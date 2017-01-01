@@ -1,8 +1,18 @@
 #pragma once
 
+#include <stdio.h>
 #include <stdint.h>
+#include <string>
 
-namespace Vulkan
+#define LOG(...)                      \
+	do                                \
+	{                                 \
+		fprintf(stderr, __VA_ARGS__); \
+	} while (0)
+
+#define STRINGIFY(x) #x
+
+namespace Util
 {
 #ifdef __GNUC__
 #define leading_zeroes(x) ((x) == 0 ? 32 : __builtin_clz(x))
@@ -45,4 +55,6 @@ inline uint32_t next_pow2(uint32_t v)
 	v |= v >> 1;
 	return v + 1;
 }
+
+std::string read_file_to_string(const std::string &path);
 }

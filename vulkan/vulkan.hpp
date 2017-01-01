@@ -4,8 +4,7 @@
 #include "vulkan_symbol_wrapper.h"
 #include <memory>
 #include <stdexcept>
-
-#define STRINGIFY(x) #x
+#include "util.hpp"
 
 #define V(x)                                                                                           \
 	do                                                                                                 \
@@ -15,11 +14,6 @@
 			throw std::runtime_error("Vulkan call failed at " __FILE__ ":" STRINGIFY(__LINE__) ".\n"); \
 	} while (0)
 
-#define LOG(...)                      \
-	do                                \
-	{                                 \
-		fprintf(stderr, __VA_ARGS__); \
-	} while (0)
 
 #ifdef VULKAN_DEBUG
 #define VK_ASSERT(x)                                             \

@@ -1,7 +1,6 @@
 add_library(vulkan-symbols
    vulkan_symbol_wrapper.cpp
    )
-target_link_libraries(vulkan-symbols)
 target_include_directories(vulkan-symbols PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../khronos/include)
 
 add_library(vulkan
@@ -31,6 +30,7 @@ add_subdirectory(wsi)
 add_subdirectory(spirv-cross EXCLUDE_FROM_ALL)
 target_link_libraries(vulkan spirv-cross-core)
 target_link_libraries(vulkan vulkan-symbols)
+target_link_libraries(vulkan util)
 
 if (UNIX)
    target_link_libraries(vulkan dl)

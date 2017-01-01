@@ -31,6 +31,28 @@ bool GLSLCompiler::compile(vector<uint32_t> &blob)
 	options.SetTargetEnvironment(shaderc_target_env_vulkan, 1);
 	options.SetSourceLanguage(shaderc_source_language_glsl);
 
+#if 0
+	class Foo : public shaderc::CompileOptions::IncluderInterface
+	{
+	public:
+		// Handles shaderc_include_resolver_fn callbacks.
+		shaderc_include_result* GetInclude(const char* requested_source,
+		                                   shaderc_include_type type,
+		                                   const char* requesting_source,
+		                                   size_t include_depth)
+		{
+			return nullptr;
+		}
+
+		// Handles shaderc_include_result_release_fn callbacks.
+		void ReleaseInclude(shaderc_include_result* data)
+		{
+			(void)data;
+		}
+	};
+	options.SetIncluder(unique_ptr<Foo>(new Foo));
+#endif
+
 	shaderc_shader_kind kind;
 	switch (stage)
 	{

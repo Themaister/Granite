@@ -27,7 +27,7 @@ target_compile_definitions(vulkan PUBLIC VULKAN_DEBUG)
 
 add_subdirectory(wsi)
 
-add_subdirectory(SPIRV-Cross EXCLUDE_FROM_ALL)
+add_subdirectory(spirv-cross EXCLUDE_FROM_ALL)
 target_link_libraries(vulkan spirv-cross-core)
 target_link_libraries(vulkan vulkan-symbols)
 

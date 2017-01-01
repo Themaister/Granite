@@ -10,6 +10,7 @@ option(VULKAN_WSI "Enable Vulkan WSI." ON)
 
 add_subdirectory(util)
 add_subdirectory(vulkan)
+add_subdirectory(filesystem)
 
 set(SHADERC_SPIRV_TOOLS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/spirv-tools")
 set(SHADERC_GLSLANG_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/glslang")
@@ -19,6 +20,6 @@ add_subdirectory(shaderc EXCLUDE_FROM_ALL)
 add_subdirectory(compiler)
 
 add_executable(main main.cpp)
-target_link_libraries(main vulkan compiler)
+target_link_libraries(main vulkan compiler filesystem)
 target_compile_options(main PRIVATE ${GRANITE_CXX_FLAGS})
 

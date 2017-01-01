@@ -4,7 +4,7 @@
 
 using namespace std;
 
-namespace Compiler
+namespace Granite
 {
 
 void GLSLCompiler::set_source_from_file(const string &path)

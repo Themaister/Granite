@@ -1,6 +1,6 @@
 #include "compiler.hpp"
 
-using namespace Compiler;
+using namespace Granite;
 using namespace std;
 
 int main()

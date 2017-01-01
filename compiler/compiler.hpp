@@ -4,7 +4,7 @@
 #include <unordered_map>
 #include <stdint.h>
 
-namespace Compiler
+namespace Granite
 {
 enum class Stage
 {

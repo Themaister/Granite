@@ -2,3 +2,5 @@ Makefile
 /build
 /.idea
 *.o
+CMakeFiles
+CMakeCache

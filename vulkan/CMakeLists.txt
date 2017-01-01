@@ -24,6 +24,7 @@ add_library(vulkan
 
 target_include_directories(vulkan PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../khronos/include)
 target_compile_definitions(vulkan PUBLIC VULKAN_DEBUG)
+target_compile_options(vulkan PRIVATE ${GRANITE_CXX_FLAGS})
 
 add_subdirectory(wsi)
 

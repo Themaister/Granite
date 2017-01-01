@@ -1,3 +1,15 @@
 [submodule "vulkan/spirv-cross"]
 	path = vulkan/spirv-cross
 	url = git://github.com/KhronosGroup/SPIRV-Cross
+[submodule "shaderc"]
+	path = shaderc
+	url = git://github.com/google/shaderc.git
+[submodule "third_party/glslang"]
+	path = third_party/glslang
+	url = https://github.com/google/glslang.git
+[submodule "third_party/spirv-tools"]
+	path = third_party/spirv-tools
+	url = https://github.com/KhronosGroup/SPIRV-Tools
+[submodule "third_party/spirv-headers"]
+	path = third_party/spirv-headers
+	url = https://github.com/KhronosGroup/SPIRV-Headers

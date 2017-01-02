@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string>
+#include <sstream>
 
 #define LOG(...)                      \
 	do                                \
@@ -57,4 +58,29 @@ inline uint32_t next_pow2(uint32_t v)
 }
 
 std::string read_file_to_string(const std::string &path);
+
+namespace inner
+{
+template <typename T>
+void join_helper(std::ostringstream &stream, T &&t)
+{
+	stream << std::forward<T>(t);
+}
+
+template <typename T, typename... Ts>
+void join_helper(std::ostringstream &stream, T &&t, Ts &&... ts)
+{
+	stream << std::forward<T>(t);
+	join_helper(stream, std::forward<Ts>(ts)...);
+}
+}
+
+template <typename... Ts>
+std::string join(Ts &&... ts)
+{
+	std::ostringstream stream;
+	inner::join_helper(stream, std::forward<Ts>(ts)...);
+	return stream.str();
+}
+
 }

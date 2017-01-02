@@ -19,8 +19,9 @@ public:
 class Filesystem
 {
 public:
-	Filesystem();
 	virtual ~Filesystem() = default;
+
+	static Filesystem &get();
 
 	enum class PathType
 	{
@@ -57,6 +58,7 @@ public:
 		NotifyType type;
 	};
 
+	std::vector<Entry> walk(const std::string &path);
 	virtual std::vector<Entry> list(const std::string &path) = 0;
 	virtual std::unique_ptr<File> open(const std::string &path) = 0;
 	virtual bool stat(const std::string &path, Stat &stat) = 0;

@@ -9,11 +9,71 @@
 #include <dirent.h>
 #include <string.h>
 #include <sys/inotify.h>
+#include <fcntl.h>
+#include <sys/mman.h>
 
 using namespace std;
 
 namespace Granite
 {
+
+MMapFile::MMapFile(const std::string &path)
+{
+	fd = open(path.c_str(), O_RDONLY);
+	if (fd < 0)
+		throw runtime_error("MMapFile failed to open file");
+
+	if (!reopen())
+	{
+		close(fd);
+		throw runtime_error("fstat failed");
+	}
+}
+
+void *MMapFile::map()
+{
+	if (mapped)
+		return mapped;
+
+	mapped = mmap(nullptr, size, PROT_READ, MAP_PRIVATE, fd, 0);
+	if (mapped == MAP_FAILED)
+		return nullptr;
+	return mapped;
+}
+
+size_t MMapFile::get_size() const
+{
+	return size;
+}
+
+bool MMapFile::reopen()
+{
+	unmap();
+	struct stat s;
+	if (fstat(fd, &s) < 0)
+		return false;
+
+	if (s.st_size > SIZE_MAX)
+		return false;
+	size = static_cast<size_t>(s.st_size);
+	return true;
+}
+
+void MMapFile::unmap()
+{
+	if (mapped)
+	{
+		munmap(mapped, size);
+		mapped = nullptr;
+	}
+}
+
+MMapFile::~MMapFile()
+{
+	unmap();
+	if (fd >= 0)
+		close(fd);
+}
 
 OSFilesystem::OSFilesystem(const std::string &base)
 	: base(base)
@@ -38,7 +98,16 @@ OSFilesystem::~OSFilesystem()
 
 unique_ptr<File> OSFilesystem::open(const std::string &path)
 {
-	return {};
+	try
+	{
+		unique_ptr<File> file(new MMapFile(Path::join(base, path)));
+		return file;
+	}
+	catch (const std::exception &e)
+	{
+		LOG("OSFilesystem::open(): %s\n", e.what());
+		return {};
+	}
 }
 
 void OSFilesystem::poll_notifications()

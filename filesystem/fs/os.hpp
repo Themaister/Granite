@@ -4,6 +4,22 @@
 
 namespace Granite
 {
+class MMapFile : public File
+{
+public:
+	MMapFile(const std::string &path);
+	~MMapFile();
+	void *map() override;
+	void unmap() override;
+	size_t get_size() const override;
+	bool reopen() override;
+
+private:
+	int fd = -1;
+	void *mapped = nullptr;
+	size_t size = 0;
+};
+
 class OSFilesystem : public Filesystem
 {
 public:

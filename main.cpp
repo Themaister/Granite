@@ -27,12 +27,22 @@ int main()
 		LOG("File: %s (type: %d) (size: %zu)\n", e.path.c_str(), static_cast<int>(e.type), size_t(size));
 	}
 
-#if 0
-	fs.install_notification("/tmp/hei", [](const Filesystem::NotifyInfo &info) {
+#if 1
+	auto file = fs.open("/tmp/hei3");
+	const auto print_file = [](File &file) {
+		void *map = file.map();
+		string s(static_cast<const char *>(map), static_cast<const char *>(map) + file.get_size());
+		LOG("Text: %s\n", s.c_str());
+		file.unmap();
+	};
+	print_file(*file);
+	fs.install_notification("/tmp/hei3", [&file, &print_file](const Filesystem::NotifyInfo &info) {
 		switch (info.type)
 		{
 			case Filesystem::NotifyType::FileChanged:
 				LOG("File changed: %s\n", info.path.c_str());
+				file->reopen();
+				print_file(*file);
 				break;
 			case Filesystem::NotifyType::FileDeleted:
 				LOG("File deleted: %s\n", info.path.c_str());

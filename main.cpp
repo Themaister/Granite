@@ -13,7 +13,6 @@ int main()
 	GLSLCompiler compiler;
 	vector<uint32_t> spirv;
 	compiler.set_source_from_file(Filesystem::get(), "/tmp/test.frag");
-	compiler.set_stage(Stage::Fragment);
 	compiler.compile(spirv);
 #endif
 

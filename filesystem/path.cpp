@@ -50,6 +50,15 @@ string relpath(const string &base, const string &path)
 	return Path::join(basedir(base), path);
 }
 
+string ext(const string &path)
+{
+	auto index = path.find_last_of('.');
+	if (index == string::npos)
+		return "";
+	else
+		return path.substr(index + 1, string::npos);
+}
+
 pair<string, string> split(const string &path)
 {
 	if (path.empty())

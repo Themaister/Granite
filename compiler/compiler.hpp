@@ -51,5 +51,7 @@ private:
 	Stage stage = Stage::Compute;
 	std::unordered_map<std::string, std::string> defines;
 	Filesystem *fs = nullptr;
+
+	static Stage stage_from_path(const std::string &path);
 };
 }

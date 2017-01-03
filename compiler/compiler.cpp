@@ -8,6 +8,25 @@ using namespace std;
 namespace Granite
 {
 
+Stage GLSLCompiler::stage_from_path(const std::string &path)
+{
+	auto ext = Path::ext(path);
+	if (ext == "vert")
+		return Stage::Vertex;
+	else if (ext == "tesc")
+		return Stage::TessControl;
+	else if (ext == "tese")
+		return Stage::TessEvaluation;
+	else if (ext == "geom")
+		return Stage::Geometry;
+	else if (ext == "frag")
+		return Stage::Fragment;
+	else if (ext == "comp")
+		return Stage::Compute;
+	else
+		throw logic_error("invalid extension");
+}
+
 void GLSLCompiler::set_source_from_file(Filesystem &fs, const string &path)
 {
 	auto file = fs.open(path);
@@ -19,6 +38,7 @@ void GLSLCompiler::set_source_from_file(Filesystem &fs, const string &path)
 	source = string(mapped, mapped + file->get_size());
 
 	source_path = path;
+	stage = stage_from_path(path);
 	this->fs = &fs;
 }
 

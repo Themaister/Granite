@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <dirent.h>
 #include <string.h>
+#include <sys/inotify.h>
 
 using namespace std;
 
@@ -17,10 +18,22 @@ namespace Granite
 OSFilesystem::OSFilesystem(const std::string &base)
 	: base(base)
 {
+	notify_fd = inotify_init1(IN_NONBLOCK);
+	if (notify_fd < 0)
+	{
+		LOG("Failed to init inotify.\n");
+		throw runtime_error("inotify");
+	}
 }
 
 OSFilesystem::~OSFilesystem()
 {
+	if (notify_fd > 0)
+	{
+		for (auto &handler : handlers)
+			inotify_rm_watch(notify_fd, handler.first);
+		close(notify_fd);
+	}
 }
 
 unique_ptr<File> OSFilesystem::open(const std::string &path)
@@ -28,15 +41,98 @@ unique_ptr<File> OSFilesystem::open(const std::string &path)
 	return {};
 }
 
+void OSFilesystem::poll_notifications()
+{
+	for (;;)
+	{
+		char buffer[sizeof(inotify_event) + NAME_MAX + 1] alignas(inotify_event);
+		ssize_t ret = read(notify_fd, buffer, sizeof(buffer));
+
+		if (ret < 0)
+		{
+			if (errno != EAGAIN)
+				throw runtime_error("failed to read inotify fd");
+			break;
+		}
+
+		struct inotify_event *current = nullptr;
+		for (ssize_t i = 0; i < ret; i += current->len + sizeof(struct inotify_event))
+		{
+			current = reinterpret_cast<inotify_event *>(buffer + i);
+			auto mask = current->mask;
+
+			int wd = current->wd;
+			auto itr = handlers.find(wd);
+			if (itr == end(handlers))
+				continue;
+
+			NotifyType type;
+			if (mask & IN_CLOSE_WRITE)
+				type = NotifyType::FileChanged;
+			else if (mask & (IN_CREATE | IN_MOVED_TO))
+				type = NotifyType::FileCreated;
+			else if (mask & (IN_DELETE | IN_DELETE_SELF | IN_MOVED_FROM))
+				type = NotifyType::FileDeleted;
+			else
+				continue;
+
+			if (itr->second.func)
+			{
+				if (itr->second.directory)
+				{
+					auto notify_path = Path::join(itr->second.path, current->name);
+					itr->second.func({move(notify_path), type });
+				}
+				else
+					itr->second.func({ itr->second.path, type });
+			}
+		}
+	}
+}
+
 void OSFilesystem::uninstall_notification(Filesystem::NotifyHandle handle)
 {
+	auto itr = handlers.find(static_cast<int>(handle));
+	if (itr == end(handlers))
+		throw runtime_error("unknown inotify handler");
 
+	auto path_itr = path_to_handler.find(itr->second.path);
+	if (path_itr == end(path_to_handler))
+		throw runtime_error("unknown inotify handler path");
+
+	path_to_handler.erase(path_itr);
+	handlers.erase(itr);
+}
+
+Filesystem::NotifyHandle OSFilesystem::find_notification(const std::string &path) const
+{
+	auto itr = path_to_handler.find(path);
+	if (itr != end(path_to_handler))
+		return itr->second;
+	else
+		return -1;
 }
 
 Filesystem::NotifyHandle OSFilesystem::install_notification(const string &path,
                                                             function<void (const Filesystem::NotifyInfo &)> func)
 {
-	return 0;
+	if (find_notification(path) >= 0)
+		throw runtime_error("cannot add multiple watches on same file/directory.");
+
+	Filesystem::Stat s;
+	if (!stat(path, s))
+		throw runtime_error("path doesn't exist");
+
+	auto resolved_path = Path::join(base, path);
+	int wd = inotify_add_watch(notify_fd, resolved_path.c_str(),
+	                           IN_MOVE | IN_CLOSE_WRITE | IN_CREATE | IN_DELETE | IN_DELETE_SELF);
+
+	if (wd < 0)
+		throw runtime_error("inotify_add_watch");
+
+	handlers[wd] = { path, move(func), s.type == Filesystem::PathType::Directory };
+	path_to_handler[path] = wd;
+	return static_cast<NotifyHandle>(wd);
 }
 
 vector<Filesystem::Entry> OSFilesystem::list(const string &path)
@@ -99,4 +195,5 @@ bool OSFilesystem::stat(const std::string &path, Stat &stat)
 	stat.size = uint64_t(buf.st_size);
 	return true;
 }
+
 }

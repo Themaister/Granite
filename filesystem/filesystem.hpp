@@ -42,14 +42,13 @@ public:
 		PathType type;
 	};
 
-	using NotifyHandle = uint64_t;
+	using NotifyHandle = int;
 
 	enum class NotifyType
 	{
-		FileRemoved,
 		FileChanged,
-		FileAdded,
-		FileMoved
+		FileDeleted,
+		FileCreated,
 	};
 
 	struct NotifyInfo
@@ -63,6 +62,8 @@ public:
 	virtual std::unique_ptr<File> open(const std::string &path) = 0;
 	virtual bool stat(const std::string &path, Stat &stat) = 0;
 	virtual NotifyHandle install_notification(const std::string &path, std::function<void (const NotifyInfo &)> func) = 0;
+	virtual NotifyHandle find_notification(const std::string &path) const = 0;
 	virtual void uninstall_notification(NotifyHandle handle) = 0;
+	virtual void poll_notifications() = 0;
 };
 }

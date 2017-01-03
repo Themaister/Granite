@@ -1,6 +1,7 @@
 #include "util.hpp"
 #include "compiler.hpp"
 #include "filesystem.hpp"
+#include "path.hpp"
 #include <unistd.h>
 
 using namespace Granite;
@@ -27,7 +28,7 @@ int main()
 		LOG("File: %s (type: %d) (size: %zu)\n", e.path.c_str(), static_cast<int>(e.type), size_t(size));
 	}
 
-#if 1
+#if 0
 	auto file = fs.open("/tmp/hei3");
 	const auto print_file = [](File &file) {
 		void *map = file.map();
@@ -68,6 +69,10 @@ int main()
 				break;
 		}
 	});
+
+	LOG("%s -> %s\n", "/tmp/test", Path::basedir("/tmp/test").c_str());
+	LOG("%s -> %s\n", "/tmp/test/", Path::basename("/tmp/test/").c_str());
+	LOG("%s + %s -> %s\n", "/tmp/foo.c", "../bazzy.cpp", Path::relpath("/tmp/foo.c", "../bazzy.cpp").c_str());
 
 	for (;;)
 	{

@@ -21,5 +21,45 @@ string join(const string &base, const string &path)
 	bool need_slash = index != base.size() - 1;
 	return Util::join(base, need_slash ? "/" : "", path);
 }
+
+string basedir(const string &path)
+{
+	if (path.empty())
+		return "";
+	auto index = path.find_last_of('/');
+	if (index == string::npos)
+		return ".";
+
+	return path.substr(0, index);
+}
+
+string basename(const string &path)
+{
+	if (path.empty())
+		return "";
+	auto index = path.find_last_of('/');
+	if (index == string::npos)
+		return path;
+
+	auto base = path.substr(index + 1, string::npos);
+	return base;
+}
+
+string relpath(const string &base, const string &path)
+{
+	return Path::join(basedir(base), path);
+}
+
+pair<string, string> split(const string &path)
+{
+	if (path.empty())
+		return make_pair(string("."), string("."));
+	auto index = path.find_last_of('/');
+	if (index == string::npos)
+		return make_pair(string("."), path);
+
+	auto base = path.substr(index + 1, string::npos);
+	return make_pair(path.substr(0, index), base);
+}
 }
 }

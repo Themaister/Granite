@@ -3,6 +3,7 @@
 #include <vector>
 #include <unordered_map>
 #include <stdint.h>
+#include "filesystem.hpp"
 
 namespace Granite
 {
@@ -30,7 +31,7 @@ public:
 		source_path = std::move(path);
 	}
 
-	void set_source_from_file(const std::string &path);
+	void set_source_from_file(Filesystem &fs, const std::string &path);
 
 	void set_define(const std::string &define, const std::string &value = "")
 	{
@@ -49,5 +50,6 @@ private:
 	std::string source_path;
 	Stage stage = Stage::Compute;
 	std::unordered_map<std::string, std::string> defines;
+	Filesystem *fs = nullptr;
 };
 }

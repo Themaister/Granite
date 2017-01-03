@@ -57,8 +57,6 @@ inline uint32_t next_pow2(uint32_t v)
 	return v + 1;
 }
 
-std::string read_file_to_string(const std::string &path);
-
 namespace inner
 {
 template <typename T>

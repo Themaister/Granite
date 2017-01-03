@@ -1,5 +1,6 @@
 #include "compiler.hpp"
 #include <shaderc/shaderc.hpp>
+#include <path.hpp>
 #include "util.hpp"
 
 using namespace std;
@@ -7,10 +8,18 @@ using namespace std;
 namespace Granite
 {
 
-void GLSLCompiler::set_source_from_file(const string &path)
+void GLSLCompiler::set_source_from_file(Filesystem &fs, const string &path)
 {
-	source = Util::read_file_to_string(path);
+	auto file = fs.open(path);
+	if (!file)
+		throw runtime_error("file open");
+	auto *mapped = static_cast<const char *>(file->map());
+	if (!mapped)
+		throw runtime_error("file map");
+	source = string(mapped, mapped + file->get_size());
+
 	source_path = path;
+	this->fs = &fs;
 }
 
 bool GLSLCompiler::compile(vector<uint32_t> &blob)
@@ -31,27 +40,64 @@ bool GLSLCompiler::compile(vector<uint32_t> &blob)
 	options.SetTargetEnvironment(shaderc_target_env_vulkan, 1);
 	options.SetSourceLanguage(shaderc_source_language_glsl);
 
-#if 0
 	class Foo : public shaderc::CompileOptions::IncluderInterface
 	{
 	public:
-		// Handles shaderc_include_resolver_fn callbacks.
-		shaderc_include_result* GetInclude(const char* requested_source,
-		                                   shaderc_include_type type,
-		                                   const char* requesting_source,
-		                                   size_t include_depth)
+		Foo(Filesystem &fs)
+			: fs(fs)
 		{
-			return nullptr;
+
 		}
 
-		// Handles shaderc_include_result_release_fn callbacks.
+		struct Holder
+		{
+			string path;
+			unique_ptr<File> file;
+		};
+
+		// Handles shaderc_include_resolver_fn callbacks.
+		shaderc_include_result* GetInclude(const char* requested_source,
+		                                   shaderc_include_type,
+		                                   const char* requesting_source,
+		                                   size_t)
+		{
+			if (!requested_source || !requesting_source)
+				return nullptr;
+			auto path = Path::relpath(requesting_source, requested_source);
+			auto file = fs.open(path);
+			if (!file)
+				return nullptr;
+
+			auto *result = new shaderc_include_result();
+			auto *holder = new Holder{};
+			holder->file = move(file);
+			holder->path = move(path);
+			result->source_name = holder->path.c_str();
+			result->source_name_length = holder->path.size();
+			result->content = static_cast<const char *>(holder->file->map());
+			result->content_length = holder->file->get_size();
+			result->user_data = holder;
+
+			if (!result->content)
+			{
+				delete holder;
+				delete result;
+				return nullptr;
+			}
+			return result;
+		}
+
 		void ReleaseInclude(shaderc_include_result* data)
 		{
-			(void)data;
+			auto *holder = static_cast<Holder *>(data->user_data);
+			delete holder;
+			delete data;
 		}
+
+	private:
+		Filesystem &fs;
 	};
-	options.SetIncluder(unique_ptr<Foo>(new Foo));
-#endif
+	options.SetIncluder(unique_ptr<Foo>(new Foo(*fs)));
 
 	shaderc_shader_kind kind;
 	switch (stage)

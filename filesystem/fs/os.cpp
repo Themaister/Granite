@@ -53,7 +53,7 @@ bool MMapFile::reopen()
 	if (fstat(fd, &s) < 0)
 		return false;
 
-	if (s.st_size > SIZE_MAX)
+	if (uint64_t(s.st_size) > SIZE_MAX)
 		return false;
 	size = static_cast<size_t>(s.st_size);
 	return true;

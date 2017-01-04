@@ -13,7 +13,10 @@ int main()
 	GLSLCompiler compiler;
 	vector<uint32_t> spirv;
 	compiler.set_source_from_file(Filesystem::get(), "/tmp/test.frag");
-	compiler.compile(spirv);
+	auto result = compiler.compile();
+
+	for (auto &dep : result.dependencies)
+		LOG("Dependency: %s\n", dep.c_str());
 #endif
 
 	auto &fs = Filesystem::get();
@@ -27,8 +30,8 @@ int main()
 		LOG("File: %s (type: %d) (size: %zu)\n", e.path.c_str(), static_cast<int>(e.type), size_t(size));
 	}
 
-#if 0
-	auto file = fs.open("/tmp/hei3");
+#if 1
+	auto file = fs.open("/tmp/test");
 	const auto print_file = [](File &file) {
 		void *map = file.map();
 		string s(static_cast<const char *>(map), static_cast<const char *>(map) + file.get_size());
@@ -36,20 +39,20 @@ int main()
 		file.unmap();
 	};
 	print_file(*file);
-	fs.install_notification("/tmp/hei3", [&file, &print_file](const Filesystem::NotifyInfo &info) {
+	fs.install_notification("/tmp/test", [&file, &print_file](const Filesystem::NotifyInfo &info) {
 		switch (info.type)
 		{
-			case Filesystem::NotifyType::FileChanged:
-				LOG("File changed: %s\n", info.path.c_str());
-				file->reopen();
-				print_file(*file);
-				break;
-			case Filesystem::NotifyType::FileDeleted:
-				LOG("File deleted: %s\n", info.path.c_str());
-				break;
-			case Filesystem::NotifyType::FileCreated:
-				LOG("File created: %s\n", info.path.c_str());
-				break;
+		case Filesystem::NotifyType::FileChanged:
+			LOG("File changed: %s\n", info.path.c_str());
+			file->reopen();
+			print_file(*file);
+			break;
+		case Filesystem::NotifyType::FileDeleted:
+			LOG("File deleted: %s\n", info.path.c_str());
+			break;
+		case Filesystem::NotifyType::FileCreated:
+			LOG("File created: %s\n", info.path.c_str());
+			break;
 		}
 	});
 #endif
@@ -57,15 +60,15 @@ int main()
 	fs.install_notification("/tmp", [](const Filesystem::NotifyInfo &info) {
 		switch (info.type)
 		{
-			case Filesystem::NotifyType::FileChanged:
-				LOG("Dir file changed: %s\n", info.path.c_str());
-				break;
-			case Filesystem::NotifyType::FileDeleted:
-				LOG("Dir file deleted: %s\n", info.path.c_str());
-				break;
-			case Filesystem::NotifyType::FileCreated:
-				LOG("Dir file created: %s\n", info.path.c_str());
-				break;
+		case Filesystem::NotifyType::FileChanged:
+			LOG("Dir file changed: %s\n", info.path.c_str());
+			break;
+		case Filesystem::NotifyType::FileDeleted:
+			LOG("Dir file deleted: %s\n", info.path.c_str());
+			break;
+		case Filesystem::NotifyType::FileCreated:
+			LOG("Dir file created: %s\n", info.path.c_str());
+			break;
 		}
 	});
 

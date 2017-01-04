@@ -42,10 +42,12 @@ void GLSLCompiler::set_source_from_file(Filesystem &fs, const string &path)
 	this->fs = &fs;
 }
 
-bool GLSLCompiler::compile(vector<uint32_t> &blob)
+CompilationResult GLSLCompiler::compile()
 {
 	shaderc::Compiler compiler;
 	shaderc::CompileOptions options;
+	CompilationResult ret;
+	ret.success = false;
 
 	for (auto &def : defines)
 	{
@@ -63,8 +65,9 @@ bool GLSLCompiler::compile(vector<uint32_t> &blob)
 	class Foo : public shaderc::CompileOptions::IncluderInterface
 	{
 	public:
-		Foo(Filesystem &fs)
-			: fs(fs)
+		Foo(Filesystem &fs, CompilationResult &result)
+			: fs(fs),
+			  compilation_result(result)
 		{
 
 		}
@@ -76,9 +79,9 @@ bool GLSLCompiler::compile(vector<uint32_t> &blob)
 		};
 
 		// Handles shaderc_include_resolver_fn callbacks.
-		shaderc_include_result* GetInclude(const char* requested_source,
+		shaderc_include_result *GetInclude(const char *requested_source,
 		                                   shaderc_include_type,
-		                                   const char* requesting_source,
+		                                   const char *requesting_source,
 		                                   size_t)
 		{
 			if (!requested_source || !requesting_source)
@@ -98,6 +101,8 @@ bool GLSLCompiler::compile(vector<uint32_t> &blob)
 			result->content_length = holder->file->get_size();
 			result->user_data = holder;
 
+			compilation_result.dependencies.insert(holder->path);
+
 			if (!result->content)
 			{
 				delete holder;
@@ -107,7 +112,7 @@ bool GLSLCompiler::compile(vector<uint32_t> &blob)
 			return result;
 		}
 
-		void ReleaseInclude(shaderc_include_result* data)
+		void ReleaseInclude(shaderc_include_result *data)
 		{
 			auto *holder = static_cast<Holder *>(data->user_data);
 			delete holder;
@@ -116,47 +121,47 @@ bool GLSLCompiler::compile(vector<uint32_t> &blob)
 
 	private:
 		Filesystem &fs;
+		CompilationResult &compilation_result;
 	};
-	options.SetIncluder(unique_ptr<Foo>(new Foo(*fs)));
+	options.SetIncluder(unique_ptr<Foo>(new Foo(*fs, ret)));
 
 	shaderc_shader_kind kind;
 	switch (stage)
 	{
-		case Stage::Vertex:
-			kind = shaderc_glsl_vertex_shader;
-			break;
+	case Stage::Vertex:
+		kind = shaderc_glsl_vertex_shader;
+		break;
 
-		case Stage::TessControl:
-			kind = shaderc_glsl_tess_control_shader;
-			break;
+	case Stage::TessControl:
+		kind = shaderc_glsl_tess_control_shader;
+		break;
 
-		case Stage::TessEvaluation:
-			kind = shaderc_glsl_tess_evaluation_shader;
-			break;
+	case Stage::TessEvaluation:
+		kind = shaderc_glsl_tess_evaluation_shader;
+		break;
 
-		case Stage::Geometry:
-			kind = shaderc_glsl_geometry_shader;
-			break;
+	case Stage::Geometry:
+		kind = shaderc_glsl_geometry_shader;
+		break;
 
-		case Stage::Fragment:
-			kind = shaderc_glsl_fragment_shader;
-			break;
+	case Stage::Fragment:
+		kind = shaderc_glsl_fragment_shader;
+		break;
 
-		case Stage::Compute:
-			kind = shaderc_glsl_compute_shader;
-			break;
+	case Stage::Compute:
+		kind = shaderc_glsl_compute_shader;
+		break;
 	}
 	shaderc::SpvCompilationResult result = compiler.CompileGlslToSpv(source, kind, source_path.c_str(), options);
 
 	if (result.GetNumErrors())
 	{
 		LOG("GLSL error: \n%s\n", result.GetErrorMessage().c_str());
-		return false;
+		return ret;
 	}
 
-	blob.clear();
-	blob.insert(begin(blob), result.cbegin(), result.cend());
-
-	return true;
+	ret.spirv.insert(begin(ret.spirv), result.cbegin(), result.cend());
+	ret.success = true;
+	return ret;
 }
 }

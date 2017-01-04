@@ -1,7 +1,9 @@
 #pragma once
+
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <unordered_set>
 #include <stdint.h>
 #include "filesystem.hpp"
 
@@ -15,6 +17,13 @@ enum class Stage
 	Geometry,
 	Fragment,
 	Compute
+};
+
+struct CompilationResult
+{
+	std::vector<uint32_t> spirv;
+	std::unordered_set<std::string> dependencies;
+	bool success;
 };
 
 class GLSLCompiler
@@ -43,7 +52,7 @@ public:
 		defines.clear();
 	}
 
-	bool compile(std::vector<uint32_t> &data);
+	CompilationResult compile();
 
 private:
 	std::string source;

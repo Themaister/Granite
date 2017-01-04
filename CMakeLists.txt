@@ -8,16 +8,15 @@ endif()
 
 option(VULKAN_WSI "Enable Vulkan WSI." ON)
 
-add_subdirectory(util)
-add_subdirectory(vulkan)
-add_subdirectory(filesystem)
-
-set(SHADERC_SPIRV_TOOLS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/spirv-tools")
-set(SHADERC_GLSLANG_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/glslang")
-set(SPIRV-Headers_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/spirv-headers")
+set(SHADERC_THIRD_PARTY_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party" CACHE STRING "Third party path." FORCE)
+set(SPIRV-Headers_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/spirv-headers" CACHE STRING "SPIRV-Headers path")
 set(SHADERC_SKIP_TESTS ON)
 add_subdirectory(shaderc EXCLUDE_FROM_ALL)
 add_subdirectory(compiler)
+
+add_subdirectory(util)
+add_subdirectory(vulkan)
+add_subdirectory(filesystem)
 
 add_executable(main main.cpp)
 target_link_libraries(main vulkan compiler filesystem)

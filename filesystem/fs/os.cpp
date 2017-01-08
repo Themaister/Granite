@@ -17,9 +17,24 @@ using namespace std;
 namespace Granite
 {
 
-MMapFile::MMapFile(const std::string &path)
+MMapFile::MMapFile(const std::string &path, Filesystem::Mode mode)
 {
-	fd = open(path.c_str(), O_RDONLY);
+	int modeflags;
+	switch (mode)
+	{
+	case Filesystem::Mode::ReadOnly:
+		modeflags = O_RDONLY;
+		break;
+
+	case Filesystem::Mode::WriteOnly:
+		modeflags = O_RDWR | O_CREAT; // Need read access for mmap.
+		break;
+
+	case Filesystem::Mode::ReadWrite:
+		modeflags = O_RDWR;
+		break;
+	}
+	fd = open(path.c_str(), modeflags, 0640);
 	if (fd < 0)
 		throw runtime_error("MMapFile failed to open file");
 
@@ -28,6 +43,24 @@ MMapFile::MMapFile(const std::string &path)
 		close(fd);
 		throw runtime_error("fstat failed");
 	}
+}
+
+void *MMapFile::map_write(size_t size)
+{
+	if (mapped)
+		return nullptr;
+
+	if (ftruncate(fd, size) < 0)
+		return nullptr;
+	this->size = size;
+
+	mapped = mmap(nullptr, size, PROT_WRITE | PROT_READ, MAP_SHARED, fd, 0);
+	if (mapped == MAP_FAILED)
+	{
+		LOGE("Failed to mmap: %s\n", strerror(errno));
+		return nullptr;
+	}
+	return mapped;
 }
 
 void *MMapFile::map()
@@ -96,11 +129,11 @@ OSFilesystem::~OSFilesystem()
 	}
 }
 
-unique_ptr<File> OSFilesystem::open(const std::string &path)
+unique_ptr<File> OSFilesystem::open(const std::string &path, Mode mode)
 {
 	try
 	{
-		unique_ptr<File> file(new MMapFile(Path::join(base, path)));
+		unique_ptr<File> file(new MMapFile(Path::join(base, path), mode));
 		return file;
 	}
 	catch (const std::exception &e)

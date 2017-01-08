@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <string>
 #include <sstream>
+#include <vector>
 
 #define LOG(...)                      \
 	do                                \
@@ -80,5 +81,8 @@ std::string join(Ts &&... ts)
 	inner::join_helper(stream, std::forward<Ts>(ts)...);
 	return stream.str();
 }
+
+std::vector<std::string> split(const std::string &str, const char *delim);
+std::vector<std::string> split_no_empty(const std::string &str, const char *delim);
 
 }

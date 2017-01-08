@@ -42,88 +42,115 @@ void GLSLCompiler::set_source_from_file(Filesystem &fs, const string &path)
 	this->fs = &fs;
 }
 
-CompilationResult GLSLCompiler::compile()
+bool GLSLCompiler::parse_variants(const string &source, const string &path)
+{
+	auto lines = Util::split(source, "\n");
+
+	unsigned line_index = 0;
+	for (auto &line : lines)
+	{
+		if (line.find("#pragma VARIANT") == 0)
+		{
+			auto variant = Util::split_no_empty(line, " ");
+			if (variant.size() == 3)
+				variants[variant[2]] = { 0, 1 };
+			else if (variant.size() == 5)
+			{
+				auto minimum = stoi(variant[3]);
+				auto maximum = stoi(variant[4]);
+				if (maximum <= minimum)
+					throw logic_error("maximum <= minimum");
+				variants[variant[2]] = { minimum, maximum };
+			}
+
+			preprocessed_source += Util::join("#line ", line_index + 2, " \"", path, "\"\n");
+		}
+		else if (line.find("#include \"") == 0)
+		{
+			auto include_path = line.substr(10);
+			if (!include_path.empty() && include_path.back() == '"')
+				include_path.pop_back();
+
+			include_path = Path::relpath(path, include_path);
+			auto file = fs->open(include_path);
+			if (!file)
+			{
+				LOG("Failed to include GLSL file: %s\n", include_path.c_str());
+				return false;
+			}
+
+			auto *mapped = static_cast<const char *>(file->map());
+			if (!mapped)
+				return false;
+			size_t size = file->get_size();
+
+			preprocessed_source += Util::join("#line ", 1, " \"", include_path, "\"\n");
+			if (!parse_variants({ mapped, mapped + size }, include_path))
+				return false;
+			preprocessed_source += Util::join("#line ", line_index + 2, " \"", path, "\"\n");
+
+			dependencies.insert(include_path);
+		}
+		else
+		{
+			preprocessed_source += line;
+			preprocessed_source += '\n';
+
+			auto first_non_space = line.find_first_not_of(' ');
+			if (first_non_space != string::npos && line[first_non_space] == '#')
+			{
+				auto keywords = Util::split(line.substr(first_non_space + 1), " ");
+				if (keywords.size() == 1)
+				{
+					auto &word = keywords.front();
+					if (word == "endif")
+						preprocessed_source += Util::join("#line ", line_index + 2, " \"", path, "\"\n");
+				}
+			}
+		}
+
+		line_index++;
+	}
+	return true;
+}
+
+void GLSLCompiler::set_variant(const std::string &variant, int value)
+{
+	auto itr = variants.find(variant);
+	if (itr == std::end(variants))
+		throw std::logic_error("variant doesn't exist");
+	itr->second.current = value;
+}
+
+void GLSLCompiler::reset_variants()
+{
+	for (auto &var : variants)
+		var.second.current = var.second.minimum;
+}
+
+bool GLSLCompiler::preprocess()
+{
+	preprocessed_source.clear();
+	return parse_variants(source, source_path);
+}
+
+vector<uint32_t> GLSLCompiler::compile()
 {
 	shaderc::Compiler compiler;
 	shaderc::CompileOptions options;
-	CompilationResult ret;
-	ret.success = false;
-
-	for (auto &def : defines)
+	if (preprocessed_source.empty())
 	{
-		if (def.second.empty())
-			options.AddMacroDefinition(def.first);
-		else
-			options.AddMacroDefinition(def.first, def.second);
+		LOG("Need to preprocess source first.\n");
+		return {};
 	}
+
+	for (auto &variant : variants)
+		options.AddMacroDefinition(variant.first, to_string(variant.second.current));
 
 	options.SetGenerateDebugInfo();
 	options.SetOptimizationLevel(shaderc_optimization_level_zero);
 	options.SetTargetEnvironment(shaderc_target_env_vulkan, 1);
 	options.SetSourceLanguage(shaderc_source_language_glsl);
-
-	class Foo : public shaderc::CompileOptions::IncluderInterface
-	{
-	public:
-		Foo(Filesystem &fs, CompilationResult &result)
-			: fs(fs),
-			  compilation_result(result)
-		{
-
-		}
-
-		struct Holder
-		{
-			string path;
-			unique_ptr<File> file;
-		};
-
-		// Handles shaderc_include_resolver_fn callbacks.
-		shaderc_include_result *GetInclude(const char *requested_source,
-		                                   shaderc_include_type,
-		                                   const char *requesting_source,
-		                                   size_t)
-		{
-			if (!requested_source || !requesting_source)
-				return nullptr;
-			auto path = Path::relpath(requesting_source, requested_source);
-			auto file = fs.open(path);
-			if (!file)
-				return nullptr;
-
-			auto *result = new shaderc_include_result();
-			auto *holder = new Holder{};
-			holder->file = move(file);
-			holder->path = move(path);
-			result->source_name = holder->path.c_str();
-			result->source_name_length = holder->path.size();
-			result->content = static_cast<const char *>(holder->file->map());
-			result->content_length = holder->file->get_size();
-			result->user_data = holder;
-
-			compilation_result.dependencies.insert(holder->path);
-
-			if (!result->content)
-			{
-				delete holder;
-				delete result;
-				return nullptr;
-			}
-			return result;
-		}
-
-		void ReleaseInclude(shaderc_include_result *data)
-		{
-			auto *holder = static_cast<Holder *>(data->user_data);
-			delete holder;
-			delete data;
-		}
-
-	private:
-		Filesystem &fs;
-		CompilationResult &compilation_result;
-	};
-	options.SetIncluder(unique_ptr<Foo>(new Foo(*fs, ret)));
 
 	shaderc_shader_kind kind;
 	switch (stage)
@@ -152,16 +179,14 @@ CompilationResult GLSLCompiler::compile()
 		kind = shaderc_glsl_compute_shader;
 		break;
 	}
-	shaderc::SpvCompilationResult result = compiler.CompileGlslToSpv(source, kind, source_path.c_str(), options);
+	shaderc::SpvCompilationResult result = compiler.CompileGlslToSpv(preprocessed_source, kind, source_path.c_str(), options);
 
 	if (result.GetNumErrors())
 	{
 		LOG("GLSL error: \n%s\n", result.GetErrorMessage().c_str());
-		return ret;
+		return {};
 	}
 
-	ret.spirv.insert(begin(ret.spirv), result.cbegin(), result.cend());
-	ret.success = true;
-	return ret;
+	return { result.cbegin(), result.cend() };
 }
 }

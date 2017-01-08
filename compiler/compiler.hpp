@@ -19,13 +19,6 @@ enum class Stage
 	Compute
 };
 
-struct CompilationResult
-{
-	std::vector<uint32_t> spirv;
-	std::unordered_set<std::string> dependencies;
-	bool success;
-};
-
 class GLSLCompiler
 {
 public:
@@ -41,26 +34,40 @@ public:
 	}
 
 	void set_source_from_file(Filesystem &fs, const std::string &path);
+	bool preprocess();
 
-	void set_define(const std::string &define, const std::string &value = "")
+	void set_variant(const std::string &variant, int value);
+	void reset_variants();
+	std::vector<uint32_t> compile();
+
+	const std::unordered_set<std::string> &get_dependencies() const
 	{
-		defines[define] = value;
+		return dependencies;
 	}
 
-	void clear_defines()
+	struct ShaderVariant
 	{
-		defines.clear();
-	}
+		int minimum;
+		int maximum;
+		int current;
+	};
 
-	CompilationResult compile();
+	const std::unordered_map<std::string, ShaderVariant> &get_variants() const
+	{
+		return variants;
+	};
 
 private:
 	std::string source;
 	std::string source_path;
 	Stage stage = Stage::Compute;
-	std::unordered_map<std::string, std::string> defines;
 	Filesystem *fs = nullptr;
 
+	std::unordered_set<std::string> dependencies;
+	std::unordered_map<std::string, ShaderVariant> variants;
+	std::string preprocessed_source;
+
 	static Stage stage_from_path(const std::string &path);
+	bool parse_variants(const std::string &source, const std::string &path);
 };
 }

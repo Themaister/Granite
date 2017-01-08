@@ -1,4 +1,4 @@
-add_library(vulkan-symbols
+add_library(vulkan-symbols STATIC
    vulkan_symbol_wrapper.cpp
    )
 target_include_directories(vulkan-symbols PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../khronos/include)

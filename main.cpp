@@ -1,6 +1,7 @@
 #include "util.hpp"
 #include "compiler.hpp"
 #include "filesystem.hpp"
+#include "event.hpp"
 #include "path.hpp"
 #include <unistd.h>
 #include <string.h>
@@ -10,6 +11,23 @@ using namespace std;
 
 int main()
 {
+	EventManager manager;
+
+	manager.enqueue<AEvent>(10);
+
+	class Handler : public EventHandler
+	{
+	public:
+		void handle(const Event &e)
+		{
+			auto &event = e.as<AEvent>();
+			fprintf(stderr, "%d\n", event.a);
+		}
+	} handler;
+
+	manager.register_handler(EventType::AEvent, handler);
+	manager.dispatch();
+#if 0
 	GLSLCompiler compiler;
 	compiler.set_source_from_file(Filesystem::get(), "/tmp/test.frag");
 	compiler.preprocess();
@@ -27,4 +45,5 @@ int main()
 	auto file = fs.open("/tmp/foobar", Filesystem::Mode::WriteOnly);
 	const string foo = ":D";
 	memcpy(file->map_write(foo.size()), foo.data(), foo.size());
+#endif
 }

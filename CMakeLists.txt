@@ -17,8 +17,9 @@ add_subdirectory(compiler)
 add_subdirectory(util)
 add_subdirectory(vulkan)
 add_subdirectory(filesystem)
+add_subdirectory(renderer)
 
 add_executable(main main.cpp)
-target_link_libraries(main vulkan compiler filesystem)
+target_link_libraries(main renderer vulkan compiler filesystem)
 target_compile_options(main PRIVATE ${GRANITE_CXX_FLAGS})
 

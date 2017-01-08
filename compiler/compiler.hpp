@@ -55,7 +55,12 @@ public:
 	const std::unordered_map<std::string, ShaderVariant> &get_variants() const
 	{
 		return variants;
-	};
+	}
+
+	const std::string &get_error_message() const
+	{
+		return error_message;
+	}
 
 private:
 	std::string source;
@@ -66,6 +71,7 @@ private:
 	std::unordered_set<std::string> dependencies;
 	std::unordered_map<std::string, ShaderVariant> variants;
 	std::string preprocessed_source;
+	std::string error_message;
 
 	static Stage stage_from_path(const std::string &path);
 	bool parse_variants(const std::string &source, const std::string &path);

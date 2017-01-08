@@ -53,14 +53,14 @@ bool GLSLCompiler::parse_variants(const string &source, const string &path)
 		{
 			auto variant = Util::split_no_empty(line, " ");
 			if (variant.size() == 3)
-				variants[variant[2]] = { 0, 1 };
+				variants[variant[2]] = { 0, 1, 0 };
 			else if (variant.size() == 5)
 			{
 				auto minimum = stoi(variant[3]);
 				auto maximum = stoi(variant[4]);
 				if (maximum <= minimum)
 					throw logic_error("maximum <= minimum");
-				variants[variant[2]] = { minimum, maximum };
+				variants[variant[2]] = { minimum, maximum, minimum };
 			}
 
 			preprocessed_source += Util::join("#line ", line_index + 2, " \"", path, "\"\n");
@@ -75,7 +75,7 @@ bool GLSLCompiler::parse_variants(const string &source, const string &path)
 			auto file = fs->open(include_path);
 			if (!file)
 			{
-				LOG("Failed to include GLSL file: %s\n", include_path.c_str());
+				LOGE("Failed to include GLSL file: %s\n", include_path.c_str());
 				return false;
 			}
 
@@ -140,7 +140,7 @@ vector<uint32_t> GLSLCompiler::compile()
 	shaderc::CompileOptions options;
 	if (preprocessed_source.empty())
 	{
-		LOG("Need to preprocess source first.\n");
+		LOGE("Need to preprocess source first.\n");
 		return {};
 	}
 
@@ -181,9 +181,10 @@ vector<uint32_t> GLSLCompiler::compile()
 	}
 	shaderc::SpvCompilationResult result = compiler.CompileGlslToSpv(preprocessed_source, kind, source_path.c_str(), options);
 
-	if (result.GetNumErrors())
+	error_message.clear();
+	if (result.GetCompilationStatus() != shaderc_compilation_status_success)
 	{
-		LOG("GLSL error: \n%s\n", result.GetErrorMessage().c_str());
+		error_message = result.GetErrorMessage();
 		return {};
 	}
 

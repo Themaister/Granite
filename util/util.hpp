@@ -6,11 +6,17 @@
 #include <sstream>
 #include <vector>
 
-#define LOG(...)                      \
-	do                                \
-	{                                 \
-		fprintf(stderr, __VA_ARGS__); \
-	} while (0)
+#define LOGE(...)                     \
+    do                                \
+    {                                 \
+        fprintf(stderr, "[ERROR]: " __VA_ARGS__); \
+    } while (0)
+
+#define LOGI(...)                     \
+    do                                \
+    {                                 \
+        fprintf(stderr, "[INFO]: " __VA_ARGS__); \
+    } while (0)
 
 #define STRINGIFY(x) #x
 
@@ -24,7 +30,7 @@ namespace Util
 #error "Implement me."
 #endif
 
-template <typename T>
+template<typename T>
 inline void for_each_bit(uint32_t value, const T &func)
 {
 	while (value)
@@ -35,7 +41,7 @@ inline void for_each_bit(uint32_t value, const T &func)
 	}
 }
 
-template <typename T>
+template<typename T>
 inline void for_each_bit_range(uint32_t value, const T &func)
 {
 	while (value)
@@ -60,13 +66,13 @@ inline uint32_t next_pow2(uint32_t v)
 
 namespace inner
 {
-template <typename T>
+template<typename T>
 void join_helper(std::ostringstream &stream, T &&t)
 {
 	stream << std::forward<T>(t);
 }
 
-template <typename T, typename... Ts>
+template<typename T, typename... Ts>
 void join_helper(std::ostringstream &stream, T &&t, Ts &&... ts)
 {
 	stream << std::forward<T>(t);
@@ -74,7 +80,7 @@ void join_helper(std::ostringstream &stream, T &&t, Ts &&... ts)
 }
 }
 
-template <typename... Ts>
+template<typename... Ts>
 std::string join(Ts &&... ts)
 {
 	std::ostringstream stream;
@@ -83,6 +89,7 @@ std::string join(Ts &&... ts)
 }
 
 std::vector<std::string> split(const std::string &str, const char *delim);
+
 std::vector<std::string> split_no_empty(const std::string &str, const char *delim);
 
 }

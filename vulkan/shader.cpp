@@ -63,7 +63,7 @@ PipelineLayout::PipelineLayout(Device *device, const CombinedResourceLayout &lay
 	}
 
 	if (vkCreatePipelineLayout(device->get_device(), &info, nullptr, &pipe_layout) != VK_SUCCESS)
-		LOG("Failed to create pipeline layout.\n");
+		LOGE("Failed to create pipeline layout.\n");
 }
 
 PipelineLayout::~PipelineLayout()
@@ -81,7 +81,7 @@ Shader::Shader(VkDevice device, ShaderStage stage, const uint32_t *data, size_t 
 	info.pCode = data;
 
 	if (vkCreateShaderModule(device, &info, nullptr, &module) != VK_SUCCESS)
-		LOG("Failed to create shader module.\n");
+		LOGE("Failed to create shader module.\n");
 
 	vector<uint32_t> code(data, data + size / sizeof(uint32_t));
 	Compiler compiler(move(code));

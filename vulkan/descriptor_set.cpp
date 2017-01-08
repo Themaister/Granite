@@ -68,7 +68,7 @@ DescriptorSetAllocator::DescriptorSetAllocator(Device *device, const DescriptorS
 	}
 
 	if (vkCreateDescriptorSetLayout(device->get_device(), &info, nullptr, &set_layout) != VK_SUCCESS)
-		LOG("Failed to create descriptor set layout.");
+		LOGE("Failed to create descriptor set layout.");
 }
 
 void DescriptorSetAllocator::begin_frame()
@@ -96,7 +96,7 @@ pair<VkDescriptorSet, bool> DescriptorSetAllocator::find(Hash hash)
 	}
 
 	if (vkCreateDescriptorPool(device->get_device(), &info, nullptr, &pool) != VK_SUCCESS)
-		LOG("Failed to create descriptor pool.\n");
+		LOGE("Failed to create descriptor pool.\n");
 
 	VkDescriptorSet sets[VULKAN_NUM_SETS_PER_POOL];
 	VkDescriptorSetLayout layouts[VULKAN_NUM_SETS_PER_POOL];
@@ -108,7 +108,7 @@ pair<VkDescriptorSet, bool> DescriptorSetAllocator::find(Hash hash)
 	alloc.pSetLayouts = layouts;
 
 	if (vkAllocateDescriptorSets(device->get_device(), &alloc, sets) != VK_SUCCESS)
-		LOG("Failed to allocate descriptor sets.\n");
+		LOGE("Failed to allocate descriptor sets.\n");
 	pools.push_back(pool);
 
 	for (auto set : sets)

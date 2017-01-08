@@ -149,7 +149,7 @@ void Device::bake_program(Program &program)
 
 		VkPipeline compute_pipeline;
 		if (vkCreateComputePipelines(device, pipeline_cache, 1, &info, nullptr, &compute_pipeline) != VK_SUCCESS)
-			LOG("Failed to create compute pipeline!\n");
+			LOGE("Failed to create compute pipeline!\n");
 		program.set_compute_pipeline(compute_pipeline);
 	}
 }
@@ -365,7 +365,7 @@ void Device::submit_queue(Fence *fence, Semaphore *semaphore)
 
 	VkResult result = vkQueueSubmit(queue, submits.size(), submits.data(), cleared_fence);
 	if (result != VK_SUCCESS)
-		LOG("vkQueueSubmit failed.\n");
+		LOGE("vkQueueSubmit failed.\n");
 	frame().submissions.clear();
 
 	if (fence)
@@ -499,7 +499,7 @@ void Device::init_swapchain(const vector<VkImage> swapchain_images, unsigned wid
 
 		VkImageView image_view;
 		if (vkCreateImageView(device, &view_info, nullptr, &image_view) != VK_SUCCESS)
-			LOG("Failed to create view for backbuffer.");
+			LOGE("Failed to create view for backbuffer.");
 
 		frame->backbuffer = make_handle<Image>(this, image, image_view, DeviceAllocation{}, info);
 		per_frame.emplace_back(move(frame));

@@ -14,8 +14,11 @@ int main()
 	compiler.preprocess();
 	auto spirv = compiler.compile();
 
+	if (spirv.empty())
+		LOGE("GLSL: %s\n", compiler.get_error_message().c_str());
+
 	for (auto &dep : compiler.get_dependencies())
-		LOG("Dependency: %s\n", dep.c_str());
+		LOGI("Dependency: %s\n", dep.c_str());
 	for (auto &dep : compiler.get_variants())
-		LOG("Variant: %s\n", dep.first.c_str());
+		LOGI("Variant: %s\n", dep.first.c_str());
 }

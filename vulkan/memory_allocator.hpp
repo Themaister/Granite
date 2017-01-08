@@ -67,7 +67,7 @@ public:
 	~Block()
 	{
 		if (free_blocks[0] != AllFree)
-			LOG("Memory leak in block detected.\n");
+			LOGE("Memory leak in block detected.\n");
 	}
 
 	inline bool full() const

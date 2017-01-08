@@ -81,7 +81,7 @@ OSFilesystem::OSFilesystem(const std::string &base)
 	notify_fd = inotify_init1(IN_NONBLOCK);
 	if (notify_fd < 0)
 	{
-		LOG("Failed to init inotify.\n");
+		LOGE("Failed to init inotify.\n");
 		throw runtime_error("inotify");
 	}
 }
@@ -105,7 +105,7 @@ unique_ptr<File> OSFilesystem::open(const std::string &path)
 	}
 	catch (const std::exception &e)
 	{
-		LOG("OSFilesystem::open(): %s\n", e.what());
+		LOGE("OSFilesystem::open(): %s\n", e.what());
 		return {};
 	}
 }
@@ -210,7 +210,7 @@ vector<Filesystem::Entry> OSFilesystem::list(const string &path)
 	DIR *dir = opendir(directory.c_str());
 	if (!dir)
 	{
-		LOG("Failed to open directory %s\n", path.c_str());
+		LOGE("Failed to open directory %s\n", path.c_str());
 		return {};
 	}
 
@@ -235,7 +235,7 @@ vector<Filesystem::Entry> OSFilesystem::list(const string &path)
 			Filesystem::Stat s;
 			if (!stat(joined_path, s))
 			{
-				LOG("Failed to stat file: %s\n", joined_path.c_str());
+				LOGE("Failed to stat file: %s\n", joined_path.c_str());
 				continue;
 			}
 

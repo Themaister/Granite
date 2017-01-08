@@ -189,7 +189,7 @@ ClassAllocator::~ClassAllocator()
 	}
 
 	if (error)
-		LOG("Memory leaked in class allocator!\n");
+		LOGE("Memory leaked in class allocator!\n");
 }
 
 void ClassAllocator::free(DeviceAllocation *alloc)

@@ -437,7 +437,7 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
 
 	VkResult res = vkCreateGraphicsPipelines(device->get_device(), cache, 1, &pipe, nullptr, &current_pipeline);
 	if (res != VK_SUCCESS)
-		LOG("Failed to create graphics pipeline!\n");
+		LOGE("Failed to create graphics pipeline!\n");
 
 	current_program->add_graphics_pipeline(hash, current_pipeline);
 	return current_pipeline;

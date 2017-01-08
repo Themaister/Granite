@@ -21,7 +21,7 @@
 	{                                                            \
 		if (!(x))                                                \
 		{                                                        \
-			LOG("Vulkan error at %s:%d.\n", __FILE__, __LINE__); \
+			LOGE("Vulkan error at %s:%d.\n", __FILE__, __LINE__); \
 			std::terminate();                                    \
 		}                                                        \
 	} while (0)

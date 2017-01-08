@@ -222,7 +222,7 @@ RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
 	rp_info.pDependencies = external_dependencies;
 
 	if (vkCreateRenderPass(device->get_device(), &rp_info, nullptr, &render_pass) != VK_SUCCESS)
-		LOG("Failed to create render pass.");
+		LOGE("Failed to create render pass.");
 }
 
 RenderPass::~RenderPass()
@@ -270,7 +270,7 @@ Framebuffer::Framebuffer(Device *device, const RenderPass &rp, const RenderPassI
 	fb_info.layers = 1;
 
 	if (vkCreateFramebuffer(device->get_device(), &fb_info, nullptr, &framebuffer) != VK_SUCCESS)
-		LOG("Failed to create framebuffer.");
+		LOGE("Failed to create framebuffer.");
 }
 
 Framebuffer::~Framebuffer()

@@ -18,15 +18,29 @@ int main()
 	class Handler : public EventHandler
 	{
 	public:
-		void handle(const Event &e)
+		bool handle_a(const Event &e)
 		{
 			auto &event = e.as<AEvent>();
 			fprintf(stderr, "%d\n", event.a);
+			return false;
+		}
+
+		bool handle_a2(const Event &e)
+		{
+			auto &event = e.as<AEvent>();
+			fprintf(stderr, "%d\n", event.a + 1);
+			return true;
 		}
 	} handler;
 
-	manager.register_handler(EventType::AEvent, handler);
+	//manager.register_handler(AEvent::type_id, static_cast<bool (EventHandler::*)(const Event &event)>(&Handler::handle_a), &handler);
+	manager.register_handler(AEvent::type_id, &Handler::handle_a, &handler);
+	manager.register_handler(AEvent::type_id, &Handler::handle_a2, &handler);
 	manager.dispatch();
+
+	manager.enqueue<AEvent>(20);
+	manager.dispatch();
+
 #if 0
 	GLSLCompiler compiler;
 	compiler.set_source_from_file(Filesystem::get(), "/tmp/test.frag");

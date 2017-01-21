@@ -1,21 +1,23 @@
 #include "event.hpp"
+#include <algorithm>
+
+using namespace std;
 
 namespace Granite
 {
 void EventManager::dispatch()
 {
-	for (unsigned i = 0; i < static_cast<unsigned>(EventType::Count); i++)
+	for (auto &event_type : events)
 	{
-		for (auto &handler : handlers[i])
-			for (auto &event : events[i])
-				handler->handle(*event);
+		auto itr = remove_if(begin(event_type.second.handlers), end(event_type.second.handlers), [&](const EventTypeData::Handler &handler) {
+			bool keep_event = true;
+			for (auto &event : event_type.second.queued_events)
+				keep_event = (handler.handler->*(handler.mem_fn))(*event) && keep_event;
+			return !keep_event;
+		});
 
-		events[i].clear();
+		event_type.second.handlers.erase(itr, end(event_type.second.handlers));
+		event_type.second.queued_events.clear();
 	}
-}
-
-void EventManager::register_handler(EventType type, EventHandler &handler)
-{
-	handlers[static_cast<unsigned>(type)].push_back(&handler);
 }
 }

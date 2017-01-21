@@ -2,16 +2,39 @@
 
 #include <vector>
 #include <memory>
+#include <unordered_map>
 
 namespace Granite
 {
-enum class EventType : unsigned
-{
-	AEvent,
-	BEvent,
 
-	Count
-};
+namespace Detail
+{
+constexpr uint64_t fnv_iterate(uint64_t hash, char c)
+{
+	return (hash * 0x100000001b3ull) ^ uint8_t(c);
+}
+
+template<size_t index>
+constexpr uint64_t compile_time_fnv1_inner(uint64_t hash, const char *str)
+{
+	return compile_time_fnv1_inner<index - 1>(fnv_iterate(hash, str[index]), str);
+}
+
+template<>
+constexpr uint64_t compile_time_fnv1_inner<size_t(-1)>(uint64_t hash, const char *)
+{
+	return hash;
+}
+
+template<size_t len>
+constexpr uint64_t compile_time_fnv1(const char (&str)[len])
+{
+	return compile_time_fnv1_inner<len - 2>(0xcbf29ce484222325ull, str);
+}
+}
+
+#define GRANITE_EVENT_TYPE_HASH(x) Detail::compile_time_fnv1(#x)
+using EventType = uint64_t;
 
 class Event
 {
@@ -45,11 +68,8 @@ private:
 	EventType id;
 };
 
-class EventHandler
+struct EventHandler
 {
-public:
-	virtual ~EventHandler() = default;
-	virtual void handle(const Event &event) = 0;
 };
 
 class EventManager
@@ -59,25 +79,48 @@ public:
 	void enqueue(P&&... p)
 	{
 		EventType type = T::type_id;
-		auto &l = events[static_cast<unsigned>(type)];
+		auto &l = events[type];
 
 		auto ptr = std::unique_ptr<Event>(new T(std::forward<P>(p)...));
 		ptr->set_type(type);
-		l.emplace_back(std::move(ptr));
+		l.queued_events.emplace_back(std::move(ptr));
 	}
 
 	void dispatch();
-	void register_handler(EventType type, EventHandler &handler);
+
+	template<typename T>
+	void register_handler(EventType type, bool (T::*mem_fn)(const Event &event), T *handler)
+	{
+		events[type].handlers.push_back({ static_cast<bool (EventHandler::*)(const Event &event)>(mem_fn), static_cast<EventHandler *>(handler) });
+	}
 
 private:
-	std::vector<std::unique_ptr<Event>> events[static_cast<unsigned>(EventType::Count)];
-	std::vector<EventHandler *> handlers[static_cast<unsigned>(EventType::Count)];
+	struct EventTypeData
+	{
+		std::vector<std::unique_ptr<Event>> queued_events;
+
+		struct Handler
+		{
+			bool (EventHandler::*mem_fn)(const Event &event);
+			EventHandler *handler;
+		};
+		std::vector<Handler> handlers;
+	};
+
+	struct EventHasher
+	{
+		size_t operator()(EventType hash) const
+		{
+			return static_cast<size_t>(hash);
+		}
+	};
+	std::unordered_map<EventType, EventTypeData, EventHasher> events;
 };
 
 class AEvent : public Event
 {
 public:
-	static constexpr EventType type_id = EventType::AEvent;
+	static constexpr EventType type_id = GRANITE_EVENT_TYPE_HASH("AEvent");
 
 	AEvent(int a) : a(a) {}
 	int a;
@@ -86,7 +129,7 @@ public:
 class BEvent : public Event
 {
 public:
-	static constexpr EventType type_id = EventType::BEvent;
+	static constexpr EventType type_id = GRANITE_EVENT_TYPE_HASH("BEvent");
 
 	BEvent(int a, int b) : a(a), b(b) {}
 	int a, b;

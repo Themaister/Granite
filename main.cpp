@@ -31,6 +31,26 @@ int main()
 			fprintf(stderr, "%d\n", event.a + 1);
 			return true;
 		}
+
+		void up(const Event &e)
+		{
+			fprintf(stderr, "UP %d\n", e.as<BEvent>().b);
+		}
+
+		void down(const Event &e)
+		{
+			fprintf(stderr, "DOWN %d\n", e.as<BEvent>().b);
+		}
+
+		void up2(const Event &e)
+		{
+			fprintf(stderr, "UP2 %d\n", e.as<BEvent>().b);
+		}
+
+		void down2(const Event &e)
+		{
+			fprintf(stderr, "DOWN2 %d\n", e.as<BEvent>().b);
+		}
 	} handler;
 
 	//manager.register_handler(AEvent::type_id, static_cast<bool (EventHandler::*)(const Event &event)>(&Handler::handle_a), &handler);
@@ -39,7 +59,15 @@ int main()
 	manager.dispatch();
 
 	manager.enqueue<AEvent>(20);
+	manager.unregister_handler(&handler);
 	manager.dispatch();
+
+	manager.register_latch_handler(BEvent::type_id, &Handler::up, &Handler::down, &handler);
+	auto cookie = manager.enqueue_latched<BEvent>(10, 20);
+	manager.dequeue_latched(cookie);
+	manager.register_latch_handler(BEvent::type_id, &Handler::up2, &Handler::down2, &handler);
+
+	cookie = manager.enqueue_latched<BEvent>(10, 40);
 
 #if 0
 	GLSLCompiler compiler;

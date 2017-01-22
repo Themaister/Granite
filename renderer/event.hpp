@@ -64,17 +64,35 @@ public:
 		id = type_id;
 	}
 
+	void set_cookie(uint64_t cookie)
+	{
+		this->cookie = cookie;
+	}
+
+	uint64_t get_cookie() const
+	{
+		return cookie;
+	}
+
 private:
 	EventType id;
+	uint64_t cookie;
 };
 
 struct EventHandler
 {
+	~EventHandler();
 };
 
 class EventManager
 {
 public:
+	static EventManager &get_global()
+	{
+		static EventManager static_manager;
+		return static_manager;
+	}
+
 	template<typename T, typename... P>
 	void enqueue(P&&... p)
 	{
@@ -86,6 +104,31 @@ public:
 		l.queued_events.emplace_back(std::move(ptr));
 	}
 
+	template<typename T, typename... P>
+	uint64_t enqueue_latched(P&&... p)
+	{
+		EventType type = T::type_id;
+		auto &l = latched_events[type];
+		auto ptr = std::unique_ptr<Event>(new T(std::forward<P>(p)...));
+		uint64_t cookie = ++cookie_counter;
+		ptr->set_type(type);
+		ptr->set_cookie(cookie);
+
+		dispatch_up_event(l.handlers, *ptr);
+		l.queued_events.emplace_back(std::move(ptr));
+		return cookie;
+	}
+
+	void dequeue_latched(uint64_t cookie);
+
+	template<typename T>
+	void dispatch_inline(const T &t)
+	{
+		EventType type = T::type_id;
+		auto &l = events[type];
+		dispatch_event(l.handlers, t);
+	}
+
 	void dispatch();
 
 	template<typename T>
@@ -94,18 +137,75 @@ public:
 		events[type].handlers.push_back({ static_cast<bool (EventHandler::*)(const Event &event)>(mem_fn), static_cast<EventHandler *>(handler) });
 	}
 
+	void unregister_handler(EventHandler *handler);
+	template<typename T>
+	void unregister_handler(bool (T::*mem_fn)(const Event &event), EventHandler *handler)
+	{
+		Handler h{ static_cast<bool (EventHandler::*)(const Event &event)>(mem_fn), static_cast<EventHandler *>(handler) };
+		unregister_handler(h);
+	}
+
+	template<typename T>
+	void register_latch_handler(EventType type, void (T::*up_fn)(const Event &event), void (T::*down_fn)(const Event &event), T *handler)
+	{
+		LatchHandler h{
+			static_cast<void (EventHandler::*)(const Event &event)>(up_fn),
+			static_cast<void (EventHandler::*)(const Event &event)>(down_fn),
+			static_cast<EventHandler *>(handler) };
+
+		auto &events = latched_events[type];
+		dispatch_up_events(events.queued_events, h);
+		latched_events[type].handlers.push_back(h);
+	}
+
+	void unregister_latch_handler(EventHandler *handler);
+	template<typename T>
+	void unregister_latch_handler(void (T::*up_fn)(const Event &event), void (T::*down_fn)(const Event &event), T *handler)
+	{
+		LatchHandler h{
+			static_cast<void (EventHandler::*)(const Event &event)>(up_fn),
+			static_cast<void (EventHandler::*)(const Event &event)>(down_fn),
+			static_cast<EventHandler *>(handler) };
+
+		unregister_latch_handler(h);
+	}
+
+	~EventManager();
+
 private:
+	struct Handler
+	{
+		bool (EventHandler::*mem_fn)(const Event &event);
+		EventHandler *handler;
+	};
+
+	struct LatchHandler
+	{
+		void (EventHandler::*up_fn)(const Event &event);
+		void (EventHandler::*down_fn)(const Event &event);
+		EventHandler *handler;
+	};
+
 	struct EventTypeData
 	{
 		std::vector<std::unique_ptr<Event>> queued_events;
-
-		struct Handler
-		{
-			bool (EventHandler::*mem_fn)(const Event &event);
-			EventHandler *handler;
-		};
 		std::vector<Handler> handlers;
 	};
+
+	struct LatchEventTypeData
+	{
+		std::vector<std::unique_ptr<Event>> queued_events;
+		std::vector<LatchHandler> handlers;
+	};
+
+	void dispatch_event(std::vector<Handler> &handlers, const Event &e);
+	void dispatch_up_events(std::vector<std::unique_ptr<Event>> &events, const LatchHandler &handler);
+	void dispatch_down_events(std::vector<std::unique_ptr<Event>> &events, const LatchHandler &handler);
+	void dispatch_up_event(std::vector<LatchHandler> &handlers, const Event &event);
+	void dispatch_down_event(std::vector<LatchHandler> &handlers, const Event &event);
+
+	void unregister_handler(const Handler &handler);
+	void unregister_latch_handler(const LatchHandler &handler);
 
 	struct EventHasher
 	{
@@ -115,6 +215,8 @@ private:
 		}
 	};
 	std::unordered_map<EventType, EventTypeData, EventHasher> events;
+	std::unordered_map<EventType, LatchEventTypeData, EventHasher> latched_events;
+	uint64_t cookie_counter = 0;
 };
 
 class AEvent : public Event

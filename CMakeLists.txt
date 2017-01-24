@@ -11,7 +11,7 @@ option(VULKAN_WSI "Enable Vulkan WSI." ON)
 set(SHADERC_THIRD_PARTY_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party" CACHE STRING "Third party path." FORCE)
 set(SPIRV-Headers_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/spirv-headers" CACHE STRING "SPIRV-Headers path")
 set(SHADERC_SKIP_TESTS ON)
-add_subdirectory(shaderc EXCLUDE_FROM_ALL)
+add_subdirectory(third_party/shaderc EXCLUDE_FROM_ALL)
 add_subdirectory(compiler)
 
 add_subdirectory(util)

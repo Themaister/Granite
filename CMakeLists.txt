@@ -15,6 +15,7 @@ add_subdirectory(shaderc EXCLUDE_FROM_ALL)
 add_subdirectory(compiler)
 
 add_subdirectory(util)
+add_subdirectory(math)
 add_subdirectory(vulkan)
 add_subdirectory(filesystem)
 add_subdirectory(renderer)

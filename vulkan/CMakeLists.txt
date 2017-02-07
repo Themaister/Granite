@@ -1,7 +1,8 @@
 add_library(vulkan-symbols STATIC
    vulkan_symbol_wrapper.cpp
    )
-target_include_directories(vulkan-symbols PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../khronos/include)
+target_include_directories(vulkan-symbols PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/khronos)
 
 add_library(vulkan
         vulkan.cpp
@@ -21,7 +22,7 @@ add_library(vulkan
         semaphore.cpp
         memory_allocator.cpp)
 
-target_include_directories(vulkan PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../khronos/include)
+target_include_directories(vulkan PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/khronos)
 target_compile_definitions(vulkan PUBLIC VULKAN_DEBUG)
 target_compile_options(vulkan PRIVATE ${GRANITE_CXX_FLAGS})
 

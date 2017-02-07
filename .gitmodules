@@ -16,3 +16,6 @@
 [submodule "third_party/glm"]
 	path = third_party/glm
 	url = git://github.com/g-truc/glm
+[submodule "third_party/glfw"]
+	path = third_party/glfw
+	url = git://github.com/glfw/glfw

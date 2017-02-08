@@ -32,6 +32,7 @@ add_subdirectory(spirv-cross EXCLUDE_FROM_ALL)
 target_link_libraries(vulkan spirv-cross-core)
 target_link_libraries(vulkan vulkan-symbols)
 target_link_libraries(vulkan util)
+target_link_libraries(vulkan vulkan-wsi)
 
 if (UNIX)
    target_link_libraries(vulkan dl)

@@ -24,3 +24,9 @@ add_executable(main main.cpp)
 target_link_libraries(main renderer vulkan compiler filesystem)
 target_compile_options(main PRIVATE ${GRANITE_CXX_FLAGS})
 
+#if (WIN32)
+#    if (CMAKE_COMPILER_IS_GNUCXX)
+#        set_target_properties(main PROPERTIES LINK_FLAGS -mwindows)
+#    endif()
+#endif()
+

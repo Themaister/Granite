@@ -87,9 +87,16 @@ bool WSI::init(unsigned width, unsigned height)
 	context = unique_ptr<Context>(new Context(ext, count, &device_ext, 1));
 
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+	//auto *monitor = glfwGetPrimaryMonitor();
+	//auto *mode = glfwGetVideoMode(monitor);
 	window = glfwCreateWindow(width, height, "GLFW Window", nullptr, nullptr);
 	if (glfwCreateWindowSurface(context->get_instance(), window, nullptr, &surface) != VK_SUCCESS)
 		return false;
+
+	int actual_width, actual_height;
+	glfwGetFramebufferSize(window, &actual_width, &actual_height);
+	width = unsigned(actual_width);
+	height = unsigned(actual_height);
 #elif defined(HAVE_KHR_DISPLAY)
 	if (!Context::init_loader(nullptr))
 		return false;
@@ -310,7 +317,7 @@ bool WSI::end_frame()
 	VkResult overall = vkQueuePresentKHR(context->get_queue(), &info);
 	if (overall != VK_SUCCESS || result != VK_SUCCESS)
 	{
-		LOG("vkQueuePresentKHR failed.\n");
+		LOGE("vkQueuePresentKHR failed.\n");
 		return false;
 	}
 	return true;
@@ -344,7 +351,7 @@ bool WSI::init_swapchain(unsigned width, unsigned height)
 	{
 		if (format_count == 0)
 		{
-			LOG("Surface has no formats.\n");
+			LOGE("Surface has no formats.\n");
 			return false;
 		}
 
@@ -426,7 +433,7 @@ bool WSI::init_swapchain(unsigned width, unsigned height)
 	this->height = swapchain_size.height;
 	this->format = format.format;
 
-	LOG("Created swapchain %u x %u (fmt: %u).\n", this->width, this->height, static_cast<unsigned>(this->format));
+	LOGI("Created swapchain %u x %u (fmt: %u).\n", this->width, this->height, static_cast<unsigned>(this->format));
 
 	uint32_t image_count;
 	V(vkGetSwapchainImagesKHR(context->get_device(), swapchain, &image_count, nullptr));

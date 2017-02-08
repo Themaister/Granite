@@ -1,5 +1,5 @@
 #include "os.hpp"
-#include "path.hpp"
+#include "../path.hpp"
 #include "util.hpp"
 #include <stdexcept>
 

@@ -5,6 +5,7 @@
 #include "path.hpp"
 #include <unistd.h>
 #include <string.h>
+#include <wsi/wsi.hpp>
 
 using namespace Granite;
 using namespace std;
@@ -68,6 +69,77 @@ int main()
 	manager.register_latch_handler(BEvent::type_id, &Handler::up2, &Handler::down2, &handler);
 
 	cookie = manager.enqueue_latched<BEvent>(10, 40);
+
+	try {
+
+
+	Vulkan::WSI wsi;
+	if (!wsi.init(1280, 720))
+		return 1;
+
+    auto &device = wsi.get_device();
+
+    GLSLCompiler compiler;
+    compiler.set_source(R"delim(#version 310 es
+layout(location = 0) in vec2 Position;
+void main()
+{
+   gl_Position = vec4(Position, 0.0, 1.0);
+}
+	)delim", "test.vert");
+	compiler.set_stage(Stage::Vertex);
+	compiler.preprocess();
+	auto vert = compiler.compile();
+    if (vert.empty())
+        LOGE("Error: %s\n", compiler.get_error_message().c_str());
+
+    compiler.set_source(R"delim(#version 310 es
+precision mediump float;
+layout(location = 0) out vec4 Color;
+void main()
+{
+   Color = vec4(1.0);
+}
+	)delim", "test.frag");
+	compiler.set_stage(Stage::Fragment);
+	compiler.preprocess();
+	auto frag = compiler.compile();
+    if (frag.empty())
+        LOGE("Error: %s\n", compiler.get_error_message().c_str());
+	auto program = device.create_program(vert.data(), vert.size() * sizeof(uint32_t), frag.data(), frag.size() * sizeof(uint32_t));
+	while (wsi.alive())
+	{
+		wsi.begin_frame();
+
+		auto cmd = device.request_command_buffer();
+		auto rp = device.get_swapchain_render_pass(Vulkan::SwapchainRenderPass::ColorOnly);
+		rp.clear_color[0].float32[0] = 1.0f;
+		rp.clear_color[0].float32[1] = 0.5f;
+		rp.clear_color[0].float32[2] = 0.5f;
+		rp.clear_color[0].float32[3] = 1.0f;
+		cmd->begin_render_pass(rp);
+
+		cmd->set_program(*program);
+        static const int8_t quad[] = {
+				-128, -128,
+				+127, -128,
+				-128, +127,
+		};
+		memcpy(cmd->allocate_vertex_data(0, 6, 2), quad, sizeof(quad));
+		cmd->set_quad_state();
+		cmd->set_vertex_attrib(0, 0, VK_FORMAT_R8G8_SNORM, 0);
+		cmd->set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+		cmd->draw(3);
+		cmd->end_render_pass();
+
+		device.submit(cmd);
+		wsi.end_frame();
+	}
+	}
+    catch (const exception &e)
+	{
+		LOGE("Exception: %s\n", e.what());
+	}
 
 #if 0
 	GLSLCompiler compiler;

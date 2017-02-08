@@ -6,6 +6,20 @@
 #include <sstream>
 #include <vector>
 
+#if defined(_WIN32) && 0
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#define LOGE(...) do { \
+    char buffer[4096]; \
+    sprintf(buffer, "[ERROR]: " __VA_ARGS__); \
+    OutputDebugStringA(buffer); \
+} while(0)
+#define LOGI(...) do { \
+    char buffer[4096]; \
+    sprintf(buffer, "[INFO]: " __VA_ARGS__); \
+    OutputDebugStringA(buffer); \
+} while(0)
+#else
 #define LOGE(...)                     \
     do                                \
     {                                 \
@@ -17,6 +31,7 @@
     {                                 \
         fprintf(stderr, "[INFO]: " __VA_ARGS__); \
     } while (0)
+#endif
 
 #define STRINGIFY(x) #x
 

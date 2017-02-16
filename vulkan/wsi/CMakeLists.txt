@@ -8,6 +8,7 @@ if (NOT WSI)
 endif()
 
 if (${WSI} MATCHES "GLFW")
+	set(GLFW_BUILD_TESTS OFF)
 	add_subdirectory(../../third_party/glfw glfw EXCLUDE_FROM_ALL)
 	target_compile_definitions(vulkan-wsi PUBLIC HAVE_GLFW)
 	target_link_libraries(vulkan-wsi vulkan-symbols glfw)

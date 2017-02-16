@@ -1,11 +1,52 @@
 #include "render_queue.hpp"
 #include <cstring>
 #include <iterator>
+#include <algorithm>
+#include <assert.h>
 
 using namespace std;
 
 namespace Granite
 {
+void RenderQueue::sort()
+{
+	stable_sort(queue, queue + count, [](const RenderInfo *a, const RenderInfo *b) {
+		return a->sorting_key < b->sorting_key;
+	});
+}
+
+void RenderQueue::combine_render_info(const RenderQueue &queue)
+{
+	size_t n = queue.get_queue_count();
+	auto **other_infos = queue.get_queue();
+	for (size_t i = 0; i < n; i++)
+		enqueue(other_infos[i]);
+}
+
+void RenderQueue::dispatch(size_t begin, size_t end)
+{
+	while (begin < end)
+	{
+		assert(queue[begin]->instance_key != 0);
+		assert(queue[begin]->sorting_key != 0);
+
+		unsigned instances = 1;
+		for (size_t i = begin + 1; i < end && queue[i]->instance_key == queue[begin]->instance_key; i++)
+		{
+			assert(queue[i]->render == queue[begin]->render);
+			instances++;
+		}
+
+		queue[begin]->render(&queue[begin], instances);
+		begin += instances;
+	}
+}
+
+void RenderQueue::dispatch()
+{
+	dispatch(0, count);
+}
+
 void RenderQueue::enqueue(RenderInfo *render_info)
 {
 	if (count >= capacity)

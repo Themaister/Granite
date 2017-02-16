@@ -14,7 +14,7 @@ struct RenderInfo
 	// Plain function pointer so we can portably sort on it,
 	// and the rendering function is kind of supposed to be a more
 	// pure function anyways.
-	// Adjacent render infos which share render function will be batched together.
+	// Adjacent render infos which share instance key will be batched together.
 	void (*render)(RenderInfo **infos, unsigned instance_count) = nullptr;
 
 	// RenderInfos with same key can be instanced.
@@ -67,6 +67,7 @@ public:
 
 	void *allocate(size_t size, size_t alignment = 64);
 	void enqueue(RenderInfo *render_info);
+	void combine_render_info(const RenderQueue &queue);
 	void reset();
 	void reset_and_reclaim();
 
@@ -79,6 +80,10 @@ public:
 	{
 		return count;
 	}
+
+	void sort();
+	void dispatch();
+	void dispatch(size_t begin, size_t end);
 
 private:
 	struct Block

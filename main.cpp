@@ -3,6 +3,7 @@
 #include "filesystem.hpp"
 #include "event.hpp"
 #include "path.hpp"
+#include "render_queue.hpp"
 #include <unistd.h>
 #include <string.h>
 #include <wsi/wsi.hpp>
@@ -12,6 +13,15 @@ using namespace std;
 
 int main()
 {
+	struct Foo : RenderInfo
+	{
+	};
+	RenderQueue queue;
+	queue.allocate_multiple<Foo>(16);
+
+	for (size_t i = 0; i < queue.get_queue_count(); i++)
+		queue.get_queue()[i]->render(&queue.get_queue()[i], 1);
+
 	EventManager manager;
 
 	manager.enqueue<AEvent>(10);

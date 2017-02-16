@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include <unordered_map>
 
-namespace Vulkan
+namespace Granite
 {
 using Hash = uint64_t;
 

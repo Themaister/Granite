@@ -6,6 +6,7 @@
 
 namespace Vulkan
 {
+using namespace Granite;
 template <typename T>
 class TemporaryHashmapEnabled
 {

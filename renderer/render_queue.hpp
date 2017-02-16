@@ -18,7 +18,7 @@ struct RenderInfo
 	void (*render)(RenderInfo **infos, unsigned instance_count) = nullptr;
 
 	// RenderInfos with same key can be instanced.
-	Hash instance_key = 0;
+	Util::Hash instance_key = 0;
 
 	// Sorting key.
 	// Lower sorting keys will appear earlier.

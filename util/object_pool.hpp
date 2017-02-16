@@ -3,7 +3,7 @@
 #include <memory>
 #include <vector>
 
-namespace Vulkan
+namespace Util
 {
 template <typename T>
 class ObjectPool

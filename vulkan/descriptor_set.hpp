@@ -33,7 +33,7 @@ public:
 	DescriptorSetAllocator(const DescriptorSetAllocator &) = delete;
 
 	void begin_frame();
-	std::pair<VkDescriptorSet, bool> find(Hash hash);
+	std::pair<VkDescriptorSet, bool> find(Util::Hash hash);
 
 	VkDescriptorSetLayout get_layout() const
 	{
@@ -43,7 +43,7 @@ public:
 	void clear();
 
 private:
-	struct DescriptorSetNode : TemporaryHashmapEnabled<DescriptorSetNode>, IntrusiveListEnabled<DescriptorSetNode>
+	struct DescriptorSetNode : Util::TemporaryHashmapEnabled<DescriptorSetNode>, Util::IntrusiveListEnabled<DescriptorSetNode>
 	{
 		DescriptorSetNode(VkDescriptorSet set)
 		    : set(set)
@@ -55,7 +55,7 @@ private:
 
 	Device *device;
 	VkDescriptorSetLayout set_layout = VK_NULL_HANDLE;
-	TemporaryHashmap<DescriptorSetNode, VULKAN_DESCRIPTOR_RING_SIZE, true> set_nodes;
+	Util::TemporaryHashmap<DescriptorSetNode, VULKAN_DESCRIPTOR_RING_SIZE, true> set_nodes;
 	std::vector<VkDescriptorPoolSize> pool_size;
 	std::vector<VkDescriptorPool> pools;
 };

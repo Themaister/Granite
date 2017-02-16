@@ -38,7 +38,7 @@ struct SamplerCreateInfo
 	VkBool32 unnormalizedCoordinates;
 };
 
-class Sampler : public IntrusivePtrEnabled<Sampler>, public Cookie
+class Sampler : public Util::IntrusivePtrEnabled<Sampler>, public Cookie
 {
 public:
 	Sampler(Device *device, VkSampler sampler, const SamplerCreateInfo &info);
@@ -59,5 +59,5 @@ private:
 	VkSampler sampler;
 	SamplerCreateInfo create_info;
 };
-using SamplerHandle = IntrusivePtr<Sampler>;
+using SamplerHandle = Util::IntrusivePtr<Sampler>;
 }

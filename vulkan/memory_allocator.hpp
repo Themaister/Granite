@@ -150,7 +150,7 @@ private:
 	VkDeviceMemory base = VK_NULL_HANDLE;
 	uint8_t *host_base = nullptr;
 	ClassAllocator *alloc = nullptr;
-	IntrusiveList<MiniHeap>::Iterator heap = {};
+	Util::IntrusiveList<MiniHeap>::Iterator heap = {};
 	uint32_t offset = 0;
 	uint32_t mask = 0;
 	uint32_t size = 0;
@@ -168,7 +168,7 @@ private:
 	}
 };
 
-struct MiniHeap : IntrusiveListEnabled<MiniHeap>
+struct MiniHeap : Util::IntrusiveListEnabled<MiniHeap>
 {
 	DeviceAllocation allocation;
 	Block heap;
@@ -200,13 +200,13 @@ private:
 	ClassAllocator() = default;
 	struct AllocationTilingHeaps
 	{
-		IntrusiveList<MiniHeap> heaps[Block::NumSubBlocks];
-		IntrusiveList<MiniHeap> full_heaps;
+		Util::IntrusiveList<MiniHeap> heaps[Block::NumSubBlocks];
+		Util::IntrusiveList<MiniHeap> full_heaps;
 		uint32_t heap_availability_mask = 0;
 	};
 	ClassAllocator *parent = nullptr;
 	AllocationTilingHeaps tiling_modes[ALLOCATION_TILING_COUNT];
-	ObjectPool<MiniHeap> object_pool;
+	Util::ObjectPool<MiniHeap> object_pool;
 
 	uint32_t sub_block_size = 1;
 	uint32_t sub_block_size_log2 = 0;

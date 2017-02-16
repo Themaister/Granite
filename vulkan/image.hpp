@@ -154,7 +154,7 @@ struct ImageViewCreateInfo
 	};
 };
 
-class ImageView : public IntrusivePtrEnabled<ImageView>, public Cookie
+class ImageView : public Util::IntrusivePtrEnabled<ImageView>, public Cookie
 {
 public:
 	ImageView(Device *device, VkImageView view, const ImageViewCreateInfo &info);
@@ -190,7 +190,7 @@ private:
 	VkImageView view;
 	ImageViewCreateInfo info;
 };
-using ImageViewHandle = IntrusivePtr<ImageView>;
+using ImageViewHandle = Util::IntrusivePtr<ImageView>;
 
 enum class ImageDomain
 {
@@ -275,7 +275,7 @@ struct ImageCreateInfo
 	}
 };
 
-class Image : public IntrusivePtrEnabled<Image>, public Cookie
+class Image : public Util::IntrusivePtrEnabled<Image>, public Cookie
 {
 public:
 	Image(Device *device, VkImage image, VkImageView default_view, const DeviceAllocation &alloc,
@@ -378,5 +378,5 @@ private:
 	VkAccessFlags access_flags = 0;
 };
 
-using ImageHandle = IntrusivePtr<Image>;
+using ImageHandle = Util::IntrusivePtr<Image>;
 }

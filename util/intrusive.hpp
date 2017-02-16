@@ -3,6 +3,9 @@
 #include <stddef.h>
 #include <utility>
 
+namespace Util
+{
+
 template <typename T>
 class IntrusivePtrEnabled
 {
@@ -20,7 +23,9 @@ public:
 	}
 
 	IntrusivePtrEnabled() = default;
+
 	IntrusivePtrEnabled(const IntrusivePtrEnabled &) = delete;
+
 	void operator=(const IntrusivePtrEnabled &) = delete;
 
 private:
@@ -32,8 +37,9 @@ class IntrusivePtr
 {
 public:
 	IntrusivePtr() = default;
+
 	IntrusivePtr(T *handle)
-	    : data(handle)
+		: data(handle)
 	{
 	}
 
@@ -130,4 +136,5 @@ template <typename T, typename... P>
 IntrusivePtr<T> make_handle(P &&... p)
 {
 	return IntrusivePtr<T>(new T(std::forward<P>(p)...));
+}
 }

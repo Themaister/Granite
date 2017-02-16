@@ -37,7 +37,7 @@ struct CombinedResourceLayout
 	VkPushConstantRange ranges[static_cast<unsigned>(ShaderStage::Count)] = {};
 	uint32_t num_ranges = 0;
 	uint32_t descriptor_set_mask = 0;
-	Hash push_constant_layout_hash = 0;
+	Util::Hash push_constant_layout_hash = 0;
 };
 
 class PipelineLayout : public Cookie
@@ -68,7 +68,7 @@ private:
 	DescriptorSetAllocator *set_allocators[VULKAN_NUM_DESCRIPTOR_SETS] = {};
 };
 
-class Shader : public IntrusivePtrEnabled<Shader>
+class Shader : public Util::IntrusivePtrEnabled<Shader>
 {
 public:
 	Shader(VkDevice device, ShaderStage stage, const uint32_t *data, size_t size);
@@ -95,9 +95,9 @@ private:
 	VkShaderModule module;
 	ResourceLayout layout;
 };
-using ShaderHandle = IntrusivePtr<Shader>;
+using ShaderHandle = Util::IntrusivePtr<Shader>;
 
-class Program : public IntrusivePtrEnabled<Program>, public Cookie
+class Program : public Util::IntrusivePtrEnabled<Program>, public Cookie
 {
 public:
 	Program(Device *device);
@@ -119,8 +119,8 @@ public:
 		return layout;
 	}
 
-	VkPipeline get_graphics_pipeline(Hash hash) const;
-	void add_graphics_pipeline(Hash hash, VkPipeline pipeline);
+	VkPipeline get_graphics_pipeline(Util::Hash hash) const;
+	void add_graphics_pipeline(Util::Hash hash, VkPipeline pipeline);
 
 	VkPipeline get_compute_pipeline() const
 	{
@@ -139,7 +139,7 @@ private:
 	ShaderHandle shaders[static_cast<unsigned>(ShaderStage::Count)];
 	PipelineLayout *layout = nullptr;
 	VkPipeline compute_pipeline = VK_NULL_HANDLE;
-	HashMap<VkPipeline> graphics_pipelines;
+	Util::HashMap<VkPipeline> graphics_pipelines;
 };
-using ProgramHandle = IntrusivePtr<Program>;
+using ProgramHandle = Util::IntrusivePtr<Program>;
 }

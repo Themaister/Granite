@@ -4,9 +4,8 @@
 #include "object_pool.hpp"
 #include <vector>
 
-namespace Vulkan
+namespace Util
 {
-using namespace Granite;
 template <typename T>
 class TemporaryHashmapEnabled
 {

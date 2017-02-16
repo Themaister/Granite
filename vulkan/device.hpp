@@ -201,11 +201,11 @@ private:
 	bool memory_type_is_host_visible(uint32_t type) const;
 
 	SamplerHandle samplers[static_cast<unsigned>(StockSampler::Count)];
-	HashMap<std::unique_ptr<PipelineLayout>> pipeline_layouts;
-	HashMap<std::unique_ptr<DescriptorSetAllocator>> descriptor_set_allocators;
+	Util::HashMap<std::unique_ptr<PipelineLayout>> pipeline_layouts;
+	Util::HashMap<std::unique_ptr<DescriptorSetAllocator>> descriptor_set_allocators;
 	FramebufferAllocator framebuffer_allocator;
 	TransientAllocator transient_allocator;
-	HashMap<std::unique_ptr<RenderPass>> render_passes;
+	Util::HashMap<std::unique_ptr<RenderPass>> render_passes;
 	VkPipelineCache pipeline_cache = VK_NULL_HANDLE;
 };
 }

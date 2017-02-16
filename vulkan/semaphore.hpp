@@ -7,7 +7,7 @@ namespace Vulkan
 {
 class Device;
 
-class SemaphoreHolder : public IntrusivePtrEnabled<SemaphoreHolder>
+class SemaphoreHolder : public Util::IntrusivePtrEnabled<SemaphoreHolder>
 {
 public:
 	SemaphoreHolder(Device *device, VkSemaphore semaphore)
@@ -49,5 +49,5 @@ private:
 	bool signalled = false;
 };
 
-using Semaphore = IntrusivePtr<SemaphoreHolder>;
+using Semaphore = Util::IntrusivePtr<SemaphoreHolder>;
 }

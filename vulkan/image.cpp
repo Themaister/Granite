@@ -37,7 +37,7 @@ Image::Image(Device *device, VkImage image, VkImageView default_view, const Devi
 		info.levels = create_info.levels;
 		info.base_layer = 0;
 		info.layers = create_info.layers;
-		view = make_handle<ImageView>(device, default_view, info);
+		view = Util::make_handle<ImageView>(device, default_view, info);
 	}
 }
 

@@ -130,8 +130,8 @@ public:
 	void clear();
 
 private:
-	struct FramebufferNode : TemporaryHashmapEnabled<FramebufferNode>,
-	                         IntrusiveListEnabled<FramebufferNode>,
+	struct FramebufferNode : Util::TemporaryHashmapEnabled<FramebufferNode>,
+	                         Util::IntrusiveListEnabled<FramebufferNode>,
 	                         Framebuffer
 	{
 		FramebufferNode(Device *device, const RenderPass &rp, const RenderPassInfo &info)
@@ -141,7 +141,7 @@ private:
 	};
 
 	Device *device;
-	TemporaryHashmap<FramebufferNode, VULKAN_FRAMEBUFFER_RING_SIZE, false> framebuffers;
+	Util::TemporaryHashmap<FramebufferNode, VULKAN_FRAMEBUFFER_RING_SIZE, false> framebuffers;
 };
 
 class TransientAllocator
@@ -154,7 +154,7 @@ public:
 	void clear();
 
 private:
-	struct TransientNode : TemporaryHashmapEnabled<TransientNode>, IntrusiveListEnabled<TransientNode>
+	struct TransientNode : Util::TemporaryHashmapEnabled<TransientNode>, Util::IntrusiveListEnabled<TransientNode>
 	{
 		TransientNode(ImageHandle handle)
 		    : handle(handle)
@@ -165,6 +165,6 @@ private:
 	};
 
 	Device *device;
-	TemporaryHashmap<TransientNode, VULKAN_FRAMEBUFFER_RING_SIZE, false> transients;
+	Util::TemporaryHashmap<TransientNode, VULKAN_FRAMEBUFFER_RING_SIZE, false> transients;
 };
 }

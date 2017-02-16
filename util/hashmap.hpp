@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include <unordered_map>
 
-namespace Granite
+namespace Util
 {
 using Hash = uint64_t;
 

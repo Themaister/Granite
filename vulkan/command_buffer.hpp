@@ -32,7 +32,7 @@ enum CommandBufferDirtyBits
 using CommandBufferDirtyFlags = uint32_t;
 
 class Device;
-class CommandBuffer : public IntrusivePtrEnabled<CommandBuffer>
+class CommandBuffer : public Util::IntrusivePtrEnabled<CommandBuffer>
 {
 public:
 	CommandBuffer(Device *device, VkCommandBuffer cmd, VkPipelineCache cache);
@@ -428,7 +428,7 @@ private:
 	} dynamic_state;
 
 	void flush_render_state();
-	VkPipeline build_graphics_pipeline(Hash hash);
+	VkPipeline build_graphics_pipeline(Util::Hash hash);
 	void flush_graphics_pipeline();
 	void flush_descriptor_sets();
 	void begin_graphics();
@@ -439,5 +439,5 @@ private:
 	void flush_compute_state();
 };
 
-using CommandBufferHandle = IntrusivePtr<CommandBuffer>;
+using CommandBufferHandle = Util::IntrusivePtr<CommandBuffer>;
 }

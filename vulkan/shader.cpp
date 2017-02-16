@@ -4,6 +4,7 @@
 
 using namespace std;
 using namespace spirv_cross;
+using namespace Util;
 
 namespace Vulkan
 {

@@ -31,6 +31,112 @@ enum CommandBufferDirtyBits
 };
 using CommandBufferDirtyFlags = uint32_t;
 
+#define COMPARE_OP_BITS 3
+#define STENCIL_OP_BITS 3
+#define BLEND_FACTOR_BITS 5
+#define BLEND_OP_BITS 3
+#define CULL_MODE_BITS 2
+#define FRONT_FACE_BITS 1
+union PipelineState {
+	struct
+	{
+		// Depth state.
+		unsigned depth_write : 1;
+		unsigned depth_test : 1;
+		unsigned blend_enable : 1;
+
+		unsigned cull_mode : CULL_MODE_BITS;
+		unsigned front_face : FRONT_FACE_BITS;
+		unsigned depth_bias_enable : 1;
+
+		unsigned depth_compare : COMPARE_OP_BITS;
+
+		unsigned stencil_test : 1;
+		unsigned stencil_front_fail : STENCIL_OP_BITS;
+		unsigned stencil_front_pass : STENCIL_OP_BITS;
+		unsigned stencil_front_depth_fail : STENCIL_OP_BITS;
+		unsigned stencil_front_compare_op : COMPARE_OP_BITS;
+		unsigned stencil_back_fail : STENCIL_OP_BITS;
+		unsigned stencil_back_pass : STENCIL_OP_BITS;
+		unsigned stencil_back_depth_fail : STENCIL_OP_BITS;
+		unsigned stencil_back_compare_op : COMPARE_OP_BITS;
+
+		unsigned alpha_to_coverage : 1;
+		unsigned alpha_to_one : 1;
+		unsigned sample_shading : 1;
+
+		unsigned src_color_blend : BLEND_FACTOR_BITS;
+		unsigned dst_color_blend : BLEND_FACTOR_BITS;
+		unsigned color_blend_op : BLEND_OP_BITS;
+		unsigned src_alpha_blend : BLEND_FACTOR_BITS;
+		unsigned dst_alpha_blend : BLEND_FACTOR_BITS;
+		unsigned alpha_blend_op : BLEND_OP_BITS;
+		unsigned primitive_restart : 1;
+		unsigned topology : 4;
+
+		uint32_t write_mask;
+	} state;
+	uint32_t words[4];
+};
+
+struct PotentialState
+{
+	float blend_constants[4];
+};
+
+struct DynamicState
+{
+	float depth_bias_constant = 0.0f;
+	float depth_bias_slope = 0.0f;
+	uint8_t front_compare_mask = 0;
+	uint8_t front_write_mask = 0;
+	uint8_t front_reference = 0;
+	uint8_t back_compare_mask = 0;
+	uint8_t back_write_mask = 0;
+	uint8_t back_reference = 0;
+	bool depth_bias_enable = false;
+	bool stencil_enable = false;
+};
+
+struct VertexAttribState
+{
+	uint32_t binding;
+	VkFormat format;
+	VkDeviceSize offset;
+};
+
+struct IndexState
+{
+	VkBuffer buffer;
+	VkDeviceSize offset;
+	VkIndexType index_type;
+};
+
+struct VertexBindingState
+{
+	VkBuffer buffers[VULKAN_NUM_VERTEX_BUFFERS];
+	VkDeviceSize offsets[VULKAN_NUM_VERTEX_BUFFERS];
+	VkDeviceSize strides[VULKAN_NUM_VERTEX_BUFFERS];
+	VkVertexInputRate input_rates[VULKAN_NUM_VERTEX_BUFFERS];
+};
+
+struct ResourceBinding
+{
+	union {
+		VkDescriptorBufferInfo buffer;
+		VkDescriptorImageInfo image;
+		VkBufferView buffer_view;
+	};
+};
+
+struct ResourceBindings
+{
+	ResourceBinding bindings[VULKAN_NUM_DESCRIPTOR_SETS][VULKAN_NUM_BINDINGS];
+	uint64_t cookies[VULKAN_NUM_DESCRIPTOR_SETS][VULKAN_NUM_BINDINGS];
+	uint64_t secondary_cookies[VULKAN_NUM_DESCRIPTOR_SETS][VULKAN_NUM_BINDINGS];
+	uint8_t push_constant_data[VULKAN_PUSH_CONSTANT_SIZE];
+};
+
 class Device;
 class CommandBuffer : public Util::IntrusivePtrEnabled<CommandBuffer>
 {
@@ -297,39 +403,12 @@ private:
 	const RenderPass *render_pass = nullptr;
 	RenderPassInfo render_pass_info;
 
-	struct AttribState
-	{
-		uint32_t binding;
-		VkFormat format;
-		VkDeviceSize offset;
-	};
-	AttribState attribs[VULKAN_NUM_VERTEX_ATTRIBS] = {};
-
-	VkBuffer vbo_buffers[VULKAN_NUM_VERTEX_BUFFERS] = {};
-	VkDeviceSize vbo_offsets[VULKAN_NUM_VERTEX_BUFFERS] = {};
-	VkDeviceSize vbo_strides[VULKAN_NUM_VERTEX_BUFFERS] = {};
-	VkVertexInputRate vbo_input_rates[VULKAN_NUM_VERTEX_BUFFERS] = {};
-
-	struct Binding
-	{
-		union {
-			VkDescriptorBufferInfo buffer;
-			VkDescriptorImageInfo image;
-			VkBufferView buffer_view;
-		};
-	};
-	Binding bindings[VULKAN_NUM_DESCRIPTOR_SETS][VULKAN_NUM_BINDINGS] = {};
-	uint64_t cookies[VULKAN_NUM_DESCRIPTOR_SETS][VULKAN_NUM_BINDINGS] = {};
-	uint64_t secondary_cookies[VULKAN_NUM_DESCRIPTOR_SETS][VULKAN_NUM_BINDINGS] = {};
-	uint8_t push_constant_data[VULKAN_PUSH_CONSTANT_SIZE] = {};
-
-	struct IndexState
-	{
-		VkBuffer buffer;
-		VkDeviceSize offset;
-		VkIndexType index_type;
-	};
+	VertexAttribState attribs[VULKAN_NUM_VERTEX_ATTRIBS] = {};
 	IndexState index = {};
+	VertexBindingState vbo = {};
+
+
+	ResourceBindings bindings = {};
 
 	VkPipeline current_pipeline = VK_NULL_HANDLE;
 	VkPipelineLayout current_pipeline_layout = VK_NULL_HANDLE;
@@ -358,74 +437,11 @@ private:
 		return mask;
 	}
 
-#define COMPARE_OP_BITS 3
-#define STENCIL_OP_BITS 3
-#define BLEND_FACTOR_BITS 5
-#define BLEND_OP_BITS 3
-#define CULL_MODE_BITS 2
-#define FRONT_FACE_BITS 1
-	union PipelineState {
-		struct
-		{
-			// Depth state.
-			unsigned depth_write : 1;
-			unsigned depth_test : 1;
-			unsigned blend_enable : 1;
-
-			unsigned cull_mode : CULL_MODE_BITS;
-			unsigned front_face : FRONT_FACE_BITS;
-			unsigned depth_bias_enable : 1;
-
-			unsigned depth_compare : COMPARE_OP_BITS;
-
-			unsigned stencil_test : 1;
-			unsigned stencil_front_fail : STENCIL_OP_BITS;
-			unsigned stencil_front_pass : STENCIL_OP_BITS;
-			unsigned stencil_front_depth_fail : STENCIL_OP_BITS;
-			unsigned stencil_front_compare_op : COMPARE_OP_BITS;
-			unsigned stencil_back_fail : STENCIL_OP_BITS;
-			unsigned stencil_back_pass : STENCIL_OP_BITS;
-			unsigned stencil_back_depth_fail : STENCIL_OP_BITS;
-			unsigned stencil_back_compare_op : COMPARE_OP_BITS;
-
-			unsigned alpha_to_coverage : 1;
-			unsigned alpha_to_one : 1;
-			unsigned sample_shading : 1;
-
-			unsigned src_color_blend : BLEND_FACTOR_BITS;
-			unsigned dst_color_blend : BLEND_FACTOR_BITS;
-			unsigned color_blend_op : BLEND_OP_BITS;
-			unsigned src_alpha_blend : BLEND_FACTOR_BITS;
-			unsigned dst_alpha_blend : BLEND_FACTOR_BITS;
-			unsigned alpha_blend_op : BLEND_OP_BITS;
-			unsigned primitive_restart : 1;
-			unsigned topology : 4;
-
-			uint32_t write_mask;
-		} state;
-		uint32_t words[4];
-	} static_state = {};
-
-	struct PotentialState
-	{
-		float blend_constants[4];
-	} potential_static_state = {};
+	PipelineState static_state = {};
+	PotentialState potential_static_state = {};
+	DynamicState dynamic_state = {};
 	static_assert(sizeof(static_state.words) >= sizeof(static_state.state),
 	              "Hashable pipeline state is not large enough!");
-
-	struct DynamicState
-	{
-		float depth_bias_constant = 0.0f;
-		float depth_bias_slope = 0.0f;
-		uint8_t front_compare_mask = 0;
-		uint8_t front_write_mask = 0;
-		uint8_t front_reference = 0;
-		uint8_t back_compare_mask = 0;
-		uint8_t back_write_mask = 0;
-		uint8_t back_reference = 0;
-		bool depth_bias_enable = false;
-		bool stencil_enable = false;
-	} dynamic_state;
 
 	void flush_render_state();
 	VkPipeline build_graphics_pipeline(Util::Hash hash);

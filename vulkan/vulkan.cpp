@@ -13,7 +13,7 @@
 
 using namespace std;
 
-#undef VULKAN_DEBUG
+//#undef VULKAN_DEBUG
 
 namespace Vulkan
 {

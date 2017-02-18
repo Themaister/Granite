@@ -1,4 +1,5 @@
 #include "render_pass.hpp"
+#include "stack_allocator.hpp"
 #include "device.hpp"
 #include <utility>
 #include <cstring>
@@ -13,17 +14,27 @@ RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
     , device(device)
 {
 	fill(begin(color_attachments), end(color_attachments), VK_FORMAT_UNDEFINED);
-	num_color_attachments = info.num_color_attachments;
 
 	VK_ASSERT(info.num_color_attachments || info.depth_stencil);
 
-	VkAttachmentDescription attachments[VULKAN_NUM_ATTACHMENTS + 1];
-	unsigned num_attachments = 0;
-	bool implicit_ds_transition = false;
-	bool implicit_color_transition = false;
+	// Set up default subpass info structure if we don't have it.
+	auto *subpass_infos = info.subpasses;
+	unsigned num_subpasses = info.num_subpasses;
+	RenderPassInfo::Subpass default_subpass_info;
+	if (!info.subpasses)
+	{
+		default_subpass_info.num_color_attachments = info.num_color_attachments;
+		default_subpass_info.depth_stencil_mode = RenderPassInfo::DepthStencil::ReadWrite;
+		for (unsigned i = 0; i < info.num_color_attachments; i++)
+			default_subpass_info.color_attachments[i] = i;
+		num_subpasses = 1;
+		subpass_infos = &default_subpass_info;
+	}
 
-	VkAttachmentReference color_ref[VULKAN_NUM_ATTACHMENTS];
-	VkAttachmentReference ds_ref = { VK_ATTACHMENT_UNUSED, VK_IMAGE_LAYOUT_UNDEFINED };
+	// First, set up attachment descriptions.
+	const unsigned num_attachments = info.num_color_attachments + (info.depth_stencil ? 1 : 0);
+	VkAttachmentDescription attachments[VULKAN_NUM_ATTACHMENTS + 1];
+	uint32_t implicit_transitions = 0;
 
 	VkAttachmentLoadOp color_load_op = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 	VkAttachmentStoreOp color_store_op = VK_ATTACHMENT_STORE_OP_DONT_CARE;
@@ -55,12 +66,10 @@ RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
 
 	for (unsigned i = 0; i < info.num_color_attachments; i++)
 	{
-		color_attachments[i] =
-		    info.color_attachments[i] ? info.color_attachments[i]->get_format() : VK_FORMAT_UNDEFINED;
-
 		VK_ASSERT(info.color_attachments[i]);
+		color_attachments[i] = info.color_attachments[i]->get_format();
 		auto &image = info.color_attachments[i]->get_image();
-		auto &att = attachments[num_attachments];
+		auto &att = attachments[i];
 		att.flags = 0;
 		att.format = color_attachments[i];
 		att.samples = image.get_create_info().samples;
@@ -77,9 +86,10 @@ RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
 				att.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 
 			att.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-			att.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-			color_ref[i].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-			implicit_color_transition = true;
+			// Undefined final layout here for now means that we will just use the layout of the last
+			// subpass which uses this attachment to avoid any dummy transition at the end.
+			att.finalLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			implicit_transitions |= 1u << i;
 		}
 		else if (image.is_swapchain_image())
 		{
@@ -87,24 +97,20 @@ RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
 				att.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 			att.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 			att.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-			color_ref[i].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-			implicit_color_transition = true;
+			implicit_transitions |= 1u << i;
 		}
 		else
 		{
 			att.initialLayout = color_layout;
 			att.finalLayout = color_layout;
-			color_ref[i].layout = color_layout;
 		}
-		color_ref[i].attachment = num_attachments;
-		num_attachments++;
 	}
 
 	depth_stencil = info.depth_stencil ? info.depth_stencil->get_format() : VK_FORMAT_UNDEFINED;
 	if (info.depth_stencil)
 	{
 		auto &image = info.depth_stencil->get_image();
-		auto &att = attachments[num_attachments];
+		auto &att = attachments[info.num_color_attachments];
 		att.flags = 0;
 		att.format = depth_stencil;
 		att.samples = image.get_create_info().samples;
@@ -135,96 +141,387 @@ RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
 
 			// For transient attachments we force the layouts.
 			att.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-			att.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-			ds_ref.layout = att.finalLayout;
-			implicit_ds_transition = true;
+
+			// Undefined final layout here for now means that we will just use the layout of the last
+			// subpass which uses this attachment to avoid any dummy transition at the end.
+			att.finalLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			implicit_transitions |= 1u << info.num_color_attachments;
 		}
 		else
 		{
 			att.initialLayout = depth_stencil_layout;
 			att.finalLayout = depth_stencil_layout;
-			ds_ref.layout = depth_stencil_layout;
+		}
+	}
+
+	Util::StackAllocator<VkAttachmentReference, 1024> reference_allocator;
+	Util::StackAllocator<uint32_t, 1024> preserve_allocator;
+
+	vector<VkSubpassDescription> subpasses(num_subpasses);
+	vector<VkSubpassDependency> external_dependencies;
+	for (unsigned i = 0; i < num_subpasses; i++)
+	{
+		auto *colors = reference_allocator.allocate_cleared(subpass_infos[i].num_color_attachments);
+		auto *inputs = reference_allocator.allocate_cleared(subpass_infos[i].num_input_attachments);
+		auto *depth = reference_allocator.allocate_cleared(1);
+
+		auto &subpass = subpasses[i];
+		subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+		subpass.colorAttachmentCount = subpass_infos[i].num_color_attachments;
+		subpass.pColorAttachments = colors;
+		subpass.inputAttachmentCount = subpass_infos[i].num_input_attachments;
+		subpass.pInputAttachments = inputs;
+		subpass.pDepthStencilAttachment = depth;
+
+		for (unsigned j = 0; j < subpass.colorAttachmentCount; j++)
+		{
+			auto att = subpass_infos[i].color_attachments[j];
+			VK_ASSERT(att == VK_ATTACHMENT_UNUSED || (att < num_attachments));
+			colors[j].attachment = att;
+			// Fill in later.
+			colors[j].layout = VK_IMAGE_LAYOUT_UNDEFINED;
 		}
 
-		ds_ref.attachment = num_attachments;
-		num_attachments++;
+		for (unsigned j = 0; j < subpass.inputAttachmentCount; j++)
+		{
+			auto att = subpass_infos[i].input_attachments[j];
+			VK_ASSERT(att == VK_ATTACHMENT_UNUSED || (att < num_attachments));
+			inputs[j].attachment = att;
+			// Fill in later.
+			inputs[j].layout = VK_IMAGE_LAYOUT_UNDEFINED;
+		}
+
+		if (info.depth_stencil && subpass_infos[i].depth_stencil_mode != RenderPassInfo::DepthStencil::None)
+		{
+			depth->attachment = info.num_color_attachments;
+			// Fill in later.
+			depth->layout = VK_IMAGE_LAYOUT_UNDEFINED;
+		}
+		else
+		{
+			depth->attachment = VK_ATTACHMENT_UNUSED;
+			depth->layout = VK_IMAGE_LAYOUT_UNDEFINED;
+		}
 	}
 
-	VkSubpassDescription subpass = {};
-	subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-	subpass.colorAttachmentCount = num_color_attachments;
-	subpass.pColorAttachments = color_ref;
-	subpass.pDepthStencilAttachment = &ds_ref;
+	const auto find_color = [&](unsigned subpass, unsigned attachment) -> VkAttachmentReference * {
+		auto *colors = subpasses[subpass].pColorAttachments;
+		for (unsigned i = 0; i < subpasses[subpass].colorAttachmentCount; i++)
+			if (colors[i].attachment == attachment)
+				return const_cast<VkAttachmentReference *>(&colors[i]);
+		return nullptr;
+	};
 
-	if (info.op_flags & RENDER_PASS_OP_COLOR_FEEDBACK_BIT)
+	const auto find_input = [&](unsigned subpass, unsigned attachment) -> VkAttachmentReference * {
+		auto *inputs = subpasses[subpass].pInputAttachments;
+		for (unsigned i = 0; i < subpasses[subpass].inputAttachmentCount; i++)
+			if (inputs[i].attachment == attachment)
+				return const_cast<VkAttachmentReference *>(&inputs[i]);
+		return nullptr;
+	};
+
+	const auto find_depth_stencil = [&](unsigned subpass, unsigned attachment) -> VkAttachmentReference * {
+		if (subpasses[subpass].pDepthStencilAttachment->attachment == attachment)
+			return const_cast<VkAttachmentReference *>(subpasses[subpass].pDepthStencilAttachment);
+		else
+			return nullptr;
+	};
+
+	// Now, figure out how each attachment is used throughout the subpasses.
+	// Either we don't care (inherit previous pass), or we need something specific.
+	// Start with initial layouts.
+	uint32_t preserve_masks[VULKAN_NUM_ATTACHMENTS + 1] = {};
+
+	// Last subpass which makes use of an attachment.
+	unsigned last_subpass_for_attachment[VULKAN_NUM_ATTACHMENTS + 1] = {};
+
+	VK_ASSERT(num_subpasses <= 32);
+
+	// 1 << subpass bit set if there are color attachment self-dependencies in the subpass.
+	uint32_t color_self_dependencies = 0;
+	// 1 << subpass bit set if there are depth-stencil attachment self-dependencies in the subpass.
+	uint32_t depth_self_dependencies = 0;
+
+	// 1 << subpass bit set if any input attachment is read in the subpass.
+	uint32_t input_attachment_read = 0;
+	uint32_t color_attachment_read_write = 0;
+	uint32_t depth_stencil_attachment_write = 0;
+	uint32_t depth_stencil_attachment_read = 0;
+
+	uint32_t external_color_dependencies = 0;
+	uint32_t external_depth_dependencies = 0;
+	uint32_t external_input_dependencies = 0;
+
+	for (unsigned attachment = 0; attachment < num_attachments; attachment++)
 	{
-		subpass.inputAttachmentCount = num_color_attachments;
-		subpass.pInputAttachments = color_ref;
-#ifdef VULKAN_DEBUG
-		for (unsigned i = 0; i < num_color_attachments; i++)
-			VK_ASSERT(color_ref[i].layout == VK_IMAGE_LAYOUT_GENERAL);
-#endif
+		bool used = false;
+		auto current_layout = attachments[attachment].initialLayout;
+		for (unsigned subpass = 0; subpass < num_subpasses; subpass++)
+		{
+			auto *color = find_color(subpass, attachment);
+			auto *input = find_input(subpass, attachment);
+			auto *depth = find_depth_stencil(subpass, attachment);
+
+			// Sanity check.
+			if (color)
+				VK_ASSERT(!depth);
+			if (depth)
+				VK_ASSERT(!color);
+
+			if (!color && !input && !depth)
+			{
+				if (used)
+					preserve_masks[attachment] |= 1u << subpass;
+			}
+
+			if (!used && (implicit_transitions & (1u << attachment)))
+			{
+				// This is the first subpass we need implicit transitions.
+				if (color)
+					external_color_dependencies |= 1u << subpass;
+				if (depth)
+					external_depth_dependencies |= 1u << subpass;
+				if (input)
+					external_input_dependencies |= 1u << subpass;
+			}
+
+			if (color && input) // If used as both input attachment and color attachment in same subpass, need GENERAL.
+			{
+				current_layout = VK_IMAGE_LAYOUT_GENERAL;
+				color->layout = current_layout;
+				input->layout = current_layout;
+				used = true;
+				last_subpass_for_attachment[attachment] = subpass;
+				color_self_dependencies |= 1u << subpass;
+
+				color_attachment_read_write |= 1u << subpass;
+				input_attachment_read |= 1u << subpass;
+			}
+			else if (color) // No particular preference
+			{
+				if (current_layout == VK_IMAGE_LAYOUT_UNDEFINED)
+					current_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+				color->layout = current_layout;
+				used = true;
+				last_subpass_for_attachment[attachment] = subpass;
+				color_attachment_read_write |= 1u << subpass;
+			}
+			else if (depth && input) // Depends on the depth mode
+			{
+				VK_ASSERT(subpass_infos[subpass].depth_stencil_mode != RenderPassInfo::DepthStencil::None);
+				if (subpass_infos[subpass].depth_stencil_mode == RenderPassInfo::DepthStencil::ReadWrite)
+				{
+					depth_self_dependencies |= 1u << subpass;
+					current_layout = VK_IMAGE_LAYOUT_GENERAL;
+					depth_stencil_attachment_write |= 1u << subpass;
+				}
+				else
+				{
+					current_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+				}
+
+				depth_stencil_attachment_read |= 1u << subpass;
+				input_attachment_read |= 1u << subpass;
+				depth->layout = current_layout;
+				input->layout = current_layout;
+				used = true;
+				last_subpass_for_attachment[attachment] = subpass;
+			}
+			else if (depth)
+			{
+				if (subpass_infos[subpass].depth_stencil_mode == RenderPassInfo::DepthStencil::ReadWrite)
+				{
+					depth_stencil_attachment_write |= 1u << subpass;
+					if (current_layout != VK_IMAGE_LAYOUT_GENERAL)
+						current_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+				}
+				else
+				{
+					if (current_layout != VK_IMAGE_LAYOUT_GENERAL)
+						current_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+				}
+
+				depth_stencil_attachment_read |= 1u << subpass;
+				depth->layout = current_layout;
+				used = true;
+				last_subpass_for_attachment[attachment] = subpass;
+			}
+			else if (input)
+			{
+				current_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+				input->layout = current_layout;
+				used = true;
+				last_subpass_for_attachment[attachment] = subpass;
+			}
+			else
+			{
+				VK_ASSERT(0 && "Unhandled attachment usage.");
+			}
+		}
+
+		// If we don't have a specific layout we need to end up in, just
+		// use the last one.
+		// Assert that we actually use all the attachments we have ...
+		VK_ASSERT(used);
+		if (attachments[attachment].finalLayout == VK_IMAGE_LAYOUT_UNDEFINED)
+		{
+			VK_ASSERT(current_layout != VK_IMAGE_LAYOUT_UNDEFINED);
+			attachments[attachment].finalLayout = current_layout;
+		}
 	}
 
+	// Only consider preserve masks before last subpass which uses an attachment.
+	for (unsigned attachment = 0; attachment < num_attachments; attachment++)
+		preserve_masks[attachment] &= (1u << last_subpass_for_attachment[attachment]) - 1;
+
+	// Add preserve attachments as needed.
+	for (unsigned subpass = 0; subpass < num_subpasses; subpass++)
+	{
+		auto &pass = subpasses[subpass];
+		unsigned preserve_count = 0;
+		for (unsigned attachment = 0; attachment < num_attachments; attachment++)
+			if (preserve_masks[attachment] & (1u << subpass))
+				preserve_count++;
+
+		auto *preserve = preserve_allocator.allocate_cleared(preserve_count);
+		pass.pPreserveAttachments = preserve;
+		pass.preserveAttachmentCount = preserve_count;
+		for (unsigned attachment = 0; attachment < num_attachments; attachment++)
+			if (preserve_masks[attachment] & (1u << subpass))
+				*preserve++ = attachment;
+	}
+
+	VK_ASSERT(num_subpasses > 0);
 	VkRenderPassCreateInfo rp_info = { VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO };
-	rp_info.subpassCount = 1;
-	rp_info.pSubpasses = &subpass;
+	rp_info.subpassCount = num_subpasses;
+	rp_info.pSubpasses = subpasses.data();
 	rp_info.pAttachments = attachments;
 	rp_info.attachmentCount = num_attachments;
 
-	VkSubpassDependency external_dependencies[2] = {};
-	unsigned num_external_deps = 0;
+	// Add external subpass dependencies.
+	for_each_bit(external_color_dependencies | external_depth_dependencies | external_input_dependencies,
+	             [&](unsigned subpass) {
+		             external_dependencies.emplace_back();
+		             auto &dep = external_dependencies.back();
+		             dep.srcSubpass = VK_SUBPASS_EXTERNAL;
+		             dep.dstSubpass = subpass;
 
-	// For transient attachments and/or swapchain, implicitly perform image layout changes.
-	if (implicit_color_transition || implicit_ds_transition)
-	{
-		auto &external_dependency = external_dependencies[num_external_deps++];
-		if (implicit_color_transition)
+		             if (external_color_dependencies & (1u << subpass))
+		             {
+			             dep.srcStageMask |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+			             dep.dstStageMask |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+			             dep.srcAccessMask |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+			             dep.dstAccessMask |=
+				             VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		             }
+
+		             if (external_depth_dependencies & (1u << subpass))
+		             {
+			             dep.srcStageMask |=
+				             VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+			             dep.dstStageMask |=
+				             VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+			             dep.srcAccessMask |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+			             dep.dstAccessMask |=
+				             VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+		             }
+
+		             if (external_input_dependencies & (1u << subpass))
+		             {
+			             dep.srcStageMask |= VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
+			             dep.dstStageMask |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+			             dep.srcAccessMask |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+			             dep.dstAccessMask |= VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
+		             }
+	             });
+
+	// Queue up self-dependencies (COLOR | DEPTH) -> INPUT.
+	for_each_bit(color_self_dependencies | depth_self_dependencies, [&](unsigned subpass) {
+		external_dependencies.emplace_back();
+		auto &dep = external_dependencies.back();
+		dep.srcSubpass = subpass;
+		dep.dstSubpass = subpass;
+		dep.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+		if (color_self_dependencies & (1u << subpass))
 		{
-			external_dependency.srcStageMask |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-			external_dependency.dstStageMask |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-			external_dependency.srcAccessMask |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-			external_dependency.dstAccessMask |=
-			    VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+			dep.srcStageMask |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+			dep.srcAccessMask |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 		}
 
-		if (implicit_ds_transition)
+		if (depth_self_dependencies & (1u << subpass))
 		{
-			external_dependency.srcStageMask |=
-			    VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-			external_dependency.dstStageMask |=
-			    VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-			external_dependency.srcAccessMask |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-			external_dependency.dstAccessMask |=
-			    VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+			dep.srcStageMask |= VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+			dep.srcAccessMask |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 		}
 
-		external_dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-		external_dependency.dstSubpass = 0;
-	}
-
-	if (info.op_flags & RENDER_PASS_OP_COLOR_FEEDBACK_BIT)
-	{
-		auto &dep = external_dependencies[num_external_deps++];
-		dep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-		dep.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 		dep.dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
 		dep.dstAccessMask = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
+	});
+
+	// Flush and invalidate caches between each subpass.
+	for (unsigned subpass = 1; subpass < num_subpasses; subpass++)
+	{
+		external_dependencies.emplace_back();
+		auto &dep = external_dependencies.back();
+		dep.srcSubpass = subpass - 1;
+		dep.dstSubpass = subpass;
 		dep.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-		dep.srcSubpass = 0;
-		dep.dstSubpass = 0;
+
+		if (color_attachment_read_write & (1u << (subpass - 1)))
+		{
+			dep.srcStageMask |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+			dep.srcAccessMask |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		}
+
+		if (depth_stencil_attachment_write & (1u << (subpass - 1)))
+		{
+			dep.srcStageMask |= VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+			dep.srcAccessMask |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+		}
+
+		if (color_attachment_read_write & (1u << subpass))
+		{
+			dep.dstStageMask |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+			dep.dstAccessMask |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+		}
+
+		if (depth_stencil_attachment_read & (1u << subpass))
+		{
+			dep.dstStageMask |= VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+			dep.dstAccessMask |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+		}
+
+		if (depth_stencil_attachment_write & (1u << subpass))
+		{
+			dep.dstStageMask |= VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+			dep.dstAccessMask |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+		}
+
+		if (input_attachment_read & (1u << subpass))
+		{
+			dep.dstStageMask |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+			dep.dstAccessMask |= VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
+		}
 	}
 
-	rp_info.dependencyCount = num_external_deps;
-	rp_info.pDependencies = external_dependencies;
+	if (!external_dependencies.empty())
+	{
+		rp_info.dependencyCount = external_dependencies.size();
+		rp_info.pDependencies = external_dependencies.data();
+	}
 
+	// Store the important subpass information for later.
+	for (auto &subpass : subpasses)
 	{
 		SubpassInfo subpass_info = {};
 		subpass_info.num_color_attachments = subpass.colorAttachmentCount;
 		subpass_info.depth_stencil_attachment = *subpass.pDepthStencilAttachment;
 		memcpy(subpass_info.color_attachments, subpass.pColorAttachments,
 		       subpass.colorAttachmentCount * sizeof(*subpass.pColorAttachments));
-		add_subpass(subpass_info);
+		memcpy(subpass_info.input_attachments, subpass.pInputAttachments,
+		       subpass.inputAttachmentCount * sizeof(*subpass.pInputAttachments));
+		this->subpasses.push_back(subpass_info);
 	}
 
 	if (vkCreateRenderPass(device->get_device(), &rp_info, nullptr, &render_pass) != VK_SUCCESS)

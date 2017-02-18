@@ -24,8 +24,6 @@ enum RenderPassOp
 	RENDER_PASS_OP_COLOR_OPTIMAL_BIT = 1 << 6,
 	RENDER_PASS_OP_DEPTH_STENCIL_OPTIMAL_BIT = 1 << 7,
 
-	RENDER_PASS_OP_COLOR_FEEDBACK_BIT = 1 << 8,
-
 	RENDER_PASS_OP_CLEAR_ALL_BIT = RENDER_PASS_OP_CLEAR_COLOR_BIT | RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT,
 
 	RENDER_PASS_OP_LOAD_ALL_BIT = RENDER_PASS_OP_LOAD_COLOR_BIT | RENDER_PASS_OP_LOAD_DEPTH_STENCIL_BIT,
@@ -48,14 +46,20 @@ struct RenderPassInfo
 	VkClearColorValue clear_color[VULKAN_NUM_ATTACHMENTS] = {};
 	VkClearDepthStencilValue clear_depth_stencil = { 1.0f, 0 };
 
+	enum class DepthStencil
+	{
+		None,
+		ReadOnly,
+		ReadWrite
+	};
+
 	struct Subpass
 	{
 		uint32_t color_attachments[VULKAN_NUM_ATTACHMENTS];
 		uint32_t input_attachments[VULKAN_NUM_ATTACHMENTS];
 		unsigned num_color_attachments = 0;
 		unsigned num_input_attachments = 0;
-		bool read_depth_stencil = false;
-		bool write_depth_stencil = false;
+		DepthStencil depth_stencil_mode = DepthStencil::ReadWrite;
 	};
 	// If 0/nullptr, assume a default subpass.
 	const Subpass *subpasses = nullptr;
@@ -141,12 +145,6 @@ private:
 	VkFormat color_attachments[VULKAN_NUM_ATTACHMENTS];
 	VkFormat depth_stencil;
 	unsigned num_color_attachments;
-
-	void add_subpass(const SubpassInfo &info)
-	{
-		subpasses.push_back(info);
-	}
-
 	std::vector<SubpassInfo> subpasses;
 };
 

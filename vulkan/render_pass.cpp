@@ -15,6 +15,8 @@ RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
 	fill(begin(color_attachments), end(color_attachments), VK_FORMAT_UNDEFINED);
 	num_color_attachments = info.num_color_attachments;
 
+	VK_ASSERT(info.num_color_attachments || info.depth_stencil);
+
 	VkAttachmentDescription attachments[VULKAN_NUM_ATTACHMENTS + 1];
 	unsigned num_attachments = 0;
 	bool implicit_ds_transition = false;
@@ -56,53 +58,46 @@ RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
 		color_attachments[i] =
 		    info.color_attachments[i] ? info.color_attachments[i]->get_format() : VK_FORMAT_UNDEFINED;
 
-		if (info.color_attachments[i])
+		VK_ASSERT(info.color_attachments[i]);
+		auto &image = info.color_attachments[i]->get_image();
+		auto &att = attachments[num_attachments];
+		att.flags = 0;
+		att.format = color_attachments[i];
+		att.samples = image.get_create_info().samples;
+		att.loadOp = color_load_op;
+		att.storeOp = color_store_op;
+		att.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+		att.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+
+		if (image.get_create_info().domain == ImageDomain::Transient)
 		{
-			auto &image = info.color_attachments[i]->get_image();
-			auto &att = attachments[num_attachments];
-			att.flags = 0;
-			att.format = color_attachments[i];
-			att.samples = image.get_create_info().samples;
-			att.loadOp = color_load_op;
-			att.storeOp = color_store_op;
-			att.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-			att.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+			if (att.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD)
+				att.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+			if (att.storeOp == VK_ATTACHMENT_STORE_OP_STORE)
+				att.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 
-			if (image.get_create_info().domain == ImageDomain::Transient)
-			{
-				if (att.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD)
-					att.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-				if (att.storeOp == VK_ATTACHMENT_STORE_OP_STORE)
-					att.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-
-				att.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-				att.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-				color_ref[i].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-				implicit_color_transition = true;
-			}
-			else if (image.is_swapchain_image())
-			{
-				if (att.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD)
-					att.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-				att.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-				att.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-				color_ref[i].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-				implicit_color_transition = true;
-			}
-			else
-			{
-				att.initialLayout = color_layout;
-				att.finalLayout = color_layout;
-				color_ref[i].layout = color_layout;
-			}
-			color_ref[i].attachment = num_attachments;
-			num_attachments++;
+			att.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			att.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+			color_ref[i].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+			implicit_color_transition = true;
+		}
+		else if (image.is_swapchain_image())
+		{
+			if (att.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD)
+				att.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+			att.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			att.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+			color_ref[i].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+			implicit_color_transition = true;
 		}
 		else
 		{
-			color_ref[i].attachment = VK_ATTACHMENT_UNUSED;
-			color_ref[i].layout = VK_IMAGE_LAYOUT_UNDEFINED;
+			att.initialLayout = color_layout;
+			att.finalLayout = color_layout;
+			color_ref[i].layout = color_layout;
 		}
+		color_ref[i].attachment = num_attachments;
+		num_attachments++;
 	}
 
 	depth_stencil = info.depth_stencil ? info.depth_stencil->get_format() : VK_FORMAT_UNDEFINED;
@@ -253,16 +248,16 @@ Framebuffer::Framebuffer(Device *device, const RenderPass &rp, const RenderPassI
 	VkImageView views[VULKAN_NUM_ATTACHMENTS + 1];
 	unsigned num_views = 0;
 
+	VK_ASSERT(info.num_color_attachments || info.depth_stencil);
+
 	for (unsigned i = 0; i < info.num_color_attachments; i++)
 	{
-		if (info.color_attachments[i])
-		{
-			unsigned lod = info.color_attachments[i]->get_create_info().base_level;
-			width = min(width, info.color_attachments[i]->get_image().get_width(lod));
-			height = min(height, info.color_attachments[i]->get_image().get_height(lod));
-			views[num_views++] = info.color_attachments[i]->get_view();
-			attachments.push_back(info.color_attachments[i]);
-		}
+		VK_ASSERT(info.color_attachments[i]);
+		unsigned lod = info.color_attachments[i]->get_create_info().base_level;
+		width = min(width, info.color_attachments[i]->get_image().get_width(lod));
+		height = min(height, info.color_attachments[i]->get_image().get_height(lod));
+		views[num_views++] = info.color_attachments[i]->get_view();
+		attachments.push_back(info.color_attachments[i]);
 	}
 
 	if (info.depth_stencil)

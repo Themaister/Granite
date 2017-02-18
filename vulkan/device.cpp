@@ -1173,7 +1173,8 @@ const RenderPass &Device::request_render_pass(const RenderPassInfo &info)
 
 	for (unsigned i = 0; i < info.num_color_attachments; i++)
 	{
-		formats[i] = info.color_attachments[i] ? info.color_attachments[i]->get_format() : VK_FORMAT_UNDEFINED;
+		VK_ASSERT(info.color_attachments[i]);
+		formats[i] = info.color_attachments[i]->get_format();
 		if (info.color_attachments[i]->get_image().get_create_info().domain == ImageDomain::Transient)
 			lazy |= 1u << i;
 		if (info.color_attachments[i]->get_image().is_swapchain_image())

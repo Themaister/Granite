@@ -37,7 +37,7 @@ using RenderPassOpFlags = uint32_t;
 class ImageView;
 struct RenderPassInfo
 {
-	ImageView *color_attachments[VULKAN_NUM_ATTACHMENTS] = {};
+	ImageView *color_attachments[VULKAN_NUM_ATTACHMENTS];
 	ImageView *depth_stencil = nullptr;
 	unsigned num_color_attachments = 0;
 	RenderPassOpFlags op_flags = 0;
@@ -47,6 +47,19 @@ struct RenderPassInfo
 
 	VkClearColorValue clear_color[VULKAN_NUM_ATTACHMENTS] = {};
 	VkClearDepthStencilValue clear_depth_stencil = { 1.0f, 0 };
+
+	struct Subpass
+	{
+		uint32_t color_attachments[VULKAN_NUM_ATTACHMENTS];
+		uint32_t input_attachments[VULKAN_NUM_ATTACHMENTS];
+		unsigned num_color_attachments = 0;
+		unsigned num_input_attachments = 0;
+		bool read_depth_stencil = false;
+		bool write_depth_stencil = false;
+	};
+	// If 0/nullptr, assume a default subpass.
+	const Subpass *subpasses = nullptr;
+	unsigned num_subpasses = 0;
 };
 
 class RenderPass : public Cookie, public NoCopyNoMove

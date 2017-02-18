@@ -137,6 +137,32 @@ struct ResourceBindings
 	uint8_t push_constant_data[VULKAN_PUSH_CONSTANT_SIZE];
 };
 
+enum CommandBufferSavedStateBits
+{
+	COMMAND_BUFFER_SAVED_BINDINGS_0_BIT = 1u << 0,
+	COMMAND_BUFFER_SAVED_BINDINGS_1_BIT = 1u << 1,
+	COMMAND_BUFFER_SAVED_BINDINGS_2_BIT = 1u << 2,
+	COMMAND_BUFFER_SAVED_BINDINGS_3_BIT = 1u << 3,
+	COMMAND_BUFFER_SAVED_VIEWPORT_BIT = 1u << 4,
+	COMMAND_BUFFER_SAVED_SCISSOR_BIT = 1u << 5,
+	COMMAND_BUFFER_SAVED_RENDER_STATE_BIT = 1u << 6,
+	COMMAND_BUFFER_SAVED_PUSH_CONSTANT_BIT = 1u << 7
+};
+static_assert(VULKAN_NUM_DESCRIPTOR_SETS == 4, "Number of descriptor sets != 4.");
+using CommandBufferSaveStateFlags = uint32_t;
+
+struct CommandBufferSavedState
+{
+	CommandBufferSaveStateFlags flags = 0;
+	ResourceBindings bindings;
+	VkViewport viewport;
+	VkRect2D scissor;
+
+	PipelineState static_state;
+	PotentialState potential_static_state;
+	DynamicState dynamic_state;
+};
+
 class Device;
 class CommandBuffer : public Util::IntrusivePtrEnabled<CommandBuffer>
 {
@@ -235,6 +261,9 @@ public:
 
 	void set_opaque_state();
 	void set_quad_state();
+
+	void save_state(CommandBufferSaveStateFlags flags, CommandBufferSavedState &state);
+	void restore_state(const CommandBufferSavedState &state);
 
 #define SET_STATIC_STATE(value)                               \
 	do                                                        \

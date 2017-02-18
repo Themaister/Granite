@@ -1108,4 +1108,93 @@ void CommandBuffer::set_quad_state()
 	state.write_mask = ~0u;
 	set_dirty(COMMAND_BUFFER_DIRTY_STATIC_STATE_BIT);
 }
+
+void CommandBuffer::restore_state(const CommandBufferSavedState &state)
+{
+	for (unsigned i = 0; i < VULKAN_NUM_DESCRIPTOR_SETS; i++)
+	{
+		if (state.flags & (COMMAND_BUFFER_SAVED_BINDINGS_0_BIT << i))
+		{
+			if (memcmp(state.bindings.bindings[i], bindings.bindings[i], sizeof(bindings.bindings[i])))
+			{
+				memcpy(bindings.bindings[i], state.bindings.bindings[i], sizeof(bindings.bindings[i]));
+				memcpy(bindings.cookies[i], state.bindings.cookies[i], sizeof(bindings.cookies[i]));
+				memcpy(bindings.secondary_cookies[i], state.bindings.secondary_cookies[i], sizeof(bindings.secondary_cookies[i]));
+				dirty_sets |= 1u << i;
+			}
+		}
+	}
+
+	if (state.flags & COMMAND_BUFFER_SAVED_PUSH_CONSTANT_BIT)
+	{
+		if (memcmp(state.bindings.push_constant_data, bindings.push_constant_data, sizeof(bindings.push_constant_data)))
+		{
+			memcpy(bindings.push_constant_data, state.bindings.push_constant_data, sizeof(bindings.push_constant_data));
+			set_dirty(COMMAND_BUFFER_DIRTY_PUSH_CONSTANTS_BIT);
+		}
+	}
+
+	if ((state.flags & COMMAND_BUFFER_SAVED_VIEWPORT_BIT) && memcmp(&state.viewport, &viewport, sizeof(viewport)))
+	{
+		viewport = state.viewport;
+		set_dirty(COMMAND_BUFFER_DIRTY_VIEWPORT_BIT);
+	}
+
+	if ((state.flags & COMMAND_BUFFER_SAVED_SCISSOR_BIT) && memcmp(&state.scissor, &scissor, sizeof(scissor)))
+	{
+		scissor = state.scissor;
+		set_dirty(COMMAND_BUFFER_DIRTY_SCISSOR_BIT);
+	}
+
+	if (state.flags & COMMAND_BUFFER_SAVED_RENDER_STATE_BIT)
+	{
+		if (memcmp(&state.static_state, &static_state, sizeof(static_state)))
+		{
+			memcpy(&static_state, &state.static_state, sizeof(static_state));
+			set_dirty(COMMAND_BUFFER_DIRTY_STATIC_STATE_BIT);
+		}
+
+		if (memcmp(&state.potential_static_state, &potential_static_state, sizeof(potential_static_state)))
+		{
+			memcpy(&potential_static_state, &state.potential_static_state, sizeof(potential_static_state));
+			set_dirty(COMMAND_BUFFER_DIRTY_STATIC_STATE_BIT);
+		}
+
+		if (memcmp(&state.dynamic_state, &dynamic_state, sizeof(dynamic_state)))
+		{
+			memcpy(&dynamic_state, &state.dynamic_state, sizeof(dynamic_state));
+			set_dirty(COMMAND_BUFFER_DIRTY_STENCIL_REFERENCE_BIT | COMMAND_BUFFER_DIRTY_DEPTH_BIAS_BIT);
+		}
+	}
+}
+
+void CommandBuffer::save_state(CommandBufferSaveStateFlags flags, CommandBufferSavedState &state)
+{
+	for (unsigned i = 0; i < VULKAN_NUM_DESCRIPTOR_SETS; i++)
+	{
+		if (flags & (COMMAND_BUFFER_SAVED_BINDINGS_0_BIT << i))
+		{
+			memcpy(state.bindings.bindings[i], bindings.bindings[i], sizeof(bindings.bindings[i]));
+			memcpy(state.bindings.cookies[i], bindings.cookies[i], sizeof(bindings.cookies[i]));
+			memcpy(state.bindings.secondary_cookies[i], bindings.secondary_cookies[i],
+			       sizeof(bindings.secondary_cookies[i]));
+		}
+	}
+
+	if (flags & COMMAND_BUFFER_SAVED_VIEWPORT_BIT)
+		state.viewport = viewport;
+	if (flags & COMMAND_BUFFER_SAVED_SCISSOR_BIT)
+		state.scissor = scissor;
+	if (flags & COMMAND_BUFFER_SAVED_RENDER_STATE_BIT)
+	{
+		state.static_state = static_state;
+		state.potential_static_state = potential_static_state;
+		state.dynamic_state = dynamic_state;
+	}
+
+	if (flags & COMMAND_BUFFER_SAVED_PUSH_CONSTANT_BIT)
+		memcpy(state.bindings.push_constant_data, bindings.push_constant_data, sizeof(bindings.push_constant_data));
+
+	state.flags = flags;
+}
 }

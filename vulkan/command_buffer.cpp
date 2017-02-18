@@ -272,8 +272,6 @@ void CommandBuffer::begin_render_pass(const RenderPassInfo &info)
 	viewport = { 0.0f, 0.0f, float(framebuffer->get_width()), float(framebuffer->get_height()), 0.0f, 1.0f };
 	scissor = rect;
 	begin_graphics();
-
-	render_pass_info = info;
 }
 
 void CommandBuffer::end_render_pass()
@@ -318,31 +316,36 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
 	// Blend state
 	VkPipelineColorBlendAttachmentState blend_attachments[VULKAN_NUM_ATTACHMENTS];
 	VkPipelineColorBlendStateCreateInfo blend = { VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO };
-	blend.attachmentCount = render_pass_info.num_color_attachments;
+	blend.attachmentCount = render_pass->get_num_color_attachments(current_subpass);
 	blend.pAttachments = blend_attachments;
 	for (unsigned i = 0; i < blend.attachmentCount; i++)
 	{
 		auto &att = blend_attachments[i];
 		att = {};
-		att.colorWriteMask = (static_state.state.write_mask >> (4 * i)) & 0xf;
-		att.blendEnable = static_state.state.blend_enable;
-		if (att.blendEnable)
+
+		if (render_pass->get_color_attachment(current_subpass, i).attachment != VK_ATTACHMENT_UNUSED &&
+			(current_layout->get_resource_layout().render_target_mask & (1u << i)))
 		{
-			att.alphaBlendOp = static_cast<VkBlendOp>(static_state.state.alpha_blend_op);
-			att.colorBlendOp = static_cast<VkBlendOp>(static_state.state.color_blend_op);
-			att.dstAlphaBlendFactor = static_cast<VkBlendFactor>(static_state.state.dst_alpha_blend);
-			att.srcAlphaBlendFactor = static_cast<VkBlendFactor>(static_state.state.src_alpha_blend);
-			att.dstColorBlendFactor = static_cast<VkBlendFactor>(static_state.state.dst_color_blend);
-			att.srcColorBlendFactor = static_cast<VkBlendFactor>(static_state.state.src_color_blend);
+			att.colorWriteMask = (static_state.state.write_mask >> (4 * i)) & 0xf;
+			att.blendEnable = static_state.state.blend_enable;
+			if (att.blendEnable)
+			{
+				att.alphaBlendOp = static_cast<VkBlendOp>(static_state.state.alpha_blend_op);
+				att.colorBlendOp = static_cast<VkBlendOp>(static_state.state.color_blend_op);
+				att.dstAlphaBlendFactor = static_cast<VkBlendFactor>(static_state.state.dst_alpha_blend);
+				att.srcAlphaBlendFactor = static_cast<VkBlendFactor>(static_state.state.src_alpha_blend);
+				att.dstColorBlendFactor = static_cast<VkBlendFactor>(static_state.state.dst_color_blend);
+				att.srcColorBlendFactor = static_cast<VkBlendFactor>(static_state.state.src_color_blend);
+			}
 		}
 	}
 	memcpy(blend.blendConstants, potential_static_state.blend_constants, sizeof(blend.blendConstants));
 
 	// Depth state
 	VkPipelineDepthStencilStateCreateInfo ds = { VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO };
-	ds.stencilTestEnable = render_pass->has_stencil() && static_state.state.stencil_test;
-	ds.depthTestEnable = render_pass->has_depth() && static_state.state.depth_test;
-	ds.depthWriteEnable = render_pass->has_depth() && static_state.state.depth_write;
+	ds.stencilTestEnable = render_pass->has_stencil(current_subpass) && static_state.state.stencil_test;
+	ds.depthTestEnable = render_pass->has_depth(current_subpass) && static_state.state.depth_test;
+	ds.depthWriteEnable = render_pass->has_depth(current_subpass) && static_state.state.depth_write;
 	if (ds.depthTestEnable)
 		ds.depthCompareOp = static_cast<VkCompareOp>(static_state.state.depth_compare);
 
@@ -422,7 +425,7 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
 	VkGraphicsPipelineCreateInfo pipe = { VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
 	pipe.layout = current_pipeline_layout;
 	pipe.renderPass = render_pass->get_render_pass();
-	pipe.subpass = 0;
+	pipe.subpass = current_subpass;
 
 	pipe.pViewportState = &vp;
 	pipe.pDynamicState = &dyn;
@@ -462,6 +465,7 @@ void CommandBuffer::flush_graphics_pipeline()
 	});
 
 	h.u64(render_pass->get_cookie());
+	h.u32(current_subpass);
 	h.u64(current_program->get_cookie());
 	h.data(static_state.words, sizeof(static_state.words));
 

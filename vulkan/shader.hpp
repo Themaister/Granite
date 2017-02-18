@@ -25,6 +25,7 @@ enum class ShaderStage
 struct ResourceLayout
 {
 	uint32_t attribute_mask = 0;
+	uint32_t render_target_mask = 0;
 	uint32_t push_constant_offset = 0;
 	uint32_t push_constant_range = 0;
 	DescriptorSetLayout sets[VULKAN_NUM_DESCRIPTOR_SETS];
@@ -33,6 +34,7 @@ struct ResourceLayout
 struct CombinedResourceLayout
 {
 	uint32_t attribute_mask = 0;
+	uint32_t render_target_mask = 0;
 	DescriptorSetLayout sets[VULKAN_NUM_DESCRIPTOR_SETS] = {};
 	VkPushConstantRange ranges[static_cast<unsigned>(ShaderStage::Count)] = {};
 	uint32_t num_ranges = 0;

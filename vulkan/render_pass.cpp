@@ -1,6 +1,7 @@
 #include "render_pass.hpp"
 #include "device.hpp"
 #include <utility>
+#include <cstring>
 
 using namespace std;
 using namespace Util;
@@ -221,6 +222,15 @@ RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
 
 	rp_info.dependencyCount = num_external_deps;
 	rp_info.pDependencies = external_dependencies;
+
+	{
+		SubpassInfo subpass_info = {};
+		subpass_info.num_color_attachments = subpass.colorAttachmentCount;
+		subpass_info.depth_stencil_attachment = *subpass.pDepthStencilAttachment;
+		memcpy(subpass_info.color_attachments, subpass.pColorAttachments,
+		       subpass.colorAttachmentCount * sizeof(*subpass.pColorAttachments));
+		add_subpass(subpass_info);
+	}
 
 	if (vkCreateRenderPass(device->get_device(), &rp_info, nullptr, &render_pass) != VK_SUCCESS)
 		LOGE("Failed to create render pass.");

@@ -430,19 +430,17 @@ private:
 
 	const Framebuffer *framebuffer = nullptr;
 	const RenderPass *render_pass = nullptr;
-	RenderPassInfo render_pass_info;
 
 	VertexAttribState attribs[VULKAN_NUM_VERTEX_ATTRIBS] = {};
 	IndexState index = {};
 	VertexBindingState vbo = {};
-
-
 	ResourceBindings bindings = {};
 
 	VkPipeline current_pipeline = VK_NULL_HANDLE;
 	VkPipelineLayout current_pipeline_layout = VK_NULL_HANDLE;
 	PipelineLayout *current_layout = nullptr;
 	Program *current_program = nullptr;
+	unsigned current_subpass = 0;
 
 	VkViewport viewport = {};
 	VkRect2D scissor = {};

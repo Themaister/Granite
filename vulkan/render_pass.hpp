@@ -52,8 +52,22 @@ struct RenderPassInfo
 class RenderPass : public Cookie, public NoCopyNoMove
 {
 public:
+	struct SubpassInfo
+	{
+		VkAttachmentReference color_attachments[VULKAN_NUM_ATTACHMENTS];
+		unsigned num_color_attachments;
+		VkAttachmentReference input_attachments[VULKAN_NUM_ATTACHMENTS];
+		unsigned num_input_attachments;
+		VkAttachmentReference depth_stencil_attachment;
+	};
+
 	RenderPass(Device *device, const RenderPassInfo &info);
 	~RenderPass();
+
+	unsigned get_num_subpasses() const
+	{
+		return subpasses.size();
+	}
 
 	VkRenderPass get_render_pass() const
 	{
@@ -65,14 +79,46 @@ public:
 		return 1;
 	}
 
-	bool has_depth() const
+	unsigned get_num_color_attachments(unsigned subpass) const
 	{
-		return format_is_depth(depth_stencil);
+		assert(subpass < subpasses.size());
+		return subpasses[subpass].num_color_attachments;
 	}
 
-	bool has_stencil() const
+	unsigned get_num_input_attachments(unsigned subpass) const
 	{
-		return format_is_stencil(depth_stencil);
+		assert(subpass < subpasses.size());
+		return subpasses[subpass].num_input_attachments;
+	}
+
+	const VkAttachmentReference &get_color_attachment(unsigned subpass, unsigned index) const
+	{
+		assert(subpass < subpasses.size());
+		assert(index < subpasses[subpass].num_color_attachments);
+		return subpasses[subpass].color_attachments[index];
+	}
+
+	const VkAttachmentReference &get_input_attachment(unsigned subpass, unsigned index) const
+	{
+		assert(subpass < subpasses.size());
+		assert(index < subpasses[subpass].num_input_attachments);
+		return subpasses[subpass].input_attachments[index];
+	}
+
+	bool has_depth(unsigned subpass) const
+	{
+		assert(subpass < subpasses.size());
+		return
+			subpasses[subpass].depth_stencil_attachment.attachment != VK_ATTACHMENT_UNUSED &&
+			format_is_depth(depth_stencil);
+	}
+
+	bool has_stencil(unsigned subpass) const
+	{
+		assert(subpass < subpasses.size());
+		return
+			subpasses[subpass].depth_stencil_attachment.attachment != VK_ATTACHMENT_UNUSED &&
+			format_is_stencil(depth_stencil);
 	}
 
 private:
@@ -82,6 +128,13 @@ private:
 	VkFormat color_attachments[VULKAN_NUM_ATTACHMENTS];
 	VkFormat depth_stencil;
 	unsigned num_color_attachments;
+
+	void add_subpass(const SubpassInfo &info)
+	{
+		subpasses.push_back(info);
+	}
+
+	std::vector<SubpassInfo> subpasses;
 };
 
 class Framebuffer : public Cookie, public NoCopyNoMove

@@ -140,6 +140,14 @@ Shader::Shader(VkDevice device, ShaderStage stage, const uint32_t *data, size_t 
 			layout.attribute_mask |= 1u << location;
 		}
 	}
+	else if (stage == ShaderStage::Fragment)
+	{
+		for (auto &attrib : resources.stage_outputs)
+		{
+			auto location = compiler.get_decoration(attrib.id, spv::DecorationLocation);
+			layout.render_target_mask |= 1u << location;
+		}
+	}
 
 	if (!resources.push_constant_buffers.empty())
 	{

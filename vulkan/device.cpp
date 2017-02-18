@@ -100,6 +100,8 @@ void Device::bake_program(Program &program)
 	CombinedResourceLayout layout;
 	if (program.get_shader(ShaderStage::Vertex))
 		layout.attribute_mask = program.get_shader(ShaderStage::Vertex)->get_layout().attribute_mask;
+	if (program.get_shader(ShaderStage::Fragment))
+		layout.render_target_mask = program.get_shader(ShaderStage::Fragment)->get_layout().render_target_mask;
 
 	layout.descriptor_set_mask = 0;
 

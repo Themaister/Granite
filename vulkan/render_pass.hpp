@@ -148,6 +148,12 @@ public:
 		return framebuffer;
 	}
 
+	ImageView *get_attachment(unsigned index) const
+	{
+		assert(index < attachments.size());
+		return attachments[index];
+	}
+
 	uint32_t get_width() const
 	{
 		return width;
@@ -170,6 +176,8 @@ private:
 	RenderPassInfo info;
 	uint32_t width = 0;
 	uint32_t height = 0;
+
+	std::vector<ImageView *> attachments;
 };
 
 static const unsigned VULKAN_FRAMEBUFFER_RING_SIZE = 4;

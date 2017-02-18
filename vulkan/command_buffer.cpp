@@ -820,20 +820,33 @@ void CommandBuffer::set_buffer_view(unsigned set, unsigned binding, const Buffer
 	dirty_sets |= 1u << set;
 }
 
-void CommandBuffer::set_input_attachment(unsigned set, unsigned binding, const ImageView &view)
+void CommandBuffer::set_input_attachments(unsigned set, unsigned start_binding)
 {
 	VK_ASSERT(set < VULKAN_NUM_DESCRIPTOR_SETS);
-	VK_ASSERT(binding < VULKAN_NUM_BINDINGS);
-	VK_ASSERT(view.get_image().get_create_info().usage & VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT);
-	if (view.get_cookie() == bindings.cookies[set][binding] &&
-	    bindings.bindings[set][binding].image.imageLayout == view.get_image().get_layout())
-		return;
+	VK_ASSERT(start_binding + render_pass->get_num_input_attachments(current_subpass) <= VULKAN_NUM_DESCRIPTOR_SETS);
+	unsigned num_input_attachments = render_pass->get_num_input_attachments(current_subpass);
+	for (unsigned i = 0; i < num_input_attachments; i++)
+	{
+		auto &ref = render_pass->get_input_attachment(current_subpass, i);
+		if (ref.attachment == VK_ATTACHMENT_UNUSED)
+			continue;
 
-	auto &b = bindings.bindings[set][binding];
-	b.image.imageLayout = view.get_image().get_layout();
-	b.image.imageView = view.get_view();
-	bindings.cookies[set][binding] = view.get_cookie();
-	dirty_sets |= 1u << set;
+		ImageView *view = framebuffer->get_attachment(ref.attachment);
+		VK_ASSERT(view);
+		VK_ASSERT(view->get_image().get_create_info().usage & VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT);
+
+		if (view->get_cookie() == bindings.cookies[set][start_binding + i] &&
+		    bindings.bindings[set][start_binding + i].image.imageLayout == ref.layout)
+		{
+			continue;
+		}
+
+		auto &b = bindings.bindings[set][start_binding + i];
+		b.image.imageLayout = ref.layout;
+		b.image.imageView = view->get_view();
+		bindings.cookies[set][start_binding + i] = view->get_cookie();
+		dirty_sets |= 1u << set;
+	}
 }
 
 void CommandBuffer::set_texture(unsigned set, unsigned binding, const ImageView &view)

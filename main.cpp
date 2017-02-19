@@ -128,7 +128,7 @@ void main()
 		wsi.begin_frame();
 
 		auto cmd = device.request_command_buffer();
-		auto rp = device.get_swapchain_render_pass(Vulkan::SwapchainRenderPass::Depth);
+		auto rp = device.get_swapchain_render_pass(Vulkan::SwapchainRenderPass::DepthStencil);
 		rp.clear_color[0].float32[0] = 1.0f;
 		rp.clear_color[0].float32[1] = 0.5f;
 		rp.clear_color[0].float32[2] = 0.5f;

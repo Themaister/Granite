@@ -98,6 +98,9 @@ Shader::Shader(VkDevice device, ShaderStage stage, const uint32_t *data, size_t 
 		else
 			layout.sets[set].sampled_image_mask |= 1u << binding;
 		layout.sets[set].stages |= 1u << static_cast<unsigned>(stage);
+
+		if (compiler.get_type(type.image.type).basetype == SPIRType::BaseType::Float)
+			layout.sets[set].fp_mask |= 1u << binding;
 	}
 
 	for (auto &image : resources.subpass_inputs)
@@ -106,6 +109,10 @@ Shader::Shader(VkDevice device, ShaderStage stage, const uint32_t *data, size_t 
 		auto binding = compiler.get_decoration(image.id, spv::DecorationBinding);
 		layout.sets[set].input_attachment_mask |= 1u << binding;
 		layout.sets[set].stages |= 1u << static_cast<unsigned>(stage);
+
+		auto &type = compiler.get_type(image.base_type_id);
+		if (compiler.get_type(type.image.type).basetype == SPIRType::BaseType::Float)
+			layout.sets[set].fp_mask |= 1u << binding;
 	}
 
 	for (auto &image : resources.storage_images)
@@ -114,6 +121,10 @@ Shader::Shader(VkDevice device, ShaderStage stage, const uint32_t *data, size_t 
 		auto binding = compiler.get_decoration(image.id, spv::DecorationBinding);
 		layout.sets[set].storage_image_mask |= 1u << binding;
 		layout.sets[set].stages |= 1u << static_cast<unsigned>(stage);
+
+		auto &type = compiler.get_type(image.base_type_id);
+		if (compiler.get_type(type.image.type).basetype == SPIRType::BaseType::Float)
+			layout.sets[set].fp_mask |= 1u << binding;
 	}
 
 	for (auto &buffer : resources.uniform_buffers)

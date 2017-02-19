@@ -810,7 +810,8 @@ void CommandBuffer::set_sampler(unsigned set, unsigned binding, const Sampler &s
 		return;
 
 	auto &b = bindings.bindings[set][binding];
-	b.image.sampler = sampler.get_sampler();
+	b.image.fp.sampler = sampler.get_sampler();
+	b.image.integer.sampler = sampler.get_sampler();
 	dirty_sets |= 1u << set;
 	bindings.secondary_cookies[set][binding] = sampler.get_cookie();
 }
@@ -844,14 +845,16 @@ void CommandBuffer::set_input_attachments(unsigned set, unsigned start_binding)
 		VK_ASSERT(view->get_image().get_create_info().usage & VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT);
 
 		if (view->get_cookie() == bindings.cookies[set][start_binding + i] &&
-		    bindings.bindings[set][start_binding + i].image.imageLayout == ref.layout)
+		    bindings.bindings[set][start_binding + i].image.fp.imageLayout == ref.layout)
 		{
 			continue;
 		}
 
 		auto &b = bindings.bindings[set][start_binding + i];
-		b.image.imageLayout = ref.layout;
-		b.image.imageView = view->get_view();
+		b.image.fp.imageLayout = ref.layout;
+		b.image.integer.imageLayout = ref.layout;
+		b.image.fp.imageView = view->get_float_view();
+		b.image.integer.imageView = view->get_integer_view();
 		bindings.cookies[set][start_binding + i] = view->get_cookie();
 		dirty_sets |= 1u << set;
 	}
@@ -863,12 +866,14 @@ void CommandBuffer::set_texture(unsigned set, unsigned binding, const ImageView 
 	VK_ASSERT(binding < VULKAN_NUM_BINDINGS);
 	VK_ASSERT(view.get_image().get_create_info().usage & VK_IMAGE_USAGE_SAMPLED_BIT);
 	if (view.get_cookie() == bindings.cookies[set][binding] &&
-	    bindings.bindings[set][binding].image.imageLayout == view.get_image().get_layout())
+	    bindings.bindings[set][binding].image.fp.imageLayout == view.get_image().get_layout())
 		return;
 
 	auto &b = bindings.bindings[set][binding];
-	b.image.imageLayout = view.get_image().get_layout();
-	b.image.imageView = view.get_view();
+	b.image.fp.imageLayout = view.get_image().get_layout();
+	b.image.fp.imageView = view.get_float_view();
+	b.image.integer.imageLayout = view.get_image().get_layout();
+	b.image.integer.imageView = view.get_integer_view();
 	bindings.cookies[set][binding] = view.get_cookie();
 	dirty_sets |= 1u << set;
 }
@@ -879,14 +884,17 @@ void CommandBuffer::set_texture(unsigned set, unsigned binding, const ImageView 
 	VK_ASSERT(binding < VULKAN_NUM_BINDINGS);
 	VK_ASSERT(view.get_image().get_create_info().usage & VK_IMAGE_USAGE_SAMPLED_BIT);
 	if (view.get_cookie() == bindings.cookies[set][binding] &&
-	    bindings.bindings[set][binding].image.imageLayout == view.get_image().get_layout() &&
+	    bindings.bindings[set][binding].image.fp.imageLayout == view.get_image().get_layout() &&
 	    sampler.get_cookie() == bindings.secondary_cookies[set][binding])
 		return;
 
 	auto &b = bindings.bindings[set][binding];
-	b.image.imageLayout = view.get_image().get_layout();
-	b.image.imageView = view.get_view();
-	b.image.sampler = sampler.get_sampler();
+	b.image.fp.imageLayout = view.get_image().get_layout();
+	b.image.fp.imageView = view.get_float_view();
+	b.image.fp.sampler = sampler.get_sampler();
+	b.image.integer.imageLayout = view.get_image().get_layout();
+	b.image.integer.imageView = view.get_integer_view();
+	b.image.integer.sampler = sampler.get_sampler();
 	bindings.cookies[set][binding] = view.get_cookie();
 	bindings.secondary_cookies[set][binding] = sampler.get_cookie();
 	dirty_sets |= 1u << set;
@@ -908,12 +916,14 @@ void CommandBuffer::set_storage_texture(unsigned set, unsigned binding, const Im
 	VK_ASSERT(view.get_image().get_create_info().usage & VK_IMAGE_USAGE_STORAGE_BIT);
 
 	if (view.get_cookie() == bindings.cookies[set][binding] &&
-	    bindings.bindings[set][binding].image.imageLayout == view.get_image().get_layout())
+	    bindings.bindings[set][binding].image.fp.imageLayout == view.get_image().get_layout())
 		return;
 
 	auto &b = bindings.bindings[set][binding];
-	b.image.imageLayout = view.get_image().get_layout();
-	b.image.imageView = view.get_view();
+	b.image.fp.imageLayout = view.get_image().get_layout();
+	b.image.fp.imageView = view.get_float_view();
+	b.image.integer.imageLayout = view.get_image().get_layout();
+	b.image.integer.imageView = view.get_integer_view();
 	bindings.cookies[set][binding] = view.get_cookie();
 	dirty_sets |= 1u << set;
 }
@@ -925,6 +935,8 @@ void CommandBuffer::flush_descriptor_set(uint32_t set)
 	uint32_t num_dynamic_offsets = 0;
 	uint32_t dynamic_offsets[VULKAN_NUM_BINDINGS];
 	Hasher h;
+
+	h.u32(set_layout.fp_mask);
 
 	// UBOs
 	for_each_bit(set_layout.uniform_buffer_mask, [&](uint32_t binding) {
@@ -953,23 +965,23 @@ void CommandBuffer::flush_descriptor_set(uint32_t set)
 	for_each_bit(set_layout.sampled_image_mask, [&](uint32_t binding) {
 		h.u64(bindings.cookies[set][binding]);
 		h.u64(bindings.secondary_cookies[set][binding]);
-		h.u32(bindings.bindings[set][binding].image.imageLayout);
-		VK_ASSERT(bindings.bindings[set][binding].image.imageView != VK_NULL_HANDLE);
-		VK_ASSERT(bindings.bindings[set][binding].image.sampler != VK_NULL_HANDLE);
+		h.u32(bindings.bindings[set][binding].image.fp.imageLayout);
+		VK_ASSERT(bindings.bindings[set][binding].image.fp.imageView != VK_NULL_HANDLE);
+		VK_ASSERT(bindings.bindings[set][binding].image.fp.sampler != VK_NULL_HANDLE);
 	});
 
 	// Storage images
 	for_each_bit(set_layout.storage_image_mask, [&](uint32_t binding) {
 		h.u64(bindings.cookies[set][binding]);
-		h.u32(bindings.bindings[set][binding].image.imageLayout);
-		VK_ASSERT(bindings.bindings[set][binding].image.imageView != VK_NULL_HANDLE);
+		h.u32(bindings.bindings[set][binding].image.fp.imageLayout);
+		VK_ASSERT(bindings.bindings[set][binding].image.fp.imageView != VK_NULL_HANDLE);
 	});
 
 	// Input attachments
 	for_each_bit(set_layout.input_attachment_mask, [&](uint32_t binding) {
 		h.u64(bindings.cookies[set][binding]);
-		h.u32(bindings.bindings[set][binding].image.imageLayout);
-		VK_ASSERT(bindings.bindings[set][binding].image.imageView != VK_NULL_HANDLE);
+		h.u32(bindings.bindings[set][binding].image.fp.imageLayout);
+		VK_ASSERT(bindings.bindings[set][binding].image.fp.imageView != VK_NULL_HANDLE);
 	});
 
 	Hash hash = h.get();
@@ -1033,7 +1045,11 @@ void CommandBuffer::flush_descriptor_set(uint32_t set)
 			write.dstArrayElement = 0;
 			write.dstBinding = binding;
 			write.dstSet = allocated.first;
-			write.pImageInfo = &bindings.bindings[set][binding].image;
+
+			if (set_layout.fp_mask & (1u << binding))
+				write.pImageInfo = &bindings.bindings[set][binding].image.fp;
+			else
+				write.pImageInfo = &bindings.bindings[set][binding].image.integer;
 		});
 
 		for_each_bit(set_layout.storage_image_mask, [&](uint32_t binding) {
@@ -1045,7 +1061,11 @@ void CommandBuffer::flush_descriptor_set(uint32_t set)
 			write.dstArrayElement = 0;
 			write.dstBinding = binding;
 			write.dstSet = allocated.first;
-			write.pImageInfo = &bindings.bindings[set][binding].image;
+
+			if (set_layout.fp_mask & (1u << binding))
+				write.pImageInfo = &bindings.bindings[set][binding].image.fp;
+			else
+				write.pImageInfo = &bindings.bindings[set][binding].image.integer;
 		});
 
 		for_each_bit(set_layout.input_attachment_mask, [&](uint32_t binding) {
@@ -1057,7 +1077,10 @@ void CommandBuffer::flush_descriptor_set(uint32_t set)
 			write.dstArrayElement = 0;
 			write.dstBinding = binding;
 			write.dstSet = allocated.first;
-			write.pImageInfo = &bindings.bindings[set][binding].image;
+			if (set_layout.fp_mask & (1u << binding))
+				write.pImageInfo = &bindings.bindings[set][binding].image.fp;
+			else
+				write.pImageInfo = &bindings.bindings[set][binding].image.integer;
 		});
 
 		vkUpdateDescriptorSets(device->get_device(), write_count, writes, 0, nullptr);

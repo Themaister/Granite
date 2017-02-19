@@ -120,6 +120,7 @@ void Device::bake_program(Program &program)
 			layout.sets[set].storage_buffer_mask |= shader_layout.sets[set].storage_buffer_mask;
 			layout.sets[set].sampled_buffer_mask |= shader_layout.sets[set].sampled_buffer_mask;
 			layout.sets[set].input_attachment_mask |= shader_layout.sets[set].input_attachment_mask;
+			layout.sets[set].fp_mask |= shader_layout.sets[set].fp_mask;
 			layout.sets[set].stages |= shader_layout.sets[set].stages;
 		}
 
@@ -880,13 +881,36 @@ ImageViewHandle Device::create_image_view(const ImageViewCreateInfo &create_info
 	view_info.subresourceRange.layerCount = create_info.layers;
 	view_info.viewType = get_image_view_type(image_create_info, &create_info);
 
-	VkImageView image_view;
+	VkImageView image_view = VK_NULL_HANDLE;
+	VkImageView depth_view = VK_NULL_HANDLE;
+	VkImageView stencil_view = VK_NULL_HANDLE;
 	if (vkCreateImageView(device, &view_info, nullptr, &image_view) != VK_SUCCESS)
 		return nullptr;
 
+	// If the image has multiple aspects, make split up images.
+	if (view_info.subresourceRange.aspectMask == (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT))
+	{
+		view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+		if (vkCreateImageView(device, &view_info, nullptr, &depth_view) != VK_SUCCESS)
+		{
+			vkDestroyImageView(device, image_view, nullptr);
+			return nullptr;
+		}
+
+		view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_STENCIL_BIT;
+		if (vkCreateImageView(device, &view_info, nullptr, &stencil_view) != VK_SUCCESS)
+		{
+			vkDestroyImageView(device, image_view, nullptr);
+			vkDestroyImageView(device, depth_view, nullptr);
+			return nullptr;
+		}
+	}
+
 	ImageViewCreateInfo tmp = create_info;
 	tmp.format = format;
-	return make_handle<ImageView>(this, image_view, tmp);
+	auto ret = make_handle<ImageView>(this, image_view, tmp);
+	ret->set_alt_views(depth_view, stencil_view);
+	return ret;
 }
 
 ImageHandle Device::create_image(const ImageCreateInfo &create_info, const ImageInitialData *initial)
@@ -945,6 +969,8 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 
 	// Create a default image view.
 	VkImageView image_view = VK_NULL_HANDLE;
+	VkImageView depth_view = VK_NULL_HANDLE;
+	VkImageView stencil_view = VK_NULL_HANDLE;
 	if (info.usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
 	                  VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT))
 	{
@@ -968,9 +994,33 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 			vkDestroyImage(device, image, nullptr);
 			return nullptr;
 		}
+
+		// If the image has multiple aspects, make split up images.
+		if (view_info.subresourceRange.aspectMask == (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT))
+		{
+			view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+			if (vkCreateImageView(device, &view_info, nullptr, &depth_view) != VK_SUCCESS)
+			{
+				allocation.free_immediate(allocator);
+				vkDestroyImageView(device, image_view, nullptr);
+				vkDestroyImage(device, image, nullptr);
+				return nullptr;
+			}
+
+			view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_STENCIL_BIT;
+			if (vkCreateImageView(device, &view_info, nullptr, &stencil_view) != VK_SUCCESS)
+			{
+				allocation.free_immediate(allocator);
+				vkDestroyImageView(device, image_view, nullptr);
+				vkDestroyImageView(device, depth_view, nullptr);
+				vkDestroyImage(device, image, nullptr);
+				return nullptr;
+			}
+		}
 	}
 
 	auto handle = make_handle<Image>(this, image, image_view, allocation, tmpinfo);
+	handle->get_view().set_alt_views(depth_view, stencil_view);
 
 	// Set possible dstStage and dstAccess.
 	handle->set_stage_flags(image_usage_to_possible_stages(info.usage));

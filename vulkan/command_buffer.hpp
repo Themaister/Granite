@@ -124,7 +124,11 @@ struct ResourceBinding
 {
 	union {
 		VkDescriptorBufferInfo buffer;
-		VkDescriptorImageInfo image;
+		struct
+		{
+			VkDescriptorImageInfo fp;
+			VkDescriptorImageInfo integer;
+		} image;
 		VkBufferView buffer_view;
 	};
 };

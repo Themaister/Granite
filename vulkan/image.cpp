@@ -17,6 +17,10 @@ ImageView::ImageView(Device *device, VkImageView view, const ImageViewCreateInfo
 ImageView::~ImageView()
 {
 	device->destroy_image_view(view);
+	if (depth_view != VK_NULL_HANDLE)
+		device->destroy_image_view(depth_view);
+	if (stencil_view != VK_NULL_HANDLE)
+		device->destroy_image_view(stencil_view);
 }
 
 Image::Image(Device *device, VkImage image, VkImageView default_view, const DeviceAllocation &alloc,

@@ -160,9 +160,35 @@ public:
 	ImageView(Device *device, VkImageView view, const ImageViewCreateInfo &info);
 	~ImageView();
 
+	void set_alt_views(VkImageView depth, VkImageView stencil)
+	{
+		VK_ASSERT(depth_view == VK_NULL_HANDLE);
+		VK_ASSERT(stencil_view == VK_NULL_HANDLE);
+		depth_view = depth;
+		stencil_view = stencil;
+	}
+
+	// By default, gets a combined view which includes all aspects in the image.
+	// This would be used mostly for render targets.
 	VkImageView get_view() const
 	{
 		return view;
+	}
+
+	// Gets an image view which only includes floating point domains.
+	// Takes effect when we want to sample from an image which is Depth/Stencil,
+	// but we only want to sample depth.
+	VkImageView get_float_view() const
+	{
+		return depth_view != VK_NULL_HANDLE ? depth_view : view;
+	}
+
+	// Gets an image view which only includes integer domains.
+	// Takes effect when we want to sample from an image which is Depth/Stencil,
+	// but we only want to sample stencil.
+	VkImageView get_integer_view() const
+	{
+		return stencil_view != VK_NULL_HANDLE ? stencil_view : view;
 	}
 
 	VkFormat get_format() const
@@ -188,6 +214,8 @@ public:
 private:
 	Device *device;
 	VkImageView view;
+	VkImageView depth_view = VK_NULL_HANDLE;
+	VkImageView stencil_view = VK_NULL_HANDLE;
 	ImageViewCreateInfo info;
 };
 using ImageViewHandle = Util::IntrusivePtr<ImageView>;

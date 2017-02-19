@@ -110,9 +110,10 @@ void main()
 precision mediump float;
 layout(location = 0) out vec4 Color;
 layout(input_attachment_index = 0, set = 0, binding = 0) uniform highp subpassInput uDepth;
+layout(input_attachment_index = 0, set = 0, binding = 1) uniform highp usubpassInput uStencil;
 void main()
 {
-   Color = subpassLoad(uDepth).xxxx;
+   Color = subpassLoad(uDepth).x * vec4(float(subpassLoad(uStencil)) / 255.0);
 }
 	)delim", "depth.frag");
 	compiler.preprocess();
@@ -134,6 +135,7 @@ void main()
 		rp.clear_color[0].float32[2] = 0.5f;
 		rp.clear_color[0].float32[3] = 1.0f;
 		rp.clear_depth_stencil.depth = 0.2f;
+		rp.clear_depth_stencil.stencil = 128;
 
 		Vulkan::RenderPassInfo::Subpass subpasses[2] = {};
 		subpasses[0].num_color_attachments = 1;
@@ -171,6 +173,7 @@ void main()
 		cmd->set_vertex_attrib(0, 0, VK_FORMAT_R8G8_SNORM, 0);
 		cmd->set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
 		cmd->set_input_attachments(0, 0);
+		cmd->set_input_attachments(0, 1);
 		cmd->draw(4);
 
 		cmd->end_render_pass();

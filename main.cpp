@@ -72,8 +72,6 @@ int main()
 	cookie = manager.enqueue_latched<BEvent>(10, 40);
 
 	try {
-
-
 	Vulkan::WSI wsi;
 	if (!wsi.init(1280, 720))
 		return 1;
@@ -99,7 +97,7 @@ precision mediump float;
 layout(location = 0) out vec4 Color;
 void main()
 {
-   Color = vec4(1.0);
+   Color = vec4(1.0, 0.5, 0.5, 0.0);
 }
 	)delim", "test.frag");
 	compiler.set_stage(Stage::Fragment);
@@ -107,17 +105,48 @@ void main()
 	auto frag = compiler.compile();
     if (frag.empty())
         LOGE("Error: %s\n", compiler.get_error_message().c_str());
+
+	compiler.set_source(R"delim(#version 310 es
+precision mediump float;
+layout(location = 0) out vec4 Color;
+layout(input_attachment_index = 0, set = 0, binding = 0) uniform highp subpassInput uDepth;
+void main()
+{
+   Color = subpassLoad(uDepth).xxxx;
+}
+	)delim", "depth.frag");
+	compiler.preprocess();
+	auto depth_frag = compiler.compile();
+	if (depth_frag.empty())
+		LOGE("Error: %s\n", compiler.get_error_message().c_str());
+
 	auto program = device.create_program(vert.data(), vert.size() * sizeof(uint32_t), frag.data(), frag.size() * sizeof(uint32_t));
+	auto depth_program = device.create_program(vert.data(), vert.size() * sizeof(uint32_t), depth_frag.data(), depth_frag.size() * sizeof(uint32_t));
+
 	while (wsi.alive())
 	{
 		wsi.begin_frame();
 
 		auto cmd = device.request_command_buffer();
-		auto rp = device.get_swapchain_render_pass(Vulkan::SwapchainRenderPass::ColorOnly);
+		auto rp = device.get_swapchain_render_pass(Vulkan::SwapchainRenderPass::Depth);
 		rp.clear_color[0].float32[0] = 1.0f;
 		rp.clear_color[0].float32[1] = 0.5f;
 		rp.clear_color[0].float32[2] = 0.5f;
 		rp.clear_color[0].float32[3] = 1.0f;
+		rp.clear_depth_stencil.depth = 0.2f;
+
+		Vulkan::RenderPassInfo::Subpass subpasses[2] = {};
+		subpasses[0].num_color_attachments = 1;
+		subpasses[0].color_attachments[0] = 0;
+		subpasses[0].depth_stencil_mode = Vulkan::RenderPassInfo::DepthStencil::ReadWrite;
+		subpasses[1].num_color_attachments = 1;
+		subpasses[1].color_attachments[0] = 0;
+		subpasses[1].num_input_attachments = 1;
+		subpasses[1].input_attachments[0] = 1;
+		subpasses[1].depth_stencil_mode = Vulkan::RenderPassInfo::DepthStencil::ReadOnly;
+		rp.num_subpasses = 2;
+		rp.subpasses = subpasses;
+
 		cmd->begin_render_pass(rp);
 
 		cmd->set_program(*program);
@@ -125,12 +154,25 @@ void main()
 				-128, -128,
 				+127, -128,
 				-128, +127,
+                +127, +127,
 		};
 		memcpy(cmd->allocate_vertex_data(0, 6, 2), quad, sizeof(quad));
 		cmd->set_quad_state();
+		cmd->set_depth_test(true, true);
+		cmd->set_depth_compare(VK_COMPARE_OP_LESS_OR_EQUAL);
 		cmd->set_vertex_attrib(0, 0, VK_FORMAT_R8G8_SNORM, 0);
 		cmd->set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 		cmd->draw(3);
+		cmd->next_subpass();
+
+		cmd->set_program(*depth_program);
+		memcpy(cmd->allocate_vertex_data(0, 8, 2), quad, sizeof(quad));
+		cmd->set_quad_state();
+		cmd->set_vertex_attrib(0, 0, VK_FORMAT_R8G8_SNORM, 0);
+		cmd->set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
+		cmd->set_input_attachments(0, 0);
+		cmd->draw(4);
+
 		cmd->end_render_pass();
 
 		device.submit(cmd);

@@ -270,7 +270,7 @@ struct ImageCreateInfo
 		info.samples = VK_SAMPLE_COUNT_1_BIT;
 		info.flags = 0;
 		info.misc = 0;
-		info.initial_layout = VK_IMAGE_LAYOUT_GENERAL;
+		info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 		return info;
 	}
 };

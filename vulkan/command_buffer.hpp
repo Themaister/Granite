@@ -216,6 +216,7 @@ public:
 	void generate_mipmap(const Image &image);
 
 	void begin_render_pass(const RenderPassInfo &info);
+	void next_subpass();
 	void end_render_pass();
 
 	void set_program(Program &program);

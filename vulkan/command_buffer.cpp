@@ -230,6 +230,16 @@ void CommandBuffer::begin_graphics()
 	begin_context();
 }
 
+void CommandBuffer::next_subpass()
+{
+	VK_ASSERT(framebuffer);
+	VK_ASSERT(render_pass);
+	current_subpass++;
+	VK_ASSERT(current_subpass < render_pass->get_num_subpasses());
+	vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_INLINE);
+	begin_graphics();
+}
+
 void CommandBuffer::begin_render_pass(const RenderPassInfo &info)
 {
 	VK_ASSERT(!framebuffer);
@@ -249,12 +259,10 @@ void CommandBuffer::begin_render_pass(const RenderPassInfo &info)
 
 	for (unsigned i = 0; i < info.num_color_attachments; i++)
 	{
-		if (info.color_attachments[i])
-		{
-			clear_values[num_clear_values++].color = info.clear_color[i];
-			if (info.color_attachments[i]->get_image().is_swapchain_image())
-				uses_swapchain = true;
-		}
+		VK_ASSERT(info.color_attachments[i]);
+		clear_values[num_clear_values++].color = info.clear_color[i];
+		if (info.color_attachments[i]->get_image().is_swapchain_image())
+			uses_swapchain = true;
 	}
 
 	if (info.depth_stencil)

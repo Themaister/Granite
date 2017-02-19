@@ -516,6 +516,7 @@ RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
 	{
 		SubpassInfo subpass_info = {};
 		subpass_info.num_color_attachments = subpass.colorAttachmentCount;
+		subpass_info.num_input_attachments = subpass.inputAttachmentCount;
 		subpass_info.depth_stencil_attachment = *subpass.pDepthStencilAttachment;
 		memcpy(subpass_info.color_attachments, subpass.pColorAttachments,
 		       subpass.colorAttachmentCount * sizeof(*subpass.pColorAttachments));

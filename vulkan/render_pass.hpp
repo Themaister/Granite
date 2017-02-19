@@ -98,33 +98,33 @@ public:
 
 	unsigned get_num_color_attachments(unsigned subpass) const
 	{
-		assert(subpass < subpasses.size());
+		VK_ASSERT(subpass < subpasses.size());
 		return subpasses[subpass].num_color_attachments;
 	}
 
 	unsigned get_num_input_attachments(unsigned subpass) const
 	{
-		assert(subpass < subpasses.size());
+		VK_ASSERT(subpass < subpasses.size());
 		return subpasses[subpass].num_input_attachments;
 	}
 
 	const VkAttachmentReference &get_color_attachment(unsigned subpass, unsigned index) const
 	{
-		assert(subpass < subpasses.size());
-		assert(index < subpasses[subpass].num_color_attachments);
+		VK_ASSERT(subpass < subpasses.size());
+		VK_ASSERT(index < subpasses[subpass].num_color_attachments);
 		return subpasses[subpass].color_attachments[index];
 	}
 
 	const VkAttachmentReference &get_input_attachment(unsigned subpass, unsigned index) const
 	{
-		assert(subpass < subpasses.size());
-		assert(index < subpasses[subpass].num_input_attachments);
+		VK_ASSERT(subpass < subpasses.size());
+		VK_ASSERT(index < subpasses[subpass].num_input_attachments);
 		return subpasses[subpass].input_attachments[index];
 	}
 
 	bool has_depth(unsigned subpass) const
 	{
-		assert(subpass < subpasses.size());
+		VK_ASSERT(subpass < subpasses.size());
 		return
 			subpasses[subpass].depth_stencil_attachment.attachment != VK_ATTACHMENT_UNUSED &&
 			format_is_depth(depth_stencil);
@@ -132,7 +132,7 @@ public:
 
 	bool has_stencil(unsigned subpass) const
 	{
-		assert(subpass < subpasses.size());
+		VK_ASSERT(subpass < subpasses.size());
 		return
 			subpasses[subpass].depth_stencil_attachment.attachment != VK_ATTACHMENT_UNUSED &&
 			format_is_stencil(depth_stencil);

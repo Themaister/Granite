@@ -1184,6 +1184,18 @@ const RenderPass &Device::request_render_pass(const RenderPassInfo &info)
 	if (info.depth_stencil && info.depth_stencil->get_image().get_create_info().domain == ImageDomain::Transient)
 		lazy |= 1u << info.num_color_attachments;
 
+	h.u32(info.num_subpasses);
+	for (unsigned i = 0; i < info.num_subpasses; i++)
+	{
+		h.u32(info.subpasses[i].num_color_attachments);
+		h.u32(info.subpasses[i].num_input_attachments);
+		h.u32(static_cast<uint32_t>(info.subpasses[i].depth_stencil_mode));
+		for (unsigned j = 0; j < info.subpasses[i].num_color_attachments; j++)
+			h.u32(info.subpasses[i].color_attachments[j]);
+		for (unsigned j = 0; j < info.subpasses[i].num_input_attachments; j++)
+			h.u32(info.subpasses[i].input_attachments[j]);
+	}
+
 	depth_stencil = info.depth_stencil ? info.depth_stencil->get_format() : VK_FORMAT_UNDEFINED;
 	h.data(formats, info.num_color_attachments * sizeof(VkFormat));
 	h.u32(info.num_color_attachments);

@@ -22,10 +22,11 @@ ShaderTemplate::ShaderTemplate(const std::string &shader_path)
 
 	instance++;
 
-	notify_backend = Filesystem::get().get_backend(Path::protocol_split(shader_path).first);
+	auto paths = Path::protocol_split(shader_path);
+	notify_backend = Filesystem::get().get_backend(paths.first);
 	if (notify_backend)
 	{
-		notify_handle = notify_backend->install_notification(shader_path, [this](const FileNotifyInfo &info) {
+		notify_handle = notify_backend->install_notification(paths.second, [this](const FileNotifyInfo &info) {
 			recompile(info);
 		});
 	}
@@ -33,6 +34,10 @@ ShaderTemplate::ShaderTemplate(const std::string &shader_path)
 
 void ShaderTemplate::recompile(const FileNotifyInfo &info)
 {
+	notify_handle = info.updated_handle;
+	if (info.type == FileNotifyType::FileDeleted)
+		return;
+
 	try
 	{
 		unique_ptr<GLSLCompiler> newcompiler(new GLSLCompiler);
@@ -111,19 +116,8 @@ ShaderManager &ShaderManager::get()
 
 ShaderProgram *ShaderManager::register_compute(const std::string &compute)
 {
-	ShaderTemplate *tmpl = nullptr;
-
+	ShaderTemplate *tmpl = get_template(compute);
 	Util::Hasher h;
-	auto itr = shaders.find(compute);
-	if (itr == end(shaders))
-	{
-		auto &shader = shaders[compute];
-		shader = unique_ptr<ShaderTemplate>(new ShaderTemplate(compute));
-		tmpl = shader.get();
-	}
-	else
-		tmpl = itr->second.get();
-
 	h.pointer(tmpl);
 	auto hash = h.get();
 
@@ -132,6 +126,43 @@ ShaderProgram *ShaderManager::register_compute(const std::string &compute)
 	{
 		auto prog = unique_ptr<ShaderProgram>(new ShaderProgram);
 		prog->set_stage(Vulkan::ShaderStage::Compute, tmpl);
+		auto *ret = prog.get();
+		programs[hash] = move(prog);
+		return ret;
+	}
+	else
+		return pitr->second.get();
+}
+
+ShaderTemplate *ShaderManager::get_template(const std::string &path)
+{
+	auto itr = shaders.find(path);
+	if (itr == end(shaders))
+	{
+		auto &shader = shaders[path];
+		shader = unique_ptr<ShaderTemplate>(new ShaderTemplate(path));
+		return shader.get();
+	}
+	else
+		return itr->second.get();
+}
+
+ShaderProgram *ShaderManager::register_graphics(const std::string &vertex, const std::string &fragment)
+{
+	ShaderTemplate *vert_tmpl = get_template(vertex);
+	ShaderTemplate *frag_tmpl = get_template(fragment);
+
+	Util::Hasher h;
+	h.pointer(vert_tmpl);
+	h.pointer(frag_tmpl);
+	auto hash = h.get();
+
+	auto pitr = programs.find(hash);
+	if (pitr == end(programs))
+	{
+		auto prog = unique_ptr<ShaderProgram>(new ShaderProgram);
+		prog->set_stage(Vulkan::ShaderStage::Vertex, vert_tmpl);
+		prog->set_stage(Vulkan::ShaderStage::Fragment, frag_tmpl);
 		auto *ret = prog.get();
 		programs[hash] = move(prog);
 		return ret;

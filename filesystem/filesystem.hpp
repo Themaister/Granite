@@ -50,6 +50,7 @@ struct FileNotifyInfo
 {
 	std::string path;
 	FileNotifyType type;
+	FileNotifyHandle updated_handle;
 };
 
 enum class FileMode
@@ -73,7 +74,13 @@ public:
 	virtual void uninstall_notification(FileNotifyHandle handle) = 0;
 	virtual void poll_notifications() = 0;
 
-private:
+	void set_protocol(const std::string &proto)
+	{
+		protocol = proto;
+	}
+
+protected:
+	std::string protocol;
 };
 
 class Filesystem

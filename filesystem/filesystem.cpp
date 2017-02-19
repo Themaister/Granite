@@ -40,6 +40,7 @@ Filesystem::Filesystem()
 	if (!asset_dir)
 		asset_dir = GRANITE_DEFAULT_ASSET_DIRECTORY;
 	protocols["assets"] = unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir));
+	protocols["assets"]->set_protocol("assets://");
 #endif
 }
 

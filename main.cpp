@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <wsi/wsi.hpp>
+#include <shader_manager.hpp>
 
 using namespace Granite;
 using namespace std;
@@ -73,91 +74,74 @@ int main()
 	cookie = manager.enqueue_latched<BEvent>(10, 40);
 
 	try {
-	Vulkan::WSI wsi;
-	if (!wsi.init(1280, 720))
-		return 1;
+		Vulkan::WSI wsi;
+		if (!wsi.init(1280, 720))
+			return 1;
 
-    auto &device = wsi.get_device();
+		auto &device = wsi.get_device();
 
-    GLSLCompiler compiler;
-    compiler.set_source_from_file("assets://shaders/quad.vert");
-	compiler.preprocess();
-	auto vert = compiler.compile();
-    if (vert.empty())
-        LOGE("Error: %s\n", compiler.get_error_message().c_str());
+		auto &sm = ShaderManager::get();
+		auto *pass0 = sm.register_graphics("assets://shaders/quad.vert", "assets://shaders/quad.frag");
+		auto *pass1 = sm.register_graphics("assets://shaders/quad.vert", "assets://shaders/depth.frag");
 
-    compiler.set_source_from_file("assets://shaders/quad.frag");
-	compiler.preprocess();
-	auto frag = compiler.compile();
-    if (frag.empty())
-        LOGE("Error: %s\n", compiler.get_error_message().c_str());
+		while (wsi.alive())
+		{
+			Filesystem::get().poll_notifications();
+			wsi.begin_frame();
 
-    compiler.set_source_from_file("assets://shaders/depth.frag");
-	compiler.preprocess();
-	auto depth_frag = compiler.compile();
-	if (depth_frag.empty())
-		LOGE("Error: %s\n", compiler.get_error_message().c_str());
+			auto cmd = device.request_command_buffer();
+			auto rp = device.get_swapchain_render_pass(Vulkan::SwapchainRenderPass::DepthStencil);
+			rp.clear_color[0].float32[0] = 1.0f;
+			rp.clear_color[0].float32[1] = 0.5f;
+			rp.clear_color[0].float32[2] = 0.5f;
+			rp.clear_color[0].float32[3] = 1.0f;
+			rp.clear_depth_stencil.depth = 0.2f;
+			rp.clear_depth_stencil.stencil = 128;
 
-	auto program = device.create_program(vert.data(), vert.size() * sizeof(uint32_t), frag.data(), frag.size() * sizeof(uint32_t));
-	auto depth_program = device.create_program(vert.data(), vert.size() * sizeof(uint32_t), depth_frag.data(), depth_frag.size() * sizeof(uint32_t));
+			Vulkan::RenderPassInfo::Subpass subpasses[2] = {};
+			subpasses[0].num_color_attachments = 1;
+			subpasses[0].color_attachments[0] = 0;
+			subpasses[0].depth_stencil_mode = Vulkan::RenderPassInfo::DepthStencil::ReadWrite;
+			subpasses[1].num_color_attachments = 1;
+			subpasses[1].color_attachments[0] = 0;
+			subpasses[1].num_input_attachments = 1;
+			subpasses[1].input_attachments[0] = 1;
+			subpasses[1].depth_stencil_mode = Vulkan::RenderPassInfo::DepthStencil::ReadOnly;
+			rp.num_subpasses = 2;
+			rp.subpasses = subpasses;
 
-	while (wsi.alive())
-	{
-		wsi.begin_frame();
+			cmd->begin_render_pass(rp);
 
-		auto cmd = device.request_command_buffer();
-		auto rp = device.get_swapchain_render_pass(Vulkan::SwapchainRenderPass::DepthStencil);
-		rp.clear_color[0].float32[0] = 1.0f;
-		rp.clear_color[0].float32[1] = 0.5f;
-		rp.clear_color[0].float32[2] = 0.5f;
-		rp.clear_color[0].float32[3] = 1.0f;
-		rp.clear_depth_stencil.depth = 0.2f;
-		rp.clear_depth_stencil.stencil = 128;
-
-		Vulkan::RenderPassInfo::Subpass subpasses[2] = {};
-		subpasses[0].num_color_attachments = 1;
-		subpasses[0].color_attachments[0] = 0;
-		subpasses[0].depth_stencil_mode = Vulkan::RenderPassInfo::DepthStencil::ReadWrite;
-		subpasses[1].num_color_attachments = 1;
-		subpasses[1].color_attachments[0] = 0;
-		subpasses[1].num_input_attachments = 1;
-		subpasses[1].input_attachments[0] = 1;
-		subpasses[1].depth_stencil_mode = Vulkan::RenderPassInfo::DepthStencil::ReadOnly;
-		rp.num_subpasses = 2;
-		rp.subpasses = subpasses;
-
-		cmd->begin_render_pass(rp);
-
-		cmd->set_program(*program);
-        static const int8_t quad[] = {
+			cmd->set_program(*pass0->get_program(device));
+			static const int8_t quad[] = {
 				-128, -128,
 				+127, -128,
 				-128, +127,
-                +127, +127,
-		};
-		memcpy(cmd->allocate_vertex_data(0, 6, 2), quad, sizeof(quad));
-		cmd->set_quad_state();
-		cmd->set_depth_test(true, true);
-		cmd->set_depth_compare(VK_COMPARE_OP_LESS_OR_EQUAL);
-		cmd->set_vertex_attrib(0, 0, VK_FORMAT_R8G8_SNORM, 0);
-		cmd->set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-		cmd->draw(3);
-		cmd->next_subpass();
+				+127, +127,
+			};
+			memcpy(cmd->allocate_vertex_data(0, 6, 2), quad, sizeof(quad));
+			cmd->set_quad_state();
+			cmd->set_depth_test(true, true);
+			cmd->set_depth_compare(VK_COMPARE_OP_LESS_OR_EQUAL);
+			cmd->set_vertex_attrib(0, 0, VK_FORMAT_R8G8_SNORM, 0);
+			cmd->set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+			cmd->draw(3);
+			cmd->next_subpass();
 
-		cmd->set_program(*depth_program);
-		memcpy(cmd->allocate_vertex_data(0, 8, 2), quad, sizeof(quad));
-		cmd->set_quad_state();
-		cmd->set_vertex_attrib(0, 0, VK_FORMAT_R8G8_SNORM, 0);
-		cmd->set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
-		cmd->set_input_attachments(0, 0);
-		cmd->set_input_attachments(0, 1);
-		cmd->draw(4);
+			cmd->set_program(*pass1->get_program(device));
+			memcpy(cmd->allocate_vertex_data(0, 8, 2), quad, sizeof(quad));
+			cmd->set_quad_state();
+			cmd->set_vertex_attrib(0, 0, VK_FORMAT_R8G8_SNORM, 0);
+			cmd->set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
+			cmd->set_input_attachments(0, 0);
+			cmd->set_input_attachments(0, 1);
+			cmd->draw(4);
 
-		cmd->end_render_pass();
+			cmd->end_render_pass();
 
-		device.submit(cmd);
-		wsi.end_frame();
-	}
+			device.submit(cmd);
+			wsi.end_frame();
+		}
 	}
     catch (const exception &e)
 	{

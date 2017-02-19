@@ -5,5 +5,5 @@ layout(input_attachment_index = 0, set = 0, binding = 0) uniform highp subpassIn
 
 void main()
 {
-   Color = subpassLoad(uDepth).xxxx;
+   Color = 3.0 * subpassLoad(uDepth).xxxx;
 }

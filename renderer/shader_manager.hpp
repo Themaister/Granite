@@ -65,5 +65,7 @@ private:
 	std::unordered_map<std::string, std::unique_ptr<ShaderTemplate>> shaders;
 	Util::HashMap<std::unique_ptr<ShaderProgram>> programs;
 	ShaderManager() = default;
+
+	ShaderTemplate *get_template(const std::string &vertex);
 };
 }

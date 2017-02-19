@@ -41,6 +41,11 @@ public:
 		u32(value >> 32);
 	}
 
+	inline void pointer(void *ptr)
+	{
+		u64(reinterpret_cast<uintptr_t>(ptr));
+	}
+
 	inline Hash get() const
 	{
 		return h;

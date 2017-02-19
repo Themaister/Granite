@@ -7,12 +7,16 @@
 #include <vector>
 #include "compiler.hpp"
 #include "device.hpp"
+#include "filesystem.hpp"
 
 namespace Granite
 {
 class ShaderTemplate
 {
 public:
+	ShaderTemplate(const std::string &shader_path);
+	~ShaderTemplate();
+
 	unsigned get_instance() const
 	{
 		return instance;
@@ -24,15 +28,19 @@ public:
 	}
 
 private:
+	void recompile(const FileNotifyInfo &info);
 	std::unique_ptr<GLSLCompiler> compiler;
 	std::vector<uint32_t> spirv;
 	unsigned instance = 0;
+	FileNotifyHandle notify_handle = -1;
+	FilesystemBackend *notify_backend = nullptr;
 };
 
 class ShaderProgram
 {
 public:
 	Vulkan::ProgramHandle get_program(Vulkan::Device &device);
+	void set_stage(Vulkan::ShaderStage stage, const ShaderTemplate *shader);
 
 	unsigned get_instance() const
 	{
@@ -55,7 +63,7 @@ public:
 
 private:
 	std::unordered_map<std::string, std::unique_ptr<ShaderTemplate>> shaders;
-	Util::HashMap<ShaderProgram> programs;
+	Util::HashMap<std::unique_ptr<ShaderProgram>> programs;
 	ShaderManager() = default;
 };
 }

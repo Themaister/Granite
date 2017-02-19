@@ -7,7 +7,7 @@ namespace Granite
 class MMapFile : public File
 {
 public:
-	MMapFile(const std::string &path, Filesystem::Mode mode);
+	MMapFile(const std::string &path, FileMode mode);
 	~MMapFile();
 	void *map() override;
 	void *map_write(size_t size) override;
@@ -21,17 +21,17 @@ private:
 	size_t size = 0;
 };
 
-class OSFilesystem : public Filesystem
+class OSFilesystem : public FilesystemBackend
 {
 public:
 	OSFilesystem(const std::string &base);
 	~OSFilesystem();
-	std::vector<Entry> list(const std::string &path) override;
-	std::unique_ptr<File> open(const std::string &path, Mode mode) override;
-	bool stat(const std::string &path, Stat &stat) override;
-	NotifyHandle install_notification(const std::string &path, std::function<void (const Filesystem::NotifyInfo &)> func) override;
-	NotifyHandle find_notification(const std::string &path) const override;
-	void uninstall_notification(NotifyHandle handle) override;
+	std::vector<ListEntry> list(const std::string &path) override;
+	std::unique_ptr<File> open(const std::string &path, FileMode mode) override;
+	bool stat(const std::string &path, FileStat &stat) override;
+	FileNotifyHandle install_notification(const std::string &path, std::function<void (const FileNotifyInfo &)> func) override;
+	FileNotifyHandle find_notification(const std::string &path) const override;
+	void uninstall_notification(FileNotifyHandle handle) override;
 	void poll_notifications() override;
 
 private:
@@ -40,11 +40,11 @@ private:
 	struct Handler
 	{
 		std::string path;
-		std::function<void (const Filesystem::NotifyInfo &)> func;
+		std::function<void (const FileNotifyInfo &)> func;
 		bool directory;
 	};
-	std::unordered_map<NotifyHandle, Handler> handlers;
-	std::unordered_map<std::string, NotifyHandle> path_to_handler;
+	std::unordered_map<FileNotifyHandle, Handler> handlers;
+	std::unordered_map<std::string, FileNotifyHandle> path_to_handler;
 	int notify_fd;
 };
 }

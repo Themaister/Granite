@@ -17,20 +17,20 @@ using namespace std;
 namespace Granite
 {
 
-MMapFile::MMapFile(const std::string &path, Filesystem::Mode mode)
+MMapFile::MMapFile(const std::string &path, FileMode mode)
 {
 	int modeflags;
 	switch (mode)
 	{
-	case Filesystem::Mode::ReadOnly:
+	case FileMode::ReadOnly:
 		modeflags = O_RDONLY;
 		break;
 
-	case Filesystem::Mode::WriteOnly:
+	case FileMode::WriteOnly:
 		modeflags = O_RDWR | O_CREAT; // Need read access for mmap.
 		break;
 
-	case Filesystem::Mode::ReadWrite:
+	case FileMode::ReadWrite:
 		modeflags = O_RDWR;
 		break;
 	}
@@ -129,7 +129,7 @@ OSFilesystem::~OSFilesystem()
 	}
 }
 
-unique_ptr<File> OSFilesystem::open(const std::string &path, Mode mode)
+unique_ptr<File> OSFilesystem::open(const std::string &path, FileMode mode)
 {
 	try
 	{
@@ -168,13 +168,13 @@ void OSFilesystem::poll_notifications()
 			if (itr == end(handlers))
 				continue;
 
-			NotifyType type;
+			FileNotifyType type;
 			if (mask & IN_CLOSE_WRITE)
-				type = NotifyType::FileChanged;
+				type = FileNotifyType::FileChanged;
 			else if (mask & (IN_CREATE | IN_MOVED_TO))
-				type = NotifyType::FileCreated;
+				type = FileNotifyType::FileCreated;
 			else if (mask & (IN_DELETE | IN_DELETE_SELF | IN_MOVED_FROM))
-				type = NotifyType::FileDeleted;
+				type = FileNotifyType::FileDeleted;
 			else
 				continue;
 
@@ -192,7 +192,7 @@ void OSFilesystem::poll_notifications()
 	}
 }
 
-void OSFilesystem::uninstall_notification(Filesystem::NotifyHandle handle)
+void OSFilesystem::uninstall_notification(FileNotifyHandle handle)
 {
 	auto itr = handlers.find(static_cast<int>(handle));
 	if (itr == end(handlers))
@@ -206,7 +206,7 @@ void OSFilesystem::uninstall_notification(Filesystem::NotifyHandle handle)
 	handlers.erase(itr);
 }
 
-Filesystem::NotifyHandle OSFilesystem::find_notification(const std::string &path) const
+FileNotifyHandle OSFilesystem::find_notification(const std::string &path) const
 {
 	auto itr = path_to_handler.find(path);
 	if (itr != end(path_to_handler))
@@ -215,13 +215,13 @@ Filesystem::NotifyHandle OSFilesystem::find_notification(const std::string &path
 		return -1;
 }
 
-Filesystem::NotifyHandle OSFilesystem::install_notification(const string &path,
-                                                            function<void (const Filesystem::NotifyInfo &)> func)
+FileNotifyHandle OSFilesystem::install_notification(const string &path,
+                                                    function<void (const FileNotifyInfo &)> func)
 {
 	if (find_notification(path) >= 0)
 		throw runtime_error("cannot add multiple watches on same file/directory.");
 
-	Filesystem::Stat s;
+	FileStat s;
 	if (!stat(path, s))
 		throw runtime_error("path doesn't exist");
 
@@ -232,12 +232,12 @@ Filesystem::NotifyHandle OSFilesystem::install_notification(const string &path,
 	if (wd < 0)
 		throw runtime_error("inotify_add_watch");
 
-	handlers[wd] = { path, move(func), s.type == Filesystem::PathType::Directory };
+	handlers[wd] = { path, move(func), s.type == PathType::Directory };
 	path_to_handler[path] = wd;
-	return static_cast<NotifyHandle>(wd);
+	return static_cast<FileNotifyHandle>(wd);
 }
 
-vector<Filesystem::Entry> OSFilesystem::list(const string &path)
+vector<ListEntry> OSFilesystem::list(const string &path)
 {
 	auto directory = Path::join(base, path);
 	DIR *dir = opendir(directory.c_str());
@@ -247,7 +247,7 @@ vector<Filesystem::Entry> OSFilesystem::list(const string &path)
 		return {};
 	}
 
-	vector<Filesystem::Entry> entries;
+	vector<ListEntry> entries;
 	struct dirent *entry;
 	while ((entry = readdir(dir)))
 	{
@@ -265,7 +265,7 @@ vector<Filesystem::Entry> OSFilesystem::list(const string &path)
 			type = PathType::Special;
 		else
 		{
-			Filesystem::Stat s;
+			FileStat s;
 			if (!stat(joined_path, s))
 			{
 				LOGE("Failed to stat file: %s\n", joined_path.c_str());
@@ -280,7 +280,7 @@ vector<Filesystem::Entry> OSFilesystem::list(const string &path)
 	return entries;
 }
 
-bool OSFilesystem::stat(const std::string &path, Stat &stat)
+bool OSFilesystem::stat(const std::string &path, FileStat &stat)
 {
 	auto resolved_path = Path::join(base, path);
 	struct stat buf;

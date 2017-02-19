@@ -70,5 +70,17 @@ pair<string, string> split(const string &path)
 	auto base = path.substr(index + 1, string::npos);
 	return make_pair(path.substr(0, index), base);
 }
+
+pair<string, string> protocol_split(const string &path)
+{
+	if (path.empty())
+		return make_pair(string(""), string(""));
+
+	auto index = path.find("://");
+	if (index == string::npos)
+		return make_pair(string(""), path);
+
+	return make_pair(path.substr(0, index), path.substr(index + 3, string::npos));
+}
 }
 }

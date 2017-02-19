@@ -13,6 +13,7 @@ using namespace std;
 
 int main()
 {
+	Filesystem::get();
 	EventManager manager;
 
 	manager.enqueue<AEvent>(10);
@@ -79,43 +80,19 @@ int main()
     auto &device = wsi.get_device();
 
     GLSLCompiler compiler;
-    compiler.set_source(R"delim(#version 310 es
-layout(location = 0) in vec2 Position;
-void main()
-{
-   gl_Position = vec4(Position, 0.0, 1.0);
-}
-	)delim", "test.vert");
-	compiler.set_stage(Stage::Vertex);
+    compiler.set_source_from_file("assets://shaders/quad.vert");
 	compiler.preprocess();
 	auto vert = compiler.compile();
     if (vert.empty())
         LOGE("Error: %s\n", compiler.get_error_message().c_str());
 
-    compiler.set_source(R"delim(#version 310 es
-precision mediump float;
-layout(location = 0) out vec4 Color;
-void main()
-{
-   Color = vec4(1.0, 0.5, 0.5, 0.0);
-}
-	)delim", "test.frag");
-	compiler.set_stage(Stage::Fragment);
+    compiler.set_source_from_file("assets://shaders/quad.frag");
 	compiler.preprocess();
 	auto frag = compiler.compile();
     if (frag.empty())
         LOGE("Error: %s\n", compiler.get_error_message().c_str());
 
-	compiler.set_source(R"delim(#version 310 es
-precision mediump float;
-layout(location = 0) out vec4 Color;
-layout(input_attachment_index = 0, set = 0, binding = 0) uniform highp subpassInput uDepth;
-layout(input_attachment_index = 0, set = 0, binding = 1) uniform highp usubpassInput uStencil;
-void main()
-{
-   Color = subpassLoad(uDepth).x * vec4(float(subpassLoad(uStencil)) / 255.0);
-}
-	)delim", "depth.frag");
+    compiler.set_source_from_file("assets://shaders/depth.frag");
 	compiler.preprocess();
 	auto depth_frag = compiler.compile();
 	if (depth_frag.empty())

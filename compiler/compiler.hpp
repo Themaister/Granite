@@ -5,7 +5,6 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <stdint.h>
-#include "filesystem.hpp"
 
 namespace Granite
 {
@@ -33,7 +32,7 @@ public:
 		source_path = std::move(path);
 	}
 
-	void set_source_from_file(Filesystem &fs, const std::string &path);
+	void set_source_from_file(const std::string &path);
 	bool preprocess();
 
 	void set_variant(const std::string &variant, int value);
@@ -66,7 +65,6 @@ private:
 	std::string source;
 	std::string source_path;
 	Stage stage = Stage::Compute;
-	Filesystem *fs = nullptr;
 
 	std::unordered_set<std::string> dependencies;
 	std::unordered_map<std::string, ShaderVariant> variants;

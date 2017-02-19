@@ -2,6 +2,7 @@
 #include <vector>
 #include <string>
 #include <memory>
+#include <unordered_map>
 
 namespace Granite
 {
@@ -17,61 +18,79 @@ public:
 	virtual bool reopen() = 0;
 };
 
+enum class PathType
+{
+	File,
+	Directory,
+	Special
+};
+
+struct ListEntry
+{
+	std::string path;
+	PathType type;
+};
+
+struct FileStat
+{
+	uint64_t size;
+	PathType type;
+};
+
+using FileNotifyHandle = int;
+
+enum class FileNotifyType
+{
+	FileChanged,
+	FileDeleted,
+	FileCreated,
+};
+
+struct FileNotifyInfo
+{
+	std::string path;
+	FileNotifyType type;
+};
+
+enum class FileMode
+{
+	ReadOnly,
+	WriteOnly,
+	ReadWrite
+};
+
+class FilesystemBackend
+{
+public:
+	virtual ~FilesystemBackend() = default;
+
+	std::vector<ListEntry> walk(const std::string &path);
+	virtual std::vector<ListEntry> list(const std::string &path) = 0;
+	virtual std::unique_ptr<File> open(const std::string &path, FileMode mode = FileMode::ReadOnly) = 0;
+	virtual bool stat(const std::string &path, FileStat &stat) = 0;
+	virtual FileNotifyHandle install_notification(const std::string &path, std::function<void (const FileNotifyInfo &)> func) = 0;
+	virtual FileNotifyHandle find_notification(const std::string &path) const = 0;
+	virtual void uninstall_notification(FileNotifyHandle handle) = 0;
+	virtual void poll_notifications() = 0;
+
+private:
+};
+
 class Filesystem
 {
 public:
-	virtual ~Filesystem() = default;
-
 	static Filesystem &get();
+	void register_protocol(const std::string &proto, std::unique_ptr<FilesystemBackend> fs);
+	FilesystemBackend *get_backend(const std::string &proto);
 
-	enum class PathType
-	{
-		File,
-		Directory,
-		Special
-	};
+	std::vector<ListEntry> walk(const std::string &path);
+	std::vector<ListEntry> list(const std::string &path);
+	std::unique_ptr<File> open(const std::string &path, FileMode mode = FileMode::ReadOnly);
+	bool stat(const std::string &path, FileStat &stat);
+	void poll_notifications();
 
-	struct Entry
-	{
-		std::string path;
-		PathType type;
-	};
-
-	struct Stat
-	{
-		uint64_t size;
-		PathType type;
-	};
-
-	using NotifyHandle = int;
-
-	enum class NotifyType
-	{
-		FileChanged,
-		FileDeleted,
-		FileCreated,
-	};
-
-	struct NotifyInfo
-	{
-		std::string path;
-		NotifyType type;
-	};
-
-	enum class Mode
-	{
-		ReadOnly,
-		WriteOnly,
-		ReadWrite
-	};
-
-	std::vector<Entry> walk(const std::string &path);
-	virtual std::vector<Entry> list(const std::string &path) = 0;
-	virtual std::unique_ptr<File> open(const std::string &path, Mode mode = Mode::ReadOnly) = 0;
-	virtual bool stat(const std::string &path, Stat &stat) = 0;
-	virtual NotifyHandle install_notification(const std::string &path, std::function<void (const NotifyInfo &)> func) = 0;
-	virtual NotifyHandle find_notification(const std::string &path) const = 0;
-	virtual void uninstall_notification(NotifyHandle handle) = 0;
-	virtual void poll_notifications() = 0;
+private:
+	Filesystem();
+	std::unordered_map<std::string, std::unique_ptr<FilesystemBackend>> protocols;
 };
 }

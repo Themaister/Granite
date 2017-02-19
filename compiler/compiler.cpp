@@ -2,6 +2,7 @@
 #include <shaderc/shaderc.hpp>
 #include <path.hpp>
 #include "util.hpp"
+#include "filesystem.hpp"
 
 using namespace std;
 
@@ -27,9 +28,9 @@ Stage GLSLCompiler::stage_from_path(const std::string &path)
 		throw logic_error("invalid extension");
 }
 
-void GLSLCompiler::set_source_from_file(Filesystem &fs, const string &path)
+void GLSLCompiler::set_source_from_file(const string &path)
 {
-	auto file = fs.open(path);
+	auto file = Filesystem::get().open(path);
 	if (!file)
 		throw runtime_error("file open");
 	auto *mapped = static_cast<const char *>(file->map());
@@ -39,7 +40,6 @@ void GLSLCompiler::set_source_from_file(Filesystem &fs, const string &path)
 
 	source_path = path;
 	stage = stage_from_path(path);
-	this->fs = &fs;
 }
 
 bool GLSLCompiler::parse_variants(const string &source, const string &path)
@@ -72,7 +72,7 @@ bool GLSLCompiler::parse_variants(const string &source, const string &path)
 				include_path.pop_back();
 
 			include_path = Path::relpath(path, include_path);
-			auto file = fs->open(include_path);
+			auto file = Filesystem::get().open(include_path);
 			if (!file)
 			{
 				LOGE("Failed to include GLSL file: %s\n", include_path.c_str());

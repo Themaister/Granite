@@ -35,25 +35,11 @@ public:
 	void set_source_from_file(const std::string &path);
 	bool preprocess();
 
-	void set_variant(const std::string &variant, int value);
-	void reset_variants();
-	std::vector<uint32_t> compile();
+	std::vector<uint32_t> compile(const std::vector<std::pair<std::string, int>> *defines = nullptr);
 
 	const std::unordered_set<std::string> &get_dependencies() const
 	{
 		return dependencies;
-	}
-
-	struct ShaderVariant
-	{
-		int minimum;
-		int maximum;
-		int current;
-	};
-
-	const std::unordered_map<std::string, ShaderVariant> &get_variants() const
-	{
-		return variants;
 	}
 
 	const std::string &get_error_message() const
@@ -67,7 +53,6 @@ private:
 	Stage stage = Stage::Compute;
 
 	std::unordered_set<std::string> dependencies;
-	std::unordered_map<std::string, ShaderVariant> variants;
 	std::string preprocessed_source;
 	std::string error_message;
 

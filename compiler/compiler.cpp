@@ -49,23 +49,7 @@ bool GLSLCompiler::parse_variants(const string &source, const string &path)
 	unsigned line_index = 0;
 	for (auto &line : lines)
 	{
-		if (line.find("#pragma VARIANT") == 0)
-		{
-			auto variant = Util::split_no_empty(line, " ");
-			if (variant.size() == 3)
-				variants[variant[2]] = { 0, 1, 0 };
-			else if (variant.size() == 5)
-			{
-				auto minimum = stoi(variant[3]);
-				auto maximum = stoi(variant[4]);
-				if (maximum <= minimum)
-					throw logic_error("maximum <= minimum");
-				variants[variant[2]] = { minimum, maximum, minimum };
-			}
-
-			preprocessed_source += Util::join("#line ", line_index + 2, " \"", path, "\"\n");
-		}
-		else if (line.find("#include \"") == 0)
+		if (line.find("#include \"") == 0)
 		{
 			auto include_path = line.substr(10);
 			if (!include_path.empty() && include_path.back() == '"')
@@ -114,27 +98,13 @@ bool GLSLCompiler::parse_variants(const string &source, const string &path)
 	return true;
 }
 
-void GLSLCompiler::set_variant(const std::string &variant, int value)
-{
-	auto itr = variants.find(variant);
-	if (itr == std::end(variants))
-		throw std::logic_error("variant doesn't exist");
-	itr->second.current = value;
-}
-
-void GLSLCompiler::reset_variants()
-{
-	for (auto &var : variants)
-		var.second.current = var.second.minimum;
-}
-
 bool GLSLCompiler::preprocess()
 {
 	preprocessed_source.clear();
 	return parse_variants(source, source_path);
 }
 
-vector<uint32_t> GLSLCompiler::compile()
+vector<uint32_t> GLSLCompiler::compile(const vector<pair<string, int>> *defines)
 {
 	shaderc::Compiler compiler;
 	shaderc::CompileOptions options;
@@ -144,8 +114,9 @@ vector<uint32_t> GLSLCompiler::compile()
 		return {};
 	}
 
-	for (auto &variant : variants)
-		options.AddMacroDefinition(variant.first, to_string(variant.second.current));
+	if (defines)
+		for (auto &define : *defines)
+			options.AddMacroDefinition(define.first, to_string(define.second));
 
 	options.SetGenerateDebugInfo();
 	options.SetOptimizationLevel(shaderc_optimization_level_zero);

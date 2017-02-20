@@ -80,7 +80,7 @@ int main()
 
 		auto &device = wsi.get_device();
 
-		auto &sm = ShaderManager::get();
+		auto &sm = device.get_shader_manager();
 		auto *pass0 = sm.register_graphics("assets://shaders/quad.vert", "assets://shaders/quad.frag");
 		auto *pass1 = sm.register_graphics("assets://shaders/quad.vert", "assets://shaders/depth.frag");
 
@@ -112,7 +112,7 @@ int main()
 
 			cmd->begin_render_pass(rp);
 
-			cmd->set_program(*pass0->get_program(device));
+			cmd->set_program(*pass0->get_program());
 			static const int8_t quad[] = {
 				-128, -128,
 				+127, -128,
@@ -128,7 +128,7 @@ int main()
 			cmd->draw(3);
 			cmd->next_subpass();
 
-			cmd->set_program(*pass1->get_program(device));
+			cmd->set_program(*pass1->get_program());
 			memcpy(cmd->allocate_vertex_data(0, 8, 2), quad, sizeof(quad));
 			cmd->set_quad_state();
 			cmd->set_vertex_attrib(0, 0, VK_FORMAT_R8G8_SNORM, 0);

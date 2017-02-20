@@ -7,12 +7,12 @@
 #include <string>
 #include <vector>
 #include "compiler.hpp"
-#include "device.hpp"
 #include "filesystem.hpp"
 
-namespace Granite
+namespace Vulkan
 {
 class ShaderManager;
+class Device;
 class ShaderTemplate
 {
 public:
@@ -34,7 +34,7 @@ public:
 
 private:
 	std::string path;
-	std::unique_ptr<GLSLCompiler> compiler;
+	std::unique_ptr<Granite::GLSLCompiler> compiler;
 	std::vector<uint32_t> spirv;
 	unsigned instance = 0;
 };
@@ -42,7 +42,12 @@ private:
 class ShaderProgram
 {
 public:
-	Vulkan::ProgramHandle get_program(Vulkan::Device &device);
+	ShaderProgram(Device *device)
+		: device(device)
+	{
+	}
+
+	Vulkan::ProgramHandle get_program();
 	void set_stage(Vulkan::ShaderStage stage, const ShaderTemplate *shader);
 
 	unsigned get_instance() const
@@ -51,6 +56,7 @@ public:
 	}
 
 private:
+	Device *device;
 	const ShaderTemplate *stages[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
 	unsigned shader_instance[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
 	Vulkan::ProgramHandle program;
@@ -60,28 +66,32 @@ private:
 class ShaderManager
 {
 public:
+	ShaderManager(Device *device)
+		: device(device)
+	{
+	}
+
 	~ShaderManager();
 	ShaderProgram *register_graphics(const std::string &vertex, const std::string &fragment);
 	ShaderProgram *register_compute(const std::string &compute);
-	static ShaderManager &get();
 
 	void register_dependency(ShaderTemplate *shader, const std::string &dependency);
 
 private:
+	Device *device;
 	std::unordered_map<std::string, std::unique_ptr<ShaderTemplate>> shaders;
 	Util::HashMap<std::unique_ptr<ShaderProgram>> programs;
-	ShaderManager() = default;
 
 	ShaderTemplate *get_template(const std::string &source);
 	std::unordered_map<std::string, std::unordered_set<ShaderTemplate *>> dependees;
 
 	struct Notify
 	{
-		FilesystemBackend *backend;
-		FileNotifyHandle handle;
+		Granite::FilesystemBackend *backend;
+		Granite::FileNotifyHandle handle;
 	};
 	std::unordered_map<std::string, Notify> directory_watches;
 	void add_directory_watch(const std::string &source);
-	void recompile(const FileNotifyInfo &info);
+	void recompile(const Granite::FileNotifyInfo &info);
 };
 }

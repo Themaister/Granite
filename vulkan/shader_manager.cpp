@@ -1,10 +1,12 @@
 #include <cstring>
 #include "path.hpp"
 #include "shader_manager.hpp"
+#include "device.hpp"
 
 using namespace std;
+using namespace Granite;
 
-namespace Granite
+namespace Vulkan
 {
 ShaderTemplate::ShaderTemplate(const std::string &shader_path)
 	: path(shader_path)
@@ -22,7 +24,6 @@ ShaderTemplate::ShaderTemplate(const std::string &shader_path)
 	}
 
 	instance++;
-
 }
 
 void ShaderTemplate::recompile()
@@ -66,7 +67,7 @@ void ShaderProgram::set_stage(Vulkan::ShaderStage stage, const ShaderTemplate *s
 	memset(shader_instance, 0, sizeof(shader_instance));
 }
 
-Vulkan::ProgramHandle ShaderProgram::get_program(Vulkan::Device &device)
+Vulkan::ProgramHandle ShaderProgram::get_program()
 {
 	auto *vert = stages[static_cast<unsigned>(Vulkan::ShaderStage::Vertex)];
 	auto *frag = stages[static_cast<unsigned>(Vulkan::ShaderStage::Fragment)];
@@ -77,7 +78,7 @@ Vulkan::ProgramHandle ShaderProgram::get_program(Vulkan::Device &device)
 		if (comp_instance != comp->get_instance())
 		{
 			comp_instance = comp->get_instance();
-			program = device.create_program(comp->get_spirv().data(), comp->get_spirv().size() * sizeof(uint32_t));
+			program = device->create_program(comp->get_spirv().data(), comp->get_spirv().size() * sizeof(uint32_t));
 			instance++;
 		}
 	}
@@ -89,18 +90,12 @@ Vulkan::ProgramHandle ShaderProgram::get_program(Vulkan::Device &device)
 		{
 			vert_instance = vert->get_instance();
 			frag_instance = frag->get_instance();
-			program = device.create_program(vert->get_spirv().data(), vert->get_spirv().size() * sizeof(uint32_t),
-			                                frag->get_spirv().data(), frag->get_spirv().size() * sizeof(uint32_t));
+			program = device->create_program(vert->get_spirv().data(), vert->get_spirv().size() * sizeof(uint32_t),
+			                                 frag->get_spirv().data(), frag->get_spirv().size() * sizeof(uint32_t));
 			instance++;
 		}
 	}
 	return program;
-}
-
-ShaderManager &ShaderManager::get()
-{
-	static ShaderManager manager;
-	return manager;
 }
 
 ShaderProgram *ShaderManager::register_compute(const std::string &compute)
@@ -116,7 +111,7 @@ ShaderProgram *ShaderManager::register_compute(const std::string &compute)
 	auto pitr = programs.find(hash);
 	if (pitr == end(programs))
 	{
-		auto prog = unique_ptr<ShaderProgram>(new ShaderProgram);
+		auto prog = unique_ptr<ShaderProgram>(new ShaderProgram(device));
 		prog->set_stage(Vulkan::ShaderStage::Compute, tmpl);
 		auto *ret = prog.get();
 		programs[hash] = move(prog);
@@ -156,7 +151,7 @@ ShaderProgram *ShaderManager::register_graphics(const std::string &vertex, const
 	auto pitr = programs.find(hash);
 	if (pitr == end(programs))
 	{
-		auto prog = unique_ptr<ShaderProgram>(new ShaderProgram);
+		auto prog = unique_ptr<ShaderProgram>(new ShaderProgram(device));
 		prog->set_stage(Vulkan::ShaderStage::Vertex, vert_tmpl);
 		prog->set_stage(Vulkan::ShaderStage::Fragment, frag_tmpl);
 		auto *ret = prog.get();

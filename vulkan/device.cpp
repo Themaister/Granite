@@ -11,6 +11,7 @@ namespace Vulkan
 Device::Device()
     : framebuffer_allocator(this)
     , transient_allocator(this)
+	, shader_manager(this)
 {
 }
 

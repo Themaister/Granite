@@ -20,6 +20,7 @@ add_library(vulkan
         buffer.cpp
         chain_allocator.cpp
         semaphore.cpp
+        shader_manager.cpp
         memory_allocator.cpp)
 
 target_include_directories(vulkan PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/khronos)
@@ -33,6 +34,8 @@ target_link_libraries(vulkan spirv-cross-core)
 target_link_libraries(vulkan vulkan-symbols)
 target_link_libraries(vulkan util)
 target_link_libraries(vulkan vulkan-wsi)
+target_link_libraries(vulkan filesystem)
+target_link_libraries(vulkan compiler)
 
 if (UNIX)
    target_link_libraries(vulkan dl)

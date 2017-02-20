@@ -15,6 +15,7 @@
 #include "semaphore_manager.hpp"
 #include "shader.hpp"
 #include "vulkan.hpp"
+#include "shader_manager.hpp"
 #include <memory>
 #include <vector>
 
@@ -117,6 +118,11 @@ public:
 	Semaphore request_semaphore();
 	void add_wait_semaphore(Semaphore semaphore, VkPipelineStageFlags stages);
 
+	ShaderManager &get_shader_manager()
+	{
+		return shader_manager;
+	}
+
 private:
 	VkInstance instance = VK_NULL_HANDLE;
 	VkPhysicalDevice gpu = VK_NULL_HANDLE;
@@ -207,5 +213,7 @@ private:
 	TransientAllocator transient_allocator;
 	Util::HashMap<std::unique_ptr<RenderPass>> render_passes;
 	VkPipelineCache pipeline_cache = VK_NULL_HANDLE;
+
+	ShaderManager shader_manager;
 };
 }

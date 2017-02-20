@@ -186,27 +186,10 @@ void OSFilesystem::poll_notifications()
 				if (itr->second.directory)
 				{
 					auto notify_path = protocol + Path::join(itr->second.path, current->name);
-					itr->second.func({ move(notify_path), type, wd });
+					itr->second.func({ move(notify_path), type });
 				}
 				else
-				{
-					// Hot-swap the notification handle so we can keep using it.
-					if (type == FileNotifyType::FileCreated)
-					{
-						// Remove old watch.
-						inotify_rm_watch(notify_fd, wd);
-						// Add a new watch.
-						int new_wd = inotify_add_watch(notify_fd, Path::join(base, itr->second.path).c_str(), wd);
-
-						// Shuffle stuff around.
-						handlers[new_wd] = move(itr->second);
-						itr = handlers.find(new_wd);
-						handlers.erase(handlers.find(wd));
-						wd = new_wd;
-					}
-
-					itr->second.func({ protocol + itr->second.path, type, wd });
-				}
+					itr->second.func({ protocol + itr->second.path, type });
 			}
 		}
 	}

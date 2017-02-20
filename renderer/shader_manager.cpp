@@ -7,6 +7,7 @@ using namespace std;
 namespace Granite
 {
 ShaderTemplate::ShaderTemplate(const std::string &shader_path)
+	: path(shader_path)
 {
 	compiler = unique_ptr<GLSLCompiler>(new GLSLCompiler);
 	compiler->set_source_from_file(shader_path);
@@ -22,35 +23,23 @@ ShaderTemplate::ShaderTemplate(const std::string &shader_path)
 
 	instance++;
 
-	auto paths = Path::protocol_split(shader_path);
-	notify_backend = Filesystem::get().get_backend(paths.first);
-	if (notify_backend)
-	{
-		notify_handle = notify_backend->install_notification(paths.second, [this](const FileNotifyInfo &info) {
-			recompile(info);
-		});
-	}
 }
 
-void ShaderTemplate::recompile(const FileNotifyInfo &info)
+void ShaderTemplate::recompile()
 {
-	notify_handle = info.updated_handle;
-	if (info.type == FileNotifyType::FileDeleted)
-		return;
-
 	try
 	{
 		unique_ptr<GLSLCompiler> newcompiler(new GLSLCompiler);
-		newcompiler->set_source_from_file(info.path);
+		newcompiler->set_source_from_file(path);
 		if (!newcompiler->preprocess())
 		{
-			LOGE("Failed to preprocess updated shader: %s\n", info.path.c_str());
+			LOGE("Failed to preprocess updated shader: %s\n", path.c_str());
 			return;
 		}
 		auto newspirv = newcompiler->compile();
 		if (newspirv.empty())
 		{
-			LOGE("Failed to compile shader: %s\n%s\n", info.path.c_str(), newcompiler->get_error_message().c_str());
+			LOGE("Failed to compile shader: %s\n%s\n", path.c_str(), newcompiler->get_error_message().c_str());
 			return;
 		}
 
@@ -64,10 +53,10 @@ void ShaderTemplate::recompile(const FileNotifyInfo &info)
 	}
 }
 
-ShaderTemplate::~ShaderTemplate()
+void ShaderTemplate::register_dependencies(ShaderManager &manager)
 {
-	if (notify_backend)
-		notify_backend->uninstall_notification(notify_handle);
+	for (auto &dep : compiler->get_dependencies())
+		manager.register_dependency(this, dep);
 }
 
 void ShaderProgram::set_stage(Vulkan::ShaderStage stage, const ShaderTemplate *shader)
@@ -117,6 +106,9 @@ ShaderManager &ShaderManager::get()
 ShaderProgram *ShaderManager::register_compute(const std::string &compute)
 {
 	ShaderTemplate *tmpl = get_template(compute);
+	register_dependency(tmpl, compute);
+	tmpl->register_dependencies(*this);
+
 	Util::Hasher h;
 	h.pointer(tmpl);
 	auto hash = h.get();
@@ -151,6 +143,10 @@ ShaderProgram *ShaderManager::register_graphics(const std::string &vertex, const
 {
 	ShaderTemplate *vert_tmpl = get_template(vertex);
 	ShaderTemplate *frag_tmpl = get_template(fragment);
+	register_dependency(vert_tmpl, vertex);
+	register_dependency(frag_tmpl, fragment);
+	vert_tmpl->register_dependencies(*this);
+	frag_tmpl->register_dependencies(*this);
 
 	Util::Hasher h;
 	h.pointer(vert_tmpl);
@@ -169,5 +165,52 @@ ShaderProgram *ShaderManager::register_graphics(const std::string &vertex, const
 	}
 	else
 		return pitr->second.get();
+}
+
+ShaderManager::~ShaderManager()
+{
+	for (auto &dir : directory_watches)
+		if (dir.second.backend)
+			dir.second.backend->uninstall_notification(dir.second.handle);
+}
+
+void ShaderManager::register_dependency(ShaderTemplate *shader, const std::string &dependency)
+{
+	dependees[dependency].insert(shader);
+	add_directory_watch(dependency);
+}
+
+void ShaderManager::recompile(const FileNotifyInfo &info)
+{
+	if (info.type == FileNotifyType::FileDeleted)
+		return;
+
+	for (auto &dep : dependees[info.path])
+	{
+		dep->recompile();
+		dep->register_dependencies(*this);
+	}
+}
+
+void ShaderManager::add_directory_watch(const std::string &source)
+{
+	auto basedir = Path::basedir(source);
+	if (directory_watches.find(basedir) != end(directory_watches))
+		return;
+
+	auto paths = Path::protocol_split(basedir);
+	auto *backend = Filesystem::get().get_backend(paths.first);
+	if (!backend)
+		return;
+
+	FileNotifyHandle handle = -1;
+	if (backend)
+	{
+		handle = backend->install_notification(paths.second, [this](const FileNotifyInfo &info) {
+			recompile(info);
+		});
+	}
+
+	directory_watches[basedir] = { backend, handle };
 }
 }

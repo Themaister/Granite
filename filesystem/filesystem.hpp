@@ -50,7 +50,6 @@ struct FileNotifyInfo
 {
 	std::string path;
 	FileNotifyType type;
-	FileNotifyHandle updated_handle;
 };
 
 enum class FileMode

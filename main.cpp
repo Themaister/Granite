@@ -83,6 +83,9 @@ int main()
 		auto &sm = device.get_shader_manager();
 		auto *pass0 = sm.register_graphics("assets://shaders/quad.vert", "assets://shaders/quad.frag");
 		auto *pass1 = sm.register_graphics("assets://shaders/quad.vert", "assets://shaders/depth.frag");
+		unsigned v0 = pass0->register_variant({});
+		unsigned v2 = pass1->register_variant({{{"FOOBAR", 0}, { "BOO", 2 }}});
+		unsigned v1 = pass1->register_variant({{{"FOOBAR", 1}, { "BOO", 2 }}});
 
 		while (wsi.alive())
 		{
@@ -112,7 +115,7 @@ int main()
 
 			cmd->begin_render_pass(rp);
 
-			cmd->set_program(*pass0->get_program());
+			cmd->set_program(*pass0->get_program(0));
 			static const int8_t quad[] = {
 				-128, -128,
 				+127, -128,
@@ -128,7 +131,7 @@ int main()
 			cmd->draw(3);
 			cmd->next_subpass();
 
-			cmd->set_program(*pass1->get_program());
+			cmd->set_program(*pass1->get_program(v1));
 			memcpy(cmd->allocate_vertex_data(0, 8, 2), quad, sizeof(quad));
 			cmd->set_quad_state();
 			cmd->set_vertex_attrib(0, 0, VK_FORMAT_R8G8_SNORM, 0);

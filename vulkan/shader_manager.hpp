@@ -18,25 +18,21 @@ class ShaderTemplate
 public:
 	ShaderTemplate(const std::string &shader_path);
 
-	unsigned get_instance() const
+	struct Variant
 	{
-		return instance;
-	}
+		std::vector<uint32_t> spirv;
+		std::vector<std::pair<std::string, int>> defines;
+		unsigned instance = 0;
+	};
 
-	const std::vector<uint32_t> &get_spirv() const
-	{
-		return spirv;
-	}
-
+	const Variant *register_variant(const std::vector<std::pair<std::string, int>> *defines = nullptr);
 	void recompile();
-
 	void register_dependencies(ShaderManager &manager);
 
 private:
 	std::string path;
 	std::unique_ptr<Granite::GLSLCompiler> compiler;
-	std::vector<uint32_t> spirv;
-	unsigned instance = 0;
+	Util::HashMap<std::unique_ptr<Variant>> variants;
 };
 
 class ShaderProgram
@@ -47,20 +43,22 @@ public:
 	{
 	}
 
-	Vulkan::ProgramHandle get_program();
-	void set_stage(Vulkan::ShaderStage stage, const ShaderTemplate *shader);
-
-	unsigned get_instance() const
-	{
-		return instance;
-	}
+	Vulkan::ProgramHandle get_program(unsigned variant);
+	void set_stage(Vulkan::ShaderStage stage, ShaderTemplate *shader);
+	unsigned register_variant(const std::vector<std::pair<std::string, int>> &defines);
 
 private:
 	Device *device;
-	const ShaderTemplate *stages[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
-	unsigned shader_instance[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
-	Vulkan::ProgramHandle program;
-	unsigned instance = 0;
+
+	struct Variant
+	{
+		const ShaderTemplate::Variant *stages[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
+		unsigned shader_instance[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
+		Vulkan::ProgramHandle program;
+	};
+
+	ShaderTemplate *stages[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
+	std::vector<Variant> variants;
 };
 
 class ShaderManager

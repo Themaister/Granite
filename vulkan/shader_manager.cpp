@@ -5,6 +5,7 @@
 
 using namespace std;
 using namespace Granite;
+using namespace Util;
 
 namespace Vulkan
 {
@@ -15,19 +16,48 @@ ShaderTemplate::ShaderTemplate(const std::string &shader_path)
 	compiler->set_source_from_file(shader_path);
 	if (!compiler->preprocess())
 		throw runtime_error(Util::join("Failed to pre-process shader: ", shader_path));
+}
 
-	spirv = compiler->compile();
-	if (spirv.empty())
+const ShaderTemplate::Variant *ShaderTemplate::register_variant(const std::vector<std::pair<std::string, int>> *defines)
+{
+	Hasher h;
+	if (defines)
 	{
-		LOGE("Shader error:\n%s\n", compiler->get_error_message().c_str());
-		throw runtime_error("Shader compile failed.");
+		for (auto &define : *defines)
+		{
+			h.u64(hash<string>()(define.first));
+			h.u32(uint32_t(define.second));
+		}
 	}
 
-	instance++;
+	auto hash = h.get();
+	auto itr = variants.find(hash);
+	if (itr == end(variants))
+	{
+		auto variant = unique_ptr<Variant>(new Variant);
+
+		variant->spirv = compiler->compile(defines);
+		if (variant->spirv.empty())
+		{
+			LOGE("Shader error:\n%s\n", compiler->get_error_message().c_str());
+			throw runtime_error("Shader compile failed.");
+		}
+
+		variant->instance++;
+		if (defines)
+			variant->defines = *defines;
+
+		auto *ret = variant.get();
+		variants[hash] = move(variant);
+		return ret;
+	}
+	else
+		return itr->second.get();
 }
 
 void ShaderTemplate::recompile()
 {
+	// Recompile all variants.
 	try
 	{
 		unique_ptr<GLSLCompiler> newcompiler(new GLSLCompiler);
@@ -37,16 +67,22 @@ void ShaderTemplate::recompile()
 			LOGE("Failed to preprocess updated shader: %s\n", path.c_str());
 			return;
 		}
-		auto newspirv = newcompiler->compile();
-		if (newspirv.empty())
-		{
-			LOGE("Failed to compile shader: %s\n%s\n", path.c_str(), newcompiler->get_error_message().c_str());
-			return;
-		}
-
-		spirv = move(newspirv);
 		compiler = move(newcompiler);
-		instance++;
+
+		for (auto &variant : variants)
+		{
+			auto newspirv = compiler->compile(&variant.second->defines);
+			if (newspirv.empty())
+			{
+				LOGE("Failed to compile shader: %s\n%s\n", path.c_str(), newcompiler->get_error_message().c_str());
+				for (auto &define : variant.second->defines)
+					LOGE("  Define: %s = %d\n", define.first.c_str(), define.second);
+				continue;
+			}
+
+			variant.second->spirv = move(newspirv);
+			variant.second->instance++;
+		}
 	}
 	catch (const std::exception &e)
 	{
@@ -60,42 +96,55 @@ void ShaderTemplate::register_dependencies(ShaderManager &manager)
 		manager.register_dependency(this, dep);
 }
 
-void ShaderProgram::set_stage(Vulkan::ShaderStage stage, const ShaderTemplate *shader)
+void ShaderProgram::set_stage(Vulkan::ShaderStage stage, ShaderTemplate *shader)
 {
 	stages[static_cast<unsigned>(stage)] = shader;
-	program.reset();
-	memset(shader_instance, 0, sizeof(shader_instance));
+	VK_ASSERT(variants.empty());
 }
 
-Vulkan::ProgramHandle ShaderProgram::get_program()
+Vulkan::ProgramHandle ShaderProgram::get_program(unsigned variant)
 {
-	auto *vert = stages[static_cast<unsigned>(Vulkan::ShaderStage::Vertex)];
-	auto *frag = stages[static_cast<unsigned>(Vulkan::ShaderStage::Fragment)];
-	auto *comp = stages[static_cast<unsigned>(Vulkan::ShaderStage::Compute)];
+	auto &var = variants[variant];
+	auto *vert = var.stages[static_cast<unsigned>(Vulkan::ShaderStage::Vertex)];
+	auto *frag = var.stages[static_cast<unsigned>(Vulkan::ShaderStage::Fragment)];
+	auto *comp = var.stages[static_cast<unsigned>(Vulkan::ShaderStage::Compute)];
 	if (comp)
 	{
-		auto &comp_instance = shader_instance[static_cast<unsigned>(Vulkan::ShaderStage::Compute)];
-		if (comp_instance != comp->get_instance())
+		auto &comp_instance = var.shader_instance[static_cast<unsigned>(Vulkan::ShaderStage::Compute)];
+		if (comp_instance != comp->instance)
 		{
-			comp_instance = comp->get_instance();
-			program = device->create_program(comp->get_spirv().data(), comp->get_spirv().size() * sizeof(uint32_t));
-			instance++;
+			comp_instance = comp->instance;
+			var.program = device->create_program(comp->spirv.data(), comp->spirv.size() * sizeof(uint32_t));
 		}
 	}
 	else if (vert && frag)
 	{
-		auto &vert_instance = shader_instance[static_cast<unsigned>(Vulkan::ShaderStage::Vertex)];
-		auto &frag_instance = shader_instance[static_cast<unsigned>(Vulkan::ShaderStage::Fragment)];
-		if (vert_instance != vert->get_instance() || frag_instance != frag->get_instance())
+		auto &vert_instance = var.shader_instance[static_cast<unsigned>(Vulkan::ShaderStage::Vertex)];
+		auto &frag_instance = var.shader_instance[static_cast<unsigned>(Vulkan::ShaderStage::Fragment)];
+		if (vert_instance != vert->instance || frag_instance != frag->instance)
 		{
-			vert_instance = vert->get_instance();
-			frag_instance = frag->get_instance();
-			program = device->create_program(vert->get_spirv().data(), vert->get_spirv().size() * sizeof(uint32_t),
-			                                 frag->get_spirv().data(), frag->get_spirv().size() * sizeof(uint32_t));
-			instance++;
+			vert_instance = vert->instance;
+			frag_instance = frag->instance;
+			var.program = device->create_program(vert->spirv.data(), vert->spirv.size() * sizeof(uint32_t),
+			                                     frag->spirv.data(), frag->spirv.size() * sizeof(uint32_t));
 		}
 	}
-	return program;
+	return var.program;
+}
+
+unsigned ShaderProgram::register_variant(const std::vector<std::pair<std::string, int>> &defines)
+{
+	unsigned index = unsigned(variants.size());
+	variants.emplace_back();
+	auto &var = variants.back();
+
+	for (unsigned i = 0; i < static_cast<unsigned>(Vulkan::ShaderStage::Count); i++)
+		if (stages[i])
+			var.stages[i] = stages[i]->register_variant(&defines);
+
+	// Make sure it's compiled correctly.
+	get_program(index);
+	return index;
 }
 
 ShaderProgram *ShaderManager::register_compute(const std::string &compute)

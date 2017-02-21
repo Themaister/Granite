@@ -7,5 +7,9 @@ layout(input_attachment_index = 0, set = 0, binding = 0) uniform highp subpassIn
 
 void main()
 {
+#if defined(FOOBAR) && FOOBAR
    Color = get_color() + 0.2;
+#else
+   Color = get_color() + 0.3;
+#endif
 }

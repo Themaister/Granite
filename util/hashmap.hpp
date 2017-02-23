@@ -41,7 +41,7 @@ public:
 		u32(value >> 32);
 	}
 
-	inline void pointer(void *ptr)
+	inline void pointer(const void *ptr)
 	{
 		u64(reinterpret_cast<uintptr_t>(ptr));
 	}

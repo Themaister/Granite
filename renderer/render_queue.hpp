@@ -4,6 +4,7 @@
 #include <list>
 #include <type_traits>
 #include <stdexcept>
+#include <command_buffer.hpp>
 #include "hashmap.hpp"
 
 namespace Granite
@@ -15,7 +16,7 @@ struct RenderInfo
 	// and the rendering function is kind of supposed to be a more
 	// pure function anyways.
 	// Adjacent render infos which share instance key will be batched together.
-	void (*render)(RenderInfo **infos, unsigned instance_count) = nullptr;
+	void (*render)(Vulkan::CommandBuffer &cmd, RenderInfo **infos, unsigned instance_count) = nullptr;
 
 	// RenderInfos with same key can be instanced.
 	Util::Hash instance_key = 0;
@@ -82,8 +83,8 @@ public:
 	}
 
 	void sort();
-	void dispatch();
-	void dispatch(size_t begin, size_t end);
+	void dispatch(Vulkan::CommandBuffer &cmd);
+	void dispatch(Vulkan::CommandBuffer &cmd, size_t begin, size_t end);
 
 private:
 	struct Block

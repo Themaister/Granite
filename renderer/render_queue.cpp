@@ -5,6 +5,7 @@
 #include <assert.h>
 
 using namespace std;
+using namespace Vulkan;
 
 namespace Granite
 {
@@ -23,7 +24,7 @@ void RenderQueue::combine_render_info(const RenderQueue &queue)
 		enqueue(other_infos[i]);
 }
 
-void RenderQueue::dispatch(size_t begin, size_t end)
+void RenderQueue::dispatch(CommandBuffer &cmd, size_t begin, size_t end)
 {
 	while (begin < end)
 	{
@@ -37,14 +38,14 @@ void RenderQueue::dispatch(size_t begin, size_t end)
 			instances++;
 		}
 
-		queue[begin]->render(&queue[begin], instances);
+		queue[begin]->render(cmd, &queue[begin], instances);
 		begin += instances;
 	}
 }
 
-void RenderQueue::dispatch()
+void RenderQueue::dispatch(CommandBuffer &cmd)
 {
-	dispatch(0, count);
+	dispatch(cmd, 0, count);
 }
 
 void RenderQueue::enqueue(RenderInfo *render_info)

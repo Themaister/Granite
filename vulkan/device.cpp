@@ -1240,11 +1240,14 @@ const RenderPass &Device::request_render_pass(const RenderPassInfo &info)
 	{
 		h.u32(info.subpasses[i].num_color_attachments);
 		h.u32(info.subpasses[i].num_input_attachments);
+		h.u32(info.subpasses[i].num_resolve_attachments);
 		h.u32(static_cast<uint32_t>(info.subpasses[i].depth_stencil_mode));
 		for (unsigned j = 0; j < info.subpasses[i].num_color_attachments; j++)
 			h.u32(info.subpasses[i].color_attachments[j]);
 		for (unsigned j = 0; j < info.subpasses[i].num_input_attachments; j++)
 			h.u32(info.subpasses[i].input_attachments[j]);
+		for (unsigned j = 0; j < info.subpasses[i].num_resolve_attachments; j++)
+			h.u32(info.subpasses[i].resolve_attachments[j]);
 	}
 
 	depth_stencil = info.depth_stencil ? info.depth_stencil->get_format() : VK_FORMAT_UNDEFINED;
@@ -1272,9 +1275,10 @@ const Framebuffer &Device::request_framebuffer(const RenderPassInfo &info)
 	return framebuffer_allocator.request_framebuffer(info);
 }
 
-ImageView &Device::get_transient_attachment(unsigned width, unsigned height, VkFormat format, unsigned int index)
+ImageView &Device::get_transient_attachment(unsigned width, unsigned height, VkFormat format,
+                                            unsigned index, unsigned samples)
 {
-	return transient_allocator.request_attachment(width, height, format, index);
+	return transient_allocator.request_attachment(width, height, format, index, samples);
 }
 
 RenderPassInfo Device::get_swapchain_render_pass(SwapchainRenderPass style)

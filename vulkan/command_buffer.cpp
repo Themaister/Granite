@@ -400,7 +400,7 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
 	// Multisample
 	VkPipelineMultisampleStateCreateInfo ms = { VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO };
 	// TODO: Support more
-	ms.rasterizationSamples = static_cast<VkSampleCountFlagBits>(render_pass->get_sample_count());
+	ms.rasterizationSamples = static_cast<VkSampleCountFlagBits>(render_pass->get_sample_count(current_subpass));
 	ms.alphaToCoverageEnable = static_state.state.alpha_to_coverage;
 	ms.alphaToOneEnable = static_state.state.alpha_to_one;
 	ms.sampleShadingEnable = static_state.state.sample_shading;

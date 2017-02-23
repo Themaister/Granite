@@ -86,7 +86,8 @@ public:
 	bool format_is_supported(VkFormat format, VkFormatFeatureFlags required) const;
 	VkFormat get_default_depth_stencil_format() const;
 	VkFormat get_default_depth_format() const;
-	ImageView &get_transient_attachment(unsigned width, unsigned height, VkFormat format, unsigned index = 0);
+	ImageView &get_transient_attachment(unsigned width, unsigned height, VkFormat format,
+	                                    unsigned index = 0, unsigned samples = 1);
 
 	PipelineLayout *request_pipeline_layout(const CombinedResourceLayout &layout);
 	DescriptorSetAllocator *request_descriptor_set_allocator(const DescriptorSetLayout &layout);

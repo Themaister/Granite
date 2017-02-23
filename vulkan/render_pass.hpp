@@ -57,8 +57,10 @@ struct RenderPassInfo
 	{
 		uint32_t color_attachments[VULKAN_NUM_ATTACHMENTS];
 		uint32_t input_attachments[VULKAN_NUM_ATTACHMENTS];
+		uint32_t resolve_attachments[VULKAN_NUM_ATTACHMENTS];
 		unsigned num_color_attachments = 0;
 		unsigned num_input_attachments = 0;
+		unsigned num_resolve_attachments = 0;
 		DepthStencil depth_stencil_mode = DepthStencil::ReadWrite;
 	};
 	// If 0/nullptr, assume a default subpass.
@@ -76,6 +78,8 @@ public:
 		VkAttachmentReference input_attachments[VULKAN_NUM_ATTACHMENTS];
 		unsigned num_input_attachments;
 		VkAttachmentReference depth_stencil_attachment;
+
+		unsigned samples;
 	};
 
 	RenderPass(Device *device, const RenderPassInfo &info);
@@ -91,9 +95,10 @@ public:
 		return render_pass;
 	}
 
-	uint32_t get_sample_count() const
+	uint32_t get_sample_count(unsigned subpass) const
 	{
-		return 1;
+		VK_ASSERT(subpass < subpasses.size());
+		return subpasses[subpass].samples;
 	}
 
 	unsigned get_num_color_attachments(unsigned subpass) const
@@ -220,7 +225,8 @@ class TransientAllocator
 {
 public:
 	TransientAllocator(Device *device);
-	ImageView &request_attachment(unsigned width, unsigned height, VkFormat format, unsigned index = 0);
+	ImageView &request_attachment(unsigned width, unsigned height, VkFormat format,
+	                              unsigned index = 0, unsigned samples = 1);
 
 	void begin_frame();
 	void clear();

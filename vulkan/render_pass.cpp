@@ -163,6 +163,7 @@ RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
 	{
 		auto *colors = reference_allocator.allocate_cleared(subpass_infos[i].num_color_attachments);
 		auto *inputs = reference_allocator.allocate_cleared(subpass_infos[i].num_input_attachments);
+		auto *resolves = reference_allocator.allocate_cleared(subpass_infos[i].num_color_attachments);
 		auto *depth = reference_allocator.allocate_cleared(1);
 
 		auto &subpass = subpasses[i];
@@ -172,6 +173,12 @@ RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
 		subpass.inputAttachmentCount = subpass_infos[i].num_input_attachments;
 		subpass.pInputAttachments = inputs;
 		subpass.pDepthStencilAttachment = depth;
+
+		if (subpass_infos[i].num_resolve_attachments)
+		{
+			VK_ASSERT(subpass_infos[i].num_color_attachments == subpass_infos[i].num_resolve_attachments);
+			subpass.pResolveAttachments = resolves;
+		}
 
 		for (unsigned j = 0; j < subpass.colorAttachmentCount; j++)
 		{
@@ -189,6 +196,18 @@ RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
 			inputs[j].attachment = att;
 			// Fill in later.
 			inputs[j].layout = VK_IMAGE_LAYOUT_UNDEFINED;
+		}
+
+		if (subpass.pResolveAttachments)
+		{
+			for (unsigned j = 0; j < subpass.colorAttachmentCount; j++)
+			{
+				auto att = subpass_infos[i].resolve_attachments[j];
+				VK_ASSERT(att == VK_ATTACHMENT_UNUSED || (att < num_attachments));
+				resolves[j].attachment = att;
+				// Fill in later.
+				resolves[j].layout = VK_IMAGE_LAYOUT_UNDEFINED;
+			}
 		}
 
 		if (info.depth_stencil && subpass_infos[i].depth_stencil_mode != RenderPassInfo::DepthStencil::None)
@@ -209,6 +228,17 @@ RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
 		for (unsigned i = 0; i < subpasses[subpass].colorAttachmentCount; i++)
 			if (colors[i].attachment == attachment)
 				return const_cast<VkAttachmentReference *>(&colors[i]);
+		return nullptr;
+	};
+
+	const auto find_resolve = [&](unsigned subpass, unsigned attachment) -> VkAttachmentReference * {
+		if (!subpasses[subpass].pResolveAttachments)
+			return nullptr;
+
+		auto *resolves = subpasses[subpass].pResolveAttachments;
+		for (unsigned i = 0; i < subpasses[subpass].colorAttachmentCount; i++)
+			if (resolves[i].attachment == attachment)
+				return const_cast<VkAttachmentReference *>(&resolves[i]);
 		return nullptr;
 	};
 
@@ -259,19 +289,23 @@ RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
 		for (unsigned subpass = 0; subpass < num_subpasses; subpass++)
 		{
 			auto *color = find_color(subpass, attachment);
+			auto *resolve = find_resolve(subpass, attachment);
 			auto *input = find_input(subpass, attachment);
 			auto *depth = find_depth_stencil(subpass, attachment);
 
 			// Sanity check.
-			if (color)
+			if (color || resolve)
 				VK_ASSERT(!depth);
 			if (depth)
-				VK_ASSERT(!color);
+				VK_ASSERT(!color && !resolve);
+			if (resolve)
+				VK_ASSERT(!color && !depth);
 
-			if (!color && !input && !depth)
+			if (!color && !input && !depth && !resolve)
 			{
 				if (used)
 					preserve_masks[attachment] |= 1u << subpass;
+				continue;
 			}
 
 			if (!used && (implicit_transitions & (1u << attachment)))
@@ -285,7 +319,16 @@ RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
 					external_input_dependencies |= 1u << subpass;
 			}
 
-			if (color && input) // If used as both input attachment and color attachment in same subpass, need GENERAL.
+			if (resolve)
+			{
+				if (current_layout == VK_IMAGE_LAYOUT_UNDEFINED)
+					current_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+				resolve->layout = current_layout;
+				used = true;
+				last_subpass_for_attachment[attachment] = subpass;
+				color_attachment_read_write |= 1u << subpass;
+			}
+			else if (color && input) // If used as both input attachment and color attachment in same subpass, need GENERAL.
 			{
 				current_layout = VK_IMAGE_LAYOUT_GENERAL;
 				color->layout = current_layout;
@@ -522,6 +565,26 @@ RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
 		       subpass.colorAttachmentCount * sizeof(*subpass.pColorAttachments));
 		memcpy(subpass_info.input_attachments, subpass.pInputAttachments,
 		       subpass.inputAttachmentCount * sizeof(*subpass.pInputAttachments));
+
+		unsigned samples = 0;
+		for (unsigned i = 0; i < subpass_info.num_color_attachments; i++)
+		{
+			unsigned samp = attachments[subpass_info.color_attachments[i].attachment].samples;
+			if (samples && (samp != samples))
+				VK_ASSERT(samp == samples);
+			samples = samp;
+		}
+
+		if (subpass_info.depth_stencil_attachment.attachment != VK_ATTACHMENT_UNUSED)
+		{
+			unsigned samp = attachments[subpass_info.depth_stencil_attachment.attachment].samples;
+			if (samples && (samp != samples))
+				VK_ASSERT(samp == samples);
+			samples = samp;
+		}
+
+		VK_ASSERT(samples > 0);
+		subpass_info.samples = samples;
 		this->subpasses.push_back(subpass_info);
 	}
 
@@ -635,13 +698,15 @@ void TransientAllocator::begin_frame()
 	transients.begin_frame();
 }
 
-ImageView &TransientAllocator::request_attachment(unsigned width, unsigned height, VkFormat format, unsigned index)
+ImageView &TransientAllocator::request_attachment(unsigned width, unsigned height, VkFormat format,
+                                                  unsigned index, unsigned samples)
 {
 	Hasher h;
 	h.u32(width);
 	h.u32(height);
 	h.u32(format);
 	h.u32(index);
+	h.u32(samples);
 
 	auto hash = h.get();
 	auto *node = transients.request(hash);
@@ -649,6 +714,7 @@ ImageView &TransientAllocator::request_attachment(unsigned width, unsigned heigh
 		return node->handle->get_view();
 
 	auto image_info = ImageCreateInfo::transient_render_target(width, height, format);
+	image_info.samples = static_cast<VkSampleCountFlagBits>(samples);
 	node = transients.emplace(hash, device->create_image(image_info, nullptr));
 	return node->handle->get_view();
 }

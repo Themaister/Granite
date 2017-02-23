@@ -93,24 +93,33 @@ int main()
 			wsi.begin_frame();
 
 			auto cmd = device.request_command_buffer();
-			auto rp = device.get_swapchain_render_pass(Vulkan::SwapchainRenderPass::DepthStencil);
-			rp.clear_color[0].float32[0] = 1.0f;
-			rp.clear_color[0].float32[1] = 0.5f;
-			rp.clear_color[0].float32[2] = 0.5f;
-			rp.clear_color[0].float32[3] = 1.0f;
+			auto rp = device.get_swapchain_render_pass(Vulkan::SwapchainRenderPass::ColorOnly);
+			rp.clear_color[0].float32[0] = 0.0f;
+			rp.clear_color[0].float32[1] = 0.0f;
+			rp.clear_color[0].float32[2] = 0.0f;
+			rp.clear_color[0].float32[3] = 0.0f;
 			rp.clear_depth_stencil.depth = 0.2f;
 			rp.clear_depth_stencil.stencil = 128;
+			rp.num_color_attachments = 2;
+			rp.color_attachments[1] = &device.get_transient_attachment(
+				rp.color_attachments[0]->get_image().get_create_info().width,
+				rp.color_attachments[0]->get_image().get_create_info().height,
+				rp.color_attachments[0]->get_image().get_create_info().format,
+				0, 4);
 
-			Vulkan::RenderPassInfo::Subpass subpasses[2] = {};
+			rp.depth_stencil = &device.get_transient_attachment(
+				rp.color_attachments[0]->get_image().get_create_info().width,
+				rp.color_attachments[0]->get_image().get_create_info().height,
+				device.get_default_depth_stencil_format(),
+			    0, 4);
+
+			Vulkan::RenderPassInfo::Subpass subpasses[1] = {};
 			subpasses[0].num_color_attachments = 1;
-			subpasses[0].color_attachments[0] = 0;
+			subpasses[0].color_attachments[0] = 1;
+			subpasses[0].num_resolve_attachments = 1;
+			subpasses[0].resolve_attachments[0] = 0;
 			subpasses[0].depth_stencil_mode = Vulkan::RenderPassInfo::DepthStencil::ReadWrite;
-			subpasses[1].num_color_attachments = 1;
-			subpasses[1].color_attachments[0] = 0;
-			subpasses[1].num_input_attachments = 1;
-			subpasses[1].input_attachments[0] = 1;
-			subpasses[1].depth_stencil_mode = Vulkan::RenderPassInfo::DepthStencil::ReadOnly;
-			rp.num_subpasses = 2;
+			rp.num_subpasses = 1;
 			rp.subpasses = subpasses;
 
 			cmd->begin_render_pass(rp);
@@ -129,17 +138,6 @@ int main()
 			cmd->set_vertex_attrib(0, 0, VK_FORMAT_R8G8_SNORM, 0);
 			cmd->set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 			cmd->draw(3);
-			cmd->next_subpass();
-
-			cmd->set_program(*pass1->get_program(v1));
-			memcpy(cmd->allocate_vertex_data(0, 8, 2), quad, sizeof(quad));
-			cmd->set_quad_state();
-			cmd->set_vertex_attrib(0, 0, VK_FORMAT_R8G8_SNORM, 0);
-			cmd->set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
-			cmd->set_input_attachments(0, 0);
-			cmd->set_input_attachments(0, 1);
-			cmd->draw(4);
-
 			cmd->end_render_pass();
 
 			device.submit(cmd);

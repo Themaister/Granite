@@ -21,7 +21,7 @@ add_subdirectory(filesystem)
 add_subdirectory(renderer)
 
 add_executable(main main.cpp)
-target_link_libraries(main renderer vulkan compiler filesystem)
+target_link_libraries(main renderer vulkan-backend compiler filesystem)
 target_compile_options(main PRIVATE ${GRANITE_CXX_FLAGS})
 
 #if (WIN32)

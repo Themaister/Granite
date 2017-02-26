@@ -1,5 +1,5 @@
 add_library(vulkan-wsi STATIC wsi.cpp)
-target_link_libraries(vulkan-wsi vulkan util)
+target_link_libraries(vulkan-wsi vulkan-backend util)
 target_include_directories(vulkan-wsi PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 option(WSI "WSI backend" "GLFW")

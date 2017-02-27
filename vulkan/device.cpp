@@ -303,7 +303,7 @@ void Device::submit_queue(Fence *fence, Semaphore *semaphore)
 
 	for (auto &cmd : frame().submissions)
 	{
-		if (cmd->swapchain_touched() && !frame().swapchain_touched)
+		if (cmd->swapchain_touched() && !frame().swapchain_touched && !frame().swapchain_consumed)
 		{
 			if (!cmds.empty())
 			{
@@ -337,12 +337,13 @@ void Device::submit_queue(Fence *fence, Semaphore *semaphore)
 		submit.pNext = nullptr;
 		submit.commandBufferCount = cmds.size() - last_cmd;
 		submit.pCommandBuffers = cmds.data() + last_cmd;
-		if (frame().swapchain_touched)
+		if (frame().swapchain_touched && !frame().swapchain_consumed)
 		{
 			static const VkFlags wait = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 			waits[index].push_back(wsi_acquire);
 			stages[index].push_back(wait);
 			signals[index].push_back(wsi_release);
+			frame().swapchain_consumed = true;
 		}
 		last_cmd = cmds.size();
 	}
@@ -612,10 +613,10 @@ void Device::wait_idle()
 
 void Device::begin_frame(unsigned index)
 {
-	current_swapchain_index = index;
-
 	// Flush the frame here as we might have pending staging command buffers from init stage.
 	flush_frame();
+
+	current_swapchain_index = index;
 
 	frame().begin();
 	framebuffer_allocator.begin_frame();
@@ -667,6 +668,7 @@ void Device::PerFrame::begin()
 	fences.clear();
 
 	swapchain_touched = false;
+	swapchain_consumed = false;
 }
 
 void Device::PerFrame::cleanup()

@@ -175,6 +175,7 @@ private:
 		std::vector<VkSemaphore> recycled_semaphores;
 		std::vector<VkSemaphore> destroyed_semaphores;
 		bool swapchain_touched = false;
+		bool swapchain_consumed = false;
 	};
 	SemaphoreManager semaphore_manager;
 	VkSemaphore wsi_acquire = VK_NULL_HANDLE;

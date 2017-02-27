@@ -12,8 +12,12 @@ public:
 
 	ImageHandle get_image()
 	{
+		VK_ASSERT(handle);
 		return handle;
 	}
+
+	void load();
+	void unload();
 
 	void update(const void *data, size_t size);
 

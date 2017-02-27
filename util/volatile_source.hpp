@@ -18,15 +18,21 @@ public:
 	{
 	}
 
-
 	~VolatileSource()
 	{
-		if (notify_backend && notify_handle >= 0)
-			notify_backend->uninstall_notification(notify_handle);
+		deinit();
 	}
 
 protected:
 	std::string path;
+	void deinit()
+	{
+		if (notify_backend && notify_handle >= 0)
+			notify_backend->uninstall_notification(notify_handle);
+		notify_backend = nullptr;
+		notify_handle = -1;
+	}
+
 	void init()
 	{
 		if (path.empty())

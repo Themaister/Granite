@@ -32,6 +32,18 @@ void Texture::update(const void *data, size_t size)
 	stbi_image_free(buffer);
 }
 
+void Texture::load()
+{
+	if (!handle)
+		init();
+}
+
+void Texture::unload()
+{
+	deinit();
+	handle.reset();
+}
+
 TextureManager::TextureManager(Device *device)
 	: device(device)
 {

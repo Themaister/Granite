@@ -358,7 +358,7 @@ bool WSI::init_swapchain(unsigned width, unsigned height)
 		bool found = false;
 		for (unsigned i = 0; i < format_count; i++)
 		{
-			if (formats[i].format == VK_FORMAT_R8G8B8A8_UNORM || formats[i].format == VK_FORMAT_B8G8R8A8_UNORM)
+			if (formats[i].format == VK_FORMAT_R8G8B8A8_SRGB || formats[i].format == VK_FORMAT_B8G8R8A8_SRGB)
 			{
 				format = formats[i];
 				found = true;

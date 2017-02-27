@@ -12,6 +12,7 @@ Device::Device()
     : framebuffer_allocator(this)
     , transient_allocator(this)
 	, shader_manager(this)
+	, texture_manager(this)
 {
 }
 
@@ -987,7 +988,7 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 		view_info.subresourceRange.baseArrayLayer = 0;
 		view_info.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
 		view_info.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
-		view_info.viewType = get_image_view_type(create_info, nullptr);
+		view_info.viewType = get_image_view_type(tmpinfo, nullptr);
 
 		if (vkCreateImageView(device, &view_info, nullptr, &image_view) != VK_SUCCESS)
 		{

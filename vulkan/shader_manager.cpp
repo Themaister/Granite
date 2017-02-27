@@ -74,7 +74,7 @@ void ShaderTemplate::recompile()
 			auto newspirv = compiler->compile(&variant.second->defines);
 			if (newspirv.empty())
 			{
-				LOGE("Failed to compile shader: %s\n%s\n", path.c_str(), newcompiler->get_error_message().c_str());
+				LOGE("Failed to compile shader: %s\n%s\n", path.c_str(), compiler->get_error_message().c_str());
 				for (auto &define : variant.second->defines)
 					LOGE("  Define: %s = %d\n", define.first.c_str(), define.second);
 				continue;

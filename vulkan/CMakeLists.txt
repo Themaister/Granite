@@ -21,7 +21,8 @@ add_library(vulkan-backend
         chain_allocator.cpp
         semaphore.cpp
         shader_manager.cpp
-        memory_allocator.cpp)
+        memory_allocator.cpp
+        texture_manager.cpp)
 
 target_include_directories(vulkan-backend PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/khronos)
 target_compile_definitions(vulkan-backend PUBLIC VULKAN_DEBUG)
@@ -36,6 +37,7 @@ target_link_libraries(vulkan-backend util)
 target_link_libraries(vulkan-backend vulkan-wsi)
 target_link_libraries(vulkan-backend filesystem)
 target_link_libraries(vulkan-backend compiler)
+target_link_libraries(vulkan-backend stb)
 
 if (UNIX)
    target_link_libraries(vulkan-backend dl)

@@ -86,6 +86,7 @@ int main()
 		unsigned v0 = pass0->register_variant({});
 		unsigned v2 = pass1->register_variant({{{"FOOBAR", 0}, { "BOO", 2 }}});
 		unsigned v1 = pass1->register_variant({{{"FOOBAR", 1}, { "BOO", 2 }}});
+		auto *tex = device.get_texture_manager().request_texture("assets://textures/test.png");
 
 		while (wsi.alive())
 		{
@@ -136,6 +137,7 @@ int main()
 			cmd->set_depth_test(true, true);
 			cmd->set_depth_compare(VK_COMPARE_OP_LESS_OR_EQUAL);
 			cmd->set_vertex_attrib(0, 0, VK_FORMAT_R8G8_SNORM, 0);
+			cmd->set_texture(0, 0, tex->get_image()->get_view(), Vulkan::StockSampler::TrilinearClamp);
 			cmd->set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 			cmd->draw(3);
 			cmd->end_render_pass();

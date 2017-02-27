@@ -16,6 +16,7 @@
 #include "shader.hpp"
 #include "vulkan.hpp"
 #include "shader_manager.hpp"
+#include "texture_manager.hpp"
 #include <memory>
 #include <vector>
 
@@ -124,6 +125,11 @@ public:
 		return shader_manager;
 	}
 
+	TextureManager &get_texture_manager()
+	{
+		return texture_manager;
+	}
+
 private:
 	VkInstance instance = VK_NULL_HANDLE;
 	VkPhysicalDevice gpu = VK_NULL_HANDLE;
@@ -216,5 +222,6 @@ private:
 	VkPipelineCache pipeline_cache = VK_NULL_HANDLE;
 
 	ShaderManager shader_manager;
+	TextureManager texture_manager;
 };
 }

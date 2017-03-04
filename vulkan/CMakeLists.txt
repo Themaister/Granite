@@ -38,6 +38,7 @@ target_link_libraries(vulkan-backend vulkan-wsi)
 target_link_libraries(vulkan-backend filesystem)
 target_link_libraries(vulkan-backend compiler)
 target_link_libraries(vulkan-backend stb)
+target_link_libraries(vulkan-backend event)
 
 if (UNIX)
    target_link_libraries(vulkan-backend dl)

@@ -4,6 +4,7 @@
 #include "event.hpp"
 #include "path.hpp"
 #include "render_queue.hpp"
+#include "vulkan_events.hpp"
 #include <unistd.h>
 #include <string.h>
 #include <wsi/wsi.hpp>
@@ -11,67 +12,51 @@
 
 using namespace Granite;
 using namespace std;
+using namespace Util;
 
 int main()
 {
-	Filesystem::get();
-	EventManager manager;
-
-	manager.enqueue<AEvent>(10);
-
 	class Handler : public EventHandler
 	{
 	public:
-		bool handle_a(const Event &e)
+		void device_create(const Event &e)
 		{
-			auto &event = e.as<AEvent>();
-			fprintf(stderr, "%d\n", event.a);
-			return false;
+			auto &ev = e.as<Vulkan::DeviceCreatedEvent>();
+			LOGI("Create device: %p\n", &ev.get_device());
 		}
 
-		bool handle_a2(const Event &e)
+		void device_destroy(const Event &e)
 		{
-			auto &event = e.as<AEvent>();
-			fprintf(stderr, "%d\n", event.a + 1);
-			return true;
+			auto &ev = e.as<Vulkan::DeviceCreatedEvent>();
+			LOGI("Destroy device: %p\n", &ev.get_device());
 		}
 
-		void up(const Event &e)
+		void swapchain_create(const Event &e)
 		{
-			fprintf(stderr, "UP %d\n", e.as<BEvent>().b);
+			auto &ev = e.as<Vulkan::SwapchainParameterEvent>();
+			LOGI("Create swapchain: %u x %u x %u\n", ev.get_width(), ev.get_height(), ev.get_image_count());
 		}
 
-		void down(const Event &e)
+		void swapchain_destroy(const Event &e)
 		{
-			fprintf(stderr, "DOWN %d\n", e.as<BEvent>().b);
+			auto &ev = e.as<Vulkan::SwapchainParameterEvent>();
+			LOGI("Destroy swapchain: %u x %u x %u\n", ev.get_width(), ev.get_height(), ev.get_image_count());
 		}
 
-		void up2(const Event &e)
+		void swapchain_index(const Event &e)
 		{
-			fprintf(stderr, "UP2 %d\n", e.as<BEvent>().b);
+			auto &ev = e.as<Vulkan::SwapchainIndexEvent>();
+			LOGI("Swapchain index: %u\n", ev.get_index());
 		}
 
-		void down2(const Event &e)
-		{
-			fprintf(stderr, "DOWN2 %d\n", e.as<BEvent>().b);
-		}
+		void swapchain_index_end(const Event &)
+		{}
 	} handler;
 
-	//manager.register_handler(AEvent::type_id, static_cast<bool (EventHandler::*)(const Event &event)>(&Handler::handle_a), &handler);
-	manager.register_handler(AEvent::type_id, &Handler::handle_a, &handler);
-	manager.register_handler(AEvent::type_id, &Handler::handle_a2, &handler);
-	manager.dispatch();
-
-	manager.enqueue<AEvent>(20);
-	manager.unregister_handler(&handler);
-	manager.dispatch();
-
-	manager.register_latch_handler(BEvent::type_id, &Handler::up, &Handler::down, &handler);
-	auto cookie = manager.enqueue_latched<BEvent>(10, 20);
-	manager.dequeue_latched(cookie);
-	manager.register_latch_handler(BEvent::type_id, &Handler::up2, &Handler::down2, &handler);
-
-	cookie = manager.enqueue_latched<BEvent>(10, 40);
+	auto &em = Granite::EventManager::get_global();
+	em.register_latch_handler(Vulkan::DeviceCreatedEvent::type_id, &Handler::device_create, &Handler::device_destroy, &handler);
+	em.register_latch_handler(Vulkan::SwapchainParameterEvent::type_id, &Handler::swapchain_create, &Handler::swapchain_destroy, &handler);
+	em.register_latch_handler(Vulkan::SwapchainIndexEvent::type_id, &Handler::swapchain_index, &Handler::swapchain_index_end, &handler);
 
 	try {
 		Vulkan::WSI wsi;

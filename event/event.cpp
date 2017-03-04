@@ -130,6 +130,14 @@ void EventManager::dequeue_latched(uint64_t cookie)
 	}
 }
 
+void EventManager::dequeue_all_latched(EventType type)
+{
+	auto &event_type = latched_events[type];
+	for (auto &event : event_type.queued_events)
+		dispatch_down_event(event_type.handlers, *event);
+	event_type.queued_events.clear();
+}
+
 EventHandler::~EventHandler()
 {
 	EventManager::get_global().unregister_handler(this);

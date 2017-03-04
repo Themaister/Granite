@@ -1,5 +1,6 @@
 #include "wsi.hpp"
 #include "vulkan_symbol_wrapper.h"
+#include "vulkan_events.hpp"
 
 #if defined(HAVE_GLFW)
 #include <GLFW/glfw3.h>
@@ -250,6 +251,9 @@ out:
 	device.init_swapchain(swapchain_images, width, height, format);
 	this->width = width;
 	this->height = height;
+
+	auto &em = Granite::EventManager::get_global();
+	em.enqueue_latched<DeviceCreatedEvent>(&device);
 	return true;
 }
 
@@ -269,6 +273,9 @@ bool WSI::begin_frame()
 		{
 			release_semaphore = semaphore_manager.request_cleared_semaphore();
 			device.begin_frame(swapchain_index);
+			auto &em = Granite::EventManager::get_global();
+			em.dequeue_all_latched(SwapchainIndexEvent::type_id);
+			em.enqueue_latched<SwapchainIndexEvent>(&device, swapchain_index);
 			semaphore_manager.recycle(device.set_acquire(acquire));
 			semaphore_manager.recycle(device.set_release(release_semaphore));
 		}
@@ -440,18 +447,26 @@ bool WSI::init_swapchain(unsigned width, unsigned height)
 	swapchain_images.resize(image_count);
 	V(vkGetSwapchainImagesKHR(context->get_device(), swapchain, &image_count, swapchain_images.data()));
 
+	auto &em = Granite::EventManager::get_global();
+	em.dequeue_all_latched(SwapchainParameterEvent::type_id);
+	em.enqueue_latched<SwapchainParameterEvent>(&device, this->width, this->height, image_count, info.imageFormat);
+
 	return true;
 }
 
 WSI::~WSI()
 {
+	auto &em = Granite::EventManager::get_global();
 	if (context)
 	{
 		vkDeviceWaitIdle(context->get_device());
 		semaphore_manager.recycle(device.set_acquire(VK_NULL_HANDLE));
 		semaphore_manager.recycle(device.set_release(VK_NULL_HANDLE));
 		if (swapchain != VK_NULL_HANDLE)
+		{
+			em.dequeue_all_latched(SwapchainParameterEvent::type_id);
 			vkDestroySwapchainKHR(context->get_device(), swapchain, nullptr);
+		}
 	}
 
 #if defined(HAVE_GLFW)
@@ -461,5 +476,7 @@ WSI::~WSI()
 
 	if (surface != VK_NULL_HANDLE)
 		vkDestroySurfaceKHR(context->get_instance(), surface, nullptr);
+
+	em.dequeue_all_latched(DeviceCreatedEvent::type_id);
 }
 }

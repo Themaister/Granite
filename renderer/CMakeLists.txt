@@ -1,6 +1,5 @@
 add_library(renderer STATIC
         mainloop.cpp mainloop.hpp
-        event.cpp event.hpp
         render_queue.hpp render_queue.cpp
         mesh.hpp mesh.cpp)
 target_link_libraries(renderer vulkan-backend math)

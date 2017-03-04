@@ -2,6 +2,7 @@
 #include "vulkan_symbol_wrapper.h"
 #include <stdexcept>
 #include <vector>
+#include "vulkan_events.hpp"
 
 #ifdef HAVE_GLFW
 #include <GLFW/glfw3.h>

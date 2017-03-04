@@ -33,7 +33,7 @@ constexpr uint64_t compile_time_fnv1(const char (&str)[len])
 }
 }
 
-#define GRANITE_EVENT_TYPE_HASH(x) Detail::compile_time_fnv1(#x)
+#define GRANITE_EVENT_TYPE_HASH(x) ::Granite::Detail::compile_time_fnv1(#x)
 using EventType = uint64_t;
 
 class Event
@@ -120,6 +120,7 @@ public:
 	}
 
 	void dequeue_latched(uint64_t cookie);
+	void dequeue_all_latched(EventType type);
 
 	template<typename T>
 	void dispatch_inline(const T &t)
@@ -217,23 +218,5 @@ private:
 	std::unordered_map<EventType, EventTypeData, EventHasher> events;
 	std::unordered_map<EventType, LatchEventTypeData, EventHasher> latched_events;
 	uint64_t cookie_counter = 0;
-};
-
-class AEvent : public Event
-{
-public:
-	static constexpr EventType type_id = GRANITE_EVENT_TYPE_HASH("AEvent");
-
-	AEvent(int a) : a(a) {}
-	int a;
-};
-
-class BEvent : public Event
-{
-public:
-	static constexpr EventType type_id = GRANITE_EVENT_TYPE_HASH("BEvent");
-
-	BEvent(int a, int b) : a(a), b(b) {}
-	int a, b;
 };
 }

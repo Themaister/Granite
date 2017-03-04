@@ -15,6 +15,7 @@ add_subdirectory(third_party/shaderc EXCLUDE_FROM_ALL)
 add_subdirectory(third_party/stb EXCLUDE_FROM_ALL)
 add_subdirectory(compiler)
 
+add_subdirectory(event)
 add_subdirectory(util)
 add_subdirectory(math)
 add_subdirectory(vulkan)

@@ -9,6 +9,7 @@
 #include <string.h>
 #include <wsi/wsi.hpp>
 #include <shader_manager.hpp>
+#include "ecs.hpp"
 
 using namespace Granite;
 using namespace std;

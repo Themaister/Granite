@@ -3,6 +3,7 @@
 
 #include "intrusive.hpp"
 #include "object_pool.hpp"
+#include "intrusive_list.hpp"
 #include "vulkan.hpp"
 #include <assert.h>
 #include <memory>

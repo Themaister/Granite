@@ -2,6 +2,7 @@
 
 #include "hashmap.hpp"
 #include "object_pool.hpp"
+#include "intrusive_list.hpp"
 #include <vector>
 
 namespace Util

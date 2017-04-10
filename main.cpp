@@ -30,10 +30,18 @@ int main()
 {
 	EntityPool pool;
 	auto entity = pool.create_entity();
-	auto *pos = pool.allocate_component<Position>(*entity);
-	auto *vel = pool.allocate_component<Velocity>(*entity);
-
+	auto *pos = entity->allocate_component<Position>();
+	auto *vel = entity->allocate_component<Velocity>();
 	auto &group = pool.get_component_group<Position, Velocity>();
+
+	auto entity2 = pool.create_entity();
+	auto *pos2 = entity2->allocate_component<Position>();
+	auto *vel2 = entity2->allocate_component<Velocity>();
+
+	auto &group2 = pool.get_component_group<Position>();
+	auto &group3 = pool.get_component_group<Velocity>();
+
+	entity2->free_component<Velocity>();
 
 	LOGI(":D\n");
 

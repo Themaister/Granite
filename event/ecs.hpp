@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <algorithm>
 #include "object_pool.hpp"
+#include "intrusive.hpp"
 
 namespace Granite
 {
@@ -70,9 +71,21 @@ public:
 	virtual void remove_component(ComponentBase *component) = 0;
 };
 
-class Entity
+class EntityPool;
+
+struct EntityDeleter
+{
+	void operator()(Entity *entity);
+};
+
+class Entity : public Util::IntrusivePtrEnabled<Entity, EntityDeleter>
 {
 public:
+	Entity(EntityPool *pool)
+		: pool(pool)
+	{
+	}
+
 	bool has_component(uint32_t id) const
 	{
 		auto itr = components.find(id);
@@ -99,12 +112,24 @@ public:
 		return static_cast<T *>(itr->second);
 	}
 
+	template <typename T, typename... Ts>
+	T *allocate_component(Ts&&... ts);
+
+	template <typename T>
+	void free_component();
+
 	std::unordered_map<uint32_t, ComponentBase *> &get_components()
 	{
 		return components;
 	}
 
+	EntityPool *get_pool()
+	{
+		return pool;
+	}
+
 private:
+	EntityPool *pool;
 	std::unordered_map<uint32_t, ComponentBase *> components;
 };
 
@@ -123,7 +148,7 @@ public:
 
 	void remove_component(ComponentBase *component) override final
 	{
-		auto itr = std::find_if(begin(groups), end(groups), [&](const std::tuple<Ts *...> &t) {
+		auto itr = std::find_if(std::begin(groups), std::end(groups), [&](const std::tuple<Ts *...> &t) {
 			return has_component(t, component);
 		});
 
@@ -177,11 +202,10 @@ private:
 		return HasAllComponents<Us...>::has_component(entity);
 	}
 
-
 	template <typename... Us>
-	static bool has_component(const std::tuple<Ts *...> &t, const ComponentBase *component)
+	static bool has_component(const std::tuple<Us *...> &t, const ComponentBase *component)
 	{
-		return Internal::HasComponent<sizeof...(Us)>::has_component(t, component);
+		return Internal::HasComponent<sizeof...(Us) - 1>::has_component(t, component);
 	}
 };
 
@@ -203,14 +227,14 @@ struct ComponentAllocator : public ComponentAllocatorBase
 	}
 };
 
-using EntityHandle = std::shared_ptr<Entity>;
+using EntityHandle = Util::IntrusivePtr<Entity, EntityDeleter>;
 
 class EntityPool
 {
 public:
 	EntityHandle create_entity()
 	{
-		auto itr = EntityHandle(entity_pool.allocate(), EntityDeleter(this));
+		auto itr = EntityHandle(entity_pool.allocate(this));
 		entities.push_back(itr.get());
 		return itr;
 	}
@@ -322,20 +346,25 @@ private:
 	{
 		GroupRegisters<Us...>::register_group(component_to_groups, group_id);
 	}
-
-	struct EntityDeleter
-	{
-		EntityDeleter(EntityPool *pool)
-			: pool(pool)
-		{
-		}
-
-		void operator()(Entity *entity)
-		{
-			pool->delete_entity(entity);
-		}
-
-		EntityPool *pool;
-	};
 };
+
+template <typename T, typename... Ts>
+T *Entity::allocate_component(Ts&&... ts)
+{
+	return pool->allocate_component<T>(*this, std::forward<Ts>(ts)...);
+}
+
+template <typename T>
+void Entity::free_component()
+{
+	auto id = ComponentIDMapping::get_id<T>();
+	auto itr = components.find(id);
+	if (itr != std::end(components))
+	{
+		assert(itr->second);
+		pool->free_component(id, itr->second);
+		components.erase(itr);
+	}
+}
+
 }

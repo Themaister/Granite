@@ -2,11 +2,12 @@
 
 #include <stddef.h>
 #include <utility>
+#include <memory>
 
 namespace Util
 {
 
-template <typename T>
+template <typename T, typename Deleter = std::default_delete<T>>
 class IntrusivePtrEnabled
 {
 public:
@@ -14,7 +15,7 @@ public:
 	{
 		size_t count = --reference_count;
 		if (count == 0)
-			delete static_cast<T *>(this);
+			Deleter()(static_cast<T *>(this));
 	}
 
 	void add_reference()
@@ -32,7 +33,7 @@ private:
 	size_t reference_count = 1;
 };
 
-template <typename T>
+template <typename T, typename Deleter = std::default_delete<T>>
 class IntrusivePtr
 {
 public:
@@ -83,7 +84,7 @@ public:
 		// Static up-cast here to avoid potential issues with multiple intrusive inheritance.
 		// Also makes sure that the pointer type actually inherits from this type.
 		if (data)
-			static_cast<IntrusivePtrEnabled<T> *>(data)->release_reference();
+			static_cast<IntrusivePtrEnabled<T, Deleter> *>(data)->release_reference();
 		data = nullptr;
 	}
 
@@ -97,7 +98,7 @@ public:
 			// Static up-cast here to avoid potential issues with multiple intrusive inheritance.
 			// Also makes sure that the pointer type actually inherits from this type.
 			if (data)
-				static_cast<IntrusivePtrEnabled<T> *>(data)->add_reference();
+				static_cast<IntrusivePtrEnabled<T, Deleter> *>(data)->add_reference();
 		}
 		return *this;
 	}

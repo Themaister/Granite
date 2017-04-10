@@ -18,7 +18,7 @@ struct BoundedComponent : ComponentBase
 	AABB aabb;
 };
 
-struct BackgroundComponent : ComponentBase
+struct RenderableComponent : ComponentBase
 {
 	std::unique_ptr<AbstractRenderable> renderable;
 };
@@ -46,11 +46,6 @@ struct TransparentComponent : ComponentBase
 
 struct CastsShadowComponent : ComponentBase
 {
-};
-
-struct StaticMeshComponent : ComponentBase
-{
-	StaticMesh mesh;
 };
 
 }

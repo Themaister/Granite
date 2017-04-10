@@ -10,13 +10,33 @@
 #include <wsi/wsi.hpp>
 #include <shader_manager.hpp>
 #include "ecs.hpp"
+#include "math.hpp"
 
 using namespace Granite;
 using namespace std;
 using namespace Util;
 
+struct Position : ComponentBase
+{
+	vec3 pos;
+};
+
+struct Velocity : ComponentBase
+{
+	vec3 vel;
+};
+
 int main()
 {
+	EntityPool pool;
+	auto entity = pool.create_entity();
+	auto *pos = pool.allocate_component<Position>(*entity);
+	auto *vel = pool.allocate_component<Velocity>(*entity);
+
+	auto &group = pool.get_component_group<Position, Velocity>();
+
+	LOGI(":D\n");
+
 	class Handler : public EventHandler
 	{
 	public:

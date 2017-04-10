@@ -10,6 +10,34 @@
 
 namespace Granite
 {
+struct ComponentBase
+{
+};
+
+namespace Internal
+{
+template <size_t Index>
+struct HasComponent
+{
+	template <typename T>
+	static bool has_component(const T &t, const ComponentBase *component)
+	{
+		return static_cast<ComponentBase *>(std::get<Index>(t)) == component ||
+		       HasComponent<Index - 1>::has_component(t, component);
+	}
+};
+
+template <>
+struct HasComponent<0>
+{
+	template <typename T>
+	static bool has_component(const T &t, const ComponentBase *component)
+	{
+		return static_cast<ComponentBase *>(std::get<0>(t)) == component;
+	}
+};
+}
+
 class Entity;
 
 struct ComponentIDMapping
@@ -34,17 +62,12 @@ private:
 	static uint32_t group_ids;
 };
 
-struct ComponentBase
-{
-
-};
-
 class EntityGroupBase
 {
 public:
 	virtual ~EntityGroupBase() = default;
-	virtual void add_entity(const Entity &entity) = 0;
-	virtual void remove_component(uint32_t id, ComponentBase *component) = 0;
+	virtual void add_entity(Entity &entity) = 0;
+	virtual void remove_component(ComponentBase *component) = 0;
 };
 
 class Entity
@@ -89,21 +112,16 @@ template <typename... Ts>
 class EntityGroup : public EntityGroupBase
 {
 public:
-	EntityGroup()
-	{
-		set_ids<Ts...>(group_ids);
-	}
-
 	void add_entity(Entity &entity) override final
 	{
 		if (has_all_components<Ts...>(entity))
 		{
 			entities.push_back(&entity);
-			groups.push_back(make_tuple(entity.get_component<Ts>()...));
+			groups.push_back(std::make_tuple(entity.get_component<Ts>()...));
 		}
 	}
 
-	void remove_component(uint32_t id, ComponentBase *component) override final
+	void remove_component(ComponentBase *component) override final
 	{
 		auto itr = std::find_if(begin(groups), end(groups), [&](const std::tuple<Ts *...> &t) {
 			return has_component(t, component);
@@ -112,7 +130,7 @@ public:
 		if (itr == end(groups))
 			return;
 
-		auto offset = itr - begin(groups);
+		auto offset = size_t(itr - begin(groups));
 		if (offset != groups.size() - 1)
 		{
 			std::swap(groups[offset], groups.back());
@@ -122,35 +140,48 @@ public:
 		entities.pop_back();
 	}
 
+	std::vector<std::tuple<Ts *...>> &get_groups()
+	{
+		return groups;
+	}
+
 private:
 	std::vector<std::tuple<Ts *...>> groups;
 	std::vector<Entity *> entities;
-	uint32_t group_ids[sizeof...(Ts)];
+
+	template <typename... Us>
+	struct HasAllComponents;
 
 	template <typename U, typename... Us>
-	void set_ids(uint32_t *ids)
+	struct HasAllComponents<U, Us...>
 	{
-		*ids = ComponentIDMapping::get_id<U>();
-		set_ids<Us...>(ids + 1);
-	}
+		static bool has_component(const Entity &entity)
+		{
+			return entity.has_component(ComponentIDMapping::get_id<U>()) &&
+		           HasAllComponents<Us...>::has_component(entity);
+		}
+	};
 
 	template <typename U>
-	void set_ids(uint32_t *ids)
+	struct HasAllComponents<U>
 	{
-		*ids = ComponentIDMapping::get_id<U>();
-	}
+		static bool has_component(const Entity &entity)
+		{
+			return entity.has_component(ComponentIDMapping::get_id<U>());
+		}
+	};
 
-	template <typename U, typename... Us>
+	template <typename... Us>
 	bool has_all_components(const Entity &entity)
 	{
-		return entity.has_component(ComponentIDMapping::get_id<U>()) &&
-	           has_all_components<Us...>(entity);
+		return HasAllComponents<Us...>::has_component(entity);
 	}
 
-	template <typename U>
-	bool has_all_components(const Entity &entity)
+
+	template <typename... Us>
+	static bool has_component(const std::tuple<Ts *...> &t, const ComponentBase *component)
 	{
-		return entity.has_component(ComponentIDMapping::get_id<U>());
+		return Internal::HasComponent<sizeof...(Us)>::has_component(t, component);
 	}
 };
 
@@ -193,7 +224,7 @@ public:
 		entity_pool.free(entity);
 
 		auto itr = std::find(std::begin(entities), std::end(entities), entity);
-		auto offset = itr - std::begin(entities);
+		auto offset = size_t(itr - std::begin(entities));
 		if (offset != entities.size() - 1)
 			std::swap(entities[offset], entities.back());
 		entities.pop_back();
@@ -207,27 +238,31 @@ public:
 		if (itr == std::end(groups))
 		{
 			register_group<Ts...>(group_id);
-			itr = groups.insert(std::make_pair(group_id, std::unique_ptr<EntityGroupBase>(new EntityGroup<Ts...>())));
+			auto tmp = groups.insert(std::make_pair(group_id, std::unique_ptr<EntityGroupBase>(new EntityGroup<Ts...>())));
+			itr = tmp.first;
 
 			auto *group = static_cast<EntityGroup<Ts...> *>(itr->second.get());
 			for (auto &entity : entities)
-				group->add_entity(entity);
+				group->add_entity(*entity);
 		}
 
 		auto *group = static_cast<EntityGroup<Ts...> *>(itr->second.get());
-		return group;
+		return group->get_groups();
 	}
 
 	template <typename T, typename... Ts>
-	void allocate_component(Entity &entity, Ts&&... ts)
+	T *allocate_component(Entity &entity, Ts&&... ts)
 	{
 		uint32_t id = ComponentIDMapping::get_id<T>();
 		auto itr = components.find(id);
 		if (itr == std::end(components))
-			itr = components.insert(std::make_pair(id, std::unique_ptr<ComponentAllocatorBase>(new ComponentAllocator<T>)));
+		{
+			auto tmp = components.insert(std::make_pair(id, std::unique_ptr<ComponentAllocatorBase>(new ComponentAllocator<T>)));
+			itr = tmp.first;
+		}
 
 		auto *allocator = static_cast<ComponentAllocator<T> *>(itr->second.get());
-		auto &comp = entity.components[id];
+		auto &comp = entity.get_components()[id];
 		if (comp)
 		{
 			allocator->free_component(comp);
@@ -241,13 +276,14 @@ public:
 			for (auto &group : component_to_groups[id])
 				groups[group]->add_entity(entity);
 		}
+		return static_cast<T *>(comp);
 	}
 
 	void free_component(uint32_t id, ComponentBase *component)
 	{
 		components[id]->free_component(component);
 		for (auto &group : component_to_groups[id])
-			groups[group]->remove_component(id, component);
+			groups[group]->remove_component(component);
 	}
 
 private:
@@ -257,17 +293,34 @@ private:
 	std::unordered_map<uint32_t, std::unordered_set<uint32_t>> component_to_groups;
 	std::vector<Entity *> entities;
 
+	template <typename... Us>
+	struct GroupRegisters;
+
 	template <typename U, typename... Us>
-	void register_group(uint32_t group_id)
+	struct GroupRegisters<U, Us...>
 	{
-		component_to_groups[ComponentIDMapping::get_id<U>()].insert(group_id);
-		register_group<Us...>(group_id);
-	}
+		static void register_group(std::unordered_map<uint32_t, std::unordered_set<uint32_t>> &groups,
+		                           uint32_t group_id)
+		{
+			groups[ComponentIDMapping::get_id<U>()].insert(group_id);
+			GroupRegisters<Us...>::register_group(groups, group_id);
+		}
+	};
 
 	template <typename U>
+	struct GroupRegisters<U>
+	{
+		static void register_group(std::unordered_map<uint32_t, std::unordered_set<uint32_t>> &groups,
+		                           uint32_t group_id)
+		{
+			groups[ComponentIDMapping::get_id<U>()].insert(group_id);
+		}
+	};
+
+	template <typename... Us>
 	void register_group(uint32_t group_id)
 	{
-		component_to_groups[ComponentIDMapping::get_id<U>()].insert(group_id);
+		GroupRegisters<Us...>::register_group(component_to_groups, group_id);
 	}
 
 	struct EntityDeleter

@@ -31,17 +31,27 @@ int main()
 	EntityPool pool;
 	auto entity = pool.create_entity();
 	auto *pos = entity->allocate_component<Position>();
+	pos->pos = vec3(1.0f, 1.0f, 1.0f);
 	auto *vel = entity->allocate_component<Velocity>();
 	auto &group = pool.get_component_group<Position, Velocity>();
 
 	auto entity2 = pool.create_entity();
 	auto *pos2 = entity2->allocate_component<Position>();
+	pos2->pos = vec3(3.0f, 3.0f, 3.0f);
 	auto *vel2 = entity2->allocate_component<Velocity>();
 
 	auto &group2 = pool.get_component_group<Position>();
 	auto &group3 = pool.get_component_group<Velocity>();
 
 	entity2->free_component<Velocity>();
+
+	for (auto &tmp : group2)
+	{
+		Position *pos;
+		tie(pos) = tmp;
+
+		LOGI("Pos.x = %f\n", pos->pos.x);
+	}
 
 	LOGI(":D\n");
 

@@ -341,10 +341,10 @@ private:
 		}
 	};
 
-	template <typename... Us>
+	template <typename U, typename... Us>
 	void register_group(uint32_t group_id)
 	{
-		GroupRegisters<Us...>::register_group(component_to_groups, group_id);
+		GroupRegisters<U, Us...>::register_group(component_to_groups, group_id);
 	}
 };
 

@@ -11,6 +11,7 @@
 #include <shader_manager.hpp>
 #include "ecs.hpp"
 #include "math.hpp"
+#include "scene.hpp"
 
 using namespace Granite;
 using namespace std;
@@ -19,11 +20,19 @@ using namespace Util;
 struct Position : ComponentBase
 {
 	vec3 pos;
+	~Position()
+	{
+		LOGI("Position dtor.\n");
+	}
 };
 
 struct Velocity : ComponentBase
 {
 	vec3 vel;
+	~Velocity()
+	{
+		LOGI("Velocity dtor.\n");
+	}
 };
 
 int main()

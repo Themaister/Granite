@@ -1,5 +1,6 @@
 #pragma once
 
+#include "abstract_renderable.hpp"
 #include "buffer.hpp"
 #include "hashmap.hpp"
 #include "material.hpp"
@@ -76,7 +77,7 @@ namespace RenderFunctions
 void static_mesh_render(Vulkan::CommandBuffer &cmd, const RenderInfo **render, unsigned instances);
 }
 
-struct StaticMesh
+struct StaticMesh : AbstractRenderable
 {
 	Vulkan::BufferHandle vbo_position;
 	Vulkan::BufferHandle vbo_attributes;
@@ -94,6 +95,9 @@ struct StaticMesh
 	Util::Hash get_instance_key() const;
 	MeshDrawPipeline pipeline;
 
-	AABB aabb;
+	AABB static_aabb;
+
+	void get_render_info(RenderQueue &queue) override final;
+	void get_depth_render_info(RenderQueue &queue) override final;
 };
 }

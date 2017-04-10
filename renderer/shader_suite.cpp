@@ -13,6 +13,12 @@ void ShaderSuite::init_graphics(ShaderManager *manager, const std::string &verte
 	program = manager->register_graphics(vertex, fragment);
 }
 
+void ShaderSuite::init_compute(Vulkan::ShaderManager *manager, const std::string &compute)
+{
+	this->manager = manager;
+	program = manager->register_compute(compute);
+}
+
 Vulkan::ProgramHandle ShaderSuite::get_program(MeshDrawPipeline pipeline, uint32_t attribute_mask,
                                                uint32_t texture_mask)
 {

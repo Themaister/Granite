@@ -1,4 +1,5 @@
 #include <cstring>
+#include <algorithm>
 #include "path.hpp"
 #include "shader_manager.hpp"
 #include "device.hpp"
@@ -134,9 +135,22 @@ Vulkan::ProgramHandle ShaderProgram::get_program(unsigned variant)
 
 unsigned ShaderProgram::register_variant(const std::vector<std::pair<std::string, int>> &defines)
 {
+	Hasher h;
+	for (auto &define : defines)
+	{
+		h.u64(hash<string>()(define.first));
+		h.u32(uint32_t(define.second));
+	}
+
+	auto hash = h.get();
+	auto itr = find(begin(variant_hashes), end(variant_hashes), hash);
+	if (itr != end(variant_hashes))
+		return unsigned(itr - begin(variant_hashes));
+
 	unsigned index = unsigned(variants.size());
 	variants.emplace_back();
 	auto &var = variants.back();
+	variant_hashes.push_back(hash);
 
 	for (unsigned i = 0; i < static_cast<unsigned>(Vulkan::ShaderStage::Count); i++)
 		if (stages[i])

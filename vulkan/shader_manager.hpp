@@ -8,6 +8,7 @@
 #include <vector>
 #include "compiler.hpp"
 #include "filesystem.hpp"
+#include "hashmap.hpp"
 
 namespace Vulkan
 {
@@ -59,6 +60,7 @@ private:
 
 	ShaderTemplate *stages[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
 	std::vector<Variant> variants;
+	std::vector<Util::Hash> variant_hashes;
 };
 
 class ShaderManager

@@ -11,21 +11,30 @@ namespace Granite
 {
 void RenderQueue::sort()
 {
-	stable_sort(queue, queue + count, [](const RenderInfo *a, const RenderInfo *b) {
-		return a->sorting_key < b->sorting_key;
-	});
+	for (auto &queue : queues)
+	{
+		stable_sort(queue.queue, queue.queue + queue.count, [](const RenderInfo *a, const RenderInfo *b) {
+			return a->sorting_key < b->sorting_key;
+		});
+	}
 }
 
 void RenderQueue::combine_render_info(const RenderQueue &queue)
 {
-	size_t n = queue.get_queue_count();
-	auto **other_infos = queue.get_queue();
-	for (size_t i = 0; i < n; i++)
-		enqueue(other_infos[i]);
+	for (unsigned i = 0; i < ecast(Queue::Count); i++)
+	{
+		auto e = static_cast<Queue>(i);
+		size_t n = queue.get_queue_count(e);
+		auto **other_infos = queue.get_queue(e);
+		for (size_t i = 0; i < n; i++)
+			enqueue(e, other_infos[i]);
+	}
 }
 
-void RenderQueue::dispatch(CommandBuffer &cmd, size_t begin, size_t end)
+void RenderQueue::dispatch(Queue queue_type, CommandBuffer &cmd, size_t begin, size_t end)
 {
+	auto *queue = queues[ecast(queue_type)].queue;
+
 	while (begin < end)
 	{
 		assert(queue[begin]->instance_key != 0);
@@ -43,22 +52,24 @@ void RenderQueue::dispatch(CommandBuffer &cmd, size_t begin, size_t end)
 	}
 }
 
-void RenderQueue::dispatch(CommandBuffer &cmd)
+void RenderQueue::dispatch(Queue queue, CommandBuffer &cmd)
 {
-	dispatch(cmd, 0, count);
+	dispatch(queue, cmd, 0, queues[ecast(queue)].count);
 }
 
-void RenderQueue::enqueue(RenderInfo *render_info)
+void RenderQueue::enqueue(Queue queue_type, RenderInfo *render_info)
 {
-	if (count >= capacity)
+	auto &info = queues[ecast(queue_type)];
+
+	if (info.count >= info.capacity)
 	{
-		size_t new_capacity = capacity ? capacity * 2 : 64;
+		size_t new_capacity = info.capacity ? info.capacity * 2 : 64;
 		RenderInfo **new_queue = static_cast<RenderInfo **>(allocate(sizeof(RenderInfo *) * new_capacity, alignof(RenderInfo *)));
-		memcpy(new_queue, queue, count * sizeof(*new_queue));
-		queue = new_queue;
-		capacity = new_capacity;
+		memcpy(new_queue, info.queue, info.count * sizeof(*new_queue));
+		info.queue = new_queue;
+		info.capacity = new_capacity;
 	}
-	queue[count++] = render_info;
+	info.queue[info.count++] = render_info;
 }
 
 RenderQueue::Chain::iterator RenderQueue::insert_block()
@@ -86,9 +97,7 @@ void RenderQueue::reset()
 	if (current != end(blocks))
 		current->reset();
 
-	queue = nullptr;
-	count = 0;
-	capacity = 0;
+	memset(queues, 0, sizeof(queues));
 }
 
 void RenderQueue::reset_and_reclaim()
@@ -96,9 +105,7 @@ void RenderQueue::reset_and_reclaim()
 	blocks.clear();
 	current = end(blocks);
 
-	queue = nullptr;
-	count = 0;
-	capacity = 0;
+	memset(queues, 0, sizeof(queues));
 }
 
 void *RenderQueue::allocate(size_t size, size_t alignment)

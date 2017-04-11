@@ -5,6 +5,7 @@
 #include <string>
 #include <sstream>
 #include <vector>
+#include <type_traits>
 
 #if defined(_WIN32) && 0
 #define WIN32_LEAN_AND_MEAN
@@ -104,7 +105,6 @@ std::string join(Ts &&... ts)
 }
 
 std::vector<std::string> split(const std::string &str, const char *delim);
-
 std::vector<std::string> split_no_empty(const std::string &str, const char *delim);
 
 }

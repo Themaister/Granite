@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <command_buffer.hpp>
 #include "hashmap.hpp"
+#include "enum_cast.hpp"
 
 namespace Granite
 {
@@ -33,13 +34,20 @@ struct RenderInfo
 	~RenderInfo() = default;
 };
 
+enum class Queue : unsigned
+{
+	Opaque = 0,
+	Transparent,
+	Count
+};
+
 class RenderQueue
 {
 public:
 	enum { BlockSize = 256 * 1024 };
 
 	template <typename T, typename... P>
-	T &emplace(P&&... p)
+	T &emplace(Queue queue, P&&... p)
 	{
 		static_assert(std::is_trivially_destructible<T>::value, "Dispatchable type is not trivially destructible!");
 		void *buffer = allocate(sizeof(T), alignof(T));
@@ -47,12 +55,12 @@ public:
 			throw std::bad_alloc();
 
 		T *t = new(buffer) T(std::forward<P>(p)...);
-		enqueue(t);
+		enqueue(queue, t);
 		return *t;
 	}
 
 	template <typename T>
-	T *allocate_multiple(size_t n)
+	T *allocate_multiple(Queue queue, size_t n)
 	{
 		static_assert(std::is_trivially_destructible<T>::value, "Dispatchable type is not trivially destructible!");
 		void *buffer = allocate(sizeof(T) * n, alignof(T));
@@ -61,30 +69,30 @@ public:
 
 		T *t = new(buffer) T[n]();
 		for (size_t i = 0; i < n; i++)
-			enqueue(&t[i]);
+			enqueue(queue, &t[i]);
 
 		return t;
 	}
 
 	void *allocate(size_t size, size_t alignment = 64);
-	void enqueue(RenderInfo *render_info);
+	void enqueue(Queue queue, RenderInfo *render_info);
 	void combine_render_info(const RenderQueue &queue);
 	void reset();
 	void reset_and_reclaim();
 
-	RenderInfo **get_queue() const
+	RenderInfo **get_queue(Queue queue) const
 	{
-		return queue;
+		return queues[ecast(queue)].queue;
 	}
 
-	size_t get_queue_count() const
+	size_t get_queue_count(Queue queue) const
 	{
-		return count;
+		return queues[ecast(queue)].count;
 	}
 
 	void sort();
-	void dispatch(Vulkan::CommandBuffer &cmd);
-	void dispatch(Vulkan::CommandBuffer &cmd, size_t begin, size_t end);
+	void dispatch(Queue queue, Vulkan::CommandBuffer &cmd);
+	void dispatch(Queue queue, Vulkan::CommandBuffer &cmd, size_t begin, size_t end);
 
 private:
 	struct Block
@@ -117,9 +125,13 @@ private:
 	Chain blocks;
 	Chain::iterator current = std::end(blocks);
 
-	RenderInfo **queue = nullptr;
-	size_t count = 0;
-	size_t capacity = 0;
+	struct QueueInfo
+	{
+		RenderInfo **queue = nullptr;
+		size_t count = 0;
+		size_t capacity = 0;
+	};
+	QueueInfo queues[static_cast<unsigned>(Queue::Count)];
 
 	void *allocate_from_block(Block &block, size_t size, size_t alignment);
 	Chain::iterator insert_block();

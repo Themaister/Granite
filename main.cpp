@@ -12,6 +12,7 @@
 #include "ecs.hpp"
 #include "math.hpp"
 #include "scene.hpp"
+#include "frustum.hpp"
 
 using namespace Granite;
 using namespace std;

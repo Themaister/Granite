@@ -1,18 +1,20 @@
 #pragma once
 
-#include "render_queue.hpp"
-
 namespace Granite
 {
+class RenderQueue;
+class RenderContext;
+class ShaderSuite;
+
 class AbstractRenderable
 {
 public:
 	virtual ~AbstractRenderable() = default;
-	virtual void get_render_info(RenderQueue &queue) = 0;
+	virtual void get_render_info(const RenderContext &context, RenderQueue &queue) = 0;
 
-	virtual void get_depth_render_info(RenderQueue &queue)
+	virtual void get_depth_render_info(const RenderContext &context, RenderQueue &queue)
 	{
-		return get_render_info(queue);
+		return get_render_info(context, queue);
 	}
 };
 }

@@ -54,11 +54,11 @@ struct StaticMeshInfo : RenderInfo
 	Vulkan::Buffer *vbo_position;
 	Vulkan::Buffer *vbo_attributes;
 	Vulkan::Buffer *ibo;
-	Vulkan::ImageView *views[static_cast<unsigned>(Material::Textures::Count)];
+	Vulkan::ImageView *views[ecast(Material::Textures::Count)];
 	Vulkan::Sampler *sampler;
 	Vulkan::Program *program;
 
-	MeshAttributeLayout attributes[static_cast<unsigned>(MeshAttribute::Count)];
+	MeshAttributeLayout attributes[ecast(MeshAttribute::Count)];
 
 	StaticMeshVertex vertex;
 	StaticMeshFragment fragment;
@@ -89,7 +89,7 @@ struct StaticMesh : AbstractRenderable
 	uint32_t attribute_stride = 0;
 	VkIndexType index_type = VK_INDEX_TYPE_UINT16;
 
-	MeshAttributeLayout attributes[static_cast<unsigned>(MeshAttribute::Count)];
+	MeshAttributeLayout attributes[ecast(MeshAttribute::Count)];
 
 	MaterialHandle material;
 	Util::Hash get_instance_key() const;
@@ -97,7 +97,6 @@ struct StaticMesh : AbstractRenderable
 
 	AABB static_aabb;
 
-	void get_render_info(RenderQueue &queue) override final;
-	void get_depth_render_info(RenderQueue &queue) override final;
+	void get_render_info(const RenderContext &context, RenderQueue &queue) override final;
 };
 }

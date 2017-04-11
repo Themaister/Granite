@@ -78,11 +78,8 @@ void static_mesh_render(CommandBuffer &cmd, const RenderInfo **infos, unsigned i
 }
 }
 
-void StaticMesh::get_render_info(RenderQueue &)
+void StaticMesh::get_render_info(const RenderContext &, RenderQueue &)
 {
 }
 
-void StaticMesh::get_depth_render_info(RenderQueue &)
-{
-}
 }

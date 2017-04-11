@@ -10,6 +10,7 @@
 
 namespace Granite
 {
+class ShaderSuite;
 
 struct RenderInfo
 {
@@ -94,6 +95,16 @@ public:
 	void dispatch(Queue queue, Vulkan::CommandBuffer &cmd);
 	void dispatch(Queue queue, Vulkan::CommandBuffer &cmd, size_t begin, size_t end);
 
+	void set_shader_suite(ShaderSuite *suite)
+	{
+		shader_suite = suite;
+	}
+
+	ShaderSuite *get_shader_suite() const
+	{
+		return shader_suite;
+	}
+
 private:
 	struct Block
 	{
@@ -135,5 +146,7 @@ private:
 
 	void *allocate_from_block(Block &block, size_t size, size_t alignment);
 	Chain::iterator insert_block();
+
+	ShaderSuite *shader_suite = nullptr;
 };
 }

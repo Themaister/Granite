@@ -10,12 +10,6 @@
 
 namespace Granite
 {
-enum class MeshDrawPipeline : unsigned
-{
-	Opaque,
-	AlphaTest,
-	AlphaBlend,
-};
 
 enum class MeshAttribute : unsigned
 {

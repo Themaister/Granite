@@ -22,7 +22,11 @@ add_library(vulkan-backend
         semaphore.cpp
         shader_manager.cpp
         memory_allocator.cpp
-        texture_manager.cpp)
+        texture_manager.cpp
+        fence.hpp
+        format.hpp
+        limits.hpp
+        vulkan_events.hpp)
 
 target_include_directories(vulkan-backend PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/khronos)
 target_compile_definitions(vulkan-backend PUBLIC VULKAN_DEBUG)

@@ -10,12 +10,16 @@ namespace Granite
 {
 struct SpatialComponent : ComponentBase
 {
-	vec3 position;
+	vec3 position = vec3(0.0f);
 };
 
 struct BoundedComponent : ComponentBase
 {
 	AABB aabb;
+};
+
+struct UnboundedComponent : ComponentBase
+{
 };
 
 struct RenderableComponent : ComponentBase
@@ -25,9 +29,9 @@ struct RenderableComponent : ComponentBase
 
 struct SpatialTransformComponent : ComponentBase
 {
-	vec3 scale;
-	vec3 translation;
-	quat rotation;
+	vec3 scale = vec3(1.0f);
+	vec3 translation = vec3(1.0f);
+	quat rotation = quat();
 };
 
 struct CachedSpatialTransformComponent : ComponentBase

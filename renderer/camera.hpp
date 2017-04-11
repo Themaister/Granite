@@ -1,5 +1,7 @@
 #pragma once
 
+#include "math.hpp"
+
 namespace Granite
 {
 class Camera

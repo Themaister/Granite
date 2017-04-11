@@ -6,7 +6,9 @@ add_library(renderer STATIC
         shader_suite.hpp shader_suite.cpp
         render_context.hpp render_context.cpp
         camera.hpp camera.cpp
-        material.hpp)
+        material.hpp
+        abstract_renderable.hpp
+        render_components.hpp)
 target_link_libraries(renderer vulkan-backend math)
 target_include_directories(renderer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_options(renderer PRIVATE ${GRANITE_CXX_FLAGS})

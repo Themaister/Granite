@@ -42,6 +42,14 @@ Filesystem::Filesystem()
 	protocols["assets"] = unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir));
 	protocols["assets"]->set_protocol("assets://");
 #endif
+
+#ifdef GRANITE_DEFAULT_CACHE_DIRECTORY
+	const char *cache_dir = getenv("GRANITE_DEFAULT_CACHE_DIRECTORY");
+	if (!cache_dir)
+		cache_dir = GRANITE_DEFAULT_CACHE_DIRECTORY;
+	protocols["cache"] = unique_ptr<FilesystemBackend>(new OSFilesystem(cache_dir));
+	protocols["cache"]->set_protocol("cache://");
+#endif
 }
 
 void Filesystem::register_protocol(const std::string &proto, std::unique_ptr<FilesystemBackend> fs)

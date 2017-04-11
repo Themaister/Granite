@@ -17,6 +17,25 @@ using namespace std;
 namespace Granite
 {
 
+static bool ensure_directory_inner(const std::string &path)
+{
+	struct stat s;
+	if (::stat(path.c_str(), &s) >= 0 && S_ISDIR(s.st_mode))
+		return true;
+
+	auto basedir = Path::basedir(path);
+	if (!ensure_directory_inner(basedir))
+		return false;
+
+	return (mkdir(path.c_str(), 0750) >= 0) || (errno == EEXIST);
+}
+
+static bool ensure_directory(const std::string &path)
+{
+	auto basedir = Path::basedir(path);
+	return ensure_directory_inner(basedir);
+}
+
 MMapFile::MMapFile(const std::string &path, FileMode mode)
 {
 	int modeflags;
@@ -27,11 +46,15 @@ MMapFile::MMapFile(const std::string &path, FileMode mode)
 		break;
 
 	case FileMode::WriteOnly:
-		modeflags = O_RDWR | O_CREAT; // Need read access for mmap.
+		if (!ensure_directory(path))
+			throw runtime_error("MMapFile failed to create directory");
+		modeflags = O_RDWR | O_CREAT | O_TRUNC; // Need read access for mmap.
 		break;
 
 	case FileMode::ReadWrite:
-		modeflags = O_RDWR;
+		if (!ensure_directory(path))
+			throw runtime_error("MMapFile failed to create directory");
+		modeflags = O_RDWR | O_CREAT;
 		break;
 	}
 	fd = open(path.c_str(), modeflags, 0640);

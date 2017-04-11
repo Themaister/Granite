@@ -224,5 +224,9 @@ private:
 
 	ShaderManager shader_manager;
 	TextureManager texture_manager;
+
+	void init_pipeline_cache();
+
+	void flush_pipeline_cache();
 };
 }

@@ -160,6 +160,64 @@ void Device::bake_program(Program &program)
 	}
 }
 
+void Device::init_pipeline_cache()
+{
+	auto file = Filesystem::get().open("cache://pipeline_cache.bin", FileMode::ReadOnly);
+	VkPipelineCacheCreateInfo info = { VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO };
+
+	if (file)
+	{
+		auto size = file->get_size();
+		static const auto uuid_size = sizeof(gpu_props.pipelineCacheUUID);
+		if (size >= uuid_size)
+		{
+			uint8_t *mapped = static_cast<uint8_t *>(file->map());
+			if (mapped)
+			{
+				if (memcmp(gpu_props.pipelineCacheUUID, mapped, uuid_size) == 0)
+				{
+					info.initialDataSize = size - uuid_size;
+					info.pInitialData = mapped + uuid_size;
+				}
+			}
+		}
+	}
+
+	vkCreatePipelineCache(device, &info, nullptr, &pipeline_cache);
+}
+
+void Device::flush_pipeline_cache()
+{
+	static const auto uuid_size = sizeof(gpu_props.pipelineCacheUUID);
+	size_t size = 0;
+	if (vkGetPipelineCacheData(device, pipeline_cache, &size, nullptr) != VK_SUCCESS)
+	{
+		LOGE("Failed to get pipeline cache data.\n");
+		return;
+	}
+
+	auto file = Filesystem::get().open("cache://pipeline_cache.bin", FileMode::WriteOnly);
+	if (!file)
+	{
+		LOGE("Failed to get pipeline cache data.\n");
+		return;
+	}
+
+	uint8_t *data = static_cast<uint8_t *>(file->map_write(uuid_size + size));
+	if (!data)
+	{
+		LOGE("Failed to get pipeline cache data.\n");
+		return;
+	}
+
+	memcpy(data, gpu_props.pipelineCacheUUID, uuid_size);
+	if (vkGetPipelineCacheData(device, pipeline_cache, &size, data + uuid_size) != VK_SUCCESS)
+	{
+		LOGE("Failed to get pipeline cache data.\n");
+		return;
+	}
+}
+
 void Device::set_context(const Context &context)
 {
 	instance = context.get_instance();
@@ -174,9 +232,7 @@ void Device::set_context(const Context &context)
 	allocator.init(gpu, device);
 	init_stock_samplers();
 
-	VkPipelineCacheCreateInfo info = { VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO };
-	vkCreatePipelineCache(device, &info, nullptr, &pipeline_cache);
-
+	init_pipeline_cache();
 	semaphore_manager.init(device);
 }
 
@@ -445,7 +501,10 @@ Device::~Device()
 	wait_idle();
 
 	if (pipeline_cache != VK_NULL_HANDLE)
+	{
+		flush_pipeline_cache();
 		vkDestroyPipelineCache(device, pipeline_cache, nullptr);
+	}
 
 	framebuffer_allocator.clear();
 	transient_allocator.clear();

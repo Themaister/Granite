@@ -8,11 +8,6 @@
 
 namespace Granite
 {
-struct SpatialComponent : ComponentBase
-{
-	vec3 position = vec3(0.0f);
-};
-
 struct BoundedComponent : ComponentBase
 {
 	AABB aabb;
@@ -37,6 +32,7 @@ struct SpatialTransformComponent : ComponentBase
 struct CachedSpatialTransformComponent : ComponentBase
 {
 	mat4 world_transform;
+	mat4 normal_transform;
 	AABB world_aabb;
 };
 

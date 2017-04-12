@@ -142,7 +142,11 @@ public:
 	template<typename T>
 	void register_handler(EventType type, bool (T::*mem_fn)(const Event &event), T *handler)
 	{
-		events[type].handlers.push_back({ static_cast<bool (EventHandler::*)(const Event &event)>(mem_fn), static_cast<EventHandler *>(handler) });
+		auto &l = events[type];
+		if (l.dispatching)
+			l.recursive_handlers.push_back({ static_cast<bool (EventHandler::*)(const Event &event)>(mem_fn), static_cast<EventHandler *>(handler) });
+		else
+			l.handlers.push_back({ static_cast<bool (EventHandler::*)(const Event &event)>(mem_fn), static_cast<EventHandler *>(handler) });
 	}
 
 	void unregister_handler(EventHandler *handler);

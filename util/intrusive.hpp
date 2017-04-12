@@ -88,7 +88,8 @@ public:
 		data = nullptr;
 	}
 
-	IntrusivePtr &operator=(const IntrusivePtr &other)
+	template <typename U>
+	IntrusivePtr &operator=(const IntrusivePtr<U> &other)
 	{
 		if (this != &other)
 		{
@@ -103,7 +104,8 @@ public:
 		return *this;
 	}
 
-	IntrusivePtr(const IntrusivePtr &other)
+	template <typename U>
+	IntrusivePtr(const IntrusivePtr<U> &other)
 	{
 		*this = other;
 	}
@@ -113,7 +115,8 @@ public:
 		reset();
 	}
 
-	IntrusivePtr &operator=(IntrusivePtr &&other)
+	template <typename U>
+	IntrusivePtr &operator=(IntrusivePtr<U> &&other)
 	{
 		if (this != &other)
 		{
@@ -124,7 +127,8 @@ public:
 		return *this;
 	}
 
-	IntrusivePtr(IntrusivePtr &&other)
+	template <typename U>
+	IntrusivePtr(IntrusivePtr<U> &&other)
 	{
 		*this = std::move(other);
 	}
@@ -137,5 +141,11 @@ template <typename T, typename... P>
 IntrusivePtr<T> make_handle(P &&... p)
 {
 	return IntrusivePtr<T>(new T(std::forward<P>(p)...));
+}
+
+template <typename Base, typename Derived, typename... P>
+IntrusivePtr<Base> make_abstract_handle(P &&... p)
+{
+	return IntrusivePtr<Base>(new Derived(std::forward<P>(p)...));
 }
 }

@@ -40,7 +40,8 @@ struct Velocity : ComponentBase
 
 int main()
 {
-	CubeMesh cube_mesh;
+	Scene scene;
+	scene.create_renderable(Util::make_abstract_handle<AbstractRenderable, CubeMesh>());
 
 	EntityPool pool;
 	auto entity = pool.create_entity();

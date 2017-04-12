@@ -1,6 +1,7 @@
 #pragma once
 
 #include "aabb.hpp"
+#include "intrusive.hpp"
 
 namespace Granite
 {
@@ -15,7 +16,7 @@ enum class MeshDrawPipeline : unsigned
 	AlphaBlend,
 };
 
-class AbstractRenderable
+class AbstractRenderable : public Util::IntrusivePtrEnabled<AbstractRenderable>
 {
 public:
 	virtual ~AbstractRenderable() = default;
@@ -42,4 +43,5 @@ public:
 		return MeshDrawPipeline::Opaque;
 	}
 };
+using AbstractRenderableHandle = Util::IntrusivePtr<AbstractRenderable>;
 }

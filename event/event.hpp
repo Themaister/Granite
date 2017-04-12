@@ -3,6 +3,7 @@
 #include <vector>
 #include <memory>
 #include <unordered_map>
+#include <stdexcept>
 
 namespace Granite
 {
@@ -114,8 +115,14 @@ public:
 		ptr->set_type(type);
 		ptr->set_cookie(cookie);
 
-		dispatch_up_event(l.handlers, *ptr);
+		if (l.enqueueing)
+			throw std::logic_error("Cannot enqueue more latched events while handling events.");
+		l.enqueueing = true;
+
+		auto *event = ptr.get();
 		l.queued_events.emplace_back(std::move(ptr));
+		dispatch_up_event(l, *event);
+		l.enqueueing = false;
 		return cookie;
 	}
 
@@ -156,7 +163,12 @@ public:
 
 		auto &events = latched_events[type];
 		dispatch_up_events(events.queued_events, h);
-		latched_events[type].handlers.push_back(h);
+
+		auto &l = latched_events[type];
+		if (l.dispatching)
+			l.recursive_handlers.push_back(h);
+		else
+			l.handlers.push_back(h);
 	}
 
 	void unregister_latch_handler(EventHandler *handler);
@@ -191,19 +203,29 @@ private:
 	{
 		std::vector<std::unique_ptr<Event>> queued_events;
 		std::vector<Handler> handlers;
+		std::vector<Handler> recursive_handlers;
+		bool enqueueing = false;
+		bool dispatching = false;
+
+		void flush_recursive_handlers();
 	};
 
 	struct LatchEventTypeData
 	{
 		std::vector<std::unique_ptr<Event>> queued_events;
 		std::vector<LatchHandler> handlers;
+		std::vector<LatchHandler> recursive_handlers;
+		bool enqueueing = false;
+		bool dispatching = false;
+
+		void flush_recursive_handlers();
 	};
 
 	void dispatch_event(std::vector<Handler> &handlers, const Event &e);
 	void dispatch_up_events(std::vector<std::unique_ptr<Event>> &events, const LatchHandler &handler);
 	void dispatch_down_events(std::vector<std::unique_ptr<Event>> &events, const LatchHandler &handler);
-	void dispatch_up_event(std::vector<LatchHandler> &handlers, const Event &event);
-	void dispatch_down_event(std::vector<LatchHandler> &handlers, const Event &event);
+	void dispatch_up_event(LatchEventTypeData &event_type, const Event &event);
+	void dispatch_down_event(LatchEventTypeData &event_type, const Event &event);
 
 	void unregister_handler(const Handler &handler);
 	void unregister_latch_handler(const LatchHandler &handler);

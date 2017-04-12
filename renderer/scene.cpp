@@ -23,7 +23,7 @@ EntityHandle Scene::create_spatial_node()
 	return entity;
 }
 
-EntityHandle Scene::create_renderable(std::unique_ptr<AbstractRenderable> renderable)
+EntityHandle Scene::create_renderable(AbstractRenderableHandle renderable)
 {
 	auto entity = create_spatial_node();
 	auto *render = entity->allocate_component<RenderableComponent>();
@@ -48,7 +48,7 @@ EntityHandle Scene::create_renderable(std::unique_ptr<AbstractRenderable> render
 		break;
 	}
 
-	render->renderable = move(renderable);
+	render->renderable = renderable;
 	return entity;
 }
 

@@ -11,7 +11,7 @@ class Scene
 public:
 	Scene();
 	EntityHandle create_spatial_node();
-	EntityHandle create_renderable(std::unique_ptr<AbstractRenderable> renderable);
+	EntityHandle create_renderable(AbstractRenderableHandle renderable);
 
 private:
 	EntityPool pool;

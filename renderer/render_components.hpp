@@ -24,7 +24,7 @@ struct UnboundedComponent : ComponentBase
 
 struct RenderableComponent : ComponentBase
 {
-	std::unique_ptr<AbstractRenderable> renderable;
+	AbstractRenderableHandle renderable;
 };
 
 struct SpatialTransformComponent : ComponentBase

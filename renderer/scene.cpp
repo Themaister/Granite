@@ -8,12 +8,40 @@ namespace Granite
 
 Scene::Scene()
 	: spatials(pool.get_component_group<BoundedComponent, SpatialTransformComponent, CachedSpatialTransformComponent>()),
-      opaque(pool.get_component_group<BoundedComponent, CachedSpatialTransformComponent, RenderableComponent, OpaqueComponent>()),
-      transparent(pool.get_component_group<BoundedComponent, CachedSpatialTransformComponent, RenderableComponent, TransparentComponent>()),
-      shadowing(pool.get_component_group<BoundedComponent, CachedSpatialTransformComponent, RenderableComponent, CastsShadowComponent>()),
+      opaque(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, OpaqueComponent>()),
+      transparent(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, TransparentComponent>()),
+      shadowing(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, CastsShadowComponent>()),
       backgrounds(pool.get_component_group<UnboundedComponent, RenderableComponent>())
 {
 
+}
+
+template <typename T>
+static void gather_visible_renderables(const Frustum &frustum, VisibilityList &list, const T &objects)
+{
+	for (auto &o : objects)
+	{
+		auto *transform = get<0>(o);
+		auto *renderable = get<1>(o);
+
+		if (frustum.intersects(transform->world_aabb))
+			list.push_back({ renderable->renderable, transform });
+	}
+}
+
+void Scene::gather_visible_opaque_renderables(const Frustum &frustum, VisibilityList &list)
+{
+	gather_visible_renderables(frustum, list, opaque);
+}
+
+void Scene::gather_visible_transparent_renderables(const Frustum &frustum, VisibilityList &list)
+{
+	gather_visible_renderables(frustum, list, transparent);
+}
+
+void Scene::gather_visible_shadow_renderables(const Frustum &frustum, VisibilityList &list)
+{
+	gather_visible_renderables(frustum, list, shadowing);
 }
 
 void Scene::update_cached_transforms()

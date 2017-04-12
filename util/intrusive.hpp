@@ -88,8 +88,7 @@ public:
 		data = nullptr;
 	}
 
-	template <typename U>
-	IntrusivePtr &operator=(const IntrusivePtr<U> &other)
+	IntrusivePtr &operator=(const IntrusivePtr &other)
 	{
 		if (this != &other)
 		{
@@ -104,8 +103,7 @@ public:
 		return *this;
 	}
 
-	template <typename U>
-	IntrusivePtr(const IntrusivePtr<U> &other)
+	IntrusivePtr(const IntrusivePtr &other)
 	{
 		*this = other;
 	}
@@ -115,8 +113,7 @@ public:
 		reset();
 	}
 
-	template <typename U>
-	IntrusivePtr &operator=(IntrusivePtr<U> &&other)
+	IntrusivePtr &operator=(IntrusivePtr &&other)
 	{
 		if (this != &other)
 		{
@@ -127,8 +124,7 @@ public:
 		return *this;
 	}
 
-	template <typename U>
-	IntrusivePtr(IntrusivePtr<U> &&other)
+	IntrusivePtr(IntrusivePtr &&other)
 	{
 		*this = std::move(other);
 	}

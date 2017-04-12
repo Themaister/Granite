@@ -8,7 +8,9 @@ add_library(renderer STATIC
         camera.hpp camera.cpp
         material.hpp
         abstract_renderable.hpp
-        render_components.hpp)
+        render_components.hpp
+        mesh_util.hpp mesh_util.cpp
+        material_util.hpp material_util.cpp)
 target_link_libraries(renderer vulkan-backend math)
 target_include_directories(renderer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_options(renderer PRIVATE ${GRANITE_CXX_FLAGS})

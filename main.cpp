@@ -14,6 +14,8 @@
 #include "scene.hpp"
 #include "frustum.hpp"
 
+#include "mesh_util.hpp"
+
 using namespace Granite;
 using namespace std;
 using namespace Util;
@@ -38,6 +40,8 @@ struct Velocity : ComponentBase
 
 int main()
 {
+	CubeMesh cube_mesh;
+
 	EntityPool pool;
 	auto entity = pool.create_entity();
 	auto *pos = entity->allocate_component<Position>();

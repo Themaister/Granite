@@ -82,4 +82,11 @@ void StaticMesh::get_render_info(const RenderContext &, RenderQueue &)
 {
 }
 
+void StaticMesh::reset()
+{
+	vbo_attributes.reset();
+	vbo_position.reset();
+	ibo.reset();
+	material.reset();
+}
 }

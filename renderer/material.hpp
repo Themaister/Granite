@@ -4,6 +4,7 @@
 #include "math.hpp"
 #include "intrusive.hpp"
 #include "texture_manager.hpp"
+#include "enum_cast.hpp"
 
 namespace Granite
 {
@@ -17,7 +18,7 @@ struct Material : public Util::IntrusivePtrEnabled<Material>
 		Metallic = 3,
 		Count
 	};
-	Vulkan::Texture *textures[static_cast<unsigned>(Textures::Count)];
+	Vulkan::Texture *textures[ecast(Textures::Count)];
 	vec4 albedo;
 	float emissive = 0.0f;
 	float roughness = 0.0f;

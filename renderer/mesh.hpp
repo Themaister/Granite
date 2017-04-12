@@ -92,5 +92,19 @@ struct StaticMesh : AbstractRenderable
 	AABB static_aabb;
 
 	void get_render_info(const RenderContext &context, RenderQueue &queue) override final;
+
+protected:
+	void reset();
+
+private:
+	bool has_static_aabb() const override
+	{
+		return true;
+	}
+
+	const AABB &get_static_aabb() const override
+	{
+		return static_aabb;
+	}
 };
 }

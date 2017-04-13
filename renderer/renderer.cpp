@@ -38,6 +38,7 @@ void Renderer::render(CommandBuffer &cmd, RenderContext &context, const Visibili
 		vis.renderable->get_render_info(context, vis.transform, queue);
 	queue.sort();
 
+	cmd.set_opaque_state();
 	queue.dispatch(Queue::Opaque, cmd);
 	queue.dispatch(Queue::Transparent, cmd);
 }

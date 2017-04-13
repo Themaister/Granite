@@ -57,14 +57,14 @@ void RenderQueue::dispatch(Queue queue, CommandBuffer &cmd)
 	dispatch(queue, cmd, 0, queues[ecast(queue)].count);
 }
 
-void RenderQueue::enqueue(Queue queue_type, RenderInfo *render_info)
+void RenderQueue::enqueue(Queue queue_type, const RenderInfo *render_info)
 {
 	auto &info = queues[ecast(queue_type)];
 
 	if (info.count >= info.capacity)
 	{
 		size_t new_capacity = info.capacity ? info.capacity * 2 : 64;
-		RenderInfo **new_queue = static_cast<RenderInfo **>(allocate(sizeof(RenderInfo *) * new_capacity, alignof(RenderInfo *)));
+		const RenderInfo **new_queue = static_cast<const RenderInfo **>(allocate(sizeof(RenderInfo *) * new_capacity, alignof(RenderInfo *)));
 		memcpy(new_queue, info.queue, info.count * sizeof(*new_queue));
 		info.queue = new_queue;
 		info.capacity = new_capacity;

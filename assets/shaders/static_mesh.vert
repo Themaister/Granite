@@ -30,18 +30,18 @@ layout(location = 0) out highp vec2 vUV;
 
 #if HAVE_NORMAL
 layout(location = 2) in mediump vec3 Normal;
-layout(location = 1) out mediump vec2 vNormal;
+layout(location = 1) out mediump vec3 vNormal;
 #endif
 
 #if HAVE_TANGENT
 layout(location = 3) in mediump vec3 Tangent;
-layout(location = 2) out mediump vec2 vTangent;
+layout(location = 2) out mediump vec3 vTangent;
 #endif
 
 void main()
 {
     gl_Position = infos[gl_InstanceIndex].MVP * Position;
-    vNormal = normalize(infos[gl_InstanceIndex].Normal * Normal);
-    vTangent = normalize(infos[gl_InstanceIndex].Normal * Tangent);
+    vNormal = normalize(mat3(infos[gl_InstanceIndex].Normal) * Normal);
+    vTangent = normalize(mat3(infos[gl_InstanceIndex].Normal) * Tangent);
     vUV = UV;
 }

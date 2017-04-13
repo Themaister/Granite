@@ -18,7 +18,7 @@ struct RenderInfo
 	// and the rendering function is kind of supposed to be a more
 	// pure function anyways.
 	// Adjacent render infos which share instance key will be batched together.
-	void (*render)(Vulkan::CommandBuffer &cmd, RenderInfo **infos, unsigned instance_count) = nullptr;
+	void (*render)(Vulkan::CommandBuffer &cmd, const RenderInfo **infos, unsigned instance_count) = nullptr;
 
 	// RenderInfos with same key can be instanced.
 	Util::Hash instance_key = 0;
@@ -76,12 +76,12 @@ public:
 	}
 
 	void *allocate(size_t size, size_t alignment = 64);
-	void enqueue(Queue queue, RenderInfo *render_info);
+	void enqueue(Queue queue, const RenderInfo *render_info);
 	void combine_render_info(const RenderQueue &queue);
 	void reset();
 	void reset_and_reclaim();
 
-	RenderInfo **get_queue(Queue queue) const
+	const RenderInfo **get_queue(Queue queue) const
 	{
 		return queues[ecast(queue)].queue;
 	}
@@ -138,7 +138,7 @@ private:
 
 	struct QueueInfo
 	{
-		RenderInfo **queue = nullptr;
+		const RenderInfo **queue = nullptr;
 		size_t count = 0;
 		size_t capacity = 0;
 	};

@@ -6,13 +6,17 @@
 #include "camera.hpp"
 #include "render_parameters.hpp"
 #include "frustum.hpp"
+#include "device.hpp"
+#include "vulkan_events.hpp"
 
 namespace Granite
 {
 
-class RenderContext
+class RenderContext : public EventHandler
 {
 public:
+	RenderContext();
+
 	void set_scene(Scene *scene)
 	{
 		this->scene = scene;
@@ -36,7 +40,15 @@ public:
 		return frustum;
 	}
 
+	Vulkan::Device &get_device() const
+	{
+		return *device;
+	}
+
 private:
+	void on_device_created(const Event &e);
+	void on_device_destroyed(const Event &e);
+	Vulkan::Device *device = nullptr;
 	Scene *scene = nullptr;
 	RenderQueue *queue = nullptr;
 	RenderParameters camera;

@@ -45,11 +45,11 @@ struct StaticMeshFragment
 
 struct StaticMeshInfo : RenderInfo
 {
-	Vulkan::Buffer *vbo_position;
-	Vulkan::Buffer *vbo_attributes;
-	Vulkan::Buffer *ibo;
-	Vulkan::ImageView *views[ecast(Material::Textures::Count)];
-	Vulkan::Sampler *sampler;
+	const Vulkan::Buffer *vbo_position;
+	const Vulkan::Buffer *vbo_attributes;
+	const Vulkan::Buffer *ibo;
+	const Vulkan::ImageView *views[ecast(Material::Textures::Count)];
+	const Vulkan::Sampler *sampler;
 	Vulkan::Program *program;
 
 	MeshAttributeLayout attributes[ecast(MeshAttribute::Count)];
@@ -87,6 +87,7 @@ struct StaticMesh : AbstractRenderable
 
 	MaterialHandle material;
 	Util::Hash get_instance_key() const;
+	uint64_t get_sort_key() const;
 	MeshDrawPipeline pipeline;
 
 	AABB static_aabb;

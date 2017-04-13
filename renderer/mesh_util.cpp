@@ -48,14 +48,14 @@ void CubeMesh::on_device_created(const Event &event)
 
 	    // Top
 		N, P, P, P,
-		P, P, N, P,
-		N, P, P, P,
+		P, P, P, P,
+		N, P, N, P,
 		P, P, N, P,
 
 	    // Bottom
 		N, N, N, P,
-		P, N, P, P,
-		N, N, N, P,
+		P, N, N, P,
+		N, N, P, P,
 		P, N, P, P,
 	};
 
@@ -120,11 +120,11 @@ void CubeMesh::on_device_created(const Event &event)
 
 	static const uint16_t indices[] = {
 		0, 1, 2, 3, 2, 1,
-		6, 7, 8, 9, 8, 7,
+		4, 5, 6, 7, 6, 5,
+		8, 9, 10, 11, 10, 9,
 		12, 13, 14, 15, 14, 13,
-		18, 19, 20, 21, 20, 19,
-		24, 25, 26, 27, 26, 25,
-		30, 31, 32, 33, 32, 31,
+		16, 17, 18, 19, 18, 17,
+		20, 21, 22, 23, 22, 21,
 	};
 	BufferCreateInfo ibo_info = {};
 	ibo_info.size = sizeof(indices);
@@ -132,6 +132,10 @@ void CubeMesh::on_device_created(const Event &event)
 	ibo_info.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
 	ibo = device.create_buffer(ibo_info, indices);
 	material = StockMaterials::get().get_checkerboard();
+
+	vertex_offset = 0;
+	ibo_offset = 0;
+	count = 36;
 }
 
 void CubeMesh::on_device_destroyed(const Event &)

@@ -5,6 +5,23 @@ using namespace Vulkan;
 
 namespace Granite
 {
+RenderContext::RenderContext()
+{
+	EventManager::get_global().register_latch_handler(DeviceCreatedEvent::type_id,
+	                                                  &RenderContext::on_device_created,
+	                                                  &RenderContext::on_device_destroyed,
+	                                                  this);
+}
+
+void RenderContext::on_device_created(const Event &e)
+{
+	device = &e.as<DeviceCreatedEvent>().get_device();
+}
+
+void RenderContext::on_device_destroyed(const Event &)
+{
+}
+
 void RenderContext::set_camera(const Camera &camera)
 {
 	set_camera(camera.get_projection(), camera.get_view());

@@ -16,11 +16,12 @@ int main()
 
 	RenderContext context;
 	Camera cam;
-	cam.look_at(vec3(0.0f, 0.0f, 10.0f), vec3(0.0f));
+	cam.look_at(vec3(0.0f, 0.0f, 3.0f), vec3(0.0f));
 	context.set_camera(cam);
 
 	Scene scene;
-	scene.create_renderable(Util::make_abstract_handle<AbstractRenderable, CubeMesh>());
+	auto entity = scene.create_renderable(Util::make_abstract_handle<AbstractRenderable, CubeMesh>());
+	auto *transform = entity->get_component<SpatialTransformComponent>();
 	VisibilityList visible;
 
 	Renderer renderer;
@@ -32,6 +33,8 @@ int main()
 		wsi.begin_frame();
 
 		visible.clear();
+		transform->rotation = normalize(rotate(transform->rotation, 0.01f, normalize(vec3(0.0f, 1.0f, 0.0f))));
+
 		scene.update_cached_transforms();
 		scene.gather_visible_opaque_renderables(context.get_visibility_frustum(), visible);
 

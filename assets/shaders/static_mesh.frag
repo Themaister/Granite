@@ -43,7 +43,7 @@ void main()
 {
 #if HAVE_ALBEDOMAP
     vec4 albedo = texture(uAlbedomap, vUV);
-    #if ALPHA_TEST && !ALPHA_TEST_ALPHA_TO_COVERAGE
+    #if defined(ALPHA_TEST) && !defined(ALPHA_TEST_ALPHA_TO_COVERAGE)
         if (albedo.a < 0.5)
             discard;
     #endif
@@ -68,10 +68,14 @@ void main()
 #endif
 
 #if HAVE_METALLICMAP
-    float roughness = texture(uMetallicmap, vUV).x;
+    float metallic = texture(uMetallicmap, vUV).x;
 #else
-    float roughness = registers.metallic;
+    float metallic = registers.metallic;
 #endif
 
+#if HAVE_NORMAL
+    FragColor = vec4(normal * 0.5 + 0.5, 1.0);
+#else
     FragColor = albedo;
+#endif
 }

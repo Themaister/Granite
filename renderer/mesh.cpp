@@ -8,11 +8,6 @@ using namespace Vulkan;
 
 namespace Granite
 {
-uint64_t StaticMesh::get_sort_key() const
-{
-	return 1;
-}
-
 Hash StaticMesh::get_instance_key() const
 {
 	Hasher h;
@@ -112,7 +107,6 @@ void StaticMesh::get_render_info(const RenderContext &context, const CachedSpati
 	info.fragment.albedo = material->albedo;
 
 	info.instance_key = get_instance_key();
-	info.sorting_key = get_sort_key();
 
 	uint32_t attrs = 0;
 	uint32_t textures = 0;
@@ -130,6 +124,12 @@ void StaticMesh::get_render_info(const RenderContext &context, const CachedSpati
 	}
 
 	info.program = queue.get_shader_suite()->get_program(pipeline, attrs, textures).get();
+	Hasher h;
+	h.pointer(info.program);
+	h.u32(ecast(pipeline));
+	h.u32(attrs);
+	h.u32(textures);
+	info.sorting_key = RenderInfo::get_sort_key(context, type, h.get(), transform->world_aabb.get_center());
 }
 
 void StaticMesh::reset()

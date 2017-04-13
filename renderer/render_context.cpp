@@ -36,6 +36,12 @@ void RenderContext::set_camera(const mat4 &projection, const mat4 &view)
 	camera.inv_view = inverse(view);
 	camera.inv_view_projection = inverse(camera.view_projection);
 	frustum.build_planes(camera.inv_view_projection);
+
+	camera.camera_position = camera.inv_view[3].xyz();
+	camera.camera_up = camera.inv_view[1].xyz();
+	camera.camera_right = camera.inv_view[0].xyz();
+	// Invert.
+	camera.camera_front = -camera.inv_view[2].xyz();
 }
 
 }

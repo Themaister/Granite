@@ -7,10 +7,19 @@
 #include <command_buffer.hpp>
 #include "hashmap.hpp"
 #include "enum_cast.hpp"
+#include "math.hpp"
 
 namespace Granite
 {
 class ShaderSuite;
+class RenderContext;
+
+enum class Queue : unsigned
+{
+	Opaque = 0,
+	Transparent,
+	Count
+};
 
 struct RenderInfo
 {
@@ -33,13 +42,8 @@ struct RenderInfo
 	// should only hold POD data.
 	// Dynamic allocation can be made from the RenderQueue.
 	~RenderInfo() = default;
-};
 
-enum class Queue : unsigned
-{
-	Opaque = 0,
-	Transparent,
-	Count
+	static uint64_t get_sort_key(const RenderContext &context, Queue queue_type, Util::Hash pipeline_hash, const vec3 &center);
 };
 
 class RenderQueue

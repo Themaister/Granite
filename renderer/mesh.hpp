@@ -87,7 +87,6 @@ struct StaticMesh : AbstractRenderable
 
 	MaterialHandle material;
 	Util::Hash get_instance_key() const;
-	uint64_t get_sort_key() const;
 	MeshDrawPipeline pipeline;
 
 	AABB static_aabb;

@@ -1,4 +1,5 @@
 #include "render_queue.hpp"
+#include "render_context.hpp"
 #include <cstring>
 #include <iterator>
 #include <algorithm>
@@ -6,6 +7,7 @@
 
 using namespace std;
 using namespace Vulkan;
+using namespace Util;
 
 namespace Granite
 {
@@ -129,5 +131,26 @@ void *RenderQueue::allocate(size_t size, size_t alignment)
 
 	data = allocate_from_block(*current, size, alignment);
 	return data;
+}
+
+uint64_t RenderInfo::get_sort_key(const RenderContext &context, Queue queue_type, Util::Hash pipeline_hash,
+                                  const vec3 &center)
+{
+	float z = dot(context.get_render_parameters().camera_front, center - context.get_render_parameters().camera_position);
+	// Monotonically increasing floating point will be monotonic in uint32_t as well when z is non-negative.
+	z = glm::max(z, 0.0f);
+	uint32_t depth_key = floatBitsToUint(z);
+
+	if (queue_type == Queue::Transparent)
+	{
+		depth_key ^= 0xffff; // Back-to-front instead.
+		// Prioritize correct back-to-front rendering over pipeline.
+		return (Hash(depth_key) << 32) | (pipeline_hash & 0xffffffffu);
+	}
+	else
+	{
+		// Prioritize state changes over depth.
+		return (pipeline_hash << 32) | depth_key;
+	}
 }
 }

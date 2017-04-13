@@ -17,11 +17,16 @@ int main()
 	RenderContext context;
 	Camera cam;
 	cam.look_at(vec3(0.0f, -2.0f, 3.0f), vec3(0.0f));
+	cam.look_at(vec3(0.0f, -6.0f, 8.0f), vec3(0.0f));
 	context.set_camera(cam);
 
 	Scene scene;
-	auto entity = scene.create_renderable(Util::make_abstract_handle<AbstractRenderable, CubeMesh>());
+	auto cube = Util::make_abstract_handle<AbstractRenderable, CubeMesh>();
+	auto entity = scene.create_renderable(cube);
 	auto *transform = entity->get_component<SpatialTransformComponent>();
+
+	entity = scene.create_renderable(cube);
+	entity->get_component<SpatialTransformComponent>()->translation = vec3(3.0f, 0.0f, 0.0f);
 	VisibilityList visible;
 
 	Renderer renderer;

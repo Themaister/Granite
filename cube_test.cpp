@@ -26,7 +26,8 @@ int main()
 	auto *transform = entity->get_component<SpatialTransformComponent>();
 
 	entity = scene.create_renderable(cube);
-	entity->get_component<SpatialTransformComponent>()->translation = vec3(3.0f, 0.0f, 0.0f);
+	entity->get_component<SpatialTransformComponent>()->translation = vec3(6.0f, 3.0f, 0.0f);
+	entity->get_component<SpatialTransformComponent>()->scale = vec3(2.0f, 1.0f, 1.0f);
 	VisibilityList visible;
 
 	Renderer renderer;
@@ -48,7 +49,7 @@ int main()
 		auto rp = device.get_swapchain_render_pass(SwapchainRenderPass::DepthStencil);
 		rp.clear_color->float32[0] = 0.2f;
 		rp.clear_color->float32[1] = 0.2f;
-		rp.clear_color->float32[2] = 0.2f;
+		rp.clear_color->float32[2] = 0.3f;
 		cmd->begin_render_pass(rp);
 		renderer.render(*cmd, context, visible);
 		cmd->end_render_pass();

@@ -10,6 +10,8 @@ namespace Granite
 {
 struct Material : public Util::IntrusivePtrEnabled<Material>
 {
+	virtual ~Material() = default;
+
 	enum class Textures : unsigned
 	{
 		Albedo = 0,

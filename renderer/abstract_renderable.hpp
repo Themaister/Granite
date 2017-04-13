@@ -8,6 +8,7 @@ namespace Granite
 class RenderQueue;
 class RenderContext;
 class ShaderSuite;
+class CachedSpatialTransformComponent;
 
 enum class MeshDrawPipeline : unsigned
 {
@@ -20,11 +21,11 @@ class AbstractRenderable : public Util::IntrusivePtrEnabled<AbstractRenderable>
 {
 public:
 	virtual ~AbstractRenderable() = default;
-	virtual void get_render_info(const RenderContext &context, RenderQueue &queue) = 0;
+	virtual void get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform, RenderQueue &queue) const = 0;
 
-	virtual void get_depth_render_info(const RenderContext &context, RenderQueue &queue)
+	virtual void get_depth_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform, RenderQueue &queue) const
 	{
-		return get_render_info(context, queue);
+		return get_render_info(context, transform, queue);
 	}
 
 	virtual bool has_static_aabb() const

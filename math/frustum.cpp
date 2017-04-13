@@ -55,10 +55,10 @@ void Frustum::build_planes(const mat4 &inv_projection)
 	vec3 b = normalize(cross(BRF - BRN, BLN - BRN));
 
 	planes[0] = vec4(l, -dot(l, BLN));
-	planes[1] = vec4(r, -dot(l, TRN));
-	planes[2] = vec4(n, -dot(l, BRN));
-	planes[3] = vec4(f, -dot(l, BRF));
-	planes[4] = vec4(t, -dot(l, TRN));
-	planes[5] = vec4(b, -dot(l, BRN));
+	planes[1] = vec4(r, -dot(r, TRN));
+	planes[2] = vec4(n, -dot(n, BRN));
+	planes[3] = vec4(f, -dot(f, BRF));
+	planes[4] = vec4(t, -dot(t, TRN));
+	planes[5] = vec4(b, -dot(b, BRN));
 }
 }

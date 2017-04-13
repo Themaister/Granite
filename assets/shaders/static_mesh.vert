@@ -1,9 +1,19 @@
 #version 310 es
 
+layout(set = 0, binding = 0, std140) uniform RenderParameters
+{
+    mat4 projection;
+	mat4 view;
+	mat4 view_projection;
+	mat4 inv_projection;
+	mat4 inv_view;
+	mat4 inv_view_projection;
+} global;
+
 struct StaticMeshInfo
 {
     mat4 MVP;
-    mat3 Normal;
+    mat4 Normal;
 };
 
 layout(set = 3, binding = 0, std140) uniform PerVertexData

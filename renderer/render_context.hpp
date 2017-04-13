@@ -31,6 +31,11 @@ public:
 		return camera;
 	}
 
+	const Frustum &get_visibility_frustum() const
+	{
+		return frustum;
+	}
+
 private:
 	Scene *scene = nullptr;
 	RenderQueue *queue = nullptr;

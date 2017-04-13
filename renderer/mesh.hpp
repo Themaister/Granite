@@ -91,7 +91,7 @@ struct StaticMesh : AbstractRenderable
 
 	AABB static_aabb;
 
-	void get_render_info(const RenderContext &context, RenderQueue &queue) override final;
+	void get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform, RenderQueue &queue) const override final;
 
 protected:
 	void reset();

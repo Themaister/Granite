@@ -11,12 +11,16 @@ void ShaderSuite::init_graphics(ShaderManager *manager, const std::string &verte
 {
 	this->manager = manager;
 	program = manager->register_graphics(vertex, fragment);
+	variants.clear();
+	base_defines.clear();
 }
 
 void ShaderSuite::init_compute(Vulkan::ShaderManager *manager, const std::string &compute)
 {
 	this->manager = manager;
 	program = manager->register_compute(compute);
+	variants.clear();
+	base_defines.clear();
 }
 
 Vulkan::ProgramHandle ShaderSuite::get_program(MeshDrawPipeline pipeline, uint32_t attribute_mask,

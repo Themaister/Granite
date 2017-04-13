@@ -25,8 +25,8 @@ struct RenderableComponent : ComponentBase
 struct SpatialTransformComponent : ComponentBase
 {
 	vec3 scale = vec3(1.0f);
-	vec3 translation = vec3(1.0f);
-	quat rotation = quat();
+	vec3 translation = vec3(0.0f);
+	quat rotation = quat(1.0f, 0.0f, 0.0f, 0.0f);
 };
 
 struct CachedSpatialTransformComponent : ComponentBase

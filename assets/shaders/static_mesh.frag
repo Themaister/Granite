@@ -73,9 +73,5 @@ void main()
     float metallic = registers.metallic;
 #endif
 
-#if HAVE_NORMAL
-    FragColor = vec4(normal * 0.5 + 0.5, 1.0);
-#else
     FragColor = albedo;
-#endif
 }

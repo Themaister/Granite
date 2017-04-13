@@ -16,7 +16,7 @@ int main()
 
 	RenderContext context;
 	Camera cam;
-	cam.look_at(vec3(0.0f, 0.0f, 3.0f), vec3(0.0f));
+	cam.look_at(vec3(0.0f, -2.0f, 3.0f), vec3(0.0f));
 	context.set_camera(cam);
 
 	Scene scene;
@@ -30,6 +30,7 @@ int main()
 
 	while (wsi.alive())
 	{
+		Filesystem::get().poll_notifications();
 		wsi.begin_frame();
 
 		visible.clear();

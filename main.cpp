@@ -13,6 +13,7 @@
 #include "math.hpp"
 #include "scene.hpp"
 #include "frustum.hpp"
+#include "transforms.hpp"
 
 #include "mesh_util.hpp"
 
@@ -40,6 +41,10 @@ struct Velocity : ComponentBase
 
 int main()
 {
+	quat view = look_at(vec3(1.0f, -1.0f, 0.0f), vec3(0.0f, 1.0f, 0.0f));
+	vec3 front = view * vec3(1.0f, -1.0f, 0.0f);
+	vec3 up = view * vec3(0.0f, 1.0f, 0.0f);
+
 	Scene scene;
 	scene.create_renderable(Util::make_abstract_handle<AbstractRenderable, CubeMesh>());
 

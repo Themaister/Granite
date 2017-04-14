@@ -21,6 +21,13 @@ bool WSI::alive()
 #endif
 }
 
+void WSI::poll_input()
+{
+#if defined(HAVE_GLFW)
+	glfwPollEvents();
+#endif
+}
+
 #if defined(HAVE_GLFW)
 static void fb_size_cb(GLFWwindow *window, int width, int height)
 {
@@ -271,6 +278,9 @@ bool WSI::begin_frame()
 
 		if (result == VK_SUCCESS)
 		{
+			// Poll after acquire as well for optimal latency.
+			poll_input();
+
 			auto &em = Granite::EventManager::get_global();
 			auto frame_time = timer.frame();
 			auto elapsed_time = timer.get_elapsed();

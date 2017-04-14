@@ -59,5 +59,6 @@ private:
 	bool need_acquire = true;
 
 	Util::FrameTimer timer;
+	void poll_input();
 };
 }

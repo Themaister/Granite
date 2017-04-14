@@ -4,6 +4,7 @@
 #include "semaphore_manager.hpp"
 #include "vulkan.hpp"
 #include "vulkan_symbol_wrapper.h"
+#include "timer.hpp"
 
 #if defined(HAVE_GLFW)
 #include <GLFW/glfw3.h>
@@ -56,5 +57,7 @@ private:
 	uint32_t swapchain_index = 0;
 	VkSemaphore release_semaphore;
 	bool need_acquire = true;
+
+	Util::FrameTimer timer;
 };
 }

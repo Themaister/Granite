@@ -10,8 +10,26 @@
 using namespace Vulkan;
 using namespace Granite;
 
+struct Framer : public EventHandler
+{
+	Framer()
+	{
+		EventManager::get_global().register_handler(FrameTickEvent::type_id,
+		                                            &Framer::on_tick, this);
+	}
+
+	bool on_tick(const Event &e)
+	{
+		LOGI("Tick: %f, Total: %f\n",
+		     e.as<FrameTickEvent>().get_frame_time(),
+		     e.as<FrameTickEvent>().get_elapsed_time());
+		return true;
+	}
+};
+
 int main()
 {
+	Framer framer;
 	Vulkan::WSI wsi;
 	wsi.init(1280, 720);
 

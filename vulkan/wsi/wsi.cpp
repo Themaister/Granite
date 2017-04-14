@@ -271,9 +271,13 @@ bool WSI::begin_frame()
 
 		if (result == VK_SUCCESS)
 		{
+			auto &em = Granite::EventManager::get_global();
+			auto frame_time = timer.frame();
+			auto elapsed_time = timer.get_elapsed();
+			em.dispatch_inline(FrameTickEvent{frame_time, elapsed_time});
+
 			release_semaphore = semaphore_manager.request_cleared_semaphore();
 			device.begin_frame(swapchain_index);
-			auto &em = Granite::EventManager::get_global();
 			em.dequeue_all_latched(SwapchainIndexEvent::type_id);
 			em.enqueue_latched<SwapchainIndexEvent>(&device, swapchain_index);
 			semaphore_manager.recycle(device.set_acquire(acquire));

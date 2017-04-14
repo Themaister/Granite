@@ -41,6 +41,11 @@ class Event
 {
 public:
 	virtual ~Event() = default;
+	Event(EventType type_id)
+		: id(type_id)
+	{
+	}
+	Event() = default;
 
 	template<typename T>
 	T &as()
@@ -82,6 +87,9 @@ private:
 
 struct EventHandler
 {
+	EventHandler(const EventHandler &) = delete;
+	void operator=(const EventHandler &) = delete;
+	EventHandler() = default;
 	~EventHandler();
 };
 

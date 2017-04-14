@@ -94,6 +94,35 @@ static inline void format_block_dim(VkFormat format, uint32_t &width, uint32_t &
 	fmt(BC3_UNORM_BLOCK, 4, 4);
 	fmt(BC3_SRGB_BLOCK, 4, 4);
 
+	fmt(ASTC_4x4_SRGB_BLOCK, 4, 4);
+	fmt(ASTC_5x4_SRGB_BLOCK, 5, 4);
+	fmt(ASTC_5x5_SRGB_BLOCK, 5, 5);
+	fmt(ASTC_6x5_SRGB_BLOCK, 6, 5);
+	fmt(ASTC_6x6_SRGB_BLOCK, 6, 6);
+	fmt(ASTC_8x5_SRGB_BLOCK, 8, 5);
+	fmt(ASTC_8x6_SRGB_BLOCK, 8, 6);
+	fmt(ASTC_8x8_SRGB_BLOCK, 8, 8);
+	fmt(ASTC_10x5_SRGB_BLOCK, 10, 5);
+	fmt(ASTC_10x6_SRGB_BLOCK, 10, 6);
+	fmt(ASTC_10x8_SRGB_BLOCK, 10, 8);
+	fmt(ASTC_10x10_SRGB_BLOCK, 10, 10);
+	fmt(ASTC_12x10_SRGB_BLOCK, 12, 10);
+	fmt(ASTC_12x12_SRGB_BLOCK, 12, 12);
+	fmt(ASTC_4x4_UNORM_BLOCK, 4, 4);
+	fmt(ASTC_5x4_UNORM_BLOCK, 5, 4);
+	fmt(ASTC_5x5_UNORM_BLOCK, 5, 5);
+	fmt(ASTC_6x5_UNORM_BLOCK, 6, 5);
+	fmt(ASTC_6x6_UNORM_BLOCK, 6, 6);
+	fmt(ASTC_8x5_UNORM_BLOCK, 8, 5);
+	fmt(ASTC_8x6_UNORM_BLOCK, 8, 6);
+	fmt(ASTC_8x8_UNORM_BLOCK, 8, 8);
+	fmt(ASTC_10x5_UNORM_BLOCK, 10, 5);
+	fmt(ASTC_10x6_UNORM_BLOCK, 10, 6);
+	fmt(ASTC_10x8_UNORM_BLOCK, 10, 8);
+	fmt(ASTC_10x10_UNORM_BLOCK, 10, 10);
+	fmt(ASTC_12x10_UNORM_BLOCK, 12, 10);
+	fmt(ASTC_12x12_UNORM_BLOCK, 12, 12);
+
 	default:
 		width = 1;
 		height = 1;
@@ -107,8 +136,8 @@ static inline void format_align_dim(VkFormat format, uint32_t &width, uint32_t &
 {
 	uint32_t align_width, align_height;
 	format_block_dim(format, align_width, align_height);
-	width = (width + align_width - 1) & (align_width - 1);
-	height = (height + align_height - 1) & (align_height - 1);
+	width = ((width + align_width - 1) / align_width) * align_width;
+	height = ((height + align_height - 1) / align_height) * align_height;
 }
 
 static inline void format_num_blocks(VkFormat format, uint32_t &width, uint32_t &height)
@@ -271,6 +300,36 @@ static inline uint32_t format_block_size(VkFormat format)
 	fmt(BC2_SRGB_BLOCK, 16);
 	fmt(BC3_UNORM_BLOCK, 16);
 	fmt(BC3_SRGB_BLOCK, 16);
+
+	// ASTC
+	fmt(ASTC_4x4_SRGB_BLOCK, 16);
+	fmt(ASTC_5x4_SRGB_BLOCK, 16);
+	fmt(ASTC_5x5_SRGB_BLOCK, 16);
+	fmt(ASTC_6x5_SRGB_BLOCK, 16);
+	fmt(ASTC_6x6_SRGB_BLOCK, 16);
+	fmt(ASTC_8x5_SRGB_BLOCK, 16);
+	fmt(ASTC_8x6_SRGB_BLOCK, 16);
+	fmt(ASTC_8x8_SRGB_BLOCK, 16);
+	fmt(ASTC_10x5_SRGB_BLOCK, 16);
+	fmt(ASTC_10x6_SRGB_BLOCK, 16);
+	fmt(ASTC_10x8_SRGB_BLOCK, 16);
+	fmt(ASTC_10x10_SRGB_BLOCK, 16);
+	fmt(ASTC_12x10_SRGB_BLOCK, 16);
+	fmt(ASTC_12x12_SRGB_BLOCK, 16);
+	fmt(ASTC_4x4_UNORM_BLOCK, 16);
+	fmt(ASTC_5x4_UNORM_BLOCK, 16);
+	fmt(ASTC_5x5_UNORM_BLOCK, 16);
+	fmt(ASTC_6x5_UNORM_BLOCK, 16);
+	fmt(ASTC_6x6_UNORM_BLOCK, 16);
+	fmt(ASTC_8x5_UNORM_BLOCK, 16);
+	fmt(ASTC_8x6_UNORM_BLOCK, 16);
+	fmt(ASTC_8x8_UNORM_BLOCK, 16);
+	fmt(ASTC_10x5_UNORM_BLOCK, 16);
+	fmt(ASTC_10x6_UNORM_BLOCK, 16);
+	fmt(ASTC_10x8_UNORM_BLOCK, 16);
+	fmt(ASTC_10x10_UNORM_BLOCK, 16);
+	fmt(ASTC_12x10_UNORM_BLOCK, 16);
+	fmt(ASTC_12x12_UNORM_BLOCK, 16);
 
 	default:
 		VK_ASSERT(0 && "Unknown format.");

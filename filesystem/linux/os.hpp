@@ -37,14 +37,22 @@ public:
 private:
 	std::string base;
 
+	struct VirtualHandler
+	{
+		std::function<void (const FileNotifyInfo &)> func;
+		FileNotifyHandle virtual_handle;
+	};
+
 	struct Handler
 	{
 		std::string path;
-		std::function<void (const FileNotifyInfo &)> func;
+		std::vector<VirtualHandler> funcs;
 		bool directory;
 	};
 	std::unordered_map<FileNotifyHandle, Handler> handlers;
 	std::unordered_map<std::string, FileNotifyHandle> path_to_handler;
+	std::unordered_map<FileNotifyHandle, FileNotifyHandle> virtual_to_real;
 	int notify_fd;
+	FileNotifyHandle virtual_handle = 0;
 };
 }

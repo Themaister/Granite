@@ -2,6 +2,7 @@
 #include "../path.hpp"
 #include "util.hpp"
 #include <stdexcept>
+#include <algorithm>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -204,15 +205,18 @@ void OSFilesystem::poll_notifications()
 			else
 				continue;
 
-			if (itr->second.func)
+			for (auto &func : itr->second.funcs)
 			{
-				if (itr->second.directory)
+				if (func.func)
 				{
-					auto notify_path = protocol + Path::join(itr->second.path, current->name);
-					itr->second.func({ move(notify_path), type });
+					if (itr->second.directory)
+					{
+						auto notify_path = protocol + Path::join(itr->second.path, current->name);
+						func.func({move(notify_path), type});
+					}
+					else
+						func.func({protocol + itr->second.path, type});
 				}
-				else
-					itr->second.func({ protocol + itr->second.path, type });
 			}
 		}
 	}
@@ -220,16 +224,35 @@ void OSFilesystem::poll_notifications()
 
 void OSFilesystem::uninstall_notification(FileNotifyHandle handle)
 {
-	auto itr = handlers.find(static_cast<int>(handle));
+	auto real = virtual_to_real.find(handle);
+	if (real == end(virtual_to_real))
+		throw runtime_error("unknown virtual inotify handler");
+
+	auto itr = handlers.find(static_cast<int>(real->second));
 	if (itr == end(handlers))
 		throw runtime_error("unknown inotify handler");
 
-	auto path_itr = path_to_handler.find(itr->second.path);
-	if (path_itr == end(path_to_handler))
+	auto handler_instance = find_if(begin(itr->second.funcs), end(itr->second.funcs), [=](const VirtualHandler &v) {
+		return v.virtual_handle == handle;
+	});
+
+	if (handler_instance == end(itr->second.funcs))
 		throw runtime_error("unknown inotify handler path");
 
-	path_to_handler.erase(path_itr);
-	handlers.erase(itr);
+	itr->second.funcs.erase(handler_instance);
+
+	if (itr->second.funcs.empty())
+	{
+		inotify_rm_watch(notify_fd, real->second);
+		auto path_itr = path_to_handler.find(itr->second.path);
+		if (path_itr == end(path_to_handler))
+			throw runtime_error("unknown inotify handler path");
+
+		path_to_handler.erase(path_itr);
+		handlers.erase(itr);
+	}
+
+	virtual_to_real.erase(real);
 }
 
 FileNotifyHandle OSFilesystem::find_notification(const std::string &path) const
@@ -244,8 +267,13 @@ FileNotifyHandle OSFilesystem::find_notification(const std::string &path) const
 FileNotifyHandle OSFilesystem::install_notification(const string &path,
                                                     function<void (const FileNotifyInfo &)> func)
 {
-	if (find_notification(path) >= 0)
-		throw runtime_error("cannot add multiple watches on same file/directory.");
+	auto handle = find_notification(path);
+	if (handle >= 0)
+	{
+		handlers[handle].funcs.push_back({ move(func), ++virtual_handle });
+		virtual_to_real[virtual_handle] = handle;
+		return virtual_handle;
+	}
 
 	FileStat s;
 	if (!stat(path, s))
@@ -258,8 +286,9 @@ FileNotifyHandle OSFilesystem::install_notification(const string &path,
 	if (wd < 0)
 		throw runtime_error("inotify_add_watch");
 
-	handlers[wd] = { path, move(func), s.type == PathType::Directory };
+	handlers[wd] = { path, {{ move(func), ++virtual_handle }}, s.type == PathType::Directory };
 	path_to_handler[path] = wd;
+	virtual_to_real[virtual_handle] = wd;
 	return static_cast<FileNotifyHandle>(wd);
 }
 

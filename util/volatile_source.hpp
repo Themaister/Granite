@@ -55,8 +55,11 @@ protected:
 		auto *proto = Filesystem::get().get_backend(paths.first);
 		if (proto)
 		{
-			notify_handle = proto->install_notification(paths.second, [&](const FileNotifyInfo &info) {
+			// Listen to directory so we can track file moves properly.
+			notify_handle = proto->install_notification(Path::basedir(paths.second), [&](const FileNotifyInfo &info) {
 				if (info.type == FileNotifyType::FileDeleted)
+					return;
+				if (info.path != path)
 					return;
 
 				auto *self = static_cast<T *>(this);

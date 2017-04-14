@@ -85,6 +85,15 @@ static inline void format_block_dim(VkFormat format, uint32_t &width, uint32_t &
 	fmt(EAC_R11G11_UNORM_BLOCK, 4, 4);
 	fmt(EAC_R11G11_SNORM_BLOCK, 4, 4);
 
+	fmt(BC1_RGB_UNORM_BLOCK, 4, 4);
+	fmt(BC1_RGB_SRGB_BLOCK, 4, 4);
+	fmt(BC1_RGBA_UNORM_BLOCK, 4, 4);
+	fmt(BC1_RGBA_SRGB_BLOCK, 4, 4);
+	fmt(BC2_UNORM_BLOCK, 4, 4);
+	fmt(BC2_SRGB_BLOCK, 4, 4);
+	fmt(BC3_UNORM_BLOCK, 4, 4);
+	fmt(BC3_SRGB_BLOCK, 4, 4);
+
 	default:
 		width = 1;
 		height = 1;
@@ -241,7 +250,7 @@ static inline uint32_t format_block_size(VkFormat format)
 	fmt(D24_UNORM_S8_UINT, 4);
 	fmt(D32_SFLOAT_S8_UINT, 5); // Doesn't make sense.
 
-		// ETC2
+	// ETC2
 	fmt(ETC2_R8G8B8A8_UNORM_BLOCK, 16);
 	fmt(ETC2_R8G8B8A8_SRGB_BLOCK, 16);
 	fmt(ETC2_R8G8B8A1_UNORM_BLOCK, 8);
@@ -252,6 +261,16 @@ static inline uint32_t format_block_size(VkFormat format)
 	fmt(EAC_R11_SNORM_BLOCK, 8);
 	fmt(EAC_R11G11_UNORM_BLOCK, 16);
 	fmt(EAC_R11G11_SNORM_BLOCK, 16);
+
+	// BC
+	fmt(BC1_RGB_UNORM_BLOCK, 8);
+	fmt(BC1_RGB_SRGB_BLOCK, 8);
+	fmt(BC1_RGBA_UNORM_BLOCK, 8);
+	fmt(BC1_RGBA_SRGB_BLOCK, 8);
+	fmt(BC2_UNORM_BLOCK, 16);
+	fmt(BC2_SRGB_BLOCK, 16);
+	fmt(BC3_UNORM_BLOCK, 16);
+	fmt(BC3_SRGB_BLOCK, 16);
 
 	default:
 		VK_ASSERT(0 && "Unknown format.");

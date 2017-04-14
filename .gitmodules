@@ -19,3 +19,6 @@
 [submodule "third_party/glfw"]
 	path = third_party/glfw
 	url = git://github.com/glfw/glfw
+[submodule "third_party/rapidjson"]
+	path = third_party/rapidjson
+	url = git://github.com/miloyip/rapidjson

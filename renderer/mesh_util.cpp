@@ -1,6 +1,7 @@
 #include "mesh_util.hpp"
 #include "device.hpp"
 #include "material_util.hpp"
+#include "material_manager.hpp"
 
 using namespace Vulkan;
 
@@ -131,7 +132,8 @@ void CubeMesh::on_device_created(const Event &event)
 	ibo_info.domain = BufferDomain::Device;
 	ibo_info.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
 	ibo = device.create_buffer(ibo_info, indices);
-	material = StockMaterials::get().get_checkerboard();
+	//material = StockMaterials::get().get_checkerboard();
+	material = MaterialManager::get().request_material("assets://materials/default.json");
 
 	vertex_offset = 0;
 	ibo_offset = 0;

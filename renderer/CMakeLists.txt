@@ -16,3 +16,6 @@ add_library(renderer STATIC
 target_link_libraries(renderer vulkan-backend math)
 target_include_directories(renderer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_options(renderer PRIVATE ${GRANITE_CXX_FLAGS})
+
+target_compile_definitions(renderer PRIVATE RAPIDJSON_HAS_STDSTRING=1)
+target_include_directories(renderer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/rapidjson/include)

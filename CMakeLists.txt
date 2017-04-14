@@ -13,6 +13,7 @@ set(SPIRV-Headers_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/spirv-head
 set(SHADERC_SKIP_TESTS ON)
 add_subdirectory(third_party/shaderc EXCLUDE_FROM_ALL)
 add_subdirectory(third_party/stb EXCLUDE_FROM_ALL)
+
 add_subdirectory(compiler)
 
 add_subdirectory(event)

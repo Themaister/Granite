@@ -5,6 +5,7 @@
 #include "camera.hpp"
 #include "mesh_util.hpp"
 #include "renderer.hpp"
+#include "material_manager.hpp"
 
 using namespace Vulkan;
 using namespace Granite;

@@ -269,10 +269,10 @@ bool WSI::begin_frame()
 	if (!need_acquire)
 		return true;
 
-	VkSemaphore acquire = semaphore_manager.request_cleared_semaphore();
 	VkResult result;
 	do
 	{
+		VkSemaphore acquire = semaphore_manager.request_cleared_semaphore();
 		result = vkAcquireNextImageKHR(context->get_device(), swapchain, UINT64_MAX, acquire, VK_NULL_HANDLE,
 		                               &swapchain_index);
 
@@ -297,11 +297,18 @@ bool WSI::begin_frame()
 		{
 			VK_ASSERT(width != 0);
 			VK_ASSERT(height != 0);
+			vkDeviceWaitIdle(device.get_device());
+			vkDestroySemaphore(device.get_device(), acquire, nullptr);
+
+			auto old_acquire = device.set_acquire(VK_NULL_HANDLE);
+			auto old_release = device.set_release(VK_NULL_HANDLE);
+			if (old_acquire != VK_NULL_HANDLE)
+				vkDestroySemaphore(device.get_device(), old_acquire, nullptr);
+			if (old_release != VK_NULL_HANDLE)
+				vkDestroySemaphore(device.get_device(), old_release, nullptr);
+
 			if (!init_swapchain(width, height))
-			{
-				semaphore_manager.recycle(acquire);
 				return false;
-			}
 			device.init_swapchain(swapchain_images, width, height, format);
 		}
 		else

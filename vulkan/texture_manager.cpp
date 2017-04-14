@@ -54,6 +54,8 @@ static VkFormat gli_format_to_vk(gli::format format)
 	fmt(RGBA_DXT5_UNORM_BLOCK16, BC3_UNORM_BLOCK);
 	fmt(RGBA_DXT5_SRGB_BLOCK16, BC3_SRGB_BLOCK);
 
+	fmt(RGBA8_UNORM_PACK8, R8G8B8A8_UNORM);
+
 	default:
 		return VK_FORMAT_UNDEFINED;
 	}

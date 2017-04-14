@@ -1114,8 +1114,13 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 		{
 			uint32_t row_length = initial[i].row_length ? initial[i].row_length : extent.width;
 			uint32_t array_height = initial[i].array_height ? initial[i].array_height : extent.height;
+
+			uint32_t blocks_x = row_length;
+			uint32_t blocks_y = array_height;
+			format_num_blocks(create_info.format, blocks_x, blocks_y);
+
 			VkDeviceSize size =
-			    format_pixel_size(create_info.format) * create_info.layers * extent.depth * row_length * array_height;
+			    format_block_size(create_info.format) * create_info.layers * extent.depth * blocks_x * blocks_y;
 
 			subresource.mipLevel = i;
 			auto *ptr = staging_cmd->update_image(*handle, { 0, 0, 0 }, extent, row_length, array_height, subresource);

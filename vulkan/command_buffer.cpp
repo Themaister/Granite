@@ -735,8 +735,12 @@ void *CommandBuffer::update_image(const Image &image, const VkOffset3D &offset, 
 	if (!image_height)
 		image_height = height;
 
+	uint32_t blocks_x = row_length;
+	uint32_t blocks_y = image_height;
+	format_num_blocks(create_info.format, blocks_x, blocks_y);
+
 	VkDeviceSize size =
-	    format_pixel_size(create_info.format) * subresource.layerCount * depth * row_length * image_height;
+	    format_block_size(create_info.format) * subresource.layerCount * depth * blocks_x * blocks_y;
 
 	auto data = device->allocate_staging_data(size);
 	copy_buffer_to_image(image, *data.buffer, data.offset, offset, extent, row_length, image_height, subresource);

@@ -264,7 +264,22 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 	device_info.enabledExtensionCount = num_required_device_extensions;
 	device_info.ppEnabledLayerNames = required_device_layers;
 	device_info.enabledLayerCount = num_required_device_layers;
-	device_info.pEnabledFeatures = required_features;
+
+	VkPhysicalDeviceFeatures enabled_features = *required_features;
+	{
+		VkPhysicalDeviceFeatures features;
+		vkGetPhysicalDeviceFeatures(gpu, &features);
+		if (features.textureCompressionETC2)
+			enabled_features.textureCompressionETC2 = VK_TRUE;
+		if (features.textureCompressionBC)
+			enabled_features.textureCompressionBC = VK_TRUE;
+		if (features.textureCompressionASTC_LDR)
+			enabled_features.textureCompressionASTC_LDR = VK_TRUE;
+		if (features.fullDrawIndexUint32)
+			enabled_features.fullDrawIndexUint32 = VK_TRUE;
+	}
+
+	device_info.pEnabledFeatures = &enabled_features;
 
 #ifdef VULKAN_DEBUG
 	static const char *device_layers[] = { "VK_LAYER_LUNARG_standard_validation" };

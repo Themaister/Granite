@@ -25,6 +25,8 @@ private:
 	Device *device;
 	ImageHandle handle;
 	VkFormat format;
+	void update_png(const void *data, size_t size);
+	void update_gli(const void *data, size_t size);
 };
 
 class TextureManager

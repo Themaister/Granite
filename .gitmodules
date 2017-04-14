@@ -22,3 +22,6 @@
 [submodule "third_party/rapidjson"]
 	path = third_party/rapidjson
 	url = git://github.com/miloyip/rapidjson
+[submodule "third_party/gli"]
+	path = third_party/gli
+	url = git://github.com/g-truc/gli

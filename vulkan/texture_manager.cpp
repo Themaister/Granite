@@ -2,7 +2,10 @@
 #include "device.hpp"
 #include "stb_image.h"
 
+#include "gli/gli.hpp"
+
 using namespace std;
+using namespace gli;
 
 namespace Vulkan
 {

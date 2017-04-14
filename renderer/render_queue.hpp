@@ -87,12 +87,12 @@ public:
 
 	const RenderInfo **get_queue(Queue queue) const
 	{
-		return queues[ecast(queue)].queue;
+		return queues[Util::ecast(queue)].queue;
 	}
 
 	size_t get_queue_count(Queue queue) const
 	{
-		return queues[ecast(queue)].count;
+		return queues[Util::ecast(queue)].count;
 	}
 
 	void sort();

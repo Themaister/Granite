@@ -8,6 +8,7 @@
 using namespace std;
 using namespace Vulkan;
 using namespace rapidjson;
+using namespace Util;
 
 namespace Granite
 {

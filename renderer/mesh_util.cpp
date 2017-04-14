@@ -4,6 +4,7 @@
 #include "material_manager.hpp"
 
 using namespace Vulkan;
+using namespace Util;
 
 namespace Granite
 {

@@ -34,7 +34,7 @@ void StockMaterials::on_device_created(const Event &event)
 
 	if (!checkerboard)
 		checkerboard = Util::make_handle<Material>();
-	checkerboard->textures[ecast(Material::Textures::Albedo)] = manager.request_texture("assets://textures/checkerboard.png");
+	checkerboard->textures[Util::ecast(Material::Textures::Albedo)] = manager.request_texture("assets://textures/checkerboard.png");
 	checkerboard->emissive = 0.0f;
 	checkerboard->metallic = 0.0f;
 	checkerboard->roughness = 1.0f;

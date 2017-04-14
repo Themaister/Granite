@@ -15,7 +15,7 @@ public:
 
 private:
 	Vulkan::Device *device = nullptr;
-	std::string paths[ecast(Material::Textures::Count)];
+	std::string paths[Util::ecast(Material::Textures::Count)];
 
 	void on_device_created(const Event &e);
 	void on_device_destroyed(const Event &e);

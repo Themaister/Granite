@@ -1,4 +1,4 @@
-add_library(vulkan-wsi STATIC wsi.cpp)
+add_library(vulkan-wsi STATIC wsi.cpp wsi.hpp input.hpp input.cpp)
 target_link_libraries(vulkan-wsi vulkan-backend util)
 target_include_directories(vulkan-wsi PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 

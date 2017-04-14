@@ -20,7 +20,7 @@ struct Material : public Util::IntrusivePtrEnabled<Material>
 		Metallic = 3,
 		Count
 	};
-	Vulkan::Texture *textures[ecast(Textures::Count)];
+	Vulkan::Texture *textures[Util::ecast(Textures::Count)];
 	vec4 albedo;
 	float emissive = 0.0f;
 	float roughness = 0.0f;

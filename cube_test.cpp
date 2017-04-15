@@ -9,6 +9,7 @@
 
 using namespace Vulkan;
 using namespace Granite;
+using namespace Util;
 
 struct Framer : public EventHandler
 {
@@ -16,13 +17,57 @@ struct Framer : public EventHandler
 	{
 		EventManager::get_global().register_handler(FrameTickEvent::type_id,
 		                                            &Framer::on_tick, this);
+		EventManager::get_global().register_handler(KeyboardEvent::type_id,
+		                                            &Framer::on_key, this);
+		EventManager::get_global().register_handler(MouseButtonEvent::type_id,
+		                                            &Framer::on_button, this);
+		EventManager::get_global().register_handler(MouseMoveEvent::type_id,
+		                                            &Framer::on_move, this);
+		EventManager::get_global().register_handler(InputStateEvent::type_id,
+		                                            &Framer::on_state, this);
 	}
 
 	bool on_tick(const Event &e)
 	{
-		LOGI("Tick: %f, Total: %f\n",
-		     e.as<FrameTickEvent>().get_frame_time(),
-		     e.as<FrameTickEvent>().get_elapsed_time());
+		return true;
+	}
+
+	bool on_state(const Event &e)
+	{
+		auto &state = e.as<InputStateEvent>();
+		if (state.get_mouse_active())
+		{
+			LOGI("Mouse X: %f\n", state.get_mouse_x());
+			LOGI("Mouse Y: %f\n", state.get_mouse_y());
+		}
+
+		return true;
+	}
+
+	bool on_button(const Event &e)
+	{
+		auto &btn = e.as<MouseButtonEvent>();
+		if (btn.get_pressed())
+			LOGI("Pressed Mouse Button: %d\n", ecast(btn.get_button()));
+		else
+			LOGI("Released Mouse Button: %d\n", ecast(btn.get_button()));
+		return true;
+	}
+
+	bool on_move(const Event &e)
+	{
+		return true;
+	}
+
+	bool on_key(const Event &e)
+	{
+		auto &key = e.as<KeyboardEvent>();
+		if (key.get_key_state() == KeyState::Pressed)
+			LOGI("Pressed %u\n", ecast(key.get_key()));
+		else if (key.get_key_state() == KeyState::Repeat)
+			LOGI("Repeated %u\n", ecast(key.get_key()));
+		else if (key.get_key_state() == KeyState::Released)
+			LOGI("Released %u\n", ecast(key.get_key()));
 		return true;
 	}
 };

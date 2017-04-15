@@ -26,6 +26,7 @@ void WSI::poll_input()
 #if defined(HAVE_GLFW)
 	glfwPollEvents();
 #endif
+	tracker.dispatch_current_state();
 }
 
 #if defined(HAVE_GLFW)
@@ -34,6 +35,113 @@ static void fb_size_cb(GLFWwindow *window, int width, int height)
 	auto *wsi = static_cast<WSI *>(glfwGetWindowUserPointer(window));
 	VK_ASSERT(width != 0 && height != 0);
 	wsi->update_framebuffer(width, height);
+}
+
+static Key glfw_key_to_granite(int key)
+{
+#define k(glfw, granite) case GLFW_KEY_##glfw: return Key::granite
+	switch (key)
+	{
+	k(A, A);
+	k(B, B);
+	k(C, C);
+	k(D, D);
+	k(E, E);
+	k(F, F);
+	k(G, G);
+	k(H, H);
+	k(I, I);
+	k(J, J);
+	k(K, K);
+	k(L, L);
+	k(M, M);
+	k(N, N);
+	k(O, O);
+	k(P, P);
+	k(Q, Q);
+	k(R, R);
+	k(S, S);
+	k(T, T);
+	k(U, U);
+	k(V, V);
+	k(W, W);
+	k(X, X);
+	k(Y, Y);
+	k(Z, Z);
+	k(LEFT_CONTROL, LeftCtrl);
+	k(LEFT_ALT, LeftAlt);
+	k(LEFT_SHIFT, LeftShift);
+	k(ENTER, Return);
+	k(SPACE, Space);
+	k(ESCAPE, Escape);
+	default:
+		return Key::Unknown;
+	}
+#undef k
+}
+
+static void key_cb(GLFWwindow *window, int key, int, int action, int)
+{
+	KeyState state;
+	switch (action)
+	{
+	case GLFW_PRESS:
+		state = KeyState::Pressed;
+		break;
+
+	default:
+	case GLFW_RELEASE:
+		state = KeyState::Released;
+		break;
+
+	case GLFW_REPEAT:
+		state = KeyState::Repeat;
+		break;
+	}
+
+	auto gkey = glfw_key_to_granite(key);
+	auto *wsi = static_cast<WSI *>(glfwGetWindowUserPointer(window));
+	wsi->get_input_tracker().key_event(gkey, state);
+}
+
+static void button_cb(GLFWwindow *window, int button, int action, int)
+{
+	auto *wsi = static_cast<WSI *>(glfwGetWindowUserPointer(window));
+
+	MouseButton btn;
+	switch (button)
+	{
+	default:
+	case GLFW_MOUSE_BUTTON_LEFT:
+		btn = MouseButton::Left;
+		break;
+	case GLFW_MOUSE_BUTTON_RIGHT:
+		btn = MouseButton::Right;
+		break;
+	case GLFW_MOUSE_BUTTON_MIDDLE:
+		btn = MouseButton::Middle;
+		break;
+	}
+	wsi->get_input_tracker().mouse_button_event(btn, action == GLFW_PRESS);
+}
+
+static void cursor_cb(GLFWwindow *window, double x, double y)
+{
+	auto *wsi = static_cast<WSI *>(glfwGetWindowUserPointer(window));
+	wsi->get_input_tracker().mouse_move_event(x, y);
+}
+
+static void enter_cb(GLFWwindow *window, int entered)
+{
+	auto *wsi = static_cast<WSI *>(glfwGetWindowUserPointer(window));
+	if (entered)
+	{
+		double x, y;
+		glfwGetCursorPos(window, &x, &y);
+		wsi->get_input_tracker().mouse_enter(x, y);
+	}
+	else
+		wsi->get_input_tracker().mouse_leave();
 }
 #endif
 
@@ -251,6 +359,10 @@ out:
 #if defined(HAVE_GLFW)
 	glfwSetWindowUserPointer(window, this);
 	glfwSetFramebufferSizeCallback(window, fb_size_cb);
+	glfwSetKeyCallback(window, key_cb);
+	glfwSetMouseButtonCallback(window, button_cb);
+	glfwSetCursorPosCallback(window, cursor_cb);
+	glfwSetCursorEnterCallback(window, enter_cb);
 #endif
 
 	semaphore_manager.init(context->get_device());

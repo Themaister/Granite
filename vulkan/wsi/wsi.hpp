@@ -5,6 +5,7 @@
 #include "vulkan.hpp"
 #include "vulkan_symbol_wrapper.h"
 #include "timer.hpp"
+#include "input.hpp"
 
 #if defined(HAVE_GLFW)
 #include <GLFW/glfw3.h>
@@ -38,6 +39,11 @@ public:
 	bool begin_frame();
 	bool end_frame();
 
+	InputTracker &get_input_tracker()
+	{
+		return tracker;
+	}
+
 private:
 	std::unique_ptr<Context> context;
 #if defined(HAVE_GLFW)
@@ -59,6 +65,7 @@ private:
 	bool need_acquire = true;
 
 	Util::FrameTimer timer;
+	InputTracker tracker;
 	void poll_input();
 };
 }

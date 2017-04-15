@@ -41,7 +41,7 @@ public:
 	void key_event(Key key, KeyState state);
 	void mouse_button_event(MouseButton button, bool pressed);
 	void mouse_move_event(double x, double y);
-	void dispatch_current_state();
+	void dispatch_current_state(double delta_time);
 
 	void mouse_enter(double x, double y);
 	void mouse_leave();

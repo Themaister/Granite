@@ -26,7 +26,7 @@ void WSI::poll_input()
 #if defined(HAVE_GLFW)
 	glfwPollEvents();
 #endif
-	tracker.dispatch_current_state();
+	tracker.dispatch_current_state(timer.get_frame_time());
 }
 
 #if defined(HAVE_GLFW)
@@ -367,12 +367,13 @@ out:
 
 	semaphore_manager.init(context->get_device());
 	device.set_context(*context);
+	auto &em = Granite::EventManager::get_global();
+	em.enqueue_latched<DeviceCreatedEvent>(&device);
+
 	device.init_swapchain(swapchain_images, width, height, format);
 	this->width = width;
 	this->height = height;
 
-	auto &em = Granite::EventManager::get_global();
-	em.enqueue_latched<DeviceCreatedEvent>(&device);
 	return true;
 }
 
@@ -390,12 +391,12 @@ bool WSI::begin_frame()
 
 		if (result == VK_SUCCESS)
 		{
-			// Poll after acquire as well for optimal latency.
-			poll_input();
-
 			auto &em = Granite::EventManager::get_global();
 			auto frame_time = timer.frame();
 			auto elapsed_time = timer.get_elapsed();
+
+			// Poll after acquire as well for optimal latency.
+			poll_input();
 			em.dispatch_inline(FrameTickEvent{frame_time, elapsed_time});
 
 			release_semaphore = semaphore_manager.request_cleared_semaphore();

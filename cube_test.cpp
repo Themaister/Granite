@@ -79,9 +79,8 @@ int main()
 	wsi.init(1280, 720);
 
 	RenderContext context;
-	Camera cam;
-	cam.look_at(vec3(0.0f, -2.0f, 3.0f), vec3(0.0f));
-	cam.look_at(vec3(0.0f, -6.0f, 8.0f), vec3(0.0f));
+	FPSCamera cam;
+	cam.look_at(vec3(0.0f, 0.0f, 8.0f), vec3(0.0f));
 	context.set_camera(cam);
 
 	Scene scene;
@@ -103,6 +102,7 @@ int main()
 		Filesystem::get().poll_notifications();
 		wsi.begin_frame();
 
+		context.set_camera(cam);
 		visible.clear();
 		transform->rotation = normalize(rotate(transform->rotation, 0.01f, normalize(vec3(0.0f, 1.0f, 0.0f))));
 

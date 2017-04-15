@@ -111,9 +111,14 @@ class InputStateEvent : public Granite::Event
 public:
 	static constexpr Granite::EventType type_id = GRANITE_EVENT_TYPE_HASH(InputStateEvent);
 
-	InputStateEvent(double abs_x, double abs_y, uint64_t key_mask, uint8_t btn_mask, bool mouse_active)
-		: Granite::Event(type_id), abs_x(abs_x), abs_y(abs_y), key_mask(key_mask), btn_mask(btn_mask), mouse_active(mouse_active)
+	InputStateEvent(double abs_x, double abs_y, double delta_time, uint64_t key_mask, uint8_t btn_mask, bool mouse_active)
+		: Granite::Event(type_id), abs_x(abs_x), abs_y(abs_y), delta_time(delta_time), key_mask(key_mask), btn_mask(btn_mask), mouse_active(mouse_active)
 	{
+	}
+
+	double get_delta_time() const
+	{
+		return delta_time;
 	}
 
 	bool get_mouse_active() const
@@ -143,6 +148,7 @@ public:
 
 private:
 	double abs_x, abs_y;
+	double delta_time;
 	uint64_t key_mask;
 	uint8_t btn_mask;
 	bool mouse_active;

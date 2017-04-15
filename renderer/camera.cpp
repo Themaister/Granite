@@ -1,5 +1,8 @@
 #include "camera.hpp"
 #include "transforms.hpp"
+#include "vulkan_events.hpp"
+
+using namespace Vulkan;
 
 namespace Granite
 {
@@ -61,5 +64,48 @@ vec3 Camera::get_up() const
 {
 	static const vec3 up(0.0f, 1.0f, 0.0f);
 	return conjugate(rotation) * up;
+}
+
+FPSCamera::FPSCamera()
+{
+	EventManager::get_global().register_handler(MouseMoveEvent::type_id, &FPSCamera::on_mouse_move, this);
+	EventManager::get_global().register_handler(InputStateEvent::type_id, &FPSCamera::on_input_state, this);
+	EventManager::get_global().register_latch_handler(SwapchainParameterEvent::type_id, &FPSCamera::on_swapchain, &FPSCamera::on_swapchain, this);
+}
+
+void FPSCamera::on_swapchain(const Event &e)
+{
+	auto &state = e.as<SwapchainParameterEvent>();
+	set_aspect(float(state.get_width()) / state.get_height());
+}
+
+bool FPSCamera::on_input_state(const Event &e)
+{
+	auto &state = e.as<InputStateEvent>();
+
+	if (state.get_key_pressed(Key::W))
+		position += 3.0f * get_front() * float(state.get_delta_time());
+	else if (state.get_key_pressed(Key::S))
+		position -= 3.0f * get_front() * float(state.get_delta_time());
+	if (state.get_key_pressed(Key::D))
+		position += 3.0f * get_right() * float(state.get_delta_time());
+	else if (state.get_key_pressed(Key::A))
+		position -= 3.0f * get_right() * float(state.get_delta_time());
+	return true;
+}
+
+bool FPSCamera::on_mouse_move(const Event &e)
+{
+	auto &m = e.as<MouseMoveEvent>();
+	if (!m.get_mouse_button_pressed(MouseButton::Right))
+		return true;
+
+	auto dx = float(m.get_delta_x());
+	auto dy = float(m.get_delta_y());
+	quat pitch = angleAxis(dy * 0.02f, vec3(1.0f, 0.0f, 0.0f));
+	quat yaw = angleAxis(dx * 0.02f, vec3(0.0f, 1.0f, 0.0f));
+	rotation = normalize(pitch * rotation * yaw);
+
+	return true;
 }
 }

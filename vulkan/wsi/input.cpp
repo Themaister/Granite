@@ -52,9 +52,9 @@ void InputTracker::mouse_leave()
 	mouse_active = false;
 }
 
-void InputTracker::dispatch_current_state()
+void InputTracker::dispatch_current_state(double delta_time)
 {
-	EventManager::get_global().dispatch_inline(InputStateEvent{last_mouse_x, last_mouse_y, key_state, mouse_button_state, mouse_active});
+	EventManager::get_global().dispatch_inline(InputStateEvent{last_mouse_x, last_mouse_y, delta_time, key_state, mouse_button_state, mouse_active});
 }
 
 }

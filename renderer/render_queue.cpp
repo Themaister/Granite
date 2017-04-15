@@ -133,6 +133,14 @@ void *RenderQueue::allocate(size_t size, size_t alignment)
 	return data;
 }
 
+uint64_t RenderInfo::get_background_sort_key(Queue queue_type, Util::Hash pipeline_hash)
+{
+	if (queue_type == Queue::Transparent)
+		return pipeline_hash & 0xffffffffu;
+	else
+		return (UINT64_MAX << 32) | (pipeline_hash & 0xffffffffu);
+}
+
 uint64_t RenderInfo::get_sort_key(const RenderContext &context, Queue queue_type, Util::Hash pipeline_hash,
                                   const vec3 &center)
 {

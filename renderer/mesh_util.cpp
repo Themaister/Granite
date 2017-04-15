@@ -2,6 +2,9 @@
 #include "device.hpp"
 #include "material_util.hpp"
 #include "material_manager.hpp"
+#include "render_context.hpp"
+#include "shader_suite.hpp"
+#include "renderer.hpp"
 
 using namespace Vulkan;
 using namespace Util;
@@ -144,6 +147,71 @@ void CubeMesh::on_device_created(const Event &event)
 void CubeMesh::on_device_destroyed(const Event &)
 {
 	reset();
+}
+
+Skybox::Skybox(std::string bg_path)
+	: bg_path(move(bg_path))
+{
+	EventManager::get_global().register_latch_handler(DeviceCreatedEvent::type_id,
+	                                                  &Skybox::on_device_created,
+	                                                  &Skybox::on_device_destroyed,
+	                                                  this);
+}
+
+struct SkyboxRenderInfo : RenderInfo
+{
+	Program *program;
+	const ImageView *view;
+	const Sampler *sampler;
+};
+
+static void skybox_render(CommandBuffer &cmd, const RenderInfo **infos, unsigned instances)
+{
+	assert(instances == 1);
+	auto *info = static_cast<const SkyboxRenderInfo *>(infos[0]);
+
+	cmd.set_program(*info->program);
+	cmd.set_texture(2, 0, *info->view, *info->sampler);
+
+	int8_t *coord = static_cast<int8_t *>(cmd.allocate_vertex_data(0, 8, 2));
+	coord[0] = -128;
+	coord[1] = -128;
+	coord[2] = +127;
+	coord[3] = -128;
+	coord[4] = -128;
+	coord[5] = +127;
+	coord[6] = +127;
+	coord[7] = +127;
+	cmd.set_vertex_attrib(0, 0, VK_FORMAT_R8G8_SNORM, 0);
+
+	cmd.set_cull_mode(VK_CULL_MODE_NONE);
+	cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
+	cmd.draw(4);
+}
+
+void Skybox::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *,
+                             RenderQueue &queue) const
+{
+	auto &info = queue.emplace<SkyboxRenderInfo>(Queue::Opaque);
+	info.view = &texture->get_image()->get_view();
+
+	Hasher h;
+	h.pointer(info.view);
+	info.instance_key = h.get();
+	info.sorting_key = RenderInfo::get_background_sort_key(Queue::Opaque, 0);
+	info.render = skybox_render;
+	info.sampler = &context.get_device().get_stock_sampler(StockSampler::LinearClamp);
+	info.program = queue.get_shader_suites()[ecast(RenderableType::Skybox)].get_program(MeshDrawPipeline::Opaque, 0, 0).get();
+}
+
+void Skybox::on_device_created(const Event &event)
+{
+	texture = event.as<DeviceCreatedEvent>().get_device().get_texture_manager().request_texture(bg_path);
+}
+
+void Skybox::on_device_destroyed(const Event &)
+{
+	texture = nullptr;
 }
 
 }

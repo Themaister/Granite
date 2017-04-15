@@ -29,6 +29,12 @@ static void gather_visible_renderables(const Frustum &frustum, VisibilityList &l
 	}
 }
 
+void Scene::gather_background_renderables(VisibilityList &list)
+{
+	for (auto &background : backgrounds)
+		list.push_back({ get<1>(background)->renderable, nullptr });
+}
+
 void Scene::gather_visible_opaque_renderables(const Frustum &frustum, VisibilityList &list)
 {
 	gather_visible_renderables(frustum, list, opaque);

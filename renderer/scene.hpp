@@ -24,6 +24,7 @@ public:
 	void gather_visible_opaque_renderables(const Frustum &frustum, VisibilityList &list);
 	void gather_visible_transparent_renderables(const Frustum &frustum, VisibilityList &list);
 	void gather_visible_shadow_renderables(const Frustum &frustum, VisibilityList &list);
+	void gather_background_renderables(VisibilityList &list);
 
 private:
 	EntityPool pool;

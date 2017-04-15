@@ -6,6 +6,13 @@
 
 namespace Granite
 {
+enum class RenderableType
+{
+	Mesh,
+	Skybox,
+	Count
+};
+
 class Renderer : public EventHandler
 {
 public:
@@ -17,6 +24,6 @@ private:
 	void on_device_destroyed(const Event &e);
 	Vulkan::Device *device = nullptr;
 	RenderQueue queue;
-	ShaderSuite suite;
+	ShaderSuite suite[Util::ecast(RenderableType::Count)];
 };
 }

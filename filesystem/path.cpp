@@ -7,6 +7,16 @@ namespace Granite
 {
 namespace Path
 {
+bool is_abspath(const string &path)
+{
+	if (path.empty())
+		return false;
+	if (path.front() == '/')
+		return true;
+
+	return path.find("://") != string::npos;
+}
+
 string join(const string &base, const string &path)
 {
 	if (base.empty())
@@ -14,7 +24,7 @@ string join(const string &base, const string &path)
 	if (path.empty())
 		return base;
 
-	if (path.front() == '/')
+	if (is_abspath(path))
 		return path;
 
 	auto index = base.find_last_of('/');

@@ -1,6 +1,7 @@
 #include "mesh.hpp"
 #include "shader_suite.hpp"
 #include "render_context.hpp"
+#include "renderer.hpp"
 #include <string.h>
 
 using namespace Util;
@@ -60,6 +61,7 @@ void static_mesh_render(CommandBuffer &cmd, const RenderInfo **infos, unsigned i
 			cmd.set_texture(2, i, *info->views[i], *info->sampler);
 
 	cmd.push_constants(&info->fragment, 0, sizeof(info->fragment));
+	cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 
 	unsigned to_render = 0;
 	for (unsigned i = 0; i < instances; i += to_render)
@@ -123,7 +125,7 @@ void StaticMesh::get_render_info(const RenderContext &context, const CachedSpati
 			textures |= 1u << i;
 	}
 
-	info.program = queue.get_shader_suite()->get_program(pipeline, attrs, textures).get();
+	info.program = queue.get_shader_suites()[ecast(RenderableType::Mesh)].get_program(pipeline, attrs, textures).get();
 	Hasher h;
 	h.pointer(info.program);
 	h.u32(ecast(pipeline));

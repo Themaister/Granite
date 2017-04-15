@@ -8,6 +8,7 @@ layout(set = 0, binding = 0, std140) uniform RenderParameters
 	mat4 inv_projection;
 	mat4 inv_view;
 	mat4 inv_view_projection;
+	mat4 inv_local_view_projection;
 
 	vec3 camera_position;
 	vec3 camera_front;

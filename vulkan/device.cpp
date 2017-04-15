@@ -240,6 +240,7 @@ void Device::init_stock_samplers()
 {
 	SamplerCreateInfo info = {};
 	info.maxLod = VK_LOD_CLAMP_NONE;
+	info.maxAnisotropy = 1.0f;
 
 	for (unsigned i = 0; i < static_cast<unsigned>(StockSampler::Count); i++)
 	{
@@ -1118,6 +1119,7 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 			uint32_t blocks_x = row_length;
 			uint32_t blocks_y = array_height;
 			format_num_blocks(create_info.format, blocks_x, blocks_y);
+			format_align_dim(create_info.format, row_length, array_height);
 
 			VkDeviceSize size =
 			    format_block_size(create_info.format) * create_info.layers * extent.depth * blocks_x * blocks_y;

@@ -44,6 +44,7 @@ struct RenderInfo
 	~RenderInfo() = default;
 
 	static uint64_t get_sort_key(const RenderContext &context, Queue queue_type, Util::Hash pipeline_hash, const vec3 &center);
+	static uint64_t get_background_sort_key(Queue queue_type, Util::Hash pipeline_hash);
 };
 
 class RenderQueue
@@ -99,14 +100,14 @@ public:
 	void dispatch(Queue queue, Vulkan::CommandBuffer &cmd);
 	void dispatch(Queue queue, Vulkan::CommandBuffer &cmd, size_t begin, size_t end);
 
-	void set_shader_suite(ShaderSuite *suite)
+	void set_shader_suites(ShaderSuite *suite)
 	{
-		shader_suite = suite;
+		shader_suites = suite;
 	}
 
-	ShaderSuite *get_shader_suite() const
+	ShaderSuite *get_shader_suites() const
 	{
-		return shader_suite;
+		return shader_suites;
 	}
 
 private:
@@ -151,6 +152,6 @@ private:
 	void *allocate_from_block(Block &block, size_t size, size_t alignment);
 	Chain::iterator insert_block();
 
-	ShaderSuite *shader_suite = nullptr;
+	ShaderSuite *shader_suites = nullptr;
 };
 }

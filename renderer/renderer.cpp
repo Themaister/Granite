@@ -3,6 +3,7 @@
 #include "render_context.hpp"
 
 using namespace Vulkan;
+using namespace Util;
 
 namespace Granite
 {
@@ -19,7 +20,8 @@ void Renderer::on_device_created(const Event &e)
 {
 	auto &created = e.as<DeviceCreatedEvent>();
 	auto &device = created.get_device();
-	suite.init_graphics(&device.get_shader_manager(), "assets://shaders/static_mesh.vert", "assets://shaders/static_mesh.frag");
+	suite[ecast(RenderableType::Mesh)].init_graphics(&device.get_shader_manager(), "assets://shaders/static_mesh.vert", "assets://shaders/static_mesh.frag");
+	suite[ecast(RenderableType::Skybox)].init_graphics(&device.get_shader_manager(), "assets://shaders/skybox.vert", "assets://shaders/skybox.frag");
 	this->device = &device;
 }
 
@@ -33,7 +35,7 @@ void Renderer::render(CommandBuffer &cmd, RenderContext &context, const Visibili
 	*global = context.get_render_parameters();
 
 	queue.reset();
-	queue.set_shader_suite(&suite);
+	queue.set_shader_suites(suite);
 	for (auto &vis : visible)
 		vis.renderable->get_render_info(context, vis.transform, queue);
 	queue.sort();

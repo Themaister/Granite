@@ -23,7 +23,9 @@ int main()
 
 	Scene scene;
 	auto cube = Util::make_abstract_handle<AbstractRenderable, CubeMesh>();
+	auto skybox = Util::make_abstract_handle<AbstractRenderable, Skybox>("assets://textures/skybox.ktx");
 	auto entity = scene.create_renderable(cube);
+	scene.create_renderable(skybox);
 	auto *transform = entity->get_component<SpatialTransformComponent>();
 
 	entity = scene.create_renderable(cube);
@@ -46,6 +48,7 @@ int main()
 
 		scene.update_cached_transforms();
 		scene.gather_visible_opaque_renderables(context.get_visibility_frustum(), visible);
+		scene.gather_background_renderables(visible);
 
 		auto cmd = device.request_command_buffer();
 		auto rp = device.get_swapchain_render_pass(SwapchainRenderPass::DepthStencil);

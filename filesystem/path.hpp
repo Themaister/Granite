@@ -13,5 +13,6 @@ std::pair<std::string, std::string> split(const std::string &path);
 std::string relpath(const std::string &base, const std::string &path);
 std::string ext(const std::string &path);
 std::pair<std::string, std::string> protocol_split(const std::string &path);
+bool is_abspath(const std::string &path);
 }
 }

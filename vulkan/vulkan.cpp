@@ -277,6 +277,8 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 			enabled_features.textureCompressionASTC_LDR = VK_TRUE;
 		if (features.fullDrawIndexUint32)
 			enabled_features.fullDrawIndexUint32 = VK_TRUE;
+		if (features.imageCubeArray)
+			enabled_features.imageCubeArray = VK_TRUE;
 	}
 
 	device_info.pEnabledFeatures = &enabled_features;

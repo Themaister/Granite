@@ -1,6 +1,7 @@
 #include "gltf.hpp"
 #include "vulkan.hpp"
 #include "filesystem.hpp"
+#include "mesh.hpp"
 #include <unordered_map>
 
 #define RAPIDJSON_ASSERT(x) do { if (!(x)) throw "JSON error"; } while(0)
@@ -9,53 +10,12 @@
 using namespace std;
 using namespace rapidjson;
 using namespace Granite;
+using namespace Util;
 
 namespace GLTF
 {
-using Buffer = std::vector<uint8_t>;
 
-struct BufferView
-{
-	uint32_t buffer_index;
-	uint32_t offset;
-	uint32_t length;
-	uint32_t target;
-};
-
-enum class ScalarType
-{
-	Float32,
-	Int32,
-	Uint32,
-	Int16,
-	Uint16,
-	Int8,
-	Uint8,
-	Int16Snorm,
-	Uint16Unorm,
-	Int8Snorm,
-	Uint8Unorm
-};
-
-struct Accessor
-{
-	uint32_t view;
-	uint32_t offset;
-	uint32_t count;
-	uint32_t stride;
-
-	VkFormat format;
-	ScalarType type;
-	uint32_t components;
-
-	union
-	{
-		float f32;
-		uint32_t u32;
-	} min[16], max[16];
-};
-
-static Buffer read_buffer(const string &path, uint64_t length)
+Parser::Buffer Parser::read_buffer(const string &path, uint64_t length)
 {
 	auto file = Filesystem::get().open(path);
 	if (!file)
@@ -96,7 +56,7 @@ Parser::Parser(const std::string &path)
 #define GL_UNSIGNED_INT                   0x1405
 #define GL_FLOAT                          0x1406
 
-static VkFormat components_to_format(ScalarType type, uint32_t components)
+VkFormat Parser::components_to_format(ScalarType type, uint32_t components)
 {
 	switch (type)
 	{
@@ -161,7 +121,7 @@ static VkFormat components_to_format(ScalarType type, uint32_t components)
 	}
 }
 
-static uint32_t type_stride(ScalarType type)
+uint32_t Parser::type_stride(ScalarType type)
 {
 	switch (type)
 	{
@@ -187,8 +147,8 @@ static uint32_t type_stride(ScalarType type)
 	}
 }
 
-static void resolve_component_type(uint32_t component_type, const char *type, bool normalized,
-                                   VkFormat &format, ScalarType &scalar_type, uint32_t &components, uint32_t &stride)
+void Parser::resolve_component_type(uint32_t component_type, const char *type, bool normalized,
+                                    VkFormat &format, ScalarType &scalar_type, uint32_t &components, uint32_t &stride)
 {
 	if (!strcmp(type, "SCALAR"))
 		components = 1;
@@ -250,50 +210,127 @@ static void resolve_component_type(uint32_t component_type, const char *type, bo
 	format = components_to_format(scalar_type, components);
 }
 
+static uint32_t get_by_name(const unordered_map<string, uint32_t> &map, const string &v)
+{
+	auto itr = map.find(v);
+	if (itr == end(map))
+		throw runtime_error("Accessor does not exist.");
+	return itr->second;
+}
+
+template <typename T>
+static void iterate_elements(const Value &value, const T &t, unordered_map<string, uint32_t> &map)
+{
+	if (value.IsArray())
+	{
+		for (auto itr = value.Begin(); itr != value.End(); ++itr)
+		{
+			t(*itr);
+		}
+	}
+	else
+	{
+		for (auto itr = value.MemberBegin(); itr != value.MemberEnd(); ++itr)
+		{
+			auto size = map.size();
+			map[itr->name.GetString()] = size;
+			t(itr->value);
+		}
+	}
+}
+
+template <typename T>
+static void read_min_max(T &out, ScalarType type, const Value &v)
+{
+	switch (type)
+	{
+	case ScalarType::Float32:
+		out.f32 = v.GetFloat();
+		break;
+
+	case ScalarType::Int8:
+	case ScalarType::Int16:
+	case ScalarType::Int32:
+		out.i32 = v.GetInt();
+		break;
+
+	case ScalarType::Uint8:
+	case ScalarType::Uint16:
+	case ScalarType::Uint32:
+		out.i32 = v.GetInt();
+		break;
+
+	case ScalarType::Int8Snorm:
+		out.f32 = clamp(float(v.GetInt()) / 0x7f, -1.0f, 1.0f);
+		break;
+	case ScalarType::Int16Snorm:
+		out.f32 = clamp(float(v.GetInt()) / 0x7fff, -1.0f, 1.0f);
+		break;
+	case ScalarType::Uint8Unorm:
+		out.f32 = clamp(float(v.GetUint()) / 0xff, 0.0f, 1.0f);
+		break;
+	case ScalarType::Uint16Unorm:
+		out.f32 = clamp(float(v.GetUint()) / 0xffff, 0.0f, 1.0f);
+		break;
+	}
+}
+
+static MeshAttribute semantic_to_attribute(const char *semantic)
+{
+	if (!strcmp(semantic, "POSITION"))
+		return MeshAttribute::Position;
+	else if (!strcmp(semantic, "NORMAL"))
+		return MeshAttribute::Normal;
+	else if (!strcmp(semantic, "TEXCOORD_0"))
+		return MeshAttribute::UV;
+	else
+		throw logic_error("Unsupported semantic.");
+}
+
+static VkPrimitiveTopology gltf_topology(const char *top)
+{
+	if (!strcmp(top, "TRIANGLES"))
+		return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	else if (!strcmp(top, "TRIANGLE_STRIP"))
+		return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+	else if (!strcmp(top, "TRIANGLE_FAN"))
+		return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN;
+	else if (!strcmp(top, "POINTS"))
+		return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
+	else if (!strcmp(top, "LINES"))
+		return VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+	else if (!strcmp(top, "LINE_STRIP"))
+		return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
+	else
+		throw logic_error("Unrecognized primitive mode.");
+}
+
 void Parser::parse(const string &original_path, const string &json)
 {
 	Document doc;
 	doc.Parse(json);
 
-	vector<Buffer> json_buffers;
-	unordered_map<string, uint32_t> json_buffer_map;
-	const auto get_buffer_index_by_name = [&](const string &v) -> uint32_t {
-		auto itr = json_buffer_map.find(v);
-		if (itr == end(json_buffer_map))
-			throw runtime_error("Buffer does not exist.");
-		return itr->second;
-	};
-
 	const auto add_buffer = [&](const Value &buf) {
 		const char *uri = buf["uri"].GetString();
 		auto length = buf["byteLength"].GetInt64();
 		auto path = Path::relpath(original_path, uri);
+
 		json_buffers.push_back(read_buffer(path, length));
 	};
 
-	vector<BufferView> json_views;
-	unordered_map<string, uint32_t> json_view_map;
 	const auto add_view = [&](const Value &view) {
 		auto &buf = view["buffer"];
-		auto buffer_index = buf.IsString() ? get_buffer_index_by_name(buf.GetString()) : buf.GetUint();
+		auto buffer_index = buf.IsString() ? get_by_name(json_buffer_map, buf.GetString()) : buf.GetUint();
 		auto offset = view["byteOffset"].GetUint();
 		auto length = view["byteLength"].GetUint();
 		auto target = view["target"].GetUint();
+
 		json_views.push_back({buffer_index, offset, length, target});
 	};
 
-	const auto get_buffer_view_by_name = [&](const string &v) -> uint32_t {
-		auto itr = json_view_map.find(v);
-		if (itr == end(json_view_map))
-			throw runtime_error("BufferView does not exist.");
-		return itr->second;
-	};
-
-	vector<Accessor> json_accessors;
-	unordered_map<string, uint32_t> json_accessor_map;
 	const auto add_accessor = [&](const Value &accessor) {
 		auto &view = accessor["bufferView"];
-		auto view_index = view.IsString() ? get_buffer_view_by_name(view.GetString()) : view.GetUint();
+		auto view_index = view.IsString() ? get_by_name(json_view_map, view.GetString()) : view.GetUint();
 
 		auto offset = accessor["byteOffset"].GetUint();
 		auto component_type = accessor["componentType"].GetUint();
@@ -316,7 +353,7 @@ void Parser::parse(const string &original_path, const string &json)
 		for (auto itr = accessor["min"].Begin(); itr != accessor["min"].End(); ++itr)
 		{
 			assert(minimums - acc.min < 16);
-			minimums->f32 = itr->GetFloat();
+			read_min_max(*minimums, acc.type, *itr);
 			minimums++;
 		}
 
@@ -324,80 +361,71 @@ void Parser::parse(const string &original_path, const string &json)
 		for (auto itr = accessor["max"].Begin(); itr != accessor["max"].End(); ++itr)
 		{
 			assert(maximums - acc.max < 16);
-			maximums->f32 = itr->GetFloat();
+			read_min_max(*maximums, acc.type, *itr);
 			maximums++;
 		}
+
 		json_accessors.push_back(acc);
 	};
 
-	const auto get_accessor_by_name = [&](const string &v) -> uint32_t {
-		auto itr = json_accessor_map.find(v);
-		if (itr == end(json_accessor_map))
-			throw runtime_error("Accessor does not exist.");
-		return itr->second;
+	const auto parse_primitive = [&](const Value &primitive) -> MeshData::AttributeData {
+		MeshData::AttributeData attr = {};
+		if (primitive.HasMember("indices"))
+		{
+			attr.index_buffer.active = true;
+			auto &indices = primitive["indices"];
+			attr.index_buffer.accessor_index = indices.IsString() ? get_by_name(json_accessor_map, indices.GetString()) : indices.GetUint();
+		}
+
+		attr.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+		if (primitive.HasMember("mode"))
+		{
+			auto &top = primitive["mode"];
+			if (top.IsString())
+				attr.topology = gltf_topology(top.GetString());
+			else
+			{
+				static const VkPrimitiveTopology topologies[] = {
+					VK_PRIMITIVE_TOPOLOGY_POINT_LIST,
+				    VK_PRIMITIVE_TOPOLOGY_LINE_LIST,
+					VK_PRIMITIVE_TOPOLOGY_LINE_STRIP, // Loop not supported in Vulkan it seems.
+					VK_PRIMITIVE_TOPOLOGY_LINE_STRIP,
+					VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+					VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
+					VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN,
+				};
+				attr.topology = topologies[top.GetUint()];
+			};
+		}
+
+		auto &attrs = primitive["attributes"];
+		for (auto itr = attrs.MemberBegin(); itr != attrs.MemberEnd(); ++itr)
+		{
+			auto *semantic = itr->name.GetString();
+			uint32_t accessor_index = itr->value.IsString() ? get_by_name(json_accessor_map, itr->value.GetString()) : itr->value.GetUint();
+			MeshAttribute attribute = semantic_to_attribute(semantic);
+
+			attr.attributes[ecast(attribute)].accessor_index = accessor_index;
+			attr.attributes[ecast(attribute)].active = true;
+		}
+
+		return attr;
 	};
 
-	auto &buffers = doc["buffers"];
-	if (buffers.IsArray())
-	{
-		for (auto itr = buffers.Begin(); itr != buffers.End(); ++itr)
+	const auto add_mesh = [&](const Value &mesh) {
+		auto &prims = mesh["primitives"];
+		for (auto itr = prims.Begin(); itr != prims.End(); ++itr)
 		{
-			auto &buf = *itr;
-			add_buffer(buf);
-			const char *uri = buf["uri"].GetString();
-			auto length = buf["byteLength"].GetInt64();
-			auto path = Path::relpath(original_path, uri);
-			json_buffers.push_back(read_buffer(path, length));
+			MeshData data;
+			data.primitives.push_back(parse_primitive(*itr));
+			json_meshes.push_back(data);
 		}
-	}
-	else
-	{
-		for (auto itr = buffers.MemberBegin(); itr != buffers.MemberEnd(); ++itr)
-		{
-			auto &buf = itr->value;
-			json_buffer_map[itr->name.GetString()] = json_buffers.size();
-			add_buffer(buf);
-		}
-	}
+	};
 
-	auto &views = doc["bufferViews"];
-	if (views.IsArray())
-	{
-		for (auto itr = views.Begin(); itr != views.End(); ++itr)
-		{
-			auto &view = *itr;
-			add_view(view);
-		}
-	}
-	else
-	{
-		for (auto itr = views.MemberBegin(); itr != views.MemberEnd(); ++itr)
-		{
-			auto &view = itr->value;
-			json_view_map[itr->name.GetString()] = json_views.size();
-			add_view(view);
-		}
-	}
-
-	auto &accessors = doc["accessors"];
-	if (accessors.IsArray())
-	{
-		for (auto itr = accessors.Begin(); itr != accessors.End(); ++itr)
-		{
-			auto &accessor = *itr;
-			add_accessor(accessor);
-		}
-	}
-	else
-	{
-		for (auto itr = accessors.MemberBegin(); itr != accessors.MemberEnd(); ++itr)
-		{
-			auto &accessor = itr->value;
-			json_accessor_map[itr->name.GetString()] = json_accessors.size();
-			add_accessor(accessor);
-		}
-	}
-
+	iterate_elements(doc["buffers"], add_buffer, json_buffer_map);
+	iterate_elements(doc["bufferViews"], add_view, json_view_map);
+	iterate_elements(doc["accessors"], add_accessor, json_accessor_map);
+	iterate_elements(doc["meshes"], add_mesh, json_mesh_map);
 }
 
 }

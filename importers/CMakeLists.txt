@@ -1,6 +1,6 @@
 add_library(importers STATIC
         gltf.cpp gltf.hpp)
-target_link_libraries(importers math util filesystem renderer)
+target_link_libraries(importers math util filesystem renderer vulkan-backend)
 target_include_directories(importers PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_options(importers PRIVATE ${GRANITE_CXX_FLAGS})
 

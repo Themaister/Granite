@@ -6,6 +6,7 @@
 #include "mesh_util.hpp"
 #include "renderer.hpp"
 #include "material_manager.hpp"
+#include "gltf.hpp"
 
 using namespace Vulkan;
 using namespace Granite;
@@ -13,6 +14,8 @@ using namespace Util;
 
 int main()
 {
+	GLTF::Parser parser("assets://scenes/test.gltf");
+
 	Vulkan::WSI wsi;
 	wsi.init(1280, 720);
 

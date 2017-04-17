@@ -13,15 +13,15 @@ layout(location = 1) in mediump vec3 vNormal;
 layout(location = 2) in mediump vec3 vTangent;
 #endif
 
-#if HAVE_BASECOLORMAP
+#if defined(HAVE_BASECOLORMAP) && HAVE_BASECOLORMAP
 layout(set = 2, binding = 0) uniform sampler2D uBaseColormap;
 #endif
 
-#if HAVE_NORMALMAP
+#if defined(HAVE_NORMALMAP) && HAVE_NORMALMAP
 layout(set = 2, binding = 1) uniform sampler2D uNormalmap;
 #endif
 
-#if HAVE_METALLICROUGHNESSMAP
+#if defined(HAVE_METALLICROUGHNESSMAP) && HAVE_METALLICROUGHNESSMAP
 layout(set = 2, binding = 2) uniform sampler2D uMetallicRoughnessmap;
 #endif
 
@@ -37,7 +37,7 @@ layout(location = 0) out vec4 FragColor;
 
 void main()
 {
-#if HAVE_BASECOLORMAP
+#if defined(HAVE_BASECOLORMAP) && HAVE_BASECOLORMAP
     vec4 base_color = texture(uBaseColormap, vUV);
     #if defined(ALPHA_TEST) && !defined(ALPHA_TEST_ALPHA_TO_COVERAGE)
         if (base_color.a < 0.5)
@@ -47,7 +47,7 @@ void main()
     vec4 base_color = registers.base_color;
 #endif
 
-#if HAVE_NORMAL
+#if defined(HAVE_NORMAL) && HAVE_NORMAL
     vec3 normal = normalize(vNormal);
     #if HAVE_NORMALMAP
         vec3 tangent = normalize(vTangent);
@@ -57,7 +57,7 @@ void main()
     #endif
 #endif
 
-#if HAVE_METALLICROUGHNESSMAP
+#if defined(HAVE_METALLICROUGHNESSMAP) && HAVE_METALLICROUGHNESSMAP
     vec2 mr = texture(uMetallicRoughnessmap, vUV).xy;
     float metallic = mr.x;
     float roughness = mr.y;

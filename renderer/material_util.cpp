@@ -16,6 +16,7 @@ StockMaterials &StockMaterials::get()
 
 StockMaterials::StockMaterials()
 {
+	checkerboard = Util::make_handle<Material>();
 	EventManager::get_global().register_latch_handler(DeviceCreatedEvent::type_id,
 	                                                  &StockMaterials::on_device_created,
 	                                                  &StockMaterials::on_device_destroyed,
@@ -32,9 +33,7 @@ void StockMaterials::on_device_created(const Event &event)
 	auto &created = event.as<DeviceCreatedEvent>();
 	auto &manager = created.get_device().get_texture_manager();
 
-	if (!checkerboard)
-		checkerboard = Util::make_handle<Material>();
-	checkerboard->textures[Util::ecast(Material::Textures::Albedo)] = manager.request_texture("assets://textures/checkerboard.png");
+	checkerboard->textures[Util::ecast(Material::Textures::BaseColor)] = manager.request_texture("assets://textures/checkerboard.png");
 	checkerboard->emissive = 0.0f;
 	checkerboard->metallic = 0.0f;
 	checkerboard->roughness = 1.0f;

@@ -37,7 +37,7 @@ struct StaticMeshVertex
 
 struct StaticMeshFragment
 {
-	vec4 albedo;
+	vec4 base_color;
 	float emissive;
 	float roughness;
 	float metallic;
@@ -51,6 +51,7 @@ struct StaticMeshInfo : RenderInfo
 	const Vulkan::ImageView *views[Util::ecast(Material::Textures::Count)];
 	const Vulkan::Sampler *sampler;
 	Vulkan::Program *program;
+	VkPrimitiveTopology topology;
 
 	MeshAttributeLayout attributes[Util::ecast(MeshAttribute::Count)];
 
@@ -82,6 +83,7 @@ struct StaticMesh : AbstractRenderable
 	uint32_t position_stride = 0;
 	uint32_t attribute_stride = 0;
 	VkIndexType index_type = VK_INDEX_TYPE_UINT16;
+	VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
 	MeshAttributeLayout attributes[Util::ecast(MeshAttribute::Count)];
 

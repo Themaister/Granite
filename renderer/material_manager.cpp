@@ -33,22 +33,22 @@ void MaterialFile::update(const void *data, size_t size)
 
 		auto &mat = doc["material"];
 
-		if (mat.HasMember("albedo"))
+		if (mat.HasMember("base_color"))
 		{
-			auto &albedo = mat["albedo"];
-			paths[ecast(Material::Textures::Albedo)].clear();
-			if (albedo.IsString())
-				paths[ecast(Material::Textures::Albedo)] = albedo.GetString();
-			else if (albedo.IsArray())
+			auto &base = mat["base_color"];
+			paths[ecast(Material::Textures::BaseColor)].clear();
+			if (base.IsString())
+				paths[ecast(Material::Textures::BaseColor)] = base.GetString();
+			else if (base.IsArray())
 			{
 				for (unsigned i = 0; i < 4; i++)
-					this->albedo[i] = albedo[i].GetFloat();
+					this->base_color[i] = base[i].GetFloat();
 			}
 			else
-				this->albedo = vec4(1.0f, 0.5f, 0.5f, 1.0f);
+				this->base_color = vec4(1.0f, 0.5f, 0.5f, 1.0f);
 		}
 		else
-			this->albedo = vec4(1.0f, 0.5f, 0.5f, 1.0f);
+			this->base_color = vec4(1.0f, 0.5f, 0.5f, 1.0f);
 
 		if (mat.HasMember("normal"))
 		{
@@ -58,21 +58,31 @@ void MaterialFile::update(const void *data, size_t size)
 				paths[ecast(Material::Textures::Normal)] = normal.GetString();
 		}
 
-		if (mat.HasMember("roughness"))
+		if (mat.HasMember("metallic_roughness"))
 		{
-			auto &roughness = mat["roughness"];
-			paths[ecast(Material::Textures::Roughness)].clear();
-			if (roughness.IsString())
-				paths[ecast(Material::Textures::Roughness)] = roughness.GetString();
-			else if (roughness.IsFloat())
-				this->roughness = roughness.GetFloat();
+			auto &mr = mat["metallic_roughness"];
+			paths[ecast(Material::Textures::MetallicRoughness)].clear();
+			if (mr.IsString())
+				paths[ecast(Material::Textures::MetallicRoughness)] = mr.GetString();
+			else if (mr.IsArray())
+			{
+				this->metallic = mr[0].GetFloat();
+				this->roughness = mr[1].GetFloat();
+			}
 			else
+			{
+				this->metallic = 0.0f;
 				this->roughness = 1.0f;
+			}
 
+			assert(this->metallic >= 0.0f && this->metallic <= 1.0f);
 			assert(this->roughness >= 0.0f && this->roughness <= 1.0f);
 		}
 		else
+		{
+			this->metallic = 0.0f;
 			this->roughness = 1.0f;
+		}
 
 		if (mat.HasMember("emissive"))
 		{
@@ -86,22 +96,6 @@ void MaterialFile::update(const void *data, size_t size)
 		}
 		else
 			this->emissive = 0.0f;
-
-		if (mat.HasMember("metallic"))
-		{
-			auto &metallic = mat["metallic"];
-			paths[ecast(Material::Textures::Metallic)].clear();
-			if (metallic.IsString())
-				paths[ecast(Material::Textures::Metallic)] = metallic.GetString();
-			else if (metallic.IsFloat())
-				this->metallic = metallic.GetFloat();
-			else
-				this->metallic = 0.0f;
-
-			assert(this->metallic >= 0.0f && this->metallic <= 1.0f);
-		}
-		else
-			this->metallic = 0.0f;
 	}
 	catch (const char *)
 	{

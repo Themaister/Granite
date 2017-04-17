@@ -14,14 +14,13 @@ struct Material : public Util::IntrusivePtrEnabled<Material>
 
 	enum class Textures : unsigned
 	{
-		Albedo = 0,
+		BaseColor = 0,
 		Normal = 1,
-		Roughness = 2,
-		Metallic = 3,
+		MetallicRoughness = 2,
 		Count
 	};
 	Vulkan::Texture *textures[Util::ecast(Textures::Count)];
-	vec4 albedo;
+	vec4 base_color;
 	float emissive = 0.0f;
 	float roughness = 0.0f;
 	float metallic = 0.0f;

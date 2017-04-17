@@ -14,6 +14,7 @@ Hash StaticMesh::get_instance_key() const
 	Hasher h;
 	h.u64(vbo_position->get_cookie());
 	h.u32(position_stride);
+	h.u32(topology);
 	if (vbo_attributes)
 	{
 		h.u64(vbo_attributes->get_cookie());
@@ -61,7 +62,12 @@ void static_mesh_render(CommandBuffer &cmd, const RenderInfo **infos, unsigned i
 			cmd.set_texture(2, i, *info->views[i], *info->sampler);
 
 	cmd.push_constants(&info->fragment, 0, sizeof(info->fragment));
-	cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+	cmd.set_primitive_topology(info->topology);
+
+	if (info->ibo && (info->topology == VK_PRIMITIVE_TOPOLOGY_LINE_STRIP || info->topology == VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP))
+		cmd.set_primitive_restart(true);
+	else
+		cmd.set_primitive_restart(false);
 
 	unsigned to_render = 0;
 	for (unsigned i = 0; i < instances; i += to_render)
@@ -73,10 +79,7 @@ void static_mesh_render(CommandBuffer &cmd, const RenderInfo **infos, unsigned i
 			vertex_data[j] = static_cast<const StaticMeshInfo *>(infos[i + j])->vertex;
 
 		if (info->ibo)
-		{
-			cmd.set_primitive_restart(true);
 			cmd.draw_indexed(info->count, to_render, info->ibo_offset, info->vertex_offset, 0);
-		}
 		else
 			cmd.draw(info->count, to_render, info->vertex_offset, 0);
 	}
@@ -106,9 +109,10 @@ void StaticMesh::get_render_info(const RenderContext &context, const CachedSpati
 	info.fragment.roughness = material->roughness;
 	info.fragment.metallic = material->metallic;
 	info.fragment.emissive = material->emissive;
-	info.fragment.albedo = material->albedo;
+	info.fragment.base_color = material->base_color;
 
 	info.instance_key = get_instance_key();
+	info.topology = topology;
 
 	uint32_t attrs = 0;
 	uint32_t textures = 0;

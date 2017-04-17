@@ -13,25 +13,21 @@ layout(location = 1) in mediump vec3 vNormal;
 layout(location = 2) in mediump vec3 vTangent;
 #endif
 
-#if HAVE_ALBEDOMAP
-layout(set = 2, binding = 0) uniform sampler2D uAlbedomap;
+#if HAVE_BASECOLORMAP
+layout(set = 2, binding = 0) uniform sampler2D uBaseColormap;
 #endif
 
 #if HAVE_NORMALMAP
 layout(set = 2, binding = 1) uniform sampler2D uNormalmap;
 #endif
 
-#if HAVE_ROUGHNESSMAP
-layout(set = 2, binding = 2) uniform sampler2D uRoughnessmap;
-#endif
-
-#if HAVE_METALLICMAP
-layout(set = 2, binding = 3) uniform sampler2D uMetallicmap;
+#if HAVE_METALLICROUGHNESSMAP
+layout(set = 2, binding = 2) uniform sampler2D uMetallicRoughnessmap;
 #endif
 
 layout(std430, push_constant) uniform Constants
 {
-    vec4 albedo;
+    vec4 base_color;
     float emissive;
     float roughness;
     float metallic;
@@ -41,14 +37,14 @@ layout(location = 0) out vec4 FragColor;
 
 void main()
 {
-#if HAVE_ALBEDOMAP
-    vec4 albedo = texture(uAlbedomap, vUV);
+#if HAVE_BASECOLORMAP
+    vec4 base_color = texture(uBaseColormap, vUV);
     #if defined(ALPHA_TEST) && !defined(ALPHA_TEST_ALPHA_TO_COVERAGE)
-        if (albedo.a < 0.5)
+        if (base_color.a < 0.5)
             discard;
     #endif
 #else
-    vec4 albedo = registers.albedo;
+    vec4 base_color = registers.base_color;
 #endif
 
 #if HAVE_NORMAL
@@ -61,17 +57,14 @@ void main()
     #endif
 #endif
 
-#if HAVE_ROUGHNESSMAP
-    float roughness = texture(uRoughnessmap, vUV).x;
+#if HAVE_METALLICROUGHNESSMAP
+    vec2 mr = texture(uMetallicRoughnessmap, vUV).xy;
+    float metallic = mr.x;
+    float roughness = mr.y;
 #else
+    float metallic = registers.metallic;
     float roughness = registers.roughness;
 #endif
 
-#if HAVE_METALLICMAP
-    float metallic = texture(uMetallicmap, vUV).x;
-#else
-    float metallic = registers.metallic;
-#endif
-
-    FragColor = albedo;
+    FragColor = base_color;
 }

@@ -55,10 +55,20 @@ Vulkan::ProgramHandle ShaderSuite::get_program(MeshDrawPipeline pipeline, uint32
 		defines.emplace_back("HAVE_BONE_INDEX", !!(attribute_mask & (1u << static_cast<uint32_t>(MeshAttribute::BoneIndex))));
 		defines.emplace_back("HAVE_BONE_WEIGHT", !!(attribute_mask & (1u << static_cast<uint32_t>(MeshAttribute::BoneWeights))));
 
-		defines.emplace_back("HAVE_ALBEDOMAP", !!(texture_mask & (1u << static_cast<uint32_t>(Material::Textures::Albedo))));
-		defines.emplace_back("HAVE_NORMALMAP", !!(texture_mask & (1u << static_cast<uint32_t>(Material::Textures::Normal))));
-		defines.emplace_back("HAVE_ROUGHNESSMAP", !!(texture_mask & (1u << static_cast<uint32_t>(Material::Textures::Roughness))));
-		defines.emplace_back("HAVE_METALLICMAP", !!(texture_mask & (1u << static_cast<uint32_t>(Material::Textures::Metallic))));
+		if (attribute_mask & (1u << static_cast<uint32_t>(MeshAttribute::UV)))
+		{
+			defines.emplace_back("HAVE_BASECOLORMAP",
+			                     !!(texture_mask & (1u << static_cast<uint32_t>(Material::Textures::BaseColor))));
+			if (attribute_mask & (1u << static_cast<uint32_t>(MeshAttribute::Normal)) &&
+			    attribute_mask & (1u << static_cast<uint32_t>(MeshAttribute::Tangent))
+				)
+			{
+				defines.emplace_back("HAVE_NORMALMAP",
+				                     !!(texture_mask & (1u << static_cast<uint32_t>(Material::Textures::Normal))));
+			}
+			defines.emplace_back("HAVE_METALLICROUGHNESSMAP", !!(texture_mask & (1u
+				<< static_cast<uint32_t>(Material::Textures::MetallicRoughness))));
+		}
 		variant = program->register_variant(defines);
 		variants[hash] = variant;
 	}

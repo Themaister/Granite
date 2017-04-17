@@ -41,6 +41,9 @@ void Renderer::render(CommandBuffer &cmd, RenderContext &context, const Visibili
 	queue.sort();
 
 	cmd.set_opaque_state();
+
+	CommandBufferSavedState state;
+	cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
 	queue.dispatch(Queue::Opaque, cmd);
 	queue.dispatch(Queue::Transparent, cmd);
 }

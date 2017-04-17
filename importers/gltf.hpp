@@ -3,33 +3,11 @@
 #include <string>
 #include <vector>
 #include "math.hpp"
-#include "mesh.hpp"
+#include "importers.hpp"
 
 namespace GLTF
 {
 using namespace glm;
-struct Mesh
-{
-	// Attributes
-	std::vector<uint8_t> positions;
-	std::vector<uint8_t> attributes;
-	uint32_t position_stride = 0;
-	uint32_t attribute_stride = 0;
-	Granite::MeshAttributeLayout attribute_layout[Util::ecast(Granite::MeshAttribute::Count)] = {};
-
-	// Index buffer
-	std::vector<uint8_t> indices;
-	VkIndexType index_type;
-	VkPrimitiveTopology topology;
-
-	// Material
-	uint32_t material_index = 0;
-
-	// AABB
-	Granite::AABB static_aabb;
-
-	uint32_t count = 0;
-};
 
 struct NodeTransform
 {
@@ -125,7 +103,7 @@ private:
 
 	void parse(const std::string &path, const std::string &json);
 	std::vector<Node> nodes;
-	std::vector<Mesh> meshes;
+	std::vector<Granite::Mesh> meshes;
 	std::vector<Material> materials;
 	static VkFormat components_to_padded_format(ScalarType type, uint32_t components);
 	static Buffer read_buffer(const std::string &path, uint64_t length);

@@ -56,64 +56,64 @@ Parser::Parser(const std::string &path)
 #define GL_UNSIGNED_INT                   0x1405
 #define GL_FLOAT                          0x1406
 
-VkFormat Parser::components_to_format(ScalarType type, uint32_t components)
+VkFormat Parser::components_to_padded_format(ScalarType type, uint32_t components)
 {
 	switch (type)
 	{
 	case ScalarType::Int8:
 	{
-		static const VkFormat formats[] = { VK_FORMAT_R8_SINT, VK_FORMAT_R8G8_SINT, VK_FORMAT_R8G8B8_SINT, VK_FORMAT_R8G8B8A8_SINT };
-		return formats[components];
+		static const VkFormat formats[] = { VK_FORMAT_R8_SINT, VK_FORMAT_R8G8_SINT, VK_FORMAT_R8G8B8A8_SINT, VK_FORMAT_R8G8B8A8_SINT };
+		return formats[components - 1];
 	}
 	case ScalarType::Int8Snorm:
 	{
-		static const VkFormat formats[] = { VK_FORMAT_R8_SNORM, VK_FORMAT_R8G8_SNORM, VK_FORMAT_R8G8B8_SNORM, VK_FORMAT_R8G8B8A8_SNORM };
-		return formats[components];
+		static const VkFormat formats[] = { VK_FORMAT_R8_SNORM, VK_FORMAT_R8G8_SNORM, VK_FORMAT_R8G8B8A8_SNORM, VK_FORMAT_R8G8B8A8_SNORM };
+		return formats[components - 1];
 	}
 	case ScalarType::Uint8:
 	{
-		static const VkFormat formats[] = { VK_FORMAT_R8_UINT, VK_FORMAT_R8G8_UINT, VK_FORMAT_R8G8B8_UINT, VK_FORMAT_R8G8B8A8_UINT };
-		return formats[components];
+		static const VkFormat formats[] = { VK_FORMAT_R8_UINT, VK_FORMAT_R8G8_UINT, VK_FORMAT_R8G8B8A8_UINT, VK_FORMAT_R8G8B8A8_UINT };
+		return formats[components - 1];
 	}
 	case ScalarType::Uint8Unorm:
 	{
-		static const VkFormat formats[] = { VK_FORMAT_R8_UNORM, VK_FORMAT_R8G8_UNORM, VK_FORMAT_R8G8B8_UNORM, VK_FORMAT_R8G8B8A8_UNORM };
-		return formats[components];
+		static const VkFormat formats[] = { VK_FORMAT_R8_UNORM, VK_FORMAT_R8G8_UNORM, VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_R8G8B8A8_UNORM };
+		return formats[components - 1];
 	}
 	case ScalarType::Int16:
 	{
-		static const VkFormat formats[] = { VK_FORMAT_R16_SINT, VK_FORMAT_R16G16_SINT, VK_FORMAT_R16G16B16_SINT, VK_FORMAT_R16G16B16A16_SINT };
-		return formats[components];
+		static const VkFormat formats[] = { VK_FORMAT_R16_SINT, VK_FORMAT_R16G16_SINT, VK_FORMAT_R16G16B16A16_SINT, VK_FORMAT_R16G16B16A16_SINT };
+		return formats[components - 1];
 	}
 	case ScalarType::Int16Snorm:
 	{
-		static const VkFormat formats[] = { VK_FORMAT_R16_SNORM, VK_FORMAT_R16G16_SNORM, VK_FORMAT_R16G16B16_SNORM, VK_FORMAT_R16G16B16A16_SNORM };
-		return formats[components];
+		static const VkFormat formats[] = { VK_FORMAT_R16_SNORM, VK_FORMAT_R16G16_SNORM, VK_FORMAT_R16G16B16A16_SNORM, VK_FORMAT_R16G16B16A16_SNORM };
+		return formats[components - 1];
 	}
 	case ScalarType::Uint16:
 	{
-		static const VkFormat formats[] = { VK_FORMAT_R16_UINT, VK_FORMAT_R16G16_UINT, VK_FORMAT_R16G16B16_UINT, VK_FORMAT_R16G16B16A16_UINT };
-		return formats[components];
+		static const VkFormat formats[] = { VK_FORMAT_R16_UINT, VK_FORMAT_R16G16_UINT, VK_FORMAT_R16G16B16A16_UINT, VK_FORMAT_R16G16B16A16_UINT };
+		return formats[components - 1];
 	}
 	case ScalarType::Uint16Unorm:
 	{
-		static const VkFormat formats[] = { VK_FORMAT_R16_UNORM, VK_FORMAT_R16G16_UNORM, VK_FORMAT_R16G16B16_UNORM, VK_FORMAT_R16G16B16A16_UNORM };
-		return formats[components];
+		static const VkFormat formats[] = { VK_FORMAT_R16_UNORM, VK_FORMAT_R16G16_UNORM, VK_FORMAT_R16G16B16A16_UNORM, VK_FORMAT_R16G16B16A16_UNORM };
+		return formats[components - 1];
 	}
 	case ScalarType::Int32:
 	{
 		static const VkFormat formats[] = { VK_FORMAT_R32_SINT, VK_FORMAT_R32G32_SINT, VK_FORMAT_R32G32B32_SINT, VK_FORMAT_R32G32B32A32_SINT };
-		return formats[components];
+		return formats[components - 1];
 	}
 	case ScalarType::Uint32:
 	{
 		static const VkFormat formats[] = { VK_FORMAT_R32_UINT, VK_FORMAT_R32G32_UINT, VK_FORMAT_R32G32B32_UINT, VK_FORMAT_R32G32B32A32_UINT };
-		return formats[components];
+		return formats[components - 1];
 	}
 	case ScalarType::Float32:
 	{
 		static const VkFormat formats[] = { VK_FORMAT_R32_SFLOAT, VK_FORMAT_R32G32_SFLOAT, VK_FORMAT_R32G32B32_SFLOAT, VK_FORMAT_R32G32B32A32_SFLOAT };
-		return formats[components];
+		return formats[components - 1];
 	}
 
 	default:
@@ -148,7 +148,7 @@ uint32_t Parser::type_stride(ScalarType type)
 }
 
 void Parser::resolve_component_type(uint32_t component_type, const char *type, bool normalized,
-                                    VkFormat &format, ScalarType &scalar_type, uint32_t &components, uint32_t &stride)
+                                    ScalarType &scalar_type, uint32_t &components, uint32_t &stride)
 {
 	if (!strcmp(type, "SCALAR"))
 		components = 1;
@@ -207,7 +207,6 @@ void Parser::resolve_component_type(uint32_t component_type, const char *type, b
 	}
 
 	stride = components * type_stride(scalar_type);
-	format = components_to_format(scalar_type, components);
 }
 
 static uint32_t get_by_name(const unordered_map<string, uint32_t> &map, const string &v)
@@ -341,7 +340,7 @@ void Parser::parse(const string &original_path, const string &json)
 			normalized = accessor["normalized"].GetBool();
 
 		Accessor acc = {};
-		resolve_component_type(component_type, type, normalized, acc.format, acc.type, acc.components, acc.stride);
+		resolve_component_type(component_type, type, normalized, acc.type, acc.components, acc.stride);
 		acc.view = view_index;
 		acc.offset = offset;
 		acc.count = count;
@@ -426,6 +425,166 @@ void Parser::parse(const string &original_path, const string &json)
 	iterate_elements(doc["bufferViews"], add_view, json_view_map);
 	iterate_elements(doc["accessors"], add_accessor, json_accessor_map);
 	iterate_elements(doc["meshes"], add_mesh, json_mesh_map);
+
+	build_meshes();
+}
+
+static uint32_t padded_type_size(uint32_t type_size)
+{
+	// If the size if not POT, and not aligned on 32-bit, pad it to be compatible with AMD.
+	if ((type_size & 3) && (type_size & (type_size - 1)))
+		return (type_size + 3) & ~3;
+	else
+		return type_size;
+}
+
+void Parser::build_primitive(const MeshData::AttributeData &prim)
+{
+	Mesh mesh;
+	mesh.topology = prim.topology;
+
+	auto &positions = prim.attributes[ecast(MeshAttribute::Position)];
+	uint32_t vertex_count = json_accessors[positions.accessor_index].count;
+	mesh.count = vertex_count;
+
+	vec3 aabb_min(0.0f);
+	vec3 aabb_max(0.0f);
+	auto &attr = json_accessors[prim.attributes[ecast(MeshAttribute::Position)].accessor_index];
+	for (unsigned i = 0; i < std::min(3u, attr.components); i++)
+	{
+		aabb_min[i] = attr.min[i].f32;
+		aabb_max[i] = attr.max[i].f32;
+	}
+	mesh.static_aabb = AABB(aabb_min, aabb_max);
+
+	for (uint32_t i = 0; i < ecast(MeshAttribute::Count); i++)
+	{
+		if (i == ecast(MeshAttribute::Position) && !prim.attributes[i].active)
+			throw logic_error("Mesh must have POSITION semantic.");
+
+		if (!prim.attributes[i].active)
+		{
+			mesh.attribute_layout[i].format = VK_FORMAT_UNDEFINED;
+			continue;
+		}
+
+		auto &attr = json_accessors[prim.attributes[i].accessor_index];
+		if (attr.count != vertex_count)
+			throw logic_error("Vertex count mismatch.");
+
+		mesh.attribute_layout[i].format = components_to_padded_format(attr.type, attr.components);
+		if (i == ecast(MeshAttribute::Position))
+		{
+			mesh.attribute_layout[i].offset = mesh.position_stride;
+			mesh.position_stride += padded_type_size(type_stride(attr.type) * attr.components);
+		}
+		else
+		{
+			mesh.attribute_layout[i].offset = mesh.attribute_stride;
+			mesh.attribute_stride += padded_type_size(type_stride(attr.type) * attr.components);
+		}
+	}
+
+	mesh.positions.resize(vertex_count * mesh.position_stride);
+	mesh.attributes.resize(vertex_count * mesh.attribute_stride);
+
+	for (uint32_t i = 0; i < ecast(MeshAttribute::Count); i++)
+	{
+		if (!prim.attributes[i].active)
+			continue;
+
+		auto &output = (i == ecast(MeshAttribute::Position)) ? mesh.positions : mesh.attributes;
+		auto output_stride = (i == ecast(MeshAttribute::Position)) ? mesh.position_stride : mesh.attribute_stride;
+
+		auto &attr = json_accessors[prim.attributes[i].accessor_index];
+		auto &view = json_views[attr.view];
+		auto &buffer = json_buffers[view.buffer_index];
+		auto type_size = type_stride(attr.type) * attr.components;
+		for (uint32_t i = 0; i < vertex_count; i++)
+		{
+			uint32_t offset = view.offset + attr.offset + i * attr.stride;
+			const auto *data = &buffer[offset];
+			memcpy(&output[mesh.attribute_layout[i].offset + output_stride * i], data, type_size);
+		}
+	}
+
+	if (prim.index_buffer.active)
+	{
+		auto &indices = json_accessors[prim.index_buffer.accessor_index];
+		auto &view = json_views[indices.view];
+		auto &buffer = json_buffers[view.buffer_index];
+
+		auto type_size = type_stride(indices.type);
+		bool u16_compat = indices.max[0].u32 < 0xffff;
+		auto index_count = indices.count;
+		auto offset = view.offset + indices.offset;
+
+		if (type_size == 1)
+		{
+			mesh.indices.resize(sizeof(uint16_t) * index_count);
+			mesh.index_type = VK_INDEX_TYPE_UINT16;
+			for (uint32_t i = 0; i < index_count; i++)
+			{
+				const uint8_t *indata = &buffer[indices.stride * i + offset];
+				uint16_t *outdata = reinterpret_cast<uint16_t *>(mesh.indices.data()) + i;
+				*outdata = uint16_t((*indata == 0xff) ? 0xffff : *indata);
+			}
+		}
+		else if (type_size == 2)
+		{
+			mesh.indices.resize(sizeof(uint16_t) * index_count);
+			mesh.index_type = VK_INDEX_TYPE_UINT16;
+			for (uint32_t i = 0; i < index_count; i++)
+			{
+				const uint16_t *indata = reinterpret_cast<const uint16_t *>(&buffer[indices.stride * i + offset]);
+				uint16_t *outdata = reinterpret_cast<uint16_t *>(mesh.indices.data()) + i;
+				*outdata = *indata;
+			}
+		}
+		else if (u16_compat)
+		{
+			mesh.indices.resize(sizeof(uint16_t) * index_count);
+			mesh.index_type = VK_INDEX_TYPE_UINT16;
+			for (uint32_t i = 0; i < index_count; i++)
+			{
+				const uint32_t *indata = reinterpret_cast<const uint32_t *>(&buffer[indices.stride * i + offset]);
+				uint16_t *outdata = reinterpret_cast<uint16_t *>(mesh.indices.data()) + i;
+				*outdata = uint16_t(*indata);
+			}
+		}
+		else
+		{
+			mesh.indices.resize(sizeof(uint32_t) * index_count);
+			mesh.index_type = VK_INDEX_TYPE_UINT32;
+			for (uint32_t i = 0; i < index_count; i++)
+			{
+				const uint32_t *indata = reinterpret_cast<const uint32_t *>(&buffer[indices.stride * i + offset]);
+				uint32_t *outdata = reinterpret_cast<uint32_t *>(mesh.indices.data()) + i;
+				*outdata = *indata;
+			}
+		}
+		mesh.count = index_count;
+	}
+
+	meshes.push_back(move(mesh));
+}
+
+void Parser::build_meshes()
+{
+	mesh_index_to_primitives.resize(json_meshes.size());
+	uint32_t primitive_count = 0;
+	uint32_t mesh_count = 0;
+
+	for (auto &mesh : json_meshes)
+	{
+		for (auto &prim : mesh.primitives)
+		{
+			mesh_index_to_primitives[mesh_count].push_back(primitive_count);
+			build_primitive(prim);
+			primitive_count++;
+		}
+		mesh_count++;
+	}
 }
 
 }

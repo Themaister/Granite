@@ -11,14 +11,16 @@ using namespace glm;
 struct Mesh
 {
 	// Attributes
-	std::vector<vec3> positions;
+	std::vector<uint8_t> positions;
 	std::vector<uint8_t> attributes;
+	uint32_t position_stride = 0;
 	uint32_t attribute_stride = 0;
 	Granite::MeshAttributeLayout attribute_layout[Util::ecast(Granite::MeshAttribute::Count)] = {};
 
 	// Index buffer
 	std::vector<uint8_t> indices;
 	VkIndexType index_type;
+	VkPrimitiveTopology topology;
 
 	// Material
 	uint32_t material_index = 0;
@@ -93,7 +95,6 @@ private:
 		uint32_t count;
 		uint32_t stride;
 
-		VkFormat format;
 		ScalarType type;
 		uint32_t components;
 
@@ -126,11 +127,11 @@ private:
 	std::vector<Node> nodes;
 	std::vector<Mesh> meshes;
 	std::vector<Material> materials;
-	static VkFormat components_to_format(ScalarType type, uint32_t components);
+	static VkFormat components_to_padded_format(ScalarType type, uint32_t components);
 	static Buffer read_buffer(const std::string &path, uint64_t length);
 	static uint32_t type_stride(ScalarType type);
 	static void resolve_component_type(uint32_t component_type, const char *type, bool normalized,
-	                                   VkFormat &format, ScalarType &scalar_type, uint32_t &components, uint32_t &stride);
+	                                   ScalarType &scalar_type, uint32_t &components, uint32_t &stride);
 
 	std::vector<Buffer> json_buffers;
 	std::vector<BufferView> json_views;
@@ -140,5 +141,9 @@ private:
 	std::unordered_map<std::string, uint32_t> json_view_map;
 	std::unordered_map<std::string, uint32_t> json_accessor_map;
 	std::unordered_map<std::string, uint32_t> json_mesh_map;
+	std::vector<std::vector<uint32_t>> mesh_index_to_primitives;
+
+	void build_meshes();
+	void build_primitive(const MeshData::AttributeData &prim);
 };
 }

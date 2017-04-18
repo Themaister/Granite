@@ -49,7 +49,7 @@ void main()
 
 #if defined(HAVE_NORMAL) && HAVE_NORMAL
     vec3 normal = normalize(vNormal);
-    #if defined(HAVE_NORMALMAP)
+    #if defined(HAVE_NORMALMAP) && HAVE_NORMALMAP
         vec3 tangent = normalize(vTangent);
         vec3 binormal = cross(normal, tangent);
         vec3 tangent_space = texture(uNormalmap, vUV).xyz * 2.0 - 1.0;

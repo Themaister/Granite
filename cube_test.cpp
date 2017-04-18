@@ -7,6 +7,8 @@
 #include "renderer.hpp"
 #include "material_manager.hpp"
 #include "gltf.hpp"
+#include "importers.hpp"
+#include <string.h>
 
 using namespace Vulkan;
 using namespace Granite;
@@ -14,8 +16,6 @@ using namespace Util;
 
 int main()
 {
-	GLTF::Parser parser("assets://scenes/test.gltf");
-
 	Vulkan::WSI wsi;
 	wsi.init(1280, 720);
 
@@ -25,20 +25,23 @@ int main()
 	context.set_camera(cam);
 
 	Scene scene;
-	auto cube = Util::make_abstract_handle<AbstractRenderable, CubeMesh>();
-	auto skybox = Util::make_abstract_handle<AbstractRenderable, Skybox>("assets://textures/skybox.ktx");
-	auto entity = scene.create_renderable(cube);
-	scene.create_renderable(skybox);
-	auto *transform = entity->get_component<SpatialTransformComponent>();
-
-	entity = scene.create_renderable(cube);
-	entity->get_component<SpatialTransformComponent>()->translation = vec3(6.0f, 3.0f, 0.0f);
-	entity->get_component<SpatialTransformComponent>()->scale = vec3(2.0f, 1.0f, 1.0f);
 	VisibilityList visible;
 
-	Renderer renderer;
+	auto skybox = Util::make_abstract_handle<AbstractRenderable, Skybox>("assets://textures/skybox.ktx");
+	scene.create_renderable(skybox);
 
 	auto &device = wsi.get_device();
+
+	GLTF::Parser parser("assets://scenes/test.gltf");
+	for (auto &mesh : parser.get_meshes())
+	{
+		MaterialInfo default_material;
+		default_material.uniform_base_color = vec4(0.0f, 1.0f, 0.0f, 1.0f);
+		auto gltf = Util::make_abstract_handle<AbstractRenderable, ImportedMesh>(mesh, default_material);
+		scene.create_renderable(gltf);
+	}
+
+	Renderer renderer;
 
 	while (wsi.alive())
 	{
@@ -47,7 +50,6 @@ int main()
 
 		context.set_camera(cam);
 		visible.clear();
-		transform->rotation = normalize(rotate(transform->rotation, 0.01f, normalize(vec3(0.0f, 1.0f, 0.0f))));
 
 		scene.update_cached_transforms();
 		scene.gather_visible_opaque_renderables(context.get_visibility_frustum(), visible);

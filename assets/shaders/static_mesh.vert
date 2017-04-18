@@ -47,7 +47,13 @@ layout(location = 2) out mediump vec3 vTangent;
 void main()
 {
     gl_Position = infos[gl_InstanceIndex].MVP * Position;
+
+#if HAVE_NORMAL
     vNormal = normalize(mat3(infos[gl_InstanceIndex].Normal) * Normal);
     vTangent = normalize(mat3(infos[gl_InstanceIndex].Normal) * Tangent);
+#endif
+
+#if HAVE_UV
     vUV = UV;
+#endif
 }

@@ -5,12 +5,71 @@
 #include "render_context.hpp"
 #include "shader_suite.hpp"
 #include "renderer.hpp"
+#include <string.h>
 
 using namespace Vulkan;
 using namespace Util;
 
 namespace Granite
 {
+ImportedMesh::ImportedMesh(const Mesh &mesh, const MaterialInfo &info)
+	: mesh(mesh), info(info)
+{
+	topology = mesh.topology;
+	index_type = mesh.index_type;
+
+	position_stride = mesh.position_stride;
+	attribute_stride = mesh.attribute_stride;
+	memcpy(attributes, mesh.attribute_layout, sizeof(mesh.attribute_layout));
+
+	count = mesh.count;
+	vertex_offset = 0;
+	ibo_offset = 0;
+
+	pipeline = MeshDrawPipeline::Opaque;
+
+	material = Util::make_abstract_handle<Material, MaterialFile>(info);
+	static_aabb = mesh.static_aabb;
+
+	EventManager::get_global().register_latch_handler(DeviceCreatedEvent::type_id,
+	                                                  &ImportedMesh::on_device_created,
+	                                                  &ImportedMesh::on_device_destroyed,
+	                                                  this);
+}
+
+void ImportedMesh::on_device_created(const Event &event)
+{
+	auto &created = event.as<DeviceCreatedEvent>();
+	auto &device = created.get_device();
+
+	BufferCreateInfo info = {};
+	info.domain = BufferDomain::Device;
+	info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+
+	info.size = mesh.positions.size();
+	vbo_position = device.create_buffer(info, mesh.positions.data());
+
+	if (!mesh.attributes.empty())
+	{
+		info.size = mesh.attributes.size();
+		vbo_attributes = device.create_buffer(info, mesh.attributes.data());
+	}
+
+	if (!mesh.indices.empty())
+	{
+		info.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+		info.size = mesh.indices.size();
+		ibo = device.create_buffer(info, mesh.indices.data());
+	}
+}
+
+void ImportedMesh::on_device_destroyed(const Event &)
+{
+	vbo_attributes.reset();
+	vbo_position.reset();
+	ibo.reset();
+}
+
 CubeMesh::CubeMesh()
 {
 	auto &event = EventManager::get_global();

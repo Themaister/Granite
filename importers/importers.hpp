@@ -29,4 +29,15 @@ struct Mesh
 
 	uint32_t count = 0;
 };
+
+struct MaterialInfo
+{
+	std::string base_color;
+	std::string normal;
+	std::string metallic_roughness;
+	vec4 uniform_base_color;
+	float uniform_metallic;
+	float uniform_roughness;
+};
+
 }

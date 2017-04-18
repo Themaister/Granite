@@ -2,9 +2,22 @@
 
 #include "mesh.hpp"
 #include "vulkan_events.hpp"
+#include "importers.hpp"
 
 namespace Granite
 {
+class ImportedMesh : public StaticMesh, public EventHandler
+{
+public:
+	ImportedMesh(const Mesh &mesh, const MaterialInfo &info);
+
+private:
+	Mesh mesh;
+	MaterialInfo info;
+	void on_device_created(const Event &event);
+	void on_device_destroyed(const Event &event);
+};
+
 class CubeMesh : public StaticMesh, public EventHandler
 {
 public:

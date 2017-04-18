@@ -4,6 +4,7 @@
 
 #define RAPIDJSON_ASSERT(x) do { if (!(x)) throw "JSON error"; } while(0)
 #include "rapidjson/document.h"
+#include "../importers/importers.hpp"
 
 using namespace std;
 using namespace Vulkan;
@@ -20,6 +21,22 @@ MaterialFile::MaterialFile(const std::string &path)
                                                       &MaterialFile::on_device_created,
                                                       &MaterialFile::on_device_destroyed,
                                                       this);
+}
+
+MaterialFile::MaterialFile(const MaterialInfo &info)
+{
+	paths[ecast(Material::Textures::BaseColor)] = info.base_color;
+	paths[ecast(Material::Textures::Normal)] = info.normal;
+	paths[ecast(Material::Textures::MetallicRoughness)] = info.metallic_roughness;
+	base_color = info.uniform_base_color;
+	emissive = 0.0f;
+	metallic = info.uniform_metallic;
+	roughness = info.uniform_roughness;
+
+	EventManager::get_global().register_latch_handler(DeviceCreatedEvent::type_id,
+	                                                  &MaterialFile::on_device_created,
+	                                                  &MaterialFile::on_device_destroyed,
+	                                                  this);
 }
 
 void MaterialFile::update(const void *data, size_t size)

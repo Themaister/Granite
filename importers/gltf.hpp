@@ -23,12 +23,6 @@ struct Node
 	NodeTransform transform;
 };
 
-struct Material
-{
-	std::string base_color;
-	std::string metallic_roughness;
-};
-
 struct Scene
 {
 	std::vector<Node> nodes;
@@ -54,6 +48,15 @@ class Parser
 public:
 	Parser(const std::string &path);
 
+	const std::vector<Granite::Mesh> &get_meshes() const
+	{
+		return meshes;
+	}
+
+	const std::vector<Granite::MaterialInfo> &get_materials() const
+	{
+		return materials;
+	}
 
 private:
 	using Buffer = std::vector<uint8_t>;
@@ -104,7 +107,7 @@ private:
 	void parse(const std::string &path, const std::string &json);
 	std::vector<Node> nodes;
 	std::vector<Granite::Mesh> meshes;
-	std::vector<Material> materials;
+	std::vector<Granite::MaterialInfo> materials;
 	static VkFormat components_to_padded_format(ScalarType type, uint32_t components);
 	static Buffer read_buffer(const std::string &path, uint64_t length);
 	static uint32_t type_stride(ScalarType type);

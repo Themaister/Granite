@@ -18,6 +18,8 @@ public:
 	{
 	}
 
+	VolatileSource() = default;
+
 	~VolatileSource()
 	{
 		deinit();

@@ -4,6 +4,7 @@
 #include "volatile_source.hpp"
 #include "device.hpp"
 #include "event.hpp"
+#include "importers.hpp"
 
 namespace Granite
 {
@@ -11,6 +12,7 @@ class MaterialFile : public Material, public Util::VolatileSource<MaterialFile>,
 {
 public:
 	MaterialFile(const std::string &path);
+	MaterialFile(const MaterialInfo &info);
 	void update(const void *data, size_t size);
 
 private:

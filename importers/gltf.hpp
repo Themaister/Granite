@@ -104,6 +104,11 @@ private:
 		std::vector<AttributeData> primitives;
 	};
 
+	struct Texture
+	{
+		uint32_t image_index;
+	};
+
 	void parse(const std::string &path, const std::string &json);
 	std::vector<Node> nodes;
 	std::vector<Granite::Mesh> meshes;
@@ -118,10 +123,15 @@ private:
 	std::vector<BufferView> json_views;
 	std::vector<Accessor> json_accessors;
 	std::vector<MeshData> json_meshes;
+	std::vector<std::string> json_images;
+	std::vector<Texture> json_textures;
 	std::unordered_map<std::string, uint32_t> json_buffer_map;
 	std::unordered_map<std::string, uint32_t> json_view_map;
 	std::unordered_map<std::string, uint32_t> json_accessor_map;
 	std::unordered_map<std::string, uint32_t> json_mesh_map;
+	std::unordered_map<std::string, uint32_t> json_images_map;
+	std::unordered_map<std::string, uint32_t> json_textures_map;
+	std::unordered_map<std::string, uint32_t> json_material_map;
 	std::vector<std::vector<uint32_t>> mesh_index_to_primitives;
 
 	void build_meshes();

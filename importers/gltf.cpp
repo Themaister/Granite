@@ -423,10 +423,56 @@ void Parser::parse(const string &original_path, const string &json)
 		}
 	};
 
+	const auto add_image = [&](const Value &image) {
+		json_images.push_back(Path::relpath(original_path, image["uri"].GetString()));
+	};
+
+	const auto add_texture = [&](const Value &value) {
+		auto &source = value["source"];
+		json_textures.push_back({ source.IsString() ? get_by_name(json_mesh_map, source.GetString()) : source.GetUint() });
+	};
+
+	const auto add_material = [&](const Value &value) {
+		MaterialInfo info;
+
+		info.uniform_base_color = vec4(1.0f);
+		info.uniform_roughness = 1.0f;
+		info.uniform_metallic = 0.0f;
+		info.two_sided = false;
+		if (value.HasMember("doubleSided"))
+			info.two_sided = value["doubleSided"].GetBool();
+
+		if (value.HasMember("normalTexture"))
+		{
+			auto &tex = value["normalTexture"]["index"];
+			info.normal = json_images[json_textures[tex.IsString() ? get_by_name(json_textures_map, tex.GetString()) : tex.GetUint()].image_index];
+		}
+
+		if (value.HasMember("pbrMetallicRoughness"))
+		{
+			auto &mr = value["pbrMetallicRoughness"];
+			if (mr.HasMember("baseColorTexture"))
+			{
+				auto &tex = mr["baseColorTexture"]["index"];
+				info.base_color = json_images[json_textures[tex.IsString() ? get_by_name(json_textures_map, tex.GetString()) : tex.GetUint()].image_index];
+			}
+			if (mr.HasMember("metallicRoughnessTexture"))
+			{
+				auto &tex = mr["metallicRoughnessTexture"]["index"];
+				info.metallic_roughness = json_images[json_textures[tex.IsString() ? get_by_name(json_textures_map, tex.GetString()) : tex.GetUint()].image_index];
+			}
+		}
+
+		materials.push_back(move(info));
+	};
+
 	iterate_elements(doc["buffers"], add_buffer, json_buffer_map);
 	iterate_elements(doc["bufferViews"], add_view, json_view_map);
 	iterate_elements(doc["accessors"], add_accessor, json_accessor_map);
 	iterate_elements(doc["meshes"], add_mesh, json_mesh_map);
+	iterate_elements(doc["images"], add_image, json_images_map);
+	iterate_elements(doc["textures"], add_texture, json_textures_map);
+	iterate_elements(doc["materials"], add_material, json_material_map);
 
 	build_meshes();
 }

@@ -65,6 +65,7 @@ struct StaticMeshInfo : RenderInfo
 	uint32_t position_stride;
 	uint32_t attribute_stride;
 	VkIndexType index_type;
+	bool two_sided;
 };
 
 namespace RenderFunctions
@@ -90,6 +91,7 @@ struct StaticMesh : AbstractRenderable
 	MaterialHandle material;
 	Util::Hash get_instance_key() const;
 	MeshDrawPipeline pipeline;
+	bool two_sided = false;
 
 	AABB static_aabb;
 

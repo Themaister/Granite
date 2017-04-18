@@ -38,6 +38,7 @@ struct MaterialInfo
 	vec4 uniform_base_color;
 	float uniform_metallic;
 	float uniform_roughness;
+	bool two_sided;
 };
 
 }

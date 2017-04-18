@@ -30,6 +30,7 @@ ImportedMesh::ImportedMesh(const Mesh &mesh, const MaterialInfo &info)
 
 	material = Util::make_abstract_handle<Material, MaterialFile>(info);
 	static_aabb = mesh.static_aabb;
+	two_sided = info.two_sided;
 
 	EventManager::get_global().register_latch_handler(DeviceCreatedEvent::type_id,
 	                                                  &ImportedMesh::on_device_created,

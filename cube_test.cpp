@@ -37,7 +37,7 @@ int main()
 	{
 		MaterialInfo default_material;
 		default_material.uniform_base_color = vec4(0.0f, 1.0f, 0.0f, 1.0f);
-		auto gltf = Util::make_abstract_handle<AbstractRenderable, ImportedMesh>(mesh, default_material);
+		auto gltf = Util::make_abstract_handle<AbstractRenderable, ImportedMesh>(mesh, parser.get_materials()[mesh.material_index]);
 		scene.create_renderable(gltf);
 	}
 

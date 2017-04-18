@@ -15,6 +15,7 @@ Hash StaticMesh::get_instance_key() const
 	h.u64(vbo_position->get_cookie());
 	h.u32(position_stride);
 	h.u32(topology);
+	h.u32(two_sided);
 	if (vbo_attributes)
 	{
 		h.u64(vbo_attributes->get_cookie());
@@ -64,10 +65,9 @@ void static_mesh_render(CommandBuffer &cmd, const RenderInfo **infos, unsigned i
 	cmd.push_constants(&info->fragment, 0, sizeof(info->fragment));
 	cmd.set_primitive_topology(info->topology);
 
-	if (info->ibo && (info->topology == VK_PRIMITIVE_TOPOLOGY_LINE_STRIP || info->topology == VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP))
-		cmd.set_primitive_restart(true);
-	else
-		cmd.set_primitive_restart(false);
+	bool primitive_restart = info->ibo && (info->topology == VK_PRIMITIVE_TOPOLOGY_LINE_STRIP || info->topology == VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
+	cmd.set_primitive_restart(primitive_restart);
+	cmd.set_cull_mode(info->two_sided ? VK_CULL_MODE_NONE : VK_CULL_MODE_BACK_BIT);
 
 	unsigned to_render = 0;
 	for (unsigned i = 0; i < instances; i += to_render)
@@ -113,6 +113,7 @@ void StaticMesh::get_render_info(const RenderContext &context, const CachedSpati
 
 	info.instance_key = get_instance_key();
 	info.topology = topology;
+	info.two_sided = two_sided;
 
 	uint32_t attrs = 0;
 	uint32_t textures = 0;

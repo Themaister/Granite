@@ -23,6 +23,7 @@ struct Mesh
 
 	// Material
 	uint32_t material_index = 0;
+	bool has_material = false;
 
 	// AABB
 	Granite::AABB static_aabb;

@@ -378,6 +378,15 @@ void Parser::parse(const string &original_path, const string &json)
 			attr.index_buffer.accessor_index = indices.IsString() ? get_by_name(json_accessor_map, indices.GetString()) : indices.GetUint();
 		}
 
+		if (primitive.HasMember("material"))
+		{
+			auto &mat = primitive["material"];
+			attr.material_index = mat.IsString() ? get_by_name(json_material_map, mat.GetString()) : mat.GetUint();
+			attr.has_material = true;
+		}
+		else
+			attr.has_material = false;
+
 		attr.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 		if (primitive.HasMember("mode"))
 		{
@@ -466,13 +475,13 @@ void Parser::parse(const string &original_path, const string &json)
 		materials.push_back(move(info));
 	};
 
+	iterate_elements(doc["images"], add_image, json_images_map);
+	iterate_elements(doc["textures"], add_texture, json_textures_map);
+	iterate_elements(doc["materials"], add_material, json_material_map);
 	iterate_elements(doc["buffers"], add_buffer, json_buffer_map);
 	iterate_elements(doc["bufferViews"], add_view, json_view_map);
 	iterate_elements(doc["accessors"], add_accessor, json_accessor_map);
 	iterate_elements(doc["meshes"], add_mesh, json_mesh_map);
-	iterate_elements(doc["images"], add_image, json_images_map);
-	iterate_elements(doc["textures"], add_texture, json_textures_map);
-	iterate_elements(doc["materials"], add_material, json_material_map);
 
 	build_meshes();
 }
@@ -490,6 +499,7 @@ void Parser::build_primitive(const MeshData::AttributeData &prim)
 {
 	Mesh mesh;
 	mesh.topology = prim.topology;
+	mesh.has_material = prim.has_material;
 
 	auto &positions = prim.attributes[ecast(MeshAttribute::Position)];
 	uint32_t vertex_count = json_accessors[positions.accessor_index].count;

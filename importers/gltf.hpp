@@ -100,6 +100,7 @@ private:
 			Buffer index_buffer;
 			uint32_t material_index;
 			VkPrimitiveTopology topology;
+			bool has_material;
 		};
 		std::vector<AttributeData> primitives;
 	};

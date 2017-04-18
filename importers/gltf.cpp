@@ -282,6 +282,8 @@ static MeshAttribute semantic_to_attribute(const char *semantic)
 		return MeshAttribute::Normal;
 	else if (!strcmp(semantic, "TEXCOORD_0"))
 		return MeshAttribute::UV;
+	else if (!strcmp(semantic, "TANGENT"))
+		return MeshAttribute::Tangent;
 	else
 		throw logic_error("Unsupported semantic.");
 }
@@ -500,11 +502,11 @@ void Parser::build_primitive(const MeshData::AttributeData &prim)
 		auto &view = json_views[attr.view];
 		auto &buffer = json_buffers[view.buffer_index];
 		auto type_size = type_stride(attr.type) * attr.components;
-		for (uint32_t i = 0; i < vertex_count; i++)
+		for (uint32_t v = 0; v < vertex_count; v++)
 		{
-			uint32_t offset = view.offset + attr.offset + i * attr.stride;
+			uint32_t offset = view.offset + attr.offset + v * attr.stride;
 			const auto *data = &buffer[offset];
-			memcpy(&output[mesh.attribute_layout[i].offset + output_stride * i], data, type_size);
+			memcpy(&output[mesh.attribute_layout[i].offset + output_stride * v], data, type_size);
 		}
 	}
 

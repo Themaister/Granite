@@ -32,7 +32,7 @@ int main()
 
 	auto &device = wsi.get_device();
 
-	GLTF::Parser parser("assets://scenes/test.gltf");
+	GLTF::Parser parser("assets://scenes/TwoSidedPlane.gltf");
 	for (auto &mesh : parser.get_meshes())
 	{
 		MaterialInfo default_material;

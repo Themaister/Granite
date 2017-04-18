@@ -97,8 +97,8 @@ public:
 	}
 
 	void sort();
-	void dispatch(Queue queue, Vulkan::CommandBuffer &cmd);
-	void dispatch(Queue queue, Vulkan::CommandBuffer &cmd, size_t begin, size_t end);
+	void dispatch(Queue queue, Vulkan::CommandBuffer &cmd, const Vulkan::CommandBufferSavedState *state);
+	void dispatch(Queue queue, Vulkan::CommandBuffer &cmd, const Vulkan::CommandBufferSavedState *state, size_t begin, size_t end);
 
 	void set_shader_suites(ShaderSuite *suite)
 	{

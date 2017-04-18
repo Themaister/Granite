@@ -44,7 +44,7 @@ void Renderer::render(CommandBuffer &cmd, RenderContext &context, const Visibili
 
 	CommandBufferSavedState state;
 	cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
-	queue.dispatch(Queue::Opaque, cmd);
-	queue.dispatch(Queue::Transparent, cmd);
+	queue.dispatch(Queue::Opaque, cmd, &state);
+	queue.dispatch(Queue::Transparent, cmd, &state);
 }
 }

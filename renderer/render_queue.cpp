@@ -33,7 +33,7 @@ void RenderQueue::combine_render_info(const RenderQueue &queue)
 	}
 }
 
-void RenderQueue::dispatch(Queue queue_type, CommandBuffer &cmd, size_t begin, size_t end)
+void RenderQueue::dispatch(Queue queue_type, CommandBuffer &cmd, const CommandBufferSavedState *state, size_t begin, size_t end)
 {
 	auto *queue = queues[ecast(queue_type)].queue;
 
@@ -41,6 +41,9 @@ void RenderQueue::dispatch(Queue queue_type, CommandBuffer &cmd, size_t begin, s
 	{
 		assert(queue[begin]->instance_key != 0);
 		assert(queue[begin]->sorting_key != 0);
+
+		if (state)
+			cmd.restore_state(*state);
 
 		unsigned instances = 1;
 		for (size_t i = begin + 1; i < end && queue[i]->instance_key == queue[begin]->instance_key; i++)
@@ -54,9 +57,9 @@ void RenderQueue::dispatch(Queue queue_type, CommandBuffer &cmd, size_t begin, s
 	}
 }
 
-void RenderQueue::dispatch(Queue queue, CommandBuffer &cmd)
+void RenderQueue::dispatch(Queue queue, CommandBuffer &cmd, const CommandBufferSavedState *state)
 {
-	dispatch(queue, cmd, 0, queues[ecast(queue)].count);
+	dispatch(queue, cmd, state, 0, queues[ecast(queue)].count);
 }
 
 void RenderQueue::enqueue(Queue queue_type, const RenderInfo *render_info)

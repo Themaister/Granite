@@ -9,11 +9,11 @@ namespace Granite
 class ImportedMesh : public StaticMesh, public EventHandler
 {
 public:
-	ImportedMesh(const Mesh &mesh, const MaterialInfo &info);
+	ImportedMesh(const Importer::Mesh &mesh, const Importer::MaterialInfo &info);
 
 private:
-	Mesh mesh;
-	MaterialInfo info;
+	Importer::Mesh mesh;
+	Importer::MaterialInfo info;
 	void on_device_created(const Event &event);
 	void on_device_destroyed(const Event &event);
 };

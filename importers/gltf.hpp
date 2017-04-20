@@ -8,25 +8,8 @@
 namespace GLTF
 {
 using namespace glm;
-
-struct NodeTransform
-{
-	vec3 scale = vec3(1.0f, 1.0f, 1.0f);
-	quat rotation = quat(1.0f, 0.0f, 0.0f, 0.0f);
-	vec3 translation = vec3(0.0f);
-};
-
-struct Node
-{
-	std::vector<uint32_t> meshes;
-	std::vector<uint32_t> children;
-	NodeTransform transform;
-};
-
-struct Scene
-{
-	std::vector<Node> nodes;
-};
+using namespace Granite;
+using namespace Granite::Importer;
 
 enum class ScalarType
 {
@@ -48,14 +31,19 @@ class Parser
 public:
 	Parser(const std::string &path);
 
-	const std::vector<Granite::Mesh> &get_meshes() const
+	const std::vector<Mesh> &get_meshes() const
 	{
 		return meshes;
 	}
 
-	const std::vector<Granite::MaterialInfo> &get_materials() const
+	const std::vector<MaterialInfo> &get_materials() const
 	{
 		return materials;
+	}
+
+	const std::vector<Node> &get_nodes() const
+	{
+		return nodes;
 	}
 
 private:
@@ -111,9 +99,8 @@ private:
 	};
 
 	void parse(const std::string &path, const std::string &json);
-	std::vector<Node> nodes;
-	std::vector<Granite::Mesh> meshes;
-	std::vector<Granite::MaterialInfo> materials;
+	std::vector<Mesh> meshes;
+	std::vector<MaterialInfo> materials;
 	static VkFormat components_to_padded_format(ScalarType type, uint32_t components);
 	static Buffer read_buffer(const std::string &path, uint64_t length);
 	static uint32_t type_stride(ScalarType type);
@@ -126,6 +113,7 @@ private:
 	std::vector<MeshData> json_meshes;
 	std::vector<std::string> json_images;
 	std::vector<Texture> json_textures;
+	std::vector<Node> nodes;
 	std::unordered_map<std::string, uint32_t> json_buffer_map;
 	std::unordered_map<std::string, uint32_t> json_view_map;
 	std::unordered_map<std::string, uint32_t> json_accessor_map;
@@ -133,6 +121,7 @@ private:
 	std::unordered_map<std::string, uint32_t> json_images_map;
 	std::unordered_map<std::string, uint32_t> json_textures_map;
 	std::unordered_map<std::string, uint32_t> json_material_map;
+	std::unordered_map<std::string, uint32_t> json_node_map;
 	std::vector<std::vector<uint32_t>> mesh_index_to_primitives;
 
 	void build_meshes();

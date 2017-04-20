@@ -28,25 +28,56 @@ int main()
 	VisibilityList visible;
 
 	auto skybox = Util::make_abstract_handle<AbstractRenderable, Skybox>("assets://textures/skybox.ktx");
-	scene.create_renderable(skybox);
+	scene.create_renderable(skybox, nullptr);
 
 	auto &device = wsi.get_device();
 
 	GLTF::Parser parser("assets://scenes/TwoSidedPlane.gltf");
+
+	std::vector<AbstractRenderableHandle> meshes;
+	meshes.reserve(parser.get_meshes().size());
 	for (auto &mesh : parser.get_meshes())
 	{
-		MaterialInfo default_material;
+		Importer::MaterialInfo default_material;
 		default_material.uniform_base_color = vec4(0.0f, 1.0f, 0.0f, 1.0f);
 		AbstractRenderableHandle gltf;
 		if (mesh.has_material)
 			gltf = Util::make_abstract_handle<AbstractRenderable, ImportedMesh>(mesh, parser.get_materials()[mesh.material_index]);
 		else
 			gltf = Util::make_abstract_handle<AbstractRenderable, ImportedMesh>(mesh, default_material);
-		scene.create_renderable(gltf);
+		meshes.push_back(gltf);
 	}
 
-	Renderer renderer;
+	std::vector<NodeComponent *> nodes;
+	nodes.reserve(parser.get_nodes().size());
+	for (auto &node : parser.get_nodes())
+	{
+		auto entity = scene.create_node();
+		auto *nodeptr = entity->get_component<NodeComponent>();
+		nodes.push_back(nodeptr);
+		nodeptr->transform.translation = node.transform.translation;
+		nodeptr->transform.rotation = node.transform.rotation;
+		nodeptr->transform.scale = node.transform.scale;
+	}
 
+	size_t i = 0;
+	for (auto &node : parser.get_nodes())
+	{
+		for (auto &child : node.children)
+			nodes[i]->children.push_back(nodes[child]);
+		for (auto &mesh : node.meshes)
+			scene.create_renderable(meshes[mesh], nodes[i]);
+		i++;
+	}
+
+	auto root = scene.create_node();
+	auto *root_node = root->get_component<NodeComponent>();
+	root_node->children = move(nodes);
+	root_node->transform.rotation = angleAxis(0.1f, vec3(0.0f, 1.0f, 0.0f));
+	root_node->transform.translation = vec3(0.0f, -1.0f, 0.0f);
+	scene.set_root(root_node);
+
+	Renderer renderer;
 	while (wsi.alive())
 	{
 		Filesystem::get().poll_notifications();

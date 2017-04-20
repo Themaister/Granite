@@ -475,6 +475,44 @@ void Parser::parse(const string &original_path, const string &json)
 		materials.push_back(move(info));
 	};
 
+	const auto add_node = [&](const Value &value) {
+		Node node;
+		if (value.HasMember("children"))
+		{
+			auto &children = value["children"];
+			for (auto itr = children.Begin(); itr != children.End(); ++itr)
+				node.children.push_back(itr->GetUint());
+		}
+
+		if (value.HasMember("mesh"))
+		{
+			auto &m = value["mesh"];
+			auto index = m.IsString() ? get_by_name(json_mesh_map, m.GetString()) : m.GetUint();
+			for (auto &prim : mesh_index_to_primitives[index])
+				node.meshes.push_back(prim);
+		}
+
+		if (value.HasMember("translation"))
+		{
+			auto &t = value["translation"];
+			node.transform.translation = vec3(t[0].GetFloat(), t[1].GetFloat(), t[2].GetFloat());
+		}
+
+		if (value.HasMember("rotation"))
+		{
+			auto &r = value["rotation"];
+			node.transform.rotation = normalize(quat(r[3].GetFloat(), r[0].GetFloat(), r[1].GetFloat(), r[2].GetFloat()));
+		}
+
+		if (value.HasMember("scale"))
+		{
+			auto &s = value["scale"];
+			node.transform.scale = vec3(s[0].GetFloat(), s[1].GetFloat(), s[2].GetFloat());
+		}
+
+		nodes.push_back(move(node));
+	};
+
 	iterate_elements(doc["images"], add_image, json_images_map);
 	iterate_elements(doc["textures"], add_texture, json_textures_map);
 	iterate_elements(doc["materials"], add_material, json_material_map);
@@ -484,6 +522,7 @@ void Parser::parse(const string &original_path, const string &json)
 	iterate_elements(doc["meshes"], add_mesh, json_mesh_map);
 
 	build_meshes();
+	iterate_elements(doc["nodes"], add_node, json_node_map);
 }
 
 static uint32_t padded_type_size(uint32_t type_size)

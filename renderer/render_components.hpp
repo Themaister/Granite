@@ -8,6 +8,26 @@
 
 namespace Granite
 {
+struct NodeComponent : ComponentBase
+{
+	std::vector<NodeComponent *> children;
+
+	struct Transform
+	{
+		vec3 scale = vec3(1.0f);
+		vec3 translation = vec3(0.0f);
+		quat rotation = quat(1.0f, 0.0f, 0.0f, 0.0f);
+	};
+	Transform transform;
+
+	struct CachedTransform
+	{
+		mat4 world_transform;
+		mat4 normal_transform;
+	};
+	CachedTransform cached_transform;
+};
+
 struct BoundedComponent : ComponentBase
 {
 	AABB aabb;
@@ -22,18 +42,10 @@ struct RenderableComponent : ComponentBase
 	AbstractRenderableHandle renderable;
 };
 
-struct SpatialTransformComponent : ComponentBase
-{
-	vec3 scale = vec3(1.0f);
-	vec3 translation = vec3(0.0f);
-	quat rotation = quat(1.0f, 0.0f, 0.0f, 0.0f);
-};
-
 struct CachedSpatialTransformComponent : ComponentBase
 {
-	mat4 world_transform;
-	mat4 normal_transform;
 	AABB world_aabb;
+	NodeComponent::CachedTransform *transform = nullptr;
 };
 
 struct OpaqueComponent : ComponentBase

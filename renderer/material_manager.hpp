@@ -12,7 +12,7 @@ class MaterialFile : public Material, public Util::VolatileSource<MaterialFile>,
 {
 public:
 	MaterialFile(const std::string &path);
-	MaterialFile(const MaterialInfo &info);
+	MaterialFile(const Importer::MaterialInfo &info);
 	void update(const void *data, size_t size);
 
 private:

@@ -9,6 +9,7 @@
 
 using namespace Vulkan;
 using namespace Util;
+using namespace Granite::Importer;
 
 namespace Granite
 {

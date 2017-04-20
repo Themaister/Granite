@@ -7,11 +7,11 @@ namespace Granite
 {
 
 Scene::Scene()
-	: spatials(pool.get_component_group<BoundedComponent, SpatialTransformComponent, CachedSpatialTransformComponent>()),
-      opaque(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, OpaqueComponent>()),
-      transparent(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, TransparentComponent>()),
-      shadowing(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, CastsShadowComponent>()),
-      backgrounds(pool.get_component_group<UnboundedComponent, RenderableComponent>())
+	: spatials(pool.get_component_group<BoundedComponent, CachedSpatialTransformComponent>()),
+	  opaque(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, OpaqueComponent>()),
+	  transparent(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, TransparentComponent>()),
+	  shadowing(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, CastsShadowComponent>()),
+	  backgrounds(pool.get_component_group<UnboundedComponent, RenderableComponent>())
 {
 
 }
@@ -24,8 +24,13 @@ static void gather_visible_renderables(const Frustum &frustum, VisibilityList &l
 		auto *transform = get<0>(o);
 		auto *renderable = get<1>(o);
 
-		if (frustum.intersects(transform->world_aabb))
-			list.push_back({ renderable->renderable, transform });
+		if (transform->transform)
+		{
+			if (frustum.intersects(transform->world_aabb))
+				list.push_back({renderable->renderable, transform });
+		}
+		else
+			list.push_back({renderable->renderable, nullptr});
 	}
 }
 
@@ -50,30 +55,52 @@ void Scene::gather_visible_shadow_renderables(const Frustum &frustum, Visibility
 	gather_visible_renderables(frustum, list, shadowing);
 }
 
+void Scene::update_transform_tree(NodeComponent *node, const mat4 &transform)
+{
+	compute_model_transform(node->cached_transform.world_transform, node->cached_transform.normal_transform,
+                            node->transform.scale, node->transform.rotation, node->transform.translation, transform);
+
+	for (auto *child : node->children)
+		update_transform_tree(child, node->cached_transform.world_transform);
+}
+
 void Scene::update_cached_transforms()
 {
+	if (root_node)
+		update_transform_tree(root_node, mat4(1.0f));
+
 	for (auto &s : spatials)
 	{
 		BoundedComponent *aabb;
-		SpatialTransformComponent *transform;
 		CachedSpatialTransformComponent *cached_transform;
-		tie(aabb, transform, cached_transform) = s;
+		tie(aabb, cached_transform) = s;
 
-		compute_model_transform(cached_transform->world_transform, cached_transform->normal_transform,
-		                        transform->scale, transform->rotation, transform->translation);
-		cached_transform->world_aabb = aabb->aabb.transform(cached_transform->world_transform);
+		if (cached_transform->transform)
+		{
+			cached_transform->world_aabb = aabb->aabb.transform(
+				cached_transform->transform->world_transform);
+		}
 	}
 }
 
-EntityHandle Scene::create_renderable(AbstractRenderableHandle renderable)
+EntityHandle Scene::create_node()
+{
+	auto entity = pool.create_entity();
+	entity->allocate_component<NodeComponent>();
+	nodes.push_back(entity);
+	return entity;
+}
+
+EntityHandle Scene::create_renderable(AbstractRenderableHandle renderable, NodeComponent *node)
 {
 	EntityHandle entity = pool.create_entity();
 	nodes.push_back(entity);
 
 	if (renderable->has_static_aabb())
 	{
-		entity->allocate_component<SpatialTransformComponent>();
-		entity->allocate_component<CachedSpatialTransformComponent>();
+		auto *transform = entity->allocate_component<CachedSpatialTransformComponent>();
+		if (node)
+			transform->transform = &node->cached_transform;
 		auto *bounded = entity->allocate_component<BoundedComponent>();
 		bounded->aabb = renderable->get_static_aabb();
 	}

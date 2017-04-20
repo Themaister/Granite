@@ -104,8 +104,8 @@ void StaticMesh::get_render_info(const RenderContext &context, const CachedSpati
 	info.count = count;
 	info.sampler = &context.get_device().get_stock_sampler(StockSampler::TrilinearClamp);
 
-	info.vertex.Normal = transform->normal_transform;
-	info.vertex.MVP = context.get_render_parameters().view_projection * transform->world_transform;
+	info.vertex.Normal = transform ? transform->transform->normal_transform : mat4(1.0f);
+	info.vertex.MVP = context.get_render_parameters().view_projection * (transform ? transform->transform->world_transform : mat4(1.0f));
 	info.fragment.roughness = material->roughness;
 	info.fragment.metallic = material->metallic;
 	info.fragment.emissive = material->emissive;
@@ -136,7 +136,11 @@ void StaticMesh::get_render_info(const RenderContext &context, const CachedSpati
 	h.u32(ecast(pipeline));
 	h.u32(attrs);
 	h.u32(textures);
-	info.sorting_key = RenderInfo::get_sort_key(context, type, h.get(), transform->world_aabb.get_center());
+
+	if (transform)
+		info.sorting_key = RenderInfo::get_sort_key(context, type, h.get(), transform->world_aabb.get_center());
+	else
+		info.sorting_key = RenderInfo::get_background_sort_key(type, h.get());
 }
 
 void StaticMesh::reset()

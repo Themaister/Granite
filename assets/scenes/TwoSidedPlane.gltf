@@ -176,6 +176,14 @@
          "children" : [],
          "mesh" : 0,
          "name" : "TwoSidedPlane"
+      },
+      {
+         "children" : [],
+         "mesh" : 0,
+         "name" : "TwoSidedPlane",
+         "translation" : [ 0.0, -2.0, 0.0 ],
+         "rotation" : [ 0.0, 0.7071, 0.0, 0.7071 ],
+         "scale" : [ 2.0, 1.0, 0.5 ]
       }
    ],
    "samplers" : [

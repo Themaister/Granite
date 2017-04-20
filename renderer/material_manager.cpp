@@ -10,6 +10,7 @@ using namespace std;
 using namespace Vulkan;
 using namespace rapidjson;
 using namespace Util;
+using namespace Granite::Importer;
 
 namespace Granite
 {

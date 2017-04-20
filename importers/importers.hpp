@@ -7,6 +7,27 @@
 
 namespace Granite
 {
+namespace Importer
+{
+struct NodeTransform
+{
+	vec3 scale = vec3(1.0f, 1.0f, 1.0f);
+	quat rotation = quat(1.0f, 0.0f, 0.0f, 0.0f);
+	vec3 translation = vec3(0.0f);
+};
+
+struct Node
+{
+	std::vector<uint32_t> meshes;
+	std::vector<uint32_t> children;
+	NodeTransform transform;
+};
+
+struct Scene
+{
+	std::vector<Node> nodes;
+};
+
 struct Mesh
 {
 	// Attributes
@@ -41,5 +62,5 @@ struct MaterialInfo
 	float uniform_roughness;
 	bool two_sided;
 };
-
+}
 }

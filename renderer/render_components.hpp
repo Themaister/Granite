@@ -8,24 +8,17 @@
 
 namespace Granite
 {
-struct NodeComponent : ComponentBase
+struct Transform
 {
-	std::vector<NodeComponent *> children;
+	vec3 scale = vec3(1.0f);
+	vec3 translation = vec3(0.0f);
+	quat rotation = quat(1.0f, 0.0f, 0.0f, 0.0f);
+};
 
-	struct Transform
-	{
-		vec3 scale = vec3(1.0f);
-		vec3 translation = vec3(0.0f);
-		quat rotation = quat(1.0f, 0.0f, 0.0f, 0.0f);
-	};
-	Transform transform;
-
-	struct CachedTransform
-	{
-		mat4 world_transform;
-		mat4 normal_transform;
-	};
-	CachedTransform cached_transform;
+struct CachedTransform
+{
+	mat4 world_transform;
+	mat4 normal_transform;
 };
 
 struct BoundedComponent : ComponentBase
@@ -45,7 +38,7 @@ struct RenderableComponent : ComponentBase
 struct CachedSpatialTransformComponent : ComponentBase
 {
 	AABB world_aabb;
-	NodeComponent::CachedTransform *transform = nullptr;
+	CachedTransform *transform = nullptr;
 };
 
 struct OpaqueComponent : ComponentBase

@@ -48,12 +48,11 @@ int main()
 		meshes.push_back(gltf);
 	}
 
-	std::vector<NodeComponent *> nodes;
+	std::vector<Scene::NodeHandle> nodes;
 	nodes.reserve(parser.get_nodes().size());
 	for (auto &node : parser.get_nodes())
 	{
-		auto entity = scene.create_node();
-		auto *nodeptr = entity->get_component<NodeComponent>();
+		auto nodeptr = scene.create_node();
 		nodes.push_back(nodeptr);
 		nodeptr->transform.translation = node.transform.translation;
 		nodeptr->transform.rotation = node.transform.rotation;
@@ -64,18 +63,20 @@ int main()
 	for (auto &node : parser.get_nodes())
 	{
 		for (auto &child : node.children)
-			nodes[i]->children.push_back(nodes[child]);
+			nodes[i]->add_child(nodes[child]);
 		for (auto &mesh : node.meshes)
-			scene.create_renderable(meshes[mesh], nodes[i]);
+			scene.create_renderable(meshes[mesh], nodes[i].get());
 		i++;
 	}
 
 	auto root = scene.create_node();
-	auto *root_node = root->get_component<NodeComponent>();
-	root_node->children = move(nodes);
-	root_node->transform.rotation = angleAxis(0.1f, vec3(0.0f, 1.0f, 0.0f));
-	root_node->transform.translation = vec3(0.0f, -1.0f, 0.0f);
-	scene.set_root(root_node);
+	for (auto &node : nodes)
+		if (!node->get_parent())
+			root->add_child(node);
+
+	root->transform.rotation = angleAxis(0.1f, vec3(0.0f, 1.0f, 0.0f));
+	root->transform.translation = vec3(0.0f, -1.0f, 0.0f);
+	scene.set_root_node(root);
 
 	Renderer renderer;
 	while (wsi.alive())

@@ -55,19 +55,19 @@ void Scene::gather_visible_shadow_renderables(const Frustum &frustum, Visibility
 	gather_visible_renderables(frustum, list, shadowing);
 }
 
-void Scene::update_transform_tree(NodeComponent *node, const mat4 &transform)
+void Scene::update_transform_tree(Node &node, const mat4 &transform)
 {
-	compute_model_transform(node->cached_transform.world_transform, node->cached_transform.normal_transform,
-                            node->transform.scale, node->transform.rotation, node->transform.translation, transform);
+	compute_model_transform(node.cached_transform.world_transform, node.cached_transform.normal_transform,
+                            node.transform.scale, node.transform.rotation, node.transform.translation, transform);
 
-	for (auto *child : node->children)
-		update_transform_tree(child, node->cached_transform.world_transform);
+	for (auto &child : node.get_children())
+		update_transform_tree(*child, node.cached_transform.world_transform);
 }
 
 void Scene::update_cached_transforms()
 {
 	if (root_node)
-		update_transform_tree(root_node, mat4(1.0f));
+		update_transform_tree(*root_node, mat4(1.0f));
 
 	for (auto &s : spatials)
 	{
@@ -83,15 +83,31 @@ void Scene::update_cached_transforms()
 	}
 }
 
-EntityHandle Scene::create_node()
+Scene::NodeHandle Scene::create_node()
 {
-	auto entity = pool.create_entity();
-	entity->allocate_component<NodeComponent>();
-	nodes.push_back(entity);
-	return entity;
+	return Util::make_handle<Node>();
 }
 
-EntityHandle Scene::create_renderable(AbstractRenderableHandle renderable, NodeComponent *node)
+void Scene::Node::add_child(NodeHandle node)
+{
+	assert(node->parent == nullptr);
+	node->parent = this;
+	children.push_back(node);
+}
+
+void Scene::Node::remove_child(Node &node)
+{
+	assert(node.parent == this);
+	node.parent = nullptr;
+
+	auto itr = remove_if(begin(children), end(children), [&](const NodeHandle &h) {
+		return &node == h.get();
+	});
+	assert(itr != end(children));
+	children.erase(itr, end(children));
+}
+
+EntityHandle Scene::create_renderable(AbstractRenderableHandle renderable, Node *node)
 {
 	EntityHandle entity = pool.create_entity();
 	nodes.push_back(entity);

@@ -29,6 +29,9 @@ struct AnimationChannel
 	Type type;
 	LinearSampler linear;
 	SlerpSampler spherical;
+
+	uint32_t joint_index = 0;
+	bool joint = false;
 };
 
 struct Animation

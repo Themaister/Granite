@@ -19,13 +19,13 @@ void AnimationSystem::animate(double t)
 			switch (channel.type)
 			{
 			case Importer::AnimationChannel::Type::Translation:
-				node.transform.translation = channel.linear.sample(index, phase);
+				node.translation = channel.linear.sample(index, phase);
 				break;
 			case Importer::AnimationChannel::Type::Scale:
-				node.transform.scale = channel.linear.sample(index, phase);
+				node.scale = channel.linear.sample(index, phase);
 				break;
 			case Importer::AnimationChannel::Type::Rotation:
-				node.transform.rotation = channel.spherical.sample(index, phase);
+				node.rotation = channel.spherical.sample(index, phase);
 				break;
 			}
 			++target;
@@ -40,11 +40,16 @@ void AnimationSystem::register_animation(const std::string &name, const Importer
 
 void AnimationSystem::start_animation(const std::string &name, double start_time, bool repeat)
 {
-	std::vector<Scene::Node *> target_nodes;
+	std::vector<Transform *> target_nodes;
 	auto &animation = animation_map[name];
 	target_nodes.reserve(animation.channels.size());
 	for (auto &channel : animation.channels)
-		target_nodes.push_back(nodes[channel.node_index].get());
+	{
+		if (channel.joint)
+			target_nodes.push_back(nodes[channel.node_index]->get_skin()[channel.joint_index]);
+		else
+			target_nodes.push_back(&nodes[channel.node_index]->transform);
+	}
 
 	animations.emplace_back(new AnimationState(move(target_nodes), animation, start_time, repeat));
 }

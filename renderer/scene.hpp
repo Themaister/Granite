@@ -60,9 +60,15 @@ public:
 			return parent;
 		}
 
+		std::vector<Transform *> &get_skin()
+		{
+			return skin;
+		}
+
 	private:
 		std::vector<Util::IntrusivePtr<Node>> children;
 		std::vector<Util::IntrusivePtr<Node>> skeletons;
+		std::vector<Transform *> skin;
 		Node *parent = nullptr;
 	};
 	using NodeHandle = Util::IntrusivePtr<Node>;

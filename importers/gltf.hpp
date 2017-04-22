@@ -54,7 +54,6 @@ private:
 		uint32_t buffer_index;
 		uint32_t offset;
 		uint32_t length;
-		uint32_t target;
 	};
 
 	struct Accessor
@@ -127,5 +126,9 @@ private:
 
 	void build_meshes();
 	void build_primitive(const MeshData::AttributeData &prim);
+
+	void extract_attribute(std::vector<float> &attributes, const Accessor &accessor);
+	void extract_attribute(std::vector<vec3> &attributes, const Accessor &accessor);
+	void extract_attribute(std::vector<quat> &attributes, const Accessor &accessor);
 };
 }

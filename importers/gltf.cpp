@@ -275,12 +275,17 @@ void Parser::resolve_component_type(uint32_t component_type, const char *type, b
 	stride = components * type_stride(scalar_type);
 }
 
-static uint32_t get_by_name(const unordered_map<string, uint32_t> &map, const string &v)
+static uint32_t get_by_name(const unordered_map<string, uint32_t> &map, const Value &v)
 {
-	auto itr = map.find(v);
-	if (itr == end(map))
-		throw runtime_error("Accessor does not exist.");
-	return itr->second;
+	if (v.IsString())
+	{
+		auto itr = map.find(v.GetString());
+		if (itr == end(map))
+			throw runtime_error("Accessor does not exist.");
+		return itr->second;
+	}
+	else
+		return v.GetUint();
 }
 
 template <typename T>
@@ -372,6 +377,57 @@ static VkPrimitiveTopology gltf_topology(const char *top)
 		throw logic_error("Unrecognized primitive mode.");
 }
 
+void Parser::extract_attribute(std::vector<float> &attributes, const Accessor &accessor)
+{
+	if (accessor.type != ScalarType::Float32)
+		throw logic_error("Attribute is not Float32.");
+	if (accessor.components != 1)
+		throw logic_error("Attribute is not single component.");
+
+	auto &view = json_views[accessor.view];
+	auto &buffer = json_buffers[view.buffer_index];
+	for (uint32_t i = 0; i < accessor.count; i++)
+	{
+		uint32_t offset = view.offset + accessor.offset + i * accessor.stride;
+		const auto *data = reinterpret_cast<const float *>(&buffer[offset]);
+		attributes.push_back(*data);
+	}
+}
+
+void Parser::extract_attribute(std::vector<vec3> &attributes, const Accessor &accessor)
+{
+	if (accessor.type != ScalarType::Float32)
+		throw logic_error("Attribute is not Float32.");
+	if (accessor.components != 3)
+		throw logic_error("Attribute is not single component.");
+
+	auto &view = json_views[accessor.view];
+	auto &buffer = json_buffers[view.buffer_index];
+	for (uint32_t i = 0; i < accessor.count; i++)
+	{
+		uint32_t offset = view.offset + accessor.offset + i * accessor.stride;
+		const auto *data = reinterpret_cast<const float *>(&buffer[offset]);
+		attributes.push_back(vec3(data[0], data[1], data[2]));
+	}
+}
+
+void Parser::extract_attribute(std::vector<quat> &attributes, const Accessor &accessor)
+{
+	if (accessor.type != ScalarType::Float32)
+		throw logic_error("Attribute is not Float32.");
+	if (accessor.components != 4)
+		throw logic_error("Attribute is not single component.");
+
+	auto &view = json_views[accessor.view];
+	auto &buffer = json_buffers[view.buffer_index];
+	for (uint32_t i = 0; i < accessor.count; i++)
+	{
+		uint32_t offset = view.offset + accessor.offset + i * accessor.stride;
+		const auto *data = reinterpret_cast<const float *>(&buffer[offset]);
+		attributes.push_back(normalize(quat(data[3], data[0], data[1], data[2])));
+	}
+}
+
 void Parser::parse(const string &original_path, const string &json)
 {
 	Document doc;
@@ -395,17 +451,16 @@ void Parser::parse(const string &original_path, const string &json)
 
 	const auto add_view = [&](const Value &view) {
 		auto &buf = view["buffer"];
-		auto buffer_index = buf.IsString() ? get_by_name(json_buffer_map, buf.GetString()) : buf.GetUint();
+		auto buffer_index = get_by_name(json_buffer_map, buf);
 		auto offset = view["byteOffset"].GetUint();
 		auto length = view["byteLength"].GetUint();
-		auto target = view["target"].GetUint();
 
-		json_views.push_back({buffer_index, offset, length, target});
+		json_views.push_back({buffer_index, offset, length});
 	};
 
 	const auto add_accessor = [&](const Value &accessor) {
 		auto &view = accessor["bufferView"];
-		auto view_index = view.IsString() ? get_by_name(json_view_map, view.GetString()) : view.GetUint();
+		auto view_index = get_by_name(json_view_map, view);
 
 		auto offset = accessor["byteOffset"].GetUint();
 		auto component_type = accessor["componentType"].GetUint();
@@ -422,7 +477,8 @@ void Parser::parse(const string &original_path, const string &json)
 		acc.count = count;
 
 		if (accessor.HasMember("byteStride"))
-			acc.stride = accessor["byteStride"].GetUint();
+			if (accessor["byteStride"].GetUint() != 0)
+				acc.stride = accessor["byteStride"].GetUint();
 
 		auto *minimums = acc.min;
 		for (auto itr = accessor["min"].Begin(); itr != accessor["min"].End(); ++itr)
@@ -449,13 +505,13 @@ void Parser::parse(const string &original_path, const string &json)
 		{
 			attr.index_buffer.active = true;
 			auto &indices = primitive["indices"];
-			attr.index_buffer.accessor_index = indices.IsString() ? get_by_name(json_accessor_map, indices.GetString()) : indices.GetUint();
+			attr.index_buffer.accessor_index = get_by_name(json_accessor_map, indices);
 		}
 
 		if (primitive.HasMember("material"))
 		{
 			auto &mat = primitive["material"];
-			attr.material_index = mat.IsString() ? get_by_name(json_material_map, mat.GetString()) : mat.GetUint();
+			attr.material_index = get_by_name(json_material_map, mat);
 			attr.has_material = true;
 		}
 		else
@@ -486,7 +542,7 @@ void Parser::parse(const string &original_path, const string &json)
 		for (auto itr = attrs.MemberBegin(); itr != attrs.MemberEnd(); ++itr)
 		{
 			auto *semantic = itr->name.GetString();
-			uint32_t accessor_index = itr->value.IsString() ? get_by_name(json_accessor_map, itr->value.GetString()) : itr->value.GetUint();
+			uint32_t accessor_index = get_by_name(json_accessor_map, itr->value);
 			MeshAttribute attribute = semantic_to_attribute(semantic);
 
 			attr.attributes[ecast(attribute)].accessor_index = accessor_index;
@@ -512,7 +568,7 @@ void Parser::parse(const string &original_path, const string &json)
 
 	const auto add_texture = [&](const Value &value) {
 		auto &source = value["source"];
-		json_textures.push_back({ source.IsString() ? get_by_name(json_mesh_map, source.GetString()) : source.GetUint() });
+		json_textures.push_back({ get_by_name(json_mesh_map, source) });
 	};
 
 	const auto add_material = [&](const Value &value) {
@@ -528,7 +584,7 @@ void Parser::parse(const string &original_path, const string &json)
 		if (value.HasMember("normalTexture"))
 		{
 			auto &tex = value["normalTexture"]["index"];
-			info.normal = json_images[json_textures[tex.IsString() ? get_by_name(json_textures_map, tex.GetString()) : tex.GetUint()].image_index];
+			info.normal = json_images[json_textures[get_by_name(json_textures_map, tex)].image_index];
 		}
 
 		if (value.HasMember("pbrMetallicRoughness"))
@@ -537,12 +593,12 @@ void Parser::parse(const string &original_path, const string &json)
 			if (mr.HasMember("baseColorTexture"))
 			{
 				auto &tex = mr["baseColorTexture"]["index"];
-				info.base_color = json_images[json_textures[tex.IsString() ? get_by_name(json_textures_map, tex.GetString()) : tex.GetUint()].image_index];
+				info.base_color = json_images[json_textures[get_by_name(json_textures_map, tex)].image_index];
 			}
 			if (mr.HasMember("metallicRoughnessTexture"))
 			{
 				auto &tex = mr["metallicRoughnessTexture"]["index"];
-				info.metallic_roughness = json_images[json_textures[tex.IsString() ? get_by_name(json_textures_map, tex.GetString()) : tex.GetUint()].image_index];
+				info.metallic_roughness = json_images[json_textures[get_by_name(json_textures_map, tex)].image_index];
 			}
 		}
 
@@ -561,7 +617,7 @@ void Parser::parse(const string &original_path, const string &json)
 		if (value.HasMember("mesh"))
 		{
 			auto &m = value["mesh"];
-			auto index = m.IsString() ? get_by_name(json_mesh_map, m.GetString()) : m.GetUint();
+			auto index = get_by_name(json_mesh_map, m);
 			for (auto &prim : mesh_index_to_primitives[index])
 				node.meshes.push_back(prim);
 		}
@@ -571,7 +627,7 @@ void Parser::parse(const string &original_path, const string &json)
 			auto &m = value["meshes"];
 			for (auto itr = m.Begin(); itr != m.End(); ++itr)
 			{
-				auto index = itr->IsString() ? get_by_name(json_mesh_map, itr->GetString()) : itr->GetUint();
+				auto index = get_by_name(json_mesh_map, *itr);
 				for (auto &prim : mesh_index_to_primitives[index])
 					node.meshes.push_back(prim);
 			}
@@ -611,6 +667,75 @@ void Parser::parse(const string &original_path, const string &json)
 
 	build_meshes();
 	iterate_elements(doc["nodes"], add_node, json_node_map);
+
+	const auto add_animation = [&](const Value &animation) {
+		auto &samplers = animation["samplers"];
+		auto &channels = animation["channels"];
+
+		struct Sampler
+		{
+			Accessor *time;
+			Accessor *value;
+		};
+
+		struct Channel
+		{
+			Sampler *sampler;
+			enum Target
+			{
+				Translation,
+				Scale,
+				Rotation
+			} target;
+			AnimationSampler *animation;
+		};
+
+		vector<Sampler> json_samplers;
+		for (auto itr = samplers.Begin(); itr != samplers.End(); ++itr)
+		{
+			auto &input = (*itr)["input"];
+			auto &output = (*itr)["output"];
+			Sampler s;
+			s.time = &json_accessors[get_by_name(json_accessor_map, input)];
+			s.value = &json_accessors[get_by_name(json_accessor_map, output)];
+			json_samplers.push_back(s);
+		}
+
+		for (auto itr = channels.Begin(); itr != channels.End(); ++itr)
+		{
+			auto &sampler = json_samplers[(*itr)["sampler"].GetUint()];
+
+			auto &node_id = (*itr)["target"]["node"];
+			uint32_t node_index = get_by_name(json_node_map, node_id);
+			auto &anim = nodes[node_index].animation;
+
+			const char *target = (*itr)["target"]["path"].GetString();
+			if (!strcmp(target, "translation"))
+			{
+				extract_attribute(anim.translation.timestamps, *sampler.time);
+				extract_attribute(anim.translation.values, *sampler.value);
+			}
+			else if (!strcmp(target, "rotation"))
+			{
+				extract_attribute(anim.rotation.timestamps, *sampler.time);
+				extract_attribute(anim.rotation.values, *sampler.value);
+			}
+			else if (!strcmp(target, "scale"))
+			{
+				extract_attribute(anim.scale.timestamps, *sampler.time);
+				extract_attribute(anim.scale.values, *sampler.value);
+			}
+			else
+				throw logic_error("Invalid target for animation.");
+		}
+	};
+
+	if (doc.HasMember("animations"))
+	{
+		auto &anim = doc["animations"];
+		for (auto itr = anim.Begin(); itr != anim.End(); ++itr)
+			add_animation(*itr);
+	}
 }
 
 static uint32_t padded_type_size(uint32_t type_size)

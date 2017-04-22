@@ -102,7 +102,7 @@ void StaticMesh::get_render_info(const RenderContext &context, const CachedSpati
 	info.ibo_offset = ibo_offset;
 	info.index_type = index_type;
 	info.count = count;
-	info.sampler = &context.get_device().get_stock_sampler(StockSampler::TrilinearClamp);
+	info.sampler = &context.get_device().get_stock_sampler(StockSampler::TrilinearWrap);
 
 	info.vertex.Normal = transform ? transform->transform->normal_transform : mat4(1.0f);
 	info.vertex.MVP = context.get_render_parameters().view_projection * (transform ? transform->transform->world_transform : mat4(1.0f));

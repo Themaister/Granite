@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include "mesh.hpp"
 #include "enum_cast.hpp"
+#include "transforms.hpp"
 
 namespace Granite
 {
@@ -16,11 +17,31 @@ struct NodeTransform
 	vec3 translation = vec3(0.0f);
 };
 
+struct AnimationSampler
+{
+	LinearSampler translation, scale;
+	SlerpSampler rotation;
+
+	float get_length() const
+	{
+		float length = translation.get_length();
+		length = std::max(length, rotation.get_length());
+		length = std::max(length, scale.get_length());
+		return length;
+	}
+
+	void sample_transform(vec3 &transform, float t);
+	void sample_scale(vec3 &scale, float t);
+	void sample_rotation(quat &rotation, float t);
+};
+
 struct Node
 {
 	std::vector<uint32_t> meshes;
 	std::vector<uint32_t> children;
 	NodeTransform transform;
+
+	AnimationSampler animation;
 };
 
 struct Scene

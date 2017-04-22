@@ -24,10 +24,11 @@ private:
 
 	struct AnimationState
 	{
-		AnimationState(const Importer::Animation &anim, double start_time, bool repeating)
-			: animation(anim), start_time(start_time), repeating(repeating)
+		AnimationState(std::vector<Scene::Node *> channel_targets, const Importer::Animation &anim, double start_time, bool repeating)
+			: channel_targets(std::move(channel_targets)), animation(anim), start_time(start_time), repeating(repeating)
 		{
 		}
+		std::vector<Scene::Node *> channel_targets;
 		const Importer::Animation &animation;
 		double start_time = 0.0;
 		bool repeating = false;

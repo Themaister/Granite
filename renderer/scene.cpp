@@ -62,6 +62,8 @@ void Scene::update_transform_tree(Node &node, const mat4 &transform)
 
 	for (auto &child : node.get_children())
 		update_transform_tree(*child, node.cached_transform.world_transform);
+	for (auto &child : node.get_skeletons())
+		update_transform_tree(*child, node.cached_transform.world_transform);
 }
 
 void Scene::update_cached_transforms()

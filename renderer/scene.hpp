@@ -40,9 +40,19 @@ public:
 			return children;
 		}
 
+		const std::vector<Util::IntrusivePtr<Node>> &get_skeletons() const
+		{
+			return skeletons;
+		}
+
 		std::vector<Util::IntrusivePtr<Node>> &get_children()
 		{
 			return children;
+		}
+
+		std::vector<Util::IntrusivePtr<Node>> &get_skeletons()
+		{
+			return skeletons;
 		}
 
 		Node *get_parent() const
@@ -52,6 +62,7 @@ public:
 
 	private:
 		std::vector<Util::IntrusivePtr<Node>> children;
+		std::vector<Util::IntrusivePtr<Node>> skeletons;
 		Node *parent = nullptr;
 	};
 	using NodeHandle = Util::IntrusivePtr<Node>;

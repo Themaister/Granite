@@ -19,6 +19,8 @@ struct CachedTransform
 {
 	mat4 world_transform;
 	mat4 normal_transform;
+	std::vector<mat4> bone_world_transforms;
+	std::vector<mat4> bone_normal_transforms;
 };
 
 struct BoundedComponent : ComponentBase

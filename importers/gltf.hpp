@@ -118,6 +118,7 @@ private:
 	std::vector<MeshData> json_meshes;
 	std::vector<std::string> json_images;
 	std::vector<Texture> json_textures;
+	std::vector<Skin> json_skins;
 	std::vector<Node> nodes;
 	std::vector<Animation> animations;
 	std::unordered_map<std::string, uint32_t> json_buffer_map;
@@ -128,6 +129,8 @@ private:
 	std::unordered_map<std::string, uint32_t> json_textures_map;
 	std::unordered_map<std::string, uint32_t> json_material_map;
 	std::unordered_map<std::string, uint32_t> json_node_map;
+	std::unordered_map<std::string, uint32_t> json_skin_map;
+	std::unordered_map<std::string, uint32_t> json_joint_map;
 	std::vector<std::vector<uint32_t>> mesh_index_to_primitives;
 
 	void build_meshes();
@@ -136,5 +139,6 @@ private:
 	void extract_attribute(std::vector<float> &attributes, const Accessor &accessor);
 	void extract_attribute(std::vector<vec3> &attributes, const Accessor &accessor);
 	void extract_attribute(std::vector<quat> &attributes, const Accessor &accessor);
+	void extract_attribute(std::vector<mat4> &attributes, const Accessor &accessor);
 };
 }

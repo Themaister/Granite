@@ -67,11 +67,19 @@ struct Animation
 	}
 };
 
+struct Skin
+{
+	mat4 bind_pose_matrix;
+	std::vector<mat4> inverse_bind_pose;
+	std::vector<uint32_t> joint_indices;
+};
+
 struct Node
 {
 	std::vector<uint32_t> meshes;
 	std::vector<uint32_t> children;
 	NodeTransform transform;
+	bool joint = false;
 };
 
 struct Scene

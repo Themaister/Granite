@@ -224,6 +224,10 @@ void Parser::resolve_component_type(uint32_t component_type, const char *type, b
 		components = 3;
 	else if (!strcmp(type, "VEC4"))
 		components = 4;
+	else if (!strcmp(type, "MAT3"))
+		components = 9;
+	else if (!strcmp(type, "MAT4"))
+		components = 16;
 	else
 		throw logic_error("Unknown component type.");
 
@@ -425,6 +429,27 @@ void Parser::extract_attribute(std::vector<quat> &attributes, const Accessor &ac
 		uint32_t offset = view.offset + accessor.offset + i * accessor.stride;
 		const auto *data = reinterpret_cast<const float *>(&buffer[offset]);
 		attributes.push_back(normalize(quat(data[3], data[0], data[1], data[2])));
+	}
+}
+
+void Parser::extract_attribute(std::vector<mat4> &attributes, const Accessor &accessor)
+{
+	if (accessor.type != ScalarType::Float32)
+		throw logic_error("Attribute is not Float32.");
+	if (accessor.components != 16)
+		throw logic_error("Attribute is not single component.");
+
+	auto &view = json_views[accessor.view];
+	auto &buffer = json_buffers[view.buffer_index];
+	for (uint32_t i = 0; i < accessor.count; i++)
+	{
+		uint32_t offset = view.offset + accessor.offset + i * accessor.stride;
+		const auto *data = reinterpret_cast<const float *>(&buffer[offset]);
+		attributes.push_back(mat4(
+			data[0], data[1], data[2], data[3],
+			data[4], data[5], data[6], data[7],
+			data[8], data[9], data[10], data[11],
+			data[12], data[13], data[14], data[15]));
 	}
 }
 
@@ -651,7 +676,40 @@ void Parser::parse(const string &original_path, const string &json)
 			node.transform.scale = vec3(s[0].GetFloat(), s[1].GetFloat(), s[2].GetFloat());
 		}
 
+		if (value.HasMember("jointName"))
+		{
+			json_joint_map[value["jointName"].GetString()] = nodes.size();
+			node.joint = true;
+		}
+
 		nodes.push_back(move(node));
+	};
+
+	const auto add_skin = [&](const Value &skin) {
+		mat4 bind_shape(1.0f);
+		if (skin.HasMember("bindShapeMatrix"))
+		{
+			auto &m = skin["bindShapeMatrix"];
+			bind_shape = mat4(
+				m[0].GetFloat(), m[1].GetFloat(), m[2].GetFloat(), m[3].GetFloat(),
+				m[4].GetFloat(), m[5].GetFloat(), m[6].GetFloat(), m[7].GetFloat(),
+				m[8].GetFloat(), m[9].GetFloat(), m[10].GetFloat(), m[11].GetFloat(),
+				m[12].GetFloat(), m[13].GetFloat(), m[14].GetFloat(), m[15].GetFloat());
+		}
+
+		auto &joints = skin["jointNames"];
+		std::vector<uint32_t> joint_indices;
+		joint_indices.reserve(joints.GetArray().Size());
+		for (auto itr = joints.Begin(); itr != joints.End(); ++itr)
+			joint_indices.push_back(get_by_name(json_joint_map, *itr));
+
+		std::vector<mat4> inverse_bind_matrices;
+		inverse_bind_matrices.reserve(joint_indices.size());
+
+		uint32_t accessor = get_by_name(json_accessor_map, skin["inverseBindMatrices"]);
+		extract_attribute(inverse_bind_matrices, json_accessors[accessor]);
+
+		json_skins.push_back({ bind_shape, move(inverse_bind_matrices), move(joint_indices) });
 	};
 
 	if (doc.HasMember("images"))
@@ -660,13 +718,21 @@ void Parser::parse(const string &original_path, const string &json)
 		iterate_elements(doc["textures"], add_texture, json_textures_map);
 	if (doc.HasMember("materials"))
 		iterate_elements(doc["materials"], add_material, json_material_map);
-	iterate_elements(doc["buffers"], add_buffer, json_buffer_map);
-	iterate_elements(doc["bufferViews"], add_view, json_view_map);
-	iterate_elements(doc["accessors"], add_accessor, json_accessor_map);
-	iterate_elements(doc["meshes"], add_mesh, json_mesh_map);
+	if (doc.HasMember("buffers"))
+		iterate_elements(doc["buffers"], add_buffer, json_buffer_map);
+	if (doc.HasMember("bufferViews"))
+		iterate_elements(doc["bufferViews"], add_view, json_view_map);
+	if (doc.HasMember("accessors"))
+		iterate_elements(doc["accessors"], add_accessor, json_accessor_map);
+	if (doc.HasMember("meshes"))
+		iterate_elements(doc["meshes"], add_mesh, json_mesh_map);
 
 	build_meshes();
-	iterate_elements(doc["nodes"], add_node, json_node_map);
+	if (doc.HasMember("nodes"))
+		iterate_elements(doc["nodes"], add_node, json_node_map);
+
+	if (doc.HasMember("skins"))
+		iterate_elements(doc["skins"], add_skin, json_skin_map);
 
 	const auto add_animation = [&](const Value &animation) {
 		auto &samplers = animation["samplers"];

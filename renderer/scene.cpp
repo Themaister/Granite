@@ -141,4 +141,38 @@ EntityHandle Scene::create_renderable(AbstractRenderableHandle renderable, Node 
 	return entity;
 }
 
+void Scene::animate(double t)
+{
+	for (auto &animation : animations)
+	{
+		double wrapped_time = fmod(t - animation->start_time, animation->animation.get_length());
+
+		unsigned index;
+		float phase;
+		animation->animation.get_index_phase(float(wrapped_time), index, phase);
+
+		for (auto &channel : animation->animation.channels)
+		{
+			auto &node = *node_id[channel.node_index];
+			switch (channel.type)
+			{
+			case Importer::AnimationChannel::Type::Translation:
+				node.transform.translation = channel.linear.sample(index, phase);
+				break;
+			case Importer::AnimationChannel::Type::Scale:
+				node.transform.scale = channel.linear.sample(index, phase);
+				break;
+			case Importer::AnimationChannel::Type::Rotation:
+				node.transform.rotation = channel.spherical.sample(index, phase);
+				break;
+			}
+		}
+	}
+}
+
+void Scene::start_animation(const Importer::Animation &animation, double start_time)
+{
+	animations.emplace_back(new AnimationState(animation, start_time, true));
+}
+
 }

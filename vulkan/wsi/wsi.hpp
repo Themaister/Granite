@@ -44,6 +44,16 @@ public:
 		return tracker;
 	}
 
+	double get_frame_time() const
+	{
+		return timer.get_frame_time();
+	}
+
+	double get_elapsed_time() const
+	{
+		return timer.get_elapsed();
+	}
+
 private:
 	std::unique_ptr<Context> context;
 #if defined(HAVE_GLFW)

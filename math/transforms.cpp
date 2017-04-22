@@ -73,43 +73,17 @@ mat4 projection(float fovy, float aspect, float znear, float zfar)
 	return glm::scale(vec3(1.0f, -1.0f, 1.0f)) * glm::perspective(fovy, aspect, znear, zfar);
 }
 
-vec3 LinearSampler::sample(float t) const
+vec3 LinearSampler::sample(unsigned index, float l) const
 {
-	assert(timestamps.size() == values.size());
-	if (t >= get_length())
-		return values.back();
-	else if (t <= timestamps.front())
-		return values.front();
-
-	unsigned index = 0;
-	while (t > timestamps[index])
-		index++;
-
-	assert(index > 0);
-	assert(index < timestamps.size());
-	unsigned prev_index = index - 1;
-
-	float l = (t - timestamps[prev_index]) / (timestamps[index] - timestamps[prev_index]);
-	return values[prev_index] * (1.0f - l) + l * values[index];
+	if (l == 0.0f)
+		return values[index];
+	return values[index] * (1.0f - l) + l * values[index + 1];
 }
 
-quat SlerpSampler::sample(float t) const
+quat SlerpSampler::sample(unsigned index, float l) const
 {
-	assert(timestamps.size() == values.size());
-	if (t >= get_length())
-		return values.back();
-	else if (t <= timestamps.front())
-		return values.front();
-
-	unsigned index = 0;
-	while (t > timestamps[index])
-		index++;
-
-	assert(index > 0);
-	assert(index < timestamps.size());
-	unsigned prev_index = index - 1;
-
-	float l = (t - timestamps[prev_index]) / (timestamps[index] - timestamps[prev_index]);
-	return slerp(values[prev_index], values[index], l);
+	if (l == 0.0f)
+		return values[index];
+	return slerp(values[index], values[index + 1], l);
 }
 }

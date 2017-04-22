@@ -46,6 +46,11 @@ public:
 		return nodes;
 	}
 
+	const std::vector<Animation> &get_animations() const
+	{
+		return animations;
+	}
+
 private:
 	using Buffer = std::vector<uint8_t>;
 
@@ -114,6 +119,7 @@ private:
 	std::vector<std::string> json_images;
 	std::vector<Texture> json_textures;
 	std::vector<Node> nodes;
+	std::vector<Animation> animations;
 	std::unordered_map<std::string, uint32_t> json_buffer_map;
 	std::unordered_map<std::string, uint32_t> json_view_map;
 	std::unordered_map<std::string, uint32_t> json_accessor_map;

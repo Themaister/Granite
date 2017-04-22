@@ -18,37 +18,13 @@ mat4 projection(float fovy, float aspect, float znear, float zfar);
 
 struct LinearSampler
 {
-	std::vector<float> timestamps;
 	std::vector<vec3> values;
-
-	bool is_valid() const
-	{
-		return !timestamps.empty();
-	}
-
-	float get_length() const
-	{
-		return timestamps.empty() ? 0.0f : timestamps.back();
-	}
-
-	vec3 sample(float t) const;
+	vec3 sample(unsigned index, float l) const;
 };
 
 struct SlerpSampler
 {
-	std::vector<float> timestamps;
 	std::vector<quat> values;
-
-	bool is_valid() const
-	{
-		return !timestamps.empty();
-	}
-
-	float get_length() const
-	{
-		return timestamps.empty() ? 0.0f : timestamps.back();
-	}
-
-	quat sample(float t) const;
+	quat sample(unsigned index, float l) const;
 };
 }

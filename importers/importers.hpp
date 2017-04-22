@@ -17,22 +17,51 @@ struct NodeTransform
 	vec3 translation = vec3(0.0f);
 };
 
-struct AnimationSampler
+struct AnimationChannel
 {
-	LinearSampler translation, scale;
-	SlerpSampler rotation;
+	uint32_t node_index = 0;
+	enum class Type
+	{
+		Translation,
+		Rotation,
+		Scale
+	};
+	Type type;
+	LinearSampler linear;
+	SlerpSampler spherical;
+};
 
+struct Animation
+{
+	std::vector<float> timestamps;
+	std::vector<AnimationChannel> channels;
 	float get_length() const
 	{
-		float length = translation.get_length();
-		length = std::max(length, rotation.get_length());
-		length = std::max(length, scale.get_length());
-		return length;
+		return timestamps.back();
 	}
 
-	void sample_transform(vec3 &transform, float t);
-	void sample_scale(vec3 &scale, float t);
-	void sample_rotation(quat &rotation, float t);
+	void get_index_phase(float t, unsigned &index, float &phase) const
+	{
+		if (t <= timestamps.front() || timestamps.size() == 1)
+		{
+			index = 0;
+			phase = 0.0f;
+		}
+		else if (t >= timestamps.back())
+		{
+			index = timestamps.size() - 2;
+			phase = 1.0f;
+		}
+		else
+		{
+			unsigned end_target = 0;
+			while (t > timestamps[end_target])
+				end_target++;
+
+			index = end_target - 1;
+			phase = (t - timestamps[index]) / (timestamps[end_target] - timestamps[index]);
+		}
+	}
 };
 
 struct Node
@@ -40,8 +69,6 @@ struct Node
 	std::vector<uint32_t> meshes;
 	std::vector<uint32_t> children;
 	NodeTransform transform;
-
-	AnimationSampler animation;
 };
 
 struct Scene

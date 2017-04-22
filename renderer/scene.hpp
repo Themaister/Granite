@@ -4,6 +4,7 @@
 #include "render_components.hpp"
 #include "frustum.hpp"
 #include <tuple>
+#include "importers.hpp"
 
 namespace Granite
 {
@@ -63,6 +64,14 @@ public:
 
 	EntityHandle create_renderable(AbstractRenderableHandle renderable, Node *node);
 
+	void register_node_id(uint32_t id, NodeHandle node)
+	{
+		node_id[id] = node;
+	}
+
+	void start_animation(const Importer::Animation &animation, double start_time);
+	void animate(double t);
+
 private:
 	EntityPool pool;
 	NodeHandle root_node;
@@ -73,5 +82,20 @@ private:
 	std::vector<std::tuple<UnboundedComponent*, RenderableComponent*>> &backgrounds;
 	std::vector<EntityHandle> nodes;
 	void update_transform_tree(Node &node, const mat4 &transform);
+
+	std::unordered_map<uint32_t, NodeHandle> node_id;
+
+	struct AnimationState
+	{
+		AnimationState(const Importer::Animation &anim, double start_time, bool repeating)
+			: animation(anim), start_time(start_time), repeating(repeating)
+		{
+		}
+		const Importer::Animation &animation;
+		double start_time = 0.0;
+		bool repeating = false;
+	};
+
+	std::vector<std::unique_ptr<AnimationState>> animations;
 };
 }

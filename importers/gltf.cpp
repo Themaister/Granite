@@ -672,62 +672,58 @@ void Parser::parse(const string &original_path, const string &json)
 		auto &samplers = animation["samplers"];
 		auto &channels = animation["channels"];
 
-		struct Sampler
-		{
-			Accessor *time;
-			Accessor *value;
-		};
+		Accessor *time = nullptr;
+		vector<Accessor *> json_samplers;
 
-		struct Channel
-		{
-			Sampler *sampler;
-			enum Target
-			{
-				Translation,
-				Scale,
-				Rotation
-			} target;
-			AnimationSampler *animation;
-		};
-
-		vector<Sampler> json_samplers;
 		for (auto itr = samplers.Begin(); itr != samplers.End(); ++itr)
 		{
 			auto &input = (*itr)["input"];
 			auto &output = (*itr)["output"];
-			Sampler s;
-			s.time = &json_accessors[get_by_name(json_accessor_map, input)];
-			s.value = &json_accessors[get_by_name(json_accessor_map, output)];
-			json_samplers.push_back(s);
+
+			if (!time)
+				time = &json_accessors[get_by_name(json_accessor_map, input)];
+			else if (time != &json_accessors[get_by_name(json_accessor_map, input)])
+				throw logic_error("Animation uses different time for keyframes.");
+
+			json_samplers.push_back(&json_accessors[get_by_name(json_accessor_map, output)]);
 		}
+
+		if (!time)
+			throw logic_error("No time accessor set.");
+
+		Animation combined_animation;
+		extract_attribute(combined_animation.timestamps, *time);
 
 		for (auto itr = channels.Begin(); itr != channels.End(); ++itr)
 		{
 			auto &sampler = json_samplers[(*itr)["sampler"].GetUint()];
-
 			auto &node_id = (*itr)["target"]["node"];
-			uint32_t node_index = get_by_name(json_node_map, node_id);
-			auto &anim = nodes[node_index].animation;
+
+			AnimationChannel channel;
+			channel.node_index = get_by_name(json_node_map, node_id);
 
 			const char *target = (*itr)["target"]["path"].GetString();
 			if (!strcmp(target, "translation"))
 			{
-				extract_attribute(anim.translation.timestamps, *sampler.time);
-				extract_attribute(anim.translation.values, *sampler.value);
+				channel.type = AnimationChannel::Type::Translation;
+				extract_attribute(channel.linear.values, *sampler);
 			}
 			else if (!strcmp(target, "rotation"))
 			{
-				extract_attribute(anim.rotation.timestamps, *sampler.time);
-				extract_attribute(anim.rotation.values, *sampler.value);
+				channel.type = AnimationChannel::Type::Rotation;
+				extract_attribute(channel.spherical.values, *sampler);
 			}
 			else if (!strcmp(target, "scale"))
 			{
-				extract_attribute(anim.scale.timestamps, *sampler.time);
-				extract_attribute(anim.scale.values, *sampler.value);
+				channel.type = AnimationChannel::Type::Scale;
+				extract_attribute(channel.linear.values, *sampler);
 			}
 			else
 				throw logic_error("Invalid target for animation.");
+
+			combined_animation.channels.push_back(move(channel));
 		}
+		animations.push_back(move(combined_animation));
 	};
 
 	if (doc.HasMember("animations"))

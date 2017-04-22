@@ -32,7 +32,6 @@ int main()
 
 	auto &device = wsi.get_device();
 
-	//GLTF::Parser parser("assets://scenes/TwoSidedPlane.gltf");
 	GLTF::Parser parser("assets://scenes/AnimatedCube.gltf");
 
 	std::vector<AbstractRenderableHandle> meshes;
@@ -67,7 +66,14 @@ int main()
 			nodes[i]->add_child(nodes[child]);
 		for (auto &mesh : node.meshes)
 			scene.create_renderable(meshes[mesh], nodes[i].get());
+
+		scene.register_node_id(i, nodes[i]);
 		i++;
+	}
+
+	for (auto &anim : parser.get_animations())
+	{
+		scene.start_animation(anim, wsi.get_elapsed_time());
 	}
 
 	auto root = scene.create_node();
@@ -88,6 +94,7 @@ int main()
 		context.set_camera(cam);
 		visible.clear();
 
+		scene.animate(wsi.get_elapsed_time());
 		scene.update_cached_transforms();
 		scene.gather_visible_opaque_renderables(context.get_visibility_frustum(), visible);
 		scene.gather_background_renderables(visible);

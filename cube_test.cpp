@@ -7,6 +7,7 @@
 #include "renderer.hpp"
 #include "material_manager.hpp"
 #include "gltf.hpp"
+#include "animation_system.hpp"
 #include "importers.hpp"
 #include <string.h>
 
@@ -59,6 +60,7 @@ int main()
 		nodeptr->transform.scale = node.transform.scale;
 	}
 
+	AnimationSystem animation_system;
 	size_t i = 0;
 	for (auto &node : parser.get_nodes())
 	{
@@ -67,14 +69,13 @@ int main()
 		for (auto &mesh : node.meshes)
 			scene.create_renderable(meshes[mesh], nodes[i].get());
 
-		scene.register_node_id(i, nodes[i]);
+		animation_system.add_node(nodes[i]);
 		i++;
 	}
 
 	for (auto &anim : parser.get_animations())
-	{
-		scene.start_animation(anim, wsi.get_elapsed_time());
-	}
+		animation_system.register_animation("cube", anim);
+	animation_system.start_animation("cube", wsi.get_elapsed_time(), true);
 
 	auto root = scene.create_node();
 	for (auto &node : nodes)
@@ -94,7 +95,7 @@ int main()
 		context.set_camera(cam);
 		visible.clear();
 
-		scene.animate(wsi.get_elapsed_time());
+		animation_system.animate(wsi.get_elapsed_time());
 		scene.update_cached_transforms();
 		scene.gather_visible_opaque_renderables(context.get_visibility_frustum(), visible);
 		scene.gather_background_renderables(visible);

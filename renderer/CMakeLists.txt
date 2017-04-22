@@ -12,7 +12,8 @@ add_library(renderer STATIC
         mesh_util.hpp mesh_util.cpp
         material_util.hpp material_util.cpp
         renderer.hpp renderer.cpp
-        material_manager.hpp material_manager.cpp)
+        material_manager.hpp material_manager.cpp
+        animation_system.hpp animation_system.cpp)
 target_link_libraries(renderer vulkan-backend math importers)
 target_include_directories(renderer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_options(renderer PRIVATE ${GRANITE_CXX_FLAGS})

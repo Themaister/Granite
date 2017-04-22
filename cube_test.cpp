@@ -32,7 +32,8 @@ int main()
 
 	auto &device = wsi.get_device();
 
-	GLTF::Parser parser("assets://scenes/TwoSidedPlane.gltf");
+	//GLTF::Parser parser("assets://scenes/TwoSidedPlane.gltf");
+	GLTF::Parser parser("assets://scenes/Triangle.gltf");
 
 	std::vector<AbstractRenderableHandle> meshes;
 	meshes.reserve(parser.get_meshes().size());

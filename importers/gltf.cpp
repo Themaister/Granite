@@ -33,6 +33,72 @@ Parser::Buffer Parser::read_buffer(const string &path, uint64_t length)
 	return buf;
 }
 
+Parser::Buffer Parser::read_base64(const char *data, uint64_t length)
+{
+	Buffer buf(length);
+	auto *ptr = buf.data();
+
+	const auto base64_index = [](char c) -> uint32_t {
+		if (c >= 'A' && c <= 'Z')
+			return uint32_t(c - 'A');
+		else if (c >= 'a' && c <= 'z')
+			return uint32_t(c - 'a') + 26;
+		else if (c >= '0' && c <= '9')
+			return uint32_t(c - '0') + 52;
+		else if (c == '+')
+			return 62;
+		else if (c == '/')
+			return 63;
+		else
+			return 0;
+	};
+
+	for (uint64_t i = 0; i < length; )
+	{
+		char c0 = *data++;
+		if (c0 == '\0')
+			break;
+		char c1 = *data++;
+		if (c1 == '\0')
+			break;
+		char c2 = *data++;
+		if (c2 == '\0')
+			break;
+		char c3 = *data++;
+		if (c3 == '\0')
+			break;
+
+		uint32_t values =
+			(base64_index(c0) << 18) |
+			(base64_index(c1) << 12) |
+			(base64_index(c2) << 6) |
+			(base64_index(c3) << 0);
+
+		unsigned outbytes = 3;
+		if (c2 == '=' && c3 == '=')
+		{
+			outbytes = 1;
+			*ptr++ = uint8_t(values >> 16);
+		}
+		else if (c3 == '=')
+		{
+			outbytes = 2;
+			*ptr++ = uint8_t(values >> 16);
+			*ptr++ = uint8_t(values >> 8);
+		}
+		else
+		{
+			*ptr++ = uint8_t(values >> 16);
+			*ptr++ = uint8_t(values >> 8);
+			*ptr++ = uint8_t(values >> 0);
+		}
+
+		i += outbytes;
+	}
+
+	return buf;
+}
+
 Parser::Parser(const std::string &path)
 {
 	auto file = Filesystem::get().open(path);
@@ -314,9 +380,17 @@ void Parser::parse(const string &original_path, const string &json)
 	const auto add_buffer = [&](const Value &buf) {
 		const char *uri = buf["uri"].GetString();
 		auto length = buf["byteLength"].GetInt64();
-		auto path = Path::relpath(original_path, uri);
 
-		json_buffers.push_back(read_buffer(path, length));
+		static const char base64_type[] = "data:application/octet-stream;base64,";
+		if (!strncmp(uri, base64_type, strlen(base64_type)))
+		{
+			json_buffers.push_back(read_base64(uri + strlen(base64_type), length));
+		}
+		else
+		{
+			auto path = Path::relpath(original_path, uri);
+			json_buffers.push_back(read_buffer(path, length));
+		}
 	};
 
 	const auto add_view = [&](const Value &view) {
@@ -492,6 +566,17 @@ void Parser::parse(const string &original_path, const string &json)
 				node.meshes.push_back(prim);
 		}
 
+		if (value.HasMember("meshes"))
+		{
+			auto &m = value["meshes"];
+			for (auto itr = m.Begin(); itr != m.End(); ++itr)
+			{
+				auto index = itr->IsString() ? get_by_name(json_mesh_map, itr->GetString()) : itr->GetUint();
+				for (auto &prim : mesh_index_to_primitives[index])
+					node.meshes.push_back(prim);
+			}
+		}
+
 		if (value.HasMember("translation"))
 		{
 			auto &t = value["translation"];
@@ -513,9 +598,12 @@ void Parser::parse(const string &original_path, const string &json)
 		nodes.push_back(move(node));
 	};
 
-	iterate_elements(doc["images"], add_image, json_images_map);
-	iterate_elements(doc["textures"], add_texture, json_textures_map);
-	iterate_elements(doc["materials"], add_material, json_material_map);
+	if (doc.HasMember("images"))
+		iterate_elements(doc["images"], add_image, json_images_map);
+	if (doc.HasMember("textures"))
+		iterate_elements(doc["textures"], add_texture, json_textures_map);
+	if (doc.HasMember("materials"))
+		iterate_elements(doc["materials"], add_material, json_material_map);
 	iterate_elements(doc["buffers"], add_buffer, json_buffer_map);
 	iterate_elements(doc["bufferViews"], add_view, json_view_map);
 	iterate_elements(doc["accessors"], add_accessor, json_accessor_map);

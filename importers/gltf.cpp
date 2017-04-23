@@ -975,11 +975,20 @@ void Parser::build_primitive(const MeshData::AttributeData &prim)
 		if (attr.count != vertex_count)
 			throw logic_error("Vertex count mismatch.");
 
-		mesh.attribute_layout[i].format = components_to_padded_format(attr.type, attr.components);
+		if (i == ecast(MeshAttribute::BoneIndex))
+			mesh.attribute_layout[i].format = VK_FORMAT_R8G8B8A8_UINT;
+		else
+			mesh.attribute_layout[i].format = components_to_padded_format(attr.type, attr.components);
+
 		if (i == ecast(MeshAttribute::Position))
 		{
 			mesh.attribute_layout[i].offset = mesh.position_stride;
 			mesh.position_stride += padded_type_size(type_stride(attr.type) * attr.components);
+		}
+		else if (i == ecast(MeshAttribute::BoneIndex))
+		{
+			mesh.attribute_layout[i].offset = mesh.attribute_stride;
+			mesh.attribute_stride += 4;
 		}
 		else
 		{
@@ -1003,11 +1012,49 @@ void Parser::build_primitive(const MeshData::AttributeData &prim)
 		auto &view = json_views[attr.view];
 		auto &buffer = json_buffers[view.buffer_index];
 		auto type_size = type_stride(attr.type) * attr.components;
-		for (uint32_t v = 0; v < vertex_count; v++)
+
+		if (i == ecast(MeshAttribute::BoneIndex))
 		{
-			uint32_t offset = view.offset + attr.offset + v * attr.stride;
-			const auto *data = &buffer[offset];
-			memcpy(&output[mesh.attribute_layout[i].offset + output_stride * v], data, type_size);
+			for (uint32_t v = 0; v < vertex_count; v++)
+			{
+				uint32_t offset = view.offset + attr.offset + v * attr.stride;
+				const auto *data = &buffer[offset];
+
+				uint8_t indices[4] = {};
+				if (attr.type == ScalarType::Float32)
+				{
+					for (uint32_t c = 0; c < attr.components; c++)
+						indices[c] = uint8_t(reinterpret_cast<const float *>(data)[c]);
+				}
+				else if (attr.type == ScalarType::Uint32)
+				{
+					for (uint32_t c = 0; c < attr.components; c++)
+						indices[c] = uint8_t(reinterpret_cast<const uint32_t *>(data)[c]);
+				}
+				else if (attr.type == ScalarType::Uint16)
+				{
+					for (uint32_t c = 0; c < attr.components; c++)
+						indices[c] = uint8_t(reinterpret_cast<const uint16_t *>(data)[c]);
+				}
+				else if (attr.type == ScalarType::Uint8)
+				{
+					for (uint32_t c = 0; c < attr.components; c++)
+						indices[c] = data[c];
+				}
+				else
+					throw logic_error("Invalid format for bone indices.");
+
+				memcpy(&output[mesh.attribute_layout[i].offset + output_stride * v], indices, sizeof(indices));
+			}
+		}
+		else
+		{
+			for (uint32_t v = 0; v < vertex_count; v++)
+			{
+				uint32_t offset = view.offset + attr.offset + v * attr.stride;
+				const auto *data = &buffer[offset];
+				memcpy(&output[mesh.attribute_layout[i].offset + output_stride * v], data, type_size);
+			}
 		}
 	}
 

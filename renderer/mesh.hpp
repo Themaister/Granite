@@ -32,7 +32,10 @@ struct StaticMeshVertex
 {
 	mat4 Model;
 	mat4 Normal;
-	enum { max_instances = 256 };
+	enum
+	{
+		max_instances = 256
+	};
 };
 
 struct StaticMeshFragment
@@ -68,9 +71,17 @@ struct StaticMeshInfo : RenderInfo
 	bool two_sided;
 };
 
+struct SkinnedMeshInfo : StaticMeshInfo
+{
+	mat4 *world_transforms = nullptr;
+	mat4 *normal_transforms = nullptr;
+	uint32_t num_bones = 0;
+};
+
 namespace RenderFunctions
 {
 void static_mesh_render(Vulkan::CommandBuffer &cmd, const RenderInfo **render, unsigned instances);
+void skinned_mesh_render(Vulkan::CommandBuffer &cmd, const RenderInfo **render, unsigned instances);
 }
 
 struct StaticMesh : AbstractRenderable
@@ -89,16 +100,21 @@ struct StaticMesh : AbstractRenderable
 	MeshAttributeLayout attributes[Util::ecast(MeshAttribute::Count)];
 
 	MaterialHandle material;
+
 	Util::Hash get_instance_key() const;
+
 	MeshDrawPipeline pipeline;
 	bool two_sided = false;
 
 	AABB static_aabb;
 
-	void get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform, RenderQueue &queue) const override final;
+	void get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
+	                     RenderQueue &queue) const override;
 
 protected:
 	void reset();
+	void fill_render_info(StaticMeshInfo &info, const RenderContext &context, const CachedSpatialTransformComponent *transform,
+                          RenderQueue &queue) const;
 
 private:
 	bool has_static_aabb() const override
@@ -110,5 +126,11 @@ private:
 	{
 		return static_aabb;
 	}
+};
+
+struct SkinnedMesh : public StaticMesh
+{
+	void get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
+	                     RenderQueue &queue) const override;
 };
 }

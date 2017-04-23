@@ -18,6 +18,18 @@ private:
 	void on_device_destroyed(const Event &event);
 };
 
+class ImportedSkinnedMesh : public SkinnedMesh, public EventHandler
+{
+public:
+	ImportedSkinnedMesh(const Importer::Mesh &mesh, const Importer::MaterialInfo &info);
+
+private:
+	Importer::Mesh mesh;
+	Importer::MaterialInfo info;
+	void on_device_created(const Event &event);
+	void on_device_destroyed(const Event &event);
+};
+
 class CubeMesh : public StaticMesh, public EventHandler
 {
 public:

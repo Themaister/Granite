@@ -82,6 +82,7 @@ void Scene::update_transform_tree(Node &node, const mat4 &transform)
 
 	// Apply the first transformation in the sequence, this is used for skinning.
 	node.cached_transform.world_transform = node.cached_transform.world_transform * node.initial_transform;
+
 	compute_normal_transform(node.cached_transform.normal_transform, node.cached_transform.world_transform);
 	update_skinning(node);
 }
@@ -142,7 +143,11 @@ Scene::NodeHandle Scene::create_skinned_node(const Importer::Skin &skin)
 		bones[i]->transform.translation = skin.joint_transforms[i].translation;
 		bones[i]->transform.scale = skin.joint_transforms[i].scale;
 		bones[i]->transform.rotation = skin.joint_transforms[i].rotation;
+		bones[i]->initial_transform = skin.inverse_bind_pose[i];
 	}
+
+	node->cached_skin_transform.bone_world_transforms.resize(skin.joint_transforms.size());
+	node->cached_skin_transform.bone_normal_transforms.resize(skin.joint_transforms.size());
 
 	auto &node_skin = node->get_skin();
 	node_skin.cached_skin.reserve(skin.joint_transforms.size());
@@ -192,7 +197,11 @@ EntityHandle Scene::create_renderable(AbstractRenderableHandle renderable, Node 
 	{
 		auto *transform = entity->allocate_component<CachedSpatialTransformComponent>();
 		if (node)
+		{
 			transform->transform = &node->cached_transform;
+			if (!node->get_skin().cached_skin.empty())
+				transform->skin_transform = &node->cached_skin_transform;
+		}
 		auto *bounded = entity->allocate_component<BoundedComponent>();
 		bounded->aabb = renderable->get_static_aabb();
 	}

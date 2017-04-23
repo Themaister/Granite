@@ -43,10 +43,24 @@ int main()
 		Importer::MaterialInfo default_material;
 		default_material.uniform_base_color = vec4(0.0f, 1.0f, 0.0f, 1.0f);
 		AbstractRenderableHandle gltf;
-		if (mesh.has_material)
-			gltf = Util::make_abstract_handle<AbstractRenderable, ImportedMesh>(mesh, parser.get_materials()[mesh.material_index]);
+
+		bool skinned = mesh.attribute_layout[ecast(MeshAttribute::BoneIndex)].format != VK_FORMAT_UNDEFINED;
+		if (skinned)
+		{
+			if (mesh.has_material)
+				gltf = Util::make_abstract_handle<AbstractRenderable, ImportedSkinnedMesh>(mesh,
+				                                                                           parser.get_materials()[mesh.material_index]);
+			else
+				gltf = Util::make_abstract_handle<AbstractRenderable, ImportedSkinnedMesh>(mesh, default_material);
+		}
 		else
-			gltf = Util::make_abstract_handle<AbstractRenderable, ImportedMesh>(mesh, default_material);
+		{
+			if (mesh.has_material)
+				gltf = Util::make_abstract_handle<AbstractRenderable, ImportedMesh>(mesh,
+				                                                                    parser.get_materials()[mesh.material_index]);
+			else
+				gltf = Util::make_abstract_handle<AbstractRenderable, ImportedMesh>(mesh, default_material);
+		}
 		meshes.push_back(gltf);
 	}
 
@@ -96,8 +110,6 @@ int main()
 		if (node && !node->get_parent())
 			root->add_child(node);
 
-	root->transform.rotation = angleAxis(0.1f, vec3(0.0f, 1.0f, 0.0f));
-	root->transform.translation = vec3(0.0f, -1.0f, 0.0f);
 	scene.set_root_node(root);
 
 	Renderer renderer;

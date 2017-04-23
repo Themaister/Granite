@@ -2,7 +2,7 @@
 
 namespace Granite
 {
-void compute_model_transform(mat4 &world, mat4 &normal, vec3 scale, quat rotation, vec3 translation, const mat4 &parent)
+void compute_model_transform(mat4 &world, vec3 scale, quat rotation, vec3 translation, const mat4 &parent)
 {
 	mat4 S = glm::scale(scale);
 	mat4 R = mat4_cast(rotation);
@@ -10,6 +10,10 @@ void compute_model_transform(mat4 &world, mat4 &normal, vec3 scale, quat rotatio
 
 	mat4 model = R * S;
 	world = parent * T * model;
+}
+
+void compute_normal_transform(mat4 &normal, const mat4 &world)
+{
 	normal = mat4(transpose(inverse(mat3(world))));
 }
 

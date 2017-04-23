@@ -5,8 +5,9 @@
 
 namespace Granite
 {
-void
-compute_model_transform(mat4 &world, mat4 &normal, vec3 scale, quat rotation, vec3 translation, const mat4 &parent);
+void compute_model_transform(mat4 &world, vec3 scale, quat rotation, vec3 translation, const mat4 &parent);
+
+void compute_normal_transform(mat4 &normal, const mat4 &world);
 
 quat rotate_vector(vec3 from, vec3 to);
 

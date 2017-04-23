@@ -19,6 +19,8 @@ public:
 	float get_radius() const;
 	AABB transform(const mat4 &m) const;
 
+	void expand(const AABB &aabb);
+
 private:
 	vec3 minimum;
 	vec3 maximum;

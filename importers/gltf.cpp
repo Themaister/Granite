@@ -453,6 +453,17 @@ void Parser::extract_attribute(std::vector<mat4> &attributes, const Accessor &ac
 	}
 }
 
+static void build_bone_hierarchy(Skin::Bone &bone, const vector<vector<uint32_t>> &hierarchy, uint32_t index)
+{
+	for (auto &child : hierarchy[index])
+	{
+		Skin::Bone child_bone;
+		child_bone.index = child;
+		build_bone_hierarchy(child_bone, hierarchy, child);
+		bone.children.push_back(move(child_bone));
+	}
+}
+
 void Parser::parse(const string &original_path, const string &json)
 {
 	Document doc;
@@ -680,6 +691,7 @@ void Parser::parse(const string &original_path, const string &json)
 		{
 			json_joint_map[value["jointName"].GetString()] = nodes.size();
 			node.joint = true;
+			node.joint_name = value["jointName"].GetString();
 		}
 
 		nodes.push_back(move(node));
@@ -698,18 +710,75 @@ void Parser::parse(const string &original_path, const string &json)
 		}
 
 		auto &joints = skin["jointNames"];
-		std::vector<uint32_t> joint_indices;
+		vector<NodeTransform> joint_transforms;
+		vector<uint32_t> joint_indices;
+		unordered_map<string, uint32_t> joint_name_to_bone;
+
+		vector<int> parents(joints.GetArray().Size());
+		for (auto &p : parents)
+			p = -1;
+
+		vector<vector<uint32_t>> hierarchy(joints.GetArray().Size());
+		joint_transforms.reserve(joints.GetArray().Size());
 		joint_indices.reserve(joints.GetArray().Size());
 		for (auto itr = joints.Begin(); itr != joints.End(); ++itr)
-			joint_indices.push_back(get_by_name(json_joint_map, *itr));
+		{
+			uint32_t joint_index = get_by_name(json_joint_map, *itr);
+			joint_indices.push_back(joint_index);
+			joint_name_to_bone[itr->GetString()] = joint_transforms.size();
+
+			auto &node = nodes[joint_index];
+			if (!node.joint)
+				throw logic_error("Node is not a joint.");
+
+			joint_transforms.push_back(node.transform);
+		}
+
+		for (unsigned i = 0; i < joint_indices.size(); i++)
+		{
+			uint32_t joint_index = joint_indices[i];
+			auto &node = nodes[joint_index];
+
+			for (auto &child : node.children)
+			{
+				auto &child_node = nodes[child];
+				if (!child_node.joint)
+					throw logic_error("Node is not a joint.");
+
+				auto itr = joint_name_to_bone.find(child_node.joint_name);
+				if (itr == end(joint_name_to_bone))
+					throw logic_error("Joint is not part of skeleton.");
+				uint32_t index = itr->second;
+
+				if (parents[index] != -1)
+					throw logic_error("Joint cannot have two parents.");
+				parents[index] = i;
+				hierarchy[i].push_back(index);
+			}
+		}
+
+		vector<Skin::Bone> skeleton;
+		for (unsigned i = 0; i < parents.size(); i++)
+		{
+			if (parents[i] == -1)
+			{
+				// This is a top-level node in the skeleton hierarchy.
+				Skin::Bone bone;
+				bone.index = i;
+				build_bone_hierarchy(bone, hierarchy, i);
+				skeleton.push_back(move(bone));
+			}
+		}
 
 		std::vector<mat4> inverse_bind_matrices;
-		inverse_bind_matrices.reserve(joint_indices.size());
+		inverse_bind_matrices.reserve(joint_transforms.size());
 
 		uint32_t accessor = get_by_name(json_accessor_map, skin["inverseBindMatrices"]);
 		extract_attribute(inverse_bind_matrices, json_accessors[accessor]);
+		for (auto &m : inverse_bind_matrices)
+			m = m * bind_shape;
 
-		json_skins.push_back({ bind_shape, move(inverse_bind_matrices), move(joint_indices) });
+		json_skins.push_back({ move(inverse_bind_matrices), move(joint_transforms), move(skeleton) });
 	};
 
 	if (doc.HasMember("images"))
@@ -767,6 +836,8 @@ void Parser::parse(const string &original_path, const string &json)
 
 			AnimationChannel channel;
 			channel.node_index = get_by_name(json_node_map, node_id);
+			if (nodes[channel.node_index].joint)
+				channel.joint_name = nodes[channel.node_index].joint_name;
 
 			const char *target = (*itr)["target"]["path"].GetString();
 			if (!strcmp(target, "translation"))

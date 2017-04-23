@@ -31,6 +31,7 @@ public:
 	public:
 		Transform transform;
 		CachedTransform cached_transform;
+		CachedSkinTransform cached_skin_transform;
 
 		void add_child(Util::IntrusivePtr<Node> node);
 		void remove_child(Node &node);
@@ -60,19 +61,28 @@ public:
 			return parent;
 		}
 
-		std::vector<Transform *> &get_skin()
+		struct Skinning
 		{
-			return skin;
+			std::vector<Transform *> skin;
+			std::vector<CachedTransform *> cached_skin;
+		};
+
+		Skinning &get_skin()
+		{
+			return skinning;
 		}
+
+		mat4 initial_transform = mat4(1.0f);
 
 	private:
 		std::vector<Util::IntrusivePtr<Node>> children;
 		std::vector<Util::IntrusivePtr<Node>> skeletons;
-		std::vector<Transform *> skin;
+		Skinning skinning;
 		Node *parent = nullptr;
 	};
 	using NodeHandle = Util::IntrusivePtr<Node>;
 	NodeHandle create_node();
+	NodeHandle create_skinned_node(const Importer::Skin &skin);
 
 	void set_root_node(NodeHandle node)
 	{
@@ -91,5 +101,7 @@ private:
 	std::vector<std::tuple<UnboundedComponent*, RenderableComponent*>> &backgrounds;
 	std::vector<EntityHandle> nodes;
 	void update_transform_tree(Node &node, const mat4 &transform);
+
+	void update_skinning(Node &node);
 };
 }

@@ -55,15 +55,35 @@ void Scene::gather_visible_shadow_renderables(const Frustum &frustum, Visibility
 	gather_visible_renderables(frustum, list, shadowing);
 }
 
+void Scene::update_skinning(Node &node)
+{
+	if (!node.cached_skin_transform.bone_world_transforms.empty())
+	{
+		unsigned len = unsigned(node.get_skin().cached_skin.size());
+		assert(node.get_skin().cached_skin.size() == node.cached_skin_transform.bone_world_transforms.size());
+		assert(node.get_skin().cached_skin.size() == node.cached_skin_transform.bone_normal_transforms.size());
+		for (unsigned i = 0; i < len; i++)
+		{
+			node.cached_skin_transform.bone_world_transforms[i] = node.get_skin().cached_skin[i]->world_transform;
+			node.cached_skin_transform.bone_normal_transforms[i] = node.get_skin().cached_skin[i]->normal_transform;
+		}
+	}
+}
+
 void Scene::update_transform_tree(Node &node, const mat4 &transform)
 {
-	compute_model_transform(node.cached_transform.world_transform, node.cached_transform.normal_transform,
+	compute_model_transform(node.cached_transform.world_transform,
                             node.transform.scale, node.transform.rotation, node.transform.translation, transform);
 
 	for (auto &child : node.get_children())
 		update_transform_tree(*child, node.cached_transform.world_transform);
 	for (auto &child : node.get_skeletons())
 		update_transform_tree(*child, node.cached_transform.world_transform);
+
+	// Apply the first transformation in the sequence, this is used for skinning.
+	node.cached_transform.world_transform = node.cached_transform.world_transform * node.initial_transform;
+	compute_normal_transform(node.cached_transform.normal_transform, node.cached_transform.world_transform);
+	update_skinning(node);
 }
 
 void Scene::update_cached_transforms()
@@ -79,8 +99,18 @@ void Scene::update_cached_transforms()
 
 		if (cached_transform->transform)
 		{
-			cached_transform->world_aabb = aabb->aabb.transform(
-				cached_transform->transform->world_transform);
+			if (cached_transform->skin_transform)
+			{
+				// TODO: Isolate the AABB per bone.
+				cached_transform->world_aabb = AABB(vec3(FLT_MAX), vec3(FLT_MIN));
+				for (auto &m : cached_transform->skin_transform->bone_world_transforms)
+					cached_transform->world_aabb.expand(aabb->aabb.transform(m));
+			}
+			else
+			{
+				cached_transform->world_aabb = aabb->aabb.transform(
+					cached_transform->transform->world_transform);
+			}
 		}
 	}
 }
@@ -88,6 +118,49 @@ void Scene::update_cached_transforms()
 Scene::NodeHandle Scene::create_node()
 {
 	return Util::make_handle<Node>();
+}
+
+static void add_bone(Scene::NodeHandle *bones, uint32_t parent, const Importer::Skin::Bone &bone)
+{
+	bones[parent]->get_skeletons().push_back(bones[bone.index]);
+	for (auto &child : bone.children)
+		add_bone(bones, bone.index, child);
+}
+
+Scene::NodeHandle Scene::create_skinned_node(const Importer::Skin &skin)
+{
+	auto node = create_node();
+
+	vector<NodeHandle> bones;
+	bones.reserve(skin.joint_transforms.size());
+
+	for (size_t i = 0; i < skin.joint_transforms.size(); i++)
+		bones.push_back(create_node());
+
+	for (size_t i = 0; i < skin.joint_transforms.size(); i++)
+	{
+		bones[i]->transform.translation = skin.joint_transforms[i].translation;
+		bones[i]->transform.scale = skin.joint_transforms[i].scale;
+		bones[i]->transform.rotation = skin.joint_transforms[i].rotation;
+	}
+
+	auto &node_skin = node->get_skin();
+	node_skin.cached_skin.reserve(skin.joint_transforms.size());
+	node_skin.skin.reserve(skin.joint_transforms.size());
+	for (size_t i = 0; i < skin.joint_transforms.size(); i++)
+	{
+		node_skin.skin.push_back(&bones[i]->transform);
+		node_skin.cached_skin.push_back(&bones[i]->cached_transform);
+	}
+
+	for (auto &skeleton : skin.skeletons)
+	{
+		node->get_skeletons().push_back(bones[skeleton.index]);
+		for (auto &child : skeleton.children)
+			add_bone(bones.data(), skeleton.index, child);
+	}
+
+	return node;
 }
 
 void Scene::Node::add_child(NodeHandle node)

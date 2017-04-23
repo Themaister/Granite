@@ -51,6 +51,11 @@ public:
 		return animations;
 	}
 
+	const std::vector<Skin> &get_skins() const
+	{
+		return json_skins;
+	}
+
 private:
 	using Buffer = std::vector<uint8_t>;
 

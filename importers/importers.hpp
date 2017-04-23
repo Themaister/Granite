@@ -30,7 +30,7 @@ struct AnimationChannel
 	LinearSampler linear;
 	SlerpSampler spherical;
 
-	uint32_t joint_index = 0;
+	std::string joint_name;
 	bool joint = false;
 };
 
@@ -69,9 +69,15 @@ struct Animation
 
 struct Skin
 {
-	mat4 bind_pose_matrix;
 	std::vector<mat4> inverse_bind_pose;
-	std::vector<uint32_t> joint_indices;
+	std::vector<NodeTransform> joint_transforms;
+
+	struct Bone
+	{
+		uint32_t index;
+		std::vector<Bone> children;
+	};
+	std::vector<Bone> skeletons;
 };
 
 struct Node
@@ -79,6 +85,12 @@ struct Node
 	std::vector<uint32_t> meshes;
 	std::vector<uint32_t> children;
 	NodeTransform transform;
+
+	std::vector<uint32_t> skeletons;
+	uint32_t skin = 0;
+	bool has_skin = false;
+
+	std::string joint_name;
 	bool joint = false;
 };
 

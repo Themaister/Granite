@@ -25,6 +25,12 @@ vec3 AABB::get_corner(unsigned i) const
 	return vec3(x, y, z);
 }
 
+void AABB::expand(const AABB &aabb)
+{
+	minimum = min(minimum, aabb.minimum);
+	maximum = max(maximum, aabb.maximum);
+}
+
 vec3 AABB::get_center() const
 {
 	return minimum + (maximum - minimum) * vec3(0.5f);

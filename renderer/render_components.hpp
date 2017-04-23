@@ -19,6 +19,10 @@ struct CachedTransform
 {
 	mat4 world_transform;
 	mat4 normal_transform;
+};
+
+struct CachedSkinTransform
+{
 	std::vector<mat4> bone_world_transforms;
 	std::vector<mat4> bone_normal_transforms;
 };
@@ -41,6 +45,7 @@ struct CachedSpatialTransformComponent : ComponentBase
 {
 	AABB world_aabb;
 	CachedTransform *transform = nullptr;
+	CachedSkinTransform *skin_transform = nullptr;
 };
 
 struct OpaqueComponent : ComponentBase

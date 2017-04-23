@@ -46,7 +46,7 @@ void AnimationSystem::start_animation(const std::string &name, double start_time
 	for (auto &channel : animation.channels)
 	{
 		if (channel.joint)
-			target_nodes.push_back(nodes[channel.node_index]->get_skin()[channel.joint_index]);
+			target_nodes.push_back(nodes[channel.node_index]->get_skin().skin[0]);
 		else
 			target_nodes.push_back(&nodes[channel.node_index]->transform);
 	}

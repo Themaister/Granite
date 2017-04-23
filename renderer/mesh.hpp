@@ -30,7 +30,7 @@ struct MeshAttributeLayout
 
 struct StaticMeshVertex
 {
-	mat4 MVP;
+	mat4 Model;
 	mat4 Normal;
 	enum { max_instances = 256 };
 };

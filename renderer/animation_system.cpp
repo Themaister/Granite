@@ -1,5 +1,7 @@
 #include "animation_system.hpp"
 
+using namespace std;
+
 namespace Granite
 {
 void AnimationSystem::animate(double t)
@@ -38,15 +40,43 @@ void AnimationSystem::register_animation(const std::string &name, const Importer
 	animation_map[name] = animation;
 }
 
+void AnimationSystem::start_animation(Scene::Node &node, const std::string &name, double start_time, bool repeat)
+{
+	std::vector<Transform *> target_nodes;
+	auto &animation = animation_map[name];
+	target_nodes.reserve(animation.channels.size());
+
+	for (auto &channel : animation.channels)
+	{
+		if (channel.joint)
+		{
+			if (node.get_skin().skin.empty())
+				throw logic_error("Node does not have a skin.");
+			if (node.get_skin().skin_index != animation.skin_index)
+				throw logic_error("Nodes skin is not compatible with animation skin index.");
+
+			target_nodes.push_back(node.get_skin().skin[channel.joint_index]);
+		}
+		else
+			target_nodes.push_back(&nodes[channel.node_index]->transform);
+	}
+
+	animations.emplace_back(new AnimationState(move(target_nodes), animation, start_time, repeat));
+}
+
 void AnimationSystem::start_animation(const std::string &name, double start_time, bool repeat)
 {
 	std::vector<Transform *> target_nodes;
 	auto &animation = animation_map[name];
 	target_nodes.reserve(animation.channels.size());
+
+	if (animation.skinning)
+		throw logic_error("Cannot start skinning animations without a target base node.");
+
 	for (auto &channel : animation.channels)
 	{
 		if (channel.joint)
-			target_nodes.push_back(nodes[channel.node_index]->get_skin().skin[0]);
+			throw logic_error("Cannot start skinning animations without a target base node.");
 		else
 			target_nodes.push_back(&nodes[channel.node_index]->transform);
 	}

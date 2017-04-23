@@ -313,6 +313,21 @@ static void iterate_elements(const Value &value, const T &t, unordered_map<strin
 	}
 }
 
+template <typename T, typename Func>
+static void reiterate_elements(T *nodes, const Value &value, const Func &func)
+{
+	if (value.IsArray())
+	{
+		for (auto itr = value.Begin(); itr != value.End(); ++itr, nodes++)
+			func(*nodes, *itr);
+	}
+	else
+	{
+		for (auto itr = value.MemberBegin(); itr != value.MemberEnd(); ++itr, nodes++)
+			func(*nodes, itr->value);
+	}
+}
+
 template <typename T>
 static void read_min_max(T &out, ScalarType type, const Value &v)
 {
@@ -359,6 +374,10 @@ static MeshAttribute semantic_to_attribute(const char *semantic)
 		return MeshAttribute::UV;
 	else if (!strcmp(semantic, "TANGENT"))
 		return MeshAttribute::Tangent;
+	else if (!strcmp(semantic, "JOINT"))
+		return MeshAttribute::BoneIndex;
+	else if (!strcmp(semantic, "WEIGHT"))
+		return MeshAttribute::BoneWeights;
 	else
 		throw logic_error("Unsupported semantic.");
 }
@@ -641,14 +660,26 @@ void Parser::parse(const string &original_path, const string &json)
 		materials.push_back(move(info));
 	};
 
-	const auto add_node = [&](const Value &value) {
-		Node node;
+	const auto add_node_skins = [&](Node &node, const Value &value) {
+		if (value.HasMember("skin"))
+		{
+			auto &s = value["skin"];
+			node.has_skin = true;
+			node.skin = get_by_name(json_skin_map, s);
+		}
+	};
+
+	const auto add_node_children = [&](Node &node, const Value &value) {
 		if (value.HasMember("children"))
 		{
 			auto &children = value["children"];
 			for (auto itr = children.Begin(); itr != children.End(); ++itr)
-				node.children.push_back(itr->GetUint());
+				node.children.push_back(get_by_name(json_node_map, *itr));
 		}
+	};
+
+	const auto add_node = [&](const Value &value) {
+		Node node;
 
 		if (value.HasMember("mesh"))
 		{
@@ -712,7 +743,6 @@ void Parser::parse(const string &original_path, const string &json)
 		auto &joints = skin["jointNames"];
 		vector<NodeTransform> joint_transforms;
 		vector<uint32_t> joint_indices;
-		unordered_map<string, uint32_t> joint_name_to_bone;
 
 		vector<int> parents(joints.GetArray().Size());
 		for (auto &p : parents)
@@ -725,7 +755,11 @@ void Parser::parse(const string &original_path, const string &json)
 		{
 			uint32_t joint_index = get_by_name(json_joint_map, *itr);
 			joint_indices.push_back(joint_index);
-			joint_name_to_bone[itr->GetString()] = joint_transforms.size();
+			json_joint_index_to_skin[joint_index] = json_skins.size();
+
+			if (joint_name_to_bone_index.find(itr->GetString()) != end(joint_name_to_bone_index))
+				throw logic_error("Joint name is aliased.");
+			joint_name_to_bone_index[itr->GetString()] = joint_transforms.size();
 
 			auto &node = nodes[joint_index];
 			if (!node.joint)
@@ -745,8 +779,8 @@ void Parser::parse(const string &original_path, const string &json)
 				if (!child_node.joint)
 					throw logic_error("Node is not a joint.");
 
-				auto itr = joint_name_to_bone.find(child_node.joint_name);
-				if (itr == end(joint_name_to_bone))
+				auto itr = joint_name_to_bone_index.find(child_node.joint_name);
+				if (itr == end(joint_name_to_bone_index))
 					throw logic_error("Joint is not part of skeleton.");
 				uint32_t index = itr->second;
 
@@ -778,7 +812,8 @@ void Parser::parse(const string &original_path, const string &json)
 		for (auto &m : inverse_bind_matrices)
 			m = m * bind_shape;
 
-		json_skins.push_back({ move(inverse_bind_matrices), move(joint_transforms), move(skeleton) });
+		uint32_t skin_index = json_skins.size();
+		json_skins.push_back({ move(inverse_bind_matrices), move(joint_transforms), move(skeleton), skin_index });
 	};
 
 	if (doc.HasMember("images"))
@@ -798,10 +833,16 @@ void Parser::parse(const string &original_path, const string &json)
 
 	build_meshes();
 	if (doc.HasMember("nodes"))
+	{
 		iterate_elements(doc["nodes"], add_node, json_node_map);
+		reiterate_elements(nodes.data(), doc["nodes"], add_node_children);
+	}
 
 	if (doc.HasMember("skins"))
 		iterate_elements(doc["skins"], add_skin, json_skin_map);
+
+	if (doc.HasMember("nodes"))
+		reiterate_elements(nodes.data(), doc["nodes"], add_node_skins);
 
 	const auto add_animation = [&](const Value &animation) {
 		auto &samplers = animation["samplers"];
@@ -810,10 +851,10 @@ void Parser::parse(const string &original_path, const string &json)
 		Accessor *time = nullptr;
 		vector<Accessor *> json_samplers;
 
-		for (auto itr = samplers.Begin(); itr != samplers.End(); ++itr)
-		{
-			auto &input = (*itr)["input"];
-			auto &output = (*itr)["output"];
+		unordered_map<string, uint32_t> json_sampler_map;
+		const auto add_sampler = [&](const Value &v) {
+			auto &input = v["input"];
+			auto &output = v["output"];
 
 			if (!time)
 				time = &json_accessors[get_by_name(json_accessor_map, input)];
@@ -821,7 +862,9 @@ void Parser::parse(const string &original_path, const string &json)
 				throw logic_error("Animation uses different time for keyframes.");
 
 			json_samplers.push_back(&json_accessors[get_by_name(json_accessor_map, output)]);
-		}
+		};
+
+		iterate_elements(samplers, add_sampler, json_sampler_map);
 
 		if (!time)
 			throw logic_error("No time accessor set.");
@@ -831,13 +874,34 @@ void Parser::parse(const string &original_path, const string &json)
 
 		for (auto itr = channels.Begin(); itr != channels.End(); ++itr)
 		{
-			auto &sampler = json_samplers[(*itr)["sampler"].GetUint()];
-			auto &node_id = (*itr)["target"]["node"];
+			auto &sampler = json_samplers[get_by_name(json_sampler_map, (*itr)["sampler"])];
+			auto &animation_target = (*itr)["target"];
+			auto &node_id = animation_target.HasMember("node") ? animation_target["node"] : animation_target["id"];
 
 			AnimationChannel channel;
 			channel.node_index = get_by_name(json_node_map, node_id);
 			if (nodes[channel.node_index].joint)
-				channel.joint_name = nodes[channel.node_index].joint_name;
+			{
+				auto itr = joint_name_to_bone_index.find(nodes[channel.node_index].joint_name);
+				if (itr == end(joint_name_to_bone_index))
+					throw logic_error("Joint name does not exist in a skeleton hierarchy.");
+
+				channel.joint_index = itr->second;
+				channel.joint = true;
+
+				auto skin_itr = json_joint_index_to_skin.find(channel.node_index);
+				if (skin_itr == end(json_joint_index_to_skin))
+					throw logic_error("Joint name does not exist in a skin.");
+
+				uint32_t skin_index = skin_itr->second;
+				if (!combined_animation.skinning)
+				{
+					combined_animation.skinning = true;
+					combined_animation.skin_index = skin_index; // Any node which receives this animation must have the same skin.
+				}
+				else if (combined_animation.skin_index != skin_index)
+					throw logic_error("Cannot have two different skin indices in a single animation.");
+			}
 
 			const char *target = (*itr)["target"]["path"].GetString();
 			if (!strcmp(target, "translation"))
@@ -864,11 +928,7 @@ void Parser::parse(const string &original_path, const string &json)
 	};
 
 	if (doc.HasMember("animations"))
-	{
-		auto &anim = doc["animations"];
-		for (auto itr = anim.Begin(); itr != anim.End(); ++itr)
-			add_animation(*itr);
-	}
+		iterate_elements(doc["animations"], add_animation, json_animation_map);
 }
 
 static uint32_t padded_type_size(uint32_t type_size)

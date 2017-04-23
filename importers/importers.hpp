@@ -30,7 +30,7 @@ struct AnimationChannel
 	LinearSampler linear;
 	SlerpSampler spherical;
 
-	std::string joint_name;
+	uint32_t joint_index;
 	bool joint = false;
 };
 
@@ -38,6 +38,10 @@ struct Animation
 {
 	std::vector<float> timestamps;
 	std::vector<AnimationChannel> channels;
+
+	uint32_t skin_index = 0;
+	bool skinning = false;
+
 	float get_length() const
 	{
 		return timestamps.back();
@@ -78,6 +82,7 @@ struct Skin
 		std::vector<Bone> children;
 	};
 	std::vector<Bone> skeletons;
+	uint32_t skin_index;
 };
 
 struct Node

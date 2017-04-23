@@ -136,6 +136,9 @@ private:
 	std::unordered_map<std::string, uint32_t> json_node_map;
 	std::unordered_map<std::string, uint32_t> json_skin_map;
 	std::unordered_map<std::string, uint32_t> json_joint_map;
+	std::unordered_map<std::string, uint32_t> json_animation_map;
+	std::unordered_map<std::string, uint32_t> joint_name_to_bone_index;
+	std::unordered_map<uint32_t, uint32_t> json_joint_index_to_skin;
 	std::vector<std::vector<uint32_t>> mesh_index_to_primitives;
 
 	void build_meshes();

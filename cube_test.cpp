@@ -33,7 +33,8 @@ int main()
 
 	auto &device = wsi.get_device();
 
-	GLTF::Parser parser("assets://scenes/AnimatedCube.gltf");
+	//GLTF::Parser parser("assets://scenes/AnimatedCube.gltf");
+	GLTF::Parser parser("assets://scenes/SimpleSkin.gltf");
 
 	std::vector<AbstractRenderableHandle> meshes;
 	meshes.reserve(parser.get_meshes().size());
@@ -53,33 +54,46 @@ int main()
 	nodes.reserve(parser.get_nodes().size());
 	for (auto &node : parser.get_nodes())
 	{
-		auto nodeptr = scene.create_node();
-		nodes.push_back(nodeptr);
-		nodeptr->transform.translation = node.transform.translation;
-		nodeptr->transform.rotation = node.transform.rotation;
-		nodeptr->transform.scale = node.transform.scale;
+		if (!node.joint)
+		{
+			Scene::NodeHandle nodeptr;
+			if (node.has_skin)
+				nodeptr = scene.create_skinned_node(parser.get_skins()[node.skin]);
+			else
+				nodeptr = scene.create_node();
+
+			nodes.push_back(nodeptr);
+			nodeptr->transform.translation = node.transform.translation;
+			nodeptr->transform.rotation = node.transform.rotation;
+			nodeptr->transform.scale = node.transform.scale;
+		}
+		else
+			nodes.push_back({});
 	}
 
 	AnimationSystem animation_system;
 	size_t i = 0;
 	for (auto &node : parser.get_nodes())
 	{
-		for (auto &child : node.children)
-			nodes[i]->add_child(nodes[child]);
-		for (auto &mesh : node.meshes)
-			scene.create_renderable(meshes[mesh], nodes[i].get());
+		if (nodes[i])
+		{
+			for (auto &child : node.children)
+				nodes[i]->add_child(nodes[child]);
+			for (auto &mesh : node.meshes)
+				scene.create_renderable(meshes[mesh], nodes[i].get());
 
-		animation_system.add_node(nodes[i]);
+			animation_system.add_node(nodes[i]);
+		}
 		i++;
 	}
 
 	for (auto &anim : parser.get_animations())
 		animation_system.register_animation("cube", anim);
-	animation_system.start_animation("cube", wsi.get_elapsed_time(), true);
+	animation_system.start_animation(*nodes[0], "cube", wsi.get_elapsed_time(), true);
 
 	auto root = scene.create_node();
 	for (auto &node : nodes)
-		if (!node->get_parent())
+		if (node && !node->get_parent())
 			root->add_child(node);
 
 	root->transform.rotation = angleAxis(0.1f, vec3(0.0f, 1.0f, 0.0f));

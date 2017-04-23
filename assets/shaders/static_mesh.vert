@@ -18,7 +18,7 @@ layout(set = 0, binding = 0, std140) uniform RenderParameters
 
 struct StaticMeshInfo
 {
-    mat4 MVP;
+    mat4 Model;
     mat4 Normal;
 };
 
@@ -46,7 +46,12 @@ layout(location = 2) out mediump vec3 vTangent;
 
 void main()
 {
-    gl_Position = infos[gl_InstanceIndex].MVP * Position;
+    vec3 World =
+        infos[gl_InstanceIndex].Model[0].xyz * Position.x +
+        infos[gl_InstanceIndex].Model[1].xyz * Position.y +
+        infos[gl_InstanceIndex].Model[2].xyz * Position.z +
+        infos[gl_InstanceIndex].Model[3].xyz;
+    gl_Position = global.view_projection * vec4(World, 1.0);
 
 #if HAVE_NORMAL
     vNormal = normalize(mat3(infos[gl_InstanceIndex].Normal) * Normal);

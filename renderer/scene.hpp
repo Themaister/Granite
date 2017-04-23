@@ -65,6 +65,7 @@ public:
 		{
 			std::vector<Transform *> skin;
 			std::vector<CachedTransform *> cached_skin;
+			uint32_t skin_index = 0;
 		};
 
 		Skinning &get_skin()

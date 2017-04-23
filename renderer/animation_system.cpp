@@ -58,7 +58,7 @@ void AnimationSystem::start_animation(Scene::Node &node, const std::string &name
 			target_nodes.push_back(node.get_skin().skin[channel.joint_index]);
 		}
 		else
-			target_nodes.push_back(&nodes[channel.node_index]->transform);
+			target_nodes.push_back(&node.transform);
 	}
 
 	animations.emplace_back(new AnimationState(move(target_nodes), animation, start_time, repeat));

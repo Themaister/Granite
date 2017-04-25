@@ -38,6 +38,7 @@ struct Animation
 {
 	std::vector<float> timestamps;
 	std::vector<AnimationChannel> channels;
+	std::string name;
 
 	Util::Hash skin_compat = 0;
 	bool skinning = false;

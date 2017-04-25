@@ -102,8 +102,10 @@ int main()
 	}
 
 	for (auto &anim : parser.get_animations())
-		animation_system.register_animation("cube", anim);
-	animation_system.start_animation(*nodes[0], "cube", wsi.get_elapsed_time(), true);
+	{
+		animation_system.register_animation(anim.name, anim);
+		animation_system.start_animation(*nodes[0], anim.name, wsi.get_elapsed_time(), true);
+	}
 
 	auto root = scene.create_node();
 	for (auto &node : nodes)

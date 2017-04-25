@@ -138,6 +138,7 @@ private:
 	std::unordered_map<std::string, uint32_t> json_skin_map;
 	std::unordered_map<std::string, uint32_t> json_joint_map;
 	std::unordered_map<std::string, uint32_t> json_animation_map;
+	std::vector<std::string> json_animation_names;
 	std::unordered_map<std::string, uint32_t> joint_name_to_bone_index;
 	std::unordered_map<uint32_t, uint32_t> json_joint_index_to_skin;
 	std::vector<std::vector<uint32_t>> mesh_index_to_primitives;

@@ -935,11 +935,30 @@ void Parser::parse(const string &original_path, const string &json)
 
 			combined_animation.channels.push_back(move(channel));
 		}
+		combined_animation.name = move(json_animation_names[animations.size()]);
 		animations.push_back(move(combined_animation));
 	};
 
 	if (doc.HasMember("animations"))
-		iterate_elements(doc["animations"], add_animation, json_animation_map);
+	{
+		auto &animations = doc["animations"];
+		if (animations.IsArray())
+		{
+			unsigned counter = 0;
+			for (auto itr = animations.Begin(); itr != animations.End(); ++itr)
+			{
+				string name = "animation_";
+				name += to_string(counter);
+				json_animation_names.push_back(move(name));
+			}
+		}
+		else
+		{
+			for (auto itr = animations.MemberBegin(); itr != animations.MemberEnd(); ++itr)
+				json_animation_names.push_back(itr->name.GetString());
+		}
+		iterate_elements(animations, add_animation, json_animation_map);
+	}
 }
 
 static uint32_t padded_type_size(uint32_t type_size)

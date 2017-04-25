@@ -34,7 +34,7 @@ int main()
 	auto &device = wsi.get_device();
 
 	//GLTF::Parser parser("assets://scenes/AnimatedCube.gltf");
-	GLTF::Parser parser("assets://scenes/SimpleSkin.gltf");
+	GLTF::Parser parser("assets://scenes/personal/model/sponza/sponza.gltf");
 
 	std::vector<AbstractRenderableHandle> meshes;
 	meshes.reserve(parser.get_meshes().size());
@@ -101,9 +101,9 @@ int main()
 		i++;
 	}
 
-	for (auto &anim : parser.get_animations())
-		animation_system.register_animation("cube", anim);
-	animation_system.start_animation(*nodes[0], "cube", wsi.get_elapsed_time(), true);
+	//for (auto &anim : parser.get_animations())
+	//	animation_system.register_animation("cube", anim);
+	//animation_system.start_animation(*nodes[0], "cube", wsi.get_elapsed_time(), true);
 
 	auto root = scene.create_node();
 	for (auto &node : nodes)

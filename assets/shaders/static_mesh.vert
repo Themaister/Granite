@@ -108,10 +108,14 @@ void main()
             mat3(BoneNormalTransforms[BoneIndices.z]) * BoneWeights.z +
             mat3(BoneNormalTransforms[BoneIndices.w]) * BoneWeights.w;
         vNormal = normalize(NormalTransform * Normal);
-        vTangent = normalize(NormalTransform * Tangent);
+        #if HAVE_TANGENT
+            vTangent = normalize(NormalTransform * Tangent);
+        #endif
     #else
         vNormal = normalize(mat3(infos[gl_InstanceIndex].Normal) * Normal);
-        vTangent = normalize(mat3(infos[gl_InstanceIndex].Normal) * Tangent);
+        #if HAVE_TANGENT
+            vTangent = normalize(mat3(infos[gl_InstanceIndex].Normal) * Tangent);
+        #endif
     #endif
 #endif
 

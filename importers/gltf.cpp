@@ -536,19 +536,25 @@ void Parser::parse(const string &original_path, const string &json)
 				acc.stride = accessor["byteStride"].GetUint();
 
 		auto *minimums = acc.min;
-		for (auto itr = accessor["min"].Begin(); itr != accessor["min"].End(); ++itr)
+		if (accessor.HasMember("min"))
 		{
-			assert(minimums - acc.min < 16);
-			read_min_max(*minimums, acc.type, *itr);
-			minimums++;
+			for (auto itr = accessor["min"].Begin(); itr != accessor["min"].End(); ++itr)
+			{
+				assert(minimums - acc.min < 16);
+				read_min_max(*minimums, acc.type, *itr);
+				minimums++;
+			}
 		}
 
 		auto *maximums = acc.max;
-		for (auto itr = accessor["max"].Begin(); itr != accessor["max"].End(); ++itr)
+		if (accessor.HasMember("max"))
 		{
-			assert(maximums - acc.max < 16);
-			read_min_max(*maximums, acc.type, *itr);
-			maximums++;
+			for (auto itr = accessor["max"].Begin(); itr != accessor["max"].End(); ++itr)
+			{
+				assert(maximums - acc.max < 16);
+				read_min_max(*maximums, acc.type, *itr);
+				maximums++;
+			}
 		}
 
 		json_accessors.push_back(acc);
@@ -623,7 +629,7 @@ void Parser::parse(const string &original_path, const string &json)
 
 	const auto add_texture = [&](const Value &value) {
 		auto &source = value["source"];
-		json_textures.push_back({ get_by_name(json_mesh_map, source) });
+		json_textures.push_back({ get_by_name(json_images_map, source) });
 	};
 
 	const auto add_material = [&](const Value &value) {

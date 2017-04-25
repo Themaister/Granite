@@ -735,6 +735,7 @@ void Parser::parse(const string &original_path, const string &json)
 	};
 
 	const auto add_skin = [&](const Value &skin) {
+		Util::Hasher hasher;
 		mat4 bind_shape(1.0f);
 		if (skin.HasMember("bindShapeMatrix"))
 		{
@@ -757,6 +758,8 @@ void Parser::parse(const string &original_path, const string &json)
 		vector<vector<uint32_t>> hierarchy(joints.GetArray().Size());
 		joint_transforms.reserve(joints.GetArray().Size());
 		joint_indices.reserve(joints.GetArray().Size());
+
+		hasher.u32(joints.GetArray().Size());
 		for (auto itr = joints.Begin(); itr != joints.End(); ++itr)
 		{
 			uint32_t joint_index = get_by_name(json_joint_map, *itr);
@@ -766,6 +769,7 @@ void Parser::parse(const string &original_path, const string &json)
 			if (joint_name_to_bone_index.find(itr->GetString()) != end(joint_name_to_bone_index))
 				throw logic_error("Joint name is aliased.");
 			joint_name_to_bone_index[itr->GetString()] = joint_transforms.size();
+			hasher.string(itr->GetString());
 
 			auto &node = nodes[joint_index];
 			if (!node.joint)
@@ -818,8 +822,9 @@ void Parser::parse(const string &original_path, const string &json)
 		for (auto &m : inverse_bind_matrices)
 			m = m * bind_shape;
 
-		uint32_t skin_index = json_skins.size();
-		json_skins.push_back({ move(inverse_bind_matrices), move(joint_transforms), move(skeleton), skin_index });
+		auto compat = hasher.get();
+		skin_compat.push_back(compat);
+		json_skins.push_back({ move(inverse_bind_matrices), move(joint_transforms), move(skeleton), compat });
 	};
 
 	if (doc.HasMember("images"))
@@ -903,9 +908,9 @@ void Parser::parse(const string &original_path, const string &json)
 				if (!combined_animation.skinning)
 				{
 					combined_animation.skinning = true;
-					combined_animation.skin_index = skin_index; // Any node which receives this animation must have the same skin.
+					combined_animation.skin_compat = skin_compat[skin_index]; // Any node which receives this animation must have the same skin.
 				}
-				else if (combined_animation.skin_index != skin_index)
+				else if (combined_animation.skin_compat != skin_compat[skin_index])
 					throw logic_error("Cannot have two different skin indices in a single animation.");
 			}
 

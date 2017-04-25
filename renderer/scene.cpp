@@ -165,7 +165,7 @@ Scene::NodeHandle Scene::create_skinned_node(const Importer::Skin &skin)
 			add_bone(bones.data(), skeleton.index, child);
 	}
 
-	node_skin.skin_index = skin.skin_index;
+	node_skin.skin_compat = skin.skin_compat;
 	return node;
 }
 

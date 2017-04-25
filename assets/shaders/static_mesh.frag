@@ -66,7 +66,9 @@ void main()
     float roughness = registers.roughness;
 #endif
 
-#if HAVE_NORMAL
+#if defined(HAVE_BASECOLORMAP) && HAVE_BASECOLORMAP
+    FragColor = base_color;
+#elif HAVE_NORMAL
     FragColor = vec4(0.5 * normal + 0.5, 1.0);
 #else
     FragColor = base_color;

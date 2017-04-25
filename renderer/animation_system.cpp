@@ -52,7 +52,7 @@ void AnimationSystem::start_animation(Scene::Node &node, const std::string &name
 		{
 			if (node.get_skin().skin.empty())
 				throw logic_error("Node does not have a skin.");
-			if (node.get_skin().skin_index != animation.skin_index)
+			if (node.get_skin().skin_compat != animation.skin_compat)
 				throw logic_error("Nodes skin is not compatible with animation skin index.");
 
 			target_nodes.push_back(node.get_skin().skin[channel.joint_index]);

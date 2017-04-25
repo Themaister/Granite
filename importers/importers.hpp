@@ -39,7 +39,7 @@ struct Animation
 	std::vector<float> timestamps;
 	std::vector<AnimationChannel> channels;
 
-	uint32_t skin_index = 0;
+	Util::Hash skin_compat = 0;
 	bool skinning = false;
 
 	float get_length() const
@@ -82,7 +82,7 @@ struct Skin
 		std::vector<Bone> children;
 	};
 	std::vector<Bone> skeletons;
-	uint32_t skin_index;
+	Util::Hash skin_compat;
 };
 
 struct Node
@@ -92,7 +92,7 @@ struct Node
 	NodeTransform transform;
 
 	std::vector<uint32_t> skeletons;
-	uint32_t skin = 0;
+	Util::Hash skin = 0;
 	bool has_skin = false;
 
 	std::string joint_name;

@@ -126,6 +126,7 @@ private:
 	std::vector<Skin> json_skins;
 	std::vector<Node> nodes;
 	std::vector<Animation> animations;
+	std::vector<Util::Hash> skin_compat;
 	std::unordered_map<std::string, uint32_t> json_buffer_map;
 	std::unordered_map<std::string, uint32_t> json_view_map;
 	std::unordered_map<std::string, uint32_t> json_accessor_map;

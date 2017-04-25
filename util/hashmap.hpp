@@ -46,6 +46,13 @@ public:
 		u64(reinterpret_cast<uintptr_t>(ptr));
 	}
 
+	inline void string(const char *str)
+	{
+		char c;
+		while ((c = *str++) != '\0')
+			u32(uint8_t(c));
+	}
+
 	inline Hash get() const
 	{
 		return h;

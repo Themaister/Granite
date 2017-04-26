@@ -31,9 +31,6 @@ int main()
 	loader.load_scene("assets://scenes/test.json");
 	auto &scene = loader.get_scene();
 
-	auto skybox = Util::make_abstract_handle<AbstractRenderable, Skybox>("assets://textures/skybox.ktx");
-	scene.create_renderable(skybox, nullptr);
-
 	auto &device = wsi.get_device();
 
 	Renderer renderer;

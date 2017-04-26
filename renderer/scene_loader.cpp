@@ -84,6 +84,9 @@ void SceneLoader::parse(const std::string &path, const std::string &json)
 	Document doc;
 	doc.Parse(json);
 
+	if (doc.HasParseError())
+		throw logic_error("Failed to parse.");
+
 	auto &scenes = doc["scenes"];
 	for (auto itr = scenes.MemberBegin(); itr != scenes.MemberEnd(); ++itr)
 	{
@@ -171,6 +174,13 @@ void SceneLoader::parse(const std::string &path, const std::string &json)
 			root->add_child(node);
 
 	scene->set_root_node(root);
+
+	if (doc.HasMember("background"))
+	{
+		auto texture_path = Path::relpath(path, doc["background"].GetString());
+		auto skybox = Util::make_abstract_handle<AbstractRenderable, Skybox>(texture_path);
+		scene->create_renderable(skybox, nullptr);
+	}
 }
 
 }

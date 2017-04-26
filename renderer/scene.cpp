@@ -171,6 +171,7 @@ Scene::NodeHandle Scene::create_skinned_node(const Importer::Skin &skin)
 
 void Scene::Node::add_child(NodeHandle node)
 {
+	assert(this != node.get());
 	assert(node->parent == nullptr);
 	node->parent = this;
 	children.push_back(node);

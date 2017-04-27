@@ -127,30 +127,70 @@ void SceneLoader::parse(const std::string &path, const std::string &json)
 	for (auto itr = nodes.Begin(); itr != nodes.End(); ++itr)
 	{
 		auto &elem = *itr;
+		bool has_scene = elem.HasMember("scene");
 
-		auto scene_itr = subscenes.find(elem["scene"].GetString());
-		if (scene_itr == end(subscenes))
+		auto scene_itr = has_scene ? subscenes.find(elem["scene"].GetString()) : end(subscenes);
+		if (has_scene && scene_itr == end(subscenes))
 			throw logic_error("Scene does not exist.");
 
-		hierarchy.push_back(build_tree_for_subscene(scene_itr->second));
+		vec3 stride = vec3(0.0f);
+		uvec3 instance_size = uvec3(1);
+		if (elem.HasMember("grid_stride"))
+		{
+			auto &grid_stride = elem["grid_stride"];
+			stride = vec3(grid_stride[0].GetFloat(), grid_stride[1].GetFloat(), grid_stride[2].GetFloat());
+		}
+
+		if (elem.HasMember("grid_size"))
+		{
+			auto &grid_size = elem["grid_size"];
+			instance_size = uvec3(grid_size[0].GetUint(), grid_size[1].GetUint(), grid_size[2].GetUint());
+		}
+
+		Transform transform;
 
 		if (elem.HasMember("translation"))
 		{
 			auto &t = elem["translation"];
-			hierarchy.back()->transform.translation = vec3(t[0].GetFloat(), t[1].GetFloat(), t[2].GetFloat());
+			transform.translation = vec3(t[0].GetFloat(), t[1].GetFloat(), t[2].GetFloat());
 		}
 
 		if (elem.HasMember("rotation"))
 		{
 			auto &r = elem["rotation"];
-			hierarchy.back()->transform.rotation = normalize(quat(r[3].GetFloat(), r[0].GetFloat(), r[1].GetFloat(), r[2].GetFloat()));
+			transform.rotation = normalize(quat(r[3].GetFloat(), r[0].GetFloat(), r[1].GetFloat(), r[2].GetFloat()));
 		}
 
 		if (elem.HasMember("scale"))
 		{
 			auto &s = elem["scale"];
-			hierarchy.back()->transform.scale = vec3(s[0].GetFloat(), s[1].GetFloat(), s[2].GetFloat());
+			transform.scale = vec3(s[0].GetFloat(), s[1].GetFloat(), s[2].GetFloat());
 		}
+
+		if (has_scene)
+		{
+			if (all(equal(instance_size, uvec3(1))))
+				hierarchy.push_back(build_tree_for_subscene(scene_itr->second));
+			else
+			{
+				auto subroot = scene->create_node();
+				for (unsigned z = 0; z < instance_size.z; z++)
+				{
+					for (unsigned y = 0; y < instance_size.y; y++)
+					{
+						for (unsigned x = 0; x < instance_size.x; x++)
+						{
+							auto child = build_tree_for_subscene(scene_itr->second);
+							child->transform.translation = vec3(x, y, z) * stride;
+							subroot->add_child(child);
+						}
+					}
+				}
+				hierarchy.push_back(subroot);
+			}
+		}
+
+		hierarchy.back()->transform = transform;
 	}
 
 	auto hier_itr = begin(hierarchy);

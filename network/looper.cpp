@@ -104,7 +104,7 @@ int Looper::wait(int timeout)
 				flags |= EVENT_ERROR;
 
 			//fprintf(stderr, "Handling event (0x%x)!\n", events[i].events);
-			auto done = (flags & (EPOLLHUP | EPOLLERR)) || !handler->handle(*this, flags);
+			auto done = !handler->handle(*this, flags);
 			if (done)
 			{
 				auto &socket = handler->get_socket();

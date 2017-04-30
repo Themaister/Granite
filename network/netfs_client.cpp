@@ -76,7 +76,7 @@ struct FSReader : LooperHandler
 		auto ret = command_reader.process(*socket);
 		if (command_reader.complete())
 		{
-			::write(1, reply_buffer.data(), reply_buffer.size());
+			fwrite(reply_buffer.data(), reply_buffer.size(), 1, stdout);
 			return false;
 		}
 
@@ -108,13 +108,16 @@ struct FSReader : LooperHandler
 	SocketWriter command_writer;
 };
 
-int main()
+int main(int argc, char *argv[])
 {
+	if (argc != 2)
+		return 1;
+
 	Looper looper;
 	auto client = Socket::connect("127.0.0.1", 7070);
 	if (!client)
 		return 1;
 
-	looper.register_handler(EVENT_OUT, unique_ptr<FSReader>(new FSReader("assets://test.txt", move(client))));
+	looper.register_handler(EVENT_OUT, unique_ptr<FSReader>(new FSReader(argv[1], move(client))));
 	while (looper.wait(-1) >= 0);
 }

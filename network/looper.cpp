@@ -1,4 +1,4 @@
-#include "netfs_server.hpp"
+#include "network.hpp"
 
 #include <stdexcept>
 #include <sys/epoll.h>
@@ -13,6 +13,11 @@ using namespace std;
 
 namespace Granite
 {
+LooperHandler::LooperHandler(std::unique_ptr<Socket> socket)
+	: socket(move(socket))
+{
+}
+
 Looper::Looper()
 {
 	fd = epoll_create1(0);
@@ -26,7 +31,7 @@ Looper::~Looper()
 		close(fd);
 }
 
-bool Looper::register_handler(Socket &sock, EventFlags events, unique_ptr<LooperHandler> handler)
+bool Looper::register_handler(EventFlags events, unique_ptr<LooperHandler> handler)
 {
 	int flags = 0;
 	if (events & EVENT_IN)
@@ -37,12 +42,12 @@ bool Looper::register_handler(Socket &sock, EventFlags events, unique_ptr<Looper
 
 	epoll_event event = {};
 	event.events = flags;
-	event.data.fd = sock.get_fd();
-	if (epoll_ctl(fd, EPOLL_CTL_ADD, sock.get_fd(), &event) < 0)
+	event.data.ptr = handler.get();
+	if (epoll_ctl(fd, EPOLL_CTL_ADD, handler->get_socket().get_fd(), &event) < 0)
 		return false;
 
-	sock.set_parent_looper(this);
-	handlers[sock.get_fd()] = move(handler);
+	handler->get_socket().set_parent_looper(this);
+	handlers[handler->get_socket().get_fd()] = move(handler);
 	return true;
 }
 
@@ -69,11 +74,7 @@ int Looper::wait(int timeout)
 		handled += ret;
 		for (int i = 0; i < ret; i++)
 		{
-			auto itr = handlers.find(events[i].data.fd);
-			if (itr == end(handlers))
-				throw logic_error("Unknown handler.");
-
-			int event_fd = events[i].data.fd;
+			auto *handler = static_cast<LooperHandler *>(events[i].data.ptr);
 
 			EventFlags flags = 0;
 			if (events[i].events & EPOLLIN)
@@ -86,17 +87,11 @@ int Looper::wait(int timeout)
 				flags |= EVENT_ERROR;
 
 			fprintf(stderr, "Handling event (0x%x)!\n", events[i].events);
-			auto done = itr->second->handle(flags);
+			auto done = handler->handle(flags);
 			if (done)
 			{
-				auto *socket = itr->second->get_socket();
-				if (socket)
-					unregister_handler(*socket);
-				else
-				{
-					epoll_ctl(fd, EPOLL_CTL_DEL, event_fd, nullptr);
-					handlers[event_fd].reset();
-				}
+				auto &socket = handler->get_socket();
+				unregister_handler(socket);
 			}
 		}
 	}

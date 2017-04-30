@@ -1,4 +1,4 @@
-#include "netfs_server.hpp"
+#include "network.hpp"
 
 #include <sys/types.h>
 #include <sys/socket.h>

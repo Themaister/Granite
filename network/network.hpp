@@ -37,6 +37,8 @@ public:
 		ErrorIO = -2
 	};
 
+	static std::unique_ptr<Socket> connect(const char *addr, uint16_t port);
+
 private:
 	int fd;
 	Looper *looper = nullptr;
@@ -78,12 +80,13 @@ using EventFlags = uint32_t;
 class LooperHandler
 {
 public:
+	LooperHandler(std::unique_ptr<Socket> socket);
 	virtual ~LooperHandler() = default;
 	virtual bool handle(EventFlags flags) = 0;
 
-	Socket *get_socket()
+	Socket &get_socket()
 	{
-		return socket.get();
+		return *socket.get();
 	}
 
 protected:
@@ -99,7 +102,7 @@ public:
 	Looper(Looper &&) = delete;
 	void operator=(Looper &&) = delete;
 
-	bool register_handler(Socket &sock, EventFlags events, std::unique_ptr<LooperHandler> handler);
+	bool register_handler(EventFlags events, std::unique_ptr<LooperHandler> handler);
 	void unregister_handler(Socket &sock);
 	int wait(int timeout = -1);
 

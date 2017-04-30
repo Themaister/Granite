@@ -36,6 +36,8 @@ add_executable(cube-test cube_test.cpp)
 target_link_libraries(cube-test math renderer vulkan-backend importers)
 target_compile_options(cube-test PRIVATE ${GRANITE_CXX_FLAGS})
 
+add_subdirectory(network)
+
 #if (WIN32)
 #    if (CMAKE_COMPILER_IS_GNUCXX)
 #        set_target_properties(main PROPERTIES LINK_FLAGS -mwindows)

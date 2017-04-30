@@ -8,6 +8,41 @@
 namespace Granite
 {
 class Looper;
+class Socket;
+
+class SocketReader
+{
+public:
+	void start(void *data, size_t size);
+	ssize_t process(Socket &socket);
+
+	bool complete() const
+	{
+		return offset == size;
+	}
+
+private:
+	void *data = nullptr;
+	size_t offset = 0;
+	size_t size = 0;
+};
+
+class SocketWriter
+{
+public:
+	void start(const void *data, size_t size);
+	ssize_t process(Socket &socket);
+
+	bool complete() const
+	{
+		return offset == size;
+	}
+
+private:
+	const void *data = nullptr;
+	size_t offset = 0;
+	size_t size = 0;
+};
 
 class Socket
 {
@@ -23,6 +58,11 @@ public:
 		this->looper = looper;
 	}
 
+	Looper *get_parent_looper()
+	{
+		return looper;
+	}
+
 	int get_fd() const
 	{
 		return fd;
@@ -31,7 +71,7 @@ public:
 	ssize_t write(const void *data, size_t size);
 	ssize_t read(void *data, size_t size);
 
-	enum
+	enum Error
 	{
 		ErrorWouldBlock = -1,
 		ErrorIO = -2
@@ -52,21 +92,6 @@ private:
 	SocketGlobal();
 };
 
-class TCPListener
-{
-public:
-	TCPListener() = default;
-	~TCPListener();
-
-	TCPListener(TCPListener &&) = delete;
-	void operator=(TCPListener &&) = delete;
-
-	bool init(uint16_t port);
-	std::unique_ptr<Socket> accept();
-
-private:
-	int fd = -1;
-};
 
 enum EventFlagBits
 {
@@ -81,8 +106,10 @@ class LooperHandler
 {
 public:
 	LooperHandler(std::unique_ptr<Socket> socket);
+	LooperHandler() = default;
+
 	virtual ~LooperHandler() = default;
-	virtual bool handle(EventFlags flags) = 0;
+	virtual bool handle(Looper &looper, EventFlags flags) = 0;
 
 	Socket &get_socket()
 	{
@@ -102,6 +129,7 @@ public:
 	Looper(Looper &&) = delete;
 	void operator=(Looper &&) = delete;
 
+	bool modify_handler(EventFlags events, LooperHandler &handler);
 	bool register_handler(EventFlags events, std::unique_ptr<LooperHandler> handler);
 	void unregister_handler(Socket &sock);
 	int wait(int timeout = -1);
@@ -110,4 +138,29 @@ private:
 	int fd;
 	std::unordered_map<int, std::unique_ptr<LooperHandler>> handlers;
 };
+
+class TCPListener : public LooperHandler
+{
+public:
+	TCPListener(TCPListener &&) = delete;
+	void operator=(TCPListener &&) = delete;
+	std::unique_ptr<Socket> accept();
+
+	template <typename T>
+	static std::unique_ptr<T> bind(uint16_t port)
+	{
+		try
+		{
+			return std::unique_ptr<T>(new T(port));
+		}
+		catch (...)
+		{
+			return {};
+		}
+	}
+
+protected:
+	TCPListener(uint16_t port);
+};
+
 }

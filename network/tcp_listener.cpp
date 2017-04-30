@@ -26,7 +26,7 @@ unique_ptr<Socket> TCPListener::accept()
 {
 	sockaddr_storage their;
 	socklen_t their_size = sizeof(their);
-	int new_fd = ::accept(fd,
+	int new_fd = ::accept(socket->get_fd(),
                           reinterpret_cast<sockaddr *>(&their), &their_size);
 
 	int old = fcntl(new_fd, F_GETFL);
@@ -39,7 +39,7 @@ unique_ptr<Socket> TCPListener::accept()
 	return unique_ptr<Socket>(new Socket(new_fd));
 }
 
-bool TCPListener::init(uint16_t port)
+TCPListener::TCPListener(uint16_t port)
 {
 	SocketGlobal::get();
 
@@ -52,13 +52,15 @@ bool TCPListener::init(uint16_t port)
 
 	int res = getaddrinfo(nullptr, std::to_string(port).c_str(), &hints, &servinfo);
 	if (res < 0)
-		return false;
+		throw runtime_error("getaddrinfo");
+
+	int fd = -1;
 
 	addrinfo *walk;
 	for (walk = servinfo; walk; walk = walk->ai_next)
 	{
-		fd = socket(walk->ai_family, walk->ai_socktype,
-		            walk->ai_protocol);
+		fd = ::socket(walk->ai_family, walk->ai_socktype,
+		              walk->ai_protocol);
 
 		if (fd < 0)
 			continue;
@@ -71,7 +73,7 @@ bool TCPListener::init(uint16_t port)
 			continue;
 		}
 
-		if (bind(fd, walk->ai_addr, walk->ai_addrlen) < 0)
+		if (::bind(fd, walk->ai_addr, walk->ai_addrlen) < 0)
 		{
 			close(fd);
 			break;
@@ -83,20 +85,14 @@ bool TCPListener::init(uint16_t port)
 	freeaddrinfo(servinfo);
 
 	if (!walk)
-		return false;
+		throw runtime_error("bind");
 
 	if (listen(fd, 64) < 0)
 	{
 		close(fd);
-		return false;
+		throw runtime_error("listen");
 	}
 
-	return true;
-}
-
-TCPListener::~TCPListener()
-{
-	if (fd >= 0)
-		close(fd);
+	socket = unique_ptr<Socket>(new Socket(fd));
 }
 }

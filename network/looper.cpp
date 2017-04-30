@@ -31,7 +31,7 @@ Looper::~Looper()
 		close(fd);
 }
 
-bool Looper::register_handler(EventFlags events, unique_ptr<LooperHandler> handler)
+bool Looper::modify_handler(EventFlags events, LooperHandler &handler)
 {
 	int flags = 0;
 	if (events & EVENT_IN)
@@ -39,6 +39,23 @@ bool Looper::register_handler(EventFlags events, unique_ptr<LooperHandler> handl
 	if (events & EVENT_OUT)
 		flags |= EPOLLOUT;
 	flags |= EPOLLHUP | EPOLLERR;
+
+	epoll_event event = {};
+	event.events = flags;
+	event.data.ptr = &handler;
+	if (epoll_ctl(fd, EPOLL_CTL_MOD, handler.get_socket().get_fd(), &event) < 0)
+		return false;
+
+	return true;
+}
+
+bool Looper::register_handler(EventFlags events, unique_ptr<LooperHandler> handler)
+{
+	int flags = 0;
+	if (events & EVENT_IN)
+		flags |= EPOLLIN;
+	if (events & EVENT_OUT)
+		flags |= EPOLLOUT;
 
 	epoll_event event = {};
 	event.events = flags;
@@ -86,8 +103,8 @@ int Looper::wait(int timeout)
 			if (events[i].events & EPOLLERR)
 				flags |= EVENT_ERROR;
 
-			fprintf(stderr, "Handling event (0x%x)!\n", events[i].events);
-			auto done = handler->handle(flags);
+			//fprintf(stderr, "Handling event (0x%x)!\n", events[i].events);
+			auto done = (flags & (EPOLLHUP | EPOLLERR)) || !handler->handle(*this, flags);
 			if (done)
 			{
 				auto &socket = handler->get_socket();

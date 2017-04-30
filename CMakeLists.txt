@@ -24,14 +24,6 @@ add_subdirectory(filesystem)
 add_subdirectory(renderer)
 add_subdirectory(importers)
 
-add_executable(main main.cpp)
-target_link_libraries(main renderer vulkan-backend compiler filesystem)
-target_compile_options(main PRIVATE ${GRANITE_CXX_FLAGS})
-
-add_executable(camera-test camera_test.cpp)
-target_link_libraries(camera-test math renderer)
-target_compile_options(camera-test PRIVATE ${GRANITE_CXX_FLAGS})
-
 add_executable(cube-test cube_test.cpp)
 target_link_libraries(cube-test math renderer vulkan-backend importers)
 target_compile_options(cube-test PRIVATE ${GRANITE_CXX_FLAGS})

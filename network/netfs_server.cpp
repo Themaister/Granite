@@ -12,18 +12,20 @@ struct FSHandler : LooperHandler
 	FSHandler(unique_ptr<Socket> socket)
 		: LooperHandler(move(socket))
 	{
-		command_reader.start(&command_id, sizeof(command_id));
+		reply_builder.begin(4);
+		command_reader.start(reply_builder.get_buffer());
 		state = ReadCommand;
 	}
 
 	bool parse_command(Looper &)
 	{
-		command_id = ntohl(command_id);
+		command_id = reply_builder.read_u32();
 		switch (command_id)
 		{
 		case NETFS_READ_FILE:
 			state = ReadChunkSize;
-			command_reader.start(reply, 3 * sizeof(uint32_t));
+			reply_builder.begin(3 * sizeof(uint32_t));
+			command_reader.start(reply_builder.get_buffer());
 			return true;
 
 		default:
@@ -36,18 +38,15 @@ struct FSHandler : LooperHandler
 		auto ret = command_reader.process(*socket);
 		if (command_reader.complete())
 		{
-			for (auto &n : reply)
-				n = ntohl(n);
-
-			if (reply[0] != NETFS_BEGIN_CHUNK)
+			if (reply_builder.read_u32() != NETFS_BEGIN_CHUNK)
 				return false;
 
-			uint64_t chunk_size = (uint64_t(reply[1]) << 32) | reply[2];
+			uint64_t chunk_size = reply_builder.read_u64();
 			if (!chunk_size)
 				return false;
 
-			reply_buffer.resize(chunk_size);
-			command_reader.start(reply_buffer.data(), reply_buffer.size());
+			reply_builder.begin(chunk_size);
+			command_reader.start(reply_builder.get_buffer());
 			state = ReadChunkData;
 			return true;
 		}
@@ -63,29 +62,27 @@ struct FSHandler : LooperHandler
 			looper.modify_handler(EVENT_OUT, *this);
 			state = WriteReplyChunk;
 
-			string str(reinterpret_cast<const char *>(reply_buffer.data()),
-			           reinterpret_cast<const char *>(reply_buffer.data()) + reply_buffer.size());
+			auto str = reply_builder.read_string_implicit_count();
 
 			file = Filesystem::get().open(str);
 			mapped = nullptr;
 			if (file)
 				mapped = file->map();
 
+			reply_builder.begin();
 			if (mapped)
 			{
-				reply[0] = htonl(NETFS_BEGIN_CHUNK);
-				reply[1] = htonl(NETFS_ERROR_OK);
-				reply[2] = htonl(uint32_t(uint64_t(file->get_size()) >> 32));
-				reply[3] = htonl(uint32_t(file->get_size()));
+				reply_builder.add_u32(NETFS_BEGIN_CHUNK);
+				reply_builder.add_u32(NETFS_ERROR_OK);
+				reply_builder.add_u64(file->get_size());
 			}
 			else
 			{
-				reply[0] = htonl(NETFS_BEGIN_CHUNK);
-				reply[1] = htonl(NETFS_ERROR_IO);
-				reply[2] = htonl(0);
-				reply[3] = htonl(0);
+				reply_builder.add_u32(NETFS_BEGIN_CHUNK);
+				reply_builder.add_u32(NETFS_ERROR_IO);
+				reply_builder.add_u64(0);
 			}
-			command_writer.start(reply, sizeof(reply));
+			command_writer.start(reply_builder.get_buffer());
 
 			return true;
 		}
@@ -153,11 +150,10 @@ struct FSHandler : LooperHandler
 		WriteReplyChunk,
 		WriteReplyData
 	};
-	uint32_t reply[4];
-	vector<uint8_t> reply_buffer;
 	State state = ReadCommand;
 	SocketReader command_reader;
 	SocketWriter command_writer;
+	ReplyBuilder reply_builder;
 	uint32_t command_id = 0;
 
 	unique_ptr<File> file;

@@ -4,6 +4,7 @@
 #include <functional>
 #include <memory>
 #include <unordered_map>
+#include <vector>
 
 namespace Granite
 {
@@ -15,6 +16,11 @@ class SocketReader
 public:
 	void start(void *data, size_t size);
 	ssize_t process(Socket &socket);
+
+	void start(std::vector<uint8_t> &buffer)
+	{
+		start(buffer.data(), buffer.size());
+	}
 
 	bool complete() const
 	{
@@ -31,6 +37,12 @@ class SocketWriter
 {
 public:
 	void start(const void *data, size_t size);
+
+	void start(const std::vector<uint8_t> &buffer)
+	{
+		start(buffer.data(), buffer.size());
+	}
+
 	ssize_t process(Socket &socket);
 
 	bool complete() const

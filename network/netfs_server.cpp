@@ -4,14 +4,17 @@
 #include <arpa/inet.h>
 #include "filesystem.hpp"
 #include "event.hpp"
+#include <unordered_set>
 
 using namespace Granite;
 using namespace std;
 
+class FSHandler;
+
 struct FilesystemHandler : LooperHandler
 {
-	FilesystemHandler(unique_ptr<Socket> socket)
-		: LooperHandler(move(socket))
+	FilesystemHandler(unique_ptr<Socket> socket, FilesystemBackend &backend)
+		: LooperHandler(move(socket)), backend(backend)
 	{
 	}
 
@@ -22,7 +25,15 @@ struct FilesystemHandler : LooperHandler
 
 		return true;
 	}
+
+	FileNotifyHandle install_notification(const std::string &path, FSHandler *handler);
+	void uninstall_notification(FSHandler *handler, FileNotifyHandle handle);
+	void uninstall_all_notifications(FSHandler *handler);
+
+	std::unordered_map<FSHandler *, std::unordered_set<FileNotifyHandle>> handler_to_handles;
+	FilesystemBackend &backend;
 };
+
 
 struct NotificationSystem : EventHandler
 {
@@ -36,7 +47,7 @@ struct NotificationSystem : EventHandler
 			if (fs->get_notification_fd() >= 0)
 			{
 				auto socket = unique_ptr<Socket>(new Socket(fs->get_notification_fd(), false));
-				auto handler = unique_ptr<FilesystemHandler>(new FilesystemHandler(move(socket)));
+				auto handler = unique_ptr<FilesystemHandler>(new FilesystemHandler(move(socket), *fs));
 				auto *ptr = handler.get();
 				looper.register_handler(EVENT_IN, move(handler));
 				protocols[proto.first] = ptr;
@@ -50,12 +61,18 @@ struct NotificationSystem : EventHandler
 		if (fs.get_backend().get_notification_fd() >= 0)
 		{
 			auto socket = unique_ptr<Socket>(new Socket(fs.get_backend().get_notification_fd(), false));
-			auto handler = unique_ptr<FilesystemHandler>(new FilesystemHandler(move(socket)));
+			auto handler = unique_ptr<FilesystemHandler>(new FilesystemHandler(move(socket), fs.get_backend()));
 			auto *ptr = handler.get();
 			looper.register_handler(EVENT_IN, move(handler));
 			protocols[fs.get_protocol()] = ptr;
 		}
 		return true;
+	}
+
+	void uninstall_all_notifications(FSHandler *handler)
+	{
+		for (auto &proto : protocols)
+			proto.second->uninstall_all_notifications(handler);
 	}
 
 	Looper &looper;
@@ -70,6 +87,18 @@ struct FSHandler : LooperHandler
 		reply_builder.begin(4);
 		command_reader.start(reply_builder.get_buffer());
 		state = ReadCommand;
+	}
+
+	~FSHandler()
+	{
+		notify_system.uninstall_all_notifications(this);
+	}
+
+	void notify(const FileNotifyInfo &info)
+	{
+		if (pending_notifications.empty() && socket->get_parent_looper())
+			socket->get_parent_looper()->modify_handler(EVENT_IN | EVENT_OUT, *this);
+		pending_notifications.push_back(info);
 	}
 
 	bool parse_command(Looper &)
@@ -408,7 +437,8 @@ struct FSHandler : LooperHandler
 		ReadChunkSize2,
 		ReadChunkData2,
 		WriteReplyChunk,
-		WriteReplyData
+		WriteReplyData,
+		NotificationLoop
 	};
 
 	NotificationSystem &notify_system;
@@ -418,9 +448,41 @@ struct FSHandler : LooperHandler
 	ReplyBuilder reply_builder;
 	uint32_t command_id = 0;
 
+	std::vector<FileNotifyInfo> pending_notifications;
+
 	unique_ptr<File> file;
 	void *mapped = nullptr;
 };
+
+FileNotifyHandle FilesystemHandler::install_notification(const std::string &path, FSHandler *handler)
+{
+	auto handle = backend.install_notification(path, [=](const FileNotifyInfo &info) {
+		handler->notify(info);
+	});
+
+	if (handle >= 0)
+		handler_to_handles[handler].insert(handle);
+	return handle;
+}
+
+void FilesystemHandler::uninstall_notification(FSHandler *handler, FileNotifyHandle handle)
+{
+	auto &handles = handler_to_handles[handler];
+	if (handles.count(handle))
+	{
+		backend.uninstall_notification(handle);
+		handles.erase(handles.find(handle));
+	}
+}
+
+void FilesystemHandler::uninstall_all_notifications(FSHandler *handler)
+{
+	auto &handles = handler_to_handles[handler];
+	for (auto &handle : handles)
+		backend.uninstall_notification(handle);
+	handles.clear();
+	handler_to_handles.erase(handler_to_handles.find(handler));
+}
 
 struct ListenerHandler : TCPListener
 {

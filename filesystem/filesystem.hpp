@@ -3,6 +3,7 @@
 #include <string>
 #include <memory>
 #include <unordered_map>
+#include "event.hpp"
 
 namespace Granite
 {
@@ -83,6 +84,30 @@ protected:
 	std::string protocol;
 };
 
+class FilesystemProtocolEvent : public Event
+{
+public:
+	FilesystemProtocolEvent(const std::string &protocol, FilesystemBackend &backend)
+		: Event(type_id), protocol(protocol), backend(backend)
+	{
+	}
+	static constexpr EventType type_id = GRANITE_EVENT_TYPE_HASH(FilesystemProtocolEvent);
+
+	const std::string &get_protocol() const
+	{
+		return protocol;
+	}
+
+	FilesystemBackend &get_backend() const
+	{
+		return backend;
+	}
+
+private:
+	std::string protocol;
+	FilesystemBackend &backend;
+};
+
 class Filesystem
 {
 public:
@@ -95,6 +120,11 @@ public:
 	std::unique_ptr<File> open(const std::string &path, FileMode mode = FileMode::ReadOnly);
 	bool stat(const std::string &path, FileStat &stat);
 	void poll_notifications();
+
+	const std::unordered_map<std::string, std::unique_ptr<FilesystemBackend>> &get_protocols() const
+	{
+		return protocols;
+	}
 
 private:
 	Filesystem();

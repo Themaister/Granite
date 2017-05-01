@@ -59,7 +59,7 @@ private:
 class Socket
 {
 public:
-	Socket(int fd);
+	Socket(int fd, bool owned = true);
 	~Socket();
 
 	Socket(Socket &&) = delete;
@@ -92,8 +92,9 @@ public:
 	static std::unique_ptr<Socket> connect(const char *addr, uint16_t port);
 
 private:
-	int fd;
 	Looper *looper = nullptr;
+	int fd;
+	bool owned;
 };
 
 class SocketGlobal
@@ -157,19 +158,6 @@ public:
 	TCPListener(TCPListener &&) = delete;
 	void operator=(TCPListener &&) = delete;
 	std::unique_ptr<Socket> accept();
-
-	template <typename T>
-	static std::unique_ptr<T> bind(uint16_t port)
-	{
-		try
-		{
-			return std::unique_ptr<T>(new T(port));
-		}
-		catch (...)
-		{
-			return {};
-		}
-	}
 
 protected:
 	TCPListener(uint16_t port);

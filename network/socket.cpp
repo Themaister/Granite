@@ -47,8 +47,8 @@ ssize_t SocketWriter::process(Socket &socket)
 	return offset;
 }
 
-Socket::Socket(int fd)
-	: fd(fd)
+Socket::Socket(int fd, bool owned)
+	: fd(fd), owned(owned)
 {
 }
 
@@ -71,8 +71,7 @@ unique_ptr<Socket> Socket::connect(const char *addr, uint16_t port)
 	addrinfo *walk;
 	for (walk = servinfo; walk; walk = walk->ai_next)
 	{
-		fd = socket(walk->ai_family, walk->ai_socktype,
-		            walk->ai_protocol);
+		fd = socket(walk->ai_family, walk->ai_socktype, walk->ai_protocol);
 
 		if (fd < 0)
 			continue;
@@ -106,7 +105,7 @@ Socket::~Socket()
 	if (looper)
 		looper->unregister_handler(*this);
 
-	if (fd >= 0)
+	if (owned && fd >= 0)
 		close(fd);
 }
 

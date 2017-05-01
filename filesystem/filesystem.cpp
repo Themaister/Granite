@@ -54,6 +54,7 @@ Filesystem::Filesystem()
 
 void Filesystem::register_protocol(const std::string &proto, std::unique_ptr<FilesystemBackend> fs)
 {
+	EventManager::get_global().dispatch_inline(FilesystemProtocolEvent(proto, *fs));
 	protocols[proto] = move(fs);
 }
 

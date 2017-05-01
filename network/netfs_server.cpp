@@ -3,14 +3,69 @@
 #include "netfs.hpp"
 #include <arpa/inet.h>
 #include "filesystem.hpp"
+#include "event.hpp"
 
 using namespace Granite;
 using namespace std;
 
+struct FilesystemHandler : LooperHandler
+{
+	FilesystemHandler(unique_ptr<Socket> socket)
+		: LooperHandler(move(socket))
+	{
+	}
+
+	bool handle(Looper &, EventFlags flags) override
+	{
+		if (flags & EVENT_IN)
+			Filesystem::get().poll_notifications();
+
+		return true;
+	}
+};
+
+struct NotificationSystem : EventHandler
+{
+	NotificationSystem(Looper &looper)
+		: looper(looper)
+	{
+		EventManager::get_global().register_handler(FilesystemProtocolEvent::type_id, &NotificationSystem::on_filesystem, this);
+		for (auto &proto : Filesystem::get().get_protocols())
+		{
+			auto &fs = proto.second;
+			if (fs->get_notification_fd() >= 0)
+			{
+				auto socket = unique_ptr<Socket>(new Socket(fs->get_notification_fd(), false));
+				auto handler = unique_ptr<FilesystemHandler>(new FilesystemHandler(move(socket)));
+				auto *ptr = handler.get();
+				looper.register_handler(EVENT_IN, move(handler));
+				protocols[proto.first] = ptr;
+			}
+		}
+	}
+
+	bool on_filesystem(const Event &e)
+	{
+		auto &fs = e.as<FilesystemProtocolEvent>();
+		if (fs.get_backend().get_notification_fd() >= 0)
+		{
+			auto socket = unique_ptr<Socket>(new Socket(fs.get_backend().get_notification_fd(), false));
+			auto handler = unique_ptr<FilesystemHandler>(new FilesystemHandler(move(socket)));
+			auto *ptr = handler.get();
+			looper.register_handler(EVENT_IN, move(handler));
+			protocols[fs.get_protocol()] = ptr;
+		}
+		return true;
+	}
+
+	Looper &looper;
+	std::unordered_map<std::string, FilesystemHandler *> protocols;
+};
+
 struct FSHandler : LooperHandler
 {
-	FSHandler(unique_ptr<Socket> socket)
-		: LooperHandler(move(socket))
+	FSHandler(NotificationSystem &notify_system, unique_ptr<Socket> socket)
+		: LooperHandler(move(socket)), notify_system(notify_system)
 	{
 		reply_builder.begin(4);
 		command_reader.start(reply_builder.get_buffer());
@@ -355,6 +410,8 @@ struct FSHandler : LooperHandler
 		WriteReplyChunk,
 		WriteReplyData
 	};
+
+	NotificationSystem &notify_system;
 	State state = ReadCommand;
 	SocketReader command_reader;
 	SocketWriter command_writer;
@@ -367,8 +424,8 @@ struct FSHandler : LooperHandler
 
 struct ListenerHandler : TCPListener
 {
-	ListenerHandler(uint16_t port)
-		: TCPListener(port)
+	ListenerHandler(NotificationSystem &notify_system, uint16_t port)
+		: TCPListener(port), notify_system(notify_system)
 	{
 	}
 
@@ -376,20 +433,19 @@ struct ListenerHandler : TCPListener
 	{
 		auto client = accept();
 		if (client)
-			looper.register_handler(EVENT_IN, unique_ptr<FSHandler>(new FSHandler(move(client))));
+			looper.register_handler(EVENT_IN, unique_ptr<FSHandler>(new FSHandler(notify_system, move(client))));
 		return true;
 	}
+
+	NotificationSystem &notify_system;
 };
+
 
 int main()
 {
 	Looper looper;
-	auto listener = TCPListener::bind<ListenerHandler>(7070);
-	if (!listener)
-	{
-		LOGE("Failed to listen to port 7070.");
-		return 1;
-	}
+	auto notify = unique_ptr<NotificationSystem>(new NotificationSystem(looper));
+	auto listener = unique_ptr<LooperHandler>(new ListenerHandler(*notify, 7070));
 
 	looper.register_handler(EVENT_IN, move(listener));
 	while (looper.wait(-1) >= 0);

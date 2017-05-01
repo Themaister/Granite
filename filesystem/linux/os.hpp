@@ -33,6 +33,7 @@ public:
 	FileNotifyHandle find_notification(const std::string &path) const override;
 	void uninstall_notification(FileNotifyHandle handle) override;
 	void poll_notifications() override;
+	int get_notification_fd() const override;
 
 private:
 	std::string base;

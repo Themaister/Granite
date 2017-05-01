@@ -72,6 +72,7 @@ public:
 	virtual FileNotifyHandle find_notification(const std::string &path) const = 0;
 	virtual void uninstall_notification(FileNotifyHandle handle) = 0;
 	virtual void poll_notifications() = 0;
+	virtual int get_notification_fd() const = 0;
 
 	void set_protocol(const std::string &proto)
 	{

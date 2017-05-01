@@ -26,6 +26,7 @@ struct FSHandler : LooperHandler
 		case NETFS_LIST:
 		case NETFS_READ_FILE:
 		case NETFS_WRITE_FILE:
+		case NETFS_STAT:
 			state = ReadChunkSize;
 			reply_builder.begin(3 * sizeof(uint32_t));
 			command_reader.start(reply_builder.get_buffer());
@@ -41,7 +42,7 @@ struct FSHandler : LooperHandler
 		auto ret = command_reader.process(*socket);
 		if (command_reader.complete())
 		{
-			if (reply_builder.read_u32() != NETFS_BEGIN_CHUNK)
+			if (reply_builder.read_u32() != NETFS_BEGIN_CHUNK_REQUEST)
 				return false;
 
 			uint64_t chunk_size = reply_builder.read_u64();
@@ -63,7 +64,7 @@ struct FSHandler : LooperHandler
 		if (command_reader.complete())
 		{
 			reply_builder.begin();
-			reply_builder.add_u32(NETFS_BEGIN_CHUNK);
+			reply_builder.add_u32(NETFS_BEGIN_CHUNK_REPLY);
 			reply_builder.add_u32(NETFS_ERROR_OK);
 			reply_builder.add_u64(file->get_size());
 			command_writer.start(reply_builder.get_buffer());
@@ -80,7 +81,7 @@ struct FSHandler : LooperHandler
 		auto ret = command_reader.process(*socket);
 		if (command_reader.complete())
 		{
-			if (reply_builder.read_u32() != NETFS_BEGIN_CHUNK)
+			if (reply_builder.read_u32() != NETFS_BEGIN_CHUNK_REQUEST)
 				return false;
 
 			uint64_t chunk_size = reply_builder.read_u64();
@@ -91,7 +92,7 @@ struct FSHandler : LooperHandler
 			if (!mapped)
 			{
 				reply_builder.begin();
-				reply_builder.add_u32(NETFS_BEGIN_CHUNK);
+				reply_builder.add_u32(NETFS_BEGIN_CHUNK_REPLY);
 				reply_builder.add_u32(NETFS_ERROR_IO);
 				reply_builder.add_u64(0);
 				command_writer.start(reply_builder.get_buffer());
@@ -116,7 +117,7 @@ struct FSHandler : LooperHandler
 		if (!file)
 		{
 			reply_builder.begin();
-			reply_builder.add_u32(NETFS_BEGIN_CHUNK);
+			reply_builder.add_u32(NETFS_BEGIN_CHUNK_REPLY);
 			reply_builder.add_u32(NETFS_ERROR_IO);
 			reply_builder.add_u64(0);
 			command_writer.start(reply_builder.get_buffer());
@@ -142,13 +143,13 @@ struct FSHandler : LooperHandler
 		reply_builder.begin();
 		if (mapped)
 		{
-			reply_builder.add_u32(NETFS_BEGIN_CHUNK);
+			reply_builder.add_u32(NETFS_BEGIN_CHUNK_REPLY);
 			reply_builder.add_u32(NETFS_ERROR_OK);
 			reply_builder.add_u64(file->get_size());
 		}
 		else
 		{
-			reply_builder.add_u32(NETFS_BEGIN_CHUNK);
+			reply_builder.add_u32(NETFS_BEGIN_CHUNK_REPLY);
 			reply_builder.add_u32(NETFS_ERROR_IO);
 			reply_builder.add_u64(0);
 		}
@@ -159,7 +160,7 @@ struct FSHandler : LooperHandler
 	void write_string_list(const vector<ListEntry> &list)
 	{
 		reply_builder.begin();
-		reply_builder.add_u32(NETFS_BEGIN_CHUNK);
+		reply_builder.add_u32(NETFS_BEGIN_CHUNK_REPLY);
 		reply_builder.add_u32(NETFS_ERROR_OK);
 		auto offset = reply_builder.add_u64(0);
 		reply_builder.add_u32(list.size());
@@ -181,6 +182,38 @@ struct FSHandler : LooperHandler
 		}
 		reply_builder.poke_u64(offset, reply_builder.get_buffer().size() - (offset + 8));
 		command_writer.start(reply_builder.get_buffer());
+	}
+
+	bool begin_stat(const string &arg)
+	{
+		FileStat s;
+		reply_builder.begin();
+		reply_builder.add_u32(NETFS_BEGIN_CHUNK_REPLY);
+		if (Filesystem::get().stat(arg, s))
+		{
+			reply_builder.add_u32(NETFS_ERROR_OK);
+			reply_builder.add_u64(8 + 4);
+			reply_builder.add_u64(s.size);
+			switch (s.type)
+			{
+			case PathType::File:
+				reply_builder.add_u32(NETFS_FILE_TYPE_PLAIN);
+				break;
+			case PathType::Directory:
+				reply_builder.add_u32(NETFS_FILE_TYPE_DIRECTORY);
+				break;
+			case PathType::Special:
+				reply_builder.add_u32(NETFS_FILE_TYPE_SPECIAL);
+				break;
+			}
+		}
+		else
+		{
+			reply_builder.add_u32(NETFS_ERROR_IO);
+			reply_builder.add_u64(0);
+		}
+		command_writer.start(reply_builder.get_buffer());
+		return true;
 	}
 
 	bool begin_list(const string &arg)
@@ -214,6 +247,12 @@ struct FSHandler : LooperHandler
 
 			case NETFS_WRITE_FILE:
 				begin_write_file(looper, str);
+				break;
+
+			case NETFS_STAT:
+				looper.modify_handler(EVENT_OUT, *this);
+				state = WriteReplyChunk;
+				begin_stat(str);
 				break;
 
 			case NETFS_LIST:

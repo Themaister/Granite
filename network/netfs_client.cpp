@@ -20,9 +20,9 @@ struct FSWriteCommand : LooperHandler
 		result_reply.begin(4 * sizeof(uint32_t));
 
 		reply_builder.add_u32(NETFS_WRITE_FILE);
-		reply_builder.add_u32(NETFS_BEGIN_CHUNK);
+		reply_builder.add_u32(NETFS_BEGIN_CHUNK_REQUEST);
 		reply_builder.add_string(path);
-		reply_builder.add_u32(NETFS_BEGIN_CHUNK);
+		reply_builder.add_u32(NETFS_BEGIN_CHUNK_REQUEST);
 		reply_builder.add_u64(buffer.size());
 		reply_builder.add_buffer(buffer);
 		command_writer.start(reply_builder.get_buffer());
@@ -62,7 +62,7 @@ struct FSWriteCommand : LooperHandler
 		auto ret = command_reader.process(*socket);
 		if (command_reader.complete())
 		{
-			if (result_reply.read_u32() != NETFS_BEGIN_CHUNK)
+			if (result_reply.read_u32() != NETFS_BEGIN_CHUNK_REPLY)
 				return false;
 			if (result_reply.read_u32() != NETFS_ERROR_OK)
 				return false;
@@ -109,7 +109,7 @@ struct FSReadCommand : LooperHandler
 	{
 		reply_builder.begin();
 		reply_builder.add_u32(command);
-		reply_builder.add_u32(NETFS_BEGIN_CHUNK);
+		reply_builder.add_u32(NETFS_BEGIN_CHUNK_REQUEST);
 		reply_builder.add_string(path);
 		command_writer.start(reply_builder.get_buffer());
 		state = WriteCommand;
@@ -135,7 +135,7 @@ struct FSReadCommand : LooperHandler
 		auto ret = command_reader.process(*socket);
 		if (command_reader.complete())
 		{
-			if (reply_builder.read_u32() != NETFS_BEGIN_CHUNK)
+			if (reply_builder.read_u32() != NETFS_BEGIN_CHUNK_REPLY)
 				return false;
 
 			if (reply_builder.read_u32() != NETFS_ERROR_OK)
@@ -240,6 +240,34 @@ struct FSList : FSReadCommand
 	}
 };
 
+struct FSStat : FSReadCommand
+{
+	FSStat(const string &path, unique_ptr<Socket> socket)
+		: FSReadCommand(path, NETFS_STAT, move(socket))
+	{
+	}
+
+	void parse_reply() override
+	{
+		uint64_t size = reply_builder.read_u64();
+		uint32_t type = reply_builder.read_u32();
+		const char *file_type = "";
+		switch (type)
+		{
+		case NETFS_FILE_TYPE_PLAIN:
+			file_type = "plain";
+			break;
+		case NETFS_FILE_TYPE_DIRECTORY:
+			file_type = "directory";
+			break;
+		case NETFS_FILE_TYPE_SPECIAL:
+			file_type = "special";
+			break;
+		}
+		LOGI("File type: %s, size: %llu.\nStat success!\n", file_type, static_cast<unsigned long long>(size));
+	}
+};
+
 struct FSWalk : FSReadCommand
 {
 	FSWalk(const string &path, unique_ptr<Socket> socket)
@@ -293,6 +321,9 @@ int main(int argc, char *argv[])
 
 	client = Socket::connect("127.0.0.1", 7070);
 	looper.register_handler(EVENT_OUT | EVENT_IN, unique_ptr<FSWriteCommand>(new FSWriteCommand("assets://test.bin", { 0, 1, 2, 3, 4 }, move(client))));
+
+	client = Socket::connect("127.0.0.1", 7070);
+	looper.register_handler(EVENT_OUT, unique_ptr<FSReadCommand>(new FSStat(argv[1], move(client))));
 
 	while (looper.wait(-1) >= 0);
 }

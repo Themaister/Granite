@@ -170,6 +170,11 @@ unique_ptr<File> OSFilesystem::open(const std::string &path, FileMode mode)
 	}
 }
 
+int OSFilesystem::get_notification_fd() const
+{
+	return notify_fd;
+}
+
 void OSFilesystem::poll_notifications()
 {
 	for (;;)

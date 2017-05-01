@@ -9,8 +9,10 @@ namespace Granite
 enum NetFSCommand
 {
 	NETFS_READ_FILE = 1,
-	NETFS_WRITE_FILE = 2,
-	NETFS_BEGIN_CHUNK = 3
+	NETFS_LIST = 2,
+	NETFS_WALK = 3,
+	NETFS_WRITE_FILE = 4,
+	NETFS_BEGIN_CHUNK = 5
 };
 
 enum NetFSError
@@ -19,33 +21,55 @@ enum NetFSError
 	NETFS_ERROR_IO = 1
 };
 
+enum NetFSFileType
+{
+	NETFS_FILE_TYPE_PLAIN = 1,
+	NETFS_FILE_TYPE_DIRECTORY = 2,
+	NETFS_FILE_TYPE_SPECIAL = 3
+};
+
 class ReplyBuilder
 {
 public:
-	void add_u32(uint32_t value)
+	size_t add_u32(uint32_t value)
 	{
+		auto ret = buffer.size();
 		buffer.resize(buffer.size() + 4);
-		value = htonl(value);
-		memcpy(buffer.data() + buffer.size() - 4, &value, 4);
+		poke_u32(buffer.size() - 4, value);
+		return ret;
 	}
 
-	void add_u64(uint64_t value)
+	size_t add_u64(uint64_t value)
 	{
+		auto ret = buffer.size();
 		buffer.resize(buffer.size() + 8);
+		poke_u64(buffer.size() - 8, value);
+		return ret;
+	}
 
+	void poke_u32(size_t offset, uint32_t value)
+	{
+		value = htonl(value);
+		memcpy(buffer.data() + offset, &value, 4);
+	}
+
+	void poke_u64(size_t offset, uint64_t value)
+	{
 		uint32_t value0 = uint32_t(value >> 32);
 		uint32_t value1 = uint32_t(value >> 0);
 		value0 = htonl(value0);
 		value1 = htonl(value1);
-		memcpy(buffer.data() + buffer.size() - 8, &value0, 4);
-		memcpy(buffer.data() + buffer.size() - 4, &value1, 4);
+		memcpy(buffer.data() + offset, &value0, 4);
+		memcpy(buffer.data() + offset + 4, &value1, 4);
 	}
 
-	void add_string(const std::string &str)
+	size_t add_string(const std::string &str)
 	{
+		auto ret = buffer.size();
 		add_u64(str.size());
 		buffer.insert(std::end(buffer), reinterpret_cast<const uint8_t *>(str.data()),
 		              reinterpret_cast<const uint8_t *>(str.data()) + str.size());
+		return ret;
 	}
 
 	uint32_t read_u32()
@@ -115,6 +139,6 @@ public:
 
 private:
 	std::vector<uint8_t> buffer;
-	uint32_t offset = 0;
+	size_t offset = 0;
 };
 }

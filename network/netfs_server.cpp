@@ -5,6 +5,7 @@
 #include "filesystem.hpp"
 #include "event.hpp"
 #include <unordered_set>
+#include <queue>
 
 using namespace Granite;
 using namespace std;
@@ -33,7 +34,6 @@ struct FilesystemHandler : LooperHandler
 	std::unordered_map<FSHandler *, std::unordered_set<FileNotifyHandle>> handler_to_handles;
 	FilesystemBackend &backend;
 };
-
 
 struct NotificationSystem : EventHandler
 {
@@ -75,6 +75,24 @@ struct NotificationSystem : EventHandler
 			proto.second->uninstall_all_notifications(handler);
 	}
 
+	FileNotifyHandle install_notification(FSHandler *handler, const string &protocol, const string &path)
+	{
+		auto *proto = protocols[protocol];
+		if (!proto)
+			return -1;
+
+		return proto->install_notification(path, handler);
+	}
+
+	void uninstall_notification(FSHandler *handler, const string &protocol, FileNotifyHandle handle)
+	{
+		auto *proto = protocols[protocol];
+		if (!proto)
+			return;
+
+		proto->uninstall_notification(handler, handle);
+	}
+
 	Looper &looper;
 	std::unordered_map<std::string, FilesystemHandler *> protocols;
 };
@@ -96,9 +114,28 @@ struct FSHandler : LooperHandler
 
 	void notify(const FileNotifyInfo &info)
 	{
-		if (pending_notifications.empty() && socket->get_parent_looper())
+		if (reply_queue.empty() && socket->get_parent_looper())
 			socket->get_parent_looper()->modify_handler(EVENT_IN | EVENT_OUT, *this);
-		pending_notifications.push_back(info);
+
+		reply_queue.emplace();
+		auto &reply = reply_queue.back();
+		reply.builder.add_u32(NETFS_NOTIFICATION);
+		reply.builder.add_u64(info.path.size() + 8 + 4);
+		reply.builder.add_string(info.path);
+
+		switch (info.type)
+		{
+		case FileNotifyType::FileCreated:
+			reply.builder.add_u32(NETFS_FILE_CREATED);
+			break;
+		case FileNotifyType::FileDeleted:
+			reply.builder.add_u32(NETFS_FILE_DELETED);
+			break;
+		case FileNotifyType::FileChanged:
+			reply.builder.add_u32(NETFS_FILE_CHANGED);
+			break;
+		}
+		reply.writer.start(reply.builder.get_buffer());
 	}
 
 	bool parse_command(Looper &)
@@ -111,6 +148,7 @@ struct FSHandler : LooperHandler
 		case NETFS_READ_FILE:
 		case NETFS_WRITE_FILE:
 		case NETFS_STAT:
+		case NETFS_NOTIFICATION:
 			state = ReadChunkSize;
 			reply_builder.begin(3 * sizeof(uint32_t));
 			command_reader.start(reply_builder.get_buffer());
@@ -351,6 +389,12 @@ struct FSHandler : LooperHandler
 				begin_walk(str);
 				break;
 
+			case NETFS_NOTIFICATION:
+				protocol = move(str);
+				looper.modify_handler(EVENT_IN, *this);
+				state = NotificationLoop;
+				break;
+
 			default:
 				return false;
 			}
@@ -409,7 +453,107 @@ struct FSHandler : LooperHandler
 		return (ret > 0) || (ret == Socket::ErrorWouldBlock);
 	}
 
-	bool handle(Looper &looper, EventFlags) override
+	bool notification_loop_register_notification(Looper &looper)
+	{
+		auto ret = command_reader.process(*socket);
+		if (command_reader.complete())
+		{
+			auto path = reply_builder.read_string();
+			auto handle = notify_system.install_notification(this, protocol, path);
+
+			reply_queue.emplace();
+			auto &reply = reply_queue.back();
+			reply.builder.add_u32(NETFS_BEGIN_CHUNK_REPLY);
+			reply.builder.add_u32(NETFS_ERROR_OK);
+			reply.builder.add_u64(8);
+			reply.builder.add_u64(uint64_t(handle));
+			reply.writer.start(reply.builder.get_buffer());
+			looper.modify_handler(EVENT_IN | EVENT_OUT, *this);
+			return true;
+		}
+
+		return (ret > 0) || (ret == Socket::ErrorWouldBlock);
+	}
+
+	bool notification_loop_unregister_notification(Looper &looper)
+	{
+		auto ret = command_reader.process(*socket);
+		if (command_reader.complete())
+		{
+			auto handle = reply_builder.read_u64();
+			notify_system.uninstall_notification(this, protocol, handle);
+
+			reply_queue.emplace();
+			auto &reply = reply_queue.back();
+			reply.builder.add_u32(NETFS_BEGIN_CHUNK_REPLY);
+			reply.builder.add_u32(NETFS_ERROR_OK);
+			reply.builder.add_u64(0);
+			reply.writer.start(reply.builder.get_buffer());
+			looper.modify_handler(EVENT_IN | EVENT_OUT, *this);
+			return true;
+		}
+
+		return (ret > 0) || (ret == Socket::ErrorWouldBlock);
+	}
+
+	bool notification_loop(Looper &looper, EventFlags flags)
+	{
+		if (flags & EVENT_IN)
+		{
+			auto ret = command_reader.process(*socket);
+			if (command_reader.complete())
+			{
+				auto cmd = reply_builder.read_u32();
+				if (cmd == NETFS_REGISTER_NOTIFICATION)
+				{
+					auto size = reply_builder.read_u64();
+					state = NotificationLoopRegister;
+					reply_builder.begin(size);
+					command_reader.start(reply_builder.get_buffer());
+					looper.modify_handler(EVENT_IN, *this);
+					return true;
+				}
+				else if (cmd == NETFS_UNREGISTER_NOTIFICATION)
+				{
+					auto size = reply_builder.read_u64();
+					state = NotificationLoopUnregister;
+					reply_builder.begin(size);
+					command_reader.start(reply_builder.get_buffer());
+					looper.modify_handler(EVENT_IN, *this);
+					return true;
+				}
+				else
+					return false;
+			}
+
+			return (ret > 0) || (ret == Socket::ErrorWouldBlock);
+		}
+
+		if (flags & EVENT_OUT)
+		{
+			if (reply_queue.empty())
+			{
+				looper.modify_handler(EVENT_IN, *this);
+				return true;
+			}
+
+			auto ret = reply_queue.front().writer.process(*socket);
+			if (reply_queue.front().writer.complete())
+				reply_queue.pop();
+
+			if (reply_queue.empty())
+			{
+				looper.modify_handler(EVENT_IN, *this);
+				return true;
+			}
+			else
+				return (ret > 0) || (ret == Socket::ErrorWouldBlock);
+		}
+
+		return true;
+	}
+
+	bool handle(Looper &looper, EventFlags flags) override
 	{
 		if (state == ReadCommand)
 			return read_command(looper);
@@ -425,6 +569,12 @@ struct FSHandler : LooperHandler
 			return write_reply_chunk(looper);
 		else if (state == WriteReplyData)
 			return write_reply_data(looper);
+		else if (state == NotificationLoop)
+			return notification_loop(looper, flags);
+		else if (state == NotificationLoopRegister)
+			return notification_loop_register_notification(looper);
+		else if (state == NotificationLoopUnregister)
+			return notification_loop_unregister_notification(looper);
 		else
 			return false;
 	}
@@ -438,7 +588,9 @@ struct FSHandler : LooperHandler
 		ReadChunkData2,
 		WriteReplyChunk,
 		WriteReplyData,
-		NotificationLoop
+		NotificationLoop,
+		NotificationLoopRegister,
+		NotificationLoopUnregister
 	};
 
 	NotificationSystem &notify_system;
@@ -448,7 +600,13 @@ struct FSHandler : LooperHandler
 	ReplyBuilder reply_builder;
 	uint32_t command_id = 0;
 
-	std::vector<FileNotifyInfo> pending_notifications;
+	struct NotificationReply
+	{
+		SocketWriter writer;
+		ReplyBuilder builder;
+	};
+	std::queue<NotificationReply> reply_queue;
+	std::string protocol;
 
 	unique_ptr<File> file;
 	void *mapped = nullptr;
@@ -501,7 +659,6 @@ struct ListenerHandler : TCPListener
 
 	NotificationSystem &notify_system;
 };
-
 
 int main()
 {

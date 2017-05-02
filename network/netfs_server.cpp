@@ -119,7 +119,8 @@ struct FSHandler : LooperHandler
 
 		reply_queue.emplace();
 		auto &reply = reply_queue.back();
-		reply.builder.add_u32(NETFS_NOTIFICATION);
+		reply.builder.add_u32(NETFS_BEGIN_CHUNK_NOTIFICATION);
+		reply.builder.add_u32(NETFS_ERROR_OK);
 		reply.builder.add_u64(info.path.size() + 8 + 4);
 		reply.builder.add_string(info.path);
 
@@ -392,6 +393,8 @@ struct FSHandler : LooperHandler
 			case NETFS_NOTIFICATION:
 				protocol = move(str);
 				looper.modify_handler(EVENT_IN, *this);
+				reply_builder.begin(3 * sizeof(uint32_t));
+				command_reader.start(reply_builder.get_buffer());
 				state = NotificationLoop;
 				break;
 
@@ -458,7 +461,7 @@ struct FSHandler : LooperHandler
 		auto ret = command_reader.process(*socket);
 		if (command_reader.complete())
 		{
-			auto path = reply_builder.read_string();
+			auto path = reply_builder.read_string_implicit_count();
 			auto handle = notify_system.install_notification(this, protocol, path);
 
 			reply_queue.emplace();
@@ -469,6 +472,7 @@ struct FSHandler : LooperHandler
 			reply.builder.add_u64(uint64_t(handle));
 			reply.writer.start(reply.builder.get_buffer());
 			looper.modify_handler(EVENT_IN | EVENT_OUT, *this);
+			state = NotificationLoop;
 			return true;
 		}
 
@@ -490,6 +494,7 @@ struct FSHandler : LooperHandler
 			reply.builder.add_u64(0);
 			reply.writer.start(reply.builder.get_buffer());
 			looper.modify_handler(EVENT_IN | EVENT_OUT, *this);
+			state = NotificationLoop;
 			return true;
 		}
 

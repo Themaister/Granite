@@ -9,6 +9,133 @@
 using namespace Granite;
 using namespace std;
 
+struct FSNotifyCommand : LooperHandler
+{
+	FSNotifyCommand(const string &protocol, const string &path, unique_ptr<Socket> socket)
+		: LooperHandler(move(socket))
+	{
+		reply_builder.add_u32(NETFS_NOTIFICATION);
+		reply_builder.add_u32(NETFS_BEGIN_CHUNK_REQUEST);
+		reply_builder.add_string(protocol);
+
+		reply_builder.add_u32(NETFS_REGISTER_NOTIFICATION);
+		reply_builder.add_string(path);
+		command_writer.start(reply_builder.get_buffer());
+		state = WriteCommand;
+	}
+
+	bool write_command(Looper &looper, EventFlags)
+	{
+		auto ret = command_writer.process(*socket);
+		if (command_writer.complete())
+		{
+			looper.modify_handler(EVENT_IN, *this);
+			result_reply.begin(4 * sizeof(uint32_t));
+			command_reader.start(result_reply.get_buffer());
+			state = ReadReply;
+			return true;
+		}
+
+		return (ret > 0) || (ret == Socket::ErrorWouldBlock);
+	}
+
+	bool read_reply_data(Looper &)
+	{
+		auto ret = command_reader.process(*socket);
+		if (command_reader.complete())
+		{
+			if (last_cmd == NETFS_BEGIN_CHUNK_NOTIFICATION)
+			{
+				auto path = result_reply.read_string();
+				auto type = result_reply.read_u32();
+				const char *notification = "";
+				switch (type)
+				{
+				case NETFS_FILE_CHANGED:
+					notification = "changed";
+					break;
+				case NETFS_FILE_DELETED:
+					notification = "deleted";
+					break;
+				case NETFS_FILE_CREATED:
+					notification = "created";
+					break;
+				}
+
+				LOGI("Notification: %s %s!\n", path.c_str(), notification);
+				result_reply.begin(4 * sizeof(uint32_t));
+				command_reader.start(result_reply.get_buffer());
+				state = ReadReply;
+				return true;
+			}
+			else if (last_cmd == NETFS_BEGIN_CHUNK_REPLY)
+			{
+				auto handle = int(result_reply.read_u64());
+				LOGI("Got notification handle: %d!\n", handle);
+				result_reply.begin(4 * sizeof(uint32_t));
+				command_reader.start(result_reply.get_buffer());
+				state = ReadReply;
+				return true;
+			}
+			else
+				return false;
+		}
+
+		return (ret > 0) || (ret == Socket::ErrorWouldBlock);
+	}
+
+	bool read_reply(Looper &)
+	{
+		auto ret = command_reader.process(*socket);
+		if (command_reader.complete())
+		{
+			auto cmd = result_reply.read_u32();
+			if (cmd == NETFS_BEGIN_CHUNK_NOTIFICATION || cmd == NETFS_BEGIN_CHUNK_REPLY)
+			{
+				if (result_reply.read_u32() != NETFS_ERROR_OK)
+					return false;
+
+				last_cmd = cmd;
+				auto size = result_reply.read_u64();
+				result_reply.begin(size);
+				command_reader.start(result_reply.get_buffer());
+				state = ReadReplyData;
+				return true;
+			}
+			else
+				return false;
+		}
+
+		return (ret > 0) || (ret == Socket::ErrorWouldBlock);
+	}
+
+	bool handle(Looper &looper, EventFlags flags) override
+	{
+		if (state == WriteCommand)
+			return write_command(looper, flags);
+		else if (state == ReadReply)
+			return read_reply(looper);
+		else if (state == ReadReplyData)
+			return read_reply_data(looper);
+		else
+			return false;
+	}
+
+	enum State
+	{
+		WriteCommand,
+		ReadReply,
+		ReadReplyData
+	};
+
+	State state = WriteCommand;
+	SocketReader command_reader;
+	SocketWriter command_writer;
+	ReplyBuilder reply_builder;
+	ReplyBuilder result_reply;
+	uint32_t last_cmd = 0;
+};
+
 struct FSWriteCommand : LooperHandler
 {
 	FSWriteCommand(const string &path, const vector<uint8_t> &buffer, unique_ptr<Socket> socket)
@@ -312,6 +439,7 @@ int main(int argc, char *argv[])
 	if (!client)
 		return 1;
 
+#if 0
 	looper.register_handler(EVENT_OUT, unique_ptr<FSReadCommand>(new FSReader(argv[1], move(client))));
 	if (argc >= 3)
 	{
@@ -324,6 +452,10 @@ int main(int argc, char *argv[])
 
 	client = Socket::connect("127.0.0.1", 7070);
 	looper.register_handler(EVENT_OUT, unique_ptr<FSReadCommand>(new FSStat(argv[1], move(client))));
+#endif
+
+	client = Socket::connect("127.0.0.1", 7070);
+	looper.register_handler(EVENT_OUT, unique_ptr<FSNotifyCommand>(new FSNotifyCommand("assets", "notify.me", move(client))));
 
 	while (looper.wait(-1) >= 0);
 }

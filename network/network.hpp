@@ -24,7 +24,7 @@ public:
 
 	bool complete() const
 	{
-		return offset == size;
+		return size != 0 && offset == size;
 	}
 
 private:

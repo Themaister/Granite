@@ -5,6 +5,7 @@
 #include <memory>
 #include <unordered_map>
 #include <vector>
+#include <mutex>
 
 namespace Granite
 {
@@ -146,10 +147,20 @@ public:
 	bool register_handler(EventFlags events, std::unique_ptr<LooperHandler> handler);
 	void unregister_handler(Socket &sock);
 	int wait(int timeout = -1);
+	int wait_idle(int timeout = -1);
+	void run_in_looper(std::function<void ()> func);
+	void kill();
 
 private:
 	int fd;
 	std::unordered_map<int, std::unique_ptr<LooperHandler>> handlers;
+
+	int event_fd;
+	std::mutex queue_lock;
+	std::vector<std::function<void ()>> func_queue;
+	void handle_deferred_funcs();
+
+	bool dead = false;
 };
 
 class TCPListener : public LooperHandler

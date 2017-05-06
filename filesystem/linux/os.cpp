@@ -216,11 +216,11 @@ void OSFilesystem::poll_notifications()
 				{
 					if (itr->second.directory)
 					{
-						auto notify_path = protocol + Path::join(itr->second.path, current->name);
+						auto notify_path = protocol + "://" + Path::join(itr->second.path, current->name);
 						func.func({move(notify_path), type});
 					}
 					else
-						func.func({protocol + itr->second.path, type});
+						func.func({protocol + "://" + itr->second.path, type});
 				}
 			}
 		}

@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <sys/eventfd.h>
 
 using namespace std;
 
@@ -23,10 +24,22 @@ Looper::Looper()
 	fd = epoll_create1(0);
 	if (fd < 0)
 		throw runtime_error("Failed to create epoller.");
+
+	event_fd = ::eventfd(0, EFD_NONBLOCK);
+	if (event_fd < 0)
+		throw runtime_error("Failed to create eventfd.");
+
+	epoll_event event = {};
+	event.events = EPOLLIN;
+	event.data.ptr = nullptr;
+	if (epoll_ctl(fd, EPOLL_CTL_ADD, event_fd, &event) < 0)
+		throw runtime_error("Failed to add event fd to epoll.");
 }
 
 Looper::~Looper()
 {
+	if (event_fd >= 0)
+		close(event_fd);
 	if (fd >= 0)
 		close(fd);
 }
@@ -77,14 +90,51 @@ void Looper::unregister_handler(Socket &sock)
 	handlers.erase(itr);
 }
 
-int Looper::wait(int timeout)
+void Looper::run_in_looper(std::function<void()> func)
 {
+	{
+		lock_guard<mutex> holder{queue_lock};
+		func_queue.push_back(move(func));
+	}
+
+	uint64_t one = 1;
+	::write(event_fd, &one, sizeof(one));
+}
+
+void Looper::kill()
+{
+	{
+		lock_guard<mutex> holder{queue_lock};
+		func_queue.push_back([this]() {
+			dead = true;
+		});
+	}
+	uint64_t one = 1;
+	::write(event_fd, &one, sizeof(one));
+}
+
+void Looper::handle_deferred_funcs()
+{
+	uint64_t count = 0;
+	if (::read(event_fd, &count, sizeof(count)) < 0)
+		return;
+	if (!count)
+		return;
+
+	lock_guard<mutex> holder{queue_lock};
+	for (auto &func : func_queue)
+		func();
+	func_queue.clear();
+}
+
+int Looper::wait_idle(int timeout)
+{
+	if (dead)
+		return -1;
+
 	epoll_event events[64];
 	int ret;
 	int handled = 0;
-
-	if (handlers.empty())
-		return -1;
 
 	while ((ret = epoll_wait(fd, events, 64, handled ? 0 : timeout)) > 0)
 	{
@@ -92,6 +142,12 @@ int Looper::wait(int timeout)
 		for (int i = 0; i < ret; i++)
 		{
 			auto *handler = static_cast<LooperHandler *>(events[i].data.ptr);
+
+			if (!handler)
+			{
+				handle_deferred_funcs();
+				continue;
+			}
 
 			EventFlags flags = 0;
 			if (events[i].events & EPOLLIN)
@@ -114,6 +170,14 @@ int Looper::wait(int timeout)
 	}
 
 	return handled;
+}
+
+int Looper::wait(int timeout)
+{
+	if (handlers.empty())
+		return -1;
+
+	return wait_idle(timeout);
 }
 
 }

@@ -15,7 +15,7 @@ public:
 	virtual void *map() = 0;
 	virtual void *map_write(size_t size) = 0;
 	virtual void unmap() = 0;
-	virtual size_t get_size() const = 0;
+	virtual size_t get_size() = 0;
 	virtual bool reopen() = 0;
 };
 

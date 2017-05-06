@@ -36,24 +36,31 @@ Filesystem::Filesystem()
 {
 	protocols[""] = unique_ptr<FilesystemBackend>(new OSFilesystem("/"));
 
+	if (getenv("GRANITE_USE_NETFS"))
+	{
+		protocols["assets"] = unique_ptr<FilesystemBackend>(new NetworkFilesystem);
+		protocols["assets"]->set_protocol("assets");
+		protocols["cache"] = unique_ptr<FilesystemBackend>(new NetworkFilesystem);
+		protocols["cache"]->set_protocol("cache");
+	}
+	else
+	{
 #ifdef GRANITE_DEFAULT_ASSET_DIRECTORY
-	const char *asset_dir = getenv("GRANITE_DEFAULT_ASSET_DIRECTORY");
-	if (!asset_dir)
-		asset_dir = GRANITE_DEFAULT_ASSET_DIRECTORY;
-	protocols["assets"] = unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir));
-	protocols["assets"]->set_protocol("assets");
-
-	protocols["netfs"] = unique_ptr<FilesystemBackend>(new NetworkFilesystem(asset_dir));
-	protocols["netfs"]->set_protocol("assets");
+		const char *asset_dir = getenv("GRANITE_DEFAULT_ASSET_DIRECTORY");
+		if (!asset_dir)
+			asset_dir = GRANITE_DEFAULT_ASSET_DIRECTORY;
+		protocols["assets"] = unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir));
+		protocols["assets"]->set_protocol("assets");
 #endif
 
 #ifdef GRANITE_DEFAULT_CACHE_DIRECTORY
-	const char *cache_dir = getenv("GRANITE_DEFAULT_CACHE_DIRECTORY");
-	if (!cache_dir)
-		cache_dir = GRANITE_DEFAULT_CACHE_DIRECTORY;
-	protocols["cache"] = unique_ptr<FilesystemBackend>(new OSFilesystem(cache_dir));
-	protocols["cache"]->set_protocol("cache");
+		const char *cache_dir = getenv("GRANITE_DEFAULT_CACHE_DIRECTORY");
+		if (!cache_dir)
+			cache_dir = GRANITE_DEFAULT_CACHE_DIRECTORY;
+		protocols["cache"] = unique_ptr<FilesystemBackend>(new OSFilesystem(cache_dir));
+		protocols["cache"]->set_protocol("cache");
 #endif
+	}
 }
 
 void Filesystem::register_protocol(const std::string &proto, std::unique_ptr<FilesystemBackend> fs)

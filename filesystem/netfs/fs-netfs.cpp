@@ -105,11 +105,26 @@ struct FSReader : FSReadCommand
 	{
 	}
 
+	~FSReader()
+	{
+		if (!got_reply)
+			result.set_exception(make_exception_ptr(runtime_error("file read")));
+	}
+
 	void parse_reply() override
 	{
-		LOGI("Read success!\n");
-		fwrite(reply_builder.get_buffer().data(), reply_builder.get_buffer().size(), 1, stdout);
+		got_reply = true;
+		try
+		{
+			result.set_value(reply_builder.consume_buffer());
+		}
+		catch (...)
+		{
+		}
 	}
+
+	promise<vector<uint8_t>> result;
+	bool got_reply = false;
 };
 
 struct FSList : FSReadCommand
@@ -147,8 +162,15 @@ struct FSList : FSReadCommand
 				break;
 			}
 		}
-		result.set_value(move(list));
+
 		got_reply = true;
+		try
+		{
+			result.set_value(move(list));
+		}
+		catch (...)
+		{
+		}
 	}
 
 	promise<vector<ListEntry>> result;
@@ -189,50 +211,21 @@ struct FSStat : FSReadCommand
 			break;
 		}
 
-		result.set_value(s);
 		got_reply = true;
+		try
+		{
+			result.set_value(s);
+		}
+		catch (...)
+		{
+		}
 	}
 
 	std::promise<FileStat> result;
 	bool got_reply = false;
 };
 
-struct FSWalk : FSReadCommand
-{
-	FSWalk(const string &path, unique_ptr<Socket> socket)
-		: FSReadCommand(path, NETFS_WALK, move(socket))
-	{
-	}
-
-	void parse_reply() override
-	{
-		uint32_t entries = reply_builder.read_u32();
-		for (uint32_t i = 0; i < entries; i++)
-		{
-			auto path = reply_builder.read_string();
-			auto type = reply_builder.read_u32();
-
-			const char *file_type = "";
-			switch (type)
-			{
-			case NETFS_FILE_TYPE_PLAIN:
-				file_type = "plain";
-				break;
-			case NETFS_FILE_TYPE_DIRECTORY:
-				file_type = "directory";
-				break;
-			case NETFS_FILE_TYPE_SPECIAL:
-				file_type = "special";
-				break;
-			}
-			LOGI("Path: %s (%s)\n", path.c_str(), file_type);
-		}
-		LOGI("Walk success!\n");
-	}
-};
-
-NetworkFilesystem::NetworkFilesystem(const std::string &base)
-	: base(base)
+NetworkFilesystem::NetworkFilesystem()
 {
 	looper_thread = thread(&NetworkFilesystem::looper_entry, this);
 }
@@ -266,9 +259,89 @@ vector<ListEntry> NetworkFilesystem::list(const std::string &path)
 	}
 }
 
-unique_ptr<File> NetworkFilesystem::open(const std::string &, FileMode)
+NetworkFile::~NetworkFile()
 {
-	return {};
+}
+
+NetworkFile::NetworkFile(Looper &looper, const std::string &path, FileMode mode)
+	: path(path)
+{
+	if (mode != FileMode::ReadOnly)
+		throw runtime_error("Unsupported file mode.");
+
+	auto socket = Socket::connect("127.0.0.1", 7070);
+	if (!socket)
+		throw runtime_error("Failed to connect to server.");
+
+	auto *handler = new FSReader(path, move(socket));
+	future = handler->result.get_future();
+
+	// Capture-by-move would be nice here.
+	looper.run_in_looper([handler, &looper]() {
+		looper.register_handler(EVENT_OUT, unique_ptr<FSReader>(handler));
+	});
+}
+
+void NetworkFile::unmap()
+{
+}
+
+bool NetworkFile::reopen()
+{
+	return false;
+}
+
+void *NetworkFile::map_write(size_t)
+{
+	return nullptr;
+}
+
+void *NetworkFile::map()
+{
+	try
+	{
+		if (!has_buffer)
+		{
+			buffer = future.get();
+			has_buffer = true;
+		}
+		return buffer.empty() ? nullptr : buffer.data();
+	}
+	catch (...)
+	{
+		return nullptr;
+	}
+}
+
+size_t NetworkFile::get_size()
+{
+	try
+	{
+		if (!has_buffer)
+		{
+			buffer = future.get();
+			has_buffer = true;
+		}
+		return buffer.size();
+	}
+	catch (...)
+	{
+		return 0;
+	}
+}
+
+unique_ptr<File> NetworkFilesystem::open(const std::string &path, FileMode mode)
+{
+	try
+	{
+		auto joined = protocol + "://" + path;
+		return unique_ptr<File>(new NetworkFile(looper, move(joined), mode));
+	}
+	catch (const std::exception &e)
+	{
+		LOGE("NetworkFilesystem::open(): %s\n", e.what());
+		return {};
+	}
 }
 
 bool NetworkFilesystem::stat(const std::string &path, FileStat &stat)

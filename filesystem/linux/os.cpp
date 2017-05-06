@@ -101,7 +101,7 @@ void *MMapFile::map()
 	return mapped;
 }
 
-size_t MMapFile::get_size() const
+size_t MMapFile::get_size()
 {
 	return size;
 }

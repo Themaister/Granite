@@ -140,6 +140,11 @@ public:
 		return buffer;
 	}
 
+	std::vector<uint8_t> &&consume_buffer()
+	{
+		return move(buffer);
+	}
+
 	void begin(size_t size = 0)
 	{
 		if (size == 0)

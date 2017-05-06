@@ -12,7 +12,7 @@ public:
 	void *map() override;
 	void *map_write(size_t size) override;
 	void unmap() override;
-	size_t get_size() const override;
+	size_t get_size() override;
 	bool reopen() override;
 
 private:

@@ -9,6 +9,7 @@
 
 namespace Granite
 {
+class FSReader;
 class NetworkFile : public File
 {
 public:
@@ -17,24 +18,20 @@ public:
 	void *map() override;
 	void *map_write(size_t size) override;
 	void unmap() override;
-	size_t get_size() const override;
+	size_t get_size() override;
 	bool reopen() override;
 
-	struct Result
-	{
-		std::vector<uint8_t> buffer;
-		NetFSError error;
-	};
-
 private:
-	std::future<Result> future;
+	std::string path;
+	std::future<std::vector<uint8_t>> future;
+	bool has_buffer = false;
 	std::vector<uint8_t> buffer;
 };
 
 class NetworkFilesystem : public FilesystemBackend
 {
 public:
-	NetworkFilesystem(const std::string &base);
+	NetworkFilesystem();
 	~NetworkFilesystem();
 	std::vector<ListEntry> list(const std::string &path) override;
 	std::unique_ptr<File> open(const std::string &path, FileMode mode) override;
@@ -65,7 +62,6 @@ public:
 	}
 
 private:
-	std::string base;
 	std::thread looper_thread;
 	Looper looper;
 	void looper_entry();

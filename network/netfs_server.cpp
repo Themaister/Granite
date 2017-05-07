@@ -121,8 +121,9 @@ struct FSHandler : LooperHandler
 		auto &reply = reply_queue.back();
 		reply.builder.add_u32(NETFS_BEGIN_CHUNK_NOTIFICATION);
 		reply.builder.add_u32(NETFS_ERROR_OK);
-		reply.builder.add_u64(info.path.size() + 8 + 4);
+		reply.builder.add_u64(info.path.size() + 8 + 8 + 4);
 		reply.builder.add_string(info.path);
+		reply.builder.add_u64(uint64_t(info.handle));
 
 		switch (info.type)
 		{

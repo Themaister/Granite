@@ -7,6 +7,7 @@
 #include <vector>
 #include <queue>
 #include "filesystem.hpp"
+#include <future>
 
 using namespace Granite;
 using namespace std;
@@ -29,7 +30,7 @@ struct FSNotifyCommand : LooperHandler
 		state = NotificationLoop;
 	}
 
-	void push_register_notification(const string &path)
+	void push_register_notification(const string &path, promise<FileNotifyHandle> result)
 	{
 		if (reply_queue.empty() && socket->get_parent_looper())
 			socket->get_parent_looper()->modify_handler(EVENT_IN | EVENT_OUT, *this);
@@ -39,9 +40,11 @@ struct FSNotifyCommand : LooperHandler
 		reply.builder.add_u32(NETFS_REGISTER_NOTIFICATION);
 		reply.builder.add_string(path);
 		reply.writer.start(reply.builder.get_buffer());
+
+		replies.push(move(result));
 	}
 
-	void push_unregister_notification(FileNotifyHandle handler)
+	void push_unregister_notification(FileNotifyHandle handler, promise<FileNotifyHandle> result)
 	{
 		if (reply_queue.empty() && socket->get_parent_looper())
 			socket->get_parent_looper()->modify_handler(EVENT_IN | EVENT_OUT, *this);
@@ -52,6 +55,7 @@ struct FSNotifyCommand : LooperHandler
 		reply.builder.add_u64(8);
 		reply.builder.add_u64(uint64_t(handler));
 		reply.writer.start(reply.builder.get_buffer());
+		replies.push(move(result));
 	}
 
 	void modify_looper(Looper &looper)
@@ -67,23 +71,24 @@ struct FSNotifyCommand : LooperHandler
 		{
 			if (last_cmd == NETFS_BEGIN_CHUNK_NOTIFICATION)
 			{
-				auto path = result_reply.read_string();
+				FileNotifyInfo info;
+				info.path = result_reply.read_string();
+				info.handle = FileNotifyHandle(result_reply.read_u64());
 				auto type = result_reply.read_u32();
-				const char *notification = "";
 				switch (type)
 				{
 				case NETFS_FILE_CHANGED:
-					notification = "changed";
+					info.type = FileNotifyType::FileChanged;
 					break;
 				case NETFS_FILE_DELETED:
-					notification = "deleted";
+					info.type = FileNotifyType::FileDeleted;
 					break;
 				case NETFS_FILE_CREATED:
-					notification = "created";
+					info.type = FileNotifyType::FileCreated;
 					break;
 				}
 
-				LOGI("Notification: %s %s!\n", path.c_str(), notification);
+				notify_cb(info);
 				result_reply.begin(4 * sizeof(uint32_t));
 				command_reader.start(result_reply.get_buffer());
 				modify_looper(looper);
@@ -93,7 +98,16 @@ struct FSNotifyCommand : LooperHandler
 			else if (last_cmd == NETFS_BEGIN_CHUNK_REPLY)
 			{
 				auto handle = int(result_reply.read_u64());
-				LOGI("Got notification handle: %d!\n", handle);
+
+				try
+				{
+					replies.front().set_value(handle);
+				}
+				catch (...)
+				{
+				}
+				replies.pop();
+
 				result_reply.begin(4 * sizeof(uint32_t));
 				command_reader.start(result_reply.get_buffer());
 				modify_looper(looper);
@@ -185,7 +199,9 @@ struct FSNotifyCommand : LooperHandler
 		SocketWriter writer;
 		ReplyBuilder builder;
 	};
-	std::queue<NotificationReply> reply_queue;
+	queue<NotificationReply> reply_queue;
+	queue<promise<FileNotifyHandle>> replies;
+	function<void (const FileNotifyInfo &info)> notify_cb;
 };
 
 struct FSWriteCommand : LooperHandler

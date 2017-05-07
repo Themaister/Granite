@@ -5,41 +5,62 @@
 #include <string.h>
 #include <unistd.h>
 #include <vector>
+#include <queue>
+#include "filesystem.hpp"
 
 using namespace Granite;
 using namespace std;
 
 struct FSNotifyCommand : LooperHandler
 {
-	FSNotifyCommand(const string &protocol, const string &path, unique_ptr<Socket> socket)
+	FSNotifyCommand(const string &protocol, unique_ptr<Socket> socket)
 		: LooperHandler(move(socket))
 	{
-		reply_builder.add_u32(NETFS_NOTIFICATION);
-		reply_builder.add_u32(NETFS_BEGIN_CHUNK_REQUEST);
-		reply_builder.add_string(protocol);
+		reply_queue.emplace();
+		auto &reply = reply_queue.back();
+		reply.builder.add_u32(NETFS_NOTIFICATION);
+		reply.builder.add_u32(NETFS_BEGIN_CHUNK_REQUEST);
+		reply.builder.add_string(protocol);
+		reply.writer.start(reply.builder.get_buffer());
 
-		reply_builder.add_u32(NETFS_REGISTER_NOTIFICATION);
-		reply_builder.add_string(path);
-		command_writer.start(reply_builder.get_buffer());
-		state = WriteCommand;
+		result_reply.begin(4 * sizeof(uint32_t));
+		command_reader.start(result_reply.get_buffer());
+
+		state = NotificationLoop;
 	}
 
-	bool write_command(Looper &looper, EventFlags)
+	void push_register_notification(const string &path)
 	{
-		auto ret = command_writer.process(*socket);
-		if (command_writer.complete())
-		{
-			looper.modify_handler(EVENT_IN, *this);
-			result_reply.begin(4 * sizeof(uint32_t));
-			command_reader.start(result_reply.get_buffer());
-			state = ReadReply;
-			return true;
-		}
+		if (reply_queue.empty() && socket->get_parent_looper())
+			socket->get_parent_looper()->modify_handler(EVENT_IN | EVENT_OUT, *this);
 
-		return (ret > 0) || (ret == Socket::ErrorWouldBlock);
+		reply_queue.emplace();
+		auto &reply = reply_queue.back();
+		reply.builder.add_u32(NETFS_REGISTER_NOTIFICATION);
+		reply.builder.add_string(path);
+		reply.writer.start(reply.builder.get_buffer());
 	}
 
-	bool read_reply_data(Looper &)
+	void push_unregister_notification(FileNotifyHandle handler)
+	{
+		if (reply_queue.empty() && socket->get_parent_looper())
+			socket->get_parent_looper()->modify_handler(EVENT_IN | EVENT_OUT, *this);
+
+		reply_queue.emplace();
+		auto &reply = reply_queue.back();
+		reply.builder.add_u32(NETFS_UNREGISTER_NOTIFICATION);
+		reply.builder.add_u64(8);
+		reply.builder.add_u64(uint64_t(handler));
+		reply.writer.start(reply.builder.get_buffer());
+	}
+
+	void modify_looper(Looper &looper)
+	{
+		uint32_t mask = reply_queue.empty() ? EVENT_IN : (EVENT_IN | EVENT_OUT);
+		looper.modify_handler(mask, *this);
+	}
+
+	bool read_reply_data(Looper &looper)
 	{
 		auto ret = command_reader.process(*socket);
 		if (command_reader.complete())
@@ -65,7 +86,8 @@ struct FSNotifyCommand : LooperHandler
 				LOGI("Notification: %s %s!\n", path.c_str(), notification);
 				result_reply.begin(4 * sizeof(uint32_t));
 				command_reader.start(result_reply.get_buffer());
-				state = ReadReply;
+				modify_looper(looper);
+				state = NotificationLoop;
 				return true;
 			}
 			else if (last_cmd == NETFS_BEGIN_CHUNK_REPLY)
@@ -74,7 +96,8 @@ struct FSNotifyCommand : LooperHandler
 				LOGI("Got notification handle: %d!\n", handle);
 				result_reply.begin(4 * sizeof(uint32_t));
 				command_reader.start(result_reply.get_buffer());
-				state = ReadReply;
+				modify_looper(looper);
+				state = NotificationLoop;
 				return true;
 			}
 			else
@@ -84,56 +107,85 @@ struct FSNotifyCommand : LooperHandler
 		return (ret > 0) || (ret == Socket::ErrorWouldBlock);
 	}
 
-	bool read_reply(Looper &)
+	bool notification_loop(Looper &looper, EventFlags flags)
 	{
-		auto ret = command_reader.process(*socket);
-		if (command_reader.complete())
+		if (flags & EVENT_OUT)
 		{
-			auto cmd = result_reply.read_u32();
-			if (cmd == NETFS_BEGIN_CHUNK_NOTIFICATION || cmd == NETFS_BEGIN_CHUNK_REPLY)
+			if (reply_queue.empty())
 			{
-				if (result_reply.read_u32() != NETFS_ERROR_OK)
-					return false;
+				looper.modify_handler(EVENT_IN, *this);
+				return true;
+			}
 
-				last_cmd = cmd;
-				auto size = result_reply.read_u64();
-				result_reply.begin(size);
-				command_reader.start(result_reply.get_buffer());
-				state = ReadReplyData;
+			auto ret = reply_queue.front().writer.process(*socket);
+			if (reply_queue.front().writer.complete())
+				reply_queue.pop();
+
+			if (reply_queue.empty())
+			{
+				looper.modify_handler(EVENT_IN, *this);
 				return true;
 			}
 			else
-				return false;
+				return (ret > 0) || (ret == Socket::ErrorWouldBlock);
 		}
 
-		return (ret > 0) || (ret == Socket::ErrorWouldBlock);
+		if (flags & EVENT_IN)
+		{
+			auto ret = command_reader.process(*socket);
+			if (command_reader.complete())
+			{
+				auto cmd = result_reply.read_u32();
+				if (cmd == NETFS_BEGIN_CHUNK_NOTIFICATION || cmd == NETFS_BEGIN_CHUNK_REPLY)
+				{
+					if (result_reply.read_u32() != NETFS_ERROR_OK)
+						return false;
+
+					last_cmd = cmd;
+					auto size = result_reply.read_u64();
+					result_reply.begin(size);
+					command_reader.start(result_reply.get_buffer());
+					state = ReadReplyData;
+					looper.modify_handler(EVENT_IN, *this);
+					return true;
+				}
+				else
+					return false;
+			}
+
+			return (ret > 0) || (ret == Socket::ErrorWouldBlock);
+		}
+
+		return true;
 	}
 
 	bool handle(Looper &looper, EventFlags flags) override
 	{
-		if (state == WriteCommand)
-			return write_command(looper, flags);
-		else if (state == ReadReply)
-			return read_reply(looper);
-		else if (state == ReadReplyData)
+		if (state == ReadReplyData)
 			return read_reply_data(looper);
+		else if (state == NotificationLoop)
+			return notification_loop(looper, flags);
 		else
 			return false;
 	}
 
 	enum State
 	{
-		WriteCommand,
-		ReadReply,
-		ReadReplyData
+		ReadReplyData,
+		NotificationLoop
 	};
 
-	State state = WriteCommand;
+	State state = NotificationLoop;
 	SocketReader command_reader;
-	SocketWriter command_writer;
-	ReplyBuilder reply_builder;
 	ReplyBuilder result_reply;
 	uint32_t last_cmd = 0;
+
+	struct NotificationReply
+	{
+		SocketWriter writer;
+		ReplyBuilder builder;
+	};
+	std::queue<NotificationReply> reply_queue;
 };
 
 struct FSWriteCommand : LooperHandler
@@ -455,7 +507,7 @@ int main(int argc, char *argv[])
 #endif
 
 	client = Socket::connect("127.0.0.1", 7070);
-	looper.register_handler(EVENT_OUT, unique_ptr<FSNotifyCommand>(new FSNotifyCommand("assets", "notify.me", move(client))));
+	looper.register_handler(EVENT_OUT, unique_ptr<FSNotifyCommand>(new FSNotifyCommand("assets", move(client))));
 
 	while (looper.wait(-1) >= 0);
 }

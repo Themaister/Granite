@@ -508,6 +508,7 @@ struct FSHandler : LooperHandler
 		if (command_reader.complete())
 		{
 			auto handle = reply_builder.read_u64();
+			LOGI("Got unregister request for handle %d.\n", int(handle));
 			notify_system.uninstall_notification(this, protocol, handle);
 
 			reply_queue.emplace();
@@ -552,6 +553,7 @@ struct FSHandler : LooperHandler
 				}
 				else if (cmd == NETFS_UNREGISTER_NOTIFICATION)
 				{
+					LOGI("Got unregister request.\n");
 					auto size = reply_builder.read_u64();
 					state = NotificationLoopUnregister;
 					reply_builder.begin(size);

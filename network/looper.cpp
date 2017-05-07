@@ -38,6 +38,9 @@ Looper::Looper()
 
 Looper::~Looper()
 {
+	for (auto &handler : handlers)
+		handler.second->get_socket().set_parent_looper(nullptr);
+
 	if (event_fd >= 0)
 		close(event_fd);
 	if (fd >= 0)

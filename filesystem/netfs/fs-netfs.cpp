@@ -24,11 +24,18 @@ struct FSNotifyCommand : LooperHandler
 		command_reader.start(result_reply.get_buffer());
 
 		state = NotificationLoop;
+		expected = false;
+	}
+
+	void expected_destruction()
+	{
+		expected = true;
 	}
 
 	~FSNotifyCommand()
 	{
-		LOGE("Destroying FSNotifyCommand!\n");
+		if (!expected)
+			terminate();
 	}
 
 	void set_notify_cb(function<void (const FileNotifyInfo &)> func)
@@ -165,10 +172,34 @@ struct FSNotifyCommand : LooperHandler
 
 					last_cmd = cmd;
 					auto size = result_reply.read_u64();
-					result_reply.begin(size);
-					command_reader.start(result_reply.get_buffer());
-					state = ReadReplyData;
-					looper.modify_handler(EVENT_IN, *this);
+
+					if (size)
+					{
+						// Either receive notification or acknowledgement.
+						result_reply.begin(size);
+						command_reader.start(result_reply.get_buffer());
+						state = ReadReplyData;
+						looper.modify_handler(EVENT_IN, *this);
+					}
+					else
+					{
+						// Acknowledge unregister notification.
+						try
+						{
+							replies.front().set_value(0);
+						}
+						catch (...)
+						{
+						}
+
+						assert(!replies.empty());
+						replies.pop();
+
+						result_reply.begin(4 * sizeof(uint32_t));
+						command_reader.start(result_reply.get_buffer());
+						modify_looper(looper);
+						state = NotificationLoop;
+					}
 					return true;
 				}
 				else
@@ -210,6 +241,7 @@ struct FSNotifyCommand : LooperHandler
 	queue<NotificationReply> reply_queue;
 	queue<promise<FileNotifyHandle>> replies;
 	function<void (const FileNotifyInfo &info)> notify_cb;
+	atomic_bool expected;
 };
 
 struct FSReadCommand : LooperHandler
@@ -629,7 +661,6 @@ FileNotifyHandle NetworkFilesystem::install_notification(const std::string &path
 	try
 	{
 		auto handle = result.get();
-		LOGI("Got notification handle: %d\n", handle);
 		handlers[handle] = move(func);
 		return handle;
 	}
@@ -812,6 +843,9 @@ bool NetworkFilesystem::stat(const std::string &path, FileStat &stat)
 
 NetworkFilesystem::~NetworkFilesystem()
 {
+	if (notify)
+		notify->expected_destruction();
+
 	looper.kill();
 	if (looper_thread.joinable())
 		looper_thread.join();

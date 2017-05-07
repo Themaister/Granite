@@ -23,9 +23,12 @@ public:
 
 private:
 	std::string path;
+	FileMode mode;
+	Looper &looper;
 	std::future<std::vector<uint8_t>> future;
-	bool has_buffer = false;
 	std::vector<uint8_t> buffer;
+	bool has_buffer = false;
+	bool need_flush = false;
 };
 
 class NetworkFilesystem : public FilesystemBackend

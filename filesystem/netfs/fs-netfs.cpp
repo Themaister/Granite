@@ -225,6 +225,113 @@ struct FSStat : FSReadCommand
 	bool got_reply = false;
 };
 
+struct FSWriteCommand : LooperHandler
+{
+	FSWriteCommand(const string &path, const vector<uint8_t> &buffer, unique_ptr<Socket> socket)
+		: LooperHandler(move(socket))
+	{
+		target_size = buffer.size();
+
+		reply_builder.begin();
+		result_reply.begin(4 * sizeof(uint32_t));
+
+		reply_builder.add_u32(NETFS_WRITE_FILE);
+		reply_builder.add_u32(NETFS_BEGIN_CHUNK_REQUEST);
+		reply_builder.add_string(path);
+		reply_builder.add_u32(NETFS_BEGIN_CHUNK_REQUEST);
+		reply_builder.add_u64(buffer.size());
+		reply_builder.add_buffer(buffer);
+		command_writer.start(reply_builder.get_buffer());
+		command_reader.start(result_reply.get_buffer());
+		state = WriteCommand;
+	}
+
+	bool write_command(Looper &looper, EventFlags flags)
+	{
+		if (flags & EVENT_IN)
+		{
+			auto ret = command_reader.process(*socket);
+			// Received message before we completed the write, must be an error.
+			if (command_reader.complete())
+				return false;
+
+			return (ret > 0) || (ret == Socket::ErrorWouldBlock);
+		}
+		else if (flags & EVENT_OUT)
+		{
+			auto ret = command_writer.process(*socket);
+			if (command_writer.complete())
+			{
+				// Done writing, wait for reply.
+				looper.modify_handler(EVENT_IN, *this);
+				state = ReadReply;
+			}
+
+			return (ret > 0) || (ret == Socket::ErrorWouldBlock);
+		}
+
+		return true;
+	}
+
+	~FSWriteCommand()
+	{
+		if (!got_reply)
+			result.set_exception(make_exception_ptr(runtime_error("Failed write")));
+	}
+
+	bool read_reply(Looper &)
+	{
+		auto ret = command_reader.process(*socket);
+		if (command_reader.complete())
+		{
+			if (result_reply.read_u32() != NETFS_BEGIN_CHUNK_REPLY)
+				return false;
+			if (result_reply.read_u32() != NETFS_ERROR_OK)
+				return false;
+			if (result_reply.read_u64() != target_size)
+				return false;
+
+			got_reply = true;
+			try
+			{
+				result.set_value(NETFS_ERROR_OK);
+			}
+			catch (...)
+			{
+			}
+			return false;
+		}
+
+		return (ret > 0) || (ret == Socket::ErrorWouldBlock);
+	}
+
+	bool handle(Looper &looper, EventFlags flags) override
+	{
+		if (state == WriteCommand)
+			return write_command(looper, flags);
+		else if (state == ReadReply)
+			return read_reply(looper);
+		else
+			return false;
+	}
+
+	enum State
+	{
+		WriteCommand,
+		ReadReply
+	};
+
+	State state = WriteCommand;
+	SocketReader command_reader;
+	SocketWriter command_writer;
+	ReplyBuilder reply_builder;
+	ReplyBuilder result_reply;
+	size_t target_size = 0;
+
+	promise<NetFSError> result;
+	bool got_reply = false;
+};
+
 NetworkFilesystem::NetworkFilesystem()
 {
 	looper_thread = thread(&NetworkFilesystem::looper_entry, this);
@@ -261,39 +368,76 @@ vector<ListEntry> NetworkFilesystem::list(const std::string &path)
 
 NetworkFile::~NetworkFile()
 {
+	unmap();
 }
 
 NetworkFile::NetworkFile(Looper &looper, const std::string &path, FileMode mode)
-	: path(path)
+	: path(path), mode(mode), looper(looper)
 {
-	if (mode != FileMode::ReadOnly)
+	if (mode == FileMode::ReadWrite)
 		throw runtime_error("Unsupported file mode.");
 
-	auto socket = Socket::connect("127.0.0.1", 7070);
-	if (!socket)
-		throw runtime_error("Failed to connect to server.");
-
-	auto *handler = new FSReader(path, move(socket));
-	future = handler->result.get_future();
-
-	// Capture-by-move would be nice here.
-	looper.run_in_looper([handler, &looper]() {
-		looper.register_handler(EVENT_OUT, unique_ptr<FSReader>(handler));
-	});
+	if (mode == FileMode::ReadOnly)
+	{
+		if (!reopen())
+			throw runtime_error("Failed to connect to server.");
+	}
 }
 
 void NetworkFile::unmap()
 {
+	if (mode == FileMode::WriteOnly && has_buffer && need_flush)
+	{
+		need_flush = false;
+		auto socket = Socket::connect("127.0.0.1", 7070);
+		if (!socket)
+			throw runtime_error("Failed to connect to server.");
+
+		auto handler = unique_ptr<FSWriteCommand>(new FSWriteCommand(path, buffer, move(socket)));
+		auto reply = handler->result.get_future();
+		looper.run_in_looper([&handler, this]() {
+			looper.register_handler(EVENT_OUT | EVENT_IN, move(handler));
+		});
+
+		try
+		{
+			NetFSError error = reply.get();
+			if (error != NETFS_ERROR_OK)
+				LOGE("Failed to write file: %s\n", path.c_str());
+		}
+		catch (...)
+		{
+			LOGE("Failed to write file: %s\n", path.c_str());
+		}
+	}
 }
 
 bool NetworkFile::reopen()
 {
-	return false;
+	if (mode == FileMode::ReadOnly)
+	{
+		has_buffer = false;
+		auto socket = Socket::connect("127.0.0.1", 7070);
+		if (!socket)
+			return false;
+
+		auto *handler = new FSReader(path, move(socket));
+		future = handler->result.get_future();
+
+		// Capture-by-move would be nice here.
+		looper.run_in_looper([handler, this]() {
+			looper.register_handler(EVENT_OUT, unique_ptr<FSReader>(handler));
+		});
+	}
+	return true;
 }
 
-void *NetworkFile::map_write(size_t)
+void *NetworkFile::map_write(size_t size)
 {
-	return nullptr;
+	has_buffer = true;
+	need_flush = true;
+	buffer.resize(size);
+	return buffer.empty() ? nullptr : buffer.data();
 }
 
 void *NetworkFile::map()

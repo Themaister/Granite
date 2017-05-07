@@ -1,11 +1,217 @@
 #include "fs-netfs.hpp"
 #include "../path.hpp"
 #include "util.hpp"
+#include <queue>
+#include <assert.h>
 
 using namespace std;
 
 namespace Granite
 {
+struct FSNotifyCommand : LooperHandler
+{
+	FSNotifyCommand(const string &protocol, unique_ptr<Socket> socket)
+		: LooperHandler(move(socket))
+	{
+		reply_queue.emplace();
+		auto &reply = reply_queue.back();
+		reply.builder.add_u32(NETFS_NOTIFICATION);
+		reply.builder.add_u32(NETFS_BEGIN_CHUNK_REQUEST);
+		reply.builder.add_string(protocol);
+		reply.writer.start(reply.builder.get_buffer());
+
+		result_reply.begin(4 * sizeof(uint32_t));
+		command_reader.start(result_reply.get_buffer());
+
+		state = NotificationLoop;
+	}
+
+	~FSNotifyCommand()
+	{
+		LOGE("Destroying FSNotifyCommand!\n");
+	}
+
+	void set_notify_cb(function<void (const FileNotifyInfo &)> func)
+	{
+		notify_cb = move(func);
+	}
+
+	void push_register_notification(const string &path, promise<FileNotifyHandle> result)
+	{
+		if (reply_queue.empty() && socket->get_parent_looper())
+			socket->get_parent_looper()->modify_handler(EVENT_IN | EVENT_OUT, *this);
+
+		reply_queue.emplace();
+		auto &reply = reply_queue.back();
+		reply.builder.add_u32(NETFS_REGISTER_NOTIFICATION);
+		reply.builder.add_string(path);
+		reply.writer.start(reply.builder.get_buffer());
+
+		replies.push(move(result));
+	}
+
+	void push_unregister_notification(FileNotifyHandle handler, promise<FileNotifyHandle> result)
+	{
+		if (reply_queue.empty() && socket->get_parent_looper())
+			socket->get_parent_looper()->modify_handler(EVENT_IN | EVENT_OUT, *this);
+
+		reply_queue.emplace();
+		auto &reply = reply_queue.back();
+		reply.builder.add_u32(NETFS_UNREGISTER_NOTIFICATION);
+		reply.builder.add_u64(8);
+		reply.builder.add_u64(uint64_t(handler));
+		reply.writer.start(reply.builder.get_buffer());
+		replies.push(move(result));
+	}
+
+	void modify_looper(Looper &looper)
+	{
+		uint32_t mask = reply_queue.empty() ? EVENT_IN : (EVENT_IN | EVENT_OUT);
+		looper.modify_handler(mask, *this);
+	}
+
+	bool read_reply_data(Looper &looper)
+	{
+		auto ret = command_reader.process(*socket);
+		if (command_reader.complete())
+		{
+			if (last_cmd == NETFS_BEGIN_CHUNK_NOTIFICATION)
+			{
+				FileNotifyInfo info;
+				info.path = result_reply.read_string();
+				info.handle = FileNotifyHandle(result_reply.read_u64());
+				auto type = result_reply.read_u32();
+				switch (type)
+				{
+				case NETFS_FILE_CHANGED:
+					info.type = FileNotifyType::FileChanged;
+					break;
+				case NETFS_FILE_DELETED:
+					info.type = FileNotifyType::FileDeleted;
+					break;
+				case NETFS_FILE_CREATED:
+					info.type = FileNotifyType::FileCreated;
+					break;
+				}
+
+				notify_cb(info);
+				result_reply.begin(4 * sizeof(uint32_t));
+				command_reader.start(result_reply.get_buffer());
+				modify_looper(looper);
+				state = NotificationLoop;
+				return true;
+			}
+			else if (last_cmd == NETFS_BEGIN_CHUNK_REPLY)
+			{
+				auto handle = int(result_reply.read_u64());
+
+				try
+				{
+					replies.front().set_value(handle);
+				}
+				catch (...)
+				{
+				}
+
+				assert(!replies.empty());
+				replies.pop();
+
+				result_reply.begin(4 * sizeof(uint32_t));
+				command_reader.start(result_reply.get_buffer());
+				modify_looper(looper);
+				state = NotificationLoop;
+				return true;
+			}
+			else
+				return false;
+		}
+
+		return (ret > 0) || (ret == Socket::ErrorWouldBlock);
+	}
+
+	bool notification_loop(Looper &looper, EventFlags flags)
+	{
+		if (flags & EVENT_OUT)
+		{
+			if (reply_queue.empty())
+			{
+				looper.modify_handler(EVENT_IN, *this);
+				return true;
+			}
+
+			auto ret = reply_queue.front().writer.process(*socket);
+			if (reply_queue.front().writer.complete())
+				reply_queue.pop();
+
+			if (reply_queue.empty())
+			{
+				looper.modify_handler(EVENT_IN, *this);
+				return true;
+			}
+			else
+				return (ret > 0) || (ret == Socket::ErrorWouldBlock);
+		}
+
+		if (flags & EVENT_IN)
+		{
+			auto ret = command_reader.process(*socket);
+			if (command_reader.complete())
+			{
+				auto cmd = result_reply.read_u32();
+				if (cmd == NETFS_BEGIN_CHUNK_NOTIFICATION || cmd == NETFS_BEGIN_CHUNK_REPLY)
+				{
+					if (result_reply.read_u32() != NETFS_ERROR_OK)
+						return false;
+
+					last_cmd = cmd;
+					auto size = result_reply.read_u64();
+					result_reply.begin(size);
+					command_reader.start(result_reply.get_buffer());
+					state = ReadReplyData;
+					looper.modify_handler(EVENT_IN, *this);
+					return true;
+				}
+				else
+					return false;
+			}
+
+			return (ret > 0) || (ret == Socket::ErrorWouldBlock);
+		}
+
+		return true;
+	}
+
+	bool handle(Looper &looper, EventFlags flags) override
+	{
+		if (state == ReadReplyData)
+			return read_reply_data(looper);
+		else if (state == NotificationLoop)
+			return notification_loop(looper, flags);
+		else
+			return false;
+	}
+
+	enum State
+	{
+		ReadReplyData,
+		NotificationLoop
+	};
+
+	State state = NotificationLoop;
+	SocketReader command_reader;
+	ReplyBuilder result_reply;
+	uint32_t last_cmd = 0;
+
+	struct NotificationReply
+	{
+		SocketWriter writer;
+		ReplyBuilder builder;
+	};
+	queue<NotificationReply> reply_queue;
+	queue<promise<FileNotifyHandle>> replies;
+	function<void (const FileNotifyInfo &info)> notify_cb;
+};
+
 struct FSReadCommand : LooperHandler
 {
 	virtual ~FSReadCommand() = default;
@@ -340,6 +546,97 @@ NetworkFilesystem::NetworkFilesystem()
 void NetworkFilesystem::looper_entry()
 {
 	while (looper.wait_idle(-1) >= 0);
+}
+
+void NetworkFilesystem::setup_notification()
+{
+	auto socket = Socket::connect("127.0.0.1", 7070);
+	if (!socket)
+		return;
+	notify = new FSNotifyCommand(protocol, move(socket));
+	notify->set_notify_cb([this](const FileNotifyInfo &info) {
+		signal_notification(info);
+	});
+
+	// Move capture would be nice ...
+	looper.run_in_looper([this]() {
+		looper.register_handler(EVENT_OUT, unique_ptr<FSNotifyCommand>(notify));
+	});
+}
+
+void NetworkFilesystem::uninstall_notification(FileNotifyHandle handle)
+{
+	if (!notify)
+		setup_notification();
+	if (!notify)
+		return;
+
+	auto itr = handlers.find(handle);
+	if (itr == end(handlers))
+		return;
+	handlers.erase(itr);
+
+	auto *value = new promise<FileNotifyHandle>;
+	auto result = value->get_future();
+	looper.run_in_looper([this, value, handle]() {
+		notify->push_unregister_notification(handle, move(*value));
+		delete value;
+	});
+
+	try
+	{
+		result.wait();
+	}
+	catch (...)
+	{
+	}
+}
+
+void NetworkFilesystem::signal_notification(const FileNotifyInfo &info)
+{
+	lock_guard<mutex> holder{lock};
+	pending.push_back(info);
+}
+
+void NetworkFilesystem::poll_notifications()
+{
+	lock_guard<mutex> holder{lock};
+	for (auto &notification : pending)
+	{
+		auto &func = handlers[notification.handle];
+		if (func)
+			func(notification);
+	}
+	pending.clear();
+}
+
+FileNotifyHandle NetworkFilesystem::install_notification(const std::string &path,
+                                                         std::function<void(const FileNotifyInfo &)> func)
+{
+	if (!notify)
+		setup_notification();
+	if (!notify)
+		return -1;
+
+	auto *value = new promise<FileNotifyHandle>;
+	auto result = value->get_future();
+
+	looper.run_in_looper([this, value, path]() {
+		notify->push_register_notification(path, move(*value));
+		delete value;
+	});
+
+	try
+	{
+		auto handle = result.get();
+		LOGI("Got notification handle: %d\n", handle);
+		handlers[handle] = move(func);
+		return handle;
+	}
+	catch (...)
+	{
+		return -1;
+	}
 }
 
 vector<ListEntry> NetworkFilesystem::list(const std::string &path)

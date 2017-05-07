@@ -6,6 +6,12 @@ if (CMAKE_COMPILER_IS_GNUCXX)
    set(GRANITE_CXX_FLAGS -Wall -Wextra -pedantic -Wno-missing-field-initializers)
 endif()
 
+option(SANITIZE_ADDRESS "Sanitize" OFF)
+if (SANITIZE_ADDRESS)
+    set(GRANITE_CXX_FLAGS ${GRANITE_CXX_FLAGS} -fsanitize=address)
+    set(GRANITE_LINK_FLAGS -fsanitize=address)
+endif()
+
 option(VULKAN_WSI "Enable Vulkan WSI." ON)
 
 set(SHADERC_THIRD_PARTY_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party" CACHE STRING "Third party path." FORCE)
@@ -27,6 +33,7 @@ add_subdirectory(importers)
 add_executable(cube-test cube_test.cpp)
 target_link_libraries(cube-test math renderer vulkan-backend importers)
 target_compile_options(cube-test PRIVATE ${GRANITE_CXX_FLAGS})
+set_target_properties(cube-test PROPERTIES LINK_FLAGS ${GRANITE_LINK_FLAGS})
 
 add_subdirectory(network)
 
@@ -35,4 +42,3 @@ add_subdirectory(network)
 #        set_target_properties(main PROPERTIES LINK_FLAGS -mwindows)
 #    endif()
 #endif()
-

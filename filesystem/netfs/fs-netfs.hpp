@@ -31,6 +31,7 @@ private:
 	bool need_flush = false;
 };
 
+class FSNotifyCommand;
 class NetworkFilesystem : public FilesystemBackend
 {
 public:
@@ -40,24 +41,15 @@ public:
 	std::unique_ptr<File> open(const std::string &path, FileMode mode) override;
 	bool stat(const std::string &path, FileStat &stat) override;
 
-	FileNotifyHandle install_notification(const std::string &, std::function<void (const FileNotifyInfo &)>) override
-	{
-		return -1;
-	}
-
+	FileNotifyHandle install_notification(const std::string &path, std::function<void (const FileNotifyInfo &)> func) override;
 	FileNotifyHandle find_notification(const std::string &) const override
 	{
 		return -1;
 	}
 
-	void uninstall_notification(FileNotifyHandle) override
-	{
+	void uninstall_notification(FileNotifyHandle handle) override;
 
-	}
-
-	void poll_notifications() override
-	{
-	}
+	void poll_notifications() override;
 
 	int get_notification_fd() const override
 	{
@@ -68,5 +60,13 @@ private:
 	std::thread looper_thread;
 	Looper looper;
 	void looper_entry();
+	FSNotifyCommand *notify = nullptr;
+
+	std::unordered_map<FileNotifyHandle, std::function<void (const FileNotifyInfo &)>> handlers;
+	std::mutex lock;
+	std::vector<FileNotifyInfo> pending;
+
+	void setup_notification();
+	void signal_notification(const FileNotifyInfo &info);
 };
 }

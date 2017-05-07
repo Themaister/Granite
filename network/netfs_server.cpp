@@ -109,11 +109,14 @@ struct FSHandler : LooperHandler
 
 	~FSHandler()
 	{
+		if (is_notify_fs)
+			LOGE("Tearing down Notification system ...\n");
 		notify_system.uninstall_all_notifications(this);
 	}
 
 	void notify(const FileNotifyInfo &info)
 	{
+		LOGI("Notification for path: %s\n", info.path.c_str());
 		if (reply_queue.empty() && socket->get_parent_looper())
 			socket->get_parent_looper()->modify_handler(EVENT_IN | EVENT_OUT, *this);
 
@@ -143,6 +146,10 @@ struct FSHandler : LooperHandler
 	bool parse_command(Looper &)
 	{
 		command_id = reply_builder.read_u32();
+
+		if (command_id == NETFS_NOTIFICATION)
+			is_notify_fs = true;
+
 		switch (command_id)
 		{
 		case NETFS_WALK:
@@ -167,11 +174,17 @@ struct FSHandler : LooperHandler
 		if (command_reader.complete())
 		{
 			if (reply_builder.read_u32() != NETFS_BEGIN_CHUNK_REQUEST)
+			{
+				LOGE("Failed in read_chunk_size().\n");
 				return false;
+			}
 
 			uint64_t chunk_size = reply_builder.read_u64();
 			if (!chunk_size)
+			{
+				LOGE("Got zero chunk_size in read_chunk_size().\n");
 				return false;
+			}
 
 			reply_builder.begin(chunk_size);
 			command_reader.start(reply_builder.get_buffer());
@@ -206,11 +219,17 @@ struct FSHandler : LooperHandler
 		if (command_reader.complete())
 		{
 			if (reply_builder.read_u32() != NETFS_BEGIN_CHUNK_REQUEST)
+			{
+				LOGE("Got wrong request in read_chunk_size2().\n");
 				return false;
+			}
 
 			uint64_t chunk_size = reply_builder.read_u64();
 			if (!chunk_size)
+			{
+				LOGE("Got zero chunk size in read_chunk_size2().\n");
 				return false;
+			}
 
 			mapped = file->map_write(chunk_size);
 			if (!mapped)
@@ -473,6 +492,9 @@ struct FSHandler : LooperHandler
 			reply.builder.add_u64(uint64_t(handle));
 			reply.writer.start(reply.builder.get_buffer());
 			looper.modify_handler(EVENT_IN | EVENT_OUT, *this);
+
+			reply_builder.begin(3 * sizeof(uint32_t));
+			command_reader.start(reply_builder.get_buffer());
 			state = NotificationLoop;
 			return true;
 		}
@@ -495,11 +517,20 @@ struct FSHandler : LooperHandler
 			reply.builder.add_u64(0);
 			reply.writer.start(reply.builder.get_buffer());
 			looper.modify_handler(EVENT_IN | EVENT_OUT, *this);
+
+			reply_builder.begin(3 * sizeof(uint32_t));
+			command_reader.start(reply_builder.get_buffer());
 			state = NotificationLoop;
 			return true;
 		}
 
 		return (ret > 0) || (ret == Socket::ErrorWouldBlock);
+	}
+
+	void modify_looper(Looper &looper)
+	{
+		uint32_t mask = reply_queue.empty() ? EVENT_IN : (EVENT_IN | EVENT_OUT);
+		looper.modify_handler(mask, *this);
 	}
 
 	bool notification_loop(Looper &looper, EventFlags flags)
@@ -529,7 +560,10 @@ struct FSHandler : LooperHandler
 					return true;
 				}
 				else
+				{
+					LOGE("Wrong request type %u in notification loop.\n", cmd);
 					return false;
+				}
 			}
 
 			return (ret > 0) || (ret == Socket::ErrorWouldBlock);
@@ -616,6 +650,8 @@ struct FSHandler : LooperHandler
 
 	unique_ptr<File> file;
 	void *mapped = nullptr;
+
+	bool is_notify_fs = false;
 };
 
 FileNotifyHandle FilesystemHandler::install_notification(const std::string &path, FSHandler *handler)

@@ -294,7 +294,7 @@ FileNotifyHandle OSFilesystem::install_notification(const string &path,
 	handlers[wd] = { path, {{ move(func), ++virtual_handle }}, s.type == PathType::Directory };
 	path_to_handler[path] = wd;
 	virtual_to_real[virtual_handle] = wd;
-	return static_cast<FileNotifyHandle>(wd);
+	return static_cast<FileNotifyHandle>(virtual_handle);
 }
 
 vector<ListEntry> OSFilesystem::list(const string &path)

@@ -18,8 +18,15 @@ SceneLoader::SceneLoader()
 	scene.reset(new Scene);
 }
 
+unique_ptr<AnimationSystem> SceneLoader::consume_animation_system()
+{
+	return move(animation_system);
+}
+
 void SceneLoader::load_scene(const std::string &path)
 {
+	animation_system.reset(new AnimationSystem);
+
 	auto file = Filesystem::get().open(path);
 	if (!file)
 		throw runtime_error("Failed to load GLTF file.");
@@ -189,8 +196,65 @@ void SceneLoader::parse(const std::string &path, const std::string &json)
 				hierarchy.push_back(subroot);
 			}
 		}
+		else
+			hierarchy.push_back(scene->create_node());
 
 		hierarchy.back()->transform = transform;
+	}
+
+	if (doc.HasMember("animations"))
+	{
+		unsigned index = 0;
+		auto &animations = doc["animations"];
+		for (auto itr = animations.Begin(); itr != animations.End(); ++itr)
+		{
+			auto &animation = *itr;
+			auto &rotation = animation["axisAngle"];
+			float x = rotation[0].GetFloat();
+			float y = rotation[1].GetFloat();
+			float z = rotation[2].GetFloat();
+			vec3 direction = normalize(vec3(x, y, z));
+			float angular_freq = rotation[3].GetFloat();
+			float time_for_rotation = 2.0f * pi<float>() / angular_freq;
+
+			Importer::Animation track;
+			track.timestamps.push_back(0.00f * time_for_rotation);
+			track.timestamps.push_back(0.25f * time_for_rotation);
+			track.timestamps.push_back(0.50f * time_for_rotation);
+			track.timestamps.push_back(0.75f * time_for_rotation);
+			track.timestamps.push_back(1.00f * time_for_rotation);
+
+			Importer::AnimationChannel channel;
+			channel.type = Importer::AnimationChannel::Type::Rotation;
+			channel.spherical.values.push_back(angleAxis(0.00f * 2.0f * pi<float>(), direction));
+			channel.spherical.values.push_back(angleAxis(0.25f * 2.0f * pi<float>(), direction));
+			channel.spherical.values.push_back(angleAxis(0.50f * 2.0f * pi<float>(), direction));
+			channel.spherical.values.push_back(angleAxis(0.75f * 2.0f * pi<float>(), direction));
+			channel.spherical.values.push_back(angleAxis(1.00f * 2.0f * pi<float>(), direction));
+			track.channels.push_back(move(channel));
+
+			auto ident = to_string(index);
+			animation_system->register_animation(ident, track);
+
+			bool per_instance = false;
+			if (animation.HasMember("perInstance"))
+				per_instance = animation["perInstance"].GetBool();
+
+			auto &targets = animation["targetNodes"];
+			for (auto itr = targets.Begin(); itr != targets.End(); ++itr)
+			{
+				auto index = itr->GetUint();
+				auto &root = hierarchy[index];
+
+				if (root->get_children().empty() || !per_instance)
+					animation_system->start_animation(*root, ident, 0.0, true);
+				else
+				{
+					for (auto &child : root->get_children())
+						animation_system->start_animation(*child, ident, 0.0, true);
+				}
+			}
+		}
 	}
 
 	auto hier_itr = begin(hierarchy);

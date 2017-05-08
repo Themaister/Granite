@@ -30,6 +30,7 @@ int main()
 	SceneLoader loader;
 	loader.load_scene("assets://scenes/test.json");
 	auto &scene = loader.get_scene();
+	auto animation = loader.consume_animation_system();
 
 	auto &device = wsi.get_device();
 
@@ -39,6 +40,7 @@ int main()
 		Filesystem::get().poll_notifications();
 		wsi.begin_frame();
 
+		animation->animate(wsi.get_elapsed_time());
 		context.set_camera(cam);
 		visible.clear();
 

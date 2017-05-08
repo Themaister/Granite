@@ -1,10 +1,10 @@
-add_library(vulkan-symbols STATIC
+add_granite_library(vulkan-symbols
    vulkan_symbol_wrapper.cpp
    )
 target_include_directories(vulkan-symbols PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/khronos)
 
-add_library(vulkan-backend
+add_granite_library(vulkan-backend
         vulkan.cpp
         device.cpp
         image.cpp
@@ -31,7 +31,6 @@ add_library(vulkan-backend
 target_include_directories(vulkan-backend PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/khronos)
 target_include_directories(vulkan-backend PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/gli ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/glm)
 target_compile_definitions(vulkan-backend PUBLIC VULKAN_DEBUG)
-target_compile_options(vulkan-backend PRIVATE ${GRANITE_CXX_FLAGS})
 
 if (CMAKE_COMPILER_IS_GNUCXX)
     set_source_files_properties(texture_manager.cpp PROPERTIES COMPILE_FLAGS "-Wno-type-limits -Wno-pedantic -Wno-ignored-qualifiers -Wno-unused-parameter")

@@ -1,15 +1,10 @@
-add_library(networking STATIC network.hpp tcp_listener.cpp socket.cpp looper.cpp)
-target_compile_options(networking PRIVATE ${GRANITE_CXX_FLAGS})
+add_granite_library(networking network.hpp tcp_listener.cpp socket.cpp looper.cpp)
 target_include_directories(networking PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
-add_executable(netfs-server netfs_server.cpp)
+add_granite_executable(netfs-server netfs_server.cpp)
 target_link_libraries(netfs-server networking filesystem)
-target_compile_options(netfs-server PRIVATE ${GRANITE_CXX_FLAGS})
 target_include_directories(netfs-server PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-set_target_properties(netfs-server PROPERTIES LINK_FLAGS ${GRANITE_LINK_FLAGS})
 
-add_executable(netfs-client netfs_client.cpp)
+add_granite_executable(netfs-client netfs_client.cpp)
 target_link_libraries(netfs-client networking filesystem)
-target_compile_options(netfs-client PRIVATE ${GRANITE_CXX_FLAGS})
 target_include_directories(netfs-client PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-set_target_properties(netfs-client PROPERTIES LINK_FLAGS ${GRANITE_LINK_FLAGS})

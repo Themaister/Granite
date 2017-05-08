@@ -10,6 +10,8 @@ option(SANITIZE_ADDRESS "Sanitize" OFF)
 if (SANITIZE_ADDRESS)
     set(GRANITE_CXX_FLAGS ${GRANITE_CXX_FLAGS} -fsanitize=address)
     set(GRANITE_LINK_FLAGS -fsanitize=address)
+else()
+    set(GRANITE_LINK_FLAGS)
 endif()
 
 option(VULKAN_WSI "Enable Vulkan WSI." ON)
@@ -19,6 +21,19 @@ set(SPIRV-Headers_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/spirv-head
 set(SHADERC_SKIP_TESTS ON)
 add_subdirectory(third_party/shaderc EXCLUDE_FROM_ALL)
 add_subdirectory(third_party/stb EXCLUDE_FROM_ALL)
+
+function(add_granite_library NAME)
+    add_library(${NAME} STATIC ${ARGN})
+    target_compile_options(${NAME} PRIVATE ${GRANITE_CXX_FLAGS})
+endfunction()
+
+function(add_granite_executable NAME)
+    add_executable(${NAME} ${ARGN})
+    target_compile_options(${NAME} PRIVATE ${GRANITE_CXX_FLAGS})
+    if (SANITIZE_ADDRESS)
+        set_target_properties(${NAME} PROPERTIES LINK_FLAGS ${GRANITE_LINK_FLAGS})
+    endif()
+endfunction()
 
 add_subdirectory(compiler)
 
@@ -30,10 +45,8 @@ add_subdirectory(filesystem)
 add_subdirectory(renderer)
 add_subdirectory(importers)
 
-add_executable(cube-test cube_test.cpp)
+add_granite_executable(cube-test cube_test.cpp)
 target_link_libraries(cube-test math renderer vulkan-backend importers)
-target_compile_options(cube-test PRIVATE ${GRANITE_CXX_FLAGS})
-set_target_properties(cube-test PROPERTIES LINK_FLAGS ${GRANITE_LINK_FLAGS})
 
 add_subdirectory(network)
 

@@ -1,4 +1,4 @@
-add_library(util STATIC
+add_granite_library(util
         util.hpp
         util.cpp
         enum_cast.hpp
@@ -11,5 +11,4 @@ add_library(util STATIC
         volatile_source.hpp
         timer.hpp timer.cpp)
 
-target_compile_options(util PRIVATE ${GRANITE_CXX_FLAGS})
 target_include_directories(util PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

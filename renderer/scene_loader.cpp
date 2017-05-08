@@ -27,16 +27,10 @@ void SceneLoader::load_scene(const std::string &path)
 {
 	animation_system.reset(new AnimationSystem);
 
-	auto file = Filesystem::get().open(path);
-	if (!file)
+	string json;
+	if (!Filesystem::get().read_file_to_string(path, json))
 		throw runtime_error("Failed to load GLTF file.");
 
-	auto length = file->get_size();
-	auto *buffer = static_cast<const char *>(file->map());
-	if (!buffer)
-		throw runtime_error("Failed to map GLTF file.");
-
-	string json(buffer, buffer + length);
 	parse(path, json);
 }
 
@@ -84,6 +78,19 @@ Scene::NodeHandle SceneLoader::build_tree_for_subscene(const SubsceneData &subsc
 			root->add_child(node);
 
 	return root;
+}
+
+void SceneLoader::load_animation(const std::string &path, Importer::Animation &animation)
+{
+	string str;
+	if (!Filesystem::get().read_file_to_string(path, str))
+	{
+		LOGE("Failed to load file: %s\n", path.c_str());
+		return;
+	}
+
+	Document doc;
+	doc.Parse(str);
 }
 
 void SceneLoader::parse(const std::string &path, const std::string &json)
@@ -209,32 +216,43 @@ void SceneLoader::parse(const std::string &path, const std::string &json)
 		for (auto itr = animations.Begin(); itr != animations.End(); ++itr)
 		{
 			auto &animation = *itr;
-			auto &rotation = animation["axisAngle"];
-			float x = rotation[0].GetFloat();
-			float y = rotation[1].GetFloat();
-			float z = rotation[2].GetFloat();
-			vec3 direction = normalize(vec3(x, y, z));
-			float angular_freq = rotation[3].GetFloat();
-			float time_for_rotation = 2.0f * pi<float>() / angular_freq;
-
 			Importer::Animation track;
-			track.timestamps.push_back(0.00f * time_for_rotation);
-			track.timestamps.push_back(0.25f * time_for_rotation);
-			track.timestamps.push_back(0.50f * time_for_rotation);
-			track.timestamps.push_back(0.75f * time_for_rotation);
-			track.timestamps.push_back(1.00f * time_for_rotation);
 
-			Importer::AnimationChannel channel;
-			channel.type = Importer::AnimationChannel::Type::Rotation;
-			channel.spherical.values.push_back(angleAxis(0.00f * 2.0f * pi<float>(), direction));
-			channel.spherical.values.push_back(angleAxis(0.25f * 2.0f * pi<float>(), direction));
-			channel.spherical.values.push_back(angleAxis(0.50f * 2.0f * pi<float>(), direction));
-			channel.spherical.values.push_back(angleAxis(0.75f * 2.0f * pi<float>(), direction));
-			channel.spherical.values.push_back(angleAxis(1.00f * 2.0f * pi<float>(), direction));
-			track.channels.push_back(move(channel));
+			if (animation.HasMember("axisAngle"))
+			{
+				auto &rotation = animation["axisAngle"];
+				float x = rotation[0].GetFloat();
+				float y = rotation[1].GetFloat();
+				float z = rotation[2].GetFloat();
+				vec3 direction = normalize(vec3(x, y, z));
+				float angular_freq = rotation[3].GetFloat();
+				float time_for_rotation = 2.0f * pi<float>() / angular_freq;
+
+				track.timestamps.push_back(0.00f * time_for_rotation);
+				track.timestamps.push_back(0.25f * time_for_rotation);
+				track.timestamps.push_back(0.50f * time_for_rotation);
+				track.timestamps.push_back(0.75f * time_for_rotation);
+				track.timestamps.push_back(1.00f * time_for_rotation);
+
+				Importer::AnimationChannel channel;
+				channel.type = Importer::AnimationChannel::Type::Rotation;
+				channel.spherical.values.push_back(angleAxis(0.00f * 2.0f * pi<float>(), direction));
+				channel.spherical.values.push_back(angleAxis(0.25f * 2.0f * pi<float>(), direction));
+				channel.spherical.values.push_back(angleAxis(0.50f * 2.0f * pi<float>(), direction));
+				channel.spherical.values.push_back(angleAxis(0.75f * 2.0f * pi<float>(), direction));
+				channel.spherical.values.push_back(angleAxis(1.00f * 2.0f * pi<float>(), direction));
+				track.channels.push_back(move(channel));
+			}
+			else if (animation.HasMember("animationData"))
+			{
+				auto *data_path = animation["animationData"].GetString();
+				load_animation(Path::relpath(path, data_path), track);
+			}
 
 			auto ident = to_string(index);
-			animation_system->register_animation(ident, track);
+
+			if (!track.channels.empty())
+				animation_system->register_animation(ident, track);
 
 			bool per_instance = false;
 			if (animation.HasMember("perInstance"))

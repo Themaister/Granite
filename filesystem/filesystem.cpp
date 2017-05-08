@@ -98,6 +98,21 @@ std::vector<ListEntry> Filesystem::list(const std::string &path)
 	return backend->list(paths.second);
 }
 
+bool Filesystem::read_file_to_string(const std::string &path, std::string &str)
+{
+	auto file = open(path, FileMode::ReadOnly);
+	if (!file)
+		return false;
+
+	auto size = file->get_size();
+	const char *mapped = static_cast<const char *>(file->map());
+	if (!mapped)
+		return false;
+
+	str = string(mapped, mapped + size);
+	return true;
+}
+
 std::unique_ptr<File> Filesystem::open(const std::string &path, FileMode mode)
 {
 	auto paths = Path::protocol_split(path);

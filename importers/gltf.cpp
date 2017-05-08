@@ -101,16 +101,9 @@ Parser::Buffer Parser::read_base64(const char *data, uint64_t length)
 
 Parser::Parser(const std::string &path)
 {
-	auto file = Filesystem::get().open(path);
-	if (!file)
+	string json;
+	if (!Filesystem::get().read_file_to_string(path, json))
 		throw runtime_error("Failed to load GLTF file.");
-
-	auto length = file->get_size();
-	auto *buffer = static_cast<const char *>(file->map());
-	if (!buffer)
-		throw runtime_error("Failed to map GLTF file.");
-
-	string json(buffer, buffer + length);
 	parse(path, json);
 }
 

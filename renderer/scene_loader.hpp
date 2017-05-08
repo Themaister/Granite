@@ -34,5 +34,6 @@ private:
 	void parse(const std::string &path, const std::string &json);
 
 	Scene::NodeHandle build_tree_for_subscene(const SubsceneData &subscene);
+	void load_animation(const std::string &path, Importer::Animation &animation);
 };
 }

@@ -30,13 +30,8 @@ Stage GLSLCompiler::stage_from_path(const std::string &path)
 
 void GLSLCompiler::set_source_from_file(const string &path)
 {
-	auto file = Filesystem::get().open(path);
-	if (!file)
-		throw runtime_error("file open");
-	auto *mapped = static_cast<const char *>(file->map());
-	if (!mapped)
-		throw runtime_error("file map");
-	source = string(mapped, mapped + file->get_size());
+	if (!Filesystem::get().read_file_to_string(path, source))
+		throw runtime_error("Failed to load shader.");
 
 	source_path = path;
 	stage = stage_from_path(path);
@@ -56,20 +51,15 @@ bool GLSLCompiler::parse_variants(const string &source, const string &path)
 				include_path.pop_back();
 
 			include_path = Path::relpath(path, include_path);
-			auto file = Filesystem::get().open(include_path);
-			if (!file)
+			string included_source;
+			if (!Filesystem::get().read_file_to_string(include_path, included_source))
 			{
 				LOGE("Failed to include GLSL file: %s\n", include_path.c_str());
 				return false;
 			}
 
-			auto *mapped = static_cast<const char *>(file->map());
-			if (!mapped)
-				return false;
-			size_t size = file->get_size();
-
 			preprocessed_source += Util::join("#line ", 1, " \"", include_path, "\"\n");
-			if (!parse_variants({ mapped, mapped + size }, include_path))
+			if (!parse_variants(included_source, include_path))
 				return false;
 			preprocessed_source += Util::join("#line ", line_index + 2, " \"", path, "\"\n");
 

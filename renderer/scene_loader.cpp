@@ -331,6 +331,10 @@ void SceneLoader::parse(const std::string &path, const std::string &json)
 					animation_system->start_animation(*root, ident, 0.0, true);
 				else
 				{
+					for (auto &channel : track.channels)
+						if (channel.type == Importer::AnimationChannel::Type::Translation)
+							throw logic_error("Cannot use per-instance translation.");
+
 					for (auto &child : root->get_children())
 						animation_system->start_animation(*child, ident, 0.0, true);
 				}

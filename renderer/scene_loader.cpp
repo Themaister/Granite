@@ -26,11 +26,9 @@ unique_ptr<AnimationSystem> SceneLoader::consume_animation_system()
 void SceneLoader::load_scene(const std::string &path)
 {
 	animation_system.reset(new AnimationSystem);
-
 	string json;
 	if (!Filesystem::get().read_file_to_string(path, json))
 		throw runtime_error("Failed to load GLTF file.");
-
 	parse(path, json);
 }
 
@@ -91,6 +89,70 @@ void SceneLoader::load_animation(const std::string &path, Importer::Animation &a
 
 	Document doc;
 	doc.Parse(str);
+	if (doc.HasParseError())
+		throw logic_error("Failed to parse.");
+
+	auto &timestamps = doc["timestamps"];
+	animation.timestamps.clear();
+	for (auto itr = timestamps.Begin(); itr != timestamps.End(); ++itr)
+		animation.timestamps.push_back(itr->GetFloat());
+
+	Importer::AnimationChannel channel;
+
+	if (doc.HasMember("rotation"))
+	{
+		SlerpSampler slerp;
+		auto &rotations = doc["rotation"];
+		for (auto itr = rotations.Begin(); itr != rotations.End(); ++itr)
+		{
+			auto &value = *itr;
+			float x = value[0].GetFloat();
+			float y = value[1].GetFloat();
+			float z = value[2].GetFloat();
+			float w = value[3].GetFloat();
+			slerp.values.push_back(normalize(quat(w, x, y, z)));
+		}
+
+		channel.type = Importer::AnimationChannel::Type::Rotation;
+		channel.spherical = move(slerp);
+		animation.channels.push_back(move(channel));
+	}
+
+	if (doc.HasMember("translation"))
+	{
+		LinearSampler linear;
+		auto &rotations = doc["translation"];
+		for (auto itr = rotations.Begin(); itr != rotations.End(); ++itr)
+		{
+			auto &value = *itr;
+			float x = value[0].GetFloat();
+			float y = value[1].GetFloat();
+			float z = value[2].GetFloat();
+			linear.values.push_back(vec3(x, y, z));
+		}
+
+		channel.type = Importer::AnimationChannel::Type::Translation;
+		channel.linear = move(linear);
+		animation.channels.push_back(move(channel));
+	}
+
+	if (doc.HasMember("scale"))
+	{
+		LinearSampler linear;
+		auto &rotations = doc["scale"];
+		for (auto itr = rotations.Begin(); itr != rotations.End(); ++itr)
+		{
+			auto &value = *itr;
+			float x = value[0].GetFloat();
+			float y = value[1].GetFloat();
+			float z = value[2].GetFloat();
+			linear.values.push_back(vec3(x, y, z));
+		}
+
+		channel.type = Importer::AnimationChannel::Type::Scale;
+		channel.linear = move(linear);
+		animation.channels.push_back(move(channel));
+	}
 }
 
 void SceneLoader::parse(const std::string &path, const std::string &json)
@@ -137,6 +199,7 @@ void SceneLoader::parse(const std::string &path, const std::string &json)
 	}
 
 	vector<Scene::NodeHandle> hierarchy;
+
 	auto &nodes = doc["nodes"];
 	for (auto itr = nodes.Begin(); itr != nodes.End(); ++itr)
 	{

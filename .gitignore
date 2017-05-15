@@ -4,3 +4,10 @@ Makefile
 *.o
 CMakeFiles
 CMakeCache
+/.gradle
+/gradlew*
+/gradle
+/local.properties
+*.iml
+/app/build
+/app/.externalNativeBuild

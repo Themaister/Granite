@@ -28,7 +28,6 @@ Image::Image(Device *device, VkImage image, VkImageView default_view, const Devi
     : Cookie(device)
     , device(device)
     , image(image)
-    , view(move(view))
     , alloc(alloc)
     , create_info(create_info)
 {

@@ -7,7 +7,20 @@ if (NOT WSI)
    set(WSI "GLFW")
 endif()
 
-if (${WSI} MATCHES "GLFW")
+if (ANDROID)
+	add_granite_library(android-glue
+		android.cpp
+		${ANDROID_NDK}/sources/android/native_app_glue/android_native_app_glue.c
+		${ANDROID_NDK}/sources/android/cpufeatures/cpu-features.c)
+
+	target_include_directories(android-glue
+		PUBLIC
+		${ANDROID_NDK}/sources/android/native_app_glue)
+
+	target_compile_definitions(vulkan-wsi PUBLIC HAVE_ANDROID_SURFACE)
+	target_link_libraries(vulkan-wsi vulkan-symbols android-glue)
+	target_link_libraries(android-glue util)
+elseif (${WSI} MATCHES "GLFW")
 	set(GLFW_BUILD_TESTS OFF)
 	add_subdirectory(../../third_party/glfw glfw EXCLUDE_FROM_ALL)
 	target_compile_definitions(vulkan-wsi PUBLIC HAVE_GLFW)

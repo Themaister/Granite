@@ -3,6 +3,7 @@
 #include <vector>
 #include <arpa/inet.h>
 #include <string.h>
+#include <string>
 
 namespace Granite
 {

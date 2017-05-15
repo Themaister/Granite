@@ -179,7 +179,7 @@ void OSFilesystem::poll_notifications()
 {
 	for (;;)
 	{
-		char buffer[sizeof(inotify_event) + NAME_MAX + 1] alignas(inotify_event);
+		alignas(inotify_event) char buffer[sizeof(inotify_event) + NAME_MAX + 1];
 		ssize_t ret = read(notify_fd, buffer, sizeof(buffer));
 
 		if (ret < 0)

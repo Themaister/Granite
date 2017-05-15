@@ -2,6 +2,7 @@
 #include "os.hpp"
 #include "fs-netfs.hpp"
 #include "path.hpp"
+#include <stdlib.h>
 
 using namespace std;
 

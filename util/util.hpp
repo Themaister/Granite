@@ -20,6 +20,10 @@
     sprintf(buffer, "[INFO]: " __VA_ARGS__); \
     OutputDebugStringA(buffer); \
 } while(0)
+#elif defined(ANDROID)
+#include <android/log.h>
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "Granite", __VA_ARGS__)
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, "Granite", __VA_ARGS__)
 #else
 #define LOGE(...)                     \
     do                                \

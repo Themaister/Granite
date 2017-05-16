@@ -1,5 +1,4 @@
 add_granite_library(renderer
-        mainloop.cpp mainloop.hpp
         render_queue.hpp render_queue.cpp
         mesh.hpp mesh.cpp
         scene.hpp scene.cpp

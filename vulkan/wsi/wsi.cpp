@@ -6,20 +6,38 @@
 #include <GLFW/glfw3.h>
 #endif
 
-#ifdef HAVE_ANDROID_SURFACE
-#include "android_native_app_glue.h"
-#endif
+extern bool mainloop_step(Vulkan::WSI &wsi);
 
 using namespace std;
 
 namespace Vulkan
 {
 
+#ifdef ANDROID
+static ANativeWindow *native_window;
+void WSI::set_global_native_window(ANativeWindow *window)
+{
+	native_window = window;
+}
+
+void WSI::runtime_term_native_window()
+{
+
+}
+
+void WSI::runtime_init_native_window(ANativeWindow *window)
+{
+
+}
+#endif
+
 bool WSI::alive()
 {
 #if defined(HAVE_GLFW)
 	glfwPollEvents();
 	return !glfwWindowShouldClose(window);
+#elif defined(HAVE_ANDROID_SURFACE)
+	return mainloop_step(*this);
 #else
 	return true;
 #endif

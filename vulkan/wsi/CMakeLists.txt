@@ -9,7 +9,7 @@ endif()
 
 if (ANDROID)
 	target_compile_definitions(vulkan-wsi PUBLIC HAVE_ANDROID_SURFACE)
-	target_link_libraries(vulkan-wsi vulkan-symbols)
+	target_link_libraries(vulkan-wsi vulkan-symbols application)
 elseif (${WSI} MATCHES "GLFW")
 	set(GLFW_BUILD_TESTS OFF)
 	add_subdirectory(../../third_party/glfw glfw EXCLUDE_FROM_ALL)

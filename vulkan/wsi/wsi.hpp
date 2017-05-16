@@ -14,6 +14,10 @@
 #include <memory>
 #include <vector>
 
+#ifdef ANDROID
+#include <android/native_window_jni.h>
+#endif
+
 namespace Vulkan
 {
 
@@ -53,6 +57,15 @@ public:
 	{
 		return timer.get_elapsed();
 	}
+
+#ifdef ANDROID
+	static void set_global_native_window(ANativeWindow *window);
+	void runtime_init_native_window(ANativeWindow *window);
+	void runtime_term_native_window();
+#endif
+
+	void deinit_surface_and_swapchain();
+	void init_surface_and_swapchain(VkSurfaceKHR surface);
 
 private:
 	std::unique_ptr<Context> context;

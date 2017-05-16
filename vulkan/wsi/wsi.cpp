@@ -337,7 +337,6 @@ out:
 	if (vkCreateDisplayPlaneSurfaceKHR(context->get_instance(), &create_info, NULL, &surface) != VK_SUCCESS)
 		return false;
 #elif defined(HAVE_ANDROID_SURFACE)
-	app_dummy();
 #endif
 
 	VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(context->get_instance(), vkDestroySurfaceKHR);

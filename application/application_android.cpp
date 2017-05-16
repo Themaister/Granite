@@ -3,5 +3,6 @@
 
 void android_main(android_app *app)
 {
+	app_dummy();
 	LOGI("Starting android app!\n");
 }

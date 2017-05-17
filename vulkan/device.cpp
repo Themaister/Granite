@@ -656,7 +656,9 @@ void Device::wait_idle()
 	if (!per_frame.empty())
 		flush_frame();
 
-	vkDeviceWaitIdle(device);
+	if (device != VK_NULL_HANDLE)
+		vkDeviceWaitIdle(device);
+
 	for (auto &frame : per_frame)
 	{
 		// Avoid double-wait-on-semaphore scenarios.

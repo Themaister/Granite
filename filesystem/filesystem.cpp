@@ -37,6 +37,12 @@ Filesystem::Filesystem()
 {
 	protocols[""] = unique_ptr<FilesystemBackend>(new OSFilesystem("/"));
 
+#ifdef ANDROID
+	protocols["assets"] = unique_ptr<FilesystemBackend>(new NetworkFilesystem);
+	protocols["assets"]->set_protocol("assets");
+	protocols["cache"] = unique_ptr<FilesystemBackend>(new NetworkFilesystem);
+	protocols["cache"]->set_protocol("cache");
+#else
 	if (getenv("GRANITE_USE_NETFS"))
 	{
 		protocols["assets"] = unique_ptr<FilesystemBackend>(new NetworkFilesystem);
@@ -62,6 +68,7 @@ Filesystem::Filesystem()
 		protocols["cache"]->set_protocol("cache");
 #endif
 	}
+#endif
 }
 
 void Filesystem::register_protocol(const std::string &proto, std::unique_ptr<FilesystemBackend> fs)

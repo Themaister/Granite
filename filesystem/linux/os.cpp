@@ -20,6 +20,9 @@ namespace Granite
 
 static bool ensure_directory_inner(const std::string &path)
 {
+	if (Path::is_root_path(path))
+		return false;
+
 	struct stat s;
 	if (::stat(path.c_str(), &s) >= 0 && S_ISDIR(s.st_mode))
 		return true;

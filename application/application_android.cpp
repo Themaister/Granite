@@ -114,6 +114,7 @@ void android_main(android_app *app)
 				catch (const std::exception &e)
 				{
 					LOGE("Application threw exception: %s\n", e.what());
+					exit(1);
 				}
 				return;
 			}

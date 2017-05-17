@@ -1,3 +1,7 @@
+#ifdef HAVE_ANDROID_SURFACE
+#define VK_USE_PLATFORM_ANDROID_KHR
+#endif
+
 #include "wsi.hpp"
 #include "vulkan_symbol_wrapper.h"
 #include "vulkan_events.hpp"
@@ -355,6 +359,26 @@ out:
 	if (vkCreateDisplayPlaneSurfaceKHR(context->get_instance(), &create_info, NULL, &surface) != VK_SUCCESS)
 		return false;
 #elif defined(HAVE_ANDROID_SURFACE)
+	if (!native_window)
+		return false;
+
+	PFN_vkCreateAndroidSurfaceKHR create_surface;
+	if (!Context::init_loader(nullptr))
+		return false;
+
+	static const char *instance_ext[] = {
+			"VK_KHR_surface", "VK_KHR_android_surface",
+	};
+	context =
+			unique_ptr<Context>(new Context(instance_ext, sizeof(instance_ext) / sizeof(instance_ext[0]), &device_ext, 1));
+
+	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(context->get_instance(), "vkCreateAndroidSurfaceKHR", create_surface))
+		return false;
+
+	VkAndroidSurfaceCreateInfoKHR surface_info = { VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR };
+	surface_info.window = native_window;
+	if (create_surface(context->get_instance(), &surface_info, nullptr, &surface) != VK_SUCCESS)
+		return false;
 #endif
 
 	VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(context->get_instance(), vkDestroySurfaceKHR);

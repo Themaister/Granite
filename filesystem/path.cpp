@@ -17,6 +17,18 @@ bool is_abspath(const string &path)
 	return path.find("://") != string::npos;
 }
 
+bool is_root_path(const string &path)
+{
+	if (path.empty())
+		return false;
+
+	if (path.front() == '/' && path.size() == 1)
+		return true;
+
+	auto index = path.find("://");
+	return index != string::npos && (index + 3) == path.size();
+}
+
 string join(const string &base, const string &path)
 {
 	if (base.empty())
@@ -36,9 +48,17 @@ string basedir(const string &path)
 {
 	if (path.empty())
 		return "";
+
+	if (is_root_path(path))
+		return path;
+
 	auto index = path.find_last_of('/');
 	if (index == string::npos)
 		return ".";
+
+	// Preserve the first slash.
+	if (index == 0 && is_abspath(path))
+		index++;
 
 	return path.substr(0, index);
 }

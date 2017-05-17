@@ -4,6 +4,8 @@
 #include <queue>
 #include <assert.h>
 
+#define HOST_IP "localhost"
+
 using namespace std;
 
 namespace Granite
@@ -582,7 +584,7 @@ void NetworkFilesystem::looper_entry()
 
 void NetworkFilesystem::setup_notification()
 {
-	auto socket = Socket::connect("127.0.0.1", 7070);
+	auto socket = Socket::connect(HOST_IP, 7070);
 	if (!socket)
 		return;
 	notify = new FSNotifyCommand(protocol, move(socket));
@@ -673,7 +675,7 @@ FileNotifyHandle NetworkFilesystem::install_notification(const std::string &path
 vector<ListEntry> NetworkFilesystem::list(const std::string &path)
 {
 	auto joined = protocol + "://" + path;
-	auto socket = Socket::connect("127.0.0.1", 7070);
+	auto socket = Socket::connect(HOST_IP, 7070);
 	if (!socket)
 		return {};
 
@@ -717,7 +719,7 @@ void NetworkFile::unmap()
 	if (mode == FileMode::WriteOnly && has_buffer && need_flush)
 	{
 		need_flush = false;
-		auto socket = Socket::connect("127.0.0.1", 7070);
+		auto socket = Socket::connect(HOST_IP, 7070);
 		if (!socket)
 			throw runtime_error("Failed to connect to server.");
 
@@ -745,7 +747,7 @@ bool NetworkFile::reopen()
 	if (mode == FileMode::ReadOnly)
 	{
 		has_buffer = false;
-		auto socket = Socket::connect("127.0.0.1", 7070);
+		auto socket = Socket::connect(HOST_IP, 7070);
 		if (!socket)
 			return false;
 
@@ -819,7 +821,7 @@ unique_ptr<File> NetworkFilesystem::open(const std::string &path, FileMode mode)
 bool NetworkFilesystem::stat(const std::string &path, FileStat &stat)
 {
 	auto joined = protocol + "://" + path;
-	auto socket = Socket::connect("127.0.0.1", 7070);
+	auto socket = Socket::connect(HOST_IP, 7070);
 	if (!socket)
 		return false;
 

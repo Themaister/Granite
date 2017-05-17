@@ -7,6 +7,7 @@ struct AppState
 	Vulkan::WSI *wsi = nullptr;
 	bool active = false;
 	bool has_window = false;
+	bool wsi_idle = false;
 };
 
 static int32_t engine_handle_input(android_app *, AInputEvent *)
@@ -23,21 +24,28 @@ static void engine_handle_cmd(android_app *pApp, int32_t cmd)
 	case APP_CMD_RESUME:
 	{
 		state.active = true;
-		LOGI("APP_CMD_RESUME\n");
+		if (state.wsi && state.wsi_idle)
+		{
+			state.wsi->get_frame_timer().leave_idle();
+			state.wsi_idle = false;
+		}
 		break;
 	}
 
 	case APP_CMD_PAUSE:
 	{
 		state.active = false;
-		LOGI("APP_CMD_PAUSE\n");
+		if (state.wsi)
+		{
+			state.wsi->get_frame_timer().enter_idle();
+			state.wsi_idle = true;
+		}
 		break;
 	}
 
 	case APP_CMD_INIT_WINDOW:
 		if (pApp->window != nullptr)
 		{
-			LOGI("APP_INIT_WINDOW\n");
 			Vulkan::WSI::set_global_native_window(pApp->window);
 			state.has_window = true;
 
@@ -47,9 +55,7 @@ static void engine_handle_cmd(android_app *pApp, int32_t cmd)
 		break;
 
 	case APP_CMD_TERM_WINDOW:
-		LOGE("Terminating window.\n");
 		state.has_window = false;
-
 		if (state.wsi)
 			state.wsi->runtime_term_native_window();
 		break;
@@ -90,7 +96,7 @@ void android_main(android_app *app)
 	app_dummy();
 	global_app = app;
 
-	LOGI("Starting android app!\n");
+	LOGI("Starting Granite!\n");
 
 	app->userData = &global_state;
 	app->onAppCmd = engine_handle_cmd;

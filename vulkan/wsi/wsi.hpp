@@ -67,6 +67,11 @@ public:
 	void deinit_surface_and_swapchain();
 	void init_surface_and_swapchain();
 
+	Util::FrameTimer &get_frame_timer()
+	{
+		return timer;
+	}
+
 private:
 	std::unique_ptr<Context> context;
 #if defined(HAVE_GLFW)

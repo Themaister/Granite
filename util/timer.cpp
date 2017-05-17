@@ -12,6 +12,17 @@ FrameTimer::FrameTimer()
 	last_period = 0;
 }
 
+void FrameTimer::enter_idle()
+{
+	idle_start = get_time();
+}
+
+void FrameTimer::leave_idle()
+{
+	auto idle_end = get_time();
+	idle_time += idle_end - idle_start;
+}
+
 double FrameTimer::get_frame_time() const
 {
 	return double(last_period) * 1e-9;
@@ -19,7 +30,7 @@ double FrameTimer::get_frame_time() const
 
 double FrameTimer::frame()
 {
-	auto new_time = get_time();
+	auto new_time = get_time() - idle_time;
 	last_period = new_time - last;
 	last = new_time;
 	return double(last_period) * 1e-9;

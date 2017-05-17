@@ -65,10 +65,12 @@ bool mainloop_step(Vulkan::WSI &wsi)
 	android_poll_source *source;
 	global_state.wsi = &wsi;
 
-	while (!global_state.active || !global_state.has_window)
+	bool once = false;
+
+	while (!once || !global_state.active || !global_state.has_window)
 	{
-		bool running = global_state.has_window && global_state.active;
-		while (ALooper_pollAll(running ? 1 : -1, nullptr, &events, reinterpret_cast<void **>(&source)) >= 0)
+		while (ALooper_pollAll((global_state.has_window && global_state.active) ? 1 : -1,
+							   nullptr, &events, reinterpret_cast<void **>(&source)) >= 0)
 		{
 			if (source)
 				source->process(global_app, source);
@@ -76,6 +78,8 @@ bool mainloop_step(Vulkan::WSI &wsi)
 			if (global_app->destroyRequested)
 				return false;
 		}
+
+		once = true;
 	}
 
 	return true;

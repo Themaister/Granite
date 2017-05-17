@@ -65,7 +65,7 @@ public:
 #endif
 
 	void deinit_surface_and_swapchain();
-	void init_surface_and_swapchain(VkSurfaceKHR surface);
+	void init_surface_and_swapchain();
 
 private:
 	std::unique_ptr<Context> context;

@@ -26,12 +26,19 @@ void WSI::set_global_native_window(ANativeWindow *window)
 
 void WSI::runtime_term_native_window()
 {
-
+	deinit_surface_and_swapchain();
 }
 
 void WSI::runtime_init_native_window(ANativeWindow *window)
 {
+	native_window = window;
 
+	PFN_vkCreateAndroidSurfaceKHR create_surface;
+	VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(context->get_instance(), "vkCreateAndroidSurfaceKHR", create_surface);
+	VkAndroidSurfaceCreateInfoKHR surface_info = { VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR };
+	surface_info.window = native_window;
+	create_surface(context->get_instance(), &surface_info, nullptr, &surface);
+	init_surface_and_swapchain();
 }
 #endif
 
@@ -417,11 +424,38 @@ out:
 	auto &em = Granite::EventManager::get_global();
 	em.enqueue_latched<DeviceCreatedEvent>(&device);
 
-	device.init_swapchain(swapchain_images, width, height, format);
-	this->width = width;
-	this->height = height;
+	device.init_swapchain(swapchain_images, this->width, this->height, format);
 
 	return true;
+}
+
+void WSI::init_surface_and_swapchain()
+{
+	update_framebuffer(width, height);
+}
+
+void WSI::deinit_surface_and_swapchain()
+{
+	device.wait_idle();
+
+	auto acquire = device.set_acquire(VK_NULL_HANDLE);
+	auto release = device.set_release(VK_NULL_HANDLE);
+	if (acquire != VK_NULL_HANDLE)
+		vkDestroySemaphore(device.get_device(), acquire, nullptr);
+	if (release != VK_NULL_HANDLE)
+		vkDestroySemaphore(device.get_device(), release, nullptr);
+
+	if (swapchain != VK_NULL_HANDLE)
+		vkDestroySwapchainKHR(context->get_device(), swapchain, nullptr);
+	swapchain = VK_NULL_HANDLE;
+	need_acquire = true;
+
+	if (surface != VK_NULL_HANDLE)
+		vkDestroySurfaceKHR(context->get_instance(), surface, nullptr);
+	surface = VK_NULL_HANDLE;
+
+	auto &em = Granite::EventManager::get_global();
+	em.dequeue_all_latched(SwapchainParameterEvent::type_id);
 }
 
 bool WSI::begin_frame()
@@ -453,7 +487,7 @@ bool WSI::begin_frame()
 			semaphore_manager.recycle(device.set_acquire(acquire));
 			semaphore_manager.recycle(device.set_release(release_semaphore));
 		}
-		else if (result == VK_SUBOPTIMAL_KHR || result == VK_ERROR_OUT_OF_DATE_KHR)
+		else if (result == VK_SUBOPTIMAL_KHR || result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_ERROR_SURFACE_LOST_KHR)
 		{
 			VK_ASSERT(width != 0);
 			VK_ASSERT(height != 0);
@@ -486,7 +520,6 @@ bool WSI::end_frame()
 
 	if (!device.swapchain_touched())
 	{
-		need_acquire = false;
 		device.wait_idle();
 		return true;
 	}
@@ -564,7 +597,10 @@ bool WSI::init_swapchain(unsigned width, unsigned height)
 		swapchain_size.height = height;
 	}
 	else
-		swapchain_size = surface_properties.currentExtent;
+	{
+		swapchain_size.width = max(min(width, surface_properties.maxImageExtent.width), surface_properties.minImageExtent.width);
+		swapchain_size.height = max(min(height, surface_properties.maxImageExtent.height), surface_properties.minImageExtent.height);
+	}
 
 	uint32_t num_present_modes;
 	vkGetPhysicalDeviceSurfacePresentModesKHR(gpu, surface, &num_present_modes, nullptr);
@@ -593,6 +629,16 @@ bool WSI::init_swapchain(unsigned width, unsigned height)
 	else
 		pre_transform = surface_properties.currentTransform;
 
+	VkCompositeAlphaFlagBitsKHR composite_mode = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+	if (surface_properties.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR)
+		composite_mode = VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
+	if (surface_properties.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR)
+		composite_mode = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+	if (surface_properties.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR)
+		composite_mode = VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR;
+	if (surface_properties.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR)
+		composite_mode = VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR;
+
 	VkSwapchainKHR old_swapchain = swapchain;
 
 	VkSwapchainCreateInfoKHR info = { VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR };
@@ -607,7 +653,7 @@ bool WSI::init_swapchain(unsigned width, unsigned height)
 	    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 	info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	info.preTransform = pre_transform;
-	info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+	info.compositeAlpha = composite_mode;
 	info.presentMode = swapchain_present_mode;
 	info.clipped = true;
 	info.oldSwapchain = old_swapchain;

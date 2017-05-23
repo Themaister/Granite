@@ -634,14 +634,18 @@ void NetworkFilesystem::signal_notification(const FileNotifyInfo &info)
 
 void NetworkFilesystem::poll_notifications()
 {
-	lock_guard<mutex> holder{lock};
-	for (auto &notification : pending)
+	vector<FileNotifyInfo> tmp_pending;
+	{
+		lock_guard<mutex> holder{lock};
+		swap(tmp_pending, pending);
+	}
+
+	for (auto &notification : tmp_pending)
 	{
 		auto &func = handlers[notification.handle];
 		if (func)
 			func(notification);
 	}
-	pending.clear();
 }
 
 FileNotifyHandle NetworkFilesystem::install_notification(const std::string &path,

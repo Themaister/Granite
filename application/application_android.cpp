@@ -24,9 +24,7 @@ struct ApplicationPlatformAndroid : ApplicationPlatform
 	}
 
 	bool alive(Vulkan::WSI &wsi) override;
-	void poll_input() override
-	{
-	}
+	void poll_input() override;
 
 	vector<const char *> get_instance_extensions() override
 	{
@@ -51,6 +49,9 @@ struct ApplicationPlatformAndroid : ApplicationPlatform
 	bool active = false;
 	bool has_window = true;
 	bool wsi_idle = false;
+
+	bool pending_native_window_init = false;
+	bool pending_native_window_term = false;
 };
 
 unique_ptr<ApplicationPlatform> create_default_application_platform(unsigned width, unsigned height)
@@ -59,6 +60,18 @@ unique_ptr<ApplicationPlatform> create_default_application_platform(unsigned wid
 	assert(!global_app->userData);
 	global_app->userData = platform;
 	return unique_ptr<ApplicationPlatform>(platform);
+}
+
+static VkSurfaceKHR create_surface_from_native_window(VkInstance instance, ANativeWindow *window)
+{
+	VkSurfaceKHR surface = VK_NULL_HANDLE;
+	PFN_vkCreateAndroidSurfaceKHR create_surface;
+	VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateAndroidSurfaceKHR", create_surface);
+	VkAndroidSurfaceCreateInfoKHR create_info = { VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR };
+	create_info.window = window;
+	if (create_surface(instance, &create_info, nullptr, &surface) != VK_SUCCESS)
+		return VK_NULL_HANDLE;
+	return surface;
 }
 
 static int32_t engine_handle_input(android_app *, AInputEvent *)
@@ -113,34 +126,46 @@ static void engine_handle_cmd(android_app *pApp, int32_t cmd)
 	case APP_CMD_INIT_WINDOW:
 		if (pApp->window != nullptr)
 		{
-			state.has_window = true;
-			VkSurfaceKHR surface = VK_NULL_HANDLE;
-			PFN_vkCreateAndroidSurfaceKHR create_surface;
-			VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(state.wsi->get_context().get_instance(), "vkCreateAndroidSurfaceKHR", create_surface);
-			VkAndroidSurfaceCreateInfoKHR create_info = { VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR };
-			create_info.window = pApp->window;
-			create_surface(state.wsi->get_context().get_instance(), &create_info, nullptr, &surface);
-			state.wsi->init_surface_and_swapchain(surface);
+			if (state.wsi)
+			{
+				state.has_window = true;
+				auto surface = create_surface_from_native_window(state.wsi->get_context().get_instance(), pApp->window);
+				state.wsi->init_surface_and_swapchain(surface);
+			}
+			else
+				state.pending_native_window_init = true;
 		}
 		break;
 
 	case APP_CMD_TERM_WINDOW:
 		state.has_window = false;
-		state.wsi->deinit_surface_and_swapchain();
+		if (state.wsi)
+			state.wsi->deinit_surface_and_swapchain();
+		else
+			state.pending_native_window_term = true;
 		break;
 	}
 }
 
 VkSurfaceKHR ApplicationPlatformAndroid::create_surface(VkInstance instance, VkPhysicalDevice)
 {
-	VkSurfaceKHR surface = VK_NULL_HANDLE;
-	PFN_vkCreateAndroidSurfaceKHR create_surface;
-	VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateAndroidSurfaceKHR", create_surface);
-	VkAndroidSurfaceCreateInfoKHR create_info = { VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR };
-	create_info.window = global_app->window;
-	if (create_surface(instance, &create_info, nullptr, &surface) != VK_SUCCESS)
-		return VK_NULL_HANDLE;
-	return surface;
+	return create_surface_from_native_window(instance, global_app->window);
+}
+
+void ApplicationPlatformAndroid::poll_input()
+{
+	auto &state = *static_cast<ApplicationPlatformAndroid *>(global_app->userData);
+	int events;
+	android_poll_source *source;
+	state.wsi = nullptr;
+	while (ALooper_pollAll(1, nullptr, &events, reinterpret_cast<void **>(&source)) >= 0)
+	{
+		if (source)
+			source->process(global_app, source);
+
+		if (global_app->destroyRequested)
+			return;
+	}
 }
 
 bool ApplicationPlatformAndroid::alive(Vulkan::WSI &wsi)
@@ -150,11 +175,27 @@ bool ApplicationPlatformAndroid::alive(Vulkan::WSI &wsi)
 	android_poll_source *source;
 	state.wsi = &wsi;
 
+	if (global_app->destroyRequested)
+		return false;
+
 	bool once = false;
+
+	if (state.pending_native_window_term)
+	{
+		wsi.deinit_surface_and_swapchain();
+		state.pending_native_window_term = false;
+	}
+
+	if (state.pending_native_window_init)
+	{
+		auto surface = create_surface_from_native_window(wsi.get_context().get_instance(), global_app->window);
+		wsi.init_surface_and_swapchain(surface);
+		state.pending_native_window_init = false;
+	}
 
 	while (!once || !state.active || !state.has_window)
 	{
-		while (ALooper_pollAll((state.has_window && state.active) ? 1 : -1,
+		while (ALooper_pollAll((state.has_window && state.active) ? 0 : -1,
 							   nullptr, &events, reinterpret_cast<void **>(&source)) >= 0)
 		{
 			if (source)

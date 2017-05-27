@@ -58,7 +58,7 @@ public:
 			throw runtime_error("Failed to initialize Vulkan loader.");
 	}
 
-	bool alive() override
+	bool alive(Vulkan::WSI &) override
 	{
 		return true;
 	}

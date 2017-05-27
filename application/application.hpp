@@ -39,7 +39,7 @@ public:
 
 	virtual uint32_t get_surface_width() = 0;
 	virtual uint32_t get_surface_height() = 0;
-	virtual bool alive() = 0;
+	virtual bool alive(Vulkan::WSI &wsi) = 0;
 	virtual void poll_input() = 0;
 
 	Util::FrameTimer &get_frame_timer()

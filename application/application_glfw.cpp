@@ -37,7 +37,7 @@ public:
 		glfwSetCursorEnterCallback(window, enter_cb);
 	}
 
-	bool alive() override
+	bool alive(Vulkan::WSI &) override
 	{
 		glfwPollEvents();
 		return !glfwWindowShouldClose(window);

@@ -52,7 +52,7 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 int mainloop_run(Application &app)
 {
 	auto &wsi = app.get_wsi();
-	while (app.get_platform().alive())
+	while (app.get_platform().alive(wsi))
 	{
 		Filesystem::get().poll_notifications();
 		wsi.begin_frame();

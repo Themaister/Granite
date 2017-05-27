@@ -8,8 +8,7 @@ if (NOT GRANITE_PLATFORM)
 endif()
 
 if (ANDROID)
-	target_compile_definitions(application PUBLIC HAVE_ANDROID_SURFACE)
-	target_link_libraries(application vulkan-symbols application)
+	target_link_libraries(application vulkan-symbols)
 	target_sources(application PRIVATE application_android.cpp)
 
 	add_granite_library(android-glue

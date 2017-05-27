@@ -1,6 +1,7 @@
 #include "camera.hpp"
 #include "transforms.hpp"
 #include "vulkan_events.hpp"
+#include "input.hpp"
 
 using namespace Vulkan;
 

@@ -3,9 +3,8 @@
 #include "event.hpp"
 
 using namespace Util;
-using namespace Granite;
 
-namespace Vulkan
+namespace Granite
 {
 void InputTracker::key_event(Key key, KeyState state)
 {

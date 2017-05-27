@@ -1,16 +1,12 @@
-#ifdef HAVE_ANDROID_SURFACE
-#define VK_USE_PLATFORM_ANDROID_KHR
-#endif
-
 #include "wsi.hpp"
 #include "vulkan_symbol_wrapper.h"
 #include "vulkan_events.hpp"
+#include "application.hpp"
+#include "input.hpp"
 
 #if defined(HAVE_GLFW)
 #include <GLFW/glfw3.h>
 #endif
-
-extern bool mainloop_step(Vulkan::WSI &wsi);
 
 using namespace std;
 
@@ -39,142 +35,6 @@ void WSI::runtime_init_native_window(ANativeWindow *window)
 	surface_info.window = native_window;
 	create_surface(context->get_instance(), &surface_info, nullptr, &surface);
 	init_surface_and_swapchain();
-}
-#endif
-
-bool WSI::alive()
-{
-#if defined(HAVE_GLFW)
-	glfwPollEvents();
-	return !glfwWindowShouldClose(window);
-#elif defined(HAVE_ANDROID_SURFACE)
-	return mainloop_step(*this);
-#else
-	return true;
-#endif
-}
-
-void WSI::poll_input()
-{
-#if defined(HAVE_GLFW)
-	glfwPollEvents();
-#endif
-	tracker.dispatch_current_state(timer.get_frame_time());
-}
-
-#if defined(HAVE_GLFW)
-static void fb_size_cb(GLFWwindow *window, int width, int height)
-{
-	auto *wsi = static_cast<WSI *>(glfwGetWindowUserPointer(window));
-	VK_ASSERT(width != 0 && height != 0);
-	wsi->update_framebuffer(width, height);
-}
-
-static Key glfw_key_to_granite(int key)
-{
-#define k(glfw, granite) case GLFW_KEY_##glfw: return Key::granite
-	switch (key)
-	{
-	k(A, A);
-	k(B, B);
-	k(C, C);
-	k(D, D);
-	k(E, E);
-	k(F, F);
-	k(G, G);
-	k(H, H);
-	k(I, I);
-	k(J, J);
-	k(K, K);
-	k(L, L);
-	k(M, M);
-	k(N, N);
-	k(O, O);
-	k(P, P);
-	k(Q, Q);
-	k(R, R);
-	k(S, S);
-	k(T, T);
-	k(U, U);
-	k(V, V);
-	k(W, W);
-	k(X, X);
-	k(Y, Y);
-	k(Z, Z);
-	k(LEFT_CONTROL, LeftCtrl);
-	k(LEFT_ALT, LeftAlt);
-	k(LEFT_SHIFT, LeftShift);
-	k(ENTER, Return);
-	k(SPACE, Space);
-	k(ESCAPE, Escape);
-	default:
-		return Key::Unknown;
-	}
-#undef k
-}
-
-static void key_cb(GLFWwindow *window, int key, int, int action, int)
-{
-	KeyState state;
-	switch (action)
-	{
-	case GLFW_PRESS:
-		state = KeyState::Pressed;
-		break;
-
-	default:
-	case GLFW_RELEASE:
-		state = KeyState::Released;
-		break;
-
-	case GLFW_REPEAT:
-		state = KeyState::Repeat;
-		break;
-	}
-
-	auto gkey = glfw_key_to_granite(key);
-	auto *wsi = static_cast<WSI *>(glfwGetWindowUserPointer(window));
-	wsi->get_input_tracker().key_event(gkey, state);
-}
-
-static void button_cb(GLFWwindow *window, int button, int action, int)
-{
-	auto *wsi = static_cast<WSI *>(glfwGetWindowUserPointer(window));
-
-	MouseButton btn;
-	switch (button)
-	{
-	default:
-	case GLFW_MOUSE_BUTTON_LEFT:
-		btn = MouseButton::Left;
-		break;
-	case GLFW_MOUSE_BUTTON_RIGHT:
-		btn = MouseButton::Right;
-		break;
-	case GLFW_MOUSE_BUTTON_MIDDLE:
-		btn = MouseButton::Middle;
-		break;
-	}
-	wsi->get_input_tracker().mouse_button_event(btn, action == GLFW_PRESS);
-}
-
-static void cursor_cb(GLFWwindow *window, double x, double y)
-{
-	auto *wsi = static_cast<WSI *>(glfwGetWindowUserPointer(window));
-	wsi->get_input_tracker().mouse_move_event(x, y);
-}
-
-static void enter_cb(GLFWwindow *window, int entered)
-{
-	auto *wsi = static_cast<WSI *>(glfwGetWindowUserPointer(window));
-	if (entered)
-	{
-		double x, y;
-		glfwGetCursorPos(window, &x, &y);
-		wsi->get_input_tracker().mouse_enter(x, y);
-	}
-	else
-		wsi->get_input_tracker().mouse_leave();
 }
 #endif
 
@@ -220,33 +80,48 @@ static bool vulkan_update_display_mode(unsigned *width, unsigned *height, const 
 }
 #endif
 
-bool WSI::init(unsigned width, unsigned height)
+bool WSI::init(Granite::ApplicationPlatform *platform, unsigned width, unsigned height)
 {
-	const char *device_ext = "VK_KHR_swapchain";
+	this->platform = platform;
 
-#if defined(HAVE_GLFW)
-	if (!glfwInit())
+	auto instance_ext = platform->get_instance_extensions();
+	auto device_ext = platform->get_device_extensions();
+	context = unique_ptr<Context>(new Context(instance_ext.data(), instance_ext.size(), device_ext.data(), device_ext.size()));
+	surface = platform->create_surface(context->get_instance());
+	width = platform->get_surface_width();
+	height = platform->get_surface_height();
+
+	VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(context->get_instance(), vkDestroySurfaceKHR);
+	VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(context->get_instance(), vkGetPhysicalDeviceSurfaceSupportKHR);
+	VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(context->get_instance(),
+	                                                     vkGetPhysicalDeviceSurfaceCapabilitiesKHR);
+	VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(context->get_instance(), vkGetPhysicalDeviceSurfaceFormatsKHR);
+	VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(context->get_instance(),
+	                                                     vkGetPhysicalDeviceSurfacePresentModesKHR);
+
+	VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_EXTENSION_SYMBOL(context->get_device(), vkCreateSwapchainKHR);
+	VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_EXTENSION_SYMBOL(context->get_device(), vkDestroySwapchainKHR);
+	VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_EXTENSION_SYMBOL(context->get_device(), vkGetSwapchainImagesKHR);
+	VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_EXTENSION_SYMBOL(context->get_device(), vkAcquireNextImageKHR);
+	VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_EXTENSION_SYMBOL(context->get_device(), vkQueuePresentKHR);
+
+	VkBool32 supported = VK_FALSE;
+	vkGetPhysicalDeviceSurfaceSupportKHR(context->get_gpu(), context->get_queue_family(), surface, &supported);
+	if (!supported)
 		return false;
 
-	if (!Context::init_loader(glfwGetInstanceProcAddress))
+	if (!init_swapchain(width, height))
 		return false;
 
-	uint32_t count;
-	const char **ext = glfwGetRequiredInstanceExtensions(&count);
-	context = unique_ptr<Context>(new Context(ext, count, &device_ext, 1));
+	semaphore_manager.init(context->get_device());
+	device.set_context(*context);
+	auto &em = Granite::EventManager::get_global();
+	em.enqueue_latched<DeviceCreatedEvent>(&device);
 
-	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-	//auto *monitor = glfwGetPrimaryMonitor();
-	//auto *mode = glfwGetVideoMode(monitor);
-	window = glfwCreateWindow(width, height, "GLFW Window", nullptr, nullptr);
-	if (glfwCreateWindowSurface(context->get_instance(), window, nullptr, &surface) != VK_SUCCESS)
-		return false;
+	device.init_swapchain(swapchain_images, this->width, this->height, format);
+	return true;
 
-	int actual_width, actual_height;
-	glfwGetFramebufferSize(window, &actual_width, &actual_height);
-	width = unsigned(actual_width);
-	height = unsigned(actual_height);
-#elif defined(HAVE_KHR_DISPLAY)
+#if defined(HAVE_KHR_DISPLAY)
 	if (!Context::init_loader(nullptr))
 		return false;
 
@@ -387,46 +262,6 @@ out:
 	if (create_surface(context->get_instance(), &surface_info, nullptr, &surface) != VK_SUCCESS)
 		return false;
 #endif
-
-	VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(context->get_instance(), vkDestroySurfaceKHR);
-	VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(context->get_instance(), vkGetPhysicalDeviceSurfaceSupportKHR);
-	VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(context->get_instance(),
-	                                                     vkGetPhysicalDeviceSurfaceCapabilitiesKHR);
-	VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(context->get_instance(), vkGetPhysicalDeviceSurfaceFormatsKHR);
-	VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(context->get_instance(),
-	                                                     vkGetPhysicalDeviceSurfacePresentModesKHR);
-
-	VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_EXTENSION_SYMBOL(context->get_device(), vkCreateSwapchainKHR);
-	VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_EXTENSION_SYMBOL(context->get_device(), vkDestroySwapchainKHR);
-	VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_EXTENSION_SYMBOL(context->get_device(), vkGetSwapchainImagesKHR);
-	VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_EXTENSION_SYMBOL(context->get_device(), vkAcquireNextImageKHR);
-	VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_EXTENSION_SYMBOL(context->get_device(), vkQueuePresentKHR);
-
-	VkBool32 supported = false;
-	vkGetPhysicalDeviceSurfaceSupportKHR(context->get_gpu(), context->get_queue_family(), surface, &supported);
-	if (!supported)
-		return false;
-
-	if (!init_swapchain(width, height))
-		return false;
-
-#if defined(HAVE_GLFW)
-	glfwSetWindowUserPointer(window, this);
-	glfwSetFramebufferSizeCallback(window, fb_size_cb);
-	glfwSetKeyCallback(window, key_cb);
-	glfwSetMouseButtonCallback(window, button_cb);
-	glfwSetCursorPosCallback(window, cursor_cb);
-	glfwSetCursorEnterCallback(window, enter_cb);
-#endif
-
-	semaphore_manager.init(context->get_device());
-	device.set_context(*context);
-	auto &em = Granite::EventManager::get_global();
-	em.enqueue_latched<DeviceCreatedEvent>(&device);
-
-	device.init_swapchain(swapchain_images, this->width, this->height, format);
-
-	return true;
 }
 
 void WSI::init_surface_and_swapchain()
@@ -460,6 +295,12 @@ void WSI::deinit_surface_and_swapchain()
 
 bool WSI::begin_frame()
 {
+	if (platform->should_resize())
+	{
+		update_framebuffer(platform->get_surface_width(), platform->get_surface_height());
+		platform->acknowledge_resize();
+	}
+
 	if (!need_acquire)
 		return true;
 
@@ -473,12 +314,12 @@ bool WSI::begin_frame()
 		if (result == VK_SUCCESS)
 		{
 			auto &em = Granite::EventManager::get_global();
-			auto frame_time = timer.frame();
-			auto elapsed_time = timer.get_elapsed();
+			auto frame_time = platform->get_frame_timer().frame();
+			auto elapsed_time = platform->get_frame_timer().get_elapsed();
 
 			// Poll after acquire as well for optimal latency.
-			poll_input();
-			em.dispatch_inline(FrameTickEvent{frame_time, elapsed_time});
+			platform->poll_input();
+			em.dispatch_inline(Granite::FrameTickEvent{frame_time, elapsed_time});
 
 			release_semaphore = semaphore_manager.request_cleared_semaphore();
 			device.begin_frame(swapchain_index);
@@ -695,11 +536,6 @@ WSI::~WSI()
 			vkDestroySwapchainKHR(context->get_device(), swapchain, nullptr);
 		}
 	}
-
-#if defined(HAVE_GLFW)
-	if (window)
-		glfwDestroyWindow(window);
-#endif
 
 	if (surface != VK_NULL_HANDLE)
 		vkDestroySurfaceKHR(context->get_instance(), surface, nullptr);

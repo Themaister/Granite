@@ -4,19 +4,13 @@
 #include "semaphore_manager.hpp"
 #include "vulkan.hpp"
 #include "vulkan_symbol_wrapper.h"
-#include "timer.hpp"
-#include "input.hpp"
-
-#if defined(HAVE_GLFW)
-#include <GLFW/glfw3.h>
-#endif
-
 #include <memory>
 #include <vector>
 
-#ifdef ANDROID
-#include <android/native_window_jni.h>
-#endif
+namespace Granite
+{
+class ApplicationPlatform;
+}
 
 namespace Vulkan
 {
@@ -24,11 +18,9 @@ namespace Vulkan
 class WSI
 {
 public:
-	bool init(unsigned width, unsigned height);
-	~WSI();
+	bool init(Granite::ApplicationPlatform *platform, unsigned width, unsigned height);
 
-	bool alive();
-	void update_framebuffer(unsigned width, unsigned height);
+	~WSI();
 
 	inline Context &get_context()
 	{
@@ -43,19 +35,10 @@ public:
 	bool begin_frame();
 	bool end_frame();
 
-	InputTracker &get_input_tracker()
+	Granite::ApplicationPlatform &get_platform()
 	{
-		return tracker;
-	}
-
-	double get_frame_time() const
-	{
-		return timer.get_frame_time();
-	}
-
-	double get_elapsed_time() const
-	{
-		return timer.get_elapsed();
+		VK_ASSERT(platform);
+		return *platform;
 	}
 
 #ifdef ANDROID
@@ -67,16 +50,10 @@ public:
 	void deinit_surface_and_swapchain();
 	void init_surface_and_swapchain();
 
-	Util::FrameTimer &get_frame_timer()
-	{
-		return timer;
-	}
-
 private:
+	void update_framebuffer(unsigned width, unsigned height);
+
 	std::unique_ptr<Context> context;
-#if defined(HAVE_GLFW)
-	GLFWwindow *window = nullptr;
-#endif
 	VkSurfaceKHR surface = VK_NULL_HANDLE;
 	VkSwapchainKHR swapchain = VK_NULL_HANDLE;
 	std::vector<VkImage> swapchain_images;
@@ -92,8 +69,6 @@ private:
 	VkSemaphore release_semaphore;
 	bool need_acquire = true;
 
-	Util::FrameTimer timer;
-	InputTracker tracker;
-	void poll_input();
+	Granite::ApplicationPlatform *platform = nullptr;
 };
 }

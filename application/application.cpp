@@ -11,7 +11,9 @@ Application::Application(unsigned width, unsigned height)
 	EventManager::get_global();
 	Filesystem::get();
 
-	if (!wsi.init(width, height))
+	platform = create_default_application_platform(width, height);
+
+	if (!wsi.init(platform.get(), width, height))
 		throw runtime_error("Failed to initialize WSI.");
 }
 
@@ -50,11 +52,12 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 int mainloop_run(Application &app)
 {
 	auto &wsi = app.get_wsi();
-	while (wsi.alive())
+	while (app.get_platform().alive())
 	{
 		Filesystem::get().poll_notifications();
 		wsi.begin_frame();
-		app.render_frame(wsi.get_frame_time(), wsi.get_elapsed_time());
+		app.render_frame(wsi.get_platform().get_frame_timer().get_frame_time(),
+		                 wsi.get_platform().get_frame_timer().get_elapsed());
 		wsi.end_frame();
 	}
 	return 0;

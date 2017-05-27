@@ -4,81 +4,10 @@
 #include "application.hpp"
 #include "input.hpp"
 
-#if defined(HAVE_GLFW)
-#include <GLFW/glfw3.h>
-#endif
-
 using namespace std;
 
 namespace Vulkan
 {
-
-#ifdef ANDROID
-static ANativeWindow *native_window;
-void WSI::set_global_native_window(ANativeWindow *window)
-{
-	native_window = window;
-}
-
-void WSI::runtime_term_native_window()
-{
-	deinit_surface_and_swapchain();
-}
-
-void WSI::runtime_init_native_window(ANativeWindow *window)
-{
-	native_window = window;
-
-	PFN_vkCreateAndroidSurfaceKHR create_surface;
-	VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(context->get_instance(), "vkCreateAndroidSurfaceKHR", create_surface);
-	VkAndroidSurfaceCreateInfoKHR surface_info = { VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR };
-	surface_info.window = native_window;
-	create_surface(context->get_instance(), &surface_info, nullptr, &surface);
-	init_surface_and_swapchain();
-}
-#endif
-
-#if defined(HAVE_KHR_DISPLAY)
-static bool vulkan_update_display_mode(unsigned *width, unsigned *height, const VkDisplayModePropertiesKHR *mode,
-                                       unsigned desired_width, unsigned desired_height)
-{
-	unsigned visible_width = mode->parameters.visibleRegion.width;
-	unsigned visible_height = mode->parameters.visibleRegion.height;
-
-	if (!desired_width || !desired_height)
-	{
-		/* Strategy here is to pick something which is largest resolution. */
-		unsigned area = visible_width * visible_height;
-		if (area > (*width) * (*height))
-		{
-			*width = visible_width;
-			*height = visible_height;
-			return true;
-		}
-		else
-			return false;
-	}
-	else
-	{
-		/* For particular resolutions, find the closest. */
-		int delta_x = int(desired_width) - int(visible_width);
-		int delta_y = int(desired_height) - int(visible_height);
-		int old_delta_x = int(desired_width) - int(*width);
-		int old_delta_y = int(desired_height) - int(*height);
-
-		int dist = delta_x * delta_x + delta_y * delta_y;
-		int old_dist = old_delta_x * old_delta_x + old_delta_y * old_delta_y;
-		if (dist < old_dist)
-		{
-			*width = visible_width;
-			*height = visible_height;
-			return true;
-		}
-		else
-			return false;
-	}
-}
-#endif
 
 bool WSI::init(Granite::ApplicationPlatform *platform, unsigned width, unsigned height)
 {
@@ -87,7 +16,10 @@ bool WSI::init(Granite::ApplicationPlatform *platform, unsigned width, unsigned 
 	auto instance_ext = platform->get_instance_extensions();
 	auto device_ext = platform->get_device_extensions();
 	context = unique_ptr<Context>(new Context(instance_ext.data(), instance_ext.size(), device_ext.data(), device_ext.size()));
-	surface = platform->create_surface(context->get_instance());
+	surface = platform->create_surface(context->get_instance(), context->get_gpu());
+	if (surface == VK_NULL_HANDLE)
+		return false;
+
 	width = platform->get_surface_width();
 	height = platform->get_surface_height();
 
@@ -120,152 +52,18 @@ bool WSI::init(Granite::ApplicationPlatform *platform, unsigned width, unsigned 
 
 	device.init_swapchain(swapchain_images, this->width, this->height, format);
 	return true;
-
-#if defined(HAVE_KHR_DISPLAY)
-	if (!Context::init_loader(nullptr))
-		return false;
-
-	static const char *instance_ext[] = {
-		"VK_KHR_surface", "VK_KHR_display",
-	};
-	context =
-	    unique_ptr<Context>(new Context(instance_ext, sizeof(instance_ext) / sizeof(instance_ext[0]), &device_ext, 1));
-
-	VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(context->get_instance(),
-	                                                     vkGetPhysicalDeviceDisplayPropertiesKHR);
-	VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(context->get_instance(),
-	                                                     vkGetPhysicalDeviceDisplayPlanePropertiesKHR);
-	VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(context->get_instance(),
-	                                                     vkGetDisplayPlaneSupportedDisplaysKHR);
-	VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(context->get_instance(), vkGetDisplayModePropertiesKHR);
-	VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(context->get_instance(), vkCreateDisplayModeKHR);
-	VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(context->get_instance(), vkGetDisplayPlaneCapabilitiesKHR);
-	VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(context->get_instance(), vkCreateDisplayPlaneSurfaceKHR);
-
-	uint32_t display_count;
-	vkGetPhysicalDeviceDisplayPropertiesKHR(context->get_gpu(), &display_count, nullptr);
-	vector<VkDisplayPropertiesKHR> displays(display_count);
-	vkGetPhysicalDeviceDisplayPropertiesKHR(context->get_gpu(), &display_count, displays.data());
-
-	uint32_t plane_count;
-	vkGetPhysicalDeviceDisplayPlanePropertiesKHR(context->get_gpu(), &plane_count, nullptr);
-	vector<VkDisplayPlanePropertiesKHR> planes(plane_count);
-	vkGetPhysicalDeviceDisplayPlanePropertiesKHR(context->get_gpu(), &plane_count, planes.data());
-
-	VkDisplayModeKHR best_mode = VK_NULL_HANDLE;
-	uint32_t best_plane = UINT32_MAX;
-
-	unsigned actual_width = 0;
-	unsigned actual_height = 0;
-	VkDisplayPlaneAlphaFlagBitsKHR alpha_mode = VK_DISPLAY_PLANE_ALPHA_OPAQUE_BIT_KHR;
-
-	for (unsigned dpy = 0; dpy < display_count; dpy++)
-	{
-		VkDisplayKHR display = displays[dpy].display;
-		best_mode = VK_NULL_HANDLE;
-		best_plane = UINT32_MAX;
-
-		uint32_t mode_count;
-		vkGetDisplayModePropertiesKHR(context->get_gpu(), display, &mode_count, nullptr);
-		vector<VkDisplayModePropertiesKHR> modes(mode_count);
-		vkGetDisplayModePropertiesKHR(context->get_gpu(), display, &mode_count, modes.data());
-
-		for (unsigned i = 0; i < mode_count; i++)
-		{
-			const VkDisplayModePropertiesKHR &mode = modes[i];
-			if (vulkan_update_display_mode(&actual_width, &actual_height, &mode, 0, 0))
-				best_mode = mode.displayMode;
-		}
-
-		if (best_mode == VK_NULL_HANDLE)
-			continue;
-
-		for (unsigned i = 0; i < plane_count; i++)
-		{
-			uint32_t supported_count = 0;
-			VkDisplayPlaneCapabilitiesKHR plane_caps;
-			vkGetDisplayPlaneSupportedDisplaysKHR(context->get_gpu(), i, &supported_count, nullptr);
-
-			if (!supported_count)
-				continue;
-
-			vector<VkDisplayKHR> supported(supported_count);
-			vkGetDisplayPlaneSupportedDisplaysKHR(context->get_gpu(), i, &supported_count, supported.data());
-
-			unsigned j;
-			for (j = 0; j < supported_count; j++)
-			{
-				if (supported[j] == display)
-				{
-					if (best_plane == UINT32_MAX)
-						best_plane = j;
-					break;
-				}
-			}
-
-			if (j == supported_count)
-				continue;
-
-			if (planes[i].currentDisplay == VK_NULL_HANDLE || planes[i].currentDisplay == display)
-				best_plane = j;
-			else
-				continue;
-
-			vkGetDisplayPlaneCapabilitiesKHR(context->get_gpu(), best_mode, i, &plane_caps);
-
-			if (plane_caps.supportedAlpha & VK_DISPLAY_PLANE_ALPHA_OPAQUE_BIT_KHR)
-			{
-				best_plane = j;
-				alpha_mode = VK_DISPLAY_PLANE_ALPHA_OPAQUE_BIT_KHR;
-				goto out;
-			}
-		}
-	}
-out:
-
-	if (best_mode == VK_NULL_HANDLE)
-		return false;
-	if (best_plane == UINT32_MAX)
-		return false;
-
-	VkDisplaySurfaceCreateInfoKHR create_info = { VK_STRUCTURE_TYPE_DISPLAY_SURFACE_CREATE_INFO_KHR };
-	create_info.displayMode = best_mode;
-	create_info.planeIndex = best_plane;
-	create_info.planeStackIndex = planes[best_plane].currentStackIndex;
-	create_info.transform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
-	create_info.globalAlpha = 1.0f;
-	create_info.alphaMode = (VkDisplayPlaneAlphaFlagBitsKHR)alpha_mode;
-	create_info.imageExtent.width = width;
-	create_info.imageExtent.height = height;
-
-	if (vkCreateDisplayPlaneSurfaceKHR(context->get_instance(), &create_info, NULL, &surface) != VK_SUCCESS)
-		return false;
-#elif defined(HAVE_ANDROID_SURFACE)
-	if (!native_window)
-		return false;
-
-	PFN_vkCreateAndroidSurfaceKHR create_surface;
-	if (!Context::init_loader(nullptr))
-		return false;
-
-	static const char *instance_ext[] = {
-			"VK_KHR_surface", "VK_KHR_android_surface",
-	};
-	context =
-			unique_ptr<Context>(new Context(instance_ext, sizeof(instance_ext) / sizeof(instance_ext[0]), &device_ext, 1));
-
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(context->get_instance(), "vkCreateAndroidSurfaceKHR", create_surface))
-		return false;
-
-	VkAndroidSurfaceCreateInfoKHR surface_info = { VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR };
-	surface_info.window = native_window;
-	if (create_surface(context->get_instance(), &surface_info, nullptr, &surface) != VK_SUCCESS)
-		return false;
-#endif
 }
 
-void WSI::init_surface_and_swapchain()
+void WSI::init_surface_and_swapchain(VkSurfaceKHR new_surface)
 {
+	if (new_surface != VK_NULL_HANDLE)
+	{
+		VK_ASSERT(surface == VK_NULL_HANDLE);
+		surface = new_surface;
+	}
+
+	width = platform->get_surface_width();
+	height = platform->get_surface_height();
 	update_framebuffer(width, height);
 }
 

@@ -41,14 +41,8 @@ public:
 		return *platform;
 	}
 
-#ifdef ANDROID
-	static void set_global_native_window(ANativeWindow *window);
-	void runtime_init_native_window(ANativeWindow *window);
-	void runtime_term_native_window();
-#endif
-
 	void deinit_surface_and_swapchain();
-	void init_surface_and_swapchain();
+	void init_surface_and_swapchain(VkSurfaceKHR new_surface);
 
 private:
 	void update_framebuffer(unsigned width, unsigned height);

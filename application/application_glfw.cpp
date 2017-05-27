@@ -56,7 +56,7 @@ public:
 		return { ext, ext + count };
 	}
 
-	VkSurfaceKHR create_surface(VkInstance instance) override
+	VkSurfaceKHR create_surface(VkInstance instance, VkPhysicalDevice) override
 	{
 		VkSurfaceKHR surface = VK_NULL_HANDLE;
 		if (glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS)

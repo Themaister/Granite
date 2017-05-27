@@ -15,7 +15,7 @@ class ApplicationPlatform
 public:
 	virtual ~ApplicationPlatform() = default;
 
-	virtual VkSurfaceKHR create_surface(VkInstance instance) = 0;
+	virtual VkSurfaceKHR create_surface(VkInstance instance, VkPhysicalDevice gpu) = 0;
 	virtual std::vector<const char *> get_instance_extensions() = 0;
 	virtual std::vector<const char *> get_device_extensions()
 	{

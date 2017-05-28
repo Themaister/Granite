@@ -2,14 +2,41 @@
 #include "android_native_app_glue.h"
 #include "util.hpp"
 #include "application.hpp"
+#include <jni.h>
 
 using namespace std;
 
 namespace Granite
 {
-static android_app *global_app;
-bool global_has_window;
-bool global_active;
+struct GlobalState
+{
+	android_app *app;
+	int32_t base_width;
+	int32_t base_height;
+	bool has_window;
+	bool active;
+};
+
+struct JNI
+{
+	jclass granite;
+	jmethodID finishFromThread;
+	jclass classLoaderClass;
+	jobject classLoader;
+};
+static GlobalState global_state;
+static JNI jni;
+
+namespace App
+{
+static void finishFromThread()
+{
+	JNIEnv *env = nullptr;
+	global_state.app->activity->vm->AttachCurrentThread(&env, nullptr);
+	env->CallVoidMethod(global_state.app->activity->clazz, jni.finishFromThread);
+	global_state.app->activity->vm->DetachCurrentThread();
+}
+}
 
 struct ApplicationPlatformAndroid : ApplicationPlatform
 {
@@ -19,8 +46,8 @@ struct ApplicationPlatformAndroid : ApplicationPlatform
 		if (!Vulkan::Context::init_loader(nullptr))
 			throw runtime_error("Failed to init Vulkan loader.");
 
-		has_window = global_has_window;
-		active = global_active;
+		has_window = global_state.has_window;
+		active = global_state.active;
 	}
 
 	bool alive(Vulkan::WSI &wsi) override;
@@ -57,8 +84,8 @@ struct ApplicationPlatformAndroid : ApplicationPlatform
 unique_ptr<ApplicationPlatform> create_default_application_platform(unsigned width, unsigned height)
 {
 	auto *platform = new ApplicationPlatformAndroid(width, height);
-	assert(!global_app->userData);
-	global_app->userData = platform;
+	assert(!global_state.app->userData);
+	global_state.app->userData = platform;
 	return unique_ptr<ApplicationPlatform>(platform);
 }
 
@@ -74,33 +101,96 @@ static VkSurfaceKHR create_surface_from_native_window(VkInstance instance, ANati
 	return surface;
 }
 
-static int32_t engine_handle_input(android_app *, AInputEvent *)
+static int32_t engine_handle_input(android_app *app, AInputEvent *event)
 {
-	return 0;
+	auto &state = *static_cast<ApplicationPlatformAndroid *>(app->userData);
+	bool handled = false;
+
+	auto type = AInputEvent_getType(event);
+	switch (type)
+	{
+	case AINPUT_EVENT_TYPE_MOTION:
+	{
+		auto pointer = AMotionEvent_getAction(event);
+		auto action = pointer & AMOTION_EVENT_ACTION_MASK;
+
+		switch (action)
+		{
+		case AMOTION_EVENT_ACTION_DOWN:
+		case AMOTION_EVENT_ACTION_POINTER_DOWN:
+		{
+			auto index = (pointer & AMOTION_EVENT_ACTION_POINTER_INDEX_MASK) >> AMOTION_EVENT_ACTION_POINTER_INDEX_SHIFT;
+			auto x = AMotionEvent_getX(event, index) / global_state.base_width;
+			auto y = AMotionEvent_getY(event, index) / global_state.base_height;
+			int id = AMotionEvent_getPointerId(event, index);
+			handled = true;
+			break;
+		}
+
+		case AMOTION_EVENT_ACTION_MOVE:
+		{
+			size_t count = AMotionEvent_getPointerCount(event);
+			for (size_t index = 0; index < count; index++)
+			{
+				auto x = AMotionEvent_getX(event, index) / global_state.base_width;
+				auto y = AMotionEvent_getY(event, index) / global_state.base_height;
+				int id = AMotionEvent_getPointerId(event, index);
+			}
+			handled = true;
+			break;
+		}
+
+		case AMOTION_EVENT_ACTION_UP:
+		case AMOTION_EVENT_ACTION_POINTER_UP:
+		{
+			auto index = (pointer & AMOTION_EVENT_ACTION_POINTER_INDEX_MASK) >> AMOTION_EVENT_ACTION_POINTER_INDEX_SHIFT;
+			auto x = AMotionEvent_getX(event, index) / global_state.base_width;
+			auto y = AMotionEvent_getY(event, index) / global_state.base_height;
+			int id = AMotionEvent_getPointerId(event, index);
+			handled = true;
+			break;
+		}
+
+		default:
+			break;
+		}
+		break;
+	}
+
+	default:
+		break;
+	}
+
+	return handled ? 1 : 0;
 }
 
-static void engine_handle_cmd_init(android_app *pApp, int32_t cmd)
+static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 {
-	auto &has_window = *static_cast<bool *>(pApp->userData);
+	auto &has_window = *static_cast<bool *>(app->userData);
 	switch (cmd)
 	{
 	case APP_CMD_RESUME:
-		global_active = true;
+		global_state.active = true;
 		break;
 
 	case APP_CMD_PAUSE:
-		global_active = false;
+		global_state.active = false;
 		break;
 
 	case APP_CMD_INIT_WINDOW:
-		global_has_window = pApp->window != nullptr;
+		global_state.has_window = app->window != nullptr;
+		if (app->window)
+		{
+			global_state.base_width = ANativeWindow_getWidth(app->window);
+			global_state.base_height = ANativeWindow_getHeight(app->window);
+		}
 		break;
 	}
 }
 
-static void engine_handle_cmd(android_app *pApp, int32_t cmd)
+static void engine_handle_cmd(android_app *app, int32_t cmd)
 {
-	auto &state = *static_cast<ApplicationPlatformAndroid *>(pApp->userData);
+	auto &state = *static_cast<ApplicationPlatformAndroid *>(app->userData);
 
 	switch (cmd)
 	{
@@ -124,12 +214,15 @@ static void engine_handle_cmd(android_app *pApp, int32_t cmd)
 	}
 
 	case APP_CMD_INIT_WINDOW:
-		if (pApp->window != nullptr)
+		if (app->window != nullptr)
 		{
+			global_state.base_width = ANativeWindow_getWidth(app->window);
+			global_state.base_height = ANativeWindow_getHeight(app->window);
+
 			if (state.wsi)
 			{
 				state.has_window = true;
-				auto surface = create_surface_from_native_window(state.wsi->get_context().get_instance(), pApp->window);
+				auto surface = create_surface_from_native_window(state.wsi->get_context().get_instance(), app->window);
 				state.wsi->init_surface_and_swapchain(surface);
 			}
 			else
@@ -149,33 +242,33 @@ static void engine_handle_cmd(android_app *pApp, int32_t cmd)
 
 VkSurfaceKHR ApplicationPlatformAndroid::create_surface(VkInstance instance, VkPhysicalDevice)
 {
-	return create_surface_from_native_window(instance, global_app->window);
+	return create_surface_from_native_window(instance, global_state.app->window);
 }
 
 void ApplicationPlatformAndroid::poll_input()
 {
-	auto &state = *static_cast<ApplicationPlatformAndroid *>(global_app->userData);
+	auto &state = *static_cast<ApplicationPlatformAndroid *>(global_state.app->userData);
 	int events;
 	android_poll_source *source;
 	state.wsi = nullptr;
 	while (ALooper_pollAll(1, nullptr, &events, reinterpret_cast<void **>(&source)) >= 0)
 	{
 		if (source)
-			source->process(global_app, source);
+			source->process(global_state.app, source);
 
-		if (global_app->destroyRequested)
+		if (global_state.app->destroyRequested)
 			return;
 	}
 }
 
 bool ApplicationPlatformAndroid::alive(Vulkan::WSI &wsi)
 {
-	auto &state = *static_cast<ApplicationPlatformAndroid *>(global_app->userData);
+	auto &state = *static_cast<ApplicationPlatformAndroid *>(global_state.app->userData);
 	int events;
 	android_poll_source *source;
 	state.wsi = &wsi;
 
-	if (global_app->destroyRequested)
+	if (global_state.app->destroyRequested)
 		return false;
 
 	bool once = false;
@@ -188,7 +281,7 @@ bool ApplicationPlatformAndroid::alive(Vulkan::WSI &wsi)
 
 	if (state.pending_native_window_init)
 	{
-		auto surface = create_surface_from_native_window(wsi.get_context().get_instance(), global_app->window);
+		auto surface = create_surface_from_native_window(wsi.get_context().get_instance(), global_state.app->window);
 		wsi.init_surface_and_swapchain(surface);
 		state.pending_native_window_init = false;
 	}
@@ -199,9 +292,9 @@ bool ApplicationPlatformAndroid::alive(Vulkan::WSI &wsi)
 							   nullptr, &events, reinterpret_cast<void **>(&source)) >= 0)
 		{
 			if (source)
-				source->process(global_app, source);
+				source->process(global_state.app, source);
 
-			if (global_app->destroyRequested)
+			if (global_state.app->destroyRequested)
 				return false;
 		}
 
@@ -210,20 +303,51 @@ bool ApplicationPlatformAndroid::alive(Vulkan::WSI &wsi)
 
 	return true;
 }
+
+static void init_jni()
+{
+	JNIEnv *env = nullptr;
+	auto *app = global_state.app;
+	app->activity->vm->AttachCurrentThread(&env, nullptr);
+
+	jclass clazz = env->GetObjectClass(app->activity->clazz);
+	jmethodID getApplication = env->GetMethodID(clazz, "getApplication", "()Landroid/app/Application;");
+	jobject application = env->CallObjectMethod(app->activity->clazz, getApplication);
+
+	jclass applicationClass = env->GetObjectClass(application);
+	jmethodID getApplicationContext = env->GetMethodID(applicationClass, "getApplicationContext", "()Landroid/content/Context;");
+	jobject context = env->CallObjectMethod(application, getApplicationContext);
+
+	jclass contextClass = env->GetObjectClass(context);
+	jmethodID getClassLoader = env->GetMethodID(contextClass, "getClassLoader", "()Ljava/lang/ClassLoader;");
+	jni.classLoader = env->CallObjectMethod(context, getClassLoader);
+
+	jni.classLoaderClass = env->GetObjectClass(jni.classLoader);
+	jmethodID loadClass = env->GetMethodID(jni.classLoaderClass, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
+	jstring str = env->NewStringUTF("net.themaister.granite.GraniteActivity");
+	jni.granite = static_cast<jclass>(env->CallObjectMethod(jni.classLoader, loadClass, str));
+	jni.finishFromThread = env->GetMethodID(jni.granite, "finishFromThread", "()V");
+
+	env->DeleteLocalRef(str);
+	app->activity->vm->DetachCurrentThread();
+}
 }
 
 void android_main(android_app *app)
 {
 	app_dummy();
-	Granite::global_app = app;
+	// Statics on Android might not be cleared out.
+	Granite::global_state = {};
+	Granite::jni = {};
+
+	Granite::global_state.app = app;
+	Granite::init_jni();
 
 	LOGI("Starting Granite!\n");
 
 	app->onAppCmd = Granite::engine_handle_cmd_init;
 	app->onInputEvent = Granite::engine_handle_input;
 	app->userData = nullptr;
-	Granite::global_active = false;
-	Granite::global_has_window = false;
 
 	for (;;)
 	{
@@ -237,7 +361,7 @@ void android_main(android_app *app)
 			if (app->destroyRequested)
 				return;
 
-			if (Granite::global_has_window)
+			if (Granite::global_state.has_window)
 			{
 				app->onAppCmd = Granite::engine_handle_cmd;
 

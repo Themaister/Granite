@@ -37,6 +37,23 @@ enum class KeyState
 };
 static_assert(Util::ecast(Key::Count) <= 64, "Cannot have more than 64 keys for bit-packing.");
 
+struct TouchState
+{
+	enum { PointerCount = 16 };
+	struct Pointer
+	{
+		unsigned id;
+		float start_x;
+		float start_y;
+		float last_x;
+		float last_y;
+		float x;
+		float y;
+	};
+	Pointer pointers[PointerCount] = {};
+	unsigned active_pointers = 0;
+};
+
 class InputTracker
 {
 public:
@@ -45,6 +62,10 @@ public:
 	void mouse_move_event(double x, double y);
 	void dispatch_current_state(double delta_time);
 	void orientation_event(quat rot);
+
+	void on_touch_down(unsigned id, float x, float y);
+	void on_touch_move(unsigned id, float x, float y);
+	void on_touch_up(unsigned id, float x, float y);
 
 	void mouse_enter(double x, double y);
 	void mouse_leave();
@@ -59,6 +80,8 @@ public:
 		return (mouse_button_state & (1ull << Util::ecast(button))) != 0;
 	}
 
+	void dispatch_touch_gesture();
+
 private:
 	uint64_t key_state = 0;
 	uint8_t mouse_button_state = 0;
@@ -66,6 +89,104 @@ private:
 
 	double last_mouse_x = 0.0;
 	double last_mouse_y = 0.0;
+
+	enum { TouchCount = 16 };
+	TouchState touch;
+};
+
+class TouchGestureEvent : public Granite::Event
+{
+public:
+	static constexpr Granite::EventType type_id = GRANITE_EVENT_TYPE_HASH(TouchGestureEvent);
+
+	TouchGestureEvent(const TouchState &state)
+		: state(state)
+	{
+	}
+
+	const TouchState &get_state() const
+	{
+		return state;
+	}
+
+private:
+	const TouchState &state;
+};
+
+class TouchDownEvent : public Granite::Event
+{
+public:
+	static constexpr Granite::EventType type_id = GRANITE_EVENT_TYPE_HASH(TouchDownEvent);
+
+	TouchDownEvent(unsigned index, unsigned id, float x, float y)
+		: index(index), id(id), x(x), y(y)
+	{
+	}
+
+	float get_x() const
+	{
+		return x;
+	}
+
+	float get_y() const
+	{
+		return y;
+	}
+
+	unsigned get_index() const
+	{
+		return index;
+	}
+
+	unsigned get_id() const
+	{
+		return id;
+	}
+
+private:
+	unsigned index, id;
+	float x, y;
+};
+
+class TouchUpEvent : public Granite::Event
+{
+public:
+	static constexpr Granite::EventType type_id = GRANITE_EVENT_TYPE_HASH(TouchUpEvent);
+
+	TouchUpEvent(unsigned id, float x, float y, float start_x, float start_y)
+		: id(id), x(x), y(y), start_x(start_x), start_y(start_y)
+	{
+	}
+
+	float get_x() const
+	{
+		return x;
+	}
+
+	float get_y() const
+	{
+		return y;
+	}
+
+	float get_start_x() const
+	{
+		return start_x;
+	}
+
+	float get_start_y() const
+	{
+		return start_y;
+	}
+
+	unsigned get_id() const
+	{
+		return id;
+	}
+
+private:
+	unsigned id;
+	float x, y;
+	float start_x, start_y;
 };
 
 class KeyboardEvent : public Granite::Event

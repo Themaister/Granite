@@ -71,8 +71,23 @@ FPSCamera::FPSCamera()
 {
 	EventManager::get_global().register_handler(MouseMoveEvent::type_id, &FPSCamera::on_mouse_move, this);
 	EventManager::get_global().register_handler(OrientationEvent::type_id, &FPSCamera::on_orientation, this);
+	EventManager::get_global().register_handler(TouchDownEvent::type_id, &FPSCamera::on_touch_down, this);
+	EventManager::get_global().register_handler(TouchUpEvent::type_id, &FPSCamera::on_touch_up, this);
 	EventManager::get_global().register_handler(InputStateEvent::type_id, &FPSCamera::on_input_state, this);
 	EventManager::get_global().register_latch_handler(SwapchainParameterEvent::type_id, &FPSCamera::on_swapchain, &FPSCamera::on_swapchain, this);
+}
+
+bool FPSCamera::on_touch_down(const Event &)
+{
+	pointer_count++;
+	return true;
+}
+
+bool FPSCamera::on_touch_up(const Event &)
+{
+	assert(pointer_count > 0);
+	pointer_count--;
+	return true;
 }
 
 void FPSCamera::on_swapchain(const Event &e)
@@ -84,6 +99,8 @@ void FPSCamera::on_swapchain(const Event &e)
 bool FPSCamera::on_input_state(const Event &e)
 {
 	auto &state = e.as<InputStateEvent>();
+
+	position += 3.0f * get_front() * float(pointer_count) * float(state.get_delta_time());
 
 	if (state.get_key_pressed(Key::W))
 		position += 3.0f * get_front() * float(state.get_delta_time());
@@ -114,7 +131,7 @@ bool FPSCamera::on_mouse_move(const Event &e)
 bool FPSCamera::on_orientation(const Event &e)
 {
 	auto &o = e.as<OrientationEvent>();
-	rotation = o.get_rotation();
+	rotation = inverse(o.get_rotation());
 	return true;
 }
 }

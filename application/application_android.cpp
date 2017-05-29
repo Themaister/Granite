@@ -131,6 +131,9 @@ static void handle_sensors()
 {
 	auto &state = *static_cast<ApplicationPlatformAndroid *>(global_state.app->userData);
 
+	if (!ASensorEventQueue_hasEvents(jni.sensor_queue))
+		return;
+
 	ASensorEvent events[64];
 	for (;;)
 	{
@@ -146,21 +149,18 @@ static void handle_sensors()
 				quat q(-event.data[3], event.data[0], event.data[1], event.data[2]);
 				if (global_state.orientation == 1)
 				{
+					// Compensate for different display rotation.
 					swap(q.x, q.y);
 					q.x = -q.x;
 				}
+				else if (global_state.orientation == 2 || global_state.orientation == 3)
+				{
+					LOGE("Untested orientation %u!\n", global_state.orientation);
+				}
 
 				static const quat landscape(glm::one_over_root_two<float>(), glm::one_over_root_two<float>(), 0.0f, 0.0f);
-				q = normalize(q * landscape);
-
-				LOGI("Rotation: (%6.4f, %6.4f, %6.4f, %6.4f)\n",
-					 q.x, q.y, q.z, q.w);
-
+				q = inverse(normalize(q * landscape));
 				state.get_input_tracker().orientation_event(q);
-			}
-			else if (event.type == ASENSOR_TYPE_GYROSCOPE)
-			{
-				LOGI("Gyro!\n");
 			}
 		}
 	}
@@ -188,6 +188,7 @@ static int32_t engine_handle_input(android_app *app, AInputEvent *event)
 			auto x = AMotionEvent_getX(event, index) / global_state.base_width;
 			auto y = AMotionEvent_getY(event, index) / global_state.base_height;
 			int id = AMotionEvent_getPointerId(event, index);
+			state.get_input_tracker().on_touch_down(id, x, y);
 			handled = true;
 			break;
 		}
@@ -200,7 +201,9 @@ static int32_t engine_handle_input(android_app *app, AInputEvent *event)
 				auto x = AMotionEvent_getX(event, index) / global_state.base_width;
 				auto y = AMotionEvent_getY(event, index) / global_state.base_height;
 				int id = AMotionEvent_getPointerId(event, index);
+				state.get_input_tracker().on_touch_move(id, x, y);
 			}
+			state.get_input_tracker().dispatch_touch_gesture();
 			handled = true;
 			break;
 		}
@@ -212,6 +215,7 @@ static int32_t engine_handle_input(android_app *app, AInputEvent *event)
 			auto x = AMotionEvent_getX(event, index) / global_state.base_width;
 			auto y = AMotionEvent_getY(event, index) / global_state.base_height;
 			int id = AMotionEvent_getPointerId(event, index);
+			state.get_input_tracker().on_touch_up(id, x, y);
 			handled = true;
 			break;
 		}
@@ -382,6 +386,7 @@ void ApplicationPlatformAndroid::poll_input()
 		if (global_state.app->destroyRequested)
 			return;
 	}
+	state.get_input_tracker().dispatch_current_state(state.get_frame_timer().get_frame_time());
 }
 
 bool ApplicationPlatformAndroid::alive(Vulkan::WSI &wsi)

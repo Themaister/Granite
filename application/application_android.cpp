@@ -115,8 +115,9 @@ static void enable_sensors()
 		return;
 
 	int min_delay = ASensor_getMinDelay(jni.rotation_sensor);
-	ASensorEventQueue_setEventRate(jni.sensor_queue, jni.rotation_sensor, std::max(8000, min_delay));
 	ASensorEventQueue_enableSensor(jni.sensor_queue, jni.rotation_sensor);
+	if (ASensorEventQueue_setEventRate(jni.sensor_queue, jni.rotation_sensor, std::max(8000, min_delay)) < 0)
+		LOGE("Failed to set event rate.\n");
 }
 
 static void disable_sensors()

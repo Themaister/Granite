@@ -1,5 +1,6 @@
 package net.themaister.granite;
 
+import android.hardware.SensorManager;
 import android.view.Display;
 import android.view.SurfaceHolder;
 import android.view.View;

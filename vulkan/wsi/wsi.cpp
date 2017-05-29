@@ -22,6 +22,7 @@ bool WSI::init(Granite::ApplicationPlatform *platform, unsigned width, unsigned 
 
 	width = platform->get_surface_width();
 	height = platform->get_surface_height();
+	aspect_ratio = float(width) / height;
 
 	VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(context->get_instance(), vkDestroySurfaceKHR);
 	VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(context->get_instance(), vkGetPhysicalDeviceSurfaceSupportKHR);
@@ -315,7 +316,7 @@ bool WSI::init_swapchain(unsigned width, unsigned height)
 
 	auto &em = Granite::EventManager::get_global();
 	em.dequeue_all_latched(SwapchainParameterEvent::type_id);
-	em.enqueue_latched<SwapchainParameterEvent>(&device, this->width, this->height, image_count, info.imageFormat);
+	em.enqueue_latched<SwapchainParameterEvent>(&device, this->width, this->height, aspect_ratio, image_count, info.imageFormat);
 
 	return true;
 }

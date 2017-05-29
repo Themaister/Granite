@@ -55,6 +55,7 @@ private:
 
 	unsigned width = 0;
 	unsigned height = 0;
+	float aspect_ratio = 1.0f;
 	VkFormat format = VK_FORMAT_UNDEFINED;
 	SemaphoreManager semaphore_manager;
 

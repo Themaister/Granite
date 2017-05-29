@@ -77,7 +77,7 @@ FPSCamera::FPSCamera()
 void FPSCamera::on_swapchain(const Event &e)
 {
 	auto &state = e.as<SwapchainParameterEvent>();
-	set_aspect(float(state.get_width()) / state.get_height());
+	set_aspect(state.get_aspect_ratio());
 }
 
 bool FPSCamera::on_input_state(const Event &e)

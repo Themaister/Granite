@@ -31,8 +31,8 @@ class SwapchainParameterEvent : public Granite::Event
 public:
 	static constexpr Granite::EventType type_id = GRANITE_EVENT_TYPE_HASH(SwapchainParameterEvent);
 
-	SwapchainParameterEvent(Device *device, unsigned width, unsigned height, unsigned count, VkFormat format)
-		: device(*device), width(width), height(height), image_count(count), format(format)
+	SwapchainParameterEvent(Device *device, unsigned width, unsigned height, float aspect_ratio, unsigned count, VkFormat format)
+		: device(*device), width(width), height(height), aspect_ratio(aspect_ratio), image_count(count), format(format)
 	{}
 
 	unsigned get_width() const
@@ -43,6 +43,11 @@ public:
 	unsigned get_height() const
 	{
 		return height;
+	}
+
+	float get_aspect_ratio() const
+	{
+		return aspect_ratio;
 	}
 
 	unsigned get_image_count() const
@@ -59,6 +64,7 @@ private:
 	Device &device;
 	unsigned width;
 	unsigned height;
+	float aspect_ratio;
 	unsigned image_count;
 	VkFormat format;
 };

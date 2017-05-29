@@ -3,8 +3,11 @@
 #include "util.hpp"
 #include "application.hpp"
 #include <jni.h>
+#include <android/sensor.h>
 
 using namespace std;
+
+#define SENSOR_GAME_ROTATION_VECTOR 15
 
 namespace Granite
 {
@@ -23,6 +26,9 @@ struct JNI
 	jmethodID finishFromThread;
 	jclass classLoaderClass;
 	jobject classLoader;
+
+	ASensorEventQueue *sensor_queue;
+	const ASensor *sensor;
 };
 static GlobalState global_state;
 static JNI jni;
@@ -101,6 +107,48 @@ static VkSurfaceKHR create_surface_from_native_window(VkInstance instance, ANati
 	return surface;
 }
 
+static void enable_sensors()
+{
+	if (!jni.sensor || !jni.sensor_queue)
+		return;
+
+	int min_delay = ASensor_getMinDelay(jni.sensor);
+	ASensorEventQueue_setEventRate(jni.sensor_queue, jni.sensor, std::max(8000, min_delay));
+	ASensorEventQueue_enableSensor(jni.sensor_queue, jni.sensor);
+}
+
+static void disable_sensors()
+{
+	if (!jni.sensor || !jni.sensor_queue)
+		return;
+
+	ASensorEventQueue_disableSensor(jni.sensor_queue, jni.sensor);
+}
+
+static void handle_sensors()
+{
+	ASensorEvent events[64];
+	for (;;)
+	{
+		int count = ASensorEventQueue_getEvents(jni.sensor_queue, events, 64);
+		if (count <= 0)
+			return;
+
+		for (int i = 0; i < count; i++)
+		{
+			auto &event = events[i];
+			if (event.type == SENSOR_GAME_ROTATION_VECTOR)
+			{
+				LOGI("Rotation: %6.4f, %6.4f, %6.4f, %6.4f)\n",
+					 event.data[0],
+					 event.data[1],
+					 event.data[2],
+					 event.data[3]);
+			}
+		}
+	}
+}
+
 static int32_t engine_handle_input(android_app *app, AInputEvent *event)
 {
 	auto &state = *static_cast<ApplicationPlatformAndroid *>(app->userData);
@@ -171,6 +219,7 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 	{
 	case APP_CMD_RESUME:
 	{
+		enable_sensors();
 		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
 		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
 		global_state.active = true;
@@ -179,6 +228,7 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 
 	case APP_CMD_PAUSE:
 	{
+		disable_sensors();
 		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
 		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
 		global_state.active = false;
@@ -220,6 +270,7 @@ static void engine_handle_cmd(android_app *app, int32_t cmd)
 	{
 		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
 		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
+		enable_sensors();
 
 		state.active = true;
 		if (state.wsi_idle)
@@ -234,6 +285,7 @@ static void engine_handle_cmd(android_app *app, int32_t cmd)
 	{
 		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
 		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
+		disable_sensors();
 
 		state.active = false;
 		state.get_frame_timer().enter_idle();
@@ -291,12 +343,16 @@ void ApplicationPlatformAndroid::poll_input()
 {
 	auto &state = *static_cast<ApplicationPlatformAndroid *>(global_state.app->userData);
 	int events;
+	int ident;
 	android_poll_source *source;
 	state.wsi = nullptr;
-	while (ALooper_pollAll(1, nullptr, &events, reinterpret_cast<void **>(&source)) >= 0)
+	while ((ident = ALooper_pollAll(1, nullptr, &events, reinterpret_cast<void **>(&source))) >= 0)
 	{
 		if (source)
 			source->process(global_state.app, source);
+
+		if (ident == LOOPER_ID_USER)
+			handle_sensors();
 
 		if (global_state.app->destroyRequested)
 			return;
@@ -307,6 +363,7 @@ bool ApplicationPlatformAndroid::alive(Vulkan::WSI &wsi)
 {
 	auto &state = *static_cast<ApplicationPlatformAndroid *>(global_state.app->userData);
 	int events;
+	int ident;
 	android_poll_source *source;
 	state.wsi = &wsi;
 
@@ -330,11 +387,14 @@ bool ApplicationPlatformAndroid::alive(Vulkan::WSI &wsi)
 
 	while (!once || !state.active || !state.has_window)
 	{
-		while (ALooper_pollAll((state.has_window && state.active) ? 0 : -1,
-							   nullptr, &events, reinterpret_cast<void **>(&source)) >= 0)
+		while ((ident = ALooper_pollAll((state.has_window && state.active) ? 0 : -1,
+										nullptr, &events, reinterpret_cast<void **>(&source))) >= 0)
 		{
 			if (source)
 				source->process(global_state.app, source);
+
+			if (ident == LOOPER_ID_USER)
+				handle_sensors();
 
 			if (global_state.app->destroyRequested)
 				return false;
@@ -373,6 +433,20 @@ static void init_jni()
 	env->DeleteLocalRef(str);
 	app->activity->vm->DetachCurrentThread();
 }
+
+static void init_sensors()
+{
+	auto *manager = ASensorManager_getInstance();
+	if (!manager)
+		return;
+	jni.sensor = ASensorManager_getDefaultSensor(manager, SENSOR_GAME_ROTATION_VECTOR);
+	if (!jni.sensor)
+		return;
+
+	jni.sensor_queue = ASensorManager_createEventQueue(manager, ALooper_forThread(), LOOPER_ID_USER, nullptr, nullptr);
+	if (!jni.sensor_queue)
+		return;
+}
 }
 
 using namespace Granite;
@@ -393,13 +467,16 @@ void android_main(android_app *app)
 	app->onInputEvent = engine_handle_input;
 	app->userData = nullptr;
 
+	init_sensors();
+
 	EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
 
 	for (;;)
 	{
 		int events;
+		int ident;
 		android_poll_source *source;
-		while (ALooper_pollAll(-1, nullptr, &events, reinterpret_cast<void **>(&source)) >= 0)
+		while ((ident = ALooper_pollAll(-1, nullptr, &events, reinterpret_cast<void **>(&source))) >= 0)
 		{
 			if (source)
 				source->process(app, source);
@@ -409,6 +486,9 @@ void android_main(android_app *app)
 				EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
 				return;
 			}
+
+			if (ident == LOOPER_ID_USER)
+				handle_sensors();
 
 			if (Granite::global_state.has_window)
 			{

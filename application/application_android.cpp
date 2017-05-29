@@ -146,7 +146,7 @@ static void handle_sensors()
 			auto &event = events[i];
 			if (event.type == SENSOR_GAME_ROTATION_VECTOR)
 			{
-				quat q(-event.data[3], event.data[0], event.data[1], event.data[2]);
+				quat q(event.data[3], -event.data[0], -event.data[1], -event.data[2]);
 				if (global_state.orientation == 1)
 				{
 					// Compensate for different display rotation.

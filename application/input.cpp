@@ -6,6 +6,11 @@ using namespace Util;
 
 namespace Granite
 {
+void InputTracker::orientation_event(quat rot)
+{
+	EventManager::get_global().dispatch_inline(OrientationEvent{rot});
+}
+
 void InputTracker::key_event(Key key, KeyState state)
 {
 	if (state == KeyState::Released)

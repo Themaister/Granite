@@ -1,5 +1,9 @@
 package net.themaister.granite;
 
+import android.view.Display;
+import android.view.SurfaceHolder;
+import android.view.View;
+
 public class GraniteActivity extends android.app.NativeActivity
 {
     private final static String TAG = "Granite";
@@ -11,5 +15,14 @@ public class GraniteActivity extends android.app.NativeActivity
                 finish();
             }
         });
+    }
+
+    public int getDisplayRotation()
+    {
+        Display display = getWindowManager().getDefaultDisplay();
+        if (display == null)
+            return 0;
+
+        return display.getRotation();
     }
 }

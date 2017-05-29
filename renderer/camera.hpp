@@ -63,6 +63,7 @@ public:
 private:
 	bool on_mouse_move(const Event &e);
 	bool on_input_state(const Event &e);
+	bool on_orientation(const Event &e);
 	void on_swapchain(const Event &e);
 };
 }

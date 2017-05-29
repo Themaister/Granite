@@ -70,6 +70,7 @@ vec3 Camera::get_up() const
 FPSCamera::FPSCamera()
 {
 	EventManager::get_global().register_handler(MouseMoveEvent::type_id, &FPSCamera::on_mouse_move, this);
+	EventManager::get_global().register_handler(OrientationEvent::type_id, &FPSCamera::on_orientation, this);
 	EventManager::get_global().register_handler(InputStateEvent::type_id, &FPSCamera::on_input_state, this);
 	EventManager::get_global().register_latch_handler(SwapchainParameterEvent::type_id, &FPSCamera::on_swapchain, &FPSCamera::on_swapchain, this);
 }
@@ -107,6 +108,13 @@ bool FPSCamera::on_mouse_move(const Event &e)
 	quat yaw = angleAxis(dx * 0.02f, vec3(0.0f, 1.0f, 0.0f));
 	rotation = normalize(pitch * rotation * yaw);
 
+	return true;
+}
+
+bool FPSCamera::on_orientation(const Event &e)
+{
+	auto &o = e.as<OrientationEvent>();
+	rotation = o.get_rotation();
 	return true;
 }
 }

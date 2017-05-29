@@ -3,6 +3,7 @@
 #include "enum_cast.hpp"
 #include "event.hpp"
 #include <stdint.h>
+#include "math.hpp"
 
 namespace Granite
 {
@@ -43,6 +44,7 @@ public:
 	void mouse_button_event(MouseButton button, bool pressed);
 	void mouse_move_event(double x, double y);
 	void dispatch_current_state(double delta_time);
+	void orientation_event(quat rot);
 
 	void mouse_enter(double x, double y);
 	void mouse_leave();
@@ -89,6 +91,24 @@ public:
 private:
 	Key key;
 	KeyState state;
+};
+
+class OrientationEvent : public Granite::Event
+{
+public:
+	static constexpr Granite::EventType type_id = GRANITE_EVENT_TYPE_HASH(OrientationEvent);
+	OrientationEvent(quat rot)
+		: Granite::Event(type_id), rot(rot)
+	{
+	}
+
+	const quat &get_rotation() const
+	{
+		return rot;
+	}
+
+private:
+	quat rot;
 };
 
 class MouseButtonEvent : public Granite::Event

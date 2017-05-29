@@ -16,6 +16,7 @@ struct GlobalState
 	android_app *app;
 	int32_t base_width;
 	int32_t base_height;
+	int orientation;
 	bool has_window;
 	bool active;
 };
@@ -24,11 +25,12 @@ struct JNI
 {
 	jclass granite;
 	jmethodID finishFromThread;
+	jmethodID getDisplayRotation;
 	jclass classLoaderClass;
 	jobject classLoader;
 
 	ASensorEventQueue *sensor_queue;
-	const ASensor *sensor;
+	const ASensor *rotation_sensor;
 };
 static GlobalState global_state;
 static JNI jni;
@@ -109,24 +111,26 @@ static VkSurfaceKHR create_surface_from_native_window(VkInstance instance, ANati
 
 static void enable_sensors()
 {
-	if (!jni.sensor || !jni.sensor_queue)
+	if (!jni.rotation_sensor || !jni.sensor_queue)
 		return;
 
-	int min_delay = ASensor_getMinDelay(jni.sensor);
-	ASensorEventQueue_setEventRate(jni.sensor_queue, jni.sensor, std::max(8000, min_delay));
-	ASensorEventQueue_enableSensor(jni.sensor_queue, jni.sensor);
+	int min_delay = ASensor_getMinDelay(jni.rotation_sensor);
+	ASensorEventQueue_setEventRate(jni.sensor_queue, jni.rotation_sensor, std::max(8000, min_delay));
+	ASensorEventQueue_enableSensor(jni.sensor_queue, jni.rotation_sensor);
 }
 
 static void disable_sensors()
 {
-	if (!jni.sensor || !jni.sensor_queue)
+	if (!jni.rotation_sensor || !jni.sensor_queue)
 		return;
 
-	ASensorEventQueue_disableSensor(jni.sensor_queue, jni.sensor);
+	ASensorEventQueue_disableSensor(jni.sensor_queue, jni.rotation_sensor);
 }
 
 static void handle_sensors()
 {
+	auto &state = *static_cast<ApplicationPlatformAndroid *>(global_state.app->userData);
+
 	ASensorEvent events[64];
 	for (;;)
 	{
@@ -139,11 +143,24 @@ static void handle_sensors()
 			auto &event = events[i];
 			if (event.type == SENSOR_GAME_ROTATION_VECTOR)
 			{
-				LOGI("Rotation: %6.4f, %6.4f, %6.4f, %6.4f)\n",
-					 event.data[0],
-					 event.data[1],
-					 event.data[2],
-					 event.data[3]);
+				quat q(-event.data[3], event.data[0], event.data[1], event.data[2]);
+				if (global_state.orientation == 1)
+				{
+					swap(q.x, q.y);
+					q.x = -q.x;
+				}
+
+				static const quat landscape(glm::one_over_root_two<float>(), glm::one_over_root_two<float>(), 0.0f, 0.0f);
+				q = normalize(q * landscape);
+
+				LOGI("Rotation: (%6.4f, %6.4f, %6.4f, %6.4f)\n",
+					 q.x, q.y, q.z, q.w);
+
+				state.get_input_tracker().orientation_event(q);
+			}
+			else if (event.type == ASENSOR_TYPE_GYROSCOPE)
+			{
+				LOGI("Gyro!\n");
 			}
 		}
 	}
@@ -250,13 +267,21 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 	}
 
 	case APP_CMD_INIT_WINDOW:
+	{
 		global_state.has_window = app->window != nullptr;
 		if (app->window)
 		{
 			global_state.base_width = ANativeWindow_getWidth(app->window);
 			global_state.base_height = ANativeWindow_getHeight(app->window);
 		}
+
+		JNIEnv *env = nullptr;
+		app->activity->vm->AttachCurrentThread(&env, nullptr);
+		global_state.orientation = env->CallIntMethod(app->activity->clazz, jni.getDisplayRotation);
+		app->activity->vm->DetachCurrentThread();
+
 		break;
+	}
 	}
 }
 
@@ -429,6 +454,7 @@ static void init_jni()
 	jstring str = env->NewStringUTF("net.themaister.granite.GraniteActivity");
 	jni.granite = static_cast<jclass>(env->CallObjectMethod(jni.classLoader, loadClass, str));
 	jni.finishFromThread = env->GetMethodID(jni.granite, "finishFromThread", "()V");
+	jni.getDisplayRotation = env->GetMethodID(jni.granite, "getDisplayRotation", "()I");
 
 	env->DeleteLocalRef(str);
 	app->activity->vm->DetachCurrentThread();
@@ -439,9 +465,12 @@ static void init_sensors()
 	auto *manager = ASensorManager_getInstance();
 	if (!manager)
 		return;
-	jni.sensor = ASensorManager_getDefaultSensor(manager, SENSOR_GAME_ROTATION_VECTOR);
-	if (!jni.sensor)
+
+	jni.rotation_sensor = ASensorManager_getDefaultSensor(manager, SENSOR_GAME_ROTATION_VECTOR);
+	if (!jni.rotation_sensor)
 		return;
+
+	LOGI("Game Sensor name: %s\n", ASensor_getName(jni.rotation_sensor));
 
 	jni.sensor_queue = ASensorManager_createEventQueue(manager, ALooper_forThread(), LOOPER_ID_USER, nullptr, nullptr);
 	if (!jni.sensor_queue)

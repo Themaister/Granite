@@ -7,9 +7,36 @@
 #include "renderer.hpp"
 #include "input.hpp"
 #include "timer.hpp"
+#include "event.hpp"
 
 namespace Granite
 {
+enum class ApplicationLifecycle
+{
+	Running,
+	Paused,
+	Stopped,
+	Dead
+};
+
+class ApplicationLifecycleEvent : public Event
+{
+public:
+	static constexpr EventType type_id = GRANITE_EVENT_TYPE_HASH(ApplicationLifecycleEvent);
+	ApplicationLifecycleEvent(ApplicationLifecycle lifecycle)
+		: lifecycle(lifecycle)
+	{
+	}
+
+	ApplicationLifecycle get_lifecycle() const
+	{
+		return lifecycle;
+	}
+
+private:
+	ApplicationLifecycle lifecycle;
+};
+
 class ApplicationPlatform
 {
 public:
@@ -52,8 +79,14 @@ public:
 		return tracker;
 	}
 
+	void kill()
+	{
+		killed = true;
+	}
+
 protected:
 	bool resize = false;
+	bool killed = false;
 
 private:
 	Util::FrameTimer timer;
@@ -77,6 +110,8 @@ public:
 		return *platform;
 	}
 
+	int run();
+
 private:
 	std::unique_ptr<ApplicationPlatform> platform;
 	Vulkan::WSI wsi;
@@ -98,6 +133,5 @@ private:
 };
 
 extern int application_main(int argc, char *argv[]);
-int mainloop_run(Application &app);
 std::unique_ptr<ApplicationPlatform> create_default_application_platform(unsigned width, unsigned height);
 }

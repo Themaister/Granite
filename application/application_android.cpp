@@ -170,12 +170,34 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 	switch (cmd)
 	{
 	case APP_CMD_RESUME:
+	{
+		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
 		global_state.active = true;
 		break;
+	}
 
 	case APP_CMD_PAUSE:
+	{
+		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
 		global_state.active = false;
 		break;
+	}
+
+	case APP_CMD_START:
+	{
+		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
+		break;
+	}
+
+	case APP_CMD_STOP:
+	{
+		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
+		break;
+	}
 
 	case APP_CMD_INIT_WINDOW:
 		global_state.has_window = app->window != nullptr;
@@ -196,6 +218,9 @@ static void engine_handle_cmd(android_app *app, int32_t cmd)
 	{
 	case APP_CMD_RESUME:
 	{
+		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
+
 		state.active = true;
 		if (state.wsi_idle)
 		{
@@ -207,9 +232,26 @@ static void engine_handle_cmd(android_app *app, int32_t cmd)
 
 	case APP_CMD_PAUSE:
 	{
+		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
+
 		state.active = false;
 		state.get_frame_timer().enter_idle();
 		state.wsi_idle = true;
+		break;
+	}
+
+	case APP_CMD_START:
+	{
+		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
+		break;
+	}
+
+	case APP_CMD_STOP:
+	{
+		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
 		break;
 	}
 
@@ -268,7 +310,7 @@ bool ApplicationPlatformAndroid::alive(Vulkan::WSI &wsi)
 	android_poll_source *source;
 	state.wsi = &wsi;
 
-	if (global_state.app->destroyRequested)
+	if (state.killed || global_state.app->destroyRequested)
 		return false;
 
 	bool once = false;
@@ -333,21 +375,25 @@ static void init_jni()
 }
 }
 
+using namespace Granite;
+
 void android_main(android_app *app)
 {
 	app_dummy();
 	// Statics on Android might not be cleared out.
-	Granite::global_state = {};
-	Granite::jni = {};
+	global_state = {};
+	jni = {};
 
-	Granite::global_state.app = app;
-	Granite::init_jni();
+	global_state.app = app;
+	init_jni();
 
 	LOGI("Starting Granite!\n");
 
-	app->onAppCmd = Granite::engine_handle_cmd_init;
-	app->onInputEvent = Granite::engine_handle_input;
+	app->onAppCmd = engine_handle_cmd_init;
+	app->onInputEvent = engine_handle_input;
 	app->userData = nullptr;
+
+	EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
 
 	for (;;)
 	{
@@ -359,7 +405,10 @@ void android_main(android_app *app)
 				source->process(app, source);
 
 			if (app->destroyRequested)
+			{
+				EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
 				return;
+			}
 
 			if (Granite::global_state.has_window)
 			{
@@ -369,6 +418,7 @@ void android_main(android_app *app)
 				{
 					int ret = Granite::application_main(0, nullptr);
 					LOGI("Application returned %d.\n", ret);
+					EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
 					return;
 				}
 				catch (const std::exception &e)

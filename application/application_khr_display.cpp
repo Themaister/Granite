@@ -56,6 +56,21 @@ public:
 	{
 		if (!Context::init_loader(nullptr))
 			throw runtime_error("Failed to initialize Vulkan loader.");
+
+		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+		EventManager::get_global().enqueue_latched_event<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
+		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+		EventManager::get_global().enqueue_latched_event<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
+		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+		EventManager::get_global().enqueue_latched_event<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
+	}
+
+	~ApplicationDisplay()
+	{
+		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+		EventManager::get_global().enqueue_latched_event<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
+		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+		EventManager::get_global().enqueue_latched_event<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
 	}
 
 	bool alive(Vulkan::WSI &) override

@@ -35,12 +35,19 @@ public:
 		glfwSetMouseButtonCallback(window, button_cb);
 		glfwSetCursorPosCallback(window, cursor_cb);
 		glfwSetCursorEnterCallback(window, enter_cb);
+
+		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
+		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
+		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
 	}
 
 	bool alive(Vulkan::WSI &) override
 	{
 		glfwPollEvents();
-		return !glfwWindowShouldClose(window);
+		return !killed && !glfwWindowShouldClose(window);
 	}
 
 	void poll_input() override
@@ -81,6 +88,11 @@ public:
 
 	~ApplicationPlatformGLFW()
 	{
+		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
+		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
+
 		if (window)
 			glfwDestroyWindow(window);
 	}

@@ -49,15 +49,15 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 	device.submit(cmd);
 }
 
-int mainloop_run(Application &app)
+int Application::run()
 {
-	auto &wsi = app.get_wsi();
-	while (app.get_platform().alive(wsi))
+	auto &wsi = get_wsi();
+	while (get_platform().alive(wsi))
 	{
 		Filesystem::get().poll_notifications();
 		wsi.begin_frame();
-		app.render_frame(wsi.get_platform().get_frame_timer().get_frame_time(),
-		                 wsi.get_platform().get_frame_timer().get_elapsed());
+		render_frame(wsi.get_platform().get_frame_timer().get_frame_time(),
+					 wsi.get_platform().get_frame_timer().get_elapsed());
 		wsi.end_frame();
 	}
 	return 0;

@@ -160,7 +160,7 @@ static void handle_sensors()
 				}
 
 				static const quat landscape(glm::one_over_root_two<float>(), glm::one_over_root_two<float>(), 0.0f, 0.0f);
-				q = inverse(normalize(q * landscape));
+				q = conjugate(normalize(q * landscape));
 				state.get_input_tracker().orientation_event(q);
 			}
 		}

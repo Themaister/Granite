@@ -131,7 +131,7 @@ bool FPSCamera::on_mouse_move(const Event &e)
 bool FPSCamera::on_orientation(const Event &e)
 {
 	auto &o = e.as<OrientationEvent>();
-	rotation = inverse(o.get_rotation());
+	rotation = conjugate(o.get_rotation());
 	return true;
 }
 }

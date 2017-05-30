@@ -17,6 +17,8 @@ enum class RenderableType
 
 struct SpriteTransformInfo
 {
+	SpriteTransformInfo() = default;
+
 	SpriteTransformInfo(const vec3 &pos)
 		: position(pos)
 	{

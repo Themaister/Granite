@@ -1,6 +1,7 @@
 #include "renderer.hpp"
 #include "device.hpp"
 #include "render_context.hpp"
+#include "sprite.hpp"
 
 using namespace Vulkan;
 using namespace Util;
@@ -47,7 +48,7 @@ void Renderer::render_sprites(Vulkan::CommandBuffer &cmd, const vec2 &camera_pos
 	queue.reset();
 	queue.set_shader_suites(suite);
 	for (auto &vis : visible)
-		vis.sprite->get_quad_render_info(vis.position, queue);
+		vis.sprite->get_quad_render_info(vis.transform, queue);
 	queue.sort();
 
 	cmd.set_quad_state();

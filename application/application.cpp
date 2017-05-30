@@ -38,27 +38,36 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 	auto sprite = Util::make_abstract_handle<AbstractRenderable, Sprite>();
 	auto *s = static_cast<Sprite *>(sprite.get());
 	s->size = ivec2(16, 16);
-	s->color = vec4(1.0f, 0.0f, 0.0f, 1.0f);
+	s->color[0] = 255;
+	s->color[1] = 0;
+	s->color[2] = 0;
+	s->color[3] = 255;
 	s->pipeline = MeshDrawPipeline::Opaque;
 
 	auto sprite2 = Util::make_abstract_handle<AbstractRenderable, Sprite>();
 	auto *s2 = static_cast<Sprite *>(sprite2.get());
 	s2->size = ivec2(16, 16);
-	s2->color = vec4(0.0f, 1.0f, 0.0f, 1.0f);
+	s2->color[0] = 0;
+	s2->color[1] = 255;
+	s2->color[2] = 0;
+	s2->color[3] = 255;
 	s2->pipeline = MeshDrawPipeline::AlphaBlend;
 
 	auto sprite3 = Util::make_abstract_handle<AbstractRenderable, Sprite>();
 	auto *s3 = static_cast<Sprite *>(sprite3.get());
 	s3->size = ivec2(16, 16);
-	s3->color = vec4(0.0f, 0.0f, 1.0f, 1.0f);
+	s3->color[0] = 0;
+	s3->color[1] = 0;
+	s3->color[2] = 255;
+	s3->color[3] = 255;
 	s3->pipeline = MeshDrawPipeline::AlphaBlend;
 
-	sprites.push_back({ sprite, vec3(16.0f, 16.0f, 0.1f) });
-	sprites.push_back({ sprite, vec3(64.0f, 16.0f, 0.1f) });
-	sprites.push_back({ sprite, vec3(64.0f, 64.0f, 0.1f) });
-	sprites.push_back({ sprite, vec3(0.0f, 64.0f, 0.1f) });
-	sprites.push_back({ sprite2, vec3(100.0f, 16.0f, 0.2f) });
-	sprites.push_back({ sprite3, vec3(100.0f, 16.0f, 0.19f) });
+	sprites.push_back({ s, vec3(16.0f, 16.0f, 0.1f) });
+	sprites.push_back({ s, vec3(64.0f, 16.0f, 0.1f) });
+	sprites.push_back({ s, vec3(64.0f, 64.0f, 0.1f) });
+	sprites.push_back({ s, vec3(0.0f, 64.0f, 0.1f) });
+	sprites.push_back({ s2, vec3(100.0f, 16.0f, 0.2f) });
+	sprites.push_back({ s3, vec3(100.0f, 16.0f, 0.19f) });
 
 	animation_system->animate(elapsed_time);
 	context.set_camera(cam);

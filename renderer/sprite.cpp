@@ -21,19 +21,19 @@ void sprite_render(Vulkan::CommandBuffer &cmd, const RenderInfo **infos, unsigne
 			1.0f / info.texture->get_image().get_create_info().height,
 		};
 		cmd.push_constants(inv_res, 0, sizeof(inv_res));
-		cmd.set_texture(2, 0, *info.texture, Vulkan::StockSampler::NearestWrap);
+		cmd.set_texture(2, 0, *info.texture, Vulkan::StockSampler::LinearWrap);
 	}
 
 	cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
 	auto *quad = static_cast<int8_t *>(cmd.allocate_vertex_data(0, 8, 2));
-	quad[0] = 0;
-	quad[1] = 1;
-	quad[2] = 1;
-	quad[3] = 1;
-	quad[4] = 0;
-	quad[5] = 0;
-	quad[6] = 1;
-	quad[7] = 0;
+	quad[0] = -128;
+	quad[1] = 127;
+	quad[2] = 127;
+	quad[3] = 127;
+	quad[4] = -128;
+	quad[5] = -128;
+	quad[6] = 127;
+	quad[7] = -128;
 
 	unsigned quads = 0;
 	for (unsigned i = 0; i < num_instances; i++)
@@ -50,15 +50,16 @@ void sprite_render(Vulkan::CommandBuffer &cmd, const RenderInfo **infos, unsigne
 		memcpy(data + quads, info.quads, info.quad_count * sizeof(*data));
 		quads += info.quad_count;
 	}
-	cmd.set_vertex_attrib(0, 0, VK_FORMAT_R8G8_SINT, 0);
-	cmd.set_vertex_attrib(1, 1, VK_FORMAT_R16G16B16A16_SINT, offsetof(SpriteRenderInfo::QuadData, pos_off_x));
-	cmd.set_vertex_attrib(2, 1, VK_FORMAT_R16G16B16A16_SINT, offsetof(SpriteRenderInfo::QuadData, tex_off_x));
-	cmd.set_vertex_attrib(3, 1, VK_FORMAT_R8G8B8A8_UNORM, offsetof(SpriteRenderInfo::QuadData, color));
-	cmd.set_vertex_attrib(4, 1, VK_FORMAT_R32_SFLOAT, offsetof(SpriteRenderInfo::QuadData, layer));
+	cmd.set_vertex_attrib(0, 0, VK_FORMAT_R8G8_SNORM, 0);
+	cmd.set_vertex_attrib(1, 1, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(SpriteRenderInfo::QuadData, pos_off_x));
+	cmd.set_vertex_attrib(2, 1, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(SpriteRenderInfo::QuadData, tex_off_x));
+	cmd.set_vertex_attrib(3, 1, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(SpriteRenderInfo::QuadData, rotation));
+	cmd.set_vertex_attrib(4, 1, VK_FORMAT_R8G8B8A8_UNORM, offsetof(SpriteRenderInfo::QuadData, color));
+	cmd.set_vertex_attrib(5, 1, VK_FORMAT_R32_SFLOAT, offsetof(SpriteRenderInfo::QuadData, layer));
 	cmd.draw(4, quads);
 }
 }
-void Sprite::get_quad_render_info(const vec3 &position, RenderQueue &queue) const
+void Sprite::get_quad_render_info(const SpriteTransformInfo &transform, RenderQueue &queue) const
 {
 	auto queue_type = pipeline == MeshDrawPipeline::AlphaBlend ? Queue::Transparent : Queue::Opaque;
 	auto &sprite = queue.emplace<SpriteRenderInfo>(queue_type);
@@ -77,17 +78,21 @@ void Sprite::get_quad_render_info(const vec3 &position, RenderQueue &queue) cons
 	sprite.quad_count = 1;
 
 	for (unsigned i = 0; i < 4; i++)
-		sprite.quads->color[i] = uint8_t(clamp(color[i] * 255.0f + 0.5f, 0.0f, 255.0f));
+		sprite.quads->color[i] = color[i];
 
-	sprite.quads->layer = position.z;
-	sprite.quads->pos_off_x = int16_t(position.x);
-	sprite.quads->pos_off_y = int16_t(position.y);
-	sprite.quads->pos_scale_x = size.x;
-	sprite.quads->pos_scale_y = size.y;
+	sprite.quads->pos_off_x = transform.position.x;
+	sprite.quads->pos_off_y = transform.position.y;
+	sprite.quads->pos_scale_x = size.x * transform.scale.x;
+	sprite.quads->pos_scale_y = size.y * transform.scale.y;
 	sprite.quads->tex_off_x = tex_offset.x;
 	sprite.quads->tex_off_y = tex_offset.y;
 	sprite.quads->tex_scale_x = size.x;
 	sprite.quads->tex_scale_y = size.y;
+	sprite.quads->rotation[0] = transform.rotation[0].x;
+	sprite.quads->rotation[1] = transform.rotation[0].y;
+	sprite.quads->rotation[2] = transform.rotation[1].x;
+	sprite.quads->rotation[3] = transform.rotation[1].y;
+	sprite.quads->layer = transform.position.z;
 
 	sprite.render = RenderFunctions::sprite_render;
 
@@ -95,6 +100,6 @@ void Sprite::get_quad_render_info(const vec3 &position, RenderQueue &queue) cons
 	hasher.pointer(texture);
 	hasher.u32(ecast(pipeline));
 	sprite.instance_key = hasher.get();
-	sprite.sorting_key = sprite.get_sprite_sort_key(queue_type, hasher.get(), position.z);
+	sprite.sorting_key = sprite.get_sprite_sort_key(queue_type, hasher.get(), transform.position.z);
 }
 }

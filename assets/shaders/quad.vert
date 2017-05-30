@@ -1,9 +1,10 @@
 #version 310 es
-layout(location = 0) in mediump ivec2 QuadCoord;
-layout(location = 1) in ivec4 PosOffsetScale;
-layout(location = 2) in ivec4 TexOffsetScale;
-layout(location = 3) in mediump vec4 Color;
-layout(location = 4) in mediump float Layer;
+layout(location = 0) in mediump vec2 QuadCoord;
+layout(location = 1) in vec4 PosOffsetScale;
+layout(location = 2) in vec4 TexOffsetScale;
+layout(location = 3) in mediump vec4 Rotation;
+layout(location = 4) in mediump vec4 Color;
+layout(location = 5) in mediump float Layer;
 
 layout(std140, set = 0, binding = 0) uniform Scene
 {
@@ -22,12 +23,13 @@ layout(push_constant, std430) uniform Globals
 
 void main()
 {
-    ivec2 pos_pixels = QuadCoord * PosOffsetScale.zw + PosOffsetScale.xy;
-    vec2 pos_ndc = (vec2(pos_pixels) + pos_offset_pixels) * inv_resolution;
+    vec2 QuadPos = (mat2(Rotation.xy, Rotation.zw) * QuadCoord) * 0.5 + 0.5;
+    vec2 pos_pixels = QuadPos * PosOffsetScale.zw + PosOffsetScale.xy;
+    vec2 pos_ndc = (pos_pixels + pos_offset_pixels) * inv_resolution;
     gl_Position = vec4(2.0 * pos_ndc - 1.0, Layer, 1.0);
 
 #if defined(HAVE_UV) && HAVE_UV
-    vTex = vec2(QuadCoord * TexOffsetScale.zw + TexOffsetScale.xy) * constants.inv_tex_resolution;
+    vTex = (QuadCoord * TexOffsetScale.zw + TexOffsetScale.xy) * constants.inv_tex_resolution;
 #endif
     vColor = Color;
 }

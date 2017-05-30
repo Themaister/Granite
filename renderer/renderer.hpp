@@ -6,6 +6,7 @@
 
 namespace Granite
 {
+class Sprite;
 enum class RenderableType
 {
 	Mesh,
@@ -14,10 +15,29 @@ enum class RenderableType
 	Count
 };
 
+struct SpriteTransformInfo
+{
+	SpriteTransformInfo(const vec3 &pos)
+		: position(pos)
+	{
+	}
+
+	SpriteTransformInfo(const vec3 &pos, const vec2 &scale, const mat2 &rot)
+		: position(pos),
+	      scale(scale),
+	      rotation(rot)
+	{
+	}
+
+	vec3 position = vec3(0.0f);
+	vec2 scale = vec2(1.0f);
+	mat2 rotation = mat2(1.0f);
+};
+
 struct SpriteInfo
 {
-	AbstractRenderableHandle sprite;
-	vec3 position;
+	Sprite *sprite;
+	SpriteTransformInfo transform;
 };
 using SpriteList = std::vector<SpriteInfo>;
 

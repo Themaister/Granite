@@ -13,8 +13,9 @@ struct SpriteRenderInfo : RenderInfo
 
 	struct QuadData
 	{
-		int16_t pos_off_x, pos_off_y, pos_scale_x, pos_scale_y;
-		int16_t tex_off_x, tex_off_y, tex_scale_x, tex_scale_y;
+		float pos_off_x, pos_off_y, pos_scale_x, pos_scale_y;
+		float tex_off_x, tex_off_y, tex_scale_x, tex_scale_y;
+		float rotation[4];
 		uint8_t color[4];
 		float layer;
 	};
@@ -34,9 +35,9 @@ struct Sprite : AbstractRenderable
 
 	ivec2 tex_offset;
 	ivec2 size;
-	vec4 color;
+	uint8_t color[4];
 
-	void get_quad_render_info(const vec3 &position, RenderQueue &queue) const override;
+	void get_quad_render_info(const SpriteTransformInfo &transform, RenderQueue &queue) const override;
 	void get_render_info(const RenderContext &, const CachedSpatialTransformComponent *, RenderQueue &) const override
 	{
 	}

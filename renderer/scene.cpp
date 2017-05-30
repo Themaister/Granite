@@ -27,17 +27,17 @@ static void gather_visible_renderables(const Frustum &frustum, VisibilityList &l
 		if (transform->transform)
 		{
 			if (frustum.intersects(transform->world_aabb))
-				list.push_back({renderable->renderable, transform });
+				list.push_back({ renderable->renderable.get(), transform });
 		}
 		else
-			list.push_back({renderable->renderable, nullptr});
+			list.push_back({ renderable->renderable.get(), nullptr});
 	}
 }
 
 void Scene::gather_background_renderables(VisibilityList &list)
 {
 	for (auto &background : backgrounds)
-		list.push_back({ get<1>(background)->renderable, nullptr });
+		list.push_back({ get<1>(background)->renderable.get(), nullptr });
 }
 
 void Scene::gather_visible_opaque_renderables(const Frustum &frustum, VisibilityList &list)

@@ -9,6 +9,7 @@ class RenderQueue;
 class RenderContext;
 class ShaderSuite;
 class CachedSpatialTransformComponent;
+struct SpriteTransformInfo;
 
 enum class MeshDrawPipeline : unsigned
 {
@@ -28,7 +29,7 @@ public:
 		return get_render_info(context, transform, queue);
 	}
 
-	virtual void get_quad_render_info(const vec3 &, RenderQueue &) const
+	virtual void get_quad_render_info(const SpriteTransformInfo &, RenderQueue &) const
 	{
 	}
 

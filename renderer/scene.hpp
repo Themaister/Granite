@@ -10,7 +10,7 @@ namespace Granite
 {
 struct RenderableInfo
 {
-	AbstractRenderableHandle renderable;
+	AbstractRenderable *renderable;
 	const CachedSpatialTransformComponent *transform;
 };
 using VisibilityList = std::vector<RenderableInfo>;

@@ -59,7 +59,7 @@ void sprite_render(Vulkan::CommandBuffer &cmd, const RenderInfo **infos, unsigne
 	cmd.draw(4, quads);
 }
 }
-void Sprite::get_quad_render_info(const SpriteTransformInfo &transform, RenderQueue &queue) const
+void Sprite::get_sprite_render_info(const SpriteTransformInfo &transform, RenderQueue &queue) const
 {
 	auto queue_type = pipeline == MeshDrawPipeline::AlphaBlend ? Queue::Transparent : Queue::Opaque;
 	auto &sprite = queue.emplace<SpriteRenderInfo>(queue_type);
@@ -68,7 +68,7 @@ void Sprite::get_quad_render_info(const SpriteTransformInfo &transform, RenderQu
 	static const uint32_t pos_mask = 1u << ecast(MeshAttribute::Position);
 	static const uint32_t base_color_mask = 1u << ecast(Material::Textures::BaseColor);
 
-	sprite.program = queue.get_shader_suites()[ecast(RenderableType::Quad)].get_program(pipeline,
+	sprite.program = queue.get_shader_suites()[ecast(RenderableType::Sprite)].get_program(pipeline,
 	                                                                                    texture ? (uv_mask | pos_mask) : pos_mask,
 	                                                                                    texture ? base_color_mask : 0).get();
 	if (texture)

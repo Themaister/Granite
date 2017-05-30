@@ -37,7 +37,7 @@ struct Sprite : AbstractRenderable
 	ivec2 size;
 	uint8_t color[4];
 
-	void get_quad_render_info(const SpriteTransformInfo &transform, RenderQueue &queue) const override;
+	void get_sprite_render_info(const SpriteTransformInfo &transform, RenderQueue &queue) const override;
 	void get_render_info(const RenderContext &, const CachedSpatialTransformComponent *, RenderQueue &) const override
 	{
 	}

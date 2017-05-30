@@ -267,7 +267,8 @@ public:
 
 	void set_opaque_state();
 	void set_quad_state();
-	void set_transparent_quad_state();
+	void set_opaque_sprite_state();
+	void set_transparent_sprite_state();
 
 	void save_state(CommandBufferSaveStateFlags flags, CommandBufferSavedState &state);
 	void restore_state(const CommandBufferSavedState &state);

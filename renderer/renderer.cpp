@@ -21,9 +21,11 @@ void Renderer::on_device_created(const Event &e)
 {
 	auto &created = e.as<DeviceCreatedEvent>();
 	auto &device = created.get_device();
+
 	suite[ecast(RenderableType::Mesh)].init_graphics(&device.get_shader_manager(), "assets://shaders/static_mesh.vert", "assets://shaders/static_mesh.frag");
 	suite[ecast(RenderableType::Skybox)].init_graphics(&device.get_shader_manager(), "assets://shaders/skybox.vert", "assets://shaders/skybox.frag");
-	suite[ecast(RenderableType::Quad)].init_graphics(&device.get_shader_manager(), "assets://shaders/quad.vert", "assets://shaders/quad.frag");
+	suite[ecast(RenderableType::Sprite)].init_graphics(&device.get_shader_manager(), "assets://shaders/sprite.vert", "assets://shaders/sprite.frag");
+
 	this->device = &device;
 }
 
@@ -48,15 +50,15 @@ void Renderer::render_sprites(Vulkan::CommandBuffer &cmd, const vec2 &camera_pos
 	queue.reset();
 	queue.set_shader_suites(suite);
 	for (auto &vis : visible)
-		vis.sprite->get_quad_render_info(vis.transform, queue);
+		vis.sprite->get_sprite_render_info(vis.transform, queue);
 	queue.sort();
 
-	cmd.set_quad_state();
+	cmd.set_opaque_sprite_state();
 	CommandBufferSavedState state;
 	cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
 	queue.dispatch(Queue::Opaque, cmd, &state);
 
-	cmd.set_transparent_quad_state();
+	cmd.set_transparent_sprite_state();
 	cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
 	queue.dispatch(Queue::Transparent, cmd, &state);
 }

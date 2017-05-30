@@ -29,7 +29,7 @@ public:
 		return get_render_info(context, transform, queue);
 	}
 
-	virtual void get_quad_render_info(const SpriteTransformInfo &, RenderQueue &) const
+	virtual void get_sprite_render_info(const SpriteTransformInfo &, RenderQueue &) const
 	{
 	}
 

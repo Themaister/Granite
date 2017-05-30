@@ -11,7 +11,7 @@ enum class RenderableType
 {
 	Mesh,
 	Skybox,
-	Quad,
+	Sprite,
 	Count
 };
 

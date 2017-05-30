@@ -1159,6 +1159,20 @@ void CommandBuffer::set_quad_state()
 	state.front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	state.cull_mode = VK_CULL_MODE_NONE;
 	state.blend_enable = false;
+	state.depth_test = false;
+	state.depth_write = false;
+	state.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+	state.write_mask = ~0u;
+	set_dirty(COMMAND_BUFFER_DIRTY_STATIC_STATE_BIT);
+}
+
+void CommandBuffer::set_opaque_sprite_state()
+{
+	auto &state = static_state.state;
+	state = {};
+	state.front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+	state.cull_mode = VK_CULL_MODE_NONE;
+	state.blend_enable = false;
 	state.depth_compare = VK_COMPARE_OP_LESS;
 	state.depth_test = true;
 	state.depth_write = true;
@@ -1167,7 +1181,7 @@ void CommandBuffer::set_quad_state()
 	set_dirty(COMMAND_BUFFER_DIRTY_STATIC_STATE_BIT);
 }
 
-void CommandBuffer::set_transparent_quad_state()
+void CommandBuffer::set_transparent_sprite_state()
 {
 	auto &state = static_state.state;
 	state = {};

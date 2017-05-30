@@ -44,6 +44,7 @@ struct RenderInfo
 	~RenderInfo() = default;
 
 	static uint64_t get_sort_key(const RenderContext &context, Queue queue_type, Util::Hash pipeline_hash, const vec3 &center);
+	static uint64_t get_sprite_sort_key(Queue queue_type, Util::Hash pipeline_hash, float layer);
 	static uint64_t get_background_sort_key(Queue queue_type, Util::Hash pipeline_hash);
 };
 

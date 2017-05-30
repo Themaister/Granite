@@ -250,6 +250,7 @@ public:
 	void *update_image(const Image &image, uint32_t row_length = 0, uint32_t image_height = 0);
 
 	void set_viewport(const VkViewport &viewport);
+	const VkViewport &get_viewport() const;
 	void set_scissor(const VkRect2D &rect);
 
 	void set_vertex_attrib(uint32_t attrib, uint32_t binding, VkFormat format, VkDeviceSize offset);
@@ -266,6 +267,7 @@ public:
 
 	void set_opaque_state();
 	void set_quad_state();
+	void set_transparent_quad_state();
 
 	void save_state(CommandBufferSaveStateFlags flags, CommandBufferSavedState &state);
 	void restore_state(const CommandBufferSavedState &state);
@@ -315,10 +317,20 @@ public:
 		SET_STATIC_STATE(dst_alpha_blend);
 	}
 
+	inline void set_blend_factors(VkBlendFactor src_blend, VkBlendFactor dst_blend)
+	{
+		set_blend_factors(src_blend, src_blend, dst_blend, dst_blend);
+	}
+
 	inline void set_blend_op(VkBlendOp color_blend_op, VkBlendOp alpha_blend_op)
 	{
 		SET_STATIC_STATE(color_blend_op);
 		SET_STATIC_STATE(alpha_blend_op);
+	}
+
+	inline void set_blend_op(VkBlendOp blend_op)
+	{
+		set_blend_op(blend_op, blend_op);
 	}
 
 	inline void set_depth_bias(bool depth_bias_enable)

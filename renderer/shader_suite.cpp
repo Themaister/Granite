@@ -48,26 +48,25 @@ Vulkan::ProgramHandle ShaderSuite::get_program(MeshDrawPipeline pipeline, uint32
 			break;
 		}
 
-		defines.emplace_back("HAVE_POSITION", !!(attribute_mask & (1u << static_cast<uint32_t>(MeshAttribute::Position))));
-		defines.emplace_back("HAVE_UV", !!(attribute_mask & (1u << static_cast<uint32_t>(MeshAttribute::UV))));
-		defines.emplace_back("HAVE_NORMAL", !!(attribute_mask & (1u << static_cast<uint32_t>(MeshAttribute::Normal))));
-		defines.emplace_back("HAVE_TANGENT", !!(attribute_mask & (1u << static_cast<uint32_t>(MeshAttribute::Tangent))));
-		defines.emplace_back("HAVE_BONE_INDEX", !!(attribute_mask & (1u << static_cast<uint32_t>(MeshAttribute::BoneIndex))));
-		defines.emplace_back("HAVE_BONE_WEIGHT", !!(attribute_mask & (1u << static_cast<uint32_t>(MeshAttribute::BoneWeights))));
+		defines.emplace_back("HAVE_POSITION", !!(attribute_mask & (1u << ecast(MeshAttribute::Position))));
+		defines.emplace_back("HAVE_UV", !!(attribute_mask & (1u << ecast(MeshAttribute::UV))));
+		defines.emplace_back("HAVE_NORMAL", !!(attribute_mask & (1u << ecast(MeshAttribute::Normal))));
+		defines.emplace_back("HAVE_TANGENT", !!(attribute_mask & (1u << ecast(MeshAttribute::Tangent))));
+		defines.emplace_back("HAVE_BONE_INDEX", !!(attribute_mask & (1u << ecast(MeshAttribute::BoneIndex))));
+		defines.emplace_back("HAVE_BONE_WEIGHT", !!(attribute_mask & (1u << ecast(MeshAttribute::BoneWeights))));
 
 		if (attribute_mask & (1u << static_cast<uint32_t>(MeshAttribute::UV)))
 		{
 			defines.emplace_back("HAVE_BASECOLORMAP",
-			                     !!(texture_mask & (1u << static_cast<uint32_t>(Material::Textures::BaseColor))));
-			if (attribute_mask & (1u << static_cast<uint32_t>(MeshAttribute::Normal)) &&
-			    attribute_mask & (1u << static_cast<uint32_t>(MeshAttribute::Tangent))
+			                     !!(texture_mask & (1u << ecast(Material::Textures::BaseColor))));
+			if (attribute_mask & (1u << ecast(MeshAttribute::Normal)) &&
+			    attribute_mask & (1u << ecast(MeshAttribute::Tangent))
 				)
 			{
 				defines.emplace_back("HAVE_NORMALMAP",
-				                     !!(texture_mask & (1u << static_cast<uint32_t>(Material::Textures::Normal))));
+				                     !!(texture_mask & (1u << ecast(Material::Textures::Normal))));
 			}
-			defines.emplace_back("HAVE_METALLICROUGHNESSMAP", !!(texture_mask & (1u
-				<< static_cast<uint32_t>(Material::Textures::MetallicRoughness))));
+			defines.emplace_back("HAVE_METALLICROUGHNESSMAP", !!(texture_mask & (1u << ecast(Material::Textures::MetallicRoughness))));
 		}
 		variant = program->register_variant(defines);
 		variants[hash] = variant;

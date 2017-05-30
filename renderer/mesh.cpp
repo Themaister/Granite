@@ -158,6 +158,7 @@ void StaticMesh::fill_render_info(StaticMeshInfo &info, const RenderContext &con
 	info.program = queue.get_shader_suites()[ecast(RenderableType::Mesh)].get_program(pipeline, attrs, textures).get();
 	Hasher h;
 	h.pointer(info.program);
+	h.pointer(material.get());
 	h.u32(ecast(pipeline));
 	h.u32(attrs);
 	h.u32(textures);

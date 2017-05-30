@@ -1,5 +1,6 @@
 #include "application.hpp"
 #include <stdexcept>
+#include "sprite.hpp"
 
 using namespace std;
 using namespace Vulkan;
@@ -33,6 +34,32 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 	auto &scene = scene_loader.get_scene();
 	auto &device = wsi.get_device();
 
+	SpriteList sprites;
+	auto sprite = Util::make_abstract_handle<AbstractRenderable, Sprite>();
+	auto *s = static_cast<Sprite *>(sprite.get());
+	s->size = ivec2(16, 16);
+	s->color = vec4(1.0f, 0.0f, 0.0f, 1.0f);
+	s->pipeline = MeshDrawPipeline::Opaque;
+
+	auto sprite2 = Util::make_abstract_handle<AbstractRenderable, Sprite>();
+	auto *s2 = static_cast<Sprite *>(sprite2.get());
+	s2->size = ivec2(16, 16);
+	s2->color = vec4(0.0f, 1.0f, 0.0f, 1.0f);
+	s2->pipeline = MeshDrawPipeline::AlphaBlend;
+
+	auto sprite3 = Util::make_abstract_handle<AbstractRenderable, Sprite>();
+	auto *s3 = static_cast<Sprite *>(sprite3.get());
+	s3->size = ivec2(16, 16);
+	s3->color = vec4(0.0f, 0.0f, 1.0f, 1.0f);
+	s3->pipeline = MeshDrawPipeline::AlphaBlend;
+
+	sprites.push_back({ sprite, vec3(16.0f, 16.0f, 0.1f) });
+	sprites.push_back({ sprite, vec3(64.0f, 16.0f, 0.1f) });
+	sprites.push_back({ sprite, vec3(64.0f, 64.0f, 0.1f) });
+	sprites.push_back({ sprite, vec3(0.0f, 64.0f, 0.1f) });
+	sprites.push_back({ sprite2, vec3(100.0f, 16.0f, 0.2f) });
+	sprites.push_back({ sprite3, vec3(100.0f, 16.0f, 0.19f) });
+
 	animation_system->animate(elapsed_time);
 	context.set_camera(cam);
 	visible.clear();
@@ -45,6 +72,10 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 	auto rp = device.get_swapchain_render_pass(SwapchainRenderPass::DepthStencil);
 	cmd->begin_render_pass(rp);
 	renderer.render(*cmd, context, visible);
+	renderer.render_sprites(*cmd,
+	                        vec2(0.0f),
+	                        vec2(cmd->get_viewport().width, cmd->get_viewport().height),
+	                        sprites);
 	cmd->end_render_pass();
 	device.submit(cmd);
 }

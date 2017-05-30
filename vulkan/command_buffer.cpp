@@ -635,6 +635,11 @@ void CommandBuffer::set_viewport(const VkViewport &viewport)
 	set_dirty(COMMAND_BUFFER_DIRTY_VIEWPORT_BIT);
 }
 
+const VkViewport &CommandBuffer::get_viewport() const
+{
+	return this->viewport;
+}
+
 void CommandBuffer::set_scissor(const VkRect2D &rect)
 {
 	VK_ASSERT(framebuffer);
@@ -1154,10 +1159,30 @@ void CommandBuffer::set_quad_state()
 	state.front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	state.cull_mode = VK_CULL_MODE_NONE;
 	state.blend_enable = false;
-	state.depth_test = false;
+	state.depth_compare = VK_COMPARE_OP_LESS;
+	state.depth_test = true;
+	state.depth_write = true;
+	state.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+	state.write_mask = ~0u;
+	set_dirty(COMMAND_BUFFER_DIRTY_STATIC_STATE_BIT);
+}
+
+void CommandBuffer::set_transparent_quad_state()
+{
+	auto &state = static_state.state;
+	state = {};
+	state.front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+	state.cull_mode = VK_CULL_MODE_NONE;
+	state.blend_enable = true;
+	state.depth_test = true;
+	state.depth_compare = VK_COMPARE_OP_LESS;
 	state.depth_write = false;
 	state.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
 	state.write_mask = ~0u;
+
+	set_blend_factors(VK_BLEND_FACTOR_SRC_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA);
+	set_blend_op(VK_BLEND_OP_ADD);
+
 	set_dirty(COMMAND_BUFFER_DIRTY_STATIC_STATE_BIT);
 }
 

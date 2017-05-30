@@ -144,17 +144,16 @@ uint64_t RenderInfo::get_background_sort_key(Queue queue_type, Util::Hash pipeli
 		return (UINT64_MAX << 32) | (pipeline_hash & 0xffffffffu);
 }
 
-uint64_t RenderInfo::get_sort_key(const RenderContext &context, Queue queue_type, Util::Hash pipeline_hash,
-                                  const vec3 &center)
+uint64_t RenderInfo::get_sprite_sort_key(Queue queue_type, Util::Hash pipeline_hash, float z)
 {
-	float z = dot(context.get_render_parameters().camera_front, center - context.get_render_parameters().camera_position);
 	// Monotonically increasing floating point will be monotonic in uint32_t as well when z is non-negative.
 	z = glm::max(z, 0.0f);
+
 	uint32_t depth_key = floatBitsToUint(z);
 
 	if (queue_type == Queue::Transparent)
 	{
-		depth_key ^= 0xffff; // Back-to-front instead.
+		depth_key ^= 0xffffffffu; // Back-to-front instead.
 		// Prioritize correct back-to-front rendering over pipeline.
 		return (Hash(depth_key) << 32) | (pipeline_hash & 0xffffffffu);
 	}
@@ -163,5 +162,12 @@ uint64_t RenderInfo::get_sort_key(const RenderContext &context, Queue queue_type
 		// Prioritize state changes over depth.
 		return (pipeline_hash << 32) | depth_key;
 	}
+}
+
+uint64_t RenderInfo::get_sort_key(const RenderContext &context, Queue queue_type, Util::Hash pipeline_hash,
+                                  const vec3 &center)
+{
+	float z = dot(context.get_render_parameters().camera_front, center - context.get_render_parameters().camera_position);
+	return get_sprite_sort_key(queue_type, pipeline_hash, z);
 }
 }

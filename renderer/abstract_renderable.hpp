@@ -28,6 +28,10 @@ public:
 		return get_render_info(context, transform, queue);
 	}
 
+	virtual void get_quad_render_info(const vec3 &, RenderQueue &) const
+	{
+	}
+
 	virtual bool has_static_aabb() const
 	{
 		return false;

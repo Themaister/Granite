@@ -4,6 +4,7 @@
 #include <memory>
 #include <unordered_map>
 #include "event.hpp"
+#include <functional>
 
 namespace Granite
 {

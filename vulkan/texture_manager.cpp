@@ -124,6 +124,11 @@ void Texture::update_gli(const void *data, size_t size)
 	{
 	case gli::target::TARGET_1D_ARRAY:
 		info.misc |= IMAGE_MISC_FORCE_ARRAY_BIT;
+		info.type = VK_IMAGE_TYPE_1D;
+		info.height = 1;
+		info.depth = 1;
+		break;
+
 	case gli::target::TARGET_1D:
 		info.type = VK_IMAGE_TYPE_1D;
 		info.height = 1;
@@ -132,6 +137,10 @@ void Texture::update_gli(const void *data, size_t size)
 
 	case gli::target::TARGET_2D_ARRAY:
 		info.misc |= IMAGE_MISC_FORCE_ARRAY_BIT;
+		info.depth = 1;
+		info.type = VK_IMAGE_TYPE_2D;
+		break;
+
 	case gli::target::TARGET_2D:
 		info.depth = 1;
 		info.type = VK_IMAGE_TYPE_2D;
@@ -139,6 +148,12 @@ void Texture::update_gli(const void *data, size_t size)
 
 	case gli::target::TARGET_CUBE_ARRAY:
 		info.misc |= IMAGE_MISC_FORCE_ARRAY_BIT;
+		info.flags |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+		info.depth = 1;
+		info.layers *= tex.faces();
+		info.type = VK_IMAGE_TYPE_2D;
+		break;
+
 	case gli::target::TARGET_CUBE:
 		info.flags |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
 		info.depth = 1;

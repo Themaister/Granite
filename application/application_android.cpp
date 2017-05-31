@@ -76,6 +76,11 @@ struct ApplicationPlatformAndroid : ApplicationPlatform
 		return height;
 	}
 
+	float get_aspect_ratio() override
+	{
+		return float(global_state.base_width) / global_state.base_height;
+	}
+
 	VkSurfaceKHR create_surface(VkInstance instance, VkPhysicalDevice) override;
 
 	unsigned width, height;

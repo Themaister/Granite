@@ -66,6 +66,12 @@ public:
 
 	virtual uint32_t get_surface_width() = 0;
 	virtual uint32_t get_surface_height() = 0;
+
+	virtual float get_aspect_ratio()
+	{
+		return float(get_surface_width()) / float(get_surface_height());
+	}
+
 	virtual bool alive(Vulkan::WSI &wsi) = 0;
 	virtual void poll_input() = 0;
 

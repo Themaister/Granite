@@ -22,7 +22,7 @@ bool WSI::init(Granite::ApplicationPlatform *platform, unsigned width, unsigned 
 
 	width = platform->get_surface_width();
 	height = platform->get_surface_height();
-	aspect_ratio = float(width) / height;
+	aspect_ratio = platform->get_aspect_ratio();
 
 	VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(context->get_instance(), vkDestroySurfaceKHR);
 	VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(context->get_instance(), vkGetPhysicalDeviceSurfaceSupportKHR);
@@ -187,6 +187,7 @@ bool WSI::end_frame()
 void WSI::update_framebuffer(unsigned width, unsigned height)
 {
 	vkDeviceWaitIdle(context->get_device());
+	aspect_ratio = platform->get_aspect_ratio();
 	init_swapchain(width, height);
 	device.init_swapchain(swapchain_images, width, height, format);
 }

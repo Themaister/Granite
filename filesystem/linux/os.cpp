@@ -232,6 +232,8 @@ void OSFilesystem::poll_notifications()
 
 void OSFilesystem::uninstall_notification(FileNotifyHandle handle)
 {
+	LOGI("Uninstalling notification: %d\n", handle);
+
 	auto real = virtual_to_real.find(handle);
 	if (real == end(virtual_to_real))
 		throw runtime_error("unknown virtual inotify handler");
@@ -252,36 +254,16 @@ void OSFilesystem::uninstall_notification(FileNotifyHandle handle)
 	if (itr->second.funcs.empty())
 	{
 		inotify_rm_watch(notify_fd, real->second);
-		auto path_itr = path_to_handler.find(itr->second.path);
-		if (path_itr == end(path_to_handler))
-			throw runtime_error("unknown inotify handler path");
-
-		path_to_handler.erase(path_itr);
 		handlers.erase(itr);
 	}
 
 	virtual_to_real.erase(real);
 }
 
-FileNotifyHandle OSFilesystem::find_notification(const std::string &path) const
-{
-	auto itr = path_to_handler.find(path);
-	if (itr != end(path_to_handler))
-		return itr->second;
-	else
-		return -1;
-}
-
 FileNotifyHandle OSFilesystem::install_notification(const string &path,
                                                     function<void (const FileNotifyInfo &)> func)
 {
-	auto handle = find_notification(path);
-	if (handle >= 0)
-	{
-		handlers[handle].funcs.push_back({ move(func), ++virtual_handle });
-		virtual_to_real[virtual_handle] = handle;
-		return virtual_handle;
-	}
+	LOGI("Installing notification for: %s\n", path.c_str());
 
 	FileStat s;
 	if (!stat(path, s))
@@ -294,8 +276,15 @@ FileNotifyHandle OSFilesystem::install_notification(const string &path,
 	if (wd < 0)
 		throw runtime_error("inotify_add_watch");
 
-	handlers[wd] = { path, {{ move(func), ++virtual_handle }}, s.type == PathType::Directory };
-	path_to_handler[path] = wd;
+	// We could have different paths which look different but resolve to the same wd, so handle that.
+	auto itr = handlers.find(wd);
+	if (itr == end(handlers))
+		handlers[wd] = { path, {{ move(func), ++virtual_handle }}, s.type == PathType::Directory };
+	else
+		itr->second.funcs.push_back({ move(func), ++virtual_handle });
+
+	LOGI("  Got handle: %d\n", virtual_handle);
+
 	virtual_to_real[virtual_handle] = wd;
 	return static_cast<FileNotifyHandle>(virtual_handle);
 }

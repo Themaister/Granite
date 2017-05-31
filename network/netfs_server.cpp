@@ -110,8 +110,10 @@ struct FSHandler : LooperHandler
 	~FSHandler()
 	{
 		if (is_notify_fs)
+		{
 			LOGE("Tearing down Notification system ...\n");
-		notify_system.uninstall_all_notifications(this);
+			notify_system.uninstall_all_notifications(this);
+		}
 	}
 
 	void notify(const FileNotifyInfo &info)

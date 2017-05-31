@@ -11,7 +11,6 @@ ChainAllocator::ChainAllocator(Device *device, VkDeviceSize block_size, VkDevice
     , usage(usage)
 {
 	buffers.push_back(device->create_buffer({ BufferDomain::Host, block_size, usage }, nullptr));
-	host = static_cast<uint8_t *>(device->map_host_buffer(*buffers.back(), MEMORY_ACCESS_WRITE));
 }
 
 ChainAllocator::~ChainAllocator()
@@ -53,6 +52,8 @@ ChainDataAllocation ChainAllocator::allocate(VkDeviceSize size)
 		buffers.push_back(device->create_buffer({ BufferDomain::Host, block_size, usage }, nullptr));
 		host = static_cast<uint8_t *>(device->map_host_buffer(*buffers.back(), MEMORY_ACCESS_WRITE));
 	}
+	else if (offset == 0)
+		host = static_cast<uint8_t *>(device->map_host_buffer(*buffers[chain_index], MEMORY_ACCESS_WRITE));
 
 	ChainDataAllocation alloc = {};
 	alloc.data = host + offset;
@@ -67,6 +68,7 @@ void ChainAllocator::discard()
 	chain_index = 0;
 	offset = 0;
 	start_flush_index = 0;
+	host = nullptr;
 	large_buffers.clear();
 }
 }

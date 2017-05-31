@@ -42,15 +42,16 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 	sprite.color[0] = 255;
 	sprite.color[1] = 255;
 	sprite.color[2] = 255;
-	sprite.color[3] = 255;
+	sprite.color[3] = 128;
 	sprite.texture = device.get_texture_manager().request_texture("assets://textures/maister.png");
-	sprite.pipeline = MeshDrawPipeline::Opaque;
+	sprite.pipeline = MeshDrawPipeline::AlphaBlend;
 	sprite.size.x = sprite.texture->get_image()->get_create_info().width;
 	sprite.size.y = sprite.texture->get_image()->get_create_info().height;
 	sprite.tex_offset = ivec2(0);
 
 	SpriteList sprites;
 	sprites.push_back({&sprite, { vec3(10.0f, 10.0f, 0.0f) }});
+	sprites[0].transform.rotation = mat2(cos(0.4f), -sin(0.4f), sin(0.4f), cos(0.4f));
 
 	scene.update_cached_transforms();
 	scene.gather_visible_opaque_renderables(context.get_visibility_frustum(), visible);

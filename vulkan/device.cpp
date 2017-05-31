@@ -25,6 +25,7 @@ Semaphore Device::request_semaphore()
 
 void Device::add_wait_semaphore(Semaphore semaphore, VkPipelineStageFlags stages)
 {
+	flush_frame();
 	wait_semaphores.push_back(semaphore);
 	wait_stages.push_back(stages);
 }

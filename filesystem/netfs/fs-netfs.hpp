@@ -42,10 +42,6 @@ public:
 	bool stat(const std::string &path, FileStat &stat) override;
 
 	FileNotifyHandle install_notification(const std::string &path, std::function<void (const FileNotifyInfo &)> func) override;
-	FileNotifyHandle find_notification(const std::string &) const override
-	{
-		return -1;
-	}
 
 	void uninstall_notification(FileNotifyHandle handle) override;
 

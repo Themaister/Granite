@@ -72,7 +72,6 @@ public:
 	virtual std::unique_ptr<File> open(const std::string &path, FileMode mode = FileMode::ReadOnly) = 0;
 	virtual bool stat(const std::string &path, FileStat &stat) = 0;
 	virtual FileNotifyHandle install_notification(const std::string &path, std::function<void (const FileNotifyInfo &)> func) = 0;
-	virtual FileNotifyHandle find_notification(const std::string &path) const = 0;
 	virtual void uninstall_notification(FileNotifyHandle handle) = 0;
 	virtual void poll_notifications() = 0;
 	virtual int get_notification_fd() const = 0;

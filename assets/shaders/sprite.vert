@@ -29,7 +29,7 @@ void main()
     gl_Position = vec4(2.0 * pos_ndc - 1.0, Layer, 1.0);
 
 #if defined(HAVE_UV) && HAVE_UV
-    vTex = (QuadPos * TexOffsetScale.zw + TexOffsetScale.xy) * constants.inv_tex_resolution;
+    vTex = ((QuadCoord * 0.5 + 0.5) * TexOffsetScale.zw + TexOffsetScale.xy) * constants.inv_tex_resolution;
 #endif
     vColor = Color;
 }

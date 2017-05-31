@@ -30,7 +30,6 @@ public:
 	std::unique_ptr<File> open(const std::string &path, FileMode mode) override;
 	bool stat(const std::string &path, FileStat &stat) override;
 	FileNotifyHandle install_notification(const std::string &path, std::function<void (const FileNotifyInfo &)> func) override;
-	FileNotifyHandle find_notification(const std::string &path) const override;
 	void uninstall_notification(FileNotifyHandle handle) override;
 	void poll_notifications() override;
 	int get_notification_fd() const override;
@@ -51,7 +50,6 @@ private:
 		bool directory;
 	};
 	std::unordered_map<FileNotifyHandle, Handler> handlers;
-	std::unordered_map<std::string, FileNotifyHandle> path_to_handler;
 	std::unordered_map<FileNotifyHandle, FileNotifyHandle> virtual_to_real;
 	int notify_fd;
 	FileNotifyHandle virtual_handle = 0;

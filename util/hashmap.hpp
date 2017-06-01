@@ -35,6 +35,17 @@ public:
 		h = (h * 0x100000001b3ull) ^ value;
 	}
 
+	inline void f32(float value)
+	{
+		union
+		{
+			float f32;
+			uint32_t u32;
+		} u;
+		u.f32 = value;
+		u32(u.u32);
+	}
+
 	inline void u64(uint64_t value)
 	{
 		u32(value & 0xffffffffu);

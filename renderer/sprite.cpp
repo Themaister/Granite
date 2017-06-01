@@ -24,6 +24,15 @@ void sprite_render(Vulkan::CommandBuffer &cmd, const RenderInfo **infos, unsigne
 		cmd.set_texture(2, 0, *info.texture, Vulkan::StockSampler::LinearWrap);
 	}
 
+	VkRect2D sci;
+	sci.offset.x = glm::max<uint32_t>(cmd.get_viewport().x, info.clip_quad.x);
+	sci.offset.y = glm::max<uint32_t>(cmd.get_viewport().y, info.clip_quad.y);
+	uint32_t end_x = glm::min<uint32_t>(cmd.get_viewport().x + cmd.get_viewport().width, info.clip_quad.x + info.clip_quad.z);
+	uint32_t end_y = glm::min<uint32_t>(cmd.get_viewport().y + cmd.get_viewport().height, info.clip_quad.y + info.clip_quad.w);
+	sci.extent.width = end_x - sci.offset.x;
+	sci.extent.height = end_y - sci.offset.y;
+	cmd.set_scissor(sci);
+
 	cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
 	auto *quad = static_cast<int8_t *>(cmd.allocate_vertex_data(0, 8, 2));
 	quad[0] = -128;
@@ -93,12 +102,17 @@ void Sprite::get_sprite_render_info(const SpriteTransformInfo &transform, Render
 	sprite.quads->rotation[2] = transform.rotation[1].x;
 	sprite.quads->rotation[3] = transform.rotation[1].y;
 	sprite.quads->layer = transform.position.z;
+	sprite.clip_quad = transform.clip;
 
 	sprite.render = RenderFunctions::sprite_render;
 
 	Util::Hasher hasher;
 	hasher.pointer(texture);
 	hasher.u32(ecast(pipeline));
+	hasher.u32(transform.clip.x);
+	hasher.u32(transform.clip.y);
+	hasher.u32(transform.clip.z);
+	hasher.u32(transform.clip.w);
 	sprite.instance_key = hasher.get();
 	sprite.sorting_key = sprite.get_sprite_sort_key(queue_type, hasher.get(), transform.position.z);
 }

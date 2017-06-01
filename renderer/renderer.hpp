@@ -19,21 +19,20 @@ struct SpriteTransformInfo
 {
 	SpriteTransformInfo() = default;
 
-	SpriteTransformInfo(const vec3 &pos)
-		: position(pos)
-	{
-	}
-
-	SpriteTransformInfo(const vec3 &pos, const vec2 &scale, const mat2 &rot)
+	SpriteTransformInfo(const vec3 &pos, const vec2 &scale = vec2(1.0f, 1.0f),
+	                    const mat2 &rot = mat2(1.0f),
+	                    const uvec4 &clip = uvec4(0u, 0u, ~0u, ~0u))
 		: position(pos),
 	      scale(scale),
-	      rotation(rot)
+	      rotation(rot),
+	      clip(clip)
 	{
 	}
 
 	vec3 position = vec3(0.0f);
 	vec2 scale = vec2(1.0f);
 	mat2 rotation = mat2(1.0f);
+	uvec4 clip = uvec4(0u, 0u, ~0u, ~0u);
 };
 
 struct SpriteInfo

@@ -20,6 +20,7 @@ struct SpriteRenderInfo : RenderInfo
 		float layer;
 	};
 	QuadData *quads;
+	uvec4 clip_quad;
 	unsigned quad_count;
 };
 

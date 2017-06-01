@@ -38,6 +38,20 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 	context.set_camera(cam);
 	visible.clear();
 
+#if 0
+	SpriteList sprites;
+	Sprite sprite;
+	sprite.pipeline = MeshDrawPipeline::Opaque;
+	sprite.texture = device.get_texture_manager().request_texture("assets://textures/maister.png");
+	sprite.color[0] = 255;
+	sprite.color[1] = 255;
+	sprite.color[2] = 255;
+	sprite.color[3] = 255;
+	sprite.size = ivec2(400);
+	sprites.push_back({ &sprite });
+	sprites.back().transform.clip = uvec4(40, 40, 200, 200);
+#endif
+
 	scene.update_cached_transforms();
 	scene.gather_visible_opaque_renderables(context.get_visibility_frustum(), visible);
 	scene.gather_background_renderables(visible);
@@ -46,6 +60,7 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 	auto rp = device.get_swapchain_render_pass(SwapchainRenderPass::DepthStencil);
 	cmd->begin_render_pass(rp);
 	renderer.render(*cmd, context, visible);
+	renderer.render_sprites(*cmd, vec2(0.0f), vec2(cmd->get_viewport().width, cmd->get_viewport().height), sprites);
 	cmd->end_render_pass();
 	device.submit(cmd);
 }

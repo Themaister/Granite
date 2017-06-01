@@ -64,13 +64,25 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 
 	auto &queue = renderer.get_render_queue();
 	queue.reset();
-	font->render_text(queue, "Hai", vec3(40.0f, 40.0f, 0.0f), vec2(50.0f));
+	font->render_text(queue, "Hai. I wub u pus <3", vec3(40.0f, 40.0f, 0.0f), vec2(50.0f));
+
+	struct GlobalData
+	{
+		float inv_resolution[2];
+		float pos_offset_pixels[2];
+	};
+	auto *global = static_cast<GlobalData *>(cmd->allocate_constant_data(0, 0, sizeof(GlobalData)));
+
+	global->inv_resolution[0] = 1.0f / cmd->get_viewport().width;
+	global->inv_resolution[1] = 1.0f / cmd->get_viewport().height;
+	global->pos_offset_pixels[0] = 0.0f;
+	global->pos_offset_pixels[1] = 0.0f;
 
 	queue.sort();
-	cmd->set_quad_state();
+	cmd->set_transparent_sprite_state();
 	CommandBufferSavedState state;
 	cmd->save_state(COMMAND_BUFFER_SAVED_RENDER_STATE_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_SCISSOR_BIT, state);
-	queue.dispatch(Queue::Opaque, *cmd, &state);
+	queue.dispatch(Queue::Transparent, *cmd, &state);
 
 	//renderer.render_sprites(*cmd, vec2(0.0f), vec2(cmd->get_viewport().width, cmd->get_viewport().height), sprites);
 	cmd->end_render_pass();

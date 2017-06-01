@@ -61,19 +61,19 @@ void Font::render_text(RenderQueue &queue, const char *text, const vec3 &offset,
 	(void)scale;
 
 	size_t len = strlen(text);
-	auto &sprite = queue.emplace<SpriteRenderInfo>(Queue::Opaque);
+	auto &sprite = queue.emplace<SpriteRenderInfo>(Queue::Transparent);
 	sprite.texture = view.get();
 	sprite.clip_quad = uvec4(0, 0, ~0u, ~0u);
 
 	static const uint32_t uv_mask = 1u << ecast(MeshAttribute::UV);
 	static const uint32_t pos_mask = 1u << ecast(MeshAttribute::Position);
 	static const uint32_t base_color_mask = 1u << ecast(Material::Textures::BaseColor);
-	sprite.program = queue.get_shader_suites()[ecast(RenderableType::Sprite)].get_program(MeshDrawPipeline::AlphaTest,
+	sprite.program = queue.get_shader_suites()[ecast(RenderableType::Sprite)].get_program(MeshDrawPipeline::AlphaBlend,
                                                                                           uv_mask | pos_mask, base_color_mask).get();
 
 	Hasher hasher;
 	hasher.pointer(sprite.texture);
-	sprite.sorting_key = RenderInfo::get_sprite_sort_key(Queue::Opaque, hasher.get(), offset.z);
+	sprite.sorting_key = RenderInfo::get_sprite_sort_key(Queue::Transparent, hasher.get(), offset.z);
 	sprite.instance_key = hasher.get();
 
 	sprite.quads = static_cast<SpriteRenderInfo::QuadData *>(queue.allocate(sizeof(SpriteRenderInfo::QuadData) * len,
@@ -102,10 +102,10 @@ void Font::render_text(RenderQueue &queue, const char *text, const vec3 &offset,
 			quad.pos_off_y = q.y0;
 			quad.pos_scale_x = q.x1 - q.x0;
 			quad.pos_scale_y = q.y1 - q.y0;
-			quad.tex_off_x = q.s0 * width;
-			quad.tex_off_y = q.t0 * height;
-			quad.tex_scale_x = q.s1 * width - quad.tex_off_x;
-			quad.tex_scale_y = q.t1 * height - quad.tex_off_y;
+			quad.tex_off_x = round(q.s0 * width);
+			quad.tex_off_y = round(q.t0 * height);
+			quad.tex_scale_x = round(q.s1 * width) - quad.tex_off_x;
+			quad.tex_scale_y = round(q.t1 * height) - quad.tex_off_y;
 		}
 		text++;
 	}

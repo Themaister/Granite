@@ -25,3 +25,6 @@
 [submodule "third_party/gli"]
 	path = third_party/gli
 	url = git://github.com/g-truc/gli
+[submodule "third_party/stb/stb"]
+	path = third_party/stb/stb
+	url = git://github.com/nothings/stb

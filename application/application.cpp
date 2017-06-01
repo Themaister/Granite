@@ -60,7 +60,7 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 	auto rp = device.get_swapchain_render_pass(SwapchainRenderPass::DepthStencil);
 	cmd->begin_render_pass(rp);
 	renderer.render(*cmd, context, visible);
-	renderer.render_sprites(*cmd, vec2(0.0f), vec2(cmd->get_viewport().width, cmd->get_viewport().height), sprites);
+	//renderer.render_sprites(*cmd, vec2(0.0f), vec2(cmd->get_viewport().width, cmd->get_viewport().height), sprites);
 	cmd->end_render_pass();
 	device.submit(cmd);
 }

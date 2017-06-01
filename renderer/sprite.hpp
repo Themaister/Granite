@@ -6,8 +6,16 @@
 
 namespace Granite
 {
+
+namespace RenderFunctions
+{
+void sprite_render(Vulkan::CommandBuffer &cmd, const RenderInfo **render, unsigned instances);
+}
+
 struct SpriteRenderInfo : RenderInfo
 {
+	SpriteRenderInfo();
+
 	const Vulkan::ImageView *texture = nullptr;
 	Vulkan::Program *program = nullptr;
 
@@ -23,11 +31,6 @@ struct SpriteRenderInfo : RenderInfo
 	uvec4 clip_quad;
 	unsigned quad_count;
 };
-
-namespace RenderFunctions
-{
-void sprite_render(Vulkan::CommandBuffer &cmd, const RenderInfo **render, unsigned instances);
-}
 
 struct Sprite : AbstractRenderable
 {

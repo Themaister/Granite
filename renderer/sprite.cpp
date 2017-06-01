@@ -7,6 +7,12 @@ using namespace Util;
 
 namespace Granite
 {
+
+SpriteRenderInfo::SpriteRenderInfo()
+{
+	render = RenderFunctions::sprite_render;
+}
+
 namespace RenderFunctions
 {
 void sprite_render(Vulkan::CommandBuffer &cmd, const RenderInfo **infos, unsigned num_instances)
@@ -68,6 +74,7 @@ void sprite_render(Vulkan::CommandBuffer &cmd, const RenderInfo **infos, unsigne
 	cmd.draw(4, quads);
 }
 }
+
 void Sprite::get_sprite_render_info(const SpriteTransformInfo &transform, RenderQueue &queue) const
 {
 	auto queue_type = pipeline == MeshDrawPipeline::AlphaBlend ? Queue::Transparent : Queue::Opaque;
@@ -83,7 +90,8 @@ void Sprite::get_sprite_render_info(const SpriteTransformInfo &transform, Render
 	if (texture)
 		sprite.texture = &texture->get_image()->get_view();
 
-	sprite.quads = static_cast<SpriteRenderInfo::QuadData *>(queue.allocate(sizeof(SpriteRenderInfo::QuadData)));
+	sprite.quads = static_cast<SpriteRenderInfo::QuadData *>(queue.allocate(sizeof(SpriteRenderInfo::QuadData),
+	                                                                        alignof(SpriteRenderInfo::QuadData)));
 	sprite.quad_count = 1;
 
 	for (unsigned i = 0; i < 4; i++)
@@ -103,8 +111,6 @@ void Sprite::get_sprite_render_info(const SpriteTransformInfo &transform, Render
 	sprite.quads->rotation[3] = transform.rotation[1].y;
 	sprite.quads->layer = transform.position.z;
 	sprite.clip_quad = transform.clip;
-
-	sprite.render = RenderFunctions::sprite_render;
 
 	Util::Hasher hasher;
 	hasher.pointer(texture);

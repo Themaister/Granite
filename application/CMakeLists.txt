@@ -1,6 +1,6 @@
 add_granite_library(application application.cpp application.hpp input.cpp input.hpp)
 target_include_directories(application PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(application vulkan-backend vulkan-wsi renderer)
+target_link_libraries(application vulkan-backend vulkan-wsi ui-renderer)
 
 option(GRANITE_PLATFORM "Granite Platform" "GLFW")
 if (NOT GRANITE_PLATFORM)

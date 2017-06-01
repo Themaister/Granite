@@ -37,7 +37,7 @@ struct SpriteTransformInfo
 
 struct SpriteInfo
 {
-	Sprite *sprite;
+	AbstractRenderable *sprite;
 	SpriteTransformInfo transform;
 };
 using SpriteList = std::vector<SpriteInfo>;
@@ -48,6 +48,11 @@ public:
 	Renderer();
 	void render(Vulkan::CommandBuffer &cmd, RenderContext &context, const VisibilityList &visible);
 	void render_sprites(Vulkan::CommandBuffer &cmd, const vec2 &camera_pos, const vec2 &camera_size, const SpriteList &visible);
+
+	RenderQueue &get_render_queue()
+	{
+		return queue;
+	}
 
 private:
 	void on_device_created(const Event &e);

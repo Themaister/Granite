@@ -48,11 +48,12 @@ add_subdirectory(math)
 add_subdirectory(vulkan)
 add_subdirectory(filesystem)
 add_subdirectory(renderer)
+add_subdirectory(ui)
 add_subdirectory(importers)
 add_subdirectory(application)
 
 add_granite_executable(sandbox cube_test.cpp)
-target_link_libraries(sandbox math renderer vulkan-backend importers application)
+target_link_libraries(sandbox math application)
 
 add_subdirectory(network)
 

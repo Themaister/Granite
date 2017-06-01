@@ -8,6 +8,7 @@
 #include "input.hpp"
 #include "timer.hpp"
 #include "event.hpp"
+#include "font.hpp"
 
 namespace Granite
 {
@@ -136,6 +137,7 @@ private:
 	VisibilityList visible;
 	SceneLoader scene_loader;
 	std::unique_ptr<AnimationSystem> animation_system;
+	std::unique_ptr<Font> font;
 };
 
 extern int application_main(int argc, char *argv[]);

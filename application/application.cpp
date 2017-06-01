@@ -26,6 +26,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned
 
 	cam.look_at(vec3(0.0f, 0.0f, 8.0f), vec3(0.0f));
 	context.set_camera(cam);
+	font.reset(new Font("assets://font.ttf", 32));
 }
 
 void SceneViewerApplication::render_frame(double, double elapsed_time)
@@ -60,6 +61,17 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 	auto rp = device.get_swapchain_render_pass(SwapchainRenderPass::DepthStencil);
 	cmd->begin_render_pass(rp);
 	renderer.render(*cmd, context, visible);
+
+	auto &queue = renderer.get_render_queue();
+	queue.reset();
+	font->render_text(queue, "Hai", vec3(40.0f, 40.0f, 0.0f), vec2(50.0f));
+
+	queue.sort();
+	cmd->set_quad_state();
+	CommandBufferSavedState state;
+	cmd->save_state(COMMAND_BUFFER_SAVED_RENDER_STATE_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_SCISSOR_BIT, state);
+	queue.dispatch(Queue::Opaque, *cmd, &state);
+
 	//renderer.render_sprites(*cmd, vec2(0.0f), vec2(cmd->get_viewport().width, cmd->get_viewport().height), sprites);
 	cmd->end_render_pass();
 	device.submit(cmd);

@@ -24,8 +24,16 @@ bool Frustum::intersects(const AABB &aabb) const
 	return true;
 }
 
-void Frustum::build_planes(const mat4 &inv_projection)
+vec3 Frustum::get_coord(float dx, float dy, float dz) const
 {
+	vec4 clip = vec4(2.0f * dx - 1.0f, 2.0f * dy - 1.0f, dz, 1.0f);
+	clip = inv_view_projection * clip;
+	return clip.xyz() / clip.w;
+}
+
+void Frustum::build_planes(const mat4 &inv_view_projection)
+{
+	this->inv_view_projection = inv_view_projection;
 	static const vec4 tln(-1.0f, -1.0f, 0.0f, 1.0f);
 	static const vec4 tlf(-1.0f, -1.0f, 1.0f, 1.0f);
 	static const vec4 bln(-1.0f, +1.0f, 0.0f, 1.0f);
@@ -39,13 +47,13 @@ void Frustum::build_planes(const mat4 &inv_projection)
 		return v.xyz() / vec3(v.w);
 	};
 
-	vec3 TLN = project(inv_projection * tln);
-	vec3 BLN = project(inv_projection * bln);
-	vec3 BLF = project(inv_projection * blf);
-	vec3 TRN = project(inv_projection * trn);
-	vec3 TRF = project(inv_projection * trf);
-	vec3 BRN = project(inv_projection * brn);
-	vec3 BRF = project(inv_projection * brf);
+	vec3 TLN = project(inv_view_projection * tln);
+	vec3 BLN = project(inv_view_projection * bln);
+	vec3 BLF = project(inv_view_projection * blf);
+	vec3 TRN = project(inv_view_projection * trn);
+	vec3 TRF = project(inv_view_projection * trf);
+	vec3 BRN = project(inv_view_projection * brn);
+	vec3 BRF = project(inv_view_projection * brf);
 
 	vec3 l = normalize(cross(BLF - BLN, TLN - BLN));
 	vec3 r = normalize(cross(TRF - TRN, BRN - TRN));

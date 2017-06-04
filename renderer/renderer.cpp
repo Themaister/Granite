@@ -53,7 +53,7 @@ void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context)
 	queue.dispatch(Queue::Transparent, cmd, &state);
 }
 
-DebugMeshInfo &Renderer::render_debug(RenderContext &context, const AABB &aabb, unsigned count)
+DebugMeshInfo &Renderer::render_debug(RenderContext &context, unsigned count)
 {
 	auto &debug = queue.emplace<DebugMeshInfo>(Queue::Opaque);
 	debug.render = RenderFunctions::debug_mesh_render;
@@ -68,45 +68,56 @@ DebugMeshInfo &Renderer::render_debug(RenderContext &context, const AABB &aabb, 
 	Hasher hasher;
 	hasher.pointer(debug.program);
 	debug.instance_key = hasher.get();
-	debug.sorting_key = RenderInfo::get_sort_key(context, Queue::Opaque, hasher.get(), aabb.get_center());
+	debug.sorting_key = RenderInfo::get_sort_key(context, Queue::Opaque, hasher.get(), vec3(0.0f));
 	debug.MVP = context.get_render_parameters().view_projection;
 	return debug;
 }
 
-void Renderer::render_debug_aabb(RenderContext &context, const AABB &aabb, const vec4 &color)
+template <typename T>
+inline void dump_debug_coords(vec3 *pos, const T &t)
 {
-	auto &debug = render_debug(context, aabb, 12 * 2);
+	*pos++ = t.get_coord(0.0f, 0.0f, 0.0f);
+	*pos++ = t.get_coord(1.0f, 0.0f, 0.0f);
+	*pos++ = t.get_coord(1.0f, 0.0f, 0.0f);
+	*pos++ = t.get_coord(1.0f, 0.0f, 1.0f);
+	*pos++ = t.get_coord(1.0f, 0.0f, 1.0f);
+	*pos++ = t.get_coord(0.0f, 0.0f, 1.0f);
+	*pos++ = t.get_coord(0.0f, 0.0f, 1.0f);
+	*pos++ = t.get_coord(0.0f, 0.0f, 0.0f);
 
+	*pos++ = t.get_coord(0.0f, 1.0f, 0.0f);
+	*pos++ = t.get_coord(1.0f, 1.0f, 0.0f);
+	*pos++ = t.get_coord(1.0f, 1.0f, 0.0f);
+	*pos++ = t.get_coord(1.0f, 1.0f, 1.0f);
+	*pos++ = t.get_coord(1.0f, 1.0f, 1.0f);
+	*pos++ = t.get_coord(0.0f, 1.0f, 1.0f);
+	*pos++ = t.get_coord(0.0f, 1.0f, 1.0f);
+	*pos++ = t.get_coord(0.0f, 1.0f, 0.0f);
+
+	*pos++ = t.get_coord(0.0f, 0.0f, 0.0f);
+	*pos++ = t.get_coord(0.0f, 1.0f, 0.0f);
+	*pos++ = t.get_coord(1.0f, 0.0f, 0.0f);
+	*pos++ = t.get_coord(1.0f, 1.0f, 0.0f);
+	*pos++ = t.get_coord(1.0f, 0.0f, 1.0f);
+	*pos++ = t.get_coord(1.0f, 1.0f, 1.0f);
+	*pos++ = t.get_coord(0.0f, 0.0f, 1.0f);
+	*pos++ = t.get_coord(0.0f, 1.0f, 1.0f);
+}
+
+void Renderer::render_debug_frustum(RenderContext &context, const Frustum &frustum, const vec4 &color)
+{
+	auto &debug = render_debug(context, 12 * 2);
 	for (unsigned i = 0; i < debug.count; i++)
 		debug.colors[i] = color;
+	dump_debug_coords(debug.positions, frustum);
+}
 
-	auto *pos = debug.positions;
-	*pos++ = aabb.get_coord(0.0f, 0.0f, 0.0f);
-	*pos++ = aabb.get_coord(1.0f, 0.0f, 0.0f);
-	*pos++ = aabb.get_coord(1.0f, 0.0f, 0.0f);
-	*pos++ = aabb.get_coord(1.0f, 0.0f, 1.0f);
-	*pos++ = aabb.get_coord(1.0f, 0.0f, 1.0f);
-	*pos++ = aabb.get_coord(0.0f, 0.0f, 1.0f);
-	*pos++ = aabb.get_coord(0.0f, 0.0f, 1.0f);
-	*pos++ = aabb.get_coord(0.0f, 0.0f, 0.0f);
-
-	*pos++ = aabb.get_coord(0.0f, 1.0f, 0.0f);
-	*pos++ = aabb.get_coord(1.0f, 1.0f, 0.0f);
-	*pos++ = aabb.get_coord(1.0f, 1.0f, 0.0f);
-	*pos++ = aabb.get_coord(1.0f, 1.0f, 1.0f);
-	*pos++ = aabb.get_coord(1.0f, 1.0f, 1.0f);
-	*pos++ = aabb.get_coord(0.0f, 1.0f, 1.0f);
-	*pos++ = aabb.get_coord(0.0f, 1.0f, 1.0f);
-	*pos++ = aabb.get_coord(0.0f, 1.0f, 0.0f);
-
-	*pos++ = aabb.get_coord(0.0f, 0.0f, 0.0f);
-	*pos++ = aabb.get_coord(0.0f, 1.0f, 0.0f);
-	*pos++ = aabb.get_coord(1.0f, 0.0f, 0.0f);
-	*pos++ = aabb.get_coord(1.0f, 1.0f, 0.0f);
-	*pos++ = aabb.get_coord(1.0f, 0.0f, 1.0f);
-	*pos++ = aabb.get_coord(1.0f, 1.0f, 1.0f);
-	*pos++ = aabb.get_coord(0.0f, 0.0f, 1.0f);
-	*pos++ = aabb.get_coord(0.0f, 1.0f, 1.0f);
+void Renderer::render_debug_aabb(RenderContext &context, const AABB &aabb, const vec4 &color)
+{
+	auto &debug = render_debug(context, 12 * 2);
+	for (unsigned i = 0; i < debug.count; i++)
+		debug.colors[i] = color;
+	dump_debug_coords(debug.positions, aabb);
 }
 
 void Renderer::push_renderables(RenderContext &context, const VisibilityList &visible)

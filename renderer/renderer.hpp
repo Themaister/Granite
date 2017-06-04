@@ -40,6 +40,6 @@ private:
 	RenderQueue queue;
 	ShaderSuite suite[Util::ecast(RenderableType::Count)];
 
-	DebugMeshInfo &render_debug(RenderContext &context, const AABB &aabb, unsigned count);
+	DebugMeshInfo &render_debug(RenderContext &context, unsigned count);
 };
 }

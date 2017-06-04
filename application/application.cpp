@@ -41,6 +41,13 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 
 	flat_renderer.begin();
 
+	Camera camera;
+	camera.look_at(vec3(0.0f), vec3(1.0f, 0.0f, 0.0f));
+	camera.set_depth_range(0.1f, 3.0f);
+	mat4 inv_vp = inverse(camera.get_projection() * camera.get_view());
+	Frustum f;
+	f.build_planes(inv_vp);
+
 	scene.update_cached_transforms();
 	scene.gather_visible_opaque_renderables(context.get_visibility_frustum(), visible);
 	scene.gather_background_renderables(visible);
@@ -50,6 +57,7 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 	cmd->begin_render_pass(rp);
 	renderer.begin();
 	renderer.push_renderables(context, visible);
+	renderer.render_debug_frustum(context, f, vec4(0.0f, 0.0f, 1.0f, 1.0f));
 	renderer.flush(*cmd, context);
 	flat_renderer.flush(*cmd, vec2(0.0f), vec2(cmd->get_viewport().width, cmd->get_viewport().height));
 	cmd->end_render_pass();

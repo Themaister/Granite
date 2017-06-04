@@ -5,6 +5,7 @@
 #include "scene_loader.hpp"
 #include "animation_system.hpp"
 #include "renderer.hpp"
+#include "flat_renderer.hpp"
 #include "input.hpp"
 #include "timer.hpp"
 #include "event.hpp"
@@ -133,6 +134,7 @@ public:
 private:
 	RenderContext context;
 	Renderer renderer;
+	FlatRenderer flat_renderer;
 	FPSCamera cam;
 	VisibilityList visible;
 	SceneLoader scene_loader;

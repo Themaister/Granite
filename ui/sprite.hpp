@@ -2,7 +2,7 @@
 
 #include "abstract_renderable.hpp"
 #include "texture_manager.hpp"
-#include "renderer.hpp"
+#include "flat_renderer.hpp"
 
 namespace Granite
 {
@@ -18,6 +18,7 @@ struct SpriteRenderInfo : RenderInfo
 
 	const Vulkan::ImageView *texture = nullptr;
 	Vulkan::Program *program = nullptr;
+	Vulkan::StockSampler sampler;
 
 	struct QuadData
 	{
@@ -28,7 +29,7 @@ struct SpriteRenderInfo : RenderInfo
 		float layer;
 	};
 	QuadData *quads;
-	uvec4 clip_quad;
+	ivec4 clip_quad = ivec4(-0x10000, -0x10000, 0x20000, 0x20000);
 	unsigned quad_count;
 };
 
@@ -36,6 +37,7 @@ struct Sprite : AbstractRenderable
 {
 	MeshDrawPipeline pipeline = MeshDrawPipeline::Opaque;
 	Vulkan::Texture *texture = nullptr;
+	Vulkan::StockSampler sampler = Vulkan::StockSampler::LinearWrap;
 
 	ivec2 tex_offset;
 	ivec2 size;

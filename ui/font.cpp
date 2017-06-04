@@ -47,6 +47,7 @@ Font::Font(const std::string &path, unsigned size)
 	if (!success)
 		throw runtime_error("Failed to bake bitmap.");
 
+	font_height = size;
 	EventManager::get_global().register_latch_handler(DeviceCreatedEvent::type_id,
 	                                                  &Font::on_device_created,
 	                                                  &Font::on_device_destroyed,
@@ -54,16 +55,19 @@ Font::Font(const std::string &path, unsigned size)
 }
 
 void Font::render_text(RenderQueue &queue, const char *text, const vec3 &offset, const vec2 &size,
-                       Alignment alignment, float scale)
+                       Alignment alignment, float scale) const
 {
 	(void)size;
 	(void)alignment;
 	(void)scale;
 
+	if (!*text)
+		return;
+
 	size_t len = strlen(text);
 	auto &sprite = queue.emplace<SpriteRenderInfo>(Queue::Transparent);
 	sprite.texture = view.get();
-	sprite.clip_quad = uvec4(0, 0, ~0u, ~0u);
+	sprite.sampler = StockSampler::LinearWrap;
 
 	static const uint32_t uv_mask = 1u << ecast(MeshAttribute::UV);
 	static const uint32_t pos_mask = 1u << ecast(MeshAttribute::Position);
@@ -73,6 +77,7 @@ void Font::render_text(RenderQueue &queue, const char *text, const vec3 &offset,
 
 	Hasher hasher;
 	hasher.pointer(sprite.texture);
+	hasher.u32(ecast(sprite.sampler));
 	sprite.sorting_key = RenderInfo::get_sprite_sort_key(Queue::Transparent, hasher.get(), offset.z);
 	sprite.instance_key = hasher.get();
 
@@ -81,10 +86,21 @@ void Font::render_text(RenderQueue &queue, const char *text, const vec3 &offset,
 	sprite.quad_count = 0;
 
 	vec2 off = offset.xy();
+	off.y += font_height;
+	vec2 cached = off;
+
+	vec2 min_rect = vec2(FLT_MAX);
+	vec2 max_rect = vec2(FLT_MIN);
+
 	while (*text)
 	{
 		stbtt_aligned_quad q;
-		if (*text >= 32)
+		if (*text == '\n')
+		{
+			cached.y += font_height;
+			off = cached;
+		}
+		else if (*text >= 32)
 		{
 			stbtt_GetBakedQuad(baked_chars, width, height, *text - 32, &off.x, &off.y, &q, 1);
 
@@ -106,8 +122,16 @@ void Font::render_text(RenderQueue &queue, const char *text, const vec3 &offset,
 			quad.tex_off_y = round(q.t0 * height);
 			quad.tex_scale_x = round(q.s1 * width) - quad.tex_off_x;
 			quad.tex_scale_y = round(q.t1 * height) - quad.tex_off_y;
+
+			max_rect = max(max_rect, vec2(q.x1, q.y1));
+			min_rect = min(min_rect, vec2(q.x0, q.y0));
 		}
 		text++;
+	}
+
+	if (any(lessThan(min_rect, offset.xy())) || any(greaterThan(max_rect, offset.xy() + size)))
+	{
+		sprite.clip_quad = ivec4(ivec2(offset.xy()), ivec2(size));
 	}
 }
 

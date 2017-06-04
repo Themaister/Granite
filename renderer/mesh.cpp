@@ -56,9 +56,10 @@ static void mesh_set_state(CommandBuffer &cmd, const StaticMeshInfo &info)
 		if (info.attributes[i].format != VK_FORMAT_UNDEFINED)
 			cmd.set_vertex_attrib(i, i == 0 ? 0 : 1, info.attributes[i].format, info.attributes[i].offset);
 
+	auto &sampler = cmd.get_device().get_stock_sampler(info.sampler);
 	for (unsigned i = 0; i < ecast(Material::Textures::Count); i++)
 		if (info.views[i])
-			cmd.set_texture(2, i, *info.views[i], *info.sampler);
+			cmd.set_texture(2, i, *info.views[i], sampler);
 
 	cmd.push_constants(&info.fragment, 0, sizeof(info.fragment));
 	cmd.set_primitive_topology(info.topology);
@@ -127,7 +128,7 @@ void StaticMesh::fill_render_info(StaticMeshInfo &info, const RenderContext &con
 	info.ibo_offset = ibo_offset;
 	info.index_type = index_type;
 	info.count = count;
-	info.sampler = &context.get_device().get_stock_sampler(StockSampler::TrilinearWrap);
+	info.sampler = material->sampler;
 
 	info.vertex.Normal = transform ? transform->transform->normal_transform : mat4(1.0f);
 	info.vertex.Model = transform ? transform->transform->world_transform : mat4(1.0f);

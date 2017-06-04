@@ -27,16 +27,14 @@ void sprite_render(Vulkan::CommandBuffer &cmd, const RenderInfo **infos, unsigne
 			1.0f / info.texture->get_image().get_create_info().height,
 		};
 		cmd.push_constants(inv_res, 0, sizeof(inv_res));
-		cmd.set_texture(2, 0, *info.texture, Vulkan::StockSampler::LinearWrap);
+		cmd.set_texture(2, 0, *info.texture, info.sampler);
 	}
 
 	VkRect2D sci;
-	sci.offset.x = glm::max<uint32_t>(cmd.get_viewport().x, info.clip_quad.x);
-	sci.offset.y = glm::max<uint32_t>(cmd.get_viewport().y, info.clip_quad.y);
-	uint32_t end_x = glm::min<uint32_t>(cmd.get_viewport().x + cmd.get_viewport().width, info.clip_quad.x + info.clip_quad.z);
-	uint32_t end_y = glm::min<uint32_t>(cmd.get_viewport().y + cmd.get_viewport().height, info.clip_quad.y + info.clip_quad.w);
-	sci.extent.width = end_x - sci.offset.x;
-	sci.extent.height = end_y - sci.offset.y;
+	sci.offset.x = info.clip_quad.x;
+	sci.offset.y = info.clip_quad.y;
+	sci.extent.width = uint32_t(info.clip_quad.z);
+	sci.extent.height = uint32_t(info.clip_quad.w);
 	cmd.set_scissor(sci);
 
 	cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
@@ -89,6 +87,7 @@ void Sprite::get_sprite_render_info(const SpriteTransformInfo &transform, Render
 	                                                                                    texture ? base_color_mask : 0).get();
 	if (texture)
 		sprite.texture = &texture->get_image()->get_view();
+	sprite.sampler = sampler;
 
 	sprite.quads = static_cast<SpriteRenderInfo::QuadData *>(queue.allocate(sizeof(SpriteRenderInfo::QuadData),
 	                                                                        alignof(SpriteRenderInfo::QuadData)));
@@ -114,11 +113,12 @@ void Sprite::get_sprite_render_info(const SpriteTransformInfo &transform, Render
 
 	Util::Hasher hasher;
 	hasher.pointer(texture);
+	hasher.u32(ecast(sampler));
 	hasher.u32(ecast(pipeline));
-	hasher.u32(transform.clip.x);
-	hasher.u32(transform.clip.y);
-	hasher.u32(transform.clip.z);
-	hasher.u32(transform.clip.w);
+	hasher.s32(transform.clip.x);
+	hasher.s32(transform.clip.y);
+	hasher.s32(transform.clip.z);
+	hasher.s32(transform.clip.w);
 	sprite.instance_key = hasher.get();
 	sprite.sorting_key = sprite.get_sprite_sort_key(queue_type, hasher.get(), transform.position.z);
 }

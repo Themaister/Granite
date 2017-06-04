@@ -26,7 +26,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned
 
 	cam.look_at(vec3(0.0f, 0.0f, 8.0f), vec3(0.0f));
 	context.set_camera(cam);
-	font.reset(new Font("assets://font.ttf", 32));
+	font.reset(new Font("assets://font.ttf", 12));
 }
 
 void SceneViewerApplication::render_frame(double, double elapsed_time)
@@ -39,8 +39,9 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 	context.set_camera(cam);
 	visible.clear();
 
+	flat_renderer.begin();
+
 #if 0
-	SpriteList sprites;
 	Sprite sprite;
 	sprite.pipeline = MeshDrawPipeline::Opaque;
 	sprite.texture = device.get_texture_manager().request_texture("assets://textures/maister.png");
@@ -49,9 +50,13 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 	sprite.color[2] = 255;
 	sprite.color[3] = 255;
 	sprite.size = ivec2(400);
-	sprites.push_back({ &sprite });
-	sprites.back().transform.clip = uvec4(40, 40, 200, 200);
+	SpriteInfo info = { &sprite };
+	info.transform.clip = uvec4(40, 40, 200, 200);
+	flat_renderer.push_sprite(info);
 #endif
+
+	flat_renderer.render_text(*font, "Hai\nI herd u liek gg\ngggg\nThis is a very long sentence yo. Maybe this will overflow something ...",
+	                          vec3(0.0f, 0.0f, 0.0f), vec2(400.0f, 400.0f));
 
 	scene.update_cached_transforms();
 	scene.gather_visible_opaque_renderables(context.get_visibility_frustum(), visible);
@@ -61,30 +66,7 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 	auto rp = device.get_swapchain_render_pass(SwapchainRenderPass::DepthStencil);
 	cmd->begin_render_pass(rp);
 	renderer.render(*cmd, context, visible);
-
-	auto &queue = renderer.get_render_queue();
-	queue.reset();
-	font->render_text(queue, "Hai. I wub u pus <3", vec3(40.0f, 40.0f, 0.0f), vec2(50.0f));
-
-	struct GlobalData
-	{
-		float inv_resolution[2];
-		float pos_offset_pixels[2];
-	};
-	auto *global = static_cast<GlobalData *>(cmd->allocate_constant_data(0, 0, sizeof(GlobalData)));
-
-	global->inv_resolution[0] = 1.0f / cmd->get_viewport().width;
-	global->inv_resolution[1] = 1.0f / cmd->get_viewport().height;
-	global->pos_offset_pixels[0] = 0.0f;
-	global->pos_offset_pixels[1] = 0.0f;
-
-	queue.sort();
-	cmd->set_transparent_sprite_state();
-	CommandBufferSavedState state;
-	cmd->save_state(COMMAND_BUFFER_SAVED_RENDER_STATE_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_SCISSOR_BIT, state);
-	queue.dispatch(Queue::Transparent, *cmd, &state);
-
-	//renderer.render_sprites(*cmd, vec2(0.0f), vec2(cmd->get_viewport().width, cmd->get_viewport().height), sprites);
+	flat_renderer.flush(*cmd, vec2(0.0f), vec2(cmd->get_viewport().width, cmd->get_viewport().height));
 	cmd->end_render_pass();
 	device.submit(cmd);
 }

@@ -35,6 +35,11 @@ public:
 		h = (h * 0x100000001b3ull) ^ value;
 	}
 
+	inline void s32(int32_t value)
+	{
+		u32(uint32_t(value));
+	}
+
 	inline void f32(float value)
 	{
 		union

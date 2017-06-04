@@ -5,6 +5,7 @@
 #include "intrusive.hpp"
 #include "texture_manager.hpp"
 #include "enum_cast.hpp"
+#include "sampler.hpp"
 
 namespace Granite
 {
@@ -24,6 +25,7 @@ struct Material : public Util::IntrusivePtrEnabled<Material>
 	float emissive = 0.0f;
 	float roughness = 0.0f;
 	float metallic = 0.0f;
+	Vulkan::StockSampler sampler = Vulkan::StockSampler::TrilinearWrap;
 };
 using MaterialHandle = Util::IntrusivePtr<Material>;
 }

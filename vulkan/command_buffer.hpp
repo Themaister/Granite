@@ -177,6 +177,11 @@ public:
 		return cmd;
 	}
 
+	Device &get_device()
+	{
+		return *device;
+	}
+
 	bool swapchain_touched() const
 	{
 		return uses_swapchain;

@@ -52,7 +52,7 @@ struct StaticMeshInfo : RenderInfo
 	const Vulkan::Buffer *vbo_attributes;
 	const Vulkan::Buffer *ibo;
 	const Vulkan::ImageView *views[Util::ecast(Material::Textures::Count)];
-	const Vulkan::Sampler *sampler;
+	Vulkan::StockSampler sampler;
 	Vulkan::Program *program;
 	VkPrimitiveTopology topology;
 

@@ -27,7 +27,7 @@ public:
 
 	void render_text(RenderQueue &queue, const char *text,
 	                 const vec3 &offset, const vec2 &size,
-	                 Alignment alignment = Alignment::TopLeft, float scale = 1.0f);
+	                 Alignment alignment = Alignment::TopLeft, float scale = 1.0f) const;
 
 private:
 	Vulkan::ImageHandle texture;
@@ -38,5 +38,6 @@ private:
 
 	std::vector<uint8_t> bitmap;
 	unsigned width = 0, height = 0;
+	unsigned font_height = 0;
 };
 }

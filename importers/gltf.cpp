@@ -635,6 +635,24 @@ void Parser::parse(const string &original_path, const string &json)
 		if (value.HasMember("doubleSided"))
 			info.two_sided = value["doubleSided"].GetBool();
 
+		info.pipeline = MeshDrawPipeline::Opaque;
+		if (value.HasMember("alphaMode"))
+		{
+			string mode = value["alphaMode"].GetString();
+			if (mode == "OPAQUE")
+				info.pipeline = MeshDrawPipeline::Opaque;
+			else if (mode == "MASK")
+				info.pipeline = MeshDrawPipeline::AlphaTest;
+			else if (mode == "BLEND")
+				info.pipeline = MeshDrawPipeline::AlphaBlend;
+		}
+
+		if (value.HasMember("emissiveFactor"))
+		{
+			auto &e = value["emissiveFactor"];
+			info.uniform_emissive_color = vec3(e[0].GetFloat(), e[1].GetFloat(), e[2].GetFloat());
+		}
+
 		if (value.HasMember("normalTexture"))
 		{
 			auto &tex = value["normalTexture"]["index"];
@@ -649,11 +667,23 @@ void Parser::parse(const string &original_path, const string &json)
 				auto &tex = mr["baseColorTexture"]["index"];
 				info.base_color = json_images[json_textures[get_by_name(json_textures_map, tex)].image_index];
 			}
+
 			if (mr.HasMember("metallicRoughnessTexture"))
 			{
 				auto &tex = mr["metallicRoughnessTexture"]["index"];
 				info.metallic_roughness = json_images[json_textures[get_by_name(json_textures_map, tex)].image_index];
 			}
+
+			if (mr.HasMember("baseColorFactor"))
+			{
+				auto &v = mr["baseColorFactor"];
+				info.uniform_base_color = vec4(v[0].GetFloat(), v[1].GetFloat(), v[2].GetFloat(), v[3].GetFloat());
+			}
+
+			if (mr.HasMember("metallicFactor"))
+				info.uniform_metallic = mr["metallicFactor"].GetFloat();
+			if (mr.HasMember("roughnessFactor"))
+				info.uniform_roughness = mr["roughnessFactor"].GetFloat();
 		}
 
 		materials.push_back(move(info));

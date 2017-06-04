@@ -42,7 +42,7 @@ struct StaticMeshVertex
 struct StaticMeshFragment
 {
 	vec4 base_color;
-	float emissive;
+	vec4 emissive;
 	float roughness;
 	float metallic;
 };
@@ -103,9 +103,6 @@ struct StaticMesh : AbstractRenderable
 	MaterialHandle material;
 
 	Util::Hash get_instance_key() const;
-
-	MeshDrawPipeline pipeline;
-	bool two_sided = false;
 
 	AABB static_aabb;
 

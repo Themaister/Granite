@@ -27,11 +27,8 @@ ImportedSkinnedMesh::ImportedSkinnedMesh(const Mesh &mesh, const MaterialInfo &i
 	vertex_offset = 0;
 	ibo_offset = 0;
 
-	pipeline = MeshDrawPipeline::Opaque;
-
 	material = Util::make_abstract_handle<Material, MaterialFile>(info);
 	static_aabb = mesh.static_aabb;
-	two_sided = info.two_sided;
 
 	EventManager::get_global().register_latch_handler(DeviceCreatedEvent::type_id,
 	                                                  &ImportedSkinnedMesh::on_device_created,
@@ -86,11 +83,8 @@ ImportedMesh::ImportedMesh(const Mesh &mesh, const MaterialInfo &info)
 	vertex_offset = 0;
 	ibo_offset = 0;
 
-	pipeline = MeshDrawPipeline::Opaque;
-
 	material = Util::make_abstract_handle<Material, MaterialFile>(info);
 	static_aabb = mesh.static_aabb;
-	two_sided = info.two_sided;
 
 	EventManager::get_global().register_latch_handler(DeviceCreatedEvent::type_id,
 	                                                  &ImportedMesh::on_device_created,

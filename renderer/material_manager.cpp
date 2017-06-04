@@ -30,9 +30,11 @@ MaterialFile::MaterialFile(const MaterialInfo &info)
 	paths[ecast(Material::Textures::Normal)] = info.normal;
 	paths[ecast(Material::Textures::MetallicRoughness)] = info.metallic_roughness;
 	base_color = info.uniform_base_color;
-	emissive = 0.0f;
+	emissive = info.uniform_emissive_color;
 	metallic = info.uniform_metallic;
 	roughness = info.uniform_roughness;
+	pipeline = info.pipeline;
+	two_sided = info.two_sided;
 
 	EventManager::get_global().register_latch_handler(DeviceCreatedEvent::type_id,
 	                                                  &MaterialFile::on_device_created,
@@ -89,7 +91,7 @@ void MaterialFile::update(const void *data, size_t size)
 			}
 			else
 			{
-				this->metallic = 0.0f;
+				this->metallic = 1.0f;
 				this->roughness = 1.0f;
 			}
 
@@ -98,22 +100,17 @@ void MaterialFile::update(const void *data, size_t size)
 		}
 		else
 		{
-			this->metallic = 0.0f;
+			this->metallic = 1.0f;
 			this->roughness = 1.0f;
 		}
 
 		if (mat.HasMember("emissive"))
 		{
 			auto &emissive = mat["emissive"];
-			if (emissive.IsFloat())
-				this->emissive = emissive.GetFloat();
-			else
-				this->emissive = 0.0f;
-
-			assert(this->emissive >= 0.0f);
+			this->emissive = vec3(emissive[0].GetFloat(), emissive[1].GetFloat(), emissive[2].GetFloat());
 		}
 		else
-			this->emissive = 0.0f;
+			this->emissive = vec3(0.0f);
 	}
 	catch (const char *)
 	{

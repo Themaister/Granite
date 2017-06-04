@@ -6,6 +6,7 @@
 #include "texture_manager.hpp"
 #include "enum_cast.hpp"
 #include "sampler.hpp"
+#include "abstract_renderable.hpp"
 
 namespace Granite
 {
@@ -22,10 +23,12 @@ struct Material : public Util::IntrusivePtrEnabled<Material>
 	};
 	Vulkan::Texture *textures[Util::ecast(Textures::Count)];
 	vec4 base_color;
-	float emissive = 0.0f;
-	float roughness = 0.0f;
-	float metallic = 0.0f;
+	vec3 emissive;
+	float roughness = 1.0f;
+	float metallic = 1.0f;
+	MeshDrawPipeline pipeline = MeshDrawPipeline::Opaque;
 	Vulkan::StockSampler sampler = Vulkan::StockSampler::TrilinearWrap;
+	bool two_sided = false;
 };
 using MaterialHandle = Util::IntrusivePtr<Material>;
 }

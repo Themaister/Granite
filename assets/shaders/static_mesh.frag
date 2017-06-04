@@ -28,7 +28,7 @@ layout(set = 2, binding = 2) uniform sampler2D uMetallicRoughnessmap;
 layout(std430, push_constant) uniform Constants
 {
     vec4 base_color;
-    float emissive;
+    vec4 emissive;
     float roughness;
     float metallic;
 } registers;

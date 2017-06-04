@@ -15,7 +15,6 @@ Hash StaticMesh::get_instance_key() const
 	h.u64(vbo_position->get_cookie());
 	h.u32(position_stride);
 	h.u32(topology);
-	h.u32(two_sided);
 	if (vbo_attributes)
 	{
 		h.u64(vbo_attributes->get_cookie());
@@ -116,7 +115,7 @@ void skinned_mesh_render(CommandBuffer &cmd, const RenderInfo **infos, unsigned 
 void StaticMesh::fill_render_info(StaticMeshInfo &info, const RenderContext &context,
                                   const CachedSpatialTransformComponent *transform, RenderQueue &queue) const
 {
-	auto type = pipeline == MeshDrawPipeline::AlphaBlend ? Queue::Transparent : Queue::Opaque;
+	auto type = material->pipeline == MeshDrawPipeline::AlphaBlend ? Queue::Transparent : Queue::Opaque;
 	info.render = RenderFunctions::static_mesh_render;
 	info.vbo_attributes = vbo_attributes.get();
 	info.vbo_position = vbo_position.get();
@@ -134,12 +133,12 @@ void StaticMesh::fill_render_info(StaticMeshInfo &info, const RenderContext &con
 	info.vertex.Model = transform ? transform->transform->world_transform : mat4(1.0f);
 	info.fragment.roughness = material->roughness;
 	info.fragment.metallic = material->metallic;
-	info.fragment.emissive = material->emissive;
+	info.fragment.emissive = vec4(material->emissive, 0.0f);
 	info.fragment.base_color = material->base_color;
 
 	info.instance_key = get_instance_key();
 	info.topology = topology;
-	info.two_sided = two_sided;
+	info.two_sided = material->two_sided;
 
 	uint32_t attrs = 0;
 	uint32_t textures = 0;
@@ -156,11 +155,10 @@ void StaticMesh::fill_render_info(StaticMeshInfo &info, const RenderContext &con
 			textures |= 1u << i;
 	}
 
-	info.program = queue.get_shader_suites()[ecast(RenderableType::Mesh)].get_program(pipeline, attrs, textures).get();
+	info.program = queue.get_shader_suites()[ecast(RenderableType::Mesh)].get_program(material->pipeline, attrs, textures).get();
 	Hasher h;
 	h.pointer(info.program);
 	h.pointer(material.get());
-	h.u32(ecast(pipeline));
 	h.u32(attrs);
 	h.u32(textures);
 
@@ -172,14 +170,14 @@ void StaticMesh::fill_render_info(StaticMeshInfo &info, const RenderContext &con
 
 void StaticMesh::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform, RenderQueue &queue) const
 {
-	auto type = pipeline == MeshDrawPipeline::AlphaBlend ? Queue::Transparent : Queue::Opaque;
+	auto type = material->pipeline == MeshDrawPipeline::AlphaBlend ? Queue::Transparent : Queue::Opaque;
 	auto &info = queue.emplace<StaticMeshInfo>(type);
 	fill_render_info(info, context, transform, queue);
 }
 
 void SkinnedMesh::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform, RenderQueue &queue) const
 {
-	auto type = pipeline == MeshDrawPipeline::AlphaBlend ? Queue::Transparent : Queue::Opaque;
+	auto type = material->pipeline == MeshDrawPipeline::AlphaBlend ? Queue::Transparent : Queue::Opaque;
 	auto &info = queue.emplace<SkinnedMeshInfo>(type);
 	fill_render_info(info, context, transform, queue);
 	info.render = RenderFunctions::skinned_mesh_render;

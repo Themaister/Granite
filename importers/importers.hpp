@@ -134,10 +134,12 @@ struct MaterialInfo
 	std::string base_color;
 	std::string normal;
 	std::string metallic_roughness;
-	vec4 uniform_base_color;
-	float uniform_metallic;
-	float uniform_roughness;
-	bool two_sided;
+	vec4 uniform_base_color = vec4(1.0f);
+	vec3 uniform_emissive_color = vec4(0.0f);
+	float uniform_metallic = 1.0f;
+	float uniform_roughness = 1.0f;
+	MeshDrawPipeline pipeline = MeshDrawPipeline::Opaque;
+	bool two_sided = false;
 };
 }
 }

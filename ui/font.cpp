@@ -93,7 +93,7 @@ void Font::render_text(RenderQueue &queue, const char *text, const vec3 &offset,
 	vec2 cached = off;
 
 	vec2 min_rect = vec2(FLT_MAX);
-	vec2 max_rect = vec2(FLT_MIN);
+	vec2 max_rect = vec2(-FLT_MAX);
 
 	while (*text)
 	{

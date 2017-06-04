@@ -47,6 +47,15 @@ struct StaticMeshFragment
 	float metallic;
 };
 
+struct DebugMeshInfo : RenderInfo
+{
+	Vulkan::Program *program;
+	mat4 MVP;
+	vec3 *positions;
+	vec4 *colors;
+	uint32_t count = 0;
+};
+
 struct StaticMeshInfo : RenderInfo
 {
 	const Vulkan::Buffer *vbo_position;
@@ -82,6 +91,7 @@ struct SkinnedMeshInfo : StaticMeshInfo
 namespace RenderFunctions
 {
 void static_mesh_render(Vulkan::CommandBuffer &cmd, const RenderInfo **render, unsigned instances);
+void debug_mesh_render(Vulkan::CommandBuffer &cmd, const RenderInfo **render, unsigned instances);
 void skinned_mesh_render(Vulkan::CommandBuffer &cmd, const RenderInfo **render, unsigned instances);
 }
 

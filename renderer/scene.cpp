@@ -103,7 +103,7 @@ void Scene::update_cached_transforms()
 			if (cached_transform->skin_transform)
 			{
 				// TODO: Isolate the AABB per bone.
-				cached_transform->world_aabb = AABB(vec3(FLT_MAX), vec3(FLT_MIN));
+				cached_transform->world_aabb = AABB(vec3(FLT_MAX), vec3(-FLT_MAX));
 				for (auto &m : cached_transform->skin_transform->bone_world_transforms)
 					cached_transform->world_aabb.expand(aabb->aabb.transform(m));
 			}

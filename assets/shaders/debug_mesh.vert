@@ -6,7 +6,7 @@ layout(location = 0) in highp vec3 Position;
 
 #if HAVE_VERTEX_COLOR
 layout(location = 1) in mediump vec4 Color;
-layout(location = 0) out mediump vec4 vCOlor;
+layout(location = 0) out mediump vec4 vColor;
 #endif
 
 layout(std430, push_constant) uniform Model

@@ -53,9 +53,69 @@ void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context)
 	queue.dispatch(Queue::Transparent, cmd, &state);
 }
 
+DebugMeshInfo &Renderer::render_debug(RenderContext &context, const AABB &aabb, unsigned count)
+{
+	auto &debug = queue.emplace<DebugMeshInfo>(Queue::Opaque);
+	debug.render = RenderFunctions::debug_mesh_render;
+	debug.count = count;
+	debug.colors = static_cast<vec4 *>(queue.allocate(debug.count * sizeof(vec4)));
+	debug.positions = static_cast<vec3 *>(queue.allocate(debug.count * sizeof(vec3)));
+
+	static const uint32_t pos_mask = 1u << ecast(MeshAttribute::Position);
+	static const uint32_t color_mask = 1u << ecast(MeshAttribute::VertexColor);
+	debug.program = suite[ecast(RenderableType::DebugMesh)].get_program(MeshDrawPipeline::Opaque, pos_mask | color_mask, 0).get();
+
+	Hasher hasher;
+	hasher.pointer(debug.program);
+	debug.instance_key = hasher.get();
+	debug.sorting_key = RenderInfo::get_sort_key(context, Queue::Opaque, hasher.get(), aabb.get_center());
+	debug.MVP = context.get_render_parameters().view_projection;
+	return debug;
+}
+
+void Renderer::render_debug_aabb(RenderContext &context, const AABB &aabb, const vec4 &color)
+{
+	auto &debug = render_debug(context, aabb, 12 * 2);
+
+	for (unsigned i = 0; i < debug.count; i++)
+		debug.colors[i] = color;
+
+	auto *pos = debug.positions;
+	*pos++ = aabb.get_coord(0.0f, 0.0f, 0.0f);
+	*pos++ = aabb.get_coord(1.0f, 0.0f, 0.0f);
+	*pos++ = aabb.get_coord(1.0f, 0.0f, 0.0f);
+	*pos++ = aabb.get_coord(1.0f, 0.0f, 1.0f);
+	*pos++ = aabb.get_coord(1.0f, 0.0f, 1.0f);
+	*pos++ = aabb.get_coord(0.0f, 0.0f, 1.0f);
+	*pos++ = aabb.get_coord(0.0f, 0.0f, 1.0f);
+	*pos++ = aabb.get_coord(0.0f, 0.0f, 0.0f);
+
+	*pos++ = aabb.get_coord(0.0f, 1.0f, 0.0f);
+	*pos++ = aabb.get_coord(1.0f, 1.0f, 0.0f);
+	*pos++ = aabb.get_coord(1.0f, 1.0f, 0.0f);
+	*pos++ = aabb.get_coord(1.0f, 1.0f, 1.0f);
+	*pos++ = aabb.get_coord(1.0f, 1.0f, 1.0f);
+	*pos++ = aabb.get_coord(0.0f, 1.0f, 1.0f);
+	*pos++ = aabb.get_coord(0.0f, 1.0f, 1.0f);
+	*pos++ = aabb.get_coord(0.0f, 1.0f, 0.0f);
+
+	*pos++ = aabb.get_coord(0.0f, 0.0f, 0.0f);
+	*pos++ = aabb.get_coord(0.0f, 1.0f, 0.0f);
+	*pos++ = aabb.get_coord(1.0f, 0.0f, 0.0f);
+	*pos++ = aabb.get_coord(1.0f, 1.0f, 0.0f);
+	*pos++ = aabb.get_coord(1.0f, 0.0f, 1.0f);
+	*pos++ = aabb.get_coord(1.0f, 1.0f, 1.0f);
+	*pos++ = aabb.get_coord(0.0f, 0.0f, 1.0f);
+	*pos++ = aabb.get_coord(0.0f, 1.0f, 1.0f);
+}
+
 void Renderer::push_renderables(RenderContext &context, const VisibilityList &visible)
 {
 	for (auto &vis : visible)
+	{
 		vis.renderable->get_render_info(context, vis.transform, queue);
+		if (vis.transform)
+			render_debug_aabb(context, vis.transform->world_aabb, vec4(0.0f, 1.0f, 0.0f, 1.0f));
+	}
 }
 }

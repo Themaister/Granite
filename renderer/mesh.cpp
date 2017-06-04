@@ -68,6 +68,38 @@ static void mesh_set_state(CommandBuffer &cmd, const StaticMeshInfo &info)
 	cmd.set_cull_mode(info.two_sided ? VK_CULL_MODE_NONE : VK_CULL_MODE_BACK_BIT);
 }
 
+void debug_mesh_render(CommandBuffer &cmd, const RenderInfo **infos, unsigned instances)
+{
+	auto *info = static_cast<const DebugMeshInfo *>(infos[0]);
+
+	cmd.set_program(*info->program);
+	cmd.push_constants(&info->MVP, 0, sizeof(info->MVP));
+	cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_LINE_LIST);
+	cmd.set_vertex_attrib(0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0);
+	cmd.set_vertex_attrib(1, 1, VK_FORMAT_R32G32B32A32_SFLOAT, 0);
+
+	unsigned count = 0;
+
+	for (unsigned i = 0; i < instances; i++)
+		count += static_cast<const DebugMeshInfo *>(infos[i])->count;
+
+	vec3 *pos = static_cast<vec3 *>(cmd.allocate_vertex_data(0, count * sizeof(vec3), sizeof(vec3)));
+	vec4 *color = static_cast<vec4 *>(cmd.allocate_vertex_data(1, count * sizeof(vec4), sizeof(vec4)));
+
+	count = 0;
+	for (unsigned i = 0; i < instances; i++)
+	{
+		auto &draw = *static_cast<const DebugMeshInfo *>(infos[i]);
+		memcpy(pos + count, draw.positions, draw.count * sizeof(vec3));
+		memcpy(color + count, draw.colors, draw.count * sizeof(vec4));
+		count += draw.count;
+	}
+
+	cmd.set_depth_bias(true);
+	cmd.set_depth_bias(-1.0f, -1.0f);
+	cmd.draw(count);
+}
+
 void static_mesh_render(CommandBuffer &cmd, const RenderInfo **infos, unsigned instances)
 {
 	auto *info = static_cast<const StaticMeshInfo *>(infos[0]);

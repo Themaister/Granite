@@ -3,7 +3,9 @@ layout(location = 0) in mediump vec2 QuadCoord;
 layout(location = 1) in vec4 PosOffsetScale;
 layout(location = 2) in vec4 TexOffsetScale;
 layout(location = 3) in mediump vec4 Rotation;
+#if HAVE_VERTEX_COLOR
 layout(location = 4) in mediump vec4 Color;
+#endif
 layout(location = 5) in mediump float Layer;
 
 layout(std140, set = 0, binding = 0) uniform Scene
@@ -31,5 +33,7 @@ void main()
 #if defined(HAVE_UV) && HAVE_UV
     vTex = ((QuadCoord * 0.5 + 0.5) * TexOffsetScale.zw + TexOffsetScale.xy) * constants.inv_tex_resolution;
 #endif
+#if HAVE_VERTEX_COLOR
     vColor = Color;
+#endif
 }

@@ -72,9 +72,11 @@ void Font::render_text(RenderQueue &queue, const char *text, const vec3 &offset,
 
 	static const uint32_t uv_mask = 1u << ecast(MeshAttribute::UV);
 	static const uint32_t pos_mask = 1u << ecast(MeshAttribute::Position);
+	static const uint32_t color_mask = 1u << ecast(MeshAttribute::VertexColor);
 	static const uint32_t base_color_mask = 1u << ecast(Material::Textures::BaseColor);
 	sprite.program = queue.get_shader_suites()[ecast(RenderableType::Sprite)].get_program(MeshDrawPipeline::AlphaBlend,
-                                                                                          uv_mask | pos_mask, base_color_mask).get();
+                                                                                          uv_mask | pos_mask | color_mask,
+                                                                                          base_color_mask).get();
 
 	Hasher hasher;
 	hasher.pointer(sprite.texture);

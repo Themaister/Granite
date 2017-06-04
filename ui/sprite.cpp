@@ -80,11 +80,12 @@ void Sprite::get_sprite_render_info(const SpriteTransformInfo &transform, Render
 
 	static const uint32_t uv_mask = 1u << ecast(MeshAttribute::UV);
 	static const uint32_t pos_mask = 1u << ecast(MeshAttribute::Position);
+	static const uint32_t color_mask = 1u << ecast(MeshAttribute::VertexColor);
 	static const uint32_t base_color_mask = 1u << ecast(Material::Textures::BaseColor);
 
 	sprite.program = queue.get_shader_suites()[ecast(RenderableType::Sprite)].get_program(pipeline,
-	                                                                                    texture ? (uv_mask | pos_mask) : pos_mask,
-	                                                                                    texture ? base_color_mask : 0).get();
+	                                                                                      (pos_mask | color_mask) | (texture ? uv_mask : 0),
+	                                                                                      texture ? base_color_mask : 0).get();
 	if (texture)
 		sprite.texture = &texture->get_image()->get_view();
 	sprite.sampler = sampler;

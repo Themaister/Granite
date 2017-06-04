@@ -54,6 +54,7 @@ Vulkan::ProgramHandle ShaderSuite::get_program(MeshDrawPipeline pipeline, uint32
 		defines.emplace_back("HAVE_TANGENT", !!(attribute_mask & (1u << ecast(MeshAttribute::Tangent))));
 		defines.emplace_back("HAVE_BONE_INDEX", !!(attribute_mask & (1u << ecast(MeshAttribute::BoneIndex))));
 		defines.emplace_back("HAVE_BONE_WEIGHT", !!(attribute_mask & (1u << ecast(MeshAttribute::BoneWeights))));
+		defines.emplace_back("HAVE_VERTEX_COLOR", !!(attribute_mask & (1u << ecast(MeshAttribute::VertexColor))));
 
 		if (attribute_mask & (1u << static_cast<uint32_t>(MeshAttribute::UV)))
 		{

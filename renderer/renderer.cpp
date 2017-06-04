@@ -23,6 +23,7 @@ void Renderer::on_device_created(const Event &e)
 	auto &device = created.get_device();
 
 	suite[ecast(RenderableType::Mesh)].init_graphics(&device.get_shader_manager(), "assets://shaders/static_mesh.vert", "assets://shaders/static_mesh.frag");
+	suite[ecast(RenderableType::DebugMesh)].init_graphics(&device.get_shader_manager(), "assets://shaders/debug_mesh.vert", "assets://shaders/debug_mesh.frag");
 	suite[ecast(RenderableType::Skybox)].init_graphics(&device.get_shader_manager(), "assets://shaders/skybox.vert", "assets://shaders/skybox.frag");
 
 	this->device = &device;

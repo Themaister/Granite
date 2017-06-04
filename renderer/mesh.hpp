@@ -19,6 +19,7 @@ enum class MeshAttribute : unsigned
 	Tangent = 3,
 	BoneIndex = 4,
 	BoneWeights = 5,
+	VertexColor = 6,
 	Count
 };
 

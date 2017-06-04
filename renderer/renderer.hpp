@@ -10,6 +10,7 @@ class Sprite;
 enum class RenderableType
 {
 	Mesh,
+	DebugMesh,
 	Skybox,
 	Sprite,
 	Count

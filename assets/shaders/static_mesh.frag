@@ -58,7 +58,7 @@ void main()
 #endif
 
 #if defined(HAVE_METALLICROUGHNESSMAP) && HAVE_METALLICROUGHNESSMAP
-    vec2 mr = texture(uMetallicRoughnessmap, vUV).xy;
+    vec2 mr = texture(uMetallicRoughnessmap, vUV).bg;
     float metallic = mr.x;
     float roughness = mr.y;
 #else

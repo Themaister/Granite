@@ -139,6 +139,7 @@ struct MaterialInfo
 	float uniform_metallic = 1.0f;
 	float uniform_roughness = 1.0f;
 	MeshDrawPipeline pipeline = MeshDrawPipeline::Opaque;
+	Vulkan::StockSampler sampler = Vulkan::StockSampler::TrilinearWrap;
 	bool two_sided = false;
 };
 }

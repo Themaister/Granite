@@ -3,6 +3,7 @@
 #include "filesystem.hpp"
 #include "mesh.hpp"
 #include <unordered_map>
+#include <algorithm>
 
 #define RAPIDJSON_ASSERT(x) do { if (!(x)) throw "JSON error"; } while(0)
 #include "rapidjson/document.h"
@@ -114,6 +115,15 @@ Parser::Parser(const std::string &path)
 #define GL_INT                            0x1404
 #define GL_UNSIGNED_INT                   0x1405
 #define GL_FLOAT                          0x1406
+
+#define GL_REPEAT                         0x2901
+#define GL_CLAMP_TO_EDGE                  0x812F
+#define GL_NEAREST                        0x2600
+#define GL_LINEAR                         0x2601
+#define GL_NEAREST_MIPMAP_NEAREST         0x2700
+#define GL_LINEAR_MIPMAP_NEAREST          0x2701
+#define GL_NEAREST_MIPMAP_LINEAR          0x2702
+#define GL_LINEAR_MIPMAP_LINEAR           0x2703
 
 VkFormat Parser::components_to_padded_format(ScalarType type, uint32_t components)
 {
@@ -620,9 +630,55 @@ void Parser::parse(const string &original_path, const string &json)
 		json_images.push_back(Path::relpath(original_path, image["uri"].GetString()));
 	};
 
+	const auto add_stock_sampler = [&](const Value &value) {
+		unsigned wrap_s = GL_REPEAT;
+		unsigned wrap_t = GL_REPEAT;
+		unsigned min_filter = GL_LINEAR_MIPMAP_LINEAR;
+		unsigned mag_filter = GL_LINEAR;
+
+		if (value.HasMember("magFilter"))
+			mag_filter = value["magFilter"].GetUint();
+		if (value.HasMember("minFilter"))
+			min_filter = value["minFilter"].GetUint();
+		if (value.HasMember("wrapS"))
+			wrap_s = value["wrapS"].GetUint();
+		if (value.HasMember("wrapT"))
+			wrap_t = value["wrapT"].GetUint();
+
+		Vulkan::StockSampler sampler = Vulkan::StockSampler::TrilinearWrap;
+
+		struct Entry
+		{
+			unsigned wrap_s, wrap_t, mag_filter, min_filter;
+			Vulkan::StockSampler sampler;
+		};
+		static const Entry entries[] = {
+			{ GL_REPEAT, GL_REPEAT, GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR, Vulkan::StockSampler::TrilinearWrap },
+			{ GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR, Vulkan::StockSampler::TrilinearClamp },
+			{ GL_REPEAT, GL_REPEAT, GL_LINEAR, GL_LINEAR_MIPMAP_NEAREST, Vulkan::StockSampler::LinearWrap },
+			{ GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_LINEAR, GL_LINEAR_MIPMAP_NEAREST, Vulkan::StockSampler::LinearClamp },
+			{ GL_REPEAT, GL_REPEAT, GL_NEAREST, GL_NEAREST_MIPMAP_NEAREST, Vulkan::StockSampler::NearestWrap },
+			{ GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_NEAREST, GL_NEAREST_MIPMAP_NEAREST, Vulkan::StockSampler::NearestClamp },
+		};
+
+		auto itr = find_if(begin(entries), end(entries), [&](const Entry &e) {
+			return e.wrap_s == wrap_s && e.wrap_t == wrap_t && e.min_filter == min_filter && e.mag_filter == mag_filter;
+		});
+
+		if (itr != end(entries))
+			sampler = itr->sampler;
+		else
+			LOGE("Could not find stock sampler, using TrilinearWrap.\n");
+
+		json_stock_samplers.push_back(sampler);
+	};
+
 	const auto add_texture = [&](const Value &value) {
 		auto &source = value["source"];
-		json_textures.push_back({ get_by_name(json_images_map, source) });
+
+		auto &sampler = value["sampler"];
+		auto stock_sampler = json_stock_samplers[get_by_name(json_stock_sampler_map, sampler)];
+		json_textures.push_back({ get_by_name(json_images_map, source), stock_sampler });
 	};
 
 	const auto add_material = [&](const Value &value) {
@@ -666,6 +722,7 @@ void Parser::parse(const string &original_path, const string &json)
 			{
 				auto &tex = mr["baseColorTexture"]["index"];
 				info.base_color = json_images[json_textures[get_by_name(json_textures_map, tex)].image_index];
+				info.sampler = json_textures[get_by_name(json_textures_map, tex)].sampler;
 			}
 
 			if (mr.HasMember("metallicRoughnessTexture"))
@@ -852,6 +909,8 @@ void Parser::parse(const string &original_path, const string &json)
 
 	if (doc.HasMember("images"))
 		iterate_elements(doc["images"], add_image, json_images_map);
+	if (doc.HasMember("samplers"))
+		iterate_elements(doc["samplers"], add_stock_sampler, json_stock_sampler_map);
 	if (doc.HasMember("textures"))
 		iterate_elements(doc["textures"], add_texture, json_textures_map);
 	if (doc.HasMember("materials"))

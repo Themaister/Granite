@@ -105,6 +105,7 @@ private:
 	struct Texture
 	{
 		uint32_t image_index;
+		Vulkan::StockSampler sampler;
 	};
 
 	void parse(const std::string &path, const std::string &json);
@@ -123,6 +124,7 @@ private:
 	std::vector<MeshData> json_meshes;
 	std::vector<std::string> json_images;
 	std::vector<Texture> json_textures;
+	std::vector<Vulkan::StockSampler> json_stock_samplers;
 	std::vector<Skin> json_skins;
 	std::vector<Node> nodes;
 	std::vector<Animation> animations;
@@ -133,6 +135,7 @@ private:
 	std::unordered_map<std::string, uint32_t> json_mesh_map;
 	std::unordered_map<std::string, uint32_t> json_images_map;
 	std::unordered_map<std::string, uint32_t> json_textures_map;
+	std::unordered_map<std::string, uint32_t> json_stock_sampler_map;
 	std::unordered_map<std::string, uint32_t> json_material_map;
 	std::unordered_map<std::string, uint32_t> json_node_map;
 	std::unordered_map<std::string, uint32_t> json_skin_map;

@@ -35,6 +35,7 @@ MaterialFile::MaterialFile(const MaterialInfo &info)
 	roughness = info.uniform_roughness;
 	pipeline = info.pipeline;
 	two_sided = info.two_sided;
+	sampler = info.sampler;
 
 	EventManager::get_global().register_latch_handler(DeviceCreatedEvent::type_id,
 	                                                  &MaterialFile::on_device_created,

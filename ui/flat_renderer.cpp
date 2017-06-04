@@ -62,10 +62,10 @@ void FlatRenderer::flush(Vulkan::CommandBuffer &cmd, const vec2 &camera_pos, con
 	queue.reset();
 }
 
-void FlatRenderer::render_text(const Font &font, const char *text, const vec3 &offset, const vec2 &size,
+void FlatRenderer::render_text(const Font &font, const char *text, const vec3 &offset, const vec2 &size, const vec4 &color,
                                Font::Alignment alignment, float scale)
 {
-	font.render_text(queue, text, offset, size, alignment, scale);
+	font.render_text(queue, text, offset, size, color, alignment, scale);
 }
 
 void FlatRenderer::push_sprite(const SpriteInfo &info)

@@ -55,6 +55,7 @@ Font::Font(const std::string &path, unsigned size)
 }
 
 void Font::render_text(RenderQueue &queue, const char *text, const vec3 &offset, const vec2 &size,
+                       const vec4 &color,
                        Alignment alignment, float scale) const
 {
 	(void)size;
@@ -105,10 +106,7 @@ void Font::render_text(RenderQueue &queue, const char *text, const vec3 &offset,
 			stbtt_GetBakedQuad(baked_chars, width, height, *text - 32, &off.x, &off.y, &q, 1);
 
 			auto &quad = sprite.quads[sprite.quad_count++];
-			quad.color[0] = 255;
-			quad.color[1] = 255;
-			quad.color[2] = 255;
-			quad.color[3] = 255;
+			quantize_color(quad.color, color);
 			quad.rotation[0] = 1.0f;
 			quad.rotation[1] = 0.0f;
 			quad.rotation[2] = 0.0f;

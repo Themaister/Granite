@@ -32,24 +32,29 @@ void Renderer::on_device_destroyed(const Event &)
 {
 }
 
-void Renderer::render(CommandBuffer &cmd, RenderContext &context, const VisibilityList &visible)
+void Renderer::begin()
+{
+	queue.reset();
+	queue.set_shader_suites(suite);
+}
+
+void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context)
 {
 	auto *global = static_cast<RenderParameters *>(cmd.allocate_constant_data(0, 0, sizeof(RenderParameters)));
 	*global = context.get_render_parameters();
 
-	queue.reset();
-	queue.set_shader_suites(suite);
-	for (auto &vis : visible)
-		vis.renderable->get_render_info(context, vis.transform, queue);
 	queue.sort();
 
 	cmd.set_opaque_state();
-
 	CommandBufferSavedState state;
 	cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
 	queue.dispatch(Queue::Opaque, cmd, &state);
 	queue.dispatch(Queue::Transparent, cmd, &state);
+}
 
-	queue.reset();
+void Renderer::push_renderables(RenderContext &context, const VisibilityList &visible)
+{
+	for (auto &vis : visible)
+		vis.renderable->get_render_info(context, vis.transform, queue);
 }
 }

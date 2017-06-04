@@ -43,6 +43,7 @@ public:
 
 	void render_text(const Font &font, const char *text,
 	                 const vec3 &offset, const vec2 &size,
+	                 const vec4 &color = vec4(1.0f),
 	                 Font::Alignment alignment = Font::Alignment::TopLeft, float scale = 1.0f);
 
 	void flush(Vulkan::CommandBuffer &cmd, const vec2 &camera_pos, const vec2 &camera_size);

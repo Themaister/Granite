@@ -19,7 +19,10 @@ class Renderer : public EventHandler
 {
 public:
 	Renderer();
-	void render(Vulkan::CommandBuffer &cmd, RenderContext &context, const VisibilityList &visible);
+
+	void begin();
+	void push_renderables(RenderContext &context, const VisibilityList &visible);
+	void flush(Vulkan::CommandBuffer &cmd, RenderContext &context);
 
 	RenderQueue &get_render_queue()
 	{

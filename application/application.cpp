@@ -41,23 +41,6 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 
 	flat_renderer.begin();
 
-#if 0
-	Sprite sprite;
-	sprite.pipeline = MeshDrawPipeline::Opaque;
-	sprite.texture = device.get_texture_manager().request_texture("assets://textures/maister.png");
-	sprite.color[0] = 255;
-	sprite.color[1] = 255;
-	sprite.color[2] = 255;
-	sprite.color[3] = 255;
-	sprite.size = ivec2(400);
-	SpriteInfo info = { &sprite };
-	info.transform.clip = uvec4(40, 40, 200, 200);
-	flat_renderer.push_sprite(info);
-#endif
-
-	flat_renderer.render_text(*font, "Hai\nI herd u liek gg\ngggg\nThis is a very long sentence yo. Maybe this will overflow something ...",
-	                          vec3(0.0f, 0.0f, 0.0f), vec2(400.0f, 400.0f));
-
 	scene.update_cached_transforms();
 	scene.gather_visible_opaque_renderables(context.get_visibility_frustum(), visible);
 	scene.gather_background_renderables(visible);
@@ -65,7 +48,9 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 	auto cmd = device.request_command_buffer();
 	auto rp = device.get_swapchain_render_pass(SwapchainRenderPass::DepthStencil);
 	cmd->begin_render_pass(rp);
-	renderer.render(*cmd, context, visible);
+	renderer.begin();
+	renderer.push_renderables(context, visible);
+	renderer.flush(*cmd, context);
 	flat_renderer.flush(*cmd, vec2(0.0f), vec2(cmd->get_viewport().width, cmd->get_viewport().height));
 	cmd->end_render_pass();
 	device.submit(cmd);

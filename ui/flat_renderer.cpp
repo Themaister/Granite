@@ -22,6 +22,7 @@ void FlatRenderer::on_device_created(const Event &e)
 	auto &created = e.as<DeviceCreatedEvent>();
 	auto &device = created.get_device();
 	suite[ecast(RenderableType::Sprite)].init_graphics(&device.get_shader_manager(), "assets://shaders/sprite.vert", "assets://shaders/sprite.frag");
+	suite[ecast(RenderableType::LineUI)].init_graphics(&device.get_shader_manager(), "assets://shaders/line_ui.vert", "assets://shaders/debug_mesh.frag");
 	this->device = &device;
 }
 
@@ -82,6 +83,7 @@ void FlatRenderer::render_quad(const ImageView *view, Vulkan::StockSampler sampl
 
 	Hasher h;
 	h.pointer(sprite.program);
+	h.u32(transparent);
 
 	if (view)
 	{
@@ -122,6 +124,66 @@ void FlatRenderer::render_textured_quad(const ImageView &view, const vec3 &offse
 void FlatRenderer::render_quad(const vec3 &offset, const vec2 &size, const vec4 &color)
 {
 	render_quad(nullptr, Vulkan::StockSampler::Count, offset, size, vec2(0.0f), vec2(0.0f), color, color.a < 1.0f);
+}
+
+static void line_strip_render(CommandBuffer &cmd, const RenderInfo **infos, unsigned instances)
+{
+	auto &info = *static_cast<const LineStripInfo *>(infos[0]);
+	cmd.set_program(*info.program);
+
+	cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_LINE_STRIP);
+	cmd.set_primitive_restart(true);
+
+	unsigned count = 0;
+	for (unsigned i = 0; i < instances; i++)
+		count += static_cast<const LineStripInfo *>(infos[i])->count + 1;
+
+	uint32_t *indices = static_cast<uint32_t *>(cmd.allocate_index_data(count * sizeof(uint32_t), VK_INDEX_TYPE_UINT32));
+	vec3 *positions = static_cast<vec3 *>(cmd.allocate_vertex_data(0, sizeof(vec3) * count, sizeof(vec3)));
+	vec4 *colors = static_cast<vec4 *>(cmd.allocate_vertex_data(1, sizeof(vec4) * count, sizeof(vec4)));
+	cmd.set_vertex_attrib(0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0);
+	cmd.set_vertex_attrib(1, 1, VK_FORMAT_R32G32B32A32_SFLOAT, 0);
+
+	unsigned index = 0;
+	for (unsigned i = 0; i < instances; i++)
+	{
+		auto &info = *static_cast<const LineStripInfo *>(infos[i]);
+		for (unsigned x = 0; x < info.count; x++)
+		{
+			*positions++ = info.positions[x];
+			*colors++ = info.colors[x];
+			*indices++ = index++;
+		}
+		*indices++ = 0xffffffffu;
+	}
+
+	cmd.draw_indexed(count);
+}
+
+void FlatRenderer::render_line_strip(const vec2 *offset, float layer, unsigned count, const vec4 &color)
+{
+	auto transparent = color.a < 1.0f;
+	auto &strip = queue.emplace<LineStripInfo>(transparent ? Queue::Transparent : Queue::Opaque);
+
+	static const uint32_t pos_mask = 1u << ecast(MeshAttribute::Position);
+	static const uint32_t color_mask = 1u << ecast(MeshAttribute::VertexColor);
+	strip.program = suite[ecast(RenderableType::LineUI)].get_program(transparent ? MeshDrawPipeline::AlphaBlend : MeshDrawPipeline::Opaque,
+	                                                                 pos_mask | color_mask, 0).get();
+
+	strip.render = line_strip_render;
+	strip.count = count;
+
+	Hasher h;
+	h.u32(transparent);
+	strip.instance_key = h.get();
+	strip.sorting_key = RenderInfo::get_sprite_sort_key(transparent ? Queue::Transparent : Queue::Opaque, h.get(), layer);
+	strip.positions = static_cast<vec3 *>(queue.allocate(sizeof(vec3) * count, alignof(vec3)));
+	strip.colors = static_cast<vec4 *>(queue.allocate(sizeof(vec4) * count, alignof(vec4)));
+
+	for (unsigned i = 0; i < count; i++)
+		strip.colors[i] = color;
+	for (unsigned i = 0; i < count; i++)
+		strip.positions[i] = vec3(offset[i], layer);
 }
 
 void FlatRenderer::render_text(const Font &font, const char *text, const vec3 &offset, const vec2 &size, const vec4 &color,

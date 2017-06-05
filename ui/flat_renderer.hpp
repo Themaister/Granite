@@ -33,6 +33,14 @@ struct SpriteInfo
 };
 using SpriteList = std::vector<SpriteInfo>;
 
+struct LineStripInfo : RenderInfo
+{
+	Vulkan::Program *program;
+	vec3 *positions;
+	vec4 *colors;
+	unsigned count;
+};
+
 class FlatRenderer : public EventHandler
 {
 public:
@@ -55,6 +63,7 @@ public:
 	                 Font::Alignment alignment = Font::Alignment::TopLeft, float scale = 1.0f);
 
 	void flush(Vulkan::CommandBuffer &cmd, const vec3 &camera_pos, const vec3 &camera_size);
+	void render_line_strip(const vec2 *offsets, float layer, unsigned count, const vec4 &color);
 
 private:
 	void on_device_created(const Event &e);

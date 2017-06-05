@@ -13,6 +13,7 @@ enum class RenderableType
 	DebugMesh,
 	Skybox,
 	Sprite,
+	LineUI,
 	Count
 };
 

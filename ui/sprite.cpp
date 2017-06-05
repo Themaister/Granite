@@ -107,14 +107,10 @@ void Sprite::get_sprite_render_info(const SpriteTransformInfo &transform, Render
 	auto queue_type = pipeline == DrawPipeline::AlphaBlend ? Queue::Transparent : Queue::Opaque;
 	auto &sprite = queue.emplace<SpriteRenderInfo>(queue_type);
 
-	static const uint32_t uv_mask = 1u << ecast(MeshAttribute::UV);
-	static const uint32_t pos_mask = 1u << ecast(MeshAttribute::Position);
-	static const uint32_t color_mask = 1u << ecast(MeshAttribute::VertexColor);
-	static const uint32_t base_color_mask = 1u << ecast(Material::Textures::BaseColor);
-
 	sprite.program = queue.get_shader_suites()[ecast(RenderableType::Sprite)].get_program(pipeline,
-	                                                                                      (pos_mask | color_mask) | (texture ? uv_mask : 0),
-	                                                                                      texture ? base_color_mask : 0).get();
+	                                                                                      (MESH_ATTRIBUTE_POSITION_BIT | MESH_ATTRIBUTE_VERTEX_COLOR_BIT) |
+		                                                                                      (texture ? MESH_ATTRIBUTE_UV_BIT : 0),
+	                                                                                      texture ? MATERIAL_TEXTURE_BASE_COLOR_BIT : 0).get();
 	if (texture)
 		sprite.texture = &texture->get_image()->get_view();
 	sprite.sampler = sampler;

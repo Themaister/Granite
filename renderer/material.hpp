@@ -30,5 +30,13 @@ struct Material : public Util::IntrusivePtrEnabled<Material>
 	Vulkan::StockSampler sampler = Vulkan::StockSampler::TrilinearWrap;
 	bool two_sided = false;
 };
+
+enum MaterialTextureFlagBits
+{
+	MATERIAL_TEXTURE_BASE_COLOR_BIT = 1u << Util::ecast(Material::Textures::BaseColor),
+	MATERIAL_TEXTURE_NORMAL_BIT = 1u << Util::ecast(Material::Textures::Normal),
+	MATERIAL_TEXTURE_METALLIC_ROUGHNESS_BIT = 1u << Util::ecast(Material::Textures::MetallicRoughness)
+};
+
 using MaterialHandle = Util::IntrusivePtr<Material>;
 }

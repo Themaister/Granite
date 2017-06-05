@@ -76,11 +76,6 @@ void FlatRenderer::render_quad(const ImageView *view, Vulkan::StockSampler sampl
 	sprite.quad_count = 1;
 	sprite.quads = static_cast<SpriteRenderInfo::QuadData *>(queue.allocate(sizeof(SpriteRenderInfo::QuadData), alignof(SpriteRenderInfo::QuadData)));
 
-	static const uint32_t pos_mask = 1u << ecast(MeshAttribute::Position);
-	static const uint32_t uv_mask = 1u << ecast(MeshAttribute::UV);
-	static const uint32_t color_mask = 1u << ecast(MeshAttribute::VertexColor);
-	static const uint32_t tex_mask = 1u << ecast(Material::Textures::BaseColor);
-
 	Hasher h;
 	h.pointer(sprite.program);
 	h.u32(transparent);
@@ -89,12 +84,18 @@ void FlatRenderer::render_quad(const ImageView *view, Vulkan::StockSampler sampl
 	{
 		sprite.texture = view;
 		sprite.sampler = sampler;
-		sprite.program = suite[ecast(RenderableType::Sprite)].get_program(pipeline, pos_mask | color_mask | uv_mask, tex_mask).get();
+		sprite.program = suite[ecast(RenderableType::Sprite)].get_program(pipeline,
+		                                                                  MESH_ATTRIBUTE_POSITION_BIT |
+		                                                                  MESH_ATTRIBUTE_VERTEX_COLOR_BIT |
+		                                                                  MESH_ATTRIBUTE_UV_BIT,
+		                                                                  MATERIAL_TEXTURE_BASE_COLOR_BIT).get();
 		h.u64(view->get_cookie());
 		h.u32(ecast(sampler));
 	}
 	else
-		sprite.program = suite[ecast(RenderableType::Sprite)].get_program(pipeline, pos_mask | color_mask, 0).get();
+		sprite.program = suite[ecast(RenderableType::Sprite)].get_program(pipeline,
+		                                                                  MESH_ATTRIBUTE_POSITION_BIT |
+		                                                                  MESH_ATTRIBUTE_VERTEX_COLOR_BIT, 0).get();
 
 	sprite.instance_key = h.get();
 	sprite.sorting_key = RenderInfo::get_sprite_sort_key(type, h.get(), offset.z);
@@ -131,10 +132,8 @@ void FlatRenderer::render_line_strip(const vec2 *offset, float layer, unsigned c
 	auto transparent = color.a < 1.0f;
 	auto &strip = queue.emplace<LineStripInfo>(transparent ? Queue::Transparent : Queue::Opaque);
 
-	static const uint32_t pos_mask = 1u << ecast(MeshAttribute::Position);
-	static const uint32_t color_mask = 1u << ecast(MeshAttribute::VertexColor);
 	strip.program = suite[ecast(RenderableType::LineUI)].get_program(transparent ? DrawPipeline::AlphaBlend : DrawPipeline::Opaque,
-	                                                                 pos_mask | color_mask, 0).get();
+	                                                                 MESH_ATTRIBUTE_POSITION_BIT | MESH_ATTRIBUTE_VERTEX_COLOR_BIT, 0).get();
 
 	strip.render = RenderFunctions::line_strip_render;
 	strip.count = count;

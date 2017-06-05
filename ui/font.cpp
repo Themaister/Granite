@@ -70,13 +70,11 @@ void Font::render_text(RenderQueue &queue, const char *text, const vec3 &offset,
 	sprite.texture = view.get();
 	sprite.sampler = StockSampler::LinearWrap;
 
-	static const uint32_t uv_mask = 1u << ecast(MeshAttribute::UV);
-	static const uint32_t pos_mask = 1u << ecast(MeshAttribute::Position);
-	static const uint32_t color_mask = 1u << ecast(MeshAttribute::VertexColor);
-	static const uint32_t base_color_mask = 1u << ecast(Material::Textures::BaseColor);
 	sprite.program = queue.get_shader_suites()[ecast(RenderableType::Sprite)].get_program(DrawPipeline::AlphaBlend,
-                                                                                          uv_mask | pos_mask | color_mask,
-                                                                                          base_color_mask).get();
+	                                                                                      MESH_ATTRIBUTE_UV_BIT |
+	                                                                                      MESH_ATTRIBUTE_POSITION_BIT |
+	                                                                                      MESH_ATTRIBUTE_VERTEX_COLOR_BIT,
+	                                                                                      MATERIAL_TEXTURE_BASE_COLOR_BIT).get();
 
 	Hasher hasher;
 	hasher.pointer(sprite.texture);

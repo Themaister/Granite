@@ -1,6 +1,7 @@
 #include "flat_renderer.hpp"
 #include "device.hpp"
 #include "event.hpp"
+#include "sprite.hpp"
 
 using namespace Vulkan;
 using namespace std;
@@ -34,19 +35,23 @@ void FlatRenderer::begin()
 	queue.set_shader_suites(suite);
 }
 
-void FlatRenderer::flush(Vulkan::CommandBuffer &cmd, const vec2 &camera_pos, const vec2 &camera_size)
+void FlatRenderer::flush(Vulkan::CommandBuffer &cmd, const vec3 &camera_pos, const vec3 &camera_size)
 {
 	struct GlobalData
 	{
-		float inv_resolution[2];
-		float pos_offset_pixels[2];
+		float inv_resolution[4];
+		float pos_offset_pixels[4];
 	};
 	auto *global = static_cast<GlobalData *>(cmd.allocate_constant_data(0, 0, sizeof(GlobalData)));
 
 	global->inv_resolution[0] = 1.0f / camera_size.x;
 	global->inv_resolution[1] = 1.0f / camera_size.y;
+	global->inv_resolution[2] = 1.0f / camera_size.z;
+	global->inv_resolution[3] = 0.0f;
 	global->pos_offset_pixels[0] = -camera_pos.x;
 	global->pos_offset_pixels[1] = -camera_pos.y;
+	global->pos_offset_pixels[2] = -camera_pos.z;
+	global->pos_offset_pixels[3] = 0.0f;
 
 	queue.sort();
 
@@ -58,8 +63,65 @@ void FlatRenderer::flush(Vulkan::CommandBuffer &cmd, const vec2 &camera_pos, con
 	cmd.set_transparent_sprite_state();
 	cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
 	queue.dispatch(Queue::Transparent, cmd, &state);
+}
 
-	queue.reset();
+void FlatRenderer::render_quad(const ImageView *view, Vulkan::StockSampler sampler,
+                               const vec3 &offset, const vec2 &size, const vec2 &tex_offset, const vec2 &tex_size, const vec4 &color,
+                               bool transparent)
+{
+	auto type = transparent ? Queue::Transparent : Queue::Opaque;
+	auto pipeline = transparent ? MeshDrawPipeline::AlphaBlend : MeshDrawPipeline::Opaque;
+	auto &sprite = queue.emplace<SpriteRenderInfo>(type);
+	sprite.quad_count = 1;
+	sprite.quads = static_cast<SpriteRenderInfo::QuadData *>(queue.allocate(sizeof(SpriteRenderInfo::QuadData), alignof(SpriteRenderInfo::QuadData)));
+
+	static const uint32_t pos_mask = 1u << ecast(MeshAttribute::Position);
+	static const uint32_t uv_mask = 1u << ecast(MeshAttribute::UV);
+	static const uint32_t color_mask = 1u << ecast(MeshAttribute::VertexColor);
+	static const uint32_t tex_mask = 1u << ecast(Material::Textures::BaseColor);
+
+	Hasher h;
+	h.pointer(sprite.program);
+
+	if (view)
+	{
+		sprite.texture = view;
+		sprite.sampler = sampler;
+		sprite.program = suite[ecast(RenderableType::Sprite)].get_program(pipeline, pos_mask | color_mask | uv_mask, tex_mask).get();
+		h.u64(view->get_cookie());
+		h.u32(ecast(sampler));
+	}
+	else
+		sprite.program = suite[ecast(RenderableType::Sprite)].get_program(pipeline, pos_mask | color_mask, 0).get();
+
+	sprite.instance_key = h.get();
+	sprite.sorting_key = RenderInfo::get_sprite_sort_key(type, h.get(), offset.z);
+
+	sprite.quads->layer = offset.z;
+	sprite.quads->pos_off_x = offset.x;
+	sprite.quads->pos_off_y = offset.y;
+	sprite.quads->pos_scale_x = size.x;
+	sprite.quads->pos_scale_y = size.y;
+	sprite.quads->tex_off_x = tex_offset.x;
+	sprite.quads->tex_off_y = tex_offset.y;
+	sprite.quads->tex_scale_x = tex_size.x;
+	sprite.quads->tex_scale_y = tex_size.y;
+	quantize_color(sprite.quads->color, color);
+	sprite.quads->rotation[0] = 1.0f;
+	sprite.quads->rotation[1] = 0.0f;
+	sprite.quads->rotation[2] = 0.0f;
+	sprite.quads->rotation[3] = 1.0f;
+}
+
+void FlatRenderer::render_textured_quad(const ImageView &view, const vec3 &offset, const vec2 &size, const vec2 &tex_offset,
+                                        const vec2 &tex_size, bool transparent, const vec4 &color, Vulkan::StockSampler sampler)
+{
+	render_quad(&view, sampler, offset, size, tex_offset, tex_size, color, transparent);
+}
+
+void FlatRenderer::render_quad(const vec3 &offset, const vec2 &size, const vec4 &color)
+{
+	render_quad(nullptr, Vulkan::StockSampler::Count, offset, size, vec2(0.0f), vec2(0.0f), color, color.a < 1.0f);
 }
 
 void FlatRenderer::render_text(const Font &font, const char *text, const vec3 &offset, const vec2 &size, const vec4 &color,

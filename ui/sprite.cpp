@@ -8,11 +8,6 @@ using namespace Util;
 namespace Granite
 {
 
-SpriteRenderInfo::SpriteRenderInfo()
-{
-	render = RenderFunctions::sprite_render;
-}
-
 namespace RenderFunctions
 {
 void sprite_render(Vulkan::CommandBuffer &cmd, const RenderInfo **infos, unsigned num_instances)

@@ -14,7 +14,10 @@ void sprite_render(Vulkan::CommandBuffer &cmd, const RenderInfo **render, unsign
 
 struct SpriteRenderInfo : RenderInfo
 {
-	SpriteRenderInfo();
+	SpriteRenderInfo()
+	{
+		render = RenderFunctions::sprite_render;
+	}
 
 	const Vulkan::ImageView *texture = nullptr;
 	Vulkan::Program *program = nullptr;

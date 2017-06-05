@@ -123,10 +123,6 @@ void Renderer::render_debug_aabb(RenderContext &context, const AABB &aabb, const
 void Renderer::push_renderables(RenderContext &context, const VisibilityList &visible)
 {
 	for (auto &vis : visible)
-	{
 		vis.renderable->get_render_info(context, vis.transform, queue);
-		if (vis.transform)
-			render_debug_aabb(context, vis.transform->world_aabb, vec4(0.0f, 1.0f, 0.0f, 1.0f));
-	}
 }
 }

@@ -10,8 +10,8 @@ layout(location = 5) in mediump float Layer;
 
 layout(std140, set = 0, binding = 0) uniform Scene
 {
-    vec2 inv_resolution;
-    vec2 pos_offset_pixels;
+    vec3 inv_resolution;
+    vec3 pos_offset_pixels;
 };
 
 layout(location = 0) flat out mediump vec4 vColor;
@@ -27,8 +27,8 @@ void main()
 {
     vec2 QuadPos = (mat2(Rotation.xy, Rotation.zw) * QuadCoord) * 0.5 + 0.5;
     vec2 pos_pixels = QuadPos * PosOffsetScale.zw + PosOffsetScale.xy;
-    vec2 pos_ndc = (pos_pixels + pos_offset_pixels) * inv_resolution;
-    gl_Position = vec4(2.0 * pos_ndc - 1.0, Layer, 1.0);
+    vec2 pos_ndc = (pos_pixels + pos_offset_pixels.xy) * inv_resolution.xy;
+    gl_Position = vec4(2.0 * pos_ndc - 1.0, Layer * inv_resolution.z + pos_offset_pixels.z, 1.0);
 
 #if defined(HAVE_UV) && HAVE_UV
     vTex = ((QuadCoord * 0.5 + 0.5) * TexOffsetScale.zw + TexOffsetScale.xy) * constants.inv_tex_resolution;

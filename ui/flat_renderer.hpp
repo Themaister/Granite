@@ -2,6 +2,7 @@
 
 #include "renderer.hpp"
 #include "font.hpp"
+#include "sprite.hpp"
 
 namespace Granite
 {
@@ -41,12 +42,19 @@ public:
 	void push_sprite(const SpriteInfo &info);
 	void push_sprites(const SpriteList &visible);
 
+	void render_quad(const vec3 &offset, const vec2 &size, const vec4 &color);
+	void render_textured_quad(const Vulkan::ImageView &view, const vec3 &offset, const vec2 &size,
+	                          const vec2 &tex_offset, const vec2 &tex_size,
+	                          bool transparent = false,
+	                          const vec4 &color = vec4(1.0f),
+	                          Vulkan::StockSampler sampler = Vulkan::StockSampler::LinearClamp);
+
 	void render_text(const Font &font, const char *text,
 	                 const vec3 &offset, const vec2 &size,
 	                 const vec4 &color = vec4(1.0f),
 	                 Font::Alignment alignment = Font::Alignment::TopLeft, float scale = 1.0f);
 
-	void flush(Vulkan::CommandBuffer &cmd, const vec2 &camera_pos, const vec2 &camera_size);
+	void flush(Vulkan::CommandBuffer &cmd, const vec3 &camera_pos, const vec3 &camera_size);
 
 private:
 	void on_device_created(const Event &e);
@@ -54,5 +62,9 @@ private:
 	Vulkan::Device *device = nullptr;
 	RenderQueue queue;
 	ShaderSuite suite[Util::ecast(RenderableType::Count)];
+
+	void render_quad(const Vulkan::ImageView *view, Vulkan::StockSampler sampler,
+	                 const vec3 &offset, const vec2 &size, const vec2 &tex_offset, const vec2 &tex_size, const vec4 &color,
+	                 bool transparent);
 };
 }

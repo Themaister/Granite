@@ -56,7 +56,7 @@ Vulkan::ProgramHandle ShaderSuite::get_program(DrawPipeline pipeline, uint32_t a
 		defines.emplace_back("HAVE_BONE_WEIGHT", !!(attribute_mask & MESH_ATTRIBUTE_BONE_WEIGHTS_BIT));
 		defines.emplace_back("HAVE_VERTEX_COLOR", !!(attribute_mask & MESH_ATTRIBUTE_VERTEX_COLOR_BIT));
 
-		if (attribute_mask & (1u << static_cast<uint32_t>(MeshAttribute::UV)))
+		if (attribute_mask & MESH_ATTRIBUTE_UV_BIT)
 		{
 			defines.emplace_back("HAVE_BASECOLORMAP", !!(texture_mask & MATERIAL_TEXTURE_BASE_COLOR_BIT));
 			if ((attribute_mask & MESH_ATTRIBUTE_NORMAL_BIT) && (attribute_mask & MESH_ATTRIBUTE_TANGENT_BIT))

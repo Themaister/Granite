@@ -672,6 +672,12 @@ void Device::wait_idle()
 	transient_allocator.clear();
 	for (auto &allocator : descriptor_set_allocators)
 		allocator.second->clear();
+
+	for (auto &frame : per_frame)
+	{
+		frame->cleanup();
+		frame->begin();
+	}
 }
 
 void Device::begin_frame(unsigned index)

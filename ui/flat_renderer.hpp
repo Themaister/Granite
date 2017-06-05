@@ -3,6 +3,7 @@
 #include "renderer.hpp"
 #include "font.hpp"
 #include "sprite.hpp"
+#include <vector>
 
 namespace Granite
 {
@@ -39,6 +40,7 @@ struct LineStripInfo : RenderInfo
 	vec3 *positions;
 	vec4 *colors;
 	unsigned count;
+	ivec4 clip = ivec4(-0x10000, -0x10000, 0x20000, 0x20000);
 };
 
 class FlatRenderer : public EventHandler
@@ -65,6 +67,10 @@ public:
 	void flush(Vulkan::CommandBuffer &cmd, const vec3 &camera_pos, const vec3 &camera_size);
 	void render_line_strip(const vec2 *offsets, float layer, unsigned count, const vec4 &color);
 
+	void reset_scissor();
+	void push_scissor(const vec2 &offset, const vec2 &size);
+	void pop_scissor();
+
 private:
 	void on_device_created(const Event &e);
 	void on_device_destroyed(const Event &e);
@@ -72,8 +78,17 @@ private:
 	RenderQueue queue;
 	ShaderSuite suite[Util::ecast(RenderableType::Count)];
 
+	struct Scissor
+	{
+		vec2 offset;
+		vec2 size;
+	};
+	std::vector<Scissor> scissor_stack;
+
 	void render_quad(const Vulkan::ImageView *view, Vulkan::StockSampler sampler,
 	                 const vec3 &offset, const vec2 &size, const vec2 &tex_offset, const vec2 &tex_size, const vec4 &color,
 	                 bool transparent);
+
+	void build_scissor(ivec4 &clip, const vec2 &minimum, const vec2 &maximum) const;
 };
 }

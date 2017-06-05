@@ -15,6 +15,25 @@ FlatRenderer::FlatRenderer()
 	                                                  &FlatRenderer::on_device_created,
 	                                                  &FlatRenderer::on_device_destroyed,
 	                                                  this);
+
+	reset_scissor();
+}
+
+void FlatRenderer::reset_scissor()
+{
+	scissor_stack.clear();
+	scissor_stack.push_back({ vec2(-0x10000), vec2(0x20000) });
+}
+
+void FlatRenderer::push_scissor(const vec2 &offset, const vec2 &size)
+{
+	scissor_stack.push_back({ offset, size });
+}
+
+void FlatRenderer::pop_scissor()
+{
+	assert(!scissor_stack.empty());
+	scissor_stack.pop_back();
 }
 
 void FlatRenderer::on_device_created(const Event &e)
@@ -76,8 +95,14 @@ void FlatRenderer::render_quad(const ImageView *view, Vulkan::StockSampler sampl
 	sprite.quad_count = 1;
 	sprite.quads = static_cast<SpriteRenderInfo::QuadData *>(queue.allocate(sizeof(SpriteRenderInfo::QuadData), alignof(SpriteRenderInfo::QuadData)));
 
+	build_scissor(sprite.clip_quad, offset.xy(), offset.xy() + size);
+
 	Hasher h;
 	h.pointer(sprite.program);
+	h.s32(sprite.clip_quad.x);
+	h.s32(sprite.clip_quad.y);
+	h.s32(sprite.clip_quad.z);
+	h.s32(sprite.clip_quad.w);
 	h.u32(transparent);
 
 	if (view)
@@ -127,6 +152,19 @@ void FlatRenderer::render_quad(const vec3 &offset, const vec2 &size, const vec4 
 	render_quad(nullptr, Vulkan::StockSampler::Count, offset, size, vec2(0.0f), vec2(0.0f), color, color.a < 1.0f);
 }
 
+void FlatRenderer::build_scissor(ivec4 &clip, const vec2 &minimum, const vec2 &maximum) const
+{
+	auto &current = scissor_stack.back();
+	bool scissor_invariant =
+		all(lessThanEqual(current.offset, minimum)) &&
+		all(greaterThanEqual(current.offset + current.size, maximum));
+
+	if (scissor_invariant)
+		clip = ivec4(-0x10000, -0x10000, 0x20000, 0x20000);
+	else
+		clip = ivec4(current.offset, current.size);
+}
+
 void FlatRenderer::render_line_strip(const vec2 *offset, float layer, unsigned count, const vec4 &color)
 {
 	auto transparent = color.a < 1.0f;
@@ -138,17 +176,32 @@ void FlatRenderer::render_line_strip(const vec2 *offset, float layer, unsigned c
 	strip.render = RenderFunctions::line_strip_render;
 	strip.count = count;
 
+	strip.positions = static_cast<vec3 *>(queue.allocate(sizeof(vec3) * count, alignof(vec3)));
+	strip.colors = static_cast<vec4 *>(queue.allocate(sizeof(vec4) * count, alignof(vec4)));
+
+	vec2 minimum(FLT_MAX);
+	vec2 maximum(-FLT_MAX);
+
+	for (unsigned i = 0; i < count; i++)
+		strip.colors[i] = color;
+
+	for (unsigned i = 0; i < count; i++)
+	{
+		strip.positions[i] = vec3(offset[i], layer);
+		minimum = min(minimum, offset[i]);
+		maximum = max(maximum, offset[i]);
+	}
+
+	build_scissor(strip.clip, minimum, maximum);
+
 	Hasher h;
 	h.u32(transparent);
 	strip.instance_key = h.get();
 	strip.sorting_key = RenderInfo::get_sprite_sort_key(transparent ? Queue::Transparent : Queue::Opaque, h.get(), layer);
-	strip.positions = static_cast<vec3 *>(queue.allocate(sizeof(vec3) * count, alignof(vec3)));
-	strip.colors = static_cast<vec4 *>(queue.allocate(sizeof(vec4) * count, alignof(vec4)));
-
-	for (unsigned i = 0; i < count; i++)
-		strip.colors[i] = color;
-	for (unsigned i = 0; i < count; i++)
-		strip.positions[i] = vec3(offset[i], layer);
+	h.s32(strip.clip.x);
+	h.s32(strip.clip.y);
+	h.s32(strip.clip.z);
+	h.s32(strip.clip.w);
 }
 
 void FlatRenderer::render_text(const Font &font, const char *text, const vec3 &offset, const vec2 &size, const vec4 &color,

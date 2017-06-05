@@ -18,6 +18,13 @@ void line_strip_render(Vulkan::CommandBuffer &cmd, const RenderInfo **infos, uns
 	cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_LINE_STRIP);
 	cmd.set_primitive_restart(true);
 
+	VkRect2D sci;
+	sci.offset.x = info.clip.x;
+	sci.offset.y = info.clip.y;
+	sci.extent.width = uint32_t(info.clip.z);
+	sci.extent.height = uint32_t(info.clip.w);
+	cmd.set_scissor(sci);
+
 	unsigned count = 0;
 	for (unsigned i = 0; i < instances; i++)
 		count += static_cast<const LineStripInfo *>(infos[i])->count + 1;

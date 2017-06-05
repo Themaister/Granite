@@ -126,7 +126,6 @@ void FlatRenderer::render_quad(const vec3 &offset, const vec2 &size, const vec4 
 	render_quad(nullptr, Vulkan::StockSampler::Count, offset, size, vec2(0.0f), vec2(0.0f), color, color.a < 1.0f);
 }
 
-
 void FlatRenderer::render_line_strip(const vec2 *offset, float layer, unsigned count, const vec4 &color)
 {
 	auto transparent = color.a < 1.0f;

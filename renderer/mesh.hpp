@@ -92,6 +92,7 @@ namespace RenderFunctions
 {
 void static_mesh_render(Vulkan::CommandBuffer &cmd, const RenderInfo **render, unsigned instances);
 void debug_mesh_render(Vulkan::CommandBuffer &cmd, const RenderInfo **render, unsigned instances);
+void line_strip_render(Vulkan::CommandBuffer &cmd, const RenderInfo **render, unsigned instances);
 void skinned_mesh_render(Vulkan::CommandBuffer &cmd, const RenderInfo **render, unsigned instances);
 }
 

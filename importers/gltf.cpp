@@ -691,16 +691,16 @@ void Parser::parse(const string &original_path, const string &json)
 		if (value.HasMember("doubleSided"))
 			info.two_sided = value["doubleSided"].GetBool();
 
-		info.pipeline = MeshDrawPipeline::Opaque;
+		info.pipeline = DrawPipeline::Opaque;
 		if (value.HasMember("alphaMode"))
 		{
 			string mode = value["alphaMode"].GetString();
 			if (mode == "OPAQUE")
-				info.pipeline = MeshDrawPipeline::Opaque;
+				info.pipeline = DrawPipeline::Opaque;
 			else if (mode == "MASK")
-				info.pipeline = MeshDrawPipeline::AlphaTest;
+				info.pipeline = DrawPipeline::AlphaTest;
 			else if (mode == "BLEND")
-				info.pipeline = MeshDrawPipeline::AlphaBlend;
+				info.pipeline = DrawPipeline::AlphaBlend;
 		}
 
 		if (value.HasMember("emissiveFactor"))

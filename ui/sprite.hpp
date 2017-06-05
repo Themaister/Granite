@@ -38,7 +38,7 @@ struct SpriteRenderInfo : RenderInfo
 
 struct Sprite : AbstractRenderable
 {
-	MeshDrawPipeline pipeline = MeshDrawPipeline::Opaque;
+	DrawPipeline pipeline = DrawPipeline::Opaque;
 	Vulkan::Texture *texture = nullptr;
 	Vulkan::StockSampler sampler = Vulkan::StockSampler::LinearWrap;
 
@@ -51,7 +51,7 @@ struct Sprite : AbstractRenderable
 	{
 	}
 
-	MeshDrawPipeline get_mesh_draw_pipeline() const override
+	DrawPipeline get_mesh_draw_pipeline() const override
 	{
 		return pipeline;
 	}

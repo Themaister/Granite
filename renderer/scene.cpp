@@ -213,7 +213,7 @@ EntityHandle Scene::create_renderable(AbstractRenderableHandle renderable, Node 
 
 	switch (renderable->get_mesh_draw_pipeline())
 	{
-	case MeshDrawPipeline::AlphaBlend:
+	case DrawPipeline::AlphaBlend:
 		entity->allocate_component<TransparentComponent>();
 		break;
 

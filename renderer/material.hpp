@@ -26,7 +26,7 @@ struct Material : public Util::IntrusivePtrEnabled<Material>
 	vec3 emissive;
 	float roughness = 1.0f;
 	float metallic = 1.0f;
-	MeshDrawPipeline pipeline = MeshDrawPipeline::Opaque;
+	DrawPipeline pipeline = DrawPipeline::Opaque;
 	Vulkan::StockSampler sampler = Vulkan::StockSampler::TrilinearWrap;
 	bool two_sided = false;
 };

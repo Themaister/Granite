@@ -11,7 +11,7 @@ class ShaderSuite;
 class CachedSpatialTransformComponent;
 struct SpriteTransformInfo;
 
-enum class MeshDrawPipeline : unsigned
+enum class DrawPipeline : unsigned
 {
 	Opaque,
 	AlphaTest,
@@ -44,9 +44,9 @@ public:
 		return aabb;
 	}
 
-	virtual MeshDrawPipeline get_mesh_draw_pipeline() const
+	virtual DrawPipeline get_mesh_draw_pipeline() const
 	{
-		return MeshDrawPipeline::Opaque;
+		return DrawPipeline::Opaque;
 	}
 };
 using AbstractRenderableHandle = Util::IntrusivePtr<AbstractRenderable>;

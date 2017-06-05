@@ -23,11 +23,11 @@ void ShaderSuite::init_compute(Vulkan::ShaderManager *manager, const std::string
 	base_defines.clear();
 }
 
-Vulkan::ProgramHandle ShaderSuite::get_program(MeshDrawPipeline pipeline, uint32_t attribute_mask,
+Vulkan::ProgramHandle ShaderSuite::get_program(DrawPipeline pipeline, uint32_t attribute_mask,
                                                uint32_t texture_mask)
 {
 	Hasher h;
-	h.u32(pipeline == MeshDrawPipeline::AlphaTest);
+	h.u32(pipeline == DrawPipeline::AlphaTest);
 	h.u32(attribute_mask);
 	h.u32(texture_mask);
 
@@ -40,7 +40,7 @@ Vulkan::ProgramHandle ShaderSuite::get_program(MeshDrawPipeline pipeline, uint32
 		vector<pair<string, int>> defines = base_defines;
 		switch (pipeline)
 		{
-		case MeshDrawPipeline::AlphaTest:
+		case DrawPipeline::AlphaTest:
 			defines.emplace_back("ALPHA_TEST", 1);
 			break;
 

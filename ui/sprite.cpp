@@ -10,6 +10,40 @@ namespace Granite
 
 namespace RenderFunctions
 {
+void line_strip_render(Vulkan::CommandBuffer &cmd, const RenderInfo **infos, unsigned instances)
+{
+	auto &info = *static_cast<const LineStripInfo *>(infos[0]);
+	cmd.set_program(*info.program);
+
+	cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_LINE_STRIP);
+	cmd.set_primitive_restart(true);
+
+	unsigned count = 0;
+	for (unsigned i = 0; i < instances; i++)
+		count += static_cast<const LineStripInfo *>(infos[i])->count + 1;
+
+	uint32_t *indices = static_cast<uint32_t *>(cmd.allocate_index_data(count * sizeof(uint32_t), VK_INDEX_TYPE_UINT32));
+	vec3 *positions = static_cast<vec3 *>(cmd.allocate_vertex_data(0, sizeof(vec3) * count, sizeof(vec3)));
+	vec4 *colors = static_cast<vec4 *>(cmd.allocate_vertex_data(1, sizeof(vec4) * count, sizeof(vec4)));
+	cmd.set_vertex_attrib(0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0);
+	cmd.set_vertex_attrib(1, 1, VK_FORMAT_R32G32B32A32_SFLOAT, 0);
+
+	unsigned index = 0;
+	for (unsigned i = 0; i < instances; i++)
+	{
+		auto &info = *static_cast<const LineStripInfo *>(infos[i]);
+		for (unsigned x = 0; x < info.count; x++)
+		{
+			*positions++ = info.positions[x];
+			*colors++ = info.colors[x];
+			*indices++ = index++;
+		}
+		*indices++ = 0xffffffffu;
+	}
+
+	cmd.draw_indexed(count);
+}
+
 void sprite_render(Vulkan::CommandBuffer &cmd, const RenderInfo **infos, unsigned num_instances)
 {
 	auto &info = *static_cast<const SpriteRenderInfo *>(infos[0]);
@@ -70,7 +104,7 @@ void sprite_render(Vulkan::CommandBuffer &cmd, const RenderInfo **infos, unsigne
 
 void Sprite::get_sprite_render_info(const SpriteTransformInfo &transform, RenderQueue &queue) const
 {
-	auto queue_type = pipeline == MeshDrawPipeline::AlphaBlend ? Queue::Transparent : Queue::Opaque;
+	auto queue_type = pipeline == DrawPipeline::AlphaBlend ? Queue::Transparent : Queue::Opaque;
 	auto &sprite = queue.emplace<SpriteRenderInfo>(queue_type);
 
 	static const uint32_t uv_mask = 1u << ecast(MeshAttribute::UV);

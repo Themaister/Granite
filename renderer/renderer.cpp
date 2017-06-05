@@ -63,7 +63,7 @@ DebugMeshInfo &Renderer::render_debug(RenderContext &context, unsigned count)
 
 	static const uint32_t pos_mask = 1u << ecast(MeshAttribute::Position);
 	static const uint32_t color_mask = 1u << ecast(MeshAttribute::VertexColor);
-	debug.program = suite[ecast(RenderableType::DebugMesh)].get_program(MeshDrawPipeline::Opaque, pos_mask | color_mask, 0).get();
+	debug.program = suite[ecast(RenderableType::DebugMesh)].get_program(DrawPipeline::Opaque, pos_mask | color_mask, 0).get();
 
 	Hasher hasher;
 	hasher.pointer(debug.program);

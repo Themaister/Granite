@@ -138,7 +138,7 @@ struct MaterialInfo
 	vec3 uniform_emissive_color = vec4(0.0f);
 	float uniform_metallic = 1.0f;
 	float uniform_roughness = 1.0f;
-	MeshDrawPipeline pipeline = MeshDrawPipeline::Opaque;
+	DrawPipeline pipeline = DrawPipeline::Opaque;
 	Vulkan::StockSampler sampler = Vulkan::StockSampler::TrilinearWrap;
 	bool two_sided = false;
 };

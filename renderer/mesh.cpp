@@ -147,7 +147,7 @@ void skinned_mesh_render(CommandBuffer &cmd, const RenderInfo **infos, unsigned 
 void StaticMesh::fill_render_info(StaticMeshInfo &info, const RenderContext &context,
                                   const CachedSpatialTransformComponent *transform, RenderQueue &queue) const
 {
-	auto type = material->pipeline == MeshDrawPipeline::AlphaBlend ? Queue::Transparent : Queue::Opaque;
+	auto type = material->pipeline == DrawPipeline::AlphaBlend ? Queue::Transparent : Queue::Opaque;
 	info.render = RenderFunctions::static_mesh_render;
 	info.vbo_attributes = vbo_attributes.get();
 	info.vbo_position = vbo_position.get();
@@ -202,14 +202,14 @@ void StaticMesh::fill_render_info(StaticMeshInfo &info, const RenderContext &con
 
 void StaticMesh::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform, RenderQueue &queue) const
 {
-	auto type = material->pipeline == MeshDrawPipeline::AlphaBlend ? Queue::Transparent : Queue::Opaque;
+	auto type = material->pipeline == DrawPipeline::AlphaBlend ? Queue::Transparent : Queue::Opaque;
 	auto &info = queue.emplace<StaticMeshInfo>(type);
 	fill_render_info(info, context, transform, queue);
 }
 
 void SkinnedMesh::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform, RenderQueue &queue) const
 {
-	auto type = material->pipeline == MeshDrawPipeline::AlphaBlend ? Queue::Transparent : Queue::Opaque;
+	auto type = material->pipeline == DrawPipeline::AlphaBlend ? Queue::Transparent : Queue::Opaque;
 	auto &info = queue.emplace<SkinnedMeshInfo>(type);
 	fill_render_info(info, context, transform, queue);
 	info.render = RenderFunctions::skinned_mesh_render;

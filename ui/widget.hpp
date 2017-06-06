@@ -27,8 +27,8 @@ class Widget : public Util::IntrusivePtrEnabled<Widget>
 public:
 	virtual ~Widget() = default;
 
-	virtual void add_child(const Util::IntrusivePtr<Widget> &widget) = 0;
-	virtual Util::IntrusivePtr<Widget> remove_child(Widget &widget);
+	virtual void add_child(const Util::IntrusivePtr<Widget> &widget);
+	virtual Util::IntrusivePtr<Widget> remove_child(const Widget &widget);
 
 	template <typename T, typename... P>
 	inline T *add_child(P&&... p)
@@ -38,23 +38,74 @@ public:
 		return handle.get();
 	}
 
-	virtual void set_minimum_geometry(ivec2 size) = 0;
-	virtual void set_target_geometry(ivec2 size) = 0;
-	virtual void set_parent_offset(ivec2 offset) = 0;
-	virtual void set_alignment(Alignment alignment) = 0;
-	virtual void set_internal_margin(ivec2 offset) = 0;
-	virtual void set_outer_margin(ivec2 offset) = 0;
-	virtual void set_size_is_flexible(bool enable) = 0;
+	void set_minimum_geometry(ivec2 size)
+	{
+		geometry.minimum = size;
+		geometry_changed();
+	}
+
+	void set_target_geometry(ivec2 size)
+	{
+		geometry.target = size;
+		geometry_changed();
+	}
+
+	void set_size_is_flexible(bool enable)
+	{
+		geometry.flexible_size = enable;
+		geometry_changed();
+	}
+
+	void set_visible(bool visible)
+	{
+		geometry.visible = visible;
+		geometry_changed();
+	}
+
+	bool get_visible() const
+	{
+		return geometry.visible;
+	}
+
+	void set_background_color(vec4 color)
+	{
+		bg_color = color;
+		needs_redraw = true;
+	}
+
+	bool get_needs_redraw() const;
+	void reconfigure_geometry();
 
 protected:
-	void notify_children_geometry_changed();
-	virtual ivec2 get_minimum_geometry() = 0;
-	virtual ivec2 get_target_geometry() = 0;
+	void geometry_changed();
 	virtual void render(FlatRenderer &renderer, float layer, ivec2 offset, ivec2 size) = 0;
+
+	vec4 bg_color = vec4(1.0f, 1.0f, 1.0f, 0.0f);
+	bool needs_redraw = true;
+
+	struct
+	{
+		ivec2 minimum = ivec2(1);
+		ivec2 target = ivec2(1);
+		bool flexible_size = false;
+		bool visible = true;
+	} geometry;
+
+	void render_children(FlatRenderer &renderer, float layer, ivec2 offset);
 
 private:
 	Widget *parent = nullptr;
-	std::vector<Util::IntrusivePtr<Widget>> children;
+
+	struct Child
+	{
+		ivec2 offset;
+		ivec2 size;
+		Util::IntrusivePtr<Widget> widget;
+	};
+	std::vector<Child> children;
+	bool needs_reconfigure = false;
+
+	virtual void reconfigure() = 0;
 };
 
 using WidgetHandle = Util::IntrusivePtr<Widget>;

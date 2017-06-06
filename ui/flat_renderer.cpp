@@ -22,7 +22,7 @@ FlatRenderer::FlatRenderer()
 void FlatRenderer::reset_scissor()
 {
 	scissor_stack.clear();
-	scissor_stack.push_back({ vec2(-0x10000), vec2(0x20000) });
+	scissor_stack.push_back({ vec2(0), vec2(0x4000) });
 }
 
 void FlatRenderer::push_scissor(const vec2 &offset, const vec2 &size)
@@ -160,7 +160,7 @@ void FlatRenderer::build_scissor(ivec4 &clip, const vec2 &minimum, const vec2 &m
 		all(greaterThanEqual(current.offset + current.size, maximum));
 
 	if (scissor_invariant)
-		clip = ivec4(-0x10000, -0x10000, 0x20000, 0x20000);
+		clip = ivec4(0, 0, 0x4000, 0x4000);
 	else
 		clip = ivec4(current.offset, current.size);
 }

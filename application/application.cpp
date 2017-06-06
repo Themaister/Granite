@@ -54,8 +54,8 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 #if 1
 	auto &view = device.get_texture_manager().request_texture("assets://textures/maister.png")->get_image()->get_view();
 	flat_renderer.render_textured_quad(view, vec3(200.0f, 200.0f, 0.0f), vec2(64.0f), vec2(0.0f), vec2(400.0f));
-	flat_renderer.render_quad(vec3(10.0f, 10.0f, 0.01f), vec2(256.0f), vec4(1.0f));
-	flat_renderer.render_quad(vec3(30.0f, 30.0f, 0.015f), vec2(400.0f), vec4(0.8f, 0.0f, 0.0f, 0.4f));
+	flat_renderer.render_quad(vec3(110.0f, 10.0f, 0.01f), vec2(256.0f), vec4(1.0f));
+	flat_renderer.render_quad(vec3(330.0f, 30.0f, 0.015f), vec2(400.0f), vec4(0.8f, 0.0f, 0.0f, 0.4f));
 #endif
 
 	flat_renderer.pop_scissor();
@@ -72,8 +72,8 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 		{ 80.0f, 12.0f },
 		{ 10.0f, 18.0f },
 	};
-	flat_renderer.render_line_strip(offsets, 0.0f, 4, vec4(1.0f));
-	flat_renderer.render_line_strip(offsets2, 0.0f, 4, vec4(1.0f, 0.0f, 0.0f, 1.0f));
+	flat_renderer.render_line_strip(offsets, 0.01f, 4, vec4(1.0f));
+	flat_renderer.render_line_strip(offsets2, 0.01f, 4, vec4(1.0f, 0.0f, 0.0f, 1.0f));
 
 	scene.update_cached_transforms();
 	scene.gather_visible_opaque_renderables(context.get_visibility_frustum(), visible);

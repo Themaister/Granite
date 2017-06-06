@@ -13,7 +13,7 @@ struct SpriteTransformInfo
 
 	SpriteTransformInfo(const vec3 &pos, const vec2 &scale = vec2(1.0f, 1.0f),
 	                    const mat2 &rot = mat2(1.0f),
-	                    const uvec4 &clip = uvec4(0u, 0u, ~0u, ~0u))
+	                    const ivec4 &clip = ivec4(0, 0, 0x4000, 0x4000))
 		: position(pos),
 	      scale(scale),
 	      rotation(rot),
@@ -24,7 +24,7 @@ struct SpriteTransformInfo
 	vec3 position = vec3(0.0f);
 	vec2 scale = vec2(1.0f);
 	mat2 rotation = mat2(1.0f);
-	ivec4 clip = ivec4(-0x10000, -0x10000, 0x20000, 0x20000);
+	ivec4 clip = ivec4(0, 0, 0x4000, 0x4000);
 };
 
 struct SpriteInfo
@@ -40,7 +40,7 @@ struct LineStripInfo : RenderInfo
 	vec3 *positions;
 	vec4 *colors;
 	unsigned count;
-	ivec4 clip = ivec4(-0x10000, -0x10000, 0x20000, 0x20000);
+	ivec4 clip = ivec4(0, 0, 0x4000, 0x4000);
 };
 
 class FlatRenderer : public EventHandler

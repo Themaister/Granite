@@ -643,6 +643,8 @@ const VkViewport &CommandBuffer::get_viewport() const
 void CommandBuffer::set_scissor(const VkRect2D &rect)
 {
 	VK_ASSERT(framebuffer);
+	VK_ASSERT(rect.offset.x >= 0);
+	VK_ASSERT(rect.offset.y >= 0);
 	scissor = rect;
 	set_dirty(COMMAND_BUFFER_DIRTY_SCISSOR_BIT);
 }

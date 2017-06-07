@@ -10,7 +10,7 @@ layout(location = 1) in mediump vec3 vNormal;
 #endif
 
 #if HAVE_TANGENT
-layout(location = 2) in mediump vec3 vTangent;
+layout(location = 2) in mediump vec4 vTangent;
 #endif
 
 #if defined(HAVE_BASECOLORMAP) && HAVE_BASECOLORMAP
@@ -50,8 +50,8 @@ void main()
 #if defined(HAVE_NORMAL) && HAVE_NORMAL
     vec3 normal = normalize(vNormal);
     #if defined(HAVE_NORMALMAP) && HAVE_NORMALMAP
-        vec3 tangent = normalize(vTangent);
-        vec3 binormal = cross(normal, tangent);
+        vec3 tangent = normalize(vTangent.xyz);
+        vec3 binormal = cross(normal, tangent) * vTangent.w;
         vec3 tangent_space = texture(uNormalmap, vUV).xyz * 2.0 - 1.0;
         normal = normalize(mat3(tangent, binormal, normal) * tangent_space);
     #endif

@@ -15,8 +15,8 @@ layout(location = 1) out mediump vec3 vNormal;
 #endif
 
 #if HAVE_TANGENT
-layout(location = 3) in mediump vec3 Tangent;
-layout(location = 2) out mediump vec3 vTangent;
+layout(location = 3) in mediump vec4 Tangent;
+layout(location = 2) out mediump vec4 vTangent;
 #endif
 
 #if HAVE_BONE_INDEX
@@ -95,12 +95,12 @@ void main()
             mat3(BoneNormalTransforms[BoneIndices.w]) * BoneWeights.w;
         vNormal = normalize(NormalTransform * Normal);
         #if HAVE_TANGENT
-            vTangent = normalize(NormalTransform * Tangent);
+            vTangent = vec4(normalize(NormalTransform * Tangent.xyz), Tangent.w);
         #endif
     #else
         vNormal = normalize(mat3(infos[gl_InstanceIndex].Normal) * Normal);
         #if HAVE_TANGENT
-            vTangent = normalize(mat3(infos[gl_InstanceIndex].Normal) * Tangent);
+            vTangent = vec4(normalize(mat3(infos[gl_InstanceIndex].Normal) * Tangent.xyz), Tangent.w);
         #endif
     #endif
 #endif

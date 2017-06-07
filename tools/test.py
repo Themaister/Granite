@@ -34,11 +34,7 @@ builder = MeshBuilder()
 builder.add_triangle(
         Vertex((0.0, 0.0, 0.0), (0.0, 0.0)),
         Vertex((1.0, 0.0, 0.0), (0.0, 0.1)),
-        Vertex((2.0, 1.0, 0.0), (0.0, 0.2)))
-builder.add_triangle(
-        Vertex((0.0, 0.0, 0.0), (0.0, 0.0)),
-        Vertex((1.0, 0.0, 0.0), (0.0, 0.1)),
-        Vertex((2.0, 1.0, 0.0), (0.0, 0.2)))
+        Vertex((0.0, 1.0, 0.0), (-0.1, 0.0)))
 
 builder.build_normals()
 print(builder.normals)

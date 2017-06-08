@@ -41,7 +41,7 @@ class ImageResolver():
         self.samplers = []
 
     def get_index(self, name):
-        return self.images.index(name)
+        return self.names.index(name)
 
     def register_texture(self, name, path, sampler):
         if name in self.names:

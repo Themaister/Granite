@@ -61,13 +61,13 @@ class MeshBuilder():
         self.name = None
         pass
 
-    def add_triangle(self, v0, v1, v2):
-        self.add_vertex(v0)
-        self.add_vertex(v1)
-        self.add_vertex(v2)
+    def add_triangle(self, v0, v1, v2, force_unique = False):
+        self.add_vertex(v0, force_unique)
+        self.add_vertex(v1, force_unique)
+        self.add_vertex(v2, force_unique)
 
-    def add_vertex(self, v):
-        found = v in self.vertices
+    def add_vertex(self, v, force_unique):
+        found = (v in self.vertices) and (not force_unique)
         if found:
             index = self.vertices.index(v)
             self.indices.append(index)
@@ -76,9 +76,9 @@ class MeshBuilder():
             self.index_count += 1
             self.vertices.append(v)
 
-    def add_quad(self, v0, v1, v2, v3):
-        self.add_triangle(v0, v1, v2)
-        self.add_triangle(v3, v2, v1)
+    def add_quad(self, v0, v1, v2, v3, force_unique = False):
+        self.add_triangle(v0, v1, v2, force_unique)
+        self.add_triangle(v3, v2, v1, force_unique)
 
     def build_normals(self):
         self.normals = [(0.0, 0.0, 0.0)] * len(self.vertices)

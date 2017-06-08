@@ -24,7 +24,9 @@ class MaterialBuilder():
                 }
 
         if self.base_color:
-            pbr['baseColor'] = { 'index' : textures.get_index(self.base_color) }
+            pbr['baseColorTexture'] = { 'index' : textures.get_index(self.base_color) }
+        if self.metallic_roughness:
+            pbr['metallicRoughnessTexture'] = { 'index' : textures.get_index(self.metallic_roughness) }
         if self.normal:
             value['normalTexture'] = { 'index' : textures.get_index(self.normal) }
 

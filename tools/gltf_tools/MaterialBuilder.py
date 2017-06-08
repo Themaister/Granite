@@ -11,14 +11,17 @@ class MaterialBuilder():
         self.double_sided = False
 
     def to_json_object(self, textures):
-        value = {}
+        value = {
+                'alphaMode' : self.alpha_mode,
+                'doubleSided' : self.double_sided
+                }
+
         if self.name:
             value['name'] = self.name
         pbr = { 'baseColorFactor' : [x for x in self.base_color_factor],
                 'roughnessFactor' : self.roughness_factor,
-                'metallicFactor' : self.metallic_factor,
-                'alphaMode' : self.alpha_mode,
-                'doubleSided' : self.double_sided }
+                'metallicFactor' : self.metallic_factor
+                }
 
         if self.base_color:
             pbr['baseColor'] = { 'index' : textures.get_index(self.base_color) }

@@ -51,6 +51,8 @@ class BufferResolver():
             'min' : minimum(vertices)
             })
 
+        return buffer_index
+
     def build_index_buffer(self, indices):
         min_index = min(indices)
         max_index = max(indices)
@@ -79,6 +81,8 @@ class BufferResolver():
             'componentType' : GL_UNSIGNED_INT if full_range else GL_UNSIGNED_SHORT,
             'type' : 'SCALAR',
             'count' : len(indices),
-            'max' : max_index,
-            'min' : min_index
+            'max' : [max_index],
+            'min' : [min_index]
             })
+
+        return buffer_index

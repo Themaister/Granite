@@ -1,11 +1,12 @@
 {
    "scenes" : {
       "cube" : "AnimatedCube.gltf",
-      "monkey" : "Suzanne.gltf"
+      "monkey" : "Suzanne.gltf",
+      "test": "test.gltf"
    },
    "nodes" : [
       {
-         "scene" : "cube",
+         "scene" : "test",
          "translation" : [ 5.0, 0.0, 0.0 ]
       },
       {

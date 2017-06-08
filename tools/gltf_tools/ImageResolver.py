@@ -1,5 +1,3 @@
-from gltf_tools.gltf_object import GLTFObject
-
 NEAREST_WRAP = 0
 BILINEAR_WRAP = 1
 TRILINEAR_WRAP = 2
@@ -36,7 +34,7 @@ def to_sampler_json(sampler):
         raise TypeError('Sampler is out of range')
 
 
-class ImageResolver(GLTFObject):
+class ImageResolver():
     def __init__(self):
         self.names = []
         self.paths = []

@@ -1,6 +1,4 @@
-from gltf_tools.gltf_object import GLTFObject
-
-class MaterialBuilder(GLTFObject):
+class MaterialBuilder():
     def __init__(self):
         self.name = None
         self.base_color = None
@@ -11,9 +9,8 @@ class MaterialBuilder(GLTFObject):
         self.roughness_factor = 1.0
         self.alpha_mode = 'OPAQUE'
         self.double_sided = False
-        self.texture_resolver = None
-    
-    def to_json_object(self):
+
+    def to_json_object(self, textures):
         value = {}
         if self.name:
             value['name'] = self.name
@@ -24,9 +21,9 @@ class MaterialBuilder(GLTFObject):
                 'doubleSided' : self.double_sided }
 
         if self.base_color:
-            pbr['baseColor'] = { 'index' : self.texture_resolver.get_index(self.base_color) }
+            pbr['baseColor'] = { 'index' : textures.get_index(self.base_color) }
         if self.normal:
-            value['normalTexture'] = { 'index' : self.texture_resolver.get_index(self.normal) }
+            value['normalTexture'] = { 'index' : textures.get_index(self.normal) }
 
         value['pbrMetallicRoughness'] = pbr
 

@@ -32,3 +32,20 @@ class MaterialBuilder(GLTFObject):
 
         return value
 
+class MaterialResolver():
+    def __init__(self):
+        self.names = []
+        self.materials = []
+
+    def get_material(self, name):
+        if name in self.names:
+            return self.materials[self.names.index(name)]
+        else:
+            mat = MaterialBuilder()
+            self.materials.append(mat)
+            self.names.append(name)
+            return mat
+
+    def get_material_index(self, name):
+        return self.names.index(name)
+

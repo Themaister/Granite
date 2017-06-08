@@ -3,6 +3,7 @@
 from gltf_tools.MeshBuilder import *
 from gltf_tools.MaterialBuilder import *
 from gltf_tools.ImageResolver import *
+from gltf_tools.BufferResolver import *
 import json
 import sys
 import struct
@@ -13,6 +14,13 @@ class JSONDumper(json.JSONEncoder):
             return obj.to_json_object()
         else:
             return json.JSONEncoder.default(obj)
+
+buffers = BufferResolver()
+buffers.build_index_buffer([0, 1, 2])
+buffers.build_float_buffer([(1.0, 2.0), (4.0, -1.0)])
+print(buffers.buffers)
+print(buffers.accessors)
+print(buffers.views)
 
 images = ImageResolver()
 images.register_texture('FOO1', 'path1.ktx', BILINEAR_WRAP)

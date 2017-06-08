@@ -57,6 +57,8 @@ class MeshBuilder():
         self.vertices = []
         self.indices = []
         self.index_count = 0
+        self.material = None
+        self.name = None
         pass
 
     def add_triangle(self, v0, v1, v2):
@@ -100,4 +102,30 @@ class MeshBuilder():
 
         for i in range(0, len(self.tangents)):
             self.tangents[i] = pad_tangent(self.normals[i], self.tangents[i], bitangents[i])
+
+    def to_primitive(self, buffers, materials):
+        self.build_normals()
+        prim = {}
+        attrs = {}
+        attrs['POSITION'] = buffers.build_float_buffer([x.position for x in self.vertices])
+        attrs['NORMAL'] = buffers.build_float_buffer(self.normals)
+        attrs['TANGENT'] = buffers.build_float_buffer(self.tangents)
+        attrs['TEXCOORD_0'] = buffers.build_float_buffer([x.uv for x in self.vertices])
+        prim['attributes'] = attrs
+        prim['indices'] = buffers.build_index_buffer(self.indices)
+        if self.material:
+            prim['material'] = materials.get_material_index(self.material)
+        prim['mode'] = 4
+
+        return prim
+
+
+    def to_json_object(self, buffers, materials):
+        mesh = {}
+        if self.name:
+            mesh['name'] = self.name
+
+        mesh['primitives'] = [self.to_primitive(buffers, materials)]
+        return mesh
+
 

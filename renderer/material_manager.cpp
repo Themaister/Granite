@@ -36,6 +36,7 @@ MaterialFile::MaterialFile(const MaterialInfo &info)
 	pipeline = info.pipeline;
 	two_sided = info.two_sided;
 	sampler = info.sampler;
+	bake_hash();
 
 	EventManager::get_global().register_latch_handler(DeviceCreatedEvent::type_id,
 	                                                  &MaterialFile::on_device_created,
@@ -120,6 +121,7 @@ void MaterialFile::update(const void *data, size_t size)
 
 	if (device)
 		init_textures();
+	bake_hash();
 }
 
 void MaterialFile::init_textures()
@@ -131,6 +133,7 @@ void MaterialFile::init_textures()
 		else
 			textures[i] = nullptr;
 	}
+	bake_hash();
 }
 
 void MaterialFile::on_device_created(const Event &e)

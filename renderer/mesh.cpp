@@ -29,7 +29,7 @@ Hash StaticMesh::get_instance_key() const
 	h.u32(count);
 	h.u32(vertex_offset);
 	h.u32(position_stride);
-	h.pointer(material.get());
+	h.u64(material->get_hash());
 	for (auto &attr : attributes)
 	{
 		h.u32(attr.format);
@@ -190,7 +190,7 @@ void StaticMesh::fill_render_info(StaticMeshInfo &info, const RenderContext &con
 	info.program = queue.get_shader_suites()[ecast(RenderableType::Mesh)].get_program(material->pipeline, attrs, textures).get();
 	Hasher h;
 	h.pointer(info.program);
-	h.pointer(material.get());
+	h.u64(material->get_hash());
 	h.u32(attrs);
 	h.u32(textures);
 

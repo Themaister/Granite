@@ -7,6 +7,7 @@
 #include "enum_cast.hpp"
 #include "sampler.hpp"
 #include "abstract_renderable.hpp"
+#include "hashmap.hpp"
 
 namespace Granite
 {
@@ -21,6 +22,7 @@ struct Material : public Util::IntrusivePtrEnabled<Material>
 		MetallicRoughness = 2,
 		Count
 	};
+
 	Vulkan::Texture *textures[Util::ecast(Textures::Count)];
 	vec4 base_color;
 	vec3 emissive;
@@ -29,6 +31,32 @@ struct Material : public Util::IntrusivePtrEnabled<Material>
 	DrawPipeline pipeline = DrawPipeline::Opaque;
 	Vulkan::StockSampler sampler = Vulkan::StockSampler::TrilinearWrap;
 	bool two_sided = false;
+
+	void bake_hash()
+	{
+		Util::Hasher h;
+		for (auto &tex : textures)
+			h.pointer(tex);
+		for (unsigned i = 0; i < 4; i++)
+			h.f32(base_color[i]);
+		for (unsigned i = 0; i < 3; i++)
+			h.f32(emissive[i]);
+		h.f32(roughness);
+		h.f32(metallic);
+		h.u32(Util::ecast(pipeline));
+		h.u32(Util::ecast(sampler));
+		h.u32(two_sided);
+		hash = h.get();
+	}
+
+	uint64_t get_hash() const
+	{
+		assert(hash);
+		return hash;
+	}
+
+private:
+	uint64_t hash = 0;
 };
 
 enum MaterialTextureFlagBits

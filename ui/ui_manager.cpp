@@ -1,4 +1,7 @@
 #include "ui_manager.hpp"
+#include "window.hpp"
+
+using namespace Util;
 
 namespace Granite
 {
@@ -12,6 +15,35 @@ UIManager &UIManager::get()
 
 UIManager::UIManager()
 {
+	fonts[ecast(FontSize::Small)].reset(new Font("assets://font.ttf", 12));
+	fonts[ecast(FontSize::Normal)].reset(new Font("assets://font.ttf", 16));
+	fonts[ecast(FontSize::Large)].reset(new Font("assets://font.ttf", 24));
+}
+
+void UIManager::add_child(WidgetHandle handle)
+{
+	widgets.push_back(handle);
+}
+
+void UIManager::render(Vulkan::CommandBuffer &cmd)
+{
+	renderer.begin();
+
+	float minimum_layer = 0.0f;
+	for (auto &widget : widgets)
+	{
+		auto *window = static_cast<Window *>(widget.get());
+		widget->reconfigure_geometry();
+		float min_layer = widget->render(renderer, 0.0f, window->get_position(), widget->get_target_geometry());
+		minimum_layer = min(min_layer, minimum_layer);
+	}
+
+	renderer.flush(cmd, vec3(0.0f, 0.0f, minimum_layer), vec3(cmd.get_viewport().width, cmd.get_viewport().height, 32000.0f));
+}
+
+Font& UIManager::get_font(FontSize size)
+{
+	return *fonts[Util::ecast(size)];
 }
 }
 }

@@ -1,15 +1,16 @@
 #pragma once
 
+#include <window.hpp>
 #include "wsi.hpp"
 #include "render_context.hpp"
 #include "scene_loader.hpp"
 #include "animation_system.hpp"
 #include "renderer.hpp"
-#include "flat_renderer.hpp"
 #include "input.hpp"
 #include "timer.hpp"
 #include "event.hpp"
 #include "font.hpp"
+#include "ui_manager.hpp"
 
 namespace Granite
 {
@@ -134,12 +135,12 @@ public:
 private:
 	RenderContext context;
 	Renderer renderer;
-	FlatRenderer flat_renderer;
 	FPSCamera cam;
 	VisibilityList visible;
 	SceneLoader scene_loader;
 	std::unique_ptr<AnimationSystem> animation_system;
 	std::unique_ptr<Font> font;
+	UI::Window *window;
 };
 
 extern int application_main(int argc, char *argv[]);

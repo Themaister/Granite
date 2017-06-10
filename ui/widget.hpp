@@ -50,6 +50,11 @@ public:
 		geometry_changed();
 	}
 
+	ivec2 get_target_geometry() const
+	{
+		return geometry.target;
+	}
+
 	void set_size_is_flexible(bool enable)
 	{
 		geometry.flexible_size = enable;
@@ -76,9 +81,10 @@ public:
 	bool get_needs_redraw() const;
 	void reconfigure_geometry();
 
+	virtual float render(FlatRenderer &renderer, float layer, ivec2 offset, ivec2 size) = 0;
+
 protected:
 	void geometry_changed();
-	virtual void render(FlatRenderer &renderer, float layer, ivec2 offset, ivec2 size) = 0;
 
 	vec4 bg_color = vec4(1.0f, 1.0f, 1.0f, 0.0f);
 	bool needs_redraw = true;
@@ -91,7 +97,7 @@ protected:
 		bool visible = true;
 	} geometry;
 
-	void render_children(FlatRenderer &renderer, float layer, ivec2 offset);
+	float render_children(FlatRenderer &renderer, float layer, ivec2 offset);
 
 private:
 	Widget *parent = nullptr;

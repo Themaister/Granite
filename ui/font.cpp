@@ -54,16 +54,94 @@ Font::Font(const std::string &path, unsigned size)
 	                                                  this);
 }
 
+vec2 Font::get_text_geometry(const char *text, float) const
+{
+	if (!*text)
+		return ivec2(0);
+
+	vec2 off = vec2(0.0f);
+	off.y += font_height;
+
+	vec2 cached = off;
+	vec2 minimum = vec2(FLT_MAX);
+	vec2 maximum = vec2(-FLT_MAX);
+
+	while (*text)
+	{
+		stbtt_aligned_quad q;
+		if (*text == '\n')
+		{
+			cached.y += font_height;
+			off = cached;
+		}
+		else if (*text >= 32)
+		{
+			stbtt_GetBakedQuad(baked_chars, width, height, *text - 32, &off.x, &off.y, &q, 1);
+			minimum = min(minimum, vec2(q.x0, q.y0));
+			minimum = min(minimum, vec2(q.x1, q.y1));
+			maximum = max(maximum, vec2(q.x0, q.y0));
+			maximum = max(maximum, vec2(q.x1, q.y1));
+		}
+		text++;
+	}
+
+	return vec2(maximum.x, cached.y);
+}
+
+vec2 Font::get_aligned_offset(Alignment alignment, vec2 text_geometry, vec2 target_geometry) const
+{
+	vec2 alignment_offset = vec2(0.0f);
+
+	switch (alignment)
+	{
+	case Alignment::TopCenter:
+	case Alignment::Center:
+	case Alignment::BottomCenter:
+		alignment_offset.x = 0.5f * (target_geometry.x - text_geometry.x);
+		break;
+
+	case Alignment::TopRight:
+	case Alignment::CenterRight:
+	case Alignment::BottomRight:
+		alignment_offset.x = 1.0f * (target_geometry.x - text_geometry.x);
+		break;
+
+	default:
+		alignment_offset.x = 0.0f;
+		break;
+	}
+
+	switch (alignment)
+	{
+	case Alignment::CenterLeft:
+	case Alignment::CenterRight:
+	case Alignment::Center:
+		alignment_offset.y = 0.5f * (target_geometry.y - text_geometry.y);
+		break;
+
+	case Alignment::BottomLeft:
+	case Alignment::BottomCenter:
+	case Alignment::BottomRight:
+		alignment_offset.y = 1.0f * (target_geometry.y - text_geometry.y);
+		break;
+
+	default:
+		alignment_offset.y = 0.0f;
+		break;
+	}
+
+	return alignment_offset;
+}
+
 void Font::render_text(RenderQueue &queue, const char *text, const vec3 &offset, const vec2 &size,
                        const vec4 &color,
                        Alignment alignment, float scale) const
 {
-	(void)size;
-	(void)alignment;
-	(void)scale;
-
 	if (!*text)
 		return;
+
+	vec2 geometry = get_text_geometry(text, scale);
+	vec2 alignment_offset = get_aligned_offset(alignment, geometry, size);
 
 	size_t len = strlen(text);
 	auto &sprite = queue.emplace<SpriteRenderInfo>(Queue::Transparent);
@@ -104,6 +182,11 @@ void Font::render_text(RenderQueue &queue, const char *text, const vec3 &offset,
 		else if (*text >= 32)
 		{
 			stbtt_GetBakedQuad(baked_chars, width, height, *text - 32, &off.x, &off.y, &q, 1);
+
+			q.x0 += alignment_offset.x;
+			q.x1 += alignment_offset.x;
+			q.y0 += alignment_offset.y;
+			q.y1 += alignment_offset.y;
 
 			auto &quad = sprite.quads[sprite.quad_count++];
 			quantize_color(quad.color, color);

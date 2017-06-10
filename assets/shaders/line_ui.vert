@@ -16,7 +16,7 @@ layout(std140, set = 0, binding = 0) uniform Scene
 void main()
 {
     vec2 pos_ndc = (Position.xy + pos_offset_pixels.xy) * inv_resolution.xy;
-    gl_Position = vec4(2.0 * pos_ndc - 1.0, Position.z * inv_resolution.z + pos_offset_pixels.z, 1.0);
+    gl_Position = vec4(2.0 * pos_ndc - 1.0, (Position.z + pos_offset_pixels.z) * inv_resolution.z, 1.0);
 #if HAVE_VERTEX_COLOR
     vColor = Color;
 #endif

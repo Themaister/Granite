@@ -686,7 +686,7 @@ void Parser::parse(const string &original_path, const string &json)
 
 		info.uniform_base_color = vec4(1.0f);
 		info.uniform_roughness = 1.0f;
-		info.uniform_metallic = 0.0f;
+		info.uniform_metallic = 1.0f;
 		info.two_sided = false;
 		if (value.HasMember("doubleSided"))
 			info.two_sided = value["doubleSided"].GetBool();

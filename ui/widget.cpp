@@ -8,8 +8,9 @@ namespace Granite
 {
 namespace UI
 {
-void Widget::render_children(FlatRenderer &renderer, float layer, ivec2 offset)
+float Widget::render_children(FlatRenderer &renderer, float layer, ivec2 offset)
 {
+	float minimum_layer = layer;
 	for (auto &child : children)
 	{
 		if (child.widget->get_visible())
@@ -18,10 +19,12 @@ void Widget::render_children(FlatRenderer &renderer, float layer, ivec2 offset)
 				renderer.render_quad(vec3(child.offset + offset, layer - 0.5f), vec2(child.size), child.widget->bg_color);
 
 			renderer.push_scissor(child.offset + offset, child.size);
-			child.widget->render(renderer, layer - 1.0f, child.offset + offset, child.size);
+			float min_layer = child.widget->render(renderer, layer - 1.0f, child.offset + offset, child.size);
+			minimum_layer = std::min(minimum_layer, min_layer);
 			renderer.pop_scissor();
 		}
 	}
+	return minimum_layer;
 }
 
 void Widget::add_child(const Util::IntrusivePtr<Widget> &widget)

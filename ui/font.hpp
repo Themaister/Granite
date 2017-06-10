@@ -30,6 +30,11 @@ public:
 	                 const vec4 &color,
 	                 Alignment alignment = Alignment::TopLeft, float scale = 1.0f) const;
 
+	vec2 get_text_geometry(const char *text,
+	                       float scale = 1.0f) const;
+
+	vec2 get_aligned_offset(Alignment alignment, vec2 text_geometry, vec2 target_geometry) const;
+
 private:
 	Vulkan::ImageHandle texture;
 	Vulkan::ImageViewHandle view;

@@ -33,9 +33,9 @@ mesh.add_quad(
         Vertex((x, h,   0.0), (0.75, 0.0)))
 mesh.add_quad(
         Vertex((0.0, 0.0, z), (0.75, 1.0)),
-        Vertex((w,   0.0, z), (0.1, 1.0)),
+        Vertex((w,   0.0, z), (1.0, 1.0)),
         Vertex((0.0, h,   z), (0.75, 0.0)),
-        Vertex((w,   h,   z), (0.1, 0.0)))
+        Vertex((w,   h,   z), (1.0, 0.0)))
 
 images.register_texture('pine', '../textures/Pine_BaseColor.png', NEAREST_WRAP)
 

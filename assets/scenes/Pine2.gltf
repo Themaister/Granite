@@ -114,11 +114,11 @@
         },
         {
             "byteLength": 128,
-            "uri": "data:application/octet-stream;base64,AAAAAAAAAAAAAIC/AACAvwAAAAAAAAAAAACAvwAAgL8AAAAAAAAAAAAAgL8AAIC/AAAAAAAAAAAAAIC/AACAvwAAgL8AAAAAAAAAAAAAgD8AAIC/AAAAAAAAAAAAAIA/AACAvwAAAAAAAAAAAACAPwAAgL8AAAAAAAAAAAAAgD8="
+            "uri": "data:application/octet-stream;base64,AAAAAAAAAAAAAIC/AACAvwAAAAAAAAAAAACAvwAAgL8AAAAAAAAAAAAAgL8AAIC/AAAAAAAAAAAAAIC/AACAvwAAgD8AAAAAAAAAAAAAgL8AAIA/AAAAAAAAAAAAAIC/AACAPwAAAAAAAAAAAACAvwAAgD8AAAAAAAAAAAAAgL8="
         },
         {
             "byteLength": 64,
-            "uri": "data:application/octet-stream;base64,AAAAPwAAgD8AAEA/AACAPwAAAD8AAAAAAABAPwAAAAAAAEA/AACAP83MzD0AAIA/AABAPwAAAADNzMw9AAAAAA=="
+            "uri": "data:application/octet-stream;base64,AAAAPwAAgD8AAEA/AACAPwAAAD8AAAAAAABAPwAAAAAAAEA/AACAPwAAgD8AAIA/AABAPwAAAAAAAIA/AAAAAA=="
         },
         {
             "byteLength": 24,
@@ -194,13 +194,13 @@
             "type": "VEC4",
             "count": 8,
             "max": [
+                1.0,
                 0.0,
                 0.0,
-                0.0,
-                1.0
+                -1.0
             ],
             "min": [
-                -1.0,
+                0.0,
                 0.0,
                 -1.0,
                 -1.0
@@ -213,11 +213,11 @@
             "type": "VEC2",
             "count": 8,
             "max": [
-                0.75,
+                1.0,
                 1.0
             ],
             "min": [
-                0.1,
+                0.5,
                 0.0
             ]
         },

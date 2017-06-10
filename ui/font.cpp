@@ -130,7 +130,7 @@ vec2 Font::get_aligned_offset(Alignment alignment, vec2 text_geometry, vec2 targ
 		break;
 	}
 
-	return alignment_offset;
+	return round(alignment_offset);
 }
 
 void Font::render_text(RenderQueue &queue, const char *text, const vec3 &offset, const vec2 &size,

@@ -1,6 +1,7 @@
 #include "application.hpp"
 #include <stdexcept>
 #include "sprite.hpp"
+#include "horizontal_packing.hpp"
 
 using namespace std;
 using namespace Vulkan;
@@ -46,6 +47,17 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned
 	w2->set_minimum_geometry(vec2(40.0f, 10.0f));
 	w3->set_minimum_geometry(vec2(40.0f, 10.0f));
 	window->set_target_geometry(ivec2(10));
+
+	auto *w4 = window->add_child<UI::HorizontalPacking>();
+	w4->set_margin(10.0f);
+	auto *tmp = w4->add_child<UI::Widget>();
+	tmp->set_background_color(vec4(0.0f, 0.0f, 0.0f, 1.0f));
+	tmp->set_minimum_geometry(vec2(50.0f));
+	//tmp->set_target_geometry(vec2(50.0f));
+	tmp = w4->add_child<UI::Widget>();
+	tmp->set_background_color(vec4(0.0f, 0.0f, 0.0f, 1.0f));
+	tmp->set_minimum_geometry(vec2(50.0f));
+	//tmp->set_target_geometry(vec2(50.0f));
 
 	w2->set_size_is_flexible(true);
 }

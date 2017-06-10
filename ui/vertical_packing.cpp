@@ -79,7 +79,7 @@ float VerticalPacking::render(FlatRenderer &renderer, float layer, vec2 offset, 
 			child.offset = off;
 			off.y += child.size.y;
 
-			float target = child.widget->get_target_geometry().x;
+			float target = max(child.widget->get_target_geometry().x, child.widget->get_minimum_geometry().x);
 			if (child.widget->get_size_is_flexible())
 				target = max(target, size.x - 2.0f * geometry.margin);
 			child.size.x = min(target, size.x - 2.0f * geometry.margin);

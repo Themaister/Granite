@@ -5,6 +5,7 @@ add_granite_library(ui-renderer
         widget.hpp widget.cpp
         window.hpp window.cpp
         vertical_packing.cpp vertical_packing.hpp
+        horizontal_packing.cpp horizontal_packing.hpp
         ui_manager.hpp ui_manager.cpp)
 target_link_libraries(ui-renderer renderer stb filesystem)
 target_include_directories(ui-renderer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

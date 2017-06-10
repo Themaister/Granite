@@ -35,7 +35,7 @@ public:
 	{
 		auto handle = Util::make_abstract_handle<Widget, T>(std::forward<P>(p)...);
 		add_child(handle);
-		return handle.get();
+		return static_cast<T *>(handle.get());
 	}
 
 	void set_minimum_geometry(vec2 size)

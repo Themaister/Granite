@@ -65,8 +65,6 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 	window->set_floating_position(ivec2(40));
 	window->set_title("My Window");
 
-	window->set_target_geometry(window->get_target_geometry() + vec2(0.0f, 1.0f));
-
 	scene.update_cached_transforms();
 	scene.gather_visible_opaque_renderables(context.get_visibility_frustum(), visible);
 	scene.gather_background_renderables(visible);

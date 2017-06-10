@@ -1,12 +1,12 @@
 #pragma once
 
-#include "widget.hpp"
+#include "vertical_packing.hpp"
 
 namespace Granite
 {
 namespace UI
 {
-class Window : public Widget
+class Window : public VerticalPacking
 {
 public:
 	Window();
@@ -17,22 +17,22 @@ public:
 		return title;
 	}
 
-	void set_position(ivec2 pos)
+	void set_floating_position(vec2 pos)
 	{
 		position = pos;
 		geometry_changed();
 	}
 
-	ivec2 get_position() const
+	vec2 get_floating_position() const
 	{
 		return position;
 	}
 
 private:
 	std::string title;
-	ivec2 position = ivec2(0);
+	vec2 position = vec2(0);
 
-	float render(FlatRenderer &renderer, float layer, ivec2 offset, ivec2 size) override;
+	float render(FlatRenderer &renderer, float layer, vec2 offset, vec2 size) override;
 	void reconfigure() override;
 };
 }

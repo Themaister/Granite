@@ -26,10 +26,28 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned
 
 	cam.look_at(vec3(0.0f, 0.0f, 8.0f), vec3(0.0f));
 	context.set_camera(cam);
-	font.reset(new Font("assets://font.ttf", 12));
 
 	auto &ui = UI::UIManager::get();
 	window = ui.add_child<UI::Window>();
+	auto *w0 = window->add_child<UI::Widget>();
+	auto *w1 = window->add_child<UI::Widget>();
+	auto *w2 = window->add_child<UI::Widget>();
+	auto *w3 = window->add_child<UI::Widget>();
+	w0->set_background_color(vec4(1.0f, 0.0f, 0.0f, 1.0f));
+	w1->set_background_color(vec4(0.0f, 1.0f, 0.0f, 1.0f));
+	w2->set_background_color(vec4(1.0f, 1.0f, 0.0f, 1.0f));
+	w3->set_background_color(vec4(0.0f, 1.0f, 1.0f, 1.0f));
+	w0->set_target_geometry(vec2(400.0f, 60.0f));
+	w1->set_target_geometry(vec2(400.0f, 60.0f));
+	w2->set_target_geometry(vec2(400.0f, 60.0f));
+	w3->set_target_geometry(vec2(40.0f, 60.0f));
+	w0->set_minimum_geometry(vec2(40.0f, 10.0f));
+	w1->set_minimum_geometry(vec2(40.0f, 10.0f));
+	w2->set_minimum_geometry(vec2(40.0f, 10.0f));
+	w3->set_minimum_geometry(vec2(40.0f, 10.0f));
+	window->set_target_geometry(ivec2(10));
+
+	w2->set_size_is_flexible(true);
 }
 
 void SceneViewerApplication::render_frame(double, double elapsed_time)
@@ -42,11 +60,12 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 	context.set_camera(cam);
 	visible.clear();
 
-	window->set_minimum_geometry(ivec2(400));
-	window->set_target_geometry(ivec2(400));
 	window->set_background_color(vec4(1.0f));
-	window->set_position(ivec2(40));
+	window->set_margin(5);
+	window->set_floating_position(ivec2(40));
 	window->set_title("My Window");
+
+	window->set_target_geometry(window->get_target_geometry() + vec2(0.0f, 1.0f));
 
 	scene.update_cached_transforms();
 	scene.gather_visible_opaque_renderables(context.get_visibility_frustum(), visible);

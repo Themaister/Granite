@@ -38,27 +38,48 @@ public:
 		return handle.get();
 	}
 
-	void set_minimum_geometry(ivec2 size)
+	void set_minimum_geometry(vec2 size)
 	{
 		geometry.minimum = size;
 		geometry_changed();
 	}
 
-	void set_target_geometry(ivec2 size)
+	void set_target_geometry(vec2 size)
 	{
 		geometry.target = size;
 		geometry_changed();
 	}
 
-	ivec2 get_target_geometry() const
+	vec2 get_target_geometry() const
 	{
 		return geometry.target;
+	}
+
+	vec2 get_minimum_geometry() const
+	{
+		return geometry.minimum;
+	}
+
+	void set_margin(float pixels)
+	{
+		geometry.margin = pixels;
+		geometry_changed();
+	}
+
+	float get_margin() const
+	{
+		return geometry.margin;
 	}
 
 	void set_size_is_flexible(bool enable)
 	{
 		geometry.flexible_size = enable;
 		geometry_changed();
+	}
+
+	bool get_size_is_flexible() const
+	{
+		return geometry.flexible_size;
 	}
 
 	void set_visible(bool visible)
@@ -81,7 +102,10 @@ public:
 	bool get_needs_redraw() const;
 	void reconfigure_geometry();
 
-	virtual float render(FlatRenderer &renderer, float layer, ivec2 offset, ivec2 size) = 0;
+	virtual float render(FlatRenderer & /* renderer */, float layer, vec2 /* offset */, vec2 /* size */)
+	{
+		return layer;
+	}
 
 protected:
 	void geometry_changed();
@@ -91,27 +115,29 @@ protected:
 
 	struct
 	{
-		ivec2 minimum = ivec2(1);
-		ivec2 target = ivec2(1);
+		vec2 minimum = vec2(1);
+		vec2 target = vec2(1);
+		float margin = 0.0f;
 		bool flexible_size = false;
 		bool visible = true;
 	} geometry;
 
-	float render_children(FlatRenderer &renderer, float layer, ivec2 offset);
+	float render_children(FlatRenderer &renderer, float layer, vec2 offset);
 
-private:
 	Widget *parent = nullptr;
 
 	struct Child
 	{
-		ivec2 offset;
-		ivec2 size;
+		vec2 offset;
+		vec2 size;
 		Util::IntrusivePtr<Widget> widget;
 	};
 	std::vector<Child> children;
 	bool needs_reconfigure = false;
 
-	virtual void reconfigure() = 0;
+	virtual void reconfigure()
+	{
+	}
 };
 
 using WidgetHandle = Util::IntrusivePtr<Widget>;

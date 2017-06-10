@@ -139,7 +139,6 @@ private:
 	VisibilityList visible;
 	SceneLoader scene_loader;
 	std::unique_ptr<AnimationSystem> animation_system;
-	std::unique_ptr<Font> font;
 	UI::Window *window;
 };
 

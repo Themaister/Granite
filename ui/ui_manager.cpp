@@ -34,7 +34,12 @@ void UIManager::render(Vulkan::CommandBuffer &cmd)
 	{
 		auto *window = static_cast<Window *>(widget.get());
 		widget->reconfigure_geometry();
-		float min_layer = widget->render(renderer, 0.0f, window->get_position(), widget->get_target_geometry());
+
+		vec2 window_size = max(widget->get_target_geometry(), widget->get_minimum_geometry());
+		renderer.push_scissor(window->get_floating_position(), window_size);
+		float min_layer = widget->render(renderer, 0.0f, window->get_floating_position(), window_size);
+		renderer.pop_scissor();
+
 		minimum_layer = min(min_layer, minimum_layer);
 	}
 

@@ -8,7 +8,7 @@ namespace Granite
 {
 namespace UI
 {
-float Widget::render_children(FlatRenderer &renderer, float layer, ivec2 offset)
+float Widget::render_children(FlatRenderer &renderer, float layer, vec2 offset)
 {
 	float minimum_layer = layer;
 	for (auto &child : children)

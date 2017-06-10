@@ -118,7 +118,7 @@
         },
         {
             "byteLength": 64,
-            "uri": "data:application/octet-stream;base64,AAAAAAAAgD8AAIA+AACAPwAAAAAAAAAAAACAPgAAAAAAAIA+AACAPwAAAD8AAIA/AACAPgAAAAAAAAA/AAAAAA=="
+            "uri": "data:application/octet-stream;base64,AAAAPwAAgD8AAEA/AACAPwAAAD8AAAAAAABAPwAAAAAAAEA/AACAPwAAgD8AAIA/AABAPwAAAAAAAIA/AAAAAA=="
         },
         {
             "byteLength": 24,
@@ -213,11 +213,11 @@
             "type": "VEC2",
             "count": 8,
             "max": [
-                0.5,
+                1.0,
                 1.0
             ],
             "min": [
-                0.0,
+                0.5,
                 0.0
             ]
         },

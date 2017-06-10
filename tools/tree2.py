@@ -27,15 +27,15 @@ z = l / 2.0
 
 mesh.material = 'DEFAULT'
 mesh.add_quad(
-        Vertex((x, 0.0, l),   (0.0,  1.0)),
-        Vertex((x, 0.0, 0.0), (0.25, 1.0)),
-        Vertex((x, h,   l),   (0.0,  0.0)),
-        Vertex((x, h,   0.0), (0.25, 0.0)))
+        Vertex((x, 0.0, l),   (0.5,  1.0)),
+        Vertex((x, 0.0, 0.0), (0.75, 1.0)),
+        Vertex((x, h,   l),   (0.5,  0.0)),
+        Vertex((x, h,   0.0), (0.75, 0.0)))
 mesh.add_quad(
-        Vertex((0.0, 0.0, z), (0.25, 1.0)),
-        Vertex((w,   0.0, z), (0.5, 1.0)),
-        Vertex((0.0, h,   z), (0.25, 0.0)),
-        Vertex((w,   h,   z), (0.5, 0.0)))
+        Vertex((0.0, 0.0, z), (0.75, 1.0)),
+        Vertex((w,   0.0, z), (1.0, 1.0)),
+        Vertex((0.0, h,   z), (0.75, 0.0)),
+        Vertex((w,   h,   z), (1.0, 0.0)))
 
 images.register_texture('pine', '../textures/Pine_BaseColor.png', NEAREST_WRAP)
 

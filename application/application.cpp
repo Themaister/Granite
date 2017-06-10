@@ -2,6 +2,7 @@
 #include <stdexcept>
 #include "sprite.hpp"
 #include "horizontal_packing.hpp"
+#include "image_widget.hpp"
 
 using namespace std;
 using namespace Vulkan;
@@ -33,6 +34,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned
 	auto *w0 = window->add_child<UI::Widget>();
 	auto *w1 = window->add_child<UI::Widget>();
 	auto *w2 = window->add_child<UI::Widget>();
+	window->add_child<UI::Image>("assets://textures/maister.png");
 	auto *w3 = window->add_child<UI::Widget>();
 	w0->set_background_color(vec4(1.0f, 0.0f, 0.0f, 1.0f));
 	w1->set_background_color(vec4(0.0f, 1.0f, 0.0f, 1.0f));
@@ -76,6 +78,7 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 	window->set_margin(5);
 	window->set_floating_position(ivec2(40));
 	window->set_title("My Window");
+	//window->set_target_geometry(window->get_target_geometry() + vec2(1.0f));
 
 	scene.update_cached_transforms();
 	scene.gather_visible_opaque_renderables(context.get_visibility_frustum(), visible);

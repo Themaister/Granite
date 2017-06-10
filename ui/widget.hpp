@@ -27,7 +27,7 @@ class Widget : public Util::IntrusivePtrEnabled<Widget>
 public:
 	virtual ~Widget() = default;
 
-	virtual void add_child(const Util::IntrusivePtr<Widget> &widget);
+	virtual void add_child(Util::IntrusivePtr<Widget> widget);
 	virtual Util::IntrusivePtr<Widget> remove_child(const Widget &widget);
 
 	template <typename T, typename... P>

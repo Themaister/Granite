@@ -27,9 +27,11 @@ float Widget::render_children(FlatRenderer &renderer, float layer, vec2 offset)
 	return minimum_layer;
 }
 
-void Widget::add_child(const Util::IntrusivePtr<Widget> &widget)
+void Widget::add_child(Util::IntrusivePtr<Widget> widget)
 {
 	children.push_back({ ivec2(0), ivec2(0), widget });
+	assert(widget->parent == nullptr);
+	widget->parent = this;
 	geometry_changed();
 }
 
@@ -44,6 +46,7 @@ Util::IntrusivePtr<Widget> Widget::remove_child(const Widget &widget)
 
 	auto res = itr->widget;
 	children.erase(itr);
+	res->parent = nullptr;
 	return res;
 }
 

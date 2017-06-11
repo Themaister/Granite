@@ -85,7 +85,7 @@ vec2 Font::get_text_geometry(const char *text, float) const
 		text++;
 	}
 
-	return vec2(maximum.x, cached.y);
+	return ceil(vec2(maximum.x, cached.y));
 }
 
 vec2 Font::get_aligned_offset(Alignment alignment, vec2 text_geometry, vec2 target_geometry) const

@@ -3,6 +3,7 @@
 #include "sprite.hpp"
 #include "horizontal_packing.hpp"
 #include "image_widget.hpp"
+#include "label.hpp"
 
 using namespace std;
 using namespace Vulkan;
@@ -49,6 +50,11 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned
 	w2->set_minimum_geometry(vec2(40.0f, 10.0f));
 	w3->set_minimum_geometry(vec2(40.0f, 10.0f));
 	window->set_target_geometry(ivec2(10));
+
+	auto *label = window->add_child<UI::Label>("Hai :D");
+	label->set_margin(20.0f);
+	label->set_color(vec4(0.0f, 0.0f, 0.0f, 1.0f));
+	label->set_font_alignment(Font::Alignment::Center);
 
 	auto *w4 = window->add_child<UI::HorizontalPacking>();
 	w4->set_margin(10.0f);

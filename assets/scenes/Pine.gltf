@@ -41,7 +41,7 @@
     ],
     "images": [
         {
-            "uri": "../textures/Pine_BaseColor.png"
+            "uri": "../textures/Pine_BaseColor.ktx"
         }
     ],
     "samplers": [
@@ -64,6 +64,17 @@
             "wrapT": 10497
         },
         {
+            "magFilter": 9729,
+            "minFilter": 9987,
+            "wrapS": 10497,
+            "wrapT": 10497,
+            "extras": {
+                "granite": {
+                    "chunky": true
+                }
+            }
+        },
+        {
             "magFilter": 9728,
             "minFilter": 9984,
             "wrapS": 33071,
@@ -80,19 +91,45 @@
             "minFilter": 9987,
             "wrapS": 33071,
             "wrapT": 33071
+        },
+        {
+            "magFilter": 9729,
+            "minFilter": 9987,
+            "wrapS": 33071,
+            "wrapT": 33071,
+            "extras": {
+                "granite": {
+                    "chunky": true
+                }
+            }
         }
     ],
     "textures": [
         {
-            "sampler": 0,
+            "sampler": 3,
             "source": 0
         }
     ],
     "nodes": [
         {
             "children": [],
-            "mesh": 0,
-            "name": ""
+            "translation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "scale": [
+                1.0,
+                1.0,
+                1.0
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+            ],
+            "mesh": 0
         }
     ],
     "scene": 0,
@@ -106,7 +143,7 @@
     "buffers": [
         {
             "byteLength": 96,
-            "uri": "data:application/octet-stream;base64,AACAPwAAAAAAAABAAACAPwAAAAAAAAAAAACAPwAAYEAAAABAAACAPwAAYEAAAAAAAAAAAAAAAAAAAIA/AAAAQAAAAAAAAIA/AAAAAAAAYEAAAIA/AAAAQAAAYEAAAIA/"
+            "uri": "data:application/octet-stream;base64,AACAPwAAAAAAAABAAACAPwAAAAAAAAAAAACAPwAAgEAAAABAAACAPwAAgEAAAAAAAAAAAAAAAAAAAIA/AAAAQAAAAAAAAIA/AAAAAAAAgEAAAIA/AAAAQAAAgEAAAIA/"
         },
         {
             "byteLength": 96,
@@ -118,7 +155,7 @@
         },
         {
             "byteLength": 64,
-            "uri": "data:application/octet-stream;base64,AAAAAAAAgD8AAIA+AACAPwAAAAAAAAAAAACAPgAAAAAAAIA+AACAPwAAAD8AAIA/AACAPgAAAAAAAAA/AAAAAA=="
+            "uri": "data:application/octet-stream;base64,AAAAAAAAAD8AAIA+AAAAPwAAAAAAAAAAAACAPgAAAAAAAIA+AAAAPwAAAD8AAAA/AACAPgAAAAAAAAA/AAAAAA=="
         },
         {
             "byteLength": 24,
@@ -161,7 +198,7 @@
             "count": 8,
             "max": [
                 2.0,
-                3.5,
+                4.0,
                 2.0
             ],
             "min": [
@@ -214,7 +251,7 @@
             "count": 8,
             "max": [
                 0.5,
-                1.0
+                0.5
             ],
             "min": [
                 0.0,

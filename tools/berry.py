@@ -19,32 +19,34 @@ material.double_sided = True
 material.base_color = 'pine'
 material.alpha_mode = 'MASK'
 
-w = 2.0
-l = 2.0
-h = 4.0
+w = 1.0
+l = 1.0
+h = 0.5
 
 x = w / 2.0
 z = l / 2.0
 
-uv = 256.0 / 512.0
+uvy0 = (256.0 + 96.0) / 512.0
+uvy = (256.0 + 96.0 + 32.0) / 512.0
+uvx = 64.0 / 512.0
 
-mesh = meshes.get_mesh('pine2')
+mesh = meshes.get_mesh('berry')
 mesh.material = 'DEFAULT'
 mesh.add_quad(
-        Vertex((x, 0.0, l),   (0.5,  uv)),
-        Vertex((x, 0.0, 0.0), (0.75, uv)),
-        Vertex((x, h,   l),   (0.5,  0.0)),
-        Vertex((x, h,   0.0), (0.75, 0.0)))
+        Vertex((x, 0.0, l),   (0.0,  uvy)),
+        Vertex((x, 0.0, 0.0), (uvx, uvy)),
+        Vertex((x, h,   l),   (0.0,  uvy0)),
+        Vertex((x, h,   0.0), (uvx, uvy0)))
 mesh.add_quad(
-        Vertex((0.0, 0.0, z), (0.75, uv)),
-        Vertex((w,   0.0, z), (1.0, uv)),
-        Vertex((0.0, h,   z), (0.75, 0.0)),
-        Vertex((w,   h,   z), (1.0, 0.0)))
+        Vertex((0.0, 0.0, z), (0.0, uvy)),
+        Vertex((w,   0.0, z), (uvx, uvy)),
+        Vertex((0.0, h,   z), (0.0, uvy0)),
+        Vertex((w,   h,   z), (uvx, uvy0)))
 
 images.register_texture('pine', '../textures/Pine_BaseColor.ktx', CHUNKY_WRAP)
 
 node = Node()
-node.mesh = 'pine2'
+node.mesh = 'berry'
 
 gltf = build_gltf([node], meshes, materials, images)
 print(json.dumps(gltf, indent = 4))

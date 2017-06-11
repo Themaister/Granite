@@ -21,12 +21,12 @@ material.alpha_mode = 'MASK'
 
 w = 2.0
 l = 2.0
-h = 3.5
+h = 4.0
 
 x = w / 2.0
 z = l / 2.0
 
-uv = 224.0 / 512.0
+uv = 256.0 / 512.0
 
 mesh = meshes.get_mesh('pine')
 mesh.material = 'DEFAULT'

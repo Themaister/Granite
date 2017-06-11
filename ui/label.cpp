@@ -20,7 +20,7 @@ void Label::set_text(std::string text)
 float Label::render(FlatRenderer &renderer, float layer, vec2 offset, vec2 size)
 {
 	auto &font = UIManager::get().get_font(font_size);
-	renderer.render_text(font, text.c_str(), vec3(offset, layer), size,
+	renderer.render_text(font, text.c_str(), vec3(offset + geometry.margin, layer), size - 2.0f * geometry.margin,
 	                     color, alignment);
 
 	assert(children.empty());

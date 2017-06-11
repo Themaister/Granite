@@ -56,9 +56,11 @@ add_granite_executable(sandbox cube_test.cpp)
 target_link_libraries(sandbox math application)
 
 add_subdirectory(network)
+add_subdirectory(tools)
 
 #if (WIN32)
 #    if (CMAKE_COMPILER_IS_GNUCXX)
 #        set_target_properties(main PROPERTIES LINK_FLAGS -mwindows)
 #    endif()
 #endif()
+

@@ -41,7 +41,7 @@
     ],
     "images": [
         {
-            "uri": "../textures/maister.png"
+            "uri": "../textures/maister.ktx"
         }
     ],
     "samplers": [

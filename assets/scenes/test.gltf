@@ -42,9 +42,6 @@
     "images": [
         {
             "uri": "../textures/maister.png"
-        },
-        {
-            "uri": "path2.ktx"
         }
     ],
     "samplers": [
@@ -89,24 +86,57 @@
         {
             "sampler": 0,
             "source": 0
-        },
-        {
-            "sampler": 2,
-            "source": 1
         }
     ],
     "nodes": [
         {
             "children": [],
-            "mesh": 0,
-            "name": ""
+            "translation": [
+                0.0,
+                4.0,
+                0.0
+            ],
+            "scale": [
+                1.0,
+                1.0,
+                1.0
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+            ],
+            "mesh": 0
+        },
+        {
+            "children": [
+                0
+            ],
+            "translation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "scale": [
+                1.0,
+                1.0,
+                1.0
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+            ],
+            "mesh": 0
         }
     ],
     "scene": 0,
     "scenes": [
         {
             "nodes": [
-                0
+                1
             ]
         }
     ],

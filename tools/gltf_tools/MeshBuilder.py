@@ -129,3 +129,23 @@ class MeshBuilder():
         return mesh
 
 
+class MeshResolver():
+    def __init__(self):
+        self.meshes = []
+        self.names = []
+
+    def get_mesh(self, name):
+        if name in self.names:
+            index = self.names.index(name)
+            return self.meshes[index]
+        else:
+            index = len(self.names)
+            self.names.append(name)
+            mesh = MeshBuilder()
+            self.meshes.append(mesh)
+            return mesh
+
+    def get_mesh_index(self, name):
+        index = self.names.index(name)
+        return index
+

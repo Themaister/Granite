@@ -35,7 +35,9 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned
 	auto *w0 = window->add_child<UI::Widget>();
 	auto *w1 = window->add_child<UI::Widget>();
 	auto *w2 = window->add_child<UI::Widget>();
-	window->add_child<UI::Image>("assets://textures/maister.png");
+	auto *image = window->add_child<UI::Image>("assets://textures/maister.png");
+	image->set_minimum_geometry(image->get_target_geometry() * vec2(1.0f / 16.0f));
+	image->set_keep_aspect_ratio(true);
 	auto *w3 = window->add_child<UI::Widget>();
 	w0->set_background_color(vec4(1.0f, 0.0f, 0.0f, 1.0f));
 	w1->set_background_color(vec4(0.0f, 1.0f, 0.0f, 1.0f));

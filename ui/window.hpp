@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vertical_packing.hpp"
+#include <string>
 
 namespace Granite
 {

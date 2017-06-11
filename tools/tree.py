@@ -4,12 +4,13 @@ from gltf_tools.MeshBuilder import *
 from gltf_tools.MaterialBuilder import *
 from gltf_tools.ImageResolver import *
 from gltf_tools.GLTFBuilder import *
+from gltf_tools.Node import *
 import json
 import sys
 import struct
 
 images = ImageResolver()
-mesh = MeshBuilder()
+meshes = MeshResolver()
 materials = MaterialResolver()
 
 material = materials.get_material('DEFAULT')
@@ -25,20 +26,26 @@ h = 3.5
 x = w / 2.0
 z = l / 2.0
 
+uv = 224.0 / 512.0
+
+mesh = meshes.get_mesh('pine')
 mesh.material = 'DEFAULT'
 mesh.add_quad(
-        Vertex((x, 0.0, l),   (0.0,  1.0)),
-        Vertex((x, 0.0, 0.0), (0.25, 1.0)),
+        Vertex((x, 0.0, l),   (0.0,  uv)),
+        Vertex((x, 0.0, 0.0), (0.25, uv)),
         Vertex((x, h,   l),   (0.0,  0.0)),
         Vertex((x, h,   0.0), (0.25, 0.0)))
 mesh.add_quad(
-        Vertex((0.0, 0.0, z), (0.25, 1.0)),
-        Vertex((w,   0.0, z), (0.5, 1.0)),
+        Vertex((0.0, 0.0, z), (0.25, uv)),
+        Vertex((w,   0.0, z), (0.5, uv)),
         Vertex((0.0, h,   z), (0.25, 0.0)),
         Vertex((w,   h,   z), (0.5, 0.0)))
 
-images.register_texture('pine', '../textures/Pine_BaseColor.png', NEAREST_WRAP)
+images.register_texture('pine', '../textures/Pine_BaseColor.ktx', CHUNKY_WRAP)
 
-gltf = build_gltf([mesh], materials, images)
+node = Node()
+node.mesh = 'pine'
+
+gltf = build_gltf([node], meshes, materials, images)
 print(json.dumps(gltf, indent = 4))
 

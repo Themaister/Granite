@@ -16,6 +16,8 @@ enum class StockSampler
 	TrilinearWrap,
 	NearestShadow,
 	LinearShadow,
+	ChunkyWrap,
+	ChunkyClamp,
 	Count
 };
 

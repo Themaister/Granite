@@ -22,9 +22,9 @@ mesh = meshes.get_mesh('DEFAULT')
 mesh.material = 'DEFAULT'
 mesh.add_quad(
         Vertex((0.0, 0.0, 0.0), (0.0, 0.0)),
-        Vertex((1.0, 0.0, 0.0), (4.0, 0.0)),
-        Vertex((0.0, 1.0, 0.0), (0.0, 4.0)),
-        Vertex((1.0, 1.0, 0.0), (4.0, 4.0)))
+        Vertex((1.0, 0.0, 0.0), (1.0, 0.0)),
+        Vertex((0.0, 1.0, 0.0), (0.0, 1.0)),
+        Vertex((1.0, 1.0, 0.0), (1.0, 1.0)))
 
 node1 = Node()
 node1.mesh = 'DEFAULT'
@@ -33,7 +33,7 @@ node2.mesh = 'DEFAULT'
 node2.translation = (0.0, 4.0, 0.0)
 node1.children.append(node2)
 
-images.register_texture('maister', '../textures/maister.png', NEAREST_WRAP)
+images.register_texture('maister', '../textures/maister.png', TRILINEAR_WRAP)
 
 gltf = build_gltf([node1], meshes, materials, images)
 print(json.dumps(gltf, indent = 4))

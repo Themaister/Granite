@@ -41,7 +41,7 @@
     ],
     "images": [
         {
-            "uri": "../textures/maister.ktx"
+            "uri": "../textures/maister.png"
         }
     ],
     "samplers": [
@@ -84,7 +84,7 @@
     ],
     "textures": [
         {
-            "sampler": 0,
+            "sampler": 2,
             "source": 0
         }
     ],
@@ -155,7 +155,7 @@
         },
         {
             "byteLength": 32,
-            "uri": "data:application/octet-stream;base64,AAAAAAAAAAAAAIBAAAAAAAAAAAAAAIBAAACAQAAAgEA="
+            "uri": "data:application/octet-stream;base64,AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8="
         },
         {
             "byteLength": 12,
@@ -250,8 +250,8 @@
             "type": "VEC2",
             "count": 4,
             "max": [
-                4.0,
-                4.0
+                1.0,
+                1.0
             ],
             "min": [
                 0.0,

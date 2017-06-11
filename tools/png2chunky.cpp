@@ -56,6 +56,12 @@ static ETC2Block splat_etc2_block(const uint8_t *color)
 
 int main(int argc, char *argv[])
 {
+	if (argc != 3)
+	{
+		LOGE("Usage: %s file.png file.ktx\n", argv[0]);
+		return 1;
+	}
+
 	int width, height;
 	int components;
 
@@ -70,6 +76,19 @@ int main(int argc, char *argv[])
 	fclose(file);
 
 	unsigned levels = num_miplevels(width, height);
+
+	if (width != height)
+	{
+		LOGE("Chunky textures must be square.\n");
+		return 1;
+	}
+
+	if (width & (width - 1))
+	{
+		LOGE("Chunky textures must be POT.\n");
+		return 1;
+	}
+
 	gli::texture2d texture(gli::FORMAT_RGBA8_SRGB_PACK8, gli::texture2d::extent_type(width, height), levels);
 	gli::texture2d texture_etc2(gli::FORMAT_RGBA_ETC2_SRGB_BLOCK8, gli::texture2d::extent_type(width * 4, height * 4), levels);
 
@@ -86,6 +105,7 @@ int main(int argc, char *argv[])
 
 		unsigned mip_width = texture[level].extent().x;
 		unsigned mip_height = texture[level].extent().y;
+
 		for (unsigned y = 0; y < mip_height; y++)
 			for (unsigned x = 0; x < mip_width; x++, src += 4, dst++)
 				*dst = splat_etc2_block(src);

@@ -80,8 +80,8 @@ static ASTCBlock splat_astc_block(const uint8_t *x0, const uint8_t *x1, const ui
 
 	uint16_t block_mode = 0;
 
-	// 1 bit per weight. For some reason the reference decoder doesn't like this.
-	block_mode |= 1;
+	// 2 bit per weight. Could use 1, but 16 weight bits per block is illegal :(
+	block_mode |= 2;
 
 	// 4x4 weight mode.
 	block_mode |= 2 << 5;
@@ -98,17 +98,17 @@ static ASTCBlock splat_astc_block(const uint8_t *x0, const uint8_t *x1, const ui
 	// CEM (LDR RGBA direct)
 	write_bits(astc.data, 12, 4, 25);
 
-	// This will result in RGBA5555 with 4 endpoints.
+	// This will result in RGBA4444 with 4 endpoints.
 
 	struct Color
 	{
 		uint8_t r, g, b, a;
 	};
 
-	Color a = {uint8_t(x0[0] >> 3), uint8_t(x0[1] >> 3), uint8_t(x0[2] >> 3), uint8_t(x0[3] >= 128 ? 31 : 0)};
-	Color b = {uint8_t(x1[0] >> 3), uint8_t(x1[1] >> 3), uint8_t(x1[2] >> 3), uint8_t(x1[3] >= 128 ? 31 : 0)};
-	Color c = {uint8_t(x2[0] >> 3), uint8_t(x2[1] >> 3), uint8_t(x2[2] >> 3), uint8_t(x2[3] >= 128 ? 31 : 0)};
-	Color d = {uint8_t(x3[0] >> 3), uint8_t(x3[1] >> 3), uint8_t(x3[2] >> 3), uint8_t(x3[3] >= 128 ? 31 : 0)};
+	Color a = {uint8_t(x0[0] >> 4), uint8_t(x0[1] >> 4), uint8_t(x0[2] >> 4), uint8_t(x0[3] >= 128 ? 15 : 0)};
+	Color b = {uint8_t(x1[0] >> 4), uint8_t(x1[1] >> 4), uint8_t(x1[2] >> 4), uint8_t(x1[3] >= 128 ? 15 : 0)};
+	Color c = {uint8_t(x2[0] >> 4), uint8_t(x2[1] >> 4), uint8_t(x2[2] >> 4), uint8_t(x2[3] >= 128 ? 15 : 0)};
+	Color d = {uint8_t(x3[0] >> 4), uint8_t(x3[1] >> 4), uint8_t(x3[2] >> 4), uint8_t(x3[3] >= 128 ? 15 : 0)};
 
 	// Mask to transparent black for now.
 	if (a.a == 0)
@@ -145,30 +145,40 @@ static ASTCBlock splat_astc_block(const uint8_t *x0, const uint8_t *x1, const ui
 		swap(a.r, b.r);
 		swap(a.g, b.g);
 		swap(a.b, b.b);
-		astc.data[15] = 0xcc;
+		swap(a.a, b.a);
+		astc.data[15] = 0xf0;
+		astc.data[14] = 0xf0;
 	}
 	else
-		astc.data[15] = 0x33;
+	{
+		astc.data[15] = 0x0f;
+		astc.data[14] = 0x0f;
+	}
 
 	if (c.r + c.g + c.b > d.r + d.g + d.b)
 	{
 		swap(c.r, d.r);
 		swap(c.g, d.g);
 		swap(c.b, d.b);
-		astc.data[14] = 0xcc;
+		swap(c.a, d.a);
+		astc.data[13] = 0xf0;
+		astc.data[12] = 0xf0;
 	}
 	else
-		astc.data[14] = 0x33;
+	{
+		astc.data[13] = 0x0f;
+		astc.data[12] = 0x0f;
+	}
 
 	// Write colors
 	const uint8_t colors[] = {
-		// Partition 1
+		// Partition 0
 		c.r, d.r,
 		c.g, d.g,
 		c.b, d.b,
 		c.a, d.a,
 
-		// Partition 0
+		// Partition 1
 		a.r, b.r,
 		a.g, b.g,
 		a.b, b.b,
@@ -177,7 +187,7 @@ static ASTCBlock splat_astc_block(const uint8_t *x0, const uint8_t *x1, const ui
 
 	for (unsigned i = 0; i < 16; i++)
 	{
-		write_bits(astc.data, colors[i], 5, 29 + 5 * i);
+		write_bits(astc.data, colors[i], 4, 29 + 4 * i);
 	}
 
 	return astc;

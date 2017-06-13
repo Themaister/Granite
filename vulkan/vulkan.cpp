@@ -208,6 +208,14 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 		V(vkEnumeratePhysicalDevices(instance, &gpu_count, nullptr));
 		vector<VkPhysicalDevice> gpus(gpu_count);
 		V(vkEnumeratePhysicalDevices(instance, &gpu_count, gpus.data()));
+
+		for (auto &gpu : gpus)
+		{
+			VkPhysicalDeviceProperties props;
+			vkGetPhysicalDeviceProperties(gpu, &props);
+			LOGI("Found Vulkan GPU: %s\n", props.deviceName);
+		}
+
 		gpu = gpus.front();
 	}
 
@@ -215,7 +223,7 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 	vkGetPhysicalDeviceProperties(gpu, &gpu_props);
 	vkGetPhysicalDeviceMemoryProperties(gpu, &mem_props);
 
-	LOGI("Vulkan GPU: %s\n", gpu_props.deviceName);
+	LOGI("Selected Vulkan GPU: %s\n", gpu_props.deviceName);
 
 	uint32_t queue_count;
 	vkGetPhysicalDeviceQueueFamilyProperties(gpu, &queue_count, nullptr);

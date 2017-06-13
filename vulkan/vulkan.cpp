@@ -215,6 +215,8 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 	vkGetPhysicalDeviceProperties(gpu, &gpu_props);
 	vkGetPhysicalDeviceMemoryProperties(gpu, &mem_props);
 
+	LOGI("Vulkan GPU: %s\n", gpu_props.deviceName);
+
 	uint32_t queue_count;
 	vkGetPhysicalDeviceQueueFamilyProperties(gpu, &queue_count, nullptr);
 	vector<VkQueueFamilyProperties> queue_props(queue_count);

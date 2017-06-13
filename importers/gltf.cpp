@@ -635,7 +635,6 @@ void Parser::parse(const string &original_path, const string &json)
 		unsigned wrap_t = GL_REPEAT;
 		unsigned min_filter = GL_LINEAR_MIPMAP_LINEAR;
 		unsigned mag_filter = GL_LINEAR;
-		bool chunky = false;
 
 		if (value.HasMember("magFilter"))
 			mag_filter = value["magFilter"].GetUint();
@@ -645,30 +644,25 @@ void Parser::parse(const string &original_path, const string &json)
 			wrap_s = value["wrapS"].GetUint();
 		if (value.HasMember("wrapT"))
 			wrap_t = value["wrapT"].GetUint();
-		if (value.HasMember("extras") && value["extras"].HasMember("granite") && value["extras"]["granite"].HasMember("chunky"))
-			chunky = value["extras"]["granite"]["chunky"].GetBool();
 
 		Vulkan::StockSampler sampler = Vulkan::StockSampler::TrilinearWrap;
 
 		struct Entry
 		{
 			unsigned wrap_s, wrap_t, mag_filter, min_filter;
-			bool chunky;
 			Vulkan::StockSampler sampler;
 		};
 		static const Entry entries[] = {
-			{ GL_REPEAT, GL_REPEAT, GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR, false, Vulkan::StockSampler::TrilinearWrap },
-			{ GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR, false, Vulkan::StockSampler::TrilinearClamp },
-			{ GL_REPEAT, GL_REPEAT, GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR, true, Vulkan::StockSampler::ChunkyWrap },
-			{ GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR, true, Vulkan::StockSampler::ChunkyClamp },
-			{ GL_REPEAT, GL_REPEAT, GL_LINEAR, GL_LINEAR_MIPMAP_NEAREST, false, Vulkan::StockSampler::LinearWrap },
-			{ GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_LINEAR, GL_LINEAR_MIPMAP_NEAREST, false, Vulkan::StockSampler::LinearClamp },
-			{ GL_REPEAT, GL_REPEAT, GL_NEAREST, GL_NEAREST_MIPMAP_NEAREST, false, Vulkan::StockSampler::NearestWrap },
-			{ GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_NEAREST, GL_NEAREST_MIPMAP_NEAREST, false, Vulkan::StockSampler::NearestClamp },
+			{ GL_REPEAT, GL_REPEAT, GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR, Vulkan::StockSampler::TrilinearWrap },
+			{ GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR, Vulkan::StockSampler::TrilinearClamp },
+			{ GL_REPEAT, GL_REPEAT, GL_LINEAR, GL_LINEAR_MIPMAP_NEAREST, Vulkan::StockSampler::LinearWrap },
+			{ GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_LINEAR, GL_LINEAR_MIPMAP_NEAREST, Vulkan::StockSampler::LinearClamp },
+			{ GL_REPEAT, GL_REPEAT, GL_NEAREST, GL_NEAREST_MIPMAP_NEAREST, Vulkan::StockSampler::NearestWrap },
+			{ GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_NEAREST, GL_NEAREST_MIPMAP_NEAREST, Vulkan::StockSampler::NearestClamp },
 		};
 
 		auto itr = find_if(begin(entries), end(entries), [&](const Entry &e) {
-			return e.wrap_s == wrap_s && e.wrap_t == wrap_t && e.min_filter == min_filter && e.mag_filter == mag_filter && chunky == e.chunky;
+			return e.wrap_s == wrap_s && e.wrap_t == wrap_t && e.min_filter == min_filter && e.mag_filter == mag_filter;
 		});
 
 		if (itr != end(entries))
@@ -696,6 +690,13 @@ void Parser::parse(const string &original_path, const string &json)
 		info.two_sided = false;
 		if (value.HasMember("doubleSided"))
 			info.two_sided = value["doubleSided"].GetBool();
+
+		if (value.HasMember("extras"))
+		{
+			auto &extras = value["extras"];
+			if (extras.HasMember("lodBias"))
+				info.lod_bias = extras["lodBias"].GetFloat();
+		}
 
 		info.pipeline = DrawPipeline::Opaque;
 		if (value.HasMember("alphaMode"))

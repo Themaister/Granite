@@ -11,3 +11,4 @@ CMakeCache
 *.iml
 /app/build
 /app/.externalNativeBuild
+__pycache__

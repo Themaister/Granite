@@ -1,11 +1,9 @@
 NEAREST_WRAP = 0
 BILINEAR_WRAP = 1
 TRILINEAR_WRAP = 2
-CHUNKY_WRAP = 3
-NEAREST_CLAMP = 4
-BILINEAR_CLAMP = 5
-TRILINEAR_CLAMP = 6
-CHUNKY_CLAMP = 7
+NEAREST_CLAMP = 3
+BILINEAR_CLAMP = 4
+TRILINEAR_CLAMP = 5
 
 GL_REPEAT = 0x2901
 GL_CLAMP_TO_EDGE = 0x812F
@@ -26,18 +24,12 @@ def to_sampler_json(sampler):
         return { 'magFilter' : GL_LINEAR, 'minFilter' : GL_LINEAR_MIPMAP_NEAREST, 'wrapS' : GL_REPEAT, 'wrapT' : GL_REPEAT }
     elif sampler == TRILINEAR_WRAP:
         return { 'magFilter' : GL_LINEAR, 'minFilter' : GL_LINEAR_MIPMAP_LINEAR, 'wrapS' : GL_REPEAT, 'wrapT' : GL_REPEAT }
-    elif sampler == CHUNKY_WRAP:
-        return { 'magFilter' : GL_LINEAR, 'minFilter' : GL_LINEAR_MIPMAP_LINEAR, 'wrapS' : GL_REPEAT, 'wrapT' : GL_REPEAT,
-                'extras' : { 'granite' : { 'chunky' : True }}}
     elif sampler == NEAREST_CLAMP:
         return { 'magFilter' : GL_NEAREST, 'minFilter' : GL_NEAREST_MIPMAP_NEAREST, 'wrapS' : GL_CLAMP_TO_EDGE, 'wrapT' : GL_CLAMP_TO_EDGE }
     elif sampler == BILINEAR_CLAMP:
         return { 'magFilter' : GL_LINEAR, 'minFilter' : GL_LINEAR_MIPMAP_NEAREST, 'wrapS' : GL_CLAMP_TO_EDGE, 'wrapT' : GL_CLAMP_TO_EDGE }
     elif sampler == TRILINEAR_CLAMP:
         return { 'magFilter' : GL_LINEAR, 'minFilter' : GL_LINEAR_MIPMAP_LINEAR, 'wrapS' : GL_CLAMP_TO_EDGE, 'wrapT' : GL_CLAMP_TO_EDGE }
-    elif sampler == CHUNKY_CLAMP:
-        return { 'magFilter' : GL_LINEAR, 'minFilter' : GL_LINEAR_MIPMAP_LINEAR, 'wrapS' : GL_CLAMP_TO_EDGE, 'wrapT' : GL_CLAMP_TO_EDGE,
-                'extras' : { 'granite' : { 'chunky' : True }}}
     else:
         raise TypeError('Sampler is out of range')
 
@@ -68,7 +60,7 @@ class ImageResolver():
         return [to_image_json(x) for x in self.paths]
 
     def to_samplers(self):
-        return [to_sampler_json(x) for x in range(8)]
+        return [to_sampler_json(x) for x in range(6)]
 
     def to_textures(self):
         tex = []

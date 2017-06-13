@@ -9,11 +9,13 @@ class MaterialBuilder():
         self.roughness_factor = 1.0
         self.alpha_mode = 'OPAQUE'
         self.double_sided = False
+        self.lod_bias = 0.0
 
     def to_json_object(self, textures):
         value = {
                 'alphaMode' : self.alpha_mode,
-                'doubleSided' : self.double_sided
+                'doubleSided' : self.double_sided,
+                'extras' : { 'lodBias' : self.lod_bias }
                 }
 
         if self.name:

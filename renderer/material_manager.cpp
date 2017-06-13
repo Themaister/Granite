@@ -35,6 +35,7 @@ MaterialFile::MaterialFile(const MaterialInfo &info)
 	roughness = info.uniform_roughness;
 	pipeline = info.pipeline;
 	two_sided = info.two_sided;
+	lod_bias = info.lod_bias;
 	sampler = info.sampler;
 	bake_hash();
 

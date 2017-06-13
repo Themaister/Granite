@@ -56,6 +56,7 @@ struct StaticMeshFragment
 	vec4 emissive;
 	float roughness;
 	float metallic;
+	float lod_bias;
 };
 
 struct DebugMeshInfo : RenderInfo

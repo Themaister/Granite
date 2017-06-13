@@ -249,18 +249,6 @@ void Device::init_stock_samplers()
 
 		switch (mode)
 		{
-		case StockSampler::ChunkyClamp:
-		case StockSampler::ChunkyWrap:
-			info.mipLodBias = -1.5f;
-			break;
-
-		default:
-			info.mipLodBias = 0.0f;
-			break;
-		}
-
-		switch (mode)
-		{
 		case StockSampler::NearestShadow:
 		case StockSampler::LinearShadow:
 			info.compareEnable = true;
@@ -276,8 +264,6 @@ void Device::init_stock_samplers()
 		{
 		case StockSampler::TrilinearClamp:
 		case StockSampler::TrilinearWrap:
-		case StockSampler::ChunkyClamp:
-		case StockSampler::ChunkyWrap:
 			info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
 			break;
 
@@ -293,8 +279,6 @@ void Device::init_stock_samplers()
 		case StockSampler::TrilinearClamp:
 		case StockSampler::TrilinearWrap:
 		case StockSampler::LinearShadow:
-		case StockSampler::ChunkyClamp:
-		case StockSampler::ChunkyWrap:
 			info.magFilter = VK_FILTER_LINEAR;
 			info.minFilter = VK_FILTER_LINEAR;
 			break;
@@ -311,7 +295,6 @@ void Device::init_stock_samplers()
 		case StockSampler::LinearWrap:
 		case StockSampler::NearestWrap:
 		case StockSampler::TrilinearWrap:
-		case StockSampler::ChunkyWrap:
 			info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
 			info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
 			info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
@@ -322,7 +305,6 @@ void Device::init_stock_samplers()
 		case StockSampler::TrilinearClamp:
 		case StockSampler::NearestShadow:
 		case StockSampler::LinearShadow:
-		case StockSampler::ChunkyClamp:
 			info.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
 			info.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
 			info.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;

@@ -19,34 +19,24 @@ material.double_sided = True
 material.base_color = 'pine'
 material.alpha_mode = 'MASK'
 
-w = 1.0
-l = 1.0
-h = 1.5
+uvy0 = 256.0 / 512.0
+uvy2 = (256.0 + 32.0) / 512.0
 
-x = w / 2.0
-z = l / 2.0
+uvx1 = (128.0 + 64.0) / 512.0
+uvx2 = (128.0 + 64.0 + 32.0) / 512.0
 
-uvy = (256.0 + 96.0) / 512.0
-uvx2 = 128.0 / 512.0
-uvx = 64.0 / 512.0
-
-mesh = meshes.get_mesh('bush')
+mesh = meshes.get_mesh('clover2')
 mesh.material = 'DEFAULT'
 mesh.add_quad(
-        Vertex((x, 0.0, l),   (0.0,  uvy)),
-        Vertex((x, 0.0, 0.0), (uvx, uvy)),
-        Vertex((x, h,   l),   (0.0,  0.5)),
-        Vertex((x, h,   0.0), (uvx, 0.5)))
-mesh.add_quad(
-        Vertex((0.0, 0.0, z), (uvx, uvy)),
-        Vertex((w,   0.0, z), (uvx2, uvy)),
-        Vertex((0.0, h,   z), (uvx, 0.5)),
-        Vertex((w,   h,   z), (uvx2, 0.5)))
+        Vertex((0.0, 0.175, 0.5), (uvx1, uvy2)),
+        Vertex((0.5, 0.175, 0.5), (uvx2, uvy2)),
+        Vertex((0.0, 0.175, 0.0), (uvx1, uvy0)),
+        Vertex((0.5, 0.175, 0.0), (uvx2, uvy0)))
 
 images.register_texture('pine', '../textures/Pine_BaseColor.ktx', CHUNKY_WRAP)
 
 node = Node()
-node.mesh = 'bush'
+node.mesh = 'clover2'
 
 gltf = build_gltf([node], meshes, materials, images)
 print(json.dumps(gltf, indent = 4))

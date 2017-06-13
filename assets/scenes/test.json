@@ -2,11 +2,13 @@
    "scenes" : {
       "cube" : "AnimatedCube.gltf",
       "monkey" : "Suzanne.gltf",
-      "test": "test.gltf",
-      "pine": "Pine.gltf",
-      "pine2": "Pine2.gltf",
-      "bush": "Bush.gltf",
-      "berry": "Berry.gltf"
+      "test" : "test.gltf",
+      "pine" : "Pine.gltf",
+      "pine2" : "Pine2.gltf",
+      "bush" : "Bush.gltf",
+      "berry" : "Berry.gltf",
+      "clover" : "Clover.gltf",
+      "clover2" : "Clover2.gltf"
    },
    "nodes" : [
       {
@@ -49,6 +51,18 @@
          "translation" : [ 4.2, -2.0, 0.1 ],
          "grid_stride" : [ 0.9, 1.0, 0.9 ],
          "grid_size" : [ 12, 1, 9 ]
+      },
+      {
+         "scene" : "clover",
+         "translation" : [ 6, -2.0, 7.0 ],
+         "grid_stride" : [ 1.9, 1.0, 1.9 ],
+         "grid_size" : [ 2, 1, 3 ]
+      },
+      {
+         "scene" : "clover2",
+         "translation" : [ 8.75, -2.0, 7.75 ],
+         "grid_stride" : [ 1.5, 1.0, 1.5 ],
+         "grid_size" : [ 2, 1, 2 ]
       }
    ],
    "background" : "../textures/skybox.ktx",

@@ -143,19 +143,19 @@
     "buffers": [
         {
             "byteLength": 96,
-            "uri": "data:application/octet-stream;base64,AAAAPwAAAAAAAIA/AAAAPwAAAAAAAAAAAAAAPwAAwD8AAIA/AAAAPwAAwD8AAAAAAAAAAAAAAAAAAAA/AACAPwAAAAAAAAA/AAAAAAAAwD8AAAA/AACAPwAAwD8AAAA/"
+            "uri": "data:application/octet-stream;base64,AAAAADMzMz4AAIA/AACAPzMzMz4AAIA/AAAAADMzMz4AAAAAAACAPzMzMz4AAAAAAACAPpqZmT4AAEA/AABAP5qZmT4AAEA/AACAPpqZmT4AAIA+AABAP5qZmT4AAIA+"
         },
         {
             "byteLength": 96,
-            "uri": "data:application/octet-stream;base64,AACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/"
+            "uri": "data:application/octet-stream;base64,AAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAA"
         },
         {
             "byteLength": 128,
-            "uri": "data:application/octet-stream;base64,AAAAAAAAAAAAAIC/AACAvwAAAAAAAAAAAACAvwAAgL8AAAAAAAAAAAAAgL8AAIC/AAAAAAAAAAAAAIC/AACAvwAAgD8AAAAAAAAAAAAAgL8AAIA/AAAAAAAAAAAAAIC/AACAPwAAAAAAAAAAAACAvwAAgD8AAAAAAAAAAAAAgL8="
+            "uri": "data:application/octet-stream;base64,AACAPwAAAAAAAAAAAACAvwAAgD8AAAAAAAAAAAAAgL8AAIA/AAAAAAAAAAAAAIC/AACAPwAAAAAAAAAAAACAvwAAgD8AAAAAAAAAAAAAgL8AAIA/AAAAAAAAAAAAAIC/AACAPwAAAAAAAAAAAACAvwAAgD8AAAAAAAAAAAAAgL8="
         },
         {
             "byteLength": 64,
-            "uri": "data:application/octet-stream;base64,AAAAAAAAMD8AAAA+AAAwPwAAAAAAAAA/AAAAPgAAAD8AAAA+AAAwPwAAgD4AADA/AAAAPgAAAD8AAIA+AAAAPw=="
+            "uri": "data:application/octet-stream;base64,AACAPgAAID8AAMA+AAAgPwAAgD4AAAA/AADAPgAAAD8AAMA+AAAQPwAA4D4AABA/AADAPgAAAD8AAOA+AAAAPw=="
         },
         {
             "byteLength": 24,
@@ -198,12 +198,12 @@
             "count": 8,
             "max": [
                 1.0,
-                1.5,
+                0.3,
                 1.0
             ],
             "min": [
                 0.0,
-                0.0,
+                0.175,
                 0.0
             ]
         },
@@ -214,13 +214,13 @@
             "type": "VEC3",
             "count": 8,
             "max": [
-                1.0,
                 0.0,
-                1.0
+                1.0,
+                0.0
             ],
             "min": [
                 0.0,
-                0.0,
+                1.0,
                 0.0
             ]
         },
@@ -237,9 +237,9 @@
                 -1.0
             ],
             "min": [
+                1.0,
                 0.0,
                 0.0,
-                -1.0,
                 -1.0
             ]
         },
@@ -250,11 +250,11 @@
             "type": "VEC2",
             "count": 8,
             "max": [
-                0.25,
-                0.6875
+                0.4375,
+                0.625
             ],
             "min": [
-                0.0,
+                0.25,
                 0.5
             ]
         },

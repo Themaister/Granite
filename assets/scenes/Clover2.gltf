@@ -142,50 +142,50 @@
     ],
     "buffers": [
         {
-            "byteLength": 96,
-            "uri": "data:application/octet-stream;base64,AAAAPwAAAAAAAIA/AAAAPwAAAAAAAAAAAAAAPwAAwD8AAIA/AAAAPwAAwD8AAAAAAAAAAAAAAAAAAAA/AACAPwAAAAAAAAA/AAAAAAAAwD8AAAA/AACAPwAAwD8AAAA/"
+            "byteLength": 48,
+            "uri": "data:application/octet-stream;base64,AAAAADMzMz4AAAA/AAAAPzMzMz4AAAA/AAAAADMzMz4AAAAAAAAAPzMzMz4AAAAA"
         },
         {
-            "byteLength": 96,
-            "uri": "data:application/octet-stream;base64,AACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/"
-        },
-        {
-            "byteLength": 128,
-            "uri": "data:application/octet-stream;base64,AAAAAAAAAAAAAIC/AACAvwAAAAAAAAAAAACAvwAAgL8AAAAAAAAAAAAAgL8AAIC/AAAAAAAAAAAAAIC/AACAvwAAgD8AAAAAAAAAAAAAgL8AAIA/AAAAAAAAAAAAAIC/AACAPwAAAAAAAAAAAACAvwAAgD8AAAAAAAAAAAAAgL8="
+            "byteLength": 48,
+            "uri": "data:application/octet-stream;base64,AAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAA"
         },
         {
             "byteLength": 64,
-            "uri": "data:application/octet-stream;base64,AAAAAAAAMD8AAAA+AAAwPwAAAAAAAAA/AAAAPgAAAD8AAAA+AAAwPwAAgD4AADA/AAAAPgAAAD8AAIA+AAAAPw=="
+            "uri": "data:application/octet-stream;base64,AACAPwAAAAAAAAAAAACAvwAAgD8AAAAAAAAAAAAAgL8AAIA/AAAAAAAAAAAAAIC/AACAPwAAAAAAAAAAAACAvw=="
         },
         {
-            "byteLength": 24,
-            "uri": "data:application/octet-stream;base64,AAABAAIAAwACAAEABAAFAAYABwAGAAUA"
+            "byteLength": 32,
+            "uri": "data:application/octet-stream;base64,AADAPgAAED8AAOA+AAAQPwAAwD4AAAA/AADgPgAAAD8="
+        },
+        {
+            "byteLength": 12,
+            "uri": "data:application/octet-stream;base64,AAABAAIAAwACAAEA"
         }
     ],
     "bufferViews": [
         {
             "buffer": 0,
-            "byteLength": 96,
+            "byteLength": 48,
             "byteOffset": 0
         },
         {
             "buffer": 1,
-            "byteLength": 96,
+            "byteLength": 48,
             "byteOffset": 0
         },
         {
             "buffer": 2,
-            "byteLength": 128,
-            "byteOffset": 0
-        },
-        {
-            "buffer": 3,
             "byteLength": 64,
             "byteOffset": 0
         },
         {
+            "buffer": 3,
+            "byteLength": 32,
+            "byteOffset": 0
+        },
+        {
             "buffer": 4,
-            "byteLength": 24,
+            "byteLength": 12,
             "byteOffset": 0
         }
     ],
@@ -195,15 +195,15 @@
             "byteOffset": 0,
             "componentType": 5126,
             "type": "VEC3",
-            "count": 8,
+            "count": 4,
             "max": [
-                1.0,
-                1.5,
-                1.0
+                0.5,
+                0.175,
+                0.5
             ],
             "min": [
                 0.0,
-                0.0,
+                0.175,
                 0.0
             ]
         },
@@ -212,15 +212,15 @@
             "byteOffset": 0,
             "componentType": 5126,
             "type": "VEC3",
-            "count": 8,
+            "count": 4,
             "max": [
-                1.0,
                 0.0,
-                1.0
+                1.0,
+                0.0
             ],
             "min": [
                 0.0,
-                0.0,
+                1.0,
                 0.0
             ]
         },
@@ -229,7 +229,7 @@
             "byteOffset": 0,
             "componentType": 5126,
             "type": "VEC4",
-            "count": 8,
+            "count": 4,
             "max": [
                 1.0,
                 0.0,
@@ -237,9 +237,9 @@
                 -1.0
             ],
             "min": [
+                1.0,
                 0.0,
                 0.0,
-                -1.0,
                 -1.0
             ]
         },
@@ -248,13 +248,13 @@
             "byteOffset": 0,
             "componentType": 5126,
             "type": "VEC2",
-            "count": 8,
+            "count": 4,
             "max": [
-                0.25,
-                0.6875
+                0.4375,
+                0.5625
             ],
             "min": [
-                0.0,
+                0.375,
                 0.5
             ]
         },
@@ -263,9 +263,9 @@
             "byteOffset": 0,
             "componentType": 5123,
             "type": "SCALAR",
-            "count": 12,
+            "count": 6,
             "max": [
-                7
+                3
             ],
             "min": [
                 0

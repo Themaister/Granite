@@ -38,7 +38,7 @@ layout(location = 0) out vec4 FragColor;
 void main()
 {
 #if defined(HAVE_BASECOLORMAP) && HAVE_BASECOLORMAP
-    vec4 base_color = texture(uBaseColormap, vUV);
+    vec4 base_color = texture(uBaseColormap, vUV) * registers.base_color;
     #if defined(ALPHA_TEST) && !defined(ALPHA_TEST_ALPHA_TO_COVERAGE)
         if (base_color.a < 0.5)
             discard;
@@ -59,8 +59,8 @@ void main()
 
 #if defined(HAVE_METALLICROUGHNESSMAP) && HAVE_METALLICROUGHNESSMAP
     vec2 mr = texture(uMetallicRoughnessmap, vUV).bg;
-    float metallic = mr.x;
-    float roughness = mr.y;
+    float metallic = mr.x * registers.metallic;
+    float roughness = mr.y * registers.roughness;
 #else
     float metallic = registers.metallic;
     float roughness = registers.roughness;

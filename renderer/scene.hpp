@@ -15,11 +15,14 @@ struct RenderableInfo
 };
 using VisibilityList = std::vector<RenderableInfo>;
 
+class RenderContext;
+
 class Scene
 {
 public:
 	Scene();
 
+	void refresh_per_frame(RenderContext &context);
 	void update_cached_transforms();
 	void gather_visible_opaque_renderables(const Frustum &frustum, VisibilityList &list);
 	void gather_visible_transparent_renderables(const Frustum &frustum, VisibilityList &list);
@@ -100,6 +103,7 @@ private:
 	std::vector<std::tuple<CachedSpatialTransformComponent*, RenderableComponent*, TransparentComponent*>> &transparent;
 	std::vector<std::tuple<CachedSpatialTransformComponent*, RenderableComponent*, CastsShadowComponent*>> &shadowing;
 	std::vector<std::tuple<UnboundedComponent*, RenderableComponent*>> &backgrounds;
+	std::vector<std::tuple<PerFrameUpdateComponent*>> &per_frame_updates;
 	std::vector<EntityHandle> nodes;
 	void update_transform_tree(Node &node, const mat4 &transform);
 

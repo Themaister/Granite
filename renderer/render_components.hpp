@@ -41,6 +41,17 @@ struct RenderableComponent : ComponentBase
 	AbstractRenderableHandle renderable;
 };
 
+struct PerFrameRefreshable
+{
+	virtual ~PerFrameRefreshable() = default;
+	virtual void refresh(RenderContext &context) = 0;
+};
+
+struct PerFrameUpdateComponent : ComponentBase
+{
+	PerFrameRefreshable *refresh = nullptr;
+};
+
 struct CachedSpatialTransformComponent : ComponentBase
 {
 	AABB world_aabb;

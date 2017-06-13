@@ -31,6 +31,7 @@ layout(std430, push_constant) uniform Constants
     vec4 emissive;
     float roughness;
     float metallic;
+    float lod_bias;
 } registers;
 
 layout(location = 0) out vec4 FragColor;
@@ -38,7 +39,7 @@ layout(location = 0) out vec4 FragColor;
 void main()
 {
 #if defined(HAVE_BASECOLORMAP) && HAVE_BASECOLORMAP
-    vec4 base_color = texture(uBaseColormap, vUV) * registers.base_color;
+    vec4 base_color = texture(uBaseColormap, vUV, registers.lod_bias) * registers.base_color;
     #if defined(ALPHA_TEST) && !defined(ALPHA_TEST_ALPHA_TO_COVERAGE)
         if (base_color.a < 0.5)
             discard;
@@ -58,7 +59,7 @@ void main()
 #endif
 
 #if defined(HAVE_METALLICROUGHNESSMAP) && HAVE_METALLICROUGHNESSMAP
-    vec2 mr = texture(uMetallicRoughnessmap, vUV).bg;
+    vec2 mr = texture(uMetallicRoughnessmap, vUV, registers.lod_bias).bg;
     float metallic = mr.x * registers.metallic;
     float roughness = mr.y * registers.roughness;
 #else

@@ -411,7 +411,7 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
 	raster.cullMode = static_cast<VkCullModeFlags>(static_state.state.cull_mode);
 	raster.frontFace = static_cast<VkFrontFace>(static_state.state.front_face);
 	raster.lineWidth = 1.0f;
-	raster.polygonMode = VK_POLYGON_MODE_FILL;
+	raster.polygonMode = static_state.state.wireframe ? VK_POLYGON_MODE_LINE : VK_POLYGON_MODE_FILL;
 
 	// Stages
 	VkPipelineShaderStageCreateInfo stages[static_cast<unsigned>(ShaderStage::Count)];

@@ -74,6 +74,8 @@ union PipelineState {
 		unsigned primitive_restart : 1;
 		unsigned topology : 4;
 
+		unsigned wireframe : 1;
+
 		uint32_t write_mask;
 	} state;
 	uint32_t words[4];
@@ -302,6 +304,11 @@ public:
 	{
 		SET_STATIC_STATE(depth_test);
 		SET_STATIC_STATE(depth_write);
+	}
+
+	inline void set_wireframe(bool wireframe)
+	{
+		SET_STATIC_STATE(wireframe);
 	}
 
 	inline void set_depth_compare(VkCompareOp depth_compare)

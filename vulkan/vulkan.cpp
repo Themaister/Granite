@@ -289,6 +289,8 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 			enabled_features.fullDrawIndexUint32 = VK_TRUE;
 		if (features.imageCubeArray)
 			enabled_features.imageCubeArray = VK_TRUE;
+		if (features.fillModeNonSolid)
+			enabled_features.fillModeNonSolid = VK_TRUE;
 	}
 
 	device_info.pEnabledFeatures = &enabled_features;

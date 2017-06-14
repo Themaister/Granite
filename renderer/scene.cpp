@@ -12,7 +12,8 @@ Scene::Scene()
 	  transparent(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, TransparentComponent>()),
 	  shadowing(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, CastsShadowComponent>()),
 	  backgrounds(pool.get_component_group<UnboundedComponent, RenderableComponent>()),
-	  per_frame_updates(pool.get_component_group<PerFrameUpdateComponent>())
+	  per_frame_updates(pool.get_component_group<PerFrameUpdateComponent>()),
+	  per_frame_update_transforms(pool.get_component_group<PerFrameUpdateTransformComponent, CachedSpatialTransformComponent>())
 {
 
 }
@@ -37,6 +38,14 @@ static void gather_visible_renderables(const Frustum &frustum, VisibilityList &l
 
 void Scene::refresh_per_frame(RenderContext &context)
 {
+	for (auto &update : per_frame_update_transforms)
+	{
+		auto *refresh = get<0>(update)->refresh;
+		auto *transform = get<1>(update);
+		if (refresh)
+			refresh->refresh(context, transform);
+	}
+
 	for (auto &update : per_frame_updates)
 	{
 		auto *refresh = get<0>(update)->refresh;

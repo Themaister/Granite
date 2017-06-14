@@ -88,8 +88,8 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 	window->set_title("My Window");
 	//window->set_target_geometry(window->get_target_geometry() + vec2(1.0f));
 
-	scene.refresh_per_frame(context);
 	scene.update_cached_transforms();
+	scene.refresh_per_frame(context);
 	scene.gather_visible_opaque_renderables(context.get_visibility_frustum(), visible);
 	scene.gather_background_renderables(visible);
 

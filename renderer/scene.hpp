@@ -104,6 +104,7 @@ private:
 	std::vector<std::tuple<CachedSpatialTransformComponent*, RenderableComponent*, CastsShadowComponent*>> &shadowing;
 	std::vector<std::tuple<UnboundedComponent*, RenderableComponent*>> &backgrounds;
 	std::vector<std::tuple<PerFrameUpdateComponent*>> &per_frame_updates;
+	std::vector<std::tuple<PerFrameUpdateTransformComponent*, CachedSpatialTransformComponent*>> &per_frame_update_transforms;
 	std::vector<EntityHandle> nodes;
 	void update_transform_tree(Node &node, const mat4 &transform);
 

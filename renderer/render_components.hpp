@@ -41,10 +41,21 @@ struct RenderableComponent : ComponentBase
 	AbstractRenderableHandle renderable;
 };
 
+struct PerFrameRefreshableTransform
+{
+	virtual ~PerFrameRefreshableTransform() = default;
+	virtual void refresh(RenderContext &context, const CachedSpatialTransformComponent *transform) = 0;
+};
+
 struct PerFrameRefreshable
 {
 	virtual ~PerFrameRefreshable() = default;
 	virtual void refresh(RenderContext &context) = 0;
+};
+
+struct PerFrameUpdateTransformComponent : ComponentBase
+{
+	PerFrameRefreshableTransform *refresh = nullptr;
 };
 
 struct PerFrameUpdateComponent : ComponentBase

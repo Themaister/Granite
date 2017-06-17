@@ -14,6 +14,7 @@ layout(location = 1) in highp vec2 vUV;
 layout(location = 2) in mediump float vLOD;
 
 layout(set = 2, binding = 1) uniform sampler2D uNormalsTerrain;
+layout(set = 2, binding = 3) uniform sampler2D uBaseColor;
 
 layout(std140, set = 2, binding = 4) uniform GroundData
 {
@@ -26,6 +27,8 @@ void main()
 {
     vec3 terrain = texture(uNormalsTerrain, vUV).xyz * 2.0 - 1.0;
     vec3 normal = normalize(mat3(registers.Normal) * terrain.xzy); // Normal is +Y, Bitangent is +Z.
-    FragColor = vec4(normal, 1.0);
-    FragColor = vec4(fract(vLOD));
+
+    vec2 uv = vUV * uUVTilingScale;
+    vec4 base_color = texture(uBaseColor, uv, -1.5);
+    FragColor = base_color;
 }

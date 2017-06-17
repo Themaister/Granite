@@ -21,6 +21,7 @@ struct PatchInfo : RenderInfo
 
 	const Vulkan::ImageView *heights;
 	const Vulkan::ImageView *normals;
+	const Vulkan::ImageView *base_color;
 	const Vulkan::ImageView *lod_map;
 
 	mat4 push[2];
@@ -72,6 +73,7 @@ static void ground_patch_render(Vulkan::CommandBuffer &cmd, const RenderInfo **i
 	cmd.set_texture(2, 0, *patch.heights, cmd.get_device().get_stock_sampler(StockSampler::LinearWrap));
 	cmd.set_texture(2, 1, *patch.normals, cmd.get_device().get_stock_sampler(StockSampler::TrilinearWrap));
 	cmd.set_texture(2, 2, *patch.lod_map, cmd.get_device().get_stock_sampler(StockSampler::LinearClamp));
+	cmd.set_texture(2, 3, *patch.base_color, cmd.get_device().get_stock_sampler(StockSampler::TrilinearWrap));
 
 	auto *data = static_cast<GroundData *>(cmd.allocate_constant_data(2, 4, sizeof(GroundData)));
 	data->inv_heightmap_size = patch.inv_heightmap_size;
@@ -129,8 +131,8 @@ void GroundPatch::get_render_info(const RenderContext &context, const CachedSpat
 	ground->get_render_info(context, transform, queue, *this);
 }
 
-Ground::Ground(unsigned size, const string &heightmap, const string &normalmap)
-	: size(size), heightmap_path(heightmap), normalmap_path(normalmap)
+Ground::Ground(unsigned size, const string &heightmap, const string &normalmap, const string &base_color)
+	: size(size), heightmap_path(heightmap), normalmap_path(normalmap), base_color_path(base_color)
 {
 	assert(size % base_patch_size == 0);
 	num_patches_x = size / base_patch_size;
@@ -148,6 +150,7 @@ void Ground::on_device_created(const Event &e)
 	auto &device = e.as<DeviceCreatedEvent>().get_device();
 	heights = device.get_texture_manager().request_texture(heightmap_path);
 	normals = device.get_texture_manager().request_texture(normalmap_path);
+	base_color = device.get_texture_manager().request_texture(base_color_path);
 	build_buffers(device);
 
 	ImageCreateInfo info = {};
@@ -241,6 +244,7 @@ void Ground::on_device_destroyed(const Event &)
 {
 	heights = nullptr;
 	normals = nullptr;
+	base_color = nullptr;
 	quad_lod.clear();
 	lod_map.reset();
 }
@@ -276,8 +280,10 @@ void Ground::get_render_info(const RenderContext &context, const CachedSpatialTr
 
 	auto heightmap = heights->get_image();
 	auto normal = normals->get_image();
+	auto base_color_image = base_color->get_image();
 	patch.heights = &heightmap->get_view();
 	patch.normals = &normal->get_view();
+	patch.base_color = &base_color_image->get_view();
 	patch.lod_map = &lod_map->get_view();
 	patch.offsets = ground_patch.offset * vec2(size);
 	patch.inv_heightmap_size = vec2(1.0f / size);
@@ -289,6 +295,7 @@ void Ground::get_render_info(const RenderContext &context, const CachedSpatialTr
 
 	hasher.u64(heightmap->get_cookie());
 	hasher.u64(normal->get_cookie());
+	hasher.u64(base_color_image->get_cookie());
 	hasher.s32(base_lod);
 
 	// Allow promotion to push constant for transforms.
@@ -323,17 +330,20 @@ void Ground::refresh(RenderContext &context)
 	device.submit(cmd);
 }
 
-Ground::Handles Ground::add_to_scene(Scene &scene, float tiling_factor, const std::string &heightmap, const std::string &normalmap)
+Ground::Handles Ground::add_to_scene(Scene &scene, unsigned size, float tiling_factor,
+                                     const std::string &heightmap, const std::string &normalmap, const std::string &base_color)
 {
 	Handles handles;
 
 	handles.node = scene.create_node();
 	handles.entity = scene.create_entity();
 
-	auto ground = make_handle<Ground>(512, heightmap, normalmap);
+	auto ground = make_handle<Ground>(size, heightmap, normalmap, base_color);
 	ground->set_tiling_factor(vec2(tiling_factor));
 	auto *update_component = handles.entity->allocate_component<PerFrameUpdateComponent>();
 	update_component->refresh = ground.get();
+
+	handles.ground = ground.get();
 
 	vec2 inv_patches = vec2(1.0f / ground->get_num_patches_x(), 1.0f / ground->get_num_patches_z());
 

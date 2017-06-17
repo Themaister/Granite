@@ -60,7 +60,7 @@ static void ground_patch_render(Vulkan::CommandBuffer &cmd, const RenderInfo **i
 
 	cmd.set_program(*patch.program);
 	cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
-	cmd.set_wireframe(true);
+	//cmd.set_wireframe(true);
 	cmd.set_primitive_restart(true);
 
 	cmd.set_index_buffer(*patch.ibo, 0, VK_INDEX_TYPE_UINT16);

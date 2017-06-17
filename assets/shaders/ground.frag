@@ -18,7 +18,6 @@ layout(std140, set = 2, binding = 4) uniform GroundData
 {
     vec2 uInvHeightmapSize;
     vec2 uUVShift;
-    vec2 uUVHalfTexel;
     vec2 uUVTilingScale;
 };
 
@@ -26,5 +25,5 @@ void main()
 {
     vec3 terrain = texture(uNormalsTerrain, vUV).xyz * 2.0 - 1.0;
     vec3 normal = normalize(registers.Normal * terrain.xzy); // Normal is +Y, Bitangent is +Z.
-    FragColor = vec4(0.5 * normal + 0.5, 1.0);
+    FragColor = vec4(normal, 1.0);
 }

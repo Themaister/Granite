@@ -75,5 +75,9 @@ private:
 		unsigned count;
 	};
 	std::vector<LOD> quad_lod;
+
+	void build_buffers(Vulkan::Device &device);
+	void build_lod(Vulkan::Device &device, unsigned size, unsigned stride);
+	unsigned base_patch_size = 64;
 };
 }

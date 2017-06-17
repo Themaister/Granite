@@ -2,7 +2,7 @@
 #include "vulkan_events.hpp"
 #include "device.hpp"
 #include "renderer.hpp"
-#include "image.hpp"
+#include "render_context.hpp"
 
 using namespace Vulkan;
 using namespace std;
@@ -134,6 +134,64 @@ void Ground::on_device_created(const Event &e)
 	auto &device = e.as<DeviceCreatedEvent>().get_device();
 	heights = device.get_texture_manager().request_texture(heightmap_path);
 	normals = device.get_texture_manager().request_texture(normalmap_path);
+	build_buffers(device);
+}
+
+void Ground::build_lod(Device &device, unsigned size, unsigned stride)
+{
+	unsigned size_1 = size + 1;
+	vector<GroundVertex> vertices;
+	vertices.reserve(size_1 * size_1);
+	vector<uint16_t> indices;
+	indices.reserve(size * 2 * size_1);
+
+	unsigned half_size = base_patch_size >> 1;
+
+	for (unsigned y = 0; y <= base_patch_size; y += stride)
+	{
+		for (unsigned x = 0; x <= base_patch_size; x += stride)
+		{
+			GroundVertex v = {};
+			v.pos[0] = uint8_t(x);
+			v.pos[1] = uint8_t(y);
+			v.pos[2] = uint8_t(x < half_size);
+			v.pos[3] = uint8_t(y < half_size);
+
+			v.weights[0] = uint8_t(x == 0 ? 255 : 0);
+			v.weights[1] = uint8_t(x == base_patch_size ? 255 : 0);
+			v.weights[2] = uint8_t(y == 0 ? 255 : 0);
+			v.weights[3] = uint8_t(y == base_patch_size ? 255 : 0);
+
+			vertices.push_back(v);
+		}
+	}
+
+	BufferCreateInfo info = {};
+	info.size = vertices.size() * sizeof(GroundVertex);
+	info.domain = BufferDomain::Device;
+	info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+
+	LOD lod;
+	lod.vbo = device.create_buffer(info, vertices.data());
+
+	info.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+	info.size = indices.size() * sizeof(uint16_t);
+	lod.ibo = device.create_buffer(info, indices.data());
+	lod.count = indices.size();
+
+	quad_lod.push_back(lod);
+}
+
+void Ground::build_buffers(Device &device)
+{
+	unsigned size = base_patch_size;
+	unsigned stride = 1;
+	while (size >= 2)
+	{
+		build_lod(device, size, stride);
+		size >>= 1;
+		stride <<= 1;
+	}
 }
 
 void Ground::on_device_destroyed(const Event &)
@@ -196,5 +254,6 @@ void Ground::get_render_info(const RenderContext &context, const CachedSpatialTr
 
 void Ground::refresh(RenderContext &context)
 {
+	auto &device = context.get_device();
 }
 }

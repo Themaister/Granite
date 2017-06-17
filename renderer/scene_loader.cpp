@@ -372,13 +372,33 @@ void SceneLoader::parse(const std::string &path, const std::string &json)
 		scene->create_renderable(skybox, nullptr);
 	}
 
+	const auto read_transform = [](Transform &transform, const Value &value) {
+		if (value.HasMember("scale"))
+		{
+			auto &s = value["scale"];
+			transform.scale = vec3(s[0].GetFloat(), s[1].GetFloat(), s[2].GetFloat());
+		}
+
+		if (value.HasMember("translation"))
+		{
+			auto &t = value["translation"];
+			transform.translation = vec3(t[0].GetFloat(), t[1].GetFloat(), t[2].GetFloat());
+		}
+
+		if (value.HasMember("rotation"))
+		{
+			auto &r = value["rotation"];
+			transform.rotation = normalize(quat(r[3].GetFloat(), r[0].GetFloat(), r[1].GetFloat(), r[2].GetFloat()));
+		}
+	};
+
 	if (doc.HasMember("terrain"))
 	{
 		auto &terrain = doc["terrain"];
 		auto heightmap = Path::relpath(path, terrain["heightmap"].GetString());
 		auto normalmap = Path::relpath(path, terrain["normalmap"].GetString());
 		auto handles = Ground::add_to_scene(*scene, heightmap, normalmap);
-		handles.node->transform.scale = vec3(64.0f, 1.0f, 64.0f);
+		read_transform(handles.node->transform, terrain);
 		root->add_child(handles.node);
 	}
 }

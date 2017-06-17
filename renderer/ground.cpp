@@ -27,6 +27,7 @@ struct PatchInfo : RenderInfo
 
 	vec4 lods;
 	vec2 offsets;
+	vec2 inv_heightmap_size;
 	float inner_lod;
 };
 
@@ -72,8 +73,7 @@ static void ground_patch_render(Vulkan::CommandBuffer &cmd, const RenderInfo **i
 	cmd.set_texture(2, 2, *patch.lod_map, cmd.get_device().get_stock_sampler(StockSampler::LinearWrap));
 
 	auto *data = static_cast<GroundData *>(cmd.allocate_constant_data(2, 4, sizeof(GroundData)));
-	data->inv_heightmap_size = vec2(1.0f / patch.heights->get_image().get_create_info().width,
-	                                1.0f / patch.heights->get_image().get_create_info().height);
+	data->inv_heightmap_size = patch.inv_heightmap_size;
 	data->uv_shift = vec2(0.0f);
 	data->uv_tiling_scale = vec2(16.0f);
 
@@ -262,14 +262,9 @@ void Ground::get_render_info(const RenderContext &context, const CachedSpatialTr
 		*ground_patch.nz->lod,
 		*ground_patch.pz->lod);
 	patch.inner_lod = *ground_patch.lod;
-
-	float lod = *ground_patch.lod;
-	for (unsigned i = 0; i < 4; i++)
-		lod = glm::min(lod, patch.lods[i]);
-
 	patch.lods = max(vec4(patch.inner_lod), patch.lods);
 
-	int base_lod = int(lod);
+	int base_lod = int(patch.inner_lod);
 	patch.vbo = quad_lod[base_lod].vbo.get();
 	patch.ibo = quad_lod[base_lod].ibo.get();
 	patch.count = quad_lod[base_lod].count;
@@ -284,6 +279,7 @@ void Ground::get_render_info(const RenderContext &context, const CachedSpatialTr
 	patch.normals = &normal->get_view();
 	patch.lod_map = &lod_map->get_view();
 	patch.offsets = ground_patch.offset * vec2(size);
+	patch.inv_heightmap_size = vec2(1.0f / size);
 
 	Util::Hasher hasher;
 	hasher.pointer(patch.program);

@@ -6,7 +6,7 @@ layout(location = 0) out vec4 FragColor;
 layout(push_constant, std430) uniform Constants
 {
     mat4 Model;
-    mat3 Normal;
+    mat4 Normal;
 } registers;
 
 layout(location = 0) in highp vec3 vWorld;
@@ -24,6 +24,6 @@ layout(std140, set = 2, binding = 4) uniform GroundData
 void main()
 {
     vec3 terrain = texture(uNormalsTerrain, vUV).xyz * 2.0 - 1.0;
-    vec3 normal = normalize(registers.Normal * terrain.xzy); // Normal is +Y, Bitangent is +Z.
+    vec3 normal = normalize(mat3(registers.Normal) * terrain.xzy); // Normal is +Y, Bitangent is +Z.
     FragColor = vec4(normal, 1.0);
 }

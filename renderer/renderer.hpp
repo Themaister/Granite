@@ -12,6 +12,7 @@ enum class RenderableType
 	Mesh,
 	DebugMesh,
 	Skybox,
+	Ground,
 	Sprite,
 	LineUI,
 	Count

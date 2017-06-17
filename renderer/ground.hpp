@@ -54,7 +54,7 @@ public:
 	static Handles add_to_scene(Scene &scene, const std::string &heightmap, const std::string &normalmap);
 
 	void get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform, RenderQueue &queue,
-                         const vec2 &base, const vec2 &offset) const;
+	                     const GroundPatch &patch) const;
 
 private:
 	Ground(const std::string &heightmap, const std::string &normalmap);
@@ -64,7 +64,16 @@ private:
 	void refresh(RenderContext &context) override;
 	Vulkan::Texture *heights = nullptr;
 	Vulkan::Texture *normals = nullptr;
+	Vulkan::ImageHandle lod_map;
 	void on_device_created(const Event &e);
 	void on_device_destroyed(const Event &e);
+
+	struct LOD
+	{
+		Vulkan::BufferHandle vbo;
+		Vulkan::BufferHandle ibo;
+		unsigned count;
+	};
+	std::vector<LOD> quad_lod;
 };
 }

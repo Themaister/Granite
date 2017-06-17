@@ -85,8 +85,9 @@ private:
 	uint64_t cookie;
 };
 
-struct EventHandler
+class EventHandler
 {
+public:
 	EventHandler(const EventHandler &) = delete;
 	void operator=(const EventHandler &) = delete;
 	EventHandler() = default;

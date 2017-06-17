@@ -1,5 +1,6 @@
 #include "event.hpp"
 #include <algorithm>
+#include <assert.h>
 
 using namespace std;
 
@@ -121,13 +122,8 @@ void EventManager::unregister_latch_handler(EventHandler *handler)
 	for (auto &event_type : latched_events)
 	{
 		auto itr = remove_if(begin(event_type.second.handlers), end(event_type.second.handlers), [&](const LatchHandler &h) {
-			if (h.handler == handler)
-				dispatch_down_events(event_type.second.queued_events, h);
 			return h.handler == handler;
 		});
-
-		if (itr != end(event_type.second.handlers) && event_type.second.dispatching)
-			throw logic_error("Unregistering handlers while dispatching events.");
 
 		if (itr != end(event_type.second.handlers))
 			event_type.second.handlers.erase(itr, end(event_type.second.handlers));

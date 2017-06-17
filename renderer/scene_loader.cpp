@@ -5,6 +5,7 @@
 #include "rapidjson/document.h"
 #include "mesh_util.hpp"
 #include "enum_cast.hpp"
+#include "ground.hpp"
 
 using namespace std;
 using namespace rapidjson;
@@ -369,6 +370,16 @@ void SceneLoader::parse(const std::string &path, const std::string &json)
 		auto texture_path = Path::relpath(path, doc["background"].GetString());
 		auto skybox = Util::make_abstract_handle<AbstractRenderable, Skybox>(texture_path);
 		scene->create_renderable(skybox, nullptr);
+	}
+
+	if (doc.HasMember("terrain"))
+	{
+		auto &terrain = doc["terrain"];
+		auto heightmap = Path::relpath(path, terrain["heightmap"].GetString());
+		auto normalmap = Path::relpath(path, terrain["normalmap"].GetString());
+		auto handles = Ground::add_to_scene(*scene, heightmap, normalmap);
+		handles.node->transform.scale = vec3(64.0f, 1.0f, 64.0f);
+		root->add_child(handles.node);
 	}
 }
 

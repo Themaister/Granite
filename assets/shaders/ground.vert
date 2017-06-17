@@ -61,16 +61,16 @@ mediump vec2 lod_factor(vec2 uv)
 
 mediump float sample_height_displacement(vec2 uv, vec2 off, mediump vec2 lod)
 {
-    return mix(
+    return clamp(mix(
             textureLod(uHeightmap, uv + 0.5 * off, lod.x).x,
             textureLod(uHeightmap, uv + 1.0 * off, lod.x + 1.0).x,
-            lod.y);
+            lod.y), -1.0, 1.0);
 }
 
 void main()
 {
-    vec2 pos = warp_position(); // Range [0, HeightmapSize)
-    vec2 uv = pos * uInvHeightmapSize; // Range [0, 1]
+    vec2 pos = warp_position() * uInvHeightmapSize;
+    vec2 uv = pos;
     mediump vec2 lod = lod_factor(uv);
     uv += uUVShift;
 

@@ -94,6 +94,7 @@ public:
 	}
 
 	EntityHandle create_renderable(AbstractRenderableHandle renderable, Node *node);
+	EntityHandle create_entity();
 
 private:
 	EntityPool pool;

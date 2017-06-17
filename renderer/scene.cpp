@@ -209,6 +209,13 @@ void Scene::Node::remove_child(Node &node)
 	children.erase(itr, end(children));
 }
 
+EntityHandle Scene::create_entity()
+{
+	EntityHandle entity = pool.create_entity();
+	nodes.push_back(entity);
+	return entity;
+}
+
 EntityHandle Scene::create_renderable(AbstractRenderableHandle renderable, Node *node)
 {
 	EntityHandle entity = pool.create_entity();

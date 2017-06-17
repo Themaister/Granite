@@ -28,6 +28,7 @@ struct PatchInfo : RenderInfo
 	vec4 lods;
 	vec2 offsets;
 	vec2 inv_heightmap_size;
+	vec2 tiling_factor;
 	float inner_lod;
 };
 
@@ -70,12 +71,12 @@ static void ground_patch_render(Vulkan::CommandBuffer &cmd, const RenderInfo **i
 
 	cmd.set_texture(2, 0, *patch.heights, cmd.get_device().get_stock_sampler(StockSampler::LinearWrap));
 	cmd.set_texture(2, 1, *patch.normals, cmd.get_device().get_stock_sampler(StockSampler::TrilinearWrap));
-	cmd.set_texture(2, 2, *patch.lod_map, cmd.get_device().get_stock_sampler(StockSampler::LinearWrap));
+	cmd.set_texture(2, 2, *patch.lod_map, cmd.get_device().get_stock_sampler(StockSampler::LinearClamp));
 
 	auto *data = static_cast<GroundData *>(cmd.allocate_constant_data(2, 4, sizeof(GroundData)));
 	data->inv_heightmap_size = patch.inv_heightmap_size;
 	data->uv_shift = vec2(0.0f);
-	data->uv_tiling_scale = vec2(16.0f);
+	data->uv_tiling_scale = patch.tiling_factor;
 
 	cmd.push_constants(patch.push, 0, sizeof(patch.push));
 
@@ -280,6 +281,7 @@ void Ground::get_render_info(const RenderContext &context, const CachedSpatialTr
 	patch.lod_map = &lod_map->get_view();
 	patch.offsets = ground_patch.offset * vec2(size);
 	patch.inv_heightmap_size = vec2(1.0f / size);
+	patch.tiling_factor = tiling_factor;
 
 	Util::Hasher hasher;
 	hasher.pointer(patch.program);
@@ -321,7 +323,7 @@ void Ground::refresh(RenderContext &context)
 	device.submit(cmd);
 }
 
-Ground::Handles Ground::add_to_scene(Scene &scene, const std::string &heightmap, const std::string &normalmap)
+Ground::Handles Ground::add_to_scene(Scene &scene, float tiling_factor, const std::string &heightmap, const std::string &normalmap)
 {
 	Handles handles;
 
@@ -329,6 +331,7 @@ Ground::Handles Ground::add_to_scene(Scene &scene, const std::string &heightmap,
 	handles.entity = scene.create_entity();
 
 	auto ground = make_handle<Ground>(512, heightmap, normalmap);
+	ground->set_tiling_factor(vec2(tiling_factor));
 	auto *update_component = handles.entity->allocate_component<PerFrameUpdateComponent>();
 	update_component->refresh = ground.get();
 

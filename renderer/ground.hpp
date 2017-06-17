@@ -61,12 +61,17 @@ class Ground : public Util::IntrusivePtrEnabled<Ground>, public PerFrameRefresha
 public:
 	Ground(unsigned size, const std::string &heightmap, const std::string &normalmap);
 
+	void set_tiling_factor(vec2 factor)
+	{
+		tiling_factor = factor;
+	}
+
 	struct Handles
 	{
 		EntityHandle entity;
 		Scene::NodeHandle node;
 	};
-	static Handles add_to_scene(Scene &scene, const std::string &heightmap, const std::string &normalmap);
+	static Handles add_to_scene(Scene &scene, float tiling_factor, const std::string &heightmap, const std::string &normalmap);
 
 	void get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform, RenderQueue &queue,
 	                     const GroundPatch &patch) const;
@@ -115,5 +120,7 @@ private:
 	unsigned num_patches_x = 0;
 	unsigned num_patches_z = 0;
 	std::vector<float> patch_lods;
+
+	vec2 tiling_factor = vec2(1.0f);
 };
 }

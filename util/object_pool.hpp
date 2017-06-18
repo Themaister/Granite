@@ -21,6 +21,8 @@ public:
 
 			for (unsigned i = 0; i < num_objects; i++)
 				vacants.push_back(&ptr[i]);
+
+			memory.emplace_back(ptr);
 		}
 
 		T *ptr = vacants.back();

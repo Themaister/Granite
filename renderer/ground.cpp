@@ -21,6 +21,7 @@ struct PatchInfo : RenderInfo
 
 	const Vulkan::ImageView *heights;
 	const Vulkan::ImageView *normals;
+	//const Vulkan::ImageView *normals_fine;
 	const Vulkan::ImageView *base_color;
 	const Vulkan::ImageView *lod_map;
 	const Vulkan::ImageView *type_map;
@@ -31,6 +32,7 @@ struct PatchInfo : RenderInfo
 	vec2 offsets;
 	vec2 inv_heightmap_size;
 	vec2 tiling_factor;
+	vec2 tangent_scale;
 	float inner_lod;
 };
 
@@ -45,6 +47,7 @@ struct GroundData
 	vec2 inv_heightmap_size;
 	vec2 uv_shift;
 	vec2 uv_tiling_scale;
+	vec2 tangent_scale;
 };
 
 struct PatchData
@@ -71,16 +74,18 @@ static void ground_patch_render(Vulkan::CommandBuffer &cmd, const RenderInfo **i
 	cmd.set_vertex_attrib(0, 0, VK_FORMAT_R8G8B8A8_UINT, offsetof(GroundVertex, pos));
 	cmd.set_vertex_attrib(1, 0, VK_FORMAT_R8G8B8A8_UNORM, offsetof(GroundVertex, weights));
 
-	cmd.set_texture(2, 0, *patch.heights, cmd.get_device().get_stock_sampler(StockSampler::LinearWrap));
-	cmd.set_texture(2, 1, *patch.normals, cmd.get_device().get_stock_sampler(StockSampler::TrilinearWrap));
+	cmd.set_texture(2, 0, *patch.heights, cmd.get_device().get_stock_sampler(StockSampler::LinearClamp));
+	cmd.set_texture(2, 1, *patch.normals, cmd.get_device().get_stock_sampler(StockSampler::TrilinearClamp));
 	cmd.set_texture(2, 2, *patch.lod_map, cmd.get_device().get_stock_sampler(StockSampler::LinearClamp));
 	cmd.set_texture(2, 3, *patch.base_color, cmd.get_device().get_stock_sampler(StockSampler::TrilinearWrap));
 	cmd.set_texture(2, 4, *patch.type_map, cmd.get_device().get_stock_sampler(StockSampler::LinearClamp));
+	//cmd.set_texture(2, 5, *patch.normals_fine, cmd.get_device().get_stock_sampler(StockSampler::TrilinearWrap));
 
 	auto *data = static_cast<GroundData *>(cmd.allocate_constant_data(3, 1, sizeof(GroundData)));
 	data->inv_heightmap_size = patch.inv_heightmap_size;
 	data->uv_shift = vec2(0.0f);
 	data->uv_tiling_scale = patch.tiling_factor;
+	data->tangent_scale = patch.tangent_scale;
 
 	cmd.push_constants(patch.push, 0, sizeof(patch.push));
 
@@ -103,14 +108,11 @@ static void ground_patch_render(Vulkan::CommandBuffer &cmd, const RenderInfo **i
 }
 }
 
-const float Ground::max_lod = 5.0f;
-const unsigned Ground::base_patch_size = 64;
-
-void GroundPatch::set_scale(vec2 offset, vec2 size)
+void GroundPatch::set_bounds(vec3 offset, vec3 size)
 {
-	this->offset = offset;
-	this->size = size;
-	aabb = AABB(vec3(offset.x, -1.0f, offset.y), vec3(size.x + offset.x, 1.0f, size.y + offset.y));
+	this->offset = offset.xz();
+	this->size = size.xz();
+	aabb = AABB(offset, offset + size);
 }
 
 GroundPatch::GroundPatch(Util::IntrusivePtr<Ground> ground)
@@ -124,7 +126,7 @@ void GroundPatch::refresh(RenderContext &context, const CachedSpatialTransformCo
 	const auto &camera_pos = context.get_render_parameters().camera_position;
 	vec3 diff = center - camera_pos;
 	float dist_log2 = 0.5f * glm::log2(dot(diff, diff) + 0.001f);
-	*lod = clamp(dist_log2 + lod_bias + ground->get_base_lod_bias(), 0.0f, ground->max_lod);
+	*lod = clamp(dist_log2 + lod_bias + ground->get_base_lod_bias(), 0.0f, ground->get_info().max_lod);
 }
 
 void GroundPatch::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
@@ -136,9 +138,9 @@ void GroundPatch::get_render_info(const RenderContext &context, const CachedSpat
 Ground::Ground(unsigned size, const TerrainInfo &info)
 	: size(size), info(info)
 {
-	assert(size % base_patch_size == 0);
-	num_patches_x = size / base_patch_size;
-	num_patches_z = size / base_patch_size;
+	assert(size % info.base_patch_size == 0);
+	num_patches_x = size / info.base_patch_size;
+	num_patches_z = size / info.base_patch_size;
 	patch_lods.resize(num_patches_x * num_patches_z);
 
 	EventManager::get_global().register_latch_handler(DeviceCreatedEvent::type_id,
@@ -152,6 +154,7 @@ void Ground::on_device_created(const Event &e)
 	auto &device = e.as<DeviceCreatedEvent>().get_device();
 	heights = device.get_texture_manager().request_texture(info.heightmap);
 	normals = device.get_texture_manager().request_texture(info.normalmap);
+	//normals_fine = device.get_texture_manager().request_texture(info.normalmap_fine);
 	base_color = device.get_texture_manager().request_texture(info.base_color);
 	type_map = device.get_texture_manager().request_texture(info.typemap);
 	build_buffers(device);
@@ -178,11 +181,11 @@ void Ground::build_lod(Device &device, unsigned size, unsigned stride)
 	vector<uint16_t> indices;
 	indices.reserve(size * (2 * size_1 + 1));
 
-	unsigned half_size = base_patch_size >> 1;
+	unsigned half_size = info.base_patch_size >> 1;
 
-	for (unsigned y = 0; y <= base_patch_size; y += stride)
+	for (unsigned y = 0; y <= info.base_patch_size; y += stride)
 	{
-		for (unsigned x = 0; x <= base_patch_size; x += stride)
+		for (unsigned x = 0; x <= info.base_patch_size; x += stride)
 		{
 			GroundVertex v = {};
 			v.pos[0] = uint8_t(x);
@@ -192,11 +195,11 @@ void Ground::build_lod(Device &device, unsigned size, unsigned stride)
 
 			if (x == 0)
 				v.weights[0] = 255;
-			else if (x == base_patch_size)
+			else if (x == info.base_patch_size)
 				v.weights[1] = 255;
 			else if (y == 0)
 				v.weights[2] = 255;
-			else if (y == base_patch_size)
+			else if (y == info.base_patch_size)
 				v.weights[3] = 255;
 
 			vertices.push_back(v);
@@ -233,7 +236,7 @@ void Ground::build_lod(Device &device, unsigned size, unsigned stride)
 
 void Ground::build_buffers(Device &device)
 {
-	unsigned size = base_patch_size;
+	unsigned size = info.base_patch_size;
 	unsigned stride = 1;
 	while (size >= 2)
 	{
@@ -247,6 +250,7 @@ void Ground::on_device_destroyed(const Event &)
 {
 	heights = nullptr;
 	normals = nullptr;
+	normals_fine = nullptr;
 	base_color = nullptr;
 	type_map = nullptr;
 	quad_lod.clear();
@@ -264,6 +268,9 @@ void Ground::get_render_info(const RenderContext &context, const CachedSpatialTr
 	// However, the base mesh [0, size) is squashed to [0, 1] size in X/Z direction.
 	// We compensate for this scaling by doing the inverse transposed normal matrix properly here.
 	patch.push[1] = transform->transform->normal_transform * glm::scale(vec3(size, 1.0f, size));
+
+	// Find something concrete to put here.
+	patch.tangent_scale = vec2(1.0f / 10.0f);
 
 	patch.lods = vec4(
 		*ground_patch.nx->lod,
@@ -284,10 +291,12 @@ void Ground::get_render_info(const RenderContext &context, const CachedSpatialTr
 
 	auto heightmap = heights->get_image();
 	auto normal = normals->get_image();
+	//auto normal_fine = normals_fine->get_image();
 	auto base_color_image = base_color->get_image();
 	auto typemap_image = type_map->get_image();
 	patch.heights = &heightmap->get_view();
 	patch.normals = &normal->get_view();
+	//patch.normals_fine = &normal_fine->get_view();
 	patch.base_color = &base_color_image->get_view();
 	patch.lod_map = &lod_map->get_view();
 	patch.type_map = &typemap_image->get_view();
@@ -301,6 +310,7 @@ void Ground::get_render_info(const RenderContext &context, const CachedSpatialTr
 
 	hasher.u64(heightmap->get_cookie());
 	hasher.u64(normal->get_cookie());
+	//hasher.u64(normal_fine->get_cookie());
 	hasher.u64(base_color_image->get_cookie());
 	hasher.u64(typemap_image->get_cookie());
 	hasher.u64(lod_map->get_cookie());
@@ -357,17 +367,41 @@ Ground::Handles Ground::add_to_scene(Scene &scene, unsigned size, float tiling_f
 	vector<GroundPatch *> patches;
 	patches.reserve(ground->get_num_patches_x() * ground->get_num_patches_z());
 
+	if (!info.patch_lod_bias.empty() && info.patch_lod_bias.size() != (ground->get_num_patches_x() * ground->get_num_patches_z()))
+		throw logic_error("Mismatch in number of patch lod biases and patches.");
+
+	const float *patch_bias = info.patch_lod_bias.empty() ? nullptr : info.patch_lod_bias.data();
+	const vec2 *patch_range = info.patch_range.empty() ? nullptr : info.patch_range.data();
+
 	for (unsigned z = 0; z < ground->get_num_patches_z(); z++)
 	{
 		for (unsigned x = 0; x < ground->get_num_patches_x(); x++)
 		{
 			auto patch = make_abstract_handle<AbstractRenderable, GroundPatch>(ground);
 			auto *p = static_cast<GroundPatch *>(patch.get());
-			p->set_scale(vec2(x, z) * inv_patches, inv_patches);
+
+			float min_y = -1.0f;
+			float max_y = 1.0f;
+			if (patch_range)
+			{
+				min_y = patch_range->x;
+				max_y = patch_range->y;
+				patch_range++;
+			}
+
+			p->set_bounds(vec3(x * inv_patches.x, min_y - 0.01f, z * inv_patches.y), vec3(inv_patches.x, max_y - min_y + 0.02f, inv_patches.y));
+
 			p->set_lod_pointer(ground->get_lod_pointer(x, z));
 			auto patch_entity = scene.create_renderable(patch, handles.node.get());
 			auto *transforms = patch_entity->allocate_component<PerFrameUpdateTransformComponent>();
 			transforms->refresh = p;
+
+			if (patch_bias)
+			{
+				p->lod_bias = *patch_bias;
+				patch_bias++;
+			}
+
 			patches.push_back(p);
 		}
 	}

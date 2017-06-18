@@ -19,11 +19,69 @@ static unsigned num_miplevels(unsigned width, unsigned height)
 	return levels;
 }
 
+static vec2 get_plane_range(const float *data, unsigned width, unsigned height, unsigned stride)
+{
+	float maximum = -FLT_MAX;
+	float minimum = FLT_MAX;
+
+	for (unsigned y = 0; y < height - 1; y++)
+	{
+		for (unsigned x = 0; x < width - 1; x++)
+		{
+			maximum = max(maximum, data[y * stride + x]);
+			minimum = min(minimum, data[y * stride + x]);
+		}
+	}
+
+	return vec2(minimum, maximum);
+}
+
+static float get_plane_error(const float *data, unsigned width, unsigned height, unsigned stride)
+{
+	// Estimate a plane equation, then find the mean error from that estimation.
+	double mean_dx = 0.0;
+	double mean_dy = 0.0;
+	double mean = 0.0;
+	for (unsigned y = 0; y < height - 1; y++)
+	{
+		for (unsigned x = 0; x < width - 1; x++)
+		{
+			double dx = data[y * stride + (x + 1)] - data[y * stride + x];
+			double dy = data[(y + 1) * stride + (x + 1)] - data[y * stride + x];
+			mean_dx += dx;
+			mean_dy += dy;
+			mean += data[y * stride + x];
+		}
+	}
+
+	mean /= (width - 1) * (height - 1);
+	mean_dx /= (width - 1) * (height - 1);
+	mean_dy /= (width - 1) * (height - 1);
+
+	dvec2 delta = dvec2(mean_dx, mean_dy);
+	double base = mean -
+		0.5 * delta.x * (width - 1) -
+		0.5 * delta.y * (height - 1);
+
+	double error = 0.0;
+	for (unsigned y = 0; y < height; y++)
+	{
+		for (unsigned x = 0; x < width; x++)
+		{
+			double h = data[y * stride + x];
+			double estimated = base + delta.x * x + delta.y * y;
+			error += (h - estimated) * (h - estimated);
+		}
+	}
+
+	return float(sqrt(error / (width * height)));
+}
+
 int main(int argc, char *argv[])
 {
-	if (argc != 4)
+	if (argc != 5)
 	{
-		LOGE("Usage: %s input <output-height> <output-normals>\n", argv[0]);
+		LOGE("Usage: %s input <output-height> <output-normals> <meta-data>\n", argv[0]);
 		return 1;
 	}
 
@@ -59,6 +117,59 @@ int main(int argc, char *argv[])
 		int h = max(height >> level, 1);
 		return clamp(c, 0, h - 1);
 	};
+
+	static const int block_size = 64;
+	int blocks_x = width / block_size;
+	int blocks_y = height / block_size;
+
+	std::vector<float> biases;
+	std::vector<vec2> ranges;
+	biases.reserve(blocks_x * blocks_y);
+	ranges.reserve(blocks_x * blocks_y);
+
+	unsigned block_index = 0;
+	for (int block_y = 0; block_y < blocks_y; block_y++)
+	{
+		for (int block_x = 0; block_x < blocks_x; block_x++, block_index++)
+		{
+			int extra_block_x = block_x + 1 < blocks_x ? 1 : 0;
+			int extra_block_y = block_y + 1 < blocks_y ? 1 : 0;
+
+			float mean_error = get_plane_error(data + block_x * block_size + block_y * block_size * width,
+			                                   block_size + extra_block_x, block_size + extra_block_y, width);
+
+			vec2 range = get_plane_range(data + block_x * block_size + block_y * block_size * width,
+			                             block_size + extra_block_x, block_size + extra_block_y, width);
+
+			float bias = -log2(mean_error + 0.00001f) - 5.0f;
+			biases.push_back(bias);
+			ranges.push_back(range);
+		}
+	}
+
+	file = fopen(argv[4], "w");
+	if (!file)
+	{
+		LOGE("Failed to write bias data to %s\n", argv[4]);
+		return 1;
+	}
+
+	fprintf(file, "{ \"bias\" : [\n");
+	for (auto &bias : biases)
+	{
+		fprintf(file, "  %.3f", bias);
+		if (&bias != &biases.back())
+			fprintf(file, ",\n");
+	}
+	fprintf(file, "],\n \"range\" : [\n");
+	for (auto &range : ranges)
+	{
+		fprintf(file, "  [%f, %f]", range.x, range.y);
+		if (&range != &ranges.back())
+			fprintf(file, ",\n");
+	}
+	fprintf(file, "] }\n");
+	fclose(file);
 
 	for (unsigned level = 1; level < levels; level++)
 	{

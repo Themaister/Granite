@@ -11,7 +11,7 @@ class GroundPatch : public AbstractRenderable, public PerFrameRefreshableTransfo
 public:
 	friend class Ground;
 	GroundPatch(Util::IntrusivePtr<Ground> ground);
-	void set_scale(vec2 offset, vec2 size);
+	void set_bounds(vec3 offset, vec3 size);
 
 	void set_lod_pointer(float *ptr)
 	{
@@ -65,7 +65,12 @@ public:
 		std::string normalmap;
 		std::string base_color;
 		std::string typemap;
+		std::string normalmap_fine;
 		float lod_bias = 0.0f;
+		unsigned base_patch_size = 64;
+		float max_lod = 5.0f;
+		std::vector<float> patch_lod_bias;
+		std::vector<vec2> patch_range;
 	};
 	Ground(unsigned size, const TerrainInfo &info);
 
@@ -106,8 +111,10 @@ public:
 		return info.lod_bias;
 	}
 
-	static const unsigned base_patch_size;
-	static const float max_lod;
+	const TerrainInfo &get_info() const
+	{
+		return info;
+	}
 
 private:
 	unsigned size;
@@ -116,6 +123,7 @@ private:
 	void refresh(RenderContext &context) override;
 	Vulkan::Texture *heights = nullptr;
 	Vulkan::Texture *normals = nullptr;
+	Vulkan::Texture *normals_fine = nullptr;
 	Vulkan::Texture *base_color = nullptr;
 	Vulkan::Texture *type_map = nullptr;
 	Vulkan::ImageHandle lod_map;

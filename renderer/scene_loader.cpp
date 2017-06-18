@@ -400,6 +400,7 @@ void SceneLoader::parse(const std::string &path, const std::string &json)
 		info.heightmap = Path::relpath(path, terrain["heightmap"].GetString());
 		info.normalmap = Path::relpath(path, terrain["normalmap"].GetString());
 		info.base_color = Path::relpath(path, terrain["baseColorTexture"].GetString());
+		info.normalmap_fine = Path::relpath(path, terrain["normalTexture"].GetString());
 		info.typemap = Path::relpath(path, terrain["typemapTexture"].GetString());
 
 		float tiling_factor = 1.0f;
@@ -408,6 +409,25 @@ void SceneLoader::parse(const std::string &path, const std::string &json)
 
 		if (terrain.HasMember("lodBias"))
 			info.lod_bias = terrain["lodBias"].GetFloat();
+
+		if (terrain.HasMember("patchData"))
+		{
+			auto patch_path = Path::relpath(path, terrain["patchData"].GetString());
+			string json;
+			if (Filesystem::get().read_file_to_string(patch_path, json))
+			{
+				Document patch_doc;
+				patch_doc.Parse(json);
+				auto &bias = patch_doc["bias"];
+				for (auto itr = bias.Begin(); itr != bias.End(); ++itr)
+					info.patch_lod_bias.push_back(itr->GetFloat());
+				auto &range = patch_doc["range"];
+				for (auto itr = range.Begin(); itr != range.End(); ++itr)
+					info.patch_range.push_back(vec2((*itr)[0].GetFloat(), (*itr)[1].GetFloat()));
+			}
+			else
+				LOGE("Failed to read patch data from %s\n", patch_path.c_str());
+		}
 
 		unsigned size = 1024;
 		if (terrain.HasMember("size"))

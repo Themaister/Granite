@@ -6,7 +6,6 @@ layout(location = 1) in vec4 aLODWeights;
 
 layout(location = 0) out highp vec3 vWorld;
 layout(location = 1) out highp vec2 vUV;
-layout(location = 2) out mediump float vLOD;
 
 layout(set = 2, binding = 0) uniform sampler2D uHeightmap;
 layout(set = 2, binding = 2) uniform sampler2D uLodMap;
@@ -29,6 +28,7 @@ layout(std140, set = 3, binding = 1) uniform GroundData
     vec2 uInvHeightmapSize;
     vec2 uUVShift;
     vec2 uUVTilingScale;
+    vec2 uTangentScale;
 };
 
 layout(push_constant, std430) uniform Constants
@@ -84,6 +84,4 @@ void main()
     vec4 world = registers.Model * vec4(pos.x, height_displacement, pos.y, 1.0);
     vWorld = world.xyz;
     gl_Position = global.view_projection * world;
-
-    vLOD = lod.x + lod.y;
 }

@@ -121,6 +121,8 @@ void Texture::update_gli(const void *data, size_t size)
 		return;
 	}
 
+	unsigned faces = 1;
+
 	switch (tex.target())
 	{
 	case gli::target::TARGET_1D_ARRAY:
@@ -151,14 +153,14 @@ void Texture::update_gli(const void *data, size_t size)
 		info.misc |= IMAGE_MISC_FORCE_ARRAY_BIT;
 		info.flags |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
 		info.depth = 1;
-		info.layers *= tex.faces();
+		faces = tex.faces();
 		info.type = VK_IMAGE_TYPE_2D;
 		break;
 
 	case gli::target::TARGET_CUBE:
 		info.flags |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
 		info.depth = 1;
-		info.layers *= tex.faces();
+		faces = tex.faces();
 		info.type = VK_IMAGE_TYPE_2D;
 		break;
 
@@ -171,15 +173,23 @@ void Texture::update_gli(const void *data, size_t size)
 		return;
 	}
 
-	ImageInitialData initial[32] = {};
+	vector<ImageInitialData> initial;
+	initial.reserve(info.levels * faces * info.layers);
 
-	for (unsigned i = 0; i < info.levels; i++)
+	for (unsigned level = 0; level < info.levels; level++)
 	{
-		auto *mip = tex.data(0, 0, i);
-		initial[i].data = mip;
+		for (unsigned layer = 0; layer < info.layers; layer++)
+		{
+			for (unsigned face = 0; face < faces; face++)
+			{
+				auto *mip = tex.data(layer, face, level);
+				initial.push_back({mip, 0, 0});
+			}
+		}
 	}
 
-	handle = device->create_image(info, initial);
+	info.layers *= faces;
+	handle = device->create_image(info, initial.data());
 }
 
 void Texture::update_png(const void *data, size_t size)

@@ -23,6 +23,7 @@ struct PatchInfo : RenderInfo
 	const Vulkan::ImageView *normals;
 	const Vulkan::ImageView *base_color;
 	const Vulkan::ImageView *lod_map;
+	const Vulkan::ImageView *type_map;
 
 	mat4 push[2];
 
@@ -74,8 +75,9 @@ static void ground_patch_render(Vulkan::CommandBuffer &cmd, const RenderInfo **i
 	cmd.set_texture(2, 1, *patch.normals, cmd.get_device().get_stock_sampler(StockSampler::TrilinearWrap));
 	cmd.set_texture(2, 2, *patch.lod_map, cmd.get_device().get_stock_sampler(StockSampler::LinearClamp));
 	cmd.set_texture(2, 3, *patch.base_color, cmd.get_device().get_stock_sampler(StockSampler::TrilinearWrap));
+	cmd.set_texture(2, 4, *patch.type_map, cmd.get_device().get_stock_sampler(StockSampler::LinearClamp));
 
-	auto *data = static_cast<GroundData *>(cmd.allocate_constant_data(2, 4, sizeof(GroundData)));
+	auto *data = static_cast<GroundData *>(cmd.allocate_constant_data(3, 1, sizeof(GroundData)));
 	data->inv_heightmap_size = patch.inv_heightmap_size;
 	data->uv_shift = vec2(0.0f);
 	data->uv_tiling_scale = patch.tiling_factor;
@@ -165,6 +167,22 @@ void Ground::on_device_created(const Event &e)
 	info.samples = VK_SAMPLE_COUNT_1_BIT;
 	info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 	lod_map = device.create_image(info, nullptr);
+
+#define RED 0xff0000u
+#define GREEN 0xff00u
+#define BLUE 0xffu
+#define ALPHA 0xff000000u
+	vector<uint32_t> types = {
+		RED, GREEN, GREEN, BLUE,
+	    ALPHA, ALPHA, RED, RED,
+	    BLUE, BLUE, GREEN, RED,
+		ALPHA, ALPHA, RED, RED,
+	};
+	info = ImageCreateInfo::immutable_2d_image(4, 4, VK_FORMAT_R8G8B8A8_UNORM);
+
+	ImageInitialData initial = {};
+	initial.data = types.data();
+	type_map = device.create_image(info, &initial);
 }
 
 void Ground::build_lod(Device &device, unsigned size, unsigned stride)
@@ -247,6 +265,7 @@ void Ground::on_device_destroyed(const Event &)
 	base_color = nullptr;
 	quad_lod.clear();
 	lod_map.reset();
+	type_map.reset();
 }
 
 void Ground::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
@@ -285,6 +304,7 @@ void Ground::get_render_info(const RenderContext &context, const CachedSpatialTr
 	patch.normals = &normal->get_view();
 	patch.base_color = &base_color_image->get_view();
 	patch.lod_map = &lod_map->get_view();
+	patch.type_map = &type_map->get_view();
 	patch.offsets = ground_patch.offset * vec2(size);
 	patch.inv_heightmap_size = vec2(1.0f / size);
 	patch.tiling_factor = tiling_factor;
@@ -296,6 +316,8 @@ void Ground::get_render_info(const RenderContext &context, const CachedSpatialTr
 	hasher.u64(heightmap->get_cookie());
 	hasher.u64(normal->get_cookie());
 	hasher.u64(base_color_image->get_cookie());
+	hasher.u64(lod_map->get_cookie());
+	hasher.u64(type_map->get_cookie());
 	hasher.s32(base_lod);
 
 	// Allow promotion to push constant for transforms.

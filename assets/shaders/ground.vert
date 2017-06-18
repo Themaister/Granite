@@ -24,7 +24,7 @@ layout(set = 3, binding = 0, std140) uniform Patches
     PatchData data[256];
 } patches;
 
-layout(std140, set = 2, binding = 4) uniform GroundData
+layout(std140, set = 3, binding = 1) uniform GroundData
 {
     vec2 uInvHeightmapSize;
     vec2 uUVShift;

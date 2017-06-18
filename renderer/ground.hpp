@@ -109,6 +109,7 @@ private:
 	Vulkan::Texture *normals = nullptr;
 	Vulkan::Texture *base_color = nullptr;
 	Vulkan::ImageHandle lod_map;
+	Vulkan::ImageHandle type_map;
 	void on_device_created(const Event &e);
 	void on_device_destroyed(const Event &e);
 

@@ -1119,26 +1119,33 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 		VkExtent3D extent = { create_info.width, create_info.height, create_info.depth };
 
 		VkImageSubresourceLayers subresource = {
-			format_to_aspect_mask(info.format), 0, 0, create_info.layers,
+			format_to_aspect_mask(info.format), 0, 0, 1,
 		};
 
-		for (unsigned i = 0; i < copy_levels; i++)
+		unsigned index = 0;
+		for (unsigned level = 0; level < copy_levels; level++)
 		{
-			uint32_t row_length = initial[i].row_length ? initial[i].row_length : extent.width;
-			uint32_t array_height = initial[i].array_height ? initial[i].array_height : extent.height;
+			for (unsigned layer = 0; layer < create_info.layers; layer++, index++)
+			{
+				subresource.baseArrayLayer = layer;
+				subresource.mipLevel = level;
 
-			uint32_t blocks_x = row_length;
-			uint32_t blocks_y = array_height;
-			format_num_blocks(create_info.format, blocks_x, blocks_y);
-			format_align_dim(create_info.format, row_length, array_height);
+				uint32_t row_length = initial[index].row_length ? initial[index].row_length : extent.width;
+				uint32_t array_height = initial[index].array_height ? initial[index].array_height : extent.height;
 
-			VkDeviceSize size =
-			    format_block_size(create_info.format) * create_info.layers * extent.depth * blocks_x * blocks_y;
+				uint32_t blocks_x = row_length;
+				uint32_t blocks_y = array_height;
+				format_num_blocks(create_info.format, blocks_x, blocks_y);
+				format_align_dim(create_info.format, row_length, array_height);
 
-			subresource.mipLevel = i;
-			auto *ptr = staging_cmd->update_image(*handle, { 0, 0, 0 }, extent, row_length, array_height, subresource);
-			VK_ASSERT(ptr);
-			memcpy(ptr, initial[i].data, size);
+				VkDeviceSize size =
+					format_block_size(create_info.format) * extent.depth * blocks_x * blocks_y;
+
+				auto *ptr = staging_cmd->update_image(*handle, {0, 0, 0}, extent, row_length, array_height,
+				                                      subresource);
+				VK_ASSERT(ptr);
+				memcpy(ptr, initial[index].data, size);
+			}
 
 			extent.width = max(extent.width >> 1u, 1u);
 			extent.height = max(extent.height >> 1u, 1u);

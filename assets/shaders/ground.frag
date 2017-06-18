@@ -50,5 +50,7 @@ void main()
         types.z * texture(uBaseColor, vec3(uv, 2.0), -1.5).rgb +
         types.w * texture(uBaseColor, vec3(uv, 3.0), -1.5).rgb;
 
-    FragColor = vec4(base_color, 1.0);
+    float ndotl = clamp(dot(normal, normalize(vec3(1.0, 0.8, 1.0))), 0.0, 1.0);
+    FragColor = vec4(base_color * ndotl, 1.0);
 }
+

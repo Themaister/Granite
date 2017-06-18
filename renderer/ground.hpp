@@ -65,6 +65,7 @@ public:
 		std::string normalmap;
 		std::string base_color;
 		std::string typemap;
+		float lod_bias = 0.0f;
 	};
 	Ground(unsigned size, const TerrainInfo &info);
 
@@ -98,6 +99,11 @@ public:
 	unsigned get_num_patches_z() const
 	{
 		return num_patches_z;
+	}
+
+	float get_base_lod_bias() const
+	{
+		return info.lod_bias;
 	}
 
 	static const unsigned base_patch_size;

@@ -54,7 +54,7 @@ vec2 warp_position()
 
 mediump vec2 lod_factor(vec2 uv)
 {
-    mediump float level = textureLod(uLodMap, uv, 0.0).x * (255.0 / 32.0);
+    mediump float level = textureLod(uLodMap, uv, 0.0).x;
     mediump float floor_level = floor(level);
     mediump float fract_level = level - floor_level;
     return vec2(floor_level, fract_level);

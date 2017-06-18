@@ -124,7 +124,7 @@ void GroundPatch::refresh(RenderContext &context, const CachedSpatialTransformCo
 	const auto &camera_pos = context.get_render_parameters().camera_position;
 	vec3 diff = center - camera_pos;
 	float dist_log2 = 0.5f * glm::log2(dot(diff, diff) + 0.001f);
-	*lod = clamp(dist_log2 - 3.0f, 0.0f, ground->max_lod);
+	*lod = clamp(dist_log2 + lod_bias + ground->get_base_lod_bias(), 0.0f, ground->max_lod);
 }
 
 void GroundPatch::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
@@ -162,7 +162,7 @@ void Ground::on_device_created(const Event &e)
 	info.width = num_patches_x;
 	info.height = num_patches_z;
 	info.levels = 1;
-	info.format = VK_FORMAT_R8_UNORM;
+	info.format = VK_FORMAT_R16_SFLOAT;
 	info.type = VK_IMAGE_TYPE_2D;
 	info.depth = 1;
 	info.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -322,10 +322,10 @@ void Ground::refresh(RenderContext &context)
 	                   VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
 	                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
 	lod_map->set_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-	uint8_t *data = static_cast<uint8_t *>(cmd->update_image(*lod_map));
+	uint16_t *data = static_cast<uint16_t *>(cmd->update_image(*lod_map));
 
-	const auto quantize = [](float v) -> uint8_t {
-		return uint8_t(clamp(round(v * 32.0f), 0.0f, 255.0f));
+	const auto quantize = [](float v) -> uint16_t {
+		return packHalf2x16(vec2(v)) & 0xffffu;
 	};
 
 	for (auto lod : patch_lods)

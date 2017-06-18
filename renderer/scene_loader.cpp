@@ -406,6 +406,9 @@ void SceneLoader::parse(const std::string &path, const std::string &json)
 		if (terrain.HasMember("tilingFactor"))
 			tiling_factor = terrain["tilingFactor"].GetFloat();
 
+		if (terrain.HasMember("lodBias"))
+			info.lod_bias = terrain["lodBias"].GetFloat();
+
 		unsigned size = 1024;
 		if (terrain.HasMember("size"))
 			size = terrain["size"].GetUint();

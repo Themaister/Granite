@@ -35,10 +35,10 @@ void main()
     vec3 terrain = texture(uNormalsTerrain, vUV).xyz * 2.0 - 1.0;
     vec3 normal = normalize(mat3(registers.Normal) * terrain.xzy); // Normal is +Y, Bitangent is +Z.
 
-    vec4 types = textureLod(uTypeMap, vUV, 0.0);
+    vec4 types = vec4(textureLod(uTypeMap, vUV, 0.0).rgb, 0.05);
     float max_weight = horiz_max(types);
     types = types / max_weight;
-    types = clamp(5.0 * (types - 0.8), vec4(0.0), vec4(1.0));
+    types = clamp(4.0 * (types - 0.75), vec4(0.0), vec4(1.0));
     float weight = 1.0 / dot(types, vec4(1.0));
     types *= weight;
 

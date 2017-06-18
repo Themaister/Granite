@@ -59,7 +59,14 @@ private:
 class Ground : public Util::IntrusivePtrEnabled<Ground>, public PerFrameRefreshable, public EventHandler
 {
 public:
-	Ground(unsigned size, const std::string &heightmap, const std::string &normalmap, const std::string &base_color);
+	struct TerrainInfo
+	{
+		std::string heightmap;
+		std::string normalmap;
+		std::string base_color;
+		std::string typemap;
+	};
+	Ground(unsigned size, const TerrainInfo &info);
 
 	void set_tiling_factor(vec2 factor)
 	{
@@ -73,9 +80,7 @@ public:
 		Ground *ground;
 	};
 
-	static Handles add_to_scene(Scene &scene, unsigned size, float tiling_factor,
-	                            const std::string &heightmap, const std::string &normalmap,
-	                            const std::string &base_color);
+	static Handles add_to_scene(Scene &scene, unsigned size, float tiling_factor, const TerrainInfo &info);
 
 	void get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform, RenderQueue &queue,
 	                     const GroundPatch &patch) const;
@@ -100,16 +105,14 @@ public:
 
 private:
 	unsigned size;
-	std::string heightmap_path;
-	std::string normalmap_path;
-	std::string base_color_path;
+	TerrainInfo info;
 
 	void refresh(RenderContext &context) override;
 	Vulkan::Texture *heights = nullptr;
 	Vulkan::Texture *normals = nullptr;
 	Vulkan::Texture *base_color = nullptr;
+	Vulkan::Texture *type_map = nullptr;
 	Vulkan::ImageHandle lod_map;
-	Vulkan::ImageHandle type_map;
 	void on_device_created(const Event &e);
 	void on_device_destroyed(const Event &e);
 

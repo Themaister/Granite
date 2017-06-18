@@ -133,8 +133,8 @@ void GroundPatch::get_render_info(const RenderContext &context, const CachedSpat
 	ground->get_render_info(context, transform, queue, *this);
 }
 
-Ground::Ground(unsigned size, const string &heightmap, const string &normalmap, const string &base_color)
-	: size(size), heightmap_path(heightmap), normalmap_path(normalmap), base_color_path(base_color)
+Ground::Ground(unsigned size, const TerrainInfo &info)
+	: size(size), info(info)
 {
 	assert(size % base_patch_size == 0);
 	num_patches_x = size / base_patch_size;
@@ -150,9 +150,10 @@ Ground::Ground(unsigned size, const string &heightmap, const string &normalmap, 
 void Ground::on_device_created(const Event &e)
 {
 	auto &device = e.as<DeviceCreatedEvent>().get_device();
-	heights = device.get_texture_manager().request_texture(heightmap_path);
-	normals = device.get_texture_manager().request_texture(normalmap_path);
-	base_color = device.get_texture_manager().request_texture(base_color_path);
+	heights = device.get_texture_manager().request_texture(info.heightmap);
+	normals = device.get_texture_manager().request_texture(info.normalmap);
+	base_color = device.get_texture_manager().request_texture(info.base_color);
+	type_map = device.get_texture_manager().request_texture(info.typemap);
 	build_buffers(device);
 
 	ImageCreateInfo info = {};
@@ -167,22 +168,6 @@ void Ground::on_device_created(const Event &e)
 	info.samples = VK_SAMPLE_COUNT_1_BIT;
 	info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 	lod_map = device.create_image(info, nullptr);
-
-#define RED 0xff0000u
-#define GREEN 0xff00u
-#define BLUE 0xffu
-#define ALPHA 0xff000000u
-	vector<uint32_t> types = {
-		RED, GREEN, GREEN, BLUE,
-	    ALPHA, ALPHA, RED, RED,
-	    BLUE, BLUE, GREEN, RED,
-		ALPHA, ALPHA, RED, RED,
-	};
-	info = ImageCreateInfo::immutable_2d_image(4, 4, VK_FORMAT_R8G8B8A8_UNORM);
-
-	ImageInitialData initial = {};
-	initial.data = types.data();
-	type_map = device.create_image(info, &initial);
 }
 
 void Ground::build_lod(Device &device, unsigned size, unsigned stride)
@@ -263,9 +248,9 @@ void Ground::on_device_destroyed(const Event &)
 	heights = nullptr;
 	normals = nullptr;
 	base_color = nullptr;
+	type_map = nullptr;
 	quad_lod.clear();
 	lod_map.reset();
-	type_map.reset();
 }
 
 void Ground::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
@@ -300,11 +285,12 @@ void Ground::get_render_info(const RenderContext &context, const CachedSpatialTr
 	auto heightmap = heights->get_image();
 	auto normal = normals->get_image();
 	auto base_color_image = base_color->get_image();
+	auto typemap_image = type_map->get_image();
 	patch.heights = &heightmap->get_view();
 	patch.normals = &normal->get_view();
 	patch.base_color = &base_color_image->get_view();
 	patch.lod_map = &lod_map->get_view();
-	patch.type_map = &type_map->get_view();
+	patch.type_map = &typemap_image->get_view();
 	patch.offsets = ground_patch.offset * vec2(size);
 	patch.inv_heightmap_size = vec2(1.0f / size);
 	patch.tiling_factor = tiling_factor;
@@ -316,8 +302,8 @@ void Ground::get_render_info(const RenderContext &context, const CachedSpatialTr
 	hasher.u64(heightmap->get_cookie());
 	hasher.u64(normal->get_cookie());
 	hasher.u64(base_color_image->get_cookie());
+	hasher.u64(typemap_image->get_cookie());
 	hasher.u64(lod_map->get_cookie());
-	hasher.u64(type_map->get_cookie());
 	hasher.s32(base_lod);
 
 	// Allow promotion to push constant for transforms.
@@ -352,15 +338,14 @@ void Ground::refresh(RenderContext &context)
 	device.submit(cmd);
 }
 
-Ground::Handles Ground::add_to_scene(Scene &scene, unsigned size, float tiling_factor,
-                                     const std::string &heightmap, const std::string &normalmap, const std::string &base_color)
+Ground::Handles Ground::add_to_scene(Scene &scene, unsigned size, float tiling_factor, const TerrainInfo &info)
 {
 	Handles handles;
 
 	handles.node = scene.create_node();
 	handles.entity = scene.create_entity();
 
-	auto ground = make_handle<Ground>(size, heightmap, normalmap, base_color);
+	auto ground = make_handle<Ground>(size, info);
 	ground->set_tiling_factor(vec2(tiling_factor));
 	auto *update_component = handles.entity->allocate_component<PerFrameUpdateComponent>();
 	update_component->refresh = ground.get();

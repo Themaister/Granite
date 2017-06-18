@@ -395,9 +395,12 @@ void SceneLoader::parse(const std::string &path, const std::string &json)
 	if (doc.HasMember("terrain"))
 	{
 		auto &terrain = doc["terrain"];
-		auto heightmap = Path::relpath(path, terrain["heightmap"].GetString());
-		auto normalmap = Path::relpath(path, terrain["normalmap"].GetString());
-		auto base_color = Path::relpath(path, terrain["baseColorTexture"].GetString());
+
+		Ground::TerrainInfo info;
+		info.heightmap = Path::relpath(path, terrain["heightmap"].GetString());
+		info.normalmap = Path::relpath(path, terrain["normalmap"].GetString());
+		info.base_color = Path::relpath(path, terrain["baseColorTexture"].GetString());
+		info.typemap = Path::relpath(path, terrain["typemapTexture"].GetString());
 
 		float tiling_factor = 1.0f;
 		if (terrain.HasMember("tilingFactor"))
@@ -407,7 +410,7 @@ void SceneLoader::parse(const std::string &path, const std::string &json)
 		if (terrain.HasMember("size"))
 			size = terrain["size"].GetUint();
 
-		auto handles = Ground::add_to_scene(*scene, size, tiling_factor, heightmap, normalmap, base_color);
+		auto handles = Ground::add_to_scene(*scene, size, tiling_factor, info);
 		read_transform(handles.node->transform, terrain);
 		root->add_child(handles.node);
 	}

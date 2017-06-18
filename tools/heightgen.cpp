@@ -42,6 +42,7 @@ int main(int argc, char *argv[])
 
 	unsigned levels = num_miplevels(width, height);
 	gli::texture2d heights(gli::FORMAT_R32_SFLOAT_PACK32, gli::extent2d(width, height), levels);
+	gli::texture2d heights16(gli::FORMAT_R16_SFLOAT_PACK16, gli::extent2d(width, height), levels);
 	auto *data = static_cast<float *>(heights.data(0, 0, 0));
 	for (int y = 0; y < height; y++)
 		for (int x = 0; x < width; x++)
@@ -86,7 +87,23 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	if (!gli::save(heights, argv[2]))
+	for (unsigned level = 0; level < levels; level++)
+	{
+		int mip_width = heights.extent(level).x;
+		int mip_height = heights.extent(level).y;
+		const float *src = static_cast<float *>(heights.data(0, 0, level));
+		uint16_t *dst = static_cast<uint16_t *>(heights16.data(0, 0, level));
+
+		for (int y = 0; y < mip_height; y++)
+		{
+			for (int x = 0; x < mip_width; x++)
+			{
+				dst[y * mip_width + x] = packHalf1x16(src[y * mip_width + x]);
+			}
+		}
+	}
+
+	if (!gli::save(heights16, argv[2]))
 	{
 		LOGE("Failed to save heightmap: %s\n", argv[2]);
 		return 1;

@@ -20,7 +20,7 @@ struct PatchData
 
 layout(set = 3, binding = 0, std140) uniform Patches
 {
-    PatchData data[256];
+    PatchData data[512];
 } patches;
 
 layout(std140, set = 3, binding = 1) uniform GroundData

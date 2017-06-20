@@ -144,11 +144,12 @@ uint64_t RenderInfo::get_background_sort_key(Queue queue_type, Util::Hash pipeli
 		return (UINT64_MAX << 32) | (pipeline_hash & 0xffffffffu);
 }
 
-uint64_t RenderInfo::get_sprite_sort_key(Queue queue_type, Util::Hash pipeline_hash, float z)
+uint64_t RenderInfo::get_sprite_sort_key(Queue queue_type, Util::Hash pipeline_hash, float z, StaticLayer layer)
 {
+	static_assert(ecast(StaticLayer::Count) == 4, "Number of static layers is not 4.");
+
 	// Monotonically increasing floating point will be monotonic in uint32_t as well when z is non-negative.
 	z = glm::max(z, 0.0f);
-
 	uint32_t depth_key = floatBitsToUint(z);
 
 	if (queue_type == Queue::Transparent)
@@ -159,15 +160,18 @@ uint64_t RenderInfo::get_sprite_sort_key(Queue queue_type, Util::Hash pipeline_h
 	}
 	else
 	{
+		depth_key >>= 2;
+		pipeline_hash &= 0xffffffffu;
+
 		// Prioritize state changes over depth.
-		return (pipeline_hash << 32) | depth_key;
+		return (uint64_t(ecast(layer)) << 62) | (pipeline_hash << 30) | depth_key;
 	}
 }
 
 uint64_t RenderInfo::get_sort_key(const RenderContext &context, Queue queue_type, Util::Hash pipeline_hash,
-                                  const vec3 &center)
+                                  const vec3 &center, StaticLayer layer)
 {
 	float z = dot(context.get_render_parameters().camera_front, center - context.get_render_parameters().camera_position);
-	return get_sprite_sort_key(queue_type, pipeline_hash, z);
+	return get_sprite_sort_key(queue_type, pipeline_hash, z, layer);
 }
 }

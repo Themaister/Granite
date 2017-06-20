@@ -89,9 +89,9 @@ static void ground_patch_render(Vulkan::CommandBuffer &cmd, const RenderInfo **i
 
 	cmd.push_constants(patch.push, 0, sizeof(patch.push));
 
-	for (unsigned i = 0; i < instances; i += 64)
+	for (unsigned i = 0; i < instances; i += 512)
 	{
-		unsigned to_render = std::min(instances - i, 64u);
+		unsigned to_render = std::min(instances - i, 512u);
 
 		auto *patches = static_cast<PatchData *>(cmd.allocate_constant_data(3, 0, sizeof(PatchData) * to_render));
 		for (unsigned j = 0; j < to_render; j++)
@@ -306,7 +306,9 @@ void Ground::get_render_info(const RenderContext &context, const CachedSpatialTr
 
 	Util::Hasher hasher;
 	hasher.pointer(patch.program);
-	patch.sorting_key = RenderInfo::get_sort_key(context, Queue::Opaque, hasher.get(), transform->world_aabb.get_center());
+	hasher.s32(base_lod);
+	patch.sorting_key = RenderInfo::get_sort_key(context, Queue::Opaque, hasher.get(), transform->world_aabb.get_center(),
+	                                             StaticLayer::Last);
 
 	hasher.u64(heightmap->get_cookie());
 	hasher.u64(normal->get_cookie());
@@ -314,7 +316,6 @@ void Ground::get_render_info(const RenderContext &context, const CachedSpatialTr
 	hasher.u64(base_color_image->get_cookie());
 	hasher.u64(typemap_image->get_cookie());
 	hasher.u64(lod_map->get_cookie());
-	hasher.s32(base_lod);
 
 	// Allow promotion to push constant for transforms.
 	// We'll instance a lot of patches belonging to the same ground.

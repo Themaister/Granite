@@ -157,7 +157,7 @@ void Font::render_text(RenderQueue &queue, const char *text, const vec3 &offset,
 	Hasher hasher;
 	hasher.pointer(sprite.texture);
 	hasher.u32(ecast(sprite.sampler));
-	sprite.sorting_key = RenderInfo::get_sprite_sort_key(Queue::Transparent, hasher.get(), offset.z);
+	sprite.sorting_key = RenderInfo::get_sprite_sort_key(Queue::Transparent, hasher.get(), hasher.get(), offset.z);
 	sprite.instance_key = hasher.get();
 
 	sprite.quads = static_cast<SpriteRenderInfo::QuadData *>(queue.allocate(sizeof(SpriteRenderInfo::QuadData) * len,

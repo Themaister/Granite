@@ -69,7 +69,7 @@ DebugMeshInfo &Renderer::render_debug(RenderContext &context, unsigned count)
 	Hasher hasher;
 	hasher.pointer(debug.program);
 	debug.instance_key = hasher.get();
-	debug.sorting_key = RenderInfo::get_sort_key(context, Queue::Opaque, hasher.get(), vec3(0.0f));
+	debug.sorting_key = RenderInfo::get_sort_key(context, Queue::Opaque, hasher.get(), hasher.get(), vec3(0.0f));
 	debug.MVP = context.get_render_parameters().view_projection;
 	return debug;
 }

@@ -136,15 +136,19 @@ void *RenderQueue::allocate(size_t size, size_t alignment)
 	return data;
 }
 
-uint64_t RenderInfo::get_background_sort_key(Queue queue_type, Util::Hash pipeline_hash)
+uint64_t RenderInfo::get_background_sort_key(Queue queue_type, Util::Hash pipeline_hash, Util::Hash draw_hash)
 {
+	pipeline_hash &= 0xffff0000u;
+	pipeline_hash |= draw_hash & 0xffffu;
+
 	if (queue_type == Queue::Transparent)
 		return pipeline_hash & 0xffffffffu;
 	else
 		return (UINT64_MAX << 32) | (pipeline_hash & 0xffffffffu);
 }
 
-uint64_t RenderInfo::get_sprite_sort_key(Queue queue_type, Util::Hash pipeline_hash, float z, StaticLayer layer)
+uint64_t RenderInfo::get_sprite_sort_key(Queue queue_type, Util::Hash pipeline_hash, Util::Hash draw_hash,
+                                         float z, StaticLayer layer)
 {
 	static_assert(ecast(StaticLayer::Count) == 4, "Number of static layers is not 4.");
 
@@ -152,16 +156,18 @@ uint64_t RenderInfo::get_sprite_sort_key(Queue queue_type, Util::Hash pipeline_h
 	z = glm::max(z, 0.0f);
 	uint32_t depth_key = floatBitsToUint(z);
 
+	pipeline_hash &= 0xffff0000u;
+	pipeline_hash |= draw_hash & 0xffffu;
+
 	if (queue_type == Queue::Transparent)
 	{
 		depth_key ^= 0xffffffffu; // Back-to-front instead.
 		// Prioritize correct back-to-front rendering over pipeline.
-		return (Hash(depth_key) << 32) | (pipeline_hash & 0xffffffffu);
+		return (Hash(depth_key) << 32) | pipeline_hash;
 	}
 	else
 	{
 		depth_key >>= 2;
-		pipeline_hash &= 0xffffffffu;
 
 		// Prioritize state changes over depth.
 		return (uint64_t(ecast(layer)) << 62) | (pipeline_hash << 30) | depth_key;
@@ -169,9 +175,10 @@ uint64_t RenderInfo::get_sprite_sort_key(Queue queue_type, Util::Hash pipeline_h
 }
 
 uint64_t RenderInfo::get_sort_key(const RenderContext &context, Queue queue_type, Util::Hash pipeline_hash,
+                                  Util::Hash draw_hash,
                                   const vec3 &center, StaticLayer layer)
 {
 	float z = dot(context.get_render_parameters().camera_front, center - context.get_render_parameters().camera_position);
-	return get_sprite_sort_key(queue_type, pipeline_hash, z, layer);
+	return get_sprite_sort_key(queue_type, pipeline_hash, draw_hash, z, layer);
 }
 }

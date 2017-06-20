@@ -99,6 +99,7 @@ void FlatRenderer::render_quad(const ImageView *view, Vulkan::StockSampler sampl
 
 	Hasher h;
 	h.pointer(sprite.program);
+	auto pipe_hash = h.get();
 	h.s32(sprite.clip_quad.x);
 	h.s32(sprite.clip_quad.y);
 	h.s32(sprite.clip_quad.z);
@@ -123,7 +124,7 @@ void FlatRenderer::render_quad(const ImageView *view, Vulkan::StockSampler sampl
 		                                                                  MESH_ATTRIBUTE_VERTEX_COLOR_BIT, 0).get();
 
 	sprite.instance_key = h.get();
-	sprite.sorting_key = RenderInfo::get_sprite_sort_key(type, h.get(), offset.z);
+	sprite.sorting_key = RenderInfo::get_sprite_sort_key(type, pipe_hash, h.get(), offset.z);
 
 	sprite.quads->layer = offset.z;
 	sprite.quads->pos_off_x = offset.x;
@@ -197,7 +198,7 @@ void FlatRenderer::render_line_strip(const vec2 *offset, float layer, unsigned c
 	Hasher h;
 	h.u32(transparent);
 	strip.instance_key = h.get();
-	strip.sorting_key = RenderInfo::get_sprite_sort_key(transparent ? Queue::Transparent : Queue::Opaque, h.get(), layer);
+	strip.sorting_key = RenderInfo::get_sprite_sort_key(transparent ? Queue::Transparent : Queue::Opaque, h.get(), h.get(), layer);
 	h.s32(strip.clip.x);
 	h.s32(strip.clip.y);
 	h.s32(strip.clip.z);

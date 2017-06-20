@@ -312,7 +312,7 @@ void Skybox::get_render_info(const RenderContext &context, const CachedSpatialTr
 	Hasher h;
 	h.pointer(info.view);
 	info.instance_key = h.get();
-	info.sorting_key = RenderInfo::get_background_sort_key(Queue::Opaque, 0);
+	info.sorting_key = RenderInfo::get_background_sort_key(Queue::Opaque, 0, 0);
 	info.render = skybox_render;
 	info.sampler = &context.get_device().get_stock_sampler(StockSampler::LinearClamp);
 	info.program = queue.get_shader_suites()[ecast(RenderableType::Skybox)].get_program(DrawPipeline::Opaque, 0, 0).get();

@@ -306,8 +306,10 @@ void Ground::get_render_info(const RenderContext &context, const CachedSpatialTr
 
 	Util::Hasher hasher;
 	hasher.pointer(patch.program);
+	auto pipe_hash = hasher.get();
 	hasher.s32(base_lod);
-	patch.sorting_key = RenderInfo::get_sort_key(context, Queue::Opaque, hasher.get(), transform->world_aabb.get_center(),
+	patch.sorting_key = RenderInfo::get_sort_key(context, Queue::Opaque, pipe_hash, hasher.get(),
+	                                             transform->world_aabb.get_center(),
 	                                             StaticLayer::Last);
 
 	hasher.u64(heightmap->get_cookie());

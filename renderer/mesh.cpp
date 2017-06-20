@@ -191,14 +191,17 @@ void StaticMesh::fill_render_info(StaticMeshInfo &info, const RenderContext &con
 	info.program = queue.get_shader_suites()[ecast(RenderableType::Mesh)].get_program(material->pipeline, attrs, textures).get();
 	Hasher h;
 	h.pointer(info.program);
+	auto pipe_hash = h.get();
+
 	h.u64(material->get_hash());
 	h.u32(attrs);
 	h.u32(textures);
+	h.u64(vbo_position->get_cookie());
 
 	if (transform)
-		info.sorting_key = RenderInfo::get_sort_key(context, type, h.get(), transform->world_aabb.get_center());
+		info.sorting_key = RenderInfo::get_sort_key(context, type, pipe_hash, h.get(), transform->world_aabb.get_center());
 	else
-		info.sorting_key = RenderInfo::get_background_sort_key(type, h.get());
+		info.sorting_key = RenderInfo::get_background_sort_key(type, pipe_hash, h.get());
 }
 
 void StaticMesh::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform, RenderQueue &queue) const

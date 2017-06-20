@@ -153,6 +153,6 @@ void Sprite::get_sprite_render_info(const SpriteTransformInfo &transform, Render
 	hasher.s32(transform.clip.z);
 	hasher.s32(transform.clip.w);
 	sprite.instance_key = hasher.get();
-	sprite.sorting_key = sprite.get_sprite_sort_key(queue_type, hasher.get(), transform.position.z);
+	sprite.sorting_key = sprite.get_sprite_sort_key(queue_type, hasher.get(), hasher.get(), transform.position.z);
 }
 }

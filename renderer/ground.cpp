@@ -156,7 +156,7 @@ void Ground::on_device_created(const Event &e)
 	normals = device.get_texture_manager().request_texture(info.normalmap);
 	//normals_fine = device.get_texture_manager().request_texture(info.normalmap_fine);
 	base_color = device.get_texture_manager().request_texture(info.base_color);
-	type_map = device.get_texture_manager().request_texture(info.typemap);
+	type_map = device.get_texture_manager().request_texture(info.splatmap);
 	build_buffers(device);
 
 	ImageCreateInfo info = {};
@@ -293,13 +293,13 @@ void Ground::get_render_info(const RenderContext &context, const CachedSpatialTr
 	auto normal = normals->get_image();
 	//auto normal_fine = normals_fine->get_image();
 	auto base_color_image = base_color->get_image();
-	auto typemap_image = type_map->get_image();
+	auto splatmap_image = type_map->get_image();
 	patch.heights = &heightmap->get_view();
 	patch.normals = &normal->get_view();
 	//patch.normals_fine = &normal_fine->get_view();
 	patch.base_color = &base_color_image->get_view();
 	patch.lod_map = &lod_map->get_view();
-	patch.type_map = &typemap_image->get_view();
+	patch.type_map = &splatmap_image->get_view();
 	patch.offsets = ground_patch.offset * vec2(size);
 	patch.inv_heightmap_size = vec2(1.0f / size);
 	patch.tiling_factor = tiling_factor;
@@ -316,7 +316,7 @@ void Ground::get_render_info(const RenderContext &context, const CachedSpatialTr
 	hasher.u64(normal->get_cookie());
 	//hasher.u64(normal_fine->get_cookie());
 	hasher.u64(base_color_image->get_cookie());
-	hasher.u64(typemap_image->get_cookie());
+	hasher.u64(splatmap_image->get_cookie());
 	hasher.u64(lod_map->get_cookie());
 
 	// Allow promotion to push constant for transforms.

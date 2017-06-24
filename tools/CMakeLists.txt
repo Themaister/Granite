@@ -12,4 +12,6 @@ endfunction()
 add_granite_tool(png2chunky png2chunky.cpp)
 add_granite_tool(ktxcat ktxcat.cpp)
 add_granite_tool(heightgen heightgen.cpp)
+add_granite_tool(cluttergen cluttergen.cpp)
+add_granite_tool(png2ktx png2ktx.cpp)
 

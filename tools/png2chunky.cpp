@@ -4,8 +4,10 @@
 #include "util.hpp"
 #include <stdio.h>
 #include <algorithm>
+#include "math.hpp"
 
 using namespace std;
+using namespace Granite;
 
 static unsigned num_miplevels(unsigned width, unsigned height)
 {
@@ -193,6 +195,79 @@ static ASTCBlock splat_astc_block(const uint8_t *x0, const uint8_t *x1, const ui
 	return astc;
 }
 
+static void fixup_alpha_test(gli::texture2d &texture, unsigned level)
+{
+	using Pixel = glm::tvec4<uint8_t>;
+	using PixelRGB = glm::tvec3<uint8_t>;
+
+	int width = texture[level].extent().x;
+	int height = texture[level].extent().y;
+	gli::image image(gli::FORMAT_RGBA8_SRGB_PACK8, gli::extent3d(width, height, 1));
+
+	const auto coord = [=](int x, int y) {
+		return gli::extent2d(clamp(x, 0, width - 1), clamp(y, 0, height - 1));
+	};
+
+	const auto coord3d = [=](int x, int y) {
+		return gli::extent3d(clamp(x, 0, width - 1), clamp(y, 0, height - 1), 0);
+	};
+
+	for (int y = 0; y < height; y++)
+	{
+		for (int x = 0; x < width; x++)
+		{
+			Pixel s11 = texture.load<Pixel>(coord(x + 0, y + 0), level);
+			if (s11.a >= 128) // Opaque pixel
+			{
+				Pixel s((s11.r * s11.a) / 255, (s11.g * s11.a) / 255, (s11.b * s11.a) / 255, s11.a);
+				image.store<Pixel>(coord3d(x, y), s11);
+			}
+			else
+			{
+				ivec3 rgb(0, 0, 0);
+				int weights = 0;
+
+				// Transparent, inherent weighted average from neighbors.
+				Pixel s00 = texture.load<Pixel>(coord(x - 1, y - 1), level);
+				Pixel s10 = texture.load<Pixel>(coord(x + 0, y - 1), level);
+				Pixel s20 = texture.load<Pixel>(coord(x + 1, y - 1), level);
+				Pixel s01 = texture.load<Pixel>(coord(x - 1, y + 0), level);
+				Pixel s21 = texture.load<Pixel>(coord(x + 1, y + 0), level);
+				Pixel s02 = texture.load<Pixel>(coord(x - 1, y + 1), level);
+				Pixel s12 = texture.load<Pixel>(coord(x + 0, y + 1), level);
+				Pixel s22 = texture.load<Pixel>(coord(x + 1, y + 1), level);
+
+				const auto accum = [&](const Pixel &pix) {
+					rgb += ivec3(pix.r, pix.g, pix.b) * ivec3(pix.a);
+					weights += pix.a;
+				};
+
+				accum(s00);
+				accum(s10);
+				accum(s20);
+				accum(s01);
+				accum(s21);
+				accum(s02);
+				accum(s12);
+				accum(s22);
+
+				if (weights)
+				{
+					rgb.r = uint8_t(rgb.r / weights);
+					rgb.g = uint8_t(rgb.g / weights);
+					rgb.b = uint8_t(rgb.b / weights);
+					image.store<Pixel>(coord3d(x, y), Pixel(rgb, s11.a));
+				}
+				else
+					image.store<Pixel>(coord3d(x, y), s11);
+			}
+		}
+	}
+
+	assert(image.size() == texture[level].size());
+	memcpy(texture[level].data(), image.data(), image.size());
+}
+
 int main(int argc, char *argv[])
 {
 	if (argc < 3)
@@ -312,6 +387,9 @@ int main(int argc, char *argv[])
 		for (unsigned y = 0; y < mip_height; y++)
 			for (unsigned x = 0; x < mip_width; x++)
 				dst[y * mip_width + x] = src[(y >> 1) * (mip_width >> 1) + (x >> 1)];
+
+		for (unsigned level = 0; level < levels + 1; level++)
+			fixup_alpha_test(texture_compressed, level);
 	}
 
 	if (!gli::save_ktx(texture_compressed, argv[2]))

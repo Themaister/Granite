@@ -400,7 +400,7 @@ void SceneLoader::parse(const std::string &path, const std::string &json)
 		info.heightmap = Path::relpath(path, terrain["heightmap"].GetString());
 		info.normalmap = Path::relpath(path, terrain["normalmap"].GetString());
 		info.base_color = Path::relpath(path, terrain["baseColorTexture"].GetString());
-		info.normalmap_fine = Path::relpath(path, terrain["normalTexture"].GetString());
+		//info.normalmap_fine = Path::relpath(path, terrain["normalTexture"].GetString());
 		info.splatmap = Path::relpath(path, terrain["splatmapTexture"].GetString());
 
 		float tiling_factor = 1.0f;

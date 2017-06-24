@@ -5,7 +5,9 @@
 #include "rapidjson/document.h"
 #include "rapidjson/writer.h"
 #include "rapidjson/stringbuffer.h"
+#include "rapidjson/istreamwrapper.h"
 #include <random>
+#include <fstream>
 #include "FastNoise.h"
 
 using namespace std;
@@ -146,9 +148,9 @@ static float get_neighbor_normal_y(const gli::texture &normals, int x, int y, in
 
 int main(int argc, char *argv[])
 {
-	if (argc != 5)
+	if (argc != 6)
 	{
-		LOGE("Usage: %s heightmap normalmap splatmap scene\n", argv[0]);
+		LOGE("Usage: %s heightmap normalmap splatmap scene-desc scene-output\n", argv[0]);
 		return 1;
 	}
 
@@ -192,6 +194,11 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
+	Document desc;
+	ifstream ifs(argv[4]);
+	IStreamWrapper wrapper(ifs);
+	desc.ParseStream(wrapper);
+
 	gli::texture2d clutter_mask(gli::FORMAT_R32_SFLOAT_PACK32, gli::extent2d(splatmap.extent(0).x, splatmap.extent(0).y), 1);
 	int width = splatmap.extent(0).x;
 	int height = splatmap.extent(0).y;
@@ -221,32 +228,23 @@ int main(int argc, char *argv[])
 	Value nodes(kArrayType);
 
 	mt19937 rnd;
-	vector<vec3> pine, grass, bush, berry, maple;
-
-	add_geometry(maple, rnd, heightmap, clutter, width, height, 9, 0.01f, 200);
-	add_geometry(pine, rnd, heightmap, clutter, width, height, 9, 0.01f, 2000);
-	add_geometry(bush, rnd, heightmap, clutter, width, height, 3, 0.1f, 5000);
-	add_geometry(berry, rnd, heightmap, clutter, width, height, 3, 0.1f, 5000);
-	add_geometry(grass, rnd, heightmap, clutter, width, height, 3, 0.1f, 10000);
 
 	Document doc;
 	doc.SetObject();
 	auto &allocator = doc.GetAllocator();
-
-	add_objects(nodes, rnd, maple, "maple", allocator);
-	add_objects(nodes, rnd, pine, "pine", allocator);
-	add_objects(nodes, rnd, bush, "bush", allocator);
-	add_objects(nodes, rnd, berry, "berry", allocator);
-	add_objects(nodes, rnd, grass, "grass", allocator);
-
 	Value scene_list(kObjectType);
-	scene_list.AddMember("pine", "Pine.gltf", allocator);
-	scene_list.AddMember("grass", "Grass.gltf", allocator);
-	scene_list.AddMember("bush", "Bush.gltf", allocator);
-	scene_list.AddMember("berry", "Berry.gltf", allocator);
-	//scene_list.AddMember("clover", "Clover.gltf", allocator);
-	//scene_list.AddMember("clover2", "Clover2.gltf", allocator);
-	scene_list.AddMember("maple", "Maple.gltf", allocator);
+
+	for (auto itr = desc["types"].MemberBegin(); itr != desc["types"].MemberEnd(); ++itr)
+	{
+		auto &type = itr->value;
+		vector<vec3> objects;
+		add_geometry(objects, rnd, heightmap, clutter, width, height,
+		             type["damageRadius"].GetInt(), type["damageFactor"].GetFloat(), type["count"].GetUint());
+
+		add_objects(nodes, rnd, objects, itr->name.GetString(), allocator);
+		scene_list.AddMember(itr->name, type["mesh"], allocator);
+	}
+
 	doc.AddMember("nodes", nodes, allocator);
 
 	Value t(kArrayType);
@@ -266,9 +264,8 @@ int main(int argc, char *argv[])
 	terrain.AddMember("scale", s, allocator);
 	terrain.AddMember("lodBias", 0.0f, allocator);
 	terrain.AddMember("tilingFactor", 128.0f, allocator);
-	terrain.AddMember("size", 2048, allocator);
+	terrain.AddMember("size", width, allocator);
 	terrain.AddMember("baseColorTexture", "../textures/Grass_BaseColor_Array.ktx", allocator);
-    terrain.AddMember("normalTexture", "../textures/finenormal.png", allocator);
 	terrain.AddMember("splatmapTexture", "../textures/splatmap.ktx", allocator);
 	terrain.AddMember("patchData", "bias.json", allocator);
 
@@ -279,7 +276,7 @@ int main(int argc, char *argv[])
 	Writer<StringBuffer> writer(buffer);
 	doc.Accept(writer);
 
-	FILE *file = fopen(argv[4], "w");
+	FILE *file = fopen(argv[5], "w");
 	if (!file)
 	{
 		LOGE("Failed to open JSON file for writing: %s\n", argv[4]);

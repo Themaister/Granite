@@ -65,7 +65,7 @@ public:
 		std::string normalmap;
 		std::string base_color;
 		std::string splatmap;
-		std::string normalmap_fine;
+		//std::string normalmap_fine;
 		float lod_bias = 0.0f;
 		unsigned base_patch_size = 64;
 		float max_lod = 5.0f;

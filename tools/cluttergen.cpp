@@ -213,7 +213,7 @@ int main(int argc, char *argv[])
 		{
 			float normal_y = get_neighbor_normal_y(normals, x, y, width, height);
 			float cluster_noise = 2.0f * (clustering_sample(x, y) + 0.2f);
-			clutter[y * width + x] = (src[y * width + x] & 0x00ffffffu) ? 0.0f : pow(normal_y, 20.0f);
+			clutter[y * width + x] = (src[y * width + x] & 0x00ffffffu) ? 0.0f : pow(normal_y, 10.0f);
 			clutter[y * width + x] *= clamp(cluster_noise, 0.0f, 1.0f);
 		}
 	}

@@ -87,8 +87,10 @@ static void add_geometry(vector<vec3> &objects, mt19937 &rnd, const gli::texture
 	}
 }
 
-static void add_objects(Value &nodes, const vector<vec3> &objects, const char *mesh, MemoryPoolAllocator<> &allocator)
+static void add_objects(Value &nodes, mt19937 &rnd, const vector<vec3> &objects, const char *mesh, MemoryPoolAllocator<> &allocator)
 {
+	uniform_real_distribution<float> dist_angle(0.0f, 2.0f * pi<float>());
+
 	for (auto &object : objects)
 	{
 		Value t(kObjectType);
@@ -96,11 +98,10 @@ static void add_objects(Value &nodes, const vector<vec3> &objects, const char *m
 
 		Value translation(kArrayType);
 		translation.PushBack(object.x * height_scale + height_offset, allocator);
-		translation.PushBack(object.y * height_scale_y + height_offset_y, allocator);
+		translation.PushBack((object.y - 0.01f) * height_scale_y + height_offset_y, allocator);
 		translation.PushBack(object.z * height_scale + height_offset, allocator);
 		t.AddMember("translation", translation, allocator);
 
-#if 0
 		Value rotation(kArrayType);
 		float angle = dist_angle(rnd);
 		quat q = angleAxis(angle, vec3(0.0f, 1.0f, 0.0f));
@@ -109,7 +110,6 @@ static void add_objects(Value &nodes, const vector<vec3> &objects, const char *m
 		rotation.PushBack(q.z, allocator);
 		rotation.PushBack(q.w, allocator);
 		t.AddMember("rotation", rotation, allocator);
-#endif
 
 		nodes.PushBack(t, allocator);
 	}
@@ -201,8 +201,8 @@ int main(int argc, char *argv[])
 	doc.SetObject();
 	auto &allocator = doc.GetAllocator();
 
-	add_objects(nodes, trees, "pine", allocator);
-	add_objects(nodes, grass, "grass", allocator);
+	add_objects(nodes, rnd, trees, "pine", allocator);
+	add_objects(nodes, rnd, grass, "grass", allocator);
 
 	Value scene_list(kObjectType);
 	scene_list.AddMember("pine", "Pine.gltf", allocator);

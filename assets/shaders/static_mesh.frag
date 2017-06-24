@@ -56,6 +56,8 @@ void main()
         vec3 tangent_space = texture(uNormalmap, vUV).xyz * 2.0 - 1.0;
         normal = normalize(mat3(tangent, binormal, normal) * tangent_space);
     #endif
+    if (!gl_FrontFacing)
+        normal = -normal;
 #endif
 
 #if defined(HAVE_METALLICROUGHNESSMAP) && HAVE_METALLICROUGHNESSMAP
@@ -65,6 +67,10 @@ void main()
 #else
     float metallic = registers.metallic;
     float roughness = registers.roughness;
+#endif
+
+#if HAVE_NORMAL
+    float ndotl = clamp(dot(normal, normalize(vec3(1.0, 1.0, 1.0))), 0.0, 1.0);
 #endif
 
 #if defined(HAVE_BASECOLORMAP) && HAVE_BASECOLORMAP

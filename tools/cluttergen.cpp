@@ -12,6 +12,11 @@ using namespace Util;
 using namespace Granite;
 using namespace rapidjson;
 
+static const float height_offset = -64.0f;
+static const float height_offset_y = -2.0f;
+static const float height_scale = 128.0f;
+static const float height_scale_y = 1.0f;
+
 static float sample_heightmap(const gli::texture &tex, float x, float y)
 {
 	x = clamp(x, 0.0f, float(tex.extent(0).x - 2));
@@ -90,9 +95,9 @@ static void add_objects(Value &nodes, const vector<vec3> &objects, const char *m
 		t.AddMember("scene", StringRef(mesh), allocator);
 
 		Value translation(kArrayType);
-		translation.PushBack(object.x * 128.0f - 64.0f, allocator);
-		translation.PushBack(object.y - 2.0f, allocator);
-		translation.PushBack(object.z * 128.0f - 64.0f, allocator);
+		translation.PushBack(object.x * height_scale + height_offset, allocator);
+		translation.PushBack(object.y * height_scale_y + height_offset_y, allocator);
+		translation.PushBack(object.z * height_scale + height_offset, allocator);
 		t.AddMember("translation", translation, allocator);
 
 #if 0
@@ -134,6 +139,12 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
+	if (normals.format() != gli::FORMAT_RGB10A2_UNORM_PACK32)
+	{
+		LOGE("Unexpected format on normalmap: %s\n", argv[2]);
+		return 1;
+	}
+
 	if (splatmap.empty())
 	{
 		LOGE("Failed to load splatmap: %s\n", argv[3]);
@@ -159,15 +170,20 @@ int main(int argc, char *argv[])
 	auto *src = static_cast<const uint32_t *>(splatmap.data());
 	auto *clutter = static_cast<float *>(clutter_mask.data());
 
-	const auto convert_normal_y = [](uint32_t v) -> float {
-		return float((v >> 20) & 0x3ff) * (1.0f / 1023.0f);
+	const auto convert_normal = [](uint32_t v) -> vec3 {
+		return vec3((uvec3(v) >> uvec3(0, 10, 20)) & uvec3(0x3ff)) * (1.0f / 1023.0f) * 2.0f - 1.0f;
 	};
 
 	for (int y = 0; y < height; y++)
 	{
 		for (int x = 0; x < width; x++)
 		{
-			float normal_y = glm::max(convert_normal_y(normals.load<uint32_t>(gli::texture::extent_type(x, y, 0), 0, 0, 0)) * 2.0f - 1.0f, 0.0f);
+			vec3 n = convert_normal(normals.load<uint32_t>(gli::texture::extent_type(x, y, 0), 0, 0, 0));
+			n.x *= width / height_scale;
+			n.y *= height / height_scale;
+			n = normalize(n);
+			float normal_y = glm::max(n.z, 0.0f);
+
 			clutter[y * width + x] = (src[y * width + x] & 0x00ffffffu) ? 0.0f : pow(normal_y, 20.0f);
 		}
 	}
@@ -196,12 +212,12 @@ int main(int argc, char *argv[])
 	Value t(kArrayType);
 	Value s(kArrayType);
 
-	t.PushBack(-64.0f, allocator);
-	t.PushBack(-2.0f, allocator);
-	t.PushBack(-64.0f, allocator);
-	s.PushBack(128.0f, allocator);
-	s.PushBack(1.0f, allocator);
-	s.PushBack(128.0f, allocator);
+	t.PushBack(height_offset, allocator);
+	t.PushBack(height_offset_y, allocator);
+	t.PushBack(height_offset, allocator);
+	s.PushBack(height_scale, allocator);
+	s.PushBack(height_scale_y, allocator);
+	s.PushBack(height_scale, allocator);
 
 	Value terrain(kObjectType);
 	terrain.AddMember("heightmap", "../textures/heightmap.ktx", allocator);

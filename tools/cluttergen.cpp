@@ -200,6 +200,7 @@ int main(int argc, char *argv[])
 	auto *clutter = static_cast<float *>(clutter_mask.data());
 
 	FastNoise noise;
+	noise.SetFrequency(0.002f);
 
 	const auto clustering_sample = [&noise](float x, float y) -> float {
 		auto value = noise.GetSimplex(x, y);

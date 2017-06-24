@@ -45,10 +45,10 @@ void main()
     types *= weight;
 
     vec3 base_color =
-        types.x * texture(uBaseColor, vec3(uv, 0.0), -1.5).rgb +
-        types.y * texture(uBaseColor, vec3(uv, 1.0), -1.5).rgb +
-        types.z * texture(uBaseColor, vec3(uv, 2.0), -1.5).rgb +
-        types.w * texture(uBaseColor, vec3(uv, 3.0), -1.5).rgb;
+        types.x * texture(uBaseColor, vec3(uv, 0.0)).rgb +
+        types.y * texture(uBaseColor, vec3(uv, 1.0)).rgb +
+        types.z * texture(uBaseColor, vec3(uv, 2.0)).rgb +
+        types.w * texture(uBaseColor, vec3(uv, 3.0)).rgb;
 
     float ndotl = clamp(dot(normal, normalize(vec3(1.0, 1.0, 1.0))), 0.0, 1.0);
     FragColor = vec4(base_color * (0.2 + 0.8 * ndotl), 1.0);

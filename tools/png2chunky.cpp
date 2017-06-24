@@ -202,8 +202,17 @@ int main(int argc, char *argv[])
 	}
 
 	bool astc = false;
+	bool etc2 = false;
 	if (argc >= 4)
+	{
 		astc = strcmp(argv[3], "--astc") == 0;
+		etc2 = strcmp(argv[3], "--etc2") == 0;
+		if (!astc && !etc2)
+		{
+			LOGE("Invalid argument: %s\n", argv[3]);
+			return 1;
+		}
+	}
 
 	int width, height;
 	int components;
@@ -220,16 +229,19 @@ int main(int argc, char *argv[])
 
 	unsigned levels = num_miplevels(width, height);
 
-	if (width != height)
+	if (astc || etc2)
 	{
-		LOGE("Chunky textures must be square.\n");
-		return 1;
-	}
+		if (width != height)
+		{
+			LOGE("Chunky textures must be square.\n");
+			return 1;
+		}
 
-	if (width & (width - 1))
-	{
-		LOGE("Chunky textures must be POT.\n");
-		return 1;
+		if (width & (width - 1))
+		{
+			LOGE("Chunky textures must be POT.\n");
+			return 1;
+		}
 	}
 
 	gli::texture2d texture(gli::FORMAT_RGBA8_SRGB_PACK8, gli::texture2d::extent_type(width, height), levels);
@@ -237,8 +249,10 @@ int main(int argc, char *argv[])
 	gli::texture2d texture_compressed;
 	if (astc)
 		texture_compressed = gli::texture2d(gli::FORMAT_RGBA_ASTC_4X4_SRGB_BLOCK16, gli::texture2d::extent_type(width * 2, height * 2), levels);
-	else
+	else if (etc2)
 		texture_compressed = gli::texture2d(gli::FORMAT_RGBA_ETC2_SRGB_BLOCK8, gli::texture2d::extent_type(width * 4, height * 4), levels);
+	else
+		texture_compressed = gli::texture2d(gli::FORMAT_RGBA8_SRGB_PACK8, gli::texture2d::extent_type(width * 2, height * 2), levels + 1);
 
 	auto *data = texture.data(0, 0, 0);
 	memcpy(data, buffer, width * height * 4);
@@ -266,7 +280,7 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
-	else
+	else if (etc2)
 	{
 		for (unsigned level = 0; level < levels; level++)
 		{
@@ -280,6 +294,24 @@ int main(int argc, char *argv[])
 				for (unsigned x = 0; x < mip_width; x++, src += 4, dst++)
 					*dst = splat_etc2_block(src);
 		}
+	}
+	else
+	{
+		for (unsigned level = 0; level < levels; level++)
+		{
+			auto *src = static_cast<const uint8_t *>(texture[level].data());
+			auto *dst = static_cast<ETC2Block *>(texture_compressed[level + 1].data());
+			memcpy(dst, src, texture[level].size());
+		}
+
+		auto *src = static_cast<const uint32_t *>(texture[0].data());
+		auto *dst = static_cast<uint32_t *>(texture_compressed[0].data());
+		unsigned mip_width = texture_compressed[0].extent().x;
+		unsigned mip_height = texture_compressed[0].extent().y;
+
+		for (unsigned y = 0; y < mip_height; y++)
+			for (unsigned x = 0; x < mip_width; x++)
+				dst[y * mip_width + x] = src[(y >> 1) * (mip_width >> 1) + (x >> 1)];
 	}
 
 	if (!gli::save_ktx(texture_compressed, argv[2]))

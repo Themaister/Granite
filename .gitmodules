@@ -31,3 +31,6 @@
 [submodule "assets/gltf-sandbox"]
 	path = assets/gltf-sandbox
 	url = git@bitbucket.org:Themaister/gltf-sandbox.git
+[submodule "third_party/FastNoise"]
+	path = third_party/FastNoise
+	url = git://github.com/Auburns/FastNoise

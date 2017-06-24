@@ -6,6 +6,7 @@
 #include "rapidjson/writer.h"
 #include "rapidjson/stringbuffer.h"
 #include <random>
+#include "FastNoise.h"
 
 using namespace std;
 using namespace Util;
@@ -198,12 +199,21 @@ int main(int argc, char *argv[])
 	auto *src = static_cast<const uint32_t *>(splatmap.data());
 	auto *clutter = static_cast<float *>(clutter_mask.data());
 
+	FastNoise noise;
+
+	const auto clustering_sample = [&noise](float x, float y) -> float {
+		auto value = noise.GetSimplex(x, y);
+		return value;
+	};
+
 	for (int y = 0; y < height; y++)
 	{
 		for (int x = 0; x < width; x++)
 		{
 			float normal_y = get_neighbor_normal_y(normals, x, y, width, height);
+			float cluster_noise = 2.0f * (clustering_sample(x, y) + 0.2f);
 			clutter[y * width + x] = (src[y * width + x] & 0x00ffffffu) ? 0.0f : pow(normal_y, 20.0f);
+			clutter[y * width + x] *= clamp(cluster_noise, 0.0f, 1.0f);
 		}
 	}
 

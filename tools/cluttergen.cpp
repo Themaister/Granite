@@ -34,6 +34,82 @@ static float sample_heightmap(const gli::texture &tex, float x, float y)
 	return mix(x0, x1, fy);
 }
 
+static void add_geometry(vector<vec3> &objects, mt19937 &rnd, const gli::texture &heightmap, float *clutter, int width, int height,
+                         int damage_radius, float damage_weight,
+                         unsigned count)
+{
+	uniform_real_distribution<float> dist_w(0.5f, width - 0.5f);
+	uniform_real_distribution<float> dist_h(0.5f, height - 0.5f);
+	uniform_real_distribution<float> dist_weight(0.25f, 0.75f);
+	uniform_real_distribution<float> dist_angle(0.0f, 2.0f * pi<float>());
+
+	for (unsigned i = 0; i < count; i++)
+	{
+		float x = dist_w(rnd);
+		float y = dist_h(rnd);
+
+		float &current = clutter[int(glm::max(y - 0.5f, 0.0f)) * width + int(glm::max(x - 0.5f, 0.0f))];
+
+		// We can place something here!
+		if (current > dist_weight(rnd))
+		{
+			float u = x / width;
+			float v = y / height;
+			objects.push_back(vec3(u, sample_heightmap(heightmap, x, y), v));
+
+			x -= 0.5f;
+			y -= 0.5f;
+			int ix = int(x);
+			int iy = int(y);
+
+			// Damage a radius around the tree to discourage more clutter.
+			int start_x = glm::max(ix - damage_radius + 1, 0);
+			int end_x = glm::min(ix + damage_radius, width - 1);
+			int start_y = glm::max(iy - damage_radius + 1, 0);
+			int end_y = glm::min(iy + damage_radius, height - 1);
+
+			for (int damage_y = start_y; damage_y <= end_y; damage_y++)
+			{
+				for (int damage_x = start_x; damage_x <= end_x; damage_x++)
+				{
+					float dist_x = damage_x - x;
+					float dist_y = damage_y - y;
+					float dist_sqr = dist_x * dist_x + dist_y * dist_y;
+					clutter[damage_y * width + damage_x] -= exp2(-damage_weight * dist_sqr);
+				}
+			}
+		}
+	}
+}
+
+static void add_objects(Value &nodes, const vector<vec3> &objects, const char *mesh, MemoryPoolAllocator<> &allocator)
+{
+	for (auto &object : objects)
+	{
+		Value t(kObjectType);
+		t.AddMember("scene", StringRef(mesh), allocator);
+
+		Value translation(kArrayType);
+		translation.PushBack(object.x * 128.0f - 64.0f, allocator);
+		translation.PushBack(object.y - 2.0f, allocator);
+		translation.PushBack(object.z * 128.0f - 64.0f, allocator);
+		t.AddMember("translation", translation, allocator);
+
+#if 0
+		Value rotation(kArrayType);
+		float angle = dist_angle(rnd);
+		quat q = angleAxis(angle, vec3(0.0f, 1.0f, 0.0f));
+		rotation.PushBack(q.x, allocator);
+		rotation.PushBack(q.y, allocator);
+		rotation.PushBack(q.z, allocator);
+		rotation.PushBack(q.w, allocator);
+		t.AddMember("rotation", rotation, allocator);
+#endif
+
+		nodes.PushBack(t, allocator);
+	}
+}
+
 int main(int argc, char *argv[])
 {
 	if (argc != 5)
@@ -96,59 +172,26 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	Value nodes(kArrayType);
+
 	mt19937 rnd;
-	uniform_real_distribution<float> dist_w(0.5f, width - 0.5f);
-	uniform_real_distribution<float> dist_h(0.5f, height - 0.5f);
-	uniform_real_distribution<float> dist_weight(0.25f, 0.75f);
-	uniform_real_distribution<float> dist_angle(0.0f, 2.0f * pi<float>());
-
 	vector<vec3> trees;
+	vector<vec3> grass;
 
-	// Try to place 10000 trees :3
-	for (unsigned i = 0; i < 10000; i++)
-	{
-		float x = dist_w(rnd);
-		float y = dist_h(rnd);
-
-		float &current = clutter[int(glm::max(y - 0.5f, 0.0f)) * width + int(glm::max(x - 0.5f, 0.0f))];
-
-		// We can place something here!
-		if (current > dist_weight(rnd))
-		{
-			float u = x / width;
-			float v = y / height;
-			trees.push_back(vec3(u, 2.0f * sample_heightmap(heightmap, x, y), v));
-
-			x -= 0.5f;
-			y -= 0.5f;
-			int ix = int(x);
-			int iy = int(y);
-
-			// Damage a radius around the tree to discourage more clutter.
-			int start_x = glm::max(ix - 10, 0);
-			int end_x = glm::min(ix + 9, width - 1);
-			int start_y = glm::max(iy - 10, 0);
-			int end_y = glm::min(iy + 9, height - 1);
-
-			for (int damage_y = start_y; damage_y <= end_y; damage_y++)
-			{
-				for (int damage_x = start_x; damage_x <= end_x; damage_x++)
-				{
-					float dist_x = damage_x - x;
-					float dist_y = damage_y - y;
-					float dist_sqr = dist_x * dist_x + dist_y * dist_y;
-					clutter[damage_y * width + damage_x] -= exp2(-0.01f * dist_sqr);
-				}
-			}
-		}
-	}
+	add_geometry(trees, rnd, heightmap, clutter, width, height, 9, 0.01f, 2000);
+	add_geometry(grass, rnd, heightmap, clutter, width, height, 3, 0.1f, 10000);
 
 	Document doc;
 	doc.SetObject();
 	auto &allocator = doc.GetAllocator();
 
+	add_objects(nodes, trees, "pine", allocator);
+	add_objects(nodes, grass, "grass", allocator);
+
 	Value scene_list(kObjectType);
 	scene_list.AddMember("pine", "Pine.gltf", allocator);
+	scene_list.AddMember("grass", "Grass.gltf", allocator);
+	doc.AddMember("nodes", nodes, allocator);
 
 	Value t(kArrayType);
 	Value s(kArrayType);
@@ -157,7 +200,7 @@ int main(int argc, char *argv[])
 	t.PushBack(-2.0f, allocator);
 	t.PushBack(-64.0f, allocator);
 	s.PushBack(128.0f, allocator);
-	s.PushBack(2.0f, allocator);
+	s.PushBack(1.0f, allocator);
 	s.PushBack(128.0f, allocator);
 
 	Value terrain(kObjectType);
@@ -175,34 +218,6 @@ int main(int argc, char *argv[])
 
 	doc.AddMember("scenes", scene_list, allocator);
 	doc.AddMember("terrain", terrain, allocator);
-
-	Value nodes(kArrayType);
-	for (auto &tree : trees)
-	{
-		Value t(kObjectType);
-		t.AddMember("scene", "pine", allocator);
-
-		Value translation(kArrayType);
-		translation.PushBack(tree.x * 128.0f - 64.0f, allocator);
-		translation.PushBack(tree.y - 2.0f, allocator);
-		translation.PushBack(tree.z * 128.0f - 64.0f, allocator);
-		t.AddMember("translation", translation, allocator);
-
-#if 0
-		Value rotation(kArrayType);
-		float angle = dist_angle(rnd);
-		quat q = angleAxis(angle, vec3(0.0f, 1.0f, 0.0f));
-		rotation.PushBack(q.x, allocator);
-		rotation.PushBack(q.y, allocator);
-		rotation.PushBack(q.z, allocator);
-		rotation.PushBack(q.w, allocator);
-		t.AddMember("rotation", rotation, allocator);
-#endif
-
-		nodes.PushBack(t, allocator);
-	}
-
-	doc.AddMember("nodes", nodes, allocator);
 
 	StringBuffer buffer;
 	Writer<StringBuffer> writer(buffer);

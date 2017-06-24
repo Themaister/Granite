@@ -227,7 +227,7 @@ int main(int argc, char *argv[])
 
 	Value nodes(kArrayType);
 
-	mt19937 rnd;
+	mt19937 rnd(0);
 
 	Document doc;
 	doc.SetObject();

@@ -33,6 +33,11 @@ int main(int argc, char *argv[])
 			generate_mipmaps = true;
 		else if (strcmp(argv[i], "--srgb") == 0)
 			srgb = true;
+		else
+		{
+			LOGE("Invalid option %s\n", argv[i]);
+			return 1;
+		}
 	}
 
 	int width, height;

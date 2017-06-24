@@ -115,6 +115,34 @@ static void add_objects(Value &nodes, mt19937 &rnd, const vector<vec3> &objects,
 	}
 }
 
+static float get_neighbor_normal_y(const gli::texture &normals, int x, int y, int width, int height)
+{
+	const auto convert_normal = [](uint32_t v) -> vec3 {
+		return vec3((uvec3(v) >> uvec3(0, 10, 20)) & uvec3(0x3ff)) * (1.0f / 1023.0f) * 2.0f - 1.0f;
+	};
+
+	float normal_y = 1.0f;
+	int sx = glm::max(x - 1, 0);
+	int ex = glm::min(x + 1, width - 1);
+	int sy = glm::max(y - 1, 0);
+	int ey = glm::min(y + 1, height - 1);
+
+	for (int j = sy; j <= ey; j++)
+	{
+		for (int i = sx; i <= ex; i++)
+		{
+			vec3 n = convert_normal(normals.load<uint32_t>(gli::texture::extent_type(i, j, 0), 0, 0, 0));
+			n.x *= width / height_scale;
+			n.y *= height / height_scale;
+			n = normalize(n);
+			normal_y = glm::min(n.z, normal_y);
+		}
+	}
+
+	normal_y = glm::max(normal_y, 0.0f);
+	return normal_y;
+}
+
 int main(int argc, char *argv[])
 {
 	if (argc != 5)
@@ -170,20 +198,11 @@ int main(int argc, char *argv[])
 	auto *src = static_cast<const uint32_t *>(splatmap.data());
 	auto *clutter = static_cast<float *>(clutter_mask.data());
 
-	const auto convert_normal = [](uint32_t v) -> vec3 {
-		return vec3((uvec3(v) >> uvec3(0, 10, 20)) & uvec3(0x3ff)) * (1.0f / 1023.0f) * 2.0f - 1.0f;
-	};
-
 	for (int y = 0; y < height; y++)
 	{
 		for (int x = 0; x < width; x++)
 		{
-			vec3 n = convert_normal(normals.load<uint32_t>(gli::texture::extent_type(x, y, 0), 0, 0, 0));
-			n.x *= width / height_scale;
-			n.y *= height / height_scale;
-			n = normalize(n);
-			float normal_y = glm::max(n.z, 0.0f);
-
+			float normal_y = get_neighbor_normal_y(normals, x, y, width, height);
 			clutter[y * width + x] = (src[y * width + x] & 0x00ffffffu) ? 0.0f : pow(normal_y, 20.0f);
 		}
 	}
@@ -191,22 +210,32 @@ int main(int argc, char *argv[])
 	Value nodes(kArrayType);
 
 	mt19937 rnd;
-	vector<vec3> trees;
-	vector<vec3> grass;
+	vector<vec3> pine, grass, bush, berry, maple;
 
-	add_geometry(trees, rnd, heightmap, clutter, width, height, 9, 0.01f, 2000);
+	add_geometry(maple, rnd, heightmap, clutter, width, height, 9, 0.01f, 200);
+	add_geometry(pine, rnd, heightmap, clutter, width, height, 9, 0.01f, 2000);
+	add_geometry(bush, rnd, heightmap, clutter, width, height, 3, 0.1f, 5000);
+	add_geometry(berry, rnd, heightmap, clutter, width, height, 3, 0.1f, 5000);
 	add_geometry(grass, rnd, heightmap, clutter, width, height, 3, 0.1f, 10000);
 
 	Document doc;
 	doc.SetObject();
 	auto &allocator = doc.GetAllocator();
 
-	add_objects(nodes, rnd, trees, "pine", allocator);
+	add_objects(nodes, rnd, maple, "maple", allocator);
+	add_objects(nodes, rnd, pine, "pine", allocator);
+	add_objects(nodes, rnd, bush, "bush", allocator);
+	add_objects(nodes, rnd, berry, "berry", allocator);
 	add_objects(nodes, rnd, grass, "grass", allocator);
 
 	Value scene_list(kObjectType);
 	scene_list.AddMember("pine", "Pine.gltf", allocator);
 	scene_list.AddMember("grass", "Grass.gltf", allocator);
+	scene_list.AddMember("bush", "Bush.gltf", allocator);
+	scene_list.AddMember("berry", "Berry.gltf", allocator);
+	//scene_list.AddMember("clover", "Clover.gltf", allocator);
+	//scene_list.AddMember("clover2", "Clover2.gltf", allocator);
+	scene_list.AddMember("maple", "Maple.gltf", allocator);
 	doc.AddMember("nodes", nodes, allocator);
 
 	Value t(kArrayType);

@@ -204,7 +204,8 @@ int main(int argc, char *argv[])
 	int width = splatmap.extent(0).x;
 	int height = splatmap.extent(0).y;
 
-	auto *src = static_cast<const uint32_t *>(splatmap.data());
+	using Pixel = tvec4<uint8_t>;
+	auto *src = static_cast<const Pixel *>(splatmap.data());
 	auto *clutter = static_cast<float *>(clutter_mask.data());
 
 	FastNoise noise;
@@ -223,8 +224,17 @@ int main(int argc, char *argv[])
 			float cluster_noise = 2.0f * (clustering_sample(x, y) + 0.2f);
 			cluster_noise = glm::max(cluster_noise, 0.2f);
 
-			clutter[y * width + x] = (src[y * width + x] & 0x00ffffffu) ? 0.0f : pow(normal_y, 10.0f);
-			clutter[y * width + x] *= clamp(cluster_noise, 0.0f, 1.0f);
+			float base_clutter = 1.0f;
+			if (src[y * width + x].r)
+				base_clutter = 0.0f;
+			else if (src[y * width + x].g)
+				base_clutter = 0.0f;
+			else if (src[y * width + x].b)
+				base_clutter = 0.15f;
+
+			base_clutter *= pow(normal_y, 10.0f);
+			base_clutter *= clamp(cluster_noise, 0.0f, 1.0f);
+			clutter[y * width + x] = base_clutter;
 		}
 	}
 

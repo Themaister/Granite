@@ -4,20 +4,10 @@
 #include "gli/generate_mipmaps.hpp"
 #include "util.hpp"
 #include "math.hpp"
+#include "tool_util.hpp"
 
 using namespace glm;
-
-static unsigned num_miplevels(unsigned width, unsigned height)
-{
-	unsigned size = std::max(width, height);
-	unsigned levels = 0;
-	while (size)
-	{
-		levels++;
-		size >>= 1;
-	}
-	return levels;
-}
+using namespace Util;
 
 static vec2 get_plane_range(const float *data, unsigned width, unsigned height, unsigned stride)
 {

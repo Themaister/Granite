@@ -14,7 +14,7 @@ Scene::Scene()
 	  backgrounds(pool.get_component_group<UnboundedComponent, RenderableComponent>()),
 	  per_frame_updates(pool.get_component_group<PerFrameUpdateComponent>()),
 	  per_frame_update_transforms(pool.get_component_group<PerFrameUpdateTransformComponent, CachedSpatialTransformComponent>()),
-	  environments(pool.get_component_group<EnvironmentComponent, UnboundedComponent, RenderableComponent>())
+	  environments(pool.get_component_group<EnvironmentComponent>())
 {
 
 }

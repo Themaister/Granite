@@ -9,6 +9,8 @@
 #include <random>
 #include <fstream>
 #include "FastNoise.h"
+#include "path.hpp"
+#include "tool_util.hpp"
 
 using namespace std;
 using namespace Util;
@@ -271,7 +273,31 @@ int main(int argc, char *argv[])
 	doc.AddMember("scenes", scene_list, allocator);
 	doc.AddMember("terrain", terrain, allocator);
 	if (desc.HasMember("background"))
+	{
 		doc.AddMember("background", desc["background"], allocator);
+
+		auto &bg = doc["background"];
+		if (bg.HasMember("fog"))
+		{
+			auto &fog = bg["fog"];
+			if (!fog.HasMember("color") && bg.HasMember("skybox"))
+			{
+				auto skydome_path = Path::relpath(argv[5], bg["skybox"].GetString());
+				auto skydome = gli::load(skydome_path);
+				if (skydome.empty())
+				{
+					LOGE("Failed to load skydome: %s\n", skydome_path.c_str());
+					return 1;
+				}
+				vec4 color = skybox_to_fog_color(skydome);
+				Value v(kArrayType);
+				v.PushBack(color.r, allocator);
+				v.PushBack(color.g, allocator);
+				v.PushBack(color.b, allocator);
+				fog.AddMember("color", v, allocator);
+			}
+		}
+	}
 
 	StringBuffer buffer;
 	Writer<StringBuffer> writer(buffer);

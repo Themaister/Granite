@@ -368,9 +368,17 @@ void SceneLoader::parse(const std::string &path, const std::string &json)
 	if (doc.HasMember("background"))
 	{
 		auto &bg = doc["background"];
-		auto texture_path = Path::relpath(path, bg["skybox"].GetString());
-		auto skybox = Util::make_abstract_handle<AbstractRenderable, Skybox>(texture_path);
-		auto entity = scene->create_renderable(skybox, nullptr);
+
+		EntityHandle entity;
+
+		if (bg.HasMember("skybox"))
+		{
+			auto texture_path = Path::relpath(path, bg["skybox"].GetString());
+			auto skybox = Util::make_abstract_handle<AbstractRenderable, Skybox>(texture_path);
+			entity = scene->create_renderable(skybox, nullptr);
+		}
+		else
+			entity = scene->create_entity();
 
 		if (bg.HasMember("fog"))
 		{

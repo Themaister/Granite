@@ -4,20 +4,10 @@
 #include "stb_image.h"
 #include "util.hpp"
 #include "math.hpp"
+#include "tool_util.hpp"
 
 using namespace Granite;
-
-static unsigned num_miplevels(unsigned width, unsigned height)
-{
-	unsigned size = std::max(width, height);
-	unsigned levels = 0;
-	while (size)
-	{
-		levels++;
-		size >>= 1;
-	}
-	return levels;
-}
+using namespace Util;
 
 static gli::texture2d blur_texture(const gli::texture2d &input)
 {

@@ -46,11 +46,12 @@ static float sample_heightmap(const gli::texture &tex, float x, float y)
 
 static void add_geometry(vector<vec3> &objects, mt19937 &rnd, const gli::texture &heightmap, float *clutter, int width, int height,
                          int damage_radius, float damage_weight,
+                         float min_weight, float max_weight,
                          unsigned count)
 {
 	uniform_real_distribution<float> dist_w(0.5f, width - 0.5f);
 	uniform_real_distribution<float> dist_h(0.5f, height - 0.5f);
-	uniform_real_distribution<float> dist_weight(0.25f, 0.75f);
+	uniform_real_distribution<float> dist_weight(min_weight, max_weight);
 	uniform_real_distribution<float> dist_angle(0.0f, 2.0f * pi<float>());
 
 	for (unsigned i = 0; i < count; i++)
@@ -220,6 +221,8 @@ int main(int argc, char *argv[])
 		{
 			float normal_y = get_neighbor_normal_y(normals, x, y, width, height);
 			float cluster_noise = 2.0f * (clustering_sample(x, y) + 0.2f);
+			cluster_noise = glm::max(cluster_noise, 0.2f);
+
 			clutter[y * width + x] = (src[y * width + x] & 0x00ffffffu) ? 0.0f : pow(normal_y, 10.0f);
 			clutter[y * width + x] *= clamp(cluster_noise, 0.0f, 1.0f);
 		}
@@ -239,7 +242,9 @@ int main(int argc, char *argv[])
 		auto &type = itr->value;
 		vector<vec3> objects;
 		add_geometry(objects, rnd, heightmap, clutter, width, height,
-		             type["damageRadius"].GetInt(), type["damageFactor"].GetFloat(), type["count"].GetUint());
+		             type["damageRadius"].GetInt(), type["damageFactor"].GetFloat(),
+		             type["minWeight"].GetFloat(), type["maxWeight"].GetFloat(),
+		             type["count"].GetUint());
 
 		add_objects(nodes, rnd, objects, itr->name.GetString(), allocator);
 		scene_list.AddMember(itr->name, type["mesh"], allocator);

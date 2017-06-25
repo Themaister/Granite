@@ -18,7 +18,7 @@ using namespace rapidjson;
 static const float height_offset = -64.0f;
 static const float height_offset_y = -2.0f;
 static const float height_scale = 128.0f;
-static const float height_scale_y = 1.0f;
+static const float height_scale_y = 3.0f;
 
 static float sample_heightmap(const gli::texture &tex, float x, float y)
 {

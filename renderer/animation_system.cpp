@@ -17,17 +17,20 @@ void AnimationSystem::animate(double t)
 		auto target = begin(animation->channel_targets);
 		for (auto &channel : animation->animation.channels)
 		{
-			auto &node = **target;
+			auto *transform = target->first;
+			auto *node = target->second;
+			node->invalidate_cached_transform();
+
 			switch (channel.type)
 			{
 			case Importer::AnimationChannel::Type::Translation:
-				node.translation = channel.linear.sample(index, phase);
+				transform->translation = channel.linear.sample(index, phase);
 				break;
 			case Importer::AnimationChannel::Type::Scale:
-				node.scale = channel.linear.sample(index, phase);
+				transform->scale = channel.linear.sample(index, phase);
 				break;
 			case Importer::AnimationChannel::Type::Rotation:
-				node.rotation = channel.spherical.sample(index, phase);
+				transform->rotation = channel.spherical.sample(index, phase);
 				break;
 			}
 			++target;
@@ -42,7 +45,7 @@ void AnimationSystem::register_animation(const std::string &name, const Importer
 
 void AnimationSystem::start_animation(Scene::Node &node, const std::string &name, double start_time, bool repeat)
 {
-	std::vector<Transform *> target_nodes;
+	std::vector<std::pair<Transform *, Scene::Node *>> target_nodes;
 	auto &animation = animation_map[name];
 	target_nodes.reserve(animation.channels.size());
 
@@ -55,10 +58,10 @@ void AnimationSystem::start_animation(Scene::Node &node, const std::string &name
 			if (node.get_skin().skin_compat != animation.skin_compat)
 				throw logic_error("Nodes skin is not compatible with animation skin index.");
 
-			target_nodes.push_back(node.get_skin().skin[channel.joint_index]);
+			target_nodes.push_back({ node.get_skin().skin[channel.joint_index], &node });
 		}
 		else
-			target_nodes.push_back(&node.transform);
+			target_nodes.push_back({ &node.transform, &node });
 	}
 
 	animations.emplace_back(new AnimationState(move(target_nodes), animation, start_time, repeat));
@@ -66,7 +69,7 @@ void AnimationSystem::start_animation(Scene::Node &node, const std::string &name
 
 void AnimationSystem::start_animation(const std::string &name, double start_time, bool repeat)
 {
-	std::vector<Transform *> target_nodes;
+	std::vector<std::pair<Transform *, Scene::Node *>> target_nodes;
 	auto &animation = animation_map[name];
 	target_nodes.reserve(animation.channels.size());
 
@@ -78,7 +81,7 @@ void AnimationSystem::start_animation(const std::string &name, double start_time
 		if (channel.joint)
 			throw logic_error("Cannot start skinning animations without a target base node.");
 		else
-			target_nodes.push_back(&nodes[channel.node_index]->transform);
+			target_nodes.push_back({ &nodes[channel.node_index]->transform, nodes[channel.node_index].get() });
 	}
 
 	animations.emplace_back(new AnimationState(move(target_nodes), animation, start_time, repeat));

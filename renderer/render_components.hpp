@@ -76,6 +76,12 @@ struct CachedSpatialTransformComponent : ComponentBase
 	CachedSkinTransform *skin_transform = nullptr;
 };
 
+struct CachedSpatialTransformTimestampComponent : ComponentBase
+{
+	uint32_t last_timestamp = ~0u;
+	const uint32_t *current_timestamp = nullptr;
+};
+
 struct OpaqueComponent : ComponentBase
 {
 };

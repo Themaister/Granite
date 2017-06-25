@@ -37,6 +37,7 @@ public:
 		CachedTransform cached_transform;
 		CachedSkinTransform cached_skin_transform;
 
+		void invalidate_cached_transform();
 		void add_child(Util::IntrusivePtr<Node> node);
 		void remove_child(Node &node);
 
@@ -77,13 +78,41 @@ public:
 			return skinning;
 		}
 
+		inline bool get_and_clear_child_transform_dirty()
+		{
+			auto ret = any_child_transform_dirty;
+			any_child_transform_dirty = false;
+			return ret;
+		}
+
+		inline bool get_and_clear_transform_dirty()
+		{
+			auto ret = cached_transform_dirty;
+			cached_transform_dirty = false;
+			return ret;
+		}
+
 		mat4 initial_transform = mat4(1.0f);
+
+		void update_timestamp()
+		{
+			timestamp++;
+		}
+
+		const uint32_t *get_timestamp_pointer() const
+		{
+			return &timestamp;
+		}
 
 	private:
 		std::vector<Util::IntrusivePtr<Node>> children;
 		std::vector<Util::IntrusivePtr<Node>> skeletons;
 		Skinning skinning;
 		Node *parent = nullptr;
+
+		bool any_child_transform_dirty = true;
+		bool cached_transform_dirty = true;
+		uint32_t timestamp = 0;
 	};
 	using NodeHandle = Util::IntrusivePtr<Node>;
 	NodeHandle create_node();
@@ -100,7 +129,7 @@ public:
 private:
 	EntityPool pool;
 	NodeHandle root_node;
-	std::vector<std::tuple<BoundedComponent*, CachedSpatialTransformComponent*>> &spatials;
+	std::vector<std::tuple<BoundedComponent*, CachedSpatialTransformComponent*, CachedSpatialTransformTimestampComponent *>> &spatials;
 	std::vector<std::tuple<CachedSpatialTransformComponent*, RenderableComponent*, OpaqueComponent*>> &opaque;
 	std::vector<std::tuple<CachedSpatialTransformComponent*, RenderableComponent*, TransparentComponent*>> &transparent;
 	std::vector<std::tuple<CachedSpatialTransformComponent*, RenderableComponent*, CastsShadowComponent*>> &shadowing;
@@ -109,7 +138,7 @@ private:
 	std::vector<std::tuple<PerFrameUpdateTransformComponent*, CachedSpatialTransformComponent*>> &per_frame_update_transforms;
 	std::vector<std::tuple<EnvironmentComponent*>> &environments;
 	std::vector<EntityHandle> nodes;
-	void update_transform_tree(Node &node, const mat4 &transform);
+	void update_transform_tree(Node &node, const mat4 &transform, bool parent_is_dirty);
 
 	void update_skinning(Node &node);
 };

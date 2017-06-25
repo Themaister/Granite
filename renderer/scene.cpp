@@ -7,7 +7,7 @@ namespace Granite
 {
 
 Scene::Scene()
-	: spatials(pool.get_component_group<BoundedComponent, CachedSpatialTransformComponent>()),
+	: spatials(pool.get_component_group<BoundedComponent, CachedSpatialTransformComponent, CachedSpatialTransformTimestampComponent>()),
 	  opaque(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, OpaqueComponent>()),
 	  transparent(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, TransparentComponent>()),
 	  shadowing(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, CastsShadowComponent>()),
@@ -99,48 +99,66 @@ void Scene::update_skinning(Node &node)
 	}
 }
 
-void Scene::update_transform_tree(Node &node, const mat4 &transform)
+void Scene::update_transform_tree(Node &node, const mat4 &transform, bool parent_is_dirty)
 {
-	compute_model_transform(node.cached_transform.world_transform,
-                            node.transform.scale, node.transform.rotation, node.transform.translation, transform);
+	bool transform_dirty = node.get_and_clear_transform_dirty() || parent_is_dirty;
 
-	for (auto &child : node.get_children())
-		update_transform_tree(*child, node.cached_transform.world_transform);
-	for (auto &child : node.get_skeletons())
-		update_transform_tree(*child, node.cached_transform.world_transform);
+	if (transform_dirty)
+	{
+		compute_model_transform(node.cached_transform.world_transform,
+		                        node.transform.scale, node.transform.rotation, node.transform.translation, transform);
+	}
 
-	// Apply the first transformation in the sequence, this is used for skinning.
-	node.cached_transform.world_transform = node.cached_transform.world_transform * node.initial_transform;
+	if (node.get_and_clear_child_transform_dirty() || parent_is_dirty)
+	{
+		for (auto &child : node.get_children())
+			update_transform_tree(*child, node.cached_transform.world_transform, parent_is_dirty);
+	}
 
-	compute_normal_transform(node.cached_transform.normal_transform, node.cached_transform.world_transform);
-	update_skinning(node);
+	if (transform_dirty)
+	{
+		for (auto &child : node.get_skeletons())
+			update_transform_tree(*child, node.cached_transform.world_transform, true);
+
+		// Apply the first transformation in the sequence, this is used for skinning.
+		node.cached_transform.world_transform = node.cached_transform.world_transform * node.initial_transform;
+
+		compute_normal_transform(node.cached_transform.normal_transform, node.cached_transform.world_transform);
+		update_skinning(node);
+		node.update_timestamp();
+	}
 }
 
 void Scene::update_cached_transforms()
 {
 	if (root_node)
-		update_transform_tree(*root_node, mat4(1.0f));
+		update_transform_tree(*root_node, mat4(1.0f), false);
 
 	for (auto &s : spatials)
 	{
 		BoundedComponent *aabb;
 		CachedSpatialTransformComponent *cached_transform;
-		tie(aabb, cached_transform) = s;
+		CachedSpatialTransformTimestampComponent *timestamp;
+		tie(aabb, cached_transform, timestamp) = s;
 
-		if (cached_transform->transform)
+		if (timestamp->last_timestamp != *timestamp->current_timestamp)
 		{
-			if (cached_transform->skin_transform)
+			if (cached_transform->transform)
 			{
-				// TODO: Isolate the AABB per bone.
-				cached_transform->world_aabb = AABB(vec3(FLT_MAX), vec3(-FLT_MAX));
-				for (auto &m : cached_transform->skin_transform->bone_world_transforms)
-					cached_transform->world_aabb.expand(aabb->aabb.transform(m));
+				if (cached_transform->skin_transform)
+				{
+					// TODO: Isolate the AABB per bone.
+					cached_transform->world_aabb = AABB(vec3(FLT_MAX), vec3(-FLT_MAX));
+					for (auto &m : cached_transform->skin_transform->bone_world_transforms)
+						cached_transform->world_aabb.expand(aabb->aabb.transform(m));
+				}
+				else
+				{
+					cached_transform->world_aabb = aabb->aabb.transform(
+						cached_transform->transform->world_transform);
+				}
 			}
-			else
-			{
-				cached_transform->world_aabb = aabb->aabb.transform(
-					cached_transform->transform->world_transform);
-			}
+			timestamp->last_timestamp = *timestamp->current_timestamp;
 		}
 	}
 }
@@ -203,6 +221,7 @@ void Scene::Node::add_child(NodeHandle node)
 	assert(this != node.get());
 	assert(node->parent == nullptr);
 	node->parent = this;
+	node->invalidate_cached_transform();
 	children.push_back(node);
 }
 
@@ -210,12 +229,23 @@ void Scene::Node::remove_child(Node &node)
 {
 	assert(node.parent == this);
 	node.parent = nullptr;
+	node.invalidate_cached_transform();
 
 	auto itr = remove_if(begin(children), end(children), [&](const NodeHandle &h) {
 		return &node == h.get();
 	});
 	assert(itr != end(children));
 	children.erase(itr, end(children));
+}
+
+void Scene::Node::invalidate_cached_transform()
+{
+	if (!cached_transform_dirty)
+	{
+		cached_transform_dirty = true;
+		for (auto *p = parent; p && !p->any_child_transform_dirty; p = p->parent)
+			p->any_child_transform_dirty = true;
+	}
 }
 
 EntityHandle Scene::create_entity()
@@ -233,9 +263,12 @@ EntityHandle Scene::create_renderable(AbstractRenderableHandle renderable, Node 
 	if (renderable->has_static_aabb())
 	{
 		auto *transform = entity->allocate_component<CachedSpatialTransformComponent>();
+		auto *timestamp = entity->allocate_component<CachedSpatialTransformTimestampComponent>();
 		if (node)
 		{
 			transform->transform = &node->cached_transform;
+			timestamp->current_timestamp = node->get_timestamp_pointer();
+
 			if (!node->get_skin().cached_skin.empty())
 				transform->skin_transform = &node->cached_skin_transform;
 		}

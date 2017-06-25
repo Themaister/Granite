@@ -68,6 +68,7 @@ public:
 		//std::string normalmap_fine;
 		float lod_bias = 0.0f;
 		unsigned base_patch_size = 64;
+		unsigned normal_size = 1024;
 		float max_lod = 5.0f;
 		std::vector<float> patch_lod_bias;
 		std::vector<vec2> patch_range;

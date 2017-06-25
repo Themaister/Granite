@@ -446,6 +446,10 @@ void SceneLoader::parse(const std::string &path, const std::string &json)
 		if (terrain.HasMember("size"))
 			size = terrain["size"].GetUint();
 
+		info.normal_size = 1024;
+		if (terrain.HasMember("normalSize"))
+			info.normal_size = terrain["normalSize"].GetUint();
+
 		auto handles = Ground::add_to_scene(*scene, size, tiling_factor, info);
 		read_transform(handles.node->transform, terrain);
 		root->add_child(handles.node);

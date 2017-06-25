@@ -135,8 +135,6 @@ static float get_neighbor_normal_y(const gli::texture &normals, int x, int y, in
 		for (int i = sx; i <= ex; i++)
 		{
 			vec3 n = convert_normal(normals.load<uint32_t>(gli::texture::extent_type(i, j, 0), 0, 0, 0));
-			n.x *= width / height_scale;
-			n.y *= height / height_scale;
 			n = normalize(n);
 			normal_y = glm::min(n.z, normal_y);
 		}
@@ -264,6 +262,7 @@ int main(int argc, char *argv[])
 	terrain.AddMember("scale", s, allocator);
 	terrain.AddMember("lodBias", 0.0f, allocator);
 	terrain.AddMember("tilingFactor", 128.0f, allocator);
+	terrain.AddMember("normalSize", 128, allocator);
 	terrain.AddMember("size", width, allocator);
 	terrain.AddMember("baseColorTexture", "../textures/Grass_BaseColor_Array.ktx", allocator);
 	terrain.AddMember("splatmapTexture", "../textures/splatmap.ktx", allocator);

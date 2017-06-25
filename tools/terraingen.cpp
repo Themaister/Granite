@@ -79,9 +79,9 @@ static float get_plane_error(const float *data, unsigned width, unsigned height,
 
 int main(int argc, char *argv[])
 {
-	if (argc != 5)
+	if (argc != 6)
 	{
-		LOGE("Usage: %s <input-height> <output-height> <output-normals> <meta-data>\n", argv[0]);
+		LOGE("Usage: %s <input-height> <output-height> <output-normals> <meta-data> <reference-normal-size>\n", argv[0]);
 		return 1;
 	}
 
@@ -94,6 +94,10 @@ int main(int argc, char *argv[])
 
 	int width = heights_base.extent(0).x;
 	int height = heights_base.extent(0).y;
+	float normal_size = std::stof(argv[5]);
+
+	float normal_scale_x = float(width) / normal_size;
+	float normal_scale_y = float(height) / normal_size;
 
 	unsigned levels = num_miplevels(width, height);
 	gli::texture2d heights(gli::FORMAT_R32_SFLOAT_PACK32, gli::extent2d(width, height), levels);
@@ -274,7 +278,7 @@ int main(int argc, char *argv[])
 
 		for (int i = 0; i < mip_width * mip_height; i++)
 		{
-			vec3 normalized = normalize(vec3(src[i].x, src[i].y, src[i].z));
+			vec3 normalized = normalize(vec3(normal_scale_x * src[i].x, normal_scale_y * src[i].y, src[i].z));
 			uvec3 quantized = uvec3(round(clamp(1023.0f * (normalized * 0.5f + 0.5f), vec3(0.0f), vec3(1023.0f))));
 			dst[i] = (quantized.x << 0) | (quantized.y << 10) | (quantized.z << 20);
 		}

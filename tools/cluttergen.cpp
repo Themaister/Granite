@@ -93,7 +93,7 @@ static void add_geometry(vector<vec3> &objects, mt19937 &rnd, const gli::texture
 	}
 }
 
-static void add_objects(Value &nodes, mt19937 &rnd, const vector<vec3> &objects, const char *mesh, MemoryPoolAllocator<> &allocator)
+static void add_objects(Value &nodes, mt19937 &rnd, const vector<vec3> &objects, const char *mesh, float y_offset, MemoryPoolAllocator<> &allocator)
 {
 	uniform_real_distribution<float> dist_angle(0.0f, 2.0f * pi<float>());
 
@@ -104,7 +104,7 @@ static void add_objects(Value &nodes, mt19937 &rnd, const vector<vec3> &objects,
 
 		Value translation(kArrayType);
 		translation.PushBack(object.x * height_scale + height_offset, allocator);
-		translation.PushBack((object.y - 0.01f) * height_scale_y + height_offset_y, allocator);
+		translation.PushBack((object.y + y_offset) * height_scale_y + height_offset_y, allocator);
 		translation.PushBack(object.z * height_scale + height_offset, allocator);
 		t.AddMember("translation", translation, allocator);
 
@@ -246,7 +246,7 @@ int main(int argc, char *argv[])
 		             type["minWeight"].GetFloat(), type["maxWeight"].GetFloat(),
 		             type["count"].GetUint());
 
-		add_objects(nodes, rnd, objects, itr->name.GetString(), allocator);
+		add_objects(nodes, rnd, objects, itr->name.GetString(), type["yOffset"].GetFloat(), allocator);
 		scene_list.AddMember(itr->name, type["mesh"], allocator);
 	}
 

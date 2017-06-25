@@ -27,6 +27,10 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned
 	scene_loader.load_scene(path);
 	animation_system = scene_loader.consume_animation_system();
 
+	auto *environment = scene_loader.get_scene().get_environment();
+	if (environment)
+		context.set_fog_parameters(environment->fog);
+
 	cam.look_at(vec3(0.0f, 0.0f, 8.0f), vec3(0.0f));
 	context.set_camera(cam);
 

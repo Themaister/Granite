@@ -7,8 +7,8 @@ namespace Granite
 {
 RenderContext::RenderContext()
 {
-	fog.color = vec3(0.45f, 0.4f, 0.3f);
-	fog.falloff = 0.005f;
+	fog.color = vec3(1.0f);
+	fog.falloff = 0.0f;
 
 	EventManager::get_global().register_latch_handler(DeviceCreatedEvent::type_id,
 	                                                  &RenderContext::on_device_created,

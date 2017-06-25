@@ -1,5 +1,6 @@
 #pragma once
 
+#include <render_parameters.hpp>
 #include "ecs.hpp"
 #include "math.hpp"
 #include "aabb.hpp"
@@ -34,6 +35,11 @@ struct BoundedComponent : ComponentBase
 
 struct UnboundedComponent : ComponentBase
 {
+};
+
+struct EnvironmentComponent : ComponentBase
+{
+	FogParameters fog;
 };
 
 struct RenderableComponent : ComponentBase

@@ -2,15 +2,15 @@
 #include "gli/save.hpp"
 #include "util.hpp"
 #include <vector>
-#include <gli/texture2d_array.hpp>
+#include <gli/texture_cube.hpp>
 
 using namespace std;
 
 int main(int argc, char *argv[])
 {
-	if (argc < 3)
+	if (argc != 8)
 	{
-		LOGE("Usage: %s <output> <inputs>...\n", argv[0]);
+		LOGE("Usage: %s <output> <inputs> x 6...\n", argv[0]);
 		return 1;
 	}
 
@@ -67,18 +67,24 @@ int main(int argc, char *argv[])
 		height = tex.extent().y;
 		levels = tex.levels();
 		inputs.push_back(move(tex));
+
+		if (width != height)
+		{
+			LOGE("Input can only be square\n");
+			return 1;
+		}
 	}
 
-	gli::texture2d_array array(fmt, gli::extent2d(width, height), inputs.size(), levels);
-	for (unsigned layer = 0; layer < inputs.size(); layer++)
+	gli::texture_cube cube(fmt, gli::extent2d(width, height), levels);
+	for (unsigned level = 0; level < levels; level++)
 	{
-		for (unsigned level = 0; level < levels; level++)
+		for (unsigned face = 0; face < 6; face++)
 		{
-			auto *dst = array.data(layer, 0, level);
-			auto *src = inputs[layer].data(0, 0, level);
+			auto *dst = cube.data(0, face, level);
+			auto *src = inputs[face].data(0, 0, level);
 
-			size_t dst_size = array.size(level);
-			size_t src_size = inputs[layer].size(level);
+			size_t dst_size = cube.size(level);
+			size_t src_size = inputs[face].size(level);
 			if (dst_size != src_size)
 			{
 				LOGE("Size mismatch!\n");
@@ -89,7 +95,7 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	if (!gli::save(array, argv[1]))
+	if (!gli::save(cube, argv[1]))
 	{
 		LOGE("Failed to save file: %s\n", argv[1]);
 		return 1;

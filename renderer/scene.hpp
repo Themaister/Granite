@@ -28,6 +28,7 @@ public:
 	void gather_visible_transparent_renderables(const Frustum &frustum, VisibilityList &list);
 	void gather_visible_shadow_renderables(const Frustum &frustum, VisibilityList &list);
 	void gather_background_renderables(VisibilityList &list);
+	EnvironmentComponent *get_environment() const;
 
 	class Node : public Util::IntrusivePtrEnabled<Node>
 	{
@@ -106,6 +107,7 @@ private:
 	std::vector<std::tuple<UnboundedComponent*, RenderableComponent*>> &backgrounds;
 	std::vector<std::tuple<PerFrameUpdateComponent*>> &per_frame_updates;
 	std::vector<std::tuple<PerFrameUpdateTransformComponent*, CachedSpatialTransformComponent*>> &per_frame_update_transforms;
+	std::vector<std::tuple<EnvironmentComponent*, UnboundedComponent*, RenderableComponent*>> &environments;
 	std::vector<EntityHandle> nodes;
 	void update_transform_tree(Node &node, const mat4 &transform);
 

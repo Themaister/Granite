@@ -271,6 +271,8 @@ int main(int argc, char *argv[])
 
 	doc.AddMember("scenes", scene_list, allocator);
 	doc.AddMember("terrain", terrain, allocator);
+	if (desc.HasMember("background"))
+		doc.AddMember("background", desc["background"], allocator);
 
 	StringBuffer buffer;
 	Writer<StringBuffer> writer(buffer);

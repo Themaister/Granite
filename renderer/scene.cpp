@@ -13,7 +13,8 @@ Scene::Scene()
 	  shadowing(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, CastsShadowComponent>()),
 	  backgrounds(pool.get_component_group<UnboundedComponent, RenderableComponent>()),
 	  per_frame_updates(pool.get_component_group<PerFrameUpdateComponent>()),
-	  per_frame_update_transforms(pool.get_component_group<PerFrameUpdateTransformComponent, CachedSpatialTransformComponent>())
+	  per_frame_update_transforms(pool.get_component_group<PerFrameUpdateTransformComponent, CachedSpatialTransformComponent>()),
+	  environments(pool.get_component_group<EnvironmentComponent, UnboundedComponent, RenderableComponent>())
 {
 
 }
@@ -52,6 +53,14 @@ void Scene::refresh_per_frame(RenderContext &context)
 		if (refresh)
 			refresh->refresh(context);
 	}
+}
+
+EnvironmentComponent *Scene::get_environment() const
+{
+	if (environments.empty())
+		return nullptr;
+	else
+		return get<0>(environments.front());
 }
 
 void Scene::gather_background_renderables(VisibilityList &list)

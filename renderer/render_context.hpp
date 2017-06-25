@@ -35,6 +35,11 @@ public:
 		return camera;
 	}
 
+	void set_fog_parameters(const FogParameters &fog)
+	{
+		this->fog = fog;
+	}
+
 	const FogParameters &get_fog_parameters() const
 	{
 		return fog;

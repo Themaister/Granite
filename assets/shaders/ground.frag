@@ -42,7 +42,7 @@ void main()
     vec4 types = vec4(textureLod(uSplatMap, vUV, 0.0).rgb, 0.25);
     float max_weight = horiz_max(types);
     types = types / max_weight;
-    types = clamp(4.0 * (types - 0.75), vec4(0.0), vec4(1.0));
+    types = clamp(2.0 * (types - 0.5), vec4(0.0), vec4(1.0));
     float weight = 1.0 / dot(types, vec4(1.0));
     types *= weight;
 

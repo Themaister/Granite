@@ -19,4 +19,10 @@ struct RenderParameters
 	alignas(vec4) vec3 camera_right;
 	alignas(vec4) vec3 camera_up;
 };
+
+struct FogParameters
+{
+	vec3 color;
+	float falloff;
+};
 }

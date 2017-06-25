@@ -1,7 +1,10 @@
 #version 310 es
 precision mediump float;
 
+#include "inc/fog.h"
+
 layout(location = 0) out vec4 FragColor;
+layout(location = 0) in mediump vec3 vEyeVec;
 
 layout(push_constant, std430) uniform Constants
 {
@@ -9,7 +12,6 @@ layout(push_constant, std430) uniform Constants
     mat4 Normal;
 } registers;
 
-layout(location = 0) in highp vec3 vWorld;
 layout(location = 1) in highp vec2 vUV;
 
 layout(set = 2, binding = 1) uniform sampler2D uNormalsTerrain;
@@ -53,5 +55,7 @@ void main()
     float ndotl = clamp(dot(normal, normalize(vec3(1.0, 1.0, 1.0))), 0.0, 1.0);
     FragColor = vec4(base_color * (0.2 + 0.8 * ndotl), 1.0);
     //FragColor = vec4(0.5 * normal + 0.5, 1.0);
+
+    FragColor.rgb = apply_fog(FragColor.rgb, vEyeVec);
 }
 

@@ -4,7 +4,7 @@
 layout(location = 0) in uvec4 aPosition;
 layout(location = 1) in vec4 aLODWeights;
 
-layout(location = 0) out highp vec3 vWorld;
+layout(location = 0) out mediump vec3 vEyeVec;
 layout(location = 1) out highp vec2 vUV;
 
 layout(set = 2, binding = 0) uniform sampler2D uHeightmap;
@@ -82,6 +82,6 @@ void main()
     float height_displacement = sample_height_displacement(uv, off, lod);
 
     vec4 world = registers.Model * vec4(pos.x, height_displacement, pos.y, 1.0);
-    vWorld = world.xyz;
+    vEyeVec = world.xyz - global.camera_position;
     gl_Position = global.view_projection * world;
 }

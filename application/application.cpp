@@ -95,7 +95,14 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 
 	auto cmd = device.request_command_buffer();
 	auto rp = device.get_swapchain_render_pass(SwapchainRenderPass::DepthStencil);
+
+	rp.clear_color[0].float32[0] = context.get_fog_parameters().color.r;
+	rp.clear_color[0].float32[1] = context.get_fog_parameters().color.g;
+	rp.clear_color[0].float32[2] = context.get_fog_parameters().color.b;
+	rp.clear_color[0].float32[3] = 0.0f;
+
 	cmd->begin_render_pass(rp);
+
 	renderer.begin();
 	renderer.push_renderables(context, visible);
 	renderer.flush(*cmd, context);

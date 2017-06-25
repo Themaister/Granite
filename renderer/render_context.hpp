@@ -35,6 +35,11 @@ public:
 		return camera;
 	}
 
+	const FogParameters &get_fog_parameters() const
+	{
+		return fog;
+	}
+
 	const Frustum &get_visibility_frustum() const
 	{
 		return frustum;
@@ -52,6 +57,7 @@ private:
 	Scene *scene = nullptr;
 	RenderQueue *queue = nullptr;
 	RenderParameters camera;
+	FogParameters fog;
 	Frustum frustum;
 };
 }

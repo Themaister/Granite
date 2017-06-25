@@ -15,4 +15,5 @@ layout(set = 0, binding = 0, std140) uniform RenderParameters
 	vec3 camera_right;
 	vec3 camera_up;
 } global;
+
 #endif

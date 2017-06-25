@@ -1,16 +1,20 @@
 #version 310 es
 precision mediump float;
 
+#include "inc/fog.h"
+
+layout(location = 0) in mediump vec3 vEyeVec;
+
 #if HAVE_UV
-layout(location = 0) in highp vec2 vUV;
+layout(location = 1) in highp vec2 vUV;
 #endif
 
 #if HAVE_NORMAL
-layout(location = 1) in mediump vec3 vNormal;
+layout(location = 2) in mediump vec3 vNormal;
 #endif
 
 #if HAVE_TANGENT
-layout(location = 2) in mediump vec4 vTangent;
+layout(location = 3) in mediump vec4 vTangent;
 #endif
 
 #if defined(HAVE_BASECOLORMAP) && HAVE_BASECOLORMAP
@@ -80,4 +84,6 @@ void main()
 #else
     FragColor = base_color;
 #endif
+
+    FragColor.rgb = apply_fog(FragColor.rgb, vEyeVec);
 }

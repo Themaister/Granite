@@ -45,6 +45,9 @@ void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context)
 	auto *global = static_cast<RenderParameters *>(cmd.allocate_constant_data(0, 0, sizeof(RenderParameters)));
 	*global = context.get_render_parameters();
 
+	auto *fog = static_cast<FogParameters *>(cmd.allocate_constant_data(0, 1, sizeof(FogParameters)));
+	*fog = context.get_fog_parameters();
+
 	queue.sort();
 
 	cmd.set_opaque_state();

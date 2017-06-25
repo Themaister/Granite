@@ -19,19 +19,19 @@ int main(int argc, char *argv[])
 	float freq = stof(argv[3]);
 
 	FastNoise noise[4];
-	noise[0].SetFractalOctaves(2);
+	noise[0].SetFractalOctaves(7);
 	noise[0].SetFrequency(freq);
-	noise[0].SetFractalGain(0.2f);
+	noise[0].SetFractalGain(0.25f);
 
-	noise[1].SetFractalOctaves(3);
+	noise[1].SetFractalOctaves(7);
 	noise[1].SetFrequency(freq);
 	noise[1].SetFractalGain(0.3f);
 
-	noise[2].SetFractalOctaves(4);
+	noise[2].SetFractalOctaves(7);
 	noise[2].SetFrequency(freq);
 	noise[2].SetFractalGain(0.4f);
 
-	noise[3].SetFractalOctaves(8);
+	noise[3].SetFractalOctaves(7);
 	noise[3].SetFrequency(freq);
 	noise[3].SetFractalGain(0.6f);
 
@@ -63,14 +63,16 @@ int main(int argc, char *argv[])
 			float height = 0.0f;
 			int w = 0.0f;
 
+			int alpha_w = 255 - glm::max(splat.z, glm::max(splat.x, splat.y));
+
 			height += noise[0].GetSimplexFractal(x, y) * splat.x;
 			w += splat.x;
 			height += noise[1].GetSimplexFractal(x, y) * splat.y;
 			w += splat.y;
 			height += noise[2].GetSimplexFractal(x, y) * splat.z;
 			w += splat.z;
-			height += noise[3].GetSimplexFractal(x, y) * 1;
-			w += 1;
+			height += noise[3].GetSimplexFractal(x, y) * alpha_w;
+			w += alpha_w;
 
 			*data++ = height / w;
 		}

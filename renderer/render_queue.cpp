@@ -82,6 +82,12 @@ RenderQueue::Chain::iterator RenderQueue::insert_block()
 	return blocks.insert(end(blocks), Block(BlockSize));
 }
 
+RenderQueue::Chain::iterator RenderQueue::insert_large_block(size_t size, size_t alignment)
+{
+	size_t padded_size = alignment > alignof(uintmax_t) ? (size + alignment) : size;
+	return large_blocks.insert(end(large_blocks), Block(padded_size));
+}
+
 void *RenderQueue::allocate_from_block(Block &block, size_t size, size_t alignment)
 {
 	block.ptr = (block.ptr + alignment - 1) & ~(alignment - 1);
@@ -103,11 +109,13 @@ void RenderQueue::reset()
 		current->reset();
 
 	memset(queues, 0, sizeof(queues));
+	large_blocks.clear();
 }
 
 void RenderQueue::reset_and_reclaim()
 {
 	blocks.clear();
+	large_blocks.clear();
 	current = end(blocks);
 
 	memset(queues, 0, sizeof(queues));
@@ -116,7 +124,10 @@ void RenderQueue::reset_and_reclaim()
 void *RenderQueue::allocate(size_t size, size_t alignment)
 {
 	if (size + alignment > BlockSize)
-		return nullptr;
+	{
+		auto itr = insert_large_block(size, alignment);
+		return allocate_from_block(*itr, size, alignment);
+	}
 
 	// First allocation.
 	if (current == end(blocks))

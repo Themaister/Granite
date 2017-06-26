@@ -154,6 +154,7 @@ private:
 
 	using Chain = std::list<Block>;
 	Chain blocks;
+	Chain large_blocks;
 	Chain::iterator current = std::end(blocks);
 
 	struct QueueInfo
@@ -166,6 +167,7 @@ private:
 
 	void *allocate_from_block(Block &block, size_t size, size_t alignment);
 	Chain::iterator insert_block();
+	Chain::iterator insert_large_block(size_t size, size_t alignment);
 
 	ShaderSuite *shader_suites = nullptr;
 };

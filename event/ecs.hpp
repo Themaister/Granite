@@ -310,6 +310,8 @@ public:
 			groups[group]->remove_component(component);
 	}
 
+	void reset_groups();
+
 private:
 	Util::ObjectPool<Entity> entity_pool;
 	std::unordered_map<uint32_t, std::unique_ptr<EntityGroupBase>> groups;

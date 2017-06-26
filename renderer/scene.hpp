@@ -21,6 +21,7 @@ class Scene
 {
 public:
 	Scene();
+	~Scene();
 
 	void refresh_per_frame(RenderContext &context);
 	void update_cached_transforms();

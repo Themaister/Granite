@@ -19,6 +19,12 @@ Scene::Scene()
 
 }
 
+Scene::~Scene()
+{
+	// Makes shutdown way faster :)
+	pool.reset_groups();
+}
+
 template <typename T>
 static void gather_visible_renderables(const Frustum &frustum, VisibilityList &list, const T &objects)
 {

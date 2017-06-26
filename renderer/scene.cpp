@@ -109,10 +109,10 @@ void Scene::update_transform_tree(Node &node, const mat4 &transform, bool parent
 		                        node.transform.scale, node.transform.rotation, node.transform.translation, transform);
 	}
 
-	if (node.get_and_clear_child_transform_dirty() || parent_is_dirty)
+	if (node.get_and_clear_child_transform_dirty() || transform_dirty)
 	{
 		for (auto &child : node.get_children())
-			update_transform_tree(*child, node.cached_transform.world_transform, parent_is_dirty);
+			update_transform_tree(*child, node.cached_transform.world_transform, transform_dirty);
 	}
 
 	if (transform_dirty)

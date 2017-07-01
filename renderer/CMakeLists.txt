@@ -13,6 +13,7 @@ add_granite_library(renderer
         renderer.hpp renderer.cpp
         material_manager.hpp material_manager.cpp
         animation_system.hpp animation_system.cpp
+        render_graph.cpp render_graph.hpp
         ground.hpp ground.cpp
         scene_loader.cpp scene_loader.hpp)
 target_link_libraries(renderer vulkan-backend math importers)

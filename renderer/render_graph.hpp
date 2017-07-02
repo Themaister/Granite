@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <string>
 #include "vulkan.hpp"
 
 namespace Granite
@@ -35,15 +36,17 @@ struct ResourceDimensions
 	unsigned depth = 1;
 	unsigned layers = 1;
 	unsigned levels = 1;
+	bool transient = false;
 
 	bool operator==(const ResourceDimensions &other) const
 	{
 		return format == other.format &&
-	           width == other.width &&
-	           height == other.height &&
-	           depth == other.depth &&
-	           layers == other.layers &&
-	           levels == other.levels;
+		       width == other.width &&
+		       height == other.height &&
+		       depth == other.depth &&
+		       layers == other.layers &&
+		       levels == other.levels &&
+		       transient == other.transient;
 	}
 
 	bool operator!=(const ResourceDimensions &other) const
@@ -60,6 +63,8 @@ public:
 		Buffer,
 		Texture
 	};
+
+	enum { Unused = ~0u };
 
 	RenderResource(Type type, unsigned index)
 		: resource_type(type), index(index)
@@ -111,7 +116,7 @@ public:
 private:
 	Type resource_type;
 	unsigned index;
-	unsigned physical_index;
+	unsigned physical_index = Unused;
 	std::unordered_set<unsigned> written_in_passes;
 	std::unordered_set<unsigned> read_in_passes;
 };
@@ -157,6 +162,8 @@ public:
 	{
 	}
 
+	enum { Unused = ~0u };
+
 	unsigned get_index() const
 	{
 		return index;
@@ -199,12 +206,12 @@ public:
 		return attachments_inputs;
 	}
 
-	const RenderTextureResource *get_depth_stencil_input() const
+	RenderTextureResource *get_depth_stencil_input() const
 	{
 		return depth_stencil_input;
 	}
 
-	const RenderTextureResource *get_depth_stencil_output() const
+	RenderTextureResource *get_depth_stencil_output() const
 	{
 		return depth_stencil_output;
 	}
@@ -222,7 +229,7 @@ public:
 private:
 	RenderGraph &graph;
 	unsigned index;
-	unsigned physical_pass = ~0u;
+	unsigned physical_pass = Unused;
 
 	std::vector<RenderTextureResource *> color_outputs;
 	std::vector<RenderTextureResource *> color_inputs;
@@ -245,6 +252,7 @@ public:
 
 	void bake();
 	void reset();
+	void log();
 
 	RenderTextureResource &get_texture_resource(const std::string &name);
 
@@ -289,5 +297,8 @@ private:
 	std::vector<PhysicalPass> physical_passes;
 	void build_physical_passes();
 	void build_transients();
+	void build_physical_resources();
+
+	std::vector<ResourceDimensions> physical_dimensions;
 };
 }

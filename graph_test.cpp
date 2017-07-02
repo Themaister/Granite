@@ -8,6 +8,12 @@ int Granite::application_main(int, char **)
 	RenderGraph graph;
 	AttachmentInfo info;
 
+	ResourceDimensions dim;
+	dim.width = 1280;
+	dim.height = 720;
+	dim.format = VK_FORMAT_B8G8R8A8_SRGB;
+	graph.set_backbuffer_dimensions(dim);
+
 	auto &pass0 = graph.add_pass("pass0");
 	pass0.add_color_output("a", info);
 	pass0.add_color_output("b", info);
@@ -24,6 +30,7 @@ int Granite::application_main(int, char **)
 	graph.set_backbuffer_source("screen");
 
 	graph.bake();
+	graph.log();
 
 	return 0;
 }

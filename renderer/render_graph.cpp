@@ -119,9 +119,136 @@ void RenderGraph::validate_passes()
 	}
 }
 
+void RenderGraph::build_physical_resources()
+{
+	unsigned phys_index = 0;
+
+	// Find resources which can alias safely.
+	for (auto &pass_index : pass_stack)
+	{
+		auto &pass = *passes[pass_index];
+
+		for (auto *input : pass.get_attachment_inputs())
+		{
+			if (input->get_physical_index() == RenderResource::Unused)
+			{
+				physical_dimensions.push_back(get_resource_dimensions(*input));
+				input->set_physical_index(phys_index++);
+			}
+		}
+
+		for (auto *input : pass.get_texture_inputs())
+		{
+			if (input->get_physical_index() == RenderResource::Unused)
+			{
+				physical_dimensions.push_back(get_resource_dimensions(*input));
+				input->set_physical_index(phys_index++);
+			}
+		}
+
+		for (auto *input : pass.get_color_scale_inputs())
+		{
+			if (input && input->get_physical_index() == RenderResource::Unused)
+			{
+				physical_dimensions.push_back(get_resource_dimensions(*input));
+				input->set_physical_index(phys_index++);
+			}
+		}
+
+		if (!pass.get_color_inputs().empty())
+		{
+			unsigned size = pass.get_color_inputs().size();
+			for (unsigned i = 0; i < size; i++)
+			{
+				auto *input = pass.get_color_inputs()[i];
+				if (input)
+				{
+					if (input->get_physical_index() == RenderResource::Unused)
+					{
+						physical_dimensions.push_back(get_resource_dimensions(*input));
+						input->set_physical_index(phys_index++);
+					}
+
+					if (pass.get_color_outputs()[i]->get_physical_index() == RenderResource::Unused)
+						pass.get_color_outputs()[i]->set_physical_index(input->get_physical_index());
+					else if (pass.get_color_outputs()[i]->get_physical_index() != input->get_physical_index())
+						throw logic_error("Cannot alias resources. Index already claimed.");
+				}
+			}
+		}
+
+		for (auto *output : pass.get_color_outputs())
+		{
+			if (output->get_physical_index() == RenderResource::Unused)
+			{
+				physical_dimensions.push_back(get_resource_dimensions(*output));
+				output->set_physical_index(phys_index++);
+			}
+		}
+
+		auto *ds_output = pass.get_depth_stencil_output();
+		auto *ds_input = pass.get_depth_stencil_input();
+		if (ds_input)
+		{
+			if (ds_input->get_physical_index() == RenderResource::Unused)
+			{
+				physical_dimensions.push_back(get_resource_dimensions(*ds_input));
+				ds_input->set_physical_index(phys_index++);
+			}
+
+			if (ds_output)
+			{
+				if (ds_output->get_physical_index() == RenderResource::Unused)
+					ds_output->set_physical_index(ds_input->get_physical_index());
+				else if (ds_output->get_physical_index() != ds_input->get_physical_index())
+					throw logic_error("Cannot alias resources. Index already claimed.");
+			}
+		}
+		else if (ds_output)
+		{
+			if (ds_output->get_physical_index() == RenderResource::Unused)
+			{
+				physical_dimensions.push_back(get_resource_dimensions(*ds_output));
+				ds_output->set_physical_index(ds_input->get_physical_index());
+			}
+		}
+	}
+}
+
 void RenderGraph::build_transients()
 {
+	for (auto &resource : resources)
+	{
+		if (resource->get_type() != RenderResource::Type::Texture)
+			continue;
 
+		unsigned physical_pass = ~0u;
+		bool transient = true;
+
+		for (auto &pass : resource->get_write_passes())
+		{
+			unsigned phys = passes[pass]->get_physical_pass_index();
+			if (physical_pass != ~0u && phys != physical_pass)
+			{
+				transient = false;
+				break;
+			}
+			physical_pass = phys;
+		}
+
+		for (auto &pass : resource->get_read_passes())
+		{
+			unsigned phys = passes[pass]->get_physical_pass_index();
+			if (physical_pass != ~0u && phys != physical_pass)
+			{
+				transient = false;
+				break;
+			}
+			physical_pass = phys;
+		}
+
+		static_cast<RenderTextureResource *>(resource.get())->set_transient_state(transient);
+	}
 }
 
 void RenderGraph::build_physical_passes()
@@ -208,6 +335,25 @@ void RenderGraph::build_physical_passes()
 	}
 }
 
+void RenderGraph::log()
+{
+	for (auto &resource : physical_dimensions)
+	{
+		LOGI("Resource #%u: %u x %u (fmt: %u)\n", unsigned(&resource - physical_dimensions.data()),
+		     resource.width, resource.height, unsigned(resource.format));
+	}
+
+	for (auto &passes : physical_passes)
+	{
+		LOGI("Physical pass #%u:\n", unsigned(&passes - physical_passes.data()));
+		for (auto &subpass : passes.passes)
+		{
+			LOGI("  Subpass #%u:\n", unsigned(&subpass - passes.passes.data()));
+
+		}
+	}
+}
+
 void RenderGraph::bake()
 {
 	validate_passes();
@@ -286,6 +432,7 @@ void RenderGraph::bake()
 
 	build_physical_passes();
 	build_transients();
+	build_physical_resources();
 
 	pass_barriers.clear();
 	pass_barriers.reserve(pass_stack.size());
@@ -298,6 +445,7 @@ ResourceDimensions RenderGraph::get_resource_dimensions(const RenderTextureResou
 	ResourceDimensions dim;
 	auto &info = resource.get_attachment_info();
 	dim.format = info.format;
+	dim.transient = resource.get_transient_state();
 
 	switch (info.size_class)
 	{
@@ -364,7 +512,7 @@ void RenderGraph::build_barriers()
 
 		for (auto *input : pass.get_texture_inputs())
 		{
-			auto &barrier = get_dst_access(input->get_index());
+			auto &barrier = get_dst_access(input->get_physical_index());
 			barrier.access |= VK_ACCESS_SHADER_READ_BIT;
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 				throw logic_error("Layout mismatch.");
@@ -373,7 +521,7 @@ void RenderGraph::build_barriers()
 
 		for (auto *input : pass.get_attachment_inputs())
 		{
-			auto &barrier = get_dst_access(input->get_index());
+			auto &barrier = get_dst_access(input->get_physical_index());
 			barrier.access |= VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 				throw logic_error("Layout mismatch.");
@@ -385,7 +533,7 @@ void RenderGraph::build_barriers()
 			if (!input)
 				continue;
 
-			auto &barrier = get_dst_access(input->get_index());
+			auto &barrier = get_dst_access(input->get_physical_index());
 			barrier.access |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 				throw logic_error("Layout mismatch.");
@@ -397,7 +545,7 @@ void RenderGraph::build_barriers()
 			if (!input)
 				continue;
 
-			auto &barrier = get_dst_access(input->get_index());
+			auto &barrier = get_dst_access(input->get_physical_index());
 			barrier.access |= VK_ACCESS_SHADER_READ_BIT;
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 				throw logic_error("Layout mismatch.");
@@ -406,7 +554,7 @@ void RenderGraph::build_barriers()
 
 		for (auto *output : pass.get_color_outputs())
 		{
-			auto &barrier = get_src_access(output->get_index());
+			auto &barrier = get_src_access(output->get_physical_index());
 			barrier.access |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 				throw logic_error("Layout mismatch.");
@@ -418,8 +566,8 @@ void RenderGraph::build_barriers()
 
 		if (output && input)
 		{
-			auto &dst_barrier = get_dst_access(input->get_index());
-			auto &src_barrier = get_src_access(output->get_index());
+			auto &dst_barrier = get_dst_access(input->get_physical_index());
+			auto &src_barrier = get_src_access(output->get_physical_index());
 
 			if (dst_barrier.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
 				dst_barrier.layout = VK_IMAGE_LAYOUT_GENERAL;
@@ -432,7 +580,7 @@ void RenderGraph::build_barriers()
 		}
 		else if (input)
 		{
-			auto &dst_barrier = get_dst_access(input->get_index());
+			auto &dst_barrier = get_dst_access(input->get_physical_index());
 			if (dst_barrier.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
 				dst_barrier.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 			else
@@ -441,7 +589,7 @@ void RenderGraph::build_barriers()
 		}
 		else if (output)
 		{
-			auto &src_barrier = get_src_access(output->get_index());
+			auto &src_barrier = get_src_access(output->get_physical_index());
 			src_barrier.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 			src_barrier.access |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 		}

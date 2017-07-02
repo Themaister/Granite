@@ -500,6 +500,8 @@ void RenderGraph::bake()
 	physical_dimensions[swapchain_physical_index].transient = false;
 	if (physical_dimensions[swapchain_physical_index] != swapchain_dimensions)
 		swapchain_physical_index = RenderResource::Unused;
+
+	build_physical_barriers();
 }
 
 ResourceDimensions RenderGraph::get_resource_dimensions(const RenderTextureResource &resource) const
@@ -542,6 +544,77 @@ ResourceDimensions RenderGraph::get_resource_dimensions(const RenderTextureResou
 		dim.format = swapchain_dimensions.format;
 
 	return dim;
+}
+
+void RenderGraph::build_physical_barriers()
+{
+	auto barrier_itr = begin(pass_barriers);
+
+	struct ResourceState
+	{
+		VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
+		VkAccessFlags invalidated_types = 0;
+		VkAccessFlags flushed_types = 0;
+
+		// If we need to tack on multiple invalidates after the fact ...
+		VkAccessFlags *last_invalidate = nullptr;
+	};
+
+	// To handle global state.
+	vector<ResourceState> global_resource_state(physical_dimensions.size());
+
+	// To handle state inside a physical pass.
+	vector<ResourceState> resource_state;
+	resource_state.reserve(physical_dimensions.size());
+
+	for (auto &physical_pass : physical_passes)
+	{
+		resource_state.clear();
+		resource_state.resize(physical_dimensions.size());
+
+		for (auto &subpass : physical_pass.passes)
+		{
+			auto &barriers = *barrier_itr;
+			auto &invalidates = barriers.invalidate;
+			auto &flushes = barriers.flush;
+
+			for (auto &invalidate : invalidates)
+			{
+				// Transients and swapchain images are handled implicitly.
+				if (physical_dimensions[invalidate.resource_index].transient ||
+					invalidate.resource_index == swapchain_physical_index)
+				{
+					continue;
+				}
+
+				// Only the first use of a resource in a physical pass needs to be handled externally.
+				if (resource_state[invalidate.resource_index].layout == VK_IMAGE_LAYOUT_UNDEFINED)
+				{
+					resource_state[invalidate.resource_index].invalidated_types |= invalidate.access;
+					resource_state[invalidate.resource_index].layout = invalidate.layout;
+				}
+
+				// All pending flushes have been invalidated in the appropriate stages already.
+				resource_state[invalidate.resource_index].flushed_types = 0;
+			}
+
+			for (auto &flush : flushes)
+			{
+				// Transients are handled implicitly.
+				if (physical_dimensions[flush.resource_index].transient ||
+				    flush.resource_index == swapchain_physical_index)
+				{
+					continue;
+				}
+
+				resource_state[flush.resource_index].flushed_types |= flush.access;
+				if (resource_state[flush.resource_index].layout == VK_IMAGE_LAYOUT_UNDEFINED)
+					resource_state[flush.resource_index].layout = flush.layout;
+			}
+
+			++barrier_itr;
+		}
+	}
 }
 
 void RenderGraph::build_barriers()

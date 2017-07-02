@@ -209,9 +209,20 @@ public:
 		return depth_stencil_output;
 	}
 
+	unsigned get_physical_pass_index() const
+	{
+		return physical_pass;
+	}
+
+	void set_physical_pass_index(unsigned index)
+	{
+		physical_pass = index;
+	}
+
 private:
 	RenderGraph &graph;
 	unsigned index;
+	unsigned physical_pass = ~0u;
 
 	std::vector<RenderTextureResource *> color_outputs;
 	std::vector<RenderTextureResource *> color_inputs;
@@ -277,5 +288,6 @@ private:
 	};
 	std::vector<PhysicalPass> physical_passes;
 	void build_physical_passes();
+	void build_transients();
 };
 }

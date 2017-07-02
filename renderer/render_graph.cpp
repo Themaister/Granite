@@ -119,13 +119,61 @@ void RenderGraph::validate_passes()
 	}
 }
 
+void RenderGraph::build_transients()
+{
+
+}
+
 void RenderGraph::build_physical_passes()
 {
 	physical_passes.clear();
 	PhysicalPass physical_pass;
 
-	const auto should_merge = [](const RenderPass &start, const RenderPass &next) -> bool {
-		return false;
+	const auto find_attachment = [](const vector<RenderTextureResource *> &resources, const RenderTextureResource *resource) -> bool {
+		auto itr = find(begin(resources), end(resources), resource);
+		return itr != end(resources);
+	};
+
+	const auto should_merge = [&](const RenderPass &prev, const RenderPass &next) -> bool {
+		// Need non-local dependency, cannot merge.
+		for (auto *input : next.get_texture_inputs())
+		{
+			if (find_attachment(prev.get_color_outputs(), input))
+				return false;
+			if (input && prev.get_depth_stencil_output() == input)
+				return false;
+		}
+
+		// Need non-local dependency, cannot merge.
+		for (auto *input : next.get_color_scale_inputs())
+		{
+			if (find_attachment(prev.get_color_outputs(), input))
+				return false;
+		}
+
+		// Keep color on tile.
+		for (auto *input : next.get_color_inputs())
+		{
+			if (!input)
+				continue;
+			if (find_attachment(prev.get_color_outputs(), input))
+				return true;
+		}
+
+		// Keep depth on tile.
+		if (next.get_depth_stencil_input() && next.get_depth_stencil_input() == prev.get_depth_stencil_output())
+			return true;
+
+		// Keep depth attachment or color on-tile.
+		for (auto *input : next.get_attachment_inputs())
+		{
+			if (find_attachment(prev.get_color_outputs(), input))
+				return true;
+			if (input && prev.get_depth_stencil_output() == input)
+				return true;
+		}
+
+		return true;
 	};
 
 	for (unsigned index = 0; index < pass_stack.size(); )
@@ -133,7 +181,17 @@ void RenderGraph::build_physical_passes()
 		unsigned merge_end = index + 1;
 		for (; merge_end < pass_stack.size(); merge_end++)
 		{
-			if (!should_merge(*passes[pass_stack[index]], *passes[pass_stack[merge_end]]))
+			bool merge = true;
+			for (unsigned merge_start = index; merge_start < merge_end; merge_start++)
+			{
+				if (!should_merge(*passes[pass_stack[merge_start]], *passes[pass_stack[merge_end]]))
+				{
+					merge = false;
+					break;
+				}
+			}
+
+			if (!merge)
 				break;
 		}
 
@@ -141,12 +199,18 @@ void RenderGraph::build_physical_passes()
 		physical_passes.push_back(move(physical_pass));
 		index = merge_end;
 	}
+
+	for (auto &physical_pass : physical_passes)
+	{
+		unsigned index = &physical_pass - physical_passes.data();
+		for (auto &pass : physical_pass.passes)
+			passes[pass]->set_physical_pass_index(index);
+	}
 }
 
 void RenderGraph::bake()
 {
 	validate_passes();
-	build_physical_passes();
 
 	auto itr = resource_to_index.find(backbuffer_source);
 	if (itr == end(resource_to_index))
@@ -219,6 +283,9 @@ void RenderGraph::bake()
 
 	reverse(begin(pass_stack), end(pass_stack));
 	filter_passes(pass_stack);
+
+	build_physical_passes();
+	build_transients();
 
 	pass_barriers.clear();
 	pass_barriers.reserve(pass_stack.size());

@@ -348,7 +348,7 @@ void RenderGraph::log()
 
 	const auto swap_str = [this](const Barrier &barrier) -> const char * {
 		return barrier.resource_index == swapchain_physical_index ?
-	           " (swapchain) " : "";
+	           " (swapchain)" : "";
 	};
 
 	for (auto &passes : physical_passes)
@@ -360,11 +360,11 @@ void RenderGraph::log()
 			auto &pass = *this->passes[subpass];
 
 			auto &barriers = *barrier_itr;
-			for (auto &barrier : barriers.dst_access)
+			for (auto &barrier : barriers.invalidate)
 			{
 				if (!physical_dimensions[barrier.resource_index].transient)
 				{
-					LOGI("      DstBarrier: %u%s, layout: %s, access: %s\n",
+					LOGI("      Invalidate: %u%s, layout: %s, access: %s\n",
 					     barrier.resource_index,
 					     swap_str(barrier),
 					     Vulkan::layout_to_string(barrier.layout),
@@ -394,12 +394,12 @@ void RenderGraph::log()
 				}
 			}
 
-			for (auto &barrier : barriers.src_access)
+			for (auto &barrier : barriers.flush)
 			{
 				if (!physical_dimensions[barrier.resource_index].transient &&
 					barrier.resource_index != swapchain_physical_index)
 				{
-					LOGI("      SrcBarrier: %u, layout: %s, access: %s\n",
+					LOGI("      Flush: %u, layout: %s, access: %s\n",
 					     barrier.resource_index, Vulkan::layout_to_string(barrier.layout),
 					     Vulkan::access_flags_to_string(barrier.access).c_str());
 				}
@@ -564,17 +564,17 @@ void RenderGraph::build_barriers()
 		auto &pass = *passes[index];
 		Barriers barriers;
 
-		const auto get_dst_access = [&](unsigned index) -> Barrier & {
-			return get_access(barriers.dst_access, index);
+		const auto get_invalidate_access = [&](unsigned index) -> Barrier & {
+			return get_access(barriers.invalidate, index);
 		};
 
-		const auto get_src_access = [&](unsigned index) -> Barrier & {
-			return get_access(barriers.src_access, index);
+		const auto get_flush_access = [&](unsigned index) -> Barrier & {
+			return get_access(barriers.flush, index);
 		};
 
 		for (auto *input : pass.get_texture_inputs())
 		{
-			auto &barrier = get_dst_access(input->get_physical_index());
+			auto &barrier = get_invalidate_access(input->get_physical_index());
 			barrier.access |= VK_ACCESS_SHADER_READ_BIT;
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 				throw logic_error("Layout mismatch.");
@@ -583,7 +583,7 @@ void RenderGraph::build_barriers()
 
 		for (auto *input : pass.get_attachment_inputs())
 		{
-			auto &barrier = get_dst_access(input->get_physical_index());
+			auto &barrier = get_invalidate_access(input->get_physical_index());
 			barrier.access |= VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 				throw logic_error("Layout mismatch.");
@@ -595,7 +595,7 @@ void RenderGraph::build_barriers()
 			if (!input)
 				continue;
 
-			auto &barrier = get_dst_access(input->get_physical_index());
+			auto &barrier = get_invalidate_access(input->get_physical_index());
 			barrier.access |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 				throw logic_error("Layout mismatch.");
@@ -607,7 +607,7 @@ void RenderGraph::build_barriers()
 			if (!input)
 				continue;
 
-			auto &barrier = get_dst_access(input->get_physical_index());
+			auto &barrier = get_invalidate_access(input->get_physical_index());
 			barrier.access |= VK_ACCESS_SHADER_READ_BIT;
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 				throw logic_error("Layout mismatch.");
@@ -616,7 +616,7 @@ void RenderGraph::build_barriers()
 
 		for (auto *output : pass.get_color_outputs())
 		{
-			auto &barrier = get_src_access(output->get_physical_index());
+			auto &barrier = get_flush_access(output->get_physical_index());
 			barrier.access |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 				throw logic_error("Layout mismatch.");
@@ -628,8 +628,8 @@ void RenderGraph::build_barriers()
 
 		if (output && input)
 		{
-			auto &dst_barrier = get_dst_access(input->get_physical_index());
-			auto &src_barrier = get_src_access(output->get_physical_index());
+			auto &dst_barrier = get_invalidate_access(input->get_physical_index());
+			auto &src_barrier = get_flush_access(output->get_physical_index());
 
 			if (dst_barrier.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
 				dst_barrier.layout = VK_IMAGE_LAYOUT_GENERAL;
@@ -642,7 +642,7 @@ void RenderGraph::build_barriers()
 		}
 		else if (input)
 		{
-			auto &dst_barrier = get_dst_access(input->get_physical_index());
+			auto &dst_barrier = get_invalidate_access(input->get_physical_index());
 			if (dst_barrier.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
 				dst_barrier.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 			else
@@ -651,7 +651,7 @@ void RenderGraph::build_barriers()
 		}
 		else if (output)
 		{
-			auto &src_barrier = get_src_access(output->get_physical_index());
+			auto &src_barrier = get_flush_access(output->get_physical_index());
 			src_barrier.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 			src_barrier.access |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 		}

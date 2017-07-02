@@ -50,6 +50,9 @@ static inline std::string access_flags_to_string(VkAccessFlags flags)
 	if (flags & VK_ACCESS_TRANSFER_READ_BIT)
 		result += "TRANSFER_READ ";
 
+	if (!result.empty())
+		result.pop_back();
+
 	return result;
 }
 }

@@ -277,8 +277,8 @@ private:
 
 	struct Barriers
 	{
-		std::vector<Barrier> dst_access;
-		std::vector<Barrier> src_access;
+		std::vector<Barrier> invalidate;
+		std::vector<Barrier> flush;
 	};
 
 	std::vector<Barriers> pass_barriers;
@@ -293,11 +293,14 @@ private:
 	struct PhysicalPass
 	{
 		std::vector<unsigned> passes;
+		std::vector<Barrier> invalidate;
+		std::vector<Barrier> flush;
 	};
 	std::vector<PhysicalPass> physical_passes;
 	void build_physical_passes();
 	void build_transients();
 	void build_physical_resources();
+	void build_physical_barriers();
 
 	std::vector<ResourceDimensions> physical_dimensions;
 	unsigned swapchain_physical_index = RenderResource::Unused;

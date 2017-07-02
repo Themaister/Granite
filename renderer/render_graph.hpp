@@ -4,6 +4,7 @@
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include "vulkan.hpp"
 
 namespace Granite
@@ -17,13 +18,38 @@ enum SizeClass
 	InputRelative
 };
 
-struct ColorOutputInfo
+struct AttachmentInfo
 {
 	SizeClass size_class = SizeClass::SwapchainRelative;
 	float size_x = 1.0f;
 	float size_y = 1.0f;
 	VkFormat format = VK_FORMAT_UNDEFINED;
 	std::string size_relative_name;
+};
+
+struct ResourceDimensions
+{
+	VkFormat format = VK_FORMAT_UNDEFINED;
+	unsigned width = 0;
+	unsigned height = 0;
+	unsigned depth = 1;
+	unsigned layers = 1;
+	unsigned levels = 1;
+
+	bool operator==(const ResourceDimensions &other) const
+	{
+		return format == other.format &&
+	           width == other.width &&
+	           height == other.height &&
+	           depth == other.depth &&
+	           layers == other.layers &&
+	           levels == other.levels;
+	}
+
+	bool operator!=(const ResourceDimensions &other) const
+	{
+		return !(*this == other);
+	}
 };
 
 class RenderResource
@@ -35,8 +61,8 @@ public:
 		Texture
 	};
 
-	RenderResource(Type type)
-		: resource_type(type)
+	RenderResource(Type type, unsigned index)
+		: resource_type(type), index(index)
 	{
 	}
 
@@ -67,8 +93,25 @@ public:
 		return written_in_passes;
 	}
 
+	unsigned get_index() const
+	{
+		return index;
+	}
+
+	void set_physical_index(unsigned index)
+	{
+		physical_index = index;
+	}
+
+	unsigned get_physical_index() const
+	{
+		return physical_index;
+	}
+
 private:
 	Type resource_type;
+	unsigned index;
+	unsigned physical_index;
 	std::unordered_set<unsigned> written_in_passes;
 	std::unordered_set<unsigned> read_in_passes;
 };
@@ -76,23 +119,34 @@ private:
 class RenderTextureResource : public RenderResource
 {
 public:
-	RenderTextureResource()
-		: RenderResource(RenderResource::Type::Texture)
+	RenderTextureResource(unsigned index)
+		: RenderResource(RenderResource::Type::Texture, index)
 	{
 	}
 
-	void set_color_output_info(const ColorOutputInfo &info)
+	void set_attachment_info(const AttachmentInfo &info)
 	{
 		this->info = info;
 	}
 
-	const ColorOutputInfo &get_color_output_info() const
+	const AttachmentInfo &get_attachment_info() const
 	{
 		return info;
 	}
 
+	void set_transient_state(bool enable)
+	{
+		transient = enable;
+	}
+
+	bool get_transient_state() const
+	{
+		return transient;
+	}
+
 private:
-	ColorOutputInfo info;
+	AttachmentInfo info;
+	bool transient = false;
 };
 
 class RenderPass
@@ -108,10 +162,17 @@ public:
 		return index;
 	}
 
-	RenderTextureResource &add_color_output(const std::string &name, const ColorOutputInfo &info);
+	RenderTextureResource &set_depth_stencil_input(const std::string &name);
+	RenderTextureResource &set_depth_stencil_output(const std::string &name, const AttachmentInfo &info);
+	RenderTextureResource &add_color_output(const std::string &name, const AttachmentInfo &info);
 	RenderTextureResource &add_texture_input(const std::string &name);
 	RenderTextureResource &add_color_input(const std::string &name);
 	RenderTextureResource &add_attachment_input(const std::string &name);
+
+	void make_color_input_scaled(unsigned index)
+	{
+		std::swap(color_scale_inputs[index], color_inputs[index]);
+	}
 
 	const std::vector<RenderTextureResource *> &get_color_outputs() const
 	{
@@ -121,6 +182,11 @@ public:
 	const std::vector<RenderTextureResource *> &get_color_inputs() const
 	{
 		return color_inputs;
+	}
+
+	const std::vector<RenderTextureResource *> &get_color_scale_inputs() const
+	{
+		return color_scale_inputs;
 	}
 
 	const std::vector<RenderTextureResource *> &get_texture_inputs() const
@@ -133,14 +199,27 @@ public:
 		return attachments_inputs;
 	}
 
+	const RenderTextureResource *get_depth_stencil_input() const
+	{
+		return depth_stencil_input;
+	}
+
+	const RenderTextureResource *get_depth_stencil_output() const
+	{
+		return depth_stencil_output;
+	}
+
 private:
 	RenderGraph &graph;
 	unsigned index;
 
 	std::vector<RenderTextureResource *> color_outputs;
 	std::vector<RenderTextureResource *> color_inputs;
+	std::vector<RenderTextureResource *> color_scale_inputs;
 	std::vector<RenderTextureResource *> texture_inputs;
 	std::vector<RenderTextureResource *> attachments_inputs;
+	RenderTextureResource *depth_stencil_input = nullptr;
+	RenderTextureResource *depth_stencil_output = nullptr;
 };
 
 class RenderGraph
@@ -148,6 +227,11 @@ class RenderGraph
 public:
 	RenderPass &add_pass(const std::string &name);
 	void set_backbuffer_source(const std::string &name);
+	void set_backbuffer_dimensions(const ResourceDimensions &dim)
+	{
+		swapchain_dimensions = dim;
+	}
+
 	void bake();
 	void reset();
 
@@ -163,5 +247,35 @@ private:
 	std::vector<unsigned> pass_stack;
 	std::vector<unsigned> pushed_passes;
 	std::vector<unsigned> pushed_passes_tmp;
+	std::unordered_set<unsigned> handled_passes;
+
+	struct Barrier
+	{
+		unsigned resource_index;
+		VkImageLayout layout;
+		VkAccessFlags access;
+	};
+
+	struct Barriers
+	{
+		std::vector<Barrier> dst_access;
+		std::vector<Barrier> src_access;
+	};
+
+	std::vector<Barriers> pass_barriers;
+
+	void filter_passes(std::vector<unsigned> &list);
+	void validate_passes();
+	void build_barriers();
+
+	ResourceDimensions get_resource_dimensions(const RenderTextureResource &resource) const;
+	ResourceDimensions swapchain_dimensions;
+
+	struct PhysicalPass
+	{
+		std::vector<unsigned> passes;
+	};
+	std::vector<PhysicalPass> physical_passes;
+	void build_physical_passes();
 };
 }

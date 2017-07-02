@@ -1,4 +1,5 @@
 #include "render_graph.hpp"
+#include "type_to_string.hpp"
 #include <algorithm>
 
 using namespace std;
@@ -343,13 +344,68 @@ void RenderGraph::log()
 		     resource.width, resource.height, unsigned(resource.format));
 	}
 
+	auto barrier_itr = begin(pass_barriers);
+
+	const auto swap_str = [this](const Barrier &barrier) -> const char * {
+		return barrier.resource_index == swapchain_physical_index ?
+	           " (swapchain) " : "";
+	};
+
 	for (auto &passes : physical_passes)
 	{
 		LOGI("Physical pass #%u:\n", unsigned(&passes - physical_passes.data()));
 		for (auto &subpass : passes.passes)
 		{
-			LOGI("  Subpass #%u:\n", unsigned(&subpass - passes.passes.data()));
+			LOGI("    Subpass #%u:\n", unsigned(&subpass - passes.passes.data()));
+			auto &pass = *this->passes[subpass];
 
+			auto &barriers = *barrier_itr;
+			for (auto &barrier : barriers.dst_access)
+			{
+				if (!physical_dimensions[barrier.resource_index].transient)
+				{
+					LOGI("      DstBarrier: %u%s, layout: %s, access: %s\n",
+					     barrier.resource_index,
+					     swap_str(barrier),
+					     Vulkan::layout_to_string(barrier.layout),
+					     Vulkan::access_flags_to_string(barrier.access).c_str());
+				}
+			}
+
+			if (pass.get_depth_stencil_output())
+				LOGI("        DepthStencil RW: %u\n", pass.get_depth_stencil_output()->get_physical_index());
+			else if (pass.get_depth_stencil_input())
+				LOGI("        DepthStencil ReadOnly: %u\n", pass.get_depth_stencil_input()->get_physical_index());
+
+			for (auto &output : pass.get_color_outputs())
+				LOGI("        ColorAttachment #%u: %u\n", unsigned(&output - pass.get_color_outputs().data()), output->get_physical_index());
+			for (auto &input : pass.get_attachment_inputs())
+				LOGI("        InputAttachment #%u: %u\n", unsigned(&input - pass.get_attachment_inputs().data()), input->get_physical_index());
+			for (auto &input : pass.get_texture_inputs())
+				LOGI("        Texture #%u: %u\n", unsigned(&input - pass.get_texture_inputs().data()), input->get_physical_index());
+
+			for (auto &input : pass.get_color_scale_inputs())
+			{
+				if (input)
+				{
+					LOGI("        ColorScaleInput #%u: %u\n",
+					     unsigned(&input - pass.get_color_scale_inputs().data()),
+					     input->get_physical_index());
+				}
+			}
+
+			for (auto &barrier : barriers.src_access)
+			{
+				if (!physical_dimensions[barrier.resource_index].transient &&
+					barrier.resource_index != swapchain_physical_index)
+				{
+					LOGI("      SrcBarrier: %u, layout: %s, access: %s\n",
+					     barrier.resource_index, Vulkan::layout_to_string(barrier.layout),
+					     Vulkan::access_flags_to_string(barrier.access).c_str());
+				}
+			}
+
+			++barrier_itr;
 		}
 	}
 }
@@ -438,6 +494,12 @@ void RenderGraph::bake()
 	pass_barriers.reserve(pass_stack.size());
 
 	build_barriers();
+
+	// Check if the swapchain needs to be blitted to (in case the geometry does not match the backbuffer).
+	swapchain_physical_index = resources[resource_to_index[backbuffer_source]]->get_physical_index();
+	physical_dimensions[swapchain_physical_index].transient = false;
+	if (physical_dimensions[swapchain_physical_index] != swapchain_dimensions)
+		swapchain_physical_index = RenderResource::Unused;
 }
 
 ResourceDimensions RenderGraph::get_resource_dimensions(const RenderTextureResource &resource) const

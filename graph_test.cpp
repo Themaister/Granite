@@ -21,10 +21,11 @@ int Granite::application_main(int, char **)
 	auto &pass1 = graph.add_pass("pass1");
 	pass1.add_color_output("a1", info);
 	pass1.add_color_input("a");
+	pass1.add_texture_input("b");
 
 	auto &pass2 = graph.add_pass("pass2");
 	pass2.add_color_output("screen", info);
-	pass2.add_texture_input("a1");
+	pass2.add_attachment_input("a1");
 	pass2.add_texture_input("b");
 
 	graph.set_backbuffer_source("screen");

@@ -300,5 +300,6 @@ private:
 	void build_physical_resources();
 
 	std::vector<ResourceDimensions> physical_dimensions;
+	unsigned swapchain_physical_index = RenderResource::Unused;
 };
 }

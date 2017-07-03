@@ -39,6 +39,8 @@ RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
 	VkAttachmentLoadOp ds_load_op = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 	VkAttachmentStoreOp ds_store_op = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 
+	VK_ASSERT(!(info.clear_attachments & info.load_attachments));
+
 	const auto color_load_op = [&info](unsigned index) -> VkAttachmentLoadOp {
 		if ((info.clear_attachments & (1u << index)) != 0)
 			return VK_ATTACHMENT_LOAD_OP_CLEAR;

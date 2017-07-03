@@ -8,56 +8,98 @@ class RPImpl : public RenderPassImplementation
 public:
 	void build_render_pass(RenderGraph &, Vulkan::CommandBuffer &) override
 	{
+	}
 
+	bool get_clear_color(unsigned index, VkClearColorValue *value) override
+	{
+		if (value)
+		{
+			value->float32[0] = 1.0f;
+			value->float32[1] = 0.1f;
+			value->float32[2] = 0.1f;
+			value->float32[3] = 1.0f;
+		}
+
+		return true;
+	}
+
+	bool get_clear_depth_stencil(VkClearDepthStencilValue *value) override
+	{
+		if (value)
+		{
+			value->depth = 1.0f;
+			value->stencil = 0;
+		}
+
+		return true;
+	}
+};
+
+class RenderGraphTest : public Application, public EventHandler
+{
+public:
+	RenderGraphTest()
+		: Application(1280, 720)
+	{
+		EventManager::get_global().register_latch_handler(Vulkan::SwapchainParameterEvent::type_id,
+		                                                  &RenderGraphTest::on_swapchain_created,
+		                                                  &RenderGraphTest::on_swapchain_destroyed,
+		                                                  this);
+	}
+
+	void bake_graph(const Vulkan::SwapchainParameterEvent &parameter)
+	{
+		graph.reset();
+
+		AttachmentInfo info;
+		info.size_x = 2.0f;
+		info.size_y = 2.0f;
+		auto ds_info = info;
+		ds_info.format = get_wsi().get_device().get_default_depth_format();
+
+		ResourceDimensions dim;
+		dim.width = parameter.get_width();
+		dim.height = parameter.get_height();
+		dim.format = parameter.get_format();
+		graph.set_backbuffer_dimensions(dim);
+
+		auto &pass = graph.add_pass("pass");
+		pass.add_color_output("screen", info);
+		pass.set_depth_stencil_output("depth", ds_info);
+		pass.set_implementation(&clear_screen);
+
+		graph.set_backbuffer_source("screen");
+
+		graph.bake();
+		graph.log();
+	}
+
+	void render_frame(double, double) override
+	{
+		auto &device = get_wsi().get_device();
+		graph.setup_attachments(device, &device.get_swapchain_view());
+		auto cmd = device.request_command_buffer();
+		graph.enqueue_initial_barriers(*cmd);
+		graph.enqueue_render_passes(*cmd);
+		device.submit(cmd);
+	}
+
+private:
+	RenderGraph graph;
+	RPImpl clear_screen;
+
+	void on_swapchain_created(const Event &event)
+	{
+		bake_graph(event.as<Vulkan::SwapchainParameterEvent>());
+	}
+
+	void on_swapchain_destroyed(const Event &)
+	{
 	}
 };
 
 int Granite::application_main(int, char **)
 {
-	RenderGraph graph;
-	AttachmentInfo info;
-	info.size_x = 2.0f;
-	info.size_y = 2.0f;
-
-	RPImpl impl;
-
-	ResourceDimensions dim;
-	dim.width = 1280;
-	dim.height = 720;
-	dim.format = VK_FORMAT_B8G8R8A8_SRGB;
-	graph.set_backbuffer_dimensions(dim);
-
-	auto &pass0 = graph.add_pass("pass0");
-	pass0.add_color_output("a", info);
-	pass0.add_color_output("b", info);
-	pass0.set_depth_stencil_output("c", info);
-	pass0.set_implementation(&impl);
-
-	auto &pass1 = graph.add_pass("pass1");
-	pass1.add_color_output("a1", info);
-	pass1.add_color_input("a");
-	pass1.add_texture_input("b");
-	pass1.set_depth_stencil_output("c1", info);
-	pass1.set_implementation(&impl);
-
-	auto &pass2 = graph.add_pass("pass2");
-	pass2.add_color_output("screen1", info);
-	pass2.add_attachment_input("a1");
-	pass2.set_depth_stencil_input("c1");
-	pass2.add_texture_input("b");
-	pass2.add_attachment_input("c1");
-	pass2.set_implementation(&impl);
-
-	auto &pass3 = graph.add_pass("pass3");
-	pass3.add_color_output("screen", info);
-	pass3.add_texture_input("c1");
-	pass3.add_color_input("screen1");
-	pass3.set_implementation(&impl);
-
-	graph.set_backbuffer_source("screen");
-
-	graph.bake();
-	graph.log();
-
-	return 0;
+	RenderGraphTest app;
+	return app.run();
 }

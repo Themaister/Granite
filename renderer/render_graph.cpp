@@ -271,20 +271,29 @@ void RenderGraph::build_render_pass_info()
 		auto &colors = physical_pass.physical_color_attachments;
 		colors.clear();
 
-		const auto add_unique = [&](unsigned index) -> pair<unsigned, bool> {
-			auto itr = find(begin(physical_pass.physical_color_attachments), end(colors), index);
+		const auto add_unique_color = [&](unsigned index) -> pair<unsigned, bool> {
+			auto itr = find(begin(colors), end(colors), index);
 			if (itr != end(colors))
 				return make_pair(unsigned(itr - begin(colors)), false);
 			else
 			{
-				unsigned ret = physical_attachments.size();
+				unsigned ret = colors.size();
 				colors.push_back(index);
 				return make_pair(ret, true);
 			}
 		};
 
+		const auto add_unique_input_attachment = [&](unsigned index) -> pair<unsigned, bool> {
+			if (index == physical_pass.physical_depth_stencil_attachment)
+				return make_pair(unsigned(colors.size()), false); // The N + 1 attachment refers to depth.
+			else
+				return add_unique_color(index);
+		};
+
 		for (auto &subpass : physical_pass.passes)
 		{
+			vector<ScaledClearRequests> scaled_clear_requests;
+
 			auto &pass = *passes[subpass];
 			unsigned subpass_index = unsigned(&subpass - physical_pass.passes.data());
 
@@ -293,12 +302,15 @@ void RenderGraph::build_render_pass_info()
 			physical_pass.subpasses[subpass_index].num_color_attachments = num_color_attachments;
 			for (unsigned i = 0; i < num_color_attachments; i++)
 			{
-				auto res = add_unique(pass.get_color_outputs()[i]->get_physical_index());
+				auto res = add_unique_color(pass.get_color_outputs()[i]->get_physical_index());
 				physical_pass.subpasses[subpass_index].color_attachments[i] = res.first;
 
 				if (res.second) // This is the first time the color attachment is used, check if we need LOAD, or if we can clear it.
 				{
-					if (pass.get_color_inputs().empty() || !pass.get_color_inputs()[i])
+					bool has_color_input = !pass.get_color_inputs().empty() && pass.get_color_inputs()[i];
+					bool has_scaled_color_input = !pass.get_color_scale_inputs().empty() && pass.get_color_scale_inputs()[i];
+
+					if (!has_color_input && !has_scaled_color_input)
 					{
 						if (pass.get_implementation().get_clear_color(i))
 						{
@@ -308,30 +320,31 @@ void RenderGraph::build_render_pass_info()
 					}
 					else
 					{
-						rp.load_attachments |= 1u << res.first;
+						if (has_scaled_color_input)
+							scaled_clear_requests.push_back({ i, pass.get_color_outputs()[i]->get_physical_index() });
+						else
+							rp.load_attachments |= 1u << res.first;
 					}
 				}
 			}
 
-			// Add input attachments.
-			unsigned num_input_attachments = pass.get_attachment_inputs().size();
-			physical_pass.subpasses[subpass_index].num_input_attachments = num_input_attachments;
-			for (unsigned i = 0; i < num_input_attachments; i++)
-			{
-				auto res = add_unique(pass.get_attachment_inputs()[i]->get_physical_index());
-				physical_pass.subpasses[subpass_index].input_attachments[i] = res.first;
-
-				// If this is the first subpass the attachment is used, we need to load it.
-				if (res.second)
-					rp.load_attachments |= 1u << res.first;
-			}
+			physical_pass.scaled_clear_requests.push_back(move(scaled_clear_requests));
 
 			auto *ds_input = pass.get_depth_stencil_input();
 			auto *ds_output = pass.get_depth_stencil_output();
 
+			const auto add_unique_ds = [&](unsigned index) -> pair<unsigned, bool> {
+				assert(physical_pass.physical_depth_stencil_attachment == RenderResource::Unused ||
+				       physical_pass.physical_depth_stencil_attachment == ds_output->get_physical_index());
+
+				bool new_attachment = physical_pass.physical_depth_stencil_attachment == RenderResource::Unused;
+				physical_pass.physical_depth_stencil_attachment = index;
+				return make_pair(index, new_attachment);
+			};
+
 			if (ds_output && ds_input)
 			{
-				auto res = add_unique(ds_output->get_physical_index());
+				auto res = add_unique_ds(ds_output->get_physical_index());
 				// If this is the first subpass the attachment is used, we need to load it.
 				if (res.second)
 					rp.load_attachments |= 1u << res.first;
@@ -339,13 +352,10 @@ void RenderGraph::build_render_pass_info()
 				rp.op_flags |= Vulkan::RENDER_PASS_OP_DEPTH_STENCIL_OPTIMAL_BIT | Vulkan::RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT;
 				physical_pass.subpasses[subpass_index].depth_stencil_mode = Vulkan::RenderPassInfo::DepthStencil::ReadWrite;
 
-				assert(physical_pass.physical_depth_stencil_attachment == RenderResource::Unused ||
-				       physical_pass.physical_depth_stencil_attachment == ds_output->get_physical_index());
-				physical_pass.physical_depth_stencil_attachment = ds_output->get_physical_index();
 			}
 			else if (ds_output)
 			{
-				auto res = add_unique(ds_output->get_physical_index());
+				auto res = add_unique_ds(ds_output->get_physical_index());
 				// If this is the first subpass the attachment is used, we need to either clear or discard.
 				if (res.second && pass.get_implementation().get_clear_depth_stencil())
 				{
@@ -363,7 +373,7 @@ void RenderGraph::build_render_pass_info()
 			}
 			else if (ds_input)
 			{
-				auto res = add_unique(ds_input->get_physical_index());
+				auto res = add_unique_ds(ds_input->get_physical_index());
 
 				// If this is the first subpass the attachment is used, we need to load.
 				if (res.second)
@@ -389,14 +399,30 @@ void RenderGraph::build_render_pass_info()
 				}
 
 				physical_pass.subpasses[subpass_index].depth_stencil_mode = Vulkan::RenderPassInfo::DepthStencil::ReadOnly;
-
-				assert(physical_pass.physical_depth_stencil_attachment == RenderResource::Unused ||
-				       physical_pass.physical_depth_stencil_attachment == ds_input->get_physical_index());
-				physical_pass.physical_depth_stencil_attachment = ds_input->get_physical_index();
 			}
 			else
 			{
 				physical_pass.subpasses[subpass_index].depth_stencil_mode = Vulkan::RenderPassInfo::DepthStencil::None;
+			}
+		}
+
+		for (auto &subpass : physical_pass.passes)
+		{
+			auto &pass = *passes[subpass];
+			unsigned subpass_index = unsigned(&subpass - physical_pass.passes.data());
+
+			// Add input attachments.
+			// Have to do these in a separate loop so we can pick up depth stencil input attachments properly.
+			unsigned num_input_attachments = pass.get_attachment_inputs().size();
+			physical_pass.subpasses[subpass_index].num_input_attachments = num_input_attachments;
+			for (unsigned i = 0; i < num_input_attachments; i++)
+			{
+				auto res = add_unique_input_attachment(pass.get_attachment_inputs()[i]->get_physical_index());
+				physical_pass.subpasses[subpass_index].input_attachments[i] = res.first;
+
+				// If this is the first subpass the attachment is used, we need to load it.
+				if (res.second)
+					rp.load_attachments |= 1u << res.first;
 			}
 		}
 
@@ -741,6 +767,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::CommandBuffer &cmd)
 		physical_attachments[index]->get_image().set_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 		auto rp_info = cmd.get_device().get_swapchain_render_pass(Vulkan::SwapchainRenderPass::ColorOnly);
+		rp_info.clear_attachments = 0;
 		cmd.begin_render_pass(rp_info);
 		enqueue_scaled_requests(cmd, {{ 0, index }});
 		cmd.end_render_pass();
@@ -786,7 +813,7 @@ void RenderGraph::enqueue_initial_barriers(Vulkan::CommandBuffer &cmd)
 		return;
 
 	vector<VkImageMemoryBarrier> barriers(initial_barriers.size());
-	VkPipelineStageFlags src_stages = VK_SHADER_STAGE_ALL_GRAPHICS;
+	VkPipelineStageFlags src_stages = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
 	VkPipelineStageFlags dst_stages = 0;
 
 	for (unsigned i = 0; i < num_barriers; i++)

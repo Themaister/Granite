@@ -9,6 +9,7 @@
 #include <functional>
 #include "vulkan.hpp"
 #include "device.hpp"
+#include "stack_allocator.hpp"
 
 namespace Granite
 {
@@ -159,12 +160,12 @@ private:
 class RenderPassImplementation
 {
 public:
-	virtual bool get_clear_color(unsigned, VkClearColorValue &)
+	virtual bool get_clear_color(unsigned, VkClearColorValue * = nullptr)
 	{
 		return false;
 	}
 
-	virtual bool get_clear_depth_stencil(VkClearDepthStencilValue &)
+	virtual bool get_clear_depth_stencil(VkClearDepthStencilValue * = nullptr)
 	{
 		return false;
 	}
@@ -271,7 +272,7 @@ private:
 	RenderPassImplementation *implementation = nullptr;
 };
 
-class RenderGraph
+class RenderGraph : public Vulkan::NoCopyNoMove
 {
 public:
 	RenderPass &add_pass(const std::string &name);
@@ -329,6 +330,11 @@ private:
 		std::vector<unsigned> passes;
 		std::vector<Barrier> invalidate;
 		std::vector<Barrier> flush;
+
+		Vulkan::RenderPassInfo render_pass_info;
+		std::vector<Vulkan::RenderPassInfo::Subpass> subpasses;
+		std::vector<unsigned> physical_color_attachments;
+		unsigned physical_depth_stencil_attachment = RenderResource::Unused;
 	};
 	std::vector<PhysicalPass> physical_passes;
 	std::vector<Barrier> initial_barriers;
@@ -336,6 +342,7 @@ private:
 	void build_transients();
 	void build_physical_resources();
 	void build_physical_barriers();
+	void build_render_pass_info();
 
 	std::vector<ResourceDimensions> physical_dimensions;
 	std::vector<Vulkan::ImageView *> physical_attachments;

@@ -3,10 +3,21 @@
 
 using namespace Granite;
 
+class RPImpl : public RenderPassImplementation
+{
+public:
+	void build_render_pass(RenderGraph &, Vulkan::CommandBuffer &) override
+	{
+
+	}
+};
+
 int Granite::application_main(int, char **)
 {
 	RenderGraph graph;
 	AttachmentInfo info;
+
+	RPImpl impl;
 
 	ResourceDimensions dim;
 	dim.width = 1280;
@@ -18,12 +29,14 @@ int Granite::application_main(int, char **)
 	pass0.add_color_output("a", info);
 	pass0.add_color_output("b", info);
 	pass0.set_depth_stencil_output("c", info);
+	pass0.set_implementation(&impl);
 
 	auto &pass1 = graph.add_pass("pass1");
 	pass1.add_color_output("a1", info);
 	pass1.add_color_input("a");
 	pass1.add_texture_input("b");
 	pass1.set_depth_stencil_output("c1", info);
+	pass1.set_implementation(&impl);
 
 	auto &pass2 = graph.add_pass("pass2");
 	pass2.add_color_output("screen1", info);
@@ -31,11 +44,13 @@ int Granite::application_main(int, char **)
 	pass2.set_depth_stencil_input("c1");
 	pass2.add_texture_input("b");
 	pass2.add_attachment_input("c1");
+	pass2.set_implementation(&impl);
 
 	auto &pass3 = graph.add_pass("pass3");
 	pass3.add_color_output("screen", info);
 	pass3.add_texture_input("c1");
 	pass3.add_color_input("screen1");
+	pass3.set_implementation(&impl);
 
 	graph.set_backbuffer_source("screen");
 

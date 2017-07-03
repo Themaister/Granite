@@ -253,6 +253,146 @@ void RenderGraph::build_transients()
 	}
 }
 
+void RenderGraph::build_render_pass_info()
+{
+	for (auto &physical_pass : physical_passes)
+	{
+		auto &rp = physical_pass.render_pass_info;
+		physical_pass.subpasses.resize(physical_pass.passes.size());
+		rp.subpasses = physical_pass.subpasses.data();
+		rp.num_subpasses = physical_pass.subpasses.size();
+		rp.clear_attachments = 0;
+		rp.load_attachments = 0;
+		rp.store_attachments = ~0u;
+		rp.op_flags = Vulkan::RENDER_PASS_OP_COLOR_OPTIMAL_BIT;
+
+		auto &colors = physical_pass.physical_color_attachments;
+		colors.clear();
+
+		const auto add_unique = [&](unsigned index) -> pair<unsigned, bool> {
+			auto itr = find(begin(physical_pass.physical_color_attachments), end(colors), index);
+			if (itr != end(colors))
+				return make_pair(unsigned(itr - begin(colors)), false);
+			else
+			{
+				unsigned ret = physical_attachments.size();
+				colors.push_back(index);
+				return make_pair(ret, true);
+			}
+		};
+
+		for (auto &subpass : physical_pass.passes)
+		{
+			auto &pass = *passes[subpass];
+			unsigned subpass_index = unsigned(&subpass - physical_pass.passes.data());
+
+			// Add color attachments.
+			unsigned num_color_attachments = pass.get_color_outputs().size();
+			physical_pass.subpasses[subpass_index].num_color_attachments = num_color_attachments;
+			for (unsigned i = 0; i < num_color_attachments; i++)
+			{
+				auto res = add_unique(pass.get_color_outputs()[i]->get_physical_index());
+				physical_pass.subpasses[subpass_index].color_attachments[i] = res.first;
+
+				if (res.second) // This is the first time the color attachment is used, check if we need LOAD, or if we can clear it.
+				{
+					if (pass.get_color_inputs().empty() || !pass.get_color_inputs()[i])
+					{
+						if (pass.get_implementation().get_clear_color(i))
+							rp.clear_attachments |= 1u << res.first;
+					}
+					else
+					{
+						rp.load_attachments |= 1u << res.first;
+					}
+				}
+			}
+
+			// Add input attachments.
+			unsigned num_input_attachments = pass.get_attachment_inputs().size();
+			physical_pass.subpasses[subpass_index].num_input_attachments = num_input_attachments;
+			for (unsigned i = 0; i < num_input_attachments; i++)
+			{
+				auto res = add_unique(pass.get_attachment_inputs()[i]->get_physical_index());
+				physical_pass.subpasses[subpass_index].input_attachments[i] = res.first;
+
+				// If this is the first subpass the attachment is used, we need to load it.
+				if (res.second)
+					rp.load_attachments |= 1u << res.first;
+			}
+
+			auto *ds_input = pass.get_depth_stencil_input();
+			auto *ds_output = pass.get_depth_stencil_output();
+
+			if (ds_output && ds_input)
+			{
+				auto res = add_unique(ds_output->get_physical_index());
+				// If this is the first subpass the attachment is used, we need to load it.
+				if (res.second)
+					rp.load_attachments |= 1u << res.first;
+
+				rp.op_flags |= Vulkan::RENDER_PASS_OP_DEPTH_STENCIL_OPTIMAL_BIT | Vulkan::RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT;
+				physical_pass.subpasses[subpass_index].depth_stencil_mode = Vulkan::RenderPassInfo::DepthStencil::ReadWrite;
+
+				assert(physical_pass.physical_depth_stencil_attachment == RenderResource::Unused ||
+				       physical_pass.physical_depth_stencil_attachment == ds_output->get_physical_index());
+				physical_pass.physical_depth_stencil_attachment = ds_output->get_physical_index();
+			}
+			else if (ds_output)
+			{
+				auto res = add_unique(ds_output->get_physical_index());
+				// If this is the first subpass the attachment is used, we need to either clear or discard.
+				if (res.second && pass.get_implementation().get_clear_depth_stencil())
+					rp.op_flags |= Vulkan::RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT;
+
+				rp.op_flags |= Vulkan::RENDER_PASS_OP_DEPTH_STENCIL_OPTIMAL_BIT | Vulkan::RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT;
+				physical_pass.subpasses[subpass_index].depth_stencil_mode = Vulkan::RenderPassInfo::DepthStencil::ReadWrite;
+
+				assert(physical_pass.physical_depth_stencil_attachment == RenderResource::Unused ||
+				       physical_pass.physical_depth_stencil_attachment == ds_output->get_physical_index());
+				physical_pass.physical_depth_stencil_attachment = ds_output->get_physical_index();
+			}
+			else if (ds_input)
+			{
+				auto res = add_unique(ds_input->get_physical_index());
+
+				// If this is the first subpass the attachment is used, we need to load.
+				if (res.second)
+				{
+					rp.op_flags |= Vulkan::RENDER_PASS_OP_DEPTH_STENCIL_READ_ONLY_BIT |
+					               Vulkan::RENDER_PASS_OP_LOAD_DEPTH_STENCIL_BIT;
+
+					bool preserve_depth = false;
+					for (auto &read_pass : ds_input->get_read_passes())
+					{
+						if (passes[read_pass]->get_physical_pass_index() > unsigned(&physical_pass - physical_passes.data()))
+						{
+							preserve_depth = true;
+							break;
+						}
+					}
+
+					if (preserve_depth)
+					{
+						// Have to store here, or the attachment becomes undefined in future passes.
+						rp.op_flags |= Vulkan::RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT;
+					}
+				}
+
+				physical_pass.subpasses[subpass_index].depth_stencil_mode = Vulkan::RenderPassInfo::DepthStencil::ReadOnly;
+
+				assert(physical_pass.physical_depth_stencil_attachment == RenderResource::Unused ||
+				       physical_pass.physical_depth_stencil_attachment == ds_input->get_physical_index());
+				physical_pass.physical_depth_stencil_attachment = ds_input->get_physical_index();
+			}
+			else
+			{
+				physical_pass.subpasses[subpass_index].depth_stencil_mode = Vulkan::RenderPassInfo::DepthStencil::None;
+			}
+		}
+	}
+}
+
 void RenderGraph::build_physical_passes()
 {
 	physical_passes.clear();
@@ -503,6 +643,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::CommandBuffer &cmd)
 
 		// Transients are never stored, if a resource is not transient
 		// it *is* needed somewhere outside the physical renderpass.
+		// Read-only depth is handled in op_flags.
 		rp_info.store_attachments = ~0u;
 
 		vector<Vulkan::RenderPassInfo::Subpass> subpasses(physical_pass.passes.size());
@@ -523,6 +664,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::CommandBuffer &cmd)
 		for (auto &barrier : physical_pass.flush)
 		{
 			auto &resource = resources[barrier.resource_index];
+			physical_attachments[barrier.resource_index]->get_image().set_layout(barrier.layout);
 			resource.current_layout = barrier.layout;
 			resource.src_access |= barrier.access;
 		}
@@ -661,6 +803,7 @@ void RenderGraph::bake()
 	build_physical_passes();
 	build_transients();
 	build_physical_resources();
+	build_render_pass_info();
 
 	pass_barriers.clear();
 	pass_barriers.reserve(pass_stack.size());

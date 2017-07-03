@@ -68,9 +68,12 @@ RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
 	VkImageLayout color_layout = info.op_flags & RENDER_PASS_OP_COLOR_OPTIMAL_BIT ?
 	                                 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL :
 	                                 VK_IMAGE_LAYOUT_GENERAL;
-	VkImageLayout depth_stencil_layout = info.op_flags & RENDER_PASS_OP_DEPTH_STENCIL_OPTIMAL_BIT ?
-	                                         VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL :
-	                                         VK_IMAGE_LAYOUT_GENERAL;
+
+	VkImageLayout depth_stencil_layout = VK_IMAGE_LAYOUT_GENERAL;
+	if (info.op_flags & RENDER_PASS_OP_DEPTH_STENCIL_OPTIMAL_BIT)
+		depth_stencil_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+	else if (info.op_flags & RENDER_PASS_OP_DEPTH_STENCIL_READ_ONLY_BIT)
+		depth_stencil_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 
 	for (unsigned i = 0; i < info.num_color_attachments; i++)
 	{
@@ -337,7 +340,7 @@ RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
 
 			if (resolve)
 			{
-				if (current_layout == VK_IMAGE_LAYOUT_UNDEFINED)
+				if (current_layout != VK_IMAGE_LAYOUT_GENERAL)
 					current_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 				resolve->layout = current_layout;
 				used = true;
@@ -358,7 +361,7 @@ RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
 			}
 			else if (color) // No particular preference
 			{
-				if (current_layout == VK_IMAGE_LAYOUT_UNDEFINED)
+				if (current_layout != VK_IMAGE_LAYOUT_GENERAL)
 					current_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 				color->layout = current_layout;
 				used = true;
@@ -376,7 +379,8 @@ RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
 				}
 				else
 				{
-					current_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+					if (current_layout != VK_IMAGE_LAYOUT_GENERAL)
+						current_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 				}
 
 				depth_stencil_attachment_read |= 1u << subpass;
@@ -407,7 +411,8 @@ RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
 			}
 			else if (input)
 			{
-				current_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+				if (current_layout != VK_IMAGE_LAYOUT_GENERAL)
+					current_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 				input->layout = current_layout;
 				used = true;
 				last_subpass_for_attachment[attachment] = subpass;

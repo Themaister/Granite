@@ -390,6 +390,8 @@ void RenderGraph::build_render_pass_info()
 				physical_pass.subpasses[subpass_index].depth_stencil_mode = Vulkan::RenderPassInfo::DepthStencil::None;
 			}
 		}
+
+		physical_pass.render_pass_info.num_color_attachments = physical_pass.physical_color_attachments.size();
 	}
 }
 
@@ -428,6 +430,20 @@ void RenderGraph::build_physical_passes()
 			if (find_attachment(prev.get_color_outputs(), input))
 				return true;
 		}
+
+		const auto different_attachment = [](const RenderResource *a, const RenderResource *b) {
+			return a && b && a->get_physical_index() != b->get_physical_index();
+		};
+
+		// Need a different depth attachment, break up the pass.
+		if (different_attachment(next.get_depth_stencil_input(), prev.get_depth_stencil_input()))
+			return false;
+		if (different_attachment(next.get_depth_stencil_output(), prev.get_depth_stencil_input()))
+			return false;
+		if (different_attachment(next.get_depth_stencil_input(), prev.get_depth_stencil_output()))
+			return false;
+		if (different_attachment(next.get_depth_stencil_output(), prev.get_depth_stencil_output()))
+			return false;
 
 		// Keep depth on tile.
 		if (next.get_depth_stencil_input() && next.get_depth_stencil_input() == prev.get_depth_stencil_output())
@@ -687,6 +703,19 @@ void RenderGraph::setup_attachments(Vulkan::Device &device, Vulkan::ImageView *s
 			physical_attachments[i] = &device.get_transient_attachment(att.width, att.height, att.format, i, 1);
 		else
 			physical_attachments[i] = &device.get_physical_attachment(att.width, att.height, att.format, i, 1);
+	}
+
+	// Assign concrete ImageViews to the render pass.
+	for (auto &physical_pass : physical_passes)
+	{
+		unsigned num_attachments = physical_pass.physical_color_attachments.size();
+		for (unsigned i = 0; i < num_attachments; i++)
+			physical_pass.render_pass_info.color_attachments[i] = physical_attachments[physical_pass.physical_color_attachments[i]];
+
+		if (physical_pass.physical_depth_stencil_attachment != RenderResource::Unused)
+			physical_pass.render_pass_info.depth_stencil = physical_attachments[physical_pass.physical_depth_stencil_attachment];
+		else
+			physical_pass.render_pass_info.depth_stencil = nullptr;
 	}
 }
 

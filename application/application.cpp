@@ -26,8 +26,8 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned
       horiz("assets://shaders/quad.vert", "assets://shaders/blur.frag"),
       vert("assets://shaders/quad.vert", "assets://shaders/blur.frag")
 {
-	horiz.set_defines({{ "METHOD", 2 }});
-	vert.set_defines({{ "METHOD", 5 }});
+	horiz.set_defines({{ "METHOD", 0 }});
+	vert.set_defines({{ "METHOD", 3 }});
 
 	scene_loader.load_scene(path);
 	animation_system = scene_loader.consume_animation_system();

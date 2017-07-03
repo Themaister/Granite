@@ -325,6 +325,25 @@ private:
 	ResourceDimensions get_resource_dimensions(const RenderTextureResource &resource) const;
 	ResourceDimensions swapchain_dimensions;
 
+	struct ColorClearRequest
+	{
+		RenderPassImplementation *implementation;
+		VkClearColorValue *target;
+		unsigned index;
+	};
+
+	struct DepthClearRequest
+	{
+		RenderPassImplementation *implementation;
+		VkClearDepthStencilValue *target;
+	};
+
+	struct ScaledClearRequests
+	{
+		unsigned target;
+		unsigned physical_resource;
+	};
+
 	struct PhysicalPass
 	{
 		std::vector<unsigned> passes;
@@ -335,6 +354,11 @@ private:
 		std::vector<Vulkan::RenderPassInfo::Subpass> subpasses;
 		std::vector<unsigned> physical_color_attachments;
 		unsigned physical_depth_stencil_attachment = RenderResource::Unused;
+
+		std::vector<ColorClearRequest> color_clear_requests;
+		DepthClearRequest depth_clear_request;
+
+		std::vector<std::vector<ScaledClearRequests>> scaled_clear_requests;
 	};
 	std::vector<PhysicalPass> physical_passes;
 	std::vector<Barrier> initial_barriers;
@@ -348,5 +372,7 @@ private:
 	std::vector<Vulkan::ImageView *> physical_attachments;
 	Vulkan::ImageView *swapchain_attachment = nullptr;
 	unsigned swapchain_physical_index = RenderResource::Unused;
+
+	void enqueue_scaled_requests(Vulkan::CommandBuffer &cmd, const std::vector<ScaledClearRequests> &requests);
 };
 }

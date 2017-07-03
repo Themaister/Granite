@@ -103,6 +103,7 @@ public:
 	}
 
 	RenderPassInfo get_swapchain_render_pass(SwapchainRenderPass style);
+	ImageView &get_swapchain_view();
 	ChainDataAllocation allocate_constant_data(VkDeviceSize size);
 	ChainDataAllocation allocate_vertex_data(VkDeviceSize size);
 	ChainDataAllocation allocate_index_data(VkDeviceSize size);

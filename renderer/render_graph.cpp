@@ -265,6 +265,8 @@ void RenderGraph::build_render_pass_info()
 		rp.load_attachments = 0;
 		rp.store_attachments = ~0u;
 		rp.op_flags = Vulkan::RENDER_PASS_OP_COLOR_OPTIMAL_BIT;
+		physical_pass.color_clear_requests.clear();
+		physical_pass.depth_clear_request = {};
 
 		auto &colors = physical_pass.physical_color_attachments;
 		colors.clear();
@@ -299,7 +301,10 @@ void RenderGraph::build_render_pass_info()
 					if (pass.get_color_inputs().empty() || !pass.get_color_inputs()[i])
 					{
 						if (pass.get_implementation().get_clear_color(i))
+						{
 							rp.clear_attachments |= 1u << res.first;
+							physical_pass.color_clear_requests.push_back({ &pass.get_implementation(), &rp.clear_color[res.first], i });
+						}
 					}
 					else
 					{
@@ -343,7 +348,11 @@ void RenderGraph::build_render_pass_info()
 				auto res = add_unique(ds_output->get_physical_index());
 				// If this is the first subpass the attachment is used, we need to either clear or discard.
 				if (res.second && pass.get_implementation().get_clear_depth_stencil())
+				{
 					rp.op_flags |= Vulkan::RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT;
+					physical_pass.depth_clear_request.implementation = &pass.get_implementation();
+					physical_pass.depth_clear_request.target = &rp.clear_depth_stencil;
+				}
 
 				rp.op_flags |= Vulkan::RENDER_PASS_OP_DEPTH_STENCIL_OPTIMAL_BIT | Vulkan::RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT;
 				physical_pass.subpasses[subpass_index].depth_stencil_mode = Vulkan::RenderPassInfo::DepthStencil::ReadWrite;
@@ -609,6 +618,42 @@ static inline VkPipelineStageFlags access_to_stages(VkAccessFlags flags)
 	return stages;
 }
 
+void RenderGraph::enqueue_scaled_requests(Vulkan::CommandBuffer &cmd, const std::vector<ScaledClearRequests> &requests)
+{
+	if (requests.empty())
+		return;
+
+	auto &device = cmd.get_device();
+	auto *program = device.get_shader_manager().register_graphics("assets://shaders/scaled_readback.vert", "assets://shaders/scaled_readback.frag");
+
+	vector<pair<string, int>> defines;
+	defines.reserve(requests.size());
+
+	for (auto &req : requests)
+	{
+		defines.push_back({string("HAVE_TARGET_") + to_string(req.target), 1});
+		cmd.set_texture(0, req.target, *physical_attachments[req.physical_resource], Vulkan::StockSampler::LinearClamp);
+	}
+
+	cmd.set_quad_state();
+
+	unsigned variant = program->register_variant(defines);
+	auto shader = program->get_program(variant);
+	cmd.set_program(*shader);
+	int8_t *data = static_cast<int8_t *>(cmd.allocate_vertex_data(0, 8, 2));
+	*data++ = -128;
+	*data++ = +127;
+	*data++ = +127;
+	*data++ = +127;
+	*data++ = -128;
+	*data++ = -128;
+	*data++ = +127;
+	*data++ = -128;
+
+	cmd.set_vertex_attrib(0, 0, VK_FORMAT_R8G8_SNORM, 0);
+	cmd.draw(4);
+}
+
 void RenderGraph::enqueue_render_passes(Vulkan::CommandBuffer &cmd)
 {
 	// TODO: Use events, so we can get overlapping between render passes.
@@ -654,20 +699,19 @@ void RenderGraph::enqueue_render_passes(Vulkan::CommandBuffer &cmd)
 			            barriers.size(), barriers.data());
 		}
 
-		Vulkan::RenderPassInfo rp_info;
-		cmd.begin_render_pass(rp_info);
+		for (auto &clear_req : physical_pass.color_clear_requests)
+			clear_req.implementation->get_clear_color(clear_req.index, clear_req.target);
+		if (physical_pass.depth_clear_request.implementation)
+			physical_pass.depth_clear_request.implementation->get_clear_depth_stencil(physical_pass.depth_clear_request.target);
 
-		// Transients are never stored, if a resource is not transient
-		// it *is* needed somewhere outside the physical renderpass.
-		// Read-only depth is handled in op_flags.
-		rp_info.store_attachments = ~0u;
-
-		vector<Vulkan::RenderPassInfo::Subpass> subpasses(physical_pass.passes.size());
-		rp_info.num_subpasses = subpasses.size();
-		rp_info.subpasses = subpasses.data();
+		cmd.begin_render_pass(physical_pass.render_pass_info);
 
 		for (auto &subpass : physical_pass.passes)
 		{
+			unsigned subpass_index = unsigned(&subpass - physical_pass.passes.data());
+			auto &scaled_requests = physical_pass.scaled_clear_requests[subpass_index];
+			enqueue_scaled_requests(cmd, scaled_requests);
+
 			auto &pass = *passes[subpass];
 			pass.get_implementation().build_render_pass(*this, cmd);
 			if (&subpass != &physical_pass.passes.back())
@@ -684,6 +728,22 @@ void RenderGraph::enqueue_render_passes(Vulkan::CommandBuffer &cmd)
 			resource.current_layout = barrier.layout;
 			resource.src_access |= barrier.access;
 		}
+	}
+
+	// Scale to swapchain.
+	if (swapchain_physical_index == RenderResource::Unused)
+	{
+		unsigned index = resource_to_index[backbuffer_source];
+		cmd.image_barrier(physical_attachments[index]->get_image(),
+	                      resources[index].current_layout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	                      VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, resources[index].src_access,
+	                      VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		physical_attachments[index]->get_image().set_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+		auto rp_info = cmd.get_device().get_swapchain_render_pass(Vulkan::SwapchainRenderPass::ColorOnly);
+		cmd.begin_render_pass(rp_info);
+		enqueue_scaled_requests(cmd, {{ 0, index }});
+		cmd.end_render_pass();
 	}
 }
 

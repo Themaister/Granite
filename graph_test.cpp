@@ -16,6 +16,8 @@ int Granite::application_main(int, char **)
 {
 	RenderGraph graph;
 	AttachmentInfo info;
+	info.size_x = 2.0f;
+	info.size_y = 2.0f;
 
 	RPImpl impl;
 

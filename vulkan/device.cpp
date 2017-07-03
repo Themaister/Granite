@@ -1379,6 +1379,11 @@ ImageView &Device::get_physical_attachment(unsigned width, unsigned height, VkFo
 	return physical_allocator.request_attachment(width, height, format, index, samples);
 }
 
+ImageView &Device::get_swapchain_view()
+{
+	return frame().backbuffer->get_view();
+}
+
 RenderPassInfo Device::get_swapchain_render_pass(SwapchainRenderPass style)
 {
 	RenderPassInfo info;

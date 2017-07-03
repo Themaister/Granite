@@ -321,7 +321,7 @@ void RenderGraph::build_render_pass_info()
 					else
 					{
 						if (has_scaled_color_input)
-							scaled_clear_requests.push_back({ i, pass.get_color_outputs()[i]->get_physical_index() });
+							scaled_clear_requests.push_back({ i, pass.get_color_scale_inputs()[i]->get_physical_index() });
 						else
 							rp.load_attachments |= 1u << res.first;
 					}
@@ -700,6 +700,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::CommandBuffer &cmd)
 		// Queue up invalidates and change layouts.
 		for (auto &barrier : physical_pass.invalidate)
 		{
+			auto &view = *physical_attachments[barrier.resource_index];
 			auto &resource = resources[barrier.resource_index];
 			VkImageMemoryBarrier b = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
 			b.oldLayout = resource.current_layout;
@@ -708,6 +709,10 @@ void RenderGraph::enqueue_render_passes(Vulkan::CommandBuffer &cmd)
 			b.dstAccessMask = barrier.access;
 			b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 			b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			b.image = physical_attachments[barrier.resource_index]->get_image().get_image();
+			b.subresourceRange.aspectMask = Vulkan::format_to_aspect_mask(view.get_image().get_format());
+			b.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
+			b.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
 
 			barriers.push_back(b);
 			resource.current_layout = barrier.layout;
@@ -1259,6 +1264,8 @@ void RenderGraph::reset()
 	pass_to_index.clear();
 	resource_to_index.clear();
 	physical_passes.clear();
+	physical_dimensions.clear();
+	physical_attachments.clear();
 }
 
 }

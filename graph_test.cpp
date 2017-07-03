@@ -51,6 +51,10 @@ public:
 	{
 		graph.reset();
 
+		AttachmentInfo smol;
+		smol.size_x = 0.5f;
+		smol.size_y = 0.5f;
+
 		AttachmentInfo info;
 		info.size_x = 2.0f;
 		info.size_y = 2.0f;
@@ -63,8 +67,13 @@ public:
 		dim.format = parameter.get_format();
 		graph.set_backbuffer_dimensions(dim);
 
+		auto &smol_pass = graph.add_pass("smol");
+		smol_pass.add_color_output("input", smol);
+		smol_pass.set_implementation(&clear_screen);
+
 		auto &pass = graph.add_pass("pass");
 		pass.add_color_output("screen", info);
+		pass.add_color_input("input");
 		pass.set_depth_stencil_output("depth", ds_info);
 		pass.set_implementation(&clear_screen);
 

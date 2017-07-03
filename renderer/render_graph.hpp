@@ -6,6 +6,7 @@
 #include <unordered_set>
 #include <utility>
 #include <string>
+#include <functional>
 #include "vulkan.hpp"
 #include "device.hpp"
 
@@ -155,6 +156,22 @@ private:
 	bool transient = false;
 };
 
+class RenderPassImplementation
+{
+public:
+	virtual bool get_clear_color(unsigned, VkClearColorValue &)
+	{
+		return false;
+	}
+
+	virtual bool get_clear_depth_stencil(VkClearDepthStencilValue &)
+	{
+		return false;
+	}
+
+	virtual void build_render_pass(RenderGraph &graph, Vulkan::CommandBuffer &cmd) = 0;
+};
+
 class RenderPass
 {
 public:
@@ -168,6 +185,17 @@ public:
 	unsigned get_index() const
 	{
 		return index;
+	}
+
+	void set_implementation(RenderPassImplementation *impl)
+	{
+		implementation = impl;
+	}
+
+	RenderPassImplementation &get_implementation()
+	{
+		assert(implementation);
+		return *implementation;
 	}
 
 	RenderTextureResource &set_depth_stencil_input(const std::string &name);
@@ -239,6 +267,8 @@ private:
 	std::vector<RenderTextureResource *> attachments_inputs;
 	RenderTextureResource *depth_stencil_input = nullptr;
 	RenderTextureResource *depth_stencil_output = nullptr;
+
+	RenderPassImplementation *implementation = nullptr;
 };
 
 class RenderGraph

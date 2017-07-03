@@ -501,12 +501,18 @@ void RenderGraph::enqueue_render_passes(Vulkan::CommandBuffer &cmd)
 		Vulkan::RenderPassInfo rp_info;
 		cmd.begin_render_pass(rp_info);
 
+		// Transients are never stored, if a resource is not transient
+		// it *is* needed somewhere outside the physical renderpass.
+		rp_info.store_attachments = ~0u;
+
+		vector<Vulkan::RenderPassInfo::Subpass> subpasses(physical_pass.passes.size());
+		rp_info.num_subpasses = subpasses.size();
+		rp_info.subpasses = subpasses.data();
+
 		for (auto &subpass : physical_pass.passes)
 		{
 			auto &pass = *passes[subpass];
-
-			// Dispatch
-
+			pass.get_implementation().build_render_pass(*this, cmd);
 			if (&subpass != &physical_pass.passes.back())
 				cmd.next_subpass();
 		}

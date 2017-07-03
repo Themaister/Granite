@@ -270,12 +270,14 @@ void CommandBuffer::begin_render_pass(const RenderPassInfo &info)
 	for (unsigned i = 0; i < info.num_color_attachments; i++)
 	{
 		VK_ASSERT(info.color_attachments[i]);
-		clear_values[num_clear_values++].color = info.clear_color[i];
+		if (info.clear_attachments & (1u << i))
+			clear_values[num_clear_values++].color = info.clear_color[i];
+
 		if (info.color_attachments[i]->get_image().is_swapchain_image())
 			uses_swapchain = true;
 	}
 
-	if (info.depth_stencil)
+	if (info.depth_stencil && (info.op_flags & RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT) != 0)
 		clear_values[num_clear_values++].depthStencil = info.clear_depth_stencil;
 
 	VkRenderPassBeginInfo begin_info = { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };

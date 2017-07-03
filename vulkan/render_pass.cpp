@@ -36,18 +36,24 @@ RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
 	VkAttachmentDescription attachments[VULKAN_NUM_ATTACHMENTS + 1];
 	uint32_t implicit_transitions = 0;
 
-	VkAttachmentLoadOp color_load_op = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-	VkAttachmentStoreOp color_store_op = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 	VkAttachmentLoadOp ds_load_op = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 	VkAttachmentStoreOp ds_store_op = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 
-	if (info.op_flags & RENDER_PASS_OP_CLEAR_COLOR_BIT)
-		color_load_op = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	else if (info.op_flags & RENDER_PASS_OP_LOAD_COLOR_BIT)
-		color_load_op = VK_ATTACHMENT_LOAD_OP_LOAD;
+	const auto color_load_op = [&info](unsigned index) -> VkAttachmentLoadOp {
+		if ((info.clear_attachments & (1u << index)) != 0)
+			return VK_ATTACHMENT_LOAD_OP_CLEAR;
+		else if ((info.load_attachments & (1u << index)) != 0)
+			return VK_ATTACHMENT_LOAD_OP_LOAD;
+		else
+			return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	};
 
-	if (info.op_flags & RENDER_PASS_OP_STORE_COLOR_BIT)
-		color_store_op = VK_ATTACHMENT_STORE_OP_STORE;
+	const auto color_store_op = [&info](unsigned index) -> VkAttachmentStoreOp {
+		if ((info.store_attachments & (1u << index)) != 0)
+			return VK_ATTACHMENT_STORE_OP_STORE;
+		else
+			return VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	};
 
 	if (info.op_flags & RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT)
 		ds_load_op = VK_ATTACHMENT_LOAD_OP_CLEAR;
@@ -73,8 +79,8 @@ RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
 		att.flags = 0;
 		att.format = color_attachments[i];
 		att.samples = image.get_create_info().samples;
-		att.loadOp = color_load_op;
-		att.storeOp = color_store_op;
+		att.loadOp = color_load_op(i);
+		att.storeOp = color_store_op(i);
 		att.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 		att.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 
@@ -102,7 +108,15 @@ RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
 		else
 		{
 			att.initialLayout = color_layout;
-			att.finalLayout = color_layout;
+
+			if (color_layout != VK_IMAGE_LAYOUT_GENERAL)
+			{
+				// Undefined final layout here for now means that we will just use the layout of the last
+				// subpass which uses this attachment to avoid any dummy transition at the end.
+				att.finalLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			}
+			else
+				att.finalLayout = color_layout;
 		}
 	}
 

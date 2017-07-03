@@ -13,22 +13,13 @@ namespace Vulkan
 {
 enum RenderPassOp
 {
-	RENDER_PASS_OP_CLEAR_COLOR_BIT = 1 << 0,
-	RENDER_PASS_OP_LOAD_COLOR_BIT = 1 << 1,
-	RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT = 1 << 2,
-	RENDER_PASS_OP_LOAD_DEPTH_STENCIL_BIT = 1 << 3,
+	RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT = 1 << 0,
+	RENDER_PASS_OP_LOAD_DEPTH_STENCIL_BIT = 1 << 1,
 
-	RENDER_PASS_OP_STORE_COLOR_BIT = 1 << 4,
-	RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT = 1 << 5,
+	RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT = 1 << 2,
 
-	RENDER_PASS_OP_COLOR_OPTIMAL_BIT = 1 << 6,
-	RENDER_PASS_OP_DEPTH_STENCIL_OPTIMAL_BIT = 1 << 7,
-
-	RENDER_PASS_OP_CLEAR_ALL_BIT = RENDER_PASS_OP_CLEAR_COLOR_BIT | RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT,
-
-	RENDER_PASS_OP_LOAD_ALL_BIT = RENDER_PASS_OP_LOAD_COLOR_BIT | RENDER_PASS_OP_LOAD_DEPTH_STENCIL_BIT,
-
-	RENDER_PASS_OP_STORE_ALL_BIT = RENDER_PASS_OP_STORE_COLOR_BIT | RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT,
+	RENDER_PASS_OP_COLOR_OPTIMAL_BIT = 1 << 3,
+	RENDER_PASS_OP_DEPTH_STENCIL_OPTIMAL_BIT = 1 << 4
 };
 using RenderPassOpFlags = uint32_t;
 
@@ -39,6 +30,9 @@ struct RenderPassInfo
 	ImageView *depth_stencil = nullptr;
 	unsigned num_color_attachments = 0;
 	RenderPassOpFlags op_flags = 0;
+	uint32_t clear_attachments = 0;
+	uint32_t load_attachments = 0;
+	uint32_t store_attachments = 0;
 
 	// Render area will be clipped to the actual framebuffer.
 	VkRect2D render_area = { { 0, 0 }, { UINT32_MAX, UINT32_MAX } };

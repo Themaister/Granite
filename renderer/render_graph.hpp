@@ -14,6 +14,7 @@
 namespace Granite
 {
 class RenderGraph;
+class RenderPass;
 
 enum SizeClass
 {
@@ -170,7 +171,7 @@ public:
 		return false;
 	}
 
-	virtual void build_render_pass(RenderGraph &graph, Vulkan::CommandBuffer &cmd) = 0;
+	virtual void build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd) = 0;
 };
 
 class RenderPass
@@ -182,6 +183,11 @@ public:
 	}
 
 	enum { Unused = ~0u };
+
+	RenderGraph &get_graph()
+	{
+		return graph;
+	}
 
 	unsigned get_index() const
 	{
@@ -205,6 +211,9 @@ public:
 	RenderTextureResource &add_texture_input(const std::string &name);
 	RenderTextureResource &add_color_input(const std::string &name);
 	RenderTextureResource &add_attachment_input(const std::string &name);
+
+	void set_texture_inputs(Vulkan::CommandBuffer &cmd, unsigned set, unsigned start_binding,
+	                        Vulkan::StockSampler sampler);
 
 	void make_color_input_scaled(unsigned index)
 	{
@@ -290,6 +299,11 @@ public:
 	void enqueue_render_passes(Vulkan::CommandBuffer &cmd);
 
 	RenderTextureResource &get_texture_resource(const std::string &name);
+
+	Vulkan::ImageView &get_physical_resource(unsigned index)
+	{
+		return *physical_attachments[index];
+	}
 
 private:
 	std::vector<std::unique_ptr<RenderPass>> passes;

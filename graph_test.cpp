@@ -6,7 +6,7 @@ using namespace Granite;
 class RPImpl : public RenderPassImplementation
 {
 public:
-	void build_render_pass(RenderGraph &, Vulkan::CommandBuffer &) override
+	void build_render_pass(RenderPass &, Vulkan::CommandBuffer &) override
 	{
 	}
 

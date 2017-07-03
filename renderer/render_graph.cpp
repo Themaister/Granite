@@ -7,6 +7,16 @@ using namespace std;
 
 namespace Granite
 {
+void RenderPass::set_texture_inputs(Vulkan::CommandBuffer &cmd, unsigned set, unsigned start_binding,
+                                     Vulkan::StockSampler sampler)
+{
+	for (auto &tex : texture_inputs)
+	{
+		cmd.set_texture(set, start_binding, graph.get_physical_resource(tex->get_physical_index()), sampler);
+		start_binding++;
+	}
+}
+
 RenderTextureResource &RenderPass::add_attachment_input(const std::string &name)
 {
 	auto &res = graph.get_texture_resource(name);
@@ -744,7 +754,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::CommandBuffer &cmd)
 			enqueue_scaled_requests(cmd, scaled_requests);
 
 			auto &pass = *passes[subpass];
-			pass.get_implementation().build_render_pass(*this, cmd);
+			pass.get_implementation().build_render_pass(pass, cmd);
 			if (&subpass != &physical_pass.passes.back())
 				cmd.next_subpass();
 		}

@@ -221,10 +221,14 @@ private:
 	Util::TemporaryHashmap<FramebufferNode, VULKAN_FRAMEBUFFER_RING_SIZE, false> framebuffers;
 };
 
-class TransientAllocator
+class AttachmentAllocator
 {
 public:
-	TransientAllocator(Device *device);
+	AttachmentAllocator(Device *device, bool transient)
+		: device(device), transient(transient)
+	{
+	}
+
 	ImageView &request_attachment(unsigned width, unsigned height, VkFormat format,
 	                              unsigned index = 0, unsigned samples = 1);
 
@@ -243,6 +247,27 @@ private:
 	};
 
 	Device *device;
-	Util::TemporaryHashmap<TransientNode, VULKAN_FRAMEBUFFER_RING_SIZE, false> transients;
+	bool transient;
+	Util::TemporaryHashmap<TransientNode, VULKAN_FRAMEBUFFER_RING_SIZE, false> attachments;
 };
+
+class TransientAttachmentAllocator : public AttachmentAllocator
+{
+public:
+	TransientAttachmentAllocator(Device *device)
+		: AttachmentAllocator(device, true)
+	{
+	}
+};
+
+class PhysicalAttachmentAllocator : public AttachmentAllocator
+{
+public:
+	PhysicalAttachmentAllocator(Device *device)
+		: AttachmentAllocator(device, false)
+	{
+	}
+};
+
 }
+

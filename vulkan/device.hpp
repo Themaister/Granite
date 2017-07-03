@@ -89,6 +89,8 @@ public:
 	VkFormat get_default_depth_format() const;
 	ImageView &get_transient_attachment(unsigned width, unsigned height, VkFormat format,
 	                                    unsigned index = 0, unsigned samples = 1);
+	ImageView &get_physical_attachment(unsigned width, unsigned height, VkFormat format,
+	                                   unsigned index = 0, unsigned samples = 1);
 
 	PipelineLayout *request_pipeline_layout(const CombinedResourceLayout &layout);
 	DescriptorSetAllocator *request_descriptor_set_allocator(const DescriptorSetLayout &layout);
@@ -218,7 +220,8 @@ private:
 	Util::HashMap<std::unique_ptr<PipelineLayout>> pipeline_layouts;
 	Util::HashMap<std::unique_ptr<DescriptorSetAllocator>> descriptor_set_allocators;
 	FramebufferAllocator framebuffer_allocator;
-	TransientAllocator transient_allocator;
+	TransientAttachmentAllocator transient_allocator;
+	PhysicalAttachmentAllocator physical_allocator;
 	Util::HashMap<std::unique_ptr<RenderPass>> render_passes;
 	VkPipelineCache pipeline_cache = VK_NULL_HANDLE;
 

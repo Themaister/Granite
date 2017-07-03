@@ -210,6 +210,11 @@ public:
 	void barrier(VkPipelineStageFlags src_stage, VkAccessFlags src_access, VkPipelineStageFlags dst_stage,
 	             VkAccessFlags dst_access);
 
+	void barrier(VkPipelineStageFlags src_stages, VkPipelineStageFlags dst_stages,
+	             unsigned barriers, const VkMemoryBarrier *globals,
+	             unsigned buffer_barriers, const VkBufferMemoryBarrier *buffers,
+	             unsigned image_barriers, const VkImageMemoryBarrier *images);
+
 	void buffer_barrier(const Buffer &buffer, VkPipelineStageFlags src_stage, VkAccessFlags src_access,
 	                    VkPipelineStageFlags dst_stage, VkAccessFlags dst_access);
 

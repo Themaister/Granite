@@ -683,23 +683,18 @@ Framebuffer &FramebufferAllocator::request_framebuffer(const RenderPassInfo &inf
 	return *framebuffers.emplace(hash, device, rp, info);
 }
 
-TransientAllocator::TransientAllocator(Device *device)
-    : device(device)
+void AttachmentAllocator::clear()
 {
+	attachments.clear();
 }
 
-void TransientAllocator::clear()
+void AttachmentAllocator::begin_frame()
 {
-	transients.clear();
+	attachments.begin_frame();
 }
 
-void TransientAllocator::begin_frame()
-{
-	transients.begin_frame();
-}
-
-ImageView &TransientAllocator::request_attachment(unsigned width, unsigned height, VkFormat format,
-                                                  unsigned index, unsigned samples)
+ImageView &AttachmentAllocator::request_attachment(unsigned width, unsigned height, VkFormat format,
+                                                   unsigned index, unsigned samples)
 {
 	Hasher h;
 	h.u32(width);
@@ -709,13 +704,24 @@ ImageView &TransientAllocator::request_attachment(unsigned width, unsigned heigh
 	h.u32(samples);
 
 	auto hash = h.get();
-	auto *node = transients.request(hash);
+	auto *node = attachments.request(hash);
 	if (node)
 		return node->handle->get_view();
 
-	auto image_info = ImageCreateInfo::transient_render_target(width, height, format);
+	ImageCreateInfo image_info;
+	if (transient)
+	{
+		image_info = ImageCreateInfo::transient_render_target(width, height, format);
+	}
+	else
+	{
+		image_info = ImageCreateInfo::render_target(width, height, format);
+		image_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+		image_info.usage |= VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+	}
+
 	image_info.samples = static_cast<VkSampleCountFlagBits>(samples);
-	node = transients.emplace(hash, device->create_image(image_info, nullptr));
+	node = attachments.emplace(hash, device->create_image(image_info, nullptr));
 	return node->handle->get_view();
 }
 }

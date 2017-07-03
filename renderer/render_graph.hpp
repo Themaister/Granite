@@ -7,6 +7,7 @@
 #include <utility>
 #include <string>
 #include "vulkan.hpp"
+#include "device.hpp"
 
 namespace Granite
 {
@@ -253,6 +254,9 @@ public:
 	void bake();
 	void reset();
 	void log();
+	void setup_attachments(Vulkan::Device &device, Vulkan::ImageView *swapchain);
+	void enqueue_initial_barriers(Vulkan::CommandBuffer &cmd);
+	void enqueue_render_passes(Vulkan::CommandBuffer &cmd);
 
 	RenderTextureResource &get_texture_resource(const std::string &name);
 
@@ -304,6 +308,8 @@ private:
 	void build_physical_barriers();
 
 	std::vector<ResourceDimensions> physical_dimensions;
+	std::vector<Vulkan::ImageView *> physical_attachments;
+	Vulkan::ImageView *swapchain_attachment = nullptr;
 	unsigned swapchain_physical_index = RenderResource::Unused;
 };
 }

@@ -1,5 +1,6 @@
 #include "render_graph.hpp"
 #include "type_to_string.hpp"
+#include "format.hpp"
 #include <algorithm>
 
 using namespace std;
@@ -437,6 +438,142 @@ void RenderGraph::log()
 			     Vulkan::access_flags_to_string(barrier.access).c_str());
 		}
 	}
+}
+
+static inline VkPipelineStageFlags access_to_stages(VkAccessFlags flags)
+{
+	VkPipelineStageFlags stages = 0;
+	if (flags & (VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT))
+		stages |= VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+	if (flags & (VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT))
+		stages |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	if (flags & (VK_ACCESS_INPUT_ATTACHMENT_READ_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT))
+		stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+
+	return stages;
+}
+
+void RenderGraph::enqueue_render_passes(Vulkan::CommandBuffer &cmd)
+{
+	// TODO: Use events, so we can get overlapping between render passes.
+	struct BarrierData
+	{
+		VkPipelineStageFlags src_stages = 0;
+		VkAccessFlags src_access = 0;
+		VkImageLayout current_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+	};
+	vector<BarrierData> resources(physical_dimensions.size());
+	vector<VkImageMemoryBarrier> barriers;
+
+	for (auto &physical_pass : physical_passes)
+	{
+		VkPipelineStageFlags dst_stages = 0;
+		barriers.clear();
+
+		// Queue up invalidates and change layouts.
+		for (auto &barrier : physical_pass.invalidate)
+		{
+			auto &resource = resources[barrier.resource_index];
+			VkImageMemoryBarrier b = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+			b.oldLayout = resource.current_layout;
+			b.newLayout = barrier.layout;
+			b.srcAccessMask = resource.src_access;
+			b.dstAccessMask = barrier.access;
+			b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+
+			barriers.push_back(b);
+			resource.current_layout = barrier.layout;
+			resource.src_access = 0;
+			resource.src_stages = 0;
+			dst_stages |= access_to_stages(barrier.access);
+
+			physical_attachments[barrier.resource_index]->get_image().set_layout(barrier.layout);
+		}
+
+		if (!barriers.empty())
+		{
+			cmd.barrier(VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, dst_stages,
+			            0, nullptr, 0, nullptr,
+			            barriers.size(), barriers.data());
+		}
+
+		Vulkan::RenderPassInfo rp_info;
+		cmd.begin_render_pass(rp_info);
+
+		for (auto &subpass : physical_pass.passes)
+		{
+			auto &pass = *passes[subpass];
+
+			// Dispatch
+
+			if (&subpass != &physical_pass.passes.back())
+				cmd.next_subpass();
+		}
+
+		cmd.end_render_pass();
+
+		// TODO: Signal event here.
+		for (auto &barrier : physical_pass.flush)
+		{
+			auto &resource = resources[barrier.resource_index];
+			resource.current_layout = barrier.layout;
+			resource.src_access |= barrier.access;
+		}
+	}
+}
+
+void RenderGraph::setup_attachments(Vulkan::Device &device, Vulkan::ImageView *swapchain)
+{
+	physical_attachments.clear();
+	physical_attachments.resize(physical_dimensions.size());
+	swapchain_attachment = swapchain;
+
+	unsigned num_attachments = physical_dimensions.size();
+	for (unsigned i = 0; i < num_attachments; i++)
+	{
+		auto &att = physical_dimensions[i];
+		if (i == swapchain_physical_index)
+			physical_attachments[i] = swapchain;
+		else if (att.transient)
+			physical_attachments[i] = &device.get_transient_attachment(att.width, att.height, att.format, i, 1);
+		else
+			physical_attachments[i] = &device.get_physical_attachment(att.width, att.height, att.format, i, 1);
+	}
+}
+
+void RenderGraph::enqueue_initial_barriers(Vulkan::CommandBuffer &cmd)
+{
+	unsigned num_barriers = initial_barriers.size();
+	if (!num_barriers)
+		return;
+
+	vector<VkImageMemoryBarrier> barriers(initial_barriers.size());
+	VkPipelineStageFlags src_stages = VK_SHADER_STAGE_ALL_GRAPHICS;
+	VkPipelineStageFlags dst_stages = 0;
+
+	for (unsigned i = 0; i < num_barriers; i++)
+	{
+		auto *view = physical_attachments[initial_barriers[i].resource_index];
+		barriers[i].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		barriers[i].image = view->get_image().get_image();
+		barriers[i].srcAccessMask = 0;
+		barriers[i].dstAccessMask = initial_barriers[i].access;
+		barriers[i].oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		barriers[i].newLayout = initial_barriers[i].layout;
+		barriers[i].subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
+		barriers[i].subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
+		barriers[i].subresourceRange.aspectMask =
+			Vulkan::format_to_aspect_mask(view->get_image().get_format());
+
+		barriers[i].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barriers[i].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		view->get_image().set_layout(initial_barriers[i].layout);
+
+		dst_stages |= access_to_stages(initial_barriers[i].access);
+	}
+
+	cmd.barrier(src_stages, dst_stages, 0, nullptr, 0, nullptr, num_barriers, barriers.data());
 }
 
 void RenderGraph::bake()

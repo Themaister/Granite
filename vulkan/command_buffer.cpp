@@ -117,6 +117,16 @@ void CommandBuffer::barrier(VkPipelineStageFlags src_stages, VkAccessFlags src_a
 	vkCmdPipelineBarrier(cmd, src_stages, dst_stages, 0, 1, &barrier, 0, nullptr, 0, nullptr);
 }
 
+void CommandBuffer::barrier(VkPipelineStageFlags src_stages, VkPipelineStageFlags dst_stages, unsigned barriers,
+                            const VkMemoryBarrier *globals, unsigned buffer_barriers,
+                            const VkBufferMemoryBarrier *buffers, unsigned image_barriers,
+                            const VkImageMemoryBarrier *images)
+{
+	VK_ASSERT(!render_pass);
+	VK_ASSERT(!framebuffer);
+	vkCmdPipelineBarrier(cmd, src_stages, dst_stages, 0, barriers, globals, buffer_barriers, buffers, image_barriers, images);
+}
+
 void CommandBuffer::buffer_barrier(const Buffer &buffer, VkPipelineStageFlags src_stages, VkAccessFlags src_access,
                                    VkPipelineStageFlags dst_stages, VkAccessFlags dst_access)
 {

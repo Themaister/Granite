@@ -11,6 +11,7 @@
 #include "event.hpp"
 #include "font.hpp"
 #include "ui_manager.hpp"
+#include "render_graph.hpp"
 
 namespace Granite
 {
@@ -126,7 +127,7 @@ private:
 	Vulkan::WSI wsi;
 };
 
-class SceneViewerApplication : public Application
+class SceneViewerApplication : public Application, public EventHandler, public RenderPassImplementation
 {
 public:
 	SceneViewerApplication(const std::string &path, unsigned width, unsigned height);
@@ -140,6 +141,17 @@ private:
 	SceneLoader scene_loader;
 	std::unique_ptr<AnimationSystem> animation_system;
 	UI::Window *window;
+
+	void on_swapchain_changed(const Event &e);
+	void on_swapchain_destroyed(const Event &e);
+	RenderGraph graph;
+
+	bool get_clear_color(unsigned index, VkClearColorValue *value) override;
+	bool get_clear_depth_stencil(VkClearDepthStencilValue *value) override;
+	void build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd) override;
+
+	RenderPassShaderBlitImplementation horiz;
+	RenderPassShaderBlitImplementation vert;
 };
 
 extern int application_main(int argc, char *argv[]);

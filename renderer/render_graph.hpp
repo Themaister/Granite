@@ -174,6 +174,33 @@ public:
 	virtual void build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd) = 0;
 };
 
+class RenderPassShaderBlitImplementation : public RenderPassImplementation
+{
+public:
+	RenderPassShaderBlitImplementation(std::string vertex, std::string fragment)
+		: vertex(std::move(vertex)), fragment(std::move(fragment))
+	{
+	}
+
+	void set_defines(std::vector<std::pair<std::string, int>> defines)
+	{
+		this->defines = std::move(defines);
+	}
+
+	void set_sampler(Vulkan::StockSampler sampler)
+	{
+		this->sampler = sampler;
+	}
+
+	void build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd) override;
+
+private:
+	std::string vertex;
+	std::string fragment;
+	Vulkan::StockSampler sampler = Vulkan::StockSampler::LinearClamp;
+	std::vector<std::pair<std::string, int>> defines;
+};
+
 class RenderPass
 {
 public:

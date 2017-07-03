@@ -1,7 +1,7 @@
 #version 310 es
 precision highp float;
 
-layout(location = 0) in highp vec2 vTex;
+layout(location = 0) in highp vec2 vUV;
 
 #ifdef HAVE_TARGET_0
 layout(location = 0) out vec4 FragColor0;
@@ -26,15 +26,15 @@ layout(set = 0, binding = 3) uniform sampler2D uSampler3;
 void main()
 {
 #ifdef HAVE_TARGET_0
-    FragColor0 = textureLod(uSampler0, vTex, 0.0);
+    FragColor0 = textureLod(uSampler0, vUV, 0.0);
 #endif
 #ifdef HAVE_TARGET_1
-    FragColor1 = textureLod(uSampler1, vTex, 0.0);
+    FragColor1 = textureLod(uSampler1, vUV, 0.0);
 #endif
 #ifdef HAVE_TARGET_2
-    FragColor2 = textureLod(uSampler2, vTex, 0.0);
+    FragColor2 = textureLod(uSampler2, vUV, 0.0);
 #endif
 #ifdef HAVE_TARGET_3
-    FragColor3 = textureLod(uSampler3, vTex, 0.0);
+    FragColor3 = textureLod(uSampler3, vUV, 0.0);
 #endif
 }

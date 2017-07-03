@@ -35,6 +35,11 @@ public:
 		: device(*device), width(width), height(height), aspect_ratio(aspect_ratio), image_count(count), format(format)
 	{}
 
+	Device &get_device() const
+	{
+		return device;
+	}
+
 	unsigned get_width() const
 	{
 		return width;

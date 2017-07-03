@@ -7,6 +7,31 @@ using namespace std;
 
 namespace Granite
 {
+void RenderPassShaderBlitImplementation::build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd)
+{
+	pass.set_texture_inputs(cmd, 0, 0, sampler);
+	auto &device = cmd.get_device();
+	auto *program = device.get_shader_manager().register_graphics(vertex, fragment);
+	unsigned variant = program->register_variant(defines);
+	auto shader = program->get_program(variant);
+	cmd.set_program(*shader);
+
+	int8_t *data = static_cast<int8_t *>(cmd.allocate_vertex_data(0, 8, 2));
+	*data++ = -128;
+	*data++ = +127;
+	*data++ = +127;
+	*data++ = +127;
+	*data++ = -128;
+	*data++ = -128;
+	*data++ = +127;
+	*data++ = -128;
+
+	cmd.set_vertex_attrib(0, 0, VK_FORMAT_R8G8_SNORM, 0);
+	cmd.set_quad_state();
+
+	cmd.draw(4);
+}
+
 void RenderPass::set_texture_inputs(Vulkan::CommandBuffer &cmd, unsigned set, unsigned start_binding,
                                      Vulkan::StockSampler sampler)
 {
@@ -660,7 +685,7 @@ void RenderGraph::enqueue_scaled_requests(Vulkan::CommandBuffer &cmd, const std:
 		return;
 
 	auto &device = cmd.get_device();
-	auto *program = device.get_shader_manager().register_graphics("assets://shaders/scaled_readback.vert", "assets://shaders/scaled_readback.frag");
+	auto *program = device.get_shader_manager().register_graphics("assets://shaders/quad.vert", "assets://shaders/scaled_readback.frag");
 
 	vector<pair<string, int>> defines;
 	defines.reserve(requests.size());

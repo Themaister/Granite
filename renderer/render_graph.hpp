@@ -297,6 +297,7 @@ private:
 		std::vector<Barrier> flush;
 	};
 	std::vector<PhysicalPass> physical_passes;
+	std::vector<Barrier> initial_barriers;
 	void build_physical_passes();
 	void build_transients();
 	void build_physical_resources();

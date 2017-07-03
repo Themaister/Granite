@@ -210,7 +210,7 @@ void RenderGraph::build_physical_resources()
 			if (ds_output->get_physical_index() == RenderResource::Unused)
 			{
 				physical_dimensions.push_back(get_resource_dimensions(*ds_output));
-				ds_output->set_physical_index(ds_input->get_physical_index());
+				ds_output->set_physical_index(phys_index++);
 			}
 		}
 	}
@@ -340,8 +340,9 @@ void RenderGraph::log()
 {
 	for (auto &resource : physical_dimensions)
 	{
-		LOGI("Resource #%u: %u x %u (fmt: %u)\n", unsigned(&resource - physical_dimensions.data()),
-		     resource.width, resource.height, unsigned(resource.format));
+		LOGI("Resource #%u: %u x %u (fmt: %u), transient: %s%s\n", unsigned(&resource - physical_dimensions.data()),
+		     resource.width, resource.height, unsigned(resource.format), resource.transient ? "yes" : "no",
+		     unsigned(&resource - physical_dimensions.data()) == swapchain_physical_index ? " (swapchain)" : "");
 	}
 
 	auto barrier_itr = begin(pass_barriers);
@@ -351,9 +352,28 @@ void RenderGraph::log()
 	           " (swapchain)" : "";
 	};
 
+	for (auto &barrier : initial_barriers)
+	{
+		LOGI("DiscardBarrier: %u%s, layout: %s, access: %s\n",
+		     barrier.resource_index,
+		     swap_str(barrier),
+		     Vulkan::layout_to_string(barrier.layout),
+		     Vulkan::access_flags_to_string(barrier.access).c_str());
+	}
+
 	for (auto &passes : physical_passes)
 	{
 		LOGI("Physical pass #%u:\n", unsigned(&passes - physical_passes.data()));
+
+		for (auto &barrier : passes.invalidate)
+		{
+			LOGI("  Invalidate: %u%s, layout: %s, access: %s\n",
+			     barrier.resource_index,
+			     swap_str(barrier),
+			     Vulkan::layout_to_string(barrier.layout),
+			     Vulkan::access_flags_to_string(barrier.access).c_str());
+		}
+
 		for (auto &subpass : passes.passes)
 		{
 			LOGI("    Subpass #%u:\n", unsigned(&subpass - passes.passes.data()));
@@ -406,6 +426,15 @@ void RenderGraph::log()
 			}
 
 			++barrier_itr;
+		}
+
+		for (auto &barrier : passes.flush)
+		{
+			LOGI("  Flush: %u%s, layout: %s, access: %s\n",
+			     barrier.resource_index,
+			     swap_str(barrier),
+			     Vulkan::layout_to_string(barrier.layout),
+			     Vulkan::access_flags_to_string(barrier.access).c_str());
 		}
 	}
 }
@@ -500,6 +529,8 @@ void RenderGraph::bake()
 	physical_dimensions[swapchain_physical_index].transient = false;
 	if (physical_dimensions[swapchain_physical_index] != swapchain_dimensions)
 		swapchain_physical_index = RenderResource::Unused;
+	else
+		physical_dimensions[swapchain_physical_index].transient = true;
 
 	build_physical_barriers();
 }
@@ -548,16 +579,28 @@ ResourceDimensions RenderGraph::get_resource_dimensions(const RenderTextureResou
 
 void RenderGraph::build_physical_barriers()
 {
+	initial_barriers.clear();
 	auto barrier_itr = begin(pass_barriers);
+
+	const auto flush_access_to_invalidate = [](VkAccessFlags flags) -> VkAccessFlags {
+		if (flags & VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT)
+			flags |= VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+		if (flags & VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT)
+			flags |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+		return flags;
+	};
 
 	struct ResourceState
 	{
-		VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
+		VkImageLayout initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+		VkImageLayout final_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+		VkImageLayout current_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 		VkAccessFlags invalidated_types = 0;
 		VkAccessFlags flushed_types = 0;
 
 		// If we need to tack on multiple invalidates after the fact ...
-		VkAccessFlags *last_invalidate = nullptr;
+		unsigned last_invalidate_pass = RenderPass::Unused;
+		unsigned last_flush_pass = RenderPass::Unused;
 	};
 
 	// To handle global state.
@@ -571,6 +614,7 @@ void RenderGraph::build_physical_barriers()
 	{
 		resource_state.clear();
 		resource_state.resize(physical_dimensions.size());
+		unsigned physical_pass_index = unsigned(&physical_pass - physical_passes.data());
 
 		for (auto &subpass : physical_pass.passes)
 		{
@@ -588,10 +632,10 @@ void RenderGraph::build_physical_barriers()
 				}
 
 				// Only the first use of a resource in a physical pass needs to be handled externally.
-				if (resource_state[invalidate.resource_index].layout == VK_IMAGE_LAYOUT_UNDEFINED)
+				if (resource_state[invalidate.resource_index].initial_layout == VK_IMAGE_LAYOUT_UNDEFINED)
 				{
 					resource_state[invalidate.resource_index].invalidated_types |= invalidate.access;
-					resource_state[invalidate.resource_index].layout = invalidate.layout;
+					resource_state[invalidate.resource_index].initial_layout = invalidate.layout;
 				}
 
 				// All pending flushes have been invalidated in the appropriate stages already.
@@ -607,12 +651,68 @@ void RenderGraph::build_physical_barriers()
 					continue;
 				}
 
+				// The last use of a resource in a physical pass needs to be handled externally.
 				resource_state[flush.resource_index].flushed_types |= flush.access;
-				if (resource_state[flush.resource_index].layout == VK_IMAGE_LAYOUT_UNDEFINED)
-					resource_state[flush.resource_index].layout = flush.layout;
+				resource_state[flush.resource_index].final_layout = flush.layout;
+
+				// This is the first time we used this resource, so queue up initial barriers which transition from
+				// UNDEFINED to flush.layout on the start of the frame.
+				if (resource_state[flush.resource_index].initial_layout == VK_IMAGE_LAYOUT_UNDEFINED)
+				{
+					resource_state[flush.resource_index].initial_layout = flush.layout;
+					initial_barriers.push_back({ flush.resource_index, flush.layout, flush_access_to_invalidate(flush.access) });
+				}
 			}
 
 			++barrier_itr;
+		}
+
+		for (auto &resource : resource_state)
+		{
+			unsigned index = unsigned(&resource - resource_state.data());
+
+			// Do we need to invalidate this resource before starting the pass?
+			if (resource.initial_layout != VK_IMAGE_LAYOUT_UNDEFINED &&
+			    resource.initial_layout != global_resource_state[index].initial_layout &&
+			    resource.invalidated_types & ~global_resource_state[index].invalidated_types)
+			{
+				Barrier *last_barrier = nullptr;
+
+				if (global_resource_state[index].last_invalidate_pass != RenderPass::Unused)
+				{
+					unsigned last_pass = global_resource_state[index].last_invalidate_pass;
+					auto itr = find_if(begin(physical_passes[last_pass].invalidate), end(physical_passes[last_pass].invalidate), [index](const Barrier &b) {
+						return b.resource_index == index;
+					});
+
+					if (itr != end(physical_passes[last_pass].invalidate))
+						last_barrier = &*itr;
+				}
+
+				// If we just need to tack on more access flags, and no layout change is needed, just modify the old barrier.
+				if (last_barrier && last_barrier->layout == resource.initial_layout)
+					last_barrier->access |= resource.invalidated_types;
+				else
+				{
+					physical_pass.invalidate.push_back(
+						{ index, resource.initial_layout, resource.invalidated_types });
+					global_resource_state[index].invalidated_types |= resource.invalidated_types;
+					global_resource_state[index].current_layout = resource.initial_layout;
+					global_resource_state[index].last_invalidate_pass = physical_pass_index;
+					global_resource_state[index].last_flush_pass = RenderPass::Unused;
+				}
+			}
+
+			// Did the pass write anything in this pass which needs to be flushed?
+			global_resource_state[index].flushed_types = 0;
+			if (resource.flushed_types)
+			{
+				physical_pass.flush.push_back({ index, resource.final_layout, resource.flushed_types });
+				global_resource_state[index].invalidated_types = 0;
+				global_resource_state[index].current_layout = resource.final_layout;
+				global_resource_state[index].last_invalidate_pass = RenderPass::Unused;
+				global_resource_state[index].last_flush_pass = physical_pass_index;
+			}
 		}
 	}
 }

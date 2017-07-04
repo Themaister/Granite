@@ -21,14 +21,45 @@ Application::Application(unsigned width, unsigned height)
 		throw runtime_error("Failed to initialize WSI.");
 }
 
+bool SceneViewerApplication::GBufferImpl::get_clear_color(unsigned index, VkClearColorValue *value)
+{
+	if (value)
+		memset(value, 0, sizeof(*value));
+	return true;
+}
+
+bool SceneViewerApplication::GBufferImpl::get_clear_depth_stencil(VkClearDepthStencilValue *value)
+{
+	if (value)
+	{
+		value->stencil = 0;
+		value->depth = 1.0f;
+	}
+
+	return true;
+}
+
+void SceneViewerApplication::GBufferImpl::build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd)
+{
+	app->renderer.flush(cmd, app->context);
+}
+
+void SceneViewerApplication::LightingImpl::build_render_pass(RenderPass &, Vulkan::CommandBuffer &)
+{
+
+}
+
+void SceneViewerApplication::UIImpl::build_render_pass(RenderPass &, Vulkan::CommandBuffer &cmd)
+{
+	UI::UIManager::get().render(cmd);
+}
+
 SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned width, unsigned height)
 	: Application(width, height),
-      horiz("assets://shaders/quad.vert", "assets://shaders/blur.frag"),
-      vert("assets://shaders/quad.vert", "assets://shaders/blur.frag")
+	  gbuffer_impl(this),
+	  lighting_impl(this),
+	  ui_impl(this)
 {
-	horiz.set_defines({{ "METHOD", 0 }});
-	vert.set_defines({{ "METHOD", 3 }});
-
 	scene_loader.load_scene(path);
 	animation_system = scene_loader.consume_animation_system();
 
@@ -86,28 +117,6 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned
 	                                                  this);
 }
 
-bool SceneViewerApplication::get_clear_depth_stencil(VkClearDepthStencilValue *value)
-{
-	if (value)
-	{
-		value->depth = 1.0f;
-		value->stencil = 0;
-	}
-	return true;
-}
-
-bool SceneViewerApplication::get_clear_color(unsigned index, VkClearColorValue *value)
-{
-	if (value)
-	{
-		value->float32[0] = context.get_fog_parameters().color.r;
-		value->float32[1] = context.get_fog_parameters().color.g;
-		value->float32[2] = context.get_fog_parameters().color.b;
-		value->float32[3] = 0.0f;
-	}
-	return true;
-}
-
 void SceneViewerApplication::on_swapchain_changed(const Event &e)
 {
 	auto &swap = e.as<SwapchainParameterEvent>();
@@ -121,38 +130,35 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 	graph.set_backbuffer_source("backbuffer");
 
 	AttachmentInfo backbuffer;
-	AttachmentInfo backbuffer_depth = backbuffer;
-	backbuffer_depth.format = swap.get_device().get_default_depth_stencil_format();
+	AttachmentInfo emissive, albedo, normal, pbr, depth;
+	emissive.format = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
+	albedo.format = VK_FORMAT_R8G8B8A8_SRGB;
+	normal.format = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
+	pbr.format = VK_FORMAT_R8G8_UNORM;
+	depth.format = swap.get_device().get_default_depth_stencil_format();
 
-	AttachmentInfo info;
-	info.format = VK_FORMAT_R16G16B16A16_SFLOAT;
-	info.size_x = 1.0f;
-	info.size_y = 1.0f;
-	info.size_class = SizeClass::SwapchainRelative;
+	auto &gbuffer = graph.add_pass("gbuffer", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	gbuffer.add_color_output("emissive", emissive);
+	gbuffer.add_color_output("albedo", albedo);
+	gbuffer.add_color_output("normal", normal);
+	gbuffer.add_color_output("pbr", pbr);
+	gbuffer.set_depth_stencil_output("depth", depth);
+	gbuffer.set_implementation(&gbuffer_impl);
 
-	auto &pass = graph.add_pass("main", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
-	pass.add_color_output("main", info);
-	pass.set_depth_stencil_output("backbuffer_depth", backbuffer_depth);
-	pass.set_implementation(this);
+	auto &lighting = graph.add_pass("lighting", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	lighting.add_color_output("HDR", emissive, "emissive");
+	lighting.add_attachment_input("albedo");
+	lighting.add_attachment_input("normal");
+	lighting.add_attachment_input("pbr");
+	lighting.set_depth_stencil_input("depth");
+	lighting.set_implementation(&lighting_impl);
 
-	auto &horiz = graph.add_pass("blur_horiz", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
-	horiz.add_color_output("horiz", info);
-	horiz.add_texture_input("main");
-	horiz.set_implementation(&this->horiz);
-
-	auto &vert = graph.add_pass("blur_vert", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
-	vert.add_color_output("backbuffer", backbuffer);
-	vert.add_texture_input("horiz");
-	vert.set_implementation(&this->vert);
+	auto &ui = graph.add_pass("ui", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	ui.add_color_output("backbuffer", backbuffer, "HDR");
+	ui.set_implementation(&ui_impl);
 
 	graph.bake();
 	graph.log();
-}
-
-void SceneViewerApplication::build_render_pass(RenderPass &, Vulkan::CommandBuffer &cmd)
-{
-	renderer.flush(cmd, context);
-	UI::UIManager::get().render(cmd);
 }
 
 void SceneViewerApplication::on_swapchain_destroyed(const Event &)

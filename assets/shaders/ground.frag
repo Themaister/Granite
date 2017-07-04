@@ -3,7 +3,11 @@ precision mediump float;
 
 #include "inc/fog.h"
 
-layout(location = 0) out vec4 FragColor;
+layout(location = 0) out vec3 Emissive;
+layout(location = 1) out vec4 BaseColor;
+layout(location = 2) out vec3 Normal;
+layout(location = 3) out vec2 PBR;
+
 layout(location = 0) in mediump vec3 vEyeVec;
 
 layout(push_constant, std430) uniform Constants
@@ -52,10 +56,10 @@ void main()
         types.z * texture(uBaseColor, vec3(uv, 2.0)).rgb +
         types.w * texture(uBaseColor, vec3(uv, 3.0)).rgb;
 
-    float ndotl = clamp(dot(normal, normalize(vec3(1.0, 1.0, 1.0))), 0.0, 1.0);
-    FragColor = vec4(base_color * (0.2 + 0.8 * ndotl), 1.0);
-    //FragColor = vec4(0.5 * normal + 0.5, 1.0);
 
-    FragColor.rgb = apply_fog(FragColor.rgb, vEyeVec);
+    Emissive = vec3(0.0);
+    BaseColor = vec4(base_color, 1.0);
+    Normal = normal * 0.5 + 0.5;
+    PBR = vec2(0.0, 1.0);
 }
 

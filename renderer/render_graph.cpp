@@ -195,27 +195,25 @@ void RenderGraph::validate_passes()
 	for (auto &pass_ptr : passes)
 	{
 		auto &pass = *pass_ptr;
-		if (!pass.get_color_inputs().empty() && pass.get_color_inputs().size() != pass.get_color_outputs().size())
+
+		if (pass.get_color_inputs().size() != pass.get_color_outputs().size())
 			throw logic_error("Size of color inputs must match color outputs.");
-
-		if (!pass.get_color_inputs().empty())
-		{
-			unsigned num_inputs = pass.get_color_inputs().size();
-			for (unsigned i = 0; i < num_inputs; i++)
-			{
-				if (!pass.get_color_inputs()[i])
-					continue;
-
-				if (get_resource_dimensions(*pass.get_color_inputs()[i]) != get_resource_dimensions(*pass.get_color_outputs()[i]))
-					pass.make_color_input_scaled(i);
-			}
-		}
 
 		if (pass.get_storage_inputs().size() != pass.get_storage_outputs().size())
 			throw logic_error("Size of storage inputs must match storage outputs.");
 
 		if (pass.get_storage_texture_inputs().size() != pass.get_storage_texture_outputs().size())
 			throw logic_error("Size of storage texture inputs must match storage texture outputs.");
+
+		unsigned num_inputs = pass.get_color_inputs().size();
+		for (unsigned i = 0; i < num_inputs; i++)
+		{
+			if (!pass.get_color_inputs()[i])
+				continue;
+
+			if (get_resource_dimensions(*pass.get_color_inputs()[i]) != get_resource_dimensions(*pass.get_color_outputs()[i]))
+				pass.make_color_input_scaled(i);
+		}
 
 		if (!pass.get_storage_outputs().empty())
 		{
@@ -429,37 +427,51 @@ void RenderGraph::build_physical_resources()
 
 void RenderGraph::build_transients()
 {
+	vector<unsigned> physical_pass_used(physical_dimensions.size());
+	for (auto &u : physical_pass_used)
+		u = RenderPass::Unused;
+
+	for (auto &dim : physical_dimensions)
+		dim.transient = true;
+
 	for (auto &resource : resources)
 	{
 		if (resource->get_type() != RenderResource::Type::Texture)
 			continue;
 
-		unsigned physical_pass = ~0u;
-		bool transient = true;
+		unsigned physical_index = resource->get_physical_index();
+		if (physical_index == RenderResource::Unused)
+			continue;
 
 		for (auto &pass : resource->get_write_passes())
 		{
 			unsigned phys = passes[pass]->get_physical_pass_index();
-			if (physical_pass != ~0u && phys != physical_pass)
+			if (phys != RenderPass::Unused)
 			{
-				transient = false;
-				break;
+				if (physical_pass_used[physical_index] != RenderPass::Unused &&
+				    phys != physical_pass_used[physical_index])
+				{
+					physical_dimensions[physical_index].transient = false;
+					break;
+				}
+				physical_pass_used[physical_index] = phys;
 			}
-			physical_pass = phys;
 		}
 
 		for (auto &pass : resource->get_read_passes())
 		{
 			unsigned phys = passes[pass]->get_physical_pass_index();
-			if (physical_pass != ~0u && phys != physical_pass)
+			if (phys != RenderPass::Unused)
 			{
-				transient = false;
-				break;
+				if (physical_pass_used[physical_index] != RenderPass::Unused &&
+				    phys != physical_pass_used[physical_index])
+				{
+					physical_dimensions[physical_index].transient = false;
+					break;
+				}
+				physical_pass_used[physical_index] = phys;
 			}
-			physical_pass = phys;
 		}
-
-		static_cast<RenderTextureResource *>(resource.get())->set_transient_state(transient);
 	}
 }
 
@@ -545,7 +557,7 @@ void RenderGraph::build_render_pass_info()
 
 			const auto add_unique_ds = [&](unsigned index) -> pair<unsigned, bool> {
 				assert(physical_pass.physical_depth_stencil_attachment == RenderResource::Unused ||
-				       physical_pass.physical_depth_stencil_attachment == ds_output->get_physical_index());
+				       physical_pass.physical_depth_stencil_attachment == index);
 
 				bool new_attachment = physical_pass.physical_depth_stencil_attachment == RenderResource::Unused;
 				physical_pass.physical_depth_stencil_attachment = index;
@@ -1359,12 +1371,12 @@ void RenderGraph::bake()
 	// Next, try to merge adjacent passes together.
 	build_physical_passes();
 
-	// After merging physical passes, if an image resource is only used in a single physical pass, make it transient.
-	build_transients();
-
 	// Figure out which physical resources we need. Here we will alias resources which can trivially alias via renaming.
 	// E.g. depth input -> depth output is just one physical attachment, similar with color.
 	build_physical_resources();
+
+	// After merging physical passes and resources, if an image resource is only used in a single physical pass, make it transient.
+	build_transients();
 
 	// Now that we are done, we can make render passes.
 	build_render_pass_info();
@@ -1487,7 +1499,8 @@ void RenderGraph::build_physical_barriers()
 		// Go over all physical passes, and observe their use of barriers.
 		// In multipass, only the first and last barriers need to be considered externally.
 		// Compute never has multipass.
-		for (auto &subpass : physical_pass.passes)
+		unsigned subpasses = physical_pass.passes.size();
+		for (unsigned i = 0; i < subpasses; i++, ++barrier_itr)
 		{
 			auto &barriers = *barrier_itr;
 			auto &invalidates = barriers.invalidate;
@@ -1582,8 +1595,6 @@ void RenderGraph::build_physical_barriers()
 					}
 				}
 			}
-
-			++barrier_itr;
 		}
 
 		// Now that the render pass has been studied, look at each resource individually and see how we need to deal

@@ -1,8 +1,6 @@
 #version 310 es
 precision mediump float;
 
-#include "inc/fog.h"
-
 layout(location = 0) in mediump vec3 vEyeVec;
 
 #if HAVE_UV
@@ -38,7 +36,10 @@ layout(std430, push_constant) uniform Constants
     float lod_bias;
 } registers;
 
-layout(location = 0) out vec4 FragColor;
+layout(location = 0) out vec3 Emissive;
+layout(location = 1) out vec4 BaseColor;
+layout(location = 2) out vec3 Normal;
+layout(location = 3) out vec2 PBR;
 
 void main()
 {
@@ -73,17 +74,8 @@ void main()
     float roughness = registers.roughness;
 #endif
 
-#if HAVE_NORMAL
-    float ndotl = clamp(dot(normal, normalize(vec3(1.0, 1.0, 1.0))), 0.0, 1.0);
-#endif
-
-#if defined(HAVE_BASECOLORMAP) && HAVE_BASECOLORMAP
-    FragColor = base_color;
-#elif HAVE_NORMAL
-    FragColor = vec4(0.5 * normal + 0.5, 1.0);
-#else
-    FragColor = base_color;
-#endif
-
-    FragColor.rgb = apply_fog(FragColor.rgb, vEyeVec);
+    Emissive = vec3(0.0);
+    BaseColor = base_color;
+    Normal = 0.5 * normal + 0.5;
+    PBR = vec2(metallic, roughness);
 }

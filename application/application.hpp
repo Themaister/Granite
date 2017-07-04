@@ -127,13 +127,51 @@ private:
 	Vulkan::WSI wsi;
 };
 
-class SceneViewerApplication : public Application, public EventHandler, public RenderPassImplementation
+class SceneViewerApplication : public Application, public EventHandler
 {
 public:
 	SceneViewerApplication(const std::string &path, unsigned width, unsigned height);
 	void render_frame(double frame_time, double elapsed_time) override;
 
 private:
+	struct GBufferImpl : RenderPassImplementation
+	{
+		GBufferImpl(SceneViewerApplication *app)
+			: app(app)
+		{
+		}
+
+		bool get_clear_color(unsigned index, VkClearColorValue *value) override;
+		bool get_clear_depth_stencil(VkClearDepthStencilValue *value) override;
+		void build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd) override;
+		SceneViewerApplication *app;
+	};
+	GBufferImpl gbuffer_impl;
+
+	struct LightingImpl : RenderPassImplementation
+	{
+		LightingImpl(SceneViewerApplication *app)
+			: app(app)
+		{
+		}
+
+		void build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd) override;
+		SceneViewerApplication *app;
+	};
+	LightingImpl lighting_impl;
+
+	struct UIImpl : RenderPassImplementation
+	{
+		UIImpl(SceneViewerApplication *app)
+			: app(app)
+		{
+		}
+		void build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd) override;
+
+		SceneViewerApplication *app;
+	};
+	UIImpl ui_impl;
+
 	RenderContext context;
 	Renderer renderer;
 	FPSCamera cam;
@@ -145,13 +183,6 @@ private:
 	void on_swapchain_changed(const Event &e);
 	void on_swapchain_destroyed(const Event &e);
 	RenderGraph graph;
-
-	bool get_clear_color(unsigned index, VkClearColorValue *value) override;
-	bool get_clear_depth_stencil(VkClearDepthStencilValue *value) override;
-	void build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd) override;
-
-	RenderPassShaderBlitImplementation horiz;
-	RenderPassShaderBlitImplementation vert;
 };
 
 extern int application_main(int argc, char *argv[]);

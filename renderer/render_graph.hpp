@@ -322,8 +322,7 @@ public:
 	void reset();
 	void log();
 	void setup_attachments(Vulkan::Device &device, Vulkan::ImageView *swapchain);
-	void enqueue_initial_barriers(Vulkan::CommandBuffer &cmd);
-	void enqueue_render_passes(Vulkan::CommandBuffer &cmd);
+	void enqueue_render_passes(Vulkan::Device &device);
 
 	RenderTextureResource &get_texture_resource(const std::string &name);
 
@@ -415,5 +414,6 @@ private:
 	unsigned swapchain_physical_index = RenderResource::Unused;
 
 	void enqueue_scaled_requests(Vulkan::CommandBuffer &cmd, const std::vector<ScaledClearRequests> &requests);
+	void enqueue_initial_barriers(Vulkan::CommandBuffer &cmd);
 };
 }

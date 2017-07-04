@@ -180,13 +180,10 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 	scene.gather_visible_opaque_renderables(context.get_visibility_frustum(), visible);
 	scene.gather_background_renderables(visible);
 
-	auto cmd = device.request_command_buffer();
 	renderer.begin();
 	renderer.push_renderables(context, visible);
 	graph.setup_attachments(device, &device.get_swapchain_view());
-	graph.enqueue_initial_barriers(*cmd);
-	graph.enqueue_render_passes(*cmd);
-	device.submit(cmd);
+	graph.enqueue_render_passes(device);
 }
 
 int Application::run()

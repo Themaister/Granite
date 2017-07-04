@@ -715,8 +715,14 @@ void RenderGraph::enqueue_scaled_requests(Vulkan::CommandBuffer &cmd, const std:
 	cmd.draw(4);
 }
 
-void RenderGraph::enqueue_render_passes(Vulkan::CommandBuffer &cmd)
+void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 {
+	{
+		auto cmd = device.request_command_buffer();
+		enqueue_initial_barriers(*cmd);
+		device.submit(cmd);
+	}
+
 	// TODO: Use events, so we can get overlapping between render passes.
 	struct BarrierData
 	{
@@ -729,6 +735,8 @@ void RenderGraph::enqueue_render_passes(Vulkan::CommandBuffer &cmd)
 
 	for (auto &physical_pass : physical_passes)
 	{
+		auto cmd = device.request_command_buffer();
+
 		VkPipelineStageFlags dst_stages = 0;
 		barriers.clear();
 
@@ -760,9 +768,9 @@ void RenderGraph::enqueue_render_passes(Vulkan::CommandBuffer &cmd)
 
 		if (!barriers.empty())
 		{
-			cmd.barrier(VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, dst_stages,
-			            0, nullptr, 0, nullptr,
-			            barriers.size(), barriers.data());
+			cmd->barrier(VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, dst_stages,
+			             0, nullptr, 0, nullptr,
+			             barriers.size(), barriers.data());
 		}
 
 		for (auto &clear_req : physical_pass.color_clear_requests)
@@ -770,21 +778,21 @@ void RenderGraph::enqueue_render_passes(Vulkan::CommandBuffer &cmd)
 		if (physical_pass.depth_clear_request.implementation)
 			physical_pass.depth_clear_request.implementation->get_clear_depth_stencil(physical_pass.depth_clear_request.target);
 
-		cmd.begin_render_pass(physical_pass.render_pass_info);
+		cmd->begin_render_pass(physical_pass.render_pass_info);
 
 		for (auto &subpass : physical_pass.passes)
 		{
 			unsigned subpass_index = unsigned(&subpass - physical_pass.passes.data());
 			auto &scaled_requests = physical_pass.scaled_clear_requests[subpass_index];
-			enqueue_scaled_requests(cmd, scaled_requests);
+			enqueue_scaled_requests(*cmd, scaled_requests);
 
 			auto &pass = *passes[subpass];
-			pass.get_implementation().build_render_pass(pass, cmd);
+			pass.get_implementation().build_render_pass(pass, *cmd);
 			if (&subpass != &physical_pass.passes.back())
-				cmd.next_subpass();
+				cmd->next_subpass();
 		}
 
-		cmd.end_render_pass();
+		cmd->end_render_pass();
 
 		// TODO: Signal event here.
 		for (auto &barrier : physical_pass.flush)
@@ -794,23 +802,27 @@ void RenderGraph::enqueue_render_passes(Vulkan::CommandBuffer &cmd)
 			resource.current_layout = barrier.layout;
 			resource.src_access |= barrier.access;
 		}
+
+		device.submit(cmd);
 	}
 
 	// Scale to swapchain.
 	if (swapchain_physical_index == RenderResource::Unused)
 	{
+		auto cmd = device.request_command_buffer();
 		unsigned index = resource_to_index[backbuffer_source];
-		cmd.image_barrier(physical_attachments[index]->get_image(),
+		cmd->image_barrier(physical_attachments[index]->get_image(),
 	                      resources[index].current_layout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	                      VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, resources[index].src_access,
 	                      VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 		physical_attachments[index]->get_image().set_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
-		auto rp_info = cmd.get_device().get_swapchain_render_pass(Vulkan::SwapchainRenderPass::ColorOnly);
+		auto rp_info = device.get_swapchain_render_pass(Vulkan::SwapchainRenderPass::ColorOnly);
 		rp_info.clear_attachments = 0;
-		cmd.begin_render_pass(rp_info);
-		enqueue_scaled_requests(cmd, {{ 0, index }});
-		cmd.end_render_pass();
+		cmd->begin_render_pass(rp_info);
+		enqueue_scaled_requests(*cmd, {{ 0, index }});
+		cmd->end_render_pass();
+		device.submit(cmd);
 	}
 }
 

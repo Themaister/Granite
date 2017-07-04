@@ -1,0 +1,17 @@
+#version 310 es
+layout(local_size_x = 1) in;
+
+layout(set = 0, binding = 0, std430) writeonly buffer SSBO0
+{
+    float value0;
+};
+
+layout(set = 0, binding = 1, std430) readonly buffer SSBO1
+{
+    float value1;
+};
+
+void main()
+{
+    value0 = value1 + 0.05;
+}

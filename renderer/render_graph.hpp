@@ -305,6 +305,7 @@ public:
 
 	RenderBufferResource &add_uniform_input(const std::string &name);
 	RenderBufferResource &add_storage_output(const std::string &name, const BufferInfo &info, const std::string &input = "");
+	RenderBufferResource &add_storage_read_only_input(const std::string &name);
 
 	RenderTextureResource &add_storage_texture_output(const std::string &name, const AttachmentInfo &info, const std::string &input = "");
 
@@ -361,6 +362,11 @@ public:
 		return storage_inputs;
 	}
 
+	const std::vector<RenderBufferResource *> &get_storage_read_inputs() const
+	{
+		return storage_read_inputs;
+	}
+
 	const std::vector<RenderBufferResource *> &get_storage_outputs() const
 	{
 		return storage_outputs;
@@ -401,6 +407,7 @@ private:
 	std::vector<RenderTextureResource *> attachments_inputs;
 	std::vector<RenderBufferResource *> uniform_inputs;
 	std::vector<RenderBufferResource *> storage_outputs;
+	std::vector<RenderBufferResource *> storage_read_inputs;
 	std::vector<RenderBufferResource *> storage_inputs;
 	RenderTextureResource *depth_stencil_input = nullptr;
 	RenderTextureResource *depth_stencil_output = nullptr;

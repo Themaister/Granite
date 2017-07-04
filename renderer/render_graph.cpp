@@ -39,6 +39,14 @@ RenderBufferResource &RenderPass::add_uniform_input(const std::string &name)
 	return res;
 }
 
+RenderBufferResource &RenderPass::add_storage_read_only_input(const std::string &name)
+{
+	auto &res = graph.get_buffer_resource(name);
+	res.read_in_pass(index);
+	storage_read_inputs.push_back(&res);
+	return res;
+}
+
 RenderBufferResource &RenderPass::add_storage_output(const std::string &name, const BufferInfo &info, const std::string &input)
 {
 	auto &res = graph.get_buffer_resource(name);
@@ -271,6 +279,15 @@ void RenderGraph::build_physical_resources()
 		}
 
 		for (auto *input : pass.get_uniform_inputs())
+		{
+			if (input->get_physical_index() == RenderResource::Unused)
+			{
+				physical_dimensions.push_back(get_resource_dimensions(*input));
+				input->set_physical_index(phys_index++);
+			}
+		}
+
+		for (auto *input : pass.get_storage_read_inputs())
 		{
 			if (input->get_physical_index() == RenderResource::Unused)
 			{
@@ -656,6 +673,11 @@ void RenderGraph::build_physical_passes()
 
 		// Need non-local dependency, cannot merge.
 		for (auto *input : next.get_uniform_inputs())
+			if (find_buffer(prev.get_storage_outputs(), input))
+				return false;
+
+		// Need non-local dependency, cannot merge.
+		for (auto *input : next.get_storage_read_inputs())
 			if (find_buffer(prev.get_storage_outputs(), input))
 				return false;
 
@@ -1318,6 +1340,8 @@ void RenderGraph::bake()
 
 			for (auto *input : pass.get_uniform_inputs())
 				depend_passes(input->get_write_passes());
+			for (auto *input : pass.get_storage_read_inputs())
+				depend_passes(input->get_write_passes());
 		}
 
 		pushed_passes.clear();
@@ -1691,6 +1715,20 @@ void RenderGraph::build_barriers()
 			barrier.access |= VK_ACCESS_UNIFORM_READ_BIT;
 			if (pass.get_stages() == VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT)
 				barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT; // TODO: Pick appropriate stage.
+			else
+				barrier.stages |= pass.get_stages();
+
+			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
+				throw logic_error("Layout mismatch.");
+			barrier.layout = VK_IMAGE_LAYOUT_GENERAL; // It's a buffer, but use this as a sentinel.
+		}
+
+		for (auto *input : pass.get_storage_read_inputs())
+		{
+			auto &barrier = get_invalidate_access(input->get_physical_index());
+			barrier.access |= VK_ACCESS_SHADER_READ_BIT;
+			if (pass.get_stages() == VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT)
+				barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; // TODO: Pick appropriate stage.
 			else
 				barrier.stages |= pass.get_stages();
 

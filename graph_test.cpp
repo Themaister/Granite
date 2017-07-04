@@ -69,6 +69,23 @@ public:
 	}
 };
 
+class CopyValueImpl : public RenderPassImplementation
+{
+public:
+	void build_render_pass(RenderPass &render_pass, Vulkan::CommandBuffer &cmd) override
+	{
+		auto &write_buffer = render_pass.get_graph().get_physical_buffer_resource(render_pass.get_storage_outputs()[0]->get_physical_index());
+		auto &read_buffer = render_pass.get_graph().get_physical_buffer_resource(render_pass.get_storage_read_inputs()[0]->get_physical_index());
+		auto &device = cmd.get_device();
+		auto *program = device.get_shader_manager().register_compute("assets://shaders/copy_value.comp");
+		unsigned variant = program->register_variant({});
+		cmd.set_program(*program->get_program(variant));
+		cmd.set_storage_buffer(0, 0, write_buffer);
+		cmd.set_storage_buffer(0, 1, read_buffer);
+		cmd.dispatch(1, 1, 1);
+	}
+};
+
 class RenderGraphTest : public Application, public EventHandler
 {
 public:
@@ -118,6 +135,11 @@ public:
 		compute_pass.add_storage_texture_output("smol-image", smol_image_info);
 		compute_pass.set_implementation(&write_value);
 
+		auto &compute_pass2 = graph.add_pass("compute2", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+		compute_pass2.add_storage_output("constant2", buffer_info);
+		compute_pass2.add_storage_read_only_input("constant");
+		compute_pass2.set_implementation(&copy_value);
+
 		auto &smol_pass = graph.add_pass("smol", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 		smol_pass.add_color_output("input", smol);
 		smol_pass.set_implementation(&clear_screen);
@@ -125,7 +147,7 @@ public:
 		auto &pass = graph.add_pass("pass", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 		pass.add_color_output("screen", info, "input");
 		pass.set_depth_stencil_output("depth", ds_info);
-		pass.add_uniform_input("constant");
+		pass.add_uniform_input("constant2");
 		pass.add_texture_input("smol-image");
 		pass.set_implementation(&read_value);
 
@@ -146,6 +168,7 @@ private:
 	RenderGraph graph;
 	RPImpl clear_screen;
 	ReadValueImpl read_value;
+	CopyValueImpl copy_value;
 	WriteValueImpl write_value;
 
 	void on_swapchain_created(const Event &event)

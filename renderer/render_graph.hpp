@@ -512,6 +512,7 @@ private:
 	};
 	std::vector<PhysicalPass> physical_passes;
 	std::vector<Barrier> initial_barriers;
+	std::vector<Barrier> initial_top_of_pipe_barriers;
 	void build_physical_passes();
 	void build_transients();
 	void build_physical_resources();
@@ -527,5 +528,6 @@ private:
 
 	void enqueue_scaled_requests(Vulkan::CommandBuffer &cmd, const std::vector<ScaledClearRequests> &requests);
 	void enqueue_initial_barriers(Vulkan::CommandBuffer &cmd);
+	void enqueue_initial_barriers(Vulkan::CommandBuffer &cmd, const std::vector<Barrier> &barriers, VkPipelineStageFlags src_stages);
 };
 }

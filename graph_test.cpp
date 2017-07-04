@@ -111,6 +111,7 @@ public:
 		smol_image_info.size_x = 1.0f;
 		smol_image_info.size_y = 1.0f;
 		smol_image_info.size_class = SizeClass::Absolute;
+		smol_image_info.persistent = true;
 
 		auto &compute_pass = graph.add_pass("compute", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 		compute_pass.add_storage_output("constant", buffer_info);

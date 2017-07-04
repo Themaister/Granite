@@ -46,18 +46,7 @@ public:
 		auto *program = device.get_shader_manager().register_graphics("assets://shaders/clear_value.vert", "assets://shaders/clear_value.frag");
 		unsigned variant = program->register_variant({});
 		cmd.set_program(*program->get_program(variant));
-
-		int8_t *data = static_cast<int8_t *>(cmd.allocate_vertex_data(0, 8, 2));
-		*data++ = -128;
-		*data++ = +127;
-		*data++ = +127;
-		*data++ = +127;
-		*data++ = -128;
-		*data++ = -128;
-		*data++ = +127;
-		*data++ = -128;
-
-		cmd.set_vertex_attrib(0, 0, VK_FORMAT_R8G8_SNORM, 0);
+		cmd.set_quad_vertex_state();
 		cmd.set_uniform_buffer(0, 0, buffer);
 		cmd.set_quad_state();
 		cmd.draw(4);
@@ -123,6 +112,10 @@ public:
 		compute_pass.add_storage_output("constant", buffer_info);
 		compute_pass.set_implementation(&write_value);
 
+		auto &compute_pass2 = graph.add_pass("compute2", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+		compute_pass2.add_storage_output("constant2", buffer_info, "constant");
+		compute_pass2.set_implementation(&write_value);
+
 		auto &smol_pass = graph.add_pass("smol", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 		smol_pass.add_color_output("input", smol);
 		smol_pass.set_implementation(&clear_screen);
@@ -130,7 +123,7 @@ public:
 		auto &pass = graph.add_pass("pass", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 		pass.add_color_output("screen", info, "input");
 		pass.set_depth_stencil_output("depth", ds_info);
-		pass.add_uniform_input("constant");
+		pass.add_uniform_input("constant2");
 		pass.set_implementation(&read_value);
 
 		graph.set_backbuffer_source("screen");

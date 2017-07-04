@@ -16,19 +16,8 @@ void RenderPassShaderBlitImplementation::build_render_pass(RenderPass &pass, Vul
 	auto shader = program->get_program(variant);
 	cmd.set_program(*shader);
 
-	int8_t *data = static_cast<int8_t *>(cmd.allocate_vertex_data(0, 8, 2));
-	*data++ = -128;
-	*data++ = +127;
-	*data++ = +127;
-	*data++ = +127;
-	*data++ = -128;
-	*data++ = -128;
-	*data++ = +127;
-	*data++ = -128;
-
-	cmd.set_vertex_attrib(0, 0, VK_FORMAT_R8G8_SNORM, 0);
 	cmd.set_quad_state();
-
+	cmd.set_quad_vertex_state();
 	cmd.draw(4);
 }
 
@@ -68,7 +57,7 @@ RenderBufferResource &RenderPass::add_storage_output(const std::string &name, co
 
 	if (!input.empty())
 	{
-		auto &input_res = graph.get_buffer_resource(name);
+		auto &input_res = graph.get_buffer_resource(input);
 		input_res.read_in_pass(index);
 		storage_inputs.push_back(&input_res);
 	}
@@ -824,22 +813,11 @@ void RenderGraph::enqueue_scaled_requests(Vulkan::CommandBuffer &cmd, const std:
 		cmd.set_texture(0, req.target, *physical_attachments[req.physical_resource], Vulkan::StockSampler::LinearClamp);
 	}
 
-	cmd.set_quad_state();
-
 	unsigned variant = program->register_variant(defines);
 	auto shader = program->get_program(variant);
 	cmd.set_program(*shader);
-	int8_t *data = static_cast<int8_t *>(cmd.allocate_vertex_data(0, 8, 2));
-	*data++ = -128;
-	*data++ = +127;
-	*data++ = +127;
-	*data++ = +127;
-	*data++ = -128;
-	*data++ = -128;
-	*data++ = +127;
-	*data++ = -128;
-
-	cmd.set_vertex_attrib(0, 0, VK_FORMAT_R8G8_SNORM, 0);
+	cmd.set_quad_state();
+	cmd.set_quad_vertex_state();
 	cmd.draw(4);
 }
 
@@ -995,7 +973,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 	if (swapchain_physical_index == RenderResource::Unused)
 	{
 		auto cmd = device.request_command_buffer();
-		unsigned index = resource_to_index[backbuffer_source];
+		unsigned index = this->resources[resource_to_index[backbuffer_source]]->get_physical_index();
 		cmd->image_barrier(physical_attachments[index]->get_image(),
 		                   resources[index].current_layout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		                   resources[index].src_stages, resources[index].src_access,

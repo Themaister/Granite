@@ -359,10 +359,18 @@ public:
 	void enqueue_render_passes(Vulkan::Device &device);
 
 	RenderTextureResource &get_texture_resource(const std::string &name);
+	RenderBufferResource &get_buffer_resource(const std::string &name);
 
-	Vulkan::ImageView &get_physical_resource(unsigned index)
+	Vulkan::ImageView &get_physical_texture_resource(unsigned index)
 	{
+		assert(physical_attachments[index]);
 		return *physical_attachments[index];
+	}
+
+	Vulkan::Buffer &get_physical_buffer_resource(unsigned index)
+	{
+		assert(physical_buffers[index]);
+		return *physical_buffers[index];
 	}
 
 private:
@@ -445,6 +453,7 @@ private:
 
 	std::vector<ResourceDimensions> physical_dimensions;
 	std::vector<Vulkan::ImageView *> physical_attachments;
+	std::vector<Vulkan::BufferHandle> physical_buffers;
 	Vulkan::ImageView *swapchain_attachment = nullptr;
 	unsigned swapchain_physical_index = RenderResource::Unused;
 

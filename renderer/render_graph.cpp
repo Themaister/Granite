@@ -37,7 +37,7 @@ void RenderPass::set_texture_inputs(Vulkan::CommandBuffer &cmd, unsigned set, un
 {
 	for (auto &tex : texture_inputs)
 	{
-		cmd.set_texture(set, start_binding, graph.get_physical_resource(tex->get_physical_index()), sampler);
+		cmd.set_texture(set, start_binding, graph.get_physical_texture_resource(tex->get_physical_index()), sampler);
 		start_binding++;
 	}
 }
@@ -98,6 +98,7 @@ RenderTextureResource &RenderGraph::get_texture_resource(const std::string &name
 	auto itr = resource_to_index.find(name);
 	if (itr != end(resource_to_index))
 	{
+		assert(resources[itr->second]->get_type() == RenderResource::Type::Texture);
 		return static_cast<RenderTextureResource &>(*resources[itr->second]);
 	}
 	else
@@ -106,6 +107,23 @@ RenderTextureResource &RenderGraph::get_texture_resource(const std::string &name
 		resources.emplace_back(new RenderTextureResource(index));
 		resource_to_index[name] = index;
 		return static_cast<RenderTextureResource &>(*resources.back());
+	}
+}
+
+RenderBufferResource &RenderGraph::get_buffer_resource(const std::string &name)
+{
+	auto itr = resource_to_index.find(name);
+	if (itr != end(resource_to_index))
+	{
+		assert(resources[itr->second]->get_type() == RenderResource::Type::Buffer);
+		return static_cast<RenderBufferResource &>(*resources[itr->second]);
+	}
+	else
+	{
+		unsigned index = resources.size();
+		resources.emplace_back(new RenderBufferResource(index));
+		resource_to_index[name] = index;
+		return static_cast<RenderBufferResource &>(*resources.back());
 	}
 }
 
@@ -585,11 +603,12 @@ void RenderGraph::log()
 
 	for (auto &barrier : initial_barriers)
 	{
-		LOGI("DiscardBarrier: %u%s, layout: %s, access: %s\n",
+		LOGI("DiscardBarrier: %u%s, layout: %s, access: %s, stages: %s\n",
 		     barrier.resource_index,
 		     swap_str(barrier),
 		     Vulkan::layout_to_string(barrier.layout),
-		     Vulkan::access_flags_to_string(barrier.access).c_str());
+		     Vulkan::access_flags_to_string(barrier.access).c_str(),
+		     Vulkan::stage_flags_to_string(barrier.stages).c_str());
 	}
 
 	for (auto &passes : physical_passes)
@@ -598,11 +617,12 @@ void RenderGraph::log()
 
 		for (auto &barrier : passes.invalidate)
 		{
-			LOGI("  Invalidate: %u%s, layout: %s, access: %s\n",
+			LOGI("  Invalidate: %u%s, layout: %s, access: %s, stages: %s\n",
 			     barrier.resource_index,
 			     swap_str(barrier),
 			     Vulkan::layout_to_string(barrier.layout),
-			     Vulkan::access_flags_to_string(barrier.access).c_str());
+			     Vulkan::access_flags_to_string(barrier.access).c_str(),
+			     Vulkan::stage_flags_to_string(barrier.stages).c_str());
 		}
 
 		for (auto &subpass : passes.passes)
@@ -615,11 +635,12 @@ void RenderGraph::log()
 			{
 				if (!physical_dimensions[barrier.resource_index].transient)
 				{
-					LOGI("      Invalidate: %u%s, layout: %s, access: %s\n",
+					LOGI("      Invalidate: %u%s, layout: %s, access: %s, stages: %s\n",
 					     barrier.resource_index,
 					     swap_str(barrier),
 					     Vulkan::layout_to_string(barrier.layout),
-					     Vulkan::access_flags_to_string(barrier.access).c_str());
+					     Vulkan::access_flags_to_string(barrier.access).c_str(),
+					     Vulkan::stage_flags_to_string(barrier.stages).c_str());
 				}
 			}
 
@@ -650,9 +671,10 @@ void RenderGraph::log()
 				if (!physical_dimensions[barrier.resource_index].transient &&
 					barrier.resource_index != swapchain_physical_index)
 				{
-					LOGI("      Flush: %u, layout: %s, access: %s\n",
+					LOGI("      Flush: %u, layout: %s, access: %s, stages: %s\n",
 					     barrier.resource_index, Vulkan::layout_to_string(barrier.layout),
-					     Vulkan::access_flags_to_string(barrier.access).c_str());
+					     Vulkan::access_flags_to_string(barrier.access).c_str(),
+					     Vulkan::stage_flags_to_string(barrier.stages).c_str());
 				}
 			}
 
@@ -661,11 +683,12 @@ void RenderGraph::log()
 
 		for (auto &barrier : passes.flush)
 		{
-			LOGI("  Flush: %u%s, layout: %s, access: %s\n",
+			LOGI("  Flush: %u%s, layout: %s, access: %s, stages: %s\n",
 			     barrier.resource_index,
 			     swap_str(barrier),
 			     Vulkan::layout_to_string(barrier.layout),
-			     Vulkan::access_flags_to_string(barrier.access).c_str());
+			     Vulkan::access_flags_to_string(barrier.access).c_str(),
+			     Vulkan::stage_flags_to_string(barrier.stages).c_str());
 		}
 	}
 }
@@ -873,32 +896,56 @@ void RenderGraph::enqueue_initial_barriers(Vulkan::CommandBuffer &cmd)
 	if (!num_barriers)
 		return;
 
-	vector<VkImageMemoryBarrier> barriers(initial_barriers.size());
+	vector<VkBufferMemoryBarrier> buffer_barriers;
+	vector<VkImageMemoryBarrier> image_barriers;
+	buffer_barriers.reserve(initial_barriers.size());
+	image_barriers.reserve(initial_barriers.size());
+
+	// This serializes frames, which might not be the ideal, but we can overlap TRANSFERS and some compute at least ...
 	VkPipelineStageFlags src_stages = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
 	VkPipelineStageFlags dst_stages = 0;
 
 	for (unsigned i = 0; i < num_barriers; i++)
 	{
-		auto *view = physical_attachments[initial_barriers[i].resource_index];
-		barriers[i].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-		barriers[i].image = view->get_image().get_image();
-		barriers[i].srcAccessMask = 0;
-		barriers[i].dstAccessMask = initial_barriers[i].access;
-		barriers[i].oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		barriers[i].newLayout = initial_barriers[i].layout;
-		barriers[i].subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
-		barriers[i].subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
-		barriers[i].subresourceRange.aspectMask =
-			Vulkan::format_to_aspect_mask(view->get_image().get_format());
+		auto type = resources[initial_barriers[i].resource_index]->get_type();
 
-		barriers[i].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		barriers[i].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		view->get_image().set_layout(initial_barriers[i].layout);
+		if (type == RenderResource::Type::Texture)
+		{
+			auto *view = physical_attachments[initial_barriers[i].resource_index];
+			VkImageMemoryBarrier b = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+			b.image = view->get_image().get_image();
+			b.srcAccessMask = 0;
+			b.dstAccessMask = initial_barriers[i].access;
+			b.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			b.newLayout = initial_barriers[i].layout;
+			b.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
+			b.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
+			b.subresourceRange.aspectMask = Vulkan::format_to_aspect_mask(view->get_image().get_format());
+			b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			image_barriers.push_back(b);
+			view->get_image().set_layout(initial_barriers[i].layout);
+		}
+		else if (type == RenderResource::Type::Buffer)
+		{
+			auto &buffer = *physical_buffers[initial_barriers[i].resource_index];
+			VkBufferMemoryBarrier b = { VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER };
+			b.srcAccessMask = 0;
+			b.dstAccessMask = initial_barriers[i].access;
+			b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			b.buffer = buffer.get_buffer();
+			b.offset = 0;
+			b.size = VK_WHOLE_SIZE;
+			buffer_barriers.push_back(b);
+		}
 
 		dst_stages |= initial_barriers[i].stages;
 	}
 
-	cmd.barrier(src_stages, dst_stages, 0, nullptr, 0, nullptr, num_barriers, barriers.data());
+	cmd.barrier(src_stages, dst_stages, 0, nullptr,
+	            buffer_barriers.size(), buffer_barriers.empty() ? nullptr : buffer_barriers.data(),
+	            image_barriers.size(), image_barriers.empty() ? nullptr : image_barriers.data());
 }
 
 void RenderGraph::bake()

@@ -492,7 +492,7 @@ RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
 
 		             if (external_input_dependencies & (1u << subpass))
 		             {
-			             dep.srcStageMask |= VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
+			             dep.srcStageMask |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 			             dep.dstStageMask |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
 			             dep.srcAccessMask |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 			             dep.dstAccessMask |= VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;

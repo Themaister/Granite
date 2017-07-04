@@ -211,6 +211,13 @@ public:
 	void barrier(VkPipelineStageFlags src_stage, VkAccessFlags src_access, VkPipelineStageFlags dst_stage,
 	             VkAccessFlags dst_access);
 
+	PipelineEvent signal_event(VkPipelineStageFlags stages);
+	void wait_events(unsigned num_events, const VkEvent *events,
+	                 VkPipelineStageFlags src_stages, VkPipelineStageFlags dst_stages,
+	                 unsigned barriers, const VkMemoryBarrier *globals,
+	                 unsigned buffer_barriers, const VkBufferMemoryBarrier *buffers,
+	                 unsigned image_barriers, const VkImageMemoryBarrier *images);
+
 	void barrier(VkPipelineStageFlags src_stages, VkPipelineStageFlags dst_stages,
 	             unsigned barriers, const VkMemoryBarrier *globals,
 	             unsigned buffer_barriers, const VkBufferMemoryBarrier *buffers,
@@ -229,8 +236,6 @@ public:
 	                const VkOffset3D &src_offset, const VkOffset3D &src_extent, unsigned dst_level, unsigned src_level,
 	                unsigned dst_base_layer = 0, uint32_t src_base_layer = 0, unsigned num_layers = 1,
 	                VkFilter filter = VK_FILTER_LINEAR);
-
-	PipelineEvent signal_event(VkPipelineStageFlags stages);
 
 	void generate_mipmap(const Image &image);
 

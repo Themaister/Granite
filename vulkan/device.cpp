@@ -751,6 +751,7 @@ void Device::PerFrame::begin()
 	destroyed_buffers.clear();
 	destroyed_semaphores.clear();
 	recycled_semaphores.clear();
+	recycled_events.clear();
 	allocations.clear();
 	fences.clear();
 

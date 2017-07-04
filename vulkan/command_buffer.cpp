@@ -600,8 +600,9 @@ void CommandBuffer::flush_render_state()
 	dirty_vbos &= ~update_vbo_mask;
 }
 
-void CommandBuffer::wait_events(unsigned num_events, const VkEvent *events, unsigned barriers,
+void CommandBuffer::wait_events(unsigned num_events, const VkEvent *events,
                                 VkPipelineStageFlags src_stages, VkPipelineStageFlags dst_stages,
+                                unsigned barriers,
                                 const VkMemoryBarrier *globals, unsigned buffer_barriers,
                                 const VkBufferMemoryBarrier *buffers, unsigned image_barriers,
                                 const VkImageMemoryBarrier *images)

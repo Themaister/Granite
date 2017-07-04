@@ -33,9 +33,9 @@ VkEvent EventManager::request_cleared_event()
 	}
 	else
 	{
-		auto sem = events.back();
+		auto event = events.back();
 		events.pop_back();
-		return sem;
+		return event;
 	}
 }
 }

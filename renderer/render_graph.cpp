@@ -678,6 +678,7 @@ static inline VkPipelineStageFlags access_to_stages(VkAccessFlags flags)
 	if (flags & VK_ACCESS_SHADER_WRITE_BIT)
 		stages |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
 
+	assert(stages != 0);
 	return stages;
 }
 
@@ -725,15 +726,16 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 		device.submit(cmd);
 	}
 
-	// TODO: Use events, so we can get overlapping between render passes.
 	struct BarrierData
 	{
 		VkPipelineStageFlags src_stages = 0;
 		VkAccessFlags src_access = 0;
 		VkImageLayout current_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+		Vulkan::PipelineEvent event;
 	};
 	vector<BarrierData> resources(physical_dimensions.size());
 	vector<VkImageMemoryBarrier> barriers;
+	vector<VkEvent> events;
 
 	for (auto &physical_pass : physical_passes)
 	{
@@ -741,6 +743,14 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 
 		VkPipelineStageFlags dst_stages = 0;
 		barriers.clear();
+		events.clear();
+
+		const auto add_unique_event = [&](VkEvent event) {
+			assert(event != VK_NULL_HANDLE);
+			auto itr = find(begin(events), end(events), event);
+			if (itr == end(events))
+				events.push_back(event);
+		};
 
 		// Queue up invalidates and change layouts.
 		for (auto &barrier : physical_pass.invalidate)
@@ -766,13 +776,15 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 			dst_stages |= access_to_stages(barrier.access);
 
 			physical_attachments[barrier.resource_index]->get_image().set_layout(barrier.layout);
+			add_unique_event(resource.event->get_event());
 		}
 
 		if (!barriers.empty())
 		{
-			cmd->barrier(VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, dst_stages,
-			             0, nullptr, 0, nullptr,
-			             barriers.size(), barriers.data());
+			cmd->wait_events(events.size(), events.data(),
+			                 VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, dst_stages,
+			                 0, nullptr, 0, nullptr,
+			                 barriers.size(), barriers.data());
 		}
 
 		for (auto &clear_req : physical_pass.color_clear_requests)
@@ -796,13 +808,17 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 
 		cmd->end_render_pass();
 
-		// TODO: Signal event here.
+		Vulkan::PipelineEvent event;
+		if (!physical_pass.flush.empty())
+			event = cmd->signal_event(VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+
 		for (auto &barrier : physical_pass.flush)
 		{
 			auto &resource = resources[barrier.resource_index];
 			physical_attachments[barrier.resource_index]->get_image().set_layout(barrier.layout);
 			resource.current_layout = barrier.layout;
 			resource.src_access |= barrier.access;
+			resource.event = event;
 		}
 
 		device.submit(cmd);

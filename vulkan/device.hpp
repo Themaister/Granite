@@ -13,6 +13,7 @@
 #include "sampler.hpp"
 #include "semaphore.hpp"
 #include "semaphore_manager.hpp"
+#include "event_manager.hpp"
 #include "shader.hpp"
 #include "vulkan.hpp"
 #include "shader_manager.hpp"
@@ -78,6 +79,7 @@ public:
 	void destroy_sampler(VkSampler sampler);
 	void destroy_framebuffer(VkFramebuffer framebuffer);
 	void destroy_semaphore(VkSemaphore semaphore);
+	void destroy_event(VkEvent event);
 	void free_memory(const DeviceAllocation &alloc);
 
 	VkSemaphore set_acquire(VkSemaphore acquire);
@@ -133,6 +135,8 @@ public:
 		return texture_manager;
 	}
 
+	PipelineEvent request_pipeline_event();
+
 private:
 	VkInstance instance = VK_NULL_HANDLE;
 	VkPhysicalDevice gpu = VK_NULL_HANDLE;
@@ -148,6 +152,7 @@ private:
 	struct PerFrame
 	{
 		PerFrame(Device *device, DeviceAllocator &global, SemaphoreManager &semaphore_manager,
+		         EventManager &event_manager,
 		         uint32_t queue_family_index);
 		~PerFrame();
 		void operator=(const PerFrame &) = delete;
@@ -159,6 +164,7 @@ private:
 		VkDevice device;
 		DeviceAllocator &global_allocator;
 		SemaphoreManager &semaphore_manager;
+		EventManager &event_manager;
 		CommandPool cmd_pool;
 		ImageHandle backbuffer;
 		FenceManager fence_manager;
@@ -176,11 +182,13 @@ private:
 		std::vector<CommandBufferHandle> submissions;
 		std::vector<std::shared_ptr<FenceHolder>> fences;
 		std::vector<VkSemaphore> recycled_semaphores;
+		std::vector<VkEvent> recycled_events;
 		std::vector<VkSemaphore> destroyed_semaphores;
 		bool swapchain_touched = false;
 		bool swapchain_consumed = false;
 	};
 	SemaphoreManager semaphore_manager;
+	EventManager event_manager;
 	VkSemaphore wsi_acquire = VK_NULL_HANDLE;
 	VkSemaphore wsi_release = VK_NULL_HANDLE;
 

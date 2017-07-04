@@ -87,10 +87,7 @@ public:
 	{
 		auto &device = get_wsi().get_device();
 		graph.setup_attachments(device, &device.get_swapchain_view());
-		auto cmd = device.request_command_buffer();
-		graph.enqueue_initial_barriers(*cmd);
-		graph.enqueue_render_passes(*cmd);
-		device.submit(cmd);
+		graph.enqueue_render_passes(device);
 	}
 
 private:

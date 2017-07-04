@@ -236,6 +236,7 @@ void Device::set_context(const Context &context)
 
 	init_pipeline_cache();
 	semaphore_manager.init(device);
+	event_manager.init(device);
 }
 
 void Device::init_stock_samplers()
@@ -531,7 +532,7 @@ void Device::init_virtual_swapchain(unsigned num_swapchain_images)
 	per_frame.clear();
 
 	for (unsigned i = 0; i < num_swapchain_images; i++)
-		per_frame.emplace_back(new PerFrame(this, allocator, semaphore_manager, queue_family_index));
+		per_frame.emplace_back(new PerFrame(this, allocator, semaphore_manager, event_manager, queue_family_index));
 }
 
 void Device::init_swapchain(const vector<VkImage> swapchain_images, unsigned width, unsigned height, VkFormat format)
@@ -550,7 +551,7 @@ void Device::init_swapchain(const vector<VkImage> swapchain_images, unsigned wid
 
 	for (auto &image : swapchain_images)
 	{
-		auto frame = unique_ptr<PerFrame>(new PerFrame(this, allocator, semaphore_manager, queue_family_index));
+		auto frame = unique_ptr<PerFrame>(new PerFrame(this, allocator, semaphore_manager, event_manager, queue_family_index));
 
 		VkImageViewCreateInfo view_info = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
 		view_info.image = image;
@@ -576,10 +577,12 @@ void Device::init_swapchain(const vector<VkImage> swapchain_images, unsigned wid
 }
 
 Device::PerFrame::PerFrame(Device *device, DeviceAllocator &global, SemaphoreManager &semaphore_manager,
+                           EventManager &event_manager,
                            uint32_t queue_family_index)
     : device(device->get_device())
     , global_allocator(global)
     , semaphore_manager(semaphore_manager)
+    , event_manager(event_manager)
     , cmd_pool(device->get_device(), queue_family_index)
     , fence_manager(device->get_device())
     , vbo_chain(device, 1024 * 1024, 64, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT)
@@ -627,6 +630,17 @@ void Device::destroy_semaphore(VkSemaphore semaphore)
 {
 	VK_ASSERT(!exists(frame().destroyed_semaphores, semaphore));
 	frame().destroyed_semaphores.push_back(semaphore);
+}
+
+void Device::destroy_event(VkEvent event)
+{
+	VK_ASSERT(!exists(frame().recycled_events, event));
+	frame().recycled_events.push_back(event);
+}
+
+PipelineEvent Device::request_pipeline_event()
+{
+	return Util::make_handle<EventHolder>(this, event_manager.request_cleared_event());
 }
 
 void Device::destroy_image(VkImage image)
@@ -723,6 +737,8 @@ void Device::PerFrame::begin()
 		vkDestroySemaphore(device, semaphore, nullptr);
 	for (auto &semaphore : recycled_semaphores)
 		semaphore_manager.recycle(semaphore);
+	for (auto &event : recycled_events)
+		event_manager.recycle(event);
 	for (auto &alloc : allocations)
 		alloc.free_immediate(global_allocator);
 

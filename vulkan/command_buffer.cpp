@@ -600,6 +600,13 @@ void CommandBuffer::flush_render_state()
 	dirty_vbos &= ~update_vbo_mask;
 }
 
+PipelineEvent CommandBuffer::signal_event(VkPipelineStageFlags stages)
+{
+	auto event = device->request_pipeline_event();
+	vkCmdSetEvent(cmd, event->get_event(), stages);
+	return event;
+}
+
 void CommandBuffer::set_vertex_attrib(uint32_t attrib, uint32_t binding, VkFormat format, VkDeviceSize offset)
 {
 	VK_ASSERT(attrib < VULKAN_NUM_VERTEX_ATTRIBS);

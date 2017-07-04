@@ -7,6 +7,7 @@
 #include "sampler.hpp"
 #include "shader.hpp"
 #include "vulkan.hpp"
+#include "pipeline_event.hpp"
 
 namespace Vulkan
 {
@@ -228,6 +229,8 @@ public:
 	                const VkOffset3D &src_offset, const VkOffset3D &src_extent, unsigned dst_level, unsigned src_level,
 	                unsigned dst_base_layer = 0, uint32_t src_base_layer = 0, unsigned num_layers = 1,
 	                VkFilter filter = VK_FILTER_LINEAR);
+
+	PipelineEvent signal_event(VkPipelineStageFlags stages);
 
 	void generate_mipmap(const Image &image);
 

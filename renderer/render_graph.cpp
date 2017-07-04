@@ -742,6 +742,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 		auto cmd = device.request_command_buffer();
 
 		VkPipelineStageFlags dst_stages = 0;
+		VkPipelineStageFlags src_stages = 0;
 		barriers.clear();
 		events.clear();
 
@@ -772,8 +773,9 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 			barriers.push_back(b);
 			resource.current_layout = barrier.layout;
 			resource.src_access = 0;
-			resource.src_stages = 0;
+			src_stages |= resource.src_stages;
 			dst_stages |= access_to_stages(barrier.access);
+			resource.src_stages = 0;
 
 			physical_attachments[barrier.resource_index]->get_image().set_layout(barrier.layout);
 			add_unique_event(resource.event->get_event());
@@ -782,7 +784,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 		if (!barriers.empty())
 		{
 			cmd->wait_events(events.size(), events.data(),
-			                 VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, dst_stages,
+			                 src_stages, dst_stages,
 			                 0, nullptr, 0, nullptr,
 			                 barriers.size(), barriers.data());
 		}
@@ -817,6 +819,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 			auto &resource = resources[barrier.resource_index];
 			physical_attachments[barrier.resource_index]->get_image().set_layout(barrier.layout);
 			resource.current_layout = barrier.layout;
+			resource.src_stages = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
 			resource.src_access |= barrier.access;
 			resource.event = event;
 		}

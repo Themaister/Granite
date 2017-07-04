@@ -130,17 +130,17 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 	info.size_y = 1.0f;
 	info.size_class = SizeClass::SwapchainRelative;
 
-	auto &pass = graph.add_pass("main");
+	auto &pass = graph.add_pass("main", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 	pass.add_color_output("main", info);
 	pass.set_depth_stencil_output("backbuffer_depth", backbuffer_depth);
 	pass.set_implementation(this);
 
-	auto &horiz = graph.add_pass("blur_horiz");
+	auto &horiz = graph.add_pass("blur_horiz", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 	horiz.add_color_output("horiz", info);
 	horiz.add_texture_input("main");
 	horiz.set_implementation(&this->horiz);
 
-	auto &vert = graph.add_pass("blur_vert");
+	auto &vert = graph.add_pass("blur_vert", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 	vert.add_color_output("backbuffer", backbuffer);
 	vert.add_texture_input("horiz");
 	vert.set_implementation(&this->vert);

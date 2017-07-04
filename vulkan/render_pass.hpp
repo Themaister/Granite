@@ -242,8 +242,8 @@ private:
 	};
 
 	Device *device;
-	bool transient;
 	Util::TemporaryHashmap<TransientNode, VULKAN_FRAMEBUFFER_RING_SIZE, false> attachments;
+	bool transient;
 };
 
 class TransientAttachmentAllocator : public AttachmentAllocator

@@ -32,6 +32,12 @@ struct AttachmentInfo
 	std::string size_relative_name;
 };
 
+struct BufferInfo
+{
+	VkDeviceSize size;
+	VkBufferUsageFlags usage;
+};
+
 struct ResourceDimensions
 {
 	VkFormat format = VK_FORMAT_UNDEFINED;
@@ -125,6 +131,28 @@ private:
 	std::unordered_set<unsigned> read_in_passes;
 };
 
+class RenderBufferResource : public RenderResource
+{
+public:
+	RenderBufferResource(unsigned index)
+		: RenderResource(RenderResource::Type::Buffer, index)
+	{
+	}
+
+	void set_buffer_info(const BufferInfo &info)
+	{
+		this->info = info;
+	}
+
+	const BufferInfo &get_buffer_info() const
+	{
+		return info;
+	}
+
+private:
+	BufferInfo info;
+};
+
 class RenderTextureResource : public RenderResource
 {
 public:
@@ -204,12 +232,17 @@ private:
 class RenderPass
 {
 public:
-	RenderPass(RenderGraph &graph, unsigned index)
-		: graph(graph), index(index)
+	RenderPass(RenderGraph &graph, unsigned index, VkPipelineStageFlags stages)
+		: graph(graph), index(index), stages(stages)
 	{
 	}
 
 	enum { Unused = ~0u };
+
+	VkPipelineStageFlags get_stages() const
+	{
+		return stages;
+	}
 
 	RenderGraph &get_graph()
 	{
@@ -296,6 +329,7 @@ private:
 	RenderGraph &graph;
 	unsigned index;
 	unsigned physical_pass = Unused;
+	VkPipelineStageFlags stages;
 
 	std::vector<RenderTextureResource *> color_outputs;
 	std::vector<RenderTextureResource *> color_inputs;
@@ -311,7 +345,7 @@ private:
 class RenderGraph : public Vulkan::NoCopyNoMove
 {
 public:
-	RenderPass &add_pass(const std::string &name);
+	RenderPass &add_pass(const std::string &name, VkPipelineStageFlags stages);
 	void set_backbuffer_source(const std::string &name);
 	void set_backbuffer_dimensions(const ResourceDimensions &dim)
 	{
@@ -348,6 +382,7 @@ private:
 		unsigned resource_index;
 		VkImageLayout layout;
 		VkAccessFlags access;
+		VkPipelineStageFlags stages;
 	};
 
 	struct Barriers

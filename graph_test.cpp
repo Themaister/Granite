@@ -41,8 +41,10 @@ public:
 	void build_render_pass(RenderPass &render_pass, Vulkan::CommandBuffer &cmd) override
 	{
 		auto &buffer = render_pass.get_graph().get_physical_buffer_resource(render_pass.get_uniform_inputs()[0]->get_physical_index());
+		auto &image = render_pass.get_graph().get_physical_texture_resource(render_pass.get_texture_inputs()[0]->get_physical_index());
 		auto &device = cmd.get_device();
 		cmd.set_uniform_buffer(0, 0, buffer);
+		cmd.set_texture(0, 1, image, Vulkan::StockSampler::LinearClamp);
 		Vulkan::CommandBufferUtil::draw_quad(cmd, "assets://shaders/clear_value.vert", "assets://shaders/clear_value.frag");
 	}
 };
@@ -53,11 +55,13 @@ public:
 	void build_render_pass(RenderPass &render_pass, Vulkan::CommandBuffer &cmd) override
 	{
 		auto &buffer = render_pass.get_graph().get_physical_buffer_resource(render_pass.get_storage_outputs()[0]->get_physical_index());
+		auto &image = render_pass.get_graph().get_physical_texture_resource(render_pass.get_storage_texture_outputs()[0]->get_physical_index());
 		auto &device = cmd.get_device();
 		auto *program = device.get_shader_manager().register_compute("assets://shaders/write_value.comp");
 		unsigned variant = program->register_variant({});
 		cmd.set_program(*program->get_program(variant));
 		cmd.set_storage_buffer(0, 0, buffer);
+		cmd.set_storage_texture(0, 1, image);
 
 		float value = 0.25f;
 		cmd.push_constants(&value, 0, sizeof(value));
@@ -102,13 +106,16 @@ public:
 		buffer_info.size = 4;
 		buffer_info.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 
+		AttachmentInfo smol_image_info;
+		smol_image_info.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+		smol_image_info.size_x = 1.0f;
+		smol_image_info.size_y = 1.0f;
+		smol_image_info.size_class = SizeClass::Absolute;
+
 		auto &compute_pass = graph.add_pass("compute", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 		compute_pass.add_storage_output("constant", buffer_info);
+		compute_pass.add_storage_texture_output("smol-image", smol_image_info);
 		compute_pass.set_implementation(&write_value);
-
-		auto &compute_pass2 = graph.add_pass("compute2", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-		compute_pass2.add_storage_output("constant2", buffer_info, "constant");
-		compute_pass2.set_implementation(&write_value);
 
 		auto &smol_pass = graph.add_pass("smol", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 		smol_pass.add_color_output("input", smol);
@@ -117,7 +124,8 @@ public:
 		auto &pass = graph.add_pass("pass", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 		pass.add_color_output("screen", info, "input");
 		pass.set_depth_stencil_output("depth", ds_info);
-		pass.add_uniform_input("constant2");
+		pass.add_uniform_input("constant");
+		pass.add_texture_input("smol-image");
 		pass.set_implementation(&read_value);
 
 		graph.set_backbuffer_source("screen");

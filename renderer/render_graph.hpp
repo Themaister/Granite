@@ -30,6 +30,8 @@ struct AttachmentInfo
 	float size_y = 1.0f;
 	VkFormat format = VK_FORMAT_UNDEFINED;
 	std::string size_relative_name;
+
+	bool persistent = false;
 };
 
 struct BufferInfo
@@ -61,6 +63,8 @@ struct ResourceDimensions
 	unsigned layers = 1;
 	unsigned levels = 1;
 	bool transient = false;
+	bool persistent = false;
+	bool storage = false;
 
 	bool operator==(const ResourceDimensions &other) const
 	{
@@ -71,7 +75,9 @@ struct ResourceDimensions
 		       layers == other.layers &&
 		       levels == other.levels &&
 		       buffer_info == buffer_info &&
-		       transient == other.transient;
+		       transient == other.transient &&
+		       persistent == other.persistent &&
+		       storage == other.storage;
 	}
 
 	bool operator!=(const ResourceDimensions &other) const
@@ -196,9 +202,20 @@ public:
 		return transient;
 	}
 
+	void set_storage_state(bool enable)
+	{
+		storage = enable;
+	}
+
+	bool get_storage_state() const
+	{
+		return storage;
+	}
+
 private:
 	AttachmentInfo info;
 	bool transient = false;
+	bool storage = false;
 };
 
 class RenderPassImplementation
@@ -289,6 +306,8 @@ public:
 	RenderBufferResource &add_uniform_input(const std::string &name);
 	RenderBufferResource &add_storage_output(const std::string &name, const BufferInfo &info, const std::string &input = "");
 
+	RenderTextureResource &add_storage_texture_output(const std::string &name, const AttachmentInfo &info, const std::string &input = "");
+
 	void set_texture_inputs(Vulkan::CommandBuffer &cmd, unsigned set, unsigned start_binding,
 	                        Vulkan::StockSampler sampler);
 
@@ -315,6 +334,16 @@ public:
 	const std::vector<RenderTextureResource *> &get_texture_inputs() const
 	{
 		return texture_inputs;
+	}
+
+	const std::vector<RenderTextureResource *> &get_storage_texture_outputs() const
+	{
+		return storage_texture_outputs;
+	}
+
+	const std::vector<RenderTextureResource *> &get_storage_texture_inputs() const
+	{
+		return storage_texture_inputs;
 	}
 
 	const std::vector<RenderTextureResource *> &get_attachment_inputs() const
@@ -367,6 +396,8 @@ private:
 	std::vector<RenderTextureResource *> color_inputs;
 	std::vector<RenderTextureResource *> color_scale_inputs;
 	std::vector<RenderTextureResource *> texture_inputs;
+	std::vector<RenderTextureResource *> storage_texture_inputs;
+	std::vector<RenderTextureResource *> storage_texture_outputs;
 	std::vector<RenderTextureResource *> attachments_inputs;
 	std::vector<RenderBufferResource *> uniform_inputs;
 	std::vector<RenderBufferResource *> storage_outputs;
@@ -490,6 +521,7 @@ private:
 	std::vector<ResourceDimensions> physical_dimensions;
 	std::vector<Vulkan::ImageView *> physical_attachments;
 	std::vector<Vulkan::BufferHandle> physical_buffers;
+	std::vector<Vulkan::ImageHandle> physical_storage_attachments;
 	Vulkan::ImageView *swapchain_attachment = nullptr;
 	unsigned swapchain_physical_index = RenderResource::Unused;
 

@@ -89,6 +89,27 @@ RenderTextureResource &RenderPass::add_color_output(const std::string &name, con
 	return res;
 }
 
+RenderTextureResource &RenderPass::add_storage_texture_output(const std::string &name, const AttachmentInfo &info,
+                                                              const std::string &input)
+{
+	auto &res = graph.get_texture_resource(name);
+	res.written_in_pass(index);
+	res.set_attachment_info(info);
+	res.set_storage_state(true);
+	storage_texture_outputs.push_back(&res);
+
+	if (!input.empty())
+	{
+		auto &input_res = graph.get_texture_resource(input);
+		input_res.read_in_pass(index);
+		storage_texture_inputs.push_back(&input_res);
+	}
+	else
+		storage_texture_inputs.push_back(nullptr);
+
+	return res;
+}
+
 RenderTextureResource &RenderPass::set_depth_stencil_output(const std::string &name, const AttachmentInfo &info)
 {
 	auto &res = graph.get_texture_resource(name);
@@ -185,6 +206,9 @@ void RenderGraph::validate_passes()
 		if (pass.get_storage_inputs().size() != pass.get_storage_outputs().size())
 			throw logic_error("Size of storage inputs must match storage outputs.");
 
+		if (pass.get_storage_texture_inputs().size() != pass.get_storage_texture_outputs().size())
+			throw logic_error("Size of storage texture inputs must match storage texture outputs.");
+
 		if (!pass.get_storage_outputs().empty())
 		{
 			unsigned num_outputs = pass.get_storage_outputs().size();
@@ -195,6 +219,19 @@ void RenderGraph::validate_passes()
 
 				if (pass.get_storage_outputs()[i]->get_buffer_info() != pass.get_storage_inputs()[i]->get_buffer_info())
 					throw logic_error("Doing RMW on a storage buffer, but usage and sizes do not match.");
+			}
+		}
+
+		if (!pass.get_storage_texture_outputs().empty())
+		{
+			unsigned num_outputs = pass.get_storage_texture_outputs().size();
+			for (unsigned i = 0; i < num_outputs; i++)
+			{
+				if (!pass.get_storage_texture_inputs()[i])
+					continue;
+
+				if (get_resource_dimensions(*pass.get_storage_texture_outputs()[i]) != get_resource_dimensions(*pass.get_storage_texture_inputs()[i]))
+					throw logic_error("Doing RMW on a storage texture image, but sizes do not match.");
 			}
 		}
 
@@ -295,6 +332,28 @@ void RenderGraph::build_physical_resources()
 			}
 		}
 
+		if (!pass.get_storage_texture_inputs().empty())
+		{
+			unsigned size = pass.get_storage_texture_inputs().size();
+			for (unsigned i = 0; i < size; i++)
+			{
+				auto *input = pass.get_storage_texture_inputs()[i];
+				if (input)
+				{
+					if (input->get_physical_index() == RenderResource::Unused)
+					{
+						physical_dimensions.push_back(get_resource_dimensions(*input));
+						input->set_physical_index(phys_index++);
+					}
+
+					if (pass.get_storage_texture_outputs()[i]->get_physical_index() == RenderResource::Unused)
+						pass.get_storage_texture_outputs()[i]->set_physical_index(input->get_physical_index());
+					else if (pass.get_storage_texture_outputs()[i]->get_physical_index() != input->get_physical_index())
+						throw logic_error("Cannot alias resources. Index already claimed.");
+				}
+			}
+		}
+
 		for (auto *output : pass.get_color_outputs())
 		{
 			if (output->get_physical_index() == RenderResource::Unused)
@@ -305,6 +364,15 @@ void RenderGraph::build_physical_resources()
 		}
 
 		for (auto *output : pass.get_storage_outputs())
+		{
+			if (output->get_physical_index() == RenderResource::Unused)
+			{
+				physical_dimensions.push_back(get_resource_dimensions(*output));
+				output->set_physical_index(phys_index++);
+			}
+		}
+
+		for (auto *output : pass.get_storage_texture_outputs())
 		{
 			if (output->get_physical_index() == RenderResource::Unused)
 			{
@@ -580,6 +648,8 @@ void RenderGraph::build_physical_passes()
 		{
 			if (find_attachment(prev.get_color_outputs(), input))
 				return false;
+			if (find_attachment(prev.get_storage_texture_outputs(), input))
+				return false;
 			if (input && prev.get_depth_stencil_output() == input)
 				return false;
 		}
@@ -595,8 +665,15 @@ void RenderGraph::build_physical_passes()
 				return false;
 
 		// Need non-local dependency, cannot merge.
+		for (auto *input : next.get_storage_texture_inputs())
+			if (find_attachment(prev.get_storage_texture_outputs(), input))
+				return false;
+
+		// Need non-local dependency, cannot merge.
 		for (auto *input : next.get_color_scale_inputs())
 		{
+			if (find_attachment(prev.get_storage_texture_outputs(), input))
+				return false;
 			if (find_attachment(prev.get_color_outputs(), input))
 				return false;
 		}
@@ -606,6 +683,8 @@ void RenderGraph::build_physical_passes()
 		{
 			if (!input)
 				continue;
+			if (find_attachment(prev.get_storage_texture_outputs(), input))
+				return false;
 			if (find_attachment(prev.get_color_outputs(), input))
 				return true;
 		}
@@ -980,6 +1059,9 @@ void RenderGraph::setup_attachments(Vulkan::Device &device, Vulkan::ImageView *s
 	// Try to reuse the buffers if possible.
 	physical_buffers.resize(physical_dimensions.size());
 
+	// Try to reuse the storage images if possible.
+	physical_storage_attachments.resize(physical_dimensions.size());
+
 	swapchain_attachment = swapchain;
 
 	unsigned num_attachments = physical_dimensions.size();
@@ -1009,12 +1091,56 @@ void RenderGraph::setup_attachments(Vulkan::Device &device, Vulkan::ImageView *s
 		}
 		else
 		{
-			if (i == swapchain_physical_index)
-				physical_attachments[i] = swapchain;
-			else if (att.transient)
-				physical_attachments[i] = &device.get_transient_attachment(att.width, att.height, att.format, i, 1);
+			if (att.storage)
+			{
+				bool need_image = true;
+				const VkImageUsageFlags usage =
+					VK_IMAGE_USAGE_SAMPLED_BIT |
+					VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+					VK_IMAGE_USAGE_STORAGE_BIT |
+					VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+					VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+
+				if (physical_attachments[i])
+				{
+					if (att.persistent &&
+				        physical_attachments[i]->get_image().get_create_info().format == att.format &&
+						physical_attachments[i]->get_image().get_create_info().width == att.width &&
+						physical_attachments[i]->get_image().get_create_info().height == att.height &&
+						physical_attachments[i]->get_image().get_create_info().usage == usage &&
+						physical_attachments[i]->get_image().get_create_info().flags == VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT)
+					{
+						need_image = false;
+					}
+				}
+
+				if (need_image)
+				{
+					Vulkan::ImageCreateInfo info;
+					info.format = att.format;
+					info.width = att.width;
+					info.height = att.height;
+					info.domain = Vulkan::ImageDomain::Physical;
+					info.levels = 1;
+					info.layers = 1;
+					info.usage = usage;
+					info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+					info.samples = VK_SAMPLE_COUNT_1_BIT;
+					info.flags = VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
+					physical_storage_attachments[i] = device.create_image(info, nullptr);
+				}
+
+				physical_attachments[i] = &physical_storage_attachments[i]->get_view();
+			}
 			else
-				physical_attachments[i] = &device.get_physical_attachment(att.width, att.height, att.format, i, 1);
+			{
+				if (i == swapchain_physical_index)
+					physical_attachments[i] = swapchain;
+				else if (att.transient)
+					physical_attachments[i] = &device.get_transient_attachment(att.width, att.height, att.format, i, 1);
+				else
+					physical_attachments[i] = &device.get_physical_attachment(att.width, att.height, att.format, i, 1);
+			}
 		}
 	}
 
@@ -1147,18 +1273,33 @@ void RenderGraph::bake()
 				depend_passes(pass.get_depth_stencil_input()->get_write_passes());
 			for (auto *input : pass.get_attachment_inputs())
 				depend_passes(input->get_write_passes());
+
 			for (auto *input : pass.get_color_inputs())
+			{
 				if (input)
 					depend_passes(input->get_write_passes());
+			}
+
 			for (auto *input : pass.get_color_scale_inputs())
+			{
 				if (input)
 					depend_passes(input->get_write_passes());
+			}
+
 			for (auto *input : pass.get_texture_inputs())
 				depend_passes(input->get_write_passes());
 
 			for (auto *input : pass.get_storage_inputs())
+			{
 				if (input)
 					depend_passes(input->get_write_passes());
+			}
+
+			for (auto *input : pass.get_storage_texture_inputs())
+			{
+				if (input)
+					depend_passes(input->get_write_passes());
+			}
 
 			for (auto *input : pass.get_uniform_inputs())
 				depend_passes(input->get_write_passes());
@@ -1219,6 +1360,8 @@ ResourceDimensions RenderGraph::get_resource_dimensions(const RenderTextureResou
 	auto &info = resource.get_attachment_info();
 	dim.format = info.format;
 	dim.transient = resource.get_transient_state();
+	dim.persistent = info.persistent;
+	dim.storage = resource.get_storage_state();
 
 	switch (info.size_class)
 	{
@@ -1265,6 +1408,8 @@ void RenderGraph::build_physical_barriers()
 			flags |= VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
 		if (flags & VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT)
 			flags |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+		if (flags & VK_ACCESS_SHADER_WRITE_BIT)
+			flags |= VK_ACCESS_SHADER_READ_BIT;
 		return flags;
 	};
 
@@ -1552,7 +1697,24 @@ void RenderGraph::build_barriers()
 
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 				throw logic_error("Layout mismatch.");
-			barrier.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+			barrier.layout = VK_IMAGE_LAYOUT_GENERAL;
+		}
+
+		for (auto *input : pass.get_storage_texture_inputs())
+		{
+			if (!input)
+				continue;
+
+			auto &barrier = get_invalidate_access(input->get_physical_index());
+			barrier.access |= VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+			if (pass.get_stages() == VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT)
+				barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; // TODO: Pick appropriate stage.
+			else
+				barrier.stages |= pass.get_stages();
+
+			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
+				throw logic_error("Layout mismatch.");
+			barrier.layout = VK_IMAGE_LAYOUT_GENERAL;
 		}
 
 		for (auto *input : pass.get_color_inputs())
@@ -1601,6 +1763,21 @@ void RenderGraph::build_barriers()
 		}
 
 		for (auto *output : pass.get_storage_outputs())
+		{
+			auto &barrier = get_flush_access(output->get_physical_index());
+			barrier.access |= VK_ACCESS_SHADER_WRITE_BIT;
+
+			if (pass.get_stages() == VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT)
+				barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; // TODO: Pick appropriate stage.
+			else
+				barrier.stages |= pass.get_stages();
+
+			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
+				throw logic_error("Layout mismatch.");
+			barrier.layout = VK_IMAGE_LAYOUT_GENERAL;
+		}
+
+		for (auto *output : pass.get_storage_texture_outputs())
 		{
 			auto &barrier = get_flush_access(output->get_physical_index());
 			barrier.access |= VK_ACCESS_SHADER_WRITE_BIT;

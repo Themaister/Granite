@@ -42,14 +42,8 @@ public:
 	{
 		auto &buffer = render_pass.get_graph().get_physical_buffer_resource(render_pass.get_uniform_inputs()[0]->get_physical_index());
 		auto &device = cmd.get_device();
-
-		auto *program = device.get_shader_manager().register_graphics("assets://shaders/clear_value.vert", "assets://shaders/clear_value.frag");
-		unsigned variant = program->register_variant({});
-		cmd.set_program(*program->get_program(variant));
-		cmd.set_quad_vertex_state();
 		cmd.set_uniform_buffer(0, 0, buffer);
-		cmd.set_quad_state();
-		cmd.draw(4);
+		Vulkan::CommandBufferUtil::draw_quad(cmd, "assets://shaders/clear_value.vert", "assets://shaders/clear_value.frag");
 	}
 };
 

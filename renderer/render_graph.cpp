@@ -10,15 +10,7 @@ namespace Granite
 void RenderPassShaderBlitImplementation::build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd)
 {
 	pass.set_texture_inputs(cmd, 0, 0, sampler);
-	auto &device = cmd.get_device();
-	auto *program = device.get_shader_manager().register_graphics(vertex, fragment);
-	unsigned variant = program->register_variant(defines);
-	auto shader = program->get_program(variant);
-	cmd.set_program(*shader);
-
-	cmd.set_quad_state();
-	cmd.set_quad_vertex_state();
-	cmd.draw(4);
+	Vulkan::CommandBufferUtil::draw_quad(cmd, vertex, fragment, defines);
 }
 
 void RenderPass::set_texture_inputs(Vulkan::CommandBuffer &cmd, unsigned set, unsigned start_binding,
@@ -38,7 +30,6 @@ RenderTextureResource &RenderPass::add_attachment_input(const std::string &name)
 	attachments_inputs.push_back(&res);
 	return res;
 }
-
 
 RenderBufferResource &RenderPass::add_uniform_input(const std::string &name)
 {
@@ -801,9 +792,6 @@ void RenderGraph::enqueue_scaled_requests(Vulkan::CommandBuffer &cmd, const std:
 	if (requests.empty())
 		return;
 
-	auto &device = cmd.get_device();
-	auto *program = device.get_shader_manager().register_graphics("assets://shaders/quad.vert", "assets://shaders/scaled_readback.frag");
-
 	vector<pair<string, int>> defines;
 	defines.reserve(requests.size());
 
@@ -813,12 +801,7 @@ void RenderGraph::enqueue_scaled_requests(Vulkan::CommandBuffer &cmd, const std:
 		cmd.set_texture(0, req.target, *physical_attachments[req.physical_resource], Vulkan::StockSampler::LinearClamp);
 	}
 
-	unsigned variant = program->register_variant(defines);
-	auto shader = program->get_program(variant);
-	cmd.set_program(*shader);
-	cmd.set_quad_state();
-	cmd.set_quad_vertex_state();
-	cmd.draw(4);
+	Vulkan::CommandBufferUtil::draw_quad(cmd, "assets://shaders/quad.vert", "assets://shaders/scaled_readback.frag", defines);
 }
 
 void RenderGraph::enqueue_render_passes(Vulkan::Device &device)

@@ -1194,21 +1194,6 @@ void CommandBuffer::set_opaque_state()
 	set_dirty(COMMAND_BUFFER_DIRTY_STATIC_STATE_BIT);
 }
 
-void CommandBuffer::set_quad_vertex_state()
-{
-	int8_t *data = static_cast<int8_t *>(allocate_vertex_data(0, 8, 2));
-	*data++ = -128;
-	*data++ = +127;
-	*data++ = +127;
-	*data++ = +127;
-	*data++ = -128;
-	*data++ = -128;
-	*data++ = +127;
-	*data++ = -128;
-
-	set_vertex_attrib(0, 0, VK_FORMAT_R8G8_SNORM, 0);
-}
-
 void CommandBuffer::set_quad_state()
 {
 	auto &state = static_state.state;
@@ -1344,5 +1329,28 @@ void CommandBuffer::save_state(CommandBufferSaveStateFlags flags, CommandBufferS
 		memcpy(state.bindings.push_constant_data, bindings.push_constant_data, sizeof(bindings.push_constant_data));
 
 	state.flags = flags;
+}
+
+void CommandBufferUtil::draw_quad(CommandBuffer &cmd, const std::string &vertex, const std::string &fragment,
+                                  const std::vector<std::pair<std::string, int>> &defines)
+{
+	auto &device = cmd.get_device();
+	auto *program = device.get_shader_manager().register_graphics(vertex, fragment);
+	unsigned variant = program->register_variant(defines);
+	cmd.set_program(*program->get_program(variant));
+	cmd.set_quad_state();
+
+	int8_t *data = static_cast<int8_t *>(cmd.allocate_vertex_data(0, 8, 2));
+	*data++ = -128;
+	*data++ = +127;
+	*data++ = +127;
+	*data++ = +127;
+	*data++ = -128;
+	*data++ = -128;
+	*data++ = +127;
+	*data++ = -128;
+
+	cmd.set_vertex_attrib(0, 0, VK_FORMAT_R8G8_SNORM, 0);
+	cmd.draw(4);
 }
 }

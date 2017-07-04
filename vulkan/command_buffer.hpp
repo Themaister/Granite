@@ -290,8 +290,6 @@ public:
 	void set_opaque_sprite_state();
 	void set_transparent_sprite_state();
 
-	void set_quad_vertex_state();
-
 	void save_state(CommandBufferSaveStateFlags flags, CommandBufferSavedState &state);
 	void restore_state(const CommandBufferSavedState &state);
 
@@ -525,6 +523,12 @@ private:
 	void begin_context();
 
 	void flush_compute_state();
+};
+
+struct CommandBufferUtil
+{
+	static void draw_quad(CommandBuffer &cmd, const std::string &vertex, const std::string &fragment,
+                          const std::vector<std::pair<std::string, int>> &defines = {});
 };
 
 using CommandBufferHandle = Util::IntrusivePtr<CommandBuffer>;

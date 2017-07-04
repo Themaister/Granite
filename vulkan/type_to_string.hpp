@@ -35,6 +35,8 @@ static inline std::string access_flags_to_string(VkAccessFlags flags)
 
 	if (flags & VK_ACCESS_SHADER_READ_BIT)
 		result += "SHADER_READ ";
+	if (flags & VK_ACCESS_SHADER_WRITE_BIT)
+		result += "SHADER_WRITE ";
 	if (flags & VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT)
 		result += "DS_WRITE ";
 	if (flags & VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT)
@@ -52,6 +54,8 @@ static inline std::string access_flags_to_string(VkAccessFlags flags)
 
 	if (!result.empty())
 		result.pop_back();
+	else
+		result = "NONE";
 
 	return result;
 }
@@ -77,6 +81,8 @@ static inline std::string stage_flags_to_string(VkPipelineStageFlags flags)
 
 	if (!result.empty())
 		result.pop_back();
+	else
+		result = "NONE";
 
 	return result;
 }

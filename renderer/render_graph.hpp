@@ -34,13 +34,27 @@ struct AttachmentInfo
 
 struct BufferInfo
 {
-	VkDeviceSize size;
-	VkBufferUsageFlags usage;
+	VkDeviceSize size = 0;
+	VkBufferUsageFlags usage = 0;
+	bool persistent = false;
+
+	bool operator==(const BufferInfo &other) const
+	{
+		return size == other.size &&
+	           usage == other.usage &&
+	           persistent == other.persistent;
+	}
+
+	bool operator!=(const BufferInfo &other) const
+	{
+		return !(*this == other);
+	}
 };
 
 struct ResourceDimensions
 {
 	VkFormat format = VK_FORMAT_UNDEFINED;
+	BufferInfo buffer_info;
 	unsigned width = 0;
 	unsigned height = 0;
 	unsigned depth = 1;
@@ -56,6 +70,7 @@ struct ResourceDimensions
 		       depth == other.depth &&
 		       layers == other.layers &&
 		       levels == other.levels &&
+		       buffer_info == buffer_info &&
 		       transient == other.transient;
 	}
 
@@ -267,10 +282,12 @@ public:
 
 	RenderTextureResource &set_depth_stencil_input(const std::string &name);
 	RenderTextureResource &set_depth_stencil_output(const std::string &name, const AttachmentInfo &info);
-	RenderTextureResource &add_color_output(const std::string &name, const AttachmentInfo &info);
+	RenderTextureResource &add_color_output(const std::string &name, const AttachmentInfo &info, const std::string &input = "");
 	RenderTextureResource &add_texture_input(const std::string &name);
-	RenderTextureResource &add_color_input(const std::string &name);
 	RenderTextureResource &add_attachment_input(const std::string &name);
+
+	RenderBufferResource &add_uniform_input(const std::string &name);
+	RenderBufferResource &add_storage_output(const std::string &name, const BufferInfo &info, const std::string &input = "");
 
 	void set_texture_inputs(Vulkan::CommandBuffer &cmd, unsigned set, unsigned start_binding,
 	                        Vulkan::StockSampler sampler);
@@ -305,6 +322,21 @@ public:
 		return attachments_inputs;
 	}
 
+	const std::vector<RenderBufferResource *> &get_uniform_inputs() const
+	{
+		return uniform_inputs;
+	}
+
+	const std::vector<RenderBufferResource *> &get_storage_inputs() const
+	{
+		return storage_inputs;
+	}
+
+	const std::vector<RenderBufferResource *> &get_storage_outputs() const
+	{
+		return storage_outputs;
+	}
+
 	RenderTextureResource *get_depth_stencil_input() const
 	{
 		return depth_stencil_input;
@@ -336,6 +368,9 @@ private:
 	std::vector<RenderTextureResource *> color_scale_inputs;
 	std::vector<RenderTextureResource *> texture_inputs;
 	std::vector<RenderTextureResource *> attachments_inputs;
+	std::vector<RenderBufferResource *> uniform_inputs;
+	std::vector<RenderBufferResource *> storage_outputs;
+	std::vector<RenderBufferResource *> storage_inputs;
 	RenderTextureResource *depth_stencil_input = nullptr;
 	RenderTextureResource *depth_stencil_output = nullptr;
 
@@ -405,6 +440,7 @@ private:
 	void validate_passes();
 	void build_barriers();
 
+	ResourceDimensions get_resource_dimensions(const RenderBufferResource &resource) const;
 	ResourceDimensions get_resource_dimensions(const RenderTextureResource &resource) const;
 	ResourceDimensions swapchain_dimensions;
 

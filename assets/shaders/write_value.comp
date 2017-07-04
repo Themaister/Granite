@@ -1,0 +1,17 @@
+#version 310 es
+layout(local_size_x = 1) in;
+
+layout(set = 0, binding = 0) writeonly buffer SSBO
+{
+    float value;
+};
+
+layout(std430, push_constant) uniform Registers
+{
+    float value;
+} registers;
+
+void main()
+{
+    value = registers.value;
+}

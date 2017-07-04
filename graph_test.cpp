@@ -35,6 +35,53 @@ public:
 	}
 };
 
+class ReadValueImpl : public RenderPassImplementation
+{
+public:
+	void build_render_pass(RenderPass &render_pass, Vulkan::CommandBuffer &cmd) override
+	{
+		auto &buffer = render_pass.get_graph().get_physical_buffer_resource(render_pass.get_uniform_inputs()[0]->get_physical_index());
+		auto &device = cmd.get_device();
+
+		auto *program = device.get_shader_manager().register_graphics("assets://shaders/clear_value.vert", "assets://shaders/clear_value.frag");
+		unsigned variant = program->register_variant({});
+		cmd.set_program(*program->get_program(variant));
+
+		int8_t *data = static_cast<int8_t *>(cmd.allocate_vertex_data(0, 8, 2));
+		*data++ = -128;
+		*data++ = +127;
+		*data++ = +127;
+		*data++ = +127;
+		*data++ = -128;
+		*data++ = -128;
+		*data++ = +127;
+		*data++ = -128;
+
+		cmd.set_vertex_attrib(0, 0, VK_FORMAT_R8G8_SNORM, 0);
+		cmd.set_uniform_buffer(0, 0, buffer);
+		cmd.set_quad_state();
+		cmd.draw(4);
+	}
+};
+
+class WriteValueImpl : public RenderPassImplementation
+{
+public:
+	void build_render_pass(RenderPass &render_pass, Vulkan::CommandBuffer &cmd) override
+	{
+		auto &buffer = render_pass.get_graph().get_physical_buffer_resource(render_pass.get_storage_outputs()[0]->get_physical_index());
+		auto &device = cmd.get_device();
+		auto *program = device.get_shader_manager().register_compute("assets://shaders/write_value.comp");
+		unsigned variant = program->register_variant({});
+		cmd.set_program(*program->get_program(variant));
+		cmd.set_storage_buffer(0, 0, buffer);
+
+		float value = 0.25f;
+		cmd.push_constants(&value, 0, sizeof(value));
+		cmd.dispatch(1, 1, 1);
+	}
+};
+
 class RenderGraphTest : public Application, public EventHandler
 {
 public:
@@ -67,15 +114,24 @@ public:
 		dim.format = parameter.get_format();
 		graph.set_backbuffer_dimensions(dim);
 
-		auto &smol_pass = graph.add_pass("smol");
+		BufferInfo buffer_info;
+		buffer_info.persistent = true;
+		buffer_info.size = 4;
+		buffer_info.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+
+		auto &compute_pass = graph.add_pass("compute", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+		compute_pass.add_storage_output("constant", buffer_info);
+		compute_pass.set_implementation(&write_value);
+
+		auto &smol_pass = graph.add_pass("smol", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 		smol_pass.add_color_output("input", smol);
 		smol_pass.set_implementation(&clear_screen);
 
-		auto &pass = graph.add_pass("pass");
-		pass.add_color_output("screen", info);
-		pass.add_color_input("input");
+		auto &pass = graph.add_pass("pass", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+		pass.add_color_output("screen", info, "input");
 		pass.set_depth_stencil_output("depth", ds_info);
-		pass.set_implementation(&clear_screen);
+		pass.add_uniform_input("constant");
+		pass.set_implementation(&read_value);
 
 		graph.set_backbuffer_source("screen");
 
@@ -93,6 +149,8 @@ public:
 private:
 	RenderGraph graph;
 	RPImpl clear_screen;
+	ReadValueImpl read_value;
+	WriteValueImpl write_value;
 
 	void on_swapchain_created(const Event &event)
 	{

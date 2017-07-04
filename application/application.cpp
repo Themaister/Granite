@@ -21,7 +21,7 @@ Application::Application(unsigned width, unsigned height)
 		throw runtime_error("Failed to initialize WSI.");
 }
 
-bool SceneViewerApplication::GBufferImpl::get_clear_color(unsigned index, VkClearColorValue *value)
+bool SceneViewerApplication::GBufferImpl::get_clear_color(unsigned, VkClearColorValue *value)
 {
 	if (value)
 		memset(value, 0, sizeof(*value));
@@ -39,14 +39,68 @@ bool SceneViewerApplication::GBufferImpl::get_clear_depth_stencil(VkClearDepthSt
 	return true;
 }
 
-void SceneViewerApplication::GBufferImpl::build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd)
+void SceneViewerApplication::GBufferImpl::build_render_pass(RenderPass &, Vulkan::CommandBuffer &cmd)
 {
 	app->renderer.flush(cmd, app->context);
 }
 
-void SceneViewerApplication::LightingImpl::build_render_pass(RenderPass &, Vulkan::CommandBuffer &)
+void SceneViewerApplication::LightingImpl::build_render_pass(RenderPass &, Vulkan::CommandBuffer &cmd)
 {
+	cmd.set_quad_state();
+	cmd.set_input_attachments(1, 0);
+	cmd.set_blend_enable(true);
+	cmd.set_blend_factors(VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_ONE);
+	cmd.set_blend_op(VK_BLEND_OP_ADD);
 
+	int8_t *data = static_cast<int8_t *>(cmd.allocate_vertex_data(0, 8, 2));
+	*data++ = -128;
+	*data++ = +127;
+	*data++ = +127;
+	*data++ = +127;
+	*data++ = -128;
+	*data++ = -128;
+	*data++ = +127;
+	*data++ = -128;
+	cmd.set_vertex_attrib(0, 0, VK_FORMAT_R8G8_SNORM, 0);
+
+	auto &device = cmd.get_device();
+	auto *program = device.get_shader_manager().register_graphics("assets://shaders/lights/directional.vert", "assets://shaders/lights/directional.frag");
+	unsigned variant = program->register_variant({});
+	cmd.set_program(*program->get_program(variant));
+	cmd.set_depth_test(true, false);
+	cmd.set_depth_compare(VK_COMPARE_OP_GREATER);
+
+	struct DirectionalLight
+	{
+		mat4 inv_view_proj;
+		vec4 direction;
+		vec4 color;
+	} push;
+
+	push.color = vec4(2.0, 1.5, 1.0, 0.0);
+	push.direction = vec4(normalize(vec3(0.8, 0.4, 0.9)), 0.0);
+	push.inv_view_proj = app->context.get_render_parameters().inv_view_projection;
+	cmd.push_constants(&push, 0, sizeof(push));
+
+	cmd.draw(4);
+
+	struct Fog
+	{
+		mat4 inv_view_proj;
+		vec4 camera_pos;
+		vec4 color_falloff;
+	} fog;
+
+	fog.inv_view_proj = app->context.get_render_parameters().inv_view_projection;
+	fog.camera_pos = vec4(app->context.get_render_parameters().camera_position, 0.0f);
+	fog.color_falloff = vec4(app->context.get_fog_parameters().color, app->context.get_fog_parameters().falloff);
+	cmd.push_constants(&fog, 0, sizeof(fog));
+
+	cmd.set_blend_factors(VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA, VK_BLEND_FACTOR_SRC_ALPHA);
+	program = device.get_shader_manager().register_graphics("assets://shaders/lights/fog.vert", "assets://shaders/lights/fog.frag");
+	variant = program->register_variant({});
+	cmd.set_program(*program->get_program(variant));
+	cmd.draw(4);
 }
 
 void SceneViewerApplication::UIImpl::build_render_pass(RenderPass &, Vulkan::CommandBuffer &cmd)
@@ -150,6 +204,7 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 	lighting.add_attachment_input("albedo");
 	lighting.add_attachment_input("normal");
 	lighting.add_attachment_input("pbr");
+	lighting.add_attachment_input("depth");
 	lighting.set_depth_stencil_input("depth");
 	lighting.set_implementation(&lighting_impl);
 

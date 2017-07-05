@@ -1163,7 +1163,7 @@ void RenderGraph::setup_attachments(Vulkan::Device &device, Vulkan::ImageView *s
 				        physical_attachments[i]->get_image().get_create_info().format == att.format &&
 						physical_attachments[i]->get_image().get_create_info().width == att.width &&
 						physical_attachments[i]->get_image().get_create_info().height == att.height &&
-						physical_attachments[i]->get_image().get_create_info().usage == usage &&
+						(physical_attachments[i]->get_image().get_create_info().usage & usage) == usage &&
 						physical_attachments[i]->get_image().get_create_info().flags == VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT)
 					{
 						need_image = false;

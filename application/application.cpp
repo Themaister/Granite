@@ -78,7 +78,7 @@ void SceneViewerApplication::LightingImpl::build_render_pass(RenderPass &, Vulka
 		vec4 color;
 	} push;
 
-	push.color = vec4(6.0, 5.5, 3.5, 0.0);
+	push.color = vec4(3.0, 2.5, 2.5, 0.0);
 	push.direction = vec4(normalize(vec3(0.8, 0.4, 0.9)), 0.0);
 	push.inv_view_proj = app->context.get_render_parameters().inv_view_projection;
 	cmd.push_constants(&push, 0, sizeof(push));

@@ -1132,7 +1132,7 @@ void RenderGraph::setup_attachments(Vulkan::Device &device, Vulkan::ImageView *s
 			{
 				if (att.buffer_info.persistent &&
 					physical_buffers[i]->get_create_info().size == info.size &&
-					physical_buffers[i]->get_create_info().usage == info.usage)
+					(physical_buffers[i]->get_create_info().usage & info.usage) == info.usage)
 				{
 					need_buffer = false;
 				}

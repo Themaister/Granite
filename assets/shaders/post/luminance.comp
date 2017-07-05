@@ -1,9 +1,10 @@
 #version 310 es
 layout(local_size_x = 8, local_size_y = 8) in;
 
-layout(std430, set = 0, binding = 0) writeonly buffer LuminanceData
+layout(std430, set = 0, binding = 0) buffer LuminanceData
 {
     float average_log_luminance;
+    float average_linear_luminance;
     float average_inv_linear_luminance;
 };
 
@@ -11,11 +12,53 @@ layout(set = 0, binding = 1) uniform sampler2D uImage;
 
 layout(std430, push_constant) uniform Registers
 {
-    uvec2 size;
+    ivec2 size;
 } registers;
+
+shared float shared_loglum[64];
 
 void main()
 {
-    average_log_luminance = 0.0;
-    average_inv_linear_luminance = 1.0;
+    int iter_y = (registers.size.y + 7) >> 3;
+    int iter_x = (registers.size.x + 7) >> 3;
+    ivec2 local_index = ivec2(gl_LocalInvocationID.xy);
+    float total_log_lum = 0.0;
+    vec2 inv_size = 1.0 / vec2(registers.size);
+
+    for (int y = 0; y < iter_y; y++)
+    {
+        for (int x = 0; x < iter_x; x++)
+        {
+            int sx = x * 8 + local_index.x;
+            int sy = y * 8 + local_index.y;
+            if (all(lessThan(ivec2(sx, sy), registers.size)))
+                total_log_lum += textureLod(uImage, (vec2(sx, sy) + 0.5) * inv_size, 0.0).a;
+        }
+    }
+    shared_loglum[gl_LocalInvocationIndex] = total_log_lum;
+
+#define STEP(i) \
+    memoryBarrierShared(); \
+    barrier(); \
+    if (gl_LocalInvocationIndex < i) \
+        shared_loglum[gl_LocalInvocationIndex] += shared_loglum[gl_LocalInvocationIndex + i]
+
+    STEP(32u);
+    STEP(16u);
+    STEP(8u);
+    STEP(4u);
+    STEP(2u);
+
+    memoryBarrierShared();
+    barrier();
+
+    if (gl_LocalInvocationIndex == 0u)
+    {
+        float loglum = shared_loglum[0] + shared_loglum[1];
+        loglum *= inv_size.x * inv_size.y;
+        float new_log_luma = mix(average_log_luminance, loglum, 0.1);
+        average_log_luminance = new_log_luma;
+        average_linear_luminance = exp2(new_log_luma);
+        average_inv_linear_luminance = exp2(-new_log_luma);
+    }
 }

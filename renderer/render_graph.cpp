@@ -432,7 +432,13 @@ void RenderGraph::build_transients()
 		u = RenderPass::Unused;
 
 	for (auto &dim : physical_dimensions)
-		dim.transient = true;
+	{
+		// Buffers are never transient.
+		if (dim.buffer_info.size)
+			dim.transient = false;
+		else
+			dim.transient = true;
+	}
 
 	for (auto &resource : resources)
 	{
@@ -980,6 +986,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 				b.buffer = buffer.get_buffer();
 				b.offset = 0;
 				b.size = VK_WHOLE_SIZE;
+
 				buffer_barriers.push_back(b);
 			}
 			else
@@ -997,6 +1004,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 				b.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
 				b.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
 				physical_attachments[barrier.resource_index]->get_image().set_layout(barrier.layout);
+
 				image_barriers.push_back(b);
 			}
 
@@ -1553,15 +1561,31 @@ void RenderGraph::build_physical_barriers()
 
 				global_resource_state[invalidate.resource_index].last_read_pass = physical_pass_index;
 
+				// This is the very first time the resource has been used, but it hasn't been written to.
+				// This is a read-only operation and the initial barriers will ensure that transitions are made.
+				if (global_resource_state[invalidate.resource_index].current_layout == VK_IMAGE_LAYOUT_UNDEFINED &&
+					resource_state[invalidate.resource_index].initial_layout == VK_IMAGE_LAYOUT_UNDEFINED)
+				{
+					// This only makes sense for persistent buffer resources. Otherwise we are reading dummy data.
+					if (!physical_dimensions[invalidate.resource_index].buffer_info.size ||
+					    !physical_dimensions[invalidate.resource_index].buffer_info.persistent)
+					{
+						throw logic_error("Starting a resource as read-only is only valid for persistent buffers.");
+					}
+
+					initial_barriers.push_back(
+						{ invalidate.resource_index,
+						  invalidate.layout,
+						  flush_access_to_invalidate(invalidate.access),
+						  invalidate.stages });
+				}
+
 				// Only the first use of a resource in a physical pass needs to be handled externally.
 				if (resource_state[invalidate.resource_index].initial_layout == VK_IMAGE_LAYOUT_UNDEFINED)
 				{
 					resource_state[invalidate.resource_index].invalidated_types |= invalidate.access;
 					resource_state[invalidate.resource_index].invalidated_stages |= invalidate.stages;
 					resource_state[invalidate.resource_index].initial_layout = invalidate.layout;
-
-					// If there are no flushes afterwards, we end up in this layout after the render pass.
-					resource_state[invalidate.resource_index].final_layout = invalidate.layout;
 				}
 
 				// All pending flushes have been invalidated in the appropriate stages already.
@@ -1637,6 +1661,19 @@ void RenderGraph::build_physical_barriers()
 		// with the physical render pass as a whole.
 		for (auto &resource : resource_state)
 		{
+			// Resource was not touched in this pass.
+			if (resource.final_layout == VK_IMAGE_LAYOUT_UNDEFINED && resource.initial_layout == VK_IMAGE_LAYOUT_UNDEFINED)
+				continue;
+
+			bool read_only_pass = false;
+			// If there are only invalidations in this pass it is read-only, and the final layout becomes the initial one.
+			// Promote the last initial layout to the final layout.
+			if (resource.final_layout == VK_IMAGE_LAYOUT_UNDEFINED)
+			{
+				resource.final_layout = resource.initial_layout;
+				read_only_pass = true;
+			}
+
 			unsigned index = unsigned(&resource - resource_state.data());
 
 			bool need_invalidate_barrier = false;
@@ -1662,6 +1699,10 @@ void RenderGraph::build_physical_barriers()
 					// There are some access flags which have yet to be made visible to relevant stages.
 					need_invalidate_barrier = true;
 				}
+
+				// If we have never flushed anything, there is no need to invalidate yet.
+				if (read_only_pass && global_resource_state[index].current_layout == VK_IMAGE_LAYOUT_UNDEFINED)
+					need_invalidate_barrier = false;
 			}
 
 			// Do we need to invalidate this resource before starting the pass?
@@ -1704,20 +1745,30 @@ void RenderGraph::build_physical_barriers()
 					global_resource_state[index].current_layout = resource.initial_layout;
 					global_resource_state[index].last_invalidate_pass = physical_pass_index;
 					global_resource_state[index].last_flush_pass = RenderPass::Unused;
+					global_resource_state[index].flushed_types = 0;
 				}
 			}
 
-			// Did the pass write anything in this pass which needs to be flushed?
-			global_resource_state[index].flushed_types = 0;
 			if (resource.flushed_types)
 			{
+				if (global_resource_state[index].last_flush_pass != RenderPass::Unused)
+					throw logic_error("Two flushes in a row observed. Need to invalidate at least once in-between each flush.");
+
+				// Did the pass write anything in this pass which needs to be flushed?
 				physical_pass.flush.push_back({ index, resource.final_layout, resource.flushed_types, resource.flushed_stages });
 				global_resource_state[index].invalidated_types = 0;
 				global_resource_state[index].invalidated_stages = 0;
-				global_resource_state[index].current_layout = resource.final_layout;
 				global_resource_state[index].last_invalidate_pass = RenderPass::Unused;
 				global_resource_state[index].last_flush_pass = physical_pass_index;
 			}
+			else if (resource.invalidated_types)
+			{
+				// Did the pass read anything in this pass which needs to be protected before it can be written?
+				// Implement this as a flush with 0 access bits. This is how Vulkan essentially implements a write-after-read hazard.
+				physical_pass.flush.push_back({ index, resource.final_layout, 0, resource.invalidated_stages });
+			}
+
+			global_resource_state[index].current_layout = resource.final_layout;
 		}
 	}
 

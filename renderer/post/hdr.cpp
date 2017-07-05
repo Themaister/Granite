@@ -14,16 +14,13 @@ void LuminanceAdaptPass::build_render_pass(RenderPass &pass, Vulkan::CommandBuff
 	unsigned half_width = input.get_image().get_create_info().width / 2;
 	unsigned half_height = input.get_image().get_create_info().height / 2;
 
-	unsigned groups_x = (half_width + 7) / 8;
-	unsigned groups_y = (half_height + 7) / 8;
-
 	auto *program = cmd.get_device().get_shader_manager().register_compute("assets://shaders/post/luminance.comp");
 	unsigned variant = program->register_variant({});
 	cmd.set_program(*program->get_program(variant));
 
 	uvec2 size(half_width, half_height);
 	cmd.push_constants(&size, 0, sizeof(size));
-	cmd.dispatch(groups_x, groups_y, 1);
+	cmd.dispatch(1, 1, 1);
 }
 
 void BloomThresholdPass::build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd)
@@ -73,7 +70,7 @@ void TonemapPass::setup_hdr_postprocess(RenderGraph &graph, const std::string &i
 	static LuminanceAdaptPass luminance_pass;
 
 	BufferInfo buffer_info;
-	buffer_info.size = 8;
+	buffer_info.size = 3 * sizeof(float);
 	buffer_info.persistent = true;
 	buffer_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
 

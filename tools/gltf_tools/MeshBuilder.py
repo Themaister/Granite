@@ -1,7 +1,7 @@
 from collections import namedtuple
 import math
 
-Vertex = namedtuple('Vertex', 'position uv')
+Vertex = namedtuple('Vertex', 'position uv normal')
 BakedVertex = namedtuple('BakedVertex', 'position uv normal tangent')
 
 def sub(a, b):
@@ -52,6 +52,11 @@ def compute_tangent_bitangent(v0, v1, v2):
     b = muls(sub(muls(q2, s1), muls(q1, s2)), det)
     return (normalize(t), normalize(b))
 
+def readjust_tangent(normal, tangent):
+    tmp = cross(normal, tangent)
+    new_tangent = cross(tmp, normal)
+    return new_tangent
+
 class MeshBuilder():
     def __init__(self):
         self.vertices = []
@@ -81,7 +86,7 @@ class MeshBuilder():
         self.add_triangle(v3, v2, v1, force_unique)
 
     def build_normals(self):
-        self.normals = [(0.0, 0.0, 0.0)] * len(self.vertices)
+        self.normals = [v.normal if v.normal else (0.0, 0.0, 0.0) for v in self.vertices]
         self.tangents = [(0.0, 0.0, 0.0)] * len(self.vertices)
         bitangents = [(0.0, 0.0, 0.0)] * len(self.vertices)
         for i in range(0, len(self.indices) // 3):
@@ -91,13 +96,19 @@ class MeshBuilder():
             v2 = self.vertices[indices[2]].position
             normal = normalize(cross(sub(v1, v0), sub(v2, v0)))
             tangent, bitangent = compute_tangent_bitangent(self.vertices[indices[0]], self.vertices[indices[1]], self.vertices[indices[2]])
+            has_defined_normals = self.vertices[indices[0]].normal and self.vertices[indices[1]].normal and self.vertices[indices[2]].normal
+
             for index in indices:
-                self.normals[index] = add(self.normals[index], normal)
+                if not has_defined_normals:
+                    self.normals[index] = add(self.normals[index], normal)
                 self.tangents[index] = add(self.tangents[index], tangent)
                 bitangents[index] = add(bitangents[index], bitangent)
 
         self.normals = [normalize(x) for x in self.normals]
         self.tangents = [normalize(x) for x in self.tangents]
+        for i in range(0, len(self.tangents)):
+            self.tangents[i] = readjust_tangent(self.normals[i], self.tangents[i])
+
         bitangents = [normalize(x) for x in bitangents]
 
         for i in range(0, len(self.tangents)):
@@ -109,12 +120,15 @@ class MeshBuilder():
         attrs = {}
         attrs['POSITION'] = buffers.build_float_buffer([x.position for x in self.vertices])
         attrs['NORMAL'] = buffers.build_float_buffer(self.normals)
-        attrs['TANGENT'] = buffers.build_float_buffer(self.tangents)
-        attrs['TEXCOORD_0'] = buffers.build_float_buffer([x.uv for x in self.vertices])
         prim['attributes'] = attrs
         prim['indices'] = buffers.build_index_buffer(self.indices)
         if self.material:
             prim['material'] = materials.get_material_index(self.material)
+            mat = materials.get_material(self.material)
+            if mat.normal:
+                attrs['TANGENT'] = buffers.build_float_buffer(self.tangents)
+            if mat.normal or mat.base_color or mat.metallic_roughness:
+                attrs['TEXCOORD_0'] = buffers.build_float_buffer([x.uv for x in self.vertices])
         prim['mode'] = 4
 
         return prim

@@ -181,7 +181,9 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 	dim.height = swap.get_height();
 	dim.format = swap.get_format();
 	graph.set_backbuffer_dimensions(dim);
-	graph.set_backbuffer_source("backbuffer");
+
+	const char *backbuffer_source = getenv("GRANITE_SURFACE");
+	graph.set_backbuffer_source(backbuffer_source ? backbuffer_source : "backbuffer");
 
 	AttachmentInfo backbuffer;
 	AttachmentInfo emissive, albedo, normal, pbr, depth;

@@ -1131,7 +1131,11 @@ void RenderGraph::setup_attachments(Vulkan::Device &device, Vulkan::ImageView *s
 			}
 
 			if (need_buffer)
-				physical_buffers[i] = device.create_buffer(info, nullptr);
+			{
+				// Zero-initialize buffers. TODO: Make this configurable.
+				vector<uint8_t> blank(info.size);
+				physical_buffers[i] = device.create_buffer(info, blank.data());
+			}
 		}
 		else
 		{
@@ -1300,6 +1304,25 @@ void RenderGraph::bake()
 		}
 	};
 
+	const auto depend_passes_no_check = [&](const std::unordered_set<unsigned> &passes) {
+		for (auto &pass : passes)
+		{
+			pushed_passes_tmp.push_back(pass);
+			pass_stack.push_back(pass);
+		}
+	};
+
+	const auto depend_passes_no_check_ignore_self = [&](unsigned self, const std::unordered_set<unsigned> &passes) {
+		for (auto &pass : passes)
+		{
+			if (pass != self)
+			{
+				pushed_passes_tmp.push_back(pass);
+				pass_stack.push_back(pass);
+			}
+		}
+	};
+
 	const auto make_unique_list = [](std::vector<unsigned> &passes) {
 		// As tie-break rule on ordering, place earlier passes late in the stack.
 		sort(begin(passes), end(passes), greater<unsigned>());
@@ -1341,7 +1364,13 @@ void RenderGraph::bake()
 			for (auto *input : pass.get_storage_inputs())
 			{
 				if (input)
-					depend_passes(input->get_write_passes());
+				{
+					// There might be no writers of this resource if it's used in a feedback fashion.
+					depend_passes_no_check(input->get_write_passes());
+					// Deal with write-after-read hazards if a storage buffer is read in other passes
+					// (feedback) before being updated.
+					depend_passes_no_check_ignore_self(pass.get_index(), input->get_read_passes());
+				}
 			}
 
 			for (auto *input : pass.get_storage_texture_inputs())
@@ -1351,9 +1380,16 @@ void RenderGraph::bake()
 			}
 
 			for (auto *input : pass.get_uniform_inputs())
-				depend_passes(input->get_write_passes());
+			{
+				// There might be no writers of this resource if it's used in a feedback fashion.
+				depend_passes_no_check(input->get_write_passes());
+			}
+
 			for (auto *input : pass.get_storage_read_inputs())
+			{
+				// There might be no writers of this resource if it's used in a feedback fashion.
 				depend_passes(input->get_write_passes());
+			}
 		}
 
 		pushed_passes.clear();

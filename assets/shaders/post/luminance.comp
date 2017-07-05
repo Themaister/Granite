@@ -1,0 +1,21 @@
+#version 310 es
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(std430, set = 0, binding = 0) writeonly buffer LuminanceData
+{
+    float average_log_luminance;
+    float average_inv_linear_luminance;
+};
+
+layout(set = 0, binding = 1) uniform sampler2D uImage;
+
+layout(std430, push_constant) uniform Registers
+{
+    uvec2 size;
+} registers;
+
+void main()
+{
+    average_log_luminance = 0.0;
+    average_inv_linear_luminance = 1.0;
+}

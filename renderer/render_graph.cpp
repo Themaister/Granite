@@ -1525,6 +1525,9 @@ void RenderGraph::build_physical_barriers()
 		unsigned last_invalidate_pass = RenderPass::Unused;
 		unsigned last_read_pass = RenderPass::Unused;
 		unsigned last_flush_pass = RenderPass::Unused;
+
+		// Have we ever written to this resource in this pass?
+		bool has_writer = false;
 	};
 
 	// To handle global state.
@@ -1563,7 +1566,7 @@ void RenderGraph::build_physical_barriers()
 
 				// This is the very first time the resource has been used, but it hasn't been written to.
 				// This is a read-only operation and the initial barriers will ensure that transitions are made.
-				if (global_resource_state[invalidate.resource_index].current_layout == VK_IMAGE_LAYOUT_UNDEFINED &&
+				if (!global_resource_state[invalidate.resource_index].has_writer &&
 					resource_state[invalidate.resource_index].initial_layout == VK_IMAGE_LAYOUT_UNDEFINED)
 				{
 					// This only makes sense for persistent buffer resources. Otherwise we are reading dummy data.
@@ -1573,11 +1576,25 @@ void RenderGraph::build_physical_barriers()
 						throw logic_error("Starting a resource as read-only is only valid for persistent buffers.");
 					}
 
-					initial_barriers.push_back(
-						{ invalidate.resource_index,
-						  invalidate.layout,
-						  flush_access_to_invalidate(invalidate.access),
-						  invalidate.stages });
+					auto itr = find_if(begin(initial_barriers), end(initial_barriers), [&](const Barrier &barrier) {
+						return barrier.resource_index == invalidate.resource_index;
+					});
+
+					// We might have multiple, separate readers which all need different access flags and stages,
+					// just batch them all up to start of frame.
+					if (itr != end(initial_barriers))
+					{
+						itr->access |= flush_access_to_invalidate(invalidate.access);
+						itr->stages |= invalidate.stages;
+					}
+					else
+					{
+						initial_barriers.push_back(
+							{ invalidate.resource_index,
+							  invalidate.layout,
+							  flush_access_to_invalidate(invalidate.access),
+							  invalidate.stages });
+					}
 				}
 
 				// Only the first use of a resource in a physical pass needs to be handled externally.
@@ -1591,6 +1608,7 @@ void RenderGraph::build_physical_barriers()
 				// All pending flushes have been invalidated in the appropriate stages already.
 				// This is relevant if the invalidate happens in subpass #1 and beyond.
 				resource_state[invalidate.resource_index].flushed_types = 0;
+				resource_state[invalidate.resource_index].flushed_stages = 0;
 			}
 
 			for (auto &flush : flushes)
@@ -1625,6 +1643,7 @@ void RenderGraph::build_physical_barriers()
 						throw logic_error("Cannot have two passes which both invalidate a resource.");
 
 					resource_state[flush.resource_index].initial_layout = flush.layout;
+					global_resource_state[flush.resource_index].has_writer = true;
 
 					// If a buffer is created anew every frame, there is no reason to wait for previous frame to complete.
 					bool need_initial_barrier = !physical_dimensions[flush.resource_index].buffer_info.size ||
@@ -1729,13 +1748,6 @@ void RenderGraph::build_physical_barriers()
 					last_barrier->access |= resource.invalidated_types;
 					last_barrier->stages |= resource.invalidated_stages;
 				}
-				else if (last_barrier && last_barrier->layout != resource.initial_layout)
-				{
-					// We have a write-after-read hazard due to layout transition.
-					// We have to wait until the last pass which reads the resource is complete.
-					// Currently, this is not supported.
-					throw logic_error("read-after-read transition hazard detected. This is currently unsupported.");
-				}
 				else
 				{
 					physical_pass.invalidate.push_back(
@@ -1756,15 +1768,21 @@ void RenderGraph::build_physical_barriers()
 
 				// Did the pass write anything in this pass which needs to be flushed?
 				physical_pass.flush.push_back({ index, resource.final_layout, resource.flushed_types, resource.flushed_stages });
+
+				// We cannot move any invalidates to earlier passes now, so clear this state out.
 				global_resource_state[index].invalidated_types = 0;
 				global_resource_state[index].invalidated_stages = 0;
 				global_resource_state[index].last_invalidate_pass = RenderPass::Unused;
+
+				// Just to detect if we have two flushes in a row. This is illegal.
 				global_resource_state[index].last_flush_pass = physical_pass_index;
 			}
 			else if (resource.invalidated_types)
 			{
 				// Did the pass read anything in this pass which needs to be protected before it can be written?
-				// Implement this as a flush with 0 access bits. This is how Vulkan essentially implements a write-after-read hazard.
+				// Implement this as a flush with 0 access bits.
+				// This is how Vulkan essentially implements a write-after-read hazard.
+				// The only purpose of this flush barrier is to set the last pass which the resource was used as a stage.
 				physical_pass.flush.push_back({ index, resource.final_layout, 0, resource.invalidated_stages });
 			}
 

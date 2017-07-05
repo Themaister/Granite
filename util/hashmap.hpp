@@ -24,8 +24,7 @@ public:
 	template <typename T>
 	inline void data(const T *data, size_t size)
 	{
-		using arith_type = decltype(data[int()]);
-		size /= sizeof(arith_type);
+		size /= sizeof(*data);
 		for (size_t i = 0; i < size; i++)
 			h = (h * 0x100000001b3ull) ^ data[i];
 	}

@@ -15,6 +15,7 @@ CommandBuffer::CommandBuffer(Device *device, VkCommandBuffer cmd, VkPipelineCach
 {
 	begin_compute();
 	set_opaque_state();
+	memset(&static_state, 0, sizeof(static_state));
 }
 
 void CommandBuffer::copy_buffer(const Buffer &dst, VkDeviceSize dst_offset, const Buffer &src, VkDeviceSize src_offset,
@@ -1178,7 +1179,7 @@ void CommandBuffer::dispatch(uint32_t groups_x, uint32_t groups_y, uint32_t grou
 void CommandBuffer::set_opaque_state()
 {
 	auto &state = static_state.state;
-	state = {};
+	memset(&state, 0, sizeof(state));
 	state.front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	state.cull_mode = VK_CULL_MODE_BACK_BIT;
 	state.blend_enable = false;
@@ -1197,7 +1198,7 @@ void CommandBuffer::set_opaque_state()
 void CommandBuffer::set_quad_state()
 {
 	auto &state = static_state.state;
-	state = {};
+	memset(&state, 0, sizeof(state));
 	state.front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	state.cull_mode = VK_CULL_MODE_NONE;
 	state.blend_enable = false;
@@ -1211,7 +1212,7 @@ void CommandBuffer::set_quad_state()
 void CommandBuffer::set_opaque_sprite_state()
 {
 	auto &state = static_state.state;
-	state = {};
+	memset(&state, 0, sizeof(state));
 	state.front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	state.cull_mode = VK_CULL_MODE_NONE;
 	state.blend_enable = false;
@@ -1226,7 +1227,7 @@ void CommandBuffer::set_opaque_sprite_state()
 void CommandBuffer::set_transparent_sprite_state()
 {
 	auto &state = static_state.state;
-	state = {};
+	memset(&state, 0, sizeof(state));
 	state.front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	state.cull_mode = VK_CULL_MODE_NONE;
 	state.blend_enable = true;
@@ -1320,7 +1321,7 @@ void CommandBuffer::save_state(CommandBufferSaveStateFlags flags, CommandBufferS
 		state.scissor = scissor;
 	if (flags & COMMAND_BUFFER_SAVED_RENDER_STATE_BIT)
 	{
-		state.static_state = static_state;
+		memcpy(&state.static_state, &static_state, sizeof(static_state));
 		state.potential_static_state = potential_static_state;
 		state.dynamic_state = dynamic_state;
 	}

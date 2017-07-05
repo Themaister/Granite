@@ -507,7 +507,7 @@ private:
 		return mask;
 	}
 
-	PipelineState static_state = {};
+	PipelineState static_state;
 	PotentialState potential_static_state = {};
 	DynamicState dynamic_state = {};
 	static_assert(sizeof(static_state.words) >= sizeof(static_state.state),

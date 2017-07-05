@@ -318,7 +318,7 @@ int main(int argc, char *argv[])
 	else if (etc2)
 		texture_compressed = gli::texture2d(gli::FORMAT_RGBA_ETC2_SRGB_BLOCK8, gli::texture2d::extent_type(width * 4, height * 4), levels);
 	else
-		texture_compressed = gli::texture2d(gli::FORMAT_RGBA8_SRGB_PACK8, gli::texture2d::extent_type(width * 2, height * 2), levels + 1);
+		texture_compressed = gli::texture2d(gli::FORMAT_RGBA8_SRGB_PACK8, gli::texture2d::extent_type(width * 4, height * 4), levels + 2);
 
 	auto *data = texture.data(0, 0, 0);
 	memcpy(data, buffer, width * height * 4);
@@ -366,20 +366,29 @@ int main(int argc, char *argv[])
 		for (unsigned level = 0; level < levels; level++)
 		{
 			auto *src = static_cast<const uint8_t *>(texture[level].data());
-			auto *dst = static_cast<ETC2Block *>(texture_compressed[level + 1].data());
+			auto *dst = static_cast<ETC2Block *>(texture_compressed[level + 2].data());
 			memcpy(dst, src, texture[level].size());
 		}
 
 		auto *src = static_cast<const uint32_t *>(texture[0].data());
-		auto *dst = static_cast<uint32_t *>(texture_compressed[0].data());
-		unsigned mip_width = texture_compressed[0].extent().x;
-		unsigned mip_height = texture_compressed[0].extent().y;
 
-		for (unsigned y = 0; y < mip_height; y++)
-			for (unsigned x = 0; x < mip_width; x++)
-				dst[y * mip_width + x] = src[(y >> 1) * (mip_width >> 1) + (x >> 1)];
+		auto *dst0 = static_cast<uint32_t *>(texture_compressed[0].data());
+		unsigned mip_width0 = texture_compressed[0].extent().x;
+		unsigned mip_height0 = texture_compressed[0].extent().y;
 
-		for (unsigned level = 0; level < levels + 1; level++)
+		auto *dst1 = static_cast<uint32_t *>(texture_compressed[1].data());
+		unsigned mip_width1 = texture_compressed[1].extent().x;
+		unsigned mip_height1 = texture_compressed[1].extent().y;
+
+		for (unsigned y = 0; y < mip_height0; y++)
+			for (unsigned x = 0; x < mip_width0; x++)
+				dst0[y * mip_width0 + x] = src[(y >> 2) * (mip_width0 >> 2) + (x >> 2)];
+
+		for (unsigned y = 0; y < mip_height1; y++)
+			for (unsigned x = 0; x < mip_width1; x++)
+				dst1[y * mip_width1 + x] = src[(y >> 1) * (mip_width1 >> 1) + (x >> 1)];
+
+		for (unsigned level = 0; level < levels + 2; level++)
 			fixup_alpha_test(texture_compressed, level);
 	}
 

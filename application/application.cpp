@@ -4,6 +4,7 @@
 #include "horizontal_packing.hpp"
 #include "image_widget.hpp"
 #include "label.hpp"
+#include "post/hdr.hpp"
 
 using namespace std;
 using namespace Vulkan;
@@ -77,7 +78,7 @@ void SceneViewerApplication::LightingImpl::build_render_pass(RenderPass &, Vulka
 		vec4 color;
 	} push;
 
-	push.color = vec4(2.0, 1.5, 1.0, 0.0);
+	push.color = vec4(6.0, 5.5, 3.5, 0.0);
 	push.direction = vec4(normalize(vec3(0.8, 0.4, 0.9)), 0.0);
 	push.inv_view_proj = app->context.get_render_parameters().inv_view_projection;
 	cmd.push_constants(&push, 0, sizeof(push));
@@ -210,8 +211,10 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 	lighting.set_depth_stencil_input("depth");
 	lighting.set_implementation(&lighting_impl);
 
+	TonemapPass::setup_hdr_postprocess(graph, "HDR", "tonemapped");
+
 	auto &ui = graph.add_pass("ui", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
-	ui.add_color_output("backbuffer", backbuffer, "HDR");
+	ui.add_color_output("backbuffer", backbuffer, "tonemapped");
 	ui.set_implementation(&ui_impl);
 
 	graph.bake();

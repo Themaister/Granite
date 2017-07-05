@@ -25,5 +25,5 @@ void main()
     vec3 base_color = subpassLoad(BaseColor).rgb;
 
     float ndotl = clamp(dot(normal, registers.direction), 0.0, 1.0);
-    FragColor = (0.8 * ndotl + 0.2) * base_color;
+    FragColor = (0.8 * ndotl + 0.2) * registers.color * base_color;
 }

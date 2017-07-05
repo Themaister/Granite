@@ -15,6 +15,7 @@ add_granite_library(renderer
         animation_system.hpp animation_system.cpp
         render_graph.cpp render_graph.hpp
         ground.hpp ground.cpp
+        post/hdr.hpp post/hdr.cpp
         scene_loader.cpp scene_loader.hpp)
 target_link_libraries(renderer vulkan-backend math importers)
 target_include_directories(renderer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

@@ -1,0 +1,24 @@
+#version 310 es
+precision mediump float;
+
+layout(set = 0, binding = 0) uniform sampler2D uHDR;
+layout(set = 0, binding = 1) uniform sampler2D uBloom;
+layout(location = 0) in highp vec2 vUV;
+layout(location = 0) out vec3 FragColor;
+
+const float exposure = 4.0;
+
+vec3 tonemap_reinhart(vec3 color)
+{
+    color *= exposure;
+    color = color / (1.0 + color);
+    return color;
+}
+
+void main()
+{
+    vec3 color = textureLod(uHDR, vUV, 0.0).rgb;
+    vec3 bloom = textureLod(uBloom, vUV, 0.0).rgb;
+    color += bloom;
+    FragColor = tonemap_reinhart(color);
+}

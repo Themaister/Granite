@@ -53,8 +53,16 @@ static void add_geometry(vector<vec3> &objects, mt19937 &rnd, const gli::texture
 {
 	uniform_real_distribution<float> dist_w(0.5f, width - 0.5f);
 	uniform_real_distribution<float> dist_h(0.5f, height - 0.5f);
-	uniform_real_distribution<float> dist_weight(min_weight, max_weight);
+	uniform_real_distribution<float> dist_clutter(0.0f, 1.0f);
 	uniform_real_distribution<float> dist_angle(0.0f, 2.0f * pi<float>());
+
+	FastNoise noise;
+	noise.SetFrequency(0.004f);
+
+	const auto clustering_sample = [&noise](float x, float y) -> float {
+		auto value = noise.GetSimplex(x, y);
+		return value;
+	};
 
 	for (unsigned i = 0; i < count; i++)
 	{
@@ -69,8 +77,11 @@ static void add_geometry(vector<vec3> &objects, mt19937 &rnd, const gli::texture
 		splat_normalized.w = glm::max(1.0f - splat_normalized.x - splat_normalized.y - splat_normalized.z, 0.0f);
 		float weighted_current = current * dot(splat_normalized, splat_weights);
 
+		float random_clutter = dist_clutter(rnd);
+		float random_range = clustering_sample(x, y);
+
 		// We can place something here!
-		if (weighted_current > dist_weight(rnd))
+		if (weighted_current > random_clutter && random_range > min_weight && random_range < max_weight)
 		{
 			float u = x / width;
 			float v = y / height;
@@ -215,25 +226,12 @@ int main(int argc, char *argv[])
 	using Pixel = tvec4<uint8_t>;
 	auto *clutter = static_cast<float *>(clutter_mask.data());
 
-	FastNoise noise;
-	noise.SetFrequency(0.002f);
-
-	const auto clustering_sample = [&noise](float x, float y) -> float {
-		auto value = noise.GetSimplex(x, y);
-		return value;
-	};
-
 	for (int y = 0; y < height; y++)
 	{
 		for (int x = 0; x < width; x++)
 		{
 			float normal_y = get_neighbor_normal_y(normals, x, y, width, height);
-			float cluster_noise = 2.0f * (clustering_sample(x, y) + 0.2f);
-			cluster_noise = glm::max(cluster_noise, 0.2f);
-
-			float base_clutter = pow(normal_y, 10.0f);
-			base_clutter *= clamp(cluster_noise, 0.0f, 1.0f);
-			clutter[y * width + x] = base_clutter;
+			clutter[y * width + x] = pow(normal_y, 10.0f);
 		}
 	}
 

@@ -44,10 +44,12 @@ static float sample_heightmap(const gli::texture &tex, float x, float y)
 	return mix(x0, x1, fy);
 }
 
-static void add_geometry(vector<vec3> &objects, mt19937 &rnd, const gli::texture &heightmap, float *clutter, int width, int height,
+static void add_geometry(vector<vec3> &objects, mt19937 &rnd, const gli::texture &heightmap, const gli::texture &splatmap,
+                         float *clutter, int width, int height,
                          int damage_radius, float damage_weight,
                          float min_weight, float max_weight,
-                         unsigned count)
+                         unsigned count,
+                         const vec4 &splat_weights)
 {
 	uniform_real_distribution<float> dist_w(0.5f, width - 0.5f);
 	uniform_real_distribution<float> dist_h(0.5f, height - 0.5f);
@@ -61,8 +63,14 @@ static void add_geometry(vector<vec3> &objects, mt19937 &rnd, const gli::texture
 
 		float &current = clutter[int(glm::max(y - 0.5f, 0.0f)) * width + int(glm::max(x - 0.5f, 0.0f))];
 
+		using Pixel = glm::tvec4<uint8_t>;
+		auto splat_pixel = splatmap.load<Pixel>(gli::extent3d(int(glm::max(x - 0.5f, 0.0f)), int(glm::max(y - 0.5f, 0.0f)), 0), 0, 0, 0);
+		vec4 splat_normalized = vec4(splat_pixel.x, splat_pixel.y, splat_pixel.z, splat_pixel.w) * (1.0f / 255.0f);
+		splat_normalized.w = glm::max(1.0f - splat_normalized.x - splat_normalized.y - splat_normalized.z, 0.0f);
+		float weighted_current = current * dot(splat_normalized, splat_weights);
+
 		// We can place something here!
-		if (current > dist_weight(rnd))
+		if (weighted_current > dist_weight(rnd))
 		{
 			float u = x / width;
 			float v = y / height;
@@ -205,7 +213,6 @@ int main(int argc, char *argv[])
 	int height = splatmap.extent(0).y;
 
 	using Pixel = tvec4<uint8_t>;
-	auto *src = static_cast<const Pixel *>(splatmap.data());
 	auto *clutter = static_cast<float *>(clutter_mask.data());
 
 	FastNoise noise;
@@ -224,15 +231,7 @@ int main(int argc, char *argv[])
 			float cluster_noise = 2.0f * (clustering_sample(x, y) + 0.2f);
 			cluster_noise = glm::max(cluster_noise, 0.2f);
 
-			float base_clutter = 1.0f;
-			if (src[y * width + x].r)
-				base_clutter = 0.0f;
-			else if (src[y * width + x].g)
-				base_clutter = 0.0f;
-			else if (src[y * width + x].b)
-				base_clutter = 0.15f;
-
-			base_clutter *= pow(normal_y, 10.0f);
+			float base_clutter = pow(normal_y, 10.0f);
 			base_clutter *= clamp(cluster_noise, 0.0f, 1.0f);
 			clutter[y * width + x] = base_clutter;
 		}
@@ -251,10 +250,15 @@ int main(int argc, char *argv[])
 	{
 		auto &type = itr->value;
 		vector<vec3> objects;
-		add_geometry(objects, rnd, heightmap, clutter, width, height,
+		add_geometry(objects, rnd, heightmap, splatmap,
+		             clutter, width, height,
 		             type["damageRadius"].GetInt(), type["damageFactor"].GetFloat(),
 		             type["minWeight"].GetFloat(), type["maxWeight"].GetFloat(),
-		             type["count"].GetUint());
+		             type["count"].GetUint(),
+		             vec4(type["splatTypes"][0].GetFloat(),
+		                  type["splatTypes"][1].GetFloat(),
+		                  type["splatTypes"][2].GetFloat(),
+		                  type["splatTypes"][3].GetFloat()));
 
 		add_objects(nodes, rnd, objects, itr->name.GetString(), type["yOffset"].GetFloat(), allocator);
 		scene_list.AddMember(itr->name, type["mesh"], allocator);

@@ -4,6 +4,7 @@
 #include "gli/generate_mipmaps.hpp"
 #include "util.hpp"
 #include "math.hpp"
+#include "tool_util.hpp"
 
 using namespace glm;
 
@@ -21,11 +22,12 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	gli::texture2d normals(gli::FORMAT_RGBA32_SFLOAT_PACK32, gli::extent2d(input.extent().x, input.extent().y), input.levels());
-	gli::texture2d normal10(gli::FORMAT_RGB10A2_UNORM_PACK32, gli::extent2d(input.extent().x, input.extent().y), input.levels());
-
 	int width = input.extent().x;
 	int height = input.extent().y;
+	unsigned levels = Util::num_miplevels(width, height);
+
+	gli::texture2d normals(gli::FORMAT_RGBA32_SFLOAT_PACK32, gli::extent2d(input.extent().x, input.extent().y), levels);
+	gli::texture2d normal10(gli::FORMAT_RGB10A2_UNORM_PACK32, gli::extent2d(input.extent().x, input.extent().y), levels);
 
 	const auto clamp_x = [&](int c, int level = 0) -> int {
 		int w = max(width >> level, 1);

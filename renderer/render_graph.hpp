@@ -446,6 +446,14 @@ public:
 		return *physical_buffers[index];
 	}
 
+	// For keeping feed-back resources alive during rebaking.
+	Vulkan::BufferHandle consume_persistent_physical_buffer_resource(unsigned index) const;
+	void install_persistent_physical_buffer_resource(unsigned index, Vulkan::BufferHandle buffer);
+
+	// Utility to consume all physical buffer handles and install them.
+	std::vector<Vulkan::BufferHandle> consume_physical_buffers() const;
+	void install_physical_buffers(std::vector<Vulkan::BufferHandle> buffers);
+
 private:
 	std::vector<std::unique_ptr<RenderPass>> passes;
 	std::vector<std::unique_ptr<RenderResource>> resources;

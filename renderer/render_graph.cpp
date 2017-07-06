@@ -169,6 +169,33 @@ RenderBufferResource &RenderGraph::get_buffer_resource(const std::string &name)
 	}
 }
 
+std::vector<Vulkan::BufferHandle> RenderGraph::consume_physical_buffers() const
+{
+	return physical_buffers;
+}
+
+void RenderGraph::install_physical_buffers(std::vector<Vulkan::BufferHandle> buffers)
+{
+	physical_buffers = move(buffers);
+}
+
+Vulkan::BufferHandle RenderGraph::consume_persistent_physical_buffer_resource(unsigned index) const
+{
+	if (index >= physical_buffers.size())
+		return {};
+	if (!physical_buffers[index])
+		return {};
+
+	return physical_buffers[index];
+}
+
+void RenderGraph::install_persistent_physical_buffer_resource(unsigned index, Vulkan::BufferHandle buffer)
+{
+	if (index >= physical_buffers.size())
+		throw logic_error("Out of range.");
+	physical_buffers[index] = buffer;
+}
+
 RenderPass &RenderGraph::add_pass(const std::string &name, VkPipelineStageFlags stages)
 {
 	auto itr = pass_to_index.find(name);

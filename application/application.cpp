@@ -175,6 +175,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned
 void SceneViewerApplication::on_swapchain_changed(const Event &e)
 {
 	auto &swap = e.as<SwapchainParameterEvent>();
+	auto physical_buffers = graph.consume_physical_buffers();
 	graph.reset();
 
 	ResourceDimensions dim;
@@ -219,6 +220,7 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 
 	graph.bake();
 	graph.log();
+	graph.install_physical_buffers(move(physical_buffers));
 }
 
 void SceneViewerApplication::on_swapchain_destroyed(const Event &)

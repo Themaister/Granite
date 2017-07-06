@@ -189,7 +189,6 @@ static ASTCBlock splat_astc_block(const uint8_t *x0, const uint8_t *x1, const ui
 static void fixup_alpha_test(gli::texture2d &texture, unsigned level)
 {
 	using Pixel = glm::tvec4<uint8_t>;
-	using PixelRGB = glm::tvec3<uint8_t>;
 
 	int width = texture[level].extent().x;
 	int height = texture[level].extent().y;
@@ -269,11 +268,16 @@ int main(int argc, char *argv[])
 
 	bool astc = false;
 	bool etc2 = false;
-	if (argc >= 4)
+	bool highpass_mips = false;
+	for (int i = 3; i < argc; i++)
 	{
-		astc = strcmp(argv[3], "--astc") == 0;
-		etc2 = strcmp(argv[3], "--etc2") == 0;
-		if (!astc && !etc2)
+		if (strcmp(argv[i], "--astc") == 0)
+			astc = true;
+		else if (strcmp(argv[i], "--etc2") == 0)
+			etc2 = true;
+		else if (strcmp(argv[i], "--highpass-mips") == 0)
+			highpass_mips = true;
+		else
 		{
 			LOGE("Invalid argument: %s\n", argv[3]);
 			return 1;
@@ -390,6 +394,12 @@ int main(int argc, char *argv[])
 
 		for (unsigned level = 0; level < levels + 2; level++)
 			fixup_alpha_test(texture_compressed, level);
+	}
+
+	if (highpass_mips)
+	{
+		for (unsigned level = 3; level < texture_compressed.levels(); level++)
+			filter_tiling_artifacts(texture_compressed, level, texture_compressed[level]);
 	}
 
 	if (!gli::save_ktx(texture_compressed, argv[2]))

@@ -50,11 +50,12 @@ void main()
     float weight = 1.0 / dot(types, vec4(1.0));
     types *= weight;
 
+    const float lod = 1.0;
     vec3 base_color =
-        types.x * texture(uBaseColor, vec3(uv, 0.0)).rgb +
-        types.y * texture(uBaseColor, vec3(uv, 1.0)).rgb +
-        types.z * texture(uBaseColor, vec3(uv, 2.0)).rgb +
-        types.w * texture(uBaseColor, vec3(uv, 3.0)).rgb;
+        types.x * texture(uBaseColor, vec3(uv, 0.0), lod).rgb +
+        types.y * texture(uBaseColor, vec3(uv, 1.0), lod).rgb +
+        types.z * texture(uBaseColor, vec3(uv, 2.0), lod).rgb +
+        types.w * texture(uBaseColor, vec3(uv, 3.0), lod).rgb;
 
 
     Emissive = vec3(0.0);

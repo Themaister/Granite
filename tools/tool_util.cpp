@@ -1,6 +1,8 @@
 #include "tool_util.hpp"
 #include "math.hpp"
 #include "util.hpp"
+#include "fft.h"
+#include <complex>
 
 using namespace glm;
 
@@ -69,5 +71,77 @@ vec4 skybox_to_fog_color(const gli::texture &cube)
 
 	auto res = color / vec3(cube.faces() * width * height);
 	return vec4(res, 1.0f);
+}
+
+void filter_tiling_artifacts(gli::texture &target, unsigned level, const gli::image &image)
+{
+	gli::image result(image.format(), image.extent());
+
+	int width = image.extent().x;
+	int height = image.extent().y;
+
+	if (width & (width - 1))
+		throw std::logic_error("Width needs to be POT.");
+	if (height & (height - 1))
+		throw std::logic_error("Height needs to be POT.");
+
+	float inv_scale = 1.0f / (width * height);
+
+	auto *fft_input = static_cast<float *>(mufft_alloc(2 * sizeof(float) * width * height)); // Required for c2r.
+	auto *fft_output = static_cast<std::complex<float> *>(mufft_alloc(sizeof(std::complex<float>) * width * height));
+
+	using Pixel = glm::tvec4<uint8_t>;
+
+	mufft_plan_2d *forward_plan = mufft_create_plan_2d_r2c(width, height, 0);
+	mufft_plan_2d *inverse_plan = mufft_create_plan_2d_c2r(width, height, 0);
+
+	if (!forward_plan || !inverse_plan)
+	{
+		memset(target.data(0, 0, level), 0, target.size(level));
+		return;
+	}
+
+	std::vector<float> freq_domain(width * height);
+	for (int y = 0; y <= height / 2; y++)
+	{
+		for (int x = 0; x <= width / 2; x++)
+		{
+			float response = 1.0f;
+			if (x == width / 2 || y == height / 2)
+				response = 0.0f;
+			else if (x == 0 && y)
+				response = 0.0f;
+			else if (y == 0 && x)
+				response = 0.0f;
+			else if (x || y) // Keep the DC
+				response = sqrt(4.0f * (x * x + y * y) / (width * width + height * height));
+
+			freq_domain[y * width + x] = inv_scale * response;
+		}
+
+		// Mirror in frequency domain.
+		if (y && (y < height / 2))
+			memcpy(&freq_domain[(height - y) * width], &freq_domain[y * width], sizeof(float) * width);
+	}
+
+	for (unsigned component = 0; component < 4; component++)
+	{
+		auto *src = static_cast<const Pixel *>(image.data());
+		for (int i = 0; i < width * height; i++)
+			fft_input[i] = src[i][component] * (1.0f / 255.0f);
+		mufft_execute_plan_2d(forward_plan, fft_output, fft_input);
+
+		for (unsigned i = 0; i < width * height; i++)
+			fft_output[i] *= freq_domain[i];
+
+		mufft_execute_plan_2d(inverse_plan, fft_input, fft_output);
+		for (int i = 0; i < width * height; i++)
+			static_cast<Pixel *>(target.data(0, 0, level))[i][component] = uint8_t(round(clamp(fft_input[i] * 255.0f, 0.0f, 255.0f)));
+	}
+
+	mufft_free_plan_2d(forward_plan);
+	mufft_free_plan_2d(inverse_plan);
+	mufft_free(fft_input);
+	mufft_free(fft_output);
 }
 }

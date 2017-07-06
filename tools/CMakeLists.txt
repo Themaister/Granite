@@ -10,7 +10,7 @@ function(add_granite_tool NAME)
 endfunction()
 
 add_granite_library(tool-util tool_util.hpp tool_util.cpp)
-target_link_libraries(tool-util math util)
+target_link_libraries(tool-util math util mufft)
 target_include_directories(tool-util PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/gli)
 if (CMAKE_COMPILER_IS_GNUCXX)
     target_compile_options(tool-util PUBLIC -Wno-type-limits -Wno-pedantic -Wno-ignored-qualifiers -Wno-unused-parameter)

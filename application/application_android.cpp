@@ -392,6 +392,7 @@ void ApplicationPlatformAndroid::poll_input()
 		if (global_state.app->destroyRequested)
 			return;
 	}
+
 	state.get_input_tracker().dispatch_current_state(state.get_frame_timer().get_frame_time());
 }
 

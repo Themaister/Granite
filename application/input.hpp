@@ -353,29 +353,5 @@ private:
 	bool mouse_active;
 };
 
-class FrameTickEvent : public Granite::Event
-{
-public:
-	static constexpr Granite::EventType type_id = GRANITE_EVENT_TYPE_HASH(FrameTickEvent);
-
-	FrameTickEvent(double frame_time, double elapsed_time)
-		: Granite::Event(type_id), frame_time(frame_time), elapsed_time(elapsed_time)
-	{
-	}
-
-	double get_frame_time() const
-	{
-		return frame_time;
-	}
-
-	double get_elapsed_time() const
-	{
-		return elapsed_time;
-	}
-
-private:
-	double frame_time;
-	double elapsed_time;
-};
 
 }

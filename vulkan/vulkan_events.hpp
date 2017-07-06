@@ -74,6 +74,7 @@ private:
 	VkFormat format;
 };
 
+
 class SwapchainIndexEvent : public Granite::Event
 {
 public:

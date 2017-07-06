@@ -1,8 +1,21 @@
 #include "hdr.hpp"
 #include "math.hpp"
+#include "application.hpp"
 
 namespace Granite
 {
+LuminanceAdaptPass::LuminanceAdaptPass()
+{
+	EventManager::get_global().register_handler(FrameTickEvent::type_id, &LuminanceAdaptPass::on_frame_time, this);
+}
+
+bool LuminanceAdaptPass::on_frame_time(const Event &e)
+{
+	auto &time = e.as<FrameTickEvent>();
+	last_frame_time = float(time.get_frame_time());
+	return true;
+}
+
 void LuminanceAdaptPass::build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd)
 {
 	auto &input = pass.get_graph().get_physical_texture_resource(pass.get_texture_inputs()[0]->get_physical_index());
@@ -18,8 +31,14 @@ void LuminanceAdaptPass::build_render_pass(RenderPass &pass, Vulkan::CommandBuff
 	unsigned variant = program->register_variant({});
 	cmd.set_program(*program->get_program(variant));
 
-	uvec2 size(half_width, half_height);
-	cmd.push_constants(&size, 0, sizeof(size));
+	struct Registers
+	{
+		uvec2 size;
+		float lerp;
+	} push;
+	push.size = uvec2(half_width, half_height);
+	push.lerp = 1.0f - pow(0.5f, last_frame_time);
+	cmd.push_constants(&push, 0, sizeof(push));
 	cmd.dispatch(1, 1, 1);
 }
 

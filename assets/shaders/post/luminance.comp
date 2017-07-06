@@ -13,6 +13,7 @@ layout(set = 0, binding = 1) uniform sampler2D uImage;
 layout(std430, push_constant) uniform Registers
 {
     ivec2 size;
+    float lerp;
 } registers;
 
 shared float shared_loglum[64];
@@ -56,7 +57,7 @@ void main()
     {
         float loglum = shared_loglum[0] + shared_loglum[1];
         loglum *= inv_size.x * inv_size.y;
-        float new_log_luma = mix(average_log_luminance, loglum, 0.02); // TODO: Depend on frame-time?
+        float new_log_luma = mix(average_log_luminance, loglum, registers.lerp);
         average_log_luminance = new_log_luma;
         average_linear_luminance = exp2(new_log_luma);
         average_inv_linear_luminance = exp2(-new_log_luma);

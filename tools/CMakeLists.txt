@@ -23,6 +23,7 @@ add_granite_tool(heightgen heightgen.cpp)
 add_granite_tool(terraingen terraingen.cpp)
 add_granite_tool(cluttergen cluttergen.cpp)
 add_granite_tool(png2ktx png2ktx.cpp)
+add_granite_tool(normalgen normalgen.cpp)
 
 target_link_libraries(cluttergen fast-noise)
 target_link_libraries(heightgen fast-noise)

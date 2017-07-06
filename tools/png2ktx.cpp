@@ -115,8 +115,9 @@ int main(int argc, char *argv[])
 	auto texture = gli::texture2d(srgb ? gli::FORMAT_RGBA8_SRGB_PACK8 : gli::FORMAT_RGBA8_UNORM_PACK8,
 	                              gli::texture2d::extent_type(width, height), generate_mipmaps ? levels : 1);
 
-	auto *data = texture.data(0, 0, 0);
+	auto *data = static_cast<uint8_t *>(texture.data(0, 0, 0));
 	memcpy(data, buffer, width * height * 4);
+
 	stbi_image_free(buffer);
 
 	if (blur_gauss)

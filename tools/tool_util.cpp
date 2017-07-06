@@ -136,7 +136,7 @@ void filter_tiling_artifacts(gli::texture &target, unsigned level, const gli::im
 			fft_input[i] = src[i][component] * (1.0f / 255.0f);
 		mufft_execute_plan_2d(forward_plan, fft_output, fft_input);
 
-		for (unsigned i = 0; i < width * height; i++)
+		for (int i = 0; i < width * height; i++)
 			fft_output[i] *= freq_domain[i];
 
 		mufft_execute_plan_2d(inverse_plan, fft_input, fft_output);

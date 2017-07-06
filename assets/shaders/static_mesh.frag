@@ -43,16 +43,6 @@ layout(location = 3) out vec2 PBR;
 
 void main()
 {
-#if defined(HAVE_BASECOLORMAP) && HAVE_BASECOLORMAP
-    vec4 base_color = texture(uBaseColormap, vUV, registers.lod_bias) * registers.base_color;
-    #if defined(ALPHA_TEST) && !defined(ALPHA_TEST_ALPHA_TO_COVERAGE)
-        if (base_color.a < 0.5)
-            discard;
-    #endif
-#else
-    vec4 base_color = registers.base_color;
-#endif
-
 #if defined(HAVE_NORMAL) && HAVE_NORMAL
     vec3 normal = normalize(vNormal);
     #if defined(HAVE_NORMALMAP) && HAVE_NORMALMAP
@@ -72,6 +62,16 @@ void main()
 #else
     float metallic = registers.metallic;
     float roughness = registers.roughness;
+#endif
+
+#if defined(HAVE_BASECOLORMAP) && HAVE_BASECOLORMAP
+    vec4 base_color = texture(uBaseColormap, vUV, registers.lod_bias) * registers.base_color;
+    #if defined(ALPHA_TEST) && !defined(ALPHA_TEST_ALPHA_TO_COVERAGE)
+        if (base_color.a < 0.5)
+            discard;
+    #endif
+#else
+    vec4 base_color = registers.base_color;
 #endif
 
     Emissive = vec3(0.0);

@@ -97,7 +97,12 @@ void filter_tiling_artifacts(gli::texture &target, unsigned level, const gli::im
 
 	if (!forward_plan || !inverse_plan)
 	{
-		memset(target.data(0, 0, level), 0, target.size(level));
+		// Use the DC. Might as well be a flat color now.
+		auto lowest_mip = target.load<Pixel>(gli::extent3d(0, 0, 0), 0, 0, target.max_level());
+		int mip_width = target.extent(level).x;
+		int mip_height = target.extent(level).y;
+		for (int i = 0; i < mip_width * mip_height; i++)
+			static_cast<Pixel *>(target.data(0, 0, level))[i] = lowest_mip;
 		return;
 	}
 

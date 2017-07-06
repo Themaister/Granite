@@ -50,7 +50,7 @@ void main()
     float weight = 1.0 / dot(types, vec4(1.0));
     types *= weight;
 
-    const float lod = 1.0;
+    const float lod = 0.5;
     vec3 base_color =
         types.x * texture(uBaseColor, vec3(uv, 0.0), lod).rgb +
         types.y * texture(uBaseColor, vec3(uv, 1.0), lod).rgb +

@@ -477,7 +477,7 @@ private:
 	VertexAttribState attribs[VULKAN_NUM_VERTEX_ATTRIBS] = {};
 	IndexState index = {};
 	VertexBindingState vbo = {};
-	ResourceBindings bindings = {};
+	ResourceBindings bindings;
 
 	VkPipeline current_pipeline = VK_NULL_HANDLE;
 	VkPipelineLayout current_pipeline_layout = VK_NULL_HANDLE;

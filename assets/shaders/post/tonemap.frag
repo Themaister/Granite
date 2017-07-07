@@ -50,6 +50,6 @@ void main()
     vec3 color = textureLod(uHDR, vUV, 0.0).rgb;
     vec3 bloom = textureLod(uBloom, vUV, 0.0).rgb;
     color += bloom;
-    //FragColor = tonemap_reinhart(color * average_inv_linear_luminance);
     FragColor = tonemap_filmic(color * average_inv_linear_luminance);
+    //FragColor = 0.25 * color * average_inv_linear_luminance;
 }

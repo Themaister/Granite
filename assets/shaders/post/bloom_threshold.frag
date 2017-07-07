@@ -15,11 +15,11 @@ layout(location = 0) in highp vec2 vUV;
 void main()
 {
     vec3 color = textureLod(uHDR, vUV, 0.0).rgb;
-    highp float luminance = dot(color + 0.00001, vec3(0.29, 0.60, 0.11));
+    highp float luminance = max(max(color.x, color.y), color.z) + 0.0001;
     highp float loglum = log2(luminance);
 
     color /= luminance;
-    luminance -= 4.0 * average_linear_luminance;
+    luminance -= 8.0 * average_linear_luminance;
     vec3 thres_color = max(color * luminance, vec3(0.0));
     FragColor = vec4(thres_color, loglum);
 }

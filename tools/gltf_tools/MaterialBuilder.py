@@ -5,7 +5,7 @@ class MaterialBuilder():
         self.normal = None
         self.metallic_roughness = None
         self.base_color_factor = (1.0, 1.0, 1.0, 1.0)
-        self.metallic_factor = 1.0
+        self.metallic_factor = 0.0
         self.roughness_factor = 1.0
         self.alpha_mode = 'OPAQUE'
         self.double_sided = False

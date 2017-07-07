@@ -16,6 +16,7 @@ CommandBuffer::CommandBuffer(Device *device, VkCommandBuffer cmd, VkPipelineCach
 	begin_compute();
 	set_opaque_state();
 	memset(&static_state, 0, sizeof(static_state));
+	memset(&bindings, 0, sizeof(bindings));
 }
 
 void CommandBuffer::copy_buffer(const Buffer &dst, VkDeviceSize dst_offset, const Buffer &src, VkDeviceSize src_offset,

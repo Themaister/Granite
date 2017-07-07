@@ -78,21 +78,24 @@ void SceneViewerApplication::LightingImpl::build_render_pass(RenderPass &, Vulka
 	cmd.set_depth_test(true, false);
 	cmd.set_depth_compare(VK_COMPARE_OP_GREATER);
 	assert(reflection && irradiance);
-	cmd.set_texture(0, 0, reflection->get_image()->get_view());
-	cmd.set_texture(0, 1, irradiance->get_image()->get_view());
+	cmd.set_texture(0, 0, reflection->get_image()->get_view(), Vulkan::StockSampler::LinearClamp);
+	cmd.set_texture(0, 1, irradiance->get_image()->get_view(), Vulkan::StockSampler::LinearClamp);
 
 	struct DirectionalLight
 	{
 		mat4 inv_view_proj;
 		vec4 direction;
-		vec4 color;
-		vec4 camera_pos;
+		vec4 color_env_intensity;
+		vec4 camera_pos_mipscale;
 	} push;
 
-	push.color = vec4(3.0, 2.5, 2.5, 0.0);
-	push.direction = vec4(normalize(vec3(0.8, 0.4, 0.9)), 0.0);
+	const float intensity = 1.0f;
+	const float mipscale = 6.0f;
+
+	push.color_env_intensity = vec4(3.0f, 2.5f, 2.5f, intensity);
+	push.direction = vec4(normalize(vec3(0.8f, 1.2f, 0.9f)), 0.0f);
 	push.inv_view_proj = app->context.get_render_parameters().inv_view_projection;
-	push.camera_pos = vec4(app->context.get_render_parameters().camera_position, 0.0f);
+	push.camera_pos_mipscale = vec4(app->context.get_render_parameters().camera_position, mipscale);
 	cmd.push_constants(&push, 0, sizeof(push));
 
 	cmd.draw(4);

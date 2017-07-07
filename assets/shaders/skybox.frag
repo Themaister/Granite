@@ -8,5 +8,5 @@ layout(location = 0) out vec3 Emissive;
 
 void main()
 {
-    Emissive = texture(uSkybox, vDirection).rgb;
+    Emissive = 2.0 * texture(uSkybox, vDirection).rgb;
 }

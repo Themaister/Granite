@@ -59,8 +59,8 @@ int main(int argc, char *argv[])
 
 	normals = gli::generate_mipmaps(normals, gli::FILTER_LINEAR);
 
-	const float normal_scale_x = 1.0f;
-	const float normal_scale_y = 1.0f;
+	const float normal_scale_x = 4.0f;
+	const float normal_scale_y = 4.0f;
 	for (unsigned level = 0; level < normals.levels(); level++)
 	{
 		int mip_width = normals.extent(level).x;

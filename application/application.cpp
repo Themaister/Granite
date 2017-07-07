@@ -51,6 +51,11 @@ void SceneViewerApplication::LightingImpl::on_device_created(Vulkan::Device &dev
 	irradiance = device.get_texture_manager().request_texture(skydome_irradiance);
 }
 
+static vec3 light_direction()
+{
+	return normalize(vec3(0.5f, 1.2f, 0.8f));
+}
+
 void SceneViewerApplication::LightingImpl::build_render_pass(RenderPass &, Vulkan::CommandBuffer &cmd)
 {
 	cmd.set_quad_state();
@@ -78,12 +83,14 @@ void SceneViewerApplication::LightingImpl::build_render_pass(RenderPass &, Vulka
 	cmd.set_depth_test(true, false);
 	cmd.set_depth_compare(VK_COMPARE_OP_GREATER);
 	assert(reflection && irradiance);
-	cmd.set_texture(0, 0, reflection->get_image()->get_view(), Vulkan::StockSampler::LinearClamp);
-	cmd.set_texture(0, 1, irradiance->get_image()->get_view(), Vulkan::StockSampler::LinearClamp);
+	cmd.set_texture(0, 1, reflection->get_image()->get_view(), Vulkan::StockSampler::LinearClamp);
+	cmd.set_texture(0, 2, irradiance->get_image()->get_view(), Vulkan::StockSampler::LinearClamp);
+	cmd.set_texture(0, 3, shadow_map->get_view(), Vulkan::StockSampler::LinearShadow);
 
-	struct DirectionalLight
+	struct DirectionalLightPush
 	{
-		mat4 inv_view_proj;
+		vec4 inv_view_proj_col2;
+		vec4 shadow_col2;
 		vec4 direction;
 		vec4 color_env_intensity;
 		vec4 camera_pos_mipscale;
@@ -92,9 +99,21 @@ void SceneViewerApplication::LightingImpl::build_render_pass(RenderPass &, Vulka
 	const float intensity = 1.0f;
 	const float mipscale = 6.0f;
 
+	mat4 total_shadow_transform = shadow_transform * app->context.get_render_parameters().inv_view_projection;
+
+	struct DirectionalLightUBO
+	{
+		mat4 inv_view_projection;
+		mat4 shadow_transform;
+	};
+	auto *ubo = static_cast<DirectionalLightUBO *>(cmd.allocate_constant_data(0, 0, sizeof(DirectionalLightUBO)));
+	ubo->inv_view_projection = app->context.get_render_parameters().inv_view_projection;
+	ubo->shadow_transform = total_shadow_transform;
+
+	push.inv_view_proj_col2 = app->context.get_render_parameters().inv_view_projection[2];
+	push.shadow_col2 = total_shadow_transform[2];
 	push.color_env_intensity = vec4(3.0f, 2.5f, 2.5f, intensity);
-	push.direction = vec4(normalize(vec3(0.8f, 1.2f, 0.9f)), 0.0f);
-	push.inv_view_proj = app->context.get_render_parameters().inv_view_projection;
+	push.direction = vec4(light_direction(), 0.0f);
 	push.camera_pos_mipscale = vec4(app->context.get_render_parameters().camera_position, mipscale);
 	cmd.push_constants(&push, 0, sizeof(push));
 
@@ -128,7 +147,8 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned
 	: Application(width, height),
 	  gbuffer_impl(this),
 	  lighting_impl(this),
-	  ui_impl(this)
+	  ui_impl(this),
+      depth_renderer(Renderer::Type::DepthOnly)
 {
 	scene_loader.load_scene(path);
 	animation_system = scene_loader.consume_animation_system();
@@ -265,13 +285,73 @@ void SceneViewerApplication::on_swapchain_destroyed(const Event &)
 {
 }
 
+void SceneViewerApplication::update_shadow_map()
+{
+	auto &device = get_wsi().get_device();
+	auto &scene = scene_loader.get_scene();
+	visible.clear();
+
+	// Get the scene AABB for shadow casters.
+	auto &shadow_casters = scene.get_entity_pool().get_component_group<CachedSpatialTransformComponent, RenderableComponent, CastsShadowComponent>();
+	AABB aabb(vec3(FLT_MAX), vec3(-FLT_MAX));
+	for (auto &caster : shadow_casters)
+		aabb.expand(get<0>(caster)->world_aabb);
+
+	mat4 view = mat4_cast(look_at(-light_direction(), vec3(0.0f, 1.0f, 0.0f)));
+
+	// Project the scene AABB into the light and find our ortho ranges.
+	AABB ortho_range = aabb.transform(view);
+	mat4 proj = ortho(ortho_range);
+
+	// Standard scale/bias.
+	lighting_impl.shadow_transform = glm::translate(vec3(0.5f, 0.5f, 0.0f)) * glm::scale(vec3(0.5f, 0.5f, 1.0f)) * proj * view;
+	context.set_camera(proj, view);
+
+	depth_renderer.begin();
+	scene.gather_visible_shadow_renderables(context.get_visibility_frustum(), visible);
+	depth_renderer.push_renderables(context, visible);
+
+	auto image_info = ImageCreateInfo::render_target(4096, 4096, VK_FORMAT_D16_UNORM);
+	image_info.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+	image_info.initial_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+	lighting_impl.shadow_map = device.create_image(image_info, nullptr);
+
+	auto cmd = device.request_command_buffer();
+	RenderPassInfo rp;
+	rp.num_color_attachments = 0;
+	rp.depth_stencil = &lighting_impl.shadow_map->get_view();
+	rp.clear_depth_stencil.depth = 1.0f;
+	rp.op_flags =
+		RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT |
+		RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT |
+		RENDER_PASS_OP_DEPTH_STENCIL_OPTIMAL_BIT;
+
+	cmd->begin_render_pass(rp);
+	depth_renderer.flush(*cmd, context);
+	cmd->end_render_pass();
+	cmd->image_barrier(*lighting_impl.shadow_map,
+	                   VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                       VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+                       VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+
+	lighting_impl.shadow_map->set_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	device.submit(cmd);
+}
+
 void SceneViewerApplication::render_frame(double, double elapsed_time)
 {
 	auto &wsi = get_wsi();
 	auto &scene = scene_loader.get_scene();
 	auto &device = wsi.get_device();
 
+	context.set_camera(cam);
 	animation_system->animate(elapsed_time);
+	scene.update_cached_transforms();
+	scene.refresh_per_frame(context);
+
+	if (!lighting_impl.shadow_map)
+		update_shadow_map();
+
 	context.set_camera(cam);
 	visible.clear();
 
@@ -281,8 +361,6 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 	window->set_title("My Window");
 	//window->set_target_geometry(window->get_target_geometry() + vec2(1.0f));
 
-	scene.update_cached_transforms();
-	scene.refresh_per_frame(context);
 	scene.gather_visible_opaque_renderables(context.get_visibility_frustum(), visible);
 	scene.gather_background_renderables(visible);
 

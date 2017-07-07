@@ -9,7 +9,8 @@ using namespace Util;
 namespace Granite
 {
 
-Renderer::Renderer()
+Renderer::Renderer(Type type)
+	: type(type)
 {
 	EventManager::get_global().register_latch_handler(DeviceCreatedEvent::type_id,
                                                       &Renderer::on_device_created,
@@ -22,10 +23,27 @@ void Renderer::on_device_created(const Event &e)
 	auto &created = e.as<DeviceCreatedEvent>();
 	auto &device = created.get_device();
 
-	suite[ecast(RenderableType::Mesh)].init_graphics(&device.get_shader_manager(), "assets://shaders/static_mesh.vert", "assets://shaders/static_mesh.frag");
-	suite[ecast(RenderableType::DebugMesh)].init_graphics(&device.get_shader_manager(), "assets://shaders/debug_mesh.vert", "assets://shaders/debug_mesh.frag");
-	suite[ecast(RenderableType::Skybox)].init_graphics(&device.get_shader_manager(), "assets://shaders/skybox.vert", "assets://shaders/skybox.frag");
-	suite[ecast(RenderableType::Ground)].init_graphics(&device.get_shader_manager(), "assets://shaders/ground.vert", "assets://shaders/ground.frag");
+	if (type == Type::General)
+	{
+		suite[ecast(RenderableType::Mesh)].init_graphics(&device.get_shader_manager(),
+		                                                 "assets://shaders/static_mesh.vert",
+		                                                 "assets://shaders/static_mesh.frag");
+		suite[ecast(RenderableType::DebugMesh)].init_graphics(&device.get_shader_manager(),
+		                                                      "assets://shaders/debug_mesh.vert",
+		                                                      "assets://shaders/debug_mesh.frag");
+		suite[ecast(RenderableType::Skybox)].init_graphics(&device.get_shader_manager(), "assets://shaders/skybox.vert",
+		                                                   "assets://shaders/skybox.frag");
+		suite[ecast(RenderableType::Ground)].init_graphics(&device.get_shader_manager(), "assets://shaders/ground.vert",
+		                                                   "assets://shaders/ground.frag");
+	}
+	else if (type == Type::DepthOnly)
+	{
+		suite[ecast(RenderableType::Mesh)].init_graphics(&device.get_shader_manager(),
+		                                                 "assets://shaders/static_mesh.vert",
+		                                                 "assets://shaders/static_mesh_depth.frag");
+		suite[ecast(RenderableType::Ground)].init_graphics(&device.get_shader_manager(), "assets://shaders/ground.vert",
+		                                                   "assets://shaders/ground_depth.frag");
+	}
 
 	this->device = &device;
 }
@@ -45,16 +63,23 @@ void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context)
 	auto *global = static_cast<RenderParameters *>(cmd.allocate_constant_data(0, 0, sizeof(RenderParameters)));
 	*global = context.get_render_parameters();
 
-	auto *fog = static_cast<FogParameters *>(cmd.allocate_constant_data(0, 1, sizeof(FogParameters)));
-	*fog = context.get_fog_parameters();
-
 	queue.sort();
 
 	cmd.set_opaque_state();
+
+	if (type == Type::DepthOnly)
+	{
+		cmd.set_cull_mode(VK_CULL_MODE_FRONT_BIT);
+		cmd.set_depth_bias(true);
+		cmd.set_depth_bias(2.0f, 2.0f);
+	}
+
 	CommandBufferSavedState state;
 	cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
 	queue.dispatch(Queue::Opaque, cmd, &state);
-	queue.dispatch(Queue::Transparent, cmd, &state);
+
+	if (type == Type::General)
+		queue.dispatch(Queue::Transparent, cmd, &state);
 }
 
 DebugMeshInfo &Renderer::render_debug(RenderContext &context, unsigned count)

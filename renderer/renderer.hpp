@@ -21,7 +21,13 @@ enum class RenderableType
 class Renderer : public EventHandler
 {
 public:
-	Renderer();
+	enum Type
+	{
+		General,
+		DepthOnly
+	};
+
+	Renderer(Type type = Type::General);
 
 	void begin();
 	void push_renderables(RenderContext &context, const VisibilityList &visible);
@@ -43,5 +49,6 @@ private:
 	ShaderSuite suite[Util::ecast(RenderableType::Count)];
 
 	DebugMeshInfo &render_debug(RenderContext &context, unsigned count);
+	Type type;
 };
 }

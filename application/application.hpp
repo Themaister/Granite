@@ -187,8 +187,12 @@ private:
 		Vulkan::Texture *reflection = nullptr;
 		Vulkan::Texture *irradiance = nullptr;
 		void on_device_created(Vulkan::Device &device);
+
+		mat4 shadow_transform;
+		Vulkan::ImageHandle shadow_map;
 	};
 	LightingImpl lighting_impl;
+	void update_shadow_map();
 
 	struct UIImpl : RenderPassImplementation
 	{
@@ -204,6 +208,7 @@ private:
 
 	RenderContext context;
 	Renderer renderer;
+	Renderer depth_renderer;
 	FPSCamera cam;
 	VisibilityList visible;
 	SceneLoader scene_loader;

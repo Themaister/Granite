@@ -2,8 +2,9 @@
 
 #include "../inc/pbr.h"
 
-layout(set = 0, binding = 0) uniform samplerCube uReflection;
-layout(set = 0, binding = 1) uniform samplerCube uIrradiance;
+layout(set = 0, binding = 1) uniform samplerCube uReflection;
+layout(set = 0, binding = 2) uniform samplerCube uIrradiance;
+layout(set = 0, binding = 3) uniform sampler2DShadow uShadowmap;
 
 layout(input_attachment_index = 0, set = 1, binding = 0) uniform subpassInput BaseColor;
 layout(input_attachment_index = 1, set = 1, binding = 1) uniform subpassInput Normal;
@@ -11,10 +12,12 @@ layout(input_attachment_index = 2, set = 1, binding = 2) uniform subpassInput PB
 layout(input_attachment_index = 3, set = 1, binding = 3) uniform subpassInput Depth;
 layout(location = 0) out vec3 FragColor;
 layout(location = 0) in vec4 vClip;
+layout(location = 1) in vec4 vShadowClip;
 
 layout(std430, push_constant) uniform Registers
 {
-    mat4 inverse_view_projection;
+    vec4 inverse_view_projection_col2;
+    vec4 shadow_projection_col2;
     vec3 direction;
     vec3 color;
 	float environment_intensity;
@@ -33,7 +36,12 @@ void main()
     vec3 N = subpassLoad(Normal).xyz * 2.0 - 1.0;
 
     // Reconstruct position.
-    vec4 clip = vClip + depth * registers.inverse_view_projection[2];
+    vec4 clip = vClip + depth * registers.inverse_view_projection_col2;
+
+    // Sample shadowmap.
+    vec4 clip_shadow = vShadowClip + depth * registers.shadow_projection_col2;
+    float shadow_term = textureProj(uShadowmap, clip_shadow);
+
     vec3 pos = clip.xyz / clip.w;
 
     // Compute directional light.
@@ -52,12 +60,12 @@ void main()
     vec3 specular_fresnel = fresnel(F0, HoV);
     vec3 specref = blinn_specular(NoH, specular_fresnel, roughness);
 
-    specref *= NoL;
-    vec3 diffref = NoL * (1.0 - specular_fresnel) * (1.0 / PI);
+    specref *= NoL * shadow_term;
+    vec3 diffref = NoL * shadow_term * (1.0 - specular_fresnel) * (1.0 / PI);
 
     // IBL diffuse term.
     //vec3 envdiff = registers.environment_intensity * textureLod(uIrradiance, N, 10.0).rgb * (1.0 / PI);
-	vec3 envdiff = vec3(0.5, 0.5, 0.7) / PI;
+	vec3 envdiff = vec3(0.2, 0.2, 0.3) / PI;
 
     // IBL specular term.
     vec3 reflected = reflect(-V, N);

@@ -1,4 +1,5 @@
 #include "transforms.hpp"
+#include "aabb.hpp"
 
 namespace Granite
 {
@@ -75,6 +76,13 @@ quat look_at(vec3 direction, vec3 up)
 mat4 projection(float fovy, float aspect, float znear, float zfar)
 {
 	return glm::scale(vec3(1.0f, -1.0f, 1.0f)) * glm::perspective(fovy, aspect, znear, zfar);
+}
+
+mat4 ortho(const AABB &aabb)
+{
+	vec3 min = aabb.get_minimum();
+	vec3 max = aabb.get_maximum();
+	return glm::scale(vec3(1.0f, -1.0f, 1.0f)) * glm::ortho(min.x, max.x, min.y, max.y, min.z, max.z);
 }
 
 vec3 LinearSampler::sample(unsigned index, float l) const

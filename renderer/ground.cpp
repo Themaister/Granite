@@ -21,7 +21,7 @@ struct PatchInfo : RenderInfo
 
 	const Vulkan::ImageView *heights;
 	const Vulkan::ImageView *normals;
-	//const Vulkan::ImageView *normals_fine;
+	const Vulkan::ImageView *normals_fine;
 	const Vulkan::ImageView *base_color;
 	const Vulkan::ImageView *lod_map;
 	const Vulkan::ImageView *type_map;
@@ -79,7 +79,7 @@ static void ground_patch_render(Vulkan::CommandBuffer &cmd, const RenderInfo **i
 	cmd.set_texture(2, 2, *patch.lod_map, cmd.get_device().get_stock_sampler(StockSampler::LinearClamp));
 	cmd.set_texture(2, 3, *patch.base_color, cmd.get_device().get_stock_sampler(StockSampler::TrilinearWrap));
 	cmd.set_texture(2, 4, *patch.type_map, cmd.get_device().get_stock_sampler(StockSampler::LinearClamp));
-	//cmd.set_texture(2, 5, *patch.normals_fine, cmd.get_device().get_stock_sampler(StockSampler::TrilinearWrap));
+	cmd.set_texture(2, 5, *patch.normals_fine, cmd.get_device().get_stock_sampler(StockSampler::TrilinearWrap));
 
 	auto *data = static_cast<GroundData *>(cmd.allocate_constant_data(3, 1, sizeof(GroundData)));
 	data->inv_heightmap_size = patch.inv_heightmap_size;
@@ -154,7 +154,7 @@ void Ground::on_device_created(const Event &e)
 	auto &device = e.as<DeviceCreatedEvent>().get_device();
 	heights = device.get_texture_manager().request_texture(info.heightmap);
 	normals = device.get_texture_manager().request_texture(info.normalmap);
-	//normals_fine = device.get_texture_manager().request_texture(info.normalmap_fine);
+	normals_fine = device.get_texture_manager().request_texture(info.normalmap_fine);
 	base_color = device.get_texture_manager().request_texture(info.base_color);
 	type_map = device.get_texture_manager().request_texture(info.splatmap);
 	build_buffers(device);
@@ -291,12 +291,12 @@ void Ground::get_render_info(const RenderContext &context, const CachedSpatialTr
 
 	auto heightmap = heights->get_image();
 	auto normal = normals->get_image();
-	//auto normal_fine = normals_fine->get_image();
+	auto normal_fine = normals_fine->get_image();
 	auto base_color_image = base_color->get_image();
 	auto splatmap_image = type_map->get_image();
 	patch.heights = &heightmap->get_view();
 	patch.normals = &normal->get_view();
-	//patch.normals_fine = &normal_fine->get_view();
+	patch.normals_fine = &normal_fine->get_view();
 	patch.base_color = &base_color_image->get_view();
 	patch.lod_map = &lod_map->get_view();
 	patch.type_map = &splatmap_image->get_view();

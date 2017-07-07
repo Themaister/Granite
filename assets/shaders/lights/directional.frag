@@ -65,7 +65,7 @@ void main()
 
     // IBL diffuse term.
     //vec3 envdiff = registers.environment_intensity * textureLod(uIrradiance, N, 10.0).rgb * (1.0 / PI);
-	vec3 envdiff = vec3(0.2, 0.2, 0.3) / PI;
+	vec3 envdiff = mix(vec3(0.2, 0.2, 0.2) / PI, vec3(0.2, 0.2, 0.3) / PI, clamp(N.y, 0.0, 1.0));
 
     // IBL specular term.
     vec3 reflected = reflect(-V, N);

@@ -284,6 +284,7 @@ int main(int argc, char *argv[])
 	terrain.AddMember("normalSize", 128, allocator);
 	terrain.AddMember("size", width, allocator);
 	terrain.AddMember("baseColorTexture", "../textures/Grass_BaseColor_Array.ktx", allocator);
+	terrain.AddMember("normalTexture", "../textures/Grass_NormalMap.ktx", allocator);
 	terrain.AddMember("splatmapTexture", "../textures/splatmap.ktx", allocator);
 	terrain.AddMember("patchData", "bias.json", allocator);
 

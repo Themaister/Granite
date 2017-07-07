@@ -374,6 +374,7 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
 	ds.stencilTestEnable = render_pass->has_stencil(current_subpass) && static_state.state.stencil_test;
 	ds.depthTestEnable = render_pass->has_depth(current_subpass) && static_state.state.depth_test;
 	ds.depthWriteEnable = render_pass->has_depth(current_subpass) && static_state.state.depth_write;
+
 	if (ds.depthTestEnable)
 		ds.depthCompareOp = static_cast<VkCompareOp>(static_state.state.depth_compare);
 
@@ -387,6 +388,7 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
 		ds.back.failOp = static_cast<VkStencilOp>(static_state.state.stencil_back_fail);
 		ds.back.depthFailOp = static_cast<VkStencilOp>(static_state.state.stencil_back_depth_fail);
 	}
+
 
 	// Vertex input
 	VkPipelineVertexInputStateCreateInfo vi = { VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
@@ -432,6 +434,7 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
 	raster.frontFace = static_cast<VkFrontFace>(static_state.state.front_face);
 	raster.lineWidth = 1.0f;
 	raster.polygonMode = static_state.state.wireframe ? VK_POLYGON_MODE_LINE : VK_POLYGON_MODE_FILL;
+	raster.depthBiasEnable = static_state.state.depth_bias_enable != 0;
 
 	// Stages
 	VkPipelineShaderStageCreateInfo stages[static_cast<unsigned>(ShaderStage::Count)];

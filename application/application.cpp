@@ -304,7 +304,7 @@ void SceneViewerApplication::update_shadow_map()
 	mat4 proj = ortho(ortho_range);
 
 	// Standard scale/bias.
-	lighting_impl.shadow_transform = glm::translate(vec3(0.5f, 0.5f, -0.0004f)) * glm::scale(vec3(0.5f, 0.5f, 1.0f)) * proj * view;
+	lighting_impl.shadow_transform = glm::translate(vec3(0.5f, 0.5f, 0.0f)) * glm::scale(vec3(0.5f, 0.5f, 1.0f)) * proj * view;
 	context.set_camera(proj, view);
 
 	depth_renderer.begin();

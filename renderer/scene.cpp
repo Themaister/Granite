@@ -69,6 +69,11 @@ EnvironmentComponent *Scene::get_environment() const
 		return get<0>(environments.front());
 }
 
+EntityPool &Scene::get_entity_pool()
+{
+	return pool;
+}
+
 void Scene::gather_background_renderables(VisibilityList &list)
 {
 	for (auto &background : backgrounds)

@@ -42,6 +42,12 @@ struct EnvironmentComponent : ComponentBase
 	FogParameters fog;
 };
 
+struct SkyboxComponent : ComponentBase
+{
+	std::string reflection_path;
+	std::string irradiance_path;
+};
+
 struct RenderableComponent : ComponentBase
 {
 	AbstractRenderableHandle renderable;

@@ -45,6 +45,12 @@ void SceneViewerApplication::GBufferImpl::build_render_pass(RenderPass &, Vulkan
 	app->renderer.flush(cmd, app->context);
 }
 
+void SceneViewerApplication::LightingImpl::on_device_created(Vulkan::Device &device)
+{
+	reflection = device.get_texture_manager().request_texture(skydome_reflection);
+	irradiance = device.get_texture_manager().request_texture(skydome_irradiance);
+}
+
 void SceneViewerApplication::LightingImpl::build_render_pass(RenderPass &, Vulkan::CommandBuffer &cmd)
 {
 	cmd.set_quad_state();
@@ -65,22 +71,28 @@ void SceneViewerApplication::LightingImpl::build_render_pass(RenderPass &, Vulka
 	cmd.set_vertex_attrib(0, 0, VK_FORMAT_R8G8_SNORM, 0);
 
 	auto &device = cmd.get_device();
-	auto *program = device.get_shader_manager().register_graphics("assets://shaders/lights/directional.vert", "assets://shaders/lights/directional.frag");
+	auto *program = device.get_shader_manager().register_graphics("assets://shaders/lights/directional.vert",
+	                                                              "assets://shaders/lights/directional.frag");
 	unsigned variant = program->register_variant({});
 	cmd.set_program(*program->get_program(variant));
 	cmd.set_depth_test(true, false);
 	cmd.set_depth_compare(VK_COMPARE_OP_GREATER);
+	assert(reflection && irradiance);
+	cmd.set_texture(0, 0, reflection->get_image()->get_view());
+	cmd.set_texture(0, 1, irradiance->get_image()->get_view());
 
 	struct DirectionalLight
 	{
 		mat4 inv_view_proj;
 		vec4 direction;
 		vec4 color;
+		vec4 camera_pos;
 	} push;
 
 	push.color = vec4(3.0, 2.5, 2.5, 0.0);
 	push.direction = vec4(normalize(vec3(0.8, 0.4, 0.9)), 0.0);
 	push.inv_view_proj = app->context.get_render_parameters().inv_view_projection;
+	push.camera_pos = vec4(app->context.get_render_parameters().camera_position, 0.0f);
 	cmd.push_constants(&push, 0, sizeof(push));
 
 	cmd.draw(4);
@@ -117,6 +129,14 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned
 {
 	scene_loader.load_scene(path);
 	animation_system = scene_loader.consume_animation_system();
+
+	auto &skybox = scene_loader.get_scene().get_entity_pool().get_component_group<SkyboxComponent>();
+	if (!skybox.empty())
+	{
+		auto *skybox_component = get<0>(skybox.front());
+		lighting_impl.skydome_reflection = skybox_component->reflection_path;
+		lighting_impl.skydome_irradiance = skybox_component->irradiance_path;
+	}
 
 	auto *environment = scene_loader.get_scene().get_environment();
 	if (environment)
@@ -170,6 +190,21 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned
 	                                                  &SceneViewerApplication::on_swapchain_changed,
 	                                                  &SceneViewerApplication::on_swapchain_destroyed,
 	                                                  this);
+
+	EventManager::get_global().register_latch_handler(DeviceCreatedEvent::type_id,
+	                                                  &SceneViewerApplication::on_device_created,
+	                                                  &SceneViewerApplication::on_device_destroyed,
+	                                                  this);
+}
+
+void SceneViewerApplication::on_device_created(const Event &e)
+{
+	auto &device = e.as<DeviceCreatedEvent>();
+	lighting_impl.on_device_created(device.get_device());
+}
+
+void SceneViewerApplication::on_device_destroyed(const Event &)
+{
 }
 
 void SceneViewerApplication::on_swapchain_changed(const Event &e)

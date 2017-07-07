@@ -182,6 +182,11 @@ private:
 
 		void build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd) override;
 		SceneViewerApplication *app;
+		std::string skydome_reflection;
+		std::string skydome_irradiance;
+		Vulkan::Texture *reflection = nullptr;
+		Vulkan::Texture *irradiance = nullptr;
+		void on_device_created(Vulkan::Device &device);
 	};
 	LightingImpl lighting_impl;
 
@@ -205,6 +210,8 @@ private:
 	std::unique_ptr<AnimationSystem> animation_system;
 	UI::Window *window;
 
+	void on_device_created(const Event &e);
+	void on_device_destroyed(const Event &e);
 	void on_swapchain_changed(const Event &e);
 	void on_swapchain_destroyed(const Event &e);
 	RenderGraph graph;

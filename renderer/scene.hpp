@@ -30,6 +30,7 @@ public:
 	void gather_visible_shadow_renderables(const Frustum &frustum, VisibilityList &list);
 	void gather_background_renderables(VisibilityList &list);
 	EnvironmentComponent *get_environment() const;
+	EntityPool &get_entity_pool();
 
 	class Node : public Util::IntrusivePtrEnabled<Node>
 	{

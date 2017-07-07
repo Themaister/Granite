@@ -376,6 +376,10 @@ void SceneLoader::parse(const std::string &path, const std::string &json)
 			auto texture_path = Path::relpath(path, bg["skybox"].GetString());
 			auto skybox = Util::make_abstract_handle<AbstractRenderable, Skybox>(texture_path);
 			entity = scene->create_renderable(skybox, nullptr);
+
+			auto *skybox_component = entity->allocate_component<SkyboxComponent>();
+			skybox_component->reflection_path = texture_path;
+			skybox_component->irradiance_path = texture_path;
 		}
 		else
 			entity = scene->create_entity();

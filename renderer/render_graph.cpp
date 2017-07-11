@@ -1171,10 +1171,10 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 		// Need to wait on this event before we can transfer ownership to another alias.
 		for (auto &transfer : pass.alias_transfer)
 		{
-			physical_events[transfer.first] = physical_events[transfer.second];
-			physical_events[transfer.first].invalidated = 0;
-			physical_events[transfer.first].to_flush = 0;
-			physical_attachments[transfer.first]->get_image().set_layout(VK_IMAGE_LAYOUT_UNDEFINED);
+			physical_events[transfer.second] = physical_events[transfer.first];
+			physical_events[transfer.second].invalidated = 0;
+			physical_events[transfer.second].to_flush = 0;
+			physical_attachments[transfer.second]->get_image().set_layout(VK_IMAGE_LAYOUT_UNDEFINED);
 		}
 	};
 

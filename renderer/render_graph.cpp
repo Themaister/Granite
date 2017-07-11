@@ -1102,6 +1102,8 @@ void RenderGraph::build_aliases()
 			register_writer(output, subpass.get_physical_pass_index());
 	}
 
+	vector<vector<unsigned>> alias_chains(physical_dimensions.size());
+
 	physical_aliases.resize(physical_dimensions.size());
 	for (auto &v : physical_aliases)
 		v = RenderResource::Unused;
@@ -1123,9 +1125,32 @@ void RenderGraph::build_aliases()
 				if (pass_range[i].disjoint_lifetime(pass_range[j])) // We can alias.
 				{
 					physical_aliases[i] = j;
+					if (alias_chains[j].empty())
+						alias_chains[j].push_back(j);
+					alias_chains[j].push_back(i);
+
 					break;
 				}
 			}
+		}
+	}
+
+	// Now we've found the aliases, so set up the transfer barriers in order of use.
+	for (auto &chain : alias_chains)
+	{
+		if (chain.empty())
+			continue;
+
+		sort(begin(chain), end(chain), [&](unsigned a, unsigned b) -> bool {
+			return pass_range[a].last_used_pass() < pass_range[b].first_used_pass();
+		});
+
+		for (unsigned i = 0; i < chain.size(); i++)
+		{
+			if (i + 1 < chain.size())
+				physical_passes[pass_range[chain[i]].last_used_pass()].alias_transfer.push_back(make_pair(chain[i], chain[i + 1]));
+			else
+				physical_passes[pass_range[chain[i]].last_used_pass()].alias_transfer.push_back(make_pair(chain[i], chain[0]));
 		}
 	}
 }
@@ -1433,6 +1458,14 @@ void RenderGraph::setup_physical_buffer(Vulkan::Device &device, unsigned attachm
 void RenderGraph::setup_physical_image(Vulkan::Device &device, unsigned attachment, bool storage)
 {
 	auto &att = physical_dimensions[attachment];
+
+	if (physical_aliases[attachment] != RenderResource::Unused)
+	{
+		physical_image_attachments[attachment] = physical_image_attachments[physical_aliases[attachment]];
+		physical_attachments[attachment] = &physical_image_attachments[attachment]->get_view();
+		physical_events[attachment] = {};
+		return;
+	}
 
 	bool need_image = true;
 	VkImageUsageFlags usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;

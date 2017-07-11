@@ -534,6 +534,7 @@ private:
 		std::vector<unsigned> discards;
 		std::vector<Barrier> invalidate;
 		std::vector<Barrier> flush;
+		std::vector<std::pair<unsigned, unsigned>> alias_transfer;
 
 		Vulkan::RenderPassInfo render_pass_info;
 		std::vector<Vulkan::RenderPassInfo::Subpass> subpasses;

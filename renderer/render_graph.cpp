@@ -1000,6 +1000,15 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 
 	vector<VkEvent> events;
 
+	const auto transfer_ownership = [this](PhysicalPass &pass) {
+		// Need to wait on this event before we can transfer ownership to another alias.
+		for (auto &transfer : pass.alias_transfer)
+		{
+			physical_events[transfer.first] = physical_events[transfer.second];
+			physical_attachments[transfer.first]->get_image().set_layout(VK_IMAGE_LAYOUT_UNDEFINED);
+		}
+	};
+
 	for (auto &physical_pass : physical_passes)
 	{
 		bool require_pass = false;
@@ -1010,7 +1019,10 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 		}
 
 		if (!require_pass)
+		{
+			transfer_ownership(physical_pass);
 			continue;
+		}
 
 		auto cmd = device.request_command_buffer();
 
@@ -1190,6 +1202,9 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 		}
 
 		device.submit(cmd);
+
+		transfer_ownership(physical_pass);
+
 	}
 
 	// Scale to swapchain.

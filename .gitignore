@@ -12,3 +12,4 @@ CMakeCache
 /app/build
 /app/.externalNativeBuild
 __pycache__
+perf.data

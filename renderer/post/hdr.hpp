@@ -10,10 +10,16 @@ public:
 	void build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd) override;
 };
 
-class BloomDownsamplePass : public RenderPassImplementation
+class BloomDownsamplePass : public RenderPassImplementation, public EventHandler
 {
 public:
+	BloomDownsamplePass(bool feedback);
 	void build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd) override;
+
+private:
+	float last_frame_time = 0.0f;
+	bool on_frame_time(const Event &e);
+	bool feedback;
 };
 
 class BloomUpsamplePass : public RenderPassImplementation

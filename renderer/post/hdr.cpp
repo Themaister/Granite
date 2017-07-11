@@ -9,6 +9,20 @@ LuminanceAdaptPass::LuminanceAdaptPass()
 	EventManager::get_global().register_handler(FrameTickEvent::type_id, &LuminanceAdaptPass::on_frame_time, this);
 }
 
+BloomDownsamplePass::BloomDownsamplePass(bool feedback)
+	: feedback(feedback)
+{
+	if (feedback)
+		EventManager::get_global().register_handler(FrameTickEvent::type_id, &BloomDownsamplePass::on_frame_time, this);
+}
+
+bool BloomDownsamplePass::on_frame_time(const Event &e)
+{
+	auto &time = e.as<FrameTickEvent>();
+	last_frame_time = float(time.get_frame_time());
+	return true;
+}
+
 bool LuminanceAdaptPass::on_frame_time(const Event &e)
 {
 	auto &time = e.as<FrameTickEvent>();
@@ -54,10 +68,52 @@ void BloomThresholdPass::build_render_pass(RenderPass &pass, Vulkan::CommandBuff
 void BloomDownsamplePass::build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd)
 {
 	auto &input = pass.get_graph().get_physical_texture_resource(pass.get_texture_inputs()[0]->get_physical_index());
-	vec2 inv_size = vec2(1.0f / input.get_image().get_create_info().width, 1.0f / input.get_image().get_create_info().height);
-	cmd.push_constants(&inv_size, 0, sizeof(inv_size));
 	cmd.set_texture(0, 0, input, Vulkan::StockSampler::LinearClamp);
-	Vulkan::CommandBufferUtil::draw_quad(cmd, "assets://shaders/quad.vert", "assets://shaders/post/bloom_downsample.frag");
+
+	if (feedback)
+	{
+		auto *feedback_texture = pass.get_graph().get_physical_history_texture_resource(
+			pass.get_history_inputs()[0]->get_physical_index());
+
+		if (feedback_texture)
+		{
+			struct Push
+			{
+				vec2 inv_size;
+				float lerp;
+			} push;
+			push.inv_size = vec2(1.0f / input.get_image().get_create_info().width,
+			                     1.0f / input.get_image().get_create_info().height);
+
+			float lerp = 1.0f - pow(0.08f, last_frame_time);
+			push.lerp = lerp;
+			cmd.push_constants(&push, 0, sizeof(push));
+
+			cmd.set_texture(0, 1, *feedback_texture, Vulkan::StockSampler::NearestClamp);
+			Vulkan::CommandBufferUtil::draw_quad(cmd,
+			                                     "assets://shaders/quad.vert",
+			                                     "assets://shaders/post/bloom_downsample.frag",
+			                                     {{"FEEDBACK", 1}});
+		}
+		else
+		{
+			vec2 inv_size = vec2(1.0f / input.get_image().get_create_info().width,
+			                     1.0f / input.get_image().get_create_info().height);
+			cmd.push_constants(&inv_size, 0, sizeof(inv_size));
+			Vulkan::CommandBufferUtil::draw_quad(cmd,
+			                                     "assets://shaders/quad.vert",
+			                                     "assets://shaders/post/bloom_downsample.frag");
+		}
+	}
+	else
+	{
+		vec2 inv_size = vec2(1.0f / input.get_image().get_create_info().width,
+		                     1.0f / input.get_image().get_create_info().height);
+		cmd.push_constants(&inv_size, 0, sizeof(inv_size));
+		Vulkan::CommandBufferUtil::draw_quad(cmd,
+		                                     "assets://shaders/quad.vert",
+		                                     "assets://shaders/post/bloom_downsample.frag");
+	}
 }
 
 void BloomUpsamplePass::build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd)
@@ -82,7 +138,8 @@ void TonemapPass::build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd
 
 void TonemapPass::setup_hdr_postprocess(RenderGraph &graph, const std::string &input, const std::string &output)
 {
-	static BloomDownsamplePass downsample;
+	static BloomDownsamplePass downsample(false);
+	static BloomDownsamplePass downsample_feedback(true);
 	static BloomUpsamplePass upsample;
 	static BloomThresholdPass threshold_pass;
 	static TonemapPass tonemap_pass;
@@ -146,7 +203,8 @@ void TonemapPass::setup_hdr_postprocess(RenderGraph &graph, const std::string &i
 	auto &blur3 = graph.add_pass("bloom-downsample-3", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 	blur3.add_color_output("bloom-downsample-3", blur_info);
 	blur3.add_texture_input("bloom-downsample-2");
-	blur3.set_implementation(&downsample);
+	blur3.add_history_input("bloom-downsample-3");
+	blur3.set_implementation(&downsample_feedback);
 
 	blur_info.size_x = 0.0625f;
 	blur_info.size_y = 0.0625f;

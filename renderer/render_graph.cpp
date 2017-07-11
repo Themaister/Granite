@@ -32,6 +32,14 @@ RenderTextureResource &RenderPass::add_attachment_input(const std::string &name)
 	return res;
 }
 
+RenderTextureResource &RenderPass::add_history_input(const std::string &name)
+{
+	auto &res = graph.get_texture_resource(name);
+	// History inputs are not used in any particular pass, but next frame.
+	history_inputs.push_back(&res);
+	return res;
+}
+
 RenderBufferResource &RenderPass::add_uniform_input(const std::string &name)
 {
 	auto &res = graph.get_buffer_resource(name);
@@ -147,6 +155,7 @@ RenderGraph::RenderGraph()
 void RenderGraph::on_swapchain_destroyed(const Event &)
 {
 	physical_image_attachments.clear();
+	physical_history_image_attachments.clear();
 }
 
 void RenderGraph::on_swapchain_changed(const Event &)
@@ -468,6 +477,22 @@ void RenderGraph::build_physical_resources()
 			}
 		}
 	}
+
+	// Figure out which physical resources need to have history.
+	physical_image_has_history.clear();
+	physical_image_has_history.resize(physical_dimensions.size());
+
+	for (auto &pass_index : pass_stack)
+	{
+		auto &pass = *passes[pass_index];
+		for (auto &history : pass.get_history_inputs())
+		{
+			unsigned phys_index = history->get_physical_index();
+			if (phys_index == RenderResource::Unused)
+				throw logic_error("History input is used, but it was never written to.");
+			physical_image_has_history[phys_index] = true;
+		}
+	}
 }
 
 void RenderGraph::build_transients()
@@ -483,6 +508,10 @@ void RenderGraph::build_transients()
 			dim.transient = false;
 		else
 			dim.transient = true;
+
+		unsigned index = unsigned(&dim - physical_dimensions.data());
+		if (physical_image_has_history[index])
+			dim.transient = false;
 	}
 
 	for (auto &resource : resources)
@@ -1243,12 +1272,17 @@ void RenderGraph::setup_attachments(Vulkan::Device &device, Vulkan::ImageView *s
 
 	// Try to reuse render targets if possible.
 	physical_image_attachments.resize(physical_dimensions.size());
+	physical_history_image_attachments.resize(physical_dimensions.size());
 
 	swapchain_attachment = swapchain;
 
 	unsigned num_attachments = physical_dimensions.size();
 	for (unsigned i = 0; i < num_attachments; i++)
 	{
+		// Move over history attachments.
+		if (physical_image_has_history[i])
+			swap(physical_history_image_attachments[i], physical_image_attachments[i]);
+
 		auto &att = physical_dimensions[i];
 		if (att.buffer_info.size != 0)
 		{
@@ -1257,18 +1291,13 @@ void RenderGraph::setup_attachments(Vulkan::Device &device, Vulkan::ImageView *s
 		else
 		{
 			if (att.storage)
-			{
 				setup_physical_image(device, i, true);
-			}
+			else if (i == swapchain_physical_index)
+				physical_attachments[i] = swapchain;
+			else if (att.transient)
+				physical_attachments[i] = &device.get_transient_attachment(att.width, att.height, att.format, i, 1);
 			else
-			{
-				if (i == swapchain_physical_index)
-					physical_attachments[i] = swapchain;
-				else if (att.transient)
-					physical_attachments[i] = &device.get_transient_attachment(att.width, att.height, att.format, i, 1);
-				else
-					setup_physical_image(device, i, false);
-			}
+				setup_physical_image(device, i, false);
 		}
 	}
 
@@ -1340,6 +1369,32 @@ void RenderGraph::enqueue_initial_barriers(Vulkan::CommandBuffer &cmd, const vec
 		}
 
 		dst_stages |= barriers[i].stages;
+	}
+
+	// Transition history resources to SHADER_READ_ONLY_OPTIMAL if necessary.
+	if (src_stages == VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT)
+	{
+		for (auto &image : physical_history_image_attachments)
+		{
+			if (!image)
+				continue;
+			if (image->get_layout() == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) // Already in SHADER_READ_ONLY layout, no need to transition.
+				continue;
+
+			VkImageMemoryBarrier b = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+			b.image = image->get_image();
+			b.srcAccessMask = 0;
+			b.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+			b.oldLayout = image->get_layout();
+			b.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			b.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
+			b.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
+			b.subresourceRange.aspectMask = Vulkan::format_to_aspect_mask(image->get_format());
+			b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			image_barriers.push_back(b);
+			image->set_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		}
 	}
 
 	cmd.barrier(src_stages, dst_stages, 0, nullptr,

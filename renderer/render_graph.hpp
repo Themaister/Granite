@@ -301,6 +301,7 @@ public:
 	RenderTextureResource &add_color_output(const std::string &name, const AttachmentInfo &info, const std::string &input = "");
 	RenderTextureResource &add_texture_input(const std::string &name);
 	RenderTextureResource &add_attachment_input(const std::string &name);
+	RenderTextureResource &add_history_input(const std::string &name);
 
 	RenderBufferResource &add_uniform_input(const std::string &name);
 	RenderBufferResource &add_storage_output(const std::string &name, const BufferInfo &info, const std::string &input = "");
@@ -349,6 +350,11 @@ public:
 	const std::vector<RenderTextureResource *> &get_attachment_inputs() const
 	{
 		return attachments_inputs;
+	}
+
+	const std::vector<RenderTextureResource *> &get_history_inputs() const
+	{
+		return history_inputs;
 	}
 
 	const std::vector<RenderBufferResource *> &get_uniform_inputs() const
@@ -404,6 +410,7 @@ private:
 	std::vector<RenderTextureResource *> storage_texture_inputs;
 	std::vector<RenderTextureResource *> storage_texture_outputs;
 	std::vector<RenderTextureResource *> attachments_inputs;
+	std::vector<RenderTextureResource *> history_inputs;
 	std::vector<RenderBufferResource *> uniform_inputs;
 	std::vector<RenderBufferResource *> storage_outputs;
 	std::vector<RenderBufferResource *> storage_read_inputs;
@@ -438,6 +445,13 @@ public:
 	{
 		assert(physical_attachments[index]);
 		return *physical_attachments[index];
+	}
+
+	Vulkan::ImageView *get_physical_history_texture_resource(unsigned index)
+	{
+		if (!physical_history_image_attachments[index])
+			return nullptr;
+		return &physical_history_image_attachments[index]->get_view();
 	}
 
 	Vulkan::Buffer &get_physical_buffer_resource(unsigned index)
@@ -538,6 +552,9 @@ private:
 	std::vector<Vulkan::ImageView *> physical_attachments;
 	std::vector<Vulkan::BufferHandle> physical_buffers;
 	std::vector<Vulkan::ImageHandle> physical_image_attachments;
+	std::vector<Vulkan::ImageHandle> physical_history_image_attachments;
+	std::vector<bool> physical_image_has_history;
+
 	Vulkan::ImageView *swapchain_attachment = nullptr;
 	unsigned swapchain_physical_index = RenderResource::Unused;
 

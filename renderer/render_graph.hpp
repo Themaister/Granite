@@ -220,7 +220,7 @@ private:
 class RenderPassImplementation
 {
 public:
-	virtual bool need_render_pass()
+	virtual bool need_render_pass(RenderPass &)
 	{
 		return true;
 	}
@@ -483,7 +483,6 @@ private:
 	std::vector<unsigned> pass_stack;
 	std::vector<unsigned> pushed_passes;
 	std::vector<unsigned> pushed_passes_tmp;
-	std::unordered_set<unsigned> handled_passes;
 
 	struct Barrier
 	{

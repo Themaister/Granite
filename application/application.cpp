@@ -85,7 +85,7 @@ void SceneViewerApplication::LightingImpl::build_render_pass(RenderPass &, Vulka
 	assert(reflection && irradiance);
 	cmd.set_texture(0, 1, reflection->get_image()->get_view(), Vulkan::StockSampler::LinearClamp);
 	cmd.set_texture(0, 2, irradiance->get_image()->get_view(), Vulkan::StockSampler::LinearClamp);
-	cmd.set_texture(0, 3, shadow_map->get_view(), Vulkan::StockSampler::LinearShadow);
+	cmd.set_texture(0, 3, *shadow.shadow_map, Vulkan::StockSampler::LinearShadow);
 
 	struct DirectionalLightPush
 	{
@@ -99,7 +99,7 @@ void SceneViewerApplication::LightingImpl::build_render_pass(RenderPass &, Vulka
 	const float intensity = 1.0f;
 	const float mipscale = 6.0f;
 
-	mat4 total_shadow_transform = shadow_transform * app->context.get_render_parameters().inv_view_projection;
+	mat4 total_shadow_transform = shadow.shadow_transform * app->context.get_render_parameters().inv_view_projection;
 
 	struct DirectionalLightUBO
 	{
@@ -245,6 +245,12 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 	const char *backbuffer_source = getenv("GRANITE_SURFACE");
 	graph.set_backbuffer_source(backbuffer_source ? backbuffer_source : "backbuffer");
 
+	AttachmentInfo shadowmap;
+	shadowmap.size_class = SizeClass::Absolute;
+	shadowmap.size_x = 4096.0f;
+	shadowmap.size_y = 4096.0f;
+	shadowmap.format = VK_FORMAT_D16_UNORM;
+
 	AttachmentInfo backbuffer;
 	AttachmentInfo emissive, albedo, normal, pbr, depth;
 	emissive.format = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
@@ -252,6 +258,10 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 	normal.format = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
 	pbr.format = VK_FORMAT_R8G8_UNORM;
 	depth.format = swap.get_device().get_default_depth_stencil_format();
+
+	auto &shadowpass = graph.add_pass("shadow", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	shadowpass.set_depth_stencil_output("shadowmap", shadowmap);
+	shadowpass.set_implementation(&lighting_impl.shadow);
 
 	auto &gbuffer = graph.add_pass("gbuffer", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 	gbuffer.add_color_output("emissive", emissive);
@@ -268,6 +278,7 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 	lighting.add_attachment_input("pbr");
 	lighting.add_attachment_input("depth");
 	lighting.set_depth_stencil_input("depth");
+	lighting.add_texture_input("shadowmap");
 	lighting.set_implementation(&lighting_impl);
 
 	TonemapPass::setup_hdr_postprocess(graph, "HDR", "tonemapped");
@@ -285,11 +296,31 @@ void SceneViewerApplication::on_swapchain_destroyed(const Event &)
 {
 }
 
+bool SceneViewerApplication::ShadowmapImpl::need_render_pass(RenderPass &pass)
+{
+	return shadow_map != &pass.get_graph().get_physical_texture_resource(pass.get_depth_stencil_output()->get_physical_index());
+}
+
+void SceneViewerApplication::ShadowmapImpl::build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd)
+{
+	app->depth_renderer.flush(cmd, app->depth_context);
+	shadow_map = &pass.get_graph().get_physical_texture_resource(pass.get_depth_stencil_output()->get_physical_index());
+}
+
+bool SceneViewerApplication::ShadowmapImpl::get_clear_depth_stencil(VkClearDepthStencilValue *value)
+{
+	if (value)
+	{
+		value->depth = 1.0f;
+		value->stencil = 0;
+	}
+	return true;
+}
+
 void SceneViewerApplication::update_shadow_map()
 {
-	auto &device = get_wsi().get_device();
 	auto &scene = scene_loader.get_scene();
-	visible.clear();
+	depth_visible.clear();
 
 	// Get the scene AABB for shadow casters.
 	auto &shadow_casters = scene.get_entity_pool().get_component_group<CachedSpatialTransformComponent, RenderableComponent, CastsShadowComponent>();
@@ -304,38 +335,12 @@ void SceneViewerApplication::update_shadow_map()
 	mat4 proj = ortho(ortho_range);
 
 	// Standard scale/bias.
-	lighting_impl.shadow_transform = glm::translate(vec3(0.5f, 0.5f, 0.0f)) * glm::scale(vec3(0.5f, 0.5f, 1.0f)) * proj * view;
-	context.set_camera(proj, view);
+	lighting_impl.shadow.shadow_transform = glm::translate(vec3(0.5f, 0.5f, 0.0f)) * glm::scale(vec3(0.5f, 0.5f, 1.0f)) * proj * view;
+	depth_context.set_camera(proj, view);
 
 	depth_renderer.begin();
-	scene.gather_visible_shadow_renderables(context.get_visibility_frustum(), visible);
-	depth_renderer.push_renderables(context, visible);
-
-	auto image_info = ImageCreateInfo::render_target(4096, 4096, VK_FORMAT_D16_UNORM);
-	image_info.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-	image_info.initial_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-	lighting_impl.shadow_map = device.create_image(image_info, nullptr);
-
-	auto cmd = device.request_command_buffer();
-	RenderPassInfo rp;
-	rp.num_color_attachments = 0;
-	rp.depth_stencil = &lighting_impl.shadow_map->get_view();
-	rp.clear_depth_stencil.depth = 1.0f;
-	rp.op_flags =
-		RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT |
-		RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT |
-		RENDER_PASS_OP_DEPTH_STENCIL_OPTIMAL_BIT;
-
-	cmd->begin_render_pass(rp);
-	depth_renderer.flush(*cmd, context);
-	cmd->end_render_pass();
-	cmd->image_barrier(*lighting_impl.shadow_map,
-	                   VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                       VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-                       VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-
-	lighting_impl.shadow_map->set_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-	device.submit(cmd);
+	scene.gather_visible_shadow_renderables(depth_context.get_visibility_frustum(), depth_visible);
+	depth_renderer.push_renderables(depth_context, depth_visible);
 }
 
 void SceneViewerApplication::render_frame(double, double elapsed_time)
@@ -349,7 +354,7 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 	scene.update_cached_transforms();
 	scene.refresh_per_frame(context);
 
-	if (!lighting_impl.shadow_map)
+	if (!lighting_impl.shadow.shadow_map)
 		update_shadow_map();
 
 	context.set_camera(cam);

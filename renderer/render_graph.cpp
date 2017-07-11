@@ -654,7 +654,6 @@ void RenderGraph::build_render_pass_info()
 
 				rp.op_flags |= Vulkan::RENDER_PASS_OP_DEPTH_STENCIL_OPTIMAL_BIT | Vulkan::RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT;
 				physical_pass.subpasses[subpass_index].depth_stencil_mode = Vulkan::RenderPassInfo::DepthStencil::ReadWrite;
-
 			}
 			else if (ds_output)
 			{
@@ -1183,7 +1182,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 		bool require_pass = false;
 		for (auto &pass : physical_pass.passes)
 		{
-			if (passes[pass]->get_implementation().need_render_pass())
+			if (passes[pass]->get_implementation().need_render_pass(*passes[pass]))
 				require_pass = true;
 		}
 
@@ -1587,7 +1586,6 @@ void RenderGraph::bake()
 	pushed_passes.clear();
 	pushed_passes_tmp.clear();
 	pass_stack.clear();
-	handled_passes.clear();
 
 	// Work our way back from the backbuffer, and sort out all the dependencies.
 	auto &backbuffer_resource = *resources[itr->second];
@@ -1646,8 +1644,6 @@ void RenderGraph::bake()
 
 		for (auto &pushed_pass : pushed_passes)
 		{
-			handled_passes.insert(pushed_pass);
-
 			auto &pass = *passes[pushed_pass];
 			if (pass.get_depth_stencil_input())
 				depend_passes(pass.get_depth_stencil_input()->get_write_passes());
@@ -1712,12 +1708,12 @@ void RenderGraph::bake()
 
 	// Now, we have a linear list of passes to submit in-order which would obey the dependencies.
 
-	// Next, try to merge adjacent passes together.
-	build_physical_passes();
-
 	// Figure out which physical resources we need. Here we will alias resources which can trivially alias via renaming.
 	// E.g. depth input -> depth output is just one physical attachment, similar with color.
 	build_physical_resources();
+
+	// Next, try to merge adjacent passes together.
+	build_physical_passes();
 
 	// After merging physical passes and resources, if an image resource is only used in a single physical pass, make it transient.
 	build_transients();

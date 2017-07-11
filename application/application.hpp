@@ -173,10 +173,26 @@ private:
 	};
 	GBufferImpl gbuffer_impl;
 
+	struct ShadowmapImpl : RenderPassImplementation
+	{
+		ShadowmapImpl(SceneViewerApplication *app)
+			: app(app)
+		{
+		}
+
+		bool need_render_pass(RenderPass &pass) override;
+		void build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd) override;
+		bool get_clear_depth_stencil(VkClearDepthStencilValue *value) override;
+
+		mat4 shadow_transform;
+		Vulkan::ImageView *shadow_map = nullptr;
+		SceneViewerApplication *app;
+	};
+
 	struct LightingImpl : RenderPassImplementation
 	{
 		LightingImpl(SceneViewerApplication *app)
-			: app(app)
+			: app(app), shadow(app)
 		{
 		}
 
@@ -188,8 +204,7 @@ private:
 		Vulkan::Texture *irradiance = nullptr;
 		void on_device_created(Vulkan::Device &device);
 
-		mat4 shadow_transform;
-		Vulkan::ImageHandle shadow_map;
+		ShadowmapImpl shadow;
 	};
 	LightingImpl lighting_impl;
 	void update_shadow_map();
@@ -207,10 +222,12 @@ private:
 	UIImpl ui_impl;
 
 	RenderContext context;
+	RenderContext depth_context;
 	Renderer renderer;
 	Renderer depth_renderer;
 	FPSCamera cam;
 	VisibilityList visible;
+	VisibilityList depth_visible;
 	SceneLoader scene_loader;
 	std::unique_ptr<AnimationSystem> animation_system;
 	UI::Window *window;

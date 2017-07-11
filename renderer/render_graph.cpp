@@ -2,6 +2,7 @@
 #include "type_to_string.hpp"
 #include "format.hpp"
 #include <algorithm>
+#include "vulkan_events.hpp"
 
 using namespace std;
 
@@ -133,6 +134,23 @@ RenderTextureResource &RenderPass::set_depth_stencil_input(const std::string &na
 	res.read_in_pass(index);
 	depth_stencil_input = &res;
 	return res;
+}
+
+RenderGraph::RenderGraph()
+{
+	EventManager::get_global().register_latch_handler(Vulkan::SwapchainParameterEvent::type_id,
+                                                      &RenderGraph::on_swapchain_changed,
+                                                      &RenderGraph::on_swapchain_destroyed,
+                                                      this);
+}
+
+void RenderGraph::on_swapchain_destroyed(const Event &)
+{
+	physical_image_attachments.clear();
+}
+
+void RenderGraph::on_swapchain_changed(const Event &)
+{
 }
 
 RenderTextureResource &RenderGraph::get_texture_resource(const std::string &name)
@@ -1130,6 +1148,91 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 	}
 }
 
+void RenderGraph::setup_physical_buffer(Vulkan::Device &device, unsigned attachment)
+{
+	auto &att = physical_dimensions[attachment];
+
+	Vulkan::BufferCreateInfo info = {};
+	info.size = att.buffer_info.size;
+	info.usage = att.buffer_info.usage;
+	info.domain = Vulkan::BufferDomain::Device;
+
+	bool need_buffer = true;
+	if (physical_buffers[attachment])
+	{
+		if (att.persistent &&
+		    physical_buffers[attachment]->get_create_info().size == info.size &&
+		    (physical_buffers[attachment]->get_create_info().usage & info.usage) == info.usage)
+		{
+			need_buffer = false;
+		}
+	}
+
+	if (need_buffer)
+	{
+		// Zero-initialize buffers. TODO: Make this configurable.
+		vector<uint8_t> blank(info.size);
+		physical_buffers[attachment] = device.create_buffer(info, blank.data());
+	}
+}
+
+void RenderGraph::setup_physical_image(Vulkan::Device &device, unsigned attachment, bool storage)
+{
+	auto &att = physical_dimensions[attachment];
+
+	bool need_image = true;
+	VkImageUsageFlags usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+	VkImageCreateFlags flags = 0;
+
+	if (storage)
+	{
+		usage |= VK_IMAGE_USAGE_STORAGE_BIT;
+		flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
+	}
+
+	if (Vulkan::format_is_stencil(att.format) ||
+	    Vulkan::format_is_depth_stencil(att.format) ||
+	    Vulkan::format_is_depth(att.format))
+	{
+		usage |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+	}
+	else
+	{
+		usage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	}
+
+	if (physical_image_attachments[attachment])
+	{
+		if (att.persistent &&
+		    physical_image_attachments[attachment]->get_create_info().format == att.format &&
+		    physical_image_attachments[attachment]->get_create_info().width == att.width &&
+		    physical_image_attachments[attachment]->get_create_info().height == att.height &&
+		    (physical_image_attachments[attachment]->get_create_info().usage & usage) == usage &&
+			(physical_image_attachments[attachment]->get_create_info().flags & flags) == flags)
+		{
+			need_image = false;
+		}
+	}
+
+	if (need_image)
+	{
+		Vulkan::ImageCreateInfo info;
+		info.format = att.format;
+		info.width = att.width;
+		info.height = att.height;
+		info.domain = Vulkan::ImageDomain::Physical;
+		info.levels = 1;
+		info.layers = 1;
+		info.usage = usage;
+		info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+		info.samples = VK_SAMPLE_COUNT_1_BIT;
+		info.flags = flags;
+		physical_image_attachments[attachment] = device.create_image(info, nullptr);
+	}
+
+	physical_attachments[attachment] = &physical_image_attachments[attachment]->get_view();
+}
+
 void RenderGraph::setup_attachments(Vulkan::Device &device, Vulkan::ImageView *swapchain)
 {
 	physical_attachments.clear();
@@ -1138,8 +1241,8 @@ void RenderGraph::setup_attachments(Vulkan::Device &device, Vulkan::ImageView *s
 	// Try to reuse the buffers if possible.
 	physical_buffers.resize(physical_dimensions.size());
 
-	// Try to reuse the storage images if possible.
-	physical_storage_attachments.resize(physical_dimensions.size());
+	// Try to reuse render targets if possible.
+	physical_image_attachments.resize(physical_dimensions.size());
 
 	swapchain_attachment = swapchain;
 
@@ -1149,71 +1252,13 @@ void RenderGraph::setup_attachments(Vulkan::Device &device, Vulkan::ImageView *s
 		auto &att = physical_dimensions[i];
 		if (att.buffer_info.size != 0)
 		{
-			Vulkan::BufferCreateInfo info = {};
-			info.size = att.buffer_info.size;
-			info.usage = att.buffer_info.usage;
-			info.domain = Vulkan::BufferDomain::Device;
-
-			bool need_buffer = true;
-			if (physical_buffers[i])
-			{
-				if (att.buffer_info.persistent &&
-					physical_buffers[i]->get_create_info().size == info.size &&
-					(physical_buffers[i]->get_create_info().usage & info.usage) == info.usage)
-				{
-					need_buffer = false;
-				}
-			}
-
-			if (need_buffer)
-			{
-				// Zero-initialize buffers. TODO: Make this configurable.
-				vector<uint8_t> blank(info.size);
-				physical_buffers[i] = device.create_buffer(info, blank.data());
-			}
+			setup_physical_buffer(device, i);
 		}
 		else
 		{
 			if (att.storage)
 			{
-				bool need_image = true;
-				const VkImageUsageFlags usage =
-					VK_IMAGE_USAGE_SAMPLED_BIT |
-					VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
-					VK_IMAGE_USAGE_STORAGE_BIT |
-					VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
-					VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-
-				if (physical_attachments[i])
-				{
-					if (att.persistent &&
-				        physical_attachments[i]->get_image().get_create_info().format == att.format &&
-						physical_attachments[i]->get_image().get_create_info().width == att.width &&
-						physical_attachments[i]->get_image().get_create_info().height == att.height &&
-						(physical_attachments[i]->get_image().get_create_info().usage & usage) == usage &&
-						physical_attachments[i]->get_image().get_create_info().flags == VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT)
-					{
-						need_image = false;
-					}
-				}
-
-				if (need_image)
-				{
-					Vulkan::ImageCreateInfo info;
-					info.format = att.format;
-					info.width = att.width;
-					info.height = att.height;
-					info.domain = Vulkan::ImageDomain::Physical;
-					info.levels = 1;
-					info.layers = 1;
-					info.usage = usage;
-					info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-					info.samples = VK_SAMPLE_COUNT_1_BIT;
-					info.flags = VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
-					physical_storage_attachments[i] = device.create_image(info, nullptr);
-				}
-
-				physical_attachments[i] = &physical_storage_attachments[i]->get_view();
+				setup_physical_image(device, i, true);
 			}
 			else
 			{
@@ -1222,7 +1267,7 @@ void RenderGraph::setup_attachments(Vulkan::Device &device, Vulkan::ImageView *s
 				else if (att.transient)
 					physical_attachments[i] = &device.get_transient_attachment(att.width, att.height, att.format, i, 1);
 				else
-					physical_attachments[i] = &device.get_physical_attachment(att.width, att.height, att.format, i, 1);
+					setup_physical_image(device, i, false);
 			}
 		}
 	}
@@ -1473,6 +1518,7 @@ ResourceDimensions RenderGraph::get_resource_dimensions(const RenderBufferResour
 	ResourceDimensions dim;
 	auto &info = resource.get_buffer_info();
 	dim.buffer_info = info;
+	dim.persistent = info.persistent;
 	return dim;
 }
 
@@ -1598,7 +1644,7 @@ void RenderGraph::build_physical_barriers()
 				{
 					// This only makes sense for persistent buffer resources. Otherwise we are reading dummy data.
 					if (!physical_dimensions[invalidate.resource_index].buffer_info.size ||
-					    !physical_dimensions[invalidate.resource_index].buffer_info.persistent)
+					    !physical_dimensions[invalidate.resource_index].persistent)
 					{
 						throw logic_error("Starting a resource as read-only is only valid for persistent buffers.");
 					}
@@ -1672,16 +1718,15 @@ void RenderGraph::build_physical_barriers()
 					resource_state[flush.resource_index].initial_layout = flush.layout;
 					global_resource_state[flush.resource_index].has_writer = true;
 
-					// If a buffer is created anew every frame, there is no reason to wait for previous frame to complete.
+					// If a resource is created anew every frame, there is no reason to wait for previous frame to complete.
 					bool need_initial_barrier = !physical_dimensions[flush.resource_index].buffer_info.size ||
-					                            physical_dimensions[flush.resource_index].buffer_info.persistent;
+					                            physical_dimensions[flush.resource_index].persistent;
 
 					if (need_initial_barrier)
 					{
 						// For storage images which are not persistent, we recreate them every frame, so
 						// we can use top-of-pipe barrier to do the initial transition.
 						if (!physical_dimensions[flush.resource_index].buffer_info.size &&
-							physical_dimensions[flush.resource_index].storage &&
 							!physical_dimensions[flush.resource_index].persistent)
 						{
 							initial_top_of_pipe_barriers.push_back(

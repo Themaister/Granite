@@ -30,15 +30,14 @@ struct AttachmentInfo
 	float size_y = 1.0f;
 	VkFormat format = VK_FORMAT_UNDEFINED;
 	std::string size_relative_name;
-
-	bool persistent = false;
+	bool persistent = true;
 };
 
 struct BufferInfo
 {
 	VkDeviceSize size = 0;
 	VkBufferUsageFlags usage = 0;
-	bool persistent = false;
+	bool persistent = true;
 
 	bool operator==(const BufferInfo &other) const
 	{
@@ -415,9 +414,10 @@ private:
 	RenderPassImplementation *implementation = nullptr;
 };
 
-class RenderGraph : public Vulkan::NoCopyNoMove
+class RenderGraph : public Vulkan::NoCopyNoMove, public EventHandler
 {
 public:
+	RenderGraph();
 	RenderPass &add_pass(const std::string &name, VkPipelineStageFlags stages);
 	void set_backbuffer_source(const std::string &name);
 	void set_backbuffer_dimensions(const ResourceDimensions &dim)
@@ -537,12 +537,18 @@ private:
 	std::vector<ResourceDimensions> physical_dimensions;
 	std::vector<Vulkan::ImageView *> physical_attachments;
 	std::vector<Vulkan::BufferHandle> physical_buffers;
-	std::vector<Vulkan::ImageHandle> physical_storage_attachments;
+	std::vector<Vulkan::ImageHandle> physical_image_attachments;
 	Vulkan::ImageView *swapchain_attachment = nullptr;
 	unsigned swapchain_physical_index = RenderResource::Unused;
 
 	void enqueue_scaled_requests(Vulkan::CommandBuffer &cmd, const std::vector<ScaledClearRequests> &requests);
 	void enqueue_initial_barriers(Vulkan::CommandBuffer &cmd);
 	void enqueue_initial_barriers(Vulkan::CommandBuffer &cmd, const std::vector<Barrier> &barriers, VkPipelineStageFlags src_stages);
+
+	void on_swapchain_changed(const Event &e);
+	void on_swapchain_destroyed(const Event &e);
+
+	void setup_physical_buffer(Vulkan::Device &device, unsigned attachment);
+	void setup_physical_image(Vulkan::Device &device, unsigned attachment, bool storage);
 };
 }

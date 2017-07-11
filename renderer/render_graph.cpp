@@ -1383,7 +1383,26 @@ void RenderGraph::enqueue_initial_barriers(Vulkan::CommandBuffer &cmd, const vec
 
 			VkImageMemoryBarrier b = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
 			b.image = image->get_image();
-			b.srcAccessMask = 0;
+
+			switch (image->get_layout())
+			{
+			case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+				b.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+				break;
+
+			case VK_IMAGE_LAYOUT_GENERAL:
+				b.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+				break;
+
+			case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+				b.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+				break;
+
+			default:
+				b.srcAccessMask = 0;
+				break;
+			}
+
 			b.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 			b.oldLayout = image->get_layout();
 			b.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -1395,6 +1414,9 @@ void RenderGraph::enqueue_initial_barriers(Vulkan::CommandBuffer &cmd, const vec
 			image_barriers.push_back(b);
 			image->set_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 		}
+
+		// TODO: Deal with correct src/dst stages here.
+		dst_stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
 	}
 
 	cmd.barrier(src_stages, dst_stages, 0, nullptr,

@@ -85,7 +85,7 @@ void BloomDownsamplePass::build_render_pass(RenderPass &pass, Vulkan::CommandBuf
 			push.inv_size = vec2(1.0f / input.get_image().get_create_info().width,
 			                     1.0f / input.get_image().get_create_info().height);
 
-			float lerp = 1.0f - pow(0.08f, last_frame_time);
+			float lerp = 1.0f - pow(0.001f, last_frame_time);
 			push.lerp = lerp;
 			cmd.push_constants(&push, 0, sizeof(push));
 

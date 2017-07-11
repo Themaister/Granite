@@ -10,7 +10,7 @@ public:
 	{
 	}
 
-	bool get_clear_color(unsigned index, VkClearColorValue *value) override
+	bool get_clear_color(unsigned, VkClearColorValue *value) override
 	{
 		if (value)
 		{
@@ -42,7 +42,6 @@ public:
 	{
 		auto &buffer = render_pass.get_graph().get_physical_buffer_resource(render_pass.get_uniform_inputs()[0]->get_physical_index());
 		auto &image = render_pass.get_graph().get_physical_texture_resource(render_pass.get_texture_inputs()[0]->get_physical_index());
-		auto &device = cmd.get_device();
 		cmd.set_uniform_buffer(0, 0, buffer);
 		cmd.set_texture(0, 1, image, Vulkan::StockSampler::LinearClamp);
 		Vulkan::CommandBufferUtil::draw_quad(cmd, "assets://shaders/clear_value.vert", "assets://shaders/clear_value.frag");

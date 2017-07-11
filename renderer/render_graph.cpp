@@ -156,6 +156,7 @@ void RenderGraph::on_swapchain_destroyed(const Event &)
 {
 	physical_image_attachments.clear();
 	physical_history_image_attachments.clear();
+	physical_events.clear();
 }
 
 void RenderGraph::on_swapchain_changed(const Event &)
@@ -888,26 +889,6 @@ void RenderGraph::log()
 	           " (swapchain)" : "";
 	};
 
-	for (auto &barrier : initial_top_of_pipe_barriers)
-	{
-		LOGI("ImmediateDiscardBarrier: %u%s, layout: %s, access: %s, stages: %s\n",
-		     barrier.resource_index,
-		     swap_str(barrier),
-		     Vulkan::layout_to_string(barrier.layout),
-		     Vulkan::access_flags_to_string(barrier.access).c_str(),
-		     Vulkan::stage_flags_to_string(barrier.stages).c_str());
-	}
-
-	for (auto &barrier : initial_barriers)
-	{
-		LOGI("DiscardBarrier: %u%s, layout: %s, access: %s, stages: %s\n",
-		     barrier.resource_index,
-		     swap_str(barrier),
-		     Vulkan::layout_to_string(barrier.layout),
-		     Vulkan::access_flags_to_string(barrier.access).c_str(),
-		     Vulkan::stage_flags_to_string(barrier.stages).c_str());
-	}
-
 	for (auto &passes : physical_passes)
 	{
 		LOGI("Physical pass #%u:\n", unsigned(&passes - physical_passes.data()));
@@ -1009,32 +990,36 @@ void RenderGraph::enqueue_scaled_requests(Vulkan::CommandBuffer &cmd, const std:
 
 void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 {
-	{
-		auto cmd = device.request_command_buffer();
-		enqueue_initial_barriers(*cmd);
-		device.submit(cmd);
-	}
-
-	struct BarrierData
-	{
-		VkPipelineStageFlags src_stages = 0;
-		VkAccessFlags src_access = 0;
-		VkImageLayout current_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-		Vulkan::PipelineEvent event;
-	};
-	vector<BarrierData> resources(physical_dimensions.size());
 	vector<VkBufferMemoryBarrier> buffer_barriers;
 	vector<VkImageMemoryBarrier> image_barriers;
+
+	// Immediate buffer barriers are useless because they don't need any layout transition,
+	// and the API guarantees that submitting a batch makes memory visible to GPU resources.
+	// Immediate image barriers are purely for doing layout transitions without waiting (srcStage = TOP_OF_PIPE).
+	vector<VkImageMemoryBarrier> immediate_image_barriers;
+
 	vector<VkEvent> events;
 
 	for (auto &physical_pass : physical_passes)
 	{
+		bool require_pass = false;
+		for (auto &pass : physical_pass.passes)
+		{
+			if (passes[pass]->get_implementation().need_render_pass())
+				require_pass = true;
+		}
+
+		if (!require_pass)
+			continue;
+
 		auto cmd = device.request_command_buffer();
 
 		VkPipelineStageFlags dst_stages = 0;
 		VkPipelineStageFlags src_stages = 0;
 		buffer_barriers.clear();
 		image_barriers.clear();
+		immediate_image_barriers.clear();
+
 		events.clear();
 
 		const auto add_unique_event = [&](VkEvent event) {
@@ -1044,16 +1029,23 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 				events.push_back(event);
 		};
 
+		// Before invalidating, force the layout to UNDEFINED.
+		// This will be required for resource aliasing later.
+		for (auto &discard : physical_pass.discards)
+			if (!physical_dimensions[discard].buffer_info.size)
+				physical_attachments[discard]->get_image().set_layout(VK_IMAGE_LAYOUT_UNDEFINED);
+
 		// Queue up invalidates and change layouts.
 		for (auto &barrier : physical_pass.invalidate)
 		{
-			auto &resource = resources[barrier.resource_index];
+			auto &event = physical_events[barrier.resource_index];
+			bool need_barrier = false;
 
 			if (physical_dimensions[barrier.resource_index].buffer_info.size)
 			{
 				auto &buffer = *physical_buffers[barrier.resource_index];
-				VkBufferMemoryBarrier b = { VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER };
-				b.srcAccessMask = resource.src_access;
+				VkBufferMemoryBarrier b = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+				b.srcAccessMask = event.to_flush;
 				b.dstAccessMask = barrier.access;
 				b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 				b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -1061,15 +1053,20 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 				b.offset = 0;
 				b.size = VK_WHOLE_SIZE;
 
-				buffer_barriers.push_back(b);
+				need_barrier =
+					(event.to_flush != 0) ||
+					((b.dstAccessMask & ~event.invalidated) != 0);
+
+				if (need_barrier && event.event)
+					buffer_barriers.push_back(b);
 			}
 			else
 			{
 				auto &view = *physical_attachments[barrier.resource_index];
 				VkImageMemoryBarrier b = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
-				b.oldLayout = resource.current_layout;
+				b.oldLayout = view.get_image().get_layout();
 				b.newLayout = barrier.layout;
-				b.srcAccessMask = resource.src_access;
+				b.srcAccessMask = event.to_flush;
 				b.dstAccessMask = barrier.access;
 				b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 				b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -1079,16 +1076,48 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 				b.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
 				physical_attachments[barrier.resource_index]->get_image().set_layout(barrier.layout);
 
-				image_barriers.push_back(b);
+				need_barrier =
+					(b.oldLayout != b.newLayout) ||
+					(event.to_flush != 0) ||
+					((b.dstAccessMask & ~event.invalidated) != 0);
+
+				if (need_barrier)
+				{
+					if (event.event)
+					{
+						image_barriers.push_back(b);
+					}
+					else
+					{
+						immediate_image_barriers.push_back(b);
+						if (b.oldLayout != VK_NULL_HANDLE)
+							throw logic_error("Cannot do immediate image barriers from another other than UNDEFINED.");
+					}
+				}
 			}
 
-			resource.current_layout = barrier.layout;
-			resource.src_access = 0;
-			src_stages |= resource.src_stages;
-			dst_stages |= barrier.stages;
-			resource.src_stages = 0;
+			if (need_barrier && event.event)
+			{
+				src_stages |= event.stages;
+				dst_stages |= barrier.stages;
+				add_unique_event(event.event->get_event());
+			}
 
-			add_unique_event(resource.event->get_event());
+			// Event has been injected, no need to wait for same resource again.
+			event.event.reset();
+			event.stages = 0;
+
+			if (event.to_flush)
+				event.invalidated = 0;
+
+			event.to_flush = 0;
+			event.invalidated |= barrier.access;
+		}
+
+		if (!immediate_image_barriers.empty())
+		{
+			cmd->barrier(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, dst_stages,
+			             0, nullptr, 0, nullptr, immediate_image_barriers.size(), immediate_image_barriers.data());
 		}
 
 		if (!image_barriers.empty() || !buffer_barriers.empty())
@@ -1119,7 +1148,13 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 				enqueue_scaled_requests(*cmd, scaled_requests);
 
 				auto &pass = *passes[subpass];
+
+				// If we have started the render pass, we have to do it, even if a lone subpass might not be required,
+				// due to clearing and so on.
+				// This should be an extremely unlikely scenario.
+				// Either you need all subpasses or none.
 				pass.get_implementation().build_render_pass(pass, *cmd);
+
 				if (&subpass != &physical_pass.passes.back())
 					cmd->next_subpass();
 			}
@@ -1137,21 +1172,21 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 		for (auto &barrier : physical_pass.flush)
 			wait_stages |= barrier.stages;
 
-		Vulkan::PipelineEvent event;
+		Vulkan::PipelineEvent pipeline_event;
 		if (wait_stages != 0)
-			event = cmd->signal_event(wait_stages);
+			pipeline_event = cmd->signal_event(wait_stages);
 
 		for (auto &barrier : physical_pass.flush)
 		{
-			auto &resource = resources[barrier.resource_index];
+			auto &event = physical_events[barrier.resource_index];
 
 			if (!physical_dimensions[barrier.resource_index].buffer_info.size)
 				physical_attachments[barrier.resource_index]->get_image().set_layout(barrier.layout);
 
-			resource.current_layout = barrier.layout;
-			resource.src_stages = wait_stages;
-			resource.src_access |= barrier.access;
-			resource.event = event;
+			event.stages = barrier.stages;
+			event.to_flush = barrier.access;
+			event.invalidated = 0;
+			event.event = pipeline_event;
 		}
 
 		device.submit(cmd);
@@ -1161,18 +1196,48 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 	if (swapchain_physical_index == RenderResource::Unused)
 	{
 		auto cmd = device.request_command_buffer();
+
 		unsigned index = this->resources[resource_to_index[backbuffer_source]]->get_physical_index();
-		cmd->image_barrier(physical_attachments[index]->get_image(),
-		                   resources[index].current_layout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-		                   resources[index].src_stages, resources[index].src_access,
-		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-		physical_attachments[index]->get_image().set_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+		if (physical_events[index].event)
+		{
+			VkEvent event = physical_events[index].event->get_event();
+			VkImageMemoryBarrier barrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+			barrier.image = physical_attachments[index]->get_image().get_image();
+			barrier.srcAccessMask = physical_events[index].to_flush;
+			barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+			barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			barrier.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
+			barrier.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
+			barrier.subresourceRange.aspectMask = Vulkan::format_to_aspect_mask(physical_attachments[index]->get_format());
+
+			cmd->wait_events(1, &event,
+			                 physical_events[index].stages ? physical_events[index].stages : VkPipelineStageFlags(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT),
+			                 VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+			                 0, nullptr,
+			                 0, nullptr,
+			                 1, &barrier);
+
+			physical_attachments[index]->get_image().set_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		}
+		else
+		{
+			throw logic_error("Swapchain resource was not written to.");
+		}
 
 		auto rp_info = device.get_swapchain_render_pass(Vulkan::SwapchainRenderPass::ColorOnly);
 		rp_info.clear_attachments = 0;
 		cmd->begin_render_pass(rp_info);
 		enqueue_scaled_requests(*cmd, {{ 0, index }});
 		cmd->end_render_pass();
+
+		// Set a write-after-read barrier on this resource.
+		physical_events[index].stages = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+		physical_events[index].to_flush = 0;
+		physical_events[index].invalidated = VK_ACCESS_SHADER_READ_BIT;
+		physical_events[index].event = cmd->signal_event(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+
 		device.submit(cmd);
 	}
 }
@@ -1202,6 +1267,7 @@ void RenderGraph::setup_physical_buffer(Vulkan::Device &device, unsigned attachm
 		// Zero-initialize buffers. TODO: Make this configurable.
 		vector<uint8_t> blank(info.size);
 		physical_buffers[attachment] = device.create_buffer(info, blank.data());
+		physical_events[attachment] = {};
 	}
 }
 
@@ -1257,6 +1323,7 @@ void RenderGraph::setup_physical_image(Vulkan::Device &device, unsigned attachme
 		info.samples = VK_SAMPLE_COUNT_1_BIT;
 		info.flags = flags;
 		physical_image_attachments[attachment] = device.create_image(info, nullptr);
+		physical_events[attachment] = {};
 	}
 
 	physical_attachments[attachment] = &physical_image_attachments[attachment]->get_view();
@@ -1273,6 +1340,7 @@ void RenderGraph::setup_attachments(Vulkan::Device &device, Vulkan::ImageView *s
 	// Try to reuse render targets if possible.
 	physical_image_attachments.resize(physical_dimensions.size());
 	physical_history_image_attachments.resize(physical_dimensions.size());
+	physical_events.resize(physical_dimensions.size());
 
 	swapchain_attachment = swapchain;
 
@@ -1313,115 +1381,6 @@ void RenderGraph::setup_attachments(Vulkan::Device &device, Vulkan::ImageView *s
 		else
 			physical_pass.render_pass_info.depth_stencil = nullptr;
 	}
-}
-
-void RenderGraph::enqueue_initial_barriers(Vulkan::CommandBuffer &cmd)
-{
-	enqueue_initial_barriers(cmd, initial_barriers, VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
-	enqueue_initial_barriers(cmd, initial_top_of_pipe_barriers, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
-}
-
-void RenderGraph::enqueue_initial_barriers(Vulkan::CommandBuffer &cmd, const vector<Barrier> &barriers, VkPipelineStageFlags src_stages)
-{
-	unsigned num_barriers = barriers.size();
-	if (!num_barriers)
-		return;
-
-	vector<VkBufferMemoryBarrier> buffer_barriers;
-	vector<VkImageMemoryBarrier> image_barriers;
-	buffer_barriers.reserve(barriers.size());
-	image_barriers.reserve(barriers.size());
-
-	// This serializes frames, which might not be the ideal, but we can overlap TRANSFERS and some compute at least ...
-	VkPipelineStageFlags dst_stages = 0;
-
-	for (unsigned i = 0; i < num_barriers; i++)
-	{
-		if (physical_dimensions[barriers[i].resource_index].buffer_info.size)
-		{
-			auto &buffer = *physical_buffers[barriers[i].resource_index];
-			VkBufferMemoryBarrier b = { VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER };
-			b.srcAccessMask = 0;
-			b.dstAccessMask = barriers[i].access;
-			b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			b.buffer = buffer.get_buffer();
-			b.offset = 0;
-			b.size = VK_WHOLE_SIZE;
-			buffer_barriers.push_back(b);
-		}
-		else
-		{
-			auto *view = physical_attachments[barriers[i].resource_index];
-			VkImageMemoryBarrier b = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
-			b.image = view->get_image().get_image();
-			b.srcAccessMask = 0;
-			b.dstAccessMask = barriers[i].access;
-			b.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-			b.newLayout = barriers[i].layout;
-			b.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
-			b.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
-			b.subresourceRange.aspectMask = Vulkan::format_to_aspect_mask(view->get_image().get_format());
-			b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			image_barriers.push_back(b);
-			view->get_image().set_layout(barriers[i].layout);
-		}
-
-		dst_stages |= barriers[i].stages;
-	}
-
-	// Transition history resources to SHADER_READ_ONLY_OPTIMAL if necessary.
-	if (src_stages == VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT)
-	{
-		for (auto &image : physical_history_image_attachments)
-		{
-			if (!image)
-				continue;
-			if (image->get_layout() == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) // Already in SHADER_READ_ONLY layout, no need to transition.
-				continue;
-
-			VkImageMemoryBarrier b = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
-			b.image = image->get_image();
-
-			switch (image->get_layout())
-			{
-			case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
-				b.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-				break;
-
-			case VK_IMAGE_LAYOUT_GENERAL:
-				b.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-				break;
-
-			case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
-				b.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-				break;
-
-			default:
-				b.srcAccessMask = 0;
-				break;
-			}
-
-			b.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-			b.oldLayout = image->get_layout();
-			b.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			b.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
-			b.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
-			b.subresourceRange.aspectMask = Vulkan::format_to_aspect_mask(image->get_format());
-			b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			image_barriers.push_back(b);
-			image->set_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-		}
-
-		// TODO: Deal with correct src/dst stages here.
-		dst_stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-	}
-
-	cmd.barrier(src_stages, dst_stages, 0, nullptr,
-	            buffer_barriers.size(), buffer_barriers.empty() ? nullptr : buffer_barriers.data(),
-	            image_barriers.size(), image_barriers.empty() ? nullptr : image_barriers.data());
 }
 
 void RenderGraph::bake()
@@ -1645,9 +1604,6 @@ ResourceDimensions RenderGraph::get_resource_dimensions(const RenderTextureResou
 
 void RenderGraph::build_physical_barriers()
 {
-	initial_barriers.clear();
-	initial_top_of_pipe_barriers.clear();
-
 	auto barrier_itr = begin(pass_barriers);
 
 	const auto flush_access_to_invalidate = [](VkAccessFlags flags) -> VkAccessFlags {
@@ -1675,9 +1631,6 @@ void RenderGraph::build_physical_barriers()
 		unsigned last_invalidate_pass = RenderPass::Unused;
 		unsigned last_read_pass = RenderPass::Unused;
 		unsigned last_flush_pass = RenderPass::Unused;
-
-		// Have we ever written to this resource in this pass?
-		bool has_writer = false;
 	};
 
 	// To handle global state.
@@ -1714,39 +1667,6 @@ void RenderGraph::build_physical_barriers()
 
 				global_resource_state[invalidate.resource_index].last_read_pass = physical_pass_index;
 
-				// This is the very first time the resource has been used, but it hasn't been written to.
-				// This is a read-only operation and the initial barriers will ensure that transitions are made.
-				if (!global_resource_state[invalidate.resource_index].has_writer &&
-					resource_state[invalidate.resource_index].initial_layout == VK_IMAGE_LAYOUT_UNDEFINED)
-				{
-					// This only makes sense for persistent buffer resources. Otherwise we are reading dummy data.
-					if (!physical_dimensions[invalidate.resource_index].buffer_info.size ||
-					    !physical_dimensions[invalidate.resource_index].persistent)
-					{
-						throw logic_error("Starting a resource as read-only is only valid for persistent buffers.");
-					}
-
-					auto itr = find_if(begin(initial_barriers), end(initial_barriers), [&](const Barrier &barrier) {
-						return barrier.resource_index == invalidate.resource_index;
-					});
-
-					// We might have multiple, separate readers which all need different access flags and stages,
-					// just batch them all up to start of frame.
-					if (itr != end(initial_barriers))
-					{
-						itr->access |= flush_access_to_invalidate(invalidate.access);
-						itr->stages |= invalidate.stages;
-					}
-					else
-					{
-						initial_barriers.push_back(
-							{ invalidate.resource_index,
-							  invalidate.layout,
-							  flush_access_to_invalidate(invalidate.access),
-							  invalidate.stages });
-					}
-				}
-
 				// Only the first use of a resource in a physical pass needs to be handled externally.
 				if (resource_state[invalidate.resource_index].initial_layout == VK_IMAGE_LAYOUT_UNDEFINED)
 				{
@@ -1775,52 +1695,16 @@ void RenderGraph::build_physical_barriers()
 				resource_state[flush.resource_index].flushed_stages |= flush.stages;
 				resource_state[flush.resource_index].final_layout = flush.layout;
 
-				// This is the first time we used this resource, so queue up initial barriers which transition from
-				// UNDEFINED to flush.layout on the start of the frame.
+				// If we didn't have an invalidation before first flush, we must invalidate first.
+				// Only first flush in a render pass needs a matching invalidation.
 				if (resource_state[flush.resource_index].initial_layout == VK_IMAGE_LAYOUT_UNDEFINED)
 				{
-					// Make sure that no other pass tries to discard the same resource.
-					auto itr = find_if(begin(initial_barriers), end(initial_barriers), [&](const Barrier &barrier) {
-						return barrier.resource_index == flush.resource_index;
-					});
-					if (itr != end(initial_barriers))
-						throw logic_error("Cannot have two passes which both invalidate a resource.");
-
-					itr = find_if(begin(initial_top_of_pipe_barriers), end(initial_top_of_pipe_barriers), [&](const Barrier &barrier) {
-						return barrier.resource_index == flush.resource_index;
-					});
-					if (itr != end(initial_top_of_pipe_barriers))
-						throw logic_error("Cannot have two passes which both invalidate a resource.");
-
 					resource_state[flush.resource_index].initial_layout = flush.layout;
-					global_resource_state[flush.resource_index].has_writer = true;
+					resource_state[flush.resource_index].invalidated_stages = flush.stages;
+					resource_state[flush.resource_index].invalidated_types = flush_access_to_invalidate(flush.access);
 
-					// If a resource is created anew every frame, there is no reason to wait for previous frame to complete.
-					bool need_initial_barrier = !physical_dimensions[flush.resource_index].buffer_info.size ||
-					                            physical_dimensions[flush.resource_index].persistent;
-
-					if (need_initial_barrier)
-					{
-						// For storage images which are not persistent, we recreate them every frame, so
-						// we can use top-of-pipe barrier to do the initial transition.
-						if (!physical_dimensions[flush.resource_index].buffer_info.size &&
-							!physical_dimensions[flush.resource_index].persistent)
-						{
-							initial_top_of_pipe_barriers.push_back(
-								{ flush.resource_index,
-								  flush.layout,
-								  flush_access_to_invalidate(flush.access),
-								  flush.stages });
-						}
-						else
-						{
-							initial_barriers.push_back(
-								{ flush.resource_index,
-								  flush.layout,
-								  flush_access_to_invalidate(flush.access),
-								  flush.stages });
-						}
-					}
+					// We're not reading the resource in this pass, so we might as well transition from UNDEFINED to discard the resource.
+					physical_pass.discards.push_back(flush.resource_index);
 				}
 			}
 		}
@@ -1833,44 +1717,36 @@ void RenderGraph::build_physical_barriers()
 			if (resource.final_layout == VK_IMAGE_LAYOUT_UNDEFINED && resource.initial_layout == VK_IMAGE_LAYOUT_UNDEFINED)
 				continue;
 
-			bool read_only_pass = false;
-			// If there are only invalidations in this pass it is read-only, and the final layout becomes the initial one.
-			// Promote the last initial layout to the final layout.
+			unsigned index = unsigned(&resource - resource_state.data());
+			bool need_invalidate_barrier = false;
+
 			if (resource.final_layout == VK_IMAGE_LAYOUT_UNDEFINED)
 			{
+				// If there are only invalidations in this pass it is read-only, and the final layout becomes the initial one.
+				// Promote the last initial layout to the final layout.
 				resource.final_layout = resource.initial_layout;
-				read_only_pass = true;
 			}
 
-			unsigned index = unsigned(&resource - resource_state.data());
-
-			bool need_invalidate_barrier = false;
-			if (resource.initial_layout != VK_IMAGE_LAYOUT_UNDEFINED)
+			if (resource.initial_layout != global_resource_state[index].initial_layout)
 			{
-				if (resource.initial_layout != global_resource_state[index].initial_layout)
-				{
-					// Need to change the image layout before we start.
-					// If we change the layout, we need to invalidate all types and stages again.
-					global_resource_state[index].invalidated_types = 0;
-					global_resource_state[index].invalidated_stages = 0;
-				}
+				// Need to change the image layout before we start.
+				// If we change the layout, we need to invalidate all types and stages again.
+				global_resource_state[index].invalidated_types = 0;
+				global_resource_state[index].invalidated_stages = 0;
+			}
 
-				if (resource.invalidated_stages & ~global_resource_state[index].invalidated_stages)
-				{
-					// There are some stages which have yet to be made visible to relevant stages.
-					// If we introduce new stages, make sure we don't forget the relevant types to the new stages which we introduced.
-					need_invalidate_barrier = true;
-					global_resource_state[index].invalidated_types = 0;
-				}
-				else if (resource.invalidated_types & ~global_resource_state[index].invalidated_types)
-				{
-					// There are some access flags which have yet to be made visible to relevant stages.
-					need_invalidate_barrier = true;
-				}
+			if (resource.invalidated_stages & ~global_resource_state[index].invalidated_stages)
+			{
+				// There are some stages which have yet to be made visible to relevant stages.
+				// If we introduce new stages, make sure we don't forget the relevant types to the new stages which we introduced.
+				need_invalidate_barrier = true;
+				global_resource_state[index].invalidated_types = 0;
+			}
 
-				// If we have never flushed anything, there is no need to invalidate yet.
-				if (read_only_pass && global_resource_state[index].current_layout == VK_IMAGE_LAYOUT_UNDEFINED)
-					need_invalidate_barrier = false;
+			if (resource.invalidated_types & ~global_resource_state[index].invalidated_types)
+			{
+				// There are some access flags which have yet to be made visible to relevant stages.
+				need_invalidate_barrier = true;
 			}
 
 			// Do we need to invalidate this resource before starting the pass?
@@ -1879,6 +1755,7 @@ void RenderGraph::build_physical_barriers()
 				Barrier *last_barrier = nullptr;
 
 				// Find the last time this resource was invalidated.
+				// Maybe we can piggy-back off an old invalidation barrier instead of invalidating different things multiple times.
 				if (global_resource_state[index].last_invalidate_pass != RenderPass::Unused)
 				{
 					unsigned last_pass = global_resource_state[index].last_invalidate_pass;
@@ -1905,6 +1782,8 @@ void RenderGraph::build_physical_barriers()
 					global_resource_state[index].invalidated_stages |= resource.invalidated_stages;
 					global_resource_state[index].current_layout = resource.initial_layout;
 					global_resource_state[index].last_invalidate_pass = physical_pass_index;
+
+					// An invalidation barrier will flush out relevant memory access from earlier passes.
 					global_resource_state[index].last_flush_pass = RenderPass::Unused;
 					global_resource_state[index].flushed_types = 0;
 				}
@@ -1932,15 +1811,13 @@ void RenderGraph::build_physical_barriers()
 				// Implement this as a flush with 0 access bits.
 				// This is how Vulkan essentially implements a write-after-read hazard.
 				// The only purpose of this flush barrier is to set the last pass which the resource was used as a stage.
+				// Do not clear last_invalidate_pass, because we can still keep tacking on new access flags, etc.
 				physical_pass.flush.push_back({ index, resource.final_layout, 0, resource.invalidated_stages });
 			}
 
 			global_resource_state[index].current_layout = resource.final_layout;
 		}
 	}
-
-	// If there are pending writes which have not been invalidated, they will vanish into the aether.
-	// This is only relevant for the swapchain dummy image, but this will be explicitly synchronized later.
 }
 
 void RenderGraph::build_barriers()
@@ -2210,6 +2087,9 @@ void RenderGraph::reset()
 	physical_dimensions.clear();
 	physical_attachments.clear();
 	physical_buffers.clear();
+	physical_image_attachments.clear();
+	physical_events.clear();
+	physical_history_image_attachments.clear();
 }
 
 }

@@ -220,6 +220,11 @@ private:
 class RenderPassImplementation
 {
 public:
+	virtual bool need_render_pass()
+	{
+		return true;
+	}
+
 	virtual bool get_clear_color(unsigned, VkClearColorValue * = nullptr)
 	{
 		return false;
@@ -526,6 +531,7 @@ private:
 	struct PhysicalPass
 	{
 		std::vector<unsigned> passes;
+		std::vector<unsigned> discards;
 		std::vector<Barrier> invalidate;
 		std::vector<Barrier> flush;
 
@@ -540,8 +546,6 @@ private:
 		std::vector<std::vector<ScaledClearRequests>> scaled_clear_requests;
 	};
 	std::vector<PhysicalPass> physical_passes;
-	std::vector<Barrier> initial_barriers;
-	std::vector<Barrier> initial_top_of_pipe_barriers;
 	void build_physical_passes();
 	void build_transients();
 	void build_physical_resources();
@@ -553,14 +557,22 @@ private:
 	std::vector<Vulkan::BufferHandle> physical_buffers;
 	std::vector<Vulkan::ImageHandle> physical_image_attachments;
 	std::vector<Vulkan::ImageHandle> physical_history_image_attachments;
+
+	struct PipelineEvent
+	{
+		Vulkan::PipelineEvent event;
+		VkPipelineStageFlags stages = 0;
+		VkAccessFlags to_flush = 0;
+		VkAccessFlags invalidated = 0;
+	};
+
+	std::vector<PipelineEvent> physical_events;
 	std::vector<bool> physical_image_has_history;
 
 	Vulkan::ImageView *swapchain_attachment = nullptr;
 	unsigned swapchain_physical_index = RenderResource::Unused;
 
 	void enqueue_scaled_requests(Vulkan::CommandBuffer &cmd, const std::vector<ScaledClearRequests> &requests);
-	void enqueue_initial_barriers(Vulkan::CommandBuffer &cmd);
-	void enqueue_initial_barriers(Vulkan::CommandBuffer &cmd, const std::vector<Barrier> &barriers, VkPipelineStageFlags src_stages);
 
 	void on_swapchain_changed(const Event &e);
 	void on_swapchain_destroyed(const Event &e);

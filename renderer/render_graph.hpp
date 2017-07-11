@@ -552,6 +552,7 @@ private:
 	void build_physical_resources();
 	void build_physical_barriers();
 	void build_render_pass_info();
+	void build_aliases();
 
 	std::vector<ResourceDimensions> physical_dimensions;
 	std::vector<Vulkan::ImageView *> physical_attachments;
@@ -569,6 +570,7 @@ private:
 
 	std::vector<PipelineEvent> physical_events;
 	std::vector<bool> physical_image_has_history;
+	std::vector<unsigned> physical_aliases;
 
 	Vulkan::ImageView *swapchain_attachment = nullptr;
 	unsigned swapchain_physical_index = RenderResource::Unused;

@@ -988,6 +988,148 @@ void RenderGraph::enqueue_scaled_requests(Vulkan::CommandBuffer &cmd, const std:
 	Vulkan::CommandBufferUtil::draw_quad(cmd, "assets://shaders/quad.vert", "assets://shaders/scaled_readback.frag", defines);
 }
 
+void RenderGraph::build_aliases()
+{
+	struct Range
+	{
+		unsigned first_write_pass = ~0u;
+		unsigned last_write_pass = 0;
+		unsigned first_read_pass = ~0u;
+		unsigned last_read_pass = 0;
+
+		bool has_writer() const
+		{
+			return first_write_pass <= last_write_pass;
+		}
+
+		bool has_reader() const
+		{
+			return first_read_pass <= last_read_pass;
+		}
+
+		bool is_used() const
+		{
+			return has_writer() || has_reader();
+		}
+
+		bool can_alias() const
+		{
+			// If we read before we have completely written to a resource we need to preserve it, so no alias is possible.
+			if (has_reader() && has_writer() && first_read_pass <= first_write_pass)
+				return false;
+			return true;
+		}
+
+		unsigned last_used_pass() const
+		{
+			unsigned last_pass = 0;
+			if (has_writer())
+				last_pass = std::max(last_pass, last_write_pass);
+			if (has_reader())
+				last_pass = std::max(last_pass, last_read_pass);
+			return last_pass;
+		}
+
+		unsigned first_used_pass() const
+		{
+			unsigned first_pass = ~0u;
+			if (has_writer())
+				first_pass = std::min(first_pass, first_write_pass);
+			if (has_reader())
+				first_pass = std::min(first_pass, first_read_pass);
+			return first_pass;
+		}
+
+		bool disjoint_lifetime(const Range &range) const
+		{
+			if (!is_used() || !range.is_used())
+				return false;
+			if (!can_alias() || !range.can_alias())
+				return false;
+
+			bool left = last_used_pass() < range.first_used_pass();
+			bool right = range.last_used_pass() < first_used_pass();
+			return left || right;
+		}
+	};
+
+	vector<Range> pass_range(physical_dimensions.size());
+
+	const auto register_reader = [this, &pass_range](const RenderTextureResource *resource, unsigned pass_index) {
+		if (resource && pass_index != RenderPass::Unused)
+		{
+			unsigned phys = resource->get_physical_index();
+			if (phys != RenderResource::Unused)
+			{
+				auto &range = pass_range[phys];
+				range.last_read_pass = std::max(range.last_read_pass, pass_index);
+				range.first_read_pass = std::min(range.first_read_pass, pass_index);
+			}
+		}
+	};
+
+	const auto register_writer = [this, &pass_range](const RenderTextureResource *resource, unsigned pass_index) {
+		if (resource && pass_index != RenderPass::Unused)
+		{
+			unsigned phys = resource->get_physical_index();
+			if (phys != RenderResource::Unused)
+			{
+				auto &range = pass_range[phys];
+				range.last_write_pass = std::max(range.last_write_pass, pass_index);
+				range.first_write_pass = std::min(range.first_write_pass, pass_index);
+			}
+		}
+	};
+
+	for (auto &pass : pass_stack)
+	{
+		auto &subpass = *passes[pass];
+
+		for (auto *input : subpass.get_color_inputs())
+			register_reader(input, subpass.get_physical_pass_index());
+		for (auto *input : subpass.get_color_scale_inputs())
+			register_reader(input, subpass.get_physical_pass_index());
+		for (auto *input : subpass.get_attachment_inputs())
+			register_reader(input, subpass.get_physical_pass_index());
+		for (auto *input : subpass.get_texture_inputs())
+			register_reader(input, subpass.get_physical_pass_index());
+		if (subpass.get_depth_stencil_input())
+			register_reader(subpass.get_depth_stencil_input(), subpass.get_physical_pass_index());
+
+		if (subpass.get_depth_stencil_output())
+			register_writer(subpass.get_depth_stencil_output(), subpass.get_physical_pass_index());
+		for (auto *output : subpass.get_color_outputs())
+			register_writer(output, subpass.get_physical_pass_index());
+	}
+
+	physical_aliases.resize(physical_dimensions.size());
+	for (auto &v : physical_aliases)
+		v = RenderResource::Unused;
+
+	for (unsigned i = 0; i < physical_dimensions.size(); i++)
+	{
+		// No aliases for buffers.
+		if (physical_dimensions[i].buffer_info.size)
+			continue;
+
+		// Only try to alias with lower-indexed resources, because we allocate them one-by-one starting from index 0.
+		for (unsigned j = 0; j < i; j++)
+		{
+			if (physical_image_has_history[j])
+				continue;
+
+			if (physical_dimensions[i] == physical_dimensions[j])
+			{
+				if (pass_range[i].disjoint_lifetime(pass_range[j])) // We can alias.
+				{
+					physical_aliases[i] = j;
+					break;
+				}
+			}
+		}
+	}
+}
+
 void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 {
 	vector<VkBufferMemoryBarrier> buffer_barriers;
@@ -1005,6 +1147,8 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 		for (auto &transfer : pass.alias_transfer)
 		{
 			physical_events[transfer.first] = physical_events[transfer.second];
+			physical_events[transfer.first].invalidated = 0;
+			physical_events[transfer.first].to_flush = 0;
 			physical_attachments[transfer.first]->get_image().set_layout(VK_IMAGE_LAYOUT_UNDEFINED);
 		}
 	};
@@ -1562,6 +1706,10 @@ void RenderGraph::bake()
 	// Based on our render graph, figure out the barriers we actually need.
 	// Some barriers are implicit (transients), and some are redundant, i.e. same texture read in multiple passes.
 	build_physical_barriers();
+
+	// Figure out which images can alias with each other.
+	// Also build virtual "transfer" barriers. These things only copy events over to other physical resources.
+	build_aliases();
 }
 
 ResourceDimensions RenderGraph::get_resource_dimensions(const RenderBufferResource &resource) const

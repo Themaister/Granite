@@ -1360,12 +1360,18 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 		{
 			auto &event = physical_events[barrier.resource_index];
 
+			auto old_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 			if (!physical_dimensions[barrier.resource_index].buffer_info.size)
-				physical_attachments[barrier.resource_index]->get_image().set_layout(barrier.layout);
+			{
+				auto &image = physical_attachments[barrier.resource_index]->get_image();
+				old_layout = image.get_layout();
+				image.set_layout(barrier.layout);
+			}
 
 			event.stages = barrier.stages;
 			event.to_flush = barrier.access;
-			event.invalidated = 0;
+			if (event.to_flush || old_layout != barrier.layout)
+				event.invalidated = 0;
 			event.event = pipeline_event;
 		}
 

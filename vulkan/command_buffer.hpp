@@ -97,8 +97,6 @@ struct DynamicState
 	uint8_t back_compare_mask = 0;
 	uint8_t back_write_mask = 0;
 	uint8_t back_reference = 0;
-	bool depth_bias_enable = false;
-	bool stencil_enable = false;
 };
 
 struct VertexAttribState

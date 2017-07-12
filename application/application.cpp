@@ -290,6 +290,8 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 	graph.bake();
 	graph.log();
 	graph.install_physical_buffers(move(physical_buffers));
+
+	lighting_impl.shadow.shadow_map = nullptr;
 }
 
 void SceneViewerApplication::on_swapchain_destroyed(const Event &)

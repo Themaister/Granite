@@ -338,9 +338,6 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
 		states[dyn.dynamicStateCount++] = VK_DYNAMIC_STATE_STENCIL_WRITE_MASK;
 	}
 
-	dynamic_state.depth_bias_enable = static_state.state.depth_bias_enable != 0;
-	dynamic_state.stencil_enable = static_state.state.stencil_test != 0;
-
 	// Blend state
 	VkPipelineColorBlendAttachmentState blend_attachments[VULKAN_NUM_ATTACHMENTS];
 	VkPipelineColorBlendStateCreateInfo blend = { VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO };
@@ -582,9 +579,9 @@ void CommandBuffer::flush_render_state()
 		vkCmdSetViewport(cmd, 0, 1, &viewport);
 	if (get_and_clear(COMMAND_BUFFER_DIRTY_SCISSOR_BIT))
 		vkCmdSetScissor(cmd, 0, 1, &scissor);
-	if (dynamic_state.depth_bias_enable && get_and_clear(COMMAND_BUFFER_DIRTY_DEPTH_BIAS_BIT))
+	if (static_state.state.depth_bias_enable && get_and_clear(COMMAND_BUFFER_DIRTY_DEPTH_BIAS_BIT))
 		vkCmdSetDepthBias(cmd, dynamic_state.depth_bias_constant, 0.0f, dynamic_state.depth_bias_slope);
-	if (dynamic_state.stencil_enable && get_and_clear(COMMAND_BUFFER_DIRTY_STENCIL_REFERENCE_BIT))
+	if (static_state.state.stencil_test && get_and_clear(COMMAND_BUFFER_DIRTY_STENCIL_REFERENCE_BIT))
 	{
 		vkCmdSetStencilCompareMask(cmd, VK_STENCIL_FACE_FRONT_BIT, dynamic_state.front_compare_mask);
 		vkCmdSetStencilReference(cmd, VK_STENCIL_FACE_FRONT_BIT, dynamic_state.front_reference);

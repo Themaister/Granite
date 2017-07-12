@@ -490,6 +490,7 @@ private:
 		VkImageLayout layout;
 		VkAccessFlags access;
 		VkPipelineStageFlags stages;
+		bool history;
 	};
 
 	struct Barriers
@@ -533,6 +534,7 @@ private:
 		std::vector<unsigned> discards;
 		std::vector<Barrier> invalidate;
 		std::vector<Barrier> flush;
+		std::vector<Barrier> history;
 		std::vector<std::pair<unsigned, unsigned>> alias_transfer;
 
 		Vulkan::RenderPassInfo render_pass_info;
@@ -563,11 +565,13 @@ private:
 	{
 		Vulkan::PipelineEvent event;
 		VkPipelineStageFlags stages = 0;
+		VkPipelineStageFlags invalidated_stages = 0;
 		VkAccessFlags to_flush = 0;
 		VkAccessFlags invalidated = 0;
 	};
 
 	std::vector<PipelineEvent> physical_events;
+	std::vector<PipelineEvent> physical_history_events;
 	std::vector<bool> physical_image_has_history;
 	std::vector<unsigned> physical_aliases;
 

@@ -23,9 +23,20 @@ public:
 		return event;
 	}
 
+	VkPipelineStageFlags get_stages() const
+	{
+		return stages;
+	}
+
+	void set_stages(VkPipelineStageFlags stages)
+	{
+		this->stages = stages;
+	}
+
 private:
 	Device *device;
 	VkEvent event;
+	VkPipelineStageFlags stages = 0;
 };
 
 using PipelineEvent = Util::IntrusivePtr<EventHolder>;

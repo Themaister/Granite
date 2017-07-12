@@ -624,6 +624,7 @@ PipelineEvent CommandBuffer::signal_event(VkPipelineStageFlags stages)
 	VK_ASSERT(!render_pass);
 	auto event = device->request_pipeline_event();
 	vkCmdSetEvent(cmd, event->get_event(), stages);
+	event->set_stages(stages);
 	return event;
 }
 

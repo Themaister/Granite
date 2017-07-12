@@ -1218,8 +1218,9 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 		// Queue up invalidates and change layouts.
 		for (auto &barrier : physical_pass.invalidate)
 		{
-			auto &event = physical_events[barrier.resource_index];
+			auto &event = barrier.history ? physical_history_events[barrier.resource_index] : physical_events[barrier.resource_index];
 			bool need_barrier = false;
+			bool layout_change = false;
 
 			if (physical_dimensions[barrier.resource_index].buffer_info.size)
 			{
@@ -1242,26 +1243,35 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 			}
 			else
 			{
-				auto &view = *physical_attachments[barrier.resource_index];
+				Vulkan::Image *image = barrier.history ?
+				                       physical_history_image_attachments[barrier.resource_index].get() :
+				                       &physical_attachments[barrier.resource_index]->get_image();
+
+				if (!image)
+					continue;
+
 				VkImageMemoryBarrier b = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
-				b.oldLayout = view.get_image().get_layout();
+				b.oldLayout = image->get_layout();
 				b.newLayout = barrier.layout;
 				b.srcAccessMask = event.to_flush;
 				b.dstAccessMask = barrier.access;
 				b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 				b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-				b.image = physical_attachments[barrier.resource_index]->get_image().get_image();
-				b.subresourceRange.aspectMask = Vulkan::format_to_aspect_mask(view.get_image().get_format());
+				b.image = image->get_image();
+				b.subresourceRange.aspectMask = Vulkan::format_to_aspect_mask(image->get_format());
 				b.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
 				b.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
-				physical_attachments[barrier.resource_index]->get_image().set_layout(barrier.layout);
+				image->set_layout(barrier.layout);
 
 				need_barrier =
 					(b.oldLayout != b.newLayout) ||
 					(event.to_flush != 0) ||
-					((b.dstAccessMask & ~event.invalidated) != 0);
+					((b.dstAccessMask & ~event.invalidated) != 0) ||
+					((barrier.stages & ~event.invalidated_stages) != 0);
 
-				if (need_barrier)
+				layout_change = b.oldLayout != b.newLayout;
+
+				if (image && need_barrier)
 				{
 					if (event.event)
 					{
@@ -1276,22 +1286,28 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 				}
 			}
 
-			if (need_barrier && event.event)
+			if (need_barrier)
 			{
-				src_stages |= event.stages;
 				dst_stages |= barrier.stages;
-				add_unique_event(event.event->get_event());
+
+				if (event.event)
+				{
+					src_stages |= event.event->get_stages();
+					add_unique_event(event.event->get_event());
+				}
+				else
+					src_stages |= event.stages;
+
+				if (event.to_flush || layout_change)
+				{
+					event.invalidated = 0;
+					event.invalidated_stages = 0;
+				}
+
+				event.to_flush = 0;
+				event.invalidated |= barrier.access;
+				event.invalidated_stages |= barrier.stages;
 			}
-
-			// Event has been injected, no need to wait for same resource again.
-			event.event.reset();
-			event.stages = 0;
-
-			if (event.to_flush)
-				event.invalidated = 0;
-
-			event.to_flush = 0;
-			event.invalidated |= barrier.access;
 		}
 
 		if (!immediate_image_barriers.empty())
@@ -1358,27 +1374,36 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 
 		for (auto &barrier : physical_pass.flush)
 		{
-			auto &event = physical_events[barrier.resource_index];
+			auto &event = barrier.history ?
+			              physical_history_events[barrier.resource_index] :
+			              physical_events[barrier.resource_index];
 
 			auto old_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 			if (!physical_dimensions[barrier.resource_index].buffer_info.size)
 			{
-				auto &image = physical_attachments[barrier.resource_index]->get_image();
-				old_layout = image.get_layout();
-				image.set_layout(barrier.layout);
+				auto *image = barrier.history ?
+				              physical_history_image_attachments[barrier.resource_index].get() :
+				              &physical_attachments[barrier.resource_index]->get_image();
+
+				if (!image)
+					continue;
+
+				old_layout = image->get_layout();
+				image->set_layout(barrier.layout);
 			}
 
 			event.stages = barrier.stages;
 			event.to_flush = barrier.access;
 			if (event.to_flush || old_layout != barrier.layout)
+			{
 				event.invalidated = 0;
+				event.invalidated_stages = 0;
+			}
 			event.event = pipeline_event;
 		}
 
 		device.submit(cmd);
-
 		transfer_ownership(physical_pass);
-
 	}
 
 	// Scale to swapchain.
@@ -1393,6 +1418,8 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 			VkEvent event = physical_events[index].event->get_event();
 			VkImageMemoryBarrier barrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
 			barrier.image = physical_attachments[index]->get_image().get_image();
+			barrier.oldLayout = physical_attachments[index]->get_image().get_layout();
+			barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 			barrier.srcAccessMask = physical_events[index].to_flush;
 			barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 			barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -1402,7 +1429,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 			barrier.subresourceRange.aspectMask = Vulkan::format_to_aspect_mask(physical_attachments[index]->get_format());
 
 			cmd->wait_events(1, &event,
-			                 physical_events[index].stages ? physical_events[index].stages : VkPipelineStageFlags(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT),
+			                 physical_events[index].event->get_stages(),
 			                 VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
 			                 0, nullptr,
 			                 0, nullptr,
@@ -1538,15 +1565,19 @@ void RenderGraph::setup_attachments(Vulkan::Device &device, Vulkan::ImageView *s
 	physical_image_attachments.resize(physical_dimensions.size());
 	physical_history_image_attachments.resize(physical_dimensions.size());
 	physical_events.resize(physical_dimensions.size());
+	physical_history_events.resize(physical_dimensions.size());
 
 	swapchain_attachment = swapchain;
 
 	unsigned num_attachments = physical_dimensions.size();
 	for (unsigned i = 0; i < num_attachments; i++)
 	{
-		// Move over history attachments.
+		// Move over history attachments and events.
 		if (physical_image_has_history[i])
+		{
 			swap(physical_history_image_attachments[i], physical_image_attachments[i]);
+			swap(physical_history_events[i], physical_events[i]);
+		}
 
 		auto &att = physical_dimensions[i];
 		if (att.buffer_info.size != 0)
@@ -1863,6 +1894,26 @@ void RenderGraph::build_physical_barriers()
 					continue;
 				}
 
+				if (invalidate.history)
+				{
+					auto itr = find_if(begin(physical_pass.invalidate), end(physical_pass.invalidate), [&](const Barrier &b) -> bool {
+						return b.resource_index == invalidate.resource_index && b.history;
+					});
+
+					if (itr == end(physical_pass.invalidate))
+					{
+						// Special case history barriers. They are a bit different from other barriers.
+						// We just need to ensure the layout is right and that we avoid write-after-read.
+						// Even if we see these barriers in multiple render passes, they will not emit multiple barriers.
+						physical_pass.invalidate.push_back(
+							{ invalidate.resource_index, invalidate.layout, invalidate.access, invalidate.stages, true });
+						physical_pass.flush.push_back(
+							{ invalidate.resource_index, invalidate.layout, 0, invalidate.stages, true });
+					}
+
+					continue;
+				}
+
 				global_resource_state[invalidate.resource_index].last_read_pass = physical_pass_index;
 
 				// Only the first use of a resource in a physical pass needs to be handled externally.
@@ -1975,7 +2026,7 @@ void RenderGraph::build_physical_barriers()
 				else
 				{
 					physical_pass.invalidate.push_back(
-						{ index, resource.initial_layout, resource.invalidated_types, resource.invalidated_stages });
+						{ index, resource.initial_layout, resource.invalidated_types, resource.invalidated_stages, false });
 					global_resource_state[index].invalidated_types |= resource.invalidated_types;
 					global_resource_state[index].invalidated_stages |= resource.invalidated_stages;
 					global_resource_state[index].current_layout = resource.initial_layout;
@@ -1993,7 +2044,7 @@ void RenderGraph::build_physical_barriers()
 					throw logic_error("Two flushes in a row observed. Need to invalidate at least once in-between each flush.");
 
 				// Did the pass write anything in this pass which needs to be flushed?
-				physical_pass.flush.push_back({ index, resource.final_layout, resource.flushed_types, resource.flushed_stages });
+				physical_pass.flush.push_back({ index, resource.final_layout, resource.flushed_types, resource.flushed_stages, false });
 
 				// We cannot move any invalidates to earlier passes now, so clear this state out.
 				global_resource_state[index].invalidated_types = 0;
@@ -2010,7 +2061,7 @@ void RenderGraph::build_physical_barriers()
 				// This is how Vulkan essentially implements a write-after-read hazard.
 				// The only purpose of this flush barrier is to set the last pass which the resource was used as a stage.
 				// Do not clear last_invalidate_pass, because we can still keep tacking on new access flags, etc.
-				physical_pass.flush.push_back({ index, resource.final_layout, 0, resource.invalidated_stages });
+				physical_pass.flush.push_back({ index, resource.final_layout, 0, resource.invalidated_stages, false });
 			}
 
 			global_resource_state[index].current_layout = resource.final_layout;
@@ -2023,15 +2074,15 @@ void RenderGraph::build_barriers()
 	pass_barriers.clear();
 	pass_barriers.reserve(pass_stack.size());
 
-	const auto get_access = [&](vector<Barrier> &barriers, unsigned index) -> Barrier & {
-		auto itr = find_if(begin(barriers), end(barriers), [index](const Barrier &b) {
-			return index == b.resource_index;
+	const auto get_access = [&](vector<Barrier> &barriers, unsigned index, bool history) -> Barrier & {
+		auto itr = find_if(begin(barriers), end(barriers), [index, history](const Barrier &b) {
+			return index == b.resource_index && history == b.history;
 		});
 		if (itr != end(barriers))
 			return *itr;
 		else
 		{
-			barriers.push_back({ index, VK_IMAGE_LAYOUT_UNDEFINED, 0, 0 });
+			barriers.push_back({ index, VK_IMAGE_LAYOUT_UNDEFINED, 0, 0, history });
 			return barriers.back();
 		}
 	};
@@ -2041,17 +2092,17 @@ void RenderGraph::build_barriers()
 		auto &pass = *passes[index];
 		Barriers barriers;
 
-		const auto get_invalidate_access = [&](unsigned index) -> Barrier & {
-			return get_access(barriers.invalidate, index);
+		const auto get_invalidate_access = [&](unsigned index, bool history) -> Barrier & {
+			return get_access(barriers.invalidate, index, history);
 		};
 
 		const auto get_flush_access = [&](unsigned index) -> Barrier & {
-			return get_access(barriers.flush, index);
+			return get_access(barriers.flush, index, false);
 		};
 
 		for (auto *input : pass.get_uniform_inputs())
 		{
-			auto &barrier = get_invalidate_access(input->get_physical_index());
+			auto &barrier = get_invalidate_access(input->get_physical_index(), false);
 			barrier.access |= VK_ACCESS_UNIFORM_READ_BIT;
 			if (pass.get_stages() == VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT)
 				barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT; // TODO: Pick appropriate stage.
@@ -2065,7 +2116,7 @@ void RenderGraph::build_barriers()
 
 		for (auto *input : pass.get_storage_read_inputs())
 		{
-			auto &barrier = get_invalidate_access(input->get_physical_index());
+			auto &barrier = get_invalidate_access(input->get_physical_index(), false);
 			barrier.access |= VK_ACCESS_SHADER_READ_BIT;
 			if (pass.get_stages() == VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT)
 				barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; // TODO: Pick appropriate stage.
@@ -2079,11 +2130,26 @@ void RenderGraph::build_barriers()
 
 		for (auto *input : pass.get_texture_inputs())
 		{
-			auto &barrier = get_invalidate_access(input->get_physical_index());
+			auto &barrier = get_invalidate_access(input->get_physical_index(), false);
 			barrier.access |= VK_ACCESS_SHADER_READ_BIT;
 
 			if (pass.get_stages() == VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT)
 				barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; // TODO: VERTEX_SHADER can also read textures!
+			else
+				barrier.stages |= pass.get_stages();
+
+			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
+				throw logic_error("Layout mismatch.");
+			barrier.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		}
+
+		for (auto *input : pass.get_history_inputs())
+		{
+			auto &barrier = get_invalidate_access(input->get_physical_index(), true);
+			barrier.access |= VK_ACCESS_SHADER_READ_BIT;
+
+			if (pass.get_stages() == VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT)
+				barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; // TODO: Pick appropriate stage.
 			else
 				barrier.stages |= pass.get_stages();
 
@@ -2097,7 +2163,7 @@ void RenderGraph::build_barriers()
 			if (pass.get_stages() != VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT)
 				throw logic_error("Only graphics passes can have input attachments.");
 
-			auto &barrier = get_invalidate_access(input->get_physical_index());
+			auto &barrier = get_invalidate_access(input->get_physical_index(), false);
 			barrier.access |= VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
 			barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
@@ -2110,7 +2176,7 @@ void RenderGraph::build_barriers()
 			if (!input)
 				continue;
 
-			auto &barrier = get_invalidate_access(input->get_physical_index());
+			auto &barrier = get_invalidate_access(input->get_physical_index(), false);
 			barrier.access |= VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
 			if (pass.get_stages() == VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT)
 				barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; // TODO: Pick appropriate stage.
@@ -2127,7 +2193,7 @@ void RenderGraph::build_barriers()
 			if (!input)
 				continue;
 
-			auto &barrier = get_invalidate_access(input->get_physical_index());
+			auto &barrier = get_invalidate_access(input->get_physical_index(), false);
 			barrier.access |= VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
 			if (pass.get_stages() == VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT)
 				barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; // TODO: Pick appropriate stage.
@@ -2147,7 +2213,7 @@ void RenderGraph::build_barriers()
 			if (pass.get_stages() != VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT)
 				throw logic_error("Only graphics passes can have color inputs.");
 
-			auto &barrier = get_invalidate_access(input->get_physical_index());
+			auto &barrier = get_invalidate_access(input->get_physical_index(), false);
 			barrier.access |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
 			barrier.stages |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
@@ -2163,7 +2229,7 @@ void RenderGraph::build_barriers()
 			if (pass.get_stages() != VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT)
 				throw logic_error("Only graphics passes can have scaled color inputs.");
 
-			auto &barrier = get_invalidate_access(input->get_physical_index());
+			auto &barrier = get_invalidate_access(input->get_physical_index(), false);
 			barrier.access |= VK_ACCESS_SHADER_READ_BIT;
 			barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
@@ -2222,7 +2288,7 @@ void RenderGraph::build_barriers()
 
 		if (output && input)
 		{
-			auto &dst_barrier = get_invalidate_access(input->get_physical_index());
+			auto &dst_barrier = get_invalidate_access(input->get_physical_index(), false);
 			auto &src_barrier = get_flush_access(output->get_physical_index());
 
 			if (dst_barrier.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
@@ -2238,7 +2304,7 @@ void RenderGraph::build_barriers()
 		}
 		else if (input)
 		{
-			auto &dst_barrier = get_invalidate_access(input->get_physical_index());
+			auto &dst_barrier = get_invalidate_access(input->get_physical_index(), false);
 			if (dst_barrier.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
 				dst_barrier.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 			else

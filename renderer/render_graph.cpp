@@ -1764,6 +1764,7 @@ void RenderGraph::bake()
 	// Check if the swapchain needs to be blitted to (in case the geometry does not match the backbuffer).
 	swapchain_physical_index = resources[resource_to_index[backbuffer_source]]->get_physical_index();
 	physical_dimensions[swapchain_physical_index].transient = false;
+	physical_dimensions[swapchain_physical_index].persistent = swapchain_dimensions.persistent;
 	if (physical_dimensions[swapchain_physical_index] != swapchain_dimensions)
 		swapchain_physical_index = RenderResource::Unused;
 	else

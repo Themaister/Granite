@@ -62,7 +62,7 @@ struct ResourceDimensions
 	unsigned layers = 1;
 	unsigned levels = 1;
 	bool transient = false;
-	bool persistent = false;
+	bool persistent = true;
 	bool storage = false;
 
 	bool operator==(const ResourceDimensions &other) const

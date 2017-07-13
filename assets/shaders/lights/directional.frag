@@ -33,7 +33,7 @@ float sample_vsm(vec4 clip_shadow)
     float shadow_term = 1.0f;
     if (coord.z > moments.x)
     {
-        float variance = max(moments.y - moments.x * moments.x, 0.001);
+        float variance = max(moments.y - moments.x * moments.x, 0.00001);
         float d = coord.z - moments.x;
         shadow_term = variance / (variance + d * d);
         shadow_term = clamp(2.0 * (shadow_term - 0.5), 0.0, 1.0);

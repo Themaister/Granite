@@ -159,87 +159,6 @@ public:
 	void render_frame(double frame_time, double elapsed_time) override;
 
 private:
-	struct GBufferImpl : RenderPassImplementation
-	{
-		GBufferImpl(SceneViewerApplication *app)
-			: app(app)
-		{
-		}
-
-		bool get_clear_color(unsigned index, VkClearColorValue *value) override;
-		bool get_clear_depth_stencil(VkClearDepthStencilValue *value) override;
-		void build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd) override;
-		SceneViewerApplication *app;
-	};
-	GBufferImpl gbuffer_impl;
-
-	struct ShadowmapImpl : RenderPassImplementation
-	{
-		ShadowmapImpl(SceneViewerApplication *app)
-			: app(app)
-		{
-		}
-
-		bool need_render_pass(RenderPass &pass) override;
-		void build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd) override;
-		bool get_clear_depth_stencil(VkClearDepthStencilValue *value) override;
-
-		mat4 shadow_transform;
-		Vulkan::ImageView *shadow_map = nullptr;
-		SceneViewerApplication *app;
-	};
-
-	struct VSMResolveImpl : RenderPassImplementation
-	{
-		VSMResolveImpl(SceneViewerApplication *app)
-			: app(app)
-		{
-		}
-
-		bool need_render_pass(RenderPass &pass) override;
-		void build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd) override;
-		SceneViewerApplication *app;
-	};
-
-	struct LightingImpl : RenderPassImplementation
-	{
-		LightingImpl(SceneViewerApplication *app)
-			: app(app), shadow(app), vsm(app),
-			  vsm_vertical("assets://shaders/quad.vert", "assets://shaders/blur.frag"),
-			  vsm_horizontal("assets://shaders/quad.vert", "assets://shaders/blur.frag")
-		{
-			vsm_vertical.set_defines({{ "METHOD", RenderPassShaderBlitImplementation::METHOD_5TAP_GAUSS_VERT }});
-			vsm_horizontal.set_defines({{ "METHOD", RenderPassShaderBlitImplementation::METHOD_5TAP_GAUSS_HORIZ }});
-		}
-
-		void build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd) override;
-		SceneViewerApplication *app;
-		std::string skydome_reflection;
-		std::string skydome_irradiance;
-		Vulkan::Texture *reflection = nullptr;
-		Vulkan::Texture *irradiance = nullptr;
-		void on_device_created(Vulkan::Device &device);
-
-		ShadowmapImpl shadow;
-		VSMResolveImpl vsm;
-		RenderPassShaderBlitImplementation vsm_vertical;
-		RenderPassShaderBlitImplementation vsm_horizontal;
-	};
-	LightingImpl lighting_impl;
-	void update_shadow_map();
-
-	struct UIImpl : RenderPassImplementation
-	{
-		UIImpl(SceneViewerApplication *app)
-			: app(app)
-		{
-		}
-		void build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd) override;
-
-		SceneViewerApplication *app;
-	};
-	UIImpl ui_impl;
-
 	RenderContext context;
 	RenderContext depth_context;
 	Renderer renderer;
@@ -256,6 +175,17 @@ private:
 	void on_swapchain_changed(const Event &e);
 	void on_swapchain_destroyed(const Event &e);
 	RenderGraph graph;
+
+	mat4 shadow_transform;
+	Vulkan::ImageView *shadow_map = nullptr;
+	Vulkan::Texture *reflection = nullptr;
+	Vulkan::Texture *irradiance = nullptr;
+	bool need_shadow_map_update = true;
+	void update_shadow_map();
+	std::string skydome_reflection;
+	std::string skydome_irradiance;
+
+	void lighting_pass(Vulkan::CommandBuffer &cmd);
 };
 
 extern int application_main(int argc, char *argv[]);

@@ -219,65 +219,6 @@ private:
 	bool storage = false;
 };
 
-class RenderPassImplementation
-{
-public:
-	virtual bool need_render_pass(RenderPass &)
-	{
-		return true;
-	}
-
-	virtual bool get_clear_color(unsigned, VkClearColorValue * = nullptr)
-	{
-		return false;
-	}
-
-	virtual bool get_clear_depth_stencil(VkClearDepthStencilValue * = nullptr)
-	{
-		return false;
-	}
-
-	virtual void build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd) = 0;
-};
-
-class RenderPassShaderBlitImplementation : public RenderPassImplementation
-{
-public:
-	enum Methods
-	{
-		METHOD_3TAP_GAUSS_HORIZ = 0,
-		METHOD_5TAP_GAUSS_HORIZ = 1,
-		METHOD_7TAP_GAUSS_HORIZ = 2,
-		METHOD_3TAP_GAUSS_VERT = 3,
-		METHOD_5TAP_GAUSS_VERT = 4,
-		METHOD_7TAP_GAUSS_VERT = 5,
-		METHOD_3x3_TAP_GAUSS = 6
-	};
-
-	RenderPassShaderBlitImplementation(std::string vertex, std::string fragment)
-		: vertex(std::move(vertex)), fragment(std::move(fragment))
-	{
-	}
-
-	void set_defines(std::vector<std::pair<std::string, int>> defines)
-	{
-		this->defines = std::move(defines);
-	}
-
-	void set_sampler(Vulkan::StockSampler sampler)
-	{
-		this->sampler = sampler;
-	}
-
-	void build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd) override;
-
-private:
-	std::string vertex;
-	std::string fragment;
-	Vulkan::StockSampler sampler = Vulkan::StockSampler::LinearClamp;
-	std::vector<std::pair<std::string, int>> defines;
-};
-
 class RenderPass
 {
 public:
@@ -301,17 +242,6 @@ public:
 	unsigned get_index() const
 	{
 		return index;
-	}
-
-	void set_implementation(RenderPassImplementation *impl)
-	{
-		implementation = impl;
-	}
-
-	RenderPassImplementation &get_implementation()
-	{
-		assert(implementation);
-		return *implementation;
 	}
 
 	RenderTextureResource &set_depth_stencil_input(const std::string &name);
@@ -421,11 +351,65 @@ public:
 		physical_pass = index;
 	}
 
+	bool need_render_pass()
+	{
+		if (need_render_pass_cb)
+			return need_render_pass_cb();
+		else
+			return true;
+	}
+
+	bool get_clear_color(unsigned index, VkClearColorValue * value = nullptr)
+	{
+		if (get_clear_color_cb)
+			return get_clear_color_cb(index, value);
+		else
+			return false;
+	}
+
+	bool get_clear_depth_stencil(VkClearDepthStencilValue * value = nullptr)
+	{
+		if (get_clear_depth_stencil_cb)
+			return get_clear_depth_stencil_cb(value);
+		else
+			return false;
+	}
+
+	void build_render_pass(Vulkan::CommandBuffer &cmd)
+	{
+		build_render_pass_cb(cmd);
+	}
+
+	void set_need_render_pass(std::function<bool ()> func)
+	{
+		need_render_pass_cb = std::move(func);
+	}
+
+	void set_build_render_pass(std::function<void (Vulkan::CommandBuffer &)> func)
+	{
+		build_render_pass_cb = std::move(func);
+	}
+
+	void set_get_clear_depth_stencil(std::function<bool (VkClearDepthStencilValue *)> func)
+	{
+		get_clear_depth_stencil_cb = std::move(func);
+	}
+
+	void set_get_clear_color(std::function<bool (unsigned, VkClearColorValue *)> func)
+	{
+		get_clear_color_cb = std::move(func);
+	}
+
 private:
 	RenderGraph &graph;
 	unsigned index;
 	unsigned physical_pass = Unused;
 	VkPipelineStageFlags stages;
+
+	std::function<void (Vulkan::CommandBuffer &)> build_render_pass_cb;
+	std::function<bool ()> need_render_pass_cb;
+	std::function<bool (VkClearDepthStencilValue *)> get_clear_depth_stencil_cb;
+	std::function<bool (unsigned, VkClearColorValue *)> get_clear_color_cb;
 
 	std::vector<RenderTextureResource *> color_outputs;
 	std::vector<RenderTextureResource *> resolve_outputs;
@@ -442,8 +426,6 @@ private:
 	std::vector<RenderBufferResource *> storage_inputs;
 	RenderTextureResource *depth_stencil_input = nullptr;
 	RenderTextureResource *depth_stencil_output = nullptr;
-
-	RenderPassImplementation *implementation = nullptr;
 };
 
 class RenderGraph : public Vulkan::NoCopyNoMove, public EventHandler
@@ -531,14 +513,14 @@ private:
 
 	struct ColorClearRequest
 	{
-		RenderPassImplementation *implementation;
+		RenderPass *pass;
 		VkClearColorValue *target;
 		unsigned index;
 	};
 
 	struct DepthClearRequest
 	{
-		RenderPassImplementation *implementation;
+		RenderPass *pass;
 		VkClearDepthStencilValue *target;
 	};
 

@@ -8,14 +8,8 @@ using namespace std;
 
 namespace Granite
 {
-void RenderPassShaderBlitImplementation::build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd)
-{
-	pass.set_texture_inputs(cmd, 0, 0, sampler);
-	Vulkan::CommandBufferUtil::draw_quad(cmd, vertex, fragment, defines);
-}
-
 void RenderPass::set_texture_inputs(Vulkan::CommandBuffer &cmd, unsigned set, unsigned start_binding,
-                                     Vulkan::StockSampler sampler)
+                                    Vulkan::StockSampler sampler)
 {
 	for (auto &tex : texture_inputs)
 	{
@@ -636,10 +630,10 @@ void RenderGraph::build_render_pass_info()
 
 					if (!has_color_input && !has_scaled_color_input)
 					{
-						if (pass.get_implementation().get_clear_color(i))
+						if (pass.get_clear_color(i))
 						{
 							rp.clear_attachments |= 1u << res.first;
-							physical_pass.color_clear_requests.push_back({ &pass.get_implementation(), &rp.clear_color[res.first], i });
+							physical_pass.color_clear_requests.push_back({ &pass, &rp.clear_color[res.first], i });
 						}
 					}
 					else
@@ -691,10 +685,10 @@ void RenderGraph::build_render_pass_info()
 			{
 				auto res = add_unique_ds(ds_output->get_physical_index());
 				// If this is the first subpass the attachment is used, we need to either clear or discard.
-				if (res.second && pass.get_implementation().get_clear_depth_stencil())
+				if (res.second && pass.get_clear_depth_stencil())
 				{
 					rp.op_flags |= Vulkan::RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT;
-					physical_pass.depth_clear_request.implementation = &pass.get_implementation();
+					physical_pass.depth_clear_request.pass = &pass;
 					physical_pass.depth_clear_request.target = &rp.clear_depth_stencil;
 				}
 
@@ -1227,7 +1221,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 		bool require_pass = false;
 		for (auto &pass : physical_pass.passes)
 		{
-			if (passes[pass]->get_implementation().need_render_pass(*passes[pass]))
+			if (passes[pass]->need_render_pass())
 				require_pass = true;
 		}
 
@@ -1375,10 +1369,13 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 		if (graphics)
 		{
 			for (auto &clear_req : physical_pass.color_clear_requests)
-				clear_req.implementation->get_clear_color(clear_req.index, clear_req.target);
-			if (physical_pass.depth_clear_request.implementation)
-				physical_pass.depth_clear_request.implementation->get_clear_depth_stencil(
+				clear_req.pass->get_clear_color(clear_req.index, clear_req.target);
+
+			if (physical_pass.depth_clear_request.pass)
+			{
+				physical_pass.depth_clear_request.pass->get_clear_depth_stencil(
 					physical_pass.depth_clear_request.target);
+			}
 
 			cmd->begin_render_pass(physical_pass.render_pass_info);
 
@@ -1394,7 +1391,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 				// due to clearing and so on.
 				// This should be an extremely unlikely scenario.
 				// Either you need all subpasses or none.
-				pass.get_implementation().build_render_pass(pass, *cmd);
+				pass.build_render_pass(*cmd);
 
 				if (&subpass != &physical_pass.passes.back())
 					cmd->next_subpass();
@@ -1406,7 +1403,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 		{
 			assert(physical_pass.passes.size() == 1);
 			auto &pass = *passes[physical_pass.passes.front()];
-			pass.get_implementation().build_render_pass(pass, *cmd);
+			pass.build_render_pass(*cmd);
 		}
 
 		VkPipelineStageFlags wait_stages = 0;

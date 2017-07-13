@@ -65,7 +65,7 @@ void SceneViewerApplication::VSMResolveImpl::build_render_pass(RenderPass &pass,
 {
 	cmd.set_input_attachments(0, 0);
 	CommandBufferUtil::draw_quad(cmd, "assets://shaders/quad.vert", "assets://shaders/lights/resolve_esm.frag");
-	app->lighting_impl.shadow.shadow_map = &pass.get_graph().get_physical_texture_resource(pass.get_resolve_outputs()[0]->get_physical_index());
+	app->lighting_impl.shadow.shadow_map = &pass.get_graph().get_physical_texture_resource(pass.get_graph().get_texture_resource("vsm").get_physical_index());
 }
 
 void SceneViewerApplication::LightingImpl::build_render_pass(RenderPass &, Vulkan::CommandBuffer &cmd)
@@ -259,19 +259,20 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 
 	AttachmentInfo shadowmap;
 	shadowmap.size_class = SizeClass::Absolute;
-	shadowmap.size_x = 2048.0f;
-	shadowmap.size_y = 2048.0f;
+	shadowmap.size_x = 4096.0f;
+	shadowmap.size_y = 4096.0f;
 	shadowmap.format = swap.get_device().get_default_depth_format();
-	shadowmap.samples = 4;
 
 	AttachmentInfo vsm_output;
 	vsm_output.size_class = SizeClass::Absolute;
-	vsm_output.size_x = 2048.0f;
-	vsm_output.size_y = 2048.0f;
+	vsm_output.size_x = 4096.0f;
+	vsm_output.size_y = 4096.0f;
 	vsm_output.format = VK_FORMAT_R32_SFLOAT;
-	vsm_output.samples = 4;
 	auto vsm = vsm_output;
 	vsm.samples = 1;
+	auto vsm_half = vsm;
+	vsm_half.size_x *= 0.5f;
+	vsm_half.size_y *= 0.5f;
 
 	AttachmentInfo backbuffer;
 	AttachmentInfo emissive, albedo, normal, pbr, depth;
@@ -285,10 +286,9 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 	shadowpass.set_depth_stencil_output("shadowmap", shadowmap);
 	shadowpass.set_implementation(&lighting_impl.shadow);
 
-	auto &vsm_resolve = graph.add_pass("esm-resolve", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	auto &vsm_resolve = graph.add_pass("vsm-resolve", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 	vsm_resolve.add_attachment_input("shadowmap");
-	vsm_resolve.add_color_output("vsm-output", vsm_output);
-	vsm_resolve.add_resolve_output("vsm-resolved", vsm);
+	vsm_resolve.add_color_output("vsm-resolved", vsm_output);
 	vsm_resolve.set_implementation(&lighting_impl.vsm);
 
 	auto &vsm_vertical = graph.add_pass("vsm-vertical", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
@@ -296,9 +296,9 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 	vsm_vertical.add_color_output("vsm-vertical", vsm);
 	vsm_vertical.set_implementation(&lighting_impl.vsm_vertical);
 
-	auto &vsm_horizontal = graph.add_pass("esm-horizontal", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	auto &vsm_horizontal = graph.add_pass("vsm-horizontal", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 	vsm_horizontal.add_texture_input("vsm-vertical");
-	vsm_horizontal.add_color_output("vsm", vsm);
+	vsm_horizontal.add_color_output("vsm", vsm_half);
 	vsm_horizontal.set_implementation(&lighting_impl.vsm_horizontal);
 
 	auto &gbuffer = graph.add_pass("gbuffer", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
@@ -380,7 +380,6 @@ void SceneViewerApplication::update_shadow_map()
 	depth_renderer.begin();
 	scene.gather_visible_shadow_renderables(depth_context.get_visibility_frustum(), depth_visible);
 	depth_renderer.push_renderables(depth_context, depth_visible);
-	//depth_renderer.enable_multisampling(true);
 }
 
 void SceneViewerApplication::render_frame(double, double elapsed_time)

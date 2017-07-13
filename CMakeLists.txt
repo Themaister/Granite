@@ -56,9 +56,6 @@ add_subdirectory(application)
 add_granite_executable(sandbox cube_test.cpp)
 target_link_libraries(sandbox math application)
 
-add_granite_executable(graph-test graph_test.cpp)
-target_link_libraries(graph-test renderer)
-
 add_subdirectory(network)
 add_subdirectory(tools)
 

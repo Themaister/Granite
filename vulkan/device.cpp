@@ -1165,13 +1165,12 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 		VK_ASSERT(create_info.initial_layout != VK_IMAGE_LAYOUT_UNDEFINED);
 		bool generate_mips = (create_info.misc & IMAGE_MISC_GENERATE_MIPS_BIT) != 0;
 		unsigned copy_levels = generate_mips ? 1u : info.mipLevels;
-		auto transfer_layout = generate_mips ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 
-		staging_cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_UNDEFINED, transfer_layout,
+		staging_cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 		                           VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT,
 		                           VK_ACCESS_TRANSFER_WRITE_BIT);
 
-		handle->set_layout(transfer_layout);
+		handle->set_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
 		VkExtent3D extent = { create_info.width, create_info.height, create_info.depth };
 
@@ -1211,14 +1210,14 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 
 		if (generate_mips)
 		{
-			staging_cmd->image_barrier(*handle, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-			                           VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+			staging_cmd->barrier_prepare_generate_mipmap(*handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+			handle->set_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 			staging_cmd->generate_mipmap(*handle);
 		}
 
 		staging_cmd->image_barrier(
 		    *handle, handle->get_layout(), create_info.initial_layout, VK_PIPELINE_STAGE_TRANSFER_BIT,
-		    VK_ACCESS_TRANSFER_WRITE_BIT, handle->get_stage_flags(),
+		    generate_mips ? 0 : VK_ACCESS_TRANSFER_WRITE_BIT, handle->get_stage_flags(),
 		    handle->get_access_flags() & image_layout_to_possible_access(create_info.initial_layout));
 	}
 	else if (create_info.initial_layout != VK_IMAGE_LAYOUT_UNDEFINED)

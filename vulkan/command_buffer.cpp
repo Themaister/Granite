@@ -173,11 +173,64 @@ void CommandBuffer::image_barrier(const Image &image, VkPipelineStageFlags src_s
 	image_barrier(image, image.get_layout(), image.get_layout(), src_stages, src_access, dst_stages, dst_access);
 }
 
+void CommandBuffer::barrier_prepare_generate_mipmap(const Image &image, VkImageLayout base_level_layout,
+                                                    VkPipelineStageFlags src_stage, VkAccessFlags src_access)
+{
+	auto &create_info = image.get_create_info();
+	VkImageMemoryBarrier barriers[2] = {};
+	VK_ASSERT(create_info.levels > 1);
+
+	for (unsigned i = 0; i < 2; i++)
+	{
+		barriers[i].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		barriers[i].image = image.get_image();
+		barriers[i].subresourceRange.aspectMask = format_to_aspect_mask(image.get_format());
+		barriers[i].subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
+		barriers[i].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barriers[i].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+
+		if (i == 0)
+		{
+			barriers[i].oldLayout = base_level_layout;
+			barriers[i].newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+			barriers[i].srcAccessMask = src_access;
+			barriers[i].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+			barriers[i].subresourceRange.baseMipLevel = 0;
+			barriers[i].subresourceRange.levelCount = 1;
+		}
+		else
+		{
+			barriers[i].oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			barriers[i].newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+			barriers[i].srcAccessMask = 0;
+			barriers[i].dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+			barriers[i].subresourceRange.baseMipLevel = 1;
+			barriers[i].subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
+		}
+	}
+
+	barrier(src_stage, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, nullptr, 0, nullptr, 2, barriers);
+}
+
 void CommandBuffer::generate_mipmap(const Image &image)
 {
 	auto &create_info = image.get_create_info();
 	VkOffset3D size = { int(create_info.width), int(create_info.height), int(create_info.depth) };
 	const VkOffset3D origin = { 0, 0, 0 };
+
+	VK_ASSERT(image.get_layout() == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+
+	VkImageMemoryBarrier b = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+	b.image = image.get_image();
+	b.subresourceRange.levelCount = 1;
+	b.subresourceRange.layerCount = create_info.layers;
+	b.subresourceRange.aspectMask = format_to_aspect_mask(image.get_format());
+	b.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	b.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+	b.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+	b.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+	b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 
 	for (unsigned i = 1; i < create_info.levels; i++)
 	{
@@ -186,17 +239,18 @@ void CommandBuffer::generate_mipmap(const Image &image)
 		size.y = max(size.y >> 1, 1);
 		size.z = max(size.z >> 1, 1);
 
-		blit_image(image, image, origin, size, origin, src_size, i, i - 1, 0, 0, create_info.layers, VK_FILTER_LINEAR);
+		blit_image(image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+		           origin, size, origin, src_size, i, i - 1, 0, 0, create_info.layers, VK_FILTER_LINEAR);
 
-		if (i + 1 < create_info.levels)
-		{
-			image_barrier(image, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-			              VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
-		}
+		b.subresourceRange.baseMipLevel = i;
+		barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+		        0, nullptr, 0, nullptr, 1, &b);
 	}
 }
 
-void CommandBuffer::blit_image(const Image &dst, const Image &src, const VkOffset3D &dst_offset,
+void CommandBuffer::blit_image(const Image &dst, VkImageLayout dst_layout,
+                               const Image &src, VkImageLayout src_layout,
+                               const VkOffset3D &dst_offset,
                                const VkOffset3D &dst_extent, const VkOffset3D &src_offset, const VkOffset3D &src_extent,
                                unsigned dst_level, unsigned src_level, unsigned dst_base_layer, unsigned src_base_layer,
                                unsigned num_layers, VkFilter filter)
@@ -212,7 +266,7 @@ void CommandBuffer::blit_image(const Image &dst, const Image &src, const VkOffse
 		{ dst_offset, add_offset(dst_offset, dst_extent) },
 	};
 
-	vkCmdBlitImage(cmd, src.get_image(), src.get_layout(), dst.get_image(), dst.get_layout(), 1, &blit, filter);
+	vkCmdBlitImage(cmd, src.get_image(), src_layout, dst.get_image(), dst_layout, 1, &blit, filter);
 }
 
 void CommandBuffer::begin_context()

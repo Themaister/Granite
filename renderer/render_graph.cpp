@@ -1583,8 +1583,8 @@ void RenderGraph::setup_physical_image(Vulkan::Device &device, unsigned attachme
 		info.width = att.width;
 		info.height = att.height;
 		info.domain = Vulkan::ImageDomain::Physical;
-		info.levels = 1;
-		info.layers = 1;
+		info.levels = att.levels;
+		info.layers = att.layers;
 		info.usage = usage;
 		info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 		info.samples = static_cast<VkSampleCountFlagBits>(att.samples);
@@ -1835,6 +1835,8 @@ ResourceDimensions RenderGraph::get_resource_dimensions(const RenderTextureResou
 {
 	ResourceDimensions dim;
 	auto &info = resource.get_attachment_info();
+	dim.layers = info.layers;
+	dim.samples = info.samples;
 	dim.format = info.format;
 	dim.transient = resource.get_transient_state();
 	dim.persistent = info.persistent;
@@ -1863,8 +1865,6 @@ ResourceDimensions RenderGraph::get_resource_dimensions(const RenderTextureResou
 		dim.width = unsigned(input_dim.width * info.size_x);
 		dim.height = unsigned(input_dim.height * info.size_y);
 		dim.depth = input_dim.depth;
-		dim.layers = input_dim.layers;
-		dim.levels = input_dim.levels;
 		break;
 	}
 	}
@@ -1872,7 +1872,18 @@ ResourceDimensions RenderGraph::get_resource_dimensions(const RenderTextureResou
 	if (dim.format == VK_FORMAT_UNDEFINED)
 		dim.format = swapchain_dimensions.format;
 
-	dim.samples = info.samples;
+	const auto num_levels = [](unsigned width, unsigned height) -> unsigned {
+		unsigned levels = 0;
+		unsigned max_dim = std::max(width, height);
+		while (max_dim)
+		{
+			levels++;
+			max_dim >>= 1;
+		}
+		return levels;
+	};
+
+	dim.levels = std::min(num_levels(dim.width, dim.height), info.levels == 0 ? ~0u : info.levels);
 	return dim;
 }
 

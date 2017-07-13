@@ -168,11 +168,21 @@ public:
 		stencil_view = stencil;
 	}
 
+	void set_base_level_view(VkImageView view)
+	{
+		base_level_view = view;
+	}
+
 	// By default, gets a combined view which includes all aspects in the image.
 	// This would be used mostly for render targets.
 	VkImageView get_view() const
 	{
 		return view;
+	}
+
+	VkImageView get_base_level_view() const
+	{
+		return base_level_view != VK_NULL_HANDLE ? base_level_view : view;
 	}
 
 	// Gets an image view which only includes floating point domains.
@@ -214,6 +224,7 @@ public:
 private:
 	Device *device;
 	VkImageView view;
+	VkImageView base_level_view = VK_NULL_HANDLE;
 	VkImageView depth_view = VK_NULL_HANDLE;
 	VkImageView stencil_view = VK_NULL_HANDLE;
 	ImageViewCreateInfo info;

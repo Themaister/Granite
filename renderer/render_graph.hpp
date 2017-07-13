@@ -31,6 +31,8 @@ struct AttachmentInfo
 	VkFormat format = VK_FORMAT_UNDEFINED;
 	std::string size_relative_name;
 	unsigned samples = 1;
+	unsigned levels = 1;
+	unsigned layers = 1;
 	bool persistent = true;
 };
 

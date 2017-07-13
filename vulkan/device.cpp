@@ -973,11 +973,29 @@ ImageViewHandle Device::create_image_view(const ImageViewCreateInfo &create_info
 	view_info.subresourceRange.layerCount = create_info.layers;
 	view_info.viewType = get_image_view_type(image_create_info, &create_info);
 
+	unsigned num_levels;
+	if (view_info.subresourceRange.levelCount == VK_REMAINING_MIP_LEVELS)
+		num_levels = create_info.image->get_create_info().levels - view_info.subresourceRange.baseMipLevel;
+	else
+		num_levels = view_info.subresourceRange.levelCount;
+
 	VkImageView image_view = VK_NULL_HANDLE;
 	VkImageView depth_view = VK_NULL_HANDLE;
 	VkImageView stencil_view = VK_NULL_HANDLE;
+	VkImageView base_level_view = VK_NULL_HANDLE;
 	if (vkCreateImageView(device, &view_info, nullptr, &image_view) != VK_SUCCESS)
 		return nullptr;
+
+	if (num_levels > 1)
+	{
+		view_info.subresourceRange.levelCount = 1;
+		if (vkCreateImageView(device, &view_info, nullptr, &base_level_view) != VK_SUCCESS)
+		{
+			vkDestroyImageView(device, image_view, nullptr);
+			return nullptr;
+		}
+		view_info.subresourceRange.levelCount = create_info.levels;
+	}
 
 	// If the image has multiple aspects, make split up images.
 	if (view_info.subresourceRange.aspectMask == (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT))
@@ -986,6 +1004,7 @@ ImageViewHandle Device::create_image_view(const ImageViewCreateInfo &create_info
 		if (vkCreateImageView(device, &view_info, nullptr, &depth_view) != VK_SUCCESS)
 		{
 			vkDestroyImageView(device, image_view, nullptr);
+			vkDestroyImageView(device, base_level_view, nullptr);
 			return nullptr;
 		}
 
@@ -994,6 +1013,7 @@ ImageViewHandle Device::create_image_view(const ImageViewCreateInfo &create_info
 		{
 			vkDestroyImageView(device, image_view, nullptr);
 			vkDestroyImageView(device, depth_view, nullptr);
+			vkDestroyImageView(device, base_level_view, nullptr);
 			return nullptr;
 		}
 	}
@@ -1002,6 +1022,7 @@ ImageViewHandle Device::create_image_view(const ImageViewCreateInfo &create_info
 	tmp.format = format;
 	auto ret = make_handle<ImageView>(this, image_view, tmp);
 	ret->set_alt_views(depth_view, stencil_view);
+	ret->set_base_level_view(base_level_view);
 	return ret;
 }
 
@@ -1063,6 +1084,7 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 	VkImageView image_view = VK_NULL_HANDLE;
 	VkImageView depth_view = VK_NULL_HANDLE;
 	VkImageView stencil_view = VK_NULL_HANDLE;
+	VkImageView base_level_view = VK_NULL_HANDLE;
 	if (info.usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
 	                  VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT))
 	{
@@ -1087,6 +1109,19 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 			return nullptr;
 		}
 
+		if (info.mipLevels > 1)
+		{
+			view_info.subresourceRange.levelCount = 1;
+			if (vkCreateImageView(device, &view_info, nullptr, &base_level_view) != VK_SUCCESS)
+			{
+				allocation.free_immediate(allocator);
+				vkDestroyImage(device, image, nullptr);
+				vkDestroyImageView(device, image_view, nullptr);
+				return nullptr;
+			}
+			view_info.subresourceRange.levelCount = info.mipLevels;
+		}
+
 		// If the image has multiple aspects, make split up images.
 		if (view_info.subresourceRange.aspectMask == (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT))
 		{
@@ -1095,6 +1130,7 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 			{
 				allocation.free_immediate(allocator);
 				vkDestroyImageView(device, image_view, nullptr);
+				vkDestroyImageView(device, base_level_view, nullptr);
 				vkDestroyImage(device, image, nullptr);
 				return nullptr;
 			}
@@ -1105,6 +1141,7 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 				allocation.free_immediate(allocator);
 				vkDestroyImageView(device, image_view, nullptr);
 				vkDestroyImageView(device, depth_view, nullptr);
+				vkDestroyImageView(device, base_level_view, nullptr);
 				vkDestroyImage(device, image, nullptr);
 				return nullptr;
 			}
@@ -1113,6 +1150,7 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 
 	auto handle = make_handle<Image>(this, image, image_view, allocation, tmpinfo);
 	handle->get_view().set_alt_views(depth_view, stencil_view);
+	handle->get_view().set_base_level_view(base_level_view);
 
 	// Set possible dstStage and dstAccess.
 	handle->set_stage_flags(image_usage_to_possible_stages(info.usage));

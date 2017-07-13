@@ -228,6 +228,8 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 	auto vsm_resolve_output = vsm_output;
 	vsm_resolve_output.samples = 1;
 	auto vsm = vsm_resolve_output;
+	auto vsm_mipmapped = vsm;
+	vsm_mipmapped.levels = 0;
 
 	AttachmentInfo backbuffer;
 	AttachmentInfo emissive, albedo, normal, pbr, depth;
@@ -282,7 +284,7 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 
 	auto &vsm_horizontal = graph.add_pass("vsm-horizontal", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 	vsm_horizontal.add_texture_input("vsm-vertical");
-	vsm_horizontal.add_color_output("vsm", vsm);
+	vsm_horizontal.add_color_output("vsm", vsm_mipmapped);
 	vsm_horizontal.set_build_render_pass([this, &vsm_horizontal](Vulkan::CommandBuffer &cmd) {
 		vsm_horizontal.set_texture_inputs(cmd, 0, 0, Vulkan::StockSampler::NearestClamp);
 		CommandBufferUtil::draw_quad(cmd, "assets://shaders/quad.vert", "assets://shaders/blur.frag", {{ "METHOD", 1 }});

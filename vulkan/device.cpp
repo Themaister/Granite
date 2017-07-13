@@ -1217,7 +1217,7 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 
 		staging_cmd->image_barrier(
 		    *handle, handle->get_layout(), create_info.initial_layout, VK_PIPELINE_STAGE_TRANSFER_BIT,
-		    generate_mips ? 0 : VK_ACCESS_TRANSFER_WRITE_BIT, handle->get_stage_flags(),
+		    generate_mips ? VK_ACCESS_TRANSFER_READ_BIT : VK_ACCESS_TRANSFER_WRITE_BIT, handle->get_stage_flags(),
 		    handle->get_access_flags() & image_layout_to_possible_access(create_info.initial_layout));
 	}
 	else if (create_info.initial_layout != VK_IMAGE_LAYOUT_UNDEFINED)

@@ -778,6 +778,13 @@ void RenderGraph::build_physical_passes()
 		if (prev.get_stages() != VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT || next.get_stages() != VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT)
 			return false;
 
+		for (auto *output : prev.get_color_outputs())
+		{
+			// Need to mip-map after this pass, so cannot merge.
+			if (physical_dimensions[output->get_physical_index()].levels > 1)
+				return false;
+		}
+
 		// Need non-local dependency, cannot merge.
 		for (auto *input : next.get_texture_inputs())
 		{
@@ -1004,6 +1011,25 @@ void RenderGraph::log()
 			     Vulkan::access_flags_to_string(barrier.access).c_str(),
 			     Vulkan::stage_flags_to_string(barrier.stages).c_str());
 		}
+	}
+}
+
+void RenderGraph::enqueue_mipmap_requests(Vulkan::CommandBuffer &cmd, const std::vector<MipmapRequests> &requests)
+{
+	if (requests.empty())
+		return;
+
+	for (auto &req : requests)
+	{
+		auto &image = physical_attachments[req.physical_resource]->get_image();
+		auto old_layout = image.get_layout();
+		cmd.barrier_prepare_generate_mipmap(image, req.layout, req.stages, req.access);
+
+		image.set_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+		cmd.generate_mipmap(image);
+
+		// Keep the old layout so that the flush barriers can detect that a transition has happened.
+		image.set_layout(old_layout);
 	}
 }
 
@@ -1398,6 +1424,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 			}
 
 			cmd->end_render_pass();
+			enqueue_mipmap_requests(*cmd, physical_pass.mipmap_requests);
 		}
 		else
 		{
@@ -1550,6 +1577,9 @@ void RenderGraph::setup_physical_image(Vulkan::Device &device, unsigned attachme
 		usage |= VK_IMAGE_USAGE_STORAGE_BIT;
 		flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
 	}
+
+	if (att.levels > 1)
+		usage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 
 	if (Vulkan::format_is_stencil(att.format) ||
 	    Vulkan::format_is_depth_stencil(att.format) ||
@@ -2004,9 +2034,19 @@ void RenderGraph::build_physical_barriers()
 				// Only first flush in a render pass needs a matching invalidation.
 				if (resource_state[flush.resource_index].initial_layout == VK_IMAGE_LAYOUT_UNDEFINED)
 				{
-					resource_state[flush.resource_index].initial_layout = flush.layout;
-					resource_state[flush.resource_index].invalidated_stages = flush.stages;
-					resource_state[flush.resource_index].invalidated_types = flush_access_to_invalidate(flush.access);
+					// If we end in TRANSFER_SRC_OPTIMAL, we actually start in COLOR_ATTACHMENT_OPTIMAL.
+					if (flush.layout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
+					{
+						resource_state[flush.resource_index].initial_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+						resource_state[flush.resource_index].invalidated_stages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+						resource_state[flush.resource_index].invalidated_types = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+					}
+					else
+					{
+						resource_state[flush.resource_index].initial_layout = flush.layout;
+						resource_state[flush.resource_index].invalidated_stages = flush.stages;
+						resource_state[flush.resource_index].invalidated_types = flush_access_to_invalidate(flush.access);
+					}
 
 					// We're not reading the resource in this pass, so we might as well transition from UNDEFINED to discard the resource.
 					physical_pass.discards.push_back(flush.resource_index);
@@ -2118,6 +2158,13 @@ void RenderGraph::build_physical_barriers()
 				// The only purpose of this flush barrier is to set the last pass which the resource was used as a stage.
 				// Do not clear last_invalidate_pass, because we can still keep tacking on new access flags, etc.
 				physical_pass.flush.push_back({ index, resource.final_layout, 0, resource.invalidated_stages, false });
+			}
+
+			// If we end in TRANSFER_SRC_OPTIMAL, this is a sentinel for needing mipmapping, so enqueue that up here.
+			if (resource.final_layout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
+			{
+				physical_pass.mipmap_requests.push_back({ index, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+				                                          VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL });
 			}
 
 			global_resource_state[index].current_layout = resource.final_layout;
@@ -2299,11 +2346,24 @@ void RenderGraph::build_barriers()
 				throw logic_error("Only graphics passes can have scaled color outputs.");
 
 			auto &barrier = get_flush_access(output->get_physical_index());
-			barrier.access |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-			barrier.stages |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
-				throw logic_error("Layout mismatch.");
-			barrier.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+			if (physical_dimensions[output->get_physical_index()].levels > 1)
+			{
+				// access should be 0 here. generate_mipmaps will take care of invalidation needed.
+				barrier.access |= VK_ACCESS_TRANSFER_READ_BIT; // Validation layers complain without this.
+				barrier.stages |= VK_PIPELINE_STAGE_TRANSFER_BIT;
+				if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
+					throw logic_error("Layout mismatch.");
+				barrier.layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+			}
+			else
+			{
+				barrier.access |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+				barrier.stages |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+				if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
+					throw logic_error("Layout mismatch.");
+				barrier.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+			}
 		}
 
 		for (auto *output : pass.get_resolve_outputs())

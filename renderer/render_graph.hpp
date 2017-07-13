@@ -532,6 +532,14 @@ private:
 		unsigned physical_resource;
 	};
 
+	struct MipmapRequests
+	{
+		unsigned physical_resource;
+		VkPipelineStageFlags stages;
+		VkAccessFlags access;
+		VkImageLayout layout;
+	};
+
 	struct PhysicalPass
 	{
 		std::vector<unsigned> passes;
@@ -550,6 +558,7 @@ private:
 		DepthClearRequest depth_clear_request;
 
 		std::vector<std::vector<ScaledClearRequests>> scaled_clear_requests;
+		std::vector<MipmapRequests> mipmap_requests;
 	};
 	std::vector<PhysicalPass> physical_passes;
 	void build_physical_passes();
@@ -583,6 +592,7 @@ private:
 	unsigned swapchain_physical_index = RenderResource::Unused;
 
 	void enqueue_scaled_requests(Vulkan::CommandBuffer &cmd, const std::vector<ScaledClearRequests> &requests);
+	void enqueue_mipmap_requests(Vulkan::CommandBuffer &cmd, const std::vector<MipmapRequests> &requests);
 
 	void on_swapchain_changed(const Event &e);
 	void on_swapchain_destroyed(const Event &e);

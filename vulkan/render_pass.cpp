@@ -240,6 +240,14 @@ RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
 			depth->attachment = VK_ATTACHMENT_UNUSED;
 			depth->layout = VK_IMAGE_LAYOUT_UNDEFINED;
 		}
+
+		static const VkAttachmentReference dummy_attachment = { VK_ATTACHMENT_UNUSED, VK_IMAGE_LAYOUT_UNDEFINED };
+		if (subpass.colorAttachmentCount == 0)
+		{
+			// So we can support alpha-to-coverage in depth only modes.
+			subpass.colorAttachmentCount = 1;
+			subpass.pColorAttachments = &dummy_attachment;
+		}
 	}
 
 	const auto find_color = [&](unsigned subpass, unsigned attachment) -> VkAttachmentReference * {
@@ -413,6 +421,12 @@ RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
 			{
 				if (current_layout != VK_IMAGE_LAYOUT_GENERAL)
 					current_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+				// If the attachment is first used as an input attachment, the initial layout should actually be
+				// SHADER_READ_ONLY_OPTIMAL.
+				if (!used && attachments[attachment].initialLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
+					attachments[attachment].initialLayout = current_layout;
+
 				input->layout = current_layout;
 				used = true;
 				last_subpass_for_attachment[attachment] = subpass;
@@ -590,6 +604,9 @@ RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
 		unsigned samples = 0;
 		for (unsigned i = 0; i < subpass_info.num_color_attachments; i++)
 		{
+			if (subpass_info.color_attachments[i].attachment == VK_ATTACHMENT_UNUSED)
+				continue;
+
 			unsigned samp = attachments[subpass_info.color_attachments[i].attachment].samples;
 			if (samples && (samp != samples))
 				VK_ASSERT(samp == samples);

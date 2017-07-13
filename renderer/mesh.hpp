@@ -91,6 +91,7 @@ struct StaticMeshInfo : RenderInfo
 	uint32_t attribute_stride;
 	VkIndexType index_type;
 	bool two_sided;
+	bool alpha_test;
 };
 
 struct SkinnedMeshInfo : StaticMeshInfo

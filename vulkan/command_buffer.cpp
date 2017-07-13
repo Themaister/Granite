@@ -418,18 +418,17 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
 
 	// Multisample
 	VkPipelineMultisampleStateCreateInfo ms = { VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO };
-	// TODO: Support more
 	ms.rasterizationSamples = static_cast<VkSampleCountFlagBits>(render_pass->get_sample_count(current_subpass));
-	ms.alphaToCoverageEnable = static_state.state.alpha_to_coverage;
-	ms.alphaToOneEnable = static_state.state.alpha_to_one;
 
-	// If we have multisampled input attachments, force per-sample shading.
-	bool force_per_sample_shading = false;
 	if (render_pass->get_sample_count(current_subpass) > 1)
-		force_per_sample_shading = render_pass->get_num_input_attachments(current_subpass) > 0;
-
-	ms.sampleShadingEnable = static_state.state.sample_shading || force_per_sample_shading;
-	ms.minSampleShading = 1.0f;
+	{
+		ms.alphaToCoverageEnable = static_state.state.alpha_to_coverage;
+		ms.alphaToOneEnable = static_state.state.alpha_to_one;
+		// If we have multisampled input attachments, force per-sample shading.
+		bool force_per_sample_shading = render_pass->get_num_input_attachments(current_subpass) > 0;
+		ms.sampleShadingEnable = static_state.state.sample_shading || force_per_sample_shading;
+		ms.minSampleShading = 1.0f;
+	}
 
 	// Raster
 	VkPipelineRasterizationStateCreateInfo raster = { VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO };

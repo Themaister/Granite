@@ -4,7 +4,7 @@
 
 layout(set = 0, binding = 1) uniform samplerCube uReflection;
 layout(set = 0, binding = 2) uniform samplerCube uIrradiance;
-layout(set = 0, binding = 3) uniform sampler2DShadow uShadowmap;
+layout(set = 0, binding = 3) uniform sampler2D uShadowmap;
 
 layout(input_attachment_index = 0, set = 1, binding = 0) uniform subpassInput BaseColor;
 layout(input_attachment_index = 1, set = 1, binding = 1) uniform subpassInput Normal;
@@ -25,6 +25,15 @@ layout(std430, push_constant) uniform Registers
 	float environment_mipscale;
 } registers;
 
+float sample_esm(vec4 clip_shadow)
+{
+    vec3 coord = clip_shadow.xyz / clip_shadow.w;
+    float e_z = texture(uShadowmap, coord.xy).x;
+    float e_d = 1000.0 * coord.z;
+
+    return clamp(exp2(1.0 * (e_z - e_d)), 0.0, 1.0);
+}
+
 void main()
 {
     // Load material information.
@@ -40,7 +49,7 @@ void main()
 
     // Sample shadowmap.
     vec4 clip_shadow = vShadowClip + depth * registers.shadow_projection_col2;
-    float shadow_term = textureProj(uShadowmap, clip_shadow);
+    float shadow_term = sample_esm(clip_shadow);
 
     vec3 pos = clip.xyz / clip.w;
 

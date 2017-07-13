@@ -56,6 +56,18 @@ static vec3 light_direction()
 	return normalize(vec3(0.5f, 1.2f, 0.8f));
 }
 
+bool SceneViewerApplication::ESMResolveImpl::need_render_pass(RenderPass &)
+{
+	return true;
+}
+
+void SceneViewerApplication::ESMResolveImpl::build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd)
+{
+	cmd.set_input_attachments(0, 0);
+	CommandBufferUtil::draw_quad(cmd, "assets://shaders/quad.vert", "assets://shaders/lights/resolve_esm.frag");
+	app->lighting_impl.shadow.shadow_map = &pass.get_graph().get_physical_texture_resource(pass.get_resolve_outputs()[0]->get_physical_index());
+}
+
 void SceneViewerApplication::LightingImpl::build_render_pass(RenderPass &, Vulkan::CommandBuffer &cmd)
 {
 	cmd.set_quad_state();
@@ -85,7 +97,7 @@ void SceneViewerApplication::LightingImpl::build_render_pass(RenderPass &, Vulka
 	assert(reflection && irradiance);
 	cmd.set_texture(0, 1, reflection->get_image()->get_view(), Vulkan::StockSampler::LinearClamp);
 	cmd.set_texture(0, 2, irradiance->get_image()->get_view(), Vulkan::StockSampler::LinearClamp);
-	cmd.set_texture(0, 3, *shadow.shadow_map, Vulkan::StockSampler::LinearShadow);
+	cmd.set_texture(0, 3, *shadow.shadow_map, Vulkan::StockSampler::LinearClamp);
 
 	struct DirectionalLightPush
 	{
@@ -247,9 +259,19 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 
 	AttachmentInfo shadowmap;
 	shadowmap.size_class = SizeClass::Absolute;
-	shadowmap.size_x = 4096.0f;
-	shadowmap.size_y = 4096.0f;
-	shadowmap.format = VK_FORMAT_D16_UNORM;
+	shadowmap.size_x = 2048.0f;
+	shadowmap.size_y = 2048.0f;
+	shadowmap.format = swap.get_device().get_default_depth_format();
+	shadowmap.samples = 4;
+
+	AttachmentInfo esm_output;
+	esm_output.size_class = SizeClass::Absolute;
+	esm_output.size_x = 2048.0f;
+	esm_output.size_y = 2048.0f;
+	esm_output.format = VK_FORMAT_R32_SFLOAT;
+	esm_output.samples = 4;
+	auto esm = esm_output;
+	esm.samples = 1;
 
 	AttachmentInfo backbuffer;
 	AttachmentInfo emissive, albedo, normal, pbr, depth;
@@ -262,6 +284,22 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 	auto &shadowpass = graph.add_pass("shadow", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 	shadowpass.set_depth_stencil_output("shadowmap", shadowmap);
 	shadowpass.set_implementation(&lighting_impl.shadow);
+
+	auto &esm_resolve = graph.add_pass("esm-resolve", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	esm_resolve.add_attachment_input("shadowmap");
+	esm_resolve.add_color_output("esm-output", esm_output);
+	esm_resolve.add_resolve_output("esm-resolved", esm);
+	esm_resolve.set_implementation(&lighting_impl.esm);
+
+	auto &esm_vertical = graph.add_pass("esm-vertical", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	esm_vertical.add_texture_input("esm-resolved");
+	esm_vertical.add_color_output("esm-vertical", esm);
+	esm_vertical.set_implementation(&lighting_impl.esm_vertical);
+
+	auto &esm_horizontal = graph.add_pass("esm-horizontal", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	esm_horizontal.add_texture_input("esm-vertical");
+	esm_horizontal.add_color_output("esm", esm);
+	esm_horizontal.set_implementation(&lighting_impl.esm_horizontal);
 
 	auto &gbuffer = graph.add_pass("gbuffer", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 	gbuffer.add_color_output("emissive", emissive);
@@ -278,7 +316,7 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 	lighting.add_attachment_input("pbr");
 	lighting.add_attachment_input("depth");
 	lighting.set_depth_stencil_input("depth");
-	lighting.add_texture_input("shadowmap");
+	lighting.add_texture_input("esm");
 	lighting.set_implementation(&lighting_impl);
 
 	TonemapPass::setup_hdr_postprocess(graph, "HDR", "tonemapped");
@@ -298,15 +336,14 @@ void SceneViewerApplication::on_swapchain_destroyed(const Event &)
 {
 }
 
-bool SceneViewerApplication::ShadowmapImpl::need_render_pass(RenderPass &pass)
+bool SceneViewerApplication::ShadowmapImpl::need_render_pass(RenderPass &)
 {
-	return shadow_map != &pass.get_graph().get_physical_texture_resource(pass.get_depth_stencil_output()->get_physical_index());
+	return true;
 }
 
-void SceneViewerApplication::ShadowmapImpl::build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd)
+void SceneViewerApplication::ShadowmapImpl::build_render_pass(RenderPass &, Vulkan::CommandBuffer &cmd)
 {
 	app->depth_renderer.flush(cmd, app->depth_context);
-	shadow_map = &pass.get_graph().get_physical_texture_resource(pass.get_depth_stencil_output()->get_physical_index());
 }
 
 bool SceneViewerApplication::ShadowmapImpl::get_clear_depth_stencil(VkClearDepthStencilValue *value)
@@ -343,6 +380,7 @@ void SceneViewerApplication::update_shadow_map()
 	depth_renderer.begin();
 	scene.gather_visible_shadow_renderables(depth_context.get_visibility_frustum(), depth_visible);
 	depth_renderer.push_renderables(depth_context, depth_visible);
+	//depth_renderer.enable_multisampling(true);
 }
 
 void SceneViewerApplication::render_frame(double, double elapsed_time)

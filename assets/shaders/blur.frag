@@ -1,5 +1,5 @@
 #version 310 es
-precision mediump float;
+precision highp float;
 
 layout(location = 0) in highp vec2 vUV;
 layout(set = 0, binding = 0) uniform sampler2D uSampler;

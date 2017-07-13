@@ -243,6 +243,17 @@ public:
 class RenderPassShaderBlitImplementation : public RenderPassImplementation
 {
 public:
+	enum Methods
+	{
+		METHOD_3TAP_GAUSS_HORIZ = 0,
+		METHOD_5TAP_GAUSS_HORIZ = 1,
+		METHOD_7TAP_GAUSS_HORIZ = 2,
+		METHOD_3TAP_GAUSS_VERT = 3,
+		METHOD_5TAP_GAUSS_VERT = 4,
+		METHOD_7TAP_GAUSS_VERT = 5,
+		METHOD_3x3_TAP_GAUSS = 6
+	};
+
 	RenderPassShaderBlitImplementation(std::string vertex, std::string fragment)
 		: vertex(std::move(vertex)), fragment(std::move(fragment))
 	{

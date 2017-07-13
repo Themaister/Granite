@@ -44,6 +44,9 @@ static void mesh_set_state(CommandBuffer &cmd, const StaticMeshInfo &info)
 {
 	cmd.set_program(*info.program);
 
+	//if (info.alpha_test)
+	//	cmd.set_multisample_state(true, false, false);
+
 	cmd.set_vertex_binding(0, *info.vbo_position, 0, info.position_stride);
 	if (info.vbo_attributes)
 		cmd.set_vertex_binding(1, *info.vbo_attributes, 0, info.attribute_stride);
@@ -172,6 +175,7 @@ void StaticMesh::fill_render_info(StaticMeshInfo &info, const RenderContext &con
 	info.instance_key = get_instance_key();
 	info.topology = topology;
 	info.two_sided = material->two_sided;
+	info.alpha_test = material->pipeline == DrawPipeline::AlphaTest;
 
 	uint32_t attrs = 0;
 	uint32_t textures = 0;

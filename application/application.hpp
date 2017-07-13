@@ -189,11 +189,27 @@ private:
 		SceneViewerApplication *app;
 	};
 
+	struct ESMResolveImpl : RenderPassImplementation
+	{
+		ESMResolveImpl(SceneViewerApplication *app)
+			: app(app)
+		{
+		}
+
+		bool need_render_pass(RenderPass &pass) override;
+		void build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd) override;
+		SceneViewerApplication *app;
+	};
+
 	struct LightingImpl : RenderPassImplementation
 	{
 		LightingImpl(SceneViewerApplication *app)
-			: app(app), shadow(app)
+			: app(app), shadow(app), esm(app),
+			  esm_vertical("assets://shaders/quad.vert", "assets://shaders/blur.frag"),
+			  esm_horizontal("assets://shaders/quad.vert", "assets://shaders/blur.frag")
 		{
+			esm_vertical.set_defines({{ "METHOD", RenderPassShaderBlitImplementation::METHOD_5TAP_GAUSS_VERT }});
+			esm_horizontal.set_defines({{ "METHOD", RenderPassShaderBlitImplementation::METHOD_5TAP_GAUSS_HORIZ }});
 		}
 
 		void build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd) override;
@@ -205,6 +221,9 @@ private:
 		void on_device_created(Vulkan::Device &device);
 
 		ShadowmapImpl shadow;
+		ESMResolveImpl esm;
+		RenderPassShaderBlitImplementation esm_vertical;
+		RenderPassShaderBlitImplementation esm_horizontal;
 	};
 	LightingImpl lighting_impl;
 	void update_shadow_map();

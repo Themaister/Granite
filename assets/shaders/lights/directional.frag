@@ -36,7 +36,7 @@ float sample_vsm(vec4 clip_shadow)
         float variance = max(moments.y - moments.x * moments.x, 0.00001);
         float d = coord.z - moments.x;
         shadow_term = variance / (variance + d * d);
-        shadow_term = clamp(2.0 * (shadow_term - 0.5), 0.0, 1.0);
+        shadow_term = clamp((shadow_term - 0.25) / 0.75, 0.0, 1.0);
     }
     return shadow_term;
 }
@@ -66,7 +66,7 @@ void main()
 
     // Sample shadowmap.
     vec4 clip_shadow = vShadowClip + depth * registers.shadow_projection_col2;
-    float shadow_term = sample_esm(clip_shadow);
+    float shadow_term = sample_vsm(clip_shadow);
 
     vec3 pos = clip.xyz / clip.w;
 

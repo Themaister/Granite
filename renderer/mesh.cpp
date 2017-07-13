@@ -45,7 +45,7 @@ static void mesh_set_state(CommandBuffer &cmd, const StaticMeshInfo &info)
 	cmd.set_program(*info.program);
 
 	if (info.alpha_test)
-		cmd.set_multisample_state(true, false, false);
+		cmd.set_multisample_state(false, false, true);
 
 	cmd.set_vertex_binding(0, *info.vbo_position, 0, info.position_stride);
 	if (info.vbo_attributes)

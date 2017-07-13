@@ -18,18 +18,6 @@ Renderer::Renderer(Type type)
                                                       this);
 }
 
-void Renderer::enable_multisampling(bool enable)
-{
-	multisampling = enable;
-	for (auto &s : suite)
-	{
-		if (enable)
-			s.get_base_defines() = {{ "ALPHA_TEST_ALPHA_TO_COVERAGE", 1 }};
-		else
-			s.get_base_defines() = {};
-	}
-}
-
 void Renderer::on_device_created(const Event &e)
 {
 	auto &created = e.as<DeviceCreatedEvent>();

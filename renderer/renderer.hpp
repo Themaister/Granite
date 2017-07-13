@@ -28,7 +28,6 @@ public:
 	};
 
 	Renderer(Type type = Type::General);
-	void enable_multisampling(bool enable);
 
 	void begin();
 	void push_renderables(RenderContext &context, const VisibilityList &visible);
@@ -51,6 +50,5 @@ private:
 
 	DebugMeshInfo &render_debug(RenderContext &context, unsigned count);
 	Type type;
-	bool multisampling = false;
 };
 }

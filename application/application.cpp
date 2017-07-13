@@ -213,21 +213,21 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 
 	AttachmentInfo shadowmap;
 	shadowmap.size_class = SizeClass::Absolute;
-	shadowmap.size_x = 4096.0f;
-	shadowmap.size_y = 4096.0f;
+	shadowmap.size_x = 2048.0f;
+	shadowmap.size_y = 2048.0f;
 	shadowmap.format = swap.get_device().get_default_depth_format();
+	shadowmap.samples = 4;
 
 	AttachmentInfo vsm_output;
 	vsm_output.size_class = SizeClass::Absolute;
-	vsm_output.size_x = 4096.0f;
-	vsm_output.size_y = 4096.0f;
-	vsm_output.format = VK_FORMAT_R32_SFLOAT;
-	auto vsm = vsm_output;
-	auto vsm_first = vsm;
-	auto vsm_half = vsm;
-	vsm_first.size_y *= 0.5f;
-	vsm_half.size_x *= 0.5f;
-	vsm_half.size_y *= 0.5f;
+	vsm_output.size_x = 2048.0f;
+	vsm_output.size_y = 2048.0f;
+	vsm_output.format = VK_FORMAT_R32G32_SFLOAT;
+	vsm_output.samples = 4;
+
+	auto vsm_resolve_output = vsm_output;
+	vsm_resolve_output.samples = 1;
+	auto vsm = vsm_resolve_output;
 
 	AttachmentInfo backbuffer;
 	AttachmentInfo emissive, albedo, normal, pbr, depth;
@@ -257,10 +257,11 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 
 	auto &vsm_resolve = graph.add_pass("vsm-resolve", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 	vsm_resolve.add_attachment_input("shadowmap");
-	vsm_resolve.add_color_output("vsm-resolved", vsm_output);
+	vsm_resolve.add_color_output("vsm-output", vsm_output);
+	vsm_resolve.add_resolve_output("vsm-resolved", vsm_resolve_output);
 	vsm_resolve.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
 		cmd.set_input_attachments(0, 0);
-		CommandBufferUtil::draw_quad(cmd, "assets://shaders/quad.vert", "assets://shaders/lights/resolve_esm.frag");
+		CommandBufferUtil::draw_quad(cmd, "assets://shaders/quad.vert", "assets://shaders/lights/resolve_vsm.frag");
 	});
 
 	vsm_resolve.set_need_render_pass([this]() {
@@ -269,9 +270,9 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 
 	auto &vsm_vertical = graph.add_pass("vsm-vertical", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 	vsm_vertical.add_texture_input("vsm-resolved");
-	vsm_vertical.add_color_output("vsm-vertical", vsm_first);
+	vsm_vertical.add_color_output("vsm-vertical", vsm);
 	vsm_vertical.set_build_render_pass([this, &vsm_vertical](Vulkan::CommandBuffer &cmd) {
-		vsm_vertical.set_texture_inputs(cmd, 0, 0, Vulkan::StockSampler::LinearClamp);
+		vsm_vertical.set_texture_inputs(cmd, 0, 0, Vulkan::StockSampler::NearestClamp);
 		CommandBufferUtil::draw_quad(cmd, "assets://shaders/quad.vert", "assets://shaders/blur.frag", {{ "METHOD", 4 }});
 	});
 
@@ -281,9 +282,9 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 
 	auto &vsm_horizontal = graph.add_pass("vsm-horizontal", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 	vsm_horizontal.add_texture_input("vsm-vertical");
-	vsm_horizontal.add_color_output("vsm", vsm_half);
+	vsm_horizontal.add_color_output("vsm", vsm);
 	vsm_horizontal.set_build_render_pass([this, &vsm_horizontal](Vulkan::CommandBuffer &cmd) {
-		vsm_horizontal.set_texture_inputs(cmd, 0, 0, Vulkan::StockSampler::LinearClamp);
+		vsm_horizontal.set_texture_inputs(cmd, 0, 0, Vulkan::StockSampler::NearestClamp);
 		CommandBufferUtil::draw_quad(cmd, "assets://shaders/quad.vert", "assets://shaders/blur.frag", {{ "METHOD", 1 }});
 	});
 

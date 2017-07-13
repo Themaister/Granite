@@ -30,6 +30,7 @@ struct AttachmentInfo
 	float size_y = 1.0f;
 	VkFormat format = VK_FORMAT_UNDEFINED;
 	std::string size_relative_name;
+	unsigned samples = 1;
 	bool persistent = true;
 };
 
@@ -61,6 +62,7 @@ struct ResourceDimensions
 	unsigned depth = 1;
 	unsigned layers = 1;
 	unsigned levels = 1;
+	unsigned samples = 1;
 	bool transient = false;
 	bool persistent = true;
 	bool storage = false;
@@ -304,6 +306,7 @@ public:
 	RenderTextureResource &set_depth_stencil_input(const std::string &name);
 	RenderTextureResource &set_depth_stencil_output(const std::string &name, const AttachmentInfo &info);
 	RenderTextureResource &add_color_output(const std::string &name, const AttachmentInfo &info, const std::string &input = "");
+	RenderTextureResource &add_resolve_output(const std::string &name, const AttachmentInfo &info);
 	RenderTextureResource &add_texture_input(const std::string &name);
 	RenderTextureResource &add_attachment_input(const std::string &name);
 	RenderTextureResource &add_history_input(const std::string &name);
@@ -325,6 +328,11 @@ public:
 	const std::vector<RenderTextureResource *> &get_color_outputs() const
 	{
 		return color_outputs;
+	}
+
+	const std::vector<RenderTextureResource *> &get_resolve_outputs() const
+	{
+		return resolve_outputs;
 	}
 
 	const std::vector<RenderTextureResource *> &get_color_inputs() const
@@ -409,6 +417,7 @@ private:
 	VkPipelineStageFlags stages;
 
 	std::vector<RenderTextureResource *> color_outputs;
+	std::vector<RenderTextureResource *> resolve_outputs;
 	std::vector<RenderTextureResource *> color_inputs;
 	std::vector<RenderTextureResource *> color_scale_inputs;
 	std::vector<RenderTextureResource *> texture_inputs;

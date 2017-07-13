@@ -83,6 +83,15 @@ RenderTextureResource &RenderPass::add_texture_input(const std::string &name)
 	return res;
 }
 
+RenderTextureResource &RenderPass::add_resolve_output(const std::string &name, const AttachmentInfo &info)
+{
+	auto &res = graph.get_texture_resource(name);
+	res.written_in_pass(index);
+	res.set_attachment_info(info);
+	resolve_outputs.push_back(&res);
+	return res;
+}
+
 RenderTextureResource &RenderPass::add_color_output(const std::string &name, const AttachmentInfo &info, const std::string &input)
 {
 	auto &res = graph.get_texture_resource(name);
@@ -260,6 +269,9 @@ void RenderGraph::validate_passes()
 		if (pass.get_storage_texture_inputs().size() != pass.get_storage_texture_outputs().size())
 			throw logic_error("Size of storage texture inputs must match storage texture outputs.");
 
+		if (!pass.get_resolve_outputs().empty() && pass.get_resolve_outputs().size() != pass.get_color_outputs().size())
+			throw logic_error("Must have one resolve output for each color output.");
+
 		unsigned num_inputs = pass.get_color_inputs().size();
 		for (unsigned i = 0; i < num_inputs; i++)
 		{
@@ -425,6 +437,15 @@ void RenderGraph::build_physical_resources()
 		}
 
 		for (auto *output : pass.get_color_outputs())
+		{
+			if (output->get_physical_index() == RenderResource::Unused)
+			{
+				physical_dimensions.push_back(get_resource_dimensions(*output));
+				output->set_physical_index(phys_index++);
+			}
+		}
+
+		for (auto *output : pass.get_resolve_outputs())
 		{
 			if (output->get_physical_index() == RenderResource::Unused)
 			{
@@ -631,6 +652,17 @@ void RenderGraph::build_render_pass_info()
 				}
 			}
 
+			if (!pass.get_resolve_outputs().empty())
+			{
+				physical_pass.subpasses[subpass_index].num_resolve_attachments = num_color_attachments;
+				for (unsigned i = 0; i < num_color_attachments; i++)
+				{
+					auto res = add_unique_color(pass.get_resolve_outputs()[i]->get_physical_index());
+					physical_pass.subpasses[subpass_index].resolve_attachments[i] = res.first;
+					// Resolve attachments are don't care always.
+				}
+			}
+
 			physical_pass.scaled_clear_requests.push_back(move(scaled_clear_requests));
 
 			auto *ds_input = pass.get_depth_stencil_input();
@@ -757,6 +789,8 @@ void RenderGraph::build_physical_passes()
 		{
 			if (find_attachment(prev.get_color_outputs(), input))
 				return false;
+			if (find_attachment(prev.get_resolve_outputs(), input))
+				return false;
 			if (find_attachment(prev.get_storage_texture_outputs(), input))
 				return false;
 			if (input && prev.get_depth_stencil_output() == input)
@@ -790,6 +824,8 @@ void RenderGraph::build_physical_passes()
 				return false;
 			if (find_attachment(prev.get_color_outputs(), input))
 				return false;
+			if (find_attachment(prev.get_resolve_outputs(), input))
+				return false;
 		}
 
 		// Keep color on tile.
@@ -800,6 +836,8 @@ void RenderGraph::build_physical_passes()
 			if (find_attachment(prev.get_storage_texture_outputs(), input))
 				return false;
 			if (find_attachment(prev.get_color_outputs(), input))
+				return true;
+			if (find_attachment(prev.get_resolve_outputs(), input))
 				return true;
 		}
 
@@ -825,6 +863,8 @@ void RenderGraph::build_physical_passes()
 		for (auto *input : next.get_attachment_inputs())
 		{
 			if (find_attachment(prev.get_color_outputs(), input))
+				return true;
+			if (find_attachment(prev.get_resolve_outputs(), input))
 				return true;
 			if (input && prev.get_depth_stencil_output() == input)
 				return true;
@@ -928,6 +968,8 @@ void RenderGraph::log()
 
 			for (auto &output : pass.get_color_outputs())
 				LOGI("        ColorAttachment #%u: %u\n", unsigned(&output - pass.get_color_outputs().data()), output->get_physical_index());
+			for (auto &output : pass.get_resolve_outputs())
+				LOGI("        ResolveAttachment #%u: %u\n", unsigned(&output - pass.get_resolve_outputs().data()), output->get_physical_index());
 			for (auto &input : pass.get_attachment_inputs())
 				LOGI("        InputAttachment #%u: %u\n", unsigned(&input - pass.get_attachment_inputs().data()), input->get_physical_index());
 			for (auto &input : pass.get_texture_inputs())
@@ -1098,6 +1140,8 @@ void RenderGraph::build_aliases()
 		if (subpass.get_depth_stencil_output())
 			register_writer(subpass.get_depth_stencil_output(), subpass.get_physical_pass_index());
 		for (auto *output : subpass.get_color_outputs())
+			register_writer(output, subpass.get_physical_pass_index());
+		for (auto *output : subpass.get_resolve_outputs())
 			register_writer(output, subpass.get_physical_pass_index());
 	}
 
@@ -1526,6 +1570,7 @@ void RenderGraph::setup_physical_image(Vulkan::Device &device, unsigned attachme
 		    physical_image_attachments[attachment]->get_create_info().format == att.format &&
 		    physical_image_attachments[attachment]->get_create_info().width == att.width &&
 		    physical_image_attachments[attachment]->get_create_info().height == att.height &&
+			physical_image_attachments[attachment]->get_create_info().samples == att.samples &&
 		    (physical_image_attachments[attachment]->get_create_info().usage & usage) == usage &&
 			(physical_image_attachments[attachment]->get_create_info().flags & flags) == flags)
 		{
@@ -1544,7 +1589,7 @@ void RenderGraph::setup_physical_image(Vulkan::Device &device, unsigned attachme
 		info.layers = 1;
 		info.usage = usage;
 		info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-		info.samples = VK_SAMPLE_COUNT_1_BIT;
+		info.samples = static_cast<VkSampleCountFlagBits>(att.samples);
 		info.flags = flags;
 		physical_image_attachments[attachment] = device.create_image(info, nullptr);
 		physical_events[attachment] = {};
@@ -1591,7 +1636,7 @@ void RenderGraph::setup_attachments(Vulkan::Device &device, Vulkan::ImageView *s
 			else if (i == swapchain_physical_index)
 				physical_attachments[i] = swapchain;
 			else if (att.transient)
-				physical_attachments[i] = &device.get_transient_attachment(att.width, att.height, att.format, i, 1);
+				physical_attachments[i] = &device.get_transient_attachment(att.width, att.height, att.format, i, att.samples);
 			else
 				setup_physical_image(device, i, false);
 		}
@@ -1829,6 +1874,7 @@ ResourceDimensions RenderGraph::get_resource_dimensions(const RenderTextureResou
 	if (dim.format == VK_FORMAT_UNDEFINED)
 		dim.format = swapchain_dimensions.format;
 
+	dim.samples = info.samples;
 	return dim;
 }
 
@@ -2242,6 +2288,19 @@ void RenderGraph::build_barriers()
 		{
 			if (pass.get_stages() != VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT)
 				throw logic_error("Only graphics passes can have scaled color outputs.");
+
+			auto &barrier = get_flush_access(output->get_physical_index());
+			barrier.access |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+			barrier.stages |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
+				throw logic_error("Layout mismatch.");
+			barrier.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		}
+
+		for (auto *output : pass.get_resolve_outputs())
+		{
+			if (pass.get_stages() != VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT)
+				throw logic_error("Only graphics passes can resolve outputs.");
 
 			auto &barrier = get_flush_access(output->get_physical_index());
 			barrier.access |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;

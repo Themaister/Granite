@@ -56,12 +56,12 @@ static vec3 light_direction()
 	return normalize(vec3(0.5f, 1.2f, 0.8f));
 }
 
-bool SceneViewerApplication::ESMResolveImpl::need_render_pass(RenderPass &)
+bool SceneViewerApplication::VSMResolveImpl::need_render_pass(RenderPass &)
 {
 	return true;
 }
 
-void SceneViewerApplication::ESMResolveImpl::build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd)
+void SceneViewerApplication::VSMResolveImpl::build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd)
 {
 	cmd.set_input_attachments(0, 0);
 	CommandBufferUtil::draw_quad(cmd, "assets://shaders/quad.vert", "assets://shaders/lights/resolve_esm.frag");
@@ -264,14 +264,14 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 	shadowmap.format = swap.get_device().get_default_depth_format();
 	shadowmap.samples = 4;
 
-	AttachmentInfo esm_output;
-	esm_output.size_class = SizeClass::Absolute;
-	esm_output.size_x = 2048.0f;
-	esm_output.size_y = 2048.0f;
-	esm_output.format = VK_FORMAT_R32_SFLOAT;
-	esm_output.samples = 4;
-	auto esm = esm_output;
-	esm.samples = 1;
+	AttachmentInfo vsm_output;
+	vsm_output.size_class = SizeClass::Absolute;
+	vsm_output.size_x = 2048.0f;
+	vsm_output.size_y = 2048.0f;
+	vsm_output.format = VK_FORMAT_R32_SFLOAT;
+	vsm_output.samples = 4;
+	auto vsm = vsm_output;
+	vsm.samples = 1;
 
 	AttachmentInfo backbuffer;
 	AttachmentInfo emissive, albedo, normal, pbr, depth;
@@ -285,21 +285,21 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 	shadowpass.set_depth_stencil_output("shadowmap", shadowmap);
 	shadowpass.set_implementation(&lighting_impl.shadow);
 
-	auto &esm_resolve = graph.add_pass("esm-resolve", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
-	esm_resolve.add_attachment_input("shadowmap");
-	esm_resolve.add_color_output("esm-output", esm_output);
-	esm_resolve.add_resolve_output("esm-resolved", esm);
-	esm_resolve.set_implementation(&lighting_impl.esm);
+	auto &vsm_resolve = graph.add_pass("esm-resolve", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	vsm_resolve.add_attachment_input("shadowmap");
+	vsm_resolve.add_color_output("vsm-output", vsm_output);
+	vsm_resolve.add_resolve_output("vsm-resolved", vsm);
+	vsm_resolve.set_implementation(&lighting_impl.vsm);
 
-	auto &esm_vertical = graph.add_pass("esm-vertical", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
-	esm_vertical.add_texture_input("esm-resolved");
-	esm_vertical.add_color_output("esm-vertical", esm);
-	esm_vertical.set_implementation(&lighting_impl.esm_vertical);
+	auto &vsm_vertical = graph.add_pass("vsm-vertical", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	vsm_vertical.add_texture_input("vsm-resolved");
+	vsm_vertical.add_color_output("vsm-vertical", vsm);
+	vsm_vertical.set_implementation(&lighting_impl.vsm_vertical);
 
-	auto &esm_horizontal = graph.add_pass("esm-horizontal", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
-	esm_horizontal.add_texture_input("esm-vertical");
-	esm_horizontal.add_color_output("esm", esm);
-	esm_horizontal.set_implementation(&lighting_impl.esm_horizontal);
+	auto &vsm_horizontal = graph.add_pass("esm-horizontal", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	vsm_horizontal.add_texture_input("vsm-vertical");
+	vsm_horizontal.add_color_output("vsm", vsm);
+	vsm_horizontal.set_implementation(&lighting_impl.vsm_horizontal);
 
 	auto &gbuffer = graph.add_pass("gbuffer", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 	gbuffer.add_color_output("emissive", emissive);
@@ -316,7 +316,7 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 	lighting.add_attachment_input("pbr");
 	lighting.add_attachment_input("depth");
 	lighting.set_depth_stencil_input("depth");
-	lighting.add_texture_input("esm");
+	lighting.add_texture_input("vsm");
 	lighting.set_implementation(&lighting_impl);
 
 	TonemapPass::setup_hdr_postprocess(graph, "HDR", "tonemapped");

@@ -870,7 +870,8 @@ void RenderGraph::build_physical_passes()
 				return true;
 		}
 
-		return true;
+		// No reason to merge, so don't.
+		return false;
 	};
 
 	for (unsigned index = 0; index < pass_stack.size(); )

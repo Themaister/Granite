@@ -30,11 +30,15 @@ void main()
     const float w0 = 0.07142857;
     const float w1 = 0.14285;
     const float w2 = 0.285714;
-    color += textureLodOffset(uSampler, vUV, 0.0, ivec2(-2, 0)) * w0;
-    color += textureLodOffset(uSampler, vUV, 0.0, ivec2(-1, 0)) * w1;
-    color += textureLod(uSampler, vUV, 0.0) * w2;
-    color += textureLodOffset(uSampler, vUV, 0.0, ivec2(+1, 0)) * w1;
-    color += textureLodOffset(uSampler, vUV, 0.0, ivec2(+2, 0)) * w0;
+	const float weight = 1.0 / (w2 + w1 * 2.0 + w0 * 2.0);
+	const float W0 = w0 * weight;
+	const float W1 = w1 * weight;
+	const float W2 = w2 * weight;
+    color += textureLodOffset(uSampler, vUV, 0.0, ivec2(-2, 0)) * W0;
+    color += textureLodOffset(uSampler, vUV, 0.0, ivec2(-1, 0)) * W1;
+    color += textureLod(uSampler, vUV, 0.0) * W2;
+    color += textureLodOffset(uSampler, vUV, 0.0, ivec2(+1, 0)) * W1;
+    color += textureLodOffset(uSampler, vUV, 0.0, ivec2(+2, 0)) * W0;
 #elif METHOD == METHOD_7TAP_GAUSS_HORIZ
     const float w0 = 0.03007964045641579;
     const float w1 = 0.10496581333665146;
@@ -57,11 +61,15 @@ void main()
     const float w0 = 0.07142857;
     const float w1 = 0.14285;
     const float w2 = 0.285714;
-    color += textureLodOffset(uSampler, vUV, 0.0, ivec2(0, -2)) * w0;
-    color += textureLodOffset(uSampler, vUV, 0.0, ivec2(0, -1)) * w1;
-    color += textureLod(uSampler, vUV, 0.0) * w2;
-    color += textureLodOffset(uSampler, vUV, 0.0, ivec2(0, +1)) * w1;
-    color += textureLodOffset(uSampler, vUV, 0.0, ivec2(0, +2)) * w0;
+	const float weight = 1.0 / (w2 + w1 * 2.0 + w0 * 2.0);
+	const float W0 = w0 * weight;
+	const float W1 = w1 * weight;
+	const float W2 = w2 * weight;
+    color += textureLodOffset(uSampler, vUV, 0.0, ivec2(0, -2)) * W0;
+    color += textureLodOffset(uSampler, vUV, 0.0, ivec2(0, -1)) * W1;
+    color += textureLod(uSampler, vUV, 0.0) * W2;
+    color += textureLodOffset(uSampler, vUV, 0.0, ivec2(0, +1)) * W1;
+    color += textureLodOffset(uSampler, vUV, 0.0, ivec2(0, +2)) * W0;
 #elif METHOD == METHOD_7TAP_GAUSS_VERT
     const float w0 = 0.03007964045641579;
     const float w1 = 0.10496581333665146;

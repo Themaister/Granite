@@ -25,13 +25,29 @@ layout(std430, push_constant) uniform Registers
 	float environment_mipscale;
 } registers;
 
+float sample_vsm(vec4 clip_shadow)
+{
+    vec3 coord = clip_shadow.xyz / clip_shadow.w;
+    vec2 moments = texture(uShadowmap, coord.xy).xy;
+
+    float shadow_term = 1.0f;
+    if (coord.z > moments.x)
+    {
+        float variance = max(moments.y - moments.x * moments.x, 0.001);
+        float d = coord.z - moments.x;
+        shadow_term = variance / (variance + d * d);
+    }
+    return shadow_term;
+}
+
 float sample_esm(vec4 clip_shadow)
 {
     vec3 coord = clip_shadow.xyz / clip_shadow.w;
-    float e_z = texture(uShadowmap, coord.xy).x;
-    float e_d = 1000.0 * coord.z;
-
-    return clamp(exp2(1.0 * (e_z - e_d)), 0.0, 1.0);
+    float moment = texture(uShadowmap, coord.xy).x;
+	float value = moment * exp2(-100.0 * coord.z);
+	value *= value;
+	value *= value;
+	return clamp(value, 0.0, 1.0);
 }
 
 void main()

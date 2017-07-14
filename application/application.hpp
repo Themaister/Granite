@@ -177,15 +177,19 @@ private:
 	RenderGraph graph;
 
 	mat4 shadow_transform;
+	mat4 shadow_transform_near;
 	Vulkan::ImageView *shadow_map = nullptr;
+	Vulkan::ImageView *shadow_map_near = nullptr;
 	Vulkan::Texture *reflection = nullptr;
 	Vulkan::Texture *irradiance = nullptr;
 	bool need_shadow_map_update = true;
 	void update_shadow_map();
 	std::string skydome_reflection;
 	std::string skydome_irradiance;
+	AABB scene_aabb;
 
 	void lighting_pass(Vulkan::CommandBuffer &cmd);
+	void render_shadow_map_near(Vulkan::CommandBuffer &cmd);
 };
 
 extern int application_main(int argc, char *argv[]);

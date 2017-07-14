@@ -5,6 +5,7 @@
 layout(set = 0, binding = 1) uniform samplerCube uReflection;
 layout(set = 0, binding = 2) uniform samplerCube uIrradiance;
 layout(set = 0, binding = 3) uniform sampler2D uShadowmap;
+layout(set = 0, binding = 4) uniform sampler2D uShadowmapNear;
 
 layout(input_attachment_index = 0, set = 1, binding = 0) uniform subpassInput BaseColor;
 layout(input_attachment_index = 1, set = 1, binding = 1) uniform subpassInput Normal;
@@ -13,22 +14,26 @@ layout(input_attachment_index = 3, set = 1, binding = 3) uniform subpassInput De
 layout(location = 0) out vec3 FragColor;
 layout(location = 0) in vec4 vClip;
 layout(location = 1) in vec4 vShadowClip;
+layout(location = 2) in vec4 vShadowNearClip;
 
 layout(std430, push_constant) uniform Registers
 {
     vec4 inverse_view_projection_col2;
     vec4 shadow_projection_col2;
+    vec4 shadow_projection_near_col2;
     vec3 direction;
+    float inv_cutoff_distance;
     vec3 color;
 	float environment_intensity;
     vec3 camera_pos;
 	float environment_mipscale;
+	vec3 camera_front;
 } registers;
 
-float sample_vsm(vec4 clip_shadow)
+float sample_vsm(sampler2D shadowmap, vec4 clip_shadow)
 {
     vec3 coord = clip_shadow.xyz / clip_shadow.w;
-    vec2 moments = texture(uShadowmap, coord.xy).xy;
+    vec2 moments = texture(shadowmap, coord.xy).xy;
 
     float shadow_term = 1.0f;
     if (coord.z > moments.x)
@@ -63,12 +68,16 @@ void main()
 
     // Reconstruct position.
     vec4 clip = vClip + depth * registers.inverse_view_projection_col2;
+    vec3 pos = clip.xyz / clip.w;
 
     // Sample shadowmap.
+    vec4 clip_shadow_near = vShadowNearClip + depth * registers.shadow_projection_near_col2;
+    float shadow_term_near = sample_vsm(uShadowmapNear, clip_shadow_near);
     vec4 clip_shadow = vShadowClip + depth * registers.shadow_projection_col2;
-    float shadow_term = sample_vsm(clip_shadow);
-
-    vec3 pos = clip.xyz / clip.w;
+    float shadow_term_far = sample_vsm(uShadowmap, clip_shadow);
+    float view_z = dot(registers.camera_front, (pos - registers.camera_pos));
+    float shadow_lerp = clamp(4.0 * (view_z * registers.inv_cutoff_distance - 0.75), 0.0, 1.0);
+    float shadow_term = mix(shadow_term_near, shadow_term_far, shadow_lerp);
 
     // Compute directional light.
     vec3 L = registers.direction;

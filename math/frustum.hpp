@@ -13,6 +13,8 @@ public:
 
 	vec3 get_coord(float dx, float dy, float dz) const;
 
+	static vec4 get_bounding_sphere(const mat4 &inv_projection, const mat4 &inv_view);
+
 private:
 	vec4 planes[6];
 	mat4 inv_view_projection;

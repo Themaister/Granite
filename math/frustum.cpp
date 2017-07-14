@@ -31,6 +31,38 @@ vec3 Frustum::get_coord(float dx, float dy, float dz) const
 	return clip.xyz() / clip.w;
 }
 
+vec4 Frustum::get_bounding_sphere(const mat4 &inv_projection, const mat4 &inv_view)
+{
+	// Make sure that radius is numerically stable throughout, since we use that as a snapping factor potentially.
+	// Use the inverse projection to create the radius.
+
+	const auto get_coord = [&](float x, float y, float z) -> vec3 {
+		vec4 clip = vec4(x, y, z, 1.0f);
+		clip = inv_projection * clip;
+		return clip.xyz() / clip.w;
+	};
+
+	vec3 center_near = get_coord(0.0f, 0.0f, 0.0f);
+	vec3 center_far = get_coord(0.0f, 0.0f, 1.0f);
+
+	vec3 near_pos = get_coord(-1.0f, -1.0f, 0.0f);
+	vec3 far_pos = get_coord(+1.0f, +1.0f, 1.0f);
+
+	float C = length(center_far - center_near);
+	float N = dot(near_pos - center_near, near_pos - center_near);
+	float F = dot(far_pos - center_far, far_pos - center_far);
+
+	// Solve the equation:
+	// n^2 + x^2 == f^2 + (C - x)^2 =>
+	// N + x^2 == F + C^2 - 2Cx + x^2.
+	// x = (F - N + C^2) / 2C
+	float center_distance = (F - N + C * C) / (2.0f * C);
+	float radius = sqrt(center_distance * center_distance + N);
+	vec3 view_space_center = center_near + center_distance * normalize(center_far - center_near);
+	vec3 center = (inv_view * vec4(view_space_center, 1.0f)).xyz();
+	return vec4(center, radius);
+}
+
 void Frustum::build_planes(const mat4 &inv_view_projection)
 {
 	this->inv_view_projection = inv_view_projection;

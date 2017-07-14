@@ -52,6 +52,13 @@ void RenderContext::set_camera(const mat4 &projection, const mat4 &view)
 	camera.camera_right = camera.inv_view[0].xyz();
 	// Invert.
 	camera.camera_front = -camera.inv_view[2].xyz();
+
+	mat2 inv_zw(camera.inv_projection[2].zw(), camera.inv_projection[3].zw());
+	const auto project = [](const vec2 &zw) -> float {
+		return -zw.x / zw.y;
+	};
+	camera.z_near = project(inv_zw * vec2(0.0f, 1.0f));
+	camera.z_far = project(inv_zw * vec2(1.0f, 1.0f));
 }
 
 }

@@ -27,6 +27,8 @@ static vec3 light_direction()
 	return normalize(vec3(0.5f, 1.2f, 0.8f));
 }
 
+static const float cascade_cutoff_distance = 10.0f;
+
 void SceneViewerApplication::lighting_pass(Vulkan::CommandBuffer &cmd)
 {
 	cmd.set_quad_state();
@@ -57,35 +59,43 @@ void SceneViewerApplication::lighting_pass(Vulkan::CommandBuffer &cmd)
 	cmd.set_texture(0, 1, reflection->get_image()->get_view(), Vulkan::StockSampler::LinearClamp);
 	cmd.set_texture(0, 2, irradiance->get_image()->get_view(), Vulkan::StockSampler::LinearClamp);
 	cmd.set_texture(0, 3, *shadow_map, Vulkan::StockSampler::LinearClamp);
+	cmd.set_texture(0, 4, *shadow_map_near, Vulkan::StockSampler::LinearClamp);
 
 	struct DirectionalLightPush
 	{
 		vec4 inv_view_proj_col2;
 		vec4 shadow_col2;
-		vec4 direction;
+		vec4 shadow_near_col2;
+		vec4 direction_inv_cutoff;
 		vec4 color_env_intensity;
 		vec4 camera_pos_mipscale;
+		vec3 camera_front;
 	} push;
 
 	const float intensity = 1.0f;
 	const float mipscale = 6.0f;
 
 	mat4 total_shadow_transform = shadow_transform * context.get_render_parameters().inv_view_projection;
+	mat4 total_shadow_transform_near = shadow_transform_near * context.get_render_parameters().inv_view_projection;
 
 	struct DirectionalLightUBO
 	{
 		mat4 inv_view_projection;
 		mat4 shadow_transform;
+		mat4 shadow_transform_near;
 	};
 	auto *ubo = static_cast<DirectionalLightUBO *>(cmd.allocate_constant_data(0, 0, sizeof(DirectionalLightUBO)));
 	ubo->inv_view_projection = context.get_render_parameters().inv_view_projection;
 	ubo->shadow_transform = total_shadow_transform;
+	ubo->shadow_transform_near = total_shadow_transform_near;
 
 	push.inv_view_proj_col2 = context.get_render_parameters().inv_view_projection[2];
 	push.shadow_col2 = total_shadow_transform[2];
+	push.shadow_near_col2 = total_shadow_transform_near[2];
 	push.color_env_intensity = vec4(3.0f, 2.5f, 2.5f, intensity);
-	push.direction = vec4(light_direction(), 0.0f);
+	push.direction_inv_cutoff = vec4(light_direction(), 1.0f / cascade_cutoff_distance);
 	push.camera_pos_mipscale = vec4(context.get_render_parameters().camera_position, mipscale);
+	push.camera_front = context.get_render_parameters().camera_front;
 	cmd.push_constants(&push, 0, sizeof(push));
 
 	cmd.draw(4);
@@ -217,6 +227,9 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 	shadowmap.size_y = 2048.0f;
 	shadowmap.format = swap.get_device().get_default_depth_format();
 	shadowmap.samples = 4;
+	auto shadowmap_near = shadowmap;
+	shadowmap_near.size_x = 512.0f;
+	shadowmap_near.size_y = 512.0f;
 
 	AttachmentInfo vsm_output;
 	vsm_output.size_class = SizeClass::Absolute;
@@ -224,9 +237,16 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 	vsm_output.size_y = 2048.0f;
 	vsm_output.format = VK_FORMAT_R32G32_SFLOAT;
 	vsm_output.samples = 4;
+	auto vsm_output_near = vsm_output;
+	vsm_output_near.size_x = 512.0f;
+	vsm_output_near.size_y = 512.0f;
 
 	auto vsm_resolve_output = vsm_output;
 	vsm_resolve_output.samples = 1;
+	auto vsm_resolve_near_output = vsm_output;
+	vsm_resolve_near_output.samples = 1;
+	vsm_resolve_near_output.size_x = 512.0f;
+	vsm_resolve_near_output.size_y = 512.0f;
 	auto vsm = vsm_resolve_output;
 	auto vsm_mipmapped = vsm;
 	vsm_mipmapped.levels = 0;
@@ -257,11 +277,35 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 		return need_shadow_map_update;
 	});
 
+	auto &shadowpass_near = graph.add_pass("shadow-near", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	shadowpass_near.set_depth_stencil_output("shadowmap-near", shadowmap_near);
+	shadowpass_near.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
+		render_shadow_map_near(cmd);
+	});
+
+	shadowpass_near.set_get_clear_depth_stencil([](VkClearDepthStencilValue *value) -> bool {
+		if (value)
+		{
+			value->depth = 1.0f;
+			value->stencil = 0;
+		}
+		return true;
+	});
+
 	auto &vsm_resolve = graph.add_pass("vsm-resolve", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 	vsm_resolve.add_attachment_input("shadowmap");
 	vsm_resolve.add_color_output("vsm-output", vsm_output);
 	vsm_resolve.add_resolve_output("vsm-resolved", vsm_resolve_output);
 	vsm_resolve.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
+		cmd.set_input_attachments(0, 0);
+		CommandBufferUtil::draw_quad(cmd, "assets://shaders/quad.vert", "assets://shaders/lights/resolve_vsm.frag");
+	});
+
+	auto &vsm_resolve_near = graph.add_pass("vsm-resolve-near", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	vsm_resolve_near.add_attachment_input("shadowmap-near");
+	vsm_resolve_near.add_color_output("vsm-output-near", vsm_output_near);
+	vsm_resolve_near.add_resolve_output("vsm-resolved-near", vsm_resolve_near_output);
+	vsm_resolve_near.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
 		cmd.set_input_attachments(0, 0);
 		CommandBufferUtil::draw_quad(cmd, "assets://shaders/quad.vert", "assets://shaders/lights/resolve_vsm.frag");
 	});
@@ -292,6 +336,22 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 
 	vsm_horizontal.set_need_render_pass([this]() {
 		return need_shadow_map_update;
+	});
+
+	auto &vsm_vertical_near = graph.add_pass("vsm-vertical-near", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	vsm_vertical_near.add_texture_input("vsm-resolved-near");
+	vsm_vertical_near.add_color_output("vsm-vertical-near", vsm_resolve_near_output);
+	vsm_vertical_near.set_build_render_pass([this, &vsm_vertical_near](Vulkan::CommandBuffer &cmd) {
+		vsm_vertical_near.set_texture_inputs(cmd, 0, 0, Vulkan::StockSampler::NearestClamp);
+		CommandBufferUtil::draw_quad(cmd, "assets://shaders/quad.vert", "assets://shaders/blur.frag", {{ "METHOD", 3 }});
+	});
+
+	auto &vsm_horizontal_near = graph.add_pass("vsm-horizontal-near", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	vsm_horizontal_near.add_texture_input("vsm-vertical-near");
+	vsm_horizontal_near.add_color_output("vsm-near", vsm_resolve_near_output);
+	vsm_horizontal_near.set_build_render_pass([this, &vsm_horizontal_near](Vulkan::CommandBuffer &cmd) {
+		vsm_horizontal_near.set_texture_inputs(cmd, 0, 0, Vulkan::StockSampler::NearestClamp);
+		CommandBufferUtil::draw_quad(cmd, "assets://shaders/quad.vert", "assets://shaders/blur.frag", {{ "METHOD", 0 }});
 	});
 
 	auto &gbuffer = graph.add_pass("gbuffer", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
@@ -327,6 +387,7 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 	lighting.add_attachment_input("depth");
 	lighting.set_depth_stencil_input("depth");
 	lighting.add_texture_input("vsm");
+	lighting.add_texture_input("vsm-near");
 	lighting.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
 		lighting_pass(cmd);
 	});
@@ -360,6 +421,7 @@ void SceneViewerApplication::update_shadow_map()
 	AABB aabb(vec3(FLT_MAX), vec3(-FLT_MAX));
 	for (auto &caster : shadow_casters)
 		aabb.expand(get<0>(caster)->world_aabb);
+	scene_aabb = aabb;
 
 	mat4 view = mat4_cast(look_at(-light_direction(), vec3(0.0f, 1.0f, 0.0f)));
 
@@ -374,6 +436,37 @@ void SceneViewerApplication::update_shadow_map()
 	depth_renderer.begin();
 	scene.gather_visible_shadow_renderables(depth_context.get_visibility_frustum(), depth_visible);
 	depth_renderer.push_renderables(depth_context, depth_visible);
+}
+
+void SceneViewerApplication::render_shadow_map_near(Vulkan::CommandBuffer &cmd)
+{
+	auto &scene = scene_loader.get_scene();
+	depth_visible.clear();
+	mat4 view = mat4_cast(look_at(-light_direction(), vec3(0.0f, 1.0f, 0.0f)));
+	AABB ortho_range_depth = scene_aabb.transform(view); // Just need this to determine Zmin/Zmax.
+
+	auto near_camera = static_cast<Camera &>(cam);
+	near_camera.set_depth_range(near_camera.get_znear(), cascade_cutoff_distance);
+	vec4 sphere = Frustum::get_bounding_sphere(inverse(near_camera.get_projection()), inverse(near_camera.get_view()));
+	vec2 center_xy = (view * vec4(sphere.xyz(), 1.0f)).xy();
+	sphere.w *= 1.01f;
+
+	vec2 texel_size = vec2(2.0f * sphere.w) * vec2(1.0f / shadow_map_near->get_image().get_create_info().width,
+	                                               1.0f / shadow_map_near->get_image().get_create_info().height);
+
+	// Snap to texel grid.
+	center_xy = round(center_xy / texel_size) * texel_size;
+
+	AABB ortho_range = AABB(vec3(center_xy - vec2(sphere.w), ortho_range_depth.get_minimum().z),
+	                        vec3(center_xy + vec2(sphere.w), ortho_range_depth.get_maximum().z));
+
+	mat4 proj = ortho(ortho_range);
+	shadow_transform_near = glm::translate(vec3(0.5f, 0.5f, 0.0f)) * glm::scale(vec3(0.5f, 0.5f, 1.0f)) * proj * view;
+	depth_context.set_camera(proj, view);
+	depth_renderer.begin();
+	scene.gather_visible_shadow_renderables(depth_context.get_visibility_frustum(), depth_visible);
+	depth_renderer.push_renderables(depth_context, depth_visible);
+	depth_renderer.flush(cmd, depth_context);
 }
 
 void SceneViewerApplication::render_frame(double, double elapsed_time)
@@ -403,6 +496,7 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 	renderer.push_renderables(context, visible);
 	graph.setup_attachments(device, &device.get_swapchain_view());
 	shadow_map = &graph.get_physical_texture_resource(graph.get_texture_resource("vsm").get_physical_index());
+	shadow_map_near = &graph.get_physical_texture_resource(graph.get_texture_resource("vsm-near").get_physical_index());
 	if (need_shadow_map_update)
 		update_shadow_map();
 	graph.enqueue_render_passes(device);

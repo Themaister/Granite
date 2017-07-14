@@ -18,6 +18,9 @@ struct RenderParameters
 	alignas(vec4) vec3 camera_front;
 	alignas(vec4) vec3 camera_right;
 	alignas(vec4) vec3 camera_up;
+
+	float z_near;
+	float z_far;
 };
 
 struct FogParameters

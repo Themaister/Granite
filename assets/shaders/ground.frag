@@ -19,9 +19,10 @@ layout(push_constant, std430) uniform Constants
 layout(location = 1) in highp vec2 vUV;
 
 layout(set = 2, binding = 1) uniform sampler2D uNormalsTerrain;
-layout(set = 2, binding = 3) uniform mediump sampler2DArray uBaseColor;
-layout(set = 2, binding = 4) uniform sampler2D uSplatMap;
-layout(set = 2, binding = 5) uniform sampler2D uDeepRoughNormals;
+layout(set = 2, binding = 2) uniform sampler2D uOcclusionTerrain;
+layout(set = 2, binding = 4) uniform mediump sampler2DArray uBaseColor;
+layout(set = 2, binding = 5) uniform sampler2D uSplatMap;
+layout(set = 2, binding = 6) uniform sampler2D uDeepRoughNormals;
 
 layout(std140, set = 3, binding = 1) uniform GroundData
 {
@@ -60,7 +61,7 @@ void main()
     vec3 normal = normalize(mat3(registers.Normal) * terrain.xzy); // Normal is +Y, Bitangent is +Z.
 
     Emissive = vec3(0.0);
-    BaseColor = vec4(base_color, 1.0);
+    BaseColor = vec4(base_color, texture(uOcclusionTerrain, vUV).x);
     Normal = normal * 0.5 + 0.5;
     PBR = vec2(0.0, 1.0);
 }

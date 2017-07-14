@@ -93,6 +93,8 @@ static VkFormat gli_format_to_vk(gli::format format)
 	fmt(RG16_SFLOAT_PACK16, R16G16_SFLOAT);
 	fmt(R16_SFLOAT_PACK16, R16_SFLOAT);
 	fmt(RGB10A2_UNORM_PACK32, A2B10G10R10_UNORM_PACK32);
+	fmt(R8_UNORM_PACK8, R8_UNORM);
+	fmt(RG8_UNORM_PACK8, R8G8_UNORM);
 
 	default:
 		return VK_FORMAT_UNDEFINED;

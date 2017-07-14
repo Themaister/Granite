@@ -63,7 +63,7 @@ void main()
     vec2 mr = subpassLoad(PBR).xy;
     float metallic = mr.x;
     float roughness = mr.y * 0.75 + 0.25;
-    vec3 base_color = subpassLoad(BaseColor).rgb;
+    vec4 base_color_ambient = subpassLoad(BaseColor);
     vec3 N = subpassLoad(Normal).xyz * 2.0 - 1.0;
 
     // Reconstruct position.
@@ -90,7 +90,7 @@ void main()
     float HoV = clamp(dot(H, V), 0.001, 1.0);
     float LoV = clamp(dot(L, V), 0.001, 1.0);
 
-    vec3 F0 = compute_F0(base_color, metallic);
+    vec3 F0 = compute_F0(base_color_ambient.rgb, metallic);
 
     vec3 specular_fresnel = fresnel(F0, HoV);
     vec3 specref = blinn_specular(NoH, specular_fresnel, roughness);
@@ -100,7 +100,7 @@ void main()
 
     // IBL diffuse term.
     //vec3 envdiff = registers.environment_intensity * textureLod(uIrradiance, N, 10.0).rgb * (1.0 / PI);
-	vec3 envdiff = mix(vec3(0.2, 0.2, 0.2) / PI, vec3(0.2, 0.2, 0.3) / PI, clamp(N.y, 0.0, 1.0));
+	vec3 envdiff = base_color_ambient.a * mix(vec3(0.2, 0.2, 0.2) / PI, vec3(0.2, 0.2, 0.3) / PI, clamp(N.y, 0.0, 1.0));
 
     // IBL specular term.
     vec3 reflected = reflect(-V, N);
@@ -112,10 +112,10 @@ void main()
     vec2 brdf = image_based_brdf(roughness, NoV);
 
     vec3 iblspec = min(vec3(1.0), fresnel(F0, NoV) * brdf.x + brdf.y);
-    envspec *= iblspec;
+    envspec *= iblspec * base_color_ambient.a;
 
     vec3 reflected_light = specref + envspec;
-    vec3 diffuse_light = (diffref + envdiff) * base_color * (1.0 - metallic);
+    vec3 diffuse_light = (diffref + envdiff) * base_color_ambient.rgb * (1.0 - metallic);
     vec3 lighting = registers.color * (reflected_light + diffuse_light);
 
     FragColor = lighting;

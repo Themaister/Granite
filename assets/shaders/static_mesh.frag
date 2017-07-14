@@ -75,7 +75,7 @@ void main()
 #endif
 
     Emissive = vec3(0.0);
-    BaseColor = base_color;
+    BaseColor = vec4(base_color.rgb, 1.0);
     Normal = 0.5 * normal + 0.5;
     PBR = vec2(metallic, roughness);
 }

@@ -1,6 +1,8 @@
 #include "util.hpp"
 #include "gli/load.hpp"
 #include "gli/texture2d.hpp"
+#include "gli/generate_mipmaps.hpp"
+#include "gli/save.hpp"
 #include "math.hpp"
 #include "rapidjson/document.h"
 #include "rapidjson/writer.h"
@@ -8,6 +10,7 @@
 #include "rapidjson/istreamwrapper.h"
 #include <random>
 #include <fstream>
+#include <gli/core/filter.hpp>
 #include "FastNoise.h"
 #include "path.hpp"
 #include "tool_util.hpp"
@@ -168,9 +171,9 @@ static float get_neighbor_normal_y(const gli::texture &normals, int x, int y, in
 
 int main(int argc, char *argv[])
 {
-	if (argc != 6)
+	if (argc != 7)
 	{
-		LOGE("Usage: %s heightmap normalmap splatmap scene-desc scene-output\n", argv[0]);
+		LOGE("Usage: %s heightmap normalmap splatmap scene-desc scene-output occlusionmap\n", argv[0]);
 		return 1;
 	}
 
@@ -277,6 +280,7 @@ int main(int argc, char *argv[])
 	Value terrain(kObjectType);
 	terrain.AddMember("heightmap", "../textures/heightmap.ktx", allocator);
 	terrain.AddMember("normalmap", "../textures/normalmap.ktx", allocator);
+	terrain.AddMember("occlusionmap", "../textures/occlusionmap.ktx", allocator);
 	terrain.AddMember("translation", t, allocator);
 	terrain.AddMember("scale", s, allocator);
 	terrain.AddMember("lodBias", 0.0f, allocator);
@@ -330,4 +334,16 @@ int main(int argc, char *argv[])
 
 	fputs(buffer.GetString(), file);
 	fclose(file);
+
+	gli::texture2d clutter_mask_unorm(gli::FORMAT_R8_UNORM_PACK8, gli::extent2d(width, height), num_miplevels(width, height));
+	uint8_t *data = static_cast<uint8_t *>(clutter_mask_unorm.data());
+	for (int i = 0; i < width * height; i++)
+		data[i] = uint8_t(clamp(round(clutter[i] * 255.0f), 64.0f, 255.0f));
+	clutter_mask_unorm = gli::generate_mipmaps(clutter_mask_unorm, gli::FILTER_LINEAR);
+
+	if (!gli::save(clutter_mask_unorm, argv[6]))
+	{
+		LOGE("Failed to save clutter mask texture.\n");
+		return 1;
+	}
 }

@@ -63,6 +63,7 @@ public:
 	{
 		std::string heightmap;
 		std::string normalmap;
+		std::string occlusionmap;
 		std::string base_color;
 		std::string splatmap;
 		std::string normalmap_fine;
@@ -124,6 +125,7 @@ private:
 	void refresh(RenderContext &context) override;
 	Vulkan::Texture *heights = nullptr;
 	Vulkan::Texture *normals = nullptr;
+	Vulkan::Texture *occlusion = nullptr;
 	Vulkan::Texture *normals_fine = nullptr;
 	Vulkan::Texture *base_color = nullptr;
 	Vulkan::Texture *type_map = nullptr;

@@ -47,7 +47,7 @@ void skybox_to_fog_color(vec4 &out_color, const gli::texture &cube)
 		return;
 	}
 
-	using Pixel = tvec4<uint8_t>;
+	using Pixel = u8vec4;
 
 	for (size_t face = 0; face < cube.faces(); face++)
 	{

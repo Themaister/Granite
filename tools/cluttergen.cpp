@@ -49,7 +49,7 @@ static float sample_heightmap(const gli::texture &tex, float x, float y)
 
 static void add_geometry(vector<vec3> &objects, mt19937 &rnd, const gli::texture &heightmap, const gli::texture &splatmap,
                          float *clutter, int width, int height,
-                         int damage_radius, float damage_weight,
+                         int damage_radius,
                          float min_weight, float max_weight,
                          unsigned count,
                          const vec4 &splat_weights)
@@ -61,6 +61,8 @@ static void add_geometry(vector<vec3> &objects, mt19937 &rnd, const gli::texture
 
 	FastNoise noise;
 	noise.SetFrequency(0.004f);
+
+	float damage_weight = 3.0f / float(damage_radius * damage_radius);
 
 	const auto clustering_sample = [&noise](float x, float y) -> float {
 		auto value = noise.GetSimplex(x, y);
@@ -108,7 +110,7 @@ static void add_geometry(vector<vec3> &objects, mt19937 &rnd, const gli::texture
 					float dist_x = damage_x - x;
 					float dist_y = damage_y - y;
 					float dist_sqr = dist_x * dist_x + dist_y * dist_y;
-					clutter[damage_y * width + damage_x] -= exp2(-damage_weight * dist_sqr);
+					clutter[damage_y * width + damage_x] -= 1.5f * exp2(-damage_weight * dist_sqr);
 				}
 			}
 		}
@@ -226,7 +228,6 @@ int main(int argc, char *argv[])
 	int width = splatmap.extent(0).x;
 	int height = splatmap.extent(0).y;
 
-	using Pixel = tvec4<uint8_t>;
 	auto *clutter = static_cast<float *>(clutter_mask.data());
 
 	for (int y = 0; y < height; y++)
@@ -253,7 +254,7 @@ int main(int argc, char *argv[])
 		vector<vec3> objects;
 		add_geometry(objects, rnd, heightmap, splatmap,
 		             clutter, width, height,
-		             type["damageRadius"].GetInt(), type["damageFactor"].GetFloat(),
+		             type["damageRadius"].GetInt(),
 		             type["minWeight"].GetFloat(), type["maxWeight"].GetFloat(),
 		             type["count"].GetUint(),
 		             vec4(type["splatTypes"][0].GetFloat(),
@@ -311,7 +312,8 @@ int main(int argc, char *argv[])
 					LOGE("Failed to load skydome: %s\n", skydome_path.c_str());
 					return 1;
 				}
-				vec4 color = skybox_to_fog_color(skydome);
+				vec4 color;
+				skybox_to_fog_color(color, skydome);
 				Value v(kArrayType);
 				v.PushBack(color.r, allocator);
 				v.PushBack(color.g, allocator);
@@ -338,7 +340,7 @@ int main(int argc, char *argv[])
 	gli::texture2d clutter_mask_unorm(gli::FORMAT_R8_UNORM_PACK8, gli::extent2d(width, height), num_miplevels(width, height));
 	uint8_t *data = static_cast<uint8_t *>(clutter_mask_unorm.data());
 	for (int i = 0; i < width * height; i++)
-		data[i] = uint8_t(clamp(round(clutter[i] * 255.0f), 64.0f, 255.0f));
+		data[i] = uint8_t(clamp(round((clutter[i] * 0.75f + 0.25f) * 255.0f), 32.0f, 255.0f));
 	clutter_mask_unorm = gli::generate_mipmaps(clutter_mask_unorm, gli::FILTER_LINEAR);
 
 	if (!gli::save(clutter_mask_unorm, argv[6]))

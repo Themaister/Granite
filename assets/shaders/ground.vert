@@ -8,7 +8,7 @@ layout(location = 0) out mediump vec3 vEyeVec;
 layout(location = 1) out highp vec2 vUV;
 
 layout(set = 2, binding = 0) uniform sampler2D uHeightmap;
-layout(set = 2, binding = 2) uniform sampler2D uLodMap;
+layout(set = 2, binding = 3) uniform sampler2D uLodMap;
 
 struct PatchData
 {

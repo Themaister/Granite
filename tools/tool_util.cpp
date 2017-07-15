@@ -28,7 +28,7 @@ static float srgb_conv(float v)
 		return pow((v + 0.055f) * (1.0f / 1.055f), 2.4f);
 }
 
-vec4 skybox_to_fog_color(const gli::texture &cube)
+void skybox_to_fog_color(vec4 &out_color, const gli::texture &cube)
 {
 	int width = cube.extent().x;
 	int height = cube.extent().y;
@@ -43,7 +43,8 @@ vec4 skybox_to_fog_color(const gli::texture &cube)
 	else
 	{
 		LOGE("Unrecognized cubemap format, returning white.\n");
-		return vec4(1.0f);
+		out_color = vec4(1.0f);
+		return;
 	}
 
 	using Pixel = tvec4<uint8_t>;
@@ -70,7 +71,7 @@ vec4 skybox_to_fog_color(const gli::texture &cube)
 	}
 
 	auto res = color / vec3(cube.faces() * width * height);
-	return vec4(res, 1.0f);
+	out_color = vec4(res, 1.0f);
 }
 
 void filter_tiling_artifacts(gli::texture &target, unsigned level, const gli::image &image)

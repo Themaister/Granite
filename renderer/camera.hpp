@@ -26,6 +26,8 @@ public:
 
 	vec3 get_up() const;
 
+	vec3 get_position() const;
+
 	const quat &get_rotation() const
 	{
 		return rotation;

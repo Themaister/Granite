@@ -49,6 +49,11 @@ mat4 Camera::get_projection() const
 	return projection(fovy, aspect, znear, zfar);
 }
 
+vec3 Camera::get_position() const
+{
+	return position;
+}
+
 vec3 Camera::get_front() const
 {
 	static const vec3 z(0.0f, 0.0f, -1.0f);

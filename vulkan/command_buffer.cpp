@@ -1393,15 +1393,8 @@ void CommandBuffer::save_state(CommandBufferSaveStateFlags flags, CommandBufferS
 	state.flags = flags;
 }
 
-void CommandBufferUtil::draw_quad(CommandBuffer &cmd, const std::string &vertex, const std::string &fragment,
-                                  const std::vector<std::pair<std::string, int>> &defines)
+void CommandBufferUtil::set_quad_vertex_state(CommandBuffer &cmd)
 {
-	auto &device = cmd.get_device();
-	auto *program = device.get_shader_manager().register_graphics(vertex, fragment);
-	unsigned variant = program->register_variant(defines);
-	cmd.set_program(*program->get_program(variant));
-	cmd.set_quad_state();
-
 	int8_t *data = static_cast<int8_t *>(cmd.allocate_vertex_data(0, 8, 2));
 	*data++ = -128;
 	*data++ = +127;
@@ -1413,6 +1406,17 @@ void CommandBufferUtil::draw_quad(CommandBuffer &cmd, const std::string &vertex,
 	*data++ = -128;
 
 	cmd.set_vertex_attrib(0, 0, VK_FORMAT_R8G8_SNORM, 0);
+}
+
+void CommandBufferUtil::draw_quad(CommandBuffer &cmd, const std::string &vertex, const std::string &fragment,
+                                  const std::vector<std::pair<std::string, int>> &defines)
+{
+	auto &device = cmd.get_device();
+	auto *program = device.get_shader_manager().register_graphics(vertex, fragment);
+	unsigned variant = program->register_variant(defines);
+	cmd.set_program(*program->get_program(variant));
+	cmd.set_quad_state();
+	set_quad_vertex_state(cmd);
 	cmd.draw(4);
 }
 }

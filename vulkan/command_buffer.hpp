@@ -536,6 +536,7 @@ struct CommandBufferUtil
 {
 	static void draw_quad(CommandBuffer &cmd, const std::string &vertex, const std::string &fragment,
                           const std::vector<std::pair<std::string, int>> &defines = {});
+	static void set_quad_vertex_state(CommandBuffer &cmd);
 };
 
 using CommandBufferHandle = Util::IntrusivePtr<CommandBuffer>;

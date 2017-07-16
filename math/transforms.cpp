@@ -4,7 +4,7 @@
 namespace Granite
 {
 bool compute_plane_reflection(mat4 &projection, mat4 &view, vec3 camera_pos, vec3 center, vec3 normal, vec3 look_up,
-                              float radius_x, float radius_z, float &z_near, float z_far)
+                              float radius_up, float radius_other, float &z_near, float z_far)
 {
 	normal = normalize(normal);
 
@@ -24,12 +24,12 @@ bool compute_plane_reflection(mat4 &projection, mat4 &view, vec3 camera_pos, vec
 	view = mat4_cast(look_at(normal, look_up)) * glm::translate(-camera_pos);
 
 	float dist_x = dot(look_pos_x, center - camera_pos);
-	float left = dist_x - radius_z;
-	float right = dist_x + radius_z;
+	float left = dist_x - radius_other;
+	float right = dist_x + radius_other;
 
 	float dist_y = dot(look_up, center - camera_pos);
-	float bottom = dist_y - radius_x;
-	float top = dist_y + radius_x;
+	float bottom = dist_y - radius_up;
+	float top = dist_y + radius_up;
 
 	z_near = over_plane;
 	projection = glm::scale(vec3(1.0f, -1.0f, 1.0f)) * glm::frustum(left, right, bottom, top, over_plane, z_far);

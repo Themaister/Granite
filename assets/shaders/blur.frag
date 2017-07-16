@@ -83,6 +83,9 @@ void main()
     color += textureLodOffset(uSampler, vUV, 0.0, ivec2(0, +2)) * w1;
     color += textureLodOffset(uSampler, vUV, 0.0, ivec2(0, +3)) * w0;
 #elif METHOD == METHOD_3x3_TAP_GAUSS
+    const float w0 = 0.0625;
+    const float w1 = 0.125;
+    const float w2 = 0.25;
     color += textureLodOffset(uSampler, vUV, 0.0, ivec2(-1, -1)) * w0;
     color += textureLodOffset(uSampler, vUV, 0.0, ivec2(+0, -1)) * w1;
     color += textureLodOffset(uSampler, vUV, 0.0, ivec2(+1, -1)) * w0;

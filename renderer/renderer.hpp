@@ -15,6 +15,7 @@ enum class RenderableType
 	Ground,
 	Sprite,
 	LineUI,
+	TexturePlane,
 	Count
 };
 

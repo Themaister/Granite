@@ -328,4 +328,57 @@ void Skybox::on_device_destroyed(const Event &)
 	texture = nullptr;
 }
 
+struct TexturePlaneInfo : RenderInfo
+{
+	Vulkan::Program *program;
+	const Vulkan::ImageView *view;
+
+	struct Push
+	{
+		vec4 normal;
+		vec4 tangent;
+		vec4 bitangent;
+		vec4 position;
+		vec4 dPdx;
+		vec4 dPdy;
+	};
+	Push push;
+};
+
+static void texture_plane_render(CommandBuffer &cmd, const RenderInfo **infos, unsigned instances)
+{
+	for (unsigned i = 0; i < instances; i++)
+	{
+		auto &info = *static_cast<const TexturePlaneInfo *>(infos[i]);
+		cmd.set_program(*info.program);
+		cmd.set_texture(2, 0, *info.view, Vulkan::StockSampler::LinearClamp);
+		CommandBufferUtil::set_quad_vertex_state(cmd);
+		cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
+		cmd.set_cull_mode(VK_CULL_MODE_NONE);
+		cmd.push_constants(&info.push, 0, sizeof(info.push));
+		cmd.draw(4);
+	}
+}
+
+void TexturePlane::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
+                                   RenderQueue &queue) const
+{
+	assert(!transform);
+	auto &info = queue.emplace<TexturePlaneInfo>(Queue::Opaque);
+
+	info.view = reflection;
+	info.program = queue.get_shader_suites()[ecast(RenderableType::TexturePlane)].get_program(DrawPipeline::Opaque, 0, 0).get();
+	info.push.normal = vec4(normalize(normal), 0.0f);
+	info.push.position = vec4(position, 0.0f);
+	info.push.dPdx = vec4(dpdx, 0.0f);
+	info.push.dPdy = vec4(dpdy, 0.0f);
+	info.render = texture_plane_render;
+
+	Hasher h;
+	h.pointer(info.program);
+	info.sorting_key = RenderInfo::get_sort_key(context, Queue::Opaque, h.get(), h.get(), position);
+	h.u64(info.view->get_cookie());
+	info.instance_key = h.get();
+}
+
 }

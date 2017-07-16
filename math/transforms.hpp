@@ -8,7 +8,7 @@ namespace Granite
 class AABB;
 
 bool compute_plane_reflection(mat4 &projection, mat4 &view, vec3 camera_pos, vec3 center, vec3 normal, vec3 look_up,
-                              float radius_x, float radius_z, float &z_near, float z_far);
+                              float radius_up, float radius_other, float &z_near, float z_far);
 
 void compute_model_transform(mat4 &world, vec3 scale, quat rotation, vec3 translation, const mat4 &parent);
 

@@ -35,6 +35,9 @@ void Renderer::on_device_created(const Event &e)
 		                                                   "assets://shaders/skybox.frag");
 		suite[ecast(RenderableType::Ground)].init_graphics(&device.get_shader_manager(), "assets://shaders/ground.vert",
 		                                                   "assets://shaders/ground.frag");
+		suite[ecast(RenderableType::TexturePlane)].init_graphics(&device.get_shader_manager(),
+		                                                         "assets://shaders/texture_plane.vert",
+		                                                         "assets://shaders/texture_plane.frag");
 	}
 	else if (type == Type::DepthOnly)
 	{

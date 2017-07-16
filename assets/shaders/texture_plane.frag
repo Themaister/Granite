@@ -25,6 +25,6 @@ void main()
 {
     Emissive = texture(uReflection, vUV).rgb;
     Normal = registers.normal * 0.5 + 0.5;
-    BaseColor = vec4(0.02, 0.02, 0.02, 1.0);
-    PBR = vec2(1.0, 1.0); // No diffuse, no specular, only reflection.
+    BaseColor = vec4(0.0, 0.0, 0.0, 1.0);
+    PBR = vec2(0.0, 1.0); // No diffuse, no specular, only reflection.
 }

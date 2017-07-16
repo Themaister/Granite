@@ -121,7 +121,8 @@ void SceneViewerApplication::lighting_pass(Vulkan::CommandBuffer &cmd, bool refl
 
 SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned width, unsigned height)
 	: Application(width, height),
-      depth_renderer(Renderer::Type::DepthOnly)
+      depth_renderer(Renderer::Type::DepthOnly),
+      plane_reflection("assets://gltf-sandbox/textures/ocean_normal.png")
 {
 	scene_loader.load_scene(path);
 	animation_system = scene_loader.consume_animation_system();

@@ -13,6 +13,7 @@ layout(std430, push_constant) uniform Registers
     vec3 position;
     vec3 dPdx;
     vec3 dPdy;
+    vec4 offset;
 } registers;
 
 void main()

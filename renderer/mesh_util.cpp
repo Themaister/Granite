@@ -5,6 +5,7 @@
 #include "render_context.hpp"
 #include "shader_suite.hpp"
 #include "renderer.hpp"
+#include "application.hpp"
 #include <string.h>
 
 using namespace Vulkan;
@@ -332,6 +333,7 @@ struct TexturePlaneInfo : RenderInfo
 {
 	Vulkan::Program *program;
 	const Vulkan::ImageView *view;
+	const Vulkan::ImageView *normal;
 
 	struct Push
 	{
@@ -341,6 +343,7 @@ struct TexturePlaneInfo : RenderInfo
 		vec4 position;
 		vec4 dPdx;
 		vec4 dPdy;
+		vec4 offset_scale;
 	};
 	Push push;
 };
@@ -351,13 +354,40 @@ static void texture_plane_render(CommandBuffer &cmd, const RenderInfo **infos, u
 	{
 		auto &info = *static_cast<const TexturePlaneInfo *>(infos[i]);
 		cmd.set_program(*info.program);
-		cmd.set_texture(2, 0, *info.view, Vulkan::StockSampler::LinearClamp);
+		cmd.set_texture(2, 0, *info.view, Vulkan::StockSampler::TrilinearClamp);
+		cmd.set_texture(2, 1, *info.normal, Vulkan::StockSampler::TrilinearWrap);
 		CommandBufferUtil::set_quad_vertex_state(cmd);
 		cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
 		cmd.set_cull_mode(VK_CULL_MODE_NONE);
 		cmd.push_constants(&info.push, 0, sizeof(info.push));
 		cmd.draw(4);
 	}
+}
+
+TexturePlane::TexturePlane(const std::string &normal)
+	: normal_path(normal)
+{
+	EventManager::get_global().register_latch_handler(DeviceCreatedEvent::type_id,
+	                                                  &TexturePlane::on_device_created,
+	                                                  &TexturePlane::on_device_destroyed,
+	                                                  this);
+	EventManager::get_global().register_handler(FrameTickEvent::type_id, &TexturePlane::on_frame_time, this);
+}
+
+bool TexturePlane::on_frame_time(const Event &e)
+{
+	elapsed = e.as<FrameTickEvent>().get_elapsed_time();
+	return true;
+}
+
+void TexturePlane::on_device_created(const Event &event)
+{
+	normalmap = event.as<DeviceCreatedEvent>().get_device().get_texture_manager().request_texture(normal_path);
+}
+
+void TexturePlane::on_device_destroyed(const Event &)
+{
+	normalmap = nullptr;
 }
 
 void TexturePlane::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
@@ -367,12 +397,16 @@ void TexturePlane::get_render_info(const RenderContext &context, const CachedSpa
 	auto &info = queue.emplace<TexturePlaneInfo>(Queue::Opaque);
 
 	info.view = reflection;
+	info.normal = &normalmap->get_image()->get_view();
 	info.program = queue.get_shader_suites()[ecast(RenderableType::TexturePlane)].get_program(DrawPipeline::Opaque, 0, 0).get();
 	info.push.normal = vec4(normalize(normal), 0.0f);
 	info.push.position = vec4(position, 0.0f);
 	info.push.dPdx = vec4(dpdx, 0.0f);
 	info.push.dPdy = vec4(dpdy, 0.0f);
+	info.push.tangent = vec4(normalize(dpdx), 0.0f);
+	info.push.bitangent = vec4(normalize(dpdy), 0.0f);
 	info.render = texture_plane_render;
+	info.push.offset_scale = vec4(vec2(0.03 * elapsed), vec2(2.0f));
 
 	Hasher h;
 	h.pointer(info.program);

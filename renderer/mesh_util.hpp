@@ -58,13 +58,14 @@ private:
 	Vulkan::Texture *texture = nullptr;
 
 	void on_device_created(const Event &event);
-
 	void on_device_destroyed(const Event &event);
 };
 
-class TexturePlane : public AbstractRenderable
+class TexturePlane : public AbstractRenderable, public EventHandler
 {
 public:
+	TexturePlane(const std::string &normal);
+
 	void get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
 	                     RenderQueue &queue) const override;
 
@@ -94,10 +95,16 @@ public:
 	}
 
 private:
+	std::string normal_path;
 	const Vulkan::ImageView *reflection = nullptr;
+	Vulkan::Texture *normalmap = nullptr;
 	vec3 position;
 	vec3 normal;
 	vec3 dpdx;
 	vec3 dpdy;
+	double elapsed = 0.0f;
+	void on_device_created(const Event &event);
+	void on_device_destroyed(const Event &event);
+	bool on_frame_time(const Event &e);
 };
 }

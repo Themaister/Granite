@@ -945,7 +945,7 @@ void CommandBuffer::set_buffer_view(unsigned set, unsigned binding, const Buffer
 void CommandBuffer::set_input_attachments(unsigned set, unsigned start_binding)
 {
 	VK_ASSERT(set < VULKAN_NUM_DESCRIPTOR_SETS);
-	VK_ASSERT(start_binding + render_pass->get_num_input_attachments(current_subpass) <= VULKAN_NUM_DESCRIPTOR_SETS);
+	VK_ASSERT(start_binding + render_pass->get_num_input_attachments(current_subpass) <= VULKAN_NUM_BINDINGS);
 	unsigned num_input_attachments = render_pass->get_num_input_attachments(current_subpass);
 	for (unsigned i = 0; i < num_input_attachments; i++)
 	{

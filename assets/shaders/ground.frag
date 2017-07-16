@@ -1,8 +1,6 @@
 #version 310 es
 precision mediump float;
 
-#include "inc/fog.h"
-
 layout(location = 0) out vec3 Emissive;
 layout(location = 1) out vec4 BaseColor;
 layout(location = 2) out vec3 Normal;

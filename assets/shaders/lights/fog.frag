@@ -1,7 +1,7 @@
 #version 310 es
 precision highp float;
 
-#include "../inc/fog.h"
+#include "fog.h"
 
 layout(std430, push_constant) uniform Registers
 {
@@ -11,7 +11,7 @@ layout(std430, push_constant) uniform Registers
     float falloff;
 } registers;
 
-layout(input_attachment_index = 3, set = 1, binding = 3) uniform highp subpassInput Depth;
+layout(input_attachment_index = 3, set = 0, binding = 4) uniform highp subpassInput Depth;
 layout(location = 0) in highp vec4 vClip;
 layout(location = 0) out vec4 FragColor;
 

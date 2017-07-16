@@ -32,7 +32,7 @@ static const float cascade_cutoff_distance = 10.0f;
 void SceneViewerApplication::lighting_pass(Vulkan::CommandBuffer &cmd)
 {
 	cmd.set_quad_state();
-	cmd.set_input_attachments(1, 0);
+	cmd.set_input_attachments(0, 1);
 	cmd.set_blend_enable(true);
 	cmd.set_blend_factors(VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_ONE);
 	cmd.set_blend_op(VK_BLEND_OP_ADD);
@@ -56,10 +56,10 @@ void SceneViewerApplication::lighting_pass(Vulkan::CommandBuffer &cmd)
 	cmd.set_depth_test(true, false);
 	cmd.set_depth_compare(VK_COMPARE_OP_GREATER);
 	assert(reflection && irradiance);
-	cmd.set_texture(0, 1, reflection->get_image()->get_view(), Vulkan::StockSampler::LinearClamp);
-	cmd.set_texture(0, 2, irradiance->get_image()->get_view(), Vulkan::StockSampler::LinearClamp);
-	cmd.set_texture(0, 3, *shadow_map, Vulkan::StockSampler::LinearClamp);
-	cmd.set_texture(0, 4, *shadow_map_near, Vulkan::StockSampler::LinearClamp);
+	cmd.set_texture(1, 0, reflection->get_image()->get_view(), Vulkan::StockSampler::LinearClamp);
+	cmd.set_texture(1, 1, irradiance->get_image()->get_view(), Vulkan::StockSampler::LinearClamp);
+	cmd.set_texture(1, 2, *shadow_map, Vulkan::StockSampler::LinearClamp);
+	cmd.set_texture(1, 3, *shadow_map_near, Vulkan::StockSampler::LinearClamp);
 
 	struct DirectionalLightPush
 	{

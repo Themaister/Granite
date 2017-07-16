@@ -3,6 +3,43 @@
 
 namespace Granite
 {
+bool compute_plane_reflection(mat4 &projection, mat4 &view, vec3 camera_pos, vec3 center, vec3 normal, vec3 look_up,
+                              float radius_x, float radius_z, float &z_near, float z_far)
+{
+	normal = normalize(normal);
+
+	// Reflect the camera position from the plane.
+	float over_plane = dot(normal, camera_pos - center);
+	if (over_plane <= 0.0f)
+		return false;
+
+	camera_pos -= 2.0f * over_plane * normal;
+
+	// The look direction is up through the plane direction.
+	// This way we avoid skewed near and far planes (i.e. oblique).
+	// Make sure look_up is perpendicular to normal.
+	vec3 look_pos_x = normalize(cross(normal, look_up));
+	look_up = normalize(cross(look_pos_x, normal));
+
+	view = mat4_cast(look_at(normal, look_up));
+
+	float dist_x = dot(look_pos_x, center - camera_pos);
+	float left = dist_x - radius_x;
+	float right = dist_x + radius_x;
+
+	float dist_y = dot(look_up, center - camera_pos);
+	float bottom = dist_y - radius_z;
+	float top = dist_y + radius_z;
+
+	z_near = over_plane;
+	projection = glm::scale(vec3(1.0f, -1.0f, 1.0f)) * glm::frustum(left, right, bottom, top, over_plane, z_far);
+
+	if (z_near >= z_far)
+		return false;
+
+	return true;
+}
+
 void compute_model_transform(mat4 &world, vec3 scale, quat rotation, vec3 translation, const mat4 &parent)
 {
 	mat4 S = glm::scale(scale);

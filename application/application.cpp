@@ -191,6 +191,16 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned
 	                                                  &SceneViewerApplication::on_device_created,
 	                                                  &SceneViewerApplication::on_device_destroyed,
 	                                                  this);
+
+	mat4 proj;
+	mat4 view;
+
+	float z_near = 0.0f;
+	bool working = compute_plane_reflection(proj, view, vec3(0.0f, 1.0f, 0.0f), vec3(0.0f, 0.0f, 0.0f),
+	                                        vec3(0.0f, 1.0f, 0.0f), vec3(1.0f, 0.0f, 0.0f),
+	                                        10.0f, 5.0f, z_near, 100.0f);
+
+	LOGI("Znear = %f\n", z_near);
 }
 
 void SceneViewerApplication::on_device_created(const Event &e)
@@ -204,6 +214,18 @@ void SceneViewerApplication::on_device_destroyed(const Event &)
 {
 	reflection = nullptr;
 	irradiance = nullptr;
+}
+
+void SceneViewerApplication::render_main_pass(Vulkan::CommandBuffer &cmd)
+{
+	auto &scene = scene_loader.get_scene();
+	context.set_camera(cam);
+	visible.clear();
+	scene.gather_visible_opaque_renderables(context.get_visibility_frustum(), visible);
+	scene.gather_background_renderables(visible);
+	renderer.begin();
+	renderer.push_renderables(context, visible);
+	renderer.flush(cmd, context);
 }
 
 void SceneViewerApplication::on_swapchain_changed(const Event &e)
@@ -262,7 +284,7 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 	auto &shadowpass = graph.add_pass("shadow", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 	shadowpass.set_depth_stencil_output("shadowmap", shadowmap);
 	shadowpass.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
-		depth_renderer.flush(cmd, depth_context);
+		render_shadow_map_far(cmd);
 	});
 	shadowpass.set_get_clear_depth_stencil([](VkClearDepthStencilValue *value) -> bool {
 		if (value)
@@ -361,7 +383,7 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 	gbuffer.add_color_output("pbr", pbr);
 	gbuffer.set_depth_stencil_output("depth", depth);
 	gbuffer.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
-		renderer.flush(cmd, context);
+		render_main_pass(cmd);
 	});
 
 	gbuffer.set_get_clear_depth_stencil([](VkClearDepthStencilValue *value) -> bool {
@@ -438,6 +460,12 @@ void SceneViewerApplication::update_shadow_map()
 	depth_renderer.push_renderables(depth_context, depth_visible);
 }
 
+void SceneViewerApplication::render_shadow_map_far(Vulkan::CommandBuffer &cmd)
+{
+	update_shadow_map();
+	depth_renderer.flush(cmd, depth_context);
+}
+
 void SceneViewerApplication::render_shadow_map_near(Vulkan::CommandBuffer &cmd)
 {
 	auto &scene = scene_loader.get_scene();
@@ -475,13 +503,9 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 	auto &scene = scene_loader.get_scene();
 	auto &device = wsi.get_device();
 
-	context.set_camera(cam);
 	animation_system->animate(elapsed_time);
 	scene.update_cached_transforms();
 	scene.refresh_per_frame(context);
-
-	context.set_camera(cam);
-	visible.clear();
 
 	window->set_background_color(vec4(1.0f));
 	window->set_margin(5);
@@ -489,16 +513,9 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 	window->set_title("My Window");
 	//window->set_target_geometry(window->get_target_geometry() + vec2(1.0f));
 
-	scene.gather_visible_opaque_renderables(context.get_visibility_frustum(), visible);
-	scene.gather_background_renderables(visible);
-
-	renderer.begin();
-	renderer.push_renderables(context, visible);
 	graph.setup_attachments(device, &device.get_swapchain_view());
 	shadow_map = &graph.get_physical_texture_resource(graph.get_texture_resource("vsm").get_physical_index());
 	shadow_map_near = &graph.get_physical_texture_resource(graph.get_texture_resource("vsm-near").get_physical_index());
-	if (need_shadow_map_update)
-		update_shadow_map();
 	graph.enqueue_render_passes(device);
 
 	need_shadow_map_update = false;

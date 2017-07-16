@@ -191,16 +191,6 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned
 	                                                  &SceneViewerApplication::on_device_created,
 	                                                  &SceneViewerApplication::on_device_destroyed,
 	                                                  this);
-
-	mat4 proj;
-	mat4 view;
-
-	float z_near = 0.0f;
-	bool working = compute_plane_reflection(proj, view, vec3(0.0f, 1.0f, 0.0f), vec3(0.0f, 0.0f, 0.0f),
-	                                        vec3(0.0f, 1.0f, 0.0f), vec3(1.0f, 0.0f, 0.0f),
-	                                        10.0f, 5.0f, z_near, 100.0f);
-
-	LOGI("Znear = %f\n", z_near);
 }
 
 void SceneViewerApplication::on_device_created(const Event &e)
@@ -216,10 +206,10 @@ void SceneViewerApplication::on_device_destroyed(const Event &)
 	irradiance = nullptr;
 }
 
-void SceneViewerApplication::render_main_pass(Vulkan::CommandBuffer &cmd)
+void SceneViewerApplication::render_main_pass(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view)
 {
 	auto &scene = scene_loader.get_scene();
-	context.set_camera(cam);
+	context.set_camera(proj, view);
 	visible.clear();
 	scene.gather_visible_opaque_renderables(context.get_visibility_frustum(), visible);
 	scene.gather_background_renderables(visible);
@@ -280,6 +270,23 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 	normal.format = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
 	pbr.format = VK_FORMAT_R8G8_UNORM;
 	depth.format = swap.get_device().get_default_depth_stencil_format();
+
+	AttachmentInfo emissive_reflection, albedo_reflection, normal_reflection, pbr_reflection, depth_reflection;
+	emissive_reflection.size_x = 0.25f;
+	emissive_reflection.size_y = 0.25f;
+	emissive_reflection.format = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
+	albedo_reflection.size_x = 0.25f;
+	albedo_reflection.size_y = 0.25f;
+	albedo_reflection.format = VK_FORMAT_R8G8B8A8_SRGB;
+	normal_reflection.size_x = 0.25f;
+	normal_reflection.size_y = 0.25f;
+	normal_reflection.format = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
+	pbr_reflection.size_x = 0.25f;
+	pbr_reflection.size_y = 0.25f;
+	pbr_reflection.format = VK_FORMAT_R8G8_UNORM;
+	depth_reflection.size_x = 0.25f;
+	depth_reflection.size_y = 0.25f;
+	depth_reflection.format = swap.get_device().get_default_depth_stencil_format();
 
 	auto &shadowpass = graph.add_pass("shadow", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 	shadowpass.set_depth_stencil_output("shadowmap", shadowmap);
@@ -383,7 +390,7 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 	gbuffer.add_color_output("pbr", pbr);
 	gbuffer.set_depth_stencil_output("depth", depth);
 	gbuffer.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
-		render_main_pass(cmd);
+		render_main_pass(cmd, cam.get_projection(), cam.get_view());
 	});
 
 	gbuffer.set_get_clear_depth_stencil([](VkClearDepthStencilValue *value) -> bool {
@@ -410,7 +417,51 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 	lighting.set_depth_stencil_input("depth");
 	lighting.add_texture_input("vsm");
 	lighting.add_texture_input("vsm-near");
+	lighting.add_texture_input("HDR-reflection");
 	lighting.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
+		lighting_pass(cmd);
+	});
+
+	auto &gbuffer_reflection = graph.add_pass("gbuffer-reflection", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	gbuffer_reflection.add_color_output("emissive-reflection", emissive_reflection);
+	gbuffer_reflection.add_color_output("albedo-reflection", albedo_reflection);
+	gbuffer_reflection.add_color_output("normal-reflection", normal_reflection);
+	gbuffer_reflection.add_color_output("pbr-reflection", pbr_reflection);
+	gbuffer_reflection.set_depth_stencil_output("depth-reflection", depth_reflection);
+	gbuffer_reflection.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
+		mat4 proj, view;
+		float z_near;
+		vec3 center = vec3(50.0f, 0.0f, 0.0f);
+		compute_plane_reflection(proj, view, context.get_render_parameters().camera_position, center, vec3(-1.0f, 0.0f, 0.0f), vec3(0.0f, 1.0f, 0.0f),
+		                         5.0f, 25.0f, z_near, 200.0f);
+		render_main_pass(cmd, proj, view);
+	});
+
+	gbuffer_reflection.set_get_clear_depth_stencil([](VkClearDepthStencilValue *value) -> bool {
+		if (value)
+		{
+			value->depth = 1.0f;
+			value->stencil = 0;
+		}
+		return true;
+	});
+
+	gbuffer_reflection.set_get_clear_color([](unsigned, VkClearColorValue *value) -> bool {
+		if (value)
+			memset(value, 0, sizeof(*value));
+		return true;
+	});
+
+	auto &lighting_reflection = graph.add_pass("lighting-reflection", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	lighting_reflection.add_color_output("HDR-reflection", emissive_reflection, "emissive-reflection");
+	lighting_reflection.add_attachment_input("albedo-reflection");
+	lighting_reflection.add_attachment_input("normal-reflection");
+	lighting_reflection.add_attachment_input("pbr-reflection");
+	lighting_reflection.add_attachment_input("depth-reflection");
+	lighting_reflection.set_depth_stencil_input("depth-reflection");
+	lighting_reflection.add_texture_input("vsm");
+	lighting_reflection.add_texture_input("vsm-near");
+	lighting_reflection.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
 		lighting_pass(cmd);
 	});
 

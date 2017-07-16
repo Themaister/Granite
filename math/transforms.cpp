@@ -21,22 +21,20 @@ bool compute_plane_reflection(mat4 &projection, mat4 &view, vec3 camera_pos, vec
 	vec3 look_pos_x = normalize(cross(normal, look_up));
 	look_up = normalize(cross(look_pos_x, normal));
 
-	view = mat4_cast(look_at(normal, look_up));
+	view = mat4_cast(look_at(normal, look_up)) * glm::translate(-camera_pos);
 
 	float dist_x = dot(look_pos_x, center - camera_pos);
-	float left = dist_x - radius_x;
-	float right = dist_x + radius_x;
+	float left = dist_x - radius_z;
+	float right = dist_x + radius_z;
 
 	float dist_y = dot(look_up, center - camera_pos);
-	float bottom = dist_y - radius_z;
-	float top = dist_y + radius_z;
+	float bottom = dist_y - radius_x;
+	float top = dist_y + radius_x;
 
 	z_near = over_plane;
 	projection = glm::scale(vec3(1.0f, -1.0f, 1.0f)) * glm::frustum(left, right, bottom, top, over_plane, z_far);
-
 	if (z_near >= z_far)
 		return false;
-
 	return true;
 }
 
@@ -78,7 +76,7 @@ quat rotate_vector(vec3 from, vec3 to)
 
 	vec3 rotation = normalize(cross(from, to));
 	vec3 half_vector = normalize(from + to);
-	float cos_half_range = max(dot(half_vector, from), 0.0f);
+	float cos_half_range = clamp(dot(half_vector, from), 0.0f, 1.0f);
 	float sin_half_angle = sqrtf(1.0f - cos_half_range * cos_half_range);
 	return quat(cos_half_range, rotation * sin_half_angle);
 }
@@ -92,9 +90,12 @@ quat rotate_vector_axis(vec3 from, vec3 to, vec3 axis)
 	if (dot(to, from) < -0.9999f)
 		return quat(0.0f, axis);
 
+	// Rotate CCW or CW, we only find the angle of rotation below.
+	float quat_sign = sign(dot(axis, cross(from, to)));
+
 	vec3 half_vector = normalize(from + to);
-	float cos_half_range = max(dot(half_vector, from), 0.0f);
-	float sin_half_angle = sqrtf(1.0f - cos_half_range * cos_half_range);
+	float cos_half_range = clamp(dot(half_vector, from), 0.0f, 1.0f);
+	float sin_half_angle = quat_sign * sqrtf(1.0f - cos_half_range * cos_half_range);
 	return quat(cos_half_range, axis * sin_half_angle);
 }
 

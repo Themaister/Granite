@@ -74,6 +74,11 @@ public:
 		reflection = view;
 	}
 
+	void set_refraction_texture(const Vulkan::ImageView *view)
+	{
+		refraction = view;
+	}
+
 	void set_position(vec3 position)
 	{
 		this->position = position;
@@ -97,6 +102,7 @@ public:
 private:
 	std::string normal_path;
 	const Vulkan::ImageView *reflection = nullptr;
+	const Vulkan::ImageView *refraction = nullptr;
 	Vulkan::Texture *normalmap = nullptr;
 	vec3 position;
 	vec3 normal;

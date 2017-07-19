@@ -332,7 +332,8 @@ void Skybox::on_device_destroyed(const Event &)
 struct TexturePlaneInfo : RenderInfo
 {
 	Vulkan::Program *program;
-	const Vulkan::ImageView *view;
+	const Vulkan::ImageView *reflection;
+	const Vulkan::ImageView *refraction;
 	const Vulkan::ImageView *normal;
 
 	struct Push
@@ -354,8 +355,9 @@ static void texture_plane_render(CommandBuffer &cmd, const RenderInfo **infos, u
 	{
 		auto &info = *static_cast<const TexturePlaneInfo *>(infos[i]);
 		cmd.set_program(*info.program);
-		cmd.set_texture(2, 0, *info.view, Vulkan::StockSampler::TrilinearClamp);
-		cmd.set_texture(2, 1, *info.normal, Vulkan::StockSampler::TrilinearWrap);
+		cmd.set_texture(2, 0, *info.reflection, Vulkan::StockSampler::TrilinearClamp);
+		cmd.set_texture(2, 1, *info.refraction, Vulkan::StockSampler::TrilinearClamp);
+		cmd.set_texture(2, 2, *info.normal, Vulkan::StockSampler::TrilinearWrap);
 		CommandBufferUtil::set_quad_vertex_state(cmd);
 		cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
 		cmd.set_cull_mode(VK_CULL_MODE_NONE);
@@ -396,7 +398,8 @@ void TexturePlane::get_render_info(const RenderContext &context, const CachedSpa
 	assert(!transform);
 	auto &info = queue.emplace<TexturePlaneInfo>(Queue::Opaque);
 
-	info.view = reflection;
+	info.reflection = reflection;
+	info.refraction = refraction;
 	info.normal = &normalmap->get_image()->get_view();
 	info.program = queue.get_shader_suites()[ecast(RenderableType::TexturePlane)].get_program(DrawPipeline::Opaque, 0, 0).get();
 	info.push.normal = vec4(normalize(normal), 0.0f);
@@ -411,7 +414,8 @@ void TexturePlane::get_render_info(const RenderContext &context, const CachedSpa
 	Hasher h;
 	h.pointer(info.program);
 	info.sorting_key = RenderInfo::get_sort_key(context, Queue::Opaque, h.get(), h.get(), position);
-	h.u64(info.view->get_cookie());
+	h.u64(info.reflection->get_cookie());
+	h.u64(info.refraction->get_cookie());
 	info.instance_key = h.get();
 }
 

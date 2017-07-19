@@ -1403,6 +1403,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 					physical_pass.depth_clear_request.target);
 			}
 
+			LOGI("Beginning physical pass: %u\n", unsigned(&physical_pass - physical_passes.data()));
 			cmd->begin_render_pass(physical_pass.render_pass_info);
 
 			for (auto &subpass : physical_pass.passes)

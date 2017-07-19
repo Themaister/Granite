@@ -38,7 +38,10 @@ struct EnvironmentInfo
 layout(set = 1, binding = 0) uniform samplerCube uReflection;
 layout(set = 1, binding = 1) uniform samplerCube uIrradiance;
 layout(set = 1, binding = 2) uniform sampler2D uShadowmap;
+
+#if SHADOW_CASCADES
 layout(set = 1, binding = 3) uniform sampler2D uShadowmapNear;
+#endif
 
 float vsm(float depth, vec2 moments)
 {
@@ -105,12 +108,12 @@ vec3 compute_lighting(
 	// IBL specular term.
 	vec3 reflected = reflect(-V, N);
 	//float minimum_lod = textureQueryLod(uReflection, reflected).y;
-	float minimum_lod = 10.0;
+	float minimum_lod = 4.0;
 	vec3 envspec = environment.intensity *
 	               textureLod(uReflection, reflected,
 	                          max(material.roughness * environment.mipscale, minimum_lod)).rgb;
 
-	envspec *= 0.0;
+	envspec *= 0.1;
 
 	// Lookup reflectance terms.
 	//vec2 brdf = textureLod(uBRDF, vec2(mr.y, 1.0 - NoV), 0.0).xy;

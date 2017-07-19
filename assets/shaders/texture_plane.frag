@@ -32,5 +32,5 @@ void main()
     Emissive = texture(uReflection, vUV + uv_offset, 2.0).rgb;
     Normal = normal * 0.5 + 0.5;
     BaseColor = vec4(0.0, 0.0, 0.0, 1.0);
-    PBR = vec2(1.0, 1.0); // No diffuse, no specular, only reflection.
+    PBR = vec2(1.0, 0.0); // No diffuse, no specular, only reflection.
 }

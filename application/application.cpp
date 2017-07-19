@@ -24,7 +24,7 @@ Application::Application(unsigned width, unsigned height)
 
 static vec3 light_direction()
 {
-	return normalize(vec3(0.5f, 1.2f, 0.8f));
+	return normalize(vec3(0.5f, 0.3f, 0.8f));
 }
 
 static const float cascade_cutoff_distance = 10.0f;
@@ -72,7 +72,7 @@ void SceneViewerApplication::lighting_pass(Vulkan::CommandBuffer &cmd, bool refl
 		vec3 camera_front;
 	} push;
 
-	const float intensity = 1.0f;
+	const float intensity = 2.0f;
 	const float mipscale = 6.0f;
 
 	mat4 total_shadow_transform = shadow_transform * context.get_render_parameters().inv_view_projection;
@@ -92,7 +92,7 @@ void SceneViewerApplication::lighting_pass(Vulkan::CommandBuffer &cmd, bool refl
 	push.inv_view_proj_col2 = context.get_render_parameters().inv_view_projection[2];
 	push.shadow_col2 = total_shadow_transform[2];
 	push.shadow_near_col2 = total_shadow_transform_near[2];
-	push.color_env_intensity = vec4(3.0f, 2.5f, 2.5f, intensity);
+	push.color_env_intensity = vec4(6.0f, 4.5f, 4.0f, intensity);
 	push.direction_inv_cutoff = vec4(light_direction(), 1.0f / cascade_cutoff_distance);
 	push.camera_pos_mipscale = vec4(context.get_render_parameters().camera_position, mipscale);
 	push.camera_front = context.get_render_parameters().camera_front;

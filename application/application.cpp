@@ -467,7 +467,7 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 	gbuffer_reflection.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
 		mat4 proj, view;
 		float z_near;
-		vec3 center = vec3(60.0f, -1.0f, 0.0f);
+		vec3 center = vec3(60.0f, -2.0f, 0.0f);
 		vec3 normal = vec3(0.0f, 1.0f, 0.0f);
 		float rad_up = 10.0f;
 		float rad_x = 10.0f;
@@ -525,7 +525,7 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 	gbuffer_refraction.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
 		mat4 proj, view;
 		float z_near;
-		vec3 center = vec3(60.0f, -1.0f, 0.0f);
+		vec3 center = vec3(60.0f, -2.0f, 0.0f);
 		vec3 normal = vec3(0.0f, 1.0f, 0.0f);
 		float rad_up = 10.0f;
 		float rad_x = 10.0f;

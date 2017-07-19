@@ -30,13 +30,14 @@ void main()
     vec3 tangent = texture(uNormal, registers.normal_offset_scale.zw * vUV + registers.normal_offset_scale.xy).xyz * 2.0 - 1.0;
     vec3 normal = normalize(registers.normal * tangent.z + registers.tangent * tangent.x + registers.bitangent * tangent.y);
 
-    vec2 uv_offset = tangent.xy * 0.015;
+    vec2 uv_offset = tangent.xy * 0.01;
 
     vec2 reflection_uv = vUV + uv_offset;
     vec2 refraction_uv = vec2(1.0 - vUV.x - tangent.x * 0.02, vUV.y - tangent.y * 0.02);
 
     float NoV = abs(clamp(dot(normal, normalize(vEyeVec)), -1.0, 1.0));
     float fresnel = 0.04 + 0.96 * pow(1.0 - NoV, 5.0);
+    //fresnel = 1.0;
     vec3 refraction = texture(uRefraction, refraction_uv).rgb;
     vec3 reflection = texture(uReflection, reflection_uv, 1.0).rgb;
     Emissive = mix(refraction, reflection, fresnel);

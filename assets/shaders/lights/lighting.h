@@ -113,7 +113,7 @@ vec3 compute_lighting(
 	               textureLod(uReflection, reflected,
 	                          max(material.roughness * environment.mipscale, minimum_lod)).rgb;
 
-	envspec *= 0.1;
+	envspec *= 0.01;
 
 	// Lookup reflectance terms.
 	//vec2 brdf = textureLod(uBRDF, vec2(mr.y, 1.0 - NoV), 0.0).xy;

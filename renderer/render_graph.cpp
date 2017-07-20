@@ -923,10 +923,10 @@ void RenderGraph::log()
 		}
 		else
 		{
-			LOGI("Resource #%u (%s): %u x %u (fmt: %u), transient: %s%s\n",
+			LOGI("Resource #%u (%s): %u x %u (fmt: %u), samples: %u, transient: %s%s\n",
 			     unsigned(&resource - physical_dimensions.data()),
 			     resource.name.c_str(),
-			     resource.width, resource.height, unsigned(resource.format), resource.transient ? "yes" : "no",
+			     resource.width, resource.height, unsigned(resource.format), resource.samples, resource.transient ? "yes" : "no",
 			     unsigned(&resource - physical_dimensions.data()) == swapchain_physical_index ? " (swapchain)" : "");
 		}
 	}

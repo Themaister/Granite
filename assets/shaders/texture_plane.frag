@@ -41,6 +41,7 @@ void main()
     vec3 refraction = texture(uRefraction, refraction_uv).rgb;
     vec3 reflection = texture(uReflection, reflection_uv, 1.0).rgb;
     Emissive = mix(refraction, reflection, fresnel);
+    //Emissive = vec3(0.0);
 
     Normal = normal * 0.5 + 0.5;
     BaseColor = vec4(0.0, 0.0, 0.0, 1.0);

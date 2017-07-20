@@ -29,6 +29,35 @@ static vec3 light_direction()
 
 static const float cascade_cutoff_distance = 10.0f;
 
+void SceneViewerApplication::apply_water_depth_tint(Vulkan::CommandBuffer &cmd)
+{
+	auto &device = cmd.get_device();
+	cmd.set_quad_state();
+	cmd.set_input_attachments(0, 1);
+	cmd.set_blend_enable(true);
+	cmd.set_blend_op(VK_BLEND_OP_ADD);
+	CommandBufferUtil::set_quad_vertex_state(cmd);
+	cmd.set_depth_test(true, false);
+	cmd.set_depth_compare(VK_COMPARE_OP_GREATER);
+
+	struct Tint
+	{
+		mat4 inv_view_proj;
+		vec3 falloff;
+	} tint;
+
+	tint.inv_view_proj = context.get_render_parameters().inv_view_projection;
+	tint.falloff = vec3(1.0f / 1.5f, 1.0f / 2.5f, 1.0f / 5.0f);
+	cmd.push_constants(&tint, 0, sizeof(tint));
+
+	cmd.set_blend_factors(VK_BLEND_FACTOR_ZERO, VK_BLEND_FACTOR_ZERO, VK_BLEND_FACTOR_SRC_COLOR, VK_BLEND_FACTOR_ZERO);
+	auto *program = device.get_shader_manager().register_graphics("assets://shaders/water_tint.vert",
+	                                                              "assets://shaders/water_tint.frag");
+	auto variant = program->register_variant({});
+	cmd.set_program(*program->get_program(variant));
+	cmd.draw(4);
+}
+
 void SceneViewerApplication::lighting_pass(Vulkan::CommandBuffer &cmd, bool reflection_pass)
 {
 	cmd.set_quad_state();
@@ -36,17 +65,7 @@ void SceneViewerApplication::lighting_pass(Vulkan::CommandBuffer &cmd, bool refl
 	cmd.set_blend_enable(true);
 	cmd.set_blend_factors(VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_ONE);
 	cmd.set_blend_op(VK_BLEND_OP_ADD);
-
-	int8_t *data = static_cast<int8_t *>(cmd.allocate_vertex_data(0, 8, 2));
-	*data++ = -128;
-	*data++ = +127;
-	*data++ = +127;
-	*data++ = +127;
-	*data++ = -128;
-	*data++ = -128;
-	*data++ = +127;
-	*data++ = -128;
-	cmd.set_vertex_attrib(0, 0, VK_FORMAT_R8G8_SNORM, 0);
+	CommandBufferUtil::set_quad_vertex_state(cmd);
 
 	auto &device = cmd.get_device();
 	auto *program = device.get_shader_manager().register_graphics("assets://shaders/lights/directional.vert",
@@ -274,7 +293,7 @@ void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::st
 		{
 			mat4 proj, view;
 			float z_near;
-			vec3 center = vec3(60.0f, -1.0f, 0.0f);
+			vec3 center = vec3(50.0f, -1.5f, 10.0f);
 			vec3 normal = vec3(0.0f, 1.0f, 0.0f);
 			float rad_up = 10.0f;
 			float rad_x = 10.0f;
@@ -291,7 +310,7 @@ void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::st
 		{
 			mat4 proj, view;
 			float z_near;
-			vec3 center = vec3(60.0f, -1.0f, 0.0f);
+			vec3 center = vec3(50.0f, -1.5f, 10.0f);
 			vec3 normal = vec3(0.0f, 1.0f, 0.0f);
 			float rad_up = 10.0f;
 			float rad_x = 10.0f;
@@ -338,6 +357,8 @@ void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::st
 
 	lighting.set_build_render_pass([this, type](Vulkan::CommandBuffer &cmd) {
 		lighting_pass(cmd, type != MainPassType::Main);
+		if (type == MainPassType::Refraction)
+			apply_water_depth_tint(cmd);
 	});
 
 	if (type != MainPassType::Main)
@@ -416,9 +437,13 @@ void SceneViewerApplication::add_shadow_pass(Vulkan::Device &device, const std::
 		CommandBufferUtil::draw_quad(cmd, "assets://shaders/quad.vert", "assets://shaders/lights/resolve_vsm.frag");
 	});
 
+	vsm_resolve.set_need_render_pass([this, type]() {
+		return type == DepthPassType::Main ? need_shadow_map_update : true;
+	});
+
 	auto &vsm_vertical = graph.add_pass(tagcat("vsm-vertical", tag), VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 	vsm_vertical.add_texture_input(tagcat("vsm-resolved", tag));
-	vsm_vertical.add_color_output(tagcat("vsm-vertical", tag), vsm_output);
+	vsm_vertical.add_color_output(tagcat("vsm-vertical", tag), vsm_resolve_output);
 	vsm_vertical.set_build_render_pass([this, &vsm_vertical](Vulkan::CommandBuffer &cmd) {
 		vsm_vertical.set_texture_inputs(cmd, 0, 0, Vulkan::StockSampler::NearestClamp);
 		CommandBufferUtil::draw_quad(cmd, "assets://shaders/quad.vert", "assets://shaders/blur.frag", {{ "METHOD", 4 }});
@@ -467,7 +492,7 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 	auto &ui = graph.add_pass("ui", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 	ui.add_color_output("backbuffer", backbuffer, "tonemapped");
 	ui.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
-		UI::UIManager::get().render(cmd);
+		//UI::UIManager::get().render(cmd);
 	});
 
 	graph.bake();

@@ -178,6 +178,7 @@ RenderTextureResource &RenderGraph::get_texture_resource(const std::string &name
 	{
 		unsigned index = resources.size();
 		resources.emplace_back(new RenderTextureResource(index));
+		resources.back()->set_name(name);
 		resource_to_index[name] = index;
 		return static_cast<RenderTextureResource &>(*resources.back());
 	}
@@ -195,6 +196,7 @@ RenderBufferResource &RenderGraph::get_buffer_resource(const std::string &name)
 	{
 		unsigned index = resources.size();
 		resources.emplace_back(new RenderBufferResource(index));
+		resources.back()->set_name(name);
 		resource_to_index[name] = index;
 		return static_cast<RenderBufferResource &>(*resources.back());
 	}
@@ -238,6 +240,7 @@ RenderPass &RenderGraph::add_pass(const std::string &name, VkPipelineStageFlags 
 	{
 		unsigned index = passes.size();
 		passes.emplace_back(new RenderPass(*this, index, stages));
+		passes.back()->set_name(name);
 		pass_to_index[name] = index;
 		return *passes.back();
 	}
@@ -913,11 +916,16 @@ void RenderGraph::log()
 	{
 		if (resource.buffer_info.size)
 		{
-			LOGI("Resource #%u: size: %u\n", unsigned(&resource - physical_dimensions.data()), unsigned(resource.buffer_info.size));
+			LOGI("Resource #%u (%s): size: %u\n",
+			     unsigned(&resource - physical_dimensions.data()),
+			     resource.name.c_str(),
+			     unsigned(resource.buffer_info.size));
 		}
 		else
 		{
-			LOGI("Resource #%u: %u x %u (fmt: %u), transient: %s%s\n", unsigned(&resource - physical_dimensions.data()),
+			LOGI("Resource #%u (%s): %u x %u (fmt: %u), transient: %s%s\n",
+			     unsigned(&resource - physical_dimensions.data()),
+			     resource.name.c_str(),
 			     resource.width, resource.height, unsigned(resource.format), resource.transient ? "yes" : "no",
 			     unsigned(&resource - physical_dimensions.data()) == swapchain_physical_index ? " (swapchain)" : "");
 		}
@@ -946,7 +954,7 @@ void RenderGraph::log()
 
 		for (auto &subpass : passes.passes)
 		{
-			LOGI("    Subpass #%u:\n", unsigned(&subpass - passes.passes.data()));
+			LOGI("    Subpass #%u (%s):\n", unsigned(&subpass - passes.passes.data()), this->passes[subpass]->get_name().c_str());
 			auto &pass = *this->passes[subpass];
 
 			auto &barriers = *barrier_itr;
@@ -1403,7 +1411,6 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 					physical_pass.depth_clear_request.target);
 			}
 
-			LOGI("Beginning physical pass: %u\n", unsigned(&physical_pass - physical_passes.data()));
 			cmd->begin_render_pass(physical_pass.render_pass_info);
 
 			for (auto &subpass : physical_pass.passes)
@@ -1859,6 +1866,7 @@ ResourceDimensions RenderGraph::get_resource_dimensions(const RenderBufferResour
 	auto &info = resource.get_buffer_info();
 	dim.buffer_info = info;
 	dim.persistent = info.persistent;
+	dim.name = resource.get_name();
 	return dim;
 }
 
@@ -1872,6 +1880,7 @@ ResourceDimensions RenderGraph::get_resource_dimensions(const RenderTextureResou
 	dim.transient = resource.get_transient_state();
 	dim.persistent = info.persistent;
 	dim.storage = resource.get_storage_state();
+	dim.name = resource.get_name();
 
 	switch (info.size_class)
 	{

@@ -87,6 +87,8 @@ struct ResourceDimensions
 	{
 		return !(*this == other);
 	}
+
+	std::string name;
 };
 
 class RenderResource
@@ -147,12 +149,23 @@ public:
 		return physical_index;
 	}
 
+	void set_name(const std::string &name)
+	{
+		this->name = name;
+	}
+
+	const std::string &get_name() const
+	{
+		return name;
+	}
+
 private:
 	Type resource_type;
 	unsigned index;
 	unsigned physical_index = Unused;
 	std::unordered_set<unsigned> written_in_passes;
 	std::unordered_set<unsigned> read_in_passes;
+	std::string name;
 };
 
 class RenderBufferResource : public RenderResource
@@ -402,6 +415,16 @@ public:
 		get_clear_color_cb = std::move(func);
 	}
 
+	void set_name(const std::string &name)
+	{
+		this->name = name;
+	}
+
+	const std::string &get_name() const
+	{
+		return name;
+	}
+
 private:
 	RenderGraph &graph;
 	unsigned index;
@@ -428,6 +451,7 @@ private:
 	std::vector<RenderBufferResource *> storage_inputs;
 	RenderTextureResource *depth_stencil_input = nullptr;
 	RenderTextureResource *depth_stencil_output = nullptr;
+	std::string name;
 };
 
 class RenderGraph : public Vulkan::NoCopyNoMove, public EventHandler

@@ -194,6 +194,21 @@ private:
 	void render_shadow_map_far(Vulkan::CommandBuffer &cmd);
 	void render_main_pass(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view, bool reflections);
 	TexturePlane plane_reflection;
+
+	enum class MainPassType
+	{
+		Main,
+		Reflection,
+		Refraction
+	};
+	void add_main_pass(Vulkan::Device &device, const std::string &tag, MainPassType type);
+
+	enum class DepthPassType
+	{
+		Main,
+		Near
+	};
+	void add_shadow_pass(Vulkan::Device &device, const std::string &tag, DepthPassType type);
 };
 
 extern int application_main(int argc, char *argv[]);

@@ -10,6 +10,7 @@ class Frustum
 public:
 	void build_planes(const mat4& inv_view_projection);
 	bool intersects(const AABB &aabb) const;
+	bool intersects_fast(const AABB &aabb) const;
 
 	vec3 get_coord(float dx, float dy, float dz) const;
 

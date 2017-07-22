@@ -35,7 +35,7 @@ static void gather_visible_renderables(const Frustum &frustum, VisibilityList &l
 
 		if (transform->transform)
 		{
-			if (frustum.intersects(transform->world_aabb))
+			if (frustum.intersects_fast(transform->world_aabb))
 				list.push_back({ renderable->renderable.get(), transform });
 		}
 		else

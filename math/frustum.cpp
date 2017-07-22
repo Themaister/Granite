@@ -24,6 +24,18 @@ bool Frustum::intersects(const AABB &aabb) const
 	return true;
 }
 
+bool Frustum::intersects_fast(const AABB &aabb) const
+{
+	vec4 center(aabb.get_center(), 1.0f);
+	float radius = aabb.get_radius();
+
+	for (auto &plane : planes)
+		if (dot(plane, center) < -radius)
+			return false;
+
+	return true;
+}
+
 vec3 Frustum::get_coord(float dx, float dy, float dz) const
 {
 	vec4 clip = vec4(2.0f * dx - 1.0f, 2.0f * dy - 1.0f, dz, 1.0f);

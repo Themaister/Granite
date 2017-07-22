@@ -126,23 +126,24 @@ void static_mesh_render(CommandBuffer &cmd, const RenderInfo **infos, unsigned i
 
 void skinned_mesh_render(CommandBuffer &cmd, const RenderInfo **infos, unsigned instances)
 {
-	auto *info = static_cast<const SkinnedMeshInfo *>(infos[0]);
-	mesh_set_state(cmd, *info);
+	auto *static_info = static_cast<const SkinnedMeshInfo *>(infos[0]);
+	mesh_set_state(cmd, *static_info);
 
 	for (unsigned i = 0; i < instances; i++)
 	{
+		auto &info = *static_cast<const SkinnedMeshInfo *>(infos[i]);
 		auto *vertex_data = static_cast<StaticMeshVertex *>(cmd.allocate_constant_data(3, 0, sizeof(StaticMeshVertex)));
-		auto *world_transforms = static_cast<mat4 *>(cmd.allocate_constant_data(3, 1, sizeof(mat4) * info->num_bones));
-		auto *normal_transforms = static_cast<mat4 *>(cmd.allocate_constant_data(3, 2, sizeof(mat4) * info->num_bones));
+		auto *world_transforms = static_cast<mat4 *>(cmd.allocate_constant_data(3, 1, sizeof(mat4) * info.num_bones));
+		auto *normal_transforms = static_cast<mat4 *>(cmd.allocate_constant_data(3, 2, sizeof(mat4) * info.num_bones));
 
 		memcpy(vertex_data, &static_cast<const SkinnedMeshInfo *>(infos[i])->vertex, sizeof(StaticMeshVertex));
-		memcpy(world_transforms, info->world_transforms, sizeof(mat4) * info->num_bones);
-		memcpy(normal_transforms, info->normal_transforms, sizeof(mat4) * info->num_bones);
+		memcpy(world_transforms, info.world_transforms, sizeof(mat4) * info.num_bones);
+		memcpy(normal_transforms, info.normal_transforms, sizeof(mat4) * info.num_bones);
 
-		if (info->ibo)
-			cmd.draw_indexed(info->count, 1, info->ibo_offset, info->vertex_offset, 0);
+		if (info.ibo)
+			cmd.draw_indexed(info.count, 1, info.ibo_offset, info.vertex_offset, 0);
 		else
-			cmd.draw(info->count, 1, info->vertex_offset, 0);
+			cmd.draw(info.count, 1, info.vertex_offset, 0);
 	}
 }
 }

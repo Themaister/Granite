@@ -136,7 +136,7 @@ void skinned_mesh_render(CommandBuffer &cmd, const RenderInfo **infos, unsigned 
 		auto *world_transforms = static_cast<mat4 *>(cmd.allocate_constant_data(3, 1, sizeof(mat4) * info.num_bones));
 		auto *normal_transforms = static_cast<mat4 *>(cmd.allocate_constant_data(3, 2, sizeof(mat4) * info.num_bones));
 
-		memcpy(vertex_data, &static_cast<const SkinnedMeshInfo *>(infos[i])->vertex, sizeof(StaticMeshVertex));
+		memcpy(vertex_data, &info.vertex, sizeof(StaticMeshVertex));
 		memcpy(world_transforms, info.world_transforms, sizeof(mat4) * info.num_bones);
 		memcpy(normal_transforms, info.normal_transforms, sizeof(mat4) * info.num_bones);
 

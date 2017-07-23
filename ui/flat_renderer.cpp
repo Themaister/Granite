@@ -91,55 +91,69 @@ void FlatRenderer::render_quad(const ImageView *view, Vulkan::StockSampler sampl
 {
 	auto type = transparent ? Queue::Transparent : Queue::Opaque;
 	auto pipeline = transparent ? DrawPipeline::AlphaBlend : DrawPipeline::Opaque;
-	auto &sprite = queue.emplace<SpriteRenderInfo>(type);
-	sprite.quad_count = 1;
-	sprite.quads = static_cast<SpriteRenderInfo::QuadData *>(queue.allocate(sizeof(SpriteRenderInfo::QuadData), alignof(SpriteRenderInfo::QuadData)));
 
+	SpriteRenderInfo sprite;
 	build_scissor(sprite.clip_quad, offset.xy(), offset.xy() + size);
 
+	auto *quads = queue.allocate_one<QuadData>();
+	auto *instance_data = queue.allocate_one<SpriteInstanceInfo>();
+	instance_data->quads = quads;
+	instance_data->count = 1;
+
 	Hasher h;
-	h.pointer(sprite.program);
+	h.u32(transparent);
 	auto pipe_hash = h.get();
 	h.s32(sprite.clip_quad.x);
 	h.s32(sprite.clip_quad.y);
 	h.s32(sprite.clip_quad.z);
 	h.s32(sprite.clip_quad.w);
-	h.u32(transparent);
 
 	if (view)
 	{
 		sprite.texture = view;
 		sprite.sampler = sampler;
-		sprite.program = suite[ecast(RenderableType::Sprite)].get_program(pipeline,
-		                                                                  MESH_ATTRIBUTE_POSITION_BIT |
-		                                                                  MESH_ATTRIBUTE_VERTEX_COLOR_BIT |
-		                                                                  MESH_ATTRIBUTE_UV_BIT,
-		                                                                  MATERIAL_TEXTURE_BASE_COLOR_BIT).get();
 		h.u64(view->get_cookie());
 		h.u32(ecast(sampler));
 	}
-	else
-		sprite.program = suite[ecast(RenderableType::Sprite)].get_program(pipeline,
-		                                                                  MESH_ATTRIBUTE_POSITION_BIT |
-		                                                                  MESH_ATTRIBUTE_VERTEX_COLOR_BIT, 0).get();
 
-	sprite.instance_key = h.get();
-	sprite.sorting_key = RenderInfo::get_sprite_sort_key(type, pipe_hash, h.get(), offset.z);
+	auto instance_key = h.get();
+	auto sorting_key = RenderInfo::get_sprite_sort_key(type, pipe_hash, h.get(), offset.z);
 
-	sprite.quads->layer = offset.z;
-	sprite.quads->pos_off_x = offset.x;
-	sprite.quads->pos_off_y = offset.y;
-	sprite.quads->pos_scale_x = size.x;
-	sprite.quads->pos_scale_y = size.y;
-	sprite.quads->tex_off_x = tex_offset.x;
-	sprite.quads->tex_off_y = tex_offset.y;
-	sprite.quads->tex_scale_x = tex_size.x;
-	sprite.quads->tex_scale_y = tex_size.y;
-	quantize_color(sprite.quads->color, color);
-	sprite.quads->rotation[0] = 1.0f;
-	sprite.quads->rotation[1] = 0.0f;
-	sprite.quads->rotation[2] = 0.0f;
-	sprite.quads->rotation[3] = 1.0f;
+	auto *sprite_data = queue.push<SpriteRenderInfo>(type, instance_key, sorting_key, RenderFunctions::sprite_render, instance_data);
+
+	if (sprite_data)
+	{
+		if (view)
+		{
+			sprite.program = suite[ecast(RenderableType::Sprite)].get_program(pipeline,
+			                                                                  MESH_ATTRIBUTE_POSITION_BIT |
+			                                                                  MESH_ATTRIBUTE_VERTEX_COLOR_BIT |
+			                                                                  MESH_ATTRIBUTE_UV_BIT,
+			                                                                  MATERIAL_TEXTURE_BASE_COLOR_BIT).get();
+		}
+		else
+		{
+			sprite.program = suite[ecast(RenderableType::Sprite)].get_program(pipeline,
+			                                                                  MESH_ATTRIBUTE_POSITION_BIT |
+			                                                                  MESH_ATTRIBUTE_VERTEX_COLOR_BIT, 0).get();
+		}
+		*sprite_data = sprite;
+	}
+
+	quads->layer = offset.z;
+	quads->pos_off_x = offset.x;
+	quads->pos_off_y = offset.y;
+	quads->pos_scale_x = size.x;
+	quads->pos_scale_y = size.y;
+	quads->tex_off_x = tex_offset.x;
+	quads->tex_off_y = tex_offset.y;
+	quads->tex_scale_x = tex_size.x;
+	quads->tex_scale_y = tex_size.y;
+	quantize_color(quads->color, color);
+	quads->rotation[0] = 1.0f;
+	quads->rotation[1] = 0.0f;
+	quads->rotation[2] = 0.0f;
+	quads->rotation[3] = 1.0f;
 }
 
 void FlatRenderer::render_textured_quad(const ImageView &view, const vec3 &offset, const vec2 &size, const vec2 &tex_offset,
@@ -169,26 +183,22 @@ void FlatRenderer::build_scissor(ivec4 &clip, const vec2 &minimum, const vec2 &m
 void FlatRenderer::render_line_strip(const vec2 *offset, float layer, unsigned count, const vec4 &color)
 {
 	auto transparent = color.a < 1.0f;
-	auto &strip = queue.emplace<LineStripInfo>(transparent ? Queue::Transparent : Queue::Opaque);
+	LineStripInfo strip;
 
-	strip.program = suite[ecast(RenderableType::LineUI)].get_program(transparent ? DrawPipeline::AlphaBlend : DrawPipeline::Opaque,
-	                                                                 MESH_ATTRIBUTE_POSITION_BIT | MESH_ATTRIBUTE_VERTEX_COLOR_BIT, 0).get();
-
-	strip.render = RenderFunctions::line_strip_render;
-	strip.count = count;
-
-	strip.positions = static_cast<vec3 *>(queue.allocate(sizeof(vec3) * count, alignof(vec3)));
-	strip.colors = static_cast<vec4 *>(queue.allocate(sizeof(vec4) * count, alignof(vec4)));
+	auto *lines = queue.allocate_one<LineInfo>();
+	lines->count = count;
+	lines->positions = queue.allocate_many<vec3>(count);
+	lines->colors = queue.allocate_many<vec4>(count);
 
 	vec2 minimum(FLT_MAX);
 	vec2 maximum(-FLT_MAX);
 
 	for (unsigned i = 0; i < count; i++)
-		strip.colors[i] = color;
+		lines->colors[i] = color;
 
 	for (unsigned i = 0; i < count; i++)
 	{
-		strip.positions[i] = vec3(offset[i], layer);
+		lines->positions[i] = vec3(offset[i], layer);
 		minimum = min(minimum, offset[i]);
 		maximum = max(maximum, offset[i]);
 	}
@@ -197,12 +207,25 @@ void FlatRenderer::render_line_strip(const vec2 *offset, float layer, unsigned c
 
 	Hasher h;
 	h.u32(transparent);
-	strip.instance_key = h.get();
-	strip.sorting_key = RenderInfo::get_sprite_sort_key(transparent ? Queue::Transparent : Queue::Opaque, h.get(), h.get(), layer);
+	auto pipe_hash = h.get();
 	h.s32(strip.clip.x);
 	h.s32(strip.clip.y);
 	h.s32(strip.clip.z);
 	h.s32(strip.clip.w);
+	auto instance_key = h.get();
+	auto sorting_key = RenderInfo::get_sprite_sort_key(transparent ? Queue::Transparent : Queue::Opaque, pipe_hash, h.get(), layer);
+
+	LineStripInfo *strip_data = queue.push<LineStripInfo>(transparent ? Queue::Transparent : Queue::Opaque,
+	                                                      instance_key, sorting_key, RenderFunctions::line_strip_render,
+	                                                      lines);
+	if (strip_data)
+	{
+		strip.program = suite[ecast(RenderableType::LineUI)].get_program(
+			transparent ? DrawPipeline::AlphaBlend : DrawPipeline::Opaque,
+			MESH_ATTRIBUTE_POSITION_BIT | MESH_ATTRIBUTE_VERTEX_COLOR_BIT, 0).get();
+
+		*strip_data = strip;
+	}
 }
 
 void FlatRenderer::render_text(const Font &font, const char *text, const vec3 &offset, const vec2 &size, const vec4 &color,

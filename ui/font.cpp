@@ -144,25 +144,14 @@ void Font::render_text(RenderQueue &queue, const char *text, const vec3 &offset,
 	vec2 alignment_offset = get_aligned_offset(alignment, geometry, size);
 
 	size_t len = strlen(text);
-	auto &sprite = queue.emplace<SpriteRenderInfo>(Queue::Transparent);
+	SpriteRenderInfo sprite;
 	sprite.texture = view.get();
 	sprite.sampler = StockSampler::LinearWrap;
 
-	sprite.program = queue.get_shader_suites()[ecast(RenderableType::Sprite)].get_program(DrawPipeline::AlphaBlend,
-	                                                                                      MESH_ATTRIBUTE_UV_BIT |
-	                                                                                      MESH_ATTRIBUTE_POSITION_BIT |
-	                                                                                      MESH_ATTRIBUTE_VERTEX_COLOR_BIT,
-	                                                                                      MATERIAL_TEXTURE_BASE_COLOR_BIT).get();
-
-	Hasher hasher;
-	hasher.pointer(sprite.texture);
-	hasher.u32(ecast(sprite.sampler));
-	sprite.sorting_key = RenderInfo::get_sprite_sort_key(Queue::Transparent, hasher.get(), hasher.get(), offset.z);
-	sprite.instance_key = hasher.get();
-
-	sprite.quads = static_cast<SpriteRenderInfo::QuadData *>(queue.allocate(sizeof(SpriteRenderInfo::QuadData) * len,
-	                                                                        alignof(SpriteRenderInfo::QuadData)));
-	sprite.quad_count = 0;
+	auto *instance_data = queue.allocate_one<SpriteInstanceInfo>();
+	auto *quads = queue.allocate_many<QuadData>(len);
+	instance_data->quads = quads;
+	instance_data->count = 0; // Will be accumulated in the loop.
 
 	vec2 off = offset.xy();
 	off.y += font_height;
@@ -188,7 +177,7 @@ void Font::render_text(RenderQueue &queue, const char *text, const vec3 &offset,
 			q.y0 += alignment_offset.y;
 			q.y1 += alignment_offset.y;
 
-			auto &quad = sprite.quads[sprite.quad_count++];
+			auto &quad = quads[instance_data->count++];
 			quantize_color(quad.color, color);
 			quad.rotation[0] = 1.0f;
 			quad.rotation[1] = 0.0f;
@@ -213,6 +202,32 @@ void Font::render_text(RenderQueue &queue, const char *text, const vec3 &offset,
 	if (any(lessThan(min_rect, offset.xy())) || any(greaterThan(max_rect, offset.xy() + size)))
 	{
 		sprite.clip_quad = ivec4(ivec2(offset.xy()), ivec2(size));
+	}
+
+	Hasher hasher;
+	hasher.pointer(sprite.texture);
+	hasher.u32(ecast(sprite.sampler));
+	hasher.s32(sprite.clip_quad.x);
+	hasher.s32(sprite.clip_quad.y);
+	hasher.s32(sprite.clip_quad.z);
+	hasher.s32(sprite.clip_quad.w);
+	auto instance_key = hasher.get();
+	auto sorting_key = RenderInfo::get_sprite_sort_key(Queue::Transparent, hasher.get(), hasher.get(), offset.z);
+
+	auto *sprite_data = queue.push<SpriteRenderInfo>(Queue::Transparent,
+	                                                 instance_key, sorting_key,
+	                                                 RenderFunctions::sprite_render,
+	                                                 instance_data);
+
+	if (sprite_data)
+	{
+		sprite.program = queue.get_shader_suites()[ecast(RenderableType::Sprite)].get_program(DrawPipeline::AlphaBlend,
+		                                                                                      MESH_ATTRIBUTE_UV_BIT |
+		                                                                                      MESH_ATTRIBUTE_POSITION_BIT |
+		                                                                                      MESH_ATTRIBUTE_VERTEX_COLOR_BIT,
+		                                                                                      MATERIAL_TEXTURE_BASE_COLOR_BIT).get();
+
+		*sprite_data = sprite;
 	}
 }
 

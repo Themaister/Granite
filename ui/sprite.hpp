@@ -9,31 +9,30 @@ namespace Granite
 
 namespace RenderFunctions
 {
-void sprite_render(Vulkan::CommandBuffer &cmd, const RenderInfo **render, unsigned instances);
+void sprite_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *infos, unsigned instances);
 }
 
-struct SpriteRenderInfo : RenderInfo
+struct QuadData
 {
-	SpriteRenderInfo()
-	{
-		render = RenderFunctions::sprite_render;
-	}
+	float pos_off_x, pos_off_y, pos_scale_x, pos_scale_y;
+	float tex_off_x, tex_off_y, tex_scale_x, tex_scale_y;
+	float rotation[4];
+	uint8_t color[4];
+	float layer;
+};
 
+struct SpriteInstanceInfo
+{
+	QuadData *quads;
+	unsigned count;
+};
+
+struct SpriteRenderInfo
+{
 	const Vulkan::ImageView *texture = nullptr;
 	Vulkan::Program *program = nullptr;
 	Vulkan::StockSampler sampler;
-
-	struct QuadData
-	{
-		float pos_off_x, pos_off_y, pos_scale_x, pos_scale_y;
-		float tex_off_x, tex_off_y, tex_scale_x, tex_scale_y;
-		float rotation[4];
-		uint8_t color[4];
-		float layer;
-	};
-	QuadData *quads;
 	ivec4 clip_quad = ivec4(0, 0, 0x4000, 0x4000);
-	unsigned quad_count;
 };
 
 struct Sprite : AbstractRenderable

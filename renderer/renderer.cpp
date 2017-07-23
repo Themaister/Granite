@@ -84,24 +84,34 @@ void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context)
 		queue.dispatch(Queue::Transparent, cmd, &state);
 }
 
-DebugMeshInfo &Renderer::render_debug(RenderContext &context, unsigned count)
+DebugMeshInstanceInfo &Renderer::render_debug(RenderContext &context, unsigned count)
 {
-	auto &debug = queue.emplace<DebugMeshInfo>(Queue::Opaque);
-	debug.render = RenderFunctions::debug_mesh_render;
-	debug.count = count;
-	debug.colors = static_cast<vec4 *>(queue.allocate(debug.count * sizeof(vec4)));
-	debug.positions = static_cast<vec3 *>(queue.allocate(debug.count * sizeof(vec3)));
+	DebugMeshInfo debug;
 
-	debug.program = suite[ecast(RenderableType::DebugMesh)].get_program(DrawPipeline::Opaque,
-	                                                                    MESH_ATTRIBUTE_POSITION_BIT |
-	                                                                    MESH_ATTRIBUTE_VERTEX_COLOR_BIT, 0).get();
+	auto *instance_data = queue.allocate_one<DebugMeshInstanceInfo>();
+	instance_data->count = count;
+	instance_data->colors = queue.allocate_many<vec4>(count);
+	instance_data->positions = queue.allocate_many<vec3>(count);
 
 	Hasher hasher;
-	hasher.pointer(debug.program);
-	debug.instance_key = hasher.get();
-	debug.sorting_key = RenderInfo::get_sort_key(context, Queue::Opaque, hasher.get(), hasher.get(), vec3(0.0f));
+	hasher.string("debug");
+	auto instance_key = hasher.get();
+	auto sorting_key = RenderInfo::get_sort_key(context, Queue::Opaque, hasher.get(), hasher.get(), vec3(0.0f));
 	debug.MVP = context.get_render_parameters().view_projection;
-	return debug;
+
+	auto *debug_info = queue.push<DebugMeshInfo>(Queue::Opaque, instance_key, sorting_key,
+	                                             RenderFunctions::debug_mesh_render,
+	                                             instance_data);
+
+	if (debug_info)
+	{
+		debug.program = suite[ecast(RenderableType::DebugMesh)].get_program(DrawPipeline::Opaque,
+		                                                                    MESH_ATTRIBUTE_POSITION_BIT |
+		                                                                    MESH_ATTRIBUTE_VERTEX_COLOR_BIT, 0).get();
+		*debug_info = debug;
+	}
+
+	return *instance_data;
 }
 
 template <typename T>

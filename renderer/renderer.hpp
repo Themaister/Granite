@@ -49,7 +49,7 @@ private:
 	RenderQueue queue;
 	ShaderSuite suite[Util::ecast(RenderableType::Count)];
 
-	DebugMeshInfo &render_debug(RenderContext &context, unsigned count);
+	DebugMeshInstanceInfo &render_debug(RenderContext &context, unsigned count);
 	Type type;
 };
 }

@@ -59,16 +59,32 @@ struct StaticMeshFragment
 	float lod_bias;
 };
 
-struct DebugMeshInfo : RenderInfo
+struct DebugMeshInstanceInfo
 {
-	Vulkan::Program *program;
-	mat4 MVP;
 	vec3 *positions;
 	vec4 *colors;
 	uint32_t count = 0;
 };
 
-struct StaticMeshInfo : RenderInfo
+struct DebugMeshInfo
+{
+	Vulkan::Program *program;
+	mat4 MVP;
+};
+
+struct StaticMeshInstanceInfo
+{
+	StaticMeshVertex vertex;
+};
+
+struct SkinnedMeshInstanceInfo
+{
+	mat4 *world_transforms = nullptr;
+	mat4 *normal_transforms = nullptr;
+	uint32_t num_bones = 0;
+};
+
+struct StaticMeshInfo
 {
 	const Vulkan::Buffer *vbo_position;
 	const Vulkan::Buffer *vbo_attributes;
@@ -80,7 +96,6 @@ struct StaticMeshInfo : RenderInfo
 
 	MeshAttributeLayout attributes[Util::ecast(MeshAttribute::Count)];
 
-	alignas(16) StaticMeshVertex vertex;
 	StaticMeshFragment fragment;
 
 	uint32_t ibo_offset = 0;
@@ -94,19 +109,12 @@ struct StaticMeshInfo : RenderInfo
 	bool alpha_test;
 };
 
-struct SkinnedMeshInfo : StaticMeshInfo
-{
-	mat4 *world_transforms = nullptr;
-	mat4 *normal_transforms = nullptr;
-	uint32_t num_bones = 0;
-};
-
 namespace RenderFunctions
 {
-void static_mesh_render(Vulkan::CommandBuffer &cmd, const RenderInfo **render, unsigned instances);
-void debug_mesh_render(Vulkan::CommandBuffer &cmd, const RenderInfo **render, unsigned instances);
-void line_strip_render(Vulkan::CommandBuffer &cmd, const RenderInfo **render, unsigned instances);
-void skinned_mesh_render(Vulkan::CommandBuffer &cmd, const RenderInfo **render, unsigned instances);
+void static_mesh_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *render, unsigned instances);
+void debug_mesh_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *render, unsigned instances);
+void line_strip_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *render, unsigned instances);
+void skinned_mesh_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *render, unsigned instances);
 }
 
 struct StaticMesh : AbstractRenderable
@@ -135,8 +143,7 @@ struct StaticMesh : AbstractRenderable
 
 protected:
 	void reset();
-	void fill_render_info(StaticMeshInfo &info, const RenderContext &context, const CachedSpatialTransformComponent *transform,
-                          RenderQueue &queue) const;
+	void fill_render_info(StaticMeshInfo &info, const RenderContext &context, RenderQueue &queue) const;
 
 private:
 	bool has_static_aabb() const override

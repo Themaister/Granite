@@ -11,7 +11,14 @@ using namespace Util;
 namespace Granite
 {
 
-struct PatchInfo : RenderInfo
+struct PatchInstanceInfo
+{
+	vec4 lods;
+	vec2 offsets;
+	float inner_lod;
+};
+
+struct PatchInfo
 {
 	Program *program;
 
@@ -29,12 +36,9 @@ struct PatchInfo : RenderInfo
 
 	mat4 push[2];
 
-	vec4 lods;
-	vec2 offsets;
 	vec2 inv_heightmap_size;
 	vec2 tiling_factor;
 	vec2 tangent_scale;
-	float inner_lod;
 };
 
 struct GroundVertex
@@ -61,9 +65,9 @@ struct PatchData
 
 namespace RenderFunctions
 {
-static void ground_patch_render(Vulkan::CommandBuffer &cmd, const RenderInfo **infos, unsigned instances)
+static void ground_patch_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *infos, unsigned instances)
 {
-	auto &patch = *static_cast<const PatchInfo *>(infos[0]);
+	auto &patch = *static_cast<const PatchInfo *>(infos->render_info);
 
 	cmd.set_program(*patch.program);
 	cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
@@ -98,7 +102,7 @@ static void ground_patch_render(Vulkan::CommandBuffer &cmd, const RenderInfo **i
 		auto *patches = static_cast<PatchData *>(cmd.allocate_constant_data(3, 0, sizeof(PatchData) * to_render));
 		for (unsigned j = 0; j < to_render; j++)
 		{
-			auto &patch = *static_cast<const PatchInfo *>(infos[i + j]);
+			auto &patch = *static_cast<const PatchInstanceInfo *>(infos[i + j].instance_data);
 			patches->LODs = patch.lods;
 			patches->InnerLOD = patch.inner_lod;
 			patches->Offset = patch.offsets;
@@ -264,8 +268,7 @@ void Ground::on_device_destroyed(const Event &)
 void Ground::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
                              RenderQueue &queue, const GroundPatch &ground_patch) const
 {
-	auto &patch = queue.emplace<PatchInfo>(Queue::Opaque);
-	patch.render = RenderFunctions::ground_patch_render;
+	PatchInfo patch;
 	patch.push[0] = transform->transform->world_transform;
 
 	// The normalmaps are generated with the reference that neighbor pixels are certain length apart.
@@ -276,22 +279,20 @@ void Ground::get_render_info(const RenderContext &context, const CachedSpatialTr
 	// Find something concrete to put here.
 	patch.tangent_scale = vec2(1.0f / 10.0f);
 
-	patch.lods = vec4(
+	auto *instance_data = queue.allocate_one<PatchInstanceInfo>();
+	instance_data->lods = vec4(
 		*ground_patch.nx->lod,
 		*ground_patch.px->lod,
 		*ground_patch.nz->lod,
 		*ground_patch.pz->lod);
-	patch.inner_lod = *ground_patch.lod;
-	patch.lods = max(vec4(patch.inner_lod), patch.lods);
+	instance_data->inner_lod = *ground_patch.lod;
+	instance_data->lods = max(vec4(instance_data->inner_lod), instance_data->lods);
+	instance_data->offsets = ground_patch.offset * vec2(size);
 
-	int base_lod = int(patch.inner_lod);
+	int base_lod = int(instance_data->inner_lod);
 	patch.vbo = quad_lod[base_lod].vbo.get();
 	patch.ibo = quad_lod[base_lod].ibo.get();
 	patch.count = quad_lod[base_lod].count;
-
-	patch.program = queue.get_shader_suites()[ecast(RenderableType::Ground)].get_program(DrawPipeline::Opaque,
-	                                                                                     MESH_ATTRIBUTE_POSITION_BIT,
-	                                                                                     MATERIAL_TEXTURE_BASE_COLOR_BIT).get();
 
 	auto heightmap = heights->get_image();
 	auto normal = normals->get_image();
@@ -306,7 +307,6 @@ void Ground::get_render_info(const RenderContext &context, const CachedSpatialTr
 	patch.base_color = &base_color_image->get_view();
 	patch.lod_map = &lod_map->get_view();
 	patch.type_map = &splatmap_image->get_view();
-	patch.offsets = ground_patch.offset * vec2(size);
 	patch.inv_heightmap_size = vec2(1.0f / size);
 	patch.tiling_factor = tiling_factor;
 
@@ -314,13 +314,14 @@ void Ground::get_render_info(const RenderContext &context, const CachedSpatialTr
 	hasher.pointer(patch.program);
 	auto pipe_hash = hasher.get();
 	hasher.s32(base_lod);
-	patch.sorting_key = RenderInfo::get_sort_key(context, Queue::Opaque, pipe_hash, hasher.get(),
-	                                             transform->world_aabb.get_center(),
-	                                             StaticLayer::Last);
+	auto sorting_key = RenderInfo::get_sort_key(context, Queue::Opaque, pipe_hash, hasher.get(),
+	                                            transform->world_aabb.get_center(),
+	                                            StaticLayer::Last);
 
 	hasher.u64(heightmap->get_cookie());
 	hasher.u64(normal->get_cookie());
-	//hasher.u64(normal_fine->get_cookie());
+	hasher.u64(normal_fine->get_cookie());
+	hasher.u64(occlusionmap->get_cookie());
 	hasher.u64(base_color_image->get_cookie());
 	hasher.u64(splatmap_image->get_cookie());
 	hasher.u64(lod_map->get_cookie());
@@ -329,7 +330,20 @@ void Ground::get_render_info(const RenderContext &context, const CachedSpatialTr
 	// We'll instance a lot of patches belonging to the same ground.
 	hasher.pointer(transform->transform);
 
-	patch.instance_key = hasher.get();
+	auto instance_key = hasher.get();
+
+	auto *patch_data = queue.push<PatchInfo>(Queue::Opaque, instance_key, sorting_key,
+	                                         RenderFunctions::ground_patch_render,
+	                                         instance_data);
+
+	if (patch_data)
+	{
+		patch.program = queue.get_shader_suites()[ecast(RenderableType::Ground)].get_program(DrawPipeline::Opaque,
+		                                                                                     MESH_ATTRIBUTE_POSITION_BIT,
+		                                                                                     MATERIAL_TEXTURE_BASE_COLOR_BIT).get();
+
+		*patch_data = patch;
+	}
 }
 
 void Ground::refresh(RenderContext &context)

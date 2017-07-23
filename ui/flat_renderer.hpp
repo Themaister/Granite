@@ -34,12 +34,16 @@ struct SpriteInfo
 };
 using SpriteList = std::vector<SpriteInfo>;
 
-struct LineStripInfo : RenderInfo
+struct LineInfo
 {
-	Vulkan::Program *program;
 	vec3 *positions;
 	vec4 *colors;
 	unsigned count;
+};
+
+struct LineStripInfo
+{
+	Vulkan::Program *program;
 	ivec4 clip = ivec4(0, 0, 0x4000, 0x4000);
 };
 

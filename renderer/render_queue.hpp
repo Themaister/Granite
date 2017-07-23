@@ -30,28 +30,8 @@ enum class StaticLayer : unsigned
 	Count
 };
 
-struct alignas(64) RenderInfo
+struct RenderInfo
 {
-	// Plain function pointer so we can portably sort on it,
-	// and the rendering function is kind of supposed to be a more
-	// pure function anyways.
-	// Adjacent render infos which share instance key will be batched together.
-	void (*render)(Vulkan::CommandBuffer &cmd, const RenderInfo **infos, unsigned instance_count) = nullptr;
-
-	// RenderInfos with same key can be instanced.
-	Util::Hash instance_key = 0;
-
-	// Sorting key.
-	// Lower sorting keys will appear earlier.
-	uint64_t sorting_key = 0;
-
-	// RenderInfo objects cannot be deleted.
-	// Classes which inherit from this class just be trivially destructible.
-	// Classes which inherit data here are supposed to live temporarily and
-	// should only hold POD data.
-	// Dynamic allocation can be made from the RenderQueue.
-	~RenderInfo() = default;
-
 	static uint64_t get_sort_key(const RenderContext &context, Queue queue_type,
 	                             Util::Hash pipeline_hash, Util::Hash draw_hash,
 	                             const vec3 &center,
@@ -60,6 +40,25 @@ struct alignas(64) RenderInfo
 	                                    Util::Hash pipeline_hash, Util::Hash draw_hash,
 	                                    float layer, StaticLayer static_layer = StaticLayer::Default);
 	static uint64_t get_background_sort_key(Queue queue_type, Util::Hash pipeline_hash, Util::Hash draw_hash);
+
+private:
+	RenderInfo() = default;
+};
+
+struct RenderQueueData
+{
+	// How to render an object.
+	void (*render)(Vulkan::CommandBuffer &cmd, const RenderQueueData *infos, unsigned instance_count);
+
+	// Per-draw call specific data. Understood by the render callback.
+	const void *render_info;
+
+	// Per-instance specific data. Understood by the render callback.
+	const void *instance_data;
+
+	// Sorting key.
+	// Lower sorting keys will appear earlier.
+	uint64_t sorting_key;
 };
 
 class RenderQueue
@@ -67,48 +66,60 @@ class RenderQueue
 public:
 	enum { BlockSize = 256 * 1024 };
 
-	template <typename T, typename... P>
-	T &emplace(Queue queue, P&&... p)
-	{
-		static_assert(std::is_trivially_destructible<T>::value, "Dispatchable type is not trivially destructible!");
-		void *buffer = allocate(sizeof(T), alignof(T));
-		if (!buffer)
-			throw std::bad_alloc();
-
-		T *t = new(buffer) T(std::forward<P>(p)...);
-		enqueue(queue, t);
-		return *t;
-	}
-
 	template <typename T>
-	T *allocate_multiple(Queue queue, size_t n)
+	T *push(Queue queue, Util::Hash instance_key, uint64_t sorting_key,
+	        void (*render)(Vulkan::CommandBuffer &cmd, const RenderQueueData *infos, unsigned instance_data),
+	        void *instance_data)
 	{
 		static_assert(std::is_trivially_destructible<T>::value, "Dispatchable type is not trivially destructible!");
-		void *buffer = allocate(sizeof(T) * n, alignof(T));
-		if (!buffer)
-			throw std::bad_alloc();
+		static_assert(std::is_trivially_copyable<T>::value, "Dispatchable type is not trivially copyable!");
 
-		T *t = new(buffer) T[n]();
-		for (size_t i = 0; i < n; i++)
-			enqueue(queue, &t[i]);
+		assert(instance_key != 0);
+		assert(sorting_key != 0);
 
-		return t;
+		auto itr = render_infos.find(instance_key);
+		if (itr != std::end(render_infos))
+		{
+			enqueue_queue_data(queue, { render, itr->second, instance_data, sorting_key });
+			return nullptr;
+		}
+		else
+		{
+			void *buffer = allocate(sizeof(T), alignof(T));
+			if (!buffer)
+				throw std::bad_alloc();
+
+			T *t = new(buffer) T();
+			enqueue_queue_data(queue, { render, t, instance_data, sorting_key });
+			return t;
+		}
 	}
 
 	void *allocate(size_t size, size_t alignment = 64);
-	void enqueue(Queue queue, const RenderInfo *render_info);
+
+	template <typename T>
+	T *allocate_one()
+	{
+		static_assert(std::is_trivially_destructible<T>::value, "Type is not trivially destructible!");
+		static_assert(std::is_trivially_copyable<T>::value, "Type is not trivially copyable!");
+		return static_cast<T *>(allocate(sizeof(T), alignof(T)));
+	}
+
+	template <typename T>
+	T *allocate_many(size_t n)
+	{
+		static_assert(std::is_trivially_destructible<T>::value, "Type is not trivially destructible!");
+		static_assert(std::is_trivially_copyable<T>::value, "Type is not trivially copyable!");
+		return static_cast<T *>(allocate(sizeof(T) * n, alignof(T)));
+	}
+
 	void combine_render_info(const RenderQueue &queue);
 	void reset();
 	void reset_and_reclaim();
 
-	const RenderInfo **get_queue(Queue queue) const
+	const std::vector<RenderQueueData> &get_queue_data(Queue queue) const
 	{
-		return queues[Util::ecast(queue)].queue;
-	}
-
-	size_t get_queue_count(Queue queue) const
-	{
-		return queues[Util::ecast(queue)].count;
+		return queues[Util::ecast(queue)];
 	}
 
 	void sort();
@@ -126,6 +137,8 @@ public:
 	}
 
 private:
+	void enqueue_queue_data(Queue queue, const RenderQueueData &data);
+
 	struct Block
 	{
 		std::vector<uint8_t> buffer;
@@ -157,18 +170,13 @@ private:
 	Chain large_blocks;
 	Chain::iterator current = std::end(blocks);
 
-	struct QueueInfo
-	{
-		const RenderInfo **queue = nullptr;
-		size_t count = 0;
-		size_t capacity = 0;
-	};
-	QueueInfo queues[static_cast<unsigned>(Queue::Count)];
+	std::vector<RenderQueueData> queues[static_cast<unsigned>(Queue::Count)];
 
 	void *allocate_from_block(Block &block, size_t size, size_t alignment);
 	Chain::iterator insert_block();
 	Chain::iterator insert_large_block(size_t size, size_t alignment);
 
 	ShaderSuite *shader_suites = nullptr;
+	Util::HashMap<RenderQueueData *> render_infos;
 };
 }

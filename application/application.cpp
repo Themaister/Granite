@@ -491,7 +491,7 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 	auto &ui = graph.add_pass("ui", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 	ui.add_color_output("backbuffer", backbuffer, "tonemapped");
 	ui.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
-		//UI::UIManager::get().render(cmd);
+		UI::UIManager::get().render(cmd);
 	});
 
 	graph.bake();

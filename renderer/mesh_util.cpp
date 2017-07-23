@@ -273,52 +273,50 @@ Skybox::Skybox(std::string bg_path)
 	                                                  this);
 }
 
-struct SkyboxRenderInfo : RenderInfo
+struct SkyboxRenderInfo
 {
 	Program *program;
 	const ImageView *view;
 	const Sampler *sampler;
 };
 
-static void skybox_render(CommandBuffer &cmd, const RenderInfo **infos, unsigned instances)
+static void skybox_render(CommandBuffer &cmd, const RenderQueueData *infos, unsigned instances)
 {
-	assert(instances == 1);
-	(void)instances;
+	for (unsigned i = 0; i < instances; i++)
+	{
+		auto *info = static_cast<const SkyboxRenderInfo *>(infos[i].render_info);
 
-	auto *info = static_cast<const SkyboxRenderInfo *>(infos[0]);
+		cmd.set_program(*info->program);
+		cmd.set_texture(2, 0, *info->view, *info->sampler);
 
-	cmd.set_program(*info->program);
-	cmd.set_texture(2, 0, *info->view, *info->sampler);
-
-	int8_t *coord = static_cast<int8_t *>(cmd.allocate_vertex_data(0, 8, 2));
-	coord[0] = -128;
-	coord[1] = -128;
-	coord[2] = +127;
-	coord[3] = -128;
-	coord[4] = -128;
-	coord[5] = +127;
-	coord[6] = +127;
-	coord[7] = +127;
-	cmd.set_vertex_attrib(0, 0, VK_FORMAT_R8G8_SNORM, 0);
-
-	cmd.set_cull_mode(VK_CULL_MODE_NONE);
-	cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
-	cmd.draw(4);
+		CommandBufferUtil::set_quad_vertex_state(cmd);
+		cmd.set_cull_mode(VK_CULL_MODE_NONE);
+		cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
+		cmd.draw(4);
+	}
 }
 
 void Skybox::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *,
                              RenderQueue &queue) const
 {
-	auto &info = queue.emplace<SkyboxRenderInfo>(Queue::Opaque);
+	SkyboxRenderInfo info;
 	info.view = &texture->get_image()->get_view();
 
 	Hasher h;
 	h.pointer(info.view);
-	info.instance_key = h.get();
-	info.sorting_key = RenderInfo::get_background_sort_key(Queue::Opaque, 0, 0);
-	info.render = skybox_render;
+	auto instance_key = h.get();
+	auto sorting_key = RenderInfo::get_background_sort_key(Queue::Opaque, 0, 0);
 	info.sampler = &context.get_device().get_stock_sampler(StockSampler::LinearClamp);
-	info.program = queue.get_shader_suites()[ecast(RenderableType::Skybox)].get_program(DrawPipeline::Opaque, 0, 0).get();
+
+	auto *skydome_info = queue.push<SkyboxRenderInfo>(Queue::Opaque, instance_key, sorting_key,
+	                                                  skybox_render,
+	                                                  nullptr);
+
+	if (skydome_info)
+	{
+		info.program = queue.get_shader_suites()[ecast(RenderableType::Skybox)].get_program(DrawPipeline::Opaque, 0, 0).get();
+		*skydome_info = info;
+	}
 }
 
 void Skybox::on_device_created(const Event &event)
@@ -331,7 +329,7 @@ void Skybox::on_device_destroyed(const Event &)
 	texture = nullptr;
 }
 
-struct TexturePlaneInfo : RenderInfo
+struct TexturePlaneInfo
 {
 	Vulkan::Program *program;
 	const Vulkan::ImageView *reflection;
@@ -351,11 +349,11 @@ struct TexturePlaneInfo : RenderInfo
 	Push push;
 };
 
-static void texture_plane_render(CommandBuffer &cmd, const RenderInfo **infos, unsigned instances)
+static void texture_plane_render(CommandBuffer &cmd, const RenderQueueData *infos, unsigned instances)
 {
 	for (unsigned i = 0; i < instances; i++)
 	{
-		auto &info = *static_cast<const TexturePlaneInfo *>(infos[i]);
+		auto &info = *static_cast<const TexturePlaneInfo *>(infos[i].render_info);
 		cmd.set_program(*info.program);
 		cmd.set_texture(2, 0, *info.reflection, Vulkan::StockSampler::TrilinearClamp);
 		cmd.set_texture(2, 1, *info.refraction, Vulkan::StockSampler::TrilinearClamp);
@@ -397,27 +395,32 @@ void TexturePlane::on_device_destroyed(const Event &)
 void TexturePlane::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *,
                                    RenderQueue &queue) const
 {
-	auto &info = queue.emplace<TexturePlaneInfo>(Queue::Opaque);
-
+	TexturePlaneInfo info;
 	info.reflection = reflection;
 	info.refraction = refraction;
 	info.normal = &normalmap->get_image()->get_view();
-	info.program = queue.get_shader_suites()[ecast(RenderableType::TexturePlane)].get_program(DrawPipeline::Opaque, 0, 0).get();
 	info.push.normal = vec4(normalize(normal), 0.0f);
 	info.push.position = vec4(position, 0.0f);
 	info.push.dPdx = vec4(dpdx, 0.0f);
 	info.push.dPdy = vec4(dpdy, 0.0f);
 	info.push.tangent = vec4(normalize(dpdx), 0.0f);
 	info.push.bitangent = vec4(normalize(dpdy), 0.0f);
-	info.render = texture_plane_render;
 	info.push.offset_scale = vec4(vec2(0.03 * elapsed), vec2(2.0f));
 
 	Hasher h;
-	h.pointer(info.program);
-	info.sorting_key = RenderInfo::get_sort_key(context, Queue::Opaque, h.get(), h.get(), position);
 	h.u64(info.reflection->get_cookie());
 	h.u64(info.refraction->get_cookie());
-	info.instance_key = h.get();
+	h.u64(info.normal->get_cookie());
+	auto instance_key = h.get();
+	auto sorting_key = RenderInfo::get_sort_key(context, Queue::Opaque, h.get(), h.get(), position);
+	auto *plane_info = queue.push<TexturePlaneInfo>(Queue::Opaque, instance_key, sorting_key,
+	                                                texture_plane_render, nullptr);
+
+	if (plane_info)
+	{
+		info.program = queue.get_shader_suites()[ecast(RenderableType::TexturePlane)].get_program(DrawPipeline::Opaque, 0, 0).get();
+		*plane_info = info;
+	}
 }
 
 }

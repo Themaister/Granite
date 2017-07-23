@@ -34,16 +34,20 @@ void main()
 
     vec2 reflection_uv = vUV + uv_offset;
     vec2 refraction_uv = vec2(1.0 - vUV.x - tangent.x * 0.02, vUV.y - tangent.y * 0.02);
-
-    float NoV = abs(clamp(dot(normal, normalize(vEyeVec)), -1.0, 1.0));
-    float fresnel = 0.04 + 0.96 * pow(1.0 - NoV, 5.0);
-    //fresnel = 1.0;
     vec3 refraction = texture(uRefraction, refraction_uv).rgb;
     vec3 reflection = texture(uReflection, reflection_uv, 1.0).rgb;
-    Emissive = mix(refraction, reflection, fresnel);
-    //Emissive = vec3(0.0);
+
+    float NoV = abs(clamp(dot(normal, normalize(vEyeVec)), -1.0, 1.0));
+    float reflection_coeff = 0.02 + 0.98 * pow(1.0 - NoV, 5.0);
+
+    // Even at 90 degrees transmission angle, incident angle is maximum 48 deg. With schlick approx, the reflection
+    // coeff is at most 0.025, completely insignificant, so just always transmit the refracted pixels.
+    float refraction_coeff = 0.98;
+
+    // Add in an ambient emissive color which is very dark blue-ish.
+    Emissive = refraction * refraction_coeff + reflection * reflection_coeff + vec3(0.02, 0.025, 0.04);
 
     Normal = normal * 0.5 + 0.5;
-    BaseColor = vec4(0.0, 0.0, 0.0, 1.0);
+    BaseColor = vec4(0.02, 0.02, 0.02, 1.0);
     PBR = vec2(1.0, 0.0); // No diffuse, no specular, only reflection.
 }

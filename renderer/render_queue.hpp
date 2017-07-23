@@ -30,7 +30,7 @@ enum class StaticLayer : unsigned
 	Count
 };
 
-struct RenderInfo
+struct alignas(64) RenderInfo
 {
 	// Plain function pointer so we can portably sort on it,
 	// and the rendering function is kind of supposed to be a more

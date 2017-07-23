@@ -80,7 +80,7 @@ struct StaticMeshInfo : RenderInfo
 
 	MeshAttributeLayout attributes[Util::ecast(MeshAttribute::Count)];
 
-	StaticMeshVertex vertex;
+	alignas(16) StaticMeshVertex vertex;
 	StaticMeshFragment fragment;
 
 	uint32_t ibo_offset = 0;

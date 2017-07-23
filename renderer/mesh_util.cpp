@@ -283,6 +283,8 @@ struct SkyboxRenderInfo : RenderInfo
 static void skybox_render(CommandBuffer &cmd, const RenderInfo **infos, unsigned instances)
 {
 	assert(instances == 1);
+	(void)instances;
+
 	auto *info = static_cast<const SkyboxRenderInfo *>(infos[0]);
 
 	cmd.set_program(*info->program);
@@ -392,10 +394,9 @@ void TexturePlane::on_device_destroyed(const Event &)
 	normalmap = nullptr;
 }
 
-void TexturePlane::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
+void TexturePlane::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *,
                                    RenderQueue &queue) const
 {
-	assert(!transform);
 	auto &info = queue.emplace<TexturePlaneInfo>(Queue::Opaque);
 
 	info.reflection = reflection;

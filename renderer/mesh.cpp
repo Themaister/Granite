@@ -165,8 +165,8 @@ void StaticMesh::fill_render_info(StaticMeshInfo &info, const RenderContext &con
 	info.count = count;
 	info.sampler = material->sampler;
 
-	info.vertex.Normal = transform ? transform->transform->normal_transform : mat4(1.0f);
-	info.vertex.Model = transform ? transform->transform->world_transform : mat4(1.0f);
+	info.vertex.Normal = transform->transform->normal_transform;
+	info.vertex.Model = transform->transform->world_transform;
 	info.fragment.roughness = material->roughness;
 	info.fragment.metallic = material->metallic;
 	info.fragment.emissive = vec4(material->emissive, 0.0f);
@@ -203,10 +203,7 @@ void StaticMesh::fill_render_info(StaticMeshInfo &info, const RenderContext &con
 	h.u32(textures);
 	h.u64(vbo_position->get_cookie());
 
-	if (transform)
-		info.sorting_key = RenderInfo::get_sort_key(context, type, pipe_hash, h.get(), transform->world_aabb.get_center());
-	else
-		info.sorting_key = RenderInfo::get_background_sort_key(type, pipe_hash, h.get());
+	info.sorting_key = RenderInfo::get_sort_key(context, type, pipe_hash, h.get(), transform->world_aabb.get_center());
 }
 
 void StaticMesh::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform, RenderQueue &queue) const

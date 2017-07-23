@@ -379,26 +379,26 @@ void SceneViewerApplication::add_shadow_pass(Vulkan::Device &device, const std::
 	AttachmentInfo shadowmap;
 	AttachmentInfo vsm_output;
 	shadowmap.format = device.get_default_depth_format();
-	shadowmap.samples = 4;
+	shadowmap.samples = 1;
 	shadowmap.size_class = SizeClass::Absolute;
 
 	vsm_output.format = VK_FORMAT_R32G32_SFLOAT;
-	vsm_output.samples = 4;
+	vsm_output.samples = 1;
 	vsm_output.size_class = SizeClass::Absolute;
 
 	if (type == DepthPassType::Main)
 	{
-		shadowmap.size_x = 2048.0f;
-		shadowmap.size_y = 2048.0f;
-		vsm_output.size_x = 2048.0f;
-		vsm_output.size_y = 2048.0f;
+		shadowmap.size_x = 4096.0f;
+		shadowmap.size_y = 4096.0f;
+		vsm_output.size_x = 4096.0f;
+		vsm_output.size_y = 4096.0f;
 	}
 	else
 	{
-		shadowmap.size_x = 512.0f;
-		shadowmap.size_y = 512.0f;
-		vsm_output.size_x = 512.0f;
-		vsm_output.size_y = 512.0f;
+		shadowmap.size_x = 1024.0f;
+		shadowmap.size_y = 1024.0f;
+		vsm_output.size_x = 1024.0f;
+		vsm_output.size_y = 1024.0f;
 	}
 
 	auto vsm_resolve_output = vsm_output;
@@ -430,8 +430,7 @@ void SceneViewerApplication::add_shadow_pass(Vulkan::Device &device, const std::
 
 	auto &vsm_resolve = graph.add_pass(tagcat("vsm-resolve", tag), VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 	vsm_resolve.add_attachment_input(tagcat("shadowmap", tag));
-	vsm_resolve.add_color_output(tagcat("vsm-output", tag), vsm_output);
-	vsm_resolve.add_resolve_output(tagcat("vsm-resolved", tag), vsm_resolve_output);
+	vsm_resolve.add_color_output(tagcat("vsm-resolved", tag), vsm_resolve_output);
 	vsm_resolve.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
 		cmd.set_input_attachments(0, 0);
 		CommandBufferUtil::draw_quad(cmd, "assets://shaders/quad.vert", "assets://shaders/lights/resolve_vsm.frag");

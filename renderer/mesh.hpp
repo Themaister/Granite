@@ -135,15 +135,19 @@ struct StaticMesh : AbstractRenderable
 	MaterialHandle material;
 
 	Util::Hash get_instance_key() const;
+	Util::Hash get_baked_instance_key() const;
 
 	AABB static_aabb;
 
 	void get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
 	                     RenderQueue &queue) const override;
 
+	void bake();
+
 protected:
 	void reset();
 	void fill_render_info(StaticMeshInfo &info) const;
+	Util::Hash cached_hash = 0;
 
 private:
 	bool has_static_aabb() const override

@@ -61,6 +61,8 @@ void ImportedSkinnedMesh::on_device_created(const Event &event)
 		info.size = mesh.indices.size();
 		ibo = device.create_buffer(info, mesh.indices.data());
 	}
+
+	bake();
 }
 
 void ImportedSkinnedMesh::on_device_destroyed(const Event &)
@@ -117,6 +119,8 @@ void ImportedMesh::on_device_created(const Event &event)
 		info.size = mesh.indices.size();
 		ibo = device.create_buffer(info, mesh.indices.data());
 	}
+
+	bake();
 }
 
 void ImportedMesh::on_device_destroyed(const Event &)

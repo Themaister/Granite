@@ -38,6 +38,15 @@ Hash StaticMesh::get_instance_key() const
 	return h.get();
 }
 
+Hash StaticMesh::get_baked_instance_key() const
+{
+	Hasher h;
+	assert(cached_hash != 0);
+	h.u64(cached_hash);
+	h.u64(material->get_hash());
+	return h.get();
+}
+
 namespace RenderFunctions
 {
 static void mesh_set_state(CommandBuffer &cmd, const StaticMeshInfo &info)
@@ -174,6 +183,11 @@ void StaticMesh::fill_render_info(StaticMeshInfo &info) const
 		info.views[i] = material->textures[i] ? &material->textures[i]->get_image()->get_view() : nullptr;
 }
 
+void StaticMesh::bake()
+{
+	cached_hash = get_instance_key();
+}
+
 void StaticMesh::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform, RenderQueue &queue) const
 {
 	auto type = material->pipeline == DrawPipeline::AlphaBlend ? Queue::Transparent : Queue::Opaque;
@@ -191,7 +205,7 @@ void StaticMesh::get_render_info(const RenderContext &context, const CachedSpati
 	h.u64(material->get_hash());
 	h.u64(vbo_position->get_cookie());
 
-	auto instance_key = get_instance_key();
+	auto instance_key = get_baked_instance_key();
 	auto sorting_key = RenderInfo::get_sort_key(context, type, pipe_hash, h.get(), transform->world_aabb.get_center());
 
 	auto *t = transform->transform;
@@ -239,7 +253,7 @@ void SkinnedMesh::get_render_info(const RenderContext &context, const CachedSpat
 	h.u64(material->get_hash());
 	h.u64(vbo_position->get_cookie());
 
-	auto instance_key = get_instance_key() ^ 1;
+	auto instance_key = get_baked_instance_key() ^ 1;
 	auto sorting_key = RenderInfo::get_sort_key(context, type, pipe_hash, h.get(), transform->world_aabb.get_center());
 
 	auto *instance_data = queue.allocate_one<SkinnedMeshInstanceInfo>();

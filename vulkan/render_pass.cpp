@@ -241,6 +241,8 @@ RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
 			depth->layout = VK_IMAGE_LAYOUT_UNDEFINED;
 		}
 
+		// No need for this yet, and it breaks current RADV.
+#if 0
 		static const VkAttachmentReference dummy_attachment = { VK_ATTACHMENT_UNUSED, VK_IMAGE_LAYOUT_UNDEFINED };
 		if (subpass.colorAttachmentCount == 0)
 		{
@@ -248,6 +250,7 @@ RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
 			subpass.colorAttachmentCount = 1;
 			subpass.pColorAttachments = &dummy_attachment;
 		}
+#endif
 	}
 
 	const auto find_color = [&](unsigned subpass, unsigned attachment) -> VkAttachmentReference * {

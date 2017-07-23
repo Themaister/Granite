@@ -101,6 +101,7 @@ void FlatRenderer::render_quad(const ImageView *view, Vulkan::StockSampler sampl
 	instance_data->count = 1;
 
 	Hasher h;
+	h.string("quad");
 	h.u32(transparent);
 	auto pipe_hash = h.get();
 	h.s32(sprite.clip_quad.x);
@@ -206,6 +207,7 @@ void FlatRenderer::render_line_strip(const vec2 *offset, float layer, unsigned c
 	build_scissor(strip.clip, minimum, maximum);
 
 	Hasher h;
+	h.string("line");
 	h.u32(transparent);
 	auto pipe_hash = h.get();
 	h.s32(strip.clip.x);

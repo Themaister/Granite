@@ -90,6 +90,7 @@ public:
 				throw std::bad_alloc();
 
 			T *t = new(buffer) T();
+			render_infos[instance_key] = t;
 			enqueue_queue_data(queue, { render, t, instance_data, sorting_key });
 			return t;
 		}
@@ -177,6 +178,6 @@ private:
 	Chain::iterator insert_large_block(size_t size, size_t alignment);
 
 	ShaderSuite *shader_suites = nullptr;
-	Util::HashMap<RenderQueueData *> render_infos;
+	Util::HashMap<void *> render_infos;
 };
 }

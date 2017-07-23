@@ -145,7 +145,7 @@ void skinned_mesh_render(CommandBuffer &cmd, const RenderQueueData *infos, unsig
 }
 }
 
-void StaticMesh::fill_render_info(StaticMeshInfo &info, const RenderContext &context, RenderQueue &queue) const
+void StaticMesh::fill_render_info(StaticMeshInfo &info) const
 {
 	info.vbo_attributes = vbo_attributes.get();
 	info.vbo_position = vbo_position.get();
@@ -210,7 +210,7 @@ void StaticMesh::get_render_info(const RenderContext &context, const CachedSpati
 
 	if (mesh_info)
 	{
-		fill_render_info(*mesh_info, context, queue);
+		fill_render_info(*mesh_info);
 		mesh_info->program = queue.get_shader_suites()[ecast(RenderableType::Mesh)].get_program(material->pipeline, attrs,
 		                                                                                        textures).get();
 	}
@@ -257,7 +257,7 @@ void SkinnedMesh::get_render_info(const RenderContext &context, const CachedSpat
 
 	if (mesh_info)
 	{
-		fill_render_info(*mesh_info, context, queue);
+		fill_render_info(*mesh_info);
 		mesh_info->program = queue.get_shader_suites()[ecast(RenderableType::Mesh)].get_program(material->pipeline, attrs,
 		                                                                                        textures).get();
 	}

@@ -143,7 +143,7 @@ struct StaticMesh : AbstractRenderable
 
 protected:
 	void reset();
-	void fill_render_info(StaticMeshInfo &info, const RenderContext &context, RenderQueue &queue) const;
+	void fill_render_info(StaticMeshInfo &info) const;
 
 private:
 	bool has_static_aabb() const override

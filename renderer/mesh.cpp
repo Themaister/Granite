@@ -178,19 +178,13 @@ void StaticMesh::get_render_info(const RenderContext &context, const CachedSpati
 {
 	auto type = material->pipeline == DrawPipeline::AlphaBlend ? Queue::Transparent : Queue::Opaque;
 	uint32_t attrs = 0;
-	uint32_t textures = 0;
 
 	for (unsigned i = 0; i < ecast(MeshAttribute::Count); i++)
 		if (attributes[i].format != VK_FORMAT_UNDEFINED)
 			attrs |= 1u << i;
 
-	for (unsigned i = 0; i < ecast(Material::Textures::Count); i++)
-		if (material->textures[i])
-			textures |= 1u << i;
-
 	Hasher h;
 	h.u32(attrs);
-	h.u32(textures);
 	h.u32(ecast(material->pipeline));
 	auto pipe_hash = h.get();
 
@@ -200,9 +194,10 @@ void StaticMesh::get_render_info(const RenderContext &context, const CachedSpati
 	auto instance_key = get_instance_key();
 	auto sorting_key = RenderInfo::get_sort_key(context, type, pipe_hash, h.get(), transform->world_aabb.get_center());
 
+	auto *t = transform->transform;
 	auto *instance_data = queue.allocate_one<StaticMeshInstanceInfo>();
-	instance_data->vertex.Model = transform->transform->world_transform;
-	instance_data->vertex.Normal = transform->transform->normal_transform;
+	instance_data->vertex.Model = t->world_transform;
+	instance_data->vertex.Normal = t->normal_transform;
 
 	auto *mesh_info = queue.push<StaticMeshInfo>(type, instance_key, sorting_key,
 	                                             RenderFunctions::static_mesh_render,
@@ -210,6 +205,11 @@ void StaticMesh::get_render_info(const RenderContext &context, const CachedSpati
 
 	if (mesh_info)
 	{
+		uint32_t textures = 0;
+		for (unsigned i = 0; i < ecast(Material::Textures::Count); i++)
+			if (material->textures[i])
+				textures |= 1u << i;
+
 		fill_render_info(*mesh_info);
 		mesh_info->program = queue.get_shader_suites()[ecast(RenderableType::Mesh)].get_program(material->pipeline, attrs,
 		                                                                                        textures).get();

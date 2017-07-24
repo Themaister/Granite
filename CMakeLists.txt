@@ -54,7 +54,7 @@ add_subdirectory(ui)
 add_subdirectory(importers)
 add_subdirectory(application)
 
-add_granite_executable(sandbox cube_test.cpp)
+add_granite_executable(sandbox sandbox.cpp)
 target_link_libraries(sandbox math application)
 
 add_subdirectory(network)

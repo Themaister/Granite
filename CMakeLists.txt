@@ -21,6 +21,7 @@ set(SPIRV-Headers_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/spirv-head
 set(SHADERC_SKIP_TESTS ON)
 add_subdirectory(third_party/shaderc EXCLUDE_FROM_ALL)
 add_subdirectory(third_party/stb EXCLUDE_FROM_ALL)
+add_subdirectory(third_party/spirv-cross EXCLUDE_FROM_ALL)
 
 function(add_granite_library NAME)
     add_library(${NAME} STATIC ${ARGN})

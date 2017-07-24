@@ -1,5 +1,5 @@
-[submodule "vulkan/spirv-cross"]
-	path = vulkan/spirv-cross
+[submodule "third_party/spirv-cross"]
+	path = third_party/spirv-cross
 	url = git://github.com/KhronosGroup/SPIRV-Cross
 [submodule "third_party/shaderc"]
 	path = third_party/shaderc

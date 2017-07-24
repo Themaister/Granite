@@ -40,7 +40,6 @@ endif()
 
 add_subdirectory(wsi)
 
-add_subdirectory(spirv-cross EXCLUDE_FROM_ALL)
 target_link_libraries(vulkan-backend spirv-cross-core)
 target_link_libraries(vulkan-backend vulkan-symbols)
 target_link_libraries(vulkan-backend util)

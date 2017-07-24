@@ -3,7 +3,7 @@ set(CMAKE_CXX_STANDARD 11)
 project(Granite LANGUAGES CXX C)
 
 if (CMAKE_COMPILER_IS_GNUCXX)
-   set(GRANITE_CXX_FLAGS -Wall -Wextra -pedantic -Wno-missing-field-initializers)
+	set(GRANITE_CXX_FLAGS -Wall -Wextra -pedantic -Wno-missing-field-initializers -Wno-empty-body)
 endif()
 
 option(SANITIZE_ADDRESS "Sanitize" OFF)

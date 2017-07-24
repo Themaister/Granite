@@ -333,7 +333,7 @@ void Ground::get_render_info(const RenderContext &context, const CachedSpatialTr
 	patch.tiling_factor = tiling_factor;
 
 	Util::Hasher hasher;
-	hasher.pointer(patch.program);
+	hasher.string("ground");
 	auto pipe_hash = hasher.get();
 	hasher.s32(base_lod);
 	auto sorting_key = RenderInfo::get_sort_key(context, Queue::Opaque, pipe_hash, hasher.get(),

@@ -1,10 +1,7 @@
 #version 310 es
 precision mediump float;
 
-layout(location = 0) out vec3 Emissive;
-layout(location = 1) out vec4 BaseColor;
-layout(location = 2) out vec3 Normal;
-layout(location = 3) out vec2 PBR;
+#include "inc/render_target.h"
 
 layout(location = 0) in mediump vec3 vEyeVec;
 
@@ -58,9 +55,6 @@ void main()
     terrain.xy += types.w * 0.5 * (texture(uDeepRoughNormals, uv).xy * 2.0 - 1.0);
     vec3 normal = normalize(mat3(registers.Normal) * terrain.xzy); // Normal is +Y, Bitangent is +Z.
 
-    Emissive = vec3(0.0);
-    BaseColor = vec4(base_color, texture(uOcclusionTerrain, vUV).x);
-    Normal = normal * 0.5 + 0.5;
-    PBR = vec2(0.0, 1.0);
+    emit_render_target(vec3(0.0), vec4(base_color, 1.0), normal, 0.0, 1.0, texture(uOcclusionTerrain, vUV).x, vEyeVec);
 }
 

@@ -36,10 +36,7 @@ layout(std430, push_constant) uniform Constants
     float lod_bias;
 } registers;
 
-layout(location = 0) out vec3 Emissive;
-layout(location = 1) out vec4 BaseColor;
-layout(location = 2) out vec3 Normal;
-layout(location = 3) out vec2 PBR;
+#include "inc/render_target.h"
 
 void main()
 {
@@ -74,8 +71,5 @@ void main()
     vec4 base_color = registers.base_color;
 #endif
 
-    Emissive = vec3(0.0);
-    BaseColor = vec4(base_color.rgb, 1.0);
-    Normal = 0.5 * normal + 0.5;
-    PBR = vec2(metallic, roughness);
+    emit_render_target(vec3(0.0), base_color, normal, metallic, roughness, 1.0, vEyeVec);
 }

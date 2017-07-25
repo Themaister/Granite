@@ -4,10 +4,7 @@ precision mediump float;
 layout(location = 0) in highp vec2 vUV;
 layout(location = 1) in mediump vec3 vEyeVec;
 
-layout(location = 0) out vec3 Emissive;
-layout(location = 1) out vec4 BaseColor;
-layout(location = 2) out vec3 Normal;
-layout(location = 3) out vec2 PBR;
+#include "inc/render_target.h"
 
 layout(set = 2, binding = 0) uniform sampler2D uReflection;
 layout(set = 2, binding = 1) uniform sampler2D uRefraction;
@@ -45,9 +42,6 @@ void main()
     float refraction_coeff = 0.98;
 
     // Add in an ambient emissive color which is very dark blue-ish.
-    Emissive = refraction * refraction_coeff + reflection * reflection_coeff + vec3(0.02, 0.025, 0.04);
-
-    Normal = normal * 0.5 + 0.5;
-    BaseColor = vec4(0.02, 0.02, 0.02, 1.0);
-    PBR = vec2(1.0, 0.0); // No diffuse, no specular, only reflection.
+    emit_render_target(refraction * refraction_coeff + reflection * reflection_coeff + vec3(0.02, 0.025, 0.04),
+        vec4(0.02, 0.02, 0.02, 1.0), normal, 1.0, 0.0, 1.0, vEyeVec);
 }

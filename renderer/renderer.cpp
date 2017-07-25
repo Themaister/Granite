@@ -70,6 +70,8 @@ void Renderer::on_device_created(const Event &e)
 		                                                   "assets://shaders/ground_depth.frag");
 	}
 
+	for (auto &s : suite)
+		s.bake_base_defines();
 	this->device = &device;
 }
 

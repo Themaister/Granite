@@ -45,10 +45,23 @@ void ShaderSuite::init_compute(Vulkan::ShaderManager *manager, const std::string
 	base_defines.clear();
 }
 
+void ShaderSuite::bake_base_defines()
+{
+	Hasher h;
+	for (auto &define : base_defines)
+	{
+		h.string(define.first.c_str());
+		h.s32(define.second);
+	}
+	base_define_hash = h.get();
+}
+
 Vulkan::ProgramHandle ShaderSuite::get_program(DrawPipeline pipeline, uint32_t attribute_mask,
                                                uint32_t texture_mask)
 {
 	Hasher h;
+	assert(base_define_hash != 0);
+	h.u64(base_define_hash);
 	h.u32(pipeline == DrawPipeline::AlphaTest);
 	h.u32(attribute_mask);
 	h.u32(texture_mask);

@@ -39,7 +39,10 @@ public:
 		return base_defines;
 	}
 
+	void bake_base_defines();
+
 private:
+	Util::Hash base_define_hash = 0;
 	Vulkan::ShaderManager *manager = nullptr;
 	Vulkan::ShaderProgram *program = nullptr;
 	Util::HashMap<unsigned> variants;

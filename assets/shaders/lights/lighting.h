@@ -38,9 +38,12 @@ struct EnvironmentInfo
 layout(set = 1, binding = 0) uniform samplerCube uReflection;
 layout(set = 1, binding = 1) uniform samplerCube uIrradiance;
 layout(set = 1, binding = 2) uniform sampler2D uShadowmap;
-
 #if SHADOW_CASCADES
 layout(set = 1, binding = 3) uniform sampler2D uShadowmapNear;
+#endif
+
+#ifdef RENDERER_FORWARD
+#include "lighting_data.h"
 #endif
 
 float vsm(float depth, vec2 moments)

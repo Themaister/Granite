@@ -22,5 +22,5 @@ void main()
     vec3 plane = registers.position + Position.x * registers.dPdx + Position.y * registers.dPdy;
     gl_Position = global.view_projection * vec4(plane, 1.0);
     vUV = Position * 0.5 + 0.5;
-    vEyeVec = global.camera_position - plane;
+    vEyeVec = plane - global.camera_position;
 }

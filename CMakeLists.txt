@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.5)
 set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_C_STANDARD 99)
 project(Granite LANGUAGES CXX C)
 
 if (CMAKE_COMPILER_IS_GNUCXX)

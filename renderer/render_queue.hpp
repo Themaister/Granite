@@ -94,7 +94,6 @@ public:
 	        void *instance_data)
 	{
 		static_assert(std::is_trivially_destructible<T>::value, "Dispatchable type is not trivially destructible!");
-		static_assert(std::is_trivially_copyable<T>::value, "Dispatchable type is not trivially copyable!");
 
 		assert(instance_key != 0);
 		assert(sorting_key != 0);
@@ -124,7 +123,6 @@ public:
 	T *allocate_one()
 	{
 		static_assert(std::is_trivially_destructible<T>::value, "Type is not trivially destructible!");
-		static_assert(std::is_trivially_copyable<T>::value, "Type is not trivially copyable!");
 		return static_cast<T *>(allocate(sizeof(T), alignof(T)));
 	}
 
@@ -132,7 +130,6 @@ public:
 	T *allocate_many(size_t n)
 	{
 		static_assert(std::is_trivially_destructible<T>::value, "Type is not trivially destructible!");
-		static_assert(std::is_trivially_copyable<T>::value, "Type is not trivially copyable!");
 		return static_cast<T *>(allocate(sizeof(T) * n, alignof(T)));
 	}
 

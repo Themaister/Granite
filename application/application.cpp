@@ -92,7 +92,15 @@ void SceneViewerApplication::lighting_pass(Vulkan::CommandBuffer &cmd, bool refl
 	auto &device = cmd.get_device();
 	auto *program = device.get_shader_manager().register_graphics("assets://shaders/lights/directional.vert",
 	                                                              "assets://shaders/lights/directional.frag");
-	unsigned variant = program->register_variant({{ "SHADOW_CASCADES", reflection_pass ? 0 : 1 }});
+
+	vector<pair<string, int>> defines;
+	if (!reflection_pass)
+		defines.push_back({ "SHADOW_CASCADES", 1 });
+	defines.push_back({ "ENVIRONMENT", 1 });
+	defines.push_back({ "FOG", 1 });
+	defines.push_back({ "SHADOWS", 1 });
+
+	unsigned variant = program->register_variant(defines);
 	cmd.set_program(*program->get_program(variant));
 	cmd.set_depth_test(true, false);
 	cmd.set_depth_compare(VK_COMPARE_OP_GREATER);

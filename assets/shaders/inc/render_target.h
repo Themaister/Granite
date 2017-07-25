@@ -26,23 +26,34 @@ layout(location = 0) out vec4 Color;
 void emit_render_target(vec3 emissive, vec4 base_color, vec3 normal, float metallic, float roughness, float ambient, vec3 eye_dir)
 {
     vec3 pos = eye_dir + global.camera_position;
+
+#ifdef SHADOWS
 #if SHADOW_CASCADES
     vec4 clip_shadow_near = shadow.near * vec4(pos, 1.0);
 #else
     vec4 clip_shadow_near = vec4(0.0);
 #endif
     vec4 clip_shadow_far = shadow.far * vec4(pos, 1.0);
+#endif
 
     vec3 lighting = emissive + compute_lighting(
         MaterialProperties(base_color, normal, metallic, roughness, ambient),
-        LightInfo(pos, global.camera_position, global.camera_front, directional.direction, directional.color,
-                clip_shadow_near, clip_shadow_far, shadow.inv_cutoff_distance),
-        EnvironmentInfo(environment.intensity, environment.mipscale));
+        LightInfo(pos, global.camera_position, global.camera_front, directional.direction, directional.color
+#ifdef SHADOWS
+                , clip_shadow_near, clip_shadow_far, shadow.inv_cutoff_distance
+#endif
+        )
+#ifdef ENVIRONMENT
+        , EnvironmentInfo(environment.intensity, environment.mipscale)
+#endif
+        );
 
+#ifdef FOG
     lighting = apply_fog(lighting, eye_dir, fog.color, fog.falloff);
+#endif
+
     Color = lighting;
 }
 #endif
-
 
 #endif

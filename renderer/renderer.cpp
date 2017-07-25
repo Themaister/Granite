@@ -27,6 +27,7 @@
 
 using namespace Vulkan;
 using namespace Util;
+using namespace std;
 
 namespace Granite
 {
@@ -38,6 +39,54 @@ Renderer::Renderer(Type type)
                                                       &Renderer::on_device_created,
                                                       &Renderer::on_device_destroyed,
                                                       this);
+
+	if (type == Type::GeneralDeferred || type == Type::GeneralForward)
+		set_mesh_renderer_options(SHADOW_CASCADE_ENABLE_BIT | SHADOW_ENABLE_BIT | FOG_ENABLE_BIT | ENVIRONMENT_ENABLE_BIT);
+	else
+		set_mesh_renderer_options(0);
+}
+
+void Renderer::set_mesh_renderer_options(RendererOptionFlags flags)
+{
+	if (renderer_options != flags)
+	{
+		vector<pair<string, int>> global_defines;
+		if (flags & SHADOW_ENABLE_BIT)
+			global_defines.push_back({ "SHADOWS", 1 });
+		if (flags & SHADOW_CASCADE_ENABLE_BIT)
+			global_defines.push_back({ "SHADOW_CASCADES", 1 });
+		if (flags & FOG_ENABLE_BIT)
+			global_defines.push_back({ "FOG", 1 });
+		if (flags & ENVIRONMENT_ENABLE_BIT)
+			global_defines.push_back({ "ENVIRONMENT", 1 });
+
+		switch (type)
+		{
+		case Type::GeneralForward:
+			global_defines.push_back({ "RENDERER_FORWARD", 1 });
+			break;
+
+		case Type::GeneralDeferred:
+			global_defines.push_back({ "RENDERER_DEFERRED", 1 });
+			break;
+
+		case Type::DepthOnly:
+			global_defines.push_back({ "RENDERER_DEPTH", 1 });
+			break;
+		}
+
+		auto &meshes = suite[ecast(RenderableType::Mesh)];
+		meshes.get_base_defines() = global_defines;
+		meshes.bake_base_defines();
+		auto &ground = suite[ecast(RenderableType::Ground)];
+		ground.get_base_defines() = global_defines;
+		ground.bake_base_defines();
+		auto &plane = suite[ecast(RenderableType::TexturePlane)];
+		plane.get_base_defines() = global_defines;
+		plane.bake_base_defines();
+
+		renderer_options = flags;
+	}
 }
 
 void Renderer::on_device_created(const Event &e)
@@ -45,7 +94,7 @@ void Renderer::on_device_created(const Event &e)
 	auto &created = e.as<DeviceCreatedEvent>();
 	auto &device = created.get_device();
 
-	if (type == Type::General)
+	if (type == Type::GeneralDeferred)
 	{
 		suite[ecast(RenderableType::Mesh)].init_graphics(&device.get_shader_manager(),
 		                                                 "assets://shaders/static_mesh.vert",
@@ -90,6 +139,12 @@ void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context)
 	auto *global = static_cast<RenderParameters *>(cmd.allocate_constant_data(0, 0, sizeof(RenderParameters)));
 	*global = context.get_render_parameters();
 
+	if (type == Type::GeneralForward)
+	{
+		auto *fog = static_cast<FogParameters *>(cmd.allocate_constant_data(0, 2, sizeof(FogParameters)));
+		*fog = context.get_fog_parameters();
+	}
+
 	queue.sort();
 
 	cmd.set_opaque_state();
@@ -104,7 +159,7 @@ void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context)
 	cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
 	queue.dispatch(Queue::Opaque, cmd, &state);
 
-	if (type == Type::General)
+	if (type == Type::GeneralForward)
 		queue.dispatch(Queue::Transparent, cmd, &state);
 }
 

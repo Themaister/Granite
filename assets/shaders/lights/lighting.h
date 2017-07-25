@@ -3,10 +3,6 @@
 
 #include "pbr.h"
 
-#ifndef SHADOW_CASCADES
-#define SHADOW_CASCADES 0
-#endif
-
 struct MaterialProperties
 {
 	vec3 base_color;
@@ -24,11 +20,14 @@ struct LightInfo
 	vec3 direction;
 	vec3 color;
 
+#ifdef SHADOWS
 	vec4 clip_shadow_near;
 	vec4 clip_shadow_far;
 	float inv_cutoff_distance;
+#endif
 };
 
+#ifdef ENVIRONMENT
 struct EnvironmentInfo
 {
 	float intensity;
@@ -37,13 +36,12 @@ struct EnvironmentInfo
 
 layout(set = 1, binding = 0) uniform samplerCube uReflection;
 layout(set = 1, binding = 1) uniform samplerCube uIrradiance;
+#endif
+
+#ifdef SHADOWS
 layout(set = 1, binding = 2) uniform sampler2D uShadowmap;
 #if SHADOW_CASCADES
 layout(set = 1, binding = 3) uniform sampler2D uShadowmapNear;
-#endif
-
-#ifdef RENDERER_FORWARD
-#include "lighting_data.h"
 #endif
 
 float vsm(float depth, vec2 moments)
@@ -59,12 +57,10 @@ float vsm(float depth, vec2 moments)
     return shadow_term;
 }
 
-#define SAMPLE_VSM(TEX, CLIP) texture(TEX, CLIP.xyz / CLIP.w).xy
-
 float get_shadow_term(LightInfo light)
 {
     // Sample shadowmap.
-#if SHADOW_CASCADES
+#ifdef SHADOW_CASCADES
 	vec3 shadow_near = light.clip_shadow_near.xyz / light.clip_shadow_near.w;
 	vec3 shadow_far = light.clip_shadow_far.xyz / light.clip_shadow_far.w;
 	float shadow_term_near = vsm(shadow_near.z, texture(uShadowmapNear, shadow_near.xy).xy);
@@ -78,13 +74,23 @@ float get_shadow_term(LightInfo light)
 	return vsm(shadow_far.z, texture(uShadowmap, shadow_far.xy).xy);
 #endif
 }
+#endif
+
+#ifdef RENDERER_FORWARD
+#include "lighting_data.h"
+#endif
 
 vec3 compute_lighting(
 		MaterialProperties material,
-		LightInfo light,
-		EnvironmentInfo environment)
+		LightInfo light
+#ifdef ENVIRONMENT
+		, EnvironmentInfo environment
+#endif
+		)
 {
+#ifdef SHADOWS
 	float shadow_term = get_shadow_term(light);
+#endif
 
 	// Compute directional light.
 	vec3 L = light.direction;
@@ -99,11 +105,11 @@ vec3 compute_lighting(
 	float LoV = clamp(dot(L, V), 0.001, 1.0);
 
 	vec3 F0 = compute_F0(material.base_color, material.metallic);
-
 	vec3 specular_fresnel = fresnel(F0, HoV);
 	vec3 specref = NoL * shadow_term * blinn_specular(NoH, specular_fresnel, material.roughness);
 	vec3 diffref = NoL * shadow_term * (1.0 - specular_fresnel) * (1.0 / PI);
 
+#ifdef ENVIRONMENT
 	// IBL diffuse term.
 	//vec3 envdiff = registers.environment_intensity * textureLod(uIrradiance, N, 10.0).rgb * (1.0 / PI);
 	vec3 envdiff = material.ambient_factor * mix(vec3(0.2, 0.2, 0.2) / PI, vec3(0.2, 0.2, 0.3) / PI, clamp(N.y, 0.0, 1.0));
@@ -125,8 +131,12 @@ vec3 compute_lighting(
 	vec3 iblspec = min(vec3(1.0), fresnel(F0, NoV) * brdf.x + brdf.y);
 	envspec *= iblspec * material.ambient_factor;
 
-	vec3 reflected_light = specref + envspec;
-	vec3 diffuse_light = (diffref + envdiff) * material.base_color * (1.0 - material.metallic);
+	diffref += envdiff;
+	specref += envspec;
+#endif
+
+	vec3 reflected_light = specref;
+	vec3 diffuse_light = diffref * material.base_color * (1.0 - material.metallic);
 	return light.color * (reflected_light + diffuse_light);
 }
 

@@ -8,7 +8,6 @@ layout(location = 1) in mediump vec3 vEyeVec;
 
 layout(set = 2, binding = 0) uniform sampler2D uPlaneReflection;
 layout(set = 2, binding = 1) uniform sampler2D uPlaneRefraction;
-
 layout(set = 2, binding = 2) uniform sampler2D uNormal;
 
 layout(std430, push_constant) uniform Registers
@@ -44,5 +43,5 @@ void main()
 
     // Add in an ambient emissive color which is very dark blue-ish.
     emit_render_target(refraction * refraction_coeff + reflection * reflection_coeff + vec3(0.02, 0.025, 0.04),
-        vec4(0.02, 0.02, 0.02, 1.0), normal, 1.0, 0.0, 1.0, vEyeVec);
+        vec4(0.02, 0.02, 0.02, 1.0), normal, 1.0, 0.1, 1.0, vEyeVec);
 }

@@ -46,6 +46,12 @@ struct RenderParameters
 	float z_far;
 };
 
+struct ResolutionParameters
+{
+	vec2 resolution;
+	vec2 inv_resolution;
+};
+
 struct FogParameters
 {
 	vec3 color;

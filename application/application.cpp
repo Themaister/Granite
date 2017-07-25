@@ -46,7 +46,7 @@ Application::Application(unsigned width, unsigned height)
 
 static vec3 light_direction()
 {
-	return normalize(vec3(0.5f, 1.2f, 0.8f));
+	return normalize(vec3(0.5f, 0.4f, 0.8f));
 }
 
 static const float cascade_cutoff_distance = 10.0f;

@@ -39,4 +39,10 @@ layout(set = 0, binding = 5, std140) uniform RefractionData
 } refraction;
 #endif
 
+layout(set = 0, binding = 6, std140) uniform ResolutionData
+{
+	vec2 resolution;
+	vec2 inv_resolution;
+} resolution;
+
 #endif

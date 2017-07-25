@@ -156,6 +156,10 @@ void Renderer::set_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderC
 	auto *refraction = static_cast<RefractionParameters *>(cmd.allocate_constant_data(0, 5, sizeof(RefractionParameters)));
 	*refraction = lighting->refraction;
 
+	auto *resolution = static_cast<ResolutionParameters *>(cmd.allocate_constant_data(0, 6, sizeof(ResolutionParameters)));
+	resolution->resolution = vec2(cmd.get_viewport().width, cmd.get_viewport().height);
+	resolution->inv_resolution = vec2(1.0f / cmd.get_viewport().width, 1.0f / cmd.get_viewport().height);
+
 	if (lighting->environment_radiance)
 		cmd.set_texture(1, 0, *lighting->environment_radiance, Vulkan::StockSampler::LinearClamp);
 	if (lighting->environment_irradiance)

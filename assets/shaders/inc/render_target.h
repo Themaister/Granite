@@ -54,7 +54,7 @@ void emit_render_target(vec3 emissive, vec4 base_color, vec3 normal, float metal
 #endif
 
 #ifdef REFRACTION
-	vec4 pos_near_clip = global.inv_view_projection * vec4(gl_FragCoord.xy, 0.0, 1.0);
+	vec4 pos_near_clip = global.inv_view_projection * vec4(2.0 * gl_FragCoord.xy * resolution.inv_resolution - 1.0, 0.0, 1.0);
 	vec3 pos_near = pos_near_clip.xyz / pos_near_clip.w;
     float distance = distance(pos, pos_near);
     lighting *= exp2(-refraction.falloff * distance);

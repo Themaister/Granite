@@ -58,7 +58,8 @@ public:
 		SHADOW_ENABLE_BIT = 1 << 0,
 		SHADOW_CASCADE_ENABLE_BIT = 1 << 1,
 		FOG_ENABLE_BIT = 1 << 2,
-		ENVIRONMENT_ENABLE_BIT = 1 << 3
+		ENVIRONMENT_ENABLE_BIT = 1 << 3,
+		REFRACTION_ENABLE_BIT = 1 << 4
 	};
 	using RendererOptionFlags = uint32_t;
 	void set_mesh_renderer_options(RendererOptionFlags flags);
@@ -85,5 +86,7 @@ private:
 	DebugMeshInstanceInfo &render_debug(RenderContext &context, unsigned count);
 	Type type;
 	uint32_t renderer_options = ~0u;
+
+	void set_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context);
 };
 }

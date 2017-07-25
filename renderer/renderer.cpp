@@ -59,6 +59,8 @@ void Renderer::set_mesh_renderer_options(RendererOptionFlags flags)
 			global_defines.push_back({ "FOG", 1 });
 		if (flags & ENVIRONMENT_ENABLE_BIT)
 			global_defines.push_back({ "ENVIRONMENT", 1 });
+		if (flags & REFRACTION_ENABLE_BIT)
+			global_defines.push_back({ "REFRACTION", 1 });
 
 		switch (type)
 		{
@@ -94,7 +96,7 @@ void Renderer::on_device_created(const Event &e)
 	auto &created = e.as<DeviceCreatedEvent>();
 	auto &device = created.get_device();
 
-	if (type == Type::GeneralDeferred)
+	if (type == Type::GeneralDeferred || type == Type::GeneralForward)
 	{
 		suite[ecast(RenderableType::Mesh)].init_graphics(&device.get_shader_manager(),
 		                                                 "assets://shaders/static_mesh.vert",
@@ -134,16 +136,42 @@ void Renderer::begin()
 	queue.set_shader_suites(suite);
 }
 
+void Renderer::set_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context)
+{
+	auto *lighting = context.get_lighting_parameters();
+	assert(lighting);
+
+	auto *environment = static_cast<EnvironmentParameters *>(cmd.allocate_constant_data(0, 1, sizeof(EnvironmentParameters)));
+	*environment = lighting->environment;
+
+	auto *fog = static_cast<FogParameters *>(cmd.allocate_constant_data(0, 2, sizeof(FogParameters)));
+	*fog = lighting->fog;
+
+	auto *shadow = static_cast<ShadowParameters *>(cmd.allocate_constant_data(0, 3, sizeof(ShadowParameters)));
+	*shadow = lighting->shadow;
+
+	auto *directional = static_cast<DirectionalParameters *>(cmd.allocate_constant_data(0, 4, sizeof(DirectionalParameters)));
+	*directional = lighting->directional;
+
+	auto *refraction = static_cast<RefractionParameters *>(cmd.allocate_constant_data(0, 5, sizeof(RefractionParameters)));
+	*refraction = lighting->refraction;
+
+	if (lighting->environment_radiance)
+		cmd.set_texture(1, 0, *lighting->environment_radiance, Vulkan::StockSampler::LinearClamp);
+	if (lighting->environment_irradiance)
+		cmd.set_texture(1, 1, *lighting->environment_irradiance, Vulkan::StockSampler::LinearClamp);
+	if (lighting->shadow_far)
+		cmd.set_texture(1, 2, *lighting->shadow_far, Vulkan::StockSampler::TrilinearClamp);
+	if (lighting->shadow_near)
+		cmd.set_texture(1, 3, *lighting->shadow_near, Vulkan::StockSampler::LinearClamp);
+}
+
 void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context)
 {
 	auto *global = static_cast<RenderParameters *>(cmd.allocate_constant_data(0, 0, sizeof(RenderParameters)));
 	*global = context.get_render_parameters();
-
 	if (type == Type::GeneralForward)
-	{
-		auto *fog = static_cast<FogParameters *>(cmd.allocate_constant_data(0, 2, sizeof(FogParameters)));
-		*fog = context.get_fog_parameters();
-	}
+		set_lighting_parameters(cmd, context);
 
 	queue.sort();
 

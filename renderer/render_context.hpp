@@ -57,14 +57,14 @@ public:
 		return camera;
 	}
 
-	void set_fog_parameters(const FogParameters &fog)
+	void set_lighting_parameters(const LightingParameters *lighting)
 	{
-		this->fog = fog;
+		this->lighting = lighting;
 	}
 
-	const FogParameters &get_fog_parameters() const
+	const LightingParameters *get_lighting_parameters() const
 	{
-		return fog;
+		return lighting;
 	}
 
 	const Frustum &get_visibility_frustum() const
@@ -85,6 +85,7 @@ private:
 	RenderQueue *queue = nullptr;
 	RenderParameters camera;
 	FogParameters fog;
+	const LightingParameters *lighting;
 	Frustum frustum;
 };
 }

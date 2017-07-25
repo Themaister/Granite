@@ -20,6 +20,7 @@ void emit_render_target(vec3 emissive, vec4 base_color, vec3 normal, float metal
 }
 #elif defined(RENDERER_FORWARD)
 layout(location = 0) out vec4 Color;
+#include "render_parameters.h"
 #include "../lights/lighting.h"
 #include "../lights/fog.h"
 
@@ -28,7 +29,7 @@ void emit_render_target(vec3 emissive, vec4 base_color, vec3 normal, float metal
     vec3 pos = eye_dir + global.camera_position;
 
 #ifdef SHADOWS
-#if SHADOW_CASCADES
+#ifdef SHADOW_CASCADES
     vec4 clip_shadow_near = shadow.near * vec4(pos, 1.0);
 #else
     vec4 clip_shadow_near = vec4(0.0);
@@ -37,7 +38,7 @@ void emit_render_target(vec3 emissive, vec4 base_color, vec3 normal, float metal
 #endif
 
     vec3 lighting = emissive + compute_lighting(
-        MaterialProperties(base_color, normal, metallic, roughness, ambient),
+        MaterialProperties(base_color.rgb, normal, metallic, roughness, ambient, base_color.a),
         LightInfo(pos, global.camera_position, global.camera_front, directional.direction, directional.color
 #ifdef SHADOWS
                 , clip_shadow_near, clip_shadow_far, shadow.inv_cutoff_distance
@@ -52,7 +53,14 @@ void emit_render_target(vec3 emissive, vec4 base_color, vec3 normal, float metal
     lighting = apply_fog(lighting, eye_dir, fog.color, fog.falloff);
 #endif
 
-    Color = lighting;
+#ifdef REFRACTION
+	vec4 pos_near_clip = global.inv_view_projection * vec4(gl_FragCoord.xy, 0.0, 1.0);
+	vec3 pos_near = pos_near_clip.xyz / pos_near_clip.w;
+    float distance = distance(pos, pos_near);
+    lighting *= exp2(-refraction.falloff * distance);
+#endif
+
+    Color = vec4(lighting, base_color.a);
 }
 #endif
 

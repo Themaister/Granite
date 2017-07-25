@@ -6,8 +6,9 @@ layout(location = 1) in mediump vec3 vEyeVec;
 
 #include "inc/render_target.h"
 
-layout(set = 2, binding = 0) uniform sampler2D uReflection;
-layout(set = 2, binding = 1) uniform sampler2D uRefraction;
+layout(set = 2, binding = 0) uniform sampler2D uPlaneReflection;
+layout(set = 2, binding = 1) uniform sampler2D uPlaneRefraction;
+
 layout(set = 2, binding = 2) uniform sampler2D uNormal;
 
 layout(std430, push_constant) uniform Registers
@@ -31,8 +32,8 @@ void main()
 
     vec2 reflection_uv = vUV + uv_offset;
     vec2 refraction_uv = vec2(1.0 - vUV.x - tangent.x * 0.02, vUV.y - tangent.y * 0.02);
-    vec3 refraction = texture(uRefraction, refraction_uv).rgb;
-    vec3 reflection = texture(uReflection, reflection_uv, 1.0).rgb;
+    vec3 refraction = texture(uPlaneRefraction, refraction_uv).rgb;
+    vec3 reflection = texture(uPlaneReflection, reflection_uv, 1.0).rgb;
 
     float NoV = abs(clamp(dot(normal, normalize(vEyeVec)), -1.0, 1.0));
     float reflection_coeff = 0.02 + 0.98 * pow(1.0 - NoV, 5.0);

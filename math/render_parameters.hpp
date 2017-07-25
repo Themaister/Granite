@@ -23,6 +23,7 @@
 #pragma once
 
 #include "math.hpp"
+#include "image.hpp"
 
 namespace Granite
 {
@@ -36,10 +37,10 @@ struct RenderParameters
 	mat4 inv_view_projection;
 	mat4 inv_local_view_projection;
 
-	alignas(vec4) vec3 camera_position;
-	alignas(vec4) vec3 camera_front;
-	alignas(vec4) vec3 camera_right;
-	alignas(vec4) vec3 camera_up;
+	alignas(16) vec3 camera_position;
+	alignas(16) vec3 camera_front;
+	alignas(16) vec3 camera_right;
+	alignas(16) vec3 camera_up;
 
 	float z_near;
 	float z_far;
@@ -49,5 +50,43 @@ struct FogParameters
 {
 	vec3 color;
 	float falloff;
+};
+
+struct DirectionalParameters
+{
+	alignas(16) vec3 color;
+	alignas(16) vec3 direction;
+};
+
+struct ShadowParameters
+{
+	mat4 near_transform;
+	mat4 far_transform;
+	float inv_cutoff_distance;
+};
+
+struct EnvironmentParameters
+{
+	float intensity;
+	float mipscale;
+};
+
+struct RefractionParameters
+{
+	vec3 falloff;
+};
+
+struct LightingParameters
+{
+	FogParameters fog;
+	DirectionalParameters directional;
+	ShadowParameters shadow;
+	EnvironmentParameters environment;
+	RefractionParameters refraction;
+
+	Vulkan::ImageView *environment_radiance = nullptr;
+	Vulkan::ImageView *environment_irradiance = nullptr;
+	Vulkan::ImageView *shadow_near = nullptr;
+	Vulkan::ImageView *shadow_far = nullptr;
 };
 }

@@ -10,6 +10,7 @@ struct MaterialProperties
 	float metallic;
 	float roughness;
 	float ambient_factor;
+	float transparency;
 };
 
 struct LightInfo
@@ -40,7 +41,7 @@ layout(set = 1, binding = 1) uniform samplerCube uIrradiance;
 
 #ifdef SHADOWS
 layout(set = 1, binding = 2) uniform sampler2D uShadowmap;
-#if SHADOW_CASCADES
+#ifdef SHADOW_CASCADES
 layout(set = 1, binding = 3) uniform sampler2D uShadowmapNear;
 #endif
 
@@ -90,6 +91,8 @@ vec3 compute_lighting(
 {
 #ifdef SHADOWS
 	float shadow_term = get_shadow_term(light);
+#else
+	const float shadow_term = 1.0;
 #endif
 
 	// Compute directional light.

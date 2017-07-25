@@ -80,6 +80,7 @@ void SceneViewerApplication::apply_water_depth_tint(Vulkan::CommandBuffer &cmd)
 	cmd.draw(4);
 }
 
+#if 0
 void SceneViewerApplication::lighting_pass(Vulkan::CommandBuffer &cmd, bool reflection_pass)
 {
 	cmd.set_quad_state();
@@ -174,14 +175,17 @@ void SceneViewerApplication::lighting_pass(Vulkan::CommandBuffer &cmd, bool refl
 		cmd.draw(4);
 	}
 }
+#endif
 
 SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned width, unsigned height)
 	: Application(width, height),
+	  renderer(Renderer::Type::GeneralForward),
       depth_renderer(Renderer::Type::DepthOnly),
       plane_reflection("assets://gltf-sandbox/textures/ocean_normal.ktx")
 {
 	scene_loader.load_scene(path);
 	animation_system = scene_loader.consume_animation_system();
+	context.set_lighting_parameters(&lighting);
 
 	auto &skybox = scene_loader.get_scene().get_entity_pool().get_component_group<SkyboxComponent>();
 	if (!skybox.empty())
@@ -193,7 +197,9 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned
 
 	auto *environment = scene_loader.get_scene().get_environment();
 	if (environment)
-		context.set_fog_parameters(environment->fog);
+		lighting.fog = environment->fog;
+	else
+		lighting.fog = {};
 
 	cam.look_at(vec3(0.0f, 0.0f, 8.0f), vec3(0.0f));
 	context.set_camera(cam);
@@ -284,6 +290,92 @@ static inline string tagcat(const std::string &a, const std::string &b)
 
 void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::string &tag, MainPassType type)
 {
+	AttachmentInfo color, depth, reflection_blur;
+	color.format = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
+	depth.format = device.get_default_depth_format();
+
+	if (type != MainPassType::Main)
+	{
+		color.size_x = 0.5f;
+		color.size_y = 0.5f;
+		depth.size_x = 0.5f;
+		depth.size_y = 0.5f;
+
+		reflection_blur.size_x = 0.25f;
+		reflection_blur.size_y = 0.25f;
+		reflection_blur.levels = 0;
+	}
+
+	auto &lighting = graph.add_pass(tagcat("lighting", tag), VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	lighting.add_color_output(tagcat("HDR", tag), color);
+	lighting.set_depth_stencil_output(tagcat("depth", tag), depth);
+
+	lighting.set_get_clear_depth_stencil([](VkClearDepthStencilValue *value) -> bool {
+		if (value)
+		{
+			value->depth = 1.0f;
+			value->stencil = 0;
+		}
+		return true;
+	});
+
+	lighting.set_get_clear_color([](unsigned, VkClearColorValue *value) -> bool {
+		if (value)
+			memset(value, 0, sizeof(*value));
+		return true;
+	});
+
+	lighting.set_build_render_pass([this, type](Vulkan::CommandBuffer &cmd) {
+		if (type == MainPassType::Reflection)
+		{
+			mat4 proj, view;
+			float z_near;
+			vec3 center = vec3(50.0f, -1.5f, 10.0f);
+			vec3 normal = vec3(0.0f, 1.0f, 0.0f);
+			float rad_up = 10.0f;
+			float rad_x = 10.0f;
+			compute_plane_reflection(proj, view, cam.get_position(), center, normal, vec3(1.0f, 0.0f, 0.0f),
+			                         rad_up, rad_x, z_near, 200.0f);
+
+			plane_reflection.set_position(center);
+			plane_reflection.set_normal(normal);
+			plane_reflection.set_dpdy(vec3(-rad_up, 0.0f, 0.0f));
+			plane_reflection.set_dpdx(vec3(0.0f, 0.0f, -rad_x));
+			renderer.set_mesh_renderer_options(Renderer::ENVIRONMENT_ENABLE_BIT | Renderer::SHADOW_ENABLE_BIT);
+			render_main_pass(cmd, proj, view, false);
+		}
+		else if (type == MainPassType::Refraction)
+		{
+			mat4 proj, view;
+			float z_near;
+			vec3 center = vec3(50.0f, -1.5f, 10.0f);
+			vec3 normal = vec3(0.0f, 1.0f, 0.0f);
+			float rad_up = 10.0f;
+			float rad_x = 10.0f;
+			compute_plane_refraction(proj, view, cam.get_position(), center, normal, vec3(1.0f, 0.0f, 0.0f),
+			                         rad_up, rad_x, z_near, 200.0f);
+			renderer.set_mesh_renderer_options(Renderer::ENVIRONMENT_ENABLE_BIT | Renderer::SHADOW_ENABLE_BIT | Renderer::REFRACTION_ENABLE_BIT);
+			render_main_pass(cmd, proj, view, false);
+		}
+		else
+		{
+			renderer.set_mesh_renderer_options(Renderer::ENVIRONMENT_ENABLE_BIT |
+			                                   Renderer::SHADOW_ENABLE_BIT |
+			                                   Renderer::FOG_ENABLE_BIT |
+			                                   Renderer::SHADOW_CASCADE_ENABLE_BIT);
+			render_main_pass(cmd, cam.get_projection(), cam.get_view(), true);
+		}
+	});
+
+	lighting.add_texture_input("vsm-main");
+	if (type == MainPassType::Main)
+	{
+		lighting.add_texture_input("vsm-near");
+		lighting.add_texture_input("reflection");
+		lighting.add_texture_input("refraction");
+	}
+
+#if 0
 	AttachmentInfo emissive, albedo, normal, pbr, depth;
 	emissive.format = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
 	albedo.format = VK_FORMAT_R8G8B8A8_SRGB;
@@ -390,6 +482,7 @@ void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::st
 		if (type == MainPassType::Refraction)
 			apply_water_depth_tint(cmd);
 	});
+#endif
 
 	if (type != MainPassType::Main)
 	{
@@ -554,7 +647,7 @@ void SceneViewerApplication::update_shadow_map()
 	mat4 proj = ortho(ortho_range);
 
 	// Standard scale/bias.
-	shadow_transform = glm::translate(vec3(0.5f, 0.5f, 0.0f)) * glm::scale(vec3(0.5f, 0.5f, 1.0f)) * proj * view;
+	lighting.shadow.far_transform = glm::translate(vec3(0.5f, 0.5f, 0.0f)) * glm::scale(vec3(0.5f, 0.5f, 1.0f)) * proj * view;
 	depth_context.set_camera(proj, view);
 
 	depth_renderer.begin();
@@ -581,8 +674,8 @@ void SceneViewerApplication::render_shadow_map_near(Vulkan::CommandBuffer &cmd)
 	vec2 center_xy = (view * vec4(sphere.xyz(), 1.0f)).xy();
 	sphere.w *= 1.01f;
 
-	vec2 texel_size = vec2(2.0f * sphere.w) * vec2(1.0f / shadow_map_near->get_image().get_create_info().width,
-	                                               1.0f / shadow_map_near->get_image().get_create_info().height);
+	vec2 texel_size = vec2(2.0f * sphere.w) * vec2(1.0f / lighting.shadow_near->get_image().get_create_info().width,
+	                                               1.0f / lighting.shadow_near->get_image().get_create_info().height);
 
 	// Snap to texel grid.
 	center_xy = round(center_xy / texel_size) * texel_size;
@@ -591,7 +684,7 @@ void SceneViewerApplication::render_shadow_map_near(Vulkan::CommandBuffer &cmd)
 	                        vec3(center_xy + vec2(sphere.w), ortho_range_depth.get_maximum().z));
 
 	mat4 proj = ortho(ortho_range);
-	shadow_transform_near = glm::translate(vec3(0.5f, 0.5f, 0.0f)) * glm::scale(vec3(0.5f, 0.5f, 1.0f)) * proj * view;
+	lighting.shadow.near_transform = glm::translate(vec3(0.5f, 0.5f, 0.0f)) * glm::scale(vec3(0.5f, 0.5f, 1.0f)) * proj * view;
 	depth_context.set_camera(proj, view);
 	depth_renderer.begin();
 	scene.gather_visible_shadow_renderables(depth_context.get_visibility_frustum(), depth_visible);
@@ -605,6 +698,15 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 	auto &scene = scene_loader.get_scene();
 	auto &device = wsi.get_device();
 
+	lighting.environment_radiance = &reflection->get_image()->get_view();
+	lighting.environment_irradiance = &irradiance->get_image()->get_view();
+	lighting.shadow.inv_cutoff_distance = 1.0f / cascade_cutoff_distance;
+	lighting.environment.intensity = 1.0f;
+	lighting.environment.mipscale = 6.0f;
+	lighting.refraction.falloff = vec3(1.0f / 1.5f, 1.0f / 2.5f, 1.0f / 5.0f);
+	lighting.directional.direction = light_direction();
+	lighting.directional.color = vec3(3.0f, 2.5f, 2.5f);
+
 	animation_system->animate(elapsed_time);
 	scene.update_cached_transforms();
 	scene.refresh_per_frame(context);
@@ -616,8 +718,8 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 	//window->set_target_geometry(window->get_target_geometry() + vec2(1.0f));
 
 	graph.setup_attachments(device, &device.get_swapchain_view());
-	shadow_map = &graph.get_physical_texture_resource(graph.get_texture_resource("vsm-main").get_physical_index());
-	shadow_map_near = &graph.get_physical_texture_resource(graph.get_texture_resource("vsm-near").get_physical_index());
+	lighting.shadow_far = &graph.get_physical_texture_resource(graph.get_texture_resource("vsm-main").get_physical_index());
+	lighting.shadow_near = &graph.get_physical_texture_resource(graph.get_texture_resource("vsm-near").get_physical_index());
 	plane_reflection.set_reflection_texture(&graph.get_physical_texture_resource(graph.get_texture_resource("reflection").get_physical_index()));
 	plane_reflection.set_refraction_texture(&graph.get_physical_texture_resource(graph.get_texture_resource("refraction").get_physical_index()));
 	graph.enqueue_render_passes(device);

@@ -32,4 +32,11 @@ layout(set = 0, binding = 4, std140) uniform DirectionalLight
 	vec3 direction;
 } directional;
 
+#ifdef REFRACTION
+layout(set = 0, binding = 5, std140) uniform RefractionData
+{
+	vec3 falloff;
+} refraction;
+#endif
+
 #endif

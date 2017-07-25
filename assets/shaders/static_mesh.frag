@@ -71,5 +71,5 @@ void main()
     vec4 base_color = registers.base_color;
 #endif
 
-    emit_render_target(vec3(0.0), base_color, normal, metallic, roughness, 1.0, vEyeVec);
+    emit_render_target(vec3(0.0), base_color, normal, metallic, roughness * 0.9 + 0.1, 1.0, vEyeVec);
 }

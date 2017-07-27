@@ -23,7 +23,6 @@
 #include "network.hpp"
 #include "util.hpp"
 #include "netfs.hpp"
-#include <arpa/inet.h>
 #include "filesystem.hpp"
 #include "event.hpp"
 #include <unordered_set>

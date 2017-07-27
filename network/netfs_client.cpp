@@ -23,7 +23,6 @@
 #include "network.hpp"
 #include "netfs.hpp"
 #include "util.hpp"
-#include <arpa/inet.h>
 #include <string.h>
 #include <unistd.h>
 #include <vector>

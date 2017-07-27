@@ -38,7 +38,7 @@ OSFilesystem::~OSFilesystem()
 {
 }
 
-unique_ptr<File> OSFilesystem::open(const std::string &, Mode)
+unique_ptr<File> OSFilesystem::open(const std::string &, FileMode)
 {
     return {};
 }
@@ -47,29 +47,29 @@ void OSFilesystem::poll_notifications()
 {
 }
 
-void OSFilesystem::uninstall_notification(Filesystem::NotifyHandle)
+void OSFilesystem::uninstall_notification(FileNotifyHandle)
 {
 }
 
-Filesystem::NotifyHandle OSFilesystem::find_notification(const std::string &) const
-{
-    return -1;
-}
-
-Filesystem::NotifyHandle OSFilesystem::install_notification(const string &,
-                                                            function<void (const Filesystem::NotifyInfo &)>)
+FileNotifyHandle OSFilesystem::install_notification(const string &,
+                                                    function<void (const FileNotifyInfo &)>)
 {
     return -1;
 }
 
-vector<Filesystem::Entry> OSFilesystem::list(const string &)
+vector<ListEntry> OSFilesystem::list(const string &)
 {
     return {};
 }
 
-bool OSFilesystem::stat(const std::string &, Stat &)
+bool OSFilesystem::stat(const std::string &, FileStat &)
 {
     return false;
+}
+
+int OSFilesystem::get_notification_fd() const
+{
+    return -1;
 }
 
 }

@@ -22,6 +22,7 @@
 
 #include "network.hpp"
 
+#ifndef _WIN32
 #include <string>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -29,6 +30,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
+#endif
 
 using namespace std;
 
@@ -77,6 +79,7 @@ Socket::Socket(int fd, bool owned)
 
 unique_ptr<Socket> Socket::connect(const char *addr, uint16_t port)
 {
+#ifndef _WIN32
 	SocketGlobal::get();
 
 	int fd = -1;
@@ -121,6 +124,9 @@ unique_ptr<Socket> Socket::connect(const char *addr, uint16_t port)
 	}
 
 	return unique_ptr<Socket>(new Socket(fd));
+#else
+	return {};
+#endif
 }
 
 Socket::~Socket()
@@ -128,12 +134,15 @@ Socket::~Socket()
 	if (looper)
 		looper->unregister_handler(*this);
 
+#ifndef _WIN32
 	if (owned && fd >= 0)
 		close(fd);
+#endif
 }
 
 ssize_t Socket::read(void *data, size_t size)
 {
+#ifndef _WIN32
 	auto ret = ::recv(fd, data, size, 0);
 	if (ret < 0)
 	{
@@ -143,10 +152,14 @@ ssize_t Socket::read(void *data, size_t size)
 			return ErrorIO;
 	}
 	return ret;
+#else
+	return -1;
+#endif
 }
 
 ssize_t Socket::write(const void *data, size_t size)
 {
+#ifndef _WIN32
 	auto ret = ::send(fd, data, size, MSG_NOSIGNAL);
 	if (ret < 0)
 	{
@@ -156,5 +169,8 @@ ssize_t Socket::write(const void *data, size_t size)
 			return ErrorIO;
 	}
 	return ret;
+#else
+	return -1;
+#endif
 }
 }

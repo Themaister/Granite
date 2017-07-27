@@ -22,6 +22,30 @@
 
 #include "network.hpp"
 
+#ifdef _WIN32
+namespace Granite
+{
+SocketGlobal::SocketGlobal()
+{
+}
+
+SocketGlobal &SocketGlobal::get()
+{
+	static SocketGlobal global;
+	return global;
+}
+
+std::unique_ptr<Socket> TCPListener::accept()
+{
+	return {};
+}
+
+TCPListener::TCPListener(uint16_t port)
+{
+	throw std::runtime_error("Unimplemented feature on Windows.");
+}
+}
+#else
 #include <string>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -119,3 +143,4 @@ TCPListener::TCPListener(uint16_t port)
 	socket = unique_ptr<Socket>(new Socket(fd));
 }
 }
+#endif

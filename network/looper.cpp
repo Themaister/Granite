@@ -22,6 +22,7 @@
 
 #include "network.hpp"
 
+#ifndef _WIN32
 #include <stdexcept>
 #include <sys/epoll.h>
 #include <sys/types.h>
@@ -31,6 +32,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <sys/eventfd.h>
+#endif
 
 using namespace std;
 
@@ -43,6 +45,7 @@ LooperHandler::LooperHandler(std::unique_ptr<Socket> socket)
 
 Looper::Looper()
 {
+#ifndef _WIN32
 	fd = epoll_create1(0);
 	if (fd < 0)
 		throw runtime_error("Failed to create epoller.");
@@ -56,10 +59,14 @@ Looper::Looper()
 	event.data.ptr = nullptr;
 	if (epoll_ctl(fd, EPOLL_CTL_ADD, event_fd, &event) < 0)
 		throw runtime_error("Failed to add event fd to epoll.");
+#else
+	throw std::runtime_error("Unimplemented feature on Windows.");
+#endif
 }
 
 Looper::~Looper()
 {
+#ifndef _WIN32
 	for (auto &handler : handlers)
 		handler.second->get_socket().set_parent_looper(nullptr);
 
@@ -67,10 +74,12 @@ Looper::~Looper()
 		close(event_fd);
 	if (fd >= 0)
 		close(fd);
+#endif
 }
 
 bool Looper::modify_handler(EventFlags events, LooperHandler &handler)
 {
+#ifndef _WIN32
 	int flags = 0;
 	if (events & EVENT_IN)
 		flags |= EPOLLIN;
@@ -85,10 +94,14 @@ bool Looper::modify_handler(EventFlags events, LooperHandler &handler)
 		return false;
 
 	return true;
+#else
+	return false;
+#endif
 }
 
 bool Looper::register_handler(EventFlags events, unique_ptr<LooperHandler> handler)
 {
+#ifndef _WIN32
 	int flags = 0;
 	if (events & EVENT_IN)
 		flags |= EPOLLIN;
@@ -104,19 +117,25 @@ bool Looper::register_handler(EventFlags events, unique_ptr<LooperHandler> handl
 	handler->get_socket().set_parent_looper(this);
 	handlers[handler->get_socket().get_fd()] = move(handler);
 	return true;
+#else
+	return false;
+#endif
 }
 
 void Looper::unregister_handler(Socket &sock)
 {
+#ifndef _WIN32
 	epoll_ctl(fd, EPOLL_CTL_DEL, sock.get_fd(), nullptr);
 	sock.set_parent_looper(nullptr);
 
 	auto itr = handlers.find(sock.get_fd());
 	handlers.erase(itr);
+#endif
 }
 
 void Looper::run_in_looper(std::function<void()> func)
 {
+#ifndef _WIN32
 	{
 		lock_guard<mutex> holder{queue_lock};
 		func_queue.push_back(move(func));
@@ -124,10 +143,12 @@ void Looper::run_in_looper(std::function<void()> func)
 
 	uint64_t one = 1;
 	::write(event_fd, &one, sizeof(one));
+#endif
 }
 
 void Looper::kill()
 {
+#ifndef _WIN32
 	{
 		lock_guard<mutex> holder{queue_lock};
 		func_queue.push_back([this]() {
@@ -136,10 +157,12 @@ void Looper::kill()
 	}
 	uint64_t one = 1;
 	::write(event_fd, &one, sizeof(one));
+#endif
 }
 
 void Looper::handle_deferred_funcs()
 {
+#ifndef _WIN32
 	uint64_t count = 0;
 	if (::read(event_fd, &count, sizeof(count)) < 0)
 		return;
@@ -150,10 +173,12 @@ void Looper::handle_deferred_funcs()
 	for (auto &func : func_queue)
 		func();
 	func_queue.clear();
+#endif
 }
 
 int Looper::wait_idle(int timeout)
 {
+#ifndef _WIN32
 	if (dead)
 		return -1;
 
@@ -195,14 +220,21 @@ int Looper::wait_idle(int timeout)
 	}
 
 	return handled;
+#else
+	return -1;
+#endif
 }
 
 int Looper::wait(int timeout)
 {
+#ifndef _WIN32
 	if (handlers.empty())
 		return -1;
 
 	return wait_idle(timeout);
+#else
+	return -1;
+#endif
 }
 
 }

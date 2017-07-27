@@ -26,17 +26,17 @@
 
 namespace Granite
 {
-class OSFilesystem : public Filesystem
+class OSFilesystem : public FilesystemBackend
 {
 public:
 	OSFilesystem(const std::string &base);
 	~OSFilesystem();
-	std::vector<Entry> list(const std::string &path) override;
-	std::unique_ptr<File> open(const std::string &path, Mode mode) override;
-	bool stat(const std::string &path, Stat &stat) override;
-	NotifyHandle install_notification(const std::string &path, std::function<void (const Filesystem::NotifyInfo &)> func) override;
-	NotifyHandle find_notification(const std::string &path) const override;
-	void uninstall_notification(NotifyHandle handle) override;
+	std::vector<ListEntry> list(const std::string &path) override;
+	std::unique_ptr<File> open(const std::string &path, FileMode mode) override;
+	bool stat(const std::string &path, FileStat &stat) override;
+	FileNotifyHandle install_notification(const std::string &path, std::function<void (const FileNotifyInfo &)> func) override;
+	void uninstall_notification(FileNotifyHandle handle) override;
 	void poll_notifications() override;
+	int get_notification_fd() const override;
 };
 }

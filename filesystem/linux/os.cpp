@@ -64,7 +64,7 @@ static bool ensure_directory(const std::string &path)
 
 MMapFile::MMapFile(const std::string &path, FileMode mode)
 {
-	int modeflags;
+	int modeflags = 0;
 	switch (mode)
 	{
 	case FileMode::ReadOnly:

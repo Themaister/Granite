@@ -23,9 +23,29 @@
 #pragma once
 #include "../filesystem.hpp"
 #include <unordered_map>
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
 
 namespace Granite
 {
+class MappedFile : public File
+{
+public:
+	MappedFile(const std::string &path, FileMode mode);
+	~MappedFile();
+	void *map() override;
+	void *map_write(size_t size) override;
+	void unmap() override;
+	size_t get_size() override;
+	bool reopen() override;
+
+private:
+	HANDLE file = INVALID_HANDLE_VALUE;
+	HANDLE file_mapping = INVALID_HANDLE_VALUE;
+	void *mapped = nullptr;
+	size_t size = 0;
+};
+
 class OSFilesystem : public FilesystemBackend
 {
 public:
@@ -38,5 +58,8 @@ public:
 	void uninstall_notification(FileNotifyHandle handle) override;
 	void poll_notifications() override;
 	int get_notification_fd() const override;
+
+private:
+	std::string base;
 };
 }

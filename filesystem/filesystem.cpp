@@ -24,12 +24,86 @@
 #include "os.hpp"
 #include "fs-netfs.hpp"
 #include "path.hpp"
+#include "util.hpp"
 #include <stdlib.h>
 
 using namespace std;
 
 namespace Granite
 {
+StdioFile::StdioFile(const std::string &path, FileMode mode)
+	: mode(mode)
+{
+	const char *filemode = nullptr;
+	switch (mode)
+	{
+	case FileMode::ReadOnly:
+		filemode = "rb";
+		break;
+
+	case FileMode::ReadWrite:
+		filemode = "rb+";
+		break;
+
+	case FileMode::WriteOnly:
+		filemode = "wb";
+		break;
+	}
+
+	file = fopen(path.c_str(), filemode);
+	if (!file)
+	{
+		LOGE("Failed to open file: %s\n", path.c_str());
+		throw runtime_error("fopen() failed.");
+	}
+
+	if (mode != FileMode::WriteOnly)
+	{
+		fseek(file, 0, SEEK_END);
+		size = ftell(file);
+		rewind(file);
+	}
+}
+
+size_t StdioFile::get_size()
+{
+	return size;
+}
+
+void *StdioFile::map()
+{
+	rewind(file);
+	buffer.resize(size);
+	fread(buffer.data(), 1, size, file);
+	return buffer.data();
+}
+
+void *StdioFile::map_write(size_t size)
+{
+	buffer.resize(size);
+	this->size = size;
+	return buffer.data();
+}
+
+bool StdioFile::reopen()
+{
+	return false;
+}
+
+void StdioFile::unmap()
+{
+}
+
+StdioFile::~StdioFile()
+{
+	if (mode != FileMode::ReadOnly)
+	{
+		rewind(file);
+		fwrite(buffer.data(), 1, size, file);
+	}
+	fclose(file);
+}
+
 Filesystem &Filesystem::get()
 {
 	static Filesystem fs;

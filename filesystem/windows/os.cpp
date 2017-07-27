@@ -29,99 +29,6 @@ using namespace std;
 
 namespace Granite
 {
-
-MappedFile::MappedFile(const std::string &path, FileMode mode)
-{
-	DWORD access = 0;
-	DWORD disposition = 0;
-	switch (mode)
-	{
-	case FileMode::ReadOnly:
-		access = GENERIC_READ;
-		disposition = OPEN_EXISTING;
-		break;
-
-	case FileMode::ReadWrite:
-		access = GENERIC_READ | GENERIC_WRITE;
-		disposition = OPEN_EXISTING;
-		break;
-
-	case FileMode::WriteOnly:
-		access = GENERIC_READ | GENERIC_WRITE;
-		disposition = CREATE_ALWAYS;
-		break;
-	}
-	HANDLE file = CreateFileA(path.c_str(), access, 0,
-	                          nullptr, disposition,
-	                          FILE_ATTRIBUTE_NORMAL, nullptr);
-
-	if (file == INVALID_HANDLE_VALUE)
-	{
-		LOGE("open(): %s failed.\n", path.c_str());
-		throw runtime_error("Failed to open file.");
-	}
-
-	DWORD hi;
-	DWORD lo = GetFileSize(file, &hi);
-	size = size_t((uint64_t(hi) << 32) | lo);
-}
-
-size_t MappedFile::get_size()
-{
-	return size;
-}
-
-void *MappedFile::map()
-{
-	if (mapped)
-		return mapped;
-
-	DWORD lo = DWORD(size);
-	DWORD hi_size = DWORD(uint64_t(size) >> 32);
-	file_mapping = CreateFileMappingA(file, nullptr, PAGE_READONLY, hi_size, lo, nullptr);
-	if (file_mapping == INVALID_HANDLE_VALUE)
-		return nullptr;
-	mapped = MapViewOfFile(file_mapping, FILE_MAP_READ, 0, 0, size);
-	return mapped;
-}
-
-void *MappedFile::map_write(size_t size)
-{
-	unmap();
-	this->size = size;
-
-	DWORD lo = DWORD(size);
-	DWORD hi_size = DWORD(uint64_t(size) >> 32);
-	file_mapping = CreateFileMappingA(file, nullptr, PAGE_READWRITE, hi_size, lo, nullptr);
-	if (file_mapping == INVALID_HANDLE_VALUE)
-		return nullptr;
-
-	mapped = MapViewOfFile(file, FILE_MAP_READ | FILE_MAP_WRITE, 0, 0, size);
-	return mapped;
-}
-
-bool MappedFile::reopen()
-{
-	return false;
-}
-
-void MappedFile::unmap()
-{
-	if (mapped)
-		UnmapViewOfFile(mapped);
-	if (file_mapping)
-		CloseHandle(file_mapping);
-	mapped = nullptr;
-	file_mapping = INVALID_HANDLE_VALUE;
-}
-
-MappedFile::~MappedFile()
-{
-	unmap();
-	if (file != INVALID_HANDLE_VALUE)
-		CloseHandle(file);
-}
-
 OSFilesystem::OSFilesystem(const std::string &base)
 	: base(base)
 {
@@ -135,7 +42,7 @@ unique_ptr<File> OSFilesystem::open(const std::string &path, FileMode mode)
 {
 	try
 	{
-		unique_ptr<File> file(new MappedFile(Path::join(base, path), mode));
+		unique_ptr<File> file(new StdioFile(Path::join(base, path), mode));
 		return file;
 	}
 	catch (const std::exception &e)

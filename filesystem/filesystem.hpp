@@ -27,6 +27,7 @@
 #include <unordered_map>
 #include "event.hpp"
 #include <functional>
+#include <stdio.h>
 
 namespace Granite
 {
@@ -82,6 +83,24 @@ enum class FileMode
 	ReadOnly,
 	WriteOnly,
 	ReadWrite
+};
+
+class StdioFile : public File
+{
+public:
+	StdioFile(const std::string &path, FileMode mode);
+	~StdioFile();
+	void *map() override;
+	void *map_write(size_t size) override;
+	void unmap() override;
+	size_t get_size() override;
+	bool reopen() override;
+
+private:
+	FILE *file = nullptr;
+	size_t size = 0;
+	FileMode mode;
+	std::vector<uint8_t> buffer;
 };
 
 class FilesystemBackend

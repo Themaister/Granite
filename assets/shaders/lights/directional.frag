@@ -41,7 +41,7 @@ void main()
     vec4 clip_shadow = vShadowClip + depth * registers.shadow_projection_col2;
 
     FragColor = compute_lighting(
-		MaterialProperties(base_color_ambient.rgb, N, mr.x, mr.y, base_color_ambient.a),
+		MaterialProperties(base_color_ambient.rgb, N, mr.x, mr.y, base_color_ambient.a, 1.0),
 		LightInfo(pos, registers.camera_pos, registers.camera_front,
 				registers.direction, registers.color,
 				clip_shadow_near, clip_shadow, registers.inv_cutoff_distance),

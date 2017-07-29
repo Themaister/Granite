@@ -20,6 +20,10 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#define RENDERER_FORWARD 0
+#define RENDERER_DEFERRED 1
+#define RENDERER RENDERER_DEFERRED
+
 #include "application.hpp"
 #include <stdexcept>
 #include "sprite.hpp"
@@ -80,7 +84,6 @@ void SceneViewerApplication::apply_water_depth_tint(Vulkan::CommandBuffer &cmd)
 	cmd.draw(4);
 }
 
-#if 0
 void SceneViewerApplication::lighting_pass(Vulkan::CommandBuffer &cmd, bool reflection_pass)
 {
 	cmd.set_quad_state();
@@ -108,10 +111,10 @@ void SceneViewerApplication::lighting_pass(Vulkan::CommandBuffer &cmd, bool refl
 	assert(reflection && irradiance);
 	cmd.set_texture(1, 0, reflection->get_image()->get_view(), Vulkan::StockSampler::LinearClamp);
 	cmd.set_texture(1, 1, irradiance->get_image()->get_view(), Vulkan::StockSampler::LinearClamp);
-	cmd.set_texture(1, 2, *shadow_map, Vulkan::StockSampler::LinearClamp);
+	cmd.set_texture(1, 2, *lighting.shadow_far, Vulkan::StockSampler::LinearShadow);
 
 	if (!reflection_pass)
-		cmd.set_texture(1, 3, *shadow_map_near, Vulkan::StockSampler::LinearClamp);
+		cmd.set_texture(1, 3, *lighting.shadow_near, Vulkan::StockSampler::LinearShadow);
 
 	struct DirectionalLightPush
 	{
@@ -127,8 +130,8 @@ void SceneViewerApplication::lighting_pass(Vulkan::CommandBuffer &cmd, bool refl
 	const float intensity = 1.0f;
 	const float mipscale = 6.0f;
 
-	mat4 total_shadow_transform = shadow_transform * context.get_render_parameters().inv_view_projection;
-	mat4 total_shadow_transform_near = shadow_transform_near * context.get_render_parameters().inv_view_projection;
+	mat4 total_shadow_transform = lighting.shadow.far_transform * context.get_render_parameters().inv_view_projection;
+	mat4 total_shadow_transform_near = lighting.shadow.near_transform * context.get_render_parameters().inv_view_projection;
 
 	struct DirectionalLightUBO
 	{
@@ -164,7 +167,7 @@ void SceneViewerApplication::lighting_pass(Vulkan::CommandBuffer &cmd, bool refl
 
 		fog.inv_view_proj = context.get_render_parameters().inv_view_projection;
 		fog.camera_pos = vec4(context.get_render_parameters().camera_position, 0.0f);
-		fog.color_falloff = vec4(context.get_fog_parameters().color, context.get_fog_parameters().falloff);
+		fog.color_falloff = vec4(lighting.fog.color, lighting.fog.falloff);
 		cmd.push_constants(&fog, 0, sizeof(fog));
 
 		cmd.set_blend_factors(VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA, VK_BLEND_FACTOR_SRC_ALPHA);
@@ -175,11 +178,14 @@ void SceneViewerApplication::lighting_pass(Vulkan::CommandBuffer &cmd, bool refl
 		cmd.draw(4);
 	}
 }
-#endif
 
 SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned width, unsigned height)
 	: Application(width, height),
+#if RENDERER == RENDERER_FORWARD
 	  renderer(Renderer::Type::GeneralForward),
+#else
+      renderer(Renderer::Type::GeneralDeferred),
+#endif
       depth_renderer(Renderer::Type::DepthOnly),
       plane_reflection("assets://gltf-sandbox/textures/ocean_normal.ktx")
 {
@@ -290,6 +296,7 @@ static inline string tagcat(const std::string &a, const std::string &b)
 
 void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::string &tag, MainPassType type)
 {
+#if RENDERER == RENDERER_FORWARD
 	AttachmentInfo color, depth, reflection_blur;
 	color.format = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
 	depth.format = device.get_default_depth_format();
@@ -374,8 +381,7 @@ void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::st
 		lighting.add_texture_input("reflection");
 		lighting.add_texture_input("refraction");
 	}
-
-#if 0
+#elif RENDERER == RENDERER_DEFERRED
 	AttachmentInfo emissive, albedo, normal, pbr, depth;
 	emissive.format = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
 	albedo.format = VK_FORMAT_R8G8B8A8_SRGB;
@@ -469,10 +475,10 @@ void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::st
 	lighting.add_attachment_input(tagcat("depth", tag));
 	lighting.set_depth_stencil_input(tagcat("depth", tag));
 
-	lighting.add_texture_input("vsm-main");
+	lighting.add_texture_input("shadow-main");
 	if (type == MainPassType::Main)
 	{
-		lighting.add_texture_input("vsm-near");
+		lighting.add_texture_input("shadow-near");
 		lighting.add_texture_input("reflection");
 		lighting.add_texture_input("refraction");
 	}

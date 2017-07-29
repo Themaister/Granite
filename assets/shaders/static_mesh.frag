@@ -38,13 +38,23 @@ layout(std430, push_constant) uniform Constants
 
 #include "inc/render_target.h"
 
+#if defined(ALPHA_TEST) && !defined(ALPHA_TEST_ALPHA_TO_COVERAGE)
+#define NEED_GRADIENTS
+#endif
+
 void main()
 {
+#ifdef NEED_GRADIENTS
     vec2 gradX = dFdx(vUV);
     vec2 gradY = dFdy(vUV);
+#endif
 
 #if defined(HAVE_BASECOLORMAP) && HAVE_BASECOLORMAP
-    vec4 base_color = textureGrad(uBaseColormap, vUV, gradX, gradY) * registers.base_color;
+    #ifdef NEED_GRADIENTS
+        vec4 base_color = textureGrad(uBaseColormap, vUV, gradX, gradY) * registers.base_color;
+    #else
+        vec4 base_color = texture(uBaseColormap, vUV, registers.lod_bias) * registers.base_color;
+    #endif
 #else
     vec4 base_color = registers.base_color;
 #endif
@@ -60,7 +70,11 @@ void main()
     #if defined(HAVE_NORMALMAP) && HAVE_NORMALMAP
         vec3 tangent = normalize(vTangent.xyz);
         vec3 binormal = cross(normal, tangent) * vTangent.w;
-        vec3 tangent_space = textureGrad(uNormalmap, vUV, gradX, gradY).xyz * 2.0 - 1.0;
+        #ifdef NEED_GRADIENTS
+            vec3 tangent_space = textureGrad(uNormalmap, vUV, gradX, gradY).xyz * 2.0 - 1.0;
+        #else
+            vec3 tangent_space = texture(uNormalmap, vUV, registers.lod_bias).xyz * 2.0 - 1.0;
+        #endif
         normal = normalize(mat3(tangent, binormal, normal) * tangent_space);
     #endif
     if (!gl_FrontFacing)
@@ -68,7 +82,11 @@ void main()
 #endif
 
 #if defined(HAVE_METALLICROUGHNESSMAP) && HAVE_METALLICROUGHNESSMAP
-    vec2 mr = textureGrad(uMetallicRoughnessmap, vUV, gradX, gradY).bg;
+    #ifdef NEED_GRADIENTS
+        vec2 mr = textureGrad(uMetallicRoughnessmap, vUV, gradX, gradY).bg;
+    #else
+        vec2 mr = texture(uMetallicRoughnessmap, vUV, registers.lod_bias).bg;
+    #endif
     float metallic = mr.x * registers.metallic;
     float roughness = mr.y * registers.roughness;
 #else

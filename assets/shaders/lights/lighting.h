@@ -40,11 +40,13 @@ layout(set = 1, binding = 1) uniform samplerCube uIrradiance;
 #endif
 
 #ifdef SHADOWS
-layout(set = 1, binding = 2) uniform sampler2D uShadowmap;
+layout(set = 1, binding = 2) uniform highp sampler2DShadow uShadowmap;
 #ifdef SHADOW_CASCADES
-layout(set = 1, binding = 3) uniform sampler2D uShadowmapNear;
+layout(set = 1, binding = 3) uniform highp sampler2DShadow uShadowmapNear;
 #endif
 
+#define SHADOW_PCF
+#ifdef SHADOW_VSM
 float vsm(float depth, vec2 moments)
 {
     float shadow_term = 1.0f;
@@ -57,7 +59,9 @@ float vsm(float depth, vec2 moments)
     }
     return shadow_term;
 }
+#endif
 
+#ifdef SHADOW_VSM
 float get_shadow_term(LightInfo light)
 {
     // Sample shadowmap.
@@ -75,6 +79,22 @@ float get_shadow_term(LightInfo light)
 	return vsm(shadow_far.z, texture(uShadowmap, shadow_far.xy).xy);
 #endif
 }
+#elif defined(SHADOW_PCF)
+float get_shadow_term(LightInfo light)
+{
+#ifdef SHADOW_CASCADES
+	float shadow_term_near = textureProjLod(uShadowmapNear, light.clip_shadow_near, 0.0);
+	float shadow_term_far = textureProjLod(uShadowmap, light.clip_shadow_far, 0.0);
+    float view_z = dot(light.camera_front, (light.pos - light.camera_pos));
+    float shadow_lerp = clamp(4.0 * (view_z * light.inv_cutoff_distance - 0.75), 0.0, 1.0);
+    float shadow_term = mix(shadow_term_near, shadow_term_far, shadow_lerp);
+	return shadow_term;
+#else
+	float shadow_term_far = textureProjLod(uShadowmap, light.clip_shadow_far, 0.0);
+	return shadow_term_far;
+#endif
+}
+#endif
 #endif
 
 #ifdef RENDERER_FORWARD
@@ -95,6 +115,8 @@ vec3 compute_lighting(
 	const float shadow_term = 1.0;
 #endif
 
+	float roughness = material.roughness * 0.9 + 0.1;
+
 	// Compute directional light.
 	vec3 L = light.direction;
 	vec3 V = normalize(light.camera_pos - light.pos);
@@ -109,7 +131,7 @@ vec3 compute_lighting(
 
 	vec3 F0 = compute_F0(material.base_color, material.metallic);
 	vec3 specular_fresnel = fresnel(F0, HoV);
-	vec3 specref = NoL * shadow_term * blinn_specular(NoH, specular_fresnel, material.roughness);
+	vec3 specref = NoL * shadow_term * blinn_specular(NoH, specular_fresnel, roughness);
 	vec3 diffref = NoL * shadow_term * (1.0 - specular_fresnel) * (1.0 / PI);
 
 #ifdef ENVIRONMENT
@@ -123,13 +145,13 @@ vec3 compute_lighting(
 	float minimum_lod = 4.0;
 	vec3 envspec = environment.intensity *
 	               textureLod(uReflection, reflected,
-	                          max(material.roughness * environment.mipscale, minimum_lod)).rgb;
+	                          max(roughness * environment.mipscale, minimum_lod)).rgb;
 
 	envspec *= 0.01;
 
 	// Lookup reflectance terms.
 	//vec2 brdf = textureLod(uBRDF, vec2(mr.y, 1.0 - NoV), 0.0).xy;
-	vec2 brdf = image_based_brdf(material.roughness, NoV);
+	vec2 brdf = image_based_brdf(roughness, NoV);
 
 	vec3 iblspec = min(vec3(1.0), fresnel(F0, NoV) * brdf.x + brdf.y);
 	envspec *= iblspec * material.ambient_factor;

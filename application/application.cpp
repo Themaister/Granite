@@ -367,10 +367,10 @@ void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::st
 		}
 	});
 
-	lighting.add_texture_input("vsm-main");
+	lighting.add_texture_input("shadow-main");
 	if (type == MainPassType::Main)
 	{
-		lighting.add_texture_input("vsm-near");
+		lighting.add_texture_input("shadow-near");
 		lighting.add_texture_input("reflection");
 		lighting.add_texture_input("refraction");
 	}
@@ -500,37 +500,23 @@ void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::st
 void SceneViewerApplication::add_shadow_pass(Vulkan::Device &device, const std::string &tag, DepthPassType type)
 {
 	AttachmentInfo shadowmap;
-	AttachmentInfo vsm_output;
 	shadowmap.format = device.get_default_depth_format();
 	shadowmap.samples = 1;
 	shadowmap.size_class = SizeClass::Absolute;
-
-	vsm_output.format = VK_FORMAT_R32G32_SFLOAT;
-	vsm_output.samples = 1;
-	vsm_output.size_class = SizeClass::Absolute;
 
 	if (type == DepthPassType::Main)
 	{
 		shadowmap.size_x = 4096.0f;
 		shadowmap.size_y = 4096.0f;
-		vsm_output.size_x = 4096.0f;
-		vsm_output.size_y = 4096.0f;
 	}
 	else
 	{
 		shadowmap.size_x = 1024.0f;
 		shadowmap.size_y = 1024.0f;
-		vsm_output.size_x = 1024.0f;
-		vsm_output.size_y = 1024.0f;
 	}
 
-	auto vsm_resolve_output = vsm_output;
-	vsm_resolve_output.samples = 1;
-	auto vsm_mipmapped = vsm_resolve_output;
-	vsm_mipmapped.levels = 0;
-
 	auto &shadowpass = graph.add_pass(tagcat("shadow", tag), VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
-	shadowpass.set_depth_stencil_output(tagcat("shadowmap", tag), shadowmap);
+	shadowpass.set_depth_stencil_output(tagcat("shadow", tag), shadowmap);
 	shadowpass.set_build_render_pass([this, type](Vulkan::CommandBuffer &cmd) {
 		if (type == DepthPassType::Main)
 			render_shadow_map_far(cmd);
@@ -548,42 +534,6 @@ void SceneViewerApplication::add_shadow_pass(Vulkan::Device &device, const std::
 	});
 
 	shadowpass.set_need_render_pass([this, type]() {
-		return type == DepthPassType::Main ? need_shadow_map_update : true;
-	});
-
-	auto &vsm_resolve = graph.add_pass(tagcat("vsm-resolve", tag), VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
-	vsm_resolve.add_attachment_input(tagcat("shadowmap", tag));
-	vsm_resolve.add_color_output(tagcat("vsm-resolved", tag), vsm_resolve_output);
-	vsm_resolve.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
-		cmd.set_input_attachments(0, 0);
-		CommandBufferUtil::draw_quad(cmd, "assets://shaders/quad.vert", "assets://shaders/lights/resolve_vsm.frag");
-	});
-
-	vsm_resolve.set_need_render_pass([this, type]() {
-		return type == DepthPassType::Main ? need_shadow_map_update : true;
-	});
-
-	auto &vsm_vertical = graph.add_pass(tagcat("vsm-vertical", tag), VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
-	vsm_vertical.add_texture_input(tagcat("vsm-resolved", tag));
-	vsm_vertical.add_color_output(tagcat("vsm-vertical", tag), vsm_resolve_output);
-	vsm_vertical.set_build_render_pass([this, &vsm_vertical](Vulkan::CommandBuffer &cmd) {
-		vsm_vertical.set_texture_inputs(cmd, 0, 0, Vulkan::StockSampler::NearestClamp);
-		CommandBufferUtil::draw_quad(cmd, "assets://shaders/quad.vert", "assets://shaders/blur.frag", {{ "METHOD", 4 }});
-	});
-
-	vsm_vertical.set_need_render_pass([this, type]() {
-		return type == DepthPassType::Main ? need_shadow_map_update : true;
-	});
-
-	auto &vsm_horizontal = graph.add_pass(tagcat("vsm-horizontal", tag), VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
-	vsm_horizontal.add_texture_input(tagcat("vsm-vertical", tag));
-	vsm_horizontal.add_color_output(tagcat("vsm", tag), vsm_mipmapped);
-	vsm_horizontal.set_build_render_pass([this, &vsm_horizontal](Vulkan::CommandBuffer &cmd) {
-		vsm_horizontal.set_texture_inputs(cmd, 0, 0, Vulkan::StockSampler::NearestClamp);
-		CommandBufferUtil::draw_quad(cmd, "assets://shaders/quad.vert", "assets://shaders/blur.frag", {{ "METHOD", 1 }});
-	});
-
-	vsm_horizontal.set_need_render_pass([this, type]() {
 		return type == DepthPassType::Main ? need_shadow_map_update : true;
 	});
 }
@@ -718,8 +668,8 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 	//window->set_target_geometry(window->get_target_geometry() + vec2(1.0f));
 
 	graph.setup_attachments(device, &device.get_swapchain_view());
-	lighting.shadow_far = &graph.get_physical_texture_resource(graph.get_texture_resource("vsm-main").get_physical_index());
-	lighting.shadow_near = &graph.get_physical_texture_resource(graph.get_texture_resource("vsm-near").get_physical_index());
+	lighting.shadow_far = &graph.get_physical_texture_resource(graph.get_texture_resource("shadow-main").get_physical_index());
+	lighting.shadow_near = &graph.get_physical_texture_resource(graph.get_texture_resource("shadow-near").get_physical_index());
 	plane_reflection.set_reflection_texture(&graph.get_physical_texture_resource(graph.get_texture_resource("reflection").get_physical_index()));
 	plane_reflection.set_refraction_texture(&graph.get_physical_texture_resource(graph.get_texture_resource("refraction").get_physical_index()));
 	graph.enqueue_render_passes(device);

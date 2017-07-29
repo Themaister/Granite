@@ -165,9 +165,9 @@ void Renderer::set_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderC
 	if (lighting->environment_irradiance)
 		cmd.set_texture(1, 1, *lighting->environment_irradiance, Vulkan::StockSampler::LinearClamp);
 	if (lighting->shadow_far)
-		cmd.set_texture(1, 2, *lighting->shadow_far, Vulkan::StockSampler::TrilinearClamp);
+		cmd.set_texture(1, 2, *lighting->shadow_far, Vulkan::StockSampler::LinearShadow);
 	if (lighting->shadow_near)
-		cmd.set_texture(1, 3, *lighting->shadow_near, Vulkan::StockSampler::LinearClamp);
+		cmd.set_texture(1, 3, *lighting->shadow_near, Vulkan::StockSampler::LinearShadow);
 }
 
 void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context)
@@ -184,7 +184,8 @@ void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context)
 	if (type == Type::DepthOnly)
 	{
 		cmd.set_depth_bias(true);
-		cmd.set_depth_bias(0.0f, 1.0f);
+		cmd.set_depth_bias(1.0f, 1.0f);
+		cmd.set_cull_mode(VK_CULL_MODE_FRONT_BIT);
 	}
 
 	CommandBufferSavedState state;

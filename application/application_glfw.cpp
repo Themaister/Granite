@@ -252,7 +252,16 @@ unique_ptr<ApplicationPlatform> create_default_application_platform(unsigned wid
 }
 }
 
+#ifdef _WIN32
+int CALLBACK WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
+{
+	char granite_str[] = "granite";
+	char *granite_ptr[] = { granite_str, nullptr };
+	return Granite::application_main(1, granite_ptr);
+}
+#else
 int main(int argc, char *argv[])
 {
 	return Granite::application_main(argc, argv);
 }
+#endif

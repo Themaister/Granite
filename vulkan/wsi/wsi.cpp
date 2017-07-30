@@ -254,7 +254,7 @@ bool WSI::init_swapchain(unsigned width, unsigned height)
 	}
 
 	VkExtent2D swapchain_size;
-	if (surface_properties.currentExtent.width == -1u)
+	if (surface_properties.currentExtent.width == ~0u)
 	{
 		swapchain_size.width = width;
 		swapchain_size.height = height;

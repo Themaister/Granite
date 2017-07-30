@@ -31,7 +31,7 @@
 using namespace Granite;
 using namespace std;
 
-class FSHandler;
+struct FSHandler;
 
 struct FilesystemHandler : LooperHandler
 {

@@ -29,7 +29,7 @@
 #include <vector>
 #include <type_traits>
 
-#if defined(_WIN32) && 0
+#if defined(_MSC_VER)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #define LOGE(...) do { \

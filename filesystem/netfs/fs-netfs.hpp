@@ -31,7 +31,7 @@
 
 namespace Granite
 {
-class FSReader;
+struct FSReader;
 class NetworkFile : public File
 {
 public:
@@ -53,7 +53,7 @@ private:
 	bool need_flush = false;
 };
 
-class FSNotifyCommand;
+struct FSNotifyCommand;
 class NetworkFilesystem : public FilesystemBackend
 {
 public:

@@ -45,6 +45,12 @@ Return member_function_invoker(void *object, const Event &e)
 
 namespace Detail
 {
+
+#ifdef _MSC_VER
+// MSVC generates bogus warnings here.
+#pragma warning(disable: 4307)
+#endif
+
 constexpr uint64_t fnv_iterate(uint64_t hash, char c)
 {
 	return (hash * 0x100000001b3ull) ^ uint8_t(c);

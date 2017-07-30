@@ -5,6 +5,8 @@ project(Granite LANGUAGES CXX C)
 
 if (CMAKE_COMPILER_IS_GNUCXX)
 	set(GRANITE_CXX_FLAGS -Wall -Wextra -pedantic -Wno-missing-field-initializers -Wno-empty-body)
+elseif (MSVC)
+	set(GRANITE_CXX_FLAGS /D_CRT_SECURE_NO_WARNINGS)
 endif()
 
 option(SANITIZE_ADDRESS "Sanitize" OFF)

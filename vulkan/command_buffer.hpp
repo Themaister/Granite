@@ -125,7 +125,7 @@ struct VertexAttribState
 {
 	uint32_t binding;
 	VkFormat format;
-	VkDeviceSize offset;
+	uint32_t offset;
 };
 
 struct IndexState
@@ -138,8 +138,8 @@ struct IndexState
 struct VertexBindingState
 {
 	VkBuffer buffers[VULKAN_NUM_VERTEX_BUFFERS];
-	VkDeviceSize offsets[VULKAN_NUM_VERTEX_BUFFERS];
-	VkDeviceSize strides[VULKAN_NUM_VERTEX_BUFFERS];
+	uint32_t offsets[VULKAN_NUM_VERTEX_BUFFERS];
+	uint32_t strides[VULKAN_NUM_VERTEX_BUFFERS];
 	VkVertexInputRate input_rates[VULKAN_NUM_VERTEX_BUFFERS];
 };
 

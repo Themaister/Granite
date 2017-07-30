@@ -112,7 +112,7 @@ void EventManager::unregister_handler(EventHandler *handler)
 	for (auto &event_type : events)
 	{
 		auto itr = remove_if(begin(event_type.second.handlers), end(event_type.second.handlers), [&](const Handler &h) {
-			return h.handler == handler;
+			return h.unregister_key == handler;
 		});
 
 		if (itr != end(event_type.second.handlers) && event_type.second.dispatching)
@@ -123,12 +123,14 @@ void EventManager::unregister_handler(EventHandler *handler)
 	}
 }
 
+#if 0
+// Check against mem_fn isn't safe.
 void EventManager::unregister_handler(const Handler &handler)
 {
 	for (auto &event_type : events)
 	{
 		auto itr = remove_if(begin(event_type.second.handlers), end(event_type.second.handlers), [&](const Handler &h) {
-			return h.handler == handler.handler && h.mem_fn == handler.mem_fn;
+			return h.unregister_key == handler.unregister_key && h.mem_fn == handler.mem_fn;
 		});
 
 		if (itr != end(event_type.second.handlers) && event_type.second.dispatching)
@@ -138,13 +140,14 @@ void EventManager::unregister_handler(const Handler &handler)
 			event_type.second.handlers.erase(itr, end(event_type.second.handlers));
 	}
 }
+#endif
 
-void EventManager::unregister_latch_handler(void *handler)
+void EventManager::unregister_latch_handler(EventHandler *handler)
 {
 	for (auto &event_type : latched_events)
 	{
 		auto itr = remove_if(begin(event_type.second.handlers), end(event_type.second.handlers), [&](const LatchHandler &h) {
-			return h.handler == handler;
+			return h.unregister_key == handler;
 		});
 
 		if (itr != end(event_type.second.handlers))
@@ -157,7 +160,7 @@ void EventManager::unregister_latch_handler(const LatchHandler &handler)
 	for (auto &event_type : latched_events)
 	{
 		auto itr = remove_if(begin(event_type.second.handlers), end(event_type.second.handlers), [&](const LatchHandler &h) {
-			bool signal = h.handler == handler.handler && h.up_fn == handler.up_fn && h.down_fn == handler.down_fn;
+			bool signal = h.unregister_key == handler.unregister_key && h.up_fn == handler.up_fn && h.down_fn == handler.down_fn;
 			if (signal)
 				dispatch_down_events(event_type.second.queued_events, h);
 			return signal;

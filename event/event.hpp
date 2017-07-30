@@ -188,18 +188,21 @@ public:
 	{
 		auto &l = events[type];
 		if (l.dispatching)
-			l.recursive_handlers.push_back({ member_function_invoker<bool, T, mem_fn>, handler });
+			l.recursive_handlers.push_back({ member_function_invoker<bool, T, mem_fn>, handler, handler });
 		else
-			l.handlers.push_back({ member_function_invoker<bool, T, mem_fn>, handler });
+			l.handlers.push_back({ member_function_invoker<bool, T, mem_fn>, handler, handler });
 	}
 
 	void unregister_handler(EventHandler *handler);
+
+#if 0
 	template<typename T, bool (T::*mem_fn)(const Event &)>
-	void unregister_handler(T *handler)
+	void unregister_handler(EventHandler *handler)
 	{
-		Handler h{ member_function_invoker<bool, T, mem_fn>, handler };
+		Handler h{ member_function_invoker<bool, T, mem_fn>, nullptr, handler };
 		unregister_handler(h);
 	}
+#endif
 
 	template<typename T, void (T::*up_fn)(const Event &), void (T::*down_fn)(const Event &)>
 	void register_latch_handler(EventType type, T *handler)
@@ -207,7 +210,7 @@ public:
 		LatchHandler h{
 			member_function_invoker<void, T, up_fn>,
 			member_function_invoker<void, T, down_fn>,
-			handler };
+			handler, handler };
 
 		auto &events = latched_events[type];
 		dispatch_up_events(events.queued_events, h);
@@ -219,17 +222,20 @@ public:
 			l.handlers.push_back(h);
 	}
 
-	void unregister_latch_handler(void *handler);
+	void unregister_latch_handler(EventHandler *handler);
+
+#if 0
 	template<typename T, void (T::*up_fn)(const Event &), void (T::*down_fn)(const Event &)>
-	void unregister_latch_handler(T *handler)
+	void unregister_latch_handler(EventHandler *handler)
 	{
 		LatchHandler h{
 			member_function_invoker<void, T, up_fn>,
 			member_function_invoker<void, T, down_fn>,
-			handler };
+			nullptr, handler };
 
 		unregister_latch_handler(h);
 	}
+#endif
 
 	~EventManager();
 
@@ -238,6 +244,7 @@ private:
 	{
 		bool (*mem_fn)(void *object, const Event &event);
 		void *handler;
+		EventHandler *unregister_key;
 	};
 
 	struct LatchHandler
@@ -245,6 +252,7 @@ private:
 		void (*up_fn)(void *object, const Event &event);
 		void (*down_fn)(void *object, const Event &event);
 		void *handler;
+		EventHandler *unregister_key;
 	};
 
 	struct EventTypeData
@@ -275,7 +283,9 @@ private:
 	void dispatch_up_event(LatchEventTypeData &event_type, const Event &event);
 	void dispatch_down_event(LatchEventTypeData &event_type, const Event &event);
 
+#if 0
 	void unregister_handler(const Handler &handler);
+#endif
 	void unregister_latch_handler(const LatchHandler &handler);
 
 	struct EventHasher

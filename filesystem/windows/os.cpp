@@ -24,6 +24,7 @@
 #include "../path.hpp"
 #include "util.hpp"
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <stdexcept>
 
 using namespace std;

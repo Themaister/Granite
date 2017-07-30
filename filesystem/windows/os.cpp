@@ -23,12 +23,37 @@
 #include "os.hpp"
 #include "../path.hpp"
 #include "util.hpp"
+#include <sys/types.h>
 #include <stdexcept>
 
 using namespace std;
 
 namespace Granite
 {
+static bool ensure_directory_inner(const std::string &path)
+{
+	if (Path::is_root_path(path))
+		return false;
+
+	struct _stat s;
+	if (::_stat(path.c_str(), &s) >= 0 && (s.st_mode & _S_IFDIR) != 0)
+		return true;
+
+	auto basedir = Path::basedir(path);
+	if (!ensure_directory_inner(basedir))
+		return false;
+
+	if (!CreateDirectory(path.c_str(), nullptr))
+		return GetLastError() == ERROR_ALREADY_EXISTS;
+	return true;
+}
+
+static bool ensure_directory(const std::string &path)
+{
+	auto basedir = Path::basedir(path);
+	return ensure_directory_inner(basedir);
+}
+
 MappedFile::MappedFile(const string &path, FileMode mode)
 {
 	DWORD access = 0;
@@ -42,17 +67,21 @@ MappedFile::MappedFile(const string &path, FileMode mode)
 		break;
 
 	case FileMode::ReadWrite:
+		if (!ensure_directory(path))
+			throw runtime_error("MappedFile failed to create directory");
 		access = GENERIC_READ | GENERIC_WRITE;
 		disposition = OPEN_ALWAYS;
 		break;
 
 	case FileMode::WriteOnly:
+		if (!ensure_directory(path))
+			throw runtime_error("MappedFile failed to create directory");
 		access = GENERIC_READ | GENERIC_WRITE;
 		disposition = CREATE_ALWAYS;
 		break;
 	}
 
-	file = CreateFileA(path.c_str(), access, FILE_SHARE_READ, nullptr, disposition, FILE_ATTRIBUTE_NORMAL, INVALID_HANDLE_VALUE);
+	file = CreateFileA(path.c_str(), access, FILE_SHARE_READ, nullptr, disposition, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, INVALID_HANDLE_VALUE);
 	if (file == INVALID_HANDLE_VALUE)
 	{
 		LOGE("Failed to open file: %s.\n", path.c_str());
@@ -171,9 +200,22 @@ vector<ListEntry> OSFilesystem::list(const string &)
     return {};
 }
 
-bool OSFilesystem::stat(const std::string &, FileStat &)
+bool OSFilesystem::stat(const std::string &path, FileStat &stat)
 {
-    return false;
+	auto joined = Path::join(base, path);
+	struct _stat buf;
+	if (_stat(path.c_str(), &buf) < 0)
+		return false;
+
+	if (buf.st_mode & _S_IFREG)
+		stat.type = PathType::File;
+	else if (buf.st_mode & _S_IFDIR)
+		stat.type = PathType::Directory;
+	else
+		stat.type = PathType::Special;
+
+	stat.size = uint64_t(buf.st_size);
+	return true;
 }
 
 int OSFilesystem::get_notification_fd() const

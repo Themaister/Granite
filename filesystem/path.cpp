@@ -22,6 +22,7 @@
 
 #include "path.hpp"
 #include "util.hpp"
+#include <algorithm>
 
 using namespace std;
 
@@ -29,12 +30,31 @@ namespace Granite
 {
 namespace Path
 {
+
+static size_t find_last_slash(const string &str)
+{
+#ifdef _WIN32
+	auto index = str.find_last_of("/\\");
+#else
+	auto index = str.find_last_of('/');
+#endif
+	return index;
+}
+
 bool is_abspath(const string &path)
 {
 	if (path.empty())
 		return false;
 	if (path.front() == '/')
 		return true;
+
+#ifdef _WIN32
+	{
+		auto index = std::min(path.find(":/"), path.find(":\\"));
+		if (index != string::npos)
+			return true;
+	}
+#endif
 
 	return path.find("://") != string::npos;
 }
@@ -46,6 +66,14 @@ bool is_root_path(const string &path)
 
 	if (path.front() == '/' && path.size() == 1)
 		return true;
+
+#ifdef _WIN32
+	{
+		auto index = std::min(path.find(":/"), path.find(":\\"));
+		if (index != string::npos && (index + 2) == path.size())
+			return true;
+	}
+#endif
 
 	auto index = path.find("://");
 	return index != string::npos && (index + 3) == path.size();
@@ -61,7 +89,7 @@ string join(const string &base, const string &path)
 	if (is_abspath(path))
 		return path;
 
-	auto index = base.find_last_of('/');
+	auto index = find_last_slash(base);
 	bool need_slash = index != base.size() - 1;
 	return Util::join(base, need_slash ? "/" : "", path);
 }
@@ -74,7 +102,7 @@ string basedir(const string &path)
 	if (is_root_path(path))
 		return path;
 
-	auto index = path.find_last_of('/');
+	auto index = find_last_slash(path);
 	if (index == string::npos)
 		return ".";
 
@@ -89,7 +117,8 @@ string basename(const string &path)
 {
 	if (path.empty())
 		return "";
-	auto index = path.find_last_of('/');
+
+	auto index = find_last_slash(path);
 	if (index == string::npos)
 		return path;
 
@@ -115,7 +144,8 @@ pair<string, string> split(const string &path)
 {
 	if (path.empty())
 		return make_pair(string("."), string("."));
-	auto index = path.find_last_of('/');
+
+	auto index = find_last_slash(path);
 	if (index == string::npos)
 		return make_pair(string("."), path);
 

@@ -28,6 +28,23 @@
 
 namespace Granite
 {
+class MappedFile : public File
+{
+public:
+	MappedFile(const std::string &path, FileMode mode);
+	~MappedFile();
+
+	virtual void *map() override;
+	virtual void *map_write(size_t size) override;
+	virtual void unmap() override;
+	virtual size_t get_size() override;
+	virtual bool reopen() override;
+
+private:
+	HANDLE file = nullptr;
+	void *mapped = nullptr;
+	size_t size = 0;
+};
 
 class OSFilesystem : public FilesystemBackend
 {

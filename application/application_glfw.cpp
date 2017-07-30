@@ -25,6 +25,10 @@
 #include "vulkan.hpp"
 #include "GLFW/glfw3.h"
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 using namespace std;
 using namespace Vulkan;
 

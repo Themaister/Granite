@@ -196,9 +196,27 @@ FileNotifyHandle OSFilesystem::install_notification(const string &,
     return -1;
 }
 
-vector<ListEntry> OSFilesystem::list(const string &)
+vector<ListEntry> OSFilesystem::list(const string &path)
 {
-    return {};
+	vector<ListEntry> entries;
+	WIN32_FIND_DATAA result;
+	auto joined = Path::join(base, path);
+	for (HANDLE handle = FindFirstFileA(joined.c_str(), &result);
+		handle != INVALID_HANDLE_VALUE;
+		handle = FindFirstFileA(joined.c_str(), &result))
+	{
+		ListEntry entry;
+		if (result.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+			entry.type = PathType::Directory;
+		else if (result.dwFileAttributes & FILE_ATTRIBUTE_NORMAL)
+			entry.type = PathType::File;
+		else
+			entry.type = PathType::Special;
+
+		entry.path = Path::join(path, result.cFileName);
+		entries.push_back(move(entry));
+	}
+	return entries;
 }
 
 bool OSFilesystem::stat(const std::string &path, FileStat &stat)

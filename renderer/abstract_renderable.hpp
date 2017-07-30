@@ -30,7 +30,7 @@ namespace Granite
 class RenderQueue;
 class RenderContext;
 class ShaderSuite;
-class CachedSpatialTransformComponent;
+struct CachedSpatialTransformComponent;
 struct SpriteTransformInfo;
 
 enum class DrawPipeline : unsigned

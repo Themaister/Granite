@@ -39,10 +39,7 @@ StockMaterials &StockMaterials::get()
 StockMaterials::StockMaterials()
 {
 	checkerboard = Util::make_handle<Material>();
-	EventManager::get_global().register_latch_handler(DeviceCreatedEvent::type_id,
-	                                                  &StockMaterials::on_device_created,
-	                                                  &StockMaterials::on_device_destroyed,
-	                                                  this);
+	EVENT_MANAGER_REGISTER_LATCH(StockMaterials, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
 MaterialHandle StockMaterials::get_checkerboard()
@@ -59,6 +56,7 @@ void StockMaterials::on_device_created(const Event &event)
 	checkerboard->emissive = vec3(0.0f);
 	checkerboard->metallic = 1.0f;
 	checkerboard->roughness = 1.0f;
+	checkerboard->bake_hash();
 }
 
 void StockMaterials::on_device_destroyed(const Event &)

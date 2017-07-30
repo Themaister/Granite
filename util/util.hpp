@@ -62,12 +62,41 @@
 
 #define STRINGIFY(x) #x
 
+#ifdef _MSC_VER
+#include <intrin.h>
+#endif
+
 namespace Util
 {
 #ifdef __GNUC__
 #define leading_zeroes(x) ((x) == 0 ? 32 : __builtin_clz(x))
 #define trailing_zeroes(x) ((x) == 0 ? 32 : __builtin_ctz(x))
 #define trailing_ones(x) __builtin_ctz(~(x))
+#elif defined(_MSC_VER)
+namespace Internal
+{
+static inline uint32_t clz(uint32_t x)
+{
+	unsigned long result;
+	if (_BitScanReverse(&result, x))
+		return 31 - result;
+	else
+		return 32;
+}
+
+static inline uint32_t ctz(uint32_t x)
+{
+	unsigned long result;
+	if (_BitScanForward(&result, x))
+		return result;
+	else
+		return 32;
+}
+}
+
+#define leading_zeroes(x) ::Util::Internal::clz(x)
+#define trailing_zeroes(x) ::Util::Internal::ctz(x)
+#define trailing_ones(x) ::Util::Internal::ctz(~(x))
 #else
 #error "Implement me."
 #endif

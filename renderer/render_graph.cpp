@@ -171,10 +171,7 @@ RenderTextureResource &RenderPass::set_depth_stencil_input(const std::string &na
 
 RenderGraph::RenderGraph()
 {
-	EventManager::get_global().register_latch_handler(Vulkan::SwapchainParameterEvent::type_id,
-                                                      &RenderGraph::on_swapchain_changed,
-                                                      &RenderGraph::on_swapchain_destroyed,
-                                                      this);
+	EVENT_MANAGER_REGISTER_LATCH(RenderGraph, on_swapchain_changed, on_swapchain_destroyed, Vulkan::SwapchainParameterEvent);
 }
 
 void RenderGraph::on_swapchain_destroyed(const Event &)

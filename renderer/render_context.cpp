@@ -29,13 +29,7 @@ namespace Granite
 {
 RenderContext::RenderContext()
 {
-	fog.color = vec3(1.0f);
-	fog.falloff = 0.0f;
-
-	EventManager::get_global().register_latch_handler(DeviceCreatedEvent::type_id,
-	                                                  &RenderContext::on_device_created,
-	                                                  &RenderContext::on_device_destroyed,
-	                                                  this);
+	EVENT_MANAGER_REGISTER_LATCH(RenderContext, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
 void RenderContext::on_device_created(const Event &e)

@@ -30,7 +30,7 @@ struct FrameEvent : EventHandler
 {
 	FrameEvent()
 	{
-		EventManager::get_global().register_handler(FrameTickEvent::type_id, &FrameEvent::on_frame_time, this);
+		EVENT_MANAGER_REGISTER(FrameEvent, on_frame_time, FrameTickEvent);
 	}
 
 	bool on_frame_time(const Event &e)

@@ -354,7 +354,7 @@ public:
 
 	bool get_key_pressed(Key key) const
 	{
-		return (key_mask & (1 << Util::ecast(key))) != 0;
+		return (key_mask & (1ull << Util::ecast(key))) != 0;
 	}
 
 	double get_mouse_x() const

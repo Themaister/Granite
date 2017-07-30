@@ -50,7 +50,7 @@ void SocketWriter::start(const void *data, size_t size)
 	offset = 0;
 }
 
-ssize_t SocketReader::process(Socket &socket)
+int SocketReader::process(Socket &socket)
 {
 	size_t to_read = size - offset;
 	auto res = socket.read(static_cast<uint8_t *>(data) + offset, to_read);
@@ -61,7 +61,7 @@ ssize_t SocketReader::process(Socket &socket)
 	return offset;
 }
 
-ssize_t SocketWriter::process(Socket &socket)
+int SocketWriter::process(Socket &socket)
 {
 	size_t to_write = size - offset;
 	auto res = socket.write(static_cast<const uint8_t *>(data) + offset, to_write);
@@ -140,7 +140,7 @@ Socket::~Socket()
 #endif
 }
 
-ssize_t Socket::read(void *data, size_t size)
+int Socket::read(void *data, size_t size)
 {
 #ifndef _WIN32
 	auto ret = ::recv(fd, data, size, 0);
@@ -157,7 +157,7 @@ ssize_t Socket::read(void *data, size_t size)
 #endif
 }
 
-ssize_t Socket::write(const void *data, size_t size)
+int Socket::write(const void *data, size_t size)
 {
 #ifndef _WIN32
 	auto ret = ::send(fd, data, size, MSG_NOSIGNAL);

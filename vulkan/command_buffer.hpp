@@ -539,8 +539,10 @@ private:
 	PipelineState static_state;
 	PotentialState potential_static_state = {};
 	DynamicState dynamic_state = {};
+#ifndef _MSC_VER
 	static_assert(sizeof(static_state.words) >= sizeof(static_state.state),
 	              "Hashable pipeline state is not large enough!");
+#endif
 
 	void flush_render_state();
 	VkPipeline build_graphics_pipeline(Util::Hash hash);

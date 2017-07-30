@@ -96,12 +96,12 @@ vec3 Camera::get_up() const
 
 FPSCamera::FPSCamera()
 {
-	EventManager::get_global().register_handler(MouseMoveEvent::type_id, &FPSCamera::on_mouse_move, this);
-	EventManager::get_global().register_handler(OrientationEvent::type_id, &FPSCamera::on_orientation, this);
-	EventManager::get_global().register_handler(TouchDownEvent::type_id, &FPSCamera::on_touch_down, this);
-	EventManager::get_global().register_handler(TouchUpEvent::type_id, &FPSCamera::on_touch_up, this);
-	EventManager::get_global().register_handler(InputStateEvent::type_id, &FPSCamera::on_input_state, this);
-	EventManager::get_global().register_latch_handler(SwapchainParameterEvent::type_id, &FPSCamera::on_swapchain, &FPSCamera::on_swapchain, this);
+	EVENT_MANAGER_REGISTER(FPSCamera, on_mouse_move, MouseMoveEvent);
+	EVENT_MANAGER_REGISTER(FPSCamera, on_orientation, OrientationEvent);
+	EVENT_MANAGER_REGISTER(FPSCamera, on_touch_down, TouchDownEvent);
+	EVENT_MANAGER_REGISTER(FPSCamera, on_touch_up, TouchUpEvent);
+	EVENT_MANAGER_REGISTER(FPSCamera, on_input_state, InputStateEvent);
+	EVENT_MANAGER_REGISTER_LATCH(FPSCamera, on_swapchain, on_swapchain, SwapchainParameterEvent);
 }
 
 bool FPSCamera::on_touch_down(const Event &)

@@ -38,7 +38,7 @@ class SocketReader
 {
 public:
 	void start(void *data, size_t size);
-	ssize_t process(Socket &socket);
+	int process(Socket &socket);
 
 	void start(std::vector<uint8_t> &buffer)
 	{
@@ -66,7 +66,7 @@ public:
 		start(buffer.data(), buffer.size());
 	}
 
-	ssize_t process(Socket &socket);
+	int process(Socket &socket);
 
 	bool complete() const
 	{
@@ -103,8 +103,8 @@ public:
 		return fd;
 	}
 
-	ssize_t write(const void *data, size_t size);
-	ssize_t read(void *data, size_t size);
+	int write(const void *data, size_t size);
+	int read(void *data, size_t size);
 
 	enum Error
 	{

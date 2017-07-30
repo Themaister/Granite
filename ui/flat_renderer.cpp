@@ -33,11 +33,7 @@ namespace Granite
 {
 FlatRenderer::FlatRenderer()
 {
-	EventManager::get_global().register_latch_handler(DeviceCreatedEvent::type_id,
-	                                                  &FlatRenderer::on_device_created,
-	                                                  &FlatRenderer::on_device_destroyed,
-	                                                  this);
-
+	EVENT_MANAGER_REGISTER_LATCH(FlatRenderer, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 	reset_scissor();
 }
 

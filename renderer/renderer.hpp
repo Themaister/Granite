@@ -28,7 +28,7 @@
 
 namespace Granite
 {
-class Sprite;
+struct Sprite;
 enum class RenderableType
 {
 	Mesh,

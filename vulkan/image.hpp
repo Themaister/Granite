@@ -27,6 +27,7 @@
 #include "intrusive.hpp"
 #include "memory_allocator.hpp"
 #include "vulkan.hpp"
+#include <algorithm>
 
 namespace Vulkan
 {

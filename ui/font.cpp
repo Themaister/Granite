@@ -70,10 +70,7 @@ Font::Font(const std::string &path, unsigned size)
 		throw runtime_error("Failed to bake bitmap.");
 
 	font_height = size;
-	EventManager::get_global().register_latch_handler(DeviceCreatedEvent::type_id,
-	                                                  &Font::on_device_created,
-	                                                  &Font::on_device_destroyed,
-	                                                  this);
+	EVENT_MANAGER_REGISTER_LATCH(Font, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
 vec2 Font::get_text_geometry(const char *text, float) const

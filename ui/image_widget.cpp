@@ -34,10 +34,7 @@ namespace UI
 Image::Image(const std::string &path)
 	: path(path)
 {
-	EventManager::get_global().register_latch_handler(DeviceCreatedEvent::type_id,
-	                                                  &Image::on_device_created,
-	                                                  &Image::on_device_destroyed,
-	                                                  this);
+	EVENT_MANAGER_REGISTER_LATCH(Image, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
 void Image::on_device_created(const Event &e)

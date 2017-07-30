@@ -35,10 +35,7 @@ namespace Granite
 Renderer::Renderer(Type type)
 	: type(type)
 {
-	EventManager::get_global().register_latch_handler(DeviceCreatedEvent::type_id,
-                                                      &Renderer::on_device_created,
-                                                      &Renderer::on_device_destroyed,
-                                                      this);
+	EVENT_MANAGER_REGISTER_LATCH(Renderer, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 
 	if (type == Type::GeneralDeferred || type == Type::GeneralForward)
 		set_mesh_renderer_options(SHADOW_CASCADE_ENABLE_BIT | SHADOW_ENABLE_BIT | FOG_ENABLE_BIT | ENVIRONMENT_ENABLE_BIT);

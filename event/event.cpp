@@ -45,7 +45,7 @@ void EventManager::dispatch()
 		auto &queued_events = event_type.second.queued_events;
 		auto itr = remove_if(begin(handlers), end(handlers), [&](const Handler &handler) {
 			for (auto &event : queued_events)
-				if (!(handler.handler->*(handler.mem_fn))(*event))
+				if (!handler.mem_fn(handler.handler, *event))
 					return true;
 			return false;
 		});
@@ -58,7 +58,7 @@ void EventManager::dispatch()
 void EventManager::dispatch_event(std::vector<Handler> &handlers, const Event &e)
 {
 	auto itr = remove_if(begin(handlers), end(handlers), [&](const Handler &handler) {
-		bool keep_event = (handler.handler->*(handler.mem_fn))(e);
+		bool keep_event = handler.mem_fn(handler.handler, e);
 		return !keep_event;
 	});
 
@@ -68,13 +68,13 @@ void EventManager::dispatch_event(std::vector<Handler> &handlers, const Event &e
 void EventManager::dispatch_up_events(std::vector<std::unique_ptr<Event>> &events, const LatchHandler &handler)
 {
 	for (auto &event : events)
-		(handler.handler->*(handler.up_fn))(*event);
+		handler.up_fn(handler.handler, *event);
 }
 
 void EventManager::dispatch_down_events(std::vector<std::unique_ptr<Event>> &events, const LatchHandler &handler)
 {
 	for (auto &event : events)
-		(handler.handler->*(handler.down_fn))(*event);
+		handler.down_fn(handler.handler, *event);
 }
 
 void EventManager::LatchEventTypeData::flush_recursive_handlers()
@@ -93,7 +93,7 @@ void EventManager::dispatch_up_event(LatchEventTypeData &event_type, const Event
 {
 	event_type.dispatching = true;
 	for (auto &handler : event_type.handlers)
-		(handler.handler->*(handler.up_fn))(event);
+		handler.up_fn(handler.handler, event);
 	event_type.flush_recursive_handlers();
 	event_type.dispatching = false;
 }
@@ -102,7 +102,7 @@ void EventManager::dispatch_down_event(LatchEventTypeData &event_type, const Eve
 {
 	event_type.dispatching = true;
 	for (auto &handler : event_type.handlers)
-		(handler.handler->*(handler.down_fn))(event);
+		handler.down_fn(handler.handler, event);
 	event_type.flush_recursive_handlers();
 	event_type.dispatching = false;
 }
@@ -139,7 +139,7 @@ void EventManager::unregister_handler(const Handler &handler)
 	}
 }
 
-void EventManager::unregister_latch_handler(EventHandler *handler)
+void EventManager::unregister_latch_handler(void *handler)
 {
 	for (auto &event_type : latched_events)
 	{

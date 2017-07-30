@@ -84,7 +84,6 @@ private:
 	Scene *scene = nullptr;
 	RenderQueue *queue = nullptr;
 	RenderParameters camera;
-	FogParameters fog;
 	const LightingParameters *lighting;
 	Frustum frustum;
 };

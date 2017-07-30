@@ -53,10 +53,7 @@ ImportedSkinnedMesh::ImportedSkinnedMesh(const Mesh &mesh, const MaterialInfo &i
 	material = Util::make_abstract_handle<Material, MaterialFile>(info);
 	static_aabb = mesh.static_aabb;
 
-	EventManager::get_global().register_latch_handler(DeviceCreatedEvent::type_id,
-	                                                  &ImportedSkinnedMesh::on_device_created,
-	                                                  &ImportedSkinnedMesh::on_device_destroyed,
-	                                                  this);
+	EVENT_MANAGER_REGISTER_LATCH(ImportedSkinnedMesh, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
 void ImportedSkinnedMesh::on_device_created(const Event &event)
@@ -111,10 +108,7 @@ ImportedMesh::ImportedMesh(const Mesh &mesh, const MaterialInfo &info)
 	material = Util::make_abstract_handle<Material, MaterialFile>(info);
 	static_aabb = mesh.static_aabb;
 
-	EventManager::get_global().register_latch_handler(DeviceCreatedEvent::type_id,
-	                                                  &ImportedMesh::on_device_created,
-	                                                  &ImportedMesh::on_device_destroyed,
-	                                                  this);
+	EVENT_MANAGER_REGISTER_LATCH(ImportedMesh, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
 void ImportedMesh::on_device_created(const Event &event)
@@ -154,9 +148,8 @@ void ImportedMesh::on_device_destroyed(const Event &)
 
 CubeMesh::CubeMesh()
 {
-	auto &event = EventManager::get_global();
-	event.register_latch_handler(DeviceCreatedEvent::type_id, &CubeMesh::on_device_created, &CubeMesh::on_device_destroyed, this);
 	static_aabb = AABB(vec3(-1.0f), vec3(1.0f));
+	EVENT_MANAGER_REGISTER_LATCH(CubeMesh, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
 void CubeMesh::on_device_created(const Event &event)
@@ -283,6 +276,7 @@ void CubeMesh::on_device_created(const Event &event)
 	vertex_offset = 0;
 	ibo_offset = 0;
 	count = 36;
+	bake();
 }
 
 void CubeMesh::on_device_destroyed(const Event &)
@@ -293,10 +287,7 @@ void CubeMesh::on_device_destroyed(const Event &)
 Skybox::Skybox(std::string bg_path)
 	: bg_path(move(bg_path))
 {
-	EventManager::get_global().register_latch_handler(DeviceCreatedEvent::type_id,
-	                                                  &Skybox::on_device_created,
-	                                                  &Skybox::on_device_destroyed,
-	                                                  this);
+	EVENT_MANAGER_REGISTER_LATCH(Skybox, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
 struct SkyboxRenderInfo
@@ -395,11 +386,8 @@ static void texture_plane_render(CommandBuffer &cmd, const RenderQueueData *info
 TexturePlane::TexturePlane(const std::string &normal)
 	: normal_path(normal)
 {
-	EventManager::get_global().register_latch_handler(DeviceCreatedEvent::type_id,
-	                                                  &TexturePlane::on_device_created,
-	                                                  &TexturePlane::on_device_destroyed,
-	                                                  this);
-	EventManager::get_global().register_handler(FrameTickEvent::type_id, &TexturePlane::on_frame_time, this);
+	EVENT_MANAGER_REGISTER_LATCH(TexturePlane, on_device_created, on_device_destroyed, DeviceCreatedEvent);
+	EVENT_MANAGER_REGISTER(TexturePlane, on_frame_time, FrameTickEvent);
 }
 
 bool TexturePlane::on_frame_time(const Event &e)

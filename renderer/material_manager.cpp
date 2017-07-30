@@ -40,10 +40,8 @@ MaterialFile::MaterialFile(const std::string &path)
 	: VolatileSource(path)
 {
 	init();
-	EventManager::get_global().register_latch_handler(DeviceCreatedEvent::type_id,
-                                                      &MaterialFile::on_device_created,
-                                                      &MaterialFile::on_device_destroyed,
-                                                      this);
+
+	EVENT_MANAGER_REGISTER_LATCH(MaterialFile, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
 MaterialFile::MaterialFile(const MaterialInfo &info)
@@ -61,10 +59,7 @@ MaterialFile::MaterialFile(const MaterialInfo &info)
 	sampler = info.sampler;
 	bake_hash();
 
-	EventManager::get_global().register_latch_handler(DeviceCreatedEvent::type_id,
-	                                                  &MaterialFile::on_device_created,
-	                                                  &MaterialFile::on_device_destroyed,
-	                                                  this);
+	EVENT_MANAGER_REGISTER_LATCH(MaterialFile, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
 void MaterialFile::update(const void *data, size_t size)

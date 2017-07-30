@@ -26,9 +26,22 @@
 #include <memory>
 #include <unordered_map>
 #include <stdexcept>
+#include <utility>
+
+#define EVENT_MANAGER_REGISTER(clazz, member, event) \
+	::Granite::EventManager::get_global().register_handler<clazz, &clazz::member>(event::type_id, this)
+#define EVENT_MANAGER_REGISTER_LATCH(clazz, up_event, down_event, event) \
+	::Granite::EventManager::get_global().register_latch_handler<clazz, &clazz::up_event, &clazz::down_event>(event::type_id, this)
 
 namespace Granite
 {
+class Event;
+
+template <typename Return, typename T, Return (T::*callback)(const Event &e)>
+Return member_function_invoker(void *object, const Event &e)
+{
+	return (static_cast<T *>(object)->*callback)(e);
+}
 
 namespace Detail
 {
@@ -52,7 +65,7 @@ constexpr uint64_t compile_time_fnv1_inner<size_t(-1)>(uint64_t hash, const char
 template<size_t len>
 constexpr uint64_t compile_time_fnv1(const char (&str)[len])
 {
-	return compile_time_fnv1_inner<len - 2>(0xcbf29ce484222325ull, str);
+	return compile_time_fnv1_inner<len - 1>(0xcbf29ce484222325ull, str);
 }
 }
 
@@ -170,31 +183,31 @@ public:
 
 	void dispatch();
 
-	template<typename T>
-	void register_handler(EventType type, bool (T::*mem_fn)(const Event &event), T *handler)
+	template<typename T, bool (T::*mem_fn)(const Event &)>
+	void register_handler(EventType type, T *handler)
 	{
 		auto &l = events[type];
 		if (l.dispatching)
-			l.recursive_handlers.push_back({ static_cast<bool (EventHandler::*)(const Event &event)>(mem_fn), static_cast<EventHandler *>(handler) });
+			l.recursive_handlers.push_back({ member_function_invoker<bool, T, mem_fn>, handler });
 		else
-			l.handlers.push_back({ static_cast<bool (EventHandler::*)(const Event &event)>(mem_fn), static_cast<EventHandler *>(handler) });
+			l.handlers.push_back({ member_function_invoker<bool, T, mem_fn>, handler });
 	}
 
 	void unregister_handler(EventHandler *handler);
-	template<typename T>
-	void unregister_handler(bool (T::*mem_fn)(const Event &event), EventHandler *handler)
+	template<typename T, bool (T::*mem_fn)(const Event &)>
+	void unregister_handler(T *handler)
 	{
-		Handler h{ static_cast<bool (EventHandler::*)(const Event &event)>(mem_fn), static_cast<EventHandler *>(handler) };
+		Handler h{ member_function_invoker<bool, T, mem_fn>, handler };
 		unregister_handler(h);
 	}
 
-	template<typename T>
-	void register_latch_handler(EventType type, void (T::*up_fn)(const Event &event), void (T::*down_fn)(const Event &event), T *handler)
+	template<typename T, void (T::*up_fn)(const Event &), void (T::*down_fn)(const Event &)>
+	void register_latch_handler(EventType type, T *handler)
 	{
 		LatchHandler h{
-			static_cast<void (EventHandler::*)(const Event &event)>(up_fn),
-			static_cast<void (EventHandler::*)(const Event &event)>(down_fn),
-			static_cast<EventHandler *>(handler) };
+			member_function_invoker<void, T, up_fn>,
+			member_function_invoker<void, T, down_fn>,
+			handler };
 
 		auto &events = latched_events[type];
 		dispatch_up_events(events.queued_events, h);
@@ -206,14 +219,14 @@ public:
 			l.handlers.push_back(h);
 	}
 
-	void unregister_latch_handler(EventHandler *handler);
-	template<typename T>
-	void unregister_latch_handler(void (T::*up_fn)(const Event &event), void (T::*down_fn)(const Event &event), T *handler)
+	void unregister_latch_handler(void *handler);
+	template<typename T, void (T::*up_fn)(const Event &), void (T::*down_fn)(const Event &)>
+	void unregister_latch_handler(T *handler)
 	{
 		LatchHandler h{
-			static_cast<void (EventHandler::*)(const Event &event)>(up_fn),
-			static_cast<void (EventHandler::*)(const Event &event)>(down_fn),
-			static_cast<EventHandler *>(handler) };
+			member_function_invoker<void, T, up_fn>,
+			member_function_invoker<void, T, down_fn>,
+			handler };
 
 		unregister_latch_handler(h);
 	}
@@ -223,15 +236,15 @@ public:
 private:
 	struct Handler
 	{
-		bool (EventHandler::*mem_fn)(const Event &event);
-		EventHandler *handler;
+		bool (*mem_fn)(void *object, const Event &event);
+		void *handler;
 	};
 
 	struct LatchHandler
 	{
-		void (EventHandler::*up_fn)(const Event &event);
-		void (EventHandler::*down_fn)(const Event &event);
-		EventHandler *handler;
+		void (*up_fn)(void *object, const Event &event);
+		void (*down_fn)(void *object, const Event &event);
+		void *handler;
 	};
 
 	struct EventTypeData

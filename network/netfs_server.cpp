@@ -61,7 +61,7 @@ struct NotificationSystem : EventHandler
 	NotificationSystem(Looper &looper)
 		: looper(looper)
 	{
-		EventManager::get_global().register_handler(FilesystemProtocolEvent::type_id, &NotificationSystem::on_filesystem, this);
+		EVENT_MANAGER_REGISTER(NotificationSystem, on_filesystem, FilesystemProtocolEvent);
 		for (auto &proto : Filesystem::get().get_protocols())
 		{
 			auto &fs = proto.second;

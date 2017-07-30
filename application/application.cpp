@@ -251,15 +251,8 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned
 
 	w2->set_size_is_flexible(true);
 
-	EventManager::get_global().register_latch_handler(SwapchainParameterEvent::type_id,
-	                                                  &SceneViewerApplication::on_swapchain_changed,
-	                                                  &SceneViewerApplication::on_swapchain_destroyed,
-	                                                  this);
-
-	EventManager::get_global().register_latch_handler(DeviceCreatedEvent::type_id,
-	                                                  &SceneViewerApplication::on_device_created,
-	                                                  &SceneViewerApplication::on_device_destroyed,
-	                                                  this);
+	EVENT_MANAGER_REGISTER_LATCH(SceneViewerApplication, on_swapchain_changed, on_swapchain_destroyed, SwapchainParameterEvent);
+	EVENT_MANAGER_REGISTER_LATCH(SceneViewerApplication, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
 void SceneViewerApplication::on_device_created(const Event &e)

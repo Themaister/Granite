@@ -171,10 +171,7 @@ Ground::Ground(unsigned size, const TerrainInfo &info)
 	num_patches_z = size / info.base_patch_size;
 	patch_lods.resize(num_patches_x * num_patches_z);
 
-	EventManager::get_global().register_latch_handler(DeviceCreatedEvent::type_id,
-                                                      &Ground::on_device_created,
-                                                      &Ground::on_device_destroyed,
-                                                      this);
+	EVENT_MANAGER_REGISTER_LATCH(Ground, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
 void Ground::on_device_created(const Event &e)

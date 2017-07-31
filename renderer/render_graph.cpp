@@ -1773,17 +1773,55 @@ void RenderGraph::depend_passes_recursive(const RenderPass &self, const std::uno
 	if (stack_count > this->passes.size())
 		throw logic_error("Cycle detected.");
 
+	for (auto &pass : passes)
+		if (pass != self.get_index())
+			pass_dependencies[self.get_index()].insert(pass);
+
 	stack_count++;
 
 	for (auto &pushed_pass : passes)
 	{
 		if (ignore_self && pushed_pass == self.get_index())
 			continue;
+		else if (pushed_pass == self.get_index())
+			throw logic_error("Pass depends on itself.");
 
 		pass_stack.push_back(pushed_pass);
 		auto &pass = *this->passes[pushed_pass];
 		traverse_dependencies(pass, stack_count);
 	}
+}
+
+void RenderGraph::reorder_passes(std::vector<unsigned> &passes)
+{
+	if (passes.size() <= 2)
+		return;
+
+	unsigned iterations = passes.size() - 1;
+	for (unsigned i = 0; i < iterations; i++)
+	{
+		bool introduces_barrier_before = i > 0 && depends_on_pass(passes[i + 1], passes[i - 1]);
+		bool introduces_barrier_after = (i + 1 < iterations) && depends_on_pass(passes[i + 2], passes[i]);
+		// If pass N + 1 doesn't depend on pass N, we can reorder them, however, we should only do so if we can avoid introducing other hard barriers.
+		// A hard barrier is when pass N + 1 depends directly on pass N.
+		// TODO: Need some logic to avoid reordering passes which will break subpass merging on mobile.
+		if (!introduces_barrier_before && !introduces_barrier_after && !depends_on_pass(passes[i + 1], passes[i]))
+			swap(passes[i + 1], passes[i]);
+	}
+}
+
+bool RenderGraph::depends_on_pass(unsigned dst_pass, unsigned src_pass)
+{
+	if (dst_pass == src_pass)
+		return true;
+
+	for (auto &dep : pass_dependencies[dst_pass])
+	{
+		if (depends_on_pass(dep, src_pass))
+			return true;
+	}
+
+	return false;
 }
 
 void RenderGraph::bake()
@@ -1796,6 +1834,9 @@ void RenderGraph::bake()
 		throw logic_error("Backbuffer source does not exist.");
 
 	pass_stack.clear();
+
+	pass_dependencies.clear();
+	pass_dependencies.resize(passes.size());
 
 	// Work our way back from the backbuffer, and sort out all the dependencies.
 	auto &backbuffer_resource = *resources[itr->second];
@@ -1815,6 +1856,9 @@ void RenderGraph::bake()
 
 	reverse(begin(pass_stack), end(pass_stack));
 	filter_passes(pass_stack);
+
+	// Now, reorder passes to extract better pipelining.
+	reorder_passes(pass_stack);
 
 	// Now, we have a linear list of passes to submit in-order which would obey the dependencies.
 

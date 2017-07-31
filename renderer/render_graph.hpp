@@ -648,5 +648,10 @@ private:
 	                             unsigned stack_count, bool no_check, bool ignore_self);
 
 	void traverse_dependencies(const RenderPass &pass, unsigned stack_count);
+
+	std::vector<std::unordered_set<unsigned>> pass_dependencies;
+	bool depends_on_pass(unsigned dst_pass, unsigned src_pass);
+
+	void reorder_passes(std::vector<unsigned> &passes);
 };
 }

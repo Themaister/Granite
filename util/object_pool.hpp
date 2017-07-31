@@ -24,6 +24,7 @@
 
 #include <memory>
 #include <vector>
+#include <stdlib.h>
 
 namespace Util
 {

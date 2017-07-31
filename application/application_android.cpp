@@ -516,7 +516,6 @@ using namespace Granite;
 
 void android_main(android_app *app)
 {
-	app_dummy();
 	// Statics on Android might not be cleared out.
 	global_state = {};
 	jni = {};

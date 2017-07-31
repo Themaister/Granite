@@ -531,8 +531,6 @@ private:
 	std::string backbuffer_source;
 
 	std::vector<unsigned> pass_stack;
-	std::vector<unsigned> pushed_passes;
-	std::vector<unsigned> pushed_passes_tmp;
 
 	struct Barrier
 	{
@@ -645,5 +643,10 @@ private:
 
 	void setup_physical_buffer(Vulkan::Device &device, unsigned attachment);
 	void setup_physical_image(Vulkan::Device &device, unsigned attachment, bool storage);
+
+	void depend_passes_recursive(const RenderPass &pass, const std::unordered_set<unsigned> &passes,
+	                             unsigned stack_count, bool no_check, bool ignore_self);
+
+	void traverse_dependencies(const RenderPass &pass, unsigned stack_count);
 };
 }

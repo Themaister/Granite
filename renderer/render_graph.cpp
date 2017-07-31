@@ -1711,6 +1711,81 @@ void RenderGraph::setup_attachments(Vulkan::Device &device, Vulkan::ImageView *s
 	}
 }
 
+void RenderGraph::traverse_dependencies(const RenderPass &pass, unsigned stack_count)
+{
+	// For these kinds of resources,
+	// make sure that we pull in the dependency right away so we can merge render passes if possible.
+	if (pass.get_depth_stencil_input())
+	{
+		depend_passes_recursive(pass, pass.get_depth_stencil_input()->get_write_passes(),
+		                        stack_count, false, false);
+	}
+
+	for (auto *input : pass.get_attachment_inputs())
+		depend_passes_recursive(pass, input->get_write_passes(), stack_count, false, false);
+
+	for (auto *input : pass.get_color_inputs())
+	{
+		if (input)
+			depend_passes_recursive(pass, input->get_write_passes(), stack_count, false, false);
+	}
+
+	for (auto *input : pass.get_texture_inputs())
+		depend_passes_recursive(pass, input->get_write_passes(), stack_count, false, false);
+
+	for (auto *input : pass.get_storage_inputs())
+	{
+		if (input)
+		{
+			// There might be no writers of this resource if it's used in a feedback fashion.
+			depend_passes_recursive(pass, input->get_write_passes(), stack_count, true, false);
+			// Deal with write-after-read hazards if a storage buffer is read in other passes
+			// (feedback) before being updated.
+			depend_passes_recursive(pass, input->get_read_passes(), stack_count, true, true);
+		}
+	}
+
+	for (auto *input : pass.get_storage_texture_inputs())
+	{
+		if (input)
+			depend_passes_recursive(pass, input->get_write_passes(), stack_count, false, false);
+	}
+
+	for (auto *input : pass.get_uniform_inputs())
+	{
+		// There might be no writers of this resource if it's used in a feedback fashion.
+		depend_passes_recursive(pass, input->get_write_passes(), stack_count, true, false);
+	}
+
+	for (auto *input : pass.get_storage_read_inputs())
+	{
+		// There might be no writers of this resource if it's used in a feedback fashion.
+		depend_passes_recursive(pass, input->get_write_passes(), stack_count, true, false);
+	}
+}
+
+void RenderGraph::depend_passes_recursive(const RenderPass &self, const std::unordered_set<unsigned> &passes,
+                                          unsigned stack_count, bool no_check, bool ignore_self)
+{
+	if (!no_check && passes.empty())
+		throw logic_error("No pass exists which writes to resource.");
+
+	if (stack_count > this->passes.size())
+		throw logic_error("Cycle detected.");
+
+	stack_count++;
+
+	for (auto &pushed_pass : passes)
+	{
+		if (ignore_self && pushed_pass == self.get_index())
+			continue;
+
+		pass_stack.push_back(pushed_pass);
+		auto &pass = *this->passes[pushed_pass];
+		traverse_dependencies(pass, stack_count);
+	}
+}
+
 void RenderGraph::bake()
 {
 	// First, validate that the graph is sane.
@@ -1720,8 +1795,6 @@ void RenderGraph::bake()
 	if (itr == end(resource_to_index))
 		throw logic_error("Backbuffer source does not exist.");
 
-	pushed_passes.clear();
-	pushed_passes_tmp.clear();
 	pass_stack.clear();
 
 	// Work our way back from the backbuffer, and sort out all the dependencies.
@@ -1731,113 +1804,13 @@ void RenderGraph::bake()
 		throw logic_error("No pass exists which writes to resource.");
 
 	for (auto &pass : backbuffer_resource.get_write_passes())
-	{
 		pass_stack.push_back(pass);
-		pushed_passes.push_back(pass);
-	}
 
-	const auto depend_passes = [&](const std::unordered_set<unsigned> &passes) {
-		if (passes.empty())
-			throw logic_error("No pass exists which writes to resource.");
-
-		for (auto &pass : passes)
-		{
-			pushed_passes_tmp.push_back(pass);
-			pass_stack.push_back(pass);
-		}
-	};
-
-	const auto depend_passes_no_check = [&](const std::unordered_set<unsigned> &passes) {
-		for (auto &pass : passes)
-		{
-			pushed_passes_tmp.push_back(pass);
-			pass_stack.push_back(pass);
-		}
-	};
-
-	const auto depend_passes_no_check_ignore_self = [&](unsigned self, const std::unordered_set<unsigned> &passes) {
-		for (auto &pass : passes)
-		{
-			if (pass != self)
-			{
-				pushed_passes_tmp.push_back(pass);
-				pass_stack.push_back(pass);
-			}
-		}
-	};
-
-	const auto make_unique_list = [](std::vector<unsigned> &passes) {
-		// As tie-break rule on ordering, place earlier passes late in the stack.
-		sort(begin(passes), end(passes), greater<unsigned>());
-		passes.erase(unique(begin(passes), end(passes)), end(passes));
-	};
-
-	unsigned iteration_count = 0;
-
-	while (!pushed_passes.empty())
+	auto tmp_pass_stack = pass_stack;
+	for (auto &pushed_pass : tmp_pass_stack)
 	{
-		pushed_passes_tmp.clear();
-		make_unique_list(pushed_passes);
-
-		for (auto &pushed_pass : pushed_passes)
-		{
-			auto &pass = *passes[pushed_pass];
-			if (pass.get_depth_stencil_input())
-				depend_passes(pass.get_depth_stencil_input()->get_write_passes());
-			for (auto *input : pass.get_attachment_inputs())
-				depend_passes(input->get_write_passes());
-
-			for (auto *input : pass.get_color_inputs())
-			{
-				if (input)
-					depend_passes(input->get_write_passes());
-			}
-
-			for (auto *input : pass.get_color_scale_inputs())
-			{
-				if (input)
-					depend_passes(input->get_write_passes());
-			}
-
-			for (auto *input : pass.get_texture_inputs())
-				depend_passes(input->get_write_passes());
-
-			for (auto *input : pass.get_storage_inputs())
-			{
-				if (input)
-				{
-					// There might be no writers of this resource if it's used in a feedback fashion.
-					depend_passes_no_check(input->get_write_passes());
-					// Deal with write-after-read hazards if a storage buffer is read in other passes
-					// (feedback) before being updated.
-					depend_passes_no_check_ignore_self(pass.get_index(), input->get_read_passes());
-				}
-			}
-
-			for (auto *input : pass.get_storage_texture_inputs())
-			{
-				if (input)
-					depend_passes(input->get_write_passes());
-			}
-
-			for (auto *input : pass.get_uniform_inputs())
-			{
-				// There might be no writers of this resource if it's used in a feedback fashion.
-				depend_passes_no_check(input->get_write_passes());
-			}
-
-			for (auto *input : pass.get_storage_read_inputs())
-			{
-				// There might be no writers of this resource if it's used in a feedback fashion.
-				depend_passes(input->get_write_passes());
-			}
-		}
-
-		pushed_passes.clear();
-		swap(pushed_passes, pushed_passes_tmp);
-
-		if (++iteration_count > passes.size())
-			throw logic_error("Cycle detected.");
+		auto &pass = *passes[pushed_pass];
+		traverse_dependencies(pass, 0);
 	}
 
 	reverse(begin(pass_stack), end(pass_stack));

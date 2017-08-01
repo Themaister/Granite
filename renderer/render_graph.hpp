@@ -645,11 +645,12 @@ private:
 	void setup_physical_image(Vulkan::Device &device, unsigned attachment, bool storage);
 
 	void depend_passes_recursive(const RenderPass &pass, const std::unordered_set<unsigned> &passes,
-	                             unsigned stack_count, bool no_check, bool ignore_self);
+	                             unsigned stack_count, bool no_check, bool ignore_self, bool merge_dependency);
 
 	void traverse_dependencies(const RenderPass &pass, unsigned stack_count);
 
 	std::vector<std::unordered_set<unsigned>> pass_dependencies;
+	std::vector<std::unordered_set<unsigned>> pass_merge_dependencies;
 	bool depends_on_pass(unsigned dst_pass, unsigned src_pass);
 
 	void reorder_passes(std::vector<unsigned> &passes);

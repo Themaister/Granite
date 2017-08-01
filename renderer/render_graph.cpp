@@ -1718,54 +1718,54 @@ void RenderGraph::traverse_dependencies(const RenderPass &pass, unsigned stack_c
 	if (pass.get_depth_stencil_input())
 	{
 		depend_passes_recursive(pass, pass.get_depth_stencil_input()->get_write_passes(),
-		                        stack_count, false, false);
+		                        stack_count, false, false, true);
 	}
 
 	for (auto *input : pass.get_attachment_inputs())
-		depend_passes_recursive(pass, input->get_write_passes(), stack_count, false, false);
+		depend_passes_recursive(pass, input->get_write_passes(), stack_count, false, false, true);
 
 	for (auto *input : pass.get_color_inputs())
 	{
 		if (input)
-			depend_passes_recursive(pass, input->get_write_passes(), stack_count, false, false);
+			depend_passes_recursive(pass, input->get_write_passes(), stack_count, false, false, true);
 	}
 
 	for (auto *input : pass.get_texture_inputs())
-		depend_passes_recursive(pass, input->get_write_passes(), stack_count, false, false);
+		depend_passes_recursive(pass, input->get_write_passes(), stack_count, false, false, false);
 
 	for (auto *input : pass.get_storage_inputs())
 	{
 		if (input)
 		{
 			// There might be no writers of this resource if it's used in a feedback fashion.
-			depend_passes_recursive(pass, input->get_write_passes(), stack_count, true, false);
+			depend_passes_recursive(pass, input->get_write_passes(), stack_count, true, false, false);
 			// Deal with write-after-read hazards if a storage buffer is read in other passes
 			// (feedback) before being updated.
-			depend_passes_recursive(pass, input->get_read_passes(), stack_count, true, true);
+			depend_passes_recursive(pass, input->get_read_passes(), stack_count, true, true, false);
 		}
 	}
 
 	for (auto *input : pass.get_storage_texture_inputs())
 	{
 		if (input)
-			depend_passes_recursive(pass, input->get_write_passes(), stack_count, false, false);
+			depend_passes_recursive(pass, input->get_write_passes(), stack_count, false, false, false);
 	}
 
 	for (auto *input : pass.get_uniform_inputs())
 	{
 		// There might be no writers of this resource if it's used in a feedback fashion.
-		depend_passes_recursive(pass, input->get_write_passes(), stack_count, true, false);
+		depend_passes_recursive(pass, input->get_write_passes(), stack_count, true, false, false);
 	}
 
 	for (auto *input : pass.get_storage_read_inputs())
 	{
 		// There might be no writers of this resource if it's used in a feedback fashion.
-		depend_passes_recursive(pass, input->get_write_passes(), stack_count, true, false);
+		depend_passes_recursive(pass, input->get_write_passes(), stack_count, true, false, false);
 	}
 }
 
 void RenderGraph::depend_passes_recursive(const RenderPass &self, const std::unordered_set<unsigned> &passes,
-                                          unsigned stack_count, bool no_check, bool ignore_self)
+                                          unsigned stack_count, bool no_check, bool ignore_self, bool merge_dependency)
 {
 	if (!no_check && passes.empty())
 		throw logic_error("No pass exists which writes to resource.");
@@ -1776,6 +1776,11 @@ void RenderGraph::depend_passes_recursive(const RenderPass &self, const std::uno
 	for (auto &pass : passes)
 		if (pass != self.get_index())
 			pass_dependencies[self.get_index()].insert(pass);
+
+	if (merge_dependency)
+		for (auto &pass : passes)
+			if (pass != self.get_index())
+				pass_merge_dependencies[self.get_index()].insert(pass);
 
 	stack_count++;
 
@@ -1794,6 +1799,22 @@ void RenderGraph::depend_passes_recursive(const RenderPass &self, const std::uno
 
 void RenderGraph::reorder_passes(std::vector<unsigned> &passes)
 {
+	// If a pass depends on an earlier pass via merge dependencies,
+	// copy over dependencies to the dependees to avoid cases which can break subpass merging.
+	// This is a "soft" dependency. If we ignore it, it's not a real problem.
+	for (auto &pass_merge_deps : pass_merge_dependencies)
+	{
+		auto pass_index = unsigned(&pass_merge_deps - pass_merge_dependencies.data());
+		auto &pass_deps = pass_dependencies[pass_index];
+
+		for (auto &merge_dep : pass_merge_deps)
+		{
+			for (auto &dependee : pass_deps)
+				if (merge_dep != dependee)
+					pass_dependencies[merge_dep].insert(dependee);
+		}
+	}
+
 	// TODO: This is very inefficient, but should work okay for a reasonable amount of passes ...
 	// But, reasonable amounts are always one more than what you'd think ...
 	// Clarity in the algorithm is pretty important, because these things tend to be very annoying to debug.
@@ -1831,14 +1852,26 @@ void RenderGraph::reorder_passes(std::vector<unsigned> &passes)
 
 		unsigned best_candidate = 0;
 		unsigned best_overlap_factor = 0;
-		for (unsigned i = 1; i < unscheduled_passes.size(); i++)
+
+		for (unsigned i = 0; i < unscheduled_passes.size(); i++)
 		{
 			unsigned overlap_factor = 0;
-			for (auto itr = passes.rbegin(); itr != passes.rend(); ++itr)
+
+			// Always try to merge passes if possible on tilers.
+			// This might not make sense on desktop however,
+			// so we can conditionally enable this path depending on our GPU.
+			if (pass_merge_dependencies[unscheduled_passes[i]].count(passes.back()))
 			{
-				if (depends_on_pass(unscheduled_passes[i], *itr))
-					break;
-				overlap_factor++;
+				overlap_factor = ~0u;
+			}
+			else
+			{
+				for (auto itr = passes.rbegin(); itr != passes.rend(); ++itr)
+				{
+					if (depends_on_pass(unscheduled_passes[i], *itr))
+						break;
+					overlap_factor++;
+				}
 			}
 
 			if (overlap_factor <= best_overlap_factor)
@@ -1891,7 +1924,9 @@ void RenderGraph::bake()
 	pass_stack.clear();
 
 	pass_dependencies.clear();
+	pass_merge_dependencies.clear();
 	pass_dependencies.resize(passes.size());
+	pass_merge_dependencies.resize(passes.size());
 
 	// Work our way back from the backbuffer, and sort out all the dependencies.
 	auto &backbuffer_resource = *resources[itr->second];

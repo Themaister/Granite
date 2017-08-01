@@ -1825,15 +1825,23 @@ void RenderGraph::reorder_passes(std::vector<unsigned> &passes)
 		// Ideally, we pick a pass which does not introduce any hard barrier.
 		// A "hard barrier" here is where a pass depends directly on the pass before it forcing something ala vkCmdPipelineBarrier,
 		// we would like to avoid this if possible.
-		// Find the latest pass in the graph which satisfies this requirement.
-		// This should ensure "optimal" pipelining, because the dependee will likely be scheduled late,
-		// and we want as much distance as possible between vertices in the graph as possible.
+
+		// Find the pass which has the optimal overlap factor which means the number of passes can be scheduled in-between
+		// the depender, and the dependee.
 
 		unsigned best_candidate = 0;
+		unsigned best_overlap_factor = 0;
 		for (unsigned i = 1; i < unscheduled_passes.size(); i++)
 		{
-			bool introduces_hard_barrier = depends_on_pass(unscheduled_passes[i], passes.back());
-			if (introduces_hard_barrier)
+			unsigned overlap_factor = 0;
+			for (auto itr = passes.rbegin(); itr != passes.rend(); ++itr)
+			{
+				if (depends_on_pass(unscheduled_passes[i], *itr))
+					break;
+				overlap_factor++;
+			}
+
+			if (overlap_factor <= best_overlap_factor)
 				continue;
 
 			bool possible_candidate = true;
@@ -1850,6 +1858,7 @@ void RenderGraph::reorder_passes(std::vector<unsigned> &passes)
 				continue;
 
 			best_candidate = i;
+			best_overlap_factor = overlap_factor;
 		}
 
 		schedule(best_candidate);

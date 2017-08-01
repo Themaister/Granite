@@ -1794,19 +1794,68 @@ void RenderGraph::depend_passes_recursive(const RenderPass &self, const std::uno
 
 void RenderGraph::reorder_passes(std::vector<unsigned> &passes)
 {
+	// TODO: This is very inefficient, but should work okay for a reasonable amount of passes ...
+	// But, reasonable amounts are always one more than what you'd think ...
+	// Clarity in the algorithm is pretty important, because these things tend to be very annoying to debug.
+
 	if (passes.size() <= 2)
 		return;
 
-	unsigned iterations = passes.size() - 1;
-	for (unsigned i = 0; i < iterations; i++)
+	vector<unsigned> unscheduled_passes;
+	unscheduled_passes.reserve(passes.size());
+	swap(passes, unscheduled_passes);
+
+	const auto schedule = [&](unsigned index) {
+		// Need to preserve the order of remaining elements.
+		passes.push_back(unscheduled_passes[index]);
+		move(unscheduled_passes.begin() + index + 1,
+		     unscheduled_passes.end(),
+		     unscheduled_passes.begin() + index);
+		unscheduled_passes.pop_back();
+	};
+
+	schedule(0);
+	while (!unscheduled_passes.empty())
 	{
-		bool introduces_barrier_before = i > 0 && depends_on_pass(passes[i + 1], passes[i - 1]);
-		bool introduces_barrier_after = (i + 1 < iterations) && depends_on_pass(passes[i + 2], passes[i]);
-		// If pass N + 1 doesn't depend on pass N, we can reorder them, however, we should only do so if we can avoid introducing other hard barriers.
-		// A hard barrier is when pass N + 1 depends directly on pass N.
-		// TODO: Need some logic to avoid reordering passes which will break subpass merging on mobile.
-		if (!introduces_barrier_before && !introduces_barrier_after && !depends_on_pass(passes[i + 1], passes[i]))
-			swap(passes[i + 1], passes[i]);
+		// Find the next pass to schedule.
+		// We can pick any pass N, if the pass does not depend on anything left in unscheduled_passes.
+		// unscheduled_passes[0] is always okay as a fallback, so unless we find something better,
+		// we will at least pick that.
+
+		// Ideally, we pick a pass which does not introduce any hard barrier.
+		// A "hard barrier" here is where a pass depends directly on the pass before it forcing something ala vkCmdPipelineBarrier,
+		// we would like to avoid this if possible.
+		// Find the latest pass in the graph which satisfies this requirement.
+		// This should ensure "optimal" pipelining, because the dependee will likely be scheduled late,
+		// and we want as much distance as possible between vertices in the graph as possible.
+
+		unsigned best_candidate = 0;
+		for (unsigned i = 1; i < unscheduled_passes.size(); i++)
+		{
+			bool introduces_hard_barrier = depends_on_pass(unscheduled_passes[i], passes.back());
+			if (introduces_hard_barrier)
+				continue;
+
+			bool possible_candidate = true;
+			for (unsigned j = 0; j < unscheduled_passes.size(); j++)
+			{
+				if (j == i)
+					continue;
+
+				if (depends_on_pass(unscheduled_passes[i], unscheduled_passes[j]))
+				{
+					possible_candidate = false;
+					break;
+				}
+			}
+
+			if (!possible_candidate)
+				continue;
+
+			best_candidate = i;
+		}
+
+		schedule(best_candidate);
 	}
 }
 

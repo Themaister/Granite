@@ -371,8 +371,8 @@ void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::st
 	if (type == MainPassType::Main)
 	{
 		lighting.add_texture_input("shadow-near");
-		lighting.add_texture_input("reflection");
-		lighting.add_texture_input("refraction");
+		gbuffer.add_texture_input("reflection");
+		gbuffer.add_texture_input("refraction");
 	}
 #elif RENDERER == RENDERER_DEFERRED
 	AttachmentInfo emissive, albedo, normal, pbr, depth;
@@ -472,8 +472,8 @@ void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::st
 	if (type == MainPassType::Main)
 	{
 		lighting.add_texture_input("shadow-near");
-		lighting.add_texture_input("reflection");
-		lighting.add_texture_input("refraction");
+		gbuffer.add_texture_input("reflection");
+		gbuffer.add_texture_input("refraction");
 	}
 
 	lighting.set_build_render_pass([this, type](Vulkan::CommandBuffer &cmd) {

@@ -1837,11 +1837,8 @@ void RenderGraph::reorder_passes(std::vector<unsigned> &passes)
 				continue;
 
 			bool possible_candidate = true;
-			for (unsigned j = 0; j < unscheduled_passes.size(); j++)
+			for (unsigned j = 0; j < i; j++)
 			{
-				if (j == i)
-					continue;
-
 				if (depends_on_pass(unscheduled_passes[i], unscheduled_passes[j]))
 				{
 					possible_candidate = false;

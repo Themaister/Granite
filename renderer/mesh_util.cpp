@@ -432,7 +432,7 @@ void TexturePlane::get_render_info(const RenderContext &context, const CachedSpa
 
 	if (plane_info)
 	{
-		info.program = queue.get_shader_suites()[ecast(RenderableType::TexturePlane)].get_program(DrawPipeline::Opaque, 0, 0).get();
+		info.program = queue.get_shader_suites()[ecast(RenderableType::TexturePlane)].get_program(DrawPipeline::Opaque, 0, MATERIAL_EMISSIVE_BIT).get();
 		*plane_info = info;
 	}
 }

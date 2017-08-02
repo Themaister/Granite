@@ -1074,7 +1074,7 @@ void RenderGraph::enqueue_scaled_requests(Vulkan::CommandBuffer &cmd, const std:
 		cmd.set_texture(0, req.target, *physical_attachments[req.physical_resource], Vulkan::StockSampler::LinearClamp);
 	}
 
-	Vulkan::CommandBufferUtil::draw_quad(cmd, "assets://shaders/quad.vert", "assets://shaders/scaled_readback.frag", defines);
+	Vulkan::CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/scaled_readback.frag", defines);
 }
 
 void RenderGraph::build_aliases()

@@ -37,9 +37,9 @@ UIManager &UIManager::get()
 
 UIManager::UIManager()
 {
-	fonts[ecast(FontSize::Small)].reset(new Font("assets://gltf-sandbox/font.ttf", 12));
-	fonts[ecast(FontSize::Normal)].reset(new Font("assets://gltf-sandbox/font.ttf", 16));
-	fonts[ecast(FontSize::Large)].reset(new Font("assets://gltf-sandbox/font.ttf", 24));
+	fonts[ecast(FontSize::Small)].reset(new Font("builtin://fonts/font.ttf", 12));
+	fonts[ecast(FontSize::Normal)].reset(new Font("builtin://fonts/font.ttf", 16));
+	fonts[ecast(FontSize::Large)].reset(new Font("builtin://fonts/font.ttf", 24));
 }
 
 void UIManager::add_child(WidgetHandle handle)

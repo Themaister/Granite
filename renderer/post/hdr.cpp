@@ -55,7 +55,7 @@ static void luminance_build_render_pass(RenderPass &pass, Vulkan::CommandBuffer 
 	unsigned half_width = input.get_image().get_create_info().width / 2;
 	unsigned half_height = input.get_image().get_create_info().height / 2;
 
-	auto *program = cmd.get_device().get_shader_manager().register_compute("assets://shaders/post/luminance.comp");
+	auto *program = cmd.get_device().get_shader_manager().register_compute("builtin://shaders/post/luminance.comp");
 	unsigned variant = program->register_variant({});
 	cmd.set_program(*program->get_program(variant));
 
@@ -76,7 +76,7 @@ static void bloom_threshold_build_render_pass(RenderPass &pass, Vulkan::CommandB
 	auto &ubo = pass.get_graph().get_physical_buffer_resource(pass.get_uniform_inputs()[0]->get_physical_index());
 	cmd.set_texture(0, 0, input, Vulkan::StockSampler::LinearClamp);
 	cmd.set_uniform_buffer(0, 1, ubo);
-	Vulkan::CommandBufferUtil::draw_quad(cmd, "assets://shaders/quad.vert", "assets://shaders/post/bloom_threshold.frag");
+	Vulkan::CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/post/bloom_threshold.frag");
 }
 
 static void bloom_downsample_build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd, bool feedback)
@@ -105,8 +105,8 @@ static void bloom_downsample_build_render_pass(RenderPass &pass, Vulkan::Command
 
 			cmd.set_texture(0, 1, *feedback_texture, Vulkan::StockSampler::NearestClamp);
 			Vulkan::CommandBufferUtil::draw_quad(cmd,
-			                                     "assets://shaders/quad.vert",
-			                                     "assets://shaders/post/bloom_downsample.frag",
+			                                     "builtin://shaders/quad.vert",
+			                                     "builtin://shaders/post/bloom_downsample.frag",
 			                                     {{"FEEDBACK", 1}});
 		}
 		else
@@ -115,8 +115,8 @@ static void bloom_downsample_build_render_pass(RenderPass &pass, Vulkan::Command
 			                     1.0f / input.get_image().get_create_info().height);
 			cmd.push_constants(&inv_size, 0, sizeof(inv_size));
 			Vulkan::CommandBufferUtil::draw_quad(cmd,
-			                                     "assets://shaders/quad.vert",
-			                                     "assets://shaders/post/bloom_downsample.frag");
+			                                     "builtin://shaders/quad.vert",
+			                                     "builtin://shaders/post/bloom_downsample.frag");
 		}
 	}
 	else
@@ -125,8 +125,8 @@ static void bloom_downsample_build_render_pass(RenderPass &pass, Vulkan::Command
 		                     1.0f / input.get_image().get_create_info().height);
 		cmd.push_constants(&inv_size, 0, sizeof(inv_size));
 		Vulkan::CommandBufferUtil::draw_quad(cmd,
-		                                     "assets://shaders/quad.vert",
-		                                     "assets://shaders/post/bloom_downsample.frag");
+		                                     "builtin://shaders/quad.vert",
+		                                     "builtin://shaders/post/bloom_downsample.frag");
 	}
 }
 
@@ -136,7 +136,7 @@ static void bloom_upsample_build_render_pass(RenderPass &pass, Vulkan::CommandBu
 	vec2 inv_size = vec2(1.0f / input.get_image().get_create_info().width, 1.0f / input.get_image().get_create_info().height);
 	cmd.push_constants(&inv_size, 0, sizeof(inv_size));
 	cmd.set_texture(0, 0, input, Vulkan::StockSampler::LinearClamp);
-	Vulkan::CommandBufferUtil::draw_quad(cmd, "assets://shaders/quad.vert", "assets://shaders/post/bloom_upsample.frag");
+	Vulkan::CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/post/bloom_upsample.frag");
 }
 
 static void tonemap_build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd)
@@ -147,7 +147,7 @@ static void tonemap_build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &c
 	cmd.set_texture(0, 0, hdr, Vulkan::StockSampler::LinearClamp);
 	cmd.set_texture(0, 1, bloom, Vulkan::StockSampler::LinearClamp);
 	cmd.set_uniform_buffer(0, 2, ubo);
-	Vulkan::CommandBufferUtil::draw_quad(cmd, "assets://shaders/quad.vert", "assets://shaders/post/tonemap.frag");
+	Vulkan::CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/post/tonemap.frag");
 }
 
 void setup_hdr_postprocess(RenderGraph &graph, const std::string &input, const std::string &output)

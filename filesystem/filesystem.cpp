@@ -143,6 +143,8 @@ Filesystem::Filesystem()
 	{
 		protocols["assets"] = unique_ptr<FilesystemBackend>(new NetworkFilesystem);
 		protocols["assets"]->set_protocol("assets");
+		protocols["builtin"] = unique_ptr<FilesystemBackend>(new NetworkFilesystem);
+		protocols["builtin"]->set_protocol("builtin");
 		protocols["cache"] = unique_ptr<FilesystemBackend>(new NetworkFilesystem);
 		protocols["cache"]->set_protocol("cache");
 	}
@@ -154,6 +156,14 @@ Filesystem::Filesystem()
 			asset_dir = GRANITE_DEFAULT_ASSET_DIRECTORY;
 		protocols["assets"] = unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir));
 		protocols["assets"]->set_protocol("assets");
+#endif
+
+#ifdef GRANITE_DEFAULT_BUILTIN_DIRECTORY
+		const char *builtin_dir = getenv("GRANITE_DEFAULT_BUILTIN_DIRECTORY");
+		if (!builtin_dir)
+			builtin_dir = GRANITE_DEFAULT_BUILTIN_DIRECTORY;
+		protocols["builtin"] = unique_ptr<FilesystemBackend>(new OSFilesystem(builtin_dir));
+		protocols["builtin"]->set_protocol("builtin");
 #endif
 
 #ifdef GRANITE_DEFAULT_CACHE_DIRECTORY

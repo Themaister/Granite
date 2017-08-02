@@ -2,7 +2,8 @@ add_granite_library(filesystem STATIC filesystem.cpp filesystem.hpp path.hpp pat
 target_include_directories(filesystem PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(filesystem util event)
 
-target_compile_definitions(filesystem PRIVATE GRANITE_DEFAULT_ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/../assets\")
+target_compile_definitions(filesystem PRIVATE GRANITE_DEFAULT_ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/../assets/gltf-sandbox\")
+target_compile_definitions(filesystem PRIVATE GRANITE_DEFAULT_BUILTIN_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/../assets\")
 target_compile_definitions(filesystem PRIVATE GRANITE_DEFAULT_CACHE_DIRECTORY=\"${CMAKE_BINARY_DIR}/cache\")
 
 if (WIN32)

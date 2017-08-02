@@ -96,28 +96,28 @@ void Renderer::on_device_created(const Event &e)
 	if (type == Type::GeneralDeferred || type == Type::GeneralForward)
 	{
 		suite[ecast(RenderableType::Mesh)].init_graphics(&device.get_shader_manager(),
-		                                                 "assets://shaders/static_mesh.vert",
-		                                                 "assets://shaders/static_mesh.frag");
+		                                                 "builtin://shaders/static_mesh.vert",
+		                                                 "builtin://shaders/static_mesh.frag");
 		suite[ecast(RenderableType::DebugMesh)].init_graphics(&device.get_shader_manager(),
-		                                                      "assets://shaders/debug_mesh.vert",
-		                                                      "assets://shaders/debug_mesh.frag");
-		suite[ecast(RenderableType::Skybox)].init_graphics(&device.get_shader_manager(), "assets://shaders/skybox.vert",
-		                                                   "assets://shaders/skybox.frag");
-		suite[ecast(RenderableType::Ground)].init_graphics(&device.get_shader_manager(), "assets://shaders/ground.vert",
-		                                                   "assets://shaders/ground.frag");
+		                                                      "builtin://shaders/debug_mesh.vert",
+		                                                      "builtin://shaders/debug_mesh.frag");
+		suite[ecast(RenderableType::Skybox)].init_graphics(&device.get_shader_manager(), "builtin://shaders/skybox.vert",
+		                                                   "builtin://shaders/skybox.frag");
+		suite[ecast(RenderableType::Ground)].init_graphics(&device.get_shader_manager(), "builtin://shaders/ground.vert",
+		                                                   "builtin://shaders/ground.frag");
 		suite[ecast(RenderableType::TexturePlane)].init_graphics(&device.get_shader_manager(),
-		                                                         "assets://shaders/texture_plane.vert",
-		                                                         "assets://shaders/texture_plane.frag");
+		                                                         "builtin://shaders/texture_plane.vert",
+		                                                         "builtin://shaders/texture_plane.frag");
 	}
 	else if (type == Type::DepthOnly)
 	{
 		suite[ecast(RenderableType::Mesh)].init_graphics(&device.get_shader_manager(),
-		                                                 "assets://shaders/static_mesh.vert",
-		                                                 "assets://shaders/static_mesh_depth.frag");
-		suite[ecast(RenderableType::Ground)].init_graphics(&device.get_shader_manager(), "assets://shaders/ground.vert",
-		                                                   "assets://shaders/dummy.frag");
-		suite[ecast(RenderableType::TexturePlane)].init_graphics(&device.get_shader_manager(), "assets://shaders/texture_plane.vert",
-		                                                         "assets://shaders/dummy.frag");
+		                                                 "builtin://shaders/static_mesh.vert",
+		                                                 "builtin://shaders/static_mesh_depth.frag");
+		suite[ecast(RenderableType::Ground)].init_graphics(&device.get_shader_manager(), "builtin://shaders/ground.vert",
+		                                                   "builtin://shaders/dummy.frag");
+		suite[ecast(RenderableType::TexturePlane)].init_graphics(&device.get_shader_manager(), "builtin://shaders/texture_plane.vert",
+		                                                         "builtin://shaders/dummy.frag");
 	}
 
 	for (auto &s : suite)

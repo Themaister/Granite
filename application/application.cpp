@@ -77,8 +77,8 @@ void SceneViewerApplication::apply_water_depth_tint(Vulkan::CommandBuffer &cmd)
 	cmd.push_constants(&tint, 0, sizeof(tint));
 
 	cmd.set_blend_factors(VK_BLEND_FACTOR_ZERO, VK_BLEND_FACTOR_ZERO, VK_BLEND_FACTOR_SRC_COLOR, VK_BLEND_FACTOR_ZERO);
-	auto *program = device.get_shader_manager().register_graphics("assets://shaders/water_tint.vert",
-	                                                              "assets://shaders/water_tint.frag");
+	auto *program = device.get_shader_manager().register_graphics("builtin://shaders/water_tint.vert",
+	                                                              "builtin://shaders/water_tint.frag");
 	auto variant = program->register_variant({});
 	cmd.set_program(*program->get_program(variant));
 	cmd.draw(4);
@@ -94,8 +94,8 @@ void SceneViewerApplication::lighting_pass(Vulkan::CommandBuffer &cmd, bool refl
 	CommandBufferUtil::set_quad_vertex_state(cmd);
 
 	auto &device = cmd.get_device();
-	auto *program = device.get_shader_manager().register_graphics("assets://shaders/lights/directional.vert",
-	                                                              "assets://shaders/lights/directional.frag");
+	auto *program = device.get_shader_manager().register_graphics("builtin://shaders/lights/directional.vert",
+	                                                              "builtin://shaders/lights/directional.frag");
 
 	vector<pair<string, int>> defines;
 	if (!reflection_pass)
@@ -171,8 +171,8 @@ void SceneViewerApplication::lighting_pass(Vulkan::CommandBuffer &cmd, bool refl
 		cmd.push_constants(&fog, 0, sizeof(fog));
 
 		cmd.set_blend_factors(VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA, VK_BLEND_FACTOR_SRC_ALPHA);
-		program = device.get_shader_manager().register_graphics("assets://shaders/lights/fog.vert",
-		                                                        "assets://shaders/lights/fog.frag");
+		program = device.get_shader_manager().register_graphics("builtin://shaders/lights/fog.vert",
+		                                                        "builtin://shaders/lights/fog.frag");
 		variant = program->register_variant({});
 		cmd.set_program(*program->get_program(variant));
 		cmd.draw(4);
@@ -187,7 +187,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned
       renderer(Renderer::Type::GeneralDeferred),
 #endif
       depth_renderer(Renderer::Type::DepthOnly),
-      plane_reflection("assets://gltf-sandbox/textures/ocean_normal.ktx")
+      plane_reflection("builtin://gltf-sandbox/textures/ocean_normal.ktx")
 {
 	scene_loader.load_scene(path);
 	animation_system = scene_loader.consume_animation_system();
@@ -215,7 +215,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned
 	auto *w0 = window->add_child<UI::Widget>();
 	auto *w1 = window->add_child<UI::Widget>();
 	auto *w2 = window->add_child<UI::Widget>();
-	auto *image = window->add_child<UI::Image>("assets://gltf-sandbox/textures/maister.png");
+	auto *image = window->add_child<UI::Image>("builtin://gltf-sandbox/textures/maister.png");
 	image->set_minimum_geometry(image->get_target_geometry() * vec2(1.0f / 16.0f));
 	image->set_keep_aspect_ratio(true);
 	auto *w3 = window->add_child<UI::Widget>();
@@ -490,7 +490,7 @@ void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::st
 		reflection_blur_pass.add_color_output(tag, reflection_blur);
 		reflection_blur_pass.set_build_render_pass([this, &reflection_blur_pass](Vulkan::CommandBuffer &cmd) {
 			reflection_blur_pass.set_texture_inputs(cmd, 0, 0, Vulkan::StockSampler::LinearClamp);
-			CommandBufferUtil::draw_quad(cmd, "assets://shaders/quad.vert", "assets://shaders/blur.frag",
+			CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/blur.frag",
 			                             {{"METHOD", 6}});
 		});
 	}

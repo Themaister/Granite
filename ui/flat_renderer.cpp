@@ -58,8 +58,8 @@ void FlatRenderer::on_device_created(const Event &e)
 {
 	auto &created = e.as<DeviceCreatedEvent>();
 	auto &device = created.get_device();
-	suite[ecast(RenderableType::Sprite)].init_graphics(&device.get_shader_manager(), "assets://shaders/sprite.vert", "assets://shaders/sprite.frag");
-	suite[ecast(RenderableType::LineUI)].init_graphics(&device.get_shader_manager(), "assets://shaders/line_ui.vert", "assets://shaders/debug_mesh.frag");
+	suite[ecast(RenderableType::Sprite)].init_graphics(&device.get_shader_manager(), "builtin://shaders/sprite.vert", "builtin://shaders/sprite.frag");
+	suite[ecast(RenderableType::LineUI)].init_graphics(&device.get_shader_manager(), "builtin://shaders/line_ui.vert", "builtin://shaders/debug_mesh.frag");
 
 	for (auto &s : suite)
 		s.bake_base_defines();

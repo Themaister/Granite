@@ -52,7 +52,7 @@ void StockMaterials::on_device_created(const Event &event)
 	auto &created = event.as<DeviceCreatedEvent>();
 	auto &manager = created.get_device().get_texture_manager();
 
-	checkerboard->textures[Util::ecast(Material::Textures::BaseColor)] = manager.request_texture("assets://textures/checkerboard.png");
+	checkerboard->textures[Util::ecast(Material::Textures::BaseColor)] = manager.request_texture("builtin://textures/checkerboard.png");
 	checkerboard->emissive = vec3(0.0f);
 	checkerboard->metallic = 1.0f;
 	checkerboard->roughness = 1.0f;

@@ -115,7 +115,9 @@ void Renderer::on_device_created(const Event &e)
 		                                                 "assets://shaders/static_mesh.vert",
 		                                                 "assets://shaders/static_mesh_depth.frag");
 		suite[ecast(RenderableType::Ground)].init_graphics(&device.get_shader_manager(), "assets://shaders/ground.vert",
-		                                                   "assets://shaders/ground_depth.frag");
+		                                                   "assets://shaders/dummy.frag");
+		suite[ecast(RenderableType::TexturePlane)].init_graphics(&device.get_shader_manager(), "assets://shaders/texture_plane.vert",
+		                                                         "assets://shaders/dummy.frag");
 	}
 
 	for (auto &s : suite)

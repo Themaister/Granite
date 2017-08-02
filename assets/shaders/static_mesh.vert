@@ -3,13 +3,17 @@
 #include "inc/render_parameters.h"
 
 layout(location = 0) in highp vec3 Position;
+
+#ifndef RENDERER_DEPTH
 layout(location = 0) out mediump vec3 vEyeVec;
+#endif
 
 #if HAVE_UV
 layout(location = 1) in highp vec2 UV;
 layout(location = 1) out highp vec2 vUV;
 #endif
 
+#ifndef RENDERER_DEPTH
 #if HAVE_NORMAL
 layout(location = 2) in mediump vec3 Normal;
 layout(location = 2) out mediump vec3 vNormal;
@@ -18,6 +22,7 @@ layout(location = 2) out mediump vec3 vNormal;
 #if HAVE_TANGENT
 layout(location = 3) in mediump vec4 Tangent;
 layout(location = 3) out mediump vec4 vTangent;
+#endif
 #endif
 
 #if HAVE_BONE_INDEX
@@ -86,8 +91,12 @@ void main()
         infos[gl_InstanceIndex].Model[3].xyz;
 #endif
     gl_Position = global.view_projection * vec4(World, 1.0);
-    vEyeVec = World - global.camera_position;
 
+#ifndef RENDERER_DEPTH
+    vEyeVec = World - global.camera_position;
+#endif
+
+#ifndef RENDERER_DEPTH
 #if HAVE_NORMAL
     #if HAVE_BONE_INDEX && HAVE_BONE_WEIGHT
         mat3 NormalTransform =
@@ -105,6 +114,7 @@ void main()
             vTangent = vec4(normalize(mat3(infos[gl_InstanceIndex].Normal) * Tangent.xyz), Tangent.w);
         #endif
     #endif
+#endif
 #endif
 
 #if HAVE_UV

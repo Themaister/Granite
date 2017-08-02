@@ -4,8 +4,10 @@
 layout(location = 0) in uvec4 aPosition;
 layout(location = 1) in vec4 aLODWeights;
 
+#ifndef RENDERER_DEPTH
 layout(location = 0) out mediump vec3 vEyeVec;
 layout(location = 1) out highp vec2 vUV;
+#endif
 
 layout(set = 2, binding = 0) uniform sampler2D uHeightmap;
 layout(set = 2, binding = 3) uniform sampler2D uLodMap;
@@ -78,10 +80,14 @@ void main()
     mediump float delta_mod = exp2(lod.x);
     vec2 off = uInvHeightmapSize * delta_mod;
 
+#ifndef RENDERER_DEPTH
     vUV = uv;
+#endif
     float height_displacement = sample_height_displacement(uv, off, lod);
 
     vec4 world = registers.Model * vec4(pos.x, height_displacement, pos.y, 1.0);
+#ifndef RENDERER_DEPTH
     vEyeVec = world.xyz - global.camera_position;
+#endif
     gl_Position = global.view_projection * world;
 }

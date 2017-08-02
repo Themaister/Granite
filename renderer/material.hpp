@@ -54,8 +54,9 @@ struct Material : public Util::IntrusivePtrEnabled<Material>
 	DrawPipeline pipeline = DrawPipeline::Opaque;
 	Vulkan::StockSampler sampler = Vulkan::StockSampler::TrilinearWrap;
 	bool two_sided = false;
+	bool needs_emissive = false;
 
-	void bake_hash()
+	void bake()
 	{
 		Util::Hasher h;
 		for (auto &tex : textures)
@@ -71,6 +72,7 @@ struct Material : public Util::IntrusivePtrEnabled<Material>
 		h.u32(Util::ecast(sampler));
 		h.u32(two_sided);
 		hash = h.get();
+		needs_emissive = any(notEqual(emissive, vec3(0.0f)));
 	}
 
 	uint64_t get_hash() const
@@ -87,7 +89,8 @@ enum MaterialTextureFlagBits
 {
 	MATERIAL_TEXTURE_BASE_COLOR_BIT = 1u << Util::ecast(Material::Textures::BaseColor),
 	MATERIAL_TEXTURE_NORMAL_BIT = 1u << Util::ecast(Material::Textures::Normal),
-	MATERIAL_TEXTURE_METALLIC_ROUGHNESS_BIT = 1u << Util::ecast(Material::Textures::MetallicRoughness)
+	MATERIAL_TEXTURE_METALLIC_ROUGHNESS_BIT = 1u << Util::ecast(Material::Textures::MetallicRoughness),
+	MATERIAL_EMISSIVE_BIT = 1u << 3
 };
 
 using MaterialHandle = Util::IntrusivePtr<Material>;

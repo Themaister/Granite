@@ -57,7 +57,7 @@ MaterialFile::MaterialFile(const MaterialInfo &info)
 	two_sided = info.two_sided;
 	lod_bias = info.lod_bias;
 	sampler = info.sampler;
-	bake_hash();
+	bake();
 
 	EVENT_MANAGER_REGISTER_LATCH(MaterialFile, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
@@ -139,7 +139,7 @@ void MaterialFile::update(const void *data, size_t size)
 
 	if (device)
 		init_textures();
-	bake_hash();
+	bake();
 }
 
 void MaterialFile::init_textures()
@@ -151,7 +151,7 @@ void MaterialFile::init_textures()
 		else
 			textures[i] = nullptr;
 	}
-	bake_hash();
+	bake();
 }
 
 void MaterialFile::on_device_created(const Event &e)

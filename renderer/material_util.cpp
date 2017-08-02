@@ -56,7 +56,7 @@ void StockMaterials::on_device_created(const Event &event)
 	checkerboard->emissive = vec3(0.0f);
 	checkerboard->metallic = 1.0f;
 	checkerboard->roughness = 1.0f;
-	checkerboard->bake_hash();
+	checkerboard->bake();
 }
 
 void StockMaterials::on_device_destroyed(const Event &)

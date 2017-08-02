@@ -426,8 +426,8 @@ void TexturePlane::get_render_info(const RenderContext &context, const CachedSpa
 	h.u64(info.refraction->get_cookie());
 	h.u64(info.normal->get_cookie());
 	auto instance_key = h.get();
-	auto sorting_key = RenderInfo::get_sort_key(context, Queue::Opaque, h.get(), h.get(), position);
-	auto *plane_info = queue.push<TexturePlaneInfo>(Queue::Opaque, instance_key, sorting_key,
+	auto sorting_key = RenderInfo::get_sort_key(context, Queue::OpaqueEmissive, h.get(), h.get(), position);
+	auto *plane_info = queue.push<TexturePlaneInfo>(Queue::OpaqueEmissive, instance_key, sorting_key,
 	                                                texture_plane_render, nullptr);
 
 	if (plane_info)

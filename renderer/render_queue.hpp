@@ -39,6 +39,7 @@ class RenderContext;
 enum class Queue : unsigned
 {
 	Opaque = 0,
+	OpaqueEmissive,
 	Transparent,
 	Count
 };

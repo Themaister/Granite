@@ -210,9 +210,19 @@ void StaticMesh::bake()
 	cached_hash = get_instance_key();
 }
 
+static Queue material_to_queue(const Material &mat)
+{
+	if (mat.pipeline == DrawPipeline::AlphaBlend)
+		return Queue::Transparent;
+	else if (mat.needs_emissive)
+		return Queue::OpaqueEmissive;
+	else
+		return Queue::Opaque;
+}
+
 void StaticMesh::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform, RenderQueue &queue) const
 {
-	auto type = material->pipeline == DrawPipeline::AlphaBlend ? Queue::Transparent : Queue::Opaque;
+	auto type = material_to_queue(*material);
 	uint32_t attrs = 0;
 
 	for (unsigned i = 0; i < ecast(MeshAttribute::Count); i++)
@@ -246,6 +256,9 @@ void StaticMesh::get_render_info(const RenderContext &context, const CachedSpati
 			if (material->textures[i])
 				textures |= 1u << i;
 
+		if (type == Queue::OpaqueEmissive)
+			textures |= MATERIAL_EMISSIVE_BIT;
+
 		fill_render_info(*mesh_info);
 		mesh_info->program = queue.get_shader_suites()[ecast(RenderableType::Mesh)].get_program(material->pipeline, attrs,
 		                                                                                        textures).get();
@@ -254,7 +267,7 @@ void StaticMesh::get_render_info(const RenderContext &context, const CachedSpati
 
 void SkinnedMesh::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform, RenderQueue &queue) const
 {
-	auto type = material->pipeline == DrawPipeline::AlphaBlend ? Queue::Transparent : Queue::Opaque;
+	auto type = material_to_queue(*material);
 	uint32_t attrs = 0;
 	uint32_t textures = 0;
 

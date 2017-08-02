@@ -6,14 +6,18 @@
 #endif
 
 #if defined(RENDERER_DEFERRED)
+#if defined(HAVE_EMISSIVE) && HAVE_EMISSIVE
 layout(location = 0) out vec3 Emissive;
+#endif
 layout(location = 1) out vec4 BaseColor;
 layout(location = 2) out vec3 Normal;
 layout(location = 3) out vec2 PBR;
 
 void emit_render_target(vec3 emissive, vec4 base_color, vec3 normal, float metallic, float roughness, float ambient, vec3 eye_dir)
 {
+#if defined(HAVE_EMISSIVE) && HAVE_EMISSIVE
     Emissive = emissive;
+#endif
     BaseColor = vec4(base_color.rgb, ambient);
     Normal = 0.5 * normal + 0.5;
     PBR = vec2(metallic, roughness);

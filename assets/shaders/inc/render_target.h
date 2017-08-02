@@ -5,8 +5,10 @@
 #define RENDERER_DEFERRED
 #endif
 
+#define WORKAROUND_RADV 1
+
 #if defined(RENDERER_DEFERRED)
-#if defined(HAVE_EMISSIVE) && HAVE_EMISSIVE
+#if (defined(HAVE_EMISSIVE) && HAVE_EMISSIVE) || WORKAROUND_RADV
 layout(location = 0) out vec3 Emissive;
 #endif
 layout(location = 1) out vec4 BaseColor;
@@ -17,6 +19,8 @@ void emit_render_target(vec3 emissive, vec4 base_color, vec3 normal, float metal
 {
 #if defined(HAVE_EMISSIVE) && HAVE_EMISSIVE
     Emissive = emissive;
+#elif WORKAROUND_RADV
+    Emissive = vec3(0.0);
 #endif
     BaseColor = vec4(base_color.rgb, ambient);
     Normal = 0.5 * normal + 0.5;

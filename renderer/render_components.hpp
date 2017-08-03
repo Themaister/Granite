@@ -31,6 +31,12 @@
 
 namespace Granite
 {
+class RenderGraph;
+class Renderer;
+class RenderQueue;
+class RenderContext;
+class RenderPass;
+
 struct Transform
 {
 	vec3 scale = vec3(1.0f);
@@ -73,6 +79,21 @@ struct SkyboxComponent : ComponentBase
 struct RenderableComponent : ComponentBase
 {
 	AbstractRenderableHandle renderable;
+};
+
+struct RenderPassCreator
+{
+	virtual ~RenderPassCreator() = default;
+	virtual void add_render_passes(RenderGraph &graph) = 0;
+	virtual void set_renderer(Renderer *renderer) = 0;
+	virtual void set_render_queue(RenderQueue *queue) = 0;
+	virtual void set_base_render_context(const RenderContext *context) = 0;
+	virtual void setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target) = 0;
+};
+
+struct RenderPassComponent : ComponentBase
+{
+	RenderPassCreator *creator = nullptr;
 };
 
 struct PerFrameRefreshableTransform

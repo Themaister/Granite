@@ -1246,6 +1246,16 @@ void RenderGraph::build_aliases()
 	}
 }
 
+bool RenderGraph::need_invalidate(const Barrier &barrier, const PipelineEvent &event)
+{
+	bool need_invalidate = false;
+	Util::for_each_bit(barrier.stages, [&](uint32_t bit) {
+		if (barrier.access & ~event.invalidated_in_stage[bit])
+			need_invalidate = true;
+	});
+	return need_invalidate;
+}
+
 void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 {
 	vector<VkBufferMemoryBarrier> buffer_barriers;
@@ -1262,9 +1272,12 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 		// Need to wait on this event before we can transfer ownership to another alias.
 		for (auto &transfer : pass.alias_transfer)
 		{
-			physical_events[transfer.second] = physical_events[transfer.first];
-			physical_events[transfer.second].invalidated = 0;
-			physical_events[transfer.second].to_flush = 0;
+			auto &events = physical_events[transfer.second];
+			events = physical_events[transfer.first];
+			for (auto &e : events.invalidated_in_stage)
+				e = 0;
+			events.to_flush_access = 0;
+
 			physical_attachments[transfer.second]->get_image().set_layout(VK_IMAGE_LAYOUT_UNDEFINED);
 		}
 	};
@@ -1284,9 +1297,12 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 			continue;
 		}
 
+		//unsigned pass_index = unsigned(&physical_pass - physical_passes.data());
+
 		auto cmd = device.request_command_buffer();
 
 		VkPipelineStageFlags dst_stages = 0;
+		VkPipelineStageFlags immediate_dst_stages = 0;
 		VkPipelineStageFlags src_stages = 0;
 		buffer_barriers.clear();
 		image_barriers.clear();
@@ -1311,27 +1327,25 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 		for (auto &barrier : physical_pass.invalidate)
 		{
 			auto &event = barrier.history ? physical_history_events[barrier.resource_index] : physical_events[barrier.resource_index];
-			bool need_barrier = false;
+			bool need_event_barrier = false;
 			bool layout_change = false;
 
 			if (physical_dimensions[barrier.resource_index].buffer_info.size)
 			{
-				auto &buffer = *physical_buffers[barrier.resource_index];
-				VkBufferMemoryBarrier b = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
-				b.srcAccessMask = event.to_flush;
-				b.dstAccessMask = barrier.access;
-				b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-				b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-				b.buffer = buffer.get_buffer();
-				b.offset = 0;
-				b.size = VK_WHOLE_SIZE;
-
-				need_barrier =
-					(event.to_flush != 0) ||
-					((b.dstAccessMask & ~event.invalidated) != 0);
-
-				if (need_barrier && event.event)
+				need_event_barrier = event.event && ((event.to_flush_access != 0) || need_invalidate(barrier, event));
+				if (need_event_barrier)
+				{
+					auto &buffer = *physical_buffers[barrier.resource_index];
+					VkBufferMemoryBarrier b = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+					b.srcAccessMask = event.to_flush_access;
+					b.dstAccessMask = barrier.access;
+					b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+					b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+					b.buffer = buffer.get_buffer();
+					b.offset = 0;
+					b.size = VK_WHOLE_SIZE;
 					buffer_barriers.push_back(b);
+				}
 			}
 			else
 			{
@@ -1345,7 +1359,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 				VkImageMemoryBarrier b = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
 				b.oldLayout = image->get_layout();
 				b.newLayout = barrier.layout;
-				b.srcAccessMask = event.to_flush;
+				b.srcAccessMask = event.to_flush_access;
 				b.dstAccessMask = barrier.access;
 				b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 				b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -1355,11 +1369,10 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 				b.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
 				image->set_layout(barrier.layout);
 
-				need_barrier =
-					(b.oldLayout != b.newLayout) ||
-					(event.to_flush != 0) ||
-					((b.dstAccessMask & ~event.invalidated) != 0) ||
-					((barrier.stages & ~event.invalidated_stages) != 0);
+				bool need_barrier =
+						(b.oldLayout != b.newLayout) ||
+						(event.to_flush_access != 0) ||
+						need_invalidate(barrier, event);
 
 				layout_change = b.oldLayout != b.newLayout;
 
@@ -1368,44 +1381,37 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 					if (event.event)
 					{
 						image_barriers.push_back(b);
+						need_event_barrier = true;
 					}
 					else
 					{
 						immediate_image_barriers.push_back(b);
 						if (b.oldLayout != VK_NULL_HANDLE)
 							throw logic_error("Cannot do immediate image barriers from another other than UNDEFINED.");
+						immediate_dst_stages |= barrier.stages;
 					}
 				}
 			}
 
-			if (need_barrier)
+			if (need_event_barrier)
 			{
 				dst_stages |= barrier.stages;
 
-				if (event.event)
-				{
-					src_stages |= event.event->get_stages();
-					add_unique_event(event.event->get_event());
-				}
-				else
-					src_stages |= event.stages;
+				assert(event.event);
+				src_stages |= event.event->get_stages();
+				add_unique_event(event.event->get_event());
 
-				if (event.to_flush || layout_change)
+				if (event.to_flush_access || layout_change)
 				{
-					event.invalidated = 0;
-					event.invalidated_stages = 0;
+					for (auto &e : event.invalidated_in_stage)
+						e = 0;
 				}
 
-				event.to_flush = 0;
-				event.invalidated |= barrier.access;
-				event.invalidated_stages |= barrier.stages;
+				event.to_flush_access = 0;
+				Util::for_each_bit(barrier.stages, [&](uint32_t bit) {
+					event.invalidated_in_stage[bit] |= barrier.access;
+				});
 			}
-		}
-
-		if (!immediate_image_barriers.empty())
-		{
-			cmd->barrier(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, dst_stages,
-			             0, nullptr, 0, nullptr, immediate_image_barriers.size(), immediate_image_barriers.data());
 		}
 
 		if (!image_barriers.empty() || !buffer_barriers.empty())
@@ -1415,6 +1421,12 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 			                 0, nullptr,
 			                 buffer_barriers.size(), buffer_barriers.empty() ? nullptr : buffer_barriers.data(),
 			                 image_barriers.size(), image_barriers.empty() ? nullptr : image_barriers.data());
+		}
+
+		if (!immediate_image_barriers.empty())
+		{
+			cmd->barrier(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, immediate_dst_stages,
+			             0, nullptr, 0, nullptr, immediate_image_barriers.size(), immediate_image_barriers.data());
 		}
 
 		bool graphics = (passes[physical_pass.passes.front()]->get_stages() & VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT) != 0;
@@ -1488,13 +1500,14 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 				image->set_layout(barrier.layout);
 			}
 
-			event.stages = barrier.stages;
-			event.to_flush = barrier.access;
-			if (event.to_flush || old_layout != barrier.layout)
+			event.to_flush_stages = barrier.stages;
+			event.to_flush_access = barrier.access;
+			if (event.to_flush_stages || old_layout != barrier.layout)
 			{
-				event.invalidated = 0;
-				event.invalidated_stages = 0;
+				for (auto &e : event.invalidated_in_stage)
+					e = 0;
 			}
+
 			event.event = pipeline_event;
 		}
 
@@ -1516,7 +1529,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 			barrier.image = physical_attachments[index]->get_image().get_image();
 			barrier.oldLayout = physical_attachments[index]->get_image().get_layout();
 			barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			barrier.srcAccessMask = physical_events[index].to_flush;
+			barrier.srcAccessMask = physical_events[index].to_flush_access;
 			barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 			barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 			barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -1545,9 +1558,11 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 		cmd->end_render_pass();
 
 		// Set a write-after-read barrier on this resource.
-		physical_events[index].stages = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-		physical_events[index].to_flush = 0;
-		physical_events[index].invalidated = VK_ACCESS_SHADER_READ_BIT;
+		physical_events[index].to_flush_stages = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+		physical_events[index].to_flush_access = 0;
+		for (auto &e : physical_events[index].invalidated_in_stage)
+			e = 0;
+		physical_events[index].invalidated_in_stage[trailing_zeroes(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT)] = VK_ACCESS_SHADER_READ_BIT;
 		physical_events[index].event = cmd->signal_event(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 
 		device.submit(cmd);

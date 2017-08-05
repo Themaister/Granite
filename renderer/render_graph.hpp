@@ -634,10 +634,10 @@ private:
 	struct PipelineEvent
 	{
 		Vulkan::PipelineEvent event;
-		VkPipelineStageFlags stages = 0;
-		VkPipelineStageFlags invalidated_stages = 0;
-		VkAccessFlags to_flush = 0;
-		VkAccessFlags invalidated = 0;
+		VkPipelineStageFlags to_flush_stages = 0;
+		VkAccessFlags to_flush_access = 0;
+
+		VkAccessFlags invalidated_in_stage[32] = {};
 	};
 
 	std::vector<PipelineEvent> physical_events;
@@ -667,5 +667,6 @@ private:
 	bool depends_on_pass(unsigned dst_pass, unsigned src_pass);
 
 	void reorder_passes(std::vector<unsigned> &passes);
+	static bool need_invalidate(const Barrier &barrier, const PipelineEvent &event);
 };
 }

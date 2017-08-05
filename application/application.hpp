@@ -209,7 +209,6 @@ private:
 	std::string skydome_irradiance;
 	AABB scene_aabb;
 
-	void lighting_pass(Vulkan::CommandBuffer &cmd, bool reflection_pass);
 	void render_shadow_map_near(Vulkan::CommandBuffer &cmd);
 	void render_shadow_map_far(Vulkan::CommandBuffer &cmd);
 	void render_main_pass(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view);

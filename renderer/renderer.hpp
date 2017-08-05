@@ -45,13 +45,17 @@ public:
 		REFRACTION_ENABLE_BIT = 1 << 4
 	};
 	using RendererOptionFlags = uint32_t;
+
 	void set_mesh_renderer_options(RendererOptionFlags flags);
 
 	void begin();
+
 	void push_renderables(RenderContext &context, const VisibilityList &visible);
+
 	void flush(Vulkan::CommandBuffer &cmd, RenderContext &context);
 
 	void render_debug_aabb(RenderContext &context, const AABB &aabb, const vec4 &color);
+
 	void render_debug_frustum(RenderContext &context, const Frustum &frustum, const vec4 &color);
 
 	RenderQueue &get_render_queue()
@@ -66,15 +70,24 @@ public:
 
 private:
 	void on_device_created(const Event &e);
+
 	void on_device_destroyed(const Event &e);
+
 	Vulkan::Device *device = nullptr;
 	RenderQueue queue;
 	ShaderSuite suite[Util::ecast(RenderableType::Count)];
 
 	DebugMeshInstanceInfo &render_debug(RenderContext &context, unsigned count);
+
 	RendererType type;
 	uint32_t renderer_options = ~0u;
 
 	void set_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context);
+};
+
+class DeferredLightRenderer
+{
+public:
+	static void render_light(Vulkan::CommandBuffer &cmd, RenderContext &context);
 };
 }

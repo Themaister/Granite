@@ -55,101 +55,6 @@ static vec3 light_direction()
 
 static const float cascade_cutoff_distance = 10.0f;
 
-void SceneViewerApplication::lighting_pass(Vulkan::CommandBuffer &cmd, bool reflection_pass)
-{
-	cmd.set_quad_state();
-	cmd.set_input_attachments(0, 1);
-	cmd.set_blend_enable(true);
-	cmd.set_blend_factors(VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_ONE);
-	cmd.set_blend_op(VK_BLEND_OP_ADD);
-	CommandBufferUtil::set_quad_vertex_state(cmd);
-
-	auto &device = cmd.get_device();
-	auto *program = device.get_shader_manager().register_graphics("builtin://shaders/lights/directional.vert",
-	                                                              "builtin://shaders/lights/directional.frag");
-
-	vector<pair<string, int>> defines;
-	if (!reflection_pass)
-		defines.push_back({ "SHADOW_CASCADES", 1 });
-	defines.push_back({ "ENVIRONMENT", 1 });
-	defines.push_back({ "FOG", 1 });
-	defines.push_back({ "SHADOWS", 1 });
-
-	unsigned variant = program->register_variant(defines);
-	cmd.set_program(*program->get_program(variant));
-	cmd.set_depth_test(true, false);
-	cmd.set_depth_compare(VK_COMPARE_OP_GREATER);
-	assert(reflection && irradiance);
-	cmd.set_texture(1, 0, reflection->get_image()->get_view(), Vulkan::StockSampler::LinearClamp);
-	cmd.set_texture(1, 1, irradiance->get_image()->get_view(), Vulkan::StockSampler::LinearClamp);
-	cmd.set_texture(1, 2, *lighting.shadow_far, Vulkan::StockSampler::LinearShadow);
-
-	if (!reflection_pass)
-		cmd.set_texture(1, 3, *lighting.shadow_near, Vulkan::StockSampler::LinearShadow);
-
-	struct DirectionalLightPush
-	{
-		vec4 inv_view_proj_col2;
-		vec4 shadow_col2;
-		vec4 shadow_near_col2;
-		vec4 direction_inv_cutoff;
-		vec4 color_env_intensity;
-		vec4 camera_pos_mipscale;
-		vec3 camera_front;
-	} push;
-
-	const float intensity = 1.0f;
-	const float mipscale = 6.0f;
-
-	mat4 total_shadow_transform = lighting.shadow.far_transform * context.get_render_parameters().inv_view_projection;
-	mat4 total_shadow_transform_near = lighting.shadow.near_transform * context.get_render_parameters().inv_view_projection;
-
-	struct DirectionalLightUBO
-	{
-		mat4 inv_view_projection;
-		mat4 shadow_transform;
-		mat4 shadow_transform_near;
-	};
-	auto *ubo = static_cast<DirectionalLightUBO *>(cmd.allocate_constant_data(0, 0, sizeof(DirectionalLightUBO)));
-	ubo->inv_view_projection = context.get_render_parameters().inv_view_projection;
-	ubo->shadow_transform = total_shadow_transform;
-	ubo->shadow_transform_near = total_shadow_transform_near;
-
-	push.inv_view_proj_col2 = context.get_render_parameters().inv_view_projection[2];
-	push.shadow_col2 = total_shadow_transform[2];
-	push.shadow_near_col2 = total_shadow_transform_near[2];
-	push.color_env_intensity = vec4(3.0f, 2.5f, 2.5f, intensity);
-	push.direction_inv_cutoff = vec4(light_direction(), 1.0f / cascade_cutoff_distance);
-	push.camera_pos_mipscale = vec4(context.get_render_parameters().camera_position, mipscale);
-	push.camera_front = context.get_render_parameters().camera_front;
-	cmd.push_constants(&push, 0, sizeof(push));
-
-	cmd.draw(4);
-
-	// Skip fog for non-reflection passes.
-	if (!reflection_pass)
-	{
-		struct Fog
-		{
-			mat4 inv_view_proj;
-			vec4 camera_pos;
-			vec4 color_falloff;
-		} fog;
-
-		fog.inv_view_proj = context.get_render_parameters().inv_view_projection;
-		fog.camera_pos = vec4(context.get_render_parameters().camera_position, 0.0f);
-		fog.color_falloff = vec4(lighting.fog.color, lighting.fog.falloff);
-		cmd.push_constants(&fog, 0, sizeof(fog));
-
-		cmd.set_blend_factors(VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA, VK_BLEND_FACTOR_SRC_ALPHA);
-		program = device.get_shader_manager().register_graphics("builtin://shaders/lights/fog.vert",
-		                                                        "builtin://shaders/lights/fog.frag");
-		variant = program->register_variant({});
-		cmd.set_program(*program->get_program(variant));
-		cmd.draw(4);
-	}
-}
-
 SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned width, unsigned height)
 	: Application(width, height),
 #if RENDERER == RENDERER_FORWARD
@@ -345,7 +250,7 @@ void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::st
 	scene_loader.get_scene().add_render_pass_dependencies(graph, gbuffer);
 
 	lighting.set_build_render_pass([this, type](Vulkan::CommandBuffer &cmd) {
-		lighting_pass(cmd, type != MainPassType::Main);
+		DeferredLightRenderer::render_light(cmd, context);
 	});
 #endif
 }

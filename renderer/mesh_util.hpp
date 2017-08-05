@@ -92,12 +92,20 @@ public:
 
 	void set_reflection_name(const std::string &name)
 	{
+		need_reflection = !name.empty();
 		reflection_name = name;
 	}
 
 	void set_refraction_name(const std::string &name)
 	{
+		need_refraction = !name.empty();
 		refraction_name = name;
+	}
+
+	void set_resolution_scale(float x, float y)
+	{
+		scale_x = x;
+		scale_y = y;
 	}
 
 	vec4 get_plane() const
@@ -109,6 +117,11 @@ public:
 	                     RenderQueue &queue) const override;
 
 	void set_plane(const vec3 &position, const vec3 &normal, const vec3 &up, float extent_up, float extent_across);
+	void set_base_emissive(const vec3 &color)
+	{
+		base_emissive = color;
+	}
+
 	void set_zfar(float zfar);
 
 private:
@@ -122,9 +135,12 @@ private:
 	vec3 up;
 	vec3 dpdx;
 	vec3 dpdy;
+	vec3 base_emissive;
 	float rad_up = 0.0f;
 	float rad_x = 0.0f;
 	float zfar = 100.0f;
+	float scale_x = 1.0f;
+	float scale_y = 1.0f;
 
 	double elapsed = 0.0f;
 	void on_device_created(const Event &event);
@@ -140,8 +156,8 @@ private:
 	Scene *scene = nullptr;
 	VisibilityList visible;
 
-	bool need_reflection = true;
-	bool need_refraction = true;
+	bool need_reflection = false;
+	bool need_refraction = false;
 
 	enum Type
 	{

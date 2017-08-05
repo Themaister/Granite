@@ -345,6 +345,44 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	Value planes(kArrayType);
+	Value plane(kObjectType);
+
+	Value center(kArrayType);
+	Value normal(kArrayType);
+	Value up(kArrayType);
+	Value base_emissive(kArrayType);
+	Value resolution_scale(kArrayType);
+
+	center.PushBack(55.0f, allocator);
+	center.PushBack(-1.5f, allocator);
+	center.PushBack(15.0f, allocator);
+	normal.PushBack(0.0f, allocator);
+	normal.PushBack(1.0f, allocator);
+	normal.PushBack(0.0f, allocator);
+	up.PushBack(1.0f, allocator);
+	up.PushBack(0.0f, allocator);
+	up.PushBack(0.0f, allocator);
+	base_emissive.PushBack(0.01f, allocator);
+	base_emissive.PushBack(0.015f, allocator);
+	base_emissive.PushBack(0.03f, allocator);
+	resolution_scale.PushBack(0.5f, allocator);
+	resolution_scale.PushBack(0.5f, allocator);
+
+	plane.AddMember("reflectionName", "reflection", allocator);
+	plane.AddMember("refractionName", "refraction", allocator);
+	plane.AddMember("normalMap", "../textures/ocean_normal.ktx", allocator);
+	plane.AddMember("center", center, allocator);
+	plane.AddMember("normal", normal, allocator);
+	plane.AddMember("up", up, allocator);
+	plane.AddMember("baseEmissive", base_emissive, allocator);
+	plane.AddMember("radiusUp", 10.0f, allocator);
+	plane.AddMember("radiusAcross", 10.0f, allocator);
+	plane.AddMember("zFar", 200.0f, allocator);
+	plane.AddMember("resolutionScale", resolution_scale, allocator);
+	planes.PushBack(plane, allocator);
+	doc.AddMember("planes", planes, allocator);
+
 	StringBuffer buffer;
 	Writer<StringBuffer> writer(buffer);
 	doc.Accept(writer);

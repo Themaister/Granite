@@ -362,6 +362,7 @@ struct TexturePlaneInfo
 		vec4 dPdx;
 		vec4 dPdy;
 		vec4 offset_scale;
+		vec4 base_emissive;
 	};
 	Push push;
 };
@@ -372,8 +373,10 @@ static void texture_plane_render(CommandBuffer &cmd, const RenderQueueData *info
 	{
 		auto &info = *static_cast<const TexturePlaneInfo *>(infos[i].render_info);
 		cmd.set_program(*info.program);
-		cmd.set_texture(2, 0, *info.reflection, Vulkan::StockSampler::TrilinearClamp);
-		cmd.set_texture(2, 1, *info.refraction, Vulkan::StockSampler::TrilinearClamp);
+		if (info.reflection)
+			cmd.set_texture(2, 0, *info.reflection, Vulkan::StockSampler::TrilinearClamp);
+		if (info.refraction)
+			cmd.set_texture(2, 1, *info.refraction, Vulkan::StockSampler::TrilinearClamp);
 		cmd.set_texture(2, 2, *info.normal, Vulkan::StockSampler::TrilinearWrap);
 		CommandBufferUtil::set_quad_vertex_state(cmd);
 		cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
@@ -470,13 +473,13 @@ void TexturePlane::add_render_pass(RenderGraph &graph, Type type)
 	color.format = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
 	depth.format = device.get_default_depth_format();
 
-	color.size_x = 0.5f;
-	color.size_y = 0.5f;
-	depth.size_x = 0.5f;
-	depth.size_y = 0.5f;
+	color.size_x = scale_x;
+	color.size_y = scale_y;
+	depth.size_x = scale_x;
+	depth.size_y = scale_y;
 
-	reflection_blur.size_x = 0.25f;
-	reflection_blur.size_y = 0.25f;
+	reflection_blur.size_x = 0.5f * scale_x;
+	reflection_blur.size_y = 0.5f * scale_y;
 	reflection_blur.levels = 0;
 
 	auto &name = type == Reflection ? reflection_name : refraction_name;
@@ -618,6 +621,7 @@ void TexturePlane::get_render_info(const RenderContext &context, const CachedSpa
 	info.push.tangent = vec4(normalize(dpdx), 0.0f);
 	info.push.bitangent = vec4(normalize(dpdy), 0.0f);
 	info.push.offset_scale = vec4(vec2(0.03 * elapsed), vec2(2.0f));
+	info.push.base_emissive = vec4(base_emissive, 0.0f);
 
 	Hasher h;
 	if (info.reflection)
@@ -638,7 +642,10 @@ void TexturePlane::get_render_info(const RenderContext &context, const CachedSpa
 
 	if (plane_info)
 	{
-		info.program = queue.get_shader_suites()[ecast(RenderableType::TexturePlane)].get_program(DrawPipeline::Opaque, 0, MATERIAL_EMISSIVE_BIT).get();
+		unsigned mat_mask = MATERIAL_EMISSIVE_BIT;
+		mat_mask |= info.refraction ? MATERIAL_EMISSIVE_REFRACTION_BIT : 0;
+		mat_mask |= info.reflection ? MATERIAL_EMISSIVE_REFLECTION_BIT : 0;
+		info.program = queue.get_shader_suites()[ecast(RenderableType::TexturePlane)].get_program(DrawPipeline::Opaque, 0, mat_mask).get();
 		*plane_info = info;
 	}
 }

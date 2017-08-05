@@ -490,22 +490,47 @@ void SceneLoader::parse(const std::string &path, const std::string &json)
 		root->add_child(handles.node);
 	}
 
+	if (doc.HasMember("planes"))
 	{
-		auto plane = Util::make_abstract_handle<AbstractRenderable, TexturePlane>("builtin://gltf-sandbox/textures/ocean_normal.ktx");
-		auto entity = scene->create_renderable(plane, nullptr);
+		auto &planes = doc["planes"];
+		for (auto itr = planes.Begin(); itr != planes.End(); ++itr)
+		{
+			auto &info = *itr;
 
-		auto *texture_plane = static_cast<TexturePlane *>(plane.get());
-		texture_plane->set_plane(vec3(60.0f, -1.5f, 10.0f), vec3(0.0f, 1.0f, 0.0f), vec3(1.0f, 0.0f, 0.0f), 10.0f, 10.0f);
-		texture_plane->set_zfar(200.0f);
-		texture_plane->set_reflection_name("reflection");
-		texture_plane->set_refraction_name("refraction");
-		entity->free_component<UnboundedComponent>();
-		entity->allocate_component<RenderPassSinkComponent>();
-		auto *cull_plane = entity->allocate_component<CullPlaneComponent>();
-		cull_plane->plane = texture_plane->get_plane();
+			auto plane = Util::make_abstract_handle<AbstractRenderable, TexturePlane>(
+					Path::relpath(path, info["normalMap"].GetString()));
 
-		auto *rpass = entity->allocate_component<RenderPassComponent>();
-		rpass->creator = texture_plane;
+			auto entity = scene->create_renderable(plane, nullptr);
+
+			auto *texture_plane = static_cast<TexturePlane *>(plane.get());
+
+			vec3 center = vec3(info["center"][0].GetFloat(), info["center"][1].GetFloat(), info["center"][2].GetFloat());
+			vec3 normal = vec3(info["normal"][0].GetFloat(), info["normal"][1].GetFloat(), info["normal"][2].GetFloat());
+			vec3 up = vec3(info["up"][0].GetFloat(), info["up"][1].GetFloat(), info["up"][2].GetFloat());
+			vec3 emissive = vec3(info["baseEmissive"][0].GetFloat(), info["baseEmissive"][1].GetFloat(), info["baseEmissive"][2].GetFloat());
+			float rad_up = info["radiusUp"].GetFloat();
+			float rad_x = info["radiusAcross"].GetFloat();
+			float zfar = info["zFar"].GetFloat();
+
+			texture_plane->set_plane(center, normal, up, rad_up, rad_x);
+			texture_plane->set_zfar(zfar);
+
+			if (info.HasMember("reflectionName"))
+				texture_plane->set_reflection_name(info["reflectionName"].GetString());
+			if (info.HasMember("refractionName"))
+				texture_plane->set_refraction_name(info["refractionName"].GetString());
+
+			texture_plane->set_resolution_scale(info["resolutionScale"][0].GetFloat(), info["resolutionScale"][1].GetFloat());
+
+			texture_plane->set_base_emissive(emissive);
+			entity->free_component<UnboundedComponent>();
+			entity->allocate_component<RenderPassSinkComponent>();
+			auto *cull_plane = entity->allocate_component<CullPlaneComponent>();
+			cull_plane->plane = texture_plane->get_plane();
+
+			auto *rpass = entity->allocate_component<RenderPassComponent>();
+			rpass->creator = texture_plane;
+		}
 	}
 }
 

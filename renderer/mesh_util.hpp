@@ -90,9 +90,18 @@ class TexturePlane : public AbstractRenderable, public EventHandler, public Rend
 public:
 	TexturePlane(const std::string &normal);
 
+	void set_reflection_name(const std::string &name)
+	{
+		reflection_name = name;
+	}
+
+	void set_refraction_name(const std::string &name)
+	{
+		refraction_name = name;
+	}
+
 	void get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
 	                     RenderQueue &queue) const override;
-
 
 	void set_plane(const vec3 &position, const vec3 &normal, const vec3 &up, float extent_up, float extent_across);
 	void set_zfar(float zfar);

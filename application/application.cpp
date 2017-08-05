@@ -57,11 +57,8 @@ static const float cascade_cutoff_distance = 10.0f;
 
 SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned width, unsigned height)
 	: Application(width, height),
-#if RENDERER == RENDERER_FORWARD
-	  renderer(RendererType::GeneralForward),
-#else
-      renderer(RendererType::GeneralDeferred),
-#endif
+	  forward_renderer(RendererType::GeneralForward),
+      deferred_renderer(RendererType::GeneralDeferred),
       depth_renderer(RendererType::DepthOnly),
       plane_reflection("builtin://gltf-sandbox/textures/ocean_normal.ktx")
 {
@@ -154,9 +151,9 @@ void SceneViewerApplication::render_main_pass(Vulkan::CommandBuffer &cmd, const 
 	scene.gather_visible_opaque_renderables(context.get_visibility_frustum(), visible);
 	scene.gather_background_renderables(visible);
 	scene.gather_visible_render_pass_sinks(context.get_render_parameters().camera_position, visible);
-	renderer.begin();
-	renderer.push_renderables(context, visible);
-	renderer.flush(cmd, context);
+	deferred_renderer.begin();
+	deferred_renderer.push_renderables(context, visible);
+	deferred_renderer.flush(cmd, context);
 }
 
 static inline string tagcat(const std::string &a, const std::string &b)
@@ -301,6 +298,7 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 	auto &swap = e.as<SwapchainParameterEvent>();
 	auto physical_buffers = graph.consume_physical_buffers();
 	graph.reset();
+	graph.set_device(&swap.get_device());
 
 	ResourceDimensions dim;
 	dim.width = swap.get_width();
@@ -418,7 +416,7 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 	lighting.directional.color = vec3(3.0f, 2.5f, 2.5f);
 
 	context.set_camera(cam);
-	scene.set_render_pass_data(&renderer, &context);
+	scene.set_render_pass_data(&forward_renderer, &context);
 
 	animation_system->animate(elapsed_time);
 	scene.update_cached_transforms();

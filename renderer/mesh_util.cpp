@@ -432,7 +432,9 @@ void TexturePlane::set_scene(Scene *scene)
 
 void TexturePlane::render_main_pass(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view)
 {
+	context.set_lighting_parameters(base_context->get_lighting_parameters());
 	context.set_camera(proj, view);
+
 	visible.clear();
 	scene->gather_visible_opaque_renderables(context.get_visibility_frustum(), visible);
 	scene->gather_visible_transparent_renderables(context.get_visibility_frustum(), visible);
@@ -498,6 +500,7 @@ void TexturePlane::add_render_pass(RenderGraph &graph, Type type)
 		return true;
 	});
 
+#if 0
 	lighting.set_need_render_pass([this]() -> bool {
 		// No point in rendering reflection/refraction if we cannot even see it :)
 		vec3 c0 = position + dpdx + dpdy;
@@ -510,6 +513,7 @@ void TexturePlane::add_render_pass(RenderGraph &graph, Type type)
 		float plane_test = dot(base_context->get_render_parameters().camera_position - position, normal);
 		return plane_test > 0.0f;
 	});
+#endif
 
 	lighting.set_build_render_pass([this, type](Vulkan::CommandBuffer &cmd) {
 		if (type == Reflection)
@@ -614,8 +618,16 @@ void TexturePlane::get_render_info(const RenderContext &context, const CachedSpa
 	info.push.offset_scale = vec4(vec2(0.03 * elapsed), vec2(2.0f));
 
 	Hasher h;
-	h.u64(info.reflection->get_cookie());
-	h.u64(info.refraction->get_cookie());
+	if (info.reflection)
+		h.u64(info.reflection->get_cookie());
+	else
+		h.u32(0);
+
+	if (info.refraction)
+		h.u64(info.refraction->get_cookie());
+	else
+		h.u32(0);
+
 	h.u64(info.normal->get_cookie());
 	auto instance_key = h.get();
 	auto sorting_key = RenderInfo::get_sort_key(context, Queue::OpaqueEmissive, h.get(), h.get(), position);

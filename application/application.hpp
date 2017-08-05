@@ -184,7 +184,8 @@ public:
 private:
 	RenderContext context;
 	RenderContext depth_context;
-	Renderer renderer;
+	Renderer forward_renderer;
+	Renderer deferred_renderer;
 	Renderer depth_renderer;
 	LightingParameters lighting;
 	FPSCamera cam;

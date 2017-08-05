@@ -489,6 +489,21 @@ void SceneLoader::parse(const std::string &path, const std::string &json)
 		read_transform(handles.node->transform, terrain);
 		root->add_child(handles.node);
 	}
+
+	{
+		auto plane = Util::make_abstract_handle<AbstractRenderable, TexturePlane>("builtin://gltf-sandbox/textures/ocean_normal.ktx");
+		auto entity = scene->create_renderable(plane, nullptr);
+
+		auto *texture_plane = static_cast<TexturePlane *>(plane.get());
+		texture_plane->set_plane(vec3(60.0f, -1.5f, 10.0f), vec3(0.0f, 1.0f, 0.0f), vec3(1.0f, 0.0f, 0.0f), 10.0f, 10.0f);
+		texture_plane->set_zfar(200.0f);
+		texture_plane->set_reflection_name("reflection");
+		texture_plane->set_refraction_name("refraction");
+		entity->allocate_component<CastsShadowComponent>();
+
+		auto *rpass = entity->allocate_component<RenderPassComponent>();
+		rpass->creator = texture_plane;
+	}
 }
 
 }

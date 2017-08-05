@@ -25,33 +25,16 @@
 #include "vulkan_events.hpp"
 #include "scene.hpp"
 #include "shader_suite.hpp"
+#include "renderer_enums.hpp"
 
 namespace Granite
 {
 struct Sprite;
-enum class RenderableType
-{
-	Mesh,
-	DebugMesh,
-	Skybox,
-	Ground,
-	Sprite,
-	LineUI,
-	TexturePlane,
-	Count
-};
 
 class Renderer : public EventHandler
 {
 public:
-	enum Type
-	{
-		GeneralForward,
-		GeneralDeferred,
-		DepthOnly
-	};
-
-	Renderer(Type type = Type::GeneralDeferred);
+	Renderer(RendererType type = RendererType::GeneralDeferred);
 
 	enum RendererOptionBits
 	{
@@ -76,6 +59,11 @@ public:
 		return queue;
 	}
 
+	RendererType get_renderer_type() const
+	{
+		return type;
+	}
+
 private:
 	void on_device_created(const Event &e);
 	void on_device_destroyed(const Event &e);
@@ -84,7 +72,7 @@ private:
 	ShaderSuite suite[Util::ecast(RenderableType::Count)];
 
 	DebugMeshInstanceInfo &render_debug(RenderContext &context, unsigned count);
-	Type type;
+	RendererType type;
 	uint32_t renderer_options = ~0u;
 
 	void set_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context);

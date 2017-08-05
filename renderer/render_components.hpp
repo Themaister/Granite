@@ -28,6 +28,7 @@
 #include "aabb.hpp"
 #include "mesh.hpp"
 #include "abstract_renderable.hpp"
+#include "renderer_enums.hpp"
 
 namespace Granite
 {
@@ -36,6 +37,7 @@ class Renderer;
 class RenderQueue;
 class RenderContext;
 class RenderPass;
+class Scene;
 
 struct Transform
 {
@@ -85,10 +87,21 @@ struct RenderPassCreator
 {
 	virtual ~RenderPassCreator() = default;
 	virtual void add_render_passes(RenderGraph &graph) = 0;
-	virtual void set_renderer(Renderer *renderer) = 0;
-	virtual void set_render_queue(RenderQueue *queue) = 0;
+	virtual void set_base_renderer(Renderer *renderer) = 0;
 	virtual void set_base_render_context(const RenderContext *context) = 0;
 	virtual void setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target) = 0;
+	virtual void setup_render_pass_resources(RenderGraph &graph) = 0;
+	virtual void set_scene(Scene *scene) = 0;
+	virtual RendererType get_renderer_type() = 0;
+};
+
+struct RenderPassSinkComponent : ComponentBase
+{
+};
+
+struct CullPlaneComponent : ComponentBase
+{
+	vec4 plane;
 };
 
 struct RenderPassComponent : ComponentBase

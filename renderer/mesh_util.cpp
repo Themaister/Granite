@@ -406,6 +406,198 @@ void TexturePlane::on_device_destroyed(const Event &)
 	normalmap = nullptr;
 }
 
+void TexturePlane::setup_render_pass_resources(RenderGraph &graph)
+{
+	reflection = nullptr;
+	refraction = nullptr;
+
+	if (need_reflection)
+		reflection = &graph.get_physical_texture_resource(graph.get_texture_resource(reflection_name).get_physical_index());
+	if (need_refraction)
+		refraction = &graph.get_physical_texture_resource(graph.get_texture_resource(refraction_name).get_physical_index());
+}
+
+void TexturePlane::setup_render_pass_dependencies(RenderGraph &, RenderPass &target)
+{
+	if (need_reflection)
+		target.add_texture_input(reflection_name);
+	if (need_refraction)
+		target.add_texture_input(refraction_name);
+}
+
+void TexturePlane::set_scene(Scene *scene)
+{
+	this->scene = scene;
+}
+
+void TexturePlane::render_main_pass(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view)
+{
+	context.set_camera(proj, view);
+	visible.clear();
+	scene->gather_visible_opaque_renderables(context.get_visibility_frustum(), visible);
+	scene->gather_visible_transparent_renderables(context.get_visibility_frustum(), visible);
+	scene->gather_background_renderables(visible);
+	renderer->begin();
+	renderer->push_renderables(context, visible);
+	renderer->flush(cmd, context);
+}
+
+void TexturePlane::set_plane(const vec3 &position, const vec3 &normal, const vec3 &up, float extent_up,
+                             float extent_across)
+{
+	this->position = position;
+	this->normal = normal;
+	this->up = up;
+	rad_up = extent_up;
+	rad_x = extent_across;
+
+	dpdx = normalize(cross(normal, up)) * extent_across;
+	dpdy = normalize(up) * -extent_up;
+}
+
+void TexturePlane::set_zfar(float zfar)
+{
+	this->zfar = zfar;
+}
+
+void TexturePlane::add_render_pass(RenderGraph &graph, Type type)
+{
+	auto &device = graph.get_device();
+
+	AttachmentInfo color, depth, reflection_blur;
+	color.format = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
+	depth.format = device.get_default_depth_format();
+
+	color.size_x = 0.5f;
+	color.size_y = 0.5f;
+	depth.size_x = 0.5f;
+	depth.size_y = 0.5f;
+
+	reflection_blur.size_x = 0.25f;
+	reflection_blur.size_y = 0.25f;
+	reflection_blur.levels = 0;
+
+	auto &name = type == Reflection ? reflection_name : refraction_name;
+
+	auto &lighting = graph.add_pass(name + "-lighting", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	lighting.add_color_output(name + "-HDR", color);
+	lighting.set_depth_stencil_output(name + "-depth", depth);
+
+	lighting.set_get_clear_depth_stencil([](VkClearDepthStencilValue *value) -> bool {
+		if (value)
+		{
+			value->depth = 1.0f;
+			value->stencil = 0;
+		}
+		return true;
+	});
+
+	lighting.set_get_clear_color([](unsigned, VkClearColorValue *value) -> bool {
+		if (value)
+			memset(value, 0, sizeof(*value));
+		return true;
+	});
+
+	lighting.set_need_render_pass([this]() -> bool {
+		// No point in rendering reflection/refraction if we cannot even see it :)
+		vec3 c0 = position + dpdx + dpdy;
+		vec3 c1 = position - dpdx - dpdy;
+		AABB aabb(min(c0, c1), max(c0, c1));
+		if (!base_context->get_visibility_frustum().intersects(aabb))
+			return false;
+
+		// Only render if we are above the plane.
+		float plane_test = dot(base_context->get_render_parameters().camera_position - position, normal);
+		return plane_test > 0.0f;
+	});
+
+	lighting.set_build_render_pass([this, type](Vulkan::CommandBuffer &cmd) {
+		if (type == Reflection)
+		{
+			mat4 proj, view;
+			float z_near;
+			compute_plane_reflection(proj, view, base_context->get_render_parameters().camera_position, position, normal, up,
+			                         rad_up, rad_x, z_near, 200.0f);
+			renderer->set_mesh_renderer_options(Renderer::ENVIRONMENT_ENABLE_BIT | Renderer::SHADOW_ENABLE_BIT);
+			render_main_pass(cmd, proj, view);
+		}
+		else if (type == Refraction)
+		{
+			mat4 proj, view;
+			float z_near;
+			compute_plane_refraction(proj, view, base_context->get_render_parameters().camera_position, position, normal, up,
+			                         rad_up, rad_x, z_near, 200.0f);
+			renderer->set_mesh_renderer_options(Renderer::ENVIRONMENT_ENABLE_BIT | Renderer::SHADOW_ENABLE_BIT | Renderer::REFRACTION_ENABLE_BIT);
+			render_main_pass(cmd, proj, view);
+		}
+	});
+
+	lighting.add_texture_input("shadow-main");
+
+	auto &reflection_blur_pass = graph.add_pass(name, VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	reflection_blur_pass.add_texture_input(name + "-HDR");
+	reflection_blur_pass.add_color_output(name, reflection_blur);
+	reflection_blur_pass.set_build_render_pass([this, &reflection_blur_pass](Vulkan::CommandBuffer &cmd) {
+		reflection_blur_pass.set_texture_inputs(cmd, 0, 0, Vulkan::StockSampler::LinearClamp);
+		CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/blur.frag",
+		                             {{"METHOD", 6}});
+	});
+}
+
+#if 0
+void TexturePlane::apply_water_depth_tint(Vulkan::CommandBuffer &cmd)
+{
+	auto &device = cmd.get_device();
+	cmd.set_quad_state();
+	cmd.set_input_attachments(0, 1);
+	cmd.set_blend_enable(true);
+	cmd.set_blend_op(VK_BLEND_OP_ADD);
+	CommandBufferUtil::set_quad_vertex_state(cmd);
+	cmd.set_depth_test(true, false);
+	cmd.set_depth_compare(VK_COMPARE_OP_GREATER);
+
+	struct Tint
+	{
+		mat4 inv_view_proj;
+		vec3 falloff;
+	} tint;
+
+	tint.inv_view_proj = context.get_render_parameters().inv_view_projection;
+	tint.falloff = vec3(1.0f / 1.5f, 1.0f / 2.5f, 1.0f / 5.0f);
+	cmd.push_constants(&tint, 0, sizeof(tint));
+
+	cmd.set_blend_factors(VK_BLEND_FACTOR_ZERO, VK_BLEND_FACTOR_ZERO, VK_BLEND_FACTOR_SRC_COLOR, VK_BLEND_FACTOR_ZERO);
+	auto *program = device.get_shader_manager().register_graphics("builtin://shaders/water_tint.vert",
+	                                                              "builtin://shaders/water_tint.frag");
+	auto variant = program->register_variant({});
+	cmd.set_program(*program->get_program(variant));
+	cmd.draw(4);
+}
+#endif
+
+void TexturePlane::add_render_passes(RenderGraph &graph)
+{
+	if (need_reflection)
+		add_render_pass(graph, Reflection);
+	if (need_refraction)
+		add_render_pass(graph, Refraction);
+}
+
+RendererType TexturePlane::get_renderer_type()
+{
+	return RendererType::GeneralForward;
+}
+
+void TexturePlane::set_base_renderer(Renderer *renderer)
+{
+	this->renderer = renderer;
+}
+
+void TexturePlane::set_base_render_context(const RenderContext *context)
+{
+	base_context = context;
+}
+
 void TexturePlane::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *,
                                    RenderQueue &queue) const
 {

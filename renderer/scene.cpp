@@ -36,7 +36,9 @@ Scene::Scene()
 	  backgrounds(pool.get_component_group<UnboundedComponent, RenderableComponent>()),
 	  per_frame_updates(pool.get_component_group<PerFrameUpdateComponent>()),
 	  per_frame_update_transforms(pool.get_component_group<PerFrameUpdateTransformComponent, CachedSpatialTransformComponent>()),
-	  environments(pool.get_component_group<EnvironmentComponent>())
+	  environments(pool.get_component_group<EnvironmentComponent>()),
+	  render_pass_sinks(pool.get_component_group<RenderPassSinkComponent, RenderableComponent, CullPlaneComponent>()),
+	  render_pass_creators(pool.get_component_group<RenderPassComponent>())
 {
 
 }
@@ -62,6 +64,44 @@ static void gather_visible_renderables(const Frustum &frustum, VisibilityList &l
 		}
 		else
 			list.push_back({ renderable->renderable.get(), nullptr});
+	}
+}
+
+void Scene::add_render_passes(RenderGraph &graph)
+{
+	for (auto &pass : render_pass_creators)
+	{
+		auto *rpass = get<0>(pass)->creator;
+		rpass->add_render_passes(graph);
+	}
+}
+
+void Scene::add_render_pass_dependencies(RenderGraph &graph, RenderPass &main_pass)
+{
+	for (auto &pass : render_pass_creators)
+	{
+		auto *rpass = get<0>(pass)->creator;
+		rpass->setup_render_pass_dependencies(graph, main_pass);
+	}
+}
+
+void Scene::set_render_pass_data(Renderer *renderer, const RenderContext *context)
+{
+	for (auto &pass : render_pass_creators)
+	{
+		auto *rpass = get<0>(pass)->creator;
+		rpass->set_base_renderer(renderer);
+		rpass->set_base_render_context(context);
+		rpass->set_scene(this);
+	}
+}
+
+void Scene::bind_render_graph_resources(RenderGraph &graph)
+{
+	for (auto &pass : render_pass_creators)
+	{
+		auto *rpass = get<0>(pass)->creator;
+		rpass->setup_render_pass_resources(graph);
 	}
 }
 
@@ -100,6 +140,16 @@ void Scene::gather_background_renderables(VisibilityList &list)
 {
 	for (auto &background : backgrounds)
 		list.push_back({ get<1>(background)->renderable.get(), nullptr });
+}
+
+void Scene::gather_visible_render_pass_sinks(const vec3 &camera_pos, VisibilityList &list)
+{
+	for (auto &sink : render_pass_sinks)
+	{
+		auto &plane = get<2>(sink)->plane;
+		if (dot(vec4(camera_pos, 1.0f), plane) > 0.0f)
+			list.push_back({get<1>(sink)->renderable.get(), nullptr});
+	}
 }
 
 void Scene::gather_visible_opaque_renderables(const Frustum &frustum, VisibilityList &list)

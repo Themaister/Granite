@@ -480,6 +480,18 @@ class RenderGraph : public Vulkan::NoCopyNoMove, public EventHandler
 {
 public:
 	RenderGraph();
+
+	void set_device(Vulkan::Device *device)
+	{
+		this->device = device;
+	}
+
+	Vulkan::Device &get_device()
+	{
+		assert(device);
+		return *device;
+	}
+
 	RenderPass &add_pass(const std::string &name, VkPipelineStageFlags stages);
 	void set_backbuffer_source(const std::string &name);
 	void set_backbuffer_dimensions(const ResourceDimensions &dim)
@@ -524,6 +536,7 @@ public:
 	void install_physical_buffers(std::vector<Vulkan::BufferHandle> buffers);
 
 private:
+	Vulkan::Device *device = nullptr;
 	std::vector<std::unique_ptr<RenderPass>> passes;
 	std::vector<std::unique_ptr<RenderResource>> resources;
 	std::unordered_map<std::string, unsigned> pass_to_index;

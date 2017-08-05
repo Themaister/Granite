@@ -25,6 +25,8 @@
 #include "mesh.hpp"
 #include "vulkan_events.hpp"
 #include "importers.hpp"
+#include "render_components.hpp"
+#include "render_context.hpp"
 
 namespace Granite
 {
@@ -83,7 +85,7 @@ private:
 	void on_device_destroyed(const Event &event);
 };
 
-class TexturePlane : public AbstractRenderable, public EventHandler
+class TexturePlane : public AbstractRenderable, public EventHandler, public RenderPassCreator
 {
 public:
 	TexturePlane(const std::string &normal);
@@ -91,48 +93,57 @@ public:
 	void get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
 	                     RenderQueue &queue) const override;
 
-	void set_reflection_texture(const Vulkan::ImageView *view)
-	{
-		reflection = view;
-	}
 
-	void set_refraction_texture(const Vulkan::ImageView *view)
-	{
-		refraction = view;
-	}
-
-	void set_position(vec3 position)
-	{
-		this->position = position;
-	}
-
-	void set_dpdx(vec3 dpdx)
-	{
-		this->dpdx = dpdx;
-	}
-
-	void set_dpdy(vec3 dpdy)
-	{
-		this->dpdy = dpdy;
-	}
-
-	void set_normal(vec3 normal)
-	{
-		this->normal = normal;
-	}
+	void set_plane(const vec3 &position, const vec3 &normal, const vec3 &up, float extent_up, float extent_across);
+	void set_zfar(float zfar);
 
 private:
 	std::string normal_path;
 	const Vulkan::ImageView *reflection = nullptr;
 	const Vulkan::ImageView *refraction = nullptr;
 	Vulkan::Texture *normalmap = nullptr;
+
 	vec3 position;
 	vec3 normal;
+	vec3 up;
 	vec3 dpdx;
 	vec3 dpdy;
+	float rad_up = 0.0f;
+	float rad_x = 0.0f;
+	float zfar = 100.0f;
+
 	double elapsed = 0.0f;
 	void on_device_created(const Event &event);
 	void on_device_destroyed(const Event &event);
 	bool on_frame_time(const Event &e);
+
+	std::string reflection_name;
+	std::string refraction_name;
+
+	Renderer *renderer = nullptr;
+	const RenderContext *base_context = nullptr;
+	RenderContext context;
+	Scene *scene = nullptr;
+	VisibilityList visible;
+
+	bool need_reflection = true;
+	bool need_refraction = true;
+
+	enum Type
+	{
+		Reflection,
+		Refraction
+	};
+	void add_render_pass(RenderGraph &graph, Type type);
+
+	void add_render_passes(RenderGraph &graph) override;
+	void set_base_renderer(Renderer *renderer) override;
+	void set_base_render_context(const RenderContext *context) override;
+	void setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target) override;
+	void setup_render_pass_resources(RenderGraph &graph) override;
+	void set_scene(Scene *scene) override;
+	RendererType get_renderer_type() override;
+
+	void render_main_pass(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view);
 };
 }

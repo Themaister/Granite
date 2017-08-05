@@ -50,9 +50,15 @@ public:
 	void gather_visible_opaque_renderables(const Frustum &frustum, VisibilityList &list);
 	void gather_visible_transparent_renderables(const Frustum &frustum, VisibilityList &list);
 	void gather_visible_shadow_renderables(const Frustum &frustum, VisibilityList &list);
+	void gather_visible_render_pass_sinks(const vec3 &camera_pos, VisibilityList &list);
 	void gather_background_renderables(VisibilityList &list);
 	EnvironmentComponent *get_environment() const;
 	EntityPool &get_entity_pool();
+
+	void add_render_passes(RenderGraph &graph);
+	void add_render_pass_dependencies(RenderGraph &graph, RenderPass &main_pass);
+	void set_render_pass_data(Renderer *renderer, const RenderContext *context);
+	void bind_render_graph_resources(RenderGraph &graph);
 
 	class Node : public Util::IntrusivePtrEnabled<Node>
 	{
@@ -161,6 +167,8 @@ private:
 	std::vector<std::tuple<PerFrameUpdateComponent*>> &per_frame_updates;
 	std::vector<std::tuple<PerFrameUpdateTransformComponent*, CachedSpatialTransformComponent*>> &per_frame_update_transforms;
 	std::vector<std::tuple<EnvironmentComponent*>> &environments;
+	std::vector<std::tuple<RenderPassSinkComponent*, RenderableComponent*, CullPlaneComponent*>> &render_pass_sinks;
+	std::vector<std::tuple<RenderPassComponent*>> &render_pass_creators;
 	std::vector<EntityHandle> nodes;
 	void update_transform_tree(Node &node, const mat4 &transform, bool parent_is_dirty);
 

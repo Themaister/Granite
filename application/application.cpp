@@ -55,35 +55,6 @@ static vec3 light_direction()
 
 static const float cascade_cutoff_distance = 10.0f;
 
-void SceneViewerApplication::apply_water_depth_tint(Vulkan::CommandBuffer &cmd)
-{
-	auto &device = cmd.get_device();
-	cmd.set_quad_state();
-	cmd.set_input_attachments(0, 1);
-	cmd.set_blend_enable(true);
-	cmd.set_blend_op(VK_BLEND_OP_ADD);
-	CommandBufferUtil::set_quad_vertex_state(cmd);
-	cmd.set_depth_test(true, false);
-	cmd.set_depth_compare(VK_COMPARE_OP_GREATER);
-
-	struct Tint
-	{
-		mat4 inv_view_proj;
-		vec3 falloff;
-	} tint;
-
-	tint.inv_view_proj = context.get_render_parameters().inv_view_projection;
-	tint.falloff = vec3(1.0f / 1.5f, 1.0f / 2.5f, 1.0f / 5.0f);
-	cmd.push_constants(&tint, 0, sizeof(tint));
-
-	cmd.set_blend_factors(VK_BLEND_FACTOR_ZERO, VK_BLEND_FACTOR_ZERO, VK_BLEND_FACTOR_SRC_COLOR, VK_BLEND_FACTOR_ZERO);
-	auto *program = device.get_shader_manager().register_graphics("builtin://shaders/water_tint.vert",
-	                                                              "builtin://shaders/water_tint.frag");
-	auto variant = program->register_variant({});
-	cmd.set_program(*program->get_program(variant));
-	cmd.draw(4);
-}
-
 void SceneViewerApplication::lighting_pass(Vulkan::CommandBuffer &cmd, bool reflection_pass)
 {
 	cmd.set_quad_state();
@@ -182,11 +153,11 @@ void SceneViewerApplication::lighting_pass(Vulkan::CommandBuffer &cmd, bool refl
 SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned width, unsigned height)
 	: Application(width, height),
 #if RENDERER == RENDERER_FORWARD
-	  renderer(Renderer::Type::GeneralForward),
+	  renderer(RendererType::GeneralForward),
 #else
-      renderer(Renderer::Type::GeneralDeferred),
+      renderer(RendererType::GeneralDeferred),
 #endif
-      depth_renderer(Renderer::Type::DepthOnly),
+      depth_renderer(RendererType::DepthOnly),
       plane_reflection("builtin://gltf-sandbox/textures/ocean_normal.ktx")
 {
 	scene_loader.load_scene(path);
@@ -260,23 +231,24 @@ void SceneViewerApplication::on_device_created(const Event &e)
 	auto &device = e.as<DeviceCreatedEvent>();
 	reflection = device.get_device().get_texture_manager().request_texture(skydome_reflection);
 	irradiance = device.get_device().get_texture_manager().request_texture(skydome_irradiance);
+	graph.set_device(&device.get_device());
 }
 
 void SceneViewerApplication::on_device_destroyed(const Event &)
 {
 	reflection = nullptr;
 	irradiance = nullptr;
+	graph.set_device(nullptr);
 }
 
-void SceneViewerApplication::render_main_pass(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view, bool reflections)
+void SceneViewerApplication::render_main_pass(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view)
 {
 	auto &scene = scene_loader.get_scene();
 	context.set_camera(proj, view);
 	visible.clear();
 	scene.gather_visible_opaque_renderables(context.get_visibility_frustum(), visible);
 	scene.gather_background_renderables(visible);
-	if (reflections)
-		visible.push_back({ &plane_reflection, nullptr });
+	scene.gather_visible_render_pass_sinks(context.get_render_parameters().camera_position, visible);
 	renderer.begin();
 	renderer.push_renderables(context, visible);
 	renderer.flush(cmd, context);
@@ -290,21 +262,9 @@ static inline string tagcat(const std::string &a, const std::string &b)
 void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::string &tag, MainPassType type)
 {
 #if RENDERER == RENDERER_FORWARD
-	AttachmentInfo color, depth, reflection_blur;
+	AttachmentInfo color, depth;
 	color.format = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
 	depth.format = device.get_default_depth_format();
-
-	if (type != MainPassType::Main)
-	{
-		color.size_x = 0.5f;
-		color.size_y = 0.5f;
-		depth.size_x = 0.5f;
-		depth.size_y = 0.5f;
-
-		reflection_blur.size_x = 0.25f;
-		reflection_blur.size_y = 0.25f;
-		reflection_blur.levels = 0;
-	}
 
 	auto &lighting = graph.add_pass(tagcat("lighting", tag), VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 	lighting.add_color_output(tagcat("HDR", tag), color);
@@ -326,53 +286,18 @@ void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::st
 	});
 
 	lighting.set_build_render_pass([this, type](Vulkan::CommandBuffer &cmd) {
-		if (type == MainPassType::Reflection)
-		{
-			mat4 proj, view;
-			float z_near;
-			vec3 center = vec3(50.0f, -1.5f, 10.0f);
-			vec3 normal = vec3(0.0f, 1.0f, 0.0f);
-			float rad_up = 10.0f;
-			float rad_x = 10.0f;
-			compute_plane_reflection(proj, view, cam.get_position(), center, normal, vec3(1.0f, 0.0f, 0.0f),
-			                         rad_up, rad_x, z_near, 200.0f);
-
-			plane_reflection.set_position(center);
-			plane_reflection.set_normal(normal);
-			plane_reflection.set_dpdy(vec3(-rad_up, 0.0f, 0.0f));
-			plane_reflection.set_dpdx(vec3(0.0f, 0.0f, -rad_x));
-			renderer.set_mesh_renderer_options(Renderer::ENVIRONMENT_ENABLE_BIT | Renderer::SHADOW_ENABLE_BIT);
-			render_main_pass(cmd, proj, view, false);
-		}
-		else if (type == MainPassType::Refraction)
-		{
-			mat4 proj, view;
-			float z_near;
-			vec3 center = vec3(50.0f, -1.5f, 10.0f);
-			vec3 normal = vec3(0.0f, 1.0f, 0.0f);
-			float rad_up = 10.0f;
-			float rad_x = 10.0f;
-			compute_plane_refraction(proj, view, cam.get_position(), center, normal, vec3(1.0f, 0.0f, 0.0f),
-			                         rad_up, rad_x, z_near, 200.0f);
-			renderer.set_mesh_renderer_options(Renderer::ENVIRONMENT_ENABLE_BIT | Renderer::SHADOW_ENABLE_BIT | Renderer::REFRACTION_ENABLE_BIT);
-			render_main_pass(cmd, proj, view, false);
-		}
-		else
-		{
-			renderer.set_mesh_renderer_options(Renderer::ENVIRONMENT_ENABLE_BIT |
-			                                   Renderer::SHADOW_ENABLE_BIT |
-			                                   Renderer::FOG_ENABLE_BIT |
-			                                   Renderer::SHADOW_CASCADE_ENABLE_BIT);
-			render_main_pass(cmd, cam.get_projection(), cam.get_view(), true);
-		}
+		renderer.set_mesh_renderer_options(Renderer::ENVIRONMENT_ENABLE_BIT |
+		                                   Renderer::SHADOW_ENABLE_BIT |
+		                                   Renderer::FOG_ENABLE_BIT |
+		                                   Renderer::SHADOW_CASCADE_ENABLE_BIT);
+		render_main_pass(cmd, cam.get_projection(), cam.get_view());
 	});
 
 	lighting.add_texture_input("shadow-main");
 	if (type == MainPassType::Main)
 	{
 		lighting.add_texture_input("shadow-near");
-		gbuffer.add_texture_input("reflection");
-		gbuffer.add_texture_input("refraction");
+		scene_loader.get_scene().add_render_pass_dependencies(graph, lighting);
 	}
 #elif RENDERER == RENDERER_DEFERRED
 	AttachmentInfo emissive, albedo, normal, pbr, depth;
@@ -382,27 +307,6 @@ void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::st
 	pbr.format = VK_FORMAT_R8G8_UNORM;
 	depth.format = device.get_default_depth_stencil_format();
 
-	AttachmentInfo reflection_blur;
-	reflection_blur.format = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
-
-	if (type != MainPassType::Main)
-	{
-		emissive.size_x = 0.5f;
-		emissive.size_y = 0.5f;
-		albedo.size_x = 0.5f;
-		albedo.size_y = 0.5f;
-		normal.size_x = 0.5f;
-		normal.size_y = 0.5f;
-		pbr.size_x = 0.5f;
-		pbr.size_y = 0.5f;
-		depth.size_x = 0.5f;
-		depth.size_y = 0.5f;
-
-		reflection_blur.size_x = 0.25f;
-		reflection_blur.size_y = 0.25f;
-		reflection_blur.levels = 0;
-	}
-
 	auto &gbuffer = graph.add_pass(tagcat("gbuffer", tag), VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 	gbuffer.add_color_output(tagcat("emissive", tag), emissive);
 	gbuffer.add_color_output(tagcat("albedo", tag), albedo);
@@ -410,39 +314,7 @@ void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::st
 	gbuffer.add_color_output(tagcat("pbr", tag), pbr);
 	gbuffer.set_depth_stencil_output(tagcat("depth", tag), depth);
 	gbuffer.set_build_render_pass([this, type](Vulkan::CommandBuffer &cmd) {
-		if (type == MainPassType::Reflection)
-		{
-			mat4 proj, view;
-			float z_near;
-			vec3 center = vec3(50.0f, -1.5f, 10.0f);
-			vec3 normal = vec3(0.0f, 1.0f, 0.0f);
-			float rad_up = 10.0f;
-			float rad_x = 10.0f;
-			compute_plane_reflection(proj, view, cam.get_position(), center, normal, vec3(1.0f, 0.0f, 0.0f),
-			                         rad_up, rad_x, z_near, 200.0f);
-
-			plane_reflection.set_position(center);
-			plane_reflection.set_normal(normal);
-			plane_reflection.set_dpdy(vec3(-rad_up, 0.0f, 0.0f));
-			plane_reflection.set_dpdx(vec3(0.0f, 0.0f, -rad_x));
-			render_main_pass(cmd, proj, view, false);
-		}
-		else if (type == MainPassType::Refraction)
-		{
-			mat4 proj, view;
-			float z_near;
-			vec3 center = vec3(50.0f, -1.5f, 10.0f);
-			vec3 normal = vec3(0.0f, 1.0f, 0.0f);
-			float rad_up = 10.0f;
-			float rad_x = 10.0f;
-			compute_plane_refraction(proj, view, cam.get_position(), center, normal, vec3(1.0f, 0.0f, 0.0f),
-			                         rad_up, rad_x, z_near, 200.0f);
-			render_main_pass(cmd, proj, view, false);
-		}
-		else
-		{
-			render_main_pass(cmd, cam.get_projection(), cam.get_view(), true);
-		}
+		render_main_pass(cmd, cam.get_projection(), cam.get_view());
 	});
 
 	gbuffer.set_get_clear_depth_stencil([](VkClearDepthStencilValue *value) -> bool {
@@ -469,31 +341,13 @@ void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::st
 	lighting.set_depth_stencil_input(tagcat("depth", tag));
 
 	lighting.add_texture_input("shadow-main");
-	if (type == MainPassType::Main)
-	{
-		lighting.add_texture_input("shadow-near");
-		gbuffer.add_texture_input("reflection");
-		gbuffer.add_texture_input("refraction");
-	}
+	lighting.add_texture_input("shadow-near");
+	scene_loader.get_scene().add_render_pass_dependencies(graph, gbuffer);
 
 	lighting.set_build_render_pass([this, type](Vulkan::CommandBuffer &cmd) {
 		lighting_pass(cmd, type != MainPassType::Main);
-		if (type == MainPassType::Refraction)
-			apply_water_depth_tint(cmd);
 	});
 #endif
-
-	if (type != MainPassType::Main)
-	{
-		auto &reflection_blur_pass = graph.add_pass(tagcat("blur", tag), VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
-		reflection_blur_pass.add_texture_input(tagcat("HDR", tag));
-		reflection_blur_pass.add_color_output(tag, reflection_blur);
-		reflection_blur_pass.set_build_render_pass([this, &reflection_blur_pass](Vulkan::CommandBuffer &cmd) {
-			reflection_blur_pass.set_texture_inputs(cmd, 0, 0, Vulkan::StockSampler::LinearClamp);
-			CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/blur.frag",
-			                             {{"METHOD", 6}});
-		});
-	}
 }
 
 void SceneViewerApplication::add_shadow_pass(Vulkan::Device &device, const std::string &tag, DepthPassType type)
@@ -552,6 +406,8 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 
 	const char *backbuffer_source = getenv("GRANITE_SURFACE");
 	graph.set_backbuffer_source(backbuffer_source ? backbuffer_source : "backbuffer");
+
+	scene_loader.get_scene().add_render_passes(graph);
 
 	add_shadow_pass(swap.get_device(), "main", DepthPassType::Main);
 	add_shadow_pass(swap.get_device(), "near", DepthPassType::Near);
@@ -656,6 +512,9 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 	lighting.directional.direction = light_direction();
 	lighting.directional.color = vec3(3.0f, 2.5f, 2.5f);
 
+	context.set_camera(cam);
+	scene.set_render_pass_data(&renderer, &context);
+
 	animation_system->animate(elapsed_time);
 	scene.update_cached_transforms();
 	scene.refresh_per_frame(context);
@@ -669,8 +528,7 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 	graph.setup_attachments(device, &device.get_swapchain_view());
 	lighting.shadow_far = &graph.get_physical_texture_resource(graph.get_texture_resource("shadow-main").get_physical_index());
 	lighting.shadow_near = &graph.get_physical_texture_resource(graph.get_texture_resource("shadow-near").get_physical_index());
-	plane_reflection.set_reflection_texture(&graph.get_physical_texture_resource(graph.get_texture_resource("reflection").get_physical_index()));
-	plane_reflection.set_refraction_texture(&graph.get_physical_texture_resource(graph.get_texture_resource("refraction").get_physical_index()));
+	scene.bind_render_graph_resources(graph);
 	graph.enqueue_render_passes(device);
 
 	need_shadow_map_update = false;

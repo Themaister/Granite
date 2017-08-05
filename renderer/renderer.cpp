@@ -32,12 +32,12 @@ using namespace std;
 namespace Granite
 {
 
-Renderer::Renderer(Type type)
+Renderer::Renderer(RendererType type)
 	: type(type)
 {
 	EVENT_MANAGER_REGISTER_LATCH(Renderer, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 
-	if (type == Type::GeneralDeferred || type == Type::GeneralForward)
+	if (type == RendererType::GeneralDeferred || type == RendererType::GeneralForward)
 		set_mesh_renderer_options(SHADOW_CASCADE_ENABLE_BIT | SHADOW_ENABLE_BIT | FOG_ENABLE_BIT | ENVIRONMENT_ENABLE_BIT);
 	else
 		set_mesh_renderer_options(0);
@@ -61,16 +61,19 @@ void Renderer::set_mesh_renderer_options(RendererOptionFlags flags)
 
 		switch (type)
 		{
-		case Type::GeneralForward:
+		case RendererType::GeneralForward:
 			global_defines.push_back({ "RENDERER_FORWARD", 1 });
 			break;
 
-		case Type::GeneralDeferred:
+		case RendererType::GeneralDeferred:
 			global_defines.push_back({ "RENDERER_DEFERRED", 1 });
 			break;
 
-		case Type::DepthOnly:
+		case RendererType::DepthOnly:
 			global_defines.push_back({ "RENDERER_DEPTH", 1 });
+			break;
+
+		default:
 			break;
 		}
 
@@ -93,7 +96,7 @@ void Renderer::on_device_created(const Event &e)
 	auto &created = e.as<DeviceCreatedEvent>();
 	auto &device = created.get_device();
 
-	if (type == Type::GeneralDeferred || type == Type::GeneralForward)
+	if (type == RendererType::GeneralDeferred || type == RendererType::GeneralForward)
 	{
 		suite[ecast(RenderableType::Mesh)].init_graphics(&device.get_shader_manager(),
 		                                                 "builtin://shaders/static_mesh.vert",
@@ -109,7 +112,7 @@ void Renderer::on_device_created(const Event &e)
 		                                                         "builtin://shaders/texture_plane.vert",
 		                                                         "builtin://shaders/texture_plane.frag");
 	}
-	else if (type == Type::DepthOnly)
+	else if (type == RendererType::DepthOnly)
 	{
 		suite[ecast(RenderableType::Mesh)].init_graphics(&device.get_shader_manager(),
 		                                                 "builtin://shaders/static_mesh.vert",
@@ -159,13 +162,13 @@ void Renderer::set_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderC
 	resolution->resolution = vec2(cmd.get_viewport().width, cmd.get_viewport().height);
 	resolution->inv_resolution = vec2(1.0f / cmd.get_viewport().width, 1.0f / cmd.get_viewport().height);
 
-	if (lighting->environment_radiance)
+	if (lighting->environment_radiance != nullptr)
 		cmd.set_texture(1, 0, *lighting->environment_radiance, Vulkan::StockSampler::LinearClamp);
-	if (lighting->environment_irradiance)
+	if (lighting->environment_irradiance != nullptr)
 		cmd.set_texture(1, 1, *lighting->environment_irradiance, Vulkan::StockSampler::LinearClamp);
-	if (lighting->shadow_far)
+	if (lighting->shadow_far != nullptr)
 		cmd.set_texture(1, 2, *lighting->shadow_far, Vulkan::StockSampler::LinearShadow);
-	if (lighting->shadow_near)
+	if (lighting->shadow_near != nullptr)
 		cmd.set_texture(1, 3, *lighting->shadow_near, Vulkan::StockSampler::LinearShadow);
 }
 
@@ -173,14 +176,14 @@ void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context)
 {
 	auto *global = static_cast<RenderParameters *>(cmd.allocate_constant_data(0, 0, sizeof(RenderParameters)));
 	*global = context.get_render_parameters();
-	if (type == Type::GeneralForward)
+	if (type == RendererType::GeneralForward)
 		set_lighting_parameters(cmd, context);
 
 	queue.sort();
 
 	cmd.set_opaque_state();
 
-	if (type == Type::DepthOnly)
+	if (type == RendererType::DepthOnly)
 	{
 		cmd.set_depth_bias(true);
 		cmd.set_depth_bias(1.0f, 1.0f);
@@ -193,7 +196,7 @@ void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context)
 	queue.dispatch(Queue::Opaque, cmd, &state);
 	queue.dispatch(Queue::OpaqueEmissive, cmd, &state);
 
-	if (type == Type::GeneralForward)
+	if (type == RendererType::GeneralForward)
 		queue.dispatch(Queue::Transparent, cmd, &state);
 }
 

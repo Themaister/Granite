@@ -10,7 +10,7 @@ add_granite_library(renderer
         render_components.hpp
         mesh_util.hpp mesh_util.cpp
         material_util.hpp material_util.cpp
-        renderer.hpp renderer.cpp
+        renderer.hpp renderer.cpp renderer_enums.hpp
         material_manager.hpp material_manager.cpp
         animation_system.hpp animation_system.cpp
         render_graph.cpp render_graph.hpp

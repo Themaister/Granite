@@ -499,7 +499,10 @@ void SceneLoader::parse(const std::string &path, const std::string &json)
 		texture_plane->set_zfar(200.0f);
 		texture_plane->set_reflection_name("reflection");
 		texture_plane->set_refraction_name("refraction");
-		entity->allocate_component<CastsShadowComponent>();
+		entity->free_component<UnboundedComponent>();
+		entity->allocate_component<RenderPassSinkComponent>();
+		auto *cull_plane = entity->allocate_component<CullPlaneComponent>();
+		cull_plane->plane = texture_plane->get_plane();
 
 		auto *rpass = entity->allocate_component<RenderPassComponent>();
 		rpass->creator = texture_plane;

@@ -30,6 +30,7 @@
 #include <algorithm>
 #include "object_pool.hpp"
 #include "intrusive.hpp"
+#include <assert.h>
 
 namespace Granite
 {

@@ -500,7 +500,6 @@ void TexturePlane::add_render_pass(RenderGraph &graph, Type type)
 		return true;
 	});
 
-#if 0
 	lighting.set_need_render_pass([this]() -> bool {
 		// No point in rendering reflection/refraction if we cannot even see it :)
 		vec3 c0 = position + dpdx + dpdy;
@@ -513,7 +512,6 @@ void TexturePlane::add_render_pass(RenderGraph &graph, Type type)
 		float plane_test = dot(base_context->get_render_parameters().camera_position - position, normal);
 		return plane_test > 0.0f;
 	});
-#endif
 
 	lighting.set_build_render_pass([this, type](Vulkan::CommandBuffer &cmd) {
 		if (type == Reflection)
@@ -521,18 +519,22 @@ void TexturePlane::add_render_pass(RenderGraph &graph, Type type)
 			mat4 proj, view;
 			float z_near;
 			compute_plane_reflection(proj, view, base_context->get_render_parameters().camera_position, position, normal, up,
-			                         rad_up, rad_x, z_near, 200.0f);
+			                         rad_up, rad_x, z_near, zfar);
 			renderer->set_mesh_renderer_options(Renderer::ENVIRONMENT_ENABLE_BIT | Renderer::SHADOW_ENABLE_BIT);
-			render_main_pass(cmd, proj, view);
+
+			if (zfar > z_near)
+				render_main_pass(cmd, proj, view);
 		}
 		else if (type == Refraction)
 		{
 			mat4 proj, view;
 			float z_near;
 			compute_plane_refraction(proj, view, base_context->get_render_parameters().camera_position, position, normal, up,
-			                         rad_up, rad_x, z_near, 200.0f);
+			                         rad_up, rad_x, z_near, zfar);
 			renderer->set_mesh_renderer_options(Renderer::ENVIRONMENT_ENABLE_BIT | Renderer::SHADOW_ENABLE_BIT | Renderer::REFRACTION_ENABLE_BIT);
-			render_main_pass(cmd, proj, view);
+
+			if (zfar > z_near)
+				render_main_pass(cmd, proj, view);
 		}
 	});
 

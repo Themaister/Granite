@@ -100,6 +100,11 @@ public:
 		refraction_name = name;
 	}
 
+	vec4 get_plane() const
+	{
+		return vec4(normal, -dot(normal, position));
+	}
+
 	void get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
 	                     RenderQueue &queue) const override;
 

@@ -33,6 +33,7 @@ Scene::Scene()
 	  opaque(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, OpaqueComponent>()),
 	  transparent(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, TransparentComponent>()),
 	  shadowing(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, CastsShadowComponent>()),
+	  render_pass_shadowing(pool.get_component_group<RenderPassComponent, RenderableComponent, CastsShadowComponent>()),
 	  backgrounds(pool.get_component_group<UnboundedComponent, RenderableComponent>()),
 	  per_frame_updates(pool.get_component_group<PerFrameUpdateComponent>()),
 	  per_frame_update_transforms(pool.get_component_group<PerFrameUpdateTransformComponent, CachedSpatialTransformComponent>()),
@@ -165,6 +166,8 @@ void Scene::gather_visible_transparent_renderables(const Frustum &frustum, Visib
 void Scene::gather_visible_shadow_renderables(const Frustum &frustum, VisibilityList &list)
 {
 	gather_visible_renderables(frustum, list, shadowing);
+	for (auto &object : render_pass_shadowing)
+		list.push_back({ get<1>(object)->renderable.get(), nullptr });
 }
 
 void Scene::update_skinning(Node &node)
@@ -371,7 +374,8 @@ EntityHandle Scene::create_renderable(AbstractRenderableHandle renderable, Node 
 
 	default:
 		entity->allocate_component<OpaqueComponent>();
-		entity->allocate_component<CastsShadowComponent>();
+		if (renderable->has_static_aabb())
+			entity->allocate_component<CastsShadowComponent>();
 		break;
 	}
 

@@ -2086,21 +2086,12 @@ void RenderGraph::build_physical_barriers()
 	{
 		VkImageLayout initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 		VkImageLayout final_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-		VkImageLayout current_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 		VkAccessFlags invalidated_types = 0;
 		VkAccessFlags flushed_types = 0;
 
 		VkPipelineStageFlags invalidated_stages = 0;
 		VkPipelineStageFlags flushed_stages = 0;
-
-		// If we need to tack on multiple invalidates after the fact ...
-		unsigned last_invalidate_pass = RenderPass::Unused;
-		unsigned last_read_pass = RenderPass::Unused;
-		unsigned last_flush_pass = RenderPass::Unused;
 	};
-
-	// To handle global state.
-	vector<ResourceState> global_resource_state(physical_dimensions.size());
 
 	// To handle state inside a physical pass.
 	vector<ResourceState> resource_state;
@@ -2110,7 +2101,6 @@ void RenderGraph::build_physical_barriers()
 	{
 		resource_state.clear();
 		resource_state.resize(physical_dimensions.size());
-		unsigned physical_pass_index = unsigned(&physical_pass - physical_passes.data());
 
 		// Go over all physical passes, and observe their use of barriers.
 		// In multipass, only the first and last barriers need to be considered externally.
@@ -2150,8 +2140,6 @@ void RenderGraph::build_physical_barriers()
 
 					continue;
 				}
-
-				global_resource_state[invalidate.resource_index].last_read_pass = physical_pass_index;
 
 				// Only the first use of a resource in a physical pass needs to be handled externally.
 				if (resource_state[invalidate.resource_index].initial_layout == VK_IMAGE_LAYOUT_UNDEFINED)
@@ -2214,7 +2202,6 @@ void RenderGraph::build_physical_barriers()
 				continue;
 
 			unsigned index = unsigned(&resource - resource_state.data());
-			bool need_invalidate_barrier = false;
 
 			if (resource.final_layout == VK_IMAGE_LAYOUT_UNDEFINED)
 			{
@@ -2223,83 +2210,13 @@ void RenderGraph::build_physical_barriers()
 				resource.final_layout = resource.initial_layout;
 			}
 
-			if (resource.initial_layout != global_resource_state[index].initial_layout)
-			{
-				// Need to change the image layout before we start.
-				// If we change the layout, we need to invalidate all types and stages again.
-				global_resource_state[index].invalidated_types = 0;
-				global_resource_state[index].invalidated_stages = 0;
-			}
-
-			if (resource.invalidated_stages & ~global_resource_state[index].invalidated_stages)
-			{
-				// There are some stages which have yet to be made visible to relevant stages.
-				// If we introduce new stages, make sure we don't forget the relevant types to the new stages which we introduced.
-				need_invalidate_barrier = true;
-				global_resource_state[index].invalidated_types = 0;
-			}
-
-			if (resource.invalidated_types & ~global_resource_state[index].invalidated_types)
-			{
-				// There are some access flags which have yet to be made visible to relevant stages.
-				need_invalidate_barrier = true;
-			}
-
-			// Do we need to invalidate this resource before starting the pass?
-			if (need_invalidate_barrier)
-			{
-				Barrier *last_barrier = nullptr;
-
-				// Find the last time this resource was invalidated.
-				// Maybe we can piggy-back off an old invalidation barrier instead of invalidating different things multiple times.
-				if (global_resource_state[index].last_invalidate_pass != RenderPass::Unused)
-				{
-					unsigned last_pass = global_resource_state[index].last_invalidate_pass;
-					auto itr = find_if(begin(physical_passes[last_pass].invalidate), end(physical_passes[last_pass].invalidate), [index](const Barrier &b) {
-						return b.resource_index == index;
-					});
-
-					if (itr != end(physical_passes[last_pass].invalidate))
-						last_barrier = &*itr;
-				}
-
-				// If we just need to tack on more access flags or stages,
-				// and no layout change is needed, just modify the old barrier.
-				if (last_barrier && last_barrier->layout == resource.initial_layout)
-				{
-					last_barrier->access |= resource.invalidated_types;
-					last_barrier->stages |= resource.invalidated_stages;
-				}
-				else
-				{
-					physical_pass.invalidate.push_back(
-						{ index, resource.initial_layout, resource.invalidated_types, resource.invalidated_stages, false });
-					global_resource_state[index].invalidated_types |= resource.invalidated_types;
-					global_resource_state[index].invalidated_stages |= resource.invalidated_stages;
-					global_resource_state[index].current_layout = resource.initial_layout;
-					global_resource_state[index].last_invalidate_pass = physical_pass_index;
-
-					// An invalidation barrier will flush out relevant memory access from earlier passes.
-					global_resource_state[index].last_flush_pass = RenderPass::Unused;
-					global_resource_state[index].flushed_types = 0;
-				}
-			}
+			physical_pass.invalidate.push_back(
+					{ index, resource.initial_layout, resource.invalidated_types, resource.invalidated_stages, false });
 
 			if (resource.flushed_types)
 			{
-				if (global_resource_state[index].last_flush_pass != RenderPass::Unused)
-					throw logic_error("Two flushes in a row observed. Need to invalidate at least once in-between each flush.");
-
 				// Did the pass write anything in this pass which needs to be flushed?
 				physical_pass.flush.push_back({ index, resource.final_layout, resource.flushed_types, resource.flushed_stages, false });
-
-				// We cannot move any invalidates to earlier passes now, so clear this state out.
-				global_resource_state[index].invalidated_types = 0;
-				global_resource_state[index].invalidated_stages = 0;
-				global_resource_state[index].last_invalidate_pass = RenderPass::Unused;
-
-				// Just to detect if we have two flushes in a row. This is illegal.
-				global_resource_state[index].last_flush_pass = physical_pass_index;
 			}
 			else if (resource.invalidated_types)
 			{
@@ -2317,8 +2234,6 @@ void RenderGraph::build_physical_barriers()
 				physical_pass.mipmap_requests.push_back({ index, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
 				                                          VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL });
 			}
-
-			global_resource_state[index].current_layout = resource.final_layout;
 		}
 	}
 }

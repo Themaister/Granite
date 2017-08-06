@@ -145,7 +145,7 @@ public:
 
 	void wait_for_fence(const Fence &fence);
 	Semaphore request_semaphore();
-	void add_wait_semaphore(Semaphore semaphore, VkPipelineStageFlags stages);
+	void add_wait_semaphore(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags stages);
 
 	ShaderManager &get_shader_manager()
 	{
@@ -222,14 +222,15 @@ private:
 	VkSemaphore wsi_acquire = VK_NULL_HANDLE;
 	VkSemaphore wsi_release = VK_NULL_HANDLE;
 
-	std::vector<Semaphore> wait_semaphores;
-	std::vector<VkPipelineStageFlags> wait_stages;
+	struct QueueData
+	{
+		std::vector<Semaphore> wait_semaphores;
+		std::vector<VkPipelineStageFlags> wait_stages;
+		CommandBufferHandle staging_cmd;
+	} graphics, compute, transfer;
 
-	CommandBufferHandle graphics_staging_cmd;
-	CommandBufferHandle compute_staging_cmd;
-	CommandBufferHandle transfer_staging_cmd;
 	void begin_staging(CommandBuffer::Type type);
-	void submit_queue(Fence *fence, Semaphore *semaphore);
+	void submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore);
 
 	PerFrame &frame()
 	{
@@ -276,5 +277,7 @@ private:
 	void flush_pipeline_cache();
 
 	CommandPool &get_command_pool(CommandBuffer::Type type);
+	QueueData &get_queue_data(CommandBuffer::Type type);
+	std::vector<CommandBufferHandle> &get_queue_submissions(CommandBuffer::Type type);
 };
 }

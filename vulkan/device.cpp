@@ -46,11 +46,12 @@ Semaphore Device::request_semaphore()
 	return ptr;
 }
 
-void Device::add_wait_semaphore(Semaphore semaphore, VkPipelineStageFlags stages)
+void Device::add_wait_semaphore(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags stages)
 {
 	flush_frame();
-	wait_semaphores.push_back(semaphore);
-	wait_stages.push_back(stages);
+	auto &data = get_queue_data(type);
+	data.wait_semaphores.push_back(semaphore);
+	data.wait_stages.push_back(stages);
 }
 
 void *Device::map_host_buffer(Buffer &buffer, MemoryAccessFlags access)
@@ -345,29 +346,36 @@ void Device::init_stock_samplers()
 
 void Device::submit(CommandBufferHandle cmd, Fence *fence, Semaphore *semaphore)
 {
-	if (graphics_staging_cmd)
+	auto &data = get_queue_data(cmd->get_command_buffer_type());
+	auto &pool = get_command_pool(cmd->get_command_buffer_type());
+	auto &submissions = get_queue_submissions(cmd->get_command_buffer_type());
+
+	if (data.staging_cmd)
 	{
-		frame().graphics_cmd_pool.signal_submitted(graphics_staging_cmd->get_command_buffer());
-		vkEndCommandBuffer(graphics_staging_cmd->get_command_buffer());
-		frame().graphics_submissions.push_back(graphics_staging_cmd);
-		graphics_staging_cmd.reset();
+		pool.signal_submitted(data.staging_cmd->get_command_buffer());
+		vkEndCommandBuffer(data.staging_cmd->get_command_buffer());
+		submissions.push_back(data.staging_cmd);
+		data.staging_cmd.reset();
 	}
 
-	frame().graphics_cmd_pool.signal_submitted(cmd->get_command_buffer());
+	pool.signal_submitted(cmd->get_command_buffer());
 	vkEndCommandBuffer(cmd->get_command_buffer());
-	frame().graphics_submissions.push_back(move(cmd));
+	submissions.push_back(move(cmd));
 
 	if (fence || semaphore)
-		submit_queue(fence, semaphore);
+		submit_queue(cmd->get_command_buffer_type(), fence, semaphore);
 }
 
-void Device::submit_queue(Fence *fence, Semaphore *semaphore)
+void Device::submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore)
 {
-	if (frame().graphics_submissions.empty())
+	auto &data = get_queue_data(type);
+	auto &submissions = get_queue_submissions(type);
+
+	if (submissions.empty())
 		return;
 
 	vector<VkCommandBuffer> cmds;
-	cmds.reserve(frame().graphics_submissions.size());
+	cmds.reserve(submissions.size());
 
 	vector<VkSubmitInfo> submits;
 	submits.reserve(2);
@@ -378,17 +386,18 @@ void Device::submit_queue(Fence *fence, Semaphore *semaphore)
 	vector<VkFlags> stages[2];
 
 	// Add external wait semaphores.
-	stages[0] = wait_stages;
-	for (auto &semaphore : wait_semaphores)
+	swap(stages[0], data.wait_stages);
+
+	for (auto &semaphore : data.wait_semaphores)
 	{
 		auto wait = semaphore->consume();
 		frame().recycled_semaphores.push_back(wait);
 		waits[0].push_back(wait);
 	}
-	wait_stages.clear();
-	wait_semaphores.clear();
+	data.wait_stages.clear();
+	data.wait_semaphores.clear();
 
-	for (auto &cmd : frame().graphics_submissions)
+	for (auto &cmd : submissions)
 	{
 		if (cmd->swapchain_touched() && !frame().swapchain_touched && !frame().swapchain_consumed)
 		{
@@ -457,10 +466,25 @@ void Device::submit_queue(Fence *fence, Semaphore *semaphore)
 			submit.pSignalSemaphores = signals[i].data();
 	}
 
-	VkResult result = vkQueueSubmit(graphics_queue, submits.size(), submits.data(), cleared_fence);
+	VkQueue queue;
+	switch (type)
+	{
+	default:
+	case CommandBuffer::Type::Graphics:
+		queue = graphics_queue;
+		break;
+	case CommandBuffer::Type::Compute:
+		queue = compute_queue;
+		break;
+	case CommandBuffer::Type::Transfer:
+		queue = transfer_queue;
+		break;
+	}
+
+	VkResult result = vkQueueSubmit(queue, submits.size(), submits.data(), cleared_fence);
 	if (result != VK_SUCCESS)
 		LOGE("vkQueueSubmit failed.\n");
-	frame().graphics_submissions.clear();
+	submissions.clear();
 
 	if (fence)
 	{
@@ -478,15 +502,15 @@ void Device::submit_queue(Fence *fence, Semaphore *semaphore)
 
 void Device::flush_frame()
 {
-	if (graphics_staging_cmd)
+	if (graphics.staging_cmd)
 	{
-		frame().graphics_cmd_pool.signal_submitted(graphics_staging_cmd->get_command_buffer());
-		vkEndCommandBuffer(graphics_staging_cmd->get_command_buffer());
-		frame().graphics_submissions.push_back(graphics_staging_cmd);
-		graphics_staging_cmd.reset();
+		frame().graphics_cmd_pool.signal_submitted(graphics.staging_cmd->get_command_buffer());
+		vkEndCommandBuffer(graphics.staging_cmd->get_command_buffer());
+		frame().graphics_submissions.push_back(graphics.staging_cmd);
+		graphics.staging_cmd.reset();
 	}
 
-	submit_queue(nullptr, nullptr);
+	submit_queue(CommandBuffer::Type::Graphics, nullptr, nullptr);
 }
 
 void Device::begin_staging(CommandBuffer::Type type)
@@ -495,17 +519,31 @@ void Device::begin_staging(CommandBuffer::Type type)
 	{
 	default:
 	case CommandBuffer::Type::Graphics:
-		if (!graphics_staging_cmd)
-			graphics_staging_cmd = request_command_buffer(type);
+		if (!graphics.staging_cmd)
+			graphics.staging_cmd = request_command_buffer(type);
 		break;
 	case CommandBuffer::Type::Compute:
-		if (!compute_staging_cmd)
-			compute_staging_cmd = request_command_buffer(type);
+		if (!compute.staging_cmd)
+			compute.staging_cmd = request_command_buffer(type);
 		break;
 	case CommandBuffer::Type::Transfer:
-		if (!transfer_staging_cmd)
-			transfer_staging_cmd = request_command_buffer(type);
+		if (!transfer.staging_cmd)
+			transfer.staging_cmd = request_command_buffer(type);
 		break;
+	}
+}
+
+Device::QueueData &Device::get_queue_data(CommandBuffer::Type type)
+{
+	switch (type)
+	{
+	default:
+	case CommandBuffer::Type::Graphics:
+		return graphics;
+	case CommandBuffer::Type::Compute:
+		return compute;
+	case CommandBuffer::Type::Transfer:
+		return transfer;
 	}
 }
 
@@ -520,6 +558,20 @@ CommandPool &Device::get_command_pool(CommandBuffer::Type type)
 		return frame().compute_cmd_pool;
 	case CommandBuffer::Type::Transfer:
 		return frame().transfer_cmd_pool;
+	}
+}
+
+vector<CommandBufferHandle> &Device::get_queue_submissions(CommandBuffer::Type type)
+{
+	switch (type)
+	{
+	default:
+	case CommandBuffer::Type::Graphics:
+		return frame().graphics_submissions;
+	case CommandBuffer::Type::Compute:
+		return frame().compute_submissions;
+	case CommandBuffer::Type::Transfer:
+		return frame().transfer_submissions;
 	}
 }
 
@@ -1235,7 +1287,7 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 		bool generate_mips = (create_info.misc & IMAGE_MISC_GENERATE_MIPS_BIT) != 0;
 		unsigned copy_levels = generate_mips ? 1u : info.mipLevels;
 
-		graphics_staging_cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		graphics.staging_cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 		                                    VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT,
 		                                    VK_ACCESS_TRANSFER_WRITE_BIT);
 
@@ -1266,7 +1318,7 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 				VkDeviceSize size =
 					format_block_size(create_info.format) * extent.depth * blocks_x * blocks_y;
 
-				auto *ptr = graphics_staging_cmd->update_image(*handle, {0, 0, 0}, extent, row_length, array_height,
+				auto *ptr = graphics.staging_cmd->update_image(*handle, {0, 0, 0}, extent, row_length, array_height,
 				                                               subresource);
 				VK_ASSERT(ptr);
 				memcpy(ptr, initial[index].data, size);
@@ -1279,13 +1331,13 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 
 		if (generate_mips)
 		{
-			graphics_staging_cmd->barrier_prepare_generate_mipmap(*handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			graphics.staging_cmd->barrier_prepare_generate_mipmap(*handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 			                                                      VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
 			handle->set_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-			graphics_staging_cmd->generate_mipmap(*handle);
+			graphics.staging_cmd->generate_mipmap(*handle);
 		}
 
-		graphics_staging_cmd->image_barrier(
+		graphics.staging_cmd->image_barrier(
 				*handle, handle->get_layout(), create_info.initial_layout, VK_PIPELINE_STAGE_TRANSFER_BIT,
 				generate_mips ? VK_ACCESS_TRANSFER_READ_BIT : VK_ACCESS_TRANSFER_WRITE_BIT, handle->get_stage_flags(),
 				handle->get_access_flags() & image_layout_to_possible_access(create_info.initial_layout));
@@ -1295,7 +1347,7 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 		begin_staging(CommandBuffer::Type::Graphics);
 
 		VK_ASSERT(create_info.domain != ImageDomain::Transient);
-		graphics_staging_cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_UNDEFINED, create_info.initial_layout,
+		graphics.staging_cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_UNDEFINED, create_info.initial_layout,
 		                                    VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, handle->get_stage_flags(),
 		                                    handle->get_access_flags() &
 		                                    image_layout_to_possible_access(create_info.initial_layout));
@@ -1392,10 +1444,10 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 	{
 		begin_staging(CommandBuffer::Type::Graphics);
 
-		auto *ptr = graphics_staging_cmd->update_buffer(*handle, 0, create_info.size);
+		auto *ptr = graphics.staging_cmd->update_buffer(*handle, 0, create_info.size);
 		VK_ASSERT(ptr);
 		memcpy(ptr, initial, create_info.size);
-		graphics_staging_cmd->buffer_barrier(*handle, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+		graphics.staging_cmd->buffer_barrier(*handle, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 		                                     buffer_usage_to_possible_stages(info.usage),
 		                                     buffer_usage_to_possible_access(info.usage));
 	}

@@ -269,7 +269,8 @@ public:
 
 	// Prepares an image to have its mipmap generated.
 	// Puts the top-level into TRANSFER_SRC_OPTIMAL, and all other levels are invalidated with an UNDEFINED -> TRANSFER_DST_OPTIMAL.
-	void barrier_prepare_generate_mipmap(const Image &image, VkImageLayout base_level_layout, VkPipelineStageFlags src_stage, VkAccessFlags src_access);
+	void barrier_prepare_generate_mipmap(const Image &image, VkImageLayout base_level_layout, VkPipelineStageFlags src_stage, VkAccessFlags src_access,
+	                                     bool need_top_level_barrier = true);
 
 	// The image must have been transitioned with barrier_prepare_generate_mipmap before calling this function.
 	// After calling this function, the image will be entirely in TRANSFER_SRC_OPTIMAL layout.

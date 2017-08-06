@@ -152,7 +152,8 @@ struct ImageInitialData
 enum ImageMiscFlagBits
 {
 	IMAGE_MISC_GENERATE_MIPS_BIT = 1 << 0,
-	IMAGE_MISC_FORCE_ARRAY_BIT = 1 << 1
+	IMAGE_MISC_FORCE_ARRAY_BIT = 1 << 1,
+	IMAGE_MISC_CONCURRENT_QUEUE_BIT = 1 << 2
 };
 using ImageMiscFlags = uint32_t;
 

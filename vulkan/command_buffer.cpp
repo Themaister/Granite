@@ -197,7 +197,8 @@ void CommandBuffer::image_barrier(const Image &image, VkPipelineStageFlags src_s
 }
 
 void CommandBuffer::barrier_prepare_generate_mipmap(const Image &image, VkImageLayout base_level_layout,
-                                                    VkPipelineStageFlags src_stage, VkAccessFlags src_access)
+                                                    VkPipelineStageFlags src_stage, VkAccessFlags src_access,
+                                                    bool need_top_level_barrier)
 {
 	auto &create_info = image.get_create_info();
 	VkImageMemoryBarrier barriers[2] = {};
@@ -232,7 +233,9 @@ void CommandBuffer::barrier_prepare_generate_mipmap(const Image &image, VkImageL
 		}
 	}
 
-	barrier(src_stage, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, nullptr, 0, nullptr, 2, barriers);
+	barrier(src_stage, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, nullptr, 0, nullptr,
+	        need_top_level_barrier ? 2 : 1,
+	        need_top_level_barrier ? barriers : barriers + 1);
 }
 
 void CommandBuffer::generate_mipmap(const Image &image)

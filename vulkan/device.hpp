@@ -294,5 +294,6 @@ private:
 	void flush_frame(CommandBuffer::Type type);
 	void clear_wait_semaphores();
 	void add_staging_transfer_queue_dependency(const Buffer &dst, VkBufferUsageFlags usage);
+	void add_staging_transfer_queue_dependency(const Image &dst, VkImageUsageFlags usage);
 };
 }

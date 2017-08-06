@@ -346,9 +346,10 @@ void Device::init_stock_samplers()
 
 void Device::submit(CommandBufferHandle cmd, Fence *fence, Semaphore *semaphore)
 {
-	auto &data = get_queue_data(cmd->get_command_buffer_type());
-	auto &pool = get_command_pool(cmd->get_command_buffer_type());
-	auto &submissions = get_queue_submissions(cmd->get_command_buffer_type());
+	auto type = cmd->get_command_buffer_type();
+	auto &data = get_queue_data(type);
+	auto &pool = get_command_pool(type);
+	auto &submissions = get_queue_submissions(type);
 
 	if (data.staging_cmd)
 	{
@@ -436,10 +437,71 @@ void Device::submit_empty(CommandBuffer::Type type, Fence *fence, Semaphore *sem
 	}
 }
 
+void Device::add_queue_dependency(CommandBuffer::Type consumer, VkPipelineStageFlags stages,
+                                  CommandBuffer::Type producer)
+{
+	VK_ASSERT(consumer != producer);
+	auto &dst = get_queue_data(consumer);
+
+	VkPipelineStageFlags *dst_stages;
+	switch (producer)
+	{
+	default:
+	case CommandBuffer::Type::Graphics:
+		dst_stages = &dst.wait_for_graphics;
+		break;
+	case CommandBuffer::Type::Compute:
+		dst_stages = &dst.wait_for_compute;
+		break;
+	case CommandBuffer::Type::Transfer:
+		dst_stages = &dst.wait_for_transfer;
+		break;
+	}
+
+	// This way of dealing with the queue dependencies is very lazy, for optimal theoretical overlap we would
+	// need to flush producer here and inject a wait for consumer.
+	// This however probably isn't a good idea when we have a large amount of staging transfers.
+	// This function is generally only used by the internal APIs to inject dependencies between staging command buffers.
+	*dst_stages |= stages;
+}
+
 void Device::submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore)
 {
 	auto &data = get_queue_data(type);
 	auto &submissions = get_queue_submissions(type);
+
+	if (data.wait_for_graphics && type != CommandBuffer::Type::Graphics)
+	{
+		Semaphore transition;
+		flush_frame(CommandBuffer::Type::Graphics);
+		submit_queue(CommandBuffer::Type::Graphics, nullptr, &transition);
+		data.wait_stages.push_back(data.wait_for_graphics);
+		transition->consume();
+		data.wait_semaphores.push_back(move(transition));
+		data.wait_for_graphics = 0;
+	}
+
+	if (data.wait_for_compute && type != CommandBuffer::Type::Compute)
+	{
+		Semaphore transition;
+		flush_frame(CommandBuffer::Type::Compute);
+		submit_queue(CommandBuffer::Type::Compute, nullptr, &transition);
+		data.wait_stages.push_back(data.wait_for_compute);
+		transition->consume();
+		data.wait_semaphores.push_back(move(transition));
+		data.wait_for_compute = 0;
+	}
+
+	if (data.wait_for_transfer && type != CommandBuffer::Type::Transfer)
+	{
+		Semaphore transition;
+		flush_frame(CommandBuffer::Type::Transfer);
+		submit_queue(CommandBuffer::Type::Transfer, nullptr, &transition);
+		data.wait_stages.push_back(data.wait_for_transfer);
+		transition->consume();
+		data.wait_semaphores.push_back(move(transition));
+		data.wait_for_transfer = 0;
+	}
 
 	if (submissions.empty())
 	{

@@ -159,6 +159,8 @@ public:
 
 	PipelineEvent request_pipeline_event();
 
+	void add_queue_dependency(CommandBuffer::Type consumer, VkPipelineStageFlags stages, CommandBuffer::Type producer);
+
 private:
 	VkInstance instance = VK_NULL_HANDLE;
 	VkPhysicalDevice gpu = VK_NULL_HANDLE;
@@ -227,6 +229,11 @@ private:
 		std::vector<Semaphore> wait_semaphores;
 		std::vector<VkPipelineStageFlags> wait_stages;
 		CommandBufferHandle staging_cmd;
+
+		// Used to imply dependencies between staging command chains, injected automatically.
+		VkPipelineStageFlags wait_for_graphics = 0;
+		VkPipelineStageFlags wait_for_compute = 0;
+		VkPipelineStageFlags wait_for_transfer = 0;
 	} graphics, compute, transfer;
 
 	void begin_staging(CommandBuffer::Type type);

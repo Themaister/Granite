@@ -345,17 +345,17 @@ void Device::init_stock_samplers()
 
 void Device::submit(CommandBufferHandle cmd, Fence *fence, Semaphore *semaphore)
 {
-	if (staging_cmd)
+	if (graphics_staging_cmd)
 	{
-		frame().graphics_cmd_pool.signal_submitted(staging_cmd->get_command_buffer());
-		vkEndCommandBuffer(staging_cmd->get_command_buffer());
-		frame().submissions.push_back(staging_cmd);
-		staging_cmd.reset();
+		frame().graphics_cmd_pool.signal_submitted(graphics_staging_cmd->get_command_buffer());
+		vkEndCommandBuffer(graphics_staging_cmd->get_command_buffer());
+		frame().graphics_submissions.push_back(graphics_staging_cmd);
+		graphics_staging_cmd.reset();
 	}
 
 	frame().graphics_cmd_pool.signal_submitted(cmd->get_command_buffer());
 	vkEndCommandBuffer(cmd->get_command_buffer());
-	frame().submissions.push_back(move(cmd));
+	frame().graphics_submissions.push_back(move(cmd));
 
 	if (fence || semaphore)
 		submit_queue(fence, semaphore);
@@ -363,11 +363,11 @@ void Device::submit(CommandBufferHandle cmd, Fence *fence, Semaphore *semaphore)
 
 void Device::submit_queue(Fence *fence, Semaphore *semaphore)
 {
-	if (frame().submissions.empty())
+	if (frame().graphics_submissions.empty())
 		return;
 
 	vector<VkCommandBuffer> cmds;
-	cmds.reserve(frame().submissions.size());
+	cmds.reserve(frame().graphics_submissions.size());
 
 	vector<VkSubmitInfo> submits;
 	submits.reserve(2);
@@ -388,7 +388,7 @@ void Device::submit_queue(Fence *fence, Semaphore *semaphore)
 	wait_stages.clear();
 	wait_semaphores.clear();
 
-	for (auto &cmd : frame().submissions)
+	for (auto &cmd : frame().graphics_submissions)
 	{
 		if (cmd->swapchain_touched() && !frame().swapchain_touched && !frame().swapchain_consumed)
 		{
@@ -460,7 +460,7 @@ void Device::submit_queue(Fence *fence, Semaphore *semaphore)
 	VkResult result = vkQueueSubmit(graphics_queue, submits.size(), submits.data(), cleared_fence);
 	if (result != VK_SUCCESS)
 		LOGE("vkQueueSubmit failed.\n");
-	frame().submissions.clear();
+	frame().graphics_submissions.clear();
 
 	if (fence)
 	{
@@ -478,21 +478,35 @@ void Device::submit_queue(Fence *fence, Semaphore *semaphore)
 
 void Device::flush_frame()
 {
-	if (staging_cmd)
+	if (graphics_staging_cmd)
 	{
-		frame().graphics_cmd_pool.signal_submitted(staging_cmd->get_command_buffer());
-		vkEndCommandBuffer(staging_cmd->get_command_buffer());
-		frame().submissions.push_back(staging_cmd);
-		staging_cmd.reset();
+		frame().graphics_cmd_pool.signal_submitted(graphics_staging_cmd->get_command_buffer());
+		vkEndCommandBuffer(graphics_staging_cmd->get_command_buffer());
+		frame().graphics_submissions.push_back(graphics_staging_cmd);
+		graphics_staging_cmd.reset();
 	}
 
 	submit_queue(nullptr, nullptr);
 }
 
-void Device::begin_staging()
+void Device::begin_staging(CommandBuffer::Type type)
 {
-	if (!staging_cmd)
-		staging_cmd = request_command_buffer();
+	switch (type)
+	{
+	default:
+	case CommandBuffer::Type::Graphics:
+		if (!graphics_staging_cmd)
+			graphics_staging_cmd = request_command_buffer(type);
+		break;
+	case CommandBuffer::Type::Compute:
+		if (!compute_staging_cmd)
+			compute_staging_cmd = request_command_buffer(type);
+		break;
+	case CommandBuffer::Type::Transfer:
+		if (!transfer_staging_cmd)
+			transfer_staging_cmd = request_command_buffer(type);
+		break;
+	}
 }
 
 CommandPool &Device::get_command_pool(CommandBuffer::Type type)
@@ -1214,16 +1228,16 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 	// Copy initial data to texture.
 	if (initial)
 	{
-		begin_staging();
+		begin_staging(CommandBuffer::Type::Graphics);
 
 		VK_ASSERT(create_info.domain != ImageDomain::Transient);
 		VK_ASSERT(create_info.initial_layout != VK_IMAGE_LAYOUT_UNDEFINED);
 		bool generate_mips = (create_info.misc & IMAGE_MISC_GENERATE_MIPS_BIT) != 0;
 		unsigned copy_levels = generate_mips ? 1u : info.mipLevels;
 
-		staging_cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		                           VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT,
-		                           VK_ACCESS_TRANSFER_WRITE_BIT);
+		graphics_staging_cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		                                    VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT,
+		                                    VK_ACCESS_TRANSFER_WRITE_BIT);
 
 		handle->set_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
@@ -1252,8 +1266,8 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 				VkDeviceSize size =
 					format_block_size(create_info.format) * extent.depth * blocks_x * blocks_y;
 
-				auto *ptr = staging_cmd->update_image(*handle, {0, 0, 0}, extent, row_length, array_height,
-				                                      subresource);
+				auto *ptr = graphics_staging_cmd->update_image(*handle, {0, 0, 0}, extent, row_length, array_height,
+				                                               subresource);
 				VK_ASSERT(ptr);
 				memcpy(ptr, initial[index].data, size);
 			}
@@ -1265,25 +1279,26 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 
 		if (generate_mips)
 		{
-			staging_cmd->barrier_prepare_generate_mipmap(*handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+			graphics_staging_cmd->barrier_prepare_generate_mipmap(*handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			                                                      VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
 			handle->set_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-			staging_cmd->generate_mipmap(*handle);
+			graphics_staging_cmd->generate_mipmap(*handle);
 		}
 
-		staging_cmd->image_barrier(
-		    *handle, handle->get_layout(), create_info.initial_layout, VK_PIPELINE_STAGE_TRANSFER_BIT,
-		    generate_mips ? VK_ACCESS_TRANSFER_READ_BIT : VK_ACCESS_TRANSFER_WRITE_BIT, handle->get_stage_flags(),
-		    handle->get_access_flags() & image_layout_to_possible_access(create_info.initial_layout));
+		graphics_staging_cmd->image_barrier(
+				*handle, handle->get_layout(), create_info.initial_layout, VK_PIPELINE_STAGE_TRANSFER_BIT,
+				generate_mips ? VK_ACCESS_TRANSFER_READ_BIT : VK_ACCESS_TRANSFER_WRITE_BIT, handle->get_stage_flags(),
+				handle->get_access_flags() & image_layout_to_possible_access(create_info.initial_layout));
 	}
 	else if (create_info.initial_layout != VK_IMAGE_LAYOUT_UNDEFINED)
 	{
-		begin_staging();
+		begin_staging(CommandBuffer::Type::Graphics);
 
 		VK_ASSERT(create_info.domain != ImageDomain::Transient);
-		staging_cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_UNDEFINED, create_info.initial_layout,
-		                           VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, handle->get_stage_flags(),
-		                           handle->get_access_flags() &
-		                               image_layout_to_possible_access(create_info.initial_layout));
+		graphics_staging_cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_UNDEFINED, create_info.initial_layout,
+		                                    VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, handle->get_stage_flags(),
+		                                    handle->get_access_flags() &
+		                                    image_layout_to_possible_access(create_info.initial_layout));
 	}
 	handle->set_layout(create_info.initial_layout);
 
@@ -1352,14 +1367,14 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 
 	if (create_info.domain == BufferDomain::Device && initial && !memory_type_is_host_visible(memory_type))
 	{
-		begin_staging();
+		begin_staging(CommandBuffer::Type::Graphics);
 
-		auto *ptr = staging_cmd->update_buffer(*handle, 0, create_info.size);
+		auto *ptr = graphics_staging_cmd->update_buffer(*handle, 0, create_info.size);
 		VK_ASSERT(ptr);
 		memcpy(ptr, initial, create_info.size);
-		staging_cmd->buffer_barrier(*handle, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-		                            buffer_usage_to_possible_stages(info.usage),
-		                            buffer_usage_to_possible_access(info.usage));
+		graphics_staging_cmd->buffer_barrier(*handle, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+		                                     buffer_usage_to_possible_stages(info.usage),
+		                                     buffer_usage_to_possible_access(info.usage));
 	}
 	else if (initial)
 	{

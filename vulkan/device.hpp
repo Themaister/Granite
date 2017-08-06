@@ -207,7 +207,9 @@ private:
 		std::vector<VkBufferView> destroyed_buffer_views;
 		std::vector<VkImage> destroyed_images;
 		std::vector<VkBuffer> destroyed_buffers;
-		std::vector<CommandBufferHandle> submissions;
+		std::vector<CommandBufferHandle> graphics_submissions;
+		std::vector<CommandBufferHandle> compute_submissions;
+		std::vector<CommandBufferHandle> transfer_submissions;
 		std::vector<std::shared_ptr<FenceHolder>> fences;
 		std::vector<VkSemaphore> recycled_semaphores;
 		std::vector<VkEvent> recycled_events;
@@ -223,8 +225,10 @@ private:
 	std::vector<Semaphore> wait_semaphores;
 	std::vector<VkPipelineStageFlags> wait_stages;
 
-	CommandBufferHandle staging_cmd;
-	void begin_staging();
+	CommandBufferHandle graphics_staging_cmd;
+	CommandBufferHandle compute_staging_cmd;
+	CommandBufferHandle transfer_staging_cmd;
+	void begin_staging(CommandBuffer::Type type);
 	void submit_queue(Fence *fence, Semaphore *semaphore);
 
 	PerFrame &frame()

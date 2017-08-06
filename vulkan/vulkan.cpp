@@ -24,6 +24,7 @@
 #include "vulkan_symbol_wrapper.h"
 #include <stdexcept>
 #include <vector>
+#include <algorithm>
 #include "vulkan_events.hpp"
 
 #ifdef HAVE_GLFW
@@ -292,10 +293,23 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 	for (unsigned i = 0; i < queue_count; i++)
 	{
 		static const VkQueueFlags required = VK_QUEUE_TRANSFER_BIT;
-		if (i != graphics_queue_family && (queue_props[i].queueFlags & required) == required)
+		if (i != graphics_queue_family && i != compute_queue_family && (queue_props[i].queueFlags & required) == required)
 		{
 			transfer_queue_family = i;
 			break;
+		}
+	}
+
+	if (transfer_queue_family == VK_QUEUE_FAMILY_IGNORED)
+	{
+		for (unsigned i = 0; i < queue_count; i++)
+		{
+			static const VkQueueFlags required = VK_QUEUE_TRANSFER_BIT;
+			if (i != graphics_queue_family && (queue_props[i].queueFlags & required) == required)
+			{
+				transfer_queue_family = i;
+				break;
+			}
 		}
 	}
 

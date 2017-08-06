@@ -70,9 +70,10 @@ static inline VkAccessFlags buffer_usage_to_possible_access(VkBufferUsageFlags u
 
 enum class BufferDomain
 {
-	Device,
-	Host,
-	CachedHost
+	Device, // Device local. Probably not visible from CPU.
+	LinkedDeviceHost, // On desktop, directly mapped VRAM over PCI.
+	Host, // Host-only, needs to be synced to GPU. Might be device local as well on iGPUs.
+	CachedHost // Host-only, used for readbacks.
 };
 
 struct BufferCreateInfo

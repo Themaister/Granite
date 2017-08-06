@@ -48,7 +48,7 @@ Semaphore Device::request_semaphore()
 
 void Device::add_wait_semaphore(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags stages)
 {
-	flush_frame();
+	flush_frame(type);
 	auto &data = get_queue_data(type);
 	data.wait_semaphores.push_back(semaphore);
 	data.wait_stages.push_back(stages);
@@ -500,17 +500,29 @@ void Device::submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *sem
 	}
 }
 
-void Device::flush_frame()
+void Device::flush_frame(CommandBuffer::Type type)
 {
-	if (graphics.staging_cmd)
+	auto &data = get_queue_data(type);
+	auto &pool = get_command_pool(type);
+	auto &submissions = get_queue_submissions(type);
+
+	if (data.staging_cmd)
 	{
-		frame().graphics_cmd_pool.signal_submitted(graphics.staging_cmd->get_command_buffer());
-		vkEndCommandBuffer(graphics.staging_cmd->get_command_buffer());
-		frame().graphics_submissions.push_back(graphics.staging_cmd);
-		graphics.staging_cmd.reset();
+		pool.signal_submitted(data.staging_cmd->get_command_buffer());
+		vkEndCommandBuffer(data.staging_cmd->get_command_buffer());
+		submissions.push_back(data.staging_cmd);
+		data.staging_cmd.reset();
 	}
 
-	submit_queue(CommandBuffer::Type::Graphics, nullptr, nullptr);
+	submit_queue(type, nullptr, nullptr);
+}
+
+void Device::flush_frame()
+{
+	flush_frame(CommandBuffer::Type::Transfer);
+	flush_frame(CommandBuffer::Type::Compute);
+	flush_frame(CommandBuffer::Type::Graphics);
+
 }
 
 void Device::begin_staging(CommandBuffer::Type type)

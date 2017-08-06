@@ -279,5 +279,6 @@ private:
 	CommandPool &get_command_pool(CommandBuffer::Type type);
 	QueueData &get_queue_data(CommandBuffer::Type type);
 	std::vector<CommandBufferHandle> &get_queue_submissions(CommandBuffer::Type type);
+	void flush_frame(CommandBuffer::Type type);
 };
 }

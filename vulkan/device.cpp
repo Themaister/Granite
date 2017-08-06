@@ -495,14 +495,28 @@ void Device::begin_staging()
 		staging_cmd = request_command_buffer();
 }
 
-CommandBufferHandle Device::request_command_buffer()
+CommandPool &Device::get_command_pool(CommandBuffer::Type type)
 {
-	auto cmd = frame().graphics_cmd_pool.request_command_buffer();
+	switch (type)
+	{
+	default:
+	case CommandBuffer::Type::Graphics:
+		return frame().graphics_cmd_pool;
+	case CommandBuffer::Type::Compute:
+		return frame().compute_cmd_pool;
+	case CommandBuffer::Type::Transfer:
+		return frame().transfer_cmd_pool;
+	}
+}
+
+CommandBufferHandle Device::request_command_buffer(CommandBuffer::Type type)
+{
+	auto cmd = get_command_pool(type).request_command_buffer();
 
 	VkCommandBufferBeginInfo info = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
 	info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 	vkBeginCommandBuffer(cmd, &info);
-	return make_handle<CommandBuffer>(this, cmd, pipeline_cache);
+	return make_handle<CommandBuffer>(this, cmd, pipeline_cache, type);
 }
 
 VkSemaphore Device::set_acquire(VkSemaphore acquire)

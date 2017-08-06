@@ -194,7 +194,15 @@ class Device;
 class CommandBuffer : public Util::IntrusivePtrEnabled<CommandBuffer>
 {
 public:
-	CommandBuffer(Device *device, VkCommandBuffer cmd, VkPipelineCache cache);
+	enum class Type
+	{
+		Graphics,
+		Compute,
+		Transfer,
+		Count
+	};
+
+	CommandBuffer(Device *device, VkCommandBuffer cmd, VkPipelineCache cache, Type type);
 	VkCommandBuffer get_command_buffer()
 	{
 		return cmd;
@@ -495,10 +503,16 @@ public:
 		set_stencil_back_reference(compare_mask, write_mask, reference);
 	}
 
+	inline Type get_command_buffer_type() const
+	{
+		return type;
+	}
+
 private:
 	Device *device;
 	VkCommandBuffer cmd;
 	VkPipelineCache cache;
+	Type type;
 
 	const Framebuffer *framebuffer = nullptr;
 	const RenderPass *render_pass = nullptr;

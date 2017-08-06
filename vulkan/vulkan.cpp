@@ -340,7 +340,8 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 	if (compute_queue_family != graphics_queue_family)
 	{
 		queue_info[queue_family_count].queueFamilyIndex = compute_queue_family;
-		queue_info[queue_family_count].queueCount = transfer_queue_family == compute_queue_family ? 2 : 1;
+		queue_info[queue_family_count].queueCount = std::min(transfer_queue_family == compute_queue_family ? 2u : 1u,
+		                                                     queue_props[compute_queue_family].queueCount);
 		queue_info[queue_family_count].pQueuePriorities = prio;
 		queue_family_count++;
 	}

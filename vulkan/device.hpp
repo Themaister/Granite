@@ -69,7 +69,7 @@ public:
 	void begin_frame(unsigned index);
 	void flush_frame();
 	void wait_idle();
-	CommandBufferHandle request_command_buffer();
+	CommandBufferHandle request_command_buffer(CommandBuffer::Type type = CommandBuffer::Type::Graphics);
 	void submit(CommandBufferHandle cmd, Fence *fence = nullptr, Semaphore *semaphore = nullptr);
 
 	VkDevice get_device()
@@ -270,5 +270,7 @@ private:
 	void init_pipeline_cache();
 
 	void flush_pipeline_cache();
+
+	CommandPool &get_command_pool(CommandBuffer::Type type);
 };
 }

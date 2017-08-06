@@ -30,10 +30,11 @@ using namespace Util;
 
 namespace Vulkan
 {
-CommandBuffer::CommandBuffer(Device *device, VkCommandBuffer cmd, VkPipelineCache cache)
+CommandBuffer::CommandBuffer(Device *device, VkCommandBuffer cmd, VkPipelineCache cache, Type type)
     : device(device)
     , cmd(cmd)
     , cache(cache)
+    , type(type)
 {
 	begin_compute();
 	set_opaque_state();

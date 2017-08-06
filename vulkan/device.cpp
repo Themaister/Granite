@@ -597,7 +597,6 @@ void Device::flush_frame()
 	flush_frame(CommandBuffer::Type::Transfer);
 	flush_frame(CommandBuffer::Type::Compute);
 	flush_frame(CommandBuffer::Type::Graphics);
-
 }
 
 void Device::begin_staging(CommandBuffer::Type type)

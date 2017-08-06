@@ -366,13 +366,87 @@ void Device::submit(CommandBufferHandle cmd, Fence *fence, Semaphore *semaphore)
 		submit_queue(cmd->get_command_buffer_type(), fence, semaphore);
 }
 
+void Device::submit_empty(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore)
+{
+	auto &data = get_queue_data(type);
+	VkSubmitInfo submit = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
+
+	// Add external wait semaphores.
+	vector<VkSemaphore> waits;
+	vector<VkSemaphore> signals;
+	vector<VkFlags> stages = move(data.wait_stages);
+
+	for (auto &semaphore : data.wait_semaphores)
+	{
+		auto wait = semaphore->consume();
+		frame().recycled_semaphores.push_back(wait);
+		waits.push_back(wait);
+	}
+	data.wait_stages.clear();
+	data.wait_semaphores.clear();
+
+	// Add external signal semaphores.
+	VkSemaphore cleared_semaphore = VK_NULL_HANDLE;
+	if (semaphore)
+	{
+		cleared_semaphore = semaphore_manager.request_cleared_semaphore();
+		signals.push_back(cleared_semaphore);
+	}
+
+	submit.signalSemaphoreCount = signals.size();
+	submit.waitSemaphoreCount = waits.size();
+	if (!signals.empty())
+		submit.pSignalSemaphores = signals.data();
+	if (!stages.empty())
+		submit.pWaitDstStageMask = stages.data();
+	if (!waits.empty())
+		submit.pWaitSemaphores = waits.data();
+
+	VkQueue queue;
+	switch (type)
+	{
+	default:
+	case CommandBuffer::Type::Graphics:
+		queue = graphics_queue;
+		break;
+	case CommandBuffer::Type::Compute:
+		queue = compute_queue;
+		break;
+	case CommandBuffer::Type::Transfer:
+		queue = transfer_queue;
+		break;
+	}
+
+	VkFence cleared_fence = frame().fence_manager.request_cleared_fence();
+	VkResult result = vkQueueSubmit(queue, 1, &submit, cleared_fence);
+	if (result != VK_SUCCESS)
+		LOGE("vkQueueSubmit failed.\n");
+
+	if (fence)
+	{
+		auto ptr = make_shared<FenceHolder>(this, cleared_fence);
+		*fence = ptr;
+		frame().fences.push_back(move(ptr));
+	}
+
+	if (semaphore)
+	{
+		auto ptr = make_handle<SemaphoreHolder>(this, cleared_semaphore);
+		*semaphore = ptr;
+	}
+}
+
 void Device::submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore)
 {
 	auto &data = get_queue_data(type);
 	auto &submissions = get_queue_submissions(type);
 
 	if (submissions.empty())
+	{
+		if (fence || semaphore)
+			submit_empty(type, fence, semaphore);
 		return;
+	}
 
 	vector<VkCommandBuffer> cmds;
 	cmds.reserve(submissions.size());
@@ -386,7 +460,7 @@ void Device::submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *sem
 	vector<VkFlags> stages[2];
 
 	// Add external wait semaphores.
-	swap(stages[0], data.wait_stages);
+	stages[0] = move(data.wait_stages);
 
 	for (auto &semaphore : data.wait_semaphores)
 	{
@@ -443,12 +517,13 @@ void Device::submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *sem
 		}
 		last_cmd = cmds.size();
 	}
-	VkFence cleared_fence = frame().fence_manager.request_cleared_fence();
 
+	VkFence cleared_fence = frame().fence_manager.request_cleared_fence();
 	VkSemaphore cleared_semaphore = VK_NULL_HANDLE;
 	if (semaphore)
 	{
 		cleared_semaphore = semaphore_manager.request_cleared_semaphore();
+		signals[submits.size() - 1].push_back(cleared_semaphore);
 	}
 
 	for (unsigned i = 0; i < submits.size(); i++)

@@ -231,6 +231,7 @@ private:
 
 	void begin_staging(CommandBuffer::Type type);
 	void submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore);
+	void submit_empty(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore);
 
 	PerFrame &frame()
 	{

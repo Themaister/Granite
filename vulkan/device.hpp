@@ -159,8 +159,6 @@ public:
 
 	PipelineEvent request_pipeline_event();
 
-	void add_queue_dependency(CommandBuffer::Type consumer, VkPipelineStageFlags stages, CommandBuffer::Type producer);
-
 private:
 	VkInstance instance = VK_NULL_HANDLE;
 	VkPhysicalDevice gpu = VK_NULL_HANDLE;
@@ -174,6 +172,7 @@ private:
 	VkPhysicalDeviceMemoryProperties mem_props;
 	VkPhysicalDeviceProperties gpu_props;
 	void init_stock_samplers();
+	void add_queue_dependency(CommandBuffer::Type consumer, VkPipelineStageFlags stages, CommandBuffer::Type producer);
 
 	struct PerFrame
 	{
@@ -288,5 +287,6 @@ private:
 	QueueData &get_queue_data(CommandBuffer::Type type);
 	std::vector<CommandBufferHandle> &get_queue_submissions(CommandBuffer::Type type);
 	void flush_frame(CommandBuffer::Type type);
+	void clear_wait_semaphores();
 };
 }

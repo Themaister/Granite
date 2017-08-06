@@ -50,11 +50,6 @@ public:
 		return signalled;
 	}
 
-	void signal()
-	{
-		signalled = true;
-	}
-
 	VkSemaphore consume()
 	{
 		auto ret = semaphore;
@@ -68,7 +63,7 @@ public:
 private:
 	Device *device;
 	VkSemaphore semaphore;
-	bool signalled = false;
+	bool signalled = true;
 };
 
 using Semaphore = Util::IntrusivePtr<SemaphoreHolder>;

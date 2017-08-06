@@ -375,7 +375,7 @@ void Device::submit_empty(CommandBuffer::Type type, Fence *fence, Semaphore *sem
 	// Add external wait semaphores.
 	vector<VkSemaphore> waits;
 	vector<VkSemaphore> signals;
-	vector<VkFlags> stages = move(data.wait_stages);
+	auto stages = move(data.wait_stages);
 
 	for (auto &semaphore : data.wait_semaphores)
 	{
@@ -442,8 +442,11 @@ void Device::add_queue_dependency(CommandBuffer::Type consumer, VkPipelineStageF
 {
 	VK_ASSERT(consumer != producer);
 	auto &dst = get_queue_data(consumer);
+	auto &src = get_queue_data(producer);
 
 	VkPipelineStageFlags *dst_stages;
+	VkPipelineStageFlags *src_stages;
+
 	switch (producer)
 	{
 	default:
@@ -457,6 +460,25 @@ void Device::add_queue_dependency(CommandBuffer::Type consumer, VkPipelineStageF
 		dst_stages = &dst.wait_for_transfer;
 		break;
 	}
+
+	switch (consumer)
+	{
+	default:
+	case CommandBuffer::Type::Graphics:
+		src_stages = &src.wait_for_graphics;
+		break;
+	case CommandBuffer::Type::Compute:
+		src_stages = &src.wait_for_compute;
+		break;
+	case CommandBuffer::Type::Transfer:
+		src_stages = &src.wait_for_transfer;
+		break;
+	}
+
+	// If the stage we need to wait for, in turn waits for us, we have a problem, we need some kind of early flushing to
+	// make this work, but it will probably mess with staging command buffers because we can randomly flush those ...
+	// For now, just assert on this case, it should never happen for internal stuff.
+	VK_ASSERT(*src_stages == 0);
 
 	// This way of dealing with the queue dependencies is very lazy, for optimal theoretical overlap we would
 	// need to flush producer here and inject a wait for consumer.
@@ -472,35 +494,38 @@ void Device::submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *sem
 
 	if (data.wait_for_graphics && type != CommandBuffer::Type::Graphics)
 	{
+		// Avoid recursive waits just in case.
+		data.wait_stages.push_back(data.wait_for_graphics);
+		data.wait_for_graphics = 0;
+
 		Semaphore transition;
 		flush_frame(CommandBuffer::Type::Graphics);
 		submit_queue(CommandBuffer::Type::Graphics, nullptr, &transition);
-		data.wait_stages.push_back(data.wait_for_graphics);
-		transition->consume();
 		data.wait_semaphores.push_back(move(transition));
-		data.wait_for_graphics = 0;
 	}
 
 	if (data.wait_for_compute && type != CommandBuffer::Type::Compute)
 	{
+		// Avoid recursive waits just in case.
+		data.wait_stages.push_back(data.wait_for_compute);
+		data.wait_for_compute = 0;
+
 		Semaphore transition;
 		flush_frame(CommandBuffer::Type::Compute);
 		submit_queue(CommandBuffer::Type::Compute, nullptr, &transition);
-		data.wait_stages.push_back(data.wait_for_compute);
-		transition->consume();
 		data.wait_semaphores.push_back(move(transition));
-		data.wait_for_compute = 0;
 	}
 
 	if (data.wait_for_transfer && type != CommandBuffer::Type::Transfer)
 	{
+		// Avoid recursive waits just in case.
+		data.wait_stages.push_back(data.wait_for_transfer);
+		data.wait_for_transfer = 0;
+
 		Semaphore transition;
 		flush_frame(CommandBuffer::Type::Transfer);
 		submit_queue(CommandBuffer::Type::Transfer, nullptr, &transition);
-		data.wait_stages.push_back(data.wait_for_transfer);
-		transition->consume();
 		data.wait_semaphores.push_back(move(transition));
-		data.wait_for_transfer = 0;
 	}
 
 	if (submissions.empty())
@@ -656,7 +681,10 @@ void Device::flush_frame(CommandBuffer::Type type)
 
 void Device::flush_frame()
 {
+	// The order here is important. We need to flush transfers first, because create_buffer() and create_image()
+	// can relax semaphores into pipeline barriers if the transfer queue and compute/graphics queues alias.
 	flush_frame(CommandBuffer::Type::Transfer);
+
 	flush_frame(CommandBuffer::Type::Compute);
 	flush_frame(CommandBuffer::Type::Graphics);
 }
@@ -934,6 +962,32 @@ void Device::destroy_framebuffer(VkFramebuffer framebuffer)
 	frame().destroyed_framebuffers.push_back(framebuffer);
 }
 
+void Device::clear_wait_semaphores()
+{
+	for (auto &sem : graphics.wait_semaphores)
+		vkDestroySemaphore(device, sem->consume(), nullptr);
+	for (auto &sem : compute.wait_semaphores)
+		vkDestroySemaphore(device, sem->consume(), nullptr);
+	for (auto &sem : transfer.wait_semaphores)
+		vkDestroySemaphore(device, sem->consume(), nullptr);
+
+	graphics.wait_semaphores.clear();
+	graphics.wait_stages.clear();
+	graphics.wait_for_graphics = 0;
+	graphics.wait_for_transfer = 0;
+	graphics.wait_for_compute = 0;
+	compute.wait_semaphores.clear();
+	compute.wait_stages.clear();
+	compute.wait_for_graphics = 0;
+	compute.wait_for_transfer = 0;
+	compute.wait_for_compute = 0;
+	transfer.wait_semaphores.clear();
+	transfer.wait_stages.clear();
+	transfer.wait_for_graphics = 0;
+	transfer.wait_for_transfer = 0;
+	transfer.wait_for_compute = 0;
+}
+
 void Device::wait_idle()
 {
 	if (!per_frame.empty())
@@ -941,6 +995,8 @@ void Device::wait_idle()
 
 	if (device != VK_NULL_HANDLE)
 		vkDeviceWaitIdle(device);
+
+	clear_wait_semaphores();
 
 	for (auto &frame : per_frame)
 	{
@@ -1590,14 +1646,58 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 
 	if (create_info.domain == BufferDomain::Device && initial && !memory_type_is_host_visible(memory_type))
 	{
-		begin_staging(CommandBuffer::Type::Graphics);
+		if (transfer_queue == graphics_queue && transfer_queue == compute_queue)
+		{
+			// For single-queue systems, just use a pipeline barrier,
+			// this is more efficient than semaphores because with semaphores we will end up draining the entire graphics queue.
+			begin_staging(CommandBuffer::Type::Transfer);
 
-		auto *ptr = graphics.staging_cmd->update_buffer(*handle, 0, create_info.size);
-		VK_ASSERT(ptr);
-		memcpy(ptr, initial, create_info.size);
-		graphics.staging_cmd->buffer_barrier(*handle, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-		                                     buffer_usage_to_possible_stages(info.usage),
-		                                     buffer_usage_to_possible_access(info.usage));
+			auto *ptr = graphics.staging_cmd->update_buffer(*handle, 0, create_info.size);
+			VK_ASSERT(ptr);
+			memcpy(ptr, initial, create_info.size);
+			transfer.staging_cmd->buffer_barrier(*handle, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+			                                     buffer_usage_to_possible_stages(info.usage),
+			                                     buffer_usage_to_possible_access(info.usage));
+		}
+		else
+		{
+			begin_staging(CommandBuffer::Type::Transfer);
+			auto *ptr = transfer.staging_cmd->update_buffer(*handle, 0, create_info.size);
+			VK_ASSERT(ptr);
+			memcpy(ptr, initial, create_info.size);
+
+			if (transfer_queue == graphics_queue)
+			{
+				transfer.staging_cmd->buffer_barrier(*handle, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+				                                     buffer_usage_to_possible_stages(info.usage),
+				                                     buffer_usage_to_possible_access(info.usage));
+			}
+			else
+			{
+				add_queue_dependency(CommandBuffer::Type::Graphics,
+				                     buffer_usage_to_possible_stages(info.usage),
+				                     CommandBuffer::Type::Transfer);
+			}
+
+			if (transfer_queue == compute_queue)
+			{
+				transfer.staging_cmd->buffer_barrier(*handle, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+				                                     buffer_usage_to_possible_stages(info.usage) &
+				                                     (VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+				                                      VK_PIPELINE_STAGE_TRANSFER_BIT),
+				                                     buffer_usage_to_possible_access(info.usage) &
+				                                     (VK_ACCESS_SHADER_READ_BIT |
+				                                      VK_ACCESS_SHADER_WRITE_BIT |
+				                                      VK_ACCESS_TRANSFER_READ_BIT |
+				                                      VK_ACCESS_TRANSFER_WRITE_BIT));
+			}
+			else
+			{
+				add_queue_dependency(CommandBuffer::Type::Compute,
+				                     buffer_usage_to_possible_stages(info.usage),
+				                     CommandBuffer::Type::Transfer);
+			}
+		}
 	}
 	else if (initial)
 	{

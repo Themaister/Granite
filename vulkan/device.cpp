@@ -1446,6 +1446,7 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 	if (initial)
 		info.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
+	info.flags = create_info.flags;
 	if (create_info.usage & VK_IMAGE_USAGE_STORAGE_BIT)
 		info.flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
 

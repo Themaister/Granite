@@ -247,8 +247,13 @@ void Device::set_context(const Context &context)
 	instance = context.get_instance();
 	gpu = context.get_gpu();
 	device = context.get_device();
-	queue_family_index = context.get_queue_family();
-	queue = context.get_queue();
+
+	graphics_queue_family_index = context.get_graphics_queue_family();
+	graphics_queue = context.get_graphics_queue();
+	compute_queue_family_index = context.get_compute_queue_family();
+	compute_queue = context.get_compute_queue();
+	transfer_queue_family_index = context.get_transfer_queue_family();
+	transfer_queue = context.get_transfer_queue();
 
 	mem_props = context.get_mem_props();
 	gpu_props = context.get_gpu_props();
@@ -342,13 +347,13 @@ void Device::submit(CommandBufferHandle cmd, Fence *fence, Semaphore *semaphore)
 {
 	if (staging_cmd)
 	{
-		frame().cmd_pool.signal_submitted(staging_cmd->get_command_buffer());
+		frame().graphics_cmd_pool.signal_submitted(staging_cmd->get_command_buffer());
 		vkEndCommandBuffer(staging_cmd->get_command_buffer());
 		frame().submissions.push_back(staging_cmd);
 		staging_cmd.reset();
 	}
 
-	frame().cmd_pool.signal_submitted(cmd->get_command_buffer());
+	frame().graphics_cmd_pool.signal_submitted(cmd->get_command_buffer());
 	vkEndCommandBuffer(cmd->get_command_buffer());
 	frame().submissions.push_back(move(cmd));
 
@@ -452,7 +457,7 @@ void Device::submit_queue(Fence *fence, Semaphore *semaphore)
 			submit.pSignalSemaphores = signals[i].data();
 	}
 
-	VkResult result = vkQueueSubmit(queue, submits.size(), submits.data(), cleared_fence);
+	VkResult result = vkQueueSubmit(graphics_queue, submits.size(), submits.data(), cleared_fence);
 	if (result != VK_SUCCESS)
 		LOGE("vkQueueSubmit failed.\n");
 	frame().submissions.clear();
@@ -475,7 +480,7 @@ void Device::flush_frame()
 {
 	if (staging_cmd)
 	{
-		frame().cmd_pool.signal_submitted(staging_cmd->get_command_buffer());
+		frame().graphics_cmd_pool.signal_submitted(staging_cmd->get_command_buffer());
 		vkEndCommandBuffer(staging_cmd->get_command_buffer());
 		frame().submissions.push_back(staging_cmd);
 		staging_cmd.reset();
@@ -492,7 +497,7 @@ void Device::begin_staging()
 
 CommandBufferHandle Device::request_command_buffer()
 {
-	auto cmd = frame().cmd_pool.request_command_buffer();
+	auto cmd = frame().graphics_cmd_pool.request_command_buffer();
 
 	VkCommandBufferBeginInfo info = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
 	info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -554,10 +559,15 @@ void Device::init_virtual_swapchain(unsigned num_swapchain_images)
 	per_frame.clear();
 
 	for (unsigned i = 0; i < num_swapchain_images; i++)
-		per_frame.emplace_back(new PerFrame(this, allocator, semaphore_manager, event_manager, queue_family_index));
+	{
+		per_frame.emplace_back(new PerFrame(this, allocator, semaphore_manager, event_manager,
+		                                    graphics_queue_family_index,
+		                                    compute_queue_family_index,
+		                                    transfer_queue_family_index));
+	}
 }
 
-void Device::init_swapchain(const vector<VkImage> swapchain_images, unsigned width, unsigned height, VkFormat format)
+void Device::init_swapchain(const vector<VkImage> &swapchain_images, unsigned width, unsigned height, VkFormat format)
 {
 	wait_idle();
 
@@ -573,7 +583,10 @@ void Device::init_swapchain(const vector<VkImage> swapchain_images, unsigned wid
 
 	for (auto &image : swapchain_images)
 	{
-		auto frame = unique_ptr<PerFrame>(new PerFrame(this, allocator, semaphore_manager, event_manager, queue_family_index));
+		auto frame = unique_ptr<PerFrame>(new PerFrame(this, allocator, semaphore_manager, event_manager,
+		                                               graphics_queue_family_index,
+		                                               compute_queue_family_index,
+		                                               transfer_queue_family_index));
 
 		VkImageViewCreateInfo view_info = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
 		view_info.image = image;
@@ -600,12 +613,16 @@ void Device::init_swapchain(const vector<VkImage> swapchain_images, unsigned wid
 
 Device::PerFrame::PerFrame(Device *device, DeviceAllocator &global, SemaphoreManager &semaphore_manager,
                            EventManager &event_manager,
-                           uint32_t queue_family_index)
+                           uint32_t graphics_queue_family_index,
+                           uint32_t compute_queue_family_index,
+                           uint32_t transfer_queue_family_index)
     : device(device->get_device())
     , global_allocator(global)
     , semaphore_manager(semaphore_manager)
     , event_manager(event_manager)
-    , cmd_pool(device->get_device(), queue_family_index)
+    , graphics_cmd_pool(device->get_device(), graphics_queue_family_index)
+    , compute_cmd_pool(device->get_device(), compute_queue_family_index)
+    , transfer_cmd_pool(device->get_device(), transfer_queue_family_index)
     , fence_manager(device->get_device())
     , vbo_chain(device, 1024 * 1024, 64, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT)
     , ibo_chain(device, 1024 * 1024, 64, VK_BUFFER_USAGE_INDEX_BUFFER_BIT)
@@ -739,7 +756,9 @@ void Device::PerFrame::begin()
 	vbo_chain.discard();
 	ibo_chain.discard();
 	fence_manager.begin();
-	cmd_pool.begin();
+	graphics_cmd_pool.begin();
+	compute_cmd_pool.begin();
+	transfer_cmd_pool.begin();
 
 	for (auto &framebuffer : destroyed_framebuffers)
 		vkDestroyFramebuffer(device, framebuffer, nullptr);

@@ -58,7 +58,7 @@ public:
 	Device();
 	~Device();
 	void set_context(const Context &context);
-	void init_swapchain(const std::vector<VkImage> swapchain_images, unsigned width, unsigned height, VkFormat format);
+	void init_swapchain(const std::vector<VkImage> &swapchain_images, unsigned width, unsigned height, VkFormat format);
 	void init_virtual_swapchain(unsigned num_swapchain_images);
 
 	unsigned get_num_swapchain_images() const
@@ -163,7 +163,9 @@ private:
 	VkInstance instance = VK_NULL_HANDLE;
 	VkPhysicalDevice gpu = VK_NULL_HANDLE;
 	VkDevice device = VK_NULL_HANDLE;
-	VkQueue queue = VK_NULL_HANDLE;
+	VkQueue graphics_queue = VK_NULL_HANDLE;
+	VkQueue compute_queue = VK_NULL_HANDLE;
+	VkQueue transfer_queue = VK_NULL_HANDLE;
 	DeviceAllocator allocator;
 	uint64_t cookie = 0;
 
@@ -175,7 +177,9 @@ private:
 	{
 		PerFrame(Device *device, DeviceAllocator &global, SemaphoreManager &semaphore_manager,
 		         EventManager &event_manager,
-		         uint32_t queue_family_index);
+		         uint32_t graphics_queue_family_index,
+		         uint32_t compute_queue_family_index,
+		         uint32_t transfer_queue_family_index);
 		~PerFrame();
 		void operator=(const PerFrame &) = delete;
 		PerFrame(const PerFrame &) = delete;
@@ -187,7 +191,9 @@ private:
 		DeviceAllocator &global_allocator;
 		SemaphoreManager &semaphore_manager;
 		EventManager &event_manager;
-		CommandPool cmd_pool;
+		CommandPool graphics_cmd_pool;
+		CommandPool compute_cmd_pool;
+		CommandPool transfer_cmd_pool;
 		ImageHandle backbuffer;
 		FenceManager fence_manager;
 
@@ -240,7 +246,9 @@ private:
 	std::vector<std::unique_ptr<PerFrame>> per_frame;
 
 	unsigned current_swapchain_index = 0;
-	uint32_t queue_family_index = 0;
+	uint32_t graphics_queue_family_index = 0;
+	uint32_t compute_queue_family_index = 0;
+	uint32_t transfer_queue_family_index = 0;
 
 	uint32_t find_memory_type(BufferDomain domain, uint32_t mask);
 	uint32_t find_memory_type(ImageDomain domain, uint32_t mask);

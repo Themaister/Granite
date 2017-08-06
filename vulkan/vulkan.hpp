@@ -93,9 +93,19 @@ public:
 		return device;
 	}
 
-	VkQueue get_queue() const
+	VkQueue get_graphics_queue() const
 	{
-		return queue;
+		return graphics_queue;
+	}
+
+	VkQueue get_compute_queue() const
+	{
+		return compute_queue;
+	}
+
+	VkQueue get_transfer_queue() const
+	{
+		return transfer_queue;
 	}
 
 	const VkPhysicalDeviceProperties &get_gpu_props() const
@@ -108,9 +118,19 @@ public:
 		return mem_props;
 	}
 
-	uint32_t get_queue_family() const
+	uint32_t get_graphics_queue_family() const
 	{
-		return queue_family;
+		return graphics_queue_family;
+	}
+
+	uint32_t get_compute_queue_family() const
+	{
+		return compute_queue_family;
+	}
+
+	uint32_t get_transfer_queue_family() const
+	{
+		return transfer_queue_family;
 	}
 
 	void release_instance()
@@ -133,8 +153,12 @@ private:
 	VkPhysicalDeviceProperties gpu_props;
 	VkPhysicalDeviceMemoryProperties mem_props;
 
-	VkQueue queue = VK_NULL_HANDLE;
-	uint32_t queue_family = VK_QUEUE_FAMILY_IGNORED;
+	VkQueue graphics_queue = VK_NULL_HANDLE;
+	VkQueue compute_queue = VK_NULL_HANDLE;
+	VkQueue transfer_queue = VK_NULL_HANDLE;
+	uint32_t graphics_queue_family = VK_QUEUE_FAMILY_IGNORED;
+	uint32_t compute_queue_family = VK_QUEUE_FAMILY_IGNORED;
+	uint32_t transfer_queue_family = VK_QUEUE_FAMILY_IGNORED;
 
 	bool create_instance(const char **instance_ext, uint32_t instance_ext_count);
 	bool create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const char **required_device_extensions,

@@ -88,8 +88,12 @@ Context::Context(VkInstance instance, VkPhysicalDevice gpu, VkDevice device, VkQ
     : device(device)
     , instance(instance)
     , gpu(gpu)
-    , queue(queue)
-    , queue_family(queue_family)
+    , graphics_queue(queue)
+    , compute_queue(queue)
+    , transfer_queue(queue)
+    , graphics_queue_family(queue_family)
+    , compute_queue_family(queue_family)
+    , transfer_queue_family(queue_family)
     , owned_instance(false)
     , owned_device(false)
 {
@@ -257,39 +261,99 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 		VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance, vkGetPhysicalDeviceSurfaceSupportKHR);
 	}
 
-	bool found_queue = false;
 	for (unsigned i = 0; i < queue_count; i++)
 	{
-		VkBool32 supported = surface == VK_NULL_HANDLE;
 #ifdef HAVE_GLFW
-		supported = glfwGetPhysicalDevicePresentationSupport(instance, gpu, i);
+		VkBool32 supported = glfwGetPhysicalDevicePresentationSupport(instance, gpu, i);
 #else
+		VkBool32 supported = surface == VK_NULL_HANDLE;
 		if (surface != VK_NULL_HANDLE)
 			vkGetPhysicalDeviceSurfaceSupportKHR(gpu, i, surface, &supported);
 #endif
 
-		VkQueueFlags required = VK_QUEUE_COMPUTE_BIT | VK_QUEUE_GRAPHICS_BIT;
+		static const VkQueueFlags required = VK_QUEUE_COMPUTE_BIT | VK_QUEUE_GRAPHICS_BIT;
 		if (supported && ((queue_props[i].queueFlags & required) == required))
 		{
-			found_queue = true;
-			queue_family = i;
+			graphics_queue_family = i;
 			break;
 		}
 	}
 
-	if (!found_queue)
+	for (unsigned i = 0; i < queue_count; i++)
+	{
+		static const VkQueueFlags required = VK_QUEUE_COMPUTE_BIT;
+		if (i != graphics_queue_family && (queue_props[i].queueFlags & required) == required)
+		{
+			compute_queue_family = i;
+			break;
+		}
+	}
+
+	for (unsigned i = 0; i < queue_count; i++)
+	{
+		static const VkQueueFlags required = VK_QUEUE_TRANSFER_BIT;
+		if (i != graphics_queue_family && (queue_props[i].queueFlags & required) == required)
+		{
+			transfer_queue_family = i;
+			break;
+		}
+	}
+
+	if (graphics_queue_family == VK_QUEUE_FAMILY_IGNORED)
 		return false;
 
-	static const float prio = 1.0f;
-	VkDeviceQueueCreateInfo queue_info = { VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO };
+	unsigned universal_queue_index = 1;
+	uint32_t graphics_queue_index = 0;
+	uint32_t compute_queue_index = 0;
+	uint32_t transfer_queue_index = 0;
+
+	if (compute_queue_family == VK_QUEUE_FAMILY_IGNORED)
+	{
+		compute_queue_family = graphics_queue_family;
+		compute_queue_index = std::min(queue_props[graphics_queue_family].queueCount - 1, universal_queue_index);
+		universal_queue_index++;
+	}
+
+	if (transfer_queue_family == VK_QUEUE_FAMILY_IGNORED)
+	{
+		transfer_queue_family = graphics_queue_family;
+		transfer_queue_index = std::min(queue_props[graphics_queue_family].queueCount - 1, universal_queue_index);
+		universal_queue_index++;
+	}
+	else if (transfer_queue_family == compute_queue_family)
+		transfer_queue_index = std::min(queue_props[compute_queue_family].queueCount - 1, 1u);
+
+	static const float prio[3] = { 1.0f, 1.0f, 1.0f };
+
+	unsigned queue_family_count = 0;
+	VkDeviceQueueCreateInfo queue_info[3] = {};
 
 	VkDeviceCreateInfo device_info = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
-	device_info.pQueueCreateInfos = &queue_info;
+	device_info.pQueueCreateInfos = queue_info;
 
-	queue_info.queueFamilyIndex = queue_family;
-	queue_info.queueCount = 1;
-	queue_info.pQueuePriorities = &prio;
-	device_info.queueCreateInfoCount = 1;
+	queue_info[queue_family_count].queueFamilyIndex = graphics_queue_family;
+	queue_info[queue_family_count].queueCount = std::min(universal_queue_index,
+	                                                     queue_props[graphics_queue_family].queueCount);
+	queue_info[queue_family_count].pQueuePriorities = prio;
+	queue_family_count++;
+
+	if (compute_queue_family != graphics_queue_family)
+	{
+		queue_info[queue_family_count].queueFamilyIndex = compute_queue_family;
+		queue_info[queue_family_count].queueCount = transfer_queue_family == compute_queue_family ? 2 : 1;
+		queue_info[queue_family_count].pQueuePriorities = prio;
+		queue_family_count++;
+	}
+
+	if (transfer_queue_family != graphics_queue_family && transfer_queue_family != compute_queue_family)
+	{
+		queue_info[queue_family_count].queueFamilyIndex = transfer_queue_family;
+		queue_info[queue_family_count].queueCount = 1;
+		queue_info[queue_family_count].pQueuePriorities = prio;
+		queue_family_count++;
+	}
+
+	device_info.queueCreateInfoCount = queue_family_count;
 
 	// Should query for these, but no big deal for now.
 	device_info.ppEnabledExtensionNames = required_device_extensions;
@@ -331,7 +395,9 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 		return false;
 
 	vulkan_symbol_wrapper_load_core_device_symbols(device);
-	vkGetDeviceQueue(device, queue_family, 0, &queue);
+	vkGetDeviceQueue(device, graphics_queue_family, graphics_queue_index, &graphics_queue);
+	vkGetDeviceQueue(device, compute_queue_family, compute_queue_index, &compute_queue);
+	vkGetDeviceQueue(device, transfer_queue_family, transfer_queue_index, &transfer_queue);
 	return true;
 }
 }

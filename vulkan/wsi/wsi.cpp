@@ -61,7 +61,7 @@ bool WSI::init(Granite::ApplicationPlatform *platform, unsigned width, unsigned 
 	VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_EXTENSION_SYMBOL(context->get_device(), vkQueuePresentKHR);
 
 	VkBool32 supported = VK_FALSE;
-	vkGetPhysicalDeviceSurfaceSupportKHR(context->get_gpu(), context->get_queue_family(), surface, &supported);
+	vkGetPhysicalDeviceSurfaceSupportKHR(context->get_gpu(), context->get_graphics_queue_family(), surface, &supported);
 	if (!supported)
 		return false;
 
@@ -197,7 +197,7 @@ bool WSI::end_frame()
 	info.pImageIndices = &swapchain_index;
 	info.pResults = &result;
 
-	VkResult overall = vkQueuePresentKHR(context->get_queue(), &info);
+	VkResult overall = vkQueuePresentKHR(context->get_graphics_queue(), &info);
 	if (overall != VK_SUCCESS || result != VK_SUCCESS)
 	{
 		LOGE("vkQueuePresentKHR failed.\n");

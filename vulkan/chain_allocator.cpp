@@ -45,14 +45,20 @@ void ChainAllocator::reset()
 	large_buffers.clear();
 	offset = 0;
 	chain_index = 0;
+	start_flush_buffer = 0;
+	start_flush_offset = 0;
+	host = nullptr;
 }
 
 ChainDataAllocation ChainAllocator::allocate(VkDeviceSize size)
 {
+	BufferDomain ideal_domain = (usage & ~VK_BUFFER_USAGE_TRANSFER_SRC_BIT) != 0 ? BufferDomain::Device : BufferDomain::Host;
+	VkBufferUsageFlags extra_usage = ideal_domain == BufferDomain::Device ? VK_BUFFER_USAGE_TRANSFER_DST_BIT : 0;
+
 	// Fallback to dedicated allocation.
 	if (size > block_size)
 	{
-		auto gpu_buffer = device->create_buffer({ BufferDomain::Device, size, usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT }, nullptr);
+		auto gpu_buffer = device->create_buffer({ ideal_domain, size, usage | extra_usage }, nullptr);
 		BufferHandle cpu_buffer;
 
 		ChainDataAllocation alloc = {};
@@ -83,13 +89,13 @@ ChainDataAllocation ChainAllocator::allocate(VkDeviceSize size)
 
 	if (chain_index >= buffers.size())
 	{
-		auto gpu_buffer = device->create_buffer({ BufferDomain::Device, size, usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT }, nullptr);
+		auto gpu_buffer = device->create_buffer({ ideal_domain, block_size, usage | extra_usage }, nullptr);
 		BufferHandle cpu_buffer;
 
 		host = static_cast<uint8_t *>(device->map_host_buffer(*gpu_buffer, MEMORY_ACCESS_WRITE));
 		if (!host)
 		{
-			cpu_buffer = device->create_buffer({ BufferDomain::Host, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT }, nullptr);
+			cpu_buffer = device->create_buffer({ BufferDomain::Host, block_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT }, nullptr);
 			host = static_cast<uint8_t *>(device->map_host_buffer(*cpu_buffer, MEMORY_ACCESS_WRITE));
 		}
 		else
@@ -115,40 +121,46 @@ void ChainAllocator::sync_to_gpu()
 			device->sync_buffer_to_gpu(*buffer.gpu, *buffer.cpu, 0, buffer.gpu->get_create_info().size);
 	large_buffers.clear();
 
-	auto current_index = start_flush_buffer;
-
-	// Flush the current node.
-	if (start_flush_offset != 0)
+	if (!buffers.empty())
 	{
 		auto &buffer = buffers[start_flush_buffer];
 
-		auto to_flush_bytes = buffer.gpu->get_create_info().size - start_flush_offset;
+		bool flush_all = start_flush_buffer < chain_index;
+		auto to_flush_bytes = (flush_all ? buffer.gpu->get_create_info().size : offset) - start_flush_offset;
+
 		if (buffer.gpu != buffer.cpu && to_flush_bytes)
 			device->sync_buffer_to_gpu(*buffer.gpu, *buffer.cpu, start_flush_offset, to_flush_bytes);
 
-		start_flush_offset = 0;
-		start_flush_buffer++;
+		if (flush_all)
+		{
+			start_flush_offset = 0;
+			start_flush_buffer++;
+		}
+		else
+			start_flush_offset = offset;
 	}
 
 	// Completely flush nodes.
-	for (unsigned i = start_flush_buffer; i < chain_index; i++)
+	while (start_flush_buffer < chain_index)
 	{
 		auto &buffer = buffers[start_flush_buffer];
 		if (buffer.gpu != buffer.cpu)
 			device->sync_buffer_to_gpu(*buffer.gpu, *buffer.cpu, 0, buffer.gpu->get_create_info().size);
+
+		start_flush_buffer++;
+		start_flush_offset = 0;
 	}
 
 	// The last node might not be fully complete, partially sync.
 	// We might have done this sync already in the first branch ...
-	if (offset && current_index != chain_index)
+	if (start_flush_offset < offset && start_flush_buffer == chain_index)
 	{
-		auto &buffer = buffers[chain_index];
+		auto &buffer = buffers[start_flush_buffer];
 		if (buffer.gpu != buffer.cpu)
-			device->sync_buffer_to_gpu(*buffer.gpu, *buffer.cpu, 0, offset);
-	}
+			device->sync_buffer_to_gpu(*buffer.gpu, *buffer.cpu, start_flush_offset, offset - start_flush_offset);
 
-	start_flush_buffer = chain_index;
-	start_flush_offset = offset;
+		start_flush_offset = offset;
+	}
 }
 
 void ChainAllocator::discard()

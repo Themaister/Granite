@@ -364,7 +364,7 @@ void Device::submit(CommandBufferHandle cmd, Fence *fence, Semaphore *semaphore)
 	submissions.push_back(move(cmd));
 
 	if (fence || semaphore)
-		submit_queue(cmd->get_command_buffer_type(), fence, semaphore);
+		submit_queue(type, fence, semaphore);
 }
 
 void Device::submit_empty(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore)
@@ -542,9 +542,6 @@ void Device::sync_buffer_to_gpu(const Buffer &dst, const Buffer &src, VkDeviceSi
 
 void Device::submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore)
 {
-	// Flush any copies for pending chain allocators.
-	frame().sync_to_gpu();
-
 	auto &data = get_queue_data(type);
 	auto &submissions = get_queue_submissions(type);
 
@@ -723,6 +720,12 @@ void Device::flush_frame(CommandBuffer::Type type)
 	auto &data = get_queue_data(type);
 	auto &pool = get_command_pool(type);
 	auto &submissions = get_queue_submissions(type);
+
+	if (type == CommandBuffer::Type::Transfer)
+	{
+		// Flush any copies for pending chain allocators.
+		frame().sync_to_gpu();
+	}
 
 	if (data.staging_cmd)
 	{
@@ -1194,9 +1197,8 @@ uint32_t Device::find_memory_type(BufferDomain domain, uint32_t mask)
 		break;
 
 	case BufferDomain::Host:
-		desired = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
-		          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-		fallback = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+		desired = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+		fallback = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
 		break;
 
 	case BufferDomain::CachedHost:

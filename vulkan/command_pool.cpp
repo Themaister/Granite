@@ -40,9 +40,6 @@ CommandPool::~CommandPool()
 	vkDestroyCommandPool(device, pool, nullptr);
 }
 
-#ifdef VULKAN_DEBUG
-#endif
-
 void CommandPool::signal_submitted(VkCommandBuffer cmd)
 {
 #ifdef VULKAN_DEBUG

@@ -487,8 +487,64 @@ void Device::add_queue_dependency(CommandBuffer::Type consumer, VkPipelineStageF
 	*dst_stages |= stages;
 }
 
+void Device::add_staging_transfer_queue_dependency(const Buffer &dst, VkBufferUsageFlags usage)
+{
+	if (transfer_queue == graphics_queue && transfer_queue == compute_queue)
+	{
+		// For single-queue systems, just use a pipeline barrier,
+		// this is more efficient than semaphores because with semaphores we will end up draining the entire graphics queue.
+		transfer.staging_cmd->buffer_barrier(dst, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+		                                     buffer_usage_to_possible_stages(usage),
+		                                     buffer_usage_to_possible_access(usage));
+	}
+	else
+	{
+		if (transfer_queue == graphics_queue)
+		{
+			transfer.staging_cmd->buffer_barrier(dst, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+			                                     buffer_usage_to_possible_stages(usage),
+			                                     buffer_usage_to_possible_access(usage));
+		}
+		else
+		{
+			add_queue_dependency(CommandBuffer::Type::Graphics,
+			                     buffer_usage_to_possible_stages(usage),
+			                     CommandBuffer::Type::Transfer);
+		}
+
+		if (transfer_queue == compute_queue)
+		{
+			transfer.staging_cmd->buffer_barrier(dst, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+			                                     buffer_usage_to_possible_stages(usage) &
+			                                     (VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+			                                      VK_PIPELINE_STAGE_TRANSFER_BIT),
+			                                     buffer_usage_to_possible_access(usage) &
+			                                     (VK_ACCESS_SHADER_READ_BIT |
+			                                      VK_ACCESS_SHADER_WRITE_BIT |
+			                                      VK_ACCESS_TRANSFER_READ_BIT |
+			                                      VK_ACCESS_TRANSFER_WRITE_BIT));
+		}
+		else
+		{
+			add_queue_dependency(CommandBuffer::Type::Compute,
+			                     buffer_usage_to_possible_stages(usage),
+			                     CommandBuffer::Type::Transfer);
+		}
+	}
+}
+
+void Device::sync_buffer_to_gpu(const Buffer &dst, const Buffer &src, VkDeviceSize offset, VkDeviceSize size)
+{
+	begin_staging(CommandBuffer::Type::Transfer);
+	transfer.staging_cmd->copy_buffer(dst, offset, src, offset, size);
+	add_staging_transfer_queue_dependency(dst, dst.get_create_info().usage);
+}
+
 void Device::submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore)
 {
+	// Flush any copies for pending chain allocators.
+	frame().sync_to_gpu();
+
 	auto &data = get_queue_data(type);
 	auto &submissions = get_queue_submissions(type);
 
@@ -1031,6 +1087,14 @@ void Device::begin_frame(unsigned index)
 	physical_allocator.begin_frame();
 	for (auto &allocator : descriptor_set_allocators)
 		allocator.second->begin_frame();
+}
+
+void Device::PerFrame::sync_to_gpu()
+{
+	ubo_chain.sync_to_gpu();
+	staging_chain.sync_to_gpu();
+	vbo_chain.sync_to_gpu();
+	ibo_chain.sync_to_gpu();
 }
 
 void Device::PerFrame::begin()
@@ -1646,58 +1710,11 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 
 	if (create_info.domain == BufferDomain::Device && initial && !memory_type_is_host_visible(memory_type))
 	{
-		if (transfer_queue == graphics_queue && transfer_queue == compute_queue)
-		{
-			// For single-queue systems, just use a pipeline barrier,
-			// this is more efficient than semaphores because with semaphores we will end up draining the entire graphics queue.
-			begin_staging(CommandBuffer::Type::Transfer);
-
-			auto *ptr = graphics.staging_cmd->update_buffer(*handle, 0, create_info.size);
-			VK_ASSERT(ptr);
-			memcpy(ptr, initial, create_info.size);
-			transfer.staging_cmd->buffer_barrier(*handle, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-			                                     buffer_usage_to_possible_stages(info.usage),
-			                                     buffer_usage_to_possible_access(info.usage));
-		}
-		else
-		{
-			begin_staging(CommandBuffer::Type::Transfer);
-			auto *ptr = transfer.staging_cmd->update_buffer(*handle, 0, create_info.size);
-			VK_ASSERT(ptr);
-			memcpy(ptr, initial, create_info.size);
-
-			if (transfer_queue == graphics_queue)
-			{
-				transfer.staging_cmd->buffer_barrier(*handle, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-				                                     buffer_usage_to_possible_stages(info.usage),
-				                                     buffer_usage_to_possible_access(info.usage));
-			}
-			else
-			{
-				add_queue_dependency(CommandBuffer::Type::Graphics,
-				                     buffer_usage_to_possible_stages(info.usage),
-				                     CommandBuffer::Type::Transfer);
-			}
-
-			if (transfer_queue == compute_queue)
-			{
-				transfer.staging_cmd->buffer_barrier(*handle, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-				                                     buffer_usage_to_possible_stages(info.usage) &
-				                                     (VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
-				                                      VK_PIPELINE_STAGE_TRANSFER_BIT),
-				                                     buffer_usage_to_possible_access(info.usage) &
-				                                     (VK_ACCESS_SHADER_READ_BIT |
-				                                      VK_ACCESS_SHADER_WRITE_BIT |
-				                                      VK_ACCESS_TRANSFER_READ_BIT |
-				                                      VK_ACCESS_TRANSFER_WRITE_BIT));
-			}
-			else
-			{
-				add_queue_dependency(CommandBuffer::Type::Compute,
-				                     buffer_usage_to_possible_stages(info.usage),
-				                     CommandBuffer::Type::Transfer);
-			}
-		}
+		begin_staging(CommandBuffer::Type::Transfer);
+		auto *ptr = transfer.staging_cmd->update_buffer(*handle, 0, create_info.size);
+		VK_ASSERT(ptr);
+		memcpy(ptr, initial, create_info.size);
+		add_staging_transfer_queue_dependency(*handle, info.usage);
 	}
 	else if (initial)
 	{

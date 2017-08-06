@@ -91,6 +91,16 @@ public:
 		return data != nullptr;
 	}
 
+	bool operator==(const IntrusivePtr &other) const
+	{
+		return data == other.data;
+	}
+
+	bool operator!=(const IntrusivePtr &other) const
+	{
+		return data != other.data;
+	}
+
 	T *get()
 	{
 		return data;

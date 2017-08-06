@@ -159,6 +159,10 @@ public:
 
 	PipelineEvent request_pipeline_event();
 
+	// Used by the chain allocator. Performs a copy on the staging transfer queue, and automatically sets up
+	// semaphores which compute and graphics queues will wait on.
+	void sync_buffer_to_gpu(const Buffer &dst, const Buffer &src, VkDeviceSize offset, VkDeviceSize size);
+
 private:
 	VkInstance instance = VK_NULL_HANDLE;
 	VkPhysicalDevice gpu = VK_NULL_HANDLE;
@@ -187,6 +191,7 @@ private:
 
 		void cleanup();
 		void begin();
+		void sync_to_gpu();
 
 		VkDevice device;
 		DeviceAllocator &global_allocator;
@@ -288,5 +293,6 @@ private:
 	std::vector<CommandBufferHandle> &get_queue_submissions(CommandBuffer::Type type);
 	void flush_frame(CommandBuffer::Type type);
 	void clear_wait_semaphores();
+	void add_staging_transfer_queue_dependency(const Buffer &dst, VkBufferUsageFlags usage);
 };
 }

@@ -46,16 +46,25 @@ public:
 	void discard();
 	void reset();
 
+	void sync_to_gpu();
+
 private:
 	Device *device;
 	VkDeviceSize block_size;
 	VkDeviceSize alignment;
 	VkBufferUsageFlags usage;
 
-	std::vector<BufferHandle> buffers;
-	std::vector<BufferHandle> large_buffers;
+	struct SyncedBuffer
+	{
+		BufferHandle cpu;
+		BufferHandle gpu;
+	};
+
+	std::vector<SyncedBuffer> buffers;
+	std::vector<SyncedBuffer> large_buffers;
 	unsigned chain_index = 0;
-	unsigned start_flush_index = 0;
+	unsigned start_flush_buffer = 0;
+	VkDeviceSize start_flush_offset = 0;
 	VkDeviceSize offset = 0;
 	VkDeviceSize size = 0;
 	uint8_t *host = nullptr;

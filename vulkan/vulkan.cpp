@@ -331,6 +331,7 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 	VkDeviceCreateInfo device_info = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
 	device_info.pQueueCreateInfos = queue_info;
 
+	queue_info[queue_family_count].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
 	queue_info[queue_family_count].queueFamilyIndex = graphics_queue_family;
 	queue_info[queue_family_count].queueCount = std::min(universal_queue_index,
 	                                                     queue_props[graphics_queue_family].queueCount);
@@ -339,6 +340,7 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 
 	if (compute_queue_family != graphics_queue_family)
 	{
+		queue_info[queue_family_count].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
 		queue_info[queue_family_count].queueFamilyIndex = compute_queue_family;
 		queue_info[queue_family_count].queueCount = std::min(transfer_queue_family == compute_queue_family ? 2u : 1u,
 		                                                     queue_props[compute_queue_family].queueCount);
@@ -348,6 +350,7 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 
 	if (transfer_queue_family != graphics_queue_family && transfer_queue_family != compute_queue_family)
 	{
+		queue_info[queue_family_count].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
 		queue_info[queue_family_count].queueFamilyIndex = transfer_queue_family;
 		queue_info[queue_family_count].queueCount = 1;
 		queue_info[queue_family_count].pQueuePriorities = prio;

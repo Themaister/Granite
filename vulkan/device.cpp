@@ -1340,6 +1340,29 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 	VkBufferCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
 	info.size = create_info.size;
 	info.usage = create_info.usage | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+	info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+	uint32_t sharing_indices[3];
+	if (graphics_queue_family_index != compute_queue_family_index ||
+	    graphics_queue_family_index != transfer_queue_family_index)
+	{
+		// For buffers, always just use CONCURRENT access modes,
+		// so we don't have to deal with acquire/release barriers in async compute.
+		info.sharingMode = VK_SHARING_MODE_CONCURRENT;
+
+		sharing_indices[info.queueFamilyIndexCount++] = graphics_queue_family_index;
+
+		if (graphics_queue_family_index != compute_queue_family_index)
+			sharing_indices[info.queueFamilyIndexCount++] = compute_queue_family_index;
+
+		if (graphics_queue_family_index != transfer_queue_family_index &&
+		    compute_queue_family_index != transfer_queue_family_index)
+		{
+			sharing_indices[info.queueFamilyIndexCount++] = transfer_queue_family_index;
+		}
+
+		info.pQueueFamilyIndices = sharing_indices;
+	}
 
 	if (vkCreateBuffer(device, &info, nullptr, &buffer) != VK_SUCCESS)
 		return nullptr;

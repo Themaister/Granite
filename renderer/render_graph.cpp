@@ -43,6 +43,7 @@ void RenderPass::set_texture_inputs(Vulkan::CommandBuffer &cmd, unsigned set, un
 RenderTextureResource &RenderPass::add_attachment_input(const std::string &name)
 {
 	auto &res = graph.get_texture_resource(name);
+	res.add_stages(stages);
 	res.read_in_pass(index);
 	attachments_inputs.push_back(&res);
 	return res;
@@ -51,6 +52,7 @@ RenderTextureResource &RenderPass::add_attachment_input(const std::string &name)
 RenderTextureResource &RenderPass::add_history_input(const std::string &name)
 {
 	auto &res = graph.get_texture_resource(name);
+	res.add_stages(stages);
 	// History inputs are not used in any particular pass, but next frame.
 	history_inputs.push_back(&res);
 	return res;
@@ -59,6 +61,7 @@ RenderTextureResource &RenderPass::add_history_input(const std::string &name)
 RenderBufferResource &RenderPass::add_uniform_input(const std::string &name)
 {
 	auto &res = graph.get_buffer_resource(name);
+	res.add_stages(stages);
 	res.read_in_pass(index);
 	uniform_inputs.push_back(&res);
 	return res;
@@ -67,6 +70,7 @@ RenderBufferResource &RenderPass::add_uniform_input(const std::string &name)
 RenderBufferResource &RenderPass::add_storage_read_only_input(const std::string &name)
 {
 	auto &res = graph.get_buffer_resource(name);
+	res.add_stages(stages);
 	res.read_in_pass(index);
 	storage_read_inputs.push_back(&res);
 	return res;
@@ -75,6 +79,7 @@ RenderBufferResource &RenderPass::add_storage_read_only_input(const std::string 
 RenderBufferResource &RenderPass::add_storage_output(const std::string &name, const BufferInfo &info, const std::string &input)
 {
 	auto &res = graph.get_buffer_resource(name);
+	res.add_stages(stages);
 	res.set_buffer_info(info);
 	res.written_in_pass(index);
 	storage_outputs.push_back(&res);
@@ -94,6 +99,7 @@ RenderBufferResource &RenderPass::add_storage_output(const std::string &name, co
 RenderTextureResource &RenderPass::add_texture_input(const std::string &name)
 {
 	auto &res = graph.get_texture_resource(name);
+	res.add_stages(stages);
 	res.read_in_pass(index);
 	texture_inputs.push_back(&res);
 	return res;
@@ -102,6 +108,7 @@ RenderTextureResource &RenderPass::add_texture_input(const std::string &name)
 RenderTextureResource &RenderPass::add_resolve_output(const std::string &name, const AttachmentInfo &info)
 {
 	auto &res = graph.get_texture_resource(name);
+	res.add_stages(stages);
 	res.written_in_pass(index);
 	res.set_attachment_info(info);
 	resolve_outputs.push_back(&res);
@@ -111,6 +118,7 @@ RenderTextureResource &RenderPass::add_resolve_output(const std::string &name, c
 RenderTextureResource &RenderPass::add_color_output(const std::string &name, const AttachmentInfo &info, const std::string &input)
 {
 	auto &res = graph.get_texture_resource(name);
+	res.add_stages(stages);
 	res.written_in_pass(index);
 	res.set_attachment_info(info);
 	color_outputs.push_back(&res);
@@ -135,6 +143,7 @@ RenderTextureResource &RenderPass::add_storage_texture_output(const std::string 
                                                               const std::string &input)
 {
 	auto &res = graph.get_texture_resource(name);
+	res.add_stages(stages);
 	res.written_in_pass(index);
 	res.set_attachment_info(info);
 	res.set_storage_state(true);
@@ -155,6 +164,7 @@ RenderTextureResource &RenderPass::add_storage_texture_output(const std::string 
 RenderTextureResource &RenderPass::set_depth_stencil_output(const std::string &name, const AttachmentInfo &info)
 {
 	auto &res = graph.get_texture_resource(name);
+	res.add_stages(stages);
 	res.written_in_pass(index);
 	res.set_attachment_info(info);
 	depth_stencil_output = &res;
@@ -164,6 +174,7 @@ RenderTextureResource &RenderPass::set_depth_stencil_output(const std::string &n
 RenderTextureResource &RenderPass::set_depth_stencil_input(const std::string &name)
 {
 	auto &res = graph.get_texture_resource(name);
+	res.add_stages(stages);
 	res.read_in_pass(index);
 	depth_stencil_input = &res;
 	return res;
@@ -348,6 +359,8 @@ void RenderGraph::build_physical_resources()
 				physical_dimensions.push_back(get_resource_dimensions(*input));
 				input->set_physical_index(phys_index++);
 			}
+			else
+				physical_dimensions[input->get_physical_index()].stages |= input->get_used_stages();
 		}
 
 		for (auto *input : pass.get_texture_inputs())
@@ -357,6 +370,8 @@ void RenderGraph::build_physical_resources()
 				physical_dimensions.push_back(get_resource_dimensions(*input));
 				input->set_physical_index(phys_index++);
 			}
+			else
+				physical_dimensions[input->get_physical_index()].stages |= input->get_used_stages();
 		}
 
 		for (auto *input : pass.get_uniform_inputs())
@@ -366,6 +381,8 @@ void RenderGraph::build_physical_resources()
 				physical_dimensions.push_back(get_resource_dimensions(*input));
 				input->set_physical_index(phys_index++);
 			}
+			else
+				physical_dimensions[input->get_physical_index()].stages |= input->get_used_stages();
 		}
 
 		for (auto *input : pass.get_storage_read_inputs())
@@ -375,6 +392,8 @@ void RenderGraph::build_physical_resources()
 				physical_dimensions.push_back(get_resource_dimensions(*input));
 				input->set_physical_index(phys_index++);
 			}
+			else
+				physical_dimensions[input->get_physical_index()].stages |= input->get_used_stages();
 		}
 
 		for (auto *input : pass.get_color_scale_inputs())
@@ -384,6 +403,8 @@ void RenderGraph::build_physical_resources()
 				physical_dimensions.push_back(get_resource_dimensions(*input));
 				input->set_physical_index(phys_index++);
 			}
+			else if (input)
+				physical_dimensions[input->get_physical_index()].stages |= input->get_used_stages();
 		}
 
 		if (!pass.get_color_inputs().empty())
@@ -399,6 +420,8 @@ void RenderGraph::build_physical_resources()
 						physical_dimensions.push_back(get_resource_dimensions(*input));
 						input->set_physical_index(phys_index++);
 					}
+					else
+						physical_dimensions[input->get_physical_index()].stages |= input->get_used_stages();
 
 					if (pass.get_color_outputs()[i]->get_physical_index() == RenderResource::Unused)
 						pass.get_color_outputs()[i]->set_physical_index(input->get_physical_index());
@@ -421,6 +444,8 @@ void RenderGraph::build_physical_resources()
 						physical_dimensions.push_back(get_resource_dimensions(*input));
 						input->set_physical_index(phys_index++);
 					}
+					else
+						physical_dimensions[input->get_physical_index()].stages |= input->get_used_stages();
 
 					if (pass.get_storage_outputs()[i]->get_physical_index() == RenderResource::Unused)
 						pass.get_storage_outputs()[i]->set_physical_index(input->get_physical_index());
@@ -443,6 +468,8 @@ void RenderGraph::build_physical_resources()
 						physical_dimensions.push_back(get_resource_dimensions(*input));
 						input->set_physical_index(phys_index++);
 					}
+					else
+						physical_dimensions[input->get_physical_index()].stages |= input->get_used_stages();
 
 					if (pass.get_storage_texture_outputs()[i]->get_physical_index() == RenderResource::Unused)
 						pass.get_storage_texture_outputs()[i]->set_physical_index(input->get_physical_index());
@@ -459,6 +486,8 @@ void RenderGraph::build_physical_resources()
 				physical_dimensions.push_back(get_resource_dimensions(*output));
 				output->set_physical_index(phys_index++);
 			}
+			else
+				physical_dimensions[output->get_physical_index()].stages |= output->get_used_stages();
 		}
 
 		for (auto *output : pass.get_resolve_outputs())
@@ -468,6 +497,8 @@ void RenderGraph::build_physical_resources()
 				physical_dimensions.push_back(get_resource_dimensions(*output));
 				output->set_physical_index(phys_index++);
 			}
+			else
+				physical_dimensions[output->get_physical_index()].stages |= output->get_used_stages();
 		}
 
 		for (auto *output : pass.get_storage_outputs())
@@ -477,6 +508,8 @@ void RenderGraph::build_physical_resources()
 				physical_dimensions.push_back(get_resource_dimensions(*output));
 				output->set_physical_index(phys_index++);
 			}
+			else
+				physical_dimensions[output->get_physical_index()].stages |= output->get_used_stages();
 		}
 
 		for (auto *output : pass.get_storage_texture_outputs())
@@ -486,6 +519,8 @@ void RenderGraph::build_physical_resources()
 				physical_dimensions.push_back(get_resource_dimensions(*output));
 				output->set_physical_index(phys_index++);
 			}
+			else
+				physical_dimensions[output->get_physical_index()].stages |= output->get_used_stages();
 		}
 
 		auto *ds_output = pass.get_depth_stencil_output();
@@ -497,6 +532,8 @@ void RenderGraph::build_physical_resources()
 				physical_dimensions.push_back(get_resource_dimensions(*ds_input));
 				ds_input->set_physical_index(phys_index++);
 			}
+			else
+				physical_dimensions[ds_input->get_physical_index()].stages |= ds_input->get_used_stages();
 
 			if (ds_output)
 			{
@@ -504,6 +541,8 @@ void RenderGraph::build_physical_resources()
 					ds_output->set_physical_index(ds_input->get_physical_index());
 				else if (ds_output->get_physical_index() != ds_input->get_physical_index())
 					throw logic_error("Cannot alias resources. Index already claimed.");
+				else
+					physical_dimensions[ds_output->get_physical_index()].stages |= ds_output->get_used_stages();
 			}
 		}
 		else if (ds_output)
@@ -513,6 +552,8 @@ void RenderGraph::build_physical_resources()
 				physical_dimensions.push_back(get_resource_dimensions(*ds_output));
 				ds_output->set_physical_index(phys_index++);
 			}
+			else
+				physical_dimensions[ds_output->get_physical_index()].stages |= ds_output->get_used_stages();
 		}
 	}
 
@@ -1266,6 +1307,11 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 	// Immediate image barriers are purely for doing layout transitions without waiting (srcStage = TOP_OF_PIPE).
 	vector<VkImageMemoryBarrier> immediate_image_barriers;
 
+	// Barriers which are used when waiting for a semaphore, and then doing a transition.
+	// We need to use pipeline barriers here so we can have srcStage = dstStage,
+	// and hand over while not breaking the pipeline.
+	vector<VkImageMemoryBarrier> semaphore_handover_barriers;
+
 	vector<VkEvent> events;
 
 	const auto transfer_ownership = [this](PhysicalPass &pass) {
@@ -1299,14 +1345,23 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 
 		//unsigned pass_index = unsigned(&physical_pass - physical_passes.data());
 
-		auto cmd = device.request_command_buffer();
+		bool graphics = (passes[physical_pass.passes.front()]->get_stages() & VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT) != 0;
+		auto queue_type = graphics ? Vulkan::CommandBuffer::Type::Graphics : Vulkan::CommandBuffer::Type::Compute;
+		auto cmd = device.request_command_buffer(queue_type);
+
+		const auto wait_for_semaphore_in_queue = [&](Vulkan::Semaphore sem, VkPipelineStageFlags stages) {
+			if (sem->get_semaphore() != VK_NULL_HANDLE)
+				device.add_wait_semaphore(queue_type, sem, stages);
+		};
 
 		VkPipelineStageFlags dst_stages = 0;
 		VkPipelineStageFlags immediate_dst_stages = 0;
 		VkPipelineStageFlags src_stages = 0;
+		VkPipelineStageFlags handover_stages = 0;
 		buffer_barriers.clear();
 		image_barriers.clear();
 		immediate_image_barriers.clear();
+		semaphore_handover_barriers.clear();
 
 		events.clear();
 
@@ -1330,6 +1385,10 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 			bool need_event_barrier = false;
 			bool layout_change = false;
 
+			auto &wait_semaphore = graphics ? event.wait_graphics_semaphore : event.wait_compute_semaphore;
+			if (wait_semaphore)
+				wait_for_semaphore_in_queue(wait_semaphore, barrier.stages);
+
 			if (physical_dimensions[barrier.resource_index].buffer_info.size)
 			{
 				need_event_barrier = event.event && ((event.to_flush_access != 0) || need_invalidate(barrier, event));
@@ -1337,6 +1396,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 				{
 					auto &buffer = *physical_buffers[barrier.resource_index];
 					VkBufferMemoryBarrier b = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+
 					b.srcAccessMask = event.to_flush_access;
 					b.dstAccessMask = barrier.access;
 					b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -1359,8 +1419,20 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 				VkImageMemoryBarrier b = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
 				b.oldLayout = image->get_layout();
 				b.newLayout = barrier.layout;
-				b.srcAccessMask = event.to_flush_access;
-				b.dstAccessMask = barrier.access;
+
+				// If we use semaphores for a resource, srcAccessMask has already been made available,
+				// so no need to flush caches another time.
+				if (wait_semaphore)
+					b.srcAccessMask = 0;
+				else
+					b.srcAccessMask = event.to_flush_access;
+
+				// If we do not change the layout, there is no need for dstAccessMask either.
+				if (wait_semaphore && b.oldLayout == b.newLayout)
+					b.dstAccessMask = 0;
+				else
+					b.dstAccessMask = barrier.access;
+
 				b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 				b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 				b.image = image->get_image();
@@ -1369,10 +1441,19 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 				b.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
 				image->set_layout(barrier.layout);
 
-				bool need_barrier =
-						(b.oldLayout != b.newLayout) ||
-						(event.to_flush_access != 0) ||
-						need_invalidate(barrier, event);
+				bool need_barrier;
+
+				if (wait_semaphore)
+				{
+					need_barrier = b.oldLayout != b.newLayout;
+				}
+				else
+				{
+					need_barrier =
+							(b.oldLayout != b.newLayout) ||
+							(event.to_flush_access != 0) ||
+							need_invalidate(barrier, event);
+				}
 
 				layout_change = b.oldLayout != b.newLayout;
 
@@ -1382,6 +1463,11 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 					{
 						image_barriers.push_back(b);
 						need_event_barrier = true;
+					}
+					else if (wait_semaphore)
+					{
+						semaphore_handover_barriers.push_back(b);
+						handover_stages |= barrier.stages;
 					}
 					else
 					{
@@ -1412,6 +1498,21 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 					event.invalidated_in_stage[bit] |= barrier.access;
 				});
 			}
+			else if (wait_semaphore)
+			{
+				// Waiting for a semaphore makes data visible to all access in relevant stages.
+				Util::for_each_bit(barrier.stages, [&](uint32_t bit) {
+					event.invalidated_in_stage[bit] |= ~0u;
+				});
+			}
+		}
+
+		if (!semaphore_handover_barriers.empty())
+		{
+			cmd->barrier(handover_stages, handover_stages,
+			             0, nullptr, 0, nullptr,
+			             semaphore_handover_barriers.size(),
+			             semaphore_handover_barriers.empty() ? nullptr : semaphore_handover_barriers.data());
 		}
 
 		if (!image_barriers.empty() || !buffer_barriers.empty())
@@ -1428,8 +1529,6 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 			cmd->barrier(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, immediate_dst_stages,
 			             0, nullptr, 0, nullptr, immediate_image_barriers.size(), immediate_image_barriers.data());
 		}
-
-		bool graphics = (passes[physical_pass.passes.front()]->get_stages() & VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT) != 0;
 
 		if (graphics)
 		{
@@ -1474,11 +1573,14 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 
 		VkPipelineStageFlags wait_stages = 0;
 		for (auto &barrier : physical_pass.flush)
-			wait_stages |= barrier.stages;
+			if (!physical_dimensions[barrier.resource_index].uses_semaphore())
+				wait_stages |= barrier.stages;
 
 		Vulkan::PipelineEvent pipeline_event;
 		if (wait_stages != 0)
 			pipeline_event = cmd->signal_event(wait_stages);
+
+		bool need_submission_semaphore = false;
 
 		for (auto &barrier : physical_pass.flush)
 		{
@@ -1508,10 +1610,43 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 					e = 0;
 			}
 
-			event.event = pipeline_event;
+			if (physical_dimensions[barrier.resource_index].uses_semaphore())
+			{
+				need_submission_semaphore = true;
+				// Actual semaphore will be set on submission.
+			}
+			else
+			{
+				event.event = pipeline_event;
+			}
 		}
 
-		device.submit(cmd);
+		Vulkan::Semaphore graphics_semaphore;
+		Vulkan::Semaphore compute_semaphore;
+		if (need_submission_semaphore)
+		{
+			device.submit(cmd, nullptr, &graphics_semaphore);
+			device.submit_empty(queue_type, nullptr, &compute_semaphore);
+		}
+		else
+			device.submit(cmd);
+
+		if (need_submission_semaphore)
+		{
+			for (auto &barrier : physical_pass.flush)
+			{
+				auto &event = barrier.history ?
+				              physical_history_events[barrier.resource_index] :
+				              physical_events[barrier.resource_index];
+
+				if (physical_dimensions[barrier.resource_index].uses_semaphore())
+				{
+					event.wait_graphics_semaphore = graphics_semaphore;
+					event.wait_compute_semaphore = compute_semaphore;
+				}
+			}
+		}
+
 		transfer_ownership(physical_pass);
 	}
 
@@ -1546,6 +1681,15 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 
 			physical_attachments[index]->get_image().set_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 		}
+		else if (physical_events[index].wait_graphics_semaphore)
+		{
+			if (physical_events[index].wait_graphics_semaphore->get_semaphore() != VK_NULL_HANDLE)
+			{
+				device.add_wait_semaphore(Vulkan::CommandBuffer::Type::Graphics,
+				                          physical_events[index].wait_graphics_semaphore,
+				                          VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+			}
+		}
 		else
 		{
 			throw logic_error("Swapchain resource was not written to.");
@@ -1564,8 +1708,6 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 			e = 0;
 		physical_events[index].invalidated_in_stage[trailing_zeroes(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT)] = VK_ACCESS_SHADER_READ_BIT;
 		physical_events[index].event = cmd->signal_event(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-
-		device.submit(cmd);
 	}
 }
 
@@ -1661,6 +1803,13 @@ void RenderGraph::setup_physical_image(Vulkan::Device &device, unsigned attachme
 		info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 		info.samples = static_cast<VkSampleCountFlagBits>(att.samples);
 		info.flags = flags;
+
+		// For resources which are accessed in both compute and graphics, we will use async compute queue,
+		// so make sure the image can be accessed concurrently.
+		static const VkPipelineStageFlags concurrent = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT |
+		                                               VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+		info.misc = (att.stages & concurrent) == concurrent ? Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_BIT : 0;
+
 		physical_image_attachments[attachment] = device.create_image(info, nullptr);
 		physical_events[attachment] = {};
 	}
@@ -2021,6 +2170,7 @@ ResourceDimensions RenderGraph::get_resource_dimensions(const RenderTextureResou
 	dim.transient = resource.get_transient_state();
 	dim.persistent = info.persistent;
 	dim.storage = resource.get_storage_state();
+	dim.stages = resource.get_used_stages();
 	dim.name = resource.get_name();
 
 	switch (info.size_class)

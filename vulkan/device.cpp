@@ -542,6 +542,10 @@ void Device::sync_buffer_to_gpu(const Buffer &dst, const Buffer &src, VkDeviceSi
 
 void Device::submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore)
 {
+	// Always check if we need to flush pending transfers.
+	if (type != CommandBuffer::Type::Transfer)
+		flush_frame(CommandBuffer::Type::Transfer);
+
 	auto &data = get_queue_data(type);
 	auto &submissions = get_queue_submissions(type);
 
@@ -1742,6 +1746,14 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 		                                    VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, handle->get_stage_flags(),
 		                                    handle->get_access_flags() &
 		                                    image_layout_to_possible_access(create_info.initial_layout));
+
+		// For concurrent queue, make sure that compute can see the final image as well.
+		if (concurrent_queue && graphics_queue != compute_queue)
+		{
+			add_queue_dependency(CommandBuffer::Type::Compute,
+			                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
+			                     CommandBuffer::Type::Graphics);
+		}
 	}
 
 	handle->set_layout(create_info.initial_layout);

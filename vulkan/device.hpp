@@ -68,9 +68,11 @@ public:
 
 	void begin_frame(unsigned index);
 	void flush_frame();
+	void flush_frame(CommandBuffer::Type type);
 	void wait_idle();
 	CommandBufferHandle request_command_buffer(CommandBuffer::Type type = CommandBuffer::Type::Graphics);
 	void submit(CommandBufferHandle cmd, Fence *fence = nullptr, Semaphore *semaphore = nullptr);
+	void submit_empty(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore);
 
 	VkDevice get_device()
 	{
@@ -242,7 +244,6 @@ private:
 
 	void begin_staging(CommandBuffer::Type type);
 	void submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore);
-	void submit_empty(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore);
 
 	PerFrame &frame()
 	{
@@ -291,7 +292,6 @@ private:
 	CommandPool &get_command_pool(CommandBuffer::Type type);
 	QueueData &get_queue_data(CommandBuffer::Type type);
 	std::vector<CommandBufferHandle> &get_queue_submissions(CommandBuffer::Type type);
-	void flush_frame(CommandBuffer::Type type);
 	void clear_wait_semaphores();
 	void add_staging_transfer_queue_dependency(const Buffer &dst, VkBufferUsageFlags usage);
 	void add_staging_transfer_queue_dependency(const Image &dst, VkImageUsageFlags usage);

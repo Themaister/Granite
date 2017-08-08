@@ -90,6 +90,7 @@ struct ResourceDimensions
 	bool transient = false;
 	bool persistent = true;
 	bool storage = false;
+	VkPipelineStageFlags stages = 0;
 
 	bool operator==(const ResourceDimensions &other) const
 	{
@@ -103,11 +104,20 @@ struct ResourceDimensions
 		       transient == other.transient &&
 		       persistent == other.persistent &&
 		       storage == other.storage;
+		// stages is deliberately not part of this test.
 	}
 
 	bool operator!=(const ResourceDimensions &other) const
 	{
 		return !(*this == other);
+	}
+
+	bool uses_semaphore() const
+	{
+		static const VkPipelineStageFlags concurrent =
+				VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT |
+				VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+		return (stages & concurrent) == concurrent;
 	}
 
 	std::string name;
@@ -181,6 +191,16 @@ public:
 		return name;
 	}
 
+	void add_stages(VkPipelineStageFlags stages)
+	{
+		used_stages |= stages;
+	}
+
+	VkPipelineStageFlags get_used_stages() const
+	{
+		return used_stages;
+	}
+
 private:
 	Type resource_type;
 	unsigned index;
@@ -188,6 +208,7 @@ private:
 	std::unordered_set<unsigned> written_in_passes;
 	std::unordered_set<unsigned> read_in_passes;
 	std::string name;
+	VkPipelineStageFlags used_stages = 0;
 };
 
 class RenderBufferResource : public RenderResource
@@ -634,6 +655,11 @@ private:
 	struct PipelineEvent
 	{
 		Vulkan::PipelineEvent event;
+		// Need two separate semaphores so we can wait in both queues independently.
+		// Waiting for a semaphore resets it.
+		Vulkan::Semaphore wait_graphics_semaphore;
+		Vulkan::Semaphore wait_compute_semaphore;
+
 		VkPipelineStageFlags to_flush_stages = 0;
 		VkAccessFlags to_flush_access = 0;
 

@@ -146,7 +146,7 @@ Context::~Context()
 const VkApplicationInfo &Context::get_application_info()
 {
 	static const VkApplicationInfo info = {
-		VK_STRUCTURE_TYPE_APPLICATION_INFO, nullptr, "paraLLEl PSX", 0, "paraLLEl PSX", 0, VK_MAKE_VERSION(1, 0, 18),
+		VK_STRUCTURE_TYPE_APPLICATION_INFO, nullptr, "Granite", 0, "Granite", 0, VK_MAKE_VERSION(1, 0, 57),
 	};
 	return info;
 }

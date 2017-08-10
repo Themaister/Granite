@@ -79,19 +79,19 @@ public:
 		if (!Context::init_loader(nullptr))
 			throw runtime_error("Failed to initialize Vulkan loader.");
 
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
 	}
 
 	~ApplicationPlatformDisplay()
 	{
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
 	}
 

@@ -24,6 +24,8 @@
 
 #include "math.hpp"
 #include "event.hpp"
+#include "vulkan_events.hpp"
+#include "input.hpp"
 
 namespace Granite
 {
@@ -85,12 +87,12 @@ class FPSCamera : public Camera, public EventHandler
 public:
 	FPSCamera();
 private:
-	bool on_mouse_move(const Event &e);
-	bool on_input_state(const Event &e);
-	bool on_orientation(const Event &e);
-	bool on_touch_down(const Event &e);
-	bool on_touch_up(const Event &e);
-	void on_swapchain(const Event &e);
+	bool on_mouse_move(const MouseMoveEvent &e);
+	bool on_input_state(const InputStateEvent &e);
+	bool on_orientation(const OrientationEvent &e);
+	bool on_touch_down(const TouchDownEvent &e);
+	bool on_touch_up(const TouchUpEvent &e);
+	void on_swapchain(const Vulkan::SwapchainParameterEvent &e);
 
 	unsigned pointer_count = 0;
 };

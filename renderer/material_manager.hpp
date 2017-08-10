@@ -27,6 +27,7 @@
 #include "device.hpp"
 #include "event.hpp"
 #include "importers.hpp"
+#include "vulkan_events.hpp"
 
 namespace Granite
 {
@@ -41,8 +42,8 @@ private:
 	Vulkan::Device *device = nullptr;
 	std::string paths[Util::ecast(Material::Textures::Count)];
 
-	void on_device_created(const Event &e);
-	void on_device_destroyed(const Event &e);
+	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
+	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
 
 	void init_textures();
 };

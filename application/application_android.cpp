@@ -269,7 +269,7 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 	case APP_CMD_RESUME:
 	{
 		enable_sensors();
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
 		global_state.active = true;
 		break;
@@ -278,7 +278,7 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 	case APP_CMD_PAUSE:
 	{
 		disable_sensors();
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
 		global_state.active = false;
 		break;
@@ -286,14 +286,14 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 
 	case APP_CMD_START:
 	{
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
 		break;
 	}
 
 	case APP_CMD_STOP:
 	{
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
 		break;
 	}
@@ -325,7 +325,7 @@ static void engine_handle_cmd(android_app *app, int32_t cmd)
 	{
 	case APP_CMD_RESUME:
 	{
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
 		enable_sensors();
 
@@ -340,7 +340,7 @@ static void engine_handle_cmd(android_app *app, int32_t cmd)
 
 	case APP_CMD_PAUSE:
 	{
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
 		disable_sensors();
 
@@ -352,14 +352,14 @@ static void engine_handle_cmd(android_app *app, int32_t cmd)
 
 	case APP_CMD_START:
 	{
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
 		break;
 	}
 
 	case APP_CMD_STOP:
 	{
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
 		break;
 	}
@@ -545,7 +545,7 @@ void android_main(android_app *app)
 
 			if (app->destroyRequested)
 			{
-				EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+				EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 				return;
 			}
 
@@ -560,7 +560,7 @@ void android_main(android_app *app)
 				{
 					int ret = Granite::application_main(0, nullptr);
 					LOGI("Application returned %d.\n", ret);
-					EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+					EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 					return;
 				}
 				catch (const std::exception &e)

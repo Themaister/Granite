@@ -33,9 +33,9 @@ struct FrameEvent : EventHandler
 		EVENT_MANAGER_REGISTER(FrameEvent, on_frame_time, FrameTickEvent);
 	}
 
-	bool on_frame_time(const Event &e)
+	bool on_frame_time(const FrameTickEvent &tick)
 	{
-		frame_time = float(e.as<FrameTickEvent>().get_frame_time());
+		frame_time = float(tick.get_frame_time());
 		return true;
 	}
 

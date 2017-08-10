@@ -119,7 +119,7 @@ private:
 class TouchGestureEvent : public Granite::Event
 {
 public:
-	static constexpr Granite::EventType type_id = GRANITE_EVENT_TYPE_HASH(TouchGestureEvent);
+	GRANITE_EVENT_TYPE_DECL(TouchGestureEvent)
 
 	TouchGestureEvent(const TouchState &state)
 		: state(state)
@@ -138,7 +138,7 @@ private:
 class TouchDownEvent : public Granite::Event
 {
 public:
-	static constexpr Granite::EventType type_id = GRANITE_EVENT_TYPE_HASH(TouchDownEvent);
+	GRANITE_EVENT_TYPE_DECL(TouchDownEvent)
 
 	TouchDownEvent(unsigned index, unsigned id, float x, float y)
 		: index(index), id(id), x(x), y(y)
@@ -173,7 +173,7 @@ private:
 class TouchUpEvent : public Granite::Event
 {
 public:
-	static constexpr Granite::EventType type_id = GRANITE_EVENT_TYPE_HASH(TouchUpEvent);
+	GRANITE_EVENT_TYPE_DECL(TouchUpEvent)
 
 	TouchUpEvent(unsigned id, float x, float y, float start_x, float start_y)
 		: id(id), x(x), y(y), start_x(start_x), start_y(start_y)
@@ -214,10 +214,10 @@ private:
 class KeyboardEvent : public Granite::Event
 {
 public:
-	static constexpr Granite::EventType type_id = GRANITE_EVENT_TYPE_HASH(KeyboardEvent);
+	GRANITE_EVENT_TYPE_DECL(KeyboardEvent)
 
 	KeyboardEvent(Key key, KeyState state)
-		: Granite::Event(type_id), key(key), state(state)
+		: key(key), state(state)
 	{
 	}
 
@@ -239,9 +239,9 @@ private:
 class OrientationEvent : public Granite::Event
 {
 public:
-	static constexpr Granite::EventType type_id = GRANITE_EVENT_TYPE_HASH(OrientationEvent);
+	GRANITE_EVENT_TYPE_DECL(OrientationEvent)
 	OrientationEvent(quat rot)
-		: Granite::Event(type_id), rot(rot)
+		: rot(rot)
 	{
 	}
 
@@ -257,10 +257,10 @@ private:
 class MouseButtonEvent : public Granite::Event
 {
 public:
-	static constexpr Granite::EventType type_id = GRANITE_EVENT_TYPE_HASH(MouseButtonEvent);
+	GRANITE_EVENT_TYPE_DECL(MouseButtonEvent)
 
 	MouseButtonEvent(MouseButton button, bool pressed)
-		: Granite::Event(type_id), button(button), pressed(pressed)
+		: button(button), pressed(pressed)
 	{
 	}
 
@@ -282,12 +282,11 @@ private:
 class MouseMoveEvent : public Granite::Event
 {
 public:
-	static constexpr Granite::EventType type_id = GRANITE_EVENT_TYPE_HASH(MouseMoveEvent);
+	GRANITE_EVENT_TYPE_DECL(MouseMoveEvent);
 
 	MouseMoveEvent(double delta_x, double delta_y, double abs_x, double abs_y,
 	               uint64_t key_mask, uint8_t btn_mask)
-		: Granite::Event(type_id),
-		  delta_x(delta_x), delta_y(delta_y), abs_x(abs_x), abs_y(abs_y), key_mask(key_mask), btn_mask(btn_mask)
+		: delta_x(delta_x), delta_y(delta_y), abs_x(abs_x), abs_y(abs_y), key_mask(key_mask), btn_mask(btn_mask)
 	{
 	}
 
@@ -330,10 +329,10 @@ private:
 class InputStateEvent : public Granite::Event
 {
 public:
-	static constexpr Granite::EventType type_id = GRANITE_EVENT_TYPE_HASH(InputStateEvent);
+	GRANITE_EVENT_TYPE_DECL(InputStateEvent)
 
 	InputStateEvent(double abs_x, double abs_y, double delta_time, uint64_t key_mask, uint8_t btn_mask, bool mouse_active)
-		: Granite::Event(type_id), abs_x(abs_x), abs_y(abs_y), delta_time(delta_time), key_mask(key_mask), btn_mask(btn_mask), mouse_active(mouse_active)
+		: abs_x(abs_x), abs_y(abs_y), delta_time(delta_time), key_mask(key_mask), btn_mask(btn_mask), mouse_active(mouse_active)
 	{
 	}
 

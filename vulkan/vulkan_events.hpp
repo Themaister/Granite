@@ -33,7 +33,7 @@ class Device;
 class DeviceCreatedEvent : public Granite::Event
 {
 public:
-	static constexpr Granite::EventType type_id = GRANITE_EVENT_TYPE_HASH(DeviceCreatedEvent);
+	GRANITE_EVENT_TYPE_DECL(DeviceCreatedEvent)
 
 	DeviceCreatedEvent(Device *device)
 		: device(*device)
@@ -51,7 +51,7 @@ private:
 class SwapchainParameterEvent : public Granite::Event
 {
 public:
-	static constexpr Granite::EventType type_id = GRANITE_EVENT_TYPE_HASH(SwapchainParameterEvent);
+	GRANITE_EVENT_TYPE_DECL(SwapchainParameterEvent)
 
 	SwapchainParameterEvent(Device *device, unsigned width, unsigned height, float aspect_ratio, unsigned count, VkFormat format)
 		: device(*device), width(width), height(height), aspect_ratio(aspect_ratio), image_count(count), format(format)
@@ -100,7 +100,7 @@ private:
 class SwapchainIndexEvent : public Granite::Event
 {
 public:
-	static constexpr Granite::EventType type_id = GRANITE_EVENT_TYPE_HASH(SwapchainIndexEvent);
+	GRANITE_EVENT_TYPE_DECL(SwapchainIndexEvent)
 
 	SwapchainIndexEvent(Device *device, unsigned index)
 		: device(*device), index(index)

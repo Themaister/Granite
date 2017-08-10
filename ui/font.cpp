@@ -250,9 +250,8 @@ void Font::render_text(RenderQueue &queue, const char *text, const vec3 &offset,
 	}
 }
 
-void Font::on_device_created(const Event &e)
+void Font::on_device_created(const DeviceCreatedEvent &created)
 {
-	auto &created = e.as<DeviceCreatedEvent>();
 	auto &device = created.get_device();
 
 	ImageCreateInfo info = ImageCreateInfo::immutable_2d_image(width, height, VK_FORMAT_R8_UNORM, false);
@@ -272,7 +271,7 @@ void Font::on_device_created(const Event &e)
 	view = device.create_image_view(view_info);
 }
 
-void Font::on_device_destroyed(const Event &)
+void Font::on_device_destroyed(const DeviceCreatedEvent &)
 {
 	view.reset();
 	texture.reset();

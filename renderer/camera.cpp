@@ -104,29 +104,26 @@ FPSCamera::FPSCamera()
 	EVENT_MANAGER_REGISTER_LATCH(FPSCamera, on_swapchain, on_swapchain, SwapchainParameterEvent);
 }
 
-bool FPSCamera::on_touch_down(const Event &)
+bool FPSCamera::on_touch_down(const TouchDownEvent &)
 {
 	pointer_count++;
 	return true;
 }
 
-bool FPSCamera::on_touch_up(const Event &)
+bool FPSCamera::on_touch_up(const TouchUpEvent &)
 {
 	assert(pointer_count > 0);
 	pointer_count--;
 	return true;
 }
 
-void FPSCamera::on_swapchain(const Event &e)
+void FPSCamera::on_swapchain(const SwapchainParameterEvent &state)
 {
-	auto &state = e.as<SwapchainParameterEvent>();
 	set_aspect(state.get_aspect_ratio());
 }
 
-bool FPSCamera::on_input_state(const Event &e)
+bool FPSCamera::on_input_state(const InputStateEvent &state)
 {
-	auto &state = e.as<InputStateEvent>();
-
 	position += 3.0f * get_front() * float(pointer_count) * float(state.get_delta_time());
 
 	if (state.get_key_pressed(Key::W))
@@ -140,9 +137,8 @@ bool FPSCamera::on_input_state(const Event &e)
 	return true;
 }
 
-bool FPSCamera::on_mouse_move(const Event &e)
+bool FPSCamera::on_mouse_move(const MouseMoveEvent &m)
 {
-	auto &m = e.as<MouseMoveEvent>();
 	if (!m.get_mouse_button_pressed(MouseButton::Right))
 		return true;
 
@@ -155,9 +151,8 @@ bool FPSCamera::on_mouse_move(const Event &e)
 	return true;
 }
 
-bool FPSCamera::on_orientation(const Event &e)
+bool FPSCamera::on_orientation(const OrientationEvent &o)
 {
-	auto &o = e.as<OrientationEvent>();
 	rotation = conjugate(o.get_rotation());
 	return true;
 }

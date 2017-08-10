@@ -22,7 +22,6 @@
 
 #include "material_util.hpp"
 #include "device.hpp"
-#include "vulkan_events.hpp"
 #include "texture_manager.hpp"
 #include <string.h>
 
@@ -47,9 +46,8 @@ MaterialHandle StockMaterials::get_checkerboard()
 	return checkerboard;
 }
 
-void StockMaterials::on_device_created(const Event &event)
+void StockMaterials::on_device_created(const DeviceCreatedEvent &created)
 {
-	auto &created = event.as<DeviceCreatedEvent>();
 	auto &manager = created.get_device().get_texture_manager();
 
 	checkerboard->textures[Util::ecast(Material::Textures::BaseColor)] = manager.request_texture("builtin://textures/checkerboard.png");
@@ -59,7 +57,7 @@ void StockMaterials::on_device_created(const Event &event)
 	checkerboard->bake();
 }
 
-void StockMaterials::on_device_destroyed(const Event &)
+void StockMaterials::on_device_destroyed(const DeviceCreatedEvent &)
 {
 	memset(checkerboard->textures, 0, sizeof(checkerboard->textures));
 }

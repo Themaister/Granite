@@ -56,9 +56,8 @@ ImportedSkinnedMesh::ImportedSkinnedMesh(const Mesh &mesh, const MaterialInfo &i
 	EVENT_MANAGER_REGISTER_LATCH(ImportedSkinnedMesh, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
-void ImportedSkinnedMesh::on_device_created(const Event &event)
+void ImportedSkinnedMesh::on_device_created(const DeviceCreatedEvent &created)
 {
-	auto &created = event.as<DeviceCreatedEvent>();
 	auto &device = created.get_device();
 
 	BufferCreateInfo info = {};
@@ -84,7 +83,7 @@ void ImportedSkinnedMesh::on_device_created(const Event &event)
 	bake();
 }
 
-void ImportedSkinnedMesh::on_device_destroyed(const Event &)
+void ImportedSkinnedMesh::on_device_destroyed(const DeviceCreatedEvent &)
 {
 	vbo_attributes.reset();
 	vbo_position.reset();
@@ -111,9 +110,8 @@ ImportedMesh::ImportedMesh(const Mesh &mesh, const MaterialInfo &info)
 	EVENT_MANAGER_REGISTER_LATCH(ImportedMesh, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
-void ImportedMesh::on_device_created(const Event &event)
+void ImportedMesh::on_device_created(const DeviceCreatedEvent &created)
 {
-	auto &created = event.as<DeviceCreatedEvent>();
 	auto &device = created.get_device();
 
 	BufferCreateInfo info = {};
@@ -139,7 +137,7 @@ void ImportedMesh::on_device_created(const Event &event)
 	bake();
 }
 
-void ImportedMesh::on_device_destroyed(const Event &)
+void ImportedMesh::on_device_destroyed(const DeviceCreatedEvent &)
 {
 	vbo_attributes.reset();
 	vbo_position.reset();
@@ -152,9 +150,8 @@ CubeMesh::CubeMesh()
 	EVENT_MANAGER_REGISTER_LATCH(CubeMesh, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
-void CubeMesh::on_device_created(const Event &event)
+void CubeMesh::on_device_created(const DeviceCreatedEvent &created)
 {
-	auto &created = event.as<DeviceCreatedEvent>();
 	auto &device = created.get_device();
 
 	static const int8_t N = -128;
@@ -279,7 +276,7 @@ void CubeMesh::on_device_created(const Event &event)
 	bake();
 }
 
-void CubeMesh::on_device_destroyed(const Event &)
+void CubeMesh::on_device_destroyed(const DeviceCreatedEvent &)
 {
 	reset();
 }
@@ -336,12 +333,12 @@ void Skybox::get_render_info(const RenderContext &context, const CachedSpatialTr
 	}
 }
 
-void Skybox::on_device_created(const Event &event)
+void Skybox::on_device_created(const DeviceCreatedEvent &created)
 {
-	texture = event.as<DeviceCreatedEvent>().get_device().get_texture_manager().request_texture(bg_path);
+	texture = created.get_device().get_texture_manager().request_texture(bg_path);
 }
 
-void Skybox::on_device_destroyed(const Event &)
+void Skybox::on_device_destroyed(const DeviceCreatedEvent &)
 {
 	texture = nullptr;
 }
@@ -393,18 +390,18 @@ TexturePlane::TexturePlane(const std::string &normal)
 	EVENT_MANAGER_REGISTER(TexturePlane, on_frame_time, FrameTickEvent);
 }
 
-bool TexturePlane::on_frame_time(const Event &e)
+bool TexturePlane::on_frame_time(const FrameTickEvent &tick)
 {
-	elapsed = e.as<FrameTickEvent>().get_elapsed_time();
+	elapsed = tick.get_elapsed_time();
 	return true;
 }
 
-void TexturePlane::on_device_created(const Event &event)
+void TexturePlane::on_device_created(const DeviceCreatedEvent &created)
 {
-	normalmap = event.as<DeviceCreatedEvent>().get_device().get_texture_manager().request_texture(normal_path);
+	normalmap = created.get_device().get_texture_manager().request_texture(normal_path);
 }
 
-void TexturePlane::on_device_destroyed(const Event &)
+void TexturePlane::on_device_destroyed(const DeviceCreatedEvent &)
 {
 	normalmap = nullptr;
 }

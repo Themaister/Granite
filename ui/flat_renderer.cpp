@@ -54,9 +54,8 @@ void FlatRenderer::pop_scissor()
 	scissor_stack.pop_back();
 }
 
-void FlatRenderer::on_device_created(const Event &e)
+void FlatRenderer::on_device_created(const DeviceCreatedEvent &created)
 {
-	auto &created = e.as<DeviceCreatedEvent>();
 	auto &device = created.get_device();
 	suite[ecast(RenderableType::Sprite)].init_graphics(&device.get_shader_manager(), "builtin://shaders/sprite.vert", "builtin://shaders/sprite.frag");
 	suite[ecast(RenderableType::LineUI)].init_graphics(&device.get_shader_manager(), "builtin://shaders/line_ui.vert", "builtin://shaders/debug_mesh.frag");
@@ -67,7 +66,7 @@ void FlatRenderer::on_device_created(const Event &e)
 	this->device = &device;
 }
 
-void FlatRenderer::on_device_destroyed(const Event &)
+void FlatRenderer::on_device_destroyed(const DeviceCreatedEvent &)
 {
 }
 

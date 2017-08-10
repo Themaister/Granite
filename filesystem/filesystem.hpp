@@ -130,10 +130,10 @@ class FilesystemProtocolEvent : public Event
 {
 public:
 	FilesystemProtocolEvent(const std::string &protocol, FilesystemBackend &backend)
-		: Event(type_id), protocol(protocol), backend(backend)
+		: protocol(protocol), backend(backend)
 	{
 	}
-	static constexpr EventType type_id = GRANITE_EVENT_TYPE_HASH(FilesystemProtocolEvent);
+	GRANITE_EVENT_TYPE_DECL(FilesystemProtocolEvent)
 
 	const std::string &get_protocol() const
 	{

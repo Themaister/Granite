@@ -37,9 +37,9 @@ Image::Image(const std::string &path)
 	EVENT_MANAGER_REGISTER_LATCH(Image, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
-void Image::on_device_created(const Event &e)
+void Image::on_device_created(const DeviceCreatedEvent &created)
 {
-	auto &device = e.as<DeviceCreatedEvent>().get_device();
+	auto &device = created.get_device();
 	texture = device.get_texture_manager().request_texture(path);
 
 	auto &create_info = texture->get_image()->get_create_info();
@@ -78,7 +78,7 @@ float Image::render(FlatRenderer &renderer, float layer, vec2 offset, vec2 size)
 	return layer;
 }
 
-void Image::on_device_destroyed(const Event &)
+void Image::on_device_destroyed(const DeviceCreatedEvent &)
 {
 	texture = nullptr;
 }

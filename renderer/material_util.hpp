@@ -24,6 +24,7 @@
 
 #include "material.hpp"
 #include "event.hpp"
+#include "vulkan_events.hpp"
 
 namespace Granite
 {
@@ -35,8 +36,8 @@ public:
 
 private:
 	StockMaterials();
-	void on_device_created(const Event &event);
-	void on_device_destroyed(const Event &event);
+	void on_device_created(const Vulkan::DeviceCreatedEvent &event);
+	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
 
 	MaterialHandle checkerboard;
 };

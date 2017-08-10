@@ -21,7 +21,6 @@
  */
 
 #include "ground.hpp"
-#include "vulkan_events.hpp"
 #include "device.hpp"
 #include "renderer.hpp"
 #include "render_context.hpp"
@@ -174,9 +173,9 @@ Ground::Ground(unsigned size, const TerrainInfo &info)
 	EVENT_MANAGER_REGISTER_LATCH(Ground, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
-void Ground::on_device_created(const Event &e)
+void Ground::on_device_created(const DeviceCreatedEvent &created)
 {
-	auto &device = e.as<DeviceCreatedEvent>().get_device();
+	auto &device = created.get_device();
 	heights = device.get_texture_manager().request_texture(info.heightmap);
 	normals = device.get_texture_manager().request_texture(info.normalmap);
 	occlusion = device.get_texture_manager().request_texture(info.occlusionmap);
@@ -272,7 +271,7 @@ void Ground::build_buffers(Device &device)
 	}
 }
 
-void Ground::on_device_destroyed(const Event &)
+void Ground::on_device_destroyed(const DeviceCreatedEvent &)
 {
 	heights = nullptr;
 	normals = nullptr;

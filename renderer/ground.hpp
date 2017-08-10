@@ -24,6 +24,7 @@
 
 #include "abstract_renderable.hpp"
 #include "scene.hpp"
+#include "vulkan_events.hpp"
 
 namespace Granite
 {
@@ -152,8 +153,8 @@ private:
 	Vulkan::Texture *base_color = nullptr;
 	Vulkan::Texture *type_map = nullptr;
 	Vulkan::ImageHandle lod_map;
-	void on_device_created(const Event &e);
-	void on_device_destroyed(const Event &e);
+	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
+	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
 
 	struct LOD
 	{

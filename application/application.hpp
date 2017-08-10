@@ -49,7 +49,8 @@ enum class ApplicationLifecycle
 class ApplicationLifecycleEvent : public Event
 {
 public:
-	static constexpr EventType type_id = GRANITE_EVENT_TYPE_HASH(ApplicationLifecycleEvent);
+	GRANITE_EVENT_TYPE_DECL(ApplicationLifecycleEvent)
+
 	ApplicationLifecycleEvent(ApplicationLifecycle lifecycle)
 		: lifecycle(lifecycle)
 	{
@@ -67,10 +68,10 @@ private:
 class FrameTickEvent : public Granite::Event
 {
 public:
-	static constexpr Granite::EventType type_id = GRANITE_EVENT_TYPE_HASH(FrameTickEvent);
+	GRANITE_EVENT_TYPE_DECL(FrameTickEvent)
 
 	FrameTickEvent(double frame_time, double elapsed_time)
-		: Granite::Event(type_id), frame_time(frame_time), elapsed_time(elapsed_time)
+		: frame_time(frame_time), elapsed_time(elapsed_time)
 	{
 	}
 
@@ -195,10 +196,10 @@ private:
 	std::unique_ptr<AnimationSystem> animation_system;
 	UI::Window *window;
 
-	void on_device_created(const Event &e);
-	void on_device_destroyed(const Event &e);
-	void on_swapchain_changed(const Event &e);
-	void on_swapchain_destroyed(const Event &e);
+	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
+	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
+	void on_swapchain_changed(const Vulkan::SwapchainParameterEvent &e);
+	void on_swapchain_destroyed(const Vulkan::SwapchainParameterEvent &e);
 	RenderGraph graph;
 
 	Vulkan::Texture *reflection = nullptr;

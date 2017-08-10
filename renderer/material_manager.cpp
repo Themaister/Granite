@@ -154,13 +154,13 @@ void MaterialFile::init_textures()
 	bake();
 }
 
-void MaterialFile::on_device_created(const Event &e)
+void MaterialFile::on_device_created(const DeviceCreatedEvent &created)
 {
-	device = &e.as<DeviceCreatedEvent>().get_device();
+	device = &created.get_device();
 	init_textures();
 }
 
-void MaterialFile::on_device_destroyed(const Event &)
+void MaterialFile::on_device_destroyed(const DeviceCreatedEvent &)
 {
 	device = nullptr;
 	memset(textures, 0, sizeof(textures));

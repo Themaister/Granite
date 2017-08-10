@@ -128,15 +128,14 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned
 	EVENT_MANAGER_REGISTER_LATCH(SceneViewerApplication, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
-void SceneViewerApplication::on_device_created(const Event &e)
+void SceneViewerApplication::on_device_created(const DeviceCreatedEvent &device)
 {
-	auto &device = e.as<DeviceCreatedEvent>();
 	reflection = device.get_device().get_texture_manager().request_texture(skydome_reflection);
 	irradiance = device.get_device().get_texture_manager().request_texture(skydome_irradiance);
 	graph.set_device(&device.get_device());
 }
 
-void SceneViewerApplication::on_device_destroyed(const Event &)
+void SceneViewerApplication::on_device_destroyed(const DeviceCreatedEvent &)
 {
 	reflection = nullptr;
 	irradiance = nullptr;
@@ -293,9 +292,8 @@ void SceneViewerApplication::add_shadow_pass(Vulkan::Device &device, const std::
 	});
 }
 
-void SceneViewerApplication::on_swapchain_changed(const Event &e)
+void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent &swap)
 {
-	auto &swap = e.as<SwapchainParameterEvent>();
 	auto physical_buffers = graph.consume_physical_buffers();
 	graph.reset();
 	graph.set_device(&swap.get_device());
@@ -332,7 +330,7 @@ void SceneViewerApplication::on_swapchain_changed(const Event &e)
 	need_shadow_map_update = true;
 }
 
-void SceneViewerApplication::on_swapchain_destroyed(const Event &)
+void SceneViewerApplication::on_swapchain_destroyed(const SwapchainParameterEvent &)
 {
 }
 

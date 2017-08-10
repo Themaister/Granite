@@ -61,8 +61,8 @@ private:
 	Vulkan::ImageHandle texture;
 	Vulkan::ImageViewHandle view;
 	stbtt_bakedchar baked_chars[128 - 32];
-	void on_device_created(const Event &e);
-	void on_device_destroyed(const Event &e);
+	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
+	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
 
 	std::vector<uint8_t> bitmap;
 	unsigned width = 0, height = 0;

@@ -32,12 +32,12 @@ RenderContext::RenderContext()
 	EVENT_MANAGER_REGISTER_LATCH(RenderContext, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
-void RenderContext::on_device_created(const Event &e)
+void RenderContext::on_device_created(const DeviceCreatedEvent &e)
 {
-	device = &e.as<DeviceCreatedEvent>().get_device();
+	device = &e.get_device();
 }
 
-void RenderContext::on_device_destroyed(const Event &)
+void RenderContext::on_device_destroyed(const DeviceCreatedEvent &)
 {
 }
 

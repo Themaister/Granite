@@ -30,6 +30,7 @@
 
 namespace Granite
 {
+class FrameTickEvent;
 class ImportedMesh : public StaticMesh, public EventHandler
 {
 public:
@@ -39,9 +40,8 @@ private:
 	Importer::Mesh mesh;
 	Importer::MaterialInfo info;
 
-	void on_device_created(const Event &event);
-
-	void on_device_destroyed(const Event &event);
+	void on_device_created(const Vulkan::DeviceCreatedEvent &event);
+	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
 };
 
 class ImportedSkinnedMesh : public SkinnedMesh, public EventHandler
@@ -53,9 +53,8 @@ private:
 	Importer::Mesh mesh;
 	Importer::MaterialInfo info;
 
-	void on_device_created(const Event &event);
-
-	void on_device_destroyed(const Event &event);
+	void on_device_created(const Vulkan::DeviceCreatedEvent &event);
+	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
 };
 
 class CubeMesh : public StaticMesh, public EventHandler
@@ -64,9 +63,8 @@ public:
 	CubeMesh();
 
 private:
-	void on_device_created(const Event &event);
-
-	void on_device_destroyed(const Event &event);
+	void on_device_created(const Vulkan::DeviceCreatedEvent &event);
+	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
 };
 
 class Skybox : public AbstractRenderable, public EventHandler
@@ -81,8 +79,8 @@ private:
 	std::string bg_path;
 	Vulkan::Texture *texture = nullptr;
 
-	void on_device_created(const Event &event);
-	void on_device_destroyed(const Event &event);
+	void on_device_created(const Vulkan::DeviceCreatedEvent &event);
+	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
 };
 
 class TexturePlane : public AbstractRenderable, public EventHandler, public RenderPassCreator
@@ -143,9 +141,9 @@ private:
 	float scale_y = 1.0f;
 
 	double elapsed = 0.0f;
-	void on_device_created(const Event &event);
-	void on_device_destroyed(const Event &event);
-	bool on_frame_time(const Event &e);
+	void on_device_created(const Vulkan::DeviceCreatedEvent &event);
+	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
+	bool on_frame_time(const FrameTickEvent &e);
 
 	std::string reflection_name;
 	std::string refraction_name;

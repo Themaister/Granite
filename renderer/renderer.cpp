@@ -91,9 +91,8 @@ void Renderer::set_mesh_renderer_options(RendererOptionFlags flags)
 	}
 }
 
-void Renderer::on_device_created(const Event &e)
+void Renderer::on_device_created(const DeviceCreatedEvent &created)
 {
-	auto &created = e.as<DeviceCreatedEvent>();
 	auto &device = created.get_device();
 
 	if (type == RendererType::GeneralDeferred || type == RendererType::GeneralForward)
@@ -128,7 +127,7 @@ void Renderer::on_device_created(const Event &e)
 	this->device = &device;
 }
 
-void Renderer::on_device_destroyed(const Event &)
+void Renderer::on_device_destroyed(const DeviceCreatedEvent &)
 {
 }
 

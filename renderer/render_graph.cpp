@@ -24,7 +24,6 @@
 #include "type_to_string.hpp"
 #include "format.hpp"
 #include <algorithm>
-#include "vulkan_events.hpp"
 
 using namespace std;
 
@@ -185,14 +184,14 @@ RenderGraph::RenderGraph()
 	EVENT_MANAGER_REGISTER_LATCH(RenderGraph, on_swapchain_changed, on_swapchain_destroyed, Vulkan::SwapchainParameterEvent);
 }
 
-void RenderGraph::on_swapchain_destroyed(const Event &)
+void RenderGraph::on_swapchain_destroyed(const Vulkan::SwapchainParameterEvent &)
 {
 	physical_image_attachments.clear();
 	physical_history_image_attachments.clear();
 	physical_events.clear();
 }
 
-void RenderGraph::on_swapchain_changed(const Event &)
+void RenderGraph::on_swapchain_changed(const Vulkan::SwapchainParameterEvent &)
 {
 }
 

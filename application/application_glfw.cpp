@@ -62,11 +62,11 @@ public:
 		glfwSetCursorPosCallback(window, cursor_cb);
 		glfwSetCursorEnterCallback(window, enter_cb);
 
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
 	}
 
@@ -114,9 +114,9 @@ public:
 
 	~ApplicationPlatformGLFW()
 	{
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::type_id);
+		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
 
 		if (window)

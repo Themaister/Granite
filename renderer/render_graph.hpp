@@ -32,6 +32,7 @@
 #include "vulkan.hpp"
 #include "device.hpp"
 #include "stack_allocator.hpp"
+#include "vulkan_events.hpp"
 
 namespace Granite
 {
@@ -677,8 +678,8 @@ private:
 	void enqueue_scaled_requests(Vulkan::CommandBuffer &cmd, const std::vector<ScaledClearRequests> &requests);
 	void enqueue_mipmap_requests(Vulkan::CommandBuffer &cmd, const std::vector<MipmapRequests> &requests);
 
-	void on_swapchain_changed(const Event &e);
-	void on_swapchain_destroyed(const Event &e);
+	void on_swapchain_changed(const Vulkan::SwapchainParameterEvent &e);
+	void on_swapchain_destroyed(const Vulkan::SwapchainParameterEvent &e);
 
 	void setup_physical_buffer(Vulkan::Device &device, unsigned attachment);
 	void setup_physical_image(Vulkan::Device &device, unsigned attachment, bool storage);

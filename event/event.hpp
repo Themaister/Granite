@@ -29,18 +29,18 @@
 #include <utility>
 
 #define EVENT_MANAGER_REGISTER(clazz, member, event) \
-	::Granite::EventManager::get_global().register_handler<clazz, &clazz::member>(event::type_id, this)
+	::Granite::EventManager::get_global().register_handler<clazz, event, &clazz::member>(this)
 #define EVENT_MANAGER_REGISTER_LATCH(clazz, up_event, down_event, event) \
-	::Granite::EventManager::get_global().register_latch_handler<clazz, &clazz::up_event, &clazz::down_event>(event::type_id, this)
+	::Granite::EventManager::get_global().register_latch_handler<clazz, event, &clazz::up_event, &clazz::down_event>(this)
 
 namespace Granite
 {
 class Event;
 
-template <typename Return, typename T, Return (T::*callback)(const Event &e)>
+template <typename Return, typename T, typename EventType, Return (T::*callback)(const EventType &e)>
 Return member_function_invoker(void *object, const Event &e)
 {
-	return (static_cast<T *>(object)->*callback)(e);
+	return (static_cast<T *>(object)->*callback)(static_cast<const EventType &>(e));
 }
 
 namespace Detail
@@ -78,38 +78,13 @@ constexpr uint64_t compile_time_fnv1(const char (&str)[len])
 #define GRANITE_EVENT_TYPE_HASH(x) ::Granite::Detail::compile_time_fnv1(#x)
 using EventType = uint64_t;
 
+#define GRANITE_EVENT_TYPE_DECL(x) \
+	static inline constexpr ::Granite::EventType get_type_id() { return GRANITE_EVENT_TYPE_HASH(x); }
+
 class Event
 {
 public:
 	virtual ~Event() = default;
-	Event(EventType type_id)
-		: id(type_id)
-	{
-	}
-	Event() = default;
-
-	template<typename T>
-	T &as()
-	{
-		if (id != T::type_id)
-			throw std::bad_cast();
-
-		return static_cast<T&>(*this);
-	}
-
-	template<typename T>
-	const T &as() const
-	{
-		if (id != T::type_id)
-			throw std::bad_cast();
-
-		return static_cast<const T&>(*this);
-	}
-
-	void set_type(EventType type_id)
-	{
-		id = type_id;
-	}
 
 	void set_cookie(uint64_t cookie)
 	{
@@ -122,7 +97,6 @@ public:
 	}
 
 private:
-	EventType id;
 	uint64_t cookie;
 };
 
@@ -147,22 +121,20 @@ public:
 	template<typename T, typename... P>
 	void enqueue(P&&... p)
 	{
-		EventType type = T::type_id;
+		static constexpr auto type = T::get_type_id();
 		auto &l = events[type];
 
 		auto ptr = std::unique_ptr<Event>(new T(std::forward<P>(p)...));
-		ptr->set_type(type);
 		l.queued_events.emplace_back(std::move(ptr));
 	}
 
 	template<typename T, typename... P>
 	uint64_t enqueue_latched(P&&... p)
 	{
-		EventType type = T::type_id;
+		static constexpr auto type = T::get_type_id();
 		auto &l = latched_events[type];
 		auto ptr = std::unique_ptr<Event>(new T(std::forward<P>(p)...));
 		uint64_t cookie = ++cookie_counter;
-		ptr->set_type(type);
 		ptr->set_cookie(cookie);
 
 		if (l.enqueueing)
@@ -182,21 +154,22 @@ public:
 	template<typename T>
 	void dispatch_inline(const T &t)
 	{
-		EventType type = T::type_id;
+		static constexpr auto type = T::get_type_id();
 		auto &l = events[type];
 		dispatch_event(l.handlers, t);
 	}
 
 	void dispatch();
 
-	template<typename T, bool (T::*mem_fn)(const Event &)>
-	void register_handler(EventType type, T *handler)
+	template<typename T, typename EventType, bool (T::*mem_fn)(const EventType &)>
+	void register_handler(T *handler)
 	{
-		auto &l = events[type];
+		static constexpr auto type_id = EventType::get_type_id();
+		auto &l = events[type_id];
 		if (l.dispatching)
-			l.recursive_handlers.push_back({ member_function_invoker<bool, T, mem_fn>, handler, handler });
+			l.recursive_handlers.push_back({ member_function_invoker<bool, T, EventType, mem_fn>, handler, handler });
 		else
-			l.handlers.push_back({ member_function_invoker<bool, T, mem_fn>, handler, handler });
+			l.handlers.push_back({ member_function_invoker<bool, T, EventType, mem_fn>, handler, handler });
 	}
 
 	void unregister_handler(EventHandler *handler);
@@ -210,18 +183,19 @@ public:
 	}
 #endif
 
-	template<typename T, void (T::*up_fn)(const Event &), void (T::*down_fn)(const Event &)>
-	void register_latch_handler(EventType type, T *handler)
+	template<typename T, typename EventType, void (T::*up_fn)(const EventType &), void (T::*down_fn)(const EventType &)>
+	void register_latch_handler(T *handler)
 	{
 		LatchHandler h{
-			member_function_invoker<void, T, up_fn>,
-			member_function_invoker<void, T, down_fn>,
+			member_function_invoker<void, T, EventType, up_fn>,
+			member_function_invoker<void, T, EventType, down_fn>,
 			handler, handler };
 
-		auto &events = latched_events[type];
+		static constexpr auto type_id = EventType::get_type_id();
+		auto &events = latched_events[type_id];
 		dispatch_up_events(events.queued_events, h);
 
-		auto &l = latched_events[type];
+		auto &l = latched_events[type_id];
 		if (l.dispatching)
 			l.recursive_handlers.push_back(h);
 		else

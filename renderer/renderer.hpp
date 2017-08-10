@@ -69,9 +69,9 @@ public:
 	}
 
 private:
-	void on_device_created(const Event &e);
+	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
 
-	void on_device_destroyed(const Event &e);
+	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
 
 	Vulkan::Device *device = nullptr;
 	RenderQueue queue;

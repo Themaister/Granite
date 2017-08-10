@@ -21,11 +21,20 @@
  */
 
 #include "application.hpp"
+#include "os.hpp"
 
 namespace Granite
 {
 int application_main(int, char **)
 {
+#ifdef GRANITE_DEFAULT_ASSET_DIRECTORY
+	const char *asset_dir = getenv("GRANITE_DEFAULT_ASSET_DIRECTORY");
+	if (!asset_dir)
+		asset_dir = GRANITE_DEFAULT_ASSET_DIRECTORY;
+
+	Filesystem::get().register_protocol("assets", std::unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir)));
+#endif
+
 	SceneViewerApplication app("assets://scenes/scene.json", 1280, 720);
 	return app.run();
 }

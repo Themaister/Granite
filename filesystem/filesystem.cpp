@@ -131,47 +131,33 @@ vector<ListEntry> FilesystemBackend::walk(const std::string &path)
 
 Filesystem::Filesystem()
 {
-	protocols[""] = unique_ptr<FilesystemBackend>(new OSFilesystem("/"));
+	register_protocol("file", unique_ptr<FilesystemBackend>(new OSFilesystem("/")));
 
 #ifdef ANDROID
-	protocols["assets"] = unique_ptr<FilesystemBackend>(new NetworkFilesystem);
-	protocols["assets"]->set_protocol("assets");
-	protocols["cache"] = unique_ptr<FilesystemBackend>(new NetworkFilesystem);
-	protocols["cache"]->set_protocol("cache");
+	register_protocol("assets", unique_ptr<FilesystemBackend>(new NetworkFilesystem));
+	register_protocol("builtin", unique_ptr<FilesystemBackend>(new NetworkFilesystem));
+	register_protocol("cache", unique_ptr<FilesystemBackend>(new NetworkFilesystem));
 #else
 	if (getenv("GRANITE_USE_NETFS"))
 	{
-		protocols["assets"] = unique_ptr<FilesystemBackend>(new NetworkFilesystem);
-		protocols["assets"]->set_protocol("assets");
-		protocols["builtin"] = unique_ptr<FilesystemBackend>(new NetworkFilesystem);
-		protocols["builtin"]->set_protocol("builtin");
-		protocols["cache"] = unique_ptr<FilesystemBackend>(new NetworkFilesystem);
-		protocols["cache"]->set_protocol("cache");
+		register_protocol("assets", unique_ptr<FilesystemBackend>(new NetworkFilesystem));
+		register_protocol("builtin", unique_ptr<FilesystemBackend>(new NetworkFilesystem));
+		register_protocol("cache", unique_ptr<FilesystemBackend>(new NetworkFilesystem));
 	}
 	else
 	{
-#ifdef GRANITE_DEFAULT_ASSET_DIRECTORY
-		const char *asset_dir = getenv("GRANITE_DEFAULT_ASSET_DIRECTORY");
-		if (!asset_dir)
-			asset_dir = GRANITE_DEFAULT_ASSET_DIRECTORY;
-		protocols["assets"] = unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir));
-		protocols["assets"]->set_protocol("assets");
-#endif
-
 #ifdef GRANITE_DEFAULT_BUILTIN_DIRECTORY
 		const char *builtin_dir = getenv("GRANITE_DEFAULT_BUILTIN_DIRECTORY");
 		if (!builtin_dir)
 			builtin_dir = GRANITE_DEFAULT_BUILTIN_DIRECTORY;
-		protocols["builtin"] = unique_ptr<FilesystemBackend>(new OSFilesystem(builtin_dir));
-		protocols["builtin"]->set_protocol("builtin");
+		register_protocol("builtin", unique_ptr<FilesystemBackend>(new OSFilesystem(builtin_dir)));
 #endif
 
 #ifdef GRANITE_DEFAULT_CACHE_DIRECTORY
 		const char *cache_dir = getenv("GRANITE_DEFAULT_CACHE_DIRECTORY");
 		if (!cache_dir)
 			cache_dir = GRANITE_DEFAULT_CACHE_DIRECTORY;
-		protocols["cache"] = unique_ptr<FilesystemBackend>(new OSFilesystem(cache_dir));
-		protocols["cache"]->set_protocol("cache");
+		register_protocol("cache", unique_ptr<FilesystemBackend>(new OSFilesystem(cache_dir)));
 #endif
 	}
 #endif
@@ -179,6 +165,7 @@ Filesystem::Filesystem()
 
 void Filesystem::register_protocol(const std::string &proto, std::unique_ptr<FilesystemBackend> fs)
 {
+	fs->set_protocol(proto);
 	EventManager::get_global().dispatch_inline(FilesystemProtocolEvent(proto, *fs));
 	protocols[proto] = move(fs);
 }

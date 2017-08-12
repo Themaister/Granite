@@ -26,6 +26,7 @@
 #include <vector>
 #include <algorithm>
 #include "vulkan_events.hpp"
+#include <string.h>
 
 #ifdef HAVE_GLFW
 #include <GLFW/glfw3.h>
@@ -36,8 +37,6 @@
 #endif
 
 using namespace std;
-
-//#undef VULKAN_DEBUG
 
 namespace Vulkan
 {
@@ -162,6 +161,10 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_debug_cb(VkDebugReportFlagsEXT flag
 	(void)location;
 	(void)messageCode;
 	(void)pUserData;
+
+	// False positives about lack of srcAccessMask/dstAccessMask.
+	if (strcmp(pLayerPrefix, "DS") == 0 && messageCode == 10)
+		return VK_FALSE;
 
 	if (flags & VK_DEBUG_REPORT_ERROR_BIT_EXT)
 	{

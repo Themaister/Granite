@@ -305,36 +305,14 @@ void Parser::resolve_component_type(uint32_t component_type, const char *type, b
 	stride = components * type_stride(scalar_type);
 }
 
-static uint32_t get_by_name(const unordered_map<string, uint32_t> &map, const Value &v)
-{
-	if (v.IsString())
-	{
-		auto itr = map.find(v.GetString());
-		if (itr == end(map))
-			throw runtime_error("Accessor does not exist.");
-		return itr->second;
-	}
-	else
-		return v.GetUint();
-}
-
 template <typename T>
-static void iterate_elements(const Value &value, const T &t, unordered_map<string, uint32_t> &map)
+static void iterate_elements(const Value &value, const T &t)
 {
 	if (value.IsArray())
 	{
 		for (auto itr = value.Begin(); itr != value.End(); ++itr)
 		{
 			t(*itr);
-		}
-	}
-	else
-	{
-		for (auto itr = value.MemberBegin(); itr != value.MemberEnd(); ++itr)
-		{
-			auto size = map.size();
-			map[itr->name.GetString()] = size;
-			t(itr->value);
 		}
 	}
 }
@@ -400,9 +378,9 @@ static MeshAttribute semantic_to_attribute(const char *semantic)
 		return MeshAttribute::UV;
 	else if (!strcmp(semantic, "TANGENT"))
 		return MeshAttribute::Tangent;
-	else if (!strcmp(semantic, "JOINT"))
+	else if (!strcmp(semantic, "JOINTS_0"))
 		return MeshAttribute::BoneIndex;
-	else if (!strcmp(semantic, "WEIGHT"))
+	else if (!strcmp(semantic, "WEIGHTS_0"))
 		return MeshAttribute::BoneWeights;
 	else if (!strcmp(semantic, "COLOR_0"))
 		return MeshAttribute::VertexColor;
@@ -534,7 +512,7 @@ void Parser::parse(const string &original_path, const string &json)
 
 	const auto add_view = [&](const Value &view) {
 		auto &buf = view["buffer"];
-		auto buffer_index = get_by_name(json_buffer_map, buf);
+		auto buffer_index = buf.GetUint();
 		auto offset = view["byteOffset"].GetUint();
 		auto length = view["byteLength"].GetUint();
 
@@ -543,7 +521,7 @@ void Parser::parse(const string &original_path, const string &json)
 
 	const auto add_accessor = [&](const Value &accessor) {
 		auto &view = accessor["bufferView"];
-		auto view_index = get_by_name(json_view_map, view);
+		auto view_index = view.GetUint();
 
 		uint32_t offset = 0;
 		if (accessor.HasMember("byteOffset"))
@@ -596,13 +574,13 @@ void Parser::parse(const string &original_path, const string &json)
 		{
 			attr.index_buffer.active = true;
 			auto &indices = primitive["indices"];
-			attr.index_buffer.accessor_index = get_by_name(json_accessor_map, indices);
+			attr.index_buffer.accessor_index = indices.GetUint();
 		}
 
 		if (primitive.HasMember("material"))
 		{
 			auto &mat = primitive["material"];
-			attr.material_index = get_by_name(json_material_map, mat);
+			attr.material_index = mat.GetUint();
 			attr.has_material = true;
 		}
 		else
@@ -633,7 +611,7 @@ void Parser::parse(const string &original_path, const string &json)
 		for (auto itr = attrs.MemberBegin(); itr != attrs.MemberEnd(); ++itr)
 		{
 			auto *semantic = itr->name.GetString();
-			uint32_t accessor_index = get_by_name(json_accessor_map, itr->value);
+			uint32_t accessor_index = itr->value.GetUint();
 			MeshAttribute attribute = semantic_to_attribute(semantic);
 
 			attr.attributes[ecast(attribute)].accessor_index = accessor_index;
@@ -704,8 +682,8 @@ void Parser::parse(const string &original_path, const string &json)
 		auto &source = value["source"];
 
 		auto &sampler = value["sampler"];
-		auto stock_sampler = json_stock_samplers[get_by_name(json_stock_sampler_map, sampler)];
-		json_textures.push_back({ get_by_name(json_images_map, source), stock_sampler });
+		auto stock_sampler = json_stock_samplers[sampler.GetUint()];
+		json_textures.push_back({ source.GetUint(), stock_sampler });
 	};
 
 	const auto add_material = [&](const Value &value) {
@@ -746,7 +724,7 @@ void Parser::parse(const string &original_path, const string &json)
 		if (value.HasMember("normalTexture"))
 		{
 			auto &tex = value["normalTexture"]["index"];
-			info.normal = json_images[json_textures[get_by_name(json_textures_map, tex)].image_index];
+			info.normal = json_images[json_textures[tex.GetUint()].image_index];
 		}
 
 		if (value.HasMember("extensions"))
@@ -781,8 +759,8 @@ void Parser::parse(const string &original_path, const string &json)
 					if (value.HasMember("diffuseTexture"))
 					{
 						auto &tex = value["diffuseTexture"]["index"];
-						info.base_color = json_images[json_textures[get_by_name(json_textures_map, tex)].image_index];
-						info.sampler = json_textures[get_by_name(json_textures_map, tex)].sampler;
+						info.base_color = json_images[json_textures[tex.GetUint()].image_index];
+						info.sampler = json_textures[tex.GetUint()].sampler;
 					}
 
 					if (value.HasMember("specularGlossinessTexture"))
@@ -799,14 +777,14 @@ void Parser::parse(const string &original_path, const string &json)
 			if (mr.HasMember("baseColorTexture"))
 			{
 				auto &tex = mr["baseColorTexture"]["index"];
-				info.base_color = json_images[json_textures[get_by_name(json_textures_map, tex)].image_index];
-				info.sampler = json_textures[get_by_name(json_textures_map, tex)].sampler;
+				info.base_color = json_images[json_textures[tex.GetUint()].image_index];
+				info.sampler = json_textures[tex.GetUint()].sampler;
 			}
 
 			if (mr.HasMember("metallicRoughnessTexture"))
 			{
 				auto &tex = mr["metallicRoughnessTexture"]["index"];
-				info.metallic_roughness = json_images[json_textures[get_by_name(json_textures_map, tex)].image_index];
+				info.metallic_roughness = json_images[json_textures[tex.GetUint()].image_index];
 			}
 
 			if (mr.HasMember("baseColorFactor"))
@@ -829,7 +807,7 @@ void Parser::parse(const string &original_path, const string &json)
 		{
 			auto &s = value["skin"];
 			node.has_skin = true;
-			node.skin = get_by_name(json_skin_map, s);
+			node.skin = s.GetUint();
 		}
 	};
 
@@ -838,7 +816,7 @@ void Parser::parse(const string &original_path, const string &json)
 		{
 			auto &children = value["children"];
 			for (auto itr = children.Begin(); itr != children.End(); ++itr)
-				node.children.push_back(get_by_name(json_node_map, *itr));
+				node.children.push_back(itr->GetUint());
 		}
 	};
 
@@ -848,7 +826,7 @@ void Parser::parse(const string &original_path, const string &json)
 		if (value.HasMember("mesh"))
 		{
 			auto &m = value["mesh"];
-			auto index = get_by_name(json_mesh_map, m);
+			auto index = m.GetUint();
 			for (auto &prim : mesh_index_to_primitives[index])
 				node.meshes.push_back(prim);
 		}
@@ -858,7 +836,7 @@ void Parser::parse(const string &original_path, const string &json)
 			auto &m = value["meshes"];
 			for (auto itr = m.Begin(); itr != m.End(); ++itr)
 			{
-				auto index = get_by_name(json_mesh_map, *itr);
+				auto index = itr->GetUint();
 				for (auto &prim : mesh_index_to_primitives[index])
 					node.meshes.push_back(prim);
 			}
@@ -897,13 +875,6 @@ void Parser::parse(const string &original_path, const string &json)
 			glm::decompose(transform, node.transform.scale, node.transform.rotation, node.transform.translation, skew, perspective);
 		}
 
-		if (value.HasMember("jointName"))
-		{
-			json_joint_map[value["jointName"].GetString()] = nodes.size();
-			node.joint = true;
-			node.joint_name = value["jointName"].GetString();
-		}
-
 		nodes.push_back(move(node));
 	};
 
@@ -920,7 +891,7 @@ void Parser::parse(const string &original_path, const string &json)
 				m[12].GetFloat(), m[13].GetFloat(), m[14].GetFloat(), m[15].GetFloat());
 		}
 
-		auto &joints = skin["jointNames"];
+		auto &joints = skin["joints"];
 		vector<NodeTransform> joint_transforms;
 		vector<uint32_t> joint_indices;
 
@@ -935,19 +906,12 @@ void Parser::parse(const string &original_path, const string &json)
 		hasher.u32(joints.GetArray().Size());
 		for (auto itr = joints.Begin(); itr != joints.End(); ++itr)
 		{
-			uint32_t joint_index = get_by_name(json_joint_map, *itr);
+			uint32_t joint_index = itr->GetUint();
 			joint_indices.push_back(joint_index);
 			json_joint_index_to_skin[joint_index] = json_skins.size();
-
-			if (joint_name_to_bone_index.find(itr->GetString()) != end(joint_name_to_bone_index))
-				throw logic_error("Joint name is aliased.");
-			joint_name_to_bone_index[itr->GetString()] = joint_transforms.size();
-			hasher.string(itr->GetString());
+			hasher.u32(joint_index);
 
 			auto &node = nodes[joint_index];
-			if (!node.joint)
-				throw logic_error("Node is not a joint.");
-
 			joint_transforms.push_back(node.transform);
 		}
 
@@ -958,14 +922,10 @@ void Parser::parse(const string &original_path, const string &json)
 
 			for (auto &child : node.children)
 			{
-				auto &child_node = nodes[child];
-				if (!child_node.joint)
-					throw logic_error("Node is not a joint.");
-
-				auto itr = joint_name_to_bone_index.find(child_node.joint_name);
-				if (itr == end(joint_name_to_bone_index))
-					throw logic_error("Joint is not part of skeleton.");
-				uint32_t index = itr->second;
+				auto itr = find(begin(joint_indices), end(joint_indices), child);
+				if (itr == end(joint_indices))
+					throw logic_error("Joint has a child which is not part of the skeleton.");
+				uint32_t index = itr - begin(joint_indices);
 
 				if (parents[index] != -1)
 					throw logic_error("Joint cannot have two parents.");
@@ -990,7 +950,7 @@ void Parser::parse(const string &original_path, const string &json)
 		std::vector<mat4> inverse_bind_matrices;
 		inverse_bind_matrices.reserve(joint_transforms.size());
 
-		uint32_t accessor = get_by_name(json_accessor_map, skin["inverseBindMatrices"]);
+		uint32_t accessor = skin["inverseBindMatrices"].GetUint();
 		extract_attribute(inverse_bind_matrices, json_accessors[accessor]);
 		for (auto &m : inverse_bind_matrices)
 			m = m * bind_shape;
@@ -1001,31 +961,31 @@ void Parser::parse(const string &original_path, const string &json)
 	};
 
 	if (doc.HasMember("images"))
-		iterate_elements(doc["images"], add_image, json_images_map);
+		iterate_elements(doc["images"], add_image);
 	if (doc.HasMember("samplers"))
-		iterate_elements(doc["samplers"], add_stock_sampler, json_stock_sampler_map);
+		iterate_elements(doc["samplers"], add_stock_sampler);
 	if (doc.HasMember("textures"))
-		iterate_elements(doc["textures"], add_texture, json_textures_map);
+		iterate_elements(doc["textures"], add_texture);
 	if (doc.HasMember("materials"))
-		iterate_elements(doc["materials"], add_material, json_material_map);
+		iterate_elements(doc["materials"], add_material);
 	if (doc.HasMember("buffers"))
-		iterate_elements(doc["buffers"], add_buffer, json_buffer_map);
+		iterate_elements(doc["buffers"], add_buffer);
 	if (doc.HasMember("bufferViews"))
-		iterate_elements(doc["bufferViews"], add_view, json_view_map);
+		iterate_elements(doc["bufferViews"], add_view);
 	if (doc.HasMember("accessors"))
-		iterate_elements(doc["accessors"], add_accessor, json_accessor_map);
+		iterate_elements(doc["accessors"], add_accessor);
 	if (doc.HasMember("meshes"))
-		iterate_elements(doc["meshes"], add_mesh, json_mesh_map);
+		iterate_elements(doc["meshes"], add_mesh);
 
 	build_meshes();
 	if (doc.HasMember("nodes"))
 	{
-		iterate_elements(doc["nodes"], add_node, json_node_map);
+		iterate_elements(doc["nodes"], add_node);
 		reiterate_elements(nodes.data(), doc["nodes"], add_node_children);
 	}
 
 	if (doc.HasMember("skins"))
-		iterate_elements(doc["skins"], add_skin, json_skin_map);
+		iterate_elements(doc["skins"], add_skin);
 
 	if (doc.HasMember("nodes"))
 		reiterate_elements(nodes.data(), doc["nodes"], add_node_skins);
@@ -1043,14 +1003,14 @@ void Parser::parse(const string &original_path, const string &json)
 			auto &output = v["output"];
 
 			if (!time)
-				time = &json_accessors[get_by_name(json_accessor_map, input)];
-			else if (time != &json_accessors[get_by_name(json_accessor_map, input)])
+				time = &json_accessors[input.GetUint()];
+			else if (time != &json_accessors[input.GetUint()])
 				throw logic_error("Animation uses different time for keyframes.");
 
-			json_samplers.push_back(&json_accessors[get_by_name(json_accessor_map, output)]);
+			json_samplers.push_back(&json_accessors[output.GetUint()]);
 		};
 
-		iterate_elements(samplers, add_sampler, json_sampler_map);
+		iterate_elements(samplers, add_sampler);
 
 		if (!time)
 			throw logic_error("No time accessor set.");
@@ -1060,19 +1020,17 @@ void Parser::parse(const string &original_path, const string &json)
 
 		for (auto itr = channels.Begin(); itr != channels.End(); ++itr)
 		{
-			auto &sampler = json_samplers[get_by_name(json_sampler_map, (*itr)["sampler"])];
+			auto &sampler = json_samplers[(*itr)["sampler"].GetUint()];
 			auto &animation_target = (*itr)["target"];
 			auto &node_id = animation_target.HasMember("node") ? animation_target["node"] : animation_target["id"];
 
 			AnimationChannel channel;
-			channel.node_index = get_by_name(json_node_map, node_id);
+			channel.node_index = node_id.GetUint();
+
+#if 0
 			if (nodes[channel.node_index].joint)
 			{
-				auto itr = joint_name_to_bone_index.find(nodes[channel.node_index].joint_name);
-				if (itr == end(joint_name_to_bone_index))
-					throw logic_error("Joint name does not exist in a skeleton hierarchy.");
-
-				channel.joint_index = itr->second;
+				channel.joint_index = nodes[channel.node_index].joint_index;
 				channel.joint = true;
 
 				auto skin_itr = json_joint_index_to_skin.find(channel.node_index);
@@ -1088,6 +1046,7 @@ void Parser::parse(const string &original_path, const string &json)
 				else if (combined_animation.skin_compat != skin_compat[skin_index])
 					throw logic_error("Cannot have two different skin indices in a single animation.");
 			}
+#endif
 
 			const char *target = (*itr)["target"]["path"].GetString();
 			if (!strcmp(target, "translation"))
@@ -1132,7 +1091,7 @@ void Parser::parse(const string &original_path, const string &json)
 			for (auto itr = animations.MemberBegin(); itr != animations.MemberEnd(); ++itr)
 				json_animation_names.push_back(itr->name.GetString());
 		}
-		iterate_elements(animations, add_animation, json_animation_map);
+		iterate_elements(animations, add_animation);
 	}
 }
 

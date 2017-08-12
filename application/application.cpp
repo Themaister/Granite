@@ -219,7 +219,7 @@ void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::st
 void SceneViewerApplication::add_shadow_pass(Vulkan::Device &device, const std::string &tag, DepthPassType type)
 {
 	AttachmentInfo shadowmap;
-	shadowmap.format = device.get_default_depth_format();
+	shadowmap.format = VK_FORMAT_D16_UNORM;
 	shadowmap.samples = 1;
 	shadowmap.size_class = SizeClass::Absolute;
 

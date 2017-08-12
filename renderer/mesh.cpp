@@ -99,7 +99,9 @@ static void mesh_set_state(CommandBuffer &cmd, const StaticMeshInfo &info)
 
 	bool primitive_restart = info.ibo && (info.topology == VK_PRIMITIVE_TOPOLOGY_LINE_STRIP || info.topology == VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
 	cmd.set_primitive_restart(primitive_restart);
-	cmd.set_cull_mode(info.two_sided ? VK_CULL_MODE_NONE : VK_CULL_MODE_BACK_BIT);
+
+	if (info.two_sided)
+		cmd.set_cull_mode(VK_CULL_MODE_NONE);
 }
 
 void debug_mesh_render(CommandBuffer &cmd, const RenderQueueData *infos, unsigned instances)

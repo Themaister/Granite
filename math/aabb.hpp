@@ -41,12 +41,12 @@ public:
 
 	void expand(const AABB &aabb);
 
-	vec3 get_minimum() const
+	const vec3 &get_minimum() const
 	{
 		return minimum;
 	}
 
-	vec3 get_maximum() const
+	const vec3 &get_maximum() const
 	{
 		return maximum;
 	}

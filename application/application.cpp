@@ -86,6 +86,23 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned
 	EVENT_MANAGER_REGISTER_LATCH(SceneViewerApplication, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
+void SceneViewerApplication::rescale_scene(float radius)
+{
+	scene_loader.get_scene().update_cached_transforms();
+
+	AABB aabb(vec3(FLT_MAX), vec3(-FLT_MAX));
+	auto &objects = scene_loader.get_scene().get_entity_pool().get_component_group<CachedSpatialTransformComponent, RenderableComponent>();
+	for (auto &caster : objects)
+		aabb.expand(get<0>(caster)->world_aabb);
+
+	float scale_factor = radius / aabb.get_radius();
+	auto root_node = scene_loader.get_scene().get_root_node();
+	auto new_root_node = scene_loader.get_scene().create_node();
+	new_root_node->transform.scale = vec3(scale_factor);
+	new_root_node->add_child(root_node);
+	scene_loader.get_scene().set_root_node(new_root_node);
+}
+
 void SceneViewerApplication::on_device_created(const DeviceCreatedEvent &device)
 {
 	if (!skydome_reflection.empty())
@@ -190,10 +207,10 @@ void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::st
 	gbuffer.set_get_clear_color([](unsigned, VkClearColorValue *value) -> bool {
 		if (value)
 		{
-			value->float32[0] = 0.4f;
-			value->float32[1] = 0.4f;
-			value->float32[2] = 0.4f;
-			value->float32[3] = 0.4f;
+			value->float32[0] = 0.0f;
+			value->float32[1] = 0.0f;
+			value->float32[2] = 0.0f;
+			value->float32[3] = 0.0f;
 		}
 		return true;
 	});

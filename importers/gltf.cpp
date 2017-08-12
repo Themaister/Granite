@@ -1170,6 +1170,8 @@ void Parser::build_primitive(const MeshData::AttributeData &prim)
 
 		if (i == ecast(MeshAttribute::BoneIndex))
 			mesh.attribute_layout[i].format = VK_FORMAT_R8G8B8A8_UINT;
+		else if (i == ecast(MeshAttribute::BoneWeights))
+			mesh.attribute_layout[i].format = VK_FORMAT_R16G16B16A16_UNORM;
 		else
 			mesh.attribute_layout[i].format = components_to_padded_format(attr.type, attr.components);
 
@@ -1182,6 +1184,11 @@ void Parser::build_primitive(const MeshData::AttributeData &prim)
 		{
 			mesh.attribute_layout[i].offset = mesh.attribute_stride;
 			mesh.attribute_stride += 4;
+		}
+		else if (i == ecast(MeshAttribute::BoneWeights))
+		{
+			mesh.attribute_layout[i].offset = mesh.attribute_stride;
+			mesh.attribute_stride += 8;
 		}
 		else
 		{
@@ -1238,6 +1245,48 @@ void Parser::build_primitive(const MeshData::AttributeData &prim)
 					throw logic_error("Invalid format for bone indices.");
 
 				memcpy(&output[mesh.attribute_layout[i].offset + output_stride * v], indices, sizeof(indices));
+			}
+		}
+		else if (i == ecast(MeshAttribute::BoneWeights))
+		{
+			// Need to rescale bone weights. Some meshes don't do this.
+			for (uint32_t v = 0; v < vertex_count; v++)
+			{
+				uint32_t offset = view.offset + attr.offset + v * attr.stride;
+				const auto *data = &buffer[offset];
+
+				uint16_t weights[4] = {};
+				if (attr.type == ScalarType::Float32)
+				{
+					float sum = 0.0f;
+					for (uint32_t c = 0; c < attr.components; c++)
+						sum += reinterpret_cast<const float *>(data)[c];
+					float rescale = float(0xffff) / sum;
+					for (uint32_t c = 0; c < attr.components; c++)
+						weights[c] = uint16_t(reinterpret_cast<const float *>(data)[c] * rescale);
+				}
+				else if (attr.type == ScalarType::Uint16Unorm)
+				{
+					float sum = 0.0f;
+					for (uint32_t c = 0; c < attr.components; c++)
+						sum += reinterpret_cast<const uint16_t *>(data)[c];
+					float rescale = float(0xffff) / sum;
+					for (uint32_t c = 0; c < attr.components; c++)
+						weights[c] = uint16_t(reinterpret_cast<const uint16_t *>(data)[c] * rescale);
+				}
+				else if (attr.type == ScalarType::Uint8Unorm)
+				{
+					float sum = 0.0f;
+					for (uint32_t c = 0; c < attr.components; c++)
+						sum += reinterpret_cast<const uint8_t *>(data)[c];
+					float rescale = float(0xffff) / sum;
+					for (uint32_t c = 0; c < attr.components; c++)
+						weights[c] = uint16_t(reinterpret_cast<const uint8_t *>(data)[c] * rescale);
+				}
+				else
+					throw logic_error("Invalid format for bone weights.");
+
+				memcpy(&output[mesh.attribute_layout[i].offset + output_stride * v], weights, sizeof(weights));
 			}
 		}
 		else

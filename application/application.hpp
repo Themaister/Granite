@@ -181,6 +181,7 @@ class SceneViewerApplication : public Application, public EventHandler
 public:
 	SceneViewerApplication(const std::string &path, unsigned width, unsigned height);
 	void render_frame(double frame_time, double elapsed_time) override;
+	void rescale_scene(float radius);
 
 private:
 	RenderContext context;

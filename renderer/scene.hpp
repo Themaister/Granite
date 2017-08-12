@@ -153,6 +153,11 @@ public:
 		root_node = node;
 	}
 
+	NodeHandle get_root_node() const
+	{
+		return root_node;
+	}
+
 	EntityHandle create_renderable(AbstractRenderableHandle renderable, Node *node);
 	EntityHandle create_entity();
 

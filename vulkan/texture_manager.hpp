@@ -47,7 +47,7 @@ private:
 	Device *device;
 	ImageHandle handle;
 	VkFormat format;
-	void update_png(const void *data, size_t size);
+	void update_stb(const void *data, size_t size);
 	void update_gli(const void *data, size_t size);
 };
 
@@ -55,7 +55,7 @@ class TextureManager
 {
 public:
 	TextureManager(Device *device);
-	Texture *request_texture(const std::string &path);
+	Texture *request_texture(const std::string &path, VkFormat format = VK_FORMAT_UNDEFINED);
 
 private:
 	Device *device;

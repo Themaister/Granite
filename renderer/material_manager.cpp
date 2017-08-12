@@ -146,8 +146,19 @@ void MaterialFile::init_textures()
 {
 	for (unsigned i = 0; i < ecast(Material::Textures::Count); i++)
 	{
+		VkFormat default_format;
+		switch (static_cast<Material::Textures>(i))
+		{
+		case Material::Textures::BaseColor:
+			default_format = VK_FORMAT_R8G8B8A8_SRGB;
+			break;
+		default:
+			default_format = VK_FORMAT_R8G8B8A8_UNORM;
+			break;
+		}
+
 		if (!paths[i].empty())
-			textures[i] = device->get_texture_manager().request_texture(paths[i]);
+			textures[i] = device->get_texture_manager().request_texture(paths[i], default_format);
 		else
 			textures[i] = nullptr;
 	}

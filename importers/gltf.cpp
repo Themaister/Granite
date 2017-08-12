@@ -26,6 +26,7 @@
 #include "mesh.hpp"
 #include <unordered_map>
 #include <algorithm>
+#include "glm/gtx/matrix_decompose.hpp"
 
 #define RAPIDJSON_ASSERT(x) do { if (!(x)) throw "JSON error"; } while(0)
 #include "rapidjson/document.h"
@@ -879,6 +880,21 @@ void Parser::parse(const string &original_path, const string &json)
 		{
 			auto &s = value["scale"];
 			node.transform.scale = vec3(s[0].GetFloat(), s[1].GetFloat(), s[2].GetFloat());
+		}
+
+		if (value.HasMember("matrix"))
+		{
+			auto &m = value["matrix"];
+			mat4 transform(
+					m[0].GetFloat(), m[1].GetFloat(), m[2].GetFloat(), m[3].GetFloat(),
+					m[4].GetFloat(), m[5].GetFloat(), m[6].GetFloat(), m[7].GetFloat(),
+					m[8].GetFloat(), m[9].GetFloat(), m[10].GetFloat(), m[11].GetFloat(),
+					m[12].GetFloat(), m[13].GetFloat(), m[14].GetFloat(), m[15].GetFloat());
+
+			// Decompose transform into TRS. Spec says this must be possible.
+			vec3 skew;
+			vec4 perspective;
+			glm::decompose(transform, node.transform.scale, node.transform.rotation, node.transform.translation, skew, perspective);
 		}
 
 		if (value.HasMember("jointName"))

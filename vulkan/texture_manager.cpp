@@ -42,8 +42,14 @@ void Texture::update(const void *data, size_t size)
 		0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a,
 	};
 
+	static const uint8_t jpg_magic[] = {
+		0xff, 0xd8,
+	};
+
 	if (size >= sizeof(png_magic) && memcmp(data, png_magic, sizeof(png_magic)) == 0)
-		update_png(data, size);
+		update_stb(data, size);
+	else if (size >= 2 && memcmp(data, jpg_magic, sizeof(jpg_magic)) == 0)
+		update_stb(data, size);
 	else
 		update_gli(data, size);
 }
@@ -223,7 +229,7 @@ void Texture::update_gli(const void *data, size_t size)
 	handle = device->create_image(info, initial.data());
 }
 
-void Texture::update_png(const void *data, size_t size)
+void Texture::update_stb(const void *data, size_t size)
 {
 	int width, height;
 	int components;
@@ -260,12 +266,12 @@ TextureManager::TextureManager(Device *device)
 {
 }
 
-Texture *TextureManager::request_texture(const std::string &path)
+Texture *TextureManager::request_texture(const std::string &path, VkFormat format)
 {
 	auto itr = textures.find(path);
 	if (itr == end(textures))
 	{
-		unique_ptr<Texture> texture(new Texture(device, path));
+		unique_ptr<Texture> texture(new Texture(device, path, format));
 		auto *ret = texture.get();
 		textures[path] = move(texture);
 		return ret;

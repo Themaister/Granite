@@ -194,7 +194,6 @@ private:
 	VisibilityList depth_visible;
 	SceneLoader scene_loader;
 	std::unique_ptr<AnimationSystem> animation_system;
-	UI::Window *window;
 
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
@@ -214,7 +213,6 @@ private:
 	void render_shadow_map_near(Vulkan::CommandBuffer &cmd);
 	void render_shadow_map_far(Vulkan::CommandBuffer &cmd);
 	void render_main_pass(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view);
-	TexturePlane plane_reflection;
 
 	enum class MainPassType
 	{

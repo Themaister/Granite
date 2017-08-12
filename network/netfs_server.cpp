@@ -76,9 +76,8 @@ struct NotificationSystem : EventHandler
 		}
 	}
 
-	bool on_filesystem(const Event &e)
+	bool on_filesystem(const FilesystemProtocolEvent &fs)
 	{
-		auto &fs = e.as<FilesystemProtocolEvent>();
 		if (fs.get_backend().get_notification_fd() >= 0)
 		{
 			auto socket = unique_ptr<Socket>(new Socket(fs.get_backend().get_notification_fd(), false));

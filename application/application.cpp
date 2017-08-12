@@ -59,8 +59,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned
 	: Application(width, height),
 	  forward_renderer(RendererType::GeneralForward),
       deferred_renderer(RendererType::GeneralDeferred),
-      depth_renderer(RendererType::DepthOnly),
-      plane_reflection("builtin://gltf-sandbox/textures/ocean_normal.ktx")
+      depth_renderer(RendererType::DepthOnly)
 {
 	scene_loader.load_scene(path);
 	animation_system = scene_loader.consume_animation_system();
@@ -82,47 +81,6 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned
 
 	cam.look_at(vec3(0.0f, 0.0f, 8.0f), vec3(0.0f));
 	context.set_camera(cam);
-
-	auto &ui = UI::UIManager::get();
-	window = ui.add_child<UI::Window>();
-	auto *w0 = window->add_child<UI::Widget>();
-	auto *w1 = window->add_child<UI::Widget>();
-	auto *w2 = window->add_child<UI::Widget>();
-	auto *image = window->add_child<UI::Image>("builtin://gltf-sandbox/textures/maister.png");
-	image->set_minimum_geometry(image->get_target_geometry() * vec2(1.0f / 16.0f));
-	image->set_keep_aspect_ratio(true);
-	auto *w3 = window->add_child<UI::Widget>();
-	w0->set_background_color(vec4(1.0f, 0.0f, 0.0f, 1.0f));
-	w1->set_background_color(vec4(0.0f, 1.0f, 0.0f, 1.0f));
-	w2->set_background_color(vec4(1.0f, 1.0f, 0.0f, 1.0f));
-	w3->set_background_color(vec4(0.0f, 1.0f, 1.0f, 1.0f));
-	w0->set_target_geometry(vec2(400.0f, 60.0f));
-	w1->set_target_geometry(vec2(400.0f, 60.0f));
-	w2->set_target_geometry(vec2(400.0f, 60.0f));
-	w3->set_target_geometry(vec2(40.0f, 60.0f));
-	w0->set_minimum_geometry(vec2(40.0f, 10.0f));
-	w1->set_minimum_geometry(vec2(40.0f, 10.0f));
-	w2->set_minimum_geometry(vec2(40.0f, 10.0f));
-	w3->set_minimum_geometry(vec2(40.0f, 10.0f));
-	window->set_target_geometry(ivec2(10));
-
-	auto *label = window->add_child<UI::Label>("Hai :D");
-	label->set_margin(20.0f);
-	label->set_color(vec4(0.0f, 0.0f, 0.0f, 1.0f));
-	label->set_font_alignment(Font::Alignment::Center);
-
-	auto *w4 = window->add_child<UI::HorizontalPacking>();
-	w4->set_margin(10.0f);
-	auto *tmp = w4->add_child<UI::Widget>();
-	tmp->set_background_color(vec4(0.0f, 0.0f, 0.0f, 1.0f));
-	tmp->set_minimum_geometry(vec2(50.0f));
-	//tmp->set_target_geometry(vec2(50.0f));
-	tmp = w4->add_child<UI::Widget>();
-	tmp->set_background_color(vec4(0.0f, 0.0f, 0.0f, 1.0f));
-	tmp->set_minimum_geometry(vec2(50.0f));
-	//tmp->set_target_geometry(vec2(50.0f));
-
-	w2->set_size_is_flexible(true);
 
 	EVENT_MANAGER_REGISTER_LATCH(SceneViewerApplication, on_swapchain_changed, on_swapchain_destroyed, SwapchainParameterEvent);
 	EVENT_MANAGER_REGISTER_LATCH(SceneViewerApplication, on_device_created, on_device_destroyed, DeviceCreatedEvent);
@@ -306,7 +264,7 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 	AttachmentInfo backbuffer;
 
 	const char *backbuffer_source = getenv("GRANITE_SURFACE");
-	graph.set_backbuffer_source(backbuffer_source ? backbuffer_source : "backbuffer");
+	graph.set_backbuffer_source(backbuffer_source ? backbuffer_source : "tonemapped");
 
 	scene_loader.get_scene().add_render_passes(graph);
 
@@ -316,12 +274,6 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 	add_main_pass(swap.get_device(), "refraction", MainPassType::Refraction);
 	add_main_pass(swap.get_device(), "main", MainPassType::Main);
 	setup_hdr_postprocess(graph, "HDR-main", "tonemapped");
-
-	auto &ui = graph.add_pass("ui", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
-	ui.add_color_output("backbuffer", backbuffer, "tonemapped");
-	ui.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
-		UI::UIManager::get().render(cmd);
-	});
 
 	graph.bake();
 	graph.log();
@@ -419,12 +371,6 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 	animation_system->animate(elapsed_time);
 	scene.update_cached_transforms();
 	scene.refresh_per_frame(context);
-
-	window->set_background_color(vec4(1.0f));
-	window->set_margin(5);
-	window->set_floating_position(ivec2(40));
-	window->set_title("My Window");
-	//window->set_target_geometry(window->get_target_geometry() + vec2(1.0f));
 
 	graph.setup_attachments(device, &device.get_swapchain_view());
 	lighting.shadow_far = &graph.get_physical_texture_resource(graph.get_texture_resource("shadow-main").get_physical_index());

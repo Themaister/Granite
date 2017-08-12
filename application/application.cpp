@@ -86,6 +86,10 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned
 	EVENT_MANAGER_REGISTER_LATCH(SceneViewerApplication, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
+void SceneViewerApplication::loop_animations()
+{
+}
+
 void SceneViewerApplication::rescale_scene(float radius)
 {
 	scene_loader.get_scene().update_cached_transforms();

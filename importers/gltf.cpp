@@ -836,7 +836,10 @@ void Parser::parse(const string &original_path, const string &json)
 		{
 			auto &children = value["children"];
 			for (auto itr = children.Begin(); itr != children.End(); ++itr)
-				node.children.push_back(itr->GetUint());
+			{
+				if (!nodes[itr->GetUint()].joint) // Child joint are added to skins.
+					node.children.push_back(itr->GetUint());
+			}
 		}
 	};
 
@@ -900,16 +903,6 @@ void Parser::parse(const string &original_path, const string &json)
 
 	const auto add_skin = [&](const Value &skin) {
 		Util::Hasher hasher;
-		mat4 bind_shape(1.0f);
-		if (skin.HasMember("bindShapeMatrix"))
-		{
-			auto &m = skin["bindShapeMatrix"];
-			bind_shape = mat4(
-				m[0].GetFloat(), m[1].GetFloat(), m[2].GetFloat(), m[3].GetFloat(),
-				m[4].GetFloat(), m[5].GetFloat(), m[6].GetFloat(), m[7].GetFloat(),
-				m[8].GetFloat(), m[9].GetFloat(), m[10].GetFloat(), m[11].GetFloat(),
-				m[12].GetFloat(), m[13].GetFloat(), m[14].GetFloat(), m[15].GetFloat());
-		}
 
 		auto &joints = skin["joints"];
 		vector<NodeTransform> joint_transforms;
@@ -938,6 +931,7 @@ void Parser::parse(const string &original_path, const string &json)
 			hasher.u32(joint_index);
 
 			auto &node = nodes[joint_index];
+			node.joint = true;
 			joint_transforms.push_back(node.transform);
 		}
 
@@ -948,10 +942,10 @@ void Parser::parse(const string &original_path, const string &json)
 
 			for (auto &child : node.children)
 			{
-				auto itr = find(begin(joint_indices), end(joint_indices), child);
-				if (itr == end(joint_indices))
+				auto itr = json_node_index_to_joint_index.find(child);
+				if (itr == end(json_node_index_to_joint_index))
 					throw logic_error("Joint has a child which is not part of the skeleton.");
-				uint32_t index = uint32_t(itr - begin(joint_indices));
+				uint32_t index = itr->second;
 
 				if (parents[index] != -1)
 					throw logic_error("Joint cannot have two parents.");
@@ -976,10 +970,16 @@ void Parser::parse(const string &original_path, const string &json)
 		std::vector<mat4> inverse_bind_matrices;
 		inverse_bind_matrices.reserve(joint_transforms.size());
 
-		uint32_t accessor = skin["inverseBindMatrices"].GetUint();
-		extract_attribute(inverse_bind_matrices, json_accessors[accessor]);
-		for (auto &m : inverse_bind_matrices)
-			m = m * bind_shape;
+		if (skin.HasMember("inverseBindMatrices"))
+		{
+			uint32_t accessor = skin["inverseBindMatrices"].GetUint();
+			extract_attribute(inverse_bind_matrices, json_accessors[accessor]);
+		}
+		else
+		{
+			for (uint32_t i = 0; i < joints.GetArray().Size(); i++)
+				inverse_bind_matrices.push_back(mat4(1.0f));
+		}
 
 		auto compat = hasher.get();
 		skin_compat.push_back(compat);
@@ -1007,14 +1007,16 @@ void Parser::parse(const string &original_path, const string &json)
 	if (doc.HasMember("nodes"))
 	{
 		iterate_elements(doc["nodes"], add_node);
-		reiterate_elements(nodes.data(), doc["nodes"], add_node_children);
 	}
 
 	if (doc.HasMember("skins"))
 		iterate_elements(doc["skins"], add_skin);
 
 	if (doc.HasMember("nodes"))
+	{
 		reiterate_elements(nodes.data(), doc["nodes"], add_node_skins);
+		reiterate_elements(nodes.data(), doc["nodes"], add_node_children);
+	}
 
 	const auto add_animation = [&](const Value &animation) {
 		auto &samplers = animation["samplers"];

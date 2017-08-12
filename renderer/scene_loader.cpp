@@ -75,7 +75,22 @@ Scene::NodeHandle SceneLoader::build_tree_for_subscene(const SubsceneData &subsc
 		{
 			Scene::NodeHandle nodeptr;
 			if (node.has_skin)
+			{
 				nodeptr = scene->create_skinned_node(parser.get_skins()[node.skin]);
+
+#if 1
+				auto skin_compat = parser.get_skins()[node.skin].skin_compat;
+				for (auto &animation : parser.get_animations())
+				{
+					if (animation.skin_compat == skin_compat)
+					{
+						animation_system->register_animation(animation.name, animation);
+						animation_system->start_animation(*nodeptr, animation.name, 0.0, true);
+						break;
+					}
+				}
+#endif
+			}
 			else
 				nodeptr = scene->create_node();
 
@@ -190,6 +205,7 @@ void SceneLoader::parse_gltf(const std::string &path)
 {
 	SubsceneData scene;
 	scene.parser.reset(new GLTF::Parser(path));
+
 	for (auto &mesh : scene.parser->get_meshes())
 	{
 		Importer::MaterialInfo default_material;

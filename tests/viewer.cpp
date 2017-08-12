@@ -35,7 +35,7 @@ int application_main(int, char **)
 	Filesystem::get().register_protocol("assets", std::unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir)));
 #endif
 
-	SceneViewerApplication app("assets://VC/glTF/VC.gltf", 1280, 720);
+	SceneViewerApplication app("assets://scene.gltf", 1280, 720);
 	app.rescale_scene(5.0f);
 	app.loop_animations();
 	return app.run();

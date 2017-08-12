@@ -265,7 +265,8 @@ void ShaderManager::recompile(const FileNotifyInfo &info)
 	if (info.type == FileNotifyType::FileDeleted)
 		return;
 
-	for (auto &dep : dependees[info.path])
+	auto &deps = dependees[info.path];
+	for (auto &dep : deps)
 	{
 		dep->recompile();
 		dep->register_dependencies(*this);

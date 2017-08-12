@@ -61,13 +61,13 @@ private:
 
 	struct VirtualHandler
 	{
+		std::string path;
 		std::function<void (const FileNotifyInfo &)> func;
 		FileNotifyHandle virtual_handle;
 	};
 
 	struct Handler
 	{
-		std::string path;
 		std::vector<VirtualHandler> funcs;
 		bool directory;
 	};

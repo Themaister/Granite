@@ -241,11 +241,11 @@ void OSFilesystem::poll_notifications()
 				{
 					if (itr->second.directory)
 					{
-						auto notify_path = protocol + "://" + Path::join(itr->second.path, current->name);
-						func.func({move(notify_path), type, func.virtual_handle });
+						auto notify_path = protocol + "://" + Path::join(func.path, current->name);
+						func.func({ move(notify_path), type, func.virtual_handle });
 					}
 					else
-						func.func({protocol + "://" + itr->second.path, type, func.virtual_handle });
+						func.func({ protocol + "://" + func.path, type, func.virtual_handle });
 				}
 			}
 		}
@@ -301,9 +301,9 @@ FileNotifyHandle OSFilesystem::install_notification(const string &path,
 	// We could have different paths which look different but resolve to the same wd, so handle that.
 	auto itr = handlers.find(wd);
 	if (itr == end(handlers))
-		handlers[wd] = { path, {{ move(func), ++virtual_handle }}, s.type == PathType::Directory };
+		handlers[wd] = { {{ move(path), move(func), ++virtual_handle }}, s.type == PathType::Directory };
 	else
-		itr->second.funcs.push_back({ move(func), ++virtual_handle });
+		itr->second.funcs.push_back({ move(path), move(func), ++virtual_handle });
 
 	LOGI("  Got handle: %d\n", virtual_handle);
 

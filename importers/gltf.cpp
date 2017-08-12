@@ -822,27 +822,6 @@ void Parser::parse(const string &original_path, const string &json)
 		materials.push_back(move(info));
 	};
 
-	const auto add_node_skins = [&](Node &node, const Value &value) {
-		if (value.HasMember("skin"))
-		{
-			auto &s = value["skin"];
-			node.has_skin = true;
-			node.skin = s.GetUint();
-		}
-	};
-
-	const auto add_node_children = [&](Node &node, const Value &value) {
-		if (value.HasMember("children"))
-		{
-			auto &children = value["children"];
-			for (auto itr = children.Begin(); itr != children.End(); ++itr)
-			{
-				if (!nodes[itr->GetUint()].joint) // Child joint are added to skins.
-					node.children.push_back(itr->GetUint());
-			}
-		}
-	};
-
 	const auto add_node = [&](const Value &value) {
 		Node node;
 
@@ -852,6 +831,20 @@ void Parser::parse(const string &original_path, const string &json)
 			auto index = m.GetUint();
 			for (auto &prim : mesh_index_to_primitives[index])
 				node.meshes.push_back(prim);
+		}
+
+		if (value.HasMember("skin"))
+		{
+			auto &s = value["skin"];
+			node.has_skin = true;
+			node.skin = s.GetUint();
+		}
+
+		if (value.HasMember("children"))
+		{
+			auto &children = value["children"];
+			for (auto itr = children.Begin(); itr != children.End(); ++itr)
+				node.children.push_back(itr->GetUint());
 		}
 
 		if (value.HasMember("meshes"))
@@ -1005,18 +998,10 @@ void Parser::parse(const string &original_path, const string &json)
 
 	build_meshes();
 	if (doc.HasMember("nodes"))
-	{
 		iterate_elements(doc["nodes"], add_node);
-	}
 
 	if (doc.HasMember("skins"))
 		iterate_elements(doc["skins"], add_skin);
-
-	if (doc.HasMember("nodes"))
-	{
-		reiterate_elements(nodes.data(), doc["nodes"], add_node_skins);
-		reiterate_elements(nodes.data(), doc["nodes"], add_node_children);
-	}
 
 	const auto add_animation = [&](const Value &animation) {
 		auto &samplers = animation["samplers"];
@@ -1025,7 +1010,6 @@ void Parser::parse(const string &original_path, const string &json)
 		Accessor *time = nullptr;
 		vector<Accessor *> json_samplers;
 
-		unordered_map<string, uint32_t> json_sampler_map;
 		const auto add_sampler = [&](const Value &v) {
 			auto &input = v["input"];
 			auto &output = v["output"];

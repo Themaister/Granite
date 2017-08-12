@@ -269,10 +269,8 @@ Scene::NodeHandle Scene::create_skinned_node(const Importer::Skin &skin)
 	bones.reserve(skin.joint_transforms.size());
 
 	for (size_t i = 0; i < skin.joint_transforms.size(); i++)
-		bones.push_back(create_node());
-
-	for (size_t i = 0; i < skin.joint_transforms.size(); i++)
 	{
+		bones.push_back(create_node());
 		bones[i]->transform.translation = skin.joint_transforms[i].translation;
 		bones[i]->transform.scale = skin.joint_transforms[i].scale;
 		bones[i]->transform.rotation = skin.joint_transforms[i].rotation;

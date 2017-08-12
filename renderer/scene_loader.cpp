@@ -86,7 +86,7 @@ Scene::NodeHandle SceneLoader::build_tree_for_subscene(const SubsceneData &subsc
 					{
 						animation_system->register_animation(animation.name, animation);
 						animation_system->start_animation(*nodeptr, animation.name, 0.0, true);
-						break;
+						//break;
 					}
 				}
 #endif
@@ -109,7 +109,9 @@ Scene::NodeHandle SceneLoader::build_tree_for_subscene(const SubsceneData &subsc
 		if (nodes[i])
 		{
 			for (auto &child : node.children)
-				nodes[i]->add_child(nodes[child]);
+				if (nodes[child])
+					nodes[i]->add_child(nodes[child]);
+
 			for (auto &mesh : node.meshes)
 				scene->create_renderable(subscene.meshes[mesh], nodes[i].get());
 		}

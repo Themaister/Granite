@@ -28,9 +28,6 @@
 [submodule "third_party/stb/stb"]
 	path = third_party/stb/stb
 	url = git://github.com/nothings/stb
-[submodule "assets/gltf-sandbox"]
-	path = assets/gltf-sandbox
-	url = git@bitbucket.org:Themaister/gltf-sandbox.git
 [submodule "third_party/FastNoise"]
 	path = third_party/FastNoise
 	url = git://github.com/Auburns/FastNoise

@@ -101,7 +101,11 @@ static void mesh_set_state(CommandBuffer &cmd, const StaticMeshInfo &info)
 	cmd.set_primitive_restart(primitive_restart);
 
 	if (info.two_sided)
+	{
 		cmd.set_cull_mode(VK_CULL_MODE_NONE);
+		// If depth rendering is enabled, otherwise, this is ignored.
+		cmd.set_depth_bias(1.0f, 1.0f);
+	}
 }
 
 void debug_mesh_render(CommandBuffer &cmd, const RenderQueueData *infos, unsigned instances)

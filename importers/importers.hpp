@@ -155,6 +155,7 @@ struct MaterialInfo
 	std::string normal;
 	std::string metallic_roughness;
 	std::string occlusion;
+	std::string emissive;
 	vec4 uniform_base_color = vec4(1.0f);
 	vec3 uniform_emissive_color = vec4(0.0f);
 	float uniform_metallic = 1.0f;

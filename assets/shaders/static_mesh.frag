@@ -35,6 +35,10 @@ layout(set = 2, binding = 2) uniform sampler2D uMetallicRoughnessmap;
 layout(set = 2, binding = 3) uniform sampler2D uOcclusionMap;
 #endif
 
+#if defined(HAVE_EMISSIVEMAP) && HAVE_EMISSIVEMAP
+layout(set = 2, binding = 4) uniform sampler2D uEmissiveMap;
+#endif
+
 layout(std430, push_constant) uniform Constants
 {
     vec4 base_color;
@@ -116,5 +120,16 @@ void main()
     const float ambient = 1.0;
 #endif
 
-    emit_render_target(vec3(0.0), base_color, normal, metallic, roughness, ambient, vEyeVec);
+#if defined(HAVE_EMISSIVEMAP) && HAVE_EMISSIVEMAP
+    #ifdef NEED_GRADIENTS
+        vec3 emissive = texture(uEmissiveMap, vUV, gradX, gradY).rgb;
+    #else
+        vec3 emissive = texture(uEmissiveMap, vUV, registers.lod_bias).rgb;
+    #endif
+    emissive *= registers.emissive.rgb;
+#else
+    vec3 emissive = registers.emissive.rgb;
+#endif
+
+    emit_render_target(emissive, base_color, normal, metallic, roughness, ambient, vEyeVec);
 }

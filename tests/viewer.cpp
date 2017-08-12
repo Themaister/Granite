@@ -35,7 +35,7 @@ int application_main(int, char **)
 	Filesystem::get().register_protocol("assets", std::unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir)));
 #endif
 
-	SceneViewerApplication app("assets://WaterBottle/glTF/WaterBottle.gltf", 1280, 720);
+	SceneViewerApplication app("assets://Lantern/glTF/Lantern.gltf", 1280, 720);
 	return app.run();
 }
 }

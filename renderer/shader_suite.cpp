@@ -101,6 +101,7 @@ Vulkan::ProgramHandle ShaderSuite::get_program(DrawPipeline pipeline, uint32_t a
 				defines.emplace_back("HAVE_NORMALMAP", !!(texture_mask & MATERIAL_TEXTURE_NORMAL_BIT));
 			defines.emplace_back("HAVE_METALLICROUGHNESSMAP", !!(texture_mask & MATERIAL_TEXTURE_METALLIC_ROUGHNESS_BIT));
 			defines.emplace_back("HAVE_OCCLUSIONMAP", !!(texture_mask & MATERIAL_TEXTURE_OCCLUSION_BIT));
+			defines.emplace_back("HAVE_EMISSIVEMAP", !!(texture_mask & MATERIAL_TEXTURE_EMISSIVE_BIT));
 		}
 		variant = program->register_variant(defines);
 		variants[hash] = variant;

@@ -152,7 +152,8 @@ private:
 	std::vector<Animation> animations;
 	std::vector<Util::Hash> skin_compat;
 	std::vector<std::string> json_animation_names;
-	std::unordered_map<uint32_t, uint32_t> json_joint_index_to_skin;
+	std::unordered_map<uint32_t, uint32_t> json_node_index_to_skin;
+	std::unordered_map<uint32_t, uint32_t> json_node_index_to_joint_index;
 	std::vector<std::vector<uint32_t>> mesh_index_to_primitives;
 
 	void build_meshes();

@@ -35,7 +35,7 @@ int application_main(int, char **)
 	Filesystem::get().register_protocol("assets", std::unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir)));
 #endif
 
-	SceneViewerApplication app("assets://MetalRoughSpheres/glTF/MetalRoughSpheres.gltf", 1280, 720);
+	SceneViewerApplication app("assets://TextureCoordinateTest/glTF/TextureCoordinateTest.gltf", 1280, 720);
 	return app.run();
 }
 }

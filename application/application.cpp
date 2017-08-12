@@ -216,7 +216,7 @@ void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::st
 #endif
 }
 
-void SceneViewerApplication::add_shadow_pass(Vulkan::Device &device, const std::string &tag, DepthPassType type)
+void SceneViewerApplication::add_shadow_pass(Vulkan::Device &, const std::string &tag, DepthPassType type)
 {
 	AttachmentInfo shadowmap;
 	shadowmap.format = VK_FORMAT_D16_UNORM;

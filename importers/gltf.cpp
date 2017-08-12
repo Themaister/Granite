@@ -627,7 +627,7 @@ void Parser::parse(const string &original_path, const string &json)
 		{
 			MeshData data;
 			data.primitives.push_back(parse_primitive(*itr));
-			json_meshes.push_back(data);
+			json_meshes.push_back(move(data));
 		}
 	};
 
@@ -797,6 +797,10 @@ void Parser::parse(const string &original_path, const string &json)
 				info.uniform_metallic = mr["metallicFactor"].GetFloat();
 			if (mr.HasMember("roughnessFactor"))
 				info.uniform_roughness = mr["roughnessFactor"].GetFloat();
+
+			// Workaround many broken materials ...
+			if (!mr.HasMember("metallicRoughnessTexture") && !mr.HasMember("metallicFactor"))
+				info.uniform_metallic = 0.0f;
 		}
 
 		materials.push_back(move(info));
@@ -908,7 +912,13 @@ void Parser::parse(const string &original_path, const string &json)
 		{
 			uint32_t joint_index = itr->GetUint();
 			joint_indices.push_back(joint_index);
-			json_joint_index_to_skin[joint_index] = json_skins.size();
+			if (json_node_index_to_joint_index.find(joint_index) != end(json_node_index_to_joint_index))
+				throw logic_error("A joint cannot be attached to multiple skins.");
+			if (json_node_index_to_skin.find(joint_index) != end(json_node_index_to_skin))
+				throw logic_error("A joint cannot be attached to multiple skins.");
+
+			json_node_index_to_skin[joint_index] = json_skins.size();
+			json_node_index_to_joint_index[joint_index] = joint_transforms.size();
 			hasher.u32(joint_index);
 
 			auto &node = nodes[joint_index];
@@ -925,7 +935,7 @@ void Parser::parse(const string &original_path, const string &json)
 				auto itr = find(begin(joint_indices), end(joint_indices), child);
 				if (itr == end(joint_indices))
 					throw logic_error("Joint has a child which is not part of the skeleton.");
-				uint32_t index = itr - begin(joint_indices);
+				uint32_t index = uint32_t(itr - begin(joint_indices));
 
 				if (parents[index] != -1)
 					throw logic_error("Joint cannot have two parents.");
@@ -1027,15 +1037,18 @@ void Parser::parse(const string &original_path, const string &json)
 			AnimationChannel channel;
 			channel.node_index = node_id.GetUint();
 
-#if 0
 			if (nodes[channel.node_index].joint)
 			{
-				channel.joint_index = nodes[channel.node_index].joint_index;
-				channel.joint = true;
+				auto joint_index_itr = json_node_index_to_joint_index.find(channel.node_index);
+				if (joint_index_itr == end(json_node_index_to_joint_index))
+					throw logic_error("Joint is not attached to a skeleton.");
 
-				auto skin_itr = json_joint_index_to_skin.find(channel.node_index);
-				if (skin_itr == end(json_joint_index_to_skin))
+				auto skin_itr = json_node_index_to_skin.find(channel.node_index);
+				if (skin_itr == end(json_node_index_to_skin))
 					throw logic_error("Joint name does not exist in a skin.");
+
+				channel.joint_index = joint_index_itr->second;
+				channel.joint = true;
 
 				uint32_t skin_index = skin_itr->second;
 				if (!combined_animation.skinning)
@@ -1046,7 +1059,6 @@ void Parser::parse(const string &original_path, const string &json)
 				else if (combined_animation.skin_compat != skin_compat[skin_index])
 					throw logic_error("Cannot have two different skin indices in a single animation.");
 			}
-#endif
 
 			const char *target = (*itr)["target"]["path"].GetString();
 			if (!strcmp(target, "translation"))
@@ -1109,6 +1121,7 @@ void Parser::build_primitive(const MeshData::AttributeData &prim)
 	Mesh mesh;
 	mesh.topology = prim.topology;
 	mesh.has_material = prim.has_material;
+	mesh.material_index = prim.material_index;
 
 	auto &positions = prim.attributes[ecast(MeshAttribute::Position)];
 	uint32_t vertex_count = json_accessors[positions.accessor_index].count;

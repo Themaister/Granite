@@ -300,7 +300,7 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 	vector<pair<string, int>> defines;
 	if (light.shadow_far && light.shadow_near)
 		defines.push_back({ "SHADOW_CASCADES", 1 });
-	if (light.environment_radiance && light.environment_radiance)
+	if (light.environment_radiance && light.environment_irradiance)
 		defines.push_back({ "ENVIRONMENT", 1 });
 	if (light.shadow_far)
 		defines.push_back({ "SHADOWS", 1 });

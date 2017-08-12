@@ -158,6 +158,9 @@ vec3 compute_lighting(
 
 	diffref += envdiff;
 	specref += envspec;
+#else
+	// HACK
+	diffref += vec3(0.1);
 #endif
 
 	vec3 reflected_light = specref;

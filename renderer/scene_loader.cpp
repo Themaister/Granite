@@ -71,16 +71,21 @@ Scene::NodeHandle SceneLoader::build_tree_for_subscene(const SubsceneData &subsc
 
 	for (auto &node : parser.get_nodes())
 	{
-		Scene::NodeHandle nodeptr;
-		if (node.has_skin)
-			nodeptr = scene->create_skinned_node(parser.get_skins()[node.skin]);
-		else
-			nodeptr = scene->create_node();
+		if (!node.joint)
+		{
+			Scene::NodeHandle nodeptr;
+			if (node.has_skin)
+				nodeptr = scene->create_skinned_node(parser.get_skins()[node.skin]);
+			else
+				nodeptr = scene->create_node();
 
-		nodes.push_back(nodeptr);
-		nodeptr->transform.translation = node.transform.translation;
-		nodeptr->transform.rotation = node.transform.rotation;
-		nodeptr->transform.scale = node.transform.scale;
+			nodes.push_back(nodeptr);
+			nodeptr->transform.translation = node.transform.translation;
+			nodeptr->transform.rotation = node.transform.rotation;
+			nodeptr->transform.scale = node.transform.scale;
+		}
+		else
+			nodes.push_back({});
 	}
 
 	unsigned i = 0;

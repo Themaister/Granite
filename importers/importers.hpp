@@ -117,6 +117,7 @@ struct Node
 	std::vector<uint32_t> skeletons;
 	Util::Hash skin = 0;
 	bool has_skin = false;
+	bool joint = false;
 };
 
 struct Scene

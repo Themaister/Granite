@@ -513,7 +513,7 @@ void Parser::parse(const string &original_path, const string &json)
 	const auto add_view = [&](const Value &view) {
 		auto &buf = view["buffer"];
 		auto buffer_index = buf.GetUint();
-		auto offset = view["byteOffset"].GetUint();
+		auto offset = view.HasMember("byteOffset") ? view["byteOffset"].GetUint() : 0u;
 		auto length = view["byteLength"].GetUint();
 
 		json_views.push_back({buffer_index, offset, length});
@@ -681,8 +681,12 @@ void Parser::parse(const string &original_path, const string &json)
 	const auto add_texture = [&](const Value &value) {
 		auto &source = value["source"];
 
-		auto &sampler = value["sampler"];
-		auto stock_sampler = json_stock_samplers[sampler.GetUint()];
+		Vulkan::StockSampler stock_sampler = Vulkan::StockSampler::TrilinearWrap;
+		if (value.HasMember("sampler"))
+		{
+			auto &sampler = value["sampler"];
+			stock_sampler = json_stock_samplers[sampler.GetUint()];
+		}
 		json_textures.push_back({ source.GetUint(), stock_sampler });
 	};
 
@@ -725,6 +729,12 @@ void Parser::parse(const string &original_path, const string &json)
 		{
 			auto &tex = value["normalTexture"]["index"];
 			info.normal = json_images[json_textures[tex.GetUint()].image_index];
+		}
+
+		if (value.HasMember("occlusionTexture"))
+		{
+			auto &tex = value["occlusionTexture"]["index"];
+			info.occlusion = json_images[json_textures[tex.GetUint()].image_index];
 		}
 
 		if (value.HasMember("extensions"))

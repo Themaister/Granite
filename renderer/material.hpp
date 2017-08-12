@@ -42,6 +42,7 @@ struct Material : public Util::IntrusivePtrEnabled<Material>
 		BaseColor = 0,
 		Normal = 1,
 		MetallicRoughness = 2,
+		Occlusion = 3,
 		Count
 	};
 
@@ -90,9 +91,10 @@ enum MaterialTextureFlagBits
 	MATERIAL_TEXTURE_BASE_COLOR_BIT = 1u << Util::ecast(Material::Textures::BaseColor),
 	MATERIAL_TEXTURE_NORMAL_BIT = 1u << Util::ecast(Material::Textures::Normal),
 	MATERIAL_TEXTURE_METALLIC_ROUGHNESS_BIT = 1u << Util::ecast(Material::Textures::MetallicRoughness),
-	MATERIAL_EMISSIVE_BIT = 1u << 3,
-	MATERIAL_EMISSIVE_REFRACTION_BIT = 1u << 4,
-	MATERIAL_EMISSIVE_REFLECTION_BIT = 1u << 5
+	MATERIAL_TEXTURE_OCCLUSION_BIT = 1u << Util::ecast(Material::Textures::Occlusion),
+	MATERIAL_EMISSIVE_BIT = 1u << 4,
+	MATERIAL_EMISSIVE_REFRACTION_BIT = 1u << 5,
+	MATERIAL_EMISSIVE_REFLECTION_BIT = 1u << 6
 };
 
 using MaterialHandle = Util::IntrusivePtr<Material>;

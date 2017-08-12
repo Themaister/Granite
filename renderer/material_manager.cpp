@@ -49,6 +49,7 @@ MaterialFile::MaterialFile(const MaterialInfo &info)
 	paths[ecast(Material::Textures::BaseColor)] = info.base_color;
 	paths[ecast(Material::Textures::Normal)] = info.normal;
 	paths[ecast(Material::Textures::MetallicRoughness)] = info.metallic_roughness;
+	paths[ecast(Material::Textures::Occlusion)] = info.occlusion;
 	base_color = info.uniform_base_color;
 	emissive = info.uniform_emissive_color;
 	metallic = info.uniform_metallic;

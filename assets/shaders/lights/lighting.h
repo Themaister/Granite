@@ -160,7 +160,7 @@ vec3 compute_lighting(
 	specref += envspec;
 #else
 	// HACK
-	diffref += vec3(0.1);
+	diffref += material.ambient_factor * 0.1;
 #endif
 
 	vec3 reflected_light = specref;

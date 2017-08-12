@@ -31,6 +31,10 @@ layout(set = 2, binding = 1) uniform sampler2D uNormalmap;
 layout(set = 2, binding = 2) uniform sampler2D uMetallicRoughnessmap;
 #endif
 
+#if defined(HAVE_OCCLUSIONMAP) && HAVE_OCCLUSIONMAP
+layout(set = 2, binding = 3) uniform sampler2D uOcclusionMap;
+#endif
+
 layout(std430, push_constant) uniform Constants
 {
     vec4 base_color;
@@ -102,5 +106,15 @@ void main()
     float roughness = registers.roughness;
 #endif
 
-    emit_render_target(vec3(0.0), base_color, normal, metallic, roughness, 1.0, vEyeVec);
+#if defined(HAVE_OCCLUSIONMAP) && HAVE_OCCLUSIONMAP
+    #ifdef NEED_GRADIENTS
+        float ambient = texture(uOcclusionMap, vUV, gradX, gradY).x;
+    #else
+        float ambient = texture(uOcclusionMap, vUV, registers.lod_bias).x;
+    #endif
+#else
+    const float ambient = 1.0;
+#endif
+
+    emit_render_target(vec3(0.0), base_color, normal, metallic, roughness, ambient, vEyeVec);
 }

@@ -295,23 +295,30 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 	auto *program = device.get_shader_manager().register_graphics("builtin://shaders/lights/directional.vert",
 	                                                              "builtin://shaders/lights/directional.frag");
 
-	static const vector<pair<string, int>> defines = {
-			{ "SHADOW_CASCADES", 1 },
-			{ "ENVIRONMENT", 1 },
-			{ "FOG", 1 },
-			{ "SHADOWS", 1 },
-	};
+	auto &light = *context.get_lighting_parameters();
+
+	vector<pair<string, int>> defines;
+	if (light.shadow_far && light.shadow_near)
+		defines.push_back({ "SHADOW_CASCADES", 1 });
+	if (light.environment_radiance && light.environment_radiance)
+		defines.push_back({ "ENVIRONMENT", 1 });
+	if (light.shadow_far)
+		defines.push_back({ "SHADOWS", 1 });
 
 	unsigned variant = program->register_variant(defines);
 	cmd.set_program(*program->get_program(variant));
 	cmd.set_depth_test(true, false);
 	cmd.set_depth_compare(VK_COMPARE_OP_GREATER);
 
-	auto &light = *context.get_lighting_parameters();
-	cmd.set_texture(1, 0, *light.environment_radiance, Vulkan::StockSampler::LinearClamp);
-	cmd.set_texture(1, 1, *light.environment_irradiance, Vulkan::StockSampler::LinearClamp);
-	cmd.set_texture(1, 2, *light.shadow_far, Vulkan::StockSampler::LinearShadow);
-	cmd.set_texture(1, 3, *light.shadow_near, Vulkan::StockSampler::LinearShadow);
+	if (light.environment_radiance)
+		cmd.set_texture(1, 0, *light.environment_radiance, Vulkan::StockSampler::LinearClamp);
+	if (light.environment_irradiance)
+		cmd.set_texture(1, 1, *light.environment_irradiance, Vulkan::StockSampler::LinearClamp);
+
+	if (light.shadow_far)
+		cmd.set_texture(1, 2, *light.shadow_far, Vulkan::StockSampler::LinearShadow);
+	if (light.shadow_near)
+		cmd.set_texture(1, 3, *light.shadow_near, Vulkan::StockSampler::LinearShadow);
 
 	struct DirectionalLightPush
 	{
@@ -323,9 +330,6 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 		vec4 camera_pos_mipscale;
 		vec3 camera_front;
 	} push;
-
-	const float intensity = 1.0f;
-	const float mipscale = 6.0f;
 
 	mat4 total_shadow_transform = light.shadow.far_transform * context.get_render_parameters().inv_view_projection;
 	mat4 total_shadow_transform_near = light.shadow.near_transform * context.get_render_parameters().inv_view_projection;
@@ -344,9 +348,9 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 	push.inv_view_proj_col2 = context.get_render_parameters().inv_view_projection[2];
 	push.shadow_col2 = total_shadow_transform[2];
 	push.shadow_near_col2 = total_shadow_transform_near[2];
-	push.color_env_intensity = vec4(3.0f, 2.5f, 2.5f, intensity);
+	push.color_env_intensity = vec4(light.directional.color, light.environment.intensity);
 	push.direction_inv_cutoff = vec4(light.directional.direction, light.shadow.inv_cutoff_distance);
-	push.camera_pos_mipscale = vec4(context.get_render_parameters().camera_position, mipscale);
+	push.camera_pos_mipscale = vec4(context.get_render_parameters().camera_position, light.environment.mipscale);
 	push.camera_front = context.get_render_parameters().camera_front;
 	cmd.push_constants(&push, 0, sizeof(push));
 

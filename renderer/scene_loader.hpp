@@ -53,7 +53,8 @@ private:
 
 	std::unique_ptr<Scene> scene;
 	std::unique_ptr<AnimationSystem> animation_system;
-	void parse(const std::string &path, const std::string &json);
+	void parse_scene_format(const std::string &path, const std::string &json);
+	void parse_gltf(const std::string &path);
 
 	Scene::NodeHandle build_tree_for_subscene(const SubsceneData &subscene);
 	void load_animation(const std::string &path, Importer::Animation &animation);

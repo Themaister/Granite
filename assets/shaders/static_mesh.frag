@@ -15,6 +15,10 @@ layout(location = 2) in mediump vec3 vNormal;
 layout(location = 3) in mediump vec4 vTangent;
 #endif
 
+#if HAVE_VERTEX_COLOR
+layout(location = 4) in mediump vec4 vColor;
+#endif
+
 #if defined(HAVE_BASECOLORMAP) && HAVE_BASECOLORMAP
 layout(set = 2, binding = 0) uniform sampler2D uBaseColormap;
 #endif
@@ -57,6 +61,10 @@ void main()
     #endif
 #else
     vec4 base_color = registers.base_color;
+#endif
+
+#if HAVE_VERTEX_COLOR
+    base_color *= vColor;
 #endif
 
     // Ideally we want to discard ASAP, so we need to take explicit gradients first.

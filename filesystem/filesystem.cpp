@@ -146,6 +146,14 @@ Filesystem::Filesystem()
 	}
 	else
 	{
+		const char *asset_dir = getenv("GRANITE_DEFAULT_ASSET_DIRECTORY");
+#ifdef GRANITE_DEFAULT_ASSET_DIRECTORY
+		if (!asset_dir)
+			asset_dir = GRANITE_DEFAULT_ASSET_DIRECTORY;
+#endif
+		if (asset_dir)
+			register_protocol("builtin", unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir)));
+
 #ifdef GRANITE_DEFAULT_BUILTIN_DIRECTORY
 		const char *builtin_dir = getenv("GRANITE_DEFAULT_BUILTIN_DIRECTORY");
 		if (!builtin_dir)

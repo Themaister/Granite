@@ -69,8 +69,7 @@ function(add_granite_application TARGET_NAME)
     endif()
 endfunction()
 
-add_granite_application(sandbox sandbox.cpp)
-target_compile_definitions(sandbox PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets/gltf-sandbox\")
+add_subdirectory(tests)
 
 add_subdirectory(network)
 

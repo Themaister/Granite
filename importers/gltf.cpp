@@ -403,6 +403,8 @@ static MeshAttribute semantic_to_attribute(const char *semantic)
 		return MeshAttribute::BoneIndex;
 	else if (!strcmp(semantic, "WEIGHT"))
 		return MeshAttribute::BoneWeights;
+	else if (!strcmp(semantic, "COLOR_0"))
+		return MeshAttribute::VertexColor;
 	else
 		throw logic_error("Unsupported semantic.");
 }
@@ -542,7 +544,9 @@ void Parser::parse(const string &original_path, const string &json)
 		auto &view = accessor["bufferView"];
 		auto view_index = get_by_name(json_view_map, view);
 
-		auto offset = accessor["byteOffset"].GetUint();
+		uint32_t offset = 0;
+		if (accessor.HasMember("byteOffset"))
+			offset = accessor["byteOffset"].GetUint();
 		auto component_type = accessor["componentType"].GetUint();
 		auto count = accessor["count"].GetUint();
 		auto *type = accessor["type"].GetString();
@@ -742,6 +746,50 @@ void Parser::parse(const string &original_path, const string &json)
 		{
 			auto &tex = value["normalTexture"]["index"];
 			info.normal = json_images[json_textures[get_by_name(json_textures_map, tex)].image_index];
+		}
+
+		if (value.HasMember("extensions"))
+		{
+			auto &ext = value["extensions"];
+			for (auto itr = ext.MemberBegin(); itr != ext.MemberEnd(); ++itr)
+			{
+				if (itr->name == "KHR_materials_pbrSpecularGlossiness")
+				{
+					auto &value = itr->value;
+					if (value.HasMember("diffuseFactor"))
+					{
+						auto &diff = value["diffuseFactor"];
+						info.uniform_base_color = vec4(diff[0].GetFloat(), diff[1].GetFloat(),
+						                               diff[2].GetFloat(), diff[3].GetFloat());
+					}
+
+					if (value.HasMember("glossinessFactor"))
+					{
+						auto &gloss = value["glossinessFactor"];
+						// Probably some remapping needed.
+						info.uniform_roughness = clamp(1.0f - gloss.GetFloat(), 0.0f, 1.0f);
+					}
+
+					if (value.HasMember("specularFactor"))
+					{
+						auto &spec = value["specularFactor"];
+						// No idea how to remap ...
+						info.uniform_metallic = glm::max(glm::max(spec[0].GetFloat(), spec[1].GetFloat()), spec[2].GetFloat());
+					}
+
+					if (value.HasMember("diffuseTexture"))
+					{
+						auto &tex = value["diffuseTexture"]["index"];
+						info.base_color = json_images[json_textures[get_by_name(json_textures_map, tex)].image_index];
+						info.sampler = json_textures[get_by_name(json_textures_map, tex)].sampler;
+					}
+
+					if (value.HasMember("specularGlossinessTexture"))
+					{
+						LOGE("Specular glossiness texture not supported, use PBR!\n");
+					}
+				}
+			}
 		}
 
 		if (value.HasMember("pbrMetallicRoughness"))

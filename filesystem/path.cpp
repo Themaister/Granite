@@ -110,7 +110,10 @@ string basedir(const string &path)
 	if (index == 0 && is_abspath(path))
 		index++;
 
-	return path.substr(0, index);
+	auto ret = path.substr(0, index + 1);
+	if (!is_root_path(ret))
+		ret.pop_back();
+	return ret;
 }
 
 string basename(const string &path)

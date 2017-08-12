@@ -63,9 +63,13 @@ static void luminance_build_render_pass(RenderPass &pass, Vulkan::CommandBuffer 
 	{
 		uvec2 size;
 		float lerp;
+		float minimum;
+		float maximum;
 	} push;
 	push.size = uvec2(half_width, half_height);
 	push.lerp = 1.0f - pow(0.5f, timer.frame_time);
+	push.minimum = -2.0f;
+	push.maximum = 1.0f;
 	cmd.push_constants(&push, 0, sizeof(push));
 	cmd.dispatch(1, 1, 1);
 }

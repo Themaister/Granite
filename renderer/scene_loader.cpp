@@ -49,10 +49,18 @@ unique_ptr<AnimationSystem> SceneLoader::consume_animation_system()
 void SceneLoader::load_scene(const std::string &path)
 {
 	animation_system.reset(new AnimationSystem);
-	string json;
-	if (!Filesystem::get().read_file_to_string(path, json))
-		throw runtime_error("Failed to load GLTF file.");
-	parse(path, json);
+	auto ext = Path::ext(path);
+	if (ext == "gltf" || ext == "glb")
+	{
+		parse_gltf(path);
+	}
+	else
+	{
+		string json;
+		if (!Filesystem::get().read_file_to_string(path, json))
+			throw runtime_error("Failed to load GLTF file.");
+		parse_scene_format(path, json);
+	}
 }
 
 Scene::NodeHandle SceneLoader::build_tree_for_subscene(const SubsceneData &subscene)
@@ -178,7 +186,41 @@ void SceneLoader::load_animation(const std::string &path, Importer::Animation &a
 	}
 }
 
-void SceneLoader::parse(const std::string &path, const std::string &json)
+void SceneLoader::parse_gltf(const std::string &path)
+{
+	SubsceneData scene;
+	scene.parser.reset(new GLTF::Parser(path));
+	for (auto &mesh : scene.parser->get_meshes())
+	{
+		Importer::MaterialInfo default_material;
+		default_material.uniform_base_color = vec4(0.0f, 1.0f, 0.0f, 1.0f);
+		AbstractRenderableHandle renderable;
+
+		bool skinned = mesh.attribute_layout[ecast(MeshAttribute::BoneIndex)].format != VK_FORMAT_UNDEFINED;
+		if (skinned)
+		{
+			if (mesh.has_material)
+				renderable = Util::make_abstract_handle<AbstractRenderable, ImportedSkinnedMesh>(mesh,
+				                                                                                 scene.parser->get_materials()[mesh.material_index]);
+			else
+				renderable = Util::make_abstract_handle<AbstractRenderable, ImportedSkinnedMesh>(mesh, default_material);
+		}
+		else
+		{
+			if (mesh.has_material)
+				renderable = Util::make_abstract_handle<AbstractRenderable, ImportedMesh>(mesh,
+				                                                                          scene.parser->get_materials()[mesh.material_index]);
+			else
+				renderable = Util::make_abstract_handle<AbstractRenderable, ImportedMesh>(mesh, default_material);
+		}
+		scene.meshes.push_back(renderable);
+	}
+
+	auto root_node = build_tree_for_subscene(scene);
+	this->scene->set_root_node(root_node);
+}
+
+void SceneLoader::parse_scene_format(const std::string &path, const std::string &json)
 {
 	Document doc;
 	doc.Parse(json);

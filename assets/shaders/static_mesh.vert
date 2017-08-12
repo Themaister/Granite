@@ -33,6 +33,11 @@ layout(location = 4) in mediump uvec4 BoneIndices;
 layout(location = 5) in mediump vec4 BoneWeights;
 #endif
 
+#if HAVE_VERTEX_COLOR
+layout(location = 6) in mediump vec4 VertexColor;
+layout(location = 4) out mediump vec4 vColor;
+#endif
+
 #if HAVE_BONE_INDEX && HAVE_BONE_WEIGHT
 layout(std140, set = 3, binding = 1) uniform BonesWorld
 {
@@ -119,5 +124,9 @@ void main()
 
 #if HAVE_UV
     vUV = UV;
+#endif
+
+#if HAVE_VERTEX_COLOR
+    vColor = VertexColor;
 #endif
 }

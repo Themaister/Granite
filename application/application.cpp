@@ -88,8 +88,10 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned
 
 void SceneViewerApplication::on_device_created(const DeviceCreatedEvent &device)
 {
-	reflection = device.get_device().get_texture_manager().request_texture(skydome_reflection);
-	irradiance = device.get_device().get_texture_manager().request_texture(skydome_irradiance);
+	if (!skydome_reflection.empty())
+		reflection = device.get_device().get_texture_manager().request_texture(skydome_reflection);
+	if (!skydome_irradiance.empty())
+		irradiance = device.get_device().get_texture_manager().request_texture(skydome_irradiance);
 	graph.set_device(&device.get_device());
 }
 
@@ -187,7 +189,12 @@ void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::st
 
 	gbuffer.set_get_clear_color([](unsigned, VkClearColorValue *value) -> bool {
 		if (value)
-			memset(value, 0, sizeof(*value));
+		{
+			value->float32[0] = 0.4f;
+			value->float32[1] = 0.4f;
+			value->float32[2] = 0.4f;
+			value->float32[3] = 0.4f;
+		}
 		return true;
 	});
 
@@ -356,8 +363,10 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 	auto &scene = scene_loader.get_scene();
 	auto &device = wsi.get_device();
 
-	lighting.environment_radiance = &reflection->get_image()->get_view();
-	lighting.environment_irradiance = &irradiance->get_image()->get_view();
+	if (reflection)
+		lighting.environment_radiance = &reflection->get_image()->get_view();
+	if (irradiance)
+		lighting.environment_irradiance = &irradiance->get_image()->get_view();
 	lighting.shadow.inv_cutoff_distance = 1.0f / cascade_cutoff_distance;
 	lighting.environment.intensity = 1.0f;
 	lighting.environment.mipscale = 6.0f;

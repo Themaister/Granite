@@ -43,7 +43,13 @@ void main()
     FragColor = compute_lighting(
 		MaterialProperties(base_color_ambient.rgb, N, mr.x, mr.y, base_color_ambient.a, 1.0),
 		LightInfo(pos, registers.camera_pos, registers.camera_front,
-				registers.direction, registers.color,
-				clip_shadow_near, clip_shadow, registers.inv_cutoff_distance),
-		EnvironmentInfo(registers.environment_intensity, registers.environment_mipscale));
+				registers.direction, registers.color
+#ifdef SHADOWS
+				, clip_shadow_near, clip_shadow, registers.inv_cutoff_distance
+#endif
+				)
+#ifdef ENVIRONMENT
+		, EnvironmentInfo(registers.environment_intensity, registers.environment_mipscale)
+#endif
+		);
 }

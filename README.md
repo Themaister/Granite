@@ -2,35 +2,48 @@
 
 Granite is my personal Vulkan renderer project.
 
-**Do not expect any support or help.
+## Why release this?
+
+The most interesting part of this project compared to the other open-source Vulkan renderers so far
+is probably the render graph implementation.
+
 The project is on GitHub in the hope it might be useful as-is
 for learning purposes or generating implementation ideas.
+
+### Disclaimer
+
+**Do not expect any support or help.
 Pull requests will likely be ignored or dismissed.**
 
 ## Low-level rendering backend
 
 The rendering backend focuses entirely on Vulkan,
 so it reuses Vulkan enums and data structures where appropriate.
-However, the API greatly simplifies the more painful points of Vulkan.
-Implementation is found in `vulkan/`.
+However, the API greatly simplifies the more painful points of writing straight Vulkan.
+It's not designed to be the fastest renderer ever made, it's likely a happy middle ground between
+"perfect" Vulkan and OpenGL/D3D11 w.r.t. CPU overhead.
 
 - Memory manager
 - Deferred destruction and release of API objects and memory
 - Automatic descriptor set management
 - Linear allocators for vertex/index/uniform/staging data
 - Automatic pipeline creation
-- Uses TRANSFER-queue on desktop to upload vertex/input/uniform data in bulk
+- Command buffer tracks state similar to older APIs
+- Uses TRANSFER-queue on desktop to upload linear-allocated vertex/index/uniform data in bulk
 - Vulkan GLSL for shaders, shaders are compiled in runtime with shaderc
 - Pipeline cache save-to-disk and reload
+- Easier-to-use fences and semaphores
 
 Missing bits:
 - Multithreaded rendering
 - Precompile all shaders to optimized SPIR-V
 
+Implementation is found in `vulkan/`.
+
 ## High-level rendering backend
 
 A basic scene graph, component system and other higher-level scaffolding lives in `renderer/`.
-This is probably the most unoptimized part.
+This is probably the most unoptimized and naive part.
 
 ## PBR renderer
 
@@ -40,7 +53,8 @@ Fancy rendering is not the real motivation behind this project.
 ## Automatic shader recompile and texture reload (Linux/Android only)
 
 Immediately when shaders are modified or textures are changed, the resources are automatically reloaded.
-The implementation uses inotify to do this, so it's exclusive to Linux unless a backend is implemented on Windows (meh).
+The implementation uses inotify to do this,
+so it's exclusive to Linux unless a backend is implemented on Windows (plz no).
 
 ## Network VFS
 
@@ -77,6 +91,7 @@ The default application scene renderer in `application/application.cpp` sets up
 a render graph which does:
 - Conditionally renders a shadow map covering entire scene
 - Renders a close shadow map
+- Automatically pulls in reflection/refraction render passes if present in the scene graph
 - Renders scene G-Buffer with deferred
 - Lighting pass (merged with G-Buffer pass into a single render pass)
 - Bloom threshold pass

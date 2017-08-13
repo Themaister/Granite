@@ -147,6 +147,8 @@ ninja -j16 # YMMV :3
 For MSVC, it should work to use the appropriate `-G` flag.
 There aren't any real samples yet, so not much to do unless you use Granite as a submodule.
 
+The Android build is somewhat broken atm, but it's based on gradle/CMake/NativeActivity.
+
 ## License
 
 The code is licensed under MIT. Feel free to use it for whatever purpose.

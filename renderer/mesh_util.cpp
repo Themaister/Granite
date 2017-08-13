@@ -400,7 +400,7 @@ void SkyCylinder::on_device_created(const DeviceCreatedEvent &created)
 	sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
 	sampler_info.maxLod = VK_LOD_CLAMP_NONE;
 	sampler = device.create_sampler(sampler_info);
-};
+}
 
 void SkyCylinder::on_device_destroyed(const DeviceCreatedEvent &)
 {
@@ -410,7 +410,7 @@ void SkyCylinder::on_device_destroyed(const DeviceCreatedEvent &)
 	sampler.reset();
 }
 
-void SkyCylinder::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *,
+void SkyCylinder::get_render_info(const RenderContext &, const CachedSpatialTransformComponent *,
                                   RenderQueue &queue) const
 {
 	SkyCylinderRenderInfo info;
@@ -436,8 +436,7 @@ void SkyCylinder::get_render_info(const RenderContext &context, const CachedSpat
 
 	if (cylinder_info)
 	{
-		uint32_t flags = texture ? MATERIAL_TEXTURE_EMISSIVE_BIT : 0u;
-		info.program = queue.get_shader_suites()[ecast(RenderableType::SkyCylinder)].get_program(DrawPipeline::Opaque, 0, flags).get();
+		info.program = queue.get_shader_suites()[ecast(RenderableType::SkyCylinder)].get_program(DrawPipeline::Opaque, 0, 0).get();
 		*cylinder_info = info;
 	}
 }
@@ -500,7 +499,7 @@ void Skybox::get_render_info(const RenderContext &context, const CachedSpatialTr
 
 	if (skydome_info)
 	{
-		auto flags = texture ? MATERIAL_TEXTURE_EMISSIVE_BIT : 0;
+		auto flags = texture ? MATERIAL_EMISSIVE_BIT : 0;
 		info.program = queue.get_shader_suites()[ecast(RenderableType::Skybox)].get_program(DrawPipeline::Opaque, 0, flags).get();
 		*skydome_info = info;
 	}

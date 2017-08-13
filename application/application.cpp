@@ -72,6 +72,13 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned
 		skydome_reflection = skybox_component->reflection_path;
 		skydome_irradiance = skybox_component->irradiance_path;
 	}
+	else
+	{
+		// Create a dummy skybox.
+		auto skybox = Util::make_abstract_handle<AbstractRenderable, Skybox>();
+		static_cast<Skybox *>(skybox.get())->set_color_mod(vec3(1.0f, 0.8f, 0.4f));
+		scene_loader.get_scene().create_renderable(skybox, nullptr);
+	}
 
 	auto *environment = scene_loader.get_scene().get_environment();
 	if (environment)

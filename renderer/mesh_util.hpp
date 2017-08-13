@@ -70,13 +70,19 @@ private:
 class Skybox : public AbstractRenderable, public EventHandler
 {
 public:
-	Skybox(std::string bg_path);
+	Skybox(std::string bg_path = "");
 
 	void get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
 	                     RenderQueue &queue) const override;
 
+	void set_color_mod(const vec3 &color)
+	{
+		this->color = color;
+	}
+
 private:
 	std::string bg_path;
+	vec3 color = vec3(1.0f);
 	Vulkan::Texture *texture = nullptr;
 
 	void on_device_created(const Vulkan::DeviceCreatedEvent &event);

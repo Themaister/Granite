@@ -292,6 +292,7 @@ struct SkyboxRenderInfo
 	Program *program;
 	const ImageView *view;
 	const Sampler *sampler;
+	vec3 color;
 };
 
 static void skybox_render(CommandBuffer &cmd, const RenderQueueData *infos, unsigned instances)
@@ -301,7 +302,11 @@ static void skybox_render(CommandBuffer &cmd, const RenderQueueData *infos, unsi
 		auto *info = static_cast<const SkyboxRenderInfo *>(infos[i].render_info);
 
 		cmd.set_program(*info->program);
-		cmd.set_texture(2, 0, *info->view, *info->sampler);
+
+		if (info->view)
+			cmd.set_texture(2, 0, *info->view, *info->sampler);
+
+		cmd.push_constants(&info->color, 0, sizeof(info->color));
 
 		CommandBufferUtil::set_quad_vertex_state(cmd);
 		cmd.set_cull_mode(VK_CULL_MODE_NONE);
@@ -314,13 +319,22 @@ void Skybox::get_render_info(const RenderContext &context, const CachedSpatialTr
                              RenderQueue &queue) const
 {
 	SkyboxRenderInfo info;
-	info.view = &texture->get_image()->get_view();
+
+	if (texture)
+		info.view = &texture->get_image()->get_view();
+	else
+		info.view = nullptr;
 
 	Hasher h;
 	h.pointer(info.view);
+	h.f32(color.x);
+	h.f32(color.y);
+	h.f32(color.z);
+
 	auto instance_key = h.get();
 	auto sorting_key = RenderInfo::get_background_sort_key(Queue::Opaque, 0, 0);
 	info.sampler = &context.get_device().get_stock_sampler(StockSampler::LinearClamp);
+	info.color = color;
 
 	auto *skydome_info = queue.push<SkyboxRenderInfo>(Queue::Opaque, instance_key, sorting_key,
 	                                                  skybox_render,
@@ -328,14 +342,17 @@ void Skybox::get_render_info(const RenderContext &context, const CachedSpatialTr
 
 	if (skydome_info)
 	{
-		info.program = queue.get_shader_suites()[ecast(RenderableType::Skybox)].get_program(DrawPipeline::Opaque, 0, 0).get();
+		auto flags = texture ? MATERIAL_TEXTURE_EMISSIVE_BIT : 0;
+		info.program = queue.get_shader_suites()[ecast(RenderableType::Skybox)].get_program(DrawPipeline::Opaque, 0, flags).get();
 		*skydome_info = info;
 	}
 }
 
 void Skybox::on_device_created(const DeviceCreatedEvent &created)
 {
-	texture = created.get_device().get_texture_manager().request_texture(bg_path);
+	texture = nullptr;
+	if (!bg_path.empty())
+		texture = created.get_device().get_texture_manager().request_texture(bg_path);
 }
 
 void Skybox::on_device_destroyed(const DeviceCreatedEvent &)

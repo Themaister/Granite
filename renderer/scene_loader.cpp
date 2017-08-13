@@ -458,7 +458,7 @@ void SceneLoader::parse_scene_format(const std::string &path, const std::string 
 			auto skybox = Util::make_abstract_handle<AbstractRenderable, Skybox>(texture_path);
 			entity = scene->create_renderable(skybox, nullptr);
 
-			auto *skybox_component = entity->allocate_component<SkyboxComponent>();
+			auto *skybox_component = entity->allocate_component<IBLComponent>();
 			skybox_component->reflection_path = texture_path;
 			skybox_component->irradiance_path = texture_path;
 		}

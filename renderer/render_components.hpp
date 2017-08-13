@@ -72,7 +72,7 @@ struct EnvironmentComponent : ComponentBase
 	FogParameters fog;
 };
 
-struct SkyboxComponent : ComponentBase
+struct IBLComponent : ComponentBase
 {
 	std::string reflection_path;
 	std::string irradiance_path;

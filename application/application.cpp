@@ -66,18 +66,19 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned
 	context.set_lighting_parameters(&lighting);
 	cam.set_depth_range(0.1f, 1000.0f);
 
-	auto &skybox = scene_loader.get_scene().get_entity_pool().get_component_group<SkyboxComponent>();
-	if (!skybox.empty())
+	auto &ibl = scene_loader.get_scene().get_entity_pool().get_component_group<IBLComponent>();
+	if (!ibl.empty())
 	{
-		auto *skybox_component = get<0>(skybox.front());
-		skydome_reflection = skybox_component->reflection_path;
-		skydome_irradiance = skybox_component->irradiance_path;
+		auto *ibl_component = get<0>(ibl.front());
+		skydome_reflection = ibl_component->reflection_path;
+		skydome_irradiance = ibl_component->irradiance_path;
 	}
-	else
+
+	// Create a dummy background if there isn't any background.
+	if (scene_loader.get_scene().get_entity_pool().get_component_group<UnboundedComponent>().empty())
 	{
-		// Create a dummy skybox.
-		auto cylinder = Util::make_abstract_handle<AbstractRenderable, SkyCylinder>("builtin://textures/cylinder.png");
-		static_cast<SkyCylinder *>(cylinder.get())->set_xz_scale(5.0f);
+		auto cylinder = Util::make_abstract_handle<AbstractRenderable, SkyCylinder>("builtin://textures/background.png");
+		static_cast<SkyCylinder *>(cylinder.get())->set_xz_scale(8.0f / pi<float>());
 		scene_loader.get_scene().create_renderable(cylinder, nullptr);
 	}
 

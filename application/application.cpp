@@ -22,7 +22,7 @@
 
 #define RENDERER_FORWARD 0
 #define RENDERER_DEFERRED 1
-#define RENDERER RENDERER_DEFERRED
+#define RENDERER RENDERER_FORWARD
 
 #include "application.hpp"
 #include <stdexcept>
@@ -64,6 +64,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned
 	scene_loader.load_scene(path);
 	animation_system = scene_loader.consume_animation_system();
 	context.set_lighting_parameters(&lighting);
+	cam.set_depth_range(0.1f, 1000.0f);
 
 	auto &skybox = scene_loader.get_scene().get_entity_pool().get_component_group<SkyboxComponent>();
 	if (!skybox.empty())
@@ -75,9 +76,9 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned
 	else
 	{
 		// Create a dummy skybox.
-		auto skybox = Util::make_abstract_handle<AbstractRenderable, Skybox>();
-		static_cast<Skybox *>(skybox.get())->set_color_mod(vec3(1.0f, 0.8f, 0.4f));
-		scene_loader.get_scene().create_renderable(skybox, nullptr);
+		auto cylinder = Util::make_abstract_handle<AbstractRenderable, SkyCylinder>("builtin://textures/cylinder.png");
+		static_cast<SkyCylinder *>(cylinder.get())->set_xz_scale(5.0f);
+		scene_loader.get_scene().create_renderable(cylinder, nullptr);
 	}
 
 	auto *environment = scene_loader.get_scene().get_environment();
@@ -138,9 +139,16 @@ void SceneViewerApplication::render_main_pass(Vulkan::CommandBuffer &cmd, const 
 	scene.gather_visible_opaque_renderables(context.get_visibility_frustum(), visible);
 	scene.gather_background_renderables(visible);
 	scene.gather_visible_render_pass_sinks(context.get_render_parameters().camera_position, visible);
+
+#if RENDERER == RENDERER_FORWARD
+	forward_renderer.begin();
+	forward_renderer.push_renderables(context, visible);
+	forward_renderer.flush(cmd, context);
+#else
 	deferred_renderer.begin();
 	deferred_renderer.push_renderables(context, visible);
 	deferred_renderer.flush(cmd, context);
+#endif
 }
 
 static inline string tagcat(const std::string &a, const std::string &b)
@@ -175,10 +183,18 @@ void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::st
 	});
 
 	lighting.set_build_render_pass([this, type](Vulkan::CommandBuffer &cmd) {
-		renderer.set_mesh_renderer_options(Renderer::ENVIRONMENT_ENABLE_BIT |
-		                                   Renderer::SHADOW_ENABLE_BIT |
-		                                   Renderer::FOG_ENABLE_BIT |
-		                                   Renderer::SHADOW_CASCADE_ENABLE_BIT);
+		uint32_t flags = 0;
+
+		if (this->lighting.environment_irradiance && this->lighting.environment_radiance)
+			flags |= Renderer::ENVIRONMENT_ENABLE_BIT;
+		if (this->lighting.shadow_far)
+			flags |= Renderer::SHADOW_ENABLE_BIT;
+		if (this->lighting.shadow_near && this->lighting.shadow_far)
+			flags |= Renderer::SHADOW_CASCADE_ENABLE_BIT;
+		if (this->lighting.fog.falloff > 0.0f)
+			flags |= Renderer::FOG_ENABLE_BIT;
+
+		forward_renderer.set_mesh_renderer_options(flags);
 		render_main_pass(cmd, cam.get_projection(), cam.get_view());
 	});
 

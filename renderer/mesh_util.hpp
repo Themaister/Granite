@@ -89,6 +89,39 @@ private:
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
 };
 
+class SkyCylinder : public AbstractRenderable, public EventHandler
+{
+public:
+	SkyCylinder(std::string bg_path);
+
+	void get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
+	                     RenderQueue &queue) const override;
+
+	void set_color_mod(const vec3 &color)
+	{
+		this->color = color;
+	}
+
+	void set_xz_scale(float scale)
+	{
+		this->scale = scale;
+	}
+
+private:
+	std::string bg_path;
+	vec3 color = vec3(1.0f);
+	float scale = 1.0f;
+	Vulkan::Texture *texture = nullptr;
+
+	void on_device_created(const Vulkan::DeviceCreatedEvent &event);
+	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
+
+	Vulkan::BufferHandle vbo;
+	Vulkan::BufferHandle ibo;
+	Vulkan::SamplerHandle sampler;
+	unsigned count = 0;
+};
+
 class TexturePlane : public AbstractRenderable, public EventHandler, public RenderPassCreator
 {
 public:

@@ -281,6 +281,167 @@ void CubeMesh::on_device_destroyed(const DeviceCreatedEvent &)
 	reset();
 }
 
+SkyCylinder::SkyCylinder(std::string bg_path)
+	: bg_path(move(bg_path))
+{
+	EVENT_MANAGER_REGISTER_LATCH(SkyCylinder, on_device_created, on_device_destroyed, DeviceCreatedEvent);
+}
+
+struct SkyCylinderRenderInfo
+{
+	Program *program;
+	const ImageView *view;
+	const Sampler *sampler;
+	vec3 color;
+	float scale;
+
+	const Buffer *vbo;
+	const Buffer *ibo;
+	unsigned count;
+};
+
+struct CylinderVertex
+{
+	vec3 pos;
+	vec2 uv;
+};
+
+static void skycylinder_render(CommandBuffer &cmd, const RenderQueueData *infos, unsigned instances)
+{
+	for (unsigned i = 0; i < instances; i++)
+	{
+		auto *info = static_cast<const SkyCylinderRenderInfo *>(infos[i].render_info);
+
+		cmd.set_program(*info->program);
+		cmd.set_texture(2, 0, *info->view, *info->sampler);
+
+		vec4 color_scale(info->color, info->scale);
+		cmd.push_constants(&color_scale, 0, sizeof(color_scale));
+
+		auto vp = cmd.get_viewport();
+		vp.minDepth = 1.0f;
+		vp.maxDepth = 1.0f;
+		cmd.set_viewport(vp);
+
+		cmd.set_vertex_attrib(0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(CylinderVertex, pos));
+		cmd.set_vertex_attrib(1, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(CylinderVertex, uv));
+		cmd.set_vertex_binding(0, *info->vbo, 0, sizeof(CylinderVertex));
+		cmd.set_index_buffer(*info->ibo, 0, VK_INDEX_TYPE_UINT16);
+		cmd.set_primitive_restart(true);
+		cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
+		cmd.draw_indexed(info->count);
+	}
+}
+
+void SkyCylinder::on_device_created(const DeviceCreatedEvent &created)
+{
+	auto &device = created.get_device();
+	texture = nullptr;
+	if (!bg_path.empty())
+		texture = device.get_texture_manager().request_texture(bg_path);
+
+	std::vector<CylinderVertex> v;
+	std::vector<uint16_t> indices;
+	for (unsigned i = 0; i < 33; i++)
+	{
+		float x = cos(2.0f * pi<float>() * i / 32.0f);
+		float z = sin(2.0f * pi<float>() * i / 32.0f);
+		v.push_back({ vec3(x, +1.0f, z), vec2(i / 32.0f, 0.0f) });
+		v.push_back({ vec3(x, -1.0f, z), vec2(i / 32.0f, 1.0f) });
+	}
+
+	for (unsigned i = 0; i < 33; i++)
+	{
+		indices.push_back(2 * i + 0);
+		indices.push_back(2 * i + 1);
+	}
+
+	indices.push_back(0xffff);
+
+	unsigned ring_offset = v.size();
+	v.push_back({ vec3(0.0f, 1.0f, 0.0f), vec2(0.5f, 0.0f) });
+	v.push_back({ vec3(0.0f, -1.0f, 0.0f), vec2(0.5f, 1.0f) });
+
+	for (unsigned i = 0; i < 32; i++)
+	{
+		indices.push_back(ring_offset);
+		indices.push_back(2 * i);
+		indices.push_back(2 * (i + 1));
+		indices.push_back(0xffff);
+	}
+
+	for (unsigned i = 0; i < 32; i++)
+	{
+		indices.push_back(ring_offset + 1);
+		indices.push_back(2 * (i + 1) + 1);
+		indices.push_back(2 * i + 1);
+		indices.push_back(0xffff);
+	}
+
+	BufferCreateInfo info = {};
+	info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+	info.size = v.size() * sizeof(CylinderVertex);
+	info.domain = BufferDomain::Device;
+	vbo = device.create_buffer(info, v.data());
+
+	info.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+	info.size = indices.size() * sizeof(uint16_t);
+	ibo = device.create_buffer(info, indices.data());
+
+	count = indices.size();
+
+	Vulkan::SamplerCreateInfo sampler_info = {};
+	sampler_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	sampler_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	sampler_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	sampler_info.maxAnisotropy = 1.0f;
+	sampler_info.magFilter = VK_FILTER_LINEAR;
+	sampler_info.minFilter = VK_FILTER_LINEAR;
+	sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+	sampler_info.maxLod = VK_LOD_CLAMP_NONE;
+	sampler = device.create_sampler(sampler_info);
+};
+
+void SkyCylinder::on_device_destroyed(const DeviceCreatedEvent &)
+{
+	texture = nullptr;
+	vbo.reset();
+	ibo.reset();
+	sampler.reset();
+}
+
+void SkyCylinder::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *,
+                                  RenderQueue &queue) const
+{
+	SkyCylinderRenderInfo info;
+
+	info.view = &texture->get_image()->get_view();
+
+	Hasher h;
+	h.pointer(info.view);
+
+	auto instance_key = h.get();
+	auto sorting_key = RenderInfo::get_background_sort_key(Queue::OpaqueEmissive, 0, 0);
+	info.sampler = sampler.get();
+	info.color = color;
+	info.scale = scale;
+
+	info.ibo = ibo.get();
+	info.vbo = vbo.get();
+	info.count = count;
+
+	auto *cylinder_info = queue.push<SkyCylinderRenderInfo>(Queue::OpaqueEmissive, instance_key, sorting_key,
+	                                                        skycylinder_render,
+	                                                        nullptr);
+
+	if (cylinder_info)
+	{
+		uint32_t flags = texture ? MATERIAL_TEXTURE_EMISSIVE_BIT : 0u;
+		info.program = queue.get_shader_suites()[ecast(RenderableType::SkyCylinder)].get_program(DrawPipeline::Opaque, 0, flags).get();
+		*cylinder_info = info;
+	}
+}
+
 Skybox::Skybox(std::string bg_path)
 	: bg_path(move(bg_path))
 {
@@ -327,16 +488,13 @@ void Skybox::get_render_info(const RenderContext &context, const CachedSpatialTr
 
 	Hasher h;
 	h.pointer(info.view);
-	h.f32(color.x);
-	h.f32(color.y);
-	h.f32(color.z);
 
 	auto instance_key = h.get();
-	auto sorting_key = RenderInfo::get_background_sort_key(Queue::Opaque, 0, 0);
+	auto sorting_key = RenderInfo::get_background_sort_key(Queue::OpaqueEmissive, 0, 0);
 	info.sampler = &context.get_device().get_stock_sampler(StockSampler::LinearClamp);
 	info.color = color;
 
-	auto *skydome_info = queue.push<SkyboxRenderInfo>(Queue::Opaque, instance_key, sorting_key,
+	auto *skydome_info = queue.push<SkyboxRenderInfo>(Queue::OpaqueEmissive, instance_key, sorting_key,
 	                                                  skybox_render,
 	                                                  nullptr);
 

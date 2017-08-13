@@ -86,7 +86,6 @@ Scene::NodeHandle SceneLoader::build_tree_for_subscene(const SubsceneData &subsc
 					{
 						animation_system->register_animation(animation.name, animation);
 						animation_system->start_animation(*nodeptr, animation.name, 0.0, true);
-						//break;
 					}
 				}
 #endif

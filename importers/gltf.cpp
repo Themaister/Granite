@@ -1090,20 +1090,21 @@ void Parser::parse(const string &original_path, const string &json)
 	if (doc.HasMember("animations"))
 	{
 		auto &animations = doc["animations"];
-		if (animations.IsArray())
+		unsigned counter = 0;
+		for (auto itr = animations.Begin(); itr != animations.End(); ++itr)
 		{
-			unsigned counter = 0;
-			for (auto itr = animations.Begin(); itr != animations.End(); ++itr)
+			string name;
+
+			if (itr->HasMember("name"))
+				name = (*itr)["name"].GetString();
+			else
 			{
-				string name = "animation_";
+				name = "animation_";
 				name += to_string(counter);
-				json_animation_names.push_back(move(name));
 			}
-		}
-		else
-		{
-			for (auto itr = animations.MemberBegin(); itr != animations.MemberEnd(); ++itr)
-				json_animation_names.push_back(itr->name.GetString());
+
+			json_animation_names.push_back(move(name));
+			counter++;
 		}
 		iterate_elements(animations, add_animation);
 	}

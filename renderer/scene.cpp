@@ -170,6 +170,27 @@ void Scene::gather_visible_shadow_renderables(const Frustum &frustum, Visibility
 		list.push_back({ get<1>(object)->renderable.get(), nullptr });
 }
 
+#if 0
+static void log_node_transforms(const Scene::Node &node)
+{
+	for (unsigned i = 0; i < node.cached_skin_transform.bone_world_transforms.size(); i++)
+	{
+		LOGI("Joint #%u:\n", i);
+
+		const auto &ibp = node.cached_skin_transform.bone_world_transforms[i];
+		LOGI(" Transform:\n"
+				     "      [%f, %f, %f, %f]\n"
+				     "      [%f, %f, %f, %f]\n"
+				     "      [%f, %f, %f, %f]\n"
+				     "      [%f, %f, %f, %f]\n",
+		     ibp[0][0], ibp[1][0], ibp[2][0], ibp[3][0],
+		     ibp[0][1], ibp[1][1], ibp[2][1], ibp[3][1],
+		     ibp[0][2], ibp[1][2], ibp[2][2], ibp[3][2],
+		     ibp[0][3], ibp[1][3], ibp[2][3], ibp[3][3]);
+	}
+}
+#endif
+
 void Scene::update_skinning(Node &node)
 {
 	if (!node.cached_skin_transform.bone_world_transforms.empty())
@@ -182,6 +203,8 @@ void Scene::update_skinning(Node &node)
 			node.cached_skin_transform.bone_world_transforms[i] = node.get_skin().cached_skin[i]->world_transform;
 			node.cached_skin_transform.bone_normal_transforms[i] = node.get_skin().cached_skin[i]->normal_transform;
 		}
+
+		//log_node_transforms(node);
 	}
 }
 

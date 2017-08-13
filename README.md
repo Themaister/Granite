@@ -26,6 +26,7 @@ It's not designed to be the fastest renderer ever made, it's likely a happy midd
 - Memory manager
 - Deferred destruction and release of API objects and memory
 - Automatic descriptor set management
+- Automatic, optimal multisampled resolve with pResolveAttachments
 - Linear allocators for vertex/index/uniform/staging data
 - Automatic pipeline creation
 - Command buffer tracks state similar to older APIs

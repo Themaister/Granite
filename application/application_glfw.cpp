@@ -40,6 +40,11 @@ static void button_cb(GLFWwindow *window, int button, int action, int);
 static void cursor_cb(GLFWwindow *window, double x, double y);
 static void enter_cb(GLFWwindow *window, int entered);
 
+// glfwGetProcAddr uses different calling convention on Windows.
+static VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL GetInstanceProcAddr(VkInstance instance, const char *name)
+{
+	return glfwGetInstanceProcAddress(instance, name);
+}
 
 struct ApplicationPlatformGLFW : ApplicationPlatform
 {
@@ -49,7 +54,7 @@ public:
 		if (!glfwInit())
 			throw runtime_error("Failed to initialize GLFW.");
 
-		if (!Context::init_loader(glfwGetInstanceProcAddress))
+		if (!Context::init_loader(GetInstanceProcAddr))
 			throw runtime_error("Failed to initialize Vulkan loader.");
 
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);

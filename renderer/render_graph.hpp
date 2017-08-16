@@ -661,7 +661,7 @@ private:
 		Vulkan::Semaphore wait_graphics_semaphore;
 		Vulkan::Semaphore wait_compute_semaphore;
 
-		VkPipelineStageFlags to_flush_stages = 0;
+		// Stages to wait for are stored inside the events.
 		VkAccessFlags to_flush_access = 0;
 
 		VkAccessFlags invalidated_in_stage[32] = {};

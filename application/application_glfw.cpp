@@ -43,7 +43,7 @@ static void enter_cb(GLFWwindow *window, int entered);
 // glfwGetProcAddr uses different calling convention on Windows.
 static VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL GetInstanceProcAddr(VkInstance instance, const char *name)
 {
-	return glfwGetInstanceProcAddress(instance, name);
+	return reinterpret_cast<PFN_vkVoidFunction>(glfwGetInstanceProcAddress(instance, name));
 }
 
 struct ApplicationPlatformGLFW : ApplicationPlatform

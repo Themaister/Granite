@@ -26,7 +26,6 @@ It's not designed to be the fastest renderer ever made, it's likely a happy midd
 - Memory manager
 - Deferred destruction and release of API objects and memory
 - Automatic descriptor set management
-- Automatic, optimal multisampled resolve with pResolveAttachments
 - Linear allocators for vertex/index/uniform/staging data
 - Automatic pipeline creation
 - Command buffer tracks state similar to older APIs
@@ -87,6 +86,10 @@ render graph. It supports:
 - Render target history, read previous frame's results in next frame for feedback
 - Conditional render passes, can preserve render passes if necessary
 - Render passes are reordered for optimal (?) overlap in execution
+- Automatic, optimal multisampled resolve with pResolveAttachments
+
+I have written up a longer blog post about its implementation
+[here](http://themaister.net/blog/2017/08/15/render-graphs-and-vulkan-a-deep-dive/).
 
 The default application scene renderer in `application/application.cpp` sets up
 a render graph which does:
@@ -123,7 +126,7 @@ Tested on GCC, Clang, and MSVC 2017.
 ## Platforms
 
 - GLFW (Linux / Windows)
-- VK_KHR_display (headless Linux)
+- `VK_KHR_display` (headless Linux)
 - Android
 
 ## Vulkan implementations tested

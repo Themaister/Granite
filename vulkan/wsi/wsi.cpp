@@ -72,9 +72,9 @@ bool WSI::init(Granite::ApplicationPlatform *platform, unsigned width, unsigned 
 	device.set_context(*context);
 	auto &em = Granite::EventManager::get_global();
 	em.enqueue_latched<DeviceCreatedEvent>(&device);
+	device.init_swapchain(swapchain_images, this->width, this->height, format);
 	platform->get_frame_timer().reset();
 
-	device.init_swapchain(swapchain_images, this->width, this->height, format);
 	return true;
 }
 

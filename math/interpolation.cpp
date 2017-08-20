@@ -31,7 +31,7 @@ float catmull_rom_spline(float c0, float c1, float c2, float c3, float phase)
 	return c1 +
 	       (c2 - c0) * 0.5f * phase +
 	       (c0 - (2.5f * c1) + (2.0f * c2) - (0.5f * c3)) * phase2 +
-	       ((-0.5f * c0) + (1.5f * c1) - (1.5f * c2) - (0.5f * c3)) * phase3;
+	       ((-0.5f * c0) + (1.5f * c1) - (1.5f * c2) + (0.5f * c3)) * phase3;
 }
 
 // Computes the analytic derivative of the spline dFd(phase).
@@ -40,6 +40,6 @@ float catmull_rom_spline_gradient(float c0, float c1, float c2, float c3, float 
 	float phase2 = phase * phase;
 	return (c2 - c0) * 0.5f +
 	       (c0 - (2.5f * c1) + (2.0f * c2) - (0.5f * c3)) * 2.0f * phase +
-	       ((-0.5f * c0) + (1.5f * c1) - (1.5f * c2) - (0.5f * c3)) * 3.0f * phase2;
+	       ((-0.5f * c0) + (1.5f * c1) - (1.5f * c2) + (0.5f * c3)) * 3.0f * phase2;
 }
 }

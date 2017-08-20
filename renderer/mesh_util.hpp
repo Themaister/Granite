@@ -67,6 +67,17 @@ private:
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
 };
 
+class SphereMesh : public StaticMesh, public EventHandler
+{
+public:
+	SphereMesh(unsigned density = 16);
+
+private:
+	unsigned density;
+	void on_device_created(const Vulkan::DeviceCreatedEvent &event);
+	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
+};
+
 class Skybox : public AbstractRenderable, public EventHandler
 {
 public:

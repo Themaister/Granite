@@ -144,6 +144,126 @@ void ImportedMesh::on_device_destroyed(const DeviceCreatedEvent &)
 	ibo.reset();
 }
 
+SphereMesh::SphereMesh(unsigned density)
+	: density(density)
+{
+	static_aabb = AABB(vec3(-1.0f), vec3(1.0f));
+	EVENT_MANAGER_REGISTER_LATCH(SphereMesh, on_device_created, on_device_destroyed, DeviceCreatedEvent);
+}
+
+void SphereMesh::on_device_created(const DeviceCreatedEvent &event)
+{
+	auto &device = event.get_device();
+
+	struct Attribute
+	{
+		vec3 normal;
+		vec2 uv;
+	};
+
+	std::vector<vec3> positions;
+	std::vector<Attribute> attributes;
+	std::vector<uint16_t> indices;
+
+	positions.reserve(6 * density * density);
+	attributes.reserve(6 * density * density);
+	indices.reserve(2 * density * density * 6);
+
+	float density_mod = 1.0f / float(density - 1);
+	const auto to_uv = [&](unsigned x, unsigned y) -> vec2 {
+		return vec2(density_mod * x, density_mod * y);
+	};
+
+	static const vec3 base_pos[6] = {
+			vec3(1.0f, 1.0f, 1.0f),
+			vec3(-1.0f, 1.0f, -1.0f),
+			vec3(-1.0f, 1.0f, -1.0f),
+			vec3(-1.0f, -1.0f, +1.0f),
+			vec3(-1.0f, 1.0f, +1.0f),
+			vec3(+1.0f, 1.0f, -1.0f),
+	};
+
+	static const vec3 dx[6] = {
+			vec3(0.0f, 0.0f, -2.0f),
+			vec3(0.0f, 0.0f, +2.0f),
+			vec3(2.0f, 0.0f, 0.0f),
+			vec3(2.0f, 0.0f, 0.0f),
+			vec3(2.0f, 0.0f, 0.0f),
+			vec3(-2.0f, 0.0f, 0.0f),
+	};
+
+	static const vec3 dy[6] = {
+			vec3(0.0f, -2.0f, 0.0f),
+			vec3(0.0f, -2.0f, 0.0f),
+			vec3(0.0f, 0.0f, +2.0f),
+			vec3(0.0f, 0.0f, -2.0f),
+			vec3(0.0f, -2.0f, 0.0f),
+			vec3(0.0f, -2.0f, 0.0f),
+	};
+
+	// I don't know how many times I've written this exact code in different projects by now. :)
+	for (unsigned face = 0; face < 6; face++)
+	{
+		unsigned index_offset = face * density * density;
+		for (unsigned y = 0; y < density; y++)
+		{
+			for (unsigned x = 0; x < density; x++)
+			{
+				vec2 uv = to_uv(x, y);
+				vec3 pos = normalize(base_pos[face] + dx[face] * uv.x + dy[face] * uv.y);
+				positions.push_back(pos);
+				attributes.push_back({ pos, uv });
+			}
+		}
+
+		unsigned strips = density - 1;
+		for (unsigned y = 0; y < strips; y++)
+		{
+			unsigned base_index = index_offset + y * density;
+			for (unsigned x = 0; x < density; x++)
+			{
+				indices.push_back(base_index + x);
+				indices.push_back(base_index + x + density);
+			}
+			indices.push_back(0xffff);
+		}
+	}
+
+	BufferCreateInfo info = {};
+	info.size = positions.size() * sizeof(vec3);
+	info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+	info.domain = BufferDomain::Device;
+	vbo_position = device.create_buffer(info, positions.data());
+
+	info.size = attributes.size() * sizeof(Attribute);
+	vbo_attributes = device.create_buffer(info, attributes.data());
+
+	this->attributes[ecast(MeshAttribute::Position)].format = VK_FORMAT_R32G32B32_SFLOAT;
+	this->attributes[ecast(MeshAttribute::Position)].offset = 0;
+	this->attributes[ecast(MeshAttribute::Normal)].format = VK_FORMAT_R32G32B32_SFLOAT;
+	this->attributes[ecast(MeshAttribute::Normal)].offset = offsetof(Attribute, normal);
+	this->attributes[ecast(MeshAttribute::UV)].format = VK_FORMAT_R32G32_SFLOAT;
+	this->attributes[ecast(MeshAttribute::UV)].offset = offsetof(Attribute, uv);
+	position_stride = sizeof(vec3);
+	attribute_stride = sizeof(Attribute);
+
+	info.size = indices.size() * sizeof(uint16_t);
+	info.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+	ibo = device.create_buffer(info, indices.data());
+	ibo_offset = 0;
+	index_type = VK_INDEX_TYPE_UINT16;
+	count = indices.size();
+	topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+
+	material = StockMaterials::get().get_checkerboard();
+	bake();
+}
+
+void SphereMesh::on_device_destroyed(const DeviceCreatedEvent &)
+{
+	reset();
+}
+
 CubeMesh::CubeMesh()
 {
 	static_aabb = AABB(vec3(-1.0f), vec3(1.0f));
@@ -267,8 +387,8 @@ void CubeMesh::on_device_created(const DeviceCreatedEvent &created)
 	ibo_info.domain = BufferDomain::Device;
 	ibo_info.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
 	ibo = device.create_buffer(ibo_info, indices);
-	//material = StockMaterials::get().get_checkerboard();
-	material = MaterialManager::get().request_material("builtin://materials/default.json");
+	material = StockMaterials::get().get_checkerboard();
+	//material = MaterialManager::get().request_material("builtin://materials/default.json");
 
 	vertex_offset = 0;
 	ibo_offset = 0;

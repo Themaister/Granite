@@ -398,8 +398,16 @@ Ground::Handles Ground::add_to_scene(Scene &scene, unsigned size, float tiling_f
 
 	auto ground = make_handle<Ground>(size, info);
 	ground->set_tiling_factor(vec2(tiling_factor));
+
+	auto *ground_component = handles.entity->allocate_component<GroundComponent>();
+	ground_component->ground = ground.get();
+
 	auto *update_component = handles.entity->allocate_component<PerFrameUpdateComponent>();
 	update_component->refresh = ground.get();
+
+	auto *cached_transform = handles.entity->allocate_component<CachedSpatialTransformComponent>();
+	cached_transform->transform = &handles.node->cached_transform;
+	cached_transform->skin_transform = nullptr;
 
 	handles.ground = ground.get();
 

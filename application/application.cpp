@@ -402,11 +402,9 @@ void SceneViewerApplication::render_shadow_map_near(Vulkan::CommandBuffer &cmd)
 	depth_renderer.flush(cmd, depth_context);
 }
 
-void SceneViewerApplication::render_frame(double, double elapsed_time)
+void SceneViewerApplication::update_scene(double, double elapsed_time)
 {
-	auto &wsi = get_wsi();
 	auto &scene = scene_loader.get_scene();
-	auto &device = wsi.get_device();
 
 	if (reflection)
 		lighting.environment_radiance = &reflection->get_image()->get_view();
@@ -425,6 +423,13 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 	animation_system->animate(elapsed_time);
 	scene.update_cached_transforms();
 	scene.refresh_per_frame(context);
+}
+
+void SceneViewerApplication::render_scene()
+{
+	auto &wsi = get_wsi();
+	auto &device = wsi.get_device();
+	auto &scene = scene_loader.get_scene();
 
 	graph.setup_attachments(device, &device.get_swapchain_view());
 	lighting.shadow_far = &graph.get_physical_texture_resource(graph.get_texture_resource("shadow-main").get_physical_index());
@@ -435,12 +440,20 @@ void SceneViewerApplication::render_frame(double, double elapsed_time)
 	need_shadow_map_update = false;
 }
 
+void SceneViewerApplication::render_frame(double frame_time, double elapsed_time)
+{
+	update_scene(frame_time, elapsed_time);
+	render_scene();
+}
+
 int Application::run()
 {
 	auto &wsi = get_wsi();
 	while (get_platform().alive(wsi))
 	{
 		Filesystem::get().poll_notifications();
+		EventManager::get_global().dispatch();
+
 		wsi.begin_frame();
 		render_frame(wsi.get_platform().get_frame_timer().get_frame_time(),
 					 wsi.get_platform().get_frame_timer().get_elapsed());

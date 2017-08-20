@@ -38,6 +38,7 @@ class RenderQueue;
 class RenderContext;
 class RenderPass;
 class Scene;
+class Ground;
 
 struct Transform
 {
@@ -102,6 +103,11 @@ struct RenderPassSinkComponent : ComponentBase
 struct CullPlaneComponent : ComponentBase
 {
 	vec4 plane;
+};
+
+struct GroundComponent : ComponentBase
+{
+	Ground *ground = nullptr;
 };
 
 struct RenderPassComponent : ComponentBase

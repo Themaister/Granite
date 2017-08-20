@@ -184,7 +184,10 @@ public:
 	void rescale_scene(float radius);
 	void loop_animations();
 
-private:
+protected:
+	void update_scene(double frame_time, double elapsed_time);
+	void render_scene();
+
 	RenderContext context;
 	RenderContext depth_context;
 	Renderer forward_renderer;

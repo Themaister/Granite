@@ -31,6 +31,7 @@ class FrameTimer
 public:
 	FrameTimer();
 
+	void reset();
 	double frame();
 	double get_elapsed() const;
 	double get_frame_time() const;

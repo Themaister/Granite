@@ -29,6 +29,11 @@ namespace Granite
 {
 FrameTimer::FrameTimer()
 {
+	reset();
+}
+
+void FrameTimer::reset()
+{
 	start = get_time();
 	last = start;
 	last_period = 0;

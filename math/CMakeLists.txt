@@ -3,5 +3,6 @@ add_granite_library(math
         frustum.hpp frustum.cpp
         aabb.cpp aabb.hpp
         render_parameters.hpp
+        interpolation.cpp interpolation.hpp
         transforms.cpp transforms.hpp)
 target_include_directories(math PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/glm ${CMAKE_CURRENT_SOURCE_DIR})

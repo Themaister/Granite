@@ -51,7 +51,7 @@ public:
 		return position;
 	}
 
-	Widget *on_mouse_button_pressed(vec2 position) override;
+	Widget *on_mouse_button_pressed(vec2 position, vec2 size) override;
 	void on_mouse_button_move(vec2 offset) override;
 
 private:

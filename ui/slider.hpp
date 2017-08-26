@@ -22,21 +22,54 @@
 
 #pragma once
 
-#include "glm/vec2.hpp"
-#include "glm/vec3.hpp"
-#include "glm/vec4.hpp"
-#include "glm/mat4x4.hpp"
-#include "glm/gtc/quaternion.hpp"
-#include "glm/gtx/transform.hpp"
-#include "glm/gtc/packing.hpp"
+#include "widget.hpp"
 
 namespace Granite
 {
-using namespace glm;
-
-inline void quantize_color(uint8_t *v, const vec4 &color)
+namespace UI
 {
-	for (unsigned i = 0; i < 4; i++)
-		v[i] = uint8_t(round(clamp(color[i] * 255.0f, 0.0f, 255.0f)));
+class Slider : public Widget
+{
+public:
+	void set_text(std::string text);
+	const std::string &get_text() const
+	{
+		return text;
+	}
+
+	void set_size(vec2 size)
+	{
+		this->size = size;
+	}
+
+	void set_color(vec4 color)
+	{
+		this->color = color;
+	}
+
+	vec4 get_color() const
+	{
+		return color;
+	}
+
+	void set_label_slider_gap(float size)
+	{
+		gap = size;
+	}
+
+	virtual Widget *on_mouse_button_pressed(vec2 offset, vec2 size) override;
+	virtual void on_mouse_button_move(vec2 offset) override;
+
+private:
+	std::string text;
+	vec4 color = vec4(1.0f);
+	vec2 size = vec2(0.0f);
+	vec2 drag_size = vec2(0.0f);
+	vec2 drag_base = vec2(0.0f);
+	float gap = 0.0f;
+	float value = 1.0f;
+	float render(FlatRenderer &renderer, float layer, vec2 offset, vec2 size) override;
+	void reconfigure() override;
+};
 }
 }

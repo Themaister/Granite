@@ -93,8 +93,7 @@ bool UIManager::filter_input_event(const MouseMoveEvent &e)
 	if (drag_receiver)
 	{
 		vec2 pos(e.get_abs_x(), e.get_abs_y());
-		vec2 offset = pos - drag_receiver_base;
-		drag_receiver->on_mouse_button_move(offset);
+		drag_receiver->on_mouse_button_move(pos - drag_receiver_base);
 		return false;
 	}
 	else
@@ -111,8 +110,7 @@ bool UIManager::filter_input_event(const MouseButtonEvent &e)
 		if (drag_receiver)
 		{
 			vec2 pos(e.get_abs_x(), e.get_abs_y());
-			vec2 offset = pos - drag_receiver_base;
-			drag_receiver->on_mouse_button_released(offset);
+			drag_receiver->on_mouse_button_released(pos);
 			drag_receiver = nullptr;
 			return false;
 		}
@@ -136,7 +134,7 @@ bool UIManager::filter_input_event(const MouseButtonEvent &e)
 
 		if (e.get_button() == MouseButton::Left)
 		{
-			auto *receiver = window->on_mouse_button_pressed(window_pos);
+			auto *receiver = window->on_mouse_button_pressed(pos, window->get_minimum_geometry());
 			drag_receiver = receiver;
 			drag_receiver_base = pos;
 		}

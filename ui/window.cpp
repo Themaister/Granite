@@ -40,23 +40,26 @@ void Window::set_title(const std::string &title)
 	geometry_changed();
 }
 
-Widget *Window::on_mouse_button_pressed(vec2 offset)
+Widget *Window::on_mouse_button_pressed(vec2 offset, vec2)
 {
 	move_base = position;
 
 	auto &font = UIManager::get().get_font(FontSize::Large);
 	vec2 text_geom = font.get_text_geometry(title.c_str());
 	float line_y = text_geom.y + geometry.margin + 2.0f;
-	if (offset.y < line_y)
+	if (offset.y < position.y + line_y)
 		return this;
+
+	float off_y = line_y + 2.0f;
 
 	for (auto &child : children)
 	{
-		if (any(lessThan(offset, child.offset)) ||
-		    any(greaterThanEqual(offset, child.offset + child.size)))
+		if (any(lessThan(offset, position + child.offset + vec2(0.0f, off_y))) ||
+		    any(greaterThanEqual(offset, position + child.offset + vec2(0.0f, off_y) + child.size)))
 			continue;
 
-		return child.widget->on_mouse_button_pressed(offset - child.offset);
+		return child.widget->on_mouse_button_pressed(offset - (position + child.offset + vec2(0.0f, off_y)),
+		                                             child.size);
 	}
 
 	return nullptr;

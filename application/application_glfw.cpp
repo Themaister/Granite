@@ -212,6 +212,7 @@ static void key_cb(GLFWwindow *window, int key, int, int action, int)
 
 	auto gkey = glfw_key_to_granite(key);
 	auto *glfw = static_cast<ApplicationPlatformGLFW *>(glfwGetWindowUserPointer(window));
+
 	glfw->get_input_tracker().key_event(gkey, state);
 }
 
@@ -233,7 +234,10 @@ static void button_cb(GLFWwindow *window, int button, int action, int)
 		btn = MouseButton::Middle;
 		break;
 	}
-	glfw->get_input_tracker().mouse_button_event(btn, action == GLFW_PRESS);
+
+	double x, y;
+	glfwGetCursorPos(window, &x, &y);
+	glfw->get_input_tracker().mouse_button_event(btn, x, y, action == GLFW_PRESS);
 }
 
 static void cursor_cb(GLFWwindow *window, double x, double y)

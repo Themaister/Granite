@@ -25,6 +25,7 @@
 #include "event.hpp"
 #include "widget.hpp"
 #include "flat_renderer.hpp"
+#include "input.hpp"
 
 namespace Granite
 {
@@ -43,7 +44,13 @@ class UIManager : public EventHandler
 public:
 	static UIManager &get();
 
-	bool filter_input_event(const Event &e);
+	bool filter_input_event(const TouchDownEvent &e);
+	bool filter_input_event(const TouchUpEvent &e);
+	bool filter_input_event(const MouseMoveEvent &e);
+	bool filter_input_event(const KeyboardEvent &e);
+	bool filter_input_event(const OrientationEvent &e);
+	bool filter_input_event(const TouchGestureEvent &e);
+	bool filter_input_event(const MouseButtonEvent &e);
 
 	void add_child(WidgetHandle handle);
 
@@ -63,6 +70,9 @@ private:
 	FlatRenderer renderer;
 	std::vector<WidgetHandle> widgets;
 	std::unique_ptr<Font> fonts[Util::ecast(FontSize::Count)];
+
+	Widget *drag_receiver = nullptr;
+	vec2 drag_receiver_base = vec2(0.0f);
 };
 }
 }

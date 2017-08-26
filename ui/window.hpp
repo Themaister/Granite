@@ -51,9 +51,13 @@ public:
 		return position;
 	}
 
+	Widget *on_mouse_button_pressed(vec2 position) override;
+	void on_mouse_button_move(vec2 offset) override;
+
 private:
 	std::string title;
-	vec2 position = vec2(0);
+	vec2 position = vec2(0.0f);
+	vec2 move_base = vec2(0.0f);
 
 	float render(FlatRenderer &renderer, float layer, vec2 offset, vec2 size) override;
 	void reconfigure() override;

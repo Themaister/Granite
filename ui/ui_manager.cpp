@@ -72,5 +72,89 @@ Font& UIManager::get_font(FontSize size)
 {
 	return *fonts[Util::ecast(size)];
 }
+
+bool UIManager::filter_input_event(const TouchUpEvent &)
+{
+	return true;
+}
+
+bool UIManager::filter_input_event(const TouchDownEvent &)
+{
+	return true;
+}
+
+bool UIManager::filter_input_event(const KeyboardEvent &)
+{
+	return true;
+}
+
+bool UIManager::filter_input_event(const MouseMoveEvent &e)
+{
+	if (drag_receiver)
+	{
+		vec2 pos(e.get_abs_x(), e.get_abs_y());
+		vec2 offset = pos - drag_receiver_base;
+		drag_receiver->on_mouse_button_move(offset);
+		return false;
+	}
+	else
+		return true;
+}
+
+bool UIManager::filter_input_event(const MouseButtonEvent &e)
+{
+	if (drag_receiver && e.get_pressed())
+		return false;
+
+	if (!e.get_pressed())
+	{
+		if (drag_receiver)
+		{
+			vec2 pos(e.get_abs_x(), e.get_abs_y());
+			vec2 offset = pos - drag_receiver_base;
+			drag_receiver->on_mouse_button_released(offset);
+			drag_receiver = nullptr;
+			return false;
+		}
+		else
+			return true;
+	}
+
+	for (auto &widget : widgets)
+	{
+		auto *window = static_cast<Window *>(widget.get());
+		widget->reconfigure_geometry();
+
+		vec2 pos(e.get_abs_x(), e.get_abs_y());
+		vec2 window_pos = pos - window->get_floating_position();
+
+		if (any(greaterThanEqual(window_pos, window->get_minimum_geometry())) ||
+		    any(lessThan(window_pos, vec2(0.0f))))
+		{
+			continue;
+		}
+
+		if (e.get_button() == MouseButton::Left)
+		{
+			auto *receiver = window->on_mouse_button_pressed(window_pos);
+			drag_receiver = receiver;
+			drag_receiver_base = pos;
+		}
+
+		return false;
+	}
+
+	return true;
+}
+
+bool UIManager::filter_input_event(const OrientationEvent &)
+{
+	return true;
+}
+
+bool UIManager::filter_input_event(const TouchGestureEvent &)
+{
+	return true;
+}
 }
 }

@@ -80,7 +80,7 @@ class InputTracker
 {
 public:
 	void key_event(Key key, KeyState state);
-	void mouse_button_event(MouseButton button, bool pressed);
+	void mouse_button_event(MouseButton button, double x, double y, bool pressed);
 	void mouse_move_event(double x, double y);
 	void dispatch_current_state(double delta_time);
 	void orientation_event(quat rot);
@@ -259,14 +259,24 @@ class MouseButtonEvent : public Granite::Event
 public:
 	GRANITE_EVENT_TYPE_DECL(MouseButtonEvent)
 
-	MouseButtonEvent(MouseButton button, bool pressed)
-		: button(button), pressed(pressed)
+	MouseButtonEvent(MouseButton button, double abs_x, double abs_y, bool pressed)
+		: button(button), abs_x(abs_x), abs_y(abs_y), pressed(pressed)
 	{
 	}
 
 	MouseButton get_button() const
 	{
 		return button;
+	}
+
+	double get_abs_x() const
+	{
+		return abs_x;
+	}
+
+	double get_abs_y() const
+	{
+		return abs_y;
 	}
 
 	bool get_pressed() const
@@ -276,6 +286,8 @@ public:
 
 private:
 	MouseButton button;
+	double abs_x;
+	double abs_y;
 	bool pressed;
 };
 

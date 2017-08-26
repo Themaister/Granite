@@ -27,6 +27,7 @@
 
 namespace Granite
 {
+class MouseButtonEvent;
 class FlatRenderer;
 
 namespace UI
@@ -127,6 +128,19 @@ public:
 	virtual float render(FlatRenderer & /* renderer */, float layer, vec2 /* offset */, vec2 /* size */)
 	{
 		return layer;
+	}
+
+	virtual Widget *on_mouse_button_pressed(vec2)
+	{
+		return nullptr;
+	}
+
+	virtual void on_mouse_button_released(vec2)
+	{
+	}
+
+	virtual void on_mouse_button_move(vec2)
+	{
 	}
 
 protected:

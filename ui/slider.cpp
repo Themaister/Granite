@@ -53,6 +53,7 @@ void Slider::set_range(float minimum, float maximum)
 {
 	value_minimum = minimum;
 	value_maximum = maximum;
+	value = mix(value_minimum, value_maximum, normalized_value);
 }
 
 void Slider::set_value(float value)

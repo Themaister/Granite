@@ -39,27 +39,49 @@ void Slider::reconfigure()
 {
 	auto &font = UIManager::get().get_font(FontSize::Small);
 	vec2 minimum = font.get_text_geometry(text.c_str());
+	vec2 minimum_value = font.get_text_geometry(to_string(value).c_str());
 	geometry.minimum = minimum + 2.0f * geometry.margin;
 	geometry.minimum.x += gap;
 	geometry.minimum.x += size.x;
+	geometry.minimum.x += gap;
+	geometry.minimum.x += minimum_value.x;
+	geometry.minimum.y = glm::max(geometry.minimum.y, minimum_value.y + 2.0f * geometry.margin);
 	geometry.minimum.y = glm::max(2.0f * geometry.margin + size.y, geometry.minimum.y);
+}
+
+void Slider::set_range(float minimum, float maximum)
+{
+	value_minimum = minimum;
+	value_maximum = maximum;
+}
+
+void Slider::set_value(float value)
+{
+	value = clamp(value, value_minimum, value_maximum);
+	normalized_value = (value - value_minimum) / (value_maximum - value_minimum);
+	geometry_changed();
 }
 
 Widget *Slider::on_mouse_button_pressed(vec2 offset, vec2 size)
 {
 	auto &font = UIManager::get().get_font(FontSize::Small);
 	vec2 minimum = font.get_text_geometry(text.c_str());
+	vec2 minimum_value = font.get_text_geometry(to_string(value).c_str());
+
 	vec2 slider_offset = vec2(geometry.margin);
 	slider_offset.x += minimum.x + gap;
 	vec2 slider_size = size - slider_offset;
 	slider_size.y -= geometry.margin;
+	slider_size.x -= gap + minimum_value.x;
 
 	if (any(lessThan(offset, slider_offset)) || any(greaterThanEqual(offset, slider_offset + slider_size)))
 		return nullptr;
 
-	value = clamp((offset.x - slider_offset.x) / slider_size.x, 0.0f, 1.0f);
+	normalized_value = clamp((offset.x - slider_offset.x) / slider_size.x, 0.0f, 1.0f);
+	value = mix(value_minimum, value_maximum, normalized_value);
 	drag_size = size;
 	drag_base = offset;
+	geometry_changed();
 	return this;
 }
 
@@ -68,17 +90,23 @@ void Slider::on_mouse_button_move(vec2 offset)
 	offset += drag_base;
 	auto &font = UIManager::get().get_font(FontSize::Small);
 	vec2 minimum = font.get_text_geometry(text.c_str());
+	vec2 minimum_value = font.get_text_geometry(to_string(value).c_str());
+
 	vec2 slider_offset = vec2(geometry.margin);
 	slider_offset.x += minimum.x + gap;
 	vec2 slider_size = drag_size - slider_offset;
 	slider_size.y -= geometry.margin;
-	value = clamp((offset.x - slider_offset.x) / slider_size.x, 0.0f, 1.0f);
+	slider_size.x -= gap + minimum_value.x;
+	normalized_value = clamp((offset.x - slider_offset.x) / slider_size.x, 0.0f, 1.0f);
+	value = mix(value_minimum, value_maximum, normalized_value);
+	geometry_changed();
 }
 
 float Slider::render(FlatRenderer &renderer, float layer, vec2 offset, vec2 size)
 {
 	auto &font = UIManager::get().get_font(FontSize::Small);
 	vec2 minimum = font.get_text_geometry(text.c_str());
+	vec2 minimum_value = font.get_text_geometry(to_string(value).c_str());
 	renderer.render_text(font, text.c_str(), vec3(offset + geometry.margin, layer), vec2(minimum.x, size.y - 2.0f * geometry.margin),
 	                     color, Font::Alignment::Center);
 
@@ -86,8 +114,15 @@ float Slider::render(FlatRenderer &renderer, float layer, vec2 offset, vec2 size
 	slider_offset.x += minimum.x + gap;
 	vec2 slider_size = offset + size - slider_offset;
 	slider_size.y -= geometry.margin;
+	slider_size.x -= gap + minimum_value.x;
 
-	renderer.render_quad(vec3(slider_offset, layer), slider_size * vec2(value, 1.0f), color);
+	renderer.render_quad(vec3(slider_offset, layer), slider_size * vec2(normalized_value, 1.0f), color);
+
+	renderer.render_text(font, to_string(value).c_str(),
+	                     vec3(offset.x + 3.0f * geometry.margin + 2.0f * gap + minimum.x + slider_size.x, offset.y + geometry.margin, layer),
+	                     vec2(minimum_value.x, size.y - 2.0f * geometry.margin),
+	                     color, Font::Alignment::Center);
+
 	assert(children.empty());
 	return layer;
 }

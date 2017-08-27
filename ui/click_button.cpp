@@ -20,60 +20,50 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#pragma once
-
-#include "event.hpp"
+#include "click_button.hpp"
+#include "ui_manager.hpp"
 #include "widget.hpp"
-#include "flat_renderer.hpp"
-#include "input.hpp"
+
+using namespace std;
 
 namespace Granite
 {
 namespace UI
 {
-enum class FontSize
+void ClickButton::set_text(std::string text)
 {
-	Small = 0,
-	Normal,
-	Large,
-	Count
-};
+	this->text = move(text);
+	geometry_changed();
+}
 
-class UIManager : public EventHandler
+void ClickButton::reconfigure()
 {
-public:
-	static UIManager &get();
+	auto &font = UIManager::get().get_font(FontSize::Small);
+	vec2 minimum = font.get_text_geometry(text.c_str());
+	geometry.minimum = minimum + 2.0f * geometry.margin;
+}
 
-	bool filter_input_event(const TouchDownEvent &e);
-	bool filter_input_event(const TouchUpEvent &e);
-	bool filter_input_event(const MouseMoveEvent &e);
-	bool filter_input_event(const KeyboardEvent &e);
-	bool filter_input_event(const OrientationEvent &e);
-	bool filter_input_event(const TouchGestureEvent &e);
-	bool filter_input_event(const MouseButtonEvent &e);
+void ClickButton::reconfigure_to_canvas(vec2, vec2)
+{
+}
 
-	void add_child(WidgetHandle handle);
+Widget *ClickButton::on_mouse_button_pressed(vec2)
+{
+	click_held = true;
+	return this;
+}
 
-	template <typename T, typename... P>
-	inline T *add_child(P&&... p)
-	{
-		auto handle = Util::make_abstract_handle<Widget, T>(std::forward<P>(p)...);
-		add_child(handle);
-		return static_cast<T *>(handle.get());
-	}
+void ClickButton::on_mouse_button_released(vec2)
+{
+	click_held = false;
+}
 
-	void render(Vulkan::CommandBuffer &cmd);
-	Font &get_font(FontSize size);
-
-private:
-	UIManager();
-	FlatRenderer renderer;
-	std::vector<WidgetHandle> widgets;
-	std::unique_ptr<Font> fonts[Util::ecast(FontSize::Count)];
-	Font::Alignment alignment = Font::Alignment::Center;
-
-	Widget *drag_receiver = nullptr;
-	vec2 drag_receiver_base = vec2(0.0f);
-};
+float ClickButton::render(FlatRenderer &renderer, float layer, vec2 offset, vec2 size)
+{
+	auto &font = UIManager::get().get_font(FontSize::Small);
+	renderer.render_text(font, text.c_str(), vec3(offset + geometry.margin, layer), size - 2.0f * geometry.margin,
+	                     color * vec4(1.0f, 1.0f, 1.0f, click_held ? 0.25f : 1.0f), alignment);
+	return layer;
+}
 }
 }

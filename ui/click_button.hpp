@@ -22,58 +22,44 @@
 
 #pragma once
 
-#include "event.hpp"
 #include "widget.hpp"
-#include "flat_renderer.hpp"
-#include "input.hpp"
+#include "font.hpp"
 
 namespace Granite
 {
 namespace UI
 {
-enum class FontSize
-{
-	Small = 0,
-	Normal,
-	Large,
-	Count
-};
-
-class UIManager : public EventHandler
+class ClickButton : public Widget
 {
 public:
-	static UIManager &get();
-
-	bool filter_input_event(const TouchDownEvent &e);
-	bool filter_input_event(const TouchUpEvent &e);
-	bool filter_input_event(const MouseMoveEvent &e);
-	bool filter_input_event(const KeyboardEvent &e);
-	bool filter_input_event(const OrientationEvent &e);
-	bool filter_input_event(const TouchGestureEvent &e);
-	bool filter_input_event(const MouseButtonEvent &e);
-
-	void add_child(WidgetHandle handle);
-
-	template <typename T, typename... P>
-	inline T *add_child(P&&... p)
+	void set_text(std::string text);
+	const std::string &get_text() const
 	{
-		auto handle = Util::make_abstract_handle<Widget, T>(std::forward<P>(p)...);
-		add_child(handle);
-		return static_cast<T *>(handle.get());
+		return text;
 	}
 
-	void render(Vulkan::CommandBuffer &cmd);
-	Font &get_font(FontSize size);
+	void set_label_alignment(Font::Alignment alignment)
+	{
+		this->alignment = alignment;
+	}
+
+	void set_font_color(vec4 color)
+	{
+		this->color = color;
+	}
 
 private:
-	UIManager();
-	FlatRenderer renderer;
-	std::vector<WidgetHandle> widgets;
-	std::unique_ptr<Font> fonts[Util::ecast(FontSize::Count)];
-	Font::Alignment alignment = Font::Alignment::Center;
+	void reconfigure() override;
+	void reconfigure_to_canvas(vec2 offset, vec2 size) override;
+	Widget *on_mouse_button_pressed(vec2 offset) override;
+	void on_mouse_button_released(vec2 offset) override;
 
-	Widget *drag_receiver = nullptr;
-	vec2 drag_receiver_base = vec2(0.0f);
+	float render(FlatRenderer &renderer, float layer, vec2 offset, vec2 size) override;
+	Font::Alignment alignment = Font::Alignment::Center;
+	vec4 color = vec4(0.0f, 0.0f, 0.0f, 1.0f);
+	std::string text;
+
+	bool click_held = false;
 };
 }
 }

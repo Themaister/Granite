@@ -111,7 +111,7 @@ bool UIManager::filter_input_event(const MouseButtonEvent &e)
 		if (drag_receiver)
 		{
 			vec2 pos(e.get_abs_x(), e.get_abs_y());
-			drag_receiver->on_mouse_button_released(pos);
+			drag_receiver->on_mouse_button_released(pos - drag_receiver_base);
 			drag_receiver = nullptr;
 			return false;
 		}

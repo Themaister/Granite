@@ -172,10 +172,7 @@ protected:
 	std::vector<Child> children;
 	bool needs_reconfigure = false;
 
-	virtual void reconfigure()
-	{
-	}
-
+	virtual void reconfigure() = 0;
 	virtual void reconfigure_to_canvas(vec2 offset, vec2 size) = 0;
 };
 

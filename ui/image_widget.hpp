@@ -53,6 +53,9 @@ private:
 	std::string path;
 	Vulkan::Texture *texture = nullptr;
 
+	vec2 sprite_offset;
+	vec2 sprite_size;
+
 	bool keep_aspect = true;
 };
 }

@@ -47,8 +47,11 @@ void Image::on_device_created(const DeviceCreatedEvent &created)
 	geometry.target = vec2(create_info.width, create_info.height);
 }
 
-float Image::render(FlatRenderer &renderer, float layer, vec2 offset, vec2 size)
+void Image::reconfigure_to_canvas(vec2, vec2 size)
 {
+	sprite_offset = vec2(0.0f);
+	sprite_size = size;
+
 	if (keep_aspect)
 	{
 		float target_aspect = geometry.target.x / geometry.target.y;
@@ -60,20 +63,23 @@ float Image::render(FlatRenderer &renderer, float layer, vec2 offset, vec2 size)
 			{
 				float width = round(size.y * target_aspect);
 				float bias = 0.5f * (size.x - width);
-				offset.x = round(offset.x + bias);
-				size.x = width;
+				sprite_offset.x = round(sprite_offset.x + bias);
+				sprite_size.x = width;
 			}
 			else
 			{
 				float height = round(size.x / target_aspect);
 				float bias = 0.5f * (size.y - height);
-				offset.y = round(offset.y + bias);
-				size.y = height;
+				sprite_offset.y = round(sprite_offset.y + bias);
+				sprite_size.y = height;
 			}
 		}
 	}
+}
 
-	renderer.render_textured_quad(texture->get_image()->get_view(), vec3(offset, layer), size,
+float Image::render(FlatRenderer &renderer, float layer, vec2 offset, vec2)
+{
+	renderer.render_textured_quad(texture->get_image()->get_view(), vec3(offset + sprite_offset, layer), sprite_size,
 	                              vec2(0.0f), vec2(geometry.target), true, vec4(1.0f), Vulkan::StockSampler::LinearClamp);
 	return layer;
 }

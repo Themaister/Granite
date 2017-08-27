@@ -64,10 +64,11 @@ public:
 		return value;
 	}
 
-	virtual Widget *on_mouse_button_pressed(vec2 offset, vec2 size) override;
+	virtual Widget *on_mouse_button_pressed(vec2 offset) override;
 	virtual void on_mouse_button_move(vec2 offset) override;
 
 private:
+	void reconfigure_to_canvas(vec2 offset, vec2 size) override;
 	std::string text;
 	vec4 color = vec4(1.0f);
 	vec2 size = vec2(0.0f);
@@ -78,6 +79,14 @@ private:
 	float value = 1.0f;
 	float value_minimum = 0.0f;
 	float value_maximum = 1.0f;
+
+	vec2 label_offset;
+	vec2 label_size;
+	vec2 slider_offset;
+	vec2 slider_size;
+	vec2 value_offset;
+	vec2 value_size;
+
 	float render(FlatRenderer &renderer, float layer, vec2 offset, vec2 size) override;
 	void reconfigure() override;
 };

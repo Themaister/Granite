@@ -40,26 +40,22 @@ void Window::set_title(const std::string &title)
 	geometry_changed();
 }
 
-Widget *Window::on_mouse_button_pressed(vec2 offset, vec2)
+Widget *Window::on_mouse_button_pressed(vec2 offset)
 {
 	move_base = position;
 
-	auto &font = UIManager::get().get_font(FontSize::Large);
-	vec2 text_geom = font.get_text_geometry(title.c_str());
-	float line_y = text_geom.y + geometry.margin + 2.0f;
-	if (offset.y < position.y + line_y)
+	if (offset.y < line_y + 2.0f)
 		return this;
 
 	float off_y = line_y + 2.0f;
 
 	for (auto &child : children)
 	{
-		if (any(lessThan(offset, position + child.offset + vec2(0.0f, off_y))) ||
-		    any(greaterThanEqual(offset, position + child.offset + vec2(0.0f, off_y) + child.size)))
+		if (any(lessThan(offset, child.offset + vec2(0.0f, off_y))) ||
+		    any(greaterThanEqual(offset, child.offset + vec2(0.0f, off_y) + child.size)))
 			continue;
 
-		return child.widget->on_mouse_button_pressed(offset - (position + child.offset + vec2(0.0f, off_y)),
-		                                             child.size);
+		return child.widget->on_mouse_button_pressed(offset - (child.offset + vec2(0.0f, off_y)));
 	}
 
 	return nullptr;
@@ -71,6 +67,16 @@ void Window::on_mouse_button_move(vec2 offset)
 	geometry_changed();
 }
 
+void Window::reconfigure_to_canvas(vec2 offset, vec2 size)
+{
+	auto &font = UIManager::get().get_font(FontSize::Large);
+	vec2 text_geom = font.get_text_geometry(title.c_str());
+	vec2 text_offset = font.get_aligned_offset(Font::Alignment::TopCenter, text_geom, size);
+	line_y = text_geom.y + text_offset.y + geometry.margin;
+
+	VerticalPacking::reconfigure_to_canvas(vec2(offset.x, offset.y + line_y + 2.0f), size - vec2(0.0f, line_y + 2.0f));
+}
+
 float Window::render(FlatRenderer &renderer, float layer, vec2 offset, vec2 size)
 {
 	if (bg_color.a > 0.0f)
@@ -78,13 +84,11 @@ float Window::render(FlatRenderer &renderer, float layer, vec2 offset, vec2 size
 
 	auto &font = UIManager::get().get_font(FontSize::Large);
 
-	vec2 text_geom = font.get_text_geometry(title.c_str());
-	vec2 text_offset = font.get_aligned_offset(Font::Alignment::TopCenter, text_geom, size);
-	float line_y = text_geom.y + text_offset.y + geometry.margin;
 	vec2 offsets[] = {
 		{ offset.x + geometry.margin, line_y + offset.y },
 		{ offset.x + size.x - geometry.margin, line_y + offset.y },
 	};
+
 	renderer.render_line_strip(offsets, layer - 0.5f, 2, vec4(0.0f, 0.0f, 0.0f, 1.0f));
 	offsets[0].y += 2.0f;
 	offsets[1].y += 2.0f;

@@ -27,7 +27,7 @@ namespace Granite
 {
 namespace UI
 {
-float HorizontalPacking::render(FlatRenderer &renderer, float layer, vec2 offset, vec2 size)
+void HorizontalPacking::reconfigure_to_canvas(vec2, vec2 size)
 {
 	vec2 off = vec2(0.0f, geometry.margin);
 
@@ -65,7 +65,7 @@ float HorizontalPacking::render(FlatRenderer &renderer, float layer, vec2 offset
 			for (auto &child : children)
 			{
 				float desired_padding = max(
-					child.widget->get_target_geometry().x - child.size.x, 0.0f);
+						child.widget->get_target_geometry().x - child.size.x, 0.0f);
 				float padding = min(desired_padding, extra_width_per_object);
 				child.size.x += padding;
 				slack_width -= padding;
@@ -107,7 +107,10 @@ float HorizontalPacking::render(FlatRenderer &renderer, float layer, vec2 offset
 			child.size.y = min(target, size.y - 2.0f * geometry.margin);
 		}
 	}
+}
 
+float HorizontalPacking::render(FlatRenderer &renderer, float layer, vec2 offset, vec2)
+{
 	return render_children(renderer, layer, offset);
 }
 

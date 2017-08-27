@@ -47,6 +47,7 @@ public:
 
 private:
 	float render(FlatRenderer &renderer, float layout, vec2 offset, vec2 size) override;
+	void reconfigure_to_canvas(vec2 offset, vec2 size) override;
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
 	std::string path;

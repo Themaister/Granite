@@ -68,6 +68,7 @@ private:
 	Font::Alignment alignment = Font::Alignment::TopLeft;
 	float render(FlatRenderer &renderer, float layer, vec2 offset, vec2 size) override;
 	void reconfigure() override;
+	void reconfigure_to_canvas(vec2 offset, vec2 size) override;
 };
 }
 }

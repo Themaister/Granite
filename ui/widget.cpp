@@ -101,5 +101,12 @@ void Widget::reconfigure_geometry()
 	reconfigure();
 	needs_reconfigure = false;
 }
+
+void Widget::reconfigure_geometry_to_canvas(vec2 offset, vec2 size)
+{
+	reconfigure_to_canvas(offset, size);
+	for (auto &child : children)
+		child.widget->reconfigure_geometry_to_canvas(child.offset + offset, child.size);
+}
 }
 }

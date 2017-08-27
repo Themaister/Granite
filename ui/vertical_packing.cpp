@@ -27,7 +27,7 @@ namespace Granite
 {
 namespace UI
 {
-float VerticalPacking::render(FlatRenderer &renderer, float layer, vec2 offset, vec2 size)
+void VerticalPacking::reconfigure_to_canvas(vec2, vec2 size)
 {
 	vec2 off = vec2(geometry.margin, 0.0f);
 
@@ -107,7 +107,10 @@ float VerticalPacking::render(FlatRenderer &renderer, float layer, vec2 offset, 
 			child.size.x = min(target, size.x - 2.0f * geometry.margin);
 		}
 	}
+}
 
+float VerticalPacking::render(FlatRenderer &renderer, float layer, vec2 offset, vec2)
+{
 	return render_children(renderer, layer, offset);
 }
 

@@ -39,6 +39,10 @@ void Label::set_text(std::string text)
 	this->text = move(text);
 }
 
+void Label::reconfigure_to_canvas(vec2, vec2)
+{
+}
+
 float Label::render(FlatRenderer &renderer, float layer, vec2 offset, vec2 size)
 {
 	auto &font = UIManager::get().get_font(font_size);

@@ -56,6 +56,7 @@ void UIManager::render(Vulkan::CommandBuffer &cmd)
 	{
 		auto *window = static_cast<Window *>(widget.get());
 		widget->reconfigure_geometry();
+		widget->reconfigure_geometry_to_canvas(window->get_floating_position(), window->get_minimum_geometry());
 
 		vec2 window_size = max(widget->get_target_geometry(), widget->get_minimum_geometry());
 		renderer.push_scissor(window->get_floating_position(), window_size);
@@ -122,6 +123,7 @@ bool UIManager::filter_input_event(const MouseButtonEvent &e)
 	{
 		auto *window = static_cast<Window *>(widget.get());
 		widget->reconfigure_geometry();
+		widget->reconfigure_geometry_to_canvas(window->get_floating_position(), window->get_minimum_geometry());
 
 		vec2 pos(e.get_abs_x(), e.get_abs_y());
 		vec2 window_pos = pos - window->get_floating_position();
@@ -134,7 +136,7 @@ bool UIManager::filter_input_event(const MouseButtonEvent &e)
 
 		if (e.get_button() == MouseButton::Left)
 		{
-			auto *receiver = window->on_mouse_button_pressed(pos, window->get_minimum_geometry());
+			auto *receiver = window->on_mouse_button_pressed(pos - window->get_floating_position());
 			drag_receiver = receiver;
 			drag_receiver_base = pos;
 		}

@@ -124,13 +124,14 @@ public:
 
 	bool get_needs_redraw() const;
 	void reconfigure_geometry();
+	void reconfigure_geometry_to_canvas(vec2 offset, vec2 size);
 
 	virtual float render(FlatRenderer & /* renderer */, float layer, vec2 /* offset */, vec2 /* size */)
 	{
 		return layer;
 	}
 
-	virtual Widget *on_mouse_button_pressed(vec2, vec2)
+	virtual Widget *on_mouse_button_pressed(vec2)
 	{
 		return nullptr;
 	}
@@ -174,6 +175,8 @@ protected:
 	virtual void reconfigure()
 	{
 	}
+
+	virtual void reconfigure_to_canvas(vec2 offset, vec2 size) = 0;
 };
 
 using WidgetHandle = Util::IntrusivePtr<Widget>;

@@ -40,11 +40,14 @@ void Slider::reconfigure()
 	auto &font = UIManager::get().get_font(FontSize::Small);
 	vec2 minimum = font.get_text_geometry(text.c_str());
 	vec2 minimum_value = font.get_text_geometry(to_string(value).c_str());
+
 	geometry.minimum = minimum + 2.0f * geometry.margin;
 	geometry.minimum.x += gap;
 	geometry.minimum.x += size.x;
 	geometry.minimum.x += gap;
+	geometry.minimum.x += 2.0f * geometry.margin;
 	geometry.minimum.x += minimum_value.x;
+
 	geometry.minimum.y = glm::max(geometry.minimum.y, minimum_value.y + 2.0f * geometry.margin);
 	geometry.minimum.y = glm::max(2.0f * geometry.margin + size.y, geometry.minimum.y);
 }
@@ -63,18 +66,27 @@ void Slider::set_value(float value)
 	geometry_changed();
 }
 
-Widget *Slider::on_mouse_button_pressed(vec2 offset, vec2 size)
+void Slider::reconfigure_to_canvas(vec2, vec2 size)
 {
 	auto &font = UIManager::get().get_font(FontSize::Small);
 	vec2 minimum = font.get_text_geometry(text.c_str());
 	vec2 minimum_value = font.get_text_geometry(to_string(value).c_str());
 
-	vec2 slider_offset = vec2(geometry.margin);
-	slider_offset.x += minimum.x + gap;
-	vec2 slider_size = size - slider_offset;
-	slider_size.y -= geometry.margin;
-	slider_size.x -= gap + minimum_value.x;
+	label_offset = vec2(geometry.margin);
+	label_size = vec2(minimum.x, size.y - 2.0f * geometry.margin);
 
+	slider_offset = vec2(label_offset.x + label_size.x + gap + geometry.margin, geometry.margin);
+	slider_size = vec2(value_offset.x - slider_offset.x - gap - geometry.margin, size.y - 2.0f * geometry.margin);
+	float y_squash = slider_size.y - this->size.y;
+	slider_size.y -= y_squash;
+	slider_offset.y += 0.5f * y_squash;
+
+	value_offset = vec2(size.x - geometry.margin - minimum_value.x, geometry.margin);
+	value_size = vec2(minimum_value.x, size.y - 2.0f * geometry.margin);
+}
+
+Widget *Slider::on_mouse_button_pressed(vec2 offset)
+{
 	if (any(lessThan(offset, slider_offset)) || any(greaterThanEqual(offset, slider_offset + slider_size)))
 		return nullptr;
 
@@ -89,39 +101,22 @@ Widget *Slider::on_mouse_button_pressed(vec2 offset, vec2 size)
 void Slider::on_mouse_button_move(vec2 offset)
 {
 	offset += drag_base;
-	auto &font = UIManager::get().get_font(FontSize::Small);
-	vec2 minimum = font.get_text_geometry(text.c_str());
-	vec2 minimum_value = font.get_text_geometry(to_string(value).c_str());
-
-	vec2 slider_offset = vec2(geometry.margin);
-	slider_offset.x += minimum.x + gap;
-	vec2 slider_size = drag_size - slider_offset;
-	slider_size.y -= geometry.margin;
-	slider_size.x -= gap + minimum_value.x;
 	normalized_value = clamp((offset.x - slider_offset.x) / slider_size.x, 0.0f, 1.0f);
 	value = mix(value_minimum, value_maximum, normalized_value);
 	geometry_changed();
 }
 
-float Slider::render(FlatRenderer &renderer, float layer, vec2 offset, vec2 size)
+float Slider::render(FlatRenderer &renderer, float layer, vec2 offset, vec2)
 {
 	auto &font = UIManager::get().get_font(FontSize::Small);
-	vec2 minimum = font.get_text_geometry(text.c_str());
-	vec2 minimum_value = font.get_text_geometry(to_string(value).c_str());
-	renderer.render_text(font, text.c_str(), vec3(offset + geometry.margin, layer), vec2(minimum.x, size.y - 2.0f * geometry.margin),
+
+	renderer.render_text(font, text.c_str(), vec3(offset + label_offset, layer), label_size,
 	                     color, Font::Alignment::Center);
 
-	vec2 slider_offset = offset + geometry.margin;
-	slider_offset.x += minimum.x + gap;
-	vec2 slider_size = offset + size - slider_offset;
-	slider_size.y -= geometry.margin;
-	slider_size.x -= gap + minimum_value.x;
-
-	renderer.render_quad(vec3(slider_offset, layer), slider_size * vec2(normalized_value, 1.0f), color);
+	renderer.render_quad(vec3(slider_offset + offset, layer), slider_size * vec2(normalized_value, 1.0f), color);
 
 	renderer.render_text(font, to_string(value).c_str(),
-	                     vec3(offset.x + 3.0f * geometry.margin + 2.0f * gap + minimum.x + slider_size.x, offset.y + geometry.margin, layer),
-	                     vec2(minimum_value.x, size.y - 2.0f * geometry.margin),
+	                     vec3(offset + value_offset, layer), value_size,
 	                     color, Font::Alignment::Center);
 
 	assert(children.empty());

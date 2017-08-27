@@ -153,6 +153,7 @@ vec2 Font::get_aligned_offset(Alignment alignment, vec2 text_geometry, vec2 targ
 }
 
 void Font::render_text(RenderQueue &queue, const char *text, const vec3 &offset, const vec2 &size,
+                       const vec2 &clip_offset, const vec2 &clip_size,
                        const vec4 &color,
                        Alignment alignment, float scale) const
 {
@@ -218,10 +219,8 @@ void Font::render_text(RenderQueue &queue, const char *text, const vec3 &offset,
 		text++;
 	}
 
-	if (any(lessThan(min_rect, offset.xy())) || any(greaterThan(max_rect, offset.xy() + size)))
-	{
-		sprite.clip_quad = ivec4(ivec2(offset.xy()), ivec2(size));
-	}
+	if (any(lessThan(min_rect, clip_offset)) || any(greaterThan(max_rect, clip_offset + clip_size)))
+		sprite.clip_quad = ivec4(ivec2(clip_offset), ivec2(clip_size));
 
 	Hasher hasher;
 	hasher.pointer(sprite.texture);

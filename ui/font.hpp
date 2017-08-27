@@ -49,6 +49,7 @@ public:
 
 	void render_text(RenderQueue &queue, const char *text,
 	                 const vec3 &offset, const vec2 &size,
+	                 const vec2 &clip_offset, const vec2 &clip_size,
 	                 const vec4 &color,
 	                 Alignment alignment = Alignment::TopLeft, float scale = 1.0f) const;
 

@@ -255,7 +255,9 @@ void FlatRenderer::render_line_strip(const vec2 *offset, float layer, unsigned c
 void FlatRenderer::render_text(const Font &font, const char *text, const vec3 &offset, const vec2 &size, const vec4 &color,
                                Font::Alignment alignment, float scale)
 {
-	font.render_text(queue, text, offset, size, color, alignment, scale);
+	font.render_text(queue, text, offset, size,
+	                 scissor_stack.back().offset, scissor_stack.back().size,
+	                 color, alignment, scale);
 }
 
 void FlatRenderer::push_sprite(const SpriteInfo &info)

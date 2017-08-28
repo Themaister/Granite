@@ -210,6 +210,7 @@ bool WSI::end_frame()
 void WSI::update_framebuffer(unsigned width, unsigned height)
 {
 	vkDeviceWaitIdle(context->get_device());
+
 	aspect_ratio = platform->get_aspect_ratio();
 	init_swapchain(width, height);
 	device.init_swapchain(swapchain_images, width, height, format);

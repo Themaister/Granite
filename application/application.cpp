@@ -38,13 +38,13 @@ using namespace Vulkan;
 namespace Granite
 {
 Application::Application(unsigned width, unsigned height)
+	: width(width), height(height)
 {
 	EventManager::get_global();
 	Filesystem::get();
 
 	platform = create_default_application_platform(width, height);
-
-	if (!wsi.init(platform.get(), width, height))
+	if (platform && !wsi.init(platform.get(), width, height))
 		throw runtime_error("Failed to initialize WSI.");
 }
 

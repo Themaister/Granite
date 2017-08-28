@@ -169,10 +169,21 @@ public:
 		return *platform;
 	}
 
+	unsigned get_width() const
+	{
+		return width;
+	}
+
+	unsigned get_height() const
+	{
+		return height;
+	}
+
 	bool poll();
 	void run_frame();
 
 private:
+	unsigned width, height;
 	std::unique_ptr<ApplicationPlatform> platform;
 	Vulkan::WSI wsi;
 };

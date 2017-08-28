@@ -41,6 +41,10 @@ class WSI
 {
 public:
 	bool init(Granite::ApplicationPlatform *platform, unsigned width, unsigned height);
+	bool init_external(Granite::ApplicationPlatform *platform, std::unique_ptr<Vulkan::Context> context,
+	                   unsigned num_swapchain_images,
+	                   unsigned width, unsigned height);
+	void deinit_external();
 
 	~WSI();
 

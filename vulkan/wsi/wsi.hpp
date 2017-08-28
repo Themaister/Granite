@@ -42,8 +42,7 @@ class WSI
 public:
 	bool init(Granite::ApplicationPlatform *platform, unsigned width, unsigned height);
 	bool init_external(Granite::ApplicationPlatform *platform, std::unique_ptr<Vulkan::Context> context,
-	                   unsigned num_swapchain_images,
-	                   unsigned width, unsigned height);
+	                   std::vector<Vulkan::ImageHandle> external_images);
 	void deinit_external();
 
 	~WSI();
@@ -60,6 +59,7 @@ public:
 
 	bool begin_frame();
 	bool end_frame();
+	bool begin_external_frame(unsigned index, Vulkan::Semaphore wait_semaphore);
 
 	Granite::ApplicationPlatform &get_platform()
 	{
@@ -91,5 +91,8 @@ private:
 	bool need_acquire = true;
 
 	Granite::ApplicationPlatform *platform = nullptr;
+
+	bool init_external_swapchain(std::vector<Vulkan::ImageHandle> external_images);
+	std::vector<Vulkan::ImageHandle> external_swapchain_images;
 };
 }

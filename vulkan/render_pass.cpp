@@ -129,7 +129,7 @@ RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
 			if (att.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD)
 				att.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 			att.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-			att.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+			att.finalLayout = image.get_swapchain_layout();
 			implicit_transitions |= 1u << i;
 		}
 		else

@@ -31,6 +31,28 @@ using namespace std;
 namespace Vulkan
 {
 
+bool WSI::init_external(Granite::ApplicationPlatform *platform, std::unique_ptr<Vulkan::Context> fresh_context,
+                        std::vector<Vulkan::ImageHandle> swapchain_images)
+{
+	this->platform = platform;
+	context = move(fresh_context);
+
+	width = platform->get_surface_width();
+	height = platform->get_surface_height();
+	aspect_ratio = platform->get_aspect_ratio();
+
+	if (!init_external_swapchain(move(swapchain_images)))
+		return false;
+
+	semaphore_manager.init(context->get_device());
+	device.set_context(*context);
+	auto &em = Granite::EventManager::get_global();
+	em.enqueue_latched<DeviceCreatedEvent>(&device);
+	device.init_external_swapchain(this->external_swapchain_images);
+	platform->get_frame_timer().reset();
+	return true;
+}
+
 bool WSI::init(Granite::ApplicationPlatform *platform, unsigned width, unsigned height)
 {
 	this->platform = platform;
@@ -214,6 +236,24 @@ void WSI::update_framebuffer(unsigned width, unsigned height)
 	aspect_ratio = platform->get_aspect_ratio();
 	init_swapchain(width, height);
 	device.init_swapchain(swapchain_images, width, height, format);
+}
+
+bool WSI::init_external_swapchain(std::vector<Vulkan::ImageHandle> external_images)
+{
+	external_swapchain_images = move(external_images);
+
+	this->width = external_swapchain_images.front()->get_width();
+	this->height = external_swapchain_images.front()->get_height();
+	this->format = external_swapchain_images.front()->get_format();
+
+	LOGI("Created swapchain %u x %u (fmt: %u).\n", this->width, this->height, static_cast<unsigned>(this->format));
+
+	auto &em = Granite::EventManager::get_global();
+	em.dequeue_all_latched(SwapchainParameterEvent::get_type_id());
+	em.enqueue_latched<SwapchainParameterEvent>(&device, this->width, this->height, aspect_ratio,
+	                                            external_swapchain_images.size(), this->format);
+
+	return true;
 }
 
 bool WSI::init_swapchain(unsigned width, unsigned height)

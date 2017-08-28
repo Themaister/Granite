@@ -865,7 +865,7 @@ Device::~Device()
 		frame->cleanup();
 }
 
-void Device::init_virtual_swapchain(unsigned num_swapchain_images)
+void Device::init_external_swapchain(const vector<ImageHandle> &swapchain_images)
 {
 	wait_idle();
 
@@ -877,12 +877,15 @@ void Device::init_virtual_swapchain(unsigned num_swapchain_images)
 		frame->cleanup();
 	per_frame.clear();
 
-	for (unsigned i = 0; i < num_swapchain_images; i++)
+	for (auto &image : swapchain_images)
 	{
-		per_frame.emplace_back(new PerFrame(this, allocator, semaphore_manager, event_manager,
-		                                    graphics_queue_family_index,
-		                                    compute_queue_family_index,
-		                                    transfer_queue_family_index));
+		auto frame = unique_ptr<PerFrame>(new PerFrame(this, allocator, semaphore_manager, event_manager,
+		                                               graphics_queue_family_index,
+		                                               compute_queue_family_index,
+		                                               transfer_queue_family_index));
+
+		frame->backbuffer = image;
+		per_frame.emplace_back(move(frame));
 	}
 }
 
@@ -926,6 +929,7 @@ void Device::init_swapchain(const vector<VkImage> &swapchain_images, unsigned wi
 			LOGE("Failed to create view for backbuffer.");
 
 		frame->backbuffer = make_handle<Image>(this, image, image_view, DeviceAllocation{}, info);
+		frame->backbuffer->set_swapchain_layout(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 		per_frame.emplace_back(move(frame));
 	}
 }
@@ -1908,7 +1912,6 @@ const RenderPass &Device::request_render_pass(const RenderPassInfo &info)
 	VkFormat formats[VULKAN_NUM_ATTACHMENTS];
 	VkFormat depth_stencil;
 	uint32_t lazy = 0;
-	uint32_t swapchain = 0;
 
 	for (unsigned i = 0; i < info.num_color_attachments; i++)
 	{
@@ -1916,8 +1919,8 @@ const RenderPass &Device::request_render_pass(const RenderPassInfo &info)
 		formats[i] = info.color_attachments[i]->get_format();
 		if (info.color_attachments[i]->get_image().get_create_info().domain == ImageDomain::Transient)
 			lazy |= 1u << i;
-		if (info.color_attachments[i]->get_image().is_swapchain_image())
-			swapchain |= 1u << i;
+
+		h.u32(info.color_attachments[i]->get_image().get_swapchain_layout());
 	}
 
 	if (info.depth_stencil && info.depth_stencil->get_image().get_create_info().domain == ImageDomain::Transient)
@@ -1947,7 +1950,6 @@ const RenderPass &Device::request_render_pass(const RenderPassInfo &info)
 	h.u32(info.load_attachments);
 	h.u32(info.store_attachments);
 	h.u32(lazy);
-	h.u32(swapchain);
 
 	auto hash = h.get();
 	auto itr = render_passes.find(hash);

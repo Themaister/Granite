@@ -37,6 +37,7 @@ static retro_input_state_t input_state_cb;
 static retro_hw_render_context_negotiation_interface_vulkan vulkan_negotiation;
 static std::unique_ptr<Vulkan::Context> vulkan_context;
 static retro_hw_render_interface_vulkan *vulkan_interface;
+static Vulkan::ImageViewHandle swapchain_unorm_view;
 
 namespace Granite
 {
@@ -183,6 +184,7 @@ RETRO_API void retro_cheat_set(unsigned, bool, const char *)
 
 static void context_destroy(void)
 {
+	swapchain_unorm_view.reset();
 	if (app)
 		app->get_wsi().deinit_external();
 }
@@ -221,7 +223,21 @@ static void context_reset(void)
 			num_images = i + 1;
 	}
 
-	app->get_wsi().init_external(&platform_libretro, std::move(vulkan_context), num_images, app->get_width(), app->get_height());
+	Vulkan::ImageCreateInfo info = Vulkan::ImageCreateInfo::render_target(app->get_width(), app->get_height(),
+	                                                                      VK_FORMAT_R8G8B8A8_SRGB);
+	info.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	info.flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
+	Vulkan::ImageHandle image = app->get_wsi().get_device().create_image(info, nullptr);
+
+	Vulkan::ImageViewCreateInfo view_info;
+	view_info.format = VK_FORMAT_R8G8B8A8_UNORM;
+	view_info.image = image.get();
+	swapchain_unorm_view = app->get_wsi().get_device().create_image_view(view_info);
+
+	std::vector<Vulkan::ImageHandle> images;
+	for (unsigned i = 0; i < num_images; i++)
+		images.push_back(image);
+	app->get_wsi().init_external(&platform_libretro, std::move(vulkan_context), std::move(images));
 }
 
 static bool create_device(

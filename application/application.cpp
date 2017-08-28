@@ -446,20 +446,23 @@ void SceneViewerApplication::render_frame(double frame_time, double elapsed_time
 	render_scene();
 }
 
-int Application::run()
+bool Application::poll()
 {
 	auto &wsi = get_wsi();
-	while (get_platform().alive(wsi))
-	{
-		Filesystem::get().poll_notifications();
-		EventManager::get_global().dispatch();
+	if (!get_platform().alive(wsi))
+		return false;
 
-		wsi.begin_frame();
-		render_frame(wsi.get_platform().get_frame_timer().get_frame_time(),
-					 wsi.get_platform().get_frame_timer().get_elapsed());
-		wsi.end_frame();
-	}
-	return 0;
+	Filesystem::get().poll_notifications();
+	EventManager::get_global().dispatch();
+	return true;
+}
+
+void Application::run_frame()
+{
+	wsi.begin_frame();
+	render_frame(wsi.get_platform().get_frame_timer().get_frame_time(),
+	             wsi.get_platform().get_frame_timer().get_elapsed());
+	wsi.end_frame();
 }
 
 }

@@ -169,7 +169,8 @@ public:
 		return *platform;
 	}
 
-	int run();
+	bool poll();
+	void run_frame();
 
 private:
 	std::unique_ptr<ApplicationPlatform> platform;
@@ -235,6 +236,6 @@ protected:
 	void add_shadow_pass(Vulkan::Device &device, const std::string &tag, DepthPassType type);
 };
 
-extern int application_main(int argc, char *argv[]);
+extern Application *application_create(int argc, char *argv[]);
 std::unique_ptr<ApplicationPlatform> create_default_application_platform(unsigned width, unsigned height);
 }

@@ -255,5 +255,13 @@ unique_ptr<ApplicationPlatform> create_default_application_platform(unsigned wid
 
 int main(int argc, char *argv[])
 {
-	return Granite::application_main(argc, argv);
+	auto app = unique_ptr<Granite::Application>(Granite::application_create(argc, argv));
+	if (app)
+	{
+		while (app->poll())
+			app->run_frame();
+		return 0;
+	}
+	else
+		return 1;
 }

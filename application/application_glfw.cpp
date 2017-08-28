@@ -270,11 +270,28 @@ int CALLBACK WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 {
 	char granite_str[] = "granite";
 	char *granite_ptr[] = { granite_str, nullptr };
-	return Granite::application_main(1, granite_ptr);
+
+	auto app = unique_ptr<Granite::Application>(Granite::application_create(1, granite_ptr));
+	if (app)
+	{
+		while (app->poll())
+			app->run_frame();
+		return 0;
+	}
+	else
+		return 1;
 }
 #else
 int main(int argc, char *argv[])
 {
-	return Granite::application_main(argc, argv);
+	auto app = unique_ptr<Granite::Application>(Granite::application_create(argc, argv));
+	if (app)
+	{
+		while (app->poll())
+			app->run_frame();
+		return 0;
+	}
+	else
+		return 1;
 }
 #endif

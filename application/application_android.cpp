@@ -558,7 +558,17 @@ void android_main(android_app *app)
 
 				try
 				{
-					int ret = Granite::application_main(0, nullptr);
+					int ret;
+					auto app = unique_ptr<Granite::Application>(Granite::application_create(argc, argv));
+					if (app)
+					{
+						while (app->poll())
+							app->run_frame();
+						ret = 0;
+					}
+					else
+						ret = 1;
+
 					LOGI("Application returned %d.\n", ret);
 					EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 					return;

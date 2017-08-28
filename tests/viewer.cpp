@@ -25,7 +25,7 @@
 
 namespace Granite
 {
-int application_main(int, char **)
+Application *application_create(int, char **)
 {
 #ifdef ASSET_DIRECTORY
 	const char *asset_dir = getenv("ASSET_DIRECTORY");
@@ -35,9 +35,9 @@ int application_main(int, char **)
 	Filesystem::get().register_protocol("assets", std::unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir)));
 #endif
 
-	SceneViewerApplication app("assets://CesiumMan/glTF/CesiumMan.gltf", 1280, 720);
-	app.rescale_scene(5.0f);
-	app.loop_animations();
-	return app.run();
+	auto *app = new SceneViewerApplication("assets://CesiumMan/glTF/CesiumMan.gltf", 1280, 720);
+	app->rescale_scene(5.0f);
+	app->loop_animations();
+	return app;
 }
 }

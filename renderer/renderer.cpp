@@ -43,52 +43,55 @@ Renderer::Renderer(RendererType type)
 		set_mesh_renderer_options(0);
 }
 
+void Renderer::set_mesh_renderer_options_internal(RendererOptionFlags flags)
+{
+	vector<pair<string, int>> global_defines;
+	if (flags & SHADOW_ENABLE_BIT)
+		global_defines.push_back({ "SHADOWS", 1 });
+	if (flags & SHADOW_CASCADE_ENABLE_BIT)
+		global_defines.push_back({ "SHADOW_CASCADES", 1 });
+	if (flags & FOG_ENABLE_BIT)
+		global_defines.push_back({ "FOG", 1 });
+	if (flags & ENVIRONMENT_ENABLE_BIT)
+		global_defines.push_back({ "ENVIRONMENT", 1 });
+	if (flags & REFRACTION_ENABLE_BIT)
+		global_defines.push_back({ "REFRACTION", 1 });
+
+	switch (type)
+	{
+	case RendererType::GeneralForward:
+		global_defines.push_back({ "RENDERER_FORWARD", 1 });
+		break;
+
+	case RendererType::GeneralDeferred:
+		global_defines.push_back({ "RENDERER_DEFERRED", 1 });
+		break;
+
+	case RendererType::DepthOnly:
+		global_defines.push_back({ "RENDERER_DEPTH", 1 });
+		break;
+
+	default:
+		break;
+	}
+
+	auto &meshes = suite[ecast(RenderableType::Mesh)];
+	meshes.get_base_defines() = global_defines;
+	meshes.bake_base_defines();
+	auto &ground = suite[ecast(RenderableType::Ground)];
+	ground.get_base_defines() = global_defines;
+	ground.bake_base_defines();
+	auto &plane = suite[ecast(RenderableType::TexturePlane)];
+	plane.get_base_defines() = global_defines;
+	plane.bake_base_defines();
+
+	renderer_options = flags;
+}
+
 void Renderer::set_mesh_renderer_options(RendererOptionFlags flags)
 {
 	if (renderer_options != flags)
-	{
-		vector<pair<string, int>> global_defines;
-		if (flags & SHADOW_ENABLE_BIT)
-			global_defines.push_back({ "SHADOWS", 1 });
-		if (flags & SHADOW_CASCADE_ENABLE_BIT)
-			global_defines.push_back({ "SHADOW_CASCADES", 1 });
-		if (flags & FOG_ENABLE_BIT)
-			global_defines.push_back({ "FOG", 1 });
-		if (flags & ENVIRONMENT_ENABLE_BIT)
-			global_defines.push_back({ "ENVIRONMENT", 1 });
-		if (flags & REFRACTION_ENABLE_BIT)
-			global_defines.push_back({ "REFRACTION", 1 });
-
-		switch (type)
-		{
-		case RendererType::GeneralForward:
-			global_defines.push_back({ "RENDERER_FORWARD", 1 });
-			break;
-
-		case RendererType::GeneralDeferred:
-			global_defines.push_back({ "RENDERER_DEFERRED", 1 });
-			break;
-
-		case RendererType::DepthOnly:
-			global_defines.push_back({ "RENDERER_DEPTH", 1 });
-			break;
-
-		default:
-			break;
-		}
-
-		auto &meshes = suite[ecast(RenderableType::Mesh)];
-		meshes.get_base_defines() = global_defines;
-		meshes.bake_base_defines();
-		auto &ground = suite[ecast(RenderableType::Ground)];
-		ground.get_base_defines() = global_defines;
-		ground.bake_base_defines();
-		auto &plane = suite[ecast(RenderableType::TexturePlane)];
-		plane.get_base_defines() = global_defines;
-		plane.bake_base_defines();
-
-		renderer_options = flags;
-	}
+		set_mesh_renderer_options_internal(flags);
 }
 
 void Renderer::on_device_created(const DeviceCreatedEvent &created)
@@ -124,6 +127,7 @@ void Renderer::on_device_created(const DeviceCreatedEvent &created)
 		                                                         "builtin://shaders/dummy.frag");
 	}
 
+	set_mesh_renderer_options_internal(renderer_options);
 	for (auto &s : suite)
 		s.bake_base_defines();
 	this->device = &device;

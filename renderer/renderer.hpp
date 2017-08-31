@@ -83,6 +83,7 @@ private:
 	uint32_t renderer_options = ~0u;
 
 	void set_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context);
+	void set_mesh_renderer_options_internal(RendererOptionFlags flags);
 };
 
 class DeferredLightRenderer

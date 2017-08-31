@@ -855,6 +855,18 @@ Device::~Device()
 {
 	wait_idle();
 
+	if (wsi_acquire != VK_NULL_HANDLE)
+	{
+		vkDestroySemaphore(device, wsi_acquire, nullptr);
+		wsi_acquire = VK_NULL_HANDLE;
+	}
+
+	if (wsi_release != VK_NULL_HANDLE)
+	{
+		vkDestroySemaphore(device, wsi_release, nullptr);
+		wsi_release = VK_NULL_HANDLE;
+	}
+
 	if (pipeline_cache != VK_NULL_HANDLE)
 	{
 		flush_pipeline_cache();

@@ -40,6 +40,7 @@ namespace Vulkan
 class WSI
 {
 public:
+	WSI();
 	bool init(unsigned width, unsigned height);
 	void set_platform(Granite::ApplicationPlatform *platform);
 	bool init_external(std::unique_ptr<Vulkan::Context> context,
@@ -56,7 +57,7 @@ public:
 
 	inline Device &get_device()
 	{
-		return device;
+		return *device;
 	}
 
 	bool begin_frame();
@@ -80,13 +81,13 @@ private:
 	VkSurfaceKHR surface = VK_NULL_HANDLE;
 	VkSwapchainKHR swapchain = VK_NULL_HANDLE;
 	std::vector<VkImage> swapchain_images;
-	Device device;
+	std::unique_ptr<Device> device;
+	std::unique_ptr<SemaphoreManager> semaphore_manager;
 
 	unsigned width = 0;
 	unsigned height = 0;
 	float aspect_ratio = 1.0f;
 	VkFormat format = VK_FORMAT_UNDEFINED;
-	SemaphoreManager semaphore_manager;
 
 	bool init_swapchain(unsigned width, unsigned height);
 	uint32_t swapchain_index = 0;

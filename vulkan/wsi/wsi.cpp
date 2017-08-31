@@ -30,13 +30,20 @@ using namespace std;
 
 namespace Vulkan
 {
+WSI::WSI()
+{
+	device.reset(new Device);
+	semaphore_manager.reset(new SemaphoreManager);
+}
 
 bool WSI::reinit_external_swapchain(std::vector<Vulkan::ImageHandle> external_images)
 {
 	if (!init_external_swapchain(move(external_images)))
 		return false;
 
-	device.init_external_swapchain(this->external_swapchain_images);
+	device->init_external_swapchain(this->external_swapchain_images);
+	external_acquire.reset();
+	external_release.reset();
 	return true;
 }
 
@@ -52,10 +59,10 @@ bool WSI::init_external(std::unique_ptr<Vulkan::Context> fresh_context,
 	if (!init_external_swapchain(move(swapchain_images)))
 		return false;
 
-	semaphore_manager.init(context->get_device());
+	semaphore_manager->init(context->get_device());
 	auto &em = Granite::EventManager::get_global();
-	device.init_external_swapchain(this->external_swapchain_images);
-	em.enqueue_latched<DeviceCreatedEvent>(&device);
+	device->init_external_swapchain(this->external_swapchain_images);
+	em.enqueue_latched<DeviceCreatedEvent>(device.get());
 	platform->get_frame_timer().reset();
 	return true;
 }
@@ -100,11 +107,11 @@ bool WSI::init(unsigned width, unsigned height)
 	if (!init_swapchain(width, height))
 		return false;
 
-	semaphore_manager.init(context->get_device());
-	device.set_context(*context);
+	semaphore_manager->init(context->get_device());
+	device->set_context(*context);
 	auto &em = Granite::EventManager::get_global();
-	device.init_swapchain(swapchain_images, this->width, this->height, format);
-	em.enqueue_latched<DeviceCreatedEvent>(&device);
+	device->init_swapchain(swapchain_images, this->width, this->height, format);
+	em.enqueue_latched<DeviceCreatedEvent>(device.get());
 	platform->get_frame_timer().reset();
 
 	return true;
@@ -125,14 +132,14 @@ void WSI::init_surface_and_swapchain(VkSurfaceKHR new_surface)
 
 void WSI::deinit_surface_and_swapchain()
 {
-	device.wait_idle();
+	device->wait_idle();
 
-	auto acquire = device.set_acquire(VK_NULL_HANDLE);
-	auto release = device.set_release(VK_NULL_HANDLE);
+	auto acquire = device->set_acquire(VK_NULL_HANDLE);
+	auto release = device->set_release(VK_NULL_HANDLE);
 	if (acquire != VK_NULL_HANDLE)
-		vkDestroySemaphore(device.get_device(), acquire, nullptr);
+		vkDestroySemaphore(device->get_device(), acquire, nullptr);
 	if (release != VK_NULL_HANDLE)
-		vkDestroySemaphore(device.get_device(), release, nullptr);
+		vkDestroySemaphore(device->get_device(), release, nullptr);
 
 	if (swapchain != VK_NULL_HANDLE)
 		vkDestroySwapchainKHR(context->get_device(), swapchain, nullptr);
@@ -170,17 +177,17 @@ bool WSI::begin_frame_external()
 	swapchain_index = external_frame_index;
 	em.dispatch_inline(Granite::FrameTickEvent{frame_time, elapsed_time});
 
-	release_semaphore = semaphore_manager.request_cleared_semaphore();
-	device.begin_frame(swapchain_index);
+	release_semaphore = semaphore_manager->request_cleared_semaphore();
+	device->begin_frame(swapchain_index);
 	em.dequeue_all_latched(SwapchainIndexEvent::get_type_id());
-	em.enqueue_latched<SwapchainIndexEvent>(&device, swapchain_index);
+	em.enqueue_latched<SwapchainIndexEvent>(device.get(), swapchain_index);
 
 	if (external_acquire)
-		semaphore_manager.recycle(device.set_acquire(external_acquire->consume()));
+		semaphore_manager->recycle(device->set_acquire(external_acquire->consume()));
 	else
-		semaphore_manager.recycle(device.set_acquire(VK_NULL_HANDLE));
+		semaphore_manager->recycle(device->set_acquire(VK_NULL_HANDLE));
 
-	semaphore_manager.recycle(device.set_release(release_semaphore));
+	semaphore_manager->recycle(device->set_release(release_semaphore));
 	external_release.reset();
 	return true;
 }
@@ -209,7 +216,7 @@ bool WSI::begin_frame()
 	VkResult result;
 	do
 	{
-		VkSemaphore acquire = semaphore_manager.request_cleared_semaphore();
+		VkSemaphore acquire = semaphore_manager->request_cleared_semaphore();
 		result = vkAcquireNextImageKHR(context->get_device(), swapchain, UINT64_MAX, acquire, VK_NULL_HANDLE,
 		                               &swapchain_index);
 
@@ -223,34 +230,34 @@ bool WSI::begin_frame()
 			platform->poll_input();
 			em.dispatch_inline(Granite::FrameTickEvent{frame_time, elapsed_time});
 
-			release_semaphore = semaphore_manager.request_cleared_semaphore();
-			device.begin_frame(swapchain_index);
+			release_semaphore = semaphore_manager->request_cleared_semaphore();
+			device->begin_frame(swapchain_index);
 			em.dequeue_all_latched(SwapchainIndexEvent::get_type_id());
-			em.enqueue_latched<SwapchainIndexEvent>(&device, swapchain_index);
-			semaphore_manager.recycle(device.set_acquire(acquire));
-			semaphore_manager.recycle(device.set_release(release_semaphore));
+			em.enqueue_latched<SwapchainIndexEvent>(device.get(), swapchain_index);
+			semaphore_manager->recycle(device->set_acquire(acquire));
+			semaphore_manager->recycle(device->set_release(release_semaphore));
 		}
 		else if (result == VK_SUBOPTIMAL_KHR || result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_ERROR_SURFACE_LOST_KHR)
 		{
 			VK_ASSERT(width != 0);
 			VK_ASSERT(height != 0);
-			vkDeviceWaitIdle(device.get_device());
-			vkDestroySemaphore(device.get_device(), acquire, nullptr);
+			vkDeviceWaitIdle(device->get_device());
+			vkDestroySemaphore(device->get_device(), acquire, nullptr);
 
-			auto old_acquire = device.set_acquire(VK_NULL_HANDLE);
-			auto old_release = device.set_release(VK_NULL_HANDLE);
+			auto old_acquire = device->set_acquire(VK_NULL_HANDLE);
+			auto old_release = device->set_release(VK_NULL_HANDLE);
 			if (old_acquire != VK_NULL_HANDLE)
-				vkDestroySemaphore(device.get_device(), old_acquire, nullptr);
+				vkDestroySemaphore(device->get_device(), old_acquire, nullptr);
 			if (old_release != VK_NULL_HANDLE)
-				vkDestroySemaphore(device.get_device(), old_release, nullptr);
+				vkDestroySemaphore(device->get_device(), old_release, nullptr);
 
 			if (!init_swapchain(width, height))
 				return false;
-			device.init_swapchain(swapchain_images, width, height, format);
+			device->init_swapchain(swapchain_images, width, height, format);
 		}
 		else
 		{
-			semaphore_manager.recycle(acquire);
+			semaphore_manager->recycle(acquire);
 			return false;
 		}
 	} while (result != VK_SUCCESS);
@@ -259,11 +266,11 @@ bool WSI::begin_frame()
 
 bool WSI::end_frame()
 {
-	device.flush_frame();
+	device->flush_frame();
 
-	if (!device.swapchain_touched())
+	if (!device->swapchain_touched())
 	{
-		device.wait_idle();
+		device->wait_idle();
 		return true;
 	}
 
@@ -272,7 +279,7 @@ bool WSI::end_frame()
 	// Take ownership of the release semaphore so that the external user can use it.
 	if (frame_is_external)
 	{
-		external_release = Util::make_handle<SemaphoreHolder>(&device, device.set_release(VK_NULL_HANDLE), true);
+		external_release = Util::make_handle<SemaphoreHolder>(device.get(), device->set_release(VK_NULL_HANDLE), true);
 		frame_is_external = false;
 	}
 	else
@@ -303,7 +310,7 @@ void WSI::update_framebuffer(unsigned width, unsigned height)
 
 	aspect_ratio = platform->get_aspect_ratio();
 	init_swapchain(width, height);
-	device.init_swapchain(swapchain_images, width, height, format);
+	device->init_swapchain(swapchain_images, width, height, format);
 }
 
 bool WSI::init_external_swapchain(std::vector<Vulkan::ImageHandle> external_images)
@@ -318,7 +325,7 @@ bool WSI::init_external_swapchain(std::vector<Vulkan::ImageHandle> external_imag
 
 	auto &em = Granite::EventManager::get_global();
 	em.dequeue_all_latched(SwapchainParameterEvent::get_type_id());
-	em.enqueue_latched<SwapchainParameterEvent>(&device, this->width, this->height, aspect_ratio,
+	em.enqueue_latched<SwapchainParameterEvent>(device.get(), this->width, this->height, aspect_ratio,
 	                                            external_swapchain_images.size(), this->format);
 
 	return true;
@@ -330,8 +337,8 @@ void WSI::deinit_external()
 	if (context)
 	{
 		vkDeviceWaitIdle(context->get_device());
-		semaphore_manager.recycle(device.set_acquire(VK_NULL_HANDLE));
-		semaphore_manager.recycle(device.set_release(VK_NULL_HANDLE));
+		semaphore_manager->recycle(device->set_acquire(VK_NULL_HANDLE));
+		semaphore_manager->recycle(device->set_release(VK_NULL_HANDLE));
 		if (swapchain != VK_NULL_HANDLE)
 		{
 			em.dequeue_all_latched(SwapchainParameterEvent::get_type_id());
@@ -343,6 +350,12 @@ void WSI::deinit_external()
 		vkDestroySurfaceKHR(context->get_instance(), surface, nullptr);
 
 	em.dequeue_all_latched(DeviceCreatedEvent::get_type_id());
+	external_release.reset();
+	external_acquire.reset();
+	external_swapchain_images.clear();
+	semaphore_manager.reset(new SemaphoreManager);
+	device.reset(new Device);
+	context.reset();
 }
 
 bool WSI::init_swapchain(unsigned width, unsigned height)
@@ -472,7 +485,7 @@ bool WSI::init_swapchain(unsigned width, unsigned height)
 
 	auto &em = Granite::EventManager::get_global();
 	em.dequeue_all_latched(SwapchainParameterEvent::get_type_id());
-	em.enqueue_latched<SwapchainParameterEvent>(&device, this->width, this->height, aspect_ratio, image_count, info.imageFormat);
+	em.enqueue_latched<SwapchainParameterEvent>(device.get(), this->width, this->height, aspect_ratio, image_count, info.imageFormat);
 
 	return true;
 }

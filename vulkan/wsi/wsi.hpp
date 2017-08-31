@@ -40,9 +40,11 @@ namespace Vulkan
 class WSI
 {
 public:
-	bool init(Granite::ApplicationPlatform *platform, unsigned width, unsigned height);
-	bool init_external(Granite::ApplicationPlatform *platform, std::unique_ptr<Vulkan::Context> context,
+	bool init(unsigned width, unsigned height);
+	void set_platform(Granite::ApplicationPlatform *platform);
+	bool init_external(std::unique_ptr<Vulkan::Context> context,
 	                   std::vector<Vulkan::ImageHandle> external_images);
+	bool reinit_external_swapchain(std::vector<Vulkan::ImageHandle> external_images);
 	void deinit_external();
 
 	~WSI();
@@ -59,7 +61,8 @@ public:
 
 	bool begin_frame();
 	bool end_frame();
-	bool begin_external_frame(unsigned index, Vulkan::Semaphore wait_semaphore);
+	void set_external_frame(unsigned index, Vulkan::Semaphore acquire_semaphore);
+	Vulkan::Semaphore get_external_release_semaphore();
 
 	Granite::ApplicationPlatform &get_platform()
 	{
@@ -94,5 +97,11 @@ private:
 
 	bool init_external_swapchain(std::vector<Vulkan::ImageHandle> external_images);
 	std::vector<Vulkan::ImageHandle> external_swapchain_images;
+
+	unsigned external_frame_index = 0;
+	Vulkan::Semaphore external_acquire;
+	Vulkan::Semaphore external_release;
+	bool frame_is_external = false;
+	bool begin_frame_external();
 };
 }

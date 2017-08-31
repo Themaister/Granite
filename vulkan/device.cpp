@@ -42,7 +42,7 @@ Device::Device()
 Semaphore Device::request_semaphore()
 {
 	auto semaphore = semaphore_manager.request_cleared_semaphore();
-	auto ptr = make_handle<SemaphoreHolder>(this, semaphore);
+	auto ptr = make_handle<SemaphoreHolder>(this, semaphore, false);
 	return ptr;
 }
 
@@ -432,7 +432,7 @@ void Device::submit_empty(CommandBuffer::Type type, Fence *fence, Semaphore *sem
 
 	if (semaphore)
 	{
-		auto ptr = make_handle<SemaphoreHolder>(this, cleared_semaphore);
+		auto ptr = make_handle<SemaphoreHolder>(this, cleared_semaphore, true);
 		*semaphore = ptr;
 	}
 }
@@ -654,8 +654,13 @@ void Device::submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *sem
 		if (frame().swapchain_touched && !frame().swapchain_consumed)
 		{
 			static const VkFlags wait = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-			waits[index].push_back(wsi_acquire);
-			stages[index].push_back(wait);
+			if (wsi_acquire != VK_NULL_HANDLE)
+			{
+				waits[index].push_back(wsi_acquire);
+				stages[index].push_back(wait);
+			}
+
+			VK_ASSERT(wsi_release != VK_NULL_HANDLE);
 			signals[index].push_back(wsi_release);
 			frame().swapchain_consumed = true;
 		}
@@ -714,7 +719,7 @@ void Device::submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *sem
 
 	if (semaphore)
 	{
-		auto ptr = make_handle<SemaphoreHolder>(this, cleared_semaphore);
+		auto ptr = make_handle<SemaphoreHolder>(this, cleared_semaphore, true);
 		*semaphore = ptr;
 	}
 }

@@ -44,7 +44,8 @@ Application::Application(unsigned width, unsigned height)
 	Filesystem::get();
 
 	platform = create_default_application_platform(width, height);
-	if (platform && !wsi.init(platform.get(), width, height))
+	wsi.set_platform(platform.get());
+	if (!platform->has_external_swapchain() && !wsi.init(width, height))
 		throw runtime_error("Failed to initialize WSI.");
 }
 

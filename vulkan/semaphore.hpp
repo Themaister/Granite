@@ -32,9 +32,10 @@ class Device;
 class SemaphoreHolder : public Util::IntrusivePtrEnabled<SemaphoreHolder>
 {
 public:
-	SemaphoreHolder(Device *device, VkSemaphore semaphore)
+	SemaphoreHolder(Device *device, VkSemaphore semaphore, bool signalled)
 	    : device(device)
 	    , semaphore(semaphore)
+	    , signalled(signalled)
 	{
 	}
 
@@ -58,6 +59,13 @@ public:
 		semaphore = VK_NULL_HANDLE;
 		signalled = false;
 		return ret;
+	}
+
+	void signal_external()
+	{
+		VK_ASSERT(!signalled);
+		VK_ASSERT(semaphore);
+		signalled = true;
 	}
 
 private:

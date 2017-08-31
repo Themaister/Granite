@@ -127,6 +127,10 @@ public:
 
 	virtual bool alive(Vulkan::WSI &wsi) = 0;
 	virtual void poll_input() = 0;
+	virtual bool has_external_swapchain()
+	{
+		return false;
+	}
 
 	Util::FrameTimer &get_frame_timer()
 	{

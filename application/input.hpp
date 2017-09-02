@@ -160,6 +160,11 @@ public:
 
 	void dispatch_touch_gesture();
 
+	void set_axis_deadzone(float deadzone)
+	{
+		axis_deadzone = deadzone;
+	}
+
 private:
 	uint64_t key_state = 0;
 	uint8_t mouse_button_state = 0;
@@ -173,6 +178,8 @@ private:
 
 	JoypadState joypads[Joypads] = {};
 	TouchState touch;
+
+	float axis_deadzone = 0.3f;
 };
 
 class TouchGestureEvent : public Granite::Event

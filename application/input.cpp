@@ -142,6 +142,9 @@ void InputTracker::joyaxis_state(unsigned index, JoypadAxis axis, float value)
 	if (index >= Joypads)
 		return;
 
+	if (std::abs(value) < axis_deadzone)
+		value = 0.0f;
+
 	auto &joy = joypads[index];
 	unsigned axis_index = Util::ecast(axis);
 	auto &a = joy.axis[axis_index];

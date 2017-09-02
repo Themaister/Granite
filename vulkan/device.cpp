@@ -419,7 +419,12 @@ void Device::submit_empty(CommandBuffer::Type type, Fence *fence, Semaphore *sem
 	}
 
 	VkFence cleared_fence = frame().fence_manager.request_cleared_fence();
+	if (queue_lock_callback)
+		queue_lock_callback();
 	VkResult result = vkQueueSubmit(queue, 1, &submit, cleared_fence);
+	if (queue_unlock_callback)
+		queue_unlock_callback();
+
 	if (result != VK_SUCCESS)
 		LOGE("vkQueueSubmit failed.\n");
 
@@ -705,7 +710,11 @@ void Device::submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *sem
 		break;
 	}
 
+	if (queue_lock_callback)
+		queue_lock_callback();
 	VkResult result = vkQueueSubmit(queue, submits.size(), submits.data(), cleared_fence);
+	if (queue_unlock_callback)
+		queue_unlock_callback();
 	if (result != VK_SUCCESS)
 		LOGE("vkQueueSubmit failed.\n");
 	submissions.clear();
@@ -1078,7 +1087,13 @@ void Device::wait_idle()
 		flush_frame();
 
 	if (device != VK_NULL_HANDLE)
+	{
+		if (queue_lock_callback)
+			queue_lock_callback();
 		vkDeviceWaitIdle(device);
+		if (queue_unlock_callback)
+			queue_unlock_callback();
+	}
 
 	clear_wait_semaphores();
 
@@ -2042,5 +2057,11 @@ void Device::wait_for_fence(const Fence &fence)
 	auto locked_fence = fence.lock();
 	if (locked_fence)
 		vkWaitForFences(device, 1, &locked_fence->get_fence(), true, UINT64_MAX);
+}
+
+void Device::set_queue_lock(std::function<void()> lock_callback, std::function<void()> unlock_callback)
+{
+	queue_lock_callback = move(lock_callback);
+	queue_unlock_callback = move(unlock_callback);
 }
 }

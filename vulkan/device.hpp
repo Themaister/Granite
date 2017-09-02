@@ -165,6 +165,10 @@ public:
 	// semaphores which compute and graphics queues will wait on.
 	void sync_buffer_to_gpu(const Buffer &dst, const Buffer &src, VkDeviceSize offset, VkDeviceSize size);
 
+	// For some platforms, the device and queue might be shared, possibly across threads, so need some mechanism to
+	// lock the global device and queue.
+	void set_queue_lock(std::function<void ()> lock_callback, std::function<void ()> unlock_callback);
+
 private:
 	VkInstance instance = VK_NULL_HANDLE;
 	VkPhysicalDevice gpu = VK_NULL_HANDLE;
@@ -295,5 +299,8 @@ private:
 	void clear_wait_semaphores();
 	void add_staging_transfer_queue_dependency(const Buffer &dst, VkBufferUsageFlags usage);
 	void add_staging_transfer_queue_dependency(const Image &dst, VkImageUsageFlags usage);
+
+	std::function<void ()> queue_lock_callback;
+	std::function<void ()> queue_unlock_callback;
 };
 }

@@ -366,6 +366,13 @@ static void context_reset(void)
 		return;
 	}
 
+	app->get_wsi().get_device().set_queue_lock([&]() {
+		                                           vulkan_interface->lock_queue(vulkan_interface->handle);
+	                                           },
+	                                           [&]() {
+		                                           vulkan_interface->unlock_queue(vulkan_interface->handle);
+	                                           });
+
 	unsigned num_images = 0;
 	auto sync_mask = vulkan_interface->get_sync_index_mask(vulkan_interface->handle);
 	for (unsigned i = 0; i < 32; i++)

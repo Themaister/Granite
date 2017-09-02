@@ -29,6 +29,43 @@
 
 namespace Granite
 {
+enum class JoypadKey
+{
+	Left,
+	Right,
+	Up,
+	Down,
+	A,
+	B,
+	X,
+	Y,
+	L1,
+	L2,
+	L3,
+	R1,
+	R2,
+	R3,
+	Start,
+	Select,
+	Count
+};
+
+enum class JoypadAxis
+{
+	LeftX,
+	LeftY,
+	RightX,
+	RightY,
+	Count
+};
+
+enum class JoypadKeyState
+{
+	Pressed,
+	Released,
+	Count
+};
+
 enum class Key
 {
 	Unknown,
@@ -76,6 +113,23 @@ struct TouchState
 	unsigned active_pointers = 0;
 };
 
+struct JoypadState
+{
+	bool is_button_pressed(JoypadKey key) const
+	{
+		return (button_mask & (1u << Util::ecast(key))) != 0;
+	}
+
+	float get_axis(JoypadAxis a) const
+	{
+		return axis[Util::ecast(a)];
+	}
+
+	float axis[Util::ecast(JoypadAxis::Count)];
+	uint32_t button_mask = 0;
+};
+static_assert(Util::ecast(JoypadKey::Count) <= 32, "Cannot have more than 32 joypad buttons.");
+
 class InputTracker
 {
 public:
@@ -84,6 +138,8 @@ public:
 	void mouse_move_event(double x, double y);
 	void dispatch_current_state(double delta_time);
 	void orientation_event(quat rot);
+	void joypad_key_state(unsigned index, JoypadKey key, JoypadKeyState state);
+	void joyaxis_state(unsigned index, JoypadAxis axis, float value);
 
 	void on_touch_down(unsigned id, float x, float y);
 	void on_touch_move(unsigned id, float x, float y);
@@ -113,6 +169,9 @@ private:
 	double last_mouse_y = 0.0;
 
 	enum { TouchCount = 16 };
+	enum { Joypads = 8 };
+
+	JoypadState joypads[Joypads] = {};
 	TouchState touch;
 };
 
@@ -209,6 +268,68 @@ private:
 	unsigned id;
 	float x, y;
 	float start_x, start_y;
+};
+
+class JoypadButtonEvent : public Granite::Event
+{
+public:
+	GRANITE_EVENT_TYPE_DECL(JoypadButtonEvent)
+
+	JoypadButtonEvent(unsigned index, JoypadKey key, JoypadKeyState state)
+		: index(index), key(key), state(state)
+	{
+	}
+
+	unsigned get_index() const
+	{
+		return index;
+	}
+
+	JoypadKey get_key() const
+	{
+		return key;
+	}
+
+	JoypadKeyState get_state() const
+	{
+		return state;
+	}
+
+private:
+	unsigned index;
+	JoypadKey key;
+	JoypadKeyState state;
+};
+
+class JoypadAxisEvent : public Granite::Event
+{
+public:
+	GRANITE_EVENT_TYPE_DECL(JoypadAxisEvent)
+
+	JoypadAxisEvent(unsigned index, JoypadAxis axis, float value)
+			: index(index), axis(axis), value(value)
+	{
+	}
+
+	unsigned get_index() const
+	{
+		return index;
+	}
+
+	JoypadAxis get_axis() const
+	{
+		return axis;
+	}
+
+	float get_value() const
+	{
+		return value;
+	}
+
+private:
+	unsigned index;
+	JoypadAxis axis;
+	float value;
 };
 
 class KeyboardEvent : public Granite::Event
@@ -336,6 +457,37 @@ private:
 	double delta_x, delta_y, abs_x, abs_y;
 	uint64_t key_mask;
 	uint8_t btn_mask;
+};
+
+class JoypadStateEvent : public Granite::Event
+{
+public:
+	GRANITE_EVENT_TYPE_DECL(JoypadStateEvent)
+
+	JoypadStateEvent(const JoypadState *states, unsigned count, double delta_time)
+		: states(states), count(count), delta_time(delta_time)
+	{
+	}
+
+	unsigned get_num_indices() const
+	{
+		return count;
+	}
+
+	const JoypadState &get_state(unsigned index) const
+	{
+		return states[index];
+	}
+
+	double get_delta_time() const
+	{
+		return delta_time;
+	}
+
+private:
+	const JoypadState *states;
+	unsigned count;
+	double delta_time;
 };
 
 class InputStateEvent : public Granite::Event

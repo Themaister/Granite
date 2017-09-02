@@ -101,6 +101,7 @@ FPSCamera::FPSCamera()
 	EVENT_MANAGER_REGISTER(FPSCamera, on_touch_down, TouchDownEvent);
 	EVENT_MANAGER_REGISTER(FPSCamera, on_touch_up, TouchUpEvent);
 	EVENT_MANAGER_REGISTER(FPSCamera, on_input_state, InputStateEvent);
+	EVENT_MANAGER_REGISTER(FPSCamera, on_joypad_state, JoypadStateEvent);
 	EVENT_MANAGER_REGISTER_LATCH(FPSCamera, on_swapchain, on_swapchain, SwapchainParameterEvent);
 }
 
@@ -134,6 +135,23 @@ bool FPSCamera::on_input_state(const InputStateEvent &state)
 		position += 3.0f * get_right() * float(state.get_delta_time());
 	else if (state.get_key_pressed(Key::A))
 		position -= 3.0f * get_right() * float(state.get_delta_time());
+	return true;
+}
+
+bool FPSCamera::on_joypad_state(const JoypadStateEvent &state)
+{
+	auto &p0 = state.get_state(0);
+
+	position += 3.0f * get_front() * -p0.get_axis(JoypadAxis::LeftY) * float(state.get_delta_time());
+	position += 3.0f * get_right() * p0.get_axis(JoypadAxis::LeftX) * float(state.get_delta_time());
+
+	float dx = 2.0f * p0.get_axis(JoypadAxis::RightX) * state.get_delta_time();
+	float dy = 1.0f * p0.get_axis(JoypadAxis::RightY) * state.get_delta_time();
+
+	quat pitch = angleAxis(dy, vec3(1.0f, 0.0f, 0.0f));
+	quat yaw = angleAxis(dx, vec3(0.0f, 1.0f, 0.0f));
+	rotation = normalize(pitch * rotation * yaw);
+
 	return true;
 }
 

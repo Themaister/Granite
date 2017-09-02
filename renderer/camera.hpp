@@ -93,6 +93,7 @@ private:
 	bool on_touch_down(const TouchDownEvent &e);
 	bool on_touch_up(const TouchUpEvent &e);
 	void on_swapchain(const Vulkan::SwapchainParameterEvent &e);
+	bool on_joypad_state(const JoypadStateEvent &e);
 
 	unsigned pointer_count = 0;
 };

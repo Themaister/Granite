@@ -51,6 +51,8 @@ public:
 	bool filter_input_event(const OrientationEvent &e);
 	bool filter_input_event(const TouchGestureEvent &e);
 	bool filter_input_event(const MouseButtonEvent &e);
+	bool filter_input_event(const JoypadButtonEvent &e);
+	bool filter_input_event(const JoypadAxisEvent &e);
 
 	void add_child(WidgetHandle handle);
 

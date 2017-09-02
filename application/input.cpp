@@ -108,6 +108,53 @@ void InputTracker::on_touch_up(unsigned id, float x, float y)
 	touch.active_pointers--;
 }
 
+void InputTracker::joypad_key_state(unsigned index, JoypadKey key, JoypadKeyState state)
+{
+	if (index >= Joypads)
+		return;
+
+	auto &joy = joypads[index];
+	unsigned key_index = Util::ecast(key);
+	if (state == JoypadKeyState::Pressed)
+	{
+		if ((joy.button_mask & key_index) == 0)
+		{
+			JoypadButtonEvent event(index, key, state);
+			if (UI::UIManager::get().filter_input_event(event))
+				EventManager::get_global().dispatch_inline(event);
+		}
+		joy.button_mask |= 1u << key_index;
+	}
+	else if (state == JoypadKeyState::Released)
+	{
+		if ((joy.button_mask & key_index) == 1)
+		{
+			JoypadButtonEvent event(index, key, state);
+			if (UI::UIManager::get().filter_input_event(event))
+				EventManager::get_global().dispatch_inline(event);
+		}
+		joy.button_mask &= ~(1u << key_index);
+	}
+}
+
+void InputTracker::joyaxis_state(unsigned index, JoypadAxis axis, float value)
+{
+	if (index >= Joypads)
+		return;
+
+	auto &joy = joypads[index];
+	unsigned axis_index = Util::ecast(axis);
+	auto &a = joy.axis[axis_index];
+	if (a != value)
+	{
+		JoypadAxisEvent event(index, axis, value);
+		if (UI::UIManager::get().filter_input_event(event))
+			EventManager::get_global().dispatch_inline(event);
+	}
+
+	a = value;
+}
+
 void InputTracker::key_event(Key key, KeyState state)
 {
 	if (state == KeyState::Released)
@@ -160,6 +207,7 @@ void InputTracker::mouse_leave()
 
 void InputTracker::dispatch_current_state(double delta_time)
 {
+	EventManager::get_global().dispatch_inline(JoypadStateEvent{joypads, Joypads, delta_time});
 	EventManager::get_global().dispatch_inline(InputStateEvent{last_mouse_x, last_mouse_y, delta_time, key_state, mouse_button_state, mouse_active});
 }
 

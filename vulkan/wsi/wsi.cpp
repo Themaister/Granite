@@ -340,11 +340,9 @@ void WSI::deinit_external()
 		vkDeviceWaitIdle(context->get_device());
 		semaphore_manager->recycle(device->set_acquire(VK_NULL_HANDLE));
 		semaphore_manager->recycle(device->set_release(VK_NULL_HANDLE));
+		em.dequeue_all_latched(SwapchainParameterEvent::get_type_id());
 		if (swapchain != VK_NULL_HANDLE)
-		{
-			em.dequeue_all_latched(SwapchainParameterEvent::get_type_id());
 			vkDestroySwapchainKHR(context->get_device(), swapchain, nullptr);
-		}
 	}
 
 	if (surface != VK_NULL_HANDLE)

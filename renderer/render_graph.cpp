@@ -189,6 +189,8 @@ void RenderGraph::on_swapchain_destroyed(const Vulkan::SwapchainParameterEvent &
 	physical_image_attachments.clear();
 	physical_history_image_attachments.clear();
 	physical_events.clear();
+	physical_history_events.clear();
+	physical_buffers.clear();
 }
 
 void RenderGraph::on_swapchain_changed(const Vulkan::SwapchainParameterEvent &)
@@ -2740,6 +2742,7 @@ void RenderGraph::reset()
 	physical_buffers.clear();
 	physical_image_attachments.clear();
 	physical_events.clear();
+	physical_history_events.clear();
 	physical_history_image_attachments.clear();
 }
 

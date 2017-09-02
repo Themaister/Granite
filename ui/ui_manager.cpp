@@ -101,6 +101,16 @@ bool UIManager::filter_input_event(const MouseMoveEvent &e)
 		return true;
 }
 
+bool UIManager::filter_input_event(const JoypadButtonEvent &)
+{
+	return true;
+}
+
+bool UIManager::filter_input_event(const JoypadAxisEvent &)
+{
+	return true;
+}
+
 bool UIManager::filter_input_event(const MouseButtonEvent &e)
 {
 	if (drag_receiver && e.get_pressed())

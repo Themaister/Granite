@@ -75,6 +75,46 @@ struct ApplicationPlatformLibretro : Granite::ApplicationPlatform
 	void poll_input() override
 	{
 		input_poll_cb();
+
+		auto &tracker = app->get_platform().get_input_tracker();
+		const auto poll_key = [&](unsigned index, JoypadKey key, unsigned retro_key) {
+			tracker.joypad_key_state(index, key,
+			                         input_state_cb(index, RETRO_DEVICE_JOYPAD, 0, retro_key)
+			                         ? JoypadKeyState::Pressed : JoypadKeyState::Released);
+		};
+
+		const auto poll_axis = [&](unsigned index, JoypadAxis axis, unsigned retro_index, unsigned retro_id) {
+			tracker.joyaxis_state(index, axis,
+			                      clamp(input_state_cb(index, RETRO_DEVICE_ANALOG,
+			                                           retro_index, retro_id) * (1.0f / 0x7fff), -1.0f, 1.0f));
+		};
+
+		for (unsigned i = 0; i < 2; i++)
+		{
+			poll_key(i, JoypadKey::Left, RETRO_DEVICE_ID_JOYPAD_LEFT);
+			poll_key(i, JoypadKey::Right, RETRO_DEVICE_ID_JOYPAD_RIGHT);
+			poll_key(i, JoypadKey::Up, RETRO_DEVICE_ID_JOYPAD_UP);
+			poll_key(i, JoypadKey::Down, RETRO_DEVICE_ID_JOYPAD_DOWN);
+			poll_key(i, JoypadKey::Select, RETRO_DEVICE_ID_JOYPAD_SELECT);
+			poll_key(i, JoypadKey::Start, RETRO_DEVICE_ID_JOYPAD_START);
+			poll_key(i, JoypadKey::L1, RETRO_DEVICE_ID_JOYPAD_L);
+			poll_key(i, JoypadKey::L2, RETRO_DEVICE_ID_JOYPAD_L2);
+			poll_key(i, JoypadKey::L3, RETRO_DEVICE_ID_JOYPAD_L3);
+			poll_key(i, JoypadKey::R1, RETRO_DEVICE_ID_JOYPAD_R);
+			poll_key(i, JoypadKey::R2, RETRO_DEVICE_ID_JOYPAD_R2);
+			poll_key(i, JoypadKey::R3, RETRO_DEVICE_ID_JOYPAD_R3);
+			poll_key(i, JoypadKey::B, RETRO_DEVICE_ID_JOYPAD_B);
+			poll_key(i, JoypadKey::A, RETRO_DEVICE_ID_JOYPAD_A);
+			poll_key(i, JoypadKey::X, RETRO_DEVICE_ID_JOYPAD_X);
+			poll_key(i, JoypadKey::Y, RETRO_DEVICE_ID_JOYPAD_Y);
+
+			poll_axis(i, JoypadAxis::LeftX, RETRO_DEVICE_INDEX_ANALOG_LEFT, RETRO_DEVICE_ID_ANALOG_X);
+			poll_axis(i, JoypadAxis::LeftY, RETRO_DEVICE_INDEX_ANALOG_LEFT, RETRO_DEVICE_ID_ANALOG_Y);
+			poll_axis(i, JoypadAxis::RightX, RETRO_DEVICE_INDEX_ANALOG_RIGHT, RETRO_DEVICE_ID_ANALOG_X);
+			poll_axis(i, JoypadAxis::RightY, RETRO_DEVICE_INDEX_ANALOG_RIGHT, RETRO_DEVICE_ID_ANALOG_Y);
+		}
+
+		tracker.dispatch_current_state(app->get_platform().get_frame_timer().get_frame_time());
 	}
 
 	bool has_external_swapchain() override

@@ -62,7 +62,7 @@ public:
 
 	bool begin_frame();
 	bool end_frame();
-	void set_external_frame(unsigned index, Vulkan::Semaphore acquire_semaphore);
+	void set_external_frame(unsigned index, Vulkan::Semaphore acquire_semaphore, double frame_time);
 	Vulkan::Semaphore get_external_release_semaphore();
 
 	Granite::ApplicationPlatform &get_platform()
@@ -104,5 +104,6 @@ private:
 	Vulkan::Semaphore external_release;
 	bool frame_is_external = false;
 	bool begin_frame_external();
+	double external_frame_time = 0.0;
 };
 }

@@ -33,6 +33,7 @@ public:
 
 	void reset();
 	double frame();
+	double frame(double frame_time);
 	double get_elapsed() const;
 	double get_frame_time() const;
 

@@ -63,6 +63,13 @@ double FrameTimer::frame()
 	return double(last_period) * 1e-9;
 }
 
+double FrameTimer::frame(double frame_time)
+{
+	last_period = int64_t(frame_time * 1e9);
+	last += last_period;
+	return frame_time;
+}
+
 double FrameTimer::get_elapsed() const
 {
 	return double(last - start) * 1e-9;

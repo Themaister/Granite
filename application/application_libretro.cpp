@@ -43,6 +43,7 @@ static Vulkan::Semaphore acquire_semaphore;
 static unsigned num_swapchain_images;
 static retro_vulkan_image swapchain_image_info;
 static bool can_dupe = false;
+static retro_usec_t last_frame_time;
 
 struct ApplicationPlatformLibretro : Granite::ApplicationPlatform
 {
@@ -178,6 +179,7 @@ RETRO_API void retro_run(void)
 		auto sync_index = vulkan_interface->get_sync_index(vulkan_interface->handle);
 		auto &wsi = app->get_wsi();
 
+		// Check if we need to reinitialize the swapchain.
 		unsigned num_images = 0;
 		auto sync_mask = vulkan_interface->get_sync_index_mask(vulkan_interface->handle);
 		for (unsigned i = 0; i < 32; i++)
@@ -197,8 +199,9 @@ RETRO_API void retro_run(void)
 			wsi.reinit_external_swapchain(std::move(images));
 		}
 
+		// Setup the external frame.
 		vulkan_interface->wait_sync_index(vulkan_interface->handle);
-		wsi.set_external_frame(sync_index, acquire_semaphore);
+		wsi.set_external_frame(sync_index, acquire_semaphore, last_frame_time * 1e-6);
 		acquire_semaphore.reset();
 
 		// Run frame.
@@ -418,6 +421,11 @@ static const VkApplicationInfo *get_application_info(void)
 	return &app;
 }
 
+static void frame_time_callback(retro_usec_t usecs)
+{
+	last_frame_time = usecs;
+}
+
 RETRO_API bool retro_load_game(const struct retro_game_info *)
 {
 	app = Granite::application_create(0, nullptr);
@@ -451,6 +459,12 @@ RETRO_API bool retro_load_game(const struct retro_game_info *)
 	EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
 	EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 	EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
+
+	retro_frame_time_callback frame_cb = {};
+	frame_cb.callback = frame_time_callback;
+	frame_cb.reference = (1000000 + 30) / 60;
+	last_frame_time = frame_cb.reference;
+	environ_cb(RETRO_ENVIRONMENT_SET_FRAME_TIME_CALLBACK, &frame_cb);
 
 	return true;
 }

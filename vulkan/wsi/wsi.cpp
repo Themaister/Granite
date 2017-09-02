@@ -154,11 +154,12 @@ void WSI::deinit_surface_and_swapchain()
 	em.dequeue_all_latched(SwapchainParameterEvent::get_type_id());
 }
 
-void WSI::set_external_frame(unsigned index, Vulkan::Semaphore acquire_semaphore)
+void WSI::set_external_frame(unsigned index, Vulkan::Semaphore acquire_semaphore, double frame_time)
 {
 	external_frame_index = index;
 	external_acquire = move(acquire_semaphore);
 	frame_is_external = true;
+	external_frame_time = frame_time;
 }
 
 bool WSI::begin_frame_external()
@@ -168,7 +169,7 @@ bool WSI::begin_frame_external()
 		return false;
 
 	auto &em = Granite::EventManager::get_global();
-	auto frame_time = platform->get_frame_timer().frame();
+	auto frame_time = platform->get_frame_timer().frame(external_frame_time);
 	auto elapsed_time = platform->get_frame_timer().get_elapsed();
 
 	// Poll after acquire as well for optimal latency.

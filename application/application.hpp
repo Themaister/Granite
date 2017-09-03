@@ -188,6 +188,11 @@ public:
 		return "granite";
 	}
 
+	virtual unsigned get_version()
+	{
+		return 0;
+	}
+
 	bool poll();
 	void run_frame();
 

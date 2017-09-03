@@ -512,8 +512,8 @@ static const VkApplicationInfo *get_application_info(void)
 	static const VkApplicationInfo app = {
 			VK_STRUCTURE_TYPE_APPLICATION_INFO,
 			nullptr,
-			"Granite",
-			0,
+			application_name.c_str(),
+			::app->get_version(),
 			"Granite",
 			0,
 			VK_MAKE_VERSION(1, 0, 59)

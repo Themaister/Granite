@@ -158,7 +158,11 @@ struct TransparentComponent : ComponentBase
 {
 };
 
-struct CastsShadowComponent : ComponentBase
+struct CastsStaticShadowComponent : ComponentBase
+{
+};
+
+struct CastsDynamicShadowComponent : ComponentBase
 {
 };
 

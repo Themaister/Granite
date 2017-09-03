@@ -49,7 +49,8 @@ public:
 	void update_cached_transforms();
 	void gather_visible_opaque_renderables(const Frustum &frustum, VisibilityList &list);
 	void gather_visible_transparent_renderables(const Frustum &frustum, VisibilityList &list);
-	void gather_visible_shadow_renderables(const Frustum &frustum, VisibilityList &list);
+	void gather_visible_static_shadow_renderables(const Frustum &frustum, VisibilityList &list);
+	void gather_visible_dynamic_shadow_renderables(const Frustum &frustum, VisibilityList &list);
 	void gather_visible_render_pass_sinks(const vec3 &camera_pos, VisibilityList &list);
 	void gather_background_renderables(VisibilityList &list);
 	EnvironmentComponent *get_environment() const;
@@ -167,8 +168,9 @@ private:
 	std::vector<std::tuple<BoundedComponent*, CachedSpatialTransformComponent*, CachedSpatialTransformTimestampComponent *>> &spatials;
 	std::vector<std::tuple<CachedSpatialTransformComponent*, RenderableComponent*, OpaqueComponent*>> &opaque;
 	std::vector<std::tuple<CachedSpatialTransformComponent*, RenderableComponent*, TransparentComponent*>> &transparent;
-	std::vector<std::tuple<CachedSpatialTransformComponent*, RenderableComponent*, CastsShadowComponent*>> &shadowing;
-	std::vector<std::tuple<RenderPassComponent*, RenderableComponent*, CastsShadowComponent*>> &render_pass_shadowing;
+	std::vector<std::tuple<CachedSpatialTransformComponent*, RenderableComponent*, CastsStaticShadowComponent*>> &static_shadowing;
+	std::vector<std::tuple<CachedSpatialTransformComponent*, RenderableComponent*, CastsDynamicShadowComponent*>> &dynamic_shadowing;
+	std::vector<std::tuple<RenderPassComponent*, RenderableComponent*, CastsDynamicShadowComponent*>> &render_pass_shadowing;
 	std::vector<std::tuple<UnboundedComponent*, RenderableComponent*>> &backgrounds;
 	std::vector<std::tuple<PerFrameUpdateComponent*>> &per_frame_updates;
 	std::vector<std::tuple<PerFrameUpdateTransformComponent*, CachedSpatialTransformComponent*>> &per_frame_update_transforms;

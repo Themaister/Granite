@@ -442,6 +442,10 @@ Ground::Handles Ground::add_to_scene(Scene &scene, unsigned size, float tiling_f
 
 			p->set_lod_pointer(ground->get_lod_pointer(x, z));
 			auto patch_entity = scene.create_renderable(patch, handles.node.get());
+
+			// TODO: Warpy patches shouldn't cast static shadow.
+			patch_entity->free_component<CastsStaticShadowComponent>();
+
 			auto *transforms = patch_entity->allocate_component<PerFrameUpdateTransformComponent>();
 			transforms->refresh = p;
 

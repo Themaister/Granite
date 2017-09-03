@@ -32,8 +32,9 @@ Scene::Scene()
 	: spatials(pool.get_component_group<BoundedComponent, CachedSpatialTransformComponent, CachedSpatialTransformTimestampComponent>()),
 	  opaque(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, OpaqueComponent>()),
 	  transparent(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, TransparentComponent>()),
-	  shadowing(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, CastsShadowComponent>()),
-	  render_pass_shadowing(pool.get_component_group<RenderPassComponent, RenderableComponent, CastsShadowComponent>()),
+	  static_shadowing(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, CastsStaticShadowComponent>()),
+	  dynamic_shadowing(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, CastsDynamicShadowComponent>()),
+	  render_pass_shadowing(pool.get_component_group<RenderPassComponent, RenderableComponent, CastsDynamicShadowComponent>()),
 	  backgrounds(pool.get_component_group<UnboundedComponent, RenderableComponent>()),
 	  per_frame_updates(pool.get_component_group<PerFrameUpdateComponent>()),
 	  per_frame_update_transforms(pool.get_component_group<PerFrameUpdateTransformComponent, CachedSpatialTransformComponent>()),
@@ -163,9 +164,14 @@ void Scene::gather_visible_transparent_renderables(const Frustum &frustum, Visib
 	gather_visible_renderables(frustum, list, transparent);
 }
 
-void Scene::gather_visible_shadow_renderables(const Frustum &frustum, VisibilityList &list)
+void Scene::gather_visible_static_shadow_renderables(const Frustum &frustum, VisibilityList &list)
 {
-	gather_visible_renderables(frustum, list, shadowing);
+	gather_visible_renderables(frustum, list, static_shadowing);
+}
+
+void Scene::gather_visible_dynamic_shadow_renderables(const Frustum &frustum, VisibilityList &list)
+{
+	gather_visible_renderables(frustum, list, dynamic_shadowing);
 	for (auto &object : render_pass_shadowing)
 		list.push_back({ get<1>(object)->renderable.get(), nullptr });
 }
@@ -396,7 +402,11 @@ EntityHandle Scene::create_renderable(AbstractRenderableHandle renderable, Node 
 	default:
 		entity->allocate_component<OpaqueComponent>();
 		if (renderable->has_static_aabb())
-			entity->allocate_component<CastsShadowComponent>();
+		{
+			// TODO: Find a way to make this smarter.
+			entity->allocate_component<CastsStaticShadowComponent>();
+			entity->allocate_component<CastsDynamicShadowComponent>();
+		}
 		break;
 	}
 

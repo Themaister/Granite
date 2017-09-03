@@ -343,7 +343,8 @@ void SceneViewerApplication::update_shadow_scene_aabb()
 {
 	// Get the scene AABB for shadow casters.
 	auto &scene = scene_loader.get_scene();
-	auto &shadow_casters = scene.get_entity_pool().get_component_group<CachedSpatialTransformComponent, RenderableComponent, CastsShadowComponent>();
+	auto &shadow_casters =
+			scene.get_entity_pool().get_component_group<CachedSpatialTransformComponent, RenderableComponent, CastsStaticShadowComponent>();
 	AABB aabb(vec3(FLT_MAX), vec3(-FLT_MAX));
 	for (auto &caster : shadow_casters)
 		aabb.expand(get<0>(caster)->world_aabb);
@@ -366,7 +367,7 @@ void SceneViewerApplication::update_shadow_map()
 	depth_context.set_camera(proj, view);
 
 	depth_renderer.begin();
-	scene.gather_visible_shadow_renderables(depth_context.get_visibility_frustum(), depth_visible);
+	scene.gather_visible_static_shadow_renderables(depth_context.get_visibility_frustum(), depth_visible);
 	depth_renderer.push_renderables(depth_context, depth_visible);
 }
 
@@ -402,7 +403,7 @@ void SceneViewerApplication::render_shadow_map_near(Vulkan::CommandBuffer &cmd)
 	lighting.shadow.near_transform = glm::translate(vec3(0.5f, 0.5f, 0.0f)) * glm::scale(vec3(0.5f, 0.5f, 1.0f)) * proj * view;
 	depth_context.set_camera(proj, view);
 	depth_renderer.begin();
-	scene.gather_visible_shadow_renderables(depth_context.get_visibility_frustum(), depth_visible);
+	scene.gather_visible_dynamic_shadow_renderables(depth_context.get_visibility_frustum(), depth_visible);
 	depth_renderer.push_renderables(depth_context, depth_visible);
 	depth_renderer.flush(cmd, depth_context);
 }

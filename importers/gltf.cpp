@@ -723,7 +723,41 @@ void Parser::parse(const string &original_path, const string &json)
 		}
 		else
 		{
-			json_images.push_back(Path::relpath(original_path, image["uri"].GetString()));
+			auto *uri = image["uri"].GetString();
+			static const char base64_type_jpg[] = "data:image/jpeg;base64,";
+			static const char base64_type_png[] = "data:image/png;base64,";
+			const char *base64_data = nullptr;
+
+			if (!strncmp(uri, base64_type_jpg, strlen(base64_type_jpg)))
+				base64_data = uri + strlen(base64_type_jpg);
+			else if (!strncmp(uri, base64_type_png, strlen(base64_type_png)))
+				base64_data = uri + strlen(base64_type_png);
+			else
+				json_images.push_back(Path::relpath(original_path, image["uri"].GetString()));
+
+			if (base64_data)
+			{
+				auto str_length = strlen(base64_data);
+				auto data_length = 3 * (str_length >> 2);
+				if (base64_data[str_length - 1] == '=')
+					data_length--;
+				if (base64_data[str_length - 2] == '=')
+					data_length--;
+
+				auto base64_buffer = read_base64(uri + strlen(base64_type_jpg), data_length);
+				auto fake_path = string("memory://") + original_path + "_base64_" + to_string(json_images.size());
+
+				auto file = Filesystem::get().open(fake_path, FileMode::WriteOnly);
+				if (!file)
+					throw runtime_error("Failed to open memory file.");
+
+				void *mapped = file->map_write(data_length);
+				if (!mapped)
+					throw runtime_error("Failed to map memory file.");
+
+				memcpy(mapped, base64_buffer.data(), base64_buffer.size());
+				json_images.push_back(move(fake_path));
+			}
 		}
 	};
 

@@ -339,22 +339,26 @@ void SceneViewerApplication::on_swapchain_destroyed(const SwapchainParameterEven
 {
 }
 
+void SceneViewerApplication::update_shadow_scene_aabb()
+{
+	// Get the scene AABB for shadow casters.
+	auto &scene = scene_loader.get_scene();
+	auto &shadow_casters = scene.get_entity_pool().get_component_group<CachedSpatialTransformComponent, RenderableComponent, CastsShadowComponent>();
+	AABB aabb(vec3(FLT_MAX), vec3(-FLT_MAX));
+	for (auto &caster : shadow_casters)
+		aabb.expand(get<0>(caster)->world_aabb);
+	shadow_scene_aabb = aabb;
+}
+
 void SceneViewerApplication::update_shadow_map()
 {
 	auto &scene = scene_loader.get_scene();
 	depth_visible.clear();
 
-	// Get the scene AABB for shadow casters.
-	auto &shadow_casters = scene.get_entity_pool().get_component_group<CachedSpatialTransformComponent, RenderableComponent, CastsShadowComponent>();
-	AABB aabb(vec3(FLT_MAX), vec3(-FLT_MAX));
-	for (auto &caster : shadow_casters)
-		aabb.expand(get<0>(caster)->world_aabb);
-	scene_aabb = aabb;
-
 	mat4 view = mat4_cast(look_at(-light_direction(), vec3(0.0f, 1.0f, 0.0f)));
 
 	// Project the scene AABB into the light and find our ortho ranges.
-	AABB ortho_range = aabb.transform(view);
+	AABB ortho_range = shadow_scene_aabb.transform(view);
 	mat4 proj = ortho(ortho_range);
 
 	// Standard scale/bias.
@@ -377,7 +381,7 @@ void SceneViewerApplication::render_shadow_map_near(Vulkan::CommandBuffer &cmd)
 	auto &scene = scene_loader.get_scene();
 	depth_visible.clear();
 	mat4 view = mat4_cast(look_at(-light_direction(), vec3(0.0f, 1.0f, 0.0f)));
-	AABB ortho_range_depth = scene_aabb.transform(view); // Just need this to determine Zmin/Zmax.
+	AABB ortho_range_depth = shadow_scene_aabb.transform(view); // Just need this to determine Zmin/Zmax.
 
 	auto near_camera = static_cast<Camera &>(cam);
 	near_camera.set_depth_range(near_camera.get_znear(), cascade_cutoff_distance);
@@ -431,6 +435,9 @@ void SceneViewerApplication::render_scene()
 	auto &wsi = get_wsi();
 	auto &device = wsi.get_device();
 	auto &scene = scene_loader.get_scene();
+
+	if (need_shadow_map_update)
+		update_shadow_scene_aabb();
 
 	graph.setup_attachments(device, &device.get_swapchain_view());
 	lighting.shadow_far = &graph.get_physical_texture_resource(graph.get_texture_resource("shadow-main").get_physical_index());

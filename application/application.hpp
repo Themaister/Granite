@@ -239,8 +239,9 @@ protected:
 	void update_shadow_map();
 	std::string skydome_reflection;
 	std::string skydome_irradiance;
-	AABB scene_aabb;
+	AABB shadow_scene_aabb;
 
+	void update_shadow_scene_aabb();
 	void render_shadow_map_near(Vulkan::CommandBuffer &cmd);
 	void render_shadow_map_far(Vulkan::CommandBuffer &cmd);
 	void render_main_pass(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view);

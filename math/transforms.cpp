@@ -177,6 +177,12 @@ mat4 ortho(const AABB &aabb)
 {
 	vec3 min = aabb.get_minimum();
 	vec3 max = aabb.get_maximum();
+
+	// Flip Z for RH, ortho zNear/zFar is LH style.
+	std::swap(max.z, min.z);
+	max.z = -max.z;
+	min.z = -min.z;
+
 	return glm::scale(vec3(1.0f, -1.0f, 1.0f)) * glm::ortho(min.x, max.x, min.y, max.y, min.z, max.z);
 }
 

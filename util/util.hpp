@@ -29,7 +29,15 @@
 #include <vector>
 #include <type_traits>
 
-#if defined(_MSC_VER)
+#if defined(HAVE_LIBRETRO)
+#include "libretro/libretro.h"
+namespace Granite
+{
+extern retro_log_printf_t libretro_log;
+}
+#define LOGE(...) ::Granite::libretro_log(RETRO_LOG_ERROR, __VA_ARGS__)
+#define LOGI(...) ::Granite::libretro_log(RETRO_LOG_INFO, __VA_ARGS__)
+#elif defined(_MSC_VER)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #define LOGE(...) do { \

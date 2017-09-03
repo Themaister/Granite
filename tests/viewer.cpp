@@ -35,16 +35,24 @@ Application *application_create(int argc, char **argv)
 	Filesystem::get().register_protocol("assets", std::unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir)));
 #endif
 
-	if (argc != 2)
+	try
 	{
-		LOGE("Usage: %s <glTF/scene file>\n", argv ? argv[0] : "viewer");
+		if (argc != 2)
+		{
+			LOGE("Usage: %s <glTF/scene file>\n", argv ? argv[0] : "viewer");
+			return nullptr;
+		}
+
+		auto path = std::string("file://") + argv[1];
+		auto *app = new SceneViewerApplication(path, 1280, 720);
+		app->rescale_scene(5.0f);
+		app->loop_animations();
+		return app;
+	}
+	catch (const std::exception &e)
+	{
+		LOGE("application_create() threw exception: %s\n", e.what());
 		return nullptr;
 	}
-
-	auto path = std::string("file://") + argv[1];
-	auto *app = new SceneViewerApplication(path, 1280, 720);
-	app->rescale_scene(5.0f);
-	app->loop_animations();
-	return app;
 }
 }

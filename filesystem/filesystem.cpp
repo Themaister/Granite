@@ -132,6 +132,7 @@ vector<ListEntry> FilesystemBackend::walk(const std::string &path)
 Filesystem::Filesystem()
 {
 	register_protocol("file", unique_ptr<FilesystemBackend>(new OSFilesystem(".")));
+	register_protocol("memory", unique_ptr<FilesystemBackend>(new ScratchFilesystem));
 
 #ifdef ANDROID
 	register_protocol("assets", unique_ptr<FilesystemBackend>(new NetworkFilesystem));
@@ -247,4 +248,90 @@ void Filesystem::poll_notifications()
 	for (auto &proto : protocols)
 		proto.second->poll_notifications();
 }
+
+int ScratchFilesystem::get_notification_fd() const
+{
+	return -1;
+}
+
+FileNotifyHandle ScratchFilesystem::install_notification(const std::string &,
+                                                         std::function<void(const FileNotifyInfo &)>)
+{
+	return -1;
+}
+
+void ScratchFilesystem::poll_notifications()
+{
+}
+
+void ScratchFilesystem::uninstall_notification(FileNotifyHandle)
+{
+}
+
+bool ScratchFilesystem::stat(const std::string &path, FileStat &stat)
+{
+	auto itr = scratch_files.find(path);
+	if (itr == end(scratch_files))
+		return false;
+
+	stat.size = itr->second->data.size();
+	stat.type = PathType::File;
+	return true;
+}
+
+std::vector<ListEntry> ScratchFilesystem::list(const std::string &)
+{
+	return {};
+}
+
+struct ScratchFilesystemFile : File
+{
+	ScratchFilesystemFile(std::vector<uint8_t> &data)
+		: data(data)
+	{
+	}
+
+	void *map() override
+	{
+		return data.data();
+	}
+
+	void *map_write(size_t size) override
+	{
+		data.resize(size);
+		return data.data();
+	}
+
+	bool reopen() override
+	{
+		return true;
+	}
+
+	void unmap() override
+	{
+	}
+
+	size_t get_size() override
+	{
+		return data.size();
+	}
+
+	std::vector<uint8_t> &data;
+};
+
+std::unique_ptr<File> ScratchFilesystem::open(const std::string &path, FileMode)
+{
+	auto itr = scratch_files.find(path);
+	if (itr == end(scratch_files))
+	{
+		auto &file = scratch_files[path];
+		file.reset(new ScratchFile);
+		return std::unique_ptr<ScratchFilesystemFile>(new ScratchFilesystemFile(file->data));
+	}
+	else
+	{
+		return std::unique_ptr<ScratchFilesystemFile>(new ScratchFilesystemFile(itr->second->data));
+	}
+}
+
 }

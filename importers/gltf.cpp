@@ -126,8 +126,67 @@ Parser::Buffer Parser::read_base64(const char *data, uint64_t length)
 Parser::Parser(const std::string &path)
 {
 	string json;
-	if (!Filesystem::get().read_file_to_string(path, json))
-		throw runtime_error("Failed to load GLTF file.");
+
+	{
+		auto file = Filesystem::get().open(path, FileMode::ReadOnly);
+		if (!file)
+			throw runtime_error("Failed to load GLTF file.");
+
+		auto size = file->get_size();
+		void *mapped = file->map();
+		if (!mapped)
+			throw runtime_error("Failed to map GLTF file.");
+
+		bool is_glb = false;
+
+		if (size >= 12 && memcmp("glTF", mapped, 4) == 0)
+			is_glb = true;
+
+		if (is_glb)
+		{
+			// GLB is little endian. Just parse it lazily.
+			auto *words = static_cast<const uint32_t *>(mapped);
+			if (words[1] != 2)
+				throw runtime_error("GLB version is not 2.");
+			if (words[2] > size)
+				throw runtime_error("GLB length is larger than the file size.");
+
+			auto glb_size = words[2];
+			words += 3;
+
+			auto json_length = words[0];
+			if (memcmp(&words[1], "JSON", 4) != 0)
+				throw runtime_error("Could not find JSON chunk.");
+			words += 2;
+
+			if (json_length + 12 > glb_size)
+				throw logic_error("Header error, JSON chunk lengths out of range.");
+
+			json = string(reinterpret_cast<const char *>(words),
+			              reinterpret_cast<const char *>(words) + json_length);
+			words += (json_length + 3) >> 2;
+
+			// If there is another chunk, it's BIN chunk.
+			if (json_length + 12 + 8 < glb_size)
+			{
+				auto binary_length = words[0];
+				if (memcmp(&words[1], "BIN\0", 4) != 0)
+					throw runtime_error("Could not find BIN chunk.");
+				words += 2;
+
+				if (((binary_length + 3) & ~3) + ((json_length + 3) & ~3) + (2 * 2 + 3) * sizeof(uint32_t) != glb_size)
+					throw logic_error(
+							"Header error, binary chunk and JSON chunk lengths do not match up with GLB size.");
+
+				// The first buffer in the JSON must be this embedded buffer.
+				Buffer buffer(reinterpret_cast<const uint8_t *>(words),
+				              reinterpret_cast<const uint8_t *>(words) + binary_length);
+				json_buffers.push_back(move(buffer));
+			}
+		}
+		else
+			json = string(static_cast<const char *>(mapped), static_cast<const char *>(mapped) + size);
+	}
 	parse(path, json);
 }
 
@@ -495,8 +554,18 @@ void Parser::parse(const string &original_path, const string &json)
 	doc.Parse(json);
 
 	const auto add_buffer = [&](const Value &buf) {
-		const char *uri = buf["uri"].GetString();
-		auto length = buf["byteLength"].GetInt64();
+		const char *uri = nullptr;
+		if (buf.HasMember("uri"))
+			uri = buf["uri"].GetString();
+
+		auto length = buf["byteLength"].GetUint64();
+
+		if (!uri)
+		{
+			//if (length != json_buffers.front().size())
+			//	throw logic_error("Baked GLB buffer size must match the provided size in the header.");
+			return;
+		}
 
 		static const char base64_type[] = "data:application/octet-stream;base64,";
 		if (!strncmp(uri, base64_type, strlen(base64_type)))
@@ -515,6 +584,9 @@ void Parser::parse(const string &original_path, const string &json)
 		auto buffer_index = buf.GetUint();
 		auto offset = view.HasMember("byteOffset") ? view["byteOffset"].GetUint() : 0u;
 		auto length = view["byteLength"].GetUint();
+
+		if (offset + length > json_buffers[buffer_index].size())
+			throw logic_error("Buffer view is out of range.");
 
 		json_views.push_back({buffer_index, offset, length});
 	};
@@ -632,7 +704,27 @@ void Parser::parse(const string &original_path, const string &json)
 	};
 
 	const auto add_image = [&](const Value &image) {
-		json_images.push_back(Path::relpath(original_path, image["uri"].GetString()));
+		if (image.HasMember("bufferView"))
+		{
+			auto index = image["bufferView"].GetUint();
+			auto &view = json_views[index];
+			auto fake_path = string("memory://") + original_path + "_buffer_view_" + to_string(index);
+
+			auto file = Filesystem::get().open(fake_path, FileMode::WriteOnly);
+			if (!file)
+				throw runtime_error("Failed to open memory file.");
+
+			void *mapped = file->map_write(view.length);
+			if (!mapped)
+				throw runtime_error("Failed to map memory file.");
+
+			memcpy(mapped, json_buffers[view.buffer_index].data() + view.offset, view.length);
+			json_images.push_back(move(fake_path));
+		}
+		else
+		{
+			json_images.push_back(Path::relpath(original_path, image["uri"].GetString()));
+		}
 	};
 
 	const auto add_stock_sampler = [&](const Value &value) {
@@ -979,6 +1071,10 @@ void Parser::parse(const string &original_path, const string &json)
 		json_skins.push_back({ move(inverse_bind_matrices), move(joint_transforms), move(skeleton), compat });
 	};
 
+	if (doc.HasMember("buffers"))
+		iterate_elements(doc["buffers"], add_buffer);
+	if (doc.HasMember("bufferViews"))
+		iterate_elements(doc["bufferViews"], add_view);
 	if (doc.HasMember("images"))
 		iterate_elements(doc["images"], add_image);
 	if (doc.HasMember("samplers"))
@@ -987,10 +1083,6 @@ void Parser::parse(const string &original_path, const string &json)
 		iterate_elements(doc["textures"], add_texture);
 	if (doc.HasMember("materials"))
 		iterate_elements(doc["materials"], add_material);
-	if (doc.HasMember("buffers"))
-		iterate_elements(doc["buffers"], add_buffer);
-	if (doc.HasMember("bufferViews"))
-		iterate_elements(doc["bufferViews"], add_view);
 	if (doc.HasMember("accessors"))
 		iterate_elements(doc["accessors"], add_accessor);
 	if (doc.HasMember("meshes"))

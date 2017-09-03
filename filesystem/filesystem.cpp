@@ -131,7 +131,7 @@ vector<ListEntry> FilesystemBackend::walk(const std::string &path)
 
 Filesystem::Filesystem()
 {
-	register_protocol("file", unique_ptr<FilesystemBackend>(new OSFilesystem("/")));
+	register_protocol("file", unique_ptr<FilesystemBackend>(new OSFilesystem(".")));
 
 #ifdef ANDROID
 	register_protocol("assets", unique_ptr<FilesystemBackend>(new NetworkFilesystem));

@@ -165,8 +165,6 @@ static void query_variables()
 RETRO_API void retro_set_environment(retro_environment_t cb)
 {
 	environ_cb = cb;
-	bool support = true;
-	environ_cb(RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME, &support);
 
 	retro_log_callback log_interface;
 	if (environ_cb(RETRO_ENVIRONMENT_GET_LOG_INTERFACE, &log_interface))
@@ -205,10 +203,10 @@ RETRO_API unsigned retro_api_version(void)
 RETRO_API void retro_get_system_info(struct retro_system_info *info)
 {
 	info->block_extract = false;
-	info->library_name = "Granite";
+	info->library_name = "Sample Scene Viewer";
 	info->library_version = "0.0";
-	info->need_fullpath = false;
-	info->valid_extensions = nullptr;
+	info->need_fullpath = true;
+	info->valid_extensions = "gltf|glb|scene";
 }
 
 RETRO_API void retro_get_system_av_info(struct retro_system_av_info *info)
@@ -329,9 +327,21 @@ static void frame_time_callback(retro_usec_t usecs)
 	last_frame_time = usecs;
 }
 
-RETRO_API bool retro_load_game(const struct retro_game_info *)
+RETRO_API bool retro_load_game(const struct retro_game_info *info)
 {
-	app = Granite::application_create(0, nullptr);
+	char *argv[] = {
+		const_cast<char *>("libretro-granite"),
+		const_cast<char *>(info->path),
+		nullptr,
+	};
+
+	app = Granite::application_create(2, argv);
+	if (!app)
+	{
+		Granite::libretro_log(RETRO_LOG_ERROR, "Failed to load scene: %s\n", info->path);
+		return false;
+	}
+
 	current_width = app->get_default_width();
 	current_height = app->get_default_height();
 	application_name = app->get_name();

@@ -173,14 +173,19 @@ public:
 		return *platform;
 	}
 
-	unsigned get_width() const
+	unsigned get_default_width() const
 	{
 		return width;
 	}
 
-	unsigned get_height() const
+	unsigned get_default_height() const
 	{
 		return height;
+	}
+
+	virtual std::string get_name()
+	{
+		return "granite";
 	}
 
 	bool poll();

@@ -44,6 +44,11 @@ static unsigned num_swapchain_images;
 static retro_vulkan_image swapchain_image_info;
 static bool can_dupe = false;
 static retro_usec_t last_frame_time;
+static std::string application_name;
+static std::string application_internal_resolution;
+
+static unsigned current_width;
+static unsigned current_height;
 
 struct ApplicationPlatformLibretro : Granite::ApplicationPlatform
 {
@@ -59,12 +64,12 @@ struct ApplicationPlatformLibretro : Granite::ApplicationPlatform
 
 	unsigned get_surface_width() override
 	{
-		return app->get_width();
+		return current_width;
 	}
 
 	unsigned get_surface_height() override
 	{
-		return app->get_height();
+		return current_height;
 	}
 
 	bool alive(Vulkan::WSI &) override
@@ -133,7 +138,6 @@ std::unique_ptr<ApplicationPlatform> create_default_application_platform(unsigne
 }
 }
 
-
 static retro_hw_render_callback hw_render;
 
 RETRO_API void retro_init(void)
@@ -142,6 +146,32 @@ RETRO_API void retro_init(void)
 
 RETRO_API void retro_deinit(void)
 {
+}
+
+static void setup_variables()
+{
+	application_name = app->get_name();
+	application_internal_resolution = application_name + "_internal_resolution";
+
+	static const retro_variable variables[] = {
+			{ application_internal_resolution.c_str(), "Internal resolution; 1280x720|640x360|1280x1024|1920x1080" },
+			{ nullptr, nullptr },
+	};
+	environ_cb(RETRO_ENVIRONMENT_SET_VARIABLES, const_cast<retro_variable *>(variables));
+}
+
+static void query_variables()
+{
+	retro_variable var = { application_internal_resolution.c_str(), nullptr };
+	if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+	{
+		unsigned new_width, new_height;
+		if (sscanf(var.value, "%ux%u", &new_width, &new_height) == 2)
+		{
+			current_width = new_width;
+			current_height = new_height;
+		}
+	}
 }
 
 RETRO_API void retro_set_environment(retro_environment_t cb)
@@ -197,11 +227,11 @@ RETRO_API void retro_get_system_av_info(struct retro_system_av_info *info)
 {
 	info->timing.fps = 60.0;
 	info->timing.sample_rate = 44100.0;
-	info->geometry.aspect_ratio = 16.0f / 9.0f;
-	info->geometry.base_height = app->get_width();
-	info->geometry.base_width = app->get_height();
-	info->geometry.max_width = app->get_width();
-	info->geometry.max_height = app->get_height();
+	info->geometry.aspect_ratio = float(current_width) / current_height;
+	info->geometry.base_height = current_width;
+	info->geometry.base_width = current_height;
+	info->geometry.max_width = current_width;
+	info->geometry.max_height = current_height;
 }
 
 RETRO_API void retro_set_controller_port_device(unsigned, unsigned)
@@ -212,99 +242,122 @@ RETRO_API void retro_reset(void)
 {
 }
 
+static void check_variables()
+{
+	bool updated = false;
+	if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &updated) && updated)
+	{
+		unsigned old_width = current_width;
+		unsigned old_height = current_height;
+		query_variables();
+		if (old_width != current_width || old_height != current_height)
+		{
+			retro_system_av_info av_info;
+			retro_get_system_av_info(&av_info);
+			if (!environ_cb(RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO, &av_info))
+			{
+				current_width = old_width;
+				current_height = old_height;
+			}
+		}
+	}
+}
+
 RETRO_API void retro_run(void)
 {
-	if (app)
+	if (!app)
 	{
-		auto sync_index = vulkan_interface->get_sync_index(vulkan_interface->handle);
-		auto &wsi = app->get_wsi();
+		// The application is dead, force a shutdown.
+		input_poll_cb();
+		environ_cb(RETRO_ENVIRONMENT_SHUTDOWN, nullptr);
+		return;
+	}
 
-		// Check if we need to reinitialize the swapchain.
-		unsigned num_images = 0;
-		auto sync_mask = vulkan_interface->get_sync_index_mask(vulkan_interface->handle);
-		for (unsigned i = 0; i < 32; i++)
-		{
-			if (sync_mask & (1u << i))
-				num_images = i + 1;
-		}
+	check_variables();
 
-		if (num_images != num_swapchain_images)
-		{
-			num_swapchain_images = num_images;
-			std::vector<Vulkan::ImageHandle> images;
-			for (unsigned i = 0; i < num_images; i++)
-				images.push_back(swapchain_image);
+	auto sync_index = vulkan_interface->get_sync_index(vulkan_interface->handle);
+	auto &wsi = app->get_wsi();
 
-			acquire_semaphore.reset();
-			wsi.reinit_external_swapchain(std::move(images));
-		}
+	// Check if we need to reinitialize the swapchain.
+	unsigned num_images = 0;
+	auto sync_mask = vulkan_interface->get_sync_index_mask(vulkan_interface->handle);
+	for (unsigned i = 0; i < 32; i++)
+	{
+		if (sync_mask & (1u << i))
+			num_images = i + 1;
+	}
 
-		// Setup the external frame.
-		vulkan_interface->wait_sync_index(vulkan_interface->handle);
-		wsi.set_external_frame(sync_index, acquire_semaphore, last_frame_time * 1e-6);
+	if (num_images != num_swapchain_images)
+	{
+		num_swapchain_images = num_images;
+		std::vector<Vulkan::ImageHandle> images;
+		for (unsigned i = 0; i < num_images; i++)
+			images.push_back(swapchain_image);
+
 		acquire_semaphore.reset();
+		wsi.reinit_external_swapchain(std::move(images));
+	}
 
-		// Run frame.
-		app->poll();
-		app->run_frame();
+	// Setup the external frame.
+	vulkan_interface->wait_sync_index(vulkan_interface->handle);
+	wsi.set_external_frame(sync_index, acquire_semaphore, last_frame_time * 1e-6);
+	acquire_semaphore.reset();
 
-		// Present to libretro frontend.
-		auto signal_semaphore = wsi.get_device().request_semaphore();
-		vulkan_interface->set_signal_semaphore(vulkan_interface->handle,
-		                                       signal_semaphore->get_semaphore());
-		signal_semaphore->signal_external();
+	// Run frame.
+	app->poll();
+	app->run_frame();
 
-		acquire_semaphore = wsi.get_external_release_semaphore();
-		if (acquire_semaphore->get_semaphore() != VK_NULL_HANDLE)
+	// Present to libretro frontend.
+	auto signal_semaphore = wsi.get_device().request_semaphore();
+	vulkan_interface->set_signal_semaphore(vulkan_interface->handle,
+	                                       signal_semaphore->get_semaphore());
+	signal_semaphore->signal_external();
+
+	acquire_semaphore = wsi.get_external_release_semaphore();
+	if (acquire_semaphore->get_semaphore() != VK_NULL_HANDLE)
+	{
+		vulkan_interface->set_image(vulkan_interface->handle,
+		                            &swapchain_image_info,
+		                            1, &acquire_semaphore->get_semaphore(),
+		                            VK_QUEUE_FAMILY_IGNORED);
+
+		video_cb(RETRO_HW_FRAME_BUFFER_VALID, current_width, current_height, 0);
+		can_dupe = true;
+	}
+	else
+	{
+		vulkan_interface->set_image(vulkan_interface->handle,
+		                            &swapchain_image_info,
+		                            0, nullptr,
+		                            VK_QUEUE_FAMILY_IGNORED);
+
+		if (!can_dupe)
 		{
-			vulkan_interface->set_image(vulkan_interface->handle,
-			                            &swapchain_image_info,
-			                            1, &acquire_semaphore->get_semaphore(),
-			                            VK_QUEUE_FAMILY_IGNORED);
-
-			video_cb(RETRO_HW_FRAME_BUFFER_VALID, app->get_width(), app->get_height(), 0);
+			// Need something to show ... Just clear the image to black and present that.
+			// This should only happen if we don't render to swapchain the very first frame,
+			// so performance doesn't really matter.
+			auto &device = wsi.get_device();
+			auto cmd = device.request_command_buffer();
+			cmd->image_barrier(*swapchain_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			                   VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT,
+			                   VK_ACCESS_TRANSFER_WRITE_BIT);
+			swapchain_image->set_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+			cmd->clear_image(*swapchain_image, {});
+			cmd->image_barrier(*swapchain_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			                   VK_PIPELINE_STAGE_TRANSFER_BIT, 0, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+			                   VK_ACCESS_SHADER_READ_BIT);
+			swapchain_image->set_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			video_cb(RETRO_HW_FRAME_BUFFER_VALID, current_width, current_height, 0);
 			can_dupe = true;
 		}
 		else
 		{
-			vulkan_interface->set_image(vulkan_interface->handle,
-			                            &swapchain_image_info,
-			                            0, nullptr,
-			                            VK_QUEUE_FAMILY_IGNORED);
-
-			if (!can_dupe)
-			{
-				// Need something to show ... Just clear the image to black and present that.
-				// This should only happen if we don't render to swapchain the very first frame,
-				// so performance doesn't really matter.
-				auto &device = wsi.get_device();
-				auto cmd = device.request_command_buffer();
-				cmd->image_barrier(*swapchain_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-				                   VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT,
-				                   VK_ACCESS_TRANSFER_WRITE_BIT);
-				swapchain_image->set_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-				cmd->clear_image(*swapchain_image, {});
-				cmd->image_barrier(*swapchain_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-				                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-				                   VK_PIPELINE_STAGE_TRANSFER_BIT, 0, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-				                   VK_ACCESS_SHADER_READ_BIT);
-				swapchain_image->set_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-				video_cb(RETRO_HW_FRAME_BUFFER_VALID, app->get_width(), app->get_height(), 0);
-				can_dupe = true;
-			}
-			else
-			{
-				video_cb(nullptr, app->get_width(), app->get_height(), 0);
-			}
+			video_cb(nullptr, current_width, current_height, 0);
 		}
+	}
 
-		acquire_semaphore = signal_semaphore;
-	}
-	else
-	{
-		input_poll_cb();
-		environ_cb(RETRO_ENVIRONMENT_SHUTDOWN, nullptr);
-	}
+	acquire_semaphore = signal_semaphore;
 }
 
 RETRO_API size_t retro_serialize_size(void)
@@ -382,7 +435,7 @@ static void context_reset(void)
 	}
 	num_swapchain_images = num_images;
 
-	Vulkan::ImageCreateInfo info = Vulkan::ImageCreateInfo::render_target(app->get_width(), app->get_height(),
+	Vulkan::ImageCreateInfo info = Vulkan::ImageCreateInfo::render_target(current_width, current_height,
 	                                                                      VK_FORMAT_R8G8B8A8_SRGB);
 	info.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 	info.flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
@@ -412,7 +465,7 @@ static void context_reset(void)
 	// Setup the swapchain image info for the frontend.
 	swapchain_image_info.image_view = swapchain_unorm_view->get_view();
 	swapchain_image_info.image_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	swapchain_image_info.create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	swapchain_image_info.create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 	swapchain_image_info.create_info.image = swapchain_unorm_view->get_image().get_image();
 	swapchain_image_info.create_info.format = VK_FORMAT_R8G8B8A8_UNORM;
 	swapchain_image_info.create_info.components.r = VK_COMPONENT_SWIZZLE_R;
@@ -476,6 +529,10 @@ static void frame_time_callback(retro_usec_t usecs)
 RETRO_API bool retro_load_game(const struct retro_game_info *)
 {
 	app = Granite::application_create(0, nullptr);
+	current_width = app->get_default_width();
+	current_height = app->get_default_height();
+	setup_variables();
+	query_variables();
 
 	hw_render.context_destroy = context_destroy;
 	hw_render.context_reset = context_reset;

@@ -48,7 +48,7 @@
 		}                                                        \
 	} while (0)
 #else
-#define VK_ASSERT(x)
+#define VK_ASSERT(x) ((void)0)
 #endif
 
 namespace Vulkan

@@ -680,6 +680,8 @@ private:
 
 	void on_swapchain_changed(const Vulkan::SwapchainParameterEvent &e);
 	void on_swapchain_destroyed(const Vulkan::SwapchainParameterEvent &e);
+	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
+	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
 
 	void setup_physical_buffer(Vulkan::Device &device, unsigned attachment);
 	void setup_physical_image(Vulkan::Device &device, unsigned attachment, bool storage);

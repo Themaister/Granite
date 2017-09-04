@@ -182,6 +182,7 @@ RenderTextureResource &RenderPass::set_depth_stencil_input(const std::string &na
 RenderGraph::RenderGraph()
 {
 	EVENT_MANAGER_REGISTER_LATCH(RenderGraph, on_swapchain_changed, on_swapchain_destroyed, Vulkan::SwapchainParameterEvent);
+	EVENT_MANAGER_REGISTER_LATCH(RenderGraph, on_device_created, on_device_destroyed, Vulkan::DeviceCreatedEvent);
 }
 
 void RenderGraph::on_swapchain_destroyed(const Vulkan::SwapchainParameterEvent &)
@@ -190,11 +191,19 @@ void RenderGraph::on_swapchain_destroyed(const Vulkan::SwapchainParameterEvent &
 	physical_history_image_attachments.clear();
 	physical_events.clear();
 	physical_history_events.clear();
-	physical_buffers.clear();
 }
 
 void RenderGraph::on_swapchain_changed(const Vulkan::SwapchainParameterEvent &)
 {
+}
+
+void RenderGraph::on_device_created(const Vulkan::DeviceCreatedEvent &)
+{
+}
+
+void RenderGraph::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
+{
+	physical_buffers.clear();
 }
 
 RenderTextureResource &RenderGraph::get_texture_resource(const std::string &name)

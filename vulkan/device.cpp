@@ -900,7 +900,7 @@ void Device::init_external_swapchain(const vector<ImageHandle> &swapchain_images
 	transient_allocator.clear();
 
 	for (auto &frame : per_frame)
-		frame->cleanup();
+		frame->release_owned_resources();
 	per_frame.clear();
 
 	for (auto &image : swapchain_images)
@@ -924,7 +924,7 @@ void Device::init_swapchain(const vector<VkImage> &swapchain_images, unsigned wi
 	transient_allocator.clear();
 
 	for (auto &frame : per_frame)
-		frame->cleanup();
+		frame->release_owned_resources();
 	per_frame.clear();
 
 	const auto info = ImageCreateInfo::render_target(width, height, format);

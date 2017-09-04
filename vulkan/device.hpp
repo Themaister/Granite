@@ -198,6 +198,7 @@ private:
 		void cleanup();
 		void begin();
 		void sync_to_gpu();
+		void release_owned_resources();
 
 		VkDevice device;
 		DeviceAllocator &global_allocator;

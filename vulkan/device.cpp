@@ -888,7 +888,7 @@ Device::~Device()
 		sampler.reset();
 
 	for (auto &frame : per_frame)
-		frame->cleanup();
+		frame->release_owned_resources();
 }
 
 void Device::init_external_swapchain(const vector<ImageHandle> &swapchain_images)
@@ -1097,14 +1097,6 @@ void Device::wait_idle()
 
 	clear_wait_semaphores();
 
-	for (auto &frame : per_frame)
-	{
-		// Avoid double-wait-on-semaphore scenarios.
-		bool touched_swapchain = frame->swapchain_touched;
-		frame->begin();
-		frame->swapchain_touched = touched_swapchain;
-	}
-
 	framebuffer_allocator.clear();
 	transient_allocator.clear();
 	for (auto &allocator : descriptor_set_allocators)
@@ -1112,8 +1104,11 @@ void Device::wait_idle()
 
 	for (auto &frame : per_frame)
 	{
+		// Avoid double-wait-on-semaphore scenarios.
+		bool touched_swapchain = frame->swapchain_touched;
 		frame->cleanup();
 		frame->begin();
+		frame->swapchain_touched = touched_swapchain;
 	}
 }
 
@@ -1193,11 +1188,16 @@ void Device::PerFrame::begin()
 
 void Device::PerFrame::cleanup()
 {
-	backbuffer.reset();
 	vbo_chain.reset();
 	ibo_chain.reset();
 	ubo_chain.reset();
 	staging_chain.reset();
+}
+
+void Device::PerFrame::release_owned_resources()
+{
+	cleanup();
+	backbuffer.reset();
 }
 
 Device::PerFrame::~PerFrame()

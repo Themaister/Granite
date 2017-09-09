@@ -79,6 +79,7 @@ struct StaticMeshFragment
 	float roughness;
 	float metallic;
 	float lod_bias;
+	float normal_scale;
 };
 
 struct DebugMeshInstanceInfo

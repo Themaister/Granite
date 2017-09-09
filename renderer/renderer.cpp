@@ -201,7 +201,15 @@ void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context)
 	queue.dispatch(Queue::OpaqueEmissive, cmd, &state);
 
 	if (type == RendererType::GeneralForward)
+	{
+		// Forward renderers can also render transparent objects.
+		cmd.set_blend_enable(true);
+		cmd.set_blend_factors(VK_BLEND_FACTOR_SRC_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA);
+		cmd.set_blend_op(VK_BLEND_OP_ADD);
+		cmd.set_depth_test(true, false);
+		cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
 		queue.dispatch(Queue::Transparent, cmd, &state);
+	}
 }
 
 DebugMeshInstanceInfo &Renderer::render_debug(RenderContext &context, unsigned count)

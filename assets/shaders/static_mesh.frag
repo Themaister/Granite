@@ -46,6 +46,7 @@ layout(std430, push_constant) uniform Constants
     float roughness;
     float metallic;
     float lod_bias;
+    float normal_scale;
 } registers;
 
 #include "inc/render_target.h"
@@ -91,6 +92,7 @@ void main()
         #else
             vec3 tangent_space = texture(uNormalmap, vUV, registers.lod_bias).xyz * 2.0 - 1.0;
         #endif
+        tangent_space.xy *= registers.normal_scale;
         normal = normalize(mat3(tangent, binormal, normal) * tangent_space);
     #endif
     if (!gl_FrontFacing)

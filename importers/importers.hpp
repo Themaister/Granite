@@ -161,6 +161,7 @@ struct MaterialInfo
 	float uniform_metallic = 1.0f;
 	float uniform_roughness = 1.0f;
 	float lod_bias = 0.0f;
+	float normal_scale = 1.0f;
 	DrawPipeline pipeline = DrawPipeline::Opaque;
 	Vulkan::StockSampler sampler = Vulkan::StockSampler::TrilinearWrap;
 	bool two_sided = false;

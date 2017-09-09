@@ -58,6 +58,7 @@ MaterialFile::MaterialFile(const MaterialInfo &info)
 	pipeline = info.pipeline;
 	two_sided = info.two_sided;
 	lod_bias = info.lod_bias;
+	normal_scale = info.normal_scale;
 	sampler = info.sampler;
 	bake();
 

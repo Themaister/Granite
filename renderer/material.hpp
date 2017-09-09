@@ -53,6 +53,7 @@ struct Material : public Util::IntrusivePtrEnabled<Material>
 	float roughness = 1.0f;
 	float metallic = 1.0f;
 	float lod_bias = 0.0f;
+	float normal_scale = 1.0f;
 	DrawPipeline pipeline = DrawPipeline::Opaque;
 	Vulkan::StockSampler sampler = Vulkan::StockSampler::TrilinearWrap;
 	bool two_sided = false;
@@ -70,6 +71,7 @@ struct Material : public Util::IntrusivePtrEnabled<Material>
 		h.f32(roughness);
 		h.f32(metallic);
 		h.f32(lod_bias);
+		h.f32(normal_scale);
 		h.u32(Util::ecast(pipeline));
 		h.u32(Util::ecast(sampler));
 		h.u32(two_sided);

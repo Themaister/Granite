@@ -855,6 +855,8 @@ void Parser::parse(const string &original_path, const string &json)
 		{
 			auto &tex = value["normalTexture"]["index"];
 			info.normal = json_images[json_textures[tex.GetUint()].image_index];
+			if (value["normalTexture"].HasMember("scale"))
+				info.normal_scale = value["normalTexture"]["scale"].GetFloat();
 		}
 
 		if (value.HasMember("emissiveTexture"))

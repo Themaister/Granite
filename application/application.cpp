@@ -22,7 +22,7 @@
 
 #define RENDERER_FORWARD 0
 #define RENDERER_DEFERRED 1
-#define RENDERER RENDERER_DEFERRED
+#define RENDERER RENDERER_FORWARD
 
 #include "application.hpp"
 #include <stdexcept>

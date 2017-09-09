@@ -154,6 +154,29 @@ void SceneViewerApplication::render_main_pass(Vulkan::CommandBuffer &cmd, const 
 #endif
 }
 
+void SceneViewerApplication::render_transparent_objects(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view)
+{
+	uint32_t flags = 0;
+	if (this->lighting.environment_irradiance && this->lighting.environment_radiance)
+		flags |= Renderer::ENVIRONMENT_ENABLE_BIT;
+	if (this->lighting.shadow_far)
+		flags |= Renderer::SHADOW_ENABLE_BIT;
+	if (this->lighting.shadow_near && this->lighting.shadow_far)
+		flags |= Renderer::SHADOW_CASCADE_ENABLE_BIT;
+	if (this->lighting.fog.falloff > 0.0f)
+		flags |= Renderer::FOG_ENABLE_BIT;
+
+	forward_renderer.set_mesh_renderer_options(flags);
+
+	auto &scene = scene_loader.get_scene();
+	context.set_camera(proj, view);
+	visible.clear();
+	scene.gather_visible_transparent_renderables(context.get_visibility_frustum(), visible);
+	forward_renderer.begin();
+	forward_renderer.push_renderables(context, visible);
+	forward_renderer.flush(cmd, context);
+}
+
 static inline string tagcat(const std::string &a, const std::string &b)
 {
 	return a + "-" + b;
@@ -205,6 +228,7 @@ void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::st
 
 		forward_renderer.set_mesh_renderer_options(flags);
 		render_main_pass(cmd, cam.get_projection(), cam.get_view());
+		render_transparent_objects(cmd, cam.get_projection(), cam.get_view());
 	});
 
 	lighting.add_texture_input("shadow-main");
@@ -265,6 +289,7 @@ void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::st
 
 	lighting.set_build_render_pass([this, type](Vulkan::CommandBuffer &cmd) {
 		DeferredLightRenderer::render_light(cmd, context);
+		render_transparent_objects(cmd, cam.get_projection(), cam.get_view());
 	});
 #endif
 }

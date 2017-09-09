@@ -164,6 +164,11 @@ struct StaticMesh : AbstractRenderable
 	void get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
 	                     RenderQueue &queue) const override;
 
+	DrawPipeline get_mesh_draw_pipeline() const override
+	{
+		return material->pipeline;
+	}
+
 	void bake();
 
 protected:

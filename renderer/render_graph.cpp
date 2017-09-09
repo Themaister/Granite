@@ -2027,8 +2027,14 @@ void RenderGraph::reorder_passes(std::vector<unsigned> &passes)
 		for (auto &merge_dep : pass_merge_deps)
 		{
 			for (auto &dependee : pass_deps)
+			{
+				// Avoid cycles.
+				if (depends_on_pass(dependee, merge_dep))
+					continue;
+
 				if (merge_dep != dependee)
 					pass_dependencies[merge_dep].insert(dependee);
+			}
 		}
 	}
 

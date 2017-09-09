@@ -54,8 +54,6 @@ static vec3 light_direction()
 	return normalize(vec3(0.5f, 1.2f, 0.8f));
 }
 
-static const float cascade_cutoff_distance = 10.0f;
-
 SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned width, unsigned height)
 	: Application(width, height),
 	  forward_renderer(RendererType::GeneralForward),
@@ -115,6 +113,9 @@ void SceneViewerApplication::rescale_scene(float radius)
 	new_root_node->transform.scale = vec3(scale_factor);
 	new_root_node->add_child(root_node);
 	scene_loader.get_scene().set_root_node(new_root_node);
+
+	// TODO: Make this more configurable.
+	cascade_cutoff_distance = 0.25f * radius;
 }
 
 void SceneViewerApplication::on_device_created(const DeviceCreatedEvent &device)
@@ -164,9 +165,15 @@ void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::st
 	AttachmentInfo color, depth;
 	color.format = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
 	depth.format = device.get_default_depth_format();
+	color.samples = 4;
+	depth.samples = 4;
+
+	auto resolved = color;
+	resolved.samples = 1;
 
 	auto &lighting = graph.add_pass(tagcat("lighting", tag), VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
-	lighting.add_color_output(tagcat("HDR", tag), color);
+	lighting.add_color_output(tagcat("HDR-MS", tag), color);
+	lighting.add_resolve_output(tagcat("HDR", tag), resolved);
 	lighting.set_depth_stencil_output(tagcat("depth", tag), depth);
 
 	lighting.set_get_clear_depth_stencil([](VkClearDepthStencilValue *value) -> bool {
@@ -271,8 +278,8 @@ void SceneViewerApplication::add_shadow_pass(Vulkan::Device &, const std::string
 
 	if (type == DepthPassType::Main)
 	{
-		shadowmap.size_x = 4096.0f;
-		shadowmap.size_y = 4096.0f;
+		shadowmap.size_x = 2048.0f;
+		shadowmap.size_y = 2048.0f;
 	}
 	else
 	{

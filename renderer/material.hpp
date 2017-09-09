@@ -48,8 +48,8 @@ struct Material : public Util::IntrusivePtrEnabled<Material>
 	};
 
 	Vulkan::Texture *textures[Util::ecast(Textures::Count)];
-	vec4 base_color;
-	vec3 emissive;
+	vec4 base_color = vec4(1.0f);
+	vec3 emissive = vec3(0.0f);
 	float roughness = 1.0f;
 	float metallic = 1.0f;
 	float lod_bias = 0.0f;

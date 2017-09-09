@@ -210,7 +210,9 @@ void SceneLoader::parse_gltf(const std::string &path)
 	for (auto &mesh : scene.parser->get_meshes())
 	{
 		Importer::MaterialInfo default_material;
-		default_material.uniform_base_color = vec4(0.0f, 1.0f, 0.0f, 1.0f);
+		default_material.uniform_base_color = vec4(0.3f, 1.0f, 0.3f, 1.0f);
+		default_material.uniform_metallic = 0.0f;
+		default_material.uniform_roughness = 1.0f;
 		AbstractRenderableHandle renderable;
 
 		bool skinned = mesh.attribute_layout[ecast(MeshAttribute::BoneIndex)].format != VK_FORMAT_UNDEFINED;
@@ -256,7 +258,9 @@ void SceneLoader::parse_scene_format(const std::string &path, const std::string 
 		for (auto &mesh : parser.get_meshes())
 		{
 			Importer::MaterialInfo default_material;
-			default_material.uniform_base_color = vec4(0.0f, 1.0f, 0.0f, 1.0f);
+			default_material.uniform_base_color = vec4(0.3f, 1.0f, 0.3f, 1.0f);
+			default_material.uniform_metallic = 0.0f;
+			default_material.uniform_roughness = 1.0f;
 			AbstractRenderableHandle renderable;
 
 			bool skinned = mesh.attribute_layout[ecast(MeshAttribute::BoneIndex)].format != VK_FORMAT_UNDEFINED;

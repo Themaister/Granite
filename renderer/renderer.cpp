@@ -191,7 +191,7 @@ void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context)
 	if (type == RendererType::DepthOnly)
 	{
 		cmd.set_depth_bias(true);
-		cmd.set_depth_bias(+2.0f, +1.0f);
+		cmd.set_depth_bias(+4.0f, +2.0f);
 	}
 
 	CommandBufferSavedState state;

@@ -260,6 +260,8 @@ protected:
 		Near
 	};
 	void add_shadow_pass(Vulkan::Device &device, const std::string &tag, DepthPassType type);
+
+	float cascade_cutoff_distance = 10.0f;
 };
 
 extern Application *application_create(int argc, char *argv[]);

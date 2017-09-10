@@ -89,6 +89,6 @@ function(add_granite_application TARGET_NAME)
 endfunction()
 
 add_subdirectory(tests)
-
+add_subdirectory(tools)
 add_subdirectory(network)
 

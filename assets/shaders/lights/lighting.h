@@ -38,11 +38,12 @@ struct EnvironmentInfo
 layout(set = 1, binding = 0) uniform samplerCube uReflection;
 layout(set = 1, binding = 1) uniform samplerCube uIrradiance;
 #endif
+layout(set = 1, binding = 2) uniform sampler2D uBRDFLut;
 
 #ifdef SHADOWS
-layout(set = 1, binding = 2) uniform highp sampler2DShadow uShadowmap;
+layout(set = 1, binding = 3) uniform highp sampler2DShadow uShadowmap;
 #ifdef SHADOW_CASCADES
-layout(set = 1, binding = 3) uniform highp sampler2DShadow uShadowmapNear;
+layout(set = 1, binding = 4) uniform highp sampler2DShadow uShadowmapNear;
 #endif
 
 #define SHADOW_PCF
@@ -115,7 +116,7 @@ vec3 compute_lighting(
 	const float shadow_term = 1.0;
 #endif
 
-	float roughness = material.roughness * 0.9 + 0.1;
+	float roughness = material.roughness * 0.75 + 0.25;
 
 	// Compute directional light.
 	vec3 L = light.direction;
@@ -131,14 +132,15 @@ vec3 compute_lighting(
 
 	vec3 F0 = compute_F0(material.base_color, material.metallic);
 	vec3 specular_fresnel = fresnel(F0, HoV);
-	vec3 specref = NoL * shadow_term * blinn_specular(NoH, specular_fresnel, roughness);
-	vec3 diffref = NoL * shadow_term * (1.0 - specular_fresnel) * (1.0 / PI);
+	vec3 specref = light.color * NoL * shadow_term * cook_torrance_specular(NoL, NoV, NoH, specular_fresnel, roughness);
+	vec3 diffref = light.color * NoL * shadow_term * (1.0 - specular_fresnel) * (1.0 / PI);
+
+	// Lookup reflectance terms.
+	vec2 brdf = textureLod(uBRDFLut, vec2(NoV, roughness), 0.0).xy;
+	vec3 ibl_fresnel = fresnel_ibl(F0, NoV, roughness);
+	vec3 iblspec = ibl_fresnel * brdf.x + brdf.y;
 
 #ifdef ENVIRONMENT
-	// IBL diffuse term.
-	//vec3 envdiff = registers.environment_intensity * textureLod(uIrradiance, N, 10.0).rgb * (1.0 / PI);
-	vec3 envdiff = material.ambient_factor * mix(vec3(0.2, 0.2, 0.2) / PI, vec3(0.2, 0.2, 0.3) / PI, clamp(N.y, 0.0, 1.0));
-
 	// IBL specular term.
 	vec3 reflected = reflect(-V, N);
 	//float minimum_lod = textureQueryLod(uReflection, reflected).y;
@@ -147,25 +149,21 @@ vec3 compute_lighting(
 	               textureLod(uReflection, reflected,
 	                          max(roughness * environment.mipscale, minimum_lod)).rgb;
 
-	envspec *= 0.01;
+	envspec *= iblspec;
 
-	// Lookup reflectance terms.
-	//vec2 brdf = textureLod(uBRDF, vec2(mr.y, 1.0 - NoV), 0.0).xy;
-	vec2 brdf = image_based_brdf(roughness, NoV);
+	// IBL diffuse term.
+	vec3 envdiff = environment.intensity * textureLod(uIrradiance, N, 10.0).rgb;
 
-	vec3 iblspec = min(vec3(1.0), fresnel(F0, NoV) * brdf.x + brdf.y);
-	envspec *= iblspec * material.ambient_factor;
-
-	diffref += envdiff;
-	specref += envspec;
+	diffref += envdiff * material.ambient_factor * (1.0 - ibl_fresnel);
+	specref += envspec * material.ambient_factor;
 #else
-	// HACK
-	diffref += material.ambient_factor * 0.1;
+	diffref += (1.0 - ibl_fresnel) * 0.3 * material.ambient_factor;
+	specref += iblspec * 0.3 * material.ambient_factor;
 #endif
 
 	vec3 reflected_light = specref;
 	vec3 diffuse_light = diffref * material.base_color * (1.0 - material.metallic);
-	return light.color * (reflected_light + diffuse_light);
+	return reflected_light + diffuse_light;
 }
 
 #endif

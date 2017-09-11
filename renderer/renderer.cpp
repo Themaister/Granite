@@ -171,10 +171,15 @@ void Renderer::set_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderC
 		cmd.set_texture(1, 0, *lighting->environment_radiance, Vulkan::StockSampler::LinearClamp);
 	if (lighting->environment_irradiance != nullptr)
 		cmd.set_texture(1, 1, *lighting->environment_irradiance, Vulkan::StockSampler::LinearClamp);
+
+	cmd.set_texture(1, 2,
+	                cmd.get_device().get_texture_manager().request_texture("builtin://textures/ibl_brdf_lut.ktx")->get_image()->get_view(),
+	                Vulkan::StockSampler::LinearClamp);
+
 	if (lighting->shadow_far != nullptr)
-		cmd.set_texture(1, 2, *lighting->shadow_far, Vulkan::StockSampler::LinearShadow);
+		cmd.set_texture(1, 3, *lighting->shadow_far, Vulkan::StockSampler::LinearShadow);
 	if (lighting->shadow_near != nullptr)
-		cmd.set_texture(1, 3, *lighting->shadow_near, Vulkan::StockSampler::LinearShadow);
+		cmd.set_texture(1, 4, *lighting->shadow_near, Vulkan::StockSampler::LinearShadow);
 }
 
 void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context)
@@ -328,10 +333,14 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 	if (light.environment_irradiance)
 		cmd.set_texture(1, 1, *light.environment_irradiance, Vulkan::StockSampler::LinearClamp);
 
+	cmd.set_texture(1, 2,
+	                cmd.get_device().get_texture_manager().request_texture("builtin://textures/ibl_brdf_lut.ktx")->get_image()->get_view(),
+	                Vulkan::StockSampler::LinearClamp);
+
 	if (light.shadow_far)
-		cmd.set_texture(1, 2, *light.shadow_far, Vulkan::StockSampler::LinearShadow);
+		cmd.set_texture(1, 3, *light.shadow_far, Vulkan::StockSampler::LinearShadow);
 	if (light.shadow_near)
-		cmd.set_texture(1, 3, *light.shadow_near, Vulkan::StockSampler::LinearShadow);
+		cmd.set_texture(1, 4, *light.shadow_near, Vulkan::StockSampler::LinearShadow);
 
 	struct DirectionalLightPush
 	{

@@ -459,7 +459,7 @@ void SceneViewerApplication::update_scene(double, double elapsed_time)
 	lighting.environment.mipscale = 6.0f;
 	lighting.refraction.falloff = vec3(1.0f / 1.5f, 1.0f / 2.5f, 1.0f / 5.0f);
 	lighting.directional.direction = light_direction();
-	lighting.directional.color = vec3(3.0f, 2.5f, 2.5f);
+	lighting.directional.color = vec3(6.0f, 5.5f, 4.5f);
 
 	context.set_camera(cam);
 	scene.set_render_pass_data(&forward_renderer, &context);

@@ -15,10 +15,11 @@ float D_GGX(float roughness, float NoH)
 
 float G_schlick(float roughness, float NoV, float NoL)
 {
-    float k = roughness * roughness * 0.5;
+    float r = roughness + 1.0;
+    float k = r * r * (1.0 / 8.0);
     float V = NoV * (1.0 - k) + k;
     float L = NoL * (1.0 - k) + k;
-    return 0.25 / (V * L);
+    return 0.25 / (V * L); // 1 / (4 * NoV * NoL) is folded in here.
 }
 
 vec3 blinn_specular(float NoH, vec3 specular, float roughness)
@@ -43,6 +44,11 @@ vec2 image_based_brdf(float roughness, float NoV)
 vec3 fresnel(vec3 F0, float HoV)
 {
 	return mix(F0, vec3(1.0), pow((1.0 - HoV), 5.0));
+}
+
+vec3 fresnel_ibl(vec3 F0, float cos_theta, float roughness)
+{
+	return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(1.0 - cos_theta, 5.0);
 }
 
 vec3 compute_F0(vec3 base_color, float metallic)

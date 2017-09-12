@@ -91,13 +91,21 @@ public:
 		this->color = color;
 	}
 
-private:
+protected:
 	std::string bg_path;
 	vec3 color = vec3(1.0f);
 	Vulkan::Texture *texture = nullptr;
 
 	void on_device_created(const Vulkan::DeviceCreatedEvent &event);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
+
+	RenderableType type = RenderableType::Skybox;
+};
+
+class SkyboxLatLon : public Skybox
+{
+public:
+	SkyboxLatLon(std::string bg_path = "");
 };
 
 class SkyCylinder : public AbstractRenderable, public EventHandler

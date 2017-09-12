@@ -46,10 +46,16 @@ void Texture::update(const void *data, size_t size)
 		0xff, 0xd8,
 	};
 
+	static const uint8_t hdr_magic[] = {
+		0x23, 0x3f, 0x52, 0x41, 0x44, 0x49, 0x41, 0x4e, 0x43, 0x45, 0x0a,
+	};
+
 	if (size >= sizeof(png_magic) && memcmp(data, png_magic, sizeof(png_magic)) == 0)
 		update_stb(data, size);
 	else if (size >= 2 && memcmp(data, jpg_magic, sizeof(jpg_magic)) == 0)
 		update_stb(data, size);
+	else if (size >= sizeof(hdr_magic) && memcmp(data, hdr_magic, sizeof(hdr_magic)) == 0)
+		update_hdr(data, size);
 	else
 		update_gli(data, size);
 }
@@ -227,6 +233,28 @@ void Texture::update_gli(const void *data, size_t size)
 
 	info.layers *= faces;
 	handle = device->create_image(info, initial.data());
+}
+
+void Texture::update_hdr(const void *data, size_t size)
+{
+	int width, height;
+	int components;
+	auto *buffer = stbi_loadf_from_memory(static_cast<const stbi_uc *>(data), size, &width, &height, &components, 3);
+
+	// RGB9E5 might be a better choice here, but needs complex conversion.
+	auto desc = ImageCreateInfo::immutable_2d_image(unsigned(width), unsigned(height),
+	                                                VK_FORMAT_R16G16B16A16_SFLOAT, true);
+
+	ImageInitialData initial = {};
+	vector<glm::uvec2> converted(width * height);
+	for (int i = 0; i < width * height; i++)
+	{
+		converted[i] = glm::uvec2(glm::packHalf2x16(glm::vec2(buffer[3 * i + 0], buffer[3 * i + 1])),
+		                          glm::packHalf2x16(glm::vec2(buffer[3 * i + 2], 1.0f)));
+	}
+	initial.data = converted.data();
+	handle = device->create_image(desc, &initial);
+	stbi_image_free(buffer);
 }
 
 void Texture::update_stb(const void *data, size_t size)

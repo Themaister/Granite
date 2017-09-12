@@ -94,6 +94,21 @@ void Renderer::set_mesh_renderer_options(RendererOptionFlags flags)
 		set_mesh_renderer_options_internal(flags);
 }
 
+void Renderer::set_mesh_renderer_options_from_lighting(const LightingParameters &lighting)
+{
+	uint32_t flags = 0;
+	if (lighting.environment_irradiance && lighting.environment_radiance)
+		flags |= Renderer::ENVIRONMENT_ENABLE_BIT;
+	if (lighting.shadow_far)
+		flags |= Renderer::SHADOW_ENABLE_BIT;
+	if (lighting.shadow_near && lighting.shadow_far)
+		flags |= Renderer::SHADOW_CASCADE_ENABLE_BIT;
+	if (lighting.fog.falloff > 0.0f)
+		flags |= Renderer::FOG_ENABLE_BIT;
+
+	set_mesh_renderer_options(flags);
+}
+
 void Renderer::on_device_created(const DeviceCreatedEvent &created)
 {
 	auto &device = created.get_device();
@@ -108,6 +123,8 @@ void Renderer::on_device_created(const DeviceCreatedEvent &created)
 		                                                      "builtin://shaders/debug_mesh.frag");
 		suite[ecast(RenderableType::Skybox)].init_graphics(&device.get_shader_manager(), "builtin://shaders/skybox.vert",
 		                                                   "builtin://shaders/skybox.frag");
+		suite[ecast(RenderableType::SkyboxLatLon)].init_graphics(&device.get_shader_manager(), "builtin://shaders/skybox.vert",
+		                                                   "builtin://shaders/skybox_latlon.frag");
 		suite[ecast(RenderableType::SkyCylinder)].init_graphics(&device.get_shader_manager(), "builtin://shaders/skycylinder.vert",
 		                                                   "builtin://shaders/skycylinder.frag");
 		suite[ecast(RenderableType::Ground)].init_graphics(&device.get_shader_manager(), "builtin://shaders/ground.vert",

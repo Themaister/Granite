@@ -203,6 +203,7 @@ void CommandBuffer::barrier_prepare_generate_mipmap(const Image &image, VkImageL
 	auto &create_info = image.get_create_info();
 	VkImageMemoryBarrier barriers[2] = {};
 	VK_ASSERT(create_info.levels > 1);
+	(void)create_info;
 
 	for (unsigned i = 0; i < 2; i++)
 	{

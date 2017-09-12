@@ -567,6 +567,12 @@ Skybox::Skybox(std::string bg_path)
 	EVENT_MANAGER_REGISTER_LATCH(Skybox, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
+SkyboxLatLon::SkyboxLatLon(std::string bg_path)
+	: Skybox(move(bg_path))
+{
+	type = RenderableType::SkyboxLatLon;
+}
+
 struct SkyboxRenderInfo
 {
 	Program *program;
@@ -607,10 +613,15 @@ void Skybox::get_render_info(const RenderContext &context, const CachedSpatialTr
 
 	Hasher h;
 	h.pointer(info.view);
+	h.u32(ecast(type));
 
 	auto instance_key = h.get();
 	auto sorting_key = RenderInfo::get_background_sort_key(Queue::OpaqueEmissive, 0, 0);
-	info.sampler = &context.get_device().get_stock_sampler(StockSampler::LinearClamp);
+
+	if (type == RenderableType::SkyboxLatLon)
+		info.sampler = &context.get_device().get_stock_sampler(StockSampler::LinearWrap);
+	else
+		info.sampler = &context.get_device().get_stock_sampler(StockSampler::LinearClamp);
 	info.color = color;
 
 	auto *skydome_info = queue.push<SkyboxRenderInfo>(Queue::OpaqueEmissive, instance_key, sorting_key,
@@ -620,7 +631,7 @@ void Skybox::get_render_info(const RenderContext &context, const CachedSpatialTr
 	if (skydome_info)
 	{
 		auto flags = texture ? MATERIAL_EMISSIVE_BIT : 0;
-		info.program = queue.get_shader_suites()[ecast(RenderableType::Skybox)].get_program(DrawPipeline::Opaque, 0, flags).get();
+		info.program = queue.get_shader_suites()[ecast(type)].get_program(DrawPipeline::Opaque, 0, flags).get();
 		*skydome_info = info;
 	}
 }
@@ -726,13 +737,17 @@ void TexturePlane::set_scene(Scene *scene)
 
 void TexturePlane::render_main_pass(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view)
 {
-	context.set_lighting_parameters(base_context->get_lighting_parameters());
+	LightingParameters lighting = *base_context->get_lighting_parameters();
+	lighting.shadow_near = nullptr;
+
+	context.set_lighting_parameters(&lighting);
 	context.set_camera(proj, view);
 
 	visible.clear();
 	scene->gather_visible_opaque_renderables(context.get_visibility_frustum(), visible);
 	scene->gather_visible_transparent_renderables(context.get_visibility_frustum(), visible);
 	scene->gather_background_renderables(visible);
+	renderer->set_mesh_renderer_options_from_lighting(lighting);
 	renderer->begin();
 	renderer->push_renderables(context, visible);
 	renderer->flush(cmd, context);

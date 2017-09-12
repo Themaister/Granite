@@ -48,6 +48,7 @@ private:
 	ImageHandle handle;
 	VkFormat format;
 	void update_stb(const void *data, size_t size);
+	void update_hdr(const void *data, size_t size);
 	void update_gli(const void *data, size_t size);
 };
 

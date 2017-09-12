@@ -53,5 +53,5 @@ void main()
     emissive += refraction * refraction_coeff;
 #endif
 
-    emit_render_target(emissive, vec4(0.02, 0.02, 0.02, 1.0), normal, 1.0, 0.1, 1.0, vEyeVec);
+    emit_render_target(emissive, vec4(0.02, 0.02, 0.02, 1.0), normal, 1.0, 0.0, 1.0, vEyeVec);
 }

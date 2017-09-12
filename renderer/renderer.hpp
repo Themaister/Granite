@@ -47,6 +47,7 @@ public:
 	using RendererOptionFlags = uint32_t;
 
 	void set_mesh_renderer_options(RendererOptionFlags flags);
+	void set_mesh_renderer_options_from_lighting(const LightingParameters &params);
 
 	void begin();
 

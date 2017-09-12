@@ -484,6 +484,7 @@ void Device::add_queue_dependency(CommandBuffer::Type consumer, VkPipelineStageF
 	// make this work, but it will probably mess with staging command buffers because we can randomly flush those ...
 	// For now, just assert on this case, it should never happen for internal stuff.
 	VK_ASSERT(*src_stages == 0);
+	(void)src_stages;
 
 	// This way of dealing with the queue dependencies is very lazy, for optimal theoretical overlap we would
 	// need to flush producer here and inject a wait for consumer.

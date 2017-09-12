@@ -144,6 +144,7 @@ void SceneViewerApplication::render_main_pass(Vulkan::CommandBuffer &cmd, const 
 	scene.gather_visible_render_pass_sinks(context.get_render_parameters().camera_position, visible);
 
 #if RENDERER == RENDERER_FORWARD
+	forward_renderer.set_mesh_renderer_options_from_lighting(lighting);
 	forward_renderer.begin();
 	forward_renderer.push_renderables(context, visible);
 	forward_renderer.flush(cmd, context);
@@ -156,22 +157,11 @@ void SceneViewerApplication::render_main_pass(Vulkan::CommandBuffer &cmd, const 
 
 void SceneViewerApplication::render_transparent_objects(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view)
 {
-	uint32_t flags = 0;
-	if (this->lighting.environment_irradiance && this->lighting.environment_radiance)
-		flags |= Renderer::ENVIRONMENT_ENABLE_BIT;
-	if (this->lighting.shadow_far)
-		flags |= Renderer::SHADOW_ENABLE_BIT;
-	if (this->lighting.shadow_near && this->lighting.shadow_far)
-		flags |= Renderer::SHADOW_CASCADE_ENABLE_BIT;
-	if (this->lighting.fog.falloff > 0.0f)
-		flags |= Renderer::FOG_ENABLE_BIT;
-
-	forward_renderer.set_mesh_renderer_options(flags);
-
 	auto &scene = scene_loader.get_scene();
 	context.set_camera(proj, view);
 	visible.clear();
 	scene.gather_visible_transparent_renderables(context.get_visibility_frustum(), visible);
+	forward_renderer.set_mesh_renderer_options_from_lighting(lighting);
 	forward_renderer.begin();
 	forward_renderer.push_renderables(context, visible);
 	forward_renderer.flush(cmd, context);

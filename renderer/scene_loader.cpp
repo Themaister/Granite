@@ -458,13 +458,33 @@ void SceneLoader::parse_scene_format(const std::string &path, const std::string 
 
 		if (bg.HasMember("skybox"))
 		{
-			auto texture_path = Path::relpath(path, bg["skybox"].GetString());
-			auto skybox = Util::make_abstract_handle<AbstractRenderable, Skybox>(texture_path);
-			entity = scene->create_renderable(skybox, nullptr);
+			auto texture_path = Path::relpath(path, bg["skybox"]["path"].GetString());
 
-			auto *skybox_component = entity->allocate_component<IBLComponent>();
-			skybox_component->reflection_path = texture_path;
-			skybox_component->irradiance_path = texture_path;
+			AbstractRenderableHandle skybox;
+
+			if (bg["skybox"].HasMember("projection"))
+			{
+				auto &proj = bg["skybox"]["projection"];
+				if (strcmp(proj.GetString(), "latlon") == 0)
+				{
+					skybox = Util::make_abstract_handle<AbstractRenderable, SkyboxLatLon>(texture_path);
+				}
+				else if (strcmp(proj.GetString(), "cube") == 0)
+				{
+					skybox = Util::make_abstract_handle<AbstractRenderable, Skybox>(texture_path);
+				}
+				else if (strcmp(proj.GetString(), "cylinder") == 0)
+				{
+					skybox = Util::make_abstract_handle<AbstractRenderable, SkyCylinder>(texture_path);
+					static_cast<SkyCylinder *>(skybox.get())->set_xz_scale(bg["skybox"]["cylinderScale"].GetFloat());
+				}
+				else
+					throw logic_error("Unsupported skybox projection.");
+			}
+			else
+				throw logic_error("Skybox projection must be specified.");
+
+			entity = scene->create_renderable(skybox, nullptr);
 		}
 		else
 			entity = scene->create_entity();

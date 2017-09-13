@@ -461,6 +461,7 @@ void SceneLoader::parse_scene_format(const std::string &path, const std::string 
 			auto texture_path = Path::relpath(path, bg["skybox"]["path"].GetString());
 
 			AbstractRenderableHandle skybox;
+			bool use_ibl = false;
 
 			if (bg["skybox"].HasMember("projection"))
 			{
@@ -468,10 +469,12 @@ void SceneLoader::parse_scene_format(const std::string &path, const std::string 
 				if (strcmp(proj.GetString(), "latlon") == 0)
 				{
 					skybox = Util::make_abstract_handle<AbstractRenderable, Skybox>(texture_path, true);
+					use_ibl = true;
 				}
 				else if (strcmp(proj.GetString(), "cube") == 0)
 				{
 					skybox = Util::make_abstract_handle<AbstractRenderable, Skybox>(texture_path, false);
+					use_ibl = true;
 				}
 				else if (strcmp(proj.GetString(), "cylinder") == 0)
 				{
@@ -485,6 +488,16 @@ void SceneLoader::parse_scene_format(const std::string &path, const std::string 
 				throw logic_error("Skybox projection must be specified.");
 
 			entity = scene->create_renderable(skybox, nullptr);
+			if (use_ibl)
+			{
+				auto irradiance_path = texture_path + ".irradiance";
+				auto reflection_path = texture_path + ".reflection";
+				static_cast<Skybox *>(skybox.get())->enable_irradiance(irradiance_path);
+				static_cast<Skybox *>(skybox.get())->enable_reflection(reflection_path);
+				auto *ibl = entity->allocate_component<IBLComponent>();
+				ibl->irradiance_path = irradiance_path;
+				ibl->reflection_path = reflection_path;
+			}
 		}
 		else
 			entity = scene->create_entity();

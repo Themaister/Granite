@@ -446,7 +446,7 @@ void SceneViewerApplication::update_scene(double, double elapsed_time)
 		lighting.environment_irradiance = &irradiance->get_image()->get_view();
 	lighting.shadow.inv_cutoff_distance = 1.0f / cascade_cutoff_distance;
 	lighting.environment.intensity = 1.0f;
-	lighting.environment.mipscale = 6.0f;
+	lighting.environment.mipscale = 9.0f;
 	lighting.refraction.falloff = vec3(1.0f / 1.5f, 1.0f / 2.5f, 1.0f / 5.0f);
 	lighting.directional.direction = light_direction();
 	lighting.directional.color = vec3(6.0f, 5.5f, 4.5f);

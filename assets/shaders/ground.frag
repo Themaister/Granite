@@ -1,4 +1,4 @@
-#version 310 es
+#version 450
 precision mediump float;
 
 #include "inc/render_target.h"

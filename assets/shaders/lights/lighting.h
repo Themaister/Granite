@@ -143,16 +143,21 @@ vec3 compute_lighting(
 #ifdef ENVIRONMENT
 	// IBL specular term.
 	vec3 reflected = reflect(-V, N);
-	//float minimum_lod = textureQueryLod(uReflection, reflected).y;
-	float minimum_lod = 4.0;
+
+#if defined(ALPHA_TEST) && ALPHA_TEST
+	float minimum_lod = environment.mipscale; // Can't take derivative because we might have discarded, so ...
+#else
+	float minimum_lod = textureQueryLod(uReflection, reflected).y;
+#endif
+
 	vec3 envspec = environment.intensity *
 	               textureLod(uReflection, reflected,
-	                          max(roughness * environment.mipscale, minimum_lod)).rgb;
+	                          max(material.roughness * environment.mipscale, minimum_lod)).rgb;
 
 	envspec *= iblspec;
 
 	// IBL diffuse term.
-	vec3 envdiff = environment.intensity * textureLod(uIrradiance, N, 10.0).rgb;
+	vec3 envdiff = environment.intensity * texture(uIrradiance, N).rgb;
 
 	diffref += envdiff * material.ambient_factor * (1.0 - ibl_fresnel);
 	specref += envspec * material.ambient_factor;

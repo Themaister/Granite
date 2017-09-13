@@ -91,15 +91,26 @@ public:
 		this->color = color;
 	}
 
+	void enable_irradiance(const std::string &path);
+	void enable_reflection(const std::string &path);
+
 private:
+	Vulkan::Device *device = nullptr;
 	std::string bg_path;
+	std::string irradiance_path;
+	std::string reflection_path;
 	vec3 color = vec3(1.0f);
 	Vulkan::Texture *texture = nullptr;
+	Vulkan::Texture *irradiance_texture = nullptr;
+	Vulkan::Texture *reflection_texture = nullptr;
 
 	void on_device_created(const Vulkan::DeviceCreatedEvent &event);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
 
 	bool is_latlon = true;
+
+	void update_irradiance();
+	void update_reflection();
 };
 
 class SkyCylinder : public AbstractRenderable, public EventHandler

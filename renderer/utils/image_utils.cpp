@@ -30,6 +30,154 @@ using namespace Vulkan;
 
 namespace Granite
 {
+static const vec3 dirs[6] = {
+	vec3(1.0f, 0.0f, 0.0f),
+	vec3(-1.0f, 0.0f, 0.0f),
+	vec3(0.0f, 1.0f, 0.0f),
+	vec3(0.0f, -1.0f, 0.0f),
+	vec3(0.0f, 0.0f, 1.0f),
+	vec3(0.0f, 0.0f, -1.0f),
+};
+
+static const vec3 ups[6] = {
+	vec3(0.0f, 1.0f, 0.0f),
+	vec3(0.0f, 1.0f, 0.0f),
+	vec3(0.0f, 0.0f, -1.0f),
+	vec3(0.0f, 0.0f, +1.0f),
+	vec3(0.0f, 1.0f, 0.0f),
+	vec3(0.0f, 1.0f, 0.0f),
+};
+
+ImageHandle convert_cube_to_ibl_specular(Device &device, ImageView &view)
+{
+	unsigned size = 512;
+	float base_sample_lod = log2(float(std::max(view.get_image().get_create_info().width,
+	                                            view.get_image().get_create_info().height))) - 9.0f;
+
+	ImageCreateInfo info = ImageCreateInfo::render_target(size, size, VK_FORMAT_R16G16B16A16_SFLOAT);
+	info.levels = 10;
+	info.layers = 6;
+	info.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+	info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+	info.initial_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+	auto handle = device.create_image(info, nullptr);
+	auto cmd = device.request_command_buffer();
+
+	RenderParameters params = {};
+
+	for (unsigned layer = 0; layer < 6; layer++)
+	{
+		for (unsigned level = 0; level < 10; level++)
+		{
+			ImageViewCreateInfo view_info = {};
+			view_info.layers = 1;
+			view_info.base_layer = layer;
+			view_info.base_level = level;
+			view_info.format = info.format;
+			view_info.levels = 1;
+			view_info.image = handle.get();
+			auto rt_view = device.create_image_view(view_info);
+
+			RenderPassInfo rp = {};
+			rp.num_color_attachments = 1;
+			rp.color_attachments[0] = rt_view.get();
+			rp.store_attachments = 1;
+			rp.op_flags = RENDER_PASS_OP_COLOR_OPTIMAL_BIT;
+
+			cmd->begin_render_pass(rp);
+
+			mat4 look = mat4_cast(look_at(dirs[layer], ups[layer]));
+			mat4 proj = scale(vec3(-1.0f, 1.0f, 1.0f)) * projection(0.5f * pi<float>(), 1.0f, 0.1f, 100.0f);
+			params.inv_local_view_projection = inverse(proj * look);
+			memcpy(cmd->allocate_constant_data(0, 0, sizeof(params)), &params, sizeof(params));
+			cmd->set_texture(2, 0, view, StockSampler::LinearWrap);
+
+			float sample_lod = base_sample_lod + level;
+			cmd->push_constants(&sample_lod, 0, sizeof(sample_lod));
+			cmd->set_quad_state();
+			CommandBufferUtil::set_quad_vertex_state(*cmd);
+			CommandBufferUtil::draw_quad(*cmd, "builtin://shaders/skybox.vert",
+			                             "builtin://shaders/util/ibl_specular.frag");
+
+			cmd->end_render_pass();
+		}
+	}
+
+	cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+	                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+	handle->set_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+	Fence fence;
+	device.submit(cmd, &fence);
+	return handle;
+}
+
+ImageHandle convert_cube_to_ibl_diffuse(Device &device, ImageView &view)
+{
+	unsigned size = 32;
+
+	float sample_lod = log2(float(size)) - 6.0f;
+
+	ImageCreateInfo info = ImageCreateInfo::render_target(size, size, VK_FORMAT_R16G16B16A16_SFLOAT);
+	info.levels = 0;
+	info.layers = 6;
+	info.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+	info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	info.initial_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+	auto handle = device.create_image(info, nullptr);
+	auto cmd = device.request_command_buffer();
+
+	RenderParameters params = {};
+
+	for (unsigned i = 0; i < 6; i++)
+	{
+		ImageViewCreateInfo view_info = {};
+		view_info.layers = 1;
+		view_info.base_layer = i;
+		view_info.format = info.format;
+		view_info.levels = 1;
+		view_info.image = handle.get();
+		auto rt_view = device.create_image_view(view_info);
+
+		RenderPassInfo rp = {};
+		rp.num_color_attachments = 1;
+		rp.color_attachments[0] = rt_view.get();
+		rp.store_attachments = 1;
+		rp.op_flags = RENDER_PASS_OP_COLOR_OPTIMAL_BIT;
+
+		cmd->begin_render_pass(rp);
+
+		mat4 look = mat4_cast(look_at(dirs[i], ups[i]));
+		mat4 proj = scale(vec3(-1.0f, 1.0f, 1.0f)) * projection(0.5f * pi<float>(), 1.0f, 0.1f, 100.0f);
+		params.inv_local_view_projection = inverse(proj * look);
+		memcpy(cmd->allocate_constant_data(0, 0, sizeof(params)), &params, sizeof(params));
+		cmd->set_texture(2, 0, view, StockSampler::LinearWrap);
+
+		cmd->push_constants(&sample_lod, 0, sizeof(sample_lod));
+		cmd->set_quad_state();
+		CommandBufferUtil::set_quad_vertex_state(*cmd);
+		CommandBufferUtil::draw_quad(*cmd, "builtin://shaders/skybox.vert", "builtin://shaders/util/ibl_diffuse.frag");
+
+		cmd->end_render_pass();
+	}
+
+	cmd->barrier_prepare_generate_mipmap(*handle, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+	                                     VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, true);
+	handle->set_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+	cmd->generate_mipmap(*handle);
+	cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	                   VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+	                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+	handle->set_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+	Fence fence;
+	device.submit(cmd, &fence);
+	return handle;
+}
+
 ImageHandle convert_equirect_to_cube(Device &device, ImageView &view)
 {
 	unsigned size = std::max(view.get_image().get_create_info().width / 3,
@@ -44,24 +192,6 @@ ImageHandle convert_equirect_to_cube(Device &device, ImageView &view)
 
 	auto handle = device.create_image(info, nullptr);
 	auto cmd = device.request_command_buffer();
-
-	static const vec3 dirs[6] = {
-		vec3(1.0f, 0.0f, 0.0f),
-		vec3(-1.0f, 0.0f, 0.0f),
-		vec3(0.0f, 1.0f, 0.0f),
-		vec3(0.0f, -1.0f, 0.0f),
-		vec3(0.0f, 0.0f, 1.0f),
-		vec3(0.0f, 0.0f, -1.0f),
-	};
-
-	static const vec3 ups[6] = {
-		vec3(0.0f, 1.0f, 0.0f),
-		vec3(0.0f, 1.0f, 0.0f),
-		vec3(0.0f, 0.0f, -1.0f),
-		vec3(0.0f, 0.0f, +1.0f),
-		vec3(0.0f, 1.0f, 0.0f),
-		vec3(0.0f, 1.0f, 0.0f),
-	};
 
 	RenderParameters params = {};
 

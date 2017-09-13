@@ -596,6 +596,44 @@ static void skybox_render(CommandBuffer &cmd, const RenderQueueData *infos, unsi
 	}
 }
 
+void Skybox::update_irradiance()
+{
+	if (device && !irradiance_path.empty() && !irradiance_texture)
+	{
+		auto &texture_manager = device->get_texture_manager();
+		auto cube_path = bg_path + ".cube";
+		irradiance_texture = texture_manager.register_deferred_texture(irradiance_path);
+		texture_manager.register_texture_update_notification(is_latlon ? cube_path : bg_path, [this](Vulkan::Texture &tex) {
+			irradiance_texture->replace_image(convert_cube_to_ibl_diffuse(*device, tex.get_image()->get_view()));
+		});
+	}
+}
+
+void Skybox::update_reflection()
+{
+	if (device && !reflection_path.empty() && !reflection_texture)
+	{
+		auto &texture_manager = device->get_texture_manager();
+		auto cube_path = bg_path + ".cube";
+		reflection_texture = texture_manager.register_deferred_texture(reflection_path);
+		texture_manager.register_texture_update_notification(is_latlon ? cube_path : bg_path, [this](Vulkan::Texture &tex) {
+			reflection_texture->replace_image(convert_cube_to_ibl_specular(*device, tex.get_image()->get_view()));
+		});
+	}
+}
+
+void Skybox::enable_irradiance(const std::string &path)
+{
+	irradiance_path = path;
+	update_irradiance();
+}
+
+void Skybox::enable_reflection(const std::string &path)
+{
+	reflection_path = path;
+	update_reflection();
+}
+
 void Skybox::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *,
                              RenderQueue &queue) const
 {
@@ -630,6 +668,7 @@ void Skybox::get_render_info(const RenderContext &context, const CachedSpatialTr
 void Skybox::on_device_created(const Vulkan::DeviceCreatedEvent &created)
 {
 	texture = nullptr;
+	device = &created.get_device();
 
 	if (!bg_path.empty())
 	{
@@ -637,23 +676,28 @@ void Skybox::on_device_created(const Vulkan::DeviceCreatedEvent &created)
 		{
 			auto &texture_manager = created.get_device().get_texture_manager();
 			texture_manager.request_texture(bg_path);
-			auto *device = &created.get_device();
 
 			auto cube_path = bg_path + ".cube";
 			texture = texture_manager.register_deferred_texture(cube_path);
 
-			texture_manager.register_texture_update_notification(bg_path, [this, device](Vulkan::Texture &tex) {
+			texture_manager.register_texture_update_notification(bg_path, [this](Vulkan::Texture &tex) {
 				texture->replace_image(convert_equirect_to_cube(*device, tex.get_image()->get_view()));
 			});
 		}
 		else
 			texture = created.get_device().get_texture_manager().request_texture(bg_path);
+
+		update_irradiance();
+		update_reflection();
 	}
 }
 
 void Skybox::on_device_destroyed(const DeviceCreatedEvent &)
 {
+	device = nullptr;
 	texture = nullptr;
+	irradiance_texture = nullptr;
+	reflection_texture = nullptr;
 }
 
 struct TexturePlaneInfo

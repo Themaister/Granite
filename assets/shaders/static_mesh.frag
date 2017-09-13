@@ -1,4 +1,4 @@
-#version 310 es
+#version 450
 precision mediump float;
 
 layout(location = 0) in mediump vec3 vEyeVec;

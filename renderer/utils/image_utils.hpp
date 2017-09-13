@@ -22,26 +22,9 @@
 
 #pragma once
 
+#include "device.hpp"
+
 namespace Granite
 {
-enum class RenderableType
-{
-	Mesh,
-	DebugMesh,
-	Skybox,
-	SkyCylinder,
-	Ground,
-	Sprite,
-	LineUI,
-	TexturePlane,
-	Count
-};
-
-enum class RendererType
-{
-	GeneralForward,
-	GeneralDeferred,
-	DepthOnly,
-	External
-};
+Vulkan::ImageHandle convert_equirect_to_cube(Vulkan::Device &device, Vulkan::ImageView &view);
 }

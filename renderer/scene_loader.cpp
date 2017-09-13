@@ -467,11 +467,11 @@ void SceneLoader::parse_scene_format(const std::string &path, const std::string 
 				auto &proj = bg["skybox"]["projection"];
 				if (strcmp(proj.GetString(), "latlon") == 0)
 				{
-					skybox = Util::make_abstract_handle<AbstractRenderable, SkyboxLatLon>(texture_path);
+					skybox = Util::make_abstract_handle<AbstractRenderable, Skybox>(texture_path, true);
 				}
 				else if (strcmp(proj.GetString(), "cube") == 0)
 				{
-					skybox = Util::make_abstract_handle<AbstractRenderable, Skybox>(texture_path);
+					skybox = Util::make_abstract_handle<AbstractRenderable, Skybox>(texture_path, false);
 				}
 				else if (strcmp(proj.GetString(), "cylinder") == 0)
 				{

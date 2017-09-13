@@ -29,6 +29,7 @@
 #include "renderer.hpp"
 #include "application.hpp"
 #include <string.h>
+#include "utils/image_utils.hpp"
 
 using namespace Vulkan;
 using namespace Util;
@@ -561,16 +562,10 @@ void SkyCylinder::get_render_info(const RenderContext &, const CachedSpatialTran
 	}
 }
 
-Skybox::Skybox(std::string bg_path)
-	: bg_path(move(bg_path))
+Skybox::Skybox(std::string bg_path, bool latlon)
+	: bg_path(move(bg_path)), is_latlon(latlon)
 {
 	EVENT_MANAGER_REGISTER_LATCH(Skybox, on_device_created, on_device_destroyed, DeviceCreatedEvent);
-}
-
-SkyboxLatLon::SkyboxLatLon(std::string bg_path)
-	: Skybox(move(bg_path))
-{
-	type = RenderableType::SkyboxLatLon;
 }
 
 struct SkyboxRenderInfo
@@ -613,15 +608,11 @@ void Skybox::get_render_info(const RenderContext &context, const CachedSpatialTr
 
 	Hasher h;
 	h.pointer(info.view);
-	h.u32(ecast(type));
 
 	auto instance_key = h.get();
 	auto sorting_key = RenderInfo::get_background_sort_key(Queue::OpaqueEmissive, 0, 0);
 
-	if (type == RenderableType::SkyboxLatLon)
-		info.sampler = &context.get_device().get_stock_sampler(StockSampler::LinearWrap);
-	else
-		info.sampler = &context.get_device().get_stock_sampler(StockSampler::LinearClamp);
+	info.sampler = &context.get_device().get_stock_sampler(StockSampler::LinearClamp);
 	info.color = color;
 
 	auto *skydome_info = queue.push<SkyboxRenderInfo>(Queue::OpaqueEmissive, instance_key, sorting_key,
@@ -631,16 +622,33 @@ void Skybox::get_render_info(const RenderContext &context, const CachedSpatialTr
 	if (skydome_info)
 	{
 		auto flags = texture ? MATERIAL_EMISSIVE_BIT : 0;
-		info.program = queue.get_shader_suites()[ecast(type)].get_program(DrawPipeline::Opaque, 0, flags).get();
+		info.program = queue.get_shader_suites()[ecast(RenderableType::Skybox)].get_program(DrawPipeline::Opaque, 0, flags).get();
 		*skydome_info = info;
 	}
 }
 
-void Skybox::on_device_created(const DeviceCreatedEvent &created)
+void Skybox::on_device_created(const Vulkan::DeviceCreatedEvent &created)
 {
 	texture = nullptr;
+
 	if (!bg_path.empty())
-		texture = created.get_device().get_texture_manager().request_texture(bg_path);
+	{
+		if (is_latlon)
+		{
+			auto &texture_manager = created.get_device().get_texture_manager();
+			texture_manager.request_texture(bg_path);
+			auto *device = &created.get_device();
+
+			auto cube_path = bg_path + ".cube";
+			texture = texture_manager.register_deferred_texture(cube_path);
+
+			texture_manager.register_texture_update_notification(bg_path, [this, device](Vulkan::Texture &tex) {
+				texture->replace_image(convert_equirect_to_cube(*device, tex.get_image()->get_view()));
+			});
+		}
+		else
+			texture = created.get_device().get_texture_manager().request_texture(bg_path);
+	}
 }
 
 void Skybox::on_device_destroyed(const DeviceCreatedEvent &)

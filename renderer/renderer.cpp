@@ -123,8 +123,6 @@ void Renderer::on_device_created(const DeviceCreatedEvent &created)
 		                                                      "builtin://shaders/debug_mesh.frag");
 		suite[ecast(RenderableType::Skybox)].init_graphics(&device.get_shader_manager(), "builtin://shaders/skybox.vert",
 		                                                   "builtin://shaders/skybox.frag");
-		suite[ecast(RenderableType::SkyboxLatLon)].init_graphics(&device.get_shader_manager(), "builtin://shaders/skybox.vert",
-		                                                   "builtin://shaders/skybox_latlon.frag");
 		suite[ecast(RenderableType::SkyCylinder)].init_graphics(&device.get_shader_manager(), "builtin://shaders/skycylinder.vert",
 		                                                   "builtin://shaders/skycylinder.frag");
 		suite[ecast(RenderableType::Ground)].init_graphics(&device.get_shader_manager(), "builtin://shaders/ground.vert",

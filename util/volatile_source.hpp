@@ -109,7 +109,6 @@ protected:
 	}
 
 private:
-	void update(const void *data, size_t size);
 	Granite::FileNotifyHandle notify_handle = -1;
 	Granite::FilesystemBackend *notify_backend = nullptr;
 };

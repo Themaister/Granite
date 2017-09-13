@@ -36,6 +36,11 @@ Texture::Texture(Device *device, const std::string &path, VkFormat format)
 	init();
 }
 
+Texture::Texture(Device *device)
+	: device(device), format(VK_FORMAT_UNDEFINED)
+{
+}
+
 void Texture::update(const void *data, size_t size)
 {
 	static const uint8_t png_magic[] = {
@@ -58,6 +63,8 @@ void Texture::update(const void *data, size_t size)
 		update_hdr(data, size);
 	else
 		update_gli(data, size);
+
+	device->get_texture_manager().notify_updated_texture(path, *this);
 }
 
 static VkFormat gli_format_to_vk(gli::format format)
@@ -289,6 +296,12 @@ void Texture::unload()
 	handle.reset();
 }
 
+void Texture::replace_image(ImageHandle handle)
+{
+	this->handle = handle;
+	device->get_texture_manager().notify_updated_texture(path, *this);
+}
+
 TextureManager::TextureManager(Device *device)
 	: device(device)
 {
@@ -300,6 +313,36 @@ Texture *TextureManager::request_texture(const std::string &path, VkFormat forma
 	if (itr == end(textures))
 	{
 		unique_ptr<Texture> texture(new Texture(device, path, format));
+		auto *ret = texture.get();
+		textures[path] = move(texture);
+		return ret;
+	}
+	else
+		return itr->second.get();
+}
+
+void TextureManager::register_texture_update_notification(const std::string &modified_path,
+                                                          std::function<void(Texture &)> func)
+{
+	auto itr = textures.find(modified_path);
+	if (itr != end(textures))
+		func(*itr->second);
+	notifications[modified_path].push_back(move(func));
+}
+
+void TextureManager::notify_updated_texture(const std::string &path, Vulkan::Texture &texture)
+{
+	for (auto &n : notifications[path])
+		if (n)
+			n(texture);
+}
+
+Texture *TextureManager::register_deferred_texture(const std::string &path)
+{
+	auto itr = textures.find(path);
+	if (itr == end(textures))
+	{
+		unique_ptr<Texture> texture(new Texture(device));
 		auto *ret = texture.get();
 		textures[path] = move(texture);
 		return ret;

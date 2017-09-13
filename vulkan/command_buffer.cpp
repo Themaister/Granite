@@ -250,7 +250,7 @@ void CommandBuffer::generate_mipmap(const Image &image)
 	VkImageMemoryBarrier b = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
 	b.image = image.get_image();
 	b.subresourceRange.levelCount = 1;
-	b.subresourceRange.layerCount = create_info.layers;
+	b.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
 	b.subresourceRange.aspectMask = format_to_aspect_mask(image.get_format());
 	b.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 	b.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
@@ -286,6 +286,7 @@ void CommandBuffer::blit_image(const Image &dst, VkImageLayout dst_layout,
 		return { a.x + b.x, a.y + b.y, a.z + b.z };
 	};
 
+#if 0
 	const VkImageBlit blit = {
 		{ format_to_aspect_mask(src.get_create_info().format), src_level, src_base_layer, num_layers },
 		{ src_offset, add_offset(src_offset, src_extent) },
@@ -294,6 +295,20 @@ void CommandBuffer::blit_image(const Image &dst, VkImageLayout dst_layout,
 	};
 
 	vkCmdBlitImage(cmd, src.get_image(), src_layout, dst.get_image(), dst_layout, 1, &blit, filter);
+#else
+	// RADV workaround.
+	for (unsigned i = 0; i < num_layers; i++)
+	{
+		const VkImageBlit blit = {
+				{ format_to_aspect_mask(src.get_create_info().format), src_level, src_base_layer + i, 1 },
+				{ src_offset,                                          add_offset(src_offset, src_extent) },
+				{ format_to_aspect_mask(dst.get_create_info().format), dst_level, dst_base_layer + i, 1 },
+				{ dst_offset,                                          add_offset(dst_offset, dst_extent) },
+		};
+
+		vkCmdBlitImage(cmd, src.get_image(), src_layout, dst.get_image(), dst_layout, 1, &blit, filter);
+	}
+#endif
 }
 
 void CommandBuffer::begin_context()

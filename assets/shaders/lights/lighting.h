@@ -116,7 +116,8 @@ vec3 compute_lighting(
 	const float shadow_term = 1.0;
 #endif
 
-	float roughness = material.roughness * 0.75 + 0.25;
+	//float roughness = material.roughness * 0.75 + 0.25;
+	float roughness = material.roughness;
 
 	// Compute directional light.
 	vec3 L = light.direction;
@@ -147,7 +148,7 @@ vec3 compute_lighting(
 #if defined(ALPHA_TEST) && ALPHA_TEST
 	float minimum_lod = environment.mipscale; // Can't take derivative because we might have discarded, so ...
 #else
-	float minimum_lod = textureQueryLod(uReflection, reflected).y;
+	float minimum_lod = textureQueryLod(uReflection, reflected).y + 1.0;
 #endif
 
 	vec3 envspec = environment.intensity *
@@ -162,8 +163,8 @@ vec3 compute_lighting(
 	diffref += envdiff * material.ambient_factor * (1.0 - ibl_fresnel);
 	specref += envspec * material.ambient_factor;
 #else
-	diffref += (1.0 - ibl_fresnel) * 0.3 * material.ambient_factor;
-	specref += iblspec * 0.3 * material.ambient_factor;
+	diffref += (1.0 - ibl_fresnel) * material.ambient_factor;
+	specref += iblspec * material.ambient_factor;
 #endif
 
 	vec3 reflected_light = specref;

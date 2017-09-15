@@ -1,4 +1,4 @@
-#version 310 es
+#version 450
 #include "inc/render_parameters.h"
 
 layout(location = 0) in vec2 Position;

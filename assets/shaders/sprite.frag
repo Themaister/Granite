@@ -1,5 +1,6 @@
-#version 310 es
+#version 450
 precision mediump float;
+
 layout(location = 0) out vec4 Color;
 
 #if HAVE_VERTEX_COLOR

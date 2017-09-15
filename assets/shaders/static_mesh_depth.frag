@@ -1,4 +1,4 @@
-#version 310 es
+#version 450
 precision mediump float;
 
 #if HAVE_UV

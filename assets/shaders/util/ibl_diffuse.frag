@@ -1,4 +1,4 @@
-#version 310 es
+#version 450
 precision mediump float;
 
 layout(set = 2, binding = 0) uniform samplerCube uCube;

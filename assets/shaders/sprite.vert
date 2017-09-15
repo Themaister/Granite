@@ -1,4 +1,5 @@
-#version 310 es
+#version 450
+
 layout(location = 0) in mediump vec2 QuadCoord;
 layout(location = 1) in vec4 PosOffsetScale;
 layout(location = 2) in vec4 TexOffsetScale;

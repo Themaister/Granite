@@ -1,4 +1,4 @@
-#version 310 es
+#version 450
 precision highp float;
 
 #if defined(HAVE_EMISSIVE) && HAVE_EMISSIVE

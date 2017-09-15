@@ -1,6 +1,6 @@
-#version 310 es
+#version 450
 layout(location = 0) in vec2 Position;
-layout(location = 0) out highp vec4 vClip;
+layout(location = 0) out vec4 vClip;
 
 layout(std430, push_constant) uniform Registers
 {

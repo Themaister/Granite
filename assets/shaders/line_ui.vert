@@ -1,4 +1,4 @@
-#version 310 es
+#version 450
 
 layout(location = 0) in highp vec3 Position;
 

@@ -50,12 +50,12 @@ static const vec3 ups[6] = {
 
 ImageHandle convert_cube_to_ibl_specular(Device &device, ImageView &view)
 {
-	unsigned size = 512;
+	unsigned size = 128;
 	float base_sample_lod = log2(float(std::max(view.get_image().get_create_info().width,
-	                                            view.get_image().get_create_info().height))) - 9.0f;
+	                                            view.get_image().get_create_info().height))) - 7.0f;
 
 	ImageCreateInfo info = ImageCreateInfo::render_target(size, size, VK_FORMAT_R16G16B16A16_SFLOAT);
-	info.levels = 10;
+	info.levels = 8;
 	info.layers = 6;
 	info.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
 	info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
@@ -68,7 +68,7 @@ ImageHandle convert_cube_to_ibl_specular(Device &device, ImageView &view)
 
 	for (unsigned layer = 0; layer < 6; layer++)
 	{
-		for (unsigned level = 0; level < 10; level++)
+		for (unsigned level = 0; level < info.levels; level++)
 		{
 			ImageViewCreateInfo view_info = {};
 			view_info.layers = 1;
@@ -91,10 +91,18 @@ ImageHandle convert_cube_to_ibl_specular(Device &device, ImageView &view)
 			mat4 proj = scale(vec3(-1.0f, 1.0f, 1.0f)) * projection(0.5f * pi<float>(), 1.0f, 0.1f, 100.0f);
 			params.inv_local_view_projection = inverse(proj * look);
 			memcpy(cmd->allocate_constant_data(0, 0, sizeof(params)), &params, sizeof(params));
-			cmd->set_texture(2, 0, view, StockSampler::LinearWrap);
+			cmd->set_texture(2, 0, view, StockSampler::TrilinearWrap);
+
+			struct Push
+			{
+				float lod;
+				float roughness;
+			};
 
 			float sample_lod = base_sample_lod + level;
-			cmd->push_constants(&sample_lod, 0, sizeof(sample_lod));
+			Push push = { sample_lod, mix(0.001f, 1.0f, float(level) / (info.levels - 1)) };
+			cmd->push_constants(&push, 0, sizeof(push));
+
 			cmd->set_quad_state();
 			CommandBufferUtil::set_quad_vertex_state(*cmd);
 			CommandBufferUtil::draw_quad(*cmd, "builtin://shaders/skybox.vert",

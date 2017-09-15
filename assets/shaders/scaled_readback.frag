@@ -1,4 +1,4 @@
-#version 310 es
+#version 450
 precision highp float;
 
 layout(location = 0) in highp vec2 vUV;

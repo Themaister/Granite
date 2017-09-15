@@ -1,4 +1,4 @@
-#version 310 es
+#version 450
 precision highp float;
 
 layout(std430, push_constant) uniform Registers

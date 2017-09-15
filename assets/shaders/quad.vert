@@ -1,4 +1,4 @@
-#version 310 es
+#version 450
 layout(location = 0) in vec2 Position;
 layout(location = 0) out highp vec2 vUV;
 

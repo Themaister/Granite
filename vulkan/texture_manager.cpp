@@ -41,6 +41,11 @@ Texture::Texture(Device *device)
 {
 }
 
+void Texture::set_path(const std::string &path)
+{
+	this->path = path;
+}
+
 void Texture::update(const void *data, size_t size)
 {
 	static const uint8_t png_magic[] = {
@@ -344,6 +349,7 @@ Texture *TextureManager::register_deferred_texture(const std::string &path)
 	{
 		unique_ptr<Texture> texture(new Texture(device));
 		auto *ret = texture.get();
+		texture->set_path(path);
 		textures[path] = move(texture);
 		return ret;
 	}

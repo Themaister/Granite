@@ -34,6 +34,7 @@ public:
 
 	Texture(Device *device, const std::string &path, VkFormat format = VK_FORMAT_UNDEFINED);
 	Texture(Device *device);
+	void set_path(const std::string &path);
 
 	ImageHandle get_image()
 	{

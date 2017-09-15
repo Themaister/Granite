@@ -116,8 +116,7 @@ vec3 compute_lighting(
 	const float shadow_term = 1.0;
 #endif
 
-	//float roughness = material.roughness * 0.75 + 0.25;
-	float roughness = material.roughness;
+	float roughness = material.roughness * 0.75 + 0.25;
 
 	// Compute directional light.
 	vec3 L = light.direction;

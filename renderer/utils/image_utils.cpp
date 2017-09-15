@@ -126,7 +126,7 @@ ImageHandle convert_cube_to_ibl_diffuse(Device &device, ImageView &view)
 {
 	unsigned size = 32;
 
-	float sample_lod = log2(float(size)) - 6.0f;
+	float sample_lod = log2(float(size)) - 5.0f;
 
 	ImageCreateInfo info = ImageCreateInfo::render_target(size, size, VK_FORMAT_R16G16B16A16_SFLOAT);
 	info.levels = 0;

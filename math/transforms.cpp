@@ -190,7 +190,7 @@ vec3 LinearSampler::sample(unsigned index, float l) const
 {
 	if (l == 0.0f)
 		return values[index];
-	return values[index] * (1.0f - l) + l * values[index + 1];
+	return mix(values[index], values[index + 1], l);
 }
 
 quat SlerpSampler::sample(unsigned index, float l) const
@@ -198,5 +198,21 @@ quat SlerpSampler::sample(unsigned index, float l) const
 	if (l == 0.0f)
 		return values[index];
 	return slerp(values[index], values[index + 1], l);
+}
+
+vec3 CubicSampler::sample(unsigned index, float t, float dt) const
+{
+	vec3 p0 = values[3 * index + 1];
+	vec3 m0 = dt * values[3 * index + 2];
+	vec3 m1 = dt * values[3 * index + 3];
+	vec3 p1 = values[3 * index + 4];
+
+	float t2 = t * t;
+	float t3 = t2 * t;
+
+	return (2.0f * t3 - 3.0f * t2 + 1.0f) * p0 +
+	       (t3 - 2.0f * t2 + t) * m0 +
+	       (-2.0f * t3 + 3.0f * t2) * p1 +
+	       (t3 - t2) * m1;
 }
 }

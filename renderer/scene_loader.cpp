@@ -102,6 +102,15 @@ Scene::NodeHandle SceneLoader::build_tree_for_subscene(const SubsceneData &subsc
 			nodes.push_back({});
 	}
 
+	for (auto &animation : parser.get_animations())
+	{
+		if (!animation.skinning)
+		{
+			animation_system->register_animation(animation.name, animation);
+			animation_system->start_animation(nodes.data(), animation.name, 0.0, true);
+		}
+	}
+
 	unsigned i = 0;
 	for (auto &node : parser.get_nodes())
 	{

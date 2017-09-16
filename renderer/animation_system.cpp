@@ -53,6 +53,14 @@ void AnimationSystem::animate(double t)
 			case Importer::AnimationChannel::Type::Rotation:
 				transform->rotation = channel.spherical.sample(index, phase);
 				break;
+			case Importer::AnimationChannel::Type::CubicTranslation:
+				transform->translation = channel.cubic.sample(index, phase,
+				                                              channel.timestamps[index + 1] - channel.timestamps[index]);
+				break;
+			case Importer::AnimationChannel::Type::CubicScale:
+				transform->scale = channel.cubic.sample(index, phase,
+				                                        channel.timestamps[index + 1] - channel.timestamps[index]);
+				break;
 			}
 
 			node->invalidate_cached_transform();
@@ -90,7 +98,7 @@ void AnimationSystem::start_animation(Scene::Node &node, const std::string &name
 	animations.emplace_back(new AnimationState(move(target_nodes), animation, start_time, repeat));
 }
 
-void AnimationSystem::start_animation(const std::string &name, double start_time, bool repeat)
+void AnimationSystem::start_animation(Scene::NodeHandle *node_list, const std::string &name, double start_time, bool repeat)
 {
 	std::vector<std::pair<Transform *, Scene::Node *>> target_nodes;
 	auto &animation = animation_map[name];
@@ -104,7 +112,7 @@ void AnimationSystem::start_animation(const std::string &name, double start_time
 		if (channel.joint)
 			throw logic_error("Cannot start skinning animations without a target base node.");
 		else
-			target_nodes.push_back({ &nodes[channel.node_index]->transform, nodes[channel.node_index].get() });
+			target_nodes.push_back({ &node_list[channel.node_index]->transform, node_list[channel.node_index].get() });
 	}
 
 	animations.emplace_back(new AnimationState(move(target_nodes), animation, start_time, repeat));

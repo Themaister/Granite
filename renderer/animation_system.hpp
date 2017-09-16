@@ -32,17 +32,12 @@ class AnimationSystem
 {
 public:
 	void animate(double t);
-	void start_animation(const std::string &name, double start_time, bool repeat);
+
+	void start_animation(Scene::NodeHandle *node_list, const std::string &name, double start_time, bool repeat);
 	void start_animation(Scene::Node &node, const std::string &name, double start_time, bool repeat);
 	void register_animation(const std::string &name, const Importer::Animation &animation);
 
-	void add_node(Scene::NodeHandle node)
-	{
-		nodes.push_back(node);
-	}
-
 private:
-	std::vector<Scene::NodeHandle> nodes;
 	std::unordered_map<std::string, Importer::Animation> animation_map;
 
 	struct AnimationState

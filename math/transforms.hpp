@@ -55,6 +55,12 @@ struct LinearSampler
 	vec3 sample(unsigned index, float l) const;
 };
 
+struct CubicSampler
+{
+	std::vector<vec3> values;
+	vec3 sample(unsigned index, float l, float dt) const;
+};
+
 struct SlerpSampler
 {
 	std::vector<quat> values;

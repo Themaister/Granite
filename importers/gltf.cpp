@@ -1181,6 +1181,7 @@ void Parser::parse(const string &original_path, const string &json)
 
 		vector<Accessor *> json_time;
 		vector<Accessor *> json_samplers;
+		vector<const char *> json_interpolation;
 
 		const auto add_sampler = [&](const Value &v) {
 			auto &input = v["input"];
@@ -1188,6 +1189,7 @@ void Parser::parse(const string &original_path, const string &json)
 
 			json_time.push_back(&json_accessors[input.GetUint()]);
 			json_samplers.push_back(&json_accessors[output.GetUint()]);
+			json_interpolation.push_back(v.HasMember("interpolation") ? v["interpolation"].GetString() : "LINEAR");
 		};
 
 		iterate_elements(samplers, add_sampler);
@@ -1229,23 +1231,45 @@ void Parser::parse(const string &original_path, const string &json)
 			extract_attribute(channel.timestamps, *json_time[(*itr)["sampler"].GetUint()]);
 
 			const char *target = (*itr)["target"]["path"].GetString();
-			if (!strcmp(target, "translation"))
+			const char *interpolation = json_interpolation[(*itr)["sampler"].GetUint()];
+
+			if (strcmp(interpolation, "LINEAR") == 0)
 			{
-				channel.type = AnimationChannel::Type::Translation;
-				extract_attribute(channel.linear.values, *sampler);
+				if (!strcmp(target, "translation"))
+				{
+					channel.type = AnimationChannel::Type::Translation;
+					extract_attribute(channel.linear.values, *sampler);
+				}
+				else if (!strcmp(target, "rotation"))
+				{
+					channel.type = AnimationChannel::Type::Rotation;
+					extract_attribute(channel.spherical.values, *sampler);
+				}
+				else if (!strcmp(target, "scale"))
+				{
+					channel.type = AnimationChannel::Type::Scale;
+					extract_attribute(channel.linear.values, *sampler);
+				}
+				else
+					throw logic_error("Invalid target for animation.");
 			}
-			else if (!strcmp(target, "rotation"))
+			else if (strcmp(interpolation, "CUBICSPLINE") == 0)
 			{
-				channel.type = AnimationChannel::Type::Rotation;
-				extract_attribute(channel.spherical.values, *sampler);
-			}
-			else if (!strcmp(target, "scale"))
-			{
-				channel.type = AnimationChannel::Type::Scale;
-				extract_attribute(channel.linear.values, *sampler);
+				if (!strcmp(target, "translation"))
+				{
+					channel.type = AnimationChannel::Type::CubicTranslation;
+					extract_attribute(channel.cubic.values, *sampler);
+				}
+				else if (!strcmp(target, "scale"))
+				{
+					channel.type = AnimationChannel::Type::CubicScale;
+					extract_attribute(channel.cubic.values, *sampler);
+				}
+				else
+					throw logic_error("Invalid target for animation.");
 			}
 			else
-				throw logic_error("Invalid target for animation.");
+				throw logic_error("Unsupported interpolation type.");
 
 			combined_animation.channels.push_back(move(channel));
 		}

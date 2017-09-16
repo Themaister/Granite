@@ -30,18 +30,17 @@ void AnimationSystem::animate(double t)
 {
 	for (auto &animation : animations)
 	{
-		double wrapped_time = fmod(t - animation->start_time, animation->animation.get_length());
-
-		unsigned index;
-		float phase;
-		animation->animation.get_index_phase(float(wrapped_time), index, phase);
+		double wrapped_time = fmod(t - animation->start_time, animation->animation.length);
 
 		auto target = begin(animation->channel_targets);
 		for (auto &channel : animation->animation.channels)
 		{
 			auto *transform = target->first;
 			auto *node = target->second;
-			node->invalidate_cached_transform();
+
+			unsigned index;
+			float phase;
+			channel.get_index_phase(float(wrapped_time), index, phase);
 
 			switch (channel.type)
 			{
@@ -55,6 +54,8 @@ void AnimationSystem::animate(double t)
 				transform->rotation = channel.spherical.sample(index, phase);
 				break;
 			}
+
+			node->invalidate_cached_transform();
 			++target;
 		}
 	}

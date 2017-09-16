@@ -1179,28 +1179,20 @@ void Parser::parse(const string &original_path, const string &json)
 		auto &samplers = animation["samplers"];
 		auto &channels = animation["channels"];
 
-		Accessor *time = nullptr;
+		vector<Accessor *> json_time;
 		vector<Accessor *> json_samplers;
 
 		const auto add_sampler = [&](const Value &v) {
 			auto &input = v["input"];
 			auto &output = v["output"];
 
-			if (!time)
-				time = &json_accessors[input.GetUint()];
-			else if (time != &json_accessors[input.GetUint()])
-				throw logic_error("Animation uses different time for keyframes.");
-
+			json_time.push_back(&json_accessors[input.GetUint()]);
 			json_samplers.push_back(&json_accessors[output.GetUint()]);
 		};
 
 		iterate_elements(samplers, add_sampler);
 
-		if (!time)
-			throw logic_error("No time accessor set.");
-
 		Animation combined_animation;
-		extract_attribute(combined_animation.timestamps, *time);
 
 		for (auto itr = channels.Begin(); itr != channels.End(); ++itr)
 		{
@@ -1234,6 +1226,8 @@ void Parser::parse(const string &original_path, const string &json)
 					throw logic_error("Cannot have two different skin indices in a single animation.");
 			}
 
+			extract_attribute(channel.timestamps, *json_time[(*itr)["sampler"].GetUint()]);
+
 			const char *target = (*itr)["target"]["path"].GetString();
 			if (!strcmp(target, "translation"))
 			{
@@ -1255,6 +1249,7 @@ void Parser::parse(const string &original_path, const string &json)
 
 			combined_animation.channels.push_back(move(channel));
 		}
+		combined_animation.update_length();
 		combined_animation.name = move(json_animation_names[animations.size()]);
 		animations.push_back(move(combined_animation));
 	};

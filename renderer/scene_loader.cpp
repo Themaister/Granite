@@ -157,9 +157,10 @@ void SceneLoader::load_animation(const std::string &path, Importer::Animation &a
 		throw logic_error("Failed to parse.");
 
 	auto &timestamps = doc["timestamps"];
-	animation.timestamps.clear();
+
+	vector<float> timestamp_values;
 	for (auto itr = timestamps.Begin(); itr != timestamps.End(); ++itr)
-		animation.timestamps.push_back(itr->GetFloat());
+		timestamp_values.push_back(itr->GetFloat());
 
 	Importer::AnimationChannel channel;
 
@@ -179,6 +180,7 @@ void SceneLoader::load_animation(const std::string &path, Importer::Animation &a
 
 		channel.type = Importer::AnimationChannel::Type::Rotation;
 		channel.spherical = move(slerp);
+		channel.timestamps = timestamp_values;
 		animation.channels.push_back(move(channel));
 	}
 
@@ -197,6 +199,7 @@ void SceneLoader::load_animation(const std::string &path, Importer::Animation &a
 
 		channel.type = Importer::AnimationChannel::Type::Translation;
 		channel.linear = move(linear);
+		channel.timestamps = timestamp_values;
 		animation.channels.push_back(move(channel));
 	}
 
@@ -215,8 +218,11 @@ void SceneLoader::load_animation(const std::string &path, Importer::Animation &a
 
 		channel.type = Importer::AnimationChannel::Type::Scale;
 		channel.linear = move(linear);
+		channel.timestamps = timestamp_values;
 		animation.channels.push_back(move(channel));
 	}
+
+	animation.update_length();
 }
 
 void SceneLoader::parse_gltf(const std::string &path)
@@ -394,12 +400,6 @@ void SceneLoader::parse_scene_format(const std::string &path, const std::string 
 				float angular_freq = rotation[3].GetFloat();
 				float time_for_rotation = 2.0f * pi<float>() / angular_freq;
 
-				track.timestamps.push_back(0.00f * time_for_rotation);
-				track.timestamps.push_back(0.25f * time_for_rotation);
-				track.timestamps.push_back(0.50f * time_for_rotation);
-				track.timestamps.push_back(0.75f * time_for_rotation);
-				track.timestamps.push_back(1.00f * time_for_rotation);
-
 				Importer::AnimationChannel channel;
 				channel.type = Importer::AnimationChannel::Type::Rotation;
 				channel.spherical.values.push_back(angleAxis(0.00f * 2.0f * pi<float>(), direction));
@@ -407,6 +407,13 @@ void SceneLoader::parse_scene_format(const std::string &path, const std::string 
 				channel.spherical.values.push_back(angleAxis(0.50f * 2.0f * pi<float>(), direction));
 				channel.spherical.values.push_back(angleAxis(0.75f * 2.0f * pi<float>(), direction));
 				channel.spherical.values.push_back(angleAxis(1.00f * 2.0f * pi<float>(), direction));
+
+				channel.timestamps.push_back(0.00f * time_for_rotation);
+				channel.timestamps.push_back(0.25f * time_for_rotation);
+				channel.timestamps.push_back(0.50f * time_for_rotation);
+				channel.timestamps.push_back(0.75f * time_for_rotation);
+				channel.timestamps.push_back(1.00f * time_for_rotation);
+
 				track.channels.push_back(move(channel));
 			}
 			else if (animation.HasMember("animationData"))
@@ -414,6 +421,8 @@ void SceneLoader::parse_scene_format(const std::string &path, const std::string 
 				auto *data_path = animation["animationData"].GetString();
 				load_animation(Path::relpath(path, data_path), track);
 			}
+
+			track.update_length();
 
 			auto ident = to_string(index);
 

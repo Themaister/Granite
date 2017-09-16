@@ -49,21 +49,13 @@ struct AnimationChannel
 		Scale
 	};
 	Type type;
+
+	std::vector<float> timestamps;
 	LinearSampler linear;
 	SlerpSampler spherical;
 
 	uint32_t joint_index;
 	bool joint = false;
-};
-
-struct Animation
-{
-	std::vector<float> timestamps;
-	std::vector<AnimationChannel> channels;
-	std::string name;
-
-	Util::Hash skin_compat = 0;
-	bool skinning = false;
 
 	float get_length() const
 	{
@@ -91,6 +83,23 @@ struct Animation
 			index = end_target - 1;
 			phase = (t - timestamps[index]) / (timestamps[end_target] - timestamps[index]);
 		}
+	}
+};
+
+struct Animation
+{
+	std::vector<AnimationChannel> channels;
+	std::string name;
+	float length = 0.0f;
+
+	Util::Hash skin_compat = 0;
+	bool skinning = false;
+
+	void update_length()
+	{
+		length = 0.0f;
+		for (auto &chan : channels)
+			length = std::max(length, chan.get_length());
 	}
 };
 

@@ -961,6 +961,13 @@ void Parser::parse(const string &original_path, const string &json)
 				node.meshes.push_back(prim);
 		}
 
+		if (value.HasMember("camera"))
+		{
+			auto index = value["camera"].GetUint();
+			json_cameras[index].node_index = uint32_t(nodes.size());
+			json_cameras[index].attached_to_node = true;
+		}
+
 		if (value.HasMember("skin"))
 		{
 			auto &s = value["skin"];
@@ -1107,6 +1114,43 @@ void Parser::parse(const string &original_path, const string &json)
 		json_skins.push_back({ move(inverse_bind_matrices), move(joint_transforms), move(skeleton), compat });
 	};
 
+	const auto add_camera = [&](const Value &camera) {
+		CameraInfo info;
+		if (camera.HasMember("type"))
+		{
+			if (strcmp(camera["type"].GetString(), "perspective") == 0)
+			{
+				info.type = CameraInfo::Type::Perspective;
+				auto &p = camera["perspective"];
+				if (p.HasMember("yfov"))
+					info.yfov = p["yfov"].GetFloat();
+				if (p.HasMember("znear"))
+					info.znear = p["znear"].GetFloat();
+				if (p.HasMember("zfar"))
+					info.zfar = p["zfar"].GetFloat();
+				if (p.HasMember("aspectRatio"))
+					info.aspect_ratio = p["aspectRatio"].GetFloat();
+			}
+			else if (strcmp(camera["type"].GetString(), "orthographic") == 0)
+			{
+				info.type = CameraInfo::Type::Orthographic;
+				auto &o = camera["orthographic"];
+				if (o.HasMember("znear"))
+					info.znear = o["znear"].GetFloat();
+				if (o.HasMember("zfar"))
+					info.zfar = o["zfar"].GetFloat();
+				if (o.HasMember("xmag"))
+					info.xmag = o["xmag"].GetFloat();
+				if (o.HasMember("ymag"))
+					info.ymag = o["ymag"].GetFloat();
+			}
+		}
+
+		json_cameras.push_back(info);
+	};
+
+	if (doc.HasMember("cameras"))
+		iterate_elements(doc["cameras"], add_camera);
 	if (doc.HasMember("buffers"))
 		iterate_elements(doc["buffers"], add_buffer);
 	if (doc.HasMember("bufferViews"))

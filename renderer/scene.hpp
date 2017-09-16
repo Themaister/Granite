@@ -38,6 +38,7 @@ struct RenderableInfo
 using VisibilityList = std::vector<RenderableInfo>;
 
 class RenderContext;
+struct EnvironmentComponent;
 
 class Scene
 {
@@ -172,6 +173,7 @@ private:
 	std::vector<std::tuple<CachedSpatialTransformComponent*, RenderableComponent*, CastsDynamicShadowComponent*>> &dynamic_shadowing;
 	std::vector<std::tuple<RenderPassComponent*, RenderableComponent*, CastsDynamicShadowComponent*>> &render_pass_shadowing;
 	std::vector<std::tuple<UnboundedComponent*, RenderableComponent*>> &backgrounds;
+	std::vector<std::tuple<CameraComponent*, CachedTransformComponent*>> &cameras;
 	std::vector<std::tuple<PerFrameUpdateComponent*>> &per_frame_updates;
 	std::vector<std::tuple<PerFrameUpdateTransformComponent*, CachedSpatialTransformComponent*>> &per_frame_update_transforms;
 	std::vector<std::tuple<EnvironmentComponent*>> &environments;

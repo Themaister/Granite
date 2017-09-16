@@ -73,6 +73,8 @@ public:
 		return zfar;
 	}
 
+	void set_transform(const mat4 &m);
+
 protected:
 	vec3 position = vec3(0.0f);
 	quat rotation = quat(1.0f, 0.0f, 0.0f, 0.0f);
@@ -80,6 +82,7 @@ protected:
 	float aspect = 16.0f / 9.0f;
 	float znear = 1.0f;
 	float zfar = 1000.0f;
+	float transform_z_scale = 1.0f;
 };
 
 class FPSCamera : public Camera, public EventHandler

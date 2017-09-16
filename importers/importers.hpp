@@ -120,6 +120,26 @@ struct Node
 	bool joint = false;
 };
 
+struct CameraInfo
+{
+	enum class Type
+	{
+		Orthographic,
+		Perspective
+	};
+
+	uint32_t node_index = 0;
+	Type type = Type::Perspective;
+	float aspect_ratio = 1.0f;
+	float znear = 0.1f;
+	float zfar = 1000.0f;
+	float yfov = 0.66f;
+	float xmag = 1.0f;
+	float ymag = 1.0f;
+
+	bool attached_to_node = false;
+};
+
 struct Scene
 {
 	std::vector<Node> nodes;

@@ -117,6 +117,23 @@ Scene::NodeHandle SceneLoader::build_tree_for_subscene(const SubsceneData &subsc
 		i++;
 	}
 
+	for (auto &camera : parser.get_cameras())
+	{
+		auto cam_entity = this->scene->create_entity();
+
+		Camera cam_params;
+		cam_params.set_fovy(camera.yfov);
+		cam_params.set_aspect(camera.aspect_ratio);
+		cam_params.set_depth_range(camera.znear, camera.zfar);
+		cam_entity->allocate_component<CameraComponent>()->camera = cam_params;
+
+		if (camera.attached_to_node)
+		{
+			auto *t = cam_entity->allocate_component<CachedTransformComponent>();
+			t->transform = &nodes[camera.node_index]->cached_transform;
+		}
+	}
+
 	auto root = scene->create_node();
 	for (auto &node : nodes)
 		if (node && !node->get_parent())

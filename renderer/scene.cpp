@@ -36,6 +36,7 @@ Scene::Scene()
 	  dynamic_shadowing(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, CastsDynamicShadowComponent>()),
 	  render_pass_shadowing(pool.get_component_group<RenderPassComponent, RenderableComponent, CastsDynamicShadowComponent>()),
 	  backgrounds(pool.get_component_group<UnboundedComponent, RenderableComponent>()),
+	  cameras(pool.get_component_group<CameraComponent, CachedTransformComponent>()),
 	  per_frame_updates(pool.get_component_group<PerFrameUpdateComponent>()),
 	  per_frame_update_transforms(pool.get_component_group<PerFrameUpdateTransformComponent, CachedSpatialTransformComponent>()),
 	  environments(pool.get_component_group<EnvironmentComponent>()),
@@ -275,6 +276,15 @@ void Scene::update_cached_transforms()
 			}
 			timestamp->last_timestamp = *timestamp->current_timestamp;
 		}
+	}
+
+	// Update camera transforms.
+	for (auto &c : cameras)
+	{
+		CameraComponent *cam;
+		CachedTransformComponent *transform;
+		tie(cam, transform) = c;
+		cam->camera.set_transform(transform->transform->world_transform);
 	}
 }
 

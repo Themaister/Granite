@@ -226,6 +226,8 @@ protected:
 	SceneLoader scene_loader;
 	std::unique_ptr<AnimationSystem> animation_system;
 
+	Camera *selected_camera = nullptr;
+
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
 	void on_swapchain_changed(const Vulkan::SwapchainParameterEvent &e);

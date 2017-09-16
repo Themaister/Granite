@@ -78,6 +78,11 @@ public:
 		return json_skins;
 	}
 
+	const std::vector<CameraInfo> &get_cameras() const
+	{
+		return json_cameras;
+	}
+
 private:
 	using Buffer = std::vector<uint8_t>;
 
@@ -148,6 +153,7 @@ private:
 	std::vector<Texture> json_textures;
 	std::vector<Vulkan::StockSampler> json_stock_samplers;
 	std::vector<Skin> json_skins;
+	std::vector<CameraInfo> json_cameras;
 	std::vector<Node> nodes;
 	std::vector<Animation> animations;
 	std::vector<Util::Hash> skin_compat;

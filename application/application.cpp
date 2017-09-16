@@ -88,7 +88,14 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned
 		lighting.fog = {};
 
 	cam.look_at(vec3(0.0f, 0.0f, 8.0f), vec3(0.0f));
-	context.set_camera(cam);
+
+	// Pick a camera to show.
+	selected_camera = &cam;
+	auto &scene_cameras = scene_loader.get_scene().get_entity_pool().get_component_group<CameraComponent>();
+	if (!scene_cameras.empty())
+		selected_camera = &get<0>(scene_cameras.front())->camera;
+
+	context.set_camera(*selected_camera);
 
 	EVENT_MANAGER_REGISTER_LATCH(SceneViewerApplication, on_swapchain_changed, on_swapchain_destroyed, SwapchainParameterEvent);
 	EVENT_MANAGER_REGISTER_LATCH(SceneViewerApplication, on_device_created, on_device_destroyed, DeviceCreatedEvent);
@@ -217,8 +224,8 @@ void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::st
 			flags |= Renderer::FOG_ENABLE_BIT;
 
 		forward_renderer.set_mesh_renderer_options(flags);
-		render_main_pass(cmd, cam.get_projection(), cam.get_view());
-		render_transparent_objects(cmd, cam.get_projection(), cam.get_view());
+		render_main_pass(cmd, selected_camera->get_projection(), selected_camera->get_view());
+		render_transparent_objects(cmd, selected_camera->get_projection(), selected_camera->get_view());
 	});
 
 	lighting.add_texture_input("shadow-main");
@@ -242,7 +249,7 @@ void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::st
 	gbuffer.add_color_output(tagcat("pbr", tag), pbr);
 	gbuffer.set_depth_stencil_output(tagcat("depth", tag), depth);
 	gbuffer.set_build_render_pass([this, type](Vulkan::CommandBuffer &cmd) {
-		render_main_pass(cmd, cam.get_projection(), cam.get_view());
+		render_main_pass(cmd, selected_camera->get_projection(), selected_camera->get_view());
 	});
 
 	gbuffer.set_get_clear_depth_stencil([](VkClearDepthStencilValue *value) -> bool {
@@ -285,7 +292,7 @@ void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::st
 	transparent.add_color_output(tagcat("HDR", tag), emissive, tagcat("HDR-lighting", tag));
 	transparent.set_depth_stencil_input(tagcat("depth", tag));
 	transparent.set_build_render_pass([this, type](Vulkan::CommandBuffer &cmd) {
-		render_transparent_objects(cmd, cam.get_projection(), cam.get_view());
+		render_transparent_objects(cmd, selected_camera->get_projection(), selected_camera->get_view());
 	});
 #endif
 }
@@ -412,7 +419,7 @@ void SceneViewerApplication::render_shadow_map_near(Vulkan::CommandBuffer &cmd)
 	mat4 view = mat4_cast(look_at(-light_direction(), vec3(0.0f, 1.0f, 0.0f)));
 	AABB ortho_range_depth = shadow_scene_aabb.transform(view); // Just need this to determine Zmin/Zmax.
 
-	auto near_camera = static_cast<Camera &>(cam);
+	auto near_camera = *selected_camera;
 	near_camera.set_depth_range(near_camera.get_znear(), cascade_cutoff_distance);
 	vec4 sphere = Frustum::get_bounding_sphere(inverse(near_camera.get_projection()), inverse(near_camera.get_view()));
 	vec2 center_xy = (view * vec4(sphere.xyz(), 1.0f)).xy();
@@ -451,7 +458,7 @@ void SceneViewerApplication::update_scene(double, double elapsed_time)
 	lighting.directional.direction = light_direction();
 	lighting.directional.color = vec3(6.0f, 5.5f, 4.5f);
 
-	context.set_camera(cam);
+	context.set_camera(*selected_camera);
 	scene.set_render_pass_data(&forward_renderer, &context);
 
 	animation_system->animate(elapsed_time);

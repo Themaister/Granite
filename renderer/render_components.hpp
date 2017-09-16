@@ -29,6 +29,7 @@
 #include "mesh.hpp"
 #include "abstract_renderable.hpp"
 #include "renderer_enums.hpp"
+#include "camera.hpp"
 
 namespace Granite
 {
@@ -82,6 +83,11 @@ struct IBLComponent : ComponentBase
 struct RenderableComponent : ComponentBase
 {
 	AbstractRenderableHandle renderable;
+};
+
+struct CameraComponent : ComponentBase
+{
+	Camera camera;
 };
 
 struct RenderPassCreator
@@ -142,6 +148,11 @@ struct CachedSpatialTransformComponent : ComponentBase
 	AABB world_aabb;
 	CachedTransform *transform = nullptr;
 	CachedSkinTransform *skin_transform = nullptr;
+};
+
+struct CachedTransformComponent : ComponentBase
+{
+	CachedTransform *transform = nullptr;
 };
 
 struct CachedSpatialTransformTimestampComponent : ComponentBase

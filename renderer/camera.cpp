@@ -24,6 +24,8 @@
 #include "transforms.hpp"
 #include "vulkan_events.hpp"
 #include "input.hpp"
+#include "scene.hpp"
+#include "glm/gtx/matrix_decompose.hpp"
 
 using namespace Vulkan;
 
@@ -68,7 +70,7 @@ void Camera::look_at(const vec3 &eye, const vec3 &at, const vec3 &up)
 
 mat4 Camera::get_projection() const
 {
-	return projection(fovy, aspect, znear, zfar);
+	return projection(fovy, aspect, znear * transform_z_scale, zfar * transform_z_scale);
 }
 
 vec3 Camera::get_position() const
@@ -92,6 +94,19 @@ vec3 Camera::get_up() const
 {
 	static const vec3 up(0.0f, 1.0f, 0.0f);
 	return conjugate(rotation) * up;
+}
+
+void Camera::set_transform(const mat4 &m)
+{
+	vec3 skew;
+	vec4 perspective;
+	vec3 s, t;
+	quat r;
+	glm::decompose(m, s, r, t, skew, perspective);
+
+	position = t;
+	rotation = conjugate(r);
+	transform_z_scale = s.x;
 }
 
 FPSCamera::FPSCamera()

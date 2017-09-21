@@ -67,7 +67,9 @@ bool Context::init_loader(PFN_vkGetInstanceProcAddr addr)
 		static void *module;
 		if (!module)
 		{
-			module = dlopen("libvulkan.so", RTLD_LOCAL | RTLD_LAZY);
+			module = dlopen("libvulkan.so.1", RTLD_LOCAL | RTLD_LAZY);
+			if (!module)
+				module = dlopen("libvulkan.so", RTLD_LOCAL | RTLD_LAZY);
 			if (!module)
 				return false;
 		}
@@ -197,9 +199,51 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 	for (uint32_t i = 0; i < instance_ext_count; i++)
 		instance_exts.push_back(instance_ext[i]);
 
+	uint32_t ext_count = 0;
+	vkEnumerateInstanceExtensionProperties(nullptr, &ext_count, nullptr);
+	vector<VkExtensionProperties> queried_extensions(ext_count);
+	if (ext_count)
+		vkEnumerateInstanceExtensionProperties(nullptr, &ext_count, queried_extensions.data());
+
+	uint32_t layer_count = 0;
+	vkEnumerateInstanceLayerProperties(&layer_count, nullptr);
+	vector<VkLayerProperties> queried_layers(layer_count);
+	if (layer_count)
+		vkEnumerateInstanceLayerProperties(&layer_count, queried_layers.data());
+
+	const auto has_extension = [&](const char *name) -> bool {
+		auto itr = find_if(begin(queried_extensions), end(queried_extensions), [name](const VkExtensionProperties &e) -> bool {
+			return strcmp(e.extensionName, name) == 0;
+		});
+		return itr != end(queried_extensions);
+	};
+
+	for (uint32_t i = 0; i < instance_ext_count; i++)
+		if (!has_extension(instance_ext[i]))
+			return false;
+
+	if (has_extension(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME) &&
+	    has_extension(VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME) &&
+	    has_extension(VK_KHR_EXTERNAL_SEMAPHORE_CAPABILITIES_EXTENSION_NAME))
+	{
+		instance_exts.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
+		instance_exts.push_back(VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME);
+		instance_exts.push_back(VK_KHR_EXTERNAL_SEMAPHORE_CAPABILITIES_EXTENSION_NAME);
+		supports_external = true;
+	}
+
 #ifdef VULKAN_DEBUG
-	instance_exts.push_back("VK_EXT_debug_report");
-	instance_layers.push_back("VK_LAYER_LUNARG_standard_validation");
+	const auto has_layer = [&](const char *name) -> bool {
+		auto itr = find_if(begin(queried_layers), end(queried_layers), [name](const VkLayerProperties &e) -> bool {
+			return strcmp(e.layerName, name) == 0;
+		});
+		return itr != end(queried_layers);
+	};
+
+	if (has_extension(VK_EXT_DEBUG_REPORT_EXTENSION_NAME))
+		instance_exts.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+	if (has_layer("VK_LAYER_LUNARG_standard_validation"))
+		instance_layers.push_back("VK_LAYER_LUNARG_standard_validation");
 #endif
 
 	info.enabledExtensionCount = instance_exts.size();
@@ -213,18 +257,36 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 	vulkan_symbol_wrapper_load_core_instance_symbols(instance);
 
 #ifdef VULKAN_DEBUG
-	VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance, vkCreateDebugReportCallbackEXT);
-	VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance, vkDebugReportMessageEXT);
-	VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance, vkDestroyDebugReportCallbackEXT);
-
+	if (has_extension(VK_EXT_DEBUG_REPORT_EXTENSION_NAME))
 	{
-		VkDebugReportCallbackCreateInfoEXT info = { VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT };
-		info.flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT |
-		             VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT;
-		info.pfnCallback = vulkan_debug_cb;
-		vkCreateDebugReportCallbackEXT(instance, &info, NULL, &debug_callback);
+		VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance, vkCreateDebugReportCallbackEXT);
+		VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance, vkDebugReportMessageEXT);
+		VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance, vkDestroyDebugReportCallbackEXT);
+
+		{
+			VkDebugReportCallbackCreateInfoEXT info = {VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT};
+			info.flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT |
+			             VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT;
+			info.pfnCallback = vulkan_debug_cb;
+			vkCreateDebugReportCallbackEXT(instance, &info, NULL, &debug_callback);
+		}
 	}
 #endif
+
+	if (supports_external)
+	{
+		VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance, vkGetPhysicalDeviceFeatures2KHR);
+		VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance, vkGetPhysicalDeviceProperties2KHR);
+		VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance, vkGetPhysicalDeviceFormatProperties2KHR);
+		VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance, vkGetPhysicalDeviceImageFormatProperties2KHR);
+		VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance, vkGetPhysicalDeviceSparseImageFormatProperties2KHR);
+		VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance, vkGetPhysicalDeviceQueueFamilyProperties2KHR);
+		VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance, vkGetPhysicalDeviceMemoryProperties2KHR);
+		VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance, vkGetPhysicalDeviceExternalFencePropertiesKHR);
+		VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance, vkGetPhysicalDeviceExternalSemaphorePropertiesKHR);
+		VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance, vkGetPhysicalDeviceExternalBufferPropertiesKHR);
+	}
+
 	return true;
 }
 
@@ -248,6 +310,40 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 
 		gpu = gpus.front();
 	}
+
+	uint32_t ext_count = 0;
+	vkEnumerateDeviceExtensionProperties(gpu, nullptr, &ext_count, nullptr);
+	vector<VkExtensionProperties> queried_extensions(ext_count);
+	if (ext_count)
+		vkEnumerateDeviceExtensionProperties(gpu, nullptr, &ext_count, queried_extensions.data());
+
+	uint32_t layer_count = 0;
+	vkEnumerateDeviceLayerProperties(gpu, &layer_count, nullptr);
+	vector<VkLayerProperties> queried_layers(layer_count);
+	if (layer_count)
+		vkEnumerateDeviceLayerProperties(gpu, &layer_count, queried_layers.data());
+
+	const auto has_extension = [&](const char *name) -> bool {
+		auto itr = find_if(begin(queried_extensions), end(queried_extensions), [name](const VkExtensionProperties &e) -> bool {
+			return strcmp(e.extensionName, name) == 0;
+		});
+		return itr != end(queried_extensions);
+	};
+
+	const auto has_layer = [&](const char *name) -> bool {
+		auto itr = find_if(begin(queried_layers), end(queried_layers), [name](const VkLayerProperties &e) -> bool {
+			return strcmp(e.layerName, name) == 0;
+		});
+		return itr != end(queried_layers);
+	};
+
+	for (uint32_t i = 0; i < num_required_device_extensions; i++)
+		if (!has_extension(required_device_extensions[i]))
+			return false;
+
+	for (uint32_t i = 0; i < num_required_device_layers; i++)
+		if (!has_layer(required_device_layers[i]))
+			return false;
 
 	this->gpu = gpu;
 	vkGetPhysicalDeviceProperties(gpu, &gpu_props);
@@ -376,11 +472,40 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 
 	device_info.queueCreateInfoCount = queue_family_count;
 
-	// Should query for these, but no big deal for now.
-	device_info.ppEnabledExtensionNames = required_device_extensions;
-	device_info.enabledExtensionCount = num_required_device_extensions;
-	device_info.ppEnabledLayerNames = required_device_layers;
-	device_info.enabledLayerCount = num_required_device_layers;
+	vector<const char *> enabled_extensions;
+	vector<const char *> enabled_layers;
+
+	for (uint32_t i = 0; i < num_required_device_extensions; i++)
+		enabled_extensions.push_back(required_device_extensions[i]);
+	for (uint32_t i = 0; i < num_required_device_layers; i++)
+		enabled_layers.push_back(required_device_layers[i]);
+
+	if (has_extension(VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME) &&
+	    has_extension(VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME))
+	{
+		supports_dedicated = true;
+		enabled_extensions.push_back(VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME);
+		enabled_extensions.push_back(VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME);
+	}
+
+#ifdef _WIN32
+	supports_external = false;
+#else
+	if (supports_external && supports_dedicated &&
+	    has_extension(VK_KHR_EXTERNAL_SEMAPHORE_EXTENSION_NAME) &&
+	    has_extension(VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME) &&
+	    has_extension(VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME) &&
+	    has_extension(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME))
+	{
+		supports_external = true;
+		enabled_extensions.push_back(VK_KHR_EXTERNAL_SEMAPHORE_EXTENSION_NAME);
+		enabled_extensions.push_back(VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME);
+		enabled_extensions.push_back(VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME);
+		enabled_extensions.push_back(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
+	}
+	else
+		supports_external = false;
+#endif
 
 	VkPhysicalDeviceFeatures enabled_features = *required_features;
 	{
@@ -407,10 +532,14 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 	device_info.pEnabledFeatures = &enabled_features;
 
 #ifdef VULKAN_DEBUG
-	static const char *device_layers[] = { "VK_LAYER_LUNARG_standard_validation" };
-	device_info.enabledLayerCount = 1;
-	device_info.ppEnabledLayerNames = device_layers;
+	if (has_layer("VK_LAYER_LUNARG_standard_validation"))
+		enabled_layers.push_back("VK_LAYER_LUNARG_standard_validation");
 #endif
+
+	device_info.enabledExtensionCount = enabled_extensions.size();
+	device_info.ppEnabledExtensionNames = enabled_extensions.empty() ? nullptr : enabled_extensions.data();
+	device_info.enabledLayerCount = enabled_layers.size();
+	device_info.ppEnabledLayerNames = enabled_layers.empty() ? nullptr : enabled_layers.data();
 
 	if (vkCreateDevice(gpu, &device_info, nullptr, &device) != VK_SUCCESS)
 		return false;
@@ -419,6 +548,18 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 	vkGetDeviceQueue(device, graphics_queue_family, graphics_queue_index, &graphics_queue);
 	vkGetDeviceQueue(device, compute_queue_family, compute_queue_index, &compute_queue);
 	vkGetDeviceQueue(device, transfer_queue_family, transfer_queue_index, &transfer_queue);
+
+#ifndef _WIN32
+	if (supports_external)
+	{
+		VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_EXTENSION_SYMBOL(device, vkImportSemaphoreFdKHR);
+		VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_EXTENSION_SYMBOL(device, vkGetSemaphoreFdKHR);
+		VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_EXTENSION_SYMBOL(device, vkGetMemoryFdKHR);
+		VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_EXTENSION_SYMBOL(device, vkGetMemoryFdPropertiesKHR);
+		VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_EXTENSION_SYMBOL(device, vkGetImageMemoryRequirements2KHR);
+	}
+#endif
+
 	return true;
 }
 }

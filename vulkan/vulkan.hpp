@@ -143,6 +143,16 @@ public:
 		owned_device = false;
 	}
 
+	bool supports_external_memory_and_sync() const
+	{
+		return supports_external;
+	}
+
+	bool supports_dedicated_allocation() const
+	{
+		return supports_dedicated;
+	}
+
 	static const VkApplicationInfo &get_application_info();
 
 private:
@@ -167,6 +177,8 @@ private:
 
 	bool owned_instance = false;
 	bool owned_device = false;
+	bool supports_external = false;
+	bool supports_dedicated = false;
 
 #ifdef VULKAN_DEBUG
 	VkDebugReportCallbackEXT debug_callback = VK_NULL_HANDLE;

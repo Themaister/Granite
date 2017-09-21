@@ -170,7 +170,8 @@ bool ClassAllocator::allocate(uint32_t size, AllocationTiling tiling, DeviceAllo
 	else
 	{
 		heap.allocation.offset = 0;
-		if (!global_allocator->allocate(alloc_size, memory_type, &heap.allocation.base, &heap.allocation.host_base))
+		if (!global_allocator->allocate(alloc_size, memory_type, &heap.allocation.base, &heap.allocation.host_base,
+		                                VK_NULL_HANDLE))
 		{
 			object_pool.free(node);
 			return false;
@@ -261,12 +262,34 @@ void ClassAllocator::free(DeviceAllocation *alloc)
 bool Allocator::allocate_global(uint32_t size, DeviceAllocation *alloc)
 {
 	// Fall back to global allocation, do not recycle.
-	if (!global_allocator->allocate(size, memory_type, &alloc->base, &alloc->host_base))
+	if (!global_allocator->allocate(size, memory_type, &alloc->base, &alloc->host_base, VK_NULL_HANDLE))
 		return false;
 	alloc->alloc = nullptr;
 	alloc->memory_type = memory_type;
 	alloc->size = size;
 	return true;
+}
+
+bool Allocator::allocate_dedicated(uint32_t size, DeviceAllocation *alloc, VkImage dedicated_image)
+{
+	// Fall back to global allocation, do not recycle.
+	if (!global_allocator->allocate(size, memory_type, &alloc->base, &alloc->host_base, dedicated_image))
+		return false;
+	alloc->alloc = nullptr;
+	alloc->memory_type = memory_type;
+	alloc->size = size;
+	return true;
+}
+
+DeviceAllocation DeviceAllocation::make_imported_allocation(VkDeviceMemory memory, VkDeviceSize size,
+                                                            uint32_t memory_type)
+{
+	DeviceAllocation alloc = {};
+	alloc.base = memory;
+	alloc.offset = 0;
+	alloc.size = size;
+	alloc.memory_type = memory_type;
+	return alloc;
 }
 
 bool Allocator::allocate(uint32_t size, uint32_t alignment, AllocationTiling mode, DeviceAllocation *alloc)
@@ -344,6 +367,26 @@ bool DeviceAllocator::allocate(uint32_t size, uint32_t alignment, uint32_t memor
                                DeviceAllocation *alloc)
 {
 	return allocators[memory_type]->allocate(size, alignment, mode, alloc);
+}
+
+bool DeviceAllocator::allocate_image_memory(uint32_t size, uint32_t alignment, uint32_t memory_type,
+                                            AllocationTiling tiling, DeviceAllocation *alloc, VkImage image)
+{
+	if (!use_dedicated)
+		return allocate(size, alignment, memory_type, tiling, alloc);
+
+	VkImageMemoryRequirementsInfo2KHR info = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2_KHR };
+	info.image = image;
+
+	VkMemoryDedicatedRequirementsKHR dedicated_req = { VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR };
+	VkMemoryRequirements2KHR mem_req = { VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR };
+	mem_req.pNext = &dedicated_req;
+	vkGetImageMemoryRequirements2KHR(device, &info, &mem_req);
+
+	if (dedicated_req.prefersDedicatedAllocation || dedicated_req.requiresDedicatedAllocation)
+		return allocators[memory_type]->allocate_dedicated(size, alloc, image);
+	else
+		return allocate(size, alignment, memory_type, tiling, alloc);
 }
 
 bool DeviceAllocator::allocate_global(uint32_t size, uint32_t memory_type, DeviceAllocation *alloc)
@@ -433,7 +476,8 @@ void DeviceAllocator::unmap_memory(const DeviceAllocation &alloc)
 	}
 }
 
-bool DeviceAllocator::allocate(uint32_t size, uint32_t memory_type, VkDeviceMemory *memory, uint8_t **host_memory)
+bool DeviceAllocator::allocate(uint32_t size, uint32_t memory_type, VkDeviceMemory *memory, uint8_t **host_memory,
+                               VkImage dedicated_image)
 {
 	auto &heap = heaps[mem_props.memoryTypes[memory_type].heapIndex];
 
@@ -453,6 +497,13 @@ bool DeviceAllocator::allocate(uint32_t size, uint32_t memory_type, VkDeviceMemo
 	}
 
 	VkMemoryAllocateInfo info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, nullptr, size, memory_type };
+	VkMemoryDedicatedAllocateInfoKHR dedicated = { VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR };
+	if (dedicated_image != VK_NULL_HANDLE)
+	{
+		dedicated.image = dedicated_image;
+		info.pNext = &dedicated;
+	}
+
 	VkDeviceMemory device_memory;
 	VkResult res = vkAllocateMemory(device, &info, nullptr, &device_memory);
 

@@ -61,6 +61,11 @@ public:
 		return ret;
 	}
 
+	bool can_recycle() const
+	{
+		return !should_destroy_on_consume;
+	}
+
 	void signal_external()
 	{
 		VK_ASSERT(!signalled);
@@ -68,10 +73,16 @@ public:
 		signalled = true;
 	}
 
+	void destroy_on_consume()
+	{
+		should_destroy_on_consume = true;
+	}
+
 private:
 	Device *device;
 	VkSemaphore semaphore;
 	bool signalled = true;
+	bool should_destroy_on_consume = false;
 };
 
 using Semaphore = Util::IntrusivePtr<SemaphoreHolder>;

@@ -169,6 +169,8 @@ public:
 	void free_immediate();
 	void free_immediate(DeviceAllocator &allocator);
 
+	static DeviceAllocation make_imported_allocation(VkDeviceMemory memory, VkDeviceSize size, uint32_t memory_type);
+
 private:
 	VkDeviceMemory base = VK_NULL_HANDLE;
 	uint8_t *host_base = nullptr;
@@ -265,6 +267,7 @@ public:
 
 	bool allocate(uint32_t size, uint32_t alignment, AllocationTiling tiling, DeviceAllocation *alloc);
 	bool allocate_global(uint32_t size, DeviceAllocation *alloc);
+	bool allocate_dedicated(uint32_t size, DeviceAllocation *alloc, VkImage image);
 	inline ClassAllocator &get_class_allocator(MemoryClass clazz)
 	{
 		return classes[static_cast<unsigned>(clazz)];
@@ -299,11 +302,17 @@ class DeviceAllocator
 {
 public:
 	void init(VkPhysicalDevice gpu, VkDevice device);
+	void set_supports_dedicated_allocation(bool enable)
+	{
+		use_dedicated = enable;
+	}
 
 	~DeviceAllocator();
 
 	bool allocate(uint32_t size, uint32_t alignment, uint32_t memory_type, AllocationTiling tiling,
 	              DeviceAllocation *alloc);
+	bool allocate_image_memory(uint32_t size, uint32_t alignment, uint32_t memory_type, AllocationTiling tiling,
+	                           DeviceAllocation *alloc, VkImage image);
 
 	bool allocate_global(uint32_t size, uint32_t memory_type, DeviceAllocation *alloc);
 
@@ -311,7 +320,7 @@ public:
 	void *map_memory(DeviceAllocation *alloc, MemoryAccessFlags flags);
 	void unmap_memory(const DeviceAllocation &alloc);
 
-	bool allocate(uint32_t size, uint32_t memory_type, VkDeviceMemory *memory, uint8_t **host_memory);
+	bool allocate(uint32_t size, uint32_t memory_type, VkDeviceMemory *memory, uint8_t **host_memory, VkImage dedicated_image);
 	void free(uint32_t size, uint32_t memory_type, VkDeviceMemory memory, uint8_t *host_memory);
 	void free_no_recycle(uint32_t size, uint32_t memory_type, VkDeviceMemory memory, uint8_t *host_memory);
 
@@ -320,6 +329,7 @@ private:
 	VkDevice device = VK_NULL_HANDLE;
 	VkPhysicalDeviceMemoryProperties mem_props;
 	VkDeviceSize atom_alignment = 1;
+	bool use_dedicated = false;
 
 	struct Allocation
 	{

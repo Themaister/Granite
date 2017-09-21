@@ -90,6 +90,15 @@ public:
 
 	BufferHandle create_buffer(const BufferCreateInfo &info, const void *initial);
 	ImageHandle create_image(const ImageCreateInfo &info, const ImageInitialData *initial = nullptr);
+
+#ifndef _WIN32
+	ImageHandle create_imported_image(int fd,
+	                                  VkDeviceSize size,
+	                                  uint32_t memory_type,
+	                                  VkExternalMemoryHandleTypeFlagBitsKHR handle_type,
+	                                  const ImageCreateInfo &create_info);
+#endif
+
 	ImageViewHandle create_image_view(const ImageViewCreateInfo &view_info);
 	BufferViewHandle create_buffer_view(const BufferViewCreateInfo &view_info);
 	SamplerHandle create_sampler(const SamplerCreateInfo &info);
@@ -147,6 +156,11 @@ public:
 
 	void wait_for_fence(const Fence &fence);
 	Semaphore request_semaphore();
+
+#ifndef _WIN32
+	Semaphore request_imported_semaphore(int fd, VkExternalSemaphoreHandleTypeFlagBitsKHR handle_type);
+#endif
+
 	void add_wait_semaphore(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags stages);
 
 	ShaderManager &get_shader_manager()
@@ -181,6 +195,8 @@ private:
 
 	VkPhysicalDeviceMemoryProperties mem_props;
 	VkPhysicalDeviceProperties gpu_props;
+	bool supports_external = false;
+	bool supports_dedicated = false;
 	void init_stock_samplers();
 	void add_queue_dependency(CommandBuffer::Type consumer, VkPipelineStageFlags stages, CommandBuffer::Type producer);
 

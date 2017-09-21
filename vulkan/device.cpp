@@ -46,6 +46,38 @@ Semaphore Device::request_semaphore()
 	return ptr;
 }
 
+#ifndef _WIN32
+Semaphore Device::request_imported_semaphore(int fd, VkExternalSemaphoreHandleTypeFlagBitsKHR handle_type)
+{
+	if (!supports_external)
+		return {};
+
+	VkExternalSemaphorePropertiesKHR props = { VK_STRUCTURE_TYPE_EXTERNAL_SEMAPHORE_PROPERTIES_KHR };
+	VkPhysicalDeviceExternalSemaphoreInfoKHR info = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_SEMAPHORE_INFO_KHR };
+	info.handleType = handle_type;
+
+	vkGetPhysicalDeviceExternalSemaphorePropertiesKHR(gpu, &info, &props);
+	if ((props.externalSemaphoreFeatures & VK_EXTERNAL_SEMAPHORE_FEATURE_IMPORTABLE_BIT_KHR) == 0)
+		return nullptr;
+
+	auto semaphore = semaphore_manager.request_cleared_semaphore();
+
+	VkImportSemaphoreFdInfoKHR import = { VK_STRUCTURE_TYPE_IMPORT_SEMAPHORE_FD_INFO_KHR };
+	import.fd = fd;
+	import.semaphore = semaphore;
+	import.handleType = handle_type;
+	import.flags = VK_SEMAPHORE_IMPORT_TEMPORARY_BIT_KHR;
+	auto ptr = make_handle<SemaphoreHolder>(this, semaphore, false);
+
+	if (vkImportSemaphoreFdKHR(device, &import) != VK_SUCCESS)
+		return nullptr;
+
+	ptr->signal_external();
+	ptr->destroy_on_consume();
+	return ptr;
+}
+#endif
+
 void Device::add_wait_semaphore(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags stages)
 {
 	flush_frame(type);
@@ -265,6 +297,10 @@ void Device::set_context(const Context &context)
 	init_pipeline_cache();
 	semaphore_manager.init(device);
 	event_manager.init(device);
+
+	supports_external = context.supports_external_memory_and_sync();
+	supports_dedicated = context.supports_dedicated_allocation();
+	allocator.set_supports_dedicated_allocation(supports_dedicated);
 }
 
 void Device::init_stock_samplers()
@@ -380,7 +416,10 @@ void Device::submit_empty(CommandBuffer::Type type, Fence *fence, Semaphore *sem
 	for (auto &semaphore : data.wait_semaphores)
 	{
 		auto wait = semaphore->consume();
-		frame().recycled_semaphores.push_back(wait);
+		if (semaphore->can_recycle())
+			frame().recycled_semaphores.push_back(wait);
+		else
+			frame().destroyed_semaphores.push_back(wait);
 		waits.push_back(wait);
 	}
 	data.wait_stages.clear();
@@ -615,7 +654,10 @@ void Device::submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *sem
 	for (auto &semaphore : data.wait_semaphores)
 	{
 		auto wait = semaphore->consume();
-		frame().recycled_semaphores.push_back(wait);
+		if (semaphore->can_recycle())
+			frame().recycled_semaphores.push_back(wait);
+		else
+			frame().destroyed_semaphores.push_back(wait);
 		waits[0].push_back(wait);
 	}
 	data.wait_stages.clear();
@@ -1463,6 +1505,162 @@ ImageViewHandle Device::create_image_view(const ImageViewCreateInfo &create_info
 	return ret;
 }
 
+#ifndef _WIN32
+ImageHandle Device::create_imported_image(int fd, VkDeviceSize size, uint32_t memory_type,
+                                          VkExternalMemoryHandleTypeFlagBitsKHR handle_type,
+                                          const ImageCreateInfo &create_info)
+{
+	if (!supports_external)
+		return {};
+
+	VkImageCreateInfo info = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+	info.format = create_info.format;
+	info.extent.width = create_info.width;
+	info.extent.height = create_info.height;
+	info.extent.depth = create_info.depth;
+	info.imageType = create_info.type;
+	info.mipLevels = create_info.levels;
+	info.arrayLayers = create_info.layers;
+	info.samples = create_info.samples;
+	info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	info.tiling = VK_IMAGE_TILING_OPTIMAL;
+	info.usage = create_info.usage;
+	info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	info.flags = create_info.flags;
+	VK_ASSERT(create_info.domain != ImageDomain::Transient);
+
+	VkExternalMemoryImageCreateInfoKHR externalInfo = { VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO_KHR };
+	externalInfo.handleTypes = handle_type;
+	info.pNext = &externalInfo;
+
+	VK_ASSERT(format_is_supported(create_info.format, image_usage_to_features(info.usage)));
+
+	VkImage image;
+	if (vkCreateImage(device, &info, nullptr, &image) != VK_SUCCESS)
+		return nullptr;
+
+	VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+	alloc_info.allocationSize = size;
+	alloc_info.memoryTypeIndex = memory_type;
+
+	VkMemoryDedicatedAllocateInfoKHR dedicated_info = { VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR };
+	dedicated_info.image = image;
+	alloc_info.pNext = &dedicated_info;
+
+	VkImportMemoryFdInfoKHR fd_info = { VK_STRUCTURE_TYPE_IMPORT_MEMORY_FD_INFO_KHR };
+	fd_info.handleType = handle_type;
+	fd_info.fd = fd;
+	dedicated_info.pNext = &fd_info;
+
+	VkDeviceMemory memory;
+
+	VkMemoryRequirements reqs;
+	vkGetImageMemoryRequirements(device, image, &reqs);
+	if (reqs.size > size)
+	{
+		vkDestroyImage(device, image, nullptr);
+		return nullptr;
+	}
+
+	if (((1u << memory_type) & reqs.memoryTypeBits) == 0)
+	{
+		vkDestroyImage(device, image, nullptr);
+		return nullptr;
+	}
+
+	if (vkAllocateMemory(device, &alloc_info, nullptr, &memory) != VK_SUCCESS)
+	{
+		vkDestroyImage(device, image, nullptr);
+		return nullptr;
+	}
+
+	if (vkBindImageMemory(device, image, memory, 0) != VK_SUCCESS)
+	{
+		vkDestroyImage(device, image, nullptr);
+		vkFreeMemory(device, memory, nullptr);
+		return nullptr;
+	}
+
+	// Create a default image view.
+	VkImageView image_view = VK_NULL_HANDLE;
+	VkImageView depth_view = VK_NULL_HANDLE;
+	VkImageView stencil_view = VK_NULL_HANDLE;
+	VkImageView base_level_view = VK_NULL_HANDLE;
+	if (info.usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+	                  VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT))
+	{
+		VkImageViewCreateInfo view_info = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+		view_info.image = image;
+		view_info.format = create_info.format;
+		view_info.components.r = VK_COMPONENT_SWIZZLE_R;
+		view_info.components.g = VK_COMPONENT_SWIZZLE_G;
+		view_info.components.b = VK_COMPONENT_SWIZZLE_B;
+		view_info.components.a = VK_COMPONENT_SWIZZLE_A;
+		view_info.subresourceRange.aspectMask = format_to_aspect_mask(view_info.format);
+		view_info.subresourceRange.baseMipLevel = 0;
+		view_info.subresourceRange.baseArrayLayer = 0;
+		view_info.subresourceRange.levelCount = info.mipLevels;
+		view_info.subresourceRange.layerCount = info.arrayLayers;
+		view_info.viewType = get_image_view_type(create_info, nullptr);
+
+		if (vkCreateImageView(device, &view_info, nullptr, &image_view) != VK_SUCCESS)
+		{
+			vkFreeMemory(device, memory, nullptr);
+			vkDestroyImage(device, image, nullptr);
+			return nullptr;
+		}
+
+		if (info.mipLevels > 1)
+		{
+			view_info.subresourceRange.levelCount = 1;
+			if (vkCreateImageView(device, &view_info, nullptr, &base_level_view) != VK_SUCCESS)
+			{
+				vkFreeMemory(device, memory, nullptr);
+				vkDestroyImage(device, image, nullptr);
+				vkDestroyImageView(device, image_view, nullptr);
+				return nullptr;
+			}
+			view_info.subresourceRange.levelCount = info.mipLevels;
+		}
+
+		// If the image has multiple aspects, make split up images.
+		if (view_info.subresourceRange.aspectMask == (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT))
+		{
+			view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+			if (vkCreateImageView(device, &view_info, nullptr, &depth_view) != VK_SUCCESS)
+			{
+				vkFreeMemory(device, memory, nullptr);
+				vkDestroyImageView(device, image_view, nullptr);
+				vkDestroyImageView(device, base_level_view, nullptr);
+				vkDestroyImage(device, image, nullptr);
+				return nullptr;
+			}
+
+			view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_STENCIL_BIT;
+			if (vkCreateImageView(device, &view_info, nullptr, &stencil_view) != VK_SUCCESS)
+			{
+				vkFreeMemory(device, memory, nullptr);
+				vkDestroyImageView(device, image_view, nullptr);
+				vkDestroyImageView(device, depth_view, nullptr);
+				vkDestroyImageView(device, base_level_view, nullptr);
+				vkDestroyImage(device, image, nullptr);
+				return nullptr;
+			}
+		}
+	}
+
+	auto allocation = DeviceAllocation::make_imported_allocation(memory, size, memory_type);
+	auto handle = make_handle<Image>(this, image, image_view, allocation, create_info);
+	handle->get_view().set_alt_views(depth_view, stencil_view);
+	handle->get_view().set_base_level_view(base_level_view);
+
+	// Set possible dstStage and dstAccess.
+	handle->set_stage_flags(image_usage_to_possible_stages(info.usage));
+	handle->set_access_flags(image_usage_to_possible_access(info.usage));
+	return handle;
+}
+#endif
+
 ImageHandle Device::create_image(const ImageCreateInfo &create_info, const ImageInitialData *initial)
 {
 	VkImage image;
@@ -1523,9 +1721,9 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 		return nullptr;
 
 	vkGetImageMemoryRequirements(device, image, &reqs);
-
 	uint32_t memory_type = find_memory_type(create_info.domain, reqs.memoryTypeBits);
-	if (!allocator.allocate(reqs.size, reqs.alignment, memory_type, ALLOCATION_TILING_OPTIMAL, &allocation))
+	if (!allocator.allocate_image_memory(reqs.size, reqs.alignment, memory_type, ALLOCATION_TILING_OPTIMAL,
+	                                     &allocation, image))
 	{
 		vkDestroyImage(device, image, nullptr);
 		return nullptr;

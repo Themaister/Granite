@@ -27,6 +27,11 @@
 using namespace std;
 using namespace Vulkan;
 
+#ifdef KHR_DISPLAY_ACQUIRE_XLIB
+#include <X11/Xlib.h>
+typedef VkResult (VKAPI_PTR *PFN_vkAcquireXlibDisplayEXT)(VkPhysicalDevice physicalDevice, Display *dpy, VkDisplayKHR display);
+#endif
+
 namespace Granite
 {
 
@@ -107,7 +112,11 @@ public:
 
 	vector<const char *> get_instance_extensions() override
 	{
+#ifdef KHR_DISPLAY_ACQUIRE_XLIB
+		return { "VK_KHR_surface", "VK_KHR_display", "VK_EXT_acquire_xlib_display" };
+#else
 		return { "VK_KHR_surface", "VK_KHR_display" };
+#endif
 	}
 
 	VkSurfaceKHR create_surface(VkInstance instance, VkPhysicalDevice gpu) override
@@ -134,8 +143,11 @@ public:
 		vector<VkDisplayPlanePropertiesKHR> planes(plane_count);
 		vkGetPhysicalDeviceDisplayPlanePropertiesKHR(gpu, &plane_count, planes.data());
 
+		VkDisplayKHR best_display = VK_NULL_HANDLE;
 		VkDisplayModeKHR best_mode = VK_NULL_HANDLE;
 		uint32_t best_plane = UINT32_MAX;
+
+		const char *desired_display = getenv("GRANITE_DISPLAY_NAME");
 
 		unsigned actual_width = 0;
 		unsigned actual_height = 0;
@@ -146,6 +158,9 @@ public:
 			VkDisplayKHR display = displays[dpy].display;
 			best_mode = VK_NULL_HANDLE;
 			best_plane = UINT32_MAX;
+
+			if (desired_display && strstr(displays[dpy].displayName, desired_display) != displays[dpy].displayName)
+				continue;
 
 			uint32_t mode_count;
 			vkGetDisplayModePropertiesKHR(gpu, display, &mode_count, nullptr);
@@ -199,6 +214,7 @@ public:
 				{
 					best_plane = j;
 					alpha_mode = VK_DISPLAY_PLANE_ALPHA_OPAQUE_BIT_KHR;
+					best_display = display;
 					goto out;
 				}
 			}
@@ -217,8 +233,21 @@ out:
 		create_info.transform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
 		create_info.globalAlpha = 1.0f;
 		create_info.alphaMode = alpha_mode;
-		create_info.imageExtent.width = width;
-		create_info.imageExtent.height = height;
+		create_info.imageExtent.width = actual_width;
+		create_info.imageExtent.height = actual_height;
+		this->width = actual_width;
+		this->height = actual_height;
+
+#ifdef KHR_DISPLAY_ACQUIRE_XLIB
+		dpy = XOpenDisplay(nullptr);
+		if (dpy)
+		{
+			PFN_vkAcquireXlibDisplayEXT acquire;
+			VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkAcquireXlibDisplayEXT", acquire);
+			if (acquire(gpu, dpy, best_display) != VK_SUCCESS)
+				LOGE("Failed to acquire Xlib display. Surface creation may fail.\n");
+		}
+#endif
 
 		if (vkCreateDisplayPlaneSurfaceKHR(instance, &create_info, NULL, &surface) != VK_SUCCESS)
 			return VK_NULL_HANDLE;
@@ -245,6 +274,9 @@ out:
 private:
 	unsigned width = 0;
 	unsigned height = 0;
+#ifdef KHR_DISPLAY_ACQUIRE_XLIB
+	Display *dpy = nullptr;
+#endif
 };
 
 unique_ptr<ApplicationPlatform> create_default_application_platform(unsigned width, unsigned height)

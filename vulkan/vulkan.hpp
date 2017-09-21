@@ -28,12 +28,16 @@
 #include <stdexcept>
 #include "util.hpp"
 
+#define V_S(x) #x
+#define V_S_(x) V_S(x)
+#define S__LINE__ V_S_(__LINE__)
+
 #define V(x)                                                                                           \
 	do                                                                                                 \
 	{                                                                                                  \
 		VkResult err = x;                                                                              \
 		if (err != VK_SUCCESS && err != VK_INCOMPLETE)                                                 \
-			throw std::runtime_error("Vulkan call failed at " __FILE__ ":" STRINGIFY(__LINE__) ".\n"); \
+			throw std::runtime_error("Vulkan call failed at " __FILE__ ":" S__LINE__ ".\n"); \
 	} while (0)
 
 

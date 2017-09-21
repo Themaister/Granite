@@ -362,17 +362,6 @@ void RenderGraph::build_physical_resources()
 	{
 		auto &pass = *passes[pass_index];
 
-		for (auto *input : pass.get_attachment_inputs())
-		{
-			if (input->get_physical_index() == RenderResource::Unused)
-			{
-				physical_dimensions.push_back(get_resource_dimensions(*input));
-				input->set_physical_index(phys_index++);
-			}
-			else
-				physical_dimensions[input->get_physical_index()].stages |= input->get_used_stages();
-		}
-
 		for (auto *input : pass.get_texture_inputs())
 		{
 			if (input->get_physical_index() == RenderResource::Unused)
@@ -564,6 +553,19 @@ void RenderGraph::build_physical_resources()
 			}
 			else
 				physical_dimensions[ds_output->get_physical_index()].stages |= ds_output->get_used_stages();
+		}
+
+		// Assign input attachments last so they can alias properly with existing color/depth attachments in the
+		// same subpass.
+		for (auto *input : pass.get_attachment_inputs())
+		{
+			if (input->get_physical_index() == RenderResource::Unused)
+			{
+				physical_dimensions.push_back(get_resource_dimensions(*input));
+				input->set_physical_index(phys_index++);
+			}
+			else
+				physical_dimensions[input->get_physical_index()].stages |= input->get_used_stages();
 		}
 	}
 
@@ -1939,7 +1941,14 @@ void RenderGraph::traverse_dependencies(const RenderPass &pass, unsigned stack_c
 	}
 
 	for (auto *input : pass.get_attachment_inputs())
-		depend_passes_recursive(pass, input->get_write_passes(), stack_count, false, false, true);
+	{
+		bool self_dependency = pass.get_depth_stencil_output() == input;
+		if (find(begin(pass.get_color_outputs()), end(pass.get_color_outputs()), input) != end(pass.get_color_outputs()))
+			self_dependency = true;
+
+		if (!self_dependency)
+			depend_passes_recursive(pass, input->get_write_passes(), stack_count, false, false, true);
+	}
 
 	for (auto *input : pass.get_color_inputs())
 	{
@@ -2594,9 +2603,15 @@ void RenderGraph::build_barriers()
 			auto &barrier = get_invalidate_access(input->get_physical_index(), false);
 			barrier.access |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
 			barrier.stages |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
+
+			// If the attachment is also bound as an input attachment (programmable blending)
+			// we need VK_IMAGE_LAYOUT_GENERAL.
+			if (barrier.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+				barrier.layout = VK_IMAGE_LAYOUT_GENERAL;
+			else if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 				throw logic_error("Layout mismatch.");
-			barrier.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+			else
+				barrier.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 		}
 
 		for (auto *input : pass.get_color_scale_inputs())
@@ -2635,9 +2650,18 @@ void RenderGraph::build_barriers()
 			{
 				barrier.access |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 				barrier.stages |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-				if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
+
+				// If the attachment is also bound as an input attachment (programmable blending)
+				// we need VK_IMAGE_LAYOUT_GENERAL.
+				if (barrier.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL ||
+				    barrier.layout == VK_IMAGE_LAYOUT_GENERAL)
+				{
+					barrier.layout = VK_IMAGE_LAYOUT_GENERAL;
+				}
+				else if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 					throw logic_error("Layout mismatch.");
-				barrier.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+				else
+					barrier.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 			}
 		}
 
@@ -2697,8 +2721,11 @@ void RenderGraph::build_barriers()
 
 			if (dst_barrier.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
 				dst_barrier.layout = VK_IMAGE_LAYOUT_GENERAL;
+			else if (dst_barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
+				throw logic_error("Layout mismatch.");
 			else
 				dst_barrier.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
 			dst_barrier.access |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 			dst_barrier.stages |= VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
 
@@ -2709,17 +2736,28 @@ void RenderGraph::build_barriers()
 		else if (input)
 		{
 			auto &dst_barrier = get_invalidate_access(input->get_physical_index(), false);
+
 			if (dst_barrier.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
 				dst_barrier.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+			else if (dst_barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
+				throw logic_error("Layout mismatch.");
 			else
 				dst_barrier.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
 			dst_barrier.access |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
 			dst_barrier.stages |= VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
 		}
 		else if (output)
 		{
 			auto &src_barrier = get_flush_access(output->get_physical_index());
-			src_barrier.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+			if (src_barrier.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+				src_barrier.layout = VK_IMAGE_LAYOUT_GENERAL;
+			else if (src_barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
+				throw logic_error("Layout mismatch.");
+			else
+				src_barrier.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
 			src_barrier.access |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 			src_barrier.stages |= VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
 		}

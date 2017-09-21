@@ -520,9 +520,7 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
 	{
 		ms.alphaToCoverageEnable = static_state.state.alpha_to_coverage;
 		ms.alphaToOneEnable = static_state.state.alpha_to_one;
-		// If we have multisampled input attachments, force per-sample shading.
-		bool force_per_sample_shading = render_pass->get_num_input_attachments(current_subpass) > 0;
-		ms.sampleShadingEnable = static_state.state.sample_shading || force_per_sample_shading;
+		ms.sampleShadingEnable = static_state.state.sample_shading;
 		ms.minSampleShading = 1.0f;
 	}
 

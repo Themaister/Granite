@@ -135,10 +135,26 @@ public:
 		this->height = height;
 	}
 
+	struct CachedWindow
+	{
+		int x = 0, y = 0, width = 0, height = 0;
+	};
+
+	CachedWindow get_cached_window() const
+	{
+		return cached_window;
+	}
+
+	void set_cached_window(const CachedWindow &win)
+	{
+		cached_window = win;
+	}
+
 private:
 	GLFWwindow *window = nullptr;
 	unsigned width = 0;
 	unsigned height = 0;
+	CachedWindow cached_window;
 };
 
 static void fb_size_cb(GLFWwindow *window, int width, int height)
@@ -191,7 +207,7 @@ static Key glfw_key_to_granite(int key)
 #undef k
 }
 
-static void key_cb(GLFWwindow *window, int key, int, int action, int)
+static void key_cb(GLFWwindow *window, int key, int, int action, int mods)
 {
 	KeyState state;
 	switch (action)
@@ -213,7 +229,31 @@ static void key_cb(GLFWwindow *window, int key, int, int action, int)
 	auto gkey = glfw_key_to_granite(key);
 	auto *glfw = static_cast<ApplicationPlatformGLFW *>(glfwGetWindowUserPointer(window));
 
-	glfw->get_input_tracker().key_event(gkey, state);
+	if (action == GLFW_PRESS && key == GLFW_KEY_ESCAPE)
+		glfwSetWindowShouldClose(window, GLFW_TRUE);
+	else if (action == GLFW_PRESS && key == GLFW_KEY_ENTER && mods == GLFW_MOD_ALT)
+	{
+		if (glfwGetWindowMonitor(window))
+		{
+			auto cached = glfw->get_cached_window();
+			glfwSetWindowMonitor(window, nullptr, cached.x, cached.y, cached.width, cached.height, 0);
+		}
+		else
+		{
+			auto *primary = glfwGetPrimaryMonitor();
+			if (primary)
+			{
+				auto *mode = glfwGetVideoMode(primary);
+				ApplicationPlatformGLFW::CachedWindow win;
+				glfwGetWindowPos(window, &win.x, &win.y);
+				glfwGetWindowSize(window, &win.width, &win.height);
+				glfw->set_cached_window(win);
+				glfwSetWindowMonitor(window, primary, 0, 0, mode->width, mode->height, mode->refreshRate);
+			}
+		}
+	}
+	else
+		glfw->get_input_tracker().key_event(gkey, state);
 }
 
 static void button_cb(GLFWwindow *window, int button, int action, int)

@@ -156,6 +156,34 @@ PFN_vkCreateDisplayModeKHR vulkan_symbol_wrapper_vkCreateDisplayModeKHR;
 PFN_vkGetDisplayPlaneCapabilitiesKHR vulkan_symbol_wrapper_vkGetDisplayPlaneCapabilitiesKHR;
 PFN_vkCreateDisplayPlaneSurfaceKHR vulkan_symbol_wrapper_vkCreateDisplayPlaneSurfaceKHR;
 PFN_vkCreateSharedSwapchainsKHR vulkan_symbol_wrapper_vkCreateSharedSwapchainsKHR;
+PFN_vkGetPhysicalDeviceFeatures2KHR vulkan_symbol_wrapper_vkGetPhysicalDeviceFeatures2KHR;
+PFN_vkGetPhysicalDeviceProperties2KHR vulkan_symbol_wrapper_vkGetPhysicalDeviceProperties2KHR;
+PFN_vkGetPhysicalDeviceFormatProperties2KHR vulkan_symbol_wrapper_vkGetPhysicalDeviceFormatProperties2KHR;
+PFN_vkGetPhysicalDeviceImageFormatProperties2KHR vulkan_symbol_wrapper_vkGetPhysicalDeviceImageFormatProperties2KHR;
+PFN_vkGetPhysicalDeviceQueueFamilyProperties2KHR vulkan_symbol_wrapper_vkGetPhysicalDeviceQueueFamilyProperties2KHR;
+PFN_vkGetPhysicalDeviceMemoryProperties2KHR vulkan_symbol_wrapper_vkGetPhysicalDeviceMemoryProperties2KHR;
+PFN_vkGetPhysicalDeviceSparseImageFormatProperties2KHR vulkan_symbol_wrapper_vkGetPhysicalDeviceSparseImageFormatProperties2KHR;
+PFN_vkTrimCommandPoolKHR vulkan_symbol_wrapper_vkTrimCommandPoolKHR;
+PFN_vkGetPhysicalDeviceExternalBufferPropertiesKHR vulkan_symbol_wrapper_vkGetPhysicalDeviceExternalBufferPropertiesKHR;
+PFN_vkGetMemoryFdKHR vulkan_symbol_wrapper_vkGetMemoryFdKHR;
+PFN_vkGetMemoryFdPropertiesKHR vulkan_symbol_wrapper_vkGetMemoryFdPropertiesKHR;
+PFN_vkGetPhysicalDeviceExternalSemaphorePropertiesKHR vulkan_symbol_wrapper_vkGetPhysicalDeviceExternalSemaphorePropertiesKHR;
+PFN_vkImportSemaphoreFdKHR vulkan_symbol_wrapper_vkImportSemaphoreFdKHR;
+PFN_vkGetSemaphoreFdKHR vulkan_symbol_wrapper_vkGetSemaphoreFdKHR;
+PFN_vkCmdPushDescriptorSetKHR vulkan_symbol_wrapper_vkCmdPushDescriptorSetKHR;
+PFN_vkCreateDescriptorUpdateTemplateKHR vulkan_symbol_wrapper_vkCreateDescriptorUpdateTemplateKHR;
+PFN_vkDestroyDescriptorUpdateTemplateKHR vulkan_symbol_wrapper_vkDestroyDescriptorUpdateTemplateKHR;
+PFN_vkUpdateDescriptorSetWithTemplateKHR vulkan_symbol_wrapper_vkUpdateDescriptorSetWithTemplateKHR;
+PFN_vkCmdPushDescriptorSetWithTemplateKHR vulkan_symbol_wrapper_vkCmdPushDescriptorSetWithTemplateKHR;
+PFN_vkGetSwapchainStatusKHR vulkan_symbol_wrapper_vkGetSwapchainStatusKHR;
+PFN_vkGetPhysicalDeviceExternalFencePropertiesKHR vulkan_symbol_wrapper_vkGetPhysicalDeviceExternalFencePropertiesKHR;
+PFN_vkImportFenceFdKHR vulkan_symbol_wrapper_vkImportFenceFdKHR;
+PFN_vkGetFenceFdKHR vulkan_symbol_wrapper_vkGetFenceFdKHR;
+PFN_vkGetPhysicalDeviceSurfaceCapabilities2KHR vulkan_symbol_wrapper_vkGetPhysicalDeviceSurfaceCapabilities2KHR;
+PFN_vkGetPhysicalDeviceSurfaceFormats2KHR vulkan_symbol_wrapper_vkGetPhysicalDeviceSurfaceFormats2KHR;
+PFN_vkGetImageMemoryRequirements2KHR vulkan_symbol_wrapper_vkGetImageMemoryRequirements2KHR;
+PFN_vkGetBufferMemoryRequirements2KHR vulkan_symbol_wrapper_vkGetBufferMemoryRequirements2KHR;
+PFN_vkGetImageSparseMemoryRequirements2KHR vulkan_symbol_wrapper_vkGetImageSparseMemoryRequirements2KHR;
 PFN_vkCreateDebugReportCallbackEXT vulkan_symbol_wrapper_vkCreateDebugReportCallbackEXT;
 PFN_vkDestroyDebugReportCallbackEXT vulkan_symbol_wrapper_vkDestroyDebugReportCallbackEXT;
 PFN_vkDebugReportMessageEXT vulkan_symbol_wrapper_vkDebugReportMessageEXT;
@@ -164,616 +192,349 @@ PFN_vkDebugMarkerSetObjectNameEXT vulkan_symbol_wrapper_vkDebugMarkerSetObjectNa
 PFN_vkCmdDebugMarkerBeginEXT vulkan_symbol_wrapper_vkCmdDebugMarkerBeginEXT;
 PFN_vkCmdDebugMarkerEndEXT vulkan_symbol_wrapper_vkCmdDebugMarkerEndEXT;
 PFN_vkCmdDebugMarkerInsertEXT vulkan_symbol_wrapper_vkCmdDebugMarkerInsertEXT;
+PFN_vkCmdDrawIndirectCountAMD vulkan_symbol_wrapper_vkCmdDrawIndirectCountAMD;
+PFN_vkCmdDrawIndexedIndirectCountAMD vulkan_symbol_wrapper_vkCmdDrawIndexedIndirectCountAMD;
+PFN_vkGetPhysicalDeviceExternalImageFormatPropertiesNV vulkan_symbol_wrapper_vkGetPhysicalDeviceExternalImageFormatPropertiesNV;
+PFN_vkGetDeviceGroupPeerMemoryFeaturesKHX vulkan_symbol_wrapper_vkGetDeviceGroupPeerMemoryFeaturesKHX;
+PFN_vkBindBufferMemory2KHX vulkan_symbol_wrapper_vkBindBufferMemory2KHX;
+PFN_vkBindImageMemory2KHX vulkan_symbol_wrapper_vkBindImageMemory2KHX;
+PFN_vkCmdSetDeviceMaskKHX vulkan_symbol_wrapper_vkCmdSetDeviceMaskKHX;
+PFN_vkGetDeviceGroupPresentCapabilitiesKHX vulkan_symbol_wrapper_vkGetDeviceGroupPresentCapabilitiesKHX;
+PFN_vkGetDeviceGroupSurfacePresentModesKHX vulkan_symbol_wrapper_vkGetDeviceGroupSurfacePresentModesKHX;
+PFN_vkAcquireNextImage2KHX vulkan_symbol_wrapper_vkAcquireNextImage2KHX;
+PFN_vkCmdDispatchBaseKHX vulkan_symbol_wrapper_vkCmdDispatchBaseKHX;
+PFN_vkGetPhysicalDevicePresentRectanglesKHX vulkan_symbol_wrapper_vkGetPhysicalDevicePresentRectanglesKHX;
+PFN_vkEnumeratePhysicalDeviceGroupsKHX vulkan_symbol_wrapper_vkEnumeratePhysicalDeviceGroupsKHX;
+PFN_vkCmdProcessCommandsNVX vulkan_symbol_wrapper_vkCmdProcessCommandsNVX;
+PFN_vkCmdReserveSpaceForCommandsNVX vulkan_symbol_wrapper_vkCmdReserveSpaceForCommandsNVX;
+PFN_vkCreateIndirectCommandsLayoutNVX vulkan_symbol_wrapper_vkCreateIndirectCommandsLayoutNVX;
+PFN_vkDestroyIndirectCommandsLayoutNVX vulkan_symbol_wrapper_vkDestroyIndirectCommandsLayoutNVX;
+PFN_vkCreateObjectTableNVX vulkan_symbol_wrapper_vkCreateObjectTableNVX;
+PFN_vkDestroyObjectTableNVX vulkan_symbol_wrapper_vkDestroyObjectTableNVX;
+PFN_vkRegisterObjectsNVX vulkan_symbol_wrapper_vkRegisterObjectsNVX;
+PFN_vkUnregisterObjectsNVX vulkan_symbol_wrapper_vkUnregisterObjectsNVX;
+PFN_vkGetPhysicalDeviceGeneratedCommandsPropertiesNVX vulkan_symbol_wrapper_vkGetPhysicalDeviceGeneratedCommandsPropertiesNVX;
+PFN_vkCmdSetViewportWScalingNV vulkan_symbol_wrapper_vkCmdSetViewportWScalingNV;
+PFN_vkReleaseDisplayEXT vulkan_symbol_wrapper_vkReleaseDisplayEXT;
+PFN_vkGetPhysicalDeviceSurfaceCapabilities2EXT vulkan_symbol_wrapper_vkGetPhysicalDeviceSurfaceCapabilities2EXT;
+PFN_vkDisplayPowerControlEXT vulkan_symbol_wrapper_vkDisplayPowerControlEXT;
+PFN_vkRegisterDeviceEventEXT vulkan_symbol_wrapper_vkRegisterDeviceEventEXT;
+PFN_vkRegisterDisplayEventEXT vulkan_symbol_wrapper_vkRegisterDisplayEventEXT;
+PFN_vkGetSwapchainCounterEXT vulkan_symbol_wrapper_vkGetSwapchainCounterEXT;
+PFN_vkGetRefreshCycleDurationGOOGLE vulkan_symbol_wrapper_vkGetRefreshCycleDurationGOOGLE;
+PFN_vkGetPastPresentationTimingGOOGLE vulkan_symbol_wrapper_vkGetPastPresentationTimingGOOGLE;
+PFN_vkCmdSetDiscardRectangleEXT vulkan_symbol_wrapper_vkCmdSetDiscardRectangleEXT;
+PFN_vkSetHdrMetadataEXT vulkan_symbol_wrapper_vkSetHdrMetadataEXT;
 
 static PFN_vkGetInstanceProcAddr GetInstanceProcAddr;
 void vulkan_symbol_wrapper_init(PFN_vkGetInstanceProcAddr get_instance_proc_addr)
 {
-	GetInstanceProcAddr = get_instance_proc_addr;
+    GetInstanceProcAddr = get_instance_proc_addr;
 }
 
 PFN_vkGetInstanceProcAddr vulkan_symbol_wrapper_instance_proc_addr(void)
 {
-	return GetInstanceProcAddr;
+    return GetInstanceProcAddr;
 }
+
 
 VkBool32 vulkan_symbol_wrapper_load_instance_symbol(VkInstance instance, const char *name, PFN_vkVoidFunction *ppSymbol)
 {
-	*ppSymbol = GetInstanceProcAddr(instance, name);
-	return *ppSymbol != NULL;
+    *ppSymbol = GetInstanceProcAddr(instance, name);
+    return *ppSymbol != NULL;
 }
 
 VkBool32 vulkan_symbol_wrapper_load_device_symbol(VkDevice device, const char *name, PFN_vkVoidFunction *ppSymbol)
 {
-	*ppSymbol = vkGetDeviceProcAddr(device, name);
-	return *ppSymbol != NULL;
+    *ppSymbol = vkGetDeviceProcAddr(device, name);
+    return *ppSymbol != NULL;
 }
 
 VkBool32 vulkan_symbol_wrapper_load_global_symbols(void)
 {
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(NULL, "vkCreateInstance", vkCreateInstance))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(NULL, "vkEnumerateInstanceExtensionProperties",
-	                                                vkEnumerateInstanceExtensionProperties))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(NULL, "vkEnumerateInstanceLayerProperties",
-	                                                vkEnumerateInstanceLayerProperties))
-		return VK_FALSE;
-	return VK_TRUE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(NULL, "vkCreateInstance", vkCreateInstance)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(NULL, "vkEnumerateInstanceExtensionProperties", vkEnumerateInstanceExtensionProperties)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(NULL, "vkEnumerateInstanceLayerProperties", vkEnumerateInstanceLayerProperties)) return VK_FALSE;
+    return VK_TRUE;
 }
 
 VkBool32 vulkan_symbol_wrapper_load_core_symbols(VkInstance instance)
 {
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyInstance", vkDestroyInstance))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkEnumeratePhysicalDevices", vkEnumeratePhysicalDevices))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetPhysicalDeviceFeatures",
-	                                                vkGetPhysicalDeviceFeatures))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetPhysicalDeviceFormatProperties",
-	                                                vkGetPhysicalDeviceFormatProperties))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetPhysicalDeviceImageFormatProperties",
-	                                                vkGetPhysicalDeviceImageFormatProperties))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetPhysicalDeviceProperties",
-	                                                vkGetPhysicalDeviceProperties))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetPhysicalDeviceQueueFamilyProperties",
-	                                                vkGetPhysicalDeviceQueueFamilyProperties))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetPhysicalDeviceMemoryProperties",
-	                                                vkGetPhysicalDeviceMemoryProperties))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetDeviceProcAddr", vkGetDeviceProcAddr))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateDevice", vkCreateDevice))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyDevice", vkDestroyDevice))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkEnumerateDeviceExtensionProperties",
-	                                                vkEnumerateDeviceExtensionProperties))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkEnumerateDeviceLayerProperties",
-	                                                vkEnumerateDeviceLayerProperties))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetDeviceQueue", vkGetDeviceQueue))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkQueueSubmit", vkQueueSubmit))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkQueueWaitIdle", vkQueueWaitIdle))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDeviceWaitIdle", vkDeviceWaitIdle))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkAllocateMemory", vkAllocateMemory))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkFreeMemory", vkFreeMemory))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkMapMemory", vkMapMemory))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkUnmapMemory", vkUnmapMemory))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkFlushMappedMemoryRanges", vkFlushMappedMemoryRanges))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkInvalidateMappedMemoryRanges",
-	                                                vkInvalidateMappedMemoryRanges))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetDeviceMemoryCommitment",
-	                                                vkGetDeviceMemoryCommitment))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkBindBufferMemory", vkBindBufferMemory))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkBindImageMemory", vkBindImageMemory))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetBufferMemoryRequirements",
-	                                                vkGetBufferMemoryRequirements))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetImageMemoryRequirements",
-	                                                vkGetImageMemoryRequirements))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetImageSparseMemoryRequirements",
-	                                                vkGetImageSparseMemoryRequirements))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetPhysicalDeviceSparseImageFormatProperties",
-	                                                vkGetPhysicalDeviceSparseImageFormatProperties))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkQueueBindSparse", vkQueueBindSparse))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateFence", vkCreateFence))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyFence", vkDestroyFence))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkResetFences", vkResetFences))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetFenceStatus", vkGetFenceStatus))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkWaitForFences", vkWaitForFences))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateSemaphore", vkCreateSemaphore))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroySemaphore", vkDestroySemaphore))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateEvent", vkCreateEvent))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyEvent", vkDestroyEvent))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetEventStatus", vkGetEventStatus))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkSetEvent", vkSetEvent))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkResetEvent", vkResetEvent))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateQueryPool", vkCreateQueryPool))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyQueryPool", vkDestroyQueryPool))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetQueryPoolResults", vkGetQueryPoolResults))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateBuffer", vkCreateBuffer))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyBuffer", vkDestroyBuffer))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateBufferView", vkCreateBufferView))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyBufferView", vkDestroyBufferView))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateImage", vkCreateImage))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyImage", vkDestroyImage))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetImageSubresourceLayout",
-	                                                vkGetImageSubresourceLayout))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateImageView", vkCreateImageView))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyImageView", vkDestroyImageView))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateShaderModule", vkCreateShaderModule))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyShaderModule", vkDestroyShaderModule))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreatePipelineCache", vkCreatePipelineCache))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyPipelineCache", vkDestroyPipelineCache))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetPipelineCacheData", vkGetPipelineCacheData))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkMergePipelineCaches", vkMergePipelineCaches))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateGraphicsPipelines", vkCreateGraphicsPipelines))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateComputePipelines", vkCreateComputePipelines))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyPipeline", vkDestroyPipeline))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreatePipelineLayout", vkCreatePipelineLayout))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyPipelineLayout", vkDestroyPipelineLayout))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateSampler", vkCreateSampler))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroySampler", vkDestroySampler))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateDescriptorSetLayout",
-	                                                vkCreateDescriptorSetLayout))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyDescriptorSetLayout",
-	                                                vkDestroyDescriptorSetLayout))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateDescriptorPool", vkCreateDescriptorPool))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyDescriptorPool", vkDestroyDescriptorPool))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkResetDescriptorPool", vkResetDescriptorPool))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkAllocateDescriptorSets", vkAllocateDescriptorSets))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkFreeDescriptorSets", vkFreeDescriptorSets))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkUpdateDescriptorSets", vkUpdateDescriptorSets))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateFramebuffer", vkCreateFramebuffer))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyFramebuffer", vkDestroyFramebuffer))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateRenderPass", vkCreateRenderPass))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyRenderPass", vkDestroyRenderPass))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetRenderAreaGranularity", vkGetRenderAreaGranularity))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateCommandPool", vkCreateCommandPool))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyCommandPool", vkDestroyCommandPool))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkResetCommandPool", vkResetCommandPool))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkAllocateCommandBuffers", vkAllocateCommandBuffers))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkFreeCommandBuffers", vkFreeCommandBuffers))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkBeginCommandBuffer", vkBeginCommandBuffer))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkEndCommandBuffer", vkEndCommandBuffer))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkResetCommandBuffer", vkResetCommandBuffer))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdBindPipeline", vkCmdBindPipeline))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdSetViewport", vkCmdSetViewport))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdSetScissor", vkCmdSetScissor))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdSetLineWidth", vkCmdSetLineWidth))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdSetDepthBias", vkCmdSetDepthBias))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdSetBlendConstants", vkCmdSetBlendConstants))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdSetDepthBounds", vkCmdSetDepthBounds))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdSetStencilCompareMask", vkCmdSetStencilCompareMask))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdSetStencilWriteMask", vkCmdSetStencilWriteMask))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdSetStencilReference", vkCmdSetStencilReference))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdBindDescriptorSets", vkCmdBindDescriptorSets))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdBindIndexBuffer", vkCmdBindIndexBuffer))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdBindVertexBuffers", vkCmdBindVertexBuffers))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdDraw", vkCmdDraw))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdDrawIndexed", vkCmdDrawIndexed))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdDrawIndirect", vkCmdDrawIndirect))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdDrawIndexedIndirect", vkCmdDrawIndexedIndirect))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdDispatch", vkCmdDispatch))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdDispatchIndirect", vkCmdDispatchIndirect))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdCopyBuffer", vkCmdCopyBuffer))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdCopyImage", vkCmdCopyImage))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdBlitImage", vkCmdBlitImage))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdCopyBufferToImage", vkCmdCopyBufferToImage))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdCopyImageToBuffer", vkCmdCopyImageToBuffer))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdUpdateBuffer", vkCmdUpdateBuffer))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdFillBuffer", vkCmdFillBuffer))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdClearColorImage", vkCmdClearColorImage))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdClearDepthStencilImage",
-	                                                vkCmdClearDepthStencilImage))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdClearAttachments", vkCmdClearAttachments))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdResolveImage", vkCmdResolveImage))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdSetEvent", vkCmdSetEvent))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdResetEvent", vkCmdResetEvent))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdWaitEvents", vkCmdWaitEvents))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdPipelineBarrier", vkCmdPipelineBarrier))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdBeginQuery", vkCmdBeginQuery))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdEndQuery", vkCmdEndQuery))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdResetQueryPool", vkCmdResetQueryPool))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdWriteTimestamp", vkCmdWriteTimestamp))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdCopyQueryPoolResults", vkCmdCopyQueryPoolResults))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdPushConstants", vkCmdPushConstants))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdBeginRenderPass", vkCmdBeginRenderPass))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdNextSubpass", vkCmdNextSubpass))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdEndRenderPass", vkCmdEndRenderPass))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdExecuteCommands", vkCmdExecuteCommands))
-		return VK_FALSE;
-	return VK_TRUE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyInstance", vkDestroyInstance)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkEnumeratePhysicalDevices", vkEnumeratePhysicalDevices)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetPhysicalDeviceFeatures", vkGetPhysicalDeviceFeatures)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetPhysicalDeviceFormatProperties", vkGetPhysicalDeviceFormatProperties)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetPhysicalDeviceImageFormatProperties", vkGetPhysicalDeviceImageFormatProperties)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetPhysicalDeviceProperties", vkGetPhysicalDeviceProperties)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetPhysicalDeviceQueueFamilyProperties", vkGetPhysicalDeviceQueueFamilyProperties)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetPhysicalDeviceMemoryProperties", vkGetPhysicalDeviceMemoryProperties)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetDeviceProcAddr", vkGetDeviceProcAddr)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateDevice", vkCreateDevice)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyDevice", vkDestroyDevice)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkEnumerateDeviceExtensionProperties", vkEnumerateDeviceExtensionProperties)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkEnumerateDeviceLayerProperties", vkEnumerateDeviceLayerProperties)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetDeviceQueue", vkGetDeviceQueue)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkQueueSubmit", vkQueueSubmit)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkQueueWaitIdle", vkQueueWaitIdle)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDeviceWaitIdle", vkDeviceWaitIdle)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkAllocateMemory", vkAllocateMemory)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkFreeMemory", vkFreeMemory)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkMapMemory", vkMapMemory)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkUnmapMemory", vkUnmapMemory)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkFlushMappedMemoryRanges", vkFlushMappedMemoryRanges)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkInvalidateMappedMemoryRanges", vkInvalidateMappedMemoryRanges)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetDeviceMemoryCommitment", vkGetDeviceMemoryCommitment)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkBindBufferMemory", vkBindBufferMemory)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkBindImageMemory", vkBindImageMemory)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetBufferMemoryRequirements", vkGetBufferMemoryRequirements)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetImageMemoryRequirements", vkGetImageMemoryRequirements)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetImageSparseMemoryRequirements", vkGetImageSparseMemoryRequirements)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetPhysicalDeviceSparseImageFormatProperties", vkGetPhysicalDeviceSparseImageFormatProperties)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkQueueBindSparse", vkQueueBindSparse)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateFence", vkCreateFence)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyFence", vkDestroyFence)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkResetFences", vkResetFences)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetFenceStatus", vkGetFenceStatus)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkWaitForFences", vkWaitForFences)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateSemaphore", vkCreateSemaphore)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroySemaphore", vkDestroySemaphore)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateEvent", vkCreateEvent)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyEvent", vkDestroyEvent)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetEventStatus", vkGetEventStatus)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkSetEvent", vkSetEvent)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkResetEvent", vkResetEvent)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateQueryPool", vkCreateQueryPool)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyQueryPool", vkDestroyQueryPool)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetQueryPoolResults", vkGetQueryPoolResults)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateBuffer", vkCreateBuffer)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyBuffer", vkDestroyBuffer)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateBufferView", vkCreateBufferView)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyBufferView", vkDestroyBufferView)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateImage", vkCreateImage)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyImage", vkDestroyImage)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetImageSubresourceLayout", vkGetImageSubresourceLayout)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateImageView", vkCreateImageView)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyImageView", vkDestroyImageView)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateShaderModule", vkCreateShaderModule)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyShaderModule", vkDestroyShaderModule)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreatePipelineCache", vkCreatePipelineCache)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyPipelineCache", vkDestroyPipelineCache)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetPipelineCacheData", vkGetPipelineCacheData)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkMergePipelineCaches", vkMergePipelineCaches)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateGraphicsPipelines", vkCreateGraphicsPipelines)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateComputePipelines", vkCreateComputePipelines)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyPipeline", vkDestroyPipeline)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreatePipelineLayout", vkCreatePipelineLayout)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyPipelineLayout", vkDestroyPipelineLayout)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateSampler", vkCreateSampler)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroySampler", vkDestroySampler)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateDescriptorSetLayout", vkCreateDescriptorSetLayout)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyDescriptorSetLayout", vkDestroyDescriptorSetLayout)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateDescriptorPool", vkCreateDescriptorPool)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyDescriptorPool", vkDestroyDescriptorPool)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkResetDescriptorPool", vkResetDescriptorPool)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkAllocateDescriptorSets", vkAllocateDescriptorSets)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkFreeDescriptorSets", vkFreeDescriptorSets)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkUpdateDescriptorSets", vkUpdateDescriptorSets)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateFramebuffer", vkCreateFramebuffer)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyFramebuffer", vkDestroyFramebuffer)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateRenderPass", vkCreateRenderPass)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyRenderPass", vkDestroyRenderPass)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetRenderAreaGranularity", vkGetRenderAreaGranularity)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateCommandPool", vkCreateCommandPool)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyCommandPool", vkDestroyCommandPool)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkResetCommandPool", vkResetCommandPool)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkAllocateCommandBuffers", vkAllocateCommandBuffers)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkFreeCommandBuffers", vkFreeCommandBuffers)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkBeginCommandBuffer", vkBeginCommandBuffer)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkEndCommandBuffer", vkEndCommandBuffer)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkResetCommandBuffer", vkResetCommandBuffer)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdBindPipeline", vkCmdBindPipeline)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdSetViewport", vkCmdSetViewport)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdSetScissor", vkCmdSetScissor)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdSetLineWidth", vkCmdSetLineWidth)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdSetDepthBias", vkCmdSetDepthBias)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdSetBlendConstants", vkCmdSetBlendConstants)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdSetDepthBounds", vkCmdSetDepthBounds)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdSetStencilCompareMask", vkCmdSetStencilCompareMask)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdSetStencilWriteMask", vkCmdSetStencilWriteMask)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdSetStencilReference", vkCmdSetStencilReference)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdBindDescriptorSets", vkCmdBindDescriptorSets)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdBindIndexBuffer", vkCmdBindIndexBuffer)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdBindVertexBuffers", vkCmdBindVertexBuffers)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdDraw", vkCmdDraw)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdDrawIndexed", vkCmdDrawIndexed)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdDrawIndirect", vkCmdDrawIndirect)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdDrawIndexedIndirect", vkCmdDrawIndexedIndirect)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdDispatch", vkCmdDispatch)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdDispatchIndirect", vkCmdDispatchIndirect)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdCopyBuffer", vkCmdCopyBuffer)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdCopyImage", vkCmdCopyImage)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdBlitImage", vkCmdBlitImage)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdCopyBufferToImage", vkCmdCopyBufferToImage)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdCopyImageToBuffer", vkCmdCopyImageToBuffer)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdUpdateBuffer", vkCmdUpdateBuffer)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdFillBuffer", vkCmdFillBuffer)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdClearColorImage", vkCmdClearColorImage)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdClearDepthStencilImage", vkCmdClearDepthStencilImage)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdClearAttachments", vkCmdClearAttachments)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdResolveImage", vkCmdResolveImage)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdSetEvent", vkCmdSetEvent)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdResetEvent", vkCmdResetEvent)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdWaitEvents", vkCmdWaitEvents)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdPipelineBarrier", vkCmdPipelineBarrier)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdBeginQuery", vkCmdBeginQuery)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdEndQuery", vkCmdEndQuery)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdResetQueryPool", vkCmdResetQueryPool)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdWriteTimestamp", vkCmdWriteTimestamp)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdCopyQueryPoolResults", vkCmdCopyQueryPoolResults)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdPushConstants", vkCmdPushConstants)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdBeginRenderPass", vkCmdBeginRenderPass)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdNextSubpass", vkCmdNextSubpass)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdEndRenderPass", vkCmdEndRenderPass)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCmdExecuteCommands", vkCmdExecuteCommands)) return VK_FALSE;
+    return VK_TRUE;
 }
 
 VkBool32 vulkan_symbol_wrapper_load_core_instance_symbols(VkInstance instance)
 {
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyInstance", vkDestroyInstance))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkEnumeratePhysicalDevices", vkEnumeratePhysicalDevices))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetPhysicalDeviceFeatures",
-	                                                vkGetPhysicalDeviceFeatures))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetPhysicalDeviceFormatProperties",
-	                                                vkGetPhysicalDeviceFormatProperties))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetPhysicalDeviceImageFormatProperties",
-	                                                vkGetPhysicalDeviceImageFormatProperties))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetPhysicalDeviceProperties",
-	                                                vkGetPhysicalDeviceProperties))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetPhysicalDeviceQueueFamilyProperties",
-	                                                vkGetPhysicalDeviceQueueFamilyProperties))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetPhysicalDeviceMemoryProperties",
-	                                                vkGetPhysicalDeviceMemoryProperties))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetDeviceProcAddr", vkGetDeviceProcAddr))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateDevice", vkCreateDevice))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkEnumerateDeviceExtensionProperties",
-	                                                vkEnumerateDeviceExtensionProperties))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkEnumerateDeviceLayerProperties",
-	                                                vkEnumerateDeviceLayerProperties))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetPhysicalDeviceSparseImageFormatProperties",
-	                                                vkGetPhysicalDeviceSparseImageFormatProperties))
-		return VK_FALSE;
-	return VK_TRUE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkDestroyInstance", vkDestroyInstance)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkEnumeratePhysicalDevices", vkEnumeratePhysicalDevices)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetPhysicalDeviceFeatures", vkGetPhysicalDeviceFeatures)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetPhysicalDeviceFormatProperties", vkGetPhysicalDeviceFormatProperties)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetPhysicalDeviceImageFormatProperties", vkGetPhysicalDeviceImageFormatProperties)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetPhysicalDeviceProperties", vkGetPhysicalDeviceProperties)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetPhysicalDeviceQueueFamilyProperties", vkGetPhysicalDeviceQueueFamilyProperties)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetPhysicalDeviceMemoryProperties", vkGetPhysicalDeviceMemoryProperties)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetDeviceProcAddr", vkGetDeviceProcAddr)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateDevice", vkCreateDevice)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkEnumerateDeviceExtensionProperties", vkEnumerateDeviceExtensionProperties)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkEnumerateDeviceLayerProperties", vkEnumerateDeviceLayerProperties)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkGetPhysicalDeviceSparseImageFormatProperties", vkGetPhysicalDeviceSparseImageFormatProperties)) return VK_FALSE;
+    return VK_TRUE;
 }
 
 VkBool32 vulkan_symbol_wrapper_load_core_device_symbols(VkDevice device)
 {
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroyDevice", vkDestroyDevice))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkGetDeviceQueue", vkGetDeviceQueue))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkQueueSubmit", vkQueueSubmit))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkQueueWaitIdle", vkQueueWaitIdle))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDeviceWaitIdle", vkDeviceWaitIdle))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkAllocateMemory", vkAllocateMemory))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkFreeMemory", vkFreeMemory))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkMapMemory", vkMapMemory))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkUnmapMemory", vkUnmapMemory))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkFlushMappedMemoryRanges", vkFlushMappedMemoryRanges))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkInvalidateMappedMemoryRanges",
-	                                              vkInvalidateMappedMemoryRanges))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkGetDeviceMemoryCommitment", vkGetDeviceMemoryCommitment))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkBindBufferMemory", vkBindBufferMemory))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkBindImageMemory", vkBindImageMemory))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkGetBufferMemoryRequirements",
-	                                              vkGetBufferMemoryRequirements))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkGetImageMemoryRequirements", vkGetImageMemoryRequirements))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkGetImageSparseMemoryRequirements",
-	                                              vkGetImageSparseMemoryRequirements))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkQueueBindSparse", vkQueueBindSparse))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreateFence", vkCreateFence))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroyFence", vkDestroyFence))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkResetFences", vkResetFences))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkGetFenceStatus", vkGetFenceStatus))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkWaitForFences", vkWaitForFences))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreateSemaphore", vkCreateSemaphore))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroySemaphore", vkDestroySemaphore))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreateEvent", vkCreateEvent))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroyEvent", vkDestroyEvent))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkGetEventStatus", vkGetEventStatus))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkSetEvent", vkSetEvent))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkResetEvent", vkResetEvent))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreateQueryPool", vkCreateQueryPool))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroyQueryPool", vkDestroyQueryPool))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkGetQueryPoolResults", vkGetQueryPoolResults))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreateBuffer", vkCreateBuffer))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroyBuffer", vkDestroyBuffer))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreateBufferView", vkCreateBufferView))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroyBufferView", vkDestroyBufferView))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreateImage", vkCreateImage))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroyImage", vkDestroyImage))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkGetImageSubresourceLayout", vkGetImageSubresourceLayout))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreateImageView", vkCreateImageView))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroyImageView", vkDestroyImageView))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreateShaderModule", vkCreateShaderModule))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroyShaderModule", vkDestroyShaderModule))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreatePipelineCache", vkCreatePipelineCache))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroyPipelineCache", vkDestroyPipelineCache))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkGetPipelineCacheData", vkGetPipelineCacheData))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkMergePipelineCaches", vkMergePipelineCaches))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreateGraphicsPipelines", vkCreateGraphicsPipelines))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreateComputePipelines", vkCreateComputePipelines))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroyPipeline", vkDestroyPipeline))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreatePipelineLayout", vkCreatePipelineLayout))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroyPipelineLayout", vkDestroyPipelineLayout))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreateSampler", vkCreateSampler))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroySampler", vkDestroySampler))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreateDescriptorSetLayout", vkCreateDescriptorSetLayout))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroyDescriptorSetLayout", vkDestroyDescriptorSetLayout))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreateDescriptorPool", vkCreateDescriptorPool))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroyDescriptorPool", vkDestroyDescriptorPool))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkResetDescriptorPool", vkResetDescriptorPool))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkAllocateDescriptorSets", vkAllocateDescriptorSets))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkFreeDescriptorSets", vkFreeDescriptorSets))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkUpdateDescriptorSets", vkUpdateDescriptorSets))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreateFramebuffer", vkCreateFramebuffer))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroyFramebuffer", vkDestroyFramebuffer))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreateRenderPass", vkCreateRenderPass))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroyRenderPass", vkDestroyRenderPass))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkGetRenderAreaGranularity", vkGetRenderAreaGranularity))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreateCommandPool", vkCreateCommandPool))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroyCommandPool", vkDestroyCommandPool))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkResetCommandPool", vkResetCommandPool))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkAllocateCommandBuffers", vkAllocateCommandBuffers))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkFreeCommandBuffers", vkFreeCommandBuffers))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkBeginCommandBuffer", vkBeginCommandBuffer))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkEndCommandBuffer", vkEndCommandBuffer))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkResetCommandBuffer", vkResetCommandBuffer))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdBindPipeline", vkCmdBindPipeline))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdSetViewport", vkCmdSetViewport))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdSetScissor", vkCmdSetScissor))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdSetLineWidth", vkCmdSetLineWidth))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdSetDepthBias", vkCmdSetDepthBias))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdSetBlendConstants", vkCmdSetBlendConstants))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdSetDepthBounds", vkCmdSetDepthBounds))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdSetStencilCompareMask", vkCmdSetStencilCompareMask))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdSetStencilWriteMask", vkCmdSetStencilWriteMask))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdSetStencilReference", vkCmdSetStencilReference))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdBindDescriptorSets", vkCmdBindDescriptorSets))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdBindIndexBuffer", vkCmdBindIndexBuffer))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdBindVertexBuffers", vkCmdBindVertexBuffers))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdDraw", vkCmdDraw))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdDrawIndexed", vkCmdDrawIndexed))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdDrawIndirect", vkCmdDrawIndirect))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdDrawIndexedIndirect", vkCmdDrawIndexedIndirect))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdDispatch", vkCmdDispatch))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdDispatchIndirect", vkCmdDispatchIndirect))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdCopyBuffer", vkCmdCopyBuffer))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdCopyImage", vkCmdCopyImage))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdBlitImage", vkCmdBlitImage))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdCopyBufferToImage", vkCmdCopyBufferToImage))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdCopyImageToBuffer", vkCmdCopyImageToBuffer))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdUpdateBuffer", vkCmdUpdateBuffer))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdFillBuffer", vkCmdFillBuffer))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdClearColorImage", vkCmdClearColorImage))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdClearDepthStencilImage", vkCmdClearDepthStencilImage))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdClearAttachments", vkCmdClearAttachments))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdResolveImage", vkCmdResolveImage))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdSetEvent", vkCmdSetEvent))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdResetEvent", vkCmdResetEvent))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdWaitEvents", vkCmdWaitEvents))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdPipelineBarrier", vkCmdPipelineBarrier))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdBeginQuery", vkCmdBeginQuery))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdEndQuery", vkCmdEndQuery))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdResetQueryPool", vkCmdResetQueryPool))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdWriteTimestamp", vkCmdWriteTimestamp))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdCopyQueryPoolResults", vkCmdCopyQueryPoolResults))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdPushConstants", vkCmdPushConstants))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdBeginRenderPass", vkCmdBeginRenderPass))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdNextSubpass", vkCmdNextSubpass))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdEndRenderPass", vkCmdEndRenderPass))
-		return VK_FALSE;
-	if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdExecuteCommands", vkCmdExecuteCommands))
-		return VK_FALSE;
-	return VK_TRUE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroyDevice", vkDestroyDevice)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkGetDeviceQueue", vkGetDeviceQueue)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkQueueSubmit", vkQueueSubmit)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkQueueWaitIdle", vkQueueWaitIdle)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDeviceWaitIdle", vkDeviceWaitIdle)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkAllocateMemory", vkAllocateMemory)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkFreeMemory", vkFreeMemory)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkMapMemory", vkMapMemory)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkUnmapMemory", vkUnmapMemory)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkFlushMappedMemoryRanges", vkFlushMappedMemoryRanges)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkInvalidateMappedMemoryRanges", vkInvalidateMappedMemoryRanges)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkGetDeviceMemoryCommitment", vkGetDeviceMemoryCommitment)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkBindBufferMemory", vkBindBufferMemory)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkBindImageMemory", vkBindImageMemory)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkGetBufferMemoryRequirements", vkGetBufferMemoryRequirements)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkGetImageMemoryRequirements", vkGetImageMemoryRequirements)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkGetImageSparseMemoryRequirements", vkGetImageSparseMemoryRequirements)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkQueueBindSparse", vkQueueBindSparse)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreateFence", vkCreateFence)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroyFence", vkDestroyFence)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkResetFences", vkResetFences)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkGetFenceStatus", vkGetFenceStatus)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkWaitForFences", vkWaitForFences)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreateSemaphore", vkCreateSemaphore)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroySemaphore", vkDestroySemaphore)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreateEvent", vkCreateEvent)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroyEvent", vkDestroyEvent)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkGetEventStatus", vkGetEventStatus)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkSetEvent", vkSetEvent)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkResetEvent", vkResetEvent)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreateQueryPool", vkCreateQueryPool)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroyQueryPool", vkDestroyQueryPool)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkGetQueryPoolResults", vkGetQueryPoolResults)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreateBuffer", vkCreateBuffer)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroyBuffer", vkDestroyBuffer)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreateBufferView", vkCreateBufferView)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroyBufferView", vkDestroyBufferView)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreateImage", vkCreateImage)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroyImage", vkDestroyImage)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkGetImageSubresourceLayout", vkGetImageSubresourceLayout)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreateImageView", vkCreateImageView)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroyImageView", vkDestroyImageView)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreateShaderModule", vkCreateShaderModule)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroyShaderModule", vkDestroyShaderModule)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreatePipelineCache", vkCreatePipelineCache)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroyPipelineCache", vkDestroyPipelineCache)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkGetPipelineCacheData", vkGetPipelineCacheData)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkMergePipelineCaches", vkMergePipelineCaches)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreateGraphicsPipelines", vkCreateGraphicsPipelines)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreateComputePipelines", vkCreateComputePipelines)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroyPipeline", vkDestroyPipeline)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreatePipelineLayout", vkCreatePipelineLayout)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroyPipelineLayout", vkDestroyPipelineLayout)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreateSampler", vkCreateSampler)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroySampler", vkDestroySampler)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreateDescriptorSetLayout", vkCreateDescriptorSetLayout)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroyDescriptorSetLayout", vkDestroyDescriptorSetLayout)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreateDescriptorPool", vkCreateDescriptorPool)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroyDescriptorPool", vkDestroyDescriptorPool)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkResetDescriptorPool", vkResetDescriptorPool)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkAllocateDescriptorSets", vkAllocateDescriptorSets)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkFreeDescriptorSets", vkFreeDescriptorSets)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkUpdateDescriptorSets", vkUpdateDescriptorSets)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreateFramebuffer", vkCreateFramebuffer)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroyFramebuffer", vkDestroyFramebuffer)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreateRenderPass", vkCreateRenderPass)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroyRenderPass", vkDestroyRenderPass)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkGetRenderAreaGranularity", vkGetRenderAreaGranularity)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCreateCommandPool", vkCreateCommandPool)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkDestroyCommandPool", vkDestroyCommandPool)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkResetCommandPool", vkResetCommandPool)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkAllocateCommandBuffers", vkAllocateCommandBuffers)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkFreeCommandBuffers", vkFreeCommandBuffers)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkBeginCommandBuffer", vkBeginCommandBuffer)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkEndCommandBuffer", vkEndCommandBuffer)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkResetCommandBuffer", vkResetCommandBuffer)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdBindPipeline", vkCmdBindPipeline)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdSetViewport", vkCmdSetViewport)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdSetScissor", vkCmdSetScissor)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdSetLineWidth", vkCmdSetLineWidth)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdSetDepthBias", vkCmdSetDepthBias)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdSetBlendConstants", vkCmdSetBlendConstants)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdSetDepthBounds", vkCmdSetDepthBounds)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdSetStencilCompareMask", vkCmdSetStencilCompareMask)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdSetStencilWriteMask", vkCmdSetStencilWriteMask)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdSetStencilReference", vkCmdSetStencilReference)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdBindDescriptorSets", vkCmdBindDescriptorSets)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdBindIndexBuffer", vkCmdBindIndexBuffer)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdBindVertexBuffers", vkCmdBindVertexBuffers)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdDraw", vkCmdDraw)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdDrawIndexed", vkCmdDrawIndexed)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdDrawIndirect", vkCmdDrawIndirect)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdDrawIndexedIndirect", vkCmdDrawIndexedIndirect)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdDispatch", vkCmdDispatch)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdDispatchIndirect", vkCmdDispatchIndirect)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdCopyBuffer", vkCmdCopyBuffer)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdCopyImage", vkCmdCopyImage)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdBlitImage", vkCmdBlitImage)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdCopyBufferToImage", vkCmdCopyBufferToImage)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdCopyImageToBuffer", vkCmdCopyImageToBuffer)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdUpdateBuffer", vkCmdUpdateBuffer)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdFillBuffer", vkCmdFillBuffer)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdClearColorImage", vkCmdClearColorImage)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdClearDepthStencilImage", vkCmdClearDepthStencilImage)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdClearAttachments", vkCmdClearAttachments)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdResolveImage", vkCmdResolveImage)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdSetEvent", vkCmdSetEvent)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdResetEvent", vkCmdResetEvent)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdWaitEvents", vkCmdWaitEvents)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdPipelineBarrier", vkCmdPipelineBarrier)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdBeginQuery", vkCmdBeginQuery)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdEndQuery", vkCmdEndQuery)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdResetQueryPool", vkCmdResetQueryPool)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdWriteTimestamp", vkCmdWriteTimestamp)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdCopyQueryPoolResults", vkCmdCopyQueryPoolResults)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdPushConstants", vkCmdPushConstants)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdBeginRenderPass", vkCmdBeginRenderPass)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdNextSubpass", vkCmdNextSubpass)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdEndRenderPass", vkCmdEndRenderPass)) return VK_FALSE;
+    if (!VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_SYMBOL(device, "vkCmdExecuteCommands", vkCmdExecuteCommands)) return VK_FALSE;
+    return VK_TRUE;
 }

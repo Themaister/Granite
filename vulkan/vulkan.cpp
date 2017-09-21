@@ -549,6 +549,9 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 	vkGetDeviceQueue(device, compute_queue_family, compute_queue_index, &compute_queue);
 	vkGetDeviceQueue(device, transfer_queue_family, transfer_queue_index, &transfer_queue);
 
+	if (supports_dedicated)
+		VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_EXTENSION_SYMBOL(device, vkGetImageMemoryRequirements2KHR);
+
 #ifndef _WIN32
 	if (supports_external)
 	{
@@ -556,7 +559,6 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 		VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_EXTENSION_SYMBOL(device, vkGetSemaphoreFdKHR);
 		VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_EXTENSION_SYMBOL(device, vkGetMemoryFdKHR);
 		VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_EXTENSION_SYMBOL(device, vkGetMemoryFdPropertiesKHR);
-		VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_EXTENSION_SYMBOL(device, vkGetImageMemoryRequirements2KHR);
 	}
 #endif
 

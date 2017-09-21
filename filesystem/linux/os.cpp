@@ -254,6 +254,9 @@ void OSFilesystem::poll_notifications()
 
 void OSFilesystem::uninstall_notification(FileNotifyHandle handle)
 {
+	if (handle < 0)
+		return;
+
 	LOGI("Uninstalling notification: %d\n", handle);
 
 	auto real = virtual_to_real.find(handle);
@@ -296,7 +299,10 @@ FileNotifyHandle OSFilesystem::install_notification(const string &path,
 	                           IN_MOVE | IN_CLOSE_WRITE | IN_CREATE | IN_DELETE | IN_DELETE_SELF);
 
 	if (wd < 0)
-		throw runtime_error("inotify_add_watch");
+	{
+		LOGE("Failed to create watch handle.\n");
+		return -1;
+	}
 
 	// We could have different paths which look different but resolve to the same wd, so handle that.
 	auto itr = handlers.find(wd);

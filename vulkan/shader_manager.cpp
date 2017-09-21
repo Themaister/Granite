@@ -292,6 +292,7 @@ void ShaderManager::add_directory_watch(const std::string &source)
 		});
 	}
 
-	directory_watches[basedir] = { backend, handle };
+	if (handle >= 0)
+		directory_watches[basedir] = { backend, handle };
 }
 }

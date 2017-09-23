@@ -150,6 +150,7 @@ SphereMesh::SphereMesh(unsigned density)
 	: density(density)
 {
 	static_aabb = AABB(vec3(-1.0f), vec3(1.0f));
+	material = StockMaterials::get().get_checkerboard();
 	EVENT_MANAGER_REGISTER_LATCH(SphereMesh, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
@@ -257,7 +258,6 @@ void SphereMesh::on_device_created(const DeviceCreatedEvent &event)
 	count = indices.size();
 	topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
 
-	material = StockMaterials::get().get_checkerboard();
 	bake();
 }
 
@@ -269,6 +269,7 @@ void SphereMesh::on_device_destroyed(const DeviceCreatedEvent &)
 CubeMesh::CubeMesh()
 {
 	static_aabb = AABB(vec3(-1.0f), vec3(1.0f));
+	material = StockMaterials::get().get_checkerboard();
 	EVENT_MANAGER_REGISTER_LATCH(CubeMesh, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
@@ -389,8 +390,6 @@ void CubeMesh::on_device_created(const DeviceCreatedEvent &created)
 	ibo_info.domain = BufferDomain::Device;
 	ibo_info.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
 	ibo = device.create_buffer(ibo_info, indices);
-	material = StockMaterials::get().get_checkerboard();
-	//material = MaterialManager::get().request_material("builtin://materials/default.json");
 
 	vertex_offset = 0;
 	ibo_offset = 0;

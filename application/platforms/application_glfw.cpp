@@ -21,6 +21,7 @@
  */
 
 #include "application.hpp"
+#include "application_events.hpp"
 #include "vulkan_symbol_wrapper.h"
 #include "vulkan.hpp"
 #include "GLFW/glfw3.h"
@@ -46,10 +47,11 @@ static VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL GetInstanceProcAddr(VkInstance i
 	return reinterpret_cast<PFN_vkVoidFunction>(glfwGetInstanceProcAddress(instance, name));
 }
 
-struct ApplicationPlatformGLFW : ApplicationPlatform
+struct WSIPlatformGLFW : WSIPlatform
 {
 public:
-	ApplicationPlatformGLFW(unsigned width, unsigned height)
+	WSIPlatformGLFW(unsigned width, unsigned height)
+		: width(width), height(height)
 	{
 		if (!glfwInit())
 			throw runtime_error("Failed to initialize GLFW.");
@@ -117,7 +119,7 @@ public:
 		return height;
 	}
 
-	~ApplicationPlatformGLFW()
+	~WSIPlatformGLFW()
 	{
 		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
@@ -159,7 +161,7 @@ private:
 
 static void fb_size_cb(GLFWwindow *window, int width, int height)
 {
-	auto *glfw = static_cast<ApplicationPlatformGLFW *>(glfwGetWindowUserPointer(window));
+	auto *glfw = static_cast<WSIPlatformGLFW *>(glfwGetWindowUserPointer(window));
 	VK_ASSERT(width != 0 && height != 0);
 	glfw->notify_resize(width, height);
 }
@@ -227,7 +229,7 @@ static void key_cb(GLFWwindow *window, int key, int, int action, int mods)
 	}
 
 	auto gkey = glfw_key_to_granite(key);
-	auto *glfw = static_cast<ApplicationPlatformGLFW *>(glfwGetWindowUserPointer(window));
+	auto *glfw = static_cast<WSIPlatformGLFW *>(glfwGetWindowUserPointer(window));
 
 	if (action == GLFW_PRESS && key == GLFW_KEY_ESCAPE)
 		glfwSetWindowShouldClose(window, GLFW_TRUE);
@@ -244,7 +246,7 @@ static void key_cb(GLFWwindow *window, int key, int, int action, int mods)
 			if (primary)
 			{
 				auto *mode = glfwGetVideoMode(primary);
-				ApplicationPlatformGLFW::CachedWindow win;
+				WSIPlatformGLFW::CachedWindow win;
 				glfwGetWindowPos(window, &win.x, &win.y);
 				glfwGetWindowSize(window, &win.width, &win.height);
 				glfw->set_cached_window(win);
@@ -258,7 +260,7 @@ static void key_cb(GLFWwindow *window, int key, int, int action, int mods)
 
 static void button_cb(GLFWwindow *window, int button, int action, int)
 {
-	auto *glfw = static_cast<ApplicationPlatformGLFW *>(glfwGetWindowUserPointer(window));
+	auto *glfw = static_cast<WSIPlatformGLFW *>(glfwGetWindowUserPointer(window));
 
 	MouseButton btn;
 	switch (button)
@@ -282,13 +284,13 @@ static void button_cb(GLFWwindow *window, int button, int action, int)
 
 static void cursor_cb(GLFWwindow *window, double x, double y)
 {
-	auto *glfw = static_cast<ApplicationPlatformGLFW *>(glfwGetWindowUserPointer(window));
+	auto *glfw = static_cast<WSIPlatformGLFW *>(glfwGetWindowUserPointer(window));
 	glfw->get_input_tracker().mouse_move_event(x, y);
 }
 
 static void enter_cb(GLFWwindow *window, int entered)
 {
-	auto *glfw = static_cast<ApplicationPlatformGLFW *>(glfwGetWindowUserPointer(window));
+	auto *glfw = static_cast<WSIPlatformGLFW *>(glfwGetWindowUserPointer(window));
 	if (entered)
 	{
 		double x, y;
@@ -299,21 +301,23 @@ static void enter_cb(GLFWwindow *window, int entered)
 		glfw->get_input_tracker().mouse_leave();
 }
 
-unique_ptr<ApplicationPlatform> create_default_application_platform(unsigned width, unsigned height)
+void application_dummy()
 {
-	return unique_ptr<ApplicationPlatform>(new ApplicationPlatformGLFW(width, height));
 }
 }
 
 #ifdef _WIN32
-int CALLBACK WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
+int CALLBACK WinMain(HINSTANCE, HINSTANCE, LPSTR lpCmdLine, int)
 {
 	char granite_str[] = "granite";
-	char *granite_ptr[] = { granite_str, nullptr };
+	char *granite_ptr[] = { granite_str, lpCmdLine, nullptr };
 
-	auto app = unique_ptr<Granite::Application>(Granite::application_create(1, granite_ptr));
+	auto app = unique_ptr<Granite::Application>(Granite::application_create(2, granite_ptr));
 	if (app)
 	{
+		if (!app->init_wsi(make_unique<Granite::WSIPlatformGLFW>(1280, 720)))
+			return 1;
+
 		while (app->poll())
 			app->run_frame();
 		return 0;
@@ -327,6 +331,9 @@ int main(int argc, char *argv[])
 	auto app = unique_ptr<Granite::Application>(Granite::application_create(argc, argv));
 	if (app)
 	{
+		if (!app->init_wsi(make_unique<Granite::WSIPlatformGLFW>(1280, 720)))
+			return 1;
+
 		while (app->poll())
 			app->run_frame();
 		return 0;

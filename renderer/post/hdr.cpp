@@ -22,7 +22,7 @@
 
 #include "hdr.hpp"
 #include "math.hpp"
-#include "application.hpp"
+#include "application_events.hpp"
 
 namespace Granite
 {

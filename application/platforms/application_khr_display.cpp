@@ -75,10 +75,10 @@ static bool vulkan_update_display_mode(unsigned *width, unsigned *height, const 
 	}
 }
 
-struct ApplicationPlatformDisplay : ApplicationPlatform
+struct WSIPlatformDisplay : Vulkan::WSIPlatform
 {
 public:
-	ApplicationPlatformDisplay(unsigned width, unsigned height)
+	WSIPlatformDisplay(unsigned width, unsigned height)
 		: width(width), height(height)
 	{
 		if (!Context::init_loader(nullptr))
@@ -92,7 +92,7 @@ public:
 		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
 	}
 
-	~ApplicationPlatformDisplay()
+	~WSIPlatformDisplay()
 	{
 		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
@@ -278,11 +278,6 @@ private:
 	Display *dpy = nullptr;
 #endif
 };
-
-unique_ptr<ApplicationPlatform> create_default_application_platform(unsigned width, unsigned height)
-{
-	return unique_ptr<ApplicationPlatform>(new ApplicationPlatformDisplay(width, height));
-}
 }
 
 int main(int argc, char *argv[])
@@ -290,6 +285,9 @@ int main(int argc, char *argv[])
 	auto app = unique_ptr<Granite::Application>(Granite::application_create(argc, argv));
 	if (app)
 	{
+		if (!app->init_wsi(make_unique<Granite::WSIPlatformDisplay>(1280, 720)))
+			return 1;
+
 		while (app->poll())
 			app->run_frame();
 		return 0;

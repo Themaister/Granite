@@ -26,23 +26,88 @@
 #include "semaphore_manager.hpp"
 #include "vulkan.hpp"
 #include "vulkan_symbol_wrapper.h"
+#include "timer.hpp"
+#include "input.hpp"
 #include <memory>
 #include <vector>
 
-namespace Granite
-{
-class ApplicationPlatform;
-}
-
 namespace Vulkan
 {
+class WSI;
+
+class WSIPlatform
+{
+public:
+	virtual ~WSIPlatform() = default;
+
+	virtual VkSurfaceKHR create_surface(VkInstance instance, VkPhysicalDevice gpu) = 0;
+	virtual std::vector<const char *> get_instance_extensions() = 0;
+	virtual std::vector<const char *> get_device_extensions()
+	{
+		return { "VK_KHR_swapchain" };
+	}
+
+	virtual VkFormat get_preferred_format()
+	{
+		return VK_FORMAT_B8G8R8A8_SRGB;
+	}
+
+	bool should_resize()
+	{
+		return resize;
+	}
+
+	void acknowledge_resize()
+	{
+		resize = false;
+	}
+
+	virtual uint32_t get_surface_width() = 0;
+	virtual uint32_t get_surface_height() = 0;
+
+	virtual float get_aspect_ratio()
+	{
+		return float(get_surface_width()) / float(get_surface_height());
+	}
+
+	virtual bool alive(Vulkan::WSI &wsi) = 0;
+	virtual void poll_input() = 0;
+	virtual bool has_external_swapchain()
+	{
+		return false;
+	}
+
+	Util::FrameTimer &get_frame_timer()
+	{
+		return timer;
+	}
+
+	Granite::InputTracker &get_input_tracker()
+	{
+		return tracker;
+	}
+
+	void kill()
+	{
+		killed = true;
+	}
+
+protected:
+	bool resize = false;
+	bool killed = false;
+
+private:
+	Util::FrameTimer timer;
+	Granite::InputTracker tracker;
+};
 
 class WSI
 {
 public:
 	WSI();
-	bool init(unsigned width, unsigned height);
-	void set_platform(Granite::ApplicationPlatform *platform);
+	void set_platform(WSIPlatform *platform);
+
+	bool init();
 	bool init_external(std::unique_ptr<Vulkan::Context> context,
 	                   std::vector<Vulkan::ImageHandle> external_images);
 	bool reinit_external_swapchain(std::vector<Vulkan::ImageHandle> external_images);
@@ -65,7 +130,7 @@ public:
 	void set_external_frame(unsigned index, Vulkan::Semaphore acquire_semaphore, double frame_time);
 	Vulkan::Semaphore get_external_release_semaphore();
 
-	Granite::ApplicationPlatform &get_platform()
+	WSIPlatform &get_platform()
 	{
 		VK_ASSERT(platform);
 		return *platform;
@@ -94,7 +159,7 @@ private:
 	VkSemaphore release_semaphore;
 	bool need_acquire = true;
 
-	Granite::ApplicationPlatform *platform = nullptr;
+	WSIPlatform *platform = nullptr;
 
 	bool init_external_swapchain(std::vector<Vulkan::ImageHandle> external_images);
 	std::vector<Vulkan::ImageHandle> external_swapchain_images;

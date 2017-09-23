@@ -27,9 +27,10 @@
 #include "render_context.hpp"
 #include "shader_suite.hpp"
 #include "renderer.hpp"
-#include "application.hpp"
-#include <string.h>
 #include "utils/image_utils.hpp"
+#include "application_events.hpp"
+#include "render_graph.hpp"
+#include <string.h>
 
 using namespace Vulkan;
 using namespace Util;

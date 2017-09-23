@@ -23,8 +23,7 @@
 #include "wsi.hpp"
 #include "vulkan_symbol_wrapper.h"
 #include "vulkan_events.hpp"
-#include "application.hpp"
-#include "input.hpp"
+#include "application_events.hpp"
 
 using namespace std;
 
@@ -67,22 +66,28 @@ bool WSI::init_external(std::unique_ptr<Vulkan::Context> fresh_context,
 	return true;
 }
 
-void WSI::set_platform(Granite::ApplicationPlatform *platform)
+void WSI::set_platform(WSIPlatform *platform)
 {
 	this->platform = platform;
 }
 
-bool WSI::init(unsigned width, unsigned height)
+bool WSI::init()
 {
 	auto instance_ext = platform->get_instance_extensions();
 	auto device_ext = platform->get_device_extensions();
-	context = unique_ptr<Context>(new Context(instance_ext.data(), instance_ext.size(), device_ext.data(), device_ext.size()));
+	context.reset(new Context(instance_ext.data(), instance_ext.size(), device_ext.data(), device_ext.size()));
+
+	semaphore_manager->init(context->get_device());
+	device->set_context(*context);
+	auto &em = Granite::EventManager::get_global();
+	em.enqueue_latched<DeviceCreatedEvent>(device.get());
+
 	surface = platform->create_surface(context->get_instance(), context->get_gpu());
 	if (surface == VK_NULL_HANDLE)
 		return false;
 
-	width = platform->get_surface_width();
-	height = platform->get_surface_height();
+	unsigned width = platform->get_surface_width();
+	unsigned height = platform->get_surface_height();
 	aspect_ratio = platform->get_aspect_ratio();
 
 	VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(context->get_instance(), vkDestroySurfaceKHR);
@@ -106,12 +111,7 @@ bool WSI::init(unsigned width, unsigned height)
 
 	if (!init_swapchain(width, height))
 		return false;
-
-	semaphore_manager->init(context->get_device());
-	device->set_context(*context);
-	auto &em = Granite::EventManager::get_global();
 	device->init_swapchain(swapchain_images, this->width, this->height, format);
-	em.enqueue_latched<DeviceCreatedEvent>(device.get());
 	platform->get_frame_timer().reset();
 
 	return true;

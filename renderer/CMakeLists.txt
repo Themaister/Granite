@@ -18,7 +18,7 @@ add_granite_library(renderer
         post/hdr.hpp post/hdr.cpp
         utils/image_utils.hpp utils/image_utils.cpp
         scene_loader.cpp scene_loader.hpp)
-target_link_libraries(renderer vulkan-backend math importers)
+target_link_libraries(renderer vulkan-backend math importers application-events)
 target_include_directories(renderer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 target_compile_definitions(renderer PRIVATE RAPIDJSON_HAS_STDSTRING=1)

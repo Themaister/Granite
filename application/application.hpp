@@ -22,7 +22,6 @@
 
 #pragma once
 
-#include <window.hpp>
 #include "wsi.hpp"
 #include "render_context.hpp"
 #include "scene_loader.hpp"
@@ -38,149 +37,23 @@
 
 namespace Granite
 {
-enum class ApplicationLifecycle
-{
-	Running,
-	Paused,
-	Stopped,
-	Dead
-};
-
-class ApplicationLifecycleEvent : public Event
-{
-public:
-	GRANITE_EVENT_TYPE_DECL(ApplicationLifecycleEvent)
-
-	ApplicationLifecycleEvent(ApplicationLifecycle lifecycle)
-		: lifecycle(lifecycle)
-	{
-	}
-
-	ApplicationLifecycle get_lifecycle() const
-	{
-		return lifecycle;
-	}
-
-private:
-	ApplicationLifecycle lifecycle;
-};
-
-class FrameTickEvent : public Granite::Event
-{
-public:
-	GRANITE_EVENT_TYPE_DECL(FrameTickEvent)
-
-	FrameTickEvent(double frame_time, double elapsed_time)
-		: frame_time(frame_time), elapsed_time(elapsed_time)
-	{
-	}
-
-	double get_frame_time() const
-	{
-		return frame_time;
-	}
-
-	double get_elapsed_time() const
-	{
-		return elapsed_time;
-	}
-
-private:
-	double frame_time;
-	double elapsed_time;
-};
-
-class ApplicationPlatform
-{
-public:
-	virtual ~ApplicationPlatform() = default;
-
-	virtual VkSurfaceKHR create_surface(VkInstance instance, VkPhysicalDevice gpu) = 0;
-	virtual std::vector<const char *> get_instance_extensions() = 0;
-	virtual std::vector<const char *> get_device_extensions()
-	{
-		return { "VK_KHR_swapchain" };
-	}
-
-	virtual VkFormat get_preferred_format()
-	{
-		return VK_FORMAT_B8G8R8A8_SRGB;
-	}
-
-	bool should_resize()
-	{
-		return resize;
-	}
-
-	void acknowledge_resize()
-	{
-		resize = false;
-	}
-
-	virtual uint32_t get_surface_width() = 0;
-	virtual uint32_t get_surface_height() = 0;
-
-	virtual float get_aspect_ratio()
-	{
-		return float(get_surface_width()) / float(get_surface_height());
-	}
-
-	virtual bool alive(Vulkan::WSI &wsi) = 0;
-	virtual void poll_input() = 0;
-	virtual bool has_external_swapchain()
-	{
-		return false;
-	}
-
-	Util::FrameTimer &get_frame_timer()
-	{
-		return timer;
-	}
-
-	InputTracker &get_input_tracker()
-	{
-		return tracker;
-	}
-
-	void kill()
-	{
-		killed = true;
-	}
-
-protected:
-	bool resize = false;
-	bool killed = false;
-
-private:
-	Util::FrameTimer timer;
-	InputTracker tracker;
-};
 
 class Application
 {
 public:
-	Application(unsigned width, unsigned height);
+	Application();
 	virtual ~Application() = default;
 	virtual void render_frame(double frame_time, double elapsed_time) = 0;
+	bool init_wsi(std::unique_ptr<Vulkan::WSIPlatform> platform);
 
 	Vulkan::WSI &get_wsi()
 	{
 		return wsi;
 	}
 
-	ApplicationPlatform &get_platform()
+	Vulkan::WSIPlatform &get_platform()
 	{
 		return *platform;
-	}
-
-	unsigned get_default_width() const
-	{
-		return width;
-	}
-
-	unsigned get_default_height() const
-	{
-		return height;
 	}
 
 	virtual std::string get_name()
@@ -193,19 +66,29 @@ public:
 		return 0;
 	}
 
+	virtual unsigned get_default_width()
+	{
+		return 1280;
+	}
+
+	virtual unsigned get_default_height()
+	{
+		return 720;
+	}
+
 	bool poll();
 	void run_frame();
 
 private:
-	unsigned width, height;
-	std::unique_ptr<ApplicationPlatform> platform;
+	unsigned width = 0, height = 0;
+	std::unique_ptr<Vulkan::WSIPlatform> platform;
 	Vulkan::WSI wsi;
 };
 
 class SceneViewerApplication : public Application, public EventHandler
 {
 public:
-	SceneViewerApplication(const std::string &path, unsigned width, unsigned height);
+	SceneViewerApplication(const std::string &path);
 	void render_frame(double frame_time, double elapsed_time) override;
 	void rescale_scene(float radius);
 	void loop_animations();
@@ -268,5 +151,8 @@ protected:
 };
 
 extern Application *application_create(int argc, char *argv[]);
-std::unique_ptr<ApplicationPlatform> create_default_application_platform(unsigned width, unsigned height);
+
+// Call this to ensure application-main is linked in correctly without having to mess around
+// with -Wl,--whole-archive.
+void application_dummy();
 }

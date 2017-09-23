@@ -27,6 +27,8 @@ namespace Granite
 {
 Application *application_create(int argc, char **argv)
 {
+	application_dummy();
+
 #ifdef ASSET_DIRECTORY
 	const char *asset_dir = getenv("ASSET_DIRECTORY");
 	if (!asset_dir)
@@ -44,7 +46,7 @@ Application *application_create(int argc, char **argv)
 		}
 
 		auto path = std::string("file://") + argv[1];
-		auto *app = new SceneViewerApplication(path, 1280, 720);
+		auto *app = new SceneViewerApplication(path);
 		app->rescale_scene(5.0f);
 		app->loop_animations();
 		return app;

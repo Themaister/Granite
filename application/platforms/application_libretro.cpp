@@ -39,7 +39,7 @@ static std::string application_internal_resolution;
 static unsigned current_width;
 static unsigned current_height;
 
-struct ApplicationPlatformLibretro : Granite::ApplicationPlatform
+struct WSIPlatformLibretro : Vulkan::WSIPlatform
 {
 	VkSurfaceKHR create_surface(VkInstance, VkPhysicalDevice) override
 	{
@@ -120,11 +120,6 @@ struct ApplicationPlatformLibretro : Granite::ApplicationPlatform
 namespace Granite
 {
 retro_log_printf_t libretro_log;
-// We will handle the platform stuff externally through the libretro implementation.
-std::unique_ptr<ApplicationPlatform> create_default_application_platform(unsigned, unsigned)
-{
-	return std::unique_ptr<ApplicationPlatform>(new ApplicationPlatformLibretro);
-}
 }
 
 static retro_hw_render_callback hw_render;
@@ -344,6 +339,14 @@ RETRO_API bool retro_load_game(const struct retro_game_info *info)
 
 	current_width = app->get_default_width();
 	current_height = app->get_default_height();
+
+	if (!app->init_wsi(make_unique<WSIPlatformLibretro>()))
+	{
+		Granite::libretro_log(RETRO_LOG_ERROR, "Failed to init platform.");
+		app.reset();
+		return false;
+	}
+
 	application_name = app->get_name();
 	libretro_set_application_info(application_name.c_str(), app->get_version());
 

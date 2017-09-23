@@ -37,16 +37,20 @@ using namespace Vulkan;
 
 namespace Granite
 {
-Application::Application(unsigned width, unsigned height)
-	: width(width), height(height)
+Application::Application()
 {
 	EventManager::get_global();
 	Filesystem::get();
+}
 
-	platform = create_default_application_platform(width, height);
+bool Application::init_wsi(std::unique_ptr<WSIPlatform> new_platform)
+{
+	platform = move(new_platform);
 	wsi.set_platform(platform.get());
-	if (!platform->has_external_swapchain() && !wsi.init(width, height))
-		throw runtime_error("Failed to initialize WSI.");
+	if (!platform->has_external_swapchain() && !wsi.init())
+		return false;
+
+	return true;
 }
 
 static vec3 light_direction()
@@ -54,9 +58,8 @@ static vec3 light_direction()
 	return normalize(vec3(0.5f, 1.2f, 0.8f));
 }
 
-SceneViewerApplication::SceneViewerApplication(const std::string &path, unsigned width, unsigned height)
-	: Application(width, height),
-	  forward_renderer(RendererType::GeneralForward),
+SceneViewerApplication::SceneViewerApplication(const std::string &path)
+	: forward_renderer(RendererType::GeneralForward),
       deferred_renderer(RendererType::GeneralDeferred),
       depth_renderer(RendererType::DepthOnly)
 {

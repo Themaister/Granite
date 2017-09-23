@@ -21,6 +21,7 @@
  */
 
 #include "application.hpp"
+#include "application_events.hpp"
 #include "vulkan_symbol_wrapper.h"
 #include "vulkan.hpp"
 
@@ -143,7 +144,9 @@ public:
 		vector<VkDisplayPlanePropertiesKHR> planes(plane_count);
 		vkGetPhysicalDeviceDisplayPlanePropertiesKHR(gpu, &plane_count, planes.data());
 
+#ifdef KHR_DISPLAY_ACQUIRE_XLIB
 		VkDisplayKHR best_display = VK_NULL_HANDLE;
+#endif
 		VkDisplayModeKHR best_mode = VK_NULL_HANDLE;
 		uint32_t best_plane = UINT32_MAX;
 
@@ -214,7 +217,9 @@ public:
 				{
 					best_plane = j;
 					alpha_mode = VK_DISPLAY_PLANE_ALPHA_OPAQUE_BIT_KHR;
+#ifdef KHR_DISPLAY_ACQUIRE_XLIB
 					best_display = display;
+#endif
 					goto out;
 				}
 			}
@@ -278,6 +283,10 @@ private:
 	Display *dpy = nullptr;
 #endif
 };
+
+void application_dummy()
+{
+}
 }
 
 int main(int argc, char *argv[])

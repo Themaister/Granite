@@ -24,6 +24,7 @@
 #include "android_native_app_glue.h"
 #include "util.hpp"
 #include "application.hpp"
+#include "application_events.hpp"
 #include <jni.h>
 #include <android/sensor.h>
 
@@ -33,6 +34,10 @@ using namespace std;
 
 namespace Granite
 {
+void application_dummy()
+{
+}
+
 struct GlobalState
 {
 	android_app *app;
@@ -68,9 +73,9 @@ static void finishFromThread()
 }
 }
 
-struct ApplicationPlatformAndroid : ApplicationPlatform
+struct WSIPlatformAndroid : Vulkan::WSIPlatform
 {
-	ApplicationPlatformAndroid(unsigned width, unsigned height)
+	WSIPlatformAndroid(unsigned width, unsigned height)
 		: width(width), height(height)
 	{
 		if (!Vulkan::Context::init_loader(nullptr))
@@ -116,12 +121,12 @@ struct ApplicationPlatformAndroid : ApplicationPlatform
 	bool pending_native_window_term = false;
 };
 
-unique_ptr<ApplicationPlatform> create_default_application_platform(unsigned width, unsigned height)
+unique_ptr<WSIPlatform> create_default_application_platform(unsigned width, unsigned height)
 {
-	auto *platform = new ApplicationPlatformAndroid(width, height);
+	auto *platform = new WSIPlatformAndroid(width, height);
 	assert(!global_state.app->userData);
 	global_state.app->userData = platform;
-	return unique_ptr<ApplicationPlatform>(platform);
+	return unique_ptr<WSIPlatform>(platform);
 }
 
 static VkSurfaceKHR create_surface_from_native_window(VkInstance instance, ANativeWindow *window)
@@ -157,7 +162,7 @@ static void disable_sensors()
 
 static void handle_sensors()
 {
-	auto &state = *static_cast<ApplicationPlatformAndroid *>(global_state.app->userData);
+	auto &state = *static_cast<WSIPlatformAndroid *>(global_state.app->userData);
 
 	if (!ASensorEventQueue_hasEvents(jni.sensor_queue))
 		return;
@@ -196,7 +201,7 @@ static void handle_sensors()
 
 static int32_t engine_handle_input(android_app *app, AInputEvent *event)
 {
-	auto &state = *static_cast<ApplicationPlatformAndroid *>(app->userData);
+	auto &state = *static_cast<WSIPlatformAndroid *>(app->userData);
 	bool handled = false;
 
 	auto type = AInputEvent_getType(event);
@@ -319,7 +324,7 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 
 static void engine_handle_cmd(android_app *app, int32_t cmd)
 {
-	auto &state = *static_cast<ApplicationPlatformAndroid *>(app->userData);
+	auto &state = *static_cast<WSIPlatformAndroid *>(app->userData);
 
 	switch (cmd)
 	{
@@ -391,14 +396,14 @@ static void engine_handle_cmd(android_app *app, int32_t cmd)
 	}
 }
 
-VkSurfaceKHR ApplicationPlatformAndroid::create_surface(VkInstance instance, VkPhysicalDevice)
+VkSurfaceKHR WSIPlatformAndroid::create_surface(VkInstance instance, VkPhysicalDevice)
 {
 	return create_surface_from_native_window(instance, global_state.app->window);
 }
 
-void ApplicationPlatformAndroid::poll_input()
+void WSIPlatformAndroid::poll_input()
 {
-	auto &state = *static_cast<ApplicationPlatformAndroid *>(global_state.app->userData);
+	auto &state = *static_cast<WSIPlatformAndroid *>(global_state.app->userData);
 	int events;
 	int ident;
 	android_poll_source *source;
@@ -418,9 +423,9 @@ void ApplicationPlatformAndroid::poll_input()
 	state.get_input_tracker().dispatch_current_state(state.get_frame_timer().get_frame_time());
 }
 
-bool ApplicationPlatformAndroid::alive(Vulkan::WSI &wsi)
+bool WSIPlatformAndroid::alive(Vulkan::WSI &wsi)
 {
-	auto &state = *static_cast<ApplicationPlatformAndroid *>(global_state.app->userData);
+	auto &state = *static_cast<WSIPlatformAndroid *>(global_state.app->userData);
 	int events;
 	int ident;
 	android_poll_source *source;

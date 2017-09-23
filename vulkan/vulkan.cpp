@@ -28,10 +28,6 @@
 #include "vulkan_events.hpp"
 #include <string.h>
 
-#ifdef HAVE_GLFW
-#include <GLFW/glfw3.h>
-#endif
-
 #ifdef HAVE_DYLIB
 #include <dlfcn.h>
 #endif
@@ -363,13 +359,9 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 
 	for (unsigned i = 0; i < queue_count; i++)
 	{
-#ifdef HAVE_GLFW
-		VkBool32 supported = glfwGetPhysicalDevicePresentationSupport(instance, gpu, i);
-#else
 		VkBool32 supported = surface == VK_NULL_HANDLE;
 		if (surface != VK_NULL_HANDLE)
 			vkGetPhysicalDeviceSurfaceSupportKHR(gpu, i, surface, &supported);
-#endif
 
 		static const VkQueueFlags required = VK_QUEUE_COMPUTE_BIT | VK_QUEUE_GRAPHICS_BIT;
 		if (supported && ((queue_props[i].queueFlags & required) == required))

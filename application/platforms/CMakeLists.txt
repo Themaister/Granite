@@ -21,6 +21,8 @@ if (ANDROID)
 elseif (${GRANITE_PLATFORM} MATCHES "libretro")
 	add_granite_library(retro-utils application_libretro_utils.cpp application_libretro_utils.hpp)
 	target_link_libraries(retro-utils vulkan-backend vulkan-wsi)
+	target_include_directories(retro-utils PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+	target_link_libraries(retro-utils application)
 
 	add_granite_library(application-main application_libretro.cpp)
 	target_compile_definitions(application-main PUBLIC HAVE_LIBRETRO)

@@ -264,7 +264,7 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 		VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance, vkDestroyDebugReportCallbackEXT);
 
 		{
-			VkDebugReportCallbackCreateInfoEXT info = {VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT};
+			VkDebugReportCallbackCreateInfoEXT info = { VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT };
 			info.flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT |
 			             VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT;
 			info.pfnCallback = vulkan_debug_cb;

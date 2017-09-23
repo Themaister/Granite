@@ -33,6 +33,8 @@
 
 namespace Granite
 {
+extern retro_log_printf_t libretro_log;
+
 bool libretro_create_device(
 		struct retro_vulkan_context *context,
 		VkInstance instance,

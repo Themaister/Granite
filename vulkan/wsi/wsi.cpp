@@ -39,30 +39,45 @@ bool WSI::reinit_external_swapchain(std::vector<Vulkan::ImageHandle> external_im
 {
 	if (!init_external_swapchain(move(external_images)))
 		return false;
-
-	device->init_external_swapchain(this->external_swapchain_images);
-	external_acquire.reset();
-	external_release.reset();
 	return true;
 }
 
-bool WSI::init_external(std::unique_ptr<Vulkan::Context> fresh_context,
-                        std::vector<Vulkan::ImageHandle> swapchain_images)
+bool WSI::init_external_context(std::unique_ptr<Vulkan::Context> fresh_context)
 {
 	context = move(fresh_context);
 
+	auto &em = Granite::EventManager::get_global();
+	// Need to have a dummy swapchain in place before we issue create device events.
+	semaphore_manager->init(context->get_device());
+	device->set_context(*context);
+	device->init_external_swapchain({ VK_NULL_HANDLE });
+	em.enqueue_latched<DeviceCreatedEvent>(device.get());
+	return true;
+}
+
+bool WSI::init_external_swapchain(std::vector<Vulkan::ImageHandle> swapchain_images)
+{
 	width = platform->get_surface_width();
 	height = platform->get_surface_height();
 	aspect_ratio = platform->get_aspect_ratio();
 
-	if (!init_external_swapchain(move(swapchain_images)))
-		return false;
+	external_swapchain_images = move(swapchain_images);
 
-	semaphore_manager->init(context->get_device());
+	this->width = external_swapchain_images.front()->get_width();
+	this->height = external_swapchain_images.front()->get_height();
+	this->format = external_swapchain_images.front()->get_format();
+
+	LOGI("Created swapchain %u x %u (fmt: %u).\n", this->width, this->height, static_cast<unsigned>(this->format));
+
 	auto &em = Granite::EventManager::get_global();
+	em.dequeue_all_latched(SwapchainParameterEvent::get_type_id());
+	em.enqueue_latched<SwapchainParameterEvent>(device.get(), this->width, this->height, aspect_ratio,
+	                                            external_swapchain_images.size(), this->format);
+
 	device->init_external_swapchain(this->external_swapchain_images);
-	em.enqueue_latched<DeviceCreatedEvent>(device.get());
 	platform->get_frame_timer().reset();
+	external_acquire.reset();
+	external_release.reset();
 	return true;
 }
 
@@ -77,9 +92,11 @@ bool WSI::init()
 	auto device_ext = platform->get_device_extensions();
 	context.reset(new Context(instance_ext.data(), instance_ext.size(), device_ext.data(), device_ext.size()));
 
+	auto &em = Granite::EventManager::get_global();
+	// Need to have a dummy swapchain in place before we issue create device events.
 	semaphore_manager->init(context->get_device());
 	device->set_context(*context);
-	auto &em = Granite::EventManager::get_global();
+	device->init_external_swapchain({ VK_NULL_HANDLE });
 	em.enqueue_latched<DeviceCreatedEvent>(device.get());
 
 	surface = platform->create_surface(context->get_instance(), context->get_gpu());
@@ -111,9 +128,9 @@ bool WSI::init()
 
 	if (!init_swapchain(width, height))
 		return false;
+
 	device->init_swapchain(swapchain_images, this->width, this->height, format);
 	platform->get_frame_timer().reset();
-
 	return true;
 }
 
@@ -312,24 +329,6 @@ void WSI::update_framebuffer(unsigned width, unsigned height)
 	aspect_ratio = platform->get_aspect_ratio();
 	init_swapchain(width, height);
 	device->init_swapchain(swapchain_images, width, height, format);
-}
-
-bool WSI::init_external_swapchain(std::vector<Vulkan::ImageHandle> external_images)
-{
-	external_swapchain_images = move(external_images);
-
-	this->width = external_swapchain_images.front()->get_width();
-	this->height = external_swapchain_images.front()->get_height();
-	this->format = external_swapchain_images.front()->get_format();
-
-	LOGI("Created swapchain %u x %u (fmt: %u).\n", this->width, this->height, static_cast<unsigned>(this->format));
-
-	auto &em = Granite::EventManager::get_global();
-	em.dequeue_all_latched(SwapchainParameterEvent::get_type_id());
-	em.enqueue_latched<SwapchainParameterEvent>(device.get(), this->width, this->height, aspect_ratio,
-	                                            external_swapchain_images.size(), this->format);
-
-	return true;
 }
 
 void WSI::deinit_external()

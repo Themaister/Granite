@@ -108,8 +108,9 @@ public:
 	void set_platform(WSIPlatform *platform);
 
 	bool init();
-	bool init_external(std::unique_ptr<Vulkan::Context> context,
-	                   std::vector<Vulkan::ImageHandle> external_images);
+
+	bool init_external_context(std::unique_ptr<Vulkan::Context> context);
+	bool init_external_swapchain(std::vector<Vulkan::ImageHandle> external_images);
 	bool reinit_external_swapchain(std::vector<Vulkan::ImageHandle> external_images);
 	void deinit_external();
 
@@ -161,7 +162,6 @@ private:
 
 	WSIPlatform *platform = nullptr;
 
-	bool init_external_swapchain(std::vector<Vulkan::ImageHandle> external_images);
 	std::vector<Vulkan::ImageHandle> external_swapchain_images;
 
 	unsigned external_frame_index = 0;

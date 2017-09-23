@@ -117,11 +117,6 @@ struct WSIPlatformLibretro : Vulkan::WSIPlatform
 	}
 };
 
-namespace Granite
-{
-retro_log_printf_t libretro_log;
-}
-
 static retro_hw_render_callback hw_render;
 
 RETRO_API void retro_init(void)
@@ -340,10 +335,10 @@ RETRO_API bool retro_load_game(const struct retro_game_info *info)
 	current_width = app->get_default_width();
 	current_height = app->get_default_height();
 
-	if (!app->init_wsi(make_unique<WSIPlatformLibretro>()))
+	if (!app->init_wsi(std::make_unique<WSIPlatformLibretro>()))
 	{
 		Granite::libretro_log(RETRO_LOG_ERROR, "Failed to init platform.");
-		app.reset();
+		delete app;
 		return false;
 	}
 
@@ -405,4 +400,11 @@ RETRO_API void *retro_get_memory_data(unsigned)
 RETRO_API size_t retro_get_memory_size(unsigned)
 {
 	return 0;
+}
+
+namespace Granite
+{
+void application_dummy()
+{
+}
 }

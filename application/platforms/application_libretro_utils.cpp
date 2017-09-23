@@ -22,9 +22,11 @@
 
 #include "application_libretro_utils.hpp"
 #include "application.hpp"
+#include "application_events.hpp"
 
 namespace Granite
 {
+retro_log_printf_t libretro_log;
 static retro_hw_render_interface_vulkan *vulkan_interface;
 static retro_hw_render_context_negotiation_interface_vulkan vulkan_negotiation;
 static std::unique_ptr<Vulkan::Context> vulkan_context;
@@ -187,6 +189,9 @@ bool libretro_context_reset(retro_hw_render_interface_vulkan *vulkan, Vulkan::WS
 	if (vulkan->interface_version != RETRO_HW_RENDER_INTERFACE_VULKAN_VERSION)
 		return false;
 
+	if (!wsi.init_external_context(std::move(vulkan_context)))
+		return false;
+
 	wsi.get_device().set_queue_lock([vulkan]() {
 		                                vulkan->lock_queue(vulkan->handle);
 	                                },
@@ -208,7 +213,7 @@ bool libretro_context_reset(retro_hw_render_interface_vulkan *vulkan, Vulkan::WS
 	info.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 	info.flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
 	info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-	wsi.get_device().set_context(*vulkan_context);
+
 	swapchain_image = wsi.get_device().create_image(info, nullptr);
 	swapchain_image->set_swapchain_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	can_dupe = false;
@@ -222,7 +227,7 @@ bool libretro_context_reset(retro_hw_render_interface_vulkan *vulkan, Vulkan::WS
 	for (unsigned i = 0; i < num_images; i++)
 		images.push_back(swapchain_image);
 
-	if (!wsi.init_external(std::move(vulkan_context), std::move(images)))
+	if (!wsi.init_external_swapchain(std::move(images)))
 		return false;
 
 	// Setup the swapchain image info for the frontend.

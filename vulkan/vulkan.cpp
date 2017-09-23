@@ -30,6 +30,9 @@
 
 #ifdef HAVE_DYLIB
 #include <dlfcn.h>
+#elif defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
 #endif
 
 using namespace std;
@@ -59,7 +62,7 @@ bool Context::init_loader(PFN_vkGetInstanceProcAddr addr)
 {
 	if (!addr)
 	{
-#ifdef HAVE_DYLIB
+#if defined(HAVE_DYLIB)
 		static void *module;
 		if (!module)
 		{
@@ -71,6 +74,18 @@ bool Context::init_loader(PFN_vkGetInstanceProcAddr addr)
 		}
 
 		addr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(dlsym(module, "vkGetInstanceProcAddr"));
+		if (!addr)
+			return false;
+#elif defined(_WIN32)
+		static HMODULE module;
+		if (!module)
+		{
+			module = LoadLibraryA("vulkan-1.dll");
+			if (!module)
+				return false;
+		}
+
+		addr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(GetProcAddress(module, "vkGetInstanceProcAddr"));
 		if (!addr)
 			return false;
 #else

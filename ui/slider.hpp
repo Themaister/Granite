@@ -37,6 +37,18 @@ public:
 		return text;
 	}
 
+	enum class Orientation
+	{
+		Horizontal,
+		Vertical
+	};
+
+	void set_orientation(Orientation orient)
+	{
+		orientation = orient;
+		geometry_changed();
+	}
+
 	void set_size(vec2 size)
 	{
 		this->size = size;
@@ -70,6 +82,7 @@ public:
 private:
 	void reconfigure_to_canvas(vec2 offset, vec2 size) override;
 	std::string text;
+	Orientation orientation = Orientation::Horizontal;
 	vec4 color = vec4(1.0f);
 	vec2 size = vec2(0.0f);
 	vec2 drag_size = vec2(0.0f);

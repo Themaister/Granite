@@ -21,6 +21,7 @@
  */
 
 #include <click_button.hpp>
+#include <slider.hpp>
 #include "application.hpp"
 #include "os.hpp"
 #include "ui_manager.hpp"
@@ -72,6 +73,17 @@ UIApplication::UIApplication()
 	win.add_child(button);
 	auto &btn3 = static_cast<UI::ClickButton &>(*button);
 	btn3.set_text("#1");
+
+	auto slider = make_abstract_handle<UI::Widget, UI::Slider>();
+	win.add_child(slider);
+	auto &sli = static_cast<UI::Slider &>(*slider);
+	sli.set_floating(true);
+	sli.set_floating_position(vec2(100.0f));
+	sli.set_text("Value");
+	sli.set_size(vec2(30.0f, 200.0f));
+	sli.set_label_slider_gap(5.0f);
+	sli.set_color(vec4(1.0f, 0.0f, 0.0f, 1.0f));
+	sli.set_orientation(UI::Slider::Orientation::Vertical);
 }
 
 void UIApplication::render_frame(double, double)

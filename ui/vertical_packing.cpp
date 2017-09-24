@@ -31,16 +31,29 @@ void VerticalPacking::reconfigure_to_canvas(vec2, vec2 size)
 {
 	vec2 off = vec2(geometry.margin, 0.0f);
 
+	unsigned fixed_children = 0;
+	for (auto &child : children)
+		if (!child.widget->is_floating())
+			fixed_children++;
+
 	if (!children.empty())
 	{
-		float effective_height = size.y - geometry.margin * (children.size() + 1);
+		float effective_height = size.y - geometry.margin * (fixed_children + 1);
 		float minimum_height = 0.0f;
 
 		// Make sure we allocate the minimum.
 		for (auto &child : children)
 		{
-			minimum_height += child.widget->get_minimum_geometry().y;
-			child.size.y = child.widget->get_minimum_geometry().y;
+			if (child.widget->is_floating())
+			{
+				child.size = max(child.widget->get_minimum_geometry(), child.widget->get_target_geometry());
+				child.offset = child.widget->get_floating_position() + geometry.margin;
+			}
+			else
+			{
+				minimum_height += child.widget->get_minimum_geometry().y;
+				child.size.y = child.widget->get_minimum_geometry().y;
+			}
 		}
 
 		float slack_height = effective_height - minimum_height;
@@ -52,7 +65,7 @@ void VerticalPacking::reconfigure_to_canvas(vec2, vec2 size)
 
 			for (auto &child : children)
 			{
-				if (child.size.y < child.widget->get_target_geometry().y)
+				if (!child.widget->is_floating() && (child.size.y < child.widget->get_target_geometry().y))
 					padding_targets++;
 			}
 
@@ -64,11 +77,14 @@ void VerticalPacking::reconfigure_to_canvas(vec2, vec2 size)
 			// If we have some slack room, use at most extra_height_per_object to pad from minimum to target.
 			for (auto &child : children)
 			{
-				float desired_padding = max(
-					child.widget->get_target_geometry().y - child.size.y, 0.0f);
-				float padding = min(desired_padding, extra_height_per_object);
-				child.size.y += padding;
-				slack_height -= padding;
+				if (!child.widget->is_floating())
+				{
+					float desired_padding = max(
+						child.widget->get_target_geometry().y - child.size.y, 0.0f);
+					float padding = min(desired_padding, extra_height_per_object);
+					child.size.y += padding;
+					slack_height -= padding;
+				}
 			}
 		}
 
@@ -78,7 +94,7 @@ void VerticalPacking::reconfigure_to_canvas(vec2, vec2 size)
 			unsigned padding_targets = 0;
 
 			for (auto &child : children)
-				if (child.widget->get_size_is_flexible())
+				if (!child.widget->is_floating() && child.widget->get_size_is_flexible())
 					padding_targets++;
 
 			if (padding_targets)
@@ -88,7 +104,7 @@ void VerticalPacking::reconfigure_to_canvas(vec2, vec2 size)
 				// If we have some slack room, use at most extra_height_per_object to pad from minimum to target.
 				for (auto &child : children)
 				{
-					if (child.widget->get_size_is_flexible())
+					if (!child.widget->is_floating() && child.widget->get_size_is_flexible())
 						child.size.y += extra_height_per_object;
 					slack_height -= extra_height_per_object;
 				}
@@ -97,14 +113,17 @@ void VerticalPacking::reconfigure_to_canvas(vec2, vec2 size)
 
 		for (auto &child : children)
 		{
-			off.y += geometry.margin;
-			child.offset = off;
-			off.y += child.size.y;
+			if (!child.widget->is_floating())
+			{
+				off.y += geometry.margin;
+				child.offset = off;
+				off.y += child.size.y;
 
-			float target = max(child.widget->get_target_geometry().x, child.widget->get_minimum_geometry().x);
-			if (child.widget->get_size_is_flexible())
-				target = max(target, size.x - 2.0f * geometry.margin);
-			child.size.x = min(target, size.x - 2.0f * geometry.margin);
+				float target = max(child.widget->get_target_geometry().x, child.widget->get_minimum_geometry().x);
+				if (child.widget->get_size_is_flexible())
+					target = max(target, size.x - 2.0f * geometry.margin);
+				child.size.x = min(target, size.x - 2.0f * geometry.margin);
+			}
 		}
 	}
 }
@@ -119,19 +138,31 @@ void VerticalPacking::reconfigure()
 	vec2 minimum = vec2(0.0f);
 	vec2 target = vec2(0.0f);
 
+	unsigned non_floating_count = 0;
+
 	for (auto &child : children)
 	{
-		minimum.x = max(child.widget->get_minimum_geometry().x, minimum.x);
-		minimum.y += child.widget->get_minimum_geometry().y;
+		if (child.widget->is_floating())
+		{
+			minimum = max(minimum,
+			              child.widget->get_floating_position() +
+			              max(child.widget->get_minimum_geometry(), child.widget->get_target_geometry()));
+		}
+		else
+		{
+			non_floating_count++;
+			minimum.x = max(child.widget->get_minimum_geometry().x, minimum.x);
+			minimum.y += child.widget->get_minimum_geometry().y;
 
-		target.x = max(child.widget->get_target_geometry().x, target.x);
-		target.y += child.widget->get_target_geometry().y;
+			target.x = max(child.widget->get_target_geometry().x, target.x);
+			target.y += child.widget->get_target_geometry().y;
+		}
 	}
 
 	if (!children.empty())
 	{
-		target.y += geometry.margin * (children.size() + 1);
-		minimum.y += geometry.margin * (children.size() + 1);
+		target.y += geometry.margin * (non_floating_count + 1);
+		minimum.y += geometry.margin * (non_floating_count + 1);
 	}
 
 	target.x += 2.0f * geometry.margin;

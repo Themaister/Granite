@@ -32,6 +32,7 @@ namespace UI
 Window::Window()
 {
 	bg_color = vec4(1.0f);
+	set_floating(true);
 }
 
 void Window::set_title(const std::string &title)
@@ -42,12 +43,15 @@ void Window::set_title(const std::string &title)
 
 Widget *Window::on_mouse_button_pressed(vec2 offset)
 {
-	move_base = position;
+	move_base = floating_position;
 
-	if (offset.y < line_y + 2.0f)
-		return this;
+	if (title_bar && floating)
+	{
+		if (offset.y < y_offset)
+			return this;
+	}
 
-	float off_y = line_y + 2.0f;
+	float off_y = y_offset;
 
 	for (auto &child : children)
 	{
@@ -63,18 +67,26 @@ Widget *Window::on_mouse_button_pressed(vec2 offset)
 
 void Window::on_mouse_button_move(vec2 offset)
 {
-	position = move_base + offset;
+	floating_position = move_base + offset;
 	geometry_changed();
 }
 
 void Window::reconfigure_to_canvas(vec2 offset, vec2 size)
 {
-	auto &font = UIManager::get().get_font(FontSize::Large);
-	vec2 text_geom = font.get_text_geometry(title.c_str());
-	vec2 text_offset = font.get_aligned_offset(Font::Alignment::TopCenter, text_geom, size);
-	line_y = text_geom.y + text_offset.y + geometry.margin;
+	y_offset = 0.0f;
+	line_y = 0.0f;
 
-	VerticalPacking::reconfigure_to_canvas(vec2(offset.x, offset.y + line_y + 2.0f), size - vec2(0.0f, line_y + 2.0f));
+	if (title_bar)
+	{
+		auto &font = UIManager::get().get_font(FontSize::Large);
+		vec2 text_geom = font.get_text_geometry(title.c_str());
+		vec2 text_offset = font.get_aligned_offset(Font::Alignment::TopCenter, text_geom, size);
+		line_y = text_geom.y + text_offset.y + geometry.margin;
+		y_offset = line_y + 2.0f;
+	}
+
+	WindowContainer::reconfigure_to_canvas(vec2(offset.x, offset.y + y_offset),
+	                                       size - vec2(0.0f, y_offset));
 }
 
 float Window::render(FlatRenderer &renderer, float layer, vec2 offset, vec2 size)
@@ -82,39 +94,46 @@ float Window::render(FlatRenderer &renderer, float layer, vec2 offset, vec2 size
 	if (bg_color.a > 0.0f)
 		renderer.render_quad(vec3(offset, layer), size, bg_color);
 
-	auto &font = UIManager::get().get_font(FontSize::Large);
+	if (title_bar)
+	{
+		auto &font = UIManager::get().get_font(FontSize::Large);
 
-	vec2 offsets[] = {
-		{ offset.x + geometry.margin, line_y + offset.y },
-		{ offset.x + size.x - geometry.margin, line_y + offset.y },
-	};
+		vec2 offsets[] = {
+			{offset.x + geometry.margin,          line_y + offset.y},
+			{offset.x + size.x - geometry.margin, line_y + offset.y},
+		};
 
-	renderer.render_line_strip(offsets, layer - 0.5f, 2, vec4(0.0f, 0.0f, 0.0f, 1.0f));
-	offsets[0].y += 2.0f;
-	offsets[1].y += 2.0f;
-	renderer.render_line_strip(offsets, layer - 0.5f, 2, vec4(0.0f, 0.0f, 0.0f, 1.0f));
+		renderer.render_line_strip(offsets, layer - 0.5f, 2, vec4(0.0f, 0.0f, 0.0f, 1.0f));
+		offsets[0].y += 2.0f;
+		offsets[1].y += 2.0f;
+		renderer.render_line_strip(offsets, layer - 0.5f, 2, vec4(0.0f, 0.0f, 0.0f, 1.0f));
 
-	renderer.render_text(font, title.c_str(),
-	                     vec3(offset, layer - 0.5f), size, vec4(0.0f, 0.0f, 0.0f, 1.0f), Font::Alignment::TopCenter);
+		renderer.render_text(font, title.c_str(),
+		                     vec3(offset, layer - 0.5f), size, vec4(0.0f, 0.0f, 0.0f, 1.0f),
+		                     Font::Alignment::TopCenter);
+	}
 
-	float ret = VerticalPacking::render(renderer, layer, vec2(offset.x, offset.y + line_y + 2.0f), size - vec2(0.0f, line_y + 2.0f));
+	float ret = WindowContainer::render(renderer, layer, vec2(offset.x, offset.y + y_offset), size - vec2(0.0f, y_offset));
 	return std::min(ret, layer - 0.5f);
 }
 
 void Window::reconfigure()
 {
 	auto target = geometry.target;
-	VerticalPacking::reconfigure();
+	WindowContainer::reconfigure();
 	geometry.target = target;
 
-	auto &font = UIManager::get().get_font(FontSize::Large);
-	vec2 text_geom = font.get_text_geometry(title.c_str());
-	float line_y = text_geom.y + geometry.margin + 2.0f;
+	if (title_bar)
+	{
+		auto &font = UIManager::get().get_font(FontSize::Large);
+		vec2 text_geom = font.get_text_geometry(title.c_str());
+		float line_y = text_geom.y + geometry.margin + 2.0f;
 
-	vec2 minimum = geometry.minimum;
-	minimum.y += line_y;
-	minimum.x = max(text_geom.x + 2.0f * geometry.margin, minimum.x);
-	geometry.minimum = minimum;
+		vec2 minimum = geometry.minimum;
+		minimum.y += line_y;
+		minimum.x = max(text_geom.x + 2.0f * geometry.margin, minimum.x);
+		geometry.minimum = minimum;
+	}
 }
 }
 }

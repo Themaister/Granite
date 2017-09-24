@@ -29,7 +29,8 @@ namespace Granite
 {
 namespace UI
 {
-class Window : public VerticalPacking
+using WindowContainer = VerticalPacking;
+class Window : public WindowContainer
 {
 public:
 	Window();
@@ -40,27 +41,35 @@ public:
 		return title;
 	}
 
-	void set_floating_position(vec2 pos)
-	{
-		position = pos;
-		geometry_changed();
-	}
-
-	vec2 get_floating_position() const
-	{
-		return position;
-	}
-
 	Widget *on_mouse_button_pressed(vec2 position) override;
 	void on_mouse_button_move(vec2 offset) override;
 
 	void reconfigure_to_canvas(vec2 offset, vec2 size) override;
 
+	void show_title_bar(bool enable)
+	{
+		title_bar = enable;
+		geometry_changed();
+	}
+
+	void set_fullscreen(bool enable)
+	{
+		fullscreen = enable;
+		geometry_changed();
+	}
+
+	bool is_fullscreen() const
+	{
+		return fullscreen;
+	}
+
 private:
 	std::string title;
-	vec2 position = vec2(0.0f);
 	vec2 move_base = vec2(0.0f);
 	float line_y = 0.0f;
+	float y_offset = 0.0f;
+	bool title_bar = true;
+	bool fullscreen = false;
 
 	float render(FlatRenderer &renderer, float layer, vec2 offset, vec2 size) override;
 	void reconfigure() override;

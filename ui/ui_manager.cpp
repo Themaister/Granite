@@ -56,17 +56,34 @@ void UIManager::render(Vulkan::CommandBuffer &cmd)
 	{
 		auto *window = static_cast<Window *>(widget.get());
 		widget->reconfigure_geometry();
-		widget->reconfigure_geometry_to_canvas(window->get_floating_position(), window->get_minimum_geometry());
 
-		vec2 window_size = max(widget->get_target_geometry(), widget->get_minimum_geometry());
+		vec2 window_size;
+		vec2 window_pos;
+
+		if (window->is_fullscreen())
+		{
+			window_size.x = cmd.get_viewport().width;
+			window_size.y = cmd.get_viewport().height;
+			widget->reconfigure_geometry_to_canvas(vec2(0.0f),
+			                                       vec2(cmd.get_viewport().width, cmd.get_viewport().height));
+			window_pos = vec2(0.0f);
+		}
+		else
+		{
+			widget->reconfigure_geometry_to_canvas(window->get_floating_position(), window->get_minimum_geometry());
+			window_size = max(widget->get_target_geometry(), widget->get_minimum_geometry());
+			window_pos = window->get_floating_position();
+		}
+
 		renderer.push_scissor(window->get_floating_position(), window_size);
-		float min_layer = widget->render(renderer, 0.0f, window->get_floating_position(), window_size);
+		float min_layer = widget->render(renderer, 0.0f, window_pos, window_size);
 		renderer.pop_scissor();
 
 		minimum_layer = min(min_layer, minimum_layer);
 	}
 
-	renderer.flush(cmd, vec3(0.0f, 0.0f, minimum_layer), vec3(cmd.get_viewport().width, cmd.get_viewport().height, 32000.0f));
+	renderer.flush(cmd, vec3(0.0f, 0.0f, minimum_layer),
+	               vec3(cmd.get_viewport().width, cmd.get_viewport().height, 32000.0f));
 }
 
 Font& UIManager::get_font(FontSize size)

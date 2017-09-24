@@ -144,11 +144,35 @@ public:
 	{
 	}
 
+	void set_floating_position(vec2 pos)
+	{
+		floating_position = pos;
+		geometry_changed();
+	}
+
+	vec2 get_floating_position() const
+	{
+		return floating_position;
+	}
+
+	bool is_floating() const
+	{
+		return floating;
+	}
+
+	void set_floating(bool state)
+	{
+		floating = state;
+		geometry_changed();
+	}
+
 protected:
 	void geometry_changed();
 
+	vec2 floating_position = vec2(0.0f);
 	vec4 bg_color = vec4(1.0f, 1.0f, 1.0f, 0.0f);
 	bool needs_redraw = true;
+	bool floating = false;
 
 	struct
 	{

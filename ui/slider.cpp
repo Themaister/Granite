@@ -38,8 +38,14 @@ void Slider::set_text(string text)
 void Slider::reconfigure()
 {
 	auto &font = UIManager::get().get_font(FontSize::Small);
-	vec2 minimum = font.get_text_geometry(text.c_str());
-	vec2 minimum_value = font.get_text_geometry(to_string(value).c_str());
+
+	vec2 minimum = vec2(0.0f);
+	vec2 minimum_value = vec2(0.0f);
+
+	if (label_enable)
+		minimum = font.get_text_geometry(text.c_str());
+	if (value_enable)
+		minimum_value = font.get_text_geometry(to_string(value).c_str());
 
 	geometry.minimum = minimum + 2.0f * geometry.margin;
 
@@ -88,10 +94,18 @@ void Slider::reconfigure_to_canvas(vec2, vec2 size)
 	vec2 minimum_value = font.get_text_geometry(to_string(value).c_str());
 
 	label_offset = vec2(geometry.margin);
+	label_size = vec2(0.0f);
+	value_size = vec2(0.0f);
 
 	if (orientation == Orientation::Horizontal)
 	{
-		label_size = vec2(minimum.x, size.y - 2.0f * geometry.margin);
+		if (label_enable)
+			label_size = vec2(minimum.x, size.y - 2.0f * geometry.margin);
+
+		if (value_enable)
+			value_offset = vec2(size.x - geometry.margin - minimum_value.x, geometry.margin);
+		else
+			value_offset = vec2(size.x - geometry.margin, geometry.margin);
 
 		slider_offset = vec2(label_offset.x + label_size.x + gap + geometry.margin, geometry.margin);
 		slider_size = vec2(value_offset.x - slider_offset.x - gap - geometry.margin, size.y - 2.0f * geometry.margin);
@@ -99,12 +113,18 @@ void Slider::reconfigure_to_canvas(vec2, vec2 size)
 		slider_size.y -= y_squash;
 		slider_offset.y += 0.5f * y_squash;
 
-		value_offset = vec2(size.x - geometry.margin - minimum_value.x, geometry.margin);
-		value_size = vec2(minimum_value.x, size.y - 2.0f * geometry.margin);
+		if (value_enable)
+			value_size = vec2(minimum_value.x, size.y - 2.0f * geometry.margin);
 	}
 	else
 	{
-		label_size = vec2(size.x - 2.0f * geometry.margin, minimum.y);
+		if (label_enable)
+			label_size = vec2(size.x - 2.0f * geometry.margin, minimum.y);
+
+		if (value_enable)
+			value_offset = vec2(geometry.margin, size.y - geometry.margin - minimum_value.y);
+		else
+			value_offset = vec2(geometry.margin, size.y - geometry.margin);
 
 		slider_offset = vec2(geometry.margin, label_offset.y + label_size.y + gap + geometry.margin);
 		slider_size = vec2(size.x - 2.0f * geometry.margin, value_offset.y - slider_offset.y - gap - geometry.margin);
@@ -112,8 +132,8 @@ void Slider::reconfigure_to_canvas(vec2, vec2 size)
 		slider_size.x -= x_squash;
 		slider_offset.x += 0.5f * x_squash;
 
-		value_offset = vec2(geometry.margin, size.y - geometry.margin - minimum_value.y);
-		value_size = vec2(size.x - 2.0f * geometry.margin, minimum_value.y);
+		if (value_enable)
+			value_size = vec2(size.x - 2.0f * geometry.margin, minimum_value.y);
 	}
 }
 
@@ -131,6 +151,12 @@ Widget *Slider::on_mouse_button_pressed(vec2 offset)
 	drag_size = size;
 	drag_base = offset;
 	geometry_changed();
+
+	if (tooltip_enable)
+	{
+		tooltip_offset = offset + vec2(10.0f, 0.0f);
+		displaying_tooltip = true;
+	}
 	return this;
 }
 
@@ -145,18 +171,34 @@ void Slider::on_mouse_button_move(vec2 offset)
 
 	value = mix(value_minimum, value_maximum, normalized_value);
 	geometry_changed();
+
+	if (tooltip_enable)
+	{
+		tooltip_offset = offset + vec2(10.0f, 0.0f);
+		displaying_tooltip = true;
+	}
+}
+
+void Slider::on_mouse_button_released(vec2)
+{
+	displaying_tooltip = false;
 }
 
 float Slider::render(FlatRenderer &renderer, float layer, vec2 offset, vec2)
 {
 	auto &font = UIManager::get().get_font(FontSize::Small);
+	assert(children.empty());
 
-	renderer.render_text(font, text.c_str(), vec3(offset + label_offset, layer), label_size,
-	                     color, Font::Alignment::Center);
+	if (label_enable)
+	{
+		renderer.render_text(font, text.c_str(), vec3(offset + label_offset, layer), label_size,
+		                     color, Font::Alignment::Center);
+	}
 
 	if (orientation == Orientation::Horizontal)
 	{
-		renderer.render_quad(vec3(slider_offset + offset, layer), slider_size * vec2(normalized_value, 1.0f), color);
+		renderer.render_quad(vec3(slider_offset + offset, layer),
+		                     slider_size * vec2(normalized_value, 1.0f), color);
 	}
 	else
 	{
@@ -164,12 +206,32 @@ float Slider::render(FlatRenderer &renderer, float layer, vec2 offset, vec2)
 		                     slider_size * vec2(1.0f, normalized_value), color);
 	}
 
-	renderer.render_text(font, to_string(value).c_str(),
-	                     vec3(offset + value_offset, layer), value_size,
-	                     color, Font::Alignment::Center);
+	if (value_enable)
+	{
+		renderer.render_text(font, to_string(value).c_str(),
+		                     vec3(offset + value_offset, layer), value_size,
+		                     color, Font::Alignment::Center);
+	}
 
-	assert(children.empty());
-	return layer;
+	if (displaying_tooltip)
+	{
+		renderer.push_scissor(vec2(0.0f), vec2(0x4000));
+
+		char buffer[8];
+		sprintf(buffer, "%3.0f%%", normalized_value * 100.0f);
+		renderer.render_quad(vec3(offset + tooltip_offset, layer - 1.0f), vec2(46.0f, 18.0f),
+		                     bg_color);
+		renderer.render_text(font, buffer,
+		                     vec3(offset + tooltip_offset, layer - 2.0f), vec2(46.0f, 18.0f),
+		                     color, Font::Alignment::Center);
+
+		renderer.pop_scissor();
+		return layer - 2.0f;
+	}
+	else
+	{
+		return layer;
+	}
 }
 }
 }

@@ -76,8 +76,27 @@ public:
 		return value;
 	}
 
-	virtual Widget *on_mouse_button_pressed(vec2 offset) override;
-	virtual void on_mouse_button_move(vec2 offset) override;
+	Widget *on_mouse_button_pressed(vec2 offset) override;
+	void on_mouse_button_move(vec2 offset) override;
+	void on_mouse_button_released(vec2 offset) override;
+
+	void show_label(bool enable)
+	{
+		label_enable = enable;
+		geometry_changed();
+	}
+
+	void show_value(bool enable)
+	{
+		value_enable = enable;
+		geometry_changed();
+	}
+
+	void show_tooltip(bool enable)
+	{
+		tooltip_enable = enable;
+		geometry_changed();
+	}
 
 private:
 	void reconfigure_to_canvas(vec2 offset, vec2 size) override;
@@ -100,8 +119,15 @@ private:
 	vec2 value_offset;
 	vec2 value_size;
 
+	bool label_enable = true;
+	bool value_enable = true;
+	bool tooltip_enable = false;
+
 	float render(FlatRenderer &renderer, float layer, vec2 offset, vec2 size) override;
 	void reconfigure() override;
+
+	bool displaying_tooltip = false;
+	vec2 tooltip_offset = vec2(0.0f);
 };
 }
 }

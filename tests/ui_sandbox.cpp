@@ -76,14 +76,40 @@ UIApplication::UIApplication()
 
 	auto slider = make_abstract_handle<UI::Widget, UI::Slider>();
 	win.add_child(slider);
-	auto &sli = static_cast<UI::Slider &>(*slider);
-	sli.set_floating(true);
-	sli.set_floating_position(vec2(100.0f));
-	sli.set_text("Value");
-	sli.set_size(vec2(30.0f, 200.0f));
-	sli.set_label_slider_gap(5.0f);
-	sli.set_color(vec4(1.0f, 0.0f, 0.0f, 1.0f));
-	sli.set_orientation(UI::Slider::Orientation::Vertical);
+
+	{
+		auto &sli = static_cast<UI::Slider &>(*slider);
+		sli.set_floating(true);
+		sli.set_floating_position(vec2(100.0f));
+		sli.set_text("Value");
+		sli.set_size(vec2(200.0f, 30.0f));
+		sli.set_label_slider_gap(10.0f);
+		sli.set_color(vec4(1.0f, 0.0f, 0.0f, 1.0f));
+		sli.set_orientation(UI::Slider::Orientation::Horizontal);
+		sli.set_background_color(vec4(0.0f, 0.0f, 0.0f, 1.0f));
+		sli.show_label(false);
+		sli.show_value(false);
+		sli.set_margin(5.0f);
+		sli.show_tooltip(true);
+	}
+
+	slider = make_abstract_handle<UI::Widget, UI::Slider>();
+	win.add_child(slider);
+	{
+		auto &sli = static_cast<UI::Slider &>(*slider);
+		sli.set_floating(true);
+		sli.set_floating_position(vec2(500.0f, 100.0f));
+		sli.set_text("Value");
+		sli.set_size(vec2(30.0f, 200.0f));
+		sli.set_label_slider_gap(0.0f);
+		sli.set_color(vec4(1.0f, 0.0f, 0.0f, 1.0f));
+		sli.set_orientation(UI::Slider::Orientation::Vertical);
+		sli.set_background_color(vec4(0.0f, 0.0f, 0.0f, 1.0f));
+		sli.show_label(false);
+		sli.show_value(false);
+		sli.set_margin(5.0f);
+		sli.show_tooltip(true);
+	}
 }
 
 void UIApplication::render_frame(double, double)

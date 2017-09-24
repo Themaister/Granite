@@ -50,6 +50,8 @@ void ClickButton::reconfigure_to_canvas(vec2, vec2)
 Widget *ClickButton::on_mouse_button_pressed(vec2)
 {
 	click_held = true;
+	if (click_cb)
+		click_cb();
 	return this;
 }
 

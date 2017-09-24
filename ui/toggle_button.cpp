@@ -20,53 +20,54 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#pragma once
-
+#include "toggle_button.hpp"
+#include "ui_manager.hpp"
 #include "widget.hpp"
-#include "font.hpp"
-#include <functional>
+
+using namespace std;
 
 namespace Granite
 {
 namespace UI
 {
-class ClickButton : public Widget
+void ToggleButton::set_text(std::string text)
 {
-public:
-	void set_text(std::string text);
-	const std::string &get_text() const
-	{
-		return text;
-	}
+	this->text = move(text);
+	geometry_changed();
+}
 
-	void set_label_alignment(Font::Alignment alignment)
-	{
-		this->alignment = alignment;
-	}
+void ToggleButton::reconfigure()
+{
+	auto &font = UIManager::get().get_font(FontSize::Small);
+	vec2 minimum = font.get_text_geometry(text.c_str());
+	geometry.minimum = minimum + 2.0f * geometry.margin;
+}
 
-	void set_font_color(vec4 color)
-	{
-		this->color = color;
-	}
+void ToggleButton::reconfigure_to_canvas(vec2, vec2)
+{
+}
 
-	void on_click(std::function<void ()> cb)
-	{
-		click_cb = std::move(cb);
-	}
+Widget *ToggleButton::on_mouse_button_pressed(vec2)
+{
+	click_held = true;
+	toggled = !toggled;
+	if (toggle_cb)
+		toggle_cb(toggled);
+	return this;
+}
 
-private:
-	void reconfigure() override;
-	void reconfigure_to_canvas(vec2 offset, vec2 size) override;
-	Widget *on_mouse_button_pressed(vec2 offset) override;
-	void on_mouse_button_released(vec2 offset) override;
+void ToggleButton::on_mouse_button_released(vec2)
+{
+	click_held = false;
+}
 
-	float render(FlatRenderer &renderer, float layer, vec2 offset, vec2 size) override;
-	Font::Alignment alignment = Font::Alignment::Center;
-	vec4 color = vec4(0.0f, 0.0f, 0.0f, 1.0f);
-	std::string text;
-
-	bool click_held = false;
-	std::function<void ()> click_cb;
-};
+float ToggleButton::render(FlatRenderer &renderer, float layer, vec2 offset, vec2 size)
+{
+	auto &font = UIManager::get().get_font(FontSize::Small);
+	renderer.render_text(font, text.c_str(), vec3(offset + geometry.margin, layer), size - 2.0f * geometry.margin,
+	                     (toggled ? toggled_color : untoggled_color) * vec4(1.0f, 1.0f, 1.0f, click_held ? 0.25f : 1.0f),
+	                     alignment);
+	return layer;
+}
 }
 }

@@ -22,6 +22,7 @@
 
 #include <click_button.hpp>
 #include <slider.hpp>
+#include <toggle_button.hpp>
 #include "application.hpp"
 #include "os.hpp"
 #include "ui_manager.hpp"
@@ -109,6 +110,18 @@ UIApplication::UIApplication()
 		sli.show_value(false);
 		sli.set_margin(5.0f);
 		sli.show_tooltip(true);
+	}
+
+	button = make_abstract_handle<UI::Widget, UI::ToggleButton>();
+	win.add_child(button);
+	{
+		auto &btn = static_cast<UI::ToggleButton &>(*button);
+		btn.set_floating_position(vec2(100.0f, 500.0f));
+		btn.set_floating(true);
+		btn.set_background_color(vec4(0.0f, 0.0f, 0.0f, 1.0f));
+		btn.set_text("Mjuu");
+		btn.set_toggled_font_color(vec4(0.0f, 1.0f, 0.0f, 1.0f));
+		btn.set_untoggled_font_color(vec4(1.0f, 0.0f, 0.0f, 1.0f));
 	}
 }
 

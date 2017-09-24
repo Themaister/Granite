@@ -10,6 +10,7 @@ add_granite_library(ui-renderer
         label.cpp label.hpp
         slider.cpp slider.hpp
         click_button.cpp click_button.hpp
+        toggle_button.cpp toggle_button.hpp
         ui_manager.hpp ui_manager.cpp)
 target_link_libraries(ui-renderer renderer stb filesystem)
 target_include_directories(ui-renderer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

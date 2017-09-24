@@ -23,6 +23,7 @@
 #pragma once
 
 #include "widget.hpp"
+#include <functional>
 
 namespace Granite
 {
@@ -98,6 +99,11 @@ public:
 		geometry_changed();
 	}
 
+	void on_value_changed(std::function<void (float)> func)
+	{
+		value_cb = std::move(func);
+	}
+
 private:
 	void reconfigure_to_canvas(vec2 offset, vec2 size) override;
 	std::string text;
@@ -128,6 +134,8 @@ private:
 
 	bool displaying_tooltip = false;
 	vec2 tooltip_offset = vec2(0.0f);
+
+	std::function<void (float)> value_cb;
 };
 }
 }

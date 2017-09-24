@@ -78,6 +78,8 @@ void Slider::set_range(float minimum, float maximum)
 	value_minimum = minimum;
 	value_maximum = maximum;
 	value = mix(value_minimum, value_maximum, normalized_value);
+	if (value_cb)
+		value_cb(value);
 }
 
 void Slider::set_value(float value)
@@ -85,6 +87,9 @@ void Slider::set_value(float value)
 	value = clamp(value, value_minimum, value_maximum);
 	normalized_value = (value - value_minimum) / (value_maximum - value_minimum);
 	geometry_changed();
+
+	if (value_cb)
+		value_cb(value);
 }
 
 void Slider::reconfigure_to_canvas(vec2, vec2 size)
@@ -157,6 +162,9 @@ Widget *Slider::on_mouse_button_pressed(vec2 offset)
 		tooltip_offset = offset + vec2(10.0f, 0.0f);
 		displaying_tooltip = true;
 	}
+
+	if (value_cb)
+		value_cb(value);
 	return this;
 }
 
@@ -177,6 +185,9 @@ void Slider::on_mouse_button_move(vec2 offset)
 		tooltip_offset = offset + vec2(10.0f, 0.0f);
 		displaying_tooltip = true;
 	}
+
+	if (value_cb)
+		value_cb(value);
 }
 
 void Slider::on_mouse_button_released(vec2)

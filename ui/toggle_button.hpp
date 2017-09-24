@@ -30,7 +30,7 @@ namespace Granite
 {
 namespace UI
 {
-class ClickButton : public Widget
+class ToggleButton : public Widget
 {
 public:
 	void set_text(std::string text);
@@ -44,14 +44,30 @@ public:
 		this->alignment = alignment;
 	}
 
-	void set_font_color(vec4 color)
+	void set_untoggled_font_color(vec4 color)
 	{
-		this->color = color;
+		this->untoggled_color = color;
 	}
 
-	void on_click(std::function<void ()> cb)
+	void set_toggled_font_color(vec4 color)
 	{
-		click_cb = std::move(cb);
+		this->toggled_color = color;
+	}
+
+	void on_toggle(std::function<void (bool)> cb)
+	{
+		toggle_cb = std::move(cb);
+	}
+
+	void set_toggled(bool enable)
+	{
+		if (toggled != enable)
+		{
+			if (toggle_cb)
+				toggle_cb(enable);
+		}
+		toggled = enable;
+		geometry_changed();
 	}
 
 private:
@@ -62,11 +78,13 @@ private:
 
 	float render(FlatRenderer &renderer, float layer, vec2 offset, vec2 size) override;
 	Font::Alignment alignment = Font::Alignment::Center;
-	vec4 color = vec4(0.0f, 0.0f, 0.0f, 1.0f);
+	vec4 toggled_color = vec4(0.0f, 0.0f, 0.0f, 1.0f);
+	vec4 untoggled_color = vec4(0.0f, 0.0f, 0.0f, 1.0f);
 	std::string text;
 
 	bool click_held = false;
-	std::function<void ()> click_cb;
+	bool toggled = false;
+	std::function<void (bool)> toggle_cb;
 };
 }
 }

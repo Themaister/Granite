@@ -47,6 +47,11 @@ void UIManager::add_child(WidgetHandle handle)
 	widgets.push_back(handle);
 }
 
+void UIManager::reset_children()
+{
+	widgets.clear();
+}
+
 void UIManager::render(Vulkan::CommandBuffer &cmd)
 {
 	renderer.begin();

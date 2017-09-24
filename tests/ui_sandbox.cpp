@@ -32,15 +32,30 @@ using namespace Granite;
 using namespace Vulkan;
 using namespace Util;
 
-struct UIApplication : Granite::Application
+struct UIApplication : Application, public EventHandler
 {
 	UIApplication();
 	void render_frame(double, double) override;
+
+	void on_device_created(const DeviceCreatedEvent &e);
+	void on_device_destroyed(const DeviceCreatedEvent &e);
 };
 
 UIApplication::UIApplication()
 {
+	EVENT_MANAGER_REGISTER_LATCH(UIApplication, on_device_created, on_device_destroyed, DeviceCreatedEvent);
+}
+
+void UIApplication::on_device_destroyed(const DeviceCreatedEvent &)
+{
+}
+
+void UIApplication::on_device_created(const DeviceCreatedEvent &e)
+{
+	auto &device = e.get_device();
 	auto &ui = UI::UIManager::get();
+	ui.reset_children();
+
 	auto window = make_abstract_handle<UI::Widget, UI::Window>();
 	ui.add_child(window);
 
@@ -49,6 +64,7 @@ UIApplication::UIApplication()
 	win.show_title_bar(false);
 	win.set_floating(false);
 	win.set_background_color(vec4(0.0f, 1.0f, 0.0f, 1.0f));
+	win.set_background_image(device.get_texture_manager().request_texture("builtin://textures/checkerboard.png"));
 
 	auto button = make_abstract_handle<UI::Widget, UI::ClickButton>();
 	win.add_child(button);
@@ -92,6 +108,8 @@ UIApplication::UIApplication()
 		sli.show_value(false);
 		sli.set_margin(5.0f);
 		sli.show_tooltip(true);
+		sli.set_background_image(device.get_texture_manager().request_texture("builtin://textures/checkerboard.png"));
+		sli.set_background_color(vec4(1.0f));
 	}
 
 	slider = make_abstract_handle<UI::Widget, UI::Slider>();
@@ -110,6 +128,8 @@ UIApplication::UIApplication()
 		sli.show_value(false);
 		sli.set_margin(5.0f);
 		sli.show_tooltip(true);
+		sli.set_background_image(device.get_texture_manager().request_texture("builtin://textures/checkerboard.png"));
+		sli.set_background_color(vec4(1.0f));
 	}
 
 	button = make_abstract_handle<UI::Widget, UI::ToggleButton>();
@@ -122,6 +142,8 @@ UIApplication::UIApplication()
 		btn.set_text("Mjuu");
 		btn.set_toggled_font_color(vec4(0.0f, 1.0f, 0.0f, 1.0f));
 		btn.set_untoggled_font_color(vec4(1.0f, 0.0f, 0.0f, 1.0f));
+		btn.set_background_image(device.get_texture_manager().request_texture("builtin://textures/checkerboard.png"));
+		btn.set_background_color(vec4(1.0f));
 	}
 }
 

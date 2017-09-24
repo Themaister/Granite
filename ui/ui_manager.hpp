@@ -67,6 +67,8 @@ public:
 	void render(Vulkan::CommandBuffer &cmd);
 	Font &get_font(FontSize size);
 
+	void reset_children();
+
 private:
 	UIManager();
 	FlatRenderer renderer;

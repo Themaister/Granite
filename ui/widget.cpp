@@ -38,7 +38,21 @@ float Widget::render_children(FlatRenderer &renderer, float layer, vec2 offset)
 		if (child.widget->get_visible())
 		{
 			if (child.widget->bg_color.a > 0.0f)
-				renderer.render_quad(vec3(child.offset + offset, layer - 0.5f), vec2(child.size), child.widget->bg_color);
+			{
+				if (child.widget->bg_image)
+				{
+					auto &image = *child.widget->bg_image->get_image();
+					renderer.render_textured_quad(image.get_view(),
+					                              vec3(child.offset + offset, layer - 0.5f), vec2(child.size),
+					                              vec2(0.0f), vec2(image.get_width(0), image.get_height(0)),
+					                              true, child.widget->bg_color, Vulkan::StockSampler::LinearClamp);
+				}
+				else
+				{
+					renderer.render_quad(vec3(child.offset + offset, layer - 0.5f), vec2(child.size),
+					                     child.widget->bg_color);
+				}
+			}
 
 			renderer.push_scissor(child.offset + offset, child.size);
 			float min_layer = child.widget->render(renderer, layer - 1.0f, child.offset + offset, child.size);

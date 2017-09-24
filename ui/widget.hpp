@@ -24,6 +24,7 @@
 #include "intrusive.hpp"
 #include "math.hpp"
 #include <vector>
+#include "texture_manager.hpp"
 
 namespace Granite
 {
@@ -122,6 +123,12 @@ public:
 		needs_redraw = true;
 	}
 
+	void set_background_image(Vulkan::Texture *texture)
+	{
+		bg_image = texture;
+		needs_redraw = true;
+	}
+
 	bool get_needs_redraw() const;
 	void reconfigure_geometry();
 	void reconfigure_geometry_to_canvas(vec2 offset, vec2 size);
@@ -171,6 +178,7 @@ protected:
 
 	vec2 floating_position = vec2(0.0f);
 	vec4 bg_color = vec4(1.0f, 1.0f, 1.0f, 0.0f);
+	Vulkan::Texture *bg_image = nullptr;
 	bool needs_redraw = true;
 	bool floating = false;
 

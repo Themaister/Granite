@@ -92,7 +92,20 @@ void Window::reconfigure_to_canvas(vec2 offset, vec2 size)
 float Window::render(FlatRenderer &renderer, float layer, vec2 offset, vec2 size)
 {
 	if (bg_color.a > 0.0f)
-		renderer.render_quad(vec3(offset, layer), size, bg_color);
+	{
+		if (bg_image)
+		{
+			auto &image = *bg_image->get_image();
+			renderer.render_textured_quad(image.get_view(),
+			                              vec3(offset, layer), size,
+			                              vec2(0.0f), vec2(image.get_width(0), image.get_height(0)),
+			                              true, bg_color, Vulkan::StockSampler::LinearClamp);
+		}
+		else
+		{
+			renderer.render_quad(vec3(offset, layer), size, bg_color);
+		}
+	}
 
 	if (title_bar)
 	{

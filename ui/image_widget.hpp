@@ -22,10 +22,10 @@
 
 #pragma once
 
-#include <sampler.hpp>
 #include "widget.hpp"
 #include "texture_manager.hpp"
 #include "vulkan_events.hpp"
+#include "sampler.hpp"
 
 namespace Granite
 {

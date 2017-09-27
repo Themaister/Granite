@@ -138,10 +138,7 @@ public:
 		return layer;
 	}
 
-	virtual Widget *on_mouse_button_pressed(vec2)
-	{
-		return nullptr;
-	}
+	virtual Widget *on_mouse_button_pressed(vec2);
 
 	virtual void on_mouse_button_released(vec2)
 	{

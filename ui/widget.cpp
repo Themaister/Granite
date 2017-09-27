@@ -63,6 +63,22 @@ float Widget::render_children(FlatRenderer &renderer, float layer, vec2 offset)
 	return minimum_layer;
 }
 
+Widget *Widget::on_mouse_button_pressed(vec2 offset)
+{
+	for (auto &child : children)
+	{
+		if (any(lessThan(offset, child.offset)) ||
+		    any(greaterThanEqual(offset, child.offset + child.size)))
+			continue;
+
+		auto *ret = child.widget->on_mouse_button_pressed(offset - child.offset);
+		if (ret)
+			return ret;
+	}
+
+	return nullptr;
+}
+
 void Widget::add_child(Util::IntrusivePtr<Widget> widget)
 {
 	children.push_back({ ivec2(0), ivec2(0), widget });

@@ -59,7 +59,9 @@ Widget *Window::on_mouse_button_pressed(vec2 offset)
 		    any(greaterThanEqual(offset, child.offset + vec2(0.0f, off_y) + child.size)))
 			continue;
 
-		return child.widget->on_mouse_button_pressed(offset - (child.offset + vec2(0.0f, off_y)));
+		auto *ret = child.widget->on_mouse_button_pressed(offset - (child.offset + vec2(0.0f, off_y)));
+		if (ret)
+			return ret;
 	}
 
 	return nullptr;

@@ -22,6 +22,7 @@
 
 #pragma once
 
+#include <sampler.hpp>
 #include "widget.hpp"
 #include "texture_manager.hpp"
 #include "vulkan_events.hpp"
@@ -45,6 +46,13 @@ public:
 		return keep_aspect;
 	}
 
+	void set_filter(Vulkan::StockSampler sampler)
+	{
+		this->sampler = sampler;
+	}
+
+	void reconfigure() override;
+
 private:
 	float render(FlatRenderer &renderer, float layout, vec2 offset, vec2 size) override;
 	void reconfigure_to_canvas(vec2 offset, vec2 size) override;
@@ -52,9 +60,11 @@ private:
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
 	std::string path;
 	Vulkan::Texture *texture = nullptr;
+	Vulkan::StockSampler sampler = Vulkan::StockSampler::LinearClamp;
 
 	vec2 sprite_offset;
 	vec2 sprite_size;
+	vec2 image_size;
 
 	bool keep_aspect = true;
 };

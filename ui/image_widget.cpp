@@ -37,6 +37,10 @@ Image::Image(const std::string &path)
 	EVENT_MANAGER_REGISTER_LATCH(Image, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
+void Image::reconfigure()
+{
+}
+
 void Image::on_device_created(const DeviceCreatedEvent &created)
 {
 	auto &device = created.get_device();
@@ -52,9 +56,12 @@ void Image::reconfigure_to_canvas(vec2, vec2 size)
 	sprite_offset = vec2(0.0f);
 	sprite_size = size;
 
+	auto &create_info = texture->get_image()->get_create_info();
+	image_size = vec2(create_info.width, create_info.height);
+
 	if (keep_aspect)
 	{
-		float target_aspect = geometry.target.x / geometry.target.y;
+		float target_aspect = image_size.x / image_size.y;
 		float canvas_aspect = size.x / size.y;
 
 		if (glm::abs(canvas_aspect / target_aspect - 1.0f) > 0.001f)
@@ -80,7 +87,7 @@ void Image::reconfigure_to_canvas(vec2, vec2 size)
 float Image::render(FlatRenderer &renderer, float layer, vec2 offset, vec2)
 {
 	renderer.render_textured_quad(texture->get_image()->get_view(), vec3(offset + sprite_offset, layer), sprite_size,
-	                              vec2(0.0f), vec2(geometry.target), true, vec4(1.0f), Vulkan::StockSampler::LinearClamp);
+	                              vec2(0.0f), image_size, true, vec4(1.0f), sampler);
 	return layer;
 }
 

@@ -4,8 +4,7 @@
 #include "spot.h"
 
 layout(location = 0) out vec3 FragColor;
-layout(location = 0) in vec4 vClip;
-layout(location = 1) flat in int vIndex;
+layout(location = 0) flat in int vIndex;
 
 layout(input_attachment_index = 0, set = 1, binding = 0) uniform subpassInput BaseColor;
 layout(input_attachment_index = 1, set = 1, binding = 1) uniform subpassInput Normal;
@@ -14,8 +13,9 @@ layout(input_attachment_index = 3, set = 1, binding = 3) uniform subpassInput De
 
 layout(std430, push_constant) uniform Registers
 {
-    vec4 inverse_view_projection_col2;
+    mat4 inverse_view_projection;
     vec3 camera_pos;
+    vec2 inv_resolution;
 } registers;
 
 void main()
@@ -27,7 +27,7 @@ void main()
     vec3 N = subpassLoad(Normal).xyz * 2.0 - 1.0;
 
     // Reconstruct positions.
-    vec4 clip = vClip + depth * registers.inverse_view_projection_col2;
+    vec4 clip = registers.inverse_view_projection * vec4(2.0 * gl_FragCoord.xy * registers.inv_resolution - 1.0, depth, 1.0);
     vec3 pos = clip.xyz / clip.w;
 
     FragColor = compute_spot_light(vIndex,

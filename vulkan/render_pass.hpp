@@ -147,17 +147,15 @@ public:
 	bool has_depth(unsigned subpass) const
 	{
 		VK_ASSERT(subpass < subpasses.size());
-		return
-			subpasses[subpass].depth_stencil_attachment.attachment != VK_ATTACHMENT_UNUSED &&
-			format_is_depth(depth_stencil);
+		return subpasses[subpass].depth_stencil_attachment.attachment != VK_ATTACHMENT_UNUSED &&
+		       format_is_depth(depth_stencil);
 	}
 
 	bool has_stencil(unsigned subpass) const
 	{
 		VK_ASSERT(subpass < subpasses.size());
-		return
-			subpasses[subpass].depth_stencil_attachment.attachment != VK_ATTACHMENT_UNUSED &&
-			format_is_stencil(depth_stencil);
+		return subpasses[subpass].depth_stencil_attachment.attachment != VK_ATTACHMENT_UNUSED &&
+		       (format_is_depth_stencil(depth_stencil) || format_is_stencil(depth_stencil));
 	}
 
 private:

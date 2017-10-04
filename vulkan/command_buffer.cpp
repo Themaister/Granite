@@ -477,11 +477,11 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
 		ds.front.passOp = static_cast<VkStencilOp>(static_state.state.stencil_front_pass);
 		ds.front.failOp = static_cast<VkStencilOp>(static_state.state.stencil_front_fail);
 		ds.front.depthFailOp = static_cast<VkStencilOp>(static_state.state.stencil_front_depth_fail);
+		ds.back.compareOp = static_cast<VkCompareOp>(static_state.state.stencil_back_compare_op);
 		ds.back.passOp = static_cast<VkStencilOp>(static_state.state.stencil_back_pass);
 		ds.back.failOp = static_cast<VkStencilOp>(static_state.state.stencil_back_fail);
 		ds.back.depthFailOp = static_cast<VkStencilOp>(static_state.state.stencil_back_depth_fail);
 	}
-
 
 	// Vertex input
 	VkPipelineVertexInputStateCreateInfo vi = { VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };

@@ -1208,9 +1208,16 @@ void Parser::parse(const string &original_path, const string &json)
 			{
 				auto &spot = pos["spot"];
 				if (spot.HasMember("innerAngle"))
+				{
 					info.inner_cone = spot["innerAngle"].GetFloat();
+					info.inner_cone = sqrt(1.0f - info.inner_cone * info.inner_cone);
+				}
+
 				if (spot.HasMember("outerAngle"))
+				{
 					info.outer_cone = spot["outerAngle"].GetFloat();
+					info.outer_cone = sqrt(1.0f - info.outer_cone * info.outer_cone);
+				}
 			}
 		}
 

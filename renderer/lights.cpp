@@ -103,7 +103,7 @@ PositionalFragmentInfo SpotLight::get_shader_info(const mat4 &transform) const
 			vec4(color, outer_cone),
 			vec4(constant, linear, quadratic, 1.0f / range),
 			vec4(transform[3].xyz(), inner_cone),
-			vec4(-transform[2].xyz(), xy_range),
+			vec4(normalize(transform[2].xyz()), xy_range),
 	};
 }
 
@@ -118,6 +118,13 @@ struct SpotLightRenderInfo
 	const Buffer *vbo = nullptr;
 	const Buffer *ibo = nullptr;
 	unsigned count = 0;
+
+	struct Push
+	{
+		mat4 inv_view_projection;
+		vec4 camera_pos;
+		vec2 inv_resolution;
+	} push;
 };
 
 struct PositionalVertexInfo
@@ -190,6 +197,10 @@ static void spot_render_full_screen(CommandBuffer &cmd, const RenderQueueData *i
 	cmd.set_cull_mode(VK_CULL_MODE_NONE);
 	cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
 
+	auto push = spot_info.push;
+	push.inv_resolution = vec2(1.0f / cmd.get_viewport().width, 1.0f / cmd.get_viewport().height);
+	cmd.push_constants(&push, 0, sizeof(push));
+
 	for (unsigned i = 0; i < num_instances; )
 	{
 		unsigned to_render = min(256u, num_instances - i);
@@ -217,6 +228,10 @@ static void spot_render_common(CommandBuffer &cmd, const RenderQueueData *infos,
 	cmd.set_vertex_binding(0, *spot_info.vbo, 0, sizeof(vec3));
 	cmd.set_vertex_attrib(0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0);
 	cmd.set_index_buffer(*spot_info.ibo, 0, VK_INDEX_TYPE_UINT16);
+
+	auto push = spot_info.push;
+	push.inv_resolution = vec2(1.0f / cmd.get_viewport().width, 1.0f / cmd.get_viewport().height);
+	cmd.push_constants(&push, 0, sizeof(push));
 
 	for (unsigned i = 0; i < num_instances; )
 	{
@@ -253,18 +268,12 @@ static void spot_render_back(CommandBuffer &cmd, const RenderQueueData *infos, u
 void SpotLight::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
                                 RenderQueue &queue) const
 {
-	SpotLightRenderInfo info;
-
 	auto &params = context.get_render_parameters();
 	auto &aabb = transform->world_aabb;
 	float to_center = dot(aabb.get_center() - params.camera_position, params.camera_front);
 	float radius = aabb.get_radius();
 	float aabb_near = to_center - params.z_near - radius;
 	float aabb_far = to_center + radius - params.z_far;
-
-	info.count = light_mesh.spot_count;
-	info.vbo = light_mesh.spot_vbo.get();
-	info.ibo = light_mesh.spot_ibo.get();
 
 	RenderFunc func;
 
@@ -292,7 +301,17 @@ void SpotLight::get_render_info(const RenderContext &context, const CachedSpatia
 
 	if (spot_info)
 	{
-		info.program = queue.get_shader_suites()[ecast(RenderableType::SpotLight)].get_program(DrawPipeline::AlphaBlend, 0, 0).get();
+		SpotLightRenderInfo info;
+
+		info.count = light_mesh.spot_count;
+		info.vbo = light_mesh.spot_vbo.get();
+		info.ibo = light_mesh.spot_ibo.get();
+
+		info.push.inv_view_projection = params.inv_view_projection;
+		info.push.camera_pos = vec4(params.camera_position, 0.0f);
+
+		info.program = queue.get_shader_suites()[ecast(RenderableType::SpotLight)].get_program(DrawPipeline::AlphaBlend, 0, 0,
+		                                                                                       func == spot_render_full_screen ? 1 : 0).get();
 		*spot_info = info;
 	}
 }
@@ -314,7 +333,7 @@ PositionalFragmentInfo PointLight::get_shader_info(const mat4 &transform) const
 			vec4(color, 0.0f),
 			vec4(constant, linear, quadratic, 1.0f / range),
 			vec4(transform[3].xyz(), 0.0f),
-			vec4(-transform[2].xyz(), 0.0f),
+			vec4(normalize(transform[2].xyz()), 0.0f),
 	};
 }
 

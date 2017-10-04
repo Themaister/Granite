@@ -66,9 +66,9 @@ private:
 		return true;
 	}
 
-	const AABB &get_static_aabb() const override
+	const AABB *get_static_aabb() const override
 	{
-		return aabb;
+		return &aabb;
 	}
 
 	void get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform, RenderQueue &queue) const override;

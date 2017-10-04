@@ -142,6 +142,16 @@ void Renderer::on_device_created(const DeviceCreatedEvent &created)
 		                                                         "builtin://shaders/dummy.frag");
 	}
 
+	if (type == RendererType::GeneralDeferred)
+	{
+		suite[ecast(RenderableType::SpotLight)].init_graphics(&device.get_shader_manager(),
+		                                                      "builtin://shaders/lights/spot.vert",
+		                                                      "builtin://shaders/lights/spot.frag");
+		suite[ecast(RenderableType::PointLight)].init_graphics(&device.get_shader_manager(),
+		                                                      "builtin://shaders/lights/point.vert",
+		                                                      "builtin://shaders/lights/point.frag");
+	}
+
 	set_mesh_renderer_options_internal(renderer_options);
 	for (auto &s : suite)
 		s.bake_base_defines();
@@ -182,14 +192,14 @@ void Renderer::set_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderC
 	resolution->resolution = vec2(cmd.get_viewport().width, cmd.get_viewport().height);
 	resolution->inv_resolution = vec2(1.0f / cmd.get_viewport().width, 1.0f / cmd.get_viewport().height);
 
+	cmd.set_texture(0, 7,
+	                cmd.get_device().get_texture_manager().request_texture("builtin://textures/ibl_brdf_lut.ktx")->get_image()->get_view(),
+	                Vulkan::StockSampler::LinearClamp);
+
 	if (lighting->environment_radiance != nullptr)
 		cmd.set_texture(1, 0, *lighting->environment_radiance, Vulkan::StockSampler::TrilinearClamp);
 	if (lighting->environment_irradiance != nullptr)
 		cmd.set_texture(1, 1, *lighting->environment_irradiance, Vulkan::StockSampler::LinearClamp);
-
-	cmd.set_texture(1, 2,
-	                cmd.get_device().get_texture_manager().request_texture("builtin://textures/ibl_brdf_lut.ktx")->get_image()->get_view(),
-	                Vulkan::StockSampler::LinearClamp);
 
 	if (lighting->shadow_far != nullptr)
 		cmd.set_texture(1, 3, *lighting->shadow_far, Vulkan::StockSampler::LinearShadow);
@@ -220,9 +230,26 @@ void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context)
 	queue.dispatch(Queue::Opaque, cmd, &state);
 	queue.dispatch(Queue::OpaqueEmissive, cmd, &state);
 
-	if (type == RendererType::GeneralForward)
+	if (type == RendererType::GeneralDeferred)
+	{
+		// General deferred renderers can render light volumes.
+		cmd.restore_state(state);
+		cmd.set_input_attachments(1, 0);
+		cmd.set_depth_test(true, false);
+		cmd.set_blend_enable(true);
+		cmd.set_blend_factors(VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_ONE);
+		cmd.set_blend_op(VK_BLEND_OP_ADD);
+		cmd.set_stencil_reference(0xff, 0, 0);
+		cmd.set_stencil_test(true);
+		cmd.set_stencil_front_ops(VK_COMPARE_OP_EQUAL, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP);
+		cmd.set_stencil_back_ops(VK_COMPARE_OP_EQUAL, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP);
+		cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
+		queue.dispatch(Queue::Light, cmd, &state);
+	}
+	else if (type == RendererType::GeneralForward)
 	{
 		// Forward renderers can also render transparent objects.
+		cmd.restore_state(state);
 		cmd.set_blend_enable(true);
 		cmd.set_blend_factors(VK_BLEND_FACTOR_SRC_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA);
 		cmd.set_blend_op(VK_BLEND_OP_ADD);
@@ -348,7 +375,7 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 	if (light.environment_irradiance)
 		cmd.set_texture(1, 1, *light.environment_irradiance, Vulkan::StockSampler::LinearClamp);
 
-	cmd.set_texture(1, 2,
+	cmd.set_texture(0, 7,
 	                cmd.get_device().get_texture_manager().request_texture("builtin://textures/ibl_brdf_lut.ktx")->get_image()->get_view(),
 	                Vulkan::StockSampler::LinearClamp);
 

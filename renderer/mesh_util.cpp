@@ -429,6 +429,10 @@ struct CylinderVertex
 
 static void skycylinder_render(CommandBuffer &cmd, const RenderQueueData *infos, unsigned instances)
 {
+	cmd.set_stencil_test(true);
+	cmd.set_stencil_reference(0xff, 0xff, 1);
+	cmd.set_stencil_ops(VK_COMPARE_OP_ALWAYS, VK_STENCIL_OP_REPLACE, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP);
+
 	for (unsigned i = 0; i < instances; i++)
 	{
 		auto *info = static_cast<const SkyCylinderRenderInfo *>(infos[i].render_info);
@@ -578,6 +582,10 @@ struct SkyboxRenderInfo
 
 static void skybox_render(CommandBuffer &cmd, const RenderQueueData *infos, unsigned instances)
 {
+	cmd.set_stencil_test(true);
+	cmd.set_stencil_reference(0xff, 0xff, 1);
+	cmd.set_stencil_ops(VK_COMPARE_OP_ALWAYS, VK_STENCIL_OP_REPLACE, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP);
+
 	for (unsigned i = 0; i < instances; i++)
 	{
 		auto *info = static_cast<const SkyboxRenderInfo *>(infos[i].render_info);

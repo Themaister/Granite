@@ -43,6 +43,13 @@ using HashMap = std::unordered_map<Hash, T, UnityHasher>;
 class Hasher
 {
 public:
+	Hasher(Hash h)
+		: h(h)
+	{
+	}
+
+	Hasher() = default;
+
 	template <typename T>
 	inline void data(const T *data, size_t size)
 	{
@@ -78,7 +85,8 @@ public:
 		u32(value >> 32);
 	}
 
-	inline void pointer(const void *ptr)
+	template <typename T>
+	inline void pointer(T *ptr)
 	{
 		u64(reinterpret_cast<uintptr_t>(ptr));
 	}

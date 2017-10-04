@@ -183,9 +183,9 @@ private:
 		return true;
 	}
 
-	const AABB &get_static_aabb() const override
+	const AABB *get_static_aabb() const override
 	{
-		return static_aabb;
+		return &static_aabb;
 	}
 };
 

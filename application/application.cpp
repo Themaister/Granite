@@ -22,7 +22,7 @@
 
 #define RENDERER_FORWARD 0
 #define RENDERER_DEFERRED 1
-#define RENDERER RENDERER_FORWARD
+#define RENDERER RENDERER_DEFERRED
 
 #include "application.hpp"
 #include <stdexcept>
@@ -94,9 +94,11 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path)
 
 	// Pick a camera to show.
 	selected_camera = &cam;
+#if 0
 	auto &scene_cameras = scene_loader.get_scene().get_entity_pool().get_component_group<CameraComponent>();
 	if (!scene_cameras.empty())
 		selected_camera = &get<0>(scene_cameras.front())->camera;
+#endif
 
 	context.set_camera(*selected_camera);
 
@@ -175,6 +177,17 @@ void SceneViewerApplication::render_transparent_objects(Vulkan::CommandBuffer &c
 	forward_renderer.begin();
 	forward_renderer.push_renderables(context, visible);
 	forward_renderer.flush(cmd, context);
+}
+
+void SceneViewerApplication::render_positional_lights(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view)
+{
+	auto &scene = scene_loader.get_scene();
+	context.set_camera(proj, view);
+	visible.clear();
+	scene.gather_visible_positional_lights(context.get_visibility_frustum(), visible);
+	deferred_renderer.begin();
+	deferred_renderer.push_renderables(context, visible);
+	deferred_renderer.flush(cmd, context);
 }
 
 static inline string tagcat(const std::string &a, const std::string &b)
@@ -288,6 +301,7 @@ void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::st
 	scene_loader.get_scene().add_render_pass_dependencies(graph, gbuffer);
 
 	lighting.set_build_render_pass([this, type](Vulkan::CommandBuffer &cmd) {
+		render_positional_lights(cmd, selected_camera->get_projection(), selected_camera->get_view());
 		DeferredLightRenderer::render_light(cmd, context);
 	});
 

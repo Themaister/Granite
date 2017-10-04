@@ -60,10 +60,10 @@ public:
 		return false;
 	}
 
-	virtual const AABB &get_static_aabb() const
+	virtual const AABB *get_static_aabb() const
 	{
 		static const AABB aabb(vec3(0.0f), vec3(0.0f));
-		return aabb;
+		return &aabb;
 	}
 
 	virtual DrawPipeline get_mesh_draw_pipeline() const

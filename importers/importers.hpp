@@ -140,6 +140,7 @@ struct CameraInfo
 		Perspective
 	};
 
+	std::string name;
 	uint32_t node_index = 0;
 	Type type = Type::Perspective;
 	float aspect_ratio = 1.0f;
@@ -148,6 +149,29 @@ struct CameraInfo
 	float yfov = 0.66f;
 	float xmag = 1.0f;
 	float ymag = 1.0f;
+
+	bool attached_to_node = false;
+};
+
+struct LightInfo
+{
+	enum class Type
+	{
+		Directional,
+		Spot,
+		Point,
+		Ambient
+	};
+
+	std::string name;
+	uint32_t node_index = 0;
+	Type type = Type::Spot;
+	float inner_cone = 0.40f;
+	float outer_cone = 0.45f;
+	vec3 color = vec3(1.0f);
+	float constant_falloff = 0.0f;
+	float linear_falloff = 0.0f;
+	float quadratic_falloff = 0.0f;
 
 	bool attached_to_node = false;
 };

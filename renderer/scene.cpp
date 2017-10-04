@@ -22,6 +22,7 @@
 
 #include "scene.hpp"
 #include "transforms.hpp"
+#include "lights.hpp"
 
 using namespace std;
 
@@ -32,11 +33,14 @@ Scene::Scene()
 	: spatials(pool.get_component_group<BoundedComponent, CachedSpatialTransformComponent, CachedSpatialTransformTimestampComponent>()),
 	  opaque(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, OpaqueComponent>()),
 	  transparent(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, TransparentComponent>()),
+	  positional_lights(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, PositionalLightComponent>()),
 	  static_shadowing(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, CastsStaticShadowComponent>()),
 	  dynamic_shadowing(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, CastsDynamicShadowComponent>()),
 	  render_pass_shadowing(pool.get_component_group<RenderPassComponent, RenderableComponent, CastsDynamicShadowComponent>()),
 	  backgrounds(pool.get_component_group<UnboundedComponent, RenderableComponent>()),
 	  cameras(pool.get_component_group<CameraComponent, CachedTransformComponent>()),
+	  directional_lights(pool.get_component_group<DirectionalLightComponent, CachedTransformComponent>()),
+	  ambient_lights(pool.get_component_group<AmbientLightComponent>()),
 	  per_frame_updates(pool.get_component_group<PerFrameUpdateComponent>()),
 	  per_frame_update_transforms(pool.get_component_group<PerFrameUpdateTransformComponent, CachedSpatialTransformComponent>()),
 	  environments(pool.get_component_group<EnvironmentComponent>()),
@@ -170,6 +174,11 @@ void Scene::gather_visible_static_shadow_renderables(const Frustum &frustum, Vis
 	gather_visible_renderables(frustum, list, static_shadowing);
 }
 
+void Scene::gather_visible_positional_lights(const Frustum &frustum, VisibilityList &list)
+{
+	gather_visible_renderables(frustum, list, positional_lights);
+}
+
 void Scene::gather_visible_dynamic_shadow_renderables(const Frustum &frustum, VisibilityList &list)
 {
 	gather_visible_renderables(frustum, list, dynamic_shadowing);
@@ -266,11 +275,11 @@ void Scene::update_cached_transforms()
 					// TODO: Isolate the AABB per bone.
 					cached_transform->world_aabb = AABB(vec3(FLT_MAX), vec3(-FLT_MAX));
 					for (auto &m : cached_transform->skin_transform->bone_world_transforms)
-						cached_transform->world_aabb.expand(aabb->aabb.transform(m));
+						cached_transform->world_aabb.expand(aabb->aabb->transform(m));
 				}
 				else
 				{
-					cached_transform->world_aabb = aabb->aabb.transform(
+					cached_transform->world_aabb = aabb->aabb->transform(
 						cached_transform->transform->world_transform);
 				}
 			}
@@ -285,6 +294,17 @@ void Scene::update_cached_transforms()
 		CachedTransformComponent *transform;
 		tie(cam, transform) = c;
 		cam->camera.set_transform(transform->transform->world_transform);
+	}
+
+	// Update directional light transforms.
+	for (auto &light : directional_lights)
+	{
+		DirectionalLightComponent *l;
+		CachedTransformComponent *transform;
+		tie(l, transform) = light;
+
+		// v = [0, 0, -1, 0].
+		l->direction = normalize(-transform->transform->world_transform[2]);
 	}
 }
 
@@ -375,6 +395,65 @@ EntityHandle Scene::create_entity()
 {
 	EntityHandle entity = pool.create_entity();
 	nodes.push_back(entity);
+	return entity;
+}
+
+EntityHandle Scene::create_light(const Importer::LightInfo &light, Node *node)
+{
+	EntityHandle entity = pool.create_entity();
+	nodes.push_back(entity);
+
+	switch (light.type)
+	{
+	case Importer::LightInfo::Type::Directional:
+	{
+		auto *dir = entity->allocate_component<DirectionalLightComponent>();
+		auto *transform = entity->allocate_component<CachedTransformComponent>();
+		transform->transform = &node->cached_transform;
+		dir->color = light.color;
+		break;
+	}
+
+	case Importer::LightInfo::Type::Ambient:
+	{
+		auto *ambient = entity->allocate_component<AmbientLightComponent>();
+		ambient->color = light.color;
+		break;
+	}
+
+	case Importer::LightInfo::Type::Point:
+	case Importer::LightInfo::Type::Spot:
+	{
+		AbstractRenderableHandle renderable;
+		if (light.type == Importer::LightInfo::Type::Point)
+			renderable = Util::make_abstract_handle<AbstractRenderable, PointLight>();
+		else
+		{
+			renderable = Util::make_abstract_handle<AbstractRenderable, SpotLight>();
+			auto &spot = static_cast<SpotLight &>(*renderable);
+			spot.set_spot_parameters(light.inner_cone, light.outer_cone);
+		}
+
+		auto &positional = static_cast<PositionalLight &>(*renderable);
+		positional.set_color(light.color);
+		positional.set_falloff(light.constant_falloff, light.linear_falloff, light.quadratic_falloff);
+
+		entity->allocate_component<PositionalLightComponent>()->light = &positional;
+		entity->allocate_component<RenderableComponent>()->renderable = renderable;
+
+		auto *transform = entity->allocate_component<CachedSpatialTransformComponent>();
+		auto *timestamp = entity->allocate_component<CachedSpatialTransformTimestampComponent>();
+		if (node)
+		{
+			transform->transform = &node->cached_transform;
+			timestamp->current_timestamp = node->get_timestamp_pointer();
+		}
+
+		auto *bounded = entity->allocate_component<BoundedComponent>();
+		bounded->aabb = renderable->get_static_aabb();
+		break;
+	}
+	}
 	return entity;
 }
 

@@ -143,6 +143,13 @@ Scene::NodeHandle SceneLoader::build_tree_for_subscene(const SubsceneData &subsc
 		}
 	}
 
+	for (auto &light : parser.get_lights())
+	{
+		if (!light.attached_to_node)
+			continue;
+		scene->create_light(light, nodes[light.node_index].get());
+	}
+
 	auto root = scene->create_node();
 	for (auto &node : nodes)
 		if (node && !node->get_parent())

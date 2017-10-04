@@ -968,6 +968,21 @@ void Parser::parse(const string &original_path, const string &json)
 			json_cameras[index].attached_to_node = true;
 		}
 
+		if (value.HasMember("extensions"))
+		{
+			auto &ext = value["extensions"];
+			if (ext.HasMember("KHR_lights_cmn"))
+			{
+				auto &cmn = ext["KHR_lights_cmn"];
+				if (cmn.HasMember("light"))
+				{
+					auto index = cmn["light"].GetUint();
+					json_lights[index].node_index = uint32_t(nodes.size());
+					json_lights[index].attached_to_node = true;
+				}
+			}
+		}
+
 		if (value.HasMember("skin"))
 		{
 			auto &s = value["skin"];
@@ -1116,6 +1131,10 @@ void Parser::parse(const string &original_path, const string &json)
 
 	const auto add_camera = [&](const Value &camera) {
 		CameraInfo info;
+
+		if (camera.HasMember("name"))
+			info.name = camera["name"].GetString();
+
 		if (camera.HasMember("type"))
 		{
 			if (strcmp(camera["type"].GetString(), "perspective") == 0)
@@ -1146,11 +1165,71 @@ void Parser::parse(const string &original_path, const string &json)
 			}
 		}
 
-		json_cameras.push_back(info);
+		json_cameras.push_back(move(info));
+	};
+
+	const auto add_light = [&](const Value &light) {
+		LightInfo info;
+
+		if (light.HasMember("name"))
+			info.name = light["name"].GetString();
+
+		if (light.HasMember("color"))
+		{
+			auto &color = light["color"];
+			info.color.r = color[0].GetFloat();
+			info.color.g = color[1].GetFloat();
+			info.color.b = color[2].GetFloat();
+		}
+
+		auto *type = light["type"].GetString();
+		if (strcmp(type, "point") == 0)
+			info.type = LightInfo::Type::Point;
+		else if (strcmp(type, "spot") == 0)
+			info.type = LightInfo::Type::Spot;
+		else if (strcmp(type, "directional") == 0)
+			info.type = LightInfo::Type::Directional;
+		else if (strcmp(type, "ambient") == 0)
+			info.type = LightInfo::Type::Ambient;
+		else
+			throw logic_error("Invalid light type.");
+
+		if (info.type == LightInfo::Type::Spot || info.type == LightInfo::Type::Point)
+		{
+			auto &pos = light["positional"];
+			if (pos.HasMember("constantAttenuation"))
+				info.constant_falloff = pos["constantAttenuation"].GetFloat();
+			if (pos.HasMember("linearAttenuation"))
+				info.linear_falloff = pos["linearAttenuation"].GetFloat();
+			if (pos.HasMember("quadraticAttenuation"))
+				info.quadratic_falloff = pos["quadraticAttenuation"].GetFloat();
+
+			if (pos.HasMember("spot"))
+			{
+				auto &spot = pos["spot"];
+				if (spot.HasMember("innerAngle"))
+					info.inner_cone = spot["innerAngle"].GetFloat();
+				if (spot.HasMember("outerAngle"))
+					info.outer_cone = spot["outerAngle"].GetFloat();
+			}
+		}
+
+		json_lights.push_back(move(info));
 	};
 
 	if (doc.HasMember("cameras"))
 		iterate_elements(doc["cameras"], add_camera);
+
+	if (doc.HasMember("extensions"))
+	{
+		auto &ext = doc["extensions"];
+		if (ext.HasMember("KHR_lights_cmn") && ext["KHR_lights_cmn"].HasMember("lights"))
+		{
+			auto &lights = ext["KHR_lights_cmn"]["lights"];
+			iterate_elements(lights, add_light);
+		}
+	}
+
 	if (doc.HasMember("buffers"))
 		iterate_elements(doc["buffers"], add_buffer);
 	if (doc.HasMember("bufferViews"))

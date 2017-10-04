@@ -40,6 +40,7 @@ class RenderContext;
 class RenderPass;
 class Scene;
 class Ground;
+class PositionalLight;
 
 struct Transform
 {
@@ -62,7 +63,7 @@ struct CachedSkinTransform
 
 struct BoundedComponent : ComponentBase
 {
-	AABB aabb;
+	const AABB *aabb;
 };
 
 struct UnboundedComponent : ComponentBase
@@ -167,6 +168,22 @@ struct OpaqueComponent : ComponentBase
 
 struct TransparentComponent : ComponentBase
 {
+};
+
+struct PositionalLightComponent : ComponentBase
+{
+	PositionalLight *light;
+};
+
+struct DirectionalLightComponent : ComponentBase
+{
+	vec3 color;
+	vec3 direction;
+};
+
+struct AmbientLightComponent : ComponentBase
+{
+	vec3 color;
 };
 
 struct CastsStaticShadowComponent : ComponentBase

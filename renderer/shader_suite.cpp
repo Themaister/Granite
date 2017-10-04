@@ -57,7 +57,7 @@ void ShaderSuite::bake_base_defines()
 }
 
 Vulkan::ProgramHandle ShaderSuite::get_program(DrawPipeline pipeline, uint32_t attribute_mask,
-                                               uint32_t texture_mask)
+                                               uint32_t texture_mask, uint32_t variant_id)
 {
 	Hasher h;
 	assert(base_define_hash != 0);
@@ -65,6 +65,7 @@ Vulkan::ProgramHandle ShaderSuite::get_program(DrawPipeline pipeline, uint32_t a
 	h.u32(pipeline == DrawPipeline::AlphaTest);
 	h.u32(attribute_mask);
 	h.u32(texture_mask);
+	h.u32(variant_id);
 
 	auto hash = h.get();
 	auto itr = variants.find(hash);
@@ -83,6 +84,7 @@ Vulkan::ProgramHandle ShaderSuite::get_program(DrawPipeline pipeline, uint32_t a
 			break;
 		}
 
+		defines.emplace_back("VARIANT_ID", variant_id);
 		defines.emplace_back("HAVE_EMISSIVE", !!(texture_mask & MATERIAL_EMISSIVE_BIT));
 		defines.emplace_back("HAVE_EMISSIVE_REFRACTION", !!(texture_mask & MATERIAL_EMISSIVE_REFRACTION_BIT));
 		defines.emplace_back("HAVE_EMISSIVE_REFLECTION", !!(texture_mask & MATERIAL_EMISSIVE_REFLECTION_BIT));

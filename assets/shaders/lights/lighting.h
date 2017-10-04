@@ -2,16 +2,7 @@
 #define LIGHTING_H_
 
 #include "pbr.h"
-
-struct MaterialProperties
-{
-	vec3 base_color;
-	vec3 normal;
-	float metallic;
-	float roughness;
-	float ambient_factor;
-	float transparency;
-};
+#include "material.h"
 
 struct LightInfo
 {
@@ -38,7 +29,7 @@ struct EnvironmentInfo
 layout(set = 1, binding = 0) uniform samplerCube uReflection;
 layout(set = 1, binding = 1) uniform samplerCube uIrradiance;
 #endif
-layout(set = 1, binding = 2) uniform sampler2D uBRDFLut;
+layout(set = 0, binding = 7) uniform sampler2D uBRDFLut;
 
 #ifdef SHADOWS
 layout(set = 1, binding = 3) uniform highp sampler2DShadow uShadowmap;

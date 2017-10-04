@@ -40,6 +40,7 @@ enum class Queue : unsigned
 {
 	Opaque = 0,
 	OpaqueEmissive,
+	Light, // Relevant only for classic deferred rendering
 	Transparent,
 	Count
 };
@@ -68,10 +69,13 @@ private:
 	RenderInfo() = default;
 };
 
+struct RenderQueueData;
+using RenderFunc = void (*)(Vulkan::CommandBuffer &, const RenderQueueData *, unsigned);
+
 struct RenderQueueData
 {
 	// How to render an object.
-	void (*render)(Vulkan::CommandBuffer &cmd, const RenderQueueData *infos, unsigned instance_count);
+	RenderFunc render;
 
 	// Per-draw call specific data. Understood by the render callback.
 	const void *render_info;
@@ -91,15 +95,17 @@ public:
 
 	template <typename T>
 	T *push(Queue queue, Util::Hash instance_key, uint64_t sorting_key,
-	        void (*render)(Vulkan::CommandBuffer &cmd, const RenderQueueData *infos, unsigned instance_data),
-	        void *instance_data)
+	        RenderFunc render, void *instance_data)
 	{
 		static_assert(std::is_trivially_destructible<T>::value, "Dispatchable type is not trivially destructible!");
 
 		assert(instance_key != 0);
 		assert(sorting_key != 0);
 
-		auto itr = render_infos.find(instance_key);
+		Util::Hasher h(instance_key);
+		h.pointer(render);
+
+		auto itr = render_infos.find(h.get());
 		if (itr != std::end(render_infos))
 		{
 			enqueue_queue_data(queue, { render, itr->second, instance_data, sorting_key });
@@ -112,7 +118,7 @@ public:
 				throw std::bad_alloc();
 
 			T *t = new(buffer) T();
-			render_infos[instance_key] = t;
+			render_infos[h.get()] = t;
 			enqueue_queue_data(queue, { render, t, instance_data, sorting_key });
 			return t;
 		}

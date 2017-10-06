@@ -154,23 +154,12 @@ SphereMesh::SphereMesh(unsigned density)
 	EVENT_MANAGER_REGISTER_LATCH(SphereMesh, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
-void SphereMesh::on_device_created(const DeviceCreatedEvent &event)
+SphereMeshData create_sphere_mesh(unsigned density)
 {
-	auto &device = event.get_device();
-
-	struct Attribute
-	{
-		vec3 normal;
-		vec2 uv;
-	};
-
-	std::vector<vec3> positions;
-	std::vector<Attribute> attributes;
-	std::vector<uint16_t> indices;
-
-	positions.reserve(6 * density * density);
-	attributes.reserve(6 * density * density);
-	indices.reserve(2 * density * density * 6);
+	SphereMeshData mesh;
+	mesh.positions.reserve(6 * density * density);
+	mesh.attributes.reserve(6 * density * density);
+	mesh.indices.reserve(2 * density * density * 6);
 
 	float density_mod = 1.0f / float(density - 1);
 	const auto to_uv = [&](unsigned x, unsigned y) -> vec2 {
@@ -214,8 +203,8 @@ void SphereMesh::on_device_created(const DeviceCreatedEvent &event)
 			{
 				vec2 uv = to_uv(x, y);
 				vec3 pos = normalize(base_pos[face] + dx[face] * uv.x + dy[face] * uv.y);
-				positions.push_back(pos);
-				attributes.push_back({ pos, uv });
+				mesh.positions.push_back(pos);
+				mesh.attributes.push_back({ pos, uv });
 			}
 		}
 
@@ -225,37 +214,46 @@ void SphereMesh::on_device_created(const DeviceCreatedEvent &event)
 			unsigned base_index = index_offset + y * density;
 			for (unsigned x = 0; x < density; x++)
 			{
-				indices.push_back(base_index + x);
-				indices.push_back(base_index + x + density);
+				mesh.indices.push_back(base_index + x);
+				mesh.indices.push_back(base_index + x + density);
 			}
-			indices.push_back(0xffff);
+			mesh.indices.push_back(0xffff);
 		}
 	}
 
+	return mesh;
+}
+
+void SphereMesh::on_device_created(const DeviceCreatedEvent &event)
+{
+	auto &device = event.get_device();
+
+	auto mesh = create_sphere_mesh(density);
+
 	BufferCreateInfo info = {};
-	info.size = positions.size() * sizeof(vec3);
+	info.size = mesh.positions.size() * sizeof(vec3);
 	info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
 	info.domain = BufferDomain::Device;
-	vbo_position = device.create_buffer(info, positions.data());
+	vbo_position = device.create_buffer(info, mesh.positions.data());
 
-	info.size = attributes.size() * sizeof(Attribute);
-	vbo_attributes = device.create_buffer(info, attributes.data());
+	info.size = mesh.attributes.size() * sizeof(SphereMeshData::Attribute);
+	vbo_attributes = device.create_buffer(info, mesh.attributes.data());
 
 	this->attributes[ecast(MeshAttribute::Position)].format = VK_FORMAT_R32G32B32_SFLOAT;
 	this->attributes[ecast(MeshAttribute::Position)].offset = 0;
 	this->attributes[ecast(MeshAttribute::Normal)].format = VK_FORMAT_R32G32B32_SFLOAT;
-	this->attributes[ecast(MeshAttribute::Normal)].offset = offsetof(Attribute, normal);
+	this->attributes[ecast(MeshAttribute::Normal)].offset = offsetof(SphereMeshData::Attribute, normal);
 	this->attributes[ecast(MeshAttribute::UV)].format = VK_FORMAT_R32G32_SFLOAT;
-	this->attributes[ecast(MeshAttribute::UV)].offset = offsetof(Attribute, uv);
+	this->attributes[ecast(MeshAttribute::UV)].offset = offsetof(SphereMeshData::Attribute, uv);
 	position_stride = sizeof(vec3);
-	attribute_stride = sizeof(Attribute);
+	attribute_stride = sizeof(SphereMeshData::Attribute);
 
-	info.size = indices.size() * sizeof(uint16_t);
+	info.size = mesh.indices.size() * sizeof(uint16_t);
 	info.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-	ibo = device.create_buffer(info, indices.data());
+	ibo = device.create_buffer(info, mesh.indices.data());
 	ibo_offset = 0;
 	index_type = VK_INDEX_TYPE_UINT16;
-	count = indices.size();
+	count = mesh.indices.size();
 	topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
 
 	bake();

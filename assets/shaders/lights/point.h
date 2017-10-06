@@ -22,7 +22,7 @@ layout(std140, set = 2, binding = 0) uniform PointParameters
 vec3 compute_point_light(int index, MaterialProperties material, vec3 world_pos, vec3 camera_pos)
 {
 	vec3 light_pos = point.data[index].position;
-	vec3 light_dir = point.data[index].direction;
+	vec3 light_dir = normalize(light_pos - world_pos);
 	float light_dist = length(world_pos - light_pos);
 	float static_falloff = 1.0 - smoothstep(0.9, 1.0, light_dist * point.data[index].inv_radius);
 	vec3 f = point.data[index].falloff;
@@ -49,8 +49,8 @@ vec3 compute_point_light(int index, MaterialProperties material, vec3 world_pos,
 
 	vec3 F0 = compute_F0(material.base_color, material.metallic);
 	vec3 specular_fresnel = fresnel(F0, HoV);
-	vec3 specref = NoL * shadow_term * cook_torrance_specular(NoL, NoV, NoH, specular_fresnel, roughness);
-	vec3 diffref = NoL * shadow_term * (1.0 - specular_fresnel) * (1.0 / PI);
+	vec3 specref = NoL * cook_torrance_specular(NoL, NoV, NoH, specular_fresnel, roughness);
+	vec3 diffref = NoL * (1.0 - specular_fresnel) * (1.0 / PI);
 
 	vec3 reflected_light = specref;
 	vec3 diffuse_light = diffref * material.base_color * (1.0 - material.metallic);

@@ -27,9 +27,9 @@ layout(std140, set = 2, binding = 0) uniform SpotParameters
 vec3 compute_spot_light(int index, MaterialProperties material, vec3 world_pos, vec3 camera_pos)
 {
 	vec3 light_pos = spot.data[index].position;
-	vec3 light_dir = spot.data[index].direction;
+	vec3 light_dir = normalize(light_pos - world_pos);
 	float light_dist = length(world_pos - light_pos);
-	float cone_angle = dot(normalize(world_pos - light_pos), -light_dir);
+	float cone_angle = dot(normalize(world_pos - light_pos), spot.data[index].direction);
 	float cone_falloff = smoothstep(spot.data[index].spot_outer, spot.data[index].spot_inner, cone_angle);
 	float static_falloff = 1.0 - smoothstep(0.9, 1.0, light_dist * spot.data[index].inv_radius);
 	vec3 f = spot.data[index].falloff;

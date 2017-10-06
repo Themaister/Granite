@@ -67,6 +67,20 @@ private:
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
 };
 
+struct SphereMeshData
+{
+	struct Attribute
+	{
+		vec3 normal;
+		vec2 uv;
+	};
+
+	std::vector<vec3> positions;
+	std::vector<Attribute> attributes;
+	std::vector<uint16_t> indices;
+};
+SphereMeshData create_sphere_mesh(unsigned density);
+
 class SphereMesh : public StaticMesh, public EventHandler
 {
 public:

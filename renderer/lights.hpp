@@ -56,7 +56,8 @@ public:
 protected:
 	AABB aabb;
 	vec3 color = vec3(1.0f);
-	float range = 1.0f;
+	float falloff_range = 1.0f;
+	float cutoff_range = 100.0f;
 	void recompute_range();
 
 	float constant = 0.0f;
@@ -65,7 +66,6 @@ protected:
 
 private:
 	Type type;
-	float maximum_range = 100.0f;
 	virtual void set_range(float range) = 0;
 };
 

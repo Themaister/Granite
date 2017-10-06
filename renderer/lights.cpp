@@ -53,7 +53,7 @@ void PositionalLight::set_falloff(float constant, float linear, float quadratic)
 
 void PositionalLight::set_maximum_range(float range)
 {
-	maximum_range = range;
+	cutoff_range = range;
 	recompute_range();
 }
 
@@ -61,7 +61,7 @@ void PositionalLight::recompute_range()
 {
 	if (linear == 0.0f && quadratic == 0.0f)
 	{
-		set_range(maximum_range);
+		set_range(cutoff_range);
 		return;
 	}
 
@@ -79,7 +79,7 @@ void PositionalLight::recompute_range()
 	float b = linear;
 	float c = constant - max_color / target_atten;
 	float d = (-b + sqrt(b * b - 4.0f * a * c)) / (2.0f * a);
-	set_range(min(d, maximum_range));
+	set_range(d);
 }
 
 void SpotLight::set_spot_parameters(float inner_cone, float outer_cone)
@@ -91,18 +91,24 @@ void SpotLight::set_spot_parameters(float inner_cone, float outer_cone)
 
 void SpotLight::set_range(float range)
 {
-	this->range = range;
-	float min_z = -range;
-	float xy = range * sqrt(1.0f - outer_cone * outer_cone) / outer_cone;
+	falloff_range = range;
+
+	float max_range = min(falloff_range, cutoff_range);
+	float min_z = -max_range;
+	float xy = sqrt(1.0f - outer_cone * outer_cone) / outer_cone;
 	xy_range = xy;
+	xy *= max_range;
 	aabb = AABB(vec3(-xy, -xy, min_z), vec3(xy, xy, 0.0f));
 }
 
 PositionalFragmentInfo SpotLight::get_shader_info(const mat4 &transform) const
 {
+	// This assumes a uniform scale.
+	float max_range = min(falloff_range, cutoff_range);
+
 	return {
 		vec4(color, outer_cone),
-		vec4(constant, linear, quadratic, 1.0f / (length(transform[0]) * range)),
+		vec4(constant, linear, quadratic, 1.0f / max_range),
 		vec4(transform[3].xyz(), inner_cone),
 		vec4(-normalize(transform[2].xyz()), xy_range),
 	};
@@ -361,10 +367,14 @@ static void point_render_back(CommandBuffer &cmd, const RenderQueueData *infos, 
 void SpotLight::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
                                 RenderQueue &queue) const
 {
+	// If the point light node has been scaled, renormalize this.
+	// This assumes a uniform scale.
+	float scale_factor = 1.0f / length(transform->transform->world_transform[0]);
+
 	auto &params = context.get_render_parameters();
 	auto &aabb = transform->world_aabb;
 	float to_center = dot(aabb.get_center() - params.camera_position, params.camera_front);
-	float radius = aabb.get_radius();
+	float radius = aabb.get_radius() * scale_factor;
 	float aabb_near = to_center - params.z_near - radius;
 	float aabb_far = to_center + radius - params.z_far;
 
@@ -386,7 +396,9 @@ void SpotLight::get_render_info(const RenderContext &context, const CachedSpatia
 	auto sorting_key = h.get();
 
 	auto *spot = queue.allocate_one<PositionalShaderInfo>();
-	spot->vertex.model = transform->transform->world_transform * scale(vec3(xy_range, xy_range, range));
+
+	float max_range = min(falloff_range, cutoff_range) * scale_factor;
+	spot->vertex.model = transform->transform->world_transform * scale(vec3(xy_range * max_range, xy_range * max_range, max_range));
 	spot->fragment = get_shader_info(transform->transform->world_transform);
 
 	auto *spot_info = queue.push<PositionalLightRenderInfo>(Queue::Light, instance_key, sorting_key,
@@ -416,15 +428,19 @@ PointLight::PointLight()
 
 void PointLight::set_range(float range)
 {
-	this->range = range;
-	aabb = AABB(vec3(-range), vec3(range));
+	falloff_range = range;
+	float max_range = 1.15f * min(falloff_range, cutoff_range); // Fudge factor used in vertex shader.
+	aabb = AABB(vec3(-max_range), vec3(max_range));
 }
 
 PositionalFragmentInfo PointLight::get_shader_info(const mat4 &transform) const
 {
+	// This assumes a uniform scale.
+	float max_range = min(falloff_range, cutoff_range);
+
 	return {
 		vec4(color, 0.0f),
-		vec4(constant, linear, quadratic, 1.0f / (length(transform[0]) * range)),
+		vec4(constant, linear, quadratic, 1.0f / max_range),
 		vec4(transform[3].xyz(), 0.0f),
 		vec4(normalize(transform[2].xyz()), 0.0f),
 	};
@@ -433,10 +449,14 @@ PositionalFragmentInfo PointLight::get_shader_info(const mat4 &transform) const
 void PointLight::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
                                  RenderQueue &queue) const
 {
+	// If the point light node has been scaled, renormalize this.
+	// This assumes a uniform scale.
+	float scale_factor = 1.0f / length(transform->transform->world_transform[0]);
+
 	auto &params = context.get_render_parameters();
 	auto &aabb = transform->world_aabb;
 	float to_center = dot(aabb.get_center() - params.camera_position, params.camera_front);
-	float radius = aabb.get_radius();
+	float radius = aabb.get_radius() * scale_factor;
 	float aabb_near = to_center - params.z_near - radius;
 	float aabb_far = to_center + radius - params.z_far;
 
@@ -458,7 +478,9 @@ void PointLight::get_render_info(const RenderContext &context, const CachedSpati
 	auto sorting_key = h.get();
 
 	auto *point = queue.allocate_one<PositionalShaderInfo>();
-	point->vertex.model = transform->transform->world_transform * scale(vec3(range));
+
+	float max_range = min(falloff_range, cutoff_range) * scale_factor;
+	point->vertex.model = transform->transform->world_transform * scale(vec3(max_range));
 	point->fragment = get_shader_info(transform->transform->world_transform);
 
 	auto *point_info = queue.push<PositionalLightRenderInfo>(Queue::Light, instance_key, sorting_key,

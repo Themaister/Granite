@@ -78,7 +78,7 @@ void PositionalLight::recompute_range()
 	float b = linear;
 	float c = constant - max_color / target_atten;
 	float d = (-b + sqrt(b * b - 4.0f * a * c)) / (2.0f * a);
-	set_range(d);
+	set_range(min(d, maximum_range));
 }
 
 void SpotLight::set_spot_parameters(float inner_cone, float outer_cone)
@@ -100,10 +100,10 @@ void SpotLight::set_range(float range)
 PositionalFragmentInfo SpotLight::get_shader_info(const mat4 &transform) const
 {
 	return {
-			vec4(color, outer_cone),
-			vec4(constant, linear, quadratic, 1.0f / range),
-			vec4(transform[3].xyz(), inner_cone),
-			vec4(normalize(transform[2].xyz()), xy_range),
+		vec4(color, outer_cone),
+		vec4(constant, linear, quadratic, 1.0f / range),
+		vec4(transform[3].xyz(), inner_cone),
+		vec4(normalize(transform[2].xyz()), xy_range),
 	};
 }
 
@@ -151,24 +151,36 @@ struct LightMesh : public EventHandler
 
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e)
 	{
-		static const vec3 positions[] = {
-			vec3(0.0f, 0.0f, 0.0f),
-			vec3(-1.0f, -1.0f, -1.0f),
-			vec3(+1.0f, -1.0f, -1.0f),
-			vec3(-1.0f, +1.0f, -1.0f),
-			vec3(+1.0f, +1.0f, -1.0f),
-		};
+		vec3 positions[17 + 2];
+		positions[0] = vec3(0.0f);
+		positions[1] = vec3(0.0f, 0.0f, -1.0f);
 
-		static const uint16_t indices[] = {
-			1, 0, 3,
-			0, 2, 4,
-			0, 4, 3,
-			0, 1, 2,
-			4, 2, 3,
-			2, 1, 3,
-		};
+		float half_angle = 2.0f * pi<float>() / 32.0f;
+		float padding_mod = 1.0f / cos(half_angle);
 
-		spot_count = sizeof(indices) / sizeof(indices[0]);
+		for (unsigned i = 0; i <= 16; i++)
+		{
+			float rad = 2.0f * pi<float>() * float(i) / 16.0f;
+			positions[i + 2] = vec3(padding_mod * cos(rad), padding_mod * sin(rad), -1.0f);
+		}
+
+		std::vector<uint16_t> indices;
+		indices.reserve(2 * 3 * 16);
+		for (unsigned i = 0; i < 16; i++)
+		{
+			indices.push_back(0);
+			indices.push_back((i & 15) + 2);
+			indices.push_back(((i + 1) & 15) + 2);
+		}
+
+		for (unsigned i = 0; i < 16; i++)
+		{
+			indices.push_back(1);
+			indices.push_back(((i + 1) & 15) + 2);
+			indices.push_back((i & 15) + 2);
+		}
+
+		spot_count = indices.size();
 
 		BufferCreateInfo info = {};
 		info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
@@ -176,9 +188,9 @@ struct LightMesh : public EventHandler
 		info.domain = BufferDomain::Device;
 		spot_vbo = e.get_device().create_buffer(info, positions);
 
-		info.size = sizeof(indices);
+		info.size = indices.size() * sizeof(uint16_t);
 		info.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-		spot_ibo = e.get_device().create_buffer(info, indices);
+		spot_ibo = e.get_device().create_buffer(info, indices.data());
 	};
 
 	void on_device_destroyed(const DeviceCreatedEvent &)
@@ -330,10 +342,10 @@ void PointLight::set_range(float range)
 PositionalFragmentInfo PointLight::get_shader_info(const mat4 &transform) const
 {
 	return {
-			vec4(color, 0.0f),
-			vec4(constant, linear, quadratic, 1.0f / range),
-			vec4(transform[3].xyz(), 0.0f),
-			vec4(normalize(transform[2].xyz()), 0.0f),
+		vec4(color, 0.0f),
+		vec4(constant, linear, quadratic, 1.0f / range),
+		vec4(transform[3].xyz(), 0.0f),
+		vec4(normalize(transform[2].xyz()), 0.0f),
 	};
 }
 

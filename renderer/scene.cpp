@@ -22,7 +22,7 @@
 
 #include "scene.hpp"
 #include "transforms.hpp"
-#include "lights.hpp"
+#include "lights/lights.hpp"
 
 using namespace std;
 

@@ -110,6 +110,8 @@ protected:
 	std::unique_ptr<AnimationSystem> animation_system;
 
 	Camera *selected_camera = nullptr;
+	DirectionalLightComponent *selected_directional = nullptr;
+	DirectionalLightComponent default_directional_light;
 
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);

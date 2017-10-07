@@ -35,6 +35,8 @@
 #include <windows.h>
 #endif
 
+#undef VULKAN_DEBUG
+
 using namespace std;
 
 namespace Vulkan

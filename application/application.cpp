@@ -100,6 +100,15 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path)
 		selected_camera = &get<0>(scene_cameras.front())->camera;
 #endif
 
+	// Pick a directional light.
+	default_directional_light.color = vec3(6.0f, 5.5f, 4.5f);
+	default_directional_light.direction = light_direction();
+	auto &dir_lights = scene_loader.get_scene().get_entity_pool().get_component_group<DirectionalLightComponent>();
+	if (!dir_lights.empty())
+		selected_directional = get<0>(dir_lights.front());
+	else
+		selected_directional = &default_directional_light;
+
 	context.set_camera(*selected_camera);
 
 	EVENT_MANAGER_REGISTER_LATCH(SceneViewerApplication, on_swapchain_changed, on_swapchain_destroyed, SwapchainParameterEvent);
@@ -408,7 +417,7 @@ void SceneViewerApplication::update_shadow_map()
 	auto &scene = scene_loader.get_scene();
 	depth_visible.clear();
 
-	mat4 view = mat4_cast(look_at(-light_direction(), vec3(0.0f, 1.0f, 0.0f)));
+	mat4 view = mat4_cast(look_at(-selected_directional->direction, vec3(0.0f, 1.0f, 0.0f)));
 
 	// Project the scene AABB into the light and find our ortho ranges.
 	AABB ortho_range = shadow_scene_aabb.transform(view);
@@ -433,7 +442,7 @@ void SceneViewerApplication::render_shadow_map_near(Vulkan::CommandBuffer &cmd)
 {
 	auto &scene = scene_loader.get_scene();
 	depth_visible.clear();
-	mat4 view = mat4_cast(look_at(-light_direction(), vec3(0.0f, 1.0f, 0.0f)));
+	mat4 view = mat4_cast(look_at(-selected_directional->direction, vec3(0.0f, 1.0f, 0.0f)));
 	AABB ortho_range_depth = shadow_scene_aabb.transform(view); // Just need this to determine Zmin/Zmax.
 
 	auto near_camera = *selected_camera;
@@ -472,14 +481,16 @@ void SceneViewerApplication::update_scene(double, double elapsed_time)
 	lighting.environment.intensity = 1.0f;
 	lighting.environment.mipscale = 9.0f;
 	lighting.refraction.falloff = vec3(1.0f / 1.5f, 1.0f / 2.5f, 1.0f / 5.0f);
-	lighting.directional.direction = light_direction();
-	lighting.directional.color = vec3(6.0f, 5.5f, 4.5f);
 
 	context.set_camera(*selected_camera);
 	scene.set_render_pass_data(&forward_renderer, &context);
 
 	animation_system->animate(elapsed_time);
 	scene.update_cached_transforms();
+
+	lighting.directional.direction = selected_directional->direction;
+	lighting.directional.color = selected_directional->color;
+
 	scene.refresh_per_frame(context);
 }
 

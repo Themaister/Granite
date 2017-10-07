@@ -303,8 +303,8 @@ void Scene::update_cached_transforms()
 		CachedTransformComponent *transform;
 		tie(l, transform) = light;
 
-		// v = [0, 0, -1, 0].
-		l->direction = normalize(-transform->transform->world_transform[2]);
+		// v = [0, 0, 1, 0].
+		l->direction = normalize(transform->transform->world_transform[2].xyz());
 	}
 }
 

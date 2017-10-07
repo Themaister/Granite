@@ -1837,9 +1837,10 @@ void RenderGraph::setup_physical_image(Vulkan::Device &device, unsigned attachme
 		    physical_image_attachments[attachment]->get_create_info().format == att.format &&
 		    physical_image_attachments[attachment]->get_create_info().width == att.width &&
 		    physical_image_attachments[attachment]->get_create_info().height == att.height &&
-			physical_image_attachments[attachment]->get_create_info().samples == att.samples &&
+		    physical_image_attachments[attachment]->get_create_info().depth == att.depth &&
+		    physical_image_attachments[attachment]->get_create_info().samples == att.samples &&
 		    (physical_image_attachments[attachment]->get_create_info().usage & usage) == usage &&
-			(physical_image_attachments[attachment]->get_create_info().flags & flags) == flags)
+		    (physical_image_attachments[attachment]->get_create_info().flags & flags) == flags)
 		{
 			need_image = false;
 		}
@@ -1849,8 +1850,10 @@ void RenderGraph::setup_physical_image(Vulkan::Device &device, unsigned attachme
 	{
 		Vulkan::ImageCreateInfo info;
 		info.format = att.format;
+		info.type = att.depth > 1 ? VK_IMAGE_TYPE_3D : VK_IMAGE_TYPE_2D;
 		info.width = att.width;
 		info.height = att.height;
+		info.depth = att.depth;
 		info.domain = Vulkan::ImageDomain::Physical;
 		info.levels = att.levels;
 		info.layers = att.layers;
@@ -2246,11 +2249,13 @@ ResourceDimensions RenderGraph::get_resource_dimensions(const RenderTextureResou
 	case SizeClass::SwapchainRelative:
 		dim.width = unsigned(info.size_x * swapchain_dimensions.width);
 		dim.height = unsigned(info.size_y * swapchain_dimensions.height);
+		dim.depth = unsigned(info.size_z);
 		break;
 
 	case SizeClass::Absolute:
 		dim.width = unsigned(info.size_x);
 		dim.height = unsigned(info.size_y);
+		dim.depth = unsigned(info.size_z);
 		break;
 
 	case SizeClass::InputRelative:
@@ -2263,7 +2268,7 @@ ResourceDimensions RenderGraph::get_resource_dimensions(const RenderTextureResou
 
 		dim.width = unsigned(input_dim.width * info.size_x);
 		dim.height = unsigned(input_dim.height * info.size_y);
-		dim.depth = input_dim.depth;
+		dim.depth = unsigned(input_dim.depth * info.size_z);
 		break;
 	}
 	}
@@ -2271,9 +2276,9 @@ ResourceDimensions RenderGraph::get_resource_dimensions(const RenderTextureResou
 	if (dim.format == VK_FORMAT_UNDEFINED)
 		dim.format = swapchain_dimensions.format;
 
-	const auto num_levels = [](unsigned width, unsigned height) -> unsigned {
+	const auto num_levels = [](unsigned width, unsigned height, unsigned depth) -> unsigned {
 		unsigned levels = 0;
-		unsigned max_dim = std::max(width, height);
+		unsigned max_dim = std::max(std::max(width, height), depth);
 		while (max_dim)
 		{
 			levels++;
@@ -2282,7 +2287,7 @@ ResourceDimensions RenderGraph::get_resource_dimensions(const RenderTextureResou
 		return levels;
 	};
 
-	dim.levels = std::min(num_levels(dim.width, dim.height), info.levels == 0 ? ~0u : info.levels);
+	dim.levels = std::min(num_levels(dim.width, dim.height, dim.depth), info.levels == 0 ? ~0u : info.levels);
 	return dim;
 }
 

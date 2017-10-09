@@ -82,8 +82,21 @@ void LightClusterer::setup_render_pass_resources(RenderGraph &graph)
 
 void LightClusterer::build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view)
 {
+	cmd.set_program(*program->get_program(variant));
+	cmd.set_storage_texture(0, 0, view);
 
-}
+	auto *point_lights = static_cast<PositionalFragmentInfo *>(cmd.allocate_constant_data(1, 0, 32 * sizeof(PositionalFragmentInfo)));
+	auto *spot_lights = static_cast<PositionalFragmentInfo *>(cmd.allocate_constant_data(1, 1, 32 * sizeof(PositionalFragmentInfo)));
+	unsigned point_count;
+	unsigned spot_count;
+
+	struct Push
+	{
+		uint32_t spot_count;
+		uint32_t point_count;
+	};
+	Push push = { spot_count, point_count };
+};
 
 void LightClusterer::add_render_passes(RenderGraph &graph)
 {

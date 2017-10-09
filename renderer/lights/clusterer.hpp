@@ -33,13 +33,6 @@ class LightClusterer : public RenderPassCreator, public EventHandler
 {
 public:
 	LightClusterer();
-	void add_render_passes(RenderGraph &graph) override;
-	void set_base_renderer(Renderer *renderer) override;
-	void set_base_render_context(const RenderContext *context) override;
-	void setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target) override;
-	void setup_render_pass_resources(RenderGraph &graph) override;
-	void set_scene(Scene *scene) override;
-	RendererType get_renderer_type() override;
 
 	void set_resolution(unsigned x, unsigned y, unsigned z);
 
@@ -50,7 +43,17 @@ public:
 	unsigned get_active_spot_light_count() const;
 	const mat4 &get_cluster_transform() const;
 
+	enum { MaxLights = 32 };
+
 private:
+	void add_render_passes(RenderGraph &graph) override;
+	void set_base_renderer(Renderer *renderer) override;
+	void set_base_render_context(const RenderContext *context) override;
+	void setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target) override;
+	void setup_render_pass_resources(RenderGraph &graph) override;
+	void set_scene(Scene *scene) override;
+	RendererType get_renderer_type() override;
+
 	Scene *scene = nullptr;
 	const RenderContext *context = nullptr;
 	std::vector<std::tuple<PositionalLightComponent *, CachedSpatialTransformComponent *>> *lights = nullptr;
@@ -63,9 +66,8 @@ private:
 	Vulkan::ImageView *target = nullptr;
 	unsigned variant = 0;
 
-	enum { MaxLights = 32 };
-	PositionalFragmentInfo point_lights[MaxLights];
-	PositionalFragmentInfo spot_lights[MaxLights];
+	PositionalFragmentInfo point_lights[MaxLights] = {};
+	PositionalFragmentInfo spot_lights[MaxLights] = {};
 	mat4 cluster_transform;
 	unsigned point_count = 0;
 	unsigned spot_count = 0;

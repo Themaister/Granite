@@ -136,7 +136,7 @@ void LightClusterer::build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView
 	}
 
 	if (point_count || spot_count)
-		cluster_transform = ortho(aabb);
+		cluster_transform = translate(vec3(0.5f, 0.5f, 0.0f)) * scale(vec3(0.5f, 0.5f, 1.0f)) * ortho(aabb);
 	else
 		cluster_transform = mat4(1.0f);
 

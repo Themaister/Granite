@@ -24,6 +24,7 @@
 #include "device.hpp"
 #include "render_context.hpp"
 #include "sprite.hpp"
+#include "lights/clusterer.hpp"
 
 using namespace Vulkan;
 using namespace Util;
@@ -56,6 +57,8 @@ void Renderer::set_mesh_renderer_options_internal(RendererOptionFlags flags)
 		global_defines.push_back({ "ENVIRONMENT", 1 });
 	if (flags & REFRACTION_ENABLE_BIT)
 		global_defines.push_back({ "REFRACTION", 1 });
+	if (flags & POSITIONAL_LIGHT_ENABLE_BIT)
+		global_defines.push_back({ "POSITIONAL_LIGHTS", 1 });
 
 	switch (type)
 	{
@@ -105,6 +108,8 @@ void Renderer::set_mesh_renderer_options_from_lighting(const LightingParameters 
 		flags |= Renderer::SHADOW_CASCADE_ENABLE_BIT;
 	if (lighting.fog.falloff > 0.0f)
 		flags |= Renderer::FOG_ENABLE_BIT;
+	if (lighting.cluster)
+		flags |= Renderer::POSITIONAL_LIGHT_ENABLE_BIT;
 
 	set_mesh_renderer_options(flags);
 }
@@ -168,6 +173,16 @@ void Renderer::begin()
 	queue.set_shader_suites(suite);
 }
 
+void Renderer::set_cluster_parameters(Vulkan::CommandBuffer &cmd, const LightClusterer &cluster)
+{
+	cmd.set_texture(1, 5, cluster.get_cluster_image(), StockSampler::NearestClamp);
+	memcpy(cmd.allocate_constant_data(1, 6, sizeof(mat4)), &cluster.get_cluster_transform(), sizeof(mat4));
+	memcpy(cmd.allocate_constant_data(1, 7, LightClusterer::MaxLights * sizeof(PositionalFragmentInfo)),
+	       cluster.get_active_spot_lights(), cluster.get_active_spot_light_count() * sizeof(PositionalFragmentInfo));
+	memcpy(cmd.allocate_constant_data(1, 8, LightClusterer::MaxLights * sizeof(PositionalFragmentInfo)),
+	       cluster.get_active_point_lights(), cluster.get_active_point_light_count() * sizeof(PositionalFragmentInfo));
+}
+
 void Renderer::set_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context)
 {
 	auto *lighting = context.get_lighting_parameters();
@@ -205,6 +220,9 @@ void Renderer::set_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderC
 		cmd.set_texture(1, 3, *lighting->shadow_far, Vulkan::StockSampler::LinearShadow);
 	if (lighting->shadow_near != nullptr)
 		cmd.set_texture(1, 4, *lighting->shadow_near, Vulkan::StockSampler::LinearShadow);
+
+	if (lighting->cluster)
+		set_cluster_parameters(cmd, *lighting->cluster);
 }
 
 void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context)

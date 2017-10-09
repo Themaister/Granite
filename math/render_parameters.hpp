@@ -27,6 +27,7 @@
 
 namespace Granite
 {
+class LightClusterer;
 struct RenderParameters
 {
 	mat4 projection;
@@ -94,5 +95,6 @@ struct LightingParameters
 	Vulkan::ImageView *environment_irradiance = nullptr;
 	Vulkan::ImageView *shadow_near = nullptr;
 	Vulkan::ImageView *shadow_far = nullptr;
+	const LightClusterer *cluster = nullptr;
 };
 }

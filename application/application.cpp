@@ -22,7 +22,7 @@
 
 #define RENDERER_FORWARD 0
 #define RENDERER_DEFERRED 1
-#define RENDERER RENDERER_DEFERRED
+#define RENDERER RENDERER_FORWARD
 
 #include "application.hpp"
 #include <stdexcept>
@@ -114,6 +114,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path)
 		auto entity = scene_loader.get_scene().create_entity();
 		auto *rp = entity->allocate_component<RenderPassComponent>();
 		rp->creator = cluster.get();
+		lighting.cluster = cluster.get();
 	}
 
 	context.set_camera(*selected_camera);

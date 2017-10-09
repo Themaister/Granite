@@ -30,6 +30,7 @@
 namespace Granite
 {
 struct Sprite;
+class LightClusterer;
 
 class Renderer : public EventHandler
 {
@@ -42,7 +43,8 @@ public:
 		SHADOW_CASCADE_ENABLE_BIT = 1 << 1,
 		FOG_ENABLE_BIT = 1 << 2,
 		ENVIRONMENT_ENABLE_BIT = 1 << 3,
-		REFRACTION_ENABLE_BIT = 1 << 4
+		REFRACTION_ENABLE_BIT = 1 << 4,
+		POSITIONAL_LIGHT_ENABLE_BIT = 1 << 5
 	};
 	using RendererOptionFlags = uint32_t;
 
@@ -84,6 +86,7 @@ private:
 	uint32_t renderer_options = ~0u;
 
 	void set_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context);
+	void set_cluster_parameters(Vulkan::CommandBuffer &cmd, const LightClusterer &cluster);
 	void set_mesh_renderer_options_internal(RendererOptionFlags flags);
 };
 

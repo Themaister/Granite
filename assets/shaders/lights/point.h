@@ -14,9 +14,19 @@ struct PointShaderInfo
 	float xy_scale;
 };
 
-layout(std140, set = 2, binding = 0) uniform PointParameters
+#ifndef POINT_LIGHT_DATA_SET
+#define POINT_LIGHT_DATA_SET 2
+#endif
+#ifndef POINT_LIGHT_DATA_BINDING
+#define POINT_LIGHT_DATA_BINDING 0
+#endif
+#ifndef POINT_LIGHT_DATA_COUNT
+#define POINT_LIGHT_DATA_COUNT 256
+#endif
+
+layout(std140, set = POINT_LIGHT_DATA_SET, binding = POINT_LIGHT_DATA_BINDING) uniform PointParameters
 {
-    PointShaderInfo data[256];
+    PointShaderInfo data[POINT_LIGHT_DATA_COUNT];
 } point;
 
 vec3 compute_point_light(int index, MaterialProperties material, vec3 world_pos, vec3 camera_pos)

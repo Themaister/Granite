@@ -19,9 +19,19 @@ struct SpotShaderInfo
 	float xy_scale;
 };
 
-layout(std140, set = 2, binding = 0) uniform SpotParameters
+#ifndef SPOT_LIGHT_DATA_SET
+#define SPOT_LIGHT_DATA_SET 2
+#endif
+#ifndef SPOT_LIGHT_DATA_BINDING
+#define SPOT_LIGHT_DATA_BINDING 0
+#endif
+#ifndef SPOT_LIGHT_DATA_COUNT
+#define SPOT_LIGHT_DATA_COUNT 256
+#endif
+
+layout(std140, set = SPOT_LIGHT_DATA_SET, binding = SPOT_LIGHT_DATA_BINDING) uniform SpotParameters
 {
-    SpotShaderInfo data[256];
+    SpotShaderInfo data[SPOT_LIGHT_DATA_COUNT];
 } spot;
 
 vec3 compute_spot_light(int index, MaterialProperties material, vec3 world_pos, vec3 camera_pos)

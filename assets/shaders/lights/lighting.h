@@ -93,6 +93,10 @@ float get_shadow_term(LightInfo light)
 #include "lighting_data.h"
 #endif
 
+#ifdef POSITIONAL_LIGHTS
+#include "clusterer.h"
+#endif
+
 vec3 compute_lighting(
 		MaterialProperties material,
 		LightInfo light
@@ -159,7 +163,13 @@ vec3 compute_lighting(
 
 	vec3 reflected_light = specref;
 	vec3 diffuse_light = diffref * material.base_color * (1.0 - material.metallic);
-	return reflected_light + diffuse_light;
+	vec3 lighting = reflected_light + diffuse_light;
+
+#ifdef POSITIONAL_LIGHTS
+	lighting += compute_cluster_light(material, light.pos, light.camera_pos);
+#endif
+
+	return lighting;
 }
 
 #endif

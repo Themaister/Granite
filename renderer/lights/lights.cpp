@@ -110,7 +110,7 @@ PositionalFragmentInfo SpotLight::get_shader_info(const mat4 &transform) const
 		vec4(color, outer_cone),
 		vec4(constant, linear, quadratic, 1.0f / max_range),
 		vec4(transform[3].xyz(), inner_cone),
-		vec4(-normalize(transform[2].xyz()), xy_range),
+		vec4(-normalize(transform[2].xyz()), atan(xy_range)),
 	};
 }
 

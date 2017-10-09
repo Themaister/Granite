@@ -58,7 +58,7 @@ private:
 	const RenderContext *context = nullptr;
 	std::vector<std::tuple<PositionalLightComponent *, CachedSpatialTransformComponent *>> *lights = nullptr;
 
-	unsigned x = 64, y = 8, z = 64;
+	unsigned x = 64, y = 64, z = 64;
 	void build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view);
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);

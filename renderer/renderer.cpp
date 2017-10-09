@@ -175,7 +175,7 @@ void Renderer::begin()
 
 void Renderer::set_cluster_parameters(Vulkan::CommandBuffer &cmd, const LightClusterer &cluster)
 {
-	cmd.set_texture(1, 5, cluster.get_cluster_image(), StockSampler::NearestClamp);
+	cmd.set_texture(1, 5, cluster.get_cluster_image(), StockSampler::NearestWrap);
 	memcpy(cmd.allocate_constant_data(1, 6, sizeof(mat4)), &cluster.get_cluster_transform(), sizeof(mat4));
 	memcpy(cmd.allocate_constant_data(1, 7, LightClusterer::MaxLights * sizeof(PositionalFragmentInfo)),
 	       cluster.get_active_spot_lights(), cluster.get_active_spot_light_count() * sizeof(PositionalFragmentInfo));

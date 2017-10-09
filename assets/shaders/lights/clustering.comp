@@ -15,7 +15,7 @@ struct LightInfo
 	float spot_inner;
 
 	vec3 direction;
-	float xy_scale;
+	float angle;
 };
 
 layout(std140, set = 1, binding = 0) uniform SpotLight
@@ -48,10 +48,42 @@ void main()
     uint num_spot = registers.spot_count;
     uint num_point = registers.point_count;
 
+    vec3 minimum = (registers.inv_cluster_transform * vec4(vec3(id) * registers.inv_size.xyz, 1.0)).xyz;
+    vec3 maximum = (registers.inv_cluster_transform * vec4((vec3(id) + 1.0) * registers.inv_size.xyz, 1.0)).xyz;
+    vec3 cube_center = 0.5 * (minimum + maximum);
+    float cube_radius = 0.5 * distance(minimum, maximum);
+
     for (uint i = 0u; i < num_spot; i++)
-        spot_mask |= 1u << i;
+    {
+        vec3 center = spot.lights[i].position;
+        vec3 direction = spot.lights[i].direction;
+        float size = 1.0 / spot.lights[i].inv_radius;
+        float angle = spot.lights[i].angle;
+
+        // Sphere/cone culling from https://bartwronski.com/2017/04/13/cull-that-cone/.
+        vec3 V = cube_center - center;
+        float V_sq = dot(V, V);
+        float V1_len  = dot(V, direction);
+        float V2_len = sqrt(max(V_sq - V1_len * V1_len, 0.0));
+        float distance_closest_point = cos(angle) * V2_len - sin(angle) * V1_len;
+
+        if (!any(greaterThan(vec3(distance_closest_point, V1_len, -V1_len), vec3(cube_radius, cube_radius + size, cube_radius))))
+            spot_mask |= 1u << i;
+    }
+
     for (uint i = 0u; i < num_point; i++)
-        point_mask |= 1u << i;
+    {
+        vec3 center = point.lights[i].position;
+        float radius = 1.0 / point.lights[i].inv_radius;
+        vec3 axis_dist = abs(center - cube_center);
+        float radial_dist = distance(cube_center, center);
+
+        bool axis_outside = any(greaterThan(abs(axis_dist), radius + 0.5 * registers.inv_size.xyz));
+        bool radial_outside = radial_dist > (cube_radius + radius);
+
+        if (!radial_outside && !axis_outside)
+            point_mask |= 1u << i;
+    }
 
     imageStore(uCluster, id, uvec4(spot_mask, point_mask, 0u, 0u));
 }

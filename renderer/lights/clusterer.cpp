@@ -125,13 +125,22 @@ void LightClusterer::build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView
 
 		if (l.get_type() == PositionalLight::Type::Spot && spot_count < MaxLights)
 		{
-			spot_lights[spot_count++] = static_cast<SpotLight &>(l).get_shader_info(transform->transform->world_transform);
-			aabb.expand(transform->world_aabb);
+			spot_lights[spot_count] = static_cast<SpotLight &>(l).get_shader_info(transform->transform->world_transform);
+			vec3 center = spot_lights[spot_count].position_inner.xyz();
+			float radius = 1.0f / spot_lights[spot_count].falloff_inv_radius.w;
+			AABB point_aabb(center - radius, center + radius);
+			aabb.expand(point_aabb);
+			spot_count++;
 		}
 		else if (l.get_type() == PositionalLight::Type::Point && point_count < MaxLights)
 		{
-			point_lights[point_count++] = static_cast<PointLight &>(l).get_shader_info(transform->transform->world_transform);
-			aabb.expand(transform->world_aabb);
+			point_lights[point_count] = static_cast<PointLight &>(l).get_shader_info(transform->transform->world_transform);
+
+			vec3 center = point_lights[point_count].position_inner.xyz();
+			float radius = 1.0f / point_lights[point_count].falloff_inv_radius.w;
+			AABB point_aabb(center - radius, center + radius);
+			aabb.expand(point_aabb);
+			point_count++;
 		}
 	}
 
@@ -145,10 +154,10 @@ void LightClusterer::build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView
 	cmd.set_program(*program->get_program(variant));
 	cmd.set_storage_texture(0, 0, view);
 
-	auto *point_buffer = static_cast<PositionalFragmentInfo *>(cmd.allocate_constant_data(1, 0, MaxLights * sizeof(PositionalFragmentInfo)));
-	auto *spot_buffer = static_cast<PositionalFragmentInfo *>(cmd.allocate_constant_data(1, 1, MaxLights * sizeof(PositionalFragmentInfo)));
-	memcpy(point_buffer, point_lights, point_count * sizeof(PositionalFragmentInfo));
+	auto *spot_buffer = static_cast<PositionalFragmentInfo *>(cmd.allocate_constant_data(1, 0, MaxLights * sizeof(PositionalFragmentInfo)));
+	auto *point_buffer = static_cast<PositionalFragmentInfo *>(cmd.allocate_constant_data(1, 1, MaxLights * sizeof(PositionalFragmentInfo)));
 	memcpy(spot_buffer, spot_lights, spot_count * sizeof(PositionalFragmentInfo));
+	memcpy(point_buffer, point_lights, point_count * sizeof(PositionalFragmentInfo));
 
 	struct Push
 	{

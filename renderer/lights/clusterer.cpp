@@ -25,6 +25,7 @@
 #include "scene.hpp"
 
 using namespace Vulkan;
+using namespace std;
 
 namespace Granite
 {
@@ -49,7 +50,7 @@ void LightClusterer::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
 void LightClusterer::set_scene(Scene *scene)
 {
 	this->scene = scene;
-	lights = &scene->get_entity_pool().get_component_group<PositionalLightComponent>();
+	lights = &scene->get_entity_pool().get_component_group<PositionalLightComponent, CachedSpatialTransformComponent>();
 }
 
 void LightClusterer::set_resolution(unsigned x, unsigned y, unsigned z)
@@ -80,30 +81,94 @@ void LightClusterer::setup_render_pass_resources(RenderGraph &graph)
 	target = &graph.get_physical_texture_resource(graph.get_texture_resource("light-cluster").get_physical_index());
 }
 
+unsigned LightClusterer::get_active_point_light_count() const
+{
+	return point_count;
+}
+
+unsigned LightClusterer::get_active_spot_light_count() const
+{
+	return spot_count;
+}
+
+const PositionalFragmentInfo *LightClusterer::get_active_point_lights() const
+{
+	return point_lights;
+}
+
+const PositionalFragmentInfo *LightClusterer::get_active_spot_lights() const
+{
+	return spot_lights;
+}
+
+const Vulkan::ImageView &LightClusterer::get_cluster_image() const
+{
+	return *target;
+}
+
+const mat4 &LightClusterer::get_cluster_transform() const
+{
+	return cluster_transform;
+}
+
 void LightClusterer::build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view)
 {
+	point_count = 0;
+	spot_count = 0;
+
+	AABB aabb(vec3(FLT_MAX), vec3(-FLT_MAX));
+
+	for (auto &light : *lights)
+	{
+		auto &l = *get<0>(light)->light;
+		auto *transform = get<1>(light);
+
+		if (l.get_type() == PositionalLight::Type::Spot && spot_count < MaxLights)
+		{
+			spot_lights[spot_count++] = static_cast<SpotLight &>(l).get_shader_info(transform->transform->world_transform);
+			aabb.expand(transform->world_aabb);
+		}
+		else if (l.get_type() == PositionalLight::Type::Point && point_count < MaxLights)
+		{
+			point_lights[point_count++] = static_cast<PointLight &>(l).get_shader_info(transform->transform->world_transform);
+			aabb.expand(transform->world_aabb);
+		}
+	}
+
+	if (point_count || spot_count)
+		cluster_transform = ortho(aabb);
+	else
+		cluster_transform = mat4(1.0f);
+
+	auto inverse_cluster_transform = inverse(cluster_transform);
+
 	cmd.set_program(*program->get_program(variant));
 	cmd.set_storage_texture(0, 0, view);
 
-	auto *point_lights = static_cast<PositionalFragmentInfo *>(cmd.allocate_constant_data(1, 0, 32 * sizeof(PositionalFragmentInfo)));
-	auto *spot_lights = static_cast<PositionalFragmentInfo *>(cmd.allocate_constant_data(1, 1, 32 * sizeof(PositionalFragmentInfo)));
-	unsigned point_count;
-	unsigned spot_count;
+	auto *point_buffer = static_cast<PositionalFragmentInfo *>(cmd.allocate_constant_data(1, 0, MaxLights * sizeof(PositionalFragmentInfo)));
+	auto *spot_buffer = static_cast<PositionalFragmentInfo *>(cmd.allocate_constant_data(1, 1, MaxLights * sizeof(PositionalFragmentInfo)));
+	memcpy(point_buffer, point_lights, point_count * sizeof(PositionalFragmentInfo));
+	memcpy(spot_buffer, spot_lights, spot_count * sizeof(PositionalFragmentInfo));
 
 	struct Push
 	{
+		mat4 inverse_cluster_transform;
+		uvec4 size;
+		vec4 inv_size;
 		uint32_t spot_count;
 		uint32_t point_count;
 	};
-	Push push = { spot_count, point_count };
-};
+	Push push = { inverse_cluster_transform, uvec4(x, y, z, 0), vec4(1.0f / x, 1.0f / y, 1.0f / z, 1.0f), spot_count, point_count };
+	cmd.push_constants(&push, 0, sizeof(push));
+	cmd.dispatch((x + 7) / 8, (y + 7) / 8, z);
+}
 
 void LightClusterer::add_render_passes(RenderGraph &graph)
 {
 	AttachmentInfo att;
 	att.levels = 1;
 	att.layers = 1;
-	att.format = VK_FORMAT_R32G32_UINT;
+	att.format = VK_FORMAT_R32G32B32A32_UINT;
 	att.samples = 1;
 	att.size_class = SizeClass::Absolute;
 	att.size_x = x;
@@ -112,7 +177,7 @@ void LightClusterer::add_render_passes(RenderGraph &graph)
 	att.persistent = true;
 
 	auto &pass = graph.add_pass("clustering", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-	pass.add_storage_texture_output("light-cluster", att, nullptr);
+	pass.add_storage_texture_output("light-cluster", att);
 	pass.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
 		build_cluster(cmd, *target);
 	});

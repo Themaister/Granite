@@ -1,0 +1,57 @@
+#version 450
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(rgba32ui, set = 0, binding = 0) uniform writeonly uimage3D uCluster;
+
+struct LightInfo
+{
+	vec3 color;
+	float spot_outer;
+
+	vec3 falloff;
+	float inv_radius;
+
+	vec3 position;
+	float spot_inner;
+
+	vec3 direction;
+	float xy_scale;
+};
+
+layout(std140, set = 1, binding = 0) uniform SpotLight
+{
+    LightInfo lights[32];
+} spot;
+
+layout(std140, set = 1, binding = 1) uniform PointLight
+{
+    LightInfo lights[32];
+} point;
+
+layout(std430, push_constant) uniform Registers
+{
+    mat4 inv_cluster_transform;
+    ivec4 size;
+    vec4 inv_size;
+    uint spot_count;
+    uint point_count;
+} registers;
+
+void main()
+{
+    ivec3 id = ivec3(gl_GlobalInvocationID.xyz);
+    if (any(greaterThanEqual(id, registers.size.xyz)))
+        return;
+
+    uint point_mask = 0u;
+    uint spot_mask = 0u;
+    uint num_spot = registers.spot_count;
+    uint num_point = registers.point_count;
+
+    for (uint i = 0u; i < num_spot; i++)
+        spot_mask |= 1u << i;
+    for (uint i = 0u; i < num_point; i++)
+        point_mask |= 1u << i;
+
+    imageStore(uCluster, id, uvec4(spot_mask, point_mask, 0u, 0u));
+}

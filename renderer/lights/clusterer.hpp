@@ -43,10 +43,17 @@ public:
 
 	void set_resolution(unsigned x, unsigned y, unsigned z);
 
+	const Vulkan::ImageView &get_cluster_image() const;
+	const PositionalFragmentInfo *get_active_point_lights() const;
+	const PositionalFragmentInfo *get_active_spot_lights() const;
+	unsigned get_active_point_light_count() const;
+	unsigned get_active_spot_light_count() const;
+	const mat4 &get_cluster_transform() const;
+
 private:
 	Scene *scene = nullptr;
 	const RenderContext *context = nullptr;
-	std::vector<std::tuple<PositionalLightComponent *>> *lights = nullptr;
+	std::vector<std::tuple<PositionalLightComponent *, CachedSpatialTransformComponent *>> *lights = nullptr;
 
 	unsigned x = 64, y = 8, z = 64;
 	void build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view);
@@ -55,5 +62,12 @@ private:
 	Vulkan::ShaderProgram *program = nullptr;
 	Vulkan::ImageView *target = nullptr;
 	unsigned variant = 0;
+
+	enum { MaxLights = 32 };
+	PositionalFragmentInfo point_lights[MaxLights];
+	PositionalFragmentInfo spot_lights[MaxLights];
+	mat4 cluster_transform;
+	unsigned point_count = 0;
+	unsigned spot_count = 0;
 };
 }

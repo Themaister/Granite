@@ -37,6 +37,11 @@ public:
 
 	PositionalLight(Type type);
 
+	Type get_type() const
+	{
+		return type;
+	}
+
 	void set_maximum_range(float range);
 
 	bool has_static_aabb() const override

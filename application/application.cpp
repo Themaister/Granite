@@ -109,6 +109,13 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path)
 	else
 		selected_directional = &default_directional_light;
 
+	{
+		cluster.reset(new LightClusterer);
+		auto entity = scene_loader.get_scene().create_entity();
+		auto *rp = entity->allocate_component<RenderPassComponent>();
+		rp->creator = cluster.get();
+	}
+
 	context.set_camera(*selected_camera);
 
 	EVENT_MANAGER_REGISTER_LATCH(SceneViewerApplication, on_swapchain_changed, on_swapchain_destroyed, SwapchainParameterEvent);

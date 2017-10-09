@@ -34,6 +34,7 @@
 #include "ui_manager.hpp"
 #include "render_graph.hpp"
 #include "mesh_util.hpp"
+#include "lights/clusterer.hpp"
 
 namespace Granite
 {
@@ -127,6 +128,8 @@ protected:
 	std::string skydome_reflection;
 	std::string skydome_irradiance;
 	AABB shadow_scene_aabb;
+
+	std::unique_ptr<LightClusterer> cluster;
 
 	void update_shadow_scene_aabb();
 	void render_shadow_map_near(Vulkan::CommandBuffer &cmd);

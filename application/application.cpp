@@ -119,8 +119,15 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path)
 
 	context.set_camera(*selected_camera);
 
+	graph.enable_timestamps(true);
+
 	EVENT_MANAGER_REGISTER_LATCH(SceneViewerApplication, on_swapchain_changed, on_swapchain_destroyed, SwapchainParameterEvent);
 	EVENT_MANAGER_REGISTER_LATCH(SceneViewerApplication, on_device_created, on_device_destroyed, DeviceCreatedEvent);
+}
+
+SceneViewerApplication::~SceneViewerApplication()
+{
+	graph.report_timestamps();
 }
 
 void SceneViewerApplication::loop_animations()

@@ -30,6 +30,7 @@
 #include "shader.hpp"
 #include "vulkan.hpp"
 #include "pipeline_event.hpp"
+#include "query_pool.hpp"
 
 namespace Vulkan
 {
@@ -508,6 +509,8 @@ public:
 	{
 		return type;
 	}
+
+	QueryPoolHandle write_timestamp(VkPipelineStageFlagBits stage);
 
 private:
 	Device *device;

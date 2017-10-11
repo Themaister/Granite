@@ -28,6 +28,7 @@ add_granite_library(vulkan-backend
         limits.hpp
         event_manager.cpp
         pipeline_event.cpp
+        query_pool.cpp
         vulkan_events.hpp)
 
 target_include_directories(vulkan-backend PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/khronos)

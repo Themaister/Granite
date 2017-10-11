@@ -40,6 +40,7 @@
 #include "vulkan.hpp"
 #include "shader_manager.hpp"
 #include "texture_manager.hpp"
+#include "query_pool.hpp"
 #include <memory>
 #include <vector>
 
@@ -183,6 +184,8 @@ public:
 	// lock the global device and queue.
 	void set_queue_lock(std::function<void ()> lock_callback, std::function<void ()> unlock_callback);
 
+	QueryPoolHandle write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlagBits stage);
+
 private:
 	VkInstance instance = VK_NULL_HANDLE;
 	VkPhysicalDevice gpu = VK_NULL_HANDLE;
@@ -225,6 +228,7 @@ private:
 		CommandPool transfer_cmd_pool;
 		ImageHandle backbuffer;
 		FenceManager fence_manager;
+		QueryPool query_pool;
 
 		ChainAllocator vbo_chain, ibo_chain, ubo_chain, staging_chain;
 

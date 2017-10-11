@@ -1348,6 +1348,9 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 		}
 	};
 
+	physical_timestamp_index = (physical_timestamp_index + 1) & unsigned(physical_timestamps.size() - 1);
+	auto &timestamps = physical_timestamps[physical_timestamp_index];
+
 	for (auto &physical_pass : physical_passes)
 	{
 		bool require_pass = false;
@@ -1366,6 +1369,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 		bool graphics = (passes[physical_pass.passes.front()]->get_stages() & VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT) != 0;
 		auto queue_type = graphics ? Vulkan::CommandBuffer::Type::Graphics : Vulkan::CommandBuffer::Type::Compute;
 		auto cmd = device.request_command_buffer(queue_type);
+		unsigned physical_pass_index = unsigned(&physical_pass - physical_passes.data());
 
 		const auto wait_for_semaphore_in_queue = [&](Vulkan::Semaphore sem, VkPipelineStageFlags stages) {
 			if (sem->get_semaphore() != VK_NULL_HANDLE)
@@ -1577,6 +1581,12 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 					physical_pass.depth_clear_request.target);
 			}
 
+			if (enabled_timestamps)
+			{
+				timestamps.timestamps_vertex_begin[physical_pass_index] = cmd->write_timestamp(VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
+				timestamps.timestamps_fragment_begin[physical_pass_index] = cmd->write_timestamp(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+			}
+
 			cmd->begin_render_pass(physical_pass.render_pass_info);
 
 			for (auto &subpass : physical_pass.passes)
@@ -1598,13 +1608,22 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 			}
 
 			cmd->end_render_pass();
+			if (enabled_timestamps)
+			{
+				timestamps.timestamps_vertex_end[physical_pass_index] = cmd->write_timestamp(VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
+				timestamps.timestamps_fragment_end[physical_pass_index] = cmd->write_timestamp(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+			}
 			enqueue_mipmap_requests(*cmd, physical_pass.mipmap_requests);
 		}
 		else
 		{
 			assert(physical_pass.passes.size() == 1);
 			auto &pass = *passes[physical_pass.passes.front()];
+			if (enabled_timestamps)
+				timestamps.timestamps_compute_begin[physical_pass_index] = cmd->write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 			pass.build_render_pass(*cmd);
+			if (enabled_timestamps)
+				timestamps.timestamps_compute_end[physical_pass_index] = cmd->write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 		}
 
 		VkPipelineStageFlags wait_stages = 0;
@@ -2219,6 +2238,8 @@ void RenderGraph::bake()
 	// Figure out which images can alias with each other.
 	// Also build virtual "transfer" barriers. These things only copy events over to other physical resources.
 	build_aliases();
+
+	setup_timestamps();
 }
 
 ResourceDimensions RenderGraph::get_resource_dimensions(const RenderBufferResource &resource) const
@@ -2786,6 +2807,104 @@ void RenderGraph::filter_passes(std::vector<unsigned> &list)
 		}
 	}
 	list.erase(output_itr, end(list));
+}
+
+void RenderGraph::setup_timestamps()
+{
+	physical_timestamps.resize(64);
+	physical_timestamp_index = 0;
+	for (auto &timestamps : physical_timestamps)
+	{
+		timestamps.timestamps_vertex_begin.clear();
+		timestamps.timestamps_vertex_begin.resize(physical_passes.size());
+		timestamps.timestamps_fragment_begin.clear();
+		timestamps.timestamps_fragment_begin.resize(physical_passes.size());
+		timestamps.timestamps_compute_begin.clear();
+		timestamps.timestamps_compute_begin.resize(physical_passes.size());
+		timestamps.timestamps_vertex_end.clear();
+		timestamps.timestamps_vertex_end.resize(physical_passes.size());
+		timestamps.timestamps_fragment_end.clear();
+		timestamps.timestamps_fragment_end.resize(physical_passes.size());
+		timestamps.timestamps_compute_end.clear();
+		timestamps.timestamps_compute_end.resize(physical_passes.size());
+	}
+}
+
+void RenderGraph::enable_timestamps(bool enable)
+{
+	enabled_timestamps = enable;
+}
+
+void RenderGraph::report_timestamps()
+{
+	std::vector<double> total_time_vertex(physical_passes.size());
+	std::vector<double> total_time_fragment(physical_passes.size());
+	std::vector<double> total_time_compute(physical_passes.size());
+	std::vector<unsigned> frame_count_vertex(physical_passes.size());
+	std::vector<unsigned> frame_count_fragment(physical_passes.size());
+	std::vector<unsigned> frame_count_compute(physical_passes.size());
+
+	for (auto &timestamp : physical_timestamps)
+	{
+		for (unsigned pass = 0; pass < physical_passes.size(); pass++)
+		{
+			if (timestamp.timestamps_vertex_begin[pass] &&
+			    timestamp.timestamps_vertex_end[pass] &&
+			    timestamp.timestamps_vertex_begin[pass]->is_signalled() &&
+			    timestamp.timestamps_vertex_end[pass]->is_signalled())
+			{
+				double t = timestamp.timestamps_vertex_end[pass]->get_timestamp() -
+				           timestamp.timestamps_vertex_begin[pass]->get_timestamp();
+				if (t < 0.0) // Non-monotonic, discard.
+					continue;
+
+				total_time_vertex[pass] += t;
+				frame_count_vertex[pass]++;
+			}
+
+			if (timestamp.timestamps_fragment_begin[pass] &&
+			    timestamp.timestamps_fragment_end[pass] &&
+			    timestamp.timestamps_fragment_begin[pass]->is_signalled() &&
+			    timestamp.timestamps_fragment_end[pass]->is_signalled())
+			{
+				double t = timestamp.timestamps_fragment_end[pass]->get_timestamp() -
+				           timestamp.timestamps_fragment_begin[pass]->get_timestamp();
+				if (t < 0.0) // Non-monotonic, discard.
+					continue;
+
+				total_time_fragment[pass] += t;
+				frame_count_fragment[pass]++;
+			}
+
+			if (timestamp.timestamps_compute_begin[pass] &&
+			    timestamp.timestamps_compute_end[pass] &&
+			    timestamp.timestamps_compute_begin[pass]->is_signalled() &&
+			    timestamp.timestamps_compute_end[pass]->is_signalled())
+			{
+				double t = timestamp.timestamps_compute_end[pass]->get_timestamp() -
+				           timestamp.timestamps_compute_begin[pass]->get_timestamp();
+				if (t < 0.0) // Non-monotonic, discard.
+					continue;
+
+				total_time_compute[pass] += t;
+				frame_count_compute[pass]++;
+			}
+		}
+	}
+
+	for (unsigned pass = 0; pass < physical_passes.size(); pass++)
+	{
+		LOGI("Physical pass #%u:\n", pass);
+		for (auto &subpass : physical_passes[pass].passes)
+			LOGI("  Subpass: %s\n", passes[subpass]->get_name().c_str());
+
+		if (frame_count_vertex[pass])
+			LOGI("    Vertex time: %10.3f us\n", 1e6 * total_time_vertex[pass] / frame_count_vertex[pass]);
+		if (frame_count_fragment[pass])
+			LOGI("    Fragment time: %10.3f us\n", 1e6 * total_time_fragment[pass] / frame_count_fragment[pass]);
+		if (frame_count_compute[pass])
+			LOGI("    Compute time: %10.3f us\n", 1e6 * total_time_compute[pass] / frame_count_compute[pass]);
+	}
 }
 
 void RenderGraph::reset()

@@ -1433,6 +1433,11 @@ void CommandBuffer::save_state(CommandBufferSaveStateFlags flags, CommandBufferS
 	state.flags = flags;
 }
 
+QueryPoolHandle CommandBuffer::write_timestamp(VkPipelineStageFlagBits stage)
+{
+	return device->write_timestamp(cmd, stage);
+}
+
 void CommandBufferUtil::set_quad_vertex_state(CommandBuffer &cmd)
 {
 	int8_t *data = static_cast<int8_t *>(cmd.allocate_vertex_data(0, 8, 2));

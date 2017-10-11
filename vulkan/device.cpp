@@ -1016,6 +1016,7 @@ Device::PerFrame::PerFrame(Device *device, DeviceAllocator &global, SemaphoreMan
     , compute_cmd_pool(device->get_device(), compute_queue_family_index)
     , transfer_cmd_pool(device->get_device(), transfer_queue_family_index)
     , fence_manager(device->get_device())
+    , query_pool(device)
     , vbo_chain(device, 1024 * 1024, 64, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT)
     , ibo_chain(device, 1024 * 1024, 64, VK_BUFFER_USAGE_INDEX_BUFFER_BIT)
     , ubo_chain(device, 1024 * 1024, device->get_gpu_properties().limits.minUniformBufferOffsetAlignment,
@@ -1170,6 +1171,11 @@ void Device::begin_frame(unsigned index)
 		allocator.second->begin_frame();
 }
 
+QueryPoolHandle Device::write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlagBits stage)
+{
+	return frame().query_pool.write_timestamp(cmd, stage);
+}
+
 void Device::PerFrame::sync_to_gpu()
 {
 	ubo_chain.sync_to_gpu();
@@ -1188,6 +1194,7 @@ void Device::PerFrame::begin()
 	graphics_cmd_pool.begin();
 	compute_cmd_pool.begin();
 	transfer_cmd_pool.begin();
+	query_pool.begin();
 
 	for (auto &framebuffer : destroyed_framebuffers)
 		vkDestroyFramebuffer(device, framebuffer, nullptr);

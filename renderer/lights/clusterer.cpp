@@ -23,6 +23,7 @@
 #include "clusterer.hpp"
 #include "render_graph.hpp"
 #include "scene.hpp"
+#include "render_context.hpp"
 
 using namespace Vulkan;
 using namespace std;
@@ -116,8 +117,6 @@ void LightClusterer::build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView
 	point_count = 0;
 	spot_count = 0;
 
-	AABB aabb(vec3(FLT_MAX), vec3(-FLT_MAX));
-
 	for (auto &light : *lights)
 	{
 		auto &l = *get<0>(light)->light;
@@ -126,30 +125,51 @@ void LightClusterer::build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView
 		if (l.get_type() == PositionalLight::Type::Spot && spot_count < MaxLights)
 		{
 			spot_lights[spot_count] = static_cast<SpotLight &>(l).get_shader_info(transform->transform->world_transform);
+#if 0
 			vec3 center = spot_lights[spot_count].position_inner.xyz();
 			float radius = 1.0f / spot_lights[spot_count].falloff_inv_radius.w;
 			AABB point_aabb(center - radius, center + radius);
 			aabb.expand(point_aabb);
+#endif
 			spot_count++;
 		}
 		else if (l.get_type() == PositionalLight::Type::Point && point_count < MaxLights)
 		{
 			point_lights[point_count] = static_cast<PointLight &>(l).get_shader_info(transform->transform->world_transform);
 
+#if 0
 			vec3 center = point_lights[point_count].position_inner.xyz();
 			float radius = 1.0f / point_lights[point_count].falloff_inv_radius.w;
 			AABB point_aabb(center - radius, center + radius);
 			aabb.expand(point_aabb);
+#endif
+
 			point_count++;
 		}
 	}
 
+	// Figure out aabb bounds in view space.
+	auto &inv_proj = context->get_render_parameters().inv_projection;
+	const auto project = [](const vec4 &v) -> vec3 {
+		return v.xyz() / v.w;
+	};
+
+	vec3 ul = project(inv_proj * vec4(-1.0f, -1.0f, 1.0f, 1.0f));
+	vec3 ll = project(inv_proj * vec4(-1.0f, +1.0f, 1.0f, 1.0f));
+	vec3 ur = project(inv_proj * vec4(+1.0f, -1.0f, 1.0f, 1.0f));
+	vec3 lr = project(inv_proj * vec4(+1.0f, +1.0f, 1.0f, 1.0f));
+
+	vec3 min_view = min(min(ul, ll), min(ur, lr));
+	vec3 max_view = max(max(ul, ll), max(ur, lr));
+	// Make sure scaling the box does not move the near plane.
+	max_view.z = 0.0f;
+
+	mat4 ortho_box = ortho(AABB(min_view, max_view));
+
 	if (point_count || spot_count)
-		cluster_transform = translate(vec3(0.5f, 0.5f, 0.0f)) * scale(vec3(0.5f, 0.5f, 1.0f)) * ortho(aabb);
+		cluster_transform = ortho_box * context->get_render_parameters().view;
 	else
 		cluster_transform = mat4(1.0f);
-
-	auto inverse_cluster_transform = inverse(cluster_transform);
 
 	cmd.set_program(*program->get_program(variant));
 	cmd.set_storage_texture(0, 0, view);
@@ -163,13 +183,29 @@ void LightClusterer::build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView
 	{
 		mat4 inverse_cluster_transform;
 		uvec4 size;
-		vec4 inv_size;
+		vec4 inv_size_radius;
 		uint32_t spot_count;
 		uint32_t point_count;
+		uint32_t z_offset;
 	};
-	Push push = { inverse_cluster_transform, uvec4(x, y, z, 0), vec4(1.0f / x, 1.0f / y, 1.0f / z, 1.0f), spot_count, point_count };
-	cmd.push_constants(&push, 0, sizeof(push));
-	cmd.dispatch((x + 7) / 8, (y + 7) / 8, z);
+
+	auto inverse_cluster_transform = inverse(cluster_transform);
+
+	// For every refinement level.
+	for (unsigned i = 0; i < ClusterHierarchies; i++)
+	{
+		mat4 clip_to_world = inverse_cluster_transform * scale(vec3(1.0f / (1u << i)));
+		vec3 inv_res = vec3(1.0f / x, 1.0f / y, 1.0f / z);
+		float radius = 0.5f * length(mat3(clip_to_world) * (vec3(2.0f, 2.0f, 1.0f) * inv_res));
+
+		Push push = {
+			clip_to_world,
+			uvec4(x, y, z, 0), vec4(inv_res, radius),
+			spot_count, point_count, i * z,
+		};
+		cmd.push_constants(&push, 0, sizeof(push));
+		cmd.dispatch((x + 7) / 8, (y + 7) / 8, z);
+	}
 }
 
 void LightClusterer::add_render_passes(RenderGraph &graph)
@@ -182,7 +218,7 @@ void LightClusterer::add_render_passes(RenderGraph &graph)
 	att.size_class = SizeClass::Absolute;
 	att.size_x = x;
 	att.size_y = y;
-	att.size_z = z;
+	att.size_z = z * ClusterHierarchies;
 	att.persistent = true;
 
 	auto &pass = graph.add_pass("clustering", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);

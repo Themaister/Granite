@@ -32,9 +32,11 @@ layout(std430, push_constant) uniform Registers
 {
     mat4 inv_cluster_transform;
     ivec4 size;
-    vec4 inv_size;
+    vec3 inv_size;
+    float cube_radius;
     uint spot_count;
     uint point_count;
+    int z_offset;
 } registers;
 
 void main()
@@ -48,10 +50,8 @@ void main()
     uint num_spot = registers.spot_count;
     uint num_point = registers.point_count;
 
-    vec3 minimum = (registers.inv_cluster_transform * vec4(vec3(id) * registers.inv_size.xyz, 1.0)).xyz;
-    vec3 maximum = (registers.inv_cluster_transform * vec4((vec3(id) + 1.0) * registers.inv_size.xyz, 1.0)).xyz;
-    vec3 cube_center = 0.5 * (minimum + maximum);
-    float cube_radius = 0.5 * distance(minimum, maximum);
+    vec3 cube_center = (registers.inv_cluster_transform * vec4(vec3(2.0, 2.0, 1.0) * (vec3(id) + 0.5) * registers.inv_size - vec3(1.0, 1.0, 0.0), 1.0)).xyz;
+    float cube_radius = registers.cube_radius;
 
     for (uint i = 0u; i < num_spot; i++)
     {
@@ -75,15 +75,13 @@ void main()
     {
         vec3 center = point.lights[i].position;
         float radius = 1.0 / point.lights[i].inv_radius;
-        vec3 axis_dist = abs(center - cube_center);
         float radial_dist = distance(cube_center, center);
-
-        bool axis_outside = any(greaterThan(abs(axis_dist), radius + 0.5 * registers.inv_size.xyz));
         bool radial_outside = radial_dist > (cube_radius + radius);
 
-        if (!radial_outside && !axis_outside)
+        if (!radial_outside)
             point_mask |= 1u << i;
     }
 
+    id.z += registers.z_offset;
     imageStore(uCluster, id, uvec4(spot_mask, point_mask, 0u, 0u));
 }

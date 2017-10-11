@@ -43,7 +43,7 @@ public:
 	unsigned get_active_spot_light_count() const;
 	const mat4 &get_cluster_transform() const;
 
-	enum { MaxLights = 32 };
+	enum { MaxLights = 32, ClusterHierarchies = 8 };
 
 private:
 	void add_render_passes(RenderGraph &graph) override;
@@ -58,7 +58,7 @@ private:
 	const RenderContext *context = nullptr;
 	std::vector<std::tuple<PositionalLightComponent *, CachedSpatialTransformComponent *>> *lights = nullptr;
 
-	unsigned x = 64, y = 64, z = 64;
+	unsigned x = 64, y = 32, z = 32;
 	void build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view);
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);

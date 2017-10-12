@@ -47,7 +47,7 @@ Application *application_create(int argc, char **argv)
 
 		auto path = std::string("file://") + argv[1];
 		auto *app = new SceneViewerApplication(path);
-		app->rescale_scene(5.0f);
+		//app->rescale_scene(5.0f);
 		app->loop_animations();
 		return app;
 	}

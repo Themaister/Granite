@@ -1,6 +1,4 @@
 #version 450
-precision highp float;
-precision highp int;
 
 #include "fog.h"
 

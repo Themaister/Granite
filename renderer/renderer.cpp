@@ -173,7 +173,7 @@ void Renderer::begin()
 	queue.set_shader_suites(suite);
 }
 
-void Renderer::set_cluster_parameters(Vulkan::CommandBuffer &cmd, const LightClusterer &cluster)
+static void set_cluster_parameters(Vulkan::CommandBuffer &cmd, const LightClusterer &cluster)
 {
 	cmd.set_texture(1, 5, cluster.get_cluster_image(), StockSampler::NearestWrap);
 	memcpy(cmd.allocate_constant_data(1, 6, sizeof(mat4)), &cluster.get_cluster_transform(), sizeof(mat4));
@@ -437,6 +437,31 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 	cmd.push_constants(&push, 0, sizeof(push));
 
 	cmd.draw(4);
+
+	// Clustered lighting.
+	if (light.cluster)
+	{
+		auto *cluster_program = device.get_shader_manager().register_graphics("builtin://shaders/lights/clustering.vert",
+		                                                                      "builtin://shaders/lights/clustering.frag");
+
+		struct ClusterPush
+		{
+			vec4 inv_view_proj_col2;
+			vec3 camera_pos;
+		};
+
+		ClusterPush cluster_push = {
+			context.get_render_parameters().inv_view_projection[2],
+			context.get_render_parameters().camera_position,
+		};
+
+		unsigned cluster_variant = cluster_program->register_variant({});
+		cmd.set_program(*cluster_program->get_program(cluster_variant));
+
+		cmd.push_constants(&cluster_push, 0, sizeof(cluster_push));
+		set_cluster_parameters(cmd, *light.cluster);
+		cmd.draw(4);
+	}
 
 	// Skip fog for non-reflection passes.
 	if (light.fog.falloff > 0.0f)

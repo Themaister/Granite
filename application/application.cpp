@@ -22,7 +22,7 @@
 
 #define RENDERER_FORWARD 0
 #define RENDERER_DEFERRED 1
-#define RENDERER RENDERER_FORWARD
+#define RENDERER RENDERER_DEFERRED
 
 #include "application.hpp"
 #include <stdexcept>
@@ -325,7 +325,7 @@ void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::st
 	scene_loader.get_scene().add_render_pass_dependencies(graph, gbuffer);
 
 	lighting.set_build_render_pass([this, type](Vulkan::CommandBuffer &cmd) {
-		render_positional_lights(cmd, selected_camera->get_projection(), selected_camera->get_view());
+		//render_positional_lights(cmd, selected_camera->get_projection(), selected_camera->get_view());
 		DeferredLightRenderer::render_light(cmd, context);
 	});
 

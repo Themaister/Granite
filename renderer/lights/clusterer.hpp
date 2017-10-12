@@ -43,7 +43,7 @@ public:
 	unsigned get_active_spot_light_count() const;
 	const mat4 &get_cluster_transform() const;
 
-	enum { MaxLights = 32, ClusterHierarchies = 8 };
+	enum { MaxLights = 32, ClusterHierarchies = 8, ClusterPrepassDownsample = 4 };
 
 private:
 	void add_render_passes(RenderGraph &graph) override;
@@ -59,12 +59,14 @@ private:
 	std::vector<std::tuple<PositionalLightComponent *, CachedSpatialTransformComponent *>> *lights = nullptr;
 
 	unsigned x = 64, y = 32, z = 32;
-	void build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view);
+	void build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view, const Vulkan::ImageView *pre_culled);
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
 	Vulkan::ShaderProgram *program = nullptr;
 	Vulkan::ImageView *target = nullptr;
-	unsigned variant = 0;
+	Vulkan::ImageView *pre_cull_target = nullptr;
+	unsigned inherit_variant = 0;
+	unsigned cull_variant = 0;
 
 	PositionalFragmentInfo point_lights[MaxLights] = {};
 	PositionalFragmentInfo spot_lights[MaxLights] = {};

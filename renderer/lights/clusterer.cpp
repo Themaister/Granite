@@ -39,13 +39,15 @@ void LightClusterer::on_device_created(const Vulkan::DeviceCreatedEvent &e)
 {
 	auto &shader_manager = e.get_device().get_shader_manager();
 	program = shader_manager.register_compute("builtin://shaders/lights/clustering.comp");
-	variant = program->register_variant({});
+	inherit_variant = program->register_variant({{ "INHERIT", 1 }});
+	cull_variant = program->register_variant({});
 }
 
 void LightClusterer::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
 {
 	program = nullptr;
-	variant = 0;
+	inherit_variant = 0;
+	cull_variant = 0;
 }
 
 void LightClusterer::set_scene(Scene *scene)
@@ -80,6 +82,7 @@ void LightClusterer::set_base_render_context(const RenderContext *context)
 void LightClusterer::setup_render_pass_resources(RenderGraph &graph)
 {
 	target = &graph.get_physical_texture_resource(graph.get_texture_resource("light-cluster").get_physical_index());
+	pre_cull_target = &graph.get_physical_texture_resource(graph.get_texture_resource("light-cluster-prepass").get_physical_index());
 }
 
 unsigned LightClusterer::get_active_point_light_count() const
@@ -112,15 +115,31 @@ const mat4 &LightClusterer::get_cluster_transform() const
 	return cluster_transform;
 }
 
-void LightClusterer::build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view)
+void LightClusterer::build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view, const Vulkan::ImageView *pre_culled)
 {
 	point_count = 0;
 	spot_count = 0;
+
+	unsigned res_x = x;
+	unsigned res_y = y;
+	unsigned res_z = z;
+	if (!pre_culled)
+	{
+		res_x /= ClusterPrepassDownsample;
+		res_y /= ClusterPrepassDownsample;
+		res_z /= ClusterPrepassDownsample;
+	}
+
+	auto &frustum = context->get_visibility_frustum();
 
 	for (auto &light : *lights)
 	{
 		auto &l = *get<0>(light)->light;
 		auto *transform = get<1>(light);
+
+		// Frustum cull lights here.
+		if (!frustum.intersects(transform->world_aabb))
+			continue;
 
 		if (l.get_type() == PositionalLight::Type::Spot && spot_count < MaxLights)
 		{
@@ -171,8 +190,10 @@ void LightClusterer::build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView
 	else
 		cluster_transform = mat4(1.0f);
 
-	cmd.set_program(*program->get_program(variant));
+	cmd.set_program(*program->get_program(pre_culled ? inherit_variant : cull_variant));
 	cmd.set_storage_texture(0, 0, view);
+	if (pre_culled)
+		cmd.set_texture(0, 1, *pre_culled, StockSampler::NearestWrap);
 
 	auto *spot_buffer = static_cast<PositionalFragmentInfo *>(cmd.allocate_constant_data(1, 0, MaxLights * sizeof(PositionalFragmentInfo)));
 	auto *point_buffer = static_cast<PositionalFragmentInfo *>(cmd.allocate_constant_data(1, 1, MaxLights * sizeof(PositionalFragmentInfo)));
@@ -183,6 +204,7 @@ void LightClusterer::build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView
 	{
 		mat4 inverse_cluster_transform;
 		uvec4 size;
+		vec4 inv_texture_size;
 		vec4 inv_size_radius;
 		uint32_t spot_count;
 		uint32_t point_count;
@@ -195,16 +217,18 @@ void LightClusterer::build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView
 	for (unsigned i = 0; i < ClusterHierarchies; i++)
 	{
 		mat4 clip_to_world = inverse_cluster_transform * scale(vec3(1.0f / (1u << i)));
-		vec3 inv_res = vec3(1.0f / x, 1.0f / y, 1.0f / z);
+		vec3 inv_res = vec3(1.0f / res_x, 1.0f / res_y, 1.0f / res_z);
 		float radius = 0.5f * length(mat3(clip_to_world) * (vec3(2.0f, 2.0f, 1.0f) * inv_res));
 
 		Push push = {
 			clip_to_world,
-			uvec4(x, y, z, 0), vec4(inv_res, radius),
-			spot_count, point_count, i * z,
+			uvec4(res_x, res_y, res_z, 0),
+			vec4(1.0f / res_x, 1.0f / res_y, 1.0f / (ClusterHierarchies * res_z), 1.0f),
+			vec4(inv_res, radius),
+			spot_count, point_count, i * res_z,
 		};
 		cmd.push_constants(&push, 0, sizeof(push));
-		cmd.dispatch((x + 7) / 8, (y + 7) / 8, z);
+		cmd.dispatch((res_x + 3) / 4, (res_y + 3) / 4, (res_z + 3) / 4);
 	}
 }
 
@@ -221,10 +245,25 @@ void LightClusterer::add_render_passes(RenderGraph &graph)
 	att.size_z = z * ClusterHierarchies;
 	att.persistent = true;
 
+	AttachmentInfo att_prepass = att;
+	assert((x % ClusterPrepassDownsample) == 0);
+	assert((y % ClusterPrepassDownsample) == 0);
+	assert((z % ClusterPrepassDownsample) == 0);
+	att_prepass.size_x /= ClusterPrepassDownsample;
+	att_prepass.size_y /= ClusterPrepassDownsample;
+	att_prepass.size_z /= ClusterPrepassDownsample;
+
+	auto &prepass = graph.add_pass("clustering-prepass", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+	prepass.add_storage_texture_output("light-cluster-prepass", att_prepass);
+	prepass.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
+		build_cluster(cmd, *pre_cull_target, nullptr);
+	});
+
 	auto &pass = graph.add_pass("clustering", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 	pass.add_storage_texture_output("light-cluster", att);
+	pass.add_texture_input("light-cluster-prepass");
 	pass.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
-		build_cluster(cmd, *target);
+		build_cluster(cmd, *target, pre_cull_target);
 	});
 }
 

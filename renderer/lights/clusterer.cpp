@@ -203,33 +203,27 @@ void LightClusterer::build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView
 	struct Push
 	{
 		mat4 inverse_cluster_transform;
-		uvec4 size;
+		uvec4 size_z_log2;
 		vec4 inv_texture_size;
 		vec4 inv_size_radius;
 		uint32_t spot_count;
 		uint32_t point_count;
-		uint32_t z_offset;
 	};
 
 	auto inverse_cluster_transform = inverse(cluster_transform);
 
-	// For every refinement level.
-	for (unsigned i = 0; i < ClusterHierarchies; i++)
-	{
-		mat4 clip_to_world = inverse_cluster_transform * scale(vec3(1.0f / (1u << i)));
-		vec3 inv_res = vec3(1.0f / res_x, 1.0f / res_y, 1.0f / res_z);
-		float radius = 0.5f * length(mat3(clip_to_world) * (vec3(2.0f, 2.0f, 1.0f) * inv_res));
+	vec3 inv_res = vec3(1.0f / res_x, 1.0f / res_y, 1.0f / res_z);
+	float radius = 0.5f * length(mat3(inverse_cluster_transform) * (vec3(2.0f, 2.0f, 1.0f) * inv_res));
 
-		Push push = {
-			clip_to_world,
-			uvec4(res_x, res_y, res_z, 0),
+	Push push = {
+			inverse_cluster_transform,
+			uvec4(res_x, res_y, res_z, trailing_zeroes(res_z)),
 			vec4(1.0f / res_x, 1.0f / res_y, 1.0f / (ClusterHierarchies * res_z), 1.0f),
 			vec4(inv_res, radius),
-			spot_count, point_count, i * res_z,
-		};
-		cmd.push_constants(&push, 0, sizeof(push));
-		cmd.dispatch((res_x + 3) / 4, (res_y + 3) / 4, (res_z + 3) / 4);
-	}
+			spot_count, point_count,
+	};
+	cmd.push_constants(&push, 0, sizeof(push));
+	cmd.dispatch((res_x + 3) / 4, (res_y + 3) / 4, ClusterHierarchies * ((res_z + 3) / 4));
 }
 
 void LightClusterer::add_render_passes(RenderGraph &graph)
@@ -249,6 +243,7 @@ void LightClusterer::add_render_passes(RenderGraph &graph)
 	assert((x % ClusterPrepassDownsample) == 0);
 	assert((y % ClusterPrepassDownsample) == 0);
 	assert((z % ClusterPrepassDownsample) == 0);
+	assert((z & (z - 1)) == 0);
 	att_prepass.size_x /= ClusterPrepassDownsample;
 	att_prepass.size_y /= ClusterPrepassDownsample;
 	att_prepass.size_z /= ClusterPrepassDownsample;

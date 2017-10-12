@@ -36,8 +36,8 @@ vec3 compute_cluster_light(MaterialProperties material, vec3 world_pos, vec3 cam
 
 	vec3 result = vec3(0.0);
 
-	//result.r = float(bitCount(bits.x));
-	//result.g = float(bitCount(bits.y));
+	result.r = float(bitCount(bits.x));
+	result.g = float(bitCount(bits.y));
 
 #if 1
 	while (bits.x != 0u)

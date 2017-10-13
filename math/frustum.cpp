@@ -108,6 +108,7 @@ void Frustum::build_planes(const mat4 &inv_view_projection)
 	static const vec4 trf(+1.0f, -1.0f, 1.0f, 1.0f);
 	static const vec4 brn(+1.0f, +1.0f, 0.0f, 1.0f);
 	static const vec4 brf(+1.0f, +1.0f, 1.0f, 1.0f);
+	static const vec4 c(0.0f, 0.0f, 0.5f, 1.0f);
 
 	const auto project = [](const vec4 &v) {
 		return v.xyz() / vec3(v.w);
@@ -120,6 +121,7 @@ void Frustum::build_planes(const mat4 &inv_view_projection)
 	vec3 TRF = project(inv_view_projection * trf);
 	vec3 BRN = project(inv_view_projection * brn);
 	vec3 BRF = project(inv_view_projection * brf);
+	vec4 center = inv_view_projection * c;
 
 	vec3 l = normalize(cross(BLF - BLN, TLN - BLN));
 	vec3 r = normalize(cross(TRF - TRN, BRN - TRN));
@@ -134,5 +136,10 @@ void Frustum::build_planes(const mat4 &inv_view_projection)
 	planes[3] = vec4(f, -dot(f, BRF));
 	planes[4] = vec4(t, -dot(t, TRN));
 	planes[5] = vec4(b, -dot(b, BRN));
+
+	// Winding order checks.
+	for (auto &p : planes)
+		if (dot(center, p) < 0.0f)
+			p = -p;
 }
 }

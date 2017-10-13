@@ -30,24 +30,6 @@ using namespace Vulkan;
 
 namespace Granite
 {
-static const vec3 dirs[6] = {
-	vec3(1.0f, 0.0f, 0.0f),
-	vec3(-1.0f, 0.0f, 0.0f),
-	vec3(0.0f, 1.0f, 0.0f),
-	vec3(0.0f, -1.0f, 0.0f),
-	vec3(0.0f, 0.0f, 1.0f),
-	vec3(0.0f, 0.0f, -1.0f),
-};
-
-static const vec3 ups[6] = {
-	vec3(0.0f, 1.0f, 0.0f),
-	vec3(0.0f, 1.0f, 0.0f),
-	vec3(0.0f, 0.0f, -1.0f),
-	vec3(0.0f, 0.0f, +1.0f),
-	vec3(0.0f, 1.0f, 0.0f),
-	vec3(0.0f, 1.0f, 0.0f),
-};
-
 ImageHandle convert_cube_to_ibl_specular(Device &device, ImageView &view)
 {
 	unsigned size = 128;
@@ -87,8 +69,8 @@ ImageHandle convert_cube_to_ibl_specular(Device &device, ImageView &view)
 
 			cmd->begin_render_pass(rp);
 
-			mat4 look = mat4_cast(look_at(dirs[layer], ups[layer]));
-			mat4 proj = scale(vec3(-1.0f, 1.0f, 1.0f)) * projection(0.5f * pi<float>(), 1.0f, 0.1f, 100.0f);
+			mat4 look, proj;
+			compute_cube_render_transform(vec3(0.0f), layer, proj, look, 0.1f, 100.0f);
 			params.inv_local_view_projection = inverse(proj * look);
 			memcpy(cmd->allocate_constant_data(0, 0, sizeof(params)), &params, sizeof(params));
 			cmd->set_texture(2, 0, view, StockSampler::TrilinearWrap);
@@ -158,8 +140,9 @@ ImageHandle convert_cube_to_ibl_diffuse(Device &device, ImageView &view)
 
 		cmd->begin_render_pass(rp);
 
-		mat4 look = mat4_cast(look_at(dirs[i], ups[i]));
-		mat4 proj = scale(vec3(-1.0f, 1.0f, 1.0f)) * projection(0.5f * pi<float>(), 1.0f, 0.1f, 100.0f);
+		mat4 look, proj;
+		compute_cube_render_transform(vec3(0.0f), i, proj, look, 0.1f, 100.0f);
+
 		params.inv_local_view_projection = inverse(proj * look);
 		memcpy(cmd->allocate_constant_data(0, 0, sizeof(params)), &params, sizeof(params));
 		cmd->set_texture(2, 0, view, StockSampler::LinearWrap);
@@ -221,8 +204,9 @@ ImageHandle convert_equirect_to_cube(Device &device, ImageView &view)
 
 		cmd->begin_render_pass(rp);
 
-		mat4 look = mat4_cast(look_at(dirs[i], ups[i]));
-		mat4 proj = scale(vec3(-1.0f, 1.0f, 1.0f)) * projection(0.5f * pi<float>(), 1.0f, 0.1f, 100.0f);
+		mat4 look, proj;
+		compute_cube_render_transform(vec3(0.0f), i, proj, look, 0.1f, 100.0f);
+
 		params.inv_local_view_projection = inverse(proj * look);
 		memcpy(cmd->allocate_constant_data(0, 0, sizeof(params)), &params, sizeof(params));
 		cmd->set_texture(2, 0, view, StockSampler::LinearWrap);

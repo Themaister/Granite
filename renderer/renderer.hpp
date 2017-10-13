@@ -49,6 +49,12 @@ public:
 	};
 	using RendererOptionFlags = uint32_t;
 
+	enum RendererFlushBits
+	{
+		FRONT_FACE_CLOCKWISE_BIT = 1 << 0
+	};
+	using RendererFlushFlags = uint32_t;
+
 	void set_mesh_renderer_options(RendererOptionFlags flags);
 	void set_mesh_renderer_options_from_lighting(const LightingParameters &params);
 
@@ -57,7 +63,7 @@ public:
 	void push_renderables(RenderContext &context, const VisibilityList &visible);
 	void push_depth_renderables(RenderContext &context, const VisibilityList &visible);
 
-	void flush(Vulkan::CommandBuffer &cmd, RenderContext &context);
+	void flush(Vulkan::CommandBuffer &cmd, RenderContext &context, RendererFlushFlags options = 0);
 
 	void render_debug_aabb(RenderContext &context, const AABB &aabb, const vec4 &color);
 

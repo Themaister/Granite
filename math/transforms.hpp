@@ -51,6 +51,8 @@ mat4 projection(float fovy, float aspect, float znear, float zfar);
 
 mat4 ortho(const AABB &aabb);
 
+void compute_cube_render_transform(vec3 center, unsigned face, mat4 &projection, mat4 &view, float znear, float zfar);
+
 struct LinearSampler
 {
 	std::vector<vec3> values;

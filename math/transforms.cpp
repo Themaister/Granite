@@ -191,6 +191,30 @@ mat4 ortho(const AABB &aabb)
 	return glm::scale(vec3(1.0f, -1.0f, 1.0f)) * glm::ortho(min.x, max.x, min.y, max.y, min.z, max.z);
 }
 
+void compute_cube_render_transform(vec3 center, unsigned face, mat4 &proj, mat4 &view, float znear, float zfar)
+{
+	static const vec3 dirs[6] = {
+		vec3(1.0f, 0.0f, 0.0f),
+		vec3(-1.0f, 0.0f, 0.0f),
+		vec3(0.0f, 1.0f, 0.0f),
+		vec3(0.0f, -1.0f, 0.0f),
+		vec3(0.0f, 0.0f, 1.0f),
+		vec3(0.0f, 0.0f, -1.0f),
+	};
+
+	static const vec3 ups[6] = {
+		vec3(0.0f, 1.0f, 0.0f),
+		vec3(0.0f, 1.0f, 0.0f),
+		vec3(0.0f, 0.0f, -1.0f),
+		vec3(0.0f, 0.0f, +1.0f),
+		vec3(0.0f, 1.0f, 0.0f),
+		vec3(0.0f, 1.0f, 0.0f),
+	};
+
+	view = mat4_cast(look_at(dirs[face], ups[face])) * translate(-center);
+	proj = scale(vec3(-1.0f, 1.0f, 1.0f)) * projection(0.5f * pi<float>(), 1.0f, znear, zfar);
+}
+
 vec3 LinearSampler::sample(unsigned index, float l) const
 {
 	if (l == 0.0f)

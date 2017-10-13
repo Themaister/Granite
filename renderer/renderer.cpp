@@ -238,7 +238,7 @@ void Renderer::set_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderC
 		set_cluster_parameters(cmd, *lighting->cluster);
 }
 
-void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context)
+void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context, RendererFlushFlags options)
 {
 	auto *global = static_cast<RenderParameters *>(cmd.allocate_constant_data(0, 0, sizeof(RenderParameters)));
 	*global = context.get_render_parameters();
@@ -248,6 +248,8 @@ void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context)
 	queue.sort();
 
 	cmd.set_opaque_state();
+	if (options & FRONT_FACE_CLOCKWISE_BIT)
+		cmd.set_front_face(VK_FRONT_FACE_CLOCKWISE);
 
 	if (type == RendererType::DepthOnly)
 	{

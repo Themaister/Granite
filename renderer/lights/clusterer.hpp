@@ -77,14 +77,19 @@ private:
 	PositionalFragmentInfo point_lights[MaxLights] = {};
 	PositionalFragmentInfo spot_lights[MaxLights] = {};
 	SpotLight *spot_light_handles[MaxLights] = {};
+	PointLight *point_light_handles[MaxLights] = {};
 	mat4 spot_light_shadow_transforms[MaxLights] = {};
+	vec4 point_light_shadow_transforms[MaxLights] = {};
 	mat4 cluster_transform;
 	unsigned point_count = 0;
 	unsigned spot_count = 0;
 
 	Renderer *depth_renderer = nullptr;
 	Vulkan::ImageHandle shadow_atlas;
-	void render_atlas(RenderContext &context);
+	Vulkan::ImageHandle shadow_atlas_point;
+	Vulkan::ImageViewHandle shadow_atlas_rt[6 * MaxLights];
+	void render_atlas_spot(RenderContext &context);
+	void render_atlas_point(RenderContext &context);
 
 	bool enable_shadows = true;
 	bool enable_clustering = true;

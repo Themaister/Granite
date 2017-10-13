@@ -29,7 +29,7 @@
 
 namespace Granite
 {
-class LightClusterer : public RenderPassCreator, public EventHandler
+class LightClusterer : public RenderPassCreator, public EventHandler, public PerFrameRefreshable
 {
 public:
 	LightClusterer();
@@ -52,6 +52,7 @@ private:
 	void setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target) override;
 	void setup_render_pass_resources(RenderGraph &graph) override;
 	void set_scene(Scene *scene) override;
+	void refresh(RenderContext &context) override;
 	RendererType get_renderer_type() override;
 
 	Scene *scene = nullptr;

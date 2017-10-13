@@ -115,22 +115,11 @@ const mat4 &LightClusterer::get_cluster_transform() const
 	return cluster_transform;
 }
 
-void LightClusterer::build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view, const Vulkan::ImageView *pre_culled)
+void LightClusterer::refresh(RenderContext &context)
 {
 	point_count = 0;
 	spot_count = 0;
-
-	unsigned res_x = x;
-	unsigned res_y = y;
-	unsigned res_z = z;
-	if (!pre_culled)
-	{
-		res_x /= ClusterPrepassDownsample;
-		res_y /= ClusterPrepassDownsample;
-		res_z /= ClusterPrepassDownsample;
-	}
-
-	auto &frustum = context->get_visibility_frustum();
+	auto &frustum = context.get_visibility_frustum();
 
 	for (auto &light : *lights)
 	{
@@ -168,7 +157,7 @@ void LightClusterer::build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView
 	}
 
 	// Figure out aabb bounds in view space.
-	auto &inv_proj = context->get_render_parameters().inv_projection;
+	auto &inv_proj = context.get_render_parameters().inv_projection;
 	const auto project = [](const vec4 &v) -> vec3 {
 		return v.xyz() / v.w;
 	};
@@ -186,9 +175,22 @@ void LightClusterer::build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView
 	mat4 ortho_box = ortho(AABB(min_view, max_view));
 
 	if (point_count || spot_count)
-		cluster_transform = ortho_box * context->get_render_parameters().view;
+		cluster_transform = ortho_box * context.get_render_parameters().view;
 	else
 		cluster_transform = mat4(1.0f);
+}
+
+void LightClusterer::build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view, const Vulkan::ImageView *pre_culled)
+{
+	unsigned res_x = x;
+	unsigned res_y = y;
+	unsigned res_z = z;
+	if (!pre_culled)
+	{
+		res_x /= ClusterPrepassDownsample;
+		res_y /= ClusterPrepassDownsample;
+		res_z /= ClusterPrepassDownsample;
+	}
 
 	cmd.set_program(*program->get_program(pre_culled ? inherit_variant : cull_variant));
 	cmd.set_storage_texture(0, 0, view);

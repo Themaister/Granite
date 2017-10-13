@@ -114,6 +114,8 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path)
 		auto entity = scene_loader.get_scene().create_entity();
 		auto *rp = entity->allocate_component<RenderPassComponent>();
 		rp->creator = cluster.get();
+		auto *refresh = entity->allocate_component<PerFrameUpdateComponent>();
+		refresh->refresh = cluster.get();
 		lighting.cluster = cluster.get();
 	}
 

@@ -474,7 +474,12 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 			context.get_render_parameters().camera_position,
 		};
 
-		unsigned cluster_variant = cluster_program->register_variant({});
+		unsigned cluster_variant;
+		if (light.cluster->get_spot_light_shadows())
+			cluster_variant = cluster_program->register_variant({{ "POSITIONAL_LIGHTS_SHADOW", 1 }});
+		else
+			cluster_variant = cluster_program->register_variant({});
+
 		cmd.set_program(*cluster_program->get_program(cluster_variant));
 
 		cmd.push_constants(&cluster_push, 0, sizeof(cluster_push));

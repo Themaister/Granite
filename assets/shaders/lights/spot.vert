@@ -12,9 +12,9 @@ layout(location = 0) flat out int vIndex;
 
 void main()
 {
-#if VARIANT_ID == 1
+#if defined(VARIANT_BIT_0)
     gl_Position = vec4(Position.xy, 1.0, 1.0);
-#elif VARIANT_ID == 0
+#else
     vec4 world = transforms[gl_InstanceIndex] * vec4(Position);
     vec4 clip = global.view_projection * world;
     gl_Position = clip;

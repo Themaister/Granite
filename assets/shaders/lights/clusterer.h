@@ -5,6 +5,9 @@
 #define SPOT_LIGHT_DATA_BINDING 7
 #define SPOT_LIGHT_DATA_COUNT 32
 
+#define SPOT_LIGHT_SHADOW_ATLAS_SET 1
+#define SPOT_LIGHT_SHADOW_ATLAS_BINDING 9
+
 #define SPOT_LIGHT_SHADOW_DATA_SET 1
 #define SPOT_LIGHT_SHADOW_DATA_BINDING 10
 #define SPOT_LIGHT_SHADOW_DATA_COUNT 32
@@ -40,8 +43,10 @@ vec3 compute_cluster_light(MaterialProperties material, vec3 world_pos, vec3 cam
 
 	vec3 result = vec3(0.0);
 
-	//result.r = float(bitCount(bits.x));
-	//result.g = float(bitCount(bits.y));
+#if 0
+	result.r = float(bitCount(bits.x));
+	result.g = float(bitCount(bits.y));
+#endif
 
 #if 1
 	while (bits.x != 0u)

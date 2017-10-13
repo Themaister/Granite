@@ -84,7 +84,10 @@ Vulkan::ProgramHandle ShaderSuite::get_program(DrawPipeline pipeline, uint32_t a
 			break;
 		}
 
-		defines.emplace_back("VARIANT_ID", variant_id);
+		for_each_bit(variant_id, [&](unsigned bit) {
+			defines.emplace_back(join("VARIANT_BIT_", bit), 1);
+		});
+
 		defines.emplace_back("HAVE_EMISSIVE", !!(texture_mask & MATERIAL_EMISSIVE_BIT));
 		defines.emplace_back("HAVE_EMISSIVE_REFRACTION", !!(texture_mask & MATERIAL_EMISSIVE_REFRACTION_BIT));
 		defines.emplace_back("HAVE_EMISSIVE_REFLECTION", !!(texture_mask & MATERIAL_EMISSIVE_REFLECTION_BIT));

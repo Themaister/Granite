@@ -117,6 +117,8 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path)
 		auto *refresh = entity->allocate_component<PerFrameUpdateComponent>();
 		refresh->refresh = cluster.get();
 		lighting.cluster = cluster.get();
+		cluster->set_enable_shadows(true);
+		cluster->set_enable_clustering(false);
 	}
 
 	context.set_camera(*selected_camera);
@@ -327,7 +329,7 @@ void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::st
 	scene_loader.get_scene().add_render_pass_dependencies(graph, gbuffer);
 
 	lighting.set_build_render_pass([this, type](Vulkan::CommandBuffer &cmd) {
-		//render_positional_lights(cmd, selected_camera->get_projection(), selected_camera->get_view());
+		render_positional_lights(cmd, selected_camera->get_projection(), selected_camera->get_view());
 		DeferredLightRenderer::render_light(cmd, context);
 	});
 

@@ -181,7 +181,7 @@ void Renderer::begin()
 
 static void set_cluster_parameters(Vulkan::CommandBuffer &cmd, const LightClusterer &cluster)
 {
-	cmd.set_texture(1, 5, cluster.get_cluster_image(), StockSampler::NearestWrap);
+	cmd.set_texture(1, 5, *cluster.get_cluster_image(), StockSampler::NearestWrap);
 	memcpy(cmd.allocate_constant_data(1, 6, sizeof(mat4)), &cluster.get_cluster_transform(), sizeof(mat4));
 	memcpy(cmd.allocate_constant_data(1, 7, LightClusterer::MaxLights * sizeof(PositionalFragmentInfo)),
 	       cluster.get_active_spot_lights(), cluster.get_active_spot_light_count() * sizeof(PositionalFragmentInfo));
@@ -234,7 +234,7 @@ void Renderer::set_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderC
 	if (lighting->shadow_near != nullptr)
 		cmd.set_texture(1, 4, *lighting->shadow_near, Vulkan::StockSampler::LinearShadow);
 
-	if (lighting->cluster)
+	if (lighting->cluster && lighting->cluster->get_cluster_image())
 		set_cluster_parameters(cmd, *lighting->cluster);
 }
 
@@ -458,7 +458,7 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 	cmd.draw(4);
 
 	// Clustered lighting.
-	if (light.cluster)
+	if (light.cluster && light.cluster->get_cluster_image())
 	{
 		auto *cluster_program = device.get_shader_manager().register_graphics("builtin://shaders/lights/clustering.vert",
 		                                                                      "builtin://shaders/lights/clustering.frag");

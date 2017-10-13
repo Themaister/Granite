@@ -111,17 +111,24 @@ const PositionalFragmentInfo *LightClusterer::get_active_spot_lights() const
 	return spot_lights;
 }
 
-const Vulkan::ImageView &LightClusterer::get_cluster_image() const
+void LightClusterer::set_enable_clustering(bool enable)
 {
-	return *target;
+	enable_clustering = enable;
+}
+
+void LightClusterer::set_enable_shadows(bool enable)
+{
+	enable_shadows = enable;
+}
+
+const Vulkan::ImageView *LightClusterer::get_cluster_image() const
+{
+	return enable_clustering ? target : nullptr;
 }
 
 const Vulkan::ImageView *LightClusterer::get_spot_light_shadows() const
 {
-	if (shadow_atlas)
-		return &shadow_atlas->get_view();
-	else
-		return nullptr;
+	return (enable_shadows && shadow_atlas) ? &shadow_atlas->get_view() : nullptr;
 }
 
 const mat4 &LightClusterer::get_cluster_transform() const
@@ -167,6 +174,8 @@ void LightClusterer::render_atlas(RenderContext &context)
 				translate(vec3(0.5f, 0.5f, 0.0f)) *
 				scale(vec3(0.5f, 0.5f, 1.0f)) *
 				proj * view;
+
+		spot_light_handles[i]->set_shadow_info(&shadow_atlas->get_view(), spot_light_shadow_transforms[i]);
 
 		depth_context.set_camera(proj, view);
 		visible.clear();
@@ -216,20 +225,27 @@ void LightClusterer::refresh(RenderContext &context)
 		if (!frustum.intersects(transform->world_aabb))
 			continue;
 
-		if (l.get_type() == PositionalLight::Type::Spot && spot_count < MaxLights)
+		if (l.get_type() == PositionalLight::Type::Spot)
 		{
-			spot_lights[spot_count] = static_cast<SpotLight &>(l).get_shader_info(transform->transform->world_transform);
+			auto &spot = static_cast<SpotLight &>(l);
+			spot.set_shadow_info(nullptr, {});
+			if (spot_count < MaxLights)
+			{
+				spot_lights[spot_count] = spot.get_shader_info(transform->transform->world_transform);
+				spot_light_handles[spot_count] = &spot;
 #if 0
-			vec3 center = spot_lights[spot_count].position_inner.xyz();
-			float radius = 1.0f / spot_lights[spot_count].falloff_inv_radius.w;
-			AABB point_aabb(center - radius, center + radius);
-			aabb.expand(point_aabb);
+				vec3 center = spot_lights[spot_count].position_inner.xyz();
+				float radius = 1.0f / spot_lights[spot_count].falloff_inv_radius.w;
+				AABB point_aabb(center - radius, center + radius);
+				aabb.expand(point_aabb);
 #endif
-			spot_count++;
+				spot_count++;
+			}
 		}
 		else if (l.get_type() == PositionalLight::Type::Point && point_count < MaxLights)
 		{
-			point_lights[point_count] = static_cast<PointLight &>(l).get_shader_info(transform->transform->world_transform);
+			auto &point = static_cast<PointLight &>(l);
+			point_lights[point_count] = point.get_shader_info(transform->transform->world_transform);
 
 #if 0
 			vec3 center = point_lights[point_count].position_inner.xyz();
@@ -265,7 +281,10 @@ void LightClusterer::refresh(RenderContext &context)
 	else
 		cluster_transform = mat4(1.0f);
 
-	render_atlas(context);
+	if (enable_shadows)
+		render_atlas(context);
+	else
+		shadow_atlas.reset();
 }
 
 void LightClusterer::build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view, const Vulkan::ImageView *pre_culled)
@@ -344,11 +363,19 @@ void LightClusterer::add_render_passes(RenderGraph &graph)
 		build_cluster(cmd, *pre_cull_target, nullptr);
 	});
 
+	prepass.set_need_render_pass([this]() {
+		return enable_clustering;
+	});
+
 	auto &pass = graph.add_pass("clustering", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 	pass.add_storage_texture_output("light-cluster", att);
 	pass.add_texture_input("light-cluster-prepass");
 	pass.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
 		build_cluster(cmd, *target, pre_cull_target);
+	});
+
+	pass.set_need_render_pass([this]() {
+		return enable_clustering;
 	});
 }
 

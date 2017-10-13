@@ -34,9 +34,12 @@ class LightClusterer : public RenderPassCreator, public EventHandler, public Per
 public:
 	LightClusterer();
 
+	void set_enable_shadows(bool enable);
+	void set_enable_clustering(bool enable);
+
 	void set_resolution(unsigned x, unsigned y, unsigned z);
 
-	const Vulkan::ImageView &get_cluster_image() const;
+	const Vulkan::ImageView *get_cluster_image() const;
 	const Vulkan::ImageView *get_spot_light_shadows() const;
 	const PositionalFragmentInfo *get_active_point_lights() const;
 	const PositionalFragmentInfo *get_active_spot_lights() const;
@@ -73,6 +76,7 @@ private:
 
 	PositionalFragmentInfo point_lights[MaxLights] = {};
 	PositionalFragmentInfo spot_lights[MaxLights] = {};
+	SpotLight *spot_light_handles[MaxLights] = {};
 	mat4 spot_light_shadow_transforms[MaxLights] = {};
 	mat4 cluster_transform;
 	unsigned point_count = 0;
@@ -81,5 +85,8 @@ private:
 	Renderer *depth_renderer = nullptr;
 	Vulkan::ImageHandle shadow_atlas;
 	void render_atlas(RenderContext &context);
+
+	bool enable_shadows = true;
+	bool enable_clustering = true;
 };
 }

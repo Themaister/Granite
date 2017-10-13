@@ -23,6 +23,7 @@
 #pragma once
 
 #include "abstract_renderable.hpp"
+#include "image.hpp"
 
 namespace Granite
 {
@@ -93,10 +94,15 @@ public:
 	void set_spot_parameters(float inner_cone, float outer_cone);
 	PositionalFragmentInfo get_shader_info(const mat4 &transform) const;
 
+	void set_shadow_info(const Vulkan::ImageView *shadow, const mat4 &transform);
+
 private:
 	float inner_cone = 0.4f;
 	float outer_cone = 0.45f;
 	float xy_range = 0.0f;
+
+	const Vulkan::ImageView *atlas = nullptr;
+	mat4 shadow_transform;
 
 	void set_range(float range) override;
 };

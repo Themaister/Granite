@@ -101,6 +101,12 @@ void SpotLight::set_range(float range)
 	aabb = AABB(vec3(-xy, -xy, min_z), vec3(xy, xy, 0.0f));
 }
 
+void SpotLight::set_shadow_info(const Vulkan::ImageView *shadow, const mat4 &transform)
+{
+	atlas = shadow;
+	shadow_transform = transform;
+}
+
 PositionalFragmentInfo SpotLight::get_shader_info(const mat4 &transform) const
 {
 	// This assumes a uniform scale.
@@ -126,6 +132,8 @@ struct PositionalLightRenderInfo
 	const Buffer *ibo = nullptr;
 	unsigned count = 0;
 
+	const Vulkan::ImageView *atlas = nullptr;
+
 	struct Push
 	{
 		mat4 inv_view_projection;
@@ -143,6 +151,7 @@ struct PositionalShaderInfo
 {
 	PositionalVertexInfo vertex;
 	PositionalFragmentInfo fragment;
+	mat4 shadow_transform;
 };
 
 struct LightMesh : public EventHandler
@@ -249,6 +258,9 @@ static void spot_render_full_screen(CommandBuffer &cmd, const RenderQueueData *i
 	push.inv_resolution = vec2(1.0f / cmd.get_viewport().width, 1.0f / cmd.get_viewport().height);
 	cmd.push_constants(&push, 0, sizeof(push));
 
+	if (spot_info.atlas)
+		cmd.set_texture(2, 2, *spot_info.atlas, Vulkan::StockSampler::LinearShadow);
+
 	for (unsigned i = 0; i < num_instances; )
 	{
 		unsigned to_render = min(256u, num_instances - i);
@@ -262,6 +274,13 @@ static void spot_render_full_screen(CommandBuffer &cmd, const RenderQueueData *i
 		{
 			vert[j] = static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->vertex;
 			frag[j] = static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->fragment;
+		}
+
+		if (spot_info.atlas)
+		{
+			auto *t = static_cast<mat4 *>(cmd.allocate_constant_data(2, 3, sizeof(mat4) * to_render));
+			for (unsigned j = 0; j < to_render; j++)
+				t[j] = static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->shadow_transform;
 		}
 
 		cmd.draw(4, to_render);
@@ -286,6 +305,9 @@ static void spot_render_common(CommandBuffer &cmd, const RenderQueueData *infos,
 	push.inv_resolution = vec2(1.0f / cmd.get_viewport().width, 1.0f / cmd.get_viewport().height);
 	cmd.push_constants(&push, 0, sizeof(push));
 
+	if (spot_info.atlas)
+		cmd.set_texture(2, 2, *spot_info.atlas, Vulkan::StockSampler::LinearShadow);
+
 	for (unsigned i = 0; i < num_instances; )
 	{
 		unsigned to_render = min(256u, num_instances - i);
@@ -298,6 +320,13 @@ static void spot_render_common(CommandBuffer &cmd, const RenderQueueData *infos,
 		{
 			vert[j] = static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->vertex;
 			frag[j] = static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->fragment;
+		}
+
+		if (spot_info.atlas)
+		{
+			auto *t = static_cast<mat4 *>(cmd.allocate_constant_data(2, 3, sizeof(mat4) * to_render));
+			for (unsigned j = 0; j < to_render; j++)
+				t[j] = static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->shadow_transform;
 		}
 
 		cmd.draw_indexed(spot_info.count, to_render);
@@ -391,6 +420,11 @@ void SpotLight::get_render_info(const RenderContext &context, const CachedSpatia
 		func = spot_render_front;
 
 	Hasher h;
+	if (atlas)
+		h.u64(atlas->get_cookie());
+	else
+		h.u64(0);
+
 	auto instance_key = h.get();
 	h.pointer(func);
 	auto sorting_key = h.get();
@@ -400,6 +434,7 @@ void SpotLight::get_render_info(const RenderContext &context, const CachedSpatia
 	float max_range = min(falloff_range, cutoff_range) * scale_factor;
 	spot->vertex.model = transform->transform->world_transform * scale(vec3(xy_range * max_range, xy_range * max_range, max_range));
 	spot->fragment = get_shader_info(transform->transform->world_transform);
+	spot->shadow_transform = shadow_transform;
 
 	auto *spot_info = queue.push<PositionalLightRenderInfo>(Queue::Light, instance_key, sorting_key,
 	                                                        func, spot);
@@ -414,9 +449,13 @@ void SpotLight::get_render_info(const RenderContext &context, const CachedSpatia
 
 		info.push.inv_view_projection = params.inv_view_projection;
 		info.push.camera_pos = vec4(params.camera_position, 0.0f);
+		info.atlas = atlas;
 
-		info.program = queue.get_shader_suites()[ecast(RenderableType::SpotLight)].get_program(DrawPipeline::AlphaBlend, 0, 0,
-		                                                                                       func == spot_render_full_screen ? 1 : 0).get();
+		unsigned variant = func == spot_render_full_screen ? 1 : 0;
+		if (atlas)
+			variant += 2;
+
+		info.program = queue.get_shader_suites()[ecast(RenderableType::SpotLight)].get_program(DrawPipeline::AlphaBlend, 0, 0, variant).get();
 		*spot_info = info;
 	}
 }

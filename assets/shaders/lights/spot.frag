@@ -1,5 +1,9 @@
 #version 450
 
+#if defined(VARIANT_BIT_1)
+#define POSITIONAL_LIGHTS_SHADOW
+#endif
+
 #define SPOT_LIGHT_EARLY_OUT
 #include "spot.h"
 

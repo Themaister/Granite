@@ -446,7 +446,7 @@ void SceneViewerApplication::update_shadow_map()
 
 	depth_renderer.begin();
 	scene.gather_visible_static_shadow_renderables(depth_context.get_visibility_frustum(), depth_visible);
-	depth_renderer.push_renderables(depth_context, depth_visible);
+	depth_renderer.push_depth_renderables(depth_context, depth_visible);
 }
 
 void SceneViewerApplication::render_shadow_map_far(Vulkan::CommandBuffer &cmd)
@@ -482,7 +482,7 @@ void SceneViewerApplication::render_shadow_map_near(Vulkan::CommandBuffer &cmd)
 	depth_context.set_camera(proj, view);
 	depth_renderer.begin();
 	scene.gather_visible_dynamic_shadow_renderables(depth_context.get_visibility_frustum(), depth_visible);
-	depth_renderer.push_renderables(depth_context, depth_visible);
+	depth_renderer.push_depth_renderables(depth_context, depth_visible);
 	depth_renderer.flush(cmd, depth_context);
 }
 

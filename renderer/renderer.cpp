@@ -360,6 +360,12 @@ void Renderer::push_renderables(RenderContext &context, const VisibilityList &vi
 		vis.renderable->get_render_info(context, vis.transform, queue);
 }
 
+void Renderer::push_depth_renderables(RenderContext &context, const VisibilityList &visible)
+{
+	for (auto &vis : visible)
+		vis.renderable->get_depth_render_info(context, vis.transform, queue);
+}
+
 void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderContext &context)
 {
 	cmd.set_quad_state();

@@ -54,6 +54,7 @@ public:
 	void begin();
 
 	void push_renderables(RenderContext &context, const VisibilityList &visible);
+	void push_depth_renderables(RenderContext &context, const VisibilityList &visible);
 
 	void flush(Vulkan::CommandBuffer &cmd, RenderContext &context);
 

@@ -59,6 +59,8 @@ void Renderer::set_mesh_renderer_options_internal(RendererOptionFlags flags)
 		global_defines.push_back({ "REFRACTION", 1 });
 	if (flags & POSITIONAL_LIGHT_ENABLE_BIT)
 		global_defines.push_back({ "POSITIONAL_LIGHTS", 1 });
+	if (flags & POSITIONAL_LIGHT_SHADOW_ENABLE_BIT)
+		global_defines.push_back({ "POSITIONAL_LIGHTS_SHADOW", 1 });
 
 	switch (type)
 	{
@@ -109,7 +111,11 @@ void Renderer::set_mesh_renderer_options_from_lighting(const LightingParameters 
 	if (lighting.fog.falloff > 0.0f)
 		flags |= Renderer::FOG_ENABLE_BIT;
 	if (lighting.cluster)
+	{
 		flags |= Renderer::POSITIONAL_LIGHT_ENABLE_BIT;
+		if (lighting.cluster->get_spot_light_shadows())
+			flags |= Renderer::POSITIONAL_LIGHT_SHADOW_ENABLE_BIT;
+	}
 
 	set_mesh_renderer_options(flags);
 }
@@ -181,6 +187,13 @@ static void set_cluster_parameters(Vulkan::CommandBuffer &cmd, const LightCluste
 	       cluster.get_active_spot_lights(), cluster.get_active_spot_light_count() * sizeof(PositionalFragmentInfo));
 	memcpy(cmd.allocate_constant_data(1, 8, LightClusterer::MaxLights * sizeof(PositionalFragmentInfo)),
 	       cluster.get_active_point_lights(), cluster.get_active_point_light_count() * sizeof(PositionalFragmentInfo));
+
+	if (cluster.get_spot_light_shadows())
+	{
+		cmd.set_texture(1, 9, *cluster.get_spot_light_shadows(), StockSampler::LinearShadow);
+		memcpy(cmd.allocate_constant_data(1, 10, LightClusterer::MaxLights * sizeof(mat4)),
+		       cluster.get_active_spot_light_shadow_matrices(), cluster.get_active_spot_light_count() * sizeof(mat4));
+	}
 }
 
 void Renderer::set_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context)

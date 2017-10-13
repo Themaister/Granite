@@ -92,12 +92,12 @@ void Scene::add_render_pass_dependencies(RenderGraph &graph, RenderPass &main_pa
 	}
 }
 
-void Scene::set_render_pass_data(Renderer *renderer, const RenderContext *context)
+void Scene::set_render_pass_data(Renderer *forward, Renderer *deferred, Renderer *depth, const RenderContext *context)
 {
 	for (auto &pass : render_pass_creators)
 	{
 		auto *rpass = get<0>(pass)->creator;
-		rpass->set_base_renderer(renderer);
+		rpass->set_base_renderer(forward, deferred, depth);
 		rpass->set_base_render_context(context);
 		rpass->set_scene(this);
 	}

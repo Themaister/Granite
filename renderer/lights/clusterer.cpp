@@ -24,6 +24,7 @@
 #include "render_graph.hpp"
 #include "scene.hpp"
 #include "render_context.hpp"
+#include "renderer.hpp"
 
 using namespace Vulkan;
 using namespace std;
@@ -100,6 +101,11 @@ const PositionalFragmentInfo *LightClusterer::get_active_point_lights() const
 	return point_lights;
 }
 
+const mat4 *LightClusterer::get_active_spot_light_shadow_matrices() const
+{
+	return spot_light_shadow_transforms;
+}
+
 const PositionalFragmentInfo *LightClusterer::get_active_spot_lights() const
 {
 	return spot_lights;
@@ -110,9 +116,89 @@ const Vulkan::ImageView &LightClusterer::get_cluster_image() const
 	return *target;
 }
 
+const Vulkan::ImageView *LightClusterer::get_spot_light_shadows() const
+{
+	if (shadow_atlas)
+		return &shadow_atlas->get_view();
+	else
+		return nullptr;
+}
+
 const mat4 &LightClusterer::get_cluster_transform() const
 {
 	return cluster_transform;
+}
+
+void LightClusterer::render_atlas(RenderContext &context)
+{
+	auto &device = context.get_device();
+	auto cmd = device.request_command_buffer();
+
+	if (!shadow_atlas)
+	{
+		ImageCreateInfo info = ImageCreateInfo::render_target(4096, 2048, device.get_default_depth_format());
+		info.initial_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+		info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+		shadow_atlas = device.create_image(info, nullptr);
+	}
+	else
+	{
+		cmd->image_barrier(*shadow_atlas, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+		                   VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+		                   VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT);
+		shadow_atlas->set_layout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+	}
+
+	RenderContext depth_context;
+	VisibilityList visible;
+
+	for (unsigned i = 0; i < spot_count; i++)
+	{
+		float range = tan(spot_lights[i].direction_half_angle.w);
+		mat4 view = mat4_cast(look_at_arbitrary_up(spot_lights[i].direction_half_angle.xyz())) *
+		            translate(-spot_lights[i].position_inner.xyz());
+		mat4 proj = projection(range * 2.0f, 1.0f, 0.1f, 1.0f / spot_lights[i].falloff_inv_radius.w);
+
+		// Carve out the atlas region where the spot light shadows live.
+		spot_light_shadow_transforms[i] =
+				translate(vec3(float(i & 7) / 8.0f, float(i >> 3) / 4.0f, 0.0f)) *
+				scale(vec3(1.0f / 8.0f, 1.0f / 4.0f, 1.0f)) *
+				translate(vec3(0.5f, 0.5f, 0.0f)) *
+				scale(vec3(0.5f, 0.5f, 1.0f)) *
+				proj * view;
+
+		depth_context.set_camera(proj, view);
+		visible.clear();
+		scene->gather_visible_static_shadow_renderables(depth_context.get_visibility_frustum(), visible);
+
+		depth_renderer->begin();
+		depth_renderer->push_depth_renderables(depth_context, visible);
+
+		RenderPassInfo rp;
+		rp.op_flags = RENDER_PASS_OP_DEPTH_STENCIL_OPTIMAL_BIT |
+		              RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT |
+		              RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT;
+		rp.num_color_attachments = 0;
+		rp.depth_stencil = &shadow_atlas->get_view();
+		rp.clear_depth_stencil.depth = 1.0f;
+		rp.render_area.offset.x = 512 * (i & 7);
+		rp.render_area.offset.y = 512 * (i >> 3);
+		rp.render_area.extent.width = 512;
+		rp.render_area.extent.height = 512;
+		cmd->begin_render_pass(rp);
+		cmd->set_viewport({ float(512 * (i & 7)), float(512 * (i >> 3)), 512.0f, 512.0f, 0.0f, 1.0f });
+		cmd->set_scissor(rp.render_area);
+		depth_renderer->flush(*cmd, depth_context);
+		cmd->end_render_pass();
+	}
+
+	cmd->image_barrier(*shadow_atlas, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	                   VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+	                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+	shadow_atlas->set_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+	device.submit(cmd);
 }
 
 void LightClusterer::refresh(RenderContext &context)
@@ -178,6 +264,8 @@ void LightClusterer::refresh(RenderContext &context)
 		cluster_transform = ortho_box * context.get_render_parameters().view;
 	else
 		cluster_transform = mat4(1.0f);
+
+	render_atlas(context);
 }
 
 void LightClusterer::build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view, const Vulkan::ImageView *pre_culled)
@@ -264,7 +352,8 @@ void LightClusterer::add_render_passes(RenderGraph &graph)
 	});
 }
 
-void LightClusterer::set_base_renderer(Renderer *)
+void LightClusterer::set_base_renderer(Renderer *, Renderer *, Renderer *depth)
 {
+	depth_renderer = depth;
 }
 }

@@ -500,7 +500,7 @@ void SceneViewerApplication::update_scene(double, double elapsed_time)
 	lighting.refraction.falloff = vec3(1.0f / 1.5f, 1.0f / 2.5f, 1.0f / 5.0f);
 
 	context.set_camera(*selected_camera);
-	scene.set_render_pass_data(&forward_renderer, &context);
+	scene.set_render_pass_data(&forward_renderer, &deferred_renderer, &depth_renderer, &context);
 
 	animation_system->animate(elapsed_time);
 	scene.update_cached_transforms();

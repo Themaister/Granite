@@ -168,6 +168,11 @@ quat look_at(vec3 direction, vec3 up)
 	return up_transform * look_transform;
 }
 
+quat look_at_arbitrary_up(vec3 direction)
+{
+	return rotate_vector(normalize(direction), vec3(0.0f, 0.0f, -1.0f));
+}
+
 mat4 projection(float fovy, float aspect, float znear, float zfar)
 {
 	return glm::scale(vec3(1.0f, -1.0f, 1.0f)) * glm::perspective(fovy, aspect, znear, zfar);

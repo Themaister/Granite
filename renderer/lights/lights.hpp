@@ -79,7 +79,7 @@ struct PositionalFragmentInfo
 	vec4 color_outer;
 	vec4 falloff_inv_radius;
 	vec4 position_inner;
-	vec4 direction_xy_scale;
+	vec4 direction_half_angle;
 };
 
 class SpotLight : public PositionalLight

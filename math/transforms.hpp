@@ -43,6 +43,8 @@ quat rotate_vector(vec3 from, vec3 to);
 
 quat look_at(vec3 direction, vec3 up);
 
+quat look_at_arbitrary_up(vec3 direction);
+
 quat rotate_vector_axis(vec3 from, vec3 to, vec3 axis);
 
 mat4 projection(float fovy, float aspect, float znear, float zfar);

@@ -37,8 +37,10 @@ public:
 	void set_resolution(unsigned x, unsigned y, unsigned z);
 
 	const Vulkan::ImageView &get_cluster_image() const;
+	const Vulkan::ImageView *get_spot_light_shadows() const;
 	const PositionalFragmentInfo *get_active_point_lights() const;
 	const PositionalFragmentInfo *get_active_spot_lights() const;
+	const mat4 *get_active_spot_light_shadow_matrices() const;
 	unsigned get_active_point_light_count() const;
 	unsigned get_active_spot_light_count() const;
 	const mat4 &get_cluster_transform() const;
@@ -47,7 +49,7 @@ public:
 
 private:
 	void add_render_passes(RenderGraph &graph) override;
-	void set_base_renderer(Renderer *renderer) override;
+	void set_base_renderer(Renderer *forward_renderer, Renderer *deferred_renderer, Renderer *depth_renderer) override;
 	void set_base_render_context(const RenderContext *context) override;
 	void setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target) override;
 	void setup_render_pass_resources(RenderGraph &graph) override;
@@ -71,8 +73,13 @@ private:
 
 	PositionalFragmentInfo point_lights[MaxLights] = {};
 	PositionalFragmentInfo spot_lights[MaxLights] = {};
+	mat4 spot_light_shadow_transforms[MaxLights] = {};
 	mat4 cluster_transform;
 	unsigned point_count = 0;
 	unsigned spot_count = 0;
+
+	Renderer *depth_renderer = nullptr;
+	Vulkan::ImageHandle shadow_atlas;
+	void render_atlas(RenderContext &context);
 };
 }

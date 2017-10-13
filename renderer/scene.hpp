@@ -60,7 +60,7 @@ public:
 
 	void add_render_passes(RenderGraph &graph);
 	void add_render_pass_dependencies(RenderGraph &graph, RenderPass &main_pass);
-	void set_render_pass_data(Renderer *renderer, const RenderContext *context);
+	void set_render_pass_data(Renderer *forward_renderer, Renderer *deferred_renderer, Renderer *depth_renderer, const RenderContext *context);
 	void bind_render_graph_resources(RenderGraph &graph);
 
 	class Node : public Util::IntrusivePtrEnabled<Node>

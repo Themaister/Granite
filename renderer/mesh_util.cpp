@@ -797,6 +797,7 @@ void TexturePlane::render_main_pass(Vulkan::CommandBuffer &cmd, const mat4 &proj
 {
 	LightingParameters lighting = *base_context->get_lighting_parameters();
 	lighting.shadow_near = nullptr;
+	lighting.cluster = nullptr;
 
 	context.set_lighting_parameters(&lighting);
 	context.set_camera(proj, view);
@@ -961,9 +962,9 @@ RendererType TexturePlane::get_renderer_type()
 	return RendererType::GeneralForward;
 }
 
-void TexturePlane::set_base_renderer(Renderer *renderer)
+void TexturePlane::set_base_renderer(Renderer *forward, Renderer *, Renderer *)
 {
-	this->renderer = renderer;
+	this->renderer = forward;
 }
 
 void TexturePlane::set_base_render_context(const RenderContext *context)

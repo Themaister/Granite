@@ -152,6 +152,7 @@ struct PositionalShaderInfo
 	PositionalVertexInfo vertex;
 	PositionalFragmentInfo fragment;
 	mat4 shadow_transform;
+	unsigned slice;
 };
 
 struct LightMesh : public EventHandler
@@ -327,6 +328,10 @@ static void spot_render_common(CommandBuffer &cmd, const RenderQueueData *infos,
 			auto *t = static_cast<mat4 *>(cmd.allocate_constant_data(2, 3, sizeof(mat4) * to_render));
 			for (unsigned j = 0; j < to_render; j++)
 				t[j] = static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->shadow_transform;
+
+			auto *slice = static_cast<vec4 *>(cmd.allocate_constant_data(2, 4, sizeof(vec4) * to_render));
+			for (unsigned j = 0; j < to_render; j++)
+				slice[j].x = float(static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->slice);
 		}
 
 		cmd.draw_indexed(spot_info.count, to_render);
@@ -348,6 +353,9 @@ static void point_render_common(CommandBuffer &cmd, const RenderQueueData *infos
 	push.inv_resolution = vec2(1.0f / cmd.get_viewport().width, 1.0f / cmd.get_viewport().height);
 	cmd.push_constants(&push, 0, sizeof(push));
 
+	if (point_info.atlas)
+		cmd.set_texture(2, 2, *point_info.atlas, Vulkan::StockSampler::LinearShadow);
+
 	for (unsigned i = 0; i < num_instances; )
 	{
 		unsigned to_render = min(256u, num_instances - i);
@@ -360,6 +368,17 @@ static void point_render_common(CommandBuffer &cmd, const RenderQueueData *infos
 		{
 			vert[j] = static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->vertex;
 			frag[j] = static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->fragment;
+		}
+
+		if (point_info.atlas)
+		{
+			auto *t = static_cast<vec4 *>(cmd.allocate_constant_data(2, 3, sizeof(vec4) * to_render));
+			for (unsigned j = 0; j < to_render; j++)
+				t[j] = static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->shadow_transform[0];
+
+			auto *slice = static_cast<vec4 *>(cmd.allocate_constant_data(2, 4, sizeof(vec4) * to_render));
+			for (unsigned j = 0; j < to_render; j++)
+				slice[j].x = float(static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->slice);
 		}
 
 		cmd.draw_indexed(point_info.count, to_render);
@@ -485,6 +504,13 @@ PositionalFragmentInfo PointLight::get_shader_info(const mat4 &transform) const
 	};
 }
 
+void PointLight::set_shadow_info(const Vulkan::ImageView *shadow, const vec4 &transform, unsigned slice)
+{
+	shadow_atlas = shadow;
+	shadow_transform = transform;
+	shadow_slice = slice;
+}
+
 void PointLight::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
                                  RenderQueue &queue) const
 {
@@ -512,6 +538,11 @@ void PointLight::get_render_info(const RenderContext &context, const CachedSpati
 		func = point_render_front;
 
 	Hasher h;
+	if (shadow_atlas)
+		h.u64(shadow_atlas->get_cookie());
+	else
+		h.u64(0);
+
 	auto instance_key = h.get();
 	h.pointer(func);
 	auto sorting_key = h.get();
@@ -521,6 +552,8 @@ void PointLight::get_render_info(const RenderContext &context, const CachedSpati
 	float max_range = min(falloff_range, cutoff_range) * scale_factor;
 	point->vertex.model = transform->transform->world_transform * scale(vec3(max_range));
 	point->fragment = get_shader_info(transform->transform->world_transform);
+	point->shadow_transform[0] = shadow_transform;
+	point->slice = shadow_slice;
 
 	auto *point_info = queue.push<PositionalLightRenderInfo>(Queue::Light, instance_key, sorting_key,
 	                                                         func, point);
@@ -535,9 +568,13 @@ void PointLight::get_render_info(const RenderContext &context, const CachedSpati
 
 		info.push.inv_view_projection = params.inv_view_projection;
 		info.push.camera_pos = vec4(params.camera_position, 0.0f);
+		info.atlas = shadow_atlas;
 
-		info.program = queue.get_shader_suites()[ecast(RenderableType::PointLight)].get_program(DrawPipeline::AlphaBlend, 0, 0,
-		                                                                                        func == point_render_full_screen ? 1 : 0).get();
+		unsigned variant = func == point_render_full_screen ? 1 : 0;
+		if (shadow_atlas)
+			variant += 2;
+
+		info.program = queue.get_shader_suites()[ecast(RenderableType::PointLight)].get_program(DrawPipeline::AlphaBlend, 0, 0, variant).get();
 		*point_info = info;
 	}
 }

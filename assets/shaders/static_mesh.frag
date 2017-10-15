@@ -1,5 +1,6 @@
 #version 450
-precision mediump float;
+precision highp float;
+precision highp int;
 
 layout(location = 0) in mediump vec3 vEyeVec;
 

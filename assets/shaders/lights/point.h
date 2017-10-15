@@ -29,12 +29,61 @@ layout(std140, set = POINT_LIGHT_DATA_SET, binding = POINT_LIGHT_DATA_BINDING) u
     PointShaderInfo data[POINT_LIGHT_DATA_COUNT];
 } point;
 
+#ifdef POSITIONAL_LIGHTS_SHADOW
+#ifndef POINT_LIGHT_SHADOW_DATA_SET
+#define POINT_LIGHT_SHADOW_DATA_SET 2
+#endif
+#ifndef POINT_LIGHT_SHADOW_DATA_BINDING
+#define POINT_LIGHT_SHADOW_DATA_BINDING 3
+#endif
+#ifndef POINT_LIGHT_SHADOW_DATA_COUNT
+#define POINT_LIGHT_SHADOW_DATA_COUNT 256
+#endif
+#ifndef POINT_LIGHT_SHADOW_ATLAS_SET
+#define POINT_LIGHT_SHADOW_ATLAS_SET 2
+#endif
+#ifndef POINT_LIGHT_SHADOW_ATLAS_BINDING
+#define POINT_LIGHT_SHADOW_ATLAS_BINDING 2
+#endif
+
+layout(set = POINT_LIGHT_SHADOW_ATLAS_SET, binding = POINT_LIGHT_SHADOW_ATLAS_BINDING) uniform samplerCubeArrayShadow uPointShadowAtlas;
+layout(std140, set = POINT_LIGHT_SHADOW_DATA_SET, binding = POINT_LIGHT_SHADOW_DATA_BINDING) uniform PointShadow
+{
+	vec4 transform[POINT_LIGHT_SHADOW_DATA_COUNT];
+} point_shadow;
+
+#ifdef POINT_LIGHT_TRANSLATE_SLICE
+layout(set = 2, binding = 4) uniform PointShadowSlice
+{
+	vec4 slice[POINT_LIGHT_SHADOW_DATA_COUNT];
+} point_slice;
+#endif
+#endif
+
 vec3 compute_point_light(int index, MaterialProperties material, vec3 world_pos, vec3 camera_pos)
 {
 	vec3 light_pos = point.data[index].position;
-	vec3 light_dir = normalize(light_pos - world_pos);
+	vec3 light_dir_full = world_pos - light_pos;
+	vec3 light_dir = normalize(-light_dir_full);
+
+#ifdef POSITIONAL_LIGHTS_SHADOW
+	vec3 dir_abs = abs(light_dir_full);
+	float max_z = max(max(dir_abs.x, dir_abs.y), dir_abs.z);
+	vec4 shadow_transform = point_shadow.transform[index];
+	vec2 shadow_ref2 = shadow_transform.xy * max_z + shadow_transform.zw;
+	float shadow_ref = shadow_ref2.x / shadow_ref2.y;
+	#ifdef POINT_LIGHT_TRANSLATE_SLICE
+		float slice = point_slice.slice[index].x;
+	#else
+		float slice = float(index);
+	#endif
+	float shadow_falloff = texture(uPointShadowAtlas, vec4(light_dir_full, slice), shadow_ref);
+#else
+	const float shadow_falloff = 1.0;
+#endif
+
 	float light_dist = length(world_pos - light_pos);
-	float static_falloff = 1.0 - smoothstep(0.9, 1.0, light_dist * point.data[index].inv_radius);
+	float static_falloff = shadow_falloff * (1.0 - smoothstep(0.9, 1.0, light_dist * point.data[index].inv_radius));
 	vec3 f = point.data[index].falloff;
 	vec3 point_color = point.data[index].color * (static_falloff / (f.x + light_dist * f.y + light_dist * light_dist * f.z));
 

@@ -111,6 +111,11 @@ const mat4 *LightClusterer::get_active_spot_light_shadow_matrices() const
 	return spot_light_shadow_transforms;
 }
 
+const vec4 *LightClusterer::get_active_point_light_shadow_transform() const
+{
+	return point_light_shadow_transforms;
+}
+
 const PositionalFragmentInfo *LightClusterer::get_active_spot_lights() const
 {
 	return spot_lights;
@@ -134,6 +139,11 @@ const Vulkan::ImageView *LightClusterer::get_cluster_image() const
 const Vulkan::ImageView *LightClusterer::get_spot_light_shadows() const
 {
 	return (enable_shadows && shadow_atlas) ? &shadow_atlas->get_view() : nullptr;
+}
+
+const Vulkan::ImageView *LightClusterer::get_point_light_shadows() const
+{
+	return (enable_shadows && shadow_atlas_point) ? &shadow_atlas_point->get_view() : nullptr;
 }
 
 const mat4 &LightClusterer::get_cluster_transform() const
@@ -184,6 +194,9 @@ void LightClusterer::render_atlas_point(RenderContext &context)
 			compute_cube_render_transform(point_lights[i].position_inner.xyz(), face, proj, view,
 			                              0.1f, 1.0f / point_lights[i].falloff_inv_radius.w);
 			depth_context.set_camera(proj, view);
+
+			if (face == 0)
+				point_light_shadow_transforms[i] = vec4(proj[2].zw(), proj[3].zw());
 
 			visible.clear();
 			scene->gather_visible_static_shadow_renderables(depth_context.get_visibility_frustum(), visible);

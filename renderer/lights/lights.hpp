@@ -116,7 +116,12 @@ public:
 	                     RenderQueue &queue) const override;
 	PositionalFragmentInfo get_shader_info(const mat4 &transform) const;
 
+	void set_shadow_info(const Vulkan::ImageView *shadow, const vec4 &transform, unsigned slice);
+
 private:
 	void set_range(float range) override;
+	const Vulkan::ImageView *shadow_atlas = nullptr;
+	vec4 shadow_transform;
+	unsigned shadow_slice;
 };
 }

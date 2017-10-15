@@ -41,9 +41,11 @@ public:
 
 	const Vulkan::ImageView *get_cluster_image() const;
 	const Vulkan::ImageView *get_spot_light_shadows() const;
+	const Vulkan::ImageView *get_point_light_shadows() const;
 	const PositionalFragmentInfo *get_active_point_lights() const;
 	const PositionalFragmentInfo *get_active_spot_lights() const;
 	const mat4 *get_active_spot_light_shadow_matrices() const;
+	const vec4 *get_active_point_light_shadow_transform() const;
 	unsigned get_active_point_light_count() const;
 	unsigned get_active_spot_light_count() const;
 	const mat4 &get_cluster_transform() const;

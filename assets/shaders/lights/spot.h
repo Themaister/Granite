@@ -61,7 +61,8 @@ layout(std140, set = SPOT_LIGHT_SHADOW_DATA_SET, binding = SPOT_LIGHT_SHADOW_DAT
 vec3 compute_spot_light(int index, MaterialProperties material, vec3 world_pos, vec3 camera_pos)
 {
 #ifdef POSITIONAL_LIGHTS_SHADOW
-	float shadow_falloff = textureProjLod(uSpotShadowAtlas, spot_shadow.transform[index] * vec4(world_pos, 1.0), 0.0);
+	vec4 spot_shadow_clip = spot_shadow.transform[index] * vec4(world_pos, 1.0);
+	float shadow_falloff = textureProjLod(uSpotShadowAtlas, spot_shadow_clip, 0.0);
 #else
 	const float shadow_falloff = 1.0;
 #endif

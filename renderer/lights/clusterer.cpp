@@ -158,7 +158,7 @@ void LightClusterer::render_atlas_point(RenderContext &context)
 
 	if (!shadow_atlas_point)
 	{
-		ImageCreateInfo info = ImageCreateInfo::render_target(512, 512, device.get_default_depth_format());
+		ImageCreateInfo info = ImageCreateInfo::render_target(512, 512, VK_FORMAT_D16_UNORM);
 		info.layers = 6 * MaxLights;
 		info.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
 		info.initial_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
@@ -196,7 +196,10 @@ void LightClusterer::render_atlas_point(RenderContext &context)
 			depth_context.set_camera(proj, view);
 
 			if (face == 0)
+			{
 				point_light_shadow_transforms[i] = vec4(proj[2].zw(), proj[3].zw());
+				point_light_handles[i]->set_shadow_info(&shadow_atlas_point->get_view(), point_light_shadow_transforms[i], i);
+			}
 
 			visible.clear();
 			scene->gather_visible_static_shadow_renderables(depth_context.get_visibility_frustum(), visible);
@@ -334,6 +337,7 @@ void LightClusterer::refresh(RenderContext &context)
 		else if (l.get_type() == PositionalLight::Type::Point)
 		{
 			auto &point = static_cast<PointLight &>(l);
+			point.set_shadow_info(nullptr, {}, 0);
 			if (point_count < MaxLights)
 			{
 				point_lights[point_count] = point.get_shader_info(transform->transform->world_transform);

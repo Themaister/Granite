@@ -70,7 +70,7 @@ vec3 compute_point_light(int index, MaterialProperties material, vec3 world_pos,
 	vec3 dir_abs = abs(light_dir_full);
 	float max_z = max(max(dir_abs.x, dir_abs.y), dir_abs.z);
 	vec4 shadow_transform = point_shadow.transform[index];
-	vec2 shadow_ref2 = shadow_transform.xy * max_z + shadow_transform.zw;
+	vec2 shadow_ref2 = shadow_transform.zw - shadow_transform.xy * max_z;
 	float shadow_ref = shadow_ref2.x / shadow_ref2.y;
 	#ifdef POINT_LIGHT_TRANSLATE_SLICE
 		float slice = point_slice.slice[index].x;

@@ -22,7 +22,7 @@
 
 #define RENDERER_FORWARD 0
 #define RENDERER_DEFERRED 1
-#define RENDERER RENDERER_DEFERRED
+#define RENDERER RENDERER_FORWARD
 
 #include "application.hpp"
 #include <stdexcept>
@@ -118,7 +118,11 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path)
 		refresh->refresh = cluster.get();
 		lighting.cluster = cluster.get();
 		cluster->set_enable_shadows(true);
+#if RENDERER == RENDERER_DEFERRED
 		cluster->set_enable_clustering(false);
+#else
+		cluster->set_enable_clustering(true);
+#endif
 	}
 
 	context.set_camera(*selected_camera);

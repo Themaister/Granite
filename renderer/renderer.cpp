@@ -110,7 +110,7 @@ void Renderer::set_mesh_renderer_options_from_lighting(const LightingParameters 
 		flags |= Renderer::SHADOW_CASCADE_ENABLE_BIT;
 	if (lighting.fog.falloff > 0.0f)
 		flags |= Renderer::FOG_ENABLE_BIT;
-	if (lighting.cluster)
+	if (lighting.cluster && lighting.cluster->get_cluster_image())
 	{
 		flags |= Renderer::POSITIONAL_LIGHT_ENABLE_BIT;
 		if (lighting.cluster->get_spot_light_shadows() && lighting.cluster->get_point_light_shadows())

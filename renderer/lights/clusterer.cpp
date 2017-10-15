@@ -235,7 +235,7 @@ void LightClusterer::render_atlas_spot(RenderContext &context)
 
 	if (!shadow_atlas)
 	{
-		ImageCreateInfo info = ImageCreateInfo::render_target(4096, 2048, device.get_default_depth_format());
+		ImageCreateInfo info = ImageCreateInfo::render_target(4096, 2048, VK_FORMAT_D16_UNORM);
 		info.initial_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 		info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
 		shadow_atlas = device.create_image(info, nullptr);

@@ -82,8 +82,8 @@ public:
 
 private:
 	unsigned width = 0, height = 0;
-	std::unique_ptr<Vulkan::WSIPlatform> platform;
 	Vulkan::WSI wsi;
+	std::unique_ptr<Vulkan::WSIPlatform> platform;
 };
 
 class SceneViewerApplication : public Application, public EventHandler

@@ -28,6 +28,7 @@
 #include <mutex>
 #include <condition_variable>
 #include "stb_image_write.h"
+#include "cli_parser.hpp"
 
 using namespace std;
 using namespace Vulkan;
@@ -224,10 +225,15 @@ public:
 		wsi.init_external_swapchain(swapchain_images);
 	}
 
+	void set_time_step(double t)
+	{
+		time_step = t;
+	}
+
 	void begin_frame()
 	{
 		auto &wsi = app->get_wsi();
-		wsi.set_external_frame(index, acquire_semaphore[index], 0.01);
+		wsi.set_external_frame(index, acquire_semaphore[index], time_step);
 		acquire_semaphore[index].reset();
 		worker_threads[index]->wait();
 	}
@@ -279,6 +285,7 @@ private:
 	unsigned frames = 0;
 	unsigned max_frames = UINT_MAX;
 	unsigned index = 0;
+	double time_step = 0.01;
 	string png_readback;
 	enum { SwapchainImages = 4 };
 
@@ -317,18 +324,58 @@ void application_dummy()
 }
 }
 
+static void print_help()
+{
+	LOGI("[--png-path <path>] [--frames <frames>] [--width <width>] [--height <height>] [--time-step <step>].\n");
+}
+
 int main(int argc, char *argv[])
 {
-	auto app = unique_ptr<Granite::Application>(Granite::application_create(argc, argv));
+	using namespace Granite;
+	if (argc < 1)
+		return 1;
+
+	struct Args
+	{
+		string png_path;
+		unsigned max_frames = UINT_MAX;
+		unsigned width = 1280;
+		unsigned height = 720;
+		double time_step = 0.01;
+	} args;
+
+	std::vector<char *> filtered_argv;
+	filtered_argv.push_back(argv[0]);
+
+	CLICallbacks cbs;
+	cbs.add("--frames", [&](CLIParser &parser) { args.max_frames = parser.next_uint(); });
+	cbs.add("--width", [&](CLIParser &parser) { args.width = parser.next_uint(); });
+	cbs.add("--height", [&](CLIParser &parser) { args.height = parser.next_uint(); });
+	cbs.add("--time-step", [&](CLIParser &parser) { args.time_step = parser.next_double(); });
+	cbs.add("--png-path", [&](CLIParser &parser) { args.png_path = parser.next_string(); });
+	cbs.add("--help", [](CLIParser &parser) { print_help(); parser.end(); });
+	cbs.default_handler = [&](const char *arg) { filtered_argv.push_back(const_cast<char *>(arg)); };
+	cbs.error_handler = [&]() { print_help(); };
+	CLIParser parser(move(cbs), argc - 1, argv + 1);
+	if (!parser.parse())
+		return 1;
+	else if (parser.is_ended_state())
+		return 0;
+
+	filtered_argv.push_back(nullptr);
+
+	auto app = unique_ptr<Application>(Granite::application_create(int(filtered_argv.size() - 1), filtered_argv.data()));
 	if (app)
 	{
-		auto platform = make_unique<Granite::WSIPlatformHeadless>(1280, 720);
+		auto platform = make_unique<WSIPlatformHeadless>(args.width, args.height);
 		auto *p = platform.get();
 		if (!app->init_wsi(move(platform)))
 			return 1;
 
-		p->enable_png_readback("/tmp/test");
-		p->set_max_frames(16);
+		if (!args.png_path.empty())
+			p->enable_png_readback(args.png_path);
+		p->set_max_frames(args.max_frames);
+		p->set_time_step(args.time_step);
 		p->init(app.get());
 
 		while (app->poll())

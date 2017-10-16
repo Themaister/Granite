@@ -68,7 +68,11 @@ bool Context::init_loader(PFN_vkGetInstanceProcAddr addr)
 		static void *module;
 		if (!module)
 		{
-			module = dlopen("libvulkan.so.1", RTLD_LOCAL | RTLD_LAZY);
+			const char *vulkan_path = getenv("GRANITE_VULKAN_LIBRARY");
+			if (vulkan_path)
+				module = dlopen(vulkan_path, RTLD_LOCAL | RTLD_LAZY);
+			if (!module)
+				module = dlopen("libvulkan.so.1", RTLD_LOCAL | RTLD_LAZY);
 			if (!module)
 				module = dlopen("libvulkan.so", RTLD_LOCAL | RTLD_LAZY);
 			if (!module)

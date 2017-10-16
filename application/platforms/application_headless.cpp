@@ -141,7 +141,7 @@ public:
 
 	bool alive(Vulkan::WSI &) override
 	{
-		return frames <= max_frames;
+		return frames < max_frames;
 	}
 
 	void poll_input() override

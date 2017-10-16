@@ -51,7 +51,10 @@ bool CLIParser::parse()
 				auto itr = cbs.callbacks.find(next);
 				if (itr == ::end(cbs.callbacks))
 				{
-					throw std::invalid_argument("Invalid argument");
+					if (unknown_argument_is_default)
+						cbs.default_handler(next);
+					else
+						throw std::invalid_argument("Invalid argument");
 				}
 
 				itr->second(*this);

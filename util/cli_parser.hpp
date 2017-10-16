@@ -63,10 +63,16 @@ public:
 		return ended_state;
 	}
 
+	void ignore_unknown_arguments()
+	{
+		unknown_argument_is_default = true;
+	}
+
 private:
 	CLICallbacks cbs;
 	int argc;
 	char **argv;
 	bool ended_state = false;
+	bool unknown_argument_is_default = false;
 };
 }

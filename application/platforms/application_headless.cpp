@@ -27,6 +27,7 @@
 #include <thread>
 #include <mutex>
 #include <condition_variable>
+#include "stb_image_write.h"
 
 using namespace std;
 using namespace Vulkan;
@@ -129,6 +130,8 @@ public:
 
 	~WSIPlatformHeadless() override
 	{
+		app->get_wsi().get_device().wait_idle();
+
 		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
 		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
@@ -143,6 +146,11 @@ public:
 	void poll_input() override
 	{
 		get_input_tracker().dispatch_current_state(get_frame_timer().get_frame_time());
+	}
+
+	void enable_png_readback(string base_path)
+	{
+		png_readback = base_path;
 	}
 
 	vector<const char *> get_instance_extensions() override
@@ -186,7 +194,6 @@ public:
 	{
 		this->app = app;
 
-		set_max_frames(16);
 		auto &wsi = app->get_wsi();
 		wsi.init_external_context(make_unique<Context>(nullptr, 0, nullptr, 0));
 
@@ -233,25 +240,33 @@ public:
 
 		if (release_semaphore && release_semaphore->get_semaphore() != VK_NULL_HANDLE)
 		{
-			device.add_wait_semaphore(CommandBuffer::Type::Transfer, release_semaphore, VK_PIPELINE_STAGE_TRANSFER_BIT);
+			if (!png_readback.empty())
+			{
+				device.add_wait_semaphore(CommandBuffer::Type::Transfer, release_semaphore,
+				                          VK_PIPELINE_STAGE_TRANSFER_BIT);
 
-			auto cmd = device.request_command_buffer(CommandBuffer::Type::Transfer);
-			swapchain_images[index]->set_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+				auto cmd = device.request_command_buffer(CommandBuffer::Type::Transfer);
+				swapchain_images[index]->set_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 
-			cmd->copy_image_to_buffer(*readback_buffers[index], *swapchain_images[index],
-			                          0, {}, {width, height, 1},
-			                          0, 0, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1});
+				cmd->copy_image_to_buffer(*readback_buffers[index], *swapchain_images[index],
+				                          0, {}, {width, height, 1},
+				                          0, 0, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1});
 
-			cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-			             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
+				cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+				             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 
-			device.submit(cmd, &readback_fence[index], &acquire_semaphore[index]);
+				device.submit(cmd, &readback_fence[index], &acquire_semaphore[index]);
 
-			unsigned index_copy = index;
-			unsigned frame_copy = frames;
-			worker_threads[index]->set_work([this, index_copy, frame_copy]() {
-				dump_frame(frame_copy, index_copy);
-			});
+				unsigned index_copy = index;
+				unsigned frame_copy = frames;
+				worker_threads[index]->set_work([this, index_copy, frame_copy]() {
+					dump_frame(frame_copy, index_copy);
+				});
+			}
+			else
+			{
+				acquire_semaphore[index] = release_semaphore;
+			}
 		}
 		release_semaphore.reset();
 		index = (index + 1) % SwapchainImages;
@@ -264,6 +279,7 @@ private:
 	unsigned frames = 0;
 	unsigned max_frames = UINT_MAX;
 	unsigned index = 0;
+	string png_readback;
 	enum { SwapchainImages = 4 };
 
 	vector<ImageHandle> swapchain_images;
@@ -280,6 +296,17 @@ private:
 		readback_fence[index].reset();
 
 		LOGI("Dumping frame: %u (index: %u)\n", frame, index);
+
+		auto *ptr = static_cast<uint32_t *>(device.map_host_buffer(*readback_buffers[index], MEMORY_ACCESS_READ_WRITE));
+		for (unsigned i = 0; i < width * height; i++)
+			ptr[i] |= 0xff000000u;
+
+		char buffer[64];
+		sprintf(buffer, "_%05u.png", frame);
+		auto path = png_readback + buffer;
+		if (!stbi_write_png(path.c_str(), width, height, 4, ptr, width * 4))
+			LOGE("Failed to write PNG to disk.\n");
+		device.unmap_host_buffer(*readback_buffers[index]);
 	}
 
 	Application *app = nullptr;
@@ -300,6 +327,8 @@ int main(int argc, char *argv[])
 		if (!app->init_wsi(move(platform)))
 			return 1;
 
+		p->enable_png_readback("/tmp/test");
+		p->set_max_frames(16);
 		p->init(app.get());
 
 		while (app->poll())

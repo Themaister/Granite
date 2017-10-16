@@ -94,7 +94,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path)
 
 	// Pick a camera to show.
 	selected_camera = &cam;
-#if 0
+#if 1
 	auto &scene_cameras = scene_loader.get_scene().get_entity_pool().get_component_group<CameraComponent>();
 	if (!scene_cameras.empty())
 		selected_camera = &get<0>(scene_cameras.front())->camera;

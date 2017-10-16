@@ -45,7 +45,9 @@ vec3 compute_cluster_light(MaterialProperties material, vec3 world_pos, vec3 cam
 	float level = clamp(floor(-log2(scale_factor)), 0.0, float(NUM_CLUSTER_HIERARCHIES) - 1.0);
 	cluster_pos *= exp2(level);
 	cluster_pos.xy = cluster_pos.xy * 0.5 + 0.5;
-	cluster_pos.z = (level + cluster_pos.z) * INV_NUM_CLUSTER_HIERARCHIES;
+
+	// Avoid potential NN wraps when cluster_pos.z == 1.0.
+	cluster_pos.z = (level + clamp(cluster_pos.z, 0.001, 0.999)) * INV_NUM_CLUSTER_HIERARCHIES;
 	uvec2 bits = textureLod(uCluster, cluster_pos, 0.0).xy;
 
 	vec3 result = vec3(0.0);

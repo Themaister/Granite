@@ -20,10 +20,6 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#define RENDERER_FORWARD 0
-#define RENDERER_DEFERRED 1
-#define RENDERER RENDERER_FORWARD
-
 #include "application.hpp"
 #include <stdexcept>
 #include "sprite.hpp"
@@ -31,6 +27,9 @@
 #include "image_widget.hpp"
 #include "label.hpp"
 #include "post/hdr.hpp"
+
+#define RAPIDJSON_ASSERT(x) do { if (!(x)) throw "JSON error"; } while(0)
+#include "rapidjson/document.h"
 
 using namespace std;
 using namespace Vulkan;
@@ -58,11 +57,75 @@ static vec3 light_direction()
 	return normalize(vec3(0.5f, 1.2f, 0.8f));
 }
 
-SceneViewerApplication::SceneViewerApplication(const std::string &path)
+void SceneViewerApplication::read_config(const std::string &path)
+{
+	string json;
+	if (!Filesystem::get().read_file_to_string(path, json))
+	{
+		LOGE("Failed to read config file. Assuming defaults.\n");
+		return;
+	}
+
+	rapidjson::Document doc;
+	doc.Parse(json);
+
+	if (doc.HasMember("renderer"))
+	{
+		auto *renderer =  doc["renderer"].GetString();
+		if (strcmp(renderer, "forward") == 0)
+			config.renderer_type = RendererType::GeneralForward;
+		else if (strcmp(renderer, "deferred") == 0)
+			config.renderer_type = RendererType::GeneralDeferred;
+		else
+			throw invalid_argument("Invalid renderer option.");
+	}
+
+	if (doc.HasMember("msaa"))
+		config.msaa = doc["msaa"].GetUint();
+
+	if (doc.HasMember("directionalLightShadows"))
+		config.directional_light_shadows = doc["directionalLightShadows"].GetBool();
+	if (doc.HasMember("directionalLightShadowsCascaded"))
+		config.directional_light_cascaded_shadows = doc["directionalLightShadowsCascaded"].GetBool();
+	if (doc.HasMember("clusteredLights"))
+		config.clustered_lights = doc["clusteredLights"].GetBool();
+	if (doc.HasMember("clusteredLightsShadows"))
+		config.clustered_lights_shadows = doc["clusteredLightsShadows"].GetBool();
+	if (doc.HasMember("hdrBloom"))
+		config.hdr_bloom = doc["hdrBloom"].GetBool();
+
+	if (doc.HasMember("shadowMapResolutionMain"))
+		config.shadow_map_resolution_main = doc["shadowMapResolutionMain"].GetFloat();
+	if (doc.HasMember("shadowMapResolutionNear"))
+		config.shadow_map_resolution_near = doc["shadowMapResolutionNear"].GetFloat();
+
+	if (doc.HasMember("cameraIndex"))
+		config.camera_index = doc["cameraIndex"].GetInt();
+
+	if (doc.HasMember("renderTargetFp16"))
+		config.rt_fp16 = doc["renderTargetFp16"].GetBool();
+
+	if (doc.HasMember("timestamps"))
+		config.timestamps = doc["timestamps"].GetBool();
+
+	if (doc.HasMember("rescaleScene"))
+		config.rescale_scene = doc["rescaleScene"].GetBool();
+
+	if (doc.HasMember("directionalLightCascadeCutoff"))
+		config.cascade_cutoff_distance = doc["directionalLightCascadeCutoff"].GetFloat();
+
+	if (doc.HasMember("directionalLightShadowsForceUpdate"))
+		config.force_shadow_map_update = doc["directionalLightShadowsForceUpdate"].GetBool();
+}
+
+SceneViewerApplication::SceneViewerApplication(const std::string &path, const std::string &config_path)
 	: forward_renderer(RendererType::GeneralForward),
       deferred_renderer(RendererType::GeneralDeferred),
       depth_renderer(RendererType::DepthOnly)
 {
+	if (!config_path.empty())
+		read_config(config_path);
+
 	scene_loader.load_scene(path);
 	animation_system = scene_loader.consume_animation_system();
 	context.set_lighting_parameters(&lighting);
@@ -94,11 +157,18 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path)
 
 	// Pick a camera to show.
 	selected_camera = &cam;
-#if 0
-	auto &scene_cameras = scene_loader.get_scene().get_entity_pool().get_component_group<CameraComponent>();
-	if (!scene_cameras.empty())
-		selected_camera = &get<0>(scene_cameras.front())->camera;
-#endif
+
+	if (config.camera_index >= 0)
+	{
+		auto &scene_cameras = scene_loader.get_scene().get_entity_pool().get_component_group<CameraComponent>();
+		if (!scene_cameras.empty())
+		{
+			if (unsigned(config.camera_index) < scene_cameras.size())
+				selected_camera = &get<0>(scene_cameras[config.camera_index])->camera;
+			else
+				LOGE("Camera index is out of bounds, using normal camera.");
+		}
+	}
 
 	// Pick a directional light.
 	default_directional_light.color = vec3(6.0f, 5.5f, 4.5f);
@@ -109,25 +179,31 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path)
 	else
 		selected_directional = &default_directional_light;
 
+	if (config.clustered_lights_shadows || config.clustered_lights)
 	{
 		cluster.reset(new LightClusterer);
 		auto entity = scene_loader.get_scene().create_entity();
-		auto *rp = entity->allocate_component<RenderPassComponent>();
-		rp->creator = cluster.get();
 		auto *refresh = entity->allocate_component<PerFrameUpdateComponent>();
 		refresh->refresh = cluster.get();
-		lighting.cluster = cluster.get();
-		cluster->set_enable_shadows(true);
-#if RENDERER == RENDERER_DEFERRED
-		cluster->set_enable_clustering(false);
-#else
-		cluster->set_enable_clustering(true);
-#endif
+
+		if (config.clustered_lights)
+		{
+			auto *rp = entity->allocate_component<RenderPassComponent>();
+			rp->creator = cluster.get();
+			lighting.cluster = cluster.get();
+		}
+
+		cluster->set_enable_shadows(config.clustered_lights_shadows);
+		cluster->set_enable_clustering(config.clustered_lights);
+		cluster->set_force_update_shadows(config.force_shadow_map_update);
 	}
 
 	context.set_camera(*selected_camera);
 
-	graph.enable_timestamps(false);
+	graph.enable_timestamps(config.timestamps);
+
+	if (config.rescale_scene)
+		rescale_scene(10.0f);
 
 	EVENT_MANAGER_REGISTER_LATCH(SceneViewerApplication, on_swapchain_changed, on_swapchain_destroyed, SwapchainParameterEvent);
 	EVENT_MANAGER_REGISTER_LATCH(SceneViewerApplication, on_device_created, on_device_destroyed, DeviceCreatedEvent);
@@ -157,9 +233,6 @@ void SceneViewerApplication::rescale_scene(float radius)
 	new_root_node->transform.scale = vec3(scale_factor);
 	new_root_node->add_child(root_node);
 	scene_loader.get_scene().set_root_node(new_root_node);
-
-	// TODO: Make this more configurable.
-	cascade_cutoff_distance = 0.25f * radius;
 }
 
 void SceneViewerApplication::on_device_created(const DeviceCreatedEvent &device)
@@ -187,16 +260,19 @@ void SceneViewerApplication::render_main_pass(Vulkan::CommandBuffer &cmd, const 
 	scene.gather_background_renderables(visible);
 	scene.gather_visible_render_pass_sinks(context.get_render_parameters().camera_position, visible);
 
-#if RENDERER == RENDERER_FORWARD
-	forward_renderer.set_mesh_renderer_options_from_lighting(lighting);
-	forward_renderer.begin();
-	forward_renderer.push_renderables(context, visible);
-	forward_renderer.flush(cmd, context);
-#else
-	deferred_renderer.begin();
-	deferred_renderer.push_renderables(context, visible);
-	deferred_renderer.flush(cmd, context);
-#endif
+	if (config.renderer_type == RendererType::GeneralForward)
+	{
+		forward_renderer.set_mesh_renderer_options_from_lighting(lighting);
+		forward_renderer.begin();
+		forward_renderer.push_renderables(context, visible);
+		forward_renderer.flush(cmd, context);
+	}
+	else if (config.renderer_type == RendererType::GeneralDeferred)
+	{
+		deferred_renderer.begin();
+		deferred_renderer.push_renderables(context, visible);
+		deferred_renderer.flush(cmd, context);
+	}
 }
 
 void SceneViewerApplication::render_transparent_objects(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view)
@@ -227,21 +303,27 @@ static inline string tagcat(const std::string &a, const std::string &b)
 	return a + "-" + b;
 }
 
-void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::string &tag, MainPassType type)
+void SceneViewerApplication::add_main_pass_forward(Vulkan::Device &device, const std::string &tag)
 {
-#if RENDERER == RENDERER_FORWARD
 	AttachmentInfo color, depth;
-	color.format = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
+	color.format = config.rt_fp16 ? VK_FORMAT_R16G16B16A16_SFLOAT : VK_FORMAT_B10G11R11_UFLOAT_PACK32;
 	depth.format = device.get_default_depth_format();
-	color.samples = 4;
-	depth.samples = 4;
+	color.samples = config.msaa;
+	depth.samples = config.msaa;
 
 	auto resolved = color;
 	resolved.samples = 1;
 
 	auto &lighting = graph.add_pass(tagcat("lighting", tag), VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
-	lighting.add_color_output(tagcat("HDR-MS", tag), color);
-	lighting.add_resolve_output(tagcat("HDR", tag), resolved);
+
+	if (color.samples > 1)
+	{
+		lighting.add_color_output(tagcat("HDR-MS", tag), color);
+		lighting.add_resolve_output(tagcat("HDR", tag), resolved);
+	}
+	else
+		lighting.add_color_output(tagcat("HDR", tag), color);
+
 	lighting.set_depth_stencil_output(tagcat("depth", tag), depth);
 
 	lighting.set_get_clear_depth_stencil([](VkClearDepthStencilValue *value) -> bool {
@@ -259,32 +341,24 @@ void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::st
 		return true;
 	});
 
-	lighting.set_build_render_pass([this, type](Vulkan::CommandBuffer &cmd) {
-		uint32_t flags = 0;
-
-		if (this->lighting.environment_irradiance && this->lighting.environment_radiance)
-			flags |= Renderer::ENVIRONMENT_ENABLE_BIT;
-		if (this->lighting.shadow_far)
-			flags |= Renderer::SHADOW_ENABLE_BIT;
-		if (this->lighting.shadow_near && this->lighting.shadow_far)
-			flags |= Renderer::SHADOW_CASCADE_ENABLE_BIT;
-		if (this->lighting.fog.falloff > 0.0f)
-			flags |= Renderer::FOG_ENABLE_BIT;
-
-		forward_renderer.set_mesh_renderer_options(flags);
+	lighting.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
 		render_main_pass(cmd, selected_camera->get_projection(), selected_camera->get_view());
 		render_transparent_objects(cmd, selected_camera->get_projection(), selected_camera->get_view());
 	});
 
-	lighting.add_texture_input("shadow-main");
-	if (type == MainPassType::Main)
+	if (config.directional_light_shadows)
 	{
-		lighting.add_texture_input("shadow-near");
-		scene_loader.get_scene().add_render_pass_dependencies(graph, lighting);
+		lighting.add_texture_input("shadow-main");
+		if (config.directional_light_cascaded_shadows)
+			lighting.add_texture_input("shadow-near");
 	}
-#elif RENDERER == RENDERER_DEFERRED
+	scene_loader.get_scene().add_render_pass_dependencies(graph, lighting);
+}
+
+void SceneViewerApplication::add_main_pass_deferred(Vulkan::Device &device, const std::string &tag)
+{
 	AttachmentInfo emissive, albedo, normal, pbr, depth;
-	emissive.format = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
+	emissive.format = config.rt_fp16 ? VK_FORMAT_R16G16B16A16_SFLOAT : VK_FORMAT_B10G11R11_UFLOAT_PACK32;
 	albedo.format = VK_FORMAT_R8G8B8A8_SRGB;
 	normal.format = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
 	pbr.format = VK_FORMAT_R8G8B8A8_UNORM;
@@ -296,7 +370,7 @@ void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::st
 	gbuffer.add_color_output(tagcat("normal", tag), normal);
 	gbuffer.add_color_output(tagcat("pbr", tag), pbr);
 	gbuffer.set_depth_stencil_output(tagcat("depth", tag), depth);
-	gbuffer.set_build_render_pass([this, type](Vulkan::CommandBuffer &cmd) {
+	gbuffer.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
 		render_main_pass(cmd, selected_camera->get_projection(), selected_camera->get_view());
 	});
 
@@ -328,22 +402,44 @@ void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::st
 	lighting.add_attachment_input(tagcat("depth", tag));
 	lighting.set_depth_stencil_input(tagcat("depth", tag));
 
-	lighting.add_texture_input("shadow-main");
-	lighting.add_texture_input("shadow-near");
+	if (config.directional_light_shadows)
+	{
+		lighting.add_texture_input("shadow-main");
+		if (config.directional_light_cascaded_shadows)
+			lighting.add_texture_input("shadow-near");
+	}
+
 	scene_loader.get_scene().add_render_pass_dependencies(graph, gbuffer);
 
-	lighting.set_build_render_pass([this, type](Vulkan::CommandBuffer &cmd) {
-		render_positional_lights(cmd, selected_camera->get_projection(), selected_camera->get_view());
+	lighting.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
+		if (!config.clustered_lights)
+			render_positional_lights(cmd, selected_camera->get_projection(), selected_camera->get_view());
 		DeferredLightRenderer::render_light(cmd, context);
 	});
 
 	auto &transparent = graph.add_pass(tagcat("transparent", tag), VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 	transparent.add_color_output(tagcat("HDR", tag), emissive, tagcat("HDR-lighting", tag));
 	transparent.set_depth_stencil_input(tagcat("depth", tag));
-	transparent.set_build_render_pass([this, type](Vulkan::CommandBuffer &cmd) {
+	transparent.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
 		render_transparent_objects(cmd, selected_camera->get_projection(), selected_camera->get_view());
 	});
-#endif
+}
+
+void SceneViewerApplication::add_main_pass(Vulkan::Device &device, const std::string &tag)
+{
+	switch (config.renderer_type)
+	{
+	case RendererType::GeneralForward:
+		add_main_pass_forward(device, tag);
+		break;
+
+	case RendererType::GeneralDeferred:
+		add_main_pass_deferred(device, tag);
+		break;
+
+	default:
+		break;
+	}
 }
 
 void SceneViewerApplication::add_shadow_pass(Vulkan::Device &, const std::string &tag, DepthPassType type)
@@ -355,13 +451,13 @@ void SceneViewerApplication::add_shadow_pass(Vulkan::Device &, const std::string
 
 	if (type == DepthPassType::Main)
 	{
-		shadowmap.size_x = 2048.0f;
-		shadowmap.size_y = 2048.0f;
+		shadowmap.size_x = config.shadow_map_resolution_main;
+		shadowmap.size_y = config.shadow_map_resolution_main;
 	}
 	else
 	{
-		shadowmap.size_x = 1024.0f;
-		shadowmap.size_y = 1024.0f;
+		shadowmap.size_x = config.shadow_map_resolution_near;
+		shadowmap.size_y = config.shadow_map_resolution_near;
 	}
 
 	auto &shadowpass = graph.add_pass(tagcat("shadow", tag), VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
@@ -398,19 +494,23 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 	dim.height = swap.get_height();
 	dim.format = swap.get_format();
 	graph.set_backbuffer_dimensions(dim);
-	AttachmentInfo backbuffer;
 
 	const char *backbuffer_source = getenv("GRANITE_SURFACE");
-	graph.set_backbuffer_source(backbuffer_source ? backbuffer_source : "tonemapped");
+	graph.set_backbuffer_source(backbuffer_source ? backbuffer_source : (config.hdr_bloom ? "tonemapped" : "HDR-main"));
 
 	scene_loader.get_scene().add_render_passes(graph);
 
-	add_shadow_pass(swap.get_device(), "main", DepthPassType::Main);
-	add_shadow_pass(swap.get_device(), "near", DepthPassType::Near);
-	add_main_pass(swap.get_device(), "reflection", MainPassType::Reflection);
-	add_main_pass(swap.get_device(), "refraction", MainPassType::Refraction);
-	add_main_pass(swap.get_device(), "main", MainPassType::Main);
-	setup_hdr_postprocess(graph, "HDR-main", "tonemapped");
+	if (config.directional_light_shadows)
+	{
+		add_shadow_pass(swap.get_device(), "main", DepthPassType::Main);
+		if (config.directional_light_cascaded_shadows)
+			add_shadow_pass(swap.get_device(), "near", DepthPassType::Near);
+	}
+
+	add_main_pass(swap.get_device(), "main");
+
+	if (config.hdr_bloom)
+		setup_hdr_postprocess(graph, "HDR-main", "tonemapped");
 
 	graph.bake();
 	graph.log();
@@ -469,7 +569,7 @@ void SceneViewerApplication::render_shadow_map_near(Vulkan::CommandBuffer &cmd)
 	AABB ortho_range_depth = shadow_scene_aabb.transform(view); // Just need this to determine Zmin/Zmax.
 
 	auto near_camera = *selected_camera;
-	near_camera.set_depth_range(near_camera.get_znear(), cascade_cutoff_distance);
+	near_camera.set_depth_range(near_camera.get_znear(), config.cascade_cutoff_distance);
 	vec4 sphere = Frustum::get_bounding_sphere(inverse(near_camera.get_projection()), inverse(near_camera.get_view()));
 	vec2 center_xy = (view * vec4(sphere.xyz(), 1.0f)).xy();
 	sphere.w *= 1.01f;
@@ -500,7 +600,7 @@ void SceneViewerApplication::update_scene(double, double elapsed_time)
 		lighting.environment_radiance = &reflection->get_image()->get_view();
 	if (irradiance)
 		lighting.environment_irradiance = &irradiance->get_image()->get_view();
-	lighting.shadow.inv_cutoff_distance = 1.0f / cascade_cutoff_distance;
+	lighting.shadow.inv_cutoff_distance = 1.0f / config.cascade_cutoff_distance;
 	lighting.environment.intensity = 1.0f;
 	lighting.environment.mipscale = 7.0f;
 	lighting.refraction.falloff = vec3(1.0f / 1.5f, 1.0f / 2.5f, 1.0f / 5.0f);
@@ -523,12 +623,28 @@ void SceneViewerApplication::render_scene()
 	auto &device = wsi.get_device();
 	auto &scene = scene_loader.get_scene();
 
+	if (config.force_shadow_map_update)
+		need_shadow_map_update = true;
+
 	if (need_shadow_map_update)
 		update_shadow_scene_aabb();
 
 	graph.setup_attachments(device, &device.get_swapchain_view());
-	lighting.shadow_far = &graph.get_physical_texture_resource(graph.get_texture_resource("shadow-main").get_physical_index());
-	lighting.shadow_near = &graph.get_physical_texture_resource(graph.get_texture_resource("shadow-near").get_physical_index());
+
+	lighting.shadow_near = nullptr;
+	lighting.shadow_far = nullptr;
+	if (config.directional_light_shadows)
+	{
+		lighting.shadow_far = &graph.get_physical_texture_resource(
+				graph.get_texture_resource("shadow-main").get_physical_index());
+
+		if (config.directional_light_cascaded_shadows)
+		{
+			lighting.shadow_near = &graph.get_physical_texture_resource(
+					graph.get_texture_resource("shadow-near").get_physical_index());
+		}
+	}
+
 	scene.bind_render_graph_resources(graph);
 	graph.enqueue_render_passes(device);
 

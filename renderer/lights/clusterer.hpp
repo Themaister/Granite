@@ -35,6 +35,7 @@ public:
 	LightClusterer();
 
 	void set_enable_shadows(bool enable);
+	void set_force_update_shadows(bool enable);
 	void set_enable_clustering(bool enable);
 
 	void set_resolution(unsigned x, unsigned y, unsigned z);
@@ -95,5 +96,6 @@ private:
 
 	bool enable_shadows = true;
 	bool enable_clustering = true;
+	bool force_update_shadows = false;
 };
 }

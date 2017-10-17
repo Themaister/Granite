@@ -22,12 +22,33 @@
 
 #include "application.hpp"
 #include "os.hpp"
+#include "cli_parser.hpp"
 
 namespace Granite
 {
 Application *application_create(int argc, char **argv)
 {
+	if (argc < 1)
+		return nullptr;
+
 	application_dummy();
+
+	std::string config;
+	std::string path;
+
+	CLICallbacks cbs;
+	cbs.add("--config", [&](CLIParser &parser) { config = std::string("file://") + parser.next_string(); });
+	cbs.default_handler = [&](const char *arg) { path = std::string("file://") + arg; };
+
+	CLIParser parser(std::move(cbs), argc - 1, argv + 1);
+	if (!parser.parse())
+		return nullptr;
+
+	if (path.empty())
+	{
+		LOGE("Need path to scene file.\n");
+		return nullptr;
+	}
 
 #ifdef ASSET_DIRECTORY
 	const char *asset_dir = getenv("ASSET_DIRECTORY");
@@ -39,14 +60,7 @@ Application *application_create(int argc, char **argv)
 
 	try
 	{
-		if (argc != 2)
-		{
-			LOGE("Usage: %s <glTF/scene file>\n", argv ? argv[0] : "viewer");
-			return nullptr;
-		}
-
-		auto path = std::string("file://") + argv[1];
-		auto *app = new SceneViewerApplication(path);
+		auto *app = new SceneViewerApplication(path, config);
 		//app->rescale_scene(5.0f);
 		app->loop_animations();
 		return app;

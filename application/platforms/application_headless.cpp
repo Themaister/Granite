@@ -359,6 +359,7 @@ int main(int argc, char *argv[])
 	cbs.default_handler = [&](const char *arg) { filtered_argv.push_back(const_cast<char *>(arg)); };
 	cbs.error_handler = [&]() { print_help(); };
 	CLIParser parser(move(cbs), argc - 1, argv + 1);
+	parser.ignore_unknown_arguments();
 	if (!parser.parse())
 		return 1;
 	else if (parser.is_ended_state())

@@ -1584,7 +1584,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 			if (enabled_timestamps)
 			{
 				timestamps.timestamps_vertex_begin[physical_pass_index] = cmd->write_timestamp(VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
-				timestamps.timestamps_fragment_begin[physical_pass_index] = cmd->write_timestamp(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+				timestamps.timestamps_fragment_begin[physical_pass_index] = cmd->write_timestamp(VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 			}
 
 			cmd->begin_render_pass(physical_pass.render_pass_info);
@@ -1611,7 +1611,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 			if (enabled_timestamps)
 			{
 				timestamps.timestamps_vertex_end[physical_pass_index] = cmd->write_timestamp(VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
-				timestamps.timestamps_fragment_end[physical_pass_index] = cmd->write_timestamp(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+				timestamps.timestamps_fragment_end[physical_pass_index] = cmd->write_timestamp(VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 			}
 			enqueue_mipmap_requests(*cmd, physical_pass.mipmap_requests);
 		}

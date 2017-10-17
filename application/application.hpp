@@ -89,7 +89,7 @@ private:
 class SceneViewerApplication : public Application, public EventHandler
 {
 public:
-	SceneViewerApplication(const std::string &path);
+	SceneViewerApplication(const std::string &path, const std::string &config_path);
 	~SceneViewerApplication();
 	void render_frame(double frame_time, double elapsed_time) override;
 	void rescale_scene(float radius);
@@ -139,13 +139,9 @@ protected:
 	void render_transparent_objects(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view);
 	void render_positional_lights(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view);
 
-	enum class MainPassType
-	{
-		Main,
-		Reflection,
-		Refraction
-	};
-	void add_main_pass(Vulkan::Device &device, const std::string &tag, MainPassType type);
+	void add_main_pass(Vulkan::Device &device, const std::string &tag);
+	void add_main_pass_forward(Vulkan::Device &device, const std::string &tag);
+	void add_main_pass_deferred(Vulkan::Device &device, const std::string &tag);
 
 	enum class DepthPassType
 	{
@@ -154,7 +150,29 @@ protected:
 	};
 	void add_shadow_pass(Vulkan::Device &device, const std::string &tag, DepthPassType type);
 
-	float cascade_cutoff_distance = 10.0f;
+private:
+	void read_config(const std::string &path);
+	struct Config
+	{
+		RendererType renderer_type = RendererType::GeneralForward;
+		unsigned msaa = 1;
+		bool directional_light_shadows = true;
+		bool directional_light_cascaded_shadows = true;
+		bool clustered_lights = true;
+		bool clustered_lights_shadows = true;
+		bool hdr_bloom = true;
+
+		float shadow_map_resolution_main = 2048.0f;
+		float shadow_map_resolution_near = 1024.0f;
+		int camera_index = -1;
+
+		bool rt_fp16 = false;
+		bool timestamps = false;
+		bool rescale_scene = false;
+		bool force_shadow_map_update = false;
+		float cascade_cutoff_distance = 10.0f;
+	};
+	Config config;
 };
 
 extern Application *application_create(int argc, char *argv[]);

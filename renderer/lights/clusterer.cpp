@@ -131,6 +131,11 @@ void LightClusterer::set_enable_shadows(bool enable)
 	enable_shadows = enable;
 }
 
+void LightClusterer::set_force_update_shadows(bool enable)
+{
+	force_update_shadows = enable;
+}
+
 const Vulkan::ImageView *LightClusterer::get_cluster_image() const
 {
 	return enable_clustering ? target : nullptr;
@@ -153,6 +158,9 @@ const mat4 &LightClusterer::get_cluster_transform() const
 
 void LightClusterer::render_atlas_point(RenderContext &context)
 {
+	if (shadow_atlas_point && !force_update_shadows)
+		return;
+
 	auto &device = context.get_device();
 	auto cmd = device.request_command_buffer();
 
@@ -230,6 +238,9 @@ void LightClusterer::render_atlas_point(RenderContext &context)
 
 void LightClusterer::render_atlas_spot(RenderContext &context)
 {
+	if (shadow_atlas && !force_update_shadows)
+		return;
+
 	auto &device = context.get_device();
 	auto cmd = device.request_command_buffer();
 

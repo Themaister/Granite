@@ -143,7 +143,7 @@ vec3 compute_lighting(
 	#if defined(ALPHA_TEST) && ALPHA_TEST
 		const float minimum_lod = 0.0; // Can't take derivative because we might have discarded, so ...
 	#else
-		float minimum_lod = textureQueryLod(uReflection, reflected).y + 1.0;
+		float minimum_lod = textureQueryLod(uReflection, reflected).y;
 	#endif
 
 	vec3 envspec = environment.intensity *

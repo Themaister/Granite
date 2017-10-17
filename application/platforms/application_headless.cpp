@@ -131,7 +131,8 @@ public:
 
 	~WSIPlatformHeadless() override
 	{
-		app->get_wsi().get_device().wait_idle();
+		for (auto &thread : worker_threads)
+			thread->wait();
 
 		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
@@ -299,6 +300,7 @@ private:
 	{
 		auto &wsi = app->get_wsi();
 		auto &device = wsi.get_device();
+
 		device.wait_for_fence(readback_fence[index]);
 		readback_fence[index].reset();
 

@@ -66,7 +66,7 @@ void PositionalLight::recompute_range()
 	}
 
 	// Check when attenuation drops below a constant.
-	const float target_atten = 0.01f;
+	const float target_atten = 0.1f;
 	float max_color = max(max(color.r, color.g), color.b);
 
 	if (max_color < target_atten * constant)
@@ -133,6 +133,7 @@ struct PositionalLightRenderInfo
 	unsigned count = 0;
 
 	const Vulkan::ImageView *atlas = nullptr;
+	PositionalLight::Type type;
 
 	struct Push
 	{
@@ -247,20 +248,20 @@ struct LightMesh : public EventHandler
 };
 static LightMesh light_mesh;
 
-static void spot_render_full_screen(CommandBuffer &cmd, const RenderQueueData *infos, unsigned num_instances)
+static void positional_render_full_screen(CommandBuffer &cmd, const RenderQueueData *infos, unsigned num_instances)
 {
-	auto &spot_info = *static_cast<const PositionalLightRenderInfo *>(infos[0].render_info);
-	cmd.set_program(*spot_info.program);
+	auto &light_info = *static_cast<const PositionalLightRenderInfo *>(infos[0].render_info);
+	cmd.set_program(*light_info.program);
 	CommandBufferUtil::set_quad_vertex_state(cmd);
 	cmd.set_cull_mode(VK_CULL_MODE_NONE);
 	cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
 
-	auto push = spot_info.push;
+	auto push = light_info.push;
 	push.inv_resolution = vec2(1.0f / cmd.get_viewport().width, 1.0f / cmd.get_viewport().height);
 	cmd.push_constants(&push, 0, sizeof(push));
 
-	if (spot_info.atlas)
-		cmd.set_texture(2, 2, *spot_info.atlas, Vulkan::StockSampler::LinearShadow);
+	if (light_info.atlas)
+		cmd.set_texture(2, 2, *light_info.atlas, Vulkan::StockSampler::LinearShadow);
 
 	for (unsigned i = 0; i < num_instances; )
 	{
@@ -277,11 +278,24 @@ static void spot_render_full_screen(CommandBuffer &cmd, const RenderQueueData *i
 			frag[j] = static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->fragment;
 		}
 
-		if (spot_info.atlas)
+		if (light_info.atlas)
 		{
-			auto *t = static_cast<mat4 *>(cmd.allocate_constant_data(2, 3, sizeof(mat4) * to_render));
-			for (unsigned j = 0; j < to_render; j++)
-				t[j] = static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->shadow_transform;
+			if (light_info.type == PositionalLight::Type::Spot)
+			{
+				auto *t = static_cast<mat4 *>(cmd.allocate_constant_data(2, 3, sizeof(mat4) * to_render));
+				for (unsigned j = 0; j < to_render; j++)
+					t[j] = static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->shadow_transform;
+			}
+			else
+			{
+				auto *t = static_cast<vec4 *>(cmd.allocate_constant_data(2, 3, sizeof(vec4) * to_render));
+				for (unsigned j = 0; j < to_render; j++)
+					t[j] = static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->shadow_transform[0];
+
+				auto *slice = static_cast<vec4 *>(cmd.allocate_constant_data(2, 4, sizeof(vec4) * to_render));
+				for (unsigned j = 0; j < to_render; j++)
+					slice[j].x = float(static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->slice);
+			}
 		}
 
 		cmd.draw(4, to_render);
@@ -289,25 +303,31 @@ static void spot_render_full_screen(CommandBuffer &cmd, const RenderQueueData *i
 	}
 }
 
-static void point_render_full_screen(CommandBuffer &cmd, const RenderQueueData *infos, unsigned num_instances)
+static void positional_render_common(CommandBuffer &cmd, const RenderQueueData *infos, unsigned num_instances)
 {
-	spot_render_full_screen(cmd, infos, num_instances);
-}
-
-static void spot_render_common(CommandBuffer &cmd, const RenderQueueData *infos, unsigned num_instances)
-{
-	auto &spot_info = *static_cast<const PositionalLightRenderInfo *>(infos[0].render_info);
-	cmd.set_program(*spot_info.program);
-	cmd.set_vertex_binding(0, *spot_info.vbo, 0, sizeof(vec3));
+	auto &light_info = *static_cast<const PositionalLightRenderInfo *>(infos[0].render_info);
+	cmd.set_program(*light_info.program);
+	cmd.set_vertex_binding(0, *light_info.vbo, 0, sizeof(vec3));
 	cmd.set_vertex_attrib(0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0);
-	cmd.set_index_buffer(*spot_info.ibo, 0, VK_INDEX_TYPE_UINT16);
+	cmd.set_index_buffer(*light_info.ibo, 0, VK_INDEX_TYPE_UINT16);
 
-	auto push = spot_info.push;
+	if (light_info.type == PositionalLight::Type::Spot)
+	{
+		cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+		cmd.set_primitive_restart(false);
+	}
+	else
+	{
+		cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
+		cmd.set_primitive_restart(true);
+	}
+
+	auto push = light_info.push;
 	push.inv_resolution = vec2(1.0f / cmd.get_viewport().width, 1.0f / cmd.get_viewport().height);
 	cmd.push_constants(&push, 0, sizeof(push));
 
-	if (spot_info.atlas)
-		cmd.set_texture(2, 2, *spot_info.atlas, Vulkan::StockSampler::LinearShadow);
+	if (light_info.atlas)
+		cmd.set_texture(2, 2, *light_info.atlas, Vulkan::StockSampler::LinearShadow);
 
 	for (unsigned i = 0; i < num_instances; )
 	{
@@ -323,93 +343,42 @@ static void spot_render_common(CommandBuffer &cmd, const RenderQueueData *infos,
 			frag[j] = static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->fragment;
 		}
 
-		if (spot_info.atlas)
+		if (light_info.atlas)
 		{
-			auto *t = static_cast<mat4 *>(cmd.allocate_constant_data(2, 3, sizeof(mat4) * to_render));
-			for (unsigned j = 0; j < to_render; j++)
-				t[j] = static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->shadow_transform;
+			if (light_info.type == PositionalLight::Type::Spot)
+			{
+				auto *t = static_cast<mat4 *>(cmd.allocate_constant_data(2, 3, sizeof(mat4) * to_render));
+				for (unsigned j = 0; j < to_render; j++)
+					t[j] = static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->shadow_transform;
+			}
+			else
+			{
+				auto *t = static_cast<vec4 *>(cmd.allocate_constant_data(2, 3, sizeof(vec4) * to_render));
+				for (unsigned j = 0; j < to_render; j++)
+					t[j] = static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->shadow_transform[0];
 
-			auto *slice = static_cast<vec4 *>(cmd.allocate_constant_data(2, 4, sizeof(vec4) * to_render));
-			for (unsigned j = 0; j < to_render; j++)
-				slice[j].x = float(static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->slice);
+				auto *slice = static_cast<vec4 *>(cmd.allocate_constant_data(2, 4, sizeof(vec4) * to_render));
+				for (unsigned j = 0; j < to_render; j++)
+					slice[j].x = float(static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->slice);
+			}
 		}
 
-		cmd.draw_indexed(spot_info.count, to_render);
+		cmd.draw_indexed(light_info.count, to_render);
 		i += to_render;
 	}
 }
 
-static void point_render_common(CommandBuffer &cmd, const RenderQueueData *infos, unsigned num_instances)
-{
-	auto &point_info = *static_cast<const PositionalLightRenderInfo *>(infos[0].render_info);
-	cmd.set_program(*point_info.program);
-	cmd.set_vertex_binding(0, *point_info.vbo, 0, sizeof(vec3));
-	cmd.set_vertex_attrib(0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0);
-	cmd.set_index_buffer(*point_info.ibo, 0, VK_INDEX_TYPE_UINT16);
-	cmd.set_primitive_restart(true);
-	cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
-
-	auto push = point_info.push;
-	push.inv_resolution = vec2(1.0f / cmd.get_viewport().width, 1.0f / cmd.get_viewport().height);
-	cmd.push_constants(&push, 0, sizeof(push));
-
-	if (point_info.atlas)
-		cmd.set_texture(2, 2, *point_info.atlas, Vulkan::StockSampler::LinearShadow);
-
-	for (unsigned i = 0; i < num_instances; )
-	{
-		unsigned to_render = min(256u, num_instances - i);
-		auto *frag = static_cast<PositionalFragmentInfo *>(cmd.allocate_constant_data(2, 0,
-		                                                                              sizeof(PositionalFragmentInfo) * to_render));
-		auto *vert = static_cast<PositionalVertexInfo *>(cmd.allocate_constant_data(2, 1,
-		                                                                            sizeof(PositionalVertexInfo) * to_render));
-
-		for (unsigned j = 0; j < to_render; j++)
-		{
-			vert[j] = static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->vertex;
-			frag[j] = static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->fragment;
-		}
-
-		if (point_info.atlas)
-		{
-			auto *t = static_cast<vec4 *>(cmd.allocate_constant_data(2, 3, sizeof(vec4) * to_render));
-			for (unsigned j = 0; j < to_render; j++)
-				t[j] = static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->shadow_transform[0];
-
-			auto *slice = static_cast<vec4 *>(cmd.allocate_constant_data(2, 4, sizeof(vec4) * to_render));
-			for (unsigned j = 0; j < to_render; j++)
-				slice[j].x = float(static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->slice);
-		}
-
-		cmd.draw_indexed(point_info.count, to_render);
-		i += to_render;
-	}
-}
-
-static void spot_render_front(CommandBuffer &cmd, const RenderQueueData *infos, unsigned num_instances)
+static void positional_render_front(CommandBuffer &cmd, const RenderQueueData *infos, unsigned num_instances)
 {
 	cmd.set_cull_mode(VK_CULL_MODE_BACK_BIT);
-	spot_render_common(cmd, infos, num_instances);
+	positional_render_common(cmd, infos, num_instances);
 }
 
-static void spot_render_back(CommandBuffer &cmd, const RenderQueueData *infos, unsigned num_instances)
+static void positional_render_back(CommandBuffer &cmd, const RenderQueueData *infos, unsigned num_instances)
 {
 	cmd.set_cull_mode(VK_CULL_MODE_FRONT_BIT);
 	cmd.set_depth_compare(VK_COMPARE_OP_GREATER);
-	spot_render_common(cmd, infos, num_instances);
-}
-
-static void point_render_front(CommandBuffer &cmd, const RenderQueueData *infos, unsigned num_instances)
-{
-	cmd.set_cull_mode(VK_CULL_MODE_BACK_BIT);
-	point_render_common(cmd, infos, num_instances);
-}
-
-static void point_render_back(CommandBuffer &cmd, const RenderQueueData *infos, unsigned num_instances)
-{
-	cmd.set_cull_mode(VK_CULL_MODE_FRONT_BIT);
-	cmd.set_depth_compare(VK_COMPARE_OP_GREATER);
-	point_render_common(cmd, infos, num_instances);
+	positional_render_common(cmd, infos, num_instances);
 }
 
 void SpotLight::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
@@ -431,14 +400,15 @@ void SpotLight::get_render_info(const RenderContext &context, const CachedSpatia
 	if (aabb_near < 0.0f) // We risk clipping into the mesh, and since we can't rely on depthClamp, use backface.
 	{
 		if (aabb_far > 0.0f) // We risk clipping into far plane as well ... Use a full-screen quad.
-			func = spot_render_full_screen;
+			func = positional_render_full_screen;
 		else
-			func = spot_render_back;
+			func = positional_render_back;
 	}
 	else
-		func = spot_render_front;
+		func = positional_render_front;
 
 	Hasher h;
+	h.u32(ecast(PositionalLight::Type::Spot));
 	if (atlas)
 		h.u64(atlas->get_cookie());
 	else
@@ -469,8 +439,9 @@ void SpotLight::get_render_info(const RenderContext &context, const CachedSpatia
 		info.push.inv_view_projection = params.inv_view_projection;
 		info.push.camera_pos = vec4(params.camera_position, 0.0f);
 		info.atlas = atlas;
+		info.type = PositionalLight::Type::Spot;
 
-		unsigned variant = func == spot_render_full_screen ? 1 : 0;
+		unsigned variant = func == positional_render_full_screen ? 1 : 0;
 		if (atlas)
 			variant += 2;
 
@@ -530,14 +501,15 @@ void PointLight::get_render_info(const RenderContext &context, const CachedSpati
 	if (aabb_near < 0.0f) // We risk clipping into the mesh, and since we can't rely on depthClamp, use backface.
 	{
 		if (aabb_far > 0.0f) // We risk clipping into far plane as well ... Use a full-screen quad.
-			func = point_render_full_screen;
+			func = positional_render_full_screen;
 		else
-			func = point_render_back;
+			func = positional_render_back;
 	}
 	else
-		func = point_render_front;
+		func = positional_render_front;
 
 	Hasher h;
+	h.u32(ecast(PositionalLight::Type::Point));
 	if (shadow_atlas)
 		h.u64(shadow_atlas->get_cookie());
 	else
@@ -569,8 +541,9 @@ void PointLight::get_render_info(const RenderContext &context, const CachedSpati
 		info.push.inv_view_projection = params.inv_view_projection;
 		info.push.camera_pos = vec4(params.camera_position, 0.0f);
 		info.atlas = shadow_atlas;
+		info.type = PositionalLight::Type::Point;
 
-		unsigned variant = func == point_render_full_screen ? 1 : 0;
+		unsigned variant = func == positional_render_full_screen ? 1 : 0;
 		if (shadow_atlas)
 			variant += 2;
 

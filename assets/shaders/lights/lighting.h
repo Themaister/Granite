@@ -24,6 +24,7 @@ struct EnvironmentInfo
 {
 	float intensity;
 	float mipscale;
+	float reflection_lod;
 };
 
 layout(set = 1, binding = 0) uniform samplerCube uReflection;
@@ -139,7 +140,7 @@ vec3 compute_lighting(
 	// IBL specular term.
 	vec3 reflected = reflect(-V, N);
 
-#if RENDERER == RENDERER_FORWARD
+#if defined(RENDERER_FORWARD)
 	#if defined(ALPHA_TEST) && ALPHA_TEST
 		const float minimum_lod = 0.0; // Can't take derivative because we might have discarded, so ...
 	#else
@@ -150,9 +151,8 @@ vec3 compute_lighting(
 	               textureLod(uReflection, reflected,
 	                          max(material.roughness * environment.mipscale, minimum_lod)).rgb;
 #else
-	// Can't use derivatives in deferred because we might be shading two unrelated objects in this quad ...
-	// Maybe place a normal-based derivative in the G-buffer.
-	vec3 envspec = environment.intensity * textureLod(uReflection, reflected, material.roughness * environment.mipscale).rgb;
+	float minimum_lod = environment.mipscale + 8.0 * environment.reflection_lod - 8.0;
+	vec3 envspec = environment.intensity * textureLod(uReflection, reflected, max(minimum_lod, material.roughness * environment.mipscale)).rgb;
 #endif
 
 	envspec *= iblspec;

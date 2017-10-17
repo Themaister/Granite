@@ -22,7 +22,7 @@
 
 #define RENDERER_FORWARD 0
 #define RENDERER_DEFERRED 1
-#define RENDERER RENDERER_DEFERRED
+#define RENDERER RENDERER_FORWARD
 
 #include "application.hpp"
 #include <stdexcept>
@@ -94,7 +94,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path)
 
 	// Pick a camera to show.
 	selected_camera = &cam;
-#if 1
+#if 0
 	auto &scene_cameras = scene_loader.get_scene().get_entity_pool().get_component_group<CameraComponent>();
 	if (!scene_cameras.empty())
 		selected_camera = &get<0>(scene_cameras.front())->camera;
@@ -502,7 +502,7 @@ void SceneViewerApplication::update_scene(double, double elapsed_time)
 		lighting.environment_irradiance = &irradiance->get_image()->get_view();
 	lighting.shadow.inv_cutoff_distance = 1.0f / cascade_cutoff_distance;
 	lighting.environment.intensity = 1.0f;
-	lighting.environment.mipscale = 9.0f;
+	lighting.environment.mipscale = 7.0f;
 	lighting.refraction.falloff = vec3(1.0f / 1.5f, 1.0f / 2.5f, 1.0f / 5.0f);
 
 	context.set_camera(*selected_camera);

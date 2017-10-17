@@ -139,20 +139,26 @@ vec3 compute_lighting(
 	// IBL specular term.
 	vec3 reflected = reflect(-V, N);
 
-#if defined(ALPHA_TEST) && ALPHA_TEST
-	float minimum_lod = environment.mipscale; // Can't take derivative because we might have discarded, so ...
-#else
-	float minimum_lod = textureQueryLod(uReflection, reflected).y + 1.0;
-#endif
+#if RENDERER == RENDERER_FORWARD
+	#if defined(ALPHA_TEST) && ALPHA_TEST
+		const float minimum_lod = 0.0; // Can't take derivative because we might have discarded, so ...
+	#else
+		float minimum_lod = textureQueryLod(uReflection, reflected).y + 1.0;
+	#endif
 
 	vec3 envspec = environment.intensity *
 	               textureLod(uReflection, reflected,
 	                          max(material.roughness * environment.mipscale, minimum_lod)).rgb;
+#else
+	// Can't use derivatives in deferred because we might be shading two unrelated objects in this quad ...
+	// Maybe place a normal-based derivative in the G-buffer.
+	vec3 envspec = environment.intensity * textureLod(uReflection, reflected, material.roughness * environment.mipscale).rgb;
+#endif
 
 	envspec *= iblspec;
 
 	// IBL diffuse term.
-	vec3 envdiff = environment.intensity * texture(uIrradiance, N).rgb;
+	vec3 envdiff = environment.intensity * textureLod(uIrradiance, N, 0.0).rgb;
 
 	diffref += envdiff * material.ambient_factor * (1.0 - ibl_fresnel);
 	specref += envspec * material.ambient_factor;

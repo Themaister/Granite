@@ -110,11 +110,11 @@ ImageHandle convert_cube_to_ibl_diffuse(Device &device, ImageView &view)
 
 	float sample_lod = log2(float(size)) - 5.0f;
 
-	ImageCreateInfo info = ImageCreateInfo::render_target(size, size, VK_FORMAT_R16G16B16A16_SFLOAT);
-	info.levels = 0;
+	ImageCreateInfo info = ImageCreateInfo::render_target(size, size, VK_FORMAT_B10G11R11_UFLOAT_PACK32);
+	info.levels = 1;
 	info.layers = 6;
 	info.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
-	info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
 	info.initial_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
 	auto handle = device.create_image(info, nullptr);
@@ -155,12 +155,8 @@ ImageHandle convert_cube_to_ibl_diffuse(Device &device, ImageView &view)
 		cmd->end_render_pass();
 	}
 
-	cmd->barrier_prepare_generate_mipmap(*handle, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-	                                     VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, true);
-	handle->set_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-	cmd->generate_mipmap(*handle);
-	cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-	                   VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+	cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
 	                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 	handle->set_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 

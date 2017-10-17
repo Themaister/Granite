@@ -1,5 +1,6 @@
 #version 450
-precision mediump float;
+precision highp int;
+precision highp float;
 
 layout(set = 2, binding = 0) uniform samplerCube uCube;
 layout(location = 0) out vec4 FragColor;

@@ -29,7 +29,7 @@
 
 namespace Granite
 {
-struct CLIParser;
+class CLIParser;
 
 struct CLICallbacks
 {

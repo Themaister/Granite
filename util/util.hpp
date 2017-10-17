@@ -41,11 +41,13 @@ extern retro_log_printf_t libretro_log;
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #define LOGE(...) do { \
+    fprintf(stderr, "[ERROR]: " __VA_ARGS__); \
     char buffer[4096]; \
     sprintf(buffer, "[ERROR]: " __VA_ARGS__); \
     OutputDebugStringA(buffer); \
 } while(0)
 #define LOGI(...) do { \
+    fprintf(stderr, "[INFO]: " __VA_ARGS__); \
     char buffer[4096]; \
     sprintf(buffer, "[INFO]: " __VA_ARGS__); \
     OutputDebugStringA(buffer); \

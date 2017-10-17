@@ -30,6 +30,11 @@
 #include "stb_image_write.h"
 #include "cli_parser.hpp"
 
+#ifdef _WIN32
+#include <windows.h>
+#include <shellapi.h>
+#endif
+
 using namespace std;
 using namespace Vulkan;
 
@@ -331,8 +336,31 @@ static void print_help()
 	LOGI("[--png-path <path>] [--frames <frames>] [--width <width>] [--height <height>] [--time-step <step>].\n");
 }
 
+#ifdef _WIN32
+int CALLBACK WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
+#else
 int main(int argc, char *argv[])
+#endif
 {
+#ifdef _WIN32
+	int argc;
+	wchar_t **wide_argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+	vector<char *> argv_buffer(argc + 1);
+	char **argv = nullptr;
+
+	if (wide_argv)
+	{
+		argv = argv_buffer.data();
+		for (int i = 0; i < argc; i++)
+		{
+			auto length = wcslen(wide_argv[i]);
+			argv_buffer[i] = new char[length + 1];
+			size_t num_converted;
+			wcstombs_s(&num_converted, argv_buffer[i], length + 1, wide_argv[i], length + 1);
+		}
+	}
+#endif
+
 	using namespace Granite;
 	if (argc < 1)
 		return 1;
@@ -368,6 +396,12 @@ int main(int argc, char *argv[])
 	filtered_argv.push_back(nullptr);
 
 	auto app = unique_ptr<Application>(Granite::application_create(int(filtered_argv.size() - 1), filtered_argv.data()));
+
+#ifdef _WIN32
+	for (auto &arg : argv_buffer)
+		delete[] arg;
+#endif
+
 	if (app)
 	{
 		auto platform = make_unique<WSIPlatformHeadless>(args.width, args.height);

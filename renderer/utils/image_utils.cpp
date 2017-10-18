@@ -25,6 +25,7 @@
 #include "device.hpp"
 #include "render_parameters.hpp"
 #include "util.hpp"
+#include "gli/save.hpp"
 
 using namespace Vulkan;
 
@@ -40,7 +41,7 @@ ImageHandle convert_cube_to_ibl_specular(Device &device, ImageView &view)
 	info.levels = 8;
 	info.layers = 6;
 	info.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
-	info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+	info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 	info.initial_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
 	auto handle = device.create_image(info, nullptr);
@@ -114,7 +115,7 @@ ImageHandle convert_cube_to_ibl_diffuse(Device &device, ImageView &view)
 	info.levels = 1;
 	info.layers = 6;
 	info.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
-	info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+	info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 	info.initial_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
 	auto handle = device.create_image(info, nullptr);
@@ -227,5 +228,162 @@ ImageHandle convert_equirect_to_cube(Device &device, ImageView &view)
 
 	device.submit(cmd);
 	return handle;
+}
+
+ImageReadback save_image_to_cpu_buffer(Vulkan::Device &device, const Vulkan::Image &image)
+{
+	ImageReadback readback;
+	readback.create_info = image.get_create_info();
+	assert(image.get_layout() == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL || image.get_layout() == VK_IMAGE_LAYOUT_GENERAL);
+
+	readback.levels.resize(readback.create_info.levels);
+
+	size_t offset = 0;
+
+	for (unsigned i = 0; i < readback.create_info.levels; i++)
+	{
+		readback.levels[i].width = max(readback.create_info.width >> i, 1u);
+		readback.levels[i].height = max(readback.create_info.height >> i, 1u);
+		readback.levels[i].depth = max(readback.create_info.depth >> i, 1u);
+		readback.levels[i].layer_offsets.resize(readback.create_info.layers);
+		size_t layer_size = format_get_layer_size(readback.create_info.format, readback.levels[i].width, readback.levels[i].height, readback.levels[i].depth);
+
+		for (unsigned l = 0; l < readback.create_info.layers; l++)
+		{
+			readback.levels[i].layer_offsets[l] = offset;
+			offset += layer_size;
+			offset = (offset + 63) & ~63;
+		}
+	}
+
+	BufferCreateInfo info = {};
+	info.size = offset;
+	info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+	info.domain = BufferDomain::CachedHost;
+	readback.buffer = device.create_buffer(info, nullptr);
+
+	auto cmd = device.request_command_buffer();
+
+	for (unsigned i = 0; i < readback.create_info.levels; i++)
+	{
+		for (unsigned l = 0; l < readback.create_info.layers; l++)
+		{
+			cmd->copy_image_to_buffer(*readback.buffer, image, readback.levels[i].layer_offsets[l],
+			                          {}, { readback.levels[i].width, readback.levels[i].height, readback.levels[i].depth },
+			                          0, 0, { format_to_aspect_mask(readback.create_info.format), i, l, 1 });
+		}
+	}
+
+	cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+	             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
+	device.submit(cmd, &readback.fence);
+	return readback;
+}
+
+// Expand as needed.
+static gli::format vk_format_to_gli(VkFormat format)
+{
+	switch (format)
+	{
+	case VK_FORMAT_B10G11R11_UFLOAT_PACK32:
+		return gli::FORMAT_RG11B10_UFLOAT_PACK32;
+	case VK_FORMAT_R16G16B16A16_SFLOAT:
+		return gli::FORMAT_RGBA16_SFLOAT_PACK16;
+	case VK_FORMAT_R16G16B16_SFLOAT:
+		return gli::FORMAT_RGB16_SFLOAT_PACK16;
+	case VK_FORMAT_R16G16_SFLOAT:
+		return gli::FORMAT_RG16_SFLOAT_PACK16;
+	case VK_FORMAT_R16_SFLOAT:
+		return gli::FORMAT_R16_SFLOAT_PACK16;
+	case VK_FORMAT_R32G32B32A32_SFLOAT:
+		return gli::FORMAT_RGBA32_SFLOAT_PACK32;
+	case VK_FORMAT_R32G32B32_SFLOAT:
+		return gli::FORMAT_RGB32_SFLOAT_PACK32;
+	case VK_FORMAT_R32G32_SFLOAT:
+		return gli::FORMAT_RG32_SFLOAT_PACK32;
+	case VK_FORMAT_R32_SFLOAT:
+		return gli::FORMAT_R32_SFLOAT_PACK32;
+	default:
+		return gli::FORMAT_UNDEFINED;
+	}
+}
+
+bool save_image_buffer_to_ktx(Vulkan::Device &device, ImageReadback &readback, const char *path)
+{
+	auto format = vk_format_to_gli(readback.create_info.format);
+	if (format == gli::FORMAT_UNDEFINED)
+	{
+		LOGE("Unsupported format!\n");
+		return false;
+	}
+
+	device.wait_for_fence(readback.fence);
+
+	void *ptr = device.map_host_buffer(*readback.buffer, MEMORY_ACCESS_READ);
+	device.unmap_host_buffer(*readback.buffer);
+
+	unsigned layers = readback.create_info.layers;
+	unsigned faces = 1;
+	bool cube = false;
+
+	if (readback.create_info.flags & VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT)
+	{
+		assert((layers % 6) == 0);
+		layers /= 6;
+		faces = 6;
+		cube = true;
+	}
+
+	gli::target target;
+	switch (readback.create_info.type)
+	{
+	case VK_IMAGE_TYPE_1D:
+		target = layers > 1 ? gli::TARGET_1D_ARRAY : gli::TARGET_1D;
+		break;
+
+	case VK_IMAGE_TYPE_2D:
+		if (cube)
+			target = layers > 1 ? gli::TARGET_CUBE_ARRAY : gli::TARGET_CUBE;
+		else
+			target = layers > 1 ? gli::TARGET_2D_ARRAY : gli::TARGET_2D;
+		break;
+
+	case VK_IMAGE_TYPE_3D:
+		target = gli::TARGET_3D;
+		break;
+
+	default:
+		return false;
+	}
+
+	gli::texture tex(target, format,
+	                 { readback.create_info.width, readback.create_info.height, readback.create_info.depth },
+	                 layers, faces, readback.create_info.levels);
+
+	for (unsigned layer = 0; layer < layers; layer++)
+	{
+		for (unsigned face = 0; face < faces; face++)
+		{
+			for (unsigned level = 0; level < readback.create_info.levels; level++)
+			{
+				size_t layer_size = format_get_layer_size(readback.create_info.format,
+				                                          readback.levels[level].width,
+				                                          readback.levels[level].height,
+				                                          readback.levels[level].depth);
+
+				void *dst = tex.data(layer, face, level);
+				const uint8_t *src = static_cast<const uint8_t *>(ptr) + readback.levels[level].layer_offsets[face + layer * faces];
+				memcpy(dst, src, layer_size);
+			}
+		}
+	}
+
+	if (!gli::save(tex, path))
+	{
+		LOGE("Failed to save texture to %s\n", path);
+		return false;
+	}
+
+	return true;
 }
 }

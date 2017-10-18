@@ -89,10 +89,10 @@ static inline VkImageAspectFlags format_to_aspect_mask(VkFormat format)
 static inline void format_block_dim(VkFormat format, uint32_t &width, uint32_t &height)
 {
 #define fmt(x, w, h)     \
-	case VK_FORMAT_##x: \
-		width = w; \
-		height = h; \
-		break
+    case VK_FORMAT_##x: \
+        width = w; \
+        height = h; \
+        break
 
 	switch (format)
 	{
@@ -173,8 +173,8 @@ static inline void format_num_blocks(VkFormat format, uint32_t &width, uint32_t 
 static inline uint32_t format_block_size(VkFormat format)
 {
 #define fmt(x, bpp)     \
-	case VK_FORMAT_##x: \
-		return bpp
+    case VK_FORMAT_##x: \
+        return bpp
 	switch (format)
 	{
 	fmt(R4G4_UNORM_PACK8, 1);
@@ -301,7 +301,7 @@ static inline uint32_t format_block_size(VkFormat format)
 	fmt(D24_UNORM_S8_UINT, 4);
 	fmt(D32_SFLOAT_S8_UINT, 5); // Doesn't make sense.
 
-	// ETC2
+		// ETC2
 	fmt(ETC2_R8G8B8A8_UNORM_BLOCK, 16);
 	fmt(ETC2_R8G8B8A8_SRGB_BLOCK, 16);
 	fmt(ETC2_R8G8B8A1_UNORM_BLOCK, 8);
@@ -313,7 +313,7 @@ static inline uint32_t format_block_size(VkFormat format)
 	fmt(EAC_R11G11_UNORM_BLOCK, 16);
 	fmt(EAC_R11G11_SNORM_BLOCK, 16);
 
-	// BC
+		// BC
 	fmt(BC1_RGB_UNORM_BLOCK, 8);
 	fmt(BC1_RGB_SRGB_BLOCK, 8);
 	fmt(BC1_RGBA_UNORM_BLOCK, 8);
@@ -323,7 +323,7 @@ static inline uint32_t format_block_size(VkFormat format)
 	fmt(BC3_UNORM_BLOCK, 16);
 	fmt(BC3_SRGB_BLOCK, 16);
 
-	// ASTC
+		// ASTC
 	fmt(ASTC_4x4_SRGB_BLOCK, 16);
 	fmt(ASTC_5x4_SRGB_BLOCK, 16);
 	fmt(ASTC_5x5_SRGB_BLOCK, 16);
@@ -358,5 +358,16 @@ static inline uint32_t format_block_size(VkFormat format)
 		return 0;
 	}
 #undef fmt
+}
+
+static inline VkDeviceSize format_get_layer_size(VkFormat format, unsigned width, unsigned height, unsigned depth)
+{
+	uint32_t blocks_x = width;
+	uint32_t blocks_y = height;
+	format_num_blocks(format, blocks_x, blocks_y);
+	format_align_dim(format, width, height);
+
+	VkDeviceSize size = format_block_size(format) * depth * blocks_x * blocks_y;
+	return size;
 }
 }

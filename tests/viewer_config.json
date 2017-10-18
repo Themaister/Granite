@@ -1,0 +1,17 @@
+{
+	"renderer": "forward",
+	"msaa": 1,
+	"directionalLightShadows": true,
+	"directionalLightShadowsCascaded": true,
+	"clusteredLights": true,
+	"clusteredLightsShadows": true,
+	"hdrBloom": false,
+	"shadowMapResolutionMain": 2048,
+	"shadowMapResolutionNear": 1024,
+	"cameraIndex": -1,
+	"renderTargetFp16": false,
+	"timestamps": false,
+	"rescaleScene": false,
+	"directionalLightCascadeCutoff": 10.0,
+	"directionalLightShadowsForceUpdate": false
+}

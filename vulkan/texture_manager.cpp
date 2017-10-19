@@ -142,6 +142,8 @@ static VkFormat gli_format_to_vk(gli::format format)
 	fmt(R8_UNORM_PACK8, R8_UNORM);
 	fmt(RG8_UNORM_PACK8, R8G8_UNORM);
 
+	fmt(RG11B10_UFLOAT_PACK32, B10G11R11_UFLOAT_PACK32);
+
 	default:
 		return VK_FORMAT_UNDEFINED;
 	}

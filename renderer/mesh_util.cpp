@@ -607,11 +607,20 @@ void Skybox::update_irradiance()
 	if (device && !irradiance_path.empty() && !irradiance_texture)
 	{
 		auto &texture_manager = device->get_texture_manager();
-		auto cube_path = bg_path + ".cube";
-		irradiance_texture = texture_manager.register_deferred_texture(irradiance_path);
-		texture_manager.register_texture_update_notification(is_latlon ? cube_path : bg_path, [this](Vulkan::Texture &tex) {
-			irradiance_texture->replace_image(convert_cube_to_ibl_diffuse(*device, tex.get_image()->get_view()));
-		});
+
+		if (generated_irradiance)
+		{
+			auto cube_path = bg_path + ".cube";
+			irradiance_texture = texture_manager.register_deferred_texture(irradiance_path);
+			texture_manager.register_texture_update_notification(is_latlon ? cube_path : bg_path,
+			                                                     [this](Vulkan::Texture &tex) {
+				                                                     irradiance_texture->replace_image(
+						                                                     convert_cube_to_ibl_diffuse(*device,
+						                                                                                 tex.get_image()->get_view()));
+			                                                     });
+		}
+		else
+			irradiance_texture = texture_manager.request_texture(irradiance_path);
 	}
 }
 
@@ -620,23 +629,34 @@ void Skybox::update_reflection()
 	if (device && !reflection_path.empty() && !reflection_texture)
 	{
 		auto &texture_manager = device->get_texture_manager();
-		auto cube_path = bg_path + ".cube";
-		reflection_texture = texture_manager.register_deferred_texture(reflection_path);
-		texture_manager.register_texture_update_notification(is_latlon ? cube_path : bg_path, [this](Vulkan::Texture &tex) {
-			reflection_texture->replace_image(convert_cube_to_ibl_specular(*device, tex.get_image()->get_view()));
-		});
+
+		if (generated_reflection)
+		{
+			auto cube_path = bg_path + ".cube";
+			reflection_texture = texture_manager.register_deferred_texture(reflection_path);
+			texture_manager.register_texture_update_notification(is_latlon ? cube_path : bg_path,
+			                                                     [this](Vulkan::Texture &tex) {
+				                                                     reflection_texture->replace_image(
+						                                                     convert_cube_to_ibl_specular(*device,
+						                                                                                  tex.get_image()->get_view()));
+			                                                     });
+		}
+		else
+			reflection_texture = texture_manager.request_texture(reflection_path);
 	}
 }
 
-void Skybox::enable_irradiance(const std::string &path)
+void Skybox::enable_irradiance(const std::string &path, bool generated)
 {
 	irradiance_path = path;
+	generated_irradiance = generated;
 	update_irradiance();
 }
 
-void Skybox::enable_reflection(const std::string &path)
+void Skybox::enable_reflection(const std::string &path, bool generated)
 {
 	reflection_path = path;
+	generated_reflection = generated;
 	update_reflection();
 }
 

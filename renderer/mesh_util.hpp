@@ -105,8 +105,8 @@ public:
 		this->color = color;
 	}
 
-	void enable_irradiance(const std::string &path);
-	void enable_reflection(const std::string &path);
+	void enable_irradiance(const std::string &path, bool generated);
+	void enable_reflection(const std::string &path, bool generated);
 
 private:
 	Vulkan::Device *device = nullptr;
@@ -122,6 +122,8 @@ private:
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
 
 	bool is_latlon = true;
+	bool generated_irradiance = false;
+	bool generated_reflection = false;
 
 	void update_irradiance();
 	void update_reflection();

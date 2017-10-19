@@ -500,14 +500,15 @@ void SceneLoader::parse_scene_format(const std::string &path, const std::string 
 
 		if (bg.HasMember("skybox"))
 		{
-			auto texture_path = Path::relpath(path, bg["skybox"]["path"].GetString());
+			auto &box = bg["skybox"];
+			auto texture_path = Path::relpath(path, box["path"].GetString());
 
 			AbstractRenderableHandle skybox;
 			bool use_ibl = false;
 
-			if (bg["skybox"].HasMember("projection"))
+			if (box.HasMember("projection"))
 			{
-				auto &proj = bg["skybox"]["projection"];
+				auto &proj = box["projection"];
 				if (strcmp(proj.GetString(), "latlon") == 0)
 				{
 					skybox = Util::make_abstract_handle<AbstractRenderable, Skybox>(texture_path, true);
@@ -521,7 +522,7 @@ void SceneLoader::parse_scene_format(const std::string &path, const std::string 
 				else if (strcmp(proj.GetString(), "cylinder") == 0)
 				{
 					skybox = Util::make_abstract_handle<AbstractRenderable, SkyCylinder>(texture_path);
-					static_cast<SkyCylinder *>(skybox.get())->set_xz_scale(bg["skybox"]["cylinderScale"].GetFloat());
+					static_cast<SkyCylinder *>(skybox.get())->set_xz_scale(box["cylinderScale"].GetFloat());
 				}
 				else
 					throw logic_error("Unsupported skybox projection.");
@@ -529,13 +530,21 @@ void SceneLoader::parse_scene_format(const std::string &path, const std::string 
 			else
 				throw logic_error("Skybox projection must be specified.");
 
+			string reflection;
+			string irradiance;
+
+			if (box.HasMember("reflection"))
+				reflection = Path::relpath(path, box["reflection"].GetString());
+			if (box.HasMember("irradiance"))
+				irradiance = Path::relpath(path, box["irradiance"].GetString());
+
 			entity = scene->create_renderable(skybox, nullptr);
-			if (use_ibl)
+			if (use_ibl || (!reflection.empty() && !irradiance.empty()))
 			{
-				auto irradiance_path = texture_path + ".irradiance";
-				auto reflection_path = texture_path + ".reflection";
-				static_cast<Skybox *>(skybox.get())->enable_irradiance(irradiance_path);
-				static_cast<Skybox *>(skybox.get())->enable_reflection(reflection_path);
+				auto irradiance_path = irradiance.empty() ? (texture_path + ".irradiance") : irradiance;
+				auto reflection_path = reflection.empty() ? (texture_path + ".reflection") : reflection;
+				static_cast<Skybox *>(skybox.get())->enable_irradiance(irradiance_path, irradiance.empty());
+				static_cast<Skybox *>(skybox.get())->enable_reflection(reflection_path, reflection.empty());
 				auto *ibl = entity->allocate_component<IBLComponent>();
 				ibl->irradiance_path = irradiance_path;
 				ibl->reflection_path = reflection_path;

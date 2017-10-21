@@ -20,8 +20,5 @@ add_granite_library(renderer
         lights/lights.cpp lights/lights.hpp
         lights/clusterer.cpp lights/clusterer.hpp
         scene_loader.cpp scene_loader.hpp)
-target_link_libraries(renderer vulkan-backend math importers application-events gli)
+target_link_libraries(renderer vulkan-backend math importers application-events gli rapidjson)
 target_include_directories(renderer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-
-target_compile_definitions(renderer PRIVATE RAPIDJSON_HAS_STDSTRING=1)
-target_include_directories(renderer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/rapidjson/include)

@@ -22,7 +22,7 @@
 
 #include "scene_loader.hpp"
 #include "gltf.hpp"
-#include "importers.hpp"
+#include "scene_formats.hpp"
 #define RAPIDJSON_ASSERT(x) do { if (!(x)) throw "JSON error"; } while(0)
 #include "rapidjson/document.h"
 #include "mesh_util.hpp"
@@ -158,7 +158,7 @@ Scene::NodeHandle SceneLoader::build_tree_for_subscene(const SubsceneData &subsc
 	return root;
 }
 
-void SceneLoader::load_animation(const std::string &path, Importer::Animation &animation)
+void SceneLoader::load_animation(const std::string &path, SceneFormats::Animation &animation)
 {
 	string str;
 	if (!Filesystem::get().read_file_to_string(path, str))
@@ -178,7 +178,7 @@ void SceneLoader::load_animation(const std::string &path, Importer::Animation &a
 	for (auto itr = timestamps.Begin(); itr != timestamps.End(); ++itr)
 		timestamp_values.push_back(itr->GetFloat());
 
-	Importer::AnimationChannel channel;
+	SceneFormats::AnimationChannel channel;
 
 	if (doc.HasMember("rotation"))
 	{
@@ -194,7 +194,7 @@ void SceneLoader::load_animation(const std::string &path, Importer::Animation &a
 			slerp.values.push_back(normalize(quat(w, x, y, z)));
 		}
 
-		channel.type = Importer::AnimationChannel::Type::Rotation;
+		channel.type = SceneFormats::AnimationChannel::Type::Rotation;
 		channel.spherical = move(slerp);
 		channel.timestamps = timestamp_values;
 		animation.channels.push_back(move(channel));
@@ -213,7 +213,7 @@ void SceneLoader::load_animation(const std::string &path, Importer::Animation &a
 			linear.values.push_back(vec3(x, y, z));
 		}
 
-		channel.type = Importer::AnimationChannel::Type::Translation;
+		channel.type = SceneFormats::AnimationChannel::Type::Translation;
 		channel.linear = move(linear);
 		channel.timestamps = timestamp_values;
 		animation.channels.push_back(move(channel));
@@ -232,7 +232,7 @@ void SceneLoader::load_animation(const std::string &path, Importer::Animation &a
 			linear.values.push_back(vec3(x, y, z));
 		}
 
-		channel.type = Importer::AnimationChannel::Type::Scale;
+		channel.type = SceneFormats::AnimationChannel::Type::Scale;
 		channel.linear = move(linear);
 		channel.timestamps = timestamp_values;
 		animation.channels.push_back(move(channel));
@@ -248,7 +248,7 @@ void SceneLoader::parse_gltf(const std::string &path)
 
 	for (auto &mesh : scene.parser->get_meshes())
 	{
-		Importer::MaterialInfo default_material;
+		SceneFormats::MaterialInfo default_material;
 		default_material.uniform_base_color = vec4(0.3f, 1.0f, 0.3f, 1.0f);
 		default_material.uniform_metallic = 0.0f;
 		default_material.uniform_roughness = 1.0f;
@@ -296,7 +296,7 @@ void SceneLoader::parse_scene_format(const std::string &path, const std::string 
 
 		for (auto &mesh : parser.get_meshes())
 		{
-			Importer::MaterialInfo default_material;
+			SceneFormats::MaterialInfo default_material;
 			default_material.uniform_base_color = vec4(0.3f, 1.0f, 0.3f, 1.0f);
 			default_material.uniform_metallic = 0.0f;
 			default_material.uniform_roughness = 1.0f;
@@ -404,7 +404,7 @@ void SceneLoader::parse_scene_format(const std::string &path, const std::string 
 		for (auto itr = animations.Begin(); itr != animations.End(); ++itr)
 		{
 			auto &animation = *itr;
-			Importer::Animation track;
+			SceneFormats::Animation track;
 
 			if (animation.HasMember("axisAngle"))
 			{
@@ -416,8 +416,8 @@ void SceneLoader::parse_scene_format(const std::string &path, const std::string 
 				float angular_freq = rotation[3].GetFloat();
 				float time_for_rotation = 2.0f * pi<float>() / angular_freq;
 
-				Importer::AnimationChannel channel;
-				channel.type = Importer::AnimationChannel::Type::Rotation;
+				SceneFormats::AnimationChannel channel;
+				channel.type = SceneFormats::AnimationChannel::Type::Rotation;
 				channel.spherical.values.push_back(angleAxis(0.00f * 2.0f * pi<float>(), direction));
 				channel.spherical.values.push_back(angleAxis(0.25f * 2.0f * pi<float>(), direction));
 				channel.spherical.values.push_back(angleAxis(0.50f * 2.0f * pi<float>(), direction));
@@ -460,7 +460,7 @@ void SceneLoader::parse_scene_format(const std::string &path, const std::string 
 				else
 				{
 					for (auto &channel : track.channels)
-						if (channel.type == Importer::AnimationChannel::Type::Translation)
+						if (channel.type == SceneFormats::AnimationChannel::Type::Translation)
 							throw logic_error("Cannot use per-instance translation.");
 
 					for (auto &child : root->get_children())

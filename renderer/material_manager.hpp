@@ -26,7 +26,7 @@
 #include "volatile_source.hpp"
 #include "device.hpp"
 #include "event.hpp"
-#include "importers.hpp"
+#include "scene_formats.hpp"
 #include "vulkan_events.hpp"
 
 namespace Granite
@@ -35,7 +35,7 @@ class MaterialFile : public Material, public Util::VolatileSource<MaterialFile>,
 {
 public:
 	MaterialFile(const std::string &path);
-	MaterialFile(const Importer::MaterialInfo &info);
+	MaterialFile(const SceneFormats::MaterialInfo &info);
 	void update(const void *data, size_t size);
 
 private:

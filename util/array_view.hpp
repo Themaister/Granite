@@ -22,36 +22,77 @@
 
 #pragma once
 
-#include "scene.hpp"
-#include "scene_formats.hpp"
 #include <vector>
+#include <type_traits>
 
-namespace Granite
+namespace Util
 {
-class AnimationSystem
+template<typename T>
+class ArrayView
 {
 public:
-	void animate(double t);
+	using ConstT = const typename std::remove_const<T>::type;
 
-	void start_animation(Scene::NodeHandle *node_list, const std::string &name, double start_time, bool repeat);
-	void start_animation(Scene::Node &node, const std::string &name, double start_time, bool repeat);
-	void register_animation(const std::string &name, const SceneFormats::Animation &animation);
+	ArrayView(T *t, size_t size)
+		: ptr(t), array_size(size)
+	{
+	}
+
+	template<typename U>
+	ArrayView(U &u)
+		: ptr(u.data()), array_size(u.size())
+	{
+	}
+
+	ArrayView() = default;
+
+	T *begin()
+	{
+		return ptr;
+	}
+
+	T *end()
+	{
+		return ptr + array_size;
+	}
+
+	ConstT *begin() const
+	{
+		return ptr;
+	}
+
+	ConstT *end() const
+	{
+		return ptr + array_size;
+	}
+
+	T &operator[](size_t n)
+	{
+		return ptr[n];
+	}
+
+	ConstT &operator[](size_t n) const
+	{
+		return ptr[n];
+	}
+
+	size_t size() const
+	{
+		return array_size;
+	}
+
+	T *data()
+	{
+		return ptr;
+	}
+
+	ConstT *data() const
+	{
+		return ptr;
+	}
 
 private:
-	std::unordered_map<std::string, SceneFormats::Animation> animation_map;
-
-	struct AnimationState
-	{
-		AnimationState(std::vector<std::pair<Transform *, Scene::Node *>> channel_targets, const SceneFormats::Animation &anim, double start_time, bool repeating)
-			: channel_targets(std::move(channel_targets)), animation(anim), start_time(start_time), repeating(repeating)
-		{
-		}
-		std::vector<std::pair<Transform *, Scene::Node *>> channel_targets;
-		const SceneFormats::Animation &animation;
-		double start_time = 0.0;
-		bool repeating = false;
-	};
-
-	std::vector<std::unique_ptr<AnimationState>> animations;
+	T *ptr = nullptr;
+	size_t array_size = 0;
 };
 }

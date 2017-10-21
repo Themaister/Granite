@@ -24,7 +24,7 @@
 
 #include "mesh.hpp"
 #include "vulkan_events.hpp"
-#include "importers.hpp"
+#include "scene_formats.hpp"
 #include "render_components.hpp"
 #include "render_context.hpp"
 
@@ -34,11 +34,11 @@ class FrameTickEvent;
 class ImportedMesh : public StaticMesh, public EventHandler
 {
 public:
-	ImportedMesh(const Importer::Mesh &mesh, const Importer::MaterialInfo &info);
+	ImportedMesh(const SceneFormats::Mesh &mesh, const SceneFormats::MaterialInfo &info);
 
 private:
-	Importer::Mesh mesh;
-	Importer::MaterialInfo info;
+	SceneFormats::Mesh mesh;
+	SceneFormats::MaterialInfo info;
 
 	void on_device_created(const Vulkan::DeviceCreatedEvent &event);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
@@ -47,11 +47,11 @@ private:
 class ImportedSkinnedMesh : public SkinnedMesh, public EventHandler
 {
 public:
-	ImportedSkinnedMesh(const Importer::Mesh &mesh, const Importer::MaterialInfo &info);
+	ImportedSkinnedMesh(const SceneFormats::Mesh &mesh, const SceneFormats::MaterialInfo &info);
 
 private:
-	Importer::Mesh mesh;
-	Importer::MaterialInfo info;
+	SceneFormats::Mesh mesh;
+	SceneFormats::MaterialInfo info;
 
 	void on_device_created(const Vulkan::DeviceCreatedEvent &event);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);

@@ -26,7 +26,7 @@
 #include "render_components.hpp"
 #include "frustum.hpp"
 #include <tuple>
-#include "importers.hpp"
+#include "scene_formats.hpp"
 
 namespace Granite
 {
@@ -149,7 +149,7 @@ public:
 	};
 	using NodeHandle = Util::IntrusivePtr<Node>;
 	NodeHandle create_node();
-	NodeHandle create_skinned_node(const Importer::Skin &skin);
+	NodeHandle create_skinned_node(const SceneFormats::Skin &skin);
 
 	void set_root_node(NodeHandle node)
 	{
@@ -162,7 +162,7 @@ public:
 	}
 
 	EntityHandle create_renderable(AbstractRenderableHandle renderable, Node *node);
-	EntityHandle create_light(const Importer::LightInfo &light, Node *node);
+	EntityHandle create_light(const SceneFormats::LightInfo &light, Node *node);
 	EntityHandle create_entity();
 
 private:

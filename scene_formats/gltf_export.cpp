@@ -20,38 +20,17 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#pragma once
+#include "gltf_export.hpp"
 
-#include "scene.hpp"
-#include "scene_formats.hpp"
-#include <vector>
+using namespace std;
 
 namespace Granite
 {
-class AnimationSystem
+namespace SceneFormats
 {
-public:
-	void animate(double t);
-
-	void start_animation(Scene::NodeHandle *node_list, const std::string &name, double start_time, bool repeat);
-	void start_animation(Scene::Node &node, const std::string &name, double start_time, bool repeat);
-	void register_animation(const std::string &name, const SceneFormats::Animation &animation);
-
-private:
-	std::unordered_map<std::string, SceneFormats::Animation> animation_map;
-
-	struct AnimationState
-	{
-		AnimationState(std::vector<std::pair<Transform *, Scene::Node *>> channel_targets, const SceneFormats::Animation &anim, double start_time, bool repeating)
-			: channel_targets(std::move(channel_targets)), animation(anim), start_time(start_time), repeating(repeating)
-		{
-		}
-		std::vector<std::pair<Transform *, Scene::Node *>> channel_targets;
-		const SceneFormats::Animation &animation;
-		double start_time = 0.0;
-		bool repeating = false;
-	};
-
-	std::vector<std::unique_ptr<AnimationState>> animations;
-};
+bool export_scene_to_gltf(const SceneInformation &, const string &)
+{
+	return false;
+}
+}
 }

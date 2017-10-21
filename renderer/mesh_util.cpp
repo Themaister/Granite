@@ -34,7 +34,7 @@
 
 using namespace Vulkan;
 using namespace Util;
-using namespace Granite::Importer;
+using namespace Granite::SceneFormats;
 
 namespace Granite
 {

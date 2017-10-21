@@ -84,7 +84,7 @@ add_subdirectory(vulkan)
 add_subdirectory(filesystem)
 add_subdirectory(renderer)
 add_subdirectory(ui)
-add_subdirectory(importers)
+add_subdirectory(scene_formats)
 add_subdirectory(application)
 
 function(add_granite_application TARGET_NAME)

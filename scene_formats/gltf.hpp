@@ -25,13 +25,13 @@
 #include <string>
 #include <vector>
 #include "math.hpp"
-#include "importers.hpp"
+#include "scene_formats.hpp"
 
 namespace GLTF
 {
 using namespace glm;
 using namespace Granite;
-using namespace Granite::Importer;
+using namespace Granite::SceneFormats;
 
 enum class ScalarType
 {

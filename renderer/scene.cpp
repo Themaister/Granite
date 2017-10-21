@@ -313,14 +313,14 @@ Scene::NodeHandle Scene::create_node()
 	return Util::make_handle<Node>();
 }
 
-static void add_bone(Scene::NodeHandle *bones, uint32_t parent, const Importer::Skin::Bone &bone)
+static void add_bone(Scene::NodeHandle *bones, uint32_t parent, const SceneFormats::Skin::Bone &bone)
 {
 	bones[parent]->get_skeletons().push_back(bones[bone.index]);
 	for (auto &child : bone.children)
 		add_bone(bones, bone.index, child);
 }
 
-Scene::NodeHandle Scene::create_skinned_node(const Importer::Skin &skin)
+Scene::NodeHandle Scene::create_skinned_node(const SceneFormats::Skin &skin)
 {
 	auto node = create_node();
 
@@ -398,14 +398,14 @@ EntityHandle Scene::create_entity()
 	return entity;
 }
 
-EntityHandle Scene::create_light(const Importer::LightInfo &light, Node *node)
+EntityHandle Scene::create_light(const SceneFormats::LightInfo &light, Node *node)
 {
 	EntityHandle entity = pool.create_entity();
 	nodes.push_back(entity);
 
 	switch (light.type)
 	{
-	case Importer::LightInfo::Type::Directional:
+	case SceneFormats::LightInfo::Type::Directional:
 	{
 		auto *dir = entity->allocate_component<DirectionalLightComponent>();
 		auto *transform = entity->allocate_component<CachedTransformComponent>();
@@ -414,18 +414,18 @@ EntityHandle Scene::create_light(const Importer::LightInfo &light, Node *node)
 		break;
 	}
 
-	case Importer::LightInfo::Type::Ambient:
+	case SceneFormats::LightInfo::Type::Ambient:
 	{
 		auto *ambient = entity->allocate_component<AmbientLightComponent>();
 		ambient->color = light.color;
 		break;
 	}
 
-	case Importer::LightInfo::Type::Point:
-	case Importer::LightInfo::Type::Spot:
+	case SceneFormats::LightInfo::Type::Point:
+	case SceneFormats::LightInfo::Type::Spot:
 	{
 		AbstractRenderableHandle renderable;
-		if (light.type == Importer::LightInfo::Type::Point)
+		if (light.type == SceneFormats::LightInfo::Type::Point)
 			renderable = Util::make_abstract_handle<AbstractRenderable, PointLight>();
 		else
 		{

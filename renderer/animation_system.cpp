@@ -44,20 +44,20 @@ void AnimationSystem::animate(double t)
 
 			switch (channel.type)
 			{
-			case Importer::AnimationChannel::Type::Translation:
+			case SceneFormats::AnimationChannel::Type::Translation:
 				transform->translation = channel.linear.sample(index, phase);
 				break;
-			case Importer::AnimationChannel::Type::Scale:
+			case SceneFormats::AnimationChannel::Type::Scale:
 				transform->scale = channel.linear.sample(index, phase);
 				break;
-			case Importer::AnimationChannel::Type::Rotation:
+			case SceneFormats::AnimationChannel::Type::Rotation:
 				transform->rotation = channel.spherical.sample(index, phase);
 				break;
-			case Importer::AnimationChannel::Type::CubicTranslation:
+			case SceneFormats::AnimationChannel::Type::CubicTranslation:
 				transform->translation = channel.cubic.sample(index, phase,
 				                                              channel.timestamps[index + 1] - channel.timestamps[index]);
 				break;
-			case Importer::AnimationChannel::Type::CubicScale:
+			case SceneFormats::AnimationChannel::Type::CubicScale:
 				transform->scale = channel.cubic.sample(index, phase,
 				                                        channel.timestamps[index + 1] - channel.timestamps[index]);
 				break;
@@ -69,7 +69,7 @@ void AnimationSystem::animate(double t)
 	}
 }
 
-void AnimationSystem::register_animation(const std::string &name, const Importer::Animation &animation)
+void AnimationSystem::register_animation(const std::string &name, const SceneFormats::Animation &animation)
 {
 	animation_map[name] = animation;
 }

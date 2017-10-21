@@ -27,10 +27,11 @@
 #include "mesh.hpp"
 #include "enum_cast.hpp"
 #include "transforms.hpp"
+#include "array_view.hpp"
 
 namespace Granite
 {
-namespace Importer
+namespace SceneFormats
 {
 struct NodeTransform
 {
@@ -126,7 +127,6 @@ struct Node
 	std::vector<uint32_t> children;
 	NodeTransform transform;
 
-	std::vector<uint32_t> skeletons;
 	Util::Hash skin = 0;
 	bool has_skin = false;
 	bool joint = false;
@@ -221,6 +221,17 @@ struct MaterialInfo
 	DrawPipeline pipeline = DrawPipeline::Opaque;
 	Vulkan::StockSampler sampler = Vulkan::StockSampler::TrilinearWrap;
 	bool two_sided = false;
+};
+
+struct SceneInformation
+{
+	Util::ArrayView<const MaterialInfo> materials;
+	Util::ArrayView<const Mesh> meshes;
+	Util::ArrayView<const LightInfo> lights;
+	Util::ArrayView<const CameraInfo> cameras;
+	Util::ArrayView<const Node> nodes;
+	Util::ArrayView<const Skin> skins;
+	Util::ArrayView<const Animation> animations;
 };
 }
 }

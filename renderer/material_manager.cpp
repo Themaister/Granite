@@ -26,13 +26,13 @@
 
 #define RAPIDJSON_ASSERT(x) do { if (!(x)) throw "JSON error"; } while(0)
 #include "rapidjson/document.h"
-#include "../importers/importers.hpp"
+#include "scene_formats.hpp"
 
 using namespace std;
 using namespace Vulkan;
 using namespace rapidjson;
 using namespace Util;
-using namespace Granite::Importer;
+using namespace Granite::SceneFormats;
 
 namespace Granite
 {

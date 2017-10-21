@@ -20,38 +20,48 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#pragma once
+#include "gltf.hpp"
+#include "gltf_export.hpp"
+#include "util.hpp"
+#include "cli_parser.hpp"
 
-#include "scene.hpp"
-#include "scene_formats.hpp"
-#include <vector>
+using namespace Granite;
+using namespace Util;
+using namespace std;
 
-namespace Granite
+int main(int argc, char *argv[])
 {
-class AnimationSystem
-{
-public:
-	void animate(double t);
-
-	void start_animation(Scene::NodeHandle *node_list, const std::string &name, double start_time, bool repeat);
-	void start_animation(Scene::Node &node, const std::string &name, double start_time, bool repeat);
-	void register_animation(const std::string &name, const SceneFormats::Animation &animation);
-
-private:
-	std::unordered_map<std::string, SceneFormats::Animation> animation_map;
-
-	struct AnimationState
+	struct Arguments
 	{
-		AnimationState(std::vector<std::pair<Transform *, Scene::Node *>> channel_targets, const SceneFormats::Animation &anim, double start_time, bool repeating)
-			: channel_targets(std::move(channel_targets)), animation(anim), start_time(start_time), repeating(repeating)
-		{
-		}
-		std::vector<std::pair<Transform *, Scene::Node *>> channel_targets;
-		const SceneFormats::Animation &animation;
-		double start_time = 0.0;
-		bool repeating = false;
-	};
+		string input;
+		string output;
+	} args;
 
-	std::vector<std::unique_ptr<AnimationState>> animations;
-};
+	CLICallbacks cbs;
+	cbs.add("--input", [&](CLIParser &parser) { args.input = string("file://") + parser.next_string(); });
+	cbs.add("--output", [&](CLIParser &parser) { args.output = string("file://") + parser.next_string(); });
+	CLIParser cli_parser(move(cbs), argc - 1, argv + 1);
+	if (!cli_parser.parse())
+		return 1;
+	else if (cli_parser.is_ended_state())
+		return 0;
+
+	GLTF::Parser parser(args.input);
+
+	SceneFormats::SceneInformation info;
+	info.animations = parser.get_animations();
+	info.cameras = parser.get_cameras();
+	info.lights = parser.get_lights();
+	info.materials = parser.get_materials();
+	info.meshes = parser.get_meshes();
+	info.nodes = parser.get_nodes();
+	info.skins = parser.get_skins();
+
+	if (!SceneFormats::export_scene_to_gltf(info, args.output))
+	{
+		LOGE("Failed to export scene to glTF.\n");
+		return 1;
+	}
+
+	return 0;
 }

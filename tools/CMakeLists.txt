@@ -15,3 +15,6 @@ endif()
 
 add_granite_offline_tool(png2ktx png2ktx.cpp)
 target_link_libraries(png2ktx gli)
+
+add_granite_offline_tool(gltf-repacker gltf_repacker.cpp)
+target_link_libraries(gltf-repacker scene-formats util rapidjson)

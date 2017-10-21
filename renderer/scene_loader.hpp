@@ -57,6 +57,6 @@ private:
 	void parse_gltf(const std::string &path);
 
 	Scene::NodeHandle build_tree_for_subscene(const SubsceneData &subscene);
-	void load_animation(const std::string &path, Importer::Animation &animation);
+	void load_animation(const std::string &path, SceneFormats::Animation &animation);
 };
 }

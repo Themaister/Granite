@@ -823,7 +823,7 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path)
 			Value acc(kObjectType);
 			acc.AddMember("bufferView", accessor.view, allocator);
 			acc.AddMember("componentType", accessor.component, allocator);
-			acc.AddMember("type", string(accessor.type), allocator);
+			acc.AddMember("type", StringRef(accessor.type), allocator);
 			acc.AddMember("count", accessor.count, allocator);
 			if (accessor.use_aabb)
 			{
@@ -884,6 +884,9 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path)
 			i.AddMember("uri", image.target_relpath, allocator);
 			i.AddMember("mimeType", image.target_mime, allocator);
 			images.PushBack(i, allocator);
+
+			auto target_path = Path::relpath(path, image.target_relpath);
+
 		}
 		doc.AddMember("images", images, allocator);
 	}
@@ -979,6 +982,68 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path)
 			materials.PushBack(m, allocator);
 		}
 		doc.AddMember("materials", materials, allocator);
+	}
+
+	// Meshes
+	{
+		Value meshes(kArrayType);
+		for (auto &mesh : state.mesh_group_cache)
+		{
+			Value m(kObjectType);
+			Value primitives(kArrayType);
+
+			for (auto &submesh : mesh)
+			{
+				Value prim(kObjectType);
+				Value attribs(kObjectType);
+
+				auto &m = state.mesh_cache[submesh];
+
+				for_each_bit(m.attribute_mask, [&](unsigned bit) {
+					auto attr = static_cast<MeshAttribute>(bit);
+					const char *semantic = nullptr;
+					switch (attr)
+					{
+					case MeshAttribute::Position:
+						semantic = "POSITION";
+						break;
+					case MeshAttribute::Normal:
+						semantic = "NORMAL";
+						break;
+					case MeshAttribute::BoneWeights:
+						semantic = "WEIGHTS_0";
+						break;
+					case MeshAttribute::BoneIndex:
+						semantic = "JOINTS_0";
+						break;
+					case MeshAttribute::VertexColor:
+						semantic = "COLOR_0";
+						break;
+					case MeshAttribute::Tangent:
+						semantic = "TANGENT";
+						break;
+					case MeshAttribute::UV:
+						semantic = "TEXCOORD_0";
+						break;
+					default:
+						return;
+					}
+					attribs.AddMember(StringRef(semantic), m.attribute_accessor[bit], allocator);
+				});
+
+				if (m.index_accessor >= 0)
+					prim.AddMember("indices", m.index_accessor, allocator);
+
+				if (m.material >= 0)
+					prim.AddMember("material", m.material, allocator);
+
+				prim.AddMember("attributes", attribs, allocator);
+				primitives.PushBack(prim, allocator);
+			}
+			m.AddMember("primitives", primitives, allocator);
+			meshes.PushBack(m, allocator);
+		}
+		doc.AddMember("meshes", meshes, allocator);
 	}
 
 	StringBuffer buffer;

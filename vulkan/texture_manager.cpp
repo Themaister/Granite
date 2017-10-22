@@ -23,8 +23,7 @@
 #include "texture_manager.hpp"
 #include "device.hpp"
 #include "stb_image.h"
-
-#include "gli/load.hpp"
+#include "texture_loading.hpp"
 
 using namespace std;
 
@@ -48,116 +47,17 @@ void Texture::set_path(const std::string &path)
 
 void Texture::update(const void *data, size_t size)
 {
-	static const uint8_t png_magic[] = {
-		0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a,
-	};
-
-	static const uint8_t jpg_magic[] = {
-		0xff, 0xd8,
-	};
-
-	static const uint8_t hdr_magic[] = {
-		0x23, 0x3f, 0x52, 0x41, 0x44, 0x49, 0x41, 0x4e, 0x43, 0x45, 0x0a,
-	};
-
-	if (size >= sizeof(png_magic) && memcmp(data, png_magic, sizeof(png_magic)) == 0)
-		update_stb(data, size);
-	else if (size >= 2 && memcmp(data, jpg_magic, sizeof(jpg_magic)) == 0)
-		update_stb(data, size);
-	else if (size >= sizeof(hdr_magic) && memcmp(data, hdr_magic, sizeof(hdr_magic)) == 0)
-		update_hdr(data, size);
-	else
-		update_gli(data, size);
-
+	update_gli(data, size);
 	device->get_texture_manager().notify_updated_texture(path, *this);
-}
-
-static VkFormat gli_format_to_vk(gli::format format)
-{
-#define fmt(g, vk) \
-	case gli::format::FORMAT_##g: \
-		return VK_FORMAT_##vk
-
-	switch (format)
-	{
-	fmt(RGB_ETC2_UNORM_BLOCK8, ETC2_R8G8B8_UNORM_BLOCK);
-	fmt(RGBA_ETC2_UNORM_BLOCK8, ETC2_R8G8B8A1_UNORM_BLOCK);
-	fmt(RGBA_ETC2_UNORM_BLOCK16, ETC2_R8G8B8A8_UNORM_BLOCK);
-	fmt(RGB_ETC2_SRGB_BLOCK8, ETC2_R8G8B8_SRGB_BLOCK);
-	fmt(RGBA_ETC2_SRGB_BLOCK8, ETC2_R8G8B8A1_SRGB_BLOCK);
-	fmt(RGBA_ETC2_SRGB_BLOCK16, ETC2_R8G8B8A8_SRGB_BLOCK);
-	fmt(R_EAC_SNORM_BLOCK8, EAC_R11_SNORM_BLOCK);
-	fmt(R_EAC_UNORM_BLOCK8, EAC_R11_UNORM_BLOCK);
-	fmt(RG_EAC_SNORM_BLOCK16, EAC_R11G11_SNORM_BLOCK);
-	fmt(RG_EAC_UNORM_BLOCK16, EAC_R11G11_UNORM_BLOCK);
-
-	fmt(RGB_DXT1_UNORM_BLOCK8, BC1_RGB_UNORM_BLOCK);
-	fmt(RGB_DXT1_SRGB_BLOCK8, BC1_RGB_SRGB_BLOCK);
-	fmt(RGBA_DXT1_UNORM_BLOCK8, BC1_RGBA_UNORM_BLOCK);
-	fmt(RGBA_DXT1_SRGB_BLOCK8, BC1_RGBA_SRGB_BLOCK);
-	fmt(RGBA_DXT3_UNORM_BLOCK16, BC2_UNORM_BLOCK);
-	fmt(RGBA_DXT3_SRGB_BLOCK16, BC2_SRGB_BLOCK);
-	fmt(RGBA_DXT5_UNORM_BLOCK16, BC3_UNORM_BLOCK);
-	fmt(RGBA_DXT5_SRGB_BLOCK16, BC3_SRGB_BLOCK);
-	fmt(RGB_BP_UFLOAT_BLOCK16, BC6H_UFLOAT_BLOCK);
-	fmt(RGB_BP_SFLOAT_BLOCK16, BC6H_SFLOAT_BLOCK);
-	fmt(RGBA_BP_SRGB_BLOCK16, BC7_SRGB_BLOCK);
-	fmt(RGBA_BP_UNORM_BLOCK16, BC7_UNORM_BLOCK);
-
-	// ASTC
-	fmt(RGBA_ASTC_4X4_SRGB_BLOCK16, ASTC_4x4_SRGB_BLOCK);
-	fmt(RGBA_ASTC_5X4_SRGB_BLOCK16, ASTC_5x4_SRGB_BLOCK);
-	fmt(RGBA_ASTC_5X5_SRGB_BLOCK16, ASTC_5x5_SRGB_BLOCK);
-	fmt(RGBA_ASTC_6X5_SRGB_BLOCK16, ASTC_6x5_SRGB_BLOCK);
-	fmt(RGBA_ASTC_6X6_SRGB_BLOCK16, ASTC_6x6_SRGB_BLOCK);
-	fmt(RGBA_ASTC_8X5_SRGB_BLOCK16, ASTC_8x5_SRGB_BLOCK);
-	fmt(RGBA_ASTC_8X6_SRGB_BLOCK16, ASTC_8x6_SRGB_BLOCK);
-	fmt(RGBA_ASTC_8X8_SRGB_BLOCK16, ASTC_8x8_SRGB_BLOCK);
-	fmt(RGBA_ASTC_10X5_SRGB_BLOCK16, ASTC_10x5_SRGB_BLOCK);
-	fmt(RGBA_ASTC_10X6_SRGB_BLOCK16, ASTC_10x6_SRGB_BLOCK);
-	fmt(RGBA_ASTC_10X8_SRGB_BLOCK16, ASTC_10x8_SRGB_BLOCK);
-	fmt(RGBA_ASTC_10X10_SRGB_BLOCK16, ASTC_10x10_SRGB_BLOCK);
-	fmt(RGBA_ASTC_12X10_SRGB_BLOCK16, ASTC_12x10_SRGB_BLOCK);
-	fmt(RGBA_ASTC_12X12_SRGB_BLOCK16, ASTC_12x12_SRGB_BLOCK);
-	fmt(RGBA_ASTC_4X4_UNORM_BLOCK16, ASTC_4x4_UNORM_BLOCK);
-	fmt(RGBA_ASTC_5X4_UNORM_BLOCK16, ASTC_5x4_UNORM_BLOCK);
-	fmt(RGBA_ASTC_5X5_UNORM_BLOCK16, ASTC_5x5_UNORM_BLOCK);
-	fmt(RGBA_ASTC_6X5_UNORM_BLOCK16, ASTC_6x5_UNORM_BLOCK);
-	fmt(RGBA_ASTC_6X6_UNORM_BLOCK16, ASTC_6x6_UNORM_BLOCK);
-	fmt(RGBA_ASTC_8X5_UNORM_BLOCK16, ASTC_8x5_UNORM_BLOCK);
-	fmt(RGBA_ASTC_8X6_UNORM_BLOCK16, ASTC_8x6_UNORM_BLOCK);
-	fmt(RGBA_ASTC_8X8_UNORM_BLOCK16, ASTC_8x8_UNORM_BLOCK);
-	fmt(RGBA_ASTC_10X5_UNORM_BLOCK16, ASTC_10x5_UNORM_BLOCK);
-	fmt(RGBA_ASTC_10X6_UNORM_BLOCK16, ASTC_10x6_UNORM_BLOCK);
-	fmt(RGBA_ASTC_10X8_UNORM_BLOCK16, ASTC_10x8_UNORM_BLOCK);
-	fmt(RGBA_ASTC_10X10_UNORM_BLOCK16, ASTC_10x10_UNORM_BLOCK);
-	fmt(RGBA_ASTC_12X10_UNORM_BLOCK16, ASTC_12x10_UNORM_BLOCK);
-	fmt(RGBA_ASTC_12X12_UNORM_BLOCK16, ASTC_12x12_UNORM_BLOCK);
-
-	fmt(RGBA8_UNORM_PACK8, R8G8B8A8_UNORM);
-	fmt(RGBA8_SRGB_PACK8, R8G8B8A8_SRGB);
-	fmt(RGBA32_SFLOAT_PACK32, R32G32B32A32_SFLOAT);
-	fmt(RG32_SFLOAT_PACK32, R32G32_SFLOAT);
-	fmt(R32_SFLOAT_PACK32, R32_SFLOAT);
-	fmt(RGBA16_SFLOAT_PACK16, R16G16B16A16_SFLOAT);
-	fmt(RG16_SFLOAT_PACK16, R16G16_SFLOAT);
-	fmt(R16_SFLOAT_PACK16, R16_SFLOAT);
-	fmt(RGB10A2_UNORM_PACK32, A2B10G10R10_UNORM_PACK32);
-	fmt(R8_UNORM_PACK8, R8_UNORM);
-	fmt(RG8_UNORM_PACK8, R8G8_UNORM);
-
-	fmt(RG11B10_UFLOAT_PACK32, B10G11R11_UFLOAT_PACK32);
-
-	default:
-		return VK_FORMAT_UNDEFINED;
-	}
-
-#undef fmt
 }
 
 void Texture::update_gli(const void *data, size_t size)
 {
-	gli::texture tex = gli::load(static_cast<const char *>(data), size);
+	gli::texture tex = Granite::load_texture_from_memory(data, size,
+	                                                     (format == VK_FORMAT_R8G8B8A8_SRGB ||
+	                                                      format == VK_FORMAT_B8G8R8A8_SRGB ||
+	                                                      format == VK_FORMAT_A8B8G8R8_SRGB_PACK32) ?
+	                                                     Granite::ColorSpace::sRGB : Granite::ColorSpace::Linear);
 	if (tex.empty())
 	{
 		LOGE("Texture is empty.");
@@ -174,7 +74,7 @@ void Texture::update_gli(const void *data, size_t size)
 	info.samples = VK_SAMPLE_COUNT_1_BIT;
 	info.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
 	info.initial_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	info.format = gli_format_to_vk(tex.format());
+	info.format = Granite::gli_format_to_vulkan(tex.format());
 
 	if (!device->format_is_supported(info.format, VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT))
 	{
@@ -251,48 +151,6 @@ void Texture::update_gli(const void *data, size_t size)
 
 	info.layers *= faces;
 	handle = device->create_image(info, initial.data());
-}
-
-void Texture::update_hdr(const void *data, size_t size)
-{
-	int width, height;
-	int components;
-	auto *buffer = stbi_loadf_from_memory(static_cast<const stbi_uc *>(data), size, &width, &height, &components, 3);
-
-	// RGB9E5 might be a better choice here, but needs complex conversion.
-	auto desc = ImageCreateInfo::immutable_2d_image(unsigned(width), unsigned(height),
-	                                                VK_FORMAT_R16G16B16A16_SFLOAT, true);
-
-	ImageInitialData initial = {};
-	vector<glm::uvec2> converted(width * height);
-	for (int i = 0; i < width * height; i++)
-	{
-		converted[i] = glm::uvec2(glm::packHalf2x16(glm::vec2(buffer[3 * i + 0], buffer[3 * i + 1])),
-		                          glm::packHalf2x16(glm::vec2(buffer[3 * i + 2], 1.0f)));
-	}
-	initial.data = converted.data();
-	handle = device->create_image(desc, &initial);
-	stbi_image_free(buffer);
-}
-
-void Texture::update_stb(const void *data, size_t size)
-{
-	int width, height;
-	int components;
-	auto *buffer = stbi_load_from_memory(static_cast<const stbi_uc *>(data), size, &width, &height, &components, 4);
-
-	if (!buffer)
-		throw runtime_error("stbi_load_from_memory failed.");
-
-	handle.reset();
-	auto desc = ImageCreateInfo::immutable_2d_image(unsigned(width), unsigned(height),
-	                                                format != VK_FORMAT_UNDEFINED ? format : VK_FORMAT_R8G8B8A8_SRGB,
-	                                                true);
-
-	ImageInitialData initial = {};
-	initial.data = buffer;
-	handle = device->create_image(desc, &initial);
-	stbi_image_free(buffer);
 }
 
 void Texture::load()

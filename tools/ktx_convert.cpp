@@ -21,6 +21,7 @@
  */
 
 #include <ispc_texcomp/ispc_texcomp.h>
+#include <texture_loading.hpp>
 #include "cli_parser.hpp"
 #include "gli/save.hpp"
 #include "gli/load.hpp"
@@ -31,7 +32,7 @@ using namespace Granite;
 
 static void print_help()
 {
-	LOGI("Usage: --quality [1-5] --format <format> --output <out.ktx> <in.ktx>\n");
+	LOGI("Usage: [--mipgen] [--quality [1-5]] [--format <format>] --output <out.ktx> <in.ktx>\n");
 }
 
 static gli::format string_to_format(const string &s)
@@ -50,6 +51,10 @@ static gli::format string_to_format(const string &s)
 		return gli::FORMAT_RGBA_DXT5_UNORM_BLOCK16;
 	else if (s == "bc3_srgb")
 		return gli::FORMAT_RGBA_DXT5_SRGB_BLOCK16;
+	else if (s == "rgba8_unorm")
+		return gli::FORMAT_RGBA8_UNORM_PACK8;
+	else if (s == "rgba8_srgb")
+		return gli::FORMAT_RGBA8_SRGB_PACK8;
 	else
 	{
 		LOGE("Unknown format: %s.\n", s.c_str());
@@ -86,6 +91,8 @@ int main(int argc, char *argv[])
 		gli::format format = gli::FORMAT_UNDEFINED;
 		unsigned quality = 3;
 		bool alpha = false;
+		bool generate_mipmap = false;
+		bool srgb = false;
 	} args;
 	CLICallbacks cbs;
 	cbs.add("--help", [&](CLIParser &parser) { print_help(); parser.end(); });
@@ -93,6 +100,7 @@ int main(int argc, char *argv[])
 	cbs.add("--format", [&](CLIParser &parser) { args.format = string_to_format(parser.next_string()); });
 	cbs.add("--output", [&](CLIParser &parser) { args.output = parser.next_string(); });
 	cbs.add("--alpha", [&](CLIParser &) { args.alpha = true; });
+	cbs.add("--mipgen", [&](CLIParser &) { args.generate_mipmap = true; });
 	cbs.default_handler = [&](const char *arg) { args.input = arg; };
 	CLIParser parser(move(cbs), argc - 1, argv + 1);
 
@@ -106,11 +114,41 @@ int main(int argc, char *argv[])
 	if (args.output.empty() || args.input.empty())
 		return 1;
 
-	auto input = gli::load(args.input);
+	Granite::ColorSpace color;
+	switch (args.format)
+	{
+	case gli::FORMAT_RGBA8_UNORM_PACK8:
+	case gli::FORMAT_RGBA_BP_UNORM_BLOCK16:
+	case gli::FORMAT_RGB_DXT1_UNORM_BLOCK8:
+	case gli::FORMAT_RGBA_DXT5_UNORM_BLOCK16:
+	case gli::FORMAT_RGB_BP_UFLOAT_BLOCK16:
+		color = Granite::ColorSpace::Linear;
+		break;
+
+	default:
+		color = Granite::ColorSpace::sRGB;
+		break;
+	}
+
+	auto input = Granite::load_texture_from_file(args.input, color);
+
+	if (args.generate_mipmap)
+		input = Granite::generate_offline_mipmaps(input);
+
 	if (input.empty())
 	{
 		LOGE("Failed to load texture %s.\n", args.input.c_str());
 		return 1;
+	}
+
+	if (args.format == gli::FORMAT_RGBA8_UNORM_PACK8 || args.format == gli::FORMAT_RGBA8_SRGB_PACK8)
+	{
+		if (!gli::save(input, args.output))
+		{
+			LOGE("Failed to save texture: %s\n", args.output.c_str());
+			return 1;
+		}
+		return 0;
 	}
 
 	gli::texture output(input.target(), args.format, input.extent(), input.layers(), input.faces(), input.levels());
@@ -214,6 +252,10 @@ int main(int argc, char *argv[])
 			LOGE("Input format to bc1 or bc3 must be RGBA8.\n");
 			return 1;
 		}
+		break;
+
+	case gli::FORMAT_RGBA8_UNORM_PACK8:
+	case gli::FORMAT_RGBA8_SRGB_PACK8:
 		break;
 
 	default:

@@ -182,6 +182,9 @@ void Filesystem::register_protocol(const std::string &proto, std::unique_ptr<Fil
 FilesystemBackend *Filesystem::get_backend(const std::string &proto)
 {
 	auto itr = protocols.find(proto);
+	if (proto.empty())
+		itr = protocols.find("file");
+
 	if (itr != end(protocols))
 		return itr->second.get();
 	else

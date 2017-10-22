@@ -49,7 +49,7 @@ int main(int argc, char *argv[])
 	cbs.add("--specular", [&](CLIParser &parser) { args.specular = parser.next_string(); });
 	cbs.add("--diffuse", [&](CLIParser &parser) { args.diffuse = parser.next_string(); });
 	cbs.add("--cube", [&](CLIParser &parser) { args.cube = parser.next_string(); });
-	cbs.default_handler = [&](const char *arg) { args.equirect = string("file://") + arg; };
+	cbs.default_handler = [&](const char *arg) { args.equirect = arg; };
 	cbs.error_handler = [&]() { print_help(); };
 
 	CLIParser parser(move(cbs), argc - 1, argv + 1);

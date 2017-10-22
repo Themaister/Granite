@@ -37,8 +37,8 @@ Application *application_create(int argc, char **argv)
 	std::string path;
 
 	CLICallbacks cbs;
-	cbs.add("--config", [&](CLIParser &parser) { config = std::string("file://") + parser.next_string(); });
-	cbs.default_handler = [&](const char *arg) { path = std::string("file://") + arg; };
+	cbs.add("--config", [&](CLIParser &parser) { config = parser.next_string(); });
+	cbs.default_handler = [&](const char *arg) { path = arg; };
 
 	CLIParser parser(std::move(cbs), argc - 1, argv + 1);
 	if (!parser.parse())

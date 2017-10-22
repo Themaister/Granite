@@ -38,8 +38,8 @@ int main(int argc, char *argv[])
 	} args;
 
 	CLICallbacks cbs;
-	cbs.add("--input", [&](CLIParser &parser) { args.input = string("file://") + parser.next_string(); });
-	cbs.add("--output", [&](CLIParser &parser) { args.output = string("file://") + parser.next_string(); });
+	cbs.add("--input", [&](CLIParser &parser) { args.input = parser.next_string(); });
+	cbs.add("--output", [&](CLIParser &parser) { args.output = parser.next_string(); });
 	CLIParser cli_parser(move(cbs), argc - 1, argv + 1);
 	if (!cli_parser.parse())
 		return 1;
@@ -57,9 +57,9 @@ int main(int argc, char *argv[])
 	info.nodes = parser.get_nodes();
 	info.skins = parser.get_skins();
 
-	if (!SceneFormats::export_scene_to_gltf(info, args.output))
+	if (!SceneFormats::export_scene_to_glb(info, args.output))
 	{
-		LOGE("Failed to export scene to glTF.\n");
+		LOGE("Failed to export scene to GLB.\n");
 		return 1;
 	}
 

@@ -91,6 +91,17 @@ public:
 		return ptr;
 	}
 
+	bool empty() const
+	{
+		return array_size == 0;
+	}
+
+	void reset()
+	{
+		ptr = nullptr;
+		array_size = 0;
+	}
+
 private:
 	T *ptr = nullptr;
 	size_t array_size = 0;

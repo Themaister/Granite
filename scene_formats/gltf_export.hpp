@@ -28,6 +28,6 @@ namespace Granite
 {
 namespace SceneFormats
 {
-bool export_scene_to_gltf(const SceneInformation &scene, const std::string &path);
+bool export_scene_to_glb(const SceneInformation &scene, const std::string &path);
 }
 }

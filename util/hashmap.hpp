@@ -94,7 +94,15 @@ public:
 	inline void string(const char *str)
 	{
 		char c;
+		u32(0xff);
 		while ((c = *str++) != '\0')
+			u32(uint8_t(c));
+	}
+
+	inline void string(const std::string &str)
+	{
+		u32(0xff);
+		for (auto &c : str)
 			u32(uint8_t(c));
 	}
 

@@ -73,6 +73,11 @@ struct EmittedAccessor
 	bool use_aabb = false;
 };
 
+struct EmittedMaterial
+{
+
+};
+
 struct RemapState
 {
 	Remap<Mesh> mesh;
@@ -87,6 +92,9 @@ struct RemapState
 
 	unordered_set<unsigned> mesh_hash;
 	vector<EmittedMesh> mesh_cache;
+
+	unordered_set<unsigned> material_hash;
+	vector<EmittedMaterial> material_cache;
 
 	HashMap<unsigned> mesh_group_hash;
 	vector<vector<unsigned>> mesh_group_cache;
@@ -398,6 +406,12 @@ static unsigned emit_accessor(RemapState &state, unsigned view_index,
 		return itr->second;
 }
 
+static void emit_material(RemapState &state, unsigned remapped_material)
+{
+	auto &material = *state.material.info[remapped_material];
+	state.material_cache.resize(std::max<size_t>(state.material_cache.size(), remapped_material + 1));
+}
+
 static void emit_mesh(RemapState &state, unsigned remapped_index)
 {
 	auto &mesh = *state.mesh.info[remapped_index];
@@ -416,6 +430,16 @@ static void emit_mesh(RemapState &state, unsigned remapped_index)
 	}
 	else
 		emit.index_accessor = -1;
+
+	if (mesh.has_material)
+	{
+		unsigned remapped_material = state.material.to_index[mesh.material_index];
+		if (!state.material_hash.count(remapped_material))
+		{
+			emit_material(state, remapped_material);
+			state.material_hash.insert(remapped_material);
+		}
+	}
 
 	unsigned position_buffer = 0;
 	unsigned attribute_buffer = 0;

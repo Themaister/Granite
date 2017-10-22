@@ -75,11 +75,64 @@ struct EmittedAccessor
 
 struct EmittedMaterial
 {
+	int base_color = -1;
+	int normal = -1;
+	int metallic_roughness = -1;
+	int occlusion = -1;
+	int emissive = -1;
 
+	vec4 uniform_base_color = vec4(1.0f);
+	vec3 uniform_emissive_color = vec4(0.0f);
+	float uniform_metallic = 1.0f;
+	float uniform_roughness = 1.0f;
+	float lod_bias = 0.0f;
+	float normal_scale = 1.0f;
+	DrawPipeline pipeline = DrawPipeline::Opaque;
+	bool two_sided = false;
+};
+
+struct EmittedTexture
+{
+	unsigned image;
+	unsigned sampler;
+};
+
+struct EmittedImage
+{
+	string source_path;
+	string target_relpath;
+	string target_mime;
+	Material::Textures type;
+};
+
+struct EmittedSampler
+{
+	unsigned mag_filter;
+	unsigned min_filter;
+	unsigned wrap_s;
+	unsigned wrap_t;
 };
 
 struct RemapState
 {
+	Hash hash(const Mesh &mesh);
+	Hash hash(const MaterialInfo &mesh);
+
+	template<typename StateType, typename SceneType>
+	void filter_input(StateType &output, const SceneType &input);
+
+	unsigned emit_buffer(ArrayView<const uint8_t> view);
+
+	unsigned emit_accessor(unsigned view_index,
+	                       VkFormat format, unsigned offset, unsigned stride, unsigned count);
+
+	unsigned emit_texture(const string &texture, Vulkan::StockSampler sampler, Material::Textures type);
+	unsigned emit_sampler(Vulkan::StockSampler sampler);
+	unsigned emit_image(const string &texture, Material::Textures type);
+	void emit_material(unsigned remapped_material);
+	void emit_mesh(unsigned remapped_index);
+	unsigned emit_meshes(ArrayView<const unsigned> meshes);
+
 	Remap<Mesh> mesh;
 	Remap<MaterialInfo> material;
 
@@ -96,11 +149,20 @@ struct RemapState
 	unordered_set<unsigned> material_hash;
 	vector<EmittedMaterial> material_cache;
 
+	HashMap<unsigned> texture_hash;
+	vector<EmittedTexture> texture_cache;
+
+	HashMap<unsigned> image_hash;
+	vector<EmittedImage> image_cache;
+
+	HashMap<unsigned> sampler_hash;
+	vector<EmittedSampler> sampler_cache;
+
 	HashMap<unsigned> mesh_group_hash;
 	vector<vector<unsigned>> mesh_group_cache;
 };
 
-static Hash hash(RemapState &state, const Mesh &mesh)
+Hash RemapState::hash(const Mesh &mesh)
 {
 	Hasher h;
 
@@ -110,7 +172,7 @@ static Hash hash(RemapState &state, const Mesh &mesh)
 	h.u32(mesh.position_stride);
 	h.u32(mesh.has_material);
 	if (mesh.has_material)
-		h.u32(state.material.to_index[mesh.material_index]);
+		h.u32(material.to_index[mesh.material_index]);
 	h.data(reinterpret_cast<const uint8_t *>(mesh.attribute_layout), sizeof(mesh.attribute_layout));
 
 	auto lo = mesh.static_aabb.get_minimum();
@@ -136,7 +198,7 @@ static Hash hash(RemapState &state, const Mesh &mesh)
 	return h.get();
 }
 
-static Hash hash(RemapState &state, const MaterialInfo &mat)
+Hash RemapState::hash(const MaterialInfo &mat)
 {
 	Hasher h;
 	h.string(mat.base_color);
@@ -160,11 +222,11 @@ static Hash hash(RemapState &state, const MaterialInfo &mat)
 }
 
 template<typename StateType, typename SceneType>
-static void filter_input(RemapState &state, StateType &output, const SceneType &input)
+void RemapState::filter_input(StateType &output, const SceneType &input)
 {
 	for (auto &i : input)
 	{
-		auto h = hash(state, i);
+		auto h = hash(i);
 		auto itr = output.hashmap.find(h);
 		if (itr != end(output.hashmap))
 			output.to_index.push_back(itr->second);
@@ -178,21 +240,21 @@ static void filter_input(RemapState &state, StateType &output, const SceneType &
 	}
 }
 
-static unsigned emit_buffer(RemapState &state, ArrayView<const uint8_t> view)
+unsigned RemapState::emit_buffer(ArrayView<const uint8_t> view)
 {
 	Hasher h;
 	h.data(view.data(), view.size());
-	auto itr = state.buffer_hash.find(h.get());
+	auto itr = buffer_hash.find(h.get());
 
-	if (itr == end(state.buffer_hash))
+	if (itr == end(buffer_hash))
 	{
-		unsigned index = state.buffer_views.size();
-		size_t offset = state.glb_buffer_data.size();
+		unsigned index = buffer_views.size();
+		size_t offset = glb_buffer_data.size();
 		offset = (offset + 15) & ~15;
-		state.glb_buffer_data.resize(offset + view.size());
-		memcpy(state.glb_buffer_data.data() + offset, view.data(), view.size());
-		state.buffer_views.push_back({offset, view.size()});
-		state.buffer_hash[h.get()] = index;
+		glb_buffer_data.resize(offset + view.size());
+		memcpy(glb_buffer_data.data() + offset, view.data(), view.size());
+		buffer_views.push_back({offset, view.size()});
+		buffer_hash[h.get()] = index;
 		return index;
 	}
 	else
@@ -379,8 +441,7 @@ static void set_accessor_type(EmittedAccessor &accessor, VkFormat format)
 	accessor.normalized = get_accessor_normalized(format);
 }
 
-static unsigned emit_accessor(RemapState &state, unsigned view_index,
-                              VkFormat format, unsigned offset, unsigned stride, unsigned count)
+unsigned RemapState::emit_accessor(unsigned view_index, VkFormat format, unsigned offset, unsigned stride, unsigned count)
 {
 	Hasher h;
 	h.u32(view_index);
@@ -389,41 +450,168 @@ static unsigned emit_accessor(RemapState &state, unsigned view_index,
 	h.u32(stride);
 	h.u32(count);
 
-	auto itr = state.accessor_hash.find(h.get());
-	if (itr == end(state.accessor_hash))
+	auto itr = accessor_hash.find(h.get());
+	if (itr == end(accessor_hash))
 	{
-		unsigned index = state.accessor_cache.size();
+		unsigned index = accessor_cache.size();
 		EmittedAccessor acc = {};
 		acc.count = count;
 		acc.view = view_index;
 		set_accessor_type(acc, format);
 
-		state.accessor_cache.push_back(acc);
-		state.accessor_hash[h.get()] = index;
+		accessor_cache.push_back(acc);
+		accessor_hash[h.get()] = index;
 		return index;
 	}
 	else
 		return itr->second;
 }
 
-static void emit_material(RemapState &state, unsigned remapped_material)
+unsigned RemapState::emit_sampler(Vulkan::StockSampler sampler)
 {
-	auto &material = *state.material.info[remapped_material];
-	state.material_cache.resize(std::max<size_t>(state.material_cache.size(), remapped_material + 1));
+	Hasher h;
+	h.u32(ecast(sampler));
+	auto itr = sampler_hash.find(h.get());
+
+	if (itr == end(sampler_hash))
+	{
+		unsigned index = sampler_cache.size();
+		sampler_hash[h.get()] = index;
+
+		unsigned mag_filter = 0, min_filter = 0, wrap_s = 0, wrap_t = 0;
+
+		switch (sampler)
+		{
+		case Vulkan::StockSampler::TrilinearWrap:
+			mag_filter = GL_LINEAR;
+			min_filter = GL_LINEAR_MIPMAP_LINEAR;
+			wrap_s = GL_REPEAT;
+			wrap_t = GL_REPEAT;
+			break;
+
+		case Vulkan::StockSampler::TrilinearClamp:
+			mag_filter = GL_LINEAR;
+			min_filter = GL_LINEAR_MIPMAP_LINEAR;
+			wrap_s = GL_CLAMP_TO_EDGE;
+			wrap_t = GL_CLAMP_TO_EDGE;
+			break;
+
+		case Vulkan::StockSampler::LinearWrap:
+			mag_filter = GL_LINEAR;
+			min_filter = GL_LINEAR_MIPMAP_NEAREST;
+			wrap_s = GL_REPEAT;
+			wrap_t = GL_REPEAT;
+			break;
+
+		case Vulkan::StockSampler::LinearClamp:
+			mag_filter = GL_LINEAR;
+			min_filter = GL_LINEAR_MIPMAP_NEAREST;
+			wrap_s = GL_CLAMP_TO_EDGE;
+			wrap_t = GL_CLAMP_TO_EDGE;
+			break;
+
+		case Vulkan::StockSampler::NearestClamp:
+			mag_filter = GL_NEAREST;
+			min_filter = GL_NEAREST_MIPMAP_NEAREST;
+			wrap_s = GL_CLAMP_TO_EDGE;
+			wrap_t = GL_CLAMP_TO_EDGE;
+			break;
+
+		case Vulkan::StockSampler::NearestWrap:
+			mag_filter = GL_NEAREST;
+			min_filter = GL_NEAREST_MIPMAP_NEAREST;
+			wrap_s = GL_REPEAT;
+			wrap_t = GL_REPEAT;
+			break;
+
+		default:
+			break;
+		}
+
+		sampler_cache.push_back({ mag_filter, min_filter, wrap_s, wrap_t });
+		return index;
+	}
+	else
+		return itr->second;
 }
 
-static void emit_mesh(RemapState &state, unsigned remapped_index)
+unsigned RemapState::emit_image(const string &texture, Material::Textures type)
 {
-	auto &mesh = *state.mesh.info[remapped_index];
-	state.mesh_cache.resize(std::max<size_t>(state.mesh_cache.size(), remapped_index + 1));
+	Hasher h;
+	h.string(texture);
+	h.u32(ecast(type));
+	auto itr = image_hash.find(h.get());
 
-	auto &emit = state.mesh_cache[remapped_index];
+	if (itr == end(image_hash))
+	{
+		unsigned index = image_cache.size();
+		image_hash[h.get()] = index;
+		image_cache.push_back({ texture, to_string(h.get()) + ".ktx", "image/ktx", type });
+		return index;
+	}
+	else
+		return itr->second;
+}
+
+unsigned RemapState::emit_texture(const string &texture, Vulkan::StockSampler sampler, Material::Textures type)
+{
+	unsigned image_index = emit_image(texture, type);
+	unsigned sampler_index = emit_sampler(sampler);
+	Hasher h;
+	h.u32(image_index);
+	h.u32(sampler_index);
+	auto itr = texture_hash.find(h.get());
+
+	if (itr == end(texture_hash))
+	{
+		unsigned index = texture_cache.size();
+		texture_hash[h.get()] = index;
+		texture_cache.push_back({ image_index, sampler_index });
+		return index;
+	}
+	else
+		return itr->second;
+}
+
+void RemapState::emit_material(unsigned remapped_material)
+{
+	auto &material = *this->material.info[remapped_material];
+	material_cache.resize(std::max<size_t>(material_cache.size(), remapped_material + 1));
+	auto &output = material_cache[remapped_material];
+
+	if (!material.normal.empty())
+		output.normal = emit_texture(material.normal, material.sampler, Material::Textures::Normal);
+	if (!material.occlusion.empty())
+		output.occlusion = emit_texture(material.occlusion, material.sampler, Material::Textures::Occlusion);
+	if (!material.base_color.empty())
+		output.base_color = emit_texture(material.base_color, material.sampler, Material::Textures::BaseColor);
+	if (!material.metallic_roughness.empty())
+		output.metallic_roughness = emit_texture(material.metallic_roughness, material.sampler, Material::Textures::MetallicRoughness);
+	if (!material.emissive.empty())
+		output.emissive = emit_texture(material.emissive, material.sampler, Material::Textures::Emissive);
+
+	output.uniform_base_color = material.uniform_base_color;
+	output.uniform_emissive_color = material.uniform_emissive_color;
+	output.uniform_metallic = material.uniform_metallic;
+	output.uniform_roughness = material.uniform_roughness;
+	output.lod_bias = material.lod_bias;
+	output.normal_scale = material.normal_scale;
+	output.pipeline = material.pipeline;
+	output.two_sided = material.two_sided;
+}
+
+void RemapState::emit_mesh(unsigned remapped_index)
+{
+	auto &mesh = *this->mesh.info[remapped_index];
+	mesh_cache.resize(std::max<size_t>(mesh_cache.size(), remapped_index + 1));
+
+	auto &emit = mesh_cache[remapped_index];
 	emit.material = mesh.has_material ? int(mesh.material_index) : -1;
 
 	if (!mesh.indices.empty())
 	{
-		unsigned index = emit_buffer(state, mesh.indices);
-		emit.index_accessor = emit_accessor(state, index,
+		unsigned index = emit_buffer(mesh.indices);
+		emit.index_accessor = emit_accessor(index,
 		                                    mesh.index_type == VK_INDEX_TYPE_UINT16 ? VK_FORMAT_R16_UINT
 		                                                                            : VK_FORMAT_R32_UINT,
 		                                    0, mesh.index_type == VK_INDEX_TYPE_UINT16 ? 2 : 4, mesh.count);
@@ -433,20 +621,20 @@ static void emit_mesh(RemapState &state, unsigned remapped_index)
 
 	if (mesh.has_material)
 	{
-		unsigned remapped_material = state.material.to_index[mesh.material_index];
-		if (!state.material_hash.count(remapped_material))
+		unsigned remapped_material = material.to_index[mesh.material_index];
+		if (!material_hash.count(remapped_material))
 		{
-			emit_material(state, remapped_material);
-			state.material_hash.insert(remapped_material);
+			emit_material(remapped_material);
+			material_hash.insert(remapped_material);
 		}
 	}
 
 	unsigned position_buffer = 0;
 	unsigned attribute_buffer = 0;
 	if (!mesh.positions.empty())
-		position_buffer = emit_buffer(state, mesh.positions);
+		position_buffer = emit_buffer(mesh.positions);
 	if (!mesh.attributes.empty())
-		attribute_buffer = emit_buffer(state, mesh.attributes);
+		attribute_buffer = emit_buffer(mesh.attributes);
 
 	emit.attribute_mask = 0;
 	for (unsigned i = 0; i < ecast(MeshAttribute::Count); i++)
@@ -458,17 +646,17 @@ static void emit_mesh(RemapState &state, unsigned remapped_index)
 
 		if (i == ecast(MeshAttribute::Position))
 		{
-			emit.attribute_accessor[i] = emit_accessor(state, position_buffer,
+			emit.attribute_accessor[i] = emit_accessor(position_buffer,
 			                                           mesh.attribute_layout[i].format,
 			                                           mesh.attribute_layout[i].offset, mesh.position_stride,
 			                                           mesh.positions.size() / mesh.position_stride);
 
-			state.accessor_cache[emit.attribute_accessor[i]].aabb = mesh.static_aabb;
-			state.accessor_cache[emit.attribute_accessor[i]].use_aabb = true;
+			accessor_cache[emit.attribute_accessor[i]].aabb = mesh.static_aabb;
+			accessor_cache[emit.attribute_accessor[i]].use_aabb = true;
 		}
 		else
 		{
-			emit.attribute_accessor[i] = emit_accessor(state, attribute_buffer,
+			emit.attribute_accessor[i] = emit_accessor(attribute_buffer,
 			                                           mesh.attribute_layout[i].format,
 			                                           mesh.attribute_layout[i].offset, mesh.attribute_stride,
 			                                           mesh.attributes.size() / mesh.attribute_stride);
@@ -476,7 +664,7 @@ static void emit_mesh(RemapState &state, unsigned remapped_index)
 	}
 }
 
-static unsigned emit_meshes(RemapState &state, ArrayView<const unsigned> meshes)
+unsigned RemapState::emit_meshes(ArrayView<const unsigned> meshes)
 {
 	Hasher emit_hash;
 	vector<unsigned> mesh_group;
@@ -484,24 +672,24 @@ static unsigned emit_meshes(RemapState &state, ArrayView<const unsigned> meshes)
 
 	for (auto &mesh : meshes)
 	{
-		unsigned remapped_index = state.mesh.to_index[mesh];
+		unsigned remapped_index = this->mesh.to_index[mesh];
 		emit_hash.u32(remapped_index);
 		mesh_group.push_back(remapped_index);
 
-		if (!state.mesh_hash.count(remapped_index))
+		if (!mesh_hash.count(remapped_index))
 		{
-			emit_mesh(state, remapped_index);
-			state.mesh_hash.insert(remapped_index);
+			emit_mesh(remapped_index);
+			mesh_hash.insert(remapped_index);
 		}
 	}
 
 	unsigned index;
-	auto itr = state.mesh_group_hash.find(emit_hash.get());
-	if (itr == end(state.mesh_group_hash))
+	auto itr = mesh_group_hash.find(emit_hash.get());
+	if (itr == end(mesh_group_hash))
 	{
-		index = state.mesh_group_cache.size();
-		state.mesh_group_cache.push_back(move(mesh_group));
-		state.mesh_group_hash[emit_hash.get()] = index;
+		index = mesh_group_cache.size();
+		mesh_group_cache.push_back(move(mesh_group));
+		mesh_group_hash[emit_hash.get()] = index;
 	}
 	else
 		index = itr->second;
@@ -532,8 +720,8 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path)
 	}
 
 	RemapState state;
-	filter_input(state, state.material, scene.materials);
-	filter_input(state, state.mesh, scene.meshes);
+	state.filter_input(state.material, scene.materials);
+	state.filter_input(state.mesh, scene.meshes);
 
 	Value nodes(kArrayType);
 	for (auto &node : scene.nodes)
@@ -548,7 +736,7 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path)
 		}
 
 		if (!node.meshes.empty())
-			n.AddMember("mesh", emit_meshes(state, node.meshes), allocator);
+			n.AddMember("mesh", state.emit_meshes(node.meshes), allocator);
 
 		// TODO: Reverse mapping to avoid searching every time.
 		for (auto &camera : scene.cameras)
@@ -666,6 +854,131 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path)
 			accessors.PushBack(acc, allocator);
 		}
 		doc.AddMember("accessors", accessors, allocator);
+	}
+
+	// Samplers
+	{
+		Value samplers(kArrayType);
+		for (auto &sampler : state.sampler_cache)
+		{
+			Value s(kObjectType);
+			if (sampler.mag_filter)
+				s.AddMember("magFilter", sampler.mag_filter, allocator);
+			if (sampler.min_filter)
+				s.AddMember("minFilter", sampler.min_filter, allocator);
+			if (sampler.wrap_s)
+				s.AddMember("wrapS", sampler.wrap_s, allocator);
+			if (sampler.wrap_t)
+				s.AddMember("wrapT", sampler.wrap_t, allocator);
+			samplers.PushBack(s, allocator);
+		}
+		doc.AddMember("samplers", samplers, allocator);
+	}
+
+	// Images
+	{
+		Value images(kArrayType);
+		for (auto &image : state.image_cache)
+		{
+			Value i(kObjectType);
+			i.AddMember("uri", image.target_relpath, allocator);
+			i.AddMember("mimeType", image.target_mime, allocator);
+			images.PushBack(i, allocator);
+		}
+		doc.AddMember("images", images, allocator);
+	}
+
+	// Sources
+	{
+		Value sources(kArrayType);
+		for (auto &texture : state.texture_cache)
+		{
+			Value t(kObjectType);
+			t.AddMember("sampler", texture.sampler, allocator);
+			t.AddMember("source", texture.image, allocator);
+			sources.PushBack(t, allocator);
+		}
+		doc.AddMember("textures", sources, allocator);
+	}
+
+	// Materials
+	{
+		Value materials(kArrayType);
+		for (auto &material : state.material_cache)
+		{
+			Value m(kObjectType);
+
+			if (material.pipeline == DrawPipeline::AlphaBlend)
+				m.AddMember("alphaMode", "BLEND", allocator);
+			else if (material.pipeline == DrawPipeline::AlphaTest)
+				m.AddMember("alphaMode", "MASK", allocator);
+
+			if (material.two_sided)
+				m.AddMember("doubleSided", true, allocator);
+
+			if (any(notEqual(material.uniform_emissive_color, vec3(0.0f))))
+			{
+				Value emissive(kArrayType);
+				for (unsigned i = 0; i < 3; i++)
+					emissive.PushBack(material.uniform_emissive_color[i], allocator);
+				m.AddMember("emissiveFactor", emissive, allocator);
+			}
+
+			Value pbr(kObjectType);
+			if (material.uniform_roughness != 1.0f)
+				pbr.AddMember("roughnessFactor", material.uniform_roughness, allocator);
+			if (material.uniform_metallic != 1.0f)
+				pbr.AddMember("metallicFactor", material.uniform_metallic, allocator);
+
+			if (any(notEqual(material.uniform_base_color, vec4(1.0f))))
+			{
+				Value base(kArrayType);
+				for (unsigned i = 0; i < 4; i++)
+					base.PushBack(material.uniform_base_color[i], allocator);
+				pbr.AddMember("baseColorFactor", base, allocator);
+			}
+
+			if (material.base_color >= 0)
+			{
+				Value base(kObjectType);
+				base.AddMember("index", material.base_color, allocator);
+				pbr.AddMember("baseColorTexture", base, allocator);
+			}
+
+			if (material.metallic_roughness >= 0)
+			{
+				Value mr(kObjectType);
+				mr.AddMember("index", material.metallic_roughness, allocator);
+				pbr.AddMember("metallicRoughnessTexture", mr, allocator);
+			}
+
+			m.AddMember("pbrMetallicRoughness", pbr, allocator);
+
+			if (material.normal >= 0)
+			{
+				Value n(kObjectType);
+				n.AddMember("index", material.normal, allocator);
+				n.AddMember("scale", material.normal_scale, allocator);
+				m.AddMember("normalTexture", n, allocator);
+			}
+
+			if (material.emissive >= 0)
+			{
+				Value e(kObjectType);
+				e.AddMember("index", material.emissive, allocator);
+				m.AddMember("emissiveTexture", e, allocator);
+			}
+
+			if (material.occlusion >= 0)
+			{
+				Value e(kObjectType);
+				e.AddMember("index", material.occlusion, allocator);
+				m.AddMember("occlusionTexture", e, allocator);
+			}
+
+			materials.PushBack(m, allocator);
+		}
+		doc.AddMember("materials", materials, allocator);
 	}
 
 	StringBuffer buffer;

@@ -1170,11 +1170,12 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 					positional.AddMember("linearAttenuation", light.linear_falloff, allocator);
 				if (light.quadratic_falloff != 0.0f)
 					positional.AddMember("quadraticAttenuation", light.quadratic_falloff, allocator);
-				l.AddMember("positional", positional, allocator);
 
-				spot.AddMember("innerAngle", std::max(1.0f - light.inner_cone * light.inner_cone, 0.0f), allocator);
-				spot.AddMember("outerAngle", std::max(1.0f - light.outer_cone * light.outer_cone, 0.0f), allocator);
-				l.AddMember("spot", spot, allocator);
+				spot.AddMember("innerAngle", glm::sqrt(std::max(1.0f - light.inner_cone * light.inner_cone, 0.0f)), allocator);
+				spot.AddMember("outerAngle", glm::sqrt(std::max(1.0f - light.outer_cone * light.outer_cone, 0.0f)), allocator);
+				positional.AddMember("spot", spot, allocator);
+
+				l.AddMember("positional", positional, allocator);
 				break;
 
 			case LightInfo::Type::Point:

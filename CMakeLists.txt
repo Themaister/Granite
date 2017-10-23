@@ -6,7 +6,7 @@ project(Granite LANGUAGES CXX C)
 if (CMAKE_COMPILER_IS_GNUCXX)
 	set(GRANITE_CXX_FLAGS -Wall -Wextra -pedantic -Wno-missing-field-initializers -Wno-empty-body)
 elseif (MSVC)
-	set(GRANITE_CXX_FLAGS /D_CRT_SECURE_NO_WARNINGS /wd4267 /wd4244 /MP /DNOMINMAX)
+	set(GRANITE_CXX_FLAGS /D_CRT_SECURE_NO_WARNINGS /wd4267 /wd4244 /wd4309 /wd4005 /MP /DNOMINMAX)
 endif()
 
 option(GRANITE_HIDDEN "Declare symbols as hidden by default." OFF)

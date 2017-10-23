@@ -5,7 +5,7 @@
 	"directionalLightShadowsCascaded": true,
 	"clusteredLights": true,
 	"clusteredLightsShadows": true,
-	"hdrBloom": false,
+	"hdrBloom": true,
 	"shadowMapResolutionMain": 2048,
 	"shadowMapResolutionNear": 1024,
 	"cameraIndex": -1,

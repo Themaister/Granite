@@ -28,6 +28,22 @@ namespace Granite
 {
 namespace SceneFormats
 {
-bool export_scene_to_glb(const SceneInformation &scene, const std::string &path);
+enum class TextureCompression
+{
+	BC7,
+	BC3,
+	ASTC4x4,
+	ASTC5x5,
+	ASTC6x6,
+	ASTC8x8,
+	Uncompressed
+};
+
+struct ExportOptions
+{
+	TextureCompression compression = TextureCompression::Uncompressed;
+};
+
+bool export_scene_to_glb(const SceneInformation &scene, const std::string &path, const ExportOptions &options);
 }
 }

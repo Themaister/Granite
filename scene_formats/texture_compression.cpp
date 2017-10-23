@@ -21,7 +21,7 @@
  */
 
 #include "texture_compression.hpp"
-#include "gli/save.hpp"
+#include "texture_files.hpp"
 #include "format.hpp"
 #include <vector>
 
@@ -53,6 +53,22 @@ gli::format string_to_format(const string &s)
 		return gli::FORMAT_RGBA8_UNORM_PACK8;
 	else if (s == "rgba8_srgb")
 		return gli::FORMAT_RGBA8_SRGB_PACK8;
+	else if (s == "astc_4x4_srgb")
+		return gli::FORMAT_RGBA_ASTC_4X4_SRGB_BLOCK16;
+	else if (s == "astc_4x4_unorm")
+		return gli::FORMAT_RGBA_ASTC_4X4_UNORM_BLOCK16;
+	else if (s == "astc_5x5_srgb")
+		return gli::FORMAT_RGBA_ASTC_5X5_SRGB_BLOCK16;
+	else if (s == "astc_5x5_unorm")
+		return gli::FORMAT_RGBA_ASTC_5X5_UNORM_BLOCK16;
+	else if (s == "astc_6x6_srgb")
+		return gli::FORMAT_RGBA_ASTC_6X6_SRGB_BLOCK16;
+	else if (s == "astc_6x6_unorm")
+		return gli::FORMAT_RGBA_ASTC_6X6_UNORM_BLOCK16;
+	else if (s == "astc_8x8_srgb")
+		return gli::FORMAT_RGBA_ASTC_8X8_SRGB_BLOCK16;
+	else if (s == "astc_8x8_unorm")
+		return gli::FORMAT_RGBA_ASTC_8X8_UNORM_BLOCK16;
 	else
 	{
 		LOGE("Unknown format: %s.\n", s.c_str());
@@ -70,6 +86,14 @@ static unsigned format_to_stride(gli::format format)
 	case gli::FORMAT_RGB_DXT1_UNORM_BLOCK8:
 	case gli::FORMAT_RGBA_DXT5_SRGB_BLOCK16:
 	case gli::FORMAT_RGBA_DXT5_UNORM_BLOCK16:
+	case gli::FORMAT_RGBA_ASTC_4X4_SRGB_BLOCK16:
+	case gli::FORMAT_RGBA_ASTC_4X4_UNORM_BLOCK16:
+	case gli::FORMAT_RGBA_ASTC_5X5_SRGB_BLOCK16:
+	case gli::FORMAT_RGBA_ASTC_5X5_UNORM_BLOCK16:
+	case gli::FORMAT_RGBA_ASTC_6X6_SRGB_BLOCK16:
+	case gli::FORMAT_RGBA_ASTC_6X6_UNORM_BLOCK16:
+	case gli::FORMAT_RGBA_ASTC_8X8_SRGB_BLOCK16:
+	case gli::FORMAT_RGBA_ASTC_8X8_UNORM_BLOCK16:
 		return 4;
 
 	case gli::FORMAT_RGB_BP_UFLOAT_BLOCK16:
@@ -87,12 +111,40 @@ bool compress_texture(const CompressorArguments &args, const gli::texture &input
 #ifdef HAVE_ISPC
 	bc6h_enc_settings bc6;
 	bc7_enc_settings bc7;
+	astc_enc_settings astc;
 #endif
+
+	unsigned block_size_x = 1;
+	unsigned block_size_y = 1;
+
+	const auto handle_astc_ldr_format = [&](unsigned x, unsigned y) -> bool {
+		block_size_x = x;
+		block_size_y = y;
+		if (input.format() != gli::FORMAT_RGBA8_SRGB_PACK8 && input.format() != gli::FORMAT_RGBA8_UNORM_PACK8)
+		{
+			LOGE("Input format to ASTC LDR must be RGBA8.\n");
+			return false;
+		}
+
+		if (args.alpha)
+		{
+			if (args.quality <= 3)
+				GetProfile_astc_alpha_fast(&astc, x, y);
+			else
+				GetProfile_astc_alpha_slow(&astc, x, y);
+		}
+		else
+			GetProfile_astc_fast(&astc, x, y);
+
+		return true;
+	};
 
 	switch (args.format)
 	{
 #ifdef HAVE_ISPC
 	case gli::FORMAT_RGB_BP_UFLOAT_BLOCK16:
+		block_size_x = 4;
+		block_size_y = 4;
 		if (input.format() != gli::FORMAT_RGBA16_SFLOAT_PACK16)
 		{
 			LOGE("Input format to bc6h must be RGBA16_SFLOAT.\n");
@@ -129,6 +181,8 @@ bool compress_texture(const CompressorArguments &args, const gli::texture &input
 
 	case gli::FORMAT_RGBA_BP_UNORM_BLOCK16:
 	case gli::FORMAT_RGBA_BP_SRGB_BLOCK16:
+		block_size_x = 4;
+		block_size_y = 4;
 		if (input.format() != gli::FORMAT_RGBA8_SRGB_PACK8 && input.format() != gli::FORMAT_RGBA8_UNORM_PACK8)
 		{
 			LOGE("Input format to bc7 must be RGBA8.\n");
@@ -182,11 +236,37 @@ bool compress_texture(const CompressorArguments &args, const gli::texture &input
 	case gli::FORMAT_RGB_DXT1_UNORM_BLOCK8:
 	case gli::FORMAT_RGBA_DXT5_SRGB_BLOCK16:
 	case gli::FORMAT_RGBA_DXT5_UNORM_BLOCK16:
+		block_size_x = 4;
+		block_size_y = 4;
 		if (input.format() != gli::FORMAT_RGBA8_SRGB_PACK8 && input.format() != gli::FORMAT_RGBA8_UNORM_PACK8)
 		{
 			LOGE("Input format to bc1 or bc3 must be RGBA8.\n");
 			return false;
 		}
+		break;
+
+	case gli::FORMAT_RGBA_ASTC_4X4_SRGB_BLOCK16:
+	case gli::FORMAT_RGBA_ASTC_4X4_UNORM_BLOCK16:
+		if (!handle_astc_ldr_format(4, 4))
+			return false;
+		break;
+
+	case gli::FORMAT_RGBA_ASTC_5X5_SRGB_BLOCK16:
+	case gli::FORMAT_RGBA_ASTC_5X5_UNORM_BLOCK16:
+		if (!handle_astc_ldr_format(5, 5))
+			return false;
+		break;
+
+	case gli::FORMAT_RGBA_ASTC_6X6_SRGB_BLOCK16:
+	case gli::FORMAT_RGBA_ASTC_6X6_UNORM_BLOCK16:
+		if (!handle_astc_ldr_format(6, 6))
+			return false;
+		break;
+
+	case gli::FORMAT_RGBA_ASTC_8X8_SRGB_BLOCK16:
+	case gli::FORMAT_RGBA_ASTC_8X8_UNORM_BLOCK16:
+		if (!handle_astc_ldr_format(8, 8))
+			return false;
 		break;
 #endif
 
@@ -215,10 +295,10 @@ bool compress_texture(const CompressorArguments &args, const gli::texture &input
 
 				rgba_surface padded_surface = {};
 
-				if ((surface.width & 3) || (surface.height & 3))
+				if ((surface.width % block_size_x) || (surface.height % block_size_y))
 				{
-					padded_surface.width = (surface.width + 3) & ~3;
-					padded_surface.height = (surface.height + 3) & ~3;
+					padded_surface.width = ((surface.width + block_size_x - 1) / block_size_x) * block_size_x;
+					padded_surface.height = ((surface.height + block_size_y - 1) / block_size_y) * block_size_y;
 					padded_surface.stride = padded_surface.width * format_to_stride(args.format);
 					padded_buffer.resize(padded_surface.stride * padded_surface.height);
 					padded_surface.ptr = padded_buffer.data();
@@ -251,6 +331,17 @@ bool compress_texture(const CompressorArguments &args, const gli::texture &input
 					CompressBlocksBC3(&padded_surface, static_cast<uint8_t *>(output.data(layer, face, level)));
 					break;
 
+				case gli::FORMAT_RGBA_ASTC_4X4_SRGB_BLOCK16:
+				case gli::FORMAT_RGBA_ASTC_4X4_UNORM_BLOCK16:
+				case gli::FORMAT_RGBA_ASTC_5X5_SRGB_BLOCK16:
+				case gli::FORMAT_RGBA_ASTC_5X5_UNORM_BLOCK16:
+				case gli::FORMAT_RGBA_ASTC_6X6_SRGB_BLOCK16:
+				case gli::FORMAT_RGBA_ASTC_6X6_UNORM_BLOCK16:
+				case gli::FORMAT_RGBA_ASTC_8X8_SRGB_BLOCK16:
+				case gli::FORMAT_RGBA_ASTC_8X8_UNORM_BLOCK16:
+					CompressBlocksASTC(&padded_surface, static_cast<uint8_t *>(output.data(layer, face, level)), &astc);
+					break;
+
 				default:
 					break;
 				}
@@ -259,7 +350,7 @@ bool compress_texture(const CompressorArguments &args, const gli::texture &input
 	}
 #endif
 
-	if (!gli::save(output, args.output))
+	if (!save_texture_to_file(args.output, output))
 	{
 		LOGE("Failed to save texture: %s\n", args.output.c_str());
 		return false;

@@ -29,6 +29,27 @@ using namespace Granite;
 using namespace Util;
 using namespace std;
 
+static SceneFormats::TextureCompression string_to_compression(const string &fmt)
+{
+	if (fmt == "bc7")
+		return SceneFormats::TextureCompression::BC7;
+	else if (fmt == "bc3")
+		return SceneFormats::TextureCompression::BC3;
+	else if (fmt == "astc_4x4")
+		return SceneFormats::TextureCompression::ASTC4x4;
+	else if (fmt == "astc_5x5")
+		return SceneFormats::TextureCompression::ASTC5x5;
+	else if (fmt == "astc_6x6")
+		return SceneFormats::TextureCompression::ASTC6x6;
+	else if (fmt == "astc_8x8")
+		return SceneFormats::TextureCompression::ASTC8x8;
+	else
+	{
+		LOGE("Unrecognized format, using uncompressed.\n");
+		return SceneFormats::TextureCompression::Uncompressed;
+	}
+}
+
 int main(int argc, char *argv[])
 {
 	struct Arguments
@@ -37,8 +58,11 @@ int main(int argc, char *argv[])
 		string output;
 	} args;
 
+	SceneFormats::ExportOptions options;
+
 	CLICallbacks cbs;
 	cbs.add("--output", [&](CLIParser &parser) { args.output = parser.next_string(); });
+	cbs.add("--texcomp", [&](CLIParser &parser) { options.compression = string_to_compression(parser.next_string()); });
 	cbs.default_handler = [&](const char *arg) { args.input = arg; };
 	CLIParser cli_parser(move(cbs), argc - 1, argv + 1);
 	if (!cli_parser.parse())
@@ -57,7 +81,7 @@ int main(int argc, char *argv[])
 	info.nodes = parser.get_nodes();
 	info.skins = parser.get_skins();
 
-	if (!SceneFormats::export_scene_to_glb(info, args.output))
+	if (!SceneFormats::export_scene_to_glb(info, args.output, options))
 	{
 		LOGE("Failed to export scene to GLB.\n");
 		return 1;

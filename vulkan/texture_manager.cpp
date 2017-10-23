@@ -23,7 +23,7 @@
 #include "texture_manager.hpp"
 #include "device.hpp"
 #include "stb_image.h"
-#include "texture_loading.hpp"
+#include "texture_files.hpp"
 
 using namespace std;
 

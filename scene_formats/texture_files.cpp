@@ -20,11 +20,12 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "texture_loading.hpp"
+#include "texture_files.hpp"
 #include "gli/load.hpp"
 #include "gli/generate_mipmaps.hpp"
 #include "stb_image.h"
 #include "filesystem.hpp"
+#include "gli/save_ktx.hpp"
 
 namespace Granite
 {
@@ -186,6 +187,24 @@ gli::texture load_texture_from_file(const std::string &path, ColorSpace color)
 	auto ret = load_texture_from_memory(mapped, file->get_size(), color);
 	file->unmap();
 	return ret;
+}
+
+bool save_texture_to_file(const std::string &path, const gli::texture &tex)
+{
+	std::vector<char> memory;
+	if (!gli::save_ktx(tex, memory))
+		return false;
+
+	auto file = Filesystem::get().open(path, FileMode::WriteOnly);
+	if (!file)
+		return false;
+	void *mapped = file->map_write(memory.size());
+	if (!mapped)
+		return false;
+
+	memcpy(mapped, memory.data(), memory.size());
+	file->unmap();
+	return true;
 }
 
 static unsigned num_miplevels(int width, int height, int depth)

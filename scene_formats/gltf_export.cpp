@@ -22,7 +22,7 @@
 
 #include "gltf_export.hpp"
 #include "texture_compression.hpp"
-#include "texture_loading.hpp"
+#include "texture_files.hpp"
 
 #define RAPIDJSON_ASSERT(x) do { if (!(x)) throw "JSON error"; } while(0)
 #include "rapidjson/document.h"
@@ -703,7 +703,7 @@ unsigned RemapState::emit_meshes(ArrayView<const unsigned> meshes)
 	return index;
 }
 
-bool export_scene_to_glb(const SceneInformation &scene, const string &path)
+bool export_scene_to_glb(const SceneInformation &scene, const string &path, const ExportOptions &options)
 {
 	Document doc;
 	doc.SetObject();
@@ -885,6 +885,37 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path)
 
 	// Images
 	{
+		// TODO: Multi-thread this.
+
+		const auto get_compression_format = [&](Material::Textures type) -> gli::format {
+			bool srgb = type == Material::Textures::BaseColor || type == Material::Textures::Emissive;
+			switch (options.compression)
+			{
+			case TextureCompression::Uncompressed:
+				return srgb ? gli::FORMAT_RGBA8_SRGB_PACK8 : gli::FORMAT_RGBA8_UNORM_PACK8;
+
+			case TextureCompression::BC3:
+				return srgb ? gli::FORMAT_RGBA_DXT5_SRGB_BLOCK16 : gli::FORMAT_RGBA_DXT5_UNORM_BLOCK16;
+
+			case TextureCompression::BC7:
+				return srgb ? gli::FORMAT_RGBA_BP_SRGB_BLOCK16 : gli::FORMAT_RGBA_BP_UNORM_BLOCK16;
+
+			case TextureCompression::ASTC4x4:
+				return srgb ? gli::FORMAT_RGBA_ASTC_4X4_SRGB_BLOCK16 : gli::FORMAT_RGBA_ASTC_4X4_UNORM_BLOCK16;
+
+			case TextureCompression::ASTC5x5:
+				return srgb ? gli::FORMAT_RGBA_ASTC_5X5_SRGB_BLOCK16 : gli::FORMAT_RGBA_ASTC_5X5_UNORM_BLOCK16;
+
+			case TextureCompression::ASTC6x6:
+				return srgb ? gli::FORMAT_RGBA_ASTC_6X6_SRGB_BLOCK16 : gli::FORMAT_RGBA_ASTC_6X6_UNORM_BLOCK16;
+
+			case TextureCompression::ASTC8x8:
+				return srgb ? gli::FORMAT_RGBA_ASTC_8X8_SRGB_BLOCK16 : gli::FORMAT_RGBA_ASTC_8X8_UNORM_BLOCK16;
+			}
+
+			return gli::FORMAT_UNDEFINED;
+		};
+
 		Value images(kArrayType);
 		for (auto &image : state.image_cache)
 		{
@@ -897,16 +928,27 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path)
 
 			CompressorArguments args;
 			args.output = target_path;
-			args.format = (image.type == Material::Textures::BaseColor) ? gli::FORMAT_RGBA_BP_SRGB_BLOCK16 : gli::FORMAT_RGBA_BP_UNORM_BLOCK16;
+			args.format = get_compression_format(image.type);
 			auto input = load_texture_from_file(image.source_path,
 			                                    image.type == Material::Textures::BaseColor ? ColorSpace::sRGB : ColorSpace::Linear);
 
 			input = generate_offline_mipmaps(input);
 
-			if (!compress_texture(args, input))
+			if (options.compression != TextureCompression::Uncompressed)
 			{
-				LOGE("Failed to compress!\n");
-				return false;
+				if (!compress_texture(args, input))
+				{
+					LOGE("Failed to compress!\n");
+					return false;
+				}
+			}
+			else
+			{
+				if (!save_texture_to_file(target_path, input))
+				{
+					LOGE("Failed to save uncompressed file!\n");
+					return false;
+				}
 			}
 		}
 		doc.AddMember("images", images, allocator);

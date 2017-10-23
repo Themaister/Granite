@@ -21,7 +21,7 @@
  */
 
 #include <ispc_texcomp/ispc_texcomp.h>
-#include <texture_loading.hpp>
+#include <texture_files.hpp>
 #include "cli_parser.hpp"
 #include "gli/save.hpp"
 #include "gli/load.hpp"
@@ -92,7 +92,7 @@ int main(int argc, char *argv[])
 
 	if (args.format == gli::FORMAT_RGBA8_UNORM_PACK8 || args.format == gli::FORMAT_RGBA8_SRGB_PACK8)
 	{
-		if (!gli::save(input, args.output))
+		if (!save_texture_to_file(args.output, input))
 		{
 			LOGE("Failed to save texture: %s\n", args.output.c_str());
 			return 1;

@@ -1,9 +1,13 @@
-find_library(ISPC NAMES ispc_texcomp)
+option(GRANITE_ISPC_TEXTURE_COMPRESSION "Enable ISPC texture compression" ON)
 
 add_granite_library(texture-compression texture_compression.hpp texture_compression.cpp)
-if (ISPC)
-    target_link_libraries(texture-compression ${ISPC})
-    target_compile_definitions(texture-compression PRIVATE HAVE_ISPC)
+
+if (GRANITE_ISPC_TEXTURE_COMPRESSION)
+    find_library(ISPC NAMES ispc_texcomp)
+    if (ISPC)
+        target_link_libraries(texture-compression ${ISPC})
+        target_compile_definitions(texture-compression PRIVATE HAVE_ISPC)
+    endif()
 endif()
 target_link_libraries(texture-compression gli util filesystem renderer)
 

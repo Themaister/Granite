@@ -115,7 +115,13 @@ function(add_granite_offline_tool TARGET_NAME)
     endif()
 endfunction()
 
+option(GRANITE_TOOLS "Build Granite tools." ON)
+
 add_subdirectory(tests)
-add_subdirectory(tools)
+
+if (GRANITE_TOOLS)
+    add_subdirectory(tools)
+endif()
+
 add_subdirectory(network)
 

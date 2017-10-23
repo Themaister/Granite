@@ -76,6 +76,7 @@ gli::format string_to_format(const string &s)
 	}
 }
 
+#ifdef HAVE_ISPC
 static unsigned format_to_stride(gli::format format)
 {
 	switch (format)
@@ -103,6 +104,7 @@ static unsigned format_to_stride(gli::format format)
 		return 0;
 	}
 }
+#endif
 
 bool compress_texture(const CompressorArguments &args, const gli::texture &input)
 {
@@ -114,6 +116,7 @@ bool compress_texture(const CompressorArguments &args, const gli::texture &input
 	astc_enc_settings astc;
 #endif
 
+#ifdef HAVE_ISPC
 	unsigned block_size_x = 1;
 	unsigned block_size_y = 1;
 
@@ -138,6 +141,7 @@ bool compress_texture(const CompressorArguments &args, const gli::texture &input
 
 		return true;
 	};
+#endif
 
 	switch (args.format)
 	{

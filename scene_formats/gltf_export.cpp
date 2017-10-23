@@ -1109,6 +1109,103 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 		doc.AddMember("meshes", meshes, allocator);
 	}
 
+	// Cameras
+	{
+		Value cameras(kArrayType);
+		for (auto &camera : scene.cameras)
+		{
+			Value cam(kObjectType);
+			if (camera.type == CameraInfo::Type::Perspective)
+			{
+				cam.AddMember("type", "perspective", allocator);
+				Value perspective(kObjectType);
+				perspective.AddMember("aspectRatio", camera.aspect_ratio, allocator);
+				perspective.AddMember("yfov", camera.yfov, allocator);
+				perspective.AddMember("znear", camera.znear, allocator);
+				perspective.AddMember("zfar", camera.zfar, allocator);
+				cam.AddMember("perspective", perspective, allocator);
+			}
+			else if (camera.type == CameraInfo::Type::Orthographic)
+			{
+				cam.AddMember("type", "orthographic", allocator);
+				Value ortho(kObjectType);
+				ortho.AddMember("xmag", camera.xmag, allocator);
+				ortho.AddMember("ymag", camera.ymag, allocator);
+				ortho.AddMember("znear", camera.znear, allocator);
+				ortho.AddMember("zfar", camera.zfar, allocator);
+				cam.AddMember("orthographic", ortho, allocator);
+			}
+			cameras.PushBack(cam, allocator);
+		}
+		doc.AddMember("cameras", cameras, allocator);
+	}
+
+	// Lights
+	if (!scene.lights.empty())
+	{
+		Value ext(kObjectType);
+		Value lights_cmn(kObjectType);
+		Value lights(kArrayType);
+
+		for (auto &light : scene.lights)
+		{
+			Value l(kObjectType);
+			Value positional(kObjectType);
+			Value color(kArrayType);
+			Value spot(kObjectType);
+
+			color.PushBack(light.color.x, allocator);
+			color.PushBack(light.color.y, allocator);
+			color.PushBack(light.color.z, allocator);
+			l.AddMember("color", color, allocator);
+
+			switch (light.type)
+			{
+			case LightInfo::Type::Spot:
+				l.AddMember("type", "spot", allocator);
+				l.AddMember("profile", "CMN", allocator);
+				if (light.constant_falloff != 0.0f)
+					positional.AddMember("constantAttenuation", light.constant_falloff, allocator);
+				if (light.linear_falloff != 0.0f)
+					positional.AddMember("linearAttenuation", light.linear_falloff, allocator);
+				if (light.quadratic_falloff != 0.0f)
+					positional.AddMember("quadraticAttenuation", light.quadratic_falloff, allocator);
+				l.AddMember("positional", positional, allocator);
+
+				spot.AddMember("innerAngle", std::max(1.0f - light.inner_cone * light.inner_cone, 0.0f), allocator);
+				spot.AddMember("outerAngle", std::max(1.0f - light.outer_cone * light.outer_cone, 0.0f), allocator);
+				l.AddMember("spot", spot, allocator);
+				break;
+
+			case LightInfo::Type::Point:
+				l.AddMember("type", "point", allocator);
+				l.AddMember("profile", "CMN", allocator);
+				if (light.constant_falloff != 0.0f)
+					positional.AddMember("constantAttenuation", light.constant_falloff, allocator);
+				if (light.linear_falloff != 0.0f)
+					positional.AddMember("linearAttenuation", light.linear_falloff, allocator);
+				if (light.quadratic_falloff != 0.0f)
+					positional.AddMember("quadraticAttenuation", light.quadratic_falloff, allocator);
+				l.AddMember("positional", positional, allocator);
+				break;
+
+			case LightInfo::Type::Directional:
+				l.AddMember("type", "directional", allocator);
+				l.AddMember("profile", "CMN", allocator);
+				break;
+
+			case LightInfo::Type::Ambient:
+				l.AddMember("type", "ambient", allocator);
+			}
+
+			lights.PushBack(l, allocator);
+		}
+
+		lights_cmn.AddMember("lights", lights, allocator);
+		ext.AddMember("KHR_lights_cmn", lights_cmn, allocator);
+		doc.AddMember("extensions", ext, allocator);
+	}
+
 	StringBuffer buffer;
 	PrettyWriter<StringBuffer> writer(buffer);
 	doc.Accept(writer);

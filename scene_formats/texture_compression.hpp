@@ -23,7 +23,19 @@
 #pragma once
 
 #include "material.hpp"
+#include "gli/format.hpp"
+#include "gli/texture.hpp"
 
 namespace Granite
 {
+struct CompressorArguments
+{
+	std::string output;
+	gli::format format = gli::FORMAT_UNDEFINED;
+	unsigned quality = 3;
+	bool alpha = false;
+};
+
+gli::format string_to_format(const std::string &s);
+bool compress_texture(const CompressorArguments &args, const gli::texture &input);
 }

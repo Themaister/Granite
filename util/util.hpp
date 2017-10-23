@@ -45,13 +45,13 @@ extern retro_log_printf_t libretro_log;
     char buffer[4096]; \
     sprintf(buffer, "[ERROR]: " __VA_ARGS__); \
     OutputDebugStringA(buffer); \
-} while(0)
+} while(false)
 #define LOGI(...) do { \
     fprintf(stderr, "[INFO]: " __VA_ARGS__); \
     char buffer[4096]; \
     sprintf(buffer, "[INFO]: " __VA_ARGS__); \
     OutputDebugStringA(buffer); \
-} while(0)
+} while(false)
 #elif defined(ANDROID)
 #include <android/log.h>
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "Granite", __VA_ARGS__)
@@ -61,13 +61,13 @@ extern retro_log_printf_t libretro_log;
     do                                \
     {                                 \
         fprintf(stderr, "[ERROR]: " __VA_ARGS__); \
-    } while (0)
+    } while (false)
 
 #define LOGI(...)                     \
     do                                \
     {                                 \
         fprintf(stderr, "[INFO]: " __VA_ARGS__); \
-    } while (0)
+    } while (false)
 #endif
 
 #define STRINGIFY(x) #x

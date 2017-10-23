@@ -96,6 +96,7 @@ private:
 		uint32_t buffer_index;
 		uint32_t offset;
 		uint32_t length;
+		uint32_t stride;
 	};
 
 	struct Accessor

@@ -588,7 +588,8 @@ void Parser::parse(const string &original_path, const string &json)
 		if (offset + length > json_buffers[buffer_index].size())
 			throw logic_error("Buffer view is out of range.");
 
-		json_views.push_back({buffer_index, offset, length});
+		auto stride = view.HasMember("byteStride") ? view["byteStride"].GetUint() : 0u;
+		json_views.push_back({buffer_index, offset, length, stride});
 	};
 
 	const auto add_accessor = [&](const Value &accessor) {
@@ -611,9 +612,8 @@ void Parser::parse(const string &original_path, const string &json)
 		acc.offset = offset;
 		acc.count = count;
 
-		if (accessor.HasMember("byteStride"))
-			if (accessor["byteStride"].GetUint() != 0)
-				acc.stride = accessor["byteStride"].GetUint();
+		if (json_views[view_index].stride)
+			acc.stride = json_views[view_index].stride;
 
 		auto *minimums = acc.min;
 		if (accessor.HasMember("min"))

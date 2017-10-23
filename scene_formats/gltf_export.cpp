@@ -21,6 +21,8 @@
  */
 
 #include "gltf_export.hpp"
+#include "texture_compression.hpp"
+#include "texture_loading.hpp"
 
 #define RAPIDJSON_ASSERT(x) do { if (!(x)) throw "JSON error"; } while(0)
 #include "rapidjson/document.h"
@@ -51,6 +53,7 @@ struct BufferView
 {
 	size_t offset;
 	size_t length;
+	size_t stride;
 };
 
 struct EmittedMesh
@@ -67,6 +70,7 @@ struct EmittedAccessor
 	unsigned count = 0;
 	const char *type = nullptr;
 	unsigned component = 0;
+	unsigned offset = 0;
 
 	AABB aabb;
 	bool normalized = false;
@@ -121,7 +125,7 @@ struct RemapState
 	template<typename StateType, typename SceneType>
 	void filter_input(StateType &output, const SceneType &input);
 
-	unsigned emit_buffer(ArrayView<const uint8_t> view);
+	unsigned emit_buffer(ArrayView<const uint8_t> view, uint32_t stride);
 
 	unsigned emit_accessor(unsigned view_index,
 	                       VkFormat format, unsigned offset, unsigned stride, unsigned count);
@@ -240,10 +244,11 @@ void RemapState::filter_input(StateType &output, const SceneType &input)
 	}
 }
 
-unsigned RemapState::emit_buffer(ArrayView<const uint8_t> view)
+unsigned RemapState::emit_buffer(ArrayView<const uint8_t> view, uint32_t stride)
 {
 	Hasher h;
 	h.data(view.data(), view.size());
+	h.u32(stride);
 	auto itr = buffer_hash.find(h.get());
 
 	if (itr == end(buffer_hash))
@@ -253,7 +258,7 @@ unsigned RemapState::emit_buffer(ArrayView<const uint8_t> view)
 		offset = (offset + 15) & ~15;
 		glb_buffer_data.resize(offset + view.size());
 		memcpy(glb_buffer_data.data() + offset, view.data(), view.size());
-		buffer_views.push_back({offset, view.size()});
+		buffer_views.push_back({offset, view.size(), stride});
 		buffer_hash[h.get()] = index;
 		return index;
 	}
@@ -457,6 +462,7 @@ unsigned RemapState::emit_accessor(unsigned view_index, VkFormat format, unsigne
 		EmittedAccessor acc = {};
 		acc.count = count;
 		acc.view = view_index;
+		acc.offset = offset;
 		set_accessor_type(acc, format);
 
 		accessor_cache.push_back(acc);
@@ -610,7 +616,7 @@ void RemapState::emit_mesh(unsigned remapped_index)
 
 	if (!mesh.indices.empty())
 	{
-		unsigned index = emit_buffer(mesh.indices);
+		unsigned index = emit_buffer(mesh.indices, mesh.index_type == VK_INDEX_TYPE_UINT16 ? 2 : 4);
 		emit.index_accessor = emit_accessor(index,
 		                                    mesh.index_type == VK_INDEX_TYPE_UINT16 ? VK_FORMAT_R16_UINT
 		                                                                            : VK_FORMAT_R32_UINT,
@@ -632,9 +638,9 @@ void RemapState::emit_mesh(unsigned remapped_index)
 	unsigned position_buffer = 0;
 	unsigned attribute_buffer = 0;
 	if (!mesh.positions.empty())
-		position_buffer = emit_buffer(mesh.positions);
+		position_buffer = emit_buffer(mesh.positions, mesh.position_stride);
 	if (!mesh.attributes.empty())
-		attribute_buffer = emit_buffer(mesh.attributes);
+		attribute_buffer = emit_buffer(mesh.attributes, mesh.attribute_stride);
 
 	emit.attribute_mask = 0;
 	for (unsigned i = 0; i < ecast(MeshAttribute::Count); i++)
@@ -810,6 +816,7 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path)
 			v.AddMember("buffer", 0, allocator);
 			v.AddMember("byteLength", view.length, allocator);
 			v.AddMember("byteOffset", view.offset, allocator);
+			v.AddMember("byteStride", view.stride, allocator);
 			views.PushBack(v, allocator);
 		}
 		doc.AddMember("bufferViews", views, allocator);
@@ -825,6 +832,7 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path)
 			acc.AddMember("componentType", accessor.component, allocator);
 			acc.AddMember("type", StringRef(accessor.type), allocator);
 			acc.AddMember("count", accessor.count, allocator);
+			acc.AddMember("byteOffset", accessor.offset, allocator);
 			if (accessor.use_aabb)
 			{
 				vec4 lo = vec4(accessor.aabb.get_minimum(), 1.0f);
@@ -887,6 +895,19 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path)
 
 			auto target_path = Path::relpath(path, image.target_relpath);
 
+			CompressorArguments args;
+			args.output = target_path;
+			args.format = (image.type == Material::Textures::BaseColor) ? gli::FORMAT_RGBA_BP_SRGB_BLOCK16 : gli::FORMAT_RGBA_BP_UNORM_BLOCK16;
+			auto input = load_texture_from_file(image.source_path,
+			                                    image.type == Material::Textures::BaseColor ? ColorSpace::sRGB : ColorSpace::Linear);
+
+			input = generate_offline_mipmaps(input);
+
+			if (!compress_texture(args, input))
+			{
+				LOGE("Failed to compress!\n");
+				return false;
+			}
 		}
 		doc.AddMember("images", images, allocator);
 	}
@@ -1050,6 +1071,16 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path)
 	PrettyWriter<StringBuffer> writer(buffer);
 	doc.Accept(writer);
 
+	const auto aligned_size = [](size_t size) {
+		return (size + 3) & ~size_t(3);
+	};
+
+	const auto write_u32 = [](uint8_t *data, uint32_t v) {
+		memcpy(data, &v, sizeof(uint32_t));
+	};
+
+	size_t glb_size = 12 + 8 + aligned_size(buffer.GetLength()) + 8 + aligned_size(state.glb_buffer_data.size());
+
 	auto file = Filesystem::get().open(path, FileMode::WriteOnly);
 	if (!file)
 	{
@@ -1057,14 +1088,38 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path)
 		return false;
 	}
 
-	void *mapped = file->map_write(buffer.GetLength());
+	uint8_t *mapped = static_cast<uint8_t *>(file->map_write(glb_size));
 	if (!mapped)
 	{
 		LOGE("Failed to map file: %s\n", path.c_str());
 		return false;
 	}
 
+	memcpy(mapped, "glTF", 4);
+	mapped += 4;
+	write_u32(mapped, 2);
+	mapped += 4;
+	write_u32(mapped, glb_size);
+	mapped += 4;
+
+	write_u32(mapped, aligned_size(buffer.GetLength()));
+	mapped += 4;
+	memcpy(mapped, "JSON", 4);
+	mapped += 4;
+
 	memcpy(mapped, buffer.GetString(), buffer.GetLength());
+	size_t pad_length = aligned_size(buffer.GetLength()) - buffer.GetLength();
+	memset(mapped + buffer.GetLength(), ' ', pad_length);
+	mapped += aligned_size(buffer.GetLength());
+
+	write_u32(mapped, aligned_size(state.glb_buffer_data.size()));
+	mapped += 4;
+	memcpy(mapped, "BIN\0", 4);
+	mapped += 4;
+	memcpy(mapped, state.glb_buffer_data.data(), state.glb_buffer_data.size());
+	pad_length = aligned_size(state.glb_buffer_data.size()) - state.glb_buffer_data.size();
+	memset(mapped + state.glb_buffer_data.size(), 0, pad_length);
+
 	file->unmap();
 	return true;
 }

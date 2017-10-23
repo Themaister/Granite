@@ -38,8 +38,8 @@ int main(int argc, char *argv[])
 	} args;
 
 	CLICallbacks cbs;
-	cbs.add("--input", [&](CLIParser &parser) { args.input = parser.next_string(); });
 	cbs.add("--output", [&](CLIParser &parser) { args.output = parser.next_string(); });
+	cbs.default_handler = [&](const char *arg) { args.input = arg; };
 	CLIParser cli_parser(move(cbs), argc - 1, argv + 1);
 	if (!cli_parser.parse())
 		return 1;

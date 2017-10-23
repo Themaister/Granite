@@ -26,7 +26,7 @@
 
 namespace Granite
 {
-Vulkan::ImageHandle convert_equirect_to_cube(Vulkan::Device &device, Vulkan::ImageView &view);
+Vulkan::ImageHandle convert_equirect_to_cube(Vulkan::Device &device, Vulkan::ImageView &view, float scale);
 
 Vulkan::ImageHandle convert_cube_to_ibl_diffuse(Vulkan::Device &device, Vulkan::ImageView &view);
 

@@ -31,7 +31,7 @@ using namespace std;
 
 static void print_help()
 {
-	LOGE("Usage: [--specular <path.ktx>] [--diffuse <path.ktx>] [--cube <path.ktx>] <equirect HDR>\n");
+	LOGE("Usage: [--specular <path.ktx>] [--diffuse <path.ktx>] [--cube <path.ktx>] [--cube-scale <scale>] <equirect HDR>\n");
 }
 
 int main(int argc, char *argv[])
@@ -43,12 +43,14 @@ int main(int argc, char *argv[])
 		string cube;
 		string specular;
 		string diffuse;
+		float cube_scale = 1.0f;
 	} args;
 
 	cbs.add("--help", [](CLIParser &parser) { print_help(); parser.end(); });
 	cbs.add("--specular", [&](CLIParser &parser) { args.specular = parser.next_string(); });
 	cbs.add("--diffuse", [&](CLIParser &parser) { args.diffuse = parser.next_string(); });
 	cbs.add("--cube", [&](CLIParser &parser) { args.cube = parser.next_string(); });
+	cbs.add("--cube-scale", [&](CLIParser &parser) { args.cube_scale = parser.next_double(); });
 	cbs.default_handler = [&](const char *arg) { args.equirect = arg; };
 	cbs.error_handler = [&]() { print_help(); };
 
@@ -73,7 +75,7 @@ int main(int argc, char *argv[])
 	auto &textures = device.get_texture_manager();
 	auto *equirect = textures.request_texture(args.equirect);
 
-	auto cube = convert_equirect_to_cube(device, equirect->get_image()->get_view());
+	auto cube = convert_equirect_to_cube(device, equirect->get_image()->get_view(), args.cube_scale);
 	auto specular = convert_cube_to_ibl_specular(device, cube->get_view());
 	auto diffuse = convert_cube_to_ibl_diffuse(device, cube->get_view());
 

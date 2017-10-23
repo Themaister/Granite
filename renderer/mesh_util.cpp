@@ -707,7 +707,7 @@ void Skybox::on_device_created(const Vulkan::DeviceCreatedEvent &created)
 			texture = texture_manager.register_deferred_texture(cube_path);
 
 			texture_manager.register_texture_update_notification(bg_path, [this](Vulkan::Texture &tex) {
-				texture->replace_image(convert_equirect_to_cube(*device, tex.get_image()->get_view()));
+				texture->replace_image(convert_equirect_to_cube(*device, tex.get_image()->get_view(), 1.0f));
 			});
 		}
 		else

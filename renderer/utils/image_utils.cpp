@@ -166,10 +166,10 @@ ImageHandle convert_cube_to_ibl_diffuse(Device &device, ImageView &view)
 	return handle;
 }
 
-ImageHandle convert_equirect_to_cube(Device &device, ImageView &view)
+ImageHandle convert_equirect_to_cube(Device &device, ImageView &view, float scale)
 {
-	unsigned size = std::max(view.get_image().get_create_info().width / 3,
-	                         view.get_image().get_create_info().height / 2);
+	unsigned size = unsigned(scale * std::max(view.get_image().get_create_info().width / 3,
+	                                          view.get_image().get_create_info().height / 2));
 
 	ImageCreateInfo info = ImageCreateInfo::render_target(size, size, view.get_format());
 	info.levels = 0;

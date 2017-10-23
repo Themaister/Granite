@@ -20,7 +20,6 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include <ispc_texcomp/ispc_texcomp.h>
 #include <texture_files.hpp>
 #include "cli_parser.hpp"
 #include "gli/save.hpp"
@@ -107,5 +106,4 @@ int main(int argc, char *argv[])
 		LOGE("Failed to compress texture.\n");
 		return 1;
 	}
-
 }

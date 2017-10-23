@@ -26,7 +26,7 @@
 #include <vector>
 
 #ifdef HAVE_ISPC
-#include "ispc_texcomp/ispc_texcomp.h"
+#include <ispc_texcomp.h>
 #endif
 
 #ifdef HAVE_ASTC_ENCODER

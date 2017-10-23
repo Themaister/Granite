@@ -3,11 +3,16 @@ option(GRANITE_ASTC_ENCODER_COMPRESSION "Enable astc-encoder texture compression
 
 add_granite_library(texture-compression texture_compression.hpp texture_compression.cpp)
 
+set(GRANITE_ISPC_LIBRARY_DIR "" CACHE TYPE PATH)
+set(GRANITE_ISPC_INCLUDE_DIR "" CACHE TYPE PATH)
+
 if (GRANITE_ISPC_TEXTURE_COMPRESSION)
-    find_library(ISPC NAMES ispc_texcomp)
-    if (ISPC)
-        target_link_libraries(texture-compression ${ISPC})
+    find_library(ISPC_LIBRARY NAMES ispc_texcomp HINTS ${GRANITE_ISPC_LIBRARY_DIR})
+    find_path(ISPC_INCLUDE_DIR NAMES ispc_texcomp.h HINTS ${GRANITE_ISPC_INCLUDE_DIR})
+    if (ISPC_LIBRARY AND ISPC_INCLUDE_DIR)
+        target_link_libraries(texture-compression ${ISPC_LIBRARY})
         target_compile_definitions(texture-compression PRIVATE HAVE_ISPC)
+        target_include_directories(texture-compression PUBLIC ${ISPC_INCLUDE_DIR})
     endif()
 endif()
 

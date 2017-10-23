@@ -19,3 +19,4 @@ endif()
 add_granite_library(rapidjson .dummy.cpp)
 target_include_directories(rapidjson PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/rapidjson/include)
 target_compile_definitions(rapidjson PUBLIC RAPIDJSON_HAS_STDSTRING=1)
+

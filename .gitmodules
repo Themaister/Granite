@@ -34,3 +34,6 @@
 [submodule "third_party/muFFT"]
 	path = third_party/muFFT
 	url = git://github.com/Themaister/muFFT
+[submodule "third_party/astc-encoder"]
+	path = third_party/astc-encoder
+	url = file:///git/astc-encoder

@@ -26,7 +26,6 @@
 
 namespace Vulkan
 {
-
 static inline bool format_is_depth(VkFormat format)
 {
 	switch (format)

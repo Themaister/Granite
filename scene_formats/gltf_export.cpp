@@ -236,7 +236,7 @@ void RemapState::filter_input(StateType &output, const SceneType &input)
 			output.to_index.push_back(itr->second);
 		else
 		{
-			unsigned index = output.to_index.size();
+			unsigned index = output.info.size();
 			output.to_index.push_back(output.info.size());
 			output.info.push_back(&i);
 			output.hashmap[h] = index;
@@ -929,6 +929,7 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 			CompressorArguments args;
 			args.output = target_path;
 			args.format = get_compression_format(image.type);
+			args.quality = options.texcomp_quality;
 			auto input = load_texture_from_file(image.source_path,
 			                                    image.type == Material::Textures::BaseColor ? ColorSpace::sRGB : ColorSpace::Linear);
 
@@ -1098,7 +1099,7 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 					prim.AddMember("indices", m.index_accessor, allocator);
 
 				if (m.material >= 0)
-					prim.AddMember("material", m.material, allocator);
+					prim.AddMember("material", state.material.to_index[m.material], allocator);
 
 				prim.AddMember("attributes", attribs, allocator);
 				primitives.PushBack(prim, allocator);
@@ -1208,7 +1209,8 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 	}
 
 	StringBuffer buffer;
-	PrettyWriter<StringBuffer> writer(buffer);
+	//PrettyWriter<StringBuffer> writer(buffer);
+	Writer<StringBuffer> writer(buffer);
 	doc.Accept(writer);
 
 	const auto aligned_size = [](size_t size) {

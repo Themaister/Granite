@@ -24,7 +24,6 @@ struct EnvironmentInfo
 {
 	float intensity;
 	float mipscale;
-	float reflection_lod;
 };
 
 layout(set = 1, binding = 0) uniform samplerCube uReflection;
@@ -151,8 +150,7 @@ vec3 compute_lighting(
 	               textureLod(uReflection, reflected,
 	                          max(material.roughness * environment.mipscale, minimum_lod)).rgb;
 #else
-	float minimum_lod = environment.mipscale + 8.0 * environment.reflection_lod - 8.0;
-	vec3 envspec = environment.intensity * textureLod(uReflection, reflected, max(minimum_lod, material.roughness * environment.mipscale)).rgb;
+	vec3 envspec = environment.intensity * textureLod(uReflection, reflected, material.roughness * environment.mipscale).rgb;
 #endif
 
 	envspec *= iblspec;

@@ -30,7 +30,7 @@ void main()
 {
     // Load material information.
     float depth = subpassLoad(Depth).x;
-    vec3 mrl = subpassLoad(PBR).xyz;
+    vec2 mr = subpassLoad(PBR).xy;
     vec4 base_color_ambient = subpassLoad(BaseColor);
     vec3 N = subpassLoad(Normal).xyz * 2.0 - 1.0;
 
@@ -41,7 +41,7 @@ void main()
     vec4 clip_shadow = vShadowClip + depth * registers.shadow_projection_col2;
 
     FragColor = compute_lighting(
-		MaterialProperties(base_color_ambient.rgb, N, mrl.x, mrl.y, base_color_ambient.a, 1.0),
+		MaterialProperties(base_color_ambient.rgb, N, mr.x, mr.y, base_color_ambient.a, 1.0),
 		LightInfo(pos, registers.camera_pos, registers.camera_front,
 				registers.direction, registers.color
 #ifdef SHADOWS
@@ -49,7 +49,7 @@ void main()
 #endif
 				)
 #ifdef ENVIRONMENT
-		, EnvironmentInfo(registers.environment_intensity, registers.environment_mipscale, mrl.z)
+		, EnvironmentInfo(registers.environment_intensity, registers.environment_mipscale)
 #endif
 		);
 }

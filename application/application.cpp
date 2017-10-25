@@ -361,7 +361,7 @@ void SceneViewerApplication::add_main_pass_deferred(Vulkan::Device &device, cons
 	emissive.format = config.rt_fp16 ? VK_FORMAT_R16G16B16A16_SFLOAT : VK_FORMAT_B10G11R11_UFLOAT_PACK32;
 	albedo.format = VK_FORMAT_R8G8B8A8_SRGB;
 	normal.format = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
-	pbr.format = VK_FORMAT_R8G8B8A8_UNORM;
+	pbr.format = VK_FORMAT_R8G8_UNORM;
 	depth.format = device.get_default_depth_stencil_format();
 
 	auto &gbuffer = graph.add_pass(tagcat("gbuffer", tag), VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);

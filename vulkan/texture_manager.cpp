@@ -150,6 +150,16 @@ void Texture::update_gli(const void *data, size_t size)
 	}
 
 	info.layers *= faces;
+
+	// Auto-generate mips for single-mip level images.
+	if (info.levels == 1 &&
+	    device->format_is_supported(info.format, VK_FORMAT_FEATURE_BLIT_SRC_BIT) &&
+	    device->format_is_supported(info.format, VK_FORMAT_FEATURE_BLIT_DST_BIT))
+	{
+		info.levels = 0;
+		info.misc |= IMAGE_MISC_GENERATE_MIPS_BIT;
+	}
+
 	handle = device->create_image(info, initial.data());
 }
 

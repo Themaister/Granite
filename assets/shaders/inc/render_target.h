@@ -11,7 +11,7 @@ layout(location = 0) out vec3 Emissive;
 #endif
 layout(location = 1) out vec4 BaseColor;
 layout(location = 2) out vec3 Normal;
-layout(location = 3) out vec4 PBR;
+layout(location = 3) out vec2 PBR;
 
 void emit_render_target(vec3 emissive, vec4 base_color, vec3 normal, float metallic, float roughness, float ambient, vec3 eye_dir)
 {
@@ -21,16 +21,7 @@ void emit_render_target(vec3 emissive, vec4 base_color, vec3 normal, float metal
     BaseColor = vec4(base_color.rgb, ambient);
     Normal = 0.5 * normal + 0.5;
 
-#if defined(ALPHA_TEST) && !defined(ALPHA_TEST_ALPHA_TO_COVERAGE)
-    const float reflection_lod = 0.0;
-#else
-    // Reflection shaders in deferred will need to know about the derivative of the normal vector.
-    // This information is completely lost in deferred.
-    vec3 normal_diff = fwidth(normal * 256.0);
-    float reflection_lod = log2(dot(normal_diff, normal_diff) + 0.001) * (0.5 / 8.0);
-#endif
-
-    PBR = vec4(metallic, roughness, reflection_lod, 0.0);
+    PBR = vec2(metallic, roughness);
 }
 #elif defined(RENDERER_FORWARD)
 layout(location = 0) out vec4 Color;
@@ -59,7 +50,7 @@ void emit_render_target(vec3 emissive, vec4 base_color, vec3 normal, float metal
 #endif
         )
 #ifdef ENVIRONMENT
-        , EnvironmentInfo(environment.intensity, environment.mipscale, 0.0)
+        , EnvironmentInfo(environment.intensity, environment.mipscale)
 #endif
         );
 

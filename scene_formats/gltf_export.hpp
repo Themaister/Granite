@@ -42,6 +42,7 @@ enum class TextureCompression
 struct ExportOptions
 {
 	TextureCompression compression = TextureCompression::Uncompressed;
+	unsigned texcomp_quality = 3;
 };
 
 bool export_scene_to_glb(const SceneInformation &scene, const std::string &path, const ExportOptions &options);

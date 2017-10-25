@@ -50,6 +50,11 @@ static SceneFormats::TextureCompression string_to_compression(const string &fmt)
 	}
 }
 
+static void print_help()
+{
+	LOGI("Usage: [--output <out.glb>] [--texcomp <type>] [--texcomp-quality <1 (fast) - 5 (slow)>] input.gltf\n");
+}
+
 int main(int argc, char *argv[])
 {
 	struct Arguments
@@ -63,6 +68,8 @@ int main(int argc, char *argv[])
 	CLICallbacks cbs;
 	cbs.add("--output", [&](CLIParser &parser) { args.output = parser.next_string(); });
 	cbs.add("--texcomp", [&](CLIParser &parser) { options.compression = string_to_compression(parser.next_string()); });
+	cbs.add("--texcomp-quality", [&](CLIParser &parser) { options.texcomp_quality = parser.next_uint(); });
+	cbs.add("--help", [](CLIParser &parser) { print_help(); parser.end(); });
 	cbs.default_handler = [&](const char *arg) { args.input = arg; };
 	CLIParser cli_parser(move(cbs), argc - 1, argv + 1);
 	if (!cli_parser.parse())

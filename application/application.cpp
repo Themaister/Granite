@@ -306,7 +306,12 @@ static inline string tagcat(const std::string &a, const std::string &b)
 void SceneViewerApplication::add_main_pass_forward(Vulkan::Device &device, const std::string &tag)
 {
 	AttachmentInfo color, depth;
-	color.format = config.rt_fp16 ? VK_FORMAT_R16G16B16A16_SFLOAT : VK_FORMAT_B10G11R11_UFLOAT_PACK32;
+
+	if (config.hdr_bloom)
+		color.format = config.rt_fp16 ? VK_FORMAT_R16G16B16A16_SFLOAT : VK_FORMAT_B10G11R11_UFLOAT_PACK32;
+	else
+		color.format = VK_FORMAT_UNDEFINED; // Swapchain format.
+
 	depth.format = device.get_default_depth_format();
 	color.samples = config.msaa;
 	depth.samples = config.msaa;
@@ -358,7 +363,11 @@ void SceneViewerApplication::add_main_pass_forward(Vulkan::Device &device, const
 void SceneViewerApplication::add_main_pass_deferred(Vulkan::Device &device, const std::string &tag)
 {
 	AttachmentInfo emissive, albedo, normal, pbr, depth;
-	emissive.format = config.rt_fp16 ? VK_FORMAT_R16G16B16A16_SFLOAT : VK_FORMAT_B10G11R11_UFLOAT_PACK32;
+	if (config.hdr_bloom)
+		emissive.format = config.rt_fp16 ? VK_FORMAT_R16G16B16A16_SFLOAT : VK_FORMAT_B10G11R11_UFLOAT_PACK32;
+	else
+		emissive.format = VK_FORMAT_UNDEFINED;
+
 	albedo.format = VK_FORMAT_R8G8B8A8_SRGB;
 	normal.format = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
 	pbr.format = VK_FORMAT_R8G8_UNORM;

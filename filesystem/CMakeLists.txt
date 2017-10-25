@@ -7,8 +7,15 @@ target_compile_definitions(filesystem PRIVATE GRANITE_DEFAULT_CACHE_DIRECTORY=\"
 
 if (WIN32)
     add_subdirectory(windows)
+    target_link_libraries(filesystem filesystem-os)
+elseif(ANDROID)
+    add_subdirectory(linux)
+    add_subdirectory(android)
+    target_link_libraries(filesystem filesystem-os filesystem-android)
 else()
     add_subdirectory(linux)
+    target_link_libraries(filesystem filesystem-os)
 endif()
+
 add_subdirectory(netfs)
-target_link_libraries(filesystem filesystem-os filesystem-netfs)
+target_link_libraries(filesystem filesystem-netfs)

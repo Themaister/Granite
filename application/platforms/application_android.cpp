@@ -29,6 +29,9 @@
 #include <jni.h>
 #include <android/sensor.h>
 
+#include "android.hpp"
+#include "os.hpp"
+
 using namespace std;
 using namespace Vulkan;
 
@@ -270,7 +273,6 @@ static int32_t engine_handle_input(android_app *app, AInputEvent *event)
 
 static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 {
-	auto &has_window = *static_cast<bool *>(app->userData);
 	switch (cmd)
 	{
 	case APP_CMD_RESUME:
@@ -523,6 +525,11 @@ using namespace Granite;
 
 void android_main(android_app *app)
 {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated"
+	app_dummy();
+#pragma GCC diagnostic pop
+
 	// Statics on Android might not be cleared out.
 	global_state = {};
 	jni = {};
@@ -531,6 +538,9 @@ void android_main(android_app *app)
 	init_jni();
 
 	LOGI("Starting Granite!\n");
+
+	Filesystem::get().register_protocol("builtin", make_unique<AssetManagerFilesystem>("builtin", app->activity->assetManager));
+	Filesystem::get().register_protocol("cache", make_unique<OSFilesystem>(app->activity->internalDataPath));
 
 	app->onAppCmd = engine_handle_cmd_init;
 	app->onInputEvent = engine_handle_input;
@@ -582,6 +592,8 @@ void android_main(android_app *app)
 
 					LOGI("Application returned %d.\n", ret);
 					Granite::EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+
+					App::finishFromThread();
 					return;
 				}
 				catch (const std::exception &e)

@@ -13,3 +13,9 @@ CMakeCache
 /app/.externalNativeBuild
 __pycache__
 perf.data
+/app/assets
+/app/build
+/application/platforms/android/build
+/cmake-build-debug
+/cmake-build-release
+/cmake-build-relwithdebinfo

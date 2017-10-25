@@ -24,7 +24,7 @@ android {
                             "-DCMAKE_BUILD_TYPE=Debug",
                             "-DANDROID_PLATFORM=android-24"
 
-                    targets "sandbox"
+                    targets "gltf-viewer"
                 }
             }
             jniDebuggable true
@@ -39,7 +39,7 @@ android {
                             "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
                             "-DANDROID_PLATFORM=android-24"
 
-                    targets "sandbox"
+                    targets "gltf-viewer"
                 }
             }
             debuggable true

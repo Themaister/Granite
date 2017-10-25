@@ -24,6 +24,7 @@
 #include <memory>
 #include <stdint.h>
 #include <unordered_map>
+#include <string>
 
 namespace Util
 {

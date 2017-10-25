@@ -60,7 +60,7 @@ size_t AssetFile::get_size()
 	return size;
 }
 
-void *AssetFile::map_write(size_t size)
+void *AssetFile::map_write(size_t)
 {
 	return nullptr;
 }

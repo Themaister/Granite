@@ -1197,7 +1197,7 @@ void RenderGraph::build_aliases()
 
 	vector<Range> pass_range(physical_dimensions.size());
 
-	const auto register_reader = [this, &pass_range](const RenderTextureResource *resource, unsigned pass_index) {
+	const auto register_reader = [&pass_range](const RenderTextureResource *resource, unsigned pass_index) {
 		if (resource && pass_index != RenderPass::Unused)
 		{
 			unsigned phys = resource->get_physical_index();
@@ -1210,7 +1210,7 @@ void RenderGraph::build_aliases()
 		}
 	};
 
-	const auto register_writer = [this, &pass_range](const RenderTextureResource *resource, unsigned pass_index) {
+	const auto register_writer = [&pass_range](const RenderTextureResource *resource, unsigned pass_index) {
 		if (resource && pass_index != RenderPass::Unused)
 		{
 			unsigned phys = resource->get_physical_index();

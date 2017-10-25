@@ -66,7 +66,6 @@ private:
 	unsigned start_flush_buffer = 0;
 	VkDeviceSize start_flush_offset = 0;
 	VkDeviceSize offset = 0;
-	VkDeviceSize size = 0;
 	uint8_t *host = nullptr;
 };
 }

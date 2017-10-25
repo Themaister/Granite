@@ -164,7 +164,6 @@ private:
 
 	VkFormat color_attachments[VULKAN_NUM_ATTACHMENTS];
 	VkFormat depth_stencil;
-	unsigned num_color_attachments;
 	std::vector<SubpassInfo> subpasses;
 };
 

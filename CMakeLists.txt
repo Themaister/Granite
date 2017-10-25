@@ -118,7 +118,6 @@ endfunction()
 
 option(GRANITE_TOOLS "Build Granite tools." ON)
 
-include(cmake/assets.cmake)
 add_subdirectory(tests)
 
 if (GRANITE_TOOLS)

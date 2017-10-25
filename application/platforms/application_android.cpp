@@ -539,8 +539,19 @@ void android_main(android_app *app)
 
 	LOGI("Starting Granite!\n");
 
-	Filesystem::get().register_protocol("builtin", make_unique<AssetManagerFilesystem>("builtin", app->activity->assetManager));
+#ifdef ANDROID_APK_FILESYSTEM
+#ifndef ANDROID_BUILTIN_ASSET_PATH
+#define ANDROID_BUILTIN_ASSET_PATH ""
+#endif
+
+#ifndef ANDROID_ASSET_PATH
+#define ANDROID_ASSET_PATH ""
+#endif
+
+	Filesystem::get().register_protocol("builtin", make_unique<AssetManagerFilesystem>(ANDROID_BUILTIN_ASSET_PATH, app->activity->assetManager));
+	Filesystem::get().register_protocol("assets", make_unique<AssetManagerFilesystem>(ANDROID_ASSET_PATH, app->activity->assetManager));
 	Filesystem::get().register_protocol("cache", make_unique<OSFilesystem>(app->activity->internalDataPath));
+#endif
 
 	app->onAppCmd = engine_handle_cmd_init;
 	app->onInputEvent = engine_handle_input;

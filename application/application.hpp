@@ -81,7 +81,6 @@ public:
 	void run_frame();
 
 private:
-	unsigned width = 0, height = 0;
 	Vulkan::WSI wsi;
 	std::unique_ptr<Vulkan::WSIPlatform> platform;
 };

@@ -931,7 +931,7 @@ void TexturePlane::add_render_pass(RenderGraph &graph, Type type)
 	auto &reflection_blur_pass = graph.add_pass(name, VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 	reflection_blur_pass.add_texture_input(name + "-HDR");
 	reflection_blur_pass.add_color_output(name, reflection_blur);
-	reflection_blur_pass.set_build_render_pass([this, &reflection_blur_pass](Vulkan::CommandBuffer &cmd) {
+	reflection_blur_pass.set_build_render_pass([&reflection_blur_pass](Vulkan::CommandBuffer &cmd) {
 		reflection_blur_pass.set_texture_inputs(cmd, 0, 0, Vulkan::StockSampler::LinearClamp);
 		CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/blur.frag",
 		                             {{"METHOD", 6}});

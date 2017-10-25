@@ -469,7 +469,7 @@ void Device::submit_empty(CommandBuffer::Type type, Fence *fence, Semaphore *sem
 
 	if (fence)
 	{
-		auto ptr = make_shared<FenceHolder>(this, cleared_fence);
+		auto ptr = make_shared<FenceHolder>(cleared_fence);
 		*fence = ptr;
 		frame().fences.push_back(move(ptr));
 	}
@@ -764,7 +764,7 @@ void Device::submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *sem
 
 	if (fence)
 	{
-		auto ptr = make_shared<FenceHolder>(this, cleared_fence);
+		auto ptr = make_shared<FenceHolder>(cleared_fence);
 		*fence = ptr;
 		frame().fences.push_back(move(ptr));
 	}

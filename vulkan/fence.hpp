@@ -31,9 +31,8 @@ class Device;
 class FenceHolder
 {
 public:
-	FenceHolder(Device *device, VkFence fence)
-	    : device(device)
-	    , fence(fence)
+	FenceHolder(VkFence fence)
+	    : fence(fence)
 	{
 	}
 
@@ -43,7 +42,6 @@ public:
 	}
 
 private:
-	Device *device;
 	VkFence fence;
 };
 

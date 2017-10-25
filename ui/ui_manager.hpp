@@ -74,7 +74,7 @@ private:
 	FlatRenderer renderer;
 	std::vector<WidgetHandle> widgets;
 	std::unique_ptr<Font> fonts[Util::ecast(FontSize::Count)];
-	Font::Alignment alignment = Font::Alignment::Center;
+	//Font::Alignment alignment = Font::Alignment::Center;
 
 	Widget *drag_receiver = nullptr;
 	vec2 drag_receiver_base = vec2(0.0f);

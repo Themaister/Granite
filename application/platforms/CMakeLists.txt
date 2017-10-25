@@ -6,6 +6,7 @@ endif()
 option(GRANITE_KHR_DISPLAY_ACQUIRE_XLIB "Try to acquire Xlib display when using VK_KHR_display." OFF)
 
 if (ANDROID)
+	option(GRANITE_ANDROID_APK_FILESYSTEM "Use APK file system for assets and builtin files." ON)
 	add_granite_library(application-main application_android.cpp)
 
 	add_granite_library(android-glue
@@ -18,6 +19,9 @@ if (ANDROID)
 
 	target_link_libraries(android-glue util)
 	target_link_libraries(application-main android-glue)
+	if (GRANITE_ANDROID_APK_FILESYSTEM)
+		target_compile_definitions(application-main PRIVATE ANDROID_APK_FILESYSTEM)
+	endif()
 elseif (${GRANITE_PLATFORM} MATCHES "libretro")
 	add_granite_library(retro-utils application_libretro_utils.cpp application_libretro_utils.hpp)
 	target_link_libraries(retro-utils vulkan-backend vulkan-wsi)

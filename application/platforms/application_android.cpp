@@ -601,10 +601,9 @@ void android_main(android_app *app)
 				try
 				{
 					int ret;
-					int argc = 2;
+					int argc = 1;
 					char arg[] = "granite";
-					char path[] = "assets://glTF/Lantern.gltf";
-					char *argv[] = { arg, path, nullptr };
+					char *argv[] = { arg, nullptr };
 
 					auto app = unique_ptr<Granite::Application>(Granite::application_create(argc, argv));
 					if (app)

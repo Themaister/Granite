@@ -13,7 +13,11 @@ endif()
 add_granite_library(gli .dummy.cpp)
 target_include_directories(gli PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/gli)
 if (CMAKE_COMPILER_IS_GNUCXX OR (${CMAKE_CXX_COMPILER_ID} MATCHES "Clang"))
-	target_compile_options(gli PUBLIC -Wno-type-limits -Wno-ignored-qualifiers -Wno-unused-parameter -Wno-pedantic -Wno-macro-redefined)
+	target_compile_options(gli PUBLIC -Wno-type-limits -Wno-ignored-qualifiers -Wno-unused-parameter -Wno-pedantic)
+endif()
+
+if (${CMAKE_CXX_COMPILER_ID} MATCHES "Clang")
+	target_compile_options(gli PUBLIC -Wno-macro-redefined)
 endif()
 
 add_granite_library(rapidjson .dummy.cpp)

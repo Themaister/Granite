@@ -30,7 +30,6 @@ using namespace std;
 
 namespace Granite
 {
-
 AssetFile::AssetFile(AAssetManager *mgr, const string &path, FileMode mode)
 {
 	if (mode != FileMode::ReadOnly)
@@ -84,7 +83,7 @@ unique_ptr<File> AssetManagerFilesystem::open(const std::string &path, FileMode 
 {
 	try
 	{
-		unique_ptr<File> file(new AssetFile(mgr, Path::join(base, path), mode));
+		unique_ptr<File> file(new AssetFile(mgr, Path::join(base, Path::canonicalize_path(path)), mode));
 		return file;
 	}
 	catch (const std::exception &e)
@@ -115,7 +114,7 @@ FileNotifyHandle AssetManagerFilesystem::install_notification(const string &,
 
 vector<ListEntry> AssetManagerFilesystem::list(const string &path)
 {
-	auto directory = Path::join(base, path);
+	auto directory = Path::join(base, Path::canonicalize_path(path));
 	auto *dir = AAssetManager_openDir(mgr, directory.c_str());
 
 	if (!dir)
@@ -136,7 +135,7 @@ vector<ListEntry> AssetManagerFilesystem::list(const string &path)
 
 bool AssetManagerFilesystem::stat(const std::string &path, FileStat &stat)
 {
-	auto resolved_path = Path::join(base, path);
+	auto resolved_path = Path::join(base, Path::canonicalize_path(path));
 
 	auto *asset = AAssetManager_open(mgr, resolved_path.c_str(), AASSET_MODE_UNKNOWN);
 	if (!asset)
@@ -147,5 +146,4 @@ bool AssetManagerFilesystem::stat(const std::string &path, FileStat &stat)
 	AAsset_close(asset);
 	return true;
 }
-
 }

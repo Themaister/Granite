@@ -136,6 +136,7 @@ bool WSI::init()
 
 void WSI::init_surface_and_swapchain(VkSurfaceKHR new_surface)
 {
+	LOGI("init_surface_and_swapchain()\n");
 	if (new_surface != VK_NULL_HANDLE)
 	{
 		VK_ASSERT(surface == VK_NULL_HANDLE);
@@ -149,6 +150,7 @@ void WSI::init_surface_and_swapchain(VkSurfaceKHR new_surface)
 
 void WSI::deinit_surface_and_swapchain()
 {
+	LOGI("deinit_surface_and_swapchain()\n");
 	device->wait_idle();
 
 	auto acquire = device->set_acquire(VK_NULL_HANDLE);

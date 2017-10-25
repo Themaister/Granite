@@ -30,6 +30,34 @@ namespace Granite
 {
 namespace Path
 {
+string canonicalize_path(const string &path)
+{
+	string transformed;
+	transformed.resize(path.size());
+	transform(begin(path), end(path), begin(transformed), [](char c) -> char { return c == '\\' ? '/' : c; });
+	auto data = Util::split_no_empty(transformed, "/");
+
+	vector<string> result;
+	for (auto &i : data)
+	{
+		if (i == "..")
+		{
+			if (!result.empty())
+				result.pop_back();
+		}
+		else
+			result.push_back(move(i));
+	}
+
+	string res;
+	for (auto &i : result)
+	{
+		if (&i != result.data())
+			res += "/";
+		res += i;
+	}
+	return res;
+}
 
 static size_t find_last_slash(const string &str)
 {

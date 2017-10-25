@@ -126,14 +126,6 @@ struct WSIPlatformAndroid : Vulkan::WSIPlatform
 	bool pending_native_window_term = false;
 };
 
-unique_ptr<WSIPlatform> create_default_application_platform(unsigned width, unsigned height)
-{
-	auto *platform = new WSIPlatformAndroid(width, height);
-	assert(!global_state.app->userData);
-	global_state.app->userData = platform;
-	return unique_ptr<WSIPlatform>(platform);
-}
-
 static VkSurfaceKHR create_surface_from_native_window(VkInstance instance, ANativeWindow *window)
 {
 	VkSurfaceKHR surface = VK_NULL_HANDLE;
@@ -277,6 +269,7 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 	{
 	case APP_CMD_RESUME:
 	{
+		LOGI("Lifecycle resume\n");
 		enable_sensors();
 		Granite::EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		Granite::EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
@@ -286,6 +279,7 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 
 	case APP_CMD_PAUSE:
 	{
+		LOGI("Lifecycle pause\n");
 		disable_sensors();
 		Granite::EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		Granite::EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
@@ -295,6 +289,7 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 
 	case APP_CMD_START:
 	{
+		LOGI("Lifecycle start\n");
 		Granite::EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		Granite::EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
 		break;
@@ -302,6 +297,7 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 
 	case APP_CMD_STOP:
 	{
+		LOGI("Lifecycle stop\n");
 		Granite::EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		Granite::EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
 		break;
@@ -312,6 +308,7 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 		global_state.has_window = app->window != nullptr;
 		if (app->window)
 		{
+			LOGI("Init window\n");
 			global_state.base_width = ANativeWindow_getWidth(app->window);
 			global_state.base_height = ANativeWindow_getHeight(app->window);
 		}
@@ -320,7 +317,6 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 		app->activity->vm->AttachCurrentThread(&env, nullptr);
 		global_state.orientation = env->CallIntMethod(app->activity->clazz, jni.getDisplayRotation);
 		app->activity->vm->DetachCurrentThread();
-
 		break;
 	}
 	}
@@ -334,6 +330,7 @@ static void engine_handle_cmd(android_app *app, int32_t cmd)
 	{
 	case APP_CMD_RESUME:
 	{
+		LOGI("Lifecycle resume\n");
 		Granite::EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		Granite::EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
 		enable_sensors();
@@ -349,6 +346,7 @@ static void engine_handle_cmd(android_app *app, int32_t cmd)
 
 	case APP_CMD_PAUSE:
 	{
+		LOGI("Lifecycle pause\n");
 		Granite::EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		Granite::EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
 		disable_sensors();
@@ -361,6 +359,7 @@ static void engine_handle_cmd(android_app *app, int32_t cmd)
 
 	case APP_CMD_START:
 	{
+		LOGI("Lifecycle start\n");
 		Granite::EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		Granite::EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
 		break;
@@ -368,6 +367,7 @@ static void engine_handle_cmd(android_app *app, int32_t cmd)
 
 	case APP_CMD_STOP:
 	{
+		LOGI("Lifecycle stop\n");
 		Granite::EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		Granite::EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
 		break;
@@ -376,12 +376,14 @@ static void engine_handle_cmd(android_app *app, int32_t cmd)
 	case APP_CMD_INIT_WINDOW:
 		if (app->window != nullptr)
 		{
+			state.has_window = true;
 			global_state.base_width = ANativeWindow_getWidth(app->window);
 			global_state.base_height = ANativeWindow_getHeight(app->window);
+			LOGI("New window size %d x %d\n", global_state.base_width, global_state.base_height);
 
 			if (state.wsi)
 			{
-				state.has_window = true;
+				LOGI("Lifecycle init window\n");
 				auto surface = create_surface_from_native_window(state.wsi->get_context().get_instance(), app->window);
 				state.wsi->init_surface_and_swapchain(surface);
 			}
@@ -393,7 +395,10 @@ static void engine_handle_cmd(android_app *app, int32_t cmd)
 	case APP_CMD_TERM_WINDOW:
 		state.has_window = false;
 		if (state.wsi)
+		{
+			LOGI("Lifecycle deinit window\n");
 			state.wsi->deinit_surface_and_swapchain();
+		}
 		else
 			state.pending_native_window_term = true;
 		break;
@@ -440,18 +445,24 @@ bool WSIPlatformAndroid::alive(Vulkan::WSI &wsi)
 
 	bool once = false;
 
-	if (state.pending_native_window_term)
-	{
-		wsi.deinit_surface_and_swapchain();
-		state.pending_native_window_term = false;
-	}
+	const auto flush_pending = [&]() {
+		if (state.pending_native_window_term)
+		{
+			LOGI("Pending native window term\n");
+			wsi.deinit_surface_and_swapchain();
+			state.pending_native_window_term = false;
+		}
 
-	if (state.pending_native_window_init)
-	{
-		auto surface = create_surface_from_native_window(wsi.get_context().get_instance(), global_state.app->window);
-		wsi.init_surface_and_swapchain(surface);
-		state.pending_native_window_init = false;
-	}
+		if (state.pending_native_window_init)
+		{
+			LOGI("Pending native window init\n");
+			auto surface = create_surface_from_native_window(wsi.get_context().get_instance(), global_state.app->window);
+			wsi.init_surface_and_swapchain(surface);
+			state.pending_native_window_init = false;
+		}
+	};
+
+	flush_pending();
 
 	while (!once || !state.active || !state.has_window)
 	{
@@ -470,6 +481,8 @@ bool WSIPlatformAndroid::alive(Vulkan::WSI &wsi)
 
 		once = true;
 	}
+
+	flush_pending();
 
 	return true;
 }
@@ -540,6 +553,7 @@ void android_main(android_app *app)
 	LOGI("Starting Granite!\n");
 
 #ifdef ANDROID_APK_FILESYSTEM
+
 #ifndef ANDROID_BUILTIN_ASSET_PATH
 #define ANDROID_BUILTIN_ASSET_PATH ""
 #endif
@@ -587,23 +601,30 @@ void android_main(android_app *app)
 				try
 				{
 					int ret;
-					int argc = 1;
+					int argc = 2;
 					char arg[] = "granite";
-					char *argv[] = { arg, nullptr };
+					char path[] = "assets://glTF/Lantern.gltf";
+					char *argv[] = { arg, path, nullptr };
 
 					auto app = unique_ptr<Granite::Application>(Granite::application_create(argc, argv));
 					if (app)
 					{
-						while (app->poll())
-							app->run_frame();
-						ret = 0;
+						auto platform = make_unique<Granite::WSIPlatformAndroid>(1280, 720);
+						global_state.app->userData = platform.get();
+						if (!app->init_wsi(move(platform)))
+							ret = 1;
+						else
+						{
+							while (app->poll())
+								app->run_frame();
+							ret = 0;
+						}
 					}
 					else
 						ret = 1;
 
 					LOGI("Application returned %d.\n", ret);
 					Granite::EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-
 					App::finishFromThread();
 					return;
 				}

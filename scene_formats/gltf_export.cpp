@@ -31,6 +31,7 @@
 #include "rapidjson/stringbuffer.h"
 #include "rapidjson/istreamwrapper.h"
 #include "hashmap.hpp"
+#include "thread_group.hpp"
 #include <unordered_set>
 
 using namespace std;
@@ -703,11 +704,16 @@ unsigned RemapState::emit_meshes(ArrayView<const unsigned> meshes)
 	return index;
 }
 
+static void compress_textures(ThreadGroup &workers,
+
 bool export_scene_to_glb(const SceneInformation &scene, const string &path, const ExportOptions &options)
 {
 	Document doc;
 	doc.SetObject();
 	auto &allocator = doc.GetAllocator();
+
+	ThreadGroup workers;
+	workers.start(8); // TODO: Dynamically figure this out.
 
 	Value asset(kObjectType);
 	asset.AddMember("generator", "Granite glTF 2.0 exporter", allocator);
@@ -919,38 +925,65 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 		Value images(kArrayType);
 		for (auto &image : state.image_cache)
 		{
+			compress_image(image, options.compression, options.texcomp_quality);
+
 			Value i(kObjectType);
 			i.AddMember("uri", image.target_relpath, allocator);
 			i.AddMember("mimeType", image.target_mime, allocator);
 			images.PushBack(i, allocator);
 
 			auto target_path = Path::relpath(path, image.target_relpath);
+			auto group = ThreadGroup::create_wait_group();
 
 			CompressorArguments args;
 			args.output = target_path;
 			args.format = get_compression_format(image.type);
 			args.quality = options.texcomp_quality;
-			auto input = load_texture_from_file(image.source_path,
-			                                    image.type == Material::Textures::BaseColor ? ColorSpace::sRGB : ColorSpace::Linear);
 
-			input = generate_offline_mipmaps(input);
+			const auto load_task = [target_path = move(target_path), get_compression_format, &image, &options]() -> Variant {
+				auto input = load_texture_from_file(image.source_path,
+				                                    image.type == Material::Textures::BaseColor ? ColorSpace::sRGB : ColorSpace::Linear);
 
-			if (options.compression != TextureCompression::Uncompressed)
-			{
-				if (!compress_texture(args, input))
+				return Variant(move(input));
+			};
+
+			const auto mipgen_task = [](Variant tex) -> Variant {
+				return Variant(generate_offline_mipmaps(tex.get<gli::texture>()));
+			};
+
+			const auto mipgen_complete = [target_path = move(target_path), args = move(args), &options](Variant tex) -> Variant {
+				if (options.compression != TextureCompression::Uncompressed)
 				{
-					LOGE("Failed to compress!\n");
-					return false;
+					if (!compress_texture(args, tex.get<gli::texture>()))
+					{
+						LOGE("Failed to compress!\n");
+						return Variant(false);
+					}
 				}
-			}
-			else
-			{
-				if (!save_texture_to_file(target_path, input))
+				else
 				{
-					LOGE("Failed to save uncompressed file!\n");
-					return false;
+					if (!save_texture_to_file(target_path, tex.get<gli::texture>()))
+					{
+						LOGE("Failed to save uncompressed file!\n");
+						return Variant(false);
+					}
 				}
-			}
+				return Variant(true);
+			};
+
+			const auto load_complete = [&](Variant result) {
+				auto mipmap = ThreadGroup::create_wait_group();
+				workers.enqueue_task(mipmap, [tex = move(result), mipgen_task] -> Variant {
+					return mipgen_task(tex);
+				});
+
+				mipmap->on_complete([=](Variant result) -> Variant {
+					mipgen_complete(move(result));
+				});
+			};
+
+			workers.enqueue_task(group, load_task);
+			group->on_complete(load_complete);
 		}
 		doc.AddMember("images", images, allocator);
 	}

@@ -78,6 +78,7 @@ endfunction()
 add_subdirectory(compiler)
 
 add_subdirectory(third_party)
+add_subdirectory(threading)
 add_subdirectory(event)
 add_subdirectory(util)
 add_subdirectory(math)

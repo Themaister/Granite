@@ -2,6 +2,7 @@ add_granite_library(util
         util.hpp
         util.cpp
         array_view.hpp
+        variant.hpp
         enum_cast.hpp
         hashmap.hpp
         intrusive.hpp

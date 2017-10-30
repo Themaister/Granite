@@ -55,7 +55,7 @@ struct TaskGroupDeleter
 
 struct TaskDeps : Util::IntrusivePtrEnabled<TaskDeps, TaskDepsDeleter, Util::MultiThreadCounter>
 {
-	TaskDeps(ThreadGroup *group)
+	explicit TaskDeps(ThreadGroup *group)
 	    : group(group)
 	{
 		count.store(0, std::memory_order_relaxed);

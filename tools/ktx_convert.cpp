@@ -50,6 +50,7 @@ int main(int argc, char *argv[])
 	cbs.add("--alpha", [&](CLIParser &) { args.alpha = true; });
 	cbs.add("--mipgen", [&](CLIParser &) { generate_mipmap = true; });
 	cbs.default_handler = [&](const char *arg) { input_path = arg; };
+	cbs.error_handler = []() { print_help(); };
 	CLIParser parser(move(cbs), argc - 1, argv + 1);
 
 	if (!parser.parse())

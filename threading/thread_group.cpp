@@ -183,6 +183,12 @@ TaskGroup ThreadGroup::create_task()
 	return group;
 }
 
+void Internal::TaskGroup::enqueue_task(std::function<void()> func)
+{
+	auto ref = reference_from_this();
+	group->enqueue_task(ref, move(func));
+}
+
 void ThreadGroup::enqueue_task(TaskGroup &group, std::function<void()> func)
 {
 	if (group->flushed)

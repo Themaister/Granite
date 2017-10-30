@@ -69,6 +69,9 @@ private:
 	std::atomic_size_t count;
 };
 
+template <typename T, typename Deleter, typename ReferenceOps>
+class IntrusivePtr;
+
 template <typename T, typename Deleter = std::default_delete<T>, typename ReferenceOps = SingleThreadCounter>
 class IntrusivePtrEnabled
 {
@@ -89,6 +92,9 @@ public:
 	IntrusivePtrEnabled(const IntrusivePtrEnabled &) = delete;
 
 	void operator=(const IntrusivePtrEnabled &) = delete;
+
+protected:
+	Util::IntrusivePtr<T, Deleter, ReferenceOps> reference_from_this();
 
 private:
 	ReferenceOps reference_count;
@@ -203,6 +209,13 @@ public:
 private:
 	T *data = nullptr;
 };
+
+template <typename T, typename Deleter, typename ReferenceOps>
+IntrusivePtr<T, Deleter, ReferenceOps> IntrusivePtrEnabled<T, Deleter, ReferenceOps>::reference_from_this()
+{
+	add_reference();
+	return IntrusivePtr<T, Deleter, ReferenceOps>(static_cast<T *>(this));
+}
 
 template <typename T, typename... P>
 IntrusivePtr<T> make_handle(P &&... p)

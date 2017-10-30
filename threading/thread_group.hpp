@@ -83,6 +83,7 @@ struct TaskGroup : Util::IntrusivePtrEnabled<TaskGroup, TaskGroupDeleter, Util::
 
 	ThreadGroup *group;
 	TaskDepsHandle deps;
+	void enqueue_task(std::function<void ()> func);
 
 	unsigned id = 0;
 	bool flushed = false;

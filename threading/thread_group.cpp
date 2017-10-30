@@ -138,21 +138,15 @@ void ThreadGroup::move_to_ready_tasks(const std::vector<Internal::Task *> &list)
 		cond.notify_one();
 }
 
-struct TaskGroupDeleter
+void Internal::TaskGroupDeleter::operator()(Internal::TaskGroup *group)
 {
-	void operator()(Internal::TaskGroup *group)
-	{
-		group->group->free_task_group(group);
-	}
-};
+	group->group->free_task_group(group);
+}
 
-struct TaskDepsDeleter
+void Internal::TaskDepsDeleter::operator()(Internal::TaskDeps *deps)
 {
-	void operator()(Internal::TaskDeps *deps)
-	{
-		deps->group->free_task_deps(deps);
-	}
-};
+	deps->group->free_task_deps(deps);
+}
 
 void ThreadGroup::free_task_group(Internal::TaskGroup *group)
 {
@@ -169,10 +163,10 @@ void ThreadGroup::free_task_deps(Internal::TaskDeps *deps)
 TaskGroup ThreadGroup::create_task(std::function<void()> func)
 {
 	lock_guard<mutex> holder{group_pool_lock};
-	TaskGroup group(task_group_pool.allocate(this), TaskGroupDeleter());
+	TaskGroup group(task_group_pool.allocate(this));
 
 	lock_guard<mutex> task_holder{deps_lock};
-	group->deps = { task_deps_pool.allocate(this), TaskDepsDeleter() };
+	group->deps = Internal::TaskDepsHandle(task_deps_pool.allocate(this));
 	group->deps->pending_tasks.push_back(task_pool.allocate(group->deps, move(func)));
 	group->deps->count.store(1, memory_order_relaxed);
 	return group;
@@ -181,10 +175,10 @@ TaskGroup ThreadGroup::create_task(std::function<void()> func)
 TaskGroup ThreadGroup::create_task()
 {
 	lock_guard<mutex> holder{group_pool_lock};
-	TaskGroup group(task_group_pool.allocate(this), TaskGroupDeleter());
+	TaskGroup group(task_group_pool.allocate(this));
 
 	lock_guard<mutex> task_holder{deps_lock};
-	group->deps = { task_deps_pool.allocate(this), TaskDepsDeleter() };
+	group->deps = Internal::TaskDepsHandle(task_deps_pool.allocate(this));
 	group->deps->count.store(0, memory_order_relaxed);
 	return group;
 }

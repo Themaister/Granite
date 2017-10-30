@@ -31,6 +31,7 @@
 #include <memory>
 #include <object_pool.hpp>
 #include "variant.hpp"
+#include "intrusive.hpp"
 
 namespace Granite
 {
@@ -40,21 +41,19 @@ namespace Internal
 {
 struct TaskGroup;
 struct TaskDeps;
+struct Task;
 
-struct Task
+struct TaskDepsDeleter
 {
-	Task(std::shared_ptr<TaskDeps> deps, std::function<void ()> func)
-		: deps(std::move(deps)), func(std::move(func))
-	{
-	}
-
-	Task() = default;
-
-	std::shared_ptr<TaskDeps> deps;
-	std::function<void ()> func;
+	void operator()(TaskDeps *deps);
 };
 
-struct TaskDeps
+struct TaskGroupDeleter
+{
+	void operator()(TaskGroup *group);
+};
+
+struct TaskDeps : Util::IntrusivePtrEnabled<TaskDeps, TaskDepsDeleter, Util::MultiThreadCounter>
 {
 	TaskDeps(ThreadGroup *group)
 	    : group(group)
@@ -64,7 +63,7 @@ struct TaskDeps
 	}
 
 	ThreadGroup *group;
-	std::vector<std::shared_ptr<TaskDeps>> pending;
+	std::vector<Util::IntrusivePtr<TaskDeps, TaskDepsDeleter, Util::MultiThreadCounter>> pending;
 	std::atomic_uint count;
 
 	std::vector<Task *> pending_tasks;
@@ -74,22 +73,36 @@ struct TaskDeps
 	void dependency_satisfied();
 	void notify_dependees();
 };
+using TaskDepsHandle = Util::IntrusivePtr<TaskDeps, TaskDepsDeleter, Util::MultiThreadCounter>;
 
-struct TaskGroup
+struct TaskGroup : Util::IntrusivePtrEnabled<TaskGroup, TaskGroupDeleter, Util::MultiThreadCounter>
 {
 	explicit TaskGroup(ThreadGroup *group);
 	~TaskGroup();
 	void flush();
 
 	ThreadGroup *group;
-	std::shared_ptr<TaskDeps> deps;
+	TaskDepsHandle deps;
 
 	unsigned id = 0;
 	bool flushed = false;
 };
+
+struct Task
+{
+	Task(TaskDepsHandle deps, std::function<void ()> func)
+		: deps(std::move(deps)), func(std::move(func))
+	{
+	}
+
+	Task() = default;
+
+	TaskDepsHandle deps;
+	std::function<void ()> func;
+};
 }
 
-using TaskGroup = std::shared_ptr<Internal::TaskGroup>;
+using TaskGroup = Util::IntrusivePtr<Internal::TaskGroup, Internal::TaskGroupDeleter, Util::MultiThreadCounter>;
 
 class ThreadGroup
 {

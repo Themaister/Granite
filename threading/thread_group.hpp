@@ -76,6 +76,9 @@ class ThreadGroup
 public:
 	~ThreadGroup();
 
+	ThreadGroup(const ThreadGroup &) = delete;
+	void operator=(const ThreadGroup &) = delete;
+
 	void start(unsigned num_threads);
 	void stop();
 

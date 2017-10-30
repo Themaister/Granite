@@ -704,7 +704,97 @@ unsigned RemapState::emit_meshes(ArrayView<const unsigned> meshes)
 	return index;
 }
 
-static void compress_textures(ThreadGroup &workers,
+static gli::format get_compression_format(TextureCompression compression, Material::Textures type)
+{
+	bool srgb = type == Material::Textures::BaseColor || type == Material::Textures::Emissive;
+	switch (compression)
+	{
+	case TextureCompression::Uncompressed:
+		return srgb ? gli::FORMAT_RGBA8_SRGB_PACK8 : gli::FORMAT_RGBA8_UNORM_PACK8;
+
+	case TextureCompression::BC3:
+		return srgb ? gli::FORMAT_RGBA_DXT5_SRGB_BLOCK16 : gli::FORMAT_RGBA_DXT5_UNORM_BLOCK16;
+
+	case TextureCompression::BC7:
+		return srgb ? gli::FORMAT_RGBA_BP_SRGB_BLOCK16 : gli::FORMAT_RGBA_BP_UNORM_BLOCK16;
+
+	case TextureCompression::ASTC4x4:
+		return srgb ? gli::FORMAT_RGBA_ASTC_4X4_SRGB_BLOCK16 : gli::FORMAT_RGBA_ASTC_4X4_UNORM_BLOCK16;
+
+	case TextureCompression::ASTC5x5:
+		return srgb ? gli::FORMAT_RGBA_ASTC_5X5_SRGB_BLOCK16 : gli::FORMAT_RGBA_ASTC_5X5_UNORM_BLOCK16;
+
+	case TextureCompression::ASTC6x6:
+		return srgb ? gli::FORMAT_RGBA_ASTC_6X6_SRGB_BLOCK16 : gli::FORMAT_RGBA_ASTC_6X6_UNORM_BLOCK16;
+
+	case TextureCompression::ASTC8x8:
+		return srgb ? gli::FORMAT_RGBA_ASTC_8X8_SRGB_BLOCK16 : gli::FORMAT_RGBA_ASTC_8X8_UNORM_BLOCK16;
+	}
+
+	return gli::FORMAT_UNDEFINED;
+}
+
+static Variant generate_mipmap(Variant tex)
+{
+	return Variant(generate_offline_mipmaps(tex.get<gli::texture>()));
+}
+
+static void compress_image(ThreadGroup &workers, const string &target_path, const string &src,
+                           TextureCompression compression, Material::Textures type, unsigned quality)
+{
+	auto group = ThreadGroup::create_wait_group();
+
+	CompressorArguments args;
+	args.output = target_path;
+	args.format = get_compression_format(compression, type);
+	args.quality = quality;
+
+	const auto load_task = [=]() -> Variant {
+		auto input = load_texture_from_file(src,
+		                                    type == Material::Textures::BaseColor ? ColorSpace::sRGB : ColorSpace::Linear);
+
+		return Variant(move(input));
+	};
+
+	const auto mipgen_task = [](Variant tex) -> Variant {
+		return Variant(generate_offline_mipmaps(tex.get<gli::texture>()));
+	};
+
+	const auto mipgen_complete = [=](Variant tex) -> Variant {
+		if (compression != TextureCompression::Uncompressed)
+		{
+			if (!compress_texture(args, tex.get<gli::texture>()))
+			{
+				LOGE("Failed to compress!\n");
+				return Variant(false);
+			}
+		}
+		else
+		{
+			if (!save_texture_to_file(target_path, tex.get<gli::texture>()))
+			{
+				LOGE("Failed to save uncompressed file!\n");
+				return Variant(false);
+			}
+		}
+		return Variant(true);
+	};
+
+	const auto load_complete = [=](Variant result) {
+		auto mipmap = ThreadGroup::create_wait_group();
+
+		workers.enqueue_task(mipmap, [=]() -> Variant {
+			return generate_mipmap(result);
+		});
+
+		mipmap->on_complete([=](Variant mipmapped) -> Variant {
+			mipgen_complete(mipmapped);
+		});
+	};
+
+	workers.enqueue_task(group, load_task);
+	group->on_complete(load_complete);
+}
 
 bool export_scene_to_glb(const SceneInformation &scene, const string &path, const ExportOptions &options)
 {
@@ -891,99 +981,18 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 
 	// Images
 	{
-		// TODO: Multi-thread this.
-
-		const auto get_compression_format = [&](Material::Textures type) -> gli::format {
-			bool srgb = type == Material::Textures::BaseColor || type == Material::Textures::Emissive;
-			switch (options.compression)
-			{
-			case TextureCompression::Uncompressed:
-				return srgb ? gli::FORMAT_RGBA8_SRGB_PACK8 : gli::FORMAT_RGBA8_UNORM_PACK8;
-
-			case TextureCompression::BC3:
-				return srgb ? gli::FORMAT_RGBA_DXT5_SRGB_BLOCK16 : gli::FORMAT_RGBA_DXT5_UNORM_BLOCK16;
-
-			case TextureCompression::BC7:
-				return srgb ? gli::FORMAT_RGBA_BP_SRGB_BLOCK16 : gli::FORMAT_RGBA_BP_UNORM_BLOCK16;
-
-			case TextureCompression::ASTC4x4:
-				return srgb ? gli::FORMAT_RGBA_ASTC_4X4_SRGB_BLOCK16 : gli::FORMAT_RGBA_ASTC_4X4_UNORM_BLOCK16;
-
-			case TextureCompression::ASTC5x5:
-				return srgb ? gli::FORMAT_RGBA_ASTC_5X5_SRGB_BLOCK16 : gli::FORMAT_RGBA_ASTC_5X5_UNORM_BLOCK16;
-
-			case TextureCompression::ASTC6x6:
-				return srgb ? gli::FORMAT_RGBA_ASTC_6X6_SRGB_BLOCK16 : gli::FORMAT_RGBA_ASTC_6X6_UNORM_BLOCK16;
-
-			case TextureCompression::ASTC8x8:
-				return srgb ? gli::FORMAT_RGBA_ASTC_8X8_SRGB_BLOCK16 : gli::FORMAT_RGBA_ASTC_8X8_UNORM_BLOCK16;
-			}
-
-			return gli::FORMAT_UNDEFINED;
-		};
 
 		Value images(kArrayType);
 		for (auto &image : state.image_cache)
 		{
-			compress_image(image, options.compression, options.texcomp_quality);
-
 			Value i(kObjectType);
 			i.AddMember("uri", image.target_relpath, allocator);
 			i.AddMember("mimeType", image.target_mime, allocator);
 			images.PushBack(i, allocator);
 
-			auto target_path = Path::relpath(path, image.target_relpath);
-			auto group = ThreadGroup::create_wait_group();
-
-			CompressorArguments args;
-			args.output = target_path;
-			args.format = get_compression_format(image.type);
-			args.quality = options.texcomp_quality;
-
-			const auto load_task = [target_path = move(target_path), get_compression_format, &image, &options]() -> Variant {
-				auto input = load_texture_from_file(image.source_path,
-				                                    image.type == Material::Textures::BaseColor ? ColorSpace::sRGB : ColorSpace::Linear);
-
-				return Variant(move(input));
-			};
-
-			const auto mipgen_task = [](Variant tex) -> Variant {
-				return Variant(generate_offline_mipmaps(tex.get<gli::texture>()));
-			};
-
-			const auto mipgen_complete = [target_path = move(target_path), args = move(args), &options](Variant tex) -> Variant {
-				if (options.compression != TextureCompression::Uncompressed)
-				{
-					if (!compress_texture(args, tex.get<gli::texture>()))
-					{
-						LOGE("Failed to compress!\n");
-						return Variant(false);
-					}
-				}
-				else
-				{
-					if (!save_texture_to_file(target_path, tex.get<gli::texture>()))
-					{
-						LOGE("Failed to save uncompressed file!\n");
-						return Variant(false);
-					}
-				}
-				return Variant(true);
-			};
-
-			const auto load_complete = [&](Variant result) {
-				auto mipmap = ThreadGroup::create_wait_group();
-				workers.enqueue_task(mipmap, [tex = move(result), mipgen_task] -> Variant {
-					return mipgen_task(tex);
-				});
-
-				mipmap->on_complete([=](Variant result) -> Variant {
-					mipgen_complete(move(result));
-				});
-			};
-
-			workers.enqueue_task(group, load_task);
-			group->on_complete(load_complete);
+			compress_image(workers,
+			               Path::relpath(path, image.target_relpath), image.source_path,
+			               options.compression, image.type, options.texcomp_quality);
 		}
 		doc.AddMember("images", images, allocator);
 	}

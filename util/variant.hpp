@@ -40,7 +40,7 @@ public:
 	template <typename T>
 	void set(T &&t)
 	{
-		value = std::make_unique<HolderValue<T>>(std::forward<T>(t));
+		value = std::make_shared<HolderValue<T>>(std::forward<T>(t));
 	}
 
 	template <typename T>
@@ -72,6 +72,6 @@ private:
 
 		U value;
 	};
-	std::unique_ptr<Holder> value;
+	std::shared_ptr<Holder> value;
 };
 }

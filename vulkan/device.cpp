@@ -58,7 +58,7 @@ Semaphore Device::request_imported_semaphore(int fd, VkExternalSemaphoreHandleTy
 
 	vkGetPhysicalDeviceExternalSemaphorePropertiesKHR(gpu, &info, &props);
 	if ((props.externalSemaphoreFeatures & VK_EXTERNAL_SEMAPHORE_FEATURE_IMPORTABLE_BIT_KHR) == 0)
-		return nullptr;
+		return Semaphore(nullptr);
 
 	auto semaphore = semaphore_manager.request_cleared_semaphore();
 
@@ -70,7 +70,7 @@ Semaphore Device::request_imported_semaphore(int fd, VkExternalSemaphoreHandleTy
 	auto ptr = make_handle<SemaphoreHolder>(this, semaphore, false);
 
 	if (vkImportSemaphoreFdKHR(device, &import) != VK_SUCCESS)
-		return nullptr;
+		return Semaphore(nullptr);
 
 	ptr->signal_external();
 	ptr->destroy_on_consume();
@@ -1437,7 +1437,7 @@ BufferViewHandle Device::create_buffer_view(const BufferViewCreateInfo &view_inf
 	VkBufferView view;
 	auto res = vkCreateBufferView(device, &info, nullptr, &view);
 	if (res != VK_SUCCESS)
-		return nullptr;
+		return BufferViewHandle(nullptr);
 
 	return make_handle<BufferView>(this, view, view_info);
 }
@@ -1470,7 +1470,7 @@ ImageViewHandle Device::create_image_view(const ImageViewCreateInfo &create_info
 	VkImageView stencil_view = VK_NULL_HANDLE;
 	VkImageView base_level_view = VK_NULL_HANDLE;
 	if (vkCreateImageView(device, &view_info, nullptr, &image_view) != VK_SUCCESS)
-		return nullptr;
+		return ImageViewHandle(nullptr);
 
 	if (num_levels > 1)
 	{
@@ -1478,7 +1478,7 @@ ImageViewHandle Device::create_image_view(const ImageViewCreateInfo &create_info
 		if (vkCreateImageView(device, &view_info, nullptr, &base_level_view) != VK_SUCCESS)
 		{
 			vkDestroyImageView(device, image_view, nullptr);
-			return nullptr;
+			return ImageViewHandle(nullptr);
 		}
 		view_info.subresourceRange.levelCount = create_info.levels;
 	}
@@ -1491,7 +1491,7 @@ ImageViewHandle Device::create_image_view(const ImageViewCreateInfo &create_info
 		{
 			vkDestroyImageView(device, image_view, nullptr);
 			vkDestroyImageView(device, base_level_view, nullptr);
-			return nullptr;
+			return ImageViewHandle(nullptr);
 		}
 
 		view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_STENCIL_BIT;
@@ -1500,7 +1500,7 @@ ImageViewHandle Device::create_image_view(const ImageViewCreateInfo &create_info
 			vkDestroyImageView(device, image_view, nullptr);
 			vkDestroyImageView(device, depth_view, nullptr);
 			vkDestroyImageView(device, base_level_view, nullptr);
-			return nullptr;
+			return ImageViewHandle(nullptr);
 		}
 	}
 
@@ -1544,7 +1544,7 @@ ImageHandle Device::create_imported_image(int fd, VkDeviceSize size, uint32_t me
 
 	VkImage image;
 	if (vkCreateImage(device, &info, nullptr, &image) != VK_SUCCESS)
-		return nullptr;
+		return ImageHandle(nullptr);
 
 	VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
 	alloc_info.allocationSize = size;
@@ -1566,26 +1566,26 @@ ImageHandle Device::create_imported_image(int fd, VkDeviceSize size, uint32_t me
 	if (reqs.size > size)
 	{
 		vkDestroyImage(device, image, nullptr);
-		return nullptr;
+		return ImageHandle(nullptr);
 	}
 
 	if (((1u << memory_type) & reqs.memoryTypeBits) == 0)
 	{
 		vkDestroyImage(device, image, nullptr);
-		return nullptr;
+		return ImageHandle(nullptr);
 	}
 
 	if (vkAllocateMemory(device, &alloc_info, nullptr, &memory) != VK_SUCCESS)
 	{
 		vkDestroyImage(device, image, nullptr);
-		return nullptr;
+		return ImageHandle(nullptr);
 	}
 
 	if (vkBindImageMemory(device, image, memory, 0) != VK_SUCCESS)
 	{
 		vkDestroyImage(device, image, nullptr);
 		vkFreeMemory(device, memory, nullptr);
-		return nullptr;
+		return ImageHandle(nullptr);
 	}
 
 	// Create a default image view.
@@ -1614,7 +1614,7 @@ ImageHandle Device::create_imported_image(int fd, VkDeviceSize size, uint32_t me
 		{
 			vkFreeMemory(device, memory, nullptr);
 			vkDestroyImage(device, image, nullptr);
-			return nullptr;
+			return ImageHandle(nullptr);
 		}
 
 		if (info.mipLevels > 1)
@@ -1625,7 +1625,7 @@ ImageHandle Device::create_imported_image(int fd, VkDeviceSize size, uint32_t me
 				vkFreeMemory(device, memory, nullptr);
 				vkDestroyImage(device, image, nullptr);
 				vkDestroyImageView(device, image_view, nullptr);
-				return nullptr;
+				return ImageHandle(nullptr);
 			}
 			view_info.subresourceRange.levelCount = info.mipLevels;
 		}
@@ -1640,7 +1640,7 @@ ImageHandle Device::create_imported_image(int fd, VkDeviceSize size, uint32_t me
 				vkDestroyImageView(device, image_view, nullptr);
 				vkDestroyImageView(device, base_level_view, nullptr);
 				vkDestroyImage(device, image, nullptr);
-				return nullptr;
+				return ImageHandle(nullptr);
 			}
 
 			view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_STENCIL_BIT;
@@ -1651,7 +1651,7 @@ ImageHandle Device::create_imported_image(int fd, VkDeviceSize size, uint32_t me
 				vkDestroyImageView(device, depth_view, nullptr);
 				vkDestroyImageView(device, base_level_view, nullptr);
 				vkDestroyImage(device, image, nullptr);
-				return nullptr;
+				return ImageHandle(nullptr);
 			}
 		}
 	}
@@ -1725,7 +1725,7 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 	VK_ASSERT(format_is_supported(create_info.format, image_usage_to_features(info.usage)));
 
 	if (vkCreateImage(device, &info, nullptr, &image) != VK_SUCCESS)
-		return nullptr;
+		return ImageHandle(nullptr);
 
 	vkGetImageMemoryRequirements(device, image, &reqs);
 	uint32_t memory_type = find_memory_type(create_info.domain, reqs.memoryTypeBits);
@@ -1733,14 +1733,14 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 	                                     &allocation, image))
 	{
 		vkDestroyImage(device, image, nullptr);
-		return nullptr;
+		return ImageHandle(nullptr);
 	}
 
 	if (vkBindImageMemory(device, image, allocation.get_memory(), allocation.get_offset()) != VK_SUCCESS)
 	{
 		allocation.free_immediate(allocator);
 		vkDestroyImage(device, image, nullptr);
-		return nullptr;
+		return ImageHandle(nullptr);
 	}
 
 	auto tmpinfo = create_info;
@@ -1773,7 +1773,7 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 		{
 			allocation.free_immediate(allocator);
 			vkDestroyImage(device, image, nullptr);
-			return nullptr;
+			return ImageHandle(nullptr);
 		}
 
 		if (info.mipLevels > 1)
@@ -1784,7 +1784,7 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 				allocation.free_immediate(allocator);
 				vkDestroyImage(device, image, nullptr);
 				vkDestroyImageView(device, image_view, nullptr);
-				return nullptr;
+				return ImageHandle(nullptr);
 			}
 			view_info.subresourceRange.levelCount = info.mipLevels;
 		}
@@ -1799,7 +1799,7 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 				vkDestroyImageView(device, image_view, nullptr);
 				vkDestroyImageView(device, base_level_view, nullptr);
 				vkDestroyImage(device, image, nullptr);
-				return nullptr;
+				return ImageHandle(nullptr);
 			}
 
 			view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_STENCIL_BIT;
@@ -1810,7 +1810,7 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 				vkDestroyImageView(device, depth_view, nullptr);
 				vkDestroyImageView(device, base_level_view, nullptr);
 				vkDestroyImage(device, image, nullptr);
-				return nullptr;
+				return ImageHandle(nullptr);
 			}
 		}
 	}
@@ -2024,7 +2024,7 @@ SamplerHandle Device::create_sampler(const SamplerCreateInfo &sampler_info)
 
 	VkSampler sampler;
 	if (vkCreateSampler(device, &info, nullptr, &sampler) != VK_SUCCESS)
-		return nullptr;
+		return SamplerHandle(nullptr);
 	return make_handle<Sampler>(this, sampler, sampler_info);
 }
 
@@ -2062,7 +2062,7 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 	}
 
 	if (vkCreateBuffer(device, &info, nullptr, &buffer) != VK_SUCCESS)
-		return nullptr;
+		return BufferHandle(nullptr);
 
 	vkGetBufferMemoryRequirements(device, buffer, &reqs);
 
@@ -2071,14 +2071,14 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 	if (!allocator.allocate(reqs.size, reqs.alignment, memory_type, ALLOCATION_TILING_LINEAR, &allocation))
 	{
 		vkDestroyBuffer(device, buffer, nullptr);
-		return nullptr;
+		return BufferHandle(nullptr);
 	}
 
 	if (vkBindBufferMemory(device, buffer, allocation.get_memory(), allocation.get_offset()) != VK_SUCCESS)
 	{
 		allocation.free_immediate(allocator);
 		vkDestroyBuffer(device, buffer, nullptr);
-		return nullptr;
+		return BufferHandle(nullptr);
 	}
 
 	auto tmpinfo = create_info;
@@ -2097,7 +2097,7 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 	{
 		void *ptr = allocator.map_memory(&allocation, MEMORY_ACCESS_WRITE);
 		if (!ptr)
-			return nullptr;
+			return BufferHandle(nullptr);
 		memcpy(ptr, initial, create_info.size);
 		allocator.unmap_memory(allocation);
 	}

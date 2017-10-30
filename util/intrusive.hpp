@@ -25,24 +25,63 @@
 #include <stddef.h>
 #include <utility>
 #include <memory>
+#include <atomic>
 
 namespace Util
 {
+class SingleThreadCounter
+{
+public:
+	inline void add_ref()
+	{
+		count++;
+	}
 
-template <typename T, typename Deleter = std::default_delete<T>>
+	inline bool release()
+	{
+		return --count == 0;
+	}
+
+private:
+	size_t count = 1;
+};
+
+class MultiThreadCounter
+{
+public:
+	MultiThreadCounter()
+	{
+		count.store(1, std::memory_order_relaxed);
+	}
+
+	inline void add_ref()
+	{
+		count.fetch_add(1, std::memory_order_relaxed);
+	}
+
+	inline bool release()
+	{
+		auto result = count.fetch_sub(1, std::memory_order_acq_rel);
+		return result == 1;
+	}
+
+private:
+	std::atomic_size_t count;
+};
+
+template <typename T, typename Deleter = std::default_delete<T>, typename ReferenceOps = SingleThreadCounter>
 class IntrusivePtrEnabled
 {
 public:
 	void release_reference()
 	{
-		size_t count = --reference_count;
-		if (count == 0)
+		if (reference_count.release())
 			Deleter()(static_cast<T *>(this));
 	}
 
 	void add_reference()
 	{
-		++reference_count;
+		reference_count.add_ref();
 	}
 
 	IntrusivePtrEnabled() = default;
@@ -52,16 +91,16 @@ public:
 	void operator=(const IntrusivePtrEnabled &) = delete;
 
 private:
-	size_t reference_count = 1;
+	ReferenceOps reference_count;
 };
 
-template <typename T, typename Deleter = std::default_delete<T>>
+template <typename T, typename Deleter = std::default_delete<T>, typename ReferenceOps = SingleThreadCounter>
 class IntrusivePtr
 {
 public:
 	IntrusivePtr() = default;
 
-	IntrusivePtr(T *handle)
+	explicit IntrusivePtr(T *handle)
 		: data(handle)
 	{
 	}
@@ -116,7 +155,7 @@ public:
 		// Static up-cast here to avoid potential issues with multiple intrusive inheritance.
 		// Also makes sure that the pointer type actually inherits from this type.
 		if (data)
-			static_cast<IntrusivePtrEnabled<T, Deleter> *>(data)->release_reference();
+			static_cast<IntrusivePtrEnabled<T, Deleter, ReferenceOps> *>(data)->release_reference();
 		data = nullptr;
 	}
 
@@ -130,7 +169,7 @@ public:
 			// Static up-cast here to avoid potential issues with multiple intrusive inheritance.
 			// Also makes sure that the pointer type actually inherits from this type.
 			if (data)
-				static_cast<IntrusivePtrEnabled<T, Deleter> *>(data)->add_reference();
+				static_cast<IntrusivePtrEnabled<T, Deleter, ReferenceOps> *>(data)->add_reference();
 		}
 		return *this;
 	}
@@ -145,7 +184,7 @@ public:
 		reset();
 	}
 
-	IntrusivePtr &operator=(IntrusivePtr &&other)
+	IntrusivePtr &operator=(IntrusivePtr &&other) noexcept
 	{
 		if (this != &other)
 		{
@@ -156,7 +195,7 @@ public:
 		return *this;
 	}
 
-	IntrusivePtr(IntrusivePtr &&other)
+	IntrusivePtr(IntrusivePtr &&other) noexcept
 	{
 		*this = std::move(other);
 	}

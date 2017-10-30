@@ -70,7 +70,7 @@ int main(int argc, char *argv[])
 	Context context(nullptr, 0, nullptr, 0);
 	Device device;
 	device.set_context(context);
-	device.init_external_swapchain({ nullptr });
+	device.init_external_swapchain({ ImageHandle(nullptr) });
 
 	auto &textures = device.get_texture_manager();
 	auto *equirect = textures.request_texture(args.equirect);

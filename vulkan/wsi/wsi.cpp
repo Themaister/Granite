@@ -50,7 +50,7 @@ bool WSI::init_external_context(std::unique_ptr<Vulkan::Context> fresh_context)
 	// Need to have a dummy swapchain in place before we issue create device events.
 	semaphore_manager->init(context->get_device());
 	device->set_context(*context);
-	device->init_external_swapchain({ VK_NULL_HANDLE });
+	device->init_external_swapchain({ ImageHandle(nullptr) });
 	em.enqueue_latched<DeviceCreatedEvent>(device.get());
 	return true;
 }
@@ -96,7 +96,7 @@ bool WSI::init()
 	// Need to have a dummy swapchain in place before we issue create device events.
 	semaphore_manager->init(context->get_device());
 	device->set_context(*context);
-	device->init_external_swapchain({ VK_NULL_HANDLE });
+	device->init_external_swapchain({ ImageHandle(nullptr) });
 	em.enqueue_latched<DeviceCreatedEvent>(device.get());
 
 	surface = platform->create_surface(context->get_instance(), context->get_gpu());

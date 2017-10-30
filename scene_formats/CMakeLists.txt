@@ -20,7 +20,7 @@ if (GRANITE_ASTC_ENCODER_COMPRESSION)
     target_link_libraries(texture-compression astc-encoder)
     target_compile_definitions(texture-compression PRIVATE HAVE_ASTC_ENCODER)
 endif()
-target_link_libraries(texture-compression gli util filesystem renderer)
+target_link_libraries(texture-compression gli util filesystem renderer threading)
 
 add_granite_library(scene-formats
         gltf.cpp gltf.hpp

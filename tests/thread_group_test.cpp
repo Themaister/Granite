@@ -20,23 +20,37 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#pragma once
-
-#include "material.hpp"
-#include "gli/format.hpp"
-#include "gli/texture.hpp"
 #include "thread_group.hpp"
+#include "util.hpp"
 
-namespace Granite
-{
-struct CompressorArguments
-{
-	std::string output;
-	gli::format format = gli::FORMAT_UNDEFINED;
-	unsigned quality = 3;
-	bool alpha = false;
-};
+using namespace Granite;
 
-gli::format string_to_format(const std::string &s);
-void compress_texture(ThreadGroup &group, const CompressorArguments &args, const std::shared_ptr<gli::texture> &input, TaskGroup &dep);
+int main()
+{
+	ThreadGroup group;
+	group.start(4);
+
+	auto task1 = group.create_task([]() {
+		LOGI("Ohai!\n");
+	});
+	auto task2 = group.create_task([]() {
+		LOGI("Ohai 2!\n");
+	});
+	auto task3 = group.create_task([]() {
+		LOGI("Ohai 3!\n");
+	});
+	group.enqueue_task(task3, []() {
+		LOGI("Brrr :3\n");
+	});
+	task1->id = 1;
+	task2->id = 2;
+	task3->id = 3;
+	group.add_dependency(task1, task3);
+	group.add_dependency(task2, task3);
+	group.add_dependency(task1, task2);
+	group.submit(task1);
+	group.submit(task2);
+	group.submit(task3);
+
+	group.wait_idle();
 }

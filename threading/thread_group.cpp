@@ -21,7 +21,9 @@
  */
 
 #include "thread_group.hpp"
+#include <assert.h>
 #include <stdexcept>
+#include "util.hpp"
 
 using namespace std;
 
@@ -30,65 +32,66 @@ namespace Granite
 
 namespace Internal
 {
-void WaitGroup::on_complete(std::function<void (Variant)> func)
+TaskGroup::TaskGroup(ThreadGroup *group)
+	: group(group)
 {
-	on_done = move(func);
 }
 
-WaitGroup::WaitGroup()
+void TaskDeps::notify_dependees()
 {
-	flushed.clear();
+	for (auto &dep : pending)
+		dep->dependency_satisfied();
+	pending.clear();
 }
 
-WaitGroup::~WaitGroup()
+void TaskDeps::task_completed()
 {
-	flush();
+	auto old_tasks = count.fetch_sub(1);
+	assert(old_tasks > 0);
+
+	if (old_tasks == 1)
+		notify_dependees();
 }
 
-void WaitGroup::complete()
+void TaskDeps::dependency_satisfied()
 {
-	if (wait_count.fetch_add(1) + 1 == expected_count)
+	auto old_deps = dependency_count.fetch_sub(1);
+	assert(old_deps > 0);
+	if (old_deps == 1)
 	{
-		if (on_done)
+		if (pending_tasks.empty())
+			notify_dependees();
+		else
 		{
-			for (auto &result : results)
-				on_done(move(result.get()));
+			group->move_to_ready_tasks(pending_tasks);
+			pending_tasks.clear();
 		}
-
-		lock_guard<mutex> holder{lock};
-		cond.notify_one();
 	}
 }
 
-void WaitGroup::task_completed()
+void TaskGroup::flush()
 {
-	complete();
+	if (flushed)
+		throw logic_error("Cannot flush more than once.");
+	flushed = true;
+
+	if (deps->dependency_count == 0)
+	{
+		if (deps->pending_tasks.empty())
+			deps->notify_dependees();
+		else
+		{
+			group->move_to_ready_tasks(deps->pending_tasks);
+			deps->pending_tasks.clear();
+		}
+	}
 }
 
-void WaitGroup::flush()
+TaskGroup::~TaskGroup()
 {
-	if (!flushed.test_and_set())
-		complete();
+	if (!flushed)
+		flush();
 }
-
-void WaitGroup::wait()
-{
-	unique_lock<mutex> holder{lock};
-	cond.wait(holder, [&]() {
-		return expected_count == wait_count.load(memory_order_acquire);
-	});
-}
-
-void WaitGroup::expect_completion(ThreadCookie cookie)
-{
-	results.push_back(move(cookie));
-	expected_count++;
-}
-}
-
-WaitGroup ThreadGroup::create_wait_group()
-{
-	return make_unique<Internal::WaitGroup>();
 }
 
 void ThreadGroup::start(unsigned num_threads)
@@ -104,37 +107,148 @@ void ThreadGroup::start(unsigned num_threads)
 		t = make_unique<thread>(&ThreadGroup::thread_looper, this);
 }
 
-void ThreadGroup::enqueue_task(WaitGroup &group, std::function<Variant ()> func)
+void ThreadGroup::submit(TaskGroup &group)
 {
-	packaged_task<Variant ()> task(func);
-	group->expect_completion(task.get_future());
+	group->flush();
+	group.reset();
+}
 
+void ThreadGroup::add_dependency(TaskGroup &dependee, TaskGroup &dependency)
+{
+	if (dependency->flushed)
+		throw logic_error("Cannot wait for task group which has been flushed.");
+	if (dependee->flushed)
+		throw logic_error("Cannot add dependency to task group which has been flushed.");
+
+	dependency->deps->pending.push_back(dependee->deps);
+	dependee->deps->dependency_count.fetch_add(1, memory_order_relaxed);
+}
+
+void ThreadGroup::move_to_ready_tasks(const std::vector<Internal::Task *> &list)
+{
 	lock_guard<mutex> holder{cond_lock};
-	auto cookie = task.get_future();
-	task_list.push(move(task));
+	total_tasks.fetch_add(list.size(), memory_order_relaxed);
+
+	for (auto &t : list)
+		ready_tasks.push(t);
+
+	if (list.size() > 1)
+		cond.notify_all();
+	else
+		cond.notify_one();
+}
+
+struct TaskGroupDeleter
+{
+	void operator()(Internal::TaskGroup *group)
+	{
+		group->group->free_task_group(group);
+	}
+};
+
+struct TaskDepsDeleter
+{
+	void operator()(Internal::TaskDeps *deps)
+	{
+		deps->group->free_task_deps(deps);
+	}
+};
+
+void ThreadGroup::free_task_group(Internal::TaskGroup *group)
+{
+	lock_guard<mutex> holder{group_pool_lock};
+	task_group_pool.free(group);
+}
+
+void ThreadGroup::free_task_deps(Internal::TaskDeps *deps)
+{
+	lock_guard<mutex> holder{deps_lock};
+	task_deps_pool.free(deps);
+}
+
+TaskGroup ThreadGroup::create_task(std::function<void()> func)
+{
+	lock_guard<mutex> holder{group_pool_lock};
+	TaskGroup group(task_group_pool.allocate(this), TaskGroupDeleter());
+
+	lock_guard<mutex> task_holder{deps_lock};
+	group->deps = { task_deps_pool.allocate(this), TaskDepsDeleter() };
+	group->deps->pending_tasks.push_back(task_pool.allocate(group->deps, move(func)));
+	group->deps->count.store(1, memory_order_relaxed);
+	return group;
+}
+
+TaskGroup ThreadGroup::create_task()
+{
+	lock_guard<mutex> holder{group_pool_lock};
+	TaskGroup group(task_group_pool.allocate(this), TaskGroupDeleter());
+
+	lock_guard<mutex> task_holder{deps_lock};
+	group->deps = { task_deps_pool.allocate(this), TaskDepsDeleter() };
+	group->deps->count.store(0, memory_order_relaxed);
+	return group;
+}
+
+void ThreadGroup::enqueue_task(TaskGroup &group, std::function<void()> func)
+{
+	if (group->flushed)
+		throw logic_error("Cannot enqueue work to a flushed task group.");
+
+	lock_guard<mutex> task_holder{deps_lock};
+	group->deps->pending_tasks.push_back(task_pool.allocate(group->deps, move(func)));
+	group->deps->count.fetch_add(1, memory_order_relaxed);
+}
+
+void ThreadGroup::wait_idle()
+{
+	unique_lock<mutex> holder{wait_cond_lock};
+	wait_cond.wait(holder, [&]() {
+		return total_tasks == completed_tasks;
+	});
 }
 
 void ThreadGroup::thread_looper()
 {
 	for (;;)
 	{
-		packaged_task<Variant ()> task;
+		Internal::Task *task = nullptr;
 
 		{
 			unique_lock<mutex> holder{cond_lock};
 			cond.wait(holder, [&]() {
-				return dead || !task_list.empty();
+				return dead || !ready_tasks.empty();
 			});
 
-			if (dead && task_list.empty())
+			if (dead && ready_tasks.empty())
 				break;
 
-			task = move(task_list.front());
-			task_list.pop();
+			task = ready_tasks.front();
+			ready_tasks.pop();
 		}
 
-		task();
+		if (task->func)
+			task->func();
+
+		task->deps->task_completed();
+
+		{
+			lock_guard<mutex> holder{pool_lock};
+			task_pool.free(task);
+		}
+
+		{
+			lock_guard<mutex> holder{wait_cond_lock};
+			completed_tasks++;
+			LOGI("Task completed (%u / %u)!\n", completed_tasks, total_tasks.load(memory_order_relaxed));
+			if (completed_tasks == total_tasks.load(memory_order_relaxed))
+				wait_cond.notify_one();
+		}
 	}
+}
+
+ThreadGroup::ThreadGroup()
+{
+	total_tasks.store(0);
 }
 
 ThreadGroup::~ThreadGroup()

@@ -734,66 +734,38 @@ static gli::format get_compression_format(TextureCompression compression, Materi
 	return gli::FORMAT_UNDEFINED;
 }
 
-static Variant generate_mipmap(Variant tex)
-{
-	return Variant(generate_offline_mipmaps(tex.get<gli::texture>()));
-}
-
 static void compress_image(ThreadGroup &workers, const string &target_path, const string &src,
                            TextureCompression compression, Material::Textures type, unsigned quality)
 {
-	auto group = ThreadGroup::create_wait_group();
-
 	CompressorArguments args;
 	args.output = target_path;
 	args.format = get_compression_format(compression, type);
 	args.quality = quality;
 
-	const auto load_task = [=]() -> Variant {
-		auto input = load_texture_from_file(src,
-		                                    type == Material::Textures::BaseColor ? ColorSpace::sRGB : ColorSpace::Linear);
+	auto image = make_shared<gli::texture>();
 
-		return Variant(move(input));
-	};
+	auto load_task = workers.create_task([=]() {
+		*image = load_texture_from_file(src, type == Material::Textures::BaseColor ? ColorSpace::sRGB : ColorSpace::Linear);
+	});
 
-	const auto mipgen_task = [](Variant tex) -> Variant {
-		return Variant(generate_offline_mipmaps(tex.get<gli::texture>()));
-	};
+	auto mipgen_task = workers.create_task([=]() {
+		*image = generate_offline_mipmaps(*image);
+	});
 
-	const auto mipgen_complete = [=](Variant tex) -> Variant {
-		if (compression != TextureCompression::Uncompressed)
-		{
-			if (!compress_texture(args, tex.get<gli::texture>()))
-			{
-				LOGE("Failed to compress!\n");
-				return Variant(false);
-			}
-		}
-		else
-		{
-			if (!save_texture_to_file(target_path, tex.get<gli::texture>()))
-			{
+	workers.add_dependency(mipgen_task, load_task);
+
+	if (compression != TextureCompression::Uncompressed)
+	{
+		compress_texture(workers, args, image, mipgen_task);
+	}
+	else
+	{
+		auto task = workers.create_task([=]() {
+			if (!save_texture_to_file(target_path, *image))
 				LOGE("Failed to save uncompressed file!\n");
-				return Variant(false);
-			}
-		}
-		return Variant(true);
-	};
-
-	const auto load_complete = [=](Variant result) {
-		auto mipmap = ThreadGroup::create_wait_group();
-
-		workers.enqueue_task(mipmap, [=]() -> Variant {
-			return generate_mipmap(result);
 		});
-
-		mipmap->on_complete([=](Variant mipmapped) -> Variant {
-			mipgen_complete(mipmapped);
-		});
-	};
-
-	workers.enqueue_task(group, load_task);
-	group->on_complete(load_complete);
+		workers.add_dependency(task, mipgen_task);
+	}
 }
 
 bool export_scene_to_glb(const SceneInformation &scene, const string &path, const ExportOptions &options)
@@ -803,7 +775,7 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 	auto &allocator = doc.GetAllocator();
 
 	ThreadGroup workers;
-	workers.start(8); // TODO: Dynamically figure this out.
+	workers.start(std::thread::hardware_concurrency());
 
 	Value asset(kObjectType);
 	asset.AddMember("generator", "Granite glTF 2.0 exporter", allocator);

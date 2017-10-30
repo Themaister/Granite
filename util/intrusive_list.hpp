@@ -76,6 +76,16 @@ public:
 			return *static_cast<T *>(node);
 		}
 
+		T *get()
+		{
+			return static_cast<T *>(node);
+		}
+
+		const T *get() const
+		{
+			return static_cast<const T *>(node);
+		}
+
 		T *operator->()
 		{
 			return static_cast<T *>(node);
@@ -94,10 +104,6 @@ public:
 
 	private:
 		IntrusiveListEnabled<T> *node = nullptr;
-		IntrusiveListEnabled<T> *get()
-		{
-			return node;
-		}
 	};
 
 	Iterator begin()
@@ -140,6 +146,11 @@ public:
 	{
 		other.erase(itr);
 		insert_front(itr);
+	}
+
+	bool empty() const
+	{
+		return head == nullptr;
 	}
 
 private:

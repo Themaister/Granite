@@ -78,20 +78,20 @@ int main(int argc, char *argv[])
 		break;
 	}
 
-	auto input = Granite::load_texture_from_file(input_path, color);
+	auto input = make_shared<gli::texture>(Granite::load_texture_from_file(input_path, color));
 
-	if (generate_mipmap)
-		input = Granite::generate_offline_mipmaps(input);
-
-	if (input.empty())
+	if (input->empty())
 	{
 		LOGE("Failed to load texture %s.\n", input_path.c_str());
 		return 1;
 	}
 
+	if (generate_mipmap)
+		*input = Granite::generate_offline_mipmaps(*input);
+
 	if (args.format == gli::FORMAT_RGBA8_UNORM_PACK8 || args.format == gli::FORMAT_RGBA8_SRGB_PACK8)
 	{
-		if (!save_texture_to_file(args.output, input))
+		if (!save_texture_to_file(args.output, *input))
 		{
 			LOGE("Failed to save texture: %s\n", args.output.c_str());
 			return 1;
@@ -99,11 +99,11 @@ int main(int argc, char *argv[])
 		return 0;
 	}
 
-	if (compress_texture(args, input))
-		return 0;
-	else
-	{
-		LOGE("Failed to compress texture.\n");
-		return 1;
-	}
+	ThreadGroup group;
+	group.start(std::thread::hardware_concurrency());
+
+	auto dummy = group.create_task();
+	compress_texture(group, args, input, dummy);
+	dummy->flush();
+	group.wait_idle();
 }

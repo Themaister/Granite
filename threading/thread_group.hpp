@@ -29,64 +29,105 @@
 #include <queue>
 #include <future>
 #include <memory>
+#include <object_pool.hpp>
 #include "variant.hpp"
 
 namespace Granite
 {
+class ThreadGroup;
 
 namespace Internal
 {
-using ThreadCookie = std::future<Variant>;
-}
+struct TaskGroup;
+struct TaskDeps;
 
-using WorkResults = std::vector<Internal::ThreadCookie>;
+struct Task
+{
+	Task(std::shared_ptr<TaskDeps> deps, std::function<void ()> func)
+		: deps(std::move(deps)), func(std::move(func))
+	{
+	}
 
-namespace Internal
+	Task() = default;
+
+	std::shared_ptr<TaskDeps> deps;
+	std::function<void ()> func;
+};
+
+struct TaskDeps
 {
-class WaitGroup
-{
-public:
-	WaitGroup();
-	~WaitGroup();
-	void on_complete(std::function<void (Variant)> func);
-	void wait();
+	TaskDeps(ThreadGroup *group)
+	    : group(group)
+	{
+		count.store(0, std::memory_order_relaxed);
+		dependency_count.store(0, std::memory_order_relaxed);
+	}
+
+	ThreadGroup *group;
+	std::vector<std::shared_ptr<TaskDeps>> pending;
+	std::atomic_uint count;
+
+	std::vector<Task *> pending_tasks;
+	std::atomic_uint dependency_count;
 
 	void task_completed();
+	void dependency_satisfied();
+	void notify_dependees();
+};
+
+struct TaskGroup
+{
+	explicit TaskGroup(ThreadGroup *group);
+	~TaskGroup();
 	void flush();
 
-	void expect_completion(ThreadCookie cookie);
+	ThreadGroup *group;
+	std::shared_ptr<TaskDeps> deps;
 
-private:
-	void complete();
-	std::atomic_uint wait_count;
-	std::condition_variable cond;
-	std::mutex lock;
-	std::function<void (Variant)> on_done;
-
-	unsigned expected_count = 1;
-	std::atomic_flag flushed;
-	WorkResults results;
+	unsigned id = 0;
+	bool flushed = false;
 };
 }
 
-using WaitGroup = std::unique_ptr<Internal::WaitGroup>;
+using TaskGroup = std::shared_ptr<Internal::TaskGroup>;
 
 class ThreadGroup
 {
 public:
+	ThreadGroup();
 	~ThreadGroup();
-
-	ThreadGroup(const ThreadGroup &) = delete;
-	void operator=(const ThreadGroup &) = delete;
+	ThreadGroup(ThreadGroup &&) = delete;
+	void operator=(ThreadGroup &&) = delete;
 
 	void start(unsigned num_threads);
 	void stop();
 
-	static WaitGroup create_wait_group();
-	void enqueue_task(WaitGroup &group, std::function<Variant ()> func);
+	void enqueue_task(TaskGroup &group, std::function<void ()> func);
+	TaskGroup create_task(std::function<void ()> func);
+	TaskGroup create_task();
+
+	void move_to_ready_tasks(const std::vector<Internal::Task *> &list);
+
+	void add_dependency(TaskGroup &dependee, TaskGroup &dependency);
+
+	void free_task_group(Internal::TaskGroup *group);
+	void free_task_deps(Internal::TaskDeps *deps);
+
+	void submit(TaskGroup &group);
+	void wait_idle();
 
 private:
-	std::queue<std::packaged_task<Variant ()>> task_list;
+	std::mutex pool_lock;
+	Util::ObjectPool<Internal::Task> task_pool;
+
+	std::mutex group_pool_lock;
+	Util::ObjectPool<Internal::TaskGroup> task_group_pool;
+
+	std::mutex deps_lock;
+	Util::ObjectPool<Internal::TaskDeps> task_deps_pool;
+
+	std::queue<Internal::Task *> ready_tasks;
+
 	std::vector<std::unique_ptr<std::thread>> thread_group;
 	std::mutex cond_lock;
 	std::condition_variable cond;
@@ -95,5 +136,10 @@ private:
 
 	bool active = false;
 	bool dead = false;
+
+	std::condition_variable wait_cond;
+	std::mutex wait_cond_lock;
+	std::atomic_uint total_tasks;
+	unsigned completed_tasks = 0;
 };
 }

@@ -77,6 +77,12 @@ int main(int argc, char *argv[])
 	else if (cli_parser.is_ended_state())
 		return 0;
 
+	if (args.input.empty() || args.output.empty())
+	{
+		print_help();
+		return 1;
+	}
+
 	GLTF::Parser parser(args.input);
 
 	SceneFormats::SceneInformation info;

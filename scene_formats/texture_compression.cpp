@@ -511,10 +511,10 @@ void CompressorState::enqueue_compression_block_ispc(TaskGroup &group, const Com
 	{
 		for (int x = 0; x < width; x += grid_stride_x)
 		{
-			group->enqueue_task([=, input = this->input, output = this->output]() {
+			group->enqueue_task([=, state = *this]() mutable {
 				uint8_t padded_buffer[32 * 32 * 8];
 				rgba_surface surface = {};
-				surface.ptr = const_cast<uint8_t *>(static_cast<const uint8_t *>(input->data(layer, face, level)));
+				surface.ptr = const_cast<uint8_t *>(static_cast<const uint8_t *>(state.input->data(layer, face, level)));
 				surface.width = std::min(width - x, grid_stride_x);
 				surface.height = std::min(height - y, grid_stride_y);
 				surface.stride = width * format_to_stride(args.format);
@@ -522,10 +522,16 @@ void CompressorState::enqueue_compression_block_ispc(TaskGroup &group, const Com
 
 				rgba_surface padded_surface = {};
 
-				if ((surface.width % block_size_x) || (surface.height % block_size_y))
+				const auto get_block_offset = [&]() -> size_t {
+					size_t off = x / state.block_size_x;
+					off += (y / state.block_size_y) * ((width + state.block_size_x - 1) / state.block_size_x);
+					return off;
+				};
+
+				if ((surface.width % state.block_size_x) || (surface.height % state.block_size_y))
 				{
-					padded_surface.width = ((surface.width + block_size_x - 1) / block_size_x) * block_size_x;
-					padded_surface.height = ((surface.height + block_size_y - 1) / block_size_y) * block_size_y;
+					padded_surface.width = ((surface.width + state.block_size_x - 1) / state.block_size_x) * state.block_size_x;
+					padded_surface.height = ((surface.height + state.block_size_y - 1) / state.block_size_y) * state.block_size_y;
 					padded_surface.stride = padded_surface.width * format_to_stride(args.format);
 					padded_surface.ptr = padded_buffer;
 					ReplicateBorders(&padded_surface, &surface, 0, 0, format_to_stride(args.format) * 8);
@@ -537,26 +543,26 @@ void CompressorState::enqueue_compression_block_ispc(TaskGroup &group, const Com
 				{
 				case gli::FORMAT_RGB_BP_UFLOAT_BLOCK16:
 				{
-					auto *dst = static_cast<uint8_t *>(output->data(layer, face, level));
-					dst += (y / block_size_y) * (width / block_size_x) * 16;
-					CompressBlocksBC6H(&padded_surface, dst, &bc6);
+					auto *dst = static_cast<uint8_t *>(state.output->data(layer, face, level));
+					dst += get_block_offset() * 16;
+					CompressBlocksBC6H(&padded_surface, dst, &state.bc6);
 					break;
 				}
 
 				case gli::FORMAT_RGBA_BP_SRGB_BLOCK16:
 				case gli::FORMAT_RGBA_BP_UNORM_BLOCK16:
 				{
-					auto *dst = static_cast<uint8_t *>(output->data(layer, face, level));
-					dst += (y / block_size_y) * (width / block_size_x) * 16;
-					CompressBlocksBC7(&padded_surface, dst, &bc7);
+					auto *dst = static_cast<uint8_t *>(state.output->data(layer, face, level));
+					dst += get_block_offset() * 16;
+					CompressBlocksBC7(&padded_surface, dst, &state.bc7);
 					break;
 				}
 
 				case gli::FORMAT_RGB_DXT1_SRGB_BLOCK8:
 				case gli::FORMAT_RGB_DXT1_UNORM_BLOCK8:
 				{
-					auto *dst = static_cast<uint8_t *>(output->data(layer, face, level));
-					dst += (y / block_size_y) * (width / block_size_x) * 16;
+					auto *dst = static_cast<uint8_t *>(state.output->data(layer, face, level));
+					dst += get_block_offset() * 8;
 					CompressBlocksBC1(&padded_surface, dst);
 					break;
 				}
@@ -564,8 +570,8 @@ void CompressorState::enqueue_compression_block_ispc(TaskGroup &group, const Com
 				case gli::FORMAT_RGBA_DXT5_SRGB_BLOCK16:
 				case gli::FORMAT_RGBA_DXT5_UNORM_BLOCK16:
 				{
-					auto *dst = static_cast<uint8_t *>(output->data(layer, face, level));
-					dst += (y / block_size_y) * (width / block_size_x) * 16;
+					auto *dst = static_cast<uint8_t *>(state.output->data(layer, face, level));
+					dst += get_block_offset() * 16;
 					CompressBlocksBC3(&padded_surface, dst);
 					break;
 				}
@@ -579,9 +585,9 @@ void CompressorState::enqueue_compression_block_ispc(TaskGroup &group, const Com
 				case gli::FORMAT_RGBA_ASTC_8X8_SRGB_BLOCK16:
 				case gli::FORMAT_RGBA_ASTC_8X8_UNORM_BLOCK16:
 				{
-					auto *dst = static_cast<uint8_t *>(output->data(layer, face, level));
-					dst += (y / block_size_y) * (width / block_size_x) * 16;
-					CompressBlocksASTC(&padded_surface, dst, &astc);
+					auto *dst = static_cast<uint8_t *>(state.output->data(layer, face, level));
+					dst += get_block_offset() * 16;
+					CompressBlocksASTC(&padded_surface, dst, &state.astc);
 					break;
 				}
 

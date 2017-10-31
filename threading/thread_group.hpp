@@ -131,14 +131,9 @@ public:
 	void wait_idle();
 
 private:
-	std::mutex pool_lock;
-	Util::ObjectPool<Internal::Task> task_pool;
-
-	std::mutex group_pool_lock;
-	Util::ObjectPool<Internal::TaskGroup> task_group_pool;
-
-	std::mutex deps_lock;
-	Util::ObjectPool<Internal::TaskDeps> task_deps_pool;
+	Util::ThreadSafeObjectPool<Internal::Task> task_pool;
+	Util::ThreadSafeObjectPool<Internal::TaskGroup> task_group_pool;
+	Util::ThreadSafeObjectPool<Internal::TaskDeps> task_deps_pool;
 
 	std::queue<Internal::Task *> ready_tasks;
 

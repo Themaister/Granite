@@ -150,23 +150,20 @@ void Internal::TaskDepsDeleter::operator()(Internal::TaskDeps *deps)
 
 void ThreadGroup::free_task_group(Internal::TaskGroup *group)
 {
-	lock_guard<mutex> holder{group_pool_lock};
 	task_group_pool.free(group);
 }
 
 void ThreadGroup::free_task_deps(Internal::TaskDeps *deps)
 {
-	lock_guard<mutex> holder{deps_lock};
 	task_deps_pool.free(deps);
 }
 
 TaskGroup ThreadGroup::create_task(std::function<void()> func)
 {
-	lock_guard<mutex> holder{group_pool_lock};
 	TaskGroup group(task_group_pool.allocate(this));
 
-	lock_guard<mutex> task_holder{deps_lock};
 	group->deps = Internal::TaskDepsHandle(task_deps_pool.allocate(this));
+
 	group->deps->pending_tasks.push_back(task_pool.allocate(group->deps, move(func)));
 	group->deps->count.store(1, memory_order_relaxed);
 	return group;
@@ -174,10 +171,7 @@ TaskGroup ThreadGroup::create_task(std::function<void()> func)
 
 TaskGroup ThreadGroup::create_task()
 {
-	lock_guard<mutex> holder{group_pool_lock};
 	TaskGroup group(task_group_pool.allocate(this));
-
-	lock_guard<mutex> task_holder{deps_lock};
 	group->deps = Internal::TaskDepsHandle(task_deps_pool.allocate(this));
 	group->deps->count.store(0, memory_order_relaxed);
 	return group;
@@ -194,7 +188,6 @@ void ThreadGroup::enqueue_task(TaskGroup &group, std::function<void()> func)
 	if (group->flushed)
 		throw logic_error("Cannot enqueue work to a flushed task group.");
 
-	lock_guard<mutex> task_holder{deps_lock};
 	group->deps->pending_tasks.push_back(task_pool.allocate(group->deps, move(func)));
 	group->deps->count.fetch_add(1, memory_order_relaxed);
 }
@@ -230,11 +223,7 @@ void ThreadGroup::thread_looper()
 			task->func();
 
 		task->deps->task_completed();
-
-		{
-			lock_guard<mutex> holder{pool_lock};
-			task_pool.free(task);
-		}
+		task_pool.free(task);
 
 		{
 			lock_guard<mutex> holder{wait_cond_lock};

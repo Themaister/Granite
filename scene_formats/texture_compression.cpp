@@ -267,15 +267,15 @@ static void compress_image_astc(uint8_t *output, const uint8_t *input, unsigned 
 }
 #endif
 
-struct CompressorState
+struct CompressorState : enable_shared_from_this<CompressorState>
 {
 	shared_ptr<gli::texture> input;
 	shared_ptr<gli::texture> output;
 
 #ifdef HAVE_ISPC
-	bc6h_enc_settings bc6;
-	bc7_enc_settings bc7;
-	astc_enc_settings astc;
+	bc6h_enc_settings bc6 = {};
+	bc7_enc_settings bc7 = {};
+	astc_enc_settings astc = {};
 #endif
 
 	bool use_astc_encoder = false;
@@ -504,75 +504,88 @@ void CompressorState::enqueue_compression_block_ispc(TaskGroup &group, const Com
 {
 	int width = input->extent(level).x;
 	int height = input->extent(level).y;
-	int grid_stride_x = std::min<int>(32, (32 / block_size_x) * block_size_x);
-	int grid_stride_y = std::min<int>(32, (32 / block_size_y) * block_size_y);
+	int grid_stride_x = (32 / block_size_x) * block_size_x;
+	int grid_stride_y = (32 / block_size_y) * block_size_y;
 
 	for (int y = 0; y < height; y += grid_stride_y)
 	{
 		for (int x = 0; x < width; x += grid_stride_x)
 		{
-			group->enqueue_task([=, state = *this]() mutable {
+			group->enqueue_task([=, format = args.format]() {
 				uint8_t padded_buffer[32 * 32 * 8];
+				uint8_t encode_buffer[16 * 8 * 8];
 				rgba_surface surface = {};
-				surface.ptr = const_cast<uint8_t *>(static_cast<const uint8_t *>(state.input->data(layer, face, level)));
+				surface.ptr = const_cast<uint8_t *>(static_cast<const uint8_t *>(input->data(layer, face, level)));
 				surface.width = std::min(width - x, grid_stride_x);
 				surface.height = std::min(height - y, grid_stride_y);
-				surface.stride = width * format_to_stride(args.format);
-				surface.ptr += y * surface.stride + x * format_to_stride(args.format);
+				surface.stride = width * format_to_stride(format);
+				surface.ptr += y * surface.stride + x * format_to_stride(format);
 
 				rgba_surface padded_surface = {};
 
-				const auto get_block_offset = [&]() -> size_t {
-					size_t off = x / state.block_size_x;
-					off += (y / state.block_size_y) * ((width + state.block_size_x - 1) / state.block_size_x);
-					return off;
+				int num_blocks_x = surface.width / block_size_x;
+				int num_blocks_y = surface.height / block_size_y;
+				int blocks_x = (width + block_size_x - 1) / block_size_x;
+
+				const auto get_block_data = [&](int bx, int by, int block_size) -> uint8_t * {
+					auto *dst = static_cast<uint8_t *>(output->data(layer, face, level));
+					dst += ((x / block_size_x) + bx) * block_size;
+					dst += ((y / block_size_y) + by) * blocks_x * block_size;
+					return dst;
 				};
 
-				if ((surface.width % state.block_size_x) || (surface.height % state.block_size_y))
+				const auto write_encode_data = [&](int block_size) {
+					for (int by = 0; by < num_blocks_y; by++)
+					{
+						for (int bx = 0; bx < num_blocks_x; bx++)
+						{
+							auto *dst = get_block_data(bx, by, block_size);
+							memcpy(dst, &encode_buffer[(by * num_blocks_x + bx) * block_size], block_size);
+						}
+					}
+				};
+
+				if ((surface.width % block_size_x) || (surface.height % block_size_y))
 				{
-					padded_surface.width = ((surface.width + state.block_size_x - 1) / state.block_size_x) * state.block_size_x;
-					padded_surface.height = ((surface.height + state.block_size_y - 1) / state.block_size_y) * state.block_size_y;
-					padded_surface.stride = padded_surface.width * format_to_stride(args.format);
+					padded_surface.width = ((surface.width + block_size_x - 1) / block_size_x) * block_size_x;
+					padded_surface.height = ((surface.height + block_size_y - 1) / block_size_y) * block_size_y;
+					padded_surface.stride = padded_surface.width * format_to_stride(format);
 					padded_surface.ptr = padded_buffer;
-					ReplicateBorders(&padded_surface, &surface, 0, 0, format_to_stride(args.format) * 8);
+					ReplicateBorders(&padded_surface, &surface, 0, 0, format_to_stride(format) * 8);
 				}
 				else
 					padded_surface = surface;
 
-				switch (args.format)
+				switch (format)
 				{
 				case gli::FORMAT_RGB_BP_UFLOAT_BLOCK16:
 				{
-					auto *dst = static_cast<uint8_t *>(state.output->data(layer, face, level));
-					dst += get_block_offset() * 16;
-					CompressBlocksBC6H(&padded_surface, dst, &state.bc6);
+					CompressBlocksBC6H(&padded_surface, encode_buffer, &bc6);
+					write_encode_data(16);
 					break;
 				}
 
 				case gli::FORMAT_RGBA_BP_SRGB_BLOCK16:
 				case gli::FORMAT_RGBA_BP_UNORM_BLOCK16:
 				{
-					auto *dst = static_cast<uint8_t *>(state.output->data(layer, face, level));
-					dst += get_block_offset() * 16;
-					CompressBlocksBC7(&padded_surface, dst, &state.bc7);
+					CompressBlocksBC7(&padded_surface, encode_buffer, &bc7);
+					write_encode_data(16);
 					break;
 				}
 
 				case gli::FORMAT_RGB_DXT1_SRGB_BLOCK8:
 				case gli::FORMAT_RGB_DXT1_UNORM_BLOCK8:
 				{
-					auto *dst = static_cast<uint8_t *>(state.output->data(layer, face, level));
-					dst += get_block_offset() * 8;
-					CompressBlocksBC1(&padded_surface, dst);
+					CompressBlocksBC1(&padded_surface, encode_buffer);
+					write_encode_data(8);
 					break;
 				}
 
 				case gli::FORMAT_RGBA_DXT5_SRGB_BLOCK16:
 				case gli::FORMAT_RGBA_DXT5_UNORM_BLOCK16:
 				{
-					auto *dst = static_cast<uint8_t *>(state.output->data(layer, face, level));
-					dst += get_block_offset() * 16;
-					CompressBlocksBC3(&padded_surface, dst);
+					CompressBlocksBC3(&padded_surface, encode_buffer);
+					write_encode_data(16);
 					break;
 				}
 
@@ -585,9 +598,8 @@ void CompressorState::enqueue_compression_block_ispc(TaskGroup &group, const Com
 				case gli::FORMAT_RGBA_ASTC_8X8_SRGB_BLOCK16:
 				case gli::FORMAT_RGBA_ASTC_8X8_UNORM_BLOCK16:
 				{
-					auto *dst = static_cast<uint8_t *>(state.output->data(layer, face, level));
-					dst += get_block_offset() * 16;
-					CompressBlocksASTC(&padded_surface, dst, &state.astc);
+					CompressBlocksASTC(&padded_surface, encode_buffer, &astc);
+					write_encode_data(16);
 					break;
 				}
 
@@ -658,8 +670,9 @@ void CompressorState::enqueue_compression(ThreadGroup &group, const CompressorAr
 		}
 	}
 
-	auto write_task = group.create_task([args, output = this->output]() {
-		if (!save_texture_to_file(args.output, *output))
+	// Pass down ownership to final task.
+	auto write_task = group.create_task([args, state = shared_from_this()]() {
+		if (!save_texture_to_file(args.output, *state->output))
 			LOGE("Failed to save texture to file.\n");
 	});
 	group.add_dependency(write_task, compression_task);
@@ -668,10 +681,12 @@ void CompressorState::enqueue_compression(ThreadGroup &group, const CompressorAr
 void compress_texture(ThreadGroup &group, const CompressorArguments &args, const shared_ptr<gli::texture> &input, TaskGroup &dep)
 {
 	auto output = make_shared<CompressorState>();
+	output->input = input;
 
-	auto setup_task = group.create_task([&group, output, args, input]() {
-		output->input = input;
-		output->output = make_shared<gli::texture>(input->target(), args.format, input->extent(), input->layers(), input->faces(), input->levels());
+	auto setup_task = group.create_task([&group, output, args]() {
+		output->output = make_shared<gli::texture>(output->input->target(), args.format,
+		                                           output->input->extent(),
+		                                           output->input->layers(), output->input->faces(), output->input->levels());
 		output->setup(args);
 		output->enqueue_compression(group, args);
 	});

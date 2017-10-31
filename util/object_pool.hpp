@@ -23,16 +23,17 @@
 #pragma once
 
 #include <memory>
+#include <mutex>
 #include <vector>
 #include <stdlib.h>
 
 namespace Util
 {
-template <typename T>
+template<typename T>
 class ObjectPool
 {
 public:
-	template <typename... P>
+	template<typename... P>
 	T *allocate(P &&... p)
 	{
 		if (vacants.empty())
@@ -50,7 +51,7 @@ public:
 
 		T *ptr = vacants.back();
 		vacants.pop_back();
-		new (ptr) T(std::forward<P>(p)...);
+		new(ptr) T(std::forward<P>(p)...);
 		return ptr;
 	}
 
@@ -66,8 +67,9 @@ public:
 		memory.clear();
 	}
 
-private:
+protected:
 	std::vector<T *> vacants;
+
 	struct MallocDeleter
 	{
 		void operator()(T *ptr)
@@ -75,6 +77,35 @@ private:
 			::free(ptr);
 		}
 	};
+
 	std::vector<std::unique_ptr<T, MallocDeleter>> memory;
+};
+
+template<typename T>
+class ThreadSafeObjectPool : private ObjectPool<T>
+{
+public:
+	template<typename... P>
+	T *allocate(P &&... p)
+	{
+		std::lock_guard<std::mutex> holder{lock};
+		return ObjectPool<T>::allocate(std::forward<P>(p)...);
+	}
+
+	void free(T *ptr)
+	{
+		ptr->~T();
+		std::lock_guard<std::mutex> holder{lock};
+		this->vacants.push_back(ptr);
+	}
+
+	void clear()
+	{
+		std::lock_guard<std::mutex> holder{lock};
+		ObjectPool<T>::clear();
+	}
+
+private:
+	std::mutex lock;
 };
 }

@@ -128,143 +128,6 @@ struct FirstASTC
 		build_quantization_mode_table();
 	}
 };
-
-static void compress_image_astc(uint8_t *output, const uint8_t *input, unsigned width, unsigned height,
-                                unsigned block_size_x, unsigned block_size_y, unsigned quality, bool hdr)
-{
-	static FirstASTC first_astc;
-
-	error_weighting_params ewp = {};
-	ewp.rgb_power = 1.0f;
-	ewp.alpha_power = 1.0f;
-	ewp.rgb_base_weight = 1.0f;
-	ewp.alpha_base_weight = 1.0f;
-
-	ewp.rgba_weights[0] = 1.0f;
-	ewp.rgba_weights[1] = 1.0f;
-	ewp.rgba_weights[2] = 1.0f;
-	ewp.rgba_weights[3] = 1.0f;
-
-	float log10_texels = log10(float(block_size_x * block_size_y));
-	float dblimit = std::max(95.0f - 35.0f * log10_texels, 70.0f - 19.0f * log10_texels);
-	swizzlepattern swizzle = { 0, 1, 2, 3 };
-
-	if (quality >= 3)
-	{
-		ewp.max_refinement_iters = 2;
-		ewp.block_mode_cutoff = 75.0f / 100.0f;
-		ewp.partition_1_to_2_limit = 1.2f;
-		ewp.lowest_correlation_cutoff = 0.75f;
-		ewp.partition_search_limit = 25;
-		dblimit = std::max(95.0f - 35.0f * log10_texels, 70.0f - 19.0f * log10_texels);
-	}
-	else if (quality == 2)
-	{
-		ewp.max_refinement_iters = 1;
-		ewp.block_mode_cutoff = 50.0f / 100.0f;
-		ewp.partition_1_to_2_limit = 1.0f;
-		ewp.lowest_correlation_cutoff = 0.5f;
-		ewp.partition_search_limit = 4;
-		dblimit = std::max(85.0f - 35.0f * log10_texels, 63.0f - 19.0f * log10_texels);
-	}
-	else if (quality <= 1)
-	{
-		ewp.max_refinement_iters = 1;
-		ewp.block_mode_cutoff = 25.0f / 100.0f;
-		ewp.partition_1_to_2_limit = 1.0f;
-		ewp.lowest_correlation_cutoff = 0.5f;
-		ewp.partition_search_limit = 2;
-		dblimit = std::max(70.0f - 35.0f * log10_texels, 53.0f - 19.0f * log10_texels);
-	}
-
-	if (hdr)
-	{
-		ewp.mean_stdev_radius = 0.0f;
-		ewp.rgb_power = 0.75f;
-		ewp.rgb_base_weight = 0.0f;
-		ewp.rgb_mean_weight = 1.0f;
-		ewp.alpha_power = 0.75f;
-		ewp.alpha_base_weight = 0.0f;
-		ewp.alpha_mean_weight = 1.0f;
-		ewp.partition_search_limit = PARTITION_COUNT;
-		ewp.texel_avg_error_limit = 0.0f;
-		rgb_force_use_of_hdr = 1;
-		alpha_force_use_of_hdr = 1;
-	}
-	else
-	{
-		rgb_force_use_of_hdr = 0;
-		alpha_force_use_of_hdr = 0;
-		ewp.texel_avg_error_limit = pow(0.1f, dblimit * 0.1f) * 65535.0f * 65535.0f;
-	}
-
-	float max_color_component_weight = std::max(std::max(ewp.rgba_weights[0], ewp.rgba_weights[1]),
-	                                            std::max(ewp.rgba_weights[2], ewp.rgba_weights[3]));
-	for (unsigned i = 0; i < 4; i++)
-		ewp.rgba_weights[i] = std::max(ewp.rgba_weights[i], max_color_component_weight / 1000.0f);
-	expand_block_artifact_suppression(block_size_x, block_size_y, 1, &ewp);
-
-	imageblock pb = {};
-	astc_codec_image astc_image = {};
-	astc_image.xsize = width;
-	astc_image.ysize = height;
-	astc_image.zsize = 1;
-	astc_image.padding = std::max(ewp.mean_stdev_radius, ewp.alpha_radius);
-
-	int exsize = astc_image.xsize + astc_image.padding * 2;
-	int eysize = astc_image.ysize + astc_image.padding * 2;
-	int estride = hdr ? 8 : 4;
-	vector<uint8_t *> rows(eysize);
-
-	vector<uint8_t> buffer(exsize * eysize * estride);
-	rows[0] = buffer.data();
-	for (int y = 1; y < eysize; y++)
-		rows[y] = rows[0] + y * exsize * estride;
-
-	for (int y = 0; y < eysize; y++)
-	{
-		for (int x = 0; x < exsize; x++)
-		{
-			int dst_offset = x + y * exsize;
-			int src_offset = clamp(x - astc_image.padding, 0, astc_image.xsize - 1) +
-			                 clamp(y - astc_image.padding, 0, astc_image.ysize - 1) * astc_image.xsize;
-			memcpy(&buffer[dst_offset * estride], &input[src_offset * estride], estride);
-		}
-	}
-
-	auto *ptr16 = reinterpret_cast<uint16_t **>(rows.data());
-	auto *ptr8 = rows.data();
-	// Triple-pointer wat.
-	if (hdr)
-		astc_image.imagedata16 = &ptr16;
-	else
-		astc_image.imagedata8 = &ptr8;
-
-	if (astc_image.padding > 0 || ewp.rgb_mean_weight != 0.0f || ewp.rgb_stdev_weight != 0.0f ||
-	    ewp.alpha_mean_weight != 0.0f || ewp.alpha_stdev_weight != 0.0f)
-	{
-		compute_averages_and_variances(&astc_image, ewp.rgb_power, ewp.alpha_power,
-		                               ewp.mean_stdev_radius, ewp.alpha_radius, swizzle);
-	}
-
-	int blocks_x = (width + block_size_x - 1) / block_size_x;
-	int blocks_y = (height + block_size_y - 1) / block_size_y;
-
-	symbolic_compressed_block scb;
-	physical_compressed_block pcb;
-
-	for (int y = 0; y < blocks_y; y++)
-	{
-		for (int x = 0; x < blocks_x; x++)
-		{
-			fetch_imageblock(&astc_image, &pb, block_size_x, block_size_y, 1, x * block_size_x, y * block_size_y, 0, swizzle);
-			compress_symbolic_block(&astc_image, hdr ? DECODE_HDR : DECODE_LDR,
-			                        block_size_x, block_size_y, 1, &ewp, &pb, &scb);
-			pcb = symbolic_to_physical(block_size_x, block_size_y, 1, &scb);
-			memcpy(output + 16 * (y * blocks_x + x), &pcb, sizeof(pcb));
-		}
-	}
-}
 #endif
 
 struct CompressorState : enable_shared_from_this<CompressorState>
@@ -616,9 +479,168 @@ void CompressorState::enqueue_compression_block_ispc(TaskGroup &group, const Com
 void CompressorState::enqueue_compression_block_astc(TaskGroup &compression_task, const CompressorArguments &args,
                                                      unsigned layer, unsigned face, unsigned level, bool use_hdr)
 {
+	static FirstASTC first_astc;
 
+	struct CodecState
+	{
+		error_weighting_params ewp = {};
+		vector<uint8_t *> rows;
+		vector<uint8_t> buffer;
+		astc_codec_image astc_image = {};
+
+		int layer, face, level;
+		int blocks_x, blocks_y;
+		void **ptr;
+	};
+
+	auto state = make_shared<CodecState>();
+
+	state->ewp.rgb_power = 1.0f;
+	state->ewp.alpha_power = 1.0f;
+	state->ewp.rgb_base_weight = 1.0f;
+	state->ewp.alpha_base_weight = 1.0f;
+
+	state->ewp.rgba_weights[0] = 1.0f;
+	state->ewp.rgba_weights[1] = 1.0f;
+	state->ewp.rgba_weights[2] = 1.0f;
+	state->ewp.rgba_weights[3] = 1.0f;
+
+	float log10_texels = log10(float(block_size_x * block_size_y));
+	float dblimit = std::max(95.0f - 35.0f * log10_texels, 70.0f - 19.0f * log10_texels);
+
+	if (args.quality >= 3)
+	{
+		state->ewp.max_refinement_iters = 2;
+		state->ewp.block_mode_cutoff = 75.0f / 100.0f;
+		state->ewp.partition_1_to_2_limit = 1.2f;
+		state->ewp.lowest_correlation_cutoff = 0.75f;
+		state->ewp.partition_search_limit = 25;
+		dblimit = std::max(95.0f - 35.0f * log10_texels, 70.0f - 19.0f * log10_texels);
+	}
+	else if (args.quality == 2)
+	{
+		state->ewp.max_refinement_iters = 1;
+		state->ewp.block_mode_cutoff = 50.0f / 100.0f;
+		state->ewp.partition_1_to_2_limit = 1.0f;
+		state->ewp.lowest_correlation_cutoff = 0.5f;
+		state->ewp.partition_search_limit = 4;
+		dblimit = std::max(85.0f - 35.0f * log10_texels, 63.0f - 19.0f * log10_texels);
+	}
+	else if (args.quality <= 1)
+	{
+		state->ewp.max_refinement_iters = 1;
+		state->ewp.block_mode_cutoff = 25.0f / 100.0f;
+		state->ewp.partition_1_to_2_limit = 1.0f;
+		state->ewp.lowest_correlation_cutoff = 0.5f;
+		state->ewp.partition_search_limit = 2;
+		dblimit = std::max(70.0f - 35.0f * log10_texels, 53.0f - 19.0f * log10_texels);
+	}
+
+	if (use_hdr)
+	{
+		state->ewp.mean_stdev_radius = 0;
+		state->ewp.rgb_power = 0.75f;
+		state->ewp.rgb_base_weight = 0.0f;
+		state->ewp.rgb_mean_weight = 1.0f;
+		state->ewp.alpha_power = 0.75f;
+		state->ewp.alpha_base_weight = 0.0f;
+		state->ewp.alpha_mean_weight = 1.0f;
+		state->ewp.partition_search_limit = PARTITION_COUNT;
+		state->ewp.texel_avg_error_limit = 0.0f;
+		rgb_force_use_of_hdr = 1;
+		alpha_force_use_of_hdr = 1;
+	}
+	else
+	{
+		rgb_force_use_of_hdr = 0;
+		alpha_force_use_of_hdr = 0;
+		state->ewp.texel_avg_error_limit = pow(0.1f, dblimit * 0.1f) * 65535.0f * 65535.0f;
+	}
+
+	float max_color_component_weight = std::max(std::max(state->ewp.rgba_weights[0], state->ewp.rgba_weights[1]),
+	                                            std::max(state->ewp.rgba_weights[2], state->ewp.rgba_weights[3]));
+	for (auto &w : state->ewp.rgba_weights)
+		w = std::max(w, max_color_component_weight / 1000.0f);
+
+	expand_block_artifact_suppression(block_size_x, block_size_y, 1, &state->ewp);
+
+	int width = input->extent(level).x;
+	int height = input->extent(level).y;
+
+	state->astc_image.xsize = width;
+	state->astc_image.ysize = height;
+	state->astc_image.zsize = 1;
+	state->astc_image.padding = std::max(state->ewp.mean_stdev_radius, state->ewp.alpha_radius);
+
+	int exsize = state->astc_image.xsize + state->astc_image.padding * 2;
+	int eysize = state->astc_image.ysize + state->astc_image.padding * 2;
+	int estride = use_hdr ? 8 : 4;
+	state->rows.resize(eysize);
+
+	state->buffer.resize(exsize * eysize * estride);
+	state->rows[0] = state->buffer.data();
+	for (int y = 1; y < eysize; y++)
+		state->rows[y] = state->rows[0] + y * exsize * estride;
+
+	for (int y = 0; y < eysize; y++)
+	{
+		for (int x = 0; x < exsize; x++)
+		{
+			int dst_offset = x + y * exsize;
+			int src_offset = clamp(x - state->astc_image.padding, 0, state->astc_image.xsize - 1) +
+			                 clamp(y - state->astc_image.padding, 0, state->astc_image.ysize - 1) * state->astc_image.xsize;
+
+			auto *src = static_cast<const uint8_t *>(input->data(layer, face, level));
+			memcpy(&state->buffer[dst_offset * estride], &src[src_offset * estride], estride);
+		}
+	}
+
+	state->ptr = reinterpret_cast<void **>(state->rows.data());
+
+	// Triple-pointer wat.
+	if (use_hdr)
+		state->astc_image.imagedata16 = reinterpret_cast<uint16_t ***>(&state->ptr);
+	else
+		state->astc_image.imagedata8 = reinterpret_cast<uint8_t ***>(&state->ptr);
+
+	if (state->astc_image.padding > 0 || state->ewp.rgb_mean_weight != 0.0f || state->ewp.rgb_stdev_weight != 0.0f ||
+	    state->ewp.alpha_mean_weight != 0.0f || state->ewp.alpha_stdev_weight != 0.0f)
+	{
+		const swizzlepattern swizzle = { 0, 1, 2, 3 };
+		compute_averages_and_variances(&state->astc_image, state->ewp.rgb_power, state->ewp.alpha_power,
+		                               state->ewp.mean_stdev_radius, state->ewp.alpha_radius, swizzle);
+	}
+
+	state->blocks_x = (width + block_size_x - 1) / block_size_x;
+	state->blocks_y = (height + block_size_y - 1) / block_size_y;
+	state->layer = layer;
+	state->face = face;
+	state->level = level;
+
+	for (int y = 0; y < state->blocks_y; y++)
+	{
+		for (int x = 0; x < state->blocks_x; x++)
+		{
+			compression_task->enqueue_task([=]() {
+				symbolic_compressed_block scb;
+				physical_compressed_block pcb;
+				imageblock pb = {};
+				const swizzlepattern swizzle = { 0, 1, 2, 3 };
+
+				fetch_imageblock(&state->astc_image, &pb, block_size_x, block_size_y, 1, x * block_size_x,
+				                 y * block_size_y, 0, swizzle);
+				compress_symbolic_block(&state->astc_image, use_hdr ? DECODE_HDR : DECODE_LDR,
+				                        block_size_x, block_size_y, 1, &state->ewp, &pb, &scb);
+				pcb = symbolic_to_physical(block_size_x, block_size_y, 1, &scb);
+
+				auto *dst = static_cast<uint8_t *>(output->data(state->layer, state->face, state->level));
+				memcpy(dst + 16 * (y * state->blocks_x + x), &pcb, sizeof(pcb));
+			});
+		}
+	}
 }
 #endif
+
 void CompressorState::enqueue_compression(ThreadGroup &group, const CompressorArguments &args)
 {
 	auto compression_task = group.create_task();

@@ -1257,7 +1257,8 @@ void Parser::parse(const string &original_path, const string &json)
 			fog_falloff = fog["falloff"].GetFloat();
 		}
 
-		json_environments.push_back({ move(cube), move(reflection), move(irradiance), { fog_color, fog_falloff } });
+		EnvironmentInfo::Fog fog = { fog_color, fog_falloff };
+		json_environments.push_back({ move(cube), move(reflection), move(irradiance), fog });
 	};
 
 	if (doc.HasMember("cameras"))

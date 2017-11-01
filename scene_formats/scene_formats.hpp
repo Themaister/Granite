@@ -159,10 +159,10 @@ struct EnvironmentInfo
 	std::string reflection;
 	std::string irradiance;
 
-	struct
+	struct Fog
 	{
 		vec3 color;
-		float falloff = 0.0f;
+		float falloff;
 	} fog;
 };
 

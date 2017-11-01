@@ -538,13 +538,15 @@ void CompressorState::enqueue_compression_block_astc(TaskGroup &compression_task
 
 	if (use_hdr)
 	{
-		state->ewp.mean_stdev_radius = 0;
 		state->ewp.rgb_power = 0.75f;
+		state->ewp.alpha_power = 0.75f;
+#if 0
+		state->ewp.mean_stdev_radius = 0;
 		state->ewp.rgb_base_weight = 0.0f;
 		state->ewp.rgb_mean_weight = 1.0f;
-		state->ewp.alpha_power = 0.75f;
 		state->ewp.alpha_base_weight = 0.0f;
 		state->ewp.alpha_mean_weight = 1.0f;
+#endif
 		state->ewp.partition_search_limit = PARTITION_COUNT;
 		state->ewp.texel_avg_error_limit = 0.0f;
 		rgb_force_use_of_hdr = 1;
@@ -603,13 +605,20 @@ void CompressorState::enqueue_compression_block_astc(TaskGroup &compression_task
 	else
 		state->astc_image.imagedata8 = reinterpret_cast<uint8_t ***>(&state->ptr);
 
+#if 0
 	if (state->astc_image.padding > 0 || state->ewp.rgb_mean_weight != 0.0f || state->ewp.rgb_stdev_weight != 0.0f ||
 	    state->ewp.alpha_mean_weight != 0.0f || state->ewp.alpha_stdev_weight != 0.0f)
 	{
 		const swizzlepattern swizzle = { 0, 1, 2, 3 };
+
+		// For some reason, this is not thread-safe :(
+		static mutex global_lock;
+		lock_guard<mutex> holder{global_lock};
+
 		compute_averages_and_variances(&state->astc_image, state->ewp.rgb_power, state->ewp.alpha_power,
 		                               state->ewp.mean_stdev_radius, state->ewp.alpha_radius, swizzle);
 	}
+#endif
 
 	state->blocks_x = (width + block_size_x - 1) / block_size_x;
 	state->blocks_y = (height + block_size_y - 1) / block_size_y;

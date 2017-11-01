@@ -118,6 +118,7 @@ struct EmittedImage
 
 	TextureCompression compression;
 	unsigned compression_quality;
+	bool force_linear;
 };
 
 struct EmittedSampler
@@ -143,10 +144,10 @@ struct RemapState
 	                       VkFormat format, unsigned offset, unsigned stride, unsigned count);
 
 	unsigned emit_texture(const string &texture, Vulkan::StockSampler sampler, Material::Textures type,
-	                      TextureCompression compression, unsigned quality);
+	                      TextureCompression compression, unsigned quality, bool force_linear);
 	unsigned emit_sampler(Vulkan::StockSampler sampler);
 	unsigned emit_image(const string &texture, Material::Textures type,
-	                    TextureCompression compression, unsigned quality);
+	                    TextureCompression compression, unsigned quality, bool force_linear);
 	void emit_material(unsigned remapped_material);
 	void emit_mesh(unsigned remapped_index);
 	void emit_environment(const string &cube, const string &reflection, const string &irradiance,
@@ -560,7 +561,7 @@ unsigned RemapState::emit_sampler(Vulkan::StockSampler sampler)
 }
 
 unsigned RemapState::emit_image(const string &texture, Material::Textures type,
-                                TextureCompression compression, unsigned quality)
+                                TextureCompression compression, unsigned quality, bool force_linear)
 {
 	Hasher h;
 	h.string(texture);
@@ -571,7 +572,7 @@ unsigned RemapState::emit_image(const string &texture, Material::Textures type,
 	{
 		unsigned index = image_cache.size();
 		image_hash[h.get()] = index;
-		image_cache.push_back({ texture, to_string(h.get()) + ".ktx", "image/ktx", type, compression, quality });
+		image_cache.push_back({ texture, to_string(h.get()) + ".ktx", "image/ktx", type, compression, quality, force_linear });
 		return index;
 	}
 	else
@@ -579,9 +580,9 @@ unsigned RemapState::emit_image(const string &texture, Material::Textures type,
 }
 
 unsigned RemapState::emit_texture(const string &texture, Vulkan::StockSampler sampler, Material::Textures type,
-                                  TextureCompression compression, unsigned quality)
+                                  TextureCompression compression, unsigned quality, bool force_linear)
 {
-	unsigned image_index = emit_image(texture, type, compression, quality);
+	unsigned image_index = emit_image(texture, type, compression, quality, force_linear);
 	unsigned sampler_index = emit_sampler(sampler);
 	Hasher h;
 	h.u32(image_index);
@@ -604,11 +605,11 @@ void RemapState::emit_environment(const string &cube, const string &reflection, 
 {
 	EmittedEnvironment env;
 	if (!cube.empty())
-		env.cube = emit_texture(cube, Vulkan::StockSampler::LinearClamp, Material::Textures::Emissive, compression, quality);
+		env.cube = emit_texture(cube, Vulkan::StockSampler::LinearClamp, Material::Textures::Emissive, compression, quality, true);
 	if (!reflection.empty())
-		env.reflection = emit_texture(reflection, Vulkan::StockSampler::LinearClamp, Material::Textures::Emissive, compression, quality);
+		env.reflection = emit_texture(reflection, Vulkan::StockSampler::LinearClamp, Material::Textures::Emissive, compression, quality, true);
 	if (!irradiance.empty())
-		env.irradiance = emit_texture(irradiance, Vulkan::StockSampler::LinearClamp, Material::Textures::Emissive, compression, quality);
+		env.irradiance = emit_texture(irradiance, Vulkan::StockSampler::LinearClamp, Material::Textures::Emissive, compression, quality, true);
 
 	environment_cache.push_back(env);
 }
@@ -622,32 +623,32 @@ void RemapState::emit_material(unsigned remapped_material)
 	if (!material.normal.empty())
 	{
 		output.normal = emit_texture(material.normal, material.sampler, Material::Textures::Normal,
-		                             options->compression, options->texcomp_quality);
+		                             options->compression, options->texcomp_quality, false);
 	}
 
 	if (!material.occlusion.empty())
 	{
 		output.occlusion = emit_texture(material.occlusion, material.sampler, Material::Textures::Occlusion,
-		                                options->compression, options->texcomp_quality);
+		                                options->compression, options->texcomp_quality, false);
 	}
 
 	if (!material.base_color.empty())
 	{
 		output.base_color = emit_texture(material.base_color, material.sampler, Material::Textures::BaseColor,
-		                                 options->compression, options->texcomp_quality);
+		                                 options->compression, options->texcomp_quality, false);
 	}
 
 	if (!material.metallic_roughness.empty())
 	{
 		output.metallic_roughness = emit_texture(material.metallic_roughness, material.sampler,
 		                                         Material::Textures::MetallicRoughness,
-		                                         options->compression, options->texcomp_quality);
+		                                         options->compression, options->texcomp_quality, false);
 	}
 
 	if (!material.emissive.empty())
 	{
 		output.emissive = emit_texture(material.emissive, material.sampler, Material::Textures::Emissive,
-		                               options->compression, options->texcomp_quality);
+		                               options->compression, options->texcomp_quality, false);
 	}
 
 	output.uniform_base_color = material.uniform_base_color;
@@ -757,9 +758,10 @@ unsigned RemapState::emit_meshes(ArrayView<const unsigned> meshes)
 	return index;
 }
 
-static gli::format get_compression_format(TextureCompression compression, Material::Textures type)
+static gli::format get_compression_format(TextureCompression compression, Material::Textures type, bool force_linear)
 {
-	bool srgb = type == Material::Textures::BaseColor || type == Material::Textures::Emissive;
+	bool srgb = !force_linear && (type == Material::Textures::BaseColor || type == Material::Textures::Emissive);
+
 	switch (compression)
 	{
 	case TextureCompression::Uncompressed:
@@ -791,17 +793,17 @@ static gli::format get_compression_format(TextureCompression compression, Materi
 }
 
 static void compress_image(ThreadGroup &workers, const string &target_path, const string &src,
-                           TextureCompression compression, Material::Textures type, unsigned quality)
+                           TextureCompression compression, Material::Textures type, unsigned quality, bool force_linear)
 {
 	CompressorArguments args;
 	args.output = target_path;
-	args.format = get_compression_format(compression, type);
+	args.format = get_compression_format(compression, type, force_linear);
 	args.quality = quality;
 
 	auto image = make_shared<gli::texture>();
 
 	auto load_task = workers.create_task([=]() {
-		*image = load_texture_from_file(src, type == Material::Textures::BaseColor ? ColorSpace::sRGB : ColorSpace::Linear);
+		*image = load_texture_from_file(src, (type == Material::Textures::BaseColor || type == Material::Textures::Emissive) ? ColorSpace::sRGB : ColorSpace::Linear);
 	});
 
 	auto mipgen_task = workers.create_task([=]() {
@@ -1027,7 +1029,7 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 
 			compress_image(workers,
 			               Path::relpath(path, image.target_relpath), image.source_path,
-			               image.compression, image.type, image.compression_quality);
+			               image.compression, image.type, image.compression_quality, image.force_linear);
 		}
 		doc.AddMember("images", images, allocator);
 	}

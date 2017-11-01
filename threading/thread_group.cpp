@@ -250,6 +250,8 @@ void ThreadGroup::stop()
 	if (!active)
 		return;
 
+	wait_idle();
+
 	{
 		lock_guard<mutex> holder{cond_lock};
 		dead = true;

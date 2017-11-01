@@ -32,6 +32,7 @@ enum class TextureCompression
 {
 	BC7,
 	BC3,
+	BC6H,
 	ASTC4x4,
 	ASTC5x5,
 	ASTC6x6,
@@ -43,6 +44,17 @@ struct ExportOptions
 {
 	TextureCompression compression = TextureCompression::Uncompressed;
 	unsigned texcomp_quality = 3;
+	unsigned threads = 0;
+
+	struct
+	{
+		std::string cube;
+		std::string reflection;
+		std::string irradiance;
+
+		TextureCompression compression = TextureCompression::Uncompressed;
+		unsigned texcomp_quality = 3;
+	} environment;
 };
 
 bool export_scene_to_glb(const SceneInformation &scene, const std::string &path, const ExportOptions &options);

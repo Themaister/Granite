@@ -153,6 +153,13 @@ struct CameraInfo
 	bool attached_to_node = false;
 };
 
+struct EnvironmentInfo
+{
+	std::string cube;
+	std::string reflection;
+	std::string irradiance;
+};
+
 struct LightInfo
 {
 	enum class Type

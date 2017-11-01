@@ -88,6 +88,11 @@ public:
 		return json_lights;
 	}
 
+	const std::vector<EnvironmentInfo> &get_environments() const
+	{
+		return json_environments;
+	}
+
 private:
 	using Buffer = std::vector<uint8_t>;
 
@@ -161,6 +166,7 @@ private:
 	std::vector<Skin> json_skins;
 	std::vector<CameraInfo> json_cameras;
 	std::vector<LightInfo> json_lights;
+	std::vector<EnvironmentInfo> json_environments;
 	std::vector<Node> nodes;
 	std::vector<Animation> animations;
 	std::vector<Util::Hash> skin_compat;

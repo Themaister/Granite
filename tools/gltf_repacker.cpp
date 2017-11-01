@@ -35,6 +35,8 @@ static SceneFormats::TextureCompression string_to_compression(const string &fmt)
 		return SceneFormats::TextureCompression::BC7;
 	else if (fmt == "bc3")
 		return SceneFormats::TextureCompression::BC3;
+	else if (fmt == "bc6h")
+		return SceneFormats::TextureCompression::BC6H;
 	else if (fmt == "astc_4x4")
 		return SceneFormats::TextureCompression::ASTC4x4;
 	else if (fmt == "astc_5x5")
@@ -52,7 +54,12 @@ static SceneFormats::TextureCompression string_to_compression(const string &fmt)
 
 static void print_help()
 {
-	LOGI("Usage: [--output <out.glb>] [--texcomp <type>] [--texcomp-quality <1 (fast) - 5 (slow)>] input.gltf\n");
+	LOGI("Usage: [--output <out.glb>] [--texcomp <type>]\n");
+	LOGI("[--environment-reflection <path>] [--environment-cube <path>]\n");
+	LOGI("[--environment-irradiance <path>] [--environment-texcomp <type>]\n");
+	LOGI("[--environment-texcomp-quality <1 (fast) - 5 (slow)>]\n");
+	LOGI("[--threads <num threads>]\n");
+	LOGI("[--texcomp-quality <1 (fast) - 5 (slow)>] input.gltf\n");
 }
 
 int main(int argc, char *argv[])
@@ -69,6 +76,12 @@ int main(int argc, char *argv[])
 	cbs.add("--output", [&](CLIParser &parser) { args.output = parser.next_string(); });
 	cbs.add("--texcomp", [&](CLIParser &parser) { options.compression = string_to_compression(parser.next_string()); });
 	cbs.add("--texcomp-quality", [&](CLIParser &parser) { options.texcomp_quality = parser.next_uint(); });
+	cbs.add("--environment-cube", [&](CLIParser &parser) { options.environment.cube = parser.next_string(); });
+	cbs.add("--environment-reflection", [&](CLIParser &parser) { options.environment.reflection = parser.next_string(); });
+	cbs.add("--environment-irradiance", [&](CLIParser &parser) { options.environment.irradiance = parser.next_string(); });
+	cbs.add("--environment-texcomp", [&](CLIParser &parser) { options.environment.compression = string_to_compression(parser.next_string()); });
+	cbs.add("--environment-texcomp-quality", [&](CLIParser &parser) { options.environment.texcomp_quality = parser.next_uint(); });
+	cbs.add("--threads", [&](CLIParser &parser) { options.threads = parser.next_uint(); });
 	cbs.add("--help", [](CLIParser &parser) { print_help(); parser.end(); });
 	cbs.default_handler = [&](const char *arg) { args.input = arg; };
 	CLIParser cli_parser(move(cbs), argc - 1, argv + 1);

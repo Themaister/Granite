@@ -359,6 +359,9 @@ void Parser::resolve_component_type(uint32_t component_type, const char *type, b
 		scalar_type = ScalarType::Float32;
 		break;
 	}
+
+	default:
+		throw logic_error("Unknown type.");
 	}
 
 	stride = components * type_stride(scalar_type);
@@ -1224,6 +1227,30 @@ void Parser::parse(const string &original_path, const string &json)
 		json_lights.push_back(move(info));
 	};
 
+	const auto add_environment = [&](const Value &value) {
+		string cube, reflection, irradiance;
+
+		if (value.HasMember("cubeTexture"))
+		{
+			auto index = json_textures[value["cubeTexture"].GetUint()].image_index;
+			cube = json_images[index];
+		}
+
+		if (value.HasMember("reflectionTexture"))
+		{
+			auto index = json_textures[value["reflectionTexture"].GetUint()].image_index;
+			reflection = json_images[index];
+		}
+
+		if (value.HasMember("irradianceTexture"))
+		{
+			auto index = json_textures[value["irradianceTexture"].GetUint()].image_index;
+			irradiance = json_images[index];
+		}
+
+		json_environments.push_back({ move(cube), move(reflection), move(irradiance) });
+	};
+
 	if (doc.HasMember("cameras"))
 		iterate_elements(doc["cameras"], add_camera);
 
@@ -1253,6 +1280,13 @@ void Parser::parse(const string &original_path, const string &json)
 		iterate_elements(doc["accessors"], add_accessor);
 	if (doc.HasMember("meshes"))
 		iterate_elements(doc["meshes"], add_mesh);
+
+	if (doc.HasMember("extras"))
+	{
+		auto &extra = doc["extras"];
+		if (extra.HasMember("environments"))
+			iterate_elements(extra["environments"], add_environment);
+	}
 
 	build_meshes();
 	if (doc.HasMember("nodes"))

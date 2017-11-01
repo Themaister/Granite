@@ -64,6 +64,7 @@ struct FileStat
 {
 	uint64_t size;
 	PathType type;
+	uint64_t last_modified;
 };
 
 using FileNotifyHandle = int;

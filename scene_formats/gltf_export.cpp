@@ -70,6 +70,9 @@ struct EmittedEnvironment
 	int cube = -1;
 	int reflection = -1;
 	int irradiance = -1;
+
+	vec3 fog_color;
+	float fog_falloff;
 };
 
 struct EmittedAccessor
@@ -151,6 +154,7 @@ struct RemapState
 	void emit_material(unsigned remapped_material);
 	void emit_mesh(unsigned remapped_index);
 	void emit_environment(const string &cube, const string &reflection, const string &irradiance,
+	                      vec3 fog_color, float fog_falloff,
 	                      TextureCompression compression, unsigned quality);
 	unsigned emit_meshes(ArrayView<const unsigned> meshes);
 
@@ -566,6 +570,10 @@ unsigned RemapState::emit_image(const string &texture, Material::Textures type,
 	Hasher h;
 	h.string(texture);
 	h.u32(ecast(type));
+	h.u32(ecast(compression));
+	h.u32(quality);
+	h.s32(force_linear);
+
 	auto itr = image_hash.find(h.get());
 
 	if (itr == end(image_hash))
@@ -601,6 +609,7 @@ unsigned RemapState::emit_texture(const string &texture, Vulkan::StockSampler sa
 }
 
 void RemapState::emit_environment(const string &cube, const string &reflection, const string &irradiance,
+                                  vec3 fog_color, float fog_falloff,
                                   TextureCompression compression, unsigned quality)
 {
 	EmittedEnvironment env;
@@ -610,6 +619,9 @@ void RemapState::emit_environment(const string &cube, const string &reflection, 
 		env.reflection = emit_texture(reflection, Vulkan::StockSampler::LinearClamp, Material::Textures::Emissive, compression, quality, true);
 	if (!irradiance.empty())
 		env.irradiance = emit_texture(irradiance, Vulkan::StockSampler::LinearClamp, Material::Textures::Emissive, compression, quality, true);
+
+	env.fog_color = fog_color;
+	env.fog_falloff = fog_falloff;
 
 	environment_cache.push_back(env);
 }
@@ -795,6 +807,16 @@ static gli::format get_compression_format(TextureCompression compression, Materi
 static void compress_image(ThreadGroup &workers, const string &target_path, const string &src,
                            TextureCompression compression, Material::Textures type, unsigned quality, bool force_linear)
 {
+	FileStat src_stat, dst_stat;
+	if (Filesystem::get().stat(src, src_stat) && Filesystem::get().stat(target_path, dst_stat))
+	{
+		if (src_stat.last_modified < dst_stat.last_modified)
+		{
+			LOGI("Texture %s -> %s is already compressed, skipping.\n", src.c_str(), target_path.c_str());
+			return;
+		}
+	}
+
 	CompressorArguments args;
 	args.output = target_path;
 	args.format = get_compression_format(compression, type, force_linear);
@@ -860,6 +882,7 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 	if (!options.environment.cube.empty())
 	{
 		state.emit_environment(options.environment.cube, options.environment.reflection, options.environment.irradiance,
+		                       options.environment.fog_color, options.environment.fog_falloff,
 		                       options.environment.compression, options.environment.texcomp_quality);
 	}
 
@@ -1302,6 +1325,15 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 				environment.AddMember("reflectionTexture", env.reflection, allocator);
 			if (env.irradiance >= 0)
 				environment.AddMember("irradianceTexture", env.irradiance, allocator);
+
+			Value fog(kObjectType);
+			Value color(kArrayType);
+			color.PushBack(env.fog_color.r, allocator);
+			color.PushBack(env.fog_color.g, allocator);
+			color.PushBack(env.fog_color.b, allocator);
+			fog.AddMember("color", color, allocator);
+			fog.AddMember("falloff", env.fog_falloff, allocator);
+			environment.AddMember("fog", fog, allocator);
 
 			environments.PushBack(environment, allocator);
 		}

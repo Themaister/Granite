@@ -457,8 +457,10 @@ struct FSStat : FSReadCommand
 	{
 		uint64_t size = reply_builder.read_u64();
 		uint32_t type = reply_builder.read_u32();
+		uint64_t last_modified = reply_builder.read_u64();
 		FileStat s;
 		s.size = size;
+		s.last_modified = last_modified;
 
 		switch (type)
 		{

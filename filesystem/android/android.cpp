@@ -143,6 +143,7 @@ bool AssetManagerFilesystem::stat(const std::string &path, FileStat &stat)
 
 	stat.size = AAsset_getLength(asset);
 	stat.type = PathType::File;
+	stat.last_modified = 0;
 	AAsset_close(asset);
 	return true;
 }

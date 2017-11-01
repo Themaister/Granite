@@ -357,7 +357,7 @@ struct FSHandler : LooperHandler
 		if (Filesystem::get().stat(arg, s))
 		{
 			reply_builder.add_u32(NETFS_ERROR_OK);
-			reply_builder.add_u64(8 + 4);
+			reply_builder.add_u64(8 + 4 + 8);
 			reply_builder.add_u64(s.size);
 			switch (s.type)
 			{
@@ -371,6 +371,7 @@ struct FSHandler : LooperHandler
 				reply_builder.add_u32(NETFS_FILE_TYPE_SPECIAL);
 				break;
 			}
+			reply_builder.add_u64(s.last_modified);
 		}
 		else
 		{

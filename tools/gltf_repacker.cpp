@@ -59,6 +59,7 @@ static void print_help()
 	LOGI("[--environment-irradiance <path>] [--environment-texcomp <type>]\n");
 	LOGI("[--environment-texcomp-quality <1 (fast) - 5 (slow)>]\n");
 	LOGI("[--threads <num threads>]\n");
+	LOGI("[--fog-color R G B] [--fog-falloff falloff]\n");
 	LOGI("[--texcomp-quality <1 (fast) - 5 (slow)>] input.gltf\n");
 }
 
@@ -81,6 +82,16 @@ int main(int argc, char *argv[])
 	cbs.add("--environment-irradiance", [&](CLIParser &parser) { options.environment.irradiance = parser.next_string(); });
 	cbs.add("--environment-texcomp", [&](CLIParser &parser) { options.environment.compression = string_to_compression(parser.next_string()); });
 	cbs.add("--environment-texcomp-quality", [&](CLIParser &parser) { options.environment.texcomp_quality = parser.next_uint(); });
+
+	cbs.add("--fog-color", [&](CLIParser &parser) {
+		for (unsigned i = 0; i < 3; i++)
+			options.environment.fog_color[i] = parser.next_double();
+	});
+
+	cbs.add("--fog-falloff", [&](CLIParser &parser) {
+		options.environment.fog_falloff = parser.next_double();
+	});
+
 	cbs.add("--threads", [&](CLIParser &parser) { options.threads = parser.next_uint(); });
 	cbs.add("--help", [](CLIParser &parser) { print_help(); parser.end(); });
 	cbs.default_handler = [&](const char *arg) { args.input = arg; };

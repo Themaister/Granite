@@ -277,15 +277,29 @@ void SceneLoader::parse_gltf(const std::string &path)
 	if (!scene.parser->get_environments().empty())
 	{
 		auto &env = scene.parser->get_environments().front();
+
+		EntityHandle entity;
 		if (!env.cube.empty() && !env.reflection.empty() && !env.irradiance.empty())
 		{
 			auto skybox = Util::make_abstract_handle<AbstractRenderable, Skybox>(env.cube, false);
-			auto entity = this->scene->create_renderable(skybox, nullptr);
+			entity = this->scene->create_renderable(skybox, nullptr);
 			static_cast<Skybox *>(skybox.get())->enable_irradiance(env.irradiance, false);
 			static_cast<Skybox *>(skybox.get())->enable_reflection(env.reflection, false);
 			auto *ibl = entity->allocate_component<IBLComponent>();
 			ibl->irradiance_path = env.irradiance;
 			ibl->reflection_path = env.reflection;
+		}
+
+		if (env.fog.falloff != 0.0f)
+		{
+			if (!entity)
+				entity = this->scene->create_entity();
+
+			FogParameters params;
+			params.color = env.fog.color;
+			params.falloff = env.fog.falloff;
+			auto *environment = entity->allocate_component<EnvironmentComponent>();
+			environment->fog = params;
 		}
 	}
 

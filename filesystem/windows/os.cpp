@@ -234,6 +234,7 @@ bool OSFilesystem::stat(const std::string &path, FileStat &stat)
 		stat.type = PathType::Special;
 
 	stat.size = uint64_t(buf.st_size);
+	stat.last_modified = buf.st_mtime;
 	return true;
 }
 

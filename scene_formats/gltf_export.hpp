@@ -51,6 +51,8 @@ struct ExportOptions
 		std::string cube;
 		std::string reflection;
 		std::string irradiance;
+		vec3 fog_color = vec3(0.0f);
+		float fog_falloff = 0.0f;
 
 		TextureCompression compression = TextureCompression::Uncompressed;
 		unsigned texcomp_quality = 3;

@@ -1248,7 +1248,16 @@ void Parser::parse(const string &original_path, const string &json)
 			irradiance = json_images[index];
 		}
 
-		json_environments.push_back({ move(cube), move(reflection), move(irradiance) });
+		vec3 fog_color = vec3(0.0f);
+		float fog_falloff = 1.0f;
+		if (value.HasMember("fog"))
+		{
+			auto &fog = value["fog"];
+			fog_color = vec3(fog["color"][0].GetFloat(), fog["color"][1].GetFloat(), fog["color"][2].GetFloat());
+			fog_falloff = fog["falloff"].GetFloat();
+		}
+
+		json_environments.push_back({ move(cube), move(reflection), move(irradiance), { fog_color, fog_falloff } });
 	};
 
 	if (doc.HasMember("cameras"))

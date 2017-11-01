@@ -386,8 +386,8 @@ void CompressorState::enqueue_compression_block_ispc(TaskGroup &group, const Com
 
 				rgba_surface padded_surface = {};
 
-				int num_blocks_x = surface.width / block_size_x;
-				int num_blocks_y = surface.height / block_size_y;
+				int num_blocks_x = (surface.width + block_size_x - 1) / block_size_x;
+				int num_blocks_y = (surface.height + block_size_y - 1) / block_size_y;
 				int blocks_x = (width + block_size_x - 1) / block_size_x;
 
 				const auto get_block_data = [&](int bx, int by, int block_size) -> uint8_t * {
@@ -410,8 +410,8 @@ void CompressorState::enqueue_compression_block_ispc(TaskGroup &group, const Com
 
 				if ((surface.width % block_size_x) || (surface.height % block_size_y))
 				{
-					padded_surface.width = ((surface.width + block_size_x - 1) / block_size_x) * block_size_x;
-					padded_surface.height = ((surface.height + block_size_y - 1) / block_size_y) * block_size_y;
+					padded_surface.width = num_blocks_x * block_size_x;
+					padded_surface.height = num_blocks_y * block_size_y;
 					padded_surface.stride = padded_surface.width * format_to_stride(format);
 					padded_surface.ptr = padded_buffer;
 					ReplicateBorders(&padded_surface, &surface, 0, 0, format_to_stride(format) * 8);

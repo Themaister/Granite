@@ -611,7 +611,6 @@ void SceneViewerApplication::update_scene(double, double elapsed_time)
 		lighting.environment_irradiance = &irradiance->get_image()->get_view();
 	lighting.shadow.inv_cutoff_distance = 1.0f / config.cascade_cutoff_distance;
 	lighting.environment.intensity = 1.0f;
-	lighting.environment.mipscale = 7.0f;
 	lighting.refraction.falloff = vec3(1.0f / 1.5f, 1.0f / 2.5f, 1.0f / 5.0f);
 
 	context.set_camera(*selected_camera);

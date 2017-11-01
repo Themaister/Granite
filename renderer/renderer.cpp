@@ -205,8 +205,16 @@ void Renderer::set_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderC
 	auto *lighting = context.get_lighting_parameters();
 	assert(lighting);
 
-	auto *environment = static_cast<EnvironmentParameters *>(cmd.allocate_constant_data(0, 1, sizeof(EnvironmentParameters)));
-	*environment = lighting->environment;
+	struct EnvironmentParametersShader
+	{
+		float intensity;
+		float mipscale;
+	};
+
+	auto *environment = static_cast<EnvironmentParametersShader *>(cmd.allocate_constant_data(0, 1, sizeof(EnvironmentParametersShader)));
+	environment->intensity = lighting->environment.intensity;
+	if (lighting->environment_radiance)
+		environment->mipscale = float(lighting->environment_radiance->get_create_info().levels - 1);
 
 	auto *fog = static_cast<FogParameters *>(cmd.allocate_constant_data(0, 2, sizeof(FogParameters)));
 	*fog = lighting->fog;
@@ -457,7 +465,12 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 	push.shadow_near_col2 = total_shadow_transform_near[2];
 	push.color_env_intensity = vec4(light.directional.color, light.environment.intensity);
 	push.direction_inv_cutoff = vec4(light.directional.direction, light.shadow.inv_cutoff_distance);
-	push.camera_pos_mipscale = vec4(context.get_render_parameters().camera_position, light.environment.mipscale);
+
+	float mipscale = 0.0f;
+	if (light.environment_radiance)
+		mipscale = float(light.environment_radiance->get_create_info().levels - 1);
+
+	push.camera_pos_mipscale = vec4(context.get_render_parameters().camera_position, mipscale);
 	push.camera_front = context.get_render_parameters().camera_front;
 	cmd.push_constants(&push, 0, sizeof(push));
 

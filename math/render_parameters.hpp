@@ -75,7 +75,6 @@ struct ShadowParameters
 struct EnvironmentParameters
 {
 	float intensity;
-	float mipscale;
 };
 
 struct RefractionParameters

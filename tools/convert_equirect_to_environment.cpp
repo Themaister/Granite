@@ -31,7 +31,7 @@ using namespace std;
 
 static void print_help()
 {
-	LOGE("Usage: [--specular <path.ktx>] [--diffuse <path.ktx>] [--cube <path.ktx>] [--cube-scale <scale>] <equirect HDR>\n");
+	LOGE("Usage: [--reflection <path.ktx>] [--irradiance <path.ktx>] [--cube <path.ktx>] [--cube-scale <scale>] <equirect HDR>\n");
 }
 
 int main(int argc, char *argv[])
@@ -41,14 +41,14 @@ int main(int argc, char *argv[])
 	{
 		string equirect;
 		string cube;
-		string specular;
-		string diffuse;
+		string reflection;
+		string irradiance;
 		float cube_scale = 1.0f;
 	} args;
 
 	cbs.add("--help", [](CLIParser &parser) { print_help(); parser.end(); });
-	cbs.add("--specular", [&](CLIParser &parser) { args.specular = parser.next_string(); });
-	cbs.add("--diffuse", [&](CLIParser &parser) { args.diffuse = parser.next_string(); });
+	cbs.add("--reflection", [&](CLIParser &parser) { args.reflection = parser.next_string(); });
+	cbs.add("--irradiance", [&](CLIParser &parser) { args.irradiance = parser.next_string(); });
 	cbs.add("--cube", [&](CLIParser &parser) { args.cube = parser.next_string(); });
 	cbs.add("--cube-scale", [&](CLIParser &parser) { args.cube_scale = parser.next_double(); });
 	cbs.default_handler = [&](const char *arg) { args.equirect = arg; };
@@ -104,8 +104,8 @@ int main(int argc, char *argv[])
 
 	if (!args.cube.empty())
 		save_image_buffer_to_ktx(device, saved_cube, args.cube.c_str());
-	if (!args.specular.empty())
-		save_image_buffer_to_ktx(device, saved_specular, args.specular.c_str());
-	if (!args.diffuse.empty())
-		save_image_buffer_to_ktx(device, saved_diffuse, args.diffuse.c_str());
+	if (!args.reflection.empty())
+		save_image_buffer_to_ktx(device, saved_specular, args.reflection.c_str());
+	if (!args.irradiance.empty())
+		save_image_buffer_to_ktx(device, saved_diffuse, args.irradiance.c_str());
 }

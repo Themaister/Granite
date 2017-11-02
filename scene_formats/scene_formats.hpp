@@ -158,6 +158,7 @@ struct EnvironmentInfo
 	std::string cube;
 	std::string reflection;
 	std::string irradiance;
+	float intensity;
 
 	struct Fog
 	{

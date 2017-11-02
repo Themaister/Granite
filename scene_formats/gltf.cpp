@@ -1248,6 +1248,10 @@ void Parser::parse(const string &original_path, const string &json)
 			irradiance = json_images[index];
 		}
 
+		float intensity = 1.0f;
+		if (value.HasMember("intensity"))
+			intensity = value["intensity"].GetFloat();
+
 		vec3 fog_color = vec3(0.0f);
 		float fog_falloff = 1.0f;
 		if (value.HasMember("fog"))
@@ -1258,7 +1262,7 @@ void Parser::parse(const string &original_path, const string &json)
 		}
 
 		EnvironmentInfo::Fog fog = { fog_color, fog_falloff };
-		json_environments.push_back({ move(cube), move(reflection), move(irradiance), fog });
+		json_environments.push_back({ move(cube), move(reflection), move(irradiance), intensity, fog });
 	};
 
 	if (doc.HasMember("cameras"))

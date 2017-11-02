@@ -127,6 +127,7 @@ protected:
 	void update_shadow_map();
 	std::string skydome_reflection;
 	std::string skydome_irradiance;
+	float skydome_intensity = 1.0f;
 	AABB shadow_scene_aabb;
 
 	std::unique_ptr<LightClusterer> cluster;

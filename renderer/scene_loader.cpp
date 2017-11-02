@@ -279,16 +279,21 @@ void SceneLoader::parse_gltf(const std::string &path)
 		auto &env = scene.parser->get_environments().front();
 
 		EntityHandle entity;
+		AbstractRenderableHandle skybox;
 		if (!env.cube.empty() && !env.reflection.empty() && !env.irradiance.empty())
 		{
-			auto skybox = Util::make_abstract_handle<AbstractRenderable, Skybox>(env.cube, false);
+			skybox = Util::make_abstract_handle<AbstractRenderable, Skybox>(env.cube, false);
 			entity = this->scene->create_renderable(skybox, nullptr);
 			static_cast<Skybox *>(skybox.get())->enable_irradiance(env.irradiance, false);
 			static_cast<Skybox *>(skybox.get())->enable_reflection(env.reflection, false);
 			auto *ibl = entity->allocate_component<IBLComponent>();
 			ibl->irradiance_path = env.irradiance;
 			ibl->reflection_path = env.reflection;
+			ibl->intensity = env.intensity;
 		}
+
+		if (skybox)
+			entity->allocate_component<SkyboxComponent>()->skybox = static_cast<Skybox *>(skybox.get());
 
 		if (env.fog.falloff != 0.0f)
 		{
@@ -298,8 +303,7 @@ void SceneLoader::parse_gltf(const std::string &path)
 			FogParameters params;
 			params.color = env.fog.color;
 			params.falloff = env.fog.falloff;
-			auto *environment = entity->allocate_component<EnvironmentComponent>();
-			environment->fog = params;
+			entity->allocate_component<EnvironmentComponent>()->fog = params;
 		}
 	}
 
@@ -568,15 +572,18 @@ void SceneLoader::parse_scene_format(const std::string &path, const std::string 
 				irradiance = Path::relpath(path, box["irradiance"].GetString());
 
 			entity = scene->create_renderable(skybox, nullptr);
+
 			if (use_ibl || (!reflection.empty() && !irradiance.empty()))
 			{
 				auto irradiance_path = irradiance.empty() ? (texture_path + ".irradiance") : irradiance;
 				auto reflection_path = reflection.empty() ? (texture_path + ".reflection") : reflection;
 				static_cast<Skybox *>(skybox.get())->enable_irradiance(irradiance_path, irradiance.empty());
 				static_cast<Skybox *>(skybox.get())->enable_reflection(reflection_path, reflection.empty());
+				entity->allocate_component<SkyboxComponent>()->skybox = static_cast<Skybox *>(skybox.get());
 				auto *ibl = entity->allocate_component<IBLComponent>();
 				ibl->irradiance_path = irradiance_path;
 				ibl->reflection_path = reflection_path;
+				ibl->intensity = 1.0f;
 			}
 		}
 		else

@@ -70,6 +70,7 @@ struct EmittedEnvironment
 	int cube = -1;
 	int reflection = -1;
 	int irradiance = -1;
+	float intensity = 1.0f;
 
 	vec3 fog_color;
 	float fog_falloff;
@@ -153,7 +154,7 @@ struct RemapState
 	                    TextureCompression compression, unsigned quality, bool force_linear);
 	void emit_material(unsigned remapped_material);
 	void emit_mesh(unsigned remapped_index);
-	void emit_environment(const string &cube, const string &reflection, const string &irradiance,
+	void emit_environment(const string &cube, const string &reflection, const string &irradiance, float intensity,
 	                      vec3 fog_color, float fog_falloff,
 	                      TextureCompression compression, unsigned quality);
 	unsigned emit_meshes(ArrayView<const unsigned> meshes);
@@ -609,6 +610,7 @@ unsigned RemapState::emit_texture(const string &texture, Vulkan::StockSampler sa
 }
 
 void RemapState::emit_environment(const string &cube, const string &reflection, const string &irradiance,
+                                  float intensity,
                                   vec3 fog_color, float fog_falloff,
                                   TextureCompression compression, unsigned quality)
 {
@@ -620,6 +622,7 @@ void RemapState::emit_environment(const string &cube, const string &reflection, 
 	if (!irradiance.empty())
 		env.irradiance = emit_texture(irradiance, Vulkan::StockSampler::LinearClamp, Material::Textures::Emissive, compression, quality, true);
 
+	env.intensity = intensity;
 	env.fog_color = fog_color;
 	env.fog_falloff = fog_falloff;
 
@@ -885,6 +888,7 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 	if (!options.environment.cube.empty())
 	{
 		state.emit_environment(options.environment.cube, options.environment.reflection, options.environment.irradiance,
+		                       options.environment.intensity,
 		                       options.environment.fog_color, options.environment.fog_falloff,
 		                       options.environment.compression, options.environment.texcomp_quality);
 	}
@@ -1328,6 +1332,7 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 				environment.AddMember("reflectionTexture", env.reflection, allocator);
 			if (env.irradiance >= 0)
 				environment.AddMember("irradianceTexture", env.irradiance, allocator);
+			environment.AddMember("intensity", env.intensity, allocator);
 
 			Value fog(kObjectType);
 			Value color(kArrayType);

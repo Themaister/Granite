@@ -57,6 +57,7 @@ struct ExportOptions
 
 		TextureCompression compression = TextureCompression::Uncompressed;
 		unsigned texcomp_quality = 3;
+		float intensity = 1.0f;
 	} environment;
 };
 

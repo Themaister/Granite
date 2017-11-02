@@ -41,6 +41,7 @@ class RenderPass;
 class Scene;
 class Ground;
 class PositionalLight;
+class Skybox;
 
 struct Transform
 {
@@ -75,10 +76,16 @@ struct EnvironmentComponent : ComponentBase
 	FogParameters fog;
 };
 
+struct SkyboxComponent : ComponentBase
+{
+	Skybox *skybox;
+};
+
 struct IBLComponent : ComponentBase
 {
 	std::string reflection_path;
 	std::string irradiance_path;
+	float intensity;
 };
 
 struct RenderableComponent : ComponentBase

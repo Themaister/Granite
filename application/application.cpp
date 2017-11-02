@@ -137,7 +137,12 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 		auto *ibl_component = get<0>(ibl.front());
 		skydome_reflection = ibl_component->reflection_path;
 		skydome_irradiance = ibl_component->irradiance_path;
+		skydome_intensity = ibl_component->intensity;
 	}
+
+	auto &skybox = scene_loader.get_scene().get_entity_pool().get_component_group<SkyboxComponent>();
+	for (auto &box : skybox)
+		get<0>(box)->skybox->set_color_mod(vec3(skydome_intensity));
 
 	// Create a dummy background if there isn't any background.
 	if (scene_loader.get_scene().get_entity_pool().get_component_group<UnboundedComponent>().empty())
@@ -610,7 +615,7 @@ void SceneViewerApplication::update_scene(double, double elapsed_time)
 	if (irradiance)
 		lighting.environment_irradiance = &irradiance->get_image()->get_view();
 	lighting.shadow.inv_cutoff_distance = 1.0f / config.cascade_cutoff_distance;
-	lighting.environment.intensity = 1.0f;
+	lighting.environment.intensity = skydome_intensity;
 	lighting.refraction.falloff = vec3(1.0f / 1.5f, 1.0f / 2.5f, 1.0f / 5.0f);
 
 	context.set_camera(*selected_camera);

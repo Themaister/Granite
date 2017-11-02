@@ -779,6 +779,9 @@ static gli::format get_compression_format(TextureCompression compression, Materi
 	case TextureCompression::Uncompressed:
 		return srgb ? gli::FORMAT_RGBA8_SRGB_PACK8 : gli::FORMAT_RGBA8_UNORM_PACK8;
 
+	case TextureCompression::BC1:
+		return srgb ? gli::FORMAT_RGB_DXT1_SRGB_BLOCK8 : gli::FORMAT_RGB_DXT1_UNORM_BLOCK8;
+
 	case TextureCompression::BC3:
 		return srgb ? gli::FORMAT_RGBA_DXT5_SRGB_BLOCK16 : gli::FORMAT_RGBA_DXT5_UNORM_BLOCK16;
 

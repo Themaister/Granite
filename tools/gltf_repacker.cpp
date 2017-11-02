@@ -35,6 +35,8 @@ static SceneFormats::TextureCompression string_to_compression(const string &fmt)
 		return SceneFormats::TextureCompression::BC7;
 	else if (fmt == "bc3")
 		return SceneFormats::TextureCompression::BC3;
+	else if (fmt == "bc1")
+		return SceneFormats::TextureCompression::BC1;
 	else if (fmt == "bc6h")
 		return SceneFormats::TextureCompression::BC6H;
 	else if (fmt == "astc_4x4")

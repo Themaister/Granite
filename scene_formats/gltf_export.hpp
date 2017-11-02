@@ -32,6 +32,7 @@ enum class TextureCompression
 {
 	BC7,
 	BC3,
+	BC1,
 	BC6H,
 	ASTC4x4,
 	ASTC5x5,

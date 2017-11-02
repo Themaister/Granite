@@ -74,6 +74,7 @@ int main(int argc, char *argv[])
 	} args;
 
 	SceneFormats::ExportOptions options;
+	float scale = 1.0f;
 
 	CLICallbacks cbs;
 	cbs.add("--output", [&](CLIParser &parser) { args.output = parser.next_string(); });
@@ -84,6 +85,7 @@ int main(int argc, char *argv[])
 	cbs.add("--environment-irradiance", [&](CLIParser &parser) { options.environment.irradiance = parser.next_string(); });
 	cbs.add("--environment-texcomp", [&](CLIParser &parser) { options.environment.compression = string_to_compression(parser.next_string()); });
 	cbs.add("--environment-texcomp-quality", [&](CLIParser &parser) { options.environment.texcomp_quality = parser.next_uint(); });
+	cbs.add("--scale", [&](CLIParser &parser) { scale = parser.next_double(); });
 
 	cbs.add("--fog-color", [&](CLIParser &parser) {
 		for (unsigned i = 0; i < 3; i++)
@@ -119,6 +121,20 @@ int main(int argc, char *argv[])
 	info.meshes = parser.get_meshes();
 	info.nodes = parser.get_nodes();
 	info.skins = parser.get_skins();
+
+	vector<SceneFormats::Node> nodes;
+	if (scale != 1.0f)
+	{
+		nodes = parser.get_nodes();
+
+		SceneFormats::Node root;
+		root.children.reserve(nodes.size());
+		for (unsigned i = 0; i < nodes.size(); i++)
+			root.children.push_back(i);
+		root.transform.scale = vec3(scale);
+		nodes.push_back(root);
+		info.nodes = nodes;
+	}
 
 	if (!SceneFormats::export_scene_to_glb(info, args.output, options))
 	{

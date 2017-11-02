@@ -13,10 +13,6 @@ android {
         }
     }
 
-    aaptOptions {
-        noCompress 'ktx', 'png'
-    }
-
     buildTypes {
         debug {
             externalNativeBuild {

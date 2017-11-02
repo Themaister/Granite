@@ -36,6 +36,11 @@ Application *application_create(int argc, char **argv)
 	std::string config;
 	std::string path;
 
+#ifdef ANDROID
+	config = "assets://config.json";
+	path = "assets://scene.glb";
+#endif
+
 	CLICallbacks cbs;
 	cbs.add("--config", [&](CLIParser &parser) { config = parser.next_string(); });
 	cbs.default_handler = [&](const char *arg) { path = arg; };

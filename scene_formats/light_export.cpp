@@ -40,9 +40,9 @@ std::string export_lights_to_json(const DirectionalParameters &dir, Scene &scene
 	Value directional(kObjectType);
 
 	Value direction(kArrayType);
-	direction.PushBack(dir.direction.x, allocator);
-	direction.PushBack(dir.direction.y, allocator);
-	direction.PushBack(dir.direction.z, allocator);
+	direction.PushBack(-dir.direction.x, allocator);
+	direction.PushBack(-dir.direction.y, allocator);
+	direction.PushBack(-dir.direction.z, allocator);
 	directional.AddMember("direction", direction, allocator);
 
 	Value color(kArrayType);
@@ -69,9 +69,9 @@ std::string export_lights_to_json(const DirectionalParameters &dir, Scene &scene
 		pos.PushBack(t->world_transform[3].z, allocator);
 
 		Value dir(kArrayType);
-		dir.PushBack(t->world_transform[2].x, allocator);
-		dir.PushBack(t->world_transform[2].y, allocator);
-		dir.PushBack(t->world_transform[2].z, allocator);
+		dir.PushBack(-t->world_transform[2].x, allocator);
+		dir.PushBack(-t->world_transform[2].y, allocator);
+		dir.PushBack(-t->world_transform[2].z, allocator);
 
 		if (l->get_type() == PositionalLight::Type::Spot)
 		{

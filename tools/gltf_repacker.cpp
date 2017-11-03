@@ -25,6 +25,9 @@
 #include "util.hpp"
 #include "cli_parser.hpp"
 
+#define RAPIDJSON_ASSERT(x) do { if (!(x)) throw "JSON error"; } while(0)
+#include "rapidjson/document.h"
+
 using namespace Granite;
 using namespace Util;
 using namespace std;
@@ -63,6 +66,7 @@ static void print_help()
 	LOGI("[--environment-intensity <intensity>]\n");
 	LOGI("[--threads <num threads>]\n");
 	LOGI("[--fog-color R G B] [--fog-falloff falloff]\n");
+	LOGI("[--extra-lights lights.json]\n");
 	LOGI("[--texcomp-quality <1 (fast) - 5 (slow)>] input.gltf\n");
 }
 
@@ -76,6 +80,7 @@ int main(int argc, char *argv[])
 
 	SceneFormats::ExportOptions options;
 	float scale = 1.0f;
+	string extra_lights;
 
 	CLICallbacks cbs;
 	cbs.add("--output", [&](CLIParser &parser) { args.output = parser.next_string(); });
@@ -87,6 +92,7 @@ int main(int argc, char *argv[])
 	cbs.add("--environment-texcomp", [&](CLIParser &parser) { options.environment.compression = string_to_compression(parser.next_string()); });
 	cbs.add("--environment-texcomp-quality", [&](CLIParser &parser) { options.environment.texcomp_quality = parser.next_uint(); });
 	cbs.add("--environment-intensity", [&](CLIParser &parser) { options.environment.intensity = parser.next_double(); });
+	cbs.add("--extra-lights", [&](CLIParser &parser) { extra_lights = parser.next_string(); });
 	cbs.add("--scale", [&](CLIParser &parser) { scale = parser.next_double(); });
 
 	cbs.add("--fog-color", [&](CLIParser &parser) {
@@ -114,6 +120,7 @@ int main(int argc, char *argv[])
 	}
 
 	GLTF::Parser parser(args.input);
+	vector<SceneFormats::Node> nodes;
 
 	SceneFormats::SceneInformation info;
 	info.animations = parser.get_animations();
@@ -123,20 +130,107 @@ int main(int argc, char *argv[])
 	info.meshes = parser.get_meshes();
 	info.nodes = parser.get_nodes();
 	info.skins = parser.get_skins();
+	nodes = parser.get_nodes();
 
-	vector<SceneFormats::Node> nodes;
 	if (scale != 1.0f)
 	{
-		nodes = parser.get_nodes();
-
 		SceneFormats::Node root;
 		root.children.reserve(nodes.size());
 		for (unsigned i = 0; i < nodes.size(); i++)
 			root.children.push_back(i);
 		root.transform.scale = vec3(scale);
 		nodes.push_back(root);
-		info.nodes = nodes;
 	}
+
+	vector<SceneFormats::LightInfo> lights;
+	if (!extra_lights.empty())
+	{
+		lights = parser.get_lights();
+
+		string json;
+		if (!Filesystem::get().read_file_to_string(extra_lights, json))
+		{
+			LOGE("Failed to read config file for lights.\n");
+			return 1;
+		}
+
+		rapidjson::Document doc;
+		doc.Parse(json);
+
+		// Directional
+		{
+			SceneFormats::Node light_node;
+			SceneFormats::LightInfo light;
+
+			light.attached_to_node = true;
+			light.node_index = nodes.size();
+			light.type = SceneFormats::LightInfo::Type::Directional;
+
+			auto &color = doc["directional"]["color"];
+			auto &dir = doc["directional"]["direction"];
+			light.color = vec3(color[0].GetFloat(), color[1].GetFloat(), color[2].GetFloat());
+			light_node.transform.rotation = conjugate(look_at_arbitrary_up(vec3(dir[0].GetFloat(), dir[1].GetFloat(), dir[2].GetFloat())));
+
+			lights.push_back(light);
+			nodes.push_back(light_node);
+		}
+
+		auto &spots = doc["spot"];
+		for (auto itr = spots.Begin(); itr != spots.End(); ++itr)
+		{
+			auto &spot = *itr;
+
+			SceneFormats::Node light_node;
+			SceneFormats::LightInfo light;
+			light.attached_to_node = true;
+			light.node_index = nodes.size();
+			light.type = SceneFormats::LightInfo::Type::Spot;
+
+			auto &color = spot["color"];
+			auto &dir = spot["direction"];
+			auto &pos = spot["position"];
+
+			light.color = vec3(color[0].GetFloat(), color[1].GetFloat(), color[2].GetFloat());
+			light_node.transform.rotation = conjugate(look_at_arbitrary_up(vec3(dir[0].GetFloat(), dir[1].GetFloat(), dir[2].GetFloat())));
+			light_node.transform.translation = vec3(pos[0].GetFloat(), pos[1].GetFloat(), pos[2].GetFloat());
+			light.constant_falloff = spot["constantFalloff"].GetFloat();
+			light.linear_falloff = spot["linearFalloff"].GetFloat();
+			light.quadratic_falloff = spot["quadraticFalloff"].GetFloat();
+			light.outer_cone = spot["outerCone"].GetFloat();
+			light.inner_cone = spot["innerCone"].GetFloat();
+
+			lights.push_back(light);
+			nodes.push_back(light_node);
+		}
+
+		auto &points = doc["point"];
+		for (auto itr = points.Begin(); itr != points.End(); ++itr)
+		{
+			auto &point = *itr;
+
+			SceneFormats::Node light_node;
+			SceneFormats::LightInfo light;
+			light.attached_to_node = true;
+			light.node_index = nodes.size();
+			light.type = SceneFormats::LightInfo::Type::Point;
+
+			auto &color = point["color"];
+			auto &pos = point["position"];
+
+			light_node.transform.translation = vec3(pos[0].GetFloat(), pos[1].GetFloat(), pos[2].GetFloat());
+			light.color = vec3(color[0].GetFloat(), color[1].GetFloat(), color[2].GetFloat());
+			light.constant_falloff = point["constantFalloff"].GetFloat();
+			light.linear_falloff = point["linearFalloff"].GetFloat();
+			light.quadratic_falloff = point["quadraticFalloff"].GetFloat();
+
+			lights.push_back(light);
+			nodes.push_back(light_node);
+		}
+
+		info.lights = lights;
+	}
+
+	info.nodes = nodes;
 
 	if (!SceneFormats::export_scene_to_glb(info, args.output, options))
 	{

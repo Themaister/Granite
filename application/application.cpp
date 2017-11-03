@@ -30,6 +30,7 @@
 
 #define RAPIDJSON_ASSERT(x) do { if (!(x)) throw "JSON error"; } while(0)
 #include "rapidjson/document.h"
+#include "light_export.hpp"
 
 using namespace std;
 using namespace Vulkan;
@@ -224,6 +225,24 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 SceneViewerApplication::~SceneViewerApplication()
 {
 	graph.report_timestamps();
+
+	auto lights = export_lights_to_json(lighting.directional, scene_loader.get_scene());
+	auto file = Filesystem::get().open("cache://lights.json", FileMode::WriteOnly);
+	if (!file)
+	{
+		LOGE("Failed to export light data.\n");
+	}
+	else
+	{
+		auto *mapped = file->map_write(lights.size());
+		if (!mapped)
+			LOGE("Failed to map light data.\n");
+		else
+		{
+			memcpy(mapped, lights.data(), lights.size());
+			file->unmap();
+		}
+	}
 }
 
 void SceneViewerApplication::loop_animations()

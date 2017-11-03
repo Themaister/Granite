@@ -56,12 +56,31 @@ public:
 	}
 
 	void set_color(vec3 color);
+	const vec3 &get_color() const
+	{
+		return color;
+	}
 
 	void set_falloff(float constant, float linear, float quadratic);
 
 	unsigned get_cookie() const
 	{
 		return cookie;
+	}
+
+	float get_constant_falloff() const
+	{
+		return constant;
+	}
+
+	float get_linear_falloff() const
+	{
+		return linear;
+	}
+
+	float get_quadratic_falloff() const
+	{
+		return quadratic;
 	}
 
 protected:
@@ -101,6 +120,16 @@ public:
 	PositionalFragmentInfo get_shader_info(const mat4 &transform) const;
 
 	void set_shadow_info(const Vulkan::ImageView *shadow, const mat4 &transform);
+
+	float get_inner_cone() const
+	{
+		return inner_cone;
+	}
+
+	float get_outer_cone() const
+	{
+		return outer_cone;
+	}
 
 private:
 	float inner_cone = 0.4f;

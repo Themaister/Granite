@@ -304,6 +304,14 @@ bool SceneViewerApplication::on_key_down(const KeyboardEvent &e)
 		break;
 	}
 
+	case Key::V:
+	{
+		default_directional_light.direction = -selected_camera->get_front();
+		selected_directional = &default_directional_light;
+		need_shadow_map_update = true;
+		break;
+	}
+
 	case Key::R:
 	{
 		auto &scene = scene_loader.get_scene();

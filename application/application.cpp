@@ -212,6 +212,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 
 	EVENT_MANAGER_REGISTER_LATCH(SceneViewerApplication, on_swapchain_changed, on_swapchain_destroyed, SwapchainParameterEvent);
 	EVENT_MANAGER_REGISTER_LATCH(SceneViewerApplication, on_device_created, on_device_destroyed, DeviceCreatedEvent);
+	EVENT_MANAGER_REGISTER(SceneViewerApplication, on_key_down, KeyboardEvent);
 }
 
 SceneViewerApplication::~SceneViewerApplication()
@@ -254,6 +255,60 @@ void SceneViewerApplication::on_device_destroyed(const DeviceCreatedEvent &)
 	reflection = nullptr;
 	irradiance = nullptr;
 	graph.set_device(nullptr);
+}
+
+bool SceneViewerApplication::on_key_down(const KeyboardEvent &e)
+{
+	if (e.get_key_state() != KeyState::Pressed)
+		return true;
+
+	switch (e.get_key())
+	{
+	case Key::X:
+	{
+		vec3 pos = selected_camera->get_position();
+		auto &scene = scene_loader.get_scene();
+		auto node = scene.create_node();
+		scene.get_root_node()->add_child(node);
+
+		SceneFormats::LightInfo light;
+		light.type = SceneFormats::LightInfo::Type::Spot;
+		light.outer_cone = 0.9f;
+		light.inner_cone = 0.92f;
+		light.quadratic_falloff = 0.1f;
+		light.constant_falloff = 0.0f;
+		light.color = vec3(1.0f);
+
+		node->transform.translation = pos;
+		node->transform.rotation = conjugate(look_at_arbitrary_up(selected_camera->get_front()));
+
+		scene.create_light(light, node.get());
+		break;
+	}
+
+	case Key::C:
+	{
+		vec3 pos = selected_camera->get_position();
+		auto &scene = scene_loader.get_scene();
+		auto node = scene.create_node();
+		scene.get_root_node()->add_child(node);
+
+		SceneFormats::LightInfo light;
+		light.type = SceneFormats::LightInfo::Type::Point;
+		light.quadratic_falloff = 0.1f;
+		light.constant_falloff = 0.0f;
+		light.color = vec3(1.0f);
+		node->transform.translation = pos;
+
+		scene.create_light(light, node.get());
+		break;
+	}
+
+	default:
+		break;
+	}
+
+	return true;
 }
 
 void SceneViewerApplication::render_main_pass(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view)

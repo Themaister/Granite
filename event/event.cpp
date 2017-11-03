@@ -33,8 +33,16 @@ EventManager::~EventManager()
 {
 	dispatch();
 	for (auto &event_type : latched_events)
+	{
 		for (auto &handler : event_type.second.handlers)
+		{
 			dispatch_down_events(event_type.second.queued_events, handler);
+
+			// Before the event manager dies, make sure no stale EventHandler objects try to unregister themselves.
+			if (handler.unregister_key)
+				handler.unregister_key->event_manager_teardown();
+		}
+	}
 }
 
 void EventManager::dispatch()
@@ -210,7 +218,15 @@ void EventManager::dequeue_all_latched(EventType type)
 
 EventHandler::~EventHandler()
 {
-	EventManager::get_global().unregister_handler(this);
-	EventManager::get_global().unregister_latch_handler(this);
+	if (need_unregister)
+	{
+		EventManager::get_global().unregister_handler(this);
+		EventManager::get_global().unregister_latch_handler(this);
+	}
+}
+
+void EventHandler::event_manager_teardown()
+{
+	need_unregister = false;
 }
 }

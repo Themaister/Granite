@@ -118,6 +118,7 @@ protected:
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
 	void on_swapchain_changed(const Vulkan::SwapchainParameterEvent &e);
 	void on_swapchain_destroyed(const Vulkan::SwapchainParameterEvent &e);
+	bool on_key_down(const KeyboardEvent &e);
 	RenderGraph graph;
 
 	Vulkan::Texture *reflection = nullptr;

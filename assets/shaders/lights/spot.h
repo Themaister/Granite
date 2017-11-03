@@ -85,7 +85,7 @@ vec3 compute_spot_light(int index, MaterialProperties material, vec3 world_pos, 
 
 	// Compute directional light.
 	vec3 L = light_dir;
-	vec3 V = normalize(camera_pos - light_pos);
+	vec3 V = normalize(camera_pos - world_pos);
 	vec3 H = normalize(V + L);
 	vec3 N = material.normal;
 

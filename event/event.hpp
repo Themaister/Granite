@@ -107,6 +107,11 @@ public:
 	void operator=(const EventHandler &) = delete;
 	EventHandler() = default;
 	~EventHandler();
+
+	void event_manager_teardown();
+
+private:
+	bool need_unregister = true;
 };
 
 class EventManager

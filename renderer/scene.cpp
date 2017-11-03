@@ -364,6 +364,9 @@ void Scene::Node::add_child(NodeHandle node)
 	assert(this != node.get());
 	assert(node->parent == nullptr);
 	node->parent = this;
+
+	// Force parents to be notified.
+	node->cached_transform_dirty = false;
 	node->invalidate_cached_transform();
 	children.push_back(node);
 }
@@ -372,6 +375,9 @@ void Scene::Node::remove_child(Node &node)
 {
 	assert(node.parent == this);
 	node.parent = nullptr;
+
+	// Force parents to be notified.
+	node.cached_transform_dirty = false;
 	node.invalidate_cached_transform();
 
 	auto itr = remove_if(begin(children), end(children), [&](const NodeHandle &h) {

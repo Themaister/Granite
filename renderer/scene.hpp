@@ -165,6 +165,14 @@ public:
 	EntityHandle create_light(const SceneFormats::LightInfo &light, Node *node);
 	EntityHandle create_entity();
 
+	template <typename T>
+	void remove_entities_with_component()
+	{
+		remove_entities_with_component(ComponentIDMapping::get_id<T>());
+	}
+
+	void remove_entities_with_component(uint32_t id);
+
 private:
 	EntityPool pool;
 	NodeHandle root_node;

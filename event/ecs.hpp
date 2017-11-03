@@ -116,6 +116,12 @@ public:
 	}
 
 	template <typename T>
+	bool has_component() const
+	{
+		return has_component(ComponentIDMapping::get_id<T>());
+	}
+
+	template <typename T>
 	T *get_component()
 	{
 		auto itr = components.find(ComponentIDMapping::get_id<T>());

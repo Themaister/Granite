@@ -304,6 +304,13 @@ bool SceneViewerApplication::on_key_down(const KeyboardEvent &e)
 		break;
 	}
 
+	case Key::R:
+	{
+		auto &scene = scene_loader.get_scene();
+		scene.remove_entities_with_component<PositionalLightComponent>();
+		break;
+	}
+
 	default:
 		break;
 	}

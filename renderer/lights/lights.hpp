@@ -59,6 +59,11 @@ public:
 
 	void set_falloff(float constant, float linear, float quadratic);
 
+	unsigned get_cookie() const
+	{
+		return cookie;
+	}
+
 protected:
 	AABB aabb;
 	vec3 color = vec3(1.0f);
@@ -72,6 +77,7 @@ protected:
 
 private:
 	Type type;
+	unsigned cookie;
 	virtual void set_range(float range) = 0;
 };
 

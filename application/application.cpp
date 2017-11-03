@@ -197,6 +197,12 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 			rp->creator = cluster.get();
 			lighting.cluster = cluster.get();
 		}
+		else
+		{
+			cluster->set_scene(&scene_loader.get_scene());
+			cluster->set_base_renderer(&forward_renderer, &deferred_renderer, &depth_renderer);
+			cluster->set_base_render_context(&context);
+		}
 
 		cluster->set_enable_shadows(config.clustered_lights_shadows);
 		cluster->set_enable_clustering(config.clustered_lights);

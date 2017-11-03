@@ -26,15 +26,33 @@
 #include "shader_suite.hpp"
 #include "device.hpp"
 #include "mesh_util.hpp"
+#include <atomic>
 
 using namespace Vulkan;
 using namespace Util;
 
 namespace Granite
 {
+struct LightCookie
+{
+	LightCookie()
+	{
+		count.store(0);
+	}
+
+	unsigned get_cookie()
+	{
+		return count.fetch_add(1, std::memory_order_relaxed) + 1;
+	}
+
+	std::atomic_uint count;
+};
+static LightCookie light_cookie;
+
 PositionalLight::PositionalLight(Type type)
 	: type(type)
 {
+	cookie = light_cookie.get_cookie();
 }
 
 void PositionalLight::set_color(vec3 color)

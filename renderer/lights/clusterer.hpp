@@ -51,15 +51,16 @@ public:
 	unsigned get_active_spot_light_count() const;
 	const mat4 &get_cluster_transform() const;
 
+	void set_scene(Scene *scene) override;
+	void set_base_renderer(Renderer *forward_renderer, Renderer *deferred_renderer, Renderer *depth_renderer) override;
+	void set_base_render_context(const RenderContext *context) override;
+
 	enum { MaxLights = 32, ClusterHierarchies = 8, ClusterPrepassDownsample = 4 };
 
 private:
 	void add_render_passes(RenderGraph &graph) override;
-	void set_base_renderer(Renderer *forward_renderer, Renderer *deferred_renderer, Renderer *depth_renderer) override;
-	void set_base_render_context(const RenderContext *context) override;
 	void setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target) override;
 	void setup_render_pass_resources(RenderGraph &graph) override;
-	void set_scene(Scene *scene) override;
 	void refresh(RenderContext &context) override;
 	RendererType get_renderer_type() override;
 
@@ -83,6 +84,8 @@ private:
 	PointLight *point_light_handles[MaxLights] = {};
 	mat4 spot_light_shadow_transforms[MaxLights] = {};
 	vec4 point_light_shadow_transforms[MaxLights] = {};
+	unsigned spot_cookie[MaxLights] = {};
+	unsigned point_cookie[MaxLights] = {};
 	mat4 cluster_transform;
 	unsigned point_count = 0;
 	unsigned spot_count = 0;

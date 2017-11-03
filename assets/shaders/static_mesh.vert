@@ -8,9 +8,16 @@ layout(location = 0) in highp vec3 Position;
 layout(location = 0) out mediump vec3 vEyeVec;
 #endif
 
-#if HAVE_UV
-layout(location = 1) in highp vec2 UV;
-layout(location = 1) out highp vec2 vUV;
+#ifdef RENDERER_DEPTH
+    #if HAVE_UV && defined(ALPHA_TEST)
+        layout(location = 1) in highp vec2 UV;
+        layout(location = 1) out highp vec2 vUV;
+    #endif
+#else
+    #if HAVE_UV
+        layout(location = 1) in highp vec2 UV;
+        layout(location = 1) out highp vec2 vUV;
+    #endif
 #endif
 
 #ifndef RENDERER_DEPTH
@@ -122,8 +129,14 @@ void main()
 #endif
 #endif
 
-#if HAVE_UV
-    vUV = UV;
+#ifdef RENDERER_DEPTH
+    #if HAVE_UV && defined(ALPHA_TEST)
+        vUV = UV;
+    #endif
+#else
+    #if HAVE_UV
+        vUV = UV;
+    #endif
 #endif
 
 #if HAVE_VERTEX_COLOR

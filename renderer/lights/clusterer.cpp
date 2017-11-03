@@ -158,7 +158,28 @@ const mat4 &LightClusterer::get_cluster_transform() const
 
 void LightClusterer::render_atlas_point(RenderContext &context)
 {
-	if (shadow_atlas_point && !force_update_shadows)
+	bool partial_update = false;
+	uint32_t partial_mask = 0;
+	for (unsigned i = 0; i < point_count; i++)
+	{
+		if (point_light_handles[i]->get_cookie() != point_cookie[i])
+		{
+			partial_update = true;
+			partial_mask |= 1u << i;
+		}
+		else
+			point_light_handles[i]->set_shadow_info(&shadow_atlas_point->get_view(), point_light_shadow_transforms[i], i);
+
+		point_cookie[i] = point_light_handles[i]->get_cookie();
+	}
+
+	if (!shadow_atlas_point || force_update_shadows)
+	{
+		partial_update = false;
+		partial_mask = ~0u;
+	}
+
+	if (partial_mask == 0 && shadow_atlas_point && !force_update_shadows)
 		return;
 
 	auto &device = context.get_device();
@@ -182,6 +203,30 @@ void LightClusterer::render_atlas_point(RenderContext &context)
 			shadow_atlas_rt[i] = device.create_image_view(view);
 		}
 	}
+	else if (partial_update)
+	{
+		VkImageMemoryBarrier barriers[32];
+		unsigned barrier_count = 0;
+
+		Util::for_each_bit(partial_mask, [&](unsigned bit) {
+			auto &b = barriers[barrier_count++];
+			b = {};
+			b.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+			b.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			b.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+			b.image = shadow_atlas_point->get_image();
+			b.srcAccessMask = 0;
+			b.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+			b.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+			b.subresourceRange.baseArrayLayer = 6 * bit;
+			b.subresourceRange.layerCount = 6;
+			b.subresourceRange.levelCount = 1;
+		});
+
+		cmd->barrier(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+		             0, nullptr, 0, nullptr, barrier_count, barriers);
+		shadow_atlas_point->set_layout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+	}
 	else
 	{
 		cmd->image_barrier(*shadow_atlas_point, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
@@ -196,6 +241,9 @@ void LightClusterer::render_atlas_point(RenderContext &context)
 
 	for (unsigned i = 0; i < point_count; i++)
 	{
+		if ((partial_mask & (1u << i)) == 0)
+			continue;
+
 		for (unsigned face = 0; face < 6; face++)
 		{
 			mat4 view, proj;
@@ -228,9 +276,37 @@ void LightClusterer::render_atlas_point(RenderContext &context)
 		}
 	}
 
-	cmd->image_barrier(*shadow_atlas_point, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-	                   VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-	                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+	if (partial_update)
+	{
+		VkImageMemoryBarrier barriers[32];
+		unsigned barrier_count = 0;
+
+		Util::for_each_bit(partial_mask, [&](unsigned bit) {
+			auto &b = barriers[barrier_count++];
+			b = {};
+			b.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+			b.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+			b.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			b.image = shadow_atlas_point->get_image();
+			b.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+			b.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+			b.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+			b.subresourceRange.baseArrayLayer = 6 * bit;
+			b.subresourceRange.layerCount = 6;
+			b.subresourceRange.levelCount = 1;
+		});
+
+		cmd->barrier(VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+		             0, nullptr, 0, nullptr, barrier_count, barriers);
+	}
+	else
+	{
+		cmd->image_barrier(*shadow_atlas_point, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+		                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		                   VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+	}
+
 	shadow_atlas_point->set_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 	device.submit(cmd);
@@ -238,7 +314,21 @@ void LightClusterer::render_atlas_point(RenderContext &context)
 
 void LightClusterer::render_atlas_spot(RenderContext &context)
 {
-	if (shadow_atlas && !force_update_shadows)
+	uint32_t partial_mask = 0;
+	for (unsigned i = 0; i < spot_count; i++)
+	{
+		if (spot_light_handles[i]->get_cookie() != spot_cookie[i])
+			partial_mask |= 1u << i;
+		else
+			spot_light_handles[i]->set_shadow_info(&shadow_atlas->get_view(), spot_light_shadow_transforms[i]);
+
+		spot_cookie[i] = spot_light_handles[i]->get_cookie();
+	}
+
+	if (!shadow_atlas || force_update_shadows)
+		partial_mask = ~0u;
+
+	if (partial_mask == 0 && shadow_atlas && !force_update_shadows)
 		return;
 
 	auto &device = context.get_device();
@@ -265,6 +355,9 @@ void LightClusterer::render_atlas_spot(RenderContext &context)
 
 	for (unsigned i = 0; i < spot_count; i++)
 	{
+		if ((partial_mask & (1u << i)) == 0)
+			continue;
+
 		float range = tan(spot_lights[i].direction_half_angle.w);
 		mat4 view = mat4_cast(look_at_arbitrary_up(spot_lights[i].direction_half_angle.xyz())) *
 		            translate(-spot_lights[i].position_inner.xyz());

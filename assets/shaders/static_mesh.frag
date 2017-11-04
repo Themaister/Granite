@@ -95,7 +95,7 @@ void main()
         #endif
 
         // For 2-component compressed textures.
-        float tangent_z = sqrt(max(1.0 - dot(tangent_space, tangent_space)));
+        float tangent_z = sqrt(max(0.0, 1.0 - dot(tangent_space, tangent_space)));
         tangent_space *= registers.normal_scale;
         normal = normalize(mat3(tangent, binormal, normal) * vec3(tangent_space, tangent_z));
     #endif

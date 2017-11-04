@@ -842,6 +842,12 @@ static gli::format get_compression_format(TextureCompression compression, Textur
 	case TextureCompression::BC3:
 		return srgb ? gli::FORMAT_RGBA_DXT5_SRGB_BLOCK16 : gli::FORMAT_RGBA_DXT5_UNORM_BLOCK16;
 
+	case TextureCompression::BC4:
+		return gli::FORMAT_R_ATI1N_UNORM_BLOCK8;
+
+	case TextureCompression::BC5:
+		return gli::FORMAT_RG_ATI2N_UNORM_BLOCK16;
+
 	case TextureCompression::BC7:
 		return srgb ? gli::FORMAT_RGBA_BP_SRGB_BLOCK16 : gli::FORMAT_RGBA_BP_UNORM_BLOCK16;
 
@@ -955,6 +961,7 @@ AnalysisResult::MetallicRoughnessMode AnalysisResult::deduce_metallic_roughness_
 
 bool AnalysisResult::load_image(const string &src, const VkComponentMapping &swizzle)
 {
+	src_path = src;
 	image = make_shared<gli::texture>();
 	*image = load_texture_from_file(src, (mode == TextureMode::sRGBA || mode == TextureMode::sRGB) ? ColorSpace::sRGB : ColorSpace::Linear);
 	if (image->empty())

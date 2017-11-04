@@ -44,8 +44,6 @@ struct CompressorArguments
 	std::string output;
 	gli::format format = gli::FORMAT_UNDEFINED;
 	unsigned quality = 3;
-
-	Material::Textures type = Material::Textures::BaseColor;
 	TextureMode mode = TextureMode::Unknown;
 };
 

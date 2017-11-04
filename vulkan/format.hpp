@@ -114,6 +114,10 @@ static inline void format_block_dim(VkFormat format, uint32_t &width, uint32_t &
 	fmt(BC2_SRGB_BLOCK, 4, 4);
 	fmt(BC3_UNORM_BLOCK, 4, 4);
 	fmt(BC3_SRGB_BLOCK, 4, 4);
+	fmt(BC4_UNORM_BLOCK, 4, 4);
+	fmt(BC4_SNORM_BLOCK, 4, 4);
+	fmt(BC5_UNORM_BLOCK, 4, 4);
+	fmt(BC5_SNORM_BLOCK, 4, 4);
 	fmt(BC6H_UFLOAT_BLOCK, 4, 4);
 	fmt(BC6H_SFLOAT_BLOCK, 4, 4);
 	fmt(BC7_SRGB_BLOCK, 4, 4);
@@ -325,6 +329,10 @@ static inline uint32_t format_block_size(VkFormat format)
 	fmt(BC2_SRGB_BLOCK, 16);
 	fmt(BC3_UNORM_BLOCK, 16);
 	fmt(BC3_SRGB_BLOCK, 16);
+	fmt(BC4_UNORM_BLOCK, 8);
+	fmt(BC4_SNORM_BLOCK, 8);
+	fmt(BC5_UNORM_BLOCK, 16);
+	fmt(BC5_SNORM_BLOCK, 16);
 	fmt(BC6H_UFLOAT_BLOCK, 16);
 	fmt(BC6H_SFLOAT_BLOCK, 16);
 	fmt(BC7_SRGB_BLOCK, 16);

@@ -29,9 +29,9 @@ using namespace std;
 
 namespace Granite
 {
-static const int range_threshold = 32;
-static const int div_7 = (0x10000 + 3) / 7;
-static const int div_5 = (0x10000 + 2) / 5;
+static const int range_threshold = 16;
+static const int div_7 = (0x100000) / 7;
+static const int div_5 = (0x100000) / 5;
 
 class DividerLut
 {
@@ -43,14 +43,14 @@ public:
 
 		for (int range = 1; range < 256; range++)
 		{
-			lut_7[range] = (0x70000 + (range >> 1)) / range;
-			assert(((lut_7[range] * range + 0x8000) >> 16) == 7);
+			lut_7[range] = (0x700000 + (range >> 1)) / range;
+			assert(((lut_7[range] * range + 0x80000) >> 20) == 7);
 		}
 
 		for (int range = 1; range < 256; range++)
 		{
-			lut_5[range] = (0x50000 + (range >> 1)) / range;
-			assert(((lut_5[range] * range + 0x8000) >> 16) == 5);
+			lut_5[range] = (0x500000 + (range >> 1)) / range;
+			assert(((lut_5[range] * range + 0x80000) >> 20) == 5);
 		}
 	}
 
@@ -70,6 +70,101 @@ private:
 };
 static DividerLut divider_lut;
 
+void decompress_rgtc_red_block(uint8_t *output_r, const uint8_t *block)
+{
+	uint8_t red0 = block[0];
+	uint8_t red1 = block[1];
+	uint64_t bits = 0;
+
+	for (int i = 0; i < 6; i++)
+		bits |= uint64_t(block[2 + i]) << (8 * i);
+
+	if (red0 > red1)
+	{
+		for (int i = 0; i < 16; i++)
+		{
+			int code = int((bits >> (3 * i)) & 7);
+			switch (code)
+			{
+			default:
+			case 0:
+				output_r[i] = red0;
+				break;
+
+			case 1:
+				output_r[i] = red1;
+				break;
+
+			case 2:
+				output_r[i] = uint8_t(((red0 * 6 + red1 * 1) * div_7 + 0x80000) >> 20);
+				break;
+
+			case 3:
+				output_r[i] = uint8_t(((red0 * 5 + red1 * 2) * div_7 + 0x80000) >> 20);
+				break;
+
+			case 4:
+				output_r[i] = uint8_t(((red0 * 4 + red1 * 3) * div_7 + 0x80000) >> 20);
+				break;
+
+			case 5:
+				output_r[i] = uint8_t(((red0 * 3 + red1 * 4) * div_7 + 0x80000) >> 20);
+				break;
+
+			case 6:
+				output_r[i] = uint8_t(((red0 * 2 + red1 * 5) * div_7 + 0x80000) >> 20);
+				break;
+
+			case 7:
+				output_r[i] = uint8_t(((red0 * 1 + red1 * 6) * div_7 + 0x80000) >> 20);
+				break;
+			}
+		}
+	}
+	else
+	{
+		for (int i = 0; i < 16; i++)
+		{
+			int code = int((bits >> (3 * i)) & 7);
+			switch (code)
+			{
+			default:
+			case 0:
+				output_r[i] = red0;
+				break;
+
+			case 1:
+				output_r[i] = red1;
+				break;
+
+			case 2:
+				output_r[i] = uint8_t(((red0 * 4 + red1 * 1) * div_5 + 0x80000) >> 20);
+				break;
+
+			case 3:
+				output_r[i] = uint8_t(((red0 * 3 + red1 * 2) * div_5 + 0x80000) >> 20);
+				break;
+
+			case 4:
+				output_r[i] = uint8_t(((red0 * 2 + red1 * 3) * div_5 + 0x80000) >> 20);
+				break;
+
+			case 5:
+				output_r[i] = uint8_t(((red0 * 1 + red1 * 4) * div_5 + 0x80000) >> 20);
+				break;
+
+			case 6:
+				output_r[i] = 0;
+				break;
+
+			case 7:
+				output_r[i] = 255;
+				break;
+			}
+		}
+	}
+}
+
 void compress_rgtc_red_block(uint8_t *output_r, const uint8_t *input_r)
 {
 	int block_lo = 255;
@@ -82,21 +177,28 @@ void compress_rgtc_red_block(uint8_t *output_r, const uint8_t *input_r)
 	}
 
 	uint64_t block = 0;
+	uint8_t encode_0 = 0;
+	uint8_t encode_1 = 0;
 
 	int range = block_hi - block_lo;
 
 	if (range == 0)
 	{
-		block = uint64_t(block_hi | (block_lo << 8));
+		encode_0 = uint8_t(block_hi);
+		encode_1 = uint8_t(block_lo);
 	}
 	else if (range < range_threshold)
 	{
 		// Simple case, range is small enough that we can directly quantize and be done with it.
 		int divider = divider_lut.lut7(range);
-		block = uint64_t(block_hi | (block_lo << 8));
+
+		encode_0 = uint8_t(block_hi);
+		encode_1 = uint8_t(block_lo);
+
 		for (int i = 0; i < 16; i++)
 		{
-			int code = ((input_r[i] - block_lo) * divider + 0x8000) >> 16;
+			int code = ((input_r[i] - block_lo) * divider + 0x80000) >> 20;
+			assert(code <= 7);
 
 			if (code == 7)
 				code = 0;
@@ -105,13 +207,14 @@ void compress_rgtc_red_block(uint8_t *output_r, const uint8_t *input_r)
 			else
 				code = 8 - code;
 
-			block |= uint64_t(code) << (16 + 3 * i);
+			block |= uint64_t(code) << (3 * i);
 		}
 	}
 	else
 	{
 		int divider = divider_lut.lut7(range);
-		block = uint64_t(block_hi | (block_lo << 8));
+		encode_0 = uint8_t(block_hi);
+		encode_1 = uint8_t(block_lo);
 
 		int best_error = 0;
 		int lo_index = 0;
@@ -120,8 +223,9 @@ void compress_rgtc_red_block(uint8_t *output_r, const uint8_t *input_r)
 
 		for (int i = 0; i < 16; i++)
 		{
-			int code = ((input_r[i] - block_lo) * divider + 0x8000) >> 16;
-			int interpolated_value = block_lo + ((range * code * div_7 + 0x8000) >> 16);
+			int code = ((input_r[i] - block_lo) * divider + 0x80000) >> 20;
+			assert(code <= 7);
+			int interpolated_value = block_lo + ((range * code * div_7 + 0x80000) >> 20);
 
 			if (code == 7)
 				code = 0;
@@ -133,7 +237,7 @@ void compress_rgtc_red_block(uint8_t *output_r, const uint8_t *input_r)
 			int diff = interpolated_value - input_r[i];
 			best_error += diff * diff;
 
-			block |= uint64_t(code) << (16 + 3 * i);
+			block |= uint64_t(code) << (3 * i);
 		}
 
 		int sorted_block[16];
@@ -147,6 +251,7 @@ void compress_rgtc_red_block(uint8_t *output_r, const uint8_t *input_r)
 			{
 				int partition_lo = sorted_block[lo];
 				int partition_hi = sorted_block[hi];
+				assert(partition_hi >= partition_lo);
 				int range = partition_hi - partition_lo;
 				int divider = divider_lut.lut5(range);
 
@@ -161,8 +266,9 @@ void compress_rgtc_red_block(uint8_t *output_r, const uint8_t *input_r)
 
 				for (int i = lo; i <= hi; i++)
 				{
-					int code = ((sorted_block[i] - partition_lo) * divider + 0x8000) >> 16;
-					int interpolated_value = partition_lo + ((range * code * div_5 + 0x8000) >> 16);
+					int code = ((sorted_block[i] - partition_lo) * divider + 0x80000) >> 20;
+					assert(code <= 7);
+					int interpolated_value = partition_lo + ((range * code * div_5 + 0x80000) >> 20);
 					int diff = interpolated_value - sorted_block[i];
 					error += diff * diff;
 				}
@@ -187,10 +293,13 @@ void compress_rgtc_red_block(uint8_t *output_r, const uint8_t *input_r)
 		// Did we find a better partition?
 		if (use_5_weight)
 		{
-			block = uint64_t(block_lo | (block_hi << 8));
-
 			int partition_lo = sorted_block[lo_index];
 			int partition_hi = sorted_block[hi_index];
+			encode_0 = uint8_t(partition_lo);
+			encode_1 = uint8_t(partition_hi);
+
+			block = 0;
+			assert(partition_hi >= partition_lo);
 			int range = partition_hi - partition_lo;
 			int divider = divider_lut.lut5(range);
 
@@ -213,20 +322,23 @@ void compress_rgtc_red_block(uint8_t *output_r, const uint8_t *input_r)
 				}
 				else
 				{
-					code = ((sorted_block[i] - partition_lo) * divider + 0x8000) >> 16;
+					code = ((input_r[i] - partition_lo) * divider + 0x80000) >> 20;
+					assert(code <= 5);
 					if (code == 5)
 						code = 1;
 					else if (code != 0)
-						code = code + 1;
+						code++;
 				}
 
-				block |= uint64_t(code) << (16 + 3 * i);
+				block |= uint64_t(code) << (3 * i);
 			}
 		}
 	}
 
-	for (int i = 0; i < 8; i++)
-		output_r[i] = uint8_t((block >> (8 * i)) & 0xff);
+	output_r[0] = encode_0;
+	output_r[1] = encode_1;
+	for (int i = 0; i < 6; i++)
+		output_r[2 + i] = uint8_t((block >> (8 * i)) & 0xff);
 }
 
 void compress_rgtc_red_green_block(uint8_t *output_rg, const uint8_t *input_r, const uint8_t *input_g)

@@ -102,7 +102,7 @@ void TaskGroup::wait()
 	deps->cond.wait(holder, [this]() {
 		return deps->done;
 	});
-};
+}
 
 TaskGroup::~TaskGroup()
 {
@@ -213,7 +213,7 @@ void ThreadGroup::wait_idle()
 {
 	unique_lock<mutex> holder{wait_cond_lock};
 	wait_cond.wait(holder, [&]() {
-		return total_tasks == completed_tasks;
+		return total_tasks.load(memory_order_relaxed) == completed_tasks.load(memory_order_relaxed);
 	});
 }
 
@@ -243,11 +243,14 @@ void ThreadGroup::thread_looper()
 		task_pool.free(task);
 
 		{
-			lock_guard<mutex> holder{wait_cond_lock};
-			completed_tasks++;
-			LOGI("Task completed (%u / %u)!\n", completed_tasks, total_tasks.load(memory_order_relaxed));
-			if (completed_tasks == total_tasks.load(memory_order_relaxed))
+			auto completed = completed_tasks.fetch_add(1, memory_order_relaxed) + 1;
+			//LOGI("Task completed (%u / %u)!\n", completed, total_tasks.load(memory_order_relaxed));
+
+			if (completed == total_tasks.load(memory_order_relaxed))
+			{
+				lock_guard<mutex> holder{wait_cond_lock};
 				wait_cond.notify_one();
+			}
 		}
 	}
 }
@@ -255,6 +258,7 @@ void ThreadGroup::thread_looper()
 ThreadGroup::ThreadGroup()
 {
 	total_tasks.store(0);
+	completed_tasks.store(0);
 }
 
 ThreadGroup::~ThreadGroup()

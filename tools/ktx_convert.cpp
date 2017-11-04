@@ -35,19 +35,20 @@ static void print_help()
 	LOGI("Usage: [--mipgen] [--quality [1-5]] [--format <format>] --output <out.ktx> <in.ktx>\n");
 }
 
-
 int main(int argc, char *argv[])
 {
 	string input_path;
 	bool generate_mipmap = false;
 	CompressorArguments args;
 
+	args.mode = TextureMode::RGB;
+
 	CLICallbacks cbs;
 	cbs.add("--help", [&](CLIParser &parser) { print_help(); parser.end(); });
 	cbs.add("--quality", [&](CLIParser &parser) { args.quality = parser.next_uint(); });
 	cbs.add("--format", [&](CLIParser &parser) { args.format = string_to_format(parser.next_string()); });
 	cbs.add("--output", [&](CLIParser &parser) { args.output = parser.next_string(); });
-	cbs.add("--alpha", [&](CLIParser &) { args.alpha = true; });
+	cbs.add("--alpha", [&](CLIParser &) { args.mode = TextureMode::RGBA; });
 	cbs.add("--mipgen", [&](CLIParser &) { generate_mipmap = true; });
 	cbs.default_handler = [&](const char *arg) { input_path = arg; };
 	cbs.error_handler = []() { print_help(); };

@@ -34,6 +34,8 @@
 #include "astc_codec_internals.h"
 #endif
 
+#include "rgtc_compressor.hpp"
+
 using namespace std;
 
 namespace Granite
@@ -151,6 +153,10 @@ struct CompressorState : enable_shared_from_this<CompressorState>
 	void enqueue_compression(ThreadGroup &group, const CompressorArguments &args);
 	void enqueue_compression_block_ispc(TaskGroup &group, const CompressorArguments &args, unsigned layer, unsigned face, unsigned level);
 	void enqueue_compression_block_astc(TaskGroup &group, const CompressorArguments &args, unsigned layer, unsigned face, unsigned level, bool use_hdr);
+	void enqueue_compression_block_rgtc(TaskGroup &group, const CompressorArguments &args, unsigned layer, unsigned face, unsigned level);
+
+	double total_error[4] = {};
+	mutex lock;
 };
 
 void CompressorState::setup(const CompressorArguments &args)
@@ -204,6 +210,17 @@ void CompressorState::setup(const CompressorArguments &args)
 
 	switch (args.format)
 	{
+	case gli::FORMAT_R_ATI1N_UNORM_BLOCK8:
+	case gli::FORMAT_RG_ATI2N_UNORM_BLOCK16:
+		block_size_x = 4;
+		block_size_y = 4;
+		if (input->format() != gli::FORMAT_RGBA8_UNORM_PACK8)
+		{
+			LOGE("Input format to bc4 must be RGBA8.\n");
+			return;
+		}
+		break;
+
 #ifdef HAVE_ISPC
 	case gli::FORMAT_RGB_BP_UFLOAT_BLOCK16:
 		block_size_x = 4;
@@ -297,6 +314,8 @@ void CompressorState::setup(const CompressorArguments &args)
 
 	case gli::FORMAT_RGB_DXT1_SRGB_BLOCK8:
 	case gli::FORMAT_RGB_DXT1_UNORM_BLOCK8:
+	case gli::FORMAT_RGBA_DXT1_SRGB_BLOCK8:
+	case gli::FORMAT_RGBA_DXT1_UNORM_BLOCK8:
 	case gli::FORMAT_RGBA_DXT5_SRGB_BLOCK16:
 	case gli::FORMAT_RGBA_DXT5_UNORM_BLOCK16:
 		block_size_x = 4;
@@ -360,6 +379,100 @@ void CompressorState::setup(const CompressorArguments &args)
 	default:
 		LOGE("Unknown format.\n");
 		return;
+	}
+}
+
+void CompressorState::enqueue_compression_block_rgtc(TaskGroup &group, const CompressorArguments &args, unsigned layer,
+                                                     unsigned face, unsigned level)
+{
+	int width = input->extent(level).x;
+	int height = input->extent(level).y;
+	int blocks_x = (width + block_size_x - 1) / block_size_x;
+
+	for (int y = 0; y < height; y += block_size_y)
+	{
+		for (int x = 0; x < width; x += block_size_x)
+		{
+			group->enqueue_task([=, format = args.format]() {
+				uint8_t padded_red[4 * 4];
+				uint8_t padded_green[4 * 4];
+				auto *src = static_cast<const uint8_t *>(input->data(layer, face, level));
+
+				const auto get_block_data = [&](int block_size) -> uint8_t * {
+					auto *dst = static_cast<uint8_t *>(output->data(layer, face, level));
+					dst += (x / block_size_x) * block_size;
+					dst += (y / block_size_y) * blocks_x * block_size;
+					return dst;
+				};
+
+				const auto get_encode_data = [&](int block_size) -> uint8_t * {
+					return get_block_data(block_size);
+				};
+
+				const auto get_component = [&](int sx, int sy, int c) -> uint8_t {
+					sx = std::min(sx, width - 1);
+					sy = std::min(sy, height - 1);
+					return src[4 * (sy * width + sx) + c];
+				};
+
+				for (int sy = 0; sy < 4; sy++)
+				{
+					for (int sx = 0; sx < 4; sx++)
+					{
+						padded_red[sy * 4 + sx] = get_component(x + sx, y + sy, 0);
+						padded_green[sy * 4 + sx] = get_component(x + sx, y + sy, 1);
+					}
+				}
+
+				switch (format)
+				{
+				case gli::FORMAT_R_ATI1N_UNORM_BLOCK8:
+				{
+					compress_rgtc_red_block(get_encode_data(8), padded_red);
+					if (level == 0 && face == 0 && layer == 0)
+					{
+						uint8_t decoded_red[16];
+						decompress_rgtc_red_block(decoded_red, get_encode_data(8));
+						double error = 0.0;
+						for (int i = 0; i < 16; i++)
+							error += double((decoded_red[i] - padded_red[i]) * (decoded_red[i] - padded_red[i])) / (width * height);
+
+						lock_guard<mutex> l{lock};
+						total_error[0] += error;
+					}
+					break;
+				}
+
+				case gli::FORMAT_RG_ATI2N_UNORM_BLOCK16:
+				{
+					compress_rgtc_red_green_block(get_encode_data(16), padded_red, padded_green);
+
+					if (level == 0 && face == 0 && layer == 0)
+					{
+						uint8_t decoded_red[16];
+						uint8_t decoded_green[16];
+						decompress_rgtc_red_block(decoded_red, get_encode_data(16));
+						decompress_rgtc_red_block(decoded_green, get_encode_data(16) + 8);
+
+						double error_red = 0.0;
+						double error_green = 0.0;
+						for (int i = 0; i < 16; i++)
+							error_red += double((decoded_red[i] - padded_red[i]) * (decoded_red[i] - padded_red[i])) / (width * height);
+						for (int i = 0; i < 16; i++)
+							error_green += double((decoded_green[i] - padded_green[i]) * (decoded_green[i] - padded_green[i])) / (width * height);
+
+						lock_guard<mutex> l{lock};
+						total_error[0] += error_red;
+						total_error[1] += error_green;
+					}
+					break;
+				}
+
+				default:
+					break;
+				}
+			});
+		}
 	}
 }
 
@@ -664,6 +777,11 @@ void CompressorState::enqueue_compression(ThreadGroup &group, const CompressorAr
 			{
 				switch (args.format)
 				{
+				case gli::FORMAT_R_ATI1N_UNORM_BLOCK8:
+				case gli::FORMAT_RG_ATI2N_UNORM_BLOCK16:
+					enqueue_compression_block_rgtc(compression_task, args, layer, face, level);
+					break;
+
 #ifdef HAVE_ISPC
 				case gli::FORMAT_RGB_BP_UFLOAT_BLOCK16:
 				case gli::FORMAT_RGBA_BP_SRGB_BLOCK16:
@@ -705,6 +823,11 @@ void CompressorState::enqueue_compression(ThreadGroup &group, const CompressorAr
 
 	// Pass down ownership to final task.
 	auto write_task = group.create_task([args, state = shared_from_this()]() {
+		if (state->total_error[0] != 0.0)
+			LOGI("Red PSNR: %.f dB\n", 10.0 * log10(255.0 * 255.0 / state->total_error[0]));
+		if (state->total_error[1] != 0.0)
+			LOGI("Green PSNR: %.f dB\n", 10.0 * log10(255.0 * 255.0 / state->total_error[1]));
+
 		if (!save_texture_to_file(args.output, *state->output))
 			LOGE("Failed to save texture to file.\n");
 	});

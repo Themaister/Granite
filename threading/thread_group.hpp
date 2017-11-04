@@ -154,6 +154,6 @@ private:
 	std::condition_variable wait_cond;
 	std::mutex wait_cond_lock;
 	std::atomic_uint total_tasks;
-	unsigned completed_tasks = 0;
+	std::atomic_uint completed_tasks;
 };
 }

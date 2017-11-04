@@ -1129,6 +1129,9 @@ void AnalysisResult::deduce_compression(TextureCompressionFamily family)
 		default:
 			throw invalid_argument("Invalid material type.");
 		}
+
+		if (mode == TextureMode::HDR)
+			compression = TextureCompression::BC6H;
 		break;
 
 	case TextureCompressionFamily::Uncompressed:

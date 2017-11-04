@@ -1,7 +1,9 @@
 option(GRANITE_ISPC_TEXTURE_COMPRESSION "Enable ISPC texture compression" ON)
 option(GRANITE_ASTC_ENCODER_COMPRESSION "Enable astc-encoder texture compression" ON)
 
-add_granite_library(texture-compression texture_compression.hpp texture_compression.cpp)
+add_granite_library(texture-compression
+        texture_compression.hpp texture_compression.cpp
+        rgtc_compressor.cpp rgtc_compressor.hpp)
 
 set(GRANITE_ISPC_LIBRARY_DIR "" CACHE TYPE PATH)
 set(GRANITE_ISPC_INCLUDE_DIR "" CACHE TYPE PATH)

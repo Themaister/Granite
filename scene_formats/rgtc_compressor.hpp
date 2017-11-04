@@ -22,23 +22,10 @@
 
 #pragma once
 
-#include "material.hpp"
-#include "gli/format.hpp"
-#include "gli/texture.hpp"
-#include "thread_group.hpp"
+#include <stdint.h>
 
 namespace Granite
 {
-struct CompressorArguments
-{
-	std::string output;
-	gli::format format = gli::FORMAT_UNDEFINED;
-	unsigned quality = 3;
-
-	Material::Textures type = Material::Textures::BaseColor;
-	bool alpha = false;
-};
-
-gli::format string_to_format(const std::string &s);
-void compress_texture(ThreadGroup &group, const CompressorArguments &args, const std::shared_ptr<gli::texture> &input, TaskGroup &dep);
+void compress_rgtc_red_block(uint8_t *output_r, const uint8_t *input_r);
+void compress_rgtc_red_green_block(uint8_t *output_rg, const uint8_t *input_r, const uint8_t *input_g);
 }

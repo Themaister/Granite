@@ -78,24 +78,31 @@ private:
 	unsigned inherit_variant = 0;
 	unsigned cull_variant = 0;
 
-	PositionalFragmentInfo point_lights[MaxLights] = {};
-	PositionalFragmentInfo spot_lights[MaxLights] = {};
-	SpotLight *spot_light_handles[MaxLights] = {};
-	PointLight *point_light_handles[MaxLights] = {};
-	mat4 spot_light_shadow_transforms[MaxLights] = {};
-	PointTransform point_light_shadow_transforms[MaxLights] = {};
-	unsigned spot_cookie[MaxLights] = {};
-	unsigned point_cookie[MaxLights] = {};
-	mat4 cluster_transform;
-	unsigned point_count = 0;
-	unsigned spot_count = 0;
+	struct
+	{
+		PositionalFragmentInfo lights[MaxLights] = {};
+		PointLight *handles[MaxLights] = {};
+		PointTransform transforms[MaxLights] = {};
+		unsigned cookie[MaxLights] = {};
+		unsigned count = 0;
+		uint8_t index_remap[MaxLights];
+		Vulkan::ImageHandle atlas;
+	} points;
 
-	uint8_t spot_index_remap[MaxLights];
-	uint8_t point_index_remap[MaxLights];
+	struct
+	{
+		PositionalFragmentInfo lights[MaxLights] = {};
+		SpotLight *handles[MaxLights] = {};
+		mat4 transforms[MaxLights] = {};
+		unsigned cookie[MaxLights] = {};
+		unsigned count = 0;
+		uint8_t index_remap[MaxLights];
+		Vulkan::ImageHandle atlas;
+	} spots;
+
+	mat4 cluster_transform;
 
 	Renderer *depth_renderer = nullptr;
-	Vulkan::ImageHandle shadow_atlas;
-	Vulkan::ImageHandle shadow_atlas_point;
 	Vulkan::ImageViewHandle shadow_atlas_rt[6 * MaxLights];
 	void render_atlas_spot(RenderContext &context);
 	void render_atlas_point(RenderContext &context);

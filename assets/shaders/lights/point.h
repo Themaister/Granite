@@ -46,18 +46,17 @@ layout(std140, set = POINT_LIGHT_DATA_SET, binding = POINT_LIGHT_DATA_BINDING) u
 #define POINT_LIGHT_SHADOW_ATLAS_BINDING 2
 #endif
 
+struct PointShadowData
+{
+	vec4 transform;
+	vec4 slice;
+};
+
 layout(set = POINT_LIGHT_SHADOW_ATLAS_SET, binding = POINT_LIGHT_SHADOW_ATLAS_BINDING) uniform samplerCubeArrayShadow uPointShadowAtlas;
 layout(std140, set = POINT_LIGHT_SHADOW_DATA_SET, binding = POINT_LIGHT_SHADOW_DATA_BINDING) uniform PointShadow
 {
-	vec4 transform[POINT_LIGHT_SHADOW_DATA_COUNT];
+	PointShadowData data[POINT_LIGHT_SHADOW_DATA_COUNT];
 } point_shadow;
-
-#ifdef POINT_LIGHT_TRANSLATE_SLICE
-layout(set = 2, binding = 4) uniform PointShadowSlice
-{
-	vec4 slice[POINT_LIGHT_SHADOW_DATA_COUNT];
-} point_slice;
-#endif
 #endif
 
 vec3 compute_point_light(int index, MaterialProperties material, vec3 world_pos, vec3 camera_pos)
@@ -69,14 +68,10 @@ vec3 compute_point_light(int index, MaterialProperties material, vec3 world_pos,
 #ifdef POSITIONAL_LIGHTS_SHADOW
 	vec3 dir_abs = abs(light_dir_full);
 	float max_z = max(max(dir_abs.x, dir_abs.y), dir_abs.z);
-	vec4 shadow_transform = point_shadow.transform[index];
+	vec4 shadow_transform = point_shadow.data[index].transform;
 	vec2 shadow_ref2 = shadow_transform.zw - shadow_transform.xy * max_z;
 	float shadow_ref = shadow_ref2.x / shadow_ref2.y;
-	#ifdef POINT_LIGHT_TRANSLATE_SLICE
-		float slice = point_slice.slice[index].x;
-	#else
-		float slice = float(index);
-	#endif
+	float slice = point_shadow.data[index].slice.x;
 	float shadow_falloff = texture(uPointShadowAtlas, vec4(light_dir_full, slice), shadow_ref);
 #else
 	const float shadow_falloff = 1.0;

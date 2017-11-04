@@ -34,6 +34,11 @@ namespace Granite
 LightClusterer::LightClusterer()
 {
 	EVENT_MANAGER_REGISTER_LATCH(LightClusterer, on_device_created, on_device_destroyed, DeviceCreatedEvent);
+	for (unsigned i = 0; i < MaxLights; i++)
+	{
+		point_index_remap[i] = i;
+		spot_index_remap[i] = i;
+	}
 }
 
 void LightClusterer::on_device_created(const Vulkan::DeviceCreatedEvent &e)
@@ -111,7 +116,7 @@ const mat4 *LightClusterer::get_active_spot_light_shadow_matrices() const
 	return spot_light_shadow_transforms;
 }
 
-const vec4 *LightClusterer::get_active_point_light_shadow_transform() const
+const PointTransform *LightClusterer::get_active_point_light_shadow_transform() const
 {
 	return point_light_shadow_transforms;
 }
@@ -158,30 +163,41 @@ const mat4 &LightClusterer::get_cluster_transform() const
 
 void LightClusterer::render_atlas_point(RenderContext &context)
 {
-	bool partial_update = false;
 	uint32_t partial_mask = 0;
 	for (unsigned i = 0; i < point_count; i++)
 	{
-		if (point_light_handles[i]->get_cookie() != point_cookie[i])
+		// Try to inherit shadow information from some other index.
+		auto itr = find_if(begin(point_cookie), end(point_cookie), [=](unsigned cookie) {
+			return cookie == point_light_handles[i]->get_cookie();
+		});
+
+		if (itr != end(point_cookie))
 		{
-			partial_update = true;
-			partial_mask |= 1u << i;
+			auto index = std::distance(begin(point_cookie), itr);
+			if (i != index)
+			{
+				// Reuse the shadow data from the atlas.
+				swap(point_cookie[i], point_cookie[index]);
+				swap(point_light_shadow_transforms[i], point_light_shadow_transforms[index]);
+				swap(point_index_remap[i], point_index_remap[index]);
+			}
 		}
+
+		if (point_light_handles[i]->get_cookie() != point_cookie[i])
+			partial_mask |= 1u << i;
 		else
-			point_light_handles[i]->set_shadow_info(&shadow_atlas_point->get_view(), point_light_shadow_transforms[i], i);
+			point_light_handles[i]->set_shadow_info(&shadow_atlas_point->get_view(), point_light_shadow_transforms[i]);
 
 		point_cookie[i] = point_light_handles[i]->get_cookie();
 	}
 
 	if (!shadow_atlas_point || force_update_shadows)
-	{
-		partial_update = false;
 		partial_mask = ~0u;
-	}
 
 	if (partial_mask == 0 && shadow_atlas_point && !force_update_shadows)
 		return;
 
+	bool partial_update = partial_mask != ~0u;
 	auto &device = context.get_device();
 	auto cmd = device.request_command_buffer();
 
@@ -218,7 +234,7 @@ void LightClusterer::render_atlas_point(RenderContext &context)
 			b.srcAccessMask = 0;
 			b.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 			b.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-			b.subresourceRange.baseArrayLayer = 6 * bit;
+			b.subresourceRange.baseArrayLayer = 6u * point_index_remap[bit];
 			b.subresourceRange.layerCount = 6;
 			b.subresourceRange.levelCount = 1;
 		});
@@ -244,7 +260,9 @@ void LightClusterer::render_atlas_point(RenderContext &context)
 		if ((partial_mask & (1u << i)) == 0)
 			continue;
 
-		//LOGI("Rendering shadow for point light %u (%p)\n", i, static_cast<void *>(point_light_handles[i]));
+		LOGI("Rendering shadow for point light %u (%p)\n", i, static_cast<void *>(point_light_handles[i]));
+
+		unsigned remapped = point_index_remap[i];
 
 		for (unsigned face = 0; face < 6; face++)
 		{
@@ -255,8 +273,9 @@ void LightClusterer::render_atlas_point(RenderContext &context)
 
 			if (face == 0)
 			{
-				point_light_shadow_transforms[i] = vec4(proj[2].zw(), proj[3].zw());
-				point_light_handles[i]->set_shadow_info(&shadow_atlas_point->get_view(), point_light_shadow_transforms[i], i);
+				point_light_shadow_transforms[i].transform = vec4(proj[2].zw(), proj[3].zw());
+				point_light_shadow_transforms[i].slice.x = float(remapped);
+				point_light_handles[i]->set_shadow_info(&shadow_atlas_point->get_view(), point_light_shadow_transforms[i]);
 			}
 
 			visible.clear();
@@ -270,7 +289,7 @@ void LightClusterer::render_atlas_point(RenderContext &context)
 			              RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT |
 			              RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT;
 			rp.num_color_attachments = 0;
-			rp.depth_stencil = shadow_atlas_rt[6 * i + face].get();
+			rp.depth_stencil = shadow_atlas_rt[6 * remapped + face].get();
 			rp.clear_depth_stencil.depth = 1.0f;
 			cmd->begin_render_pass(rp);
 			depth_renderer->flush(*cmd, depth_context, Renderer::FRONT_FACE_CLOCKWISE_BIT);
@@ -293,7 +312,7 @@ void LightClusterer::render_atlas_point(RenderContext &context)
 			b.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 			b.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 			b.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-			b.subresourceRange.baseArrayLayer = 6 * bit;
+			b.subresourceRange.baseArrayLayer = 6u * point_index_remap[bit];
 			b.subresourceRange.layerCount = 6;
 			b.subresourceRange.levelCount = 1;
 		});
@@ -319,6 +338,23 @@ void LightClusterer::render_atlas_spot(RenderContext &context)
 	uint32_t partial_mask = 0;
 	for (unsigned i = 0; i < spot_count; i++)
 	{
+		// Try to inherit shadow information from some other index.
+		auto itr = find_if(begin(spot_cookie), end(spot_cookie), [=](unsigned cookie) {
+			return cookie == spot_light_handles[i]->get_cookie();
+		});
+
+		if (itr != end(spot_cookie))
+		{
+			auto index = std::distance(begin(spot_cookie), itr);
+			if (i != index)
+			{
+				// Reuse the shadow data from the atlas.
+				swap(spot_cookie[i], spot_cookie[index]);
+				swap(spot_light_shadow_transforms[i], spot_light_shadow_transforms[index]);
+				swap(spot_index_remap[i], spot_index_remap[index]);
+			}
+		}
+
 		if (spot_light_handles[i]->get_cookie() != spot_cookie[i])
 			partial_mask |= 1u << i;
 		else
@@ -362,16 +398,18 @@ void LightClusterer::render_atlas_spot(RenderContext &context)
 		if ((partial_mask & (1u << i)) == 0)
 			continue;
 
-		//LOGI("Rendering shadow for spot light %u (%p)\n", i, static_cast<void *>(spot_light_handles[i]));
+		LOGI("Rendering shadow for spot light %u (%p)\n", i, static_cast<void *>(spot_light_handles[i]));
 
 		float range = tan(spot_lights[i].direction_half_angle.w);
 		mat4 view = mat4_cast(look_at_arbitrary_up(spot_lights[i].direction_half_angle.xyz())) *
 		            translate(-spot_lights[i].position_inner.xyz());
 		mat4 proj = projection(range * 2.0f, 1.0f, 0.1f, 1.0f / spot_lights[i].falloff_inv_radius.w);
 
+		unsigned remapped = spot_index_remap[i];
+
 		// Carve out the atlas region where the spot light shadows live.
 		spot_light_shadow_transforms[i] =
-				translate(vec3(float(i & 7) / 8.0f, float(i >> 3) / 4.0f, 0.0f)) *
+				translate(vec3(float(remapped & 7) / 8.0f, float(remapped >> 3) / 4.0f, 0.0f)) *
 				scale(vec3(1.0f / 8.0f, 1.0f / 4.0f, 1.0f)) *
 				translate(vec3(0.5f, 0.5f, 0.0f)) *
 				scale(vec3(0.5f, 0.5f, 1.0f)) *
@@ -393,12 +431,12 @@ void LightClusterer::render_atlas_spot(RenderContext &context)
 		rp.num_color_attachments = 0;
 		rp.depth_stencil = &shadow_atlas->get_view();
 		rp.clear_depth_stencil.depth = 1.0f;
-		rp.render_area.offset.x = 512 * (i & 7);
-		rp.render_area.offset.y = 512 * (i >> 3);
+		rp.render_area.offset.x = 512 * (remapped & 7);
+		rp.render_area.offset.y = 512 * (remapped >> 3);
 		rp.render_area.extent.width = 512;
 		rp.render_area.extent.height = 512;
 		cmd->begin_render_pass(rp);
-		cmd->set_viewport({ float(512 * (i & 7)), float(512 * (i >> 3)), 512.0f, 512.0f, 0.0f, 1.0f });
+		cmd->set_viewport({ float(512 * (remapped & 7)), float(512 * (remapped >> 3)), 512.0f, 512.0f, 0.0f, 1.0f });
 		cmd->set_scissor(rp.render_area);
 		depth_renderer->flush(*cmd, depth_context);
 		cmd->end_render_pass();
@@ -447,7 +485,7 @@ void LightClusterer::refresh(RenderContext &context)
 		else if (l.get_type() == PositionalLight::Type::Point)
 		{
 			auto &point = static_cast<PointLight &>(l);
-			point.set_shadow_info(nullptr, {}, 0);
+			point.set_shadow_info(nullptr, {});
 			if (point_count < MaxLights)
 			{
 				point_lights[point_count] = point.get_shader_info(transform->transform->world_transform);

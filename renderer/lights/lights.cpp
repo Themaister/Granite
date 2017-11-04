@@ -26,6 +26,7 @@
 #include "shader_suite.hpp"
 #include "device.hpp"
 #include "mesh_util.hpp"
+#include "clusterer.hpp"
 #include <atomic>
 
 using namespace Vulkan;
@@ -170,8 +171,11 @@ struct PositionalShaderInfo
 {
 	PositionalVertexInfo vertex;
 	PositionalFragmentInfo fragment;
-	mat4 shadow_transform;
-	unsigned slice;
+	union
+	{
+		mat4 shadow_transform;
+		PointTransform point_transform;
+	} u;
 };
 
 struct LightMesh : public EventHandler
@@ -302,17 +306,13 @@ static void positional_render_full_screen(CommandBuffer &cmd, const RenderQueueD
 			{
 				auto *t = static_cast<mat4 *>(cmd.allocate_constant_data(2, 3, sizeof(mat4) * to_render));
 				for (unsigned j = 0; j < to_render; j++)
-					t[j] = static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->shadow_transform;
+					t[j] = static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->u.shadow_transform;
 			}
 			else
 			{
-				auto *t = static_cast<vec4 *>(cmd.allocate_constant_data(2, 3, sizeof(vec4) * to_render));
+				auto *t = static_cast<PointTransform *>(cmd.allocate_constant_data(2, 3, sizeof(PointTransform) * to_render));
 				for (unsigned j = 0; j < to_render; j++)
-					t[j] = static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->shadow_transform[0];
-
-				auto *slice = static_cast<vec4 *>(cmd.allocate_constant_data(2, 4, sizeof(vec4) * to_render));
-				for (unsigned j = 0; j < to_render; j++)
-					slice[j].x = float(static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->slice);
+					t[j] = static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->u.point_transform;
 			}
 		}
 
@@ -367,17 +367,13 @@ static void positional_render_common(CommandBuffer &cmd, const RenderQueueData *
 			{
 				auto *t = static_cast<mat4 *>(cmd.allocate_constant_data(2, 3, sizeof(mat4) * to_render));
 				for (unsigned j = 0; j < to_render; j++)
-					t[j] = static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->shadow_transform;
+					t[j] = static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->u.shadow_transform;
 			}
 			else
 			{
-				auto *t = static_cast<vec4 *>(cmd.allocate_constant_data(2, 3, sizeof(vec4) * to_render));
+				auto *t = static_cast<PointTransform *>(cmd.allocate_constant_data(2, 3, sizeof(PointTransform) * to_render));
 				for (unsigned j = 0; j < to_render; j++)
-					t[j] = static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->shadow_transform[0];
-
-				auto *slice = static_cast<vec4 *>(cmd.allocate_constant_data(2, 4, sizeof(vec4) * to_render));
-				for (unsigned j = 0; j < to_render; j++)
-					slice[j].x = float(static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->slice);
+					t[j] = static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->u.point_transform;
 			}
 		}
 
@@ -441,7 +437,7 @@ void SpotLight::get_render_info(const RenderContext &context, const CachedSpatia
 	float max_range = min(falloff_range, cutoff_range) * scale_factor;
 	spot->vertex.model = transform->transform->world_transform * scale(vec3(xy_range * max_range, xy_range * max_range, max_range));
 	spot->fragment = get_shader_info(transform->transform->world_transform);
-	spot->shadow_transform = shadow_transform;
+	spot->u.shadow_transform = shadow_transform;
 
 	auto *spot_info = queue.push<PositionalLightRenderInfo>(Queue::Light, instance_key, sorting_key,
 	                                                        func, spot);
@@ -493,11 +489,10 @@ PositionalFragmentInfo PointLight::get_shader_info(const mat4 &transform) const
 	};
 }
 
-void PointLight::set_shadow_info(const Vulkan::ImageView *shadow, const vec4 &transform, unsigned slice)
+void PointLight::set_shadow_info(const Vulkan::ImageView *shadow, const PointTransform &transform)
 {
 	shadow_atlas = shadow;
 	shadow_transform = transform;
-	shadow_slice = slice;
 }
 
 void PointLight::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
@@ -542,8 +537,7 @@ void PointLight::get_render_info(const RenderContext &context, const CachedSpati
 	float max_range = min(falloff_range, cutoff_range) * scale_factor;
 	point->vertex.model = transform->transform->world_transform * scale(vec3(max_range));
 	point->fragment = get_shader_info(transform->transform->world_transform);
-	point->shadow_transform[0] = shadow_transform;
-	point->slice = shadow_slice;
+	point->u.point_transform = shadow_transform;
 
 	auto *point_info = queue.push<PositionalLightRenderInfo>(Queue::Light, instance_key, sorting_key,
 	                                                         func, point);

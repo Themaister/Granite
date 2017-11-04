@@ -2,7 +2,6 @@
 
 #if defined(VARIANT_BIT_1)
 #define POSITIONAL_LIGHTS_SHADOW
-#define POINT_LIGHT_TRANSLATE_SLICE
 #endif
 
 #define POINT_LIGHT_EARLY_OUT

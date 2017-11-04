@@ -195,8 +195,8 @@ static void set_cluster_parameters(Vulkan::CommandBuffer &cmd, const LightCluste
 		       cluster.get_active_spot_light_shadow_matrices(), cluster.get_active_spot_light_count() * sizeof(mat4));
 
 		cmd.set_texture(1, 11, *cluster.get_point_light_shadows(), StockSampler::LinearShadow);
-		memcpy(cmd.allocate_constant_data(1, 12, LightClusterer::MaxLights * sizeof(vec4)),
-		       cluster.get_active_point_light_shadow_transform(), cluster.get_active_point_light_count() * sizeof(vec4));
+		memcpy(cmd.allocate_constant_data(1, 12, LightClusterer::MaxLights * sizeof(PointTransform)),
+		       cluster.get_active_point_light_shadow_transform(), cluster.get_active_point_light_count() * sizeof(PointTransform));
 	}
 }
 

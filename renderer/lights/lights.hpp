@@ -24,6 +24,7 @@
 
 #include "abstract_renderable.hpp"
 #include "image.hpp"
+#include "light_info.hpp"
 
 namespace Granite
 {
@@ -100,14 +101,6 @@ private:
 	virtual void set_range(float range) = 0;
 };
 
-struct PositionalFragmentInfo
-{
-	vec4 color_outer;
-	vec4 falloff_inv_radius;
-	vec4 position_inner;
-	vec4 direction_half_angle;
-};
-
 class SpotLight : public PositionalLight
 {
 public:
@@ -151,12 +144,11 @@ public:
 	                     RenderQueue &queue) const override;
 	PositionalFragmentInfo get_shader_info(const mat4 &transform) const;
 
-	void set_shadow_info(const Vulkan::ImageView *shadow, const vec4 &transform, unsigned slice);
+	void set_shadow_info(const Vulkan::ImageView *shadow, const PointTransform &transform);
 
 private:
 	void set_range(float range) override;
 	const Vulkan::ImageView *shadow_atlas = nullptr;
-	vec4 shadow_transform;
-	unsigned shadow_slice;
+	PointTransform shadow_transform;
 };
 }

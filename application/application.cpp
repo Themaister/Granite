@@ -300,7 +300,7 @@ bool SceneViewerApplication::on_key_down(const KeyboardEvent &e)
 		light.type = SceneFormats::LightInfo::Type::Spot;
 		light.outer_cone = 0.9f;
 		light.inner_cone = 0.92f;
-		light.quadratic_falloff = 0.1f;
+		light.quadratic_falloff = 0.01f;
 		light.constant_falloff = 0.0f;
 		light.color = vec3(1.0f);
 
@@ -320,7 +320,7 @@ bool SceneViewerApplication::on_key_down(const KeyboardEvent &e)
 
 		SceneFormats::LightInfo light;
 		light.type = SceneFormats::LightInfo::Type::Point;
-		light.quadratic_falloff = 0.1f;
+		light.quadratic_falloff = 0.01f;
 		light.constant_falloff = 0.0f;
 		light.color = vec3(1.0f);
 		node->transform.translation = pos;

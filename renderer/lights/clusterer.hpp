@@ -46,7 +46,7 @@ public:
 	const PositionalFragmentInfo *get_active_point_lights() const;
 	const PositionalFragmentInfo *get_active_spot_lights() const;
 	const mat4 *get_active_spot_light_shadow_matrices() const;
-	const vec4 *get_active_point_light_shadow_transform() const;
+	const PointTransform *get_active_point_light_shadow_transform() const;
 	unsigned get_active_point_light_count() const;
 	unsigned get_active_spot_light_count() const;
 	const mat4 &get_cluster_transform() const;
@@ -83,12 +83,15 @@ private:
 	SpotLight *spot_light_handles[MaxLights] = {};
 	PointLight *point_light_handles[MaxLights] = {};
 	mat4 spot_light_shadow_transforms[MaxLights] = {};
-	vec4 point_light_shadow_transforms[MaxLights] = {};
+	PointTransform point_light_shadow_transforms[MaxLights] = {};
 	unsigned spot_cookie[MaxLights] = {};
 	unsigned point_cookie[MaxLights] = {};
 	mat4 cluster_transform;
 	unsigned point_count = 0;
 	unsigned spot_count = 0;
+
+	uint8_t spot_index_remap[MaxLights];
+	uint8_t point_index_remap[MaxLights];
 
 	Renderer *depth_renderer = nullptr;
 	Vulkan::ImageHandle shadow_atlas;

@@ -29,6 +29,16 @@
 
 namespace Granite
 {
+enum class TextureMode
+{
+	RGB,
+	RGBA,
+	sRGB,
+	sRGBA,
+	HDR,
+	Unknown
+};
+
 struct CompressorArguments
 {
 	std::string output;
@@ -36,7 +46,7 @@ struct CompressorArguments
 	unsigned quality = 3;
 
 	Material::Textures type = Material::Textures::BaseColor;
-	bool alpha = false;
+	TextureMode mode = TextureMode::Unknown;
 };
 
 gli::format string_to_format(const std::string &s);

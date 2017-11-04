@@ -155,6 +155,8 @@ struct CompressorState : enable_shared_from_this<CompressorState>
 
 void CompressorState::setup(const CompressorArguments &args)
 {
+	bool alpha = args.mode == TextureMode::sRGBA || args.mode == TextureMode::RGBA;
+
 	const auto handle_astc_ldr_format = [&](unsigned x, unsigned y) -> bool {
 		block_size_x = x;
 		block_size_y = y;
@@ -165,7 +167,7 @@ void CompressorState::setup(const CompressorArguments &args)
 		}
 
 #ifdef HAVE_ISPC
-		if (args.alpha)
+		if (alpha)
 		{
 			if (args.quality <= 3)
 				GetProfile_astc_alpha_fast(&astc, x, y);
@@ -253,35 +255,35 @@ void CompressorState::setup(const CompressorArguments &args)
 		switch (args.quality)
 		{
 		case 1:
-			if (args.alpha)
+			if (alpha)
 				GetProfile_alpha_ultrafast(&bc7);
 			else
 				GetProfile_ultrafast(&bc7);
 			break;
 
 		case 2:
-			if (args.alpha)
+			if (alpha)
 				GetProfile_alpha_veryfast(&bc7);
 			else
 				GetProfile_veryfast(&bc7);
 			break;
 
 		case 3:
-			if (args.alpha)
+			if (alpha)
 				GetProfile_alpha_fast(&bc7);
 			else
 				GetProfile_fast(&bc7);
 			break;
 
 		case 4:
-			if (args.alpha)
+			if (alpha)
 				GetProfile_alpha_basic(&bc7);
 			else
 				GetProfile_basic(&bc7);
 			break;
 
 		case 5:
-			if (args.alpha)
+			if (alpha)
 				GetProfile_alpha_slow(&bc7);
 			else
 				GetProfile_slow(&bc7);
@@ -342,7 +344,7 @@ void CompressorState::setup(const CompressorArguments &args)
 
 	case gli::FORMAT_RGBA_ASTC_8X8_SRGB_BLOCK16:
 	case gli::FORMAT_RGBA_ASTC_8X8_UNORM_BLOCK16:
-		if (input->format() == gli::FORMAT_RGBA16_SFLOAT_PACK16)
+		if (args.mode == TextureMode::HDR)
 		{
 			if (!handle_astc_hdr_format(8, 8))
 				return;

@@ -42,6 +42,12 @@ void TaskDeps::notify_dependees()
 	for (auto &dep : pending)
 		dep->dependency_satisfied();
 	pending.clear();
+
+	{
+		lock_guard<mutex> holder{cond_lock};
+		done = true;
+		cond.notify_one();
+	}
 }
 
 void TaskDeps::task_completed()
@@ -86,6 +92,17 @@ void TaskGroup::flush()
 		}
 	}
 }
+
+void TaskGroup::wait()
+{
+	if (!flushed)
+		flush();
+
+	unique_lock<mutex> holder{deps->cond_lock};
+	deps->cond.wait(holder, [this]() {
+		return deps->done;
+	});
+};
 
 TaskGroup::~TaskGroup()
 {

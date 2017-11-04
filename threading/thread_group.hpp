@@ -72,6 +72,10 @@ struct TaskDeps : Util::IntrusivePtrEnabled<TaskDeps, TaskDepsDeleter, Util::Mul
 	void task_completed();
 	void dependency_satisfied();
 	void notify_dependees();
+
+	std::condition_variable cond;
+	std::mutex cond_lock;
+	bool done = false;
 };
 using TaskDepsHandle = Util::IntrusivePtr<TaskDeps, TaskDepsDeleter, Util::MultiThreadCounter>;
 
@@ -80,6 +84,7 @@ struct TaskGroup : Util::IntrusivePtrEnabled<TaskGroup, TaskGroupDeleter, Util::
 	explicit TaskGroup(ThreadGroup *group);
 	~TaskGroup();
 	void flush();
+	void wait();
 
 	ThreadGroup *group;
 	TaskDepsHandle deps;

@@ -113,17 +113,43 @@ struct EmittedTexture
 	unsigned sampler;
 };
 
+struct AnalysisResult
+{
+	std::string src_path;
+	shared_ptr<gli::texture> image;
+	TextureCompression compression;
+	TextureMode mode;
+	Material::Textures type;
+	VkComponentMapping swizzle;
+
+	bool load_image(const string &src, const VkComponentMapping &swizzle);
+	void swizzle_image(const VkComponentMapping &swizzle);
+	void deduce_compression(TextureCompressionFamily family);
+
+	enum class MetallicRoughnessMode
+	{
+		RoughnessMetal,
+		RoughnessDielectric,
+		MetallicSmooth,
+		MetallicRough,
+		Default
+	};
+	MetallicRoughnessMode deduce_metallic_roughness_mode();
+};
+
 struct EmittedImage
 {
 	string source_path;
 	string target_relpath;
 	string target_mime;
-	VkComponentMapping swizzle;
-	Material::Textures type;
 
-	TextureCompression compression;
+	TextureCompressionFamily compression;
 	unsigned compression_quality;
-	bool force_linear;
+	TextureMode mode;
+	Material::Textures type;
+	VkComponentMapping swizzle;
+
+	shared_ptr<AnalysisResult> loaded_image;
 };
 
 struct EmittedSampler
@@ -150,16 +176,17 @@ struct RemapState
 
 	unsigned emit_texture(const MaterialInfo::Texture &texture,
 	                      Vulkan::StockSampler sampler, Material::Textures type,
-	                      TextureCompression compression, unsigned quality, bool force_linear);
+	                      TextureCompressionFamily compression, unsigned quality, TextureMode mode);
 
 	unsigned emit_sampler(Vulkan::StockSampler sampler);
 	unsigned emit_image(const MaterialInfo::Texture &texture, Material::Textures type,
-	                    TextureCompression compression, unsigned quality, bool force_linear);
+	                    TextureCompressionFamily compression, unsigned quality, TextureMode mode);
+
 	void emit_material(unsigned remapped_material);
 	void emit_mesh(unsigned remapped_index);
 	void emit_environment(const string &cube, const string &reflection, const string &irradiance, float intensity,
 	                      vec3 fog_color, float fog_falloff,
-	                      TextureCompression compression, unsigned quality);
+	                      TextureCompressionFamily compression, unsigned quality);
 	unsigned emit_meshes(ArrayView<const unsigned> meshes);
 
 	Remap<Mesh> mesh;
@@ -569,14 +596,14 @@ unsigned RemapState::emit_sampler(Vulkan::StockSampler sampler)
 }
 
 unsigned RemapState::emit_image(const MaterialInfo::Texture &texture, Material::Textures type,
-                                TextureCompression compression, unsigned quality, bool force_linear)
+                                TextureCompressionFamily compression, unsigned quality, TextureMode mode)
 {
 	Hasher h;
 	h.string(texture.path);
 	h.u32(ecast(type));
 	h.u32(ecast(compression));
 	h.u32(quality);
-	h.s32(force_linear);
+	h.s32(ecast(mode));
 
 	auto itr = image_hash.find(h.get());
 
@@ -584,8 +611,8 @@ unsigned RemapState::emit_image(const MaterialInfo::Texture &texture, Material::
 	{
 		unsigned index = image_cache.size();
 		image_hash[h.get()] = index;
-		image_cache.push_back({ texture.path, to_string(h.get()) + ".ktx", "image/ktx", texture.swizzle,
-		                        type, compression, quality, force_linear });
+		image_cache.push_back({ texture.path, to_string(h.get()) + ".ktx", "image/ktx",
+		                        compression, quality, mode, type, texture.swizzle, {} });
 		return index;
 	}
 	else
@@ -594,9 +621,9 @@ unsigned RemapState::emit_image(const MaterialInfo::Texture &texture, Material::
 
 unsigned RemapState::emit_texture(const MaterialInfo::Texture &texture,
                                   Vulkan::StockSampler sampler, Material::Textures type,
-                                  TextureCompression compression, unsigned quality, bool force_linear)
+                                  TextureCompressionFamily compression, unsigned quality, TextureMode mode)
 {
-	unsigned image_index = emit_image(texture, type, compression, quality, force_linear);
+	unsigned image_index = emit_image(texture, type, compression, quality, mode);
 	unsigned sampler_index = emit_sampler(sampler);
 	Hasher h;
 	h.u32(image_index);
@@ -617,7 +644,7 @@ unsigned RemapState::emit_texture(const MaterialInfo::Texture &texture,
 void RemapState::emit_environment(const string &cube, const string &reflection, const string &irradiance,
                                   float intensity,
                                   vec3 fog_color, float fog_falloff,
-                                  TextureCompression compression, unsigned quality)
+                                  TextureCompressionFamily compression, unsigned quality)
 {
 	static const VkComponentMapping swizzle = {
 		VK_COMPONENT_SWIZZLE_R,
@@ -630,19 +657,19 @@ void RemapState::emit_environment(const string &cube, const string &reflection, 
 	if (!cube.empty())
 	{
 		env.cube = emit_texture({cube, swizzle}, Vulkan::StockSampler::LinearClamp,
-		                        Material::Textures::Emissive, compression, quality, true);
+		                        Material::Textures::Emissive, compression, quality, TextureMode::HDR);
 	}
 
 	if (!reflection.empty())
 	{
 		env.reflection = emit_texture({reflection, swizzle}, Vulkan::StockSampler::LinearClamp,
-		                              Material::Textures::Emissive, compression, quality, true);
+		                              Material::Textures::Emissive, compression, quality, TextureMode::HDR);
 	}
 
 	if (!irradiance.empty())
 	{
 		env.irradiance = emit_texture({irradiance, swizzle}, Vulkan::StockSampler::LinearClamp,
-		                              Material::Textures::Emissive, compression, quality, true);
+		                              Material::Textures::Emissive, compression, quality, TextureMode::HDR);
 	}
 
 	env.intensity = intensity;
@@ -661,32 +688,33 @@ void RemapState::emit_material(unsigned remapped_material)
 	if (!material.normal.path.empty())
 	{
 		output.normal = emit_texture(material.normal, material.sampler, Material::Textures::Normal,
-		                             options->compression, options->texcomp_quality, false);
+		                             options->compression, options->texcomp_quality, TextureMode::RGB);
 	}
 
 	if (!material.occlusion.path.empty())
 	{
 		output.occlusion = emit_texture(material.occlusion, material.sampler, Material::Textures::Occlusion,
-		                                options->compression, options->texcomp_quality, false);
+		                                options->compression, options->texcomp_quality, TextureMode::RGB);
 	}
 
 	if (!material.base_color.path.empty())
 	{
 		output.base_color = emit_texture(material.base_color, material.sampler, Material::Textures::BaseColor,
-		                                 options->compression, options->texcomp_quality, false);
+		                                 options->compression, options->texcomp_quality,
+		                                 material.pipeline != DrawPipeline::Opaque ? TextureMode::sRGBA : TextureMode::sRGB);
 	}
 
 	if (!material.metallic_roughness.path.empty())
 	{
 		output.metallic_roughness = emit_texture(material.metallic_roughness, material.sampler,
 		                                         Material::Textures::MetallicRoughness,
-		                                         options->compression, options->texcomp_quality, false);
+		                                         options->compression, options->texcomp_quality, TextureMode::RGB);
 	}
 
 	if (!material.emissive.path.empty())
 	{
 		output.emissive = emit_texture(material.emissive, material.sampler, Material::Textures::Emissive,
-		                               options->compression, options->texcomp_quality, false);
+		                               options->compression, options->texcomp_quality, TextureMode::sRGB);
 	}
 
 	output.uniform_base_color = material.uniform_base_color;
@@ -796,9 +824,9 @@ unsigned RemapState::emit_meshes(ArrayView<const unsigned> meshes)
 	return index;
 }
 
-static gli::format get_compression_format(TextureCompression compression, Material::Textures type, bool force_linear)
+static gli::format get_compression_format(TextureCompression compression, TextureMode mode)
 {
-	bool srgb = !force_linear && (type == Material::Textures::BaseColor || type == Material::Textures::Emissive);
+	bool srgb = mode == TextureMode::sRGB || mode == TextureMode::sRGBA;
 
 	switch (compression)
 	{
@@ -806,7 +834,10 @@ static gli::format get_compression_format(TextureCompression compression, Materi
 		return srgb ? gli::FORMAT_RGBA8_SRGB_PACK8 : gli::FORMAT_RGBA8_UNORM_PACK8;
 
 	case TextureCompression::BC1:
-		return srgb ? gli::FORMAT_RGB_DXT1_SRGB_BLOCK8 : gli::FORMAT_RGB_DXT1_UNORM_BLOCK8;
+		if (mode == TextureMode::sRGBA || mode == TextureMode::RGBA)
+			return srgb ? gli::FORMAT_RGBA_DXT1_SRGB_BLOCK8 : gli::FORMAT_RGBA_DXT1_UNORM_BLOCK8;
+		else
+			return srgb ? gli::FORMAT_RGB_DXT1_SRGB_BLOCK8 : gli::FORMAT_RGB_DXT1_UNORM_BLOCK8;
 
 	case TextureCompression::BC3:
 		return srgb ? gli::FORMAT_RGBA_DXT5_SRGB_BLOCK16 : gli::FORMAT_RGBA_DXT5_UNORM_BLOCK16;
@@ -828,50 +859,330 @@ static gli::format get_compression_format(TextureCompression compression, Materi
 
 	case TextureCompression::ASTC8x8:
 		return srgb ? gli::FORMAT_RGBA_ASTC_8X8_SRGB_BLOCK16 : gli::FORMAT_RGBA_ASTC_8X8_UNORM_BLOCK16;
-	}
 
-	return gli::FORMAT_UNDEFINED;
+	default:
+		return gli::FORMAT_UNDEFINED;
+	}
 }
 
-static void compress_image(ThreadGroup &workers, const string &target_path, const string &src,
-                           TextureCompression compression, Material::Textures type, unsigned quality, bool force_linear)
+void AnalysisResult::swizzle_image(const VkComponentMapping &swizzle)
+{
+	if (swizzle.r != VK_COMPONENT_SWIZZLE_R ||
+	    swizzle.g != VK_COMPONENT_SWIZZLE_G ||
+	    swizzle.b != VK_COMPONENT_SWIZZLE_B ||
+	    swizzle.a != VK_COMPONENT_SWIZZLE_A)
+	{
+		if (image->format() != gli::FORMAT_RGBA8_SRGB_PACK8 && image->format() != gli::FORMAT_RGBA8_UNORM_PACK8)
+			throw invalid_argument("Can only swizzle RGBA textures.");
+
+		gli::swizzles swizzles = {};
+		const auto conv_swizzle = [](VkComponentSwizzle swiz) -> gli::swizzle {
+			switch (swiz)
+			{
+			case VK_COMPONENT_SWIZZLE_R:
+				return gli::SWIZZLE_RED;
+			case VK_COMPONENT_SWIZZLE_G:
+				return gli::SWIZZLE_GREEN;
+			case VK_COMPONENT_SWIZZLE_B:
+				return gli::SWIZZLE_BLUE;
+			case VK_COMPONENT_SWIZZLE_A:
+				return gli::SWIZZLE_ALPHA;
+#if 0
+			// gli doesn't seem to support 0/1 swizzling.
+			case VK_COMPONENT_SWIZZLE_ONE:
+				return gli::SWIZZLE_ONE;
+			case VK_COMPONENT_SWIZZLE_ZERO:
+				return gli::SWIZZLE_ZERO;
+#endif
+			default:
+				throw invalid_argument("Unrecognized swizzle parameter.");
+			}
+		};
+
+		swizzles.r = conv_swizzle(swizzle.r);
+		swizzles.g = conv_swizzle(swizzle.g);
+		swizzles.b = conv_swizzle(swizzle.b);
+		swizzles.a = conv_swizzle(swizzle.a);
+		image->swizzle<u8vec4>(swizzles);
+	}
+}
+
+AnalysisResult::MetallicRoughnessMode AnalysisResult::deduce_metallic_roughness_mode()
+{
+	if (image->layers() > 1 || image->faces() > 1)
+		return MetallicRoughnessMode::Default;
+
+	auto *src = static_cast<const u8vec4 *>(image->data(0, 0, 0));
+	int width = image->extent().x;
+	int height = image->extent().y;
+	int count = width * height;
+
+	bool metallic_zero_only = true;
+	bool metallic_one_only = true;
+	bool roughness_zero_only = true;
+	bool roughness_one_only = true;
+
+	for (int i = 0; i < count; i++)
+	{
+		if (src[i].b != 0xff)
+			roughness_one_only = false;
+		if (src[i].b != 0)
+			roughness_zero_only = false;
+
+		if (src[i].g != 0xff)
+			metallic_one_only = false;
+		if (src[i].g != 0)
+			metallic_zero_only = false;
+	}
+
+	if (!metallic_zero_only && !metallic_one_only && (roughness_one_only || roughness_zero_only))
+	{
+		if (roughness_one_only)
+			return MetallicRoughnessMode::MetallicRough;
+		else
+			return MetallicRoughnessMode::MetallicSmooth;
+	}
+	else if (!roughness_zero_only && !roughness_one_only && (metallic_one_only || metallic_zero_only))
+	{
+		if (metallic_one_only)
+			return MetallicRoughnessMode::RoughnessMetal;
+		else
+			return MetallicRoughnessMode::RoughnessDielectric;
+	}
+	else
+		return MetallicRoughnessMode::Default;
+}
+
+bool AnalysisResult::load_image(const string &src, const VkComponentMapping &swizzle)
+{
+	image = make_shared<gli::texture>();
+	*image = load_texture_from_file(src, (mode == TextureMode::sRGBA || mode == TextureMode::sRGB) ? ColorSpace::sRGB : ColorSpace::Linear);
+	if (image->empty())
+		return false;
+
+	swizzle_image(swizzle);
+	this->swizzle = {
+		VK_COMPONENT_SWIZZLE_R,
+		VK_COMPONENT_SWIZZLE_G,
+		VK_COMPONENT_SWIZZLE_B,
+		VK_COMPONENT_SWIZZLE_A
+	};
+	return true;
+}
+
+void AnalysisResult::deduce_compression(TextureCompressionFamily family)
+{
+	// Make use of dual-color modes in ASTC like (Luminance + Alpha) to encode 2-component textures.
+
+	switch (family)
+	{
+	case TextureCompressionFamily::ASTC:
+		switch (type)
+		{
+		case Material::Textures::BaseColor:
+		case Material::Textures::Emissive:
+			compression = TextureCompression::ASTC6x6;
+			break;
+
+		case Material::Textures::Occlusion:
+			compression = TextureCompression::ASTC6x6;
+			swizzle_image({ VK_COMPONENT_SWIZZLE_R,
+			                VK_COMPONENT_SWIZZLE_R,
+			                VK_COMPONENT_SWIZZLE_R,
+			                VK_COMPONENT_SWIZZLE_R });
+			break;
+
+		case Material::Textures::Normal:
+			compression = TextureCompression::ASTC6x6;
+			swizzle_image({ VK_COMPONENT_SWIZZLE_R,
+			                VK_COMPONENT_SWIZZLE_R,
+			                VK_COMPONENT_SWIZZLE_R,
+			                VK_COMPONENT_SWIZZLE_G });
+			swizzle.r = VK_COMPONENT_SWIZZLE_R;
+			swizzle.g = VK_COMPONENT_SWIZZLE_A;
+			swizzle.b = VK_COMPONENT_SWIZZLE_ONE;
+			swizzle.a = VK_COMPONENT_SWIZZLE_ONE;
+			break;
+
+		case Material::Textures::MetallicRoughness:
+		{
+			compression = TextureCompression::ASTC6x6;
+			auto mr_mode = deduce_metallic_roughness_mode();
+			switch (mr_mode)
+			{
+			case MetallicRoughnessMode::Default:
+				swizzle_image({VK_COMPONENT_SWIZZLE_G,
+				               VK_COMPONENT_SWIZZLE_G,
+				               VK_COMPONENT_SWIZZLE_G,
+				               VK_COMPONENT_SWIZZLE_B});
+				swizzle.r = VK_COMPONENT_SWIZZLE_ZERO;
+				swizzle.g = VK_COMPONENT_SWIZZLE_R;
+				swizzle.b = VK_COMPONENT_SWIZZLE_A;
+				swizzle.a = VK_COMPONENT_SWIZZLE_ZERO;
+				break;
+
+			case MetallicRoughnessMode::MetallicRough:
+			case MetallicRoughnessMode::MetallicSmooth:
+				swizzle_image({VK_COMPONENT_SWIZZLE_B,
+				               VK_COMPONENT_SWIZZLE_B,
+				               VK_COMPONENT_SWIZZLE_B,
+				               VK_COMPONENT_SWIZZLE_B});
+				swizzle.r = VK_COMPONENT_SWIZZLE_ZERO;
+				swizzle.g = mr_mode == MetallicRoughnessMode::MetallicRough ?
+				            VK_COMPONENT_SWIZZLE_ONE : VK_COMPONENT_SWIZZLE_ZERO;
+				swizzle.b = VK_COMPONENT_SWIZZLE_R;
+				swizzle.a = VK_COMPONENT_SWIZZLE_ZERO;
+				break;
+
+			case MetallicRoughnessMode::RoughnessDielectric:
+			case MetallicRoughnessMode::RoughnessMetal:
+				swizzle_image({VK_COMPONENT_SWIZZLE_G,
+				               VK_COMPONENT_SWIZZLE_G,
+				               VK_COMPONENT_SWIZZLE_G,
+				               VK_COMPONENT_SWIZZLE_G});
+				swizzle.r = VK_COMPONENT_SWIZZLE_ZERO;
+				swizzle.g = VK_COMPONENT_SWIZZLE_R;
+				swizzle.b = mr_mode == MetallicRoughnessMode::RoughnessMetal ?
+				            VK_COMPONENT_SWIZZLE_ONE : VK_COMPONENT_SWIZZLE_ZERO;
+				swizzle.a = VK_COMPONENT_SWIZZLE_ZERO;
+				break;
+			}
+			break;
+		}
+
+		default:
+			throw invalid_argument("Invalid material type.");
+		}
+		break;
+
+	case TextureCompressionFamily::BC:
+		switch (type)
+		{
+		case Material::Textures::BaseColor:
+		case Material::Textures::Emissive:
+			compression = TextureCompression::BC7;
+			break;
+
+		case Material::Textures::Occlusion:
+			compression = TextureCompression::BC4;
+			break;
+
+		case Material::Textures::MetallicRoughness:
+		{
+			auto mr_mode = deduce_metallic_roughness_mode();
+			switch (mr_mode)
+			{
+			case MetallicRoughnessMode::Default:
+				compression = TextureCompression::BC5;
+				swizzle_image({VK_COMPONENT_SWIZZLE_G,
+				               VK_COMPONENT_SWIZZLE_B,
+				               VK_COMPONENT_SWIZZLE_B,
+				               VK_COMPONENT_SWIZZLE_A});
+				swizzle.r = VK_COMPONENT_SWIZZLE_ZERO;
+				swizzle.g = VK_COMPONENT_SWIZZLE_R;
+				swizzle.b = VK_COMPONENT_SWIZZLE_G;
+				swizzle.a = VK_COMPONENT_SWIZZLE_ZERO;
+				break;
+
+			case MetallicRoughnessMode::RoughnessDielectric:
+			case MetallicRoughnessMode::RoughnessMetal:
+				compression = TextureCompression::BC4;
+				swizzle_image({VK_COMPONENT_SWIZZLE_G,
+				               VK_COMPONENT_SWIZZLE_G,
+				               VK_COMPONENT_SWIZZLE_G,
+				               VK_COMPONENT_SWIZZLE_G});
+				swizzle.r = VK_COMPONENT_SWIZZLE_ZERO;
+				swizzle.g = VK_COMPONENT_SWIZZLE_R;
+				swizzle.b = mr_mode == MetallicRoughnessMode::RoughnessMetal ?
+				            VK_COMPONENT_SWIZZLE_ONE : VK_COMPONENT_SWIZZLE_ZERO;
+				swizzle.a = VK_COMPONENT_SWIZZLE_ZERO;
+				break;
+
+			case MetallicRoughnessMode::MetallicRough:
+			case MetallicRoughnessMode::MetallicSmooth:
+				compression = TextureCompression::BC4;
+				swizzle_image({VK_COMPONENT_SWIZZLE_B,
+				               VK_COMPONENT_SWIZZLE_B,
+				               VK_COMPONENT_SWIZZLE_B,
+				               VK_COMPONENT_SWIZZLE_B});
+				swizzle.r = VK_COMPONENT_SWIZZLE_ZERO;
+				swizzle.g = mr_mode == MetallicRoughnessMode::MetallicRough ?
+				            VK_COMPONENT_SWIZZLE_ONE : VK_COMPONENT_SWIZZLE_ZERO;
+				swizzle.b = VK_COMPONENT_SWIZZLE_R;
+				swizzle.a = VK_COMPONENT_SWIZZLE_ZERO;
+				break;
+			}
+			break;
+		}
+
+		case Material::Textures::Normal:
+			compression = TextureCompression::BC5;
+			break;
+
+		default:
+			throw invalid_argument("Invalid material type.");
+		}
+		break;
+
+	case TextureCompressionFamily::Uncompressed:
+		compression = TextureCompression::Uncompressed;
+		break;
+	}
+}
+
+static shared_ptr<AnalysisResult> analyze_image(TaskGroup &group,
+                                                const string &src, const VkComponentMapping &swizzle,
+                                                Material::Textures type, TextureCompressionFamily family,
+                                                TextureMode mode)
+{
+	auto result = make_shared<AnalysisResult>();
+	result->mode = mode;
+	result->type = type;
+
+	group->enqueue_task([=]() {
+		if (!result->load_image(src, swizzle))
+		{
+			LOGE("Failed to load image.\n");
+			return;
+		}
+
+		result->deduce_compression(family);
+	});
+
+	return result;
+}
+
+static void compress_image(ThreadGroup &workers, const string &target_path, shared_ptr<AnalysisResult> &result,
+                           unsigned quality)
 {
 	FileStat src_stat, dst_stat;
-	if (Filesystem::get().stat(src, src_stat) && Filesystem::get().stat(target_path, dst_stat))
+	if (Filesystem::get().stat(result->src_path, src_stat) && Filesystem::get().stat(target_path, dst_stat))
 	{
 		if (src_stat.last_modified < dst_stat.last_modified)
 		{
-			LOGI("Texture %s -> %s is already compressed, skipping.\n", src.c_str(), target_path.c_str());
+			LOGI("Texture %s -> %s is already compressed, skipping.\n", result->src_path.c_str(), target_path.c_str());
 			return;
 		}
 	}
 
 	CompressorArguments args;
 	args.output = target_path;
-	args.format = get_compression_format(compression, type, force_linear);
+	args.format = get_compression_format(result->compression, result->mode);
 	args.quality = quality;
 
-	auto image = make_shared<gli::texture>();
-
-	auto load_task = workers.create_task([=]() {
-		*image = load_texture_from_file(src, (type == Material::Textures::BaseColor || type == Material::Textures::Emissive) ? ColorSpace::sRGB : ColorSpace::Linear);
-	});
-
 	auto mipgen_task = workers.create_task([=]() {
-		if (image->levels() == 1)
-			*image = generate_offline_mipmaps(*image);
+		if (result->image->levels() == 1)
+			*result->image = generate_offline_mipmaps(*result->image);
 	});
 
-	workers.add_dependency(mipgen_task, load_task);
-
-	if (compression != TextureCompression::Uncompressed)
+	if (result->compression != TextureCompression::Uncompressed)
 	{
-		compress_texture(workers, args, image, mipgen_task);
+		compress_texture(workers, args, result->image, mipgen_task);
 	}
 	else
 	{
 		auto task = workers.create_task([=]() {
-			if (!save_texture_to_file(target_path, *image))
+			if (!save_texture_to_file(target_path, *result->image))
 				LOGE("Failed to save uncompressed file!\n");
 		});
 		workers.add_dependency(task, mipgen_task);
@@ -1073,14 +1384,28 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 	// Images
 	{
 		Value images(kArrayType);
+
+		// Load images, swizzle, and figure out which compression type is the most appropriate.
+		auto group = workers.create_task();
 		for (auto &image : state.image_cache)
 		{
+			image.loaded_image = analyze_image(group,
+			                                   image.source_path, image.swizzle,
+			                                   image.type, image.compression, image.mode);
+		}
+		group->wait();
+
+		for (auto &image : state.image_cache)
+		{
+			// Replace the swizzle with possibly something else.
+			auto swiz = image.loaded_image->swizzle;
+
 			Value i(kObjectType);
 			i.AddMember("uri", image.target_relpath, allocator);
 			i.AddMember("mimeType", image.target_mime, allocator);
 
-			const auto swiz_to_index = [](VkComponentSwizzle swiz, unsigned identity) -> unsigned {
-				switch (swiz)
+			const auto swiz_to_index = [](VkComponentSwizzle s, unsigned identity) -> unsigned {
+				switch (s)
 				{
 				case VK_COMPONENT_SWIZZLE_R:
 					return 0;
@@ -1099,26 +1424,25 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 				}
 			};
 
-			if (image.swizzle.r != VK_COMPONENT_SWIZZLE_R ||
-			    image.swizzle.g != VK_COMPONENT_SWIZZLE_G ||
-			    image.swizzle.b != VK_COMPONENT_SWIZZLE_B ||
-			    image.swizzle.a != VK_COMPONENT_SWIZZLE_A)
+			if (swiz.r != VK_COMPONENT_SWIZZLE_R ||
+			    swiz.g != VK_COMPONENT_SWIZZLE_G ||
+			    swiz.b != VK_COMPONENT_SWIZZLE_B ||
+			    swiz.a != VK_COMPONENT_SWIZZLE_A)
 			{
 				Value extras(kObjectType);
 				Value swizzle(kArrayType);
-				swizzle.PushBack(swiz_to_index(image.swizzle.r, 0), allocator);
-				swizzle.PushBack(swiz_to_index(image.swizzle.g, 1), allocator);
-				swizzle.PushBack(swiz_to_index(image.swizzle.b, 2), allocator);
-				swizzle.PushBack(swiz_to_index(image.swizzle.a, 3), allocator);
+				swizzle.PushBack(swiz_to_index(swiz.r, 0), allocator);
+				swizzle.PushBack(swiz_to_index(swiz.g, 1), allocator);
+				swizzle.PushBack(swiz_to_index(swiz.b, 2), allocator);
+				swizzle.PushBack(swiz_to_index(swiz.a, 3), allocator);
 				extras.AddMember("swizzle", swizzle, allocator);
 				i.AddMember("extras", extras, allocator);
 			}
 
 			images.PushBack(i, allocator);
 
-			compress_image(workers,
-			               Path::relpath(path, image.target_relpath), image.source_path,
-			               image.compression, image.type, image.compression_quality, image.force_linear);
+			compress_image(workers, Path::relpath(path, image.target_relpath),
+			               image.loaded_image, image.compression_quality);
 		}
 		doc.AddMember("images", images, allocator);
 	}

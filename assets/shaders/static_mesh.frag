@@ -89,12 +89,15 @@ void main()
         vec3 tangent = normalize(vTangent.xyz);
         vec3 binormal = cross(normal, tangent) * vTangent.w;
         #ifdef NEED_GRADIENTS
-            vec3 tangent_space = textureGrad(uNormalmap, vUV, gradX, gradY).xyz * 2.0 - 1.0;
+            vec2 tangent_space = textureGrad(uNormalmap, vUV, gradX, gradY).xy * 2.0 - 1.0;
         #else
-            vec3 tangent_space = texture(uNormalmap, vUV, registers.lod_bias).xyz * 2.0 - 1.0;
+            vec2 tangent_space = texture(uNormalmap, vUV, registers.lod_bias).xy * 2.0 - 1.0;
         #endif
-        tangent_space.xy *= registers.normal_scale;
-        normal = normalize(mat3(tangent, binormal, normal) * tangent_space);
+
+        // For 2-component compressed textures.
+        float tangent_z = sqrt(max(1.0 - dot(tangent_space, tangent_space)));
+        tangent_space *= registers.normal_scale;
+        normal = normalize(mat3(tangent, binormal, normal) * vec3(tangent_space, tangent_z));
     #endif
     if (!gl_FrontFacing)
         normal = -normal;

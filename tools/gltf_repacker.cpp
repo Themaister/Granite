@@ -32,28 +32,16 @@ using namespace Granite;
 using namespace Util;
 using namespace std;
 
-static SceneFormats::TextureCompression string_to_compression(const string &fmt)
+static SceneFormats::TextureCompressionFamily string_to_compression(const string &fmt)
 {
-	if (fmt == "bc7")
-		return SceneFormats::TextureCompression::BC7;
-	else if (fmt == "bc3")
-		return SceneFormats::TextureCompression::BC3;
-	else if (fmt == "bc1")
-		return SceneFormats::TextureCompression::BC1;
-	else if (fmt == "bc6h")
-		return SceneFormats::TextureCompression::BC6H;
-	else if (fmt == "astc_4x4")
-		return SceneFormats::TextureCompression::ASTC4x4;
-	else if (fmt == "astc_5x5")
-		return SceneFormats::TextureCompression::ASTC5x5;
-	else if (fmt == "astc_6x6")
-		return SceneFormats::TextureCompression::ASTC6x6;
-	else if (fmt == "astc_8x8")
-		return SceneFormats::TextureCompression::ASTC8x8;
+	if (fmt == "bc")
+		return SceneFormats::TextureCompressionFamily::BC;
+	else if (fmt == "astc")
+		return SceneFormats::TextureCompressionFamily::ASTC;
 	else
 	{
 		LOGE("Unrecognized format, using uncompressed.\n");
-		return SceneFormats::TextureCompression::Uncompressed;
+		return SceneFormats::TextureCompressionFamily::Uncompressed;
 	}
 }
 

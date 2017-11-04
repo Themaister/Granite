@@ -23,6 +23,7 @@
 #pragma once
 
 #include "scene_formats.hpp"
+#include "texture_compression.hpp"
 
 namespace Granite
 {
@@ -32,6 +33,8 @@ enum class TextureCompression
 {
 	BC7,
 	BC3,
+	BC4,
+	BC5,
 	BC1,
 	BC6H,
 	ASTC4x4,
@@ -41,9 +44,16 @@ enum class TextureCompression
 	Uncompressed
 };
 
+enum class TextureCompressionFamily
+{
+	BC,
+	ASTC,
+	Uncompressed
+};
+
 struct ExportOptions
 {
-	TextureCompression compression = TextureCompression::Uncompressed;
+	TextureCompressionFamily compression = TextureCompressionFamily::Uncompressed;
 	unsigned texcomp_quality = 3;
 	unsigned threads = 0;
 
@@ -55,7 +65,7 @@ struct ExportOptions
 		vec3 fog_color = vec3(0.0f);
 		float fog_falloff = 0.0f;
 
-		TextureCompression compression = TextureCompression::Uncompressed;
+		TextureCompressionFamily compression = TextureCompressionFamily::Uncompressed;
 		unsigned texcomp_quality = 3;
 		float intensity = 1.0f;
 	} environment;

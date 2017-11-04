@@ -35,6 +35,7 @@
 #endif
 
 #include "rgtc_compressor.hpp"
+#define RGTC_DEBUG
 
 using namespace std;
 

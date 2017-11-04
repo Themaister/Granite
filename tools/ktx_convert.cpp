@@ -71,7 +71,13 @@ int main(int argc, char *argv[])
 	case gli::FORMAT_RGBA_BP_UNORM_BLOCK16:
 	case gli::FORMAT_RGB_DXT1_UNORM_BLOCK8:
 	case gli::FORMAT_RGBA_DXT5_UNORM_BLOCK16:
+	case gli::FORMAT_R_ATI1N_UNORM_BLOCK8:
+	case gli::FORMAT_RG_ATI2N_UNORM_BLOCK16:
 	case gli::FORMAT_RGB_BP_UFLOAT_BLOCK16:
+	case gli::FORMAT_RGBA_ASTC_4X4_UNORM_BLOCK16:
+	case gli::FORMAT_RGBA_ASTC_5X5_UNORM_BLOCK16:
+	case gli::FORMAT_RGBA_ASTC_6X6_UNORM_BLOCK16:
+	case gli::FORMAT_RGBA_ASTC_8X8_UNORM_BLOCK16:
 		color = Granite::ColorSpace::Linear;
 		break;
 
@@ -90,6 +96,9 @@ int main(int argc, char *argv[])
 
 	if (generate_mipmap)
 		*input = Granite::generate_offline_mipmaps(*input);
+
+	if (input->format() == gli::FORMAT_RGBA16_SFLOAT_PACK16)
+		args.mode = TextureMode::HDR;
 
 	if (args.format == gli::FORMAT_RGBA8_UNORM_PACK8 || args.format == gli::FORMAT_RGBA8_SRGB_PACK8)
 	{

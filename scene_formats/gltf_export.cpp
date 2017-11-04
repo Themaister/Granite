@@ -1523,6 +1523,9 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 			if (material.normal >= 0)
 			{
 				Value n(kObjectType);
+				Value extras(kObjectType);
+				extras.AddMember("twoComponent", true, allocator);
+				n.AddMember("extras", extras, allocator);
 				n.AddMember("index", material.normal, allocator);
 				n.AddMember("scale", material.normal_scale, allocator);
 				m.AddMember("normalTexture", n, allocator);

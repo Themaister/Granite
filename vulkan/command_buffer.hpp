@@ -299,6 +299,13 @@ public:
 	void push_constants(const void *data, VkDeviceSize offset, VkDeviceSize range);
 
 	void *allocate_constant_data(unsigned set, unsigned binding, VkDeviceSize size);
+
+	template <typename T>
+	T *allocate_typed_constant_data(unsigned set, unsigned binding, unsigned count)
+	{
+		return static_cast<T *>(allocate_constant_data(set, binding, count * sizeof(T)));
+	}
+
 	void *allocate_vertex_data(unsigned binding, VkDeviceSize size, VkDeviceSize stride,
 	                           VkVertexInputRate step_rate = VK_VERTEX_INPUT_RATE_VERTEX);
 	void *allocate_index_data(VkDeviceSize size, VkIndexType index_type);

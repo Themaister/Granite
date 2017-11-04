@@ -289,10 +289,8 @@ static void positional_render_full_screen(CommandBuffer &cmd, const RenderQueueD
 	{
 		unsigned to_render = min(256u, num_instances - i);
 
-		auto *frag = static_cast<PositionalFragmentInfo *>(cmd.allocate_constant_data(2, 0,
-		                                                                              sizeof(PositionalFragmentInfo) * to_render));
-		auto *vert = static_cast<PositionalVertexInfo *>(cmd.allocate_constant_data(2, 1,
-		                                                                            sizeof(PositionalVertexInfo) * to_render));
+		auto *frag = cmd.allocate_typed_constant_data<PositionalFragmentInfo>(2, 0, to_render);
+		auto *vert = cmd.allocate_typed_constant_data<PositionalVertexInfo>(2, 1, to_render);
 
 		for (unsigned j = 0; j < to_render; j++)
 		{
@@ -304,13 +302,13 @@ static void positional_render_full_screen(CommandBuffer &cmd, const RenderQueueD
 		{
 			if (light_info.type == PositionalLight::Type::Spot)
 			{
-				auto *t = static_cast<mat4 *>(cmd.allocate_constant_data(2, 3, sizeof(mat4) * to_render));
+				auto *t = cmd.allocate_typed_constant_data<mat4>(2, 3, to_render);
 				for (unsigned j = 0; j < to_render; j++)
 					t[j] = static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->u.shadow_transform;
 			}
 			else
 			{
-				auto *t = static_cast<PointTransform *>(cmd.allocate_constant_data(2, 3, sizeof(PointTransform) * to_render));
+				auto *t = cmd.allocate_typed_constant_data<PointTransform>(2, 3, to_render);
 				for (unsigned j = 0; j < to_render; j++)
 					t[j] = static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->u.point_transform;
 			}
@@ -350,10 +348,8 @@ static void positional_render_common(CommandBuffer &cmd, const RenderQueueData *
 	for (unsigned i = 0; i < num_instances; )
 	{
 		unsigned to_render = min(256u, num_instances - i);
-		auto *frag = static_cast<PositionalFragmentInfo *>(cmd.allocate_constant_data(2, 0,
-		                                                                              sizeof(PositionalFragmentInfo) * to_render));
-		auto *vert = static_cast<PositionalVertexInfo *>(cmd.allocate_constant_data(2, 1,
-		                                                                            sizeof(PositionalVertexInfo) * to_render));
+		auto *frag = cmd.allocate_typed_constant_data<PositionalFragmentInfo>(2, 0, to_render);
+		auto *vert = cmd.allocate_typed_constant_data<PositionalVertexInfo>(2, 1, to_render);
 
 		for (unsigned j = 0; j < to_render; j++)
 		{
@@ -365,13 +361,13 @@ static void positional_render_common(CommandBuffer &cmd, const RenderQueueData *
 		{
 			if (light_info.type == PositionalLight::Type::Spot)
 			{
-				auto *t = static_cast<mat4 *>(cmd.allocate_constant_data(2, 3, sizeof(mat4) * to_render));
+				auto *t = cmd.allocate_typed_constant_data<mat4>(2, 3, to_render);
 				for (unsigned j = 0; j < to_render; j++)
 					t[j] = static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->u.shadow_transform;
 			}
 			else
 			{
-				auto *t = static_cast<PointTransform *>(cmd.allocate_constant_data(2, 3, sizeof(PointTransform) * to_render));
+				auto *t = cmd.allocate_typed_constant_data<PointTransform>(2, 3, to_render);
 				for (unsigned j = 0; j < to_render; j++)
 					t[j] = static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->u.point_transform;
 			}

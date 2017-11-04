@@ -32,7 +32,13 @@ class Texture : public Util::VolatileSource<Texture>
 public:
 	friend class Util::VolatileSource<Texture>;
 
-	Texture(Device *device, const std::string &path, VkFormat format = VK_FORMAT_UNDEFINED);
+	Texture(Device *device, const std::string &path, VkFormat format = VK_FORMAT_UNDEFINED,
+	        const VkComponentMapping &swizzle = {
+			        VK_COMPONENT_SWIZZLE_R,
+			        VK_COMPONENT_SWIZZLE_G,
+			        VK_COMPONENT_SWIZZLE_B,
+			        VK_COMPONENT_SWIZZLE_A });
+
 	Texture(Device *device);
 	void set_path(const std::string &path);
 
@@ -48,6 +54,7 @@ private:
 	Device *device;
 	ImageHandle handle;
 	VkFormat format;
+	VkComponentMapping swizzle;
 	void update_gli(const void *data, size_t size);
 
 	void load();
@@ -59,7 +66,13 @@ class TextureManager
 {
 public:
 	TextureManager(Device *device);
-	Texture *request_texture(const std::string &path, VkFormat format = VK_FORMAT_UNDEFINED);
+	Texture *request_texture(const std::string &path, VkFormat format = VK_FORMAT_UNDEFINED,
+	                         const VkComponentMapping &swizzle = {
+			                         VK_COMPONENT_SWIZZLE_R,
+			                         VK_COMPONENT_SWIZZLE_G,
+			                         VK_COMPONENT_SWIZZLE_B,
+			                         VK_COMPONENT_SWIZZLE_A });
+
 	Texture *register_deferred_texture(const std::string &path);
 
 	void register_texture_update_notification(const std::string &modified_path,

@@ -280,15 +280,15 @@ void SceneLoader::parse_gltf(const std::string &path)
 
 		EntityHandle entity;
 		AbstractRenderableHandle skybox;
-		if (!env.cube.empty() && !env.reflection.empty() && !env.irradiance.empty())
+		if (!env.cube.path.empty() && !env.reflection.path.empty() && !env.irradiance.path.empty())
 		{
-			skybox = Util::make_abstract_handle<AbstractRenderable, Skybox>(env.cube, false);
+			skybox = Util::make_abstract_handle<AbstractRenderable, Skybox>(env.cube.path, false);
 			entity = this->scene->create_renderable(skybox, nullptr);
-			static_cast<Skybox *>(skybox.get())->enable_irradiance(env.irradiance, false);
-			static_cast<Skybox *>(skybox.get())->enable_reflection(env.reflection, false);
+			static_cast<Skybox *>(skybox.get())->enable_irradiance(env.irradiance.path, false);
+			static_cast<Skybox *>(skybox.get())->enable_reflection(env.reflection.path, false);
 			auto *ibl = entity->allocate_component<IBLComponent>();
-			ibl->irradiance_path = env.irradiance;
-			ibl->reflection_path = env.reflection;
+			ibl->irradiance_path = env.irradiance.path;
+			ibl->reflection_path = env.reflection.path;
 			ibl->intensity = env.intensity;
 		}
 

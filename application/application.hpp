@@ -155,11 +155,11 @@ private:
 	void read_config(const std::string &path);
 	struct Config
 	{
-		RendererType renderer_type = RendererType::GeneralForward;
+		RendererType renderer_type = RendererType::GeneralDeferred;
 		unsigned msaa = 1;
 		bool directional_light_shadows = true;
 		bool directional_light_cascaded_shadows = true;
-		bool clustered_lights = true;
+		bool clustered_lights = false;
 		bool clustered_lights_shadows = true;
 		bool hdr_bloom = true;
 

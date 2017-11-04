@@ -46,11 +46,18 @@ MaterialFile::MaterialFile(const std::string &path)
 
 MaterialFile::MaterialFile(const MaterialInfo &info)
 {
-	paths[ecast(Material::Textures::BaseColor)] = info.base_color;
-	paths[ecast(Material::Textures::Normal)] = info.normal;
-	paths[ecast(Material::Textures::MetallicRoughness)] = info.metallic_roughness;
-	paths[ecast(Material::Textures::Occlusion)] = info.occlusion;
-	paths[ecast(Material::Textures::Emissive)] = info.emissive;
+	paths[ecast(Material::Textures::BaseColor)] = info.base_color.path;
+	paths[ecast(Material::Textures::Normal)] = info.normal.path;
+	paths[ecast(Material::Textures::MetallicRoughness)] = info.metallic_roughness.path;
+	paths[ecast(Material::Textures::Occlusion)] = info.occlusion.path;
+	paths[ecast(Material::Textures::Emissive)] = info.emissive.path;
+
+	swizzle[ecast(Material::Textures::BaseColor)] = info.base_color.swizzle;
+	swizzle[ecast(Material::Textures::Normal)] = info.normal.swizzle;
+	swizzle[ecast(Material::Textures::MetallicRoughness)] = info.metallic_roughness.swizzle;
+	swizzle[ecast(Material::Textures::Occlusion)] = info.occlusion.swizzle;
+	swizzle[ecast(Material::Textures::Emissive)] = info.emissive.swizzle;
+
 	base_color = info.uniform_base_color;
 	emissive = info.uniform_emissive_color;
 	metallic = info.uniform_metallic;
@@ -162,7 +169,7 @@ void MaterialFile::init_textures()
 		}
 
 		if (!paths[i].empty())
-			textures[i] = device->get_texture_manager().request_texture(paths[i], default_format);
+			textures[i] = device->get_texture_manager().request_texture(paths[i], default_format, swizzle[i]);
 		else
 			textures[i] = nullptr;
 	}

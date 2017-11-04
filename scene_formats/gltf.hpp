@@ -144,6 +144,7 @@ private:
 	{
 		uint32_t image_index;
 		Vulkan::StockSampler sampler;
+		VkComponentMapping swizzle;
 	};
 
 	void parse(const std::string &path, const std::string &json);
@@ -160,7 +161,7 @@ private:
 	std::vector<BufferView> json_views;
 	std::vector<Accessor> json_accessors;
 	std::vector<MeshData> json_meshes;
-	std::vector<std::string> json_images;
+	std::vector<MaterialInfo::Texture> json_images;
 	std::vector<Texture> json_textures;
 	std::vector<Vulkan::StockSampler> json_stock_samplers;
 	std::vector<Skin> json_skins;

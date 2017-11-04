@@ -1,9 +1,9 @@
 {
-	"renderer": "forward",
+	"renderer": "deferred",
 	"msaa": 1,
 	"directionalLightShadows": true,
 	"directionalLightShadowsCascaded": true,
-	"clusteredLights": true,
+	"clusteredLights": false,
 	"clusteredLightsShadows": true,
 	"hdrBloom": true,
 	"shadowMapResolutionMain": 2048,

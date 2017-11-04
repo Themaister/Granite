@@ -118,6 +118,7 @@ struct EmittedImage
 	string source_path;
 	string target_relpath;
 	string target_mime;
+	VkComponentMapping swizzle;
 	Material::Textures type;
 
 	TextureCompression compression;
@@ -147,10 +148,12 @@ struct RemapState
 	unsigned emit_accessor(unsigned view_index,
 	                       VkFormat format, unsigned offset, unsigned stride, unsigned count);
 
-	unsigned emit_texture(const string &texture, Vulkan::StockSampler sampler, Material::Textures type,
+	unsigned emit_texture(const MaterialInfo::Texture &texture,
+	                      Vulkan::StockSampler sampler, Material::Textures type,
 	                      TextureCompression compression, unsigned quality, bool force_linear);
+
 	unsigned emit_sampler(Vulkan::StockSampler sampler);
-	unsigned emit_image(const string &texture, Material::Textures type,
+	unsigned emit_image(const MaterialInfo::Texture &texture, Material::Textures type,
 	                    TextureCompression compression, unsigned quality, bool force_linear);
 	void emit_material(unsigned remapped_material);
 	void emit_mesh(unsigned remapped_index);
@@ -229,11 +232,11 @@ Hash RemapState::hash(const Mesh &mesh)
 Hash RemapState::hash(const MaterialInfo &mat)
 {
 	Hasher h;
-	h.string(mat.base_color);
-	h.string(mat.normal);
-	h.string(mat.occlusion);
-	h.string(mat.metallic_roughness);
-	h.string(mat.emissive);
+	h.string(mat.base_color.path);
+	h.string(mat.normal.path);
+	h.string(mat.occlusion.path);
+	h.string(mat.metallic_roughness.path);
+	h.string(mat.emissive.path);
 
 	h.f32(mat.normal_scale);
 	h.f32(mat.uniform_metallic);
@@ -565,11 +568,11 @@ unsigned RemapState::emit_sampler(Vulkan::StockSampler sampler)
 		return itr->second;
 }
 
-unsigned RemapState::emit_image(const string &texture, Material::Textures type,
+unsigned RemapState::emit_image(const MaterialInfo::Texture &texture, Material::Textures type,
                                 TextureCompression compression, unsigned quality, bool force_linear)
 {
 	Hasher h;
-	h.string(texture);
+	h.string(texture.path);
 	h.u32(ecast(type));
 	h.u32(ecast(compression));
 	h.u32(quality);
@@ -581,14 +584,16 @@ unsigned RemapState::emit_image(const string &texture, Material::Textures type,
 	{
 		unsigned index = image_cache.size();
 		image_hash[h.get()] = index;
-		image_cache.push_back({ texture, to_string(h.get()) + ".ktx", "image/ktx", type, compression, quality, force_linear });
+		image_cache.push_back({ texture.path, to_string(h.get()) + ".ktx", "image/ktx", texture.swizzle,
+		                        type, compression, quality, force_linear });
 		return index;
 	}
 	else
 		return itr->second;
 }
 
-unsigned RemapState::emit_texture(const string &texture, Vulkan::StockSampler sampler, Material::Textures type,
+unsigned RemapState::emit_texture(const MaterialInfo::Texture &texture,
+                                  Vulkan::StockSampler sampler, Material::Textures type,
                                   TextureCompression compression, unsigned quality, bool force_linear)
 {
 	unsigned image_index = emit_image(texture, type, compression, quality, force_linear);
@@ -614,13 +619,31 @@ void RemapState::emit_environment(const string &cube, const string &reflection, 
                                   vec3 fog_color, float fog_falloff,
                                   TextureCompression compression, unsigned quality)
 {
+	static const VkComponentMapping swizzle = {
+		VK_COMPONENT_SWIZZLE_R,
+		VK_COMPONENT_SWIZZLE_G,
+		VK_COMPONENT_SWIZZLE_B,
+		VK_COMPONENT_SWIZZLE_A,
+	};
+
 	EmittedEnvironment env;
 	if (!cube.empty())
-		env.cube = emit_texture(cube, Vulkan::StockSampler::LinearClamp, Material::Textures::Emissive, compression, quality, true);
+	{
+		env.cube = emit_texture({cube, swizzle}, Vulkan::StockSampler::LinearClamp,
+		                        Material::Textures::Emissive, compression, quality, true);
+	}
+
 	if (!reflection.empty())
-		env.reflection = emit_texture(reflection, Vulkan::StockSampler::LinearClamp, Material::Textures::Emissive, compression, quality, true);
+	{
+		env.reflection = emit_texture({reflection, swizzle}, Vulkan::StockSampler::LinearClamp,
+		                              Material::Textures::Emissive, compression, quality, true);
+	}
+
 	if (!irradiance.empty())
-		env.irradiance = emit_texture(irradiance, Vulkan::StockSampler::LinearClamp, Material::Textures::Emissive, compression, quality, true);
+	{
+		env.irradiance = emit_texture({irradiance, swizzle}, Vulkan::StockSampler::LinearClamp,
+		                              Material::Textures::Emissive, compression, quality, true);
+	}
 
 	env.intensity = intensity;
 	env.fog_color = fog_color;
@@ -635,32 +658,32 @@ void RemapState::emit_material(unsigned remapped_material)
 	material_cache.resize(std::max<size_t>(material_cache.size(), remapped_material + 1));
 	auto &output = material_cache[remapped_material];
 
-	if (!material.normal.empty())
+	if (!material.normal.path.empty())
 	{
 		output.normal = emit_texture(material.normal, material.sampler, Material::Textures::Normal,
 		                             options->compression, options->texcomp_quality, false);
 	}
 
-	if (!material.occlusion.empty())
+	if (!material.occlusion.path.empty())
 	{
 		output.occlusion = emit_texture(material.occlusion, material.sampler, Material::Textures::Occlusion,
 		                                options->compression, options->texcomp_quality, false);
 	}
 
-	if (!material.base_color.empty())
+	if (!material.base_color.path.empty())
 	{
 		output.base_color = emit_texture(material.base_color, material.sampler, Material::Textures::BaseColor,
 		                                 options->compression, options->texcomp_quality, false);
 	}
 
-	if (!material.metallic_roughness.empty())
+	if (!material.metallic_roughness.path.empty())
 	{
 		output.metallic_roughness = emit_texture(material.metallic_roughness, material.sampler,
 		                                         Material::Textures::MetallicRoughness,
 		                                         options->compression, options->texcomp_quality, false);
 	}
 
-	if (!material.emissive.empty())
+	if (!material.emissive.path.empty())
 	{
 		output.emissive = emit_texture(material.emissive, material.sampler, Material::Textures::Emissive,
 		                               options->compression, options->texcomp_quality, false);

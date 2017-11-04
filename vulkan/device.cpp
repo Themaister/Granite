@@ -1367,14 +1367,10 @@ uint32_t Device::find_memory_type(ImageDomain domain, uint32_t mask)
 static inline VkImageViewType get_image_view_type(const ImageCreateInfo &create_info, const ImageViewCreateInfo *view)
 {
 	unsigned layers = view ? view->layers : create_info.layers;
-	unsigned levels = view ? view->levels : create_info.levels;
-	unsigned base_level = view ? view->base_level : 0;
 	unsigned base_layer = view ? view->base_layer : 0;
 
 	if (layers == VK_REMAINING_ARRAY_LAYERS)
 		layers = create_info.layers - base_layer;
-	if (levels == VK_REMAINING_MIP_LEVELS)
-		levels = create_info.levels - base_level;
 
 	bool force_array =
 	    view ? (view->misc & IMAGE_VIEW_MISC_FORCE_ARRAY_BIT) : (create_info.misc & IMAGE_MISC_FORCE_ARRAY_BIT);
@@ -1599,10 +1595,7 @@ ImageHandle Device::create_imported_image(int fd, VkDeviceSize size, uint32_t me
 		VkImageViewCreateInfo view_info = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
 		view_info.image = image;
 		view_info.format = create_info.format;
-		view_info.components.r = VK_COMPONENT_SWIZZLE_R;
-		view_info.components.g = VK_COMPONENT_SWIZZLE_G;
-		view_info.components.b = VK_COMPONENT_SWIZZLE_B;
-		view_info.components.a = VK_COMPONENT_SWIZZLE_A;
+		view_info.components = create_info.swizzle;
 		view_info.subresourceRange.aspectMask = format_to_aspect_mask(view_info.format);
 		view_info.subresourceRange.baseMipLevel = 0;
 		view_info.subresourceRange.baseArrayLayer = 0;
@@ -1758,10 +1751,7 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 		VkImageViewCreateInfo view_info = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
 		view_info.image = image;
 		view_info.format = create_info.format;
-		view_info.components.r = VK_COMPONENT_SWIZZLE_R;
-		view_info.components.g = VK_COMPONENT_SWIZZLE_G;
-		view_info.components.b = VK_COMPONENT_SWIZZLE_B;
-		view_info.components.a = VK_COMPONENT_SWIZZLE_A;
+		view_info.components = create_info.swizzle;
 		view_info.subresourceRange.aspectMask = format_to_aspect_mask(view_info.format);
 		view_info.subresourceRange.baseMipLevel = 0;
 		view_info.subresourceRange.baseArrayLayer = 0;

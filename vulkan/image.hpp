@@ -276,6 +276,9 @@ struct ImageCreateInfo
 	VkImageCreateFlags flags = 0;
 	ImageMiscFlags misc = 0;
 	VkImageLayout initial_layout = VK_IMAGE_LAYOUT_GENERAL;
+	VkComponentMapping swizzle = {
+		VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A,
+	};
 
 	static ImageCreateInfo immutable_2d_image(unsigned width, unsigned height, VkFormat format, bool mipmapped = false)
 	{

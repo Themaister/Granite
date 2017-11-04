@@ -29,8 +29,8 @@ using namespace std;
 
 namespace Vulkan
 {
-Texture::Texture(Device *device, const std::string &path, VkFormat format)
-	: VolatileSource(path), device(device), format(format)
+Texture::Texture(Device *device, const std::string &path, VkFormat format, const VkComponentMapping &swizzle)
+	: VolatileSource(path), device(device), format(format), swizzle(swizzle)
 {
 	init();
 }
@@ -75,6 +75,7 @@ void Texture::update_gli(const void *data, size_t size)
 	info.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
 	info.initial_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 	info.format = Granite::gli_format_to_vulkan(tex.format());
+	info.swizzle = swizzle;
 
 	if (!device->format_is_supported(info.format, VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT))
 	{
@@ -186,12 +187,12 @@ TextureManager::TextureManager(Device *device)
 {
 }
 
-Texture *TextureManager::request_texture(const std::string &path, VkFormat format)
+Texture *TextureManager::request_texture(const std::string &path, VkFormat format, const VkComponentMapping &mapping)
 {
 	auto itr = textures.find(path);
 	if (itr == end(textures))
 	{
-		unique_ptr<Texture> texture(new Texture(device, path, format));
+		unique_ptr<Texture> texture(new Texture(device, path, format, mapping));
 		auto *ret = texture.get();
 		textures[path] = move(texture);
 		return ret;

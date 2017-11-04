@@ -153,11 +153,35 @@ struct CameraInfo
 	bool attached_to_node = false;
 };
 
+struct MaterialInfo
+{
+	struct Texture
+	{
+		std::string path;
+		VkComponentMapping swizzle;
+	};
+	Texture base_color;
+	Texture normal;
+	Texture metallic_roughness;
+	Texture occlusion;
+	Texture emissive;
+
+	vec4 uniform_base_color = vec4(1.0f);
+	vec3 uniform_emissive_color = vec4(0.0f);
+	float uniform_metallic = 1.0f;
+	float uniform_roughness = 1.0f;
+	float lod_bias = 0.0f;
+	float normal_scale = 1.0f;
+	DrawPipeline pipeline = DrawPipeline::Opaque;
+	Vulkan::StockSampler sampler = Vulkan::StockSampler::TrilinearWrap;
+	bool two_sided = false;
+};
+
 struct EnvironmentInfo
 {
-	std::string cube;
-	std::string reflection;
-	std::string irradiance;
+	MaterialInfo::Texture cube;
+	MaterialInfo::Texture reflection;
+	MaterialInfo::Texture irradiance;
 	float intensity;
 
 	struct Fog
@@ -217,24 +241,6 @@ struct Mesh
 	Granite::AABB static_aabb;
 
 	uint32_t count = 0;
-};
-
-struct MaterialInfo
-{
-	std::string base_color;
-	std::string normal;
-	std::string metallic_roughness;
-	std::string occlusion;
-	std::string emissive;
-	vec4 uniform_base_color = vec4(1.0f);
-	vec3 uniform_emissive_color = vec4(0.0f);
-	float uniform_metallic = 1.0f;
-	float uniform_roughness = 1.0f;
-	float lod_bias = 0.0f;
-	float normal_scale = 1.0f;
-	DrawPipeline pipeline = DrawPipeline::Opaque;
-	Vulkan::StockSampler sampler = Vulkan::StockSampler::TrilinearWrap;
-	bool two_sided = false;
 };
 
 struct SceneInformation

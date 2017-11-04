@@ -707,6 +707,46 @@ void Parser::parse(const string &original_path, const string &json)
 	};
 
 	const auto add_image = [&](const Value &image) {
+		VkComponentMapping swizzle = {
+			VK_COMPONENT_SWIZZLE_R,
+			VK_COMPONENT_SWIZZLE_G,
+			VK_COMPONENT_SWIZZLE_B,
+			VK_COMPONENT_SWIZZLE_A,
+		};
+
+		if (image.HasMember("extras"))
+		{
+			auto &extra = image["extras"];
+			if (extra.HasMember("swizzle"))
+			{
+				auto &swiz = extra["swizzle"];
+				const auto swiz_to_enum = [](unsigned value) -> VkComponentSwizzle {
+					switch (value)
+					{
+					case 0:
+						return VK_COMPONENT_SWIZZLE_R;
+					case 1:
+						return VK_COMPONENT_SWIZZLE_G;
+					case 2:
+						return VK_COMPONENT_SWIZZLE_B;
+					case 3:
+						return VK_COMPONENT_SWIZZLE_A;
+					case 4:
+						return VK_COMPONENT_SWIZZLE_ONE;
+					case 5:
+						return VK_COMPONENT_SWIZZLE_ZERO;
+					default:
+						return VK_COMPONENT_SWIZZLE_IDENTITY;
+					}
+				};
+
+				swizzle.r = swiz_to_enum(swiz[0].GetUint());
+				swizzle.g = swiz_to_enum(swiz[1].GetUint());
+				swizzle.b = swiz_to_enum(swiz[2].GetUint());
+				swizzle.a = swiz_to_enum(swiz[3].GetUint());
+			}
+		}
+
 		if (image.HasMember("bufferView"))
 		{
 			auto index = image["bufferView"].GetUint();
@@ -722,7 +762,7 @@ void Parser::parse(const string &original_path, const string &json)
 				throw runtime_error("Failed to map memory file.");
 
 			memcpy(mapped, json_buffers[view.buffer_index].data() + view.offset, view.length);
-			json_images.push_back(move(fake_path));
+			json_images.push_back({ move(fake_path), swizzle });
 		}
 		else
 		{
@@ -736,7 +776,7 @@ void Parser::parse(const string &original_path, const string &json)
 			else if (!strncmp(uri, base64_type_png, strlen(base64_type_png)))
 				base64_data = uri + strlen(base64_type_png);
 			else
-				json_images.push_back(Path::relpath(original_path, image["uri"].GetString()));
+				json_images.push_back({ Path::relpath(original_path, image["uri"].GetString()), swizzle });
 
 			if (base64_data)
 			{
@@ -759,7 +799,7 @@ void Parser::parse(const string &original_path, const string &json)
 					throw runtime_error("Failed to map memory file.");
 
 				memcpy(mapped, base64_buffer.data(), base64_buffer.size());
-				json_images.push_back(move(fake_path));
+				json_images.push_back({ move(fake_path), swizzle });
 			}
 		}
 	};
@@ -857,7 +897,8 @@ void Parser::parse(const string &original_path, const string &json)
 		if (value.HasMember("normalTexture"))
 		{
 			auto &tex = value["normalTexture"]["index"];
-			info.normal = json_images[json_textures[tex.GetUint()].image_index];
+			auto &image = json_images[json_textures[tex.GetUint()].image_index];
+			info.normal = image;
 			if (value["normalTexture"].HasMember("scale"))
 				info.normal_scale = value["normalTexture"]["scale"].GetFloat();
 		}
@@ -865,13 +906,15 @@ void Parser::parse(const string &original_path, const string &json)
 		if (value.HasMember("emissiveTexture"))
 		{
 			auto &tex = value["emissiveTexture"]["index"];
-			info.emissive = json_images[json_textures[tex.GetUint()].image_index];
+			auto &image = json_images[json_textures[tex.GetUint()].image_index];
+			info.emissive = image;
 		}
 
 		if (value.HasMember("occlusionTexture"))
 		{
 			auto &tex = value["occlusionTexture"]["index"];
-			info.occlusion = json_images[json_textures[tex.GetUint()].image_index];
+			auto &image = json_images[json_textures[tex.GetUint()].image_index];
+			info.occlusion = image;
 		}
 
 		if (value.HasMember("extensions"))
@@ -1228,7 +1271,7 @@ void Parser::parse(const string &original_path, const string &json)
 	};
 
 	const auto add_environment = [&](const Value &value) {
-		string cube, reflection, irradiance;
+		MaterialInfo::Texture cube, reflection, irradiance;
 
 		if (value.HasMember("cubeTexture"))
 		{

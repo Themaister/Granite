@@ -1078,6 +1078,42 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 			Value i(kObjectType);
 			i.AddMember("uri", image.target_relpath, allocator);
 			i.AddMember("mimeType", image.target_mime, allocator);
+
+			const auto swiz_to_index = [](VkComponentSwizzle swiz, unsigned identity) -> unsigned {
+				switch (swiz)
+				{
+				case VK_COMPONENT_SWIZZLE_R:
+					return 0;
+				case VK_COMPONENT_SWIZZLE_G:
+					return 1;
+				case VK_COMPONENT_SWIZZLE_B:
+					return 2;
+				case VK_COMPONENT_SWIZZLE_A:
+					return 3;
+				case VK_COMPONENT_SWIZZLE_ONE:
+					return 4;
+				case VK_COMPONENT_SWIZZLE_ZERO:
+					return 5;
+				default:
+					return identity;
+				}
+			};
+
+			if (image.swizzle.r != VK_COMPONENT_SWIZZLE_R ||
+			    image.swizzle.g != VK_COMPONENT_SWIZZLE_G ||
+			    image.swizzle.b != VK_COMPONENT_SWIZZLE_B ||
+			    image.swizzle.a != VK_COMPONENT_SWIZZLE_A)
+			{
+				Value extras(kObjectType);
+				Value swizzle(kArrayType);
+				swizzle.PushBack(swiz_to_index(image.swizzle.r, 0), allocator);
+				swizzle.PushBack(swiz_to_index(image.swizzle.g, 1), allocator);
+				swizzle.PushBack(swiz_to_index(image.swizzle.b, 2), allocator);
+				swizzle.PushBack(swiz_to_index(image.swizzle.a, 3), allocator);
+				extras.AddMember("swizzle", swizzle, allocator);
+				i.AddMember("extras", extras, allocator);
+			}
+
 			images.PushBack(i, allocator);
 
 			compress_image(workers,

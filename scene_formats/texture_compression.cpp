@@ -429,6 +429,8 @@ void CompressorState::enqueue_compression_block_rgtc(TaskGroup &group, const Com
 				case gli::FORMAT_R_ATI1N_UNORM_BLOCK8:
 				{
 					compress_rgtc_red_block(get_encode_data(8), padded_red);
+
+#ifdef RGTC_DEBUG
 					if (level == 0 && face == 0 && layer == 0)
 					{
 						uint8_t decoded_red[16];
@@ -440,6 +442,7 @@ void CompressorState::enqueue_compression_block_rgtc(TaskGroup &group, const Com
 						lock_guard<mutex> l{lock};
 						total_error[0] += error;
 					}
+#endif
 					break;
 				}
 
@@ -447,6 +450,7 @@ void CompressorState::enqueue_compression_block_rgtc(TaskGroup &group, const Com
 				{
 					compress_rgtc_red_green_block(get_encode_data(16), padded_red, padded_green);
 
+#ifdef RGTC_DEBUG
 					if (level == 0 && face == 0 && layer == 0)
 					{
 						uint8_t decoded_red[16];
@@ -465,6 +469,7 @@ void CompressorState::enqueue_compression_block_rgtc(TaskGroup &group, const Com
 						total_error[0] += error_red;
 						total_error[1] += error_green;
 					}
+#endif
 					break;
 				}
 

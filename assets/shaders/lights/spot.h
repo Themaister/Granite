@@ -74,7 +74,6 @@ vec3 compute_spot_light(int index, MaterialProperties material, vec3 world_pos, 
 	float static_falloff = shadow_falloff * (1.0 - smoothstep(0.9, 1.0, light_dist * spot.data[index].inv_radius));
 	vec3 f = spot.data[index].falloff;
 	vec3 spot_color = spot.data[index].color * (cone_falloff * static_falloff / (f.x + light_dist * f.y + light_dist * light_dist * f.z));
-	vec3 result = vec3(0.0);
 
 #ifdef SPOT_LIGHT_EARLY_OUT
 	if (all(equal(spot_color, vec3(0.0))))

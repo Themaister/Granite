@@ -244,6 +244,8 @@ void LightClusterer::render_atlas_point(RenderContext &context)
 		if ((partial_mask & (1u << i)) == 0)
 			continue;
 
+		//LOGI("Rendering shadow for point light %u (%p)\n", i, static_cast<void *>(point_light_handles[i]));
+
 		for (unsigned face = 0; face < 6; face++)
 		{
 			mat4 view, proj;
@@ -343,7 +345,9 @@ void LightClusterer::render_atlas_spot(RenderContext &context)
 	}
 	else
 	{
-		cmd->image_barrier(*shadow_atlas, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+		// Preserve data if we're not overwriting the entire shadow atlas.
+		cmd->image_barrier(*shadow_atlas, partial_mask != ~0u ? shadow_atlas->get_layout() : VK_IMAGE_LAYOUT_UNDEFINED,
+		                   VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
 		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
 		                   VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
 		                   VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT);
@@ -357,6 +361,8 @@ void LightClusterer::render_atlas_spot(RenderContext &context)
 	{
 		if ((partial_mask & (1u << i)) == 0)
 			continue;
+
+		//LOGI("Rendering shadow for spot light %u (%p)\n", i, static_cast<void *>(spot_light_handles[i]));
 
 		float range = tan(spot_lights[i].direction_half_angle.w);
 		mat4 view = mat4_cast(look_at_arbitrary_up(spot_lights[i].direction_half_angle.xyz())) *

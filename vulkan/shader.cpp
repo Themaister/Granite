@@ -95,10 +95,40 @@ PipelineLayout::~PipelineLayout()
 		vkDestroyPipelineLayout(device->get_device(), pipe_layout, nullptr);
 }
 
+const char *Shader::stage_to_name(ShaderStage stage)
+{
+	switch (stage)
+	{
+	case ShaderStage::Compute:
+		return "compute";
+	case ShaderStage::Vertex:
+		return "vertex";
+	case ShaderStage::Fragment:
+		return "fragment";
+	case ShaderStage::Geometry:
+		return "geometry";
+	case ShaderStage::TessControl:
+		return "tess_control";
+	case ShaderStage::TessEvaluation:
+		return "tess_evaluation";
+	default:
+		return "unknown";
+	}
+}
+
 Shader::Shader(VkDevice device, ShaderStage stage, const uint32_t *data, size_t size)
     : device(device)
     , stage(stage)
 {
+	Util::Hasher hasher;
+	hasher.data(data, size);
+	hash = hasher.get();
+
+#ifdef GRANITE_SPIRV_DUMP
+	if (!Filesystem::get().write_buffer_to_file(string("cache://spirv/") + to_string(hash) + ".spv", data, size))
+		LOGE("Failed to dump shader to file.\n");
+#endif
+
 	VkShaderModuleCreateInfo info = { VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO };
 	info.codeSize = size;
 	info.pCode = data;

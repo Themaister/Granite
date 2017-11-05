@@ -544,6 +544,11 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
 			auto &s = stages[num_stages++];
 			s = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO };
 			s.module = current_program->get_shader(stage)->get_module();
+#ifdef GRANITE_SPIRV_DUMP
+			LOGI("Compiling SPIR-V file: (%s) %s\n",
+			     Shader::stage_to_name(stage),
+			     (to_string(current_program->get_shader(stage)->get_hash()) + ".spv").c_str());
+#endif
 			s.pName = "main";
 			s.stage = static_cast<VkShaderStageFlagBits>(1u << i);
 		}

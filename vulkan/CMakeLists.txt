@@ -41,6 +41,11 @@ if (CMAKE_COMPILER_IS_GNUCXX OR (${CMAKE_CXX_COMPILER_ID} MATCHES "Clang"))
     set_source_files_properties(texture_manager.cpp PROPERTIES COMPILE_FLAGS "-Wno-type-limits -Wno-pedantic -Wno-ignored-qualifiers -Wno-unused-parameter")
 endif()
 
+option(GRANITE_SPIRV_DUMP "Dump compiled SPIR-V modules to cache." OFF)
+if (GRANITE_SPIRV_DUMP)
+    target_compile_definitions(vulkan-backend PRIVATE GRANITE_SPIRV_DUMP)
+endif()
+
 add_subdirectory(wsi)
 
 target_link_libraries(vulkan-backend spirv-cross-core)

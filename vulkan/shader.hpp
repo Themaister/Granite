@@ -113,11 +113,20 @@ public:
 		return module;
 	}
 
+	Util::Hash get_hash() const
+	{
+		return hash;
+	}
+
+	static const char *stage_to_name(ShaderStage stage);
+
 private:
 	VkDevice device;
 	ShaderStage stage;
 	VkShaderModule module;
 	ResourceLayout layout;
+
+	Util::Hash hash;
 };
 using ShaderHandle = Util::IntrusivePtr<Shader>;
 

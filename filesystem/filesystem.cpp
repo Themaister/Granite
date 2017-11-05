@@ -226,19 +226,24 @@ bool Filesystem::read_file_to_string(const std::string &path, std::string &str)
 	return true;
 }
 
-bool Filesystem::write_string_to_file(const std::string &path, const std::string &str)
+bool Filesystem::write_buffer_to_file(const std::string &path, const void *data, size_t size)
 {
 	auto file = open(path, FileMode::WriteOnly);
 	if (!file)
 		return false;
 
-	void *mapped = file->map_write(str.size());
+	void *mapped = file->map_write(size);
 	if (!mapped)
 		return false;
 
-	memcpy(mapped, str.data(), str.size());
+	memcpy(mapped, data, size);
 	file->unmap();
 	return true;
+}
+
+bool Filesystem::write_string_to_file(const std::string &path, const std::string &str)
+{
+	return write_buffer_to_file(path, str.data(), str.size());
 }
 
 std::unique_ptr<File> Filesystem::open(const std::string &path, FileMode mode)

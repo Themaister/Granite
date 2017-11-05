@@ -210,6 +210,12 @@ void Device::bake_program(Program &program)
 		info.stage.pName = "main";
 		info.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
 
+#ifdef GRANITE_SPIRV_DUMP
+		LOGI("Compiling SPIR-V file: (%s) %s\n",
+		     Shader::stage_to_name(ShaderStage::Compute),
+		     (to_string(shader.get_hash()) + ".spv").c_str());
+#endif
+
 		VkPipeline compute_pipeline;
 		if (vkCreateComputePipelines(device, pipeline_cache, 1, &info, nullptr, &compute_pipeline) != VK_SUCCESS)
 			LOGE("Failed to create compute pipeline!\n");

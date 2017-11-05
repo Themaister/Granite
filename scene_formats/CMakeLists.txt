@@ -28,6 +28,7 @@ add_granite_library(scene-formats
         gltf.cpp gltf.hpp
         scene_formats.hpp
         light_export.cpp light_export.hpp
+        camera_export.cpp camera_export.hpp
         texture_files.cpp texture_files.hpp)
 
 add_granite_library(scene-formats-export

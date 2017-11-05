@@ -222,27 +222,25 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 	EVENT_MANAGER_REGISTER(SceneViewerApplication, on_key_down, KeyboardEvent);
 }
 
+void SceneViewerApplication::export_lights()
+{
+	auto lights = export_lights_to_json(lighting.directional, scene_loader.get_scene());
+	if (!Filesystem::get().write_string_to_file("cache://lights.json", lights))
+		LOGE("Failed to export light data.\n");
+}
+
+void SceneViewerApplication::export_cameras()
+{
+	auto cameras = export_cameras_to_json(recorded_cameras);
+	if (!Filesystem::get().write_string_to_file("cache://cameras.json", cameras))
+		LOGE("Failed to export camera data.\n");
+}
+
 SceneViewerApplication::~SceneViewerApplication()
 {
 	graph.report_timestamps();
-
-	auto lights = export_lights_to_json(lighting.directional, scene_loader.get_scene());
-	auto file = Filesystem::get().open("cache://lights.json", FileMode::WriteOnly);
-	if (!file)
-	{
-		LOGE("Failed to export light data.\n");
-	}
-	else
-	{
-		auto *mapped = file->map_write(lights.size());
-		if (!mapped)
-			LOGE("Failed to map light data.\n");
-		else
-		{
-			memcpy(mapped, lights.data(), lights.size());
-			file->unmap();
-		}
-	}
+	export_lights();
+	export_cameras();
 }
 
 void SceneViewerApplication::loop_animations()
@@ -334,6 +332,24 @@ bool SceneViewerApplication::on_key_down(const KeyboardEvent &e)
 		default_directional_light.direction = -selected_camera->get_front();
 		selected_directional = &default_directional_light;
 		need_shadow_map_update = true;
+		break;
+	}
+
+	case Key::B:
+	{
+		float fovy = selected_camera->get_fovy();
+		float aspect = selected_camera->get_aspect();
+		float znear = selected_camera->get_znear();
+		float zfar = selected_camera->get_zfar();
+
+		RecordedCamera camera;
+		camera.direction = selected_camera->get_front();
+		camera.position = selected_camera->get_position();
+		camera.aspect = aspect;
+		camera.fovy = fovy;
+		camera.znear = znear;
+		camera.zfar = zfar;
+		recorded_cameras.push_back(camera);
 		break;
 	}
 

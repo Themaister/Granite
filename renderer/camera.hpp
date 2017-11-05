@@ -42,7 +42,17 @@ public:
 
 	void set_fovy(float fovy);
 
+	float get_fovy() const
+	{
+		return fovy;
+	}
+
 	void set_aspect(float aspect);
+
+	float get_aspect() const
+	{
+		return aspect;
+	}
 
 	vec3 get_front() const;
 

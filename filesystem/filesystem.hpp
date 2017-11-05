@@ -186,6 +186,7 @@ public:
 	std::unique_ptr<File> open(const std::string &path, FileMode mode = FileMode::ReadOnly);
 
 	bool read_file_to_string(const std::string &path, std::string &str);
+	bool write_string_to_file(const std::string &path, const std::string &str);
 
 	bool stat(const std::string &path, FileStat &stat);
 

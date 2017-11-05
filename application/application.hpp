@@ -35,6 +35,7 @@
 #include "render_graph.hpp"
 #include "mesh_util.hpp"
 #include "lights/clusterer.hpp"
+#include "camera_export.hpp"
 
 namespace Granite
 {
@@ -151,6 +152,8 @@ protected:
 	};
 	void add_shadow_pass(Vulkan::Device &device, const std::string &tag, DepthPassType type);
 
+	std::vector<RecordedCamera> recorded_cameras;
+
 private:
 	void read_config(const std::string &path);
 	struct Config
@@ -174,6 +177,9 @@ private:
 		float cascade_cutoff_distance = 10.0f;
 	};
 	Config config;
+
+	void export_lights();
+	void export_cameras();
 };
 
 extern Application *application_create(int argc, char *argv[]);

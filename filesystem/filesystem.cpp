@@ -218,11 +218,26 @@ bool Filesystem::read_file_to_string(const std::string &path, std::string &str)
 		return false;
 
 	auto size = file->get_size();
-	const char *mapped = static_cast<const char *>(file->map());
+	auto *mapped = static_cast<const char *>(file->map());
 	if (!mapped)
 		return false;
 
 	str = string(mapped, mapped + size);
+	return true;
+}
+
+bool Filesystem::write_string_to_file(const std::string &path, const std::string &str)
+{
+	auto file = open(path, FileMode::WriteOnly);
+	if (!file)
+		return false;
+
+	void *mapped = file->map_write(str.size());
+	if (!mapped)
+		return false;
+
+	memcpy(mapped, str.data(), str.size());
+	file->unmap();
 	return true;
 }
 

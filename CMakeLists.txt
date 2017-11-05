@@ -120,6 +120,7 @@ endfunction()
 option(GRANITE_TOOLS "Build Granite tools." ON)
 
 add_subdirectory(tests)
+add_subdirectory(viewer)
 
 if (GRANITE_TOOLS)
     add_subdirectory(tools)

@@ -53,7 +53,7 @@ android {
             manifest.srcFile 'AndroidManifest.xml'
             resources.srcDirs = ['res']
             res.srcDirs = ['res']
-            assets.srcDirs = ['../assets', '../tests/assets']
+            assets.srcDirs = ['../assets', '../viewer/assets']
         }
     }
 

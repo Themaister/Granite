@@ -26,6 +26,11 @@
 #include "util.hpp"
 #include "filesystem.hpp"
 
+#include "spirv-tools/libspirv.hpp"
+#if GRANITE_COMPILER_OPTIMIZE
+#include "spirv-tools/optimizer.hpp"
+#endif
+
 using namespace std;
 
 namespace Granite
@@ -130,8 +135,13 @@ vector<uint32_t> GLSLCompiler::compile(const vector<pair<string, int>> *defines)
 		for (auto &define : *defines)
 			options.AddMacroDefinition(define.first, to_string(define.second));
 
-	options.SetGenerateDebugInfo();
+#if GRANITE_COMPILER_OPTIMIZE
+	options.SetOptimizationLevel(shaderc_optimization_level_size);
+#else
 	options.SetOptimizationLevel(shaderc_optimization_level_zero);
+	options.SetGenerateDebugInfo();
+#endif
+
 	options.SetTargetEnvironment(shaderc_target_env_vulkan, 1);
 	options.SetSourceLanguage(shaderc_source_language_glsl);
 
@@ -171,6 +181,21 @@ vector<uint32_t> GLSLCompiler::compile(const vector<pair<string, int>> *defines)
 		return {};
 	}
 
-	return { result.cbegin(), result.cend() };
+	vector<uint32_t> compiled_spirv(result.cbegin(), result.cend());
+
+#if GRANITE_COMPILER_OPTIMIZE
+	spvtools::Optimizer optimizer(SPV_ENV_VULKAN_1_0);
+	optimizer.RegisterPerformancePasses();
+	optimizer.Run(compiled_spirv.data(), compiled_spirv.size(), &compiled_spirv);
+#endif
+
+	spvtools::SpirvTools core(SPV_ENV_VULKAN_1_0);
+	if (!core.Validate(compiled_spirv))
+	{
+		LOGE("Failed to validate SPIR-V.\n");
+		return {};
+	}
+
+	return compiled_spirv;
 }
 }

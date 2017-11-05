@@ -30,6 +30,7 @@ struct RecordedCamera
 {
 	vec3 position;
 	vec3 direction;
+	vec3 up;
 	float fovy;
 	float aspect;
 	float znear;

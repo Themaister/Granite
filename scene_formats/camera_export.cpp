@@ -56,6 +56,13 @@ string export_cameras_to_json(const vector<RecordedCamera> &recorded_cameras)
 		pos.PushBack(cam.position.y, allocator);
 		pos.PushBack(cam.position.z, allocator);
 		c.AddMember("position", pos, allocator);
+
+		Value up(kArrayType);
+		up.PushBack(cam.up.x, allocator);
+		up.PushBack(cam.up.y, allocator);
+		up.PushBack(cam.up.z, allocator);
+		c.AddMember("up", up, allocator);
+
 		cameras.PushBack(c, allocator);
 	}
 	doc.AddMember("cameras", cameras, allocator);

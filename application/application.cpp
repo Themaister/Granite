@@ -345,6 +345,7 @@ bool SceneViewerApplication::on_key_down(const KeyboardEvent &e)
 		RecordedCamera camera;
 		camera.direction = selected_camera->get_front();
 		camera.position = selected_camera->get_position();
+		camera.up = selected_camera->get_up();
 		camera.aspect = aspect;
 		camera.fovy = fovy;
 		camera.znear = znear;

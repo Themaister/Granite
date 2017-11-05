@@ -69,6 +69,7 @@ int main(int argc, char *argv[])
 	SceneFormats::ExportOptions options;
 	float scale = 1.0f;
 	string extra_lights;
+	string extra_cameras;
 
 	CLICallbacks cbs;
 	cbs.add("--output", [&](CLIParser &parser) { args.output = parser.next_string(); });
@@ -81,6 +82,7 @@ int main(int argc, char *argv[])
 	cbs.add("--environment-texcomp-quality", [&](CLIParser &parser) { options.environment.texcomp_quality = parser.next_uint(); });
 	cbs.add("--environment-intensity", [&](CLIParser &parser) { options.environment.intensity = parser.next_double(); });
 	cbs.add("--extra-lights", [&](CLIParser &parser) { extra_lights = parser.next_string(); });
+	cbs.add("--extra-cameras", [&](CLIParser &parser) { extra_cameras = parser.next_string(); });
 	cbs.add("--scale", [&](CLIParser &parser) { scale = parser.next_double(); });
 
 	cbs.add("--fog-color", [&](CLIParser &parser) {
@@ -128,6 +130,51 @@ int main(int argc, char *argv[])
 			root.children.push_back(i);
 		root.transform.scale = vec3(scale);
 		nodes.push_back(root);
+	}
+
+	vector<SceneFormats::CameraInfo> cameras;
+	if (!extra_cameras.empty())
+	{
+		cameras = parser.get_cameras();
+
+		string json;
+		if (!Filesystem::get().read_file_to_string(extra_cameras, json))
+		{
+			LOGE("Failed to read config file for lights.\n");
+			return 1;
+		}
+
+		rapidjson::Document doc;
+		doc.Parse(json);
+
+		for (auto itr = doc["cameras"].Begin(); itr != doc["cameras"].End(); ++itr)
+		{
+			auto &c = *itr;
+
+			SceneFormats::CameraInfo camera;
+			camera.type = SceneFormats::CameraInfo::Type::Perspective;
+			camera.znear = c["znear"].GetFloat();
+			camera.zfar = c["zfar"].GetFloat();
+			camera.yfov = c["fovy"].GetFloat();
+			camera.aspect_ratio = c["aspect"].GetFloat();
+			camera.attached_to_node = true;
+			camera.node_index = nodes.size();
+
+			cameras.push_back(camera);
+
+			SceneFormats::Node camera_node;
+			auto &t = c["position"];
+			auto &d = c["direction"];
+			auto &u = c["up"];
+			camera_node.transform.translation = vec3(t[0].GetFloat(), t[1].GetFloat(), t[2].GetFloat());
+			camera_node.transform.rotation =
+					conjugate(look_at(vec3(d[0].GetFloat(), d[1].GetFloat(), d[2].GetFloat()),
+					                  vec3(u[0].GetFloat(), u[1].GetFloat(), u[2].GetFloat())));
+
+			nodes.push_back(camera_node);
+		}
+
+		info.cameras = cameras;
 	}
 
 	vector<SceneFormats::LightInfo> lights;

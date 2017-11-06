@@ -113,8 +113,7 @@ RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
 
 		if (image.get_create_info().domain == ImageDomain::Transient)
 		{
-			if (att.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD)
-				att.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+			VK_ASSERT(att.loadOp != VK_ATTACHMENT_LOAD_OP_LOAD);
 			if (att.storeOp == VK_ATTACHMENT_STORE_OP_STORE)
 				att.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 
@@ -126,8 +125,7 @@ RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
 		}
 		else if (image.is_swapchain_image())
 		{
-			if (att.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD)
-				att.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+			VK_ASSERT(att.loadOp != VK_ATTACHMENT_LOAD_OP_LOAD);
 			att.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 			att.finalLayout = image.get_swapchain_layout();
 			implicit_transitions |= 1u << i;

@@ -643,8 +643,9 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 	ui.add_color_output("ui-output", ui_info, ui_source);
 	graph.set_backbuffer_source("ui-output");
 
-	ui.set_get_clear_color([](unsigned, VkClearColorValue *) {
-		return false;
+	ui.set_get_clear_color([](unsigned, VkClearColorValue *value) {
+		memset(value, 0, sizeof(*value));
+		return true;
 	});
 
 	ui.set_build_render_pass([this](CommandBuffer &cmd) {

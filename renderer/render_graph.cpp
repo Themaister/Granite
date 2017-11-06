@@ -839,12 +839,22 @@ void RenderGraph::build_physical_passes()
 	PhysicalPass physical_pass;
 
 	const auto find_attachment = [](const vector<RenderTextureResource *> &resources, const RenderTextureResource *resource) -> bool {
-		auto itr = find(begin(resources), end(resources), resource);
+		if (!resource)
+			return false;
+
+		auto itr = find_if(begin(resources), end(resources), [resource](const RenderTextureResource *res) {
+			return res->get_physical_index() == resource->get_physical_index();
+		});
 		return itr != end(resources);
 	};
 
 	const auto find_buffer = [](const vector<RenderBufferResource *> &resources, const RenderBufferResource *resource) -> bool {
-		auto itr = find(begin(resources), end(resources), resource);
+		if (!resource)
+			return false;
+
+		auto itr = find_if(begin(resources), end(resources), [resource](const RenderBufferResource *res) {
+			return res->get_physical_index() == resource->get_physical_index();
+		});
 		return itr != end(resources);
 	};
 
@@ -904,18 +914,6 @@ void RenderGraph::build_physical_passes()
 				return false;
 		}
 
-		// Keep color on tile.
-		for (auto *input : next.get_color_inputs())
-		{
-			if (!input)
-				continue;
-			if (find_attachment(prev.get_storage_texture_outputs(), input))
-				return false;
-			if (find_attachment(prev.get_color_outputs(), input))
-				return true;
-			if (find_attachment(prev.get_resolve_outputs(), input))
-				return true;
-		}
 
 		const auto different_attachment = [](const RenderResource *a, const RenderResource *b) {
 			return a && b && a->get_physical_index() != b->get_physical_index();
@@ -930,6 +928,27 @@ void RenderGraph::build_physical_passes()
 			return false;
 		if (different_attachment(next.get_depth_stencil_output(), prev.get_depth_stencil_output()))
 			return false;
+
+		for (auto *input : next.get_color_inputs())
+		{
+			if (!input)
+				continue;
+			if (find_attachment(prev.get_storage_texture_outputs(), input))
+				return false;
+		}
+
+		// Now, we have found all failure cases, try to see if we *should* merge.
+
+		// Keep color on tile.
+		for (auto *input : next.get_color_inputs())
+		{
+			if (!input)
+				continue;
+			if (find_attachment(prev.get_color_outputs(), input))
+				return true;
+			if (find_attachment(prev.get_resolve_outputs(), input))
+				return true;
+		}
 
 		// Keep depth on tile.
 		if (next.get_depth_stencil_input() && next.get_depth_stencil_input() == prev.get_depth_stencil_output())

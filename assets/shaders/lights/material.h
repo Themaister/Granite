@@ -3,12 +3,12 @@
 
 struct MaterialProperties
 {
-	vec3 base_color;
-	vec3 normal;
-	float metallic;
-	float roughness;
-	float ambient_factor;
-	float transparency;
+	mediump vec3 base_color;
+	mediump vec3 normal;
+	mediump float metallic;
+	mediump float roughness;
+	mediump float ambient_factor;
+	mediump float transparency;
 };
 
 #endif

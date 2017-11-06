@@ -9,18 +9,19 @@
 #if defined(HAVE_EMISSIVE) && HAVE_EMISSIVE
 layout(location = 0) out vec3 Emissive;
 #endif
-layout(location = 1) out vec4 BaseColor;
-layout(location = 2) out vec3 Normal;
-layout(location = 3) out vec2 PBR;
+layout(location = 1) out mediump vec4 BaseColor;
+layout(location = 2) out mediump vec3 Normal;
+layout(location = 3) out mediump vec2 PBR;
 
-void emit_render_target(vec3 emissive, vec4 base_color, vec3 normal, float metallic, float roughness, float ambient, vec3 eye_dir)
+void emit_render_target(mediump vec3 emissive, mediump vec4 base_color, mediump vec3 normal,
+        mediump float metallic, mediump float roughness,
+        mediump float ambient, vec3 eye_dir)
 {
 #if defined(HAVE_EMISSIVE) && HAVE_EMISSIVE
     Emissive = emissive;
 #endif
     BaseColor = vec4(base_color.rgb, ambient);
     Normal = 0.5 * normal + 0.5;
-
     PBR = vec2(metallic, roughness);
 }
 #elif defined(RENDERER_FORWARD)
@@ -29,7 +30,8 @@ layout(location = 0) out vec4 Color;
 #include "../lights/lighting.h"
 #include "../lights/fog.h"
 
-void emit_render_target(vec3 emissive, vec4 base_color, vec3 normal, float metallic, float roughness, float ambient, vec3 eye_dir)
+void emit_render_target(mediump vec3 emissive, mediump vec4 base_color, mediump vec3 normal,
+        mediump float metallic, mediump float roughness, mediump float ambient, vec3 eye_dir)
 {
     vec3 pos = eye_dir + global.camera_position;
 

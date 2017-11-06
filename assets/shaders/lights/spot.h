@@ -6,17 +6,17 @@
 
 struct SpotShaderInfo
 {
-	vec3 color;
-	float spot_outer;
+	mediump vec3 color;
+	mediump float spot_outer;
 
-	vec3 falloff;
-	float inv_radius;
+	mediump vec3 falloff;
+	mediump float inv_radius;
 
 	vec3 position;
-	float spot_inner;
+	mediump float spot_inner;
 
-	vec3 direction;
-	float xy_scale;
+	mediump vec3 direction;
+	mediump float xy_scale;
 };
 
 #ifndef SPOT_LIGHT_DATA_SET
@@ -62,45 +62,44 @@ vec3 compute_spot_light(int index, MaterialProperties material, vec3 world_pos, 
 {
 #ifdef POSITIONAL_LIGHTS_SHADOW
 	vec4 spot_shadow_clip = spot_shadow.transform[index] * vec4(world_pos, 1.0);
-	float shadow_falloff = textureProjLod(uSpotShadowAtlas, spot_shadow_clip, 0.0);
+	mediump float shadow_falloff = textureProjLod(uSpotShadowAtlas, spot_shadow_clip, 0.0);
 #else
 	const float shadow_falloff = 1.0;
 #endif
 	vec3 light_pos = spot.data[index].position;
-	vec3 light_dir = normalize(light_pos - world_pos);
-	float light_dist = length(world_pos - light_pos);
-	float cone_angle = dot(normalize(world_pos - light_pos), spot.data[index].direction);
-	float cone_falloff = smoothstep(spot.data[index].spot_outer, spot.data[index].spot_inner, cone_angle);
-	float static_falloff = shadow_falloff * (1.0 - smoothstep(0.9, 1.0, light_dist * spot.data[index].inv_radius));
-	vec3 f = spot.data[index].falloff;
-	vec3 spot_color = spot.data[index].color * (cone_falloff * static_falloff / (f.x + light_dist * f.y + light_dist * light_dist * f.z));
+	mediump vec3 light_dir = normalize(light_pos - world_pos);
+	mediump float light_dist = length(world_pos - light_pos);
+	mediump float cone_angle = dot(normalize(world_pos - light_pos), spot.data[index].direction);
+	mediump float cone_falloff = smoothstep(spot.data[index].spot_outer, spot.data[index].spot_inner, cone_angle);
+	mediump float static_falloff = shadow_falloff * (1.0 - smoothstep(0.9, 1.0, light_dist * spot.data[index].inv_radius));
+	mediump vec3 f = spot.data[index].falloff;
+	mediump vec3 spot_color = spot.data[index].color * (cone_falloff * static_falloff / (f.x + light_dist * f.y + light_dist * light_dist * f.z));
 
 #ifdef SPOT_LIGHT_EARLY_OUT
 	if (all(equal(spot_color, vec3(0.0))))
 		discard;
 #endif
 
-	float roughness = material.roughness * 0.75 + 0.25;
+	mediump float roughness = material.roughness * 0.75 + 0.25;
 
 	// Compute directional light.
-	vec3 L = light_dir;
-	vec3 V = normalize(camera_pos - world_pos);
-	vec3 H = normalize(V + L);
-	vec3 N = material.normal;
+	mediump vec3 L = light_dir;
+	mediump vec3 V = normalize(camera_pos - world_pos);
+	mediump vec3 H = normalize(V + L);
+	mediump vec3 N = material.normal;
 
-	float NoH = clamp(dot(N, H), 0.0, 1.0);
-	float NoV = clamp(dot(N, V), 0.001, 1.0);
-	float NoL = clamp(dot(N, L), 0.0, 1.0);
-	float HoV = clamp(dot(H, V), 0.001, 1.0);
-	float LoV = clamp(dot(L, V), 0.001, 1.0);
+	mediump float NoV = clamp(dot(N, V), 0.001, 1.0);
+	mediump float NoL = clamp(dot(N, L), 0.0, 1.0);
+	mediump float HoV = clamp(dot(H, V), 0.001, 1.0);
+	mediump float LoV = clamp(dot(L, V), 0.001, 1.0);
 
-	vec3 F0 = compute_F0(material.base_color, material.metallic);
-	vec3 specular_fresnel = fresnel(F0, HoV);
-	vec3 specref = NoL * cook_torrance_specular(NoL, NoV, NoH, specular_fresnel, roughness);
-	vec3 diffref = NoL * (1.0 - specular_fresnel) * (1.0 / PI);
+	mediump vec3 F0 = compute_F0(material.base_color, material.metallic);
+	mediump vec3 specular_fresnel = fresnel(F0, HoV);
+	mediump vec3 specref = NoL * cook_torrance_specular(N, H, NoL, NoV, specular_fresnel, roughness);
+	mediump vec3 diffref = NoL * (1.0 - specular_fresnel) * (1.0 / PI);
 
-	vec3 reflected_light = specref;
-	vec3 diffuse_light = diffref * material.base_color * (1.0 - material.metallic);
+	mediump vec3 reflected_light = specref;
+	mediump vec3 diffuse_light = diffref * material.base_color * (1.0 - material.metallic);
 	return spot_color * (reflected_light + diffuse_light);
 }
 

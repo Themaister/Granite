@@ -1,10 +1,12 @@
 #version 450
+precision highp float;
+precision highp int;
 
 #include "lighting.h"
 
-layout(input_attachment_index = 0, set = 0, binding = 1) uniform subpassInput BaseColor;
-layout(input_attachment_index = 1, set = 0, binding = 2) uniform subpassInput Normal;
-layout(input_attachment_index = 2, set = 0, binding = 3) uniform subpassInput PBR;
+layout(input_attachment_index = 0, set = 0, binding = 1) uniform mediump subpassInput BaseColor;
+layout(input_attachment_index = 1, set = 0, binding = 2) uniform mediump subpassInput Normal;
+layout(input_attachment_index = 2, set = 0, binding = 3) uniform mediump subpassInput PBR;
 layout(input_attachment_index = 3, set = 0, binding = 4) uniform subpassInput Depth;
 
 layout(location = 0) out vec3 FragColor;
@@ -30,9 +32,9 @@ void main()
 {
     // Load material information.
     float depth = subpassLoad(Depth).x;
-    vec2 mr = subpassLoad(PBR).xy;
-    vec4 base_color_ambient = subpassLoad(BaseColor);
-    vec3 N = subpassLoad(Normal).xyz * 2.0 - 1.0;
+    mediump vec2 mr = subpassLoad(PBR).xy;
+    mediump vec4 base_color_ambient = subpassLoad(BaseColor);
+    mediump vec3 N = subpassLoad(Normal).xyz * 2.0 - 1.0;
 
     // Reconstruct positions.
     vec4 clip = vClip + depth * registers.inverse_view_projection_col2;

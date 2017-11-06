@@ -1005,6 +1005,8 @@ void AnalysisResult::deduce_compression(TextureCompressionFamily family)
 			                VK_COMPONENT_SWIZZLE_R,
 			                VK_COMPONENT_SWIZZLE_R,
 			                VK_COMPONENT_SWIZZLE_G });
+
+			mode = TextureMode::RGBA;
 			swizzle.r = VK_COMPONENT_SWIZZLE_R;
 			swizzle.g = VK_COMPONENT_SWIZZLE_A;
 			swizzle.b = VK_COMPONENT_SWIZZLE_ONE;
@@ -1018,6 +1020,7 @@ void AnalysisResult::deduce_compression(TextureCompressionFamily family)
 			switch (mr_mode)
 			{
 			case MetallicRoughnessMode::Default:
+				mode = TextureMode::RGBA;
 				swizzle_image({VK_COMPONENT_SWIZZLE_G,
 				               VK_COMPONENT_SWIZZLE_G,
 				               VK_COMPONENT_SWIZZLE_G,
@@ -1179,6 +1182,7 @@ static void compress_image(ThreadGroup &workers, const string &target_path, shar
 	args.output = target_path;
 	args.format = get_compression_format(result->compression, result->mode);
 	args.quality = quality;
+	args.mode = result->mode;
 
 	auto mipgen_task = workers.create_task([=]() {
 		if (result->image->levels() == 1)

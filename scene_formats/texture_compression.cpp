@@ -153,7 +153,7 @@ struct CompressorState : enable_shared_from_this<CompressorState>
 	void setup(const CompressorArguments &args);
 	void enqueue_compression(ThreadGroup &group, const CompressorArguments &args);
 	void enqueue_compression_block_ispc(TaskGroup &group, const CompressorArguments &args, unsigned layer, unsigned face, unsigned level);
-	void enqueue_compression_block_astc(TaskGroup &group, const CompressorArguments &args, unsigned layer, unsigned face, unsigned level, bool use_hdr);
+	void enqueue_compression_block_astc(TaskGroup &group, const CompressorArguments &args, unsigned layer, unsigned face, unsigned level, TextureMode mode);
 	void enqueue_compression_block_rgtc(TaskGroup &group, const CompressorArguments &args, unsigned layer, unsigned face, unsigned level);
 
 	double total_error[4] = {};
@@ -598,7 +598,7 @@ void CompressorState::enqueue_compression_block_ispc(TaskGroup &group, const Com
 
 #ifdef HAVE_ASTC_ENCODER
 void CompressorState::enqueue_compression_block_astc(TaskGroup &compression_task, const CompressorArguments &args,
-                                                     unsigned layer, unsigned face, unsigned level, bool use_hdr)
+                                                     unsigned layer, unsigned face, unsigned level, TextureMode mode)
 {
 	static FirstASTC first_astc;
 
@@ -624,7 +624,11 @@ void CompressorState::enqueue_compression_block_astc(TaskGroup &compression_task
 	state->ewp.rgba_weights[0] = 1.0f;
 	state->ewp.rgba_weights[1] = 1.0f;
 	state->ewp.rgba_weights[2] = 1.0f;
-	state->ewp.rgba_weights[3] = 1.0f;
+
+	if (mode == TextureMode::sRGBA || mode == TextureMode::RGBA)
+		state->ewp.rgba_weights[3] = 1.0f;
+	else
+		state->ewp.rgba_weights[3] = 0.0f;
 
 	float log10_texels = log10(float(block_size_x * block_size_y));
 	float dblimit = std::max(95.0f - 35.0f * log10_texels, 70.0f - 19.0f * log10_texels);
@@ -657,7 +661,7 @@ void CompressorState::enqueue_compression_block_astc(TaskGroup &compression_task
 		dblimit = std::max(70.0f - 35.0f * log10_texels, 53.0f - 19.0f * log10_texels);
 	}
 
-	if (use_hdr)
+	if (mode == TextureMode::HDR)
 	{
 		state->ewp.rgb_power = 0.75f;
 		state->ewp.alpha_power = 0.75f;
@@ -815,7 +819,7 @@ void CompressorState::enqueue_compression(ThreadGroup &group, const CompressorAr
 #endif
 					{
 #ifdef HAVE_ASTC_ENCODER
-						enqueue_compression_block_astc(compression_task, args, layer, face, level, use_hdr);
+						enqueue_compression_block_astc(compression_task, args, layer, face, level, args.mode);
 #endif
 					}
 					break;

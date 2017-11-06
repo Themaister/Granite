@@ -7,7 +7,7 @@
 #define POINT_LIGHT_EARLY_OUT
 #include "point.h"
 
-layout(location = 0) out vec3 FragColor;
+layout(location = 0) out mediump vec3 FragColor;
 layout(location = 0) flat in int vIndex;
 
 layout(input_attachment_index = 0, set = 1, binding = 0) uniform mediump subpassInput BaseColor;

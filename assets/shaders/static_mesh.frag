@@ -65,12 +65,12 @@ void main()
 
 #if defined(HAVE_BASECOLORMAP) && HAVE_BASECOLORMAP
     #ifdef NEED_GRADIENTS
-        vec4 base_color = textureGrad(uBaseColormap, vUV, gradX, gradY) * registers.base_color;
+        mediump vec4 base_color = textureGrad(uBaseColormap, vUV, gradX, gradY) * registers.base_color;
     #else
-        vec4 base_color = texture(uBaseColormap, vUV, registers.lod_bias) * registers.base_color;
+        mediump vec4 base_color = texture(uBaseColormap, vUV, registers.lod_bias) * registers.base_color;
     #endif
 #else
-    vec4 base_color = registers.base_color;
+    mediump vec4 base_color = registers.base_color;
 #endif
 
 #if HAVE_VERTEX_COLOR
@@ -84,18 +84,18 @@ void main()
 #endif
 
 #if defined(HAVE_NORMAL) && HAVE_NORMAL
-    vec3 normal = normalize(vNormal);
+    mediump vec3 normal = normalize(vNormal);
     #if defined(HAVE_NORMALMAP) && HAVE_NORMALMAP
-        vec3 tangent = normalize(vTangent.xyz);
-        vec3 binormal = cross(normal, tangent) * vTangent.w;
+        mediump vec3 tangent = normalize(vTangent.xyz);
+        mediump vec3 binormal = cross(normal, tangent) * vTangent.w;
         #ifdef NEED_GRADIENTS
-            vec2 tangent_space = textureGrad(uNormalmap, vUV, gradX, gradY).xy * 2.0 - 1.0;
+            mediump vec2 tangent_space = textureGrad(uNormalmap, vUV, gradX, gradY).xy * 2.0 - 1.0;
         #else
-            vec2 tangent_space = texture(uNormalmap, vUV, registers.lod_bias).xy * 2.0 - 1.0;
+            mediump vec2 tangent_space = texture(uNormalmap, vUV, registers.lod_bias).xy * 2.0 - 1.0;
         #endif
 
         // For 2-component compressed textures.
-        float tangent_z = sqrt(max(0.0, 1.0 - dot(tangent_space, tangent_space)));
+        mediump float tangent_z = sqrt(max(0.0, 1.0 - dot(tangent_space, tangent_space)));
         tangent_space *= registers.normal_scale;
         normal = normalize(mat3(tangent, binormal, normal) * vec3(tangent_space, tangent_z));
     #endif
@@ -105,36 +105,36 @@ void main()
 
 #if defined(HAVE_METALLICROUGHNESSMAP) && HAVE_METALLICROUGHNESSMAP
     #ifdef NEED_GRADIENTS
-        vec2 mr = textureGrad(uMetallicRoughnessmap, vUV, gradX, gradY).bg;
+        mediump vec2 mr = textureGrad(uMetallicRoughnessmap, vUV, gradX, gradY).bg;
     #else
-        vec2 mr = texture(uMetallicRoughnessmap, vUV, registers.lod_bias).bg;
+        mediump vec2 mr = texture(uMetallicRoughnessmap, vUV, registers.lod_bias).bg;
     #endif
-    float metallic = mr.x * registers.metallic;
-    float roughness = mr.y * registers.roughness;
+    mediump float metallic = mr.x * registers.metallic;
+    mediump float roughness = mr.y * registers.roughness;
 #else
-    float metallic = registers.metallic;
-    float roughness = registers.roughness;
+    mediump float metallic = registers.metallic;
+    mediump float roughness = registers.roughness;
 #endif
 
 #if defined(HAVE_OCCLUSIONMAP) && HAVE_OCCLUSIONMAP
     #ifdef NEED_GRADIENTS
-        float ambient = texture(uOcclusionMap, vUV, gradX, gradY).x;
+        mediump float ambient = texture(uOcclusionMap, vUV, gradX, gradY).x;
     #else
-        float ambient = texture(uOcclusionMap, vUV, registers.lod_bias).x;
+        mediump float ambient = texture(uOcclusionMap, vUV, registers.lod_bias).x;
     #endif
 #else
-    const float ambient = 1.0;
+    const mediump float ambient = 1.0;
 #endif
 
 #if defined(HAVE_EMISSIVEMAP) && HAVE_EMISSIVEMAP
     #ifdef NEED_GRADIENTS
-        vec3 emissive = texture(uEmissiveMap, vUV, gradX, gradY).rgb;
+        mediump vec3 emissive = texture(uEmissiveMap, vUV, gradX, gradY).rgb;
     #else
-        vec3 emissive = texture(uEmissiveMap, vUV, registers.lod_bias).rgb;
+        mediump vec3 emissive = texture(uEmissiveMap, vUV, registers.lod_bias).rgb;
     #endif
     emissive *= registers.emissive.rgb;
 #else
-    vec3 emissive = registers.emissive.rgb;
+    mediump vec3 emissive = registers.emissive.rgb;
 #endif
 
     emit_render_target(emissive, base_color, normal, metallic, roughness, ambient, vEyeVec);

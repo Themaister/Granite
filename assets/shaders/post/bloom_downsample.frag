@@ -1,12 +1,12 @@
 #version 310 es
 precision mediump float;
 
-layout(set = 0, binding = 0) uniform sampler2D uSampler;
+layout(set = 0, binding = 0) uniform mediump sampler2D uSampler;
 #ifdef FEEDBACK
-layout(set = 0, binding = 1) uniform sampler2D uSamplerHistory;
+layout(set = 0, binding = 1) uniform mediump sampler2D uSamplerHistory;
 #endif
 layout(location = 0) in highp vec2 vUV;
-layout(location = 0) out vec4 FragColor;
+layout(location = 0) out mediump vec4 FragColor;
 
 layout(push_constant, std430) uniform Registers
 {
@@ -18,7 +18,7 @@ layout(push_constant, std430) uniform Registers
 
 void main()
 {
-    vec4 value = 0.25 * textureLod(uSampler, vUV, 0.0);
+    mediump vec4 value = 0.25 * textureLod(uSampler, vUV, 0.0);
     value += 0.0625 * textureLod(uSampler, vUV + vec2(-1.75, +1.75) * registers.inv_texel_size, 0.0);
     value += 0.125 * textureLod(uSampler, vUV + vec2(+0.00, +1.75) * registers.inv_texel_size, 0.0);
     value += 0.0625 * textureLod(uSampler, vUV + vec2(+1.75, +1.75) * registers.inv_texel_size, 0.0);

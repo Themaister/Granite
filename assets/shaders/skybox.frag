@@ -2,11 +2,11 @@
 precision mediump float;
 
 #if defined(HAVE_EMISSIVE) && HAVE_EMISSIVE
-layout(set = 2, binding = 0) uniform samplerCube uSkybox;
+layout(set = 2, binding = 0) uniform mediump samplerCube uSkybox;
 #endif
 layout(location = 0) in highp vec3 vDirection;
 
-layout(location = 0) out vec3 Emissive;
+layout(location = 0) out mediump vec3 Emissive;
 
 layout(std430, push_constant) uniform Registers
 {

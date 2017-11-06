@@ -14,7 +14,7 @@ layout(std430, push_constant) uniform Registers
 
 layout(input_attachment_index = 3, set = 0, binding = 4) uniform highp subpassInput Depth;
 layout(location = 0) in highp vec4 vClip;
-layout(location = 0) out vec4 FragColor;
+layout(location = 0) out mediump vec4 FragColor;
 
 void main()
 {

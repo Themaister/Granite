@@ -10,13 +10,13 @@ layout(set = 2, binding = 0) uniform sampler2D uBaseColormap;
 #endif
 
 #ifdef ALPHA_TEST_ALPHA_TO_COVERAGE
-layout(location = 0) out vec4 FragColor;
+layout(location = 0) out mediump vec4 FragColor;
 #endif
 
 void main()
 {
 #if defined(HAVE_BASECOLORMAP) && HAVE_BASECOLORMAP && defined(ALPHA_TEST)
-    vec4 base_color = texture(uBaseColormap, vUV);
+    mediump vec4 base_color = texture(uBaseColormap, vUV);
 
     #if !defined(ALPHA_TEST_ALPHA_TO_COVERAGE)
         if (base_color.a < 0.5)

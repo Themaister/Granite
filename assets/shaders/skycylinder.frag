@@ -1,9 +1,9 @@
 #version 450
 precision mediump float;
 
-layout(location = 0) out vec3 Emissive;
+layout(location = 0) out mediump vec3 Emissive;
 layout(location = 0) in highp vec2 vUV;
-layout(set = 2, binding = 0) uniform sampler2D uCylinder;
+layout(set = 2, binding = 0) uniform mediump sampler2D uCylinder;
 
 layout(push_constant, std430) uniform Registers
 {

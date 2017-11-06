@@ -104,6 +104,7 @@ protected:
 	Renderer forward_renderer;
 	Renderer deferred_renderer;
 	Renderer depth_renderer;
+	FlatRenderer flat_renderer;
 	LightingParameters lighting;
 	FPSCamera cam;
 	VisibilityList visible;
@@ -140,6 +141,7 @@ protected:
 	void render_main_pass(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view);
 	void render_transparent_objects(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view);
 	void render_positional_lights(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view);
+	void render_ui(Vulkan::CommandBuffer &cmd);
 
 	void add_main_pass(Vulkan::Device &device, const std::string &tag);
 	void add_main_pass_forward(Vulkan::Device &device, const std::string &tag);
@@ -180,6 +182,10 @@ private:
 
 	void export_lights();
 	void export_cameras();
+
+	enum { FrameWindowSize = 64, FrameWindowSizeMask = FrameWindowSize - 1 };
+	float last_frame_times[FrameWindowSize] = {};
+	unsigned last_frame_index = 0;
 };
 
 extern Application *application_create(int argc, char *argv[]);

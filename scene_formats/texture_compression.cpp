@@ -162,7 +162,9 @@ struct CompressorState : enable_shared_from_this<CompressorState>
 
 void CompressorState::setup(const CompressorArguments &args)
 {
+#ifdef HAVE_ISPC
 	bool alpha = args.mode == TextureMode::sRGBA || args.mode == TextureMode::RGBA;
+#endif
 
 	const auto handle_astc_ldr_format = [&](unsigned x, unsigned y) -> bool {
 		block_size_x = x;

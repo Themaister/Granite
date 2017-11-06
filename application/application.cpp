@@ -622,7 +622,7 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 	graph.set_backbuffer_dimensions(dim);
 
 	const char *backbuffer_source = getenv("GRANITE_SURFACE");
-	graph.set_backbuffer_source(backbuffer_source ? backbuffer_source : (config.hdr_bloom ? "tonemapped" : "HDR-main"));
+	const char *ui_source = backbuffer_source ? backbuffer_source : (config.hdr_bloom ? "tonemapped" : "HDR-main");
 
 	scene_loader.get_scene().add_render_passes(graph);
 
@@ -637,6 +637,19 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 
 	if (config.hdr_bloom)
 		setup_hdr_postprocess(graph, "HDR-main", "tonemapped");
+
+	auto &ui = graph.add_pass("ui", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	AttachmentInfo ui_info;
+	ui.add_color_output("ui-output", ui_info, ui_source);
+	graph.set_backbuffer_source("ui-output");
+
+	ui.set_get_clear_color([](unsigned, VkClearColorValue *) {
+		return false;
+	});
+
+	ui.set_build_render_pass([this](CommandBuffer &cmd) {
+		render_ui(cmd);
+	});
 
 	graph.bake();
 	graph.log();
@@ -742,6 +755,45 @@ void SceneViewerApplication::update_scene(double, double elapsed_time)
 	scene.refresh_per_frame(context);
 }
 
+void SceneViewerApplication::render_ui(Vulkan::CommandBuffer &cmd)
+{
+	flat_renderer.begin();
+
+	unsigned count = std::min<unsigned>(last_frame_index, FrameWindowSize);
+	float total_time = 0.0f;
+	float min_time = FLT_MAX;
+	float max_time = 0.0f;
+	for (unsigned i = 0; i < count; i++)
+	{
+		total_time += last_frame_times[i];
+		min_time = std::min(min_time, last_frame_times[i]);
+		max_time = std::max(max_time, last_frame_times[i]);
+	}
+
+	char avg_text[64];
+	sprintf(avg_text, "Frame: %10.3f ms", (total_time / count) * 1000.0f);
+
+	char min_text[64];
+	sprintf(min_text, "Min: %10.3f ms", min_time * 1000.0f);
+
+	char max_text[64];
+	sprintf(max_text, "Max: %10.3f ms", max_time * 1000.0f);
+
+	vec3 offset(5.0f, 5.0f, 0.0f);
+	vec2 size(cmd.get_viewport().width - 10.0f, cmd.get_viewport().height - 10.0f);
+	vec4 color(1.0f, 1.0f, 0.0f, 1.0f);
+	Font::Alignment alignment = Font::Alignment::TopRight;
+
+	flat_renderer.render_text(UI::UIManager::get().get_font(UI::FontSize::Large), avg_text,
+	                          offset, size, color, alignment, 1.0f);
+	flat_renderer.render_text(UI::UIManager::get().get_font(UI::FontSize::Large), min_text,
+	                          offset + vec3(0.0f, 20.0f, 0.0f), size - vec2(0.0f, 20.0f), color, alignment, 1.0f);
+	flat_renderer.render_text(UI::UIManager::get().get_font(UI::FontSize::Large), max_text,
+	                          offset + vec3(0.0f, 40.0f, 0.0f), size - vec2(0.0f, 40.0f), color, alignment, 1.0f);
+
+	flat_renderer.flush(cmd, vec3(0.0f), vec3(cmd.get_viewport().width, cmd.get_viewport().height, 1.0f));
+}
+
 void SceneViewerApplication::render_scene()
 {
 	auto &wsi = get_wsi();
@@ -778,6 +830,7 @@ void SceneViewerApplication::render_scene()
 
 void SceneViewerApplication::render_frame(double frame_time, double elapsed_time)
 {
+	last_frame_times[last_frame_index++ & FrameWindowSizeMask] = float(frame_time);
 	update_scene(frame_time, elapsed_time);
 	render_scene();
 }

@@ -51,7 +51,10 @@ public:
 
 	enum RendererFlushBits
 	{
-		FRONT_FACE_CLOCKWISE_BIT = 1 << 0
+		FRONT_FACE_CLOCKWISE_BIT = 1 << 0,
+		DEPTH_BIAS_BIT = 1 << 1,
+		DEPTH_STENCIL_READ_ONLY = 1 << 2,
+		NO_COLOR = 1 << 3
 	};
 	using RendererFlushFlags = uint32_t;
 

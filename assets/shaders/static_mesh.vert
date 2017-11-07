@@ -68,6 +68,8 @@ layout(set = 3, binding = 0, std140) uniform PerVertexData
 };
 #endif
 
+invariant gl_Position;
+
 void main()
 {
 #if HAVE_BONE_INDEX && HAVE_BONE_WEIGHT

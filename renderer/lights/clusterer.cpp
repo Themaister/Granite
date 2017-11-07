@@ -322,7 +322,7 @@ void LightClusterer::render_atlas_point(RenderContext &context)
 			rp.depth_stencil = shadow_atlas_rt[6 * remapped + face].get();
 			rp.clear_depth_stencil.depth = 1.0f;
 			cmd->begin_render_pass(rp);
-			depth_renderer->flush(*cmd, depth_context, Renderer::FRONT_FACE_CLOCKWISE_BIT);
+			depth_renderer->flush(*cmd, depth_context, Renderer::FRONT_FACE_CLOCKWISE_BIT | Renderer::DEPTH_BIAS_BIT);
 			cmd->end_render_pass();
 		}
 	}
@@ -442,7 +442,7 @@ void LightClusterer::render_atlas_spot(RenderContext &context)
 		cmd->begin_render_pass(rp);
 		cmd->set_viewport({ float(512 * (remapped & 7)), float(512 * (remapped >> 3)), 512.0f, 512.0f, 0.0f, 1.0f });
 		cmd->set_scissor(rp.render_area);
-		depth_renderer->flush(*cmd, depth_context);
+		depth_renderer->flush(*cmd, depth_context, Renderer::DEPTH_BIAS_BIT);
 		cmd->end_render_pass();
 	}
 

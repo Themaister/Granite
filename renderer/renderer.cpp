@@ -260,10 +260,17 @@ void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context, Rendere
 	queue.sort();
 
 	cmd.set_opaque_state();
+
 	if (options & FRONT_FACE_CLOCKWISE_BIT)
 		cmd.set_front_face(VK_FRONT_FACE_CLOCKWISE);
 
-	if (type == RendererType::DepthOnly)
+	if (options & NO_COLOR)
+		cmd.set_color_write_mask(0);
+
+	if (options & DEPTH_STENCIL_READ_ONLY)
+		cmd.set_depth_test(true, false);
+
+	if (options & DEPTH_BIAS_BIT)
 	{
 		cmd.set_depth_bias(true);
 		cmd.set_depth_bias(+4.0f, +2.0f);

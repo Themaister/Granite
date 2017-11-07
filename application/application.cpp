@@ -94,6 +94,8 @@ void SceneViewerApplication::read_config(const std::string &path)
 		config.clustered_lights_shadows = doc["clusteredLightsShadows"].GetBool();
 	if (doc.HasMember("hdrBloom"))
 		config.hdr_bloom = doc["hdrBloom"].GetBool();
+	if (doc.HasMember("forwardDepthPrepass"))
+		config.forward_depth_prepass = doc["forwardDepthPrepass"].GetBool();
 
 	if (doc.HasMember("shadowMapResolutionMain"))
 		config.shadow_map_resolution_main = doc["shadowMapResolutionMain"].GetFloat();
@@ -374,18 +376,32 @@ void SceneViewerApplication::render_main_pass(Vulkan::CommandBuffer &cmd, const 
 	context.set_camera(proj, view);
 	visible.clear();
 	scene.gather_visible_opaque_renderables(context.get_visibility_frustum(), visible);
-	scene.gather_background_renderables(visible);
 	scene.gather_visible_render_pass_sinks(context.get_render_parameters().camera_position, visible);
 
 	if (config.renderer_type == RendererType::GeneralForward)
 	{
+		if (config.forward_depth_prepass)
+		{
+			depth_renderer.begin();
+			depth_renderer.push_renderables(context, visible);
+			depth_renderer.flush(cmd, context, Renderer::NO_COLOR);
+		}
+
+		scene.gather_background_renderables(visible);
+
 		forward_renderer.set_mesh_renderer_options_from_lighting(lighting);
 		forward_renderer.begin();
 		forward_renderer.push_renderables(context, visible);
-		forward_renderer.flush(cmd, context);
+
+		Renderer::RendererOptionFlags opt = 0;
+		if (config.forward_depth_prepass)
+			opt |= Renderer::DEPTH_STENCIL_READ_ONLY;
+
+		forward_renderer.flush(cmd, context, opt);
 	}
 	else if (config.renderer_type == RendererType::GeneralDeferred)
 	{
+		scene.gather_background_renderables(visible);
 		deferred_renderer.begin();
 		deferred_renderer.push_renderables(context, visible);
 		deferred_renderer.flush(cmd, context);
@@ -698,7 +714,7 @@ void SceneViewerApplication::update_shadow_map()
 void SceneViewerApplication::render_shadow_map_far(Vulkan::CommandBuffer &cmd)
 {
 	update_shadow_map();
-	depth_renderer.flush(cmd, depth_context);
+	depth_renderer.flush(cmd, depth_context, Renderer::DEPTH_BIAS_BIT);
 }
 
 void SceneViewerApplication::render_shadow_map_near(Vulkan::CommandBuffer &cmd)
@@ -729,7 +745,7 @@ void SceneViewerApplication::render_shadow_map_near(Vulkan::CommandBuffer &cmd)
 	depth_renderer.begin();
 	scene.gather_visible_dynamic_shadow_renderables(depth_context.get_visibility_frustum(), depth_visible);
 	depth_renderer.push_depth_renderables(depth_context, depth_visible);
-	depth_renderer.flush(cmd, depth_context);
+	depth_renderer.flush(cmd, depth_context, Renderer::DEPTH_BIAS_BIT);
 }
 
 void SceneViewerApplication::update_scene(double, double elapsed_time)

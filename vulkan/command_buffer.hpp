@@ -410,6 +410,11 @@ public:
 		SET_STATIC_STATE(depth_bias_enable);
 	}
 
+	inline void set_color_write_mask(uint32_t write_mask)
+	{
+		SET_STATIC_STATE(write_mask);
+	}
+
 	inline void set_stencil_test(bool stencil_test)
 	{
 		SET_STATIC_STATE(stencil_test);

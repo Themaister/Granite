@@ -58,7 +58,10 @@ Stage GLSLCompiler::stage_from_path(const std::string &path)
 void GLSLCompiler::set_source_from_file(const string &path)
 {
 	if (!Filesystem::get().read_file_to_string(path, source))
+	{
+		LOGE("Failed to load shader: %s\n", path.c_str());
 		throw runtime_error("Failed to load shader.");
+	}
 
 	source_path = path;
 	stage = stage_from_path(path);

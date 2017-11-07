@@ -29,6 +29,7 @@
 #include <condition_variable>
 #include "stb_image_write.h"
 #include "cli_parser.hpp"
+#include "os.hpp"
 
 #define RAPIDJSON_ASSERT(x) do { if (!(x)) throw "JSON error"; } while(0)
 #include "rapidjson/document.h"
@@ -384,7 +385,9 @@ void application_dummy()
 
 static void print_help()
 {
-	LOGI("[--png-path <path>] [--stat <output.json>] [--png-reference-path <path>] [--frames <frames>] [--width <width>] [--height <height>] [--time-step <step>].\n");
+	LOGI("[--png-path <path>] [--stat <output.json>]\n"
+	     "[--fs-assets <path>] [--fs-cache <path>] [--fs-builtin <path>]\n"
+	     "[--png-reference-path <path>] [--frames <frames>] [--width <width>] [--height <height>] [--time-step <step>].\n");
 }
 
 #ifdef _WIN32
@@ -421,6 +424,9 @@ int main(int argc, char *argv[])
 		string png_path;
 		string png_reference_path;
 		string stat;
+		string assets;
+		string cache;
+		string builtin;
 		unsigned max_frames = UINT_MAX;
 		unsigned width = 1280;
 		unsigned height = 720;
@@ -437,6 +443,9 @@ int main(int argc, char *argv[])
 	cbs.add("--time-step", [&](CLIParser &parser) { args.time_step = parser.next_double(); });
 	cbs.add("--png-path", [&](CLIParser &parser) { args.png_path = parser.next_string(); });
 	cbs.add("--png-reference-path", [&](CLIParser &parser) { args.png_reference_path = parser.next_string(); });
+	cbs.add("--fs-assets", [&](CLIParser &parser) { args.assets = parser.next_string(); });
+	cbs.add("--fs-builtin", [&](CLIParser &parser) { args.builtin = parser.next_string(); });
+	cbs.add("--fs-cache", [&](CLIParser &parser) { args.cache = parser.next_string(); });
 	cbs.add("--stat", [&](CLIParser &parser) { args.stat = parser.next_string(); });
 	cbs.add("--help", [](CLIParser &parser) { print_help(); parser.end(); });
 	cbs.default_handler = [&](const char *arg) { filtered_argv.push_back(const_cast<char *>(arg)); };
@@ -449,6 +458,13 @@ int main(int argc, char *argv[])
 		return 0;
 
 	filtered_argv.push_back(nullptr);
+
+	if (!args.assets.empty())
+		Filesystem::get().register_protocol("assets", make_unique<OSFilesystem>(args.assets));
+	if (!args.builtin.empty())
+		Filesystem::get().register_protocol("builtin", make_unique<OSFilesystem>(args.builtin));
+	if (!args.cache.empty())
+		Filesystem::get().register_protocol("cache", make_unique<OSFilesystem>(args.cache));
 
 	auto app = unique_ptr<Application>(Granite::application_create(int(filtered_argv.size() - 1), filtered_argv.data()));
 

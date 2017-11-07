@@ -249,6 +249,12 @@ public:
 		worker_threads[index]->wait();
 	}
 
+	void wait_workers()
+	{
+		for (auto &worker : worker_threads)
+			worker->wait();
+	}
+
 	void end_frame()
 	{
 		auto &wsi = app->get_wsi();
@@ -257,7 +263,7 @@ public:
 
 		if (release_semaphore && release_semaphore->get_semaphore() != VK_NULL_HANDLE)
 		{
-			if (!png_readback.empty())
+			if (next_readback_cb)
 			{
 				device.add_wait_semaphore(CommandBuffer::Type::Transfer, release_semaphore,
 				                          VK_PIPELINE_STAGE_TRANSFER_BIT);
@@ -274,10 +280,30 @@ public:
 
 				device.submit(cmd, &readback_fence[index], &acquire_semaphore[index]);
 
-				unsigned index_copy = index;
-				unsigned frame_copy = frames;
-				worker_threads[index]->set_work([this, index_copy, frame_copy]() {
-					dump_frame(frame_copy, index_copy);
+				worker_threads[index]->set_work([cb = next_readback_cb, index = this->index]() {
+					cb(index);
+				});
+				next_readback_cb = {};
+			}
+			else if (!png_readback.empty())
+			{
+				device.add_wait_semaphore(CommandBuffer::Type::Transfer, release_semaphore,
+				                          VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+				auto cmd = device.request_command_buffer(CommandBuffer::Type::Transfer);
+				swapchain_images[index]->set_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+
+				cmd->copy_image_to_buffer(*readback_buffers[index], *swapchain_images[index],
+				                          0, {}, {width, height, 1},
+				                          0, 0, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1});
+
+				cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+				             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
+
+				device.submit(cmd, &readback_fence[index], &acquire_semaphore[index]);
+
+				worker_threads[index]->set_work([this, index = this->index, frame = this->frames]() {
+					dump_frame(frame, index);
 				});
 			}
 			else
@@ -288,6 +314,25 @@ public:
 		release_semaphore.reset();
 		index = (index + 1) % SwapchainImages;
 		frames++;
+	}
+
+	void set_next_readback(const std::string &path)
+	{
+		next_readback_cb = [this, path](unsigned index) {
+			auto &wsi = app->get_wsi();
+			auto &device = wsi.get_device();
+
+			device.wait_for_fence(readback_fence[index]);
+			readback_fence[index].reset();
+
+			auto *ptr = static_cast<uint32_t *>(device.map_host_buffer(*readback_buffers[index], MEMORY_ACCESS_READ_WRITE));
+			for (unsigned i = 0; i < width * height; i++)
+				ptr[i] |= 0xff000000u;
+
+			if (!stbi_write_png(path.c_str(), width, height, 4, ptr, width * 4))
+				LOGE("Failed to write PNG to disk.\n");
+			device.unmap_host_buffer(*readback_buffers[index]);
+		};
 	}
 
 private:
@@ -305,6 +350,7 @@ private:
 	vector<Semaphore> acquire_semaphore;
 	vector<Fence> readback_fence;
 	vector<unique_ptr<FrameWorker>> worker_threads;
+	std::function<void (unsigned)> next_readback_cb;
 
 	void dump_frame(unsigned frame, unsigned index)
 	{
@@ -338,7 +384,7 @@ void application_dummy()
 
 static void print_help()
 {
-	LOGI("[--png-path <path>] [--frames <frames>] [--width <width>] [--height <height>] [--time-step <step>].\n");
+	LOGI("[--png-path <path>] [--stat <output.json>] [--png-reference-path <path>] [--frames <frames>] [--width <width>] [--height <height>] [--time-step <step>].\n");
 }
 
 #ifdef _WIN32
@@ -373,6 +419,7 @@ int main(int argc, char *argv[])
 	struct Args
 	{
 		string png_path;
+		string png_reference_path;
 		string stat;
 		unsigned max_frames = UINT_MAX;
 		unsigned width = 1280;
@@ -389,6 +436,7 @@ int main(int argc, char *argv[])
 	cbs.add("--height", [&](CLIParser &parser) { args.height = parser.next_uint(); });
 	cbs.add("--time-step", [&](CLIParser &parser) { args.time_step = parser.next_double(); });
 	cbs.add("--png-path", [&](CLIParser &parser) { args.png_path = parser.next_string(); });
+	cbs.add("--png-reference-path", [&](CLIParser &parser) { args.png_reference_path = parser.next_string(); });
 	cbs.add("--stat", [&](CLIParser &parser) { args.stat = parser.next_string(); });
 	cbs.add("--help", [](CLIParser &parser) { print_help(); parser.end(); });
 	cbs.default_handler = [&](const char *arg) { filtered_argv.push_back(const_cast<char *>(arg)); };
@@ -466,6 +514,14 @@ int main(int argc, char *argv[])
 				if (!Filesystem::get().write_string_to_file(args.stat, buffer.GetString()))
 					LOGE("Failed to write stat file to disk.\n");
 			}
+		}
+
+		if (!args.png_reference_path.empty())
+		{
+			p->set_next_readback(args.png_reference_path);
+			p->begin_frame();
+			app->run_frame();
+			p->end_frame();
 		}
 
 		return 0;

@@ -598,20 +598,13 @@ void LightClusterer::add_render_passes(RenderGraph &graph)
 	att_prepass.size_y /= ClusterPrepassDownsample;
 	att_prepass.size_z /= ClusterPrepassDownsample;
 
-	auto &prepass = graph.add_pass("clustering-prepass", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-	prepass.add_storage_texture_output("light-cluster-prepass", att_prepass);
-	prepass.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
-		build_cluster(cmd, *pre_cull_target, nullptr);
-	});
-
-	prepass.set_need_render_pass([this]() {
-		return enable_clustering;
-	});
-
 	auto &pass = graph.add_pass("clustering", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 	pass.add_storage_texture_output("light-cluster", att);
-	pass.add_texture_input("light-cluster-prepass");
+	pass.add_storage_texture_output("light-cluster-prepass", att_prepass);
 	pass.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
+		build_cluster(cmd, *pre_cull_target, nullptr);
+		cmd.image_barrier(pre_cull_target->get_image(), VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 		build_cluster(cmd, *target, pre_cull_target);
 	});
 

@@ -595,7 +595,8 @@ void RenderGraph::build_transients()
 	for (auto &dim : physical_dimensions)
 	{
 		// Buffers are never transient.
-		if (dim.buffer_info.size)
+		// Storage images are never transient.
+		if (dim.buffer_info.size || dim.storage)
 			dim.transient = false;
 		else
 			dim.transient = true;

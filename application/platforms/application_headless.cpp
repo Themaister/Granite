@@ -30,6 +30,11 @@
 #include "stb_image_write.h"
 #include "cli_parser.hpp"
 
+#define RAPIDJSON_ASSERT(x) do { if (!(x)) throw "JSON error"; } while(0)
+#include "rapidjson/document.h"
+#include "rapidjson/prettywriter.h"
+using namespace rapidjson;
+
 #ifdef _WIN32
 #include <windows.h>
 #include <shellapi.h>
@@ -220,7 +225,7 @@ public:
 		{
 			swapchain_images.push_back(device.create_image(info, nullptr));
 			readback_buffers.push_back(device.create_buffer(readback, nullptr));
-			acquire_semaphore.push_back(nullptr);
+			acquire_semaphore.push_back(Semaphore(nullptr));
 			worker_threads.push_back(make_unique<FrameWorker>());
 			readback_fence.push_back({});
 		}
@@ -368,6 +373,7 @@ int main(int argc, char *argv[])
 	struct Args
 	{
 		string png_path;
+		string stat;
 		unsigned max_frames = UINT_MAX;
 		unsigned width = 1280;
 		unsigned height = 720;
@@ -383,6 +389,7 @@ int main(int argc, char *argv[])
 	cbs.add("--height", [&](CLIParser &parser) { args.height = parser.next_uint(); });
 	cbs.add("--time-step", [&](CLIParser &parser) { args.time_step = parser.next_double(); });
 	cbs.add("--png-path", [&](CLIParser &parser) { args.png_path = parser.next_string(); });
+	cbs.add("--stat", [&](CLIParser &parser) { args.stat = parser.next_string(); });
 	cbs.add("--help", [](CLIParser &parser) { print_help(); parser.end(); });
 	cbs.default_handler = [&](const char *arg) { filtered_argv.push_back(const_cast<char *>(arg)); };
 	cbs.error_handler = [&]() { print_help(); };
@@ -415,12 +422,52 @@ int main(int argc, char *argv[])
 		p->set_time_step(args.time_step);
 		p->init(app.get());
 
-		while (app->poll())
+		// Run warm-up frame.
+		if (app->poll())
 		{
 			p->begin_frame();
 			app->run_frame();
 			p->end_frame();
 		}
+
+		app->get_wsi().get_device().wait_idle();
+
+		auto start_time = get_current_time_nsecs();
+		unsigned rendered_frames = 0;
+		while (app->poll())
+		{
+			p->begin_frame();
+			app->run_frame();
+			p->end_frame();
+			rendered_frames++;
+		}
+
+		app->get_wsi().get_device().wait_idle();
+		auto end_time = get_current_time_nsecs();
+
+		if (rendered_frames)
+		{
+			double usec = 1e-3 * double(end_time - start_time) / rendered_frames;
+			LOGI("Average frame time: %.3f usec\n", usec);
+
+			if (!args.stat.empty())
+			{
+				Document doc;
+				doc.SetObject();
+				auto &allocator = doc.GetAllocator();
+
+				doc.AddMember("averageFrameTimeUs", usec, allocator);
+
+				StringBuffer buffer;
+				PrettyWriter<StringBuffer> writer(buffer);
+				//Writer<StringBuffer> writer(buffer);
+				doc.Accept(writer);
+
+				if (!Filesystem::get().write_string_to_file(args.stat, buffer.GetString()))
+					LOGE("Failed to write stat file to disk.\n");
+			}
+		}
+
 		return 0;
 	}
 	else

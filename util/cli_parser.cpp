@@ -56,8 +56,8 @@ bool CLIParser::parse()
 					else
 						throw std::invalid_argument("Invalid argument");
 				}
-
-				itr->second(*this);
+				else
+					itr->second(*this);
 			}
 		}
 

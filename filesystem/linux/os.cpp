@@ -257,7 +257,7 @@ void OSFilesystem::uninstall_notification(FileNotifyHandle handle)
 	if (handle < 0)
 		return;
 
-	LOGI("Uninstalling notification: %d\n", handle);
+	//LOGI("Uninstalling notification: %d\n", handle);
 
 	auto real = virtual_to_real.find(handle);
 	if (real == end(virtual_to_real))
@@ -288,7 +288,7 @@ void OSFilesystem::uninstall_notification(FileNotifyHandle handle)
 FileNotifyHandle OSFilesystem::install_notification(const string &path,
                                                     function<void (const FileNotifyInfo &)> func)
 {
-	LOGI("Installing notification for: %s\n", path.c_str());
+	//LOGI("Installing notification for: %s\n", path.c_str());
 
 	FileStat s;
 	if (!stat(path, s))
@@ -311,7 +311,7 @@ FileNotifyHandle OSFilesystem::install_notification(const string &path,
 	else
 		itr->second.funcs.push_back({ move(path), move(func), ++virtual_handle });
 
-	LOGI("  Got handle: %d\n", virtual_handle);
+	//LOGI("  Got handle: %d\n", virtual_handle);
 
 	virtual_to_real[virtual_handle] = wd;
 	return static_cast<FileNotifyHandle>(virtual_handle);

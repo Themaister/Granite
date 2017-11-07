@@ -48,4 +48,6 @@ private:
 	int64_t idle_time = 0;
 	int64_t get_time();
 };
+
+int64_t get_current_time_nsecs();
 }

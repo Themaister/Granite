@@ -5,6 +5,13 @@ endif()
 
 option(GRANITE_KHR_DISPLAY_ACQUIRE_XLIB "Try to acquire Xlib display when using VK_KHR_display." OFF)
 
+add_granite_library(application-headless application_headless.cpp)
+target_link_libraries(application-headless
+		vulkan-symbols application vulkan-backend
+		vulkan-wsi ui-renderer
+		application-input application-events rapidjson)
+target_include_directories(application-headless PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
 if (ANDROID)
 	option(GRANITE_ANDROID_APK_FILESYSTEM "Use APK file system for assets and builtin files." ON)
 	add_granite_library(application-main application_android.cpp)
@@ -32,8 +39,8 @@ elseif (${GRANITE_PLATFORM} MATCHES "libretro")
 	target_compile_definitions(application-main PUBLIC HAVE_LIBRETRO)
 	target_link_libraries(application-main retro-utils)
 elseif (${GRANITE_PLATFORM} MATCHES "headless")
-	add_granite_library(application-main application_headless.cpp)
-	target_link_libraries(application-main vulkan-symbols)
+	add_granite_library(application-main .dummy.cpp)
+	target_link_libraries(application-main application-headless)
 elseif (${GRANITE_PLATFORM} MATCHES "GLFW")
 	set(GLFW_BUILD_TESTS OFF)
 	add_subdirectory(../../third_party/glfw glfw EXCLUDE_FROM_ALL)
@@ -60,4 +67,5 @@ target_link_libraries(application-main
 		vulkan-symbols vulkan-backend vulkan-wsi
 		ui-renderer
 		application-input application-events)
+
 

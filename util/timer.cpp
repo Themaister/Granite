@@ -77,6 +77,11 @@ double FrameTimer::get_elapsed() const
 
 int64_t FrameTimer::get_time()
 {
+	return get_current_time_nsecs();
+}
+
+int64_t get_current_time_nsecs()
+{
 	auto current = chrono::steady_clock::now().time_since_epoch();
 	auto nsecs = chrono::duration_cast<chrono::nanoseconds>(current);
 	return nsecs.count();

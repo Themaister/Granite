@@ -182,14 +182,19 @@ uint64_t RenderInfo::get_sprite_sort_key(Queue queue_type, Util::Hash pipeline_h
 	{
 		depth_key ^= 0xffffffffu; // Back-to-front instead.
 		// Prioritize correct back-to-front rendering over pipeline.
-		return (Hash(depth_key) << 32) | pipeline_hash;
+		return (uint64_t(depth_key) << 32) | pipeline_hash;
 	}
 	else
 	{
-		depth_key >>= 2;
-
+#if 1
 		// Prioritize state changes over depth.
-		return (uint64_t(ecast(layer)) << 62) | (pipeline_hash << 30) | depth_key;
+		depth_key >>= 2;
+		return (uint64_t(ecast(layer)) << 62) | (uint64_t(pipeline_hash) << 30) | depth_key;
+#else
+		// Prioritize front-back sorting over state changes.
+		pipeline_hash >>= 2;
+		return (uint64_t(ecast(layer)) << 62) | (uint64_t(depth_key) << 30) | pipeline_hash;
+#endif
 	}
 }
 

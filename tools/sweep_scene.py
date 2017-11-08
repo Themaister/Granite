@@ -43,6 +43,9 @@ def main():
     parser.add_argument('--optimized-scene',
                         help = 'Path where a processed scene is placed.',
                         type = str)
+    parser.add_argument('--scale',
+                        help = 'Scale input scene to optimized scene',
+                        type = float)
     parser.add_argument('--environment-texcomp',
                         help = 'Which texture compression to use for environments',
                         type = str)
@@ -86,11 +89,16 @@ def main():
     parser.add_argument('--iterations',
                         help = 'Number of iterations',
                         type = int)
-
+    parser.add_argument('--cleanup',
+                        help = 'Cleanup stale data after running',
+                        action = 'store_true')
+    parser.add_argument('--png-result-dir',
+                        help = 'Store frame results in directory',
+                        type = str)
 
     args = parser.parse_args()
 
-    if args.optimized_scene:
+    if args.optimized_scene is not None:
         scene_build = ['./tools/gltf-repacker']
         scene_build.append(args.scene)
 
@@ -101,23 +109,26 @@ def main():
             scene_build.append('--texcomp')
             scene_build.append(args.texcomp)
 
-        if args.environment_texcomp:
+        if args.environment_texcomp is not None:
             scene_build.append('--environment-texcomp')
             scene_build.append(args.environment_texcomp)
-        if args.environment_cube:
+        if args.environment_cube is not None:
             scene_build.append('--environment-cube')
             scene_build.append(args.environment_cube)
-        if args.environment_reflection:
+        if args.environment_reflection is not None:
             scene_build.append('--environment-reflection')
             scene_build.append(args.environment_reflection)
-        if args.environment_irradiance:
+        if args.environment_irradiance is not None:
             scene_build.append('--environment-irradiance')
             scene_build.append(args.environment_irradiance)
+        if args.scale is not None:
+            scene_build.append('--scale')
+            scene_build.append(str(args.scale))
 
-        if args.extra_lights:
+        if args.extra_lights is not None:
             scene_build.append('--extra-lights')
             scene_build.append(args.extra_lights)
-        if args.extra_cameras:
+        if args.extra_cameras is not None:
             scene_build.append('--extra-cameras')
             scene_build.append(args.extra_cameras)
 
@@ -129,7 +140,7 @@ def main():
     else:
         sweep_path = args.scene
 
-    if args.android_viewer_binary:
+    if args.android_viewer_binary is not None:
         print('Setting up directories ...')
         subprocess.check_call(['adb', 'shell', 'mkdir', '-p', '/data/local/tmp/granite'])
         subprocess.check_call(['adb', 'shell', 'mkdir', '-p', '/data/local/tmp/granite/cache'])
@@ -155,11 +166,11 @@ def main():
     os.close(f)
     os.close(f_c)
 
-    if (not args.width) or (not args.height) or (not args.frames):
+    if (args.width is None) or (args.height is None) or (args.frames is None):
         sys.stderr.write('Need width, height and frames.\n')
         sys.exit(1)
 
-    if args.android_viewer_binary:
+    if args.android_viewer_binary is not None:
         base_sweep = ['adb', 'shell', '/data/local/tmp/granite/gltf-viewer-headless', '--frames', str(args.frames),
                       '--width', str(args.width),
                       '--height', str(args.height), '/data/local/tmp/granite/scene.glb',
@@ -174,18 +185,31 @@ def main():
                       '--stat', stat_file]
 
     results = []
-    iterations = args.iterations if args.iterations else 1
+    iterations = args.iterations if args.iterations is not None else 1
 
-    if args.configs:
+    if args.configs is not None:
         for config in args.configs:
-            if args.android_viewer_binary:
+
+            if args.android_viewer_binary is not None:
                 sweep = base_sweep + ['--config', '/data/local/tmp/granite/config.json']
+                if args.png_result_dir:
+                    sweep.append('--png-reference-path')
+                    sweep.append('/data/local/tmp/granite/ref.png')
                 subprocess.check_call(['adb', 'push', config, '/data/local/tmp/granite/config.json'])
             else:
                 sweep = base_sweep + ['--config', config]
-            avg, stddev = run_test(sweep, config, iterations, stat_file, args.android_viewer_binary != None)
+                if args.png_result_dir:
+                    sweep.append('--png-reference-path')
+                    sweep.append(os.path.join(args.png_result_dir, os.path.splitext(os.path.basename(config))[0]) + '.png')
+
+            avg, stddev = run_test(sweep, config, iterations, stat_file, args.android_viewer_binary is not None)
+
+            if (args.android_viewer_binary is not None) and (args.png_result_dir is not None):
+                subprocess.check_call(['adb', 'pull', '/data/local/tmp/granite/ref.png', os.path.join(args.png_result_dir, os.path.splitext(os.path.basename(config))[0]) + '.png'])
+
             results.append((config, avg, stddev))
     elif args.gen_configs:
+        counter = 0
         for renderer in ['forward', 'deferred']:
             for msaa in [1, 4]:
                 for prepass in [False, True]:
@@ -205,18 +229,29 @@ def main():
                                     c['directionalLightShadows'] = shadows
                                     c['forwardDepthPrepass'] = prepass
                                     c['clusteredLightsShadows'] = pos_shadows
-                                    if args.gen_configs_camera_index != None:
+                                    if args.gen_configs_camera_index is not None:
                                         c['cameraIndex'] = args.gen_configs_camera_index
                                     with open(config_file, 'w') as f:
                                         json.dump(c, f)
 
-                                    if args.android_viewer_binary:
+                                    if args.android_viewer_binary is not None:
                                         sweep = base_sweep + ['--config', '/data/local/tmp/granite/config.json']
                                         subprocess.check_call(['adb', 'push', config_file, '/data/local/tmp/granite/config.json'])
+                                        if args.png_result_dir:
+                                            sweep.append('--png-reference-path')
+                                            sweep.append('/data/local/tmp/granite/ref.png')
                                     else:
                                         sweep = base_sweep + ['--config', config_file]
+                                        if args.png_result_dir:
+                                            sweep.append('--png-reference-path')
+                                            sweep.append(os.path.join(args.png_result_dir, str(counter)) + '.png')
+                                            counter += 1
 
-                                    avg, stddev = run_test(sweep, config_file, iterations, stat_file, args.android_viewer_binary != None)
+                                    avg, stddev = run_test(sweep, config_file, iterations, stat_file, args.android_viewer_binary is not None)
+
+                                    if (args.android_viewer_binary  is not None) and (args.png_result_dir is not None):
+                                        subprocess.check_call(['adb', 'pull', '/data/local/tmp/granite/ref.png', os.path.join(args.png_result_dir, str(counter)) + '.png'])
+                                        counter += 1
 
                                     config_name = {}
                                     config_name['renderer'] = renderer
@@ -232,6 +267,10 @@ def main():
         print(res)
     os.remove(stat_file)
     os.remove(config_file)
+
+    if args.cleanup:
+        if args.android_viewer_binary:
+            subprocess.check_call(['adb', 'shell', 'rm', '-r', '/data/local/tmp/granite'])
 
 if __name__ == '__main__':
     main()

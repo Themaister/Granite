@@ -13,12 +13,15 @@ def compute_stddev(values):
     avg = statistics.mean(values)
     return avg, stdev
 
-def run_test(sweep, config, iterations, stat_file):
+def run_test(sweep, config, iterations, stat_file, adb):
     config_results = []
-    for i in range(iterations):
+    for _ in range(iterations):
         print('Running scene with config:', config)
         subprocess.check_call(sweep)
         print('Ran scene ...')
+
+        if adb:
+            subprocess.check_call(['adb', 'pull', '/data/local/tmp/granite/stat.json', stat_file])
 
         with open(stat_file, 'r') as f:
             json_data = f.read()
@@ -32,6 +35,8 @@ def main():
     parser = argparse.ArgumentParser(description = 'Script for running automated performance tests.')
     parser.add_argument('--scene',
                         help = 'The glTF/glB scene to test')
+    parser.add_argument('--android-viewer-binary',
+                        help = 'Path to android binary')
     parser.add_argument('--texcomp',
                         help = 'Which texture compression to use for LDR textures',
                         type = str)
@@ -60,6 +65,9 @@ def main():
                         help = 'Which config files to sweep through',
                         type = str,
                         nargs = '+')
+    parser.add_argument('--builtin',
+                        help = 'Where to find the builtin assets/shaders',
+                        type = str)
     parser.add_argument('--gen-configs',
                         help = 'Automatically generate configs to sweep through',
                         action = 'store_true')
@@ -75,6 +83,7 @@ def main():
     parser.add_argument('--iterations',
                         help = 'Number of iterations',
                         type = int)
+
 
     args = parser.parse_args()
 
@@ -117,6 +126,27 @@ def main():
     else:
         sweep_path = args.scene
 
+    if args.android_viewer_binary:
+        print('Setting up directories ...')
+        subprocess.check_call(['adb', 'shell', 'mkdir', '-p', '/data/local/tmp/granite'])
+        subprocess.check_call(['adb', 'shell', 'mkdir', '-p', '/data/local/tmp/granite/cache'])
+        subprocess.check_call(['adb', 'shell', 'mkdir', '-p', '/data/local/tmp/granite/assets'])
+        print('Pushing granite binary ...')
+        subprocess.check_call(['adb', 'push', args.android_viewer_binary, '/data/local/tmp/granite/gltf-viewer-headless'])
+        subprocess.check_call(['adb', 'shell', 'chmod', '+x', '/data/local/tmp/granite/gltf-viewer-headless'])
+
+        print('Pushing test scene ...')
+        subprocess.check_call(['adb', 'push', sweep_path, '/data/local/tmp/granite/scene.glb'])
+        print('Pushing builtin assets ...')
+        subprocess.check_call(['adb', 'push', args.builtin, '/data/local/tmp/granite/'])
+
+        asset_dir = os.path.dirname(sweep_path)
+        for dir, subdir, file_list in os.walk(asset_dir):
+            for f in file_list:
+                if os.path.splitext(f)[1] == '.ktx':
+                    print('Pushing texture: ', os.path.join(dir, f), 'to', os.path.basename(f))
+                    subprocess.check_call(['adb', 'push', os.path.join(dir, f), '/data/local/tmp/granite/' + os.path.basename(f)])
+
     f, stat_file = tempfile.mkstemp()
     f_c, config_file = tempfile.mkstemp()
     os.close(f)
@@ -126,18 +156,31 @@ def main():
         sys.stderr.write('Need width, height and frames.\n')
         sys.exit(1)
 
-    base_sweep = ['./viewer/gltf-viewer-headless', '--frames', str(args.frames),
-                  '--width', str(args.width),
-                  '--height', str(args.height), sweep_path,
-                  '--stat', stat_file]
+    if args.android_viewer_binary:
+        base_sweep = ['adb', 'shell', '/data/local/tmp/granite/gltf-viewer-headless', '--frames', str(args.frames),
+                      '--width', str(args.width),
+                      '--height', str(args.height), '/data/local/tmp/granite/scene.glb',
+                      '--stat', '/data/local/tmp/granite/stat.json',
+                      '--fs-builtin /data/local/tmp/granite/assets',
+                      '--fs-assets /data/local/tmp/granite/assets',
+                      '--fs-cache /data/local/tmp/granite/cache']
+    else:
+        base_sweep = ['./viewer/gltf-viewer-headless', '--frames', str(args.frames),
+                      '--width', str(args.width),
+                      '--height', str(args.height), sweep_path,
+                      '--stat', stat_file]
 
     results = []
     iterations = args.iterations if args.iterations else 1
 
     if args.configs:
         for config in args.configs:
-            sweep = base_sweep + ['--config', config]
-            avg, stddev = run_test(sweep, config, iterations, stat_file)
+            if args.android_viewer_binary:
+                sweep = base_sweep + ['--config', '/data/local/tmp/granite/config.json']
+                subprocess.check_call(['adb', 'push', config, '/data/local/tmp/granite/config.json'])
+            else:
+                sweep = base_sweep + ['--config', config]
+            avg, stddev = run_test(sweep, config, iterations, stat_file, args.android_viewer_binary != None)
             results.append((config, avg, stddev))
     elif args.gen_configs:
         for renderer in ['forward', 'deferred']:
@@ -161,8 +204,14 @@ def main():
                                     c['clusteredLightsShadows'] = pos_shadows
                                     with open(config_file, 'w') as f:
                                         json.dump(c, f)
-                                    sweep = base_sweep + ['--config', config_file]
-                                    avg, stddev = run_test(sweep, config_file, iterations, stat_file)
+
+                                    if args.android_viewer_binary:
+                                        sweep = base_sweep + ['--config', '/data/local/tmp/granite/config.json']
+                                        subprocess.check_call(['adb', 'push', config_file, '/data/local/tmp/granite/config.json'])
+                                    else:
+                                        sweep = base_sweep + ['--config', config_file]
+
+                                    avg, stddev = run_test(sweep, config_file, iterations, stat_file, args.android_viewer_binary != None)
 
                                     config_name = {}
                                     config_name['renderer'] = renderer

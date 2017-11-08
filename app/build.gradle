@@ -39,7 +39,7 @@ android {
                             "-DANDROID_CPP_FEATURES=exceptions",
                             "-DGRANITE_SHADER_COMPILER_OPTIMIZE=OFF",
                             "-DGRANITE_SPIRV_DUMP=OFF",
-                            "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+                            "-DCMAKE_BUILD_TYPE=Release",
                             "-DANDROID_PLATFORM=android-24"
 
                     targets "gltf-viewer", "gltf-viewer-headless"

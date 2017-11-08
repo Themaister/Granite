@@ -521,6 +521,8 @@ int main(int argc, char *argv[])
 				auto &allocator = doc.GetAllocator();
 
 				doc.AddMember("averageFrameTimeUs", usec, allocator);
+				doc.AddMember("gpu", StringRef(app->get_wsi().get_context().get_gpu_props().deviceName), allocator);
+				doc.AddMember("driverVersion", app->get_wsi().get_context().get_gpu_props().driverVersion, allocator);
 
 				StringBuffer buffer;
 				PrettyWriter<StringBuffer> writer(buffer);

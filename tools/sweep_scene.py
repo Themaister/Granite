@@ -71,6 +71,9 @@ def main():
     parser.add_argument('--gen-configs',
                         help = 'Automatically generate configs to sweep through',
                         action = 'store_true')
+    parser.add_argument('--gen-configs-camera-index',
+                        help = 'Camera index when using gen-configs',
+                        type = int)
     parser.add_argument('--width',
                         help = 'Resolution X',
                         type = int)
@@ -202,6 +205,8 @@ def main():
                                     c['directionalLightShadows'] = shadows
                                     c['forwardDepthPrepass'] = prepass
                                     c['clusteredLightsShadows'] = pos_shadows
+                                    if args.gen_configs_camera_index != None:
+                                        c['cameraIndex'] = args.gen_configs_camera_index
                                     with open(config_file, 'w') as f:
                                         json.dump(c, f)
 

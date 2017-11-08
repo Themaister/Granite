@@ -28,8 +28,17 @@ def run_test(sweep, config, iterations, stat_file, adb):
             parsed = json.loads(json_data)
             config_results.append(parsed['averageFrameTimeUs'])
 
+    with open(stat_file, 'r') as f:
+        json_data = f.read()
+        parsed = json.loads(json_data)
+        gpu = parsed['gpu']
+        version = parsed['driverVersion']
+
     avg, stddev = compute_stddev(config_results)
-    return avg, stddev
+    return avg, stddev, gpu, version
+
+def map_result_to_json(result, width, height, gpu, version):
+    return { 'config': result[0], 'avg': result[1], 'stdev': result[2], 'width': width, 'height': height, 'gpu': gpu, 'version': version }
 
 def main():
     parser = argparse.ArgumentParser(description = 'Script for running automated performance tests.')
@@ -94,6 +103,9 @@ def main():
                         action = 'store_true')
     parser.add_argument('--png-result-dir',
                         help = 'Store frame results in directory',
+                        type = str)
+    parser.add_argument('--results',
+                        help = 'Store results JSON',
                         type = str)
 
     args = parser.parse_args()
@@ -187,6 +199,9 @@ def main():
     results = []
     iterations = args.iterations if args.iterations is not None else 1
 
+    gpu = None
+    version = None
+
     if args.configs is not None:
         for config in args.configs:
 
@@ -202,7 +217,7 @@ def main():
                     sweep.append('--png-reference-path')
                     sweep.append(os.path.join(args.png_result_dir, os.path.splitext(os.path.basename(config))[0]) + '.png')
 
-            avg, stddev = run_test(sweep, config, iterations, stat_file, args.android_viewer_binary is not None)
+            avg, stddev, gpu, version = run_test(sweep, config, iterations, stat_file, args.android_viewer_binary is not None)
 
             if (args.android_viewer_binary is not None) and (args.png_result_dir is not None):
                 subprocess.check_call(['adb', 'pull', '/data/local/tmp/granite/ref.png', os.path.join(args.png_result_dir, os.path.splitext(os.path.basename(config))[0]) + '.png'])
@@ -247,7 +262,7 @@ def main():
                                             sweep.append(os.path.join(args.png_result_dir, str(counter)) + '.png')
                                             counter += 1
 
-                                    avg, stddev = run_test(sweep, config_file, iterations, stat_file, args.android_viewer_binary is not None)
+                                    avg, stddev, gpu, version = run_test(sweep, config_file, iterations, stat_file, args.android_viewer_binary is not None)
 
                                     if (args.android_viewer_binary  is not None) and (args.png_result_dir is not None):
                                         subprocess.check_call(['adb', 'pull', '/data/local/tmp/granite/ref.png', os.path.join(args.png_result_dir, str(counter)) + '.png'])
@@ -268,8 +283,12 @@ def main():
     os.remove(stat_file)
     os.remove(config_file)
 
-    if args.cleanup:
-        if args.android_viewer_binary:
+    if args.results is not None:
+        with open(args.results, 'w') as f:
+            json.dump({ 'runs': [map_result_to_json(x, args.width, args.height, gpu, version) for x in results] }, f, indent = 4)
+
+    if args.cleanup is not None:
+        if args.android_viewer_binary is not None:
             subprocess.check_call(['adb', 'shell', 'rm', '-r', '/data/local/tmp/granite'])
 
 if __name__ == '__main__':

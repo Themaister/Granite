@@ -930,14 +930,14 @@ AnalysisResult::MetallicRoughnessMode AnalysisResult::deduce_metallic_roughness_
 
 	for (int i = 0; i < count; i++)
 	{
-		if (src[i].b != 0xff)
+		if (src[i].g != 0xff)
 			roughness_one_only = false;
-		if (src[i].b != 0)
+		if (src[i].g != 0)
 			roughness_zero_only = false;
 
-		if (src[i].g != 0xff)
+		if (src[i].b != 0xff)
 			metallic_one_only = false;
-		if (src[i].g != 0)
+		if (src[i].b != 0)
 			metallic_zero_only = false;
 	}
 

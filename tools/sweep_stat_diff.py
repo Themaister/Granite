@@ -55,6 +55,8 @@ def main():
                     for hdr_bloom in [False, True]:
                         for shadows in [False, True]:
                             for pos_shadows in [False, True]:
+                                if pos_shadows and renderer == 'forward' and (not clustered):
+                                    continue
                                 type_str = ''
                                 type_str += 'F' if renderer == 'forward' else 'D'
                                 type_str += str(msaa)

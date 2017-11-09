@@ -46,6 +46,10 @@ def main():
                         help = 'The glTF/glB scene to test')
     parser.add_argument('--android-viewer-binary',
                         help = 'Path to android binary')
+    parser.add_argument('--viewer-binary',
+                        help = 'Path to viewer binary')
+    parser.add_argument('--repacker-binary',
+                        help = 'Path to repacker binary')
     parser.add_argument('--texcomp',
                         help = 'Which texture compression to use for LDR textures',
                         type = str)
@@ -67,6 +71,10 @@ def main():
     parser.add_argument('--environment-irradiance',
                         help = 'Irradiance texture',
                         type = str)
+    parser.add_argument('--environment-intensity',
+                        help = 'Intensity of the environment',
+                        type = float,
+                        default = 1.0)
     parser.add_argument('--extra-lights',
                         help = 'Extra lights',
                         type = str)
@@ -111,7 +119,8 @@ def main():
     args = parser.parse_args()
 
     if args.optimized_scene is not None:
-        scene_build = ['./tools/gltf-repacker']
+        binary = args.repacker_binary if args.repacker_binary is not None else './tools/gltf-repacker'
+        scene_build = [binary]
         scene_build.append(args.scene)
 
         scene_build.append('--output')
@@ -133,6 +142,8 @@ def main():
         if args.environment_irradiance is not None:
             scene_build.append('--environment-irradiance')
             scene_build.append(args.environment_irradiance)
+        scene_build.append('--environment-intensity')
+        scene_build.append(str(args.environment_intensity))
         if args.scale is not None:
             scene_build.append('--scale')
             scene_build.append(str(args.scale))
@@ -178,6 +189,10 @@ def main():
     os.close(f)
     os.close(f_c)
 
+    if (args.configs is None) and (not args.gen_configs):
+        print('Not running any configs, exiting.')
+        sys.exit(0)
+
     if (args.width is None) or (args.height is None) or (args.frames is None):
         sys.stderr.write('Need width, height and frames.\n')
         sys.exit(1)
@@ -191,7 +206,8 @@ def main():
                       '--fs-assets /data/local/tmp/granite/assets',
                       '--fs-cache /data/local/tmp/granite/cache']
     else:
-        base_sweep = ['./viewer/gltf-viewer-headless', '--frames', str(args.frames),
+        binary = args.viewer_binary if args.viewer_binary is not None else './viewer/gltf-viewer-headless'
+        base_sweep = [binary, '--frames', str(args.frames),
                       '--width', str(args.width),
                       '--height', str(args.height), sweep_path,
                       '--stat', stat_file]
@@ -236,6 +252,8 @@ def main():
                         for hdr_bloom in [False, True]:
                             for shadows in [False, True]:
                                 for pos_shadows in [False, True]:
+                                    if pos_shadows and renderer == 'forward' and (not clustered):
+                                        continue
                                     c = {}
                                     c['renderer'] = renderer
                                     c['hdrBloom'] = hdr_bloom

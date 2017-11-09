@@ -128,12 +128,16 @@ void SpotLight::set_shadow_info(const Vulkan::ImageView *shadow, const mat4 &tra
 
 PositionalFragmentInfo SpotLight::get_shader_info(const mat4 &transform) const
 {
+	// If the point light node has been scaled, renormalize this.
 	// This assumes a uniform scale.
-	float max_range = min(falloff_range, cutoff_range);
+	float scale_factor = length(transform[0]);
+
+	// This assumes a uniform scale.
+	float max_range = min(falloff_range, cutoff_range) * scale_factor;
 
 	return {
 		vec4(color, outer_cone),
-		vec4(constant, linear, quadratic, 1.0f / max_range),
+		vec4(constant, linear / scale_factor, quadratic / (scale_factor * scale_factor), 1.0f / max_range),
 		vec4(transform[3].xyz(), inner_cone),
 		vec4(-normalize(transform[2].xyz()), atan(xy_range)),
 	};
@@ -394,14 +398,10 @@ static void positional_render_back(CommandBuffer &cmd, const RenderQueueData *in
 void SpotLight::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
                                 RenderQueue &queue) const
 {
-	// If the point light node has been scaled, renormalize this.
-	// This assumes a uniform scale.
-	float scale_factor = 1.0f / length(transform->transform->world_transform[0]);
-
 	auto &params = context.get_render_parameters();
 	auto &aabb = transform->world_aabb;
 	float to_center = dot(aabb.get_center() - params.camera_position, params.camera_front);
-	float radius = aabb.get_radius() * scale_factor;
+	float radius = aabb.get_radius();
 	float aabb_near = to_center - params.z_near - radius;
 	float aabb_far = to_center + radius - params.z_far;
 
@@ -430,7 +430,7 @@ void SpotLight::get_render_info(const RenderContext &context, const CachedSpatia
 
 	auto *spot = queue.allocate_one<PositionalShaderInfo>();
 
-	float max_range = min(falloff_range, cutoff_range) * scale_factor;
+	float max_range = min(falloff_range, cutoff_range);
 	spot->vertex.model = transform->transform->world_transform * scale(vec3(xy_range * max_range, xy_range * max_range, max_range));
 	spot->fragment = get_shader_info(transform->transform->world_transform);
 	spot->u.shadow_transform = shadow_transform;
@@ -474,12 +474,16 @@ void PointLight::set_range(float range)
 
 PositionalFragmentInfo PointLight::get_shader_info(const mat4 &transform) const
 {
+	// If the point light node has been scaled, renormalize this.
 	// This assumes a uniform scale.
-	float max_range = min(falloff_range, cutoff_range);
+	float scale_factor = length(transform[0]);
+
+	// This assumes a uniform scale.
+	float max_range = min(falloff_range, cutoff_range) * scale_factor;
 
 	return {
 		vec4(color, 0.0f),
-		vec4(constant, linear, quadratic, 1.0f / max_range),
+		vec4(constant, linear / scale_factor, quadratic / (scale_factor * scale_factor), 1.0f / max_range),
 		vec4(transform[3].xyz(), 0.0f),
 		vec4(normalize(transform[2].xyz()), 0.0f),
 	};
@@ -494,14 +498,10 @@ void PointLight::set_shadow_info(const Vulkan::ImageView *shadow, const PointTra
 void PointLight::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
                                  RenderQueue &queue) const
 {
-	// If the point light node has been scaled, renormalize this.
-	// This assumes a uniform scale.
-	float scale_factor = 1.0f / length(transform->transform->world_transform[0]);
-
 	auto &params = context.get_render_parameters();
 	auto &aabb = transform->world_aabb;
 	float to_center = dot(aabb.get_center() - params.camera_position, params.camera_front);
-	float radius = aabb.get_radius() * scale_factor;
+	float radius = aabb.get_radius();
 	float aabb_near = to_center - params.z_near - radius;
 	float aabb_far = to_center + radius - params.z_far;
 
@@ -530,8 +530,7 @@ void PointLight::get_render_info(const RenderContext &context, const CachedSpati
 
 	auto *point = queue.allocate_one<PositionalShaderInfo>();
 
-	float max_range = min(falloff_range, cutoff_range) * scale_factor;
-	point->vertex.model = transform->transform->world_transform * scale(vec3(max_range));
+	point->vertex.model = transform->transform->world_transform * scale(vec3(min(falloff_range, cutoff_range)));
 	point->fragment = get_shader_info(transform->transform->world_transform);
 	point->u.point_transform = shadow_transform;
 

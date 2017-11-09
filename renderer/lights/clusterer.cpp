@@ -298,7 +298,8 @@ void LightClusterer::render_atlas_point(RenderContext &context)
 		{
 			mat4 view, proj;
 			compute_cube_render_transform(points.lights[i].position_inner.xyz(), face, proj, view,
-			                              0.1f, 1.0f / points.lights[i].falloff_inv_radius.w);
+			                              0.01f / points.lights[i].falloff_inv_radius.w,
+			                              1.0f / points.lights[i].falloff_inv_radius.w);
 			depth_context.set_camera(proj, view);
 
 			if (face == 0)
@@ -407,7 +408,9 @@ void LightClusterer::render_atlas_spot(RenderContext &context)
 		float range = tan(spots.lights[i].direction_half_angle.w);
 		mat4 view = mat4_cast(look_at_arbitrary_up(spots.lights[i].direction_half_angle.xyz())) *
 		            translate(-spots.lights[i].position_inner.xyz());
-		mat4 proj = projection(range * 2.0f, 1.0f, 0.1f, 1.0f / spots.lights[i].falloff_inv_radius.w);
+		mat4 proj = projection(range * 2.0f, 1.0f,
+		                       0.01f / spots.lights[i].falloff_inv_radius.w,
+		                       1.0f / spots.lights[i].falloff_inv_radius.w);
 
 		unsigned remapped = spots.index_remap[i];
 

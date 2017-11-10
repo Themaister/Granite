@@ -336,6 +336,12 @@ public:
 		};
 	}
 
+	void wait_threads()
+	{
+		for (auto &thread : worker_threads)
+			thread->wait();
+	}
+
 private:
 	unsigned width = 0;
 	unsigned height = 0;
@@ -494,6 +500,7 @@ int main(int argc, char *argv[])
 			p->end_frame();
 		}
 
+		p->wait_threads();
 		app->get_wsi().get_device().wait_idle();
 
 		auto start_time = get_current_time_nsecs();
@@ -506,6 +513,7 @@ int main(int argc, char *argv[])
 			rendered_frames++;
 		}
 
+		p->wait_threads();
 		app->get_wsi().get_device().wait_idle();
 		auto end_time = get_current_time_nsecs();
 
@@ -542,6 +550,7 @@ int main(int argc, char *argv[])
 			p->end_frame();
 		}
 
+		p->wait_threads();
 		return 0;
 	}
 	else

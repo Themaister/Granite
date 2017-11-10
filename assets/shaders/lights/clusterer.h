@@ -41,9 +41,7 @@ layout(set = 1, binding = 5) uniform usampler3D uCluster;
 mediump vec3 compute_cluster_light(MaterialProperties material, vec3 world_pos, vec3 camera_pos)
 {
 	vec3 cluster_pos = (cluster.transform * vec4(world_pos, 1.0)).xyz;
-	vec3 clipped_pos = abs(clamp(cluster_pos, vec3(-1.0, -1.0, 0.0), vec3(1.0)));
-	vec2 max_reach2 = max(clipped_pos.xy, vec2(clipped_pos.z, 0.0001));
-	float scale_factor = max(max_reach2.x, max_reach2.y);
+	float scale_factor = max(0.0001, cluster_pos.z);
 	float level = clamp(floor(-log2(scale_factor)), 0.0, float(NUM_CLUSTER_HIERARCHIES) - 1.0);
 	cluster_pos *= exp2(level);
 	cluster_pos.xy = cluster_pos.xy * 0.5 + 0.5;

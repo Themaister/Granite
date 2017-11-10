@@ -40,6 +40,19 @@ def run_test(sweep, config, iterations, stat_file, adb):
 def map_result_to_json(result, width, height, gpu, version):
     return { 'config': result[0], 'avg': result[1], 'stdev': result[2], 'width': width, 'height': height, 'gpu': gpu, 'version': version }
 
+def config_to_path(c):
+    res = ''
+    res += c['renderer']
+    res += '_'
+    res += str(c['msaa']) + '_samples'
+    res += '_clustering' if c['clusteredLights'] else ''
+    res += '_sunshadow' if c['directionalLightShadows'] else ''
+    res += '_prepass' if c['forwardDepthPrepass'] else ''
+    res += '_positionalshadow' if c['clusteredLightsShadows'] else ''
+    res += ('_camera_' + str(c['cameraIndex'])) if ('cameraIndex' in c) else ''
+    res += '_hdrbloom' if c['hdrBloom'] else '_ldr'
+    return res
+
 def main():
     parser = argparse.ArgumentParser(description = 'Script for running automated performance tests.')
     parser.add_argument('--scene',
@@ -240,7 +253,6 @@ def main():
 
             results.append((config, avg, stddev))
     elif args.gen_configs:
-        counter = 0
         for renderer in ['forward', 'deferred']:
             for msaa in [1, 4]:
                 for prepass in [False, True]:
@@ -277,14 +289,12 @@ def main():
                                         sweep = base_sweep + ['--config', config_file]
                                         if args.png_result_dir:
                                             sweep.append('--png-reference-path')
-                                            sweep.append(os.path.join(args.png_result_dir, str(counter)) + '.png')
-                                            counter += 1
+                                            sweep.append(os.path.join(args.png_result_dir, config_to_path(c)) + '.png')
 
                                     avg, stddev, gpu, version = run_test(sweep, config_file, iterations, stat_file, args.android_viewer_binary is not None)
 
                                     if (args.android_viewer_binary  is not None) and (args.png_result_dir is not None):
-                                        subprocess.check_call(['adb', 'pull', '/data/local/tmp/granite/ref.png', os.path.join(args.png_result_dir, str(counter)) + '.png'])
-                                        counter += 1
+                                        subprocess.check_call(['adb', 'pull', '/data/local/tmp/granite/ref.png', os.path.join(args.png_result_dir, config_to_path(c)) + '.png'])
 
                                     config_name = {}
                                     config_name['renderer'] = renderer

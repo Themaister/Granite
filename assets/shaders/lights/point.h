@@ -56,14 +56,6 @@ struct PointShadowData
 	vec4 slice;
 };
 
-#ifdef POSITIONAL_LIGHT_INSTANCING
-#define POINT_DATA(index) point.data[index]
-#define POINT_SHADOW_TRANSFORM(index) point_shadow.data[index]
-#else
-#define POINT_DATA(index) point.data
-#define POINT_SHADOW_TRANSFORM(index) point_shadow.data
-#endif
-
 layout(set = POINT_LIGHT_SHADOW_ATLAS_SET, binding = POINT_LIGHT_SHADOW_ATLAS_BINDING) uniform samplerCubeArrayShadow uPointShadowAtlas;
 layout(std140, set = POINT_LIGHT_SHADOW_DATA_SET, binding = POINT_LIGHT_SHADOW_DATA_BINDING) uniform PointShadow
 {
@@ -74,6 +66,15 @@ layout(std140, set = POINT_LIGHT_SHADOW_DATA_SET, binding = POINT_LIGHT_SHADOW_D
 #endif
 } point_shadow;
 #endif
+
+#ifdef POSITIONAL_LIGHT_INSTANCING
+#define POINT_DATA(index) point.data[index]
+#define POINT_SHADOW_TRANSFORM(index) point_shadow.data[index]
+#else
+#define POINT_DATA(index) point.data
+#define POINT_SHADOW_TRANSFORM(index) point_shadow.data
+#endif
+
 
 vec3 compute_point_light(int index, MaterialProperties material, vec3 world_pos, vec3 camera_pos)
 {

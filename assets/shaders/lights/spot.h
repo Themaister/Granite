@@ -31,7 +31,11 @@ struct SpotShaderInfo
 
 layout(std140, set = SPOT_LIGHT_DATA_SET, binding = SPOT_LIGHT_DATA_BINDING) uniform SpotParameters
 {
+#ifdef POSITIONAL_LIGHT_INSTANCING
     SpotShaderInfo data[SPOT_LIGHT_DATA_COUNT];
+#else
+    SpotShaderInfo data;
+#endif
 } spot;
 
 #ifdef POSITIONAL_LIGHTS_SHADOW
@@ -54,26 +58,38 @@ layout(std140, set = SPOT_LIGHT_DATA_SET, binding = SPOT_LIGHT_DATA_BINDING) uni
 layout(set = SPOT_LIGHT_SHADOW_ATLAS_SET, binding = SPOT_LIGHT_SHADOW_ATLAS_BINDING) uniform sampler2DShadow uSpotShadowAtlas;
 layout(std140, set = SPOT_LIGHT_SHADOW_DATA_SET, binding = SPOT_LIGHT_SHADOW_DATA_BINDING) uniform SpotShadow
 {
+#ifdef POSITIONAL_LIGHT_INSTANCING
 	mat4 transform[SPOT_LIGHT_SHADOW_DATA_COUNT];
+#else
+	mat4 transform;
+#endif
 } spot_shadow;
+#endif
+
+#ifdef POSITIONAL_LIGHT_INSTANCING
+#define SPOT_DATA(index) spot.data[index]
+#define SPOT_SHADOW_TRANSFORM(index) spot_shadow.transform[index]
+#else
+#define SPOT_DATA(index) spot.data
+#define SPOT_SHADOW_TRANSFORM(index) spot_shadow.transform
 #endif
 
 vec3 compute_spot_light(int index, MaterialProperties material, vec3 world_pos, vec3 camera_pos)
 {
 #ifdef POSITIONAL_LIGHTS_SHADOW
-	vec4 spot_shadow_clip = spot_shadow.transform[index] * vec4(world_pos, 1.0);
+	vec4 spot_shadow_clip = SPOT_SHADOW_TRANSFORM(index) * vec4(world_pos, 1.0);
 	mediump float shadow_falloff = textureProjLod(uSpotShadowAtlas, spot_shadow_clip, 0.0);
 #else
 	const float shadow_falloff = 1.0;
 #endif
-	vec3 light_pos = spot.data[index].position;
+	vec3 light_pos = SPOT_DATA(index).position;
 	mediump vec3 light_dir = normalize(light_pos - world_pos);
 	mediump float light_dist = length(world_pos - light_pos);
-	mediump float cone_angle = dot(normalize(world_pos - light_pos), spot.data[index].direction);
-	mediump float cone_falloff = smoothstep(spot.data[index].spot_outer, spot.data[index].spot_inner, cone_angle);
-	mediump float static_falloff = shadow_falloff * (1.0 - smoothstep(0.9, 1.0, light_dist * spot.data[index].inv_radius));
-	mediump vec3 f = spot.data[index].falloff;
-	mediump vec3 spot_color = spot.data[index].color * (cone_falloff * static_falloff / (f.x + light_dist * f.y + light_dist * light_dist * f.z));
+	mediump float cone_angle = dot(normalize(world_pos - light_pos), SPOT_DATA(index).direction);
+	mediump float cone_falloff = smoothstep(SPOT_DATA(index).spot_outer, SPOT_DATA(index).spot_inner, cone_angle);
+	mediump float static_falloff = shadow_falloff * (1.0 - smoothstep(0.9, 1.0, light_dist * SPOT_DATA(index).inv_radius));
+	mediump vec3 f = SPOT_DATA(index).falloff;
+	mediump vec3 spot_color = SPOT_DATA(index).color * (cone_falloff * static_falloff / (f.x + light_dist * f.y + light_dist * light_dist * f.z));
 
 #ifdef SPOT_LIGHT_EARLY_OUT
 	if (all(equal(spot_color, vec3(0.0))))

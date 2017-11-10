@@ -1,4 +1,11 @@
 #version 450
+precision highp float;
+precision highp int;
+
+#if defined(VARIANT_BIT_2)
+#define INSTANCING
+#define POSITIONAL_LIGHT_INSTANCING
+#endif
 
 #if defined(VARIANT_BIT_1)
 #define POSITIONAL_LIGHTS_SHADOW
@@ -8,7 +15,10 @@
 #include "spot.h"
 
 layout(location = 0) out mediump vec3 FragColor;
+
+#ifdef INSTANCING
 layout(location = 0) flat in int vIndex;
+#endif
 
 layout(input_attachment_index = 0, set = 1, binding = 0) uniform mediump subpassInput BaseColor;
 layout(input_attachment_index = 1, set = 1, binding = 1) uniform mediump subpassInput Normal;
@@ -34,7 +44,12 @@ void main()
     vec4 clip = registers.inverse_view_projection * vec4(2.0 * gl_FragCoord.xy * registers.inv_resolution - 1.0, depth, 1.0);
     vec3 pos = clip.xyz / clip.w;
 
-    FragColor = compute_spot_light(vIndex,
+    FragColor = compute_spot_light(
+#ifdef INSTANCING
+        vIndex,
+#else
+        0,
+#endif
         MaterialProperties(base_color_ambient.rgb, N, mr.x, mr.y, base_color_ambient.a, 1.0),
         pos, registers.camera_pos);
 }

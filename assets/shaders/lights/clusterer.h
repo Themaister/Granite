@@ -23,6 +23,8 @@
 #define POINT_LIGHT_SHADOW_DATA_BINDING 12
 #define POINT_LIGHT_SHADOW_DATA_COUNT 32
 
+#define POSITIONAL_LIGHT_INSTANCING
+
 #include "spot.h"
 #include "point.h"
 

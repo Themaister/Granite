@@ -32,8 +32,17 @@
 using namespace Vulkan;
 using namespace Util;
 
+#define LIGHTS_INSTANCING 1
+
 namespace Granite
 {
+enum PositionalLightVariantBits
+{
+	POSITIONAL_VARIANT_FULL_SCREEN_BIT = 1 << 0,
+	POSITIONAL_VARIANT_SHADOW_BIT = 1 << 1,
+	POSITIONAL_VARIANT_INSTANCE_BIT = 1 << 2
+};
+
 struct LightCookie
 {
 	LightCookie()
@@ -291,7 +300,11 @@ static void positional_render_full_screen(CommandBuffer &cmd, const RenderQueueD
 
 	for (unsigned i = 0; i < num_instances; )
 	{
+#if LIGHTS_INSTANCING
 		unsigned to_render = min(256u, num_instances - i);
+#else
+		unsigned to_render = min(1u, num_instances - i);
+#endif
 
 		auto *frag = cmd.allocate_typed_constant_data<PositionalFragmentInfo>(2, 0, to_render);
 		auto *vert = cmd.allocate_typed_constant_data<PositionalVertexInfo>(2, 1, to_render);
@@ -351,7 +364,12 @@ static void positional_render_common(CommandBuffer &cmd, const RenderQueueData *
 
 	for (unsigned i = 0; i < num_instances; )
 	{
+#if LIGHTS_INSTANCING
 		unsigned to_render = min(256u, num_instances - i);
+#else
+		unsigned to_render = min(1u, num_instances - i);
+#endif
+
 		auto *frag = cmd.allocate_typed_constant_data<PositionalFragmentInfo>(2, 0, to_render);
 		auto *vert = cmd.allocate_typed_constant_data<PositionalVertexInfo>(2, 1, to_render);
 
@@ -451,9 +469,14 @@ void SpotLight::get_render_info(const RenderContext &context, const CachedSpatia
 		info.atlas = atlas;
 		info.type = PositionalLight::Type::Spot;
 
-		unsigned variant = func == positional_render_full_screen ? 1 : 0;
+		unsigned variant = 0;
+		if (func == positional_render_full_screen)
+			variant |= POSITIONAL_VARIANT_FULL_SCREEN_BIT;
 		if (atlas)
-			variant += 2;
+			variant |= POSITIONAL_VARIANT_SHADOW_BIT;
+#if LIGHTS_INSTANCING
+		variant |= POSITIONAL_VARIANT_INSTANCE_BIT;
+#endif
 
 		info.program = queue.get_shader_suites()[ecast(RenderableType::SpotLight)].get_program(DrawPipeline::AlphaBlend, 0, 0, variant).get();
 		*spot_info = info;
@@ -550,9 +573,14 @@ void PointLight::get_render_info(const RenderContext &context, const CachedSpati
 		info.atlas = shadow_atlas;
 		info.type = PositionalLight::Type::Point;
 
-		unsigned variant = func == positional_render_full_screen ? 1 : 0;
+		unsigned variant = 0;
+		if (func == positional_render_full_screen)
+			variant |= POSITIONAL_VARIANT_FULL_SCREEN_BIT;
 		if (shadow_atlas)
-			variant += 2;
+			variant |= POSITIONAL_VARIANT_SHADOW_BIT;
+#if LIGHTS_INSTANCING
+		variant |= POSITIONAL_VARIANT_INSTANCE_BIT;
+#endif
 
 		info.program = queue.get_shader_suites()[ecast(RenderableType::PointLight)].get_program(DrawPipeline::AlphaBlend, 0, 0, variant).get();
 		*point_info = info;

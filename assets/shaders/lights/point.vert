@@ -4,22 +4,35 @@
 
 layout(std140, set = 2, binding = 1) uniform Parameters
 {
+#if defined(VARIANT_BIT_2)
     mat4 transforms[256];
+#else
+    mat4 transform;
+#endif
 };
 
 layout(location = 0) in vec4 Position;
+
+#if defined(VARIANT_BIT_2)
 layout(location = 0) flat out int vIndex;
+#endif
 
 void main()
 {
-#if VARIANT_ID == 1
+#if defined(VARIANT_BIT_0)
     gl_Position = vec4(Position.xy, 1.0, 1.0);
-#elif VARIANT_ID == 0
+#else
     const float fudge_factor = 1.15; // Make sure cover the entire volume.
-    vec4 world = transforms[gl_InstanceIndex] * (vec4(fudge_factor, fudge_factor, fudge_factor, 1.0) * vec4(Position));
+    #if defined(VARIANT_BIT_2)
+        vec4 world = transforms[gl_InstanceIndex] * (vec4(fudge_factor, fudge_factor, fudge_factor, 1.0) * vec4(Position));
+    #else
+        vec4 world = transform * (vec4(fudge_factor, fudge_factor, fudge_factor, 1.0) * vec4(Position));
+    #endif
     vec4 clip = global.view_projection * world;
     gl_Position = clip;
 #endif
 
+#if defined(VARIANT_BIT_2)
     vIndex = gl_InstanceIndex;
+#endif
 }

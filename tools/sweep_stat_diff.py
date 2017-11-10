@@ -61,6 +61,7 @@ def main():
                                 type_str += 'F' if renderer == 'forward' else 'D'
                                 type_str += str(msaa)
                                 type_str += 'Z' if prepass else 'z'
+                                type_str += 'C' if clustered else 'c'
                                 type_str += 'H' if hdr_bloom else 'L'
                                 type_str += 'SS' if shadows else 'ss'
                                 type_str += 'PS' if pos_shadows else 'ps'

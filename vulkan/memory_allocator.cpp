@@ -25,6 +25,12 @@
 
 using namespace std;
 
+#ifdef VULKAN_MT
+#define ALLOCATOR_LOCK() std::lock_guard<std::mutex> holder__{lock}
+#else
+#define ALLOCATOR_LOCK()
+#endif
+
 namespace Vulkan
 {
 
@@ -112,6 +118,7 @@ void ClassAllocator::suballocate(uint32_t num_blocks, uint32_t tiling, uint32_t 
 
 bool ClassAllocator::allocate(uint32_t size, AllocationTiling tiling, DeviceAllocation *alloc, bool hierarchical)
 {
+	ALLOCATOR_LOCK();
 	unsigned num_blocks = (size + sub_block_size - 1) >> sub_block_size_log2;
 	uint32_t size_mask = (1u << (num_blocks - 1)) - 1;
 	uint32_t masked_tiling_mode = tiling_mask & tiling;
@@ -217,6 +224,7 @@ ClassAllocator::~ClassAllocator()
 
 void ClassAllocator::free(DeviceAllocation *alloc)
 {
+	ALLOCATOR_LOCK();
 	auto *heap = &*alloc->heap;
 	auto &block = heap->heap;
 	bool was_full = block.full();
@@ -413,12 +421,14 @@ DeviceAllocator::~DeviceAllocator()
 
 void DeviceAllocator::free(uint32_t size, uint32_t memory_type, VkDeviceMemory memory, uint8_t *host_memory)
 {
+	ALLOCATOR_LOCK();
 	auto &heap = heaps[mem_props.memoryTypes[memory_type].heapIndex];
 	heap.blocks.push_back({ memory, host_memory, size, memory_type });
 }
 
 void DeviceAllocator::free_no_recycle(uint32_t size, uint32_t memory_type, VkDeviceMemory memory, uint8_t *host_memory)
 {
+	ALLOCATOR_LOCK();
 	auto &heap = heaps[mem_props.memoryTypes[memory_type].heapIndex];
 	if (host_memory)
 		vkUnmapMemory(device, memory);
@@ -428,6 +438,7 @@ void DeviceAllocator::free_no_recycle(uint32_t size, uint32_t memory_type, VkDev
 
 void DeviceAllocator::garbage_collect()
 {
+	ALLOCATOR_LOCK();
 	for (auto &heap : heaps)
 		heap.garbage_collect(device);
 }
@@ -479,6 +490,7 @@ void DeviceAllocator::unmap_memory(const DeviceAllocation &alloc)
 bool DeviceAllocator::allocate(uint32_t size, uint32_t memory_type, VkDeviceMemory *memory, uint8_t **host_memory,
                                VkImage dedicated_image)
 {
+	ALLOCATOR_LOCK();
 	auto &heap = heaps[mem_props.memoryTypes[memory_type].heapIndex];
 
 	// Naive searching is fine here as vkAllocate blocks are *huge* and we won't have many of them.

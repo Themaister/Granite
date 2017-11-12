@@ -32,6 +32,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <vector>
+#include <mutex>
 
 namespace Vulkan
 {
@@ -237,6 +238,7 @@ private:
 	uint32_t sub_block_size_log2 = 0;
 	uint32_t tiling_mask = ~0u;
 	uint32_t memory_type = 0;
+	std::mutex lock;
 	DeviceAllocator *global_allocator = nullptr;
 
 	void set_global_allocator(DeviceAllocator *allocator)
@@ -329,6 +331,7 @@ private:
 	VkDevice device = VK_NULL_HANDLE;
 	VkPhysicalDeviceMemoryProperties mem_props;
 	VkDeviceSize atom_alignment = 1;
+	std::mutex lock;
 	bool use_dedicated = false;
 
 	struct Allocation

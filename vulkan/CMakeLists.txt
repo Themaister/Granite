@@ -1,6 +1,4 @@
-add_granite_library(vulkan-symbols
-   vulkan_symbol_wrapper.cpp
-   )
+add_granite_library(vulkan-symbols vulkan_symbol_wrapper.cpp vulkan_symbol_wrapper.h)
 target_include_directories(vulkan-symbols PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/khronos)
 
@@ -44,6 +42,11 @@ endif()
 option(GRANITE_SPIRV_DUMP "Dump compiled SPIR-V modules to cache." OFF)
 if (GRANITE_SPIRV_DUMP)
     target_compile_definitions(vulkan-backend PRIVATE GRANITE_SPIRV_DUMP)
+endif()
+
+option(GRANITE_VULKAN_MT "Make Vulkan backend thread-safe." ON)
+if (GRANITE_VULKAN_MT)
+    target_compile_definitions(vulkan-backend PRIVATE VULKAN_MT)
 endif()
 
 add_subdirectory(wsi)

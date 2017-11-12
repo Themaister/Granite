@@ -111,6 +111,30 @@ TaskGroup::~TaskGroup()
 }
 }
 
+struct ThreadGroupHolder
+{
+	ThreadGroup group;
+	ThreadGroupHolder()
+	{
+		group.start(thread::hardware_concurrency());
+	}
+};
+
+ThreadGroup &ThreadGroup::get_global()
+{
+	static ThreadGroupHolder group;
+	return group.group;
+}
+
+unsigned ThreadGroup::get_current_thread_index() const
+{
+	auto itr = thread_id_to_index.find(std::this_thread::get_id());
+	if (itr != end(thread_id_to_index))
+		return itr->second;
+
+	throw invalid_argument("Thread does not exist in thread manager or is not the main thread.");
+}
+
 void ThreadGroup::start(unsigned num_threads)
 {
 	if (active)
@@ -122,6 +146,11 @@ void ThreadGroup::start(unsigned num_threads)
 	thread_group.resize(num_threads);
 	for (auto &t : thread_group)
 		t = make_unique<thread>(&ThreadGroup::thread_looper, this);
+
+	thread_id_to_index.clear();
+	thread_id_to_index[std::this_thread::get_id()] = 0;
+	for (unsigned i = 0; i < num_threads; i++)
+		thread_id_to_index[thread_group[i]->get_id()] = 1 + i;
 }
 
 void ThreadGroup::submit(TaskGroup &group)

@@ -32,6 +32,7 @@
 #include <object_pool.hpp>
 #include "variant.hpp"
 #include "intrusive.hpp"
+#include <unordered_map>
 
 namespace Granite
 {
@@ -119,7 +120,13 @@ public:
 	void operator=(ThreadGroup &&) = delete;
 
 	void start(unsigned num_threads);
+	unsigned get_num_threads() const
+	{
+		return thread_group.size();
+	}
 	void stop();
+
+	unsigned get_current_thread_index() const;
 
 	void enqueue_task(TaskGroup &group, std::function<void ()> func);
 	TaskGroup create_task(std::function<void ()> func);
@@ -134,6 +141,8 @@ public:
 
 	void submit(TaskGroup &group);
 	void wait_idle();
+
+	static ThreadGroup &get_global();
 
 private:
 	Util::ThreadSafeObjectPool<Internal::Task> task_pool;
@@ -155,5 +164,6 @@ private:
 	std::mutex wait_cond_lock;
 	std::atomic_uint total_tasks;
 	std::atomic_uint completed_tasks;
+	std::unordered_map<std::thread::id, unsigned> thread_id_to_index;
 };
 }

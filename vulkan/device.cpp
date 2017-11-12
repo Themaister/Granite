@@ -37,6 +37,7 @@ Device::Device()
 	, shader_manager(this)
 	, texture_manager(this)
 {
+	cookie.store(0);
 }
 
 Semaphore Device::request_semaphore()
@@ -2138,6 +2139,11 @@ VkFormat Device::get_default_depth_format() const
 		return VK_FORMAT_D16_UNORM;
 
 	return VK_FORMAT_UNDEFINED;
+}
+
+uint64_t Device::allocate_cookie()
+{
+	return cookie.fetch_add(1, memory_order_relaxed) + 1;
 }
 
 const RenderPass &Device::request_render_pass(const RenderPassInfo &info)

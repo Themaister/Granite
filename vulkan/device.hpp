@@ -43,6 +43,7 @@
 #include "query_pool.hpp"
 #include <memory>
 #include <vector>
+#include <atomic>
 
 namespace Vulkan
 {
@@ -133,10 +134,7 @@ public:
 	const Framebuffer &request_framebuffer(const RenderPassInfo &info);
 	const RenderPass &request_render_pass(const RenderPassInfo &info);
 
-	uint64_t allocate_cookie()
-	{
-		return ++cookie;
-	}
+	uint64_t allocate_cookie();
 
 	RenderPassInfo get_swapchain_render_pass(SwapchainRenderPass style);
 	ImageView &get_swapchain_view();
@@ -194,7 +192,7 @@ private:
 	VkQueue compute_queue = VK_NULL_HANDLE;
 	VkQueue transfer_queue = VK_NULL_HANDLE;
 	DeviceAllocator allocator;
-	uint64_t cookie = 0;
+	std::atomic_uint64_t cookie;
 
 	VkPhysicalDeviceMemoryProperties mem_props;
 	VkPhysicalDeviceProperties gpu_props;

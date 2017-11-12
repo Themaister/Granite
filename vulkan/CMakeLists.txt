@@ -24,6 +24,7 @@ add_granite_library(vulkan-backend
         fence.hpp
         format.hpp
         limits.hpp
+        type_to_string.hpp
         event_manager.cpp event_manager.hpp
         pipeline_event.cpp pipeline_event.hpp
         query_pool.cpp query_pool.hpp
@@ -47,6 +48,7 @@ endif()
 option(GRANITE_VULKAN_MT "Make Vulkan backend thread-safe." ON)
 if (GRANITE_VULKAN_MT)
     target_compile_definitions(vulkan-backend PRIVATE VULKAN_MT)
+    target_link_libraries(vulkan-backend threading)
 endif()
 
 add_subdirectory(wsi)

@@ -155,7 +155,7 @@ private:
 	std::mutex cond_lock;
 	std::condition_variable cond;
 
-	void thread_looper();
+	void thread_looper(unsigned self_index);
 
 	bool active = false;
 	bool dead = false;

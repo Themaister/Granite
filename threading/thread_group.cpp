@@ -144,8 +144,15 @@ void ThreadGroup::start(unsigned num_threads)
 	active = true;
 
 	thread_group.resize(num_threads);
+
+	unsigned self_index = 1;
 	for (auto &t : thread_group)
-		t = make_unique<thread>(&ThreadGroup::thread_looper, this);
+	{
+		t = make_unique<thread>([this, self_index]() {
+			thread_looper(self_index);
+		});
+		self_index++;
+	}
 
 	thread_id_to_index.clear();
 	thread_id_to_index[std::this_thread::get_id()] = 0;
@@ -246,7 +253,7 @@ void ThreadGroup::wait_idle()
 	});
 }
 
-void ThreadGroup::thread_looper()
+void ThreadGroup::thread_looper(unsigned)
 {
 	for (;;)
 	{

@@ -497,9 +497,7 @@ void Device::submit_staging(CommandBufferHandle cmd, VkBufferUsageFlags usage)
 {
 	if (transfer_queue == graphics_queue && transfer_queue == compute_queue)
 	{
-		// For single-queue systems, just use a pipeline barrier,
-		// this is more efficient than semaphores because with semaphores
-		// we will end up draining the entire graphics queue.
+		// For single-queue systems, just use a pipeline barrier.
 		cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 		             buffer_usage_to_possible_stages(usage),
 		             buffer_usage_to_possible_access(usage));
@@ -766,6 +764,13 @@ void Device::end_frame()
 	submit_queue(CommandBuffer::Type::Compute, &fence, nullptr, nullptr);
 }
 
+void Device::flush_frame()
+{
+	flush_frame(CommandBuffer::Type::Transfer);
+	flush_frame(CommandBuffer::Type::Graphics);
+	flush_frame(CommandBuffer::Type::Compute);
+}
+
 Device::QueueData &Device::get_queue_data(CommandBuffer::Type type)
 {
 	switch (type)
@@ -774,9 +779,17 @@ Device::QueueData &Device::get_queue_data(CommandBuffer::Type type)
 	case CommandBuffer::Type::Graphics:
 		return graphics;
 	case CommandBuffer::Type::Compute:
-		return compute;
+		if (graphics_queue == compute_queue)
+			return graphics;
+		else
+			return compute;
 	case CommandBuffer::Type::Transfer:
-		return transfer;
+		if (transfer_queue == graphics_queue)
+			return graphics;
+		else if (transfer_queue == compute_queue)
+			return compute;
+		else
+			return transfer;
 	}
 }
 
@@ -788,9 +801,17 @@ CommandPool &Device::get_command_pool(CommandBuffer::Type type)
 	case CommandBuffer::Type::Graphics:
 		return frame().graphics_cmd_pool;
 	case CommandBuffer::Type::Compute:
-		return frame().compute_cmd_pool;
+		if (compute_queue == graphics_queue)
+			return frame().graphics_cmd_pool;
+		else
+			return frame().compute_cmd_pool;
 	case CommandBuffer::Type::Transfer:
-		return frame().transfer_cmd_pool;
+		if (transfer_queue == graphics_queue)
+			return frame().graphics_cmd_pool;
+		else if (transfer_queue == compute_queue)
+			return frame().compute_cmd_pool;
+		else
+			return frame().transfer_cmd_pool;
 	}
 }
 
@@ -802,9 +823,17 @@ vector<CommandBufferHandle> &Device::get_queue_submissions(CommandBuffer::Type t
 	case CommandBuffer::Type::Graphics:
 		return frame().graphics_submissions;
 	case CommandBuffer::Type::Compute:
-		return frame().compute_submissions;
+		if (compute_queue == graphics_queue)
+			return frame().graphics_submissions;
+		else
+			return frame().compute_submissions;
 	case CommandBuffer::Type::Transfer:
-		return frame().transfer_submissions;
+		if (transfer_queue == graphics_queue)
+			return frame().graphics_submissions;
+		else if (transfer_queue == compute_queue)
+			return frame().compute_submissions;
+		else
+			return frame().transfer_submissions;
 	}
 }
 

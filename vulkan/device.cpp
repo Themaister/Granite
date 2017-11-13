@@ -463,7 +463,7 @@ void Device::submit_empty(CommandBuffer::Type type, Fence *fence, Semaphore *sem
 		break;
 	}
 
-	VkFence cleared_fence = frame().fence_manager.request_cleared_fence();
+	VkFence cleared_fence = fence ? frame().fence_manager.request_cleared_fence() : VK_NULL_HANDLE;
 	if (queue_lock_callback)
 		queue_lock_callback();
 	VkResult result = vkQueueSubmit(queue, 1, &submit, cleared_fence);

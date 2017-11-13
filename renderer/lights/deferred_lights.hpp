@@ -43,7 +43,7 @@ private:
 	Renderer *depth_renderer = nullptr;
 	Renderer *deferred_renderer = nullptr;
 
-	enum { NumClusters = 4 };
+	enum { NumClusters = 7 };
 
 	VisibilityList clips;
 	VisibilityList clusters[NumClusters];

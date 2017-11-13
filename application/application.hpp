@@ -177,6 +177,7 @@ private:
 		bool timestamps = false;
 		bool rescale_scene = false;
 		bool force_shadow_map_update = false;
+		bool show_ui = true;
 		float cascade_cutoff_distance = 10.0f;
 	};
 	Config config;

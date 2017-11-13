@@ -94,6 +94,8 @@ void SceneViewerApplication::read_config(const std::string &path)
 		config.clustered_lights_shadows = doc["clusteredLightsShadows"].GetBool();
 	if (doc.HasMember("hdrBloom"))
 		config.hdr_bloom = doc["hdrBloom"].GetBool();
+	if (doc.HasMember("showUi"))
+		config.show_ui = doc["showUi"].GetBool();
 	if (doc.HasMember("forwardDepthPrepass"))
 		config.forward_depth_prepass = doc["forwardDepthPrepass"].GetBool();
 
@@ -654,19 +656,24 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 	if (config.hdr_bloom)
 		setup_hdr_postprocess(graph, "HDR-main", "tonemapped");
 
-	auto &ui = graph.add_pass("ui", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
-	AttachmentInfo ui_info;
-	ui.add_color_output("ui-output", ui_info, ui_source);
-	graph.set_backbuffer_source("ui-output");
+	if (config.show_ui)
+	{
+		auto &ui = graph.add_pass("ui", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+		AttachmentInfo ui_info;
+		ui.add_color_output("ui-output", ui_info, ui_source);
+		graph.set_backbuffer_source("ui-output");
 
-	ui.set_get_clear_color([](unsigned, VkClearColorValue *value) {
-		memset(value, 0, sizeof(*value));
-		return true;
-	});
+		ui.set_get_clear_color([](unsigned, VkClearColorValue *value) {
+			memset(value, 0, sizeof(*value));
+			return true;
+		});
 
-	ui.set_build_render_pass([this](CommandBuffer &cmd) {
-		render_ui(cmd);
-	});
+		ui.set_build_render_pass([this](CommandBuffer &cmd) {
+			render_ui(cmd);
+		});
+	}
+	else
+		graph.set_backbuffer_source(ui_source);
 
 	graph.bake();
 	graph.log();

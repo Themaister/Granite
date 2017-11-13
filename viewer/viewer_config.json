@@ -14,5 +14,6 @@
 	"timestamps": false,
 	"rescaleScene": false,
 	"directionalLightCascadeCutoff": 10.0,
-	"directionalLightShadowsForceUpdate": false
+	"directionalLightShadowsForceUpdate": false,
+	"showUi": true
 }

@@ -274,6 +274,7 @@ def main():
                                     c['directionalLightShadows'] = shadows
                                     c['forwardDepthPrepass'] = prepass
                                     c['clusteredLightsShadows'] = pos_shadows
+                                    c['showUi'] = False
                                     if args.gen_configs_camera_index is not None:
                                         c['cameraIndex'] = args.gen_configs_camera_index
                                     with open(config_file, 'w') as f:

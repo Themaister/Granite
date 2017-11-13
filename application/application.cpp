@@ -214,6 +214,13 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 		cluster->set_force_update_shadows(config.force_shadow_map_update);
 	}
 
+	{
+		auto entity = scene_loader.get_scene().create_entity();
+		entity->allocate_component<PerFrameUpdateComponent>()->refresh = &deferred_lights;
+		deferred_lights.set_scene(&scene_loader.get_scene());
+		deferred_lights.set_renderers(&depth_renderer, &deferred_renderer);
+	}
+
 	context.set_camera(*selected_camera);
 
 	graph.enable_timestamps(config.timestamps);
@@ -302,7 +309,7 @@ bool SceneViewerApplication::on_key_down(const KeyboardEvent &e)
 		light.type = SceneFormats::LightInfo::Type::Spot;
 		light.outer_cone = 0.9f;
 		light.inner_cone = 0.92f;
-		light.quadratic_falloff = 0.01f;
+		light.quadratic_falloff = 0.1f;
 		light.constant_falloff = 0.0f;
 		light.color = vec3(1.0f);
 
@@ -322,7 +329,7 @@ bool SceneViewerApplication::on_key_down(const KeyboardEvent &e)
 
 		SceneFormats::LightInfo light;
 		light.type = SceneFormats::LightInfo::Type::Point;
-		light.quadratic_falloff = 0.01f;
+		light.quadratic_falloff = 0.1f;
 		light.constant_falloff = 0.0f;
 		light.color = vec3(1.0f);
 		node->transform.translation = pos;
@@ -422,15 +429,16 @@ void SceneViewerApplication::render_transparent_objects(Vulkan::CommandBuffer &c
 	forward_renderer.flush(cmd, context);
 }
 
+void SceneViewerApplication::render_positional_lights_prepass(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view)
+{
+	context.set_camera(proj, view);
+	deferred_lights.render_prepass_lights(cmd, context);
+}
+
 void SceneViewerApplication::render_positional_lights(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view)
 {
-	auto &scene = scene_loader.get_scene();
 	context.set_camera(proj, view);
-	visible.clear();
-	scene.gather_visible_positional_lights(context.get_visibility_frustum(), visible);
-	deferred_renderer.begin();
-	deferred_renderer.push_renderables(context, visible);
-	deferred_renderer.flush(cmd, context);
+	deferred_lights.render_lights(cmd, context);
 }
 
 static inline string tagcat(const std::string &a, const std::string &b)
@@ -516,6 +524,8 @@ void SceneViewerApplication::add_main_pass_deferred(Vulkan::Device &device, cons
 	gbuffer.set_depth_stencil_output(tagcat("depth", tag), depth);
 	gbuffer.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
 		render_main_pass(cmd, selected_camera->get_projection(), selected_camera->get_view());
+		if (!config.clustered_lights)
+			render_positional_lights_prepass(cmd, selected_camera->get_projection(), selected_camera->get_view());
 	});
 
 	gbuffer.set_get_clear_depth_stencil([](VkClearDepthStencilValue *value) -> bool {

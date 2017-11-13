@@ -108,6 +108,8 @@ public:
 
 	void get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
 	                     RenderQueue &queue) const override;
+	void get_depth_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
+	                           RenderQueue &queue) const override;
 
 	void set_spot_parameters(float inner_cone, float outer_cone);
 	PositionalFragmentInfo get_shader_info(const mat4 &transform) const;
@@ -142,6 +144,8 @@ public:
 
 	void get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
 	                     RenderQueue &queue) const override;
+	void get_depth_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
+	                           RenderQueue &queue) const override;
 	PositionalFragmentInfo get_shader_info(const mat4 &transform) const;
 
 	void set_shadow_info(const Vulkan::ImageView *shadow, const PointTransform &transform);

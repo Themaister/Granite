@@ -54,12 +54,16 @@ public:
 		FRONT_FACE_CLOCKWISE_BIT = 1 << 0,
 		DEPTH_BIAS_BIT = 1 << 1,
 		DEPTH_STENCIL_READ_ONLY = 1 << 2,
-		NO_COLOR = 1 << 3
+		NO_COLOR = 1 << 3,
+		BACKFACE_BIT = 1 << 4,
+		STENCIL_WRITE_REFERENCE_BIT = 1 << 5,
+		STENCIL_COMPARE_REFERENCE_BIT = 1 << 6
 	};
 	using RendererFlushFlags = uint32_t;
 
 	void set_mesh_renderer_options(RendererOptionFlags flags);
 	void set_mesh_renderer_options_from_lighting(const LightingParameters &params);
+	void set_stencil_reference(uint8_t compare_mask, uint8_t write_mask, uint8_t ref);
 
 	void begin();
 
@@ -95,6 +99,9 @@ private:
 
 	RendererType type;
 	uint32_t renderer_options = ~0u;
+	uint8_t stencil_compare_mask = 0;
+	uint8_t stencil_write_mask = 0;
+	uint8_t stencil_reference = 0;
 
 	void set_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context);
 	void set_mesh_renderer_options_internal(RendererOptionFlags flags);

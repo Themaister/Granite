@@ -151,6 +151,12 @@ void Renderer::on_device_created(const DeviceCreatedEvent &created)
 		                                                   "builtin://shaders/dummy.frag");
 		suite[ecast(RenderableType::TexturePlane)].init_graphics(&device.get_shader_manager(), "builtin://shaders/texture_plane.vert",
 		                                                         "builtin://shaders/dummy.frag");
+		suite[ecast(RenderableType::SpotLight)].init_graphics(&device.get_shader_manager(),
+		                                                      "builtin://shaders/lights/spot.vert",
+		                                                      "builtin://shaders/dummy.frag");
+		suite[ecast(RenderableType::PointLight)].init_graphics(&device.get_shader_manager(),
+		                                                       "builtin://shaders/lights/point.vert",
+		                                                       "builtin://shaders/dummy.frag");
 	}
 
 	if (type == RendererType::GeneralDeferred)
@@ -250,6 +256,13 @@ void Renderer::set_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderC
 		set_cluster_parameters(cmd, *lighting->cluster);
 }
 
+void Renderer::set_stencil_reference(uint8_t compare_mask, uint8_t write_mask, uint8_t ref)
+{
+	stencil_compare_mask = compare_mask;
+	stencil_write_mask = write_mask;
+	stencil_reference = ref;
+}
+
 void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context, RendererFlushFlags options)
 {
 	auto *global = static_cast<RenderParameters *>(cmd.allocate_constant_data(0, 0, sizeof(RenderParameters)));
@@ -276,6 +289,19 @@ void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context, Rendere
 		cmd.set_depth_bias(+4.0f, +2.0f);
 	}
 
+	if (options & BACKFACE_BIT)
+	{
+		cmd.set_cull_mode(VK_CULL_MODE_FRONT_BIT);
+		cmd.set_depth_compare(VK_COMPARE_OP_GREATER);
+	}
+
+	if (options & STENCIL_WRITE_REFERENCE_BIT)
+	{
+		cmd.set_stencil_test(true);
+		cmd.set_stencil_ops(VK_COMPARE_OP_ALWAYS, VK_STENCIL_OP_REPLACE, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP);
+		cmd.set_stencil_reference(stencil_compare_mask, stencil_write_mask, stencil_reference);
+	}
+
 	CommandBufferSavedState state;
 	cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
 	// No need to spend write bandwidth on writing 0 to light buffer, render opaque emissive on top.
@@ -291,8 +317,13 @@ void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context, Rendere
 		cmd.set_blend_enable(true);
 		cmd.set_blend_factors(VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_ONE);
 		cmd.set_blend_op(VK_BLEND_OP_ADD);
-		cmd.set_stencil_reference(0xff, 0, 0);
+
 		cmd.set_stencil_test(true);
+		if (options & STENCIL_COMPARE_REFERENCE_BIT)
+			cmd.set_stencil_reference(stencil_compare_mask, 0, stencil_reference);
+		else
+			cmd.set_stencil_reference(0xff, 0, 0);
+
 		cmd.set_stencil_front_ops(VK_COMPARE_OP_EQUAL, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP);
 		cmd.set_stencil_back_ops(VK_COMPARE_OP_EQUAL, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP);
 		cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);

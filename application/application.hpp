@@ -35,6 +35,7 @@
 #include "render_graph.hpp"
 #include "mesh_util.hpp"
 #include "lights/clusterer.hpp"
+#include "lights/deferred_lights.hpp"
 #include "camera_export.hpp"
 
 namespace Granite
@@ -134,6 +135,7 @@ protected:
 	AABB shadow_scene_aabb;
 
 	std::unique_ptr<LightClusterer> cluster;
+	DeferredLights deferred_lights;
 
 	void update_shadow_scene_aabb();
 	void render_shadow_map_near(Vulkan::CommandBuffer &cmd);
@@ -141,6 +143,7 @@ protected:
 	void render_main_pass(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view);
 	void render_transparent_objects(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view);
 	void render_positional_lights(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view);
+	void render_positional_lights_prepass(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view);
 	void render_ui(Vulkan::CommandBuffer &cmd);
 
 	void add_main_pass(Vulkan::Device &device, const std::string &tag);

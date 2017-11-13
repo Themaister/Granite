@@ -20,6 +20,7 @@ add_granite_library(renderer
         lights/lights.cpp lights/lights.hpp
         lights/clusterer.cpp lights/clusterer.hpp
         lights/light_info.hpp
+        lights/deferred_lights.hpp lights/deferred_lights.cpp
         scene_loader.cpp scene_loader.hpp)
 target_link_libraries(renderer vulkan-backend math scene-formats application-events gli rapidjson)
 target_include_directories(renderer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

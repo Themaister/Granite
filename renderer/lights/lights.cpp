@@ -336,6 +336,38 @@ static void positional_render_full_screen(CommandBuffer &cmd, const RenderQueueD
 	}
 }
 
+static void positional_render_depth(CommandBuffer &cmd, const RenderQueueData *infos, unsigned num_instances)
+{
+	auto &light_info = *static_cast<const PositionalLightRenderInfo *>(infos[0].render_info);
+	cmd.set_program(*light_info.program);
+	cmd.set_vertex_binding(0, *light_info.vbo, 0, sizeof(vec3));
+	cmd.set_vertex_attrib(0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0);
+	cmd.set_index_buffer(*light_info.ibo, 0, VK_INDEX_TYPE_UINT16);
+
+	if (light_info.type == PositionalLight::Type::Spot)
+	{
+		cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+		cmd.set_primitive_restart(false);
+	}
+	else
+	{
+		cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
+		cmd.set_primitive_restart(true);
+	}
+
+	for (unsigned i = 0; i < num_instances; )
+	{
+		unsigned to_render = min(256u, num_instances - i);
+		auto *vert = cmd.allocate_typed_constant_data<PositionalVertexInfo>(2, 1, to_render);
+
+		for (unsigned j = 0; j < to_render; j++)
+			vert[j] = static_cast<const PositionalShaderInfo *>(infos[i + j].instance_data)->vertex;
+
+		cmd.draw_indexed(light_info.count, to_render);
+		i += to_render;
+	}
+}
+
 static void positional_render_common(CommandBuffer &cmd, const RenderQueueData *infos, unsigned num_instances)
 {
 	auto &light_info = *static_cast<const PositionalLightRenderInfo *>(infos[0].render_info);
@@ -411,6 +443,39 @@ static void positional_render_back(CommandBuffer &cmd, const RenderQueueData *in
 	cmd.set_cull_mode(VK_CULL_MODE_FRONT_BIT);
 	cmd.set_depth_compare(VK_COMPARE_OP_GREATER);
 	positional_render_common(cmd, infos, num_instances);
+}
+
+void SpotLight::get_depth_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
+                                      RenderQueue &queue) const
+{
+	RenderFunc func = positional_render_depth;
+	Hasher h;
+	h.u32(ecast(PositionalLight::Type::Spot));
+
+	auto instance_key = h.get();
+	h.pointer(func);
+	auto sorting_key = h.get();
+	auto *spot = queue.allocate_one<PositionalShaderInfo>();
+
+	float max_range = min(falloff_range, cutoff_range);
+	spot->vertex.model = transform->transform->world_transform * scale(vec3(xy_range * max_range, xy_range * max_range, max_range));
+
+	auto *spot_info = queue.push<PositionalLightRenderInfo>(Queue::Opaque, instance_key, sorting_key,
+	                                                        func, spot);
+
+	if (spot_info)
+	{
+		PositionalLightRenderInfo info;
+
+		info.count = light_mesh.spot_count;
+		info.vbo = light_mesh.spot_vbo.get();
+		info.ibo = light_mesh.spot_ibo.get();
+		info.type = PositionalLight::Type::Spot;
+
+		unsigned variant = POSITIONAL_VARIANT_INSTANCE_BIT;
+		info.program = queue.get_shader_suites()[ecast(RenderableType::SpotLight)].get_program(DrawPipeline::Opaque, 0, 0, variant).get();
+		*spot_info = info;
+	}
 }
 
 void SpotLight::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
@@ -516,6 +581,38 @@ void PointLight::set_shadow_info(const Vulkan::ImageView *shadow, const PointTra
 {
 	shadow_atlas = shadow;
 	shadow_transform = transform;
+}
+
+void PointLight::get_depth_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
+                                       RenderQueue &queue) const
+{
+	RenderFunc func = positional_render_depth;
+	Hasher h;
+	h.u32(ecast(PositionalLight::Type::Point));
+
+	auto instance_key = h.get();
+	h.pointer(func);
+	auto sorting_key = h.get();
+	auto *point = queue.allocate_one<PositionalShaderInfo>();
+
+	point->vertex.model = transform->transform->world_transform * scale(vec3(min(falloff_range, cutoff_range)));
+
+	auto *point_info = queue.push<PositionalLightRenderInfo>(Queue::Opaque, instance_key, sorting_key,
+	                                                         func, point);
+
+	if (point_info)
+	{
+		PositionalLightRenderInfo info;
+
+		info.count = light_mesh.point_count;
+		info.vbo = light_mesh.point_vbo.get();
+		info.ibo = light_mesh.point_ibo.get();
+		info.type = PositionalLight::Type::Point;
+
+		unsigned variant = POSITIONAL_VARIANT_INSTANCE_BIT;
+		info.program = queue.get_shader_suites()[ecast(RenderableType::PointLight)].get_program(DrawPipeline::Opaque, 0, 0, variant).get();
+		*point_info = info;
+	}
 }
 
 void PointLight::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,

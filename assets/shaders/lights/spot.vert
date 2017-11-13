@@ -13,7 +13,7 @@ layout(std140, set = 2, binding = 1) uniform Parameters
 
 layout(location = 0) in vec4 Position;
 
-#if defined(VARIANT_BIT_2)
+#if defined(VARIANT_BIT_2) && !defined(RENDERER_DEPTH)
 layout(location = 0) flat out int vIndex;
 #endif
 
@@ -31,7 +31,7 @@ void main()
     gl_Position = clip;
 #endif
 
-#if defined(VARIANT_BIT_2)
+#if defined(VARIANT_BIT_2) && !defined(RENDERER_DEPTH)
     vIndex = gl_InstanceIndex;
 #endif
 }

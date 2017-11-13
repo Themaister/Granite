@@ -495,27 +495,24 @@ void Device::submit_empty(CommandBuffer::Type type, Fence *fence, Semaphore *sem
 
 void Device::submit_staging(CommandBufferHandle cmd, VkBufferUsageFlags usage)
 {
+	auto access = buffer_usage_to_possible_access(usage);
+	auto stages = buffer_usage_to_possible_stages(usage);
+
 	if (transfer_queue == graphics_queue && transfer_queue == compute_queue)
 	{
 		// For single-queue systems, just use a pipeline barrier.
-		cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-		             buffer_usage_to_possible_stages(usage),
-		             buffer_usage_to_possible_access(usage));
+		cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, stages, access);
 		submit(cmd);
 	}
 	else
 	{
-		auto compute_stages =
-				buffer_usage_to_possible_stages(usage) &
-				(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT);
-
-		auto graphics_stages = buffer_usage_to_possible_stages(usage);
+		auto compute_stages = stages & (VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT);
+		auto graphics_stages = stages;
 
 		if (transfer_queue == graphics_queue)
 		{
 			cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-			             buffer_usage_to_possible_stages(usage),
-			             buffer_usage_to_possible_access(usage));
+			             graphics_stages, access);
 
 			if (compute_stages != 0)
 			{
@@ -529,10 +526,8 @@ void Device::submit_staging(CommandBufferHandle cmd, VkBufferUsageFlags usage)
 		else if (transfer_queue == compute_queue)
 		{
 			cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-			             buffer_usage_to_possible_stages(usage) &
-			             (VK_PIPELINE_STAGE_TRANSFER_BIT |
-			              VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT),
-			             buffer_usage_to_possible_access(usage) &
+			             compute_stages,
+			             access &
 			             (VK_ACCESS_SHADER_READ_BIT |
 			              VK_ACCESS_SHADER_WRITE_BIT |
 			              VK_ACCESS_TRANSFER_WRITE_BIT |

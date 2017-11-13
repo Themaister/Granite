@@ -15,5 +15,6 @@
 	"rescaleScene": false,
 	"directionalLightCascadeCutoff": 10.0,
 	"directionalLightShadowsForceUpdate": false,
+	"deferredClusteredStencilCulling": true,
 	"showUi": true
 }

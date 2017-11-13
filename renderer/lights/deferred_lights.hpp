@@ -33,6 +33,10 @@ class DeferredLights : public PerFrameRefreshable
 public:
 	void set_scene(Scene *scene);
 	void set_renderers(Renderer *depth_renderer, Renderer *deferred_renderer);
+	void set_enable_clustered_stencil_culling(bool state)
+	{
+		enable_clustered_stencil = state;
+	}
 
 	void render_prepass_lights(Vulkan::CommandBuffer &cmd, RenderContext &context);
 	void render_lights(Vulkan::CommandBuffer &cmd, RenderContext &context);
@@ -47,6 +51,7 @@ private:
 
 	VisibilityList clips;
 	VisibilityList clusters[NumClusters];
+	bool enable_clustered_stencil = false;
 
 	void refresh(RenderContext &context) override;
 };

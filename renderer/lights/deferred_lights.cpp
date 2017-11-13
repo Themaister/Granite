@@ -29,6 +29,9 @@ namespace Granite
 {
 void DeferredLights::refresh(RenderContext &context)
 {
+	if (!enable_clustered_stencil)
+		return;
+
 	visible.clear();
 	scene->gather_visible_positional_lights(context.get_visibility_frustum(), visible);
 
@@ -92,6 +95,9 @@ void DeferredLights::set_renderers(Renderer *depth_renderer, Renderer *deferred_
 
 void DeferredLights::render_prepass_lights(Vulkan::CommandBuffer &cmd, RenderContext &context)
 {
+	if (!enable_clustered_stencil)
+		return;
+
 	for (unsigned cluster = 0; cluster < NumClusters; cluster++)
 	{
 		depth_renderer->begin();
@@ -107,17 +113,28 @@ void DeferredLights::render_prepass_lights(Vulkan::CommandBuffer &cmd, RenderCon
 
 void DeferredLights::render_lights(Vulkan::CommandBuffer &cmd, RenderContext &context)
 {
-	deferred_renderer->begin();
-	deferred_renderer->push_renderables(context, clips);
-	deferred_renderer->set_stencil_reference(1, 0, 0);
-	deferred_renderer->flush(cmd, context, Renderer::STENCIL_COMPARE_REFERENCE_BIT);
-
-	for (unsigned cluster = 0; cluster < NumClusters; cluster++)
+	if (enable_clustered_stencil)
 	{
 		deferred_renderer->begin();
-		deferred_renderer->push_renderables(context, clusters[cluster]);
-		deferred_renderer->set_stencil_reference((2 << cluster) | 1, 0, 2 << cluster);
+		deferred_renderer->push_renderables(context, clips);
+		deferred_renderer->set_stencil_reference(1, 0, 0);
 		deferred_renderer->flush(cmd, context, Renderer::STENCIL_COMPARE_REFERENCE_BIT);
+
+		for (unsigned cluster = 0; cluster < NumClusters; cluster++)
+		{
+			deferred_renderer->begin();
+			deferred_renderer->push_renderables(context, clusters[cluster]);
+			deferred_renderer->set_stencil_reference((2 << cluster) | 1, 0, 2 << cluster);
+			deferred_renderer->flush(cmd, context, Renderer::STENCIL_COMPARE_REFERENCE_BIT);
+		}
+	}
+	else
+	{
+		visible.clear();
+		scene->gather_visible_positional_lights(context.get_visibility_frustum(), visible);
+		deferred_renderer->begin();
+		deferred_renderer->push_renderables(context, visible);
+		deferred_renderer->flush(cmd, context);
 	}
 }
 }

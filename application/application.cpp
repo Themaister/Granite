@@ -98,6 +98,8 @@ void SceneViewerApplication::read_config(const std::string &path)
 		config.show_ui = doc["showUi"].GetBool();
 	if (doc.HasMember("forwardDepthPrepass"))
 		config.forward_depth_prepass = doc["forwardDepthPrepass"].GetBool();
+	if (doc.HasMember("deferredClusteredStencilCulling"))
+		config.deferred_clustered_stencil_culling = doc["deferredClusteredStencilCulling"].GetBool();
 
 	if (doc.HasMember("shadowMapResolutionMain"))
 		config.shadow_map_resolution_main = doc["shadowMapResolutionMain"].GetFloat();
@@ -214,12 +216,14 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 		cluster->set_force_update_shadows(config.force_shadow_map_update);
 	}
 
+	if (config.deferred_clustered_stencil_culling)
 	{
 		auto entity = scene_loader.get_scene().create_entity();
 		entity->allocate_component<PerFrameUpdateComponent>()->refresh = &deferred_lights;
-		deferred_lights.set_scene(&scene_loader.get_scene());
-		deferred_lights.set_renderers(&depth_renderer, &deferred_renderer);
 	}
+	deferred_lights.set_scene(&scene_loader.get_scene());
+	deferred_lights.set_renderers(&depth_renderer, &deferred_renderer);
+	deferred_lights.set_enable_clustered_stencil_culling(config.deferred_clustered_stencil_culling);
 
 	context.set_camera(*selected_camera);
 
@@ -524,7 +528,7 @@ void SceneViewerApplication::add_main_pass_deferred(Vulkan::Device &device, cons
 	gbuffer.set_depth_stencil_output(tagcat("depth", tag), depth);
 	gbuffer.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
 		render_main_pass(cmd, selected_camera->get_projection(), selected_camera->get_view());
-		if (!config.clustered_lights)
+		if (!config.clustered_lights && config.deferred_clustered_stencil_culling)
 			render_positional_lights_prepass(cmd, selected_camera->get_projection(), selected_camera->get_view());
 	});
 

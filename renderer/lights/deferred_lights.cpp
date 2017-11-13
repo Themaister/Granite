@@ -22,6 +22,7 @@
 
 #include "deferred_lights.hpp"
 #include "renderer.hpp"
+#include "unstable_remove_if.hpp"
 #include <algorithm>
 
 namespace Granite
@@ -38,7 +39,7 @@ void DeferredLights::refresh(RenderContext &context)
 	auto &params = context.get_render_parameters();
 
 	// Lights which clip either near or far don't need double-sided testing.
-	auto itr = std::remove_if(begin(visible), end(visible), [&params](const RenderableInfo &light) -> bool {
+	auto itr = Util::unstable_remove_if(begin(visible), end(visible), [&params](const RenderableInfo &light) -> bool {
 		auto &aabb = light.transform->world_aabb;
 		float to_center = dot(aabb.get_center() - params.camera_position, params.camera_front);
 		float radius = aabb.get_radius();
@@ -60,14 +61,12 @@ void DeferredLights::refresh(RenderContext &context)
 	{
 		auto &aabb = light.transform->world_aabb;
 		float to_center = dot(aabb.get_center() - params.camera_position, params.camera_front);
-		float radius = aabb.get_radius();
-		float aabb_near = to_center - radius;
-		float aabb_far = to_center + radius;
-		cluster_min = min(aabb_near, cluster_min);
-		cluster_max = max(aabb_far, cluster_max);
+		cluster_min = min(to_center, cluster_min);
+		cluster_max = max(to_center, cluster_max);
 	}
 
 	float cluster_range = cluster_max - cluster_min;
+	cluster_range = max(cluster_range, 0.001f);
 	float cluster_inv_range = float(NumClusters) / cluster_range;
 
 	// Assign each renderable to a cluster index based on their position.
@@ -97,7 +96,7 @@ void DeferredLights::render_prepass_lights(Vulkan::CommandBuffer &cmd, RenderCon
 	{
 		depth_renderer->begin();
 		depth_renderer->push_depth_renderables(context, clusters[cluster]);
-		depth_renderer->set_stencil_reference(0xff, 1 << cluster, 1 << cluster);
+		depth_renderer->set_stencil_reference(0xff, 2 << cluster, 2 << cluster);
 		depth_renderer->flush(cmd, context,
 		                      Renderer::NO_COLOR |
 		                      Renderer::BACKFACE_BIT |
@@ -117,7 +116,7 @@ void DeferredLights::render_lights(Vulkan::CommandBuffer &cmd, RenderContext &co
 	{
 		deferred_renderer->begin();
 		deferred_renderer->push_renderables(context, clusters[cluster]);
-		deferred_renderer->set_stencil_reference((1 << cluster) | 1, 0, 1 << cluster);
+		deferred_renderer->set_stencil_reference((2 << cluster) | 1, 0, 2 << cluster);
 		deferred_renderer->flush(cmd, context, Renderer::STENCIL_COMPARE_REFERENCE_BIT);
 	}
 }

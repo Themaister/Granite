@@ -27,7 +27,7 @@
 #include <unordered_map>
 #include <utility>
 
-namespace Granite
+namespace Util
 {
 class CLIParser;
 

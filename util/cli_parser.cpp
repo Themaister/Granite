@@ -26,7 +26,7 @@
 
 using namespace std;
 
-namespace Granite
+namespace Util
 {
 CLIParser::CLIParser(CLICallbacks cbs_, int argc_, char *argv_[])
 	: cbs(move(cbs_)), argc(argc_), argv(argv_)

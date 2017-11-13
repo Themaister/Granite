@@ -43,6 +43,7 @@ using namespace rapidjson;
 
 using namespace std;
 using namespace Vulkan;
+using namespace Util;
 
 namespace Granite
 {

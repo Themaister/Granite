@@ -24,6 +24,8 @@
 #include "os.hpp"
 #include "cli_parser.hpp"
 
+using namespace Util;
+
 namespace Granite
 {
 Application *application_create(int argc, char **argv)

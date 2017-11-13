@@ -29,6 +29,7 @@
 
 using namespace std;
 using namespace Granite;
+using namespace Util;
 
 static void print_help()
 {

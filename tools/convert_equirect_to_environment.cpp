@@ -27,6 +27,7 @@
 
 using namespace Vulkan;
 using namespace Granite;
+using namespace Util;
 using namespace std;
 
 static void print_help()

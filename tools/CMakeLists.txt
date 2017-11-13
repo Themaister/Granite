@@ -11,3 +11,6 @@ target_link_libraries(ktx-convert texture-compression)
 
 add_granite_offline_tool(gltf-repacker gltf_repacker.cpp)
 target_link_libraries(gltf-repacker scene-formats-export util rapidjson)
+
+add_granite_offline_tool(image-compare image_compare.cpp)
+target_link_libraries(image-compare scene-formats util filesystem threading)

@@ -390,17 +390,8 @@ void Device::init_stock_samplers()
 void Device::submit(CommandBufferHandle cmd, Fence *fence, Semaphore *semaphore)
 {
 	auto type = cmd->get_command_buffer_type();
-	auto &data = get_queue_data(type);
 	auto &pool = get_command_pool(type);
 	auto &submissions = get_queue_submissions(type);
-
-	if (data.staging_cmd)
-	{
-		pool.signal_submitted(data.staging_cmd->get_command_buffer());
-		vkEndCommandBuffer(data.staging_cmd->get_command_buffer());
-		submissions.push_back(data.staging_cmd);
-		data.staging_cmd.reset();
-	}
 
 	pool.signal_submitted(cmd->get_command_buffer());
 	vkEndCommandBuffer(cmd->get_command_buffer());
@@ -488,108 +479,62 @@ void Device::submit_empty(CommandBuffer::Type type, Fence *fence, Semaphore *sem
 	}
 }
 
-void Device::add_queue_dependency(CommandBuffer::Type consumer, VkPipelineStageFlags stages,
-                                  CommandBuffer::Type producer)
-{
-	VK_ASSERT(consumer != producer);
-	auto &dst = get_queue_data(consumer);
-	auto &src = get_queue_data(producer);
-
-	VkPipelineStageFlags *dst_stages;
-	VkPipelineStageFlags *src_stages;
-
-	switch (producer)
-	{
-	default:
-	case CommandBuffer::Type::Graphics:
-		dst_stages = &dst.wait_for_graphics;
-		break;
-	case CommandBuffer::Type::Compute:
-		dst_stages = &dst.wait_for_compute;
-		break;
-	case CommandBuffer::Type::Transfer:
-		dst_stages = &dst.wait_for_transfer;
-		break;
-	}
-
-	switch (consumer)
-	{
-	default:
-	case CommandBuffer::Type::Graphics:
-		src_stages = &src.wait_for_graphics;
-		break;
-	case CommandBuffer::Type::Compute:
-		src_stages = &src.wait_for_compute;
-		break;
-	case CommandBuffer::Type::Transfer:
-		src_stages = &src.wait_for_transfer;
-		break;
-	}
-
-	// If the stage we need to wait for, in turn waits for us, we have a problem, we need some kind of early flushing to
-	// make this work, but it will probably mess with staging command buffers because we can randomly flush those ...
-	// For now, just assert on this case, it should never happen for internal stuff.
-	VK_ASSERT(*src_stages == 0);
-	(void)src_stages;
-
-	// This way of dealing with the queue dependencies is very lazy, for optimal theoretical overlap we would
-	// need to flush producer here and inject a wait for consumer.
-	// This however probably isn't a good idea when we have a large amount of staging transfers.
-	// This function is generally only used by the internal APIs to inject dependencies between staging command buffers.
-	*dst_stages |= stages;
-}
-
-void Device::add_staging_transfer_queue_dependency(const Buffer &dst, VkBufferUsageFlags usage)
+void Device::submit_staging(CommandBufferHandle cmd, VkBufferUsageFlags usage)
 {
 	if (transfer_queue == graphics_queue && transfer_queue == compute_queue)
 	{
 		// For single-queue systems, just use a pipeline barrier,
-		// this is more efficient than semaphores because with semaphores we will end up draining the entire graphics queue.
-		transfer.staging_cmd->buffer_barrier(dst, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-		                                     buffer_usage_to_possible_stages(usage),
-		                                     buffer_usage_to_possible_access(usage));
+		// this is more efficient than semaphores because with semaphores
+		// we will end up draining the entire graphics queue.
+		cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+		             buffer_usage_to_possible_stages(usage),
+		             buffer_usage_to_possible_access(usage));
+		submit(cmd);
 	}
 	else
 	{
+		auto compute_stages =
+				buffer_usage_to_possible_stages(usage) &
+				(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+		auto graphics_stages = buffer_usage_to_possible_stages(usage);
+
 		if (transfer_queue == graphics_queue)
 		{
-			transfer.staging_cmd->buffer_barrier(dst, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-			                                     buffer_usage_to_possible_stages(usage),
-			                                     buffer_usage_to_possible_access(usage));
-		}
-		else
-		{
-			add_queue_dependency(CommandBuffer::Type::Graphics,
-			                     buffer_usage_to_possible_stages(usage),
-			                     CommandBuffer::Type::Transfer);
-		}
+			cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+			             buffer_usage_to_possible_stages(usage),
+			             buffer_usage_to_possible_access(usage));
 
-		if (transfer_queue == compute_queue)
+			Semaphore sem;
+			submit(cmd, nullptr, &sem);
+
+			add_wait_semaphore(CommandBuffer::Type::Compute, sem, compute_stages);
+		}
+		else if (transfer_queue == compute_queue)
 		{
-			transfer.staging_cmd->buffer_barrier(dst, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-			                                     buffer_usage_to_possible_stages(usage) &
-			                                     (VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
-			                                      VK_PIPELINE_STAGE_TRANSFER_BIT),
-			                                     buffer_usage_to_possible_access(usage) &
-			                                     (VK_ACCESS_SHADER_READ_BIT |
-			                                      VK_ACCESS_SHADER_WRITE_BIT |
-			                                      VK_ACCESS_TRANSFER_READ_BIT |
-			                                      VK_ACCESS_TRANSFER_WRITE_BIT));
+			cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+			             buffer_usage_to_possible_stages(usage) &
+			             (VK_PIPELINE_STAGE_TRANSFER_BIT |
+			              VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT),
+			             buffer_usage_to_possible_access(usage) &
+			             (VK_ACCESS_SHADER_READ_BIT |
+			              VK_ACCESS_SHADER_WRITE_BIT |
+			              VK_ACCESS_TRANSFER_WRITE_BIT |
+			              VK_ACCESS_TRANSFER_READ_BIT));
+
+			Semaphore sem;
+			submit(cmd, nullptr, &sem);
+			add_wait_semaphore(CommandBuffer::Type::Graphics, sem, graphics_stages);
 		}
 		else
 		{
-			add_queue_dependency(CommandBuffer::Type::Compute,
-			                     buffer_usage_to_possible_stages(usage),
-			                     CommandBuffer::Type::Transfer);
+			Semaphore sem_graphics, sem_compute;
+			submit(cmd, nullptr, &sem_graphics);
+			submit_empty(CommandBuffer::Type::Transfer, nullptr, &sem_compute);
+			add_wait_semaphore(CommandBuffer::Type::Graphics, sem_graphics, graphics_stages);
+			add_wait_semaphore(CommandBuffer::Type::Compute, sem_compute, compute_stages);
 		}
 	}
-}
-
-void Device::sync_buffer_to_gpu(const Buffer &dst, const Buffer &src, VkDeviceSize offset, VkDeviceSize size)
-{
-	begin_staging(CommandBuffer::Type::Transfer);
-	transfer.staging_cmd->copy_buffer(dst, offset, src, offset, size);
-	add_staging_transfer_queue_dependency(dst, dst.get_create_info().usage);
 }
 
 void Device::submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore)
@@ -600,42 +545,6 @@ void Device::submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *sem
 
 	auto &data = get_queue_data(type);
 	auto &submissions = get_queue_submissions(type);
-
-	if (data.wait_for_graphics && type != CommandBuffer::Type::Graphics)
-	{
-		// Avoid recursive waits just in case.
-		data.wait_stages.push_back(data.wait_for_graphics);
-		data.wait_for_graphics = 0;
-
-		Semaphore transition;
-		flush_frame(CommandBuffer::Type::Graphics);
-		submit_queue(CommandBuffer::Type::Graphics, nullptr, &transition);
-		data.wait_semaphores.push_back(move(transition));
-	}
-
-	if (data.wait_for_compute && type != CommandBuffer::Type::Compute)
-	{
-		// Avoid recursive waits just in case.
-		data.wait_stages.push_back(data.wait_for_compute);
-		data.wait_for_compute = 0;
-
-		Semaphore transition;
-		flush_frame(CommandBuffer::Type::Compute);
-		submit_queue(CommandBuffer::Type::Compute, nullptr, &transition);
-		data.wait_semaphores.push_back(move(transition));
-	}
-
-	if (data.wait_for_transfer && type != CommandBuffer::Type::Transfer)
-	{
-		// Avoid recursive waits just in case.
-		data.wait_stages.push_back(data.wait_for_transfer);
-		data.wait_for_transfer = 0;
-
-		Semaphore transition;
-		flush_frame(CommandBuffer::Type::Transfer);
-		submit_queue(CommandBuffer::Type::Transfer, nullptr, &transition);
-		data.wait_semaphores.push_back(move(transition));
-	}
 
 	if (submissions.empty())
 	{
@@ -785,25 +694,22 @@ void Device::submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *sem
 
 void Device::flush_frame(CommandBuffer::Type type)
 {
-	auto &data = get_queue_data(type);
-	auto &pool = get_command_pool(type);
-	auto &submissions = get_queue_submissions(type);
-
 	if (type == CommandBuffer::Type::Transfer)
 	{
 		// Flush any copies for pending chain allocators.
-		frame().sync_to_gpu();
+		auto cmd = request_command_buffer(CommandBuffer::Type::Transfer);
+		auto stages = frame().sync_to_gpu(*cmd);
+		if (stages)
+			submit_staging(cmd, stages);
+		else
+		{
+			vkEndCommandBuffer(cmd->get_command_buffer());
+			// Nothing to flush, don't bother submitting.
+		}
 	}
 
-	if (data.staging_cmd)
-	{
-		pool.signal_submitted(data.staging_cmd->get_command_buffer());
-		vkEndCommandBuffer(data.staging_cmd->get_command_buffer());
-		submissions.push_back(data.staging_cmd);
-		data.staging_cmd.reset();
-	}
-
-	submit_queue(type, nullptr, nullptr);
+	Fence fence;
+	submit_queue(type, &fence, nullptr);
 }
 
 void Device::flush_frame()
@@ -814,26 +720,6 @@ void Device::flush_frame()
 
 	flush_frame(CommandBuffer::Type::Compute);
 	flush_frame(CommandBuffer::Type::Graphics);
-}
-
-void Device::begin_staging(CommandBuffer::Type type)
-{
-	switch (type)
-	{
-	default:
-	case CommandBuffer::Type::Graphics:
-		if (!graphics.staging_cmd)
-			graphics.staging_cmd = request_command_buffer(type);
-		break;
-	case CommandBuffer::Type::Compute:
-		if (!compute.staging_cmd)
-			compute.staging_cmd = request_command_buffer(type);
-		break;
-	case CommandBuffer::Type::Transfer:
-		if (!transfer.staging_cmd)
-			transfer.staging_cmd = request_command_buffer(type);
-		break;
-	}
 }
 
 Device::QueueData &Device::get_queue_data(CommandBuffer::Type type)
@@ -1117,19 +1003,10 @@ void Device::clear_wait_semaphores()
 
 	graphics.wait_semaphores.clear();
 	graphics.wait_stages.clear();
-	graphics.wait_for_graphics = 0;
-	graphics.wait_for_transfer = 0;
-	graphics.wait_for_compute = 0;
 	compute.wait_semaphores.clear();
 	compute.wait_stages.clear();
-	compute.wait_for_graphics = 0;
-	compute.wait_for_transfer = 0;
-	compute.wait_for_compute = 0;
 	transfer.wait_semaphores.clear();
 	transfer.wait_stages.clear();
-	transfer.wait_for_graphics = 0;
-	transfer.wait_for_transfer = 0;
-	transfer.wait_for_compute = 0;
 }
 
 void Device::wait_idle()
@@ -1183,12 +1060,14 @@ QueryPoolHandle Device::write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlag
 	return frame().query_pool.write_timestamp(cmd, stage);
 }
 
-void Device::PerFrame::sync_to_gpu()
+VkBufferUsageFlags Device::PerFrame::sync_to_gpu(CommandBuffer &cmd)
 {
-	ubo_chain.sync_to_gpu();
-	staging_chain.sync_to_gpu();
-	vbo_chain.sync_to_gpu();
-	ibo_chain.sync_to_gpu();
+	VkBufferUsageFlags flags = 0;
+	flags |= ubo_chain.sync_to_gpu(cmd);
+	flags |= staging_chain.sync_to_gpu(cmd);
+	flags |= vbo_chain.sync_to_gpu(cmd);
+	flags |= ibo_chain.sync_to_gpu(cmd);
+	return flags;
 }
 
 void Device::PerFrame::begin()
@@ -1823,19 +1702,10 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 	// Copy initial data to texture.
 	if (initial)
 	{
-		begin_staging(CommandBuffer::Type::Transfer);
-		begin_staging(CommandBuffer::Type::Graphics);
-
 		VK_ASSERT(create_info.domain != ImageDomain::Transient);
 		VK_ASSERT(create_info.initial_layout != VK_IMAGE_LAYOUT_UNDEFINED);
 		bool generate_mips = (create_info.misc & IMAGE_MISC_GENERATE_MIPS_BIT) != 0;
 		unsigned copy_levels = generate_mips ? 1u : info.mipLevels;
-
-		transfer.staging_cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		                                    VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT,
-		                                    VK_ACCESS_TRANSFER_WRITE_BIT);
-
-		handle->set_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
 		VkExtent3D extent = { create_info.width, create_info.height, create_info.depth };
 
@@ -1891,6 +1761,15 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 		// For concurrent queue mode, we just need to inject a semaphore.
 		// For non-concurrent queue mode, we will have to inject ownership transfer barrier if the queue families do not match.
 
+		auto transfer_cmd = request_command_buffer(CommandBuffer::Type::Transfer);
+		auto graphics_cmd = request_command_buffer(CommandBuffer::Type::Graphics);
+
+		transfer_cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		                            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT,
+		                            VK_ACCESS_TRANSFER_WRITE_BIT);
+
+		handle->set_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
 		if (transfer_queue != graphics_queue)
 		{
 			VkPipelineStageFlags dst_stages =
@@ -1900,6 +1779,8 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 			// transfer queue over to graphics ...
 			if (!concurrent_queue && transfer_queue_family_index != graphics_queue_family_index)
 			{
+				need_mipmap_barrier = false;
+
 				VkImageMemoryBarrier release = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
 				release.image = handle->get_image();
 				release.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -1912,7 +1793,6 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 				{
 					release.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
 					release.subresourceRange.levelCount = 1;
-					need_mipmap_barrier = false;
 				}
 				else
 				{
@@ -1933,66 +1813,70 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 				else
 					acquire.dstAccessMask = handle->get_access_flags() & image_layout_to_possible_access(create_info.initial_layout);
 
-				transfer.staging_cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT,
-				                              VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-				                              0, nullptr, 0, nullptr, 1, &release);
+				transfer_cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT,
+				                      VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+				                      0, nullptr, 0, nullptr, 1, &release);
 
-				graphics.staging_cmd->barrier(dst_stages,
-				                              dst_stages,
-				                              0, nullptr, 0, nullptr, 1, &acquire);
+				graphics_cmd->barrier(dst_stages,
+				                      dst_stages,
+				                      0, nullptr, 0, nullptr, 1, &acquire);
+			}
 
-				add_queue_dependency(CommandBuffer::Type::Graphics, dst_stages,
-				                     CommandBuffer::Type::Transfer);
-			}
-			else
-			{
-				add_queue_dependency(CommandBuffer::Type::Graphics, VK_PIPELINE_STAGE_TRANSFER_BIT,
-				                     CommandBuffer::Type::Transfer);
-			}
+			Semaphore sem;
+			submit(transfer_cmd, nullptr, &sem);
+			add_wait_semaphore(CommandBuffer::Type::Graphics, sem, dst_stages);
 		}
+		else
+			submit(transfer_cmd);
 
 		if (generate_mips)
 		{
-			graphics.staging_cmd->barrier_prepare_generate_mipmap(*handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			                                                      VK_PIPELINE_STAGE_TRANSFER_BIT,
-			                                                      prepare_src_access, need_mipmap_barrier);
+			graphics_cmd->barrier_prepare_generate_mipmap(*handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			                                              VK_PIPELINE_STAGE_TRANSFER_BIT,
+			                                              prepare_src_access, need_mipmap_barrier);
 			handle->set_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-			graphics.staging_cmd->generate_mipmap(*handle);
+			graphics_cmd->generate_mipmap(*handle);
 		}
 
 		if (need_initial_barrier)
 		{
-			graphics.staging_cmd->image_barrier(
-					*handle, handle->get_layout(), create_info.initial_layout, VK_PIPELINE_STAGE_TRANSFER_BIT,
-					final_transition_src_access, handle->get_stage_flags(),
+			graphics_cmd->image_barrier(
+					*handle, handle->get_layout(), create_info.initial_layout,
+					VK_PIPELINE_STAGE_TRANSFER_BIT, final_transition_src_access,
+					handle->get_stage_flags(),
 					handle->get_access_flags() & image_layout_to_possible_access(create_info.initial_layout));
 		}
 
 		// For concurrent queue, make sure that compute can see the final image as well.
 		if (concurrent_queue && graphics_queue != compute_queue)
 		{
-			add_queue_dependency(CommandBuffer::Type::Compute,
-			                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
-			                     CommandBuffer::Type::Graphics);
+			Semaphore sem;
+			submit(graphics_cmd, nullptr, &sem);
+			add_wait_semaphore(CommandBuffer::Type::Compute,
+			                   sem, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT);
 		}
+		else
+			submit(graphics_cmd);
 	}
 	else if (create_info.initial_layout != VK_IMAGE_LAYOUT_UNDEFINED)
 	{
-		begin_staging(CommandBuffer::Type::Graphics);
-
 		VK_ASSERT(create_info.domain != ImageDomain::Transient);
-		graphics.staging_cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_UNDEFINED, create_info.initial_layout,
-		                                    VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, handle->get_stage_flags(),
-		                                    handle->get_access_flags() &
-		                                    image_layout_to_possible_access(create_info.initial_layout));
+		auto cmd = request_command_buffer(CommandBuffer::Type::Graphics);
+		cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_UNDEFINED, create_info.initial_layout,
+		                   VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, handle->get_stage_flags(),
+		                   handle->get_access_flags() &
+		                   image_layout_to_possible_access(create_info.initial_layout));
 
 		// For concurrent queue, make sure that compute can see the final image as well.
 		if (concurrent_queue && graphics_queue != compute_queue)
 		{
-			add_queue_dependency(CommandBuffer::Type::Compute,
-			                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
-			                     CommandBuffer::Type::Graphics);
+			Semaphore sem;
+			submit(cmd, nullptr, &sem);
+			add_wait_semaphore(CommandBuffer::Type::Compute,
+			                   sem, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT);
 		}
+		else
+			submit(cmd);
 	}
 
 	handle->set_layout(create_info.initial_layout);
@@ -2084,11 +1968,13 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 
 	if (create_info.domain == BufferDomain::Device && initial && !memory_type_is_host_visible(memory_type))
 	{
-		begin_staging(CommandBuffer::Type::Transfer);
-		auto *ptr = transfer.staging_cmd->update_buffer(*handle, 0, create_info.size);
-		VK_ASSERT(ptr);
-		memcpy(ptr, initial, create_info.size);
-		add_staging_transfer_queue_dependency(*handle, info.usage);
+		auto staging_info = create_info;
+		staging_info.domain = BufferDomain::Host;
+		auto staging_buffer = create_buffer(staging_info, initial);
+
+		auto cmd = request_command_buffer(CommandBuffer::Type::Transfer);
+		cmd->copy_buffer(*handle, *staging_buffer);
+		submit_staging(cmd, info.usage);
 	}
 	else if (initial)
 	{

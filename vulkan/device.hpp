@@ -70,7 +70,6 @@ public:
 
 	void begin_frame(unsigned index);
 	void flush_frame();
-	void flush_frame(CommandBuffer::Type type);
 	void wait_idle();
 	CommandBufferHandle request_command_buffer(CommandBuffer::Type type = CommandBuffer::Type::Graphics);
 	void submit(CommandBufferHandle cmd, Fence *fence = nullptr, Semaphore *semaphore = nullptr);
@@ -174,10 +173,6 @@ public:
 
 	PipelineEvent request_pipeline_event();
 
-	// Used by the chain allocator. Performs a copy on the staging transfer queue, and automatically sets up
-	// semaphores which compute and graphics queues will wait on.
-	void sync_buffer_to_gpu(const Buffer &dst, const Buffer &src, VkDeviceSize offset, VkDeviceSize size);
-
 	// For some platforms, the device and queue might be shared, possibly across threads, so need some mechanism to
 	// lock the global device and queue.
 	void set_queue_lock(std::function<void ()> lock_callback, std::function<void ()> unlock_callback);
@@ -199,7 +194,6 @@ private:
 	bool supports_external = false;
 	bool supports_dedicated = false;
 	void init_stock_samplers();
-	void add_queue_dependency(CommandBuffer::Type consumer, VkPipelineStageFlags stages, CommandBuffer::Type producer);
 
 	struct PerFrame
 	{
@@ -214,7 +208,7 @@ private:
 
 		void cleanup();
 		void begin();
-		void sync_to_gpu();
+		VkBufferUsageFlags sync_to_gpu(CommandBuffer &cmd);
 		void release_owned_resources();
 
 		VkDevice device;
@@ -257,15 +251,8 @@ private:
 	{
 		std::vector<Semaphore> wait_semaphores;
 		std::vector<VkPipelineStageFlags> wait_stages;
-		CommandBufferHandle staging_cmd;
-
-		// Used to imply dependencies between staging command chains, injected automatically.
-		VkPipelineStageFlags wait_for_graphics = 0;
-		VkPipelineStageFlags wait_for_compute = 0;
-		VkPipelineStageFlags wait_for_transfer = 0;
 	} graphics, compute, transfer;
 
-	void begin_staging(CommandBuffer::Type type);
 	void submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore);
 
 	PerFrame &frame()
@@ -316,10 +303,10 @@ private:
 	QueueData &get_queue_data(CommandBuffer::Type type);
 	std::vector<CommandBufferHandle> &get_queue_submissions(CommandBuffer::Type type);
 	void clear_wait_semaphores();
-	void add_staging_transfer_queue_dependency(const Buffer &dst, VkBufferUsageFlags usage);
-	void add_staging_transfer_queue_dependency(const Image &dst, VkImageUsageFlags usage);
+	void submit_staging(CommandBufferHandle cmd, VkBufferUsageFlags usage);
 
 	std::function<void ()> queue_lock_callback;
 	std::function<void ()> queue_unlock_callback;
+	void flush_frame(CommandBuffer::Type type);
 };
 }

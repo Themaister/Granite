@@ -114,11 +114,18 @@ ChainDataAllocation ChainAllocator::allocate(VkDeviceSize size)
 	return alloc;
 }
 
-void ChainAllocator::sync_to_gpu()
+VkBufferUsageFlags ChainAllocator::sync_to_gpu(CommandBuffer &cmd)
 {
+	bool need_sync = false;
+
 	for (auto &buffer : large_buffers)
+	{
 		if (buffer.gpu != buffer.cpu)
-			device->sync_buffer_to_gpu(*buffer.gpu, *buffer.cpu, 0, buffer.gpu->get_create_info().size);
+		{
+			cmd.copy_buffer(*buffer.gpu, 0, *buffer.cpu, 0, buffer.gpu->get_create_info().size);
+			need_sync = true;
+		}
+	}
 	large_buffers.clear();
 
 	if (!buffers.empty())
@@ -129,7 +136,10 @@ void ChainAllocator::sync_to_gpu()
 		auto to_flush_bytes = (flush_all ? buffer.gpu->get_create_info().size : offset) - start_flush_offset;
 
 		if (buffer.gpu != buffer.cpu && to_flush_bytes)
-			device->sync_buffer_to_gpu(*buffer.gpu, *buffer.cpu, start_flush_offset, to_flush_bytes);
+		{
+			cmd.copy_buffer(*buffer.gpu, start_flush_offset, *buffer.cpu, start_flush_offset, to_flush_bytes);
+			need_sync = true;
+		}
 
 		if (flush_all)
 		{
@@ -145,7 +155,10 @@ void ChainAllocator::sync_to_gpu()
 	{
 		auto &buffer = buffers[start_flush_buffer];
 		if (buffer.gpu != buffer.cpu)
-			device->sync_buffer_to_gpu(*buffer.gpu, *buffer.cpu, 0, buffer.gpu->get_create_info().size);
+		{
+			need_sync = true;
+			cmd.copy_buffer(*buffer.gpu, 0, *buffer.cpu, 0, buffer.gpu->get_create_info().size);
+		}
 
 		start_flush_buffer++;
 		start_flush_offset = 0;
@@ -157,10 +170,16 @@ void ChainAllocator::sync_to_gpu()
 	{
 		auto &buffer = buffers[start_flush_buffer];
 		if (buffer.gpu != buffer.cpu)
-			device->sync_buffer_to_gpu(*buffer.gpu, *buffer.cpu, start_flush_offset, offset - start_flush_offset);
+		{
+			cmd.copy_buffer(*buffer.gpu, start_flush_offset, *buffer.cpu, start_flush_offset,
+			                offset - start_flush_offset);
+			need_sync = true;
+		}
 
 		start_flush_offset = offset;
 	}
+
+	return need_sync ? usage : 0;
 }
 
 void ChainAllocator::discard()

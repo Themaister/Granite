@@ -29,6 +29,7 @@
 namespace Vulkan
 {
 class Device;
+class CommandBuffer;
 struct ChainDataAllocation
 {
 	const Buffer *buffer;
@@ -46,7 +47,7 @@ public:
 	void discard();
 	void reset();
 
-	void sync_to_gpu();
+	VkBufferUsageFlags sync_to_gpu(CommandBuffer &cmd);
 
 private:
 	Device *device;

@@ -1691,11 +1691,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 		Vulkan::Semaphore graphics_semaphore;
 		Vulkan::Semaphore compute_semaphore;
 		if (need_submission_semaphore)
-		{
-			// TODO: Add support for signalling multiple semaphores in one submit?
-			device.submit(cmd, nullptr, &graphics_semaphore);
-			device.submit_empty(queue_type, nullptr, &compute_semaphore);
-		}
+			device.submit(cmd, nullptr, &graphics_semaphore, &compute_semaphore);
 		else
 			device.submit(cmd);
 
@@ -1791,9 +1787,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 			Vulkan::Semaphore graphics_semaphore;
 			Vulkan::Semaphore compute_semaphore;
 
-			// TODO: Add support for signalling multiple semaphores in one submit?
-			device.submit(cmd, nullptr, &graphics_semaphore);
-			device.submit_empty(Vulkan::CommandBuffer::Type::Graphics, nullptr, &compute_semaphore);
+			device.submit(cmd, nullptr, &graphics_semaphore, &compute_semaphore);
 			physical_events[index].wait_graphics_semaphore = graphics_semaphore;
 			physical_events[index].wait_compute_semaphore = compute_semaphore;
 		}

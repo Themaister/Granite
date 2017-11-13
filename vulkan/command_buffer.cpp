@@ -57,6 +57,12 @@ void CommandBuffer::copy_buffer(const Buffer &dst, const Buffer &src)
 	copy_buffer(dst, 0, src, 0, dst.get_create_info().size);
 }
 
+void CommandBuffer::copy_buffer_to_image(const Image &image, const Buffer &buffer, unsigned num_blits,
+                                         const VkBufferImageCopy *blits)
+{
+	vkCmdCopyBufferToImage(cmd, buffer.get_buffer(), image.get_image(), image.get_layout(), num_blits, blits);
+}
+
 void CommandBuffer::copy_buffer_to_image(const Image &image, const Buffer &src, VkDeviceSize buffer_offset,
                                          const VkOffset3D &offset, const VkExtent3D &extent, unsigned row_length,
                                          unsigned slice_height, const VkImageSubresourceLayers &subresource)

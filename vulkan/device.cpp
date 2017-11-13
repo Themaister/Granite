@@ -81,6 +81,7 @@ Semaphore Device::request_imported_semaphore(int fd, VkExternalSemaphoreHandleTy
 
 void Device::add_wait_semaphore(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags stages)
 {
+	VK_ASSERT(stages != 0);
 	flush_frame(type);
 	auto &data = get_queue_data(type);
 	data.wait_semaphores.push_back(semaphore);
@@ -387,7 +388,7 @@ void Device::init_stock_samplers()
 	}
 }
 
-void Device::submit(CommandBufferHandle cmd, Fence *fence, Semaphore *semaphore)
+void Device::submit(CommandBufferHandle cmd, Fence *fence, Semaphore *semaphore, Semaphore *semaphore_alt)
 {
 	auto type = cmd->get_command_buffer_type();
 	auto &pool = get_command_pool(type);
@@ -397,11 +398,11 @@ void Device::submit(CommandBufferHandle cmd, Fence *fence, Semaphore *semaphore)
 	vkEndCommandBuffer(cmd->get_command_buffer());
 	submissions.push_back(move(cmd));
 
-	if (fence || semaphore)
-		submit_queue(type, fence, semaphore);
+	if (fence || semaphore || semaphore_alt)
+		submit_queue(type, fence, semaphore, semaphore_alt);
 }
 
-void Device::submit_empty(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore)
+void Device::submit_empty(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore, Semaphore *semaphore_alt)
 {
 	auto &data = get_queue_data(type);
 	VkSubmitInfo submit = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
@@ -425,10 +426,17 @@ void Device::submit_empty(CommandBuffer::Type type, Fence *fence, Semaphore *sem
 
 	// Add external signal semaphores.
 	VkSemaphore cleared_semaphore = VK_NULL_HANDLE;
+	VkSemaphore cleared_semaphore_alt = VK_NULL_HANDLE;
 	if (semaphore)
 	{
 		cleared_semaphore = semaphore_manager.request_cleared_semaphore();
 		signals.push_back(cleared_semaphore);
+	}
+
+	if (semaphore_alt)
+	{
+		cleared_semaphore_alt = semaphore_manager.request_cleared_semaphore();
+		signals.push_back(cleared_semaphore_alt);
 	}
 
 	submit.signalSemaphoreCount = signals.size();
@@ -477,6 +485,12 @@ void Device::submit_empty(CommandBuffer::Type type, Fence *fence, Semaphore *sem
 		auto ptr = make_handle<SemaphoreHolder>(this, cleared_semaphore, true);
 		*semaphore = ptr;
 	}
+
+	if (semaphore_alt)
+	{
+		auto ptr = make_handle<SemaphoreHolder>(this, cleared_semaphore_alt, true);
+		*semaphore_alt = ptr;
+	}
 }
 
 void Device::submit_staging(CommandBufferHandle cmd, VkBufferUsageFlags usage)
@@ -505,10 +519,14 @@ void Device::submit_staging(CommandBufferHandle cmd, VkBufferUsageFlags usage)
 			             buffer_usage_to_possible_stages(usage),
 			             buffer_usage_to_possible_access(usage));
 
-			Semaphore sem;
-			submit(cmd, nullptr, &sem);
-
-			add_wait_semaphore(CommandBuffer::Type::Compute, sem, compute_stages);
+			if (compute_stages != 0)
+			{
+				Semaphore sem;
+				submit(cmd, nullptr, &sem);
+				add_wait_semaphore(CommandBuffer::Type::Compute, sem, compute_stages);
+			}
+			else
+				submit(cmd);
 		}
 		else if (transfer_queue == compute_queue)
 		{
@@ -522,34 +540,58 @@ void Device::submit_staging(CommandBufferHandle cmd, VkBufferUsageFlags usage)
 			              VK_ACCESS_TRANSFER_WRITE_BIT |
 			              VK_ACCESS_TRANSFER_READ_BIT));
 
-			Semaphore sem;
-			submit(cmd, nullptr, &sem);
-			add_wait_semaphore(CommandBuffer::Type::Graphics, sem, graphics_stages);
+			if (graphics_stages != 0)
+			{
+				Semaphore sem;
+				submit(cmd, nullptr, &sem);
+				add_wait_semaphore(CommandBuffer::Type::Graphics, sem, graphics_stages);
+			}
+			else
+				submit(cmd);
 		}
 		else
 		{
-			Semaphore sem_graphics, sem_compute;
-			submit(cmd, nullptr, &sem_graphics);
-			submit_empty(CommandBuffer::Type::Transfer, nullptr, &sem_compute);
-			add_wait_semaphore(CommandBuffer::Type::Graphics, sem_graphics, graphics_stages);
-			add_wait_semaphore(CommandBuffer::Type::Compute, sem_compute, compute_stages);
+			if (graphics_stages != 0 && compute_stages != 0)
+			{
+				Semaphore sem_graphics, sem_compute;
+				submit(cmd, nullptr, &sem_graphics, &sem_compute);
+				add_wait_semaphore(CommandBuffer::Type::Graphics, sem_graphics, graphics_stages);
+				add_wait_semaphore(CommandBuffer::Type::Compute, sem_compute, compute_stages);
+			}
+			else if (graphics_stages != 0)
+			{
+				Semaphore sem;
+				submit(cmd, nullptr, &sem);
+				add_wait_semaphore(CommandBuffer::Type::Graphics, sem, graphics_stages);
+			}
+			else if (compute_stages != 0)
+			{
+				Semaphore sem;
+				submit(cmd, nullptr, &sem);
+				add_wait_semaphore(CommandBuffer::Type::Compute, sem, compute_stages);
+			}
+			else
+				submit(cmd);
 		}
 	}
 }
 
-void Device::submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore)
+void Device::submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore, Semaphore *semaphore_alt)
 {
 	// Always check if we need to flush pending transfers.
 	if (type != CommandBuffer::Type::Transfer)
+	{
+		sync_chain_allocators();
 		flush_frame(CommandBuffer::Type::Transfer);
+	}
 
 	auto &data = get_queue_data(type);
 	auto &submissions = get_queue_submissions(type);
 
 	if (submissions.empty())
 	{
-		if (fence || semaphore)
-			submit_empty(type, fence, semaphore);
+		if (fence || semaphore || semaphore_alt)
+			submit_empty(type, fence, semaphore, semaphore_alt);
 		return;
 	}
 
@@ -631,12 +673,19 @@ void Device::submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *sem
 		last_cmd = cmds.size();
 	}
 
-	VkFence cleared_fence = frame().fence_manager.request_cleared_fence();
+	VkFence cleared_fence = fence ? frame().fence_manager.request_cleared_fence() : VK_NULL_HANDLE;
 	VkSemaphore cleared_semaphore = VK_NULL_HANDLE;
+	VkSemaphore cleared_semaphore_alt = VK_NULL_HANDLE;
 	if (semaphore)
 	{
 		cleared_semaphore = semaphore_manager.request_cleared_semaphore();
 		signals[submits.size() - 1].push_back(cleared_semaphore);
+	}
+
+	if (semaphore_alt)
+	{
+		cleared_semaphore_alt = semaphore_manager.request_cleared_semaphore();
+		signals[submits.size() - 1].push_back(cleared_semaphore_alt);
 	}
 
 	for (unsigned i = 0; i < submits.size(); i++)
@@ -690,34 +739,42 @@ void Device::submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *sem
 		auto ptr = make_handle<SemaphoreHolder>(this, cleared_semaphore, true);
 		*semaphore = ptr;
 	}
+
+	if (semaphore_alt)
+	{
+		auto ptr = make_handle<SemaphoreHolder>(this, cleared_semaphore_alt, true);
+		*semaphore_alt = ptr;
+	}
 }
 
 void Device::flush_frame(CommandBuffer::Type type)
 {
-	if (type == CommandBuffer::Type::Transfer)
-	{
-		// Flush any copies for pending chain allocators.
-		auto cmd = request_command_buffer(CommandBuffer::Type::Transfer);
-		auto stages = frame().sync_to_gpu(*cmd);
-		if (stages)
-			submit_staging(cmd, stages);
-		else
-		{
-			vkEndCommandBuffer(cmd->get_command_buffer());
-			// Nothing to flush, don't bother submitting.
-		}
-	}
-
 	Fence fence;
-	submit_queue(type, &fence, nullptr);
+	submit_queue(type, &fence, nullptr, nullptr);
+}
+
+void Device::sync_chain_allocators()
+{
+	// Flush any copies for pending chain allocators.
+	auto cmd = request_command_buffer(CommandBuffer::Type::Transfer);
+
+	auto stages = frame().sync_to_gpu(*cmd);
+	if (stages)
+		submit_staging(cmd, stages);
+	else
+	{
+		get_command_pool(CommandBuffer::Type::Transfer).signal_submitted(cmd->get_command_buffer());
+		vkEndCommandBuffer(cmd->get_command_buffer());
+		// Nothing to flush, don't bother submitting.
+	}
 }
 
 void Device::flush_frame()
 {
 	// The order here is important. We need to flush transfers first, because create_buffer() and create_image()
 	// can relax semaphores into pipeline barriers if the transfer queue and compute/graphics queues alias.
+	sync_chain_allocators();
 	flush_frame(CommandBuffer::Type::Transfer);
-
 	flush_frame(CommandBuffer::Type::Compute);
 	flush_frame(CommandBuffer::Type::Graphics);
 }
@@ -1547,6 +1604,108 @@ ImageHandle Device::create_imported_image(int fd, VkDeviceSize size, uint32_t me
 }
 #endif
 
+InitialImageBuffer Device::create_image_staging_buffer(const ImageCreateInfo &info, const ImageInitialData *initial)
+{
+	InitialImageBuffer result;
+
+	unsigned mip_levels = info.levels;
+	if (mip_levels == 0)
+		mip_levels = image_num_miplevels({ info.width, info.height, info.depth });
+
+	auto width = info.width;
+	auto height = info.height;
+	auto depth = info.depth;
+
+	bool generate_mips = (info.misc & IMAGE_MISC_GENERATE_MIPS_BIT) != 0;
+	unsigned copy_levels = generate_mips ? 1u : mip_levels;
+	unsigned index = 0;
+
+	// Figure out how much memory we need.
+	VkDeviceSize required_size = 0;
+
+	for (unsigned level = 0; level < copy_levels; level++)
+	{
+		for (unsigned layer = 0; layer < info.layers; layer++, index++)
+		{
+			uint32_t row_length = initial[index].row_length ? initial[index].row_length : width;
+			uint32_t array_height = initial[index].array_height ? initial[index].array_height : height;
+
+			uint32_t blocks_x = row_length;
+			uint32_t blocks_y = array_height;
+			format_num_blocks(info.format, blocks_x, blocks_y);
+			format_align_dim(info.format, row_length, array_height);
+
+			VkDeviceSize size =
+					format_block_size(info.format) * depth * blocks_x * blocks_y;
+
+			// Align to cache line for good measure.
+			required_size = (required_size + 63) & ~63;
+
+			VkBufferImageCopy copy = {};
+			copy.bufferImageHeight = array_height;
+			copy.bufferRowLength = row_length;
+			copy.imageExtent.width = width;
+			copy.imageExtent.height = height;
+			copy.imageExtent.depth = depth;
+			copy.imageSubresource.aspectMask = format_to_aspect_mask(info.format);
+			copy.imageSubresource.layerCount = 1;
+			copy.imageSubresource.baseArrayLayer = layer;
+			copy.imageSubresource.mipLevel = level;
+			copy.bufferOffset = required_size;
+			result.blits.push_back(copy);
+
+			required_size += size;
+		}
+
+		width = max(width >> 1u, 1u);
+		height = max(height >> 1u, 1u);
+		depth = max(depth >> 1u, 1u);
+	}
+
+	BufferCreateInfo buffer_info = {};
+	buffer_info.domain = BufferDomain::Host;
+	buffer_info.size = required_size;
+	buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+	result.buffer = create_buffer(buffer_info, nullptr);
+
+	// And now, do the actual copy.
+	auto *mapped = static_cast<uint8_t *>(map_host_buffer(*result.buffer, MEMORY_ACCESS_WRITE));
+	required_size = 0;
+	width = info.width;
+	height = info.height;
+	depth = info.depth;
+	index = 0;
+
+	for (unsigned level = 0; level < copy_levels; level++)
+	{
+		for (unsigned layer = 0; layer < info.layers; layer++, index++)
+		{
+			uint32_t row_length = initial[index].row_length ? initial[index].row_length : width;
+			uint32_t array_height = initial[index].array_height ? initial[index].array_height : height;
+
+			uint32_t blocks_x = row_length;
+			uint32_t blocks_y = array_height;
+			format_num_blocks(info.format, blocks_x, blocks_y);
+			format_align_dim(info.format, row_length, array_height);
+
+			VkDeviceSize size =
+					format_block_size(info.format) * depth * blocks_x * blocks_y;
+
+			// Align to cache line for good measure.
+			required_size = (required_size + 63) & ~63;
+			memcpy(mapped + required_size, initial[index].data, size);
+			required_size += size;
+		}
+
+		width = max(width >> 1u, 1u);
+		height = max(height >> 1u, 1u);
+		depth = max(depth >> 1u, 1u);
+	}
+
+	unmap_host_buffer(*result.buffer);
+	return result;
+}
+
 ImageHandle Device::create_image(const ImageCreateInfo &create_info, const ImageInitialData *initial)
 {
 	VkImage image;
@@ -1704,44 +1863,8 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 	{
 		VK_ASSERT(create_info.domain != ImageDomain::Transient);
 		VK_ASSERT(create_info.initial_layout != VK_IMAGE_LAYOUT_UNDEFINED);
+		auto staging_buffer = create_image_staging_buffer(create_info, initial);
 		bool generate_mips = (create_info.misc & IMAGE_MISC_GENERATE_MIPS_BIT) != 0;
-		unsigned copy_levels = generate_mips ? 1u : info.mipLevels;
-
-		VkExtent3D extent = { create_info.width, create_info.height, create_info.depth };
-
-		VkImageSubresourceLayers subresource = {
-			format_to_aspect_mask(info.format), 0, 0, 1,
-		};
-
-		unsigned index = 0;
-		for (unsigned level = 0; level < copy_levels; level++)
-		{
-			for (unsigned layer = 0; layer < create_info.layers; layer++, index++)
-			{
-				subresource.baseArrayLayer = layer;
-				subresource.mipLevel = level;
-
-				uint32_t row_length = initial[index].row_length ? initial[index].row_length : extent.width;
-				uint32_t array_height = initial[index].array_height ? initial[index].array_height : extent.height;
-
-				uint32_t blocks_x = row_length;
-				uint32_t blocks_y = array_height;
-				format_num_blocks(create_info.format, blocks_x, blocks_y);
-				format_align_dim(create_info.format, row_length, array_height);
-
-				VkDeviceSize size =
-					format_block_size(create_info.format) * extent.depth * blocks_x * blocks_y;
-
-				auto *ptr = transfer.staging_cmd->update_image(*handle, {0, 0, 0}, extent, row_length, array_height,
-				                                               subresource);
-				VK_ASSERT(ptr);
-				memcpy(ptr, initial[index].data, size);
-			}
-
-			extent.width = max(extent.width >> 1u, 1u);
-			extent.height = max(extent.height >> 1u, 1u);
-			extent.depth = max(extent.depth >> 1u, 1u);
-		}
 
 		// If graphics_queue != transfer_queue, we will use a semaphore, so no srcAccess mask is necessary.
 		VkAccessFlags final_transition_src_access = 0;
@@ -1769,6 +1892,7 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 		                            VK_ACCESS_TRANSFER_WRITE_BIT);
 
 		handle->set_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+		transfer_cmd->copy_buffer_to_image(*handle, *staging_buffer.buffer, staging_buffer.blits.size(), staging_buffer.blits.data());
 
 		if (transfer_queue != graphics_queue)
 		{

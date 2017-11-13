@@ -54,6 +54,12 @@ enum class SwapchainRenderPass
 	DepthStencil
 };
 
+struct InitialImageBuffer
+{
+	BufferHandle buffer;
+	std::vector<VkBufferImageCopy> blits;
+};
+
 class Device
 {
 public:
@@ -72,8 +78,8 @@ public:
 	void flush_frame();
 	void wait_idle();
 	CommandBufferHandle request_command_buffer(CommandBuffer::Type type = CommandBuffer::Type::Graphics);
-	void submit(CommandBufferHandle cmd, Fence *fence = nullptr, Semaphore *semaphore = nullptr);
-	void submit_empty(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore);
+	void submit(CommandBufferHandle cmd, Fence *fence = nullptr, Semaphore *semaphore = nullptr, Semaphore *semaphore_alt = nullptr);
+	void submit_empty(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore, Semaphore *semaphore_alt);
 
 	VkDevice get_device()
 	{
@@ -91,6 +97,7 @@ public:
 
 	BufferHandle create_buffer(const BufferCreateInfo &info, const void *initial);
 	ImageHandle create_image(const ImageCreateInfo &info, const ImageInitialData *initial = nullptr);
+	InitialImageBuffer create_image_staging_buffer(const ImageCreateInfo &info, const ImageInitialData *initial);
 
 #ifndef _WIN32
 	ImageHandle create_imported_image(int fd,
@@ -253,7 +260,7 @@ private:
 		std::vector<VkPipelineStageFlags> wait_stages;
 	} graphics, compute, transfer;
 
-	void submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore);
+	void submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore, Semaphore *semaphore_alt);
 
 	PerFrame &frame()
 	{
@@ -308,5 +315,6 @@ private:
 	std::function<void ()> queue_lock_callback;
 	std::function<void ()> queue_unlock_callback;
 	void flush_frame(CommandBuffer::Type type);
+	void sync_chain_allocators();
 };
 }

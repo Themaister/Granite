@@ -171,7 +171,7 @@ private:
 		bool clustered_lights_shadows = true;
 		bool hdr_bloom = true;
 		bool forward_depth_prepass = false;
-		bool deferred_clustered_stencil_culling = false;
+		bool deferred_clustered_stencil_culling = true;
 
 		float shadow_map_resolution_main = 2048.0f;
 		float shadow_map_resolution_near = 1024.0f;

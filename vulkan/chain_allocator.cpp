@@ -114,7 +114,7 @@ ChainDataAllocation ChainAllocator::allocate(VkDeviceSize size)
 	return alloc;
 }
 
-VkBufferUsageFlags ChainAllocator::sync_to_gpu(CommandBuffer &cmd)
+VkBufferUsageFlags ChainAllocator::sync_to_gpu(CommandBufferHandle &cmd)
 {
 	bool need_sync = false;
 
@@ -122,8 +122,10 @@ VkBufferUsageFlags ChainAllocator::sync_to_gpu(CommandBuffer &cmd)
 	{
 		if (buffer.gpu != buffer.cpu)
 		{
-			cmd.copy_buffer(*buffer.gpu, 0, *buffer.cpu, 0, buffer.gpu->get_create_info().size);
 			need_sync = true;
+			if (!cmd)
+				cmd = device->request_command_buffer(CommandBuffer::Type::Transfer);
+			cmd->copy_buffer(*buffer.gpu, 0, *buffer.cpu, 0, buffer.gpu->get_create_info().size);
 		}
 	}
 	large_buffers.clear();
@@ -137,8 +139,10 @@ VkBufferUsageFlags ChainAllocator::sync_to_gpu(CommandBuffer &cmd)
 
 		if (buffer.gpu != buffer.cpu && to_flush_bytes)
 		{
-			cmd.copy_buffer(*buffer.gpu, start_flush_offset, *buffer.cpu, start_flush_offset, to_flush_bytes);
 			need_sync = true;
+			if (!cmd)
+				cmd = device->request_command_buffer(CommandBuffer::Type::Transfer);
+			cmd->copy_buffer(*buffer.gpu, start_flush_offset, *buffer.cpu, start_flush_offset, to_flush_bytes);
 		}
 
 		if (flush_all)
@@ -157,7 +161,9 @@ VkBufferUsageFlags ChainAllocator::sync_to_gpu(CommandBuffer &cmd)
 		if (buffer.gpu != buffer.cpu)
 		{
 			need_sync = true;
-			cmd.copy_buffer(*buffer.gpu, 0, *buffer.cpu, 0, buffer.gpu->get_create_info().size);
+			if (!cmd)
+				cmd = device->request_command_buffer(CommandBuffer::Type::Transfer);
+			cmd->copy_buffer(*buffer.gpu, 0, *buffer.cpu, 0, buffer.gpu->get_create_info().size);
 		}
 
 		start_flush_buffer++;
@@ -171,9 +177,11 @@ VkBufferUsageFlags ChainAllocator::sync_to_gpu(CommandBuffer &cmd)
 		auto &buffer = buffers[start_flush_buffer];
 		if (buffer.gpu != buffer.cpu)
 		{
-			cmd.copy_buffer(*buffer.gpu, start_flush_offset, *buffer.cpu, start_flush_offset,
-			                offset - start_flush_offset);
 			need_sync = true;
+			if (!cmd)
+				cmd = device->request_command_buffer(CommandBuffer::Type::Transfer);
+			cmd->copy_buffer(*buffer.gpu, start_flush_offset, *buffer.cpu, start_flush_offset,
+			                 offset - start_flush_offset);
 		}
 
 		start_flush_offset = offset;

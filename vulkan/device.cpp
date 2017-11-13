@@ -579,11 +579,7 @@ void Device::submit_staging(CommandBufferHandle cmd, VkBufferUsageFlags usage)
 void Device::submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore, Semaphore *semaphore_alt)
 {
 	// Always check if we need to flush pending transfers.
-	if (type != CommandBuffer::Type::Transfer)
-	{
-		sync_chain_allocators();
-		flush_frame(CommandBuffer::Type::Transfer);
-	}
+	sync_chain_allocators();
 
 	auto &data = get_queue_data(type);
 	auto &submissions = get_queue_submissions(type);
@@ -749,34 +745,25 @@ void Device::submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *sem
 
 void Device::flush_frame(CommandBuffer::Type type)
 {
-	Fence fence;
-	submit_queue(type, &fence, nullptr, nullptr);
+	submit_queue(type, nullptr, nullptr, nullptr);
 }
 
 void Device::sync_chain_allocators()
 {
 	// Flush any copies for pending chain allocators.
-	auto cmd = request_command_buffer(CommandBuffer::Type::Transfer);
-
-	auto stages = frame().sync_to_gpu(*cmd);
+	CommandBufferHandle cmd;
+	auto stages = frame().sync_to_gpu(cmd);
 	if (stages)
 		submit_staging(cmd, stages);
-	else
-	{
-		get_command_pool(CommandBuffer::Type::Transfer).signal_submitted(cmd->get_command_buffer());
-		vkEndCommandBuffer(cmd->get_command_buffer());
-		// Nothing to flush, don't bother submitting.
-	}
 }
 
-void Device::flush_frame()
+void Device::end_frame()
 {
-	// The order here is important. We need to flush transfers first, because create_buffer() and create_image()
-	// can relax semaphores into pipeline barriers if the transfer queue and compute/graphics queues alias.
-	sync_chain_allocators();
-	flush_frame(CommandBuffer::Type::Transfer);
-	flush_frame(CommandBuffer::Type::Compute);
-	flush_frame(CommandBuffer::Type::Graphics);
+	// Make sure we have a fence which covers all submissions in the frame.
+	Fence fence;
+	submit_queue(CommandBuffer::Type::Transfer, &fence, nullptr, nullptr);
+	submit_queue(CommandBuffer::Type::Graphics, &fence, nullptr, nullptr);
+	submit_queue(CommandBuffer::Type::Compute, &fence, nullptr, nullptr);
 }
 
 Device::QueueData &Device::get_queue_data(CommandBuffer::Type type)
@@ -1069,7 +1056,7 @@ void Device::clear_wait_semaphores()
 void Device::wait_idle()
 {
 	if (!per_frame.empty())
-		flush_frame();
+		end_frame();
 
 	if (device != VK_NULL_HANDLE)
 	{
@@ -1100,7 +1087,7 @@ void Device::wait_idle()
 void Device::begin_frame(unsigned index)
 {
 	// Flush the frame here as we might have pending staging command buffers from init stage.
-	flush_frame();
+	end_frame();
 
 	current_swapchain_index = index;
 
@@ -1117,7 +1104,7 @@ QueryPoolHandle Device::write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlag
 	return frame().query_pool.write_timestamp(cmd, stage);
 }
 
-VkBufferUsageFlags Device::PerFrame::sync_to_gpu(CommandBuffer &cmd)
+VkBufferUsageFlags Device::PerFrame::sync_to_gpu(CommandBufferHandle &cmd)
 {
 	VkBufferUsageFlags flags = 0;
 	flags |= ubo_chain.sync_to_gpu(cmd);

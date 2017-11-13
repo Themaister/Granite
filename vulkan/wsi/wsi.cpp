@@ -286,7 +286,7 @@ bool WSI::begin_frame()
 
 bool WSI::end_frame()
 {
-	device->flush_frame();
+	device->end_frame();
 
 	if (!device->swapchain_touched())
 	{

@@ -47,7 +47,7 @@ public:
 	void discard();
 	void reset();
 
-	VkBufferUsageFlags sync_to_gpu(CommandBuffer &cmd);
+	VkBufferUsageFlags sync_to_gpu(Util::IntrusivePtr<CommandBuffer> &cmd);
 
 private:
 	Device *device;

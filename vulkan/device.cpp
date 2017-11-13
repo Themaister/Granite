@@ -572,7 +572,8 @@ void Device::submit_staging(CommandBufferHandle cmd, VkBufferUsageFlags usage)
 void Device::submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore, Semaphore *semaphore_alt)
 {
 	// Always check if we need to flush pending transfers.
-	sync_chain_allocators();
+	if (type != CommandBuffer::Type::Transfer)
+		flush_frame(CommandBuffer::Type::Transfer);
 
 	auto &data = get_queue_data(type);
 	auto &submissions = get_queue_submissions(type);
@@ -738,6 +739,8 @@ void Device::submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *sem
 
 void Device::flush_frame(CommandBuffer::Type type)
 {
+	if (type == CommandBuffer::Type::Transfer)
+		sync_chain_allocators();
 	submit_queue(type, nullptr, nullptr, nullptr);
 }
 
@@ -774,17 +777,9 @@ Device::QueueData &Device::get_queue_data(CommandBuffer::Type type)
 	case CommandBuffer::Type::Graphics:
 		return graphics;
 	case CommandBuffer::Type::Compute:
-		if (graphics_queue == compute_queue)
-			return graphics;
-		else
-			return compute;
+		return compute;
 	case CommandBuffer::Type::Transfer:
-		if (transfer_queue == graphics_queue)
-			return graphics;
-		else if (transfer_queue == compute_queue)
-			return compute;
-		else
-			return transfer;
+		return transfer;
 	}
 }
 
@@ -796,17 +791,9 @@ CommandPool &Device::get_command_pool(CommandBuffer::Type type)
 	case CommandBuffer::Type::Graphics:
 		return frame().graphics_cmd_pool;
 	case CommandBuffer::Type::Compute:
-		if (compute_queue == graphics_queue)
-			return frame().graphics_cmd_pool;
-		else
-			return frame().compute_cmd_pool;
+		return frame().compute_cmd_pool;
 	case CommandBuffer::Type::Transfer:
-		if (transfer_queue == graphics_queue)
-			return frame().graphics_cmd_pool;
-		else if (transfer_queue == compute_queue)
-			return frame().compute_cmd_pool;
-		else
-			return frame().transfer_cmd_pool;
+		return frame().transfer_cmd_pool;
 	}
 }
 
@@ -818,17 +805,9 @@ vector<CommandBufferHandle> &Device::get_queue_submissions(CommandBuffer::Type t
 	case CommandBuffer::Type::Graphics:
 		return frame().graphics_submissions;
 	case CommandBuffer::Type::Compute:
-		if (compute_queue == graphics_queue)
-			return frame().graphics_submissions;
-		else
-			return frame().compute_submissions;
+		return frame().compute_submissions;
 	case CommandBuffer::Type::Transfer:
-		if (transfer_queue == graphics_queue)
-			return frame().graphics_submissions;
-		else if (transfer_queue == compute_queue)
-			return frame().compute_submissions;
-		else
-			return frame().transfer_submissions;
+		return frame().transfer_submissions;
 	}
 }
 

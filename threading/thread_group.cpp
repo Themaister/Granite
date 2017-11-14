@@ -126,13 +126,19 @@ ThreadGroup &ThreadGroup::get_global()
 	return group.group;
 }
 
-unsigned ThreadGroup::get_current_thread_index() const
-{
-	auto itr = thread_id_to_index.find(std::this_thread::get_id());
-	if (itr != end(thread_id_to_index))
-		return itr->second;
+static thread_local unsigned thread_id_to_index = ~0u;
 
-	throw invalid_argument("Thread does not exist in thread manager or is not the main thread.");
+unsigned ThreadGroup::get_current_thread_index()
+{
+	auto ret = thread_id_to_index;
+	if (ret == ~0u)
+		throw invalid_argument("Thread does not exist in thread manager or is not the main thread.");
+	return ret;
+}
+
+void ThreadGroup::register_main_thread()
+{
+	thread_id_to_index = 0;
 }
 
 void ThreadGroup::start(unsigned num_threads)
@@ -153,11 +159,6 @@ void ThreadGroup::start(unsigned num_threads)
 		});
 		self_index++;
 	}
-
-	thread_id_to_index.clear();
-	thread_id_to_index[std::this_thread::get_id()] = 0;
-	for (unsigned i = 0; i < num_threads; i++)
-		thread_id_to_index[thread_group[i]->get_id()] = 1 + i;
 }
 
 void ThreadGroup::submit(TaskGroup &group)
@@ -253,8 +254,10 @@ void ThreadGroup::wait_idle()
 	});
 }
 
-void ThreadGroup::thread_looper(unsigned)
+void ThreadGroup::thread_looper(unsigned index)
 {
+	thread_id_to_index = index;
+
 	for (;;)
 	{
 		Internal::Task *task = nullptr;

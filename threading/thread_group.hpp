@@ -126,7 +126,7 @@ public:
 	}
 	void stop();
 
-	unsigned get_current_thread_index() const;
+	static unsigned get_current_thread_index();
 
 	void enqueue_task(TaskGroup &group, std::function<void ()> func);
 	TaskGroup create_task(std::function<void ()> func);
@@ -143,6 +143,7 @@ public:
 	void wait_idle();
 
 	static ThreadGroup &get_global();
+	static void register_main_thread();
 
 private:
 	Util::ThreadSafeObjectPool<Internal::Task> task_pool;
@@ -164,6 +165,5 @@ private:
 	std::mutex wait_cond_lock;
 	std::atomic_uint total_tasks;
 	std::atomic_uint completed_tasks;
-	std::unordered_map<std::thread::id, unsigned> thread_id_to_index;
 };
 }

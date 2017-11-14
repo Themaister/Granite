@@ -22,6 +22,7 @@
 
 #include "device.hpp"
 #include "format.hpp"
+#include "thread_group.hpp"
 #include <algorithm>
 #include <string.h>
 
@@ -38,6 +39,9 @@ Device::Device()
 	, texture_manager(this)
 {
 	cookie.store(0);
+
+	ThreadGroup::get_global();
+	ThreadGroup::register_main_thread();
 }
 
 Semaphore Device::request_semaphore()

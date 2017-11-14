@@ -268,7 +268,7 @@ public:
 			if (next_readback_cb)
 			{
 				device.add_wait_semaphore(CommandBuffer::Type::Transfer, release_semaphore,
-				                          VK_PIPELINE_STAGE_TRANSFER_BIT);
+				                          VK_PIPELINE_STAGE_TRANSFER_BIT, true);
 
 				auto cmd = device.request_command_buffer(CommandBuffer::Type::Transfer);
 				swapchain_images[index]->set_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
@@ -290,7 +290,7 @@ public:
 			else if (!png_readback.empty())
 			{
 				device.add_wait_semaphore(CommandBuffer::Type::Transfer, release_semaphore,
-				                          VK_PIPELINE_STAGE_TRANSFER_BIT);
+				                          VK_PIPELINE_STAGE_TRANSFER_BIT, true);
 
 				auto cmd = device.request_command_buffer(CommandBuffer::Type::Transfer);
 				swapchain_images[index]->set_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);

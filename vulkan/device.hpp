@@ -167,7 +167,7 @@ public:
 	Semaphore request_imported_semaphore(int fd, VkExternalSemaphoreHandleTypeFlagBitsKHR handle_type);
 #endif
 
-	void add_wait_semaphore(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags stages);
+	void add_wait_semaphore(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags stages, bool flush);
 
 	ShaderManager &get_shader_manager()
 	{
@@ -311,11 +311,12 @@ private:
 	QueueData &get_queue_data(CommandBuffer::Type type);
 	std::vector<CommandBufferHandle> &get_queue_submissions(CommandBuffer::Type type);
 	void clear_wait_semaphores();
-	void submit_staging(CommandBufferHandle cmd, VkBufferUsageFlags usage);
+	void submit_staging(CommandBufferHandle cmd, VkBufferUsageFlags usage, bool flush);
 
 	std::function<void ()> queue_lock_callback;
 	std::function<void ()> queue_unlock_callback;
 	void flush_frame(CommandBuffer::Type type);
 	void sync_chain_allocators();
+	void submit_empty_inner(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore, Semaphore *semaphore_alt);
 };
 }

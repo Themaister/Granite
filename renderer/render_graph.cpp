@@ -1393,7 +1393,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 
 		const auto wait_for_semaphore_in_queue = [&](Vulkan::Semaphore sem, VkPipelineStageFlags stages) {
 			if (sem->get_semaphore() != VK_NULL_HANDLE)
-				device.add_wait_semaphore(queue_type, sem, stages);
+				device.add_wait_semaphore(queue_type, sem, stages, true);
 		};
 
 		VkPipelineStageFlags dst_stages = 0;
@@ -1754,7 +1754,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 			{
 				device.add_wait_semaphore(Vulkan::CommandBuffer::Type::Graphics,
 				                          physical_events[index].wait_graphics_semaphore,
-				                          VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+				                          VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, true);
 			}
 
 			if (image.get_layout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)

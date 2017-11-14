@@ -165,6 +165,11 @@ private:
 	{
 		RendererType renderer_type = RendererType::GeneralDeferred;
 		unsigned msaa = 1;
+		float shadow_map_resolution_main = 2048.0f;
+		float shadow_map_resolution_near = 1024.0f;
+		float cascade_cutoff_distance = 10.0f;
+		int camera_index = -1;
+
 		bool directional_light_shadows = true;
 		bool directional_light_cascaded_shadows = true;
 		bool clustered_lights = false;
@@ -172,17 +177,11 @@ private:
 		bool hdr_bloom = true;
 		bool forward_depth_prepass = false;
 		bool deferred_clustered_stencil_culling = true;
-
-		float shadow_map_resolution_main = 2048.0f;
-		float shadow_map_resolution_near = 1024.0f;
-		int camera_index = -1;
-
 		bool rt_fp16 = false;
 		bool timestamps = false;
 		bool rescale_scene = false;
 		bool force_shadow_map_update = false;
 		bool show_ui = true;
-		float cascade_cutoff_distance = 10.0f;
 	};
 	Config config;
 

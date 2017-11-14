@@ -178,6 +178,10 @@ def main():
         sweep_path = args.scene
 
     if args.android_viewer_binary is not None:
+        if args.builtin is None:
+            sys.stderr.write('--builtin must be defined when sweeping on Android.\n')
+            sys.exit(1)
+
         print('Setting up directories ...')
         subprocess.check_call(['adb', 'shell', 'mkdir', '-p', '/data/local/tmp/granite'])
         subprocess.check_call(['adb', 'shell', 'mkdir', '-p', '/data/local/tmp/granite/cache'])
@@ -189,6 +193,7 @@ def main():
         print('Pushing test scene ...')
         subprocess.check_call(['adb', 'push', sweep_path, '/data/local/tmp/granite/scene.glb'])
         print('Pushing builtin assets ...')
+
         subprocess.check_call(['adb', 'push', args.builtin, '/data/local/tmp/granite/'])
 
         asset_dir = os.path.dirname(sweep_path)

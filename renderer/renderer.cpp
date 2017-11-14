@@ -270,7 +270,8 @@ void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context, Rendere
 	if (type == RendererType::GeneralForward)
 		set_lighting_parameters(cmd, context);
 
-	queue.sort();
+	if ((options & SKIP_SORTING_BIT) == 0)
+		queue.sort();
 
 	cmd.set_opaque_state();
 

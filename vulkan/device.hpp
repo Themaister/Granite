@@ -195,7 +195,7 @@ private:
 	VkQueue compute_queue = VK_NULL_HANDLE;
 	VkQueue transfer_queue = VK_NULL_HANDLE;
 	DeviceAllocator allocator;
-	std::atomic_uint64_t cookie;
+	std::atomic<uint64_t> cookie;
 
 	VkPhysicalDeviceMemoryProperties mem_props;
 	VkPhysicalDeviceProperties gpu_props;

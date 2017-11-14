@@ -57,7 +57,8 @@ public:
 		NO_COLOR = 1 << 3,
 		BACKFACE_BIT = 1 << 4,
 		STENCIL_WRITE_REFERENCE_BIT = 1 << 5,
-		STENCIL_COMPARE_REFERENCE_BIT = 1 << 6
+		STENCIL_COMPARE_REFERENCE_BIT = 1 << 6,
+		SKIP_SORTING_BIT = 1 << 7
 	};
 	using RendererFlushFlags = uint32_t;
 

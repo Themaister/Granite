@@ -28,10 +28,48 @@
 #include "path.hpp"
 #include <vector>
 #include <algorithm>
+#include "stb_image_write.h"
 
 using namespace Util;
 using namespace Granite;
 using namespace std;
+
+static void save_diff_image(const string &path, const gli::texture &a, const gli::texture &b)
+{
+	if (a.format() != b.format())
+	{
+		LOGE("Format mismatch.\n");
+		return;
+	}
+
+	if (a.format() != gli::FORMAT_RGBA8_UNORM_PACK8 && a.format() != gli::FORMAT_RGBA8_SRGB_PACK8)
+	{
+		LOGE("Unsupported format.\n");
+		return;
+	}
+
+	int width = a.extent().x;
+	int height = a.extent().y;
+	vector<uint8_t> buffer(width * height * 4);
+
+	auto *src_a = static_cast<const uint8_t *>(a.data());
+	auto *src_b = static_cast<const uint8_t *>(b.data());
+	auto *dst = buffer.data();
+
+	for (int pix = 0; pix < width * height; pix++, dst += 4, src_a += 4, src_b += 4)
+	{
+		int diff_r = src_a[0] - src_b[0];
+		int diff_g = src_a[1] - src_b[1];
+		int diff_b = src_a[2] - src_b[2];
+		dst[0] = min(diff_r * 16, 255);
+		dst[1] = min(diff_g * 16, 255);
+		dst[2] = min(diff_b * 16, 255);
+		dst[3] = 255;
+	}
+
+	if (!stbi_write_png(path.c_str(), width, height, 4, buffer.data(), width * 4))
+		LOGE("Failed to save diff-png to %s.\n", path.c_str());
+}
 
 static double compare_images(const gli::texture &a, const gli::texture &b)
 {
@@ -79,12 +117,16 @@ int main(int argc, char *argv[])
 	struct Arguments
 	{
 		vector<string> inputs;
+		string diff;
 		double threshold = -1.0;
 	} args;
 	CLICallbacks cbs;
 
 	cbs.add("--threshold", [&](CLIParser &parser) {
 		args.threshold = parser.next_double();
+	});
+	cbs.add("--diff", [&](CLIParser &parser) {
+		args.diff = parser.next_string();
 	});
 	cbs.default_handler = [&](const char *arg) {
 		args.inputs.push_back(arg);
@@ -179,6 +221,11 @@ int main(int argc, char *argv[])
 		{
 			LOGE("Failed to load texture: %s\n", args.inputs[1].c_str());
 			return 1;
+		}
+
+		if (!args.diff.empty())
+		{
+			save_diff_image(args.diff, a, b);
 		}
 
 		double psnr = compare_images(a, b);

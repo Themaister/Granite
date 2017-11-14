@@ -84,6 +84,8 @@ public:
 		return quadratic;
 	}
 
+	virtual vec2 get_z_range(const RenderContext &context, const mat4 &transform) const = 0;
+
 protected:
 	AABB aabb;
 	vec3 color = vec3(1.0f);
@@ -135,6 +137,7 @@ private:
 	mat4 shadow_transform;
 
 	void set_range(float range) override;
+	vec2 get_z_range(const RenderContext &context, const mat4 &transform) const override final;
 };
 
 class PointLight : public PositionalLight
@@ -152,6 +155,8 @@ public:
 
 private:
 	void set_range(float range) override;
+	vec2 get_z_range(const RenderContext &context, const mat4 &transform) const override final;
+
 	const Vulkan::ImageView *shadow_atlas = nullptr;
 	PointTransform shadow_transform;
 };

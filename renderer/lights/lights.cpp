@@ -225,16 +225,18 @@ struct LightMesh : public EventHandler
 
 	void create_spot_mesh(const DeviceCreatedEvent &e)
 	{
-		vec3 positions[17 + 2];
+		vec3 positions[16 + 2];
 		positions[0] = vec3(0.0f);
 		positions[1] = vec3(0.0f, 0.0f, -1.0f);
 
 		float half_angle = 2.0f * pi<float>() / 32.0f;
 		float padding_mod = 1.0f / cos(half_angle);
 
-		for (unsigned i = 0; i <= 16; i++)
+		// Make sure top and bottom are aligned to 1 so we can get correct culling checks,
+		// rotate the mesh by half phase so we get a "flat" top and "flat" side.
+		for (unsigned i = 0; i < 16; i++)
 		{
-			float rad = 2.0f * pi<float>() * float(i) / 16.0f;
+			float rad = 2.0f * pi<float>() * (i + 0.5f) / 16.0f;
 			positions[i + 2] = vec3(padding_mod * cos(rad), padding_mod * sin(rad), -1.0f);
 		}
 
@@ -478,21 +480,43 @@ void SpotLight::get_depth_render_info(const RenderContext &context, const Cached
 	}
 }
 
+vec2 SpotLight::get_z_range(const RenderContext &context, const mat4 &transform) const
+{
+	auto &params = context.get_render_parameters();
+	float max_range = min(falloff_range, cutoff_range);
+	mat4 model = transform * scale(vec3(xy_range * max_range, xy_range * max_range, max_range));
+
+	static const vec4 sample_points[] = {
+		vec4(0.0f, 0.0f, 0.0f, 1.0f), // Cone origin
+		vec4(-1.0f, -1.0f, -1.0f, 1.0f),
+		vec4(+1.0f, -1.0f, -1.0f, 1.0f),
+		vec4(-1.0f, +1.0f, -1.0f, 1.0f),
+		vec4(+1.0f, +1.0f, -1.0f, 1.0f),
+	};
+
+	// This can be optimized quite a lot.
+	vec2 range(FLT_MAX, -FLT_MAX);
+	for (auto &s : sample_points)
+	{
+		vec3 pos = (model * s).xyz();
+		float z = dot(pos - params.camera_position, params.camera_front);
+		range.x = glm::min(range.x, z);
+		range.y = glm::max(range.y, z);
+	}
+
+	return range;
+}
+
 void SpotLight::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
                                 RenderQueue &queue) const
 {
 	auto &params = context.get_render_parameters();
-	auto &aabb = transform->world_aabb;
-	float to_center = dot(aabb.get_center() - params.camera_position, params.camera_front);
-	float radius = aabb.get_radius();
-	float aabb_near = to_center - params.z_near - radius;
-	float aabb_far = to_center + radius - params.z_far;
-
+	vec2 range = get_z_range(context, transform->transform->world_transform);
 	RenderFunc func;
 
-	if (aabb_near < 0.0f) // We risk clipping into the mesh, and since we can't rely on depthClamp, use backface.
+	if (range.x < params.z_near) // We risk clipping into the mesh, and since we can't rely on depthClamp, use backface.
 	{
-		if (aabb_far > 0.0f) // We risk clipping into far plane as well ... Use a full-screen quad.
+		if (range.y > params.z_far) // We risk clipping into far plane as well ... Use a full-screen quad.
 			func = positional_render_full_screen;
 		else
 			func = positional_render_back;
@@ -551,6 +575,14 @@ void SpotLight::get_render_info(const RenderContext &context, const CachedSpatia
 PointLight::PointLight()
 	: PositionalLight(PositionalLight::Type::Point)
 {
+}
+
+vec2 PointLight::get_z_range(const RenderContext &context, const mat4 &transform) const
+{
+	float scale_factor = length(transform[0]);
+	float max_range = 1.15f * min(falloff_range, cutoff_range) * scale_factor;
+	float z = dot(transform[3].xyz() - context.get_render_parameters().camera_position, context.get_render_parameters().camera_front);
+	return vec2(z - max_range, z + max_range);
 }
 
 void PointLight::set_range(float range)
@@ -619,17 +651,12 @@ void PointLight::get_render_info(const RenderContext &context, const CachedSpati
                                  RenderQueue &queue) const
 {
 	auto &params = context.get_render_parameters();
-	auto &aabb = transform->world_aabb;
-	float to_center = dot(aabb.get_center() - params.camera_position, params.camera_front);
-	float radius = aabb.get_radius();
-	float aabb_near = to_center - params.z_near - radius;
-	float aabb_far = to_center + radius - params.z_far;
-
+	vec2 range = get_z_range(context, transform->transform->world_transform);
 	RenderFunc func;
 
-	if (aabb_near < 0.0f) // We risk clipping into the mesh, and since we can't rely on depthClamp, use backface.
+	if (range.x < params.z_near) // We risk clipping into the mesh, and since we can't rely on depthClamp, use backface.
 	{
-		if (aabb_far > 0.0f) // We risk clipping into far plane as well ... Use a full-screen quad.
+		if (range.y > params.z_far) // We risk clipping into far plane as well ... Use a full-screen quad.
 			func = positional_render_full_screen;
 		else
 			func = positional_render_back;

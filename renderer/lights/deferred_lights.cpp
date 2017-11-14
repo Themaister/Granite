@@ -23,6 +23,7 @@
 #include "deferred_lights.hpp"
 #include "renderer.hpp"
 #include "unstable_remove_if.hpp"
+#include "lights.hpp"
 #include <algorithm>
 
 namespace Granite
@@ -42,13 +43,9 @@ void DeferredLights::refresh(RenderContext &context)
 	auto &params = context.get_render_parameters();
 
 	// Lights which clip either near or far don't need double-sided testing.
-	auto itr = Util::unstable_remove_if(begin(visible), end(visible), [&params](const RenderableInfo &light) -> bool {
-		auto &aabb = light.transform->world_aabb;
-		float to_center = dot(aabb.get_center() - params.camera_position, params.camera_front);
-		float radius = aabb.get_radius();
-		float aabb_near = to_center - params.z_near - radius;
-		float aabb_far = to_center + radius - params.z_far;
-		return aabb_near < 0.0f || aabb_far > 0.0f;
+	auto itr = Util::unstable_remove_if(begin(visible), end(visible), [&params, &context](const RenderableInfo &light) -> bool {
+		vec2 range = static_cast<const PositionalLight *>(light.renderable)->get_z_range(context, light.transform->transform->world_transform);
+		return range.x < params.z_near || range.y > params.z_far;
 	});
 
 	clips.insert(end(clips), itr, end(visible));

@@ -483,7 +483,7 @@ void Device::submit_empty_inner(CommandBuffer::Type type, Fence *fence, Semaphor
 		queue_unlock_callback();
 
 	if (result != VK_SUCCESS)
-		LOGE("vkQueueSubmit failed.\n");
+		LOGE("vkQueueSubmit failed (code: %d).\n", int(result));
 
 	if (fence)
 	{

@@ -2282,9 +2282,9 @@ ResourceDimensions RenderGraph::get_resource_dimensions(const RenderTextureResou
 	switch (info.size_class)
 	{
 	case SizeClass::SwapchainRelative:
-		dim.width = unsigned(info.size_x * swapchain_dimensions.width);
-		dim.height = unsigned(info.size_y * swapchain_dimensions.height);
-		dim.depth = unsigned(info.size_z);
+		dim.width = std::max(unsigned(info.size_x * swapchain_dimensions.width), 1u);
+		dim.height = std::max(unsigned(info.size_y * swapchain_dimensions.height), 1u);
+		dim.depth = std::max(unsigned(info.size_z), 1u);
 		break;
 
 	case SizeClass::Absolute:
@@ -2301,9 +2301,9 @@ ResourceDimensions RenderGraph::get_resource_dimensions(const RenderTextureResou
 		auto &input = static_cast<RenderTextureResource &>(*resources[itr->second]);
 		auto input_dim = get_resource_dimensions(input);
 
-		dim.width = unsigned(input_dim.width * info.size_x);
-		dim.height = unsigned(input_dim.height * info.size_y);
-		dim.depth = unsigned(input_dim.depth * info.size_z);
+		dim.width = std::max(unsigned(input_dim.width * info.size_x), 1u);
+		dim.height = std::max(unsigned(input_dim.height * info.size_y), 1u);
+		dim.depth = std::max(unsigned(input_dim.depth * info.size_z), 1u);
 		break;
 	}
 	}

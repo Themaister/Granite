@@ -92,6 +92,8 @@ void SceneViewerApplication::read_config(const std::string &path)
 		config.clustered_lights = doc["clusteredLights"].GetBool();
 	if (doc.HasMember("clusteredLightsShadows"))
 		config.clustered_lights_shadows = doc["clusteredLightsShadows"].GetBool();
+	if (doc.HasMember("clusteredLightsShadowsResolution"))
+		config.clustered_lights_shadow_resolution = doc["clusteredLightsShadowsResolution"].GetUint();
 	if (doc.HasMember("hdrBloom"))
 		config.hdr_bloom = doc["hdrBloom"].GetBool();
 	if (doc.HasMember("showUi"))
@@ -214,6 +216,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 		cluster->set_enable_shadows(config.clustered_lights_shadows);
 		cluster->set_enable_clustering(config.clustered_lights);
 		cluster->set_force_update_shadows(config.force_shadow_map_update);
+		cluster->set_shadow_resolution(config.clustered_lights_shadow_resolution);
 	}
 
 	if (config.deferred_clustered_stencil_culling)

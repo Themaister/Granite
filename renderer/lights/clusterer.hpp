@@ -39,6 +39,7 @@ public:
 	void set_enable_clustering(bool enable);
 
 	void set_resolution(unsigned x, unsigned y, unsigned z);
+	void set_shadow_resolution(unsigned res);
 
 	const Vulkan::ImageView *get_cluster_image() const;
 	const Vulkan::ImageView *get_spot_light_shadows() const;
@@ -69,6 +70,7 @@ private:
 	std::vector<std::tuple<PositionalLightComponent *, CachedSpatialTransformComponent *>> *lights = nullptr;
 
 	unsigned x = 64, y = 32, z = 32;
+	unsigned shadow_resolution = 512;
 	void build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view, const Vulkan::ImageView *pre_culled);
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);

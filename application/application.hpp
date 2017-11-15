@@ -167,6 +167,7 @@ private:
 		unsigned msaa = 1;
 		float shadow_map_resolution_main = 2048.0f;
 		float shadow_map_resolution_near = 1024.0f;
+		unsigned clustered_lights_shadow_resolution = 512;
 		float cascade_cutoff_distance = 10.0f;
 		int camera_index = -1;
 

@@ -77,6 +77,11 @@ void LightClusterer::set_resolution(unsigned x, unsigned y, unsigned z)
 	this->z = z;
 }
 
+void LightClusterer::set_shadow_resolution(unsigned res)
+{
+	shadow_resolution = res;
+}
+
 void LightClusterer::setup_render_pass_dependencies(RenderGraph &, RenderPass &target)
 {
 	// TODO: Other passes might want this?
@@ -233,7 +238,7 @@ void LightClusterer::render_atlas_point(RenderContext &context)
 
 	if (!points.atlas)
 	{
-		ImageCreateInfo info = ImageCreateInfo::render_target(512, 512, VK_FORMAT_D16_UNORM);
+		ImageCreateInfo info = ImageCreateInfo::render_target(shadow_resolution, shadow_resolution, VK_FORMAT_D16_UNORM);
 		info.layers = 6 * MaxLights;
 		info.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
 		info.initial_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
@@ -379,7 +384,7 @@ void LightClusterer::render_atlas_spot(RenderContext &context)
 
 	if (!spots.atlas)
 	{
-		ImageCreateInfo info = ImageCreateInfo::render_target(4096, 2048, VK_FORMAT_D16_UNORM);
+		ImageCreateInfo info = ImageCreateInfo::render_target(shadow_resolution * 8, shadow_resolution * 4, VK_FORMAT_D16_UNORM);
 		info.initial_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 		info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
 		spots.atlas = device.create_image(info, nullptr);
@@ -438,12 +443,12 @@ void LightClusterer::render_atlas_spot(RenderContext &context)
 		rp.num_color_attachments = 0;
 		rp.depth_stencil = &spots.atlas->get_view();
 		rp.clear_depth_stencil.depth = 1.0f;
-		rp.render_area.offset.x = 512 * (remapped & 7);
-		rp.render_area.offset.y = 512 * (remapped >> 3);
-		rp.render_area.extent.width = 512;
-		rp.render_area.extent.height = 512;
+		rp.render_area.offset.x = shadow_resolution * (remapped & 7);
+		rp.render_area.offset.y = shadow_resolution * (remapped >> 3);
+		rp.render_area.extent.width = shadow_resolution;
+		rp.render_area.extent.height = shadow_resolution;
 		cmd->begin_render_pass(rp);
-		cmd->set_viewport({ float(512 * (remapped & 7)), float(512 * (remapped >> 3)), 512.0f, 512.0f, 0.0f, 1.0f });
+		cmd->set_viewport({ float(shadow_resolution * (remapped & 7)), float(shadow_resolution * (remapped >> 3)), float(shadow_resolution), float(shadow_resolution), 0.0f, 1.0f });
 		cmd->set_scissor(rp.render_area);
 		depth_renderer->flush(*cmd, depth_context, Renderer::DEPTH_BIAS_BIT);
 		cmd->end_render_pass();

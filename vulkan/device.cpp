@@ -724,7 +724,7 @@ void Device::submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *sem
 	if (queue_unlock_callback)
 		queue_unlock_callback();
 	if (result != VK_SUCCESS)
-		LOGE("vkQueueSubmit failed.\n");
+		LOGE("vkQueueSubmit failed (code: %d).\n", int(result));
 	submissions.clear();
 
 	if (fence)

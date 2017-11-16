@@ -138,7 +138,7 @@ vec3 compute_lighting(
 	// IBL specular term.
 	mediump vec3 reflected = reflect(-V, N);
 
-#if defined(RENDERER_FORWARD)
+#if 0 && defined(RENDERER_FORWARD)
 	#if defined(ALPHA_TEST) && ALPHA_TEST
 		const float minimum_lod = 0.0; // Can't take derivative because we might have discarded, so ...
 	#else

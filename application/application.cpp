@@ -556,7 +556,7 @@ void SceneViewerApplication::add_main_pass_deferred(Vulkan::Device &device, cons
 	});
 
 	auto &lighting = graph.add_pass(tagcat("lighting", tag), VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
-	lighting.add_color_output(tagcat("HDR-lighting", tag), emissive, tagcat("emissive", tag));
+	lighting.add_color_output(tagcat("HDR", tag), emissive, tagcat("emissive", tag));
 	lighting.add_attachment_input(tagcat("albedo", tag));
 	lighting.add_attachment_input(tagcat("normal", tag));
 	lighting.add_attachment_input(tagcat("pbr", tag));
@@ -576,12 +576,6 @@ void SceneViewerApplication::add_main_pass_deferred(Vulkan::Device &device, cons
 		if (!config.clustered_lights)
 			render_positional_lights(cmd, selected_camera->get_projection(), selected_camera->get_view());
 		DeferredLightRenderer::render_light(cmd, context);
-	});
-
-	auto &transparent = graph.add_pass(tagcat("transparent", tag), VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
-	transparent.add_color_output(tagcat("HDR", tag), emissive, tagcat("HDR-lighting", tag));
-	transparent.set_depth_stencil_input(tagcat("depth", tag));
-	transparent.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
 		render_transparent_objects(cmd, selected_camera->get_projection(), selected_camera->get_view());
 	});
 }

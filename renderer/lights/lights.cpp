@@ -27,12 +27,11 @@
 #include "device.hpp"
 #include "mesh_util.hpp"
 #include "clusterer.hpp"
+#include "quirks.hpp"
 #include <atomic>
 
 using namespace Vulkan;
 using namespace Util;
-
-#define LIGHTS_INSTANCING 1
 
 namespace Granite
 {
@@ -300,13 +299,10 @@ static void positional_render_full_screen(CommandBuffer &cmd, const RenderQueueD
 	if (light_info.atlas)
 		cmd.set_texture(2, 2, *light_info.atlas, Vulkan::StockSampler::LinearShadow);
 
+	unsigned max_lights = ImplementationQuirks::get().instance_deferred_lights ? 256u : 1u;
 	for (unsigned i = 0; i < num_instances; )
 	{
-#if LIGHTS_INSTANCING
-		unsigned to_render = min(256u, num_instances - i);
-#else
-		unsigned to_render = min(1u, num_instances - i);
-#endif
+		unsigned to_render = min(max_lights, num_instances - i);
 
 		auto *frag = cmd.allocate_typed_constant_data<PositionalFragmentInfo>(2, 0, to_render);
 		auto *vert = cmd.allocate_typed_constant_data<PositionalVertexInfo>(2, 1, to_render);
@@ -357,9 +353,10 @@ static void positional_render_depth(CommandBuffer &cmd, const RenderQueueData *i
 		cmd.set_primitive_restart(true);
 	}
 
+	unsigned max_lights = ImplementationQuirks::get().instance_deferred_lights ? 256u : 1u;
 	for (unsigned i = 0; i < num_instances; )
 	{
-		unsigned to_render = min(256u, num_instances - i);
+		unsigned to_render = min(max_lights, num_instances - i);
 		auto *vert = cmd.allocate_typed_constant_data<PositionalVertexInfo>(2, 1, to_render);
 
 		for (unsigned j = 0; j < to_render; j++)
@@ -396,13 +393,10 @@ static void positional_render_common(CommandBuffer &cmd, const RenderQueueData *
 	if (light_info.atlas)
 		cmd.set_texture(2, 2, *light_info.atlas, Vulkan::StockSampler::LinearShadow);
 
+	unsigned max_lights = ImplementationQuirks::get().instance_deferred_lights ? 256u : 1u;
 	for (unsigned i = 0; i < num_instances; )
 	{
-#if LIGHTS_INSTANCING
-		unsigned to_render = min(256u, num_instances - i);
-#else
-		unsigned to_render = min(1u, num_instances - i);
-#endif
+		unsigned to_render = min(max_lights, num_instances - i);
 
 		auto *frag = cmd.allocate_typed_constant_data<PositionalFragmentInfo>(2, 0, to_render);
 		auto *vert = cmd.allocate_typed_constant_data<PositionalVertexInfo>(2, 1, to_render);
@@ -563,9 +557,9 @@ void SpotLight::get_render_info(const RenderContext &context, const CachedSpatia
 			variant |= POSITIONAL_VARIANT_FULL_SCREEN_BIT;
 		if (atlas)
 			variant |= POSITIONAL_VARIANT_SHADOW_BIT;
-#if LIGHTS_INSTANCING
-		variant |= POSITIONAL_VARIANT_INSTANCE_BIT;
-#endif
+
+		if (ImplementationQuirks::get().instance_deferred_lights)
+			variant |= POSITIONAL_VARIANT_INSTANCE_BIT;
 
 		info.program = queue.get_shader_suites()[ecast(RenderableType::SpotLight)].get_program(DrawPipeline::AlphaBlend, 0, 0, variant).get();
 		*spot_info = info;
@@ -702,9 +696,9 @@ void PointLight::get_render_info(const RenderContext &context, const CachedSpati
 			variant |= POSITIONAL_VARIANT_FULL_SCREEN_BIT;
 		if (shadow_atlas)
 			variant |= POSITIONAL_VARIANT_SHADOW_BIT;
-#if LIGHTS_INSTANCING
-		variant |= POSITIONAL_VARIANT_INSTANCE_BIT;
-#endif
+
+		if (ImplementationQuirks::get().instance_deferred_lights)
+			variant |= POSITIONAL_VARIANT_INSTANCE_BIT;
 
 		info.program = queue.get_shader_suites()[ecast(RenderableType::PointLight)].get_program(DrawPipeline::AlphaBlend, 0, 0, variant).get();
 		*point_info = info;

@@ -125,8 +125,11 @@ RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
 		}
 		else if (image.is_swapchain_image())
 		{
-			VK_ASSERT(att.loadOp != VK_ATTACHMENT_LOAD_OP_LOAD);
-			att.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			if (att.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD)
+				att.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+			else
+				att.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
 			att.finalLayout = image.get_swapchain_layout();
 			implicit_transitions |= 1u << i;
 		}

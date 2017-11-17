@@ -23,6 +23,7 @@
 #include "render_graph.hpp"
 #include "type_to_string.hpp"
 #include "format.hpp"
+#include "quirks.hpp"
 #include <algorithm>
 
 using namespace std;
@@ -604,6 +605,9 @@ void RenderGraph::build_transients()
 		unsigned index = unsigned(&dim - physical_dimensions.data());
 		if (physical_image_has_history[index])
 			dim.transient = false;
+
+		if (!Vulkan::ImplementationQuirks::get().use_transient_storage)
+			dim.transient = false;
 	}
 
 	for (auto &resource : resources)
@@ -862,6 +866,9 @@ void RenderGraph::build_physical_passes()
 	const auto should_merge = [&](const RenderPass &prev, const RenderPass &next) -> bool {
 		// Can only merge graphics.
 		if (prev.get_stages() != VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT || next.get_stages() != VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT)
+			return false;
+
+		if (!Vulkan::ImplementationQuirks::get().merge_subpasses)
 			return false;
 
 		for (auto *output : prev.get_color_outputs())

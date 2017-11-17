@@ -28,7 +28,8 @@ struct ImplementationQuirks
 {
 	bool instance_deferred_lights = true;
 	bool merge_subpasses = true;
-	bool use_transient_storage = true;
+	bool use_transient_color = true;
+	bool use_transient_depth_stencil = true;
 
 	static ImplementationQuirks &get()
 	{

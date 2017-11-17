@@ -606,7 +606,9 @@ void RenderGraph::build_transients()
 		if (physical_image_has_history[index])
 			dim.transient = false;
 
-		if (!Vulkan::ImplementationQuirks::get().use_transient_storage)
+		if (Vulkan::format_is_depth_stencil(dim.format) && !Vulkan::ImplementationQuirks::get().use_transient_depth_stencil)
+			dim.transient = false;
+		if (!Vulkan::format_is_depth_stencil(dim.format) && !Vulkan::ImplementationQuirks::get().use_transient_color)
 			dim.transient = false;
 	}
 

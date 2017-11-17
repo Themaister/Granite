@@ -90,7 +90,7 @@ private:
 class SceneViewerApplication : public Application, public EventHandler
 {
 public:
-	SceneViewerApplication(const std::string &path, const std::string &config_path);
+	SceneViewerApplication(const std::string &path, const std::string &config_path, const std::string &quirks_path);
 	~SceneViewerApplication();
 	void render_frame(double frame_time, double elapsed_time) override;
 	void rescale_scene(float radius);
@@ -161,6 +161,7 @@ protected:
 
 private:
 	void read_config(const std::string &path);
+	void read_quirks(const std::string &path);
 	struct Config
 	{
 		RendererType renderer_type = RendererType::GeneralDeferred;

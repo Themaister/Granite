@@ -36,6 +36,7 @@ Application *application_create(int argc, char **argv)
 	application_dummy();
 
 	std::string config;
+	std::string quirks;
 	std::string path;
 
 #ifdef ANDROID
@@ -45,6 +46,7 @@ Application *application_create(int argc, char **argv)
 
 	CLICallbacks cbs;
 	cbs.add("--config", [&](CLIParser &parser) { config = parser.next_string(); });
+	cbs.add("--quirks", [&](CLIParser &parser) { quirks = parser.next_string(); });
 	cbs.default_handler = [&](const char *arg) { path = arg; };
 
 	CLIParser parser(std::move(cbs), argc - 1, argv + 1);
@@ -67,7 +69,7 @@ Application *application_create(int argc, char **argv)
 
 	try
 	{
-		auto *app = new SceneViewerApplication(path, config);
+		auto *app = new SceneViewerApplication(path, config, quirks);
 		//app->rescale_scene(5.0f);
 		app->loop_animations();
 		return app;

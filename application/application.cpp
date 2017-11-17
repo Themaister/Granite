@@ -27,6 +27,7 @@
 #include "image_widget.hpp"
 #include "label.hpp"
 #include "post/hdr.hpp"
+#include "quirks.hpp"
 
 #define RAPIDJSON_ASSERT(x) do { if (!(x)) throw "JSON error"; } while(0)
 #include "rapidjson/document.h"
@@ -56,6 +57,28 @@ bool Application::init_wsi(std::unique_ptr<WSIPlatform> new_platform)
 static vec3 light_direction()
 {
 	return normalize(vec3(0.5f, 1.2f, 0.8f));
+}
+
+void SceneViewerApplication::read_quirks(const std::string &path)
+{
+	string json;
+	if (!Filesystem::get().read_file_to_string(path, json))
+	{
+		LOGE("Failed to read config file. Assuming defaults.\n");
+		return;
+	}
+
+	rapidjson::Document doc;
+	doc.Parse(json);
+
+	if (doc.HasMember("instanceDeferredLights"))
+		ImplementationQuirks::get().instance_deferred_lights = doc["instanceDeferredLights"].GetBool();
+	if (doc.HasMember("mergeSubpasses"))
+		ImplementationQuirks::get().merge_subpasses = doc["mergeSubpasses"].GetBool();
+	if (doc.HasMember("useTransientColor"))
+		ImplementationQuirks::get().use_transient_color = doc["useTransientColor"].GetBool();
+	if (doc.HasMember("useTransientDepthStencil"))
+		ImplementationQuirks::get().use_transient_depth_stencil = doc["useTransientDepthStencil"].GetBool();
 }
 
 void SceneViewerApplication::read_config(const std::string &path)
@@ -127,13 +150,15 @@ void SceneViewerApplication::read_config(const std::string &path)
 		config.force_shadow_map_update = doc["directionalLightShadowsForceUpdate"].GetBool();
 }
 
-SceneViewerApplication::SceneViewerApplication(const std::string &path, const std::string &config_path)
+SceneViewerApplication::SceneViewerApplication(const std::string &path, const std::string &config_path, const std::string &quirks_path)
 	: forward_renderer(RendererType::GeneralForward),
       deferred_renderer(RendererType::GeneralDeferred),
       depth_renderer(RendererType::DepthOnly)
 {
 	if (!config_path.empty())
 		read_config(config_path);
+	if (!quirks_path.empty())
+		read_quirks(quirks_path);
 
 	scene_loader.load_scene(path);
 	animation_system = scene_loader.consume_animation_system();

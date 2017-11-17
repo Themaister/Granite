@@ -21,23 +21,23 @@ layout(location = 4) in mediump vec4 vColor;
 #endif
 
 #if defined(HAVE_BASECOLORMAP) && HAVE_BASECOLORMAP
-layout(set = 2, binding = 0) uniform sampler2D uBaseColormap;
+layout(set = 2, binding = 0) uniform mediump sampler2D uBaseColormap;
 #endif
 
 #if defined(HAVE_NORMALMAP) && HAVE_NORMALMAP
-layout(set = 2, binding = 1) uniform sampler2D uNormalmap;
+layout(set = 2, binding = 1) uniform mediump sampler2D uNormalmap;
 #endif
 
 #if defined(HAVE_METALLICROUGHNESSMAP) && HAVE_METALLICROUGHNESSMAP
-layout(set = 2, binding = 2) uniform sampler2D uMetallicRoughnessmap;
+layout(set = 2, binding = 2) uniform mediump sampler2D uMetallicRoughnessmap;
 #endif
 
 #if defined(HAVE_OCCLUSIONMAP) && HAVE_OCCLUSIONMAP
-layout(set = 2, binding = 3) uniform sampler2D uOcclusionMap;
+layout(set = 2, binding = 3) uniform mediump sampler2D uOcclusionMap;
 #endif
 
 #if defined(HAVE_EMISSIVEMAP) && HAVE_EMISSIVEMAP
-layout(set = 2, binding = 4) uniform sampler2D uEmissiveMap;
+layout(set = 2, binding = 4) uniform mediump sampler2D uEmissiveMap;
 #endif
 
 layout(std430, push_constant) uniform Constants

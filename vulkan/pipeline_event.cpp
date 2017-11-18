@@ -28,6 +28,11 @@ namespace Vulkan
 EventHolder::~EventHolder()
 {
 	if (event)
-		device->destroy_event(event);
+	{
+		if (internal_sync)
+			device->destroy_event_nolock(event);
+		else
+			device->destroy_event(event);
+	}
 }
 }

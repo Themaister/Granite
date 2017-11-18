@@ -26,6 +26,18 @@
 #include <algorithm>
 #include <string.h>
 
+#ifdef VULKAN_MT
+#define LOCK() std::lock_guard<std::mutex> holder__{lock.lock}
+#define DRAIN_FRAME_LOCK() \
+	std::unique_lock<std::mutex> holder__{lock.lock}; \
+	lock.cond.wait(holder__, [&]() { \
+		return lock.counter == 0; \
+	})
+#else
+#define LOCK() ((void)0)
+#define DRAIN_FRAME_LOCK() VK_ASSERT(lock.counter == 0)
+#endif
+
 using namespace std;
 using namespace Util;
 
@@ -84,6 +96,13 @@ Semaphore Device::request_imported_semaphore(int fd, VkExternalSemaphoreHandleTy
 #endif
 
 void Device::add_wait_semaphore(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags stages, bool flush)
+{
+	LOCK();
+	add_wait_semaphore_nolock(type, semaphore, stages, flush);
+}
+
+void Device::add_wait_semaphore_nolock(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags stages,
+                                       bool flush)
 {
 	VK_ASSERT(stages != 0);
 	if (flush)
@@ -428,25 +447,55 @@ static void request_block(Device &device, BufferBlock &block, VkDeviceSize size,
 
 void Device::request_vertex_block(BufferBlock &block, VkDeviceSize size)
 {
+	LOCK();
+	request_vertex_block_nolock(block, size);
+}
+
+void Device::request_vertex_block_nolock(BufferBlock &block, VkDeviceSize size)
+{
 	request_block(*this, block, size, managers.vbo, &dma.vbo, frame().vbo_blocks);
 }
 
 void Device::request_index_block(BufferBlock &block, VkDeviceSize size)
+{
+	LOCK();
+	request_index_block_nolock(block, size);
+}
+
+void Device::request_index_block_nolock(BufferBlock &block, VkDeviceSize size)
 {
 	request_block(*this, block, size, managers.ibo, &dma.ibo, frame().ibo_blocks);
 }
 
 void Device::request_uniform_block(BufferBlock &block, VkDeviceSize size)
 {
+	LOCK();
+	request_uniform_block_nolock(block, size);
+}
+
+void Device::request_uniform_block_nolock(BufferBlock &block, VkDeviceSize size)
+{
 	request_block(*this, block, size, managers.ubo, &dma.ubo, frame().ubo_blocks);
 }
 
 void Device::request_staging_block(BufferBlock &block, VkDeviceSize size)
 {
+	LOCK();
+	request_staging_block_nolock(block, size);
+}
+
+void Device::request_staging_block_nolock(BufferBlock &block, VkDeviceSize size)
+{
 	request_block(*this, block, size, managers.staging, nullptr, frame().staging_blocks);
 }
 
 void Device::submit(CommandBufferHandle cmd, Fence *fence, Semaphore *semaphore, Semaphore *semaphore_alt)
+{
+	LOCK();
+	submit_nolock(move(cmd), fence, semaphore, semaphore_alt);
+}
+
+void Device::submit_nolock(CommandBufferHandle cmd, Fence *fence, Semaphore *semaphore, Semaphore *semaphore_alt)
 {
 	auto type = cmd->get_command_buffer_type();
 	auto &pool = get_command_pool(type);
@@ -458,9 +507,17 @@ void Device::submit(CommandBufferHandle cmd, Fence *fence, Semaphore *semaphore,
 
 	if (fence || semaphore || semaphore_alt)
 		submit_queue(type, fence, semaphore, semaphore_alt);
+
+	unlock_frame();
 }
 
 void Device::submit_empty(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore, Semaphore *semaphore_alt)
+{
+	LOCK();
+	submit_empty_nolock(type, fence, semaphore, semaphore_alt);
+}
+
+void Device::submit_empty_nolock(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore, Semaphore *semaphore_alt)
 {
 	if (type != CommandBuffer::Type::Transfer)
 		flush_frame(CommandBuffer::Type::Transfer);
@@ -560,7 +617,7 @@ void Device::submit_staging(CommandBufferHandle cmd, VkBufferUsageFlags usage, b
 	{
 		// For single-queue systems, just use a pipeline barrier.
 		cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, stages, access);
-		submit(cmd);
+		submit_nolock(cmd);
 	}
 	else
 	{
@@ -585,11 +642,11 @@ void Device::submit_staging(CommandBufferHandle cmd, VkBufferUsageFlags usage, b
 			if (compute_stages != 0)
 			{
 				Semaphore sem;
-				submit(cmd, nullptr, &sem);
-				add_wait_semaphore(CommandBuffer::Type::Compute, sem, compute_stages, flush);
+				submit_nolock(cmd, nullptr, &sem);
+				add_wait_semaphore_nolock(CommandBuffer::Type::Compute, sem, compute_stages, flush);
 			}
 			else
-				submit(cmd);
+				submit_nolock(cmd);
 		}
 		else if (transfer_queue == compute_queue)
 		{
@@ -599,35 +656,35 @@ void Device::submit_staging(CommandBufferHandle cmd, VkBufferUsageFlags usage, b
 			if (graphics_stages != 0)
 			{
 				Semaphore sem;
-				submit(cmd, nullptr, &sem);
-				add_wait_semaphore(CommandBuffer::Type::Graphics, sem, graphics_stages, flush);
+				submit_nolock(cmd, nullptr, &sem);
+				add_wait_semaphore_nolock(CommandBuffer::Type::Graphics, sem, graphics_stages, flush);
 			}
 			else
-				submit(cmd);
+				submit_nolock(cmd);
 		}
 		else
 		{
 			if (graphics_stages != 0 && compute_stages != 0)
 			{
 				Semaphore sem_graphics, sem_compute;
-				submit(cmd, nullptr, &sem_graphics, &sem_compute);
-				add_wait_semaphore(CommandBuffer::Type::Graphics, sem_graphics, graphics_stages, flush);
-				add_wait_semaphore(CommandBuffer::Type::Compute, sem_compute, compute_stages, flush);
+				submit_nolock(cmd, nullptr, &sem_graphics, &sem_compute);
+				add_wait_semaphore_nolock(CommandBuffer::Type::Graphics, sem_graphics, graphics_stages, flush);
+				add_wait_semaphore_nolock(CommandBuffer::Type::Compute, sem_compute, compute_stages, flush);
 			}
 			else if (graphics_stages != 0)
 			{
 				Semaphore sem;
-				submit(cmd, nullptr, &sem);
-				add_wait_semaphore(CommandBuffer::Type::Graphics, sem, graphics_stages, flush);
+				submit_nolock(cmd, nullptr, &sem);
+				add_wait_semaphore_nolock(CommandBuffer::Type::Graphics, sem, graphics_stages, flush);
 			}
 			else if (compute_stages != 0)
 			{
 				Semaphore sem;
-				submit(cmd, nullptr, &sem);
-				add_wait_semaphore(CommandBuffer::Type::Compute, sem, compute_stages, flush);
+				submit_nolock(cmd, nullptr, &sem);
+				add_wait_semaphore_nolock(CommandBuffer::Type::Compute, sem, compute_stages, flush);
 			}
 			else
-				submit(cmd);
+				submit_nolock(cmd);
 		}
 	}
 }
@@ -806,7 +863,7 @@ void Device::sync_buffer_blocks()
 		return;
 
 	VkBufferUsageFlags usage = 0;
-	auto cmd = request_command_buffer(CommandBuffer::Type::Transfer);
+	auto cmd = request_command_buffer_nolock(CommandBuffer::Type::Transfer);
 
 	for (auto &block : dma.vbo)
 	{
@@ -840,6 +897,12 @@ void Device::sync_buffer_blocks()
 
 void Device::end_frame()
 {
+	DRAIN_FRAME_LOCK();
+	end_frame_nolock();
+}
+
+void Device::end_frame_nolock()
+{
 	// Make sure we have a fence which covers all submissions in the frame.
 	Fence fence;
 	submit_queue(CommandBuffer::Type::Transfer, &fence, nullptr, nullptr);
@@ -848,6 +911,12 @@ void Device::end_frame()
 }
 
 void Device::flush_frame()
+{
+	LOCK();
+	flush_frame_nolock();
+}
+
+void Device::flush_frame_nolock()
 {
 	flush_frame(CommandBuffer::Type::Transfer);
 	flush_frame(CommandBuffer::Type::Graphics);
@@ -898,11 +967,18 @@ vector<CommandBufferHandle> &Device::get_queue_submissions(CommandBuffer::Type t
 
 CommandBufferHandle Device::request_command_buffer(CommandBuffer::Type type)
 {
+	LOCK();
+	return request_command_buffer_nolock(type);
+}
+
+CommandBufferHandle Device::request_command_buffer_nolock(CommandBuffer::Type type)
+{
 	auto cmd = get_command_pool(type).request_command_buffer();
 
 	VkCommandBufferBeginInfo info = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
 	info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 	vkBeginCommandBuffer(cmd, &info);
+	lock_frame();
 	return make_handle<CommandBuffer>(this, cmd, pipeline_cache, type);
 }
 
@@ -1042,7 +1118,7 @@ Device::PerFrame::PerFrame(Device *device, Managers &managers,
 {
 }
 
-void Device::free_memory(const DeviceAllocation &alloc)
+void Device::free_memory_nolock(const DeviceAllocation &alloc)
 {
 	frame().allocations.push_back(alloc);
 }
@@ -1059,29 +1135,89 @@ static inline bool exists(const T &container, const U &value)
 
 void Device::destroy_pipeline(VkPipeline pipeline)
 {
+	LOCK();
+	destroy_pipeline_nolock(pipeline);
+}
+
+void Device::destroy_buffer(VkBuffer buffer)
+{
+	LOCK();
+	destroy_buffer_nolock(buffer);
+}
+
+void Device::destroy_buffer_view(VkBufferView view)
+{
+	LOCK();
+	destroy_buffer_view_nolock(view);
+}
+
+void Device::destroy_event(VkEvent event)
+{
+	LOCK();
+	destroy_event_nolock(event);
+}
+
+void Device::destroy_framebuffer(VkFramebuffer framebuffer)
+{
+	LOCK();
+	destroy_framebuffer_nolock(framebuffer);
+}
+
+void Device::destroy_image(VkImage image)
+{
+	LOCK();
+	destroy_image_nolock(image);
+}
+
+void Device::destroy_semaphore(VkSemaphore semaphore)
+{
+	LOCK();
+	destroy_semaphore_nolock(semaphore);
+}
+
+void Device::free_memory(const DeviceAllocation &alloc)
+{
+	LOCK();
+	free_memory_nolock(alloc);
+}
+
+void Device::destroy_sampler(VkSampler sampler)
+{
+	LOCK();
+	destroy_sampler_nolock(sampler);
+}
+
+void Device::destroy_image_view(VkImageView view)
+{
+	LOCK();
+	destroy_image_view_nolock(view);
+}
+
+void Device::destroy_pipeline_nolock(VkPipeline pipeline)
+{
 	VK_ASSERT(!exists(frame().destroyed_pipelines, pipeline));
 	frame().destroyed_pipelines.push_back(pipeline);
 }
 
-void Device::destroy_image_view(VkImageView view)
+void Device::destroy_image_view_nolock(VkImageView view)
 {
 	VK_ASSERT(!exists(frame().destroyed_image_views, view));
 	frame().destroyed_image_views.push_back(view);
 }
 
-void Device::destroy_buffer_view(VkBufferView view)
+void Device::destroy_buffer_view_nolock(VkBufferView view)
 {
 	VK_ASSERT(!exists(frame().destroyed_buffer_views, view));
 	frame().destroyed_buffer_views.push_back(view);
 }
 
-void Device::destroy_semaphore(VkSemaphore semaphore)
+void Device::destroy_semaphore_nolock(VkSemaphore semaphore)
 {
 	VK_ASSERT(!exists(frame().destroyed_semaphores, semaphore));
 	frame().destroyed_semaphores.push_back(semaphore);
 }
 
-void Device::destroy_event(VkEvent event)
+void Device::destroy_event_nolock(VkEvent event)
 {
 	VK_ASSERT(!exists(frame().recycled_events, event));
 	frame().recycled_events.push_back(event);
@@ -1092,25 +1228,25 @@ PipelineEvent Device::request_pipeline_event()
 	return Util::make_handle<EventHolder>(this, managers.event.request_cleared_event());
 }
 
-void Device::destroy_image(VkImage image)
+void Device::destroy_image_nolock(VkImage image)
 {
 	VK_ASSERT(!exists(frame().destroyed_images, image));
 	frame().destroyed_images.push_back(image);
 }
 
-void Device::destroy_buffer(VkBuffer buffer)
+void Device::destroy_buffer_nolock(VkBuffer buffer)
 {
 	VK_ASSERT(!exists(frame().destroyed_buffers, buffer));
 	frame().destroyed_buffers.push_back(buffer);
 }
 
-void Device::destroy_sampler(VkSampler sampler)
+void Device::destroy_sampler_nolock(VkSampler sampler)
 {
 	VK_ASSERT(!exists(frame().destroyed_samplers, sampler));
 	frame().destroyed_samplers.push_back(sampler);
 }
 
-void Device::destroy_framebuffer(VkFramebuffer framebuffer)
+void Device::destroy_framebuffer_nolock(VkFramebuffer framebuffer)
 {
 	VK_ASSERT(!exists(frame().destroyed_framebuffers, framebuffer));
 	frame().destroyed_framebuffers.push_back(framebuffer);
@@ -1135,8 +1271,10 @@ void Device::clear_wait_semaphores()
 
 void Device::wait_idle()
 {
+	DRAIN_FRAME_LOCK();
+
 	if (!per_frame.empty())
-		end_frame();
+		end_frame_nolock();
 
 	if (device != VK_NULL_HANDLE)
 	{
@@ -1179,7 +1317,7 @@ void Device::wait_idle()
 void Device::begin_frame(unsigned index)
 {
 	// Flush the frame here as we might have pending staging command buffers from init stage.
-	end_frame();
+	end_frame_nolock();
 
 	current_swapchain_index = index;
 
@@ -1194,6 +1332,20 @@ void Device::begin_frame(unsigned index)
 QueryPoolHandle Device::write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlagBits stage)
 {
 	return frame().query_pool.write_timestamp(cmd, stage);
+}
+
+void Device::lock_frame()
+{
+	lock.counter++;
+}
+
+void Device::unlock_frame()
+{
+	VK_ASSERT(lock.counter > 0);
+	lock.counter--;
+#ifdef VULKAN_MT
+	lock.cond.notify_one();
+#endif
 }
 
 void Device::PerFrame::begin()
@@ -1932,8 +2084,8 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 		// For concurrent queue mode, we just need to inject a semaphore.
 		// For non-concurrent queue mode, we will have to inject ownership transfer barrier if the queue families do not match.
 
-		auto transfer_cmd = request_command_buffer(CommandBuffer::Type::Transfer);
-		auto graphics_cmd = request_command_buffer(CommandBuffer::Type::Graphics);
+		auto transfer_cmd = request_command_buffer_nolock(CommandBuffer::Type::Transfer);
+		auto graphics_cmd = request_command_buffer_nolock(CommandBuffer::Type::Graphics);
 
 		transfer_cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 		                            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT,
@@ -1995,11 +2147,11 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 			}
 
 			Semaphore sem;
-			submit(transfer_cmd, nullptr, &sem);
-			add_wait_semaphore(CommandBuffer::Type::Graphics, sem, dst_stages, true);
+			submit_nolock(transfer_cmd, nullptr, &sem);
+			add_wait_semaphore_nolock(CommandBuffer::Type::Graphics, sem, dst_stages, true);
 		}
 		else
-			submit(transfer_cmd);
+			submit_nolock(transfer_cmd);
 
 		if (generate_mips)
 		{
@@ -2023,17 +2175,17 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 		if (concurrent_queue && graphics_queue != compute_queue)
 		{
 			Semaphore sem;
-			submit(graphics_cmd, nullptr, &sem);
-			add_wait_semaphore(CommandBuffer::Type::Compute,
-			                   sem, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT, true);
+			submit_nolock(graphics_cmd, nullptr, &sem);
+			add_wait_semaphore_nolock(CommandBuffer::Type::Compute,
+			                          sem, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT, true);
 		}
 		else
-			submit(graphics_cmd);
+			submit_nolock(graphics_cmd);
 	}
 	else if (create_info.initial_layout != VK_IMAGE_LAYOUT_UNDEFINED)
 	{
 		VK_ASSERT(create_info.domain != ImageDomain::Transient);
-		auto cmd = request_command_buffer(CommandBuffer::Type::Graphics);
+		auto cmd = request_command_buffer_nolock(CommandBuffer::Type::Graphics);
 		cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_UNDEFINED, create_info.initial_layout,
 		                   VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, handle->get_stage_flags(),
 		                   handle->get_access_flags() &
@@ -2043,12 +2195,12 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 		if (concurrent_queue && graphics_queue != compute_queue)
 		{
 			Semaphore sem;
-			submit(cmd, nullptr, &sem);
-			add_wait_semaphore(CommandBuffer::Type::Compute,
-			                   sem, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT, true);
+			submit_nolock(cmd, nullptr, &sem);
+			add_wait_semaphore_nolock(CommandBuffer::Type::Compute,
+			                          sem, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT, true);
 		}
 		else
-			submit(cmd);
+			submit_nolock(cmd);
 	}
 
 	handle->set_layout(create_info.initial_layout);
@@ -2144,7 +2296,7 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 		staging_info.domain = BufferDomain::Host;
 		auto staging_buffer = create_buffer(staging_info, initial);
 
-		auto cmd = request_command_buffer(CommandBuffer::Type::Transfer);
+		auto cmd = request_command_buffer_nolock(CommandBuffer::Type::Transfer);
 		cmd->copy_buffer(*handle, *staging_buffer);
 		submit_staging(cmd, info.usage, true);
 	}

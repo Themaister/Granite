@@ -24,12 +24,13 @@
 
 #include "vulkan.hpp"
 #include "intrusive.hpp"
+#include "cookie.hpp"
 
 namespace Vulkan
 {
 class Device;
 
-class EventHolder : public Util::IntrusivePtrEnabled<EventHolder>
+class EventHolder : public Util::IntrusivePtrEnabled<EventHolder>, public InternalSyncEnabled
 {
 public:
 	EventHolder(Device *device, VkEvent event)

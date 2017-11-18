@@ -257,9 +257,19 @@ void Program::add_graphics_pipeline(Hash hash, VkPipeline pipeline)
 Program::~Program()
 {
 	if (compute_pipeline != VK_NULL_HANDLE)
-		device->destroy_pipeline(compute_pipeline);
+	{
+		if (internal_sync)
+			device->destroy_pipeline_nolock(compute_pipeline);
+		else
+			device->destroy_pipeline(compute_pipeline);
+	}
 
 	for (auto &pipe : graphics_pipelines)
-		device->destroy_pipeline(pipe.second);
+	{
+		if (internal_sync)
+			device->destroy_pipeline_nolock(pipe.second);
+		else
+			device->destroy_pipeline(pipe.second);
+	}
 }
 }

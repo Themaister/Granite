@@ -60,7 +60,7 @@ struct SamplerCreateInfo
 	VkBool32 unnormalizedCoordinates;
 };
 
-class Sampler : public Util::IntrusivePtrEnabled<Sampler>, public Cookie
+class Sampler : public Util::IntrusivePtrEnabled<Sampler>, public Cookie, public InternalSyncEnabled
 {
 public:
 	Sampler(Device *device, VkSampler sampler, const SamplerCreateInfo &info);

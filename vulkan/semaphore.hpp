@@ -24,12 +24,13 @@
 
 #include "intrusive.hpp"
 #include "vulkan.hpp"
+#include "cookie.hpp"
 
 namespace Vulkan
 {
 class Device;
 
-class SemaphoreHolder : public Util::IntrusivePtrEnabled<SemaphoreHolder>
+class SemaphoreHolder : public Util::IntrusivePtrEnabled<SemaphoreHolder>, public InternalSyncEnabled
 {
 public:
 	SemaphoreHolder(Device *device, VkSemaphore semaphore, bool signalled)

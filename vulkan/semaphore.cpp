@@ -28,6 +28,11 @@ namespace Vulkan
 SemaphoreHolder::~SemaphoreHolder()
 {
 	if (semaphore)
-		device->destroy_semaphore(semaphore);
+	{
+		if (internal_sync)
+			device->destroy_semaphore_nolock(semaphore);
+		else
+			device->destroy_semaphore(semaphore);
+	}
 }
 }

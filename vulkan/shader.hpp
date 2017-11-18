@@ -130,7 +130,7 @@ private:
 };
 using ShaderHandle = Util::IntrusivePtr<Shader>;
 
-class Program : public Util::IntrusivePtrEnabled<Program>, public Cookie
+class Program : public Util::IntrusivePtrEnabled<Program>, public Cookie, public InternalSyncEnabled
 {
 public:
 	Program(Device *device);

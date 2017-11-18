@@ -27,10 +27,12 @@
 namespace Vulkan
 {
 class Device;
+
 class Cookie
 {
 public:
 	Cookie(Device *device);
+
 	uint64_t get_cookie() const
 	{
 		return cookie;
@@ -38,5 +40,17 @@ public:
 
 private:
 	uint64_t cookie;
+};
+
+class InternalSyncEnabled
+{
+public:
+	void set_internal_sync_object()
+	{
+		internal_sync = true;
+	}
+
+protected:
+	bool internal_sync = false;
 };
 }

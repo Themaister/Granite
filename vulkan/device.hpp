@@ -44,6 +44,8 @@
 #include <memory>
 #include <vector>
 #include <atomic>
+#include <mutex>
+#include <condition_variable>
 
 namespace Vulkan
 {
@@ -63,29 +65,46 @@ struct InitialImageBuffer
 class Device
 {
 public:
+	friend class EventHolder;
+	friend class SemaphoreHolder;
+	friend class Sampler;
+	friend class Buffer;
+	friend class Framebuffer;
+	friend class BufferView;
+	friend class ImageView;
+	friend class Image;
+	friend class Program;
+	friend class CommandBuffer;
+
 	Device();
 	~Device();
+
+	// Only called by main thread
 	void set_context(const Context &context);
 	void init_swapchain(const std::vector<VkImage> &swapchain_images, unsigned width, unsigned height, VkFormat format);
 	void init_external_swapchain(const std::vector<ImageHandle> &swapchain_images);
+	////
 
 	unsigned get_num_swapchain_images() const
 	{
 		return per_frame.size();
 	}
 
+	// Only called by main thread.
 	void begin_frame(unsigned index);
 	void wait_idle();
 	void end_frame();
+	void end_frame_nolock();
+	////
+
+	// Submission interface, may be called from any thread at any time.
 	void flush_frame();
 	CommandBufferHandle request_command_buffer(CommandBuffer::Type type = CommandBuffer::Type::Graphics);
-	void submit(CommandBufferHandle cmd, Fence *fence = nullptr, Semaphore *semaphore = nullptr, Semaphore *semaphore_alt = nullptr);
+	void submit(CommandBufferHandle cmd, Fence *fence = nullptr, Semaphore *semaphore = nullptr,
+	            Semaphore *semaphore_alt = nullptr);
 	void submit_empty(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore, Semaphore *semaphore_alt);
-
-	VkDevice get_device()
-	{
-		return device;
-	}
+	void add_wait_semaphore(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags stages, bool flush);
+	////
 
 	ShaderHandle create_shader(ShaderStage stage, const uint32_t *code, size_t size);
 	ProgramHandle create_program(const uint32_t *vertex_data, size_t vertex_size, const uint32_t *fragment_data,
@@ -111,8 +130,8 @@ public:
 	ImageViewHandle create_image_view(const ImageViewCreateInfo &view_info);
 	BufferViewHandle create_buffer_view(const BufferViewCreateInfo &view_info);
 	SamplerHandle create_sampler(const SamplerCreateInfo &info);
-	const Sampler &get_stock_sampler(StockSampler sampler) const;
 
+	// May be called from any thread at any time.
 	void destroy_buffer(VkBuffer buffer);
 	void destroy_image(VkImage image);
 	void destroy_image_view(VkImageView view);
@@ -123,6 +142,10 @@ public:
 	void destroy_semaphore(VkSemaphore semaphore);
 	void destroy_event(VkEvent event);
 	void free_memory(const DeviceAllocation &alloc);
+	////
+
+	PipelineEvent request_pipeline_event();
+	QueryPoolHandle write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlagBits stage);
 
 	VkSemaphore set_acquire(VkSemaphore acquire);
 	VkSemaphore set_release(VkSemaphore release);
@@ -144,7 +167,21 @@ public:
 	uint64_t allocate_cookie();
 
 	RenderPassInfo get_swapchain_render_pass(SwapchainRenderPass style);
-	ImageView &get_swapchain_view();
+
+	Semaphore request_semaphore();
+#ifndef _WIN32
+	Semaphore request_imported_semaphore(int fd, VkExternalSemaphoreHandleTypeFlagBitsKHR handle_type);
+#endif
+	void request_vertex_block(BufferBlock &block, VkDeviceSize size);
+	void request_index_block(BufferBlock &block, VkDeviceSize size);
+	void request_uniform_block(BufferBlock &block, VkDeviceSize size);
+	void request_staging_block(BufferBlock &block, VkDeviceSize size);
+	void wait_for_fence(const Fence &fence);
+
+	VkDevice get_device()
+	{
+		return device;
+	}
 
 	const VkPhysicalDeviceMemoryProperties &get_memory_properties() const
 	{
@@ -156,14 +193,8 @@ public:
 		return gpu_props;
 	}
 
-	void wait_for_fence(const Fence &fence);
-	Semaphore request_semaphore();
-
-#ifndef _WIN32
-	Semaphore request_imported_semaphore(int fd, VkExternalSemaphoreHandleTypeFlagBitsKHR handle_type);
-#endif
-
-	void add_wait_semaphore(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags stages, bool flush);
+	ImageView &get_swapchain_view();
+	const Sampler &get_stock_sampler(StockSampler sampler) const;
 
 	ShaderManager &get_shader_manager()
 	{
@@ -175,18 +206,9 @@ public:
 		return texture_manager;
 	}
 
-	PipelineEvent request_pipeline_event();
-
 	// For some platforms, the device and queue might be shared, possibly across threads, so need some mechanism to
 	// lock the global device and queue.
 	void set_queue_lock(std::function<void ()> lock_callback, std::function<void ()> unlock_callback);
-
-	QueryPoolHandle write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlagBits stage);
-
-	void request_vertex_block(BufferBlock &block, VkDeviceSize size);
-	void request_index_block(BufferBlock &block, VkDeviceSize size);
-	void request_uniform_block(BufferBlock &block, VkDeviceSize size);
-	void request_staging_block(BufferBlock &block, VkDeviceSize size);
 
 private:
 	VkInstance instance = VK_NULL_HANDLE;
@@ -211,6 +233,15 @@ private:
 		BufferPool vbo, ibo, ubo, staging;
 	};
 	Managers managers;
+
+	struct
+	{
+		std::mutex lock;
+		std::condition_variable cond;
+		unsigned counter = 0;
+	} lock;
+	void lock_frame();
+	void unlock_frame();
 
 	struct PerFrame
 	{
@@ -333,5 +364,29 @@ private:
 	void flush_frame(CommandBuffer::Type type);
 	void sync_buffer_blocks();
 	void submit_empty_inner(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore, Semaphore *semaphore_alt);
+
+	void destroy_buffer_nolock(VkBuffer buffer);
+	void destroy_image_nolock(VkImage image);
+	void destroy_image_view_nolock(VkImageView view);
+	void destroy_buffer_view_nolock(VkBufferView view);
+	void destroy_pipeline_nolock(VkPipeline pipeline);
+	void destroy_sampler_nolock(VkSampler sampler);
+	void destroy_framebuffer_nolock(VkFramebuffer framebuffer);
+	void destroy_semaphore_nolock(VkSemaphore semaphore);
+	void destroy_event_nolock(VkEvent event);
+	void free_memory_nolock(const DeviceAllocation &alloc);
+
+	void flush_frame_nolock();
+	CommandBufferHandle request_command_buffer_nolock(CommandBuffer::Type type = CommandBuffer::Type::Graphics);
+	void submit_nolock(CommandBufferHandle cmd, Fence *fence = nullptr, Semaphore *semaphore = nullptr,
+	                   Semaphore *semaphore_alt = nullptr);
+	void submit_empty_nolock(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore, Semaphore *semaphore_alt);
+	void add_wait_semaphore_nolock(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags stages,
+	                               bool flush);
+
+	void request_vertex_block_nolock(BufferBlock &block, VkDeviceSize size);
+	void request_index_block_nolock(BufferBlock &block, VkDeviceSize size);
+	void request_uniform_block_nolock(BufferBlock &block, VkDeviceSize size);
+	void request_staging_block_nolock(BufferBlock &block, VkDeviceSize size);
 };
 }

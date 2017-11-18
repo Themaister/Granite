@@ -83,7 +83,7 @@ struct BufferCreateInfo
 	VkBufferUsageFlags usage;
 };
 
-class Buffer : public Util::IntrusivePtrEnabled<Buffer>, public Cookie
+class Buffer : public Util::IntrusivePtrEnabled<Buffer>, public Cookie, public InternalSyncEnabled
 {
 public:
 	Buffer(Device *device, VkBuffer buffer, const DeviceAllocation &alloc, const BufferCreateInfo &info);
@@ -125,7 +125,7 @@ struct BufferViewCreateInfo
 	VkDeviceSize range;
 };
 
-class BufferView : public Util::IntrusivePtrEnabled<BufferView>, public Cookie
+class BufferView : public Util::IntrusivePtrEnabled<BufferView>, public Cookie, public InternalSyncEnabled
 {
 public:
 	BufferView(Device *device, VkBufferView view, const BufferViewCreateInfo &info);

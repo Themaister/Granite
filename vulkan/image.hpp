@@ -178,7 +178,7 @@ struct ImageViewCreateInfo
 	};
 };
 
-class ImageView : public Util::IntrusivePtrEnabled<ImageView>, public Cookie
+class ImageView : public Util::IntrusivePtrEnabled<ImageView>, public Cookie, public InternalSyncEnabled
 {
 public:
 	ImageView(Device *device, VkImageView view, const ImageViewCreateInfo &info);
@@ -341,7 +341,7 @@ struct ImageCreateInfo
 	}
 };
 
-class Image : public Util::IntrusivePtrEnabled<Image>, public Cookie
+class Image : public Util::IntrusivePtrEnabled<Image>, public Cookie, public InternalSyncEnabled
 {
 public:
 	Image(Device *device, VkImage image, VkImageView default_view, const DeviceAllocation &alloc,

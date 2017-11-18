@@ -167,7 +167,7 @@ private:
 	std::vector<SubpassInfo> subpasses;
 };
 
-class Framebuffer : public Cookie, public NoCopyNoMove
+class Framebuffer : public Cookie, public NoCopyNoMove, public InternalSyncEnabled
 {
 public:
 	Framebuffer(Device *device, const RenderPass &rp, const RenderPassInfo &info);
@@ -228,6 +228,7 @@ private:
 		FramebufferNode(Device *device, const RenderPass &rp, const RenderPassInfo &info)
 		    : Framebuffer(device, rp, info)
 		{
+			set_internal_sync_object();
 		}
 	};
 

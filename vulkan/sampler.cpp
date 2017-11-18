@@ -36,6 +36,11 @@ Sampler::Sampler(Device *device, VkSampler sampler, const SamplerCreateInfo &inf
 Sampler::~Sampler()
 {
 	if (sampler)
-		device->destroy_sampler(sampler);
+	{
+		if (internal_sync)
+			device->destroy_sampler_nolock(sampler);
+		else
+			device->destroy_sampler(sampler);
+	}
 }
 }

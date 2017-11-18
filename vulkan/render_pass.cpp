@@ -709,7 +709,12 @@ Framebuffer::Framebuffer(Device *device, const RenderPass &rp, const RenderPassI
 Framebuffer::~Framebuffer()
 {
 	if (framebuffer != VK_NULL_HANDLE)
-		device->destroy_framebuffer(framebuffer);
+	{
+		if (internal_sync)
+			device->destroy_framebuffer_nolock(framebuffer);
+		else
+			device->destroy_framebuffer(framebuffer);
+	}
 }
 
 FramebufferAllocator::FramebufferAllocator(Device *device)
@@ -786,6 +791,8 @@ ImageView &AttachmentAllocator::request_attachment(unsigned width, unsigned heig
 
 	image_info.samples = static_cast<VkSampleCountFlagBits>(samples);
 	node = attachments.emplace(hash, device->create_image(image_info, nullptr));
+	node->handle->set_internal_sync_object();
+	node->handle->get_view().set_internal_sync_object();
 	return node->handle->get_view();
 }
 }

@@ -134,25 +134,55 @@ Vulkan::ProgramHandle ShaderProgram::get_program(unsigned variant)
 	if (comp)
 	{
 		auto &comp_instance = var.shader_instance[static_cast<unsigned>(Vulkan::ShaderStage::Compute)];
+		var.instance_lock->lock_read();
 		if (comp_instance != comp->instance)
 		{
-			comp_instance = comp->instance;
-			var.program = device->create_program(comp->spirv.data(), comp->spirv.size() * sizeof(uint32_t));
+			var.instance_lock->promote_reader_to_writer();
+			if (comp_instance != comp->instance)
+			{
+				comp_instance = comp->instance;
+				var.program = device->create_program(comp->spirv.data(), comp->spirv.size() * sizeof(uint32_t));
+			}
+			auto ret = var.program;
+			var.instance_lock->unlock_write();
+			return ret;
+		}
+		else
+		{
+			auto ret = var.program;
+			var.instance_lock->unlock_read();
+			return ret;
 		}
 	}
 	else if (vert && frag)
 	{
 		auto &vert_instance = var.shader_instance[static_cast<unsigned>(Vulkan::ShaderStage::Vertex)];
 		auto &frag_instance = var.shader_instance[static_cast<unsigned>(Vulkan::ShaderStage::Fragment)];
+		var.instance_lock->lock_read();
+
 		if (vert_instance != vert->instance || frag_instance != frag->instance)
 		{
-			vert_instance = vert->instance;
-			frag_instance = frag->instance;
-			var.program = device->create_program(vert->spirv.data(), vert->spirv.size() * sizeof(uint32_t),
-			                                     frag->spirv.data(), frag->spirv.size() * sizeof(uint32_t));
+			var.instance_lock->promote_reader_to_writer();
+			if (vert_instance != vert->instance || frag_instance != frag->instance)
+			{
+				vert_instance = vert->instance;
+				frag_instance = frag->instance;
+				var.program = device->create_program(vert->spirv.data(), vert->spirv.size() * sizeof(uint32_t),
+				                                     frag->spirv.data(), frag->spirv.size() * sizeof(uint32_t));
+			}
+			auto ret = var.program;
+			var.instance_lock->unlock_write();
+			return ret;
+		}
+		else
+		{
+			auto ret = var.program;
+			var.instance_lock->unlock_read();
+			return ret;
 		}
 	}
-	return var.program;
+
+	return {};
 }
 
 unsigned ShaderProgram::register_variant(const std::vector<std::pair<std::string, int>> &defines)
@@ -269,18 +299,29 @@ ShaderProgram *ShaderManager::register_graphics(const std::string &vertex, const
 	h.pointer(frag_tmpl);
 	auto hash = h.get();
 
+	programs_lock.lock_read();
 	auto pitr = programs.find(hash);
 	if (pitr == end(programs))
 	{
+		programs_lock.unlock_read();
 		auto prog = make_unique<ShaderProgram>(device);
 		prog->set_stage(Vulkan::ShaderStage::Vertex, vert_tmpl);
 		prog->set_stage(Vulkan::ShaderStage::Fragment, frag_tmpl);
-		auto *ret = prog.get();
-		programs[hash] = move(prog);
+
+		programs_lock.lock_write();
+		auto &cache = programs[hash];
+		if (!cache)
+			cache = move(prog);
+		auto *ret = cache.get();
+		programs_lock.unlock_write();
 		return ret;
 	}
 	else
-		return pitr->second.get();
+	{
+		auto ret = pitr->second.get();
+		programs_lock.unlock_read();
+		return ret;
+	}
 }
 
 ShaderManager::~ShaderManager()

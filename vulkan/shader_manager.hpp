@@ -79,6 +79,7 @@ private:
 		const ShaderTemplate::Variant *stages[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
 		unsigned shader_instance[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
 		Vulkan::ProgramHandle program;
+		std::unique_ptr<Util::RWSpinLock> instance_lock = std::make_unique<Util::RWSpinLock>();
 	};
 
 	ShaderTemplate *stages[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};

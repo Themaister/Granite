@@ -76,6 +76,8 @@ template <typename T, typename Deleter = std::default_delete<T>, typename Refere
 class IntrusivePtrEnabled
 {
 public:
+	using IntrusivePtrType = IntrusivePtr<T, Deleter, ReferenceOps>;
+
 	void release_reference()
 	{
 		if (reference_count.release())
@@ -223,9 +225,15 @@ IntrusivePtr<T> make_handle(P &&... p)
 	return IntrusivePtr<T>(new T(std::forward<P>(p)...));
 }
 
-template <typename Base, typename Derived, typename... P>
-IntrusivePtr<Base> make_abstract_handle(P &&... p)
+template <typename Derived, typename... P>
+typename Derived::IntrusivePtrType make_abstract_handle(P &&... p)
 {
-	return IntrusivePtr<Base>(new Derived(std::forward<P>(p)...));
+	return typename Derived::IntrusivePtrType(new Derived(std::forward<P>(p)...));
 }
+
+template <typename T>
+using ThreadSafeIntrusivePtr = IntrusivePtr<T, std::default_delete<T>, MultiThreadCounter>;
+
+template <typename T>
+using ThreadSafeIntrusivePtrEnabled = IntrusivePtrEnabled<T, std::default_delete<T>, MultiThreadCounter>;
 }

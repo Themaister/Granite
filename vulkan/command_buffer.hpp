@@ -31,6 +31,7 @@
 #include "vulkan.hpp"
 #include "pipeline_event.hpp"
 #include "query_pool.hpp"
+#include "buffer_pool.hpp"
 
 namespace Vulkan
 {
@@ -204,6 +205,7 @@ public:
 	};
 
 	CommandBuffer(Device *device, VkCommandBuffer cmd, VkPipelineCache cache, Type type);
+	~CommandBuffer();
 	VkCommandBuffer get_command_buffer()
 	{
 		return cmd;
@@ -525,6 +527,8 @@ public:
 
 	QueryPoolHandle write_timestamp(VkPipelineStageFlagBits stage);
 
+	void end();
+
 private:
 	Device *device;
 	VkCommandBuffer cmd;
@@ -585,6 +589,11 @@ private:
 	void begin_context();
 
 	void flush_compute_state();
+
+	BufferBlock vbo_block;
+	BufferBlock ibo_block;
+	BufferBlock ubo_block;
+	BufferBlock staging_block;
 };
 
 struct CommandBufferUtil

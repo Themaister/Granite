@@ -23,7 +23,6 @@
 #pragma once
 
 #include "buffer.hpp"
-#include "chain_allocator.hpp"
 #include "command_buffer.hpp"
 #include "command_pool.hpp"
 #include "fence.hpp"
@@ -41,6 +40,7 @@
 #include "shader_manager.hpp"
 #include "texture_manager.hpp"
 #include "query_pool.hpp"
+#include "buffer_pool.hpp"
 #include <memory>
 #include <vector>
 #include <atomic>
@@ -145,10 +145,6 @@ public:
 
 	RenderPassInfo get_swapchain_render_pass(SwapchainRenderPass style);
 	ImageView &get_swapchain_view();
-	ChainDataAllocation allocate_constant_data(VkDeviceSize size);
-	ChainDataAllocation allocate_vertex_data(VkDeviceSize size);
-	ChainDataAllocation allocate_index_data(VkDeviceSize size);
-	ChainDataAllocation allocate_staging_data(VkDeviceSize size);
 
 	const VkPhysicalDeviceMemoryProperties &get_memory_properties() const
 	{
@@ -187,6 +183,11 @@ public:
 
 	QueryPoolHandle write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlagBits stage);
 
+	void request_vertex_block(BufferBlock &block, VkDeviceSize size);
+	void request_index_block(BufferBlock &block, VkDeviceSize size);
+	void request_uniform_block(BufferBlock &block, VkDeviceSize size);
+	void request_staging_block(BufferBlock &block, VkDeviceSize size);
+
 private:
 	VkInstance instance = VK_NULL_HANDLE;
 	VkPhysicalDevice gpu = VK_NULL_HANDLE;
@@ -194,7 +195,6 @@ private:
 	VkQueue graphics_queue = VK_NULL_HANDLE;
 	VkQueue compute_queue = VK_NULL_HANDLE;
 	VkQueue transfer_queue = VK_NULL_HANDLE;
-	DeviceAllocator allocator;
 	std::atomic<uint64_t> cookie;
 
 	VkPhysicalDeviceMemoryProperties mem_props;
@@ -203,10 +203,19 @@ private:
 	bool supports_dedicated = false;
 	void init_stock_samplers();
 
+	struct Managers
+	{
+		DeviceAllocator memory;
+		SemaphoreManager semaphore;
+		EventManager event;
+		BufferPool vbo, ibo, ubo, staging;
+	};
+	Managers managers;
+
 	struct PerFrame
 	{
-		PerFrame(Device *device, DeviceAllocator &global, SemaphoreManager &semaphore_manager,
-		         EventManager &event_manager,
+		PerFrame(Device *device,
+		         Managers &managers,
 		         uint32_t graphics_queue_family_index,
 		         uint32_t compute_queue_family_index,
 		         uint32_t transfer_queue_family_index);
@@ -214,15 +223,11 @@ private:
 		void operator=(const PerFrame &) = delete;
 		PerFrame(const PerFrame &) = delete;
 
-		void cleanup();
 		void begin();
-		VkBufferUsageFlags sync_to_gpu(CommandBufferHandle &cmd);
 		void release_owned_resources();
 
 		VkDevice device;
-		DeviceAllocator &global_allocator;
-		SemaphoreManager &semaphore_manager;
-		EventManager &event_manager;
+		Managers &managers;
 		CommandPool graphics_cmd_pool;
 		CommandPool compute_cmd_pool;
 		CommandPool transfer_cmd_pool;
@@ -230,7 +235,10 @@ private:
 		FenceManager fence_manager;
 		QueryPool query_pool;
 
-		ChainAllocator vbo_chain, ibo_chain, ubo_chain, staging_chain;
+		std::vector<BufferBlock> vbo_blocks;
+		std::vector<BufferBlock> ibo_blocks;
+		std::vector<BufferBlock> ubo_blocks;
+		std::vector<BufferBlock> staging_blocks;
 
 		std::vector<DeviceAllocation> allocations;
 		std::vector<VkFramebuffer> destroyed_framebuffers;
@@ -250,8 +258,7 @@ private:
 		bool swapchain_touched = false;
 		bool swapchain_consumed = false;
 	};
-	SemaphoreManager semaphore_manager;
-	EventManager event_manager;
+
 	VkSemaphore wsi_acquire = VK_NULL_HANDLE;
 	VkSemaphore wsi_release = VK_NULL_HANDLE;
 
@@ -260,6 +267,14 @@ private:
 		std::vector<Semaphore> wait_semaphores;
 		std::vector<VkPipelineStageFlags> wait_stages;
 	} graphics, compute, transfer;
+
+	// Pending buffers which need to be copied from CPU to GPU before submitting graphics or compute work.
+	struct
+	{
+		std::vector<BufferBlock> vbo;
+		std::vector<BufferBlock> ibo;
+		std::vector<BufferBlock> ubo;
+	} dma;
 
 	void submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore, Semaphore *semaphore_alt);
 
@@ -316,7 +331,7 @@ private:
 	std::function<void ()> queue_lock_callback;
 	std::function<void ()> queue_unlock_callback;
 	void flush_frame(CommandBuffer::Type type);
-	void sync_chain_allocators();
+	void sync_buffer_blocks();
 	void submit_empty_inner(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore, Semaphore *semaphore_alt);
 };
 }

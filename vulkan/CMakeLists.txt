@@ -5,6 +5,7 @@ target_include_directories(vulkan-symbols PUBLIC
 add_granite_library(vulkan-backend
         vulkan.cpp vulkan.hpp
         device.cpp device.hpp
+        buffer_pool.cpp buffer_pool.hpp
         image.cpp image.hpp
         cookie.cpp cookie.hpp
         sampler.cpp sampler.hpp
@@ -16,7 +17,6 @@ add_granite_library(vulkan-backend
         shader.cpp shader.hpp
         render_pass.cpp render_pass.hpp
         buffer.cpp buffer.hpp
-        chain_allocator.cpp chain_allocator.hpp
         semaphore.cpp semaphore.hpp
         shader_manager.cpp shader_manager.hpp
         memory_allocator.cpp memory_allocator.hpp

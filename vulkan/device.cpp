@@ -46,7 +46,7 @@ Device::Device()
 
 Semaphore Device::request_semaphore()
 {
-	auto semaphore = semaphore_manager.request_cleared_semaphore();
+	auto semaphore = managers.semaphore.request_cleared_semaphore();
 	auto ptr = make_handle<SemaphoreHolder>(this, semaphore, false);
 	return ptr;
 }
@@ -65,7 +65,7 @@ Semaphore Device::request_imported_semaphore(int fd, VkExternalSemaphoreHandleTy
 	if ((props.externalSemaphoreFeatures & VK_EXTERNAL_SEMAPHORE_FEATURE_IMPORTABLE_BIT_KHR) == 0)
 		return Semaphore(nullptr);
 
-	auto semaphore = semaphore_manager.request_cleared_semaphore();
+	auto semaphore = managers.semaphore.request_cleared_semaphore();
 
 	VkImportSemaphoreFdInfoKHR import = { VK_STRUCTURE_TYPE_IMPORT_SEMAPHORE_FD_INFO_KHR };
 	import.fd = fd;
@@ -95,13 +95,13 @@ void Device::add_wait_semaphore(CommandBuffer::Type type, Semaphore semaphore, V
 
 void *Device::map_host_buffer(Buffer &buffer, MemoryAccessFlags access)
 {
-	void *host = allocator.map_memory(&buffer.get_allocation(), access);
+	void *host = managers.memory.map_memory(&buffer.get_allocation(), access);
 	return host;
 }
 
 void Device::unmap_host_buffer(const Buffer &buffer)
 {
-	allocator.unmap_memory(buffer.get_allocation());
+	managers.memory.unmap_memory(buffer.get_allocation());
 }
 
 ShaderHandle Device::create_shader(ShaderStage stage, const uint32_t *data, size_t size)
@@ -304,16 +304,20 @@ void Device::set_context(const Context &context)
 	mem_props = context.get_mem_props();
 	gpu_props = context.get_gpu_props();
 
-	allocator.init(gpu, device);
 	init_stock_samplers();
-
 	init_pipeline_cache();
-	semaphore_manager.init(device);
-	event_manager.init(device);
+
+	managers.memory.init(gpu, device);
+	managers.memory.set_supports_dedicated_allocation(supports_dedicated);
+	managers.semaphore.init(device);
+	managers.event.init(device);
+	managers.vbo.init(this, 4 * 1024, 16, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+	managers.ibo.init(this, 4 * 1024, 16, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+	managers.ubo.init(this, 256 * 1024, std::max<VkDeviceSize>(16u, gpu_props.limits.minUniformBufferOffsetAlignment), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+	managers.staging.init(this, 64 * 1024, std::max<VkDeviceSize>(16u, gpu_props.limits.optimalBufferCopyOffsetAlignment), VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
 
 	supports_external = context.supports_external_memory_and_sync();
 	supports_dedicated = context.supports_dedicated_allocation();
-	allocator.set_supports_dedicated_allocation(supports_dedicated);
 }
 
 void Device::init_stock_samplers()
@@ -393,6 +397,55 @@ void Device::init_stock_samplers()
 	}
 }
 
+static void request_block(Device &device, BufferBlock &block, VkDeviceSize size,
+                          BufferPool &pool, std::vector<BufferBlock> *dma, std::vector<BufferBlock> &recycle)
+{
+	if (block.mapped)
+		device.unmap_host_buffer(*block.cpu);
+
+	if (block.offset == 0)
+	{
+		if (block.size == pool.get_block_size())
+			pool.recycle_block(move(block));
+	}
+	else
+	{
+		if (block.cpu != block.gpu)
+		{
+			VK_ASSERT(dma);
+			dma->push_back(block);
+		}
+
+		if (block.size == pool.get_block_size())
+			recycle.push_back(block);
+	}
+
+	if (size)
+		block = pool.request_block(size);
+	else
+		block = {};
+}
+
+void Device::request_vertex_block(BufferBlock &block, VkDeviceSize size)
+{
+	request_block(*this, block, size, managers.vbo, &dma.vbo, frame().vbo_blocks);
+}
+
+void Device::request_index_block(BufferBlock &block, VkDeviceSize size)
+{
+	request_block(*this, block, size, managers.ibo, &dma.ibo, frame().ibo_blocks);
+}
+
+void Device::request_uniform_block(BufferBlock &block, VkDeviceSize size)
+{
+	request_block(*this, block, size, managers.ubo, &dma.ubo, frame().ubo_blocks);
+}
+
+void Device::request_staging_block(BufferBlock &block, VkDeviceSize size)
+{
+	request_block(*this, block, size, managers.staging, nullptr, frame().staging_blocks);
+}
+
 void Device::submit(CommandBufferHandle cmd, Fence *fence, Semaphore *semaphore, Semaphore *semaphore_alt)
 {
 	auto type = cmd->get_command_buffer_type();
@@ -400,7 +453,7 @@ void Device::submit(CommandBufferHandle cmd, Fence *fence, Semaphore *semaphore,
 	auto &submissions = get_queue_submissions(type);
 
 	pool.signal_submitted(cmd->get_command_buffer());
-	vkEndCommandBuffer(cmd->get_command_buffer());
+	cmd->end();
 	submissions.push_back(move(cmd));
 
 	if (fence || semaphore || semaphore_alt)
@@ -441,13 +494,13 @@ void Device::submit_empty_inner(CommandBuffer::Type type, Fence *fence, Semaphor
 	VkSemaphore cleared_semaphore_alt = VK_NULL_HANDLE;
 	if (semaphore)
 	{
-		cleared_semaphore = semaphore_manager.request_cleared_semaphore();
+		cleared_semaphore = managers.semaphore.request_cleared_semaphore();
 		signals.push_back(cleared_semaphore);
 	}
 
 	if (semaphore_alt)
 	{
-		cleared_semaphore_alt = semaphore_manager.request_cleared_semaphore();
+		cleared_semaphore_alt = managers.semaphore.request_cleared_semaphore();
 		signals.push_back(cleared_semaphore_alt);
 	}
 
@@ -678,13 +731,13 @@ void Device::submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *sem
 	VkSemaphore cleared_semaphore_alt = VK_NULL_HANDLE;
 	if (semaphore)
 	{
-		cleared_semaphore = semaphore_manager.request_cleared_semaphore();
+		cleared_semaphore = managers.semaphore.request_cleared_semaphore();
 		signals[submits.size() - 1].push_back(cleared_semaphore);
 	}
 
 	if (semaphore_alt)
 	{
-		cleared_semaphore_alt = semaphore_manager.request_cleared_semaphore();
+		cleared_semaphore_alt = managers.semaphore.request_cleared_semaphore();
 		signals[submits.size() - 1].push_back(cleared_semaphore_alt);
 	}
 
@@ -743,27 +796,46 @@ void Device::submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *sem
 void Device::flush_frame(CommandBuffer::Type type)
 {
 	if (type == CommandBuffer::Type::Transfer)
-		sync_chain_allocators();
+		sync_buffer_blocks();
 	submit_queue(type, nullptr, nullptr, nullptr);
 }
 
-void Device::sync_chain_allocators()
+void Device::sync_buffer_blocks()
 {
-	// Flush any copies for pending chain allocators.
-	CommandBufferHandle cmd;
-	auto stages = frame().sync_to_gpu(cmd);
-	if (stages)
-	{
-		VK_ASSERT(cmd);
+	if (dma.vbo.empty() && dma.ibo.empty() && dma.ubo.empty())
+		return;
 
-		// Do not flush graphics or compute in this context.
-		// We must be able to inject semaphores into all currently enqueued graphics / compute.
-		submit_staging(cmd, stages, false);
-	}
-	else
+	VkBufferUsageFlags usage = 0;
+	auto cmd = request_command_buffer(CommandBuffer::Type::Transfer);
+
+	for (auto &block : dma.vbo)
 	{
-		VK_ASSERT(!cmd);
+		VK_ASSERT(block.offset != 0);
+		cmd->copy_buffer(*block.gpu, 0, *block.cpu, 0, block.offset);
+		usage |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
 	}
+
+	for (auto &block : dma.ibo)
+	{
+		VK_ASSERT(block.offset != 0);
+		cmd->copy_buffer(*block.gpu, 0, *block.cpu, 0, block.offset);
+		usage |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+	}
+
+	for (auto &block : dma.ubo)
+	{
+		VK_ASSERT(block.offset != 0);
+		cmd->copy_buffer(*block.gpu, 0, *block.cpu, 0, block.offset);
+		usage |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+	}
+
+	dma.vbo.clear();
+	dma.ibo.clear();
+	dma.ubo.clear();
+
+	// Do not flush graphics or compute in this context.
+	// We must be able to inject semaphores into all currently enqueued graphics / compute.
+	submit_staging(cmd, usage, false);
 }
 
 void Device::end_frame()
@@ -901,10 +973,10 @@ void Device::init_external_swapchain(const vector<ImageHandle> &swapchain_images
 
 	for (auto &image : swapchain_images)
 	{
-		auto frame = unique_ptr<PerFrame>(new PerFrame(this, allocator, semaphore_manager, event_manager,
-		                                               graphics_queue_family_index,
-		                                               compute_queue_family_index,
-		                                               transfer_queue_family_index));
+		auto frame = make_unique<PerFrame>(this, managers,
+		                                   graphics_queue_family_index,
+		                                   compute_queue_family_index,
+		                                   transfer_queue_family_index);
 
 		frame->backbuffer = image;
 		per_frame.emplace_back(move(frame));
@@ -927,10 +999,10 @@ void Device::init_swapchain(const vector<VkImage> &swapchain_images, unsigned wi
 
 	for (auto &image : swapchain_images)
 	{
-		auto frame = unique_ptr<PerFrame>(new PerFrame(this, allocator, semaphore_manager, event_manager,
-		                                               graphics_queue_family_index,
-		                                               compute_queue_family_index,
-		                                               transfer_queue_family_index));
+		auto frame = make_unique<PerFrame>(this, managers,
+		                                   graphics_queue_family_index,
+		                                   compute_queue_family_index,
+		                                   transfer_queue_family_index);
 
 		VkImageViewCreateInfo view_info = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
 		view_info.image = image;
@@ -956,25 +1028,17 @@ void Device::init_swapchain(const vector<VkImage> &swapchain_images, unsigned wi
 	}
 }
 
-Device::PerFrame::PerFrame(Device *device, DeviceAllocator &global, SemaphoreManager &semaphore_manager,
-                           EventManager &event_manager,
+Device::PerFrame::PerFrame(Device *device, Managers &managers,
                            uint32_t graphics_queue_family_index,
                            uint32_t compute_queue_family_index,
                            uint32_t transfer_queue_family_index)
     : device(device->get_device())
-    , global_allocator(global)
-    , semaphore_manager(semaphore_manager)
-    , event_manager(event_manager)
+    , managers(managers)
     , graphics_cmd_pool(device->get_device(), graphics_queue_family_index)
     , compute_cmd_pool(device->get_device(), compute_queue_family_index)
     , transfer_cmd_pool(device->get_device(), transfer_queue_family_index)
     , fence_manager(device->get_device())
     , query_pool(device)
-    , vbo_chain(device, 1024 * 1024, 64, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT)
-    , ibo_chain(device, 1024 * 1024, 64, VK_BUFFER_USAGE_INDEX_BUFFER_BIT)
-    , ubo_chain(device, 1024 * 1024, device->get_gpu_properties().limits.minUniformBufferOffsetAlignment,
-                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT)
-    , staging_chain(device, 4 * 1024 * 1024, 64, VK_BUFFER_USAGE_TRANSFER_SRC_BIT)
 {
 }
 
@@ -1025,7 +1089,7 @@ void Device::destroy_event(VkEvent event)
 
 PipelineEvent Device::request_pipeline_event()
 {
-	return Util::make_handle<EventHolder>(this, event_manager.request_cleared_event());
+	return Util::make_handle<EventHolder>(this, managers.event.request_cleared_event());
 }
 
 void Device::destroy_image(VkImage image)
@@ -1094,7 +1158,6 @@ void Device::wait_idle()
 	{
 		// Avoid double-wait-on-semaphore scenarios.
 		bool touched_swapchain = frame->swapchain_touched;
-		frame->cleanup();
 		frame->begin();
 		frame->swapchain_touched = touched_swapchain;
 	}
@@ -1120,22 +1183,8 @@ QueryPoolHandle Device::write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlag
 	return frame().query_pool.write_timestamp(cmd, stage);
 }
 
-VkBufferUsageFlags Device::PerFrame::sync_to_gpu(CommandBufferHandle &cmd)
-{
-	VkBufferUsageFlags flags = 0;
-	flags |= ubo_chain.sync_to_gpu(cmd);
-	flags |= staging_chain.sync_to_gpu(cmd);
-	flags |= vbo_chain.sync_to_gpu(cmd);
-	flags |= ibo_chain.sync_to_gpu(cmd);
-	return flags;
-}
-
 void Device::PerFrame::begin()
 {
-	ubo_chain.discard();
-	staging_chain.discard();
-	vbo_chain.discard();
-	ibo_chain.discard();
 	fence_manager.begin();
 	graphics_cmd_pool.begin();
 	compute_cmd_pool.begin();
@@ -1159,11 +1208,24 @@ void Device::PerFrame::begin()
 	for (auto &semaphore : destroyed_semaphores)
 		vkDestroySemaphore(device, semaphore, nullptr);
 	for (auto &semaphore : recycled_semaphores)
-		semaphore_manager.recycle(semaphore);
+		managers.semaphore.recycle(semaphore);
 	for (auto &event : recycled_events)
-		event_manager.recycle(event);
+		managers.event.recycle(event);
 	for (auto &alloc : allocations)
-		alloc.free_immediate(global_allocator);
+		alloc.free_immediate(managers.memory);
+
+	for (auto &block : vbo_blocks)
+		managers.vbo.recycle_block(move(block));
+	for (auto &block : ibo_blocks)
+		managers.ibo.recycle_block(move(block));
+	for (auto &block : ubo_blocks)
+		managers.ubo.recycle_block(move(block));
+	for (auto &block : staging_blocks)
+		managers.staging.recycle_block(move(block));
+	vbo_blocks.clear();
+	ibo_blocks.clear();
+	ubo_blocks.clear();
+	staging_blocks.clear();
 
 	destroyed_framebuffers.clear();
 	destroyed_samplers.clear();
@@ -1182,44 +1244,14 @@ void Device::PerFrame::begin()
 	swapchain_consumed = false;
 }
 
-void Device::PerFrame::cleanup()
-{
-	vbo_chain.reset();
-	ibo_chain.reset();
-	ubo_chain.reset();
-	staging_chain.reset();
-}
-
 void Device::PerFrame::release_owned_resources()
 {
-	cleanup();
 	backbuffer.reset();
 }
 
 Device::PerFrame::~PerFrame()
 {
-	cleanup();
 	begin();
-}
-
-ChainDataAllocation Device::allocate_constant_data(VkDeviceSize size)
-{
-	return frame().ubo_chain.allocate(size);
-}
-
-ChainDataAllocation Device::allocate_vertex_data(VkDeviceSize size)
-{
-	return frame().vbo_chain.allocate(size);
-}
-
-ChainDataAllocation Device::allocate_index_data(VkDeviceSize size)
-{
-	return frame().ibo_chain.allocate(size);
-}
-
-ChainDataAllocation Device::allocate_staging_data(VkDeviceSize size)
-{
-	return frame().staging_chain.allocate(size);
 }
 
 uint32_t Device::find_memory_type(BufferDomain domain, uint32_t mask)
@@ -1770,8 +1802,8 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 
 	vkGetImageMemoryRequirements(device, image, &reqs);
 	uint32_t memory_type = find_memory_type(create_info.domain, reqs.memoryTypeBits);
-	if (!allocator.allocate_image_memory(reqs.size, reqs.alignment, memory_type, ALLOCATION_TILING_OPTIMAL,
-	                                     &allocation, image))
+	if (!managers.memory.allocate_image_memory(reqs.size, reqs.alignment, memory_type, ALLOCATION_TILING_OPTIMAL,
+	                                           &allocation, image))
 	{
 		vkDestroyImage(device, image, nullptr);
 		return ImageHandle(nullptr);
@@ -1779,7 +1811,7 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 
 	if (vkBindImageMemory(device, image, allocation.get_memory(), allocation.get_offset()) != VK_SUCCESS)
 	{
-		allocation.free_immediate(allocator);
+		allocation.free_immediate(managers.memory);
 		vkDestroyImage(device, image, nullptr);
 		return ImageHandle(nullptr);
 	}
@@ -1809,7 +1841,7 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 
 		if (vkCreateImageView(device, &view_info, nullptr, &image_view) != VK_SUCCESS)
 		{
-			allocation.free_immediate(allocator);
+			allocation.free_immediate(managers.memory);
 			vkDestroyImage(device, image, nullptr);
 			return ImageHandle(nullptr);
 		}
@@ -1819,7 +1851,7 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 			view_info.subresourceRange.levelCount = 1;
 			if (vkCreateImageView(device, &view_info, nullptr, &base_level_view) != VK_SUCCESS)
 			{
-				allocation.free_immediate(allocator);
+				allocation.free_immediate(managers.memory);
 				vkDestroyImage(device, image, nullptr);
 				vkDestroyImageView(device, image_view, nullptr);
 				return ImageHandle(nullptr);
@@ -1833,7 +1865,7 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 			view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
 			if (vkCreateImageView(device, &view_info, nullptr, &depth_view) != VK_SUCCESS)
 			{
-				allocation.free_immediate(allocator);
+				allocation.free_immediate(managers.memory);
 				vkDestroyImageView(device, image_view, nullptr);
 				vkDestroyImageView(device, base_level_view, nullptr);
 				vkDestroyImage(device, image, nullptr);
@@ -1843,7 +1875,7 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 			view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_STENCIL_BIT;
 			if (vkCreateImageView(device, &view_info, nullptr, &stencil_view) != VK_SUCCESS)
 			{
-				allocation.free_immediate(allocator);
+				allocation.free_immediate(managers.memory);
 				vkDestroyImageView(device, image_view, nullptr);
 				vkDestroyImageView(device, depth_view, nullptr);
 				vkDestroyImageView(device, base_level_view, nullptr);
@@ -2076,7 +2108,7 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 
 	uint32_t memory_type = find_memory_type(create_info.domain, reqs.memoryTypeBits);
 
-	if (!allocator.allocate(reqs.size, reqs.alignment, memory_type, ALLOCATION_TILING_LINEAR, &allocation))
+	if (!managers.memory.allocate(reqs.size, reqs.alignment, memory_type, ALLOCATION_TILING_LINEAR, &allocation))
 	{
 		vkDestroyBuffer(device, buffer, nullptr);
 		return BufferHandle(nullptr);
@@ -2084,7 +2116,7 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 
 	if (vkBindBufferMemory(device, buffer, allocation.get_memory(), allocation.get_offset()) != VK_SUCCESS)
 	{
-		allocation.free_immediate(allocator);
+		allocation.free_immediate(managers.memory);
 		vkDestroyBuffer(device, buffer, nullptr);
 		return BufferHandle(nullptr);
 	}
@@ -2105,11 +2137,11 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 	}
 	else if (initial)
 	{
-		void *ptr = allocator.map_memory(&allocation, MEMORY_ACCESS_WRITE);
+		void *ptr = managers.memory.map_memory(&allocation, MEMORY_ACCESS_WRITE);
 		if (!ptr)
 			return BufferHandle(nullptr);
 		memcpy(ptr, initial, create_info.size);
-		allocator.unmap_memory(allocation);
+		managers.memory.unmap_memory(allocation);
 	}
 	return handle;
 }

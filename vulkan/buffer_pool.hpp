@@ -22,51 +22,63 @@
 
 #pragma once
 
-#include "buffer.hpp"
 #include "vulkan.hpp"
+#include "intrusive.hpp"
 #include <vector>
 
 namespace Vulkan
 {
 class Device;
-class CommandBuffer;
-struct ChainDataAllocation
+class Buffer;
+
+struct BufferBlockAllocation
 {
-	const Buffer *buffer;
+	uint8_t *host;
 	VkDeviceSize offset;
-	void *data;
 };
 
-class ChainAllocator
+struct BufferBlock
+{
+	Util::IntrusivePtr<Buffer> gpu;
+	Util::IntrusivePtr<Buffer> cpu;
+	VkDeviceSize offset = 0;
+	VkDeviceSize alignment = 0;
+	VkDeviceSize size = 0;
+	uint8_t *mapped = nullptr;
+
+	BufferBlockAllocation allocate(VkDeviceSize allocate_size)
+	{
+		auto aligned_offset = (offset + alignment - 1) & ~(alignment - 1);
+		if (aligned_offset + allocate_size <= size)
+		{
+			auto *ret = mapped + aligned_offset;
+			offset = aligned_offset + allocate_size;
+			return { ret, aligned_offset };
+		}
+		else
+			return { nullptr, 0 };
+	}
+};
+
+class BufferPool
 {
 public:
-	ChainAllocator(Device *device, VkDeviceSize block_size, VkDeviceSize alignment, VkBufferUsageFlags usage);
-	~ChainAllocator();
+	void init(Device *device, VkDeviceSize block_size, VkDeviceSize alignment, VkBufferUsageFlags usage);
 
-	ChainDataAllocation allocate(VkDeviceSize size);
-	void discard();
-	void reset();
+	VkDeviceSize get_block_size() const
+	{
+		return block_size;
+	}
 
-	VkBufferUsageFlags sync_to_gpu(Util::IntrusivePtr<CommandBuffer> &cmd);
+	BufferBlock request_block(VkDeviceSize minimum_size);
+	void recycle_block(BufferBlock &&block);
 
 private:
-	Device *device;
-	VkDeviceSize block_size;
-	VkDeviceSize alignment;
-	VkBufferUsageFlags usage;
-
-	struct SyncedBuffer
-	{
-		BufferHandle cpu;
-		BufferHandle gpu;
-	};
-
-	std::vector<SyncedBuffer> buffers;
-	std::vector<SyncedBuffer> large_buffers;
-	unsigned chain_index = 0;
-	unsigned start_flush_buffer = 0;
-	VkDeviceSize start_flush_offset = 0;
-	VkDeviceSize offset = 0;
-	uint8_t *host = nullptr;
+	Device *device = nullptr;
+	VkDeviceSize block_size = 0;
+	VkDeviceSize alignment = 0;
+	VkBufferUsageFlags usage = 0;
+	std::vector<BufferBlock> blocks;
+	BufferBlock allocate_block(VkDeviceSize size);
 };
 }

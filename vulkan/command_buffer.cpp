@@ -42,6 +42,14 @@ CommandBuffer::CommandBuffer(Device *device, VkCommandBuffer cmd, VkPipelineCach
 	memset(&bindings, 0, sizeof(bindings));
 }
 
+CommandBuffer::~CommandBuffer()
+{
+	VK_ASSERT(vbo_block.mapped == nullptr);
+	VK_ASSERT(ibo_block.mapped == nullptr);
+	VK_ASSERT(ubo_block.mapped == nullptr);
+	VK_ASSERT(staging_block.mapped == nullptr);
+}
+
 void CommandBuffer::copy_buffer(const Buffer &dst, VkDeviceSize dst_offset, const Buffer &src, VkDeviceSize src_offset,
                                 VkDeviceSize size)
 {
@@ -862,23 +870,38 @@ void CommandBuffer::set_program(Program &program)
 
 void *CommandBuffer::allocate_constant_data(unsigned set, unsigned binding, VkDeviceSize size)
 {
-	auto data = device->allocate_constant_data(size);
-	set_uniform_buffer(set, binding, *data.buffer, data.offset, size);
-	return data.data;
+	auto data = ubo_block.allocate(size);
+	if (!data.host)
+	{
+		device->request_uniform_block(ubo_block, size);
+		data = ubo_block.allocate(size);
+	}
+	set_uniform_buffer(set, binding, *ubo_block.gpu, data.offset, size);
+	return data.host;
 }
 
 void *CommandBuffer::allocate_index_data(VkDeviceSize size, VkIndexType index_type)
 {
-	auto data = device->allocate_index_data(size);
-	set_index_buffer(*data.buffer, data.offset, index_type);
-	return data.data;
+	auto data = ibo_block.allocate(size);
+	if (!data.host)
+	{
+		device->request_index_block(ibo_block, size);
+		data = ibo_block.allocate(size);
+	}
+	set_index_buffer(*ibo_block.gpu, data.offset, index_type);
+	return data.host;
 }
 
 void *CommandBuffer::update_buffer(const Buffer &buffer, VkDeviceSize offset, VkDeviceSize size)
 {
-	auto data = device->allocate_staging_data(size);
-	copy_buffer(buffer, offset, *data.buffer, data.offset, size);
-	return data.data;
+	auto data = staging_block.allocate(size);
+	if (!data.host)
+	{
+		device->request_staging_block(staging_block, size);
+		data = staging_block.allocate(size);
+	}
+	copy_buffer(buffer, offset, *staging_block.cpu, staging_block.offset, size);
+	return data.host;
 }
 
 void *CommandBuffer::update_image(const Image &image, const VkOffset3D &offset, const VkExtent3D &extent,
@@ -902,9 +925,15 @@ void *CommandBuffer::update_image(const Image &image, const VkOffset3D &offset, 
 	VkDeviceSize size =
 	    format_block_size(create_info.format) * subresource.layerCount * depth * blocks_x * blocks_y;
 
-	auto data = device->allocate_staging_data(size);
-	copy_buffer_to_image(image, *data.buffer, data.offset, offset, extent, row_length, image_height, subresource);
-	return data.data;
+	auto data = staging_block.allocate(size);
+	if (!data.host)
+	{
+		device->request_staging_block(staging_block, size);
+		data = staging_block.allocate(size);
+	}
+
+	copy_buffer_to_image(image, *staging_block.cpu, data.offset, offset, extent, row_length, image_height, subresource);
+	return data.host;
 }
 
 void *CommandBuffer::update_image(const Image &image, uint32_t row_length, uint32_t image_height)
@@ -919,9 +948,15 @@ void *CommandBuffer::update_image(const Image &image, uint32_t row_length, uint3
 void *CommandBuffer::allocate_vertex_data(unsigned binding, VkDeviceSize size, VkDeviceSize stride,
                                           VkVertexInputRate step_rate)
 {
-	auto data = device->allocate_vertex_data(size);
-	set_vertex_binding(binding, *data.buffer, data.offset, stride, step_rate);
-	return data.data;
+	auto data = vbo_block.allocate(size);
+	if (!data.host)
+	{
+		device->request_vertex_block(vbo_block, size);
+		data = vbo_block.allocate(size);
+	}
+
+	set_vertex_binding(binding, *vbo_block.gpu, data.offset, stride, step_rate);
+	return data.host;
 }
 
 void CommandBuffer::set_uniform_buffer(unsigned set, unsigned binding, const Buffer &buffer, VkDeviceSize offset,
@@ -1447,6 +1482,21 @@ void CommandBuffer::save_state(CommandBufferSaveStateFlags flags, CommandBufferS
 QueryPoolHandle CommandBuffer::write_timestamp(VkPipelineStageFlagBits stage)
 {
 	return device->write_timestamp(cmd, stage);
+}
+
+void CommandBuffer::end()
+{
+	if (vkEndCommandBuffer(cmd) != VK_SUCCESS)
+		LOGE("Failed to end command buffer.\n");
+
+	if (vbo_block.mapped)
+		device->request_vertex_block(vbo_block, 0);
+	if (ibo_block.mapped)
+		device->request_index_block(ibo_block, 0);
+	if (ubo_block.mapped)
+		device->request_uniform_block(ubo_block, 0);
+	if (staging_block.mapped)
+		device->request_staging_block(staging_block, 0);
 }
 
 void CommandBufferUtil::set_quad_vertex_state(CommandBuffer &cmd)

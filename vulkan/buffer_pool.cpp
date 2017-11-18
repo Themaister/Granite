@@ -36,6 +36,11 @@ void BufferPool::init(Device *device, VkDeviceSize block_size, VkDeviceSize alig
 	this->usage = usage;
 }
 
+void BufferPool::reset()
+{
+	blocks.clear();
+}
+
 BufferBlock BufferPool::allocate_block(VkDeviceSize size)
 {
 	BufferDomain ideal_domain = (usage & ~VK_BUFFER_USAGE_TRANSFER_SRC_BIT) != 0 ? BufferDomain::Device : BufferDomain::Host;

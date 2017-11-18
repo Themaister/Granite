@@ -64,6 +64,7 @@ class BufferPool
 {
 public:
 	void init(Device *device, VkDeviceSize block_size, VkDeviceSize alignment, VkBufferUsageFlags usage);
+	void reset();
 
 	VkDeviceSize get_block_size() const
 	{

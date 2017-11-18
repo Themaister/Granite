@@ -1149,6 +1149,19 @@ void Device::wait_idle()
 
 	clear_wait_semaphores();
 
+	// Free memory for buffer pools.
+	managers.vbo.reset();
+	managers.ubo.reset();
+	managers.ibo.reset();
+	managers.staging.reset();
+	for (auto &frame : per_frame)
+	{
+		frame->vbo_blocks.clear();
+		frame->ibo_blocks.clear();
+		frame->ubo_blocks.clear();
+		frame->staging_blocks.clear();
+	}
+
 	framebuffer_allocator.clear();
 	transient_allocator.clear();
 	for (auto &allocator : descriptor_set_allocators)

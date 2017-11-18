@@ -58,6 +58,7 @@ Device::Device()
 
 Semaphore Device::request_semaphore()
 {
+	LOCK();
 	auto semaphore = managers.semaphore.request_cleared_semaphore();
 	auto ptr = make_handle<SemaphoreHolder>(this, semaphore, false);
 	return ptr;
@@ -66,6 +67,7 @@ Semaphore Device::request_semaphore()
 #ifndef _WIN32
 Semaphore Device::request_imported_semaphore(int fd, VkExternalSemaphoreHandleTypeFlagBitsKHR handle_type)
 {
+	LOCK();
 	if (!supports_external)
 		return {};
 
@@ -413,6 +415,7 @@ void Device::init_stock_samplers()
 			break;
 		}
 		samplers[i] = create_sampler(info);
+		samplers[i]->set_internal_sync_object();
 	}
 }
 
@@ -1316,21 +1319,24 @@ void Device::wait_idle()
 
 void Device::begin_frame(unsigned index)
 {
+	DRAIN_FRAME_LOCK();
+
 	// Flush the frame here as we might have pending staging command buffers from init stage.
 	end_frame_nolock();
 
-	current_swapchain_index = index;
-
-	frame().begin();
 	framebuffer_allocator.begin_frame();
 	transient_allocator.begin_frame();
 	physical_allocator.begin_frame();
 	for (auto &allocator : descriptor_set_allocators)
 		allocator.second->begin_frame();
+
+	current_swapchain_index = index;
+	frame().begin();
 }
 
 QueryPoolHandle Device::write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlagBits stage)
 {
+	LOCK();
 	return frame().query_pool.write_timestamp(cmd, stage);
 }
 

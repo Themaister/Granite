@@ -83,6 +83,7 @@ private:
 	{
 		Util::TemporaryHashmap<DescriptorSetNode, VULKAN_DESCRIPTOR_RING_SIZE, true> set_nodes;
 		std::vector<VkDescriptorPool> pools;
+		bool should_begin = true;
 	};
 	std::vector<std::unique_ptr<PerThread>> per_thread;
 	std::vector<VkDescriptorPoolSize> pool_size;

@@ -102,12 +102,17 @@ DescriptorSetAllocator::DescriptorSetAllocator(Device *device, const DescriptorS
 void DescriptorSetAllocator::begin_frame()
 {
 	for (auto &thr : per_thread)
-		thr->set_nodes.begin_frame();
+		thr->should_begin = true;
 }
 
 pair<VkDescriptorSet, bool> DescriptorSetAllocator::find(unsigned thread_index, Hash hash)
 {
 	auto &state = *per_thread[thread_index];
+	if (state.should_begin)
+	{
+		state.set_nodes.begin_frame();
+		state.should_begin = false;
+	}
 
 	auto *node = state.set_nodes.request(hash);
 	if (node)

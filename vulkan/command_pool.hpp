@@ -34,13 +34,18 @@ public:
 	CommandPool(VkDevice device, uint32_t queue_family_index);
 	~CommandPool();
 
+	CommandPool(CommandPool &&) noexcept;
+	CommandPool &operator=(CommandPool &&) noexcept;
+	CommandPool(const CommandPool &) = delete;
+	void operator=(const CommandPool &) = delete;
+
 	void begin();
 	VkCommandBuffer request_command_buffer();
 	void signal_submitted(VkCommandBuffer cmd);
 
 private:
-	VkDevice device;
-	VkCommandPool pool;
+	VkDevice device = VK_NULL_HANDLE;
+	VkCommandPool pool = VK_NULL_HANDLE;
 	std::vector<VkCommandBuffer> buffers;
 #ifdef VULKAN_DEBUG
 	std::unordered_set<VkCommandBuffer> in_flight;

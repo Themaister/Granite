@@ -502,7 +502,7 @@ void Device::submit(CommandBufferHandle cmd, Fence *fence, Semaphore *semaphore,
 void Device::submit_nolock(CommandBufferHandle cmd, Fence *fence, Semaphore *semaphore, Semaphore *semaphore_alt)
 {
 	auto type = cmd->get_command_buffer_type();
-	auto &pool = get_command_pool(type);
+	auto &pool = get_command_pool(type, cmd->get_thread_index());
 	auto &submissions = get_queue_submissions(type);
 
 	pool.signal_submitted(cmd->get_command_buffer());
@@ -874,7 +874,7 @@ void Device::sync_buffer_blocks()
 		return;
 
 	VkBufferUsageFlags usage = 0;
-	auto cmd = request_command_buffer_nolock(CommandBuffer::Type::Transfer);
+	auto cmd = request_command_buffer_nolock(ThreadGroup::get_current_thread_index(), CommandBuffer::Type::Transfer);
 
 	for (auto &block : dma.vbo)
 	{
@@ -952,17 +952,17 @@ Device::QueueData &Device::get_queue_data(CommandBuffer::Type type)
 	}
 }
 
-CommandPool &Device::get_command_pool(CommandBuffer::Type type)
+CommandPool &Device::get_command_pool(CommandBuffer::Type type, unsigned thread)
 {
 	switch (type)
 	{
 	default:
 	case CommandBuffer::Type::Graphics:
-		return frame().graphics_cmd_pool;
+		return frame().graphics_cmd_pool[thread];
 	case CommandBuffer::Type::Compute:
-		return frame().compute_cmd_pool;
+		return frame().compute_cmd_pool[thread];
 	case CommandBuffer::Type::Transfer:
-		return frame().transfer_cmd_pool;
+		return frame().transfer_cmd_pool[thread];
 	}
 }
 
@@ -982,19 +982,26 @@ vector<CommandBufferHandle> &Device::get_queue_submissions(CommandBuffer::Type t
 
 CommandBufferHandle Device::request_command_buffer(CommandBuffer::Type type)
 {
-	LOCK();
-	return request_command_buffer_nolock(type);
+	return request_command_buffer_for_thread(ThreadGroup::get_current_thread_index(), type);
 }
 
-CommandBufferHandle Device::request_command_buffer_nolock(CommandBuffer::Type type)
+CommandBufferHandle Device::request_command_buffer_for_thread(unsigned thread_index, CommandBuffer::Type type)
 {
-	auto cmd = get_command_pool(type).request_command_buffer();
+	LOCK();
+	return request_command_buffer_nolock(thread_index, type);
+}
+
+CommandBufferHandle Device::request_command_buffer_nolock(unsigned thread_index, CommandBuffer::Type type)
+{
+	auto cmd = get_command_pool(type, thread_index).request_command_buffer();
 
 	VkCommandBufferBeginInfo info = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
 	info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 	vkBeginCommandBuffer(cmd, &info);
 	lock_frame();
-	return make_handle<CommandBuffer>(this, cmd, pipeline_cache, type);
+	auto handle = make_handle<CommandBuffer>(this, cmd, pipeline_cache, type);
+	handle->set_thread_index(thread_index);
+	return handle;
 }
 
 VkSemaphore Device::set_acquire(VkSemaphore acquire)
@@ -1125,11 +1132,15 @@ Device::PerFrame::PerFrame(Device *device, Managers &managers,
                            uint32_t transfer_queue_family_index)
     : device(device->get_device())
     , managers(managers)
-    , graphics_cmd_pool(device->get_device(), graphics_queue_family_index)
-    , compute_cmd_pool(device->get_device(), compute_queue_family_index)
-    , transfer_cmd_pool(device->get_device(), transfer_queue_family_index)
     , query_pool(device)
 {
+	unsigned count = ThreadGroup::get_global().get_num_threads() + 1;
+	for (unsigned i = 0; i < count; i++)
+	{
+		graphics_cmd_pool.emplace_back(device->get_device(), graphics_queue_family_index);
+		compute_cmd_pool.emplace_back(device->get_device(), compute_queue_family_index);
+		transfer_cmd_pool.emplace_back(device->get_device(), transfer_queue_family_index);
+	}
 }
 
 void Device::free_memory_nolock(const DeviceAllocation &alloc)
@@ -1387,9 +1398,12 @@ void Device::PerFrame::begin()
 		recycle_fences.clear();
 	}
 
-	graphics_cmd_pool.begin();
-	compute_cmd_pool.begin();
-	transfer_cmd_pool.begin();
+	for (auto &pool : graphics_cmd_pool)
+		pool.begin();
+	for (auto &pool : compute_cmd_pool)
+		pool.begin();
+	for (auto &pool : transfer_cmd_pool)
+		pool.begin();
 	query_pool.begin();
 
 	for (auto &framebuffer : destroyed_framebuffers)
@@ -2119,8 +2133,8 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 		// For concurrent queue mode, we just need to inject a semaphore.
 		// For non-concurrent queue mode, we will have to inject ownership transfer barrier if the queue families do not match.
 
-		auto transfer_cmd = request_command_buffer_nolock(CommandBuffer::Type::Transfer);
-		auto graphics_cmd = request_command_buffer_nolock(CommandBuffer::Type::Graphics);
+		auto transfer_cmd = request_command_buffer(CommandBuffer::Type::Transfer);
+		auto graphics_cmd = request_command_buffer(CommandBuffer::Type::Graphics);
 
 		transfer_cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 		                            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT,
@@ -2220,7 +2234,7 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 	else if (create_info.initial_layout != VK_IMAGE_LAYOUT_UNDEFINED)
 	{
 		VK_ASSERT(create_info.domain != ImageDomain::Transient);
-		auto cmd = request_command_buffer_nolock(CommandBuffer::Type::Graphics);
+		auto cmd = request_command_buffer(CommandBuffer::Type::Graphics);
 		cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_UNDEFINED, create_info.initial_layout,
 		                   VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, handle->get_stage_flags(),
 		                   handle->get_access_flags() &
@@ -2331,7 +2345,7 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 		staging_info.domain = BufferDomain::Host;
 		auto staging_buffer = create_buffer(staging_info, initial);
 
-		auto cmd = request_command_buffer_nolock(CommandBuffer::Type::Transfer);
+		auto cmd = request_command_buffer(CommandBuffer::Type::Transfer);
 		cmd->copy_buffer(*handle, *staging_buffer);
 		submit_staging(cmd, info.usage, true);
 	}

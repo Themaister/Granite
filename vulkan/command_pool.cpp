@@ -33,11 +33,41 @@ CommandPool::CommandPool(VkDevice device, uint32_t queue_family_index)
 	vkCreateCommandPool(device, &info, nullptr, &pool);
 }
 
+CommandPool::CommandPool(CommandPool &&other) noexcept
+{
+	*this = std::move(other);
+}
+
+CommandPool &CommandPool::operator=(CommandPool &&other) noexcept
+{
+	if (this != &other)
+	{
+		device = other.device;
+		if (!buffers.empty())
+			vkFreeCommandBuffers(device, pool, buffers.size(), buffers.data());
+		if (pool != VK_NULL_HANDLE)
+			vkDestroyCommandPool(device, pool, nullptr);
+
+		pool = VK_NULL_HANDLE;
+		buffers.clear();
+		std::swap(pool, other.pool);
+		std::swap(buffers, other.buffers);
+		index = other.index;
+		other.index = 0;
+#ifdef VULKAN_DEBUG
+		in_flight.clear();
+		std::swap(in_flight, other.in_flight);
+#endif
+	}
+	return *this;
+}
+
 CommandPool::~CommandPool()
 {
 	if (!buffers.empty())
 		vkFreeCommandBuffers(device, pool, buffers.size(), buffers.data());
-	vkDestroyCommandPool(device, pool, nullptr);
+	if (pool != VK_NULL_HANDLE)
+		vkDestroyCommandPool(device, pool, nullptr);
 }
 
 void CommandPool::signal_submitted(VkCommandBuffer cmd)
@@ -83,7 +113,8 @@ void CommandPool::begin()
 #ifdef VULKAN_DEBUG
 	VK_ASSERT(in_flight.empty());
 #endif
-	vkResetCommandPool(device, pool, 0);
+	if (index > 0)
+		vkResetCommandPool(device, pool, 0);
 	index = 0;
 }
 }

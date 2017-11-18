@@ -324,7 +324,7 @@ public:
 			auto &wsi = app->get_wsi();
 			auto &device = wsi.get_device();
 
-			device.wait_for_fence(readback_fence[index]);
+			readback_fence[index]->wait();
 			readback_fence[index].reset();
 
 			auto *ptr = static_cast<uint32_t *>(device.map_host_buffer(*readback_buffers[index], MEMORY_ACCESS_READ_WRITE));
@@ -365,7 +365,7 @@ private:
 		auto &wsi = app->get_wsi();
 		auto &device = wsi.get_device();
 
-		device.wait_for_fence(readback_fence[index]);
+		readback_fence[index]->wait();
 		readback_fence[index].reset();
 
 		LOGI("Dumping frame: %u (index: %u)\n", frame, index);

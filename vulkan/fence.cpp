@@ -20,24 +20,20 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#pragma once
-
-#include "vulkan.hpp"
-#include <vector>
+#include "fence.hpp"
+#include "device.hpp"
 
 namespace Vulkan
 {
-class FenceManager
+FenceHolder::~FenceHolder()
 {
-public:
-	void init(VkDevice device);
-	~FenceManager();
+	if (fence != VK_NULL_HANDLE)
+		device->reset_fence(fence);
+}
 
-	VkFence request_cleared_fence();
-	void recycle_fence(VkFence fence);
-
-private:
-	VkDevice device;
-	std::vector<VkFence> fences;
-};
+void FenceHolder::wait()
+{
+	if (vkWaitForFences(device->get_device(), 1, &fence, VK_TRUE, UINT64_MAX) != VK_SUCCESS)
+		LOGE("Failed to wait for fence!\n");
+}
 }

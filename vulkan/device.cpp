@@ -331,6 +331,7 @@ void Device::set_context(const Context &context)
 	managers.memory.init(gpu, device);
 	managers.memory.set_supports_dedicated_allocation(supports_dedicated);
 	managers.semaphore.init(device);
+	managers.fence.init(device);
 	managers.event.init(device);
 	managers.vbo.init(this, 4 * 1024, 16, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
 	managers.ibo.init(this, 4 * 1024, 16, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
@@ -508,8 +509,13 @@ void Device::submit_nolock(CommandBufferHandle cmd, Fence *fence, Semaphore *sem
 	cmd->end();
 	submissions.push_back(move(cmd));
 
+	VkFence cleared_fence = VK_NULL_HANDLE;
+
 	if (fence || semaphore || semaphore_alt)
-		submit_queue(type, fence, semaphore, semaphore_alt);
+		submit_queue(type, fence ? &cleared_fence : nullptr, semaphore, semaphore_alt);
+
+	if (fence)
+		*fence = make_handle<FenceHolder>(this, cleared_fence);
 
 	unlock_frame();
 }
@@ -524,10 +530,14 @@ void Device::submit_empty_nolock(CommandBuffer::Type type, Fence *fence, Semapho
 {
 	if (type != CommandBuffer::Type::Transfer)
 		flush_frame(CommandBuffer::Type::Transfer);
-	submit_empty_inner(type, fence, semaphore, semaphore_alt);
+
+	VkFence cleared_fence = VK_NULL_HANDLE;
+	submit_empty_inner(type, fence ? &cleared_fence : nullptr, semaphore, semaphore_alt);
+	if (fence)
+		*fence = make_handle<FenceHolder>(this, cleared_fence);
 }
 
-void Device::submit_empty_inner(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore, Semaphore *semaphore_alt)
+void Device::submit_empty_inner(CommandBuffer::Type type, VkFence *fence, Semaphore *semaphore, Semaphore *semaphore_alt)
 {
 	auto &data = get_queue_data(type);
 	VkSubmitInfo submit = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
@@ -588,7 +598,7 @@ void Device::submit_empty_inner(CommandBuffer::Type type, Fence *fence, Semaphor
 		break;
 	}
 
-	VkFence cleared_fence = fence ? frame().fence_manager.request_cleared_fence() : VK_NULL_HANDLE;
+	VkFence cleared_fence = fence ? managers.fence.request_cleared_fence() : VK_NULL_HANDLE;
 	if (queue_lock_callback)
 		queue_lock_callback();
 	VkResult result = vkQueueSubmit(queue, 1, &submit, cleared_fence);
@@ -600,9 +610,8 @@ void Device::submit_empty_inner(CommandBuffer::Type type, Fence *fence, Semaphor
 
 	if (fence)
 	{
-		auto ptr = make_shared<FenceHolder>(cleared_fence);
-		*fence = ptr;
-		frame().fences.push_back(move(ptr));
+		frame().wait_fences.push_back(cleared_fence);
+		*fence = cleared_fence;
 	}
 
 	if (semaphore)
@@ -692,7 +701,7 @@ void Device::submit_staging(CommandBufferHandle cmd, VkBufferUsageFlags usage, b
 	}
 }
 
-void Device::submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore, Semaphore *semaphore_alt)
+void Device::submit_queue(CommandBuffer::Type type, VkFence *fence, Semaphore *semaphore, Semaphore *semaphore_alt)
 {
 	// Always check if we need to flush pending transfers.
 	if (type != CommandBuffer::Type::Transfer)
@@ -786,7 +795,7 @@ void Device::submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *sem
 		last_cmd = cmds.size();
 	}
 
-	VkFence cleared_fence = fence ? frame().fence_manager.request_cleared_fence() : VK_NULL_HANDLE;
+	VkFence cleared_fence = fence ? managers.fence.request_cleared_fence() : VK_NULL_HANDLE;
 	VkSemaphore cleared_semaphore = VK_NULL_HANDLE;
 	VkSemaphore cleared_semaphore_alt = VK_NULL_HANDLE;
 	if (semaphore)
@@ -842,9 +851,8 @@ void Device::submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *sem
 
 	if (fence)
 	{
-		auto ptr = make_shared<FenceHolder>(cleared_fence);
-		*fence = ptr;
-		frame().fences.push_back(move(ptr));
+		frame().wait_fences.push_back(cleared_fence);
+		*fence = cleared_fence;
 	}
 
 	if (semaphore)
@@ -907,10 +915,14 @@ void Device::end_frame()
 void Device::end_frame_nolock()
 {
 	// Make sure we have a fence which covers all submissions in the frame.
-	Fence fence;
+	VkFence fence;
+
 	submit_queue(CommandBuffer::Type::Transfer, &fence, nullptr, nullptr);
+	frame().recycle_fences.push_back(fence);
 	submit_queue(CommandBuffer::Type::Graphics, &fence, nullptr, nullptr);
+	frame().recycle_fences.push_back(fence);
 	submit_queue(CommandBuffer::Type::Compute, &fence, nullptr, nullptr);
+	frame().recycle_fences.push_back(fence);
 }
 
 void Device::flush_frame()
@@ -1116,7 +1128,6 @@ Device::PerFrame::PerFrame(Device *device, Managers &managers,
     , graphics_cmd_pool(device->get_device(), graphics_queue_family_index)
     , compute_cmd_pool(device->get_device(), compute_queue_family_index)
     , transfer_cmd_pool(device->get_device(), transfer_queue_family_index)
-    , fence_manager(device->get_device())
     , query_pool(device)
 {
 }
@@ -1140,6 +1151,12 @@ void Device::destroy_pipeline(VkPipeline pipeline)
 {
 	LOCK();
 	destroy_pipeline_nolock(pipeline);
+}
+
+void Device::reset_fence(VkFence fence)
+{
+	LOCK();
+	frame().recycle_fences.push_back(fence);
 }
 
 void Device::destroy_buffer(VkBuffer buffer)
@@ -1356,7 +1373,20 @@ void Device::unlock_frame()
 
 void Device::PerFrame::begin()
 {
-	fence_manager.begin();
+	if (!wait_fences.empty())
+	{
+		vkWaitForFences(device, wait_fences.size(), wait_fences.data(), VK_TRUE, UINT64_MAX);
+		wait_fences.clear();
+	}
+
+	if (!recycle_fences.empty())
+	{
+		vkResetFences(device, recycle_fences.size(), recycle_fences.data());
+		for (auto &fence : recycle_fences)
+			managers.fence.recycle_fence(fence);
+		recycle_fences.clear();
+	}
+
 	graphics_cmd_pool.begin();
 	compute_cmd_pool.begin();
 	transfer_cmd_pool.begin();
@@ -1409,7 +1439,6 @@ void Device::PerFrame::begin()
 	recycled_semaphores.clear();
 	recycled_events.clear();
 	allocations.clear();
-	fences.clear();
 
 	swapchain_touched = false;
 	swapchain_consumed = false;
@@ -2474,13 +2503,6 @@ RenderPassInfo Device::get_swapchain_render_pass(SwapchainRenderPass style)
 		break;
 	}
 	return info;
-}
-
-void Device::wait_for_fence(const Fence &fence)
-{
-	auto locked_fence = fence.lock();
-	if (locked_fence)
-		vkWaitForFences(device, 1, &locked_fence->get_fence(), true, UINT64_MAX);
 }
 
 void Device::set_queue_lock(std::function<void()> lock_callback, std::function<void()> unlock_callback)

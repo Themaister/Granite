@@ -22,28 +22,28 @@
 
 #pragma once
 
-#include <memory>
+#include "intrusive.hpp"
+#include "vulkan.hpp"
 
 namespace Vulkan
 {
 class Device;
 
-class FenceHolder
+class FenceHolder : public Util::IntrusivePtrEnabled<FenceHolder>
 {
 public:
-	FenceHolder(VkFence fence)
-	    : fence(fence)
+	FenceHolder(Device *device, VkFence fence)
+	    : device(device), fence(fence)
 	{
 	}
 
-	const VkFence &get_fence() const
-	{
-		return fence;
-	}
+	~FenceHolder();
+	void wait();
 
 private:
+	Device *device;
 	VkFence fence;
 };
 
-using Fence = std::weak_ptr<FenceHolder>;
+using Fence = Util::IntrusivePtr<FenceHolder>;
 }

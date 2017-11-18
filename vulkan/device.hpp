@@ -142,6 +142,7 @@ public:
 	void destroy_semaphore(VkSemaphore semaphore);
 	void destroy_event(VkEvent event);
 	void free_memory(const DeviceAllocation &alloc);
+	void reset_fence(VkFence fence);
 	////
 
 	PipelineEvent request_pipeline_event();
@@ -176,7 +177,6 @@ public:
 	void request_index_block(BufferBlock &block, VkDeviceSize size);
 	void request_uniform_block(BufferBlock &block, VkDeviceSize size);
 	void request_staging_block(BufferBlock &block, VkDeviceSize size);
-	void wait_for_fence(const Fence &fence);
 
 	VkDevice get_device()
 	{
@@ -228,6 +228,7 @@ private:
 	struct Managers
 	{
 		DeviceAllocator memory;
+		FenceManager fence;
 		SemaphoreManager semaphore;
 		EventManager event;
 		BufferPool vbo, ibo, ubo, staging;
@@ -263,7 +264,6 @@ private:
 		CommandPool compute_cmd_pool;
 		CommandPool transfer_cmd_pool;
 		ImageHandle backbuffer;
-		FenceManager fence_manager;
 		QueryPool query_pool;
 
 		std::vector<BufferBlock> vbo_blocks;
@@ -271,6 +271,8 @@ private:
 		std::vector<BufferBlock> ubo_blocks;
 		std::vector<BufferBlock> staging_blocks;
 
+		std::vector<VkFence> wait_fences;
+		std::vector<VkFence> recycle_fences;
 		std::vector<DeviceAllocation> allocations;
 		std::vector<VkFramebuffer> destroyed_framebuffers;
 		std::vector<VkSampler> destroyed_samplers;
@@ -282,7 +284,6 @@ private:
 		std::vector<CommandBufferHandle> graphics_submissions;
 		std::vector<CommandBufferHandle> compute_submissions;
 		std::vector<CommandBufferHandle> transfer_submissions;
-		std::vector<std::shared_ptr<FenceHolder>> fences;
 		std::vector<VkSemaphore> recycled_semaphores;
 		std::vector<VkEvent> recycled_events;
 		std::vector<VkSemaphore> destroyed_semaphores;
@@ -307,7 +308,7 @@ private:
 		std::vector<BufferBlock> ubo;
 	} dma;
 
-	void submit_queue(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore, Semaphore *semaphore_alt);
+	void submit_queue(CommandBuffer::Type type, VkFence *fence, Semaphore *semaphore, Semaphore *semaphore_alt);
 
 	PerFrame &frame()
 	{
@@ -363,7 +364,7 @@ private:
 	std::function<void ()> queue_unlock_callback;
 	void flush_frame(CommandBuffer::Type type);
 	void sync_buffer_blocks();
-	void submit_empty_inner(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore, Semaphore *semaphore_alt);
+	void submit_empty_inner(CommandBuffer::Type type, VkFence *fence, Semaphore *semaphore, Semaphore *semaphore_alt);
 
 	void destroy_buffer_nolock(VkBuffer buffer);
 	void destroy_image_nolock(VkImage image);

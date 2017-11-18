@@ -24,46 +24,35 @@
 
 namespace Vulkan
 {
-FenceManager::FenceManager(VkDevice device)
-    : device(device)
+void FenceManager::init(VkDevice device)
 {
+	this->device = device;
 }
 
 VkFence FenceManager::request_cleared_fence()
 {
-	if (index < fences.size())
+	if (!fences.empty())
 	{
-		return fences[index++];
+		auto ret = fences.back();
+		fences.pop_back();
+		return ret;
 	}
 	else
 	{
 		VkFence fence;
 		VkFenceCreateInfo info = { VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
 		vkCreateFence(device, &info, nullptr, &fence);
-		fences.push_back(fence);
-		index++;
 		return fence;
 	}
 }
 
-void FenceManager::begin()
+void FenceManager::recycle_fence(VkFence fence)
 {
-	if (index)
-	{
-		vkWaitForFences(device, index, fences.data(), true, UINT64_MAX);
-		vkResetFences(device, index, fences.data());
-	}
-	index = 0;
+	fences.push_back(fence);
 }
 
 FenceManager::~FenceManager()
 {
-	if (index)
-	{
-		vkWaitForFences(device, index, fences.data(), true, UINT64_MAX);
-		vkResetFences(device, index, fences.data());
-	}
-
 	for (auto &fence : fences)
 		vkDestroyFence(device, fence, nullptr);
 }

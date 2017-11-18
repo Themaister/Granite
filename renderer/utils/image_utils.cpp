@@ -317,7 +317,7 @@ bool save_image_buffer_to_ktx(Vulkan::Device &device, ImageReadback &readback, c
 		return false;
 	}
 
-	device.wait_for_fence(readback.fence);
+	readback.fence->wait();
 
 	void *ptr = device.map_host_buffer(*readback.buffer, MEMORY_ACCESS_READ);
 	device.unmap_host_buffer(*readback.buffer);

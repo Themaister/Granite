@@ -21,7 +21,7 @@ add_granite_library(vulkan-backend
         shader_manager.cpp shader_manager.hpp
         memory_allocator.cpp memory_allocator.hpp
         texture_manager.cpp texture_manager.hpp
-        fence.hpp
+        fence.hpp fence.cpp
         format.hpp
         limits.hpp
         type_to_string.hpp

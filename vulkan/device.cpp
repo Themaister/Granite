@@ -157,15 +157,30 @@ PipelineLayout *Device::request_pipeline_layout(const CombinedResourceLayout &la
 	h.data(reinterpret_cast<const uint32_t *>(layout.sets), sizeof(layout.sets));
 	h.data(reinterpret_cast<const uint32_t *>(layout.ranges), sizeof(layout.ranges));
 	h.u32(layout.attribute_mask);
+	h.u32(layout.render_target_mask);
 
 	auto hash = h.get();
+
+	pipeline_layout_lock.lock_read();
 	auto itr = pipeline_layouts.find(hash);
 	if (itr != end(pipeline_layouts))
-		return itr->second.get();
+	{
+		auto ret = itr->second.get();
+		pipeline_layout_lock.unlock_read();
+		return ret;
+	}
+	else
+		pipeline_layout_lock.unlock_read();
 
-	auto *pipe = new PipelineLayout(this, layout);
-	pipeline_layouts.insert(make_pair(hash, unique_ptr<PipelineLayout>(pipe)));
-	return pipe;
+	auto pipe = make_unique<PipelineLayout>(this, layout);
+
+	pipeline_layout_lock.lock_write();
+	auto &cache = pipeline_layouts[hash];
+	if (!cache)
+		cache = move(pipe);
+	auto *ret = cache.get();
+	pipeline_layout_lock.unlock_write();
+	return ret;
 }
 
 DescriptorSetAllocator *Device::request_descriptor_set_allocator(const DescriptorSetLayout &layout)
@@ -173,13 +188,26 @@ DescriptorSetAllocator *Device::request_descriptor_set_allocator(const Descripto
 	Hasher h;
 	h.data(reinterpret_cast<const uint32_t *>(&layout), sizeof(layout));
 	auto hash = h.get();
+
+	descriptor_set_allocator_lock.lock_read();
 	auto itr = descriptor_set_allocators.find(hash);
 	if (itr != end(descriptor_set_allocators))
-		return itr->second.get();
+	{
+		auto ret = itr->second.get();
+		descriptor_set_allocator_lock.unlock_read();
+		return ret;
+	}
+	else
+		descriptor_set_allocator_lock.unlock_read();
 
-	auto *allocator = new DescriptorSetAllocator(this, layout);
-	descriptor_set_allocators.insert(make_pair(hash, unique_ptr<DescriptorSetAllocator>(allocator)));
-	return allocator;
+	auto allocator = make_unique<DescriptorSetAllocator>(this, layout);
+	descriptor_set_allocator_lock.lock_write();
+	auto &cache = descriptor_set_allocators[hash];
+	if (!cache)
+		cache = move(allocator);
+	auto *ret = cache.get();
+	descriptor_set_allocator_lock.unlock_write();
+	return ret;
 }
 
 void Device::bake_program(Program &program)

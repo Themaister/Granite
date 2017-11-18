@@ -28,6 +28,7 @@
 #include "intrusive.hpp"
 #include "limits.hpp"
 #include "vulkan.hpp"
+#include "read_write_lock.hpp"
 
 namespace Vulkan
 {
@@ -153,7 +154,7 @@ public:
 	}
 
 	VkPipeline get_graphics_pipeline(Util::Hash hash) const;
-	void add_graphics_pipeline(Util::Hash hash, VkPipeline pipeline);
+	VkPipeline add_graphics_pipeline(Util::Hash hash, VkPipeline pipeline);
 
 	VkPipeline get_compute_pipeline() const
 	{
@@ -173,6 +174,7 @@ private:
 	PipelineLayout *layout = nullptr;
 	VkPipeline compute_pipeline = VK_NULL_HANDLE;
 	Util::HashMap<VkPipeline> graphics_pipelines;
+	mutable Util::RWSpinLock lock;
 };
 using ProgramHandle = Util::IntrusivePtr<Program>;
 }

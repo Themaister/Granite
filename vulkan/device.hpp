@@ -41,6 +41,7 @@
 #include "texture_manager.hpp"
 #include "query_pool.hpp"
 #include "buffer_pool.hpp"
+#include "read_write_lock.hpp"
 #include <memory>
 #include <vector>
 #include <atomic>
@@ -340,8 +341,12 @@ private:
 	bool memory_type_is_host_visible(uint32_t type) const;
 
 	SamplerHandle samplers[static_cast<unsigned>(StockSampler::Count)];
+
 	Util::HashMap<std::unique_ptr<PipelineLayout>> pipeline_layouts;
 	Util::HashMap<std::unique_ptr<DescriptorSetAllocator>> descriptor_set_allocators;
+	Util::RWSpinLock pipeline_layout_lock;
+	Util::RWSpinLock descriptor_set_allocator_lock;
+
 	FramebufferAllocator framebuffer_allocator;
 	TransientAttachmentAllocator transient_allocator;
 	PhysicalAttachmentAllocator physical_allocator;

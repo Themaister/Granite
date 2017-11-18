@@ -10,6 +10,7 @@ add_granite_library(util
         stack_allocator.hpp
         temporary_hashmap.hpp
         volatile_source.hpp
+        read_write_lock.hpp
         unstable_remove_if.hpp
         cli_parser.cpp cli_parser.hpp
         timer.hpp timer.cpp)

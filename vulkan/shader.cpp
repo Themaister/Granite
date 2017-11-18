@@ -241,17 +241,32 @@ Program::Program(Device *device)
 
 VkPipeline Program::get_graphics_pipeline(Hash hash) const
 {
+	lock.lock_read();
 	auto itr = graphics_pipelines.find(hash);
 	if (itr != end(graphics_pipelines))
-		return itr->second;
+	{
+		auto ret = itr->second;
+		lock.unlock_read();
+		return ret;
+	}
 	else
+	{
+		lock.unlock_read();
 		return VK_NULL_HANDLE;
+	}
 }
 
-void Program::add_graphics_pipeline(Hash hash, VkPipeline pipeline)
+VkPipeline Program::add_graphics_pipeline(Hash hash, VkPipeline pipeline)
 {
-	VK_ASSERT(graphics_pipelines[hash] == VK_NULL_HANDLE);
-	graphics_pipelines[hash] = pipeline;
+	lock.lock_write();
+	auto &cache = graphics_pipelines[hash];
+	if (cache == VK_NULL_HANDLE)
+		cache = pipeline;
+	else
+		vkDestroyPipeline(device->get_device(), pipeline, nullptr);
+	auto ret = cache;
+	lock.unlock_write();
+	return ret;
 }
 
 Program::~Program()

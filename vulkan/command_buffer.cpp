@@ -588,7 +588,7 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
 	if (res != VK_SUCCESS)
 		LOGE("Failed to create graphics pipeline!\n");
 
-	current_program->add_graphics_pipeline(hash, current_pipeline);
+	current_pipeline = current_program->add_graphics_pipeline(hash, current_pipeline);
 	return current_pipeline;
 }
 

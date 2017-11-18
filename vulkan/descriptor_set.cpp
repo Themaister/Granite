@@ -22,6 +22,7 @@
 
 #include "descriptor_set.hpp"
 #include "device.hpp"
+#include "thread_group.hpp"
 #include <vector>
 
 using namespace std;
@@ -32,6 +33,10 @@ namespace Vulkan
 DescriptorSetAllocator::DescriptorSetAllocator(Device *device, const DescriptorSetLayout &layout)
     : device(device)
 {
+	unsigned count = ThreadGroup::get_global().get_num_threads() + 1;
+	for (unsigned i = 0; i < count; i++)
+		per_thread.emplace_back(new PerThread);
+
 	VkDescriptorSetLayoutCreateInfo info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
 
 	vector<VkDescriptorSetLayoutBinding> bindings;
@@ -96,16 +101,19 @@ DescriptorSetAllocator::DescriptorSetAllocator(Device *device, const DescriptorS
 
 void DescriptorSetAllocator::begin_frame()
 {
-	set_nodes.begin_frame();
+	for (auto &thr : per_thread)
+		thr->set_nodes.begin_frame();
 }
 
-pair<VkDescriptorSet, bool> DescriptorSetAllocator::find(Hash hash)
+pair<VkDescriptorSet, bool> DescriptorSetAllocator::find(unsigned thread_index, Hash hash)
 {
-	auto *node = set_nodes.request(hash);
+	auto &state = *per_thread[thread_index];
+
+	auto *node = state.set_nodes.request(hash);
 	if (node)
 		return { node->set, true };
 
-	node = set_nodes.request_vacant(hash);
+	node = state.set_nodes.request_vacant(hash);
 	if (node)
 		return { node->set, false };
 
@@ -132,23 +140,26 @@ pair<VkDescriptorSet, bool> DescriptorSetAllocator::find(Hash hash)
 
 	if (vkAllocateDescriptorSets(device->get_device(), &alloc, sets) != VK_SUCCESS)
 		LOGE("Failed to allocate descriptor sets.\n");
-	pools.push_back(pool);
+	state.pools.push_back(pool);
 
 	for (auto set : sets)
-		set_nodes.make_vacant(set);
+		state.set_nodes.make_vacant(set);
 
-	return { set_nodes.request_vacant(hash)->set, false };
+	return { state.set_nodes.request_vacant(hash)->set, false };
 }
 
 void DescriptorSetAllocator::clear()
 {
-	set_nodes.clear();
-	for (auto &pool : pools)
+	for (auto &thr : per_thread)
 	{
-		vkResetDescriptorPool(device->get_device(), pool, 0);
-		vkDestroyDescriptorPool(device->get_device(), pool, nullptr);
+		thr->set_nodes.clear();
+		for (auto &pool : thr->pools)
+		{
+			vkResetDescriptorPool(device->get_device(), pool, 0);
+			vkDestroyDescriptorPool(device->get_device(), pool, nullptr);
+		}
+		thr->pools.clear();
 	}
-	pools.clear();
 }
 
 DescriptorSetAllocator::~DescriptorSetAllocator()

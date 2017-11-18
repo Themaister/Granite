@@ -56,7 +56,7 @@ public:
 	DescriptorSetAllocator(const DescriptorSetAllocator &) = delete;
 
 	void begin_frame();
-	std::pair<VkDescriptorSet, bool> find(Util::Hash hash);
+	std::pair<VkDescriptorSet, bool> find(unsigned thread_index, Util::Hash hash);
 
 	VkDescriptorSetLayout get_layout() const
 	{
@@ -78,8 +78,13 @@ private:
 
 	Device *device;
 	VkDescriptorSetLayout set_layout = VK_NULL_HANDLE;
-	Util::TemporaryHashmap<DescriptorSetNode, VULKAN_DESCRIPTOR_RING_SIZE, true> set_nodes;
+
+	struct PerThread
+	{
+		Util::TemporaryHashmap<DescriptorSetNode, VULKAN_DESCRIPTOR_RING_SIZE, true> set_nodes;
+		std::vector<VkDescriptorPool> pools;
+	};
+	std::vector<std::unique_ptr<PerThread>> per_thread;
 	std::vector<VkDescriptorPoolSize> pool_size;
-	std::vector<VkDescriptorPool> pools;
 };
 }

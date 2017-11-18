@@ -1184,7 +1184,7 @@ void CommandBuffer::flush_descriptor_set(uint32_t set)
 	});
 
 	Hash hash = h.get();
-	auto allocated = current_layout->get_allocator(set)->find(hash);
+	auto allocated = current_layout->get_allocator(set)->find(thread_index, hash);
 
 	// The descriptor set was not successfully cached, rebuild.
 	if (!allocated.second)

@@ -116,7 +116,7 @@ void ShaderTemplate::recompile()
 void ShaderTemplate::register_dependencies(ShaderManager &manager)
 {
 	for (auto &dep : compiler->get_dependencies())
-		manager.register_dependency(this, dep);
+		manager.register_dependency_nolock(this, dep);
 }
 
 void ShaderProgram::set_stage(Vulkan::ShaderStage stage, ShaderTemplate *shader)
@@ -161,18 +161,26 @@ unsigned ShaderProgram::register_variant(const std::vector<std::pair<std::string
 	for (auto &define : defines)
 	{
 		h.u64(hash<string>()(define.first));
-		h.u32(uint32_t(define.second));
+		h.s32(define.second);
 	}
 
 	auto hash = h.get();
+
+	variant_lock.lock_read();
 	auto itr = find(begin(variant_hashes), end(variant_hashes), hash);
 	if (itr != end(variant_hashes))
-		return unsigned(itr - begin(variant_hashes));
+	{
+		auto ret = unsigned(itr - begin(variant_hashes));
+		variant_lock.unlock_read();
+		return ret;
+	}
 
+	variant_lock.promote_reader_to_writer();
 	unsigned index = unsigned(variants.size());
 	variants.emplace_back();
 	auto &var = variants.back();
 	variant_hashes.push_back(hash);
+	variant_lock.unlock_write();
 
 	for (unsigned i = 0; i < static_cast<unsigned>(Vulkan::ShaderStage::Count); i++)
 		if (stages[i])
@@ -185,48 +193,76 @@ unsigned ShaderProgram::register_variant(const std::vector<std::pair<std::string
 
 ShaderProgram *ShaderManager::register_compute(const std::string &compute)
 {
-	ShaderTemplate *tmpl = get_template(compute);
-	register_dependency(tmpl, compute);
-	tmpl->register_dependencies(*this);
+	auto *tmpl = get_template(compute);
 
 	Util::Hasher h;
 	h.pointer(tmpl);
 	auto hash = h.get();
 
+	programs_lock.lock_read();
 	auto pitr = programs.find(hash);
 	if (pitr == end(programs))
 	{
-		auto prog = unique_ptr<ShaderProgram>(new ShaderProgram(device));
+		programs_lock.unlock_read();
+		auto prog = make_unique<ShaderProgram>(device);
 		prog->set_stage(Vulkan::ShaderStage::Compute, tmpl);
-		auto *ret = prog.get();
-		programs[hash] = move(prog);
+
+		programs_lock.lock_write();
+		auto &cache = programs[hash];
+		if (!cache)
+			cache = move(prog);
+		auto *ret = cache.get();
+		programs_lock.unlock_write();
 		return ret;
 	}
 	else
-		return pitr->second.get();
+	{
+		auto ret = pitr->second.get();
+		programs_lock.unlock_read();
+		return ret;
+	}
 }
 
 ShaderTemplate *ShaderManager::get_template(const std::string &path)
 {
+	template_lock.lock_read();
 	auto itr = shaders.find(path);
 	if (itr == end(shaders))
 	{
-		auto &shader = shaders[path];
-		shader = unique_ptr<ShaderTemplate>(new ShaderTemplate(path));
-		return shader.get();
+		template_lock.unlock_read();
+		auto shader = make_unique<ShaderTemplate>(path);
+
+		template_lock.lock_write();
+		auto &cache = shaders[path];
+		if (!cache)
+		{
+			cache = move(shader);
+			std::lock_guard<std::mutex> holder{dependency_lock};
+			register_dependency_nolock(cache.get(), path);
+			cache->register_dependencies(*this);
+			auto ret = cache.get();
+			template_lock.unlock_write();
+			return ret;
+		}
+		else
+		{
+			auto ret = cache.get();
+			template_lock.unlock_write();
+			return ret;
+		}
 	}
 	else
-		return itr->second.get();
+	{
+		auto ret = itr->second.get();
+		template_lock.unlock_read();
+		return ret;
+	}
 }
 
 ShaderProgram *ShaderManager::register_graphics(const std::string &vertex, const std::string &fragment)
 {
-	ShaderTemplate *vert_tmpl = get_template(vertex);
-	ShaderTemplate *frag_tmpl = get_template(fragment);
-	register_dependency(vert_tmpl, vertex);
-	register_dependency(frag_tmpl, fragment);
-	vert_tmpl->register_dependencies(*this);
-	frag_tmpl->register_dependencies(*this);
+	auto *vert_tmpl = get_template(vertex);
+	auto *frag_tmpl = get_template(fragment);
 
 	Util::Hasher h;
 	h.pointer(vert_tmpl);
@@ -236,7 +272,7 @@ ShaderProgram *ShaderManager::register_graphics(const std::string &vertex, const
 	auto pitr = programs.find(hash);
 	if (pitr == end(programs))
 	{
-		auto prog = unique_ptr<ShaderProgram>(new ShaderProgram(device));
+		auto prog = make_unique<ShaderProgram>(device);
 		prog->set_stage(Vulkan::ShaderStage::Vertex, vert_tmpl);
 		prog->set_stage(Vulkan::ShaderStage::Fragment, frag_tmpl);
 		auto *ret = prog.get();
@@ -256,12 +292,19 @@ ShaderManager::~ShaderManager()
 
 void ShaderManager::register_dependency(ShaderTemplate *shader, const std::string &dependency)
 {
+	std::lock_guard<std::mutex> holder{dependency_lock};
+	register_dependency_nolock(shader, dependency);
+}
+
+void ShaderManager::register_dependency_nolock(ShaderTemplate *shader, const std::string &dependency)
+{
 	dependees[dependency].insert(shader);
 	add_directory_watch(dependency);
 }
 
 void ShaderManager::recompile(const FileNotifyInfo &info)
 {
+	std::lock_guard<std::mutex> holder{dependency_lock};
 	if (info.type == FileNotifyType::FileDeleted)
 		return;
 

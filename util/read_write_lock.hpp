@@ -33,6 +33,7 @@ namespace Util
 class RWSpinLock
 {
 public:
+	enum { Reader = 4, WriteWait = 2, Writer = 1 };
 	RWSpinLock()
 	{
 		counter.store(0);
@@ -40,23 +41,23 @@ public:
 
 	inline void lock_read()
 	{
-		unsigned v = counter.fetch_add(4, std::memory_order_acquire);
-		while ((v & 3) != 0)
+		unsigned v = counter.fetch_add(Reader, std::memory_order_acquire);
+		while ((v & (WriteWait | Writer)) != 0)
 			v = counter.load(std::memory_order_acquire);
 	}
 
 	inline void unlock_read()
 	{
-		counter.fetch_sub(4, std::memory_order_relaxed);
+		counter.fetch_sub(Reader, std::memory_order_relaxed);
 	}
 
 	inline void lock_write()
 	{
 		// Lock out potential readers.
-		counter.fetch_or(2, std::memory_order_relaxed);
+		counter.fetch_or(WriteWait, std::memory_order_relaxed);
 
-		uint32_t expected = 2;
-		while (!counter.compare_exchange_weak(expected, 1,
+		uint32_t expected = WriteWait;
+		while (!counter.compare_exchange_weak(expected, Writer,
 		                                      std::memory_order_acquire,
 		                                      std::memory_order_relaxed))
 		{
@@ -64,14 +65,33 @@ public:
 			_mm_pause();
 #endif
 			// Lock out potential readers.
-			counter.fetch_or(2, std::memory_order_relaxed);
-			expected = 2;
+			counter.fetch_or(WriteWait, std::memory_order_relaxed);
+			expected = WriteWait;
 		}
 	}
 
 	inline void unlock_write()
 	{
-		counter.fetch_and(~0x1u, std::memory_order_release);
+		counter.fetch_and(~Writer, std::memory_order_release);
+	}
+
+	inline void promote_reader_to_writer()
+	{
+		// Lock out potential readers.
+		counter.fetch_or(WriteWait, std::memory_order_relaxed);
+		uint32_t expected = Reader | WriteWait;
+
+		while (!counter.compare_exchange_weak(expected, Writer,
+		                                      std::memory_order_acquire,
+		                                      std::memory_order_relaxed))
+		{
+#ifdef __SSE2__
+			_mm_pause();
+#endif
+			// Lock out potential readers.
+			counter.fetch_or(WriteWait, std::memory_order_relaxed);
+			expected = Reader | WriteWait;
+		}
 	}
 
 private:

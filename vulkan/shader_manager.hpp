@@ -31,6 +31,7 @@
 #include "compiler.hpp"
 #include "filesystem.hpp"
 #include "hashmap.hpp"
+#include "read_write_lock.hpp"
 
 namespace Vulkan
 {
@@ -83,6 +84,7 @@ private:
 	ShaderTemplate *stages[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
 	std::vector<Variant> variants;
 	std::vector<Util::Hash> variant_hashes;
+	Util::RWSpinLock variant_lock;
 };
 
 class ShaderManager
@@ -98,14 +100,18 @@ public:
 	ShaderProgram *register_compute(const std::string &compute);
 
 	void register_dependency(ShaderTemplate *shader, const std::string &dependency);
+	void register_dependency_nolock(ShaderTemplate *shader, const std::string &dependency);
 
 private:
 	Device *device;
 	std::unordered_map<std::string, std::unique_ptr<ShaderTemplate>> shaders;
+	Util::RWSpinLock template_lock;
 	Util::HashMap<std::unique_ptr<ShaderProgram>> programs;
+	Util::RWSpinLock programs_lock;
 
 	ShaderTemplate *get_template(const std::string &source);
 	std::unordered_map<std::string, std::unordered_set<ShaderTemplate *>> dependees;
+	std::mutex dependency_lock;
 
 	struct Notify
 	{

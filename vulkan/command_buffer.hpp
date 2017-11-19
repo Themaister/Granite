@@ -231,6 +231,16 @@ public:
 		return thread_index;
 	}
 
+	void set_is_secondary()
+	{
+		is_secondary = true;
+	}
+
+	bool get_is_secondary() const
+	{
+		return is_secondary;
+	}
+
 	void clear_image(const Image &image, const VkClearValue &value);
 	void clear_quad(unsigned attachment, const VkClearRect &rect, const VkClearValue &value,
 	                VkImageAspectFlags = VK_IMAGE_ASPECT_COLOR_BIT);
@@ -291,9 +301,15 @@ public:
 	// Wait for TRANSFER stage to drain before transitioning away from TRANSFER_SRC_OPTIMAL.
 	void generate_mipmap(const Image &image);
 
-	void begin_render_pass(const RenderPassInfo &info);
-	void next_subpass();
+	void begin_render_pass(const RenderPassInfo &info, VkSubpassContents contents = VK_SUBPASS_CONTENTS_INLINE);
+	void next_subpass(VkSubpassContents contents = VK_SUBPASS_CONTENTS_INLINE);
 	void end_render_pass();
+	void submit_secondary(Util::IntrusivePtr<CommandBuffer> secondary);
+	inline unsigned get_current_subpass() const
+	{
+		return current_subpass;
+	}
+	Util::IntrusivePtr<CommandBuffer> request_secondary_command_buffer(unsigned thread_index, unsigned subpass);
 
 	void set_program(Program &program);
 	void set_buffer_view(unsigned set, unsigned binding, const BufferView &view);
@@ -558,6 +574,7 @@ private:
 	PipelineLayout *current_layout = nullptr;
 	Program *current_program = nullptr;
 	unsigned current_subpass = 0;
+	VkSubpassContents current_contents = VK_SUBPASS_CONTENTS_INLINE;
 	unsigned thread_index = 0;
 
 	VkViewport viewport = {};
@@ -569,6 +586,7 @@ private:
 	uint32_t active_vbos = 0;
 	bool uses_swapchain = false;
 	bool is_compute = true;
+	bool is_secondary = false;
 
 	void set_dirty(CommandBufferDirtyFlags flags)
 	{

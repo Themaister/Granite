@@ -101,6 +101,7 @@ public:
 	void flush_frame();
 	CommandBufferHandle request_command_buffer(CommandBuffer::Type type = CommandBuffer::Type::Graphics);
 	CommandBufferHandle request_command_buffer_for_thread(unsigned thread_index, CommandBuffer::Type type = CommandBuffer::Type::Graphics);
+
 	void submit(CommandBufferHandle cmd, Fence *fence = nullptr, Semaphore *semaphore = nullptr,
 	            Semaphore *semaphore_alt = nullptr);
 	void submit_empty(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore, Semaphore *semaphore_alt);
@@ -242,8 +243,8 @@ private:
 		std::condition_variable cond;
 		unsigned counter = 0;
 	} lock;
-	void lock_frame();
-	void unlock_frame();
+	void add_frame_counter();
+	void decrement_frame_counter();
 
 	struct PerFrame
 	{
@@ -392,5 +393,13 @@ private:
 	void request_index_block_nolock(BufferBlock &block, VkDeviceSize size);
 	void request_uniform_block_nolock(BufferBlock &block, VkDeviceSize size);
 	void request_staging_block_nolock(BufferBlock &block, VkDeviceSize size);
+
+	CommandBufferHandle request_secondary_command_buffer_for_thread(unsigned thread_index,
+	                                                                const Framebuffer *framebuffer,
+	                                                                unsigned subpass,
+	                                                                CommandBuffer::Type type = CommandBuffer::Type::Graphics);
+	void add_frame_counter_nolock();
+	void decrement_frame_counter_nolock();
+	void submit_secondary(CommandBuffer &primary, CommandBuffer &secondary);
 };
 }

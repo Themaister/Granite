@@ -352,17 +352,45 @@ void CommandBuffer::begin_graphics()
 	begin_context();
 }
 
-void CommandBuffer::next_subpass()
+CommandBufferHandle CommandBuffer::request_secondary_command_buffer(unsigned thread_index, unsigned subpass)
+{
+	VK_ASSERT(framebuffer);
+	VK_ASSERT(!is_secondary);
+
+	auto cmd = device->request_secondary_command_buffer_for_thread(thread_index, framebuffer, subpass);
+	cmd->begin_graphics();
+	cmd->framebuffer = framebuffer;
+	cmd->render_pass = render_pass;
+	cmd->current_subpass = subpass;
+	cmd->viewport = viewport;
+	cmd->scissor = scissor;
+	cmd->current_contents = VK_SUBPASS_CONTENTS_INLINE;
+
+	return cmd;
+}
+
+void CommandBuffer::submit_secondary(CommandBufferHandle secondary)
+{
+	VK_ASSERT(!is_secondary);
+	VK_ASSERT(secondary->is_secondary);
+	VK_ASSERT(current_subpass == secondary->current_subpass);
+	VK_ASSERT(current_contents == VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+
+	device->submit_secondary(*this, *secondary);
+}
+
+void CommandBuffer::next_subpass(VkSubpassContents contents)
 {
 	VK_ASSERT(framebuffer);
 	VK_ASSERT(render_pass);
 	current_subpass++;
 	VK_ASSERT(current_subpass < render_pass->get_num_subpasses());
-	vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_INLINE);
+	vkCmdNextSubpass(cmd, contents);
+	current_contents = contents;
 	begin_graphics();
 }
 
-void CommandBuffer::begin_render_pass(const RenderPassInfo &info)
+void CommandBuffer::begin_render_pass(const RenderPassInfo &info, VkSubpassContents contents)
 {
 	VK_ASSERT(!framebuffer);
 	VK_ASSERT(!render_pass);
@@ -405,10 +433,11 @@ void CommandBuffer::begin_render_pass(const RenderPassInfo &info)
 	begin_info.clearValueCount = num_clear_values;
 	begin_info.pClearValues = clear_values;
 
-	vkCmdBeginRenderPass(cmd, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
+	vkCmdBeginRenderPass(cmd, &begin_info, contents);
 
 	viewport = { 0.0f, 0.0f, float(framebuffer->get_width()), float(framebuffer->get_height()), 0.0f, 1.0f };
 	scissor = rect;
+	current_contents = contents;
 	begin_graphics();
 }
 

@@ -513,7 +513,7 @@ void Device::submit_nolock(CommandBufferHandle cmd, Fence *fence, Semaphore *sem
 	if (fence)
 		*fence = make_handle<FenceHolder>(this, cleared_fence);
 
-	unlock_frame();
+	decrement_frame_counter_nolock();
 }
 
 void Device::submit_empty(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore, Semaphore *semaphore_alt)
@@ -994,9 +994,52 @@ CommandBufferHandle Device::request_command_buffer_nolock(unsigned thread_index,
 	VkCommandBufferBeginInfo info = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
 	info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 	vkBeginCommandBuffer(cmd, &info);
-	lock_frame();
+	add_frame_counter_nolock();
 	auto handle = make_handle<CommandBuffer>(this, cmd, pipeline_cache, type);
 	handle->set_thread_index(thread_index);
+	return handle;
+}
+
+void Device::submit_secondary(CommandBuffer &primary, CommandBuffer &secondary)
+{
+	{
+		LOCK();
+		secondary.end();
+		decrement_frame_counter_nolock();
+
+#ifdef VULKAN_DEBUG
+		auto &pool = get_command_pool(secondary.get_command_buffer_type(),
+		                              secondary.get_thread_index());
+		pool.signal_submitted(secondary.get_command_buffer());
+#endif
+	}
+
+	VkCommandBuffer secondary_cmd = secondary.get_command_buffer();
+	vkCmdExecuteCommands(primary.get_command_buffer(), 1, &secondary_cmd);
+}
+
+CommandBufferHandle Device::request_secondary_command_buffer_for_thread(unsigned thread_index,
+                                                                        const Framebuffer *framebuffer,
+                                                                        unsigned subpass,
+                                                                        CommandBuffer::Type type)
+{
+	LOCK();
+
+	auto cmd = get_command_pool(type, thread_index).request_secondary_command_buffer();
+	VkCommandBufferBeginInfo info = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+	VkCommandBufferInheritanceInfo inherit = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO };
+
+	inherit.framebuffer = framebuffer->get_framebuffer();
+	inherit.renderPass = framebuffer->get_render_pass().get_render_pass();
+	inherit.subpass = subpass;
+	info.pInheritanceInfo = &inherit;
+	info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+	vkBeginCommandBuffer(cmd, &info);
+	add_frame_counter_nolock();
+	auto handle = make_handle<CommandBuffer>(this, cmd, pipeline_cache, type);
+	handle->set_thread_index(thread_index);
+	handle->set_is_secondary();
 	return handle;
 }
 
@@ -1364,12 +1407,24 @@ QueryPoolHandle Device::write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlag
 	return frame().query_pool.write_timestamp(cmd, stage);
 }
 
-void Device::lock_frame()
+void Device::add_frame_counter()
+{
+	LOCK();
+	add_frame_counter_nolock();
+}
+
+void Device::decrement_frame_counter()
+{
+	LOCK();
+	decrement_frame_counter_nolock();
+}
+
+void Device::add_frame_counter_nolock()
 {
 	lock.counter++;
 }
 
-void Device::unlock_frame()
+void Device::decrement_frame_counter_nolock()
 {
 	VK_ASSERT(lock.counter > 0);
 	lock.counter--;

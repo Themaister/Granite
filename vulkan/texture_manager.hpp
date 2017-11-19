@@ -45,7 +45,7 @@ public:
 	Texture(Device *device);
 	void set_path(const std::string &path);
 
-	ImageHandle get_image();
+	Image *get_image();
 
 	void replace_image(ImageHandle handle);
 

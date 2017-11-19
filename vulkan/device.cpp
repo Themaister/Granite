@@ -910,6 +910,14 @@ void Device::end_frame()
 
 void Device::end_frame_nolock()
 {
+	// Kept handles alive until end-of-frame, free now if appropriate.
+	for (auto &image : frame().keep_alive_images)
+	{
+		image->set_internal_sync_object();
+		image->get_view().set_internal_sync_object();
+	}
+	frame().keep_alive_images.clear();
+
 	// Make sure we have a fence which covers all submissions in the frame.
 	VkFence fence;
 
@@ -1183,6 +1191,12 @@ Device::PerFrame::PerFrame(Device *device, Managers &managers,
 		compute_cmd_pool.emplace_back(device->get_device(), compute_queue_family_index);
 		transfer_cmd_pool.emplace_back(device->get_device(), transfer_queue_family_index);
 	}
+}
+
+void Device::keep_handle_alive(ImageHandle handle)
+{
+	LOCK();
+	frame().keep_alive_images.push_back(move(handle));
 }
 
 void Device::free_memory_nolock(const DeviceAllocation &alloc)

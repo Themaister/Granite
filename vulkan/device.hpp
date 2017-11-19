@@ -145,6 +145,7 @@ public:
 	void destroy_event(VkEvent event);
 	void free_memory(const DeviceAllocation &alloc);
 	void reset_fence(VkFence fence);
+	void keep_handle_alive(ImageHandle handle);
 	////
 
 	PipelineEvent request_pipeline_event();
@@ -289,6 +290,7 @@ private:
 		std::vector<VkSemaphore> recycled_semaphores;
 		std::vector<VkEvent> recycled_events;
 		std::vector<VkSemaphore> destroyed_semaphores;
+		std::vector<ImageHandle> keep_alive_images;
 		bool swapchain_touched = false;
 		bool swapchain_consumed = false;
 	};

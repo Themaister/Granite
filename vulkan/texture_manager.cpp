@@ -65,7 +65,9 @@ void Texture::update(std::unique_ptr<Granite::File> file)
 		else
 		{
 			LOGE("Failed to map texture file ...\n");
-			handle.write_object({});
+			auto old = handle.write_object({});
+			if (old)
+				device->keep_handle_alive(move(old));
 		}
 	});
 	task->flush();
@@ -181,7 +183,7 @@ void Texture::update_gli(const void *data, size_t size)
 		info.misc |= IMAGE_MISC_GENERATE_MIPS_BIT;
 	}
 
-	handle.write_object(device->create_image(info, initial.data()));
+	replace_image(device->create_image(info, initial.data()));
 }
 
 void Texture::load()
@@ -198,11 +200,13 @@ void Texture::unload()
 
 void Texture::replace_image(ImageHandle handle)
 {
-	this->handle.write_object(move(handle));
+	auto old = this->handle.write_object(move(handle));
+	if (old)
+		device->keep_handle_alive(move(old));
 	device->get_texture_manager().notify_updated_texture(path, *this);
 }
 
-ImageHandle Texture::get_image()
+Image *Texture::get_image()
 {
 	auto ret = handle.get();
 	VK_ASSERT(ret);

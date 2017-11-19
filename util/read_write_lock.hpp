@@ -43,7 +43,12 @@ public:
 	{
 		unsigned v = counter.fetch_add(Reader, std::memory_order_relaxed);
 		while ((v & Writer) != 0)
+		{
+#ifdef __SSE2__
+			_mm_pause();
+#endif
 			v = counter.load(std::memory_order_relaxed);
+		}
 		std::atomic_thread_fence(std::memory_order_acquire);
 	}
 

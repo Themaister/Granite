@@ -38,15 +38,15 @@ public:
 		has_object.store(false);
 	}
 
-	T get_nowait()
+	auto get_nowait()
 	{
 		spin.lock_read();
-		auto ret = object;
+		auto ret = object.get();
 		spin.unlock_read();
 		return ret;
 	}
 
-	T get()
+	auto get()
 	{
 		if (has_object.load(std::memory_order_acquire))
 		{
@@ -65,10 +65,10 @@ public:
 		}
 	}
 
-	void write_object(T new_object)
+	T write_object(T new_object)
 	{
 		spin.lock_write();
-		object = std::move(new_object);
+		std::swap(object, new_object);
 		if (!has_object.exchange(true))
 		{
 			std::lock_guard<std::mutex> holder{lock};
@@ -76,6 +76,7 @@ public:
 			cond.notify_all();
 		}
 		spin.unlock_write();
+		return new_object;
 	}
 
 	void reset()

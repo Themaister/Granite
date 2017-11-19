@@ -129,7 +129,7 @@ private:
 
 	Util::Hash hash;
 };
-using ShaderHandle = Util::ThreadSafeIntrusivePtr<Shader>;
+using ShaderHandle = Util::IntrusivePtr<Shader>;
 
 class Program : public Util::ThreadSafeIntrusivePtrEnabled<Program>, public Cookie, public InternalSyncEnabled
 {
@@ -176,5 +176,5 @@ private:
 	Util::HashMap<VkPipeline> graphics_pipelines;
 	mutable Util::RWSpinLock lock;
 };
-using ProgramHandle = Util::ThreadSafeIntrusivePtr<Program>;
+using ProgramHandle = Util::IntrusivePtr<Program>;
 }

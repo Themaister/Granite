@@ -256,7 +256,7 @@ struct ComponentAllocator : public ComponentAllocatorBase
 	}
 };
 
-using EntityHandle = Util::IntrusivePtr<Entity, EntityDeleter>;
+using EntityHandle = Util::IntrusivePtr<Entity>;
 
 class EntityPool
 {

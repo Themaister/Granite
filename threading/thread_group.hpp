@@ -64,7 +64,7 @@ struct TaskDeps : Util::IntrusivePtrEnabled<TaskDeps, TaskDepsDeleter, Util::Mul
 	}
 
 	ThreadGroup *group;
-	std::vector<Util::IntrusivePtr<TaskDeps, TaskDepsDeleter, Util::MultiThreadCounter>> pending;
+	std::vector<Util::IntrusivePtr<TaskDeps>> pending;
 	std::atomic_uint count;
 
 	std::vector<Task *> pending_tasks;
@@ -78,7 +78,7 @@ struct TaskDeps : Util::IntrusivePtrEnabled<TaskDeps, TaskDepsDeleter, Util::Mul
 	std::mutex cond_lock;
 	bool done = false;
 };
-using TaskDepsHandle = Util::IntrusivePtr<TaskDeps, TaskDepsDeleter, Util::MultiThreadCounter>;
+using TaskDepsHandle = Util::IntrusivePtr<TaskDeps>;
 
 struct TaskGroup : Util::IntrusivePtrEnabled<TaskGroup, TaskGroupDeleter, Util::MultiThreadCounter>
 {
@@ -109,7 +109,7 @@ struct Task
 };
 }
 
-using TaskGroup = Util::IntrusivePtr<Internal::TaskGroup, Internal::TaskGroupDeleter, Util::MultiThreadCounter>;
+using TaskGroup = Util::IntrusivePtr<Internal::TaskGroup>;
 
 class ThreadGroup
 {

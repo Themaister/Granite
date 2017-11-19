@@ -70,32 +70,14 @@ private:
 	std::atomic_size_t count;
 };
 
-template <typename T, typename U>
-struct PointerCompare
-{
-	inline static bool notequal(const T *, const U *)
-	{
-		return true;
-	}
-};
-
 template <typename T>
-struct PointerCompare<T, T>
-{
-	inline static bool notequal(const T *a, const T *b)
-	{
-		return a != b;
-	}
-};
-
-template <typename T, typename Deleter, typename ReferenceOps>
 class IntrusivePtr;
 
 template <typename T, typename Deleter = std::default_delete<T>, typename ReferenceOps = SingleThreadCounter>
 class IntrusivePtrEnabled
 {
 public:
-	using IntrusivePtrType = IntrusivePtr<T, Deleter, ReferenceOps>;
+	using IntrusivePtrType = IntrusivePtr<T>;
 	using EnabledBase = T;
 	using EnabledDeleter = Deleter;
 	using EnabledReferenceOp = ReferenceOps;
@@ -118,17 +100,17 @@ public:
 	void operator=(const IntrusivePtrEnabled &) = delete;
 
 protected:
-	Util::IntrusivePtr<T, Deleter, ReferenceOps> reference_from_this();
+	Util::IntrusivePtr<T> reference_from_this();
 
 private:
 	ReferenceOps reference_count;
 };
 
-template <typename T, typename Deleter = std::default_delete<T>, typename ReferenceOps = SingleThreadCounter>
+template <typename T>
 class IntrusivePtr
 {
 public:
-	template <typename U, typename UDel, typename URef>
+	template <typename U>
 	friend class IntrusivePtr;
 
 	IntrusivePtr() = default;
@@ -173,20 +155,6 @@ public:
 		return data != other.data;
 	}
 
-#if 0
-	template <typename U>
-	bool operator==(const IntrusivePtr<U, Deleter, ReferenceOps> &other) const
-	{
-		return data == static_cast<const T *>(other.data);
-	}
-
-	template <typename U>
-	bool operator!=(const IntrusivePtr<U, Deleter, ReferenceOps> &other) const
-	{
-		return data != static_cast<const T *>(other.data);
-	}
-#endif
-
 	T *get()
 	{
 		return data;
@@ -212,7 +180,7 @@ public:
 	}
 
 	template <typename U>
-	IntrusivePtr &operator=(const IntrusivePtr<U, Deleter, ReferenceOps> &other)
+	IntrusivePtr &operator=(const IntrusivePtr<U> &other)
 	{
 		static_assert(std::is_base_of<T, U>::value,
 		              "Cannot safely assign downcasted intrusive pointers.");
@@ -250,7 +218,7 @@ public:
 	}
 
 	template <typename U>
-	IntrusivePtr(const IntrusivePtr<U, Deleter, ReferenceOps> &other)
+	IntrusivePtr(const IntrusivePtr<U> &other)
 	{
 		*this = other;
 	}
@@ -266,7 +234,7 @@ public:
 	}
 
 	template <typename U>
-	IntrusivePtr &operator=(IntrusivePtr<U, Deleter, ReferenceOps> &&other) noexcept
+	IntrusivePtr &operator=(IntrusivePtr<U> &&other) noexcept
 	{
 		reset();
 		data = other.data;
@@ -286,7 +254,7 @@ public:
 	}
 
 	template <typename U>
-	IntrusivePtr(IntrusivePtr<U, Deleter, ReferenceOps> &&other) noexcept
+	IntrusivePtr(IntrusivePtr<U> &&other) noexcept
 	{
 		*this = std::move(other);
 	}
@@ -302,17 +270,14 @@ private:
 };
 
 template <typename T, typename Deleter, typename ReferenceOps>
-IntrusivePtr<T, Deleter, ReferenceOps> IntrusivePtrEnabled<T, Deleter, ReferenceOps>::reference_from_this()
+IntrusivePtr<T> IntrusivePtrEnabled<T, Deleter, ReferenceOps>::reference_from_this()
 {
 	add_reference();
-	return IntrusivePtr<T, Deleter, ReferenceOps>(static_cast<T *>(this));
+	return IntrusivePtr<T>(static_cast<T *>(this));
 }
 
 template <typename Derived>
-using DerivedIntrusivePtrType = IntrusivePtr<
-		Derived,
-		typename Derived::EnabledDeleter,
-		typename Derived::EnabledReferenceOp>;
+using DerivedIntrusivePtrType = IntrusivePtr<Derived>;
 
 template <typename T, typename... P>
 DerivedIntrusivePtrType<T> make_handle(P &&... p)
@@ -325,9 +290,6 @@ typename Base::IntrusivePtrType make_derived_handle(P &&... p)
 {
 	return typename Base::IntrusivePtrType(new Derived(std::forward<P>(p)...));
 }
-
-template <typename T>
-using ThreadSafeIntrusivePtr = IntrusivePtr<T, std::default_delete<T>, MultiThreadCounter>;
 
 template <typename T>
 using ThreadSafeIntrusivePtrEnabled = IntrusivePtrEnabled<T, std::default_delete<T>, MultiThreadCounter>;

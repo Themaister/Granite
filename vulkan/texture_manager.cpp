@@ -189,29 +189,41 @@ TextureManager::TextureManager(Device *device)
 
 Texture *TextureManager::request_texture(const std::string &path, VkFormat format, const VkComponentMapping &mapping)
 {
-	auto itr = textures.find(path);
-	if (itr == end(textures))
+	Util::Hasher hasher;
+	hasher.string(path);
+	hasher.u32(format);
+	hasher.u32(mapping.r);
+	hasher.u32(mapping.g);
+	hasher.u32(mapping.b);
+	hasher.u32(mapping.a);
+	auto hash = hasher.get();
+
+	auto *ret = textures.find(hash);
+	if (!ret)
 	{
-		unique_ptr<Texture> texture(new Texture(device, path, format, mapping));
-		auto *ret = texture.get();
-		textures[path] = move(texture);
-		return ret;
+		auto texture = make_unique<Texture>(device, path, format, mapping);
+		ret = textures.insert(hash, move(texture));
 	}
-	else
-		return itr->second.get();
+	return ret;
 }
 
 void TextureManager::register_texture_update_notification(const std::string &modified_path,
                                                           std::function<void(Texture &)> func)
 {
-	auto itr = textures.find(modified_path);
-	if (itr != end(textures))
-		func(*itr->second);
+	Util::Hasher hasher;
+	hasher.string(modified_path);
+	auto hash = hasher.get();
+	auto *ret = textures.find(hash);
+	if (ret)
+		func(*ret);
+
+	lock_guard<mutex> holder{notification_lock};
 	notifications[modified_path].push_back(move(func));
 }
 
 void TextureManager::notify_updated_texture(const std::string &path, Vulkan::Texture &texture)
 {
+	lock_guard<mutex> holder{notification_lock};
 	for (auto &n : notifications[path])
 		if (n)
 			n(texture);
@@ -219,17 +231,18 @@ void TextureManager::notify_updated_texture(const std::string &path, Vulkan::Tex
 
 Texture *TextureManager::register_deferred_texture(const std::string &path)
 {
-	auto itr = textures.find(path);
-	if (itr == end(textures))
+	Util::Hasher hasher;
+	hasher.string(path);
+	auto hash = hasher.get();
+
+	auto *ret = textures.find(hash);
+	if (!ret)
 	{
-		unique_ptr<Texture> texture(new Texture(device));
-		auto *ret = texture.get();
+		auto texture = make_unique<Texture>(device);
 		texture->set_path(path);
-		textures[path] = move(texture);
-		return ret;
+		ret = textures.insert(hash, move(texture));
 	}
-	else
-		return itr->second.get();
+	return ret;
 }
 
 }

@@ -24,6 +24,8 @@
 
 #include "volatile_source.hpp"
 #include "image.hpp"
+#include "thread_safe_cache.hpp"
+#include <mutex>
 
 namespace Vulkan
 {
@@ -82,7 +84,9 @@ public:
 
 private:
 	Device *device;
-	std::unordered_map<std::string, std::unique_ptr<Texture>> textures;
+
+	Util::ThreadSafeCache<Texture> textures;
+	std::mutex notification_lock;
 	std::unordered_map<std::string, std::vector<std::function<void (Texture &)>>> notifications;
 };
 }

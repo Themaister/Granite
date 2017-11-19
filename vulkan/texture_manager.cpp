@@ -161,12 +161,12 @@ void Texture::update_gli(const void *data, size_t size)
 		info.misc |= IMAGE_MISC_GENERATE_MIPS_BIT;
 	}
 
-	handle = device->create_image(info, initial.data());
+	handle.write_object(device->create_image(info, initial.data()));
 }
 
 void Texture::load()
 {
-	if (!handle)
+	if (!handle.get_nowait())
 		init();
 }
 
@@ -178,8 +178,15 @@ void Texture::unload()
 
 void Texture::replace_image(ImageHandle handle)
 {
-	this->handle = handle;
+	this->handle.write_object(move(handle));
 	device->get_texture_manager().notify_updated_texture(path, *this);
+}
+
+ImageHandle Texture::get_image()
+{
+	auto ret = handle.get();
+	VK_ASSERT(ret);
+	return ret;
 }
 
 TextureManager::TextureManager(Device *device)

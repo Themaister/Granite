@@ -12,6 +12,7 @@ add_granite_library(util
         volatile_source.hpp
         read_write_lock.hpp
         thread_safe_cache.hpp
+        async_object_sink.hpp
         unstable_remove_if.hpp
         cli_parser.cpp cli_parser.hpp
         timer.hpp timer.cpp)

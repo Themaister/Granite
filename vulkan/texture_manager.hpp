@@ -25,6 +25,7 @@
 #include "volatile_source.hpp"
 #include "image.hpp"
 #include "thread_safe_cache.hpp"
+#include "async_object_sink.hpp"
 #include <mutex>
 
 namespace Vulkan
@@ -44,17 +45,13 @@ public:
 	Texture(Device *device);
 	void set_path(const std::string &path);
 
-	ImageHandle get_image()
-	{
-		VK_ASSERT(handle);
-		return handle;
-	}
+	ImageHandle get_image();
 
 	void replace_image(ImageHandle handle);
 
 private:
 	Device *device;
-	ImageHandle handle;
+	Util::AsyncObjectSink<ImageHandle> handle;
 	VkFormat format;
 	VkComponentMapping swizzle;
 	void update_gli(const void *data, size_t size);

@@ -25,6 +25,7 @@
 #include "format.hpp"
 #include "quirks.hpp"
 #include <algorithm>
+#include "thread_group.hpp"
 
 using namespace std;
 
@@ -1616,13 +1617,16 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 				timestamps.timestamps_fragment_begin[physical_pass_index] = cmd->write_timestamp(VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 			}
 
-			cmd->begin_render_pass(physical_pass.render_pass_info);
+			cmd->begin_render_pass(physical_pass.render_pass_info, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
 
 			for (auto &subpass : physical_pass.passes)
 			{
+				auto secondary = cmd->request_secondary_command_buffer(ThreadGroup::get_current_thread_index(),
+				                                                       cmd->get_current_subpass());
+
 				unsigned subpass_index = unsigned(&subpass - physical_pass.passes.data());
 				auto &scaled_requests = physical_pass.scaled_clear_requests[subpass_index];
-				enqueue_scaled_requests(*cmd, scaled_requests);
+				enqueue_scaled_requests(*secondary, scaled_requests);
 
 				auto &pass = *passes[subpass];
 
@@ -1630,10 +1634,11 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 				// due to clearing and so on.
 				// This should be an extremely unlikely scenario.
 				// Either you need all subpasses or none.
-				pass.build_render_pass(*cmd);
+				pass.build_render_pass(*secondary);
+				cmd->submit_secondary(move(secondary));
 
 				if (&subpass != &physical_pass.passes.back())
-					cmd->next_subpass();
+					cmd->next_subpass(VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
 			}
 
 			cmd->end_render_pass();

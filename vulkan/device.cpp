@@ -1033,7 +1033,7 @@ CommandBufferHandle Device::request_secondary_command_buffer_for_thread(unsigned
 	inherit.renderPass = framebuffer->get_render_pass().get_render_pass();
 	inherit.subpass = subpass;
 	info.pInheritanceInfo = &inherit;
-	info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
 
 	vkBeginCommandBuffer(cmd, &info);
 	add_frame_counter_nolock();

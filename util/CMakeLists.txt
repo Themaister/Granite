@@ -11,6 +11,7 @@ add_granite_library(util
         temporary_hashmap.hpp
         volatile_source.hpp
         read_write_lock.hpp
+        thread_safe_cache.hpp
         unstable_remove_if.hpp
         cli_parser.cpp cli_parser.hpp
         timer.hpp timer.cpp)

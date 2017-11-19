@@ -160,26 +160,9 @@ PipelineLayout *Device::request_pipeline_layout(const CombinedResourceLayout &la
 	h.u32(layout.render_target_mask);
 
 	auto hash = h.get();
-
-	pipeline_layout_lock.lock_read();
-	auto itr = pipeline_layouts.find(hash);
-	if (itr != end(pipeline_layouts))
-	{
-		auto ret = itr->second.get();
-		pipeline_layout_lock.unlock_read();
-		return ret;
-	}
-	else
-		pipeline_layout_lock.unlock_read();
-
-	auto pipe = make_unique<PipelineLayout>(this, layout);
-
-	pipeline_layout_lock.lock_write();
-	auto &cache = pipeline_layouts[hash];
-	if (!cache)
-		cache = move(pipe);
-	auto *ret = cache.get();
-	pipeline_layout_lock.unlock_write();
+	auto *ret = pipeline_layouts.find(hash);
+	if (!ret)
+		ret = pipeline_layouts.insert(hash, make_unique<PipelineLayout>(this, layout));
 	return ret;
 }
 
@@ -189,24 +172,9 @@ DescriptorSetAllocator *Device::request_descriptor_set_allocator(const Descripto
 	h.data(reinterpret_cast<const uint32_t *>(&layout), sizeof(layout));
 	auto hash = h.get();
 
-	descriptor_set_allocator_lock.lock_read();
-	auto itr = descriptor_set_allocators.find(hash);
-	if (itr != end(descriptor_set_allocators))
-	{
-		auto ret = itr->second.get();
-		descriptor_set_allocator_lock.unlock_read();
-		return ret;
-	}
-	else
-		descriptor_set_allocator_lock.unlock_read();
-
-	auto allocator = make_unique<DescriptorSetAllocator>(this, layout);
-	descriptor_set_allocator_lock.lock_write();
-	auto &cache = descriptor_set_allocators[hash];
-	if (!cache)
-		cache = move(allocator);
-	auto *ret = cache.get();
-	descriptor_set_allocator_lock.unlock_write();
+	auto *ret = descriptor_set_allocators.find(hash);
+	if (!ret)
+		ret = descriptor_set_allocators.insert(hash, make_unique<DescriptorSetAllocator>(this, layout));
 	return ret;
 }
 
@@ -1361,7 +1329,7 @@ void Device::wait_idle()
 
 	framebuffer_allocator.clear();
 	transient_allocator.clear();
-	for (auto &allocator : descriptor_set_allocators)
+	for (auto &allocator : descriptor_set_allocators.get_hashmap())
 		allocator.second->clear();
 
 	for (auto &frame : per_frame)
@@ -1383,7 +1351,7 @@ void Device::begin_frame(unsigned index)
 	framebuffer_allocator.begin_frame();
 	transient_allocator.begin_frame();
 	physical_allocator.begin_frame();
-	for (auto &allocator : descriptor_set_allocators)
+	for (auto &allocator : descriptor_set_allocators.get_hashmap())
 		allocator.second->begin_frame();
 
 	current_swapchain_index = index;
@@ -2480,26 +2448,10 @@ const RenderPass &Device::request_render_pass(const RenderPassInfo &info)
 
 	auto hash = h.get();
 
-	render_pass_lock.lock_read();
-	auto itr = render_passes.find(hash);
-	if (itr != end(render_passes))
-	{
-		auto ret = itr->second.get();
-		render_pass_lock.unlock_read();
-		return *ret;
-	}
-	else
-	{
-		render_pass_lock.unlock_read();
-		auto pass = make_unique<RenderPass>(this, info);
-		render_pass_lock.lock_write();
-		auto &cache = render_passes[hash];
-		if (!cache)
-			cache = move(pass);
-		auto *ret = cache.get();
-		render_pass_lock.unlock_write();
-		return *ret;
-	}
+	auto *ret = render_passes.find(hash);
+	if (!ret)
+		ret = render_passes.insert(hash, make_unique<RenderPass>(this, info));
+	return *ret;
 }
 
 const Framebuffer &Device::request_framebuffer(const RenderPassInfo &info)

@@ -27,7 +27,6 @@
 #include "command_pool.hpp"
 #include "fence.hpp"
 #include "fence_manager.hpp"
-#include "hashmap.hpp"
 #include "image.hpp"
 #include "memory_allocator.hpp"
 #include "render_pass.hpp"
@@ -41,7 +40,7 @@
 #include "texture_manager.hpp"
 #include "query_pool.hpp"
 #include "buffer_pool.hpp"
-#include "read_write_lock.hpp"
+#include "thread_safe_cache.hpp"
 #include <memory>
 #include <vector>
 #include <atomic>
@@ -342,16 +341,13 @@ private:
 
 	SamplerHandle samplers[static_cast<unsigned>(StockSampler::Count)];
 
-	Util::HashMap<std::unique_ptr<PipelineLayout>> pipeline_layouts;
-	Util::HashMap<std::unique_ptr<DescriptorSetAllocator>> descriptor_set_allocators;
-	Util::RWSpinLock pipeline_layout_lock;
-	Util::RWSpinLock descriptor_set_allocator_lock;
+	Util::ThreadSafeCache<PipelineLayout> pipeline_layouts;
+	Util::ThreadSafeCache<DescriptorSetAllocator> descriptor_set_allocators;
 
 	FramebufferAllocator framebuffer_allocator;
 	TransientAttachmentAllocator transient_allocator;
 	PhysicalAttachmentAllocator physical_allocator;
-	Util::HashMap<std::unique_ptr<RenderPass>> render_passes;
-	Util::RWSpinLock render_pass_lock;
+	Util::ThreadSafeCache<RenderPass> render_passes;
 	VkPipelineCache pipeline_cache = VK_NULL_HANDLE;
 
 	ShaderManager shader_manager;

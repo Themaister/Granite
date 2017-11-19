@@ -24,6 +24,7 @@
 #include "device.hpp"
 #include "stb_image.h"
 #include "texture_files.hpp"
+#include "thread_group.hpp"
 
 using namespace std;
 
@@ -45,10 +46,28 @@ void Texture::set_path(const std::string &path)
 	this->path = path;
 }
 
-void Texture::update(const void *data, size_t size)
+void Texture::update(std::unique_ptr<Granite::File> file)
 {
-	update_gli(data, size);
-	device->get_texture_manager().notify_updated_texture(path, *this);
+	auto &workers = Granite::ThreadGroup::get_global();
+
+	// Workaround, cannot copy the lambda because of owning a unique_ptr.
+	auto *f = file.release();
+	auto task = workers.create_task([f, this]() {
+		unique_ptr<Granite::File> file{f};
+		auto size = file->get_size();
+		void *mapped = file->map();
+		if (size && mapped)
+		{
+			update_gli(mapped, size);
+			device->get_texture_manager().notify_updated_texture(path, *this);
+		}
+		else
+		{
+			LOGE("Failed to map texture file ...\n");
+			handle.write_object({});
+		}
+	});
+	task->flush();
 }
 
 void Texture::update_gli(const void *data, size_t size)

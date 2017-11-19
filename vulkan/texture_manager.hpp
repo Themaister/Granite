@@ -58,7 +58,7 @@ private:
 
 	void load();
 	void unload();
-	void update(const void *data, size_t size);
+	void update(std::unique_ptr<Granite::File> file);
 };
 
 class TextureManager

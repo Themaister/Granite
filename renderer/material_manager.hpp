@@ -36,7 +36,7 @@ class MaterialFile : public Material, public Util::VolatileSource<MaterialFile>,
 public:
 	MaterialFile(const std::string &path);
 	MaterialFile(const SceneFormats::MaterialInfo &info);
-	void update(const void *data, size_t size);
+	void update(std::unique_ptr<File> file);
 
 private:
 	Vulkan::Device *device = nullptr;

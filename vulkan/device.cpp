@@ -1067,6 +1067,7 @@ bool Device::swapchain_touched() const
 
 Device::~Device()
 {
+	ThreadGroup::get_global().wait_idle();
 	wait_idle();
 
 	if (wsi_acquire != VK_NULL_HANDLE)

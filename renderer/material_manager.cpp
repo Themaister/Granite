@@ -72,8 +72,16 @@ MaterialFile::MaterialFile(const MaterialInfo &info)
 	EVENT_MANAGER_REGISTER_LATCH(MaterialFile, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
-void MaterialFile::update(const void *data, size_t size)
+void MaterialFile::update(std::unique_ptr<File> file)
 {
+	void *data = file->map();
+	size_t size = file->get_size();
+	if (!data || !size)
+	{
+		LOGE("Failed to map file ...\n");
+		return;
+	}
+
 	try
 	{
 		string json(static_cast<const char *>(data), static_cast<const char *>(data) + size);

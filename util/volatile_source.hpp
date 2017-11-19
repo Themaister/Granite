@@ -70,10 +70,7 @@ protected:
 		}
 
 		auto *self = static_cast<T *>(this);
-		void *data = file->map();
-		size_t size = file->get_size();
-		if (data && size)
-			self->update(data, size);
+		self->update(move(file));
 
 		auto paths = Path::protocol_split(path);
 		auto *proto = Filesystem::get().get_backend(paths.first);
@@ -92,13 +89,7 @@ protected:
 					auto file = Filesystem::get().open(info.path);
 					if (!file)
 						return;
-
-					void *data = file->map();
-					size_t size = file->get_size();
-					if (data && size)
-						self->update(data, size);
-					if (data)
-						file->unmap();
+					self->update(std::move(file));
 				}
 				catch (const std::exception &e)
 				{

@@ -125,7 +125,7 @@ struct BufferViewCreateInfo
 	VkDeviceSize range;
 };
 
-class BufferView : public Util::IntrusivePtrEnabled<BufferView>, public Cookie, public InternalSyncEnabled
+class BufferView : public Util::ThreadSafeIntrusivePtrEnabled<BufferView>, public Cookie, public InternalSyncEnabled
 {
 public:
 	BufferView(Device *device, VkBufferView view, const BufferViewCreateInfo &info);

@@ -193,7 +193,7 @@ struct CommandBufferSavedState
 };
 
 class Device;
-class CommandBuffer : public Util::IntrusivePtrEnabled<CommandBuffer>
+class CommandBuffer : public Util::ThreadSafeIntrusivePtrEnabled<CommandBuffer>
 {
 public:
 	enum class Type

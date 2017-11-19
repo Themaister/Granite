@@ -29,7 +29,7 @@ namespace Vulkan
 {
 class Device;
 
-class QueryPoolResult : public Util::IntrusivePtrEnabled<QueryPoolResult>
+class QueryPoolResult : public Util::ThreadSafeIntrusivePtrEnabled<QueryPoolResult>
 {
 public:
 	void signal_timestamp(double timestamp)

@@ -69,14 +69,13 @@ public:
 	{
 		spin.lock_write();
 		object = std::move(new_object);
-		spin.unlock_write();
-
 		if (!has_object.exchange(true))
 		{
 			std::lock_guard<std::mutex> holder{lock};
 			async_object_exists = true;
 			cond.notify_all();
 		}
+		spin.unlock_write();
 	}
 
 	void reset()

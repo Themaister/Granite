@@ -33,41 +33,38 @@ namespace Util
 class RWSpinLock
 {
 public:
-	enum { Reader = 4, WriteWait = 2, Writer = 1 };
+	enum { Reader = 2, Writer = 1 };
 	RWSpinLock()
 	{
-		counter.store(0);
+		counter.store(0, std::memory_order_relaxed);
 	}
 
 	inline void lock_read()
 	{
-		unsigned v = counter.fetch_add(Reader, std::memory_order_acquire);
-		while ((v & (WriteWait | Writer)) != 0)
-			v = counter.load(std::memory_order_acquire);
+		unsigned v = counter.fetch_add(Reader, std::memory_order_relaxed);
+		while ((v & Writer) != 0)
+			v = counter.load(std::memory_order_relaxed);
+		std::atomic_thread_fence(std::memory_order_acquire);
 	}
 
 	inline void unlock_read()
 	{
-		counter.fetch_sub(Reader, std::memory_order_relaxed);
+		counter.fetch_sub(Reader, std::memory_order_release);
 	}
 
 	inline void lock_write()
 	{
-		// Lock out potential readers.
-		counter.fetch_or(WriteWait, std::memory_order_relaxed);
-
-		uint32_t expected = WriteWait;
+		uint32_t expected = 0;
 		while (!counter.compare_exchange_weak(expected, Writer,
-		                                      std::memory_order_acquire,
+		                                      std::memory_order_relaxed,
 		                                      std::memory_order_relaxed))
 		{
 #ifdef __SSE2__
 			_mm_pause();
 #endif
-			// Lock out potential readers.
-			counter.fetch_or(WriteWait, std::memory_order_relaxed);
-			expected = WriteWait;
+			expected = 0;
 		}
+		std::atomic_thread_fence(std::memory_order_acquire);
 	}
 
 	inline void unlock_write()
@@ -77,21 +74,17 @@ public:
 
 	inline void promote_reader_to_writer()
 	{
-		// Lock out potential readers.
-		counter.fetch_or(WriteWait, std::memory_order_relaxed);
-		uint32_t expected = Reader | WriteWait;
-
+		uint32_t expected = Reader;
 		while (!counter.compare_exchange_weak(expected, Writer,
-		                                      std::memory_order_acquire,
+		                                      std::memory_order_relaxed,
 		                                      std::memory_order_relaxed))
 		{
 #ifdef __SSE2__
 			_mm_pause();
 #endif
-			// Lock out potential readers.
-			counter.fetch_or(WriteWait, std::memory_order_relaxed);
-			expected = Reader | WriteWait;
+			expected = Reader;
 		}
+		std::atomic_thread_fence(std::memory_order_acquire);
 	}
 
 private:

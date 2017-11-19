@@ -30,7 +30,7 @@ namespace Vulkan
 {
 class Device;
 
-class EventHolder : public Util::IntrusivePtrEnabled<EventHolder>, public InternalSyncEnabled
+class EventHolder : public Util::ThreadSafeIntrusivePtrEnabled<EventHolder>, public InternalSyncEnabled
 {
 public:
 	EventHolder(Device *device, VkEvent event)

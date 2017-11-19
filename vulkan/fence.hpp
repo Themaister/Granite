@@ -29,7 +29,7 @@ namespace Vulkan
 {
 class Device;
 
-class FenceHolder : public Util::IntrusivePtrEnabled<FenceHolder>
+class FenceHolder : public Util::ThreadSafeIntrusivePtrEnabled<FenceHolder>
 {
 public:
 	FenceHolder(Device *device, VkFence fence)

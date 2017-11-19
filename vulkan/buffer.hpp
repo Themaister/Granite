@@ -83,7 +83,7 @@ struct BufferCreateInfo
 	VkBufferUsageFlags usage;
 };
 
-class Buffer : public Util::IntrusivePtrEnabled<Buffer>, public Cookie, public InternalSyncEnabled
+class Buffer : public Util::ThreadSafeIntrusivePtrEnabled<Buffer>, public Cookie, public InternalSyncEnabled
 {
 public:
 	Buffer(Device *device, VkBuffer buffer, const DeviceAllocation &alloc, const BufferCreateInfo &info);

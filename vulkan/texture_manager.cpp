@@ -53,6 +53,7 @@ void Texture::update(std::unique_ptr<Granite::File> file)
 	// Workaround, cannot copy the lambda because of owning a unique_ptr.
 	auto *f = file.release();
 	auto task = workers.create_task([f, this]() {
+		LOGI("Loading texture in thread index: %u\n", Granite::ThreadGroup::get_current_thread_index());
 		unique_ptr<Granite::File> file{f};
 		auto size = file->get_size();
 		void *mapped = file->map();

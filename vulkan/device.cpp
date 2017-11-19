@@ -2248,11 +2248,11 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 			}
 
 			Semaphore sem;
-			submit_nolock(transfer_cmd, nullptr, &sem);
-			add_wait_semaphore_nolock(CommandBuffer::Type::Graphics, sem, dst_stages, true);
+			submit(transfer_cmd, nullptr, &sem);
+			add_wait_semaphore(CommandBuffer::Type::Graphics, sem, dst_stages, true);
 		}
 		else
-			submit_nolock(transfer_cmd);
+			submit(transfer_cmd);
 
 		if (generate_mips)
 		{
@@ -2276,12 +2276,12 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 		if (concurrent_queue && graphics_queue != compute_queue)
 		{
 			Semaphore sem;
-			submit_nolock(graphics_cmd, nullptr, &sem);
-			add_wait_semaphore_nolock(CommandBuffer::Type::Compute,
-			                          sem, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT, true);
+			submit(graphics_cmd, nullptr, &sem);
+			add_wait_semaphore(CommandBuffer::Type::Compute,
+			                   sem, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT, true);
 		}
 		else
-			submit_nolock(graphics_cmd);
+			submit(graphics_cmd);
 	}
 	else if (create_info.initial_layout != VK_IMAGE_LAYOUT_UNDEFINED)
 	{
@@ -2296,12 +2296,12 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 		if (concurrent_queue && graphics_queue != compute_queue)
 		{
 			Semaphore sem;
-			submit_nolock(cmd, nullptr, &sem);
-			add_wait_semaphore_nolock(CommandBuffer::Type::Compute,
-			                          sem, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT, true);
+			submit(cmd, nullptr, &sem);
+			add_wait_semaphore(CommandBuffer::Type::Compute,
+			                   sem, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT, true);
 		}
 		else
-			submit_nolock(cmd);
+			submit(cmd);
 	}
 
 	handle->set_layout(create_info.initial_layout);
@@ -2399,6 +2399,8 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 
 		auto cmd = request_command_buffer(CommandBuffer::Type::Transfer);
 		cmd->copy_buffer(*handle, *staging_buffer);
+
+		LOCK();
 		submit_staging(cmd, info.usage, true);
 	}
 	else if (initial)

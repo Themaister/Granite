@@ -36,7 +36,7 @@ class VolatileSource : public IntrusivePtrEnabled<VolatileSource<T>>
 {
 public:
 	VolatileSource(const std::string &path)
-		: path(path)
+		: path(Path::enforce_protocol(path))
 	{
 	}
 
@@ -83,12 +83,12 @@ protected:
 				if (info.path != path)
 					return;
 
-				auto *self = static_cast<T *>(this);
 				try
 				{
 					auto file = Filesystem::get().open(info.path);
 					if (!file)
 						return;
+					auto *self = static_cast<T *>(this);
 					self->update(std::move(file));
 				}
 				catch (const std::exception &e)

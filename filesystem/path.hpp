@@ -38,5 +38,6 @@ std::pair<std::string, std::string> protocol_split(const std::string &path);
 bool is_abspath(const std::string &path);
 bool is_root_path(const std::string &path);
 std::string canonicalize_path(const std::string &path);
+std::string enforce_protocol(const std::string &path);
 }
 }

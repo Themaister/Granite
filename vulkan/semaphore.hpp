@@ -30,7 +30,7 @@ namespace Vulkan
 {
 class Device;
 
-class SemaphoreHolder : public Util::IntrusivePtrEnabled<SemaphoreHolder>, public InternalSyncEnabled
+class SemaphoreHolder : public Util::ThreadSafeIntrusivePtrEnabled<SemaphoreHolder>, public InternalSyncEnabled
 {
 public:
 	SemaphoreHolder(Device *device, VkSemaphore semaphore, bool signalled)

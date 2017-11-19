@@ -30,6 +30,18 @@ namespace Granite
 {
 namespace Path
 {
+string enforce_protocol(const string &path)
+{
+	if (path.empty())
+		return "";
+
+	auto index = path.find("://");
+	if (index == string::npos)
+		return string("file://") + path;
+	else
+		return path;
+}
+
 string canonicalize_path(const string &path)
 {
 	string transformed;

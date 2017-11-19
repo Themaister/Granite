@@ -24,6 +24,7 @@
 
 #include "shader_manager.hpp"
 #include "mesh.hpp"
+#include "thread_safe_cache.hpp"
 
 namespace Granite
 {
@@ -45,7 +46,7 @@ private:
 	Util::Hash base_define_hash = 0;
 	Vulkan::ShaderManager *manager = nullptr;
 	Vulkan::ShaderProgram *program = nullptr;
-	Util::HashMap<unsigned> variants;
+	Util::ThreadSafeCache<unsigned> variants;
 	std::vector<std::pair<std::string, int>> base_defines;
 };
 }

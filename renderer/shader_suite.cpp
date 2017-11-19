@@ -33,7 +33,7 @@ void ShaderSuite::init_graphics(ShaderManager *manager, const std::string &verte
 {
 	this->manager = manager;
 	program = manager->register_graphics(vertex, fragment);
-	variants.clear();
+	variants.get_hashmap().clear();
 	base_defines.clear();
 }
 
@@ -41,7 +41,7 @@ void ShaderSuite::init_compute(Vulkan::ShaderManager *manager, const std::string
 {
 	this->manager = manager;
 	program = manager->register_compute(compute);
-	variants.clear();
+	variants.get_hashmap().clear();
 	base_defines.clear();
 }
 
@@ -68,10 +68,8 @@ Vulkan::ProgramHandle ShaderSuite::get_program(DrawPipeline pipeline, uint32_t a
 	h.u32(variant_id);
 
 	auto hash = h.get();
-	auto itr = variants.find(hash);
-
-	unsigned variant;
-	if (itr == end(variants))
+	auto *variant = variants.find(hash);
+	if (!variant)
 	{
 		vector<pair<string, int>> defines = base_defines;
 		switch (pipeline)
@@ -108,13 +106,12 @@ Vulkan::ProgramHandle ShaderSuite::get_program(DrawPipeline pipeline, uint32_t a
 			defines.emplace_back("HAVE_OCCLUSIONMAP", !!(texture_mask & MATERIAL_TEXTURE_OCCLUSION_BIT));
 			defines.emplace_back("HAVE_EMISSIVEMAP", !!(texture_mask & MATERIAL_TEXTURE_EMISSIVE_BIT));
 		}
-		variant = program->register_variant(defines);
-		variants[hash] = variant;
-	}
-	else
-		variant = itr->second;
 
-	return program->get_program(variant);
+		unsigned var_id = program->register_variant(defines);
+		variant = variants.insert(hash, make_unique<unsigned>(var_id));
+	}
+
+	return program->get_program(*variant);
 }
 
 }

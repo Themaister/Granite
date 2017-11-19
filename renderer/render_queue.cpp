@@ -114,7 +114,9 @@ void RenderQueue::reset()
 	if (current != end(blocks))
 		current->reset();
 
-	memset(queues, 0, sizeof(queues));
+	for (auto &queue : queues)
+		queue.clear();
+
 	large_blocks.clear();
 	render_infos.clear();
 }
@@ -126,7 +128,8 @@ void RenderQueue::reset_and_reclaim()
 	render_infos.clear();
 	current = end(blocks);
 
-	memset(queues, 0, sizeof(queues));
+	for (auto &queue : queues)
+		queue.clear();
 }
 
 void *RenderQueue::allocate(size_t size, size_t alignment)

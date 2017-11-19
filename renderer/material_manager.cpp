@@ -199,7 +199,7 @@ MaterialHandle MaterialManager::request_material(const std::string &path)
 	auto itr = materials.find(path);
 	if (itr == end(materials))
 	{
-		auto handle = Util::make_abstract_handle<Material, MaterialFile>(path);
+		auto handle = Util::make_derived_handle<Material, MaterialFile>(path);
 		materials[path] = handle;
 		return handle;
 	}

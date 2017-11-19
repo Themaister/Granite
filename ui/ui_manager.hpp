@@ -59,7 +59,7 @@ public:
 	template <typename T, typename... P>
 	inline T *add_child(P&&... p)
 	{
-		auto handle = Util::make_abstract_handle<Widget, T>(std::forward<P>(p)...);
+		auto handle = Util::make_handle<T>(std::forward<P>(p)...);
 		add_child(handle);
 		return static_cast<T *>(handle.get());
 	}

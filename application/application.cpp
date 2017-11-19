@@ -181,7 +181,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 	// Create a dummy background if there isn't any background.
 	if (scene_loader.get_scene().get_entity_pool().get_component_group<UnboundedComponent>().empty())
 	{
-		auto cylinder = Util::make_abstract_handle<AbstractRenderable, SkyCylinder>("builtin://textures/background.png");
+		auto cylinder = Util::make_handle<SkyCylinder>("builtin://textures/background.png");
 		static_cast<SkyCylinder *>(cylinder.get())->set_xz_scale(8.0f / pi<float>());
 		scene_loader.get_scene().create_renderable(cylinder, nullptr);
 	}

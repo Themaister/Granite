@@ -220,15 +220,15 @@ IntrusivePtr<T, Deleter, ReferenceOps> IntrusivePtrEnabled<T, Deleter, Reference
 }
 
 template <typename T, typename... P>
-IntrusivePtr<T> make_handle(P &&... p)
+typename T::IntrusivePtrType make_handle(P &&... p)
 {
-	return IntrusivePtr<T>(new T(std::forward<P>(p)...));
+	return typename T::IntrusivePtrType(new T(std::forward<P>(p)...));
 }
 
-template <typename Derived, typename... P>
-typename Derived::IntrusivePtrType make_abstract_handle(P &&... p)
+template <typename Base, typename Derived, typename... P>
+typename Base::IntrusivePtrType make_derived_handle(P &&... p)
 {
-	return typename Derived::IntrusivePtrType(new Derived(std::forward<P>(p)...));
+	return typename Base::IntrusivePtrType(new Derived(std::forward<P>(p)...));
 }
 
 template <typename T>

@@ -258,18 +258,18 @@ void SceneLoader::parse_gltf(const std::string &path)
 		if (skinned)
 		{
 			if (mesh.has_material)
-				renderable = Util::make_abstract_handle<AbstractRenderable, ImportedSkinnedMesh>(mesh,
-				                                                                                 scene.parser->get_materials()[mesh.material_index]);
+				renderable = Util::make_handle<ImportedSkinnedMesh>(mesh,
+				                                                    scene.parser->get_materials()[mesh.material_index]);
 			else
-				renderable = Util::make_abstract_handle<AbstractRenderable, ImportedSkinnedMesh>(mesh, default_material);
+				renderable = Util::make_handle<ImportedSkinnedMesh>(mesh, default_material);
 		}
 		else
 		{
 			if (mesh.has_material)
-				renderable = Util::make_abstract_handle<AbstractRenderable, ImportedMesh>(mesh,
-				                                                                          scene.parser->get_materials()[mesh.material_index]);
+				renderable = Util::make_handle<ImportedMesh>(mesh,
+				                                             scene.parser->get_materials()[mesh.material_index]);
 			else
-				renderable = Util::make_abstract_handle<AbstractRenderable, ImportedMesh>(mesh, default_material);
+				renderable = Util::make_handle<ImportedMesh>(mesh, default_material);
 		}
 		scene.meshes.push_back(renderable);
 	}
@@ -282,7 +282,7 @@ void SceneLoader::parse_gltf(const std::string &path)
 		AbstractRenderableHandle skybox;
 		if (!env.cube.path.empty() && !env.reflection.path.empty() && !env.irradiance.path.empty())
 		{
-			skybox = Util::make_abstract_handle<AbstractRenderable, Skybox>(env.cube.path, false);
+			skybox = Util::make_handle<Skybox>(env.cube.path, false);
 			entity = this->scene->create_renderable(skybox, nullptr);
 			static_cast<Skybox *>(skybox.get())->enable_irradiance(env.irradiance.path, false);
 			static_cast<Skybox *>(skybox.get())->enable_reflection(env.reflection.path, false);
@@ -339,18 +339,18 @@ void SceneLoader::parse_scene_format(const std::string &path, const std::string 
 			if (skinned)
 			{
 				if (mesh.has_material)
-					renderable = Util::make_abstract_handle<AbstractRenderable, ImportedSkinnedMesh>(mesh,
-					                                                                                 parser.get_materials()[mesh.material_index]);
+					renderable = Util::make_handle<ImportedSkinnedMesh>(mesh,
+					                                                    parser.get_materials()[mesh.material_index]);
 				else
-					renderable = Util::make_abstract_handle<AbstractRenderable, ImportedSkinnedMesh>(mesh, default_material);
+					renderable = Util::make_handle<ImportedSkinnedMesh>(mesh, default_material);
 			}
 			else
 			{
 				if (mesh.has_material)
-					renderable = Util::make_abstract_handle<AbstractRenderable, ImportedMesh>(mesh,
-					                                                                          parser.get_materials()[mesh.material_index]);
+					renderable = Util::make_handle<ImportedMesh>(mesh,
+					                                             parser.get_materials()[mesh.material_index]);
 				else
-					renderable = Util::make_abstract_handle<AbstractRenderable, ImportedMesh>(mesh, default_material);
+					renderable = Util::make_handle<ImportedMesh>(mesh, default_material);
 			}
 			subscene.meshes.push_back(renderable);
 		}
@@ -544,17 +544,17 @@ void SceneLoader::parse_scene_format(const std::string &path, const std::string 
 				auto &proj = box["projection"];
 				if (strcmp(proj.GetString(), "latlon") == 0)
 				{
-					skybox = Util::make_abstract_handle<AbstractRenderable, Skybox>(texture_path, true);
+					skybox = Util::make_handle<Skybox>(texture_path, true);
 					use_ibl = true;
 				}
 				else if (strcmp(proj.GetString(), "cube") == 0)
 				{
-					skybox = Util::make_abstract_handle<AbstractRenderable, Skybox>(texture_path, false);
+					skybox = Util::make_handle<Skybox>(texture_path, false);
 					use_ibl = true;
 				}
 				else if (strcmp(proj.GetString(), "cylinder") == 0)
 				{
-					skybox = Util::make_abstract_handle<AbstractRenderable, SkyCylinder>(texture_path);
+					skybox = Util::make_handle<SkyCylinder>(texture_path);
 					static_cast<SkyCylinder *>(skybox.get())->set_xz_scale(box["cylinderScale"].GetFloat());
 				}
 				else
@@ -680,7 +680,7 @@ void SceneLoader::parse_scene_format(const std::string &path, const std::string 
 		{
 			auto &info = *itr;
 
-			auto plane = Util::make_abstract_handle<AbstractRenderable, TexturePlane>(
+			auto plane = Util::make_handle<TexturePlane>(
 					Path::relpath(path, info["normalMap"].GetString()));
 
 			auto entity = scene->create_renderable(plane, nullptr);

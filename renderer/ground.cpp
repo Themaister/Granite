@@ -426,7 +426,7 @@ Ground::Handles Ground::add_to_scene(Scene &scene, unsigned size, float tiling_f
 	{
 		for (unsigned x = 0; x < ground->get_num_patches_x(); x++)
 		{
-			auto patch = make_abstract_handle<AbstractRenderable, GroundPatch>(ground);
+			auto patch = make_handle<GroundPatch>(ground);
 			auto *p = static_cast<GroundPatch *>(patch.get());
 
 			float min_y = -1.0f;

@@ -432,10 +432,10 @@ EntityHandle Scene::create_light(const SceneFormats::LightInfo &light, Node *nod
 	{
 		AbstractRenderableHandle renderable;
 		if (light.type == SceneFormats::LightInfo::Type::Point)
-			renderable = Util::make_abstract_handle<AbstractRenderable, PointLight>();
+			renderable = Util::make_handle<PointLight>();
 		else
 		{
-			renderable = Util::make_abstract_handle<AbstractRenderable, SpotLight>();
+			renderable = Util::make_handle<SpotLight>();
 			auto &spot = static_cast<SpotLight &>(*renderable);
 			spot.set_spot_parameters(light.inner_cone, light.outer_cone);
 		}

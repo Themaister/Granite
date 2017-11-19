@@ -52,7 +52,7 @@ ImportedSkinnedMesh::ImportedSkinnedMesh(const Mesh &mesh, const MaterialInfo &i
 	vertex_offset = 0;
 	ibo_offset = 0;
 
-	material = Util::make_abstract_handle<Material, MaterialFile>(info);
+	material = Util::make_derived_handle<Material, MaterialFile>(info);
 	static_aabb = mesh.static_aabb;
 
 	EVENT_MANAGER_REGISTER_LATCH(ImportedSkinnedMesh, on_device_created, on_device_destroyed, DeviceCreatedEvent);
@@ -106,7 +106,7 @@ ImportedMesh::ImportedMesh(const Mesh &mesh, const MaterialInfo &info)
 	vertex_offset = 0;
 	ibo_offset = 0;
 
-	material = Util::make_abstract_handle<Material, MaterialFile>(info);
+	material = Util::make_derived_handle<Material, MaterialFile>(info);
 	static_aabb = mesh.static_aabb;
 
 	EVENT_MANAGER_REGISTER_LATCH(ImportedMesh, on_device_created, on_device_destroyed, DeviceCreatedEvent);

@@ -234,6 +234,7 @@ private:
 
 	Device *device;
 	Util::TemporaryHashmap<FramebufferNode, VULKAN_FRAMEBUFFER_RING_SIZE, false> framebuffers;
+	std::mutex lock;
 };
 
 class AttachmentAllocator
@@ -263,6 +264,7 @@ private:
 
 	Device *device;
 	Util::TemporaryHashmap<TransientNode, VULKAN_FRAMEBUFFER_RING_SIZE, false> attachments;
+	std::mutex lock;
 	bool transient;
 };
 

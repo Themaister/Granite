@@ -29,6 +29,12 @@
 using namespace std;
 using namespace Util;
 
+#ifdef VULKAN_MT
+#define LOCK() std::lock_guard<std::mutex> holder__{lock}
+#else
+#define LOCK() ((void)0)
+#endif
+
 namespace Vulkan
 {
 RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
@@ -746,6 +752,8 @@ Framebuffer &FramebufferAllocator::request_framebuffer(const RenderPassInfo &inf
 		h.u64(info.depth_stencil->get_cookie());
 
 	auto hash = h.get();
+
+	LOCK();
 	auto *node = framebuffers.request(hash);
 	if (node)
 		return *node;
@@ -773,6 +781,8 @@ ImageView &AttachmentAllocator::request_attachment(unsigned width, unsigned heig
 	h.u32(samples);
 
 	auto hash = h.get();
+
+	LOCK();
 	auto *node = attachments.request(hash);
 	if (node)
 		return node->handle->get_view();

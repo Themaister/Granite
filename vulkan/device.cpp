@@ -2479,14 +2479,26 @@ const RenderPass &Device::request_render_pass(const RenderPassInfo &info)
 	h.u32(lazy);
 
 	auto hash = h.get();
+
+	render_pass_lock.lock_read();
 	auto itr = render_passes.find(hash);
 	if (itr != end(render_passes))
-		return *itr->second.get();
+	{
+		auto ret = itr->second.get();
+		render_pass_lock.unlock_read();
+		return *ret;
+	}
 	else
 	{
-		RenderPass *pass = new RenderPass(this, info);
-		render_passes.insert(make_pair(hash, unique_ptr<RenderPass>(pass)));
-		return *pass;
+		render_pass_lock.unlock_read();
+		auto pass = make_unique<RenderPass>(this, info);
+		render_pass_lock.lock_write();
+		auto &cache = render_passes[hash];
+		if (!cache)
+			cache = move(pass);
+		auto *ret = cache.get();
+		render_pass_lock.unlock_write();
+		return *ret;
 	}
 }
 

@@ -351,6 +351,7 @@ private:
 	TransientAttachmentAllocator transient_allocator;
 	PhysicalAttachmentAllocator physical_allocator;
 	Util::HashMap<std::unique_ptr<RenderPass>> render_passes;
+	Util::RWSpinLock render_pass_lock;
 	VkPipelineCache pipeline_cache = VK_NULL_HANDLE;
 
 	ShaderManager shader_manager;

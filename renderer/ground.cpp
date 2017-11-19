@@ -147,6 +147,10 @@ GroundPatch::GroundPatch(Util::IntrusivePtr<Ground> ground)
 {
 }
 
+GroundPatch::~GroundPatch()
+{
+}
+
 void GroundPatch::refresh(RenderContext &context, const CachedSpatialTransformComponent *transform)
 {
 	vec3 center = transform->world_aabb.get_center();

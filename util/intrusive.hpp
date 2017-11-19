@@ -26,6 +26,7 @@
 #include <utility>
 #include <memory>
 #include <atomic>
+#include <type_traits>
 
 namespace Util
 {
@@ -69,6 +70,24 @@ private:
 	std::atomic_size_t count;
 };
 
+template <typename T, typename U>
+struct PointerCompare
+{
+	inline static bool notequal(const T *, const U *)
+	{
+		return true;
+	}
+};
+
+template <typename T>
+struct PointerCompare<T, T>
+{
+	inline static bool notequal(const T *a, const T *b)
+	{
+		return a != b;
+	}
+};
+
 template <typename T, typename Deleter, typename ReferenceOps>
 class IntrusivePtr;
 
@@ -77,6 +96,9 @@ class IntrusivePtrEnabled
 {
 public:
 	using IntrusivePtrType = IntrusivePtr<T, Deleter, ReferenceOps>;
+	using EnabledBase = T;
+	using EnabledDeleter = Deleter;
+	using EnabledReferenceOp = ReferenceOps;
 
 	void release_reference()
 	{
@@ -106,6 +128,9 @@ template <typename T, typename Deleter = std::default_delete<T>, typename Refere
 class IntrusivePtr
 {
 public:
+	template <typename U, typename UDel, typename URef>
+	friend class IntrusivePtr;
+
 	IntrusivePtr() = default;
 
 	explicit IntrusivePtr(T *handle)
@@ -148,6 +173,20 @@ public:
 		return data != other.data;
 	}
 
+#if 0
+	template <typename U>
+	bool operator==(const IntrusivePtr<U, Deleter, ReferenceOps> &other) const
+	{
+		return data == static_cast<const T *>(other.data);
+	}
+
+	template <typename U>
+	bool operator!=(const IntrusivePtr<U, Deleter, ReferenceOps> &other) const
+	{
+		return data != static_cast<const T *>(other.data);
+	}
+#endif
+
 	T *get()
 	{
 		return data;
@@ -160,26 +199,60 @@ public:
 
 	void reset()
 	{
+		using ReferenceBase = IntrusivePtrEnabled<
+				typename T::EnabledBase,
+				typename T::EnabledDeleter,
+				typename T::EnabledReferenceOp>;
+
 		// Static up-cast here to avoid potential issues with multiple intrusive inheritance.
 		// Also makes sure that the pointer type actually inherits from this type.
 		if (data)
-			static_cast<IntrusivePtrEnabled<T, Deleter, ReferenceOps> *>(data)->release_reference();
+			static_cast<ReferenceBase *>(data)->release_reference();
 		data = nullptr;
+	}
+
+	template <typename U>
+	IntrusivePtr &operator=(const IntrusivePtr<U, Deleter, ReferenceOps> &other)
+	{
+		static_assert(std::is_base_of<T, U>::value,
+		              "Cannot safely assign downcasted intrusive pointers.");
+
+		using ReferenceBase = IntrusivePtrEnabled<
+				typename T::EnabledBase,
+				typename T::EnabledDeleter,
+				typename T::EnabledReferenceOp>;
+
+		reset();
+		data = static_cast<T *>(other.data);
+
+		// Static up-cast here to avoid potential issues with multiple intrusive inheritance.
+		// Also makes sure that the pointer type actually inherits from this type.
+		if (data)
+			static_cast<ReferenceBase *>(data)->add_reference();
+		return *this;
 	}
 
 	IntrusivePtr &operator=(const IntrusivePtr &other)
 	{
+		using ReferenceBase = IntrusivePtrEnabled<
+				typename T::EnabledBase,
+				typename T::EnabledDeleter,
+				typename T::EnabledReferenceOp>;
+
 		if (this != &other)
 		{
 			reset();
 			data = other.data;
-
-			// Static up-cast here to avoid potential issues with multiple intrusive inheritance.
-			// Also makes sure that the pointer type actually inherits from this type.
 			if (data)
-				static_cast<IntrusivePtrEnabled<T, Deleter, ReferenceOps> *>(data)->add_reference();
+				static_cast<ReferenceBase *>(data)->add_reference();
 		}
 		return *this;
+	}
+
+	template <typename U>
+	IntrusivePtr(const IntrusivePtr<U, Deleter, ReferenceOps> &other)
+	{
+		*this = other;
 	}
 
 	IntrusivePtr(const IntrusivePtr &other)
@@ -190,6 +263,15 @@ public:
 	~IntrusivePtr()
 	{
 		reset();
+	}
+
+	template <typename U>
+	IntrusivePtr &operator=(IntrusivePtr<U, Deleter, ReferenceOps> &&other) noexcept
+	{
+		reset();
+		data = other.data;
+		other.data = nullptr;
+		return *this;
 	}
 
 	IntrusivePtr &operator=(IntrusivePtr &&other) noexcept
@@ -203,6 +285,13 @@ public:
 		return *this;
 	}
 
+	template <typename U>
+	IntrusivePtr(IntrusivePtr<U, Deleter, ReferenceOps> &&other) noexcept
+	{
+		*this = std::move(other);
+	}
+
+	template <typename U>
 	IntrusivePtr(IntrusivePtr &&other) noexcept
 	{
 		*this = std::move(other);
@@ -219,10 +308,16 @@ IntrusivePtr<T, Deleter, ReferenceOps> IntrusivePtrEnabled<T, Deleter, Reference
 	return IntrusivePtr<T, Deleter, ReferenceOps>(static_cast<T *>(this));
 }
 
+template <typename Derived>
+using DerivedIntrusivePtrType = IntrusivePtr<
+		Derived,
+		typename Derived::EnabledDeleter,
+		typename Derived::EnabledReferenceOp>;
+
 template <typename T, typename... P>
-typename T::IntrusivePtrType make_handle(P &&... p)
+DerivedIntrusivePtrType<T> make_handle(P &&... p)
 {
-	return typename T::IntrusivePtrType(new T(std::forward<P>(p)...));
+	return DerivedIntrusivePtrType<T>(new T(std::forward<P>(p)...));
 }
 
 template <typename Base, typename Derived, typename... P>

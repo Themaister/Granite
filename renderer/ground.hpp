@@ -34,6 +34,7 @@ class GroundPatch : public AbstractRenderable, public PerFrameRefreshableTransfo
 public:
 	friend class Ground;
 	GroundPatch(Util::IntrusivePtr<Ground> ground);
+	~GroundPatch();
 	void set_bounds(vec3 offset, vec3 size);
 
 	void set_lod_pointer(float *ptr)

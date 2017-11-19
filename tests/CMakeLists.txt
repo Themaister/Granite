@@ -6,3 +6,6 @@ target_compile_definitions(triangle-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRE
 
 add_granite_offline_tool(thread-group-test thread_group_test.cpp)
 target_link_libraries(thread-group-test threading)
+
+add_granite_offline_tool(intrusive-test intrusive_ptr_test.cpp)
+target_link_libraries(intrusive-test util)

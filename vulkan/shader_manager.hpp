@@ -32,6 +32,7 @@
 #include "filesystem.hpp"
 #include "hashmap.hpp"
 #include "read_write_lock.hpp"
+#include "thread_safe_cache.hpp"
 
 namespace Vulkan
 {
@@ -56,7 +57,7 @@ public:
 private:
 	std::string path;
 	std::unique_ptr<Granite::GLSLCompiler> compiler;
-	Util::HashMap<std::unique_ptr<Variant>> variants;
+	Util::ThreadSafeCache<Variant> variants;
 };
 
 class ShaderProgram
@@ -105,10 +106,9 @@ public:
 
 private:
 	Device *device;
-	std::unordered_map<std::string, std::unique_ptr<ShaderTemplate>> shaders;
-	Util::RWSpinLock template_lock;
-	Util::HashMap<std::unique_ptr<ShaderProgram>> programs;
-	Util::RWSpinLock programs_lock;
+
+	Util::ThreadSafeCache<ShaderTemplate> shaders;
+	Util::ThreadSafeCache<ShaderProgram> programs;
 
 	ShaderTemplate *get_template(const std::string &source);
 	std::unordered_map<std::string, std::unordered_set<ShaderTemplate *>> dependees;

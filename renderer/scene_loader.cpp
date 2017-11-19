@@ -279,13 +279,13 @@ void SceneLoader::parse_gltf(const std::string &path)
 		auto &env = scene.parser->get_environments().front();
 
 		EntityHandle entity;
-		AbstractRenderableHandle skybox;
+		Util::IntrusivePtr<Skybox> skybox;
 		if (!env.cube.path.empty() && !env.reflection.path.empty() && !env.irradiance.path.empty())
 		{
 			skybox = Util::make_handle<Skybox>(env.cube.path, false);
 			entity = this->scene->create_renderable(skybox, nullptr);
-			static_cast<Skybox *>(skybox.get())->enable_irradiance(env.irradiance.path, false);
-			static_cast<Skybox *>(skybox.get())->enable_reflection(env.reflection.path, false);
+			skybox->enable_irradiance(env.irradiance.path, false);
+			skybox->enable_reflection(env.reflection.path, false);
 			auto *ibl = entity->allocate_component<IBLComponent>();
 			ibl->irradiance_path = env.irradiance.path;
 			ibl->reflection_path = env.reflection.path;
@@ -293,7 +293,7 @@ void SceneLoader::parse_gltf(const std::string &path)
 		}
 
 		if (skybox)
-			entity->allocate_component<SkyboxComponent>()->skybox = static_cast<Skybox *>(skybox.get());
+			entity->allocate_component<SkyboxComponent>()->skybox = skybox.get();
 
 		if (env.fog.falloff != 0.0f)
 		{
@@ -536,7 +536,8 @@ void SceneLoader::parse_scene_format(const std::string &path, const std::string 
 			auto &box = bg["skybox"];
 			auto texture_path = Path::relpath(path, box["path"].GetString());
 
-			AbstractRenderableHandle skybox;
+			Util::IntrusivePtr<Skybox> skybox;
+			AbstractRenderableHandle renderable;
 			bool use_ibl = false;
 
 			if (box.HasMember("projection"))
@@ -545,17 +546,20 @@ void SceneLoader::parse_scene_format(const std::string &path, const std::string 
 				if (strcmp(proj.GetString(), "latlon") == 0)
 				{
 					skybox = Util::make_handle<Skybox>(texture_path, true);
+					renderable = skybox;
 					use_ibl = true;
 				}
 				else if (strcmp(proj.GetString(), "cube") == 0)
 				{
 					skybox = Util::make_handle<Skybox>(texture_path, false);
+					renderable = skybox;
 					use_ibl = true;
 				}
 				else if (strcmp(proj.GetString(), "cylinder") == 0)
 				{
-					skybox = Util::make_handle<SkyCylinder>(texture_path);
-					static_cast<SkyCylinder *>(skybox.get())->set_xz_scale(box["cylinderScale"].GetFloat());
+					auto cylinder = Util::make_handle<SkyCylinder>(texture_path);
+					renderable = cylinder;
+					cylinder->set_xz_scale(box["cylinderScale"].GetFloat());
 				}
 				else
 					throw logic_error("Unsupported skybox projection.");
@@ -571,15 +575,18 @@ void SceneLoader::parse_scene_format(const std::string &path, const std::string 
 			if (box.HasMember("irradiance"))
 				irradiance = Path::relpath(path, box["irradiance"].GetString());
 
-			entity = scene->create_renderable(skybox, nullptr);
+			entity = scene->create_renderable(renderable, nullptr);
 
 			if (use_ibl || (!reflection.empty() && !irradiance.empty()))
 			{
 				auto irradiance_path = irradiance.empty() ? (texture_path + ".irradiance") : irradiance;
 				auto reflection_path = reflection.empty() ? (texture_path + ".reflection") : reflection;
-				static_cast<Skybox *>(skybox.get())->enable_irradiance(irradiance_path, irradiance.empty());
-				static_cast<Skybox *>(skybox.get())->enable_reflection(reflection_path, reflection.empty());
-				entity->allocate_component<SkyboxComponent>()->skybox = static_cast<Skybox *>(skybox.get());
+				if (skybox)
+				{
+					skybox->enable_irradiance(irradiance_path, irradiance.empty());
+					skybox->enable_reflection(reflection_path, reflection.empty());
+					entity->allocate_component<SkyboxComponent>()->skybox = skybox.get();
+				}
 				auto *ibl = entity->allocate_component<IBLComponent>();
 				ibl->irradiance_path = irradiance_path;
 				ibl->reflection_path = reflection_path;
@@ -685,8 +692,6 @@ void SceneLoader::parse_scene_format(const std::string &path, const std::string 
 
 			auto entity = scene->create_renderable(plane, nullptr);
 
-			auto *texture_plane = static_cast<TexturePlane *>(plane.get());
-
 			vec3 center = vec3(info["center"][0].GetFloat(), info["center"][1].GetFloat(), info["center"][2].GetFloat());
 			vec3 normal = vec3(info["normal"][0].GetFloat(), info["normal"][1].GetFloat(), info["normal"][2].GetFloat());
 			vec3 up = vec3(info["up"][0].GetFloat(), info["up"][1].GetFloat(), info["up"][2].GetFloat());
@@ -695,24 +700,24 @@ void SceneLoader::parse_scene_format(const std::string &path, const std::string 
 			float rad_x = info["radiusAcross"].GetFloat();
 			float zfar = info["zFar"].GetFloat();
 
-			texture_plane->set_plane(center, normal, up, rad_up, rad_x);
-			texture_plane->set_zfar(zfar);
+			plane->set_plane(center, normal, up, rad_up, rad_x);
+			plane->set_zfar(zfar);
 
 			if (info.HasMember("reflectionName"))
-				texture_plane->set_reflection_name(info["reflectionName"].GetString());
+				plane->set_reflection_name(info["reflectionName"].GetString());
 			if (info.HasMember("refractionName"))
-				texture_plane->set_refraction_name(info["refractionName"].GetString());
+				plane->set_refraction_name(info["refractionName"].GetString());
 
-			texture_plane->set_resolution_scale(info["resolutionScale"][0].GetFloat(), info["resolutionScale"][1].GetFloat());
+			plane->set_resolution_scale(info["resolutionScale"][0].GetFloat(), info["resolutionScale"][1].GetFloat());
 
-			texture_plane->set_base_emissive(emissive);
+			plane->set_base_emissive(emissive);
 			entity->free_component<UnboundedComponent>();
 			entity->allocate_component<RenderPassSinkComponent>();
 			auto *cull_plane = entity->allocate_component<CullPlaneComponent>();
-			cull_plane->plane = texture_plane->get_plane();
+			cull_plane->plane = plane->get_plane();
 
 			auto *rpass = entity->allocate_component<RenderPassComponent>();
-			rpass->creator = texture_plane;
+			rpass->creator = plane.get();
 		}
 	}
 }

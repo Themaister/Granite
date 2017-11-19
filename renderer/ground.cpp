@@ -431,7 +431,6 @@ Ground::Handles Ground::add_to_scene(Scene &scene, unsigned size, float tiling_f
 		for (unsigned x = 0; x < ground->get_num_patches_x(); x++)
 		{
 			auto patch = make_handle<GroundPatch>(ground);
-			auto *p = static_cast<GroundPatch *>(patch.get());
 
 			float min_y = -1.0f;
 			float max_y = 1.0f;
@@ -442,24 +441,24 @@ Ground::Handles Ground::add_to_scene(Scene &scene, unsigned size, float tiling_f
 				patch_range++;
 			}
 
-			p->set_bounds(vec3(x * inv_patches.x, min_y - 0.01f, z * inv_patches.y), vec3(inv_patches.x, max_y - min_y + 0.02f, inv_patches.y));
+			patch->set_bounds(vec3(x * inv_patches.x, min_y - 0.01f, z * inv_patches.y), vec3(inv_patches.x, max_y - min_y + 0.02f, inv_patches.y));
 
-			p->set_lod_pointer(ground->get_lod_pointer(x, z));
+			patch->set_lod_pointer(ground->get_lod_pointer(x, z));
 			auto patch_entity = scene.create_renderable(patch, handles.node.get());
 
 			// TODO: Warpy patches shouldn't cast static shadow.
 			patch_entity->free_component<CastsStaticShadowComponent>();
 
 			auto *transforms = patch_entity->allocate_component<PerFrameUpdateTransformComponent>();
-			transforms->refresh = p;
+			transforms->refresh = patch.get();
 
 			if (patch_bias)
 			{
-				p->lod_bias = *patch_bias;
+				patch->lod_bias = *patch_bias;
 				patch_bias++;
 			}
 
-			patches.push_back(p);
+			patches.push_back(patch.get());
 		}
 	}
 

@@ -1099,7 +1099,8 @@ Device::~Device()
 
 void Device::init_external_swapchain(const vector<ImageHandle> &swapchain_images)
 {
-	wait_idle();
+	DRAIN_FRAME_LOCK();
+	wait_idle_nolock();
 
 	// Clear out caches which might contain stale data from now on.
 	framebuffer_allocator.clear();
@@ -1123,7 +1124,8 @@ void Device::init_external_swapchain(const vector<ImageHandle> &swapchain_images
 
 void Device::init_swapchain(const vector<VkImage> &swapchain_images, unsigned width, unsigned height, VkFormat format)
 {
-	wait_idle();
+	DRAIN_FRAME_LOCK();
+	wait_idle_nolock();
 
 	// Clear out caches which might contain stale data from now on.
 	framebuffer_allocator.clear();
@@ -1343,7 +1345,11 @@ void Device::clear_wait_semaphores()
 void Device::wait_idle()
 {
 	DRAIN_FRAME_LOCK();
+	wait_idle_nolock();
+}
 
+void Device::wait_idle_nolock()
+{
 	if (!per_frame.empty())
 		end_frame_nolock();
 

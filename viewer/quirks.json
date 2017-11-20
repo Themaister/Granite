@@ -1,0 +1,6 @@
+{
+	"instanceDeferredLights": true,
+	"mergeSubpasses" : true,
+	"useTransientColor": true,
+	"useTransientDepthStencil": true
+}

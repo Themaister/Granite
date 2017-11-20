@@ -1491,8 +1491,8 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 				b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 				b.image = image->get_image();
 				b.subresourceRange.aspectMask = Vulkan::format_to_aspect_mask(image->get_format());
-				b.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
-				b.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
+				b.subresourceRange.layerCount = image->get_create_info().layers;
+				b.subresourceRange.levelCount = image->get_create_info().levels;
 				image->set_layout(barrier.layout);
 
 				layout_change = b.oldLayout != b.newLayout;
@@ -1745,8 +1745,8 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 			barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 			barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 			barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			barrier.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
-			barrier.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
+			barrier.subresourceRange.levelCount = image.get_create_info().levels;
+			barrier.subresourceRange.layerCount = image.get_create_info().layers;
 			barrier.subresourceRange.aspectMask = Vulkan::format_to_aspect_mask(physical_attachments[index]->get_format());
 
 			cmd->wait_events(1, &event,

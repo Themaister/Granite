@@ -196,8 +196,8 @@ void CommandBuffer::image_barrier(const Image &image, VkImageLayout old_layout, 
 	barrier.newLayout = new_layout;
 	barrier.image = image.get_image();
 	barrier.subresourceRange.aspectMask = format_to_aspect_mask(image.get_create_info().format);
-	barrier.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
-	barrier.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
+	barrier.subresourceRange.levelCount = image.get_create_info().levels;
+	barrier.subresourceRange.layerCount = image.get_create_info().layers;
 	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 
@@ -224,7 +224,7 @@ void CommandBuffer::barrier_prepare_generate_mipmap(const Image &image, VkImageL
 		barriers[i].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
 		barriers[i].image = image.get_image();
 		barriers[i].subresourceRange.aspectMask = format_to_aspect_mask(image.get_format());
-		barriers[i].subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
+		barriers[i].subresourceRange.layerCount = image.get_create_info().layers;
 		barriers[i].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 		barriers[i].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 
@@ -244,7 +244,7 @@ void CommandBuffer::barrier_prepare_generate_mipmap(const Image &image, VkImageL
 			barriers[i].srcAccessMask = 0;
 			barriers[i].dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 			barriers[i].subresourceRange.baseMipLevel = 1;
-			barriers[i].subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
+			barriers[i].subresourceRange.levelCount = image.get_create_info().levels - 1;
 		}
 	}
 
@@ -264,7 +264,7 @@ void CommandBuffer::generate_mipmap(const Image &image)
 	VkImageMemoryBarrier b = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
 	b.image = image.get_image();
 	b.subresourceRange.levelCount = 1;
-	b.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
+	b.subresourceRange.layerCount = image.get_create_info().layers;
 	b.subresourceRange.aspectMask = format_to_aspect_mask(image.get_format());
 	b.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 	b.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;

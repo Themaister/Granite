@@ -2242,13 +2242,13 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 				else
 				{
 					release.newLayout = create_info.initial_layout;
-					release.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
+					release.subresourceRange.levelCount = info.mipLevels;
 					need_initial_barrier = false;
 				}
 
 				handle->set_layout(release.newLayout);
 				release.subresourceRange.aspectMask = format_to_aspect_mask(info.format);
-				release.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
+				release.subresourceRange.layerCount = info.arrayLayers;
 
 				VkImageMemoryBarrier acquire = release;
 				acquire.srcAccessMask = 0;

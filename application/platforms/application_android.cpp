@@ -32,6 +32,9 @@
 #include "android.hpp"
 #include "os.hpp"
 
+#define RAPIDJSON_ASSERT(x) do { if (!(x)) throw "JSON error"; } while(0)
+#include "rapidjson/document.h"
+
 using namespace std;
 using namespace Vulkan;
 
@@ -575,6 +578,23 @@ void android_main(android_app *app)
 
 	Granite::EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
 
+	unsigned width = 1280;
+	unsigned height = 720;
+	string android_config;
+	Filesystem::get().read_file_to_string("assets://android.json", android_config);
+	if (!android_config.empty())
+	{
+		rapidjson::Document doc;
+		doc.Parse(android_config);
+
+		if (doc.HasMember("width"))
+			width = doc["width"].GetUint();
+		if (doc.HasMember("height"))
+			height = doc["height"].GetUint();
+	}
+
+	LOGI("Using resolution: %u x %u\n", width, height);
+
 	for (;;)
 	{
 		int events;
@@ -608,7 +628,7 @@ void android_main(android_app *app)
 					auto app = unique_ptr<Granite::Application>(Granite::application_create(argc, argv));
 					if (app)
 					{
-						auto platform = make_unique<Granite::WSIPlatformAndroid>(1280, 720);
+						auto platform = make_unique<Granite::WSIPlatformAndroid>(width, height);
 						global_state.app->userData = platform.get();
 						if (!app->init_wsi(move(platform)))
 							ret = 1;

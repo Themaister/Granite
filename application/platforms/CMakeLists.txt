@@ -25,7 +25,7 @@ if (ANDROID)
 			${ANDROID_NDK}/sources/android/native_app_glue)
 
 	target_link_libraries(android-glue util)
-	target_link_libraries(application-main android-glue)
+	target_link_libraries(application-main android-glue rapidjson)
 	if (GRANITE_ANDROID_APK_FILESYSTEM)
 		target_compile_definitions(application-main PRIVATE ANDROID_APK_FILESYSTEM)
 	endif()

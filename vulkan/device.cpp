@@ -1532,6 +1532,11 @@ void Device::PerFrame::begin()
 
 void Device::PerFrame::release_owned_resources()
 {
+	if (backbuffer)
+	{
+		backbuffer->set_internal_sync_object();
+		backbuffer->get_view().set_internal_sync_object();
+	}
 	backbuffer.reset();
 }
 

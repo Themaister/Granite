@@ -565,6 +565,30 @@ void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::Image
 
 	// Naive and simple multithreading :)
 
+	// Pre-compute useful data structures before we go wide ...
+	vec3 spot_position[MaxLights];
+	vec3 spot_direction[MaxLights];
+	float spot_size[MaxLights];
+	float spot_angle_sin[MaxLights];
+	float spot_angle_cos[MaxLights];
+	vec3 point_position[MaxLights];
+	float point_size[MaxLights];
+
+	for (unsigned i = 0; i < spots.count; i++)
+	{
+		spot_position[i] = spots.lights[i].position_inner.xyz();
+		spot_direction[i] = spots.lights[i].direction_half_angle.xyz();
+		spot_size[i] = 1.0f / spots.lights[i].falloff_inv_radius.w;
+		spot_angle_cos[i] = cosf(spots.lights[i].direction_half_angle.w);
+		spot_angle_sin[i] = sinf(spots.lights[i].direction_half_angle.w);
+	}
+
+	for (unsigned i = 0; i < points.count; i++)
+	{
+		point_position[i] = points.lights[i].position_inner.xyz();
+		point_size[i] = 1.0f / points.lights[i].falloff_inv_radius.w;
+	}
+
 	for (unsigned slice = 0; slice < ClusterHierarchies; slice++)
 	{
 		float world_scale_factor = exp2(-float(slice));
@@ -573,6 +597,11 @@ void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::Image
 		{
 			// One slice per task.
 			task->enqueue_task([&, world_scale_factor, slice, cz]() {
+				float point_cutoff[MaxLights];
+				float cube_radius = radius * world_scale_factor;
+				for (unsigned i = 0; i < points.count; i++)
+					point_cutoff[i] = (cube_radius + point_size[i]) * (cube_radius + point_size[i]);
+
 				uint32_t cached_spot_mask = 0;
 				uint32_t cached_point_mask = 0;
 				uvec4 cached_node = uvec4(0);
@@ -593,37 +622,32 @@ void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::Image
 						vec3 view_space = vec3(2.0f, 2.0f, 1.0f) * (vec3(cx, cy, cz) + 0.5f) * inv_res - vec3(1.0f, 1.0f, 0.0f);
 						view_space *= world_scale_factor;
 						vec3 cube_center = (inverse_cluster_transform * vec4(view_space, 1.0f)).xyz;
-						float cube_radius = radius * world_scale_factor;
 
 						for (unsigned i = 0u; i < spots.count; i++)
 						{
-							vec3 center = spots.lights[i].position_inner.xyz();
-							vec3 direction = spots.lights[i].direction_half_angle.xyz();
-							float size = 1.0f / spots.lights[i].falloff_inv_radius.w;
-							float angle = spots.lights[i].direction_half_angle.w;
-
 							// Sphere/cone culling from https://bartwronski.com/2017/04/13/cull-that-cone/.
-							vec3 V = cube_center - center;
+							vec3 V = cube_center - spot_position[i];
 							float V_sq = dot(V, V);
-							float V1_len  = dot(V, direction);
-							float V2_len = sqrt(std::max(V_sq - V1_len * V1_len, 0.0f));
-							float distance_closest_point = cos(angle) * V2_len - sin(angle) * V1_len;
+							float V1_len  = dot(V, spot_direction[i]);
+							float V2_len = sqrtf(std::max(V_sq - V1_len * V1_len, 0.0f));
+							float distance_closest_point = spot_angle_cos[i] * V2_len - spot_angle_sin[i] * V1_len;
 
-							if (!any(greaterThan(vec3(distance_closest_point, V1_len, -V1_len), vec3(cube_radius, cube_radius + size, cube_radius))))
+							if ((distance_closest_point > cube_radius) ||
+							    (V1_len > cube_radius + spot_size[i]) ||
+							    (-V1_len > cube_radius))
 							{
-								spot_mask |= 1u << i;
-								spot_count++;
+								continue;
 							}
+
+							spot_mask |= 1u << i;
+							spot_count++;
 						}
 
 						for (uint i = 0u; i < points.count; i++)
 						{
-							vec3 center = points.lights[i].position_inner.xyz();
-							float radius = 1.0f / points.lights[i].falloff_inv_radius.w;
-							float radial_dist = distance(cube_center, center);
-							bool radial_outside = radial_dist > (cube_radius + radius);
-
-							if (!radial_outside)
+							float radial_dist_sqr = dot(cube_center, point_position[i]);
+							bool radial_inside = radial_dist_sqr <= point_cutoff[i];
+							if (radial_inside)
 							{
 								point_mask |= 1u << i;
 								point_count++;

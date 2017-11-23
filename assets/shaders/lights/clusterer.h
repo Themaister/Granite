@@ -62,7 +62,7 @@ mediump vec3 compute_cluster_light(MaterialProperties material, vec3 world_pos, 
 	uint spot_count = elements.y;
 	uint point_start = elements.z;
 	uint point_count = elements.w;
-#if 0
+#if 1
 	result.r = float(spot_count);
 	result.g = float(point_count);
 #endif

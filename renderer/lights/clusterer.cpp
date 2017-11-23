@@ -688,10 +688,9 @@ void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::Image
 					lock_guard<mutex> holder{cluster_list_lock};
 					cluster_offset = cluster_list_buffer.size();
 					cluster_list_buffer.resize(cluster_offset + tmp_list_buffer.size());
+					memcpy(cluster_list_buffer.data() + cluster_offset, tmp_list_buffer.data(),
+							tmp_list_buffer.size() * sizeof(uint32_t));
 				}
-
-				memcpy(cluster_list_buffer.data() + cluster_offset, tmp_list_buffer.data(),
-				       tmp_list_buffer.size() * sizeof(uint32_t));
 
 				unsigned elems = res_x * res_y;
 				for (unsigned i = 0; i < elems; i++)

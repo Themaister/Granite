@@ -62,7 +62,7 @@ mediump vec3 compute_cluster_light(MaterialProperties material, vec3 world_pos, 
 	uint spot_count = elements.y;
 	uint point_start = elements.z;
 	uint point_count = elements.w;
-#if 1
+#if 0
 	result.r = float(spot_count);
 	result.g = float(point_count);
 #endif
@@ -74,13 +74,13 @@ mediump vec3 compute_cluster_light(MaterialProperties material, vec3 world_pos, 
 		result += compute_point_light(cluster_list.elements[point_start + i], material, world_pos, camera_pos);
 #endif
 #else
+	uvec2 bits = textureLod(uCluster, cluster_pos, 0.0).xy;
 #if 0
 	result.r = float(bitCount(bits.x));
 	result.g = float(bitCount(bits.y));
 #endif
 
 #if 1
-	uvec2 bits = textureLod(uCluster, cluster_pos, 0.0).xy;
 	while (bits.x != 0u)
 	{
 		int index = findLSB(bits.x);

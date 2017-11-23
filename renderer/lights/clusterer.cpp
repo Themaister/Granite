@@ -621,7 +621,7 @@ void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::Image
 
 						vec3 view_space = vec3(2.0f, 2.0f, 1.0f) * (vec3(cx, cy, cz) + 0.5f) * inv_res - vec3(1.0f, 1.0f, 0.0f);
 						view_space *= world_scale_factor;
-						vec3 cube_center = (inverse_cluster_transform * vec4(view_space, 1.0f)).xyz;
+						vec3 cube_center = (inverse_cluster_transform * vec4(view_space, 1.0f)).xyz();
 
 						for (unsigned i = 0u; i < spots.count; i++)
 						{
@@ -629,15 +629,17 @@ void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::Image
 							vec3 V = cube_center - spot_position[i];
 							float V_sq = dot(V, V);
 							float V1_len  = dot(V, spot_direction[i]);
+
+							if (V1_len > cube_radius + spot_size[i])
+								continue;
+							if (-V1_len > cube_radius)
+								continue;
+
 							float V2_len = sqrtf(std::max(V_sq - V1_len * V1_len, 0.0f));
 							float distance_closest_point = spot_angle_cos[i] * V2_len - spot_angle_sin[i] * V1_len;
 
-							if ((distance_closest_point > cube_radius) ||
-							    (V1_len > cube_radius + spot_size[i]) ||
-							    (-V1_len > cube_radius))
-							{
+							if (distance_closest_point > cube_radius)
 								continue;
-							}
 
 							spot_mask |= 1u << i;
 							spot_count++;

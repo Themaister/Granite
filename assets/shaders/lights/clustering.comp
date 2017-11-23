@@ -31,6 +31,11 @@ layout(std140, set = 1, binding = 1) uniform PointLight
     LightInfo lights[32];
 } point;
 
+layout(std140, set = 1, binding = 2) uniform SpotConstants
+{
+    vec3 cos_sin_size[32];
+} spot_constants;
+
 layout(std430, push_constant) uniform Registers
 {
     mat4 inv_cluster_transform;
@@ -49,11 +54,17 @@ void main()
     if (any(greaterThanEqual(id.xy, registers.size.xy)))
         return;
 
+    int wrapped_z = id.z & (registers.size.z - 1);
+    float range_z = float(wrapped_z + 1) / registers.inv_size.z;
+    ivec2 lo_coord = ivec2(floor((0.5 - 0.5 * range_z) * registers.size.xy));
+    ivec2 hi_coord = ivec2(ceil((0.5 + 0.5 * range_z) * registers.size.xy));
+    if (any(lessThan(id.xy, lo_coord)) || any(greaterThan(id.xy, hi_coord)))
+        return;
+
     uint point_mask = 0u;
     uint spot_mask = 0u;
 
     int slice = id.z >> registers.size_z_log2;
-    int wrapped_z = id.z & (registers.size.z - 1);
     float world_scale_factor = exp2(-float(slice));
 
 #ifdef INHERIT
@@ -79,15 +90,15 @@ void main()
 #endif
         vec3 center = spot.lights[i].position;
         vec3 direction = spot.lights[i].direction;
-        float size = 1.0 / spot.lights[i].inv_radius;
-        float angle = spot.lights[i].angle;
+        vec3 cos_sin_size = spot_constants.cos_sin_size[i];
+        float size = cos_sin_size.z;
 
         // Sphere/cone culling from https://bartwronski.com/2017/04/13/cull-that-cone/.
         vec3 V = cube_center - center;
         float V_sq = dot(V, V);
         float V1_len  = dot(V, direction);
         float V2_len = sqrt(max(V_sq - V1_len * V1_len, 0.0));
-        float distance_closest_point = cos(angle) * V2_len - sin(angle) * V1_len;
+        float distance_closest_point = cos_sin_size.x * V2_len - cos_sin_size.y * V1_len;
 
         if (!any(greaterThan(vec3(distance_closest_point, V1_len, -V1_len), vec3(cube_radius, cube_radius + size, cube_radius))))
             spot_mask |= 1u << i;

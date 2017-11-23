@@ -749,6 +749,15 @@ void LightClusterer::build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView
 	memcpy(spot_buffer, spots.lights, spots.count * sizeof(PositionalFragmentInfo));
 	memcpy(point_buffer, points.lights, points.count * sizeof(PositionalFragmentInfo));
 
+	auto *spot_lut_buffer = cmd.allocate_typed_constant_data<vec4>(1, 2, MaxLights);
+	for (unsigned i = 0; i < spots.count; i++)
+	{
+		spot_lut_buffer[i] = vec4(cosf(spots.lights[i].direction_half_angle.w),
+		                          sinf(spots.lights[i].direction_half_angle.w),
+		                          1.0f / spots.lights[i].falloff_inv_radius.w,
+		                          0.0f);
+	}
+
 	struct Push
 	{
 		mat4 inverse_cluster_transform;

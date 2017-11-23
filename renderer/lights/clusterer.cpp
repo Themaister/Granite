@@ -26,11 +26,10 @@
 #include "render_context.hpp"
 #include "renderer.hpp"
 #include "thread_group.hpp"
+#include "quirks.hpp"
 
 using namespace Vulkan;
 using namespace std;
-
-#define CLUSTERING_CLASSIC 1
 
 namespace Granite
 {
@@ -104,9 +103,8 @@ void LightClusterer::set_base_render_context(const RenderContext *context)
 void LightClusterer::setup_render_pass_resources(RenderGraph &graph)
 {
 	target = &graph.get_physical_texture_resource(graph.get_texture_resource("light-cluster").get_physical_index());
-#if !CLUSTERING_CLASSIC
-	pre_cull_target = &graph.get_physical_texture_resource(graph.get_texture_resource("light-cluster-prepass").get_physical_index());
-#endif
+	if (!ImplementationQuirks::get().clustering_list_iteration)
+		pre_cull_target = &graph.get_physical_texture_resource(graph.get_texture_resource("light-cluster-prepass").get_physical_index());
 }
 
 unsigned LightClusterer::get_active_point_light_count() const
@@ -779,40 +777,44 @@ void LightClusterer::add_render_passes(RenderGraph &graph)
 	att.size_z = z * ClusterHierarchies;
 	att.persistent = true;
 
-#if CLUSTERING_CLASSIC
-	auto &pass = graph.add_pass("clustering", VK_PIPELINE_STAGE_TRANSFER_BIT);
-	pass.add_blit_texture_output("light-cluster", att);
-	pass.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
-		build_cluster_cpu(cmd, *target);
-	});
+	if (ImplementationQuirks::get().clustering_list_iteration)
+	{
+		auto &pass = graph.add_pass("clustering", VK_PIPELINE_STAGE_TRANSFER_BIT);
+		pass.add_blit_texture_output("light-cluster", att);
+		pass.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
+			build_cluster_cpu(cmd, *target);
+		});
 
-	pass.set_need_render_pass([this]() {
-		return enable_clustering;
-	});
-#else
-	AttachmentInfo att_prepass = att;
-	assert((x % ClusterPrepassDownsample) == 0);
-	assert((y % ClusterPrepassDownsample) == 0);
-	assert((z % ClusterPrepassDownsample) == 0);
-	assert((z & (z - 1)) == 0);
-	att_prepass.size_x /= ClusterPrepassDownsample;
-	att_prepass.size_y /= ClusterPrepassDownsample;
-	att_prepass.size_z /= ClusterPrepassDownsample;
+		pass.set_need_render_pass([this]() {
+			return enable_clustering;
+		});
+	}
+	else
+	{
+		AttachmentInfo att_prepass = att;
+		assert((x % ClusterPrepassDownsample) == 0);
+		assert((y % ClusterPrepassDownsample) == 0);
+		assert((z % ClusterPrepassDownsample) == 0);
+		assert((z & (z - 1)) == 0);
+		att_prepass.size_x /= ClusterPrepassDownsample;
+		att_prepass.size_y /= ClusterPrepassDownsample;
+		att_prepass.size_z /= ClusterPrepassDownsample;
 
-	auto &pass = graph.add_pass("clustering", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-	pass.add_storage_texture_output("light-cluster", att);
-	pass.add_storage_texture_output("light-cluster-prepass", att_prepass);
-	pass.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
-		build_cluster(cmd, *pre_cull_target, nullptr);
-		cmd.image_barrier(pre_cull_target->get_image(), VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
-		                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-		build_cluster(cmd, *target, pre_cull_target);
-	});
+		auto &pass = graph.add_pass("clustering", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+		pass.add_storage_texture_output("light-cluster", att);
+		pass.add_storage_texture_output("light-cluster-prepass", att_prepass);
+		pass.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
+			build_cluster(cmd, *pre_cull_target, nullptr);
+			cmd.image_barrier(pre_cull_target->get_image(), VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+			                  VK_ACCESS_SHADER_WRITE_BIT,
+			                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+			build_cluster(cmd, *target, pre_cull_target);
+		});
 
-	pass.set_need_render_pass([this]() {
-		return enable_clustering;
-	});
-#endif
+		pass.set_need_render_pass([this]() {
+			return enable_clustering;
+		});
+	}
 }
 
 void LightClusterer::set_base_renderer(Renderer *, Renderer *, Renderer *depth)

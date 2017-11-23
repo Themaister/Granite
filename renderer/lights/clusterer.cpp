@@ -711,6 +711,7 @@ void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::Image
 		info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 		info.size = cluster_list_buffer.size() * sizeof(cluster_list_buffer[0]);
 		cluster_list = cmd.get_device().create_buffer(info, cluster_list_buffer.data());
+		//LOGI("Cluster list has %u elements.\n", unsigned(cluster_list_buffer.size()));
 	}
 	else
 		cluster_list.reset();

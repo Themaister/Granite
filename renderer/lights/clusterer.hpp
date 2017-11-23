@@ -107,6 +107,7 @@ private:
 
 	mat4 cluster_transform;
 	std::vector<uint32_t> cluster_list_buffer;
+	std::mutex cluster_list_lock;
 
 	Renderer *depth_renderer = nullptr;
 	Vulkan::ImageViewHandle shadow_atlas_rt[6 * MaxLights];

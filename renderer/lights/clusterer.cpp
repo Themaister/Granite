@@ -608,9 +608,20 @@ void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::Image
 				vector<uvec4> image_base(res_x * res_y);
 				auto *image_output_base = &image_data[slice * res_z * res_y * res_x + cz * res_y * res_x];
 
-				for (unsigned cy = 0; cy < res_y; cy++)
+				float range_z = float(cz + 1) / res_z;
+				int min_x = int(std::floor((0.5f - 0.5f * range_z) * res_x));
+				int max_x = int(std::ceil((0.5f + 0.5f * range_z) * res_x));
+				int min_y = int(std::floor((0.5f - 0.5f * range_z) * res_y));
+				int max_y = int(std::ceil((0.5f + 0.5f * range_z) * res_y));
+
+				min_x = clamp(min_x, 0, int(res_x) - 1);
+				max_x = clamp(max_x, 0, int(res_x) - 1);
+				min_y = clamp(min_y, 0, int(res_y) - 1);
+				max_y = clamp(max_y, 0, int(res_y) - 1);
+
+				for (int cy = min_y; cy < max_y; cy++)
 				{
-					for (unsigned cx = 0; cx < res_x; cx++)
+					for (int cx = min_x; cx < max_x; cx++)
 					{
 						uint32_t spot_mask = 0;
 						uint32_t point_mask = 0;

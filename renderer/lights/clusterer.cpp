@@ -560,6 +560,10 @@ void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::Image
 	vec3 inv_res = vec3(1.0f / res_x, 1.0f / res_y, 1.0f / res_z);
 	float radius = 0.5f * length(mat3(inverse_cluster_transform) * (vec3(2.0f, 2.0f, 1.0f) * inv_res));
 
+	uint32_t cached_spot_mask = 0;
+	uint32_t cached_point_mask = 0;
+	uvec4 cached_node = uvec4(0);
+
 	for (unsigned slice = 0; slice < ClusterHierarchies; slice++)
 	{
 		float world_scale_factor = exp2(-float(slice));
@@ -616,19 +620,32 @@ void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::Image
 						}
 					}
 
-					uint32_t spot_start = cluster_list_buffer.size();
+					if (cached_spot_mask == spot_mask && cached_point_mask == point_mask)
+					{
+						// Neighbor blocks have a high likelihood of sharing the same lights,
+						// try to conserve memory.
+						image_base[cx] = cached_node;
+					}
+					else
+					{
+						uint32_t spot_start = cluster_list_buffer.size();
 
-					Util::for_each_bit(spot_mask, [&](uint32_t bit) {
-						cluster_list_buffer.push_back(bit);
-					});
+						Util::for_each_bit(spot_mask, [&](uint32_t bit) {
+							cluster_list_buffer.push_back(bit);
+						});
 
-					uint32_t point_start = cluster_list_buffer.size();
+						uint32_t point_start = cluster_list_buffer.size();
 
-					Util::for_each_bit(point_mask, [&](uint32_t bit) {
-						cluster_list_buffer.push_back(bit);
-					});
+						Util::for_each_bit(point_mask, [&](uint32_t bit) {
+							cluster_list_buffer.push_back(bit);
+						});
 
-					image_base[cx] = uvec4(spot_start, spot_count, point_start, point_count);
+						uvec4 node(spot_start, spot_count, point_start, point_count);
+						image_base[cx] = node;
+						cached_spot_mask = spot_mask;
+						cached_point_mask = point_mask;
+						cached_node = node;
+					}
 				}
 			}
 		}

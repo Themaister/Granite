@@ -29,6 +29,8 @@
 using namespace Vulkan;
 using namespace std;
 
+#define CLUSTERING_CLASSIC 1
+
 namespace Granite
 {
 LightClusterer::LightClusterer()
@@ -101,7 +103,9 @@ void LightClusterer::set_base_render_context(const RenderContext *context)
 void LightClusterer::setup_render_pass_resources(RenderGraph &graph)
 {
 	target = &graph.get_physical_texture_resource(graph.get_texture_resource("light-cluster").get_physical_index());
+#if !CLUSTERING_CLASSIC
 	pre_cull_target = &graph.get_physical_texture_resource(graph.get_texture_resource("light-cluster-prepass").get_physical_index());
+#endif
 }
 
 unsigned LightClusterer::get_active_point_light_count() const
@@ -152,6 +156,11 @@ void LightClusterer::set_force_update_shadows(bool enable)
 const Vulkan::ImageView *LightClusterer::get_cluster_image() const
 {
 	return enable_clustering ? target : nullptr;
+}
+
+const Vulkan::Buffer *LightClusterer::get_cluster_list_buffer() const
+{
+	return enable_clustering && cluster_list ? cluster_list.get() : nullptr;
 }
 
 const Vulkan::ImageView *LightClusterer::get_spot_light_shadows() const
@@ -536,6 +545,107 @@ void LightClusterer::refresh(RenderContext &context)
 	}
 }
 
+void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view)
+{
+	unsigned res_x = x;
+	unsigned res_y = y;
+	unsigned res_z = z;
+
+	auto &image = view.get_image();
+	auto *image_data = static_cast<uvec4 *>(cmd.update_image(image, 0, 0));
+
+	auto inverse_cluster_transform = inverse(cluster_transform);
+	cluster_list_buffer.clear();
+
+	vec3 inv_res = vec3(1.0f / res_x, 1.0f / res_y, 1.0f / res_z);
+	float radius = 0.5f * length(mat3(inverse_cluster_transform) * (vec3(2.0f, 2.0f, 1.0f) * inv_res));
+
+	for (unsigned slice = 0; slice < ClusterHierarchies; slice++)
+	{
+		float world_scale_factor = exp2(-float(slice));
+
+		for (unsigned cz = 0; cz < res_z; cz++)
+		{
+			for (unsigned cy = 0; cy < res_y; cy++)
+			{
+				auto *image_base = &image_data[slice * res_z * res_y * res_x + cz * res_y * res_x + cy * res_x];
+				for (unsigned cx = 0; cx < res_x; cx++)
+				{
+					uint32_t spot_mask = 0;
+					uint32_t point_mask = 0;
+					uint32_t spot_count = 0;
+					uint32_t point_count = 0;
+
+					vec3 view_space = vec3(2.0f, 2.0f, 1.0f) * (vec3(cx, cy, cz) + 0.5f) * inv_res - vec3(1.0f, 1.0f, 0.0f);
+					view_space *= world_scale_factor;
+					vec3 cube_center = (inverse_cluster_transform * vec4(view_space, 1.0f)).xyz;
+					float cube_radius = radius * world_scale_factor;
+
+					for (unsigned i = 0u; i < spots.count; i++)
+					{
+						vec3 center = spots.lights[i].position_inner.xyz();
+						vec3 direction = spots.lights[i].direction_half_angle.xyz();
+						float size = 1.0f / spots.lights[i].falloff_inv_radius.w;
+						float angle = spots.lights[i].direction_half_angle.w;
+
+						// Sphere/cone culling from https://bartwronski.com/2017/04/13/cull-that-cone/.
+						vec3 V = cube_center - center;
+						float V_sq = dot(V, V);
+						float V1_len  = dot(V, direction);
+						float V2_len = sqrt(std::max(V_sq - V1_len * V1_len, 0.0f));
+						float distance_closest_point = cos(angle) * V2_len - sin(angle) * V1_len;
+
+						if (!any(greaterThan(vec3(distance_closest_point, V1_len, -V1_len), vec3(cube_radius, cube_radius + size, cube_radius))))
+						{
+							spot_mask |= 1u << i;
+							spot_count++;
+						}
+					}
+
+					for (uint i = 0u; i < points.count; i++)
+					{
+						vec3 center = points.lights[i].position_inner.xyz();
+						float radius = 1.0f / points.lights[i].falloff_inv_radius.w;
+						float radial_dist = distance(cube_center, center);
+						bool radial_outside = radial_dist > (cube_radius + radius);
+
+						if (!radial_outside)
+						{
+							point_mask |= 1u << i;
+							point_count++;
+						}
+					}
+
+					uint32_t spot_start = cluster_list_buffer.size();
+
+					Util::for_each_bit(spot_mask, [&](uint32_t bit) {
+						cluster_list_buffer.push_back(bit);
+					});
+
+					uint32_t point_start = cluster_list_buffer.size();
+
+					Util::for_each_bit(point_mask, [&](uint32_t bit) {
+						cluster_list_buffer.push_back(bit);
+					});
+
+					image_base[cx] = uvec4(spot_start, spot_count, point_start, point_count);
+				}
+			}
+		}
+	}
+
+	if (!cluster_list_buffer.empty())
+	{
+		BufferCreateInfo info = {};
+		info.domain = BufferDomain::Device;
+		info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+		info.size = cluster_list_buffer.size() * sizeof(cluster_list_buffer[0]);
+		cluster_list = cmd.get_device().create_buffer(info, cluster_list_buffer.data());
+	}
+	else
+		cluster_list.reset();
+}
+
 void LightClusterer::build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view, const Vulkan::ImageView *pre_culled)
 {
 	unsigned res_x = x;
@@ -597,6 +707,17 @@ void LightClusterer::add_render_passes(RenderGraph &graph)
 	att.size_z = z * ClusterHierarchies;
 	att.persistent = true;
 
+#if CLUSTERING_CLASSIC
+	auto &pass = graph.add_pass("clustering", VK_PIPELINE_STAGE_TRANSFER_BIT);
+	pass.add_blit_texture_output("light-cluster", att);
+	pass.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
+		build_cluster_cpu(cmd, *target);
+	});
+
+	pass.set_need_render_pass([this]() {
+		return enable_clustering;
+	});
+#else
 	AttachmentInfo att_prepass = att;
 	assert((x % ClusterPrepassDownsample) == 0);
 	assert((y % ClusterPrepassDownsample) == 0);
@@ -619,6 +740,7 @@ void LightClusterer::add_render_passes(RenderGraph &graph)
 	pass.set_need_render_pass([this]() {
 		return enable_clustering;
 	});
+#endif
 }
 
 void LightClusterer::set_base_renderer(Renderer *, Renderer *, Renderer *depth)

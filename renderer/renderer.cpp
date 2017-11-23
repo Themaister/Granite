@@ -61,6 +61,8 @@ void Renderer::set_mesh_renderer_options_internal(RendererOptionFlags flags)
 		global_defines.push_back({ "POSITIONAL_LIGHTS", 1 });
 	if (flags & POSITIONAL_LIGHT_SHADOW_ENABLE_BIT)
 		global_defines.push_back({ "POSITIONAL_LIGHTS_SHADOW", 1 });
+	if (flags & POSITIONAL_LIGHT_CLUSTER_LIST_BIT)
+		global_defines.push_back({ "CLUSTER_LIST", 1 });
 
 	switch (type)
 	{
@@ -115,6 +117,8 @@ void Renderer::set_mesh_renderer_options_from_lighting(const LightingParameters 
 		flags |= Renderer::POSITIONAL_LIGHT_ENABLE_BIT;
 		if (lighting.cluster->get_spot_light_shadows() && lighting.cluster->get_point_light_shadows())
 			flags |= Renderer::POSITIONAL_LIGHT_SHADOW_ENABLE_BIT;
+		if (lighting.cluster->get_cluster_list_buffer())
+			flags |= Renderer::POSITIONAL_LIGHT_CLUSTER_LIST_BIT;
 	}
 
 	set_mesh_renderer_options(flags);
@@ -204,6 +208,9 @@ static void set_cluster_parameters(Vulkan::CommandBuffer &cmd, const LightCluste
 		memcpy(cmd.allocate_constant_data(1, 12, LightClusterer::MaxLights * sizeof(PointTransform)),
 		       cluster.get_active_point_light_shadow_transform(), cluster.get_active_point_light_count() * sizeof(PointTransform));
 	}
+
+	if (cluster.get_cluster_list_buffer())
+		cmd.set_storage_buffer(1, 13, *cluster.get_cluster_list_buffer());
 }
 
 void Renderer::set_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context)
@@ -532,11 +539,12 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 			context.get_render_parameters().camera_position,
 		};
 
-		unsigned cluster_variant;
+		vector<pair<string, int>> cluster_defines;
 		if (light.cluster->get_spot_light_shadows())
-			cluster_variant = cluster_program->register_variant({{ "POSITIONAL_LIGHTS_SHADOW", 1 }});
-		else
-			cluster_variant = cluster_program->register_variant({});
+			cluster_defines.emplace_back("POSITIONAL_LIGHTS_SHADOW", 1);
+		if (light.cluster->get_cluster_list_buffer())
+			cluster_defines.emplace_back("CLUSTER_LIST", 1);
+		unsigned cluster_variant = cluster_program->register_variant(move(cluster_defines));
 
 		cmd.set_program(*cluster_program->get_program(cluster_variant));
 

@@ -116,10 +116,14 @@ struct ResourceDimensions
 
 	bool uses_semaphore() const
 	{
-		static const VkPipelineStageFlags concurrent =
+		static const VkPipelineStageFlags concurrent_compute =
 				VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT |
 				VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-		return (stages & concurrent) == concurrent;
+		static const VkPipelineStageFlags concurrent_transfer =
+				VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT |
+				VK_PIPELINE_STAGE_TRANSFER_BIT;
+		return ((stages & concurrent_compute) == concurrent_compute) ||
+		       ((stages & concurrent_transfer) == concurrent_transfer);
 	}
 
 	std::string name;
@@ -317,6 +321,8 @@ public:
 	RenderBufferResource &add_storage_read_only_input(const std::string &name);
 
 	RenderTextureResource &add_storage_texture_output(const std::string &name, const AttachmentInfo &info, const std::string &input = "");
+	RenderTextureResource &add_blit_texture_output(const std::string &name, const AttachmentInfo &info, const std::string &input = "");
+	RenderTextureResource &add_blit_texture_read_only_input(const std::string &name);
 
 	void set_texture_inputs(Vulkan::CommandBuffer &cmd, unsigned set, unsigned start_binding,
 	                        Vulkan::StockSampler sampler);
@@ -359,6 +365,21 @@ public:
 	const std::vector<RenderTextureResource *> &get_storage_texture_inputs() const
 	{
 		return storage_texture_inputs;
+	}
+
+	const std::vector<RenderTextureResource *> &get_blit_texture_inputs() const
+	{
+		return blit_texture_inputs;
+	}
+
+	const std::vector<RenderTextureResource *> &get_blit_texture_outputs() const
+	{
+		return blit_texture_outputs;
+	}
+
+	const std::vector<RenderTextureResource *> &get_blit_texture_read_inputs() const
+	{
+		return blit_texture_read_inputs;
 	}
 
 	const std::vector<RenderTextureResource *> &get_attachment_inputs() const
@@ -488,6 +509,9 @@ private:
 	std::vector<RenderTextureResource *> texture_inputs;
 	std::vector<RenderTextureResource *> storage_texture_inputs;
 	std::vector<RenderTextureResource *> storage_texture_outputs;
+	std::vector<RenderTextureResource *> blit_texture_inputs;
+	std::vector<RenderTextureResource *> blit_texture_outputs;
+	std::vector<RenderTextureResource *> blit_texture_read_inputs;
 	std::vector<RenderTextureResource *> attachments_inputs;
 	std::vector<RenderTextureResource *> history_inputs;
 	std::vector<RenderBufferResource *> uniform_inputs;

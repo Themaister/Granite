@@ -34,6 +34,12 @@ layout(std140, set = 1, binding = 6) uniform ClusterTransform
 } cluster;
 
 layout(set = 1, binding = 5) uniform usampler3D uCluster;
+#ifdef CLUSTER_LIST
+layout(std430, set = 1, binding = 13) readonly buffer ClusterList
+{
+	int elements[];
+} cluster_list;
+#endif
 
 #define NUM_CLUSTER_HIERARCHIES 8
 #define INV_NUM_CLUSTER_HIERARCHIES (1.0 / float(NUM_CLUSTER_HIERARCHIES))
@@ -48,16 +54,33 @@ mediump vec3 compute_cluster_light(MaterialProperties material, vec3 world_pos, 
 
 	// Avoid potential NN wraps when cluster_pos.z == 1.0.
 	cluster_pos.z = (level + clamp(cluster_pos.z, 0.001, 0.999)) * INV_NUM_CLUSTER_HIERARCHIES;
-	uvec2 bits = textureLod(uCluster, cluster_pos, 0.0).xy;
-
 	mediump vec3 result = vec3(0.0);
 
+#ifdef CLUSTER_LIST
+	uvec4 elements = textureLod(uCluster, cluster_pos, 0.0);
+	uint spot_start = elements.x;
+	uint spot_count = elements.y;
+	uint point_start = elements.z;
+	uint point_count = elements.w;
+#if 1
+	result.r = float(spot_count);
+	result.g = float(point_count);
+#endif
+
+#if 1
+	for (uint i = 0u; i < spot_count; i++)
+		result += compute_spot_light(cluster_list.elements[spot_start + i], material, world_pos, camera_pos);
+	for (uint i = 0u; i < point_count; i++)
+		result += compute_point_light(cluster_list.elements[point_start + i], material, world_pos, camera_pos);
+#endif
+#else
 #if 0
 	result.r = float(bitCount(bits.x));
 	result.g = float(bitCount(bits.y));
 #endif
 
 #if 1
+	uvec2 bits = textureLod(uCluster, cluster_pos, 0.0).xy;
 	while (bits.x != 0u)
 	{
 		int index = findLSB(bits.x);
@@ -71,6 +94,7 @@ mediump vec3 compute_cluster_light(MaterialProperties material, vec3 world_pos, 
 		result += compute_point_light(index, material, world_pos, camera_pos);
 		bits.y &= ~(1u << uint(index));
 	}
+#endif
 #endif
 
 	return result;

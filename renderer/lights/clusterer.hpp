@@ -42,6 +42,7 @@ public:
 	void set_shadow_resolution(unsigned res);
 
 	const Vulkan::ImageView *get_cluster_image() const;
+	const Vulkan::Buffer *get_cluster_list_buffer() const;
 	const Vulkan::ImageView *get_spot_light_shadows() const;
 	const Vulkan::ImageView *get_point_light_shadows() const;
 	const PositionalFragmentInfo *get_active_point_lights() const;
@@ -72,11 +73,13 @@ private:
 	unsigned x = 64, y = 32, z = 32;
 	unsigned shadow_resolution = 512;
 	void build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view, const Vulkan::ImageView *pre_culled);
+	void build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view);
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
 	Vulkan::ShaderProgram *program = nullptr;
 	Vulkan::ImageView *target = nullptr;
 	Vulkan::ImageView *pre_cull_target = nullptr;
+	Vulkan::BufferHandle cluster_list;
 	unsigned inherit_variant = 0;
 	unsigned cull_variant = 0;
 
@@ -103,6 +106,7 @@ private:
 	} spots;
 
 	mat4 cluster_transform;
+	std::vector<uint32_t> cluster_list_buffer;
 
 	Renderer *depth_renderer = nullptr;
 	Vulkan::ImageViewHandle shadow_atlas_rt[6 * MaxLights];

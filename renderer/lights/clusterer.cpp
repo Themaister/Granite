@@ -103,7 +103,7 @@ void LightClusterer::set_base_render_context(const RenderContext *context)
 void LightClusterer::setup_render_pass_resources(RenderGraph &graph)
 {
 	target = &graph.get_physical_texture_resource(graph.get_texture_resource("light-cluster").get_physical_index());
-	if (!ImplementationQuirks::get().clustering_list_iteration)
+	if (!ImplementationQuirks::get().clustering_list_iteration && !ImplementationQuirks::get().clustering_force_cpu)
 		pre_cull_target = &graph.get_physical_texture_resource(graph.get_texture_resource("light-cluster-prepass").get_physical_index());
 }
 
@@ -648,7 +648,10 @@ void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::Image
 				uvec4 cached_node = uvec4(0);
 
 				vector<uint32_t> tmp_list_buffer;
-				vector<uvec4> image_base(ClusterPrepassDownsample * res_x * res_y);
+				vector<uvec4> image_base;
+				if (ImplementationQuirks::get().clustering_list_iteration)
+					image_base.resize(ClusterPrepassDownsample * res_x * res_y);
+
 				auto *image_output_base = &image_data[slice * res_z * res_y * res_x + cz * res_y * res_x];
 
 				float range_z = float(cz + ClusterPrepassDownsample) / res_z;
@@ -688,7 +691,11 @@ void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::Image
 								{
 									auto final_res = cluster_lights_cpu(sx, sy, sz + int(cz), state, local_state, 1.0f, res);
 
-									if (cached_spot_mask == final_res.x && cached_point_mask == final_res.y)
+									if (!ImplementationQuirks::get().clustering_list_iteration)
+									{
+										image_output_base[sz * res_y * res_x + sy * res_x + sx] = uvec4(final_res, 0u, 0u);
+									}
+									else if (cached_spot_mask == final_res.x && cached_point_mask == final_res.y)
 									{
 										// Neighbor blocks have a high likelihood of sharing the same lights,
 										// try to conserve memory.
@@ -724,18 +731,21 @@ void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::Image
 					}
 				}
 
-				size_t cluster_offset = 0;
+				if (ImplementationQuirks::get().clustering_list_iteration)
 				{
-					lock_guard<mutex> holder{cluster_list_lock};
-					cluster_offset = cluster_list_buffer.size();
-					cluster_list_buffer.resize(cluster_offset + tmp_list_buffer.size());
-					memcpy(cluster_list_buffer.data() + cluster_offset, tmp_list_buffer.data(),
-							tmp_list_buffer.size() * sizeof(uint32_t));
-				}
+					size_t cluster_offset = 0;
+					{
+						lock_guard<mutex> holder{cluster_list_lock};
+						cluster_offset = cluster_list_buffer.size();
+						cluster_list_buffer.resize(cluster_offset + tmp_list_buffer.size());
+						memcpy(cluster_list_buffer.data() + cluster_offset, tmp_list_buffer.data(),
+						       tmp_list_buffer.size() * sizeof(uint32_t));
+					}
 
-				unsigned elems = ClusterPrepassDownsample * res_x * res_y;
-				for (unsigned i = 0; i < elems; i++)
-					image_output_base[i] = image_base[i] + uvec4(cluster_offset, 0, cluster_offset, 0);
+					unsigned elems = ClusterPrepassDownsample * res_x * res_y;
+					for (unsigned i = 0; i < elems; i++)
+						image_output_base[i] = image_base[i] + uvec4(cluster_offset, 0, cluster_offset, 0);
+				}
 			});
 		}
 	}
@@ -827,7 +837,7 @@ void LightClusterer::add_render_passes(RenderGraph &graph)
 	att.size_z = z * ClusterHierarchies;
 	att.persistent = true;
 
-	if (ImplementationQuirks::get().clustering_list_iteration)
+	if (ImplementationQuirks::get().clustering_list_iteration || ImplementationQuirks::get().clustering_force_cpu)
 	{
 		auto &pass = graph.add_pass("clustering", VK_PIPELINE_STAGE_TRANSFER_BIT);
 		pass.add_blit_texture_output("light-cluster", att);

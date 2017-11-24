@@ -3,5 +3,6 @@
 	"mergeSubpasses" : true,
 	"useTransientColor": true,
 	"useTransientDepthStencil": true,
-	"clusteringListIteration": false
+	"clusteringListIteration": false,
+	"clusteringForceCPU": false
 }

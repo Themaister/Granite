@@ -31,6 +31,7 @@ struct ImplementationQuirks
 	bool use_transient_color = true;
 	bool use_transient_depth_stencil = true;
 	bool clustering_list_iteration = false;
+	bool clustering_force_cpu = false;
 
 	static ImplementationQuirks &get()
 	{

@@ -117,5 +117,30 @@ private:
 	bool enable_shadows = true;
 	bool enable_clustering = true;
 	bool force_update_shadows = false;
+
+	struct CPUGlobalAccelState
+	{
+		mat4 inverse_cluster_transform;
+		vec3 spot_position[MaxLights];
+		vec3 spot_direction[MaxLights];
+		float spot_size[MaxLights];
+		float spot_angle_sin[MaxLights];
+		float spot_angle_cos[MaxLights];
+		vec3 point_position[MaxLights];
+		float point_size[MaxLights];
+
+		vec3 inv_res;
+		float radius;
+	};
+
+	struct CPULocalAccelState
+	{
+		float cube_radius;
+		float world_scale_factor;
+		float point_cutoff[MaxLights];
+	};
+	uvec2 cluster_lights_cpu(int x, int y, int z,
+	                         const CPUGlobalAccelState &state,
+	                         const CPULocalAccelState &local);
 };
 }

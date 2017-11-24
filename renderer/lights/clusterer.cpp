@@ -544,6 +544,48 @@ void LightClusterer::refresh(RenderContext &context)
 	}
 }
 
+uvec2 LightClusterer::cluster_lights_cpu(int x, int y, int z, const CPUGlobalAccelState &state,
+                                         const CPULocalAccelState &local_state)
+{
+	uint32_t spot_mask = 0;
+	uint32_t point_mask = 0;
+
+	vec3 view_space = vec3(2.0f, 2.0f, 1.0f) * (vec3(x, y, z) + 0.5f) * state.inv_res - vec3(1.0f, 1.0f, 0.0f);
+	view_space *= local_state.world_scale_factor;
+	vec3 cube_center = (state.inverse_cluster_transform * vec4(view_space, 1.0f)).xyz();
+
+	for (unsigned i = 0u; i < spots.count; i++)
+	{
+		// Sphere/cone culling from https://bartwronski.com/2017/04/13/cull-that-cone/.
+		vec3 V = cube_center - state.spot_position[i];
+		float V_sq = dot(V, V);
+		float V1_len  = dot(V, state.spot_direction[i]);
+
+		if (V1_len > local_state.cube_radius + state.spot_size[i])
+			continue;
+		if (-V1_len > local_state.cube_radius)
+			continue;
+
+		float V2_len = sqrtf(std::max(V_sq - V1_len * V1_len, 0.0f));
+		float distance_closest_point = state.spot_angle_cos[i] * V2_len - state.spot_angle_sin[i] * V1_len;
+
+		if (distance_closest_point > local_state.cube_radius)
+			continue;
+
+		spot_mask |= 1u << i;
+	}
+
+	for (uint i = 0u; i < points.count; i++)
+	{
+		float radial_dist_sqr = dot(cube_center, state.point_position[i]);
+		bool radial_inside = radial_dist_sqr <= local_state.point_cutoff[i];
+		if (radial_inside)
+			point_mask |= 1u << i;
+	}
+
+	return uvec2(spot_mask, point_mask);
+}
+
 void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view)
 {
 	unsigned res_x = x;
@@ -553,38 +595,31 @@ void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::Image
 	auto &image = view.get_image();
 	auto *image_data = static_cast<uvec4 *>(cmd.update_image(image, 0, 0));
 
-	auto inverse_cluster_transform = inverse(cluster_transform);
 	cluster_list_buffer.clear();
 
-	vec3 inv_res = vec3(1.0f / res_x, 1.0f / res_y, 1.0f / res_z);
-	float radius = 0.5f * length(mat3(inverse_cluster_transform) * (vec3(2.0f, 2.0f, 1.0f) * inv_res));
 	auto &workers = ThreadGroup::get_global();
 	auto task = workers.create_task();
 
 	// Naive and simple multithreading :)
-
 	// Pre-compute useful data structures before we go wide ...
-	vec3 spot_position[MaxLights];
-	vec3 spot_direction[MaxLights];
-	float spot_size[MaxLights];
-	float spot_angle_sin[MaxLights];
-	float spot_angle_cos[MaxLights];
-	vec3 point_position[MaxLights];
-	float point_size[MaxLights];
+	CPUGlobalAccelState state;
+	state.inverse_cluster_transform = inverse(cluster_transform);
+	state.inv_res = vec3(1.0f / res_x, 1.0f / res_y, 1.0f / res_z);
+	state.radius = 0.5f * length(mat3(state.inverse_cluster_transform) * (vec3(2.0f, 2.0f, 1.0f) * state.inv_res));
 
 	for (unsigned i = 0; i < spots.count; i++)
 	{
-		spot_position[i] = spots.lights[i].position_inner.xyz();
-		spot_direction[i] = spots.lights[i].direction_half_angle.xyz();
-		spot_size[i] = 1.0f / spots.lights[i].falloff_inv_radius.w;
-		spot_angle_cos[i] = cosf(spots.lights[i].direction_half_angle.w);
-		spot_angle_sin[i] = sinf(spots.lights[i].direction_half_angle.w);
+		state.spot_position[i] = spots.lights[i].position_inner.xyz();
+		state.spot_direction[i] = spots.lights[i].direction_half_angle.xyz();
+		state.spot_size[i] = 1.0f / spots.lights[i].falloff_inv_radius.w;
+		state.spot_angle_cos[i] = cosf(spots.lights[i].direction_half_angle.w);
+		state.spot_angle_sin[i] = sinf(spots.lights[i].direction_half_angle.w);
 	}
 
 	for (unsigned i = 0; i < points.count; i++)
 	{
-		point_position[i] = points.lights[i].position_inner.xyz();
-		point_size[i] = 1.0f / points.lights[i].falloff_inv_radius.w;
+		state.point_position[i] = points.lights[i].position_inner.xyz();
+		state.point_size[i] = 1.0f / points.lights[i].falloff_inv_radius.w;
 	}
 
 	for (unsigned slice = 0; slice < ClusterHierarchies; slice++)
@@ -595,10 +630,11 @@ void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::Image
 		{
 			// One slice per task.
 			task->enqueue_task([&, world_scale_factor, slice, cz]() {
-				float point_cutoff[MaxLights];
-				float cube_radius = radius * world_scale_factor;
+				CPULocalAccelState local_state;
+				local_state.world_scale_factor = world_scale_factor;
+				local_state.cube_radius = state.radius * world_scale_factor;
 				for (unsigned i = 0; i < points.count; i++)
-					point_cutoff[i] = (cube_radius + point_size[i]) * (cube_radius + point_size[i]);
+					local_state.point_cutoff[i] = (local_state.cube_radius + state.point_size[i]) * (local_state.cube_radius + state.point_size[i]);
 
 				uint32_t cached_spot_mask = 0;
 				uint32_t cached_point_mask = 0;
@@ -623,49 +659,9 @@ void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::Image
 				{
 					for (int cx = min_x; cx < max_x; cx++)
 					{
-						uint32_t spot_mask = 0;
-						uint32_t point_mask = 0;
-						uint32_t spot_count = 0;
-						uint32_t point_count = 0;
+						auto res = cluster_lights_cpu(cx, cy, cz, state, local_state);
 
-						vec3 view_space = vec3(2.0f, 2.0f, 1.0f) * (vec3(cx, cy, cz) + 0.5f) * inv_res - vec3(1.0f, 1.0f, 0.0f);
-						view_space *= world_scale_factor;
-						vec3 cube_center = (inverse_cluster_transform * vec4(view_space, 1.0f)).xyz();
-
-						for (unsigned i = 0u; i < spots.count; i++)
-						{
-							// Sphere/cone culling from https://bartwronski.com/2017/04/13/cull-that-cone/.
-							vec3 V = cube_center - spot_position[i];
-							float V_sq = dot(V, V);
-							float V1_len  = dot(V, spot_direction[i]);
-
-							if (V1_len > cube_radius + spot_size[i])
-								continue;
-							if (-V1_len > cube_radius)
-								continue;
-
-							float V2_len = sqrtf(std::max(V_sq - V1_len * V1_len, 0.0f));
-							float distance_closest_point = spot_angle_cos[i] * V2_len - spot_angle_sin[i] * V1_len;
-
-							if (distance_closest_point > cube_radius)
-								continue;
-
-							spot_mask |= 1u << i;
-							spot_count++;
-						}
-
-						for (uint i = 0u; i < points.count; i++)
-						{
-							float radial_dist_sqr = dot(cube_center, point_position[i]);
-							bool radial_inside = radial_dist_sqr <= point_cutoff[i];
-							if (radial_inside)
-							{
-								point_mask |= 1u << i;
-								point_count++;
-							}
-						}
-
-						if (cached_spot_mask == spot_mask && cached_point_mask == point_mask)
+						if (cached_spot_mask == res.x && cached_point_mask == res.y)
 						{
 							// Neighbor blocks have a high likelihood of sharing the same lights,
 							// try to conserve memory.
@@ -673,22 +669,26 @@ void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::Image
 						}
 						else
 						{
+							uint32_t spot_count = 0;
+							uint32_t point_count = 0;
 							uint32_t spot_start = tmp_list_buffer.size();
 
-							Util::for_each_bit(spot_mask, [&](uint32_t bit) {
+							Util::for_each_bit(res.x, [&](uint32_t bit) {
 								tmp_list_buffer.push_back(bit);
+								spot_count++;
 							});
 
 							uint32_t point_start = tmp_list_buffer.size();
 
-							Util::for_each_bit(point_mask, [&](uint32_t bit) {
+							Util::for_each_bit(res.y, [&](uint32_t bit) {
 								tmp_list_buffer.push_back(bit);
+								point_count++;
 							});
 
 							uvec4 node(spot_start, spot_count, point_start, point_count);
 							image_base[cy * res_x + cx] = node;
-							cached_spot_mask = spot_mask;
-							cached_point_mask = point_mask;
+							cached_spot_mask = res.x;
+							cached_point_mask = res.y;
 							cached_node = node;
 						}
 					}

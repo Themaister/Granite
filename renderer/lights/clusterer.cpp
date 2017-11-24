@@ -584,8 +584,12 @@ uvec2 LightClusterer::cluster_lights_cpu(int x, int y, int z, const CPUGlobalAcc
 		unsigned i = trailing_zeroes(pre_mask.y);
 		pre_mask.y &= ~(1u << i);
 
-		float radial_dist_sqr = dot(cube_center, state.point_position[i]);
-		bool radial_inside = radial_dist_sqr <= local_state.point_cutoff[i];
+		vec3 cube_center_dist = cube_center - state.point_position[i];
+		float radial_dist_sqr = dot(cube_center_dist, cube_center_dist);
+
+		float cutoff = state.point_size[i] + cube_radius;
+		cutoff *= cutoff;
+		bool radial_inside = radial_dist_sqr <= cutoff;
 		if (radial_inside)
 			point_mask |= 1u << i;
 	}
@@ -635,13 +639,11 @@ void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::Image
 
 		for (unsigned cz = 0; cz < res_z; cz += ClusterPrepassDownsample)
 		{
-			// One slice per task.
+			// Four slices per task.
 			task->enqueue_task([&, world_scale_factor, slice, cz]() {
 				CPULocalAccelState local_state;
 				local_state.world_scale_factor = world_scale_factor;
 				local_state.cube_radius = state.radius * world_scale_factor;
-				for (unsigned i = 0; i < points.count; i++)
-					local_state.point_cutoff[i] = (local_state.cube_radius + state.point_size[i]) * (local_state.cube_radius + state.point_size[i]);
 
 				uint32_t cached_spot_mask = 0;
 				uint32_t cached_point_mask = 0;
@@ -681,7 +683,16 @@ void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::Image
 
 						// No lights in large block? Quick eliminate.
 						if (!res.x && !res.y)
+						{
+							if (!ImplementationQuirks::get().clustering_list_iteration)
+							{
+								for (int sz = 0; sz < 4; sz++)
+									for (int sy = cy; sy < target_y; sy++)
+										for (int sx = cx; sx < target_x; sx++)
+											image_output_base[sz * res_y * res_x + sy * res_x + sx] = uvec4(0u);
+							}
 							continue;
+						}
 
 						for (int sz = 0; sz < 4; sz++)
 						{

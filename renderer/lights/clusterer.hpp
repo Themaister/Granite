@@ -137,7 +137,6 @@ private:
 	{
 		float cube_radius;
 		float world_scale_factor;
-		float point_cutoff[MaxLights];
 	};
 	uvec2 cluster_lights_cpu(int x, int y, int z,
 	                         const CPUGlobalAccelState &state,

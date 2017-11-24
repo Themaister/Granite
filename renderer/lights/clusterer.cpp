@@ -545,38 +545,45 @@ void LightClusterer::refresh(RenderContext &context)
 }
 
 uvec2 LightClusterer::cluster_lights_cpu(int x, int y, int z, const CPUGlobalAccelState &state,
-                                         const CPULocalAccelState &local_state)
+                                         const CPULocalAccelState &local_state, float scale, uvec2 pre_mask)
 {
 	uint32_t spot_mask = 0;
 	uint32_t point_mask = 0;
 
-	vec3 view_space = vec3(2.0f, 2.0f, 1.0f) * (vec3(x, y, z) + 0.5f) * state.inv_res - vec3(1.0f, 1.0f, 0.0f);
+	vec3 view_space = vec3(2.0f, 2.0f, 1.0f) * (vec3(x, y, z) + vec3(0.5f * scale)) * state.inv_res - vec3(1.0f, 1.0f, 0.0f);
 	view_space *= local_state.world_scale_factor;
 	vec3 cube_center = (state.inverse_cluster_transform * vec4(view_space, 1.0f)).xyz();
+	float cube_radius = local_state.cube_radius * scale;
 
-	for (unsigned i = 0u; i < spots.count; i++)
+	while (pre_mask.x)
 	{
+		unsigned i = trailing_zeroes(pre_mask.x);
+		pre_mask.x &= ~(1u << i);
+
 		// Sphere/cone culling from https://bartwronski.com/2017/04/13/cull-that-cone/.
 		vec3 V = cube_center - state.spot_position[i];
 		float V_sq = dot(V, V);
 		float V1_len  = dot(V, state.spot_direction[i]);
 
-		if (V1_len > local_state.cube_radius + state.spot_size[i])
+		if (V1_len > cube_radius + state.spot_size[i])
 			continue;
-		if (-V1_len > local_state.cube_radius)
+		if (-V1_len > cube_radius)
 			continue;
 
 		float V2_len = sqrtf(std::max(V_sq - V1_len * V1_len, 0.0f));
 		float distance_closest_point = state.spot_angle_cos[i] * V2_len - state.spot_angle_sin[i] * V1_len;
 
-		if (distance_closest_point > local_state.cube_radius)
+		if (distance_closest_point > cube_radius)
 			continue;
 
 		spot_mask |= 1u << i;
 	}
 
-	for (uint i = 0u; i < points.count; i++)
+	while (pre_mask.y)
 	{
+		unsigned i = trailing_zeroes(pre_mask.y);
+		pre_mask.y &= ~(1u << i);
+
 		float radial_dist_sqr = dot(cube_center, state.point_position[i]);
 		bool radial_inside = radial_dist_sqr <= local_state.point_cutoff[i];
 		if (radial_inside)
@@ -626,7 +633,7 @@ void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::Image
 	{
 		float world_scale_factor = exp2(-float(slice));
 
-		for (unsigned cz = 0; cz < res_z; cz++)
+		for (unsigned cz = 0; cz < res_z; cz += ClusterPrepassDownsample)
 		{
 			// One slice per task.
 			task->enqueue_task([&, world_scale_factor, slice, cz]() {
@@ -641,10 +648,10 @@ void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::Image
 				uvec4 cached_node = uvec4(0);
 
 				vector<uint32_t> tmp_list_buffer;
-				vector<uvec4> image_base(res_x * res_y);
+				vector<uvec4> image_base(ClusterPrepassDownsample * res_x * res_y);
 				auto *image_output_base = &image_data[slice * res_z * res_y * res_x + cz * res_y * res_x];
 
-				float range_z = float(cz + 1) / res_z;
+				float range_z = float(cz + ClusterPrepassDownsample) / res_z;
 				int min_x = int(std::floor((0.5f - 0.5f * range_z) * res_x));
 				int max_x = int(std::ceil((0.5f + 0.5f * range_z) * res_x));
 				int min_y = int(std::floor((0.5f - 0.5f * range_z) * res_y));
@@ -655,41 +662,64 @@ void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::Image
 				min_y = clamp(min_y, 0, int(res_y) - 1);
 				max_y = clamp(max_y, 0, int(res_y) - 1);
 
-				for (int cy = min_y; cy < max_y; cy++)
+				uvec2 pre_mask((1ull << spots.count) - 1,
+				               (1ull << points.count) - 1);
+
+				for (int cy = min_y; cy < max_y; cy += ClusterPrepassDownsample)
 				{
-					for (int cx = min_x; cx < max_x; cx++)
+					for (int cx = min_x; cx < max_x; cx += ClusterPrepassDownsample)
 					{
-						auto res = cluster_lights_cpu(cx, cy, cz, state, local_state);
+						int target_x = std::min(cx + ClusterPrepassDownsample, max_x);
+						int target_y = std::min(cy + ClusterPrepassDownsample, max_y);
 
-						if (cached_spot_mask == res.x && cached_point_mask == res.y)
+						auto res = cluster_lights_cpu(cx, cy, cz, state, local_state,
+						                              float(ClusterPrepassDownsample),
+						                              pre_mask);
+
+						// No lights in large block? Quick eliminate.
+						if (!res.x && !res.y)
+							continue;
+
+						for (int sz = 0; sz < 4; sz++)
 						{
-							// Neighbor blocks have a high likelihood of sharing the same lights,
-							// try to conserve memory.
-							image_base[cy * res_x + cx] = cached_node;
-						}
-						else
-						{
-							uint32_t spot_count = 0;
-							uint32_t point_count = 0;
-							uint32_t spot_start = tmp_list_buffer.size();
+							for (int sy = cy; sy < target_y; sy++)
+							{
+								for (int sx = cx; sx < target_x; sx++)
+								{
+									auto final_res = cluster_lights_cpu(sx, sy, sz + int(cz), state, local_state, 1.0f, res);
 
-							Util::for_each_bit(res.x, [&](uint32_t bit) {
-								tmp_list_buffer.push_back(bit);
-								spot_count++;
-							});
+									if (cached_spot_mask == final_res.x && cached_point_mask == final_res.y)
+									{
+										// Neighbor blocks have a high likelihood of sharing the same lights,
+										// try to conserve memory.
+										image_base[sz * res_y * res_x + sy * res_x + sx] = cached_node;
+									}
+									else
+									{
+										uint32_t spot_count = 0;
+										uint32_t point_count = 0;
+										uint32_t spot_start = tmp_list_buffer.size();
 
-							uint32_t point_start = tmp_list_buffer.size();
+										Util::for_each_bit(final_res.x, [&](uint32_t bit) {
+											tmp_list_buffer.push_back(bit);
+											spot_count++;
+										});
 
-							Util::for_each_bit(res.y, [&](uint32_t bit) {
-								tmp_list_buffer.push_back(bit);
-								point_count++;
-							});
+										uint32_t point_start = tmp_list_buffer.size();
 
-							uvec4 node(spot_start, spot_count, point_start, point_count);
-							image_base[cy * res_x + cx] = node;
-							cached_spot_mask = res.x;
-							cached_point_mask = res.y;
-							cached_node = node;
+										Util::for_each_bit(final_res.y, [&](uint32_t bit) {
+											tmp_list_buffer.push_back(bit);
+											point_count++;
+										});
+
+										uvec4 node(spot_start, spot_count, point_start, point_count);
+										image_base[sz * res_y * res_x + sy * res_x + sx] = node;
+										cached_spot_mask = final_res.x;
+										cached_point_mask = final_res.y;
+										cached_node = node;
+									}
+								}
+							}
 						}
 					}
 				}
@@ -703,7 +733,7 @@ void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::Image
 							tmp_list_buffer.size() * sizeof(uint32_t));
 				}
 
-				unsigned elems = res_x * res_y;
+				unsigned elems = ClusterPrepassDownsample * res_x * res_y;
 				for (unsigned i = 0; i < elems; i++)
 					image_output_base[i] = image_base[i] + uvec4(cluster_offset, 0, cluster_offset, 0);
 			});

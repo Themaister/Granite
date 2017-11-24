@@ -141,6 +141,7 @@ private:
 	};
 	uvec2 cluster_lights_cpu(int x, int y, int z,
 	                         const CPUGlobalAccelState &state,
-	                         const CPULocalAccelState &local);
+	                         const CPULocalAccelState &local,
+	                         float scale, uvec2 pre_mask);
 };
 }

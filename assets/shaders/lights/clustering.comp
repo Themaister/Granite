@@ -54,18 +54,14 @@ void main()
     if (any(greaterThanEqual(id.xy, registers.size.xy)))
         return;
 
+    int slice = id.z >> registers.size_z_log2;
+    float z_bias = slice == 0 ? 0.0 : 0.5;
     int wrapped_z = id.z & (registers.size.z - 1);
-    float range_z = float(wrapped_z + 1) / registers.inv_size.z;
-    ivec2 lo_coord = ivec2(floor((0.5 - 0.5 * range_z) * registers.size.xy));
-    ivec2 hi_coord = ivec2(ceil((0.5 + 0.5 * range_z) * registers.size.xy));
-    if (any(lessThan(id.xy, lo_coord)) || any(greaterThan(id.xy, hi_coord)))
-        return;
 
     uint point_mask = 0u;
     uint spot_mask = 0u;
 
-    int slice = id.z >> registers.size_z_log2;
-    float world_scale_factor = exp2(float(slice));
+    float world_scale_factor = exp2(max(0.0, float(slice - 1)));
 
 #ifdef INHERIT
     uvec2 bits = textureLod(uClusterInherit, (vec3(id) + 0.5) * registers.inv_texture_size, 0.0).xy;
@@ -74,7 +70,12 @@ void main()
     uint num_point = registers.point_count;
 #endif
 
-    vec3 view_space = vec3(2.0, 2.0, 1.0) * (vec3(id.xy, wrapped_z) + 0.5) * registers.inv_size - vec3(1.0, 1.0, 0.0);
+    vec3 view_space =
+        vec3(2.0, 2.0, 0.5) *
+        (vec3(id.xy, wrapped_z) + 0.5) *
+        registers.inv_size +
+        vec3(-1.0, -1.0, z_bias);
+
     view_space *= world_scale_factor;
     vec3 cube_center = (registers.inv_cluster_transform * vec4(view_space, 1.0)).xyz;
     float cube_radius = registers.cube_radius * world_scale_factor;

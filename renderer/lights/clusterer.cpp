@@ -530,7 +530,7 @@ void LightClusterer::refresh(RenderContext &context)
 	if (points.count || spots.count)
 		cluster_transform = ortho_box * context.get_render_parameters().view;
 	else
-		cluster_transform = mat4(1.0f);
+		cluster_transform = scale(vec3(0.0f, 0.0f, 0.0f));
 
 	if (enable_shadows)
 	{
@@ -774,6 +774,15 @@ void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::Image
 		info.size = cluster_list_buffer.size() * sizeof(cluster_list_buffer[0]);
 		cluster_list = cmd.get_device().create_buffer(info, cluster_list_buffer.data());
 		//LOGI("Cluster list has %u elements.\n", unsigned(cluster_list_buffer.size()));
+	}
+	else if (ImplementationQuirks::get().clustering_list_iteration)
+	{
+		BufferCreateInfo info = {};
+		info.domain = BufferDomain::Device;
+		info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+		info.size = sizeof(uvec4);
+		static const uvec4 dummy(0u);
+		cluster_list = cmd.get_device().create_buffer(info, &dummy);
 	}
 	else
 		cluster_list.reset();

@@ -528,7 +528,7 @@ void LightClusterer::refresh(RenderContext &context)
 	mat4 ortho_box = ortho(AABB(min_view, max_view));
 
 	if (points.count || spots.count)
-		cluster_transform = ortho_box * context.get_render_parameters().view;
+		cluster_transform = scale(vec3(1 << (ClusterHierarchies - 1))) * ortho_box * context.get_render_parameters().view;
 	else
 		cluster_transform = scale(vec3(0.0f, 0.0f, 0.0f));
 
@@ -550,7 +550,10 @@ uvec2 LightClusterer::cluster_lights_cpu(int x, int y, int z, const CPUGlobalAcc
 	uint32_t spot_mask = 0;
 	uint32_t point_mask = 0;
 
-	vec3 view_space = vec3(2.0f, 2.0f, 1.0f) * (vec3(x, y, z) + vec3(0.5f * scale)) * state.inv_res - vec3(1.0f, 1.0f, 0.0f);
+	vec3 view_space = vec3(2.0f, 2.0f, 0.5f) *
+	                  (vec3(x, y, z) + vec3(0.5f * scale)) *
+	                  state.inv_res +
+	                  vec3(-1.0f, -1.0f, local_state.z_bias);
 	view_space *= local_state.world_scale_factor;
 	vec3 cube_center = (state.inverse_cluster_transform * vec4(view_space, 1.0f)).xyz();
 	float cube_radius = local_state.cube_radius * scale;
@@ -616,7 +619,7 @@ void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::Image
 	CPUGlobalAccelState state;
 	state.inverse_cluster_transform = inverse(cluster_transform);
 	state.inv_res = vec3(1.0f / res_x, 1.0f / res_y, 1.0f / res_z);
-	state.radius = 0.5f * length(mat3(state.inverse_cluster_transform) * (vec3(2.0f, 2.0f, 1.0f) * state.inv_res));
+	state.radius = 0.5f * length(mat3(state.inverse_cluster_transform) * (vec3(2.0f, 2.0f, 0.5f) * state.inv_res));
 
 	for (unsigned i = 0; i < spots.count; i++)
 	{
@@ -633,16 +636,29 @@ void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::Image
 		state.point_size[i] = 1.0f / points.lights[i].falloff_inv_radius.w;
 	}
 
-	for (unsigned slice = 0; slice < ClusterHierarchies; slice++)
+	for (unsigned slice = 0; slice < ClusterHierarchies + 1; slice++)
 	{
-		float world_scale_factor = exp2(-float(slice));
+		float world_scale_factor;
+		float z_bias;
+
+		if (slice == 0)
+		{
+			world_scale_factor = 1.0f;
+			z_bias = 0.0f;
+		}
+		else
+		{
+			world_scale_factor = exp2(float(slice - 1));
+			z_bias = 0.5f;
+		}
 
 		for (unsigned cz = 0; cz < res_z; cz += ClusterPrepassDownsample)
 		{
 			// Four slices per task.
-			task->enqueue_task([&, world_scale_factor, slice, cz]() {
+			task->enqueue_task([&, z_bias, world_scale_factor, slice, cz]() {
 				CPULocalAccelState local_state;
 				local_state.world_scale_factor = world_scale_factor;
+				local_state.z_bias = z_bias;
 				local_state.cube_radius = state.radius * world_scale_factor;
 
 				uint32_t cached_spot_mask = 0;
@@ -657,7 +673,7 @@ void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::Image
 				auto *image_output_base = &image_data[slice * res_z * res_y * res_x + cz * res_y * res_x];
 
 				// Add a small guard band for safety.
-				float range_z = (cz + ClusterPrepassDownsample + 0.5f) / res_z;
+				float range_z = z_bias + (0.5f * (cz + ClusterPrepassDownsample + 0.5f)) / res_z;
 				int min_x = int(std::floor((0.5f - 0.5f * range_z) * res_x));
 				int max_x = int(std::ceil((0.5f + 0.5f * range_z) * res_x));
 				int min_y = int(std::floor((0.5f - 0.5f * range_z) * res_y));
@@ -832,7 +848,7 @@ void LightClusterer::build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView
 	auto inverse_cluster_transform = inverse(cluster_transform);
 
 	vec3 inv_res = vec3(1.0f / res_x, 1.0f / res_y, 1.0f / res_z);
-	float radius = 0.5f * length(mat3(inverse_cluster_transform) * (vec3(2.0f, 2.0f, 1.0f) * inv_res));
+	float radius = 0.5f * length(mat3(inverse_cluster_transform) * (vec3(2.0f, 2.0f, 0.5f) * inv_res));
 
 	Push push = {
 			inverse_cluster_transform,
@@ -855,7 +871,7 @@ void LightClusterer::add_render_passes(RenderGraph &graph)
 	att.size_class = SizeClass::Absolute;
 	att.size_x = x;
 	att.size_y = y;
-	att.size_z = z * ClusterHierarchies;
+	att.size_z = z * (ClusterHierarchies + 1);
 	att.persistent = true;
 
 	if (ImplementationQuirks::get().clustering_list_iteration || ImplementationQuirks::get().clustering_force_cpu)

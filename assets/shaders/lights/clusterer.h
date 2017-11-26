@@ -41,19 +41,37 @@ layout(std430, set = 1, binding = 13) readonly buffer ClusterList
 } cluster_list;
 #endif
 
-#define NUM_CLUSTER_HIERARCHIES 8
-#define INV_NUM_CLUSTER_HIERARCHIES (1.0 / float(NUM_CLUSTER_HIERARCHIES))
+const float NUM_CLUSTER_HIERARCHIES = 8.0;
+const float MAX_CLUSTER_HIERARCHY = NUM_CLUSTER_HIERARCHIES - 1.0;
+const float INV_PADDED_NUM_CLUSTER_HIERARCHIES = 1.0 / (NUM_CLUSTER_HIERARCHIES + 1.0);
 
 mediump vec3 compute_cluster_light(MaterialProperties material, vec3 world_pos, vec3 camera_pos)
 {
 	vec3 cluster_pos = (cluster.transform * vec4(world_pos, 1.0)).xyz;
 	float scale_factor = max(0.0001, cluster_pos.z);
-	float level = clamp(floor(-log2(scale_factor)), 0.0, float(NUM_CLUSTER_HIERARCHIES) - 1.0);
-	cluster_pos *= exp2(level);
+	float level = clamp(ceil(log2(scale_factor)), -1.0, MAX_CLUSTER_HIERARCHY);
+
+	// Fit scale to chosen level.
+	// For level -1, the scale is actually the same scale as for level 0.
+	cluster_pos *= exp2(min(-level, 0.0));
+
+	// If level == -1.0 -> inv_z_bias == 1.0 - 1.0 == 0.0
+	// If level == 0.0 -> inv_z_bias = -1.0
+	// If level >= 1.0 -> inv_z_bias = -1.0
+	float inv_z_bias = max(-level, 0.0) - 1.0;
+
+	// Rescale [-1.0, 1.0] range for XY into texture space.
 	cluster_pos.xy = cluster_pos.xy * 0.5 + 0.5;
 
-	// Avoid potential NN wraps when cluster_pos.z == 1.0.
-	cluster_pos.z = (level + clamp(cluster_pos.z, 0.001, 0.999)) * INV_NUM_CLUSTER_HIERARCHIES;
+	// Remap [0.5, 1.0] range to [0.0, 1.0].
+	// For closest hierarchy to camera, [0.0, 0.5), we will end up with [-1.0, 0.0) here,
+	// which is wrapped around to [0.0, 1.0) range.
+	// Clamp away from 1.0 to avoid potential NN wraps to next level when cluster_pos.z == 1.0.
+	cluster_pos.z = clamp(cluster_pos.z * 2.0 + inv_z_bias, 0.001, 0.999);
+
+	// Remap to slice index.
+	cluster_pos.z = (1.0 + level + cluster_pos.z) * INV_PADDED_NUM_CLUSTER_HIERARCHIES;
+
 	mediump vec3 result = vec3(0.0);
 
 #ifdef CLUSTER_LIST

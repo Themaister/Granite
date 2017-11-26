@@ -65,7 +65,7 @@ void main()
     uint spot_mask = 0u;
 
     int slice = id.z >> registers.size_z_log2;
-    float world_scale_factor = exp2(-float(slice));
+    float world_scale_factor = exp2(float(slice));
 
 #ifdef INHERIT
     uvec2 bits = textureLod(uClusterInherit, (vec3(id) + 0.5) * registers.inv_texture_size, 0.0).xy;

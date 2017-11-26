@@ -70,7 +70,7 @@ private:
 	const RenderContext *context = nullptr;
 	std::vector<std::tuple<PositionalLightComponent *, CachedSpatialTransformComponent *>> *lights = nullptr;
 
-	unsigned x = 64, y = 32, z = 32;
+	unsigned x = 64, y = 32, z = 16;
 	unsigned shadow_resolution = 512;
 	void build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view, const Vulkan::ImageView *pre_culled);
 	void build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view);
@@ -137,6 +137,7 @@ private:
 	{
 		float cube_radius;
 		float world_scale_factor;
+		float z_bias;
 	};
 	uvec2 cluster_lights_cpu(int x, int y, int z,
 	                         const CPUGlobalAccelState &state,

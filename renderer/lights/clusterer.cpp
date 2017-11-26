@@ -606,8 +606,43 @@ void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::Image
 	unsigned res_y = y;
 	unsigned res_z = z;
 
+#ifdef CLUSTERER_FORCE_TRANSFER_UPDATE
 	auto &image = view.get_image();
 	auto *image_data = static_cast<uvec4 *>(cmd.update_image(image, 0, 0));
+#else
+	// Copy to image using a compute pipeline so we know how it's implemented.
+	BufferCreateInfo compute_staging_info = {};
+	compute_staging_info.domain = BufferDomain::Host;
+	compute_staging_info.size = res_x * res_y * res_z * (ClusterHierarchies + 1) * sizeof(uvec4);
+	compute_staging_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+	auto compute_staging = cmd.get_device().create_buffer(compute_staging_info, nullptr);
+	auto *image_data = static_cast<uvec4 *>(cmd.get_device().map_host_buffer(*compute_staging, MEMORY_ACCESS_WRITE));
+
+	{
+		auto *copy_program = cmd.get_device().get_shader_manager().register_compute(
+				"builtin://shaders/util/copy_buffer_to_image_3d.comp");
+		auto variant = copy_program->register_variant({});
+		cmd.set_program(*copy_program->get_program(variant));
+		cmd.set_storage_texture(0, 0, view);
+		cmd.set_storage_buffer(0, 1, *compute_staging);
+
+		struct Push
+		{
+			uint dim_x;
+			uint dim_y;
+			uint row_stride;
+			uint height_stride;
+		};
+
+		const Push push = {
+			res_x, res_y,
+			res_x, res_x * res_y,
+		};
+
+		cmd.push_constants(&push, 0, sizeof(push));
+		cmd.dispatch((res_x + 7) / 8, (res_y + 7) / 8, res_z * (ClusterHierarchies + 1));
+	}
+#endif
 
 	cluster_list_buffer.clear();
 
@@ -876,8 +911,13 @@ void LightClusterer::add_render_passes(RenderGraph &graph)
 
 	if (ImplementationQuirks::get().clustering_list_iteration || ImplementationQuirks::get().clustering_force_cpu)
 	{
+#ifdef CLUSTERER_FORCE_TRANSFER_UPDATE
 		auto &pass = graph.add_pass("clustering", VK_PIPELINE_STAGE_TRANSFER_BIT);
 		pass.add_blit_texture_output("light-cluster", att);
+#else
+		auto &pass = graph.add_pass("clustering", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+		pass.add_storage_texture_output("light-cluster", att);
+#endif
 		pass.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
 			build_cluster_cpu(cmd, *target);
 		});

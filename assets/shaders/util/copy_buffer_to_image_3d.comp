@@ -1,0 +1,27 @@
+#version 450
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(set = 0, binding = 0, rgba32ui) uniform writeonly uimage3D uImage;
+
+layout(set = 0, binding = 1, std430) readonly buffer SSBO
+{
+    uvec4 data[];
+} source_buffer;
+
+layout(push_constant, std430) uniform Registers
+{
+    ivec2 dimension_xy;
+    int row_stride;
+    int height_stride;
+} registers;
+
+void main()
+{
+    ivec3 ident = ivec3(gl_GlobalInvocationID);
+    if (all(lessThan(ident.xy, registers.dimension_xy)))
+    {
+        int offset = ident.x + ident.y * registers.row_stride + ident.z * registers.height_stride;
+        uvec4 idata = source_buffer.data[offset];
+        imageStore(uImage, ident, idata);
+    }
+}

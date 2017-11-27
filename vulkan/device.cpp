@@ -23,6 +23,8 @@
 #include "device.hpp"
 #include "format.hpp"
 #include "thread_group.hpp"
+#include "type_to_string.hpp"
+#include "quirks.hpp"
 #include <algorithm>
 #include <string.h>
 
@@ -598,6 +600,8 @@ void Device::submit_empty_inner(CommandBuffer::Type type, VkFence *fence, Semaph
 	if (queue_lock_callback)
 		queue_lock_callback();
 	VkResult result = vkQueueSubmit(queue, 1, &submit, cleared_fence);
+	if (ImplementationQuirks::get().queue_wait_on_submission)
+		vkQueueWaitIdle(queue);
 	if (queue_unlock_callback)
 		queue_unlock_callback();
 
@@ -614,6 +618,37 @@ void Device::submit_empty_inner(CommandBuffer::Type type, VkFence *fence, Semaph
 		*semaphore = make_handle<SemaphoreHolder>(this, cleared_semaphore, true);
 	if (semaphore_alt)
 		*semaphore_alt = make_handle<SemaphoreHolder>(this, cleared_semaphore_alt, true);
+
+#ifdef VULKAN_DEBUG
+	const char *queue_name = nullptr;
+	switch (type)
+	{
+	default:
+	case CommandBuffer::Type::Graphics:
+		queue_name = "Graphics";
+		break;
+	case CommandBuffer::Type::Compute:
+		queue_name = "Compute";
+		break;
+	case CommandBuffer::Type::Transfer:
+		queue_name = "Transfer";
+		break;
+	}
+
+	LOGI("Empty submission to %s queue:\n", queue_name);
+	for (uint32_t i = 0; i < submit.waitSemaphoreCount; i++)
+	{
+		LOGI("  Waiting for semaphore: %llx in stages %s\n",
+		     reinterpret_cast<unsigned long long>(submit.pWaitSemaphores[i]),
+		     stage_flags_to_string(submit.pWaitDstStageMask[i]).c_str());
+	}
+
+	for (uint32_t i = 0; i < submit.signalSemaphoreCount; i++)
+	{
+		LOGI("  Signalling semaphore: %llx\n",
+		     reinterpret_cast<unsigned long long>(submit.pSignalSemaphores[i]));
+	}
+#endif
 }
 
 void Device::submit_staging(CommandBufferHandle cmd, VkBufferUsageFlags usage, bool flush)
@@ -839,6 +874,8 @@ void Device::submit_queue(CommandBuffer::Type type, VkFence *fence, Semaphore *s
 	if (queue_lock_callback)
 		queue_lock_callback();
 	VkResult result = vkQueueSubmit(queue, submits.size(), submits.data(), cleared_fence);
+	if (ImplementationQuirks::get().queue_wait_on_submission)
+		vkQueueWaitIdle(queue);
 	if (queue_unlock_callback)
 		queue_unlock_callback();
 	if (result != VK_SUCCESS)
@@ -855,6 +892,43 @@ void Device::submit_queue(CommandBuffer::Type type, VkFence *fence, Semaphore *s
 		*semaphore = make_handle<SemaphoreHolder>(this, cleared_semaphore, true);
 	if (semaphore_alt)
 		*semaphore_alt = make_handle<SemaphoreHolder>(this, cleared_semaphore_alt, true);
+
+#ifdef VULKAN_DEBUG
+	const char *queue_name = nullptr;
+	switch (type)
+	{
+	default:
+	case CommandBuffer::Type::Graphics:
+		queue_name = "Graphics";
+		break;
+	case CommandBuffer::Type::Compute:
+		queue_name = "Compute";
+		break;
+	case CommandBuffer::Type::Transfer:
+		queue_name = "Transfer";
+		break;
+	}
+
+	for (auto &submit : submits)
+	{
+		LOGI("Submission to %s queue:\n", queue_name);
+		for (uint32_t i = 0; i < submit.waitSemaphoreCount; i++)
+		{
+			LOGI("  Waiting for semaphore: %llx in stages %s\n",
+			     reinterpret_cast<unsigned long long>(submit.pWaitSemaphores[i]),
+			     stage_flags_to_string(submit.pWaitDstStageMask[i]).c_str());
+		}
+
+		for (uint32_t i = 0; i < submit.commandBufferCount; i++)
+			LOGI(" Command Buffer %llx\n", reinterpret_cast<unsigned long long>(submit.pCommandBuffers[i]));
+
+		for (uint32_t i = 0; i < submit.signalSemaphoreCount; i++)
+		{
+			LOGI("  Signalling semaphore: %llx\n",
+			     reinterpret_cast<unsigned long long>(submit.pSignalSemaphores[i]));
+		}
+	}
+#endif
 }
 
 void Device::flush_frame(CommandBuffer::Type type)
@@ -1495,7 +1569,12 @@ void Device::PerFrame::begin()
 	for (auto &semaphore : destroyed_semaphores)
 		vkDestroySemaphore(device, semaphore, nullptr);
 	for (auto &semaphore : recycled_semaphores)
+	{
+#ifdef VULKAN_DEBUG
+		LOGI("Recycling semaphore: %llx\n", reinterpret_cast<unsigned long long>(semaphore));
+#endif
 		managers.semaphore.recycle(semaphore);
+	}
 	for (auto &event : recycled_events)
 		managers.event.recycle(event);
 	for (auto &alloc : allocations)

@@ -513,7 +513,10 @@ void Device::submit_nolock(CommandBufferHandle cmd, Fence *fence, Semaphore *sem
 		submit_queue(type, fence ? &cleared_fence : nullptr, semaphore, semaphore_alt);
 
 	if (fence)
+	{
+		VK_ASSERT(!*fence);
 		*fence = make_handle<FenceHolder>(this, cleared_fence);
+	}
 
 	decrement_frame_counter_nolock();
 }
@@ -615,9 +618,16 @@ void Device::submit_empty_inner(CommandBuffer::Type type, VkFence *fence, Semaph
 	}
 
 	if (semaphore)
+	{
+		VK_ASSERT(!*semaphore);
 		*semaphore = make_handle<SemaphoreHolder>(this, cleared_semaphore, true);
+	}
+
 	if (semaphore_alt)
+	{
+		VK_ASSERT(!*semaphore_alt);
 		*semaphore_alt = make_handle<SemaphoreHolder>(this, cleared_semaphore_alt, true);
+	}
 
 #ifdef VULKAN_DEBUG
 	const char *queue_name = nullptr;
@@ -889,9 +899,16 @@ void Device::submit_queue(CommandBuffer::Type type, VkFence *fence, Semaphore *s
 	}
 
 	if (semaphore)
+	{
+		VK_ASSERT(!*semaphore);
 		*semaphore = make_handle<SemaphoreHolder>(this, cleared_semaphore, true);
+	}
+
 	if (semaphore_alt)
+	{
+		VK_ASSERT(!*semaphore_alt);
 		*semaphore_alt = make_handle<SemaphoreHolder>(this, cleared_semaphore_alt, true);
+	}
 
 #ifdef VULKAN_DEBUG
 	const char *queue_name = nullptr;

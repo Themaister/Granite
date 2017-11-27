@@ -129,6 +129,9 @@ def main():
     parser.add_argument('--results',
                         help = 'Store results JSON',
                         type = str)
+    parser.add_argument('--quirks',
+                        help = 'Run sweep with quirks config',
+                        type = str)
 
     args = parser.parse_args()
 
@@ -194,6 +197,10 @@ def main():
         subprocess.check_call(['adb', 'push', sweep_path, '/data/local/tmp/granite/scene.glb'])
         print('Pushing builtin assets ...')
 
+        if args.quirks is not None:
+            print('Pushing quirks config.')
+            subprocess.check_call(['adb', 'push', args.quirks, '/data/local/tmp/granite/quirks.json'])
+
         subprocess.check_call(['adb', 'push', args.builtin, '/data/local/tmp/granite/'])
 
         asset_dir = os.path.dirname(sweep_path)
@@ -224,12 +231,18 @@ def main():
                       '--fs-builtin /data/local/tmp/granite/assets',
                       '--fs-assets /data/local/tmp/granite/assets',
                       '--fs-cache /data/local/tmp/granite/cache']
+        if args.quirks is not None:
+            base_sweep.append('--quirks')
+            base_sweep.append('/data/local/tmp/granite/quirks.json')
     else:
         binary = args.viewer_binary if args.viewer_binary is not None else './viewer/gltf-viewer-headless'
         base_sweep = [binary, '--frames', str(args.frames),
                       '--width', str(args.width),
                       '--height', str(args.height), sweep_path,
                       '--stat', stat_file]
+        if args.quirks is not None:
+            base_sweep.append('--quirks')
+            base_sweep.append(args.quirks)
 
     results = []
     iterations = args.iterations if args.iterations is not None else 1

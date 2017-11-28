@@ -615,7 +615,10 @@ void Device::submit_empty_inner(CommandBuffer::Type type, VkFence *fence, Semaph
 	{
 		frame().wait_fences.push_back(cleared_fence);
 		*fence = cleared_fence;
+		data.need_fence = false;
 	}
+	else
+		data.need_fence = true;
 
 	if (semaphore)
 	{
@@ -896,7 +899,10 @@ void Device::submit_queue(CommandBuffer::Type type, VkFence *fence, Semaphore *s
 	{
 		frame().wait_fences.push_back(cleared_fence);
 		*fence = cleared_fence;
+		data.need_fence = false;
 	}
+	else
+		data.need_fence = true;
 
 	if (semaphore)
 	{
@@ -1012,12 +1018,26 @@ void Device::end_frame_nolock()
 	// Make sure we have a fence which covers all submissions in the frame.
 	VkFence fence;
 
-	submit_queue(CommandBuffer::Type::Transfer, &fence, nullptr, nullptr);
-	frame().recycle_fences.push_back(fence);
-	submit_queue(CommandBuffer::Type::Graphics, &fence, nullptr, nullptr);
-	frame().recycle_fences.push_back(fence);
-	submit_queue(CommandBuffer::Type::Compute, &fence, nullptr, nullptr);
-	frame().recycle_fences.push_back(fence);
+	if (transfer.need_fence || !frame().transfer_submissions.empty())
+	{
+		submit_queue(CommandBuffer::Type::Transfer, &fence, nullptr, nullptr);
+		frame().recycle_fences.push_back(fence);
+		transfer.need_fence = false;
+	}
+
+	if (graphics.need_fence || !frame().graphics_submissions.empty())
+	{
+		submit_queue(CommandBuffer::Type::Graphics, &fence, nullptr, nullptr);
+		frame().recycle_fences.push_back(fence);
+		graphics.need_fence = false;
+	}
+
+	if (compute.need_fence || !frame().compute_submissions.empty())
+	{
+		submit_queue(CommandBuffer::Type::Compute, &fence, nullptr, nullptr);
+		frame().recycle_fences.push_back(fence);
+		compute.need_fence = false;
+	}
 }
 
 void Device::flush_frame()

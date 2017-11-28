@@ -45,7 +45,7 @@
 #define VK_ASSERT(x)                                             \
 	do                                                           \
 	{                                                            \
-		if (!(x))                                                \
+		if (!bool(x))                                            \
 		{                                                        \
 			LOGE("Vulkan error at %s:%d.\n", __FILE__, __LINE__); \
 			std::terminate();                                    \

@@ -302,6 +302,7 @@ private:
 	{
 		std::vector<Semaphore> wait_semaphores;
 		std::vector<VkPipelineStageFlags> wait_stages;
+		bool need_fence = false;
 	} graphics, compute, transfer;
 
 	// Pending buffers which need to be copied from CPU to GPU before submitting graphics or compute work.

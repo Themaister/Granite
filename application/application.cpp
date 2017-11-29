@@ -115,6 +115,8 @@ void SceneViewerApplication::read_config(const std::string &path)
 		config.directional_light_shadows = doc["directionalLightShadows"].GetBool();
 	if (doc.HasMember("directionalLightShadowsCascaded"))
 		config.directional_light_cascaded_shadows = doc["directionalLightShadowsCascaded"].GetBool();
+	if (doc.HasMember("directionalLightShadowsVSM"))
+		config.directional_light_shadows_vsm = doc["directionalLightShadowsVSM"].GetBool();
 	if (doc.HasMember("clusteredLights"))
 		config.clustered_lights = doc["clusteredLights"].GetBool();
 	if (doc.HasMember("clusteredLightsShadows"))
@@ -630,7 +632,7 @@ void SceneViewerApplication::add_shadow_pass(Vulkan::Device &, const std::string
 {
 	AttachmentInfo shadowmap;
 	shadowmap.format = VK_FORMAT_D16_UNORM;
-	shadowmap.samples = 1;
+	shadowmap.samples = config.directional_light_shadows_vsm ? 4 : 1;
 	shadowmap.size_class = SizeClass::Absolute;
 
 	if (type == DepthPassType::Main)
@@ -645,12 +647,41 @@ void SceneViewerApplication::add_shadow_pass(Vulkan::Device &, const std::string
 	}
 
 	auto &shadowpass = graph.add_pass(tagcat("shadow", tag), VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
-	shadowpass.set_depth_stencil_output(tagcat("shadow", tag), shadowmap);
+
+	if (config.directional_light_shadows_vsm)
+	{
+		auto shadowmap_vsm_color = shadowmap;
+		auto shadowmap_vsm_resolved_color = shadowmap;
+		shadowmap_vsm_color.format = VK_FORMAT_R32G32_SFLOAT;
+		shadowmap_vsm_color.samples = 4;
+		shadowmap_vsm_resolved_color.format = VK_FORMAT_R32G32_SFLOAT;
+		shadowmap_vsm_resolved_color.samples = 1;
+
+		shadowpass.set_depth_stencil_output(tagcat("shadow-depth", tag), shadowmap);
+		shadowpass.add_color_output(tagcat("shadow-msaa", tag), shadowmap_vsm_color);
+		shadowpass.add_resolve_output(tagcat("shadow", tag), shadowmap_vsm_resolved_color);
+	}
+	else
+	{
+		shadowpass.set_depth_stencil_output(tagcat("shadow", tag), shadowmap);
+	}
+
 	shadowpass.set_build_render_pass([this, type](Vulkan::CommandBuffer &cmd) {
 		if (type == DepthPassType::Main)
 			render_shadow_map_far(cmd);
 		else
 			render_shadow_map_near(cmd);
+	});
+
+	shadowpass.set_get_clear_color([](unsigned, VkClearColorValue *value) -> bool {
+		if (value)
+		{
+			value->float32[0] = 1.0f;
+			value->float32[1] = 1.0f;
+			value->float32[2] = 0.0f;
+			value->float32[3] = 0.0f;
+		}
+		return true;
 	});
 
 	shadowpass.set_get_clear_depth_stencil([](VkClearDepthStencilValue *value) -> bool {
@@ -753,6 +784,7 @@ void SceneViewerApplication::update_shadow_map()
 	lighting.shadow.far_transform = glm::translate(vec3(0.5f, 0.5f, 0.0f)) * glm::scale(vec3(0.5f, 0.5f, 1.0f)) * proj * view;
 	depth_context.set_camera(proj, view);
 
+	depth_renderer.set_mesh_renderer_options(config.directional_light_shadows_vsm ? Renderer::SHADOW_VSM_BIT : 0);
 	depth_renderer.begin();
 	scene.gather_visible_static_shadow_renderables(depth_context.get_visibility_frustum(), depth_visible);
 	depth_renderer.push_depth_renderables(depth_context, depth_visible);
@@ -789,6 +821,7 @@ void SceneViewerApplication::render_shadow_map_near(Vulkan::CommandBuffer &cmd)
 	mat4 proj = ortho(ortho_range);
 	lighting.shadow.near_transform = glm::translate(vec3(0.5f, 0.5f, 0.0f)) * glm::scale(vec3(0.5f, 0.5f, 1.0f)) * proj * view;
 	depth_context.set_camera(proj, view);
+	depth_renderer.set_mesh_renderer_options(config.directional_light_shadows_vsm ? Renderer::SHADOW_VSM_BIT : 0);
 	depth_renderer.begin();
 	scene.gather_visible_dynamic_shadow_renderables(depth_context.get_visibility_frustum(), depth_visible);
 	depth_renderer.push_depth_renderables(depth_context, depth_visible);

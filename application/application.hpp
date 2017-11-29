@@ -174,6 +174,7 @@ private:
 
 		bool directional_light_shadows = true;
 		bool directional_light_cascaded_shadows = true;
+		bool directional_light_shadows_vsm = true;
 		bool clustered_lights = false;
 		bool clustered_lights_shadows = true;
 		bool hdr_bloom = true;

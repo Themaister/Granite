@@ -185,6 +185,10 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_debug_cb(VkDebugReportFlagsEXT flag
 	if (strcmp(pLayerPrefix, "DS") == 0 && messageCode == 10)
 		return VK_FALSE;
 
+	// Demote to a warning, it's a false positive almost all the time for Granite.
+	if (strcmp(pLayerPrefix, "DS") == 0 && messageCode == 6)
+		flags = VK_DEBUG_REPORT_WARNING_BIT_EXT;
+
 	if (flags & VK_DEBUG_REPORT_ERROR_BIT_EXT)
 	{
 		fprintf(stderr, "[Vulkan]: Error: %s: %s\n", pLayerPrefix, pMessage);

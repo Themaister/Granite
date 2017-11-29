@@ -23,28 +23,29 @@ void main()
 {
 #if defined(HAVE_BASECOLORMAP) && HAVE_BASECOLORMAP && defined(ALPHA_TEST)
     mediump float base_alpha = texture(uBaseColormap, vUV).a;
-
     #if !defined(ALPHA_TEST_ALPHA_TO_COVERAGE)
         if (base_alpha < 0.5)
             discard;
     #endif
+#else
+    const mediump float base_alpha = 1.0;
+#endif
 
+#ifdef SHADOW_RESOLVE_VSM
+    #ifdef DIRECTIONAL_SHADOW_VSM
+        float z = gl_FragCoord.z;
+    #else
+        float z = clip_z_to_linear(gl_FragCoord.z);
+    #endif
+#endif
+
+#if defined(ALPHA_TEST_ALPHA_TO_COVERAGE)
     #ifdef SHADOW_RESOLVE_VSM
-        #ifdef DIRECTIONAL_SHADOW_VSM
-            float z = gl_FragCoord.z;
-        #else
-            float z = clip_z_to_linear(gl_FragCoord.z);
-        #endif
+        FragColor = vec4(z, z * z, 0.0, base_alpha);
+    #else
+        FragColor = vec4(0.0, 0.0, 0.0, base_alpha);
     #endif
-
-    #if defined(ALPHA_TEST_ALPHA_TO_COVERAGE)
-        #ifdef SHADOW_RESOLVE_VSM
-            FragColor = vec4(z, z * z, 0.0, base_alpha);
-        #else
-            FragColor = vec4(0.0, 0.0, 0.0, base_alpha);
-        #endif
-    #elif defined(SHADOW_RESOLVE_VSM)
-        VSM = vec2(z, z * z);
-    #endif
+#elif defined(SHADOW_RESOLVE_VSM)
+    VSM = vec2(z, z * z);
 #endif
 }

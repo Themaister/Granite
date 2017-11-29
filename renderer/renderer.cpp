@@ -64,6 +64,12 @@ void Renderer::set_mesh_renderer_options_internal(RendererOptionFlags flags)
 	if (flags & POSITIONAL_LIGHT_CLUSTER_LIST_BIT)
 		global_defines.push_back({ "CLUSTER_LIST", 1 });
 
+	if (flags & SHADOW_VSM_BIT)
+	{
+		global_defines.push_back({ "DIRECTIONAL_SHADOW_VSM", 1 });
+		global_defines.push_back({ "SHADOW_RESOLVE_VSM", 1 });
+	}
+
 	switch (type)
 	{
 	case RendererType::GeneralForward:
@@ -107,7 +113,11 @@ void Renderer::set_mesh_renderer_options_from_lighting(const LightingParameters 
 	if (lighting.environment_irradiance && lighting.environment_radiance)
 		flags |= Renderer::ENVIRONMENT_ENABLE_BIT;
 	if (lighting.shadow_far)
+	{
 		flags |= Renderer::SHADOW_ENABLE_BIT;
+		if (!Vulkan::format_is_depth_stencil(lighting.shadow_far->get_format()))
+			flags |= Renderer::SHADOW_VSM_BIT;
+	}
 	if (lighting.shadow_near && lighting.shadow_far)
 		flags |= Renderer::SHADOW_CASCADE_ENABLE_BIT;
 	if (lighting.fog.falloff > 0.0f)
@@ -152,9 +162,9 @@ void Renderer::on_device_created(const DeviceCreatedEvent &created)
 		                                                 "builtin://shaders/static_mesh.vert",
 		                                                 "builtin://shaders/static_mesh_depth.frag");
 		suite[ecast(RenderableType::Ground)].init_graphics(&device.get_shader_manager(), "builtin://shaders/ground.vert",
-		                                                   "builtin://shaders/dummy.frag");
+		                                                   "builtin://shaders/dummy_depth.frag");
 		suite[ecast(RenderableType::TexturePlane)].init_graphics(&device.get_shader_manager(), "builtin://shaders/texture_plane.vert",
-		                                                         "builtin://shaders/dummy.frag");
+		                                                         "builtin://shaders/dummy_depth.frag");
 		suite[ecast(RenderableType::SpotLight)].init_graphics(&device.get_shader_manager(),
 		                                                      "builtin://shaders/lights/spot.vert",
 		                                                      "builtin://shaders/dummy.frag");

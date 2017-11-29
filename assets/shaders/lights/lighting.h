@@ -32,36 +32,31 @@ layout(set = 1, binding = 1) uniform mediump samplerCube uIrradiance;
 layout(set = 0, binding = 7) uniform mediump sampler2D uBRDFLut;
 
 #ifdef SHADOWS
-layout(set = 1, binding = 3) uniform mediump sampler2DShadow uShadowmap;
+
+#if !defined(DIRECTIONAL_SHADOW_PCF) && !defined(DIRECTIONAL_SHADOW_VSM)
+#define DIRECTIONAL_SHADOW_PCF
+#endif
+
+#ifdef DIRECTIONAL_SHADOW_VSM
+#include "vsm.h"
+layout(set = 1, binding = 3) uniform mediump sampler2D uShadowmap;
 #ifdef SHADOW_CASCADES
-layout(set = 1, binding = 4) uniform mediump sampler2DShadow uShadowmapNear;
+layout(set = 1, binding = 4) uniform mediump sampler2D uShadowmapNear;
 #endif
 
-#define SHADOW_PCF
-#ifdef SHADOW_VSM
-float vsm(float depth, vec2 moments)
-{
-    float shadow_term = 1.0f;
-    if (depth > moments.x)
-    {
-        float variance = max(moments.y - moments.x * moments.x, 0.00001);
-        float d = depth - moments.x;
-        shadow_term = variance / (variance + d * d);
-        shadow_term = clamp((shadow_term - 0.25) / 0.75, 0.0, 1.0); // Avoid some lighting leaking.
-    }
-    return shadow_term;
-}
-#endif
-
-#ifdef SHADOW_VSM
 mediump float get_shadow_term(LightInfo light)
 {
     // Sample shadowmap.
 #ifdef SHADOW_CASCADES
 	vec3 shadow_near = light.clip_shadow_near.xyz / light.clip_shadow_near.w;
 	vec3 shadow_far = light.clip_shadow_far.xyz / light.clip_shadow_far.w;
-	float shadow_term_near = vsm(shadow_near.z, texture(uShadowmapNear, shadow_near.xy).xy);
-	float shadow_term_far = vsm(shadow_far.z, texture(uShadowmap, shadow_far.xy).xy);
+
+	vec2 moments_near = textureLod(uShadowmapNear, shadow_near.xy, 0.0).xy;
+	vec2 moments_far = textureLod(uShadowmap, shadow_far.xy, 0.0).xy;
+
+	float shadow_term_near = vsm(shadow_near.z, moments_near);
+	float shadow_term_far = vsm(shadow_far.z, moments_far);
+
     float view_z = dot(light.camera_front, (light.pos - light.camera_pos));
     mediump float shadow_lerp = clamp(4.0 * (view_z * light.inv_cutoff_distance - 0.75), 0.0, 1.0);
     mediump float shadow_term = mix(shadow_term_near, shadow_term_far, shadow_lerp);
@@ -71,7 +66,14 @@ mediump float get_shadow_term(LightInfo light)
 	return vsm(shadow_far.z, texture(uShadowmap, shadow_far.xy).xy);
 #endif
 }
-#elif defined(SHADOW_PCF)
+#endif
+
+#ifdef DIRECTIONAL_SHADOW_PCF
+layout(set = 1, binding = 3) uniform mediump sampler2DShadow uShadowmap;
+#ifdef SHADOW_CASCADES
+layout(set = 1, binding = 4) uniform mediump sampler2DShadow uShadowmapNear;
+#endif
+
 mediump float get_shadow_term(LightInfo light)
 {
 #ifdef SHADOW_CASCADES

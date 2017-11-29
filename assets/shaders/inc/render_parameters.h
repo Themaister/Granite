@@ -19,4 +19,10 @@ layout(set = 0, binding = 0, std140) uniform RenderParameters
 	float z_far;
 } global;
 
+float clip_z_to_linear(float clip_z)
+{
+	vec2 z = global.inv_projection[2].zw * clip_z + global.inv_projection[3].zw;
+	return -z.x / z.y;
+}
+
 #endif

@@ -26,6 +26,7 @@
 #include "render_components.hpp"
 #include "event.hpp"
 #include "shader_manager.hpp"
+#include "renderer.hpp"
 
 namespace Granite
 {
@@ -34,9 +35,16 @@ class LightClusterer : public RenderPassCreator, public EventHandler, public Per
 public:
 	LightClusterer();
 
+	enum class ShadowType
+	{
+		PCF,
+		VSM
+	};
+
 	void set_enable_shadows(bool enable);
 	void set_force_update_shadows(bool enable);
 	void set_enable_clustering(bool enable);
+	void set_shadow_type(ShadowType shadow_type);
 
 	void set_resolution(unsigned x, unsigned y, unsigned z);
 	void set_shadow_resolution(unsigned res);
@@ -117,6 +125,7 @@ private:
 	bool enable_shadows = true;
 	bool enable_clustering = true;
 	bool force_update_shadows = false;
+	ShadowType shadow_type = ShadowType::PCF;
 
 	struct CPUGlobalAccelState
 	{
@@ -143,5 +152,14 @@ private:
 	                         const CPUGlobalAccelState &state,
 	                         const CPULocalAccelState &local,
 	                         float scale, uvec2 pre_mask);
+
+	void render_shadow(Vulkan::CommandBuffer &cmd,
+	                   RenderContext &context,
+	                   VisibilityList &visibility,
+	                   unsigned off_x, unsigned off_y,
+	                   unsigned res_x, unsigned res_y,
+	                   Vulkan::ImageView &rt, Renderer::RendererFlushFlags flags);
+	Vulkan::ImageHandle scratch_vsm_rt;
+	Vulkan::ImageHandle scratch_vsm_vert;
 };
 }

@@ -39,7 +39,8 @@ enum PositionalLightVariantBits
 {
 	POSITIONAL_VARIANT_FULL_SCREEN_BIT = 1 << 0,
 	POSITIONAL_VARIANT_SHADOW_BIT = 1 << 1,
-	POSITIONAL_VARIANT_INSTANCE_BIT = 1 << 2
+	POSITIONAL_VARIANT_INSTANCE_BIT = 1 << 2,
+	POSITIONAL_VARIANT_VSM_BIT = 1 << 3
 };
 
 struct LightCookie
@@ -297,7 +298,12 @@ static void positional_render_full_screen(CommandBuffer &cmd, const RenderQueueD
 	cmd.push_constants(&push, 0, sizeof(push));
 
 	if (light_info.atlas)
-		cmd.set_texture(2, 2, *light_info.atlas, Vulkan::StockSampler::LinearShadow);
+	{
+		auto sampler = format_is_depth_stencil(light_info.atlas->get_format()) ?
+		               Vulkan::StockSampler::LinearShadow :
+		               Vulkan::StockSampler::LinearClamp;
+		cmd.set_texture(2, 2, *light_info.atlas, sampler);
+	}
 
 	unsigned max_lights = ImplementationQuirks::get().instance_deferred_lights ? 256u : 1u;
 	for (unsigned i = 0; i < num_instances; )
@@ -391,7 +397,12 @@ static void positional_render_common(CommandBuffer &cmd, const RenderQueueData *
 	cmd.push_constants(&push, 0, sizeof(push));
 
 	if (light_info.atlas)
-		cmd.set_texture(2, 2, *light_info.atlas, Vulkan::StockSampler::LinearShadow);
+	{
+		auto sampler = format_is_depth_stencil(light_info.atlas->get_format()) ?
+		               Vulkan::StockSampler::LinearShadow :
+		               Vulkan::StockSampler::LinearClamp;
+		cmd.set_texture(2, 2, *light_info.atlas, sampler);
+	}
 
 	unsigned max_lights = ImplementationQuirks::get().instance_deferred_lights ? 256u : 1u;
 	for (unsigned i = 0; i < num_instances; )
@@ -556,7 +567,11 @@ void SpotLight::get_render_info(const RenderContext &context, const CachedSpatia
 		if (func == positional_render_full_screen)
 			variant |= POSITIONAL_VARIANT_FULL_SCREEN_BIT;
 		if (atlas)
+		{
 			variant |= POSITIONAL_VARIANT_SHADOW_BIT;
+			if (!format_is_depth_stencil(atlas->get_format()))
+				variant |= POSITIONAL_VARIANT_VSM_BIT;
+		}
 
 		if (ImplementationQuirks::get().instance_deferred_lights)
 			variant |= POSITIONAL_VARIANT_INSTANCE_BIT;
@@ -695,7 +710,11 @@ void PointLight::get_render_info(const RenderContext &context, const CachedSpati
 		if (func == positional_render_full_screen)
 			variant |= POSITIONAL_VARIANT_FULL_SCREEN_BIT;
 		if (shadow_atlas)
+		{
 			variant |= POSITIONAL_VARIANT_SHADOW_BIT;
+			if (!format_is_depth_stencil(shadow_atlas->get_format()))
+				variant |= POSITIONAL_VARIANT_VSM_BIT;
+		}
 
 		if (ImplementationQuirks::get().instance_deferred_lights)
 			variant |= POSITIONAL_VARIANT_INSTANCE_BIT;

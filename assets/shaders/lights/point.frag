@@ -11,6 +11,10 @@ precision highp int;
 #define POSITIONAL_LIGHTS_SHADOW
 #endif
 
+#if defined(VARIANT_BIT_3)
+#define POSITIONAL_SHADOW_VSM
+#endif
+
 #define POINT_LIGHT_EARLY_OUT
 #include "point.h"
 

@@ -177,6 +177,7 @@ private:
 		bool directional_light_shadows_vsm = true;
 		bool clustered_lights = false;
 		bool clustered_lights_shadows = true;
+		bool clustered_lights_shadows_vsm = true;
 		bool hdr_bloom = true;
 		bool forward_depth_prepass = false;
 		bool deferred_clustered_stencil_culling = true;

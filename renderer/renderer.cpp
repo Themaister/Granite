@@ -65,10 +65,11 @@ void Renderer::set_mesh_renderer_options_internal(RendererOptionFlags flags)
 		global_defines.push_back({ "CLUSTER_LIST", 1 });
 
 	if (flags & SHADOW_VSM_BIT)
-	{
 		global_defines.push_back({ "DIRECTIONAL_SHADOW_VSM", 1 });
+	if (flags & POSITIONAL_LIGHT_SHADOW_VSM_BIT)
+		global_defines.push_back({ "POSITIONAL_SHADOW_VSM", 1 });
+	if (flags & (POSITIONAL_LIGHT_SHADOW_VSM_BIT | SHADOW_VSM_BIT))
 		global_defines.push_back({ "SHADOW_RESOLVE_VSM", 1 });
-	}
 
 	switch (type)
 	{
@@ -210,11 +211,16 @@ static void set_cluster_parameters(Vulkan::CommandBuffer &cmd, const LightCluste
 
 	if (cluster.get_spot_light_shadows() && cluster.get_point_light_shadows())
 	{
-		cmd.set_texture(1, 9, *cluster.get_spot_light_shadows(), StockSampler::LinearShadow);
+		auto spot_sampler = format_is_depth_stencil(cluster.get_spot_light_shadows()->get_format()) ?
+		                    StockSampler::LinearShadow : StockSampler::LinearClamp;
+		auto point_sampler = format_is_depth_stencil(cluster.get_point_light_shadows()->get_format()) ?
+		                     StockSampler::LinearShadow : StockSampler::LinearClamp;
+
+		cmd.set_texture(1, 9, *cluster.get_spot_light_shadows(), spot_sampler);
 		memcpy(cmd.allocate_constant_data(1, 10, LightClusterer::MaxLights * sizeof(mat4)),
 		       cluster.get_active_spot_light_shadow_matrices(), cluster.get_active_spot_light_count() * sizeof(mat4));
 
-		cmd.set_texture(1, 11, *cluster.get_point_light_shadows(), StockSampler::LinearShadow);
+		cmd.set_texture(1, 11, *cluster.get_point_light_shadows(), point_sampler);
 		memcpy(cmd.allocate_constant_data(1, 12, LightClusterer::MaxLights * sizeof(PointTransform)),
 		       cluster.get_active_point_light_shadow_transform(), cluster.get_active_point_light_count() * sizeof(PointTransform));
 	}
@@ -573,7 +579,11 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 
 		vector<pair<string, int>> cluster_defines;
 		if (light.cluster->get_spot_light_shadows())
+		{
 			cluster_defines.emplace_back("POSITIONAL_LIGHTS_SHADOW", 1);
+			if (!format_is_depth_stencil(light.cluster->get_spot_light_shadows()->get_format()))
+				cluster_defines.emplace_back("POSITIONAL_SHADOW_VSM", 1);
+		}
 		if (light.cluster->get_cluster_list_buffer())
 			cluster_defines.emplace_back("CLUSTER_LIST", 1);
 		unsigned cluster_variant = cluster_program->register_variant(move(cluster_defines));

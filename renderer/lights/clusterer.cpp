@@ -59,6 +59,8 @@ void LightClusterer::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
 
 	spots.atlas.reset();
 	points.atlas.reset();
+	scratch_vsm_rt.reset();
+	scratch_vsm_vert.reset();
 	for (auto &rt : shadow_atlas_rt)
 		rt.reset();
 
@@ -140,6 +142,11 @@ const PositionalFragmentInfo *LightClusterer::get_active_spot_lights() const
 void LightClusterer::set_enable_clustering(bool enable)
 {
 	enable_clustering = enable;
+}
+
+void LightClusterer::set_shadow_type(ShadowType shadow_type)
+{
+	this->shadow_type = shadow_type;
 }
 
 void LightClusterer::set_enable_shadows(bool enable)
@@ -230,8 +237,122 @@ static uint32_t reassign_indices(T &type)
 	return partial_mask;
 }
 
+void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &depth_context, VisibilityList &visible,
+                                   unsigned off_x, unsigned off_y, unsigned res_x, unsigned res_y,
+                                   Vulkan::ImageView &rt, Renderer::RendererFlushFlags flags)
+{
+	bool vsm = shadow_type == ShadowType::VSM;
+	visible.clear();
+	scene->gather_visible_static_shadow_renderables(depth_context.get_visibility_frustum(), visible);
+
+	depth_renderer->set_mesh_renderer_options(vsm ? Renderer::POSITIONAL_LIGHT_SHADOW_VSM_BIT : 0);
+	depth_renderer->begin();
+	depth_renderer->push_depth_renderables(depth_context, visible);
+
+	if (vsm)
+	{
+		auto image_info = ImageCreateInfo::render_target(shadow_resolution, shadow_resolution, VK_FORMAT_R32G32_SFLOAT);
+		image_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+		image_info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+		if (!scratch_vsm_vert)
+			scratch_vsm_vert = cmd.get_device().create_image(image_info, nullptr);
+		if (!scratch_vsm_rt)
+			scratch_vsm_rt = cmd.get_device().create_image(image_info, nullptr);
+
+		RenderPassInfo rp;
+		rp.op_flags = RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT |
+		              RENDER_PASS_OP_DEPTH_STENCIL_OPTIMAL_BIT |
+		              RENDER_PASS_OP_COLOR_OPTIMAL_BIT;
+		rp.clear_attachments = (1 << 0) | (1 << 1);
+		rp.store_attachments = 1 << 1;
+		rp.color_attachments[0] = &cmd.get_device().get_transient_attachment(shadow_resolution, shadow_resolution, VK_FORMAT_R32G32_SFLOAT, 0, 4);
+		rp.color_attachments[1] = &scratch_vsm_rt->get_view();
+		rp.num_color_attachments = 2;
+		rp.depth_stencil = &cmd.get_device().get_transient_attachment(shadow_resolution, shadow_resolution, VK_FORMAT_D16_UNORM, 0, 4);
+		rp.clear_depth_stencil.depth = 1.0f;
+		rp.clear_depth_stencil.stencil = 0;
+
+		float z_far = depth_context.get_render_parameters().z_far;
+		rp.clear_color[0].float32[0] = z_far;
+		rp.clear_color[0].float32[1] = z_far * z_far;
+
+		RenderPassInfo::Subpass subpass = {};
+		subpass.num_color_attachments = 1;
+		subpass.num_resolve_attachments = 1;
+		subpass.depth_stencil_mode = RenderPassInfo::DepthStencil::ReadWrite;
+		subpass.color_attachments[0] = 0;
+		subpass.resolve_attachments[0] = 1;
+		rp.num_subpasses = 1;
+		rp.subpasses = &subpass;
+
+		cmd.image_barrier(*scratch_vsm_rt, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+		                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
+		cmd.begin_render_pass(rp);
+		depth_renderer->flush(cmd, depth_context, flags);
+		cmd.end_render_pass();
+
+		cmd.image_barrier(*scratch_vsm_rt, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+		                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		scratch_vsm_rt->set_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+		cmd.image_barrier(*scratch_vsm_vert, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+		                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
+
+		RenderPassInfo rp_vert = {};
+		rp_vert.num_color_attachments = 1;
+		rp_vert.store_attachments = 1 << 0;
+		rp_vert.color_attachments[0] = &scratch_vsm_vert->get_view();
+		rp_vert.op_flags = RENDER_PASS_OP_COLOR_OPTIMAL_BIT;
+		cmd.begin_render_pass(rp_vert);
+		cmd.set_texture(0, 0, scratch_vsm_rt->get_view(), StockSampler::NearestClamp);
+		CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/blur.frag", {{ "METHOD", 5 }});
+		cmd.end_render_pass();
+
+		cmd.image_barrier(*scratch_vsm_vert, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+		                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		scratch_vsm_vert->set_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+		RenderPassInfo rp_horiz = {};
+		rp_horiz.num_color_attachments = 1;
+		rp_horiz.store_attachments = 1 << 0;
+		rp_horiz.color_attachments[0] = &rt;
+		rp_horiz.op_flags = RENDER_PASS_OP_COLOR_OPTIMAL_BIT;
+		cmd.begin_render_pass(rp_horiz);
+		cmd.set_viewport({ float(off_x), float(off_y), float(res_x), float(res_y), 0.0f, 1.0f });
+		cmd.set_scissor({{ int(off_x), int(off_y) }, { res_x, res_y }});
+		cmd.set_texture(0, 0, scratch_vsm_vert->get_view(), StockSampler::NearestClamp);
+		CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/blur.frag", {{ "METHOD", 2 }});
+		cmd.end_render_pass();
+	}
+	else
+	{
+		RenderPassInfo rp;
+		rp.op_flags = RENDER_PASS_OP_DEPTH_STENCIL_OPTIMAL_BIT |
+		              RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT |
+		              RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT;
+		rp.num_color_attachments = 0;
+		rp.depth_stencil = &rt;
+		rp.clear_depth_stencil.depth = 1.0f;
+		rp.render_area.offset.x = off_x;
+		rp.render_area.offset.y = off_y;
+		rp.render_area.extent.width = res_x;
+		rp.render_area.extent.height = res_y;
+
+		cmd.begin_render_pass(rp);
+		cmd.set_viewport({ float(off_x), float(off_y), float(res_x), float(res_y), 0.0f, 1.0f });
+		cmd.set_scissor({{ int(off_x), int(off_y) }, { res_x, res_y }});
+		depth_renderer->flush(cmd, depth_context, flags);
+		cmd.end_render_pass();
+	}
+}
+
 void LightClusterer::render_atlas_point(RenderContext &context)
 {
+	bool vsm = shadow_type == ShadowType::VSM;
 	uint32_t partial_mask = reassign_indices(points);
 
 	if (!points.atlas || force_update_shadows)
@@ -246,11 +367,12 @@ void LightClusterer::render_atlas_point(RenderContext &context)
 
 	if (!points.atlas)
 	{
-		ImageCreateInfo info = ImageCreateInfo::render_target(shadow_resolution, shadow_resolution, VK_FORMAT_D16_UNORM);
+		auto format = vsm ? VK_FORMAT_R32G32_SFLOAT : VK_FORMAT_D16_UNORM;
+		ImageCreateInfo info = ImageCreateInfo::render_target(shadow_resolution, shadow_resolution, format);
 		info.layers = 6 * MaxLights;
 		info.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
-		info.initial_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-		info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+		info.initial_layout = vsm ? VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+		info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | (vsm ? VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT : VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
 		points.atlas = device.create_image(info, nullptr);
 
 		for (unsigned i = 0; i < 6 * MaxLights; i++)
@@ -272,19 +394,51 @@ void LightClusterer::render_atlas_point(RenderContext &context)
 			b = {};
 			b.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
 			b.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-			b.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 			b.image = points.atlas->get_image();
 			b.srcAccessMask = 0;
-			b.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-			b.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+
+			if (vsm)
+			{
+				b.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+				                  VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+				b.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+				b.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			}
+			else
+			{
+				b.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+				                  VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+				b.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+				b.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+			}
+
 			b.subresourceRange.baseArrayLayer = 6u * points.index_remap[bit];
 			b.subresourceRange.layerCount = 6;
 			b.subresourceRange.levelCount = 1;
 		});
 
-		cmd->barrier(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-		             0, nullptr, 0, nullptr, barrier_count, barriers);
-		points.atlas->set_layout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+		if (vsm)
+		{
+			cmd->barrier(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+			             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+			             0, nullptr, 0, nullptr, barrier_count, barriers);
+			points.atlas->set_layout(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+		}
+		else
+		{
+			cmd->barrier(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+			             VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+			             0, nullptr, 0, nullptr, barrier_count, barriers);
+			points.atlas->set_layout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+		}
+	}
+	else if (vsm)
+	{
+		cmd->image_barrier(*points.atlas, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+		                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		                   VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT);
+		points.atlas->set_layout(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 	}
 	else
 	{
@@ -322,22 +476,10 @@ void LightClusterer::render_atlas_point(RenderContext &context)
 				points.handles[i]->set_shadow_info(&points.atlas->get_view(), points.transforms[i]);
 			}
 
-			visible.clear();
-			scene->gather_visible_static_shadow_renderables(depth_context.get_visibility_frustum(), visible);
-
-			depth_renderer->begin();
-			depth_renderer->push_depth_renderables(depth_context, visible);
-
-			RenderPassInfo rp;
-			rp.op_flags = RENDER_PASS_OP_DEPTH_STENCIL_OPTIMAL_BIT |
-			              RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT |
-			              RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT;
-			rp.num_color_attachments = 0;
-			rp.depth_stencil = shadow_atlas_rt[6 * remapped + face].get();
-			rp.clear_depth_stencil.depth = 1.0f;
-			cmd->begin_render_pass(rp);
-			depth_renderer->flush(*cmd, depth_context, Renderer::FRONT_FACE_CLOCKWISE_BIT | Renderer::DEPTH_BIAS_BIT);
-			cmd->end_render_pass();
+			render_shadow(*cmd, depth_context, visible,
+			              0, 0, shadow_resolution, shadow_resolution,
+			              *shadow_atlas_rt[6 * remapped + face],
+			              Renderer::FRONT_FACE_CLOCKWISE_BIT | Renderer::DEPTH_BIAS_BIT);
 		}
 	}
 
@@ -350,19 +492,38 @@ void LightClusterer::render_atlas_point(RenderContext &context)
 			auto &b = barriers[barrier_count++];
 			b = {};
 			b.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-			b.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 			b.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 			b.image = points.atlas->get_image();
-			b.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+
+			if (vsm)
+			{
+				b.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+				b.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+				b.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			}
+			else
+			{
+				b.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+				b.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+				b.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+			}
+
 			b.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-			b.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
 			b.subresourceRange.baseArrayLayer = 6u * points.index_remap[bit];
 			b.subresourceRange.layerCount = 6;
 			b.subresourceRange.levelCount = 1;
 		});
 
-		cmd->barrier(VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+		cmd->barrier(vsm ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT : VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+		             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
 		             0, nullptr, 0, nullptr, barrier_count, barriers);
+	}
+	else if (vsm)
+	{
+		cmd->image_barrier(*points.atlas, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 	}
 	else
 	{
@@ -379,6 +540,7 @@ void LightClusterer::render_atlas_point(RenderContext &context)
 
 void LightClusterer::render_atlas_spot(RenderContext &context)
 {
+	bool vsm = shadow_type == ShadowType::VSM;
 	uint32_t partial_mask = reassign_indices(spots);
 
 	if (!spots.atlas || force_update_shadows)
@@ -392,20 +554,26 @@ void LightClusterer::render_atlas_spot(RenderContext &context)
 
 	if (!spots.atlas)
 	{
-		ImageCreateInfo info = ImageCreateInfo::render_target(shadow_resolution * 8, shadow_resolution * 4, VK_FORMAT_D16_UNORM);
-		info.initial_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-		info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+		auto format = vsm ? VK_FORMAT_R32G32_SFLOAT : VK_FORMAT_D16_UNORM;
+		ImageCreateInfo info = ImageCreateInfo::render_target(shadow_resolution * 8, shadow_resolution * 4, format);
+		info.initial_layout = vsm ? VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+		info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | (vsm ? VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT : VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
 		spots.atlas = device.create_image(info, nullptr);
 	}
 	else
 	{
 		// Preserve data if we're not overwriting the entire shadow atlas.
+		auto access = vsm ?
+		              (VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT) :
+		              (VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT);
+		auto stages = vsm ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT :
+		              (VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT);
+
 		cmd->image_barrier(*spots.atlas, partial_mask != ~0u ? spots.atlas->get_layout() : VK_IMAGE_LAYOUT_UNDEFINED,
-		                   VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
-		                   VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-		                   VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT);
-		spots.atlas->set_layout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+		                   vsm ? VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, stages, access);
+
+		spots.atlas->set_layout(vsm ? VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 	}
 
 	RenderContext depth_context;
@@ -438,33 +606,27 @@ void LightClusterer::render_atlas_spot(RenderContext &context)
 		spots.handles[i]->set_shadow_info(&spots.atlas->get_view(), spots.transforms[i]);
 
 		depth_context.set_camera(proj, view);
-		visible.clear();
-		scene->gather_visible_static_shadow_renderables(depth_context.get_visibility_frustum(), visible);
 
-		depth_renderer->begin();
-		depth_renderer->push_depth_renderables(depth_context, visible);
-
-		RenderPassInfo rp;
-		rp.op_flags = RENDER_PASS_OP_DEPTH_STENCIL_OPTIMAL_BIT |
-		              RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT |
-		              RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT;
-		rp.num_color_attachments = 0;
-		rp.depth_stencil = &spots.atlas->get_view();
-		rp.clear_depth_stencil.depth = 1.0f;
-		rp.render_area.offset.x = shadow_resolution * (remapped & 7);
-		rp.render_area.offset.y = shadow_resolution * (remapped >> 3);
-		rp.render_area.extent.width = shadow_resolution;
-		rp.render_area.extent.height = shadow_resolution;
-		cmd->begin_render_pass(rp);
-		cmd->set_viewport({ float(shadow_resolution * (remapped & 7)), float(shadow_resolution * (remapped >> 3)), float(shadow_resolution), float(shadow_resolution), 0.0f, 1.0f });
-		cmd->set_scissor(rp.render_area);
-		depth_renderer->flush(*cmd, depth_context, Renderer::DEPTH_BIAS_BIT);
-		cmd->end_render_pass();
+		render_shadow(*cmd, depth_context, visible,
+		              shadow_resolution * (remapped & 7), shadow_resolution * (remapped >> 3),
+		              shadow_resolution, shadow_resolution,
+		              spots.atlas->get_view(), Renderer::DEPTH_BIAS_BIT);
 	}
 
-	cmd->image_barrier(*spots.atlas, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-	                   VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-	                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+	if (vsm)
+	{
+		cmd->image_barrier(*spots.atlas, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+	}
+	else
+	{
+		cmd->image_barrier(*spots.atlas, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+		                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		                   VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+	}
 	spots.atlas->set_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 	device.submit(cmd);

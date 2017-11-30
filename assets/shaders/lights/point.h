@@ -56,7 +56,13 @@ struct PointShadowData
 	vec4 slice;
 };
 
+#ifdef POSITIONAL_SHADOW_VSM
+#include "vsm.h"
+layout(set = POINT_LIGHT_SHADOW_ATLAS_SET, binding = POINT_LIGHT_SHADOW_ATLAS_BINDING) uniform samplerCubeArray uPointShadowAtlas;
+#else
 layout(set = POINT_LIGHT_SHADOW_ATLAS_SET, binding = POINT_LIGHT_SHADOW_ATLAS_BINDING) uniform samplerCubeArrayShadow uPointShadowAtlas;
+#endif
+
 layout(std140, set = POINT_LIGHT_SHADOW_DATA_SET, binding = POINT_LIGHT_SHADOW_DATA_BINDING) uniform PointShadow
 {
 #ifdef POSITIONAL_LIGHT_INSTANCING
@@ -75,7 +81,6 @@ layout(std140, set = POINT_LIGHT_SHADOW_DATA_SET, binding = POINT_LIGHT_SHADOW_D
 #define POINT_SHADOW_TRANSFORM(index) point_shadow.data
 #endif
 
-
 vec3 compute_point_light(int index, MaterialProperties material, vec3 world_pos, vec3 camera_pos)
 {
 	vec3 light_pos = POINT_DATA(index).position;
@@ -86,10 +91,15 @@ vec3 compute_point_light(int index, MaterialProperties material, vec3 world_pos,
 	vec3 dir_abs = abs(light_dir_full);
 	float max_z = max(max(dir_abs.x, dir_abs.y), dir_abs.z);
 	vec4 shadow_transform = POINT_SHADOW_TRANSFORM(index).transform;
-	vec2 shadow_ref2 = shadow_transform.zw - shadow_transform.xy * max_z;
-	float shadow_ref = shadow_ref2.x / shadow_ref2.y;
 	mediump float slice = POINT_SHADOW_TRANSFORM(index).slice.x;
-	mediump float shadow_falloff = texture(uPointShadowAtlas, vec4(light_dir_full, slice), shadow_ref);
+	#ifdef POSITIONAL_SHADOW_VSM
+		vec2 shadow_moments = textureLod(uPointShadowAtlas, vec4(light_dir_full, slice), 0.0).xy;
+		mediump float shadow_falloff = vsm(max_z, shadow_moments);
+	#else
+		vec2 shadow_ref2 = shadow_transform.zw - shadow_transform.xy * max_z;
+		float shadow_ref = shadow_ref2.x / shadow_ref2.y;
+		mediump float shadow_falloff = texture(uPointShadowAtlas, vec4(light_dir_full, slice), shadow_ref);
+	#endif
 #else
 	const float shadow_falloff = 1.0;
 #endif

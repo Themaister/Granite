@@ -302,7 +302,7 @@ def main():
                                             c['clusteredLightsShadows'] = pos_shadows
                                             c['showUi'] = False
                                             c['deferredClusteredStencilCulling'] = stencil_culling
-                                            c['directionalLightsShadowsVSM'] = vsm
+                                            c['directionalLightShadowsVSM'] = vsm
                                             c['clusteredLightsShadowsVSM'] = vsm
                                             if args.gen_configs_camera_index is not None:
                                                 c['cameraIndex'] = args.gen_configs_camera_index

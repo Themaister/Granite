@@ -265,9 +265,18 @@ void Renderer::set_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderC
 		cmd.set_texture(1, 1, *lighting->environment_irradiance, Vulkan::StockSampler::LinearClamp);
 
 	if (lighting->shadow_far != nullptr)
-		cmd.set_texture(1, 3, *lighting->shadow_far, Vulkan::StockSampler::LinearShadow);
+	{
+		auto sampler = format_is_depth_stencil(lighting->shadow_far->get_format()) ? StockSampler::LinearShadow
+		                                                                           : StockSampler::LinearClamp;
+		cmd.set_texture(1, 3, *lighting->shadow_far, sampler);
+	}
+
 	if (lighting->shadow_near != nullptr)
-		cmd.set_texture(1, 4, *lighting->shadow_near, Vulkan::StockSampler::LinearShadow);
+	{
+		auto sampler = format_is_depth_stencil(lighting->shadow_near->get_format()) ? StockSampler::LinearShadow
+		                                                                            : StockSampler::LinearClamp;
+		cmd.set_texture(1, 4, *lighting->shadow_near, sampler);
+	}
 
 	if (lighting->cluster && lighting->cluster->get_cluster_image())
 		set_cluster_parameters(cmd, *lighting->cluster);
@@ -470,7 +479,11 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 	if (light.environment_radiance && light.environment_irradiance)
 		defines.push_back({ "ENVIRONMENT", 1 });
 	if (light.shadow_far)
+	{
 		defines.push_back({ "SHADOWS", 1 });
+		if (!format_is_depth_stencil(light.shadow_far->get_format()))
+			defines.push_back({ "DIRECTIONAL_SHADOW_VSM", 1 });
+	}
 
 	unsigned variant = program->register_variant(defines);
 	cmd.set_program(*program->get_program(variant));
@@ -487,9 +500,18 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 	                Vulkan::StockSampler::LinearClamp);
 
 	if (light.shadow_far)
-		cmd.set_texture(1, 3, *light.shadow_far, Vulkan::StockSampler::LinearShadow);
+	{
+		auto sampler = format_is_depth_stencil(light.shadow_far->get_format()) ? StockSampler::LinearShadow
+		                                                                       : StockSampler::LinearClamp;
+		cmd.set_texture(1, 3, *light.shadow_far, sampler);
+	}
+
 	if (light.shadow_near)
-		cmd.set_texture(1, 4, *light.shadow_near, Vulkan::StockSampler::LinearShadow);
+	{
+		auto sampler = format_is_depth_stencil(light.shadow_near->get_format()) ? StockSampler::LinearShadow
+		                                                                        : StockSampler::LinearClamp;
+		cmd.set_texture(1, 4, *light.shadow_near, sampler);
+	}
 
 	struct DirectionalLightPush
 	{

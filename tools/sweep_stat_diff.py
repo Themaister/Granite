@@ -11,7 +11,7 @@ def read_stat_file(path):
         parsed = json.loads(json_data)
         return parsed
 
-def find_run(stats, renderer, msaa, prepass, clustered, stencil_culling, hdr_bloom, shadows, pos_shadows):
+def find_run(stats, renderer, msaa, prepass, clustered, stencil_culling, hdr_bloom, shadows, vsm, pos_shadows):
     for run in stats['runs']:
         config = run['config']
 
@@ -23,8 +23,9 @@ def find_run(stats, renderer, msaa, prepass, clustered, stencil_culling, hdr_blo
                         if config['stencil_culling'] == stencil_culling:
                             if config['hdr_bloom'] == hdr_bloom:
                                 if config['shadows'] == shadows:
-                                    if config['pos_shadows'] == pos_shadows:
-                                        return run
+                                    if config['vsm'] == vsm:
+                                        if config['pos_shadows'] == pos_shadows:
+                                            return run
     return None
 
 def main():
@@ -58,39 +59,43 @@ def main():
                             continue
                         for hdr_bloom in [False, True]:
                             for shadows in [False, True]:
-                                for pos_shadows in [False, True]:
-                                    if pos_shadows and renderer == 'forward' and (not clustered):
+                                for vsm in [False, True]:
+                                    if vsm and (not shadows):
                                         continue
-                                    type_str = ''
-                                    type_str += 'F' if renderer == 'forward' else 'D'
-                                    type_str += str(msaa)
-                                    type_str += 'Z' if prepass else 'z'
-                                    type_str += 'C' if clustered else 'c'
-                                    type_str += 'S' if stencil_culling else 's'
-                                    type_str += 'H' if hdr_bloom else 'L'
-                                    type_str += 'SS' if shadows else 'ss'
-                                    type_str += 'PS' if pos_shadows else 'ps'
-                                    result_string = '{:15}'.format(type_str)
+                                    for pos_shadows in [False, True]:
+                                        if pos_shadows and renderer == 'forward' and (not clustered):
+                                            continue
+                                        type_str = ''
+                                        type_str += 'F' if renderer == 'forward' else 'D'
+                                        type_str += str(msaa)
+                                        type_str += 'Z' if prepass else 'z'
+                                        type_str += 'C' if clustered else 'c'
+                                        type_str += 'S' if stencil_culling else 's'
+                                        type_str += 'H' if hdr_bloom else 'L'
+                                        type_str += 'SS' if shadows else 'ss'
+                                        type_str += 'PS' if pos_shadows else 'ps'
+                                        type_str += 'V' if vsm else 'v'
+                                        result_string = '{:15}'.format(type_str)
 
-                                    first = True
-                                    reference_time = 0.0
+                                        first = True
+                                        reference_time = 0.0
 
-                                    for stat in stats:
-                                        run = find_run(stat, renderer, msaa, prepass, clustered, stencil_culling, hdr_bloom, shadows, pos_shadows)
-                                        if run is not None:
-                                            if first:
-                                                reference_time = run['avg']
+                                        for stat in stats:
+                                            run = find_run(stat, renderer, msaa, prepass, clustered, stencil_culling, hdr_bloom, shadows, vsm, pos_shadows)
+                                            if run is not None:
+                                                if first:
+                                                    reference_time = run['avg']
 
-                                            if not first:
-                                                result_string += '{:>25}'.format('{:.3f}'.format(run['avg'] / 1000.0) + ' ms ' + '({:6.2f} %)'.format(((run['avg'] - reference_time) / reference_time) * 100.0))
+                                                if not first:
+                                                    result_string += '{:>25}'.format('{:.3f}'.format(run['avg'] / 1000.0) + ' ms ' + '({:6.2f} %)'.format(((run['avg'] - reference_time) / reference_time) * 100.0))
+                                                else:
+                                                    result_string += '{:>25}'.format('{:.3f}'.format(run['avg'] / 1000.0) + ' ms')
+
+                                                first = False
                                             else:
-                                                result_string += '{:>25}'.format('{:.3f}'.format(run['avg'] / 1000.0) + ' ms')
+                                                result_string += '{:>25}'.format('N/A')
 
-                                            first = False
-                                        else:
-                                            result_string += '{:>25}'.format('N/A')
-
-                                    print(result_string)
+                                        print(result_string)
 
 
 if __name__ == '__main__':

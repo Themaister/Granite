@@ -127,7 +127,11 @@ void Renderer::set_mesh_renderer_options_from_lighting(const LightingParameters 
 	{
 		flags |= Renderer::POSITIONAL_LIGHT_ENABLE_BIT;
 		if (lighting.cluster->get_spot_light_shadows() && lighting.cluster->get_point_light_shadows())
+		{
 			flags |= Renderer::POSITIONAL_LIGHT_SHADOW_ENABLE_BIT;
+			if (!format_is_depth_stencil(lighting.cluster->get_spot_light_shadows()->get_format()))
+				flags |= Renderer::POSITIONAL_LIGHT_SHADOW_VSM_BIT;
+		}
 		if (lighting.cluster->get_cluster_list_buffer())
 			flags |= Renderer::POSITIONAL_LIGHT_CLUSTER_LIST_BIT;
 	}

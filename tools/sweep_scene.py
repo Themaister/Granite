@@ -286,11 +286,11 @@ def main():
                                 continue
                             for hdr_bloom in [False, True]:
                                 for shadows in [False, True]:
-                                    for vsm in [False, True]:
-                                        if vsm and (not shadows):
+                                    for pos_shadows in [False, True]:
+                                        if pos_shadows and renderer == 'forward' and (not clustered):
                                             continue
-                                        for pos_shadows in [False, True]:
-                                            if pos_shadows and renderer == 'forward' and (not clustered):
+                                        for vsm in [False, True]:
+                                            if vsm and (not shadows) and (not pos_shadows):
                                                 continue
                                             c = {}
                                             c['renderer'] = renderer

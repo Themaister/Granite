@@ -263,7 +263,7 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &de
 		rp.op_flags = RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT |
 		              RENDER_PASS_OP_DEPTH_STENCIL_OPTIMAL_BIT |
 		              RENDER_PASS_OP_COLOR_OPTIMAL_BIT;
-		rp.clear_attachments = (1 << 0) | (1 << 1);
+		rp.clear_attachments = 1 << 0;
 		rp.store_attachments = 1 << 1;
 		rp.color_attachments[0] = &cmd.get_device().get_transient_attachment(shadow_resolution, shadow_resolution, VK_FORMAT_R32G32_SFLOAT, 0, 4);
 		rp.color_attachments[1] = &scratch_vsm_rt->get_view();

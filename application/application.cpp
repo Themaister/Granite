@@ -664,37 +664,46 @@ void SceneViewerApplication::add_shadow_pass(Vulkan::Device &, const std::string
 		shadowmap_vsm_resolved_color.format = VK_FORMAT_R32G32_SFLOAT;
 		shadowmap_vsm_resolved_color.samples = 1;
 
+		auto shadowmap_vsm_half = shadowmap_vsm_resolved_color;
+		shadowmap_vsm_half.size_x *= 0.5f;
+		shadowmap_vsm_half.size_y *= 0.5f;
+
 		shadowpass.set_depth_stencil_output(tagcat("shadow-depth", tag), shadowmap);
 		shadowpass.add_color_output(tagcat("shadow-msaa", tag), shadowmap_vsm_color);
 		shadowpass.add_resolve_output(tagcat("shadow-raw", tag), shadowmap_vsm_resolved_color);
 
-		auto &vert_pass = graph.add_pass(tagcat("shadow-vert", tag), VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
-		vert_pass.add_color_output(tagcat("shadow-vert", tag), shadowmap_vsm_resolved_color);
-		vert_pass.add_texture_input(tagcat("shadow-raw", tag));
+		auto &down_pass = graph.add_pass(tagcat("shadow-down", tag), VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+		down_pass.add_color_output(tagcat("shadow-down", tag), shadowmap_vsm_half);
+		down_pass.add_texture_input(tagcat("shadow-raw", tag));
 
-		auto &horiz_pass = graph.add_pass(tagcat("shadow-horiz", tag), VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
-		horiz_pass.add_color_output(tagcat("shadow", tag), shadowmap_vsm_resolved_color);
-		horiz_pass.add_texture_input(tagcat("shadow-vert", tag));
+		auto &up_pass = graph.add_pass(tagcat("shadow-up", tag), VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+		up_pass.add_color_output(tagcat("shadow", tag), shadowmap_vsm_resolved_color);
+		up_pass.add_texture_input(tagcat("shadow-down", tag));
 
-		vert_pass.set_need_render_pass([this, type]() {
-			return type == DepthPassType::Main ? need_shadow_map_update : true;
-		});
-		horiz_pass.set_need_render_pass([this, type]() {
+		down_pass.set_need_render_pass([this, type]() {
 			return type == DepthPassType::Main ? need_shadow_map_update : true;
 		});
 
-		vert_pass.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
-			cmd.set_texture(0, 0,
-			                graph.get_physical_texture_resource(vert_pass.get_texture_inputs()[0]->get_physical_index()),
-			                StockSampler::NearestClamp);
-			CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/blur.frag", {{ "METHOD", 5 }});
+		up_pass.set_need_render_pass([this, type]() {
+			return type == DepthPassType::Main ? need_shadow_map_update : true;
 		});
 
-		horiz_pass.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
-			cmd.set_texture(0, 0,
-			                graph.get_physical_texture_resource(horiz_pass.get_texture_inputs()[0]->get_physical_index()),
-			                StockSampler::NearestClamp);
-			CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/blur.frag", {{ "METHOD", 2 }});
+		down_pass.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
+			auto &input = graph.get_physical_texture_resource(down_pass.get_texture_inputs()[0]->get_physical_index());
+			vec2 inv_size(1.0f / input.get_image().get_create_info().width,
+			              1.0f / input.get_image().get_create_info().height);
+			cmd.push_constants(&inv_size, 0, sizeof(inv_size));
+			cmd.set_texture(0, 0, input, StockSampler::LinearClamp);
+			CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/post/vsm_down_blur.frag");
+		});
+
+		up_pass.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
+			auto &input = graph.get_physical_texture_resource(up_pass.get_texture_inputs()[0]->get_physical_index());
+			vec2 inv_size(1.0f / input.get_image().get_create_info().width,
+			              1.0f / input.get_image().get_create_info().height);
+			cmd.set_texture(0, 0, input, StockSampler::LinearClamp);
+			cmd.push_constants(&inv_size, 0, sizeof(inv_size));
+			CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/post/vsm_up_blur.frag");
 		});
 	}
 	else

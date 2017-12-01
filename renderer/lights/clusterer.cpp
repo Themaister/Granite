@@ -60,7 +60,7 @@ void LightClusterer::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
 	spots.atlas.reset();
 	points.atlas.reset();
 	scratch_vsm_rt.reset();
-	scratch_vsm_vert.reset();
+	scratch_vsm_down.reset();
 	for (auto &rt : shadow_atlas_rt)
 		rt.reset();
 
@@ -254,10 +254,14 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &de
 		auto image_info = ImageCreateInfo::render_target(shadow_resolution, shadow_resolution, VK_FORMAT_R32G32_SFLOAT);
 		image_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 		image_info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
-		if (!scratch_vsm_vert)
-			scratch_vsm_vert = cmd.get_device().create_image(image_info, nullptr);
 		if (!scratch_vsm_rt)
 			scratch_vsm_rt = cmd.get_device().create_image(image_info, nullptr);
+		if (!scratch_vsm_down)
+		{
+			image_info.width >>= 1;
+			image_info.height >>= 1;
+			scratch_vsm_down = cmd.get_device().create_image(image_info, nullptr);
+		}
 
 		RenderPassInfo rp;
 		rp.op_flags = RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT |
@@ -289,7 +293,7 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &de
 		                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
 		                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
 
-		cmd.image_barrier(*scratch_vsm_vert, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		cmd.image_barrier(*scratch_vsm_down, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
 		                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
 
@@ -302,37 +306,48 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &de
 		                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 		scratch_vsm_rt->set_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
-		RenderPassInfo rp_vert = {};
-		rp_vert.num_color_attachments = 1;
-		rp_vert.store_attachments = 1 << 0;
-		rp_vert.color_attachments[0] = &scratch_vsm_vert->get_view();
-		rp_vert.op_flags = RENDER_PASS_OP_COLOR_OPTIMAL_BIT;
-		cmd.begin_render_pass(rp_vert);
-		cmd.set_texture(0, 0, scratch_vsm_rt->get_view(), StockSampler::NearestClamp);
-		CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/blur.frag", {{ "METHOD", 5 }});
-		cmd.end_render_pass();
+		{
+			RenderPassInfo rp_vert = {};
+			rp_vert.num_color_attachments = 1;
+			rp_vert.store_attachments = 1 << 0;
+			rp_vert.color_attachments[0] = &scratch_vsm_down->get_view();
+			rp_vert.op_flags = RENDER_PASS_OP_COLOR_OPTIMAL_BIT;
+			cmd.begin_render_pass(rp_vert);
+			cmd.set_texture(0, 0, scratch_vsm_rt->get_view(), StockSampler::LinearClamp);
+			vec2 inv_size(1.0f / scratch_vsm_rt->get_create_info().width,
+			              1.0f / scratch_vsm_rt->get_create_info().height);
+			cmd.push_constants(&inv_size, 0, sizeof(inv_size));
+			CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert",
+			                             "builtin://shaders/post/vsm_down_blur.frag");
+			cmd.end_render_pass();
+		}
 
-		cmd.image_barrier(*scratch_vsm_vert, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		cmd.image_barrier(*scratch_vsm_down, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
 		                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-		scratch_vsm_vert->set_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		scratch_vsm_down->set_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
-		RenderPassInfo rp_horiz = {};
-		rp_horiz.num_color_attachments = 1;
-		rp_horiz.store_attachments = 1 << 0;
-		rp_horiz.color_attachments[0] = &rt;
-		rp_horiz.op_flags = RENDER_PASS_OP_COLOR_OPTIMAL_BIT;
-		rp_horiz.render_area.offset.x = off_x;
-		rp_horiz.render_area.offset.y = off_y;
-		rp_horiz.render_area.extent.width = res_x;
-		rp_horiz.render_area.extent.height = res_y;
+		{
+			RenderPassInfo rp_horiz = {};
+			rp_horiz.num_color_attachments = 1;
+			rp_horiz.store_attachments = 1 << 0;
+			rp_horiz.color_attachments[0] = &rt;
+			rp_horiz.op_flags = RENDER_PASS_OP_COLOR_OPTIMAL_BIT;
+			rp_horiz.render_area.offset.x = off_x;
+			rp_horiz.render_area.offset.y = off_y;
+			rp_horiz.render_area.extent.width = res_x;
+			rp_horiz.render_area.extent.height = res_y;
 
-		cmd.begin_render_pass(rp_horiz);
-		cmd.set_viewport({ float(off_x), float(off_y), float(res_x), float(res_y), 0.0f, 1.0f });
-		cmd.set_scissor({{ int(off_x), int(off_y) }, { res_x, res_y }});
-		cmd.set_texture(0, 0, scratch_vsm_vert->get_view(), StockSampler::NearestClamp);
-		CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/blur.frag", {{ "METHOD", 2 }});
-		cmd.end_render_pass();
+			cmd.begin_render_pass(rp_horiz);
+			cmd.set_viewport({ float(off_x), float(off_y), float(res_x), float(res_y), 0.0f, 1.0f });
+			cmd.set_scissor({{ int(off_x), int(off_y) }, { res_x, res_y }});
+			vec2 inv_size(1.0f / scratch_vsm_down->get_create_info().width,
+			              1.0f / scratch_vsm_down->get_create_info().height);
+			cmd.push_constants(&inv_size, 0, sizeof(inv_size));
+			cmd.set_texture(0, 0, scratch_vsm_down->get_view(), StockSampler::LinearClamp);
+			CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/post/vsm_up_blur.frag");
+			cmd.end_render_pass();
+		}
 	}
 	else
 	{

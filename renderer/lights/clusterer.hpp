@@ -160,6 +160,6 @@ private:
 	                   unsigned res_x, unsigned res_y,
 	                   Vulkan::ImageView &rt, Renderer::RendererFlushFlags flags);
 	Vulkan::ImageHandle scratch_vsm_rt;
-	Vulkan::ImageHandle scratch_vsm_vert;
+	Vulkan::ImageHandle scratch_vsm_down;
 };
 }

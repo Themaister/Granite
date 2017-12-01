@@ -288,6 +288,11 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &de
 		cmd.image_barrier(*scratch_vsm_rt, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
 		                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
+
+		cmd.image_barrier(*scratch_vsm_vert, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+		                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
+
 		cmd.begin_render_pass(rp);
 		depth_renderer->flush(cmd, depth_context, flags);
 		cmd.end_render_pass();
@@ -296,10 +301,6 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &de
 		                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
 		                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 		scratch_vsm_rt->set_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-
-		cmd.image_barrier(*scratch_vsm_vert, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-		                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
-		                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
 
 		RenderPassInfo rp_vert = {};
 		rp_vert.num_color_attachments = 1;
@@ -321,6 +322,11 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &de
 		rp_horiz.store_attachments = 1 << 0;
 		rp_horiz.color_attachments[0] = &rt;
 		rp_horiz.op_flags = RENDER_PASS_OP_COLOR_OPTIMAL_BIT;
+		rp_horiz.render_area.offset.x = off_x;
+		rp_horiz.render_area.offset.y = off_y;
+		rp_horiz.render_area.extent.width = res_x;
+		rp_horiz.render_area.extent.height = res_y;
+
 		cmd.begin_render_pass(rp_horiz);
 		cmd.set_viewport({ float(off_x), float(off_y), float(res_x), float(res_y), 0.0f, 1.0f });
 		cmd.set_scissor({{ int(off_x), int(off_y) }, { res_x, res_y }});

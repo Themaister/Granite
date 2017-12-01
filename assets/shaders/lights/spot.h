@@ -59,6 +59,7 @@ layout(std140, set = SPOT_LIGHT_DATA_SET, binding = SPOT_LIGHT_DATA_BINDING) uni
 #include "vsm.h"
 layout(set = SPOT_LIGHT_SHADOW_ATLAS_SET, binding = SPOT_LIGHT_SHADOW_ATLAS_BINDING) uniform sampler2D uSpotShadowAtlas;
 #else
+#include "pcf.h"
 layout(set = SPOT_LIGHT_SHADOW_ATLAS_SET, binding = SPOT_LIGHT_SHADOW_ATLAS_BINDING) uniform sampler2DShadow uSpotShadowAtlas;
 #endif
 
@@ -93,7 +94,8 @@ vec3 compute_spot_light(int index, MaterialProperties material, vec3 world_pos, 
 		mediump float shadow_falloff = vsm(shadow_z, shadow_moments);
 	#else
 		vec4 spot_shadow_clip = SPOT_SHADOW_TRANSFORM(index) * vec4(world_pos, 1.0);
-		mediump float shadow_falloff = textureProjLod(uSpotShadowAtlas, spot_shadow_clip, 0.0);
+		mediump float shadow_falloff;
+		SAMPLE_PCF_KERNEL(shadow_falloff, uSpotShadowAtlas, spot_shadow_clip);
 	#endif
 #else
 	const float shadow_falloff = 1.0;

@@ -74,17 +74,22 @@ layout(set = 1, binding = 3) uniform mediump sampler2DShadow uShadowmap;
 layout(set = 1, binding = 4) uniform mediump sampler2DShadow uShadowmapNear;
 #endif
 
+#include "pcf.h"
+
 mediump float get_shadow_term(LightInfo light)
 {
 #ifdef SHADOW_CASCADES
-	float shadow_term_near = textureProjLod(uShadowmapNear, light.clip_shadow_near, 0.0);
-	float shadow_term_far = textureProjLod(uShadowmap, light.clip_shadow_far, 0.0);
+	mediump float shadow_term_near;
+	mediump float shadow_term_far;
+	SAMPLE_PCF_KERNEL(shadow_term_near, uShadowmapNear, light.clip_shadow_near);
+	SAMPLE_PCF_KERNEL(shadow_term_far, uShadowmap, light.clip_shadow_far);
     float view_z = dot(light.camera_front, (light.pos - light.camera_pos));
     mediump float shadow_lerp = clamp(4.0 * (view_z * light.inv_cutoff_distance - 0.75), 0.0, 1.0);
     mediump float shadow_term = mix(shadow_term_near, shadow_term_far, shadow_lerp);
 	return shadow_term;
 #else
-	mediump float shadow_term_far = textureProjLod(uShadowmap, light.clip_shadow_far, 0.0);
+	mediump float shadow_term_far;
+	SAMPLE_PCF_KERNEL(shadow_term_far, uShadowmap, light.clip_shadow_far);
 	return shadow_term_far;
 #endif
 }

@@ -46,20 +46,30 @@ layout(set = 1, binding = 4) uniform mediump sampler2D uShadowmapNear;
 
 mediump float get_shadow_term(LightInfo light)
 {
-    // Sample shadowmap.
+	// Sample shadowmap.
 #ifdef SHADOW_CASCADES
 	vec3 shadow_near = light.clip_shadow_near.xyz / light.clip_shadow_near.w;
 	vec3 shadow_far = light.clip_shadow_far.xyz / light.clip_shadow_far.w;
 
-	vec2 moments_near = textureLod(uShadowmapNear, shadow_near.xy, 0.0).xy;
-	vec2 moments_far = textureLod(uShadowmap, shadow_far.xy, 0.0).xy;
+	float view_z = dot(light.camera_front, (light.pos - light.camera_pos));
+	float shadow_cascade = view_z * light.inv_cutoff_distance;
+	mediump float shadow_term_near = 0.0;
+	mediump float shadow_term_far = 0.0;
 
-	float shadow_term_near = vsm(shadow_near.z, moments_near);
-	float shadow_term_far = vsm(shadow_far.z, moments_far);
+	if (shadow_cascade < 1.0)
+	{
+		vec2 moments_near = textureLod(uShadowmapNear, shadow_near.xy, 0.0).xy;
+		shadow_term_near = vsm(shadow_near.z, moments_near);
+	}
 
-    float view_z = dot(light.camera_front, (light.pos - light.camera_pos));
-    mediump float shadow_lerp = clamp(4.0 * (view_z * light.inv_cutoff_distance - 0.75), 0.0, 1.0);
-    mediump float shadow_term = mix(shadow_term_near, shadow_term_far, shadow_lerp);
+	if (shadow_cascade > 0.75)
+	{
+		vec2 moments_far = textureLod(uShadowmap, shadow_far.xy, 0.0).xy;
+		shadow_term_far = vsm(shadow_far.z, moments_far);
+	}
+
+	mediump float shadow_lerp = clamp(4.0 * (shadow_cascade - 0.75), 0.0, 1.0);
+	mediump float shadow_term = mix(shadow_term_near, shadow_term_far, shadow_lerp);
 	return shadow_term;
 #else
 	vec3 shadow_far = light.clip_shadow_far.xyz / light.clip_shadow_far.w;
@@ -79,13 +89,20 @@ layout(set = 1, binding = 4) uniform mediump sampler2DShadow uShadowmapNear;
 mediump float get_shadow_term(LightInfo light)
 {
 #ifdef SHADOW_CASCADES
-	mediump float shadow_term_near;
-	mediump float shadow_term_far;
-	SAMPLE_PCF_KERNEL(shadow_term_near, uShadowmapNear, light.clip_shadow_near);
-	SAMPLE_PCF_KERNEL(shadow_term_far, uShadowmap, light.clip_shadow_far);
-    float view_z = dot(light.camera_front, (light.pos - light.camera_pos));
-    mediump float shadow_lerp = clamp(4.0 * (view_z * light.inv_cutoff_distance - 0.75), 0.0, 1.0);
-    mediump float shadow_term = mix(shadow_term_near, shadow_term_far, shadow_lerp);
+	mediump float shadow_term_near = 0.0;
+	mediump float shadow_term_far = 0.0;
+	float view_z = dot(light.camera_front, (light.pos - light.camera_pos));
+	float shadow_cascade = view_z * light.inv_cutoff_distance;
+	if (shadow_cascade < 1.0)
+	{
+		SAMPLE_PCF_KERNEL(shadow_term_near, uShadowmapNear, light.clip_shadow_near);
+	}
+	if (shadow_cascade > 0.75)
+	{
+		SAMPLE_PCF_KERNEL(shadow_term_far, uShadowmap, light.clip_shadow_far);
+	}
+	mediump float shadow_lerp = clamp(4.0 * (shadow_cascade - 0.75), 0.0, 1.0);
+	mediump float shadow_term = mix(shadow_term_near, shadow_term_far, shadow_lerp);
 	return shadow_term;
 #else
 	mediump float shadow_term_far;

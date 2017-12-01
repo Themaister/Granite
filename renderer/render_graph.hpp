@@ -440,6 +440,11 @@ public:
 			return true;
 	}
 
+	bool may_not_need_render_pass() const
+	{
+		return bool(need_render_pass_cb);
+	}
+
 	bool get_clear_color(unsigned index, VkClearColorValue * value = nullptr)
 	{
 		if (get_clear_color_cb)

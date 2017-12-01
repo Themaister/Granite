@@ -1272,6 +1272,7 @@ void RenderGraph::build_aliases()
 		unsigned last_write_pass = 0;
 		unsigned first_read_pass = ~0u;
 		unsigned last_read_pass = 0;
+		bool block_alias = false;
 
 		bool has_writer() const
 		{
@@ -1292,6 +1293,8 @@ void RenderGraph::build_aliases()
 		{
 			// If we read before we have completely written to a resource we need to preserve it, so no alias is possible.
 			if (has_reader() && has_writer() && first_read_pass <= first_write_pass)
+				return false;
+			if (block_alias)
 				return false;
 			return true;
 		}
@@ -1344,7 +1347,7 @@ void RenderGraph::build_aliases()
 		}
 	};
 
-	const auto register_writer = [&pass_range](const RenderTextureResource *resource, unsigned pass_index) {
+	const auto register_writer = [&pass_range](const RenderTextureResource *resource, unsigned pass_index, bool block_alias) {
 		if (resource && pass_index != RenderPass::Unused)
 		{
 			unsigned phys = resource->get_physical_index();
@@ -1353,6 +1356,8 @@ void RenderGraph::build_aliases()
 				auto &range = pass_range[phys];
 				range.last_write_pass = std::max(range.last_write_pass, pass_index);
 				range.first_write_pass = std::min(range.first_write_pass, pass_index);
+				if (block_alias)
+					range.block_alias = block_alias;
 			}
 		}
 	};
@@ -1369,15 +1374,24 @@ void RenderGraph::build_aliases()
 			register_reader(input, subpass.get_physical_pass_index());
 		for (auto *input : subpass.get_texture_inputs())
 			register_reader(input, subpass.get_physical_pass_index());
+		for (auto *input : subpass.get_blit_texture_inputs())
+			register_reader(input, subpass.get_physical_pass_index());
+		for (auto *input : subpass.get_blit_texture_read_inputs())
+			register_reader(input, subpass.get_physical_pass_index());
 		if (subpass.get_depth_stencil_input())
 			register_reader(subpass.get_depth_stencil_input(), subpass.get_physical_pass_index());
 
+		// If a subpass may not execute, we cannot alias with that resource because some other pass may invalidate it.
+		bool block_alias = subpass.may_not_need_render_pass();
+
 		if (subpass.get_depth_stencil_output())
-			register_writer(subpass.get_depth_stencil_output(), subpass.get_physical_pass_index());
+			register_writer(subpass.get_depth_stencil_output(), subpass.get_physical_pass_index(), block_alias);
 		for (auto *output : subpass.get_color_outputs())
-			register_writer(output, subpass.get_physical_pass_index());
+			register_writer(output, subpass.get_physical_pass_index(), block_alias);
 		for (auto *output : subpass.get_resolve_outputs())
-			register_writer(output, subpass.get_physical_pass_index());
+			register_writer(output, subpass.get_physical_pass_index(), block_alias);
+		for (auto *output : subpass.get_blit_texture_outputs())
+			register_writer(output, subpass.get_physical_pass_index(), block_alias);
 	}
 
 	vector<vector<unsigned>> alias_chains(physical_dimensions.size());

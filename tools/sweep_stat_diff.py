@@ -14,7 +14,7 @@ def read_stat_file(path):
 def find_run(stats, variant):
     for run in stats['runs']:
         config = run['config']
-        if config['variant'] == variant
+        if config['variant'] == variant:
             return run
     return None
 

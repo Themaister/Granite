@@ -48,7 +48,9 @@ public:
 		POSITIONAL_LIGHT_SHADOW_ENABLE_BIT = 1 << 6,
 		POSITIONAL_LIGHT_CLUSTER_LIST_BIT = 1 << 7,
 		SHADOW_VSM_BIT = 1 << 8,
-		POSITIONAL_LIGHT_SHADOW_VSM_BIT = 1 << 9
+		POSITIONAL_LIGHT_SHADOW_VSM_BIT = 1 << 9,
+		SHADOW_PCF_KERNEL_WIDTH_3_BIT = 1 << 10,
+		SHADOW_PCF_KERNEL_WIDTH_5_BIT = 1 << 11
 	};
 	using RendererOptionFlags = uint32_t;
 
@@ -68,6 +70,7 @@ public:
 	void set_mesh_renderer_options(RendererOptionFlags flags);
 	void set_mesh_renderer_options_from_lighting(const LightingParameters &params);
 	void set_stencil_reference(uint8_t compare_mask, uint8_t write_mask, uint8_t ref);
+	RendererOptionFlags get_mesh_renderer_options() const;
 
 	void begin();
 
@@ -114,6 +117,6 @@ private:
 class DeferredLightRenderer
 {
 public:
-	static void render_light(Vulkan::CommandBuffer &cmd, RenderContext &context);
+	static void render_light(Vulkan::CommandBuffer &cmd, RenderContext &context, Renderer::RendererOptionFlags flags);
 };
 }

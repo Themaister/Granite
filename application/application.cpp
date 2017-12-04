@@ -117,6 +117,21 @@ void SceneViewerApplication::read_config(const std::string &path)
 		config.directional_light_cascaded_shadows = doc["directionalLightShadowsCascaded"].GetBool();
 	if (doc.HasMember("directionalLightShadowsVSM"))
 		config.directional_light_shadows_vsm = doc["directionalLightShadowsVSM"].GetBool();
+	if (doc.HasMember("PCFKernelWidth"))
+	{
+		unsigned width = doc["PCFKernelWidth"].GetUint();
+		if (width == 5)
+			config.pcf_flags = Renderer::SHADOW_PCF_KERNEL_WIDTH_5_BIT;
+		else if (width == 3)
+			config.pcf_flags = Renderer::SHADOW_PCF_KERNEL_WIDTH_3_BIT;
+		else if (width == 1)
+			config.pcf_flags = 0;
+		else
+		{
+			config.pcf_flags = 0;
+			LOGE("Invalid PCFKernelWidth, assuming default of 1.\n");
+		}
+	}
 	if (doc.HasMember("clusteredLights"))
 		config.clustered_lights = doc["clusteredLights"].GetBool();
 	if (doc.HasMember("clusteredLightsShadows"))
@@ -228,7 +243,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 
 	if (config.clustered_lights_shadows || config.clustered_lights)
 	{
-		cluster.reset(new LightClusterer);
+		cluster = make_unique<LightClusterer>();
 		auto entity = scene_loader.get_scene().create_entity();
 		auto *refresh = entity->allocate_component<PerFrameUpdateComponent>();
 		refresh->refresh = cluster.get();
@@ -444,6 +459,7 @@ void SceneViewerApplication::render_main_pass(Vulkan::CommandBuffer &cmd, const 
 		scene.gather_background_renderables(visible);
 
 		forward_renderer.set_mesh_renderer_options_from_lighting(lighting);
+		forward_renderer.set_mesh_renderer_options(forward_renderer.get_mesh_renderer_options() | config.pcf_flags);
 		forward_renderer.begin();
 		forward_renderer.push_renderables(context, visible);
 
@@ -469,6 +485,7 @@ void SceneViewerApplication::render_transparent_objects(Vulkan::CommandBuffer &c
 	visible.clear();
 	scene.gather_visible_transparent_renderables(context.get_visibility_frustum(), visible);
 	forward_renderer.set_mesh_renderer_options_from_lighting(lighting);
+	forward_renderer.set_mesh_renderer_options(forward_renderer.get_mesh_renderer_options() | config.pcf_flags);
 	forward_renderer.begin();
 	forward_renderer.push_renderables(context, visible);
 	forward_renderer.flush(cmd, context);
@@ -483,7 +500,7 @@ void SceneViewerApplication::render_positional_lights_prepass(Vulkan::CommandBuf
 void SceneViewerApplication::render_positional_lights(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view)
 {
 	context.set_camera(proj, view);
-	deferred_lights.render_lights(cmd, context);
+	deferred_lights.render_lights(cmd, context, config.pcf_flags);
 }
 
 static inline string tagcat(const std::string &a, const std::string &b)
@@ -613,7 +630,7 @@ void SceneViewerApplication::add_main_pass_deferred(Vulkan::Device &device, cons
 	lighting.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
 		if (!config.clustered_lights)
 			render_positional_lights(cmd, selected_camera->get_projection(), selected_camera->get_view());
-		DeferredLightRenderer::render_light(cmd, context);
+		DeferredLightRenderer::render_light(cmd, context, config.pcf_flags);
 		render_transparent_objects(cmd, selected_camera->get_projection(), selected_camera->get_view());
 	});
 }

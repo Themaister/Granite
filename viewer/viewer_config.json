@@ -3,6 +3,7 @@
 	"msaa": 1,
 	"directionalLightShadows": true,
 	"directionalLightShadowsVSM": false,
+	"PCFKernelWidth": 1,
 	"directionalLightShadowsCascaded": true,
 	"clusteredLights": false,
 	"clusteredLightsShadows": true,

@@ -1,9 +1,11 @@
 #ifndef PCF_H_
 #define PCF_H_
 
-#define PCF_5x5
+#ifndef SHADOW_MAP_PCF_KERNEL_WIDTH
+#define SHADOW_MAP_PCF_KERNEL_WIDTH 1
+#endif
 
-#if defined(PCF_5x5)
+#if SHADOW_MAP_PCF_KERNEL_WIDTH == 5
 #define SAMPLE_PCF(tex, uv, x, y) textureLodOffset(tex, uv, 0.0, ivec2(x, y))
 #define SAMPLE_PCF_KERNEL(var, tex, uv) \
 { \
@@ -41,7 +43,7 @@
 	var += w12 * SAMPLE_PCF(tex, clip_uv, +1, +2); \
 	var += w22 * SAMPLE_PCF(tex, clip_uv, +2, +2); \
 }
-#elif defined(PCF_3x3)
+#elif SHADOW_MAP_PCF_KERNEL_WIDTH == 3
 #define SAMPLE_PCF(tex, uv, x, y) textureLodOffset(tex, uv, 0.0, ivec2(x, y))
 #define SAMPLE_PCF_KERNEL(var, tex, uv) \
 { \
@@ -56,8 +58,10 @@
 	var += 0.1250 * SAMPLE_PCF(tex, clip_uv, +0, +1); \
 	var += 0.0625 * SAMPLE_PCF(tex, clip_uv, +1, +1); \
 }
-#else
+#elif SHADOW_MAP_PCF_KERNEL_WIDTH == 1
 #define SAMPLE_PCF_KERNEL(var, tex, uv) var = textureProjLod(tex, uv, 0.0)
+#else
+#error "Unsupported PCF kernel width."
 #endif
 
 #endif

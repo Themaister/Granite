@@ -24,6 +24,7 @@
 
 #include "scene.hpp"
 #include "render_context.hpp"
+#include "renderer.hpp"
 #include <vector>
 
 namespace Granite
@@ -39,7 +40,7 @@ public:
 	}
 
 	void render_prepass_lights(Vulkan::CommandBuffer &cmd, RenderContext &context);
-	void render_lights(Vulkan::CommandBuffer &cmd, RenderContext &context);
+	void render_lights(Vulkan::CommandBuffer &cmd, RenderContext &context, Renderer::RendererOptionFlags flags);
 
 private:
 	VisibilityList visible;

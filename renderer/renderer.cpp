@@ -48,41 +48,46 @@ void Renderer::set_mesh_renderer_options_internal(RendererOptionFlags flags)
 {
 	vector<pair<string, int>> global_defines;
 	if (flags & SHADOW_ENABLE_BIT)
-		global_defines.push_back({ "SHADOWS", 1 });
+		global_defines.emplace_back("SHADOWS", 1);
 	if (flags & SHADOW_CASCADE_ENABLE_BIT)
-		global_defines.push_back({ "SHADOW_CASCADES", 1 });
+		global_defines.emplace_back("SHADOW_CASCADES", 1);
 	if (flags & FOG_ENABLE_BIT)
-		global_defines.push_back({ "FOG", 1 });
+		global_defines.emplace_back("FOG", 1);
 	if (flags & ENVIRONMENT_ENABLE_BIT)
-		global_defines.push_back({ "ENVIRONMENT", 1 });
+		global_defines.emplace_back("ENVIRONMENT", 1);
 	if (flags & REFRACTION_ENABLE_BIT)
-		global_defines.push_back({ "REFRACTION", 1 });
+		global_defines.emplace_back("REFRACTION", 1);
 	if (flags & POSITIONAL_LIGHT_ENABLE_BIT)
-		global_defines.push_back({ "POSITIONAL_LIGHTS", 1 });
+		global_defines.emplace_back("POSITIONAL_LIGHTS", 1);
 	if (flags & POSITIONAL_LIGHT_SHADOW_ENABLE_BIT)
-		global_defines.push_back({ "POSITIONAL_LIGHTS_SHADOW", 1 });
+		global_defines.emplace_back("POSITIONAL_LIGHTS_SHADOW", 1);
 	if (flags & POSITIONAL_LIGHT_CLUSTER_LIST_BIT)
-		global_defines.push_back({ "CLUSTER_LIST", 1 });
+		global_defines.emplace_back("CLUSTER_LIST", 1);
 
 	if (flags & SHADOW_VSM_BIT)
-		global_defines.push_back({ "DIRECTIONAL_SHADOW_VSM", 1 });
+		global_defines.emplace_back("DIRECTIONAL_SHADOW_VSM", 1);
 	if (flags & POSITIONAL_LIGHT_SHADOW_VSM_BIT)
-		global_defines.push_back({ "POSITIONAL_SHADOW_VSM", 1 });
+		global_defines.emplace_back("POSITIONAL_SHADOW_VSM", 1);
 	if (flags & (POSITIONAL_LIGHT_SHADOW_VSM_BIT | SHADOW_VSM_BIT))
-		global_defines.push_back({ "SHADOW_RESOLVE_VSM", 1 });
+		global_defines.emplace_back("SHADOW_RESOLVE_VSM", 1);
+
+	if (flags & SHADOW_PCF_KERNEL_WIDTH_5_BIT)
+		global_defines.emplace_back("SHADOW_MAP_PCF_KERNEL_WIDTH", 5);
+	else if (flags & SHADOW_PCF_KERNEL_WIDTH_3_BIT)
+		global_defines.emplace_back("SHADOW_MAP_PCF_KERNEL_WIDTH", 3);
 
 	switch (type)
 	{
 	case RendererType::GeneralForward:
-		global_defines.push_back({ "RENDERER_FORWARD", 1 });
+		global_defines.emplace_back("RENDERER_FORWARD", 1);
 		break;
 
 	case RendererType::GeneralDeferred:
-		global_defines.push_back({ "RENDERER_DEFERRED", 1 });
+		global_defines.emplace_back("RENDERER_DEFERRED", 1);
 		break;
 
 	case RendererType::DepthOnly:
-		global_defines.push_back({ "RENDERER_DEPTH", 1 });
+		global_defines.emplace_back("RENDERER_DEPTH", 1);
 		break;
 
 	default:
@@ -98,8 +103,19 @@ void Renderer::set_mesh_renderer_options_internal(RendererOptionFlags flags)
 	auto &plane = suite[ecast(RenderableType::TexturePlane)];
 	plane.get_base_defines() = global_defines;
 	plane.bake_base_defines();
+	auto &spot = suite[ecast(RenderableType::SpotLight)];
+	spot.get_base_defines() = global_defines;
+	spot.bake_base_defines();
+	auto &point = suite[ecast(RenderableType::PointLight)];
+	point.get_base_defines() = global_defines;
+	point.bake_base_defines();
 
 	renderer_options = flags;
+}
+
+Renderer::RendererOptionFlags Renderer::get_mesh_renderer_options() const
+{
+	return renderer_options;
 }
 
 void Renderer::set_mesh_renderer_options(RendererOptionFlags flags)
@@ -323,7 +339,7 @@ void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context, Rendere
 	if (options & DEPTH_BIAS_BIT)
 	{
 		cmd.set_depth_bias(true);
-		cmd.set_depth_bias(+4.0f, +2.0f);
+		cmd.set_depth_bias(+4.0f, +3.0f);
 	}
 
 	if (options & BACKFACE_BIT)
@@ -468,7 +484,8 @@ void Renderer::push_depth_renderables(RenderContext &context, const VisibilityLi
 		vis.renderable->get_depth_render_info(context, vis.transform, queue);
 }
 
-void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderContext &context)
+void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderContext &context,
+                                         Renderer::RendererOptionFlags flags)
 {
 	cmd.set_quad_state();
 	cmd.set_input_attachments(0, 1);
@@ -485,14 +502,21 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 
 	vector<pair<string, int>> defines;
 	if (light.shadow_far && light.shadow_near)
-		defines.push_back({ "SHADOW_CASCADES", 1 });
+		defines.emplace_back("SHADOW_CASCADES", 1);
 	if (light.environment_radiance && light.environment_irradiance)
-		defines.push_back({ "ENVIRONMENT", 1 });
+		defines.emplace_back("ENVIRONMENT", 1);
 	if (light.shadow_far)
 	{
-		defines.push_back({ "SHADOWS", 1 });
+		defines.emplace_back("SHADOWS", 1);
 		if (!format_is_depth_stencil(light.shadow_far->get_format()))
-			defines.push_back({ "DIRECTIONAL_SHADOW_VSM", 1 });
+			defines.emplace_back("DIRECTIONAL_SHADOW_VSM", 1);
+		else
+		{
+			if (flags & Renderer::SHADOW_PCF_KERNEL_WIDTH_5_BIT)
+				defines.emplace_back("SHADOW_MAP_PCF_KERNEL_WIDTH", 5);
+			else if (flags & Renderer::SHADOW_PCF_KERNEL_WIDTH_3_BIT)
+				defines.emplace_back("SHADOW_MAP_PCF_KERNEL_WIDTH", 3);
+		}
 	}
 
 	unsigned variant = program->register_variant(defines);
@@ -587,6 +611,13 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 			cluster_defines.emplace_back("POSITIONAL_LIGHTS_SHADOW", 1);
 			if (!format_is_depth_stencil(light.cluster->get_spot_light_shadows()->get_format()))
 				cluster_defines.emplace_back("POSITIONAL_SHADOW_VSM", 1);
+			else
+			{
+				if (flags & Renderer::SHADOW_PCF_KERNEL_WIDTH_5_BIT)
+					defines.emplace_back("SHADOW_MAP_PCF_KERNEL_WIDTH", 5);
+				else if (flags & Renderer::SHADOW_PCF_KERNEL_WIDTH_3_BIT)
+					defines.emplace_back("SHADOW_MAP_PCF_KERNEL_WIDTH", 3);
+			}
 		}
 		if (light.cluster->get_cluster_list_buffer())
 			cluster_defines.emplace_back("CLUSTER_LIST", 1);

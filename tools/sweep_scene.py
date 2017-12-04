@@ -53,6 +53,9 @@ def config_to_path(c):
     res += '_hdrbloom' if c['hdrBloom'] else '_ldr'
     res += '_clusterstencil' if c['deferredClusteredStencilCulling'] else ''
     res += '_vsm' if c['directionalLightShadowsVSM'] else ''
+    if not c['directionalLightShadowsVSM']:
+        res += '_pcf5x5' if c['PCFKernelWidth'] == 5 else ''
+        res += '_pcf3x3' if c['PCFKernelWidth'] == 3 else ''
     return res
 
 def main():
@@ -273,70 +276,88 @@ def main():
 
             results.append((config, avg, stddev))
     elif args.gen_configs:
-        for renderer in ['forward', 'deferred']:
-            for msaa in [1, 4]:
-                for prepass in [False, True]:
-                    if msaa != 1 and renderer == 'deferred':
-                        continue
-                    if prepass and renderer == 'deferred':
-                        continue
-                    for clustered in [False, True]:
-                        for stencil_culling in [False, True]:
-                            if stencil_culling and (renderer != 'deferred' or clustered):
-                                continue
-                            for hdr_bloom in [False, True]:
-                                for shadows in [False, True]:
-                                    for pos_shadows in [False, True]:
-                                        if pos_shadows and renderer == 'forward' and (not clustered):
-                                            continue
-                                        for vsm in [False, True]:
-                                            if vsm and (not shadows) and (not pos_shadows):
-                                                continue
-                                            c = {}
-                                            c['renderer'] = renderer
-                                            c['hdrBloom'] = hdr_bloom
-                                            c['msaa'] = msaa
-                                            c['clusteredLights'] = clustered
-                                            c['directionalLightShadows'] = shadows
-                                            c['forwardDepthPrepass'] = prepass
-                                            c['clusteredLightsShadows'] = pos_shadows
-                                            c['showUi'] = False
-                                            c['deferredClusteredStencilCulling'] = stencil_culling
-                                            c['directionalLightShadowsVSM'] = vsm
-                                            c['clusteredLightsShadowsVSM'] = vsm
-                                            if args.gen_configs_camera_index is not None:
-                                                c['cameraIndex'] = args.gen_configs_camera_index
-                                            with open(config_file, 'w') as f:
-                                                json.dump(c, f)
+        for variant in range(1024):
+            renderer = 'forward' if (variant & 512) != 0 else 'deferred'
+            msaa = 4 if (variant & 256) != 0 else 1
+            prepass = (variant & 128) != 0
+            clustered = (variant & 64) != 0
+            stencil_culling = (variant & 32) != 0
+            hdr_bloom = (variant & 16) != 0
+            shadows = (variant & 8) != 0
+            pos_shadows = (variant & 4) != 0
+            shadow_type = variant & 3
 
-                                            if args.android_viewer_binary is not None:
-                                                sweep = base_sweep + ['--config', '/data/local/tmp/granite/config.json']
-                                                subprocess.check_call(['adb', 'push', config_file, '/data/local/tmp/granite/config.json'])
-                                                if args.png_result_dir:
-                                                    sweep.append('--png-reference-path')
-                                                    sweep.append('/data/local/tmp/granite/ref.png')
-                                            else:
-                                                sweep = base_sweep + ['--config', config_file]
-                                                if args.png_result_dir:
-                                                    sweep.append('--png-reference-path')
-                                                    sweep.append(os.path.join(args.png_result_dir, config_to_path(c)) + '.png')
+            if msaa != 1 and renderer == 'deferred':
+                continue
+            if prepass and renderer == 'deferred':
+                continue
+            if stencil_culling and (renderer != 'deferred' or clustered):
+                continue
+            if pos_shadows and renderer == 'forward' and (not clustered):
+                continue
+            if shadow_type != 0 and (not shadows) and (not pos_shadows):
+                continue
 
-                                            avg, stddev, gpu, version = run_test(sweep, config_file, iterations, stat_file, args.android_viewer_binary is not None)
+            c = {}
+            c['renderer'] = renderer
+            c['hdrBloom'] = hdr_bloom
+            c['msaa'] = msaa
+            c['clusteredLights'] = clustered
+            c['directionalLightShadows'] = shadows
+            c['forwardDepthPrepass'] = prepass
+            c['clusteredLightsShadows'] = pos_shadows
+            c['showUi'] = False
+            c['deferredClusteredStencilCulling'] = stencil_culling
+            c['directionalLightShadowsVSM'] = shadow_type == 3
+            c['clusteredLightsShadowsVSM'] = shadow_type == 3
+            if shadow_type == 0 or shadow_type == 3:
+                c['PCFKernelWidth'] = 1
+            elif shadow_type == 1:
+                c['PCFKernelWidth'] = 3
+            elif shadow_type == 2:
+                c['PCFKernelWidth'] = 5
 
-                                            if (args.android_viewer_binary  is not None) and (args.png_result_dir is not None):
-                                                subprocess.check_call(['adb', 'pull', '/data/local/tmp/granite/ref.png', os.path.join(args.png_result_dir, config_to_path(c)) + '.png'])
+            if args.gen_configs_camera_index is not None:
+                c['cameraIndex'] = args.gen_configs_camera_index
+            with open(config_file, 'w') as f:
+                json.dump(c, f)
 
-                                            config_name = {}
-                                            config_name['renderer'] = renderer
-                                            config_name['msaa'] = msaa
-                                            config_name['prepass'] = prepass
-                                            config_name['clustered'] = clustered
-                                            config_name['hdr_bloom'] = hdr_bloom
-                                            config_name['shadows'] = shadows
-                                            config_name['pos_shadows'] = pos_shadows
-                                            config_name['stencil_culling'] = stencil_culling
-                                            config_name['vsm'] = vsm
-                                            results.append((config_name, avg, stddev))
+            if args.android_viewer_binary is not None:
+                sweep = base_sweep + ['--config', '/data/local/tmp/granite/config.json']
+                subprocess.check_call(['adb', 'push', config_file, '/data/local/tmp/granite/config.json'])
+                if args.png_result_dir:
+                    sweep.append('--png-reference-path')
+                    sweep.append('/data/local/tmp/granite/ref.png')
+            else:
+                sweep = base_sweep + ['--config', config_file]
+                if args.png_result_dir:
+                    sweep.append('--png-reference-path')
+                    sweep.append(os.path.join(args.png_result_dir, config_to_path(c)) + '.png')
+
+            avg, stddev, gpu, version = run_test(sweep, config_file, iterations, stat_file, args.android_viewer_binary is not None)
+
+            if (args.android_viewer_binary  is not None) and (args.png_result_dir is not None):
+                subprocess.check_call(['adb', 'pull', '/data/local/tmp/granite/ref.png', os.path.join(args.png_result_dir, config_to_path(c)) + '.png'])
+
+            config_name = {}
+            config_name['renderer'] = renderer
+            config_name['msaa'] = msaa
+            config_name['prepass'] = prepass
+            config_name['clustered'] = clustered
+            config_name['hdr_bloom'] = hdr_bloom
+            config_name['shadows'] = shadows
+            config_name['pos_shadows'] = pos_shadows
+            config_name['stencil_culling'] = stencil_culling
+            config_name['vsm'] = shadow_type == 3
+            if shadow_type == 0:
+                config_name['pcf_width'] = 1
+            elif shadow_type == 1:
+                config_name['pcf_width'] = 3
+            elif shadow_type == 2:
+                config_name['pcf_width'] = 5
+            config_name['variant'] = variant
+
+            results.append((config_name, avg, stddev))
 
     for res in results:
         print(res)

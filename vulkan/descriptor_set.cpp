@@ -85,6 +85,20 @@ DescriptorSetAllocator::DescriptorSetAllocator(Device *device, const DescriptorS
 			types++;
 		}
 
+		if (layout.separate_image_mask & (1u << i))
+		{
+			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1, layout.stages, nullptr });
+			pool_size.push_back({ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, VULKAN_NUM_SETS_PER_POOL });
+			types++;
+		}
+
+		if (layout.sampler_mask & (1u << i))
+		{
+			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_SAMPLER, 1, layout.stages, nullptr });
+			pool_size.push_back({ VK_DESCRIPTOR_TYPE_SAMPLER, VULKAN_NUM_SETS_PER_POOL });
+			types++;
+		}
+
 		(void)types;
 		VK_ASSERT(types <= 1 && "Descriptor set aliasing!");
 	}

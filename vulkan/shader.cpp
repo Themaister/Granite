@@ -167,6 +167,26 @@ Shader::Shader(VkDevice device, ShaderStage stage, const uint32_t *data, size_t 
 			layout.sets[set].fp_mask |= 1u << binding;
 	}
 
+	for (auto &image : resources.separate_images)
+	{
+		auto set = compiler.get_decoration(image.id, spv::DecorationDescriptorSet);
+		auto binding = compiler.get_decoration(image.id, spv::DecorationBinding);
+		layout.sets[set].separate_image_mask |= 1u << binding;
+		layout.sets[set].stages |= 1u << static_cast<unsigned>(stage);
+
+		auto &type = compiler.get_type(image.base_type_id);
+		if (compiler.get_type(type.image.type).basetype == SPIRType::BaseType::Float)
+			layout.sets[set].fp_mask |= 1u << binding;
+	}
+
+	for (auto &image : resources.separate_samplers)
+	{
+		auto set = compiler.get_decoration(image.id, spv::DecorationDescriptorSet);
+		auto binding = compiler.get_decoration(image.id, spv::DecorationBinding);
+		layout.sets[set].sampler_mask |= 1u << binding;
+		layout.sets[set].stages |= 1u << static_cast<unsigned>(stage);
+	}
+
 	for (auto &image : resources.storage_images)
 	{
 		auto set = compiler.get_decoration(image.id, spv::DecorationDescriptorSet);

@@ -1137,6 +1137,12 @@ void CommandBuffer::set_texture(unsigned set, unsigned binding, const ImageView 
 	set_texture(set, binding, view, sampler);
 }
 
+void CommandBuffer::set_sampler(unsigned set, unsigned binding, StockSampler stock)
+{
+	const auto &sampler = device->get_stock_sampler(stock);
+	set_sampler(set, binding, sampler);
+}
+
 void CommandBuffer::set_storage_texture(unsigned set, unsigned binding, const ImageView &view)
 {
 	VK_ASSERT(set < VULKAN_NUM_DESCRIPTOR_SETS);
@@ -1195,6 +1201,19 @@ void CommandBuffer::flush_descriptor_set(uint32_t set)
 		h.u64(bindings.secondary_cookies[set][binding]);
 		h.u32(bindings.bindings[set][binding].image.fp.imageLayout);
 		VK_ASSERT(bindings.bindings[set][binding].image.fp.imageView != VK_NULL_HANDLE);
+		VK_ASSERT(bindings.bindings[set][binding].image.fp.sampler != VK_NULL_HANDLE);
+	});
+
+	// Separate images
+	for_each_bit(set_layout.separate_image_mask, [&](uint32_t binding) {
+		h.u64(bindings.cookies[set][binding]);
+		h.u32(bindings.bindings[set][binding].image.fp.imageLayout);
+		VK_ASSERT(bindings.bindings[set][binding].image.fp.imageView != VK_NULL_HANDLE);
+	});
+
+	// Separate samplers
+	for_each_bit(set_layout.sampler_mask, [&](uint32_t binding) {
+		h.u64(bindings.secondary_cookies[set][binding]);
 		VK_ASSERT(bindings.bindings[set][binding].image.fp.sampler != VK_NULL_HANDLE);
 	});
 
@@ -1278,6 +1297,34 @@ void CommandBuffer::flush_descriptor_set(uint32_t set)
 				write.pImageInfo = &bindings.bindings[set][binding].image.fp;
 			else
 				write.pImageInfo = &bindings.bindings[set][binding].image.integer;
+		});
+
+		for_each_bit(set_layout.separate_image_mask, [&](uint32_t binding) {
+			auto &write = writes[write_count++];
+			write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			write.pNext = nullptr;
+			write.descriptorCount = 1;
+			write.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+			write.dstArrayElement = 0;
+			write.dstBinding = binding;
+			write.dstSet = allocated.first;
+
+			if (set_layout.fp_mask & (1u << binding))
+				write.pImageInfo = &bindings.bindings[set][binding].image.fp;
+			else
+				write.pImageInfo = &bindings.bindings[set][binding].image.integer;
+		});
+
+		for_each_bit(set_layout.sampler_mask, [&](uint32_t binding) {
+			auto &write = writes[write_count++];
+			write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			write.pNext = nullptr;
+			write.descriptorCount = 1;
+			write.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+			write.dstArrayElement = 0;
+			write.dstBinding = binding;
+			write.dstSet = allocated.first;
+			write.pImageInfo = &bindings.bindings[set][binding].image.fp;
 		});
 
 		for_each_bit(set_layout.storage_image_mask, [&](uint32_t binding) {

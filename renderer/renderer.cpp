@@ -614,9 +614,9 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 			else
 			{
 				if (flags & Renderer::SHADOW_PCF_KERNEL_WIDTH_5_BIT)
-					defines.emplace_back("SHADOW_MAP_PCF_KERNEL_WIDTH", 5);
+					cluster_defines.emplace_back("SHADOW_MAP_PCF_KERNEL_WIDTH", 5);
 				else if (flags & Renderer::SHADOW_PCF_KERNEL_WIDTH_3_BIT)
-					defines.emplace_back("SHADOW_MAP_PCF_KERNEL_WIDTH", 3);
+					cluster_defines.emplace_back("SHADOW_MAP_PCF_KERNEL_WIDTH", 3);
 			}
 		}
 		if (light.cluster->get_cluster_list_buffer())

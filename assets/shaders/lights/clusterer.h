@@ -45,7 +45,12 @@ const float NUM_CLUSTER_HIERARCHIES = 8.0;
 const float MAX_CLUSTER_HIERARCHY = NUM_CLUSTER_HIERARCHIES - 1.0;
 const float INV_PADDED_NUM_CLUSTER_HIERARCHIES = 1.0 / (NUM_CLUSTER_HIERARCHIES + 1.0);
 
-mediump vec3 compute_cluster_light(MaterialProperties material, vec3 world_pos, vec3 camera_pos)
+mediump vec3 compute_cluster_light(
+		mediump vec3 material_base_color,
+		mediump vec3 material_normal,
+		mediump float material_metallic,
+		mediump float material_roughness,
+		vec3 world_pos, vec3 camera_pos)
 {
 	vec3 cluster_pos = (cluster.transform * vec4(world_pos, 1.0)).xyz;
 	float scale_factor = max(0.0001, cluster_pos.z);
@@ -102,14 +107,16 @@ mediump vec3 compute_cluster_light(MaterialProperties material, vec3 world_pos, 
 	while (bits.x != 0u)
 	{
 		int index = findLSB(bits.x);
-		result += compute_spot_light(index, material, world_pos, camera_pos);
+		result += compute_spot_light(index, material_base_color, material_normal,
+		                             material_metallic, material_roughness, world_pos, camera_pos);
 		bits.x &= ~(1u << uint(index));
 	}
 
 	while (bits.y != 0u)
 	{
 		int index = findLSB(bits.y);
-		result += compute_point_light(index, material, world_pos, camera_pos);
+		result += compute_point_light(index, material_base_color, material_normal,
+		                              material_metallic, material_roughness, world_pos, camera_pos);
 		bits.y &= ~(1u << uint(index));
 	}
 #endif

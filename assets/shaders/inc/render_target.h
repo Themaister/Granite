@@ -44,17 +44,16 @@ void emit_render_target(mediump vec3 emissive, mediump vec4 base_color, mediump 
     vec4 clip_shadow_far = shadow.far * vec4(pos, 1.0);
 #endif
 
-    vec3 lighting = emissive + compute_lighting(
-        MaterialProperties(base_color.rgb, normal, metallic, roughness, ambient, base_color.a),
-        LightInfo(pos, global.camera_position, global.camera_front, directional.direction, directional.color
+    mediump vec3 lighting = emissive + compute_lighting(
+        base_color.rgb, normal, metallic, roughness, ambient, base_color.a,
+        pos, global.camera_position, global.camera_front, directional.direction, directional.color
 #ifdef SHADOWS
-                , clip_shadow_near, clip_shadow_far, shadow.inv_cutoff_distance
+		, clip_shadow_near, clip_shadow_far, shadow.inv_cutoff_distance
 #endif
-        )
 #ifdef ENVIRONMENT
-        , EnvironmentInfo(environment.intensity, environment.mipscale)
+        , environment.intensity, environment.mipscale
 #endif
-        );
+	);
 
 #ifdef FOG
     lighting = apply_fog(lighting, eye_dir, fog.color, fog.falloff);

@@ -29,6 +29,6 @@ void main()
     vec3 pos = clip.xyz / clip.w;
 
     FragColor = compute_cluster_light(
-		MaterialProperties(base_color_ambient.rgb, N, mr.x, mr.y, base_color_ambient.a, 1.0),
+		base_color_ambient.rgb, N, mr.x, mr.y,
 		pos, registers.camera_pos);
 }

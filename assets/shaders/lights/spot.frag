@@ -54,6 +54,5 @@ void main()
 #else
         0,
 #endif
-        MaterialProperties(base_color_ambient.rgb, N, mr.x, mr.y, base_color_ambient.a, 1.0),
-        pos, registers.camera_pos);
+        base_color_ambient.rgb, N, mr.x, mr.y, pos, registers.camera_pos);
 }

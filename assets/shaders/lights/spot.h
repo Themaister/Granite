@@ -1,7 +1,6 @@
 #ifndef SPOT_LIGHT_H_
 #define SPOT_LIGHT_H_
 
-#include "material.h"
 #include "pbr.h"
 
 struct SpotShaderInfo
@@ -81,7 +80,12 @@ layout(std140, set = SPOT_LIGHT_SHADOW_DATA_SET, binding = SPOT_LIGHT_SHADOW_DAT
 #define SPOT_SHADOW_TRANSFORM(index) spot_shadow.transform
 #endif
 
-vec3 compute_spot_light(int index, MaterialProperties material, vec3 world_pos, vec3 camera_pos)
+mediump vec3 compute_spot_light(int index,
+                                mediump vec3 material_base_color,
+                                mediump vec3 material_normal,
+                                mediump float material_metallic,
+                                mediump float material_roughness,
+                                vec3 world_pos, vec3 camera_pos)
 {
 	vec3 light_pos = SPOT_DATA(index).position;
 	vec3 light_primary_direction = SPOT_DATA(index).direction;
@@ -113,26 +117,26 @@ vec3 compute_spot_light(int index, MaterialProperties material, vec3 world_pos, 
 		discard;
 #endif
 
-	mediump float roughness = material.roughness * 0.75 + 0.25;
+	mediump float roughness = material_roughness * 0.75 + 0.25;
 
 	// Compute directional light.
 	mediump vec3 L = light_dir;
 	mediump vec3 V = normalize(camera_pos - world_pos);
 	mediump vec3 H = normalize(V + L);
-	mediump vec3 N = material.normal;
+	mediump vec3 N = material_normal;
 
 	mediump float NoV = clamp(dot(N, V), 0.001, 1.0);
 	mediump float NoL = clamp(dot(N, L), 0.0, 1.0);
 	mediump float HoV = clamp(dot(H, V), 0.001, 1.0);
 	mediump float LoV = clamp(dot(L, V), 0.001, 1.0);
 
-	mediump vec3 F0 = compute_F0(material.base_color, material.metallic);
+	mediump vec3 F0 = compute_F0(material_base_color, material_metallic);
 	mediump vec3 specular_fresnel = fresnel(F0, HoV);
 	mediump vec3 specref = NoL * cook_torrance_specular(N, H, NoL, NoV, specular_fresnel, roughness);
 	mediump vec3 diffref = NoL * (1.0 - specular_fresnel) * (1.0 / PI);
 
 	mediump vec3 reflected_light = specref;
-	mediump vec3 diffuse_light = diffref * material.base_color * (1.0 - material.metallic);
+	mediump vec3 diffuse_light = diffref * material_base_color * (1.0 - material_metallic);
 	return spot_color * (reflected_light + diffuse_light);
 }
 

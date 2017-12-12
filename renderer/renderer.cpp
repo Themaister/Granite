@@ -281,7 +281,7 @@ void Renderer::set_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderC
 	resolution->resolution = vec2(cmd.get_viewport().width, cmd.get_viewport().height);
 	resolution->inv_resolution = vec2(1.0f / cmd.get_viewport().width, 1.0f / cmd.get_viewport().height);
 
-	cmd.set_texture(0, 7,
+	cmd.set_texture(1, 2,
 	                cmd.get_device().get_texture_manager().request_texture("builtin://textures/ibl_brdf_lut.ktx")->get_image()->get_view(),
 	                Vulkan::StockSampler::LinearClamp);
 
@@ -529,7 +529,7 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 	if (light.environment_irradiance)
 		cmd.set_texture(1, 1, *light.environment_irradiance, Vulkan::StockSampler::LinearClamp);
 
-	cmd.set_texture(0, 7,
+	cmd.set_texture(1, 2,
 	                cmd.get_device().get_texture_manager().request_texture("builtin://textures/ibl_brdf_lut.ktx")->get_image()->get_view(),
 	                Vulkan::StockSampler::LinearClamp);
 

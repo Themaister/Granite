@@ -7,7 +7,7 @@
 layout(set = 1, binding = 0) uniform mediump samplerCube uReflection;
 layout(set = 1, binding = 1) uniform mediump samplerCube uIrradiance;
 #endif
-layout(set = 0, binding = 7) uniform mediump sampler2D uBRDFLut;
+layout(set = 1, binding = 2) uniform mediump sampler2D uBRDFLut;
 
 #ifdef SHADOWS
 

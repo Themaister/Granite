@@ -7,7 +7,7 @@
 
 #if defined(RENDERER_DEFERRED)
 #if defined(HAVE_EMISSIVE) && HAVE_EMISSIVE
-layout(location = 0) out vec3 Emissive;
+layout(location = 0) out mediump vec3 Emissive;
 #endif
 layout(location = 1) out mediump vec4 BaseColor;
 layout(location = 2) out mediump vec3 Normal;
@@ -25,7 +25,7 @@ void emit_render_target(mediump vec3 emissive, mediump vec4 base_color, mediump 
     PBR = vec2(metallic, roughness);
 }
 #elif defined(RENDERER_FORWARD)
-layout(location = 0) out vec4 Color;
+layout(location = 0) out mediump vec4 Color;
 #include "render_parameters.h"
 #include "../lights/lighting.h"
 #include "../lights/fog.h"

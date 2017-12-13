@@ -626,6 +626,10 @@ private:
 	BufferBlock ibo_block;
 	BufferBlock ubo_block;
 	BufferBlock staging_block;
+
+	void set_texture(unsigned set, unsigned binding, VkImageView float_view, VkImageView integer_view,
+	                 VkImageLayout layout,
+	                 uint64_t cookie);
 };
 
 struct CommandBufferUtil

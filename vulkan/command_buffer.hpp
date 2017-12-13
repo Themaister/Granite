@@ -315,6 +315,8 @@ public:
 	void set_buffer_view(unsigned set, unsigned binding, const BufferView &view);
 	void set_input_attachments(unsigned set, unsigned start_binding);
 	void set_texture(unsigned set, unsigned binding, const ImageView &view);
+	void set_unorm_texture(unsigned set, unsigned binding, const ImageView &view);
+	void set_srgb_texture(unsigned set, unsigned binding, const ImageView &view);
 	void set_texture(unsigned set, unsigned binding, const ImageView &view, const Sampler &sampler);
 	void set_texture(unsigned set, unsigned binding, const ImageView &view, StockSampler sampler);
 	void set_storage_texture(unsigned set, unsigned binding, const ImageView &view);

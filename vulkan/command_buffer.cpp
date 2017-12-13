@@ -1106,6 +1106,50 @@ void CommandBuffer::set_texture(unsigned set, unsigned binding, const ImageView 
 	dirty_sets |= 1u << set;
 }
 
+enum CookieBits
+{
+	COOKIE_BIT_UNORM = 1 << 0,
+	COOKIE_BIT_SRGB = 1 << 1
+};
+
+void CommandBuffer::set_unorm_texture(unsigned set, unsigned binding, const ImageView &view)
+{
+	VK_ASSERT(set < VULKAN_NUM_DESCRIPTOR_SETS);
+	VK_ASSERT(binding < VULKAN_NUM_BINDINGS);
+	VK_ASSERT(view.get_image().get_create_info().usage & VK_IMAGE_USAGE_SAMPLED_BIT);
+	if ((view.get_cookie() | COOKIE_BIT_UNORM) == bindings.cookies[set][binding] &&
+	    bindings.bindings[set][binding].image.fp.imageLayout == view.get_image().get_layout())
+		return;
+
+	VK_ASSERT(view.get_unorm_view() != VK_NULL_HANDLE);
+	auto &b = bindings.bindings[set][binding];
+	b.image.fp.imageLayout = view.get_image().get_layout();
+	b.image.fp.imageView = view.get_unorm_view();
+	b.image.integer.imageLayout = view.get_image().get_layout();
+	b.image.integer.imageView = view.get_unorm_view();
+	bindings.cookies[set][binding] = view.get_cookie() | COOKIE_BIT_UNORM;
+	dirty_sets |= 1u << set;
+}
+
+void CommandBuffer::set_srgb_texture(unsigned set, unsigned binding, const ImageView &view)
+{
+	VK_ASSERT(set < VULKAN_NUM_DESCRIPTOR_SETS);
+	VK_ASSERT(binding < VULKAN_NUM_BINDINGS);
+	VK_ASSERT(view.get_image().get_create_info().usage & VK_IMAGE_USAGE_SAMPLED_BIT);
+	if ((view.get_cookie() | COOKIE_BIT_SRGB) == bindings.cookies[set][binding] &&
+	    bindings.bindings[set][binding].image.fp.imageLayout == view.get_image().get_layout())
+		return;
+
+	VK_ASSERT(view.get_srgb_view() != VK_NULL_HANDLE);
+	auto &b = bindings.bindings[set][binding];
+	b.image.fp.imageLayout = view.get_image().get_layout();
+	b.image.fp.imageView = view.get_srgb_view();
+	b.image.integer.imageLayout = view.get_image().get_layout();
+	b.image.integer.imageView = view.get_srgb_view();
+	bindings.cookies[set][binding] = view.get_cookie() | COOKIE_BIT_SRGB;
+	dirty_sets |= 1u << set;
+}
+
 void CommandBuffer::set_texture(unsigned set, unsigned binding, const ImageView &view, const Sampler &sampler)
 {
 	VK_ASSERT(set < VULKAN_NUM_DESCRIPTOR_SETS);

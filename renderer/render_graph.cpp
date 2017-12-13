@@ -1970,11 +1970,14 @@ void RenderGraph::setup_physical_image(Vulkan::Device &device, unsigned attachme
 
 	bool need_image = true;
 	VkImageUsageFlags usage = 0;
+	Vulkan::ImageMiscFlags misc = 0;
 
 	if (att.stages & VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT)
 		usage |= VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
 	if (att.stages & VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT)
 		usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+	if (att.unorm_srgb)
+		misc = Vulkan::IMAGE_MISC_MUTABLE_SRGB_BIT;
 
 	VkImageCreateFlags flags = 0;
 
@@ -2048,6 +2051,7 @@ void RenderGraph::setup_physical_image(Vulkan::Device &device, unsigned attachme
 		bool is_concurrent_compute = (att.stages & concurrent_compute) == concurrent_compute;
 		bool is_concurrent_copy = (att.stages & concurrent_copy) == concurrent_copy;
 		info.misc = (is_concurrent_compute || is_concurrent_copy) ? Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_BIT : 0;
+		info.misc |= misc;
 
 		physical_image_attachments[attachment] = device.create_image(info, nullptr);
 		physical_events[attachment] = {};
@@ -2435,6 +2439,7 @@ ResourceDimensions RenderGraph::get_resource_dimensions(const RenderTextureResou
 	dim.format = info.format;
 	dim.transient = resource.get_transient_state();
 	dim.persistent = info.persistent;
+	dim.unorm_srgb = info.unorm_srgb_alias;
 	dim.storage = resource.get_storage_state();
 	dim.stages = resource.get_used_stages();
 	dim.name = resource.get_name();

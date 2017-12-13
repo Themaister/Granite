@@ -20,5 +20,6 @@
 	"directionalLightCascadeCutoff": 10.0,
 	"directionalLightShadowsForceUpdate": false,
 	"deferredClusteredStencilCulling": true,
+	"fxaa": false,
 	"showUi": true
 }

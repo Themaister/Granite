@@ -58,6 +58,7 @@ struct AttachmentInfo
 	unsigned levels = 1;
 	unsigned layers = 1;
 	bool persistent = true;
+	bool unorm_srgb_alias = false;
 };
 
 struct BufferInfo
@@ -90,6 +91,7 @@ struct ResourceDimensions
 	unsigned levels = 1;
 	unsigned samples = 1;
 	bool transient = false;
+	bool unorm_srgb = false;
 	bool persistent = true;
 	bool storage = false;
 	VkPipelineStageFlags stages = 0;
@@ -105,7 +107,8 @@ struct ResourceDimensions
 		       buffer_info == buffer_info &&
 		       transient == other.transient &&
 		       persistent == other.persistent &&
-		       storage == other.storage;
+		       storage == other.storage &&
+		       unorm_srgb == other.unorm_srgb;
 		// stages is deliberately not part of this test.
 	}
 

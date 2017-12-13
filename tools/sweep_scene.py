@@ -136,6 +136,9 @@ def main():
     parser.add_argument('--quirks',
                         help = 'Run sweep with quirks config',
                         type = str)
+    parser.add_argument('--fast',
+                        help = 'Run only the most relevant configs',
+                        action = 'store_true')
 
     args = parser.parse_args()
 
@@ -297,6 +300,18 @@ def main():
                 continue
             if shadow_type != 0 and (not shadows) and (not pos_shadows):
                 continue
+
+            if args.fast:
+                if (not shadows) or (not pos_shadows):
+                    continue
+                if shadow_type == 1:
+                    continue
+                if not stencil_culling:
+                    continue
+                if not hdr_bloom:
+                    continue
+                if renderer == 'forward' and (not clustered):
+                    continue
 
             c = {}
             c['renderer'] = renderer

@@ -2157,20 +2157,20 @@ static bool fill_image_format_list(VkFormat *formats, VkFormat format)
 	{
 	case VK_FORMAT_R8G8B8A8_UNORM:
 	case VK_FORMAT_R8G8B8A8_SRGB:
-		formats[0] = VK_FORMAT_R8G8B8A8_SRGB;
-		formats[1] = VK_FORMAT_R8G8B8A8_UNORM;
+		formats[0] = VK_FORMAT_R8G8B8A8_UNORM;
+		formats[1] = VK_FORMAT_R8G8B8A8_SRGB;
 		return true;
 
 	case VK_FORMAT_B8G8R8A8_UNORM:
 	case VK_FORMAT_B8G8R8A8_SRGB:
-		formats[0] = VK_FORMAT_B8G8R8A8_SRGB;
-		formats[1] = VK_FORMAT_B8G8R8A8_UNORM;
+		formats[0] = VK_FORMAT_B8G8R8A8_UNORM;
+		formats[1] = VK_FORMAT_B8G8R8A8_SRGB;
 		return true;
 
 	case VK_FORMAT_A8B8G8R8_UNORM_PACK32:
 	case VK_FORMAT_A8B8G8R8_SRGB_PACK32:
-		formats[0] = VK_FORMAT_A8B8G8R8_SRGB_PACK32;
-		formats[1] = VK_FORMAT_A8B8G8R8_UNORM_PACK32;
+		formats[0] = VK_FORMAT_A8B8G8R8_UNORM_PACK32;
+		formats[1] = VK_FORMAT_A8B8G8R8_SRGB_PACK32;
 		return true;
 
 	default:
@@ -2688,7 +2688,8 @@ VkFormat Device::get_default_depth_format() const
 
 uint64_t Device::allocate_cookie()
 {
-	return cookie.fetch_add(1, memory_order_relaxed) + 1;
+	// Reserve lower bits for "special purposes".
+	return cookie.fetch_add(16, memory_order_relaxed) + 16;
 }
 
 const RenderPass &Device::request_render_pass(const RenderPassInfo &info)

@@ -27,6 +27,7 @@
 #include "image_widget.hpp"
 #include "label.hpp"
 #include "post/hdr.hpp"
+#include "post/fxaa.hpp"
 #include "quirks.hpp"
 
 #define RAPIDJSON_ASSERT(x) do { if (!(x)) throw "JSON error"; } while(0)
@@ -171,6 +172,9 @@ void SceneViewerApplication::read_config(const std::string &path)
 
 	if (doc.HasMember("directionalLightShadowsForceUpdate"))
 		config.force_shadow_map_update = doc["directionalLightShadowsForceUpdate"].GetBool();
+
+	if (doc.HasMember("fxaa"))
+		config.fxaa = doc["fxaa"].GetBool();
 }
 
 SceneViewerApplication::SceneViewerApplication(const std::string &path, const std::string &config_path, const std::string &quirks_path)
@@ -787,7 +791,13 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 	add_main_pass(swap.get_device(), "main");
 
 	if (config.hdr_bloom)
-		setup_hdr_postprocess(graph, "HDR-main", "tonemapped");
+		setup_hdr_postprocess(graph, "HDR-main", "tonemapped", config.fxaa);
+
+	if (config.fxaa)
+	{
+		setup_fxaa_postprocess(graph, ui_source, "fxaa");
+		ui_source = "fxaa";
+	}
 
 	if (config.show_ui)
 	{

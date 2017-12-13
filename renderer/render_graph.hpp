@@ -260,6 +260,11 @@ public:
 		return info;
 	}
 
+	AttachmentInfo &get_attachment_info()
+	{
+		return info;
+	}
+
 	void set_transient_state(bool enable)
 	{
 		transient = enable;

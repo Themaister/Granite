@@ -154,7 +154,7 @@ static void tonemap_build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &c
 	Vulkan::CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/post/tonemap.frag");
 }
 
-void setup_hdr_postprocess(RenderGraph &graph, const std::string &input, const std::string &output, bool unorm_srgb_alias)
+void setup_hdr_postprocess(RenderGraph &graph, const std::string &input, const std::string &output)
 {
 	BufferInfo buffer_info;
 	buffer_info.size = 3 * sizeof(float);
@@ -262,7 +262,6 @@ void setup_hdr_postprocess(RenderGraph &graph, const std::string &input, const s
 	AttachmentInfo tonemap_info;
 	tonemap_info.size_class = SizeClass::InputRelative;
 	tonemap_info.size_relative_name = input;
-	tonemap_info.unorm_srgb_alias = unorm_srgb_alias;
 	auto &tonemap = graph.add_pass("tonemap", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 	tonemap.add_color_output(output, tonemap_info);
 	tonemap.add_texture_input(input);

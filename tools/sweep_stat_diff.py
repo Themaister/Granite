@@ -82,9 +82,11 @@ def main():
         first = True
         reference_time = 0.0
 
+        has_valid = False
         for stat in stats:
             run = find_run(stat, variant)
             if run is not None:
+                has_valid = True
                 if first:
                     reference_time = run['avg']
 
@@ -97,7 +99,8 @@ def main():
             else:
                 result_string += '{:>25}'.format('N/A')
 
-        print(result_string)
+        if has_valid:
+            print(result_string)
 
 if __name__ == '__main__':
     main()

@@ -2210,13 +2210,13 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 	format_info.viewFormatCount = 2;
 	bool create_unorm_srgb_views = false;
 
-	if (supports_image_format &&
-	    (create_info.misc & IMAGE_MISC_MUTABLE_SRGB_BIT))
+	if (create_info.misc & IMAGE_MISC_MUTABLE_SRGB_BIT)
 	{
 		if (fill_image_format_list(view_formats, info.format))
 		{
-			info.pNext = &format_info;
 			create_unorm_srgb_views = true;
+			if (supports_image_format)
+				info.pNext = &format_info;
 		}
 	}
 

@@ -306,7 +306,7 @@ def main():
                     continue
                 if shadow_type == 1:
                     continue
-                if renderer == 'deferred' and (not stencil_culling):
+                if renderer == 'deferred' and (not clustered) and (not stencil_culling):
                     continue
                 if not hdr_bloom:
                     continue

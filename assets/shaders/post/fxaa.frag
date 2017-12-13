@@ -58,5 +58,7 @@ void main()
 #if FXAA_TARGET_SRGB
     // We're writing to an sRGB target, so need to "encode" sRGB.
     FragColor = color * color;
+#else
+    FragColor = color;
 #endif
 }

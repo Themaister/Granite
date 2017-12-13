@@ -328,6 +328,10 @@ void Device::set_context(const Context &context)
 	init_stock_samplers();
 	init_pipeline_cache();
 
+	supports_external = context.supports_external_memory_and_sync();
+	supports_dedicated = context.supports_dedicated_allocation();
+	supports_image_format = context.supports_format_list();
+
 	managers.memory.init(gpu, device);
 	managers.memory.set_supports_dedicated_allocation(supports_dedicated);
 	managers.semaphore.init(device);
@@ -337,9 +341,6 @@ void Device::set_context(const Context &context)
 	managers.ibo.init(this, 4 * 1024, 16, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
 	managers.ubo.init(this, 256 * 1024, std::max<VkDeviceSize>(16u, gpu_props.limits.minUniformBufferOffsetAlignment), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
 	managers.staging.init(this, 64 * 1024, std::max<VkDeviceSize>(16u, gpu_props.limits.optimalBufferCopyOffsetAlignment), VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
-
-	supports_external = context.supports_external_memory_and_sync();
-	supports_dedicated = context.supports_dedicated_allocation();
 }
 
 void Device::init_stock_samplers()
@@ -2150,6 +2151,33 @@ InitialImageBuffer Device::create_image_staging_buffer(const ImageCreateInfo &in
 	return result;
 }
 
+static bool fill_image_format_list(VkFormat *formats, VkFormat format)
+{
+	switch (format)
+	{
+	case VK_FORMAT_R8G8B8A8_UNORM:
+	case VK_FORMAT_R8G8B8A8_SRGB:
+		formats[0] = VK_FORMAT_R8G8B8A8_SRGB;
+		formats[1] = VK_FORMAT_R8G8B8A8_UNORM;
+		return true;
+
+	case VK_FORMAT_B8G8R8A8_UNORM:
+	case VK_FORMAT_B8G8R8A8_SRGB:
+		formats[0] = VK_FORMAT_B8G8R8A8_SRGB;
+		formats[1] = VK_FORMAT_B8G8R8A8_UNORM;
+		return true;
+
+	case VK_FORMAT_A8B8G8R8_UNORM_PACK32:
+	case VK_FORMAT_A8B8G8R8_SRGB_PACK32:
+		formats[0] = VK_FORMAT_A8B8G8R8_SRGB_PACK32;
+		formats[1] = VK_FORMAT_A8B8G8R8_UNORM_PACK32;
+		return true;
+
+	default:
+		return false;
+	}
+}
+
 ImageHandle Device::create_image(const ImageCreateInfo &create_info, const ImageInitialData *initial)
 {
 	VkImage image;
@@ -2175,8 +2203,28 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 		info.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
 	info.flags = create_info.flags;
-	if (create_info.usage & VK_IMAGE_USAGE_STORAGE_BIT)
+
+	VkImageFormatListCreateInfoKHR format_info = { VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO_KHR };
+	VkFormat view_formats[2];
+	format_info.pViewFormats = view_formats;
+	format_info.viewFormatCount = 2;
+	bool create_unorm_srgb_views = false;
+
+	if (supports_image_format &&
+	    (create_info.misc & IMAGE_MISC_MUTABLE_SRGB_BIT))
+	{
+		if (fill_image_format_list(view_formats, info.format))
+		{
+			info.pNext = &format_info;
+			create_unorm_srgb_views = true;
+		}
+	}
+
+	if ((create_info.usage & VK_IMAGE_USAGE_STORAGE_BIT) ||
+	    (create_info.misc & IMAGE_MISC_MUTABLE_SRGB_BIT))
+	{
 		info.flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
+	}
 
 	if (info.mipLevels == 0)
 		info.mipLevels = image_num_miplevels(info.extent);
@@ -2234,6 +2282,8 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 	VkImageView depth_view = VK_NULL_HANDLE;
 	VkImageView stencil_view = VK_NULL_HANDLE;
 	VkImageView base_level_view = VK_NULL_HANDLE;
+	VkImageView unorm_view = VK_NULL_HANDLE;
+	VkImageView srgb_view = VK_NULL_HANDLE;
 	if (info.usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
 	                  VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT))
 	{
@@ -2255,6 +2305,31 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 			return ImageHandle(nullptr);
 		}
 
+		if (create_unorm_srgb_views)
+		{
+			view_info.format = view_formats[0];
+			if (vkCreateImageView(device, &view_info, nullptr, &unorm_view) != VK_SUCCESS)
+			{
+				allocation.free_immediate(managers.memory);
+				vkDestroyImageView(device, image_view, nullptr);
+				vkDestroyImage(device, image, nullptr);
+				return ImageHandle(nullptr);
+			}
+
+			view_info.format = view_formats[1];
+			if (vkCreateImageView(device, &view_info, nullptr, &srgb_view) != VK_SUCCESS)
+			{
+				allocation.free_immediate(managers.memory);
+				vkDestroyImageView(device, image_view, nullptr);
+				if (unorm_view != VK_NULL_HANDLE)
+					vkDestroyImageView(device, unorm_view, nullptr);
+				vkDestroyImage(device, image, nullptr);
+				return ImageHandle(nullptr);
+			}
+
+			view_info.format = create_info.format;
+		}
+
 		if (info.mipLevels > 1)
 		{
 			view_info.subresourceRange.levelCount = 1;
@@ -2263,6 +2338,10 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 				allocation.free_immediate(managers.memory);
 				vkDestroyImage(device, image, nullptr);
 				vkDestroyImageView(device, image_view, nullptr);
+				if (unorm_view != VK_NULL_HANDLE)
+					vkDestroyImageView(device, unorm_view, nullptr);
+				if (srgb_view != VK_NULL_HANDLE)
+					vkDestroyImageView(device, srgb_view, nullptr);
 				return ImageHandle(nullptr);
 			}
 			view_info.subresourceRange.levelCount = info.mipLevels;
@@ -2277,6 +2356,10 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 				allocation.free_immediate(managers.memory);
 				vkDestroyImageView(device, image_view, nullptr);
 				vkDestroyImageView(device, base_level_view, nullptr);
+				if (unorm_view != VK_NULL_HANDLE)
+					vkDestroyImageView(device, unorm_view, nullptr);
+				if (srgb_view != VK_NULL_HANDLE)
+					vkDestroyImageView(device, srgb_view, nullptr);
 				vkDestroyImage(device, image, nullptr);
 				return ImageHandle(nullptr);
 			}
@@ -2288,6 +2371,10 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 				vkDestroyImageView(device, image_view, nullptr);
 				vkDestroyImageView(device, depth_view, nullptr);
 				vkDestroyImageView(device, base_level_view, nullptr);
+				if (unorm_view != VK_NULL_HANDLE)
+					vkDestroyImageView(device, unorm_view, nullptr);
+				if (srgb_view != VK_NULL_HANDLE)
+					vkDestroyImageView(device, srgb_view, nullptr);
 				vkDestroyImage(device, image, nullptr);
 				return ImageHandle(nullptr);
 			}
@@ -2297,6 +2384,8 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 	auto handle = make_handle<Image>(this, image, image_view, allocation, tmpinfo);
 	handle->get_view().set_alt_views(depth_view, stencil_view);
 	handle->get_view().set_base_level_view(base_level_view);
+	handle->get_view().set_unorm_view(unorm_view);
+	handle->get_view().set_srgb_view(srgb_view);
 
 	// Set possible dstStage and dstAccess.
 	handle->set_stage_flags(image_usage_to_possible_stages(info.usage));

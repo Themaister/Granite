@@ -153,7 +153,8 @@ enum ImageMiscFlagBits
 {
 	IMAGE_MISC_GENERATE_MIPS_BIT = 1 << 0,
 	IMAGE_MISC_FORCE_ARRAY_BIT = 1 << 1,
-	IMAGE_MISC_CONCURRENT_QUEUE_BIT = 1 << 2
+	IMAGE_MISC_CONCURRENT_QUEUE_BIT = 1 << 2,
+	IMAGE_MISC_MUTABLE_SRGB_BIT = 1 << 3
 };
 using ImageMiscFlags = uint32_t;
 
@@ -197,6 +198,18 @@ public:
 		base_level_view = view;
 	}
 
+	void set_unorm_view(VkImageView view)
+	{
+		VK_ASSERT(unorm_view == VK_NULL_HANDLE);
+		unorm_view = view;
+	}
+
+	void set_srgb_view(VkImageView view)
+	{
+		VK_ASSERT(srgb_view == VK_NULL_HANDLE);
+		srgb_view = view;
+	}
+
 	// By default, gets a combined view which includes all aspects in the image.
 	// This would be used mostly for render targets.
 	VkImageView get_view() const
@@ -225,6 +238,16 @@ public:
 		return stencil_view != VK_NULL_HANDLE ? stencil_view : view;
 	}
 
+	VkImageView get_unorm_view() const
+	{
+		return unorm_view != VK_NULL_HANDLE ? unorm_view : view;
+	}
+
+	VkImageView get_srgb_view() const
+	{
+		return srgb_view != VK_NULL_HANDLE ? srgb_view : view;
+	}
+
 	VkFormat get_format() const
 	{
 		return info.format;
@@ -251,6 +274,8 @@ private:
 	VkImageView base_level_view = VK_NULL_HANDLE;
 	VkImageView depth_view = VK_NULL_HANDLE;
 	VkImageView stencil_view = VK_NULL_HANDLE;
+	VkImageView unorm_view = VK_NULL_HANDLE;
+	VkImageView srgb_view = VK_NULL_HANDLE;
 	ImageViewCreateInfo info;
 };
 using ImageViewHandle = Util::IntrusivePtr<ImageView>;

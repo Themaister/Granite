@@ -157,6 +157,11 @@ public:
 		return supports_dedicated;
 	}
 
+	bool supports_format_list() const
+	{
+		return supports_image_format_list;
+	}
+
 	static const VkApplicationInfo &get_application_info();
 
 private:
@@ -183,6 +188,7 @@ private:
 	bool owned_device = false;
 	bool supports_external = false;
 	bool supports_dedicated = false;
+	bool supports_image_format_list = false;
 
 #ifdef VULKAN_DEBUG
 	VkDebugReportCallbackEXT debug_callback = VK_NULL_HANDLE;

@@ -226,6 +226,7 @@ private:
 	VkPhysicalDeviceProperties gpu_props;
 	bool supports_external = false;
 	bool supports_dedicated = false;
+	bool supports_image_format = false;
 	void init_stock_samplers();
 
 	struct Managers

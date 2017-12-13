@@ -47,6 +47,10 @@ ImageView::~ImageView()
 			device->destroy_image_view_nolock(stencil_view);
 		if (base_level_view != VK_NULL_HANDLE)
 			device->destroy_image_view_nolock(base_level_view);
+		if (unorm_view != VK_NULL_HANDLE)
+			device->destroy_image_view_nolock(unorm_view);
+		if (srgb_view != VK_NULL_HANDLE)
+			device->destroy_image_view_nolock(srgb_view);
 	}
 	else
 	{
@@ -57,6 +61,10 @@ ImageView::~ImageView()
 			device->destroy_image_view(stencil_view);
 		if (base_level_view != VK_NULL_HANDLE)
 			device->destroy_image_view(base_level_view);
+		if (unorm_view != VK_NULL_HANDLE)
+			device->destroy_image_view(unorm_view);
+		if (srgb_view != VK_NULL_HANDLE)
+			device->destroy_image_view(srgb_view);
 	}
 }
 

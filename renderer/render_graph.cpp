@@ -162,6 +162,18 @@ RenderTextureResource &RenderPass::add_storage_texture_output(const std::string 
 	return res;
 }
 
+void RenderPass::add_fake_resource_write_alias(const std::string &from, const std::string &to)
+{
+	auto &from_res = graph.get_texture_resource(from);
+	auto &to_res = graph.get_texture_resource(to);
+	to_res = from_res;
+	to_res.get_read_passes().clear();
+	to_res.get_write_passes().clear();
+	to_res.written_in_pass(index);
+
+	fake_resource_alias.emplace_back(&from_res, &to_res);
+}
+
 RenderTextureResource &RenderPass::add_blit_texture_read_only_input(const std::string &name)
 {
 	auto &res = graph.get_texture_resource(name);
@@ -662,6 +674,9 @@ void RenderGraph::build_physical_resources()
 			else
 				physical_dimensions[input->get_physical_index()].stages |= input->get_used_stages();
 		}
+
+		for (auto &pair : pass.get_fake_resource_aliases())
+			pair.second->set_physical_index(pair.first->get_physical_index());
 	}
 
 	// Figure out which physical resources need to have history.

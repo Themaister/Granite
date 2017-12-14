@@ -589,7 +589,7 @@ void SceneViewerApplication::add_main_pass_deferred(Vulkan::Device &device, cons
 	gbuffer.add_color_output(tagcat("albedo", tag), albedo);
 	gbuffer.add_color_output(tagcat("normal", tag), normal);
 	gbuffer.add_color_output(tagcat("pbr", tag), pbr);
-	gbuffer.set_depth_stencil_output(tagcat("depth", tag), depth);
+	gbuffer.set_depth_stencil_output(tagcat("depth-transient", tag), depth);
 	gbuffer.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
 		render_main_pass(cmd, selected_camera->get_projection(), selected_camera->get_view());
 		if (!config.clustered_lights && config.deferred_clustered_stencil_culling)
@@ -621,8 +621,9 @@ void SceneViewerApplication::add_main_pass_deferred(Vulkan::Device &device, cons
 	lighting.add_attachment_input(tagcat("albedo", tag));
 	lighting.add_attachment_input(tagcat("normal", tag));
 	lighting.add_attachment_input(tagcat("pbr", tag));
-	lighting.add_attachment_input(tagcat("depth", tag));
-	lighting.set_depth_stencil_input(tagcat("depth", tag));
+	lighting.add_attachment_input(tagcat("depth-transient", tag));
+	lighting.set_depth_stencil_input(tagcat("depth-transient", tag));
+	lighting.add_fake_resource_write_alias(tagcat("depth-transient", tag), tagcat("depth", tag));
 
 	if (config.directional_light_shadows)
 	{

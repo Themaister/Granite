@@ -175,6 +175,16 @@ public:
 		return written_in_passes;
 	}
 
+	std::unordered_set<unsigned> &get_read_passes()
+	{
+		return read_in_passes;
+	}
+
+	std::unordered_set<unsigned> &get_write_passes()
+	{
+		return written_in_passes;
+	}
+
 	unsigned get_index() const
 	{
 		return index;
@@ -332,6 +342,8 @@ public:
 	RenderTextureResource &add_blit_texture_output(const std::string &name, const AttachmentInfo &info, const std::string &input = "");
 	RenderTextureResource &add_blit_texture_read_only_input(const std::string &name);
 
+	void add_fake_resource_write_alias(const std::string &from, const std::string &to);
+
 	void set_texture_inputs(Vulkan::CommandBuffer &cmd, unsigned set, unsigned start_binding,
 	                        Vulkan::StockSampler sampler);
 
@@ -418,6 +430,11 @@ public:
 	const std::vector<RenderBufferResource *> &get_storage_outputs() const
 	{
 		return storage_outputs;
+	}
+
+	const std::vector<std::pair<RenderTextureResource *, RenderTextureResource *>> &get_fake_resource_aliases() const
+	{
+		return fake_resource_alias;
 	}
 
 	RenderTextureResource *get_depth_stencil_input() const
@@ -533,6 +550,7 @@ private:
 	std::vector<RenderBufferResource *> storage_inputs;
 	RenderTextureResource *depth_stencil_input = nullptr;
 	RenderTextureResource *depth_stencil_output = nullptr;
+	std::vector<std::pair<RenderTextureResource *, RenderTextureResource *>> fake_resource_alias;
 	std::string name;
 };
 

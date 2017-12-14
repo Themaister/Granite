@@ -22,9 +22,40 @@
 
 #pragma once
 #include "render_graph.hpp"
+#include "math.hpp"
 
 namespace Granite
 {
-void setup_fxaa_postprocess(RenderGraph &graph, const std::string &input, const std::string &output,
-                            VkFormat output_format = VK_FORMAT_UNDEFINED);
+class TemporalJitter
+{
+public:
+	enum class Type
+	{
+		FXAA_2Phase,
+		None
+	};
+	void reset();
+	void init(Type type, vec2 backbuffer_resolution);
+
+	void step(const mat4 &projection, const mat4 &view);
+	const mat4 &get_jitter_matrix() const;
+	const mat4 &get_history_view_proj(int frames) const;
+	const mat4 &get_history_inv_view_proj(int frames) const;
+	const mat4 &get_history_jittered_view_proj(int frames) const;
+	const mat4 &get_history_jittered_inv_view_proj(int frames) const;
+	unsigned get_jitter_phase() const;
+
+private:
+	unsigned phase = 0;
+	unsigned jitter_mask = 0;
+	enum { MaxJitterPhases = 16 };
+	mat4 jitter_table[MaxJitterPhases];
+	mat4 saved_jittered_view_proj[MaxJitterPhases];
+	mat4 saved_jittered_inv_view_proj[MaxJitterPhases];
+	mat4 saved_view_proj[MaxJitterPhases];
+	mat4 saved_inv_view_proj[MaxJitterPhases];
+};
+
+void setup_fxaa_2phase_postprocess(RenderGraph &graph, TemporalJitter &jitter, const std::string &input,
+                                   const std::string &input_depth, const std::string &output);
 }

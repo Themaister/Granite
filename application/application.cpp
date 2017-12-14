@@ -209,7 +209,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 	if (scene_loader.get_scene().get_entity_pool().get_component_group<UnboundedComponent>().empty())
 	{
 		auto cylinder = Util::make_handle<SkyCylinder>("builtin://textures/background.png");
-		static_cast<SkyCylinder *>(cylinder.get())->set_xz_scale(8.0f / pi<float>());
+		cylinder->set_xz_scale(8.0f / pi<float>());
 		scene_loader.get_scene().create_renderable(cylinder, nullptr);
 	}
 
@@ -446,7 +446,7 @@ bool SceneViewerApplication::on_key_down(const KeyboardEvent &e)
 void SceneViewerApplication::render_main_pass(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view)
 {
 	auto &scene = scene_loader.get_scene();
-	context.set_camera(proj, view);
+	context.set_camera(jitter.get_jitter_matrix() * proj, view);
 	visible.clear();
 	scene.gather_visible_opaque_renderables(context.get_visibility_frustum(), visible);
 	scene.gather_visible_render_pass_sinks(context.get_render_parameters().camera_position, visible);
@@ -485,7 +485,7 @@ void SceneViewerApplication::render_main_pass(Vulkan::CommandBuffer &cmd, const 
 void SceneViewerApplication::render_transparent_objects(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view)
 {
 	auto &scene = scene_loader.get_scene();
-	context.set_camera(proj, view);
+	context.set_camera(jitter.get_jitter_matrix() * proj, view);
 	visible.clear();
 	scene.gather_visible_transparent_renderables(context.get_visibility_frustum(), visible);
 	forward_renderer.set_mesh_renderer_options_from_lighting(lighting);
@@ -497,13 +497,13 @@ void SceneViewerApplication::render_transparent_objects(Vulkan::CommandBuffer &c
 
 void SceneViewerApplication::render_positional_lights_prepass(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view)
 {
-	context.set_camera(proj, view);
+	context.set_camera(jitter.get_jitter_matrix() * proj, view);
 	deferred_lights.render_prepass_lights(cmd, context);
 }
 
 void SceneViewerApplication::render_positional_lights(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view)
 {
-	context.set_camera(proj, view);
+	context.set_camera(jitter.get_jitter_matrix() * proj, view);
 	deferred_lights.render_lights(cmd, context, config.pcf_flags);
 }
 
@@ -795,7 +795,8 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 
 	if (config.fxaa)
 	{
-		setup_fxaa_postprocess(graph, ui_source, "fxaa");
+		//setup_fxaa_postprocess(graph, ui_source, "fxaa");
+		setup_fxaa_2phase_postprocess(graph, jitter, ui_source, "depth-main", "fxaa");
 		ui_source = "fxaa";
 	}
 
@@ -903,6 +904,7 @@ void SceneViewerApplication::render_shadow_map_near(Vulkan::CommandBuffer &cmd)
 void SceneViewerApplication::update_scene(double, double elapsed_time)
 {
 	auto &scene = scene_loader.get_scene();
+	jitter.step(selected_camera->get_projection(), selected_camera->get_view());
 
 	if (reflection)
 		lighting.environment_radiance = &reflection->get_image()->get_view();

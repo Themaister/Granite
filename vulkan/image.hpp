@@ -240,12 +240,12 @@ public:
 
 	VkImageView get_unorm_view() const
 	{
-		return unorm_view != VK_NULL_HANDLE ? unorm_view : view;
+		return unorm_view;
 	}
 
 	VkImageView get_srgb_view() const
 	{
-		return srgb_view != VK_NULL_HANDLE ? srgb_view : view;
+		return srgb_view;
 	}
 
 	VkFormat get_format() const

@@ -37,6 +37,7 @@
 #include "lights/clusterer.hpp"
 #include "lights/deferred_lights.hpp"
 #include "camera_export.hpp"
+#include "post/temporal.hpp"
 
 namespace Granite
 {
@@ -197,6 +198,8 @@ private:
 	enum { FrameWindowSize = 64, FrameWindowSizeMask = FrameWindowSize - 1 };
 	float last_frame_times[FrameWindowSize] = {};
 	unsigned last_frame_index = 0;
+
+	TemporalJitter jitter;
 };
 
 extern Application *application_create(int argc, char *argv[]);

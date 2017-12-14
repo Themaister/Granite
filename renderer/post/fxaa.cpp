@@ -25,7 +25,7 @@
 
 namespace Granite
 {
-void setup_fxaa_postprocess(RenderGraph &graph, const std::string &input, const std::string &output)
+void setup_fxaa_postprocess(RenderGraph &graph, const std::string &input, const std::string &output, VkFormat output_format)
 {
 	graph.get_texture_resource(input).get_attachment_info().unorm_srgb_alias = true;
 
@@ -33,6 +33,7 @@ void setup_fxaa_postprocess(RenderGraph &graph, const std::string &input, const 
 	AttachmentInfo fxaa_output;
 	fxaa_output.size_class = SizeClass::InputRelative;
 	fxaa_output.size_relative_name = input;
+	fxaa_output.format = output_format;
 
 	fxaa.add_color_output(output, fxaa_output);
 	fxaa.add_texture_input(input);

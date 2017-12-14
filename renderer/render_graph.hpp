@@ -559,6 +559,11 @@ public:
 		swapchain_dimensions = dim;
 	}
 
+	const ResourceDimensions &get_backbuffer_dimensions() const
+	{
+		return swapchain_dimensions;
+	}
+
 	void enable_timestamps(bool enable);
 	void report_timestamps();
 

@@ -1406,6 +1406,10 @@ void RenderGraph::build_aliases()
 		if (physical_dimensions[i].buffer_info.size)
 			continue;
 
+		// No aliases for images with history.
+		if (physical_image_has_history[i])
+			continue;
+
 		// Only try to alias with lower-indexed resources, because we allocate them one-by-one starting from index 0.
 		for (unsigned j = 0; j < i; j++)
 		{
@@ -1517,7 +1521,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 		bool graphics = (passes[physical_pass.passes.front()]->get_stages() & VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT) != 0;
 		auto queue_type = graphics ? Vulkan::CommandBuffer::Type::Graphics : Vulkan::CommandBuffer::Type::Compute;
 		auto cmd = device.request_command_buffer(queue_type);
-		unsigned physical_pass_index = unsigned(&physical_pass - physical_passes.data());
+		auto physical_pass_index = unsigned(&physical_pass - physical_passes.data());
 
 		const auto wait_for_semaphore_in_queue = [&](Vulkan::Semaphore sem, VkPipelineStageFlags stages) {
 			if (sem->get_semaphore() != VK_NULL_HANDLE)

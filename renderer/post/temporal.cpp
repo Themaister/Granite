@@ -95,6 +95,8 @@ void setup_fxaa_2phase_postprocess(RenderGraph &graph, TemporalJitter &jitter, c
 	            vec2(graph.get_backbuffer_dimensions().width, graph.get_backbuffer_dimensions().height));
 
 	setup_fxaa_postprocess(graph, input, "fxaa-pre", VK_FORMAT_R8G8B8A8_UNORM);
+	graph.get_texture_resource("fxaa-pre").get_attachment_info().unorm_srgb_alias = true;
+
 	auto &sharpen = graph.add_pass("fxaa-sharpen", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 	AttachmentInfo att, backbuffer_att;
 	att.size_relative_name = input;
@@ -146,20 +148,24 @@ void setup_fxaa_2phase_postprocess(RenderGraph &graph, TemporalJitter &jitter, c
 			push.offset_filter_next = vec2(0.0f, +1.0f / fxaa.get_image().get_create_info().height);
 		}
 
-		cmd.set_texture(0, 0, fxaa, Vulkan::StockSampler::LinearClamp);
+		auto &output_image = graph.get_physical_texture_resource(sharpen.get_color_outputs()[0]->get_physical_index());
+		bool srgb = Vulkan::format_is_srgb(output_image.get_format());
+		cmd.set_sampler(0, 0, Vulkan::StockSampler::LinearClamp);
+		if (srgb)
+			cmd.set_srgb_texture(0, 0, fxaa);
+		else
+			cmd.set_unorm_texture(0, 0, fxaa);
+
 		if (history)
 		{
 			cmd.set_texture(0, 1, *history, Vulkan::StockSampler::LinearClamp);
 			cmd.set_texture(0, 2, depth, Vulkan::StockSampler::NearestClamp);
 		}
 
-		auto &output_image = graph.get_physical_texture_resource(sharpen.get_color_outputs()[0]->get_physical_index());
-		bool srgb = Vulkan::format_is_srgb(output_image.get_format());
-
 		cmd.push_constants(&push, 0, sizeof(push));
 		Vulkan::CommandBufferUtil::set_quad_vertex_state(cmd);
 		Vulkan::CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/post/fxaa_sharpen.frag",
-		                                     {{ "HISTORY", history ? 1 : 0 }, { "BACKBUFFER_SRGB", srgb ? 1 : 0 }});
+		                                     {{ "HISTORY", history ? 1 : 0 }});
 	});
 }
 }

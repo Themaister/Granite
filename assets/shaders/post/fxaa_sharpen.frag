@@ -22,10 +22,11 @@ layout(push_constant, std430) uniform Registers
 
 void main()
 {
+    const float sharpen = 0.25;
     vec3 sharpened_input =
-        2.0 * textureLod(uInput, vUV + registers.offset_mid, 0.0).rgb -
-        0.5 * textureLod(uInput, vUV + registers.offset_lo, 0.0).rgb -
-        0.5 * textureLod(uInput, vUV + registers.offset_hi, 0.0).rgb;
+        (1.0 + 2.0 * sharpen) * textureLod(uInput, vUV + registers.offset_mid, 0.0).rgb -
+        sharpen * textureLod(uInput, vUV + registers.offset_lo, 0.0).rgb -
+        sharpen * textureLod(uInput, vUV + registers.offset_hi, 0.0).rgb;
 
 #if HISTORY
     float min_depth = min(textureLod(uDepth, vUV, 0.0).x, textureLod(uDepth, vUV + registers.offset_next, 0.0).x);
@@ -37,10 +38,6 @@ void main()
     vec3 color = sharpened_input;
 #endif
 
-#if BACKBUFFER_SRGB
-    FragColor = color * color;
-#else
     FragColor = color;
-#endif
     SaveFragColor = sharpened_input;
 }

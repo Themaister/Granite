@@ -175,6 +175,8 @@ void SceneViewerApplication::read_config(const std::string &path)
 
 	if (doc.HasMember("fxaa"))
 		config.fxaa = doc["fxaa"].GetBool();
+	if (doc.HasMember("fxaaTemporal"))
+		config.fxaa_temporal = doc["fxaaTemporal"].GetBool();
 }
 
 SceneViewerApplication::SceneViewerApplication(const std::string &path, const std::string &config_path, const std::string &quirks_path)
@@ -795,8 +797,10 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 
 	if (config.fxaa)
 	{
-		//setup_fxaa_postprocess(graph, ui_source, "fxaa");
-		setup_fxaa_2phase_postprocess(graph, jitter, ui_source, "depth-main", "fxaa");
+		if (config.fxaa_temporal)
+			setup_fxaa_2phase_postprocess(graph, jitter, ui_source, "depth-main", "fxaa");
+		else
+			setup_fxaa_postprocess(graph, ui_source, "fxaa");
 		ui_source = "fxaa";
 	}
 

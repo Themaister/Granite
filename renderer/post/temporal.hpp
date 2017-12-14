@@ -34,6 +34,7 @@ public:
 		FXAA_2Phase,
 		None
 	};
+	TemporalJitter();
 	void reset();
 	void init(Type type, vec2 backbuffer_resolution);
 

@@ -30,12 +30,10 @@ void main()
     sharpened_input = clamp(sharpened_input, 0.0, 1.0);
 
 #if HISTORY
-    float min_depth = 0.5 * (textureLod(uDepth, vUV, 0.0).x + textureLod(uDepth, vUV + registers.offset_next, 0.0).x);
+    float min_depth = min(textureLod(uDepth, vUV, 0.0).x, textureLod(uDepth, vUV + registers.offset_next, 0.0).x);
     vec4 clip = vec4(2.0 * vUV - 1.0, min_depth, 1.0);
     vec4 reproj_pos = registers.reproj * clip;
     mediump vec3 history_color = textureProjLod(uHistoryInput, reproj_pos.xyw, 0.0).rgb;
-    mediump float history_luma = max(dot(history_color, vec3(0.299, 0.587, 0.114)), 0.0001);
-    mediump float current_luma = max(dot(sharpened_input, vec3(0.299, 0.587, 0.114)), 0.0001);
     const mediump float lerp_factor = 0.5;
     mediump vec3 color = mix(history_color, sharpened_input, lerp_factor);
 #else

@@ -21,5 +21,6 @@
 	"directionalLightShadowsForceUpdate": false,
 	"deferredClusteredStencilCulling": true,
 	"fxaa": false,
+	"fxaaTemporal": false,
 	"showUi": true
 }

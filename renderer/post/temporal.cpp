@@ -25,6 +25,11 @@
 
 namespace Granite
 {
+TemporalJitter::TemporalJitter()
+{
+	init(Type::None, vec2(0.0f));
+}
+
 void TemporalJitter::init(Type type, vec2 backbuffer_resolution)
 {
 	switch (type)

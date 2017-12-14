@@ -189,6 +189,7 @@ private:
 		bool force_shadow_map_update = false;
 		bool show_ui = true;
 		bool fxaa = false;
+		bool fxaa_temporal = false;
 	};
 	Config config;
 

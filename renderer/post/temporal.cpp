@@ -101,7 +101,7 @@ void setup_fxaa_2phase_postprocess(RenderGraph &graph, TemporalJitter &jitter, c
 	AttachmentInfo att, backbuffer_att;
 	att.size_relative_name = input;
 	att.size_class = SizeClass::InputRelative;
-	att.format = VK_FORMAT_R8G8B8A8_UNORM;
+	att.format = VK_FORMAT_R8G8B8A8_SRGB;
 	backbuffer_att = att;
 	backbuffer_att.format = VK_FORMAT_UNDEFINED;
 

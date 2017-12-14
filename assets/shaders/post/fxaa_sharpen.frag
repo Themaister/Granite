@@ -27,6 +27,7 @@ void main()
         (1.0 + 2.0 * sharpen) * textureLod(uInput, vUV + registers.offset_mid, 0.0).rgb -
         sharpen * textureLod(uInput, vUV + registers.offset_lo, 0.0).rgb -
         sharpen * textureLod(uInput, vUV + registers.offset_hi, 0.0).rgb;
+    sharpened_input = clamp(sharpened_input, 0.0, 1.0);
 
 #if HISTORY
     float min_depth = min(textureLod(uDepth, vUV, 0.0).x, textureLod(uDepth, vUV + registers.offset_next, 0.0).x);

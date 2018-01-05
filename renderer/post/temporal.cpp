@@ -125,10 +125,7 @@ void setup_fxaa_2phase_postprocess(RenderGraph &graph, TemporalJitter &jitter, c
 		struct Push
 		{
 			mat4 reproj;
-			vec2 offset_filter_lo;
-			vec2 offset_filter_mid;
-			vec2 offset_filter_hi;
-			vec2 offset_filter_next;
+			vec2 inv_resolution;
 		};
 		Push push;
 
@@ -138,20 +135,8 @@ void setup_fxaa_2phase_postprocess(RenderGraph &graph, TemporalJitter &jitter, c
 				jitter.get_history_view_proj(1) *
 				jitter.get_history_inv_view_proj(0);
 
-		if (jitter.get_jitter_phase() == 0)
-		{
-			push.offset_filter_lo = vec2(-1.0f / fxaa.get_image().get_create_info().width, 0.0f);
-			push.offset_filter_mid = vec2(+0.5f / fxaa.get_image().get_create_info().width, 0.0f);
-			push.offset_filter_hi = vec2(+2.0f / fxaa.get_image().get_create_info().width, 0.0f);
-			push.offset_filter_next = vec2(+1.0f / fxaa.get_image().get_create_info().width, 0.0f);
-		}
-		else
-		{
-			push.offset_filter_lo = vec2(0.0f, -1.0f / fxaa.get_image().get_create_info().height);
-			push.offset_filter_mid = vec2(0.0f, +0.5f / fxaa.get_image().get_create_info().height);
-			push.offset_filter_hi = vec2(0.0f, +2.0f / fxaa.get_image().get_create_info().height);
-			push.offset_filter_next = vec2(0.0f, +1.0f / fxaa.get_image().get_create_info().height);
-		}
+		push.inv_resolution = vec2(1.0f / fxaa.get_image().get_create_info().width,
+		                           1.0f / fxaa.get_image().get_create_info().height);
 
 		auto &output_image = graph.get_physical_texture_resource(sharpen.get_color_outputs()[0]->get_physical_index());
 		bool srgb = Vulkan::format_is_srgb(output_image.get_format());
@@ -170,7 +155,10 @@ void setup_fxaa_2phase_postprocess(RenderGraph &graph, TemporalJitter &jitter, c
 		cmd.push_constants(&push, 0, sizeof(push));
 		Vulkan::CommandBufferUtil::set_quad_vertex_state(cmd);
 		Vulkan::CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/post/fxaa_sharpen.frag",
-		                                     {{ "HISTORY", history ? 1 : 0 }});
+		                                     {{ "HISTORY", history ? 1 : 0 },
+		                                      { "HORIZONTAL", jitter.get_jitter_phase() == 0 ? 1 : 0 },
+		                                      { "VERTICAL", jitter.get_jitter_phase() == 1 ? 1 : 0 }
+		                                     });
 	});
 }
 }

@@ -56,6 +56,7 @@ static void print_help()
 	LOGI("[--fog-color R G B] [--fog-falloff falloff]\n");
 	LOGI("[--extra-lights lights.json]\n");
 	LOGI("[--texcomp-quality <1 (fast) - 5 (slow)>] input.gltf\n");
+	LOGI("[--animate-cameras]\n");
 }
 
 int main(int argc, char *argv[])
@@ -70,6 +71,7 @@ int main(int argc, char *argv[])
 	float scale = 1.0f;
 	string extra_lights;
 	string extra_cameras;
+	bool animate_cameras = false;
 
 	CLICallbacks cbs;
 	cbs.add("--output", [&](CLIParser &parser) { args.output = parser.next_string(); });
@@ -84,6 +86,7 @@ int main(int argc, char *argv[])
 	cbs.add("--extra-lights", [&](CLIParser &parser) { extra_lights = parser.next_string(); });
 	cbs.add("--extra-cameras", [&](CLIParser &parser) { extra_cameras = parser.next_string(); });
 	cbs.add("--scale", [&](CLIParser &parser) { scale = parser.next_double(); });
+	cbs.add("--animate-cameras", [&](CLIParser &parser) { animate_cameras = true; });
 
 	cbs.add("--fog-color", [&](CLIParser &parser) {
 		for (unsigned i = 0; i < 3; i++)
@@ -133,6 +136,7 @@ int main(int argc, char *argv[])
 	}
 
 	vector<SceneFormats::CameraInfo> cameras;
+	vector<SceneFormats::Animation> animations;
 	if (!extra_cameras.empty())
 	{
 		cameras = parser.get_cameras();
@@ -147,31 +151,82 @@ int main(int argc, char *argv[])
 		rapidjson::Document doc;
 		doc.Parse(json);
 
-		for (auto itr = doc["cameras"].Begin(); itr != doc["cameras"].End(); ++itr)
-		{
-			auto &c = *itr;
+		SceneFormats::Animation animation;
 
+		if (animate_cameras)
+		{
+			animations = parser.get_animations();
+
+			// Add one camera, which will be animated by a single animating node transform.
 			SceneFormats::CameraInfo camera;
+			auto &first_camera = doc["cameras"][0];
+
 			camera.type = SceneFormats::CameraInfo::Type::Perspective;
-			camera.znear = c["znear"].GetFloat();
-			camera.zfar = c["zfar"].GetFloat();
-			camera.yfov = c["fovy"].GetFloat();
-			camera.aspect_ratio = c["aspect"].GetFloat();
+			camera.znear = first_camera["znear"].GetFloat();
+			camera.zfar = first_camera["zfar"].GetFloat();
+			camera.yfov = first_camera["fovy"].GetFloat();
+			camera.aspect_ratio = first_camera["aspect"].GetFloat();
 			camera.attached_to_node = true;
 			camera.node_index = nodes.size();
-
 			cameras.push_back(camera);
 
-			SceneFormats::Node camera_node;
-			auto &t = c["position"];
-			auto &d = c["direction"];
-			auto &u = c["up"];
-			camera_node.transform.translation = vec3(t[0].GetFloat(), t[1].GetFloat(), t[2].GetFloat());
-			camera_node.transform.rotation =
-					conjugate(look_at(vec3(d[0].GetFloat(), d[1].GetFloat(), d[2].GetFloat()),
-					                  vec3(u[0].GetFloat(), u[1].GetFloat(), u[2].GetFloat())));
+			animation.channels.resize(2);
+			animation.channels[0].type = SceneFormats::AnimationChannel::Type::Translation;
+			animation.channels[1].type = SceneFormats::AnimationChannel::Type::Rotation;
+			animation.channels[0].node_index = nodes.size();
+			animation.channels[1].node_index = nodes.size();
 
-			nodes.push_back(camera_node);
+			float timestamp = 0.0f;
+			for (auto itr = doc["cameras"].Begin(); itr != doc["cameras"].End(); ++itr)
+			{
+				auto &c = *itr;
+
+				auto &t = c["position"];
+				auto &d = c["direction"];
+				auto &u = c["up"];
+				animation.channels[0].linear.values.emplace_back(t[0].GetFloat(), t[1].GetFloat(), t[2].GetFloat());
+				quat rot = conjugate(look_at(vec3(d[0].GetFloat(), d[1].GetFloat(), d[2].GetFloat()),
+				                             vec3(u[0].GetFloat(), u[1].GetFloat(), u[2].GetFloat())));
+				animation.channels[1].spherical.values.push_back(rot);
+
+				for (auto &chan : animation.channels)
+					chan.timestamps.push_back(timestamp);
+				timestamp += 1.0f;
+			}
+
+			animation.name = "Camera";
+			animations.push_back(move(animation));
+			nodes.push_back({});
+			info.animations = animations;
+		}
+		else
+		{
+			for (auto itr = doc["cameras"].Begin(); itr != doc["cameras"].End(); ++itr)
+			{
+				auto &c = *itr;
+
+				SceneFormats::CameraInfo camera;
+				camera.type = SceneFormats::CameraInfo::Type::Perspective;
+				camera.znear = c["znear"].GetFloat();
+				camera.zfar = c["zfar"].GetFloat();
+				camera.yfov = c["fovy"].GetFloat();
+				camera.aspect_ratio = c["aspect"].GetFloat();
+				camera.attached_to_node = true;
+				camera.node_index = nodes.size();
+
+				cameras.push_back(camera);
+
+				SceneFormats::Node camera_node;
+				auto &t = c["position"];
+				auto &d = c["direction"];
+				auto &u = c["up"];
+				camera_node.transform.translation = vec3(t[0].GetFloat(), t[1].GetFloat(), t[2].GetFloat());
+				camera_node.transform.rotation =
+						conjugate(look_at(vec3(d[0].GetFloat(), d[1].GetFloat(), d[2].GetFloat()),
+						                  vec3(u[0].GetFloat(), u[1].GetFloat(), u[2].GetFloat())));
+
+				nodes.push_back(camera_node);
+			}
 		}
 
 		info.cameras = cameras;

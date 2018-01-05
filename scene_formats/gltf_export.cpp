@@ -160,6 +160,27 @@ struct EmittedSampler
 	unsigned wrap_t;
 };
 
+struct EmittedAnimation
+{
+	struct Sampler
+	{
+		unsigned timestamp_accessor;
+		unsigned data_accessor;
+		std::string interpolation;
+	};
+
+	struct Channel
+	{
+		unsigned sampler;
+		unsigned target_node;
+		std::string path;
+	};
+
+	std::string name;
+	std::vector<Sampler> samplers;
+	std::vector<Channel> channels;
+};
+
 struct RemapState
 {
 	const ExportOptions *options = nullptr;
@@ -188,6 +209,7 @@ struct RemapState
 	                      vec3 fog_color, float fog_falloff,
 	                      TextureCompressionFamily compression, unsigned quality);
 	unsigned emit_meshes(ArrayView<const unsigned> meshes);
+	void emit_animations(ArrayView<const Animation> animations);
 
 	Remap<Mesh> mesh;
 	Remap<MaterialInfo> material;
@@ -215,6 +237,8 @@ struct RemapState
 
 	HashMap<unsigned> sampler_hash;
 	vector<EmittedSampler> sampler_cache;
+
+	vector<EmittedAnimation> animations;
 
 	HashMap<unsigned> mesh_group_hash;
 	vector<vector<unsigned>> mesh_group_cache;
@@ -824,6 +848,89 @@ unsigned RemapState::emit_meshes(ArrayView<const unsigned> meshes)
 	return index;
 }
 
+void RemapState::emit_animations(ArrayView<const Animation> animations)
+{
+	for (auto &animation : animations)
+	{
+		EmittedAnimation anim;
+		anim.name = animation.name;
+
+		unsigned sampler_index = 0;
+
+		for (auto &channel : animation.channels)
+		{
+			EmittedAnimation::Channel chan;
+			unsigned timestamp_view = emit_buffer({ reinterpret_cast<const uint8_t *>(channel.timestamps.data()),
+			                                        channel.timestamps.size() * sizeof(float) },
+			                                      sizeof(float));
+
+			unsigned timestamp_accessor = emit_accessor(timestamp_view, VK_FORMAT_R32_SFLOAT, 0, sizeof(float),
+			                                            channel.timestamps.size());
+
+			unsigned data_view;
+			unsigned data_accessor;
+
+			switch (channel.type)
+			{
+			case AnimationChannel::Type::Rotation:
+				chan.path = "rotation";
+				data_view = emit_buffer({ reinterpret_cast<const uint8_t *>(channel.spherical.values.data()),
+				                          channel.spherical.values.size() * sizeof(quat) },
+				                        sizeof(quat));
+				data_accessor = emit_accessor(data_view, VK_FORMAT_R32G32B32A32_SFLOAT, 0, sizeof(quat),
+				                              channel.spherical.values.size());
+				break;
+			case AnimationChannel::Type::CubicTranslation:
+				chan.path = "translation";
+				data_view = emit_buffer({ reinterpret_cast<const uint8_t *>(channel.cubic.values.data()),
+				                          channel.cubic.values.size() * sizeof(vec3) },
+				                        sizeof(vec3));
+				data_accessor = emit_accessor(data_view, VK_FORMAT_R32G32B32_SFLOAT, 0, sizeof(vec3),
+				                              channel.cubic.values.size());
+				break;
+			case AnimationChannel::Type::Translation:
+				chan.path = "translation";
+				data_view = emit_buffer({ reinterpret_cast<const uint8_t *>(channel.linear.values.data()),
+				                          channel.linear.values.size() * sizeof(vec3) },
+				                        sizeof(vec3));
+				data_accessor = emit_accessor(data_view, VK_FORMAT_R32G32B32_SFLOAT, 0, sizeof(vec3),
+				                              channel.linear.values.size());
+				break;
+			case AnimationChannel::Type::CubicScale:
+				chan.path = "scale";
+				data_view = emit_buffer({ reinterpret_cast<const uint8_t *>(channel.cubic.values.data()),
+				                          channel.cubic.values.size() * sizeof(vec3) },
+				                        sizeof(vec3));
+				data_accessor = emit_accessor(data_view, VK_FORMAT_R32G32B32_SFLOAT, 0, sizeof(vec3),
+				                              channel.cubic.values.size());
+				break;
+			case AnimationChannel::Type::Scale:
+				chan.path = "scale";
+				data_view = emit_buffer({ reinterpret_cast<const uint8_t *>(channel.linear.values.data()),
+				                          channel.linear.values.size() * sizeof(vec3) },
+				                        sizeof(vec3));
+				data_accessor = emit_accessor(data_view, VK_FORMAT_R32G32B32_SFLOAT, 0, sizeof(vec3),
+				                              channel.linear.values.size());
+				break;
+			}
+
+			chan.target_node = channel.node_index;
+			chan.sampler = sampler_index;
+
+			EmittedAnimation::Sampler samp;
+			samp.interpolation = "LINEAR";
+			samp.timestamp_accessor = timestamp_accessor;
+			samp.data_accessor = data_accessor;
+
+			anim.channels.push_back(chan);
+			anim.samplers.push_back(samp);
+			sampler_index++;
+		}
+
+		this->animations.push_back(move(anim));
+	}
+}
+
 static gli::format get_compression_format(TextureCompression compression, TextureMode mode)
 {
 	bool srgb = mode == TextureMode::sRGB || mode == TextureMode::sRGBA;
@@ -1240,6 +1347,8 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 		                       options.environment.fog_color, options.environment.fog_falloff,
 		                       options.environment.compression, options.environment.texcomp_quality);
 	}
+
+	state.emit_animations(scene.animations);
 
 	Value nodes(kArrayType);
 	for (auto &node : scene.nodes)
@@ -1715,6 +1824,50 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 		lights_cmn.AddMember("lights", lights, allocator);
 		ext.AddMember("KHR_lights_cmn", lights_cmn, allocator);
 		doc.AddMember("extensions", ext, allocator);
+	}
+
+	// Animations
+	if (!scene.animations.empty())
+	{
+		Value animations(kArrayType);
+
+		for (auto &animation : state.animations)
+		{
+			Value anim(kObjectType);
+			Value channels(kArrayType);
+			Value samplers(kArrayType);
+
+			for (auto &chan : animation.channels)
+			{
+				Value c(kObjectType);
+
+				c.AddMember("sampler", chan.sampler, allocator);
+				Value target(kObjectType);
+				target.AddMember("node", chan.target_node, allocator);
+				target.AddMember("path", chan.path, allocator);
+				c.AddMember("target", target, allocator);
+
+				channels.PushBack(c, allocator);
+			}
+
+			for (auto &samp : animation.samplers)
+			{
+				Value s(kObjectType);
+
+				s.AddMember("input", samp.timestamp_accessor, allocator);
+				s.AddMember("output", samp.data_accessor, allocator);
+				s.AddMember("interpolation", samp.interpolation, allocator);
+
+				samplers.PushBack(s, allocator);
+			}
+
+			anim.AddMember("channels", channels, allocator);
+			anim.AddMember("samplers", samplers, allocator);
+			anim.AddMember("name", animation.name, allocator);
+			animations.PushBack(anim, allocator);
+		}
+
+		doc.AddMember("animations", animations, allocator);
 	}
 
 	if (!state.environment_cache.empty())

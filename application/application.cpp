@@ -909,6 +909,10 @@ void SceneViewerApplication::render_shadow_map_near(Vulkan::CommandBuffer &cmd)
 void SceneViewerApplication::update_scene(double, double elapsed_time)
 {
 	auto &scene = scene_loader.get_scene();
+
+	animation_system->animate(elapsed_time);
+	scene.update_cached_transforms();
+
 	jitter.step(selected_camera->get_projection(), selected_camera->get_view());
 
 	if (reflection)
@@ -921,9 +925,6 @@ void SceneViewerApplication::update_scene(double, double elapsed_time)
 
 	context.set_camera(*selected_camera);
 	scene.set_render_pass_data(&forward_renderer, &deferred_renderer, &depth_renderer, &context);
-
-	animation_system->animate(elapsed_time);
-	scene.update_cached_transforms();
 
 	lighting.directional.direction = selected_directional->direction;
 	lighting.directional.color = selected_directional->color;

@@ -1522,6 +1522,10 @@ void Device::wait_idle_nolock()
 	{
 		// Avoid double-wait-on-semaphore scenarios.
 		bool touched_swapchain = frame->swapchain_touched;
+
+		// We have done WaitIdle, no need to wait for extra fences, it's also not safe.
+		frame->wait_fences.clear();
+
 		frame->begin();
 		frame->swapchain_touched = touched_swapchain;
 	}

@@ -605,6 +605,10 @@ void Device::submit_empty_inner(CommandBuffer::Type type, VkFence *fence, Semaph
 	VkFence cleared_fence = fence ? managers.fence.request_cleared_fence() : VK_NULL_HANDLE;
 	if (queue_lock_callback)
 		queue_lock_callback();
+#ifdef VULKAN_DEBUG
+	if (cleared_fence)
+		LOGI("Signalling Fence: %llx\n", reinterpret_cast<unsigned long long>(cleared_fence));
+#endif
 	VkResult result = vkQueueSubmit(queue, 1, &submit, cleared_fence);
 	if (ImplementationQuirks::get().queue_wait_on_submission)
 		vkQueueWaitIdle(queue);
@@ -889,6 +893,10 @@ void Device::submit_queue(CommandBuffer::Type type, VkFence *fence, Semaphore *s
 
 	if (queue_lock_callback)
 		queue_lock_callback();
+#ifdef VULKAN_DEBUG
+	if (cleared_fence)
+		LOGI("Signalling fence: %llx\n", reinterpret_cast<unsigned long long>(cleared_fence));
+#endif
 	VkResult result = vkQueueSubmit(queue, submits.size(), submits.data(), cleared_fence);
 	if (ImplementationQuirks::get().queue_wait_on_submission)
 		vkQueueWaitIdle(queue);
@@ -1572,12 +1580,20 @@ void Device::PerFrame::begin()
 {
 	if (!wait_fences.empty())
 	{
+#ifdef VULKAN_DEBUG
+		for (auto &fence : wait_fences)
+			LOGI("Waiting for Fence: %llx\n", reinterpret_cast<unsigned long long>(fence));
+#endif
 		vkWaitForFences(device, wait_fences.size(), wait_fences.data(), VK_TRUE, UINT64_MAX);
 		wait_fences.clear();
 	}
 
 	if (!recycle_fences.empty())
 	{
+#ifdef VULKAN_DEBUG
+		for (auto &fence : recycle_fences)
+			LOGI("Recycling Fence: %llx\n", reinterpret_cast<unsigned long long>(fence));
+#endif
 		vkResetFences(device, recycle_fences.size(), recycle_fences.data());
 		for (auto &fence : recycle_fences)
 			managers.fence.recycle_fence(fence);

@@ -467,7 +467,12 @@ bool WSI::init_swapchain(unsigned width, unsigned height)
 	info.clipped = true;
 	info.oldSwapchain = old_swapchain;
 
-	V(vkCreateSwapchainKHR(context->get_device(), &info, nullptr, &swapchain));
+	auto res = vkCreateSwapchainKHR(context->get_device(), &info, nullptr, &swapchain);
+	if (res != VK_SUCCESS)
+	{
+		LOGE("Failed to create swapchain (code: %d)\n", int(res));
+		return false;
+	}
 
 	if (old_swapchain != VK_NULL_HANDLE)
 		vkDestroySwapchainKHR(context->get_device(), old_swapchain, nullptr);

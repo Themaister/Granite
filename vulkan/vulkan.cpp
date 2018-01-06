@@ -319,6 +319,10 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 	{
 		uint32_t gpu_count = 0;
 		V(vkEnumeratePhysicalDevices(instance, &gpu_count, nullptr));
+
+		if (gpu_count == 0)
+			return false;
+
 		vector<VkPhysicalDevice> gpus(gpu_count);
 		V(vkEnumeratePhysicalDevices(instance, &gpu_count, gpus.data()));
 
@@ -329,7 +333,16 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 			LOGI("Found Vulkan GPU: %s\n", props.deviceName);
 		}
 
-		gpu = gpus.front();
+		const char *gpu_index = getenv("GRANITE_VULKAN_DEVICE_INDEX");
+		if (gpu_index)
+		{
+			unsigned index = strtoul(gpu_index, nullptr, 0);
+			if (index < gpu_count)
+				gpu = gpus[index];
+		}
+
+		if (gpu == VK_NULL_HANDLE)
+			gpu = gpus.front();
 	}
 
 	uint32_t ext_count = 0;

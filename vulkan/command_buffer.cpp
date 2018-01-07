@@ -76,7 +76,9 @@ void CommandBuffer::copy_buffer_to_image(const Image &image, const Buffer &src, 
                                          unsigned slice_height, const VkImageSubresourceLayers &subresource)
 {
 	const VkBufferImageCopy region = {
-		buffer_offset, row_length, slice_height, subresource, offset, extent,
+		buffer_offset,
+		row_length != extent.width ? row_length : 0, slice_height != extent.height ? slice_height : 0,
+		subresource, offset, extent,
 	};
 	vkCmdCopyBufferToImage(cmd, src.get_buffer(), image.get_image(), image.get_layout(), 1, &region);
 }
@@ -86,7 +88,9 @@ void CommandBuffer::copy_image_to_buffer(const Buffer &buffer, const Image &imag
                                          unsigned slice_height, const VkImageSubresourceLayers &subresource)
 {
 	const VkBufferImageCopy region = {
-		buffer_offset, row_length, slice_height, subresource, offset, extent,
+		buffer_offset,
+		row_length != extent.width ? row_length : 0, slice_height != extent.height ? slice_height : 0,
+		subresource, offset, extent,
 	};
 	vkCmdCopyImageToBuffer(cmd, image.get_image(), image.get_layout(), buffer.get_buffer(), 1, &region);
 }

@@ -2107,8 +2107,8 @@ InitialImageBuffer Device::create_image_staging_buffer(const ImageCreateInfo &in
 			required_size = (required_size + 63) & ~63;
 
 			VkBufferImageCopy copy = {};
-			copy.bufferImageHeight = array_height;
-			copy.bufferRowLength = row_length;
+			copy.bufferRowLength = initial[index].row_length != width ? initial[index].row_length : 0;
+			copy.bufferImageHeight = initial[index].array_height != height ? initial[index].array_height : 0;
 			copy.imageExtent.width = width;
 			copy.imageExtent.height = height;
 			copy.imageExtent.depth = depth;

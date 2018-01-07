@@ -84,6 +84,8 @@ void SceneViewerApplication::read_quirks(const std::string &path)
 		ImplementationQuirks::get().clustering_list_iteration = doc["clusteringListIteration"].GetBool();
 	if (doc.HasMember("clusteringForceCPU"))
 		ImplementationQuirks::get().clustering_force_cpu = doc["clusteringForceCPU"].GetBool();
+	if (doc.HasMember("queueWaitOnSubmission"))
+		ImplementationQuirks::get().queue_wait_on_submission = doc["queueWaitOnSubmission"].GetBool();
 }
 
 void SceneViewerApplication::read_config(const std::string &path)

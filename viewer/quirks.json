@@ -4,5 +4,6 @@
 	"useTransientColor": true,
 	"useTransientDepthStencil": true,
 	"clusteringListIteration": false,
-	"clusteringForceCPU": false
+	"clusteringForceCPU": false,
+	"queueWaitOnSubmission": false
 }

@@ -34,10 +34,10 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 {
 	if (t2x_enable)
 	{
-		//jitter.init(TemporalJitter::Type::SMAA_T2X,
-		//            vec2(graph.get_backbuffer_dimensions().width, graph.get_backbuffer_dimensions().height));
-		jitter.init(TemporalJitter::Type::SMAA_2Phase,
+		jitter.init(TemporalJitter::Type::SMAA_T2X,
 		            vec2(graph.get_backbuffer_dimensions().width, graph.get_backbuffer_dimensions().height));
+		//jitter.init(TemporalJitter::Type::SMAA_2Phase,
+		//            vec2(graph.get_backbuffer_dimensions().width, graph.get_backbuffer_dimensions().height));
 	}
 	else
 		jitter.init(TemporalJitter::Type::None, vec2(1.0f));

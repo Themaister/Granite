@@ -17,45 +17,9 @@ layout(push_constant, std430) uniform Registers
     vec2 inv_resolution;
 } registers;
 
-mediump vec3 RGB_to_YCgCo(mediump vec3 c)
-{
-    return vec3(
-        0.25 * c.r + 0.5 * c.g + 0.25 * c.b,
-        0.5 * c.g - 0.25 * c.r - 0.25 * c.b,
-        0.5 * c.r - 0.5 * c.b);
-}
-
-mediump vec3 YCgCo_to_RGB(mediump vec3 c)
-{
-    mediump float tmp = c.x - c.y;
-    return vec3(tmp + c.z, c.x + c.y, tmp - c.z);
-
-    // c.x - c.y + c.z = [0.25, 0.5, 0.25] - [-0.25, 0.5, -0.25] + [0.5, 0.0, -0.5] = [1.0, 0.0, 0.0]
-    // c.x + c.y       = [0.25, 0.5, 0.25] + [-0.25, 0.5, -0.25]                    = [0.0, 1.0, 0.0]
-    // c.x - c.y - c.z = [0.25, 0.5, 0.25] - [-0.25, 0.5, -0.25] - [0.5, 0.0, -0.5] = [0.0, 0.0, 1.0]
-}
-
 #define YCgCo 1
 #define CLAMP_HISTORY 1
-#define CLAMP_AABB 1
-
-mediump vec3 clamp_history(mediump vec3 color, mediump vec3 lo, mediump vec3 hi)
-{
-#if CLAMP_AABB
-    mediump vec3 center = 0.5 * (lo + hi);
-    mediump vec3 radius = max(0.5 * (hi - lo), vec3(0.0001));
-    mediump vec3 v = color - center;
-    mediump vec3 units = v / radius;
-    mediump vec3 a_units = abs(units);
-    mediump float max_unit = max(max(a_units.x, a_units.y), a_units.z);
-    if (max_unit > 1.0)
-        return center + v / max_unit;
-    else
-        return color;
-#else
-    return clamp(color, lo, hi);
-#endif
-}
+#include "reprojection.h"
 
 void main()
 {
@@ -85,27 +49,10 @@ void main()
     #endif
 
     #if YCgCo
-        mediump vec3 rgb_lo = RGB_to_YCgCo(c1);
-        mediump vec3 rgb_hi = rgb_lo;
-
-        mediump vec3 c2_conv = RGB_to_YCgCo(c2);
-        mediump vec3 h0_conv = RGB_to_YCgCo(h0);
-        mediump vec3 h1_conv = RGB_to_YCgCo(h1);
-        rgb_lo = min(rgb_lo, c2_conv);
-        rgb_lo = min(rgb_lo, h0_conv);
-        rgb_lo = min(rgb_lo, h1_conv);
-        rgb_hi = max(rgb_hi, c2_conv);
-        rgb_hi = max(rgb_hi, h0_conv);
-        rgb_hi = max(rgb_hi, h1_conv);
-    #else
-        mediump vec3 rgb_lo = c1;
-        mediump vec3 rgb_hi = rgb_lo;
-        rgb_lo = min(rgb_lo, c2);
-        rgb_lo = min(rgb_lo, h0);
-        rgb_lo = min(rgb_lo, h1);
-        rgb_hi = max(rgb_hi, c2);
-        rgb_hi = max(rgb_hi, h0);
-        rgb_hi = max(rgb_hi, h1);
+        c1 = RGB_to_YCgCo(c1);
+        c2 = RGB_to_YCgCo(c2);
+        h0 = RGB_to_YCgCo(h0);
+        h1 = RGB_to_YCgCo(h1);
     #endif
 #endif
 
@@ -128,7 +75,7 @@ void main()
         history_color = RGB_to_YCgCo(history_color);
     #endif
     #if CLAMP_HISTORY
-        history_color = clamp_history(history_color, rgb_lo, rgb_hi);
+        history_color = clamp_history(history_color, c1, c2, h0, h1);
     #endif
     const mediump float lerp_factor = 0.5;
     mediump vec3 color = mix(history_color, sharpened_input, lerp_factor);

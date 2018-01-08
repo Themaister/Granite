@@ -22,13 +22,24 @@
 
 #include "smaa.hpp"
 #include "math.hpp"
+#include "temporal.hpp"
 
 using namespace std;
 
 namespace Granite
 {
-void setup_smaa_postprocess(RenderGraph &graph, const string &input, const string &output)
+void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
+                            const string &input, const string &input_depth,
+                            const string &output, bool t2x_enable)
 {
+	if (t2x_enable)
+	{
+		jitter.init(TemporalJitter::Type::SMAA_T2X,
+		            vec2(graph.get_backbuffer_dimensions().width, graph.get_backbuffer_dimensions().height));
+	}
+	else
+		jitter.init(TemporalJitter::Type::None, vec2(1.0f));
+
 	const bool masked_edge = true;
 	graph.get_texture_resource(input).get_attachment_info().unorm_srgb_alias = true;
 
@@ -76,7 +87,7 @@ void setup_smaa_postprocess(RenderGraph &graph, const string &input, const strin
 	if (masked_edge)
 		smaa_weight.set_depth_stencil_input("smaa-mask");
 
-	smaa_blend.add_color_output(output, smaa_output);
+	smaa_blend.add_color_output(t2x_enable ? string("smaa-sample") : output, smaa_output);
 	smaa_blend.add_texture_input(input);
 	smaa_blend.add_texture_input("smaa-weights");
 
@@ -118,11 +129,16 @@ void setup_smaa_postprocess(RenderGraph &graph, const string &input, const strin
 		                float(input_image.get_image().get_create_info().height));
 		cmd.push_constants(&rt_metrics, 0, sizeof(rt_metrics));
 
+		int subpixel_mode = 0;
+		if (jitter.get_jitter_type() == TemporalJitter::Type::SMAA_T2X)
+			subpixel_mode = 1 + jitter.get_jitter_phase();
+
 		Vulkan::CommandBufferUtil::set_quad_vertex_state(cmd);
 		Vulkan::CommandBufferUtil::draw_quad_depth(cmd,
 		                                           "builtin://shaders/post/smaa_blend_weight.vert",
 		                                           "builtin://shaders/post/smaa_blend_weight.frag",
-		                                           masked_edge, false, VK_COMPARE_OP_EQUAL, {});
+		                                           masked_edge, false, VK_COMPARE_OP_EQUAL,
+		                                           {{ "SMAA_SUBPIXEL_MODE", subpixel_mode }});
 	});
 
 	smaa_weight.set_get_clear_color([](unsigned, VkClearColorValue *value) {
@@ -136,11 +152,11 @@ void setup_smaa_postprocess(RenderGraph &graph, const string &input, const strin
 		auto &blend_image = graph.get_physical_texture_resource(smaa_blend.get_texture_inputs()[1]->get_physical_index());
 		cmd.set_texture(0, 0, input_image, Vulkan::StockSampler::LinearClamp);
 		cmd.set_texture(0, 1, blend_image, Vulkan::StockSampler::LinearClamp);
-
 		vec4 rt_metrics(1.0f / input_image.get_image().get_create_info().width,
 		                1.0f / input_image.get_image().get_create_info().height,
 		                float(input_image.get_image().get_create_info().width),
 		                float(input_image.get_image().get_create_info().height));
+
 		cmd.push_constants(&rt_metrics, 0, sizeof(rt_metrics));
 
 		Vulkan::CommandBufferUtil::set_quad_vertex_state(cmd);
@@ -148,5 +164,40 @@ void setup_smaa_postprocess(RenderGraph &graph, const string &input, const strin
 		                                     "builtin://shaders/post/smaa_neighbor_blend.vert",
 		                                     "builtin://shaders/post/smaa_neighbor_blend.frag", {});
 	});
+
+	if (t2x_enable)
+	{
+		auto &smaa_resolve = graph.add_pass("smaa-t2x-resolve", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+		smaa_resolve.add_color_output(output, smaa_output);
+		smaa_resolve.add_texture_input("smaa-sample");
+		smaa_resolve.add_texture_input(input_depth);
+		smaa_resolve.add_history_input("smaa-sample");
+
+		smaa_resolve.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
+			auto &current = graph.get_physical_texture_resource(smaa_resolve.get_texture_inputs()[0]->get_physical_index());
+			auto *prev = graph.get_physical_history_texture_resource(smaa_resolve.get_history_inputs()[0]->get_physical_index());
+			auto &depth = graph.get_physical_texture_resource(smaa_resolve.get_texture_inputs()[1]->get_physical_index());
+
+			cmd.set_texture(0, 0, current, Vulkan::StockSampler::NearestClamp);
+			if (prev)
+			{
+				cmd.set_texture(0, 1, *prev, Vulkan::StockSampler::LinearClamp);
+				cmd.set_texture(0, 2, depth, Vulkan::StockSampler::NearestClamp);
+			}
+
+			mat4 reproj =
+				translate(vec3(0.5f, 0.5f, 0.0f)) *
+				scale(vec3(0.5f, 0.5f, 1.0f)) *
+				jitter.get_history_view_proj(1) *
+				jitter.get_history_inv_view_proj(0);
+
+			cmd.push_constants(&reproj, 0, sizeof(reproj));
+			Vulkan::CommandBufferUtil::set_quad_vertex_state(cmd);
+			Vulkan::CommandBufferUtil::draw_quad(cmd,
+			                                     "builtin://shaders/quad.vert",
+			                                     "builtin://shaders/post/temporal_reproject.frag",
+			                                     {{ "HISTORY", prev ? 1 : 0 }});
+		});
+	}
 }
 }

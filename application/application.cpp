@@ -803,7 +803,7 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 
 	if (config.smaa)
 	{
-		setup_smaa_postprocess(graph, ui_source, "smaa");
+		setup_smaa_postprocess(graph, jitter, ui_source, "depth-main", "smaa", true);
 		ui_source = "smaa";
 	}
 	else if (config.fxaa)

@@ -25,5 +25,8 @@
 
 namespace Granite
 {
-void setup_smaa_postprocess(RenderGraph &graph, const std::string &input, const std::string &output);
+class TemporalJitter;
+void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
+                            const std::string &input, const std::string &input_depth,
+                            const std::string &output, bool t2x_enable);
 }

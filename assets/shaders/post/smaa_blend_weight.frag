@@ -20,5 +20,13 @@ layout(location = 0) out vec4 Weights;
 void main()
 {
     Weights = SMAABlendingWeightCalculationPS(vTex, vPixCoord, vec4[](vOffset0, vOffset1, vOffset2),
-                                              EdgesTex, AreaTex, SearchTex, vec4(0.0));
+                                              EdgesTex, AreaTex, SearchTex,
+                                          #if SMAA_SUBPIXEL_MODE == 0
+                                              vec4(0.0)
+                                          #elif SMAA_SUBPIXEL_MODE == 1
+                                              vec4(1.0, 1.0, 1.0, 0.0)
+                                          #elif SMAA_SUBPIXEL_MODE == 2
+                                              vec4(2.0, 2.0, 2.0, 0.0)
+                                          #endif
+                                              );
 }

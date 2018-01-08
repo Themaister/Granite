@@ -32,6 +32,7 @@ public:
 	enum class Type
 	{
 		FXAA_2Phase,
+		SMAA_T2X,
 		None
 	};
 	TemporalJitter();
@@ -46,6 +47,11 @@ public:
 	const mat4 &get_history_jittered_inv_view_proj(int frames) const;
 	unsigned get_jitter_phase() const;
 
+	Type get_jitter_type() const
+	{
+		return type;
+	}
+
 private:
 	unsigned phase = 0;
 	unsigned jitter_mask = 0;
@@ -55,6 +61,7 @@ private:
 	mat4 saved_jittered_inv_view_proj[MaxJitterPhases];
 	mat4 saved_view_proj[MaxJitterPhases];
 	mat4 saved_inv_view_proj[MaxJitterPhases];
+	Type type = Type::None;
 };
 
 void setup_fxaa_2phase_postprocess(RenderGraph &graph, TemporalJitter &jitter, const std::string &input,

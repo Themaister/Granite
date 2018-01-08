@@ -41,12 +41,21 @@ void TemporalJitter::init(Type type, vec2 backbuffer_resolution)
 		jitter_table[1] = translate(2.0f * vec3(0.0f, 0.5f / backbuffer_resolution.y, 0.0f));
 		break;
 
+	case Type::SMAA_T2X:
+		jitter_mask = 1;
+		phase = 0;
+		jitter_table[0] = translate(2.0f * vec3(-0.25f / backbuffer_resolution.x, -0.25f / backbuffer_resolution.y, 0.0f));
+		jitter_table[1] = translate(2.0f * vec3(+0.25f / backbuffer_resolution.x, +0.25f / backbuffer_resolution.y, 0.0f));
+		break;
+
 	case Type::None:
 		jitter_mask = 0;
 		phase = 0;
 		jitter_table[0] = mat4(1.0f);
 		break;
 	}
+
+	this->type = type;
 }
 
 void TemporalJitter::step(const mat4 &proj, const mat4 &view)

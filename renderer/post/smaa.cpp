@@ -75,6 +75,12 @@ void setup_smaa_postprocess(RenderGraph &graph, const string &input, const strin
 		                                     "builtin://shaders/post/smaa_edge_detection.frag", {});
 	});
 
+	smaa_edge.set_get_clear_color([](unsigned, VkClearColorValue *value) {
+		if (value)
+			memset(value, 0, sizeof(*value));
+		return true;
+	});
+
 	smaa_weight.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
 		auto &input_image = graph.get_physical_texture_resource(smaa_weight.get_texture_inputs()[0]->get_physical_index());
 		cmd.set_texture(0, 0, input_image, Vulkan::StockSampler::LinearClamp);
@@ -94,6 +100,12 @@ void setup_smaa_postprocess(RenderGraph &graph, const string &input, const strin
 		Vulkan::CommandBufferUtil::draw_quad(cmd,
 		                                     "builtin://shaders/post/smaa_blend_weight.vert",
 		                                     "builtin://shaders/post/smaa_blend_weight.frag", {});
+	});
+
+	smaa_weight.set_get_clear_color([](unsigned, VkClearColorValue *value) {
+		if (value)
+			memset(value, 0, sizeof(*value));
+		return true;
 	});
 
 	smaa_blend.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {

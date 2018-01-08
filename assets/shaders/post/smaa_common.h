@@ -8,7 +8,7 @@ layout(std430, push_constant) uniform Registers
 
 #define SMAA_RT_METRICS registers.rt_metrics
 #define SMAA_GLSL_4
-#define SMAA_PRESET_HIGH
+#define SMAA_PRESET_ULTRA
 #include "SMAA.hlsl"
 
 #endif

@@ -28,6 +28,7 @@
 #include "label.hpp"
 #include "post/hdr.hpp"
 #include "post/fxaa.hpp"
+#include "post/smaa.hpp"
 #include "quirks.hpp"
 
 #define RAPIDJSON_ASSERT(x) do { if (!(x)) throw "JSON error"; } while(0)
@@ -179,6 +180,8 @@ void SceneViewerApplication::read_config(const std::string &path)
 		config.fxaa = doc["fxaa"].GetBool();
 	if (doc.HasMember("fxaaTemporal"))
 		config.fxaa_temporal = doc["fxaaTemporal"].GetBool();
+	if (doc.HasMember("smaa"))
+		config.smaa = doc["smaa"].GetBool();
 }
 
 SceneViewerApplication::SceneViewerApplication(const std::string &path, const std::string &config_path, const std::string &quirks_path)
@@ -798,7 +801,12 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 	if (config.hdr_bloom)
 		setup_hdr_postprocess(graph, "HDR-main", "tonemapped");
 
-	if (config.fxaa)
+	if (config.smaa)
+	{
+		setup_smaa_postprocess(graph, ui_source, "smaa");
+		ui_source = "smaa";
+	}
+	else if (config.fxaa)
 	{
 		if (config.fxaa_temporal)
 			setup_fxaa_2phase_postprocess(graph, jitter, ui_source, "depth-main", "fxaa");

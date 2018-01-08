@@ -14,3 +14,6 @@ target_link_libraries(gltf-repacker scene-formats-export util rapidjson)
 
 add_granite_offline_tool(image-compare image_compare.cpp)
 target_link_libraries(image-compare scene-formats util filesystem threading)
+
+add_granite_offline_tool(build-smaa-luts build_smaa_luts.cpp smaa/AreaTex.h smaa/SearchTex.h)
+target_link_libraries(build-smaa-luts gli util)

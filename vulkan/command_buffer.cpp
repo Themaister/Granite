@@ -1601,12 +1601,21 @@ void CommandBufferUtil::set_quad_vertex_state(CommandBuffer &cmd)
 void CommandBufferUtil::draw_quad(CommandBuffer &cmd, const std::string &vertex, const std::string &fragment,
                                   const std::vector<std::pair<std::string, int>> &defines)
 {
+	draw_quad_depth(cmd, vertex, fragment, false, false, VK_COMPARE_OP_ALWAYS, defines);
+}
+
+void CommandBufferUtil::draw_quad_depth(CommandBuffer &cmd, const std::string &vertex, const std::string &fragment,
+                                        bool depth_test, bool depth_write, VkCompareOp depth_compare,
+                                        const std::vector<std::pair<std::string, int>> &defines)
+{
 	auto &device = cmd.get_device();
 	auto *program = device.get_shader_manager().register_graphics(vertex, fragment);
 	unsigned variant = program->register_variant(defines);
 	cmd.set_program(*program->get_program(variant));
 	cmd.set_quad_state();
 	set_quad_vertex_state(cmd);
+	cmd.set_depth_test(depth_test, depth_write);
+	cmd.set_depth_compare(depth_compare);
 	cmd.draw(4);
 }
 }

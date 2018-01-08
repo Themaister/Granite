@@ -636,6 +636,9 @@ struct CommandBufferUtil
 {
 	static void draw_quad(CommandBuffer &cmd, const std::string &vertex, const std::string &fragment,
                           const std::vector<std::pair<std::string, int>> &defines = {});
+	static void draw_quad_depth(CommandBuffer &cmd, const std::string &vertex, const std::string &fragment,
+	                            bool depth_test, bool depth_write, VkCompareOp depth_compare,
+	                            const std::vector<std::pair<std::string, int>> &defines = {});
 	static void set_quad_vertex_state(CommandBuffer &cmd);
 };
 

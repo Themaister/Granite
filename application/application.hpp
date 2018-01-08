@@ -188,10 +188,10 @@ private:
 		bool rescale_scene = false;
 		bool force_shadow_map_update = false;
 		bool show_ui = true;
-		bool fxaa = false;
-		bool fxaa_temporal = false;
-		bool smaa = true;
-		bool smaa_t2x = true;
+		bool fxaa = true;
+		bool fxaa_temporal = true;
+		bool smaa = false;
+		bool smaa_t2x = false;
 	};
 	Config config;
 

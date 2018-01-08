@@ -20,7 +20,7 @@ mediump vec3 YCgCo_to_RGB(mediump vec3 c)
 }
 
 #define CLAMP_AABB 1
-mediump vec3 clamp_history(mediump vec3 color, mediump vec3 lo, mediump vec3 hi)
+mediump vec3 clamp_box(mediump vec3 color, mediump vec3 lo, mediump vec3 hi)
 {
 #if CLAMP_AABB
     mediump vec3 center = 0.5 * (lo + hi);
@@ -52,7 +52,7 @@ mediump vec3 clamp_history(mediump vec3 color,
     hi = max(hi, c1);
     hi = max(hi, c2);
     hi = max(hi, c3);
-    return clamp_history(color, lo, hi);
+    return clamp_box(color, lo, hi);
 }
 
 mediump vec3 clamp_history(mediump vec3 color,
@@ -72,7 +72,7 @@ mediump vec3 clamp_history(mediump vec3 color,
     hi = max(hi, c2);
     hi = max(hi, c3);
     hi = max(hi, c4);
-    return clamp_history(color, lo, hi);
+    return clamp_box(color, lo, hi);
 }
 
 #endif

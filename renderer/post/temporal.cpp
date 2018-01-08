@@ -35,6 +35,7 @@ void TemporalJitter::init(Type type, vec2 backbuffer_resolution)
 	switch (type)
 	{
 	case Type::FXAA_2Phase:
+	case Type::SMAA_2Phase:
 		jitter_mask = 1;
 		phase = 0;
 		jitter_table[0] = translate(2.0f * vec3(0.5f / backbuffer_resolution.x, 0.0f, 0.0f));
@@ -163,7 +164,7 @@ void setup_fxaa_2phase_postprocess(RenderGraph &graph, TemporalJitter &jitter, c
 
 		cmd.push_constants(&push, 0, sizeof(push));
 		Vulkan::CommandBufferUtil::set_quad_vertex_state(cmd);
-		Vulkan::CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/post/fxaa_sharpen.frag",
+		Vulkan::CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/post/aa_sharpen_resolve.frag",
 		                                     {{ "HISTORY", history ? 1 : 0 },
 		                                      { "HORIZONTAL", jitter.get_jitter_phase() == 0 ? 1 : 0 },
 		                                      { "VERTICAL", jitter.get_jitter_phase() == 1 ? 1 : 0 }

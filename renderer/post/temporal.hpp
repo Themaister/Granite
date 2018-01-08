@@ -33,6 +33,7 @@ public:
 	{
 		FXAA_2Phase,
 		SMAA_T2X,
+		SMAA_2Phase,
 		None
 	};
 	TemporalJitter();

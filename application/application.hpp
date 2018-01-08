@@ -188,9 +188,9 @@ private:
 		bool rescale_scene = false;
 		bool force_shadow_map_update = false;
 		bool show_ui = true;
-		bool fxaa = true;
+		bool fxaa = false;
 		bool fxaa_temporal = false;
-		bool smaa = false;
+		bool smaa = true;
 		bool smaa_t2x = true;
 	};
 	Config config;

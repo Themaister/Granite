@@ -20,17 +20,8 @@ mediump vec3 YCgCo_to_RGB(mediump vec3 c)
 }
 
 #define CLAMP_AABB 1
-mediump vec3 clamp_history(mediump vec3 color, mediump vec3 c0, mediump vec3 c1, mediump vec3 c2, mediump vec3 c3)
+mediump vec3 clamp_history(mediump vec3 color, mediump vec3 lo, mediump vec3 hi)
 {
-    mediump vec3 lo = c0;
-	mediump vec3 hi = c0;
-    lo = min(lo, c1);
-	lo = min(lo, c2);
-	lo = min(lo, c3);
-    hi = max(hi, c1);
-	hi = max(hi, c2);
-	hi = max(hi, c3);
-
 #if CLAMP_AABB
     mediump vec3 center = 0.5 * (lo + hi);
     mediump vec3 radius = max(0.5 * (hi - lo), vec3(0.0001));
@@ -45,6 +36,43 @@ mediump vec3 clamp_history(mediump vec3 color, mediump vec3 c0, mediump vec3 c1,
 #else
     return clamp(color, lo, hi);
 #endif
+}
+
+mediump vec3 clamp_history(mediump vec3 color,
+                           mediump vec3 c0,
+                           mediump vec3 c1,
+                           mediump vec3 c2,
+                           mediump vec3 c3)
+{
+    mediump vec3 lo = c0;
+    mediump vec3 hi = c0;
+    lo = min(lo, c1);
+    lo = min(lo, c2);
+    lo = min(lo, c3);
+    hi = max(hi, c1);
+    hi = max(hi, c2);
+    hi = max(hi, c3);
+    return clamp_history(color, lo, hi);
+}
+
+mediump vec3 clamp_history(mediump vec3 color,
+                           mediump vec3 c0,
+                           mediump vec3 c1,
+                           mediump vec3 c2,
+                           mediump vec3 c3,
+                           mediump vec3 c4)
+{
+    mediump vec3 lo = c0;
+    mediump vec3 hi = c0;
+    lo = min(lo, c1);
+    lo = min(lo, c2);
+    lo = min(lo, c3);
+    lo = min(lo, c4);
+    hi = max(hi, c1);
+    hi = max(hi, c2);
+    hi = max(hi, c3);
+    hi = max(hi, c4);
+    return clamp_history(color, lo, hi);
 }
 
 #endif

@@ -45,23 +45,7 @@ void main()
         mediump vec3 clamped_history_color = clamp_history_box(history_color, CurrentFrame, vUV, current);
         #if CLAMP_VARIANCE
             mediump float history_variance = textureLod(LastVariance, vUV, 0.0).x;
-
-            // If we end up clamping, we either have a ghosting scenario, in which we should just see this for a frame or two,
-            // or, we have a persistent pattern of clamping, which can be observed as flickering, so dampen this quickly.
-            #if YCgCo
-                mediump float clamped_luma = clamped_history_color.x;
-                mediump float history_luma = history_color.x;
-            #else
-                mediump float clamped_luma = dot(clamped_history_color, vec3(0.29, 0.60, 0.11));
-                mediump float history_luma = dot(history_color, vec3(0.29, 0.60, 0.11));
-            #endif
-
-            mediump float clamp_ratio = max(max(clamped_luma, history_luma), 0.001) / max(min(clamped_luma, history_luma), 0.001);
-            mediump float variance_delta = clamp_ratio > 1.25 ? 0.25 : -0.1;
-
-            // Adapt the variance delta over time.
-            history_color = mix(clamped_history_color, history_color, history_variance);
-            history_variance += variance_delta;
+            history_color = deflicker(history_color, clamped_history_color, history_variance);
         #else
             history_color = clamped_history_color;
         #endif

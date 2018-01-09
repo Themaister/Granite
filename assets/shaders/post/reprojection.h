@@ -128,4 +128,24 @@ mediump vec3 clamp_history_box(mediump vec3 history_color,
     return clamp_box(history_color, lo_cross, hi_cross);
 }
 
+mediump vec3 deflicker(mediump vec3 history_color, mediump vec3 clamped_history, inout mediump float history_variance)
+{
+    // If we end up clamping, we either have a ghosting scenario, in which we should just see this for a frame or two,
+    // or, we have a persistent pattern of clamping, which can be observed as flickering, so dampen this quickly.
+    #if YCgCo
+        mediump float clamped_luma = clamped_history.x;
+        mediump float history_luma = history_color.x;
+    #else
+        mediump float clamped_luma = dot(clamped_history, vec3(0.29, 0.60, 0.11));
+        mediump float history_luma = dot(history_color, vec3(0.29, 0.60, 0.11));
+    #endif
+
+    mediump vec3 result = mix(clamped_history, history_color, history_variance);
+
+    // Adapt the variance delta over time.
+    mediump float clamp_ratio = max(max(clamped_luma, history_luma), 0.001) / max(min(clamped_luma, history_luma), 0.001);
+    history_variance += clamp(clamp_ratio - 1.25, 0.0, 0.35) - 0.1;
+    return result;
+}
+
 #endif

@@ -8,7 +8,7 @@ layout(set = 0, binding = 1) uniform mediump sampler2D uHistoryInput;
 layout(set = 0, binding = 2) uniform sampler2D uDepth;
 #endif
 layout(location = 0) out mediump vec3 FragColor;
-layout(location = 1) out mediump vec3 SaveFragColor;
+layout(location = 1) out mediump vec4 SaveFragColor;
 layout(location = 0) in vec2 vUV;
 
 layout(push_constant, std430) uniform Registers
@@ -19,6 +19,7 @@ layout(push_constant, std430) uniform Registers
 
 #define YCgCo 1
 #define CLAMP_HISTORY 1
+#define CLAMP_VARIANCE 1
 #include "reprojection.h"
 
 void main()
@@ -75,7 +76,29 @@ void main()
         history_color = RGB_to_YCgCo(history_color);
     #endif
     #if CLAMP_HISTORY
-        history_color = clamp_history(history_color, c1, c2, h0, h1);
+        mediump vec3 clamped_history_color = clamp_history(history_color, c1, c2, h0, h1);
+        #if CLAMP_VARIANCE
+            mediump float history_variance = textureLod(uHistoryInput, vUV, 0.0).a;
+
+            // If we end up clamping, we either have a ghosting scenario, in which we should just see this for a frame or two,
+            // or, we have a persistent pattern of clamping, which can be observed as flickering, so dampen this quickly.
+            #if YCgCo
+                mediump float clamped_luma = clamped_history_color.x;
+                mediump float history_luma = history_color.x;
+            #else
+                mediump float clamped_luma = dot(clamped_history_color, vec3(0.29, 0.60, 0.11));
+                mediump float history_luma = dot(history_color, vec3(0.29, 0.60, 0.11));
+            #endif
+
+            mediump float clamp_ratio = max(max(clamped_luma, history_luma), 0.001) / max(min(clamped_luma, history_luma), 0.001);
+            mediump float variance_delta = 0.5 * (clamp_ratio / (1.0 + clamp_ratio) - 0.55);
+
+            // Adapt the variance delta over time.
+            history_color = mix(clamped_history_color, history_color, history_variance);
+            history_variance += variance_delta;
+        #else
+            history_color = clamped_history_color;
+        #endif
     #endif
     const mediump float lerp_factor = 0.5;
     mediump vec3 color = mix(history_color, sharpened_input, lerp_factor);
@@ -88,5 +111,9 @@ void main()
 #else
     FragColor = color;
 #endif
-    SaveFragColor = tmp_sharpened_input;
+
+#if !CLAMP_VARIANCE || !HISTORY || !CLAMP_HISTORY
+    const mediump float history_variance = 0.0;
+#endif
+    SaveFragColor = vec4(tmp_sharpened_input, history_variance);
 }

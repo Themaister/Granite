@@ -182,7 +182,16 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 			smaa_resolve.add_history_input("smaa-sharpen");
 		}
 		else
+		{
 			smaa_resolve.add_history_input("smaa-sample");
+
+			AttachmentInfo variance;
+			variance.size_relative_name = input;
+			variance.format = VK_FORMAT_R8_UNORM;
+			variance.size_class = SizeClass::InputRelative;
+			smaa_resolve.add_color_output("smaa-variance", variance);
+			smaa_resolve.add_history_input("smaa-variance");
+		}
 
 		smaa_resolve.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
 			bool resolve_sharpen = jitter.get_jitter_type() == TemporalJitter::Type::SMAA_2Phase;
@@ -195,6 +204,12 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 			{
 				cmd.set_texture(0, 1, *prev, Vulkan::StockSampler::LinearClamp);
 				cmd.set_texture(0, 2, depth, Vulkan::StockSampler::NearestClamp);
+				if (!resolve_sharpen)
+				{
+					cmd.set_texture(0, 3,
+					                *graph.get_physical_history_texture_resource(smaa_resolve.get_history_inputs()[1]->get_physical_index()),
+					                Vulkan::StockSampler::NearestClamp);
+				}
 			}
 
 			struct Push

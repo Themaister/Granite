@@ -75,4 +75,57 @@ mediump vec3 clamp_history(mediump vec3 color,
     return clamp_box(color, lo, hi);
 }
 
+mediump vec3 clamp_history_box(mediump vec3 history_color,
+                               mediump sampler2D CurrentFrame,
+                               vec2 UV,
+                               mediump vec3 c11)
+{
+    mediump vec3 c01 = textureLodOffset(CurrentFrame, vUV, 0.0, ivec2(-1, 0)).rgb;
+    mediump vec3 c21 = textureLodOffset(CurrentFrame, vUV, 0.0, ivec2(+1, 0)).rgb;
+    mediump vec3 c10 = textureLodOffset(CurrentFrame, vUV, 0.0, ivec2(0, -1)).rgb;
+    mediump vec3 c12 = textureLodOffset(CurrentFrame, vUV, 0.0, ivec2(0, +1)).rgb;
+#if YCgCo
+    c01 = RGB_to_YCgCo(c01);
+    c21 = RGB_to_YCgCo(c21);
+    c10 = RGB_to_YCgCo(c10);
+    c12 = RGB_to_YCgCo(c12);
+#endif
+    mediump vec3 lo_cross = c11;
+    mediump vec3 hi_cross = c11;
+    lo_cross = min(lo_cross, c01);
+    lo_cross = min(lo_cross, c21);
+    lo_cross = min(lo_cross, c10);
+    lo_cross = min(lo_cross, c12);
+    hi_cross = max(hi_cross, c01);
+    hi_cross = max(hi_cross, c21);
+    hi_cross = max(hi_cross, c10);
+    hi_cross = max(hi_cross, c12);
+
+    mediump vec3 c00 = textureLodOffset(CurrentFrame, vUV, 0.0, ivec2(-1, -1)).rgb;
+    mediump vec3 c22 = textureLodOffset(CurrentFrame, vUV, 0.0, ivec2(+1, +1)).rgb;
+    mediump vec3 c02 = textureLodOffset(CurrentFrame, vUV, 0.0, ivec2(-1, +1)).rgb;
+    mediump vec3 c20 = textureLodOffset(CurrentFrame, vUV, 0.0, ivec2(+1, -1)).rgb;
+#if YCgCo
+    c00 = RGB_to_YCgCo(c00);
+    c22 = RGB_to_YCgCo(c22);
+    c02 = RGB_to_YCgCo(c02);
+    c20 = RGB_to_YCgCo(c20);
+#endif
+
+    mediump vec3 lo_box = lo_cross;
+    mediump vec3 hi_box = hi_cross;
+    lo_box = min(lo_box, c00);
+    lo_box = min(lo_box, c22);
+    lo_box = min(lo_box, c02);
+    lo_box = min(lo_box, c20);
+    hi_box = max(hi_box, c00);
+    hi_box = max(hi_box, c22);
+    hi_box = max(hi_box, c02);
+    hi_box = max(hi_box, c20);
+    lo_cross = mix(lo_cross, lo_box, 0.5);
+    hi_cross = mix(hi_cross, hi_box, 0.5);
+
+    return clamp_box(history_color, lo_cross, hi_cross);
+}
+
 #endif

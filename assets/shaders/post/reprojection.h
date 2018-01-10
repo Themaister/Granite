@@ -125,6 +125,18 @@ mediump vec3 clamp_history_box(mediump vec3 history_color,
     lo_cross = mix(lo_cross, lo_box, 0.5);
     hi_cross = mix(hi_cross, hi_box, 0.5);
 
+#if VARIANCE_CLIPPING
+    vec3 m1 = (c00 + c01 + c02 + c10 + c11 + c12 + c20 + c21 + c22) / 9.0;
+    vec3 m2 =
+        c00 * c00 + c01 * c01 + c02 * c02 +
+        c10 * c10 + c11 * c11 + c12 * c12 +
+        c20 * c20 + c21 * c21 + c22 * c22;
+    vec3 sigma = sqrt(max(m2 / 9.0 - m1, 0.0));
+    const float gamma = 1.0;
+    lo_cross = max(lo_cross, m1 - gamma * sigma);
+    hi_cross = min(hi_cross, m1 + gamma * sigma);
+#endif
+
     return clamp_box(history_color, lo_cross, hi_cross);
 }
 
@@ -150,6 +162,8 @@ mediump vec3 deflicker(mediump vec3 history_color, mediump vec3 clamped_history,
 
 float sample_min_depth_box(sampler2D Depth, vec2 UV, vec2 inv_resolution)
 {
+	// Sample nearest "velocity" from cross.
+    // We reproject using depth buffer instead here.
     vec2 ShiftUV = UV - 0.5 * inv_resolution;
     vec3 quad0 = textureGather(Depth, ShiftUV).xyz;
     vec2 quad1 = textureGatherOffset(Depth, ShiftUV, ivec2(1)).xz;

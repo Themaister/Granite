@@ -84,8 +84,8 @@ public:
 	void run_frame();
 
 private:
-	Vulkan::WSI wsi;
 	std::unique_ptr<Vulkan::WSIPlatform> platform;
+	Vulkan::WSI wsi;
 };
 
 class SceneViewerApplication : public Application, public EventHandler

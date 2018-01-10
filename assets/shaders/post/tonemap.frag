@@ -11,6 +11,14 @@ layout(std140, set = 0, binding = 2) uniform LuminanceData
     float average_inv_linear_luminance;
 };
 
+#define SHARPEN 0
+#if SHARPEN
+layout(std430, push_constant) uniform Registers
+{
+    vec2 inv_resolution;
+} registers;
+#endif
+
 layout(location = 0) in highp vec2 vUV;
 layout(location = 0) out mediump vec3 FragColor;
 
@@ -48,6 +56,14 @@ mediump vec3 tonemap_reinhart(mediump vec3 color)
 void main()
 {
     mediump vec3 color = textureLod(uHDR, vUV, 0.0).rgb;
+    #if SHARPEN
+        color *= 2.0;
+        color -= 0.25 * textureLod(uHDR, vUV + registers.inv_resolution * vec2(-0.5, -0.5), 0.0).rgb;
+        color -= 0.25 * textureLod(uHDR, vUV + registers.inv_resolution * vec2(+0.5, -0.5), 0.0).rgb;
+        color -= 0.25 * textureLod(uHDR, vUV + registers.inv_resolution * vec2(-0.5, +0.5), 0.0).rgb;
+        color -= 0.25 * textureLod(uHDR, vUV + registers.inv_resolution * vec2(+0.5, +0.5), 0.0).rgb;
+        color = max(color, 0.0);
+    #endif
     mediump vec3 bloom = textureLod(uBloom, vUV, 0.0).rgb;
     color += bloom;
     FragColor = tonemap_filmic(color * average_inv_linear_luminance);

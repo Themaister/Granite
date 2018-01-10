@@ -151,6 +151,8 @@ static void tonemap_build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &c
 	cmd.set_texture(0, 0, hdr, Vulkan::StockSampler::LinearClamp);
 	cmd.set_texture(0, 1, bloom, Vulkan::StockSampler::LinearClamp);
 	cmd.set_uniform_buffer(0, 2, ubo);
+	vec2 inv_size = vec2(1.0f / hdr.get_image().get_create_info().width, 1.0f / hdr.get_image().get_create_info().height);
+	cmd.push_constants(&inv_size, 0, sizeof(inv_size));
 	Vulkan::CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/post/tonemap.frag");
 }
 

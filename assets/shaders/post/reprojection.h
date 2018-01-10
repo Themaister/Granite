@@ -88,7 +88,7 @@ mediump vec3 clamp_history(mediump vec3 color,
 mediump vec3 clamp_history_box(mediump vec3 history_color,
                                mediump sampler2D CurrentFrame,
                                vec2 UV,
-                               mediump vec3 c11, inout mediump float lerp_factor)
+                               mediump vec3 c11)
 {
     mediump vec3 c01 = SAMPLE_CURRENT(CurrentFrame, UV, -1, 0);
     mediump vec3 c21 = SAMPLE_CURRENT(CurrentFrame, UV, +1, 0);
@@ -134,13 +134,6 @@ mediump vec3 clamp_history_box(mediump vec3 history_color,
     const float gamma = 1.0;
     lo_cross = max(lo_cross, m1 - gamma * sigma);
     hi_cross = min(hi_cross, m1 + gamma * sigma);
-#endif
-
-#if 1
-    // Adjust lerp factor.
-    mediump float diff = abs(history_color.x - c11.x) / max(c11.x, max(history_color.x, max(0.0001, hi_cross.x)));
-    diff = 1.0 - diff;
-    lerp_factor *= diff * diff;
 #endif
 
     return clamp_box(history_color, lo_cross, hi_cross);

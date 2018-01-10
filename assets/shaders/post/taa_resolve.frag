@@ -6,6 +6,7 @@ precision highp int;
 #define CLAMP_HISTORY 1
 #define CLAMP_VARIANCE 0
 #define HDR 1
+#define UNBIASED_LUMA 1
 
 layout(set = 0, binding = 0) uniform mediump sampler2D CurrentFrame;
 #if HISTORY
@@ -43,11 +44,21 @@ void main()
     mediump float lerp_factor = 0.1;
 
     #if CLAMP_HISTORY
-        mediump vec3 clamped_history_color = clamp_history_box(history_color, CurrentFrame, vUV, current, lerp_factor);
+        mediump vec3 clamped_history_color = clamp_history_box(history_color, CurrentFrame, vUV, current);
+
         #if CLAMP_VARIANCE
             history_color = deflicker(history_color, clamped_history_color, history_variance);
         #else
             history_color = clamped_history_color;
+        #endif
+
+        #if UNBIASED_LUMA
+            // Adjust lerp factor.
+            mediump float clamped_luma = clamped_history_color.x;
+            mediump float current_luma = current.x;
+            mediump float diff = abs(current_luma - clamped_luma) / max(current_luma, max(clamped_luma, 0.01));
+            diff = 1.0 - diff;
+            lerp_factor = mix(0.01, 0.1, diff * diff);
         #endif
     #endif
 

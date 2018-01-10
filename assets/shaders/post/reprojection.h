@@ -148,4 +148,13 @@ mediump vec3 deflicker(mediump vec3 history_color, mediump vec3 clamped_history,
     return result;
 }
 
+float sample_min_depth_box(sampler2D Depth, vec2 UV, vec2 inv_resolution)
+{
+    vec2 ShiftUV = UV - 0.5 * inv_resolution;
+    vec3 quad0 = textureGather(Depth, ShiftUV).xyz;
+    vec2 quad1 = textureGatherOffset(Depth, ShiftUV, ivec2(1)).xz;
+    vec2 min0 = min(quad0.xy, quad1);
+    float result = min(min0.x, min0.y);
+    return min(result, quad0.z);
+}
 #endif

@@ -224,6 +224,7 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 				scale(vec3(0.5f, 0.5f, 1.0f)) *
 				jitter.get_history_view_proj(1) *
 				jitter.get_history_inv_view_proj(0);
+
 			push.inv_resolution = vec2(1.0f / current.get_image().get_create_info().width,
 			                           1.0f / current.get_image().get_create_info().height);
 

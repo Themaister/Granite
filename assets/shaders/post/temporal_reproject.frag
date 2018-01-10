@@ -18,6 +18,7 @@ layout(set = 0, binding = 3) uniform sampler2D LastVariance;
 layout(std430, push_constant) uniform Registers
 {
     mat4 reproj;
+    vec2 inv_resolution;
 } registers;
 
 layout(location = 0) in vec2 vUV;
@@ -31,7 +32,8 @@ void main()
 {
 #if HISTORY
     mediump vec3 current = textureLod(CurrentFrame, vUV, 0.0).rgb;
-    float depth = textureLod(CurrentDepth, vUV, 0.0).x;
+
+    float depth = sample_min_depth_box(CurrentDepth, vUV, registers.inv_resolution);
 
     vec4 clip = vec4(2.0 * vUV - 1.0, depth, 1.0);
     vec4 reproj_pos = registers.reproj * clip;

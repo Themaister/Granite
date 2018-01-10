@@ -34,6 +34,7 @@ public:
 		FXAA_2Phase,
 		SMAA_T2X,
 		SMAA_2Phase,
+		TAA_8Phase,
 		None
 	};
 	TemporalJitter();
@@ -67,4 +68,7 @@ private:
 
 void setup_fxaa_2phase_postprocess(RenderGraph &graph, TemporalJitter &jitter, const std::string &input,
                                    const std::string &input_depth, const std::string &output);
+
+void setup_taa_resolve(RenderGraph &graph, TemporalJitter &jitter, const std::string &input,
+                       const std::string &input_depth, const std::string &output);
 }

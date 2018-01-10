@@ -49,6 +49,19 @@ void TemporalJitter::init(Type type, vec2 backbuffer_resolution)
 		jitter_table[1] = translate(2.0f * vec3(+0.25f / backbuffer_resolution.x, +0.25f / backbuffer_resolution.y, 0.0f));
 		break;
 
+	case Type::TAA_8Phase:
+		jitter_mask = 7;
+		phase = 0;
+		jitter_table[0] = translate(0.125f * vec3(-7.0f / backbuffer_resolution.x, +1.0f / backbuffer_resolution.y, 0.0f));
+		jitter_table[1] = translate(0.125f * vec3(-5.0f / backbuffer_resolution.x, -5.0f / backbuffer_resolution.y, 0.0f));
+		jitter_table[2] = translate(0.125f * vec3(-1.0f / backbuffer_resolution.x, -3.0f / backbuffer_resolution.y, 0.0f));
+		jitter_table[3] = translate(0.125f * vec3(+3.0f / backbuffer_resolution.x, -7.0f / backbuffer_resolution.y, 0.0f));
+		jitter_table[4] = translate(0.125f * vec3(-5.0f / backbuffer_resolution.x, -1.0f / backbuffer_resolution.y, 0.0f));
+		jitter_table[5] = translate(0.125f * vec3(+7.0f / backbuffer_resolution.x, +7.0f / backbuffer_resolution.y, 0.0f));
+		jitter_table[6] = translate(0.125f * vec3(+1.0f / backbuffer_resolution.x, +3.0f / backbuffer_resolution.y, 0.0f));
+		jitter_table[7] = translate(0.125f * vec3(-3.0f / backbuffer_resolution.x, +5.0f / backbuffer_resolution.y, 0.0f));
+		break;
+
 	case Type::None:
 		jitter_mask = 0;
 		phase = 0;
@@ -101,6 +114,74 @@ void TemporalJitter::reset()
 unsigned TemporalJitter::get_jitter_phase() const
 {
 	return phase & jitter_mask;
+}
+
+void setup_taa_resolve(RenderGraph &graph, TemporalJitter &jitter, const std::string &input,
+                       const std::string &input_depth, const std::string &output)
+{
+	jitter.init(TemporalJitter::Type::TAA_8Phase,
+	            vec2(graph.get_backbuffer_dimensions().width,
+	                 graph.get_backbuffer_dimensions().height));
+
+	AttachmentInfo taa_output;
+	taa_output.size_class = SizeClass::InputRelative;
+	taa_output.size_relative_name = input;
+	taa_output.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+
+	auto taa_ycgco = taa_output;
+	taa_ycgco.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+
+	auto &conv_ycgco = graph.add_pass("taa-ycgco-conv", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	conv_ycgco.add_color_output("taa-ycgco", taa_ycgco);
+	conv_ycgco.add_attachment_input(input);
+
+	conv_ycgco.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
+		cmd.set_input_attachments(0, 0);
+		Vulkan::CommandBufferUtil::draw_quad(cmd,
+		                                     "builtin://shaders/quad.vert",
+		                                     "builtin://shaders/post/ycgco_conv.frag", {});
+	});
+
+	auto &resolve = graph.add_pass("taa-resolve", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	resolve.add_color_output(output, taa_output);
+	resolve.add_texture_input("taa-ycgco");
+	resolve.add_texture_input(input_depth);
+	resolve.add_history_input(output);
+
+	resolve.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
+		auto &image = graph.get_physical_texture_resource(resolve.get_texture_inputs()[0]->get_physical_index());
+		auto &depth = graph.get_physical_texture_resource(resolve.get_texture_inputs()[1]->get_physical_index());
+		auto *prev = graph.get_physical_history_texture_resource(resolve.get_history_inputs()[0]->get_physical_index());
+
+		struct Push
+		{
+			mat4 reproj;
+			vec2 inv_resolution;
+		};
+		Push push;
+
+		push.reproj =
+				translate(vec3(0.5f, 0.5f, 0.0f)) *
+				scale(vec3(0.5f, 0.5f, 1.0f)) *
+				jitter.get_history_view_proj(1) *
+				jitter.get_history_inv_view_proj(0);
+
+		push.inv_resolution = vec2(1.0f / image.get_image().get_create_info().width,
+		                           1.0f / image.get_image().get_create_info().height);
+
+		cmd.push_constants(&push, 0, sizeof(push));
+
+		cmd.set_texture(0, 0, image, Vulkan::StockSampler::NearestClamp);
+		cmd.set_texture(0, 1, depth, Vulkan::StockSampler::NearestClamp);
+		if (prev)
+			cmd.set_texture(0, 2, *prev, Vulkan::StockSampler::LinearClamp);
+
+		Vulkan::CommandBufferUtil::set_quad_vertex_state(cmd);
+		Vulkan::CommandBufferUtil::draw_quad(cmd,
+		                                     "builtin://shaders/quad.vert",
+		                                     "builtin://shaders/post/taa_resolve.frag",
+		                                     {{ "HISTORY", prev ? 1 : 0 }});
+	});
 }
 
 void setup_fxaa_2phase_postprocess(RenderGraph &graph, TemporalJitter &jitter, const std::string &input,

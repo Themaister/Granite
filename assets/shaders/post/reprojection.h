@@ -1,6 +1,11 @@
 #ifndef REPROJECTION_H_
 #define REPROJECTION_H_
 
+mediump float RCP(mediump float v) { return 1.0 / v; }
+mediump float Max3(mediump float x, mediump float y, mediump float z) { return max(x, max(y, z)); }
+mediump vec3 Tonemap(mediump vec3 c) { return c * RCP(Max3(c.r, c.g, c.b) + 1.0); }
+mediump vec3 TonemapInvert(mediump vec3 c) { return c * RCP(1.0 - Max3(c.r, c.g, c.b)); }
+
 mediump vec3 RGB_to_YCgCo(mediump vec3 c)
 {
     return vec3(
@@ -75,21 +80,21 @@ mediump vec3 clamp_history(mediump vec3 color,
     return clamp_box(color, lo, hi);
 }
 
+#define SAMPLE_CURRENT(tex, uv, x, y) \
+    (textureLodOffset(tex, uv, 0.0, ivec2(x, y)).rgb)
+
+#define VARIANCE_CLIPPING 1
+
 mediump vec3 clamp_history_box(mediump vec3 history_color,
                                mediump sampler2D CurrentFrame,
                                vec2 UV,
-                               mediump vec3 c11)
+                               mediump vec3 c11, inout mediump float lerp_factor)
 {
-    mediump vec3 c01 = textureLodOffset(CurrentFrame, vUV, 0.0, ivec2(-1, 0)).rgb;
-    mediump vec3 c21 = textureLodOffset(CurrentFrame, vUV, 0.0, ivec2(+1, 0)).rgb;
-    mediump vec3 c10 = textureLodOffset(CurrentFrame, vUV, 0.0, ivec2(0, -1)).rgb;
-    mediump vec3 c12 = textureLodOffset(CurrentFrame, vUV, 0.0, ivec2(0, +1)).rgb;
-#if YCgCo
-    c01 = RGB_to_YCgCo(c01);
-    c21 = RGB_to_YCgCo(c21);
-    c10 = RGB_to_YCgCo(c10);
-    c12 = RGB_to_YCgCo(c12);
-#endif
+    mediump vec3 c01 = SAMPLE_CURRENT(CurrentFrame, UV, -1, 0);
+    mediump vec3 c21 = SAMPLE_CURRENT(CurrentFrame, UV, +1, 0);
+    mediump vec3 c10 = SAMPLE_CURRENT(CurrentFrame, UV, 0, -1);
+    mediump vec3 c12 = SAMPLE_CURRENT(CurrentFrame, UV, 0, +1);
+
     mediump vec3 lo_cross = c11;
     mediump vec3 hi_cross = c11;
     lo_cross = min(lo_cross, c01);
@@ -101,16 +106,10 @@ mediump vec3 clamp_history_box(mediump vec3 history_color,
     hi_cross = max(hi_cross, c10);
     hi_cross = max(hi_cross, c12);
 
-    mediump vec3 c00 = textureLodOffset(CurrentFrame, vUV, 0.0, ivec2(-1, -1)).rgb;
-    mediump vec3 c22 = textureLodOffset(CurrentFrame, vUV, 0.0, ivec2(+1, +1)).rgb;
-    mediump vec3 c02 = textureLodOffset(CurrentFrame, vUV, 0.0, ivec2(-1, +1)).rgb;
-    mediump vec3 c20 = textureLodOffset(CurrentFrame, vUV, 0.0, ivec2(+1, -1)).rgb;
-#if YCgCo
-    c00 = RGB_to_YCgCo(c00);
-    c22 = RGB_to_YCgCo(c22);
-    c02 = RGB_to_YCgCo(c02);
-    c20 = RGB_to_YCgCo(c20);
-#endif
+    mediump vec3 c00 = SAMPLE_CURRENT(CurrentFrame, UV, -1, -1);
+    mediump vec3 c22 = SAMPLE_CURRENT(CurrentFrame, UV, +1, +1);
+    mediump vec3 c02 = SAMPLE_CURRENT(CurrentFrame, UV, -1, +1);
+    mediump vec3 c20 = SAMPLE_CURRENT(CurrentFrame, UV, +1, -1);
 
     mediump vec3 lo_box = lo_cross;
     mediump vec3 hi_box = hi_cross;
@@ -131,10 +130,17 @@ mediump vec3 clamp_history_box(mediump vec3 history_color,
         c00 * c00 + c01 * c01 + c02 * c02 +
         c10 * c10 + c11 * c11 + c12 * c12 +
         c20 * c20 + c21 * c21 + c22 * c22;
-    vec3 sigma = sqrt(max(m2 / 9.0 - m1, 0.0));
+    vec3 sigma = sqrt(max(m2 / 9.0 - m1 * m1, 0.0));
     const float gamma = 1.0;
     lo_cross = max(lo_cross, m1 - gamma * sigma);
     hi_cross = min(hi_cross, m1 + gamma * sigma);
+#endif
+
+#if 1
+    // Adjust lerp factor.
+    mediump float diff = abs(history_color.x - c11.x) / max(c11.x, max(history_color.x, max(0.0001, hi_cross.x)));
+    diff = 1.0 - diff;
+    lerp_factor *= diff * diff;
 #endif
 
     return clamp_box(history_color, lo_cross, hi_cross);
@@ -156,7 +162,7 @@ mediump vec3 deflicker(mediump vec3 history_color, mediump vec3 clamped_history,
 
     // Adapt the variance delta over time.
     mediump float clamp_ratio = max(max(clamped_luma, history_luma), 0.001) / max(min(clamped_luma, history_luma), 0.001);
-    history_variance += clamp(clamp_ratio - 1.25, 0.0, 0.35) - 0.1;
+    history_variance += 4.0 * clamp(clamp_ratio - 1.25, 0.0, 0.35) - 0.1;
     return result;
 }
 

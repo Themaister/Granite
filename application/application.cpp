@@ -799,7 +799,11 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 	add_main_pass(swap.get_device(), "main");
 
 	if (config.hdr_bloom)
-		setup_hdr_postprocess(graph, "HDR-main", "tonemapped");
+	{
+		if (config.taa)
+			setup_taa_resolve(graph, jitter, "HDR-main", "depth-main", "HDR-resolved");
+		setup_hdr_postprocess(graph, config.taa ? "HDR-resolved" : "HDR-main", "tonemapped");
+	}
 
 	if (config.smaa)
 	{

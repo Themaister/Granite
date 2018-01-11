@@ -1047,6 +1047,10 @@ void RenderGraph::build_physical_passes()
 			return a && b && a->get_physical_index() != b->get_physical_index();
 		};
 
+		const auto same_attachment = [](const RenderResource *a, const RenderResource *b) {
+			return a && b && a->get_physical_index() == b->get_physical_index();
+		};
+
 		// Need a different depth attachment, break up the pass.
 		if (different_attachment(next.get_depth_stencil_input(), prev.get_depth_stencil_input()))
 			return false;
@@ -1081,8 +1085,11 @@ void RenderGraph::build_physical_passes()
 		}
 
 		// Keep depth on tile.
-		if (next.get_depth_stencil_input() && next.get_depth_stencil_input() == prev.get_depth_stencil_output())
+		if (same_attachment(next.get_depth_stencil_input(), prev.get_depth_stencil_input()) ||
+		    same_attachment(next.get_depth_stencil_input(), prev.get_depth_stencil_output()))
+		{
 			return true;
+		}
 
 		// Keep depth attachment or color on-tile.
 		for (auto *input : next.get_attachment_inputs())

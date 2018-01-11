@@ -3,8 +3,8 @@ precision highp float;
 precision highp int;
 
 #define YCgCo 1
-#define CLAMP_HISTORY 1
 #define HDR 1
+#define CLAMP_HISTORY 1
 #define UNBIASED_LUMA 1
 #define CUBIC_HISTORY 1
 
@@ -59,7 +59,7 @@ void main()
                 mediump float clamped_luma = luminance(history_color);
                 mediump float current_luma = luminance(current);
             #endif
-            mediump float diff = abs(current_luma - clamped_luma) / max(current_luma, max(clamped_luma, 0.2));
+            mediump float diff = abs(current_luma - clamped_luma) / max(current_luma, max(clamped_luma, 0.001));
             diff = 1.0 - diff;
             lerp_factor *= 0.9 * diff * diff + 0.1;
         #endif

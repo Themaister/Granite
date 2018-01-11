@@ -178,6 +178,27 @@ float sample_min_depth_box(sampler2D Depth, vec2 UV, vec2 inv_resolution)
     return min(result, quad0.z);
 }
 
+vec2 sample_nearest_velocity(sampler2D Depth, sampler2D MVs, vec2 UV, vec2 inv_resolution)
+{
+    vec2 ShiftUV = UV - 0.5 * inv_resolution;
+    vec3 depth_quad0 = textureGather(Depth, ShiftUV).xyz;
+    vec2 depth_quad1 = textureGatherOffset(Depth, ShiftUV, ivec2(1)).xz;
+
+    vec3 mvx_quad0 = textureGather(MVs, ShiftUV, 0).xyz;
+    vec2 mvx_quad1 = textureGatherOffset(MVs, ShiftUV, ivec2(1), 0).xz;
+    vec3 mvy_quad0 = textureGather(MVs, ShiftUV, 1).xyz;
+    vec2 mvy_quad1 = textureGatherOffset(MVs, ShiftUV, ivec2(1), 1).xz;
+
+    vec2 mv = vec2(mvx_quad0.x, mvy_quad0.x);
+    float d = depth_quad0.x;
+
+    if (depth_quad0.y < d) { mv = vec2(mvx_quad0.y, mvy_quad0.y); d = depth_quad0.y; }
+    if (depth_quad0.z < d) { mv = vec2(mvx_quad0.z, mvy_quad0.z); d = depth_quad0.z; }
+    if (depth_quad1.x < d) { mv = vec2(mvx_quad1.x, mvy_quad1.x); d = depth_quad1.x; }
+    if (depth_quad1.y < d) { mv = vec2(mvx_quad1.y, mvy_quad1.y);                    }
+    return mv;
+}
+
 mediump float luminance(mediump vec3 color)
 {
     return dot(color, vec3(0.29, 0.60, 0.11));

@@ -7,11 +7,15 @@ precision highp int;
 #define CLAMP_HISTORY 1
 #define UNBIASED_LUMA 1
 #define CUBIC_HISTORY 1
+#define MOTION_VECTORS 1
 
 layout(set = 0, binding = 0) uniform mediump sampler2D CurrentFrame;
 #if HISTORY
 layout(set = 0, binding = 1) uniform sampler2D CurrentDepth;
 layout(set = 0, binding = 2) uniform mediump sampler2D PreviousFrame;
+#if MOTION_VECTORS
+layout(set = 0, binding = 3) uniform sampler2D MVs;
+#endif
 #endif
 
 layout(std430, push_constant) uniform Registers
@@ -29,14 +33,24 @@ void main()
 #if HISTORY
     mediump vec3 current = SAMPLE_CURRENT(CurrentFrame, vUV, 0, 0);
 
-    float depth = sample_min_depth_box(CurrentDepth, vUV, registers.rt_metrics.xy);
-    vec4 clip = vec4(2.0 * vUV - 1.0, depth, 1.0);
-    vec4 reproj_pos = registers.reproj * clip;
-
-    #if CUBIC_HISTORY
-        mediump vec3 history_color = sample_catmull_rom(PreviousFrame, reproj_pos.xy / reproj_pos.w, registers.rt_metrics);
+    #if MOTION_VECTORS
+        vec2 MV = sample_nearest_velocity(CurrentDepth, MVs, vUV, registers.rt_metrics.xy);
+        #if CUBIC_HISTORY
+            mediump vec3 history_color = sample_catmull_rom(PreviousFrame, vUV + MV, registers.rt_metrics);
+        #else
+            mediump vec3 history_color = textureLod(PreviousFrame, vUV + MV, 0.0).rgb;
+        #endif
     #else
-        mediump vec3 history_color = textureProjLod(PreviousFrame, reproj_pos.xyw, 0.0).rgb;
+        float depth = sample_min_depth_box(CurrentDepth, vUV, registers.rt_metrics.xy);
+
+        vec4 clip = vec4(2.0 * vUV - 1.0, depth, 1.0);
+        vec4 reproj_pos = registers.reproj * clip;
+
+        #if CUBIC_HISTORY
+            mediump vec3 history_color = sample_catmull_rom(PreviousFrame, reproj_pos.xy / reproj_pos.w, registers.rt_metrics);
+        #else
+            mediump vec3 history_color = textureProjLod(PreviousFrame, reproj_pos.xyw, 0.0).rgb;
+        #endif
     #endif
 
     #if HDR

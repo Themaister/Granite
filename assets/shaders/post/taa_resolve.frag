@@ -7,6 +7,7 @@ precision highp int;
 #define CLAMP_VARIANCE 0
 #define HDR 1
 #define UNBIASED_LUMA 1
+#define CUBIC_HISTORY 1
 
 layout(set = 0, binding = 0) uniform mediump sampler2D CurrentFrame;
 #if HISTORY
@@ -17,7 +18,7 @@ layout(set = 0, binding = 2) uniform mediump sampler2D PreviousFrame;
 layout(std430, push_constant) uniform Registers
 {
     mat4 reproj;
-    vec2 inv_resolution;
+    vec4 rt_metrics;
 } registers;
 
 layout(location = 0) in vec2 vUV;
@@ -29,10 +30,16 @@ void main()
 #if HISTORY
     mediump vec3 current = SAMPLE_CURRENT(CurrentFrame, vUV, 0, 0);
 
-    float depth = sample_min_depth_box(CurrentDepth, vUV, registers.inv_resolution);
+    float depth = sample_min_depth_box(CurrentDepth, vUV, registers.rt_metrics.xy);
     vec4 clip = vec4(2.0 * vUV - 1.0, depth, 1.0);
     vec4 reproj_pos = registers.reproj * clip;
+
+#if CUBIC_HISTORY
+    mediump vec3 history_color = sample_catmull_rom(PreviousFrame, reproj_pos.xy / reproj_pos.w, registers.rt_metrics);
+#else
     mediump vec3 history_color = textureProjLod(PreviousFrame, reproj_pos.xyw, 0.0).rgb;
+#endif
+
     mediump float history_variance = textureLod(PreviousFrame, vUV, 0.0).a;
     #if HDR
         history_color = Tonemap(history_color);

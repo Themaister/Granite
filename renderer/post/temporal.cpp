@@ -156,7 +156,7 @@ void setup_taa_resolve(RenderGraph &graph, TemporalJitter &jitter, const std::st
 		struct Push
 		{
 			mat4 reproj;
-			vec2 inv_resolution;
+			vec4 inv_resolution;
 		};
 		Push push;
 
@@ -166,8 +166,10 @@ void setup_taa_resolve(RenderGraph &graph, TemporalJitter &jitter, const std::st
 				jitter.get_history_view_proj(1) *
 				jitter.get_history_inv_view_proj(0);
 
-		push.inv_resolution = vec2(1.0f / image.get_image().get_create_info().width,
-		                           1.0f / image.get_image().get_create_info().height);
+		push.inv_resolution = vec4(1.0f / image.get_image().get_create_info().width,
+		                           1.0f / image.get_image().get_create_info().height,
+		                           image.get_image().get_create_info().width,
+		                           image.get_image().get_create_info().height);
 
 		cmd.push_constants(&push, 0, sizeof(push));
 

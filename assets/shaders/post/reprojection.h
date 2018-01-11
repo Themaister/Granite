@@ -80,20 +80,27 @@ mediump vec3 clamp_history(mediump vec3 color,
     return clamp_box(color, lo, hi);
 }
 
-#define SAMPLE_CURRENT(tex, uv, x, y) \
-    (textureLodOffset(tex, uv, 0.0, ivec2(x, y)).rgb)
+#if HDR && YCgCo
+#define SAMPLE_CURRENT(tex, uv, x, y) RGB_to_YCgCo(Tonemap(textureLodOffset(tex, uv, 0.0, ivec2(x, y)).rgb))
+#elif HDR
+#define SAMPLE_CURRENT(tex, uv, x, y) Tonemap(textureLodOffset(tex, uv, 0.0, ivec2(x, y)).rgb)
+#elif YCgCo
+#define SAMPLE_CURRENT(tex, uv, x, y) RGB_to_YCgCo(textureLodOffset(tex, uv, 0.0, ivec2(x, y)).rgb)
+#else
+#define SAMPLE_CURRENT(tex, uv, x, y) (textureLodOffset(tex, uv, 0.0, ivec2(x, y)).rgb)
+#endif
 
 #define VARIANCE_CLIPPING 1
 
 mediump vec3 clamp_history_box(mediump vec3 history_color,
-                               mediump sampler2D CurrentFrame,
+                               mediump sampler2D Current,
                                vec2 UV,
                                mediump vec3 c11)
 {
-    mediump vec3 c01 = SAMPLE_CURRENT(CurrentFrame, UV, -1, 0);
-    mediump vec3 c21 = SAMPLE_CURRENT(CurrentFrame, UV, +1, 0);
-    mediump vec3 c10 = SAMPLE_CURRENT(CurrentFrame, UV, 0, -1);
-    mediump vec3 c12 = SAMPLE_CURRENT(CurrentFrame, UV, 0, +1);
+    mediump vec3 c01 = SAMPLE_CURRENT(Current, UV, -1, 0);
+    mediump vec3 c21 = SAMPLE_CURRENT(Current, UV, +1, 0);
+    mediump vec3 c10 = SAMPLE_CURRENT(Current, UV, 0, -1);
+    mediump vec3 c12 = SAMPLE_CURRENT(Current, UV, 0, +1);
 
     mediump vec3 lo_cross = c11;
     mediump vec3 hi_cross = c11;
@@ -106,10 +113,10 @@ mediump vec3 clamp_history_box(mediump vec3 history_color,
     hi_cross = max(hi_cross, c10);
     hi_cross = max(hi_cross, c12);
 
-    mediump vec3 c00 = SAMPLE_CURRENT(CurrentFrame, UV, -1, -1);
-    mediump vec3 c22 = SAMPLE_CURRENT(CurrentFrame, UV, +1, +1);
-    mediump vec3 c02 = SAMPLE_CURRENT(CurrentFrame, UV, -1, +1);
-    mediump vec3 c20 = SAMPLE_CURRENT(CurrentFrame, UV, +1, -1);
+    mediump vec3 c00 = SAMPLE_CURRENT(Current, UV, -1, -1);
+    mediump vec3 c22 = SAMPLE_CURRENT(Current, UV, +1, +1);
+    mediump vec3 c02 = SAMPLE_CURRENT(Current, UV, -1, +1);
+    mediump vec3 c20 = SAMPLE_CURRENT(Current, UV, +1, -1);
 
     mediump vec3 lo_box = lo_cross;
     mediump vec3 hi_box = hi_cross;
@@ -169,6 +176,11 @@ float sample_min_depth_box(sampler2D Depth, vec2 UV, vec2 inv_resolution)
     vec2 min0 = min(quad0.xy, quad1);
     float result = min(min0.x, min0.y);
     return min(result, quad0.z);
+}
+
+mediump float luminance(mediump vec3 color)
+{
+    return dot(color, vec3(0.29, 0.60, 0.11));
 }
 
 // From: https://gist.github.com/TheRealMJP/c83b8c0f46b63f3a88a5986f4fa982b1

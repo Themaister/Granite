@@ -238,7 +238,7 @@ void setup_taa_resolve(RenderGraph &graph, TemporalJitter &jitter, const std::st
 		Vulkan::CommandBufferUtil::draw_quad(cmd,
 		                                     "builtin://shaders/quad.vert",
 		                                     "builtin://shaders/post/taa_resolve.frag",
-		                                     {{ "HISTORY", prev ? 1 : 0 }});
+		                                     {{ "REPROJECTION_HISTORY", prev ? 1 : 0 }});
 	});
 }
 

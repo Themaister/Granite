@@ -2,18 +2,18 @@
 precision highp float;
 precision highp int;
 
-#define YCgCo 1
-#define HDR 1
-#define CLAMP_HISTORY 1
-#define UNBIASED_LUMA 1
-#define CUBIC_HISTORY 1
-#define MOTION_VECTORS 1
+#define REPROJECTION_YCgCo 1
+#define REPROJECTION_HDR 1
+#define REPROJECTION_CLAMP_HISTORY 1
+#define REPROJECTION_UNBIASED_LUMA 1
+#define REPROJECTION_CUBIC_HISTORY 1
+#define REPROJECTION_MOTION_VECTORS 1
 
 layout(set = 0, binding = 0) uniform mediump sampler2D CurrentFrame;
-#if HISTORY
+#if REPROJECTION_HISTORY
 layout(set = 0, binding = 1) uniform sampler2D CurrentDepth;
 layout(set = 0, binding = 2) uniform mediump sampler2D PreviousFrame;
-#if MOTION_VECTORS
+#if REPROJECTION_MOTION_VECTORS
 layout(set = 0, binding = 3) uniform sampler2D MVs;
 #endif
 #endif
@@ -30,63 +30,39 @@ layout(location = 0) out mediump vec3 Color;
 
 void main()
 {
-#if HISTORY
+#if REPROJECTION_HISTORY
     mediump vec3 current = SAMPLE_CURRENT(CurrentFrame, vUV, 0, 0);
 
-    #if MOTION_VECTORS
+    #if REPROJECTION_MOTION_VECTORS
         vec2 MV = sample_nearest_velocity(CurrentDepth, MVs, vUV, registers.rt_metrics.xy);
-        #if CUBIC_HISTORY
-            mediump vec3 history_color = sample_catmull_rom(PreviousFrame, vUV + MV, registers.rt_metrics);
+        #if REPROJECTION_CUBIC_HISTORY
+            mediump vec3 history_color = sample_catmull_rom(PreviousFrame, vUV - MV, registers.rt_metrics);
         #else
-            mediump vec3 history_color = textureLod(PreviousFrame, vUV + MV, 0.0).rgb;
+            mediump vec3 history_color = textureLod(PreviousFrame, vUV - MV, 0.0).rgb;
         #endif
     #else
         float depth = sample_min_depth_box(CurrentDepth, vUV, registers.rt_metrics.xy);
-
         vec4 clip = vec4(2.0 * vUV - 1.0, depth, 1.0);
         vec4 reproj_pos = registers.reproj * clip;
-
-        #if CUBIC_HISTORY
+        #if REPROJECTION_CUBIC_HISTORY
             mediump vec3 history_color = sample_catmull_rom(PreviousFrame, reproj_pos.xy / reproj_pos.w, registers.rt_metrics);
         #else
             mediump vec3 history_color = textureProjLod(PreviousFrame, reproj_pos.xyw, 0.0).rgb;
         #endif
     #endif
 
-    #if HDR
-        history_color = Tonemap(history_color);
-    #endif
-    #if YCgCo
-        history_color = RGB_to_YCgCo(history_color);
-    #endif
+    history_color = convert_input(history_color);
 
     mediump float lerp_factor = 0.1;
-
-    #if CLAMP_HISTORY
+    #if REPROJECTION_CLAMP_HISTORY
         history_color = clamp_history_box(history_color, CurrentFrame, vUV, current);
-        #if UNBIASED_LUMA
-            // Adjust lerp factor.
-            #if YCgCo
-                mediump float clamped_luma = history_color.x;
-                mediump float current_luma = current.x;
-            #else
-                mediump float clamped_luma = luminance(history_color);
-                mediump float current_luma = luminance(current);
-            #endif
-            mediump float diff = abs(current_luma - clamped_luma) / max(current_luma, max(clamped_luma, 0.001));
-            diff = 1.0 - diff;
-            lerp_factor *= 0.9 * diff * diff + 0.1;
+        #if REPROJECTION_UNBIASED_LUMA
+            lerp_factor *= unbiased_luma_weight(history_color, current);
         #endif
     #endif
 
     mediump vec3 out_color = mix(history_color, current, lerp_factor);
-    #if YCgCo
-        out_color = clamp(YCgCo_to_RGB(out_color), 0.0, 0.999);
-    #endif
-    #if HDR
-        out_color = TonemapInvert(out_color);
-    #endif
-    Color = out_color;
+    Color = convert_to_output(out_color);
 #else
     Color = textureLod(CurrentFrame, vUV, 0.0).rgb;
 #endif

@@ -1,10 +1,60 @@
 #ifndef REPROJECTION_H_
 #define REPROJECTION_H_
 
-mediump float RCP(mediump float v) { return 1.0 / v; }
-mediump float Max3(mediump float x, mediump float y, mediump float z) { return max(x, max(y, z)); }
-mediump vec3 Tonemap(mediump vec3 c) { return c * RCP(Max3(c.r, c.g, c.b) + 1.0); }
-mediump vec3 TonemapInvert(mediump vec3 c) { return c * RCP(1.0 - Max3(c.r, c.g, c.b)); }
+#ifndef REPROJECTION_HDR
+#define REPROJECTION_HDR 1
+#endif
+#ifndef REPROJECTION_YCgCo
+#define REPROJECTION_YCgCo 1
+#endif
+
+#define REPROJECTION_CLAMP_METHOD_AABB 0
+#define REPROJECTION_CLAMP_METHOD_CLAMP 1
+#ifndef REPROJECTION_CLAMP_METHOD
+#define REPROJECTION_CLAMP_METHOD REPROJECTION_CLAMP_METHOD_AABB
+#endif
+
+#ifndef REPROJECTION_VARIANCE_CLIPPING
+#define REPROJECTION_VARIANCE_CLIPPING 1
+#endif
+
+#define NEIGHBOR_METHOD_5TAP_CROSS 0
+#define NEIGHBOR_METHOD_5TAP_DIAMOND 1
+#define NEIGHBOR_METHOD_3x3 2
+#define NEIGHBOR_METHOD_ROUNDED_CORNER 3
+#define NEIGHBOR_METHOD_ROUNDED_CORNER_VARIANCE 4
+#define NEIGHBOR_METHOD_VARIANCE 5
+#ifndef NEIGHBOR_METHOD
+#define NEIGHBOR_METHOD NEIGHBOR_METHOD_ROUNDED_CORNER_VARIANCE
+#endif
+
+#define NEAREST_METHOD_5TAP_CROSS 0
+#define NEAREST_METHOD_5TAP_DIAMOND 1
+#define NEAREST_METHOD_3x3 2
+#ifndef NEAREST_METHOD
+#define NEAREST_METHOD NEAREST_METHOD_3x3
+#endif
+
+// max3 based tonemapper.
+mediump float RCP(mediump float v)
+{
+    return 1.0 / v;
+}
+
+mediump float Max3(mediump float x, mediump float y, mediump float z)
+{
+    return max(x, max(y, z));
+}
+
+mediump vec3 Tonemap(mediump vec3 c)
+{
+    return c * RCP(Max3(c.r, c.g, c.b) + 1.0);
+}
+
+mediump vec3 TonemapInvert(mediump vec3 c)
+{
+    return c * RCP(1.0 - Max3(c.r, c.g, c.b));
+}
 
 mediump vec3 RGB_to_YCgCo(mediump vec3 c)
 {
@@ -18,16 +68,14 @@ mediump vec3 YCgCo_to_RGB(mediump vec3 c)
 {
     mediump float tmp = c.x - c.y;
     return vec3(tmp + c.z, c.x + c.y, tmp - c.z);
-
     // c.x - c.y + c.z = [0.25, 0.5, 0.25] - [-0.25, 0.5, -0.25] + [0.5, 0.0, -0.5] = [1.0, 0.0, 0.0]
     // c.x + c.y       = [0.25, 0.5, 0.25] + [-0.25, 0.5, -0.25]                    = [0.0, 1.0, 0.0]
     // c.x - c.y - c.z = [0.25, 0.5, 0.25] - [-0.25, 0.5, -0.25] - [0.5, 0.0, -0.5] = [0.0, 0.0, 1.0]
 }
 
-#define CLAMP_AABB 1
 mediump vec3 clamp_box(mediump vec3 color, mediump vec3 lo, mediump vec3 hi)
 {
-#if CLAMP_AABB
+#if REPROJECTION_CLAMP_METHOD == REPROJECTION_CLAMP_METHOD_AABB
     mediump vec3 center = 0.5 * (lo + hi);
     mediump vec3 radius = max(0.5 * (hi - lo), vec3(0.0001));
     mediump vec3 v = color - center;
@@ -38,100 +86,151 @@ mediump vec3 clamp_box(mediump vec3 color, mediump vec3 lo, mediump vec3 hi)
         return center + v / max_unit;
     else
         return color;
-#else
+#elif REPROJECTION_CLAMP_METHOD == REPROJECTION_CLAMP_METHOD_CLAMP
     return clamp(color, lo, hi);
-#endif
-}
-
-mediump vec3 clamp_history(mediump vec3 color,
-                           mediump vec3 c0,
-                           mediump vec3 c1,
-                           mediump vec3 c2,
-                           mediump vec3 c3)
-{
-    mediump vec3 lo = c0;
-    mediump vec3 hi = c0;
-    lo = min(lo, c1);
-    lo = min(lo, c2);
-    lo = min(lo, c3);
-    hi = max(hi, c1);
-    hi = max(hi, c2);
-    hi = max(hi, c3);
-    return clamp_box(color, lo, hi);
-}
-
-mediump vec3 clamp_history(mediump vec3 color,
-                           mediump vec3 c0,
-                           mediump vec3 c1,
-                           mediump vec3 c2,
-                           mediump vec3 c3,
-                           mediump vec3 c4)
-{
-    mediump vec3 lo = c0;
-    mediump vec3 hi = c0;
-    lo = min(lo, c1);
-    lo = min(lo, c2);
-    lo = min(lo, c3);
-    lo = min(lo, c4);
-    hi = max(hi, c1);
-    hi = max(hi, c2);
-    hi = max(hi, c3);
-    hi = max(hi, c4);
-    return clamp_box(color, lo, hi);
-}
-
-#if HDR && YCgCo
-#define SAMPLE_CURRENT(tex, uv, x, y) RGB_to_YCgCo(Tonemap(textureLodOffset(tex, uv, 0.0, ivec2(x, y)).rgb))
-#elif HDR
-#define SAMPLE_CURRENT(tex, uv, x, y) Tonemap(textureLodOffset(tex, uv, 0.0, ivec2(x, y)).rgb)
-#elif YCgCo
-#define SAMPLE_CURRENT(tex, uv, x, y) RGB_to_YCgCo(textureLodOffset(tex, uv, 0.0, ivec2(x, y)).rgb)
 #else
-#define SAMPLE_CURRENT(tex, uv, x, y) (textureLodOffset(tex, uv, 0.0, ivec2(x, y)).rgb)
+#error "No clamp method selected."
 #endif
+}
 
-#define VARIANCE_CLIPPING 1
+mediump vec3 clamp_history4(
+        mediump vec3 color,
+        mediump vec3 c0,
+        mediump vec3 c1,
+        mediump vec3 c2,
+        mediump vec3 c3)
+{
+    mediump vec3 lo = c0;
+    mediump vec3 hi = c0;
+    lo = min(lo, c1);
+    lo = min(lo, c2);
+    lo = min(lo, c3);
+    hi = max(hi, c1);
+    hi = max(hi, c2);
+    hi = max(hi, c3);
+    return clamp_box(color, lo, hi);
+}
+
+
+mediump vec3 convert_input(mediump vec3 color)
+{
+#if REPROJECTION_HDR && REPROJECTION_YCgCo
+    return RGB_to_YCgCo(Tonemap(color));
+#elif REPROJECTION_HDR
+    return Tonemap(color);
+#elif REPROJECTION_YCgCo
+    return RGB_to_YCgCo(color);
+#else
+    return color;
+#endif
+}
+
+#define SAMPLE_CURRENT(tex, uv, x, y) convert_input(textureLodOffset(tex, uv, 0.0, ivec2(x, y)).rgb)
+
+mediump vec3 convert_to_output(mediump vec3 color)
+{
+#if REPROJECTION_HDR && REPROJECTION_YCgCo
+    return TonemapInvert(clamp(YCgCo_to_RGB(color), 0.0, 0.999));
+#elif REPROJECTION_HDR
+    return TonemapInvert(color);
+#elif REPROJECTION_YCgCo
+    return YCgCo_to_RGB(color);
+#else
+    return color;
+#endif
+}
+
+#if NEIGHBOR_METHOD == NEIGHBOR_METHOD_5TAP_CROSS
+	#define NEED_CROSS 1
+	#define NEED_DIAMOND 0
+	#define NEED_MINMAX 1
+	#define NEED_CORNER_ROUNDING 0
+	#define NEED_VARIANCE 0
+#elif NEIGHBOR_METHOD == NEIGHBOR_METHOD_5TAP_DIAMOND
+	#define NEED_CROSS 0
+	#define NEED_DIAMOND 1
+	#define NEED_MINMAX 1
+	#define NEED_CORNER_ROUNDING 0
+	#define NEED_VARIANCE 0
+#elif NEIGHBOR_METHOD == NEIGHBOR_METHOD_3x3
+	#define NEED_CROSS 1
+	#define NEED_DIAMOND 1
+	#define NEED_MINMAX 1
+	#define NEED_CORNER_ROUNDING 0
+	#define NEED_VARIANCE 0
+#elif NEIGHBOR_METHOD == NEIGHBOR_METHOD_ROUNDED_CORNER
+	#define NEED_CROSS 1
+	#define NEED_DIAMOND 1
+	#define NEED_MINMAX 1
+	#define NEED_CORNER_ROUNDING 1
+	#define NEED_VARIANCE 0
+#elif NEIGHBOR_METHOD == NEIGHBOR_METHOD_ROUNDED_CORNER_VARIANCE
+	#define NEED_CROSS 1
+	#define NEED_DIAMOND 1
+	#define NEED_MINMAX 1
+	#define NEED_CORNER_ROUNDING 1
+	#define NEED_VARIANCE 1
+#elif NEIGHBOR_METHOD == NEIGHBOR_METHOD_VARIANCE
+	#define NEED_CROSS 1
+	#define NEED_DIAMOND 1
+	#define NEED_MINMAX 0
+	#define NEED_CORNER_ROUNDING 0
+	#define NEED_VARIANCE 1
+#else
+#error "Unknown neighbor method."
+#endif
 
 mediump vec3 clamp_history_box(mediump vec3 history_color,
                                mediump sampler2D Current,
                                vec2 UV,
                                mediump vec3 c11)
 {
+#if NEED_MINMAX
+	mediump vec3 lo = c11;
+	mediump vec3 hi = c11;
+#endif
+
+#if NEED_CROSS
     mediump vec3 c01 = SAMPLE_CURRENT(Current, UV, -1, 0);
     mediump vec3 c21 = SAMPLE_CURRENT(Current, UV, +1, 0);
     mediump vec3 c10 = SAMPLE_CURRENT(Current, UV, 0, -1);
     mediump vec3 c12 = SAMPLE_CURRENT(Current, UV, 0, +1);
+    lo = min(lo, c01);
+    lo = min(lo, c21);
+    lo = min(lo, c10);
+    lo = min(lo, c12);
+    hi = max(hi, c01);
+    hi = max(hi, c21);
+    hi = max(hi, c10);
+    hi = max(hi, c12);
+#endif
 
-    mediump vec3 lo_cross = c11;
-    mediump vec3 hi_cross = c11;
-    lo_cross = min(lo_cross, c01);
-    lo_cross = min(lo_cross, c21);
-    lo_cross = min(lo_cross, c10);
-    lo_cross = min(lo_cross, c12);
-    hi_cross = max(hi_cross, c01);
-    hi_cross = max(hi_cross, c21);
-    hi_cross = max(hi_cross, c10);
-    hi_cross = max(hi_cross, c12);
+#if NEED_CORNER_ROUNDING
+    mediump vec3 corner_lo = lo;
+	mediump vec3 corner_hi = hi;
+#endif
 
+#if NEED_DIAMOND
     mediump vec3 c00 = SAMPLE_CURRENT(Current, UV, -1, -1);
     mediump vec3 c22 = SAMPLE_CURRENT(Current, UV, +1, +1);
     mediump vec3 c02 = SAMPLE_CURRENT(Current, UV, -1, +1);
     mediump vec3 c20 = SAMPLE_CURRENT(Current, UV, +1, -1);
+    lo = min(lo, c00);
+    lo = min(lo, c22);
+    lo = min(lo, c02);
+    lo = min(lo, c20);
+    hi = max(hi, c00);
+    hi = max(hi, c22);
+    hi = max(hi, c02);
+    hi = max(hi, c20);
+#endif
 
-    mediump vec3 lo_box = lo_cross;
-    mediump vec3 hi_box = hi_cross;
-    lo_box = min(lo_box, c00);
-    lo_box = min(lo_box, c22);
-    lo_box = min(lo_box, c02);
-    lo_box = min(lo_box, c20);
-    hi_box = max(hi_box, c00);
-    hi_box = max(hi_box, c22);
-    hi_box = max(hi_box, c02);
-    hi_box = max(hi_box, c20);
-    lo_cross = mix(lo_cross, lo_box, 0.5);
-    hi_cross = mix(hi_cross, hi_box, 0.5);
+#if NEED_CORNER_ROUNDING
+	lo = 0.5 * (corner_lo + lo);
+	hi = 0.5 * (corner_hi + hi);
+#endif
 
-#if VARIANCE_CLIPPING
+#if NEED_VARIANCE
     vec3 m1 = (c00 + c01 + c02 + c10 + c11 + c12 + c20 + c21 + c22) / 9.0;
     vec3 m2 =
         c00 * c00 + c01 * c01 + c02 * c02 +
@@ -139,24 +238,43 @@ mediump vec3 clamp_history_box(mediump vec3 history_color,
         c20 * c20 + c21 * c21 + c22 * c22;
     vec3 sigma = sqrt(max(m2 / 9.0 - m1 * m1, 0.0));
     const float gamma = 1.0;
-    lo_cross = max(lo_cross, m1 - gamma * sigma);
-    hi_cross = min(hi_cross, m1 + gamma * sigma);
+	#if NEED_MINMAX
+		lo = max(lo, m1 - gamma * sigma);
+		hi = min(hi, m1 + gamma * sigma);
+	#else
+		mediump vec3 lo = m1 - gamma * sigma;
+		mediump vec3 hi = m1 + gamma * sigma;
+	#endif
 #endif
 
-    return clamp_box(history_color, lo_cross, hi_cross);
+    return clamp_box(history_color, lo, hi);
+}
+
+mediump float luminance(mediump vec3 color)
+{
+#if REPROJECTION_YCgCo
+    return color.x;
+#else
+	return dot(color, vec3(0.29, 0.60, 0.11));
+#endif
+}
+
+mediump float unbiased_luma_weight(mediump vec3 history, mediump vec3 current)
+{
+	// Adjust lerp factor.
+	mediump float clamped_luma = luminance(history);
+	mediump float current_luma = luminance(current);
+	mediump float diff = abs(current_luma - clamped_luma) / max(current_luma, max(clamped_luma, 0.001));
+	diff = 1.0 - diff;
+	return 0.9 * diff * diff + 0.1;
 }
 
 mediump vec3 deflicker(mediump vec3 history_color, mediump vec3 clamped_history, inout mediump float history_variance)
 {
     // If we end up clamping, we either have a ghosting scenario, in which we should just see this for a frame or two,
     // or, we have a persistent pattern of clamping, which can be observed as flickering, so dampen this quickly.
-    #if YCgCo
-        mediump float clamped_luma = clamped_history.x;
-        mediump float history_luma = history_color.x;
-    #else
-        mediump float clamped_luma = dot(clamped_history, vec3(0.29, 0.60, 0.11));
-        mediump float history_luma = dot(history_color, vec3(0.29, 0.60, 0.11));
-    #endif
+	mediump float clamped_luma = luminance(clamped_history);
+	mediump float history_luma = luminance(history_color);
 
     mediump vec3 result = mix(clamped_history, history_color, history_variance);
 
@@ -166,8 +284,9 @@ mediump vec3 deflicker(mediump vec3 history_color, mediump vec3 clamped_history,
     return result;
 }
 
-float sample_min_depth_box(sampler2D Depth, vec2 UV, vec2 inv_resolution)
+float sample_nearest_depth_box(sampler2D Depth, vec2 UV, vec2 inv_resolution)
 {
+#if NEAREST_METHOD == NEAREST_METHOD_5TAP_CROSS
 	// Sample nearest "velocity" from cross.
     // We reproject using depth buffer instead here.
     vec2 ShiftUV = UV - 0.5 * inv_resolution;
@@ -176,10 +295,31 @@ float sample_min_depth_box(sampler2D Depth, vec2 UV, vec2 inv_resolution)
     vec2 min0 = min(quad0.xy, quad1);
     float result = min(min0.x, min0.y);
     return min(result, quad0.z);
+#elif NEAREST_METHOD == NEAREST_METHOD_5TAP_DIAMOND
+	float d0 = textureLodOffset(Depth, UV, 0.0, ivec2(-1, -1)).x;
+	float d1 = textureLodOffset(Depth, UV, 0.0, ivec2(+1, -1)).x;
+	float d2 = textureLodOffset(Depth, UV, 0.0, ivec2(-1, +1)).x;
+	float d3 = textureLodOffset(Depth, UV, 0.0, ivec2(+1, +1)).x;
+	float d4 = textureLod(Depth, UV, 0.0).x;
+	return min(d4, min(min(d0, d1), min(d2, d3)));
+#elif NEAREST_METHOD == NEAREST_METHOD_3x3
+    vec2 ShiftUV = UV - 0.5 * inv_resolution;
+    vec4 quad0 = textureGather(Depth, ShiftUV, 0);
+    vec2 quad1 = textureGatherOffset(Depth, ShiftUV, ivec2(1, 0), 0).yz;
+    vec2 quad2 = textureGatherOffset(Depth, ShiftUV, ivec2(0, 1), 0).xy;
+    float quad3 = textureLodOffset(Depth, UV, 0.0, ivec2(1)).x;
+	vec4 m0 = min(quad0, vec4(quad1, quad2));
+    vec2 m1 = min(m0.xy, m0.zw);
+    float m2 = min(m1.x, m1.y);
+    return min(m2, quad3);
+#else
+#error "Unknown nearest method."
+#endif
 }
 
 vec2 sample_nearest_velocity(sampler2D Depth, sampler2D MVs, vec2 UV, vec2 inv_resolution)
 {
+#if NEAREST_METHOD == NEAREST_METHOD_5TAP_CROSS
     vec2 ShiftUV = UV - 0.5 * inv_resolution;
     vec3 depth_quad0 = textureGather(Depth, ShiftUV).xyz;
     vec2 depth_quad1 = textureGatherOffset(Depth, ShiftUV, ivec2(1)).xz;
@@ -196,12 +336,51 @@ vec2 sample_nearest_velocity(sampler2D Depth, sampler2D MVs, vec2 UV, vec2 inv_r
     if (depth_quad0.z < d) { mv = vec2(mvx_quad0.z, mvy_quad0.z); d = depth_quad0.z; }
     if (depth_quad1.x < d) { mv = vec2(mvx_quad1.x, mvy_quad1.x); d = depth_quad1.x; }
     if (depth_quad1.y < d) { mv = vec2(mvx_quad1.y, mvy_quad1.y);                    }
-    return mv;
-}
+#elif NEAREST_METHOD == NEAREST_METHOD_5TAP_DIAMOND
+    float d = textureLod(Depth, UV, 0.0).x;
+    float d0 = textureLodOffset(Depth, UV, 0.0, ivec2(-1, -1)).x;
+	float d1 = textureLodOffset(Depth, UV, 0.0, ivec2(+1, -1)).x;
+	float d2 = textureLodOffset(Depth, UV, 0.0, ivec2(-1, +1)).x;
+	float d3 = textureLodOffset(Depth, UV, 0.0, ivec2(+1, +1)).x;
 
-mediump float luminance(mediump vec3 color)
-{
-    return dot(color, vec3(0.29, 0.60, 0.11));
+    vec2 mv = textureLod(MVs, UV, 0.0).xy;
+    vec2 mv0 = textureLodOffset(MVs, UV, 0.0, ivec2(-1, -1)).xy;
+    vec2 mv1 = textureLodOffset(MVs, UV, 0.0, ivec2(+1, -1)).xy;
+    vec2 mv2 = textureLodOffset(MVs, UV, 0.0, ivec2(-1, +1)).xy;
+    vec2 mv3 = textureLodOffset(MVs, UV, 0.0, ivec2(+1, +1)).xy;
+
+    if (d0 < d) { mv = mv0; d = d0; }
+    if (d1 < d) { mv = mv1; d = d1; }
+    if (d2 < d) { mv = mv2; d = d2; }
+    if (d3 < d) { mv = mv3;         }
+    return mv;
+#elif NEAREST_METHOD == NEAREST_METHOD_3x3
+    vec2 mv = textureLodOffset(MVs, UV, 0.0, ivec2(1)).xy;
+    float d = textureLodOffset(Depth, UV, 0.0, ivec2(1)).x;
+
+    vec2 ShiftUV = UV - 0.5 * inv_resolution;
+    vec4 quad0 = textureGather(Depth, ShiftUV, 0);
+    vec2 quad1 = textureGatherOffset(Depth, ShiftUV, ivec2(1, 0), 0).yz;
+    vec2 quad2 = textureGatherOffset(Depth, ShiftUV, ivec2(0, 1), 0).xy;
+
+    vec4 mvx_quad0 = textureGather(MVs, ShiftUV, 0);
+    vec2 mvx_quad1 = textureGatherOffset(MVs, ShiftUV, ivec2(1, 0), 0).yz;
+    vec2 mvx_quad2 = textureGatherOffset(MVs, ShiftUV, ivec2(0, 1), 0).xy;
+
+    vec4 mvy_quad0 = textureGather(MVs, ShiftUV, 1);
+    vec2 mvy_quad1 = textureGatherOffset(MVs, ShiftUV, ivec2(1, 0), 1).yz;
+    vec2 mvy_quad2 = textureGatherOffset(MVs, ShiftUV, ivec2(0, 1), 1).xy;
+
+    if (quad0.x < d) { mv = vec2(mvx_quad0.x, mvy_quad0.x); d = quad0.x; }
+    if (quad0.y < d) { mv = vec2(mvx_quad0.y, mvy_quad0.y); d = quad0.y; }
+    if (quad0.z < d) { mv = vec2(mvx_quad0.z, mvy_quad0.z); d = quad0.z; }
+    if (quad0.w < d) { mv = vec2(mvx_quad0.w, mvy_quad0.w); d = quad0.w; }
+    if (quad1.x < d) { mv = vec2(mvx_quad1.x, mvy_quad1.x); d = quad1.x; }
+    if (quad1.y < d) { mv = vec2(mvx_quad1.y, mvy_quad1.y); d = quad1.y; }
+    if (quad2.x < d) { mv = vec2(mvx_quad2.x, mvy_quad2.x); d = quad2.x; }
+    if (quad2.y < d) { mv = vec2(mvx_quad2.y, mvy_quad2.y);              }
+    return mv;
+#endif
 }
 
 // From: https://gist.github.com/TheRealMJP/c83b8c0f46b63f3a88a5986f4fa982b1

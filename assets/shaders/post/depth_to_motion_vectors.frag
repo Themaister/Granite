@@ -19,7 +19,7 @@ void main()
     if (reproj.w > 0.0)
     {
         vec2 uv = reproj.xy / reproj.w;
-        MV = uv - vUV;
+        MV = vUV - uv;
     }
     else
     {

@@ -33,7 +33,6 @@ public:
 	{
 		FXAA_2Phase,
 		SMAA_T2X,
-		SMAA_2Phase,
 		TAA_8Phase,
 		None
 	};
@@ -48,6 +47,7 @@ public:
 	const mat4 &get_history_jittered_view_proj(int frames) const;
 	const mat4 &get_history_jittered_inv_view_proj(int frames) const;
 	unsigned get_jitter_phase() const;
+	unsigned get_unmasked_phase() const;
 
 	Type get_jitter_type() const
 	{

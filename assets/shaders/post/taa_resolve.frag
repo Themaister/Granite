@@ -41,7 +41,7 @@ void main()
             mediump vec3 history_color = textureLod(PreviousFrame, vUV - MV, 0.0).rgb;
         #endif
     #else
-        float depth = sample_min_depth_box(CurrentDepth, vUV, registers.rt_metrics.xy);
+        float depth = sample_nearest_depth_box(CurrentDepth, vUV, registers.rt_metrics.xy);
         vec4 clip = vec4(2.0 * vUV - 1.0, depth, 1.0);
         vec4 reproj_pos = registers.reproj * clip;
         #if REPROJECTION_CUBIC_HISTORY

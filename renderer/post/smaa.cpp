@@ -36,8 +36,6 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 	{
 		jitter.init(TemporalJitter::Type::SMAA_T2X,
 		            vec2(graph.get_backbuffer_dimensions().width, graph.get_backbuffer_dimensions().height));
-		//jitter.init(TemporalJitter::Type::SMAA_2Phase,
-		//            vec2(graph.get_backbuffer_dimensions().width, graph.get_backbuffer_dimensions().height));
 	}
 	else
 		jitter.init(TemporalJitter::Type::None, vec2(1.0f));
@@ -169,53 +167,42 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 
 	if (t2x_enable)
 	{
-		bool sharpen = jitter.get_jitter_type() == TemporalJitter::Type::SMAA_2Phase;
-
 		auto &smaa_resolve = graph.add_pass("smaa-t2x-resolve", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 		smaa_resolve.add_color_output(output, smaa_output);
 		smaa_resolve.add_texture_input("smaa-sample");
 		smaa_resolve.add_texture_input(input_depth);
+		smaa_resolve.add_history_input("smaa-sample");
 
-		if (sharpen)
-		{
-			smaa_resolve.add_color_output("smaa-sharpen", smaa_output);
-			smaa_resolve.add_history_input("smaa-sharpen");
-		}
-		else
-		{
-			smaa_resolve.add_history_input("smaa-sample");
-
-			AttachmentInfo variance;
-			variance.size_relative_name = input;
-			variance.format = VK_FORMAT_R8_UNORM;
-			variance.size_class = SizeClass::InputRelative;
-			smaa_resolve.add_color_output("smaa-variance", variance);
-			smaa_resolve.add_history_input("smaa-variance");
-		}
+#if 0
+		AttachmentInfo variance;
+		variance.size_relative_name = input;
+		variance.format = VK_FORMAT_R8_UNORM;
+		variance.size_class = SizeClass::InputRelative;
+		smaa_resolve.add_color_output("smaa-variance", variance);
+		smaa_resolve.add_history_input("smaa-variance");
+#endif
 
 		smaa_resolve.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
-			bool resolve_sharpen = jitter.get_jitter_type() == TemporalJitter::Type::SMAA_2Phase;
 			auto &current = graph.get_physical_texture_resource(smaa_resolve.get_texture_inputs()[0]->get_physical_index());
 			auto *prev = graph.get_physical_history_texture_resource(smaa_resolve.get_history_inputs()[0]->get_physical_index());
 			auto &depth = graph.get_physical_texture_resource(smaa_resolve.get_texture_inputs()[1]->get_physical_index());
 
-			cmd.set_texture(0, 0, current, Vulkan::StockSampler::LinearClamp);
+			cmd.set_texture(0, 0, current, Vulkan::StockSampler::NearestClamp);
 			if (prev)
 			{
-				cmd.set_texture(0, 1, *prev, Vulkan::StockSampler::LinearClamp);
-				cmd.set_texture(0, 2, depth, Vulkan::StockSampler::NearestClamp);
-				if (!resolve_sharpen)
-				{
-					cmd.set_texture(0, 3,
-					                *graph.get_physical_history_texture_resource(smaa_resolve.get_history_inputs()[1]->get_physical_index()),
-					                Vulkan::StockSampler::NearestClamp);
-				}
+				cmd.set_texture(0, 1, depth, Vulkan::StockSampler::NearestClamp);
+				cmd.set_texture(0, 2, *prev, Vulkan::StockSampler::LinearClamp);
+#if 0
+				cmd.set_texture(0, 4,
+				                *graph.get_physical_history_texture_resource(smaa_resolve.get_history_inputs()[1]->get_physical_index()),
+				                Vulkan::StockSampler::NearestClamp);
+#endif
 			}
 
 			struct Push
 			{
 				mat4 reproj;
-				vec2 inv_resolution;
+				vec3 inv_resolution_seed;
 			};
 			Push push;
 
@@ -225,27 +212,16 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 				jitter.get_history_view_proj(1) *
 				jitter.get_history_inv_view_proj(0);
 
-			push.inv_resolution = vec2(1.0f / current.get_image().get_create_info().width,
-			                           1.0f / current.get_image().get_create_info().height);
+			push.inv_resolution_seed = vec3(1.0f / current.get_image().get_create_info().width,
+			                                1.0f / current.get_image().get_create_info().height,
+			                                float(jitter.get_unmasked_phase() & 1023));
 
 			cmd.push_constants(&push, 0, sizeof(push));
 			Vulkan::CommandBufferUtil::set_quad_vertex_state(cmd);
-
-			if (resolve_sharpen)
-			{
-				Vulkan::CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/post/aa_sharpen_resolve.frag",
-				                                     {{ "HISTORY", prev ? 1 : 0 },
-				                                      { "HORIZONTAL", jitter.get_jitter_phase() == 0 ? 1 : 0 },
-				                                      { "VERTICAL", jitter.get_jitter_phase() == 1 ? 1 : 0 }
-				                                     });
-			}
-			else
-			{
-				Vulkan::CommandBufferUtil::draw_quad(cmd,
-				                                     "builtin://shaders/quad.vert",
-				                                     "builtin://shaders/post/temporal_reproject.frag",
-				                                     {{"HISTORY", prev ? 1 : 0}});
-			}
+			Vulkan::CommandBufferUtil::draw_quad(cmd,
+			                                     "builtin://shaders/quad.vert",
+			                                     "builtin://shaders/post/smaa_t2x_resolve.frag",
+			                                     {{ "REPROJECTION_HISTORY", prev ? 1 : 0 }});
 		});
 	}
 }

@@ -190,9 +190,9 @@ private:
 		bool show_ui = true;
 		bool fxaa = false;
 		bool fxaa_temporal = false;
-		bool smaa = false;
-		bool smaa_t2x = false;
-		bool taa = true;
+		bool smaa = true;
+		bool smaa_t2x = true;
+		bool taa = false;
 	};
 	Config config;
 

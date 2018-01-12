@@ -3,7 +3,7 @@ precision highp float;
 precision highp int;
 
 layout(set = 0, binding = 0) uniform mediump sampler2D uInput;
-#if HISTORY
+#if REPROJECTION_HISTORY
 layout(set = 0, binding = 1) uniform mediump sampler2D uHistoryInput;
 layout(set = 0, binding = 2) uniform sampler2D uDepth;
 #endif
@@ -17,9 +17,12 @@ layout(push_constant, std430) uniform Registers
     vec2 inv_resolution;
 } registers;
 
-#define YCgCo 1
-#define CLAMP_HISTORY 1
-#define CLAMP_VARIANCE 1
+#define REPROJECTION_YCgCo 1
+#define REPROJECTION_HDR 0
+#define REPROJECTION_CLAMP_HISTORY 1
+#define REPROJECTION_UNBIASED_LUMA 1
+#define REPROJECTION_CUBIC_HISTORY 1
+#define REPROJECTION_MOTION_VECTORS 1
 #include "reprojection.h"
 
 void main()
@@ -49,12 +52,10 @@ void main()
         mediump vec3 h1 = textureLod(uInput, vUV + vec2(+1.0, 0.5) * registers.inv_resolution, 0.0).rgb;
     #endif
 
-    #if YCgCo
-        c1 = RGB_to_YCgCo(c1);
-        c2 = RGB_to_YCgCo(c2);
-        h0 = RGB_to_YCgCo(h0);
-        h1 = RGB_to_YCgCo(h1);
-    #endif
+    c1 = convert_input(c1);
+    c2 = convert_input(c2);
+    h0 = convert_input(h0);
+    h1 = convert_input(h1);
 #endif
 
 #if YCgCo && HISTORY

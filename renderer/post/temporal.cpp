@@ -35,7 +35,6 @@ void TemporalJitter::init(Type type, vec2 backbuffer_resolution)
 	switch (type)
 	{
 	case Type::FXAA_2Phase:
-	case Type::SMAA_2Phase:
 		jitter_mask = 1;
 		phase = 0;
 		jitter_table[0] = translate(2.0f * vec3(0.5f / backbuffer_resolution.x, 0.0f, 0.0f));
@@ -114,6 +113,11 @@ void TemporalJitter::reset()
 unsigned TemporalJitter::get_jitter_phase() const
 {
 	return phase & jitter_mask;
+}
+
+unsigned TemporalJitter::get_unmasked_phase() const
+{
+	return phase;
 }
 
 void setup_taa_resolve(RenderGraph &graph, TemporalJitter &jitter, const std::string &input,

@@ -173,10 +173,10 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 		smaa_resolve.add_texture_input(input_depth);
 		smaa_resolve.add_history_input("smaa-sample");
 
-#if 0
+#if 1
 		AttachmentInfo variance;
 		variance.size_relative_name = input;
-		variance.format = VK_FORMAT_R8_UNORM;
+		variance.format = VK_FORMAT_R16G16B16A16_SFLOAT;
 		variance.size_class = SizeClass::InputRelative;
 		smaa_resolve.add_color_output("smaa-variance", variance);
 		smaa_resolve.add_history_input("smaa-variance");
@@ -192,10 +192,10 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 			{
 				cmd.set_texture(0, 1, depth, Vulkan::StockSampler::NearestClamp);
 				cmd.set_texture(0, 2, *prev, Vulkan::StockSampler::LinearClamp);
-#if 0
+#if 1
 				cmd.set_texture(0, 4,
 				                *graph.get_physical_history_texture_resource(smaa_resolve.get_history_inputs()[1]->get_physical_index()),
-				                Vulkan::StockSampler::NearestClamp);
+				                Vulkan::StockSampler::LinearClamp);
 #endif
 			}
 

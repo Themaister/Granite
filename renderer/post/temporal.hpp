@@ -34,6 +34,7 @@ public:
 		FXAA_2Phase,
 		SMAA_T2X,
 		TAA_8Phase,
+		TAA_16Phase,
 		None
 	};
 	TemporalJitter();

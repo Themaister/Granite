@@ -61,6 +61,27 @@ void TemporalJitter::init(Type type, vec2 backbuffer_resolution)
 		jitter_table[7] = translate(0.125f * vec3(-3.0f / backbuffer_resolution.x, +5.0f / backbuffer_resolution.y, 0.0f));
 		break;
 
+	case Type::TAA_16Phase:
+		jitter_mask = 15;
+		phase = 0;
+		jitter_table[ 0] = translate(0.125f * vec3(-8.0f / backbuffer_resolution.x, 0.0f / backbuffer_resolution.y, 0.0f));
+		jitter_table[ 1] = translate(0.125f * vec3(-6.0f / backbuffer_resolution.x, -4.0f / backbuffer_resolution.y, 0.0f));
+		jitter_table[ 2] = translate(0.125f * vec3(-3.0f / backbuffer_resolution.x, -2.0f / backbuffer_resolution.y, 0.0f));
+		jitter_table[ 3] = translate(0.125f * vec3(-2.0f / backbuffer_resolution.x, -6.0f / backbuffer_resolution.y, 0.0f));
+		jitter_table[ 4] = translate(0.125f * vec3(1.0f / backbuffer_resolution.x, -1.0f / backbuffer_resolution.y, 0.0f));
+		jitter_table[ 5] = translate(0.125f * vec3(2.0f / backbuffer_resolution.x, -5.0f / backbuffer_resolution.y, 0.0f));
+		jitter_table[ 6] = translate(0.125f * vec3(6.0f / backbuffer_resolution.x, -7.0f / backbuffer_resolution.y, 0.0f));
+		jitter_table[ 7] = translate(0.125f * vec3(5.0f / backbuffer_resolution.x, -3.0f / backbuffer_resolution.y, 0.0f));
+		jitter_table[ 8] = translate(0.125f * vec3(4.0f / backbuffer_resolution.x, 1.0f / backbuffer_resolution.y, 0.0f));
+		jitter_table[ 9] = translate(0.125f * vec3(7.0f / backbuffer_resolution.x, 4.0f / backbuffer_resolution.y, 0.0f));
+		jitter_table[10] = translate(0.125f * vec3(3.0f / backbuffer_resolution.x, 5.0f / backbuffer_resolution.y, 0.0f));
+		jitter_table[11] = translate(0.125f * vec3(0.0f / backbuffer_resolution.x, 7.0f / backbuffer_resolution.y, 0.0f));
+		jitter_table[12] = translate(0.125f * vec3(-1.0f / backbuffer_resolution.x, 3.0f / backbuffer_resolution.y, 0.0f));
+		jitter_table[13] = translate(0.125f * vec3(-4.0f / backbuffer_resolution.x, 6.0f / backbuffer_resolution.y, 0.0f));
+		jitter_table[14] = translate(0.125f * vec3(-7.0f / backbuffer_resolution.x, 8.0f / backbuffer_resolution.y, 0.0f));
+		jitter_table[15] = translate(0.125f * vec3(-5.0f / backbuffer_resolution.x, 2.0f / backbuffer_resolution.y, 0.0f));
+		break;
+
 	case Type::None:
 		jitter_mask = 0;
 		phase = 0;
@@ -123,7 +144,7 @@ unsigned TemporalJitter::get_unmasked_phase() const
 void setup_taa_resolve(RenderGraph &graph, TemporalJitter &jitter, const std::string &input,
                        const std::string &input_depth, const std::string &output)
 {
-	jitter.init(TemporalJitter::Type::TAA_8Phase,
+	jitter.init(TemporalJitter::Type::TAA_16Phase,
 	            vec2(graph.get_backbuffer_dimensions().width,
 	                 graph.get_backbuffer_dimensions().height));
 

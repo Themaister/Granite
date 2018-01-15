@@ -265,7 +265,7 @@ mediump float unbiased_luma_weight(mediump vec3 history, mediump vec3 current)
 	mediump float current_luma = luminance(current);
 	mediump float diff = abs(current_luma - clamped_luma) / max(current_luma, max(clamped_luma, 0.001));
 	diff = 1.0 - diff;
-	return 0.9 * diff * diff + 0.1;
+	return 0.99 * diff * diff + 0.01;
 }
 
 float sample_nearest_depth_box(sampler2D Depth, vec2 UV, vec2 inv_resolution)

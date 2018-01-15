@@ -308,7 +308,7 @@ void setup_fxaa_2phase_postprocess(RenderGraph &graph, TemporalJitter &jitter, c
 		cmd.push_constants(&push, 0, sizeof(push));
 		Vulkan::CommandBufferUtil::set_quad_vertex_state(cmd);
 		Vulkan::CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/post/aa_sharpen_resolve.frag",
-		                                     {{ "HISTORY", history ? 1 : 0 },
+		                                     {{ "REPROJECTION_HISTORY", history ? 1 : 0 },
 		                                      { "HORIZONTAL", jitter.get_jitter_phase() == 0 ? 1 : 0 },
 		                                      { "VERTICAL", jitter.get_jitter_phase() == 1 ? 1 : 0 }
 		                                     });

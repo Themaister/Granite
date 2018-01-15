@@ -20,9 +20,6 @@ layout(push_constant, std430) uniform Registers
 #define REPROJECTION_YCgCo 1
 #define REPROJECTION_HDR 0
 #define REPROJECTION_CLAMP_HISTORY 1
-#define REPROJECTION_UNBIASED_LUMA 1
-#define REPROJECTION_CUBIC_HISTORY 1
-#define REPROJECTION_MOTION_VECTORS 1
 #include "reprojection.h"
 
 void main()
@@ -43,7 +40,7 @@ void main()
     mediump vec3 tmp_sharpened_input = (0.5 + sharpen) * (c1 + c2) - sharpen * (c0 + c3);
     tmp_sharpened_input = clamp(tmp_sharpened_input, 0.0, 1.0);
 
-#if CLAMP_HISTORY && HISTORY
+#if REPROJECTION_CLAMP_HISTORY && REPROJECTION_HISTORY
     #if HORIZONTAL
         mediump vec3 h0 = textureLod(uInput, vUV + vec2(0.5, -1.0) * registers.inv_resolution, 0.0).rgb;
         mediump vec3 h1 = textureLod(uInput, vUV + vec2(0.5, +1.0) * registers.inv_resolution, 0.0).rgb;
@@ -58,47 +55,47 @@ void main()
     h1 = convert_input(h1);
 #endif
 
-#if YCgCo && HISTORY
-    mediump vec3 sharpened_input = RGB_to_YCgCo(tmp_sharpened_input);
-#else
-    mediump vec3 sharpened_input = tmp_sharpened_input;
-#endif
+    mediump vec3 sharpened_input = convert_input(tmp_sharpened_input);
 
-#if HISTORY
+#if REPROJECTION_HISTORY
     #if HORIZONTAL
-        float min_depth = min(textureLod(uDepth, vUV, 0.0).x, textureLodOffset(uDepth, vUV, 0.0, ivec2(1, 0)).x);
+        // 2x3 region.
+        vec2 base_uv = vUV + vec2(0.5, -0.5) * registers.inv_resolution;
+        vec4 quad0 = textureGather(uDepth, base_uv, 0);
+        vec2 quad1 = textureGatherOffset(uDepth, base_uv, ivec2(0, 1), 0).xy;
+        vec2 min_depth0 = min(quad0.xy, quad0.zw);
+        min_depth0 = min(min_depth0, quad1);
+        float min_depth = min(min_depth0.x, min_depth0.y);
     #elif VERTICAL
-        float min_depth = min(textureLod(uDepth, vUV, 0.0).x, textureLodOffset(uDepth, vUV, 0.0, ivec2(0, 1)).x);
+        // 3x2 region.
+        vec2 base_uv = vUV + vec2(-0.5, 0.5) * registers.inv_resolution;
+        vec4 quad0 = textureGather(uDepth, base_uv, 0);
+        vec2 quad1 = textureGatherOffset(uDepth, base_uv, ivec2(1, 0), 0).yz;
+        vec2 min_depth0 = min(quad0.xy, quad0.zw);
+        min_depth0 = min(min_depth0, quad1);
+        float min_depth = min(min_depth0.x, min_depth0.y);
     #endif
     vec4 clip = vec4(2.0 * vUV - 1.0, min_depth, 1.0);
     vec4 reproj_pos = registers.reproj * clip;
-    mediump vec3 history_color = textureProjLod(uHistoryInput, reproj_pos.xyw, 0.0).rgb;
-    #if YCgCo
-        history_color = RGB_to_YCgCo(history_color);
-    #endif
-    #if CLAMP_HISTORY
-        mediump vec3 clamped_history_color = clamp_history(history_color, c1, c2, h0, h1);
-        #if CLAMP_VARIANCE
-            mediump float history_variance = textureLod(uHistoryInput, vUV, 0.0).a;
-            history_color = deflicker(history_color, clamped_history_color, history_variance);
-        #else
-            history_color = clamped_history_color;
-        #endif
+    mediump vec4 history_color_variance = textureProjLod(uHistoryInput, reproj_pos.xyw, 0.0);
+    mediump vec3 history_color = convert_input(history_color_variance.rgb);
+    mediump float variance = history_color_variance.a;
+    #if REPROJECTION_CLAMP_HISTORY
+        mediump vec3 clamped_history_color = clamp_history4(history_color, c1, c2, h0, h1);
+        mediump float clamped_luma = luminance(clamped_history_color);
+        mediump float history_luma = luminance(history_color);
+        mediump float variance_delta = abs(clamped_luma - history_luma) / max(max(clamped_luma, history_luma), 0.002);
+        variance_delta = clamp(variance_delta - 0.15, -0.15, 0.3);
+
+        history_color = mix(clamped_history_color, history_color, variance);
+        variance += variance_delta;
     #endif
     const mediump float lerp_factor = 0.5;
     mediump vec3 color = mix(history_color, sharpened_input, lerp_factor);
+    FragColor = convert_to_output(color);
+    SaveFragColor = vec4(tmp_sharpened_input, variance);
 #else
-    mediump vec3 color = sharpened_input;
+    FragColor = tmp_sharpened_input;
+    SaveFragColor = vec4(tmp_sharpened_input, 0.0);
 #endif
-
-#if YCgCo && HISTORY
-    FragColor = YCgCo_to_RGB(color);
-#else
-    FragColor = color;
-#endif
-
-#if !CLAMP_VARIANCE || !HISTORY || !CLAMP_HISTORY
-    const mediump float history_variance = 0.0;
-#endif
-    SaveFragColor = vec4(tmp_sharpened_input, history_variance);
 }

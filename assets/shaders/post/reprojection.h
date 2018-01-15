@@ -111,7 +111,6 @@ mediump vec3 clamp_history4(
     return clamp_box(color, lo, hi);
 }
 
-
 mediump vec3 convert_input(mediump vec3 color)
 {
 #if REPROJECTION_HDR && REPROJECTION_YCgCo
@@ -267,21 +266,6 @@ mediump float unbiased_luma_weight(mediump vec3 history, mediump vec3 current)
 	mediump float diff = abs(current_luma - clamped_luma) / max(current_luma, max(clamped_luma, 0.001));
 	diff = 1.0 - diff;
 	return 0.9 * diff * diff + 0.1;
-}
-
-mediump vec3 deflicker(mediump vec3 history_color, mediump vec3 clamped_history, inout mediump float history_variance)
-{
-    // If we end up clamping, we either have a ghosting scenario, in which we should just see this for a frame or two,
-    // or, we have a persistent pattern of clamping, which can be observed as flickering, so dampen this quickly.
-	mediump float clamped_luma = luminance(clamped_history);
-	mediump float history_luma = luminance(history_color);
-
-    mediump vec3 result = mix(clamped_history, history_color, history_variance);
-
-    // Adapt the variance delta over time.
-    mediump float clamp_ratio = max(max(clamped_luma, history_luma), 0.001) / max(min(clamped_luma, history_luma), 0.001);
-    history_variance += 4.0 * clamp(clamp_ratio - 1.25, 0.0, 0.35) - 0.1;
-    return result;
 }
 
 float sample_nearest_depth_box(sampler2D Depth, vec2 UV, vec2 inv_resolution)

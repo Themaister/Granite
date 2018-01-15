@@ -21,18 +21,12 @@ layout(std430, push_constant) uniform Registers
 {
     mat4 reproj;
     vec2 rt_metrics;
-    float seed;
 } registers;
 
 layout(location = 0) in vec2 vUV;
 layout(location = 0) out mediump vec3 Color;
-layout(location = 1) out mediump vec3 OutVariance;
+layout(location = 1) out mediump float OutVariance;
 #include "reprojection.h"
-
-vec3 PDnrand3(vec2 n)
-{
-	return 2.0 * fract(sin(dot(n.xy, vec2(12.9898, 78.233))) * vec3(43758.5453, 28001.8384, 50849.4141)) - 1.0;
-}
 
 void main()
 {
@@ -49,35 +43,25 @@ void main()
         vec2 reproj_uv = reproj_pos.xy / reproj_pos.w;
     #endif
     mediump vec3 history_color = textureLod(PreviousFrame, reproj_uv, 0.0).rgb;
+    mediump float variance = textureLod(AccumVariance, reproj_uv, 0.0).x;
 
     history_color = convert_input(history_color);
     #if REPROJECTION_CLAMP_HISTORY
         mediump vec3 clamped_history_color = clamp_history_box(history_color, CurrentFrame, vUV, current);
+        mediump float clamped_luma = luminance(clamped_history_color);
+        mediump float history_luma = luminance(history_color);
+        mediump float variance_delta = abs(clamped_luma - history_luma) / max(max(clamped_luma, history_luma), 0.002);
+        variance_delta = clamp(variance_delta - 0.15, -0.15, 0.3);
 
-        vec3 in_variance =
-            0.5 * textureLod(AccumVariance, reproj_uv, 0.0).rgb +
-            0.125 * textureLod(AccumVariance, reproj_uv + 0.75 * registers.rt_metrics, 0.0).rgb +
-            0.125 * textureLod(AccumVariance, reproj_uv - 0.75 * registers.rt_metrics, 0.0).rgb +
-            0.125 * textureLod(AccumVariance, reproj_uv + vec2(0.75, -0.75) * registers.rt_metrics, 0.0).rgb +
-            0.125 * textureLod(AccumVariance, reproj_uv + vec2(-0.75, +0.75) * registers.rt_metrics, 0.0).rgb;
-
-        mediump vec3 out_error = clamped_history_color - history_color;
-        out_error *= out_error;
-
-        vec3 stddev = sqrt(in_variance);
-        vec3 noise = PDnrand3(vUV + 0.01 * registers.seed + 0.69591) * 2.0 * stddev;
-        in_variance = mix(in_variance, out_error, 0.1);
-        OutVariance = in_variance;
-
-        history_color = mix(clamped_history_color, history_color, clamp(10.0 * stddev, 0.0, 1.0));
+        history_color = mix(clamped_history_color, history_color, variance);
+        variance += variance_delta;
     #endif
 
     mediump vec3 out_color = 0.5 * (history_color + current);
     Color = convert_to_output(out_color);
-
-    //Color = clamp(10.0 * stddev, 0.0, 1.0);
+    OutVariance = variance;
 #else
     Color = textureLod(CurrentFrame, vUV, 0.0).rgb;
-    OutVariance = vec3(0.0);
+    OutVariance = 0.0;
 #endif
 }

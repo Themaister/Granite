@@ -176,7 +176,7 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 #if 1
 		AttachmentInfo variance;
 		variance.size_relative_name = input;
-		variance.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+		variance.format = VK_FORMAT_R8_UNORM;
 		variance.size_class = SizeClass::InputRelative;
 		smaa_resolve.add_color_output("smaa-variance", variance);
 		smaa_resolve.add_history_input("smaa-variance");
@@ -195,14 +195,14 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 #if 1
 				cmd.set_texture(0, 4,
 				                *graph.get_physical_history_texture_resource(smaa_resolve.get_history_inputs()[1]->get_physical_index()),
-				                Vulkan::StockSampler::LinearClamp);
+				                Vulkan::StockSampler::NearestClamp);
 #endif
 			}
 
 			struct Push
 			{
 				mat4 reproj;
-				vec3 inv_resolution_seed;
+				vec2 inv_resolution_seed;
 			};
 			Push push;
 
@@ -212,9 +212,8 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 				jitter.get_history_view_proj(1) *
 				jitter.get_history_inv_view_proj(0);
 
-			push.inv_resolution_seed = vec3(1.0f / current.get_image().get_create_info().width,
-			                                1.0f / current.get_image().get_create_info().height,
-			                                float(jitter.get_unmasked_phase() & 1023));
+			push.inv_resolution_seed = vec2(1.0f / current.get_image().get_create_info().width,
+			                                1.0f / current.get_image().get_create_info().height);
 
 			cmd.push_constants(&push, 0, sizeof(push));
 			Vulkan::CommandBufferUtil::set_quad_vertex_state(cmd);

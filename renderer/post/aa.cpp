@@ -84,4 +84,31 @@ bool setup_after_post_chain_antialiasing(PostAAType type, RenderGraph &graph, Te
 		return false;
 	}
 }
+
+PostAAType string_to_post_antialiasing_type(const char *type)
+{
+	if (strcmp(type, "fxaa") == 0)
+		return PostAAType::FXAA;
+	else if (strcmp(type, "fxaa2phase") == 0)
+		return PostAAType::FXAA_2Phase;
+	else if (strcmp(type, "smaaLow") == 0)
+		return PostAAType::SMAA_Low;
+	else if (strcmp(type, "smaaMedium") == 0)
+		return PostAAType::SMAA_Medium;
+	else if (strcmp(type, "smaaHigh") == 0)
+		return PostAAType::SMAA_High;
+	else if (strcmp(type, "smaaUltra") == 0)
+		return PostAAType::SMAA_Ultra;
+	else if (strcmp(type, "smaaUltraT2X") == 0)
+		return PostAAType::SMAA_Ultra_T2X;
+	else if (strcmp(type, "taa") == 0)
+		return PostAAType::TAA;
+	else if (strcmp(type, "none") == 0)
+		return PostAAType::None;
+	else
+	{
+		LOGE("Unrecognized AA type: %s\n", type);
+		return PostAAType::None;
+	}
+}
 }

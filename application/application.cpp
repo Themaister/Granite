@@ -177,26 +177,7 @@ void SceneViewerApplication::read_config(const std::string &path)
 	if (doc.HasMember("postAA"))
 	{
 		auto *aa = doc["postAA"].GetString();
-		if (strcmp(aa, "fxaa") == 0)
-			config.postaa_type = PostAAType::FXAA;
-		else if (strcmp(aa, "fxaa2phase") == 0)
-			config.postaa_type = PostAAType::FXAA_2Phase;
-		else if (strcmp(aa, "smaaLow") == 0)
-			config.postaa_type = PostAAType::SMAA_Low;
-		else if (strcmp(aa, "smaaMedium") == 0)
-			config.postaa_type = PostAAType::SMAA_Medium;
-		else if (strcmp(aa, "smaaHigh") == 0)
-			config.postaa_type = PostAAType::SMAA_High;
-		else if (strcmp(aa, "smaaUltra") == 0)
-			config.postaa_type = PostAAType::SMAA_Ultra;
-		else if (strcmp(aa, "smaaUltraT2X") == 0)
-			config.postaa_type = PostAAType::SMAA_Ultra_T2X;
-		else if (strcmp(aa, "taa") == 0)
-			config.postaa_type = PostAAType::TAA;
-		else if (strcmp(aa, "none") == 0)
-			config.postaa_type = PostAAType::None;
-		else
-			LOGE("Unrecognized AA type: %s\n", aa);
+		config.postaa_type = string_to_post_antialiasing_type(aa);
 	}
 }
 

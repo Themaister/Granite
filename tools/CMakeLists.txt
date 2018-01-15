@@ -17,3 +17,6 @@ target_link_libraries(image-compare scene-formats util filesystem threading)
 
 add_granite_offline_tool(build-smaa-luts build_smaa_luts.cpp smaa/AreaTex.h smaa/SearchTex.h)
 target_link_libraries(build-smaa-luts gli util)
+
+add_granite_application(aa-bench aa_bench.cpp)
+target_link_libraries(aa-bench gli)

@@ -132,7 +132,7 @@ void setup_taa_resolve(RenderGraph &graph, TemporalJitter &jitter, const std::st
 	taa_output.size_relative_name = input;
 	taa_output.format = VK_FORMAT_R16G16B16A16_SFLOAT;
 
-#define TAA_MOTION_VECTORS 1
+#define TAA_MOTION_VECTORS 0
 
 #if TAA_MOTION_VECTORS
 	AttachmentInfo mv_output;
@@ -171,31 +171,9 @@ void setup_taa_resolve(RenderGraph &graph, TemporalJitter &jitter, const std::st
 	});
 #endif
 
-#define TAA_PRECOMPUTE_TONEMAP 0
-
-#if TAA_PRECOMPUTE_TONEMAP
-	auto taa_ycgco = taa_output;
-	taa_ycgco.format = VK_FORMAT_R16G16B16A16_SFLOAT;
-
-	auto &conv_ycgco = graph.add_pass("taa-ycgco-conv", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
-	conv_ycgco.add_color_output("taa-ycgco", taa_ycgco);
-	conv_ycgco.add_attachment_input(input);
-
-	conv_ycgco.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
-		cmd.set_input_attachments(0, 0);
-		Vulkan::CommandBufferUtil::draw_quad(cmd,
-		                                     "builtin://shaders/quad.vert",
-		                                     "builtin://shaders/post/ycgco_conv.frag", {});
-	});
-#endif
-
 	auto &resolve = graph.add_pass("taa-resolve", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 	resolve.add_color_output(output, taa_output);
-#if TAA_PRECOMPUTE_TONEMAP
-	resolve.add_texture_input("taa-ycgco");
-#else
 	resolve.add_texture_input(input);
-#endif
 	resolve.add_texture_input(input_depth);
 #if TAA_MOTION_VECTORS
 	resolve.add_texture_input("taa-mvs");

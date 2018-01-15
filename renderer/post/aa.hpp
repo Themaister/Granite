@@ -21,21 +21,30 @@
  */
 
 #pragma once
-#include "render_graph.hpp"
+
+#include <string>
 
 namespace Granite
 {
+class RenderGraph;
 class TemporalJitter;
-enum class SMAAPreset
+enum class PostAAType
 {
-	Low,
-	Medium,
-	High,
-	Ultra,
-	Ultra_T2X
+	FXAA,
+	FXAA_2Phase,
+	SMAA_Low,
+	SMAA_Medium,
+	SMAA_High,
+	SMAA_Ultra,
+	SMAA_Ultra_T2X,
+	TAA,
+	None
 };
 
-void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
-                            const std::string &input, const std::string &input_depth,
-                            const std::string &output, SMAAPreset preset);
+bool setup_before_post_chain_antialiasing(PostAAType type, RenderGraph &graph, TemporalJitter &jitter,
+                                          const std::string &input, const std::string &input_depth,
+                                          const std::string &output);
+bool setup_after_post_chain_antialiasing(PostAAType type, RenderGraph &graph, TemporalJitter &jitter,
+                                         const std::string &input, const std::string &input_depth,
+                                         const std::string &output);
 }

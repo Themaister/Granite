@@ -7,7 +7,7 @@ precision highp int;
 #define REPROJECTION_CLAMP_HISTORY 1
 #define REPROJECTION_UNBIASED_LUMA 1
 #define REPROJECTION_CUBIC_HISTORY 1
-#define REPROJECTION_MOTION_VECTORS 1
+#define REPROJECTION_MOTION_VECTORS 0
 
 layout(set = 0, binding = 0) uniform mediump sampler2D CurrentFrame;
 #if REPROJECTION_HISTORY

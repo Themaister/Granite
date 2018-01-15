@@ -37,6 +37,7 @@
 #include "lights/clusterer.hpp"
 #include "lights/deferred_lights.hpp"
 #include "camera_export.hpp"
+#include "post/aa.hpp"
 #include "post/temporal.hpp"
 
 namespace Granite
@@ -188,11 +189,7 @@ private:
 		bool rescale_scene = false;
 		bool force_shadow_map_update = false;
 		bool show_ui = true;
-		bool fxaa = true;
-		bool fxaa_temporal = true;
-		bool smaa = false;
-		bool smaa_t2x = false;
-		bool taa = false;
+		PostAAType postaa_type = PostAAType::None;
 	};
 	Config config;
 

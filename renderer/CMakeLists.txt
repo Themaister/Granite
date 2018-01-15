@@ -19,6 +19,7 @@ add_granite_library(renderer
         post/fxaa.hpp post/fxaa.cpp
         post/smaa.hpp post/smaa.cpp
         post/temporal.hpp post/temporal.cpp
+        post/aa.hpp post/aa.cpp
         utils/image_utils.hpp utils/image_utils.cpp
         lights/lights.cpp lights/lights.hpp
         lights/clusterer.cpp lights/clusterer.hpp

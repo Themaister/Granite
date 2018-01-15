@@ -26,10 +26,8 @@
 #include "horizontal_packing.hpp"
 #include "image_widget.hpp"
 #include "label.hpp"
-#include "post/hdr.hpp"
-#include "post/fxaa.hpp"
-#include "post/smaa.hpp"
 #include "quirks.hpp"
+#include "post/hdr.hpp"
 
 #define RAPIDJSON_ASSERT(x) do { if (!(x)) throw "JSON error"; } while(0)
 #include "rapidjson/document.h"
@@ -176,12 +174,30 @@ void SceneViewerApplication::read_config(const std::string &path)
 	if (doc.HasMember("directionalLightShadowsForceUpdate"))
 		config.force_shadow_map_update = doc["directionalLightShadowsForceUpdate"].GetBool();
 
-	if (doc.HasMember("fxaa"))
-		config.fxaa = doc["fxaa"].GetBool();
-	if (doc.HasMember("fxaaTemporal"))
-		config.fxaa_temporal = doc["fxaaTemporal"].GetBool();
-	if (doc.HasMember("smaa"))
-		config.smaa = doc["smaa"].GetBool();
+	if (doc.HasMember("postAA"))
+	{
+		auto *aa = doc["postAA"].GetString();
+		if (strcmp(aa, "fxaa") == 0)
+			config.postaa_type = PostAAType::FXAA;
+		else if (strcmp(aa, "fxaa2phase") == 0)
+			config.postaa_type = PostAAType::FXAA_2Phase;
+		else if (strcmp(aa, "smaaLow") == 0)
+			config.postaa_type = PostAAType::SMAA_Low;
+		else if (strcmp(aa, "smaaMedium") == 0)
+			config.postaa_type = PostAAType::SMAA_Medium;
+		else if (strcmp(aa, "smaaHigh") == 0)
+			config.postaa_type = PostAAType::SMAA_High;
+		else if (strcmp(aa, "smaaUltra") == 0)
+			config.postaa_type = PostAAType::SMAA_Ultra;
+		else if (strcmp(aa, "smaaUltraT2X") == 0)
+			config.postaa_type = PostAAType::SMAA_Ultra_T2X;
+		else if (strcmp(aa, "taa") == 0)
+			config.postaa_type = PostAAType::TAA;
+		else if (strcmp(aa, "none") == 0)
+			config.postaa_type = PostAAType::None;
+		else
+			LOGE("Unrecognized AA type: %s\n", aa);
+	}
 }
 
 SceneViewerApplication::SceneViewerApplication(const std::string &path, const std::string &config_path, const std::string &quirks_path)
@@ -800,23 +816,16 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 
 	if (config.hdr_bloom)
 	{
-		if (config.taa)
-			setup_taa_resolve(graph, jitter, "HDR-main", "depth-main", "HDR-resolved");
-		setup_hdr_postprocess(graph, config.taa ? "HDR-resolved" : "HDR-main", "tonemapped");
+		bool resolved = setup_before_post_chain_antialiasing(config.postaa_type,
+		                                                     graph, jitter,
+		                                                     "HDR-main", "depth-main", "HDR-resolved");
+		setup_hdr_postprocess(graph, resolved ? "HDR-resolved" : "HDR-main", "tonemapped");
 	}
 
-	if (config.smaa)
+	if (setup_after_post_chain_antialiasing(config.postaa_type, graph, jitter,
+	                                        ui_source, "depth-main", "post-aa-output"))
 	{
-		setup_smaa_postprocess(graph, jitter, ui_source, "depth-main", "smaa", config.smaa_t2x);
-		ui_source = "smaa";
-	}
-	else if (config.fxaa)
-	{
-		if (config.fxaa_temporal)
-			setup_fxaa_2phase_postprocess(graph, jitter, ui_source, "depth-main", "fxaa");
-		else
-			setup_fxaa_postprocess(graph, ui_source, "fxaa");
-		ui_source = "fxaa";
+		ui_source = "post-aa-output";
 	}
 
 	if (config.show_ui)

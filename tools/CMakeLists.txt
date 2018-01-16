@@ -20,3 +20,5 @@ target_link_libraries(build-smaa-luts gli util)
 
 add_granite_application(aa-bench aa_bench.cpp)
 target_link_libraries(aa-bench gli)
+add_granite_headless_application(aa-bench-headless aa_bench.cpp)
+target_link_libraries(aa-bench-headless gli)

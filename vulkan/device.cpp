@@ -605,7 +605,7 @@ void Device::submit_empty_inner(CommandBuffer::Type type, VkFence *fence, Semaph
 	VkFence cleared_fence = fence ? managers.fence.request_cleared_fence() : VK_NULL_HANDLE;
 	if (queue_lock_callback)
 		queue_lock_callback();
-#ifdef VULKAN_DEBUG
+#if defined(VULKAN_DEBUG) && defined(SUBMIT_DEBUG)
 	if (cleared_fence)
 		LOGI("Signalling Fence: %llx\n", reinterpret_cast<unsigned long long>(cleared_fence));
 #endif
@@ -639,7 +639,7 @@ void Device::submit_empty_inner(CommandBuffer::Type type, VkFence *fence, Semaph
 		*semaphore_alt = make_handle<SemaphoreHolder>(this, cleared_semaphore_alt, true);
 	}
 
-#ifdef VULKAN_DEBUG
+#if defined(VULKAN_DEBUG) && defined(SUBMIT_DEBUG)
 	const char *queue_name = nullptr;
 	switch (type)
 	{
@@ -893,7 +893,7 @@ void Device::submit_queue(CommandBuffer::Type type, VkFence *fence, Semaphore *s
 
 	if (queue_lock_callback)
 		queue_lock_callback();
-#ifdef VULKAN_DEBUG
+#if defined(VULKAN_DEBUG) && defined(SUBMIT_DEBUG)
 	if (cleared_fence)
 		LOGI("Signalling fence: %llx\n", reinterpret_cast<unsigned long long>(cleared_fence));
 #endif
@@ -927,7 +927,7 @@ void Device::submit_queue(CommandBuffer::Type type, VkFence *fence, Semaphore *s
 		*semaphore_alt = make_handle<SemaphoreHolder>(this, cleared_semaphore_alt, true);
 	}
 
-#ifdef VULKAN_DEBUG
+#if defined(VULKAN_DEBUG) && defined(SUBMIT_DEBUG)
 	const char *queue_name = nullptr;
 	switch (type)
 	{
@@ -1584,7 +1584,7 @@ void Device::PerFrame::begin()
 {
 	if (!wait_fences.empty())
 	{
-#ifdef VULKAN_DEBUG
+#if defined(VULKAN_DEBUG) && defined(SUBMIT_DEBUG)
 		for (auto &fence : wait_fences)
 			LOGI("Waiting for Fence: %llx\n", reinterpret_cast<unsigned long long>(fence));
 #endif
@@ -1594,7 +1594,7 @@ void Device::PerFrame::begin()
 
 	if (!recycle_fences.empty())
 	{
-#ifdef VULKAN_DEBUG
+#if defined(VULKAN_DEBUG) && defined(SUBMIT_DEBUG)
 		for (auto &fence : recycle_fences)
 			LOGI("Recycling Fence: %llx\n", reinterpret_cast<unsigned long long>(fence));
 #endif
@@ -1630,7 +1630,7 @@ void Device::PerFrame::begin()
 		vkDestroySemaphore(device, semaphore, nullptr);
 	for (auto &semaphore : recycled_semaphores)
 	{
-#ifdef VULKAN_DEBUG
+#if defined(VULKAN_DEBUG) && defined(SUBMIT_DEBUG)
 		LOGI("Recycling semaphore: %llx\n", reinterpret_cast<unsigned long long>(semaphore));
 #endif
 		managers.semaphore.recycle(semaphore);

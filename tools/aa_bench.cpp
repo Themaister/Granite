@@ -50,7 +50,6 @@ void AABenchApplication::render_frame(double, double)
 void AABenchApplication::on_swapchain_changed(const SwapchainParameterEvent &swap)
 {
 	graph.reset();
-	graph.set_device(&swap.get_device());
 
 	ResourceDimensions dim;
 	dim.width = swap.get_width();
@@ -63,8 +62,10 @@ void AABenchApplication::on_swapchain_changed(const SwapchainParameterEvent &swa
 	AttachmentInfo main_depth;
 	main_depth.format = swap.get_device().get_default_depth_format();
 
+	AttachmentInfo swapchain_output;
+
 	auto &pass = graph.add_pass("main", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
-	pass.add_color_output("tonemapped", main_output);
+	pass.add_color_output("HDR-main", main_output);
 	pass.set_depth_stencil_output("depth-main", main_depth);
 	pass.set_need_render_pass([this]() {
 		return need_main_pass;
@@ -87,11 +88,21 @@ void AABenchApplication::on_swapchain_changed(const SwapchainParameterEvent &swa
 														 graph, jitter,
 														 "HDR-main", "depth-main", "HDR-resolved");
 
+	auto &tonemap = graph.add_pass("tonemap", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	tonemap.add_color_output("tonemap", swapchain_output);
+	tonemap.add_texture_input(resolved ? "HDR-resolved" : "HDR-main");
+	tonemap.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
+		auto &input = graph.get_physical_texture_resource(tonemap.get_texture_inputs()[0]->get_physical_index());
+		Vulkan::CommandBufferUtil::set_quad_vertex_state(cmd);
+		cmd.set_texture(0, 0, input, Vulkan::StockSampler::NearestClamp);
+		Vulkan::CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/blit.frag", {});
+	});
+
 	if (setup_after_post_chain_antialiasing(type, graph, jitter,
-	                                        resolved ? "HDR-resolved" : "HDR-main", "depth-main", "post-aa-output"))
+	                                        "tonemap", "depth-main", "post-aa-output"))
 		graph.set_backbuffer_source("post-aa-output");
 	else
-		graph.set_backbuffer_source("tonemapped");
+		graph.set_backbuffer_source("tonemap");
 
 	graph.bake();
 	graph.log();
@@ -104,11 +115,14 @@ void AABenchApplication::on_swapchain_destroyed(const SwapchainParameterEvent &)
 void AABenchApplication::on_device_created(const DeviceCreatedEvent &e)
 {
 	image = e.get_device().get_texture_manager().request_texture(input_path);
+	graph.set_device(&e.get_device());
 }
 
 void AABenchApplication::on_device_destroyed(const DeviceCreatedEvent &e)
 {
 	image = nullptr;
+	graph.reset();
+	graph.set_device(nullptr);
 }
 
 namespace Granite

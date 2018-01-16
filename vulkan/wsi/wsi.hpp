@@ -92,6 +92,10 @@ public:
 		killed = true;
 	}
 
+	virtual void release_resources()
+	{
+	}
+
 protected:
 	bool resize = false;
 	bool killed = false;

@@ -77,6 +77,7 @@ void Texture::update_gli(const void *data, size_t size)
 {
 	gli::texture tex = Granite::load_texture_from_memory(data, size,
 	                                                     (format == VK_FORMAT_R8G8B8A8_SRGB ||
+	                                                      format == VK_FORMAT_UNDEFINED ||
 	                                                      format == VK_FORMAT_B8G8R8A8_SRGB ||
 	                                                      format == VK_FORMAT_A8B8G8R8_SRGB_PACK32) ?
 	                                                     Granite::ColorSpace::sRGB : Granite::ColorSpace::Linear);

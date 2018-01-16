@@ -143,6 +143,11 @@ public:
 
 	~WSIPlatformHeadless() override
 	{
+		release_resources();
+	}
+
+	void release_resources() override
+	{
 		for (auto &thread : worker_threads)
 			thread->wait();
 
@@ -150,6 +155,11 @@ public:
 		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
 		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
+
+		swapchain_images.clear();
+		readback_buffers.clear();
+		acquire_semaphore.clear();
+		readback_fence.clear();
 	}
 
 	bool alive(Vulkan::WSI &) override

@@ -336,6 +336,10 @@ void WSI::update_framebuffer(unsigned width, unsigned height)
 void WSI::deinit_external()
 {
 	auto &em = Granite::EventManager::get_global();
+
+	if (platform)
+		platform->release_resources();
+
 	if (context)
 	{
 		vkDeviceWaitIdle(context->get_device());

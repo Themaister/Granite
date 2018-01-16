@@ -114,7 +114,7 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 	smaa_blend.add_texture_input(input);
 	smaa_blend.add_texture_input("smaa-weights");
 
-	smaa_edge.set_build_render_pass([&, masked_edge, smaa_quality](Vulkan::CommandBuffer &cmd) {
+	smaa_edge.set_build_render_pass([&, edge = masked_edge, q = smaa_quality](Vulkan::CommandBuffer &cmd) {
 		auto &input_image = graph.get_physical_texture_resource(smaa_edge.get_texture_inputs()[0]->get_physical_index());
 		cmd.set_unorm_texture(0, 0, input_image);
 		cmd.set_sampler(0, 0, Vulkan::StockSampler::LinearClamp);
@@ -128,8 +128,8 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 		Vulkan::CommandBufferUtil::draw_quad_depth(cmd,
 		                                           "builtin://shaders/post/smaa_edge_detection.vert",
 		                                           "builtin://shaders/post/smaa_edge_detection.frag",
-		                                           masked_edge, masked_edge, VK_COMPARE_OP_ALWAYS,
-		                                           {{ "SMAA_QUALITY", smaa_quality }});
+		                                           edge, edge, VK_COMPARE_OP_ALWAYS,
+		                                           {{ "SMAA_QUALITY", q }});
 	});
 
 	smaa_edge.set_get_clear_color([](unsigned, VkClearColorValue *value) {
@@ -138,7 +138,7 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 		return true;
 	});
 
-	smaa_weight.set_build_render_pass([&, masked_edge, smaa_quality](Vulkan::CommandBuffer &cmd) {
+	smaa_weight.set_build_render_pass([&, edge = masked_edge, q = smaa_quality](Vulkan::CommandBuffer &cmd) {
 		auto &input_image = graph.get_physical_texture_resource(smaa_weight.get_texture_inputs()[0]->get_physical_index());
 		cmd.set_texture(0, 0, input_image, Vulkan::StockSampler::LinearClamp);
 		cmd.set_texture(0, 1,
@@ -161,10 +161,10 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 		Vulkan::CommandBufferUtil::draw_quad_depth(cmd,
 		                                           "builtin://shaders/post/smaa_blend_weight.vert",
 		                                           "builtin://shaders/post/smaa_blend_weight.frag",
-		                                           masked_edge, false, VK_COMPARE_OP_EQUAL,
+		                                           edge, false, VK_COMPARE_OP_EQUAL,
 		                                           {
 				                                           { "SMAA_SUBPIXEL_MODE", subpixel_mode },
-				                                           { "SMAA_QUALITY", smaa_quality }
+				                                           { "SMAA_QUALITY", q }
 		                                           });
 	});
 
@@ -174,7 +174,7 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 		return true;
 	});
 
-	smaa_blend.set_build_render_pass([&, smaa_quality](Vulkan::CommandBuffer &cmd) {
+	smaa_blend.set_build_render_pass([&, q = smaa_quality](Vulkan::CommandBuffer &cmd) {
 		auto &input_image = graph.get_physical_texture_resource(smaa_blend.get_texture_inputs()[0]->get_physical_index());
 		auto &blend_image = graph.get_physical_texture_resource(smaa_blend.get_texture_inputs()[1]->get_physical_index());
 		cmd.set_texture(0, 0, input_image, Vulkan::StockSampler::LinearClamp);
@@ -190,7 +190,7 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 		Vulkan::CommandBufferUtil::draw_quad(cmd,
 		                                     "builtin://shaders/post/smaa_neighbor_blend.vert",
 		                                     "builtin://shaders/post/smaa_neighbor_blend.frag",
-		                                     {{ "SMAA_QUALITY", smaa_quality }});
+		                                     {{ "SMAA_QUALITY", q }});
 	});
 
 	if (t2x_enable)

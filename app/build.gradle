@@ -25,7 +25,7 @@ android {
                             "-DCMAKE_BUILD_TYPE=Debug",
                             "-DANDROID_PLATFORM=android-24"
 
-                    targets "gltf-viewer", "gltf-viewer-headless"
+                    targets "gltf-viewer", "gltf-viewer-headless", "aa-bench-headless"
                 }
             }
             jniDebuggable true
@@ -37,12 +37,12 @@ android {
                             "-DANDROID_STL=c++_static",
                             "-DANDROID_ARM_MODE=arm",
                             "-DANDROID_CPP_FEATURES=exceptions",
-                            "-DGRANITE_SHADER_COMPILER_OPTIMIZE=OFF",
+                            "-DGRANITE_SHADER_COMPILER_OPTIMIZE=ON",
                             "-DGRANITE_SPIRV_DUMP=OFF",
                             "-DCMAKE_BUILD_TYPE=Release",
                             "-DANDROID_PLATFORM=android-24"
 
-                    targets "gltf-viewer", "gltf-viewer-headless"
+                    targets "gltf-viewer", "gltf-viewer-headless", "aa-bench-headless"
                 }
             }
             debuggable true

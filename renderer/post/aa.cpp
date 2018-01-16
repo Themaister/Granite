@@ -33,8 +33,28 @@ bool setup_before_post_chain_antialiasing(PostAAType type, RenderGraph &graph, T
 {
 	switch (type)
 	{
-	case PostAAType::TAA:
-		setup_taa_resolve(graph, jitter, input, input_depth, output);
+	case PostAAType::TAA_Low:
+		setup_taa_resolve(graph, jitter, input, input_depth, output, TAAQuality::Low);
+		return true;
+
+	case PostAAType::TAA_Medium:
+		setup_taa_resolve(graph, jitter, input, input_depth, output, TAAQuality::Medium);
+		return true;
+
+	case PostAAType::TAA_High:
+		setup_taa_resolve(graph, jitter, input, input_depth, output, TAAQuality::High);
+		return true;
+
+	case PostAAType::TAA_Ultra:
+		setup_taa_resolve(graph, jitter, input, input_depth, output, TAAQuality::Ultra);
+		return true;
+
+	case PostAAType::TAA_Extreme:
+		setup_taa_resolve(graph, jitter, input, input_depth, output, TAAQuality::Extreme);
+		return true;
+
+	case PostAAType::TAA_Nightmare:
+		setup_taa_resolve(graph, jitter, input, input_depth, output, TAAQuality::Nightmare);
 		return true;
 
 	default:
@@ -101,8 +121,18 @@ PostAAType string_to_post_antialiasing_type(const char *type)
 		return PostAAType::SMAA_Ultra;
 	else if (strcmp(type, "smaaUltraT2X") == 0)
 		return PostAAType::SMAA_Ultra_T2X;
-	else if (strcmp(type, "taa") == 0)
-		return PostAAType::TAA;
+	else if (strcmp(type, "taaLow") == 0)
+		return PostAAType::TAA_Low;
+	else if (strcmp(type, "taaMedium") == 0)
+		return PostAAType::TAA_Medium;
+	else if (strcmp(type, "taaHigh") == 0)
+		return PostAAType::TAA_High;
+	else if (strcmp(type, "taaUltra") == 0)
+		return PostAAType::TAA_Ultra;
+	else if (strcmp(type, "taaExtreme") == 0)
+		return PostAAType::TAA_Extreme;
+	else if (strcmp(type, "taaNightmare") == 0)
+		return PostAAType::TAA_Nightmare;
 	else if (strcmp(type, "none") == 0)
 		return PostAAType::None;
 	else

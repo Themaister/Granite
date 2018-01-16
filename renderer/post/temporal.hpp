@@ -70,6 +70,15 @@ private:
 void setup_fxaa_2phase_postprocess(RenderGraph &graph, TemporalJitter &jitter, const std::string &input,
                                    const std::string &input_depth, const std::string &output);
 
+enum class TAAQuality
+{
+	Low,
+	Medium,
+	High,
+	Ultra,
+	Extreme,
+	Nightmare
+};
 void setup_taa_resolve(RenderGraph &graph, TemporalJitter &jitter, const std::string &input,
-                       const std::string &input_depth, const std::string &output);
+                       const std::string &input_depth, const std::string &output, TAAQuality quality);
 }

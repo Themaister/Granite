@@ -320,6 +320,7 @@ vec2 sample_nearest_velocity(sampler2D Depth, sampler2D MVs, vec2 UV, vec2 inv_r
     if (depth_quad0.z < d) { mv = vec2(mvx_quad0.z, mvy_quad0.z); d = depth_quad0.z; }
     if (depth_quad1.x < d) { mv = vec2(mvx_quad1.x, mvy_quad1.x); d = depth_quad1.x; }
     if (depth_quad1.y < d) { mv = vec2(mvx_quad1.y, mvy_quad1.y);                    }
+    return mv;
 #elif NEAREST_METHOD == NEAREST_METHOD_5TAP_DIAMOND
     float d = textureLod(Depth, UV, 0.0).x;
     float d0 = textureLodOffset(Depth, UV, 0.0, ivec2(-1, -1)).x;

@@ -22,6 +22,7 @@
 
 #include "temporal.hpp"
 #include "fxaa.hpp"
+#include "enum_cast.hpp"
 
 namespace Granite
 {
@@ -142,7 +143,7 @@ unsigned TemporalJitter::get_unmasked_phase() const
 }
 
 void setup_taa_resolve(RenderGraph &graph, TemporalJitter &jitter, const std::string &input,
-                       const std::string &input_depth, const std::string &output)
+                       const std::string &input_depth, const std::string &output, TAAQuality quality)
 {
 	jitter.init(TemporalJitter::Type::TAA_16Phase,
 	            vec2(graph.get_backbuffer_dimensions().width,
@@ -201,7 +202,7 @@ void setup_taa_resolve(RenderGraph &graph, TemporalJitter &jitter, const std::st
 #endif
 	resolve.add_history_input(output);
 
-	resolve.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
+	resolve.set_build_render_pass([&, q = Util::ecast(quality)](Vulkan::CommandBuffer &cmd) {
 		auto &image = graph.get_physical_texture_resource(resolve.get_texture_inputs()[0]->get_physical_index());
 		auto &depth = graph.get_physical_texture_resource(resolve.get_texture_inputs()[1]->get_physical_index());
 #if TAA_MOTION_VECTORS
@@ -241,7 +242,10 @@ void setup_taa_resolve(RenderGraph &graph, TemporalJitter &jitter, const std::st
 		Vulkan::CommandBufferUtil::draw_quad(cmd,
 		                                     "builtin://shaders/quad.vert",
 		                                     "builtin://shaders/post/taa_resolve.frag",
-		                                     {{ "REPROJECTION_HISTORY", prev ? 1 : 0 }});
+		                                     {
+				                                     { "REPROJECTION_HISTORY", prev ? 1 : 0 },
+				                                     { "TAA_QUALITY", q }
+		                                     });
 	});
 }
 

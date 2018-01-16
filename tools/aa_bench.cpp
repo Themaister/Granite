@@ -40,6 +40,8 @@ AABenchApplication::AABenchApplication(const std::string &input, const char *met
 
 void AABenchApplication::render_frame(double, double)
 {
+	jitter.step(mat4(1.0f), mat4(1.0f));
+
 	auto &wsi = get_wsi();
 	auto &device = wsi.get_device();
 	graph.setup_attachments(device, &device.get_swapchain_view());

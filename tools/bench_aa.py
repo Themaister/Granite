@@ -72,6 +72,10 @@ def main():
 
     args = parser.parse_args()
 
+    if args.image is None:
+        sys.stderr.write('Need --image.\n')
+        sys.exit(1)
+
     sweep_image = args.image
 
     if args.android_binary is not None:

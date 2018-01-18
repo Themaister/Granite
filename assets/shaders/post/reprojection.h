@@ -82,10 +82,12 @@ mediump vec3 clamp_box(mediump vec3 color, mediump vec3 lo, mediump vec3 hi)
     mediump vec3 units = v / radius;
     mediump vec3 a_units = abs(units);
     mediump float max_unit = max(max(a_units.x, a_units.y), a_units.z);
+	mediump vec3 result;
     if (max_unit > 1.0)
-        return center + v / max_unit;
+        result = center + v / max_unit;
     else
-        return color;
+        result = color;
+	return result;
 #elif REPROJECTION_CLAMP_METHOD == REPROJECTION_CLAMP_METHOD_CLAMP
     return clamp(color, lo, hi);
 #else

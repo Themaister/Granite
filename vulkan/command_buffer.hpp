@@ -245,6 +245,7 @@ public:
 	void clear_quad(unsigned attachment, const VkClearRect &rect, const VkClearValue &value,
 	                VkImageAspectFlags = VK_IMAGE_ASPECT_COLOR_BIT);
 
+	void fill_buffer(const Buffer &dst, uint32_t value);
 	void copy_buffer(const Buffer &dst, VkDeviceSize dst_offset, const Buffer &src, VkDeviceSize src_offset,
 	                 VkDeviceSize size);
 	void copy_buffer(const Buffer &dst, const Buffer &src);
@@ -362,6 +363,7 @@ public:
 	                  int32_t vertex_offset = 0, uint32_t first_instance = 0);
 
 	void dispatch(uint32_t groups_x, uint32_t groups_y, uint32_t groups_z);
+	void dispatch_indirect(const Buffer &buffer, uint32_t offset);
 
 	void set_opaque_state();
 	void set_quad_state();

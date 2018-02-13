@@ -50,6 +50,11 @@ CommandBuffer::~CommandBuffer()
 	VK_ASSERT(staging_block.mapped == nullptr);
 }
 
+void CommandBuffer::fill_buffer(const Buffer &dst, uint32_t value)
+{
+	vkCmdFillBuffer(cmd, dst.get_buffer(), 0, dst.get_create_info().size, value);
+}
+
 void CommandBuffer::copy_buffer(const Buffer &dst, VkDeviceSize dst_offset, const Buffer &src, VkDeviceSize src_offset,
                                 VkDeviceSize size)
 {
@@ -1397,6 +1402,14 @@ void CommandBuffer::draw_indexed(uint32_t index_count, uint32_t instance_count, 
 	VK_ASSERT(index.buffer != VK_NULL_HANDLE);
 	flush_render_state();
 	vkCmdDrawIndexed(cmd, index_count, instance_count, first_index, vertex_offset, first_instance);
+}
+
+void CommandBuffer::dispatch_indirect(const Buffer &buffer, uint32_t offset)
+{
+	VK_ASSERT(current_program);
+	VK_ASSERT(is_compute);
+	flush_compute_state();
+	vkCmdDispatchIndirect(cmd, buffer.get_buffer(), offset);
 }
 
 void CommandBuffer::dispatch(uint32_t groups_x, uint32_t groups_y, uint32_t groups_z)

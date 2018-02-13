@@ -196,6 +196,11 @@ vector<uint32_t> GLSLCompiler::compile(const vector<pair<string, int>> *defines)
 #endif
 
 	spvtools::SpirvTools core(SPV_ENV_VULKAN_1_0);
+
+	core.SetMessageConsumer([this](spv_message_level_t, const char *, const spv_position_t&, const char *message) {
+		error_message = message;
+	});
+
 	if (!core.Validate(compiled_spirv))
 	{
 		LOGE("Failed to validate SPIR-V.\n");

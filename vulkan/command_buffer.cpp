@@ -938,7 +938,7 @@ void *CommandBuffer::update_buffer(const Buffer &buffer, VkDeviceSize offset, Vk
 		device->request_staging_block(staging_block, size);
 		data = staging_block.allocate(size);
 	}
-	copy_buffer(buffer, offset, *staging_block.cpu, staging_block.offset, size);
+	copy_buffer(buffer, offset, *staging_block.cpu, data.offset, size);
 	return data.host;
 }
 

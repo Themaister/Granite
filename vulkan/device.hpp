@@ -104,7 +104,8 @@ public:
 
 	void submit(CommandBufferHandle cmd, Fence *fence = nullptr, Semaphore *semaphore = nullptr,
 	            Semaphore *semaphore_alt = nullptr);
-	void submit_empty(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore, Semaphore *semaphore_alt);
+	void submit_empty(CommandBuffer::Type type,
+	                  Fence *fence = nullptr, Semaphore *semaphore = nullptr, Semaphore *semaphore_alt = nullptr);
 	void add_wait_semaphore(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags stages, bool flush);
 	////
 

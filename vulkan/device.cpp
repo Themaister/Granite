@@ -536,7 +536,7 @@ void Device::submit_empty_nolock(CommandBuffer::Type type, Fence *fence, Semapho
 		flush_frame(CommandBuffer::Type::Transfer);
 
 	VkFence cleared_fence = VK_NULL_HANDLE;
-	submit_empty_inner(type, fence ? &cleared_fence : nullptr, semaphore, semaphore_alt);
+	submit_queue(type, fence ? &cleared_fence : nullptr, semaphore, semaphore_alt);
 	if (fence)
 		*fence = make_handle<FenceHolder>(this, cleared_fence);
 }

@@ -52,7 +52,12 @@ CommandBuffer::~CommandBuffer()
 
 void CommandBuffer::fill_buffer(const Buffer &dst, uint32_t value)
 {
-	vkCmdFillBuffer(cmd, dst.get_buffer(), 0, dst.get_create_info().size, value);
+	fill_buffer(dst, value, 0, dst.get_create_info().size);
+}
+
+void CommandBuffer::fill_buffer(const Buffer &dst, uint32_t value, VkDeviceSize offset, VkDeviceSize size)
+{
+	vkCmdFillBuffer(cmd, dst.get_buffer(), offset, size, value);
 }
 
 void CommandBuffer::copy_buffer(const Buffer &dst, VkDeviceSize dst_offset, const Buffer &src, VkDeviceSize src_offset,

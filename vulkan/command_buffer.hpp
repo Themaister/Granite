@@ -246,6 +246,7 @@ public:
 	                VkImageAspectFlags = VK_IMAGE_ASPECT_COLOR_BIT);
 
 	void fill_buffer(const Buffer &dst, uint32_t value);
+	void fill_buffer(const Buffer &dst, uint32_t value, VkDeviceSize offset, VkDeviceSize size);
 	void copy_buffer(const Buffer &dst, VkDeviceSize dst_offset, const Buffer &src, VkDeviceSize src_offset,
 	                 VkDeviceSize size);
 	void copy_buffer(const Buffer &dst, const Buffer &src);

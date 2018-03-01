@@ -273,7 +273,7 @@ bool WSI::begin_frame()
 
 			if (!init_swapchain(width, height))
 				return false;
-			device->init_swapchain(swapchain_images, width, height, format);
+			device->init_swapchain(swapchain_images, this->width, this->height, format);
 		}
 		else
 		{
@@ -330,7 +330,7 @@ void WSI::update_framebuffer(unsigned width, unsigned height)
 
 	aspect_ratio = platform->get_aspect_ratio();
 	init_swapchain(width, height);
-	device->init_swapchain(swapchain_images, width, height, format);
+	device->init_swapchain(swapchain_images, this->width, this->height, format);
 }
 
 void WSI::deinit_external()

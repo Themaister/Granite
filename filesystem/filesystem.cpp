@@ -155,19 +155,21 @@ Filesystem::Filesystem()
 		if (asset_dir)
 			register_protocol("builtin", unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir)));
 
-#ifdef GRANITE_DEFAULT_BUILTIN_DIRECTORY
 		const char *builtin_dir = getenv("GRANITE_DEFAULT_BUILTIN_DIRECTORY");
+#ifdef GRANITE_DEFAULT_BUILTIN_DIRECTORY
 		if (!builtin_dir)
 			builtin_dir = GRANITE_DEFAULT_BUILTIN_DIRECTORY;
-		register_protocol("builtin", unique_ptr<FilesystemBackend>(new OSFilesystem(builtin_dir)));
 #endif
+		if (builtin_dir)
+			register_protocol("builtin", unique_ptr<FilesystemBackend>(new OSFilesystem(builtin_dir)));
 
-#ifdef GRANITE_DEFAULT_CACHE_DIRECTORY
 		const char *cache_dir = getenv("GRANITE_DEFAULT_CACHE_DIRECTORY");
+#ifdef GRANITE_DEFAULT_CACHE_DIRECTORY
 		if (!cache_dir)
 			cache_dir = GRANITE_DEFAULT_CACHE_DIRECTORY;
-		register_protocol("cache", unique_ptr<FilesystemBackend>(new OSFilesystem(cache_dir)));
 #endif
+		if (cache_dir)
+			register_protocol("cache", unique_ptr<FilesystemBackend>(new OSFilesystem(cache_dir)));
 	}
 #endif
 }

@@ -40,6 +40,8 @@ public:
 	~FenceHolder();
 	void wait();
 
+	bool wait_timeout(uint64_t nsec);
+
 private:
 	Device *device;
 	VkFence fence;

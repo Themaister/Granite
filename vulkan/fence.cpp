@@ -36,4 +36,9 @@ void FenceHolder::wait()
 	if (vkWaitForFences(device->get_device(), 1, &fence, VK_TRUE, UINT64_MAX) != VK_SUCCESS)
 		LOGE("Failed to wait for fence!\n");
 }
+
+bool FenceHolder::wait_timeout(uint64_t timeout)
+{
+	return vkWaitForFences(device->get_device(), 1, &fence, VK_TRUE, timeout) == VK_SUCCESS;
+}
 }

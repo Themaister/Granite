@@ -83,6 +83,7 @@ private:
 	Device *device;
 
 	Util::ThreadSafeCache<Texture> textures;
+	Util::ThreadSafeCache<Texture> deferred_textures;
 	std::mutex notification_lock;
 	std::unordered_map<std::string, std::vector<std::function<void (Texture &)>>> notifications;
 };

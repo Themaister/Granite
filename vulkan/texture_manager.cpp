@@ -223,6 +223,7 @@ Texture *TextureManager::request_texture(const std::string &path, VkFormat forma
 {
 	Util::Hasher hasher;
 	hasher.string(path);
+	auto deferred_hash = hasher.get();
 	hasher.u32(format);
 	hasher.u32(mapping.r);
 	hasher.u32(mapping.g);
@@ -230,12 +231,16 @@ Texture *TextureManager::request_texture(const std::string &path, VkFormat forma
 	hasher.u32(mapping.a);
 	auto hash = hasher.get();
 
-	auto *ret = textures.find(hash);
-	if (!ret)
-	{
-		auto texture = make_unique<Texture>(device, path, format, mapping);
-		ret = textures.insert(hash, move(texture));
-	}
+	auto *ret = deferred_textures.find(deferred_hash);
+	if (ret)
+		return ret;
+
+	ret = textures.find(hash);
+	if (ret)
+		return ret;
+
+	auto texture = make_unique<Texture>(device, path, format, mapping);
+	ret = textures.insert(hash, move(texture));
 	return ret;
 }
 
@@ -245,17 +250,17 @@ void TextureManager::register_texture_update_notification(const std::string &mod
 	Util::Hasher hasher;
 	hasher.string(modified_path);
 	auto hash = hasher.get();
-	auto *ret = textures.find(hash);
+	auto *ret = deferred_textures.find(hash);
 	if (ret)
 		func(*ret);
 
-	lock_guard<mutex> holder{notification_lock};
+	//lock_guard<mutex> holder{notification_lock};
 	notifications[modified_path].push_back(move(func));
 }
 
 void TextureManager::notify_updated_texture(const std::string &path, Vulkan::Texture &texture)
 {
-	lock_guard<mutex> holder{notification_lock};
+	//lock_guard<mutex> holder{notification_lock};
 	for (auto &n : notifications[path])
 		if (n)
 			n(texture);
@@ -267,12 +272,12 @@ Texture *TextureManager::register_deferred_texture(const std::string &path)
 	hasher.string(path);
 	auto hash = hasher.get();
 
-	auto *ret = textures.find(hash);
+	auto *ret = deferred_textures.find(hash);
 	if (!ret)
 	{
 		auto texture = make_unique<Texture>(device);
 		texture->set_path(path);
-		ret = textures.insert(hash, move(texture));
+		ret = deferred_textures.insert(hash, move(texture));
 	}
 	return ret;
 }

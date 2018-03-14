@@ -101,6 +101,8 @@ void main()
     #endif
     if (!gl_FrontFacing)
         normal = -normal;
+#else
+    const vec3 normal = vec3(0.0, 1.0, 0.0);
 #endif
 
 #if defined(HAVE_METALLICROUGHNESSMAP) && HAVE_METALLICROUGHNESSMAP
@@ -118,7 +120,7 @@ void main()
 
 #if defined(HAVE_OCCLUSIONMAP) && HAVE_OCCLUSIONMAP
     #ifdef NEED_GRADIENTS
-        mediump float ambient = texture(uOcclusionMap, vUV, gradX, gradY).x;
+        mediump float ambient = textureGrad(uOcclusionMap, vUV, gradX, gradY).x;
     #else
         mediump float ambient = texture(uOcclusionMap, vUV, registers.lod_bias).x;
     #endif
@@ -128,7 +130,7 @@ void main()
 
 #if defined(HAVE_EMISSIVEMAP) && HAVE_EMISSIVEMAP
     #ifdef NEED_GRADIENTS
-        mediump vec3 emissive = texture(uEmissiveMap, vUV, gradX, gradY).rgb;
+        mediump vec3 emissive = textureGrad(uEmissiveMap, vUV, gradX, gradY).rgb;
     #else
         mediump vec3 emissive = texture(uEmissiveMap, vUV, registers.lod_bias).rgb;
     #endif

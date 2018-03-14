@@ -1508,10 +1508,20 @@ void Parser::build_primitive(const MeshData::AttributeData &prim)
 	}
 	mesh.static_aabb = AABB(aabb_min, aabb_max);
 
+	bool rebuild_normals = false;
+
 	for (uint32_t i = 0; i < ecast(MeshAttribute::Count); i++)
 	{
 		if (i == ecast(MeshAttribute::Position) && !prim.attributes[i].active)
 			throw logic_error("Mesh must have POSITION semantic.");
+		else if (i == ecast(MeshAttribute::Normal) && !prim.attributes[i].active)
+		{
+			rebuild_normals = true;
+			mesh.attribute_layout[i].format = VK_FORMAT_R32G32B32_SFLOAT;
+			mesh.attribute_layout[i].offset = mesh.position_stride;
+			mesh.attribute_stride += 3 * sizeof(float);
+			continue;
+		}
 
 		if (!prim.attributes[i].active)
 		{
@@ -1712,6 +1722,9 @@ void Parser::build_primitive(const MeshData::AttributeData &prim)
 		}
 		mesh.count = index_count;
 	}
+
+	if (rebuild_normals)
+		recompute_normals(mesh);
 
 	meshes.push_back(move(mesh));
 }

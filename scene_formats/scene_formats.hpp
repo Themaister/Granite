@@ -253,5 +253,7 @@ struct SceneInformation
 	Util::ArrayView<const Skin> skins;
 	Util::ArrayView<const Animation> animations;
 };
+
+bool recompute_normals(Mesh &mesh);
 }
 }

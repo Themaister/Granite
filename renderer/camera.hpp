@@ -40,6 +40,8 @@ public:
 
 	void set_depth_range(float znear, float zfar);
 
+	void set_ortho(bool enable = true, float height = 0.0f);
+
 	void set_fovy(float fovy);
 
 	float get_fovy() const
@@ -83,6 +85,16 @@ public:
 		return zfar;
 	}
 
+	bool get_ortho() const
+	{
+		return ortho;
+	}
+
+	float get_ortho_height() const
+	{
+		return ortho_height;
+	}
+
 	void set_transform(const mat4 &m);
 
 protected:
@@ -93,6 +105,8 @@ protected:
 	float znear = 1.0f;
 	float zfar = 1000.0f;
 	float transform_z_scale = 1.0f;
+	bool ortho = false;
+	float ortho_height = 0.0f;
 };
 
 class FPSCamera : public Camera, public EventHandler

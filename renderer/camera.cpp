@@ -37,6 +37,12 @@ void Camera::set_depth_range(float znear, float zfar)
 	this->zfar = zfar;
 }
 
+void Camera::set_ortho(bool enable, float height)
+{
+	ortho = enable;
+	ortho_height = height;
+}
+
 void Camera::set_aspect(float aspect)
 {
 	this->aspect = aspect;
@@ -70,7 +76,10 @@ void Camera::look_at(const vec3 &eye, const vec3 &at, const vec3 &up)
 
 mat4 Camera::get_projection() const
 {
-	return projection(fovy, aspect, znear * transform_z_scale, zfar * transform_z_scale);
+	if (ortho)
+		return glm::ortho(-ortho_height * aspect, ortho_height * aspect, ortho_height, -ortho_height, znear * transform_z_scale, zfar * transform_z_scale);
+	else
+		return projection(fovy, aspect, znear * transform_z_scale, zfar * transform_z_scale);
 }
 
 vec3 Camera::get_position() const

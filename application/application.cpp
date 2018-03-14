@@ -366,6 +366,10 @@ bool SceneViewerApplication::on_key_down(const KeyboardEvent &e)
 
 	switch (e.get_key())
 	{
+	case Key::O:
+		selected_camera->set_ortho(!selected_camera->get_ortho(), 5.0f);
+		break;
+
 	case Key::X:
 	{
 		vec3 pos = selected_camera->get_position();

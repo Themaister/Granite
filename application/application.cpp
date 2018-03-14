@@ -910,8 +910,9 @@ void SceneViewerApplication::render_shadow_map_near(Vulkan::CommandBuffer &cmd)
 	depth_renderer.flush(cmd, depth_context, Renderer::DEPTH_BIAS_BIT);
 }
 
-void SceneViewerApplication::update_scene(double, double elapsed_time)
+void SceneViewerApplication::update_scene(double frame_time, double elapsed_time)
 {
+	last_frame_times[last_frame_index++ & FrameWindowSizeMask] = float(frame_time);
 	auto &scene = scene_loader.get_scene();
 
 	animation_system->animate(elapsed_time);
@@ -1011,7 +1012,6 @@ void SceneViewerApplication::render_scene()
 
 void SceneViewerApplication::render_frame(double frame_time, double elapsed_time)
 {
-	last_frame_times[last_frame_index++ & FrameWindowSizeMask] = float(frame_time);
 	update_scene(frame_time, elapsed_time);
 	render_scene();
 }

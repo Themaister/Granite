@@ -71,14 +71,6 @@ void PositionalLight::set_color(vec3 color)
 	recompute_range();
 }
 
-void PositionalLight::set_falloff(float constant, float linear, float quadratic)
-{
-	this->constant = max(constant, 0.0f);
-	this->linear = max(linear, 0.0f);
-	this->quadratic = max(quadratic, 0.0f);
-	recompute_range();
-}
-
 void PositionalLight::set_maximum_range(float range)
 {
 	cutoff_range = range;
@@ -87,26 +79,10 @@ void PositionalLight::set_maximum_range(float range)
 
 void PositionalLight::recompute_range()
 {
-	if (linear == 0.0f && quadratic == 0.0f)
-	{
-		set_range(cutoff_range);
-		return;
-	}
-
 	// Check when attenuation drops below a constant.
 	const float target_atten = 0.1f;
 	float max_color = max(max(color.r, color.g), color.b);
-
-	if (max_color < target_atten * constant)
-	{
-		set_range(0.0001f);
-		return;
-	}
-
-	float a = quadratic;
-	float b = linear;
-	float c = constant - max_color / target_atten;
-	float d = (-b + sqrt(b * b - 4.0f * a * c)) / (2.0f * a);
+	float d = sqrt(max_color / target_atten);
 	set_range(d);
 }
 
@@ -145,10 +121,12 @@ PositionalFragmentInfo SpotLight::get_shader_info(const mat4 &transform) const
 	float max_range = min(falloff_range, cutoff_range) * scale_factor;
 
 	return {
-		vec4(color, outer_cone),
-		vec4(constant, linear / scale_factor, quadratic / (scale_factor * scale_factor), 1.0f / max_range),
-		vec4(transform[3].xyz(), inner_cone),
-		vec4(-normalize(transform[2].xyz()), atan(xy_range)),
+		color * (scale_factor * scale_factor),
+		outer_cone,
+		transform[3].xyz(),
+		inner_cone,
+		-normalize(transform[2].xyz()),
+		1.0f / max_range,
 	};
 }
 
@@ -611,10 +589,12 @@ PositionalFragmentInfo PointLight::get_shader_info(const mat4 &transform) const
 	float max_range = min(falloff_range, cutoff_range) * scale_factor;
 
 	return {
-		vec4(color, 0.0f),
-		vec4(constant, linear / scale_factor, quadratic / (scale_factor * scale_factor), 1.0f / max_range),
-		vec4(transform[3].xyz(), 0.0f),
-		vec4(normalize(transform[2].xyz()), 0.0f),
+		color * (scale_factor * scale_factor),
+		0.0f,
+		transform[3].xyz(),
+		0.0f,
+		normalize(transform[2].xyz()),
+		1.0f / max_range,
 	};
 }
 

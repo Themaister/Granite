@@ -441,8 +441,12 @@ EntityHandle Scene::create_light(const SceneFormats::LightInfo &light, Node *nod
 		}
 
 		auto &positional = static_cast<PositionalLight &>(*renderable);
-		positional.set_color(light.color);
-		positional.set_falloff(light.constant_falloff, light.linear_falloff, light.quadratic_falloff);
+		positional.set_color(light.color / (light.quadratic_falloff * light.quadratic_falloff));
+
+		if (light.constant_falloff != 0.0f)
+			LOGI("Constant falloff is not zero, this will be ignored.\n");
+		if (light.linear_falloff != 0.0f)
+			LOGI("Linear falloff is not zero, this will be ignored.\n");
 
 		entity->allocate_component<PositionalLightComponent>()->light = &positional;
 		entity->allocate_component<RenderableComponent>()->renderable = renderable;

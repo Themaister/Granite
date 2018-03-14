@@ -6,11 +6,9 @@
 struct PointShaderInfo
 {
 	vec3 color;
-	vec3 falloff;
-	float inv_radius;
 	vec3 position;
 	vec3 direction;
-	float xy_scale;
+	float inv_radius;
 };
 
 #ifndef POINT_LIGHT_DATA_SET
@@ -108,10 +106,9 @@ vec3 compute_point_light(int index,
 	const float shadow_falloff = 1.0;
 #endif
 
-	mediump float light_dist = length(world_pos - light_pos);
+	mediump float light_dist = length(light_dir_full);
 	mediump float static_falloff = shadow_falloff * (1.0 - smoothstep(0.9, 1.0, light_dist * POINT_DATA(index).inv_radius));
-	mediump vec3 f = POINT_DATA(index).falloff;
-	mediump vec3 point_color = POINT_DATA(index).color * (static_falloff / (f.x + light_dist * f.y + light_dist * light_dist * f.z));
+	mediump vec3 point_color = POINT_DATA(index).color / (light_dist * light_dist);
 
 #ifdef POINT_LIGHT_EARLY_OUT
 	if (all(equal(point_color, vec3(0.0))))

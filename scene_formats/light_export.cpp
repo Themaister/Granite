@@ -84,9 +84,9 @@ std::string export_lights_to_json(const DirectionalParameters &dir, Scene &scene
 			color.PushBack(s.get_color().g, allocator);
 			color.PushBack(s.get_color().b, allocator);
 			spot.AddMember("color", color, allocator);
-			spot.AddMember("constantFalloff", s.get_constant_falloff(), allocator);
-			spot.AddMember("linearFalloff", s.get_linear_falloff(), allocator);
-			spot.AddMember("quadraticFalloff", s.get_quadratic_falloff(), allocator);
+			spot.AddMember("constantFalloff", 0.0f, allocator);
+			spot.AddMember("linearFalloff", 0.0f, allocator);
+			spot.AddMember("quadraticFalloff", 1.0f, allocator);
 			spot.AddMember("position", pos, allocator);
 			spot.AddMember("direction", dir, allocator);
 			spots.PushBack(spot, allocator);
@@ -100,9 +100,9 @@ std::string export_lights_to_json(const DirectionalParameters &dir, Scene &scene
 			color.PushBack(p.get_color().g, allocator);
 			color.PushBack(p.get_color().b, allocator);
 			point.AddMember("color", color, allocator);
-			point.AddMember("constantFalloff", p.get_constant_falloff(), allocator);
-			point.AddMember("linearFalloff", p.get_linear_falloff(), allocator);
-			point.AddMember("quadraticFalloff", p.get_quadratic_falloff(), allocator);
+			point.AddMember("constantFalloff", 0.0f, allocator);
+			point.AddMember("linearFalloff", 0.0f, allocator);
+			point.AddMember("quadraticFalloff", 1.0f, allocator);
 			point.AddMember("position", pos, allocator);
 			points.PushBack(point, allocator);
 		}

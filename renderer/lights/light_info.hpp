@@ -34,9 +34,12 @@ struct PointTransform
 
 struct PositionalFragmentInfo
 {
-	vec4 color_outer;
-	vec4 falloff_inv_radius;
-	vec4 position_inner;
-	vec4 direction_half_angle;
+	vec3 color;
+	float outer;
+	vec3 position;
+	float inner;
+	vec3 direction;
+	float inv_radius;
 };
+static_assert(sizeof(PositionalFragmentInfo) == 48, "PositionFragmentInfo is not 48 bytes.");
 }

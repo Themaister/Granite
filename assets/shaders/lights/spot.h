@@ -8,14 +8,11 @@ struct SpotShaderInfo
 	mediump vec3 color;
 	mediump float spot_outer;
 
-	mediump vec3 falloff;
-	mediump float inv_radius;
-
 	vec3 position;
 	mediump float spot_inner;
 
 	mediump vec3 direction;
-	mediump float xy_scale;
+	mediump float inv_radius;
 };
 
 #ifndef SPOT_LIGHT_DATA_SET
@@ -104,13 +101,13 @@ mediump vec3 compute_spot_light(int index,
 #else
 	const float shadow_falloff = 1.0;
 #endif
-	mediump vec3 light_dir = normalize(light_pos - world_pos);
-	mediump float light_dist = length(world_pos - light_pos);
+	mediump vec3 light_dir_full = light_pos - world_pos;
+	mediump vec3 light_dir = normalize(light_dir_full);
+	mediump float light_dist = length(light_dir_full);
 	mediump float cone_angle = dot(normalize(world_pos - light_pos), light_primary_direction);
 	mediump float cone_falloff = smoothstep(SPOT_DATA(index).spot_outer, SPOT_DATA(index).spot_inner, cone_angle);
 	mediump float static_falloff = shadow_falloff * (1.0 - smoothstep(0.9, 1.0, light_dist * SPOT_DATA(index).inv_radius));
-	mediump vec3 f = SPOT_DATA(index).falloff;
-	mediump vec3 spot_color = SPOT_DATA(index).color * (cone_falloff * static_falloff / (f.x + light_dist * f.y + light_dist * light_dist * f.z));
+	mediump vec3 spot_color = SPOT_DATA(index).color * (cone_falloff / (light_dist * light_dist));
 
 #ifdef SPOT_LIGHT_EARLY_OUT
 	if (all(equal(spot_color, vec3(0.0))))

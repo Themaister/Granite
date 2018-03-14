@@ -485,9 +485,9 @@ void LightClusterer::render_atlas_point(RenderContext &context)
 		for (unsigned face = 0; face < 6; face++)
 		{
 			mat4 view, proj;
-			compute_cube_render_transform(points.lights[i].position_inner.xyz(), face, proj, view,
-			                              0.01f / points.lights[i].falloff_inv_radius.w,
-			                              1.0f / points.lights[i].falloff_inv_radius.w);
+			compute_cube_render_transform(points.lights[i].position, face, proj, view,
+			                              0.01f / points.lights[i].inv_radius,
+			                              1.0f / points.lights[i].inv_radius);
 			depth_context.set_camera(proj, view);
 
 			if (face == 0)
@@ -607,12 +607,12 @@ void LightClusterer::render_atlas_spot(RenderContext &context)
 
 		LOGI("Rendering shadow for spot light %u (%p)\n", i, static_cast<void *>(spots.handles[i]));
 
-		float range = tan(spots.lights[i].direction_half_angle.w);
-		mat4 view = mat4_cast(look_at_arbitrary_up(spots.lights[i].direction_half_angle.xyz())) *
-		            translate(-spots.lights[i].position_inner.xyz());
+		float range = tan(spots.handles[i]->get_xy_range());
+		mat4 view = mat4_cast(look_at_arbitrary_up(spots.lights[i].direction)) *
+		            translate(-spots.lights[i].position);
 		mat4 proj = projection(range * 2.0f, 1.0f,
-		                       0.01f / spots.lights[i].falloff_inv_radius.w,
-		                       1.0f / spots.lights[i].falloff_inv_radius.w);
+		                       0.01f / spots.lights[i].inv_radius,
+		                       1.0f / spots.lights[i].inv_radius);
 
 		unsigned remapped = spots.index_remap[i];
 
@@ -841,17 +841,17 @@ void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::Image
 
 	for (unsigned i = 0; i < spots.count; i++)
 	{
-		state.spot_position[i] = spots.lights[i].position_inner.xyz();
-		state.spot_direction[i] = spots.lights[i].direction_half_angle.xyz();
-		state.spot_size[i] = 1.0f / spots.lights[i].falloff_inv_radius.w;
-		state.spot_angle_cos[i] = cosf(spots.lights[i].direction_half_angle.w);
-		state.spot_angle_sin[i] = sinf(spots.lights[i].direction_half_angle.w);
+		state.spot_position[i] = spots.lights[i].position;
+		state.spot_direction[i] = spots.lights[i].direction;
+		state.spot_size[i] = 1.0f / spots.lights[i].inv_radius;
+		state.spot_angle_cos[i] = cosf(spots.handles[i]->get_xy_range());
+		state.spot_angle_sin[i] = sinf(spots.handles[i]->get_xy_range());
 	}
 
 	for (unsigned i = 0; i < points.count; i++)
 	{
-		state.point_position[i] = points.lights[i].position_inner.xyz();
-		state.point_size[i] = 1.0f / points.lights[i].falloff_inv_radius.w;
+		state.point_position[i] = points.lights[i].position;
+		state.point_size[i] = 1.0f / points.lights[i].inv_radius;
 	}
 
 	for (unsigned slice = 0; slice < ClusterHierarchies + 1; slice++)
@@ -1047,9 +1047,9 @@ void LightClusterer::build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView
 	auto *spot_lut_buffer = cmd.allocate_typed_constant_data<vec4>(1, 2, MaxLights);
 	for (unsigned i = 0; i < spots.count; i++)
 	{
-		spot_lut_buffer[i] = vec4(cosf(spots.lights[i].direction_half_angle.w),
-		                          sinf(spots.lights[i].direction_half_angle.w),
-		                          1.0f / spots.lights[i].falloff_inv_radius.w,
+		spot_lut_buffer[i] = vec4(cosf(spots.handles[i]->get_xy_range()),
+		                          sinf(spots.handles[i]->get_xy_range()),
+		                          1.0f / spots.lights[i].inv_radius,
 		                          0.0f);
 	}
 

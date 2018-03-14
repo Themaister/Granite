@@ -62,26 +62,9 @@ public:
 		return color;
 	}
 
-	void set_falloff(float constant, float linear, float quadratic);
-
 	unsigned get_cookie() const
 	{
 		return cookie;
-	}
-
-	float get_constant_falloff() const
-	{
-		return constant;
-	}
-
-	float get_linear_falloff() const
-	{
-		return linear;
-	}
-
-	float get_quadratic_falloff() const
-	{
-		return quadratic;
 	}
 
 	virtual vec2 get_z_range(const RenderContext &context, const mat4 &transform) const = 0;
@@ -92,10 +75,6 @@ protected:
 	float falloff_range = 1.0f;
 	float cutoff_range = 100.0f;
 	void recompute_range();
-
-	float constant = 0.0f;
-	float linear = 0.0f;
-	float quadratic = 0.0f;
 
 private:
 	Type type;
@@ -126,6 +105,11 @@ public:
 	float get_outer_cone() const
 	{
 		return outer_cone;
+	}
+
+	float get_xy_range() const
+	{
+		return xy_range;
 	}
 
 private:

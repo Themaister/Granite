@@ -56,17 +56,17 @@ android {
             manifest.srcFile 'AndroidManifest.xml'
             resources.srcDirs = ['res']
             res.srcDirs = ['res']
-            assets.srcDirs = ['../assets', '../viewer/assets']
+            assets.srcDirs = ['../../assets', '../assets']
         }
     }
 
     externalNativeBuild {
         cmake {
-            path "../CMakeLists.txt"
+            path "../../CMakeLists.txt"
         }
     }
 }
 
 dependencies {
-	compile project(':application:platforms:android')
+	compile project(':..:application:platforms:android')
 }

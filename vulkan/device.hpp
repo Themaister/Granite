@@ -41,6 +41,7 @@
 #include "query_pool.hpp"
 #include "buffer_pool.hpp"
 #include "thread_safe_cache.hpp"
+#include "vulkan_pipeline_cache.hpp"
 #include <memory>
 #include <vector>
 #include <atomic>
@@ -62,7 +63,7 @@ struct InitialImageBuffer
 	std::vector<VkBufferImageCopy> blits;
 };
 
-class Device
+class Device : public VPC::StateCreatorInterface
 {
 public:
 	friend class EventHolder;
@@ -109,7 +110,7 @@ public:
 	void add_wait_semaphore(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags stages, bool flush);
 	////
 
-	Shader *create_shader(ShaderStage stage, const uint32_t *code, size_t size);
+	Shader *create_shader(const uint32_t *code, size_t size);
 	Program *create_program(const uint32_t *vertex_data, size_t vertex_size, const uint32_t *fragment_data, size_t fragment_size);
 	Program *create_program(const uint32_t *compute_data, size_t compute_size);
 	void bake_program(Program &program);
@@ -164,7 +165,7 @@ public:
 	                                   unsigned index = 0, unsigned samples = 1);
 
 	PipelineLayout *request_pipeline_layout(const CombinedResourceLayout &layout);
-	DescriptorSetAllocator *request_descriptor_set_allocator(const DescriptorSetLayout &layout);
+	DescriptorSetAllocator *request_descriptor_set_allocator(const DescriptorSetLayout &layout, const uint32_t *stages_for_sets);
 	const Framebuffer &request_framebuffer(const RenderPassInfo &info);
 	const RenderPass &request_render_pass(const RenderPassInfo &info);
 
@@ -409,5 +410,14 @@ private:
 	void decrement_frame_counter_nolock();
 	void submit_secondary(CommandBuffer &primary, CommandBuffer &secondary);
 	void wait_idle_nolock();
+
+	VPC::StateRecorder state_recorder;
+	bool enqueue_create_sampler(VPC::Hash hash, unsigned index, const VkSamplerCreateInfo *create_info, VkSampler *sampler) override;
+	bool enqueue_create_descriptor_set_layout(VPC::Hash hash, unsigned index, const VkDescriptorSetLayoutCreateInfo *create_info, VkDescriptorSetLayout *layout) override;
+	bool enqueue_create_pipeline_layout(VPC::Hash hash, unsigned index, const VkPipelineLayoutCreateInfo *create_info, VkPipelineLayout *layout) override;
+	bool enqueue_create_shader_module(VPC::Hash hash, unsigned index, const VkShaderModuleCreateInfo *create_info, VkShaderModule *module) override;
+	bool enqueue_create_render_pass(VPC::Hash hash, unsigned index, const VkRenderPassCreateInfo *create_info, VkRenderPass *render_pass) override;
+	bool enqueue_create_compute_pipeline(VPC::Hash hash, unsigned index, const VkComputePipelineCreateInfo *create_info, VkPipeline *pipeline) override;
+	bool enqueue_create_graphics_pipeline(VPC::Hash hash, unsigned index, const VkGraphicsPipelineCreateInfo *create_info, VkPipeline *pipeline) override;
 };
 }

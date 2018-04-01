@@ -128,23 +128,22 @@ void Device::unmap_host_buffer(const Buffer &buffer)
 	managers.memory.unmap_memory(buffer.get_allocation());
 }
 
-Shader *Device::create_shader(ShaderStage stage, const uint32_t *data, size_t size)
+Shader *Device::create_shader(const uint32_t *data, size_t size)
 {
 	Util::Hasher hasher;
 	hasher.data(data, size);
-	hasher.u32(ecast(stage));
 
 	auto hash = hasher.get();
 	auto *ret = shaders.find(hash);
 	if (!ret)
-		ret = shaders.insert(hash, make_unique<Shader>(hash, device, stage, data, size));
+		ret = shaders.insert(hash, make_unique<Shader>(hash, device, data, size));
 	return ret;
 }
 
 Program *Device::create_program(const uint32_t *compute_data, size_t compute_size)
 {
 	Util::Hasher hasher;
-	auto *compute = create_shader(ShaderStage::Compute, compute_data, compute_size);
+	auto *compute = create_shader(compute_data, compute_size);
 	hasher.u64(compute->get_hash());
 
 	auto hash = hasher.get();
@@ -158,8 +157,8 @@ Program *Device::create_program(const uint32_t *vertex_data, size_t vertex_size,
                                 size_t fragment_size)
 {
 	Util::Hasher hasher;
-	auto *vertex = create_shader(ShaderStage::Vertex, vertex_data, vertex_size);
-	auto *fragment = create_shader(ShaderStage::Fragment, fragment_data, fragment_size);
+	auto *vertex = create_shader(vertex_data, vertex_size);
+	auto *fragment = create_shader(fragment_data, fragment_size);
 	hasher.u64(vertex->get_hash());
 	hasher.u64(fragment->get_hash());
 
@@ -175,6 +174,7 @@ PipelineLayout *Device::request_pipeline_layout(const CombinedResourceLayout &la
 {
 	Hasher h;
 	h.data(reinterpret_cast<const uint32_t *>(layout.sets), sizeof(layout.sets));
+	h.data(&layout.stages_for_bindings[0][0], sizeof(layout.stages_for_bindings));
 	h.data(reinterpret_cast<const uint32_t *>(layout.ranges), sizeof(layout.ranges));
 	h.u32(layout.attribute_mask);
 	h.u32(layout.render_target_mask);
@@ -186,15 +186,16 @@ PipelineLayout *Device::request_pipeline_layout(const CombinedResourceLayout &la
 	return ret;
 }
 
-DescriptorSetAllocator *Device::request_descriptor_set_allocator(const DescriptorSetLayout &layout)
+DescriptorSetAllocator *Device::request_descriptor_set_allocator(const DescriptorSetLayout &layout, const uint32_t *stages_for_bindings)
 {
 	Hasher h;
 	h.data(reinterpret_cast<const uint32_t *>(&layout), sizeof(layout));
+	h.data(stages_for_bindings, sizeof(uint32_t) * VULKAN_NUM_BINDINGS);
 	auto hash = h.get();
 
 	auto *ret = descriptor_set_allocators.find(hash);
 	if (!ret)
-		ret = descriptor_set_allocators.insert(hash, make_unique<DescriptorSetAllocator>(hash, this, layout));
+		ret = descriptor_set_allocators.insert(hash, make_unique<DescriptorSetAllocator>(hash, this, layout, stages_for_bindings));
 	return ret;
 }
 
@@ -202,9 +203,9 @@ void Device::bake_program(Program &program)
 {
 	CombinedResourceLayout layout;
 	if (program.get_shader(ShaderStage::Vertex))
-		layout.attribute_mask = program.get_shader(ShaderStage::Vertex)->get_layout().attribute_mask;
+		layout.attribute_mask = program.get_shader(ShaderStage::Vertex)->get_layout().input_mask;
 	if (program.get_shader(ShaderStage::Fragment))
-		layout.render_target_mask = program.get_shader(ShaderStage::Fragment)->get_layout().render_target_mask;
+		layout.render_target_mask = program.get_shader(ShaderStage::Fragment)->get_layout().output_mask;
 
 	layout.descriptor_set_mask = 0;
 
@@ -213,6 +214,8 @@ void Device::bake_program(Program &program)
 		auto *shader = program.get_shader(static_cast<ShaderStage>(i));
 		if (!shader)
 			continue;
+
+		uint32_t stage_mask = 1u << i;
 
 		auto &shader_layout = shader->get_layout();
 		for (unsigned set = 0; set < VULKAN_NUM_DESCRIPTOR_SETS; set++)
@@ -226,7 +229,23 @@ void Device::bake_program(Program &program)
 			layout.sets[set].sampler_mask |= shader_layout.sets[set].sampler_mask;
 			layout.sets[set].separate_image_mask |= shader_layout.sets[set].separate_image_mask;
 			layout.sets[set].fp_mask |= shader_layout.sets[set].fp_mask;
-			layout.sets[set].stages |= shader_layout.sets[set].stages;
+
+			uint32_t active_binds =
+					shader_layout.sets[set].sampled_image_mask |
+					shader_layout.sets[set].storage_image_mask |
+					shader_layout.sets[set].uniform_buffer_mask|
+					shader_layout.sets[set].storage_buffer_mask |
+					shader_layout.sets[set].sampled_buffer_mask |
+					shader_layout.sets[set].input_attachment_mask |
+					shader_layout.sets[set].sampler_mask |
+					shader_layout.sets[set].separate_image_mask;
+
+			if (active_binds)
+				layout.stages_for_sets[set] |= stage_mask;
+
+			for_each_bit(active_binds, [&](uint32_t bit) {
+				layout.stages_for_bindings[set][bit] |= stage_mask;
+			});
 		}
 
 		layout.ranges[i].stageFlags = 1u << i;
@@ -236,7 +255,7 @@ void Device::bake_program(Program &program)
 
 	for (unsigned i = 0; i < VULKAN_NUM_DESCRIPTOR_SETS; i++)
 	{
-		if (layout.sets[i].stages != 0)
+		if (layout.stages_for_sets[i] != 0)
 			layout.descriptor_set_mask |= 1u << i;
 	}
 
@@ -2845,4 +2864,40 @@ void Device::set_queue_lock(std::function<void()> lock_callback, std::function<v
 	queue_lock_callback = move(lock_callback);
 	queue_unlock_callback = move(unlock_callback);
 }
+
+bool Device::enqueue_create_sampler(VPC::Hash hash, unsigned index, const VkSamplerCreateInfo *create_info, VkSampler *sampler)
+{
+	return false;
+}
+
+bool Device::enqueue_create_descriptor_set_layout(VPC::Hash hash, unsigned index, const VkDescriptorSetLayoutCreateInfo *create_info, VkDescriptorSetLayout *layout)
+{
+	return false;
+}
+
+bool Device::enqueue_create_pipeline_layout(VPC::Hash hash, unsigned index, const VkPipelineLayoutCreateInfo *create_info, VkPipelineLayout *layout)
+{
+	return false;
+}
+
+bool Device::enqueue_create_shader_module(VPC::Hash hash, unsigned index, const VkShaderModuleCreateInfo *create_info, VkShaderModule *module)
+{
+	return false;
+}
+
+bool Device::enqueue_create_render_pass(VPC::Hash hash, unsigned index, const VkRenderPassCreateInfo *create_info, VkRenderPass *render_pass)
+{
+	return false;
+}
+
+bool Device::enqueue_create_compute_pipeline(VPC::Hash hash, unsigned index, const VkComputePipelineCreateInfo *create_info, VkPipeline *pipeline)
+{
+	return false;
+}
+
+bool Device::enqueue_create_graphics_pipeline(VPC::Hash hash, unsigned index, const VkGraphicsPipelineCreateInfo *create_info, VkPipeline *pipeline)
+{
+	return false;
+}
+
 }

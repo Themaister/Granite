@@ -39,7 +39,7 @@ PipelineLayout::PipelineLayout(Hash hash, Device *device, const CombinedResource
 	unsigned num_sets = 0;
 	for (unsigned i = 0; i < VULKAN_NUM_DESCRIPTOR_SETS; i++)
 	{
-		set_allocators[i] = device->request_descriptor_set_allocator(layout.sets[i]);
+		set_allocators[i] = device->request_descriptor_set_allocator(layout.sets[i], layout.stages_for_bindings[i]);
 		layouts[i] = set_allocators[i]->get_layout();
 		if (layout.descriptor_set_mask & (1u << i))
 			num_sets = i + 1;
@@ -116,10 +116,9 @@ const char *Shader::stage_to_name(ShaderStage stage)
 	}
 }
 
-Shader::Shader(Hash hash, VkDevice device, ShaderStage stage, const uint32_t *data, size_t size)
+Shader::Shader(Hash hash, VkDevice device, const uint32_t *data, size_t size)
     : HashedObject(hash)
     , device(device)
-    , stage(stage)
 {
 #ifdef GRANITE_SPIRV_DUMP
 	if (!Filesystem::get().write_buffer_to_file(string("cache://spirv/") + to_string(hash) + ".spv", data, size))
@@ -146,7 +145,6 @@ Shader::Shader(Hash hash, VkDevice device, ShaderStage stage, const uint32_t *da
 			layout.sets[set].sampled_buffer_mask |= 1u << binding;
 		else
 			layout.sets[set].sampled_image_mask |= 1u << binding;
-		layout.sets[set].stages |= 1u << static_cast<unsigned>(stage);
 
 		if (compiler.get_type(type.image.type).basetype == SPIRType::BaseType::Float)
 			layout.sets[set].fp_mask |= 1u << binding;
@@ -157,7 +155,6 @@ Shader::Shader(Hash hash, VkDevice device, ShaderStage stage, const uint32_t *da
 		auto set = compiler.get_decoration(image.id, spv::DecorationDescriptorSet);
 		auto binding = compiler.get_decoration(image.id, spv::DecorationBinding);
 		layout.sets[set].input_attachment_mask |= 1u << binding;
-		layout.sets[set].stages |= 1u << static_cast<unsigned>(stage);
 
 		auto &type = compiler.get_type(image.base_type_id);
 		if (compiler.get_type(type.image.type).basetype == SPIRType::BaseType::Float)
@@ -169,7 +166,6 @@ Shader::Shader(Hash hash, VkDevice device, ShaderStage stage, const uint32_t *da
 		auto set = compiler.get_decoration(image.id, spv::DecorationDescriptorSet);
 		auto binding = compiler.get_decoration(image.id, spv::DecorationBinding);
 		layout.sets[set].separate_image_mask |= 1u << binding;
-		layout.sets[set].stages |= 1u << static_cast<unsigned>(stage);
 
 		auto &type = compiler.get_type(image.base_type_id);
 		if (compiler.get_type(type.image.type).basetype == SPIRType::BaseType::Float)
@@ -181,7 +177,6 @@ Shader::Shader(Hash hash, VkDevice device, ShaderStage stage, const uint32_t *da
 		auto set = compiler.get_decoration(image.id, spv::DecorationDescriptorSet);
 		auto binding = compiler.get_decoration(image.id, spv::DecorationBinding);
 		layout.sets[set].sampler_mask |= 1u << binding;
-		layout.sets[set].stages |= 1u << static_cast<unsigned>(stage);
 	}
 
 	for (auto &image : resources.storage_images)
@@ -189,7 +184,6 @@ Shader::Shader(Hash hash, VkDevice device, ShaderStage stage, const uint32_t *da
 		auto set = compiler.get_decoration(image.id, spv::DecorationDescriptorSet);
 		auto binding = compiler.get_decoration(image.id, spv::DecorationBinding);
 		layout.sets[set].storage_image_mask |= 1u << binding;
-		layout.sets[set].stages |= 1u << static_cast<unsigned>(stage);
 
 		auto &type = compiler.get_type(image.base_type_id);
 		if (compiler.get_type(type.image.type).basetype == SPIRType::BaseType::Float)
@@ -201,7 +195,6 @@ Shader::Shader(Hash hash, VkDevice device, ShaderStage stage, const uint32_t *da
 		auto set = compiler.get_decoration(buffer.id, spv::DecorationDescriptorSet);
 		auto binding = compiler.get_decoration(buffer.id, spv::DecorationBinding);
 		layout.sets[set].uniform_buffer_mask |= 1u << binding;
-		layout.sets[set].stages |= 1u << static_cast<unsigned>(stage);
 	}
 
 	for (auto &buffer : resources.storage_buffers)
@@ -209,24 +202,18 @@ Shader::Shader(Hash hash, VkDevice device, ShaderStage stage, const uint32_t *da
 		auto set = compiler.get_decoration(buffer.id, spv::DecorationDescriptorSet);
 		auto binding = compiler.get_decoration(buffer.id, spv::DecorationBinding);
 		layout.sets[set].storage_buffer_mask |= 1u << binding;
-		layout.sets[set].stages |= 1u << static_cast<unsigned>(stage);
 	}
 
-	if (stage == ShaderStage::Vertex)
+	for (auto &attrib : resources.stage_inputs)
 	{
-		for (auto &attrib : resources.stage_inputs)
-		{
-			auto location = compiler.get_decoration(attrib.id, spv::DecorationLocation);
-			layout.attribute_mask |= 1u << location;
-		}
+		auto location = compiler.get_decoration(attrib.id, spv::DecorationLocation);
+		layout.input_mask |= 1u << location;
 	}
-	else if (stage == ShaderStage::Fragment)
+
+	for (auto &attrib : resources.stage_outputs)
 	{
-		for (auto &attrib : resources.stage_outputs)
-		{
-			auto location = compiler.get_decoration(attrib.id, spv::DecorationLocation);
-			layout.render_target_mask |= 1u << location;
-		}
+		auto location = compiler.get_decoration(attrib.id, spv::DecorationLocation);
+		layout.output_mask |= 1u << location;
 	}
 
 	if (!resources.push_constant_buffers.empty())
@@ -245,17 +232,17 @@ Shader::~Shader()
 		vkDestroyShaderModule(device, module, nullptr);
 }
 
-void Program::set_shader(Shader *handle)
+void Program::set_shader(ShaderStage stage, Shader *handle)
 {
-	shaders[static_cast<unsigned>(handle->get_stage())] = handle;
+	shaders[Util::ecast(stage)] = handle;
 }
 
 Program::Program(Hash hash, Device *device, Shader *vertex, Shader *fragment)
     : HashedObject(hash)
     , device(device)
 {
-	set_shader(vertex);
-	set_shader(fragment);
+	set_shader(ShaderStage::Vertex, vertex);
+	set_shader(ShaderStage::Fragment, fragment);
 	device->bake_program(*this);
 }
 
@@ -263,7 +250,7 @@ Program::Program(Hash hash, Device *device, Shader *compute)
     : HashedObject(hash)
     , device(device)
 {
-	set_shader(compute);
+	set_shader(ShaderStage::Compute, compute);
 	device->bake_program(*this);
 }
 

@@ -29,6 +29,7 @@
 #include "limits.hpp"
 #include "vulkan.hpp"
 #include "read_write_lock.hpp"
+#include "enum_cast.hpp"
 
 namespace Vulkan
 {
@@ -47,8 +48,8 @@ enum class ShaderStage
 
 struct ResourceLayout
 {
-	uint32_t attribute_mask = 0;
-	uint32_t render_target_mask = 0;
+	uint32_t input_mask = 0;
+	uint32_t output_mask = 0;
 	uint32_t push_constant_offset = 0;
 	uint32_t push_constant_range = 0;
 	DescriptorSetLayout sets[VULKAN_NUM_DESCRIPTOR_SETS];
@@ -59,6 +60,8 @@ struct CombinedResourceLayout
 	uint32_t attribute_mask = 0;
 	uint32_t render_target_mask = 0;
 	DescriptorSetLayout sets[VULKAN_NUM_DESCRIPTOR_SETS] = {};
+	uint32_t stages_for_bindings[VULKAN_NUM_DESCRIPTOR_SETS][VULKAN_NUM_BINDINGS] = {};
+	uint32_t stages_for_sets[VULKAN_NUM_DESCRIPTOR_SETS] = {};
 	VkPushConstantRange ranges[static_cast<unsigned>(ShaderStage::Count)] = {};
 	uint32_t num_ranges = 0;
 	uint32_t descriptor_set_mask = 0;
@@ -96,17 +99,12 @@ private:
 class Shader : public Util::ThreadSafeIntrusivePtrEnabled<Shader>, public HashedObject
 {
 public:
-	Shader(Util::Hash hash, VkDevice device, ShaderStage stage, const uint32_t *data, size_t size);
+	Shader(Util::Hash hash, VkDevice device, const uint32_t *data, size_t size);
 	~Shader();
 
 	const ResourceLayout &get_layout() const
 	{
 		return layout;
-	}
-
-	ShaderStage get_stage() const
-	{
-		return stage;
 	}
 
 	VkShaderModule get_module() const
@@ -118,7 +116,6 @@ public:
 
 private:
 	VkDevice device;
-	ShaderStage stage;
 	VkShaderModule module;
 	ResourceLayout layout;
 };
@@ -133,7 +130,7 @@ public:
 
 	inline const Shader *get_shader(ShaderStage stage) const
 	{
-		return shaders[static_cast<unsigned>(stage)];
+		return shaders[Util::ecast(stage)];
 	}
 
 	void set_pipeline_layout(PipelineLayout *new_layout)
@@ -162,9 +159,9 @@ public:
 	}
 
 private:
-	void set_shader(Shader *handle);
+	void set_shader(ShaderStage stage, Shader *handle);
 	Device *device;
-	Shader *shaders[static_cast<unsigned>(ShaderStage::Count)] = {};
+	Shader *shaders[Util::ecast(ShaderStage::Count)] = {};
 	PipelineLayout *layout = nullptr;
 	VkPipeline compute_pipeline = VK_NULL_HANDLE;
 	Util::HashMap<VkPipeline> graphics_pipelines;

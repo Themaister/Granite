@@ -30,7 +30,7 @@ using namespace Util;
 
 namespace Vulkan
 {
-DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device, const DescriptorSetLayout &layout)
+DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device, const DescriptorSetLayout &layout, const uint32_t *stages_for_binds)
     : HashedObject(hash), device(device)
 {
 	unsigned count = ThreadGroup::get_global().get_num_threads() + 1;
@@ -42,59 +42,63 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device, const 
 	vector<VkDescriptorSetLayoutBinding> bindings;
 	for (unsigned i = 0; i < VULKAN_NUM_BINDINGS; i++)
 	{
+		auto stages = stages_for_binds[i];
+		if (stages == 0)
+			continue;
+
 		unsigned types = 0;
 		if (layout.sampled_image_mask & (1u << i))
 		{
-			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, layout.stages, nullptr });
+			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, stages, nullptr });
 			pool_size.push_back({ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VULKAN_NUM_SETS_PER_POOL });
 			types++;
 		}
 
 		if (layout.sampled_buffer_mask & (1u << i))
 		{
-			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1, layout.stages, nullptr });
+			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1, stages, nullptr });
 			pool_size.push_back({ VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, VULKAN_NUM_SETS_PER_POOL });
 			types++;
 		}
 
 		if (layout.storage_image_mask & (1u << i))
 		{
-			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, layout.stages, nullptr });
+			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, stages, nullptr });
 			pool_size.push_back({ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VULKAN_NUM_SETS_PER_POOL });
 			types++;
 		}
 
 		if (layout.uniform_buffer_mask & (1u << i))
 		{
-			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1, layout.stages, nullptr });
+			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1, stages, nullptr });
 			pool_size.push_back({ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, VULKAN_NUM_SETS_PER_POOL });
 			types++;
 		}
 
 		if (layout.storage_buffer_mask & (1u << i))
 		{
-			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, layout.stages, nullptr });
+			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, stages, nullptr });
 			pool_size.push_back({ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VULKAN_NUM_SETS_PER_POOL });
 			types++;
 		}
 
 		if (layout.input_attachment_mask & (1u << i))
 		{
-			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1, layout.stages, nullptr });
+			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1, stages, nullptr });
 			pool_size.push_back({ VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, VULKAN_NUM_SETS_PER_POOL });
 			types++;
 		}
 
 		if (layout.separate_image_mask & (1u << i))
 		{
-			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1, layout.stages, nullptr });
+			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1, stages, nullptr });
 			pool_size.push_back({ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, VULKAN_NUM_SETS_PER_POOL });
 			types++;
 		}
 
 		if (layout.sampler_mask & (1u << i))
 		{
-			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_SAMPLER, 1, layout.stages, nullptr });
+			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_SAMPLER, 1, stages, nullptr });
 			pool_size.push_back({ VK_DESCRIPTOR_TYPE_SAMPLER, VULKAN_NUM_SETS_PER_POOL });
 			types++;
 		}

@@ -44,7 +44,6 @@ struct DescriptorSetLayout
 	uint32_t sampler_mask = 0;
 	uint32_t separate_image_mask = 0;
 	uint32_t fp_mask = 0;
-	VkShaderStageFlags stages = 0;
 };
 
 static const unsigned VULKAN_NUM_SETS_PER_POOL = 16;
@@ -53,7 +52,7 @@ static const unsigned VULKAN_DESCRIPTOR_RING_SIZE = 8;
 class DescriptorSetAllocator : public HashedObject
 {
 public:
-	DescriptorSetAllocator(Util::Hash hash, Device *device, const DescriptorSetLayout &layout);
+	DescriptorSetAllocator(Util::Hash hash, Device *device, const DescriptorSetLayout &layout, const uint32_t *stages_for_bindings);
 	~DescriptorSetAllocator();
 	void operator=(const DescriptorSetAllocator &) = delete;
 	DescriptorSetAllocator(const DescriptorSetAllocator &) = delete;

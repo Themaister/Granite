@@ -148,17 +148,17 @@ bool Device::enqueue_create_shader_module(VPC::Hash hash, unsigned, const VkShad
 	return true;
 }
 
-bool Device::enqueue_create_compute_pipeline(VPC::Hash, unsigned, const VkComputePipelineCreateInfo *create_info, VkPipeline *pipeline)
+bool Device::enqueue_create_compute_pipeline(VPC::Hash hash, unsigned,
+                                             const VkComputePipelineCreateInfo *create_info, VkPipeline *pipeline)
 {
 	// Find the Shader* associated with this VkShaderModule and just use that.
 	auto itr = replayer_state.shader_map.find(create_info->stage.module);
 	if (itr == end(replayer_state.shader_map))
 		return false;
 
-	request_program(itr->second);
-
-	// We don't use derivative pipelines, so we don't care about the handle.
-	*pipeline = reinterpret_cast<VkPipeline>(uint64_t(-1));
+	auto *ret = request_program(itr->second);
+	*pipeline = ret->get_compute_pipeline();
+	get_state_recorder().register_compute_pipeline(hash, *create_info);
 	return true;
 }
 
@@ -178,6 +178,42 @@ Program *Device::request_program(const uint32_t *compute_data, size_t compute_si
 {
 	auto *compute = request_shader(compute_data, compute_size);
 	return request_program(compute);
+}
+
+bool Device::enqueue_create_graphics_pipeline(VPC::Hash hash, unsigned,
+                                              const VkGraphicsPipelineCreateInfo *create_info, VkPipeline *pipeline)
+{
+	auto info = *create_info;
+
+	if (info.stageCount != 2)
+		return false;
+	if (info.pStages[0].stage != VK_SHADER_STAGE_VERTEX_BIT)
+		return false;
+	if (info.pStages[1].stage != VK_SHADER_STAGE_FRAGMENT_BIT)
+		return false;
+
+	// Find the Shader* associated with this VkShaderModule and just use that.
+	auto vertex_itr = replayer_state.shader_map.find(info.pStages[0].module);
+	if (vertex_itr == end(replayer_state.shader_map))
+		return false;
+
+	// Find the Shader* associated with this VkShaderModule and just use that.
+	auto fragment_itr = replayer_state.shader_map.find(info.pStages[1].module);
+	if (fragment_itr == end(replayer_state.shader_map))
+		return false;
+
+	auto *ret = request_program(vertex_itr->second, fragment_itr->second);
+
+	// The layout is dummy, resolve it here.
+	info.layout = ret->get_pipeline_layout()->get_layout();
+
+	get_state_recorder().register_graphics_pipeline(hash, info);
+	LOGI("Creating graphics pipeline.\n");
+	VkResult res = vkCreateGraphicsPipelines(device, pipeline_cache, 1, &info, nullptr, pipeline);
+	if (res != VK_SUCCESS)
+		LOGE("Failed to create graphics pipeline!\n");
+	*pipeline = ret->add_graphics_pipeline(hash, *pipeline);
+	return true;
 }
 
 Program *Device::request_program(Vulkan::Shader *vertex, Vulkan::Shader *fragment)
@@ -2971,11 +3007,6 @@ bool Device::enqueue_create_pipeline_layout(VPC::Hash, unsigned, const VkPipelin
 {
 	// We will create this naturally when building pipelines, can just emit dummy handles.
 	*layout = reinterpret_cast<VkPipelineLayout>(uint64_t(-1));
-	return true;
-}
-
-bool Device::enqueue_create_graphics_pipeline(VPC::Hash hash, unsigned index, const VkGraphicsPipelineCreateInfo *create_info, VkPipeline *pipeline)
-{
 	return true;
 }
 

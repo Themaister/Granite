@@ -37,6 +37,80 @@ using namespace Util;
 
 namespace Vulkan
 {
+void RenderPass::setup_subpasses(const VkRenderPassCreateInfo &create_info)
+{
+	auto *attachments = create_info.pAttachments;
+
+	// Store the important subpass information for later.
+	for (uint32_t i = 0; i < create_info.subpassCount; i++)
+	{
+		auto &subpass = create_info.pSubpasses[i];
+
+		SubpassInfo subpass_info = {};
+		subpass_info.num_color_attachments = subpass.colorAttachmentCount;
+		subpass_info.num_input_attachments = subpass.inputAttachmentCount;
+		subpass_info.depth_stencil_attachment = *subpass.pDepthStencilAttachment;
+		memcpy(subpass_info.color_attachments, subpass.pColorAttachments,
+		       subpass.colorAttachmentCount * sizeof(*subpass.pColorAttachments));
+		memcpy(subpass_info.input_attachments, subpass.pInputAttachments,
+		       subpass.inputAttachmentCount * sizeof(*subpass.pInputAttachments));
+
+		unsigned samples = 0;
+		for (unsigned i = 0; i < subpass_info.num_color_attachments; i++)
+		{
+			if (subpass_info.color_attachments[i].attachment == VK_ATTACHMENT_UNUSED)
+				continue;
+
+			unsigned samp = attachments[subpass_info.color_attachments[i].attachment].samples;
+			if (samples && (samp != samples))
+				VK_ASSERT(samp == samples);
+			samples = samp;
+		}
+
+		if (subpass_info.depth_stencil_attachment.attachment != VK_ATTACHMENT_UNUSED)
+		{
+			unsigned samp = attachments[subpass_info.depth_stencil_attachment.attachment].samples;
+			if (samples && (samp != samples))
+				VK_ASSERT(samp == samples);
+			samples = samp;
+		}
+
+		VK_ASSERT(samples > 0);
+		subpass_info.samples = samples;
+		this->subpasses.push_back(subpass_info);
+	}
+}
+
+RenderPass::RenderPass(Util::Hash hash, Vulkan::Device *device, const VkRenderPassCreateInfo &create_info)
+    : HashedObject(hash)
+    , device(device)
+{
+	unsigned num_color_attachments = 0;
+	if (create_info.attachmentCount > 0)
+	{
+		auto &att = create_info.pAttachments[create_info.attachmentCount - 1];
+		if (format_is_depth_stencil(att.format))
+		{
+			depth_stencil = att.format;
+			num_color_attachments = create_info.attachmentCount - 1;
+		}
+		else
+			num_color_attachments = create_info.attachmentCount;
+	}
+
+	for (unsigned i = 0; i < num_color_attachments; i++)
+		color_attachments[i] = create_info.pAttachments[i].format;
+
+	// Store the important subpass information for later.
+	setup_subpasses(create_info);
+
+	unsigned rp_index = device->get_state_recorder().register_render_pass(get_hash(), create_info);
+	LOGI("Creating render pass.\n");
+	if (vkCreateRenderPass(device->get_device(), &create_info, nullptr, &render_pass) != VK_SUCCESS)
+		LOGE("Failed to create render pass.");
+	device->get_state_recorder().set_render_pass_handle(rp_index, render_pass);
+}
+
 RenderPass::RenderPass(Hash hash, Device *device, const RenderPassInfo &info)
     : HashedObject(hash)
     , device(device)
@@ -622,41 +696,7 @@ RenderPass::RenderPass(Hash hash, Device *device, const RenderPassInfo &info)
 	}
 
 	// Store the important subpass information for later.
-	for (auto &subpass : subpasses)
-	{
-		SubpassInfo subpass_info = {};
-		subpass_info.num_color_attachments = subpass.colorAttachmentCount;
-		subpass_info.num_input_attachments = subpass.inputAttachmentCount;
-		subpass_info.depth_stencil_attachment = *subpass.pDepthStencilAttachment;
-		memcpy(subpass_info.color_attachments, subpass.pColorAttachments,
-		       subpass.colorAttachmentCount * sizeof(*subpass.pColorAttachments));
-		memcpy(subpass_info.input_attachments, subpass.pInputAttachments,
-		       subpass.inputAttachmentCount * sizeof(*subpass.pInputAttachments));
-
-		unsigned samples = 0;
-		for (unsigned i = 0; i < subpass_info.num_color_attachments; i++)
-		{
-			if (subpass_info.color_attachments[i].attachment == VK_ATTACHMENT_UNUSED)
-				continue;
-
-			unsigned samp = attachments[subpass_info.color_attachments[i].attachment].samples;
-			if (samples && (samp != samples))
-				VK_ASSERT(samp == samples);
-			samples = samp;
-		}
-
-		if (subpass_info.depth_stencil_attachment.attachment != VK_ATTACHMENT_UNUSED)
-		{
-			unsigned samp = attachments[subpass_info.depth_stencil_attachment.attachment].samples;
-			if (samples && (samp != samples))
-				VK_ASSERT(samp == samples);
-			samples = samp;
-		}
-
-		VK_ASSERT(samples > 0);
-		subpass_info.samples = samples;
-		this->subpasses.push_back(subpass_info);
-	}
+	setup_subpasses(rp_info);
 
 	unsigned rp_index = device->get_state_recorder().register_render_pass(get_hash(), rp_info);
 	LOGI("Creating render pass.\n");

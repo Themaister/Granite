@@ -100,6 +100,7 @@ public:
 	};
 
 	RenderPass(Util::Hash hash, Device *device, const RenderPassInfo &info);
+	RenderPass(Util::Hash hash, Device *device, const VkRenderPassCreateInfo &create_info);
 	~RenderPass();
 
 	unsigned get_num_subpasses() const
@@ -162,9 +163,11 @@ private:
 	Device *device;
 	VkRenderPass render_pass = VK_NULL_HANDLE;
 
-	VkFormat color_attachments[VULKAN_NUM_ATTACHMENTS];
-	VkFormat depth_stencil;
+	VkFormat color_attachments[VULKAN_NUM_ATTACHMENTS] = {};
+	VkFormat depth_stencil = VK_FORMAT_UNDEFINED;
 	std::vector<SubpassInfo> subpasses;
+
+	void setup_subpasses(const VkRenderPassCreateInfo &create_info);
 };
 
 class Framebuffer : public Cookie, public NoCopyNoMove, public InternalSyncEnabled

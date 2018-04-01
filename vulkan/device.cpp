@@ -140,11 +140,25 @@ Shader *Device::request_shader(const uint32_t *data, size_t size)
 	return ret;
 }
 
-bool Device::enqueue_create_shader_module(VPC::Hash hash, unsigned index, const VkShaderModuleCreateInfo *create_info, VkShaderModule *module)
+bool Device::enqueue_create_shader_module(VPC::Hash hash, unsigned, const VkShaderModuleCreateInfo *create_info, VkShaderModule *module)
 {
 	auto *ret = shaders.insert(hash, make_unique<Shader>(hash, this, create_info->pCode, create_info->codeSize));
 	*module = ret->get_module();
-	replayer_shader_map[*module] = ret;
+	replayer_state.shader_map[*module] = ret;
+	return true;
+}
+
+bool Device::enqueue_create_compute_pipeline(VPC::Hash, unsigned, const VkComputePipelineCreateInfo *create_info, VkPipeline *pipeline)
+{
+	// Find the Shader* associated with this VkShaderModule and just use that.
+	auto itr = replayer_state.shader_map.find(create_info->stage.module);
+	if (itr == end(replayer_state.shader_map))
+		return false;
+
+	request_program(itr->second);
+
+	// We don't use derivative pipelines, so we don't care about the handle.
+	*pipeline = reinterpret_cast<VkPipeline>(uint64_t(-1));
 	return true;
 }
 
@@ -354,6 +368,7 @@ void Device::init_pipeline_state()
 		VPC::StateReplayer replayer;
 		replayer.parse(*this, static_cast<const char *>(mapped), file->get_size());
 		LOGI("Completed replaying cached state.\n");
+		replayer_state = {};
 	}
 	catch (const exception &e)
 	{
@@ -2816,6 +2831,14 @@ uint64_t Device::allocate_cookie()
 	return cookie.fetch_add(16, memory_order_relaxed) + 16;
 }
 
+bool Device::enqueue_create_render_pass(VPC::Hash hash, unsigned, const VkRenderPassCreateInfo *create_info, VkRenderPass *render_pass)
+{
+	auto *ret = render_passes.insert(hash, make_unique<RenderPass>(hash, this, *create_info));
+	*render_pass = ret->get_render_pass();
+	replayer_state.render_pass_map[*render_pass] = ret;
+	return true;
+}
+
 const RenderPass &Device::request_render_pass(const RenderPassInfo &info)
 {
 	Hasher h;
@@ -2937,29 +2960,23 @@ bool Device::enqueue_create_sampler(VPC::Hash hash, unsigned index, const VkSamp
 	return false;
 }
 
-bool Device::enqueue_create_descriptor_set_layout(VPC::Hash hash, unsigned index, const VkDescriptorSetLayoutCreateInfo *create_info, VkDescriptorSetLayout *layout)
+bool Device::enqueue_create_descriptor_set_layout(VPC::Hash, unsigned, const VkDescriptorSetLayoutCreateInfo *, VkDescriptorSetLayout *layout)
 {
-	return false;
+	// We will create this naturally when building pipelines, can just emit dummy handles.
+	*layout = reinterpret_cast<VkDescriptorSetLayout>(uint64_t(-1));
+	return true;
 }
 
-bool Device::enqueue_create_pipeline_layout(VPC::Hash hash, unsigned index, const VkPipelineLayoutCreateInfo *create_info, VkPipelineLayout *layout)
+bool Device::enqueue_create_pipeline_layout(VPC::Hash, unsigned, const VkPipelineLayoutCreateInfo *, VkPipelineLayout *layout)
 {
-	return false;
-}
-
-bool Device::enqueue_create_render_pass(VPC::Hash hash, unsigned index, const VkRenderPassCreateInfo *create_info, VkRenderPass *render_pass)
-{
-	return false;
-}
-
-bool Device::enqueue_create_compute_pipeline(VPC::Hash hash, unsigned index, const VkComputePipelineCreateInfo *create_info, VkPipeline *pipeline)
-{
-	return false;
+	// We will create this naturally when building pipelines, can just emit dummy handles.
+	*layout = reinterpret_cast<VkPipelineLayout>(uint64_t(-1));
+	return true;
 }
 
 bool Device::enqueue_create_graphics_pipeline(VPC::Hash hash, unsigned index, const VkGraphicsPipelineCreateInfo *create_info, VkPipeline *pipeline)
 {
-	return false;
+	return true;
 }
 
 }

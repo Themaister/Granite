@@ -429,6 +429,11 @@ private:
 	bool enqueue_create_render_pass(VPC::Hash hash, unsigned index, const VkRenderPassCreateInfo *create_info, VkRenderPass *render_pass) override;
 	bool enqueue_create_compute_pipeline(VPC::Hash hash, unsigned index, const VkComputePipelineCreateInfo *create_info, VkPipeline *pipeline) override;
 	bool enqueue_create_graphics_pipeline(VPC::Hash hash, unsigned index, const VkGraphicsPipelineCreateInfo *create_info, VkPipeline *pipeline) override;
-	std::unordered_map<VkShaderModule, Shader *> replayer_shader_map;
+
+	struct
+	{
+		std::unordered_map<VkShaderModule, Shader *> shader_map;
+		std::unordered_map<VkRenderPass, RenderPass *> render_pass_map;
+	} replayer_state;
 };
 }

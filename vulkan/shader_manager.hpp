@@ -68,7 +68,7 @@ public:
 	{
 	}
 
-	Vulkan::ProgramHandle get_program(unsigned variant);
+	Vulkan::Program *get_program(unsigned variant);
 	void set_stage(Vulkan::ShaderStage stage, ShaderTemplate *shader);
 	unsigned register_variant(const std::vector<std::pair<std::string, int>> &defines);
 
@@ -79,7 +79,7 @@ private:
 	{
 		const ShaderTemplate::Variant *stages[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
 		unsigned shader_instance[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
-		Vulkan::ProgramHandle program;
+		Vulkan::Program *program;
 		std::unique_ptr<Util::RWSpinLock> instance_lock = std::make_unique<Util::RWSpinLock>();
 	};
 

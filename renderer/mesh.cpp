@@ -264,7 +264,7 @@ void StaticMesh::get_render_info(const RenderContext &context, const CachedSpati
 
 		fill_render_info(*mesh_info);
 		mesh_info->program = queue.get_shader_suites()[ecast(RenderableType::Mesh)].get_program(material->pipeline, attrs,
-		                                                                                        textures).get();
+		                                                                                        textures);
 	}
 }
 
@@ -311,7 +311,7 @@ void SkinnedMesh::get_render_info(const RenderContext &context, const CachedSpat
 	{
 		fill_render_info(*mesh_info);
 		mesh_info->program = queue.get_shader_suites()[ecast(RenderableType::Mesh)].get_program(material->pipeline, attrs,
-		                                                                                        textures).get();
+		                                                                                        textures);
 	}
 }
 

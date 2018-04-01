@@ -362,7 +362,7 @@ void Ground::get_render_info(const RenderContext &context, const CachedSpatialTr
 	{
 		patch.program = queue.get_shader_suites()[ecast(RenderableType::Ground)].get_program(DrawPipeline::Opaque,
 		                                                                                     MESH_ATTRIBUTE_POSITION_BIT,
-		                                                                                     MATERIAL_TEXTURE_BASE_COLOR_BIT).get();
+		                                                                                     MATERIAL_TEXTURE_BASE_COLOR_BIT);
 
 		*patch_data = patch;
 	}

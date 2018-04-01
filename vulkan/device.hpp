@@ -109,10 +109,9 @@ public:
 	void add_wait_semaphore(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags stages, bool flush);
 	////
 
-	ShaderHandle create_shader(ShaderStage stage, const uint32_t *code, size_t size);
-	ProgramHandle create_program(const uint32_t *vertex_data, size_t vertex_size, const uint32_t *fragment_data,
-	                             size_t fragment_size);
-	ProgramHandle create_program(const uint32_t *compute_data, size_t compute_size);
+	Shader *create_shader(ShaderStage stage, const uint32_t *code, size_t size);
+	Program *create_program(const uint32_t *vertex_data, size_t vertex_size, const uint32_t *fragment_data, size_t fragment_size);
+	Program *create_program(const uint32_t *compute_data, size_t compute_size);
 	void bake_program(Program &program);
 
 	void *map_host_buffer(Buffer &buffer, MemoryAccessFlags access);
@@ -355,6 +354,9 @@ private:
 	PhysicalAttachmentAllocator physical_allocator;
 	Util::ThreadSafeCache<RenderPass> render_passes;
 	VkPipelineCache pipeline_cache = VK_NULL_HANDLE;
+
+	Util::ThreadSafeCache<Shader> shaders;
+	Util::ThreadSafeCache<Program> programs;
 
 	ShaderManager shader_manager;
 	TextureManager texture_manager;

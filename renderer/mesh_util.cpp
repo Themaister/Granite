@@ -559,7 +559,7 @@ void SkyCylinder::get_render_info(const RenderContext &, const CachedSpatialTran
 
 	if (cylinder_info)
 	{
-		info.program = queue.get_shader_suites()[ecast(RenderableType::SkyCylinder)].get_program(DrawPipeline::Opaque, 0, 0).get();
+		info.program = queue.get_shader_suites()[ecast(RenderableType::SkyCylinder)].get_program(DrawPipeline::Opaque, 0, 0);
 		*cylinder_info = info;
 	}
 }
@@ -686,7 +686,7 @@ void Skybox::get_render_info(const RenderContext &context, const CachedSpatialTr
 	if (skydome_info)
 	{
 		auto flags = texture ? MATERIAL_EMISSIVE_BIT : 0;
-		info.program = queue.get_shader_suites()[ecast(RenderableType::Skybox)].get_program(DrawPipeline::Opaque, 0, flags).get();
+		info.program = queue.get_shader_suites()[ecast(RenderableType::Skybox)].get_program(DrawPipeline::Opaque, 0, flags);
 		*skydome_info = info;
 	}
 }
@@ -1030,7 +1030,7 @@ void TexturePlane::get_render_info(const RenderContext &context, const CachedSpa
 		unsigned mat_mask = MATERIAL_EMISSIVE_BIT;
 		mat_mask |= info.refraction ? MATERIAL_EMISSIVE_REFRACTION_BIT : 0;
 		mat_mask |= info.reflection ? MATERIAL_EMISSIVE_REFLECTION_BIT : 0;
-		info.program = queue.get_shader_suites()[ecast(RenderableType::TexturePlane)].get_program(DrawPipeline::Opaque, 0, mat_mask).get();
+		info.program = queue.get_shader_suites()[ecast(RenderableType::TexturePlane)].get_program(DrawPipeline::Opaque, 0, mat_mask);
 		*plane_info = info;
 	}
 }

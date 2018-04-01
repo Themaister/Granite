@@ -122,7 +122,7 @@ void ShaderProgram::set_stage(Vulkan::ShaderStage stage, ShaderTemplate *shader)
 	VK_ASSERT(variants.empty());
 }
 
-Vulkan::ProgramHandle ShaderProgram::get_program(unsigned variant)
+Vulkan::Program *ShaderProgram::get_program(unsigned variant)
 {
 	auto &var = variants[variant];
 	auto *vert = var.stages[static_cast<unsigned>(Vulkan::ShaderStage::Vertex)];

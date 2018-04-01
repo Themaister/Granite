@@ -152,13 +152,13 @@ void FlatRenderer::render_quad(const ImageView *view, Vulkan::StockSampler sampl
 			                                                                  MESH_ATTRIBUTE_POSITION_BIT |
 			                                                                  MESH_ATTRIBUTE_VERTEX_COLOR_BIT |
 			                                                                  MESH_ATTRIBUTE_UV_BIT,
-			                                                                  MATERIAL_TEXTURE_BASE_COLOR_BIT).get();
+			                                                                  MATERIAL_TEXTURE_BASE_COLOR_BIT);
 		}
 		else
 		{
 			sprite.program = suite[ecast(RenderableType::Sprite)].get_program(pipeline,
 			                                                                  MESH_ATTRIBUTE_POSITION_BIT |
-			                                                                  MESH_ATTRIBUTE_VERTEX_COLOR_BIT, 0).get();
+			                                                                  MESH_ATTRIBUTE_VERTEX_COLOR_BIT, 0);
 		}
 		*sprite_data = sprite;
 	}
@@ -246,7 +246,7 @@ void FlatRenderer::render_line_strip(const vec2 *offset, float layer, unsigned c
 	{
 		strip.program = suite[ecast(RenderableType::LineUI)].get_program(
 			transparent ? DrawPipeline::AlphaBlend : DrawPipeline::Opaque,
-			MESH_ATTRIBUTE_POSITION_BIT | MESH_ATTRIBUTE_VERTEX_COLOR_BIT, 0).get();
+			MESH_ATTRIBUTE_POSITION_BIT | MESH_ATTRIBUTE_VERTEX_COLOR_BIT, 0);
 
 		*strip_data = strip;
 	}

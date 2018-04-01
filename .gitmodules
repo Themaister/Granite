@@ -37,3 +37,6 @@
 [submodule "third_party/astc-encoder"]
 	path = third_party/astc-encoder
 	url = https://bitbucket.org/Themaister/astc-encoder
+[submodule "third_party/vulkan-pipeline-cache"]
+	path = third_party/vulkan-pipeline-cache
+	url = git://github.com/Themaister/Vulkan-Pipeline-Cache

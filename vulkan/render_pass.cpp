@@ -37,8 +37,8 @@ using namespace Util;
 
 namespace Vulkan
 {
-RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
-    : Cookie(device)
+RenderPass::RenderPass(Hash hash, Device *device, const RenderPassInfo &info)
+    : HashedObject(hash)
     , device(device)
 {
 	fill(begin(color_attachments), end(color_attachments), VK_FORMAT_UNDEFINED);
@@ -742,7 +742,7 @@ Framebuffer &FramebufferAllocator::request_framebuffer(const RenderPassInfo &inf
 {
 	auto &rp = device->request_render_pass(info);
 	Hasher h;
-	h.u64(rp.get_cookie());
+	h.u64(rp.get_hash());
 
 	for (unsigned i = 0; i < info.num_color_attachments; i++)
 		if (info.color_attachments[i])

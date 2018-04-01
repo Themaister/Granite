@@ -418,7 +418,7 @@ DebugMeshInstanceInfo &Renderer::render_debug(RenderContext &context, unsigned c
 	{
 		debug.program = suite[ecast(RenderableType::DebugMesh)].get_program(DrawPipeline::Opaque,
 		                                                                    MESH_ATTRIBUTE_POSITION_BIT |
-		                                                                    MESH_ATTRIBUTE_VERTEX_COLOR_BIT, 0).get();
+		                                                                    MESH_ATTRIBUTE_VERTEX_COLOR_BIT, 0);
 		*debug_info = debug;
 	}
 

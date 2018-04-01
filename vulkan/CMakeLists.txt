@@ -64,6 +64,7 @@ target_link_libraries(vulkan-backend stb)
 target_link_libraries(vulkan-backend event)
 target_link_libraries(vulkan-backend math)
 target_link_libraries(vulkan-backend scene-formats)
+target_link_libraries(vulkan-backend vulkan-pipeline-cache)
 
 if (UNIX)
    target_link_libraries(vulkan-backend dl)

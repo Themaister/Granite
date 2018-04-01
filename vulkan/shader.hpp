@@ -65,10 +65,10 @@ struct CombinedResourceLayout
 	Util::Hash push_constant_layout_hash = 0;
 };
 
-class PipelineLayout : public Cookie
+class PipelineLayout : public HashedObject
 {
 public:
-	PipelineLayout(Device *device, const CombinedResourceLayout &layout);
+	PipelineLayout(Util::Hash hash, Device *device, const CombinedResourceLayout &layout);
 	~PipelineLayout();
 
 	const CombinedResourceLayout &get_resource_layout() const
@@ -93,10 +93,10 @@ private:
 	DescriptorSetAllocator *set_allocators[VULKAN_NUM_DESCRIPTOR_SETS] = {};
 };
 
-class Shader : public Util::ThreadSafeIntrusivePtrEnabled<Shader>
+class Shader : public Util::ThreadSafeIntrusivePtrEnabled<Shader>, public HashedObject
 {
 public:
-	Shader(VkDevice device, ShaderStage stage, const uint32_t *data, size_t size);
+	Shader(Util::Hash hash, VkDevice device, ShaderStage stage, const uint32_t *data, size_t size);
 	~Shader();
 
 	const ResourceLayout &get_layout() const
@@ -114,11 +114,6 @@ public:
 		return module;
 	}
 
-	Util::Hash get_hash() const
-	{
-		return hash;
-	}
-
 	static const char *stage_to_name(ShaderStage stage);
 
 private:
@@ -126,21 +121,19 @@ private:
 	ShaderStage stage;
 	VkShaderModule module;
 	ResourceLayout layout;
-
-	Util::Hash hash;
 };
 using ShaderHandle = Util::IntrusivePtr<Shader>;
 
-class Program : public Util::ThreadSafeIntrusivePtrEnabled<Program>, public Cookie, public InternalSyncEnabled
+class Program : public Util::ThreadSafeIntrusivePtrEnabled<Program>, public HashedObject, public InternalSyncEnabled
 {
 public:
-	Program(Device *device);
+	Program(Util::Hash hash, Device *device, Shader *vertex, Shader *fragment);
+	Program(Util::Hash hash, Device *device, Shader *compute);
 	~Program();
 
-	void set_shader(ShaderHandle handle);
 	inline const Shader *get_shader(ShaderStage stage) const
 	{
-		return shaders[static_cast<unsigned>(stage)].get();
+		return shaders[static_cast<unsigned>(stage)];
 	}
 
 	void set_pipeline_layout(PipelineLayout *new_layout)
@@ -169,8 +162,9 @@ public:
 	}
 
 private:
+	void set_shader(Shader *handle);
 	Device *device;
-	ShaderHandle shaders[static_cast<unsigned>(ShaderStage::Count)];
+	Shader *shaders[static_cast<unsigned>(ShaderStage::Count)] = {};
 	PipelineLayout *layout = nullptr;
 	VkPipeline compute_pipeline = VK_NULL_HANDLE;
 	Util::HashMap<VkPipeline> graphics_pipelines;

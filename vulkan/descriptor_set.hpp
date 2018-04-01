@@ -28,6 +28,7 @@
 #include "vulkan.hpp"
 #include <utility>
 #include <vector>
+#include "cookie.hpp"
 
 namespace Vulkan
 {
@@ -49,10 +50,10 @@ struct DescriptorSetLayout
 static const unsigned VULKAN_NUM_SETS_PER_POOL = 16;
 static const unsigned VULKAN_DESCRIPTOR_RING_SIZE = 8;
 
-class DescriptorSetAllocator
+class DescriptorSetAllocator : public HashedObject
 {
 public:
-	DescriptorSetAllocator(Device *device, const DescriptorSetLayout &layout);
+	DescriptorSetAllocator(Util::Hash hash, Device *device, const DescriptorSetLayout &layout);
 	~DescriptorSetAllocator();
 	void operator=(const DescriptorSetAllocator &) = delete;
 	DescriptorSetAllocator(const DescriptorSetAllocator &) = delete;

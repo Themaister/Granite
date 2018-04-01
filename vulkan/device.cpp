@@ -25,6 +25,7 @@
 #include "thread_group.hpp"
 #include "type_to_string.hpp"
 #include "quirks.hpp"
+#include "enum_cast.hpp"
 #include <algorithm>
 #include <string.h>
 
@@ -127,30 +128,47 @@ void Device::unmap_host_buffer(const Buffer &buffer)
 	managers.memory.unmap_memory(buffer.get_allocation());
 }
 
-ShaderHandle Device::create_shader(ShaderStage stage, const uint32_t *data, size_t size)
+Shader *Device::create_shader(ShaderStage stage, const uint32_t *data, size_t size)
 {
-	return make_handle<Shader>(device, stage, data, size);
+	Util::Hasher hasher;
+	hasher.data(data, size);
+	hasher.u32(ecast(stage));
+
+	auto hash = hasher.get();
+	auto *ret = shaders.find(hash);
+	if (!ret)
+		ret = shaders.insert(hash, make_unique<Shader>(hash, device, stage, data, size));
+	return ret;
 }
 
-ProgramHandle Device::create_program(const uint32_t *compute_data, size_t compute_size)
+Program *Device::create_program(const uint32_t *compute_data, size_t compute_size)
 {
-	auto compute = make_handle<Shader>(device, ShaderStage::Compute, compute_data, compute_size);
-	auto program = make_handle<Program>(this);
-	program->set_shader(compute);
-	bake_program(*program);
-	return program;
+	Util::Hasher hasher;
+	auto *compute = create_shader(ShaderStage::Compute, compute_data, compute_size);
+	hasher.u64(compute->get_hash());
+
+	auto hash = hasher.get();
+	auto *ret = programs.find(hash);
+	if (!ret)
+		ret = programs.insert(hash, make_unique<Program>(hash, this, compute));
+	return ret;
 }
 
-ProgramHandle Device::create_program(const uint32_t *vertex_data, size_t vertex_size, const uint32_t *fragment_data,
-                                     size_t fragment_size)
+Program *Device::create_program(const uint32_t *vertex_data, size_t vertex_size, const uint32_t *fragment_data,
+                                size_t fragment_size)
 {
-	auto vertex = make_handle<Shader>(device, ShaderStage::Vertex, vertex_data, vertex_size);
-	auto fragment = make_handle<Shader>(device, ShaderStage::Fragment, fragment_data, fragment_size);
-	auto program = make_handle<Program>(this);
-	program->set_shader(vertex);
-	program->set_shader(fragment);
-	bake_program(*program);
-	return program;
+	Util::Hasher hasher;
+	auto *vertex = create_shader(ShaderStage::Vertex, vertex_data, vertex_size);
+	auto *fragment = create_shader(ShaderStage::Fragment, fragment_data, fragment_size);
+	hasher.u64(vertex->get_hash());
+	hasher.u64(fragment->get_hash());
+
+	auto hash = hasher.get();
+	auto *ret = programs.find(hash);
+
+	if (!ret)
+		ret = programs.insert(hash, make_unique<Program>(hash, this, vertex, fragment));
+	return ret;
 }
 
 PipelineLayout *Device::request_pipeline_layout(const CombinedResourceLayout &layout)
@@ -164,7 +182,7 @@ PipelineLayout *Device::request_pipeline_layout(const CombinedResourceLayout &la
 	auto hash = h.get();
 	auto *ret = pipeline_layouts.find(hash);
 	if (!ret)
-		ret = pipeline_layouts.insert(hash, make_unique<PipelineLayout>(this, layout));
+		ret = pipeline_layouts.insert(hash, make_unique<PipelineLayout>(hash, this, layout));
 	return ret;
 }
 
@@ -176,7 +194,7 @@ DescriptorSetAllocator *Device::request_descriptor_set_allocator(const Descripto
 
 	auto *ret = descriptor_set_allocators.find(hash);
 	if (!ret)
-		ret = descriptor_set_allocators.insert(hash, make_unique<DescriptorSetAllocator>(this, layout));
+		ret = descriptor_set_allocators.insert(hash, make_unique<DescriptorSetAllocator>(hash, this, layout));
 	return ret;
 }
 
@@ -2761,7 +2779,7 @@ const RenderPass &Device::request_render_pass(const RenderPassInfo &info)
 
 	auto *ret = render_passes.find(hash);
 	if (!ret)
-		ret = render_passes.insert(hash, make_unique<RenderPass>(this, info));
+		ret = render_passes.insert(hash, make_unique<RenderPass>(hash, this, info));
 	return *ret;
 }
 

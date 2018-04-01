@@ -33,7 +33,7 @@ class ShaderSuite
 public:
 	void init_graphics(Vulkan::ShaderManager *manager, const std::string &vertex, const std::string &fragment);
 	void init_compute(Vulkan::ShaderManager *manager, const std::string &compute);
-	Vulkan::ProgramHandle get_program(DrawPipeline pipeline, uint32_t attribute_mask, uint32_t texture_mask, uint32_t variant_id = 0);
+	Vulkan::Program *get_program(DrawPipeline pipeline, uint32_t attribute_mask, uint32_t texture_mask, uint32_t variant_id = 0);
 
 	std::vector<std::pair<std::string, int>> &get_base_defines()
 	{

@@ -30,8 +30,8 @@ using namespace Util;
 
 namespace Vulkan
 {
-DescriptorSetAllocator::DescriptorSetAllocator(Device *device, const DescriptorSetLayout &layout)
-    : device(device)
+DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device, const DescriptorSetLayout &layout)
+    : HashedObject(hash), device(device)
 {
 	unsigned count = ThreadGroup::get_global().get_num_threads() + 1;
 	for (unsigned i = 0; i < count; i++)

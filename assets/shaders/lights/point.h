@@ -108,7 +108,7 @@ vec3 compute_point_light(int index,
 
 	mediump float light_dist = length(light_dir_full);
 	mediump float static_falloff = shadow_falloff * (1.0 - smoothstep(0.9, 1.0, light_dist * POINT_DATA(index).inv_radius));
-	mediump vec3 point_color = POINT_DATA(index).color / (light_dist * light_dist);
+	mediump vec3 point_color = POINT_DATA(index).color * (static_falloff / (light_dist * light_dist));
 
 #ifdef POINT_LIGHT_EARLY_OUT
 	if (all(equal(point_color, vec3(0.0))))

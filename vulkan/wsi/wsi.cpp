@@ -366,7 +366,8 @@ bool WSI::init_swapchain(unsigned width, unsigned height)
 {
 	VkSurfaceCapabilitiesKHR surface_properties;
 	auto gpu = context->get_gpu();
-	V(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu, surface, &surface_properties));
+	if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu, surface, &surface_properties) != VK_SUCCESS)
+		return false;
 
 	uint32_t format_count;
 	vkGetPhysicalDeviceSurfaceFormatsKHR(gpu, surface, &format_count, nullptr);

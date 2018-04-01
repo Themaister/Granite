@@ -30,8 +30,8 @@ using namespace Util;
 
 namespace Vulkan
 {
-PipelineLayout::PipelineLayout(Device *device, const CombinedResourceLayout &layout)
-    : Cookie(device)
+PipelineLayout::PipelineLayout(Hash hash, Device *device, const CombinedResourceLayout &layout)
+    : HashedObject(hash)
     , device(device)
     , layout(layout)
 {
@@ -116,14 +116,11 @@ const char *Shader::stage_to_name(ShaderStage stage)
 	}
 }
 
-Shader::Shader(VkDevice device, ShaderStage stage, const uint32_t *data, size_t size)
-    : device(device)
+Shader::Shader(Hash hash, VkDevice device, ShaderStage stage, const uint32_t *data, size_t size)
+    : HashedObject(hash)
+    , device(device)
     , stage(stage)
 {
-	Util::Hasher hasher;
-	hasher.data(data, size);
-	hash = hasher.get();
-
 #ifdef GRANITE_SPIRV_DUMP
 	if (!Filesystem::get().write_buffer_to_file(string("cache://spirv/") + to_string(hash) + ".spv", data, size))
 		LOGE("Failed to dump shader to file.\n");
@@ -248,15 +245,26 @@ Shader::~Shader()
 		vkDestroyShaderModule(device, module, nullptr);
 }
 
-void Program::set_shader(ShaderHandle handle)
+void Program::set_shader(Shader *handle)
 {
 	shaders[static_cast<unsigned>(handle->get_stage())] = handle;
 }
 
-Program::Program(Device *device)
-    : Cookie(device)
+Program::Program(Hash hash, Device *device, Shader *vertex, Shader *fragment)
+    : HashedObject(hash)
     , device(device)
 {
+	set_shader(vertex);
+	set_shader(fragment);
+	device->bake_program(*this);
+}
+
+Program::Program(Hash hash, Device *device, Shader *compute)
+    : HashedObject(hash)
+    , device(device)
+{
+	set_shader(compute);
+	device->bake_program(*this);
 }
 
 VkPipeline Program::get_graphics_pipeline(Hash hash) const

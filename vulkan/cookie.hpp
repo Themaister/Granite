@@ -23,6 +23,7 @@
 #pragma once
 
 #include <stdint.h>
+#include "hashmap.hpp"
 
 namespace Vulkan
 {
@@ -40,6 +41,22 @@ public:
 
 private:
 	uint64_t cookie;
+};
+
+class HashedObject
+{
+public:
+	HashedObject(Util::Hash hash)
+		: hash(hash)
+	{}
+
+	Util::Hash get_hash() const
+	{
+		return hash;
+	}
+
+private:
+	Util::Hash hash = 0;
 };
 
 class InternalSyncEnabled

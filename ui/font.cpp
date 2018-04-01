@@ -243,7 +243,7 @@ void Font::render_text(RenderQueue &queue, const char *text, const vec3 &offset,
 		                                                                                      MESH_ATTRIBUTE_UV_BIT |
 		                                                                                      MESH_ATTRIBUTE_POSITION_BIT |
 		                                                                                      MESH_ATTRIBUTE_VERTEX_COLOR_BIT,
-		                                                                                      MATERIAL_TEXTURE_BASE_COLOR_BIT).get();
+		                                                                                      MATERIAL_TEXTURE_BASE_COLOR_BIT);
 
 		*sprite_data = sprite;
 	}

@@ -653,9 +653,9 @@ void CommandBuffer::flush_graphics_pipeline()
 		h.u32(vbo.strides[bit]);
 	});
 
-	h.u64(render_pass->get_cookie());
+	h.u64(render_pass->get_hash());
 	h.u32(current_subpass);
-	h.u64(current_program->get_cookie());
+	h.u64(current_program->get_hash());
 	h.data(static_state.words, sizeof(static_state.words));
 
 	if (static_state.state.blend_enable)
@@ -862,7 +862,7 @@ void CommandBuffer::push_constants(const void *data, VkDeviceSize offset, VkDevi
 
 void CommandBuffer::set_program(Program &program)
 {
-	if (current_program && current_program->get_cookie() == program.get_cookie())
+	if (current_program == &program)
 		return;
 
 	current_program = &program;
@@ -881,7 +881,7 @@ void CommandBuffer::set_program(Program &program)
 		current_layout = program.get_pipeline_layout();
 		current_pipeline_layout = current_layout->get_layout();
 	}
-	else if (program.get_pipeline_layout()->get_cookie() != current_layout->get_cookie())
+	else if (program.get_pipeline_layout()->get_hash() != current_layout->get_hash())
 	{
 		auto &new_layout = program.get_pipeline_layout()->get_resource_layout();
 		auto &old_layout = current_layout->get_resource_layout();

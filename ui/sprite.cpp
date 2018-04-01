@@ -180,7 +180,7 @@ void Sprite::get_sprite_render_info(const SpriteTransformInfo &transform, Render
 		                                   MESH_ATTRIBUTE_POSITION_BIT |
 		                                   MESH_ATTRIBUTE_VERTEX_COLOR_BIT |
 		                                   (texture ? MESH_ATTRIBUTE_UV_BIT : 0),
-		                                   texture ? MATERIAL_TEXTURE_BASE_COLOR_BIT : 0).get();
+		                                   texture ? MATERIAL_TEXTURE_BASE_COLOR_BIT : 0);
 		*sprite_data = sprite;
 	}
 }

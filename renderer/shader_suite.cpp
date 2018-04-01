@@ -56,8 +56,8 @@ void ShaderSuite::bake_base_defines()
 	base_define_hash = h.get();
 }
 
-Vulkan::ProgramHandle ShaderSuite::get_program(DrawPipeline pipeline, uint32_t attribute_mask,
-                                               uint32_t texture_mask, uint32_t variant_id)
+Vulkan::Program *ShaderSuite::get_program(DrawPipeline pipeline, uint32_t attribute_mask,
+                                          uint32_t texture_mask, uint32_t variant_id)
 {
 	Hasher h;
 	assert(base_define_hash != 0);

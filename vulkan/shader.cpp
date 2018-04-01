@@ -85,8 +85,12 @@ PipelineLayout::PipelineLayout(Hash hash, Device *device, const CombinedResource
 		info.pPushConstantRanges = ranges;
 	}
 
+
+	unsigned layout_index = device->get_state_recorder().register_pipeline_layout(get_hash(), info);
+	LOGI("Creating pipeline layout.\n");
 	if (vkCreatePipelineLayout(device->get_device(), &info, nullptr, &pipe_layout) != VK_SUCCESS)
 		LOGE("Failed to create pipeline layout.\n");
+	device->get_state_recorder().set_pipeline_layout_handle(layout_index, pipe_layout);
 }
 
 PipelineLayout::~PipelineLayout()
@@ -116,7 +120,7 @@ const char *Shader::stage_to_name(ShaderStage stage)
 	}
 }
 
-Shader::Shader(Hash hash, VkDevice device, const uint32_t *data, size_t size)
+Shader::Shader(Hash hash, Device *device, const uint32_t *data, size_t size)
     : HashedObject(hash)
     , device(device)
 {
@@ -129,8 +133,11 @@ Shader::Shader(Hash hash, VkDevice device, const uint32_t *data, size_t size)
 	info.codeSize = size;
 	info.pCode = data;
 
-	if (vkCreateShaderModule(device, &info, nullptr, &module) != VK_SUCCESS)
+	unsigned module_index = device->get_state_recorder().register_shader_module(get_hash(), info);
+	LOGI("Creating shader module.\n");
+	if (vkCreateShaderModule(device->get_device(), &info, nullptr, &module) != VK_SUCCESS)
 		LOGE("Failed to create shader module.\n");
+	device->get_state_recorder().set_shader_module_handle(module_index, module);
 
 	vector<uint32_t> code(data, data + size / sizeof(uint32_t));
 	Compiler compiler(move(code));
@@ -229,7 +236,7 @@ Shader::Shader(Hash hash, VkDevice device, const uint32_t *data, size_t size)
 Shader::~Shader()
 {
 	if (module)
-		vkDestroyShaderModule(device, module, nullptr);
+		vkDestroyShaderModule(device->get_device(), module, nullptr);
 }
 
 void Program::set_shader(ShaderStage stage, Shader *handle)

@@ -99,7 +99,7 @@ private:
 class Shader : public Util::ThreadSafeIntrusivePtrEnabled<Shader>, public HashedObject
 {
 public:
-	Shader(Util::Hash hash, VkDevice device, const uint32_t *data, size_t size);
+	Shader(Util::Hash hash, Device *device, const uint32_t *data, size_t size);
 	~Shader();
 
 	const ResourceLayout &get_layout() const
@@ -115,7 +115,7 @@ public:
 	static const char *stage_to_name(ShaderStage stage);
 
 private:
-	VkDevice device;
+	Device *device;
 	VkShaderModule module;
 	ResourceLayout layout;
 };

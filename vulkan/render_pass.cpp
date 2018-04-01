@@ -658,8 +658,11 @@ RenderPass::RenderPass(Hash hash, Device *device, const RenderPassInfo &info)
 		this->subpasses.push_back(subpass_info);
 	}
 
+	unsigned rp_index = device->get_state_recorder().register_render_pass(get_hash(), rp_info);
+	LOGI("Creating render pass.\n");
 	if (vkCreateRenderPass(device->get_device(), &rp_info, nullptr, &render_pass) != VK_SUCCESS)
 		LOGE("Failed to create render pass.");
+	device->get_state_recorder().set_render_pass_handle(rp_index, render_pass);
 }
 
 RenderPass::~RenderPass()

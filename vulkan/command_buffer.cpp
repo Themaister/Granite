@@ -627,9 +627,12 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
 	pipe.pStages = stages;
 	pipe.stageCount = num_stages;
 
+	unsigned pipe_index = device->get_state_recorder().register_graphics_pipeline(hash, pipe);
+	LOGI("Creating graphics pipeline.\n");
 	VkResult res = vkCreateGraphicsPipelines(device->get_device(), cache, 1, &pipe, nullptr, &current_pipeline);
 	if (res != VK_SUCCESS)
 		LOGE("Failed to create graphics pipeline!\n");
+	device->get_state_recorder().set_graphics_pipeline_handle(pipe_index, current_pipeline);
 
 	current_pipeline = current_program->add_graphics_pipeline(hash, current_pipeline);
 	return current_pipeline;

@@ -136,7 +136,7 @@ Shader *Device::request_shader(const uint32_t *data, size_t size)
 	auto hash = hasher.get();
 	auto *ret = shaders.find(hash);
 	if (!ret)
-		ret = shaders.insert(hash, make_unique<Shader>(hash, device, data, size));
+		ret = shaders.insert(hash, make_unique<Shader>(hash, this, data, size));
 	return ret;
 }
 
@@ -282,8 +282,11 @@ void Device::bake_program(Program &program)
 #endif
 
 		VkPipeline compute_pipeline;
+		unsigned pipe_index = get_state_recorder().register_compute_pipeline(program.get_hash(), info);
+		LOGI("Creating compute pipeline.\n");
 		if (vkCreateComputePipelines(device, pipeline_cache, 1, &info, nullptr, &compute_pipeline) != VK_SUCCESS)
 			LOGE("Failed to create compute pipeline!\n");
+		get_state_recorder().set_compute_pipeline_handle(pipe_index, compute_pipeline);
 		program.set_compute_pipeline(compute_pipeline);
 	}
 }
@@ -316,6 +319,22 @@ void Device::init_pipeline_cache()
 
 void Device::flush_pipeline_cache()
 {
+	{
+		auto serial = state_recorder.serialize();
+		auto file = Filesystem::get().open("cache://pipelines.json", FileMode::WriteOnly);
+		if (file)
+		{
+			uint8_t *data = static_cast<uint8_t *>(file->map_write(serial.size()));
+			if (data)
+			{
+				memcpy(data, serial.data(), serial.size());
+				file->unmap();
+			}
+			else
+				LOGE("Failed to serialize pipeline data.\n");
+		}
+	}
+
 	static const auto uuid_size = sizeof(gpu_props.pipelineCacheUUID);
 	size_t size = 0;
 	if (vkGetPipelineCacheData(device, pipeline_cache, &size, nullptr) != VK_SUCCESS)

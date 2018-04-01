@@ -215,6 +215,11 @@ public:
 	// lock the global device and queue.
 	void set_queue_lock(std::function<void ()> lock_callback, std::function<void ()> unlock_callback);
 
+	VPC::StateRecorder &get_state_recorder()
+	{
+		return state_recorder;
+	}
+
 private:
 	VkInstance instance = VK_NULL_HANDLE;
 	VkPhysicalDevice gpu = VK_NULL_HANDLE;

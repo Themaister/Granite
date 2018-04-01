@@ -113,8 +113,11 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device, const 
 		info.pBindings = bindings.data();
 	}
 
+	unsigned desc_index = device->get_state_recorder().register_descriptor_set_layout(get_hash(), info);
+	LOGI("Creating descriptor set layout.\n");
 	if (vkCreateDescriptorSetLayout(device->get_device(), &info, nullptr, &set_layout) != VK_SUCCESS)
 		LOGE("Failed to create descriptor set layout.");
+	device->get_state_recorder().set_descriptor_set_layout_handle(desc_index, set_layout);
 }
 
 void DescriptorSetAllocator::begin_frame()

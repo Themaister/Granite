@@ -128,7 +128,7 @@ void Device::unmap_host_buffer(const Buffer &buffer)
 	managers.memory.unmap_memory(buffer.get_allocation());
 }
 
-Shader *Device::create_shader(const uint32_t *data, size_t size)
+Shader *Device::request_shader(const uint32_t *data, size_t size)
 {
 	Util::Hasher hasher;
 	hasher.data(data, size);
@@ -140,10 +140,10 @@ Shader *Device::create_shader(const uint32_t *data, size_t size)
 	return ret;
 }
 
-Program *Device::create_program(const uint32_t *compute_data, size_t compute_size)
+Program *Device::request_program(const uint32_t *compute_data, size_t compute_size)
 {
 	Util::Hasher hasher;
-	auto *compute = create_shader(compute_data, compute_size);
+	auto *compute = request_shader(compute_data, compute_size);
 	hasher.u64(compute->get_hash());
 
 	auto hash = hasher.get();
@@ -153,12 +153,12 @@ Program *Device::create_program(const uint32_t *compute_data, size_t compute_siz
 	return ret;
 }
 
-Program *Device::create_program(const uint32_t *vertex_data, size_t vertex_size, const uint32_t *fragment_data,
-                                size_t fragment_size)
+Program *Device::request_program(const uint32_t *vertex_data, size_t vertex_size, const uint32_t *fragment_data,
+                                 size_t fragment_size)
 {
 	Util::Hasher hasher;
-	auto *vertex = create_shader(vertex_data, vertex_size);
-	auto *fragment = create_shader(fragment_data, fragment_size);
+	auto *vertex = request_shader(vertex_data, vertex_size);
+	auto *fragment = request_shader(fragment_data, fragment_size);
 	hasher.u64(vertex->get_hash());
 	hasher.u64(fragment->get_hash());
 

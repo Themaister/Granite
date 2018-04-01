@@ -138,7 +138,7 @@ Vulkan::Program *ShaderProgram::get_program(unsigned variant)
 			if (comp_instance != comp->instance)
 			{
 				comp_instance = comp->instance;
-				var.program = device->create_program(comp->spirv.data(), comp->spirv.size() * sizeof(uint32_t));
+				var.program = device->request_program(comp->spirv.data(), comp->spirv.size() * sizeof(uint32_t));
 			}
 			auto ret = var.program;
 			var.instance_lock->unlock_write();
@@ -164,8 +164,8 @@ Vulkan::Program *ShaderProgram::get_program(unsigned variant)
 			{
 				vert_instance = vert->instance;
 				frag_instance = frag->instance;
-				var.program = device->create_program(vert->spirv.data(), vert->spirv.size() * sizeof(uint32_t),
-				                                     frag->spirv.data(), frag->spirv.size() * sizeof(uint32_t));
+				var.program = device->request_program(vert->spirv.data(), vert->spirv.size() * sizeof(uint32_t),
+				                                      frag->spirv.data(), frag->spirv.size() * sizeof(uint32_t));
 			}
 			auto ret = var.program;
 			var.instance_lock->unlock_write();

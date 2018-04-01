@@ -140,10 +140,17 @@ Shader *Device::request_shader(const uint32_t *data, size_t size)
 	return ret;
 }
 
-Program *Device::request_program(const uint32_t *compute_data, size_t compute_size)
+bool Device::enqueue_create_shader_module(VPC::Hash hash, unsigned index, const VkShaderModuleCreateInfo *create_info, VkShaderModule *module)
+{
+	auto *ret = shaders.insert(hash, make_unique<Shader>(hash, this, create_info->pCode, create_info->codeSize));
+	*module = ret->get_module();
+	replayer_shader_map[*module] = ret;
+	return true;
+}
+
+Program *Device::request_program(Vulkan::Shader *compute)
 {
 	Util::Hasher hasher;
-	auto *compute = request_shader(compute_data, compute_size);
 	hasher.u64(compute->get_hash());
 
 	auto hash = hasher.get();
@@ -153,12 +160,15 @@ Program *Device::request_program(const uint32_t *compute_data, size_t compute_si
 	return ret;
 }
 
-Program *Device::request_program(const uint32_t *vertex_data, size_t vertex_size, const uint32_t *fragment_data,
-                                 size_t fragment_size)
+Program *Device::request_program(const uint32_t *compute_data, size_t compute_size)
+{
+	auto *compute = request_shader(compute_data, compute_size);
+	return request_program(compute);
+}
+
+Program *Device::request_program(Vulkan::Shader *vertex, Vulkan::Shader *fragment)
 {
 	Util::Hasher hasher;
-	auto *vertex = request_shader(vertex_data, vertex_size);
-	auto *fragment = request_shader(fragment_data, fragment_size);
 	hasher.u64(vertex->get_hash());
 	hasher.u64(fragment->get_hash());
 
@@ -168,6 +178,14 @@ Program *Device::request_program(const uint32_t *vertex_data, size_t vertex_size
 	if (!ret)
 		ret = programs.insert(hash, make_unique<Program>(hash, this, vertex, fragment));
 	return ret;
+}
+
+Program *Device::request_program(const uint32_t *vertex_data, size_t vertex_size, const uint32_t *fragment_data,
+                                 size_t fragment_size)
+{
+	auto *vertex = request_shader(vertex_data, vertex_size);
+	auto *fragment = request_shader(fragment_data, fragment_size);
+	return request_program(vertex, fragment);
 }
 
 PipelineLayout *Device::request_pipeline_layout(const CombinedResourceLayout &layout)
@@ -317,24 +335,51 @@ void Device::init_pipeline_cache()
 	vkCreatePipelineCache(device, &info, nullptr, &pipeline_cache);
 }
 
-void Device::flush_pipeline_cache()
+void Device::init_pipeline_state()
 {
+	auto file = Filesystem::get().open("cache://pipelines.json", FileMode::ReadOnly);
+	if (!file)
+		return;
+
+	void *mapped = file->map();
+	if (!mapped)
 	{
-		auto serial = state_recorder.serialize();
-		auto file = Filesystem::get().open("cache://pipelines.json", FileMode::WriteOnly);
-		if (file)
-		{
-			uint8_t *data = static_cast<uint8_t *>(file->map_write(serial.size()));
-			if (data)
-			{
-				memcpy(data, serial.data(), serial.size());
-				file->unmap();
-			}
-			else
-				LOGE("Failed to serialize pipeline data.\n");
-		}
+		LOGE("Failed to map pipelines.json.\n");
+		return;
 	}
 
+	try
+	{
+		LOGI("Replaying cached state.\n");
+		VPC::StateReplayer replayer;
+		replayer.parse(*this, static_cast<const char *>(mapped), file->get_size());
+		LOGI("Completed replaying cached state.\n");
+	}
+	catch (const exception &e)
+	{
+		LOGE("Exception caught while parsing pipeline state: %s.\n", e.what());
+	}
+}
+
+void Device::flush_pipeline_state()
+{
+	auto serial = state_recorder.serialize();
+	auto file = Filesystem::get().open("cache://pipelines.json", FileMode::WriteOnly);
+	if (file)
+	{
+		uint8_t *data = static_cast<uint8_t *>(file->map_write(serial.size()));
+		if (data)
+		{
+			memcpy(data, serial.data(), serial.size());
+			file->unmap();
+		}
+		else
+			LOGE("Failed to serialize pipeline data.\n");
+	}
+}
+
+void Device::flush_pipeline_cache()
+{
 	static const auto uuid_size = sizeof(gpu_props.pipelineCacheUUID);
 	size_t size = 0;
 	if (vkGetPipelineCacheData(device, pipeline_cache, &size, nullptr) != VK_SUCCESS)
@@ -383,6 +428,7 @@ void Device::set_context(const Context &context)
 
 	init_stock_samplers();
 	init_pipeline_cache();
+	init_pipeline_state();
 
 	supports_external = context.supports_external_memory_and_sync();
 	supports_dedicated = context.supports_dedicated_allocation();
@@ -1273,6 +1319,8 @@ Device::~Device()
 		flush_pipeline_cache();
 		vkDestroyPipelineCache(device, pipeline_cache, nullptr);
 	}
+
+	flush_pipeline_state();
 
 	framebuffer_allocator.clear();
 	transient_allocator.clear();
@@ -2895,11 +2943,6 @@ bool Device::enqueue_create_descriptor_set_layout(VPC::Hash hash, unsigned index
 }
 
 bool Device::enqueue_create_pipeline_layout(VPC::Hash hash, unsigned index, const VkPipelineLayoutCreateInfo *create_info, VkPipelineLayout *layout)
-{
-	return false;
-}
-
-bool Device::enqueue_create_shader_module(VPC::Hash hash, unsigned index, const VkShaderModuleCreateInfo *create_info, VkShaderModule *module)
 {
 	return false;
 }

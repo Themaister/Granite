@@ -31,8 +31,6 @@ namespace Vulkan
 {
 WSI::WSI()
 {
-	device.reset(new Device);
-	semaphore_manager.reset(new SemaphoreManager);
 }
 
 bool WSI::reinit_external_swapchain(std::vector<Vulkan::ImageHandle> external_images)
@@ -48,8 +46,10 @@ bool WSI::init_external_context(std::unique_ptr<Vulkan::Context> fresh_context)
 
 	auto &em = Granite::EventManager::get_global();
 	// Need to have a dummy swapchain in place before we issue create device events.
-	semaphore_manager->init(context->get_device());
+	device.reset(new Device);
 	device->set_context(*context);
+	semaphore_manager.reset(new SemaphoreManager);
+	semaphore_manager->init(context->get_device());
 	device->init_external_swapchain({ ImageHandle(nullptr) });
 	em.enqueue_latched<DeviceCreatedEvent>(device.get());
 	return true;
@@ -94,8 +94,10 @@ bool WSI::init()
 
 	auto &em = Granite::EventManager::get_global();
 	// Need to have a dummy swapchain in place before we issue create device events.
-	semaphore_manager->init(context->get_device());
+	device.reset(new Device);
 	device->set_context(*context);
+	semaphore_manager.reset(new SemaphoreManager);
+	semaphore_manager->init(context->get_device());
 	device->init_external_swapchain({ ImageHandle(nullptr) });
 	em.enqueue_latched<DeviceCreatedEvent>(device.get());
 
@@ -357,8 +359,8 @@ void WSI::deinit_external()
 	external_release.reset();
 	external_acquire.reset();
 	external_swapchain_images.clear();
-	semaphore_manager.reset(new SemaphoreManager);
-	device.reset(new Device);
+	semaphore_manager.reset();
+	device.reset();
 	context.reset();
 }
 

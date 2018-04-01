@@ -114,6 +114,8 @@ public:
 	Program *request_program(const uint32_t *vertex_data, size_t vertex_size, const uint32_t *fragment_data,
 	                         size_t fragment_size);
 	Program *request_program(const uint32_t *compute_data, size_t compute_size);
+	Program *request_program(Shader *vertex, Shader *fragment);
+	Program *request_program(Shader *compute);
 	void bake_program(Program &program);
 
 	void *map_host_buffer(Buffer &buffer, MemoryAccessFlags access);
@@ -369,8 +371,10 @@ private:
 	TextureManager texture_manager;
 
 	void init_pipeline_cache();
+	void init_pipeline_state();
 
 	void flush_pipeline_cache();
+	void flush_pipeline_state();
 
 	CommandPool &get_command_pool(CommandBuffer::Type type, unsigned thread);
 	QueueData &get_queue_data(CommandBuffer::Type type);
@@ -425,5 +429,6 @@ private:
 	bool enqueue_create_render_pass(VPC::Hash hash, unsigned index, const VkRenderPassCreateInfo *create_info, VkRenderPass *render_pass) override;
 	bool enqueue_create_compute_pipeline(VPC::Hash hash, unsigned index, const VkComputePipelineCreateInfo *create_info, VkPipeline *pipeline) override;
 	bool enqueue_create_graphics_pipeline(VPC::Hash hash, unsigned index, const VkGraphicsPipelineCreateInfo *create_info, VkPipeline *pipeline) override;
+	std::unordered_map<VkShaderModule, Shader *> replayer_shader_map;
 };
 }

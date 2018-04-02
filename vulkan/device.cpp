@@ -140,7 +140,7 @@ Shader *Device::request_shader(const uint32_t *data, size_t size)
 	return ret;
 }
 
-bool Device::enqueue_create_shader_module(VPC::Hash hash, unsigned, const VkShaderModuleCreateInfo *create_info, VkShaderModule *module)
+bool Device::enqueue_create_shader_module(Fossilize::Hash hash, unsigned, const VkShaderModuleCreateInfo *create_info, VkShaderModule *module)
 {
 	auto *ret = shaders.insert(hash, make_unique<Shader>(hash, this, create_info->pCode, create_info->codeSize));
 	*module = ret->get_module();
@@ -148,7 +148,7 @@ bool Device::enqueue_create_shader_module(VPC::Hash hash, unsigned, const VkShad
 	return true;
 }
 
-bool Device::enqueue_create_compute_pipeline(VPC::Hash hash, unsigned,
+bool Device::enqueue_create_compute_pipeline(Fossilize::Hash hash, unsigned,
                                              const VkComputePipelineCreateInfo *create_info, VkPipeline *pipeline)
 {
 	// Find the Shader* associated with this VkShaderModule and just use that.
@@ -180,7 +180,7 @@ Program *Device::request_program(const uint32_t *compute_data, size_t compute_si
 	return request_program(compute);
 }
 
-bool Device::enqueue_create_graphics_pipeline(VPC::Hash hash, unsigned,
+bool Device::enqueue_create_graphics_pipeline(Fossilize::Hash hash, unsigned,
                                               const VkGraphicsPipelineCreateInfo *create_info, VkPipeline *pipeline)
 {
 	auto info = *create_info;
@@ -401,7 +401,7 @@ void Device::init_pipeline_state()
 	try
 	{
 		LOGI("Replaying cached state.\n");
-		VPC::StateReplayer replayer;
+		Fossilize::StateReplayer replayer;
 		replayer.parse(*this, static_cast<const char *>(mapped), file->get_size());
 		LOGI("Completed replaying cached state.\n");
 		replayer_state = {};
@@ -2867,7 +2867,7 @@ uint64_t Device::allocate_cookie()
 	return cookie.fetch_add(16, memory_order_relaxed) + 16;
 }
 
-bool Device::enqueue_create_render_pass(VPC::Hash hash, unsigned, const VkRenderPassCreateInfo *create_info, VkRenderPass *render_pass)
+bool Device::enqueue_create_render_pass(Fossilize::Hash hash, unsigned, const VkRenderPassCreateInfo *create_info, VkRenderPass *render_pass)
 {
 	auto *ret = render_passes.insert(hash, make_unique<RenderPass>(hash, this, *create_info));
 	*render_pass = ret->get_render_pass();
@@ -2991,19 +2991,19 @@ void Device::set_queue_lock(std::function<void()> lock_callback, std::function<v
 	queue_unlock_callback = move(unlock_callback);
 }
 
-bool Device::enqueue_create_sampler(VPC::Hash hash, unsigned index, const VkSamplerCreateInfo *create_info, VkSampler *sampler)
+bool Device::enqueue_create_sampler(Fossilize::Hash hash, unsigned index, const VkSamplerCreateInfo *create_info, VkSampler *sampler)
 {
 	return false;
 }
 
-bool Device::enqueue_create_descriptor_set_layout(VPC::Hash, unsigned, const VkDescriptorSetLayoutCreateInfo *, VkDescriptorSetLayout *layout)
+bool Device::enqueue_create_descriptor_set_layout(Fossilize::Hash, unsigned, const VkDescriptorSetLayoutCreateInfo *, VkDescriptorSetLayout *layout)
 {
 	// We will create this naturally when building pipelines, can just emit dummy handles.
 	*layout = reinterpret_cast<VkDescriptorSetLayout>(uint64_t(-1));
 	return true;
 }
 
-bool Device::enqueue_create_pipeline_layout(VPC::Hash, unsigned, const VkPipelineLayoutCreateInfo *, VkPipelineLayout *layout)
+bool Device::enqueue_create_pipeline_layout(Fossilize::Hash, unsigned, const VkPipelineLayoutCreateInfo *, VkPipelineLayout *layout)
 {
 	// We will create this naturally when building pipelines, can just emit dummy handles.
 	*layout = reinterpret_cast<VkPipelineLayout>(uint64_t(-1));

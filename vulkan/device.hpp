@@ -41,7 +41,7 @@
 #include "query_pool.hpp"
 #include "buffer_pool.hpp"
 #include "thread_safe_cache.hpp"
-#include "vulkan_pipeline_cache.hpp"
+#include "fossilize.hpp"
 #include <memory>
 #include <vector>
 #include <atomic>
@@ -63,7 +63,7 @@ struct InitialImageBuffer
 	std::vector<VkBufferImageCopy> blits;
 };
 
-class Device : public VPC::StateCreatorInterface
+class Device : public Fossilize::StateCreatorInterface
 {
 public:
 	friend class EventHolder;
@@ -217,7 +217,7 @@ public:
 	// lock the global device and queue.
 	void set_queue_lock(std::function<void ()> lock_callback, std::function<void ()> unlock_callback);
 
-	VPC::StateRecorder &get_state_recorder()
+	Fossilize::StateRecorder &get_state_recorder()
 	{
 		return state_recorder;
 	}
@@ -421,14 +421,14 @@ private:
 	void submit_secondary(CommandBuffer &primary, CommandBuffer &secondary);
 	void wait_idle_nolock();
 
-	VPC::StateRecorder state_recorder;
-	bool enqueue_create_sampler(VPC::Hash hash, unsigned index, const VkSamplerCreateInfo *create_info, VkSampler *sampler) override;
-	bool enqueue_create_descriptor_set_layout(VPC::Hash hash, unsigned index, const VkDescriptorSetLayoutCreateInfo *create_info, VkDescriptorSetLayout *layout) override;
-	bool enqueue_create_pipeline_layout(VPC::Hash hash, unsigned index, const VkPipelineLayoutCreateInfo *create_info, VkPipelineLayout *layout) override;
-	bool enqueue_create_shader_module(VPC::Hash hash, unsigned index, const VkShaderModuleCreateInfo *create_info, VkShaderModule *module) override;
-	bool enqueue_create_render_pass(VPC::Hash hash, unsigned index, const VkRenderPassCreateInfo *create_info, VkRenderPass *render_pass) override;
-	bool enqueue_create_compute_pipeline(VPC::Hash hash, unsigned index, const VkComputePipelineCreateInfo *create_info, VkPipeline *pipeline) override;
-	bool enqueue_create_graphics_pipeline(VPC::Hash hash, unsigned index, const VkGraphicsPipelineCreateInfo *create_info, VkPipeline *pipeline) override;
+	Fossilize::StateRecorder state_recorder;
+	bool enqueue_create_sampler(Fossilize::Hash hash, unsigned index, const VkSamplerCreateInfo *create_info, VkSampler *sampler) override;
+	bool enqueue_create_descriptor_set_layout(Fossilize::Hash hash, unsigned index, const VkDescriptorSetLayoutCreateInfo *create_info, VkDescriptorSetLayout *layout) override;
+	bool enqueue_create_pipeline_layout(Fossilize::Hash hash, unsigned index, const VkPipelineLayoutCreateInfo *create_info, VkPipelineLayout *layout) override;
+	bool enqueue_create_shader_module(Fossilize::Hash hash, unsigned index, const VkShaderModuleCreateInfo *create_info, VkShaderModule *module) override;
+	bool enqueue_create_render_pass(Fossilize::Hash hash, unsigned index, const VkRenderPassCreateInfo *create_info, VkRenderPass *render_pass) override;
+	bool enqueue_create_compute_pipeline(Fossilize::Hash hash, unsigned index, const VkComputePipelineCreateInfo *create_info, VkPipeline *pipeline) override;
+	bool enqueue_create_graphics_pipeline(Fossilize::Hash hash, unsigned index, const VkGraphicsPipelineCreateInfo *create_info, VkPipeline *pipeline) override;
 
 	struct
 	{

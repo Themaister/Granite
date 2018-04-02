@@ -145,7 +145,7 @@ vector<uint32_t> GLSLCompiler::compile(const vector<pair<string, int>> *defines)
 	options.SetGenerateDebugInfo();
 #endif
 
-	options.SetTargetEnvironment(shaderc_target_env_vulkan, 1);
+	options.SetTargetEnvironment(shaderc_target_env_vulkan, 0);
 	options.SetSourceLanguage(shaderc_source_language_glsl);
 
 	shaderc_shader_kind kind;

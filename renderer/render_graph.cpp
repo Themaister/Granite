@@ -2170,6 +2170,12 @@ void RenderGraph::traverse_dependencies(const RenderPass &pass, unsigned stack_c
 			depend_passes_recursive(pass, input->get_write_passes(), stack_count, false, false, true);
 	}
 
+	for (auto *input : pass.get_color_scale_inputs())
+	{
+		if (input)
+			depend_passes_recursive(pass, input->get_write_passes(), stack_count, false, false, false);
+	}
+
 	for (auto *input : pass.get_blit_texture_inputs())
 	{
 		if (input)

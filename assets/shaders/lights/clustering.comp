@@ -8,17 +8,14 @@ layout(set = 0, binding = 1) uniform usampler3D uClusterInherit;
 
 struct LightInfo
 {
-	vec3 color;
-	float spot_outer;
-
-	vec3 falloff;
-	float inv_radius;
+	mediump vec3 color;
+	mediump float spot_outer;
 
 	vec3 position;
-	float spot_inner;
+	mediump float spot_inner;
 
-	vec3 direction;
-	float angle;
+	mediump vec3 direction;
+	mediump float inv_radius;
 };
 
 layout(std140, set = 1, binding = 0) uniform SpotLight

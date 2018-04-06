@@ -304,7 +304,7 @@ def main():
             if args.fast:
                 if (not shadows) or (not pos_shadows):
                     continue
-                if shadow_type == 1:
+                if shadow_type == 1 or shadow_type == 2:
                     continue
                 if renderer == 'deferred' and (not clustered) and (not stencil_culling):
                     continue

@@ -526,8 +526,11 @@ void SceneViewerApplication::add_main_pass_forward(Vulkan::Device &device, const
 {
 	AttachmentInfo color, depth;
 
+	bool supports_32bpp = device.image_format_is_supported(VK_FORMAT_B10G11R11_UFLOAT_PACK32,
+	                                                       VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT);
+
 	if (config.hdr_bloom)
-		color.format = config.rt_fp16 ? VK_FORMAT_R16G16B16A16_SFLOAT : VK_FORMAT_B10G11R11_UFLOAT_PACK32;
+		color.format = (config.rt_fp16 || !supports_32bpp) ? VK_FORMAT_R16G16B16A16_SFLOAT : VK_FORMAT_B10G11R11_UFLOAT_PACK32;
 	else
 		color.format = VK_FORMAT_UNDEFINED; // Swapchain format.
 
@@ -581,9 +584,11 @@ void SceneViewerApplication::add_main_pass_forward(Vulkan::Device &device, const
 
 void SceneViewerApplication::add_main_pass_deferred(Vulkan::Device &device, const std::string &tag)
 {
+	bool supports_32bpp = device.image_format_is_supported(VK_FORMAT_B10G11R11_UFLOAT_PACK32,
+	                                                       VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT);
 	AttachmentInfo emissive, albedo, normal, pbr, depth;
 	if (config.hdr_bloom)
-		emissive.format = config.rt_fp16 ? VK_FORMAT_R16G16B16A16_SFLOAT : VK_FORMAT_B10G11R11_UFLOAT_PACK32;
+		emissive.format = (config.rt_fp16 || !supports_32bpp) ? VK_FORMAT_R16G16B16A16_SFLOAT : VK_FORMAT_B10G11R11_UFLOAT_PACK32;
 	else
 		emissive.format = VK_FORMAT_UNDEFINED;
 

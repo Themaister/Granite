@@ -2099,7 +2099,7 @@ ImageHandle Device::create_imported_image(int fd, VkDeviceSize size, uint32_t me
 	externalInfo.handleTypes = handle_type;
 	info.pNext = &externalInfo;
 
-	VK_ASSERT(format_is_supported(create_info.format, image_usage_to_features(info.usage)));
+	VK_ASSERT(image_format_is_supported(create_info.format, image_usage_to_features(info.usage)));
 
 	VkImage image;
 	if (vkCreateImage(device, &info, nullptr, &image) != VK_SUCCESS)
@@ -2427,7 +2427,7 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 		info.pQueueFamilyIndices = sharing_indices;
 	}
 
-	VK_ASSERT(format_is_supported(create_info.format, image_usage_to_features(info.usage)));
+	VK_ASSERT(image_format_is_supported(create_info.format, image_usage_to_features(info.usage)));
 
 	if (vkCreateImage(device, &info, nullptr, &image) != VK_SUCCESS)
 		return ImageHandle(nullptr);
@@ -2831,7 +2831,7 @@ bool Device::memory_type_is_host_visible(uint32_t type) const
 	return (mem_props.memoryTypes[type].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0;
 }
 
-bool Device::format_is_supported(VkFormat format, VkFormatFeatureFlags required) const
+bool Device::image_format_is_supported(VkFormat format, VkFormatFeatureFlags required) const
 {
 	VkFormatProperties props;
 	vkGetPhysicalDeviceFormatProperties(gpu, format, &props);
@@ -2841,9 +2841,9 @@ bool Device::format_is_supported(VkFormat format, VkFormatFeatureFlags required)
 
 VkFormat Device::get_default_depth_stencil_format() const
 {
-	if (format_is_supported(VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT))
+	if (image_format_is_supported(VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT))
 		return VK_FORMAT_D24_UNORM_S8_UINT;
-	if (format_is_supported(VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT))
+	if (image_format_is_supported(VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT))
 		return VK_FORMAT_D32_SFLOAT_S8_UINT;
 
 	return VK_FORMAT_UNDEFINED;
@@ -2851,11 +2851,11 @@ VkFormat Device::get_default_depth_stencil_format() const
 
 VkFormat Device::get_default_depth_format() const
 {
-	if (format_is_supported(VK_FORMAT_D32_SFLOAT, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT))
+	if (image_format_is_supported(VK_FORMAT_D32_SFLOAT, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT))
 		return VK_FORMAT_D32_SFLOAT;
-	if (format_is_supported(VK_FORMAT_X8_D24_UNORM_PACK32, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT))
+	if (image_format_is_supported(VK_FORMAT_X8_D24_UNORM_PACK32, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT))
 		return VK_FORMAT_X8_D24_UNORM_PACK32;
-	if (format_is_supported(VK_FORMAT_D16_UNORM, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT))
+	if (image_format_is_supported(VK_FORMAT_D16_UNORM, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT))
 		return VK_FORMAT_D16_UNORM;
 
 	return VK_FORMAT_UNDEFINED;

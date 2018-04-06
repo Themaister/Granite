@@ -100,9 +100,9 @@ void Texture::update_gli(const void *data, size_t size)
 	info.format = Granite::gli_format_to_vulkan(tex.format());
 	info.swizzle = swizzle;
 
-	if (!device->format_is_supported(info.format, VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT))
+	if (!device->image_format_is_supported(info.format, VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT))
 	{
-		LOGE("Format is not supported!\n");
+		LOGE("Format (%u) is not supported!\n", unsigned(info.format));
 		return;
 	}
 
@@ -177,8 +177,8 @@ void Texture::update_gli(const void *data, size_t size)
 
 	// Auto-generate mips for single-mip level images.
 	if (info.levels == 1 &&
-	    device->format_is_supported(info.format, VK_FORMAT_FEATURE_BLIT_SRC_BIT) &&
-	    device->format_is_supported(info.format, VK_FORMAT_FEATURE_BLIT_DST_BIT))
+	    device->image_format_is_supported(info.format, VK_FORMAT_FEATURE_BLIT_SRC_BIT) &&
+	    device->image_format_is_supported(info.format, VK_FORMAT_FEATURE_BLIT_DST_BIT))
 	{
 		info.levels = 0;
 		info.misc |= IMAGE_MISC_GENERATE_MIPS_BIT;

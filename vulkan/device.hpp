@@ -159,7 +159,7 @@ public:
 	VkSemaphore set_release(VkSemaphore release);
 	bool swapchain_touched() const;
 
-	bool format_is_supported(VkFormat format, VkFormatFeatureFlags required) const;
+	bool image_format_is_supported(VkFormat format, VkFormatFeatureFlags required) const;
 	VkFormat get_default_depth_stencil_format() const;
 	VkFormat get_default_depth_format() const;
 	ImageView &get_transient_attachment(unsigned width, unsigned height, VkFormat format,

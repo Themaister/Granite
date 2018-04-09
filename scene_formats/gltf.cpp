@@ -1243,10 +1243,21 @@ void Parser::parse(const string &original_path, const string &json)
 		if (info.type == LightInfo::Type::Spot || info.type == LightInfo::Type::Point)
 		{
 			auto &pos = light["positional"];
+
 			if (pos.HasMember("constantAttenuation"))
-				info.constant_falloff = pos["constantAttenuation"].GetFloat();
+			{
+				float constant_falloff = pos["constantAttenuation"].GetFloat();
+				if (constant_falloff != 0.0f)
+					LOGI("Constant falloff is not 0, this will be ignored.\n");
+			}
+
 			if (pos.HasMember("linearAttenuation"))
-				info.linear_falloff = pos["linearAttenuation"].GetFloat();
+			{
+				float linear_falloff = pos["linearAttenuation"].GetFloat();
+				if (linear_falloff != 0.0f)
+					LOGI("Linear falloff is not 0, this will be ignored.\n");
+			}
+
 			if (pos.HasMember("quadraticAttenuation"))
 				info.quadratic_falloff = pos["quadraticAttenuation"].GetFloat();
 

@@ -1783,10 +1783,6 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 			case LightInfo::Type::Spot:
 				l.AddMember("type", "spot", allocator);
 				l.AddMember("profile", "CMN", allocator);
-				if (light.constant_falloff != 0.0f)
-					positional.AddMember("constantAttenuation", light.constant_falloff, allocator);
-				if (light.linear_falloff != 0.0f)
-					positional.AddMember("linearAttenuation", light.linear_falloff, allocator);
 				if (light.quadratic_falloff != 0.0f)
 					positional.AddMember("quadraticAttenuation", light.quadratic_falloff, allocator);
 
@@ -1800,10 +1796,6 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 			case LightInfo::Type::Point:
 				l.AddMember("type", "point", allocator);
 				l.AddMember("profile", "CMN", allocator);
-				if (light.constant_falloff != 0.0f)
-					positional.AddMember("constantAttenuation", light.constant_falloff, allocator);
-				if (light.linear_falloff != 0.0f)
-					positional.AddMember("linearAttenuation", light.linear_falloff, allocator);
 				if (light.quadratic_falloff != 0.0f)
 					positional.AddMember("quadraticAttenuation", light.quadratic_falloff, allocator);
 				l.AddMember("positional", positional, allocator);

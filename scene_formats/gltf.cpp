@@ -1258,6 +1258,7 @@ void Parser::parse(const string &original_path, const string &json)
 					LOGI("Linear falloff is not 0, this will be ignored.\n");
 			}
 
+			info.quadratic_falloff = 1.0f;
 			if (pos.HasMember("quadraticAttenuation"))
 				info.quadratic_falloff = pos["quadraticAttenuation"].GetFloat();
 

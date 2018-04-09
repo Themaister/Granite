@@ -207,7 +207,7 @@ struct LightInfo
 	float inner_cone = 0.40f;
 	float outer_cone = 0.45f;
 	vec3 color = vec3(1.0f);
-	float quadratic_falloff = 0.0f;
+	float quadratic_falloff = 1.0f;
 
 	bool attached_to_node = false;
 };

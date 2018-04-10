@@ -24,12 +24,7 @@
 #include "texture_compression.hpp"
 #include "texture_files.hpp"
 
-#define RAPIDJSON_ASSERT(x) do { if (!(x)) throw "JSON error"; } while(0)
-#include "rapidjson/document.h"
-#include "rapidjson/writer.h"
-#include "rapidjson/prettywriter.h"
-#include "rapidjson/stringbuffer.h"
-#include "rapidjson/istreamwrapper.h"
+#include "rapidjson_wrapper.hpp"
 #include "hashmap.hpp"
 #include "thread_group.hpp"
 #include <unordered_set>

@@ -15,6 +15,10 @@ add_granite_library(util
         async_object_sink.hpp
         unstable_remove_if.hpp
         cli_parser.cpp cli_parser.hpp
+        dynamic_library.cpp dynamic_library.hpp
         timer.hpp timer.cpp)
 
 target_include_directories(util PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+if (NOT WIN32)
+    target_link_libraries(util dl)
+endif()

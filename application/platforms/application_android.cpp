@@ -31,9 +31,7 @@
 
 #include "android.hpp"
 #include "os.hpp"
-
-#define RAPIDJSON_ASSERT(x) do { if (!(x)) throw "JSON error"; } while(0)
-#include "rapidjson/document.h"
+#include "rapidjson_wrapper.hpp"
 
 using namespace std;
 using namespace Vulkan;

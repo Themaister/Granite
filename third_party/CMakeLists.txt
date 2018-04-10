@@ -20,7 +20,6 @@ if (${CMAKE_CXX_COMPILER_ID} MATCHES "Clang")
 	target_compile_options(gli PUBLIC -Wno-macro-redefined)
 endif()
 
-add_granite_library(rapidjson .dummy.cpp)
-target_include_directories(rapidjson PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/rapidjson/include)
-target_compile_definitions(rapidjson PUBLIC RAPIDJSON_HAS_STDSTRING=1)
+add_granite_library(rapidjson rapidjson_wrapper.hpp .dummy.cpp)
+target_include_directories(rapidjson PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/rapidjson/include)
 

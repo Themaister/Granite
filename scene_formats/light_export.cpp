@@ -20,13 +20,10 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#define RAPIDJSON_ASSERT(x) do { if (!(x)) throw "JSON error"; } while(0)
-
 #include "light_export.hpp"
 #include "scene.hpp"
 #include "lights/lights.hpp"
-#include "rapidjson/document.h"
-#include "rapidjson/prettywriter.h"
+#include "rapidjson_wrapper.hpp"
 using namespace rapidjson;
 
 namespace Granite

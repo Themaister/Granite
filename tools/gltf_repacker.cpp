@@ -24,9 +24,7 @@
 #include "gltf_export.hpp"
 #include "util.hpp"
 #include "cli_parser.hpp"
-
-#define RAPIDJSON_ASSERT(x) do { if (!(x)) throw "JSON error"; } while(0)
-#include "rapidjson/document.h"
+#include "rapidjson_wrapper.hpp"
 
 using namespace Granite;
 using namespace Util;

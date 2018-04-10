@@ -23,8 +23,7 @@
 #include "scene_loader.hpp"
 #include "gltf.hpp"
 #include "scene_formats.hpp"
-#define RAPIDJSON_ASSERT(x) do { if (!(x)) throw "JSON error"; } while(0)
-#include "rapidjson/document.h"
+#include "rapidjson_wrapper.hpp"
 #include "mesh_util.hpp"
 #include "enum_cast.hpp"
 #include "ground.hpp"

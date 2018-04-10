@@ -27,9 +27,7 @@
 #include <unordered_map>
 #include <algorithm>
 #include "glm/gtx/matrix_decompose.hpp"
-
-#define RAPIDJSON_ASSERT(x) do { if (!(x)) throw "JSON error"; } while(0)
-#include "rapidjson/document.h"
+#include "rapidjson_wrapper.hpp"
 
 using namespace std;
 using namespace rapidjson;

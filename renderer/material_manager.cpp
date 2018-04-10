@@ -23,11 +23,7 @@
 #include "material_manager.hpp"
 #include "vulkan_events.hpp"
 #include <string.h>
-
-#ifndef RAPIDJSON_ASSERT
-#define RAPIDJSON_ASSERT(x) do { if (!(x)) throw "JSON error"; } while(0)
-#endif
-#include "rapidjson/document.h"
+#include "rapidjson_wrapper.hpp"
 #include "scene_formats.hpp"
 
 using namespace std;

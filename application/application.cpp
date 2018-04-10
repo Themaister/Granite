@@ -28,11 +28,7 @@
 #include "label.hpp"
 #include "quirks.hpp"
 #include "post/hdr.hpp"
-
-#ifndef RAPIDJSON_ASSERT
-#define RAPIDJSON_ASSERT(x) do { if (!(x)) throw "JSON error"; } while(0)
-#endif
-#include "rapidjson/document.h"
+#include "rapidjson_wrapper.hpp"
 #include "light_export.hpp"
 
 using namespace std;

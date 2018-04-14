@@ -171,16 +171,10 @@ const VkApplicationInfo &Context::get_application_info()
 
 #ifdef VULKAN_DEBUG
 static VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_debug_cb(VkDebugReportFlagsEXT flags,
-                                                      VkDebugReportObjectTypeEXT objectType, uint64_t object,
-                                                      size_t location, int32_t messageCode, const char *pLayerPrefix,
-                                                      const char *pMessage, void *pUserData)
+                                                      VkDebugReportObjectTypeEXT, uint64_t,
+                                                      size_t, int32_t messageCode, const char *pLayerPrefix,
+                                                      const char *pMessage, void *)
 {
-	(void)objectType;
-	(void)object;
-	(void)location;
-	(void)messageCode;
-	(void)pUserData;
-
 	// False positives about lack of srcAccessMask/dstAccessMask.
 	if (strcmp(pLayerPrefix, "DS") == 0 && messageCode == 10)
 		return VK_FALSE;
@@ -191,19 +185,19 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_debug_cb(VkDebugReportFlagsEXT flag
 
 	if (flags & VK_DEBUG_REPORT_ERROR_BIT_EXT)
 	{
-		fprintf(stderr, "[Vulkan]: Error: %s: %s\n", pLayerPrefix, pMessage);
+		LOGE("[Vulkan]: Error: %s: %s\n", pLayerPrefix, pMessage);
 	}
 	else if (flags & VK_DEBUG_REPORT_WARNING_BIT_EXT)
 	{
-		fprintf(stderr, "[Vulkan]: Warning: %s: %s\n", pLayerPrefix, pMessage);
+		LOGE("[Vulkan]: Warning: %s: %s\n", pLayerPrefix, pMessage);
 	}
 	else if (flags & VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT)
 	{
-		//fprintf(stderr, "[Vulkan]: Performance warning: %s: %s\n", pLayerPrefix, pMessage);
+		//LOGE("[Vulkan]: Performance warning: %s: %s\n", pLayerPrefix, pMessage);
 	}
 	else
 	{
-		fprintf(stderr, "[Vulkan]: Information: %s: %s\n", pLayerPrefix, pMessage);
+		LOGE("[Vulkan]: Information: %s: %s\n", pLayerPrefix, pMessage);
 	}
 
 	return VK_FALSE;

@@ -86,7 +86,7 @@ unsigned CLIParser::next_uint()
 		throw invalid_argument("Tried to parse uint, but nothing left in arguments");
 	}
 
-	uint32_t val = stoul(*argv);
+	auto val = stoul(*argv);
 	if (val > numeric_limits<unsigned>::max())
 	{
 		throw invalid_argument("next_uint() out of range");
@@ -95,7 +95,7 @@ unsigned CLIParser::next_uint()
 	argc--;
 	argv++;
 
-	return val;
+	return unsigned(val);
 }
 
 double CLIParser::next_double()

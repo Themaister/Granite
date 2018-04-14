@@ -21,6 +21,7 @@ android {
                             "-DANDROID_STL=c++_static",
                             "-DANDROID_ARM_MODE=arm",
                             "-DANDROID_CPP_FEATURES=exceptions",
+                            "-DGRANITE_SHADER_COMPILER_OPTIMIZE=OFF",
                             "-DGRANITE_SPIRV_DUMP=OFF",
                             "-DCMAKE_BUILD_TYPE=Debug",
                             "-DANDROID_PLATFORM=android-24"

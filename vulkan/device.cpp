@@ -158,7 +158,6 @@ bool Device::enqueue_create_compute_pipeline(Fossilize::Hash hash, unsigned,
 
 	auto *ret = request_program(itr->second);
 	*pipeline = ret->get_compute_pipeline();
-	get_state_recorder().register_compute_pipeline(hash, *create_info);
 	return true;
 }
 

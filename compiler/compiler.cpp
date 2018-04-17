@@ -192,7 +192,11 @@ vector<uint32_t> GLSLCompiler::compile(const vector<pair<string, int>> *defines)
 	//optimizer.RegisterPass(spvtools::CreateMergeReturnPass());
 	//optimizer.RegisterPass(spvtools::CreateInlineExhaustivePass());
 	//optimizer.RegisterPass(spvtools::CreateEliminateDeadFunctionsPass());
-	optimizer.Run(compiled_spirv.data(), compiled_spirv.size(), &compiled_spirv);
+	if (!optimizer.Run(compiled_spirv.data(), compiled_spirv.size(), &compiled_spirv))
+	{
+		LOGE("Failed to optimize SPIR-V.\n");
+		return {};
+	}
 #endif
 
 	spvtools::SpirvTools core(SPV_ENV_VULKAN_1_0);

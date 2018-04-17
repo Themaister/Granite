@@ -20,7 +20,6 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#define VK_USE_PLATFORM_ANDROID_KHR
 #include "android_native_app_glue.h"
 #include "util.hpp"
 #include "application.hpp"
@@ -130,11 +129,9 @@ struct WSIPlatformAndroid : Vulkan::WSIPlatform
 static VkSurfaceKHR create_surface_from_native_window(VkInstance instance, ANativeWindow *window)
 {
 	VkSurfaceKHR surface = VK_NULL_HANDLE;
-	PFN_vkCreateAndroidSurfaceKHR create_surface;
-	VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkCreateAndroidSurfaceKHR", create_surface);
 	VkAndroidSurfaceCreateInfoKHR create_info = { VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR };
 	create_info.window = window;
-	if (create_surface(instance, &create_info, nullptr, &surface) != VK_SUCCESS)
+	if (vkCreateAndroidSurfaceKHR(instance, &create_info, nullptr, &surface) != VK_SUCCESS)
 		return VK_NULL_HANDLE;
 	return surface;
 }

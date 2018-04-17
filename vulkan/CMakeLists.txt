@@ -1,7 +1,3 @@
-add_granite_library(vulkan-symbols vulkan_symbol_wrapper.cpp vulkan_symbol_wrapper.h)
-target_include_directories(vulkan-symbols PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/khronos)
-
 add_granite_library(vulkan-backend
         vulkan.cpp vulkan.hpp
         device.cpp device.hpp
@@ -55,7 +51,7 @@ endif()
 add_subdirectory(wsi)
 
 target_link_libraries(vulkan-backend spirv-cross-core)
-target_link_libraries(vulkan-backend vulkan-symbols)
+target_link_libraries(vulkan-backend volk)
 target_link_libraries(vulkan-backend util)
 target_link_libraries(vulkan-backend vulkan-wsi)
 target_link_libraries(vulkan-backend filesystem)

@@ -7,7 +7,7 @@ option(GRANITE_KHR_DISPLAY_ACQUIRE_XLIB "Try to acquire Xlib display when using 
 
 add_granite_library(application-headless application_headless.cpp)
 target_link_libraries(application-headless
-		vulkan-symbols application vulkan-backend
+		volk application vulkan-backend
 		vulkan-wsi ui-renderer
 		application-input application-events rapidjson)
 target_include_directories(application-headless PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
@@ -29,6 +29,7 @@ if (ANDROID)
 	if (GRANITE_ANDROID_APK_FILESYSTEM)
 		target_compile_definitions(application-main PRIVATE ANDROID_APK_FILESYSTEM)
 	endif()
+	target_compile_definitions(volk PUBLIC VK_USE_PLATFORM_ANDROID_KHR=1)
 elseif (${GRANITE_PLATFORM} MATCHES "libretro")
 	add_granite_library(retro-utils application_libretro_utils.cpp application_libretro_utils.hpp)
 	target_link_libraries(retro-utils vulkan-backend vulkan-wsi)
@@ -46,7 +47,7 @@ elseif (${GRANITE_PLATFORM} MATCHES "GLFW")
 	add_subdirectory(../../third_party/glfw glfw EXCLUDE_FROM_ALL)
 	add_granite_library(application-main application_glfw.cpp)
 	target_compile_definitions(application-main PUBLIC HAVE_GLFW)
-	target_link_libraries(application-main vulkan-symbols glfw)
+	target_link_libraries(application-main volk glfw)
 elseif (${GRANITE_PLATFORM} MATCHES "CUSTOM_SURFACE")
 	add_granite_library(application-main application_custom_surface.cpp)
 	target_compile_definitions(application-main PUBLIC HAVE_CUSTOM_SURFACE)
@@ -57,6 +58,7 @@ elseif (${GRANITE_PLATFORM} MATCHES "KHR_DISPLAY")
 	if (GRANITE_KHR_DISPLAY_ACQUIRE_XLIB)
 		target_link_libraries(application-main X11)
 		target_compile_definitions(application-main PRIVATE "KHR_DISPLAY_ACQUIRE_XLIB")
+		target_compile_definitions(volk PUBLIC VK_USE_PLATFORM_XLIB_XRANDR_EXT=1)
 	endif()
 	if (NOT WIN32)
 		target_link_libraries(application-main -pthread)
@@ -68,7 +70,7 @@ endif()
 target_include_directories(application-main PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(application-main
 		application
-		vulkan-symbols vulkan-backend vulkan-wsi
+		volk vulkan-backend vulkan-wsi
 		ui-renderer
 		application-input application-events)
 

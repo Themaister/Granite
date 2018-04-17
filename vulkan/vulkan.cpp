@@ -21,7 +21,6 @@
  */
 
 #include "vulkan.hpp"
-#include "vulkan_symbol_wrapper.h"
 #include <stdexcept>
 #include <vector>
 #include <algorithm>
@@ -99,8 +98,8 @@ bool Context::init_loader(PFN_vkGetInstanceProcAddr addr)
 #endif
 	}
 
-	vulkan_symbol_wrapper_init(addr);
-	return vulkan_symbol_wrapper_load_global_symbols();
+	volkInitializeCustom(addr);
+	return true;
 }
 
 Context::Context(VkInstance instance, VkPhysicalDevice gpu, VkDevice device, VkQueue queue, uint32_t queue_family)
@@ -116,9 +115,8 @@ Context::Context(VkInstance instance, VkPhysicalDevice gpu, VkDevice device, VkQ
     , owned_instance(false)
     , owned_device(false)
 {
-	vulkan_symbol_wrapper_load_core_instance_symbols(instance);
-	vulkan_symbol_wrapper_load_core_device_symbols(device);
-
+	volkLoadInstance(instance);
+	volkLoadDevice(device);
 	vkGetPhysicalDeviceProperties(gpu, &gpu_props);
 	vkGetPhysicalDeviceMemoryProperties(gpu, &mem_props);
 }
@@ -131,7 +129,7 @@ Context::Context(VkInstance instance, VkPhysicalDevice gpu, VkSurfaceKHR surface
     , owned_instance(false)
     , owned_device(true)
 {
-	vulkan_symbol_wrapper_load_core_instance_symbols(instance);
+	volkLoadInstance(instance);
 	if (!create_device(gpu, surface, required_device_extensions, num_required_device_extensions, required_device_layers,
 	                   num_required_device_layers, required_features))
 	{
@@ -269,15 +267,11 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 	if (vkCreateInstance(&info, nullptr, &instance) != VK_SUCCESS)
 		return false;
 
-	vulkan_symbol_wrapper_load_core_instance_symbols(instance);
+	volkLoadInstance(instance);
 
 #ifdef VULKAN_DEBUG
 	if (has_extension(VK_EXT_DEBUG_REPORT_EXTENSION_NAME))
 	{
-		VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance, vkCreateDebugReportCallbackEXT);
-		VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance, vkDebugReportMessageEXT);
-		VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance, vkDestroyDebugReportCallbackEXT);
-
 		{
 			VkDebugReportCallbackCreateInfoEXT info = { VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT };
 			info.flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT |
@@ -287,20 +281,6 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 		}
 	}
 #endif
-
-	if (supports_external)
-	{
-		VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance, vkGetPhysicalDeviceFeatures2KHR);
-		VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance, vkGetPhysicalDeviceProperties2KHR);
-		VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance, vkGetPhysicalDeviceFormatProperties2KHR);
-		VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance, vkGetPhysicalDeviceImageFormatProperties2KHR);
-		VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance, vkGetPhysicalDeviceSparseImageFormatProperties2KHR);
-		VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance, vkGetPhysicalDeviceQueueFamilyProperties2KHR);
-		VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance, vkGetPhysicalDeviceMemoryProperties2KHR);
-		VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance, vkGetPhysicalDeviceExternalFencePropertiesKHR);
-		VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance, vkGetPhysicalDeviceExternalSemaphorePropertiesKHR);
-		VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance, vkGetPhysicalDeviceExternalBufferPropertiesKHR);
-	}
 
 	return true;
 }
@@ -383,11 +363,6 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 	vkGetPhysicalDeviceQueueFamilyProperties(gpu, &queue_count, nullptr);
 	vector<VkQueueFamilyProperties> queue_props(queue_count);
 	vkGetPhysicalDeviceQueueFamilyProperties(gpu, &queue_count, queue_props.data());
-
-	if (surface != VK_NULL_HANDLE)
-	{
-		VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance, vkGetPhysicalDeviceSurfaceSupportKHR);
-	}
 
 	for (unsigned i = 0; i < queue_count; i++)
 	{
@@ -574,23 +549,10 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 	if (vkCreateDevice(gpu, &device_info, nullptr, &device) != VK_SUCCESS)
 		return false;
 
-	vulkan_symbol_wrapper_load_core_device_symbols(device);
+	volkLoadDevice(device);
 	vkGetDeviceQueue(device, graphics_queue_family, graphics_queue_index, &graphics_queue);
 	vkGetDeviceQueue(device, compute_queue_family, compute_queue_index, &compute_queue);
 	vkGetDeviceQueue(device, transfer_queue_family, transfer_queue_index, &transfer_queue);
-
-	if (supports_dedicated)
-		VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_EXTENSION_SYMBOL(device, vkGetImageMemoryRequirements2KHR);
-
-#ifndef _WIN32
-	if (supports_external)
-	{
-		VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_EXTENSION_SYMBOL(device, vkImportSemaphoreFdKHR);
-		VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_EXTENSION_SYMBOL(device, vkGetSemaphoreFdKHR);
-		VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_EXTENSION_SYMBOL(device, vkGetMemoryFdKHR);
-		VULKAN_SYMBOL_WRAPPER_LOAD_DEVICE_EXTENSION_SYMBOL(device, vkGetMemoryFdPropertiesKHR);
-	}
-#endif
 
 	return true;
 }

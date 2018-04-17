@@ -22,7 +22,6 @@
 
 #pragma once
 
-#include "vulkan_symbol_wrapper.h"
 #include "vulkan.hpp"
 #include "libretro/libretro.h"
 #include "libretro/libretro_vulkan.h"

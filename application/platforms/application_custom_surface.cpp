@@ -22,7 +22,6 @@
 
 #include "application.hpp"
 #include "application_events.hpp"
-#include "vulkan_symbol_wrapper.h"
 #include "vulkan.hpp"
 #include "os.hpp"
 #include "cli_parser.hpp"

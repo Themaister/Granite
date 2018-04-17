@@ -25,7 +25,6 @@
 #include "device.hpp"
 #include "semaphore_manager.hpp"
 #include "vulkan.hpp"
-#include "vulkan_symbol_wrapper.h"
 #include "timer.hpp"
 #include "input.hpp"
 #include <memory>

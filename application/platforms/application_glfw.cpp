@@ -22,7 +22,6 @@
 
 #include "application.hpp"
 #include "application_events.hpp"
-#include "vulkan_symbol_wrapper.h"
 #include "vulkan.hpp"
 #include "GLFW/glfw3.h"
 

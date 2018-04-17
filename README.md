@@ -173,3 +173,6 @@ These are pulled in as submodules.
 - [SPIRV-Headers](https://github.com/KhronosGroup/SPIRV-Headers)
 - [SPIRV-Tools](https://github.com/KhronosGroup/SPIRV-Tools)
 - [stb](https://github.com/nothings/stb)
+- [volk](https://github.com/zeux/volk)
+- [Fossilize](https://github.com/Themaister/Fossilize)
+

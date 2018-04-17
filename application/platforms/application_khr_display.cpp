@@ -22,16 +22,10 @@
 
 #include "application.hpp"
 #include "application_events.hpp"
-#include "vulkan_symbol_wrapper.h"
 #include "vulkan.hpp"
 
 using namespace std;
 using namespace Vulkan;
-
-#ifdef KHR_DISPLAY_ACQUIRE_XLIB
-#include <X11/Xlib.h>
-typedef VkResult (VKAPI_PTR *PFN_vkAcquireXlibDisplayEXT)(VkPhysicalDevice physicalDevice, Display *dpy, VkDisplayKHR display);
-#endif
 
 namespace Granite
 {
@@ -123,16 +117,6 @@ public:
 	VkSurfaceKHR create_surface(VkInstance instance, VkPhysicalDevice gpu) override
 	{
 		VkSurfaceKHR surface = VK_NULL_HANDLE;
-		VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance,
-		                                                     vkGetPhysicalDeviceDisplayPropertiesKHR);
-		VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance,
-		                                                     vkGetPhysicalDeviceDisplayPlanePropertiesKHR);
-		VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance,
-		                                                     vkGetDisplayPlaneSupportedDisplaysKHR);
-		VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance, vkGetDisplayModePropertiesKHR);
-		VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance, vkCreateDisplayModeKHR);
-		VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance, vkGetDisplayPlaneCapabilitiesKHR);
-		VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_EXTENSION_SYMBOL(instance, vkCreateDisplayPlaneSurfaceKHR);
 
 		uint32_t display_count;
 		vkGetPhysicalDeviceDisplayPropertiesKHR(gpu, &display_count, nullptr);
@@ -247,9 +231,7 @@ out:
 		dpy = XOpenDisplay(nullptr);
 		if (dpy)
 		{
-			PFN_vkAcquireXlibDisplayEXT acquire;
-			VULKAN_SYMBOL_WRAPPER_LOAD_INSTANCE_SYMBOL(instance, "vkAcquireXlibDisplayEXT", acquire);
-			if (acquire(gpu, dpy, best_display) != VK_SUCCESS)
+			if (vkAcquireXlibDisplayEXT(gpu, dpy, best_display) != VK_SUCCESS)
 				LOGE("Failed to acquire Xlib display. Surface creation may fail.\n");
 		}
 #endif

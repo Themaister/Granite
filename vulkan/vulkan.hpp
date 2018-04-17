@@ -22,8 +22,15 @@
 
 #pragma once
 
+#include "volk.h"
+
+#ifdef VK_USE_PLATFORM_XLIB_XRANDR_EXT
+// Workaround silly Xlib headers that define macros for these globally :(
+#undef None
+#undef Bool
+#endif
+
 #include "util.hpp"
-#include "vulkan_symbol_wrapper.h"
 #include <memory>
 #include <stdexcept>
 #include "util.hpp"

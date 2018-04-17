@@ -62,7 +62,7 @@ void *DynamicLibrary::get_symbol_internal(const char *symbol)
 {
 #ifdef _WIN32
 	if (module)
-		return GetProcAddress(module, symbol);
+		return (void*)GetProcAddress(module, symbol);
 	else
 		return nullptr;
 #else

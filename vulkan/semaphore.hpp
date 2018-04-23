@@ -79,10 +79,21 @@ public:
 		should_destroy_on_consume = true;
 	}
 
+	void signal_pending_wait()
+	{
+		pending = true;
+	}
+
+	bool is_pending_wait() const
+	{
+		return pending;
+	}
+
 private:
 	Device *device;
 	VkSemaphore semaphore;
 	bool signalled = true;
+	bool pending = false;
 	bool should_destroy_on_consume = false;
 };
 

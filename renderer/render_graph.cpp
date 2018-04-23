@@ -1546,7 +1546,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 		auto physical_pass_index = unsigned(&physical_pass - physical_passes.data());
 
 		const auto wait_for_semaphore_in_queue = [&](Vulkan::Semaphore sem, VkPipelineStageFlags stages) {
-			if (sem->get_semaphore() != VK_NULL_HANDLE)
+			if (sem->get_semaphore() != VK_NULL_HANDLE && !sem->is_pending_wait())
 				device.add_wait_semaphore(queue_type, sem, stages, true);
 		};
 
@@ -1904,7 +1904,8 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 		}
 		else if (physical_events[index].wait_graphics_semaphore)
 		{
-			if (physical_events[index].wait_graphics_semaphore->get_semaphore() != VK_NULL_HANDLE)
+			if (physical_events[index].wait_graphics_semaphore->get_semaphore() != VK_NULL_HANDLE &&
+			    !physical_events[index].wait_graphics_semaphore->is_pending_wait())
 			{
 				device.add_wait_semaphore(Vulkan::CommandBuffer::Type::Graphics,
 				                          physical_events[index].wait_graphics_semaphore,

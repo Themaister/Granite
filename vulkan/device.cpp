@@ -113,6 +113,13 @@ void Device::add_wait_semaphore_nolock(CommandBuffer::Type type, Semaphore semap
 	if (flush)
 		flush_frame(type);
 	auto &data = get_queue_data(type);
+
+#ifdef VULKAN_DEBUG
+	for (auto &sem : data.wait_semaphores)
+		VK_ASSERT(sem.get() != semaphore.get());
+#endif
+
+	semaphore->signal_pending_wait();
 	data.wait_semaphores.push_back(semaphore);
 	data.wait_stages.push_back(stages);
 }

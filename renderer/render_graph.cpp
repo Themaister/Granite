@@ -1400,6 +1400,8 @@ void RenderGraph::build_aliases()
 			register_reader(input, subpass.get_physical_pass_index());
 		for (auto *input : subpass.get_blit_texture_read_inputs())
 			register_reader(input, subpass.get_physical_pass_index());
+		for (auto *input : subpass.get_storage_texture_inputs())
+			register_reader(input, subpass.get_physical_pass_index());
 		if (subpass.get_depth_stencil_input())
 			register_reader(subpass.get_depth_stencil_input(), subpass.get_physical_pass_index());
 
@@ -1414,6 +1416,10 @@ void RenderGraph::build_aliases()
 			register_writer(output, subpass.get_physical_pass_index(), block_alias);
 		for (auto *output : subpass.get_blit_texture_outputs())
 			register_writer(output, subpass.get_physical_pass_index(), block_alias);
+
+		// Storage textures are not aliased, because they are implicitly preserved.
+		for (auto *output : subpass.get_storage_texture_outputs())
+			register_writer(output, subpass.get_physical_pass_index(), true);
 	}
 
 	vector<vector<unsigned>> alias_chains(physical_dimensions.size());
@@ -1570,8 +1576,9 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 
 		// Before invalidating, force the layout to UNDEFINED.
 		// This will be required for resource aliasing later.
+		// Storage textures are preserved over multiple frames, don't discard.
 		for (auto &discard : physical_pass.discards)
-			if (!physical_dimensions[discard].buffer_info.size)
+			if (!physical_dimensions[discard].buffer_info.size && !physical_dimensions[discard].storage)
 				physical_attachments[discard]->get_image().set_layout(VK_IMAGE_LAYOUT_UNDEFINED);
 
 		// Queue up invalidates and change layouts.

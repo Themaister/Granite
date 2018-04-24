@@ -2064,7 +2064,7 @@ void RenderGraph::setup_physical_image(Vulkan::Device &device, unsigned attachme
 		info.domain = Vulkan::ImageDomain::Physical;
 		info.levels = att.levels;
 		info.layers = att.layers;
-		info.usage = usage;
+		info.usage = usage | att.aux_usage;
 		info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 		info.samples = static_cast<VkSampleCountFlagBits>(att.samples);
 		info.flags = flags;
@@ -2476,6 +2476,7 @@ ResourceDimensions RenderGraph::get_resource_dimensions(const RenderTextureResou
 	dim.unorm_srgb = info.unorm_srgb_alias;
 	dim.storage = resource.get_storage_state();
 	dim.stages = resource.get_used_stages();
+	dim.aux_usage = info.aux_usage;
 	dim.name = resource.get_name();
 
 	switch (info.size_class)

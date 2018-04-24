@@ -532,6 +532,10 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 			enabled_features.independentBlend = VK_TRUE;
 		if (features.sampleRateShading)
 			enabled_features.sampleRateShading = VK_TRUE;
+		if (features.fragmentStoresAndAtomics)
+			enabled_features.fragmentStoresAndAtomics = VK_TRUE;
+		if (features.shaderStorageImageExtendedFormats)
+			enabled_features.shaderStorageImageExtendedFormats = VK_TRUE;
 	}
 
 	device_info.pEnabledFeatures = &enabled_features;

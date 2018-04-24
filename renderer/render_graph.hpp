@@ -57,6 +57,7 @@ struct AttachmentInfo
 	unsigned samples = 1;
 	unsigned levels = 1;
 	unsigned layers = 1;
+	VkImageUsageFlags aux_usage = 0;
 	bool persistent = true;
 	bool unorm_srgb_alias = false;
 };
@@ -95,6 +96,7 @@ struct ResourceDimensions
 	bool persistent = true;
 	bool storage = false;
 	VkPipelineStageFlags stages = 0;
+	VkImageUsageFlags aux_usage = 0;
 
 	bool operator==(const ResourceDimensions &other) const
 	{
@@ -108,7 +110,8 @@ struct ResourceDimensions
 		       transient == other.transient &&
 		       persistent == other.persistent &&
 		       storage == other.storage &&
-		       unorm_srgb == other.unorm_srgb;
+		       unorm_srgb == other.unorm_srgb &&
+		       aux_usage == other.aux_usage;
 		// stages is deliberately not part of this test.
 	}
 

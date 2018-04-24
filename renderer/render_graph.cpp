@@ -1963,6 +1963,9 @@ void RenderGraph::setup_physical_buffer(Vulkan::Device &device, unsigned attachm
 	info.usage = att.buffer_info.usage;
 	info.domain = Vulkan::BufferDomain::Device;
 
+	// Zero-initialize buffers. TODO: Make this configurable.
+	info.misc = Vulkan::BUFFER_MISC_ZERO_INITIALIZE_BIT;
+
 	bool need_buffer = true;
 	if (physical_buffers[attachment])
 	{
@@ -1976,9 +1979,7 @@ void RenderGraph::setup_physical_buffer(Vulkan::Device &device, unsigned attachm
 
 	if (need_buffer)
 	{
-		// Zero-initialize buffers. TODO: Make this configurable.
-		vector<uint8_t> blank(info.size);
-		physical_buffers[attachment] = device.create_buffer(info, blank.data());
+		physical_buffers[attachment] = device.create_buffer(info, nullptr);
 		physical_events[attachment] = {};
 	}
 }

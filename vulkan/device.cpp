@@ -71,7 +71,7 @@ Semaphore Device::request_semaphore()
 Semaphore Device::request_imported_semaphore(int fd, VkExternalSemaphoreHandleTypeFlagBitsKHR handle_type)
 {
 	LOCK();
-	if (!supports_external)
+	if (!ext.supports_external)
 		return {};
 
 	VkExternalSemaphorePropertiesKHR props = { VK_STRUCTURE_TYPE_EXTERNAL_SEMAPHORE_PROPERTIES_KHR };
@@ -487,12 +487,10 @@ void Device::set_context(const Context &context)
 	init_pipeline_cache();
 	init_pipeline_state();
 
-	supports_external = context.supports_external_memory_and_sync();
-	supports_dedicated = context.supports_dedicated_allocation();
-	supports_image_format = context.supports_format_list();
+	ext = context.get_enabled_device_features();
 
 	managers.memory.init(gpu, device);
-	managers.memory.set_supports_dedicated_allocation(supports_dedicated);
+	managers.memory.set_supports_dedicated_allocation(ext.supports_dedicated);
 	managers.semaphore.init(device);
 	managers.fence.init(device);
 	managers.event.init(device);
@@ -2082,7 +2080,7 @@ ImageHandle Device::create_imported_image(int fd, VkDeviceSize size, uint32_t me
                                           VkExternalMemoryHandleTypeFlagBitsKHR handle_type,
                                           const ImageCreateInfo &create_info)
 {
-	if (!supports_external)
+	if (!ext.supports_external)
 		return {};
 
 	VkImageCreateInfo info = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
@@ -2396,7 +2394,7 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 		if (fill_image_format_list(view_formats, info.format))
 		{
 			create_unorm_srgb_views = true;
-			if (supports_image_format)
+			if (ext.supports_image_format_list)
 				info.pNext = &format_info;
 		}
 	}
@@ -2753,6 +2751,13 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 	VkMemoryRequirements reqs;
 	DeviceAllocation allocation;
 
+	bool zero_initialize = (create_info.misc & BUFFER_MISC_ZERO_INITIALIZE_BIT) != 0;
+	if (initial && zero_initialize)
+	{
+		LOGE("Cannot initialize buffer with data and clear.\n");
+		return BufferHandle{};
+	}
+
 	VkBufferCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
 	info.size = create_info.size;
 	info.usage = create_info.usage | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
@@ -2804,24 +2809,37 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 	tmpinfo.usage |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 	auto handle = make_handle<Buffer>(this, buffer, allocation, tmpinfo);
 
-	if (create_info.domain == BufferDomain::Device && initial && !memory_type_is_host_visible(memory_type))
+	if (create_info.domain == BufferDomain::Device && (initial || zero_initialize) && !memory_type_is_host_visible(memory_type))
 	{
-		auto staging_info = create_info;
-		staging_info.domain = BufferDomain::Host;
-		auto staging_buffer = create_buffer(staging_info, initial);
+		CommandBufferHandle cmd;
+		if (initial)
+		{
+			auto staging_info = create_info;
+			staging_info.domain = BufferDomain::Host;
+			auto staging_buffer = create_buffer(staging_info, initial);
 
-		auto cmd = request_command_buffer(CommandBuffer::Type::Transfer);
-		cmd->copy_buffer(*handle, *staging_buffer);
+			cmd = request_command_buffer(CommandBuffer::Type::Transfer);
+			cmd->copy_buffer(*handle, *staging_buffer);
+		}
+		else
+		{
+			cmd = request_command_buffer(CommandBuffer::Type::Transfer);
+			cmd->fill_buffer(*handle, 0);
+		}
 
 		LOCK();
 		submit_staging(cmd, info.usage, true);
 	}
-	else if (initial)
+	else if (initial || zero_initialize)
 	{
 		void *ptr = managers.memory.map_memory(&allocation, MEMORY_ACCESS_WRITE);
 		if (!ptr)
 			return BufferHandle(nullptr);
-		memcpy(ptr, initial, create_info.size);
+
+		if (initial)
+			memcpy(ptr, initial, create_info.size);
+		else
+			memset(ptr, 0, create_info.size);
 		managers.memory.unmap_memory(allocation);
 	}
 	return handle;

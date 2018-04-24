@@ -76,11 +76,19 @@ enum class BufferDomain
 	CachedHost // Host-only, used for readbacks.
 };
 
+enum BufferMiscFlagBits
+{
+	BUFFER_MISC_ZERO_INITIALIZE_BIT = 1 << 0
+};
+
+using BufferMiscFlags = uint32_t;
+
 struct BufferCreateInfo
 {
-	BufferDomain domain;
-	VkDeviceSize size;
-	VkBufferUsageFlags usage;
+	BufferDomain domain = BufferDomain::Device;
+	VkDeviceSize size = 0;
+	VkBufferUsageFlags usage = 0;
+	BufferMiscFlags misc = 0;
 };
 
 class Buffer : public Util::ThreadSafeIntrusivePtrEnabled<Buffer>, public Cookie, public InternalSyncEnabled

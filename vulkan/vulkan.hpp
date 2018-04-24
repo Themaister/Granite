@@ -74,6 +74,14 @@ struct NoCopyNoMove
 
 namespace Vulkan
 {
+struct DeviceFeatures
+{
+	bool supports_external = false;
+	bool supports_dedicated = false;
+	bool supports_image_format_list = false;
+	VkPhysicalDeviceFeatures enabled_features = {};
+};
+
 class Context
 {
 public:
@@ -154,19 +162,9 @@ public:
 		owned_device = false;
 	}
 
-	bool supports_external_memory_and_sync() const
+	const DeviceFeatures &get_enabled_device_features() const
 	{
-		return supports_external;
-	}
-
-	bool supports_dedicated_allocation() const
-	{
-		return supports_dedicated;
-	}
-
-	bool supports_format_list() const
-	{
-		return supports_image_format_list;
+		return ext;
 	}
 
 	static const VkApplicationInfo &get_application_info();
@@ -193,9 +191,7 @@ private:
 
 	bool owned_instance = false;
 	bool owned_device = false;
-	bool supports_external = false;
-	bool supports_dedicated = false;
-	bool supports_image_format_list = false;
+	DeviceFeatures ext;
 
 #ifdef VULKAN_DEBUG
 	VkDebugReportCallbackEXT debug_callback = VK_NULL_HANDLE;

@@ -242,7 +242,7 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 		instance_exts.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
 		instance_exts.push_back(VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME);
 		instance_exts.push_back(VK_KHR_EXTERNAL_SEMAPHORE_CAPABILITIES_EXTENSION_NAME);
-		supports_external = true;
+		ext.supports_external = true;
 	}
 
 #ifdef VULKAN_DEBUG
@@ -482,34 +482,34 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 	if (has_extension(VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME) &&
 	    has_extension(VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME))
 	{
-		supports_dedicated = true;
+		ext.supports_dedicated = true;
 		enabled_extensions.push_back(VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME);
 		enabled_extensions.push_back(VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME);
 	}
 
 	if (has_extension(VK_KHR_IMAGE_FORMAT_LIST_EXTENSION_NAME))
 	{
-		supports_image_format_list = true;
+		ext.supports_image_format_list = true;
 		enabled_extensions.push_back(VK_KHR_IMAGE_FORMAT_LIST_EXTENSION_NAME);
 	}
 
 #ifdef _WIN32
-	supports_external = false;
+	ext.supports_external = false;
 #else
-	if (supports_external && supports_dedicated &&
+	if (ext.supports_external && ext.supports_dedicated &&
 	    has_extension(VK_KHR_EXTERNAL_SEMAPHORE_EXTENSION_NAME) &&
 	    has_extension(VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME) &&
 	    has_extension(VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME) &&
 	    has_extension(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME))
 	{
-		supports_external = true;
+		ext.supports_external = true;
 		enabled_extensions.push_back(VK_KHR_EXTERNAL_SEMAPHORE_EXTENSION_NAME);
 		enabled_extensions.push_back(VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME);
 		enabled_extensions.push_back(VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME);
 		enabled_extensions.push_back(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
 	}
 	else
-		supports_external = false;
+		ext.supports_external = false;
 #endif
 
 	VkPhysicalDeviceFeatures enabled_features = *required_features;
@@ -535,6 +535,7 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 	}
 
 	device_info.pEnabledFeatures = &enabled_features;
+	ext.enabled_features = enabled_features;
 
 #ifdef VULKAN_DEBUG
 	if (has_layer("VK_LAYER_LUNARG_standard_validation"))

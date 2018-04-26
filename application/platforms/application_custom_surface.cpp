@@ -100,7 +100,7 @@ public:
 			return VK_NULL_HANDLE;
 		}
 
-		if (symbol(instance, vulkan_symbol_wrapper_instance_proc_addr(), width, height, &surface) != VK_SUCCESS)
+		if (symbol(instance, vkGetInstanceProcAddr, width, height, &surface) != VK_SUCCESS)
 			return VK_NULL_HANDLE;
 
 		return surface;

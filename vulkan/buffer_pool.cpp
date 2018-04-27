@@ -48,7 +48,12 @@ BufferBlock BufferPool::allocate_block(VkDeviceSize size)
 
 	BufferBlock block;
 
-	block.gpu = device->create_buffer({ ideal_domain, size, usage | extra_usage }, nullptr);
+	BufferCreateInfo info;
+	info.domain = ideal_domain;
+	info.size = size;
+	info.usage = usage | extra_usage;
+
+	block.gpu = device->create_buffer(info, nullptr);
 	block.gpu->set_internal_sync_object();
 
 	// Try to map it, will fail unless the memory is host visible.
@@ -56,7 +61,12 @@ BufferBlock BufferPool::allocate_block(VkDeviceSize size)
 	if (!block.mapped)
 	{
 		// Fall back to host memory, and remember to sync to gpu on submission time using DMA queue. :)
-		block.cpu = device->create_buffer({ BufferDomain::Host, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT }, nullptr);
+		BufferCreateInfo cpu_info;
+		cpu_info.domain = BufferDomain::Host;
+		cpu_info.size = size;
+		cpu_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+
+		block.cpu = device->create_buffer(cpu_info, nullptr);
 		block.cpu->set_internal_sync_object();
 		block.mapped = static_cast<uint8_t *>(device->map_host_buffer(*block.cpu, MEMORY_ACCESS_WRITE));
 	}

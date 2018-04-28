@@ -1991,8 +1991,7 @@ void RenderGraph::setup_physical_buffer(Vulkan::Device &device, unsigned attachm
 	if (need_buffer)
 	{
 		physical_buffers[attachment] = device.create_buffer(info, nullptr);
-		if (physical_buffers[attachment])
-			device.set_name(*physical_buffers[attachment], att.name.c_str());
+		device.set_name(*physical_buffers[attachment], att.name.c_str());
 		physical_events[attachment] = {};
 	}
 }
@@ -2095,8 +2094,7 @@ void RenderGraph::setup_physical_image(Vulkan::Device &device, unsigned attachme
 		info.misc |= misc;
 
 		physical_image_attachments[attachment] = device.create_image(info, nullptr);
-		if (physical_image_attachments[attachment])
-			device.set_name(*physical_image_attachments[attachment], att.name.c_str());
+		device.set_name(*physical_image_attachments[attachment], att.name.c_str());
 		physical_events[attachment] = {};
 	}
 

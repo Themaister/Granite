@@ -54,6 +54,7 @@ BufferBlock BufferPool::allocate_block(VkDeviceSize size)
 	info.usage = usage | extra_usage;
 
 	block.gpu = device->create_buffer(info, nullptr);
+	device->set_name(*block.gpu, "chain-allocated-block-gpu");
 	block.gpu->set_internal_sync_object();
 
 	// Try to map it, will fail unless the memory is host visible.
@@ -68,6 +69,7 @@ BufferBlock BufferPool::allocate_block(VkDeviceSize size)
 
 		block.cpu = device->create_buffer(cpu_info, nullptr);
 		block.cpu->set_internal_sync_object();
+		device->set_name(*block.cpu, "chain-allocated-block-cpu");
 		block.mapped = static_cast<uint8_t *>(device->map_host_buffer(*block.cpu, MEMORY_ACCESS_WRITE));
 	}
 	else

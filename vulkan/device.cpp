@@ -2295,6 +2295,7 @@ InitialImageBuffer Device::create_image_staging_buffer(const ImageCreateInfo &in
 	buffer_info.size = required_size;
 	buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 	result.buffer = create_buffer(buffer_info, nullptr);
+	set_name(*result.buffer, "image-upload-staging-buffer");
 
 	// And now, do the actual copy.
 	auto *mapped = static_cast<uint8_t *>(map_host_buffer(*result.buffer, MEMORY_ACCESS_WRITE));
@@ -2828,6 +2829,7 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 			auto staging_buffer = create_buffer(staging_info, initial);
 
 			cmd = request_command_buffer(CommandBuffer::Type::Transfer);
+			set_name(*staging_buffer, "image-upload-staging-buffer");
 			cmd->begin_region("copy-buffer-staging");
 			cmd->copy_buffer(*handle, *staging_buffer);
 			cmd->end_region();

@@ -255,7 +255,11 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 
 	if (has_extension(VK_EXT_DEBUG_REPORT_EXTENSION_NAME))
 		instance_exts.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
-	if (has_layer("VK_LAYER_LUNARG_standard_validation"))
+
+	bool force_no_validation = false;
+	if (getenv("GRANITE_VULKAN_NO_VALIDATION"))
+		force_no_validation = true;
+	if (!force_no_validation && has_layer("VK_LAYER_LUNARG_standard_validation"))
 		instance_layers.push_back("VK_LAYER_LUNARG_standard_validation");
 #endif
 
@@ -548,7 +552,10 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 	ext.enabled_features = enabled_features;
 
 #ifdef VULKAN_DEBUG
-	if (has_layer("VK_LAYER_LUNARG_standard_validation"))
+	bool force_no_validation = false;
+	if (getenv("GRANITE_VULKAN_NO_VALIDATION"))
+		force_no_validation = true;
+	if (!force_no_validation && has_layer("VK_LAYER_LUNARG_standard_validation"))
 		enabled_layers.push_back("VK_LAYER_LUNARG_standard_validation");
 #endif
 

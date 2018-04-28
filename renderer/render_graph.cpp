@@ -1259,10 +1259,13 @@ void RenderGraph::enqueue_mipmap_requests(Vulkan::CommandBuffer &cmd, const std:
 	{
 		auto &image = physical_attachments[req.physical_resource]->get_image();
 		auto old_layout = image.get_layout();
+
+		cmd.begin_region("render-graph-mipgen");
 		cmd.barrier_prepare_generate_mipmap(image, req.layout, req.stages, req.access);
 
 		image.set_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 		cmd.generate_mipmap(image);
+		cmd.end_region();
 
 		// Keep the old layout so that the flush barriers can detect that a transition has happened.
 		image.set_layout(old_layout);
@@ -1546,9 +1549,11 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 			continue;
 		}
 
+
 		bool graphics = (passes[physical_pass.passes.front()]->get_stages() & VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT) != 0;
 		auto queue_type = graphics ? Vulkan::CommandBuffer::Type::Graphics : Vulkan::CommandBuffer::Type::Compute;
 		auto cmd = device.request_command_buffer(queue_type);
+		cmd->begin_region("render-graph-sync-pre");
 		auto physical_pass_index = unsigned(&physical_pass - physical_passes.data());
 
 		const auto wait_for_semaphore_in_queue = [&](Vulkan::Semaphore sem, VkPipelineStageFlags stages) {
@@ -1751,6 +1756,8 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 			             0, nullptr, 0, nullptr, immediate_image_barriers.size(), immediate_image_barriers.data());
 		}
 
+		cmd->end_region();
+
 		if (graphics)
 		{
 			for (auto &clear_req : physical_pass.color_clear_requests)
@@ -1768,7 +1775,9 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 				timestamps.timestamps_fragment_begin[physical_pass_index] = cmd->write_timestamp(VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 			}
 
+			cmd->begin_region("begin-render-pass");
 			cmd->begin_render_pass(physical_pass.render_pass_info);
+			cmd->end_region();
 
 			for (auto &subpass : physical_pass.passes)
 			{
@@ -1790,7 +1799,9 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 					cmd->next_subpass();
 			}
 
+			cmd->begin_region("end-render-pass");
 			cmd->end_render_pass();
+			cmd->end_region();
 			if (enabled_timestamps)
 			{
 				timestamps.timestamps_vertex_end[physical_pass_index] = cmd->write_timestamp(VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
@@ -1810,6 +1821,8 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 			if (enabled_timestamps)
 				timestamps.timestamps_compute_end[physical_pass_index] = cmd->write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 		}
+
+		cmd->begin_region("render-graph-sync-post");
 
 		VkPipelineStageFlags wait_stages = 0;
 		for (auto &barrier : physical_pass.flush)
@@ -1853,6 +1866,8 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 				event.event = pipeline_event;
 		}
 
+		cmd->end_region();
+
 		Vulkan::Semaphore graphics_semaphore;
 		Vulkan::Semaphore compute_semaphore;
 		if (need_submission_semaphore)
@@ -1885,6 +1900,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 	if (swapchain_physical_index == RenderResource::Unused)
 	{
 		auto cmd = device.request_command_buffer();
+		cmd->begin_region("render-graph-copy-to-swapchain");
 
 		unsigned index = this->resources[resource_to_index[backbuffer_source]]->get_physical_index();
 		auto &image = physical_attachments[index]->get_image();
@@ -1938,6 +1954,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 
 		auto rp_info = device.get_swapchain_render_pass(Vulkan::SwapchainRenderPass::ColorOnly);
 		rp_info.clear_attachments = 0;
+
 		cmd->begin_render_pass(rp_info);
 		enqueue_scaled_requests(*cmd, {{ 0, index }});
 		cmd->end_render_pass();
@@ -1962,6 +1979,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 			physical_events[index].event = cmd->signal_event(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 			device.submit(cmd);
 		}
+		cmd->end_region();
 	}
 }
 

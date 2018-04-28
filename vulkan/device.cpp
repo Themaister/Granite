@@ -1456,6 +1456,7 @@ void Device::init_swapchain(const vector<VkImage> &swapchain_images, unsigned wi
 			LOGE("Failed to create view for backbuffer.");
 
 		frame->backbuffer = make_handle<Image>(this, image, image_view, DeviceAllocation{}, info);
+		set_name(*frame->backbuffer, "backbuffer");
 		frame->backbuffer->set_swapchain_layout(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 		per_frame.emplace_back(move(frame));
 	}
@@ -2827,9 +2828,9 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 			auto staging_info = create_info;
 			staging_info.domain = BufferDomain::Host;
 			auto staging_buffer = create_buffer(staging_info, initial);
+			set_name(*staging_buffer, "buffer-upload-staging-buffer");
 
 			cmd = request_command_buffer(CommandBuffer::Type::Transfer);
-			set_name(*staging_buffer, "image-upload-staging-buffer");
 			cmd->begin_region("copy-buffer-staging");
 			cmd->copy_buffer(*handle, *staging_buffer);
 			cmd->end_region();

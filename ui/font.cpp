@@ -257,6 +257,7 @@ void Font::on_device_created(const DeviceCreatedEvent &created)
 	ImageInitialData initial = {};
 	initial.data = bitmap.data();
 	texture = device.create_image(info, &initial);
+	device.set_name(*texture, "font");
 
 	ImageViewCreateInfo view_info;
 	view_info.image = texture.get();

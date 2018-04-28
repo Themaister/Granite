@@ -800,6 +800,7 @@ Framebuffer &FramebufferAllocator::request_framebuffer(const RenderPassInfo &inf
 	auto *node = framebuffers.request(hash);
 	if (node)
 		return *node;
+
 	return *framebuffers.emplace(hash, device, rp, info);
 }
 
@@ -846,6 +847,7 @@ ImageView &AttachmentAllocator::request_attachment(unsigned width, unsigned heig
 	node = attachments.emplace(hash, device->create_image(image_info, nullptr));
 	node->handle->set_internal_sync_object();
 	node->handle->get_view().set_internal_sync_object();
+	device->set_name(*node->handle, "AttachmentAllocator");
 	return node->handle->get_view();
 }
 }

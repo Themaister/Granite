@@ -493,6 +493,12 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 		enabled_extensions.push_back(VK_KHR_IMAGE_FORMAT_LIST_EXTENSION_NAME);
 	}
 
+	if (has_extension(VK_EXT_DEBUG_MARKER_EXTENSION_NAME))
+	{
+		ext.supports_debug_marker = true;
+		enabled_extensions.push_back(VK_EXT_DEBUG_MARKER_EXTENSION_NAME);
+	}
+
 #ifdef _WIN32
 	ext.supports_external = false;
 #else

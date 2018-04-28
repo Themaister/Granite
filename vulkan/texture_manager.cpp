@@ -184,7 +184,10 @@ void Texture::update_gli(const void *data, size_t size)
 		info.misc |= IMAGE_MISC_GENERATE_MIPS_BIT;
 	}
 
-	replace_image(device->create_image(info, initial.data()));
+	auto image = device->create_image(info, initial.data());
+	if (image)
+		device->set_name(*image, path.c_str());
+	replace_image(image);
 }
 
 void Texture::load()

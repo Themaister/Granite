@@ -79,6 +79,7 @@ struct DeviceFeatures
 	bool supports_external = false;
 	bool supports_dedicated = false;
 	bool supports_image_format_list = false;
+	bool supports_debug_marker = false;
 	VkPhysicalDeviceFeatures enabled_features = {};
 };
 

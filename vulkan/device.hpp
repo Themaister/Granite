@@ -98,6 +98,10 @@ public:
 	void end_frame_nolock();
 	////
 
+	void set_name(const Buffer &buffer, const char *name);
+	void set_name(const Image &image, const char *name);
+	void set_name(const CommandBuffer &cmd, const char *name);
+
 	// Submission interface, may be called from any thread at any time.
 	void flush_frame();
 	CommandBufferHandle request_command_buffer(CommandBuffer::Type type = CommandBuffer::Type::Graphics);

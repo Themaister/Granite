@@ -206,10 +206,13 @@ public:
 
 	CommandBuffer(Device *device, VkCommandBuffer cmd, VkPipelineCache cache, Type type);
 	~CommandBuffer();
-	VkCommandBuffer get_command_buffer()
+	VkCommandBuffer get_command_buffer() const
 	{
 		return cmd;
 	}
+
+	void begin_region(const char *name, const float *color = nullptr);
+	void end_region();
 
 	Device &get_device()
 	{

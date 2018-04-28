@@ -1782,7 +1782,9 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 				// due to clearing and so on.
 				// This should be an extremely unlikely scenario.
 				// Either you need all subpasses or none.
+				cmd->begin_region(pass.get_name().c_str());
 				pass.build_render_pass(*cmd);
+				cmd->end_region();
 
 				if (&subpass != &physical_pass.passes.back())
 					cmd->next_subpass();
@@ -1802,7 +1804,9 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 			auto &pass = *passes[physical_pass.passes.front()];
 			if (enabled_timestamps)
 				timestamps.timestamps_compute_begin[physical_pass_index] = cmd->write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+			cmd->begin_region(pass.get_name().c_str());
 			pass.build_render_pass(*cmd);
+			cmd->end_region();
 			if (enabled_timestamps)
 				timestamps.timestamps_compute_end[physical_pass_index] = cmd->write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 		}
@@ -1987,6 +1991,8 @@ void RenderGraph::setup_physical_buffer(Vulkan::Device &device, unsigned attachm
 	if (need_buffer)
 	{
 		physical_buffers[attachment] = device.create_buffer(info, nullptr);
+		if (physical_buffers[attachment])
+			device.set_name(*physical_buffers[attachment], att.name.c_str());
 		physical_events[attachment] = {};
 	}
 }
@@ -2089,6 +2095,8 @@ void RenderGraph::setup_physical_image(Vulkan::Device &device, unsigned attachme
 		info.misc |= misc;
 
 		physical_image_attachments[attachment] = device.create_image(info, nullptr);
+		if (physical_image_attachments[attachment])
+			device.set_name(*physical_image_attachments[attachment], att.name.c_str());
 		physical_events[attachment] = {};
 	}
 

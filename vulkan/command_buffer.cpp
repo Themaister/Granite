@@ -1604,6 +1604,34 @@ void CommandBuffer::end()
 		device->request_staging_block_nolock(staging_block, 0);
 }
 
+void CommandBuffer::begin_region(const char *name, const float *color)
+{
+	if (!device->ext.supports_debug_marker)
+		return;
+
+	VkDebugMarkerMarkerInfoEXT info = { VK_STRUCTURE_TYPE_DEBUG_MARKER_MARKER_INFO_EXT };
+	if (color)
+	{
+		for (unsigned i = 0; i < 4; i++)
+			info.color[i] = color[i];
+	}
+	else
+	{
+		for (unsigned i = 0; i < 4; i++)
+			info.color[i] = 1.0f;
+	}
+
+	info.pMarkerName = name;
+	vkCmdDebugMarkerBeginEXT(cmd, &info);
+}
+
+void CommandBuffer::end_region()
+{
+	if (!device->ext.supports_debug_marker)
+		return;
+	vkCmdDebugMarkerEndEXT(cmd);
+}
+
 void CommandBufferUtil::set_quad_vertex_state(CommandBuffer &cmd)
 {
 	int8_t *data = static_cast<int8_t *>(cmd.allocate_vertex_data(0, 8, 2));

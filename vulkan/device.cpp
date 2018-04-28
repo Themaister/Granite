@@ -1137,6 +1137,8 @@ void Device::sync_buffer_blocks()
 	VkBufferUsageFlags usage = 0;
 	auto cmd = request_command_buffer_nolock(ThreadGroup::get_current_thread_index(), CommandBuffer::Type::Transfer);
 
+	cmd->begin_region("buffer-block-sync");
+
 	for (auto &block : dma.vbo)
 	{
 		VK_ASSERT(block.offset != 0);
@@ -1161,6 +1163,8 @@ void Device::sync_buffer_blocks()
 	dma.vbo.clear();
 	dma.ibo.clear();
 	dma.ubo.clear();
+
+	cmd->end_region();
 
 	// Do not flush graphics or compute in this context.
 	// We must be able to inject semaphores into all currently enqueued graphics / compute.
@@ -2604,7 +2608,10 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 		                            VK_ACCESS_TRANSFER_WRITE_BIT);
 
 		handle->set_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+		transfer_cmd->begin_region("copy-image-to-gpu");
 		transfer_cmd->copy_buffer_to_image(*handle, *staging_buffer.buffer, staging_buffer.blits.size(), staging_buffer.blits.data());
+		transfer_cmd->end_region();
 
 		if (transfer_queue != graphics_queue)
 		{
@@ -2667,11 +2674,13 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 
 		if (generate_mips)
 		{
+			graphics_cmd->begin_region("mipgen");
 			graphics_cmd->barrier_prepare_generate_mipmap(*handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 			                                              VK_PIPELINE_STAGE_TRANSFER_BIT,
 			                                              prepare_src_access, need_mipmap_barrier);
 			handle->set_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 			graphics_cmd->generate_mipmap(*handle);
+			graphics_cmd->end_region();
 		}
 
 		if (need_initial_barrier)
@@ -2819,12 +2828,16 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 			auto staging_buffer = create_buffer(staging_info, initial);
 
 			cmd = request_command_buffer(CommandBuffer::Type::Transfer);
+			cmd->begin_region("copy-buffer-staging");
 			cmd->copy_buffer(*handle, *staging_buffer);
+			cmd->end_region();
 		}
 		else
 		{
 			cmd = request_command_buffer(CommandBuffer::Type::Transfer);
+			cmd->begin_region("fill-buffer-staging");
 			cmd->fill_buffer(*handle, 0);
+			cmd->end_region();
 		}
 
 		LOCK();
@@ -3032,6 +3045,42 @@ bool Device::enqueue_create_pipeline_layout(Fossilize::Hash, unsigned, const VkP
 	// We will create this naturally when building pipelines, can just emit dummy handles.
 	*layout = reinterpret_cast<VkPipelineLayout>(uint64_t(-1));
 	return true;
+}
+
+void Device::set_name(const Buffer &buffer, const char *name)
+{
+	if (!ext.supports_debug_marker)
+		return;
+
+	VkDebugMarkerObjectNameInfoEXT info = { VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT };
+	info.objectType = VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_EXT;
+	info.object = (uint64_t)buffer.get_buffer();
+	info.pObjectName = name;
+	vkDebugMarkerSetObjectNameEXT(device, &info);
+}
+
+void Device::set_name(const Image &image, const char *name)
+{
+	if (!ext.supports_debug_marker)
+		return;
+
+	VkDebugMarkerObjectNameInfoEXT info = { VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT };
+	info.objectType = VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT;
+	info.object = (uint64_t)image.get_image();
+	info.pObjectName = name;
+	vkDebugMarkerSetObjectNameEXT(device, &info);
+}
+
+void Device::set_name(const CommandBuffer &cmd, const char *name)
+{
+	if (!ext.supports_debug_marker)
+		return;
+
+	VkDebugMarkerObjectNameInfoEXT info = { VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT };
+	info.objectType = VK_DEBUG_REPORT_OBJECT_TYPE_COMMAND_BUFFER_EXT;
+	info.object = (uint64_t)cmd.get_command_buffer();
+	info.pObjectName = name;
+	vkDebugMarkerSetObjectNameEXT(device, &info);
 }
 
 }

@@ -26,7 +26,6 @@
 #include "mesh.hpp"
 #include <unordered_map>
 #include <algorithm>
-#include "glm/gtx/matrix_decompose.hpp"
 #include "rapidjson_wrapper.hpp"
 
 using namespace std;
@@ -531,10 +530,10 @@ void Parser::extract_attribute(std::vector<mat4> &attributes, const Accessor &ac
 		uint32_t offset = view.offset + accessor.offset + i * accessor.stride;
 		const auto *data = reinterpret_cast<const float *>(&buffer[offset]);
 		attributes.push_back(mat4(
-			data[0], data[1], data[2], data[3],
-			data[4], data[5], data[6], data[7],
-			data[8], data[9], data[10], data[11],
-			data[12], data[13], data[14], data[15]));
+			vec4(data[0], data[1], data[2], data[3]),
+			vec4(data[4], data[5], data[6], data[7]),
+			vec4(data[8], data[9], data[10], data[11]),
+			vec4(data[12], data[13], data[14], data[15])));
 	}
 }
 
@@ -941,7 +940,7 @@ void Parser::parse(const string &original_path, const string &json)
 					{
 						auto &spec = value["specularFactor"];
 						// No idea how to remap ...
-						info.uniform_metallic = glm::max(glm::max(spec[0].GetFloat(), spec[1].GetFloat()), spec[2].GetFloat());
+						info.uniform_metallic = muglm::max(muglm::max(spec[0].GetFloat(), spec[1].GetFloat()), spec[2].GetFloat());
 					}
 
 					if (value.HasMember("diffuseTexture"))
@@ -1074,15 +1073,13 @@ void Parser::parse(const string &original_path, const string &json)
 		{
 			auto &m = value["matrix"];
 			mat4 transform(
-					m[0].GetFloat(), m[1].GetFloat(), m[2].GetFloat(), m[3].GetFloat(),
-					m[4].GetFloat(), m[5].GetFloat(), m[6].GetFloat(), m[7].GetFloat(),
-					m[8].GetFloat(), m[9].GetFloat(), m[10].GetFloat(), m[11].GetFloat(),
-					m[12].GetFloat(), m[13].GetFloat(), m[14].GetFloat(), m[15].GetFloat());
+					vec4(m[0].GetFloat(), m[1].GetFloat(), m[2].GetFloat(), m[3].GetFloat()),
+					vec4(m[4].GetFloat(), m[5].GetFloat(), m[6].GetFloat(), m[7].GetFloat()),
+					vec4(m[8].GetFloat(), m[9].GetFloat(), m[10].GetFloat(), m[11].GetFloat()),
+					vec4(m[12].GetFloat(), m[13].GetFloat(), m[14].GetFloat(), m[15].GetFloat()));
 
 			// Decompose transform into TRS. Spec says this must be possible.
-			vec3 skew;
-			vec4 perspective;
-			glm::decompose(transform, node.transform.scale, node.transform.rotation, node.transform.translation, skew, perspective);
+			decompose(transform, node.transform.scale, node.transform.rotation, node.transform.translation);
 		}
 
 		nodes.push_back(move(node));
@@ -1221,9 +1218,9 @@ void Parser::parse(const string &original_path, const string &json)
 		if (light.HasMember("color"))
 		{
 			auto &color = light["color"];
-			info.color.r = color[0].GetFloat();
-			info.color.g = color[1].GetFloat();
-			info.color.b = color[2].GetFloat();
+			info.color.x = color[0].GetFloat();
+			info.color.y = color[1].GetFloat();
+			info.color.z = color[2].GetFloat();
 		}
 
 		auto *type = light["type"].GetString();
@@ -1266,13 +1263,13 @@ void Parser::parse(const string &original_path, const string &json)
 				if (spot.HasMember("innerAngle"))
 				{
 					info.inner_cone = spot["innerAngle"].GetFloat();
-					info.inner_cone = sqrt(1.0f - info.inner_cone * info.inner_cone);
+					info.inner_cone = std::sqrt(1.0f - info.inner_cone * info.inner_cone);
 				}
 
 				if (spot.HasMember("outerAngle"))
 				{
 					info.outer_cone = spot["outerAngle"].GetFloat();
-					info.outer_cone = sqrt(1.0f - info.outer_cone * info.outer_cone);
+					info.outer_cone = std::sqrt(1.0f - info.outer_cone * info.outer_cone);
 				}
 			}
 		}

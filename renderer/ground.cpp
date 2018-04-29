@@ -156,7 +156,7 @@ void GroundPatch::refresh(RenderContext &context, const CachedSpatialTransformCo
 	vec3 center = transform->world_aabb.get_center();
 	const auto &camera_pos = context.get_render_parameters().camera_position;
 	vec3 diff = center - camera_pos;
-	float dist_log2 = 0.5f * glm::log2(dot(diff, diff) + 0.001f);
+	float dist_log2 = 0.5f * muglm::log2(dot(diff, diff) + 0.001f);
 	*lod = clamp(dist_log2 + lod_bias + ground->get_base_lod_bias(), 0.0f, ground->get_info().max_lod);
 }
 
@@ -296,7 +296,7 @@ void Ground::get_render_info(const RenderContext &context, const CachedSpatialTr
 	// The normalmaps are generated with the reference that neighbor pixels are certain length apart.
 	// However, the base mesh [0, normal_size) is squashed to [0, 1] size in X/Z direction.
 	// We compensate for this scaling by doing the inverse transposed normal matrix properly here.
-	patch.push[1] = transform->transform->normal_transform * glm::scale(vec3(info.normal_size, 1.0f, info.normal_size));
+	patch.push[1] = transform->transform->normal_transform * scale(vec3(info.normal_size, 1.0f, info.normal_size));
 
 	// Find something concrete to put here.
 	patch.tangent_scale = vec2(1.0f / 10.0f);
@@ -470,10 +470,10 @@ Ground::Handles Ground::add_to_scene(Scene &scene, unsigned size, float tiling_f
 	{
 		for (int x = 0; x < num_x; x++)
 		{
-			auto *nx = patches[z * num_x + glm::max(x - 1, 0)];
-			auto *px = patches[z * num_x + glm::min(x + 1, num_x - 1)];
-			auto *nz = patches[glm::max(z - 1, 0) * num_x + x];
-			auto *pz = patches[glm::min(z + 1, num_z - 1) * num_x + x];
+			auto *nx = patches[z * num_x + muglm::max(x - 1, 0)];
+			auto *px = patches[z * num_x + muglm::min(x + 1, num_x - 1)];
+			auto *nz = patches[muglm::max(z - 1, 0) * num_x + x];
+			auto *pz = patches[muglm::min(z + 1, num_z - 1) * num_x + x];
 			patches[z * num_x + x]->set_neighbors(nx, px, nz, pz);
 		}
 	}

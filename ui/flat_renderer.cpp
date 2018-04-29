@@ -24,6 +24,7 @@
 #include "device.hpp"
 #include "event.hpp"
 #include "sprite.hpp"
+#include <float.h>
 
 using namespace Vulkan;
 using namespace std;
@@ -187,7 +188,7 @@ void FlatRenderer::render_textured_quad(const ImageView &view, const vec3 &offse
 
 void FlatRenderer::render_quad(const vec3 &offset, const vec2 &size, const vec4 &color)
 {
-	render_quad(nullptr, Vulkan::StockSampler::Count, offset, size, vec2(0.0f), vec2(0.0f), color, color.a < 1.0f);
+	render_quad(nullptr, Vulkan::StockSampler::Count, offset, size, vec2(0.0f), vec2(0.0f), color, color.w < 1.0f);
 }
 
 void FlatRenderer::build_scissor(ivec4 &clip, const vec2 &minimum, const vec2 &maximum) const
@@ -200,12 +201,12 @@ void FlatRenderer::build_scissor(ivec4 &clip, const vec2 &minimum, const vec2 &m
 	if (scissor_invariant)
 		clip = ivec4(0, 0, 0x4000, 0x4000);
 	else
-		clip = ivec4(current.offset, current.size);
+		clip = ivec4(ivec2(current.offset), ivec2(current.size));
 }
 
 void FlatRenderer::render_line_strip(const vec2 *offset, float layer, unsigned count, const vec4 &color)
 {
-	auto transparent = color.a < 1.0f;
+	auto transparent = color.w < 1.0f;
 	LineStripInfo strip;
 
 	auto *lines = queue.allocate_one<LineInfo>();

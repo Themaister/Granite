@@ -37,7 +37,7 @@ float Widget::render_children(FlatRenderer &renderer, float layer, vec2 offset)
 	{
 		if (child.widget->get_visible())
 		{
-			if (child.widget->bg_color.a > 0.0f)
+			if (child.widget->bg_color.w > 0.0f)
 			{
 				if (child.widget->bg_image)
 				{
@@ -81,7 +81,7 @@ Widget *Widget::on_mouse_button_pressed(vec2 offset)
 
 void Widget::add_child(Util::IntrusivePtr<Widget> widget)
 {
-	children.push_back({ ivec2(0), ivec2(0), widget });
+	children.push_back({ vec2(0), vec2(0), widget });
 	assert(widget->parent == nullptr);
 	widget->parent = this;
 	geometry_changed();

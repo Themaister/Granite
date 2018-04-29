@@ -22,16 +22,20 @@
 
 #pragma once
 
-#include "muglm/func.hpp"
-#include "muglm/matrix_helper.hpp"
+#include "muglm.hpp"
 
-namespace Granite
+namespace muglm
 {
-using namespace muglm;
+mat4 mat4_cast(const quat &q);
+mat3 mat3_cast(const quat &q);
+mat4 translate(const vec3 &v);
+mat4 scale(const vec3 &v);
+mat4 frustum(float left, float right, float bottom, float top, float near, float far);
+mat2 inverse(const mat2 &m);
+mat3 inverse(const mat3 &m);
+mat4 inverse(const mat4 &m);
+mat4 perspective(float fovy, float aspect, float near, float far);
+mat4 ortho(float left, float right, float bottom, float top, float near, float far);
 
-inline void quantize_color(uint8_t *v, const vec4 &color)
-{
-	for (unsigned i = 0; i < 4; i++)
-		v[i] = uint8_t(round(clamp(color[i] * 255.0f, 0.0f, 255.0f)));
-}
+void decompose(const mat4 &m, vec3 &scale, quat &rot, vec3 &trans);
 }

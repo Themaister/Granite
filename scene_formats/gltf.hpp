@@ -29,7 +29,6 @@
 
 namespace GLTF
 {
-using namespace glm;
 using namespace Granite;
 using namespace Granite::SceneFormats;
 

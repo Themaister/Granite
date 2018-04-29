@@ -175,7 +175,7 @@ uint64_t RenderInfo::get_sprite_sort_key(Queue queue_type, Util::Hash pipeline_h
 	static_assert(ecast(StaticLayer::Count) == 4, "Number of static layers is not 4.");
 
 	// Monotonically increasing floating point will be monotonic in uint32_t as well when z is non-negative.
-	z = glm::max(z, 0.0f);
+	z = muglm::max(z, 0.0f);
 	uint32_t depth_key = floatBitsToUint(z);
 
 	pipeline_hash &= 0xffff0000u;

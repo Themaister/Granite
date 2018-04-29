@@ -26,6 +26,7 @@
 #include "device.hpp"
 #include "sprite.hpp"
 #include <string.h>
+#include <float.h>
 
 using namespace Vulkan;
 using namespace std;
@@ -76,7 +77,7 @@ Font::Font(const std::string &path, unsigned size)
 vec2 Font::get_text_geometry(const char *text, float) const
 {
 	if (!*text)
-		return ivec2(0);
+		return vec2(0);
 
 	vec2 off = vec2(0.0f);
 	off.y += font_height;
@@ -208,10 +209,10 @@ void Font::render_text(RenderQueue &queue, const char *text, const vec3 &offset,
 			quad.pos_off_y = q.y0;
 			quad.pos_scale_x = q.x1 - q.x0;
 			quad.pos_scale_y = q.y1 - q.y0;
-			quad.tex_off_x = round(q.s0 * width);
-			quad.tex_off_y = round(q.t0 * height);
-			quad.tex_scale_x = round(q.s1 * width) - quad.tex_off_x;
-			quad.tex_scale_y = round(q.t1 * height) - quad.tex_off_y;
+			quad.tex_off_x = muglm::round(q.s0 * width);
+			quad.tex_off_y = muglm::round(q.t0 * height);
+			quad.tex_scale_x = muglm::round(q.s1 * width) - quad.tex_off_x;
+			quad.tex_scale_y = muglm::round(q.t1 * height) - quad.tex_off_y;
 
 			max_rect = max(max_rect, vec2(q.x1, q.y1));
 			min_rect = min(min_rect, vec2(q.x0, q.y0));

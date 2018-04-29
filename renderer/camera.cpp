@@ -25,7 +25,6 @@
 #include "vulkan_events.hpp"
 #include "input.hpp"
 #include "scene.hpp"
-#include "glm/gtx/matrix_decompose.hpp"
 
 using namespace Vulkan;
 
@@ -55,7 +54,7 @@ void Camera::set_fovy(float fovy)
 
 mat4 Camera::get_view() const
 {
-	return mat4_cast(rotation) * glm::translate(-position);
+	return mat4_cast(rotation) * translate(-position);
 }
 
 void Camera::set_position(const vec3 &pos)
@@ -77,7 +76,7 @@ void Camera::look_at(const vec3 &eye, const vec3 &at, const vec3 &up)
 mat4 Camera::get_projection() const
 {
 	if (ortho)
-		return glm::ortho(-ortho_height * aspect, ortho_height * aspect, ortho_height, -ortho_height, znear * transform_z_scale, zfar * transform_z_scale);
+		return muglm::ortho(-ortho_height * aspect, ortho_height * aspect, -ortho_height, ortho_height, znear * transform_z_scale, zfar * transform_z_scale);
 	else
 		return projection(fovy, aspect, znear * transform_z_scale, zfar * transform_z_scale);
 }
@@ -107,11 +106,9 @@ vec3 Camera::get_up() const
 
 void Camera::set_transform(const mat4 &m)
 {
-	vec3 skew;
-	vec4 perspective;
 	vec3 s, t;
 	quat r;
-	glm::decompose(m, s, r, t, skew, perspective);
+	muglm::decompose(m, s, r, t);
 
 	position = t;
 	rotation = conjugate(r);

@@ -23,6 +23,7 @@
 #include "scene.hpp"
 #include "transforms.hpp"
 #include "lights/lights.hpp"
+#include <float.h>
 
 using namespace std;
 

@@ -64,7 +64,7 @@ void Image::reconfigure_to_canvas(vec2, vec2 size)
 		float target_aspect = image_size.x / image_size.y;
 		float canvas_aspect = size.x / size.y;
 
-		if (glm::abs(canvas_aspect / target_aspect - 1.0f) > 0.001f)
+		if (muglm::abs(canvas_aspect / target_aspect - 1.0f) > 0.001f)
 		{
 			if (canvas_aspect > target_aspect)
 			{

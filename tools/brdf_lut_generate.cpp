@@ -3,7 +3,7 @@
 #include "gli/texture2d.hpp"
 #include "util.hpp"
 
-using namespace glm;
+using namespace muglm;
 
 // Shameless copy-pasta from learnopengl.com. :)
 

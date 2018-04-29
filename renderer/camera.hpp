@@ -100,7 +100,7 @@ public:
 protected:
 	vec3 position = vec3(0.0f);
 	quat rotation = quat(1.0f, 0.0f, 0.0f, 0.0f);
-	float fovy = 0.5f * glm::half_pi<float>();
+	float fovy = 0.5f * half_pi<float>();
 	float aspect = 16.0f / 9.0f;
 	float znear = 1.0f;
 	float zfar = 1000.0f;

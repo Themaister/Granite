@@ -30,6 +30,7 @@
 #include "post/hdr.hpp"
 #include "rapidjson_wrapper.hpp"
 #include "light_export.hpp"
+#include <float.h>
 
 using namespace std;
 using namespace Vulkan;
@@ -868,7 +869,7 @@ void SceneViewerApplication::update_shadow_map()
 	mat4 proj = ortho(ortho_range);
 
 	// Standard scale/bias.
-	lighting.shadow.far_transform = glm::translate(vec3(0.5f, 0.5f, 0.0f)) * glm::scale(vec3(0.5f, 0.5f, 1.0f)) * proj * view;
+	lighting.shadow.far_transform = translate(vec3(0.5f, 0.5f, 0.0f)) * scale(vec3(0.5f, 0.5f, 1.0f)) * proj * view;
 	depth_context.set_camera(proj, view);
 
 	depth_renderer.set_mesh_renderer_options(config.directional_light_shadows_vsm ? Renderer::SHADOW_VSM_BIT : 0);
@@ -906,7 +907,7 @@ void SceneViewerApplication::render_shadow_map_near(Vulkan::CommandBuffer &cmd)
 	                        vec3(center_xy + vec2(sphere.w), ortho_range_depth.get_maximum().z));
 
 	mat4 proj = ortho(ortho_range);
-	lighting.shadow.near_transform = glm::translate(vec3(0.5f, 0.5f, 0.0f)) * glm::scale(vec3(0.5f, 0.5f, 1.0f)) * proj * view;
+	lighting.shadow.near_transform = translate(vec3(0.5f, 0.5f, 0.0f)) * scale(vec3(0.5f, 0.5f, 1.0f)) * proj * view;
 	depth_context.set_camera(proj, view);
 	depth_renderer.set_mesh_renderer_options(config.directional_light_shadows_vsm ? Renderer::SHADOW_VSM_BIT : 0);
 	depth_renderer.begin();

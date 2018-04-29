@@ -93,7 +93,7 @@ struct EmittedMaterial
 	int emissive = -1;
 
 	vec4 uniform_base_color = vec4(1.0f);
-	vec3 uniform_emissive_color = vec4(0.0f);
+	vec3 uniform_emissive_color = vec3(0.0f);
 	float uniform_metallic = 1.0f;
 	float uniform_roughness = 1.0f;
 	float lod_bias = 0.0f;
@@ -1011,7 +1011,7 @@ void AnalysisResult::swizzle_image(const VkComponentMapping &swizzle)
 		swizzles.g = conv_swizzle(swizzle.g);
 		swizzles.b = conv_swizzle(swizzle.b);
 		swizzles.a = conv_swizzle(swizzle.a);
-		image->swizzle<u8vec4>(swizzles);
+		image->swizzle<glm::u8vec4>(swizzles);
 	}
 }
 
@@ -1020,7 +1020,7 @@ AnalysisResult::MetallicRoughnessMode AnalysisResult::deduce_metallic_roughness_
 	if (image->layers() > 1 || image->faces() > 1)
 		return MetallicRoughnessMode::Default;
 
-	auto *src = static_cast<const u8vec4 *>(image->data(0, 0, 0));
+	auto *src = static_cast<const glm::u8vec4 *>(image->data(0, 0, 0));
 	int width = image->extent().x;
 	int height = image->extent().y;
 	int count = width * height;
@@ -1391,7 +1391,7 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 		{
 			Value rot(kArrayType);
 			for (unsigned i = 0; i < 4; i++)
-				rot.PushBack(node.transform.rotation[i], allocator);
+				rot.PushBack(node.transform.rotation.as_vec4()[i], allocator);
 			n.AddMember("rotation", rot, allocator);
 		}
 
@@ -1876,9 +1876,9 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 
 			Value fog(kObjectType);
 			Value color(kArrayType);
-			color.PushBack(env.fog_color.r, allocator);
-			color.PushBack(env.fog_color.g, allocator);
-			color.PushBack(env.fog_color.b, allocator);
+			color.PushBack(env.fog_color.x, allocator);
+			color.PushBack(env.fog_color.y, allocator);
+			color.PushBack(env.fog_color.z, allocator);
 			fog.AddMember("color", color, allocator);
 			fog.AddMember("falloff", env.fog_falloff, allocator);
 			environment.AddMember("fog", fog, allocator);

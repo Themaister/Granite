@@ -93,7 +93,7 @@ void Window::reconfigure_to_canvas(vec2 offset, vec2 size)
 
 float Window::render(FlatRenderer &renderer, float layer, vec2 offset, vec2 size)
 {
-	if (bg_color.a > 0.0f)
+	if (bg_color.w > 0.0f)
 	{
 		if (bg_image)
 		{

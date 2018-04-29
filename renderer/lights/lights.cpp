@@ -29,6 +29,7 @@
 #include "clusterer.hpp"
 #include "quirks.hpp"
 #include <atomic>
+#include <float.h>
 
 using namespace Vulkan;
 using namespace Util;
@@ -81,7 +82,7 @@ void PositionalLight::recompute_range()
 {
 	// Check when attenuation drops below a constant.
 	const float target_atten = 0.1f;
-	float max_color = max(max(color.r, color.g), color.b);
+	float max_color = max(max(color.x, color.y), color.z);
 	float d = sqrt(max_color / target_atten);
 	set_range(d);
 }
@@ -483,8 +484,8 @@ vec2 SpotLight::get_z_range(const RenderContext &context, const mat4 &transform)
 	{
 		vec3 pos = (model * s).xyz();
 		float z = dot(pos - params.camera_position, params.camera_front);
-		range.x = glm::min(range.x, z);
-		range.y = glm::max(range.y, z);
+		range.x = muglm::min(range.x, z);
+		range.y = muglm::max(range.y, z);
 	}
 
 	return range;

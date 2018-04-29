@@ -25,6 +25,7 @@
 #include "unstable_remove_if.hpp"
 #include "lights.hpp"
 #include <algorithm>
+#include <float.h>
 
 namespace Granite
 {

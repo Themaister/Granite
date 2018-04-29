@@ -57,8 +57,8 @@ void Slider::reconfigure()
 		geometry.minimum.x += 2.0f * geometry.margin;
 		geometry.minimum.x += minimum_value.x;
 
-		geometry.minimum.y = glm::max(geometry.minimum.y, minimum_value.y + 2.0f * geometry.margin);
-		geometry.minimum.y = glm::max(2.0f * geometry.margin + size.y, geometry.minimum.y);
+		geometry.minimum.y = muglm::max(geometry.minimum.y, minimum_value.y + 2.0f * geometry.margin);
+		geometry.minimum.y = muglm::max(2.0f * geometry.margin + size.y, geometry.minimum.y);
 	}
 	else
 	{
@@ -68,8 +68,8 @@ void Slider::reconfigure()
 		geometry.minimum.y += 2.0f * geometry.margin;
 		geometry.minimum.y += minimum_value.y;
 
-		geometry.minimum.x = glm::max(geometry.minimum.x, minimum_value.x + 2.0f * geometry.margin);
-		geometry.minimum.x = glm::max(2.0f * geometry.margin + size.x, geometry.minimum.x);
+		geometry.minimum.x = muglm::max(geometry.minimum.x, minimum_value.x + 2.0f * geometry.margin);
+		geometry.minimum.x = muglm::max(2.0f * geometry.margin + size.x, geometry.minimum.x);
 	}
 }
 

@@ -30,6 +30,7 @@
 #include "cli_parser.hpp"
 #include "os.hpp"
 #include "rapidjson_wrapper.hpp"
+#include <limits.h>
 using namespace rapidjson;
 
 #ifdef _WIN32

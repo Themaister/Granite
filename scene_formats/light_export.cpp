@@ -43,9 +43,9 @@ std::string export_lights_to_json(const DirectionalParameters &dir, Scene &scene
 	directional.AddMember("direction", direction, allocator);
 
 	Value color(kArrayType);
-	color.PushBack(dir.color.r, allocator);
-	color.PushBack(dir.color.g, allocator);
-	color.PushBack(dir.color.b, allocator);
+	color.PushBack(dir.color.x, allocator);
+	color.PushBack(dir.color.y, allocator);
+	color.PushBack(dir.color.z, allocator);
 	directional.AddMember("color", color, allocator);
 	doc.AddMember("directional", directional, allocator);
 
@@ -77,9 +77,9 @@ std::string export_lights_to_json(const DirectionalParameters &dir, Scene &scene
 			spot.AddMember("innerCone", s.get_inner_cone(), allocator);
 			spot.AddMember("outerCone", s.get_outer_cone(), allocator);
 			Value color(kArrayType);
-			color.PushBack(s.get_color().r, allocator);
-			color.PushBack(s.get_color().g, allocator);
-			color.PushBack(s.get_color().b, allocator);
+			color.PushBack(s.get_color().x, allocator);
+			color.PushBack(s.get_color().y, allocator);
+			color.PushBack(s.get_color().z, allocator);
 			spot.AddMember("color", color, allocator);
 			spot.AddMember("constantFalloff", 0.0f, allocator);
 			spot.AddMember("linearFalloff", 0.0f, allocator);
@@ -93,9 +93,9 @@ std::string export_lights_to_json(const DirectionalParameters &dir, Scene &scene
 			Value point(kObjectType);
 			auto &p = *static_cast<PointLight *>(l);
 			Value color(kArrayType);
-			color.PushBack(p.get_color().r, allocator);
-			color.PushBack(p.get_color().g, allocator);
-			color.PushBack(p.get_color().b, allocator);
+			color.PushBack(p.get_color().x, allocator);
+			color.PushBack(p.get_color().y, allocator);
+			color.PushBack(p.get_color().z, allocator);
 			point.AddMember("color", color, allocator);
 			point.AddMember("constantFalloff", 0.0f, allocator);
 			point.AddMember("linearFalloff", 0.0f, allocator);

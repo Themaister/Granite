@@ -21,6 +21,7 @@
  */
 
 #include "render_context.hpp"
+#include "muglm/matrix_helper.hpp"
 
 using namespace std;
 using namespace Vulkan;

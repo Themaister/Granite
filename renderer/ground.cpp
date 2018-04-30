@@ -24,6 +24,7 @@
 #include "device.hpp"
 #include "renderer.hpp"
 #include "render_context.hpp"
+#include "muglm/matrix_helper.hpp"
 
 using namespace Vulkan;
 using namespace std;

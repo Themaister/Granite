@@ -26,6 +26,8 @@
 #include "render_parameters.hpp"
 #include "util.hpp"
 #include "gli/save.hpp"
+#include "muglm/matrix_helper.hpp"
+#include "muglm/func.hpp"
 
 using namespace Vulkan;
 

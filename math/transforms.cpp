@@ -22,6 +22,7 @@
 
 #include "transforms.hpp"
 #include "aabb.hpp"
+#include "muglm/matrix_helper.hpp"
 
 namespace Granite
 {

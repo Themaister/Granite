@@ -27,6 +27,7 @@
 #include <unordered_map>
 #include <algorithm>
 #include "rapidjson_wrapper.hpp"
+#include "muglm/matrix_helper.hpp"
 
 using namespace std;
 using namespace rapidjson;

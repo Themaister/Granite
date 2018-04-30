@@ -30,6 +30,8 @@
 #include "post/hdr.hpp"
 #include "rapidjson_wrapper.hpp"
 #include "light_export.hpp"
+#include "muglm/matrix_helper.hpp"
+#include "muglm/func.hpp"
 #include <float.h>
 
 using namespace std;

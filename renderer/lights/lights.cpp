@@ -28,6 +28,7 @@
 #include "mesh_util.hpp"
 #include "clusterer.hpp"
 #include "quirks.hpp"
+#include "muglm/matrix_helper.hpp"
 #include <atomic>
 #include <float.h>
 

@@ -23,6 +23,8 @@
 #include "temporal.hpp"
 #include "fxaa.hpp"
 #include "enum_cast.hpp"
+#include "muglm/matrix_helper.hpp"
+#include "muglm/func.hpp"
 
 namespace Granite
 {

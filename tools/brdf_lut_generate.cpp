@@ -2,6 +2,8 @@
 #include "gli/save.hpp"
 #include "gli/texture2d.hpp"
 #include "util.hpp"
+#include "muglm/matrix_helper.hpp"
+#include "muglm/func.hpp"
 
 using namespace muglm;
 

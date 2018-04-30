@@ -23,6 +23,8 @@
 #include "smaa.hpp"
 #include "math.hpp"
 #include "temporal.hpp"
+#include "muglm/matrix_helper.hpp"
+#include "muglm/func.hpp"
 
 using namespace std;
 

@@ -23,6 +23,7 @@
 #pragma once
 
 #include "math.hpp"
+#include "muglm/func.hpp"
 
 namespace Granite
 {

@@ -22,6 +22,7 @@
 
 #include "vertical_packing.hpp"
 #include "widget.hpp"
+#include "muglm/func.hpp"
 
 namespace Granite
 {

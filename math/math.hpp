@@ -22,16 +22,10 @@
 
 #pragma once
 
-#include "muglm/func.hpp"
-#include "muglm/matrix_helper.hpp"
+#include "muglm/muglm.hpp"
 
 namespace Granite
 {
 using namespace muglm;
-
-inline void quantize_color(uint8_t *v, const vec4 &color)
-{
-	for (unsigned i = 0; i < 4; i++)
-		v[i] = uint8_t(round(clamp(color[i] * 255.0f, 0.0f, 255.0f)));
-}
+void quantize_color(uint8_t *v, const vec4 &color);
 }

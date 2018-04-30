@@ -23,7 +23,7 @@
 #include "hdr.hpp"
 #include "math.hpp"
 #include "application_events.hpp"
-#include "muglm/func.hpp"
+#include "muglm/muglm_impl.hpp"
 
 namespace Granite
 {

@@ -21,7 +21,7 @@
  */
 
 #include "matrix_helper.hpp"
-#include "func.hpp"
+#include "muglm_impl.hpp"
 
 namespace muglm
 {

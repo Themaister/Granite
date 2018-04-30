@@ -24,7 +24,7 @@
 #include "math.hpp"
 #include "temporal.hpp"
 #include "muglm/matrix_helper.hpp"
-#include "muglm/func.hpp"
+#include "muglm/muglm_impl.hpp"
 
 using namespace std;
 

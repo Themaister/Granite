@@ -21,7 +21,7 @@
  */
 
 #include "math.hpp"
-#include "muglm/func.hpp"
+#include "muglm/muglm_impl.hpp"
 
 namespace Granite
 {

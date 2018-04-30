@@ -27,7 +27,7 @@
 #include "util.hpp"
 #include "gli/save.hpp"
 #include "muglm/matrix_helper.hpp"
-#include "muglm/func.hpp"
+#include "muglm/muglm_impl.hpp"
 
 using namespace Vulkan;
 

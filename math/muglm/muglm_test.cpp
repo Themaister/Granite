@@ -20,7 +20,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "func.hpp"
+#include "muglm_impl.hpp"
 #include "matrix_helper.hpp"
 #include <assert.h>
 #include <stdlib.h>

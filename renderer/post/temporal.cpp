@@ -24,7 +24,7 @@
 #include "fxaa.hpp"
 #include "enum_cast.hpp"
 #include "muglm/matrix_helper.hpp"
-#include "muglm/func.hpp"
+#include "muglm/muglm_impl.hpp"
 
 namespace Granite
 {

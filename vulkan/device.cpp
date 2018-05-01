@@ -2265,7 +2265,7 @@ InitialImageBuffer Device::create_image_staging_buffer(const ImageCreateInfo &in
 			format_align_dim(info.format, row_length, array_height);
 
 			VkDeviceSize size =
-					format_block_size(info.format) * depth * blocks_x * blocks_y;
+					TextureFormatLayout::format_block_size(info.format) * depth * blocks_x * blocks_y;
 
 			// Align to cache line for good measure.
 			required_size = (required_size + 63) & ~63;
@@ -2319,7 +2319,7 @@ InitialImageBuffer Device::create_image_staging_buffer(const ImageCreateInfo &in
 			format_align_dim(info.format, row_length, array_height);
 
 			VkDeviceSize size =
-					format_block_size(info.format) * depth * blocks_x * blocks_y;
+					TextureFormatLayout::format_block_size(info.format) * depth * blocks_x * blocks_y;
 
 			// Align to cache line for good measure.
 			required_size = (required_size + 63) & ~63;

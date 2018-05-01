@@ -969,7 +969,7 @@ void *CommandBuffer::update_image(const Image &image, const VkOffset3D &offset, 
 	format_num_blocks(create_info.format, blocks_x, blocks_y);
 
 	VkDeviceSize size =
-	    format_block_size(create_info.format) * subresource.layerCount * depth * blocks_x * blocks_y;
+	    TextureFormatLayout::format_block_size(create_info.format) * subresource.layerCount * depth * blocks_x * blocks_y;
 
 	auto data = staging_block.allocate(size);
 	if (!data.host)

@@ -19,6 +19,7 @@ add_granite_library(vulkan-backend
         texture_manager.cpp texture_manager.hpp
         fence.hpp fence.cpp
         format.hpp
+        texture_format.hpp texture_format.cpp
         limits.hpp
         type_to_string.hpp
         quirks.hpp

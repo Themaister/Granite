@@ -21,6 +21,7 @@
  */
 
 #include "texture_format.hpp"
+#include "format.hpp"
 #include <algorithm>
 
 using namespace std;
@@ -448,4 +449,27 @@ size_t TextureFormatLayout::layer_byte_stride(uint32_t image_height, size_t row_
 {
 	return ((image_height + block_dim_y - 1) / block_dim_y) * row_byte_stride;
 }
+
+void TextureFormatLayout::build_buffer_image_copies(std::vector<VkBufferImageCopy> &copies) const
+{
+	copies.resize(mip_levels);
+	for (unsigned level = 0; level < mip_levels; level++)
+	{
+		const auto &mip_info = mips[level];
+
+		auto &blit = copies[level];
+		blit = {};
+		blit.bufferOffset = mip_info.offset;
+		blit.bufferRowLength = mip_info.row_length;
+		blit.bufferImageHeight = mip_info.image_height;
+		blit.imageSubresource.aspectMask = format_to_aspect_mask(format);
+		blit.imageSubresource.mipLevel = level;
+		blit.imageSubresource.baseArrayLayer = 0;
+		blit.imageSubresource.layerCount = array_layers;
+		blit.imageExtent.width = mip_info.width;
+		blit.imageExtent.height = mip_info.height;
+		blit.imageExtent.depth = mip_info.depth;
+	}
+}
+
 }

@@ -129,6 +129,7 @@ public:
 	ImageHandle create_image(const ImageCreateInfo &info, const ImageInitialData *initial);
 	ImageHandle create_image_from_staging_buffer(const ImageCreateInfo &info, const InitialImageBuffer *buffer);
 	InitialImageBuffer create_image_staging_buffer(const ImageCreateInfo &info, const ImageInitialData *initial);
+	InitialImageBuffer create_image_staging_buffer(const TextureFormatLayout &layout);
 
 #ifndef _WIN32
 	ImageHandle create_imported_image(int fd,

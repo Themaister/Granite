@@ -2233,6 +2233,25 @@ ImageHandle Device::create_imported_image(int fd, VkDeviceSize size, uint32_t me
 }
 #endif
 
+InitialImageBuffer Device::create_image_staging_buffer(const TextureFormatLayout &layout)
+{
+	InitialImageBuffer result;
+
+	BufferCreateInfo buffer_info = {};
+	buffer_info.domain = BufferDomain::Host;
+	buffer_info.size = layout.get_required_size();
+	buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+	result.buffer = create_buffer(buffer_info, nullptr);
+	set_name(*result.buffer, "image-upload-staging-buffer");
+
+	auto *mapped = static_cast<uint8_t *>(map_host_buffer(*result.buffer, MEMORY_ACCESS_WRITE));
+	memcpy(mapped, layout.data(), layout.get_required_size());
+	unmap_host_buffer(*result.buffer);
+
+	layout.build_buffer_image_copies(result.blits);
+	return result;
+}
+
 InitialImageBuffer Device::create_image_staging_buffer(const ImageCreateInfo &info, const ImageInitialData *initial)
 {
 	InitialImageBuffer result;
@@ -2275,7 +2294,6 @@ InitialImageBuffer Device::create_image_staging_buffer(const ImageCreateInfo &in
 	unsigned index = 0;
 
 	layout.set_buffer(mapped, layout.get_required_size());
-	result.blits.resize(copy_levels);
 
 	for (unsigned level = 0; level < copy_levels; level++)
 	{
@@ -2300,22 +2318,10 @@ InitialImageBuffer Device::create_image_staging_buffer(const ImageCreateInfo &in
 				for (uint32_t y = 0; y < mip_info.block_image_height; y++)
 					memcpy(dst + z * dst_height_stride + y * row_size, src + z * src_height_stride + y * src_row_stride, row_size);
 		}
-
-		auto &blit = result.blits[level];
-		blit = {};
-		blit.bufferOffset = mip_info.offset;
-		blit.bufferRowLength = mip_info.row_length;
-		blit.bufferImageHeight = mip_info.image_height;
-		blit.imageSubresource.aspectMask = format_to_aspect_mask(info.format);
-		blit.imageSubresource.mipLevel = level;
-		blit.imageSubresource.baseArrayLayer = 0;
-		blit.imageSubresource.layerCount = info.layers;
-		blit.imageExtent.width = mip_info.width;
-		blit.imageExtent.height = mip_info.height;
-		blit.imageExtent.depth = mip_info.depth;
 	}
 
 	unmap_host_buffer(*result.buffer);
+	layout.build_buffer_image_copies(result.blits);
 	return result;
 }
 

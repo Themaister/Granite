@@ -41,6 +41,10 @@ public:
 	static uint32_t num_miplevels(uint32_t width, uint32_t height = 1, uint32_t depth = 1);
 
 	void set_buffer(void *buffer, size_t size);
+	inline void *get_buffer()
+	{
+		return buffer;
+	}
 
 	uint32_t get_width(uint32_t mip = 0) const;
 	uint32_t get_height(uint32_t mip = 0) const;
@@ -81,7 +85,7 @@ public:
 
 	const MipInfo &get_mip_info(uint32_t mip) const;
 
-	inline void *data(uint32_t layer = 0, uint32_t mip = 0)
+	inline void *data(uint32_t layer = 0, uint32_t mip = 0) const
 	{
 		assert(buffer);
 		assert(buffer_size == required_size);
@@ -92,7 +96,7 @@ public:
 	}
 
 	template <typename T>
-	inline T *data_1d(uint32_t x, uint32_t layer = 0, uint32_t mip = 0)
+	inline T *data_1d(uint32_t x, uint32_t layer = 0, uint32_t mip = 0) const
 	{
 		assert(sizeof(T) == block_stride);
 		assert(buffer);
@@ -107,7 +111,7 @@ public:
 	}
 
 	template <typename T>
-	inline T *data_2d(uint32_t x, uint32_t y, uint32_t layer = 0, uint32_t mip = 0)
+	inline T *data_2d(uint32_t x, uint32_t y, uint32_t layer = 0, uint32_t mip = 0) const
 	{
 		assert(sizeof(T) == block_stride);
 		assert(buffer);
@@ -123,7 +127,7 @@ public:
 	}
 
 	template <typename T>
-	inline T *data_3d(uint32_t x, uint32_t y, uint32_t z, uint32_t mip = 0)
+	inline T *data_3d(uint32_t x, uint32_t y, uint32_t z, uint32_t mip = 0) const
 	{
 		assert(sizeof(T) == block_stride);
 		assert(buffer);
@@ -137,6 +141,8 @@ public:
 		slice += x;
 		return slice;
 	}
+
+	void build_buffer_image_copies(std::vector<VkBufferImageCopy> &copies) const;
 
 private:
 	uint8_t *buffer = nullptr;

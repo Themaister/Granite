@@ -146,7 +146,7 @@ struct ImageInitialData
 {
 	const void *data;
 	unsigned row_length;
-	unsigned array_height;
+	unsigned image_height;
 };
 
 enum ImageMiscFlagBits

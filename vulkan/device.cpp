@@ -2237,99 +2237,82 @@ InitialImageBuffer Device::create_image_staging_buffer(const ImageCreateInfo &in
 {
 	InitialImageBuffer result;
 
-	unsigned mip_levels = info.levels;
-	if (mip_levels == 0)
-		mip_levels = image_num_miplevels({ info.width, info.height, info.depth });
-
-	auto width = info.width;
-	auto height = info.height;
-	auto depth = info.depth;
-
 	bool generate_mips = (info.misc & IMAGE_MISC_GENERATE_MIPS_BIT) != 0;
-	unsigned copy_levels = generate_mips ? 1u : mip_levels;
-	unsigned index = 0;
+	TextureFormatLayout layout;
 
-	// Figure out how much memory we need.
-	VkDeviceSize required_size = 0;
+	unsigned copy_levels;
+	if (generate_mips)
+		copy_levels = 1;
+	else if (info.levels == 0)
+		copy_levels = TextureFormatLayout::num_miplevels(info.width, info.height, info.depth);
+	else
+		copy_levels = info.levels;
 
-	for (unsigned level = 0; level < copy_levels; level++)
+	switch (info.type)
 	{
-		for (unsigned layer = 0; layer < info.layers; layer++, index++)
-		{
-			uint32_t row_length = initial[index].row_length ? initial[index].row_length : width;
-			uint32_t array_height = initial[index].array_height ? initial[index].array_height : height;
-
-			uint32_t blocks_x = row_length;
-			uint32_t blocks_y = array_height;
-			format_num_blocks(info.format, blocks_x, blocks_y);
-			format_align_dim(info.format, row_length, array_height);
-
-			VkDeviceSize size =
-					TextureFormatLayout::format_block_size(info.format) * depth * blocks_x * blocks_y;
-
-			// Align to cache line for good measure.
-			required_size = (required_size + 63) & ~63;
-
-			VkBufferImageCopy copy = {};
-			copy.bufferRowLength = initial[index].row_length != width ? initial[index].row_length : 0;
-			copy.bufferImageHeight = initial[index].array_height != height ? initial[index].array_height : 0;
-			copy.imageExtent.width = width;
-			copy.imageExtent.height = height;
-			copy.imageExtent.depth = depth;
-			copy.imageSubresource.aspectMask = format_to_aspect_mask(info.format);
-			copy.imageSubresource.layerCount = 1;
-			copy.imageSubresource.baseArrayLayer = layer;
-			copy.imageSubresource.mipLevel = level;
-			copy.bufferOffset = required_size;
-			result.blits.push_back(copy);
-
-			required_size += size;
-		}
-
-		width = max(width >> 1u, 1u);
-		height = max(height >> 1u, 1u);
-		depth = max(depth >> 1u, 1u);
+	case VK_IMAGE_TYPE_1D:
+		layout.set_1d(info.format, info.width, info.layers, copy_levels);
+		break;
+	case VK_IMAGE_TYPE_2D:
+		layout.set_2d(info.format, info.width, info.height, info.layers, copy_levels);
+		break;
+	case VK_IMAGE_TYPE_3D:
+		layout.set_3d(info.format, info.width, info.height, info.depth, copy_levels);
+		break;
+	default:
+		return {};
 	}
 
 	BufferCreateInfo buffer_info = {};
 	buffer_info.domain = BufferDomain::Host;
-	buffer_info.size = required_size;
+	buffer_info.size = layout.get_required_size();
 	buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 	result.buffer = create_buffer(buffer_info, nullptr);
 	set_name(*result.buffer, "image-upload-staging-buffer");
 
 	// And now, do the actual copy.
 	auto *mapped = static_cast<uint8_t *>(map_host_buffer(*result.buffer, MEMORY_ACCESS_WRITE));
-	required_size = 0;
-	width = info.width;
-	height = info.height;
-	depth = info.depth;
-	index = 0;
+	unsigned index = 0;
+
+	layout.set_buffer(mapped, layout.get_required_size());
+	result.blits.resize(copy_levels);
 
 	for (unsigned level = 0; level < copy_levels; level++)
 	{
+		const auto &mip_info = layout.get_mip_info(level);
+		uint32_t dst_height_stride = layout.get_layer_size(level);
+		size_t row_size = layout.get_row_size(level);
+
 		for (unsigned layer = 0; layer < info.layers; layer++, index++)
 		{
-			uint32_t row_length = initial[index].row_length ? initial[index].row_length : width;
-			uint32_t array_height = initial[index].array_height ? initial[index].array_height : height;
+			uint32_t src_row_length =
+					initial[index].row_length ? initial[index].row_length : mip_info.row_length;
+			uint32_t src_array_height =
+					initial[index].image_height ? initial[index].image_height : mip_info.image_height;
 
-			uint32_t blocks_x = row_length;
-			uint32_t blocks_y = array_height;
-			format_num_blocks(info.format, blocks_x, blocks_y);
-			format_align_dim(info.format, row_length, array_height);
+			uint32_t src_row_stride = layout.row_byte_stride(src_row_length);
+			uint32_t src_height_stride = layout.layer_byte_stride(src_array_height, src_row_stride);
 
-			VkDeviceSize size =
-					TextureFormatLayout::format_block_size(info.format) * depth * blocks_x * blocks_y;
+			uint8_t *dst = static_cast<uint8_t *>(layout.data(layer, level));
+			const uint8_t *src = static_cast<const uint8_t *>(initial[index].data);
 
-			// Align to cache line for good measure.
-			required_size = (required_size + 63) & ~63;
-			memcpy(mapped + required_size, initial[index].data, size);
-			required_size += size;
+			for (uint32_t z = 0; z < mip_info.depth; z++)
+				for (uint32_t y = 0; y < mip_info.block_image_height; y++)
+					memcpy(dst + z * dst_height_stride + y * row_size, src + z * src_height_stride + y * src_row_stride, row_size);
 		}
 
-		width = max(width >> 1u, 1u);
-		height = max(height >> 1u, 1u);
-		depth = max(depth >> 1u, 1u);
+		auto &blit = result.blits[level];
+		blit = {};
+		blit.bufferOffset = mip_info.offset;
+		blit.bufferRowLength = mip_info.row_length;
+		blit.bufferImageHeight = mip_info.image_height;
+		blit.imageSubresource.aspectMask = format_to_aspect_mask(info.format);
+		blit.imageSubresource.mipLevel = level;
+		blit.imageSubresource.baseArrayLayer = 0;
+		blit.imageSubresource.layerCount = info.layers;
+		blit.imageExtent.width = mip_info.width;
+		blit.imageExtent.height = mip_info.height;
+		blit.imageExtent.depth = mip_info.depth;
 	}
 
 	unmap_host_buffer(*result.buffer);

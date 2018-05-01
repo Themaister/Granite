@@ -47,8 +47,24 @@ public:
 	uint32_t get_depth(uint32_t mip = 0) const;
 	uint32_t get_levels() const;
 	uint32_t get_layers() const;
+	uint32_t get_block_stride() const;
+	uint32_t get_block_dim_x() const;
+	uint32_t get_block_dim_y() const;
 
 	size_t get_required_size() const;
+
+	size_t row_byte_stride(uint32_t row_length) const;
+	size_t layer_byte_stride(uint32_t row_length, size_t row_byte_stride) const;
+
+	inline size_t get_row_size(uint32_t mip) const
+	{
+		return mips[mip].block_row_length * block_stride;
+	}
+
+	inline size_t get_layer_size(uint32_t mip) const
+	{
+		return mips[mip].block_image_height * get_row_size(mip);
+	}
 
 	struct MipInfo
 	{
@@ -57,13 +73,23 @@ public:
 		uint32_t height = 1;
 		uint32_t depth = 1;
 
-		uint32_t block_width = 0;
-		uint32_t block_height = 0;
 		size_t block_image_height = 0;
-		size_t block_row_width = 0;
+		size_t block_row_length = 0;
+		size_t image_height = 0;
+		size_t row_length = 0;
 	};
 
-	const MipInfo &get_mipinfo(uint32_t mip) const;
+	const MipInfo &get_mip_info(uint32_t mip) const;
+
+	inline void *data(uint32_t layer = 0, uint32_t mip = 0)
+	{
+		assert(buffer);
+		assert(buffer_size == required_size);
+		auto &mip_info = mips[mip];
+		uint8_t *slice = buffer + mip_info.offset;
+		slice += block_stride * layer * mip_info.block_row_length * mip_info.block_image_height;
+		return slice;
+	}
 
 	template <typename T>
 	inline T *data_1d(uint32_t x, uint32_t layer = 0, uint32_t mip = 0)
@@ -75,7 +101,7 @@ public:
 
 		auto &mip_info = mips[mip];
 		T *slice = reinterpret_cast<T *>(buffer + mip_info.offset);
-		slice += layer * mip_info.block_row_width * mip_info.block_image_height;
+		slice += layer * mip_info.block_row_length * mip_info.block_image_height;
 		slice += x;
 		return slice;
 	}
@@ -90,8 +116,8 @@ public:
 
 		auto &mip_info = mips[mip];
 		T *slice = reinterpret_cast<T *>(buffer + mip_info.offset);
-		slice += layer * mip_info.block_row_width * mip_info.block_image_height;
-		slice += y * mip_info.block_row_width;
+		slice += layer * mip_info.block_row_length * mip_info.block_image_height;
+		slice += y * mip_info.block_row_length;
 		slice += x;
 		return slice;
 	}
@@ -106,8 +132,8 @@ public:
 
 		auto &mip_info = mips[mip];
 		T *slice = reinterpret_cast<T *>(buffer + mip_info.offset);
-		slice += z * mip_info.block_row_width * mip_info.block_image_height;
-		slice += y * mip_info.block_row_width;
+		slice += z * mip_info.block_row_length * mip_info.block_image_height;
+		slice += y * mip_info.block_row_length;
 		slice += x;
 		return slice;
 	}

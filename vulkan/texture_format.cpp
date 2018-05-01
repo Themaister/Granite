@@ -315,23 +315,33 @@ uint32_t TextureFormatLayout::format_block_size(VkFormat format)
 
 void TextureFormatLayout::fill_mipinfo(uint32_t width, uint32_t height, uint32_t depth)
 {
+	block_stride = format_block_size(format);
+	format_block_dim(format, block_dim_x, block_dim_y);
+
+	if (mip_levels == 0)
+		mip_levels = num_miplevels(width, height, depth);
+
 	size_t offset = 0;
+
 	for (uint32_t mip = 0; mip < mip_levels; mip++)
 	{
 		offset = (offset + 15) & ~15;
 
 		uint32_t blocks_x = (width + block_dim_x - 1) / block_dim_x;
 		uint32_t blocks_y = (height + block_dim_y - 1) / block_dim_y;
-		size_t mip_size = blocks_x * blocks_y * array_layers * depth;
+		size_t mip_size = blocks_x * blocks_y * array_layers * depth * block_stride;
 
 		mips[mip].offset = offset;
-		mips[mip].block_row_width = blocks_x;
+
+		mips[mip].block_row_length = blocks_x;
 		mips[mip].block_image_height = blocks_y;
+
+		mips[mip].row_length = blocks_x * block_dim_x;
+		mips[mip].image_height = blocks_y * block_dim_y;
+
 		mips[mip].width = width;
 		mips[mip].height = height;
 		mips[mip].depth = depth;
-		mips[mip].block_width = blocks_x;
-		mips[mip].block_height = blocks_y;
 
 		offset += mip_size;
 
@@ -345,43 +355,31 @@ void TextureFormatLayout::fill_mipinfo(uint32_t width, uint32_t height, uint32_t
 
 void TextureFormatLayout::set_1d(VkFormat format, uint32_t width, uint32_t array_layers, uint32_t mip_levels)
 {
-	if (mip_levels == 0)
-		mip_levels = num_miplevels(width);
-
 	this->image_type = VK_IMAGE_TYPE_1D;
 	this->format = format;
 	this->array_layers = array_layers;
 	this->mip_levels = mip_levels;
 
-	block_stride = format_block_size(format);
 	fill_mipinfo(width, 1, 1);
 }
 
 void TextureFormatLayout::set_2d(VkFormat format, uint32_t width, uint32_t height, uint32_t array_layers, uint32_t mip_levels)
 {
-	if (mip_levels == 0)
-		mip_levels = num_miplevels(width, height);
-
-	this->image_type = VK_IMAGE_TYPE_1D;
+	this->image_type = VK_IMAGE_TYPE_2D;
 	this->format = format;
 	this->array_layers = array_layers;
 	this->mip_levels = mip_levels;
 
-	block_stride = format_block_size(format);
 	fill_mipinfo(width, height, 1);
 }
 
 void TextureFormatLayout::set_3d(VkFormat format, uint32_t width, uint32_t height, uint32_t depth, uint32_t mip_levels)
 {
-	if (mip_levels == 0)
-		mip_levels = num_miplevels(width, height, depth);
-
-	this->image_type = VK_IMAGE_TYPE_1D;
+	this->image_type = VK_IMAGE_TYPE_3D;
 	this->format = format;
-	this->array_layers = array_layers;
+	this->array_layers = 1;
 	this->mip_levels = mip_levels;
 
-	block_stride = format_block_size(format);
 	fill_mipinfo(width, height, depth);
 }
 
@@ -411,6 +409,11 @@ uint32_t TextureFormatLayout::get_layers() const
 	return array_layers;
 }
 
+uint32_t TextureFormatLayout::get_block_stride() const
+{
+	return block_stride;
+}
+
 uint32_t TextureFormatLayout::get_levels() const
 {
 	return mip_levels;
@@ -421,8 +424,28 @@ size_t TextureFormatLayout::get_required_size() const
 	return required_size;
 }
 
-const TextureFormatLayout::MipInfo &TextureFormatLayout::get_mipinfo(uint32_t mip) const
+const TextureFormatLayout::MipInfo &TextureFormatLayout::get_mip_info(uint32_t mip) const
 {
 	return mips[mip];
+}
+
+uint32_t TextureFormatLayout::get_block_dim_x() const
+{
+	return block_dim_x;
+}
+
+uint32_t TextureFormatLayout::get_block_dim_y() const
+{
+	return block_dim_y;
+}
+
+size_t TextureFormatLayout::row_byte_stride(uint32_t row_length) const
+{
+	return ((row_length + block_dim_x - 1) / block_dim_x) * block_stride;
+}
+
+size_t TextureFormatLayout::layer_byte_stride(uint32_t image_height, size_t row_byte_stride) const
+{
+	return ((image_height + block_dim_y - 1) / block_dim_y) * row_byte_stride;
 }
 }

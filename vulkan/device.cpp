@@ -2348,6 +2348,18 @@ static bool fill_image_format_list(VkFormat *formats, VkFormat format)
 
 ImageHandle Device::create_image(const ImageCreateInfo &create_info, const ImageInitialData *initial)
 {
+	if (initial)
+	{
+		auto staging_buffer = create_image_staging_buffer(create_info, initial);
+		return create_image_from_staging_buffer(create_info, &staging_buffer);
+	}
+	else
+		return create_image_from_staging_buffer(create_info, nullptr);
+}
+
+ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &create_info,
+                                                     const InitialImageBuffer *staging_buffer)
+{
 	VkImage image;
 	VkMemoryRequirements reqs;
 	DeviceAllocation allocation;
@@ -2367,7 +2379,7 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 	info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	if (create_info.domain == ImageDomain::Transient)
 		info.usage |= VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
-	if (initial)
+	if (staging_buffer)
 		info.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
 	info.flags = create_info.flags;
@@ -2560,11 +2572,10 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 	handle->set_access_flags(image_usage_to_possible_access(info.usage));
 
 	// Copy initial data to texture.
-	if (initial)
+	if (staging_buffer)
 	{
 		VK_ASSERT(create_info.domain != ImageDomain::Transient);
 		VK_ASSERT(create_info.initial_layout != VK_IMAGE_LAYOUT_UNDEFINED);
-		auto staging_buffer = create_image_staging_buffer(create_info, initial);
 		bool generate_mips = (create_info.misc & IMAGE_MISC_GENERATE_MIPS_BIT) != 0;
 
 		// If graphics_queue != transfer_queue, we will use a semaphore, so no srcAccess mask is necessary.
@@ -2595,7 +2606,7 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 		handle->set_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
 		transfer_cmd->begin_region("copy-image-to-gpu");
-		transfer_cmd->copy_buffer_to_image(*handle, *staging_buffer.buffer, staging_buffer.blits.size(), staging_buffer.blits.data());
+		transfer_cmd->copy_buffer_to_image(*handle, *staging_buffer->buffer, staging_buffer->blits.size(), staging_buffer->blits.data());
 		transfer_cmd->end_region();
 
 		if (transfer_queue != graphics_queue)

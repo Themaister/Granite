@@ -126,7 +126,8 @@ public:
 	void unmap_host_buffer(const Buffer &buffer);
 
 	BufferHandle create_buffer(const BufferCreateInfo &info, const void *initial);
-	ImageHandle create_image(const ImageCreateInfo &info, const ImageInitialData *initial = nullptr);
+	ImageHandle create_image(const ImageCreateInfo &info, const ImageInitialData *initial);
+	ImageHandle create_image_from_staging_buffer(const ImageCreateInfo &info, const InitialImageBuffer *buffer);
 	InitialImageBuffer create_image_staging_buffer(const ImageCreateInfo &info, const ImageInitialData *initial);
 
 #ifndef _WIN32

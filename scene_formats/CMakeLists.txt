@@ -32,6 +32,7 @@ add_granite_library(scene-formats
         scene_formats.hpp scene_formats.cpp
         light_export.cpp light_export.hpp
         camera_export.cpp camera_export.hpp
+        memory_mapped_texture.cpp memory_mapped_texture.hpp
         texture_files.cpp texture_files.hpp)
 
 add_granite_library(scene-formats-export

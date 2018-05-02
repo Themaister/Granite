@@ -840,7 +840,7 @@ void CompressorState::enqueue_compression(ThreadGroup &group, const CompressorAr
 		if (state->total_error[1] != 0.0)
 			LOGI("Green PSNR: %.f dB\n", 10.0 * log10(255.0 * 255.0 / state->total_error[1]));
 
-		if (!save_texture_to_file(args.output, *state->output))
+		if (!save_gli_texture_to_file(args.output, *state->output))
 			LOGE("Failed to save texture to file.\n");
 	});
 	group.add_dependency(write_task, compression_task);

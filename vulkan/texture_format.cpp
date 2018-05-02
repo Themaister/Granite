@@ -410,6 +410,16 @@ uint32_t TextureFormatLayout::get_layers() const
 	return array_layers;
 }
 
+VkImageType TextureFormatLayout::get_image_type() const
+{
+	return image_type;
+}
+
+VkFormat TextureFormatLayout::get_format() const
+{
+	return format;
+}
+
 uint32_t TextureFormatLayout::get_block_stride() const
 {
 	return block_stride;

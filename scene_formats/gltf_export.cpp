@@ -1065,7 +1065,9 @@ bool AnalysisResult::load_image(const string &src, const VkComponentMapping &swi
 {
 	src_path = src;
 	image = make_shared<gli::texture>();
-	*image = load_texture_from_file(src, (mode == TextureMode::sRGBA || mode == TextureMode::sRGB) ? ColorSpace::sRGB : ColorSpace::Linear);
+	*image = load_gli_texture_from_file(src,
+	                                    (mode == TextureMode::sRGBA || mode == TextureMode::sRGB) ? ColorSpace::sRGB
+	                                                                                              : ColorSpace::Linear);
 	if (image->empty())
 		return false;
 
@@ -1298,7 +1300,7 @@ static void compress_image(ThreadGroup &workers, const string &target_path, shar
 	else
 	{
 		auto task = workers.create_task([=]() {
-			if (!save_texture_to_file(target_path, *result->image))
+			if (!save_gli_texture_to_file(target_path, *result->image))
 				LOGE("Failed to save uncompressed file!\n");
 		});
 		workers.add_dependency(task, mipgen_task);

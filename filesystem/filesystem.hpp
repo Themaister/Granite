@@ -228,4 +228,5 @@ private:
 	};
 	std::unordered_map<std::string, std::unique_ptr<ScratchFile>> scratch_files;
 };
+
 }

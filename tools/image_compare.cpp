@@ -173,8 +173,8 @@ int main(int argc, char *argv[])
 		for (unsigned i = 0; i < a_list.size(); i++)
 		{
 			task->enqueue_task([&a_list, &b_list, &psnrs, &ignore, i]() {
-				auto a = load_texture_from_file(a_list[i].path);
-				auto b = load_texture_from_file(b_list[i].path);
+				auto a = load_gli_texture_from_file(a_list[i].path);
+				auto b = load_gli_texture_from_file(b_list[i].path);
 				if (a.empty() || b.empty())
 				{
 					psnrs[i] = 0.0;
@@ -208,8 +208,8 @@ int main(int argc, char *argv[])
 	}
 	else
 	{
-		auto a = load_texture_from_file(args.inputs[0]);
-		auto b = load_texture_from_file(args.inputs[1]);
+		auto a = load_gli_texture_from_file(args.inputs[0]);
+		auto b = load_gli_texture_from_file(args.inputs[1]);
 
 		if (a.empty())
 		{

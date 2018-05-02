@@ -162,7 +162,7 @@ static gli::texture load_hdr(const void *data, size_t size)
 	return tex;
 }
 
-gli::texture load_texture_from_memory(const void *data, size_t size, ColorSpace color)
+gli::texture load_gli_texture_from_memory(const void *data, size_t size, ColorSpace color)
 {
 	static const uint8_t png_magic[] = {
 		0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a,
@@ -186,7 +186,7 @@ gli::texture load_texture_from_memory(const void *data, size_t size, ColorSpace 
 		return gli::load(static_cast<const char *>(data), size);
 }
 
-gli::texture load_texture_from_file(const std::string &path, ColorSpace color)
+gli::texture load_gli_texture_from_file(const std::string &path, ColorSpace color)
 {
 	auto file = Filesystem::get().open(path, FileMode::ReadOnly);
 	if (!file)
@@ -194,12 +194,12 @@ gli::texture load_texture_from_file(const std::string &path, ColorSpace color)
 	void *mapped = file->map();
 	if (!mapped)
 		return {};
-	auto ret = load_texture_from_memory(mapped, file->get_size(), color);
+	auto ret = load_gli_texture_from_memory(mapped, file->get_size(), color);
 	file->unmap();
 	return ret;
 }
 
-bool save_texture_to_file(const std::string &path, const gli::texture &tex)
+bool save_gli_texture_to_file(const std::string &path, const gli::texture &tex)
 {
 	std::vector<char> memory;
 	if (!gli::save_ktx(tex, memory))

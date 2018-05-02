@@ -87,7 +87,7 @@ int main(int argc, char *argv[])
 		break;
 	}
 
-	auto input = make_shared<gli::texture>(Granite::load_texture_from_file(input_path, color));
+	auto input = make_shared<gli::texture>(Granite::load_gli_texture_from_file(input_path, color));
 
 	if (input->empty())
 	{
@@ -103,7 +103,7 @@ int main(int argc, char *argv[])
 
 	if (args.format == gli::FORMAT_RGBA8_UNORM_PACK8 || args.format == gli::FORMAT_RGBA8_SRGB_PACK8)
 	{
-		if (!save_texture_to_file(args.output, *input))
+		if (!save_gli_texture_to_file(args.output, *input))
 		{
 			LOGE("Failed to save texture: %s\n", args.output.c_str());
 			return 1;

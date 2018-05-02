@@ -25,6 +25,7 @@
 #include "temporal.hpp"
 #include "muglm/matrix_helper.hpp"
 #include "muglm/muglm_impl.hpp"
+#include <string.h>
 
 using namespace std;
 

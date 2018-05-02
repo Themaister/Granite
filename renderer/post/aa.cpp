@@ -24,6 +24,7 @@
 #include "temporal.hpp"
 #include "fxaa.hpp"
 #include "smaa.hpp"
+#include <string.h>
 
 namespace Granite
 {

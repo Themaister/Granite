@@ -28,6 +28,7 @@
 #include "thread_group.hpp"
 #include "quirks.hpp"
 #include "muglm/matrix_helper.hpp"
+#include <string.h>
 
 using namespace Vulkan;
 using namespace std;

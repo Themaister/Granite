@@ -25,6 +25,7 @@
 #include "render_context.hpp"
 #include "sprite.hpp"
 #include "lights/clusterer.hpp"
+#include <string.h>
 
 using namespace Vulkan;
 using namespace Util;

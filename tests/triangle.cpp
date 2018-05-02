@@ -22,6 +22,7 @@
 
 #include "application.hpp"
 #include "os.hpp"
+#include <string.h>
 
 using namespace Granite;
 using namespace Vulkan;

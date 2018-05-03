@@ -23,6 +23,7 @@
 #include "application.hpp"
 #include "application_events.hpp"
 #include "vulkan.hpp"
+#include <string.h>
 
 using namespace std;
 using namespace Vulkan;

@@ -122,6 +122,10 @@ void Device::add_wait_semaphore_nolock(CommandBuffer::Type type, Semaphore semap
 	semaphore->signal_pending_wait();
 	data.wait_semaphores.push_back(semaphore);
 	data.wait_stages.push_back(stages);
+	data.need_fence = true;
+
+	// Sanity check.
+	VK_ASSERT(data.wait_semaphores.size() < 1024);
 }
 
 void *Device::map_host_buffer(Buffer &buffer, MemoryAccessFlags access)
@@ -1232,6 +1236,11 @@ Device::QueueData &Device::get_queue_data(CommandBuffer::Type type)
 	default:
 	case CommandBuffer::Type::Graphics:
 		return graphics;
+	case CommandBuffer::Type::SecondaryGraphics:
+		if (graphics_queue_family_index == compute_queue_family_index)
+			return compute;
+		else
+			return graphics;
 	case CommandBuffer::Type::Compute:
 		return compute;
 	case CommandBuffer::Type::Transfer:
@@ -1246,6 +1255,11 @@ CommandPool &Device::get_command_pool(CommandBuffer::Type type, unsigned thread)
 	default:
 	case CommandBuffer::Type::Graphics:
 		return frame().graphics_cmd_pool[thread];
+	case CommandBuffer::Type::SecondaryGraphics:
+		if (graphics_queue_family_index == compute_queue_family_index)
+			return frame().compute_cmd_pool[thread];
+		else
+			return frame().graphics_cmd_pool[thread];
 	case CommandBuffer::Type::Compute:
 		return frame().compute_cmd_pool[thread];
 	case CommandBuffer::Type::Transfer:
@@ -1260,6 +1274,11 @@ vector<CommandBufferHandle> &Device::get_queue_submissions(CommandBuffer::Type t
 	default:
 	case CommandBuffer::Type::Graphics:
 		return frame().graphics_submissions;
+	case CommandBuffer::Type::SecondaryGraphics:
+		if (graphics_queue_family_index == compute_queue_family_index)
+			return frame().compute_submissions;
+		else
+			return frame().graphics_submissions;
 	case CommandBuffer::Type::Compute:
 		return frame().compute_submissions;
 	case CommandBuffer::Type::Transfer:

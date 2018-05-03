@@ -199,6 +199,7 @@ public:
 	enum class Type
 	{
 		Graphics,
+		SecondaryGraphics,
 		Compute,
 		Transfer,
 		Count

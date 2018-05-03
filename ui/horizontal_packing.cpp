@@ -73,7 +73,7 @@ void HorizontalPacking::reconfigure_to_canvas(vec2, vec2 size)
 			if (!padding_targets)
 				break;
 
-			float extra_width_per_object = max(floor(slack_width / float(padding_targets)), 1.0f);
+			float extra_width_per_object = max(muglm::floor(slack_width / float(padding_targets)), 1.0f);
 
 			// If we have some slack room, use at most extra_height_per_object to pad from minimum to target.
 			for (auto &child : children)
@@ -100,7 +100,7 @@ void HorizontalPacking::reconfigure_to_canvas(vec2, vec2 size)
 
 			if (padding_targets)
 			{
-				float extra_width_per_object = max(floor(slack_width / padding_targets), 1.0f);
+				float extra_width_per_object = max(muglm::floor(slack_width / padding_targets), 1.0f);
 
 				// If we have some slack room, use at most extra_height_per_object to pad from minimum to target.
 				for (auto &child : children)

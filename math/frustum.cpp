@@ -91,7 +91,7 @@ vec4 Frustum::get_bounding_sphere(const mat4 &inv_projection, const mat4 &inv_vi
 	// N + x^2 == F + C^2 - 2Cx + x^2.
 	// x = (F - N + C^2) / 2C
 	float center_distance = (F - N + C * C) / (2.0f * C);
-	float radius = sqrt(center_distance * center_distance + N);
+	float radius = muglm::sqrt(center_distance * center_distance + N);
 	vec3 view_space_center = center_near + center_distance * normalize(center_far - center_near);
 	vec3 center = (inv_view * vec4(view_space_center, 1.0f)).xyz();
 	return vec4(center, radius);

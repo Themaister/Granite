@@ -190,7 +190,7 @@ bool MemoryMappedTexture::map_read(unique_ptr<Granite::File> new_file, void *map
 	if (header->payload_size != layout.get_required_size())
 		return false;
 
-	layout.set_buffer(mapped + sizeof(MemoryMappedHeader), header->payload_size);
+	layout.set_buffer(static_cast<uint8_t *>(mapped) + sizeof(MemoryMappedHeader), header->payload_size);
 	return true;
 }
 

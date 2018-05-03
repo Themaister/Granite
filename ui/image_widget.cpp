@@ -68,16 +68,16 @@ void Image::reconfigure_to_canvas(vec2, vec2 size)
 		{
 			if (canvas_aspect > target_aspect)
 			{
-				float width = round(size.y * target_aspect);
+				float width = muglm::round(size.y * target_aspect);
 				float bias = 0.5f * (size.x - width);
-				sprite_offset.x = round(sprite_offset.x + bias);
+				sprite_offset.x = muglm::round(sprite_offset.x + bias);
 				sprite_size.x = width;
 			}
 			else
 			{
-				float height = round(size.x / target_aspect);
+				float height = muglm::round(size.x / target_aspect);
 				float bias = 0.5f * (size.y - height);
-				sprite_offset.y = round(sprite_offset.y + bias);
+				sprite_offset.y = muglm::round(sprite_offset.y + bias);
 				sprite_size.y = height;
 			}
 		}

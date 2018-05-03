@@ -186,7 +186,7 @@ static void handle_sensors()
 					LOGE("Untested orientation %u!\n", global_state.orientation);
 				}
 
-				static const quat landscape(glm::one_over_root_two<float>(), glm::one_over_root_two<float>(), 0.0f, 0.0f);
+				static const quat landscape(muglm::one_over_root_two<float>(), muglm::one_over_root_two<float>(), 0.0f, 0.0f);
 				q = conjugate(normalize(q * landscape));
 				state.get_input_tracker().orientation_event(q);
 			}

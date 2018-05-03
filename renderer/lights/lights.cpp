@@ -84,7 +84,7 @@ void PositionalLight::recompute_range()
 	// Check when attenuation drops below a constant.
 	const float target_atten = 0.1f;
 	float max_color = max(max(color.x, color.y), color.z);
-	float d = sqrt(max_color / target_atten);
+	float d = muglm::sqrt(max_color / target_atten);
 	set_range(d);
 }
 
@@ -101,7 +101,7 @@ void SpotLight::set_range(float range)
 
 	float max_range = min(falloff_range, cutoff_range);
 	float min_z = -max_range;
-	float xy = sqrt(1.0f - outer_cone * outer_cone) / outer_cone;
+	float xy = muglm::sqrt(1.0f - outer_cone * outer_cone) / outer_cone;
 	xy_range = xy;
 	xy *= max_range;
 	aabb = AABB(vec3(-xy, -xy, min_z), vec3(xy, xy, 0.0f));

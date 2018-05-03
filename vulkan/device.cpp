@@ -915,6 +915,14 @@ void Device::submit_staging(CommandBufferHandle cmd, VkBufferUsageFlags usage, b
 
 void Device::submit_queue(CommandBuffer::Type type, VkFence *fence, Semaphore *semaphore, Semaphore *semaphore_alt)
 {
+	if (type == CommandBuffer::Type::SecondaryGraphics)
+	{
+		if (graphics_queue_family_index == compute_queue_family_index)
+			type = CommandBuffer::Type::Compute;
+		else
+			type = CommandBuffer::Type::Graphics;
+	}
+
 	// Always check if we need to flush pending transfers.
 	if (type != CommandBuffer::Type::Transfer)
 		flush_frame(CommandBuffer::Type::Transfer);

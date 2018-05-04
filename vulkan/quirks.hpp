@@ -33,6 +33,7 @@ struct ImplementationQuirks
 	bool clustering_list_iteration = false;
 	bool clustering_force_cpu = false;
 	bool queue_wait_on_submission = false;
+	bool staging_need_device_local = false;
 
 	static ImplementationQuirks &get()
 	{

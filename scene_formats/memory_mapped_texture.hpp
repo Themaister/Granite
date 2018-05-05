@@ -25,6 +25,8 @@
 #include "texture_format.hpp"
 #include "filesystem.hpp"
 
+namespace Granite
+{
 namespace SceneFormats
 {
 enum MemoryMappedTextureFlagBits
@@ -45,9 +47,11 @@ public:
 	static bool is_header(const void *mapped, size_t size);
 
 	bool map_write(const std::string &path);
+	bool map_write(std::unique_ptr<Granite::File> file, void *mapped);
 	bool map_read(const std::string &path);
 	bool map_read(std::unique_ptr<Granite::File> file, void *mapped);
 	bool map_copy(const void *mapped, size_t size);
+	bool map_write_scratch();
 
 	const Vulkan::TextureFormatLayout &get_layout() const
 	{
@@ -58,10 +62,13 @@ public:
 
 	MemoryMappedTextureFlags get_flags() const;
 
+	size_t get_required_size() const;
+
 private:
 	Vulkan::TextureFormatLayout layout;
 	std::unique_ptr<Granite::File> file;
 	bool cube = false;
 	bool mipgen_on_load = false;
 };
+}
 }

@@ -28,6 +28,14 @@
 #include "async_object_sink.hpp"
 #include <mutex>
 
+namespace Granite
+{
+namespace SceneFormats
+{
+class MemoryMappedTexture;
+}
+}
+
 namespace Vulkan
 {
 class Texture : public Util::VolatileSource<Texture>
@@ -56,6 +64,7 @@ private:
 	VkComponentMapping swizzle;
 	void update_gli(const void *data, size_t size);
 	void update_gtx(std::unique_ptr<Granite::File> file, void *mapped);
+	void update_gtx(const Granite::SceneFormats::MemoryMappedTexture &texture);
 
 	void load();
 	void unload();

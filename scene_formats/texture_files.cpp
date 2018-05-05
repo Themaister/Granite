@@ -156,7 +156,7 @@ static gli::texture load_hdr(const void *data, size_t size)
 	for (int i = 0; i < width * height; i++)
 	{
 		converted[i] = muglm::uvec2(muglm::packHalf2x16(muglm::vec2(buffer[3 * i + 0], buffer[3 * i + 1])),
-		                          muglm::packHalf2x16(muglm::vec2(buffer[3 * i + 2], 1.0f)));
+		                            muglm::packHalf2x16(muglm::vec2(buffer[3 * i + 2], 1.0f)));
 	}
 	stbi_image_free(buffer);
 	return tex;
@@ -197,6 +197,83 @@ gli::texture load_gli_texture_from_file(const std::string &path, ColorSpace colo
 	auto ret = load_gli_texture_from_memory(mapped, file->get_size(), color);
 	file->unmap();
 	return ret;
+}
+
+SceneFormats::MemoryMappedTexture load_texture_from_memory(const void *data, size_t size, ColorSpace color)
+{
+	auto tex = load_gli_texture_from_memory(data, size, color);
+	if (tex.empty())
+		return {};
+
+	SceneFormats::MemoryMappedTexture memory_tex;
+	switch (tex.target())
+	{
+	case gli::TARGET_1D:
+	case gli::TARGET_1D_ARRAY:
+		memory_tex.set_1d(gli_format_to_vulkan(tex.format()), tex.extent().x, tex.layers(), tex.levels());
+		break;
+	case gli::TARGET_2D:
+	case gli::TARGET_2D_ARRAY:
+		memory_tex.set_2d(gli_format_to_vulkan(tex.format()), tex.extent().x, tex.extent().y, tex.layers(), tex.levels());
+		break;
+	case gli::TARGET_CUBE_ARRAY:
+	case gli::TARGET_CUBE:
+		memory_tex.set_cube(gli_format_to_vulkan(tex.format()), tex.extent().x, tex.layers(), tex.levels());
+		break;
+	case gli::TARGET_3D:
+		memory_tex.set_3d(gli_format_to_vulkan(tex.format()), tex.extent().x, tex.extent().y, tex.extent().z, tex.levels());
+		break;
+
+	default:
+		return {};
+	}
+
+	if (!memory_tex.map_write_scratch())
+		return {};
+
+	auto &layout = memory_tex.get_layout();
+
+	for (unsigned level = 0; level < layout.get_levels(); level++)
+	{
+		for (unsigned layer = 0; layer < layout.get_layers(); layer++)
+		{
+			void *dst = layout.data(layer, level);
+			size_t layer_size = layout.get_layer_size(level);
+
+			unsigned src_face, src_layer;
+			if (tex.target() == gli::TARGET_CUBE || tex.target() == gli::TARGET_CUBE_ARRAY)
+			{
+				src_face = layer % 6;
+				src_layer = layer / 6;
+			}
+			else
+			{
+				src_face = 0;
+				src_layer = layer;
+			}
+
+			void *src = tex.data(src_layer, src_face, level);
+			memcpy(dst, src, layer_size);
+		}
+	}
+
+	if (layout.get_levels() == 1)
+		memory_tex.set_generate_mipmaps_on_load();
+
+	return memory_tex;
+}
+
+SceneFormats::MemoryMappedTexture load_texture_from_file(const std::string &path, ColorSpace color)
+{
+	auto file = Filesystem::get().open(path, FileMode::ReadOnly);
+	if (!file)
+		return {};
+
+	void *mapped = file->map();
+	if (!mapped)
+		return {};
+
+	return load_texture_from_memory(mapped, file->get_size(), color);
 }
 
 bool save_gli_texture_to_file(const std::string &path, const gli::texture &tex)

@@ -28,6 +28,8 @@
 #include "memory_mapped_texture.hpp"
 
 using namespace std;
+using namespace Granite;
+using namespace Granite::SceneFormats;
 
 namespace Vulkan
 {
@@ -60,7 +62,7 @@ void Texture::update(std::unique_ptr<Granite::File> file)
 		void *mapped = file->map();
 		if (size && mapped)
 		{
-			if (SceneFormats::MemoryMappedTexture::is_header(mapped, size))
+			if (MemoryMappedTexture::is_header(mapped, size))
 				update_gtx(move(file), mapped);
 			else
 				update_gli(mapped, size);
@@ -77,15 +79,8 @@ void Texture::update(std::unique_ptr<Granite::File> file)
 	task->flush();
 }
 
-void Texture::update_gtx(unique_ptr<Granite::File> file, void *mapped)
+void Texture::update_gtx(const MemoryMappedTexture &mapped_file)
 {
-	SceneFormats::MemoryMappedTexture mapped_file;
-	if (!mapped_file.map_read(move(file), mapped))
-	{
-		LOGE("Failed to read texture.\n");
-		return;
-	}
-
 	auto &layout = mapped_file.get_layout();
 
 	ImageCreateInfo info = {};
@@ -127,121 +122,28 @@ void Texture::update_gtx(unique_ptr<Granite::File> file, void *mapped)
 	replace_image(image);
 }
 
+void Texture::update_gtx(unique_ptr<File> file, void *mapped)
+{
+	SceneFormats::MemoryMappedTexture mapped_file;
+	if (!mapped_file.map_read(move(file), mapped))
+	{
+		LOGE("Failed to read texture.\n");
+		return;
+	}
+
+	update_gtx(mapped_file);
+}
+
 void Texture::update_gli(const void *data, size_t size)
 {
-	gli::texture tex = Granite::load_gli_texture_from_memory(data, size,
-	                                                         (format == VK_FORMAT_R8G8B8A8_SRGB ||
-	                                                          format == VK_FORMAT_UNDEFINED ||
-	                                                          format == VK_FORMAT_B8G8R8A8_SRGB ||
-	                                                          format == VK_FORMAT_A8B8G8R8_SRGB_PACK32) ?
-	                                                         Granite::ColorSpace::sRGB : Granite::ColorSpace::Linear);
-	if (tex.empty())
-	{
-		LOGE("Texture is empty.");
-		return;
-	}
+	auto tex = load_texture_from_memory(data, size,
+	                                    (format == VK_FORMAT_R8G8B8A8_SRGB ||
+	                                     format == VK_FORMAT_UNDEFINED ||
+	                                     format == VK_FORMAT_B8G8R8A8_SRGB ||
+	                                     format == VK_FORMAT_A8B8G8R8_SRGB_PACK32) ?
+	                                    ColorSpace::sRGB : ColorSpace::Linear);
 
-	ImageCreateInfo info = {};
-	info.domain = ImageDomain::Physical;
-	info.layers = tex.layers();
-	info.levels = tex.levels();
-	info.width = tex.extent(0).x;
-	info.height = tex.extent(0).y;
-	info.depth = tex.extent(0).z;
-	info.samples = VK_SAMPLE_COUNT_1_BIT;
-	info.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
-	info.initial_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	info.format = Granite::gli_format_to_vulkan(tex.format());
-	info.swizzle = swizzle;
-
-	if (!device->image_format_is_supported(info.format, VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT))
-	{
-		LOGE("Format (%u) is not supported!\n", unsigned(info.format));
-		return;
-	}
-
-	unsigned faces = 1;
-
-	switch (tex.target())
-	{
-	case gli::target::TARGET_1D_ARRAY:
-		info.misc |= IMAGE_MISC_FORCE_ARRAY_BIT;
-		info.type = VK_IMAGE_TYPE_1D;
-		info.height = 1;
-		info.depth = 1;
-		break;
-
-	case gli::target::TARGET_1D:
-		info.type = VK_IMAGE_TYPE_1D;
-		info.height = 1;
-		info.depth = 1;
-		break;
-
-	case gli::target::TARGET_2D_ARRAY:
-		info.misc |= IMAGE_MISC_FORCE_ARRAY_BIT;
-		info.depth = 1;
-		info.type = VK_IMAGE_TYPE_2D;
-		break;
-
-	case gli::target::TARGET_2D:
-		info.depth = 1;
-		info.type = VK_IMAGE_TYPE_2D;
-		break;
-
-	case gli::target::TARGET_CUBE_ARRAY:
-		info.misc |= IMAGE_MISC_FORCE_ARRAY_BIT;
-		info.flags |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
-		info.depth = 1;
-		faces = tex.faces();
-		info.type = VK_IMAGE_TYPE_2D;
-		break;
-
-	case gli::target::TARGET_CUBE:
-		info.flags |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
-		info.depth = 1;
-		faces = tex.faces();
-		info.type = VK_IMAGE_TYPE_2D;
-		break;
-
-	case gli::target::TARGET_3D:
-		info.type = VK_IMAGE_TYPE_3D;
-		break;
-
-	default:
-		LOGE("Unknown target type.\n");
-		return;
-	}
-
-	vector<ImageInitialData> initial;
-	initial.reserve(info.levels * faces * info.layers);
-
-	for (unsigned level = 0; level < info.levels; level++)
-	{
-		for (unsigned layer = 0; layer < info.layers; layer++)
-		{
-			for (unsigned face = 0; face < faces; face++)
-			{
-				auto *mip = tex.data(layer, face, level);
-				initial.push_back({mip, 0, 0});
-			}
-		}
-	}
-
-	info.layers *= faces;
-
-	// Auto-generate mips for single-mip level images.
-	if (info.levels == 1 &&
-	    device->image_format_is_supported(info.format, VK_FORMAT_FEATURE_BLIT_SRC_BIT) &&
-	    device->image_format_is_supported(info.format, VK_FORMAT_FEATURE_BLIT_DST_BIT))
-	{
-		info.levels = 0;
-		info.misc |= IMAGE_MISC_GENERATE_MIPS_BIT;
-	}
-
-	auto image = device->create_image(info, initial.data());
-	if (image)
-		device->set_name(*image, path.c_str());
-	replace_image(image);
+	update_gtx(tex);
 }
 
 void Texture::load()

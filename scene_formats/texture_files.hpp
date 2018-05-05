@@ -24,6 +24,7 @@
 
 #include "gli/texture.hpp"
 #include "format.hpp"
+#include "memory_mapped_texture.hpp"
 
 namespace Granite
 {
@@ -39,4 +40,7 @@ bool save_gli_texture_to_file(const std::string &path, const gli::texture &textu
 VkFormat gli_format_to_vulkan(gli::format format);
 
 gli::texture generate_offline_mipmaps(const gli::texture &tex);
+
+SceneFormats::MemoryMappedTexture load_texture_from_file(const std::string &path, ColorSpace color = ColorSpace::sRGB);
+SceneFormats::MemoryMappedTexture load_texture_from_memory(const void *data, size_t size, ColorSpace color = ColorSpace::sRGB);
 }

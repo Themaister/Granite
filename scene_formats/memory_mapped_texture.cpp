@@ -25,6 +25,8 @@
 
 using namespace std;
 
+namespace Granite
+{
 namespace SceneFormats
 {
 
@@ -86,20 +88,12 @@ void MemoryMappedTexture::set_cube(VkFormat format, uint32_t size, uint32_t cube
 	cube = true;
 }
 
-bool MemoryMappedTexture::map_write(const std::string &path)
+bool MemoryMappedTexture::map_write(unique_ptr<Granite::File> new_file, void *mapped_)
 {
-	if (layout.get_required_size() == 0)
-		return false;
-
-	file = Granite::Filesystem::get().open(path, Granite::FileMode::WriteOnly);
-	if (!file)
-		return false;
+	file = move(new_file);
+	auto *mapped = static_cast<uint8_t *>(mapped_);
 
 	MemoryMappedHeader header = {};
-	uint8_t *mapped = static_cast<uint8_t *>(file->map_write(sizeof(header) + layout.get_required_size()));
-	if (!mapped)
-		return false;
-
 	memcpy(header.magic, MAGIC, sizeof(MAGIC));
 	header.width = layout.get_width();
 	header.height = layout.get_height();
@@ -116,12 +110,29 @@ bool MemoryMappedTexture::map_write(const std::string &path)
 	return true;
 }
 
+bool MemoryMappedTexture::map_write(const std::string &path)
+{
+	if (layout.get_required_size() == 0)
+		return false;
+
+	auto new_file = Granite::Filesystem::get().open(path, Granite::FileMode::WriteOnly);
+	if (!new_file)
+		return false;
+
+	void *mapped = file->map_write(get_required_size());
+	if (!mapped)
+		return false;
+
+	return map_write(move(new_file), mapped);
+}
+
 struct ScratchFile : Granite::File
 {
 	ScratchFile(const void *mapped, size_t size)
 	{
 		data.resize(size);
-		memcpy(data.data(), mapped, size);
+		if (mapped)
+			memcpy(data.data(), mapped, size);
 	}
 
 	void *map() override
@@ -150,6 +161,22 @@ struct ScratchFile : Granite::File
 
 	std::vector<uint8_t> data;
 };
+
+bool MemoryMappedTexture::map_write_scratch()
+{
+	if (layout.get_required_size() == 0)
+		return false;
+
+	auto new_file = make_unique<ScratchFile>(nullptr, get_required_size());
+	if (new_file->get_size() < sizeof(MemoryMappedHeader))
+		return false;
+	return map_write(move(new_file), new_file->map());
+}
+
+size_t MemoryMappedTexture::get_required_size() const
+{
+	return layout.get_required_size() + sizeof(MemoryMappedHeader);
+}
 
 bool MemoryMappedTexture::map_copy(const void *mapped, size_t size)
 {
@@ -215,5 +242,6 @@ bool MemoryMappedTexture::is_header(const void *mapped, size_t size)
 	if (size < sizeof(MemoryMappedHeader))
 		return false;
 	return memcmp(mapped, MAGIC, sizeof(MAGIC)) == 0;
+}
 }
 }

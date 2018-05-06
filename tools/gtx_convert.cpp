@@ -34,7 +34,7 @@ using namespace Util;
 
 static void print_help()
 {
-	LOGI("Usage: [--mipgen] [--quality [1-5]] [--format <format>] --output <out.ktx> <in.ktx>\n");
+	LOGI("Usage: [--mipgen] [--quality [1-5]] [--format <format>] --output <out.gtx> <in.gtx>\n");
 }
 
 int main(int argc, char *argv[])

@@ -32,7 +32,7 @@ using namespace std;
 
 static void print_help()
 {
-	LOGE("Usage: [--reflection <path.ktx>] [--irradiance <path.ktx>] [--cube <path.ktx>] [--cube-scale <scale>] <equirect HDR>\n");
+	LOGE("Usage: [--reflection <path.gtx>] [--irradiance <path.gtx>] [--cube <path.gtx>] [--cube-scale <scale>] <equirect HDR>\n");
 }
 
 int main(int argc, char *argv[])

@@ -283,7 +283,7 @@ void Renderer::set_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderC
 	resolution->inv_resolution = vec2(1.0f / cmd.get_viewport().width, 1.0f / cmd.get_viewport().height);
 
 	cmd.set_texture(1, 2,
-	                cmd.get_device().get_texture_manager().request_texture("builtin://textures/ibl_brdf_lut.ktx")->get_image()->get_view(),
+	                cmd.get_device().get_texture_manager().request_texture("builtin://textures/ibl_brdf_lut.gtx")->get_image()->get_view(),
 	                Vulkan::StockSampler::LinearClamp);
 
 	if (lighting->environment_radiance != nullptr)
@@ -531,7 +531,7 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 		cmd.set_texture(1, 1, *light.environment_irradiance, Vulkan::StockSampler::LinearClamp);
 
 	cmd.set_texture(1, 2,
-	                cmd.get_device().get_texture_manager().request_texture("builtin://textures/ibl_brdf_lut.ktx")->get_image()->get_view(),
+	                cmd.get_device().get_texture_manager().request_texture("builtin://textures/ibl_brdf_lut.gtx")->get_image()->get_view(),
 	                Vulkan::StockSampler::LinearClamp);
 
 	if (light.shadow_far)

@@ -213,7 +213,7 @@ def main():
         asset_dir = os.path.dirname(sweep_path)
         for dir, subdir, file_list in os.walk(asset_dir):
             for f in file_list:
-                if os.path.splitext(f)[1] == '.ktx':
+                if os.path.splitext(f)[1] == '.gtx':
                     print('Pushing texture: ', os.path.join(dir, f), 'to', os.path.basename(f))
                     subprocess.check_call(['adb', 'push', os.path.join(dir, f), '/data/local/tmp/granite/' + os.path.basename(f)])
 

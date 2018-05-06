@@ -111,7 +111,7 @@ int main(int argc, char *argv[])
 {
 	if (argc != 2)
 	{
-		LOGE("Usage: %s <output.ktx>\n", argv[0]);
+		LOGE("Usage: %s <output.gtx>\n", argv[0]);
 		return 1;
 	}
 

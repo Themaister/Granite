@@ -11,7 +11,7 @@ int main(int argc, char *argv[])
 {
 	if (argc != 3)
 	{
-		LOGE("Usage: %s <AreaTex.ktx> <SearchTex.ktx>\n", argv[0]);
+		LOGE("Usage: %s <AreaTex.gtx> <SearchTex.gtx>\n", argv[0]);
 		return 1;
 	}
 
@@ -25,7 +25,7 @@ int main(int argc, char *argv[])
 
 	MemoryMappedTexture search;
 	search.set_2d(VK_FORMAT_R8_UNORM, SEARCHTEX_WIDTH, SEARCHTEX_HEIGHT);
-	if (!search.map_write(argv[1]))
+	if (!search.map_write(argv[2]))
 	{
 		LOGE("Failed to save search tex.\n");
 		return 1;

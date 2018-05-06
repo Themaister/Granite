@@ -145,10 +145,10 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 		auto &input_image = graph.get_physical_texture_resource(smaa_weight.get_texture_inputs()[0]->get_physical_index());
 		cmd.set_texture(0, 0, input_image, Vulkan::StockSampler::LinearClamp);
 		cmd.set_texture(0, 1,
-		                cmd.get_device().get_texture_manager().request_texture("builtin://textures/smaa/area.ktx")->get_image()->get_view(),
+		                cmd.get_device().get_texture_manager().request_texture("builtin://textures/smaa/area.gtx")->get_image()->get_view(),
 		                Vulkan::StockSampler::LinearClamp);
 		cmd.set_texture(0, 2,
-		                cmd.get_device().get_texture_manager().request_texture("builtin://textures/smaa/search.ktx")->get_image()->get_view(),
+		                cmd.get_device().get_texture_manager().request_texture("builtin://textures/smaa/search.gtx")->get_image()->get_view(),
 		                Vulkan::StockSampler::LinearClamp);
 		vec4 rt_metrics(1.0f / input_image.get_image().get_create_info().width,
 		                1.0f / input_image.get_image().get_create_info().height,

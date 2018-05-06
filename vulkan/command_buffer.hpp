@@ -260,6 +260,7 @@ public:
 	                          unsigned slice_height, const VkImageSubresourceLayers &subresrouce);
 	void copy_buffer_to_image(const Image &image, const Buffer &buffer, unsigned num_blits, const VkBufferImageCopy *blits);
 
+	void copy_image_to_buffer(const Buffer &buffer, const Image &image, unsigned num_blits, const VkBufferImageCopy *blits);
 	void copy_image_to_buffer(const Buffer &dst, const Image &src, VkDeviceSize buffer_offset, const VkOffset3D &offset,
 	                          const VkExtent3D &extent, unsigned row_length, unsigned slice_height,
 	                          const VkImageSubresourceLayers &subresrouce);

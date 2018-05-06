@@ -29,31 +29,36 @@
 #include <vector>
 #include <algorithm>
 #include "stb_image_write.h"
+#include "muglm/muglm_impl.hpp"
+#include <string.h>
 
 using namespace Util;
 using namespace Granite;
 using namespace std;
 
-static void save_diff_image(const string &path, const gli::texture &a, const gli::texture &b)
+static void save_diff_image(const string &path,
+                            const SceneFormats::MemoryMappedTexture &a,
+                            const SceneFormats::MemoryMappedTexture &b)
 {
-	if (a.format() != b.format())
+	if (a.get_layout().get_format() != b.get_layout().get_format())
 	{
 		LOGE("Format mismatch.\n");
 		return;
 	}
 
-	if (a.format() != gli::FORMAT_RGBA8_UNORM_PACK8 && a.format() != gli::FORMAT_RGBA8_SRGB_PACK8)
+	if (a.get_layout().get_format() != VK_FORMAT_R8G8B8A8_UNORM &&
+	    a.get_layout().get_format() != VK_FORMAT_R8G8B8A8_SRGB)
 	{
 		LOGE("Unsupported format.\n");
 		return;
 	}
 
-	int width = a.extent().x;
-	int height = a.extent().y;
+	int width = a.get_layout().get_width();
+	int height = a.get_layout().get_height();
 	vector<uint8_t> buffer(width * height * 4);
 
-	auto *src_a = static_cast<const uint8_t *>(a.data());
-	auto *src_b = static_cast<const uint8_t *>(b.data());
+	auto *src_a = static_cast<const uint8_t *>(a.get_layout().data());
+	auto *src_b = static_cast<const uint8_t *>(b.get_layout().data());
 	auto *dst = buffer.data();
 
 	for (int pix = 0; pix < width * height; pix++, dst += 4, src_a += 4, src_b += 4)
@@ -71,31 +76,33 @@ static void save_diff_image(const string &path, const gli::texture &a, const gli
 		LOGE("Failed to save diff-png to %s.\n", path.c_str());
 }
 
-static double compare_images(const gli::texture &a, const gli::texture &b)
+static double compare_images(const SceneFormats::MemoryMappedTexture &a, const SceneFormats::MemoryMappedTexture &b)
 {
-	if (a.format() != b.format())
+	if (a.get_layout().get_format() != b.get_layout().get_format())
 	{
 		LOGE("Format mismatch.\n");
 		return 0.0;
 	}
 
-	if (a.format() != gli::FORMAT_RGBA8_UNORM_PACK8 && a.format() != gli::FORMAT_RGBA8_SRGB_PACK8)
+	if (a.get_layout().get_format() != VK_FORMAT_R8G8B8A8_SRGB &&
+	    a.get_layout().get_format() != VK_FORMAT_R8G8B8A8_UNORM)
 	{
 		LOGE("Unsupported format.\n");
 		return 0.0;
 	}
 
-	if (a.extent().x != b.extent().x || a.extent().y != b.extent().y)
+	if (a.get_layout().get_width() != b.get_layout().get_width() ||
+	    a.get_layout().get_height() != b.get_layout().get_height())
 	{
 		LOGE("Dimension mismatch.\n");
 		return 0.0;
 	}
 
-	int width = a.extent().x;
-	int height = a.extent().y;
+	int width = a.get_layout().get_width();
+	int height = a.get_layout().get_height();
 
-	auto *src_a = static_cast<const uint8_t *>(a.data());
-	auto *src_b = static_cast<const uint8_t *>(b.data());
+	auto *src_a = static_cast<const uint8_t *>(a.get_layout().data());
+	auto *src_b = static_cast<const uint8_t *>(b.get_layout().data());
 
 	double peak_energy = 255.0 * 255.0 * width * height * 3.0;
 	double error_energy = 0.0;
@@ -109,7 +116,7 @@ static double compare_images(const gli::texture &a, const gli::texture &b)
 		error_energy += diff_b * diff_b;
 	}
 
-	return 10.0 * log10(peak_energy / error_energy);
+	return 10.0 * muglm::log10(peak_energy / error_energy);
 }
 
 int main(int argc, char *argv[])
@@ -173,8 +180,8 @@ int main(int argc, char *argv[])
 		for (unsigned i = 0; i < a_list.size(); i++)
 		{
 			task->enqueue_task([&a_list, &b_list, &psnrs, &ignore, i]() {
-				auto a = load_gli_texture_from_file(a_list[i].path);
-				auto b = load_gli_texture_from_file(b_list[i].path);
+				auto a = load_texture_from_file(a_list[i].path);
+				auto b = load_texture_from_file(b_list[i].path);
 				if (a.empty() || b.empty())
 				{
 					psnrs[i] = 0.0;
@@ -208,8 +215,8 @@ int main(int argc, char *argv[])
 	}
 	else
 	{
-		auto a = load_gli_texture_from_file(args.inputs[0]);
-		auto b = load_gli_texture_from_file(args.inputs[1]);
+		auto a = load_texture_from_file(args.inputs[0]);
+		auto b = load_texture_from_file(args.inputs[1]);
 
 		if (a.empty())
 		{

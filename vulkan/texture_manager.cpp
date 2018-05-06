@@ -65,7 +65,7 @@ void Texture::update(std::unique_ptr<Granite::File> file)
 			if (MemoryMappedTexture::is_header(mapped, size))
 				update_gtx(move(file), mapped);
 			else
-				update_gli(mapped, size);
+				update_other(mapped, size);
 			device->get_texture_manager().notify_updated_texture(path, *this);
 		}
 		else
@@ -134,7 +134,7 @@ void Texture::update_gtx(unique_ptr<File> file, void *mapped)
 	update_gtx(mapped_file);
 }
 
-void Texture::update_gli(const void *data, size_t size)
+void Texture::update_other(const void *data, size_t size)
 {
 	auto tex = load_texture_from_memory(data, size,
 	                                    (format == VK_FORMAT_R8G8B8A8_SRGB ||

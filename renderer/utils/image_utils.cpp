@@ -25,9 +25,10 @@
 #include "device.hpp"
 #include "render_parameters.hpp"
 #include "util.hpp"
-#include "gli/save.hpp"
 #include "muglm/matrix_helper.hpp"
 #include "muglm/muglm_impl.hpp"
+#include "memory_mapped_texture.hpp"
+#include <string.h>
 
 using namespace Vulkan;
 
@@ -238,153 +239,83 @@ ImageReadback save_image_to_cpu_buffer(Vulkan::Device &device, const Vulkan::Ima
 	readback.create_info = image.get_create_info();
 	assert(image.get_layout() == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL || image.get_layout() == VK_IMAGE_LAYOUT_GENERAL);
 
-	readback.levels.resize(readback.create_info.levels);
-
-	size_t offset = 0;
-
-	for (unsigned i = 0; i < readback.create_info.levels; i++)
+	switch (image.get_create_info().type)
 	{
-		readback.levels[i].width = max(readback.create_info.width >> i, 1u);
-		readback.levels[i].height = max(readback.create_info.height >> i, 1u);
-		readback.levels[i].depth = max(readback.create_info.depth >> i, 1u);
-		readback.levels[i].layer_offsets.resize(readback.create_info.layers);
-		size_t layer_size = format_get_layer_size(readback.create_info.format, readback.levels[i].width, readback.levels[i].height, readback.levels[i].depth);
+	case VK_IMAGE_TYPE_1D:
+		readback.layout.set_1d(image.get_format(), image.get_create_info().width, image.get_create_info().layers, image.get_create_info().levels);
+		break;
 
-		for (unsigned l = 0; l < readback.create_info.layers; l++)
-		{
-			readback.levels[i].layer_offsets[l] = offset;
-			offset += layer_size;
-			offset = (offset + 63) & ~63;
-		}
+	case VK_IMAGE_TYPE_2D:
+		readback.layout.set_2d(image.get_format(), image.get_create_info().width, image.get_create_info().height, image.get_create_info().layers, image.get_create_info().levels);
+		break;
+
+	case VK_IMAGE_TYPE_3D:
+		readback.layout.set_3d(image.get_format(), image.get_create_info().width, image.get_create_info().height, image.get_create_info().depth, image.get_create_info().levels);
+		break;
+
+	default:
+		return {};
 	}
 
-	BufferCreateInfo info = {};
-	info.size = offset;
-	info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-	info.domain = BufferDomain::CachedHost;
-	readback.buffer = device.create_buffer(info, nullptr);
+	std::vector<VkBufferImageCopy> blits;
+	readback.layout.build_buffer_image_copies(blits);
 
-	auto cmd = device.request_command_buffer();
+	BufferCreateInfo buffer_info;
+	buffer_info.size = readback.layout.get_required_size();
+	buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+	buffer_info.domain = BufferDomain::CachedHost;
+	readback.buffer = device.create_buffer(buffer_info, nullptr);
 
-	for (unsigned i = 0; i < readback.create_info.levels; i++)
-	{
-		for (unsigned l = 0; l < readback.create_info.layers; l++)
-		{
-			cmd->copy_image_to_buffer(*readback.buffer, image, readback.levels[i].layer_offsets[l],
-			                          {}, { readback.levels[i].width, readback.levels[i].height, readback.levels[i].depth },
-			                          0, 0, { format_to_aspect_mask(readback.create_info.format), i, l, 1 });
-		}
-	}
-
+	auto cmd = device.request_command_buffer(CommandBuffer::Type::Transfer);
+	cmd->copy_image_to_buffer(*readback.buffer, image, blits.size(), blits.data());
 	cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 	             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 	device.submit(cmd, &readback.fence);
 	return readback;
 }
 
-// Expand as needed.
-static gli::format vk_format_to_gli(VkFormat format)
+bool save_image_buffer_to_gtx(Vulkan::Device &device, ImageReadback &readback, const char *path)
 {
-	switch (format)
-	{
-	case VK_FORMAT_B10G11R11_UFLOAT_PACK32:
-		return gli::FORMAT_RG11B10_UFLOAT_PACK32;
-	case VK_FORMAT_R16G16B16A16_SFLOAT:
-		return gli::FORMAT_RGBA16_SFLOAT_PACK16;
-	case VK_FORMAT_R16G16B16_SFLOAT:
-		return gli::FORMAT_RGB16_SFLOAT_PACK16;
-	case VK_FORMAT_R16G16_SFLOAT:
-		return gli::FORMAT_RG16_SFLOAT_PACK16;
-	case VK_FORMAT_R16_SFLOAT:
-		return gli::FORMAT_R16_SFLOAT_PACK16;
-	case VK_FORMAT_R32G32B32A32_SFLOAT:
-		return gli::FORMAT_RGBA32_SFLOAT_PACK32;
-	case VK_FORMAT_R32G32B32_SFLOAT:
-		return gli::FORMAT_RGB32_SFLOAT_PACK32;
-	case VK_FORMAT_R32G32_SFLOAT:
-		return gli::FORMAT_RG32_SFLOAT_PACK32;
-	case VK_FORMAT_R32_SFLOAT:
-		return gli::FORMAT_R32_SFLOAT_PACK32;
-	default:
-		return gli::FORMAT_UNDEFINED;
-	}
-}
-
-bool save_image_buffer_to_ktx(Vulkan::Device &device, ImageReadback &readback, const char *path)
-{
-	auto format = vk_format_to_gli(readback.create_info.format);
-	if (format == gli::FORMAT_UNDEFINED)
+	auto &info = readback.create_info;
+	if (info.format == VK_FORMAT_UNDEFINED)
 	{
 		LOGE("Unsupported format!\n");
 		return false;
 	}
 
-	readback.fence->wait();
+	SceneFormats::MemoryMappedTexture tex;
 
-	void *ptr = device.map_host_buffer(*readback.buffer, MEMORY_ACCESS_READ);
-	device.unmap_host_buffer(*readback.buffer);
-
-	unsigned layers = readback.create_info.layers;
-	unsigned faces = 1;
-	bool cube = false;
-
-	if (readback.create_info.flags & VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT)
-	{
-		assert((layers % 6) == 0);
-		layers /= 6;
-		faces = 6;
-		cube = true;
-	}
-
-	gli::target target;
-	switch (readback.create_info.type)
+	switch (info.type)
 	{
 	case VK_IMAGE_TYPE_1D:
-		target = layers > 1 ? gli::TARGET_1D_ARRAY : gli::TARGET_1D;
+		tex.set_1d(info.format, info.width, info.layers, info.levels);
 		break;
 
 	case VK_IMAGE_TYPE_2D:
-		if (cube)
-			target = layers > 1 ? gli::TARGET_CUBE_ARRAY : gli::TARGET_CUBE;
+		if (info.flags & VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT)
+			tex.set_cube(info.format, info.width, info.layers / 6, info.levels);
 		else
-			target = layers > 1 ? gli::TARGET_2D_ARRAY : gli::TARGET_2D;
+			tex.set_2d(info.format, info.width, info.height, info.layers, info.levels);
 		break;
 
 	case VK_IMAGE_TYPE_3D:
-		target = gli::TARGET_3D;
+		tex.set_3d(info.format, info.width, info.height, info.depth, info.levels);
 		break;
 
 	default:
 		return false;
 	}
 
-	gli::texture tex(target, format,
-	                 { readback.create_info.width, readback.create_info.height, readback.create_info.depth },
-	                 layers, faces, readback.create_info.levels);
-
-	for (unsigned layer = 0; layer < layers; layer++)
-	{
-		for (unsigned face = 0; face < faces; face++)
-		{
-			for (unsigned level = 0; level < readback.create_info.levels; level++)
-			{
-				size_t layer_size = format_get_layer_size(readback.create_info.format,
-				                                          readback.levels[level].width,
-				                                          readback.levels[level].height,
-				                                          readback.levels[level].depth);
-
-				void *dst = tex.data(layer, face, level);
-				const uint8_t *src = static_cast<const uint8_t *>(ptr) + readback.levels[level].layer_offsets[face + layer * faces];
-				memcpy(dst, src, layer_size);
-			}
-		}
-	}
-
-	if (!gli::save(tex, path))
+	if (!tex.map_write(path))
 	{
 		LOGE("Failed to save texture to %s\n", path);
 		return false;
 	}
+
+	readback.fence->wait();
+	void *ptr = device.map_host_buffer(*readback.buffer, MEMORY_ACCESS_READ);
+	memcpy(tex.get_layout().data(), ptr, tex.get_layout().get_required_size());
+	device.unmap_host_buffer(*readback.buffer);
 
 	return true;
 }

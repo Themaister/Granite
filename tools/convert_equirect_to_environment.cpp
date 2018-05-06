@@ -104,9 +104,9 @@ int main(int argc, char *argv[])
 	auto saved_diffuse = save_image_to_cpu_buffer(device, *diffuse);
 
 	if (!args.cube.empty())
-		save_image_buffer_to_ktx(device, saved_cube, args.cube.c_str());
+		save_image_buffer_to_gtx(device, saved_cube, args.cube.c_str());
 	if (!args.reflection.empty())
-		save_image_buffer_to_ktx(device, saved_specular, args.reflection.c_str());
+		save_image_buffer_to_gtx(device, saved_specular, args.reflection.c_str());
 	if (!args.irradiance.empty())
-		save_image_buffer_to_ktx(device, saved_diffuse, args.irradiance.c_str());
+		save_image_buffer_to_gtx(device, saved_diffuse, args.irradiance.c_str());
 }

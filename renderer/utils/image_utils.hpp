@@ -27,9 +27,7 @@
 namespace Granite
 {
 Vulkan::ImageHandle convert_equirect_to_cube(Vulkan::Device &device, Vulkan::ImageView &view, float scale);
-
 Vulkan::ImageHandle convert_cube_to_ibl_diffuse(Vulkan::Device &device, Vulkan::ImageView &view);
-
 Vulkan::ImageHandle convert_cube_to_ibl_specular(Vulkan::Device &device, Vulkan::ImageView &view);
 
 struct ImageReadback
@@ -37,16 +35,8 @@ struct ImageReadback
 	Vulkan::Fence fence;
 	Vulkan::BufferHandle buffer;
 	Vulkan::ImageCreateInfo create_info;
-
-	struct Level
-	{
-		unsigned width = 0;
-		unsigned height = 0;
-		unsigned depth = 0;
-		std::vector<VkDeviceSize> layer_offsets;
-	};
-	std::vector<Level> levels;
+	Vulkan::TextureFormatLayout layout;
 };
 ImageReadback save_image_to_cpu_buffer(Vulkan::Device &device, const Vulkan::Image &image);
-bool save_image_buffer_to_ktx(Vulkan::Device &device, ImageReadback &readback, const char *path);
+bool save_image_buffer_to_gtx(Vulkan::Device &device, ImageReadback &readback, const char *path);
 }

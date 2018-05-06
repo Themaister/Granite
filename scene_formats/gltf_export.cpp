@@ -631,7 +631,7 @@ unsigned RemapState::emit_image(const MaterialInfo::Texture &texture, Material::
 	{
 		unsigned index = image_cache.size();
 		image_hash[h.get()] = index;
-		image_cache.push_back({ texture.path, to_string(h.get()) + ".ktx", "image/ktx",
+		image_cache.push_back({ texture.path, to_string(h.get()) + ".gtx", "image/custom/granite-texture",
 		                        compression, quality, mode, type, texture.swizzle, {} });
 		return index;
 	}
@@ -1778,8 +1778,8 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 				if (light.quadratic_falloff != 0.0f)
 					positional.AddMember("quadraticAttenuation", light.quadratic_falloff, allocator);
 
-				spot.AddMember("innerAngle", glm::sqrt(std::max(1.0f - light.inner_cone * light.inner_cone, 0.0f)), allocator);
-				spot.AddMember("outerAngle", glm::sqrt(std::max(1.0f - light.outer_cone * light.outer_cone, 0.0f)), allocator);
+				spot.AddMember("innerAngle", muglm::sqrt(std::max(1.0f - light.inner_cone * light.inner_cone, 0.0f)), allocator);
+				spot.AddMember("outerAngle", muglm::sqrt(std::max(1.0f - light.outer_cone * light.outer_cone, 0.0f)), allocator);
 				positional.AddMember("spot", spot, allocator);
 
 				l.AddMember("positional", positional, allocator);

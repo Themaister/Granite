@@ -53,7 +53,7 @@ public:
 	bool map_copy(const void *mapped, size_t size);
 	bool map_write_scratch();
 
-	const Vulkan::TextureFormatLayout &get_layout() const
+	inline const Vulkan::TextureFormatLayout &get_layout() const
 	{
 		return layout;
 	}
@@ -63,6 +63,11 @@ public:
 	MemoryMappedTextureFlags get_flags() const;
 
 	size_t get_required_size() const;
+
+	inline bool empty() const
+	{
+		return get_layout().get_required_size() == 0;
+	}
 
 private:
 	Vulkan::TextureFormatLayout layout;

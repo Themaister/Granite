@@ -62,7 +62,7 @@ private:
 	Util::AsyncObjectSink<ImageHandle> handle;
 	VkFormat format;
 	VkComponentMapping swizzle;
-	void update_gli(const void *data, size_t size);
+	void update_other(const void *data, size_t size);
 	void update_gtx(std::unique_ptr<Granite::File> file, void *mapped);
 	void update_gtx(const Granite::SceneFormats::MemoryMappedTexture &texture);
 

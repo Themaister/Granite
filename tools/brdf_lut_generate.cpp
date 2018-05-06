@@ -22,7 +22,7 @@ static float RadicalInverse_VdC(uint32_t bits)
 
 static vec2 Hammersley(uint i, uint N)
 {
-	return vec2(float(i)/float(N), RadicalInverse_VdC(i));
+	return vec2(float(i) / float(N), RadicalInverse_VdC(i));
 }
 
 static vec3 ImportanceSampleGGX(vec2 Xi, vec3 N, float roughness)
@@ -126,9 +126,9 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	for (unsigned y = 0; y < width; y++)
+	for (unsigned y = 0; y < height; y++)
 	{
-		for (unsigned x = 0; x < height; x++)
+		for (unsigned x = 0; x < width; x++)
 		{
 			float NoV = (x + 0.5f) * (1.0f / width);
 			float roughness = (y + 0.5f) * (1.0f / height);

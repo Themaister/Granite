@@ -743,10 +743,51 @@ MUGLM_VECTORIZED_FUNC1(uintBitsToFloat)
 
 inline uint16_t packHalf1x16(float v)
 {
-	uint f = floatBitsToUint(v);
-	return uint16_t(((f >> 16) & 0x8000) | // sign
-	                ((((f & 0x7f800000) - 0x38000000) >> 13) & 0x7c00) | // exponential
-	                ((f >> 13) & 0x03ff)); // Mantissa
+	int i = floatBitsToUint(v);
+	int s =  (i >> 16) & 0x00008000;
+	int e = ((i >> 23) & 0x000000ff) - (127 - 15);
+	int m =   i        & 0x007fffff;
+
+	if (e <= 0)
+	{
+		if (e < -10)
+			return uint16_t(s);
+
+		m = (m | 0x00800000) >> (1 - e);
+
+		if (m & 0x00001000)
+			m += 0x00002000;
+
+		return uint16_t(s | (m >> 13));
+	}
+	else if (e == 0xff - (127 - 15))
+	{
+		if (m == 0)
+			return uint16_t(s | 0x7c00);
+		else
+		{
+			m >>= 13;
+			return uint16_t(s | 0x7c00 | m | (m == 0));
+		}
+	}
+	else
+	{
+		if (m & 0x00001000)
+		{
+			m += 0x00002000;
+
+			if (m & 0x00800000)
+			{
+				m =  0;
+				e += 1;
+			}
+		}
+
+		if (e > 30)
+			return uint16_t(s | 0x7c00);
+
+		return uint16_t(s | (e << 10) | (m >> 13));
+	}
 }
 
 inline uint packHalf2x16(const vec2 &v)

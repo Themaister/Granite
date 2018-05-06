@@ -132,15 +132,15 @@ inline void generate_mipmaps(const Vulkan::TextureFormatLayout &dst_layout,
 					uvec2 c2 = min(c0 + uvec2(0, 1), max_coord);
 					uvec2 c3 = min(c0 + uvec2(1, 1), max_coord);
 
-					auto v0 = op.sample(layout, c0, layer, level - 1);
-					auto v1 = op.sample(layout, c1, layer, level - 1);
-					auto v2 = op.sample(layout, c2, layer, level - 1);
-					auto v3 = op.sample(layout, c3, layer, level - 1);
+					auto v0 = op.sample(dst_layout, c0, layer, level - 1);
+					auto v1 = op.sample(dst_layout, c1, layer, level - 1);
+					auto v2 = op.sample(dst_layout, c2, layer, level - 1);
+					auto v3 = op.sample(dst_layout, c3, layer, level - 1);
 
 					auto x0 = mix(v0, v1, uv.x);
 					auto x1 = mix(v2, v3, uv.x);
 					auto filtered = mix(x0, x1, uv.y);
-					op.write(layout, uvec2(x, y), layer, level, filtered);
+					op.write(dst_layout, uvec2(x, y), layer, level, filtered);
 				}
 			}
 		}
@@ -160,6 +160,7 @@ static void copy_dimensions(MemoryMappedTexture &mapped, const Vulkan::TextureFo
 		else
 			mapped.set_2d(layout.get_format(), layout.get_width(), layout.get_height(), layout.get_layers(), 0);
 		break;
+
 	case VK_IMAGE_TYPE_3D:
 		throw std::logic_error("3D is not supported for generate_mipmaps.");
 

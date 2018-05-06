@@ -7,8 +7,8 @@ target_link_libraries(ibl-brdf-lut-generate math util scene-formats)
 add_granite_offline_tool(convert-equirect-to-environment convert_equirect_to_environment.cpp)
 target_link_libraries(convert-equirect-to-environment scene-formats)
 
-add_granite_offline_tool(ktx-convert ktx_convert.cpp)
-target_link_libraries(ktx-convert texture-compression)
+add_granite_offline_tool(gtx-convert gtx_convert.cpp)
+target_link_libraries(gtx-convert texture-compression)
 
 add_granite_offline_tool(gltf-repacker gltf_repacker.cpp)
 target_link_libraries(gltf-repacker scene-formats-export util rapidjson)

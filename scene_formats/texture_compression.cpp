@@ -41,59 +41,61 @@ using namespace std;
 
 namespace Granite
 {
-gli::format string_to_format(const string &s)
+using namespace SceneFormats;
+
+VkFormat string_to_format(const string &s)
 {
 	if (s == "bc6h")
-		return gli::FORMAT_RGB_BP_UFLOAT_BLOCK16;
+		return VK_FORMAT_BC6H_UFLOAT_BLOCK;
 	else if (s == "bc7_unorm")
-		return gli::FORMAT_RGBA_BP_UNORM_BLOCK16;
+		return VK_FORMAT_BC7_UNORM_BLOCK;
 	else if (s == "bc7_srgb")
-		return gli::FORMAT_RGBA_BP_SRGB_BLOCK16;
+		return VK_FORMAT_BC7_SRGB_BLOCK;
 	else if (s == "bc1_unorm")
-		return gli::FORMAT_RGB_DXT1_UNORM_BLOCK8;
+		return VK_FORMAT_BC1_RGB_UNORM_BLOCK;
 	else if (s == "bc1_srgb")
-		return gli::FORMAT_RGB_DXT1_SRGB_BLOCK8;
+		return VK_FORMAT_BC1_RGB_SRGB_BLOCK;
 	else if (s == "bc3_unorm")
-		return gli::FORMAT_RGBA_DXT5_UNORM_BLOCK16;
+		return VK_FORMAT_BC3_UNORM_BLOCK;
 	else if (s == "bc3_srgb")
-		return gli::FORMAT_RGBA_DXT5_SRGB_BLOCK16;
+		return VK_FORMAT_BC3_SRGB_BLOCK;
 	else if (s == "rgba8_unorm")
-		return gli::FORMAT_RGBA8_UNORM_PACK8;
+		return VK_FORMAT_R8G8B8A8_UNORM;
 	else if (s == "rgba8_srgb")
-		return gli::FORMAT_RGBA8_SRGB_PACK8;
+		return VK_FORMAT_R8G8B8A8_SRGB;
 	else if (s == "astc_4x4_srgb")
-		return gli::FORMAT_RGBA_ASTC_4X4_SRGB_BLOCK16;
+		return VK_FORMAT_ASTC_4x4_SRGB_BLOCK;
 	else if (s == "astc_4x4_unorm")
-		return gli::FORMAT_RGBA_ASTC_4X4_UNORM_BLOCK16;
+		return VK_FORMAT_ASTC_4x4_UNORM_BLOCK;
 	else if (s == "astc_4x4")
-		return gli::FORMAT_RGBA_ASTC_4X4_UNORM_BLOCK16;
+		return VK_FORMAT_ASTC_4x4_UNORM_BLOCK;
 	else if (s == "astc_5x5_srgb")
-		return gli::FORMAT_RGBA_ASTC_5X5_SRGB_BLOCK16;
+		return VK_FORMAT_ASTC_5x5_SRGB_BLOCK;
 	else if (s == "astc_5x5_unorm")
-		return gli::FORMAT_RGBA_ASTC_5X5_UNORM_BLOCK16;
+		return VK_FORMAT_ASTC_5x5_UNORM_BLOCK;
 	else if (s == "astc_5x5")
-		return gli::FORMAT_RGBA_ASTC_5X5_UNORM_BLOCK16;
+		return VK_FORMAT_ASTC_5x5_UNORM_BLOCK;
 	else if (s == "astc_6x6_srgb")
-		return gli::FORMAT_RGBA_ASTC_6X6_SRGB_BLOCK16;
+		return VK_FORMAT_ASTC_6x6_SRGB_BLOCK;
 	else if (s == "astc_6x6_unorm")
-		return gli::FORMAT_RGBA_ASTC_6X6_UNORM_BLOCK16;
+		return VK_FORMAT_ASTC_6x6_UNORM_BLOCK;
 	else if (s == "astc_6x6")
-		return gli::FORMAT_RGBA_ASTC_6X6_UNORM_BLOCK16;
+		return VK_FORMAT_ASTC_6x6_UNORM_BLOCK;
 	else if (s == "astc_8x8_srgb")
-		return gli::FORMAT_RGBA_ASTC_8X8_SRGB_BLOCK16;
+		return VK_FORMAT_ASTC_8x8_SRGB_BLOCK;
 	else if (s == "astc_8x8_unorm")
-		return gli::FORMAT_RGBA_ASTC_8X8_UNORM_BLOCK16;
+		return VK_FORMAT_ASTC_8x8_UNORM_BLOCK;
 	else if (s == "astc_8x8")
-		return gli::FORMAT_RGBA_ASTC_8X8_UNORM_BLOCK16;
+		return VK_FORMAT_ASTC_8x8_UNORM_BLOCK;
 	else
 	{
 		LOGE("Unknown format: %s.\n", s.c_str());
-		return gli::FORMAT_UNDEFINED;
+		return VK_FORMAT_UNDEFINED;
 	}
 }
 
 #ifdef HAVE_ISPC
-static unsigned format_to_stride(gli::format format)
+static unsigned format_to_stride(VkFormat format)
 {
 	switch (format)
 	{
@@ -113,7 +115,8 @@ static unsigned format_to_stride(gli::format format)
 	case gli::FORMAT_RGBA_ASTC_8X8_UNORM_BLOCK16:
 		return 4;
 
-	case gli::FORMAT_RGB_BP_UFLOAT_BLOCK16:
+	case VK_FORMAT_BC6H_UFLOAT_BLOCK:
+	case VK_FORMAT_BC6H_SFLOAT_BLOCK:
 		return 8;
 
 	default:
@@ -135,8 +138,8 @@ struct FirstASTC
 
 struct CompressorState : enable_shared_from_this<CompressorState>
 {
-	shared_ptr<gli::texture> input;
-	shared_ptr<gli::texture> output;
+	shared_ptr<MemoryMappedTexture> input;
+	shared_ptr<MemoryMappedTexture> output;
 
 #ifdef HAVE_ISPC
 	bc6h_enc_settings bc6 = {};
@@ -152,9 +155,9 @@ struct CompressorState : enable_shared_from_this<CompressorState>
 
 	void setup(const CompressorArguments &args);
 	void enqueue_compression(ThreadGroup &group, const CompressorArguments &args);
-	void enqueue_compression_block_ispc(TaskGroup &group, const CompressorArguments &args, unsigned layer, unsigned face, unsigned level);
-	void enqueue_compression_block_astc(TaskGroup &group, const CompressorArguments &args, unsigned layer, unsigned face, unsigned level, TextureMode mode);
-	void enqueue_compression_block_rgtc(TaskGroup &group, const CompressorArguments &args, unsigned layer, unsigned face, unsigned level);
+	void enqueue_compression_block_ispc(TaskGroup &group, const CompressorArguments &args, unsigned layer, unsigned level);
+	void enqueue_compression_block_astc(TaskGroup &group, const CompressorArguments &args, unsigned layer, unsigned level, TextureMode mode);
+	void enqueue_compression_block_rgtc(TaskGroup &group, const CompressorArguments &args, unsigned layer, unsigned level);
 
 	double total_error[4] = {};
 	mutex lock;
@@ -165,11 +168,25 @@ void CompressorState::setup(const CompressorArguments &args)
 #ifdef HAVE_ISPC
 	bool alpha = args.mode == TextureMode::sRGBA || args.mode == TextureMode::RGBA;
 #endif
+	auto &layout = input->get_layout();
+
+	const auto is_8bit = [&]() -> bool {
+		return layout.get_format() == VK_FORMAT_R8G8B8A8_SRGB ||
+		       layout.get_format() == VK_FORMAT_R8G8B8A8_UNORM;
+	};
+
+	const auto is_unorm = [&]() -> bool {
+		return layout.get_format() == VK_FORMAT_R8G8B8A8_UNORM;
+	};
+
+	const auto is_16bit = [&]() -> bool {
+		return layout.get_format() == VK_FORMAT_R16G16B16A16_SFLOAT;
+	};
 
 	const auto handle_astc_ldr_format = [&](unsigned x, unsigned y) -> bool {
 		block_size_x = x;
 		block_size_y = y;
-		if (input->format() != gli::FORMAT_RGBA8_SRGB_PACK8 && input->format() != gli::FORMAT_RGBA8_UNORM_PACK8)
+		if (!is_8bit())
 		{
 			LOGE("Input format to ASTC LDR must be RGBA8.\n");
 			return false;
@@ -194,7 +211,7 @@ void CompressorState::setup(const CompressorArguments &args)
 
 	const auto handle_astc_hdr_format = [&](unsigned x, unsigned y) -> bool {
 #ifdef HAVE_ASTC_ENCODER
-		if (input->format() != gli::FORMAT_RGBA16_SFLOAT_PACK16)
+		if (layout.get_format() != VK_FORMAT_R16G16B16A16_SFLOAT)
 		{
 			LOGE("Input format to ASTC HDR must be RGBA16F.\n");
 			return false;
@@ -213,11 +230,11 @@ void CompressorState::setup(const CompressorArguments &args)
 
 	switch (args.format)
 	{
-	case gli::FORMAT_R_ATI1N_UNORM_BLOCK8:
-	case gli::FORMAT_RG_ATI2N_UNORM_BLOCK16:
+	case VK_FORMAT_BC4_UNORM_BLOCK:
+	case VK_FORMAT_BC5_UNORM_BLOCK:
 		block_size_x = 4;
 		block_size_y = 4;
-		if (input->format() != gli::FORMAT_RGBA8_UNORM_PACK8)
+		if (!is_unorm())
 		{
 			LOGE("Input format to bc4 must be RGBA8.\n");
 			return;
@@ -225,10 +242,10 @@ void CompressorState::setup(const CompressorArguments &args)
 		break;
 
 #ifdef HAVE_ISPC
-	case gli::FORMAT_RGB_BP_UFLOAT_BLOCK16:
+	case VK_FORMAT_BC6H_UFLOAT_BLOCK:
 		block_size_x = 4;
 		block_size_y = 4;
-		if (input->format() != gli::FORMAT_RGBA16_SFLOAT_PACK16)
+		if (!is_16bit())
 		{
 			LOGE("Input format to bc6h must be RGBA16_SFLOAT.\n");
 			return;
@@ -262,11 +279,11 @@ void CompressorState::setup(const CompressorArguments &args)
 		}
 		break;
 
-	case gli::FORMAT_RGBA_BP_UNORM_BLOCK16:
-	case gli::FORMAT_RGBA_BP_SRGB_BLOCK16:
+	case VK_FORMAT_BC7_SRGB_BLOCK:
+	case VK_FORMAT_BC7_UNORM_BLOCK:
 		block_size_x = 4;
 		block_size_y = 4;
-		if (input->format() != gli::FORMAT_RGBA8_SRGB_PACK8 && input->format() != gli::FORMAT_RGBA8_UNORM_PACK8)
+		if (!is_8bit())
 		{
 			LOGE("Input format to bc7 must be RGBA8.\n");
 			return;
@@ -315,15 +332,15 @@ void CompressorState::setup(const CompressorArguments &args)
 		}
 		break;
 
-	case gli::FORMAT_RGB_DXT1_SRGB_BLOCK8:
-	case gli::FORMAT_RGB_DXT1_UNORM_BLOCK8:
-	case gli::FORMAT_RGBA_DXT1_SRGB_BLOCK8:
-	case gli::FORMAT_RGBA_DXT1_UNORM_BLOCK8:
-	case gli::FORMAT_RGBA_DXT5_SRGB_BLOCK16:
-	case gli::FORMAT_RGBA_DXT5_UNORM_BLOCK16:
+	case VK_FORMAT_BC1_RGB_SRGB_BLOCK:
+	case VK_FORMAT_BC1_RGB_UNORM_BLOCK:
+	case VK_FORMAT_BC1_RGBA_SRGB_BLOCK:
+	case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:
+	case VK_FORMAT_BC3_SRGB_BLOCK:
+	case VK_FORMAT_BC3_UNORM_BLOCK:
 		block_size_x = 4;
 		block_size_y = 4;
-		if (input->format() != gli::FORMAT_RGBA8_SRGB_PACK8 && input->format() != gli::FORMAT_RGBA8_UNORM_PACK8)
+		if (!is_8bit())
 		{
 			LOGE("Input format to bc1 or bc3 must be RGBA8.\n");
 			return;
@@ -331,9 +348,9 @@ void CompressorState::setup(const CompressorArguments &args)
 		break;
 #endif
 
-	case gli::FORMAT_RGBA_ASTC_4X4_SRGB_BLOCK16:
-	case gli::FORMAT_RGBA_ASTC_4X4_UNORM_BLOCK16:
-		if (input->format() == gli::FORMAT_RGBA16_SFLOAT_PACK16)
+	case VK_FORMAT_ASTC_4x4_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_4x4_SRGB_BLOCK:
+		if (is_16bit())
 		{
 			if (!handle_astc_hdr_format(4, 4))
 				return;
@@ -342,9 +359,9 @@ void CompressorState::setup(const CompressorArguments &args)
 			return;
 		break;
 
-	case gli::FORMAT_RGBA_ASTC_5X5_SRGB_BLOCK16:
-	case gli::FORMAT_RGBA_ASTC_5X5_UNORM_BLOCK16:
-		if (input->format() == gli::FORMAT_RGBA16_SFLOAT_PACK16)
+	case VK_FORMAT_ASTC_5x5_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_5x5_SRGB_BLOCK:
+		if (is_16bit())
 		{
 			if (!handle_astc_hdr_format(5, 5))
 				return;
@@ -353,9 +370,9 @@ void CompressorState::setup(const CompressorArguments &args)
 			return;
 		break;
 
-	case gli::FORMAT_RGBA_ASTC_6X6_SRGB_BLOCK16:
-	case gli::FORMAT_RGBA_ASTC_6X6_UNORM_BLOCK16:
-		if (input->format() == gli::FORMAT_RGBA16_SFLOAT_PACK16)
+	case VK_FORMAT_ASTC_6x6_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_6x6_SRGB_BLOCK:
+		if (is_16bit())
 		{
 			if (!handle_astc_hdr_format(6, 6))
 				return;
@@ -364,9 +381,9 @@ void CompressorState::setup(const CompressorArguments &args)
 			return;
 		break;
 
-	case gli::FORMAT_RGBA_ASTC_8X8_SRGB_BLOCK16:
-	case gli::FORMAT_RGBA_ASTC_8X8_UNORM_BLOCK16:
-		if (args.mode == TextureMode::HDR)
+	case VK_FORMAT_ASTC_8x8_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_8x8_SRGB_BLOCK:
+		if (is_16bit())
 		{
 			if (!handle_astc_hdr_format(8, 8))
 				return;
@@ -375,8 +392,8 @@ void CompressorState::setup(const CompressorArguments &args)
 			return;
 		break;
 
-	case gli::FORMAT_RGBA8_UNORM_PACK8:
-	case gli::FORMAT_RGBA8_SRGB_PACK8:
+	case VK_FORMAT_R8G8B8A8_UNORM:
+	case VK_FORMAT_R8G8B8A8_SRGB:
 		break;
 
 	default:
@@ -385,11 +402,11 @@ void CompressorState::setup(const CompressorArguments &args)
 	}
 }
 
-void CompressorState::enqueue_compression_block_rgtc(TaskGroup &group, const CompressorArguments &args, unsigned layer,
-                                                     unsigned face, unsigned level)
+void CompressorState::enqueue_compression_block_rgtc(TaskGroup &group, const CompressorArguments &args, unsigned layer, unsigned level)
 {
-	int width = input->extent(level).x;
-	int height = input->extent(level).y;
+	auto &layout = input->get_layout();
+	int width = layout.get_width(level);
+	int height = layout.get_height(level);
 	int blocks_x = (width + block_size_x - 1) / block_size_x;
 
 	for (int y = 0; y < height; y += block_size_y)
@@ -399,10 +416,10 @@ void CompressorState::enqueue_compression_block_rgtc(TaskGroup &group, const Com
 			group->enqueue_task([=, format = args.format]() {
 				uint8_t padded_red[4 * 4];
 				uint8_t padded_green[4 * 4];
-				auto *src = static_cast<const uint8_t *>(input->data(layer, face, level));
+				auto *src = static_cast<const uint8_t *>(layout.data(layer, level));
 
 				const auto get_block_data = [&](int block_size) -> uint8_t * {
-					auto *dst = static_cast<uint8_t *>(output->data(layer, face, level));
+					auto *dst = static_cast<uint8_t *>(output->get_layout().data(layer, level));
 					dst += (x / block_size_x) * block_size;
 					dst += (y / block_size_y) * blocks_x * block_size;
 					return dst;
@@ -429,12 +446,12 @@ void CompressorState::enqueue_compression_block_rgtc(TaskGroup &group, const Com
 
 				switch (format)
 				{
-				case gli::FORMAT_R_ATI1N_UNORM_BLOCK8:
+				case VK_FORMAT_BC4_UNORM_BLOCK:
 				{
 					compress_rgtc_red_block(get_encode_data(8), padded_red);
 
 #ifdef RGTC_DEBUG
-					if (level == 0 && face == 0 && layer == 0)
+					if (level == 0 && layer == 0)
 					{
 						uint8_t decoded_red[16];
 						decompress_rgtc_red_block(decoded_red, get_encode_data(8));
@@ -449,12 +466,12 @@ void CompressorState::enqueue_compression_block_rgtc(TaskGroup &group, const Com
 					break;
 				}
 
-				case gli::FORMAT_RG_ATI2N_UNORM_BLOCK16:
+				case VK_FORMAT_BC5_UNORM_BLOCK:
 				{
 					compress_rgtc_red_green_block(get_encode_data(16), padded_red, padded_green);
 
 #ifdef RGTC_DEBUG
-					if (level == 0 && face == 0 && layer == 0)
+					if (level == 0 && layer == 0)
 					{
 						uint8_t decoded_red[16];
 						uint8_t decoded_green[16];
@@ -486,10 +503,11 @@ void CompressorState::enqueue_compression_block_rgtc(TaskGroup &group, const Com
 
 #ifdef HAVE_ISPC
 void CompressorState::enqueue_compression_block_ispc(TaskGroup &group, const CompressorArguments &args,
-                                                     unsigned layer, unsigned face, unsigned level)
+                                                     unsigned layer, unsigned level)
 {
-	int width = input->extent(level).x;
-	int height = input->extent(level).y;
+	auto &layout = input->get_layout();
+	int width = layout.get_width(level);
+	int height = layout.get_height(level);
 	int grid_stride_x = (32 / block_size_x) * block_size_x;
 	int grid_stride_y = (32 / block_size_y) * block_size_y;
 
@@ -501,7 +519,7 @@ void CompressorState::enqueue_compression_block_ispc(TaskGroup &group, const Com
 				uint8_t padded_buffer[32 * 32 * 8];
 				uint8_t encode_buffer[16 * 8 * 8];
 				rgba_surface surface = {};
-				surface.ptr = const_cast<uint8_t *>(static_cast<const uint8_t *>(input->data(layer, face, level)));
+				surface.ptr = const_cast<uint8_t *>(static_cast<const uint8_t *>(layout.data(layer, level)));
 				surface.width = std::min(width - x, grid_stride_x);
 				surface.height = std::min(height - y, grid_stride_y);
 				surface.stride = width * format_to_stride(format);
@@ -514,7 +532,7 @@ void CompressorState::enqueue_compression_block_ispc(TaskGroup &group, const Com
 				int blocks_x = (width + block_size_x - 1) / block_size_x;
 
 				const auto get_block_data = [&](int bx, int by, int block_size) -> uint8_t * {
-					auto *dst = static_cast<uint8_t *>(output->data(layer, face, level));
+					auto *dst = static_cast<uint8_t *>(output->get_layout().data(layer, level));
 					dst += ((x / block_size_x) + bx) * block_size;
 					dst += ((y / block_size_y) + by) * blocks_x * block_size;
 					return dst;
@@ -544,45 +562,47 @@ void CompressorState::enqueue_compression_block_ispc(TaskGroup &group, const Com
 
 				switch (format)
 				{
-				case gli::FORMAT_RGB_BP_UFLOAT_BLOCK16:
+				case VK_FORMAT_BC6H_UFLOAT_BLOCK:
 				{
 					CompressBlocksBC6H(&padded_surface, encode_buffer, &bc6);
 					write_encode_data(16);
 					break;
 				}
 
-				case gli::FORMAT_RGBA_BP_SRGB_BLOCK16:
-				case gli::FORMAT_RGBA_BP_UNORM_BLOCK16:
+				case VK_FORMAT_BC7_SRGB_BLOCK:
+				case VK_FORMAT_BC7_UNORM_BLOCK:
 				{
 					CompressBlocksBC7(&padded_surface, encode_buffer, &bc7);
 					write_encode_data(16);
 					break;
 				}
 
-				case gli::FORMAT_RGB_DXT1_SRGB_BLOCK8:
-				case gli::FORMAT_RGB_DXT1_UNORM_BLOCK8:
+				case VK_FORMAT_BC1_RGB_SRGB_BLOCK:
+				case VK_FORMAT_BC1_RGB_UNORM_BLOCK:
+				case VK_FORMAT_BC1_RGBA_SRGB_BLOCK:
+				case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:
 				{
 					CompressBlocksBC1(&padded_surface, encode_buffer);
 					write_encode_data(8);
 					break;
 				}
 
-				case gli::FORMAT_RGBA_DXT5_SRGB_BLOCK16:
-				case gli::FORMAT_RGBA_DXT5_UNORM_BLOCK16:
+				case VK_FORMAT_BC3_SRGB_BLOCK:
+				case VK_FORMAT_BC3_UNORM_BLOCK:
 				{
 					CompressBlocksBC3(&padded_surface, encode_buffer);
 					write_encode_data(16);
 					break;
 				}
 
-				case gli::FORMAT_RGBA_ASTC_4X4_SRGB_BLOCK16:
-				case gli::FORMAT_RGBA_ASTC_4X4_UNORM_BLOCK16:
-				case gli::FORMAT_RGBA_ASTC_5X5_SRGB_BLOCK16:
-				case gli::FORMAT_RGBA_ASTC_5X5_UNORM_BLOCK16:
-				case gli::FORMAT_RGBA_ASTC_6X6_SRGB_BLOCK16:
-				case gli::FORMAT_RGBA_ASTC_6X6_UNORM_BLOCK16:
-				case gli::FORMAT_RGBA_ASTC_8X8_SRGB_BLOCK16:
-				case gli::FORMAT_RGBA_ASTC_8X8_UNORM_BLOCK16:
+				case VK_FORMAT_ASTC_4x4_SRGB_BLOCK:
+				case VK_FORMAT_ASTC_4x4_UNORM_BLOCK:
+				case VK_FORMAT_ASTC_5x5_SRGB_BLOCK:
+				case VK_FORMAT_ASTC_5x5_UNORM_BLOCK:
+				case VK_FORMAT_ASTC_6x6_SRGB_BLOCK:
+				case VK_FORMAT_ASTC_6x6_UNORM_BLOCK:
+				case VK_FORMAT_ASTC_8x8_SRGB_BLOCK:
+				case VK_FORMAT_ASTC_8x8_UNORM_BLOCK:
 				{
 					CompressBlocksASTC(&padded_surface, encode_buffer, &astc);
 					write_encode_data(16);
@@ -600,7 +620,7 @@ void CompressorState::enqueue_compression_block_ispc(TaskGroup &group, const Com
 
 #ifdef HAVE_ASTC_ENCODER
 void CompressorState::enqueue_compression_block_astc(TaskGroup &compression_task, const CompressorArguments &args,
-                                                     unsigned layer, unsigned face, unsigned level, TextureMode mode)
+                                                     unsigned layer, unsigned level, TextureMode mode)
 {
 	static FirstASTC first_astc;
 
@@ -611,7 +631,7 @@ void CompressorState::enqueue_compression_block_astc(TaskGroup &compression_task
 		vector<uint8_t> buffer;
 		astc_codec_image astc_image = {};
 
-		int layer, face, level;
+		uint32_t layer, level;
 		int blocks_x, blocks_y;
 		void **ptr;
 	};
@@ -693,8 +713,8 @@ void CompressorState::enqueue_compression_block_astc(TaskGroup &compression_task
 
 	expand_block_artifact_suppression(block_size_x, block_size_y, 1, &state->ewp);
 
-	int width = input->extent(level).x;
-	int height = input->extent(level).y;
+	int width = input->get_layout().get_width(level);
+	int height = input->get_layout().get_height(level);
 
 	state->astc_image.xsize = width;
 	state->astc_image.ysize = height;
@@ -719,7 +739,7 @@ void CompressorState::enqueue_compression_block_astc(TaskGroup &compression_task
 			int src_offset = clamp(x - state->astc_image.padding, 0, state->astc_image.xsize - 1) +
 			                 clamp(y - state->astc_image.padding, 0, state->astc_image.ysize - 1) * state->astc_image.xsize;
 
-			auto *src = static_cast<const uint8_t *>(input->data(layer, face, level));
+			auto *src = static_cast<const uint8_t *>(input->get_layout().data(layer, level));
 			memcpy(&state->buffer[dst_offset * estride], &src[src_offset * estride], estride);
 		}
 	}
@@ -750,7 +770,6 @@ void CompressorState::enqueue_compression_block_astc(TaskGroup &compression_task
 	state->blocks_x = (width + block_size_x - 1) / block_size_x;
 	state->blocks_y = (height + block_size_y - 1) / block_size_y;
 	state->layer = layer;
-	state->face = face;
 	state->level = level;
 
 	for (int y = 0; y < state->blocks_y; y++)
@@ -769,7 +788,7 @@ void CompressorState::enqueue_compression_block_astc(TaskGroup &compression_task
 				                        block_size_x, block_size_y, 1, &state->ewp, &pb, &scb);
 				pcb = symbolic_to_physical(block_size_x, block_size_y, 1, &scb);
 
-				auto *dst = static_cast<uint8_t *>(output->data(state->layer, state->face, state->level));
+				auto *dst = static_cast<uint8_t *>(output->get_layout().data(state->layer, state->level));
 				memcpy(dst + 16 * (y * state->blocks_x + x), &pcb, sizeof(pcb));
 			});
 		}
@@ -781,54 +800,53 @@ void CompressorState::enqueue_compression(ThreadGroup &group, const CompressorAr
 {
 	auto compression_task = group.create_task();
 
-	for (unsigned layer = 0; layer < input->layers(); layer++)
+	for (unsigned layer = 0; layer < input->get_layout().get_layers(); layer++)
 	{
-		for (unsigned face = 0; face < input->faces(); face++)
+		for (unsigned level = 0; level < input->get_layout().get_levels(); level++)
 		{
-			for (unsigned level = 0; level < input->levels(); level++)
+			switch (args.format)
 			{
-				switch (args.format)
+			case VK_FORMAT_BC4_UNORM_BLOCK:
+			case VK_FORMAT_BC5_UNORM_BLOCK:
+				enqueue_compression_block_rgtc(compression_task, args, layer, level);
+				break;
+
+#ifdef HAVE_ISPC
+			case VK_FORMAT_BC6H_UFLOAT_BLOCK:
+			case VK_FORMAT_BC7_SRGB_BLOCK:
+			case VK_FORMAT_BC7_UNORM_BLOCK:
+			case VK_FORMAT_BC1_RGB_SRGB_BLOCK:
+			case VK_FORMAT_BC1_RGB_UNORM_BLOCK:
+			case VK_FORMAT_BC1_RGBA_SRGB_BLOCK:
+			case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:
+			case VK_FORMAT_BC3_SRGB_BLOCK:
+			case VK_FORMAT_BC3_UNORM_BLOCK:
+				enqueue_compression_block_ispc(compression_task, args, layer, level);
+				break;
+#endif
+
+			case VK_FORMAT_ASTC_4x4_SRGB_BLOCK:
+			case VK_FORMAT_ASTC_4x4_UNORM_BLOCK:
+			case VK_FORMAT_ASTC_5x5_SRGB_BLOCK:
+			case VK_FORMAT_ASTC_5x5_UNORM_BLOCK:
+			case VK_FORMAT_ASTC_6x6_SRGB_BLOCK:
+			case VK_FORMAT_ASTC_6x6_UNORM_BLOCK:
+			case VK_FORMAT_ASTC_8x8_SRGB_BLOCK:
+			case VK_FORMAT_ASTC_8x8_UNORM_BLOCK:
+#ifdef HAVE_ISPC
+				if (!use_astc_encoder)
+					enqueue_compression_block_ispc(compression_task, args, layer, level);
+				else
+#endif
 				{
-				case gli::FORMAT_R_ATI1N_UNORM_BLOCK8:
-				case gli::FORMAT_RG_ATI2N_UNORM_BLOCK16:
-					enqueue_compression_block_rgtc(compression_task, args, layer, face, level);
-					break;
-
-#ifdef HAVE_ISPC
-				case gli::FORMAT_RGB_BP_UFLOAT_BLOCK16:
-				case gli::FORMAT_RGBA_BP_SRGB_BLOCK16:
-				case gli::FORMAT_RGBA_BP_UNORM_BLOCK16:
-				case gli::FORMAT_RGB_DXT1_SRGB_BLOCK8:
-				case gli::FORMAT_RGB_DXT1_UNORM_BLOCK8:
-				case gli::FORMAT_RGBA_DXT5_SRGB_BLOCK16:
-				case gli::FORMAT_RGBA_DXT5_UNORM_BLOCK16:
-					enqueue_compression_block_ispc(compression_task, args, layer, face, level);
-					break;
-#endif
-
-				case gli::FORMAT_RGBA_ASTC_4X4_SRGB_BLOCK16:
-				case gli::FORMAT_RGBA_ASTC_4X4_UNORM_BLOCK16:
-				case gli::FORMAT_RGBA_ASTC_5X5_SRGB_BLOCK16:
-				case gli::FORMAT_RGBA_ASTC_5X5_UNORM_BLOCK16:
-				case gli::FORMAT_RGBA_ASTC_6X6_SRGB_BLOCK16:
-				case gli::FORMAT_RGBA_ASTC_6X6_UNORM_BLOCK16:
-				case gli::FORMAT_RGBA_ASTC_8X8_SRGB_BLOCK16:
-				case gli::FORMAT_RGBA_ASTC_8X8_UNORM_BLOCK16:
-#ifdef HAVE_ISPC
-					if (!use_astc_encoder)
-						enqueue_compression_block_ispc(compression_task, args, layer, face, level);
-					else
-#endif
-					{
 #ifdef HAVE_ASTC_ENCODER
-						enqueue_compression_block_astc(compression_task, args, layer, face, level, args.mode);
+					enqueue_compression_block_astc(compression_task, args, layer, level, args.mode);
 #endif
-					}
-					break;
-
-				default:
-					return;
 				}
+				break;
+
+			default:
+				return;
 			}
 		}
 	}
@@ -839,22 +857,44 @@ void CompressorState::enqueue_compression(ThreadGroup &group, const CompressorAr
 			LOGI("Red PSNR: %.f dB\n", 10.0 * log10(255.0 * 255.0 / state->total_error[0]));
 		if (state->total_error[1] != 0.0)
 			LOGI("Green PSNR: %.f dB\n", 10.0 * log10(255.0 * 255.0 / state->total_error[1]));
-
-		if (!save_gli_texture_to_file(args.output, *state->output))
-			LOGE("Failed to save texture to file.\n");
 	});
 	group.add_dependency(write_task, compression_task);
 }
 
-void compress_texture(ThreadGroup &group, const CompressorArguments &args, const shared_ptr<gli::texture> &input, TaskGroup &dep)
+void compress_texture(ThreadGroup &group, const CompressorArguments &args, const shared_ptr<MemoryMappedTexture> &input, TaskGroup &dep)
 {
 	auto output = make_shared<CompressorState>();
 	output->input = input;
 
 	auto setup_task = group.create_task([&group, output, args]() {
-		output->output = make_shared<gli::texture>(output->input->target(), args.format,
-		                                           output->input->extent(),
-		                                           output->input->layers(), output->input->faces(), output->input->levels());
+		output->output = make_shared<MemoryMappedTexture>();
+		auto &layout = output->input->get_layout();
+
+		switch (layout.get_image_type())
+		{
+		case VK_IMAGE_TYPE_1D:
+			output->output->set_1d(layout.get_format(), layout.get_width(), layout.get_layers(), layout.get_levels());
+			break;
+		case VK_IMAGE_TYPE_2D:
+			if (output->input->get_flags() & MEMORY_MAPPED_TEXTURE_CUBE_MAP_COMPATIBLE_BIT)
+				output->output->set_cube(layout.get_format(), layout.get_width(), layout.get_layers() / 6, layout.get_levels());
+			else
+				output->output->set_2d(layout.get_format(), layout.get_width(), layout.get_layers(), layout.get_levels());
+			break;
+		case VK_IMAGE_TYPE_3D:
+			output->output->set_3d(layout.get_format(), layout.get_width(), layout.get_depth(), layout.get_levels());
+			break;
+		default:
+			LOGE("Unsupported image type.\n");
+			return;
+		}
+
+		if (!output->output->map_write(args.output))
+		{
+			LOGE("Failed to map output texture for writing.\n");
+			return;
+		}
+
 		output->setup(args);
 		output->enqueue_compression(group, args);
 	});

@@ -858,6 +858,20 @@ using uvec2 = tvec2<uint32_t>;
 using uvec3 = tvec3<uint32_t>;
 using uvec4 = tvec4<uint32_t>;
 
+using u16vec2 = tvec2<uint16_t>;
+using u16vec3 = tvec3<uint16_t>;
+using u16vec4 = tvec4<uint16_t>;
+using i16vec2 = tvec2<int16_t>;
+using i16vec3 = tvec3<int16_t>;
+using i16vec4 = tvec4<int16_t>;
+
+using u8vec2 = tvec2<uint8_t>;
+using u8vec3 = tvec3<uint8_t>;
+using u8vec4 = tvec4<uint8_t>;
+using i8vec2 = tvec2<int8_t>;
+using i8vec3 = tvec3<int8_t>;
+using i8vec4 = tvec4<int8_t>;
+
 using bvec2 = tvec2<bool>;
 using bvec3 = tvec3<bool>;
 using bvec4 = tvec4<bool>;

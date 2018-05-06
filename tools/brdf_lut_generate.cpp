@@ -1,11 +1,12 @@
 #include "math.hpp"
-#include "gli/save.hpp"
-#include "gli/texture2d.hpp"
 #include "util.hpp"
 #include "muglm/matrix_helper.hpp"
 #include "muglm/muglm_impl.hpp"
+#include "memory_mapped_texture.hpp"
 
 using namespace muglm;
+using namespace Granite;
+using namespace Granite::SceneFormats;
 
 // Shameless copy-pasta from learnopengl.com. :)
 
@@ -114,24 +115,25 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	const int width = 256;
-	const int height = 256;
-	gli::texture2d tex(gli::FORMAT_RG16_SFLOAT_PACK16, gli::extent2d(width, height), 1);
+	const unsigned width = 256;
+	const unsigned height = 256;
 
-	for (int y = 0; y < width; y++)
+	MemoryMappedTexture tex;
+	tex.set_2d(VK_FORMAT_R16G16_SFLOAT, width, height);
+	if (!tex.map_write(argv[1]))
 	{
-		for (int x = 0; x < height; x++)
+		LOGE("Failed to save image to: %s\n", argv[1]);
+		return 1;
+	}
+
+	for (unsigned y = 0; y < width; y++)
+	{
+		for (unsigned x = 0; x < height; x++)
 		{
 			float NoV = (x + 0.5f) * (1.0f / width);
 			float roughness = (y + 0.5f) * (1.0f / height);
 			//roughness = roughness * 0.75f + 0.25f;
-			tex.store<uint32_t>({x, y}, 0, packHalf2x16(IntegrateBRDF(NoV, roughness)));
+			*tex.get_layout().data_2d<uint32_t>(x, y) = packHalf2x16(IntegrateBRDF(NoV, roughness));
 		}
-	}
-
-	if (!gli::save(tex, argv[1]))
-	{
-		LOGE("Failed to save image to: %s\n", argv[1]);
-		return 1;
 	}
 }

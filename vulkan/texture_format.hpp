@@ -79,10 +79,10 @@ public:
 		uint32_t height = 1;
 		uint32_t depth = 1;
 
-		size_t block_image_height = 0;
-		size_t block_row_length = 0;
-		size_t image_height = 0;
-		size_t row_length = 0;
+		uint32_t block_image_height = 0;
+		uint32_t block_row_length = 0;
+		uint32_t image_height = 0;
+		uint32_t row_length = 0;
 	};
 
 	const MipInfo &get_mip_info(uint32_t mip) const;
@@ -98,18 +98,24 @@ public:
 	}
 
 	template <typename T>
+	inline T *data_generic(uint32_t x, uint32_t y, uint32_t slice_index, uint32_t mip = 0) const
+	{
+		auto &mip_info = mips[mip];
+		T *slice = reinterpret_cast<T *>(buffer + mip_info.offset);
+		slice += slice_index * mip_info.block_row_length * mip_info.block_image_height;
+		slice += y * mip_info.block_row_length;
+		slice += x;
+		return slice;
+	}
+
+	template <typename T>
 	inline T *data_1d(uint32_t x, uint32_t layer = 0, uint32_t mip = 0) const
 	{
 		assert(sizeof(T) == block_stride);
 		assert(buffer);
 		assert(image_type == VK_IMAGE_TYPE_1D);
 		assert(buffer_size == required_size);
-
-		auto &mip_info = mips[mip];
-		T *slice = reinterpret_cast<T *>(buffer + mip_info.offset);
-		slice += layer * mip_info.block_row_length * mip_info.block_image_height;
-		slice += x;
-		return slice;
+		return data_generic<T>(x, 0, layer, mip);
 	}
 
 	template <typename T>
@@ -119,13 +125,7 @@ public:
 		assert(buffer);
 		assert(image_type == VK_IMAGE_TYPE_2D);
 		assert(buffer_size == required_size);
-
-		auto &mip_info = mips[mip];
-		T *slice = reinterpret_cast<T *>(buffer + mip_info.offset);
-		slice += layer * mip_info.block_row_length * mip_info.block_image_height;
-		slice += y * mip_info.block_row_length;
-		slice += x;
-		return slice;
+		return data_generic<T>(x, y, layer, mip);
 	}
 
 	template <typename T>
@@ -135,13 +135,7 @@ public:
 		assert(buffer);
 		assert(image_type == VK_IMAGE_TYPE_3D);
 		assert(buffer_size == required_size);
-
-		auto &mip_info = mips[mip];
-		T *slice = reinterpret_cast<T *>(buffer + mip_info.offset);
-		slice += z * mip_info.block_row_length * mip_info.block_image_height;
-		slice += y * mip_info.block_row_length;
-		slice += x;
-		return slice;
+		return data_generic<T>(x, y, z, mip);
 	}
 
 	void build_buffer_image_copies(std::vector<VkBufferImageCopy> &copies) const;

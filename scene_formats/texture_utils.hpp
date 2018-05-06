@@ -22,30 +22,46 @@
 
 #pragma once
 
-#include "material.hpp"
-#include "thread_group.hpp"
 #include "memory_mapped_texture.hpp"
+#include "math.hpp"
+#include "muglm/muglm_impl.hpp"
+#include <string.h>
+#include <stdexcept>
 
 namespace Granite
 {
-enum class TextureMode
+namespace SceneFormats
 {
-	RGB,
-	RGBA,
-	sRGB,
-	sRGBA,
-	HDR,
-	Unknown
-};
-
-struct CompressorArguments
+template <typename T, typename Op>
+inline void transform_texture_layout(const Vulkan::TextureFormatLayout &layout, const Op &op)
 {
-	std::string output;
-	VkFormat format = VK_FORMAT_UNDEFINED;
-	unsigned quality = 3;
-	TextureMode mode = TextureMode::Unknown;
-};
+	auto levels = layout.get_levels();
+	auto layers = layout.get_layers();
+	for (uint32_t level = 0; level < levels; level++)
+	{
+		auto &info = layout.get_mip_info(level);
+		uint32_t width = info.block_row_length;
+		uint32_t height = info.block_image_height;
+		uint32_t depth = info.depth;
+		for (uint32_t layer = 0; layer < layers; layer++)
+		{
+			for (uint32_t z = 0; z < depth; z++)
+			{
+				for (uint32_t y = 0; y < height; y++)
+				{
+					for (uint32_t x = 0; x < width; x++)
+					{
+						// Either z or layer must be 0.
+						auto *data = layout.data_generic<T>(x, y, z | layer, level);
+						*data = op(*data);
+					}
+				}
+			}
+		}
+	}
+}
 
-VkFormat string_to_format(const std::string &s);
-void compress_texture(ThreadGroup &group, const CompressorArguments &args, const std::shared_ptr<SceneFormats::MemoryMappedTexture> &input, TaskGroup &dep);
+MemoryMappedTexture generate_mipmaps(const Vulkan::TextureFormatLayout &layout, MemoryMappedTextureFlags flags);
+MemoryMappedTexture generate_mipmaps_to_file(const std::string &path, const Vulkan::TextureFormatLayout &layout, MemoryMappedTextureFlags flags);
+}
 }

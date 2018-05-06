@@ -28,6 +28,7 @@
 #include "hashmap.hpp"
 #include "thread_group.hpp"
 #include <unordered_set>
+#include "texture_utils.hpp"
 
 using namespace std;
 using namespace rapidjson;
@@ -111,7 +112,7 @@ struct EmittedTexture
 struct AnalysisResult
 {
 	std::string src_path;
-	shared_ptr<gli::texture> image;
+	shared_ptr<MemoryMappedTexture> image;
 	TextureCompression compression;
 	TextureMode mode;
 	Material::Textures type;
@@ -926,50 +927,50 @@ void RemapState::emit_animations(ArrayView<const Animation> animations)
 	}
 }
 
-static gli::format get_compression_format(TextureCompression compression, TextureMode mode)
+static VkFormat get_compression_format(TextureCompression compression, TextureMode mode)
 {
 	bool srgb = mode == TextureMode::sRGB || mode == TextureMode::sRGBA;
 
 	switch (compression)
 	{
 	case TextureCompression::Uncompressed:
-		return srgb ? gli::FORMAT_RGBA8_SRGB_PACK8 : gli::FORMAT_RGBA8_UNORM_PACK8;
+		return srgb ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
 
 	case TextureCompression::BC1:
 		if (mode == TextureMode::sRGBA || mode == TextureMode::RGBA)
-			return srgb ? gli::FORMAT_RGBA_DXT1_SRGB_BLOCK8 : gli::FORMAT_RGBA_DXT1_UNORM_BLOCK8;
+			return srgb ? VK_FORMAT_BC1_RGBA_SRGB_BLOCK : VK_FORMAT_BC1_RGBA_UNORM_BLOCK;
 		else
-			return srgb ? gli::FORMAT_RGB_DXT1_SRGB_BLOCK8 : gli::FORMAT_RGB_DXT1_UNORM_BLOCK8;
+			return srgb ? VK_FORMAT_BC1_RGB_SRGB_BLOCK : VK_FORMAT_BC1_RGB_UNORM_BLOCK;
 
 	case TextureCompression::BC3:
-		return srgb ? gli::FORMAT_RGBA_DXT5_SRGB_BLOCK16 : gli::FORMAT_RGBA_DXT5_UNORM_BLOCK16;
+		return srgb ? VK_FORMAT_BC3_SRGB_BLOCK : VK_FORMAT_BC3_UNORM_BLOCK;
 
 	case TextureCompression::BC4:
-		return gli::FORMAT_R_ATI1N_UNORM_BLOCK8;
+		return VK_FORMAT_BC4_UNORM_BLOCK;
 
 	case TextureCompression::BC5:
-		return gli::FORMAT_RG_ATI2N_UNORM_BLOCK16;
+		return VK_FORMAT_BC5_UNORM_BLOCK;
 
 	case TextureCompression::BC7:
-		return srgb ? gli::FORMAT_RGBA_BP_SRGB_BLOCK16 : gli::FORMAT_RGBA_BP_UNORM_BLOCK16;
+		return srgb ? VK_FORMAT_BC7_SRGB_BLOCK : VK_FORMAT_BC7_UNORM_BLOCK;
 
 	case TextureCompression::BC6H:
-		return gli::FORMAT_RGB_BP_UFLOAT_BLOCK16;
+		return VK_FORMAT_BC6H_UFLOAT_BLOCK;
 
 	case TextureCompression::ASTC4x4:
-		return srgb ? gli::FORMAT_RGBA_ASTC_4X4_SRGB_BLOCK16 : gli::FORMAT_RGBA_ASTC_4X4_UNORM_BLOCK16;
+		return srgb ? VK_FORMAT_ASTC_4x4_SRGB_BLOCK : VK_FORMAT_ASTC_4x4_UNORM_BLOCK;
 
 	case TextureCompression::ASTC5x5:
-		return srgb ? gli::FORMAT_RGBA_ASTC_5X5_SRGB_BLOCK16 : gli::FORMAT_RGBA_ASTC_5X5_UNORM_BLOCK16;
+		return srgb ? VK_FORMAT_ASTC_5x5_SRGB_BLOCK : VK_FORMAT_ASTC_5x5_UNORM_BLOCK;
 
 	case TextureCompression::ASTC6x6:
-		return srgb ? gli::FORMAT_RGBA_ASTC_6X6_SRGB_BLOCK16 : gli::FORMAT_RGBA_ASTC_6X6_UNORM_BLOCK16;
+		return srgb ? VK_FORMAT_ASTC_6x6_SRGB_BLOCK : VK_FORMAT_ASTC_6x6_UNORM_BLOCK;
 
 	case TextureCompression::ASTC8x8:
-		return srgb ? gli::FORMAT_RGBA_ASTC_8X8_SRGB_BLOCK16 : gli::FORMAT_RGBA_ASTC_8X8_UNORM_BLOCK16;
+		return srgb ? VK_FORMAT_ASTC_8x8_SRGB_BLOCK : VK_FORMAT_ASTC_8x8_UNORM_BLOCK;
 
 	default:
-		return gli::FORMAT_UNDEFINED;
+		return VK_FORMAT_UNDEFINED;
 	}
 }
 
@@ -980,49 +981,47 @@ void AnalysisResult::swizzle_image(const VkComponentMapping &swizzle)
 	    swizzle.b != VK_COMPONENT_SWIZZLE_B ||
 	    swizzle.a != VK_COMPONENT_SWIZZLE_A)
 	{
-		if (image->format() != gli::FORMAT_RGBA8_SRGB_PACK8 && image->format() != gli::FORMAT_RGBA8_UNORM_PACK8)
+		auto &layout = image->get_layout();
+		if (layout.get_format() != VK_FORMAT_R8G8B8A8_SRGB && layout.get_format() != VK_FORMAT_R8G8B8A8_UNORM)
 			throw invalid_argument("Can only swizzle RGBA textures.");
 
-		gli::swizzles swizzles = {};
-		const auto conv_swizzle = [](VkComponentSwizzle swiz) -> gli::swizzle {
+		ivec4 swizzles = {};
+		const auto conv_swizzle = [](VkComponentSwizzle swiz) -> int {
 			switch (swiz)
 			{
 			case VK_COMPONENT_SWIZZLE_R:
-				return gli::SWIZZLE_RED;
+				return 0;
 			case VK_COMPONENT_SWIZZLE_G:
-				return gli::SWIZZLE_GREEN;
+				return 1;
 			case VK_COMPONENT_SWIZZLE_B:
-				return gli::SWIZZLE_BLUE;
+				return 2;
 			case VK_COMPONENT_SWIZZLE_A:
-				return gli::SWIZZLE_ALPHA;
-#if 0
-			// gli doesn't seem to support 0/1 swizzling.
-			case VK_COMPONENT_SWIZZLE_ONE:
-				return gli::SWIZZLE_ONE;
-			case VK_COMPONENT_SWIZZLE_ZERO:
-				return gli::SWIZZLE_ZERO;
-#endif
+				return 3;
 			default:
 				throw invalid_argument("Unrecognized swizzle parameter.");
 			}
 		};
 
-		swizzles.r = conv_swizzle(swizzle.r);
-		swizzles.g = conv_swizzle(swizzle.g);
-		swizzles.b = conv_swizzle(swizzle.b);
-		swizzles.a = conv_swizzle(swizzle.a);
-		image->swizzle<glm::u8vec4>(swizzles);
+		swizzles.x = conv_swizzle(swizzle.r);
+		swizzles.y = conv_swizzle(swizzle.g);
+		swizzles.z = conv_swizzle(swizzle.b);
+		swizzles.y = conv_swizzle(swizzle.a);
+
+		transform_texture_layout<u8vec4>(layout, [swizzles](u8vec4 v) {
+			return u8vec4(v[swizzles.x], v[swizzles.y], v[swizzles.z], v[swizzles.w]);
+		});
 	}
 }
 
 AnalysisResult::MetallicRoughnessMode AnalysisResult::deduce_metallic_roughness_mode()
 {
-	if (image->layers() > 1 || image->faces() > 1)
+	auto &layout = image->get_layout();
+	if (layout.get_layers() > 1)
 		return MetallicRoughnessMode::Default;
 
-	auto *src = static_cast<const glm::u8vec4 *>(image->data(0, 0, 0));
-	int width = image->extent().x;
-	int height = image->extent().y;
+	auto *src = static_cast<const u8vec4 *>(layout.data(0, 0));
+	int width = layout.get_width();
+	int height = layout.get_height();
 	int count = width * height;
 
 	bool metallic_zero_only = true;
@@ -1032,14 +1031,14 @@ AnalysisResult::MetallicRoughnessMode AnalysisResult::deduce_metallic_roughness_
 
 	for (int i = 0; i < count; i++)
 	{
-		if (src[i].g != 0xff)
+		if (src[i].y != 0xff)
 			roughness_one_only = false;
-		if (src[i].g != 0)
+		if (src[i].y != 0)
 			roughness_zero_only = false;
 
-		if (src[i].b != 0xff)
+		if (src[i].z != 0xff)
 			metallic_one_only = false;
-		if (src[i].b != 0)
+		if (src[i].z != 0)
 			metallic_zero_only = false;
 	}
 
@@ -1064,11 +1063,12 @@ AnalysisResult::MetallicRoughnessMode AnalysisResult::deduce_metallic_roughness_
 bool AnalysisResult::load_image(const string &src, const VkComponentMapping &swizzle)
 {
 	src_path = src;
-	image = make_shared<gli::texture>();
-	*image = load_gli_texture_from_file(src,
-	                                    (mode == TextureMode::sRGBA || mode == TextureMode::sRGB) ? ColorSpace::sRGB
-	                                                                                              : ColorSpace::Linear);
-	if (image->empty())
+	image = make_shared<MemoryMappedTexture>();
+	*image = load_texture_from_file(src,
+	                                (mode == TextureMode::sRGBA || mode == TextureMode::sRGB) ? ColorSpace::sRGB
+	                                                                                          : ColorSpace::Linear);
+
+	if (image->get_layout().get_required_size() == 0)
 		return false;
 
 	swizzle_image(swizzle);
@@ -1289,22 +1289,17 @@ static void compress_image(ThreadGroup &workers, const string &target_path, shar
 	args.mode = result->mode;
 
 	auto mipgen_task = workers.create_task([=]() {
-		if (result->image->levels() == 1)
-			*result->image = generate_offline_mipmaps(*result->image);
+		if (result->image->get_layout().get_levels() == 1)
+		{
+			if (result->compression != TextureCompression::Uncompressed)
+				*result->image = generate_mipmaps(result->image->get_layout(), result->image->get_flags());
+			else
+				*result->image = generate_mipmaps_to_file(target_path, result->image->get_layout(), result->image->get_flags());
+		}
 	});
 
 	if (result->compression != TextureCompression::Uncompressed)
-	{
 		compress_texture(workers, args, result->image, mipgen_task);
-	}
-	else
-	{
-		auto task = workers.create_task([=]() {
-			if (!save_gli_texture_to_file(target_path, *result->image))
-				LOGE("Failed to save uncompressed file!\n");
-		});
-		workers.add_dependency(task, mipgen_task);
-	}
 }
 
 bool export_scene_to_glb(const SceneInformation &scene, const string &path, const ExportOptions &options)

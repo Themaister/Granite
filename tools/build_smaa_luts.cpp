@@ -1,8 +1,11 @@
 #include "smaa/AreaTex.h"
 #include "smaa/SearchTex.h"
 #include "util.hpp"
-#include "gli/texture.hpp"
-#include "gli/save.hpp"
+#include "memory_mapped_texture.hpp"
+#include <string.h>
+
+using namespace Granite;
+using namespace Granite::SceneFormats;
 
 int main(int argc, char *argv[])
 {
@@ -12,25 +15,22 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	gli::texture area_tex(gli::TARGET_2D, gli::FORMAT_RG8_UNORM_PACK8,
-	                      gli::extent3d(AREATEX_WIDTH, AREATEX_HEIGHT, 1),
-	                      1, 1, 1);
-	gli::texture search_tex(gli::TARGET_2D, gli::FORMAT_R8_UNORM_PACK8,
-	                        gli::extent3d(SEARCHTEX_WIDTH, SEARCHTEX_HEIGHT, 1),
-	                        1, 1, 1);
-
-	memcpy(area_tex.data(), areaTexBytes, AREATEX_SIZE);
-	memcpy(search_tex.data(), searchTexBytes, SEARCHTEX_SIZE);
-
-	if (!gli::save(area_tex, argv[1]))
+	MemoryMappedTexture area;
+	area.set_2d(VK_FORMAT_R8G8_UNORM, AREATEX_WIDTH, AREATEX_HEIGHT);
+	if (!area.map_write(argv[1]))
 	{
 		LOGE("Failed to save area tex.\n");
 		return 1;
 	}
 
-	if (!gli::save(search_tex, argv[2]))
+	MemoryMappedTexture search;
+	search.set_2d(VK_FORMAT_R8_UNORM, SEARCHTEX_WIDTH, SEARCHTEX_HEIGHT);
+	if (!search.map_write(argv[1]))
 	{
 		LOGE("Failed to save search tex.\n");
 		return 1;
 	}
+
+	memcpy(area.get_layout().data(), areaTexBytes, AREATEX_SIZE);
+	memcpy(search.get_layout().data(), searchTexBytes, SEARCHTEX_SIZE);
 }

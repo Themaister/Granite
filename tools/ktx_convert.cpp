@@ -22,13 +22,14 @@
 
 #include <texture_files.hpp>
 #include "cli_parser.hpp"
-#include "gli/save.hpp"
-#include "gli/load.hpp"
 #include "util.hpp"
 #include "texture_compression.hpp"
+#include "memory_mapped_texture.hpp"
+#include "texture_utils.hpp"
 
 using namespace std;
 using namespace Granite;
+using namespace Granite::SceneFormats;
 using namespace Util;
 
 static void print_help()
@@ -60,7 +61,7 @@ int main(int argc, char *argv[])
 	else if (parser.is_ended_state())
 		return 0;
 
-	if (args.format == gli::FORMAT_UNDEFINED)
+	if (args.format == VK_FORMAT_UNDEFINED)
 		return 1;
 	if (args.output.empty() || input_path.empty())
 		return 1;
@@ -68,17 +69,17 @@ int main(int argc, char *argv[])
 	Granite::ColorSpace color;
 	switch (args.format)
 	{
-	case gli::FORMAT_RGBA8_UNORM_PACK8:
-	case gli::FORMAT_RGBA_BP_UNORM_BLOCK16:
-	case gli::FORMAT_RGB_DXT1_UNORM_BLOCK8:
-	case gli::FORMAT_RGBA_DXT5_UNORM_BLOCK16:
-	case gli::FORMAT_R_ATI1N_UNORM_BLOCK8:
-	case gli::FORMAT_RG_ATI2N_UNORM_BLOCK16:
-	case gli::FORMAT_RGB_BP_UFLOAT_BLOCK16:
-	case gli::FORMAT_RGBA_ASTC_4X4_UNORM_BLOCK16:
-	case gli::FORMAT_RGBA_ASTC_5X5_UNORM_BLOCK16:
-	case gli::FORMAT_RGBA_ASTC_6X6_UNORM_BLOCK16:
-	case gli::FORMAT_RGBA_ASTC_8X8_UNORM_BLOCK16:
+	case VK_FORMAT_R8G8B8A8_UNORM:
+	case VK_FORMAT_BC1_RGB_UNORM_BLOCK:
+	case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:
+	case VK_FORMAT_BC3_UNORM_BLOCK:
+	case VK_FORMAT_BC4_UNORM_BLOCK:
+	case VK_FORMAT_BC5_UNORM_BLOCK:
+	case VK_FORMAT_BC7_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_4x4_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_5x5_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_6x6_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_8x8_UNORM_BLOCK:
 		color = Granite::ColorSpace::Linear;
 		break;
 
@@ -87,29 +88,30 @@ int main(int argc, char *argv[])
 		break;
 	}
 
-	auto input = make_shared<gli::texture>(Granite::load_gli_texture_from_file(input_path, color));
+	auto input = make_shared<MemoryMappedTexture>(Granite::load_texture_from_file(input_path, color));
 
-	if (input->empty())
+	if (input->get_layout().get_required_size() == 0)
 	{
 		LOGE("Failed to load texture %s.\n", input_path.c_str());
 		return 1;
 	}
 
 	if (generate_mipmap)
-		*input = Granite::generate_offline_mipmaps(*input);
-
-	if (input->format() == gli::FORMAT_RGBA16_SFLOAT_PACK16)
-		args.mode = TextureMode::HDR;
-
-	if (args.format == gli::FORMAT_RGBA8_UNORM_PACK8 || args.format == gli::FORMAT_RGBA8_SRGB_PACK8)
 	{
-		if (!save_gli_texture_to_file(args.output, *input))
+		if (args.format == VK_FORMAT_R8G8B8A8_UNORM || args.format == VK_FORMAT_R8G8B8A8_SRGB)
+			*input = generate_mipmaps_to_file(args.output, input->get_layout(), input->get_flags());
+		else
+			*input = generate_mipmaps(input->get_layout(), input->get_flags());
+
+		if (!input->get_layout().get_required_size() == 0)
 		{
 			LOGE("Failed to save texture: %s\n", args.output.c_str());
 			return 1;
 		}
-		return 0;
 	}
+
+	if (input->get_layout().get_format() == VK_FORMAT_R16G16B16A16_SFLOAT)
+		args.mode = TextureMode::HDR;
 
 	ThreadGroup group;
 	group.start(std::thread::hardware_concurrency());

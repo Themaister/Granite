@@ -119,7 +119,7 @@ bool MemoryMappedTexture::map_write(const std::string &path)
 	if (!new_file)
 		return false;
 
-	void *mapped = file->map_write(get_required_size());
+	void *mapped = new_file->map_write(get_required_size());
 	if (!mapped)
 		return false;
 

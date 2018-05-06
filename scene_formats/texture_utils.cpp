@@ -94,13 +94,11 @@ struct MipmapGeneratorSrgb
 
 template <typename Ops>
 inline void generate_mipmaps(const Vulkan::TextureFormatLayout &dst_layout,
-                             const Vulkan::TextureFormatLayout &layout, const Ops &op,
-                             MemoryMappedTextureFlags flags)
+                             const Vulkan::TextureFormatLayout &layout, const Ops &op)
 {
-
 	memcpy(dst_layout.data(0, 0), layout.data(0, 0), dst_layout.get_layer_size(0) * layout.get_layers());
 
-	for (uint32_t level = 1; dst_layout.get_levels(); level++)
+	for (uint32_t level = 1; level < dst_layout.get_levels(); level++)
 	{
 		auto &dst_mip = dst_layout.get_mip_info(level);
 		auto &src_mip = dst_layout.get_mip_info(level - 1);
@@ -170,7 +168,7 @@ static void copy_dimensions(MemoryMappedTexture &mapped, const Vulkan::TextureFo
 	}
 }
 
-static void generate(const MemoryMappedTexture &mapped, const Vulkan::TextureFormatLayout &layout, MemoryMappedTextureFlags flags)
+static void generate(const MemoryMappedTexture &mapped, const Vulkan::TextureFormatLayout &layout)
 {
 	auto &dst_layout = mapped.get_layout();
 
@@ -178,11 +176,13 @@ static void generate(const MemoryMappedTexture &mapped, const Vulkan::TextureFor
 	{
 	case VK_FORMAT_R8G8B8A8_SRGB:
 	case VK_FORMAT_B8G8R8A8_SRGB:
-		generate_mipmaps(dst_layout, layout, MipmapGeneratorSrgb(), flags);
+		generate_mipmaps(dst_layout, layout, MipmapGeneratorSrgb());
+		break;
 
 	case VK_FORMAT_R8G8B8A8_UNORM:
 	case VK_FORMAT_B8G8R8A8_UNORM:
-		generate_mipmaps(dst_layout, layout, MipmapGeneratorUnorm(), flags);
+		generate_mipmaps(dst_layout, layout, MipmapGeneratorUnorm());
+		break;
 
 	default:
 		throw std::logic_error("Unsupported format for generate_mipmaps.");
@@ -195,7 +195,7 @@ MemoryMappedTexture generate_mipmaps_to_file(const std::string &path, const Vulk
 	copy_dimensions(mapped, layout, flags);
 	if (!mapped.map_write(path))
 		return {};
-	generate(mapped, layout, flags);
+	generate(mapped, layout);
 	return mapped;
 }
 
@@ -205,7 +205,7 @@ MemoryMappedTexture generate_mipmaps(const Vulkan::TextureFormatLayout &layout, 
 	copy_dimensions(mapped, layout, flags);
 	if (!mapped.map_write_scratch())
 		return {};
-	generate(mapped, layout, flags);
+	generate(mapped, layout);
 	return mapped;
 }
 }

@@ -879,7 +879,7 @@ void compress_texture(ThreadGroup &group, const CompressorArguments &args, const
 			if (output->input->get_flags() & MEMORY_MAPPED_TEXTURE_CUBE_MAP_COMPATIBLE_BIT)
 				output->output->set_cube(layout.get_format(), layout.get_width(), layout.get_layers() / 6, layout.get_levels());
 			else
-				output->output->set_2d(layout.get_format(), layout.get_width(), layout.get_layers(), layout.get_levels());
+				output->output->set_2d(layout.get_format(), layout.get_width(), layout.get_height(), layout.get_layers(), layout.get_levels());
 			break;
 		case VK_IMAGE_TYPE_3D:
 			output->output->set_3d(layout.get_format(), layout.get_width(), layout.get_depth(), layout.get_levels());

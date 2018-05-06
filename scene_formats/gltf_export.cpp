@@ -1005,7 +1005,7 @@ void AnalysisResult::swizzle_image(const VkComponentMapping &swizzle)
 		swizzles.x = conv_swizzle(swizzle.r);
 		swizzles.y = conv_swizzle(swizzle.g);
 		swizzles.z = conv_swizzle(swizzle.b);
-		swizzles.y = conv_swizzle(swizzle.a);
+		swizzles.w = conv_swizzle(swizzle.a);
 
 		transform_texture_layout<u8vec4>(layout, [swizzles](u8vec4 v) {
 			return u8vec4(v[swizzles.x], v[swizzles.y], v[swizzles.z], v[swizzles.w]);

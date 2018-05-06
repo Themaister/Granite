@@ -99,20 +99,22 @@ static unsigned format_to_stride(VkFormat format)
 {
 	switch (format)
 	{
-	case gli::FORMAT_RGBA_BP_SRGB_BLOCK16:
-	case gli::FORMAT_RGBA_BP_UNORM_BLOCK16:
-	case gli::FORMAT_RGB_DXT1_SRGB_BLOCK8:
-	case gli::FORMAT_RGB_DXT1_UNORM_BLOCK8:
-	case gli::FORMAT_RGBA_DXT5_SRGB_BLOCK16:
-	case gli::FORMAT_RGBA_DXT5_UNORM_BLOCK16:
-	case gli::FORMAT_RGBA_ASTC_4X4_SRGB_BLOCK16:
-	case gli::FORMAT_RGBA_ASTC_4X4_UNORM_BLOCK16:
-	case gli::FORMAT_RGBA_ASTC_5X5_SRGB_BLOCK16:
-	case gli::FORMAT_RGBA_ASTC_5X5_UNORM_BLOCK16:
-	case gli::FORMAT_RGBA_ASTC_6X6_SRGB_BLOCK16:
-	case gli::FORMAT_RGBA_ASTC_6X6_UNORM_BLOCK16:
-	case gli::FORMAT_RGBA_ASTC_8X8_SRGB_BLOCK16:
-	case gli::FORMAT_RGBA_ASTC_8X8_UNORM_BLOCK16:
+	case VK_FORMAT_BC7_UNORM_BLOCK:
+	case VK_FORMAT_BC7_SRGB_BLOCK:
+	case VK_FORMAT_BC1_RGB_UNORM_BLOCK:
+	case VK_FORMAT_BC1_RGB_SRGB_BLOCK:
+	case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:
+	case VK_FORMAT_BC1_RGBA_SRGB_BLOCK:
+	case VK_FORMAT_BC3_UNORM_BLOCK:
+	case VK_FORMAT_BC3_SRGB_BLOCK:
+	case VK_FORMAT_ASTC_4x4_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_4x4_SRGB_BLOCK:
+	case VK_FORMAT_ASTC_5x5_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_5x5_SRGB_BLOCK:
+	case VK_FORMAT_ASTC_6x6_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_6x6_SRGB_BLOCK:
+	case VK_FORMAT_ASTC_8x8_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_8x8_SRGB_BLOCK:
 		return 4;
 
 	case VK_FORMAT_BC6H_UFLOAT_BLOCK:
@@ -870,19 +872,21 @@ void compress_texture(ThreadGroup &group, const CompressorArguments &args, const
 		output->output = make_shared<MemoryMappedTexture>();
 		auto &layout = output->input->get_layout();
 
+		output->setup(args);
+
 		switch (layout.get_image_type())
 		{
 		case VK_IMAGE_TYPE_1D:
-			output->output->set_1d(layout.get_format(), layout.get_width(), layout.get_layers(), layout.get_levels());
+			output->output->set_1d(args.format, layout.get_width(), layout.get_layers(), layout.get_levels());
 			break;
 		case VK_IMAGE_TYPE_2D:
 			if (output->input->get_flags() & MEMORY_MAPPED_TEXTURE_CUBE_MAP_COMPATIBLE_BIT)
-				output->output->set_cube(layout.get_format(), layout.get_width(), layout.get_layers() / 6, layout.get_levels());
+				output->output->set_cube(args.format, layout.get_width(), layout.get_layers() / 6, layout.get_levels());
 			else
-				output->output->set_2d(layout.get_format(), layout.get_width(), layout.get_height(), layout.get_layers(), layout.get_levels());
+				output->output->set_2d(args.format, layout.get_width(), layout.get_height(), layout.get_layers(), layout.get_levels());
 			break;
 		case VK_IMAGE_TYPE_3D:
-			output->output->set_3d(layout.get_format(), layout.get_width(), layout.get_depth(), layout.get_levels());
+			output->output->set_3d(args.format, layout.get_width(), layout.get_depth(), layout.get_levels());
 			break;
 		default:
 			LOGE("Unsupported image type.\n");
@@ -895,7 +899,6 @@ void compress_texture(ThreadGroup &group, const CompressorArguments &args, const
 			return;
 		}
 
-		output->setup(args);
 		output->enqueue_compression(group, args);
 	});
 	group.add_dependency(setup_task, dep);

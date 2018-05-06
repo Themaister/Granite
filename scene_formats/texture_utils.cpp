@@ -154,6 +154,7 @@ static void copy_dimensions(MemoryMappedTexture &mapped, const Vulkan::TextureFo
 	case VK_IMAGE_TYPE_1D:
 		mapped.set_1d(layout.get_format(), layout.get_width(), layout.get_layers(), 0);
 		break;
+
 	case VK_IMAGE_TYPE_2D:
 		if (flags & MEMORY_MAPPED_TEXTURE_CUBE_MAP_COMPATIBLE_BIT)
 			mapped.set_cube(layout.get_format(), layout.get_width(), layout.get_layers() / 6, 0);

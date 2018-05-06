@@ -159,7 +159,7 @@ bool Device::enqueue_create_shader_module(Fossilize::Hash hash, unsigned, const 
 	return true;
 }
 
-bool Device::enqueue_create_compute_pipeline(Fossilize::Hash hash, unsigned,
+bool Device::enqueue_create_compute_pipeline(Fossilize::Hash, unsigned,
                                              const VkComputePipelineCreateInfo *create_info, VkPipeline *pipeline)
 {
 	// Find the Shader* associated with this VkShaderModule and just use that.
@@ -3064,7 +3064,7 @@ void Device::set_queue_lock(std::function<void()> lock_callback, std::function<v
 	queue_unlock_callback = move(unlock_callback);
 }
 
-bool Device::enqueue_create_sampler(Fossilize::Hash hash, unsigned index, const VkSamplerCreateInfo *create_info, VkSampler *sampler)
+bool Device::enqueue_create_sampler(Fossilize::Hash, unsigned, const VkSamplerCreateInfo *, VkSampler *)
 {
 	return false;
 }

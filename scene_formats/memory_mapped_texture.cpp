@@ -140,7 +140,7 @@ struct ScratchFile : Granite::File
 		return data.data();
 	}
 
-	void *map_write(size_t size) override
+	void *map_write(size_t) override
 	{
 		return nullptr;
 	}

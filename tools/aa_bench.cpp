@@ -120,7 +120,7 @@ void AABenchApplication::on_device_created(const DeviceCreatedEvent &e)
 	graph.set_device(&e.get_device());
 }
 
-void AABenchApplication::on_device_destroyed(const DeviceCreatedEvent &e)
+void AABenchApplication::on_device_destroyed(const DeviceCreatedEvent &)
 {
 	image = nullptr;
 	graph.reset();

@@ -25,7 +25,7 @@ if (GRANITE_ASTC_ENCODER_COMPRESSION)
     target_link_libraries(texture-compression astc-encoder)
     target_compile_definitions(texture-compression PRIVATE HAVE_ASTC_ENCODER)
 endif()
-target_link_libraries(texture-compression gli util filesystem renderer threading)
+target_link_libraries(texture-compression util filesystem renderer threading)
 
 add_granite_library(scene-formats
         gltf.cpp gltf.hpp
@@ -40,7 +40,7 @@ add_granite_library(scene-formats-export
         gltf_export.cpp gltf_export.hpp)
 
 target_link_libraries(scene-formats math util filesystem renderer vulkan-backend rapidjson)
-target_link_libraries(scene-formats-export math util filesystem renderer vulkan-backend rapidjson gli texture-compression threading)
+target_link_libraries(scene-formats-export math util filesystem renderer vulkan-backend rapidjson texture-compression threading)
 target_include_directories(scene-formats PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(scene-formats-export PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 

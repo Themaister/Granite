@@ -84,7 +84,7 @@ int main(int argc, char *argv[])
 	cbs.add("--extra-lights", [&](CLIParser &parser) { extra_lights = parser.next_string(); });
 	cbs.add("--extra-cameras", [&](CLIParser &parser) { extra_cameras = parser.next_string(); });
 	cbs.add("--scale", [&](CLIParser &parser) { scale = parser.next_double(); });
-	cbs.add("--animate-cameras", [&](CLIParser &parser) { animate_cameras = true; });
+	cbs.add("--animate-cameras", [&](CLIParser &) { animate_cameras = true; });
 
 	cbs.add("--fog-color", [&](CLIParser &parser) {
 		for (unsigned i = 0; i < 3; i++)

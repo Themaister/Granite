@@ -863,8 +863,8 @@ void RemapState::emit_animations(ArrayView<const Animation> animations)
 			unsigned timestamp_accessor = emit_accessor(timestamp_view, VK_FORMAT_R32_SFLOAT, 0, sizeof(float),
 			                                            channel.timestamps.size());
 
-			unsigned data_view;
-			unsigned data_accessor;
+			unsigned data_view = 0;
+			unsigned data_accessor = 0;
 
 			switch (channel.type)
 			{
@@ -1296,6 +1296,8 @@ static void compress_image(ThreadGroup &workers, const string &target_path, shar
 			else
 				*result->image = generate_mipmaps_to_file(target_path, result->image->get_layout(), result->image->get_flags());
 		}
+
+		LOGI("Mapped input texture: %u bytes.\n", unsigned(result->image->get_required_size()));
 	});
 
 	if (result->compression != TextureCompression::Uncompressed)
@@ -1558,6 +1560,7 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 
 			compress_image(workers, Path::relpath(path, image.target_relpath),
 			               image.loaded_image, image.compression_quality);
+			workers.wait_idle();
 		}
 		doc.AddMember("images", images, allocator);
 	}

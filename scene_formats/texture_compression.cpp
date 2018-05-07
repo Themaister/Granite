@@ -859,6 +859,11 @@ void CompressorState::enqueue_compression(ThreadGroup &group, const CompressorAr
 			LOGI("Red PSNR: %.f dB\n", 10.0 * log10(255.0 * 255.0 / state->total_error[0]));
 		if (state->total_error[1] != 0.0)
 			LOGI("Green PSNR: %.f dB\n", 10.0 * log10(255.0 * 255.0 / state->total_error[1]));
+
+		LOGI("Unmapping %u bytes for texture writing.\n", unsigned(state->output->get_required_size()));
+		LOGI("Unmapping %u bytes for texture reading.\n", unsigned(state->input->get_required_size()));
+
+		state->output.reset();
 	});
 	group.add_dependency(write_task, compression_task);
 }
@@ -898,6 +903,9 @@ void compress_texture(ThreadGroup &group, const CompressorArguments &args, const
 			LOGE("Failed to map output texture for writing.\n");
 			return;
 		}
+
+		LOGI("Mapping %u bytes for texture writeout.\n",
+		     unsigned(output->output->get_required_size()));
 
 		output->enqueue_compression(group, args);
 	});

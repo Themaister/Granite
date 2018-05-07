@@ -30,8 +30,8 @@ static vec3 ImportanceSampleGGX(vec2 Xi, vec3 N, float roughness)
 	float a = roughness * roughness;
 
 	float phi = 2.0f * pi<float>() * Xi.x;
-	float cosTheta = sqrt((1.0f - Xi.y) / (1.0f + (a * a - 1.0f) * Xi.y));
-	float sinTheta = sqrt(1.0f - cosTheta * cosTheta);
+	float cosTheta = muglm::sqrt((1.0f - Xi.y) / (1.0f + (a * a - 1.0f) * Xi.y));
+	float sinTheta = muglm::sqrt(1.0f - cosTheta * cosTheta);
 
 	// from spherical coordinates to cartesian coordinates
 	vec3 H;
@@ -72,7 +72,7 @@ static float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
 static vec2 IntegrateBRDF(float NdotV, float roughness)
 {
 	vec3 V;
-	V.x = sqrt(1.0f - NdotV * NdotV);
+	V.x = muglm::sqrt(1.0f - NdotV * NdotV);
 	V.y = 0.0f;
 	V.z = NdotV;
 

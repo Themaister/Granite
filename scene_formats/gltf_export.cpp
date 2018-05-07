@@ -1289,7 +1289,7 @@ static void compress_image(ThreadGroup &workers, const string &target_path, shar
 	args.mode = result->mode;
 
 	auto mipgen_task = workers.create_task([=]() {
-		if (result->image->get_layout().get_levels() == 1)
+		if (result->image->get_layout().get_levels() == 1 && result->mode != TextureMode::HDR)
 		{
 			if (result->compression != TextureCompression::Uncompressed)
 				*result->image = generate_mipmaps(result->image->get_layout(), result->image->get_flags());

@@ -99,9 +99,9 @@ int main(int argc, char *argv[])
 
 	device.submit(cmd);
 
-	auto saved_cube = save_image_to_cpu_buffer(device, *cube);
-	auto saved_specular = save_image_to_cpu_buffer(device, *specular);
-	auto saved_diffuse = save_image_to_cpu_buffer(device, *diffuse);
+	auto saved_cube = save_image_to_cpu_buffer(device, *cube, CommandBuffer::Type::Graphics);
+	auto saved_specular = save_image_to_cpu_buffer(device, *specular, CommandBuffer::Type::Graphics);
+	auto saved_diffuse = save_image_to_cpu_buffer(device, *diffuse, CommandBuffer::Type::Graphics);
 
 	if (!args.cube.empty())
 		save_image_buffer_to_gtx(device, saved_cube, args.cube.c_str());

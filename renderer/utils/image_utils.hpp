@@ -37,6 +37,6 @@ struct ImageReadback
 	Vulkan::ImageCreateInfo create_info;
 	Vulkan::TextureFormatLayout layout;
 };
-ImageReadback save_image_to_cpu_buffer(Vulkan::Device &device, const Vulkan::Image &image);
+ImageReadback save_image_to_cpu_buffer(Vulkan::Device &device, const Vulkan::Image &image, Vulkan::CommandBuffer::Type type);
 bool save_image_buffer_to_gtx(Vulkan::Device &device, ImageReadback &readback, const char *path);
 }

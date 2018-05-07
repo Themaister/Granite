@@ -56,6 +56,9 @@ static SceneFormats::MemoryMappedTexture load_hdr(const void *data, size_t size)
 
 	SceneFormats::MemoryMappedTexture tex;
 	tex.set_2d(VK_FORMAT_R16G16B16A16_SFLOAT, width, height);
+	if (!tex.map_write_scratch())
+		return {};
+	tex.set_generate_mipmaps_on_load(true);
 
 	auto *converted = static_cast<muglm::uvec2 *>(tex.get_layout().data());
 	for (int i = 0; i < width * height; i++)

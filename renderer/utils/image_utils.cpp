@@ -233,7 +233,7 @@ ImageHandle convert_equirect_to_cube(Device &device, ImageView &view, float scal
 	return handle;
 }
 
-ImageReadback save_image_to_cpu_buffer(Vulkan::Device &device, const Vulkan::Image &image)
+ImageReadback save_image_to_cpu_buffer(Vulkan::Device &device, const Vulkan::Image &image, CommandBuffer::Type type)
 {
 	ImageReadback readback;
 	readback.create_info = image.get_create_info();
@@ -266,7 +266,7 @@ ImageReadback save_image_to_cpu_buffer(Vulkan::Device &device, const Vulkan::Ima
 	buffer_info.domain = BufferDomain::CachedHost;
 	readback.buffer = device.create_buffer(buffer_info, nullptr);
 
-	auto cmd = device.request_command_buffer(CommandBuffer::Type::Transfer);
+	auto cmd = device.request_command_buffer(type);
 	cmd->copy_image_to_buffer(*readback.buffer, image, blits.size(), blits.data());
 	cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 	             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);

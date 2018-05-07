@@ -146,6 +146,8 @@ void Context::destroy()
 #ifdef VULKAN_DEBUG
 	if (debug_callback)
 		vkDestroyDebugReportCallbackEXT(instance, debug_callback, nullptr);
+	if (debug_messenger)
+		vkDestroyDebugUtilsMessengerEXT(instance, debug_messenger, nullptr);
 #endif
 
 	if (owned_device && device != VK_NULL_HANDLE)
@@ -168,6 +170,49 @@ const VkApplicationInfo &Context::get_application_info()
 }
 
 #ifdef VULKAN_DEBUG
+static VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_messenger_cb(
+		VkDebugUtilsMessageSeverityFlagBitsEXT           messageSeverity,
+		VkDebugUtilsMessageTypeFlagsEXT                  messageType,
+		const VkDebugUtilsMessengerCallbackDataEXT*      pCallbackData,
+		void*)
+{
+	switch (messageSeverity)
+	{
+	case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
+		if (messageType == VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT)
+			LOGE("[Vulkan]: Validation Error: %s\n", pCallbackData->pMessage);
+		else
+			LOGE("[Vulkan]: Other Error: %s\n", pCallbackData->pMessage);
+		break;
+
+	case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
+		if (messageType == VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT)
+			LOGE("[Vulkan]: Validation Warning: %s\n", pCallbackData->pMessage);
+		else
+			LOGE("[Vulkan]: Other Warning: %s\n", pCallbackData->pMessage);
+		break;
+
+	case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
+	case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
+		if (messageType == VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT)
+			LOGI("[Vulkan]: Validation Info: %s\n", pCallbackData->pMessage);
+		else
+			LOGI("[Vulkan]: Other Info: %s\n", pCallbackData->pMessage);
+		break;
+
+	default:
+		return VK_FALSE;
+	}
+
+	for (uint32_t i = 0; i < pCallbackData->objectCount; i++)
+	{
+		auto *name = pCallbackData->pObjects[i].pObjectName;
+		LOGE("  Object #%u: %s\n", i, name ? name : "N/A");
+	}
+
+	return VK_FALSE;
+}
+
 static VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_debug_cb(VkDebugReportFlagsEXT flags,
                                                       VkDebugReportObjectTypeEXT, uint64_t,
                                                       size_t, int32_t messageCode, const char *pLayerPrefix,
@@ -245,6 +290,12 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 		ext.supports_external = true;
 	}
 
+	if (has_extension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME))
+	{
+		instance_exts.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+		ext.supports_debug_utils = true;
+	}
+
 #ifdef VULKAN_DEBUG
 	const auto has_layer = [&](const char *name) -> bool {
 		auto itr = find_if(begin(queried_layers), end(queried_layers), [name](const VkLayerProperties &e) -> bool {
@@ -253,7 +304,7 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 		return itr != end(queried_layers);
 	};
 
-	if (has_extension(VK_EXT_DEBUG_REPORT_EXTENSION_NAME))
+	if (!ext.supports_debug_utils && has_extension(VK_EXT_DEBUG_REPORT_EXTENSION_NAME))
 		instance_exts.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
 
 	bool force_no_validation = false;
@@ -274,15 +325,27 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 	volkLoadInstance(instance);
 
 #ifdef VULKAN_DEBUG
-	if (has_extension(VK_EXT_DEBUG_REPORT_EXTENSION_NAME))
+	if (ext.supports_debug_utils)
 	{
-		{
+		VkDebugUtilsMessengerCreateInfoEXT info = { VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT };
+		info.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT |
+		                       VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
+		                       VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
+		                       VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT;
+		info.pfnUserCallback = vulkan_messenger_cb;
+		info.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+		                   VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT |
+		                   VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT;
+
+		vkCreateDebugUtilsMessengerEXT(instance, &info, nullptr, &debug_messenger);
+	}
+	else if (has_extension(VK_EXT_DEBUG_REPORT_EXTENSION_NAME))
+	{
 			VkDebugReportCallbackCreateInfoEXT info = { VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT };
 			info.flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT |
 			             VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT;
 			info.pfnCallback = vulkan_debug_cb;
 			vkCreateDebugReportCallbackEXT(instance, &info, NULL, &debug_callback);
-		}
 	}
 #endif
 

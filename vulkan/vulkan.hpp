@@ -80,6 +80,7 @@ struct DeviceFeatures
 	bool supports_dedicated = false;
 	bool supports_image_format_list = false;
 	bool supports_debug_marker = false;
+	bool supports_debug_utils = false;
 	VkPhysicalDeviceFeatures enabled_features = {};
 };
 
@@ -196,6 +197,7 @@ private:
 
 #ifdef VULKAN_DEBUG
 	VkDebugReportCallbackEXT debug_callback = VK_NULL_HANDLE;
+	VkDebugUtilsMessengerEXT debug_messenger = VK_NULL_HANDLE;
 #endif
 
 	void destroy();

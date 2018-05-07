@@ -853,14 +853,16 @@ void Device::submit_staging(CommandBufferHandle cmd, VkBufferUsageFlags usage, b
 	{
 		auto compute_stages = stages &
 		                      (VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
-		                       VK_PIPELINE_STAGE_TRANSFER_BIT);
+		                       VK_PIPELINE_STAGE_TRANSFER_BIT |
+		                       VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT);
 
 		auto compute_access = access &
 		                      (VK_ACCESS_SHADER_READ_BIT |
 		                       VK_ACCESS_SHADER_WRITE_BIT |
 		                       VK_ACCESS_TRANSFER_READ_BIT |
 		                       VK_ACCESS_UNIFORM_READ_BIT |
-		                       VK_ACCESS_TRANSFER_WRITE_BIT);
+		                       VK_ACCESS_TRANSFER_WRITE_BIT |
+		                       VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
 
 		auto graphics_stages = stages;
 

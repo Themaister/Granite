@@ -75,6 +75,38 @@ void CommandBuffer::copy_buffer(const Buffer &dst, const Buffer &src)
 	copy_buffer(dst, 0, src, 0, dst.get_create_info().size);
 }
 
+void CommandBuffer::copy_image(const Image &dst, const Image &src)
+{
+	uint32_t levels = src.get_create_info().levels;
+	VK_ASSERT(src.get_create_info().levels == dst.get_create_info().levels);
+	VK_ASSERT(src.get_create_info().width == dst.get_create_info().width);
+	VK_ASSERT(src.get_create_info().height == dst.get_create_info().height);
+	VK_ASSERT(src.get_create_info().depth == dst.get_create_info().depth);
+	VK_ASSERT(src.get_create_info().type == dst.get_create_info().type);
+	VK_ASSERT(src.get_create_info().layers == dst.get_create_info().layers);
+	VK_ASSERT(src.get_create_info().levels == dst.get_create_info().levels);
+
+	VkImageCopy regions[32] = {};
+
+	for (uint32_t i = 0; i < levels; i++)
+	{
+		auto &region = regions[i];
+		region.extent.width = src.get_create_info().width;
+		region.extent.height = src.get_create_info().height;
+		region.extent.depth = src.get_create_info().depth;
+		region.srcSubresource.aspectMask = format_to_aspect_mask(src.get_format());
+		region.srcSubresource.layerCount = src.get_create_info().layers;
+		region.dstSubresource.aspectMask = format_to_aspect_mask(dst.get_format());
+		region.dstSubresource.layerCount = dst.get_create_info().layers;
+		region.srcSubresource.mipLevel = i;
+		region.dstSubresource.mipLevel = i;
+		VK_ASSERT(region.srcSubresource.aspectMask == region.dstSubresource.aspectMask);
+	}
+
+	vkCmdCopyImage(cmd, src.get_image(), src.get_layout(), dst.get_image(), dst.get_layout(),
+	               levels, regions);
+}
+
 void CommandBuffer::copy_buffer_to_image(const Image &image, const Buffer &buffer, unsigned num_blits,
                                          const VkBufferImageCopy *blits)
 {

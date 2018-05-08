@@ -254,6 +254,7 @@ public:
 	void copy_buffer(const Buffer &dst, VkDeviceSize dst_offset, const Buffer &src, VkDeviceSize src_offset,
 	                 VkDeviceSize size);
 	void copy_buffer(const Buffer &dst, const Buffer &src);
+	void copy_image(const Image &dst, const Image &src);
 
 	void copy_buffer_to_image(const Image &image, const Buffer &buffer, VkDeviceSize buffer_offset,
 	                          const VkOffset3D &offset, const VkExtent3D &extent, unsigned row_length,

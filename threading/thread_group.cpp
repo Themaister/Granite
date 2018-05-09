@@ -39,6 +39,9 @@ TaskGroup::TaskGroup(ThreadGroup *group)
 
 void TaskDeps::notify_dependees()
 {
+	if (signal)
+		signal->signal_increment();
+
 	for (auto &dep : pending)
 		dep->dependency_satisfied();
 	pending.clear();
@@ -212,6 +215,21 @@ void ThreadGroup::free_task_deps(Internal::TaskDeps *deps)
 	task_deps_pool.free(deps);
 }
 
+void TaskSignal::signal_increment()
+{
+	lock_guard<mutex> holder{lock};
+	counter++;
+	cond.notify_all();
+}
+
+void TaskSignal::wait_until_at_least(uint64_t count)
+{
+	unique_lock<mutex> holder{lock};
+	cond.wait(holder, [&]() -> bool {
+		return counter >= count;
+	});
+}
+
 TaskGroup ThreadGroup::create_task(std::function<void()> func)
 {
 	TaskGroup group(task_group_pool.allocate(this));
@@ -229,6 +247,11 @@ TaskGroup ThreadGroup::create_task()
 	group->deps = Internal::TaskDepsHandle(task_deps_pool.allocate(this));
 	group->deps->count.store(0, memory_order_relaxed);
 	return group;
+}
+
+void Internal::TaskGroup::set_fence_counter_signal(TaskSignal *signal)
+{
+	deps->signal = signal;
 }
 
 void Internal::TaskGroup::enqueue_task(std::function<void()> func)

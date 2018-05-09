@@ -38,6 +38,16 @@ namespace Granite
 {
 class ThreadGroup;
 
+struct TaskSignal
+{
+	std::condition_variable cond;
+	std::mutex lock;
+	uint64_t counter = 0;
+
+	void signal_increment();
+	void wait_until_at_least(uint64_t count);
+};
+
 namespace Internal
 {
 struct TaskGroup;
@@ -68,6 +78,7 @@ struct TaskDeps : Util::IntrusivePtrEnabled<TaskDeps, TaskDepsDeleter, Util::Mul
 	std::atomic_uint count;
 
 	std::vector<Task *> pending_tasks;
+	TaskSignal *signal = nullptr;
 	std::atomic_uint dependency_count;
 
 	void task_completed();
@@ -90,6 +101,7 @@ struct TaskGroup : Util::IntrusivePtrEnabled<TaskGroup, TaskGroupDeleter, Util::
 	ThreadGroup *group;
 	TaskDepsHandle deps;
 	void enqueue_task(std::function<void ()> func);
+	void set_fence_counter_signal(TaskSignal *signal);
 
 	unsigned id = 0;
 	bool flushed = false;

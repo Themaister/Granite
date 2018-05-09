@@ -163,6 +163,7 @@ struct CompressorState : enable_shared_from_this<CompressorState>
 
 	double total_error[4] = {};
 	mutex lock;
+	TaskSignal *signal = nullptr;
 };
 
 void CompressorState::setup(const CompressorArguments &args)
@@ -864,14 +865,18 @@ void CompressorState::enqueue_compression(ThreadGroup &group, const CompressorAr
 		LOGI("Unmapping %u bytes for texture reading.\n", unsigned(state->input->get_required_size()));
 
 		state->output.reset();
+		state->input.reset();
 	});
 	group.add_dependency(write_task, compression_task);
+	write_task->set_fence_counter_signal(signal);
 }
 
-void compress_texture(ThreadGroup &group, const CompressorArguments &args, const shared_ptr<MemoryMappedTexture> &input, TaskGroup &dep)
+void compress_texture(ThreadGroup &group, const CompressorArguments &args, const shared_ptr<MemoryMappedTexture> &input,
+                      TaskGroup &dep, TaskSignal *signal)
 {
 	auto output = make_shared<CompressorState>();
 	output->input = input;
+	output->signal = signal;
 
 	auto setup_task = group.create_task([&group, output, args]() {
 		output->output = make_shared<MemoryMappedTexture>();

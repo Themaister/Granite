@@ -117,7 +117,7 @@ int main(int argc, char *argv[])
 	group.start(std::thread::hardware_concurrency());
 
 	auto dummy = group.create_task();
-	compress_texture(group, args, input, dummy);
+	compress_texture(group, args, input, dummy, nullptr);
 	dummy->flush();
 	group.wait_idle();
 }

@@ -1270,7 +1270,7 @@ static shared_ptr<AnalysisResult> analyze_image(TaskGroup &group,
 }
 
 static void compress_image(ThreadGroup &workers, const string &target_path, shared_ptr<AnalysisResult> &result,
-                           unsigned quality)
+                           unsigned quality, TaskSignal *signal)
 {
 	FileStat src_stat, dst_stat;
 	if (Filesystem::get().stat(result->src_path, src_stat) && Filesystem::get().stat(target_path, dst_stat))
@@ -1278,6 +1278,8 @@ static void compress_image(ThreadGroup &workers, const string &target_path, shar
 		if (src_stat.last_modified < dst_stat.last_modified)
 		{
 			LOGI("Texture %s -> %s is already compressed, skipping.\n", result->src_path.c_str(), target_path.c_str());
+			if (signal)
+				signal->signal_increment();
 			return;
 		}
 	}
@@ -1301,7 +1303,9 @@ static void compress_image(ThreadGroup &workers, const string &target_path, shar
 	});
 
 	if (result->compression != TextureCompression::Uncompressed)
-		compress_texture(workers, args, result->image, mipgen_task);
+		compress_texture(workers, args, result->image, mipgen_task, signal);
+	else
+		mipgen_task->set_fence_counter_signal(signal);
 }
 
 bool export_scene_to_glb(const SceneInformation &scene, const string &path, const ExportOptions &options)
@@ -1502,6 +1506,7 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 	{
 		Value images(kArrayType);
 
+		LOGI("Analyzing images ...\n");
 		// Load images, swizzle, and figure out which compression type is the most appropriate.
 		auto group = workers.create_task();
 		for (auto &image : state.image_cache)
@@ -1511,7 +1516,10 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 			                                   image.type, image.compression, image.mode);
 		}
 		group->wait();
+		LOGI("Analyzed images ...\n");
 
+		TaskSignal signal;
+		unsigned max_count = 0;
 		for (auto &image : state.image_cache)
 		{
 			// Replace the swizzle with possibly something else.
@@ -1558,9 +1566,14 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 
 			images.PushBack(i, allocator);
 
+			// Only keep a certain number of compression jobs alive at a time.
+			if (max_count > 3)
+				signal.wait_until_at_least(max_count - 3);
+
 			compress_image(workers, Path::relpath(path, image.target_relpath),
-			               image.loaded_image, image.compression_quality);
-			workers.wait_idle();
+			               image.loaded_image, image.compression_quality, &signal);
+
+			max_count++;
 		}
 		doc.AddMember("images", images, allocator);
 	}

@@ -29,6 +29,7 @@
 #include "thread_group.hpp"
 #include <unordered_set>
 #include "texture_utils.hpp"
+#include "texture_format.hpp"
 
 using namespace std;
 using namespace rapidjson;
@@ -347,6 +348,7 @@ unsigned RemapState::emit_buffer(ArrayView<const uint8_t> view, uint32_t stride)
 #define GL_INT                            0x1404
 #define GL_UNSIGNED_INT                   0x1405
 #define GL_FLOAT                          0x1406
+#define GL_HALF_FLOAT                     0x140B
 
 #define GL_REPEAT                         0x2901
 #define GL_CLAMP_TO_EDGE                  0x812F
@@ -362,6 +364,7 @@ static const char *get_accessor_type(VkFormat format)
 	switch (format)
 	{
 	case VK_FORMAT_R32_SFLOAT:
+	case VK_FORMAT_R16_SFLOAT:
 	case VK_FORMAT_R8_UNORM:
 	case VK_FORMAT_R8_UINT:
 	case VK_FORMAT_R8_SNORM:
@@ -375,6 +378,7 @@ static const char *get_accessor_type(VkFormat format)
 		return "SCALAR";
 
 	case VK_FORMAT_R32G32_SFLOAT:
+	case VK_FORMAT_R16G16_SFLOAT:
 	case VK_FORMAT_R8G8_UNORM:
 	case VK_FORMAT_R8G8_UINT:
 	case VK_FORMAT_R8G8_SNORM:
@@ -388,6 +392,7 @@ static const char *get_accessor_type(VkFormat format)
 		return "VEC2";
 
 	case VK_FORMAT_R32G32B32_SFLOAT:
+	case VK_FORMAT_R16G16B16_SFLOAT:
 	case VK_FORMAT_R8G8B8_UNORM:
 	case VK_FORMAT_R8G8B8_UINT:
 	case VK_FORMAT_R8G8B8_SNORM:
@@ -399,6 +404,7 @@ static const char *get_accessor_type(VkFormat format)
 		return "VEC3";
 
 	case VK_FORMAT_R32G32B32A32_SFLOAT:
+	case VK_FORMAT_R16G16B16A16_SFLOAT:
 	case VK_FORMAT_R8G8B8A8_UNORM:
 	case VK_FORMAT_R8G8B8A8_UINT:
 	case VK_FORMAT_R8G8B8A8_SNORM:
@@ -455,6 +461,12 @@ static unsigned get_accessor_component(VkFormat format)
 	case VK_FORMAT_R32G32B32A32_SFLOAT:
 		return GL_FLOAT;
 
+	case VK_FORMAT_R16_SFLOAT:
+	case VK_FORMAT_R16G16_SFLOAT:
+	case VK_FORMAT_R16G16B16_SFLOAT:
+	case VK_FORMAT_R16G16B16A16_SFLOAT:
+		return GL_HALF_FLOAT;
+
 	case VK_FORMAT_R8_UNORM:
 	case VK_FORMAT_R8G8_UNORM:
 	case VK_FORMAT_R8G8B8_UNORM:
@@ -473,7 +485,6 @@ static unsigned get_accessor_component(VkFormat format)
 	case VK_FORMAT_R8G8_SINT:
 	case VK_FORMAT_R8G8B8_SINT:
 	case VK_FORMAT_R8G8B8A8_SINT:
-		return GL_UNSIGNED_BYTE;
 		return GL_BYTE;
 
 	case VK_FORMAT_R16_UNORM:
@@ -747,6 +758,32 @@ void RemapState::emit_material(unsigned remapped_material)
 	output.two_sided = material.two_sided;
 }
 
+static void quantize_attribute_fp32_fp16(uint8_t *output,
+                                         uint32_t output_stride,
+                                         const uint8_t *buffer,
+                                         uint32_t stride,
+                                         uint32_t count)
+{
+	for (uint32_t i = 0; i < count; i++)
+	{
+		vec4 input(0.0f, 0.0f, 0.0f, 1.0f);
+		memcpy(input.data, buffer + stride * i, stride);
+		u16vec4 packed = floatToHalf(input);
+		memcpy(output + output_stride * i, packed.data, sizeof(packed.data));
+	}
+}
+
+static void extract_attribute(uint8_t *output,
+                              uint32_t output_stride,
+                              const uint8_t *buffer,
+                              uint32_t stride,
+                              uint32_t format_stride,
+                              uint32_t count)
+{
+	for (size_t i = 0; i < count; i++)
+		memcpy(output + output_stride * i, buffer + i * stride, format_stride);
+}
+
 void RemapState::emit_mesh(unsigned remapped_index)
 {
 	auto &mesh = *this->mesh.info[remapped_index];
@@ -776,37 +813,90 @@ void RemapState::emit_mesh(unsigned remapped_index)
 		}
 	}
 
-	unsigned position_buffer = 0;
-	unsigned attribute_buffer = 0;
-	if (!mesh.positions.empty())
-		position_buffer = emit_buffer(mesh.positions, mesh.position_stride);
-	if (!mesh.attributes.empty())
-		attribute_buffer = emit_buffer(mesh.attributes, mesh.attribute_stride);
+	const auto &layout = mesh.attribute_layout;
 
 	emit.attribute_mask = 0;
-	for (unsigned i = 0; i < ecast(MeshAttribute::Count); i++)
+	if (!mesh.positions.empty())
 	{
-		if (mesh.attribute_layout[i].format == VK_FORMAT_UNDEFINED)
-			continue;
+		uint32_t buffer_index = 0;
+		uint32_t count = uint32_t(mesh.positions.size() / mesh.position_stride);
+		auto &acc = emit.attribute_accessor[ecast(MeshAttribute::Position)];
+		uint32_t format_size = Vulkan::TextureFormatLayout::format_block_size(layout[ecast(MeshAttribute::Position)].format);
 
-		emit.attribute_mask |= 1u << i;
-
-		if (i == ecast(MeshAttribute::Position))
+		switch (layout[ecast(MeshAttribute::Position)].format)
 		{
-			emit.attribute_accessor[i] = emit_accessor(position_buffer,
-			                                           mesh.attribute_layout[i].format,
-			                                           mesh.attribute_layout[i].offset, mesh.position_stride,
-			                                           mesh.positions.size() / mesh.position_stride);
+		case VK_FORMAT_R32G32B32_SFLOAT:
+		case VK_FORMAT_R32G32B32A32_SFLOAT:
+		{
+			if (all(greaterThan(mesh.static_aabb.get_minimum(), vec3(-0x8000))) &&
+			    all(lessThan(mesh.static_aabb.get_maximum(), vec3(0x8000))))
+			{
+				vector<uint8_t> output(sizeof(u16vec4) * count);
 
-			accessor_cache[emit.attribute_accessor[i]].aabb = mesh.static_aabb;
-			accessor_cache[emit.attribute_accessor[i]].use_aabb = true;
+				quantize_attribute_fp32_fp16(output.data(), sizeof(u16vec4),
+				                             mesh.positions.data(), mesh.position_stride, count);
+
+				buffer_index = emit_buffer(output, sizeof(u16vec4));
+				acc = emit_accessor(buffer_index,
+				                    VK_FORMAT_R16G16B16A16_SFLOAT,
+				                    0, sizeof(u16vec4), count);
+			}
+			else
+			{
+				buffer_index = emit_buffer(mesh.positions, mesh.position_stride);
+				acc = emit_accessor(buffer_index,
+				                    layout[ecast(MeshAttribute::Position)].format,
+				                    0, format_size, count);
+			}
+			break;
 		}
-		else
+
+		default:
+			buffer_index = emit_buffer(mesh.positions, mesh.position_stride);
+			acc = emit_accessor(buffer_index,
+			                    layout[ecast(MeshAttribute::Position)].format,
+			                    0, format_size, count);
+			break;
+		}
+
+		accessor_cache[acc].aabb = mesh.static_aabb;
+		accessor_cache[acc].use_aabb = true;
+		emit.attribute_mask |= 1u << ecast(MeshAttribute::Position);
+	}
+
+	if (!mesh.attributes.empty())
+	{
+		uint32_t attr_count = uint32_t(mesh.attributes.size() / mesh.attribute_stride);
+
+		for (unsigned i = 0; i < ecast(MeshAttribute::Count); i++)
 		{
-			emit.attribute_accessor[i] = emit_accessor(attribute_buffer,
-			                                           mesh.attribute_layout[i].format,
-			                                           mesh.attribute_layout[i].offset, mesh.attribute_stride,
-			                                           mesh.attributes.size() / mesh.attribute_stride);
+			auto attr = static_cast<MeshAttribute>(i);
+			if (layout[i].format == VK_FORMAT_UNDEFINED || i == ecast(MeshAttribute::Position))
+				continue;
+
+			emit.attribute_mask |= 1u << i;
+
+			auto format_size = Vulkan::TextureFormatLayout::format_block_size(layout[i].format);
+			vector<uint8_t> unpacked_buffer(attr_count * format_size);
+
+			extract_attribute(unpacked_buffer.data(), format_size,
+			                  mesh.attributes.data() + layout[i].offset, mesh.attribute_stride, format_size, attr_count);
+
+			VkFormat remapped_format = layout[i].format;
+
+			if ((attr == MeshAttribute::Normal || attr == MeshAttribute::Tangent) &&
+			    (layout[i].format == VK_FORMAT_R32G32B32A32_SFLOAT || layout[i].format == VK_FORMAT_R32G32B32_SFLOAT))
+			{
+				vector<uint8_t> quantized(attr_count * sizeof(u16vec4));
+				quantize_attribute_fp32_fp16(quantized.data(), sizeof(u16vec4), unpacked_buffer.data(), format_size, attr_count);
+				unpacked_buffer = move(quantized);
+
+				remapped_format = VK_FORMAT_R16G16B16A16_SFLOAT;
+				format_size = sizeof(u16vec4);
+			}
+
+			auto buffer_index = emit_buffer(unpacked_buffer, format_size);
+			emit.attribute_accessor[i] = emit_accessor(buffer_index, remapped_format, 0, format_size, attr_count);
 		}
 	}
 }

@@ -35,6 +35,7 @@ using namespace Granite::SceneFormats;
 enum class ScalarType
 {
 	Float32,
+	Float16,
 	Int32,
 	Uint32,
 	Int16,

@@ -381,7 +381,7 @@ void Ground::refresh(RenderContext &context)
 	uint16_t *data = static_cast<uint16_t *>(cmd->update_image(*lod_map));
 
 	const auto quantize = [](float v) -> uint16_t {
-		return packHalf1x16(v);
+		return floatToHalf(v);
 	};
 
 	for (auto lod : patch_lods)

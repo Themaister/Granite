@@ -741,7 +741,7 @@ inline float uintBitsToFloat(uint v)
 }
 MUGLM_VECTORIZED_FUNC1(uintBitsToFloat)
 
-inline uint16_t packHalf1x16(float v)
+inline uint16_t floatToHalf(float v)
 {
 	int i = floatBitsToUint(v);
 	int s =  (i >> 16) & 0x00008000;
@@ -790,11 +790,19 @@ inline uint16_t packHalf1x16(float v)
 	}
 }
 
-inline uint packHalf2x16(const vec2 &v)
+inline u16vec2 floatToHalf(const vec2 &v)
 {
-	uint lo = packHalf1x16(v.x);
-	uint hi = packHalf1x16(v.y);
-	return lo | (hi << 16u);
+	return u16vec2(floatToHalf(v.x), floatToHalf(v.y));
+}
+
+inline u16vec3 floatToHalf(const vec3 &v)
+{
+	return u16vec3(floatToHalf(v.x), floatToHalf(v.y), floatToHalf(v.z));
+}
+
+inline u16vec4 floatToHalf(const vec4 &v)
+{
+	return u16vec4(floatToHalf(v.x), floatToHalf(v.y), floatToHalf(v.z), floatToHalf(v.w));
 }
 
 // inversesqrt

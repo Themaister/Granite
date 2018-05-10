@@ -60,11 +60,10 @@ static SceneFormats::MemoryMappedTexture load_hdr(const void *data, size_t size)
 		return {};
 	tex.set_generate_mipmaps_on_load(true);
 
-	auto *converted = static_cast<muglm::uvec2 *>(tex.get_layout().data());
+	auto *converted = static_cast<muglm::u16vec4 *>(tex.get_layout().data());
 	for (int i = 0; i < width * height; i++)
 	{
-		converted[i] = muglm::uvec2(muglm::packHalf2x16(muglm::vec2(buffer[3 * i + 0], buffer[3 * i + 1])),
-		                            muglm::packHalf2x16(muglm::vec2(buffer[3 * i + 2], 1.0f)));
+		converted[i] = muglm::floatToHalf(muglm::vec4(buffer[3 * i + 0], buffer[3 * i + 1], buffer[3 * i + 2], 1.0f));
 	}
 	stbi_image_free(buffer);
 	return tex;

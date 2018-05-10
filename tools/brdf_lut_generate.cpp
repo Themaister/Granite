@@ -133,7 +133,7 @@ int main(int argc, char *argv[])
 			float NoV = (x + 0.5f) * (1.0f / width);
 			float roughness = (y + 0.5f) * (1.0f / height);
 			//roughness = roughness * 0.75f + 0.25f;
-			*tex.get_layout().data_2d<uint32_t>(x, y) = packHalf2x16(IntegrateBRDF(NoV, roughness));
+			*tex.get_layout().data_2d<u16vec2>(x, y) = floatToHalf(IntegrateBRDF(NoV, roughness));
 		}
 	}
 }

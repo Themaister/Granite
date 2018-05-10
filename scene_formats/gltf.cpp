@@ -195,6 +195,7 @@ Parser::Parser(const std::string &path)
 #define GL_INT                            0x1404
 #define GL_UNSIGNED_INT                   0x1405
 #define GL_FLOAT                          0x1406
+#define GL_HALF_FLOAT                     0x140B
 
 #define GL_REPEAT                         0x2901
 #define GL_CLAMP_TO_EDGE                  0x812F
@@ -264,6 +265,11 @@ VkFormat Parser::components_to_padded_format(ScalarType type, uint32_t component
 		static const VkFormat formats[] = { VK_FORMAT_R32_SFLOAT, VK_FORMAT_R32G32_SFLOAT, VK_FORMAT_R32G32B32_SFLOAT, VK_FORMAT_R32G32B32A32_SFLOAT };
 		return formats[components - 1];
 	}
+	case ScalarType::Float16:
+	{
+		static const VkFormat formats[] = { VK_FORMAT_R16_SFLOAT, VK_FORMAT_R16G16_SFLOAT, VK_FORMAT_R16G16B16_SFLOAT, VK_FORMAT_R16G16B16A16_SFLOAT };
+		return formats[components - 1];
+	}
 
 	default:
 		return VK_FORMAT_UNDEFINED;
@@ -281,6 +287,7 @@ uint32_t Parser::type_stride(ScalarType type)
 		return 1;
 
 	case ScalarType::Int16:
+	case ScalarType::Float16:
 	case ScalarType::Uint16:
 	case ScalarType::Int16Snorm:
 	case ScalarType::Uint16Unorm:
@@ -358,6 +365,12 @@ void Parser::resolve_component_type(uint32_t component_type, const char *type, b
 		break;
 	}
 
+	case GL_HALF_FLOAT:
+	{
+		scalar_type = ScalarType::Float16;
+		break;
+	}
+
 	default:
 		throw logic_error("Unknown type.");
 	}
@@ -398,6 +411,7 @@ static void read_min_max(T &out, ScalarType type, const Value &v)
 	switch (type)
 	{
 	case ScalarType::Float32:
+	case ScalarType::Float16:
 		out.f32 = v.GetFloat();
 		break;
 

@@ -220,7 +220,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_messenger_cb(
 		for (uint32_t i = 0; i < pCallbackData->objectCount; i++)
 		{
 			auto *name = pCallbackData->pObjects[i].pObjectName;
-			LOGE("  Object #%u: %s\n", i, name ? name : "N/A");
+			LOGI("  Object #%u: %s\n", i, name ? name : "N/A");
 		}
 	}
 

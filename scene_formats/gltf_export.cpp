@@ -349,6 +349,8 @@ unsigned RemapState::emit_buffer(ArrayView<const uint8_t> view, uint32_t stride)
 #define GL_UNSIGNED_INT                   0x1405
 #define GL_FLOAT                          0x1406
 #define GL_HALF_FLOAT                     0x140B
+#define GL_INT_2_10_10_10_REV             0x8D9F
+#define GL_UNSIGNED_INT_2_10_10_10_REV    0x8368
 
 #define GL_REPEAT                         0x2901
 #define GL_CLAMP_TO_EDGE                  0x812F
@@ -417,6 +419,8 @@ static const char *get_accessor_type(VkFormat format)
 	case VK_FORMAT_R32G32B32A32_UINT:
 	case VK_FORMAT_R32G32B32_SINT:
 	case VK_FORMAT_R32G32B32A32_SINT:
+	case VK_FORMAT_A2B10G10R10_SNORM_PACK32:
+	case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
 		return "VEC4";
 
 	default:
@@ -444,6 +448,8 @@ static bool get_accessor_normalized(VkFormat format)
 	case VK_FORMAT_R16G16_SNORM:
 	case VK_FORMAT_R16G16B16_SNORM:
 	case VK_FORMAT_R16G16B16A16_SNORM:
+	case VK_FORMAT_A2B10G10R10_SNORM_PACK32:
+	case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
 		return true;
 
 	default:
@@ -518,6 +524,11 @@ static unsigned get_accessor_component(VkFormat format)
 	case VK_FORMAT_R32G32B32_SINT:
 	case VK_FORMAT_R32G32B32A32_SINT:
 		return GL_INT;
+
+	case VK_FORMAT_A2B10G10R10_SNORM_PACK32:
+		return GL_INT_2_10_10_10_REV;
+	case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
+		return GL_UNSIGNED_INT_2_10_10_10_REV;
 
 	default:
 		throw invalid_argument("Unsupported format.");
@@ -759,7 +770,6 @@ void RemapState::emit_material(unsigned remapped_material)
 }
 
 static void quantize_attribute_fp32_fp16(uint8_t *output,
-                                         uint32_t output_stride,
                                          const uint8_t *buffer,
                                          uint32_t stride,
                                          uint32_t count)
@@ -769,7 +779,43 @@ static void quantize_attribute_fp32_fp16(uint8_t *output,
 		vec4 input(0.0f, 0.0f, 0.0f, 1.0f);
 		memcpy(input.data, buffer + stride * i, stride);
 		u16vec4 packed = floatToHalf(input);
-		memcpy(output + output_stride * i, packed.data, sizeof(packed.data));
+		memcpy(output + sizeof(u16vec4) * i, packed.data, sizeof(packed.data));
+	}
+}
+
+static void quantize_attribute_rg32f_rg16unorm(uint8_t *output,
+                                               const uint8_t *buffer, uint32_t count)
+{
+	for (uint32_t i = 0; i < count; i++)
+	{
+		vec2 input;
+		memcpy(input.data, buffer + sizeof(vec2) * i, sizeof(vec2));
+
+		input *= float(0xffff);
+		input = clamp(round(input), vec2(0.0f), vec2(0xffff));
+		u16vec2 result(input);
+		memcpy(output + i * sizeof(u16vec2), result.data, sizeof(u16vec2));
+	}
+}
+
+static void quantize_attribute_fp32_a2bgr10snorm(uint8_t *output, const uint8_t *buffer, uint32_t stride, uint32_t count)
+{
+	for (uint32_t i = 0; i < count; i++)
+	{
+		vec4 input(0.0f, 0.0f, 0.0f, 1.0f);
+		memcpy(input.data, buffer + stride * i, stride);
+
+		input *= vec4(0x1ff, 0x1ff, 0x1ff, 1);
+		input = round(input);
+		input = clamp(input, vec4(-0x1ff, -0x1ff, -0x1ff, -1), vec4(0x1ff, 0x1ff, 0x1ff, 1));
+		ivec4 quantized(input);
+
+		uint32_t result = uint32_t(quantized.w & 3) << 30;
+		result |= uint32_t(quantized.z & 0x3ff) << 20;
+		result |= uint32_t(quantized.y & 0x3ff) << 10;
+		result |= uint32_t(quantized.x & 0x3ff) <<  0;
+
+		memcpy(output + i * sizeof(uint32_t), &result, sizeof(uint32_t));
 	}
 }
 
@@ -833,8 +879,7 @@ void RemapState::emit_mesh(unsigned remapped_index)
 			{
 				vector<uint8_t> output(sizeof(u16vec4) * count);
 
-				quantize_attribute_fp32_fp16(output.data(), sizeof(u16vec4),
-				                             mesh.positions.data(), mesh.position_stride, count);
+				quantize_attribute_fp32_fp16(output.data(), mesh.positions.data(), mesh.position_stride, count);
 
 				buffer_index = emit_buffer(output, sizeof(u16vec4));
 				acc = emit_accessor(buffer_index,
@@ -866,7 +911,7 @@ void RemapState::emit_mesh(unsigned remapped_index)
 
 	if (!mesh.attributes.empty())
 	{
-		uint32_t attr_count = uint32_t(mesh.attributes.size() / mesh.attribute_stride);
+		auto attr_count = unsigned(mesh.attributes.size() / mesh.attribute_stride);
 
 		for (unsigned i = 0; i < ecast(MeshAttribute::Count); i++)
 		{
@@ -887,12 +932,35 @@ void RemapState::emit_mesh(unsigned remapped_index)
 			if ((attr == MeshAttribute::Normal || attr == MeshAttribute::Tangent) &&
 			    (layout[i].format == VK_FORMAT_R32G32B32A32_SFLOAT || layout[i].format == VK_FORMAT_R32G32B32_SFLOAT))
 			{
-				vector<uint8_t> quantized(attr_count * sizeof(u16vec4));
-				quantize_attribute_fp32_fp16(quantized.data(), sizeof(u16vec4), unpacked_buffer.data(), format_size, attr_count);
+				vector<uint8_t> quantized(attr_count * sizeof(uint32_t));
+				quantize_attribute_fp32_a2bgr10snorm(quantized.data(), unpacked_buffer.data(), format_size, attr_count);
 				unpacked_buffer = move(quantized);
 
-				remapped_format = VK_FORMAT_R16G16B16A16_SFLOAT;
-				format_size = sizeof(u16vec4);
+				remapped_format = VK_FORMAT_A2B10G10R10_SNORM_PACK32;
+				format_size = sizeof(uint32_t);
+			}
+			else if (attr == MeshAttribute::UV && layout[i].format == VK_FORMAT_R32G32_SFLOAT)
+			{
+				// Pack to RG16_UNORM if UV is within [0, 1] range.
+				vec2 min_uv = vec2(1.0f);
+				vec2 max_uv = vec2(0.0f);
+
+				for (unsigned v = 0; v < attr_count; v++)
+				{
+					vec2 uv;
+					memcpy(uv.data, unpacked_buffer.data() + format_size * v, format_size);
+					min_uv = min(min_uv, uv);
+					max_uv = max(max_uv, uv);
+				}
+
+				if (all(lessThanEqual(max_uv, vec2(1.0f))) && all(greaterThanEqual(min_uv, vec2(0.0f))))
+				{
+					vector<uint8_t> quantized(attr_count * sizeof(u16vec2));
+					quantize_attribute_rg32f_rg16unorm(quantized.data(), unpacked_buffer.data(), attr_count);
+					unpacked_buffer = move(quantized);
+					remapped_format = VK_FORMAT_R16G16_UNORM;
+					format_size = sizeof(u16vec2);
+				}
 			}
 
 			auto buffer_index = emit_buffer(unpacked_buffer, format_size);
@@ -1542,6 +1610,8 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 			acc.AddMember("type", StringRef(accessor.type), allocator);
 			acc.AddMember("count", accessor.count, allocator);
 			acc.AddMember("byteOffset", accessor.offset, allocator);
+			if (accessor.normalized)
+				acc.AddMember("normalized", accessor.normalized, allocator);
 			if (accessor.use_aabb)
 			{
 				vec4 lo = vec4(accessor.aabb.get_minimum(), 1.0f);

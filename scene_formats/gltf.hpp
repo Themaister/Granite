@@ -45,7 +45,11 @@ enum class ScalarType
 	Int16Snorm,
 	Uint16Unorm,
 	Int8Snorm,
-	Uint8Unorm
+	Uint8Unorm,
+	A2Bgr10Unorm,
+	A2Bgr10Uint,
+	A2Bgr10Snorm,
+	A2Bgr10Int
 };
 
 class Parser

@@ -196,6 +196,8 @@ Parser::Parser(const std::string &path)
 #define GL_UNSIGNED_INT                   0x1405
 #define GL_FLOAT                          0x1406
 #define GL_HALF_FLOAT                     0x140B
+#define GL_INT_2_10_10_10_REV             0x8D9F
+#define GL_UNSIGNED_INT_2_10_10_10_REV    0x8368
 
 #define GL_REPEAT                         0x2901
 #define GL_CLAMP_TO_EDGE                  0x812F
@@ -271,6 +273,34 @@ VkFormat Parser::components_to_padded_format(ScalarType type, uint32_t component
 		return formats[components - 1];
 	}
 
+	case ScalarType::A2Bgr10Int:
+	{
+		if (components != 4)
+			return VK_FORMAT_UNDEFINED;
+		return VK_FORMAT_A2B10G10R10_SINT_PACK32;
+	}
+
+	case ScalarType::A2Bgr10Snorm:
+	{
+		if (components != 4)
+			return VK_FORMAT_UNDEFINED;
+		return VK_FORMAT_A2B10G10R10_SNORM_PACK32;
+	}
+
+	case ScalarType::A2Bgr10Uint:
+	{
+		if (components != 4)
+			return VK_FORMAT_UNDEFINED;
+		return VK_FORMAT_A2B10G10R10_UINT_PACK32;
+	}
+
+	case ScalarType::A2Bgr10Unorm:
+	{
+		if (components != 4)
+			return VK_FORMAT_UNDEFINED;
+		return VK_FORMAT_A2B10G10R10_UNORM_PACK32;
+	}
+
 	default:
 		return VK_FORMAT_UNDEFINED;
 	}
@@ -297,6 +327,12 @@ uint32_t Parser::type_stride(ScalarType type)
 	case ScalarType::Uint32:
 	case ScalarType::Float32:
 		return 4;
+
+	case ScalarType::A2Bgr10Int:
+	case ScalarType::A2Bgr10Snorm:
+	case ScalarType::A2Bgr10Uint:
+	case ScalarType::A2Bgr10Unorm:
+		return 1; // Will be multiplied by 4.
 
 	default:
 		return 0;
@@ -371,6 +407,18 @@ void Parser::resolve_component_type(uint32_t component_type, const char *type, b
 		break;
 	}
 
+	case GL_INT_2_10_10_10_REV:
+	{
+		scalar_type = normalized ? ScalarType::A2Bgr10Snorm : ScalarType::A2Bgr10Int;
+		break;
+	}
+
+	case GL_UNSIGNED_INT_2_10_10_10_REV:
+	{
+		scalar_type = normalized ? ScalarType::A2Bgr10Unorm : ScalarType::A2Bgr10Uint;
+		break;
+	}
+
 	default:
 		throw logic_error("Unknown type.");
 	}
@@ -412,18 +460,22 @@ static void read_min_max(T &out, ScalarType type, const Value &v)
 	{
 	case ScalarType::Float32:
 	case ScalarType::Float16:
+	case ScalarType::A2Bgr10Snorm:
+	case ScalarType::A2Bgr10Unorm:
 		out.f32 = v.GetFloat();
 		break;
 
 	case ScalarType::Int8:
 	case ScalarType::Int16:
 	case ScalarType::Int32:
+	case ScalarType::A2Bgr10Int:
 		out.i32 = v.GetInt();
 		break;
 
 	case ScalarType::Uint8:
 	case ScalarType::Uint16:
 	case ScalarType::Uint32:
+	case ScalarType::A2Bgr10Uint:
 		out.i32 = v.GetInt();
 		break;
 

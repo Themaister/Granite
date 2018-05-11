@@ -82,8 +82,11 @@ struct EmittedAccessor
 	unsigned offset = 0;
 
 	AABB aabb;
+	uint32_t uint_min = 0;
+	uint32_t uint_max = 0;
 	bool normalized = false;
 	bool use_aabb = false;
+	bool use_uint_min_max = false;
 };
 
 struct EmittedMaterial
@@ -189,8 +192,7 @@ struct RemapState
 
 	unsigned emit_buffer(ArrayView<const uint8_t> view, uint32_t stride);
 
-	unsigned emit_accessor(unsigned view_index,
-	                       VkFormat format, unsigned offset, unsigned stride, unsigned count);
+	unsigned emit_accessor(unsigned view_index, VkFormat format, unsigned offset, unsigned count);
 
 	unsigned emit_texture(const MaterialInfo::Texture &texture,
 	                      Vulkan::StockSampler sampler, Material::Textures type,
@@ -542,13 +544,12 @@ static void set_accessor_type(EmittedAccessor &accessor, VkFormat format)
 	accessor.normalized = get_accessor_normalized(format);
 }
 
-unsigned RemapState::emit_accessor(unsigned view_index, VkFormat format, unsigned offset, unsigned stride, unsigned count)
+unsigned RemapState::emit_accessor(unsigned view_index, VkFormat format, unsigned offset, unsigned count)
 {
 	Hasher h;
 	h.u32(view_index);
 	h.u32(format);
 	h.u32(offset);
-	h.u32(stride);
 	h.u32(count);
 
 	auto itr = accessor_hash.find(h.get());
@@ -844,7 +845,33 @@ void RemapState::emit_mesh(unsigned remapped_index)
 		emit.index_accessor = emit_accessor(index,
 		                                    mesh.index_type == VK_INDEX_TYPE_UINT16 ? VK_FORMAT_R16_UINT
 		                                                                            : VK_FORMAT_R32_UINT,
-		                                    0, mesh.index_type == VK_INDEX_TYPE_UINT16 ? 2 : 4, mesh.count);
+		                                    0, mesh.count);
+
+		uint32_t min_index = ~0u;
+		uint32_t max_index = 0;
+
+		if (mesh.index_type == VK_INDEX_TYPE_UINT16)
+		{
+			const auto *indices = reinterpret_cast<const uint16_t *>(mesh.indices.data());
+			for (uint32_t i = 0; i < mesh.count; i++)
+			{
+				min_index = muglm::min(min_index, uint32_t(indices[i]));
+				max_index = muglm::max(max_index, uint32_t(indices[i]));
+			}
+		}
+		else
+		{
+			const auto *indices = reinterpret_cast<const uint32_t *>(mesh.indices.data());
+			for (uint32_t i = 0; i < mesh.count; i++)
+			{
+				min_index = muglm::min(min_index, indices[i]);
+				max_index = muglm::max(max_index, indices[i]);
+			}
+		}
+
+		accessor_cache[emit.index_accessor].use_uint_min_max = true;
+		accessor_cache[emit.index_accessor].uint_min = min_index;
+		accessor_cache[emit.index_accessor].uint_max = max_index;
 	}
 	else
 		emit.index_accessor = -1;
@@ -866,8 +893,7 @@ void RemapState::emit_mesh(unsigned remapped_index)
 	{
 		uint32_t buffer_index = 0;
 		uint32_t count = uint32_t(mesh.positions.size() / mesh.position_stride);
-		auto &acc = emit.attribute_accessor[ecast(MeshAttribute::Position)];
-		uint32_t format_size = Vulkan::TextureFormatLayout::format_block_size(layout[ecast(MeshAttribute::Position)].format);
+		int &acc = emit.attribute_accessor[ecast(MeshAttribute::Position)];
 
 		switch (layout[ecast(MeshAttribute::Position)].format)
 		{
@@ -884,14 +910,14 @@ void RemapState::emit_mesh(unsigned remapped_index)
 				buffer_index = emit_buffer(output, sizeof(u16vec4));
 				acc = emit_accessor(buffer_index,
 				                    VK_FORMAT_R16G16B16A16_SFLOAT,
-				                    0, sizeof(u16vec4), count);
+				                    0, count);
 			}
 			else
 			{
 				buffer_index = emit_buffer(mesh.positions, mesh.position_stride);
 				acc = emit_accessor(buffer_index,
 				                    layout[ecast(MeshAttribute::Position)].format,
-				                    0, format_size, count);
+				                    0, count);
 			}
 			break;
 		}
@@ -900,7 +926,7 @@ void RemapState::emit_mesh(unsigned remapped_index)
 			buffer_index = emit_buffer(mesh.positions, mesh.position_stride);
 			acc = emit_accessor(buffer_index,
 			                    layout[ecast(MeshAttribute::Position)].format,
-			                    0, format_size, count);
+			                    0, count);
 			break;
 		}
 
@@ -964,7 +990,7 @@ void RemapState::emit_mesh(unsigned remapped_index)
 			}
 
 			auto buffer_index = emit_buffer(unpacked_buffer, format_size);
-			emit.attribute_accessor[i] = emit_accessor(buffer_index, remapped_format, 0, format_size, attr_count);
+			emit.attribute_accessor[i] = emit_accessor(buffer_index, remapped_format, 0, attr_count);
 		}
 	}
 }
@@ -1018,7 +1044,7 @@ void RemapState::emit_animations(ArrayView<const Animation> animations)
 			                                        channel.timestamps.size() * sizeof(float) },
 			                                      sizeof(float));
 
-			unsigned timestamp_accessor = emit_accessor(timestamp_view, VK_FORMAT_R32_SFLOAT, 0, sizeof(float),
+			unsigned timestamp_accessor = emit_accessor(timestamp_view, VK_FORMAT_R32_SFLOAT, 0,
 			                                            channel.timestamps.size());
 
 			unsigned data_view = 0;
@@ -1031,7 +1057,7 @@ void RemapState::emit_animations(ArrayView<const Animation> animations)
 				data_view = emit_buffer({ reinterpret_cast<const uint8_t *>(channel.spherical.values.data()),
 				                          channel.spherical.values.size() * sizeof(quat) },
 				                        sizeof(quat));
-				data_accessor = emit_accessor(data_view, VK_FORMAT_R32G32B32A32_SFLOAT, 0, sizeof(quat),
+				data_accessor = emit_accessor(data_view, VK_FORMAT_R32G32B32A32_SFLOAT, 0,
 				                              channel.spherical.values.size());
 				break;
 			case AnimationChannel::Type::CubicTranslation:
@@ -1039,7 +1065,7 @@ void RemapState::emit_animations(ArrayView<const Animation> animations)
 				data_view = emit_buffer({ reinterpret_cast<const uint8_t *>(channel.cubic.values.data()),
 				                          channel.cubic.values.size() * sizeof(vec3) },
 				                        sizeof(vec3));
-				data_accessor = emit_accessor(data_view, VK_FORMAT_R32G32B32_SFLOAT, 0, sizeof(vec3),
+				data_accessor = emit_accessor(data_view, VK_FORMAT_R32G32B32_SFLOAT, 0,
 				                              channel.cubic.values.size());
 				break;
 			case AnimationChannel::Type::Translation:
@@ -1047,7 +1073,7 @@ void RemapState::emit_animations(ArrayView<const Animation> animations)
 				data_view = emit_buffer({ reinterpret_cast<const uint8_t *>(channel.linear.values.data()),
 				                          channel.linear.values.size() * sizeof(vec3) },
 				                        sizeof(vec3));
-				data_accessor = emit_accessor(data_view, VK_FORMAT_R32G32B32_SFLOAT, 0, sizeof(vec3),
+				data_accessor = emit_accessor(data_view, VK_FORMAT_R32G32B32_SFLOAT, 0,
 				                              channel.linear.values.size());
 				break;
 			case AnimationChannel::Type::CubicScale:
@@ -1055,7 +1081,7 @@ void RemapState::emit_animations(ArrayView<const Animation> animations)
 				data_view = emit_buffer({ reinterpret_cast<const uint8_t *>(channel.cubic.values.data()),
 				                          channel.cubic.values.size() * sizeof(vec3) },
 				                        sizeof(vec3));
-				data_accessor = emit_accessor(data_view, VK_FORMAT_R32G32B32_SFLOAT, 0, sizeof(vec3),
+				data_accessor = emit_accessor(data_view, VK_FORMAT_R32G32B32_SFLOAT, 0,
 				                              channel.cubic.values.size());
 				break;
 			case AnimationChannel::Type::Scale:
@@ -1063,7 +1089,7 @@ void RemapState::emit_animations(ArrayView<const Animation> animations)
 				data_view = emit_buffer({ reinterpret_cast<const uint8_t *>(channel.linear.values.data()),
 				                          channel.linear.values.size() * sizeof(vec3) },
 				                        sizeof(vec3));
-				data_accessor = emit_accessor(data_view, VK_FORMAT_R32G32B32_SFLOAT, 0, sizeof(vec3),
+				data_accessor = emit_accessor(data_view, VK_FORMAT_R32G32B32_SFLOAT, 0,
 				                              channel.linear.values.size());
 				break;
 			}
@@ -1638,6 +1664,16 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 					acc.AddMember("max", maximum, allocator);
 				}
 			}
+			else if (accessor.use_uint_min_max)
+			{
+				Value minimum(kArrayType);
+				Value maximum(kArrayType);
+				minimum.PushBack(accessor.uint_min, allocator);
+				maximum.PushBack(accessor.uint_max, allocator);
+				acc.AddMember("min", minimum, allocator);
+				acc.AddMember("max", maximum, allocator);
+			}
+
 			accessors.PushBack(acc, allocator);
 		}
 		doc.AddMember("accessors", accessors, allocator);

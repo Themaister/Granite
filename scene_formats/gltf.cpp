@@ -1746,7 +1746,7 @@ void Parser::build_primitive(const MeshData::AttributeData &prim)
 		auto &buffer = json_buffers[view.buffer_index];
 
 		auto type_size = type_stride(indices.type);
-		bool u16_compat = indices.max[0].u32 < 0xffff;
+		bool u16_compat = (indices.max[0].u32 < 0xffff) && (indices.max[0].u32 > indices.min[0].u32);
 		auto index_count = indices.count;
 		auto offset = view.offset + indices.offset;
 

@@ -253,5 +253,6 @@ struct SceneInformation
 };
 
 bool recompute_normals(Mesh &mesh);
+Mesh mesh_optimize_index_buffer(const Mesh &mesh);
 }
 }

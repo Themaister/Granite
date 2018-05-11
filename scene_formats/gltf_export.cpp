@@ -833,7 +833,8 @@ static void extract_attribute(uint8_t *output,
 
 void RemapState::emit_mesh(unsigned remapped_index)
 {
-	auto &mesh = *this->mesh.info[remapped_index];
+	auto mesh = mesh_optimize_index_buffer(*this->mesh.info[remapped_index]);
+	//auto &mesh = *this->mesh.info[remapped_index];
 	mesh_cache.resize(std::max<size_t>(mesh_cache.size(), remapped_index + 1));
 
 	auto &emit = mesh_cache[remapped_index];

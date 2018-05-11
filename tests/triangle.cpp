@@ -45,18 +45,40 @@ struct TriangleApplication : Granite::Application
 		cmd->set_opaque_state();
 		cmd->set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
 		cmd->set_vertex_attrib(0, 0, VK_FORMAT_R32G32_SFLOAT, 0);
+		cmd->set_vertex_attrib(1, 1, VK_FORMAT_A2B10G10R10_SNORM_PACK32, 0);
 
 		auto *program = device.get_shader_manager().register_graphics("assets://shaders/triangle.vert", "assets://shaders/triangle.frag");
 		auto variant = program->register_variant({});
 		cmd->set_program(*program->get_program(variant));
+		cmd->set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
 
 		static const vec2 vertices[] = {
-			vec2(-0.5f, -0.5f),
-			vec2(-0.5f, +0.5f),
-			vec2(+0.5f, -0.5f),
+			vec2(-1.0f, -1.0f),
+			vec2(-1.0f, +1.0f),
+			vec2(+1.0f, -1.0f),
+			vec2(+1.0f, +1.0f),
 		};
 		auto *verts = static_cast<vec2 *>(cmd->allocate_vertex_data(0, sizeof(vertices), sizeof(vec2)));
 		memcpy(verts, vertices, sizeof(vertices));
+
+		auto *attribs = static_cast<uint32_t *>(cmd->allocate_vertex_data(1, 4 * sizeof(uint32_t), sizeof(uint32_t)));
+		attribs[0] = 511u <<  0;
+		attribs[1] = 511u << 10;
+		attribs[2] = 511u << 20;
+		attribs[3] = 1u << 30;
+
+		attribs[0] |= 512u << 10;
+		attribs[0] |= 512u << 20;
+		attribs[0] |= 2u << 30;
+		attribs[1] |= 512u <<  0;
+		attribs[1] |= 512u << 20;
+		attribs[1] |= 2u << 30;
+		attribs[2] |= 512u <<  0;
+		attribs[2] |= 512u << 10;
+		attribs[2] |= 2u << 30;
+		attribs[3] |= 512u <<  0;
+		attribs[3] |= 512u << 10;
+		attribs[3] |= 512u << 20;
 
 		cmd->draw(4);
 		cmd->end_render_pass();

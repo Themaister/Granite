@@ -25,6 +25,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include "meshoptimizer.h"
 
 using namespace Util;
 using namespace std;
@@ -105,31 +106,76 @@ static vector<uint32_t> build_canonical_index_buffer(const Mesh &mesh, const vec
 	return index_buffer;
 }
 
-static void rebuild_new_attributes(vector<uint8_t> &positions, unsigned position_stride,
-                                   vector<uint8_t> &attributes, unsigned attribute_stride,
-                                   const vector<uint8_t> &source_positions, const vector<uint8_t> &source_attributes,
-                                   const vector<uint32_t> &unique_attrib_to_source_index)
+static void rebuild_new_attributes_remap_src(vector<uint8_t> &positions, unsigned position_stride,
+                                             vector<uint8_t> &attributes, unsigned attribute_stride,
+                                             const vector<uint8_t> &source_positions, const vector<uint8_t> &source_attributes,
+                                             const vector<uint32_t> &unique_attrib_to_source_index)
 {
-	positions.resize(position_stride * unique_attrib_to_source_index.size());
+	vector<uint8_t> new_positions;
+	vector<uint8_t> new_attributes;
+
+	new_positions.resize(position_stride * unique_attrib_to_source_index.size());
 	if (attribute_stride)
-		attributes.resize(attribute_stride * unique_attrib_to_source_index.size());
+		new_attributes.resize(attribute_stride * unique_attrib_to_source_index.size());
 
 	size_t count = unique_attrib_to_source_index.size();
 	for (size_t i = 0; i < count; i++)
 	{
-		memcpy(positions.data() + i * position_stride,
+		memcpy(new_positions.data() + i * position_stride,
 		       source_positions.data() + unique_attrib_to_source_index[i] * position_stride,
 		       position_stride);
 
 		if (attribute_stride)
 		{
-			memcpy(attributes.data() + i * attribute_stride,
+			memcpy(new_attributes.data() + i * attribute_stride,
 			       source_attributes.data() + unique_attrib_to_source_index[i] * attribute_stride,
 			       attribute_stride);
 		}
 	}
+
+	positions = move(new_positions);
+	attributes = move(new_attributes);
 }
 
+static void rebuild_new_attributes_remap_dst(vector<uint8_t> &positions, unsigned position_stride,
+                                             vector<uint8_t> &attributes, unsigned attribute_stride,
+                                             const vector<uint8_t> &source_positions, const vector<uint8_t> &source_attributes,
+                                             const vector<uint32_t> &unique_attrib_to_dest_index)
+{
+	vector<uint8_t> new_positions;
+	vector<uint8_t> new_attributes;
+
+	new_positions.resize(position_stride * unique_attrib_to_dest_index.size());
+	if (attribute_stride)
+		new_attributes.resize(attribute_stride * unique_attrib_to_dest_index.size());
+
+	size_t count = unique_attrib_to_dest_index.size();
+	for (size_t i = 0; i < count; i++)
+	{
+		memcpy(new_positions.data() + unique_attrib_to_dest_index[i] * position_stride,
+		       source_positions.data() + i * position_stride,
+		       position_stride);
+
+		if (attribute_stride)
+		{
+			memcpy(new_attributes.data() + unique_attrib_to_dest_index[i] * attribute_stride,
+			       source_attributes.data() + i * attribute_stride,
+			       attribute_stride);
+		}
+	}
+
+	positions = move(new_positions);
+	attributes = move(new_attributes);
+}
+
+static vector<uint32_t> remap_indices(const vector<uint32_t> &indices, const vector<uint32_t> &remap_table)
+{
+	vector<uint32_t> remapped;
+	remapped.reserve(indices.size());
+	for (auto &i : indices)
+		remapped.push_back(remap_table[i]);
+	return remapped;
+}
 
 Mesh mesh_optimize_index_buffer(const Mesh &mesh)
 {
@@ -140,11 +186,41 @@ Mesh mesh_optimize_index_buffer(const Mesh &mesh)
 	optimized.position_stride = mesh.position_stride;
 	optimized.attribute_stride = mesh.attribute_stride;
 
+	// Remove redundant indices and rewrite index and attribute buffers.
 	auto index_remap = build_index_remap_list(mesh);
 	auto index_buffer = build_canonical_index_buffer(mesh, index_remap.index_remap);
-	rebuild_new_attributes(optimized.positions, optimized.position_stride,
-	                       optimized.attributes, optimized.attribute_stride,
-	                       mesh.positions, mesh.attributes, index_remap.unique_attrib_to_source_index);
+	rebuild_new_attributes_remap_src(optimized.positions, optimized.position_stride,
+	                                 optimized.attributes, optimized.attribute_stride,
+	                                 mesh.positions, mesh.attributes, index_remap.unique_attrib_to_source_index);
+
+	size_t vertex_count = optimized.positions.size() / optimized.position_stride;
+
+	// Optimize for vertex cache.
+	meshopt_optimizeVertexCache(index_buffer.data(), index_buffer.data(), index_buffer.size(),
+	                            vertex_count);
+
+	// Remap vertex fetch to get contiguous indices as much as possible.
+	vector<uint32_t> remap_table(optimized.positions.size() / optimized.position_stride);
+	meshopt_optimizeVertexFetchRemap(remap_table.data(), index_buffer.data(), index_buffer.size(), vertex_count);
+	index_buffer = remap_indices(index_buffer, remap_table);
+	rebuild_new_attributes_remap_dst(optimized.positions, optimized.position_stride,
+	                                 optimized.attributes, optimized.attribute_stride,
+	                                 optimized.positions, optimized.attributes, remap_table);
+
+	// Try to stripify the mesh. If we end up with fewer indices, use that.
+	vector<uint32_t> stripped_index_buffer((index_buffer.size() / 3) * 4);
+	size_t stripped_index_count = meshopt_stripify(stripped_index_buffer.data(),
+	                                               index_buffer.data(), index_buffer.size(),
+	                                               vertex_count);
+
+	stripped_index_buffer.resize(stripped_index_count);
+	if (stripped_index_count < index_buffer.size())
+	{
+		optimized.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+		index_buffer = move(stripped_index_buffer);
+	}
+	else
+		optimized.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
 	uint32_t max_index = 0;
 	for (auto &i : index_buffer)
@@ -172,7 +248,6 @@ Mesh mesh_optimize_index_buffer(const Mesh &mesh)
 	}
 
 	optimized.count = unsigned(index_buffer.size());
-	optimized.topology = mesh.topology;
 
 	memcpy(optimized.attribute_layout, mesh.attribute_layout, sizeof(mesh.attribute_layout));
 	optimized.material_index = mesh.material_index;

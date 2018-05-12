@@ -161,12 +161,8 @@ The code is licensed under MIT. Feel free to use it for whatever purpose.
 
 These are pulled in as submodules.
 
-- [FastNoise](https://github.com/Auburns/FastNoise)
 - [GLFW](https://github.com/glfw/glfw)
-- [GLI](https://github.com/g-truc/gli)
-- [GLM](https://github.com/g-truc/glm)
 - [glslang](https://github.com/google/glslang.git)
-- [muFFT](https://github.com/Themaister/muFFT)
 - [rapidjson](https://github.com/miloyip/rapidjson)
 - [shaderc](https://github.com/google/shaderc.git)
 - [SPIRV-Cross](https://github.com/KhronosGroup/SPIRV-Cross)
@@ -174,5 +170,6 @@ These are pulled in as submodules.
 - [SPIRV-Tools](https://github.com/KhronosGroup/SPIRV-Tools)
 - [stb](https://github.com/nothings/stb)
 - [volk](https://github.com/zeux/volk)
+- [meshoptimizer](https://github.com/zeux/meshoptimizer)
 - [Fossilize](https://github.com/Themaister/Fossilize)
 

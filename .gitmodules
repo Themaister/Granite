@@ -31,3 +31,6 @@
 [submodule "third_party/volk"]
 	path = third_party/volk
 	url = git://github.com/zeux/volk
+[submodule "third_party/meshoptimizer"]
+	path = third_party/meshoptimizer
+	url = git://github.com/zeux/meshoptimizer

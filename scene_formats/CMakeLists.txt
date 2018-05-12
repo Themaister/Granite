@@ -39,7 +39,7 @@ add_granite_library(scene-formats
 add_granite_library(scene-formats-export
         gltf_export.cpp gltf_export.hpp)
 
-target_link_libraries(scene-formats math util filesystem renderer vulkan-backend rapidjson)
+target_link_libraries(scene-formats math util filesystem renderer vulkan-backend rapidjson meshoptimizer)
 target_link_libraries(scene-formats-export scene-formats math util filesystem renderer vulkan-backend rapidjson texture-compression threading)
 target_include_directories(scene-formats PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(scene-formats-export PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

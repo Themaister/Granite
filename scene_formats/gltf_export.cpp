@@ -60,6 +60,7 @@ struct EmittedMesh
 	int material = -1;
 	uint32_t attribute_mask = 0;
 	int attribute_accessor[ecast(MeshAttribute::Count)] = {};
+	VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_END_RANGE;
 };
 
 struct EmittedEnvironment
@@ -784,8 +785,7 @@ static void quantize_attribute_fp32_fp16(uint8_t *output,
 	}
 }
 
-static void quantize_attribute_rg32f_rg16unorm(uint8_t *output,
-                                               const uint8_t *buffer, uint32_t count)
+static void quantize_attribute_rg32f_rg16unorm(uint8_t *output, const uint8_t *buffer, uint32_t count)
 {
 	for (uint32_t i = 0; i < count; i++)
 	{
@@ -795,6 +795,17 @@ static void quantize_attribute_rg32f_rg16unorm(uint8_t *output,
 		input *= float(0xffff);
 		input = clamp(round(input), vec2(0.0f), vec2(0xffff));
 		u16vec2 result(input);
+		memcpy(output + i * sizeof(u16vec2), result.data, sizeof(u16vec2));
+	}
+}
+
+static void quantize_attribute_rg32f_rg16f(uint8_t *output, const uint8_t *buffer, uint32_t count)
+{
+	for (uint32_t i = 0; i < count; i++)
+	{
+		vec2 input;
+		memcpy(input.data, buffer + sizeof(vec2) * i, sizeof(vec2));
+		u16vec2 result = floatToHalf(input);
 		memcpy(output + i * sizeof(u16vec2), result.data, sizeof(u16vec2));
 	}
 }
@@ -834,11 +845,11 @@ static void extract_attribute(uint8_t *output,
 void RemapState::emit_mesh(unsigned remapped_index)
 {
 	auto mesh = mesh_optimize_index_buffer(*this->mesh.info[remapped_index]);
-	//auto &mesh = *this->mesh.info[remapped_index];
 	mesh_cache.resize(std::max<size_t>(mesh_cache.size(), remapped_index + 1));
 
 	auto &emit = mesh_cache[remapped_index];
 	emit.material = mesh.has_material ? int(mesh.material_index) : -1;
+	emit.topology = mesh.topology;
 
 	if (!mesh.indices.empty())
 	{
@@ -986,6 +997,14 @@ void RemapState::emit_mesh(unsigned remapped_index)
 					quantize_attribute_rg32f_rg16unorm(quantized.data(), unpacked_buffer.data(), attr_count);
 					unpacked_buffer = move(quantized);
 					remapped_format = VK_FORMAT_R16G16_UNORM;
+					format_size = sizeof(u16vec2);
+				}
+				else if (all(lessThanEqual(max_uv, vec2(0x8000))) && all(greaterThanEqual(min_uv, vec2(-0x8000))))
+				{
+					vector<uint8_t> quantized(attr_count * sizeof(u16vec2));
+					quantize_attribute_rg32f_rg16f(quantized.data(), unpacked_buffer.data(), attr_count);
+					unpacked_buffer = move(quantized);
+					remapped_format = VK_FORMAT_R16G16_SFLOAT;
 					format_size = sizeof(u16vec2);
 				}
 			}
@@ -1923,6 +1942,36 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 
 				if (m.material >= 0)
 					prim.AddMember("material", state.material.to_index[m.material], allocator);
+
+				switch (m.topology)
+				{
+				case VK_PRIMITIVE_TOPOLOGY_POINT_LIST:
+					prim.AddMember("mode", 0, allocator);
+					break;
+
+				case VK_PRIMITIVE_TOPOLOGY_LINE_LIST:
+					prim.AddMember("mode", 1, allocator);
+					break;
+
+				case VK_PRIMITIVE_TOPOLOGY_LINE_STRIP:
+					prim.AddMember("mode", 3, allocator);
+					break;
+
+				case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST:
+					prim.AddMember("mode", 4, allocator);
+					break;
+
+				case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP:
+					prim.AddMember("mode", 5, allocator);
+					break;
+
+				case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN:
+					prim.AddMember("mode", 6, allocator);
+					break;
+
+				default:
+					break;
+				}
 
 				prim.AddMember("attributes", attribs, allocator);
 				primitives.PushBack(prim, allocator);

@@ -37,6 +37,7 @@ Hash StaticMesh::get_instance_key() const
 	h.u64(vbo_position->get_cookie());
 	h.u32(position_stride);
 	h.u32(topology);
+	h.u32(primitive_restart);
 	if (vbo_attributes)
 	{
 		h.u64(vbo_attributes->get_cookie());
@@ -96,9 +97,7 @@ static void mesh_set_state(CommandBuffer &cmd, const StaticMeshInfo &info)
 
 	cmd.push_constants(&info.fragment, 0, sizeof(info.fragment));
 	cmd.set_primitive_topology(info.topology);
-
-	bool primitive_restart = info.ibo && (info.topology == VK_PRIMITIVE_TOPOLOGY_LINE_STRIP || info.topology == VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
-	cmd.set_primitive_restart(primitive_restart);
+	cmd.set_primitive_restart(info.primitive_restart);
 
 	if (info.two_sided)
 		cmd.set_cull_mode(VK_CULL_MODE_NONE);
@@ -200,6 +199,7 @@ void StaticMesh::fill_render_info(StaticMeshInfo &info) const
 	info.fragment.normal_scale = material->normal_scale;
 
 	info.topology = topology;
+	info.primitive_restart = primitive_restart;
 	info.two_sided = material->two_sided;
 	info.alpha_test = material->pipeline == DrawPipeline::AlphaTest;
 

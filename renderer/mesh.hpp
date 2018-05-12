@@ -130,6 +130,7 @@ struct StaticMeshInfo
 	VkIndexType index_type;
 	bool two_sided;
 	bool alpha_test;
+	bool primitive_restart;
 };
 
 namespace RenderFunctions
@@ -152,6 +153,7 @@ struct StaticMesh : AbstractRenderable
 	uint32_t attribute_stride = 0;
 	VkIndexType index_type = VK_INDEX_TYPE_UINT16;
 	VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	bool primitive_restart = false;
 
 	MeshAttributeLayout attributes[Util::ecast(MeshAttribute::Count)];
 

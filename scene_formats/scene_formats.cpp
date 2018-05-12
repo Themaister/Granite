@@ -218,9 +218,13 @@ Mesh mesh_optimize_index_buffer(const Mesh &mesh)
 	{
 		optimized.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
 		index_buffer = move(stripped_index_buffer);
+		optimized.primitive_restart = true;
 	}
 	else
+	{
 		optimized.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+		optimized.primitive_restart = false;
+	}
 
 	uint32_t max_index = 0;
 	for (auto &i : index_buffer)

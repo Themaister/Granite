@@ -96,6 +96,7 @@ ImportedMesh::ImportedMesh(const Mesh &mesh, const MaterialInfo &info)
 	: mesh(mesh), info(info)
 {
 	topology = mesh.topology;
+	primitive_restart = mesh.primitive_restart;
 	index_type = mesh.index_type;
 
 	position_stride = mesh.position_stride;

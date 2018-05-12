@@ -746,6 +746,10 @@ void Parser::parse(const string &original_path, const string &json)
 			};
 		}
 
+		attr.primitive_restart = false;
+		if (primitive.HasMember("primitiveRestart"))
+			attr.primitive_restart = primitive["primitiveRestart"].GetBool();
+
 		auto &attrs = primitive["attributes"];
 		for (auto itr = attrs.MemberBegin(); itr != attrs.MemberEnd(); ++itr)
 		{
@@ -1565,6 +1569,7 @@ void Parser::build_primitive(const MeshData::AttributeData &prim)
 {
 	Mesh mesh;
 	mesh.topology = prim.topology;
+	mesh.primitive_restart = prim.primitive_restart;
 	mesh.has_material = prim.has_material;
 	mesh.material_index = prim.material_index;
 

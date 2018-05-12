@@ -140,6 +140,7 @@ private:
 			uint32_t material_index;
 			VkPrimitiveTopology topology;
 			bool has_material;
+			bool primitive_restart;
 		};
 		std::vector<AttributeData> primitives;
 	};

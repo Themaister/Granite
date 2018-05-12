@@ -61,6 +61,7 @@ struct EmittedMesh
 	uint32_t attribute_mask = 0;
 	int attribute_accessor[ecast(MeshAttribute::Count)] = {};
 	VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_END_RANGE;
+	bool primitive_restart = false;
 };
 
 struct EmittedEnvironment
@@ -253,6 +254,7 @@ Hash RemapState::hash(const Mesh &mesh)
 	h.u32(mesh.attribute_stride);
 	h.u32(mesh.position_stride);
 	h.u32(mesh.has_material);
+	h.u32(mesh.primitive_restart);
 	if (mesh.has_material)
 		h.u32(material.to_index[mesh.material_index]);
 	h.data(reinterpret_cast<const uint8_t *>(mesh.attribute_layout), sizeof(mesh.attribute_layout));
@@ -850,6 +852,7 @@ void RemapState::emit_mesh(unsigned remapped_index)
 	auto &emit = mesh_cache[remapped_index];
 	emit.material = mesh.has_material ? int(mesh.material_index) : -1;
 	emit.topology = mesh.topology;
+	emit.primitive_restart = mesh.primitive_restart;
 
 	if (!mesh.indices.empty())
 	{
@@ -1973,6 +1976,7 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 					break;
 				}
 
+				prim.AddMember("primitiveRestart", m.primitive_restart, allocator);
 				prim.AddMember("attributes", attribs, allocator);
 				primitives.PushBack(prim, allocator);
 			}

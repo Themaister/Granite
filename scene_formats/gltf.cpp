@@ -476,7 +476,7 @@ static void read_min_max(T &out, ScalarType type, const Value &v)
 	case ScalarType::Uint16:
 	case ScalarType::Uint32:
 	case ScalarType::A2Bgr10Uint:
-		out.i32 = v.GetInt();
+		out.u32 = v.GetUint();
 		break;
 
 	case ScalarType::Int8Snorm:

@@ -55,6 +55,9 @@ static void print_help()
 	LOGI("[--extra-lights lights.json]\n");
 	LOGI("[--texcomp-quality <1 (fast) - 5 (slow)>] input.gltf\n");
 	LOGI("[--animate-cameras]\n");
+	LOGI("[--optimize-meshes]\n");
+	LOGI("[--stripify-meshes]\n");
+	LOGI("[--quantize-attributes]\n");
 }
 
 int main(int argc, char *argv[])
@@ -93,6 +96,19 @@ int main(int argc, char *argv[])
 
 	cbs.add("--fog-falloff", [&](CLIParser &parser) {
 		options.environment.fog_falloff = parser.next_double();
+	});
+
+	cbs.add("--quantize-attributes", [&](CLIParser &) {
+		options.quantize_attributes = true;
+	});
+
+	cbs.add("--optimize-meshes", [&](CLIParser &) {
+		options.optimize_meshes = true;
+	});
+
+	cbs.add("--stripify-meshes", [&](CLIParser &) {
+		options.optimize_meshes = true;
+		options.stripify_meshes = true;
 	});
 
 	cbs.add("--threads", [&](CLIParser &parser) { options.threads = parser.next_uint(); });

@@ -177,7 +177,7 @@ static vector<uint32_t> remap_indices(const vector<uint32_t> &indices, const vec
 	return remapped;
 }
 
-Mesh mesh_optimize_index_buffer(const Mesh &mesh)
+Mesh mesh_optimize_index_buffer(const Mesh &mesh, bool stripify)
 {
 	if (mesh.topology != VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
 		return mesh;
@@ -207,23 +207,24 @@ Mesh mesh_optimize_index_buffer(const Mesh &mesh)
 	                                 optimized.attributes, optimized.attribute_stride,
 	                                 optimized.positions, optimized.attributes, remap_table);
 
-	// Try to stripify the mesh. If we end up with fewer indices, use that.
-	vector<uint32_t> stripped_index_buffer((index_buffer.size() / 3) * 4);
-	size_t stripped_index_count = meshopt_stripify(stripped_index_buffer.data(),
-	                                               index_buffer.data(), index_buffer.size(),
-	                                               vertex_count);
+	optimized.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	optimized.primitive_restart = false;
 
-	stripped_index_buffer.resize(stripped_index_count);
-	if (stripped_index_count < index_buffer.size())
+	if (stripify)
 	{
-		optimized.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
-		index_buffer = move(stripped_index_buffer);
-		optimized.primitive_restart = true;
-	}
-	else
-	{
-		optimized.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-		optimized.primitive_restart = false;
+		// Try to stripify the mesh. If we end up with fewer indices, use that.
+		vector<uint32_t> stripped_index_buffer((index_buffer.size() / 3) * 4);
+		size_t stripped_index_count = meshopt_stripify(stripped_index_buffer.data(),
+		                                               index_buffer.data(), index_buffer.size(),
+		                                               vertex_count);
+
+		stripped_index_buffer.resize(stripped_index_count);
+		if (stripped_index_count < index_buffer.size())
+		{
+			optimized.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+			index_buffer = move(stripped_index_buffer);
+			optimized.primitive_restart = true;
+		}
 	}
 
 	uint32_t max_index = 0;
@@ -231,7 +232,7 @@ Mesh mesh_optimize_index_buffer(const Mesh &mesh)
 		if (i != ~0u)
 			max_index = muglm::max(max_index, i);
 
-	if (max_index < 0xffff) // 16-bit indices are enough.
+	if (max_index <= 0xffff) // 16-bit indices are enough.
 	{
 		optimized.index_type = VK_INDEX_TYPE_UINT16;
 		optimized.indices.resize(index_buffer.size() * sizeof(uint16_t));

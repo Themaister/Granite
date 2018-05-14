@@ -69,6 +69,10 @@ struct ExportOptions
 		unsigned texcomp_quality = 3;
 		float intensity = 1.0f;
 	} environment;
+
+	bool quantize_attributes = false;
+	bool optimize_meshes = false;
+	bool stripify_meshes = false;
 };
 
 bool export_scene_to_glb(const SceneInformation &scene, const std::string &path, const ExportOptions &options);

@@ -846,7 +846,11 @@ static void extract_attribute(uint8_t *output,
 
 void RemapState::emit_mesh(unsigned remapped_index)
 {
-	auto mesh = mesh_optimize_index_buffer(*this->mesh.info[remapped_index]);
+	Mesh new_mesh;
+	if (options->optimize_meshes)
+		new_mesh = mesh_optimize_index_buffer(*this->mesh.info[remapped_index], options->stripify_meshes);
+	auto &mesh = options->optimize_meshes ? new_mesh : *this->mesh.info[remapped_index];
+
 	mesh_cache.resize(std::max<size_t>(mesh_cache.size(), remapped_index + 1));
 
 	auto &emit = mesh_cache[remapped_index];
@@ -909,40 +913,30 @@ void RemapState::emit_mesh(unsigned remapped_index)
 		uint32_t buffer_index = 0;
 		uint32_t count = uint32_t(mesh.positions.size() / mesh.position_stride);
 		int &acc = emit.attribute_accessor[ecast(MeshAttribute::Position)];
+		VkFormat format = layout[ecast(MeshAttribute::Position)].format;
 
-		switch (layout[ecast(MeshAttribute::Position)].format)
+		bool format_is_fp32 = format == VK_FORMAT_R32G32B32_SFLOAT ||
+		                      format == VK_FORMAT_R32G32B32A32_SFLOAT;
+
+		if (options->quantize_attributes && format_is_fp32 &&
+		    all(greaterThan(mesh.static_aabb.get_minimum(), vec3(-0x8000))) &&
+		    all(lessThan(mesh.static_aabb.get_maximum(), vec3(0x8000))))
 		{
-		case VK_FORMAT_R32G32B32_SFLOAT:
-		case VK_FORMAT_R32G32B32A32_SFLOAT:
-		{
-			if (all(greaterThan(mesh.static_aabb.get_minimum(), vec3(-0x8000))) &&
-			    all(lessThan(mesh.static_aabb.get_maximum(), vec3(0x8000))))
-			{
-				vector<uint8_t> output(sizeof(u16vec4) * count);
+			vector<uint8_t> output(sizeof(u16vec4) * count);
 
-				quantize_attribute_fp32_fp16(output.data(), mesh.positions.data(), mesh.position_stride, count);
+			quantize_attribute_fp32_fp16(output.data(), mesh.positions.data(), mesh.position_stride, count);
 
-				buffer_index = emit_buffer(output, sizeof(u16vec4));
-				acc = emit_accessor(buffer_index,
-				                    VK_FORMAT_R16G16B16A16_SFLOAT,
-				                    0, count);
-			}
-			else
-			{
-				buffer_index = emit_buffer(mesh.positions, mesh.position_stride);
-				acc = emit_accessor(buffer_index,
-				                    layout[ecast(MeshAttribute::Position)].format,
-				                    0, count);
-			}
-			break;
+			buffer_index = emit_buffer(output, sizeof(u16vec4));
+			acc = emit_accessor(buffer_index,
+			                    VK_FORMAT_R16G16B16A16_SFLOAT,
+			                    0, count);
 		}
-
-		default:
+		else
+		{
 			buffer_index = emit_buffer(mesh.positions, mesh.position_stride);
 			acc = emit_accessor(buffer_index,
 			                    layout[ecast(MeshAttribute::Position)].format,
 			                    0, count);
-			break;
 		}
 
 		accessor_cache[acc].aabb = mesh.static_aabb;
@@ -970,7 +964,8 @@ void RemapState::emit_mesh(unsigned remapped_index)
 
 			VkFormat remapped_format = layout[i].format;
 
-			if ((attr == MeshAttribute::Normal || attr == MeshAttribute::Tangent) &&
+			if (options->quantize_attributes &&
+			    (attr == MeshAttribute::Normal || attr == MeshAttribute::Tangent) &&
 			    (layout[i].format == VK_FORMAT_R32G32B32A32_SFLOAT || layout[i].format == VK_FORMAT_R32G32B32_SFLOAT))
 			{
 				vector<uint8_t> quantized(attr_count * sizeof(uint32_t));
@@ -980,7 +975,9 @@ void RemapState::emit_mesh(unsigned remapped_index)
 				remapped_format = VK_FORMAT_A2B10G10R10_SNORM_PACK32;
 				format_size = sizeof(uint32_t);
 			}
-			else if (attr == MeshAttribute::UV && layout[i].format == VK_FORMAT_R32G32_SFLOAT)
+			else if (options->quantize_attributes &&
+			         attr == MeshAttribute::UV &&
+			         layout[i].format == VK_FORMAT_R32G32_SFLOAT)
 			{
 				// Pack to RG16_UNORM if UV is within [0, 1] range.
 				vec2 min_uv = vec2(1.0f);

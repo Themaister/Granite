@@ -507,7 +507,7 @@ void Device::set_context(const Context &context)
 	                  ImplementationQuirks::get().staging_need_device_local);
 	managers.staging.init(this, 64 * 1024, std::max<VkDeviceSize>(16u, gpu_props.limits.optimalBufferCopyOffsetAlignment),
 	                      VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-	                      true);
+	                      false);
 }
 
 void Device::init_stock_samplers()

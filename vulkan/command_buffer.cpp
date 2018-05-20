@@ -505,6 +505,52 @@ void CommandBuffer::end_render_pass()
 	begin_compute();
 }
 
+VkPipeline CommandBuffer::build_compute_pipeline(Hash hash)
+{
+	auto &shader = *current_program->get_shader(ShaderStage::Compute);
+	VkComputePipelineCreateInfo info = { VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO };
+	info.layout = current_program->get_pipeline_layout()->get_layout();
+	info.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	info.stage.module = shader.get_module();
+	info.stage.pName = "main";
+	info.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+
+#ifdef GRANITE_SPIRV_DUMP
+	LOGI("Compiling SPIR-V file: (%s) %s\n",
+		     Shader::stage_to_name(ShaderStage::Compute),
+		     (to_string(shader.get_hash()) + ".spv").c_str());
+#endif
+
+	VkSpecializationInfo spec_info = {};
+	VkSpecializationMapEntry spec_entries[VULKAN_NUM_SPEC_CONSTANTS];
+	auto mask = current_layout->get_resource_layout().combined_spec_constant_mask &
+	            static_state.state.spec_constant_mask;
+
+	if (mask)
+	{
+		info.stage.pSpecializationInfo = &spec_info;
+		spec_info.pData = potential_static_state.spec_constants;
+		spec_info.dataSize = sizeof(potential_static_state.spec_constants);
+		spec_info.pMapEntries = spec_entries;
+
+		for_each_bit(mask, [&](uint32_t bit) {
+			auto &entry = spec_entries[spec_info.mapEntryCount++];
+			entry.offset = sizeof(uint32_t) * bit;
+			entry.size = sizeof(uint32_t);
+			entry.constantID = bit;
+		});
+	}
+
+	VkPipeline compute_pipeline;
+	unsigned pipe_index = device->get_state_recorder().register_compute_pipeline(hash, info);
+	LOGI("Creating compute pipeline.\n");
+	if (vkCreateComputePipelines(device->get_device(), cache, 1, &info, nullptr, &compute_pipeline) != VK_SUCCESS)
+		LOGE("Failed to create compute pipeline!\n");
+	device->get_state_recorder().set_compute_pipeline_handle(pipe_index, compute_pipeline);
+
+	return current_program->add_pipeline(hash, compute_pipeline);
+}
+
 VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
 {
 	// Viewport state
@@ -631,6 +677,10 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
 	VkPipelineShaderStageCreateInfo stages[static_cast<unsigned>(ShaderStage::Count)];
 	unsigned num_stages = 0;
 
+
+	VkSpecializationInfo spec_info[ecast(ShaderStage::Count)] = {};
+	VkSpecializationMapEntry spec_entries[ecast(ShaderStage::Count)][VULKAN_NUM_SPEC_CONSTANTS];
+
 	for (unsigned i = 0; i < static_cast<unsigned>(ShaderStage::Count); i++)
 	{
 		auto stage = static_cast<ShaderStage>(i);
@@ -646,6 +696,24 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
 #endif
 			s.pName = "main";
 			s.stage = static_cast<VkShaderStageFlagBits>(1u << i);
+
+			auto mask = current_layout->get_resource_layout().spec_constant_mask[i] &
+			            static_state.state.spec_constant_mask;
+
+			if (mask)
+			{
+				s.pSpecializationInfo = &spec_info[i];
+				spec_info[i].pData = potential_static_state.spec_constants;
+				spec_info[i].dataSize = sizeof(potential_static_state.spec_constants);
+				spec_info[i].pMapEntries = spec_entries[i];
+
+				for_each_bit(mask, [&](uint32_t bit) {
+					auto &entry = spec_entries[i][spec_info[i].mapEntryCount++];
+					entry.offset = sizeof(uint32_t) * bit;
+					entry.size = sizeof(uint32_t);
+					entry.constantID = bit;
+				});
+			}
 		}
 	}
 
@@ -665,15 +733,35 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
 	pipe.pStages = stages;
 	pipe.stageCount = num_stages;
 
+	VkPipeline pipeline;
 	unsigned pipe_index = device->get_state_recorder().register_graphics_pipeline(hash, pipe);
 	LOGI("Creating graphics pipeline.\n");
-	VkResult res = vkCreateGraphicsPipelines(device->get_device(), cache, 1, &pipe, nullptr, &current_pipeline);
+	VkResult res = vkCreateGraphicsPipelines(device->get_device(), cache, 1, &pipe, nullptr, &pipeline);
 	if (res != VK_SUCCESS)
 		LOGE("Failed to create graphics pipeline!\n");
-	device->get_state_recorder().set_graphics_pipeline_handle(pipe_index, current_pipeline);
+	device->get_state_recorder().set_graphics_pipeline_handle(pipe_index, pipeline);
 
-	current_pipeline = current_program->add_graphics_pipeline(hash, current_pipeline);
-	return current_pipeline;
+	return current_program->add_pipeline(hash, pipeline);
+}
+
+void CommandBuffer::flush_compute_pipeline()
+{
+	Hasher h;
+	h.u64(current_program->get_hash());
+
+	// Spec constants.
+	auto &layout = current_layout->get_resource_layout();
+	uint32_t combined_spec_constant = layout.combined_spec_constant_mask;
+	combined_spec_constant &= static_state.state.spec_constant_mask;
+	h.u32(combined_spec_constant);
+	for_each_bit(combined_spec_constant, [&](uint32_t bit) {
+		h.u32(potential_static_state.spec_constants[bit]);
+	});
+
+	auto hash = h.get();
+	current_pipeline = current_program->get_pipeline(hash);
+	if (current_pipeline == VK_NULL_HANDLE)
+		current_pipeline = build_compute_pipeline(hash);
 }
 
 void CommandBuffer::flush_graphics_pipeline()
@@ -713,8 +801,16 @@ void CommandBuffer::flush_graphics_pipeline()
 			       sizeof(potential_static_state.blend_constants));
 	}
 
+	// Spec constants.
+	uint32_t combined_spec_constant = layout.combined_spec_constant_mask;
+	combined_spec_constant &= static_state.state.spec_constant_mask;
+	h.u32(combined_spec_constant);
+	for_each_bit(combined_spec_constant, [&](uint32_t bit) {
+		h.u32(potential_static_state.spec_constants[bit]);
+	});
+
 	auto hash = h.get();
-	current_pipeline = current_program->get_graphics_pipeline(hash);
+	current_pipeline = current_program->get_pipeline(hash);
 	if (current_pipeline == VK_NULL_HANDLE)
 		current_pipeline = build_graphics_pipeline(hash);
 }
@@ -727,7 +823,7 @@ void CommandBuffer::flush_compute_state()
 	if (get_and_clear(COMMAND_BUFFER_DIRTY_PIPELINE_BIT))
 	{
 		VkPipeline old_pipe = current_pipeline;
-		current_pipeline = current_program->get_compute_pipeline();
+		flush_compute_pipeline();
 		if (old_pipe != current_pipeline)
 			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, current_pipeline);
 	}

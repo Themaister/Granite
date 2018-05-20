@@ -85,7 +85,6 @@ PipelineLayout::PipelineLayout(Hash hash, Device *device, const CombinedResource
 		info.pPushConstantRanges = ranges;
 	}
 
-
 	unsigned layout_index = device->get_state_recorder().register_pipeline_layout(get_hash(), info);
 	LOGI("Creating pipeline layout.\n");
 	if (vkCreatePipelineLayout(device->get_device(), &info, nullptr, &pipe_layout) != VK_SUCCESS)
@@ -231,6 +230,18 @@ Shader::Shader(Hash hash, Device *device, const uint32_t *data, size_t size)
 		layout.push_constant_offset = 0;
 		layout.push_constant_range = size;
 	}
+
+	auto spec_constants = compiler.get_specialization_constants();
+	for (auto &c : spec_constants)
+	{
+		if (c.constant_id >= VULKAN_NUM_SPEC_CONSTANTS)
+		{
+			LOGE("Spec constant ID: %u is out of range, will be ignored.\n", c.constant_id);
+			continue;
+		}
+
+		layout.spec_constant_mask |= 1u << c.constant_id;
+	}
 }
 
 Shader::~Shader()
@@ -261,11 +272,11 @@ Program::Program(Hash hash, Device *device, Shader *compute)
 	device->bake_program(*this);
 }
 
-VkPipeline Program::get_graphics_pipeline(Hash hash) const
+VkPipeline Program::get_pipeline(Hash hash) const
 {
 	lock.lock_read();
-	auto itr = graphics_pipelines.find(hash);
-	if (itr != end(graphics_pipelines))
+	auto itr = pipelines.find(hash);
+	if (itr != end(pipelines))
 	{
 		auto ret = itr->second;
 		lock.unlock_read();
@@ -278,10 +289,10 @@ VkPipeline Program::get_graphics_pipeline(Hash hash) const
 	}
 }
 
-VkPipeline Program::add_graphics_pipeline(Hash hash, VkPipeline pipeline)
+VkPipeline Program::add_pipeline(Hash hash, VkPipeline pipeline)
 {
 	lock.lock_write();
-	auto &cache = graphics_pipelines[hash];
+	auto &cache = pipelines[hash];
 	if (cache == VK_NULL_HANDLE)
 		cache = pipeline;
 	else
@@ -293,15 +304,7 @@ VkPipeline Program::add_graphics_pipeline(Hash hash, VkPipeline pipeline)
 
 Program::~Program()
 {
-	if (compute_pipeline != VK_NULL_HANDLE)
-	{
-		if (internal_sync)
-			device->destroy_pipeline_nolock(compute_pipeline);
-		else
-			device->destroy_pipeline(compute_pipeline);
-	}
-
-	for (auto &pipe : graphics_pipelines)
+	for (auto &pipe : pipelines)
 	{
 		if (internal_sync)
 			device->destroy_pipeline_nolock(pipe.second);

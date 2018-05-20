@@ -32,6 +32,7 @@
 #include "pipeline_event.hpp"
 #include "query_pool.hpp"
 #include "buffer_pool.hpp"
+#include <string.h>
 
 namespace Vulkan
 {
@@ -100,6 +101,7 @@ union PipelineState {
 		unsigned topology : 4;
 
 		unsigned wireframe : 1;
+		unsigned spec_constant_mask : 8;
 
 		uint32_t write_mask;
 	} state;
@@ -109,6 +111,7 @@ union PipelineState {
 struct PotentialState
 {
 	float blend_constants[4];
+	uint32_t spec_constants[VULKAN_NUM_SPEC_CONSTANTS];
 };
 
 struct DynamicState
@@ -521,6 +524,25 @@ public:
 		SET_POTENTIALLY_STATIC_STATE(blend_constants[3]);
 	}
 
+	inline void set_specialization_constant_mask(uint32_t spec_constant_mask)
+	{
+		VK_ASSERT((spec_constant_mask & ~((1u << VULKAN_NUM_SPEC_CONSTANTS) - 1u)) == 0u);
+		SET_STATIC_STATE(spec_constant_mask);
+	}
+
+	template <typename T>
+	inline void set_specialization_constant(unsigned index, const T &value)
+	{
+		VK_ASSERT(index < VULKAN_NUM_SPEC_CONSTANTS);
+		static_assert(sizeof(value) == sizeof(uint32_t), "Spec constant data must be 32-bit.");
+		if (memcmp(&potential_static_state.spec_constants[index], &value, sizeof(value)))
+		{
+			memcpy(&potential_static_state.spec_constants[index], &value, sizeof(value));
+			if (static_state.state.spec_constant_mask & (1u << index))
+				set_dirty(COMMAND_BUFFER_DIRTY_STATIC_STATE_BIT);
+		}
+	}
+
 #define SET_DYNAMIC_STATE(state, flags)   \
 	do                                    \
 	{                                     \
@@ -622,7 +644,9 @@ private:
 
 	void flush_render_state();
 	VkPipeline build_graphics_pipeline(Util::Hash hash);
+	VkPipeline build_compute_pipeline(Util::Hash hash);
 	void flush_graphics_pipeline();
+	void flush_compute_pipeline();
 	void flush_descriptor_sets();
 	void begin_graphics();
 	void flush_descriptor_set(uint32_t set);

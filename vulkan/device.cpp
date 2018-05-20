@@ -159,16 +159,26 @@ bool Device::enqueue_create_shader_module(Fossilize::Hash hash, unsigned, const 
 	return true;
 }
 
-bool Device::enqueue_create_compute_pipeline(Fossilize::Hash, unsigned,
+bool Device::enqueue_create_compute_pipeline(Fossilize::Hash hash, unsigned,
                                              const VkComputePipelineCreateInfo *create_info, VkPipeline *pipeline)
 {
+	auto info = *create_info;
+
 	// Find the Shader* associated with this VkShaderModule and just use that.
 	auto itr = replayer_state.shader_map.find(create_info->stage.module);
 	if (itr == end(replayer_state.shader_map))
 		return false;
 
 	auto *ret = request_program(itr->second);
-	*pipeline = ret->get_compute_pipeline();
+	// The layout is dummy, resolve it here.
+	info.layout = ret->get_pipeline_layout()->get_layout();
+
+	get_state_recorder().register_compute_pipeline(hash, info);
+	LOGI("Creating compute pipeline.\n");
+	VkResult res = vkCreateComputePipelines(device, pipeline_cache, 1, &info, nullptr, pipeline);
+	if (res != VK_SUCCESS)
+		LOGE("Failed to create compute pipeline!\n");
+	*pipeline = ret->add_pipeline(hash, *pipeline);
 	return true;
 }
 
@@ -222,7 +232,7 @@ bool Device::enqueue_create_graphics_pipeline(Fossilize::Hash hash, unsigned,
 	VkResult res = vkCreateGraphicsPipelines(device, pipeline_cache, 1, &info, nullptr, pipeline);
 	if (res != VK_SUCCESS)
 		LOGE("Failed to create graphics pipeline!\n");
-	*pipeline = ret->add_graphics_pipeline(hash, *pipeline);
+	*pipeline = ret->add_pipeline(hash, *pipeline);
 	return true;
 }
 
@@ -254,6 +264,7 @@ PipelineLayout *Device::request_pipeline_layout(const CombinedResourceLayout &la
 	h.data(reinterpret_cast<const uint32_t *>(layout.sets), sizeof(layout.sets));
 	h.data(&layout.stages_for_bindings[0][0], sizeof(layout.stages_for_bindings));
 	h.data(reinterpret_cast<const uint32_t *>(layout.ranges), sizeof(layout.ranges));
+	h.data(layout.spec_constant_mask, sizeof(layout.spec_constant_mask));
 	h.u32(layout.attribute_mask);
 	h.u32(layout.render_target_mask);
 
@@ -329,6 +340,8 @@ void Device::bake_program(Program &program)
 		layout.ranges[i].stageFlags = 1u << i;
 		layout.ranges[i].offset = shader_layout.push_constant_offset;
 		layout.ranges[i].size = shader_layout.push_constant_range;
+		layout.spec_constant_mask[i] = shader_layout.spec_constant_mask;
+		layout.combined_spec_constant_mask |= shader_layout.spec_constant_mask;
 	}
 
 	for (unsigned i = 0; i < VULKAN_NUM_DESCRIPTOR_SETS; i++)
@@ -340,33 +353,7 @@ void Device::bake_program(Program &program)
 	Hasher h;
 	h.data(reinterpret_cast<uint32_t *>(layout.ranges), sizeof(layout.ranges));
 	layout.push_constant_layout_hash = h.get();
-
 	program.set_pipeline_layout(request_pipeline_layout(layout));
-
-	if (program.get_shader(ShaderStage::Compute))
-	{
-		auto &shader = *program.get_shader(ShaderStage::Compute);
-		VkComputePipelineCreateInfo info = { VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO };
-		info.layout = program.get_pipeline_layout()->get_layout();
-		info.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-		info.stage.module = shader.get_module();
-		info.stage.pName = "main";
-		info.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-
-#ifdef GRANITE_SPIRV_DUMP
-		LOGI("Compiling SPIR-V file: (%s) %s\n",
-		     Shader::stage_to_name(ShaderStage::Compute),
-		     (to_string(shader.get_hash()) + ".spv").c_str());
-#endif
-
-		VkPipeline compute_pipeline;
-		unsigned pipe_index = get_state_recorder().register_compute_pipeline(program.get_hash(), info);
-		LOGI("Creating compute pipeline.\n");
-		if (vkCreateComputePipelines(device, pipeline_cache, 1, &info, nullptr, &compute_pipeline) != VK_SUCCESS)
-			LOGE("Failed to create compute pipeline!\n");
-		get_state_recorder().set_compute_pipeline_handle(pipe_index, compute_pipeline);
-		program.set_compute_pipeline(compute_pipeline);
-	}
 }
 
 void Device::init_pipeline_cache()

@@ -52,6 +52,7 @@ struct ResourceLayout
 	uint32_t output_mask = 0;
 	uint32_t push_constant_offset = 0;
 	uint32_t push_constant_range = 0;
+	uint32_t spec_constant_mask = 0;
 	DescriptorSetLayout sets[VULKAN_NUM_DESCRIPTOR_SETS];
 };
 
@@ -65,6 +66,8 @@ struct CombinedResourceLayout
 	VkPushConstantRange ranges[static_cast<unsigned>(ShaderStage::Count)] = {};
 	uint32_t num_ranges = 0;
 	uint32_t descriptor_set_mask = 0;
+	uint32_t spec_constant_mask[Util::ecast(ShaderStage::Count)] = {};
+	uint32_t combined_spec_constant_mask = 0;
 	Util::Hash push_constant_layout_hash = 0;
 };
 
@@ -143,28 +146,15 @@ public:
 		return layout;
 	}
 
-	VkPipeline get_graphics_pipeline(Util::Hash hash) const;
-	VkPipeline add_graphics_pipeline(Util::Hash hash, VkPipeline pipeline);
-
-	VkPipeline get_compute_pipeline() const
-	{
-		VK_ASSERT(compute_pipeline != VK_NULL_HANDLE);
-		return compute_pipeline;
-	}
-
-	void set_compute_pipeline(VkPipeline pipeline)
-	{
-		VK_ASSERT(compute_pipeline == VK_NULL_HANDLE);
-		compute_pipeline = pipeline;
-	}
+	VkPipeline get_pipeline(Util::Hash hash) const;
+	VkPipeline add_pipeline(Util::Hash hash, VkPipeline pipeline);
 
 private:
 	void set_shader(ShaderStage stage, Shader *handle);
 	Device *device;
 	Shader *shaders[Util::ecast(ShaderStage::Count)] = {};
 	PipelineLayout *layout = nullptr;
-	VkPipeline compute_pipeline = VK_NULL_HANDLE;
-	Util::HashMap<VkPipeline> graphics_pipelines;
+	Util::HashMap<VkPipeline> pipelines;
 	mutable Util::RWSpinLock lock;
 };
 using ProgramHandle = Util::IntrusivePtr<Program>;

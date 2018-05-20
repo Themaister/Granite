@@ -46,6 +46,11 @@ struct TriangleApplication : Granite::Application
 		cmd->set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
 		cmd->set_vertex_attrib(0, 0, VK_FORMAT_R32G32_SFLOAT, 0);
 		cmd->set_vertex_attrib(1, 1, VK_FORMAT_A2B10G10R10_SNORM_PACK32, 0);
+		cmd->set_specialization_constant_mask(0xf);
+		cmd->set_specialization_constant(0, 0.2f);
+		cmd->set_specialization_constant(1, 0.3f);
+		cmd->set_specialization_constant(2, 0.8f);
+		cmd->set_specialization_constant(3, 1.0f);
 
 		auto *program = device.get_shader_manager().register_graphics("assets://shaders/triangle.vert", "assets://shaders/triangle.frag");
 		auto variant = program->register_variant({});

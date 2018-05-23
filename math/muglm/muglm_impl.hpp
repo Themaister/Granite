@@ -540,6 +540,8 @@ MUGLM_DEFINE_ARITH_OP(/)
 MUGLM_DEFINE_ARITH_OP(^)
 MUGLM_DEFINE_ARITH_OP(&)
 MUGLM_DEFINE_ARITH_OP(|)
+MUGLM_DEFINE_ARITH_OP(>>)
+MUGLM_DEFINE_ARITH_OP(<<)
 
 #define MUGLM_DEFINE_MATRIX_SCALAR_OP(op) \
 template <typename T> inline tmat2<T> operator op(const tmat2<T> &m, T s) { return tmat2<T>(m[0] op s, m[1] op s); } \
@@ -590,6 +592,8 @@ MUGLM_DEFINE_ARITH_MOD_OP(/=)
 MUGLM_DEFINE_ARITH_MOD_OP(^=)
 MUGLM_DEFINE_ARITH_MOD_OP(&=)
 MUGLM_DEFINE_ARITH_MOD_OP(|=)
+MUGLM_DEFINE_ARITH_MOD_OP(>>=)
+MUGLM_DEFINE_ARITH_MOD_OP(<<=)
 
 // matrix multiply
 inline vec2 operator*(const mat2 &m, const vec2 &v)

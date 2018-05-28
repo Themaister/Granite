@@ -1152,6 +1152,7 @@ void CommandBuffer::set_uniform_buffer(unsigned set, unsigned binding, const Buf
 
 	b.buffer = { buffer.get_buffer(), offset, range };
 	bindings.cookies[set][binding] = buffer.get_cookie();
+	bindings.secondary_cookies[set][binding] = 0;
 	dirty_sets |= 1u << set;
 }
 
@@ -1168,6 +1169,7 @@ void CommandBuffer::set_storage_buffer(unsigned set, unsigned binding, const Buf
 
 	b.buffer = { buffer.get_buffer(), offset, range };
 	bindings.cookies[set][binding] = buffer.get_cookie();
+	bindings.secondary_cookies[set][binding] = 0;
 	dirty_sets |= 1u << set;
 }
 
@@ -1205,6 +1207,7 @@ void CommandBuffer::set_buffer_view(unsigned set, unsigned binding, const Buffer
 	auto &b = bindings.bindings[set][binding];
 	b.buffer_view = view.get_view();
 	bindings.cookies[set][binding] = view.get_cookie();
+	bindings.secondary_cookies[set][binding] = 0;
 	dirty_sets |= 1u << set;
 }
 

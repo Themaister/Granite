@@ -673,6 +673,10 @@ struct CommandBufferUtil
 	                            bool depth_test, bool depth_write, VkCompareOp depth_compare,
 	                            const std::vector<std::pair<std::string, int>> &defines = {});
 	static void set_quad_vertex_state(CommandBuffer &cmd);
+
+	static void setup_quad(CommandBuffer &cmd, const std::string &vertex, const std::string &fragment,
+	                       const std::vector<std::pair<std::string, int>> &defines = {},
+	                       bool depth_test = false, bool depth_write = false, VkCompareOp depth_compare = VK_COMPARE_OP_ALWAYS);
 };
 
 using CommandBufferHandle = Util::IntrusivePtr<CommandBuffer>;

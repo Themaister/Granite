@@ -213,7 +213,7 @@ private:
 	std::vector<ImageView *> attachments;
 };
 
-static const unsigned VULKAN_FRAMEBUFFER_RING_SIZE = 4;
+static const unsigned VULKAN_FRAMEBUFFER_RING_SIZE = 8;
 class FramebufferAllocator
 {
 public:

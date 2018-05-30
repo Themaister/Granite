@@ -1,0 +1,20 @@
+#version 450
+layout(local_size_x = WORKGROUP_X, local_size_y = WORKGROUP_Y) in;
+
+layout(rgba8, set = 0, binding = 0) writeonly uniform image2D uOutput;
+#if IMAGE_INPUT
+layout(rgba8, set = 0, binding = 1) readonly uniform image2D uInput;
+#else
+layout(set = 0, binding = 2) uniform sampler2D uInput;
+#endif
+
+void main()
+{
+#if IMAGE_INPUT
+    vec4 in_value = imageLoad(uInput, ivec2(gl_GlobalInvocationID.xy));
+#else
+    vec4 in_value = texelFetch(uInput, ivec2(gl_GlobalInvocationID.xy), 0);
+#endif
+
+    imageStore(uOutput, ivec2(gl_GlobalInvocationID.xy), in_value);
+}

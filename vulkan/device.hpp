@@ -107,6 +107,7 @@ public:
 	CommandBufferHandle request_command_buffer(CommandBuffer::Type type = CommandBuffer::Type::Graphics);
 	CommandBufferHandle request_command_buffer_for_thread(unsigned thread_index, CommandBuffer::Type type = CommandBuffer::Type::Graphics);
 
+	CommandBuffer::Type get_physical_queue_type(CommandBuffer::Type queue_type) const;
 	void submit(CommandBufferHandle cmd, Fence *fence = nullptr, Semaphore *semaphore = nullptr,
 	            Semaphore *semaphore_alt = nullptr);
 	void submit_empty(CommandBuffer::Type type,

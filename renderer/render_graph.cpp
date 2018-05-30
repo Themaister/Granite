@@ -1916,11 +1916,22 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 	// Scale to swapchain.
 	if (swapchain_physical_index == RenderResource::Unused)
 	{
-		auto cmd = device.request_command_buffer();
+		unsigned resource_index = resource_to_index[backbuffer_source];
+		auto &source_resource = *this->resources[resource_index];
+
+		auto queue_type = (physical_dimensions[resource_index].queues & RENDER_GRAPH_QUEUE_GRAPHICS_BIT) != 0 ?
+		                  Vulkan::CommandBuffer::Type::Graphics : Vulkan::CommandBuffer::Type::SecondaryGraphics;
+
+		auto physical_queue_type = device.get_physical_queue_type(queue_type);
+
+		auto cmd = device.request_command_buffer(queue_type);
 		cmd->begin_region("render-graph-copy-to-swapchain");
 
-		unsigned index = this->resources[resource_to_index[backbuffer_source]]->get_physical_index();
+		unsigned index = source_resource.get_physical_index();
 		auto &image = physical_attachments[index]->get_image();
+
+		auto &wait_semaphore = physical_queue_type == Vulkan::CommandBuffer::Type::Graphics ?
+		                       physical_events[index].wait_graphics_semaphore : physical_events[index].wait_compute_semaphore;
 
 		if (physical_events[index].event)
 		{
@@ -1946,13 +1957,13 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 
 			physical_attachments[index]->get_image().set_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 		}
-		else if (physical_events[index].wait_graphics_semaphore)
+		else if (wait_semaphore)
 		{
-			if (physical_events[index].wait_graphics_semaphore->get_semaphore() != VK_NULL_HANDLE &&
-			    !physical_events[index].wait_graphics_semaphore->is_pending_wait())
+			if (wait_semaphore->get_semaphore() != VK_NULL_HANDLE &&
+			    !wait_semaphore->is_pending_wait())
 			{
-				device.add_wait_semaphore(Vulkan::CommandBuffer::Type::Graphics,
-				                          physical_events[index].wait_graphics_semaphore,
+				device.add_wait_semaphore(queue_type,
+				                          wait_semaphore,
 				                          VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, true);
 			}
 
@@ -2474,21 +2485,23 @@ void RenderGraph::bake()
 	swapchain_physical_index = resources[resource_to_index[backbuffer_source]]->get_physical_index();
 
 	auto &backbuffer_dim = physical_dimensions[swapchain_physical_index];
-	bool can_alias_backbuffer = true;
 
-	// If resource is touched in async-compute, we cannot use swapchain.
-	if (backbuffer_dim.queues & RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT)
-		can_alias_backbuffer = false;
-
+	// If resource is touched in async-compute, we cannot alias with swapchain.
 	// If resource is not transient, it's being used in multiple physical passes,
 	// we can't use the implicit subpass dependencies for dealing with swapchain.
-	if (!backbuffer_dim.transient)
-		can_alias_backbuffer = true;
+	bool can_alias_backbuffer = (backbuffer_dim.queues & RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT) == 0 &&
+	                            backbuffer_dim.transient;
 
 	backbuffer_dim.transient = false;
 	backbuffer_dim.persistent = swapchain_dimensions.persistent;
-	if (can_alias_backbuffer && physical_dimensions[swapchain_physical_index] != swapchain_dimensions)
+	if (!can_alias_backbuffer && physical_dimensions[swapchain_physical_index] != swapchain_dimensions)
+	{
 		swapchain_physical_index = RenderResource::Unused;
+		if ((backbuffer_dim.queues & RENDER_GRAPH_QUEUE_GRAPHICS_BIT) == 0)
+			backbuffer_dim.queues |= RENDER_GRAPH_QUEUE_ASYNC_GRAPHICS_BIT;
+		else
+			backbuffer_dim.queues |= RENDER_GRAPH_QUEUE_GRAPHICS_BIT;
+	}
 	else
 		physical_dimensions[swapchain_physical_index].transient = true;
 

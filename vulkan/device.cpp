@@ -654,6 +654,21 @@ void Device::submit(CommandBufferHandle cmd, Fence *fence, Semaphore *semaphore,
 	submit_nolock(move(cmd), fence, semaphore, semaphore_alt);
 }
 
+CommandBuffer::Type Device::get_physical_queue_type(CommandBuffer::Type queue_type) const
+{
+	if (queue_type != CommandBuffer::Type::SecondaryGraphics)
+	{
+		return queue_type;
+	}
+	else
+	{
+		if (graphics_queue_family_index == compute_queue_family_index)
+			return CommandBuffer::Type::Compute;
+		else
+			return CommandBuffer::Type::Graphics;
+	}
+}
+
 void Device::submit_nolock(CommandBufferHandle cmd, Fence *fence, Semaphore *semaphore, Semaphore *semaphore_alt)
 {
 	auto type = cmd->get_command_buffer_type();
@@ -910,13 +925,7 @@ void Device::submit_staging(CommandBufferHandle cmd, VkBufferUsageFlags usage, b
 
 void Device::submit_queue(CommandBuffer::Type type, VkFence *fence, Semaphore *semaphore, Semaphore *semaphore_alt)
 {
-	if (type == CommandBuffer::Type::SecondaryGraphics)
-	{
-		if (graphics_queue_family_index == compute_queue_family_index)
-			type = CommandBuffer::Type::Compute;
-		else
-			type = CommandBuffer::Type::Graphics;
-	}
+	type = get_physical_queue_type(type);
 
 	// Always check if we need to flush pending transfers.
 	if (type != CommandBuffer::Type::Transfer)
@@ -1234,16 +1243,11 @@ void Device::flush_frame_nolock()
 
 Device::QueueData &Device::get_queue_data(CommandBuffer::Type type)
 {
-	switch (type)
+	switch (get_physical_queue_type(type))
 	{
 	default:
 	case CommandBuffer::Type::Graphics:
 		return graphics;
-	case CommandBuffer::Type::SecondaryGraphics:
-		if (graphics_queue_family_index == compute_queue_family_index)
-			return compute;
-		else
-			return graphics;
 	case CommandBuffer::Type::Compute:
 		return compute;
 	case CommandBuffer::Type::Transfer:
@@ -1253,16 +1257,11 @@ Device::QueueData &Device::get_queue_data(CommandBuffer::Type type)
 
 CommandPool &Device::get_command_pool(CommandBuffer::Type type, unsigned thread)
 {
-	switch (type)
+	switch (get_physical_queue_type(type))
 	{
 	default:
 	case CommandBuffer::Type::Graphics:
 		return frame().graphics_cmd_pool[thread];
-	case CommandBuffer::Type::SecondaryGraphics:
-		if (graphics_queue_family_index == compute_queue_family_index)
-			return frame().compute_cmd_pool[thread];
-		else
-			return frame().graphics_cmd_pool[thread];
 	case CommandBuffer::Type::Compute:
 		return frame().compute_cmd_pool[thread];
 	case CommandBuffer::Type::Transfer:
@@ -1272,16 +1271,11 @@ CommandPool &Device::get_command_pool(CommandBuffer::Type type, unsigned thread)
 
 vector<CommandBufferHandle> &Device::get_queue_submissions(CommandBuffer::Type type)
 {
-	switch (type)
+	switch (get_physical_queue_type(type))
 	{
 	default:
 	case CommandBuffer::Type::Graphics:
 		return frame().graphics_submissions;
-	case CommandBuffer::Type::SecondaryGraphics:
-		if (graphics_queue_family_index == compute_queue_family_index)
-			return frame().compute_submissions;
-		else
-			return frame().graphics_submissions;
 	case CommandBuffer::Type::Compute:
 		return frame().compute_submissions;
 	case CommandBuffer::Type::Transfer:

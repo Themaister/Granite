@@ -1,0 +1,22 @@
+#version 450
+layout(local_size_x = 2, local_size_y = 2) in;
+
+layout(rgba8, set = 0, binding = 0) writeonly uniform image2D uImage;
+
+float foo[4];
+
+void main()
+{
+    ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
+
+    float x_sin = sin(coord.x * 0.2);
+    float y_sin = sin(coord.y * 0.5 + 0.8);
+    for (int i = 0; i < 20; i++)
+        x_sin = exp(x_sin + 0.1);
+    foo[gl_LocalInvocationIndex] = x_sin;
+
+    memoryBarrierShared();
+    barrier();
+
+    imageStore(uImage, coord, vec4(foo[gl_LocalInvocationIndex ^ 1u], y_sin, 0.0, 0.0));
+}

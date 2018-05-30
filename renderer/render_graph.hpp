@@ -601,12 +601,14 @@ public:
 
 	Vulkan::ImageView &get_physical_texture_resource(unsigned index)
 	{
+		assert(index != RenderResource::Unused);
 		assert(physical_attachments[index]);
 		return *physical_attachments[index];
 	}
 
 	Vulkan::ImageView *get_physical_history_texture_resource(unsigned index)
 	{
+		assert(index != RenderResource::Unused);
 		if (!physical_history_image_attachments[index])
 			return nullptr;
 		return &physical_history_image_attachments[index]->get_view();
@@ -614,8 +616,29 @@ public:
 
 	Vulkan::Buffer &get_physical_buffer_resource(unsigned index)
 	{
+		assert(index != RenderResource::Unused);
 		assert(physical_buffers[index]);
 		return *physical_buffers[index];
+	}
+
+	Vulkan::ImageView &get_physical_texture_resource(const RenderResource *resource)
+	{
+		assert(resource);
+		assert(resource->get_physical_index() != RenderResource::Unused);
+		return get_physical_texture_resource(resource->get_physical_index());
+	}
+
+	Vulkan::ImageView *get_physical_history_texture_resource(const RenderResource *resource)
+	{
+		assert(resource);
+		return get_physical_history_texture_resource(resource->get_physical_index());
+	}
+
+	Vulkan::Buffer &get_physical_buffer_resource(const RenderResource *resource)
+	{
+		assert(resource);
+		assert(resource->get_physical_index() != RenderResource::Unused);
+		return get_physical_buffer_resource(resource->get_physical_index());
 	}
 
 	// For keeping feed-back resources alive during rebaking.

@@ -46,6 +46,14 @@ enum SizeClass
 	InputRelative
 };
 
+enum RenderGraphQueueFlagBits
+{
+	RENDER_GRAPH_QUEUE_GRAPHICS_BIT = 1 << 0,
+	RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT = 1 << 1,
+	RENDER_GRAPH_QUEUE_ASYNC_GRAPHICS_BIT = 1 << 2
+};
+using RenderGraphQueueFlags = uint32_t;
+
 struct AttachmentInfo
 {
 	SizeClass size_class = SizeClass::SwapchainRelative;
@@ -95,7 +103,7 @@ struct ResourceDimensions
 	bool unorm_srgb = false;
 	bool persistent = true;
 	bool storage = false;
-	VkPipelineStageFlags stages = 0;
+	RenderGraphQueueFlags queues = 0;
 	VkImageUsageFlags aux_usage = 0;
 
 	bool operator==(const ResourceDimensions &other) const
@@ -112,7 +120,7 @@ struct ResourceDimensions
 		       storage == other.storage &&
 		       unorm_srgb == other.unorm_srgb &&
 		       aux_usage == other.aux_usage;
-		// stages is deliberately not part of this test.
+		// queues is deliberately not part of this test.
 	}
 
 	bool operator!=(const ResourceDimensions &other) const
@@ -122,14 +130,8 @@ struct ResourceDimensions
 
 	bool uses_semaphore() const
 	{
-		static const VkPipelineStageFlags concurrent_compute =
-				VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT |
-				VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-		static const VkPipelineStageFlags concurrent_transfer =
-				VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT |
-				VK_PIPELINE_STAGE_TRANSFER_BIT;
-		return ((stages & concurrent_compute) == concurrent_compute) ||
-		       ((stages & concurrent_transfer) == concurrent_transfer);
+		// If more than one queue is used for a resource, we need to use semaphores.
+		return (queues & (queues - 1)) != 0;
 	}
 
 	std::string name;
@@ -213,14 +215,14 @@ public:
 		return name;
 	}
 
-	void add_stages(VkPipelineStageFlags stages)
+	void add_queue(RenderGraphQueueFlagBits queue)
 	{
-		used_stages |= stages;
+		used_queues |= queue;
 	}
 
-	VkPipelineStageFlags get_used_stages() const
+	RenderGraphQueueFlags get_used_queues() const
 	{
-		return used_stages;
+		return used_queues;
 	}
 
 private:
@@ -230,7 +232,7 @@ private:
 	std::unordered_set<unsigned> written_in_passes;
 	std::unordered_set<unsigned> read_in_passes;
 	std::string name;
-	VkPipelineStageFlags used_stages = 0;
+	VkPipelineStageFlags used_queues = 0;
 };
 
 class RenderBufferResource : public RenderResource
@@ -307,16 +309,16 @@ private:
 class RenderPass
 {
 public:
-	RenderPass(RenderGraph &graph, unsigned index, VkPipelineStageFlags stages)
-		: graph(graph), index(index), stages(stages)
+	RenderPass(RenderGraph &graph, unsigned index, RenderGraphQueueFlagBits queue)
+		: graph(graph), index(index), queue(queue)
 	{
 	}
 
 	enum { Unused = ~0u };
 
-	VkPipelineStageFlags get_stages() const
+	RenderGraphQueueFlagBits get_queue() const
 	{
-		return stages;
+		return queue;
 	}
 
 	RenderGraph &get_graph()
@@ -528,7 +530,7 @@ private:
 	RenderGraph &graph;
 	unsigned index;
 	unsigned physical_pass = Unused;
-	VkPipelineStageFlags stages;
+	RenderGraphQueueFlagBits queue;
 
 	std::function<void (Vulkan::CommandBuffer &)> build_render_pass_cb;
 	std::function<bool ()> need_render_pass_cb;
@@ -573,7 +575,7 @@ public:
 		return *device;
 	}
 
-	RenderPass &add_pass(const std::string &name, VkPipelineStageFlags stages);
+	RenderPass &add_pass(const std::string &name, RenderGraphQueueFlagBits queue);
 	void set_backbuffer_source(const std::string &name);
 	void set_backbuffer_dimensions(const ResourceDimensions &dim)
 	{

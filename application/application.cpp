@@ -538,7 +538,7 @@ void SceneViewerApplication::add_main_pass_forward(Vulkan::Device &device, const
 	auto resolved = color;
 	resolved.samples = 1;
 
-	auto &lighting = graph.add_pass(tagcat("lighting", tag), VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	auto &lighting = graph.add_pass(tagcat("lighting", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 
 	if (color.samples > 1)
 	{
@@ -594,7 +594,7 @@ void SceneViewerApplication::add_main_pass_deferred(Vulkan::Device &device, cons
 	pbr.format = VK_FORMAT_R8G8_UNORM;
 	depth.format = device.get_default_depth_stencil_format();
 
-	auto &gbuffer = graph.add_pass(tagcat("gbuffer", tag), VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	auto &gbuffer = graph.add_pass(tagcat("gbuffer", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 	gbuffer.add_color_output(tagcat("emissive", tag), emissive);
 	gbuffer.add_color_output(tagcat("albedo", tag), albedo);
 	gbuffer.add_color_output(tagcat("normal", tag), normal);
@@ -626,7 +626,7 @@ void SceneViewerApplication::add_main_pass_deferred(Vulkan::Device &device, cons
 		return true;
 	});
 
-	auto &lighting = graph.add_pass(tagcat("lighting", tag), VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	auto &lighting = graph.add_pass(tagcat("lighting", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 	lighting.add_color_output(tagcat("HDR", tag), emissive, tagcat("emissive", tag));
 	lighting.add_attachment_input(tagcat("albedo", tag));
 	lighting.add_attachment_input(tagcat("normal", tag));
@@ -687,7 +687,7 @@ void SceneViewerApplication::add_shadow_pass(Vulkan::Device &, const std::string
 		shadowmap.size_y = config.shadow_map_resolution_near;
 	}
 
-	auto &shadowpass = graph.add_pass(tagcat("shadow", tag), VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	auto &shadowpass = graph.add_pass(tagcat("shadow", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 
 	if (config.directional_light_shadows_vsm)
 	{
@@ -706,11 +706,11 @@ void SceneViewerApplication::add_shadow_pass(Vulkan::Device &, const std::string
 		shadowpass.add_color_output(tagcat("shadow-msaa", tag), shadowmap_vsm_color);
 		shadowpass.add_resolve_output(tagcat("shadow-raw", tag), shadowmap_vsm_resolved_color);
 
-		auto &down_pass = graph.add_pass(tagcat("shadow-down", tag), VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+		auto &down_pass = graph.add_pass(tagcat("shadow-down", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 		down_pass.add_color_output(tagcat("shadow-down", tag), shadowmap_vsm_half);
 		down_pass.add_texture_input(tagcat("shadow-raw", tag));
 
-		auto &up_pass = graph.add_pass(tagcat("shadow-up", tag), VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+		auto &up_pass = graph.add_pass(tagcat("shadow-up", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 		up_pass.add_color_output(tagcat("shadow", tag), shadowmap_vsm_resolved_color);
 		up_pass.add_texture_input(tagcat("shadow-down", tag));
 
@@ -819,7 +819,7 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 
 	if (config.show_ui)
 	{
-		auto &ui = graph.add_pass("ui", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+		auto &ui = graph.add_pass("ui", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 		AttachmentInfo ui_info;
 		ui.add_color_output("ui-output", ui_info, ui_source);
 		graph.set_backbuffer_source("ui-output");

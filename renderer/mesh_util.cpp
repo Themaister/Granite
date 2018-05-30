@@ -870,7 +870,7 @@ void TexturePlane::add_render_pass(RenderGraph &graph, Type type)
 
 	auto &name = type == Reflection ? reflection_name : refraction_name;
 
-	auto &lighting = graph.add_pass(name + "-lighting", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	auto &lighting = graph.add_pass(name + "-lighting", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 	lighting.add_color_output(name + "-HDR", color);
 	lighting.set_depth_stencil_output(name + "-depth", depth);
 
@@ -929,7 +929,7 @@ void TexturePlane::add_render_pass(RenderGraph &graph, Type type)
 
 	lighting.add_texture_input("shadow-main");
 
-	auto &reflection_blur_pass = graph.add_pass(name, VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	auto &reflection_blur_pass = graph.add_pass(name, RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 	reflection_blur_pass.add_texture_input(name + "-HDR");
 	reflection_blur_pass.add_color_output(name, reflection_blur);
 	reflection_blur_pass.set_build_render_pass([&reflection_blur_pass](Vulkan::CommandBuffer &cmd) {

@@ -167,14 +167,14 @@ void setup_hdr_postprocess(RenderGraph &graph, const std::string &input, const s
 	auto &lum = graph.get_buffer_resource("average-luminance");
 	lum.set_buffer_info(buffer_info);
 
-	auto &adapt_pass = graph.add_pass("adapt-luminance", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+	auto &adapt_pass = graph.add_pass("adapt-luminance", RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT);
 	adapt_pass.add_storage_output("average-luminance-updated", buffer_info, "average-luminance");
 	adapt_pass.add_texture_input("bloom-downsample-3");
 	adapt_pass.set_build_render_pass([&adapt_pass](Vulkan::CommandBuffer &cmd) {
 		luminance_build_render_pass(adapt_pass, cmd);
 	});
 
-	auto &threshold = graph.add_pass("bloom-threshold", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	auto &threshold = graph.add_pass("bloom-threshold", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 	AttachmentInfo threshold_info;
 	threshold_info.format = VK_FORMAT_R16G16B16A16_SFLOAT;
 	threshold_info.size_x = 0.5f;
@@ -194,7 +194,7 @@ void setup_hdr_postprocess(RenderGraph &graph, const std::string &input, const s
 	blur_info.format = VK_FORMAT_R16G16B16A16_SFLOAT;
 	blur_info.size_class = SizeClass::InputRelative;
 	blur_info.size_relative_name = input;
-	auto &blur0 = graph.add_pass("bloom-downsample-0", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	auto &blur0 = graph.add_pass("bloom-downsample-0", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 	blur0.add_color_output("bloom-downsample-0", blur_info);
 	blur0.add_texture_input("threshold");
 	blur0.set_build_render_pass([&blur0](Vulkan::CommandBuffer &cmd) {
@@ -204,7 +204,7 @@ void setup_hdr_postprocess(RenderGraph &graph, const std::string &input, const s
 	blur_info.size_x = 0.125f;
 	blur_info.size_y = 0.125f;
 	blur_info.format = VK_FORMAT_R16G16B16A16_SFLOAT;
-	auto &blur1 = graph.add_pass("bloom-downsample-1", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	auto &blur1 = graph.add_pass("bloom-downsample-1", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 	blur1.add_color_output("bloom-downsample-1", blur_info);
 	blur1.add_texture_input("bloom-downsample-0");
 	blur1.set_build_render_pass([&blur1](Vulkan::CommandBuffer &cmd) {
@@ -214,7 +214,7 @@ void setup_hdr_postprocess(RenderGraph &graph, const std::string &input, const s
 	blur_info.size_x = 0.0625f;
 	blur_info.size_y = 0.0625f;
 	blur_info.format = VK_FORMAT_R16G16B16A16_SFLOAT;
-	auto &blur2 = graph.add_pass("bloom-downsample-2", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	auto &blur2 = graph.add_pass("bloom-downsample-2", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 	blur2.add_color_output("bloom-downsample-2", blur_info);
 	blur2.add_texture_input("bloom-downsample-1");
 	blur2.set_build_render_pass([&blur2](Vulkan::CommandBuffer &cmd) {
@@ -224,7 +224,7 @@ void setup_hdr_postprocess(RenderGraph &graph, const std::string &input, const s
 	blur_info.size_x = 0.03125f;
 	blur_info.size_y = 0.03125f;
 	blur_info.format = VK_FORMAT_R16G16B16A16_SFLOAT;
-	auto &blur3 = graph.add_pass("bloom-downsample-3", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	auto &blur3 = graph.add_pass("bloom-downsample-3", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 	blur3.add_color_output("bloom-downsample-3", blur_info);
 	blur3.add_texture_input("bloom-downsample-2");
 	blur3.add_history_input("bloom-downsample-3");
@@ -235,7 +235,7 @@ void setup_hdr_postprocess(RenderGraph &graph, const std::string &input, const s
 	blur_info.size_x = 0.0625f;
 	blur_info.size_y = 0.0625f;
 	blur_info.format = VK_FORMAT_R16G16B16A16_SFLOAT;
-	auto &blur4 = graph.add_pass("bloom-upsample-0", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	auto &blur4 = graph.add_pass("bloom-upsample-0", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 	blur4.add_color_output("bloom-upsample-0", blur_info);
 	blur4.add_texture_input("bloom-downsample-3");
 	blur4.set_build_render_pass([&blur4](Vulkan::CommandBuffer &cmd) {
@@ -245,7 +245,7 @@ void setup_hdr_postprocess(RenderGraph &graph, const std::string &input, const s
 	blur_info.size_x = 0.125f;
 	blur_info.size_y = 0.125f;
 	blur_info.format = VK_FORMAT_R16G16B16A16_SFLOAT;
-	auto &blur5 = graph.add_pass("bloom-upsample-1", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	auto &blur5 = graph.add_pass("bloom-upsample-1", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 	blur5.add_color_output("bloom-upsample-1", blur_info);
 	blur5.add_texture_input("bloom-upsample-0");
 	blur5.set_build_render_pass([&blur5](Vulkan::CommandBuffer &cmd) {
@@ -255,7 +255,7 @@ void setup_hdr_postprocess(RenderGraph &graph, const std::string &input, const s
 	blur_info.size_x = 0.25f;
 	blur_info.size_y = 0.25f;
 	blur_info.format = VK_FORMAT_R16G16B16A16_SFLOAT;
-	auto &blur6 = graph.add_pass("bloom-upsample-2", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	auto &blur6 = graph.add_pass("bloom-upsample-2", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 	blur6.add_color_output("bloom-upsample-2", blur_info);
 	blur6.add_texture_input("bloom-upsample-1");
 	blur6.set_build_render_pass([&blur6](Vulkan::CommandBuffer &cmd) {
@@ -265,7 +265,7 @@ void setup_hdr_postprocess(RenderGraph &graph, const std::string &input, const s
 	AttachmentInfo tonemap_info;
 	tonemap_info.size_class = SizeClass::InputRelative;
 	tonemap_info.size_relative_name = input;
-	auto &tonemap = graph.add_pass("tonemap", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	auto &tonemap = graph.add_pass("tonemap", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 	tonemap.add_color_output(output, tonemap_info);
 	tonemap.add_texture_input(input);
 	tonemap.add_texture_input("bloom-upsample-2");

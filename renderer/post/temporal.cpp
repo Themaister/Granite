@@ -195,7 +195,7 @@ void setup_taa_resolve(RenderGraph &graph, TemporalJitter &jitter, const std::st
 	});
 #endif
 
-	auto &resolve = graph.add_pass("taa-resolve", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	auto &resolve = graph.add_pass("taa-resolve", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 	resolve.add_color_output(output, taa_output);
 	resolve.add_texture_input(input);
 	resolve.add_texture_input(input_depth);
@@ -260,7 +260,7 @@ void setup_fxaa_2phase_postprocess(RenderGraph &graph, TemporalJitter &jitter, c
 	setup_fxaa_postprocess(graph, input, "fxaa-pre", VK_FORMAT_R8G8B8A8_UNORM);
 	graph.get_texture_resource("fxaa-pre").get_attachment_info().unorm_srgb_alias = true;
 
-	auto &sharpen = graph.add_pass("fxaa-sharpen", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	auto &sharpen = graph.add_pass("fxaa-sharpen", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 	AttachmentInfo att, backbuffer_att;
 	att.size_relative_name = input;
 	att.size_class = SizeClass::InputRelative;

@@ -66,7 +66,7 @@ void AABenchApplication::on_swapchain_changed(const SwapchainParameterEvent &swa
 
 	AttachmentInfo swapchain_output;
 
-	auto &pass = graph.add_pass("main", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	auto &pass = graph.add_pass("main", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 	pass.add_color_output("HDR-main", main_output);
 	pass.set_depth_stencil_output("depth-main", main_depth);
 	pass.set_need_render_pass([this]() {
@@ -90,7 +90,7 @@ void AABenchApplication::on_swapchain_changed(const SwapchainParameterEvent &swa
 														 graph, jitter,
 														 "HDR-main", "depth-main", "HDR-resolved");
 
-	auto &tonemap = graph.add_pass("tonemap", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	auto &tonemap = graph.add_pass("tonemap", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 	tonemap.add_color_output("tonemap", swapchain_output);
 	tonemap.add_texture_input(resolved ? "HDR-resolved" : "HDR-main");
 	tonemap.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {

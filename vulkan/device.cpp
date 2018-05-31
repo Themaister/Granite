@@ -648,10 +648,10 @@ void Device::request_staging_block_nolock(BufferBlock &block, VkDeviceSize size)
 	request_block(*this, block, size, managers.staging, nullptr, frame().staging_blocks);
 }
 
-void Device::submit(CommandBufferHandle cmd, Fence *fence, Semaphore *semaphore, Semaphore *semaphore_alt)
+void Device::submit(CommandBufferHandle cmd, Fence *fence, unsigned semaphore_count, Semaphore *semaphores)
 {
 	LOCK();
-	submit_nolock(move(cmd), fence, semaphore, semaphore_alt);
+	submit_nolock(move(cmd), fence, semaphore_count, semaphores);
 }
 
 CommandBuffer::Type Device::get_physical_queue_type(CommandBuffer::Type queue_type) const
@@ -669,7 +669,7 @@ CommandBuffer::Type Device::get_physical_queue_type(CommandBuffer::Type queue_ty
 	}
 }
 
-void Device::submit_nolock(CommandBufferHandle cmd, Fence *fence, Semaphore *semaphore, Semaphore *semaphore_alt)
+void Device::submit_nolock(CommandBufferHandle cmd, Fence *fence, unsigned semaphore_count, Semaphore *semaphores)
 {
 	auto type = cmd->get_command_buffer_type();
 	auto &pool = get_command_pool(type, cmd->get_thread_index());
@@ -681,8 +681,8 @@ void Device::submit_nolock(CommandBufferHandle cmd, Fence *fence, Semaphore *sem
 
 	VkFence cleared_fence = VK_NULL_HANDLE;
 
-	if (fence || semaphore || semaphore_alt)
-		submit_queue(type, fence ? &cleared_fence : nullptr, semaphore, semaphore_alt);
+	if (fence || semaphore_count)
+		submit_queue(type, fence ? &cleared_fence : nullptr, semaphore_count, semaphores);
 
 	if (fence)
 	{
@@ -693,24 +693,27 @@ void Device::submit_nolock(CommandBufferHandle cmd, Fence *fence, Semaphore *sem
 	decrement_frame_counter_nolock();
 }
 
-void Device::submit_empty(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore, Semaphore *semaphore_alt)
+void Device::submit_empty(CommandBuffer::Type type, Fence *fence,
+                          unsigned semaphore_count, Semaphore *semaphores)
 {
 	LOCK();
-	submit_empty_nolock(type, fence, semaphore, semaphore_alt);
+	submit_empty_nolock(type, fence, semaphore_count, semaphores);
 }
 
-void Device::submit_empty_nolock(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore, Semaphore *semaphore_alt)
+void Device::submit_empty_nolock(CommandBuffer::Type type, Fence *fence,
+                                 unsigned semaphore_count, Semaphore *semaphores)
 {
 	if (type != CommandBuffer::Type::Transfer)
 		flush_frame(CommandBuffer::Type::Transfer);
 
 	VkFence cleared_fence = VK_NULL_HANDLE;
-	submit_queue(type, fence ? &cleared_fence : nullptr, semaphore, semaphore_alt);
+	submit_queue(type, fence ? &cleared_fence : nullptr, semaphore_count, semaphores);
 	if (fence)
 		*fence = make_handle<FenceHolder>(this, cleared_fence);
 }
 
-void Device::submit_empty_inner(CommandBuffer::Type type, VkFence *fence, Semaphore *semaphore, Semaphore *semaphore_alt)
+void Device::submit_empty_inner(CommandBuffer::Type type, VkFence *fence,
+                                unsigned semaphore_count, Semaphore *semaphores)
 {
 	auto &data = get_queue_data(type);
 	VkSubmitInfo submit = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
@@ -733,18 +736,12 @@ void Device::submit_empty_inner(CommandBuffer::Type type, VkFence *fence, Semaph
 	data.wait_semaphores.clear();
 
 	// Add external signal semaphores.
-	VkSemaphore cleared_semaphore = VK_NULL_HANDLE;
-	VkSemaphore cleared_semaphore_alt = VK_NULL_HANDLE;
-	if (semaphore)
+	for (unsigned i = 0; i < semaphore_count; i++)
 	{
-		cleared_semaphore = managers.semaphore.request_cleared_semaphore();
+		VkSemaphore cleared_semaphore = managers.semaphore.request_cleared_semaphore();
 		signals.push_back(cleared_semaphore);
-	}
-
-	if (semaphore_alt)
-	{
-		cleared_semaphore_alt = managers.semaphore.request_cleared_semaphore();
-		signals.push_back(cleared_semaphore_alt);
+		VK_ASSERT(!semaphores[i]);
+		semaphores[i] = make_handle<SemaphoreHolder>(this, cleared_semaphore, true);
 	}
 
 	submit.signalSemaphoreCount = signals.size();
@@ -796,18 +793,6 @@ void Device::submit_empty_inner(CommandBuffer::Type type, VkFence *fence, Semaph
 	else
 		data.need_fence = true;
 
-	if (semaphore)
-	{
-		VK_ASSERT(!*semaphore);
-		*semaphore = make_handle<SemaphoreHolder>(this, cleared_semaphore, true);
-	}
-
-	if (semaphore_alt)
-	{
-		VK_ASSERT(!*semaphore_alt);
-		*semaphore_alt = make_handle<SemaphoreHolder>(this, cleared_semaphore_alt, true);
-	}
-
 #if defined(VULKAN_DEBUG) && defined(SUBMIT_DEBUG)
 	const char *queue_name = nullptr;
 	switch (type)
@@ -849,7 +834,7 @@ void Device::submit_staging(CommandBufferHandle cmd, VkBufferUsageFlags usage, b
 	{
 		// For single-queue systems, just use a pipeline barrier.
 		cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, stages, access);
-		submit_nolock(cmd);
+		submit_nolock(cmd, nullptr, 0, nullptr);
 	}
 	else
 	{
@@ -876,11 +861,11 @@ void Device::submit_staging(CommandBufferHandle cmd, VkBufferUsageFlags usage, b
 			if (compute_stages != 0)
 			{
 				Semaphore sem;
-				submit_nolock(cmd, nullptr, &sem);
+				submit_nolock(cmd, nullptr, 1, &sem);
 				add_wait_semaphore_nolock(CommandBuffer::Type::Compute, sem, compute_stages, flush);
 			}
 			else
-				submit_nolock(cmd);
+				submit_nolock(cmd, nullptr, 0, nullptr);
 		}
 		else if (transfer_queue == compute_queue)
 		{
@@ -890,40 +875,41 @@ void Device::submit_staging(CommandBufferHandle cmd, VkBufferUsageFlags usage, b
 			if (graphics_stages != 0)
 			{
 				Semaphore sem;
-				submit_nolock(cmd, nullptr, &sem);
+				submit_nolock(cmd, nullptr, 1, &sem);
 				add_wait_semaphore_nolock(CommandBuffer::Type::Graphics, sem, graphics_stages, flush);
 			}
 			else
-				submit_nolock(cmd);
+				submit_nolock(cmd, nullptr, 0, nullptr);
 		}
 		else
 		{
 			if (graphics_stages != 0 && compute_stages != 0)
 			{
-				Semaphore sem_graphics, sem_compute;
-				submit_nolock(cmd, nullptr, &sem_graphics, &sem_compute);
-				add_wait_semaphore_nolock(CommandBuffer::Type::Graphics, sem_graphics, graphics_stages, flush);
-				add_wait_semaphore_nolock(CommandBuffer::Type::Compute, sem_compute, compute_stages, flush);
+				Semaphore semaphores[2];
+				submit_nolock(cmd, nullptr, 2, semaphores);
+				add_wait_semaphore_nolock(CommandBuffer::Type::Graphics, semaphores[0], graphics_stages, flush);
+				add_wait_semaphore_nolock(CommandBuffer::Type::Compute, semaphores[1], compute_stages, flush);
 			}
 			else if (graphics_stages != 0)
 			{
 				Semaphore sem;
-				submit_nolock(cmd, nullptr, &sem);
+				submit_nolock(cmd, nullptr, 1, &sem);
 				add_wait_semaphore_nolock(CommandBuffer::Type::Graphics, sem, graphics_stages, flush);
 			}
 			else if (compute_stages != 0)
 			{
 				Semaphore sem;
-				submit_nolock(cmd, nullptr, &sem);
+				submit_nolock(cmd, nullptr, 1, &sem);
 				add_wait_semaphore_nolock(CommandBuffer::Type::Compute, sem, compute_stages, flush);
 			}
 			else
-				submit_nolock(cmd);
+				submit_nolock(cmd, nullptr, 0, nullptr);
 		}
 	}
 }
 
-void Device::submit_queue(CommandBuffer::Type type, VkFence *fence, Semaphore *semaphore, Semaphore *semaphore_alt)
+void Device::submit_queue(CommandBuffer::Type type, VkFence *fence,
+                          unsigned semaphore_count, Semaphore *semaphores)
 {
 	type = get_physical_queue_type(type);
 
@@ -936,8 +922,8 @@ void Device::submit_queue(CommandBuffer::Type type, VkFence *fence, Semaphore *s
 
 	if (submissions.empty())
 	{
-		if (fence || semaphore || semaphore_alt)
-			submit_empty_inner(type, fence, semaphore, semaphore_alt);
+		if (fence || semaphore_count)
+			submit_empty_inner(type, fence, semaphore_count, semaphores);
 		return;
 	}
 
@@ -1020,18 +1006,13 @@ void Device::submit_queue(CommandBuffer::Type type, VkFence *fence, Semaphore *s
 	}
 
 	VkFence cleared_fence = fence ? managers.fence.request_cleared_fence() : VK_NULL_HANDLE;
-	VkSemaphore cleared_semaphore = VK_NULL_HANDLE;
-	VkSemaphore cleared_semaphore_alt = VK_NULL_HANDLE;
-	if (semaphore)
-	{
-		cleared_semaphore = managers.semaphore.request_cleared_semaphore();
-		signals[submits.size() - 1].push_back(cleared_semaphore);
-	}
 
-	if (semaphore_alt)
+	for (unsigned i = 0; i < semaphore_count; i++)
 	{
-		cleared_semaphore_alt = managers.semaphore.request_cleared_semaphore();
-		signals[submits.size() - 1].push_back(cleared_semaphore_alt);
+		VkSemaphore cleared_semaphore = managers.semaphore.request_cleared_semaphore();
+		signals[submits.size() - 1].push_back(cleared_semaphore);
+		VK_ASSERT(!semaphores[i]);
+		semaphores[i] = make_handle<SemaphoreHolder>(this, cleared_semaphore, true);
 	}
 
 	for (unsigned i = 0; i < submits.size(); i++)
@@ -1088,18 +1069,6 @@ void Device::submit_queue(CommandBuffer::Type type, VkFence *fence, Semaphore *s
 	else
 		data.need_fence = true;
 
-	if (semaphore)
-	{
-		VK_ASSERT(!*semaphore);
-		*semaphore = make_handle<SemaphoreHolder>(this, cleared_semaphore, true);
-	}
-
-	if (semaphore_alt)
-	{
-		VK_ASSERT(!*semaphore_alt);
-		*semaphore_alt = make_handle<SemaphoreHolder>(this, cleared_semaphore_alt, true);
-	}
-
 #if defined(VULKAN_DEBUG) && defined(SUBMIT_DEBUG)
 	const char *queue_name = nullptr;
 	switch (type)
@@ -1142,7 +1111,7 @@ void Device::flush_frame(CommandBuffer::Type type)
 {
 	if (type == CommandBuffer::Type::Transfer)
 		sync_buffer_blocks();
-	submit_queue(type, nullptr, nullptr, nullptr);
+	submit_queue(type, nullptr, 0, nullptr);
 }
 
 void Device::sync_buffer_blocks()
@@ -1208,21 +1177,21 @@ void Device::end_frame_nolock()
 
 	if (transfer.need_fence || !frame().transfer_submissions.empty())
 	{
-		submit_queue(CommandBuffer::Type::Transfer, &fence, nullptr, nullptr);
+		submit_queue(CommandBuffer::Type::Transfer, &fence, 0, nullptr);
 		frame().recycle_fences.push_back(fence);
 		transfer.need_fence = false;
 	}
 
 	if (graphics.need_fence || !frame().graphics_submissions.empty())
 	{
-		submit_queue(CommandBuffer::Type::Graphics, &fence, nullptr, nullptr);
+		submit_queue(CommandBuffer::Type::Graphics, &fence, 0, nullptr);
 		frame().recycle_fences.push_back(fence);
 		graphics.need_fence = false;
 	}
 
 	if (compute.need_fence || !frame().compute_submissions.empty())
 	{
-		submit_queue(CommandBuffer::Type::Compute, &fence, nullptr, nullptr);
+		submit_queue(CommandBuffer::Type::Compute, &fence, 0, nullptr);
 		frame().recycle_fences.push_back(fence);
 		compute.need_fence = false;
 	}
@@ -2700,7 +2669,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 			}
 
 			Semaphore sem;
-			submit(transfer_cmd, nullptr, &sem);
+			submit(transfer_cmd, nullptr, 1, &sem);
 			add_wait_semaphore(CommandBuffer::Type::Graphics, sem, dst_stages, true);
 		}
 		else
@@ -2730,7 +2699,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		if (concurrent_queue && graphics_queue != compute_queue)
 		{
 			Semaphore sem;
-			submit(graphics_cmd, nullptr, &sem);
+			submit(graphics_cmd, nullptr, 1, &sem);
 			add_wait_semaphore(CommandBuffer::Type::Compute,
 			                   sem, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT, true);
 		}
@@ -2750,7 +2719,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		if (concurrent_queue && graphics_queue != compute_queue)
 		{
 			Semaphore sem;
-			submit(cmd, nullptr, &sem);
+			submit(cmd, nullptr, 1, &sem);
 			add_wait_semaphore(CommandBuffer::Type::Compute,
 			                   sem, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT, true);
 		}

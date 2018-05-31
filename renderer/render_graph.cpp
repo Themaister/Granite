@@ -1885,10 +1885,10 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 
 		cmd->end_region();
 
-		Vulkan::Semaphore graphics_semaphore;
+		Vulkan::Semaphore semaphores[2];
 		Vulkan::Semaphore compute_semaphore;
 		if (need_submission_semaphore)
-			device.submit(cmd, nullptr, &graphics_semaphore, &compute_semaphore);
+			device.submit(cmd, nullptr, 2, semaphores);
 		else
 			device.submit(cmd);
 
@@ -1903,8 +1903,8 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 
 				if (physical_dimensions[barrier.resource_index].uses_semaphore())
 				{
-					event.wait_graphics_semaphore = graphics_semaphore;
-					event.wait_compute_semaphore = compute_semaphore;
+					event.wait_graphics_semaphore = semaphores[0];
+					event.wait_compute_semaphore = semaphores[1];
 				}
 			}
 		}
@@ -1995,12 +1995,10 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 
 		if (physical_dimensions[index].uses_semaphore())
 		{
-			Vulkan::Semaphore graphics_semaphore;
-			Vulkan::Semaphore compute_semaphore;
-
-			device.submit(cmd, nullptr, &graphics_semaphore, &compute_semaphore);
-			physical_events[index].wait_graphics_semaphore = graphics_semaphore;
-			physical_events[index].wait_compute_semaphore = compute_semaphore;
+			Vulkan::Semaphore semaphores[2];
+			device.submit(cmd, nullptr, 2, semaphores);
+			physical_events[index].wait_graphics_semaphore = semaphores[0];
+			physical_events[index].wait_compute_semaphore = semaphores[1];
 		}
 		else
 		{

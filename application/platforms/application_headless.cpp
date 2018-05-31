@@ -288,7 +288,7 @@ public:
 				cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 				             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 
-				device.submit(cmd, &readback_fence[index], &acquire_semaphore[index]);
+				device.submit(cmd, &readback_fence[index], 1, &acquire_semaphore[index]);
 
 				worker_threads[index]->set_work([cb = next_readback_cb, index = this->index]() {
 					cb(index);
@@ -310,7 +310,7 @@ public:
 				cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 				             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 
-				device.submit(cmd, &readback_fence[index], &acquire_semaphore[index]);
+				device.submit(cmd, &readback_fence[index], 1, &acquire_semaphore[index]);
 
 				worker_threads[index]->set_work([this, index = this->index, frame = this->frames]() {
 					dump_frame(frame, index);

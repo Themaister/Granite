@@ -108,10 +108,12 @@ public:
 	CommandBufferHandle request_command_buffer_for_thread(unsigned thread_index, CommandBuffer::Type type = CommandBuffer::Type::Graphics);
 
 	CommandBuffer::Type get_physical_queue_type(CommandBuffer::Type queue_type) const;
-	void submit(CommandBufferHandle cmd, Fence *fence = nullptr, Semaphore *semaphore = nullptr,
-	            Semaphore *semaphore_alt = nullptr);
+	void submit(CommandBufferHandle cmd, Fence *fence = nullptr,
+	            unsigned semaphore_count = 0, Semaphore *semaphore = nullptr);
 	void submit_empty(CommandBuffer::Type type,
-	                  Fence *fence = nullptr, Semaphore *semaphore = nullptr, Semaphore *semaphore_alt = nullptr);
+	                  Fence *fence = nullptr,
+	                  unsigned semaphore_count = 0,
+	                  Semaphore *semaphore = nullptr);
 	void add_wait_semaphore(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags stages, bool flush);
 	////
 
@@ -329,7 +331,9 @@ private:
 		std::vector<BufferBlock> ubo;
 	} dma;
 
-	void submit_queue(CommandBuffer::Type type, VkFence *fence, Semaphore *semaphore, Semaphore *semaphore_alt);
+	void submit_queue(CommandBuffer::Type type, VkFence *fence,
+	                  unsigned semaphore_count = 0,
+	                  Semaphore *semaphore = nullptr);
 
 	PerFrame &frame()
 	{
@@ -392,7 +396,9 @@ private:
 	std::function<void ()> queue_unlock_callback;
 	void flush_frame(CommandBuffer::Type type);
 	void sync_buffer_blocks();
-	void submit_empty_inner(CommandBuffer::Type type, VkFence *fence, Semaphore *semaphore, Semaphore *semaphore_alt);
+	void submit_empty_inner(CommandBuffer::Type type, VkFence *fence,
+	                        unsigned semaphore_count,
+	                        Semaphore *semaphore);
 
 	void destroy_buffer_nolock(VkBuffer buffer);
 	void destroy_image_nolock(VkImage image);
@@ -407,9 +413,11 @@ private:
 
 	void flush_frame_nolock();
 	CommandBufferHandle request_command_buffer_nolock(unsigned thread_index, CommandBuffer::Type type = CommandBuffer::Type::Graphics);
-	void submit_nolock(CommandBufferHandle cmd, Fence *fence = nullptr, Semaphore *semaphore = nullptr,
-	                   Semaphore *semaphore_alt = nullptr);
-	void submit_empty_nolock(CommandBuffer::Type type, Fence *fence, Semaphore *semaphore, Semaphore *semaphore_alt);
+	void submit_nolock(CommandBufferHandle cmd, Fence *fence,
+	                   unsigned semaphore_count, Semaphore *semaphore);
+	void submit_empty_nolock(CommandBuffer::Type type, Fence *fence,
+	                         unsigned semaphore_count,
+	                         Semaphore *semaphore);
 	void add_wait_semaphore_nolock(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags stages,
 	                               bool flush);
 

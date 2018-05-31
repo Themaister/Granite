@@ -223,7 +223,8 @@ public:
 		auto info = ImageCreateInfo::render_target(width, height, VK_FORMAT_R8G8B8A8_SRGB);
 		info.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 		info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-		info.misc = IMAGE_MISC_CONCURRENT_QUEUE_BIT;
+		info.misc = IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT |
+		            IMAGE_MISC_CONCURRENT_QUEUE_TRANSFER_BIT;
 
 		BufferCreateInfo readback = {};
 		readback.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;

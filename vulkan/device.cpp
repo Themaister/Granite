@@ -2434,24 +2434,40 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 	// Only do this conditionally.
 	// On AMD, using CONCURRENT with async compute disables compression.
 	uint32_t sharing_indices[3];
-	bool concurrent_queue = (create_info.misc & IMAGE_MISC_CONCURRENT_QUEUE_BIT) != 0;
-	if (concurrent_queue &&
-	    (graphics_queue_family_index != compute_queue_family_index ||
-	     graphics_queue_family_index != transfer_queue_family_index))
+
+	uint32_t queue_flags = create_info.misc & (IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT |
+	                                           IMAGE_MISC_CONCURRENT_QUEUE_COMPUTE_BIT |
+	                                           IMAGE_MISC_CONCURRENT_QUEUE_SECONDARY_GRAPHICS_BIT |
+	                                           IMAGE_MISC_CONCURRENT_QUEUE_TRANSFER_BIT);
+	bool concurrent_queue = queue_flags != 0;
+	if (concurrent_queue)
 	{
 		info.sharingMode = VK_SHARING_MODE_CONCURRENT;
-		sharing_indices[info.queueFamilyIndexCount++] = graphics_queue_family_index;
 
-		if (graphics_queue_family_index != compute_queue_family_index)
-			sharing_indices[info.queueFamilyIndexCount++] = compute_queue_family_index;
+		const auto add_unique_family = [&](uint32_t family) {
+			for (uint32_t i = 0; i < info.queueFamilyIndexCount; i++)
+			{
+				if (sharing_indices[i] == family)
+					return;
+			}
+			sharing_indices[info.queueFamilyIndexCount++] = family;
+		};
 
-		if (graphics_queue_family_index != transfer_queue_family_index &&
-		    compute_queue_family_index != transfer_queue_family_index)
+		if (queue_flags & (IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT | IMAGE_MISC_CONCURRENT_QUEUE_SECONDARY_GRAPHICS_BIT))
+			add_unique_family(graphics_queue_family_index);
+		if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_COMPUTE_BIT)
+			add_unique_family(compute_queue_family_index);
+		if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_TRANSFER_BIT)
+			add_unique_family(transfer_queue_family_index);
+
+		if (info.queueFamilyIndexCount > 1)
+			info.pQueueFamilyIndices = sharing_indices;
+		else
 		{
-			sharing_indices[info.queueFamilyIndexCount++] = transfer_queue_family_index;
+			info.pQueueFamilyIndices = nullptr;
+			info.queueFamilyIndexCount = 0;
+			info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 		}
-
-		info.pQueueFamilyIndices = sharing_indices;
 	}
 
 	VK_ASSERT(image_format_is_supported(create_info.format, image_usage_to_features(info.usage)));

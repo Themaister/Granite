@@ -2122,9 +2122,13 @@ void RenderGraph::setup_physical_image(Vulkan::Device &device, unsigned attachme
 		info.samples = static_cast<VkSampleCountFlagBits>(att.samples);
 		info.flags = flags;
 
-		bool concurrent_queues = (att.queues & (att.queues - 1)) != 0;
-		info.misc = concurrent_queues ? Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_BIT : 0;
-		info.misc |= misc;
+		info.misc = misc;
+		if (att.queues & RENDER_GRAPH_QUEUE_GRAPHICS_BIT)
+			info.misc |= Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT;
+		if (att.queues & RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT)
+			info.misc |= Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_COMPUTE_BIT;
+		if (att.queues & RENDER_GRAPH_QUEUE_ASYNC_GRAPHICS_BIT)
+			info.misc |= Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_SECONDARY_GRAPHICS_BIT;
 
 		physical_image_attachments[attachment] = device.create_image(info, nullptr);
 		device.set_name(*physical_image_attachments[attachment], att.name.c_str());

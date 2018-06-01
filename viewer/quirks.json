@@ -5,5 +5,7 @@
 	"useTransientDepthStencil": true,
 	"clusteringListIteration": false,
 	"clusteringForceCPU": false,
-	"queueWaitOnSubmission": false
+	"queueWaitOnSubmission": false,
+	"stagingNeedDeviceLocal" : false,
+	"useAsyncComputePost": true
 }

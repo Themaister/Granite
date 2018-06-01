@@ -1622,14 +1622,15 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 		Vulkan::CommandBuffer::Type queue_type;
 		switch (passes[physical_pass.passes.front()]->get_queue())
 		{
-		case RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT:
-			graphics = false;
-			queue_type = Vulkan::CommandBuffer::Type::Compute;
-			break;
-
+		default:
 		case RENDER_GRAPH_QUEUE_GRAPHICS_BIT:
 			graphics = true;
 			queue_type = Vulkan::CommandBuffer::Type::Graphics;
+			break;
+
+		case RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT:
+			graphics = false;
+			queue_type = Vulkan::CommandBuffer::Type::Compute;
 			break;
 
 		case RENDER_GRAPH_QUEUE_ASYNC_GRAPHICS_BIT:

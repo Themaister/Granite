@@ -86,6 +86,10 @@ void SceneViewerApplication::read_quirks(const std::string &path)
 		ImplementationQuirks::get().clustering_force_cpu = doc["clusteringForceCPU"].GetBool();
 	if (doc.HasMember("queueWaitOnSubmission"))
 		ImplementationQuirks::get().queue_wait_on_submission = doc["queueWaitOnSubmission"].GetBool();
+	if (doc.HasMember("stagingNeedDeviceLocal"))
+		ImplementationQuirks::get().staging_need_device_local = doc["stagingNeedDeviceLocal"].GetBool();
+	if (doc.HasMember("useAsyncComputePost"))
+		ImplementationQuirks::get().use_async_compute_post = doc["useAsyncComputePost"].GetBool();
 }
 
 void SceneViewerApplication::read_config(const std::string &path)
@@ -808,7 +812,10 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 		bool resolved = setup_before_post_chain_antialiasing(config.postaa_type,
 		                                                     graph, jitter,
 		                                                     "HDR-main", "depth-main", "HDR-resolved");
-		setup_hdr_postprocess_compute(graph, resolved ? "HDR-resolved" : "HDR-main", "tonemapped");
+		if (ImplementationQuirks::get().use_async_compute_post)
+			setup_hdr_postprocess_compute(graph, resolved ? "HDR-resolved" : "HDR-main", "tonemapped");
+		else
+			setup_hdr_postprocess(graph, resolved ? "HDR-resolved" : "HDR-main", "tonemapped");
 	}
 
 	if (setup_after_post_chain_antialiasing(config.postaa_type, graph, jitter,
@@ -819,7 +826,7 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 
 	if (config.show_ui)
 	{
-		auto &ui = graph.add_pass("ui", RENDER_GRAPH_QUEUE_ASYNC_GRAPHICS_BIT);
+		auto &ui = graph.add_pass("ui", RenderGraph::get_default_post_graphics_queue());
 		AttachmentInfo ui_info;
 		ui.add_color_output("ui-output", ui_info, ui_source);
 		graph.set_backbuffer_source("ui-output");

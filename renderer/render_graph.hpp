@@ -33,6 +33,7 @@
 #include "device.hpp"
 #include "stack_allocator.hpp"
 #include "vulkan_events.hpp"
+#include "quirks.hpp"
 
 namespace Granite
 {
@@ -664,6 +665,14 @@ public:
 	// Utility to consume all physical buffer handles and install them.
 	std::vector<Vulkan::BufferHandle> consume_physical_buffers() const;
 	void install_physical_buffers(std::vector<Vulkan::BufferHandle> buffers);
+
+	static inline RenderGraphQueueFlagBits get_default_post_graphics_queue()
+	{
+		if (Vulkan::ImplementationQuirks::get().use_async_compute_post)
+			return RENDER_GRAPH_QUEUE_ASYNC_GRAPHICS_BIT;
+		else
+			return RENDER_GRAPH_QUEUE_GRAPHICS_BIT;
+	}
 
 private:
 	Vulkan::Device *device = nullptr;

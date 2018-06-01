@@ -88,9 +88,9 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 	smaa_depth.size_relative_name = input;
 	smaa_depth.format = VK_FORMAT_D16_UNORM;
 
-	auto &smaa_edge = graph.add_pass("smaa-edge", RENDER_GRAPH_QUEUE_ASYNC_GRAPHICS_BIT);
-	auto &smaa_weight = graph.add_pass("smaa-weights", RENDER_GRAPH_QUEUE_ASYNC_GRAPHICS_BIT);
-	auto &smaa_blend = graph.add_pass("smaa-blend", RENDER_GRAPH_QUEUE_ASYNC_GRAPHICS_BIT);
+	auto &smaa_edge = graph.add_pass("smaa-edge", RenderGraph::get_default_post_graphics_queue());
+	auto &smaa_weight = graph.add_pass("smaa-weights", RenderGraph::get_default_post_graphics_queue());
+	auto &smaa_blend = graph.add_pass("smaa-blend", RenderGraph::get_default_post_graphics_queue());
 
 	smaa_edge.add_color_output("smaa-edge", smaa_edge_output);
 	smaa_edge.add_texture_input(input);
@@ -198,7 +198,7 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 
 	if (t2x_enable)
 	{
-		auto &smaa_resolve = graph.add_pass("smaa-t2x-resolve", RENDER_GRAPH_QUEUE_ASYNC_GRAPHICS_BIT);
+		auto &smaa_resolve = graph.add_pass("smaa-t2x-resolve", RenderGraph::get_default_post_graphics_queue());
 		smaa_resolve.add_color_output(output, smaa_output);
 		smaa_resolve.add_texture_input("smaa-sample");
 		smaa_resolve.add_texture_input(input_depth);

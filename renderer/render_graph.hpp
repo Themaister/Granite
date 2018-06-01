@@ -50,8 +50,9 @@ enum SizeClass
 enum RenderGraphQueueFlagBits
 {
 	RENDER_GRAPH_QUEUE_GRAPHICS_BIT = 1 << 0,
-	RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT = 1 << 1,
-	RENDER_GRAPH_QUEUE_ASYNC_GRAPHICS_BIT = 1 << 2
+	RENDER_GRAPH_QUEUE_COMPUTE_BIT = 1 << 1,
+	RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT = 1 << 2,
+	RENDER_GRAPH_QUEUE_ASYNC_GRAPHICS_BIT = 1 << 3
 };
 using RenderGraphQueueFlags = uint32_t;
 
@@ -130,7 +131,13 @@ struct ResourceDimensions
 	bool uses_semaphore() const
 	{
 		// If more than one queue is used for a resource, we need to use semaphores.
-		return (queues & (queues - 1)) != 0;
+		auto physical_queues = queues;
+
+		// Regular compute uses regular graphics queue.
+		if (physical_queues & RENDER_GRAPH_QUEUE_COMPUTE_BIT)
+			physical_queues |= RENDER_GRAPH_QUEUE_GRAPHICS_BIT;
+		physical_queues &= ~RENDER_GRAPH_QUEUE_COMPUTE_BIT;
+		return (physical_queues & (physical_queues - 1)) != 0;
 	}
 
 	bool is_storage_image() const
@@ -668,10 +675,23 @@ public:
 
 	static inline RenderGraphQueueFlagBits get_default_post_graphics_queue()
 	{
-		if (Vulkan::ImplementationQuirks::get().use_async_compute_post)
+		if (Vulkan::ImplementationQuirks::get().use_async_compute_post &&
+		    !Vulkan::ImplementationQuirks::get().render_graph_force_single_queue)
+		{
 			return RENDER_GRAPH_QUEUE_ASYNC_GRAPHICS_BIT;
+		}
 		else
+		{
 			return RENDER_GRAPH_QUEUE_GRAPHICS_BIT;
+		}
+	}
+
+	static inline RenderGraphQueueFlagBits get_default_compute_queue()
+	{
+		if (Vulkan::ImplementationQuirks::get().render_graph_force_single_queue)
+			return RENDER_GRAPH_QUEUE_COMPUTE_BIT;
+		else
+			return RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT;
 	}
 
 private:

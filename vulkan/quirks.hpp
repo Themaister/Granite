@@ -35,6 +35,7 @@ struct ImplementationQuirks
 	bool queue_wait_on_submission = false;
 	bool staging_need_device_local = false;
 	bool use_async_compute_post = true;
+	bool render_graph_force_single_queue = false;
 
 	static ImplementationQuirks &get()
 	{

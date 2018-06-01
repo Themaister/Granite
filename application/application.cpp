@@ -90,6 +90,8 @@ void SceneViewerApplication::read_quirks(const std::string &path)
 		ImplementationQuirks::get().staging_need_device_local = doc["stagingNeedDeviceLocal"].GetBool();
 	if (doc.HasMember("useAsyncComputePost"))
 		ImplementationQuirks::get().use_async_compute_post = doc["useAsyncComputePost"].GetBool();
+	if (doc.HasMember("renderGraphForceSingleQueue"))
+		ImplementationQuirks::get().render_graph_force_single_queue = doc["renderGraphForceSingleQueue"].GetBool();
 }
 
 void SceneViewerApplication::read_config(const std::string &path)

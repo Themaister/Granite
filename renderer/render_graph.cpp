@@ -31,6 +31,9 @@ using namespace std;
 
 namespace Granite
 {
+static const RenderGraphQueueFlags compute_queues = RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT |
+                                                    RENDER_GRAPH_QUEUE_COMPUTE_BIT;
+
 void RenderPass::set_texture_inputs(Vulkan::CommandBuffer &cmd, unsigned set, unsigned start_binding,
                                     Vulkan::StockSampler sampler)
 {
@@ -1045,7 +1048,7 @@ void RenderGraph::build_physical_passes()
 
 	const auto should_merge = [&](const RenderPass &prev, const RenderPass &next) -> bool {
 		// Can only merge graphics in same queue.
-		if (prev.get_queue() == RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT || next.get_queue() != prev.get_queue())
+		if ((prev.get_queue() & compute_queues) || (next.get_queue() != prev.get_queue()))
 			return false;
 
 		if (!Vulkan::ImplementationQuirks::get().merge_subpasses)
@@ -1628,6 +1631,11 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 			queue_type = Vulkan::CommandBuffer::Type::Graphics;
 			break;
 
+		case RENDER_GRAPH_QUEUE_COMPUTE_BIT:
+			graphics = false;
+			queue_type = Vulkan::CommandBuffer::Type::Graphics;
+			break;
+
 		case RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT:
 			graphics = false;
 			queue_type = Vulkan::CommandBuffer::Type::Compute;
@@ -2164,7 +2172,7 @@ void RenderGraph::setup_physical_image(Vulkan::Device &device, unsigned attachme
 		info.flags = flags;
 
 		info.misc = misc;
-		if (att.queues & RENDER_GRAPH_QUEUE_GRAPHICS_BIT)
+		if (att.queues & (RENDER_GRAPH_QUEUE_GRAPHICS_BIT | RENDER_GRAPH_QUEUE_COMPUTE_BIT))
 			info.misc |= Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT;
 		if (att.queues & RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT)
 			info.misc |= Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_COMPUTE_BIT;
@@ -2534,7 +2542,7 @@ void RenderGraph::bake()
 	// If resource is touched in async-compute, we cannot alias with swapchain.
 	// If resource is not transient, it's being used in multiple physical passes,
 	// we can't use the implicit subpass dependencies for dealing with swapchain.
-	bool can_alias_backbuffer = (backbuffer_dim.queues & RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT) == 0 &&
+	bool can_alias_backbuffer = (backbuffer_dim.queues & compute_queues) == 0 &&
 	                            backbuffer_dim.transient;
 
 	backbuffer_dim.transient = false;
@@ -2838,7 +2846,7 @@ void RenderGraph::build_barriers()
 		{
 			auto &barrier = get_invalidate_access(input->get_physical_index(), false);
 			barrier.access |= VK_ACCESS_UNIFORM_READ_BIT;
-			if (pass.get_queue() != RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT)
+			if ((pass.get_queue() & compute_queues) == 0)
 				barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; // TODO: Pick appropriate stage.
 			else
 				barrier.stages |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
@@ -2852,7 +2860,7 @@ void RenderGraph::build_barriers()
 		{
 			auto &barrier = get_invalidate_access(input->get_physical_index(), false);
 			barrier.access |= VK_ACCESS_SHADER_READ_BIT;
-			if (pass.get_queue() != RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT)
+			if ((pass.get_queue() & compute_queues) == 0)
 				barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; // TODO: Pick appropriate stage.
 			else
 				barrier.stages |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
@@ -2877,7 +2885,7 @@ void RenderGraph::build_barriers()
 			auto &barrier = get_invalidate_access(input->get_physical_index(), false);
 			barrier.access |= VK_ACCESS_SHADER_READ_BIT;
 
-			if (pass.get_queue() != RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT)
+			if ((pass.get_queue() & compute_queues) == 0)
 				barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; // TODO: VERTEX_SHADER can also read textures!
 			else
 				barrier.stages |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
@@ -2892,7 +2900,7 @@ void RenderGraph::build_barriers()
 			auto &barrier = get_invalidate_access(input->get_physical_index(), true);
 			barrier.access |= VK_ACCESS_SHADER_READ_BIT;
 
-			if (pass.get_queue() != RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT)
+			if ((pass.get_queue() & compute_queues) == 0)
 				barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; // TODO: Pick appropriate stage.
 			else
 				barrier.stages |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
@@ -2904,7 +2912,7 @@ void RenderGraph::build_barriers()
 
 		for (auto *input : pass.get_attachment_inputs())
 		{
-			if (pass.get_queue() == RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT)
+			if (pass.get_queue() & compute_queues)
 				throw logic_error("Only graphics passes can have input attachments.");
 
 			auto &barrier = get_invalidate_access(input->get_physical_index(), false);
@@ -2922,7 +2930,7 @@ void RenderGraph::build_barriers()
 
 			auto &barrier = get_invalidate_access(input->get_physical_index(), false);
 			barrier.access |= VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-			if (pass.get_queue() != RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT)
+			if ((pass.get_queue() & compute_queues) == 0)
 				barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; // TODO: Pick appropriate stage.
 			else
 				barrier.stages |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
@@ -2939,7 +2947,7 @@ void RenderGraph::build_barriers()
 
 			auto &barrier = get_invalidate_access(input->get_physical_index(), false);
 			barrier.access |= VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-			if (pass.get_queue() != RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT)
+			if ((pass.get_queue() & compute_queues) == 0)
 				barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; // TODO: Pick appropriate stage.
 			else
 				barrier.stages |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
@@ -2967,7 +2975,7 @@ void RenderGraph::build_barriers()
 			if (!input)
 				continue;
 
-			if (pass.get_queue() == RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT)
+			if (pass.get_queue() & compute_queues)
 				throw logic_error("Only graphics passes can have color inputs.");
 
 			auto &barrier = get_invalidate_access(input->get_physical_index(), false);
@@ -2989,7 +2997,7 @@ void RenderGraph::build_barriers()
 			if (!input)
 				continue;
 
-			if (pass.get_queue() == RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT)
+			if (pass.get_queue() & compute_queues)
 				throw logic_error("Only graphics passes can have scaled color inputs.");
 
 			auto &barrier = get_invalidate_access(input->get_physical_index(), false);
@@ -3002,7 +3010,7 @@ void RenderGraph::build_barriers()
 
 		for (auto *output : pass.get_color_outputs())
 		{
-			if (pass.get_queue() == RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT)
+			if (pass.get_queue() & compute_queues)
 				throw logic_error("Only graphics passes can have color outputs.");
 
 			auto &barrier = get_flush_access(output->get_physical_index());
@@ -3037,7 +3045,7 @@ void RenderGraph::build_barriers()
 
 		for (auto *output : pass.get_resolve_outputs())
 		{
-			if (pass.get_queue() == RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT)
+			if (pass.get_queue() & compute_queues)
 				throw logic_error("Only graphics passes can resolve outputs.");
 
 			auto &barrier = get_flush_access(output->get_physical_index());
@@ -3063,7 +3071,7 @@ void RenderGraph::build_barriers()
 			auto &barrier = get_flush_access(output->get_physical_index());
 			barrier.access |= VK_ACCESS_SHADER_WRITE_BIT;
 
-			if (pass.get_queue() != RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT)
+			if ((pass.get_queue() & compute_queues) == 0)
 				barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; // TODO: Pick appropriate stage.
 			else
 				barrier.stages |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
@@ -3078,7 +3086,7 @@ void RenderGraph::build_barriers()
 			auto &barrier = get_flush_access(output->get_physical_index());
 			barrier.access |= VK_ACCESS_SHADER_WRITE_BIT;
 
-			if (pass.get_queue() != RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT)
+			if ((pass.get_queue() & compute_queues) == 0)
 				barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; // TODO: Pick appropriate stage.
 			else
 				barrier.stages |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
@@ -3091,7 +3099,7 @@ void RenderGraph::build_barriers()
 		auto *output = pass.get_depth_stencil_output();
 		auto *input = pass.get_depth_stencil_input();
 
-		if ((output || input) && pass.get_queue() == RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT)
+		if ((output || input) && (pass.get_queue() & compute_queues))
 			throw logic_error("Only graphics passes can have depth attachments.");
 
 		if (output && input)

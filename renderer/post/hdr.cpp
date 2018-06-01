@@ -315,7 +315,7 @@ void setup_hdr_postprocess_compute(RenderGraph &graph, const std::string &input,
 	downsample_info3.size_x = 0.03125f;
 	downsample_info3.size_y = 0.03125f;
 
-	auto &bloom_pass = graph.add_pass("bloom-compute", RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT);
+	auto &bloom_pass = graph.add_pass("bloom-compute", RenderGraph::get_default_compute_queue());
 	// Workaround a cache invalidation driver bug by not aliasing.
 	auto &t = bloom_pass.add_storage_texture_output("threshold", downsample_info);
 	auto &d0 = bloom_pass.add_storage_texture_output("downsample-0", downsample_info0);
@@ -377,7 +377,7 @@ void setup_hdr_postprocess(RenderGraph &graph, const std::string &input, const s
 	auto &lum = graph.get_buffer_resource("average-luminance");
 	lum.set_buffer_info(buffer_info);
 
-	auto &adapt_pass = graph.add_pass("adapt-luminance", RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT);
+	auto &adapt_pass = graph.add_pass("adapt-luminance", RenderGraph::get_default_compute_queue());
 	adapt_pass.add_storage_output("average-luminance-updated", buffer_info, "average-luminance");
 	adapt_pass.add_texture_input("bloom-downsample-3");
 	adapt_pass.set_build_render_pass([&adapt_pass](Vulkan::CommandBuffer &cmd) {

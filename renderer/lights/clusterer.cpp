@@ -1100,7 +1100,7 @@ void LightClusterer::add_render_passes(RenderGraph &graph)
 		auto &pass = graph.add_pass("clustering", VK_PIPELINE_STAGE_TRANSFER_BIT);
 		pass.add_blit_texture_output("light-cluster", att);
 #else
-		auto &pass = graph.add_pass("clustering", RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT);
+		auto &pass = graph.add_pass("clustering", RenderGraph::get_default_compute_queue());
 		pass.add_storage_texture_output("light-cluster", att);
 #endif
 		pass.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
@@ -1122,7 +1122,7 @@ void LightClusterer::add_render_passes(RenderGraph &graph)
 		att_prepass.size_y /= ClusterPrepassDownsample;
 		att_prepass.size_z /= ClusterPrepassDownsample;
 
-		auto &pass = graph.add_pass("clustering", RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT);
+		auto &pass = graph.add_pass("clustering", RenderGraph::get_default_compute_queue());
 		pass.add_storage_texture_output("light-cluster", att);
 		pass.add_storage_texture_output("light-cluster-prepass", att_prepass);
 		pass.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {

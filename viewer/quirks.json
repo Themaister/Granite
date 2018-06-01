@@ -7,5 +7,6 @@
 	"clusteringForceCPU": false,
 	"queueWaitOnSubmission": false,
 	"stagingNeedDeviceLocal" : false,
-	"useAsyncComputePost": true
+	"useAsyncComputePost": true,
+	"renderGraphForceSingleQueue" : false
 }

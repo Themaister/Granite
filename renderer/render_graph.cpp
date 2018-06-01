@@ -46,6 +46,7 @@ RenderTextureResource &RenderPass::add_attachment_input(const std::string &name)
 	auto &res = graph.get_texture_resource(name);
 	res.add_queue(queue);
 	res.read_in_pass(index);
+	res.add_image_usage(VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT);
 	attachments_inputs.push_back(&res);
 	return res;
 }
@@ -54,6 +55,7 @@ RenderTextureResource &RenderPass::add_history_input(const std::string &name)
 {
 	auto &res = graph.get_texture_resource(name);
 	res.add_queue(queue);
+	res.add_image_usage(VK_IMAGE_USAGE_SAMPLED_BIT);
 	// History inputs are not used in any particular pass, but next frame.
 	history_inputs.push_back(&res);
 	return res;
@@ -64,6 +66,7 @@ RenderBufferResource &RenderPass::add_uniform_input(const std::string &name)
 	auto &res = graph.get_buffer_resource(name);
 	res.add_queue(queue);
 	res.read_in_pass(index);
+	res.add_buffer_usage(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
 	uniform_inputs.push_back(&res);
 	return res;
 }
@@ -73,6 +76,7 @@ RenderBufferResource &RenderPass::add_storage_read_only_input(const std::string 
 	auto &res = graph.get_buffer_resource(name);
 	res.add_queue(queue);
 	res.read_in_pass(index);
+	res.add_buffer_usage(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
 	storage_read_inputs.push_back(&res);
 	return res;
 }
@@ -83,12 +87,14 @@ RenderBufferResource &RenderPass::add_storage_output(const std::string &name, co
 	res.add_queue(queue);
 	res.set_buffer_info(info);
 	res.written_in_pass(index);
+	res.add_buffer_usage(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
 	storage_outputs.push_back(&res);
 
 	if (!input.empty())
 	{
 		auto &input_res = graph.get_buffer_resource(input);
 		input_res.read_in_pass(index);
+		input_res.add_buffer_usage(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
 		storage_inputs.push_back(&input_res);
 	}
 	else
@@ -102,6 +108,7 @@ RenderTextureResource &RenderPass::add_texture_input(const std::string &name)
 	auto &res = graph.get_texture_resource(name);
 	res.add_queue(queue);
 	res.read_in_pass(index);
+	res.add_image_usage(VK_IMAGE_USAGE_SAMPLED_BIT);
 	texture_inputs.push_back(&res);
 	return res;
 }
@@ -112,6 +119,7 @@ RenderTextureResource &RenderPass::add_resolve_output(const std::string &name, c
 	res.add_queue(queue);
 	res.written_in_pass(index);
 	res.set_attachment_info(info);
+	res.add_image_usage(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
 	resolve_outputs.push_back(&res);
 	return res;
 }
@@ -122,12 +130,14 @@ RenderTextureResource &RenderPass::add_color_output(const std::string &name, con
 	res.add_queue(queue);
 	res.written_in_pass(index);
 	res.set_attachment_info(info);
+	res.add_image_usage(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
 	color_outputs.push_back(&res);
 
 	if (!input.empty())
 	{
 		auto &input_res = graph.get_texture_resource(input);
 		input_res.read_in_pass(index);
+		input_res.add_image_usage(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
 		color_inputs.push_back(&input_res);
 		color_scale_inputs.push_back(nullptr);
 	}
@@ -147,13 +157,14 @@ RenderTextureResource &RenderPass::add_storage_texture_output(const std::string 
 	res.add_queue(queue);
 	res.written_in_pass(index);
 	res.set_attachment_info(info);
-	res.set_storage_state(true);
+	res.add_image_usage(VK_IMAGE_USAGE_STORAGE_BIT);
 	storage_texture_outputs.push_back(&res);
 
 	if (!input.empty())
 	{
 		auto &input_res = graph.get_texture_resource(input);
 		input_res.read_in_pass(index);
+		input_res.add_image_usage(VK_IMAGE_USAGE_STORAGE_BIT);
 		storage_texture_inputs.push_back(&input_res);
 	}
 	else
@@ -179,6 +190,7 @@ RenderTextureResource &RenderPass::add_blit_texture_read_only_input(const std::s
 	auto &res = graph.get_texture_resource(name);
 	res.add_queue(queue);
 	res.read_in_pass(index);
+	res.add_image_usage(VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
 	blit_texture_read_inputs.push_back(&res);
 	return res;
 }
@@ -190,13 +202,14 @@ RenderTextureResource &RenderPass::add_blit_texture_output(const std::string &na
 	res.add_queue(queue);
 	res.written_in_pass(index);
 	res.set_attachment_info(info);
-	res.set_storage_state(true);
+	res.add_image_usage(VK_IMAGE_USAGE_TRANSFER_DST_BIT);
 	blit_texture_outputs.push_back(&res);
 
 	if (!input.empty())
 	{
 		auto &input_res = graph.get_texture_resource(input);
 		input_res.read_in_pass(index);
+		input_res.add_image_usage(VK_IMAGE_USAGE_TRANSFER_DST_BIT);
 		blit_texture_inputs.push_back(&input_res);
 	}
 	else
@@ -211,6 +224,7 @@ RenderTextureResource &RenderPass::set_depth_stencil_output(const std::string &n
 	res.add_queue(queue);
 	res.written_in_pass(index);
 	res.set_attachment_info(info);
+	res.add_image_usage(VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
 	depth_stencil_output = &res;
 	return res;
 }
@@ -220,6 +234,7 @@ RenderTextureResource &RenderPass::set_depth_stencil_input(const std::string &na
 	auto &res = graph.get_texture_resource(name);
 	res.add_queue(queue);
 	res.read_in_pass(index);
+	res.add_image_usage(VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
 	depth_stencil_input = &res;
 	return res;
 }
@@ -431,7 +446,10 @@ void RenderGraph::build_physical_resources()
 				input->set_physical_index(phys_index++);
 			}
 			else
+			{
 				physical_dimensions[input->get_physical_index()].queues |= input->get_used_queues();
+				physical_dimensions[input->get_physical_index()].image_usage |= input->get_image_usage();
+			}
 		}
 
 		for (auto *input : pass.get_uniform_inputs())
@@ -442,7 +460,10 @@ void RenderGraph::build_physical_resources()
 				input->set_physical_index(phys_index++);
 			}
 			else
+			{
 				physical_dimensions[input->get_physical_index()].queues |= input->get_used_queues();
+				physical_dimensions[input->get_physical_index()].buffer_info.usage |= input->get_buffer_usage();
+			}
 		}
 
 		for (auto *input : pass.get_storage_read_inputs())
@@ -453,7 +474,10 @@ void RenderGraph::build_physical_resources()
 				input->set_physical_index(phys_index++);
 			}
 			else
+			{
 				physical_dimensions[input->get_physical_index()].queues |= input->get_used_queues();
+				physical_dimensions[input->get_physical_index()].buffer_info.usage |= input->get_buffer_usage();
+			}
 		}
 
 		for (auto *input : pass.get_blit_texture_read_inputs())
@@ -464,7 +488,10 @@ void RenderGraph::build_physical_resources()
 				input->set_physical_index(phys_index++);
 			}
 			else
+			{
 				physical_dimensions[input->get_physical_index()].queues |= input->get_used_queues();
+				physical_dimensions[input->get_physical_index()].image_usage |= input->get_image_usage();
+			}
 		}
 
 		for (auto *input : pass.get_color_scale_inputs())
@@ -473,9 +500,14 @@ void RenderGraph::build_physical_resources()
 			{
 				physical_dimensions.push_back(get_resource_dimensions(*input));
 				input->set_physical_index(phys_index++);
+				physical_dimensions[input->get_physical_index()].image_usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
 			}
 			else if (input)
+			{
 				physical_dimensions[input->get_physical_index()].queues |= input->get_used_queues();
+				physical_dimensions[input->get_physical_index()].image_usage |= input->get_image_usage();
+				physical_dimensions[input->get_physical_index()].image_usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+			}
 		}
 
 		if (!pass.get_color_inputs().empty())
@@ -492,7 +524,10 @@ void RenderGraph::build_physical_resources()
 						input->set_physical_index(phys_index++);
 					}
 					else
+					{
 						physical_dimensions[input->get_physical_index()].queues |= input->get_used_queues();
+						physical_dimensions[input->get_physical_index()].image_usage |= input->get_image_usage();
+					}
 
 					if (pass.get_color_outputs()[i]->get_physical_index() == RenderResource::Unused)
 						pass.get_color_outputs()[i]->set_physical_index(input->get_physical_index());
@@ -516,7 +551,10 @@ void RenderGraph::build_physical_resources()
 						input->set_physical_index(phys_index++);
 					}
 					else
+					{
 						physical_dimensions[input->get_physical_index()].queues |= input->get_used_queues();
+						physical_dimensions[input->get_physical_index()].buffer_info.usage |= input->get_buffer_usage();
+					}
 
 					if (pass.get_storage_outputs()[i]->get_physical_index() == RenderResource::Unused)
 						pass.get_storage_outputs()[i]->set_physical_index(input->get_physical_index());
@@ -540,7 +578,10 @@ void RenderGraph::build_physical_resources()
 						input->set_physical_index(phys_index++);
 					}
 					else
+					{
 						physical_dimensions[input->get_physical_index()].queues |= input->get_used_queues();
+						physical_dimensions[input->get_physical_index()].image_usage |= input->get_image_usage();
+					}
 
 					if (pass.get_blit_texture_outputs()[i]->get_physical_index() == RenderResource::Unused)
 						pass.get_blit_texture_outputs()[i]->set_physical_index(input->get_physical_index());
@@ -564,7 +605,10 @@ void RenderGraph::build_physical_resources()
 						input->set_physical_index(phys_index++);
 					}
 					else
+					{
 						physical_dimensions[input->get_physical_index()].queues |= input->get_used_queues();
+						physical_dimensions[input->get_physical_index()].image_usage |= input->get_image_usage();
+					}
 
 					if (pass.get_storage_texture_outputs()[i]->get_physical_index() == RenderResource::Unused)
 						pass.get_storage_texture_outputs()[i]->set_physical_index(input->get_physical_index());
@@ -582,7 +626,10 @@ void RenderGraph::build_physical_resources()
 				output->set_physical_index(phys_index++);
 			}
 			else
+			{
 				physical_dimensions[output->get_physical_index()].queues |= output->get_used_queues();
+				physical_dimensions[output->get_physical_index()].image_usage |= output->get_image_usage();
+			}
 		}
 
 		for (auto *output : pass.get_resolve_outputs())
@@ -593,7 +640,10 @@ void RenderGraph::build_physical_resources()
 				output->set_physical_index(phys_index++);
 			}
 			else
+			{
 				physical_dimensions[output->get_physical_index()].queues |= output->get_used_queues();
+				physical_dimensions[output->get_physical_index()].image_usage |= output->get_image_usage();
+			}
 		}
 
 		for (auto *output : pass.get_storage_outputs())
@@ -604,7 +654,10 @@ void RenderGraph::build_physical_resources()
 				output->set_physical_index(phys_index++);
 			}
 			else
+			{
 				physical_dimensions[output->get_physical_index()].queues |= output->get_used_queues();
+				physical_dimensions[output->get_physical_index()].buffer_info.usage |= output->get_buffer_usage();
+			}
 		}
 
 		for (auto *output : pass.get_blit_texture_outputs())
@@ -615,7 +668,10 @@ void RenderGraph::build_physical_resources()
 				output->set_physical_index(phys_index++);
 			}
 			else
+			{
 				physical_dimensions[output->get_physical_index()].queues |= output->get_used_queues();
+				physical_dimensions[output->get_physical_index()].image_usage |= output->get_image_usage();
+			}
 		}
 
 		for (auto *output : pass.get_storage_texture_outputs())
@@ -626,7 +682,10 @@ void RenderGraph::build_physical_resources()
 				output->set_physical_index(phys_index++);
 			}
 			else
+			{
 				physical_dimensions[output->get_physical_index()].queues |= output->get_used_queues();
+				physical_dimensions[output->get_physical_index()].image_usage |= output->get_image_usage();
+			}
 		}
 
 		auto *ds_output = pass.get_depth_stencil_output();
@@ -639,7 +698,10 @@ void RenderGraph::build_physical_resources()
 				ds_input->set_physical_index(phys_index++);
 			}
 			else
+			{
 				physical_dimensions[ds_input->get_physical_index()].queues |= ds_input->get_used_queues();
+				physical_dimensions[ds_input->get_physical_index()].image_usage |= ds_input->get_image_usage();
+			}
 
 			if (ds_output)
 			{
@@ -647,8 +709,9 @@ void RenderGraph::build_physical_resources()
 					ds_output->set_physical_index(ds_input->get_physical_index());
 				else if (ds_output->get_physical_index() != ds_input->get_physical_index())
 					throw logic_error("Cannot alias resources. Index already claimed.");
-				else
-					physical_dimensions[ds_output->get_physical_index()].queues |= ds_output->get_used_queues();
+
+				physical_dimensions[ds_output->get_physical_index()].queues |= ds_output->get_used_queues();
+				physical_dimensions[ds_output->get_physical_index()].image_usage |= ds_output->get_image_usage();
 			}
 		}
 		else if (ds_output)
@@ -659,7 +722,10 @@ void RenderGraph::build_physical_resources()
 				ds_output->set_physical_index(phys_index++);
 			}
 			else
+			{
 				physical_dimensions[ds_output->get_physical_index()].queues |= ds_output->get_used_queues();
+				physical_dimensions[ds_output->get_physical_index()].image_usage |= ds_output->get_image_usage();
+			}
 		}
 
 		// Assign input attachments last so they can alias properly with existing color/depth attachments in the
@@ -672,7 +738,10 @@ void RenderGraph::build_physical_resources()
 				input->set_physical_index(phys_index++);
 			}
 			else
+			{
 				physical_dimensions[input->get_physical_index()].queues |= input->get_used_queues();
+				physical_dimensions[input->get_physical_index()].image_usage |= input->get_image_usage();
+			}
 		}
 
 		for (auto &pair : pass.get_fake_resource_aliases())
@@ -706,7 +775,7 @@ void RenderGraph::build_transients()
 	{
 		// Buffers are never transient.
 		// Storage images are never transient.
-		if (dim.buffer_info.size || dim.storage)
+		if (dim.is_buffer_like())
 			dim.transient = false;
 		else
 			dim.transient = true;
@@ -1600,7 +1669,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 		// This will be required for resource aliasing later.
 		// Storage textures are preserved over multiple frames, don't discard.
 		for (auto &discard : physical_pass.discards)
-			if (!physical_dimensions[discard].buffer_info.size && !physical_dimensions[discard].storage)
+			if (!physical_dimensions[discard].is_buffer_like())
 				physical_attachments[discard]->get_image().set_layout(VK_IMAGE_LAYOUT_UNDEFINED);
 
 		// Queue up invalidates and change layouts.
@@ -2040,7 +2109,7 @@ void RenderGraph::setup_physical_buffer(Vulkan::Device &device, unsigned attachm
 	}
 }
 
-void RenderGraph::setup_physical_image(Vulkan::Device &device, unsigned attachment, bool storage)
+void RenderGraph::setup_physical_image(Vulkan::Device &device, unsigned attachment)
 {
 	auto &att = physical_dimensions[attachment];
 
@@ -2053,41 +2122,14 @@ void RenderGraph::setup_physical_image(Vulkan::Device &device, unsigned attachme
 	}
 
 	bool need_image = true;
-	VkImageUsageFlags usage = 0;
+	VkImageUsageFlags usage = att.image_usage;
 	Vulkan::ImageMiscFlags misc = 0;
-
-	if (att.queues & (RENDER_GRAPH_QUEUE_GRAPHICS_BIT | RENDER_GRAPH_QUEUE_ASYNC_GRAPHICS_BIT))
-		usage |= VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
-	if (att.queues & RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT)
-		usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
-	if (att.unorm_srgb)
-		misc = Vulkan::IMAGE_MISC_MUTABLE_SRGB_BIT;
-
 	VkImageCreateFlags flags = 0;
 
-	if (storage)
-	{
-		usage |= VK_IMAGE_USAGE_STORAGE_BIT;
+	if (att.unorm_srgb)
+		misc |= Vulkan::IMAGE_MISC_MUTABLE_SRGB_BIT;
+	if (att.is_storage_image())
 		flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
-	}
-
-	if (att.queues & (RENDER_GRAPH_QUEUE_GRAPHICS_BIT | RENDER_GRAPH_QUEUE_ASYNC_GRAPHICS_BIT))
-	{
-		if (Vulkan::format_is_stencil(att.format) ||
-		    Vulkan::format_is_depth_stencil(att.format) ||
-		    Vulkan::format_is_depth(att.format))
-		{
-			usage |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-		}
-		else
-		{
-			usage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-		}
-	}
-
-	// TODO: There might be a reason not to enable this.
-	usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
-	         VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
 	if (physical_image_attachments[attachment])
 	{
@@ -2115,7 +2157,7 @@ void RenderGraph::setup_physical_image(Vulkan::Device &device, unsigned attachme
 		info.domain = Vulkan::ImageDomain::Physical;
 		info.levels = att.levels;
 		info.layers = att.layers;
-		info.usage = usage | att.aux_usage;
+		info.usage = usage;
 		info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 		info.samples = static_cast<VkSampleCountFlagBits>(att.samples);
 		info.flags = flags;
@@ -2169,14 +2211,14 @@ void RenderGraph::setup_attachments(Vulkan::Device &device, Vulkan::ImageView *s
 		}
 		else
 		{
-			if (att.storage)
-				setup_physical_image(device, i, true);
+			if (att.is_storage_image())
+				setup_physical_image(device, i);
 			else if (i == swapchain_physical_index)
 				physical_attachments[i] = swapchain;
 			else if (att.transient)
 				physical_attachments[i] = &device.get_transient_attachment(att.width, att.height, att.format, i, att.samples);
 			else
-				setup_physical_image(device, i, false);
+				setup_physical_image(device, i);
 		}
 	}
 
@@ -2523,6 +2565,7 @@ ResourceDimensions RenderGraph::get_resource_dimensions(const RenderBufferResour
 	ResourceDimensions dim;
 	auto &info = resource.get_buffer_info();
 	dim.buffer_info = info;
+	dim.buffer_info.usage |= resource.get_buffer_usage();
 	dim.persistent = info.persistent;
 	dim.name = resource.get_name();
 	return dim;
@@ -2538,9 +2581,8 @@ ResourceDimensions RenderGraph::get_resource_dimensions(const RenderTextureResou
 	dim.transient = resource.get_transient_state();
 	dim.persistent = info.persistent;
 	dim.unorm_srgb = info.unorm_srgb_alias;
-	dim.storage = resource.get_storage_state();
 	dim.queues = resource.get_used_queues();
-	dim.aux_usage = info.aux_usage;
+	dim.image_usage = info.aux_usage | resource.get_image_usage();
 	dim.name = resource.get_name();
 
 	switch (info.size_class)
@@ -2796,7 +2838,7 @@ void RenderGraph::build_barriers()
 			auto &barrier = get_invalidate_access(input->get_physical_index(), false);
 			barrier.access |= VK_ACCESS_UNIFORM_READ_BIT;
 			if (pass.get_queue() != RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT)
-				barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT; // TODO: Pick appropriate stage.
+				barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; // TODO: Pick appropriate stage.
 			else
 				barrier.stages |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
 

@@ -102,9 +102,8 @@ struct ResourceDimensions
 	bool transient = false;
 	bool unorm_srgb = false;
 	bool persistent = true;
-	bool storage = false;
 	RenderGraphQueueFlags queues = 0;
-	VkImageUsageFlags aux_usage = 0;
+	VkImageUsageFlags image_usage = 0;
 
 	bool operator==(const ResourceDimensions &other) const
 	{
@@ -117,9 +116,8 @@ struct ResourceDimensions
 		       buffer_info == buffer_info &&
 		       transient == other.transient &&
 		       persistent == other.persistent &&
-		       storage == other.storage &&
-		       unorm_srgb == other.unorm_srgb &&
-		       aux_usage == other.aux_usage;
+		       unorm_srgb == other.unorm_srgb;
+		// image_usage is deliberately not part of this test.
 		// queues is deliberately not part of this test.
 	}
 
@@ -132,6 +130,16 @@ struct ResourceDimensions
 	{
 		// If more than one queue is used for a resource, we need to use semaphores.
 		return (queues & (queues - 1)) != 0;
+	}
+
+	bool is_storage_image() const
+	{
+		return (image_usage & VK_IMAGE_USAGE_STORAGE_BIT) != 0;
+	}
+
+	bool is_buffer_like() const
+	{
+		return is_storage_image() || (buffer_info.size != 0);
 	}
 
 	std::string name;
@@ -253,8 +261,19 @@ public:
 		return info;
 	}
 
+	void add_buffer_usage(VkBufferUsageFlags flags)
+	{
+		buffer_usage |= flags;
+	}
+
+	VkBufferUsageFlags get_buffer_usage() const
+	{
+		return buffer_usage;
+	}
+
 private:
 	BufferInfo info;
+	VkBufferUsageFlags buffer_usage = 0;
 };
 
 class RenderTextureResource : public RenderResource
@@ -290,20 +309,20 @@ public:
 		return transient;
 	}
 
-	void set_storage_state(bool enable)
+	void add_image_usage(VkImageUsageFlags flags)
 	{
-		storage = enable;
+		image_usage |= flags;
 	}
 
-	bool get_storage_state() const
+	VkImageUsageFlags get_image_usage() const
 	{
-		return storage;
+		return image_usage;
 	}
 
 private:
 	AttachmentInfo info;
+	VkImageUsageFlags image_usage = 0;
 	bool transient = false;
-	bool storage = false;
 };
 
 class RenderPass
@@ -787,7 +806,7 @@ private:
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
 
 	void setup_physical_buffer(Vulkan::Device &device, unsigned attachment);
-	void setup_physical_image(Vulkan::Device &device, unsigned attachment, bool storage);
+	void setup_physical_image(Vulkan::Device &device, unsigned attachment);
 
 	void depend_passes_recursive(const RenderPass &pass, const std::unordered_set<unsigned> &passes,
 	                             unsigned stack_count, bool no_check, bool ignore_self, bool merge_dependency);

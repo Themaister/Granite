@@ -1,0 +1,33 @@
+#version 310 es
+layout(local_size_x = 8, local_size_y = 8) in;
+precision mediump float;
+
+layout(set = 0, binding = 0) uniform mediump sampler2D uSampler;
+layout(set = 0, binding = 1, rgba16f) writeonly uniform mediump image2D uOutput;
+
+layout(push_constant, std430) uniform Registers
+{
+    uvec2 num_threads;
+    vec2 inv_output_size;
+    vec2 inv_input_size;
+} registers;
+
+void main()
+{
+    if (any(greaterThanEqual(gl_GlobalInvocationID.xy, registers.num_threads)))
+        return;
+
+    vec2 vUV = (vec2(gl_GlobalInvocationID.xy) + 0.5) * registers.inv_output_size;
+
+    mediump vec4 value = 0.25 * textureLod(uSampler, vUV, 0.0);
+    value += 0.0625 * textureLod(uSampler, vUV + vec2(-0.875, +0.875) * registers.inv_input_size, 0.0);
+    value += 0.125 * textureLod(uSampler, vUV + vec2(+0.00, +0.875) * registers.inv_input_size, 0.0);
+    value += 0.0625 * textureLod(uSampler, vUV + vec2(+0.875, +0.875) * registers.inv_input_size, 0.0);
+    value += 0.125 * textureLod(uSampler, vUV + vec2(-0.875, +0.00) * registers.inv_input_size, 0.0);
+    value += 0.125 * textureLod(uSampler, vUV + vec2(+0.875, +0.00) * registers.inv_input_size, 0.0);
+    value += 0.0625 * textureLod(uSampler, vUV + vec2(-0.875, -0.875) * registers.inv_input_size, 0.0);
+    value += 0.125 * textureLod(uSampler, vUV + vec2(+0.00, -0.875) * registers.inv_input_size, 0.0);
+    value += 0.0625 * textureLod(uSampler, vUV + vec2(+0.875, -0.875) * registers.inv_input_size, 0.0);
+
+    imageStore(uOutput, ivec2(gl_GlobalInvocationID.xy), value);
+}

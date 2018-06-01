@@ -75,6 +75,37 @@ static void luminance_build_render_pass(RenderPass &pass, Vulkan::CommandBuffer 
 	cmd.dispatch(1, 1, 1);
 }
 
+static void luminance_build_compute(Vulkan::CommandBuffer &cmd, RenderGraph &graph,
+                                    const RenderBufferResource &lum, const RenderTextureResource &d3)
+{
+	auto &input = graph.get_physical_texture_resource(d3);
+	auto &output = graph.get_physical_buffer_resource(lum);
+
+	cmd.set_storage_buffer(0, 0, output);
+	cmd.set_texture(0, 1, input, Vulkan::StockSampler::LinearClamp);
+
+	unsigned half_width = input.get_image().get_create_info().width / 2;
+	unsigned half_height = input.get_image().get_create_info().height / 2;
+
+	auto *program = cmd.get_device().get_shader_manager().register_compute("builtin://shaders/post/luminance.comp");
+	unsigned variant = program->register_variant({});
+	cmd.set_program(*program->get_program(variant));
+
+	struct Registers
+	{
+		uvec2 size;
+		float lerp;
+		float minimum;
+		float maximum;
+	} push;
+	push.size = uvec2(half_width, half_height);
+	push.lerp = 1.0f - pow(0.5f, timer.frame_time);
+	push.minimum = -3.0f;
+	push.maximum = 2.0f;
+	cmd.push_constants(&push, 0, sizeof(push));
+	cmd.dispatch(1, 1, 1);
+}
+
 static void bloom_threshold_build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd)
 {
 	auto &input = pass.get_graph().get_physical_texture_resource(pass.get_texture_inputs()[0]->get_physical_index());
@@ -82,6 +113,106 @@ static void bloom_threshold_build_render_pass(RenderPass &pass, Vulkan::CommandB
 	cmd.set_texture(0, 0, input, Vulkan::StockSampler::LinearClamp);
 	cmd.set_uniform_buffer(0, 1, ubo);
 	Vulkan::CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/post/bloom_threshold.frag");
+}
+
+static void bloom_threshold_build_compute(Vulkan::CommandBuffer &cmd, RenderGraph &graph,
+                                          const RenderTextureResource &threshold, const RenderTextureResource &hdr, const RenderBufferResource &lum)
+{
+	auto &output = graph.get_physical_texture_resource(threshold);
+	auto &input = graph.get_physical_texture_resource(hdr);
+	auto &ubo = graph.get_physical_buffer_resource(lum);
+
+	cmd.set_texture(0, 0, input, Vulkan::StockSampler::LinearClamp);
+	cmd.set_uniform_buffer(0, 1, ubo);
+	cmd.set_storage_texture(0, 2, output);
+
+	auto *program = cmd.get_device().get_shader_manager().register_compute("builtin://shaders/post/bloom_threshold.comp");
+	unsigned variant = program->register_variant({});
+	cmd.set_program(*program->get_program(variant));
+
+	struct Registers
+	{
+		uvec2 threads;
+		vec2 inv_resolution;
+	} push;
+	push.threads.x = output.get_image().get_width();
+	push.threads.y = output.get_image().get_height();
+	push.inv_resolution.x = 1.0f / float(push.threads.x);
+	push.inv_resolution.y = 1.0f / float(push.threads.y);
+	cmd.push_constants(&push, 0, sizeof(push));
+	cmd.dispatch((push.threads.x + 7) / 8, (push.threads.y + 7) / 8, 1);
+}
+
+static void bloom_downsample_build_compute(Vulkan::CommandBuffer &cmd, RenderGraph &graph,
+                                           const RenderTextureResource &output_res, const RenderTextureResource &input_res,
+                                           const RenderTextureResource *feedback)
+{
+	auto &output = graph.get_physical_texture_resource(output_res);
+	auto &input = graph.get_physical_texture_resource(input_res);
+
+	cmd.set_texture(0, 0, input, Vulkan::StockSampler::LinearClamp);
+	cmd.set_storage_texture(0, 1, output);
+
+	if (feedback)
+	{
+		auto *history = graph.get_physical_history_texture_resource(*feedback);
+		if (history)
+			cmd.set_texture(0, 2, *history, Vulkan::StockSampler::NearestClamp);
+		else
+			feedback = nullptr;
+	}
+
+	auto *program = cmd.get_device().get_shader_manager().register_compute("builtin://shaders/post/bloom_downsample.comp");
+	unsigned variant = program->register_variant({{ "FEEDBACK", feedback ? 1 : 0 }});
+	cmd.set_program(*program->get_program(variant));
+
+	struct Registers
+	{
+		uvec2 threads;
+		vec2 inv_output_resolution;
+		vec2 inv_input_resolution;
+		float lerp;
+	} push;
+	push.threads.x = output.get_image().get_width();
+	push.threads.y = output.get_image().get_height();
+	push.inv_output_resolution.x = 1.0f / float(push.threads.x);
+	push.inv_output_resolution.y = 1.0f / float(push.threads.y);
+	push.inv_input_resolution.x = 1.0f / float(input.get_image().get_width());
+	push.inv_input_resolution.y = 1.0f / float(input.get_image().get_height());
+	float lerp = 1.0f - pow(0.001f, timer.frame_time);
+	push.lerp = lerp;
+
+	cmd.push_constants(&push, 0, sizeof(push));
+	cmd.dispatch((push.threads.x + 7) / 8, (push.threads.y + 7) / 8, 1);
+}
+
+static void bloom_upsample_build_compute(Vulkan::CommandBuffer &cmd, RenderGraph &graph,
+                                         const RenderTextureResource &output_res, const RenderTextureResource &input_res)
+{
+	auto &output = graph.get_physical_texture_resource(output_res);
+	auto &input = graph.get_physical_texture_resource(input_res);
+
+	cmd.set_texture(0, 0, input, Vulkan::StockSampler::LinearClamp);
+	cmd.set_storage_texture(0, 1, output);
+
+	auto *program = cmd.get_device().get_shader_manager().register_compute("builtin://shaders/post/bloom_upsample.comp");
+	unsigned variant = program->register_variant({});
+	cmd.set_program(*program->get_program(variant));
+
+	struct Registers
+	{
+		uvec2 threads;
+		vec2 inv_output_resolution;
+		vec2 inv_input_resolution;
+	} push;
+	push.threads.x = output.get_image().get_width();
+	push.threads.y = output.get_image().get_height();
+	push.inv_output_resolution.x = 1.0f / float(push.threads.x);
+	push.inv_output_resolution.y = 1.0f / float(push.threads.y);
+	push.inv_input_resolution.x = 1.0f / float(input.get_image().get_width());
+	push.inv_input_resolution.y = 1.0f / float(input.get_image().get_height());
+	cmd.push_constants(&push, 0, sizeof(push));
+	cmd.dispatch((push.threads.x + 7) / 8, (push.threads.y + 7) / 8, 1);
 }
 
 static void bloom_downsample_build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd, bool feedback)
@@ -155,6 +286,81 @@ static void tonemap_build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &c
 	vec2 inv_size = vec2(1.0f / hdr.get_image().get_create_info().width, 1.0f / hdr.get_image().get_create_info().height);
 	cmd.push_constants(&inv_size, 0, sizeof(inv_size));
 	Vulkan::CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/post/tonemap.frag");
+}
+
+void setup_hdr_postprocess_compute(RenderGraph &graph, const std::string &input, const std::string &output)
+{
+	BufferInfo buffer_info;
+	buffer_info.size = 3 * sizeof(float);
+	buffer_info.persistent = true;
+	buffer_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+
+	AttachmentInfo downsample_info;
+	downsample_info.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+	downsample_info.size_x = 0.5f;
+	downsample_info.size_y = 0.5f;
+	downsample_info.size_class = SizeClass::InputRelative;
+	downsample_info.size_relative_name = input;
+	downsample_info.aux_usage = VK_IMAGE_USAGE_SAMPLED_BIT;
+	auto downsample_info0 = downsample_info;
+	auto downsample_info1 = downsample_info;
+	auto downsample_info2 = downsample_info;
+	auto downsample_info3 = downsample_info;
+	downsample_info0.size_x = 0.25f;
+	downsample_info0.size_y = 0.25f;
+	downsample_info1.size_x = 0.125f;
+	downsample_info1.size_y = 0.125f;
+	downsample_info2.size_x = 0.0625f;
+	downsample_info2.size_y = 0.0625f;
+	downsample_info3.size_x = 0.03125f;
+	downsample_info3.size_y = 0.03125f;
+
+	auto &bloom_pass = graph.add_pass("bloom-compute", RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT);
+	auto &t = bloom_pass.add_storage_texture_output("threshold", downsample_info);
+	auto &d0 = bloom_pass.add_storage_texture_output("downsample-0", downsample_info0);
+	auto &d1 = bloom_pass.add_storage_texture_output("downsample-1", downsample_info1);
+	auto &d2 = bloom_pass.add_storage_texture_output("downsample-2", downsample_info2);
+	auto &d3 = bloom_pass.add_storage_texture_output("downsample-3", downsample_info3);
+	auto &lum = bloom_pass.add_storage_output("average-luminance", buffer_info);
+	auto &hdr = bloom_pass.add_texture_input(input);
+	bloom_pass.add_history_input("downsample-3");
+	bloom_pass.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
+		bloom_threshold_build_compute(cmd, graph, t, hdr, lum);
+		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		bloom_downsample_build_compute(cmd, graph, d0, t, nullptr);
+		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		bloom_downsample_build_compute(cmd, graph, d1, d0, nullptr);
+		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		bloom_downsample_build_compute(cmd, graph, d2, d1, nullptr);
+		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		bloom_downsample_build_compute(cmd, graph, d3, d2, &d3);
+		luminance_build_compute(cmd, graph, lum, d3);
+		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_UNIFORM_READ_BIT);
+		bloom_upsample_build_compute(cmd, graph, d2, d3);
+		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		bloom_upsample_build_compute(cmd, graph, d1, d2);
+		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		bloom_upsample_build_compute(cmd, graph, d0, d1);
+	});
+
+	AttachmentInfo tonemap_info;
+	tonemap_info.size_class = SizeClass::InputRelative;
+	tonemap_info.size_relative_name = input;
+	auto &tonemap = graph.add_pass("tonemap", RENDER_GRAPH_QUEUE_ASYNC_GRAPHICS_BIT);
+	tonemap.add_color_output(output, tonemap_info);
+	tonemap.add_texture_input(input);
+	tonemap.add_texture_input("downsample-0");
+	tonemap.add_uniform_input("average-luminance");
+	tonemap.set_build_render_pass([&tonemap](Vulkan::CommandBuffer &cmd) {
+		tonemap_build_render_pass(tonemap, cmd);
+	});
 }
 
 void setup_hdr_postprocess(RenderGraph &graph, const std::string &input, const std::string &output)

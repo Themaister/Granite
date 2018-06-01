@@ -1,0 +1,37 @@
+#version 310 es
+layout(local_size_x = 8, local_size_y = 8) in;
+precision mediump float;
+
+layout(std140, set = 0, binding = 1) uniform LuminanceData
+{
+    float average_log_luminance;
+    float average_linear_luminance;
+    float average_inv_linear_luminance;
+};
+
+layout(push_constant, std430) uniform Registers
+{
+    uvec2 num_threads;
+    vec2 inv_output_size;
+} registers;
+
+layout(set = 0, binding = 0) uniform mediump sampler2D uHDR;
+layout(set = 0, binding = 2, rgba16f) writeonly uniform mediump image2D uOutput;
+
+void main()
+{
+    if (any(greaterThanEqual(gl_GlobalInvocationID.xy, registers.num_threads)))
+        return;
+
+    vec2 vUV = (vec2(gl_GlobalInvocationID.xy) + 0.5) * registers.inv_output_size;
+
+    mediump vec3 color = textureLod(uHDR, vUV, 0.0).rgb;
+    highp float luminance = max(max(color.x, color.y), color.z) + 0.0001;
+    highp float loglum = log2(luminance);
+
+    color /= luminance;
+    luminance -= 8.0 * average_linear_luminance;
+    mediump vec3 thres_color = max(color * luminance, vec3(0.0));
+
+    imageStore(uOutput, ivec2(gl_GlobalInvocationID.xy), vec4(thres_color, loglum));
+}

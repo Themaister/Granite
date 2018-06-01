@@ -808,7 +808,7 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 		bool resolved = setup_before_post_chain_antialiasing(config.postaa_type,
 		                                                     graph, jitter,
 		                                                     "HDR-main", "depth-main", "HDR-resolved");
-		setup_hdr_postprocess(graph, resolved ? "HDR-resolved" : "HDR-main", "tonemapped");
+		setup_hdr_postprocess_compute(graph, resolved ? "HDR-resolved" : "HDR-main", "tonemapped");
 	}
 
 	if (setup_after_post_chain_antialiasing(config.postaa_type, graph, jitter,
@@ -819,7 +819,7 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 
 	if (config.show_ui)
 	{
-		auto &ui = graph.add_pass("ui", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
+		auto &ui = graph.add_pass("ui", RENDER_GRAPH_QUEUE_ASYNC_GRAPHICS_BIT);
 		AttachmentInfo ui_info;
 		ui.add_color_output("ui-output", ui_info, ui_source);
 		graph.set_backbuffer_source("ui-output");

@@ -29,7 +29,7 @@ void setup_fxaa_postprocess(RenderGraph &graph, const std::string &input, const 
 {
 	graph.get_texture_resource(input).get_attachment_info().unorm_srgb_alias = true;
 
-	auto &fxaa = graph.add_pass("fxaa", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
+	auto &fxaa = graph.add_pass("fxaa", RENDER_GRAPH_QUEUE_ASYNC_GRAPHICS_BIT);
 	AttachmentInfo fxaa_output;
 	fxaa_output.size_class = SizeClass::InputRelative;
 	fxaa_output.size_relative_name = input;

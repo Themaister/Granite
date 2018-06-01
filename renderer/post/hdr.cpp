@@ -316,10 +316,14 @@ void setup_hdr_postprocess_compute(RenderGraph &graph, const std::string &input,
 	downsample_info3.size_y = 0.03125f;
 
 	auto &bloom_pass = graph.add_pass("bloom-compute", RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT);
+	// Workaround a cache invalidation driver bug by not aliasing.
 	auto &t = bloom_pass.add_storage_texture_output("threshold", downsample_info);
 	auto &d0 = bloom_pass.add_storage_texture_output("downsample-0", downsample_info0);
+	auto &u0 = bloom_pass.add_storage_texture_output("upsample-0", downsample_info0);
 	auto &d1 = bloom_pass.add_storage_texture_output("downsample-1", downsample_info1);
+	auto &u1 = bloom_pass.add_storage_texture_output("upsample-1", downsample_info1);
 	auto &d2 = bloom_pass.add_storage_texture_output("downsample-2", downsample_info2);
+	auto &u2 = bloom_pass.add_storage_texture_output("upsample-2", downsample_info2);
 	auto &d3 = bloom_pass.add_storage_texture_output("downsample-3", downsample_info3);
 	auto &lum = bloom_pass.add_storage_output("average-luminance", buffer_info);
 	auto &hdr = bloom_pass.add_texture_input(input);
@@ -341,13 +345,13 @@ void setup_hdr_postprocess_compute(RenderGraph &graph, const std::string &input,
 		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
 		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 		luminance_build_compute(cmd, graph, lum, d3);
-		bloom_upsample_build_compute(cmd, graph, d2, d3);
+		bloom_upsample_build_compute(cmd, graph, u2, d3);
 		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
 		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_UNIFORM_READ_BIT);
-		bloom_upsample_build_compute(cmd, graph, d1, d2);
+		bloom_upsample_build_compute(cmd, graph, u1, u2);
 		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
 		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-		bloom_upsample_build_compute(cmd, graph, d0, d1);
+		bloom_upsample_build_compute(cmd, graph, u0, u1);
 	});
 
 	AttachmentInfo tonemap_info;
@@ -356,7 +360,7 @@ void setup_hdr_postprocess_compute(RenderGraph &graph, const std::string &input,
 	auto &tonemap = graph.add_pass("tonemap", RenderGraph::get_default_post_graphics_queue());
 	tonemap.add_color_output(output, tonemap_info);
 	tonemap.add_texture_input(input);
-	tonemap.add_texture_input("downsample-0");
+	tonemap.add_texture_input("upsample-0");
 	tonemap.add_uniform_input("average-luminance");
 	tonemap.set_build_render_pass([&tonemap](Vulkan::CommandBuffer &cmd) {
 		tonemap_build_render_pass(tonemap, cmd);

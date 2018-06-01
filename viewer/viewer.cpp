@@ -41,6 +41,7 @@ Application *application_create(int argc, char **argv)
 
 #ifdef ANDROID
 	config = "assets://config.json";
+	quirks = "assets://quirks.json";
 	path = "assets://scene.glb";
 #endif
 

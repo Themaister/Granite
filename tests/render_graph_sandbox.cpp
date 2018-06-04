@@ -54,8 +54,32 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
 		im.size_y = 720.0f;
 		im.size_class = SizeClass::Absolute;
 
+		// Pretend depth pass.
+		auto &depth = graph.add_pass("depth", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
+		depth.add_color_output("depth", back);
+
+		depth.set_get_clear_color([](unsigned, VkClearColorValue *value) -> bool {
+			if (value)
+			{
+				value->float32[0] = 0.0f;
+				value->float32[1] = 1.0f;
+				value->float32[2] = 0.0f;
+				value->float32[3] = 1.0f;
+			}
+			return true;
+		});
+
+		depth.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
+			CommandBufferUtil::setup_quad(cmd, "builtin://shaders/quad.vert", "assets://shaders/additive.frag");
+			cmd.set_blend_enable(true);
+			cmd.set_blend_factors(VK_BLEND_FACTOR_SRC_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA);
+			cmd.draw(4, 20);
+		});
+
+		// Pretend main rendering pass.
 		auto &graphics = graph.add_pass("first", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 		auto &first = graphics.add_color_output("first", back);
+		graphics.add_texture_input("depth");
 		graphics.set_get_clear_color([](unsigned, VkClearColorValue *value) -> bool {
 			if (value)
 			{
@@ -74,7 +98,8 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
 			cmd.draw(4, 80);
 		});
 
-		auto &compute = graph.add_pass("compute", RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT);
+		// Post processing
+		auto &compute = graph.add_pass("compute", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
 		auto &i = compute.add_storage_texture_output("image", im);
 		compute.add_texture_input("first");
 		compute.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
@@ -87,11 +112,14 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
 			cmd.dispatch(1280 / 8, 720 / 8, 40);
 		});
 
-		auto &swap = graph.add_pass("final", RENDER_GRAPH_QUEUE_ASYNC_GRAPHICS_BIT);
+		// Composite + UI
+		auto &swap = graph.add_pass("final", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 		swap.add_color_output("back", back);
 		swap.add_texture_input("image");
+		swap.add_texture_input("first");
 		swap.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
 			cmd.set_texture(0, 0, graph.get_physical_texture_resource(i), StockSampler::LinearClamp);
+			cmd.set_texture(0, 1, graph.get_physical_texture_resource(first), StockSampler::LinearClamp);
 			CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/blit.frag");
 		});
 

@@ -388,8 +388,7 @@ bool SceneViewerApplication::on_key_down(const KeyboardEvent &e)
 		light.type = SceneFormats::LightInfo::Type::Spot;
 		light.outer_cone = 0.9f;
 		light.inner_cone = 0.92f;
-		light.quadratic_falloff = 0.1f;
-		light.color = vec3(1.0f);
+		light.color = vec3(10.0f);
 
 		node->transform.translation = pos;
 		node->transform.rotation = conjugate(look_at_arbitrary_up(selected_camera->get_front()));
@@ -407,8 +406,7 @@ bool SceneViewerApplication::on_key_down(const KeyboardEvent &e)
 
 		SceneFormats::LightInfo light;
 		light.type = SceneFormats::LightInfo::Type::Point;
-		light.quadratic_falloff = 0.1f;
-		light.color = vec3(1.0f);
+		light.color = vec3(10.0f);
 		node->transform.translation = pos;
 
 		scene.create_light(light, node.get());

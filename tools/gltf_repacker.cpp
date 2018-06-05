@@ -297,7 +297,7 @@ int main(int argc, char *argv[])
 			light.color = vec3(color[0].GetFloat(), color[1].GetFloat(), color[2].GetFloat());
 			light_node.transform.rotation = conjugate(look_at_arbitrary_up(vec3(dir[0].GetFloat(), dir[1].GetFloat(), dir[2].GetFloat())));
 			light_node.transform.translation = vec3(pos[0].GetFloat(), pos[1].GetFloat(), pos[2].GetFloat());
-			light.quadratic_falloff = spot["quadraticFalloff"].GetFloat();
+			light.range = spot["range"].GetFloat();
 			light.outer_cone = spot["outerCone"].GetFloat();
 			light.inner_cone = spot["innerCone"].GetFloat();
 
@@ -321,7 +321,7 @@ int main(int argc, char *argv[])
 
 			light_node.transform.translation = vec3(pos[0].GetFloat(), pos[1].GetFloat(), pos[2].GetFloat());
 			light.color = vec3(color[0].GetFloat(), color[1].GetFloat(), color[2].GetFloat());
-			light.quadratic_falloff = point["quadraticFalloff"].GetFloat();
+			light.range = point["range"].GetFloat();
 
 			lights.push_back(light);
 			nodes.push_back(light_node);

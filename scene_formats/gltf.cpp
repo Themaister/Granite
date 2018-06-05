@@ -620,6 +620,9 @@ void Parser::parse(const string &original_path, const string &json)
 	Document doc;
 	doc.Parse(json);
 
+	if (doc.HasParseError())
+		throw logic_error("Parser error found.");
+
 	const auto add_buffer = [&](const Value &buf) {
 		const char *uri = nullptr;
 		if (buf.HasMember("uri"))
@@ -1085,9 +1088,9 @@ void Parser::parse(const string &original_path, const string &json)
 		if (value.HasMember("extensions"))
 		{
 			auto &ext = value["extensions"];
-			if (ext.HasMember("KHR_lights_cmn"))
+			if (ext.HasMember("KHR_lights"))
 			{
-				auto &cmn = ext["KHR_lights_cmn"];
+				auto &cmn = ext["KHR_lights"];
 				if (cmn.HasMember("light"))
 				{
 					auto index = cmn["light"].GetUint();
@@ -1286,6 +1289,10 @@ void Parser::parse(const string &original_path, const string &json)
 		if (light.HasMember("name"))
 			info.name = light["name"].GetString();
 
+		float intensity = 1.0f;
+		if (light.HasMember("intensity"))
+			intensity = light["intensity"].GetFloat();
+
 		if (light.HasMember("color"))
 		{
 			auto &color = light["color"];
@@ -1293,6 +1300,10 @@ void Parser::parse(const string &original_path, const string &json)
 			info.color.y = color[1].GetFloat();
 			info.color.z = color[2].GetFloat();
 		}
+		else
+			info.color = vec3(1.0f);
+
+		info.color *= intensity;
 
 		auto *type = light["type"].GetString();
 		if (strcmp(type, "point") == 0)
@@ -1306,41 +1317,28 @@ void Parser::parse(const string &original_path, const string &json)
 		else
 			throw logic_error("Invalid light type.");
 
-		if (info.type == LightInfo::Type::Spot || info.type == LightInfo::Type::Point)
+		info.range = 0.0f;
+		if (light.HasMember("range"))
+			info.range = light["range"].GetFloat();
+
+		info.inner_cone = std::cos(0.0f);
+		info.outer_cone = std::cos(pi<float>() / 4.0f);
+
+		if (info.type == LightInfo::Type::Spot)
 		{
-			auto &pos = light["positional"];
-
-			if (pos.HasMember("constantAttenuation"))
+			if (light.HasMember("spot"))
 			{
-				float constant_falloff = pos["constantAttenuation"].GetFloat();
-				if (constant_falloff != 0.0f)
-					LOGI("Constant falloff is not 0, this will be ignored.\n");
-			}
-
-			if (pos.HasMember("linearAttenuation"))
-			{
-				float linear_falloff = pos["linearAttenuation"].GetFloat();
-				if (linear_falloff != 0.0f)
-					LOGI("Linear falloff is not 0, this will be ignored.\n");
-			}
-
-			info.quadratic_falloff = 1.0f;
-			if (pos.HasMember("quadraticAttenuation"))
-				info.quadratic_falloff = pos["quadraticAttenuation"].GetFloat();
-
-			if (pos.HasMember("spot"))
-			{
-				auto &spot = pos["spot"];
-				if (spot.HasMember("innerAngle"))
+				auto &spot = light["spot"];
+				if (spot.HasMember("innerConeAngle"))
 				{
-					info.inner_cone = spot["innerAngle"].GetFloat();
-					info.inner_cone = std::sqrt(1.0f - info.inner_cone * info.inner_cone);
+					info.inner_cone = spot["innerConeAngle"].GetFloat();
+					info.inner_cone = std::cos(info.inner_cone);
 				}
 
-				if (spot.HasMember("outerAngle"))
+				if (spot.HasMember("outerConeAngle"))
 				{
-					info.outer_cone = spot["outerAngle"].GetFloat();
-					info.outer_cone = std::sqrt(1.0f - info.outer_cone * info.outer_cone);
+					info.outer_cone = spot["outerConeAngle"].GetFloat();
+					info.outer_cone = std::cos(info.outer_cone);
 				}
 			}
 		}
@@ -1392,9 +1390,9 @@ void Parser::parse(const string &original_path, const string &json)
 	if (doc.HasMember("extensions"))
 	{
 		auto &ext = doc["extensions"];
-		if (ext.HasMember("KHR_lights_cmn") && ext["KHR_lights_cmn"].HasMember("lights"))
+		if (ext.HasMember("KHR_lights") && ext["KHR_lights"].HasMember("lights"))
 		{
-			auto &lights = ext["KHR_lights_cmn"]["lights"];
+			auto &lights = ext["KHR_lights"]["lights"];
 			iterate_elements(lights, add_light);
 		}
 	}

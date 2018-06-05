@@ -45,6 +45,10 @@ public:
 	}
 
 	void set_maximum_range(float range);
+	float get_maximum_range() const
+	{
+		return cutoff_range;
+	}
 
 	bool has_static_aabb() const override
 	{

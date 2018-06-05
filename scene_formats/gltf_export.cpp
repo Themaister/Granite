@@ -1529,11 +1529,11 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 	if (!scene.lights.empty())
 	{
 		Value req(kArrayType);
-		req.PushBack("KHR_lights_cmn", allocator);
+		req.PushBack("KHR_lights", allocator);
 		doc.AddMember("extensionsRequired", req, allocator);
 
 		Value used(kArrayType);
-		used.PushBack("KHR_lights_cmn", allocator);
+		used.PushBack("KHR_lights", allocator);
 		doc.AddMember("extensionsUsed", used, allocator);
 	}
 
@@ -1585,7 +1585,7 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 				Value ext(kObjectType);
 				Value cmn(kObjectType);
 				cmn.AddMember("light", uint32_t(&light - scene.lights.data()), allocator);
-				ext.AddMember("KHR_lights_cmn", cmn, allocator);
+				ext.AddMember("KHR_lights", cmn, allocator);
 				n.AddMember("extensions", ext, allocator);
 				break;
 			}
@@ -2018,58 +2018,56 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 	if (!scene.lights.empty())
 	{
 		Value ext(kObjectType);
-		Value lights_cmn(kObjectType);
+		Value khr_lights(kObjectType);
 		Value lights(kArrayType);
 
 		for (auto &light : scene.lights)
 		{
 			Value l(kObjectType);
-			Value positional(kObjectType);
 			Value color(kArrayType);
-			Value spot(kObjectType);
 
-			color.PushBack(light.color.x, allocator);
-			color.PushBack(light.color.y, allocator);
-			color.PushBack(light.color.z, allocator);
+			float intensity = muglm::max(muglm::max(light.color.x, light.color.y), light.color.z);
+			if (intensity == 0.0f)
+				intensity = 1.0f;
+
+			color.PushBack(light.color.x / intensity, allocator);
+			color.PushBack(light.color.y / intensity, allocator);
+			color.PushBack(light.color.z / intensity, allocator);
+
+			if (intensity != 1.0f)
+				l.AddMember("intensity", intensity, allocator);
 			l.AddMember("color", color, allocator);
 
 			switch (light.type)
 			{
 			case LightInfo::Type::Spot:
+			{
+				Value spot(kObjectType);
+				spot.AddMember("innerConeAngle", muglm::acos(light.inner_cone), allocator);
+				spot.AddMember("outerConeAngle", muglm::acos(light.outer_cone), allocator);
 				l.AddMember("type", "spot", allocator);
-				l.AddMember("profile", "CMN", allocator);
-				if (light.quadratic_falloff != 0.0f)
-					positional.AddMember("quadraticAttenuation", light.quadratic_falloff, allocator);
-
-				spot.AddMember("innerAngle", muglm::sqrt(std::max(1.0f - light.inner_cone * light.inner_cone, 0.0f)), allocator);
-				spot.AddMember("outerAngle", muglm::sqrt(std::max(1.0f - light.outer_cone * light.outer_cone, 0.0f)), allocator);
-				positional.AddMember("spot", spot, allocator);
-
-				l.AddMember("positional", positional, allocator);
+				l.AddMember("spot", spot, allocator);
 				break;
+			}
 
 			case LightInfo::Type::Point:
 				l.AddMember("type", "point", allocator);
-				l.AddMember("profile", "CMN", allocator);
-				if (light.quadratic_falloff != 0.0f)
-					positional.AddMember("quadraticAttenuation", light.quadratic_falloff, allocator);
-				l.AddMember("positional", positional, allocator);
 				break;
 
 			case LightInfo::Type::Directional:
 				l.AddMember("type", "directional", allocator);
-				l.AddMember("profile", "CMN", allocator);
 				break;
 
 			case LightInfo::Type::Ambient:
 				l.AddMember("type", "ambient", allocator);
+				break;
 			}
 
 			lights.PushBack(l, allocator);
 		}
 
-		lights_cmn.AddMember("lights", lights, allocator);
-		ext.AddMember("KHR_lights_cmn", lights_cmn, allocator);
+		khr_lights.AddMember("lights", lights, allocator);
+		ext.AddMember("KHR_lights", khr_lights, allocator);
 		doc.AddMember("extensions", ext, allocator);
 	}
 
@@ -2190,7 +2188,8 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 	memcpy(mapped, "JSON", 4);
 	mapped += 4;
 
-	memcpy(mapped, buffer.GetString(), buffer.GetLength());
+	const char *json_str = buffer.GetString();
+	memcpy(mapped, json_str, buffer.GetLength());
 	size_t pad_length = aligned_size(buffer.GetLength()) - buffer.GetLength();
 	memset(mapped + buffer.GetLength(), ' ', pad_length);
 	mapped += aligned_size(buffer.GetLength());

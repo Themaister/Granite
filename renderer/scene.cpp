@@ -442,7 +442,9 @@ EntityHandle Scene::create_light(const SceneFormats::LightInfo &light, Node *nod
 		}
 
 		auto &positional = static_cast<PositionalLight &>(*renderable);
-		positional.set_color(light.color / light.quadratic_falloff);
+		positional.set_color(light.color);
+		if (light.range > 0.0f)
+			positional.set_maximum_range(light.range);
 
 		entity->allocate_component<PositionalLightComponent>()->light = &positional;
 		entity->allocate_component<RenderableComponent>()->renderable = renderable;

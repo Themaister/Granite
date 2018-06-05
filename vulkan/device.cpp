@@ -798,13 +798,13 @@ void Device::submit_empty_inner(CommandBuffer::Type type, VkFence *fence,
 	switch (type)
 	{
 	default:
-	case CommandBuffer::Type::Graphics:
+	case CommandBuffer::Type::Generic:
 		queue_name = "Graphics";
 		break;
-	case CommandBuffer::Type::Compute:
+	case CommandBuffer::Type::AsyncCompute:
 		queue_name = "Compute";
 		break;
-	case CommandBuffer::Type::Transfer:
+	case CommandBuffer::Type::AsyncTransfer:
 		queue_name = "Transfer";
 		break;
 	}
@@ -1074,13 +1074,13 @@ void Device::submit_queue(CommandBuffer::Type type, VkFence *fence,
 	switch (type)
 	{
 	default:
-	case CommandBuffer::Type::Graphics:
+	case CommandBuffer::Type::Generic:
 		queue_name = "Graphics";
 		break;
-	case CommandBuffer::Type::Compute:
+	case CommandBuffer::Type::AsyncCompute:
 		queue_name = "Compute";
 		break;
-	case CommandBuffer::Type::Transfer:
+	case CommandBuffer::Type::AsyncTransfer:
 		queue_name = "Transfer";
 		break;
 	}

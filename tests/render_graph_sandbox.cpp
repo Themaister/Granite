@@ -99,7 +99,7 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
 		});
 
 		// Post processing
-		auto &compute = graph.add_pass("compute", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
+		auto &compute = graph.add_pass("compute", RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT);
 		auto &i = compute.add_storage_texture_output("image", im);
 		compute.add_texture_input("first");
 		compute.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
@@ -113,7 +113,7 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
 		});
 
 		// Composite + UI
-		auto &swap = graph.add_pass("final", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
+		auto &swap = graph.add_pass("final", RENDER_GRAPH_QUEUE_ASYNC_GRAPHICS_BIT);
 		swap.add_color_output("back", back);
 		swap.add_texture_input("image");
 		swap.add_texture_input("first");

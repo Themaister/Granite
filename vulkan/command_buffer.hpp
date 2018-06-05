@@ -201,10 +201,10 @@ class CommandBuffer : public Util::ThreadSafeIntrusivePtrEnabled<CommandBuffer>
 public:
 	enum class Type
 	{
-		Graphics,
-		SecondaryGraphics,
-		Compute,
-		Transfer,
+		Generic,
+		AsyncGraphics,
+		AsyncCompute,
+		AsyncTransfer,
 		Count
 	};
 

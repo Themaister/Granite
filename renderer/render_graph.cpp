@@ -1628,22 +1628,22 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 		default:
 		case RENDER_GRAPH_QUEUE_GRAPHICS_BIT:
 			graphics = true;
-			queue_type = Vulkan::CommandBuffer::Type::Graphics;
+			queue_type = Vulkan::CommandBuffer::Type::Generic;
 			break;
 
 		case RENDER_GRAPH_QUEUE_COMPUTE_BIT:
 			graphics = false;
-			queue_type = Vulkan::CommandBuffer::Type::Graphics;
+			queue_type = Vulkan::CommandBuffer::Type::Generic;
 			break;
 
 		case RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT:
 			graphics = false;
-			queue_type = Vulkan::CommandBuffer::Type::Compute;
+			queue_type = Vulkan::CommandBuffer::Type::AsyncCompute;
 			break;
 
 		case RENDER_GRAPH_QUEUE_ASYNC_GRAPHICS_BIT:
 			graphics = true;
-			queue_type = Vulkan::CommandBuffer::Type::SecondaryGraphics;
+			queue_type = Vulkan::CommandBuffer::Type::AsyncGraphics;
 			break;
 		}
 
@@ -1998,7 +1998,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 		auto &source_resource = *this->resources[resource_index];
 
 		auto queue_type = (physical_dimensions[resource_index].queues & RENDER_GRAPH_QUEUE_GRAPHICS_BIT) != 0 ?
-		                  Vulkan::CommandBuffer::Type::Graphics : Vulkan::CommandBuffer::Type::SecondaryGraphics;
+		                  Vulkan::CommandBuffer::Type::Generic : Vulkan::CommandBuffer::Type::AsyncGraphics;
 
 		auto physical_queue_type = device.get_physical_queue_type(queue_type);
 
@@ -2008,7 +2008,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 		unsigned index = source_resource.get_physical_index();
 		auto &image = physical_attachments[index]->get_image();
 
-		auto &wait_semaphore = physical_queue_type == Vulkan::CommandBuffer::Type::Graphics ?
+		auto &wait_semaphore = physical_queue_type == Vulkan::CommandBuffer::Type::Generic ?
 		                       physical_events[index].wait_graphics_semaphore : physical_events[index].wait_compute_semaphore;
 
 		if (physical_events[index].event)

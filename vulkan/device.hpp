@@ -104,8 +104,8 @@ public:
 
 	// Submission interface, may be called from any thread at any time.
 	void flush_frame();
-	CommandBufferHandle request_command_buffer(CommandBuffer::Type type = CommandBuffer::Type::Graphics);
-	CommandBufferHandle request_command_buffer_for_thread(unsigned thread_index, CommandBuffer::Type type = CommandBuffer::Type::Graphics);
+	CommandBufferHandle request_command_buffer(CommandBuffer::Type type = CommandBuffer::Type::Generic);
+	CommandBufferHandle request_command_buffer_for_thread(unsigned thread_index, CommandBuffer::Type type = CommandBuffer::Type::Generic);
 
 	CommandBuffer::Type get_physical_queue_type(CommandBuffer::Type queue_type) const;
 	void submit(CommandBufferHandle cmd, Fence *fence = nullptr,
@@ -412,7 +412,7 @@ private:
 	void free_memory_nolock(const DeviceAllocation &alloc);
 
 	void flush_frame_nolock();
-	CommandBufferHandle request_command_buffer_nolock(unsigned thread_index, CommandBuffer::Type type = CommandBuffer::Type::Graphics);
+	CommandBufferHandle request_command_buffer_nolock(unsigned thread_index, CommandBuffer::Type type = CommandBuffer::Type::Generic);
 	void submit_nolock(CommandBufferHandle cmd, Fence *fence,
 	                   unsigned semaphore_count, Semaphore *semaphore);
 	void submit_empty_nolock(CommandBuffer::Type type, Fence *fence,
@@ -429,7 +429,7 @@ private:
 	CommandBufferHandle request_secondary_command_buffer_for_thread(unsigned thread_index,
 	                                                                const Framebuffer *framebuffer,
 	                                                                unsigned subpass,
-	                                                                CommandBuffer::Type type = CommandBuffer::Type::Graphics);
+	                                                                CommandBuffer::Type type = CommandBuffer::Type::Generic);
 	void add_frame_counter_nolock();
 	void decrement_frame_counter_nolock();
 	void submit_secondary(CommandBuffer &primary, CommandBuffer &secondary);

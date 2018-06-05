@@ -111,6 +111,11 @@ void AnimationSystem::start_animation(Scene::NodeHandle *node_list, const std::s
 	{
 		if (channel.joint)
 			throw logic_error("Cannot start skinning animations without a target base node.");
+		else if (!node_list[channel.node_index])
+		{
+			LOGE("Trying to animate a node which does not exist. Bailing.\n");
+			return;
+		}
 		else
 			target_nodes.push_back({ &node_list[channel.node_index]->transform, node_list[channel.node_index].get() });
 	}

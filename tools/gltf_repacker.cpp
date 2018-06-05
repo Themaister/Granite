@@ -139,6 +139,10 @@ int main(int argc, char *argv[])
 	info.skins = parser.get_skins();
 	nodes = parser.get_nodes();
 
+	SceneFormats::SceneNodes custom_nodes;
+	auto &scene = parser.get_scenes()[parser.get_default_scene()];
+	info.scene_nodes = &scene;
+
 	if (scale != 1.0f)
 	{
 		SceneFormats::Node root;
@@ -146,6 +150,10 @@ int main(int argc, char *argv[])
 		for (unsigned i = 0; i < nodes.size(); i++)
 			root.children.push_back(i);
 		root.transform.scale = vec3(scale);
+
+		custom_nodes.node_indices.push_back(nodes.size());
+		custom_nodes.name = scene.name;
+		info.scene_nodes = &custom_nodes;
 		nodes.push_back(root);
 	}
 

@@ -57,6 +57,16 @@ class Parser
 public:
 	Parser(const std::string &path);
 
+	const std::vector<SceneNodes> &get_scenes() const
+	{
+		return json_scenes;
+	}
+
+	uint32_t get_default_scene() const
+	{
+		return default_scene_index;
+	}
+
 	const std::vector<Mesh> &get_meshes() const
 	{
 		return meshes;
@@ -180,6 +190,8 @@ private:
 	std::unordered_map<uint32_t, uint32_t> json_node_index_to_skin;
 	std::unordered_map<uint32_t, uint32_t> json_node_index_to_joint_index;
 	std::vector<std::vector<uint32_t>> mesh_index_to_primitives;
+	std::vector<SceneNodes> json_scenes;
+	uint32_t default_scene_index = 0;
 
 	void build_meshes();
 	void build_primitive(const MeshData::AttributeData &prim);

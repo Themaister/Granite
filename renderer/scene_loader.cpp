@@ -68,9 +68,13 @@ Scene::NodeHandle SceneLoader::build_tree_for_subscene(const SubsceneData &subsc
 	std::vector<Scene::NodeHandle> nodes;
 	nodes.reserve(parser.get_nodes().size());
 
+	auto &scene_nodes = parser.get_scenes()[parser.get_default_scene()];
+	auto touched = build_used_nodes_in_scene(scene_nodes, parser.get_nodes());
+
+	unsigned node_index = 0;
 	for (auto &node : parser.get_nodes())
 	{
-		if (!node.joint)
+		if (!node.joint && touched.count(node_index))
 		{
 			Scene::NodeHandle nodeptr;
 			if (node.has_skin)
@@ -99,6 +103,8 @@ Scene::NodeHandle SceneLoader::build_tree_for_subscene(const SubsceneData &subsc
 		}
 		else
 			nodes.push_back({});
+
+		node_index++;
 	}
 
 	for (auto &animation : parser.get_animations())
@@ -135,7 +141,7 @@ Scene::NodeHandle SceneLoader::build_tree_for_subscene(const SubsceneData &subsc
 		cam_params.set_depth_range(camera.znear, camera.zfar);
 		cam_entity->allocate_component<CameraComponent>()->camera = cam_params;
 
-		if (camera.attached_to_node)
+		if (camera.attached_to_node && touched.count(camera.node_index))
 		{
 			auto *t = cam_entity->allocate_component<CachedTransformComponent>();
 			t->transform = &nodes[camera.node_index]->cached_transform;
@@ -144,15 +150,13 @@ Scene::NodeHandle SceneLoader::build_tree_for_subscene(const SubsceneData &subsc
 
 	for (auto &light : parser.get_lights())
 	{
-		if (!light.attached_to_node)
-			continue;
-		scene->create_light(light, nodes[light.node_index].get());
+		if (light.attached_to_node && touched.count(light.node_index))
+			scene->create_light(light, nodes[light.node_index].get());
 	}
 
 	auto root = scene->create_node();
-	for (auto &node : nodes)
-		if (node && !node->get_parent())
-			root->add_child(node);
+	for (auto &node_index : scene_nodes.node_indices)
+		root->add_child(nodes[node_index]);
 
 	return root;
 }

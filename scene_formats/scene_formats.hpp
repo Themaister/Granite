@@ -23,6 +23,7 @@
 #pragma once
 
 #include <vector>
+#include <unordered_set>
 #include <stdint.h>
 #include "mesh.hpp"
 #include "enum_cast.hpp"
@@ -212,9 +213,10 @@ struct LightInfo
 	bool attached_to_node = false;
 };
 
-struct Scene
+struct SceneNodes
 {
-	std::vector<Node> nodes;
+	std::string name;
+	std::vector<uint32_t> node_indices;
 };
 
 struct Mesh
@@ -251,9 +253,11 @@ struct SceneInformation
 	Util::ArrayView<const Node> nodes;
 	Util::ArrayView<const Skin> skins;
 	Util::ArrayView<const Animation> animations;
+	const SceneNodes *scene_nodes = nullptr;
 };
 
 bool recompute_normals(Mesh &mesh);
 Mesh mesh_optimize_index_buffer(const Mesh &mesh, bool stripify);
+std::unordered_set<uint32_t> build_used_nodes_in_scene(const SceneNodes &scene, const std::vector<Node> &nodes);
 }
 }

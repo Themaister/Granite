@@ -2147,6 +2147,37 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 		doc.AddMember("extras", extras, allocator);
 	}
 
+	// Scene nodes.
+	doc.AddMember("scene", 0, allocator);
+	Value scene_nodes(kArrayType);
+	Value scene_info(kObjectType);
+	Value scenes(kArrayType);
+
+	if (scene.scene_nodes)
+	{
+		for (auto &node : scene.scene_nodes->node_indices)
+			scene_nodes.PushBack(node, allocator);
+
+		if (!scene.scene_nodes->name.empty())
+			scene_info.AddMember("name", StringRef(scene.scene_nodes->name), allocator);
+	}
+	else
+	{
+		// Every node which is not a child of some other node is part of the scene.
+		unordered_set<uint32_t> is_child;
+		for (auto &node : scene.nodes)
+			for (auto &child : node.children)
+				is_child.insert(child);
+
+		for (size_t i = 0; i < scene.nodes.size(); i++)
+			if (!is_child.count(i))
+				scene_nodes.PushBack(i, allocator);
+	}
+
+	scene_info.AddMember("nodes", scene_nodes, allocator);
+	scenes.PushBack(scene_info, allocator);
+	doc.AddMember("scenes", scenes, allocator);
+
 	StringBuffer buffer;
 	PrettyWriter<StringBuffer> writer(buffer);
 	//Writer<StringBuffer> writer(buffer);

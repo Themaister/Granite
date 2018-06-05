@@ -349,5 +349,23 @@ bool recompute_normals(Mesh &mesh)
 
 	return true;
 }
+
+static void touch_node_children(unordered_set<uint32_t> &touched, const vector<Node> &nodes, uint32_t index)
+{
+	touched.insert(index);
+	for (auto &child : nodes[index].children)
+	{
+		touched.insert(child);
+		touch_node_children(touched, nodes, child);
+	}
+}
+
+unordered_set<uint32_t> build_used_nodes_in_scene(const SceneNodes &scene, const vector<Node> &nodes)
+{
+	unordered_set<uint32_t> touched;
+	for (auto &node : scene.node_indices)
+		touch_node_children(touched, nodes, node);
+	return touched;
+}
 }
 }

@@ -1552,6 +1552,31 @@ void Parser::parse(const string &original_path, const string &json)
 		}
 		iterate_elements(animations, add_animation);
 	}
+
+	if (doc.HasMember("scenes"))
+	{
+		auto &scenes = doc["scenes"];
+		for (auto itr = scenes.Begin(); itr != scenes.End(); ++itr)
+		{
+			auto &s = *itr;
+			SceneNodes sc;
+
+			if (s.HasMember("name"))
+				sc.name = s["name"].GetString();
+
+			if (s.HasMember("nodes"))
+			{
+				auto &nodes = s["nodes"];
+				for (auto node_itr = nodes.Begin(); node_itr != nodes.End(); ++node_itr)
+					sc.node_indices.push_back(node_itr->GetUint());
+			}
+
+			json_scenes.push_back(move(sc));
+		}
+	}
+
+	if (doc.HasMember("scene"))
+		default_scene_index = doc["scene"].GetUint();
 }
 
 static uint32_t padded_type_size(uint32_t type_size)

@@ -141,7 +141,10 @@ int main(int argc, char *argv[])
 
 	SceneFormats::SceneNodes custom_nodes;
 	auto &scene = parser.get_scenes()[parser.get_default_scene()];
-	info.scene_nodes = &scene;
+
+	custom_nodes.name = scene.name;
+	custom_nodes.node_indices = scene.node_indices;
+	info.scene_nodes = &custom_nodes;
 
 	if (scale != 1.0f)
 	{
@@ -151,8 +154,8 @@ int main(int argc, char *argv[])
 			root.children.push_back(i);
 		root.transform.scale = vec3(scale);
 
+		custom_nodes.node_indices.clear();
 		custom_nodes.node_indices.push_back(nodes.size());
-		custom_nodes.name = scene.name;
 		info.scene_nodes = &custom_nodes;
 		nodes.push_back(root);
 	}
@@ -218,6 +221,7 @@ int main(int argc, char *argv[])
 
 			animation.name = "Camera";
 			animations.push_back(move(animation));
+			custom_nodes.node_indices.push_back(camera.node_index);
 			nodes.push_back({});
 			info.animations = animations;
 		}
@@ -247,6 +251,7 @@ int main(int argc, char *argv[])
 						conjugate(look_at(vec3(d[0].GetFloat(), d[1].GetFloat(), d[2].GetFloat()),
 						                  vec3(u[0].GetFloat(), u[1].GetFloat(), u[2].GetFloat())));
 
+				custom_nodes.node_indices.push_back(camera.node_index);
 				nodes.push_back(camera_node);
 			}
 		}
@@ -284,6 +289,7 @@ int main(int argc, char *argv[])
 			light_node.transform.rotation = conjugate(look_at_arbitrary_up(vec3(dir[0].GetFloat(), dir[1].GetFloat(), dir[2].GetFloat())));
 
 			lights.push_back(light);
+			custom_nodes.node_indices.push_back(light.node_index);
 			nodes.push_back(light_node);
 		}
 
@@ -305,10 +311,12 @@ int main(int argc, char *argv[])
 			light.color = vec3(color[0].GetFloat(), color[1].GetFloat(), color[2].GetFloat());
 			light_node.transform.rotation = conjugate(look_at_arbitrary_up(vec3(dir[0].GetFloat(), dir[1].GetFloat(), dir[2].GetFloat())));
 			light_node.transform.translation = vec3(pos[0].GetFloat(), pos[1].GetFloat(), pos[2].GetFloat());
-			light.range = spot["range"].GetFloat();
+			if (spot.HasMember("range"))
+				light.range = spot["range"].GetFloat();
 			light.outer_cone = spot["outerCone"].GetFloat();
 			light.inner_cone = spot["innerCone"].GetFloat();
 
+			custom_nodes.node_indices.push_back(light.node_index);
 			lights.push_back(light);
 			nodes.push_back(light_node);
 		}
@@ -329,8 +337,10 @@ int main(int argc, char *argv[])
 
 			light_node.transform.translation = vec3(pos[0].GetFloat(), pos[1].GetFloat(), pos[2].GetFloat());
 			light.color = vec3(color[0].GetFloat(), color[1].GetFloat(), color[2].GetFloat());
-			light.range = point["range"].GetFloat();
+			if (point.HasMember("range"))
+				light.range = point["range"].GetFloat();
 
+			custom_nodes.node_indices.push_back(light.node_index);
 			lights.push_back(light);
 			nodes.push_back(light_node);
 		}

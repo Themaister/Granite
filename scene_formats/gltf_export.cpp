@@ -2038,6 +2038,9 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 				l.AddMember("intensity", intensity, allocator);
 			l.AddMember("color", color, allocator);
 
+			if (light.range != 0.0f)
+				l.AddMember("range", light.range, allocator);
+
 			switch (light.type)
 			{
 			case LightInfo::Type::Spot:

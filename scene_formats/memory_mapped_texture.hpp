@@ -52,6 +52,7 @@ public:
 	bool map_read(std::unique_ptr<Granite::File> file, void *mapped);
 	bool map_copy(const void *mapped, size_t size);
 	bool map_write_scratch();
+	bool copy_to_path(const std::string &path);
 
 	inline const Vulkan::TextureFormatLayout &get_layout() const
 	{
@@ -72,6 +73,7 @@ public:
 private:
 	Vulkan::TextureFormatLayout layout;
 	std::unique_ptr<Granite::File> file;
+	uint8_t *mapped = nullptr;
 	bool cube = false;
 	bool mipgen_on_load = false;
 };

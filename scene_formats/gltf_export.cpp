@@ -1508,6 +1508,18 @@ static void compress_image(ThreadGroup &workers, const string &target_path, shar
 
 	if (result->compression != TextureCompression::Uncompressed)
 		compress_texture(workers, args, result->image, mipgen_task, signal);
+	else if (result->image->get_layout().get_levels() != 1 || result->mode == TextureMode::HDR)
+	{
+		auto write_task = workers.create_task([=]() {
+			if (!result->image->copy_to_path(args.output))
+				LOGE("Failed to copy image.\n");
+
+			LOGI("Unmapping %u bytes for texture writing.\n", unsigned(result->image->get_required_size()));
+			result->image.reset();
+		});
+		write_task->set_fence_counter_signal(signal);
+		workers.add_dependency(write_task, mipgen_task);
+	}
 	else
 		mipgen_task->set_fence_counter_signal(signal);
 }

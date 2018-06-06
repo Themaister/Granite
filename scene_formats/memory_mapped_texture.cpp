@@ -88,10 +88,28 @@ void MemoryMappedTexture::set_cube(VkFormat format, uint32_t size, uint32_t cube
 	cube = true;
 }
 
+bool MemoryMappedTexture::copy_to_path(const std::string &path)
+{
+	if (layout.get_required_size() == 0 || !mapped)
+		return false;
+
+	auto target_file = Filesystem::get().open(path, FileMode::WriteOnly);
+	if (!target_file)
+		return false;
+
+	void *new_mapped = target_file->map_write(get_required_size());
+	if (!new_mapped)
+		return false;
+
+	memcpy(new_mapped, mapped, get_required_size());
+	target_file->unmap();
+	return true;
+}
+
 bool MemoryMappedTexture::map_write(unique_ptr<Granite::File> new_file, void *mapped_)
 {
 	file = move(new_file);
-	auto *mapped = static_cast<uint8_t *>(mapped_);
+	mapped = static_cast<uint8_t *>(mapped_);
 
 	MemoryMappedHeader header = {};
 	memcpy(header.magic, MAGIC, sizeof(MAGIC));
@@ -119,7 +137,7 @@ bool MemoryMappedTexture::map_write(const std::string &path)
 	if (!new_file)
 		return false;
 
-	void *mapped = new_file->map_write(get_required_size());
+	mapped = static_cast<uint8_t *>(new_file->map_write(get_required_size()));
 	if (!mapped)
 		return false;
 
@@ -178,16 +196,17 @@ size_t MemoryMappedTexture::get_required_size() const
 	return layout.get_required_size() + sizeof(MemoryMappedHeader);
 }
 
-bool MemoryMappedTexture::map_copy(const void *mapped, size_t size)
+bool MemoryMappedTexture::map_copy(const void *mapped_, size_t size)
 {
-	auto new_file = make_unique<ScratchFile>(mapped, size);
+	auto new_file = make_unique<ScratchFile>(mapped_, size);
 	if (new_file->get_size() < sizeof(MemoryMappedHeader))
 		return false;
 	return map_read(move(file), new_file->map());
 }
 
-bool MemoryMappedTexture::map_read(unique_ptr<Granite::File> new_file, void *mapped)
+bool MemoryMappedTexture::map_read(unique_ptr<Granite::File> new_file, void *mapped_)
 {
+	mapped = static_cast<uint8_t *>(mapped_);
 	file = move(new_file);
 
 	auto *header = reinterpret_cast<const MemoryMappedHeader *>(mapped);
@@ -237,11 +256,11 @@ bool MemoryMappedTexture::map_read(const std::string &path)
 	return map_read(move(file), mapped);
 }
 
-bool MemoryMappedTexture::is_header(const void *mapped, size_t size)
+bool MemoryMappedTexture::is_header(const void *mapped_, size_t size)
 {
 	if (size < sizeof(MemoryMappedHeader))
 		return false;
-	return memcmp(mapped, MAGIC, sizeof(MAGIC)) == 0;
+	return memcmp(mapped_, MAGIC, sizeof(MAGIC)) == 0;
 }
 }
 }

@@ -826,7 +826,9 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 
 	if (config.show_ui)
 	{
-		auto &ui = graph.add_pass("ui", RenderGraph::get_default_post_graphics_queue());
+		auto &ui = graph.add_pass("ui", config.hdr_bloom ?
+		                          RenderGraph::get_default_post_graphics_queue() : RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
+
 		AttachmentInfo ui_info;
 		ui.add_color_output("ui-output", ui_info, ui_source);
 		graph.set_backbuffer_source("ui-output");

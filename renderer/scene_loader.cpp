@@ -155,8 +155,14 @@ Scene::NodeHandle SceneLoader::build_tree_for_subscene(const SubsceneData &subsc
 	}
 
 	auto root = scene->create_node();
+#if 0
+	for (auto &node : nodes)
+		if (node && !node->get_parent())
+			root->add_child(node);
+#else
 	for (auto &node_index : scene_nodes.node_indices)
 		root->add_child(nodes[node_index]);
+#endif
 
 	return root;
 }

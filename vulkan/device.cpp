@@ -125,7 +125,7 @@ void Device::add_wait_semaphore_nolock(CommandBuffer::Type type, Semaphore semap
 	data.need_fence = true;
 
 	// Sanity check.
-	VK_ASSERT(data.wait_semaphores.size() < 1024);
+	VK_ASSERT(data.wait_semaphores.size() < 16 * 1024);
 }
 
 void *Device::map_host_buffer(Buffer &buffer, MemoryAccessFlags access)

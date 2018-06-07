@@ -510,6 +510,8 @@ static MeshAttribute semantic_to_attribute(const char *semantic)
 		return MeshAttribute::BoneWeights;
 	else if (!strcmp(semantic, "COLOR_0"))
 		return MeshAttribute::VertexColor;
+	else if (!strcmp(semantic, "TEXCOORD_1"))
+		return MeshAttribute::Count; // Ignore
 	else
 		throw logic_error("Unsupported semantic.");
 }
@@ -760,8 +762,11 @@ void Parser::parse(const string &original_path, const string &json)
 			uint32_t accessor_index = itr->value.GetUint();
 			MeshAttribute attribute = semantic_to_attribute(semantic);
 
-			attr.attributes[ecast(attribute)].accessor_index = accessor_index;
-			attr.attributes[ecast(attribute)].active = true;
+			if (attribute != MeshAttribute::Count)
+			{
+				attr.attributes[ecast(attribute)].accessor_index = accessor_index;
+				attr.attributes[ecast(attribute)].active = true;
+			}
 		}
 
 		return attr;

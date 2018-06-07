@@ -79,8 +79,36 @@ void Texture::update(std::unique_ptr<Granite::File> file)
 	task->flush();
 }
 
+void Texture::update_checkerboard()
+{
+	LOGE("Failed to load texture: %s, falling back to a checkerboard.\n",
+	     path.c_str());
+
+	ImageInitialData initial = {};
+	static const uint32_t checkerboard[] = {
+			0xffffffffu, 0xffffffffu, 0xff000000u, 0xff000000u,
+			0xffffffffu, 0xffffffffu, 0xff000000u, 0xff000000u,
+			0xff000000u, 0xff000000u, 0xffffffffu, 0xffffffffu,
+			0xff000000u, 0xff000000u, 0xffffffffu, 0xffffffffu,
+	};
+	initial.data = checkerboard;
+
+	auto info = ImageCreateInfo::immutable_2d_image(4, 4, VK_FORMAT_R8G8B8A8_UNORM, false);
+
+	auto image = device->create_image(info, &initial);
+	if (image)
+		device->set_name(*image, path.c_str());
+	replace_image(image);
+}
+
 void Texture::update_gtx(const MemoryMappedTexture &mapped_file)
 {
+	if (mapped_file.empty())
+	{
+		update_checkerboard();
+		return;
+	}
+
 	auto &layout = mapped_file.get_layout();
 
 	ImageCreateInfo info = {};

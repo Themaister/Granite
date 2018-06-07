@@ -65,6 +65,7 @@ private:
 	void update_other(const void *data, size_t size);
 	void update_gtx(std::unique_ptr<Granite::File> file, void *mapped);
 	void update_gtx(const Granite::SceneFormats::MemoryMappedTexture &texture);
+	void update_checkerboard();
 
 	void load();
 	void unload();

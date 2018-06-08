@@ -20,55 +20,56 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include "gltf_export.hpp"
 #include "util.hpp"
+#include "cli_parser.hpp"
+#include "obj.hpp"
+
 using namespace std;
+using namespace Util;
 
-namespace Util
+static void print_help()
 {
-static vector<string> split(const string &str, const char *delim, bool allow_empty)
-{
-	if (str.empty())
-		return {};
-	vector<string> ret;
+	LOGI("Usage: --output <out.glb> input.obj\n");
+}
 
-	size_t start_index = 0;
-	size_t index = 0;
-	while ((index = str.find_first_of(delim, start_index)) != string::npos)
+int main(int argc, char *argv[])
+{
+	struct Arguments
 	{
-		if (allow_empty || index > start_index)
-			ret.push_back(str.substr(start_index, index - start_index));
-		start_index = index + 1;
+		string input;
+		string output;
+	} args;
 
-		if (allow_empty && (index == str.size() - 1))
-			ret.emplace_back();
+	CLICallbacks cbs;
+	cbs.add("--output", [&](CLIParser &parser) { args.output = parser.next_string(); });
+	cbs.add("--help", [](CLIParser &parser) { print_help(); parser.end(); });
+	cbs.default_handler = [&](const char *arg) { args.input = arg; };
+	CLIParser cli_parser(move(cbs), argc - 1, argv + 1);
+	if (!cli_parser.parse())
+		return 1;
+	else if (cli_parser.is_ended_state())
+		return 0;
+
+	if (args.input.empty() || args.output.empty())
+	{
+		print_help();
+		return 1;
 	}
 
-	if (start_index < str.size())
-		ret.push_back(str.substr(start_index));
-	return ret;
-}
+	OBJ::Parser parser(args.input);
 
-vector<string> split(const string &str, const char *delim)
-{
-	return split(str, delim, true);
-}
+	SceneFormats::SceneInformation info;
+	info.materials = parser.get_materials();
+	info.nodes = parser.get_nodes();
+	info.meshes = parser.get_meshes();
+	SceneFormats::ExportOptions options;
 
-vector<string> split_no_empty(const string &str, const char *delim)
-{
-	return split(str, delim, false);
-}
+	if (!SceneFormats::export_scene_to_glb(info, args.output, options))
+	{
+		LOGE("Failed to export scene to GLB.\n");
+		return 1;
+	}
 
-string strip_whitespace(const string &str)
-{
-	string ret;
-	auto index = str.find_first_not_of(" \t");
-	if (index == string::npos)
-		return "";
-	ret = str.substr(index, string::npos);
-	index = ret.find_last_not_of(" \t");
-	if (index != string::npos)
-		return ret.substr(0, index + 1);
-	else
-		return ret;
-}
+	return 0;
 }

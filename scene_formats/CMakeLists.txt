@@ -29,6 +29,7 @@ target_link_libraries(texture-compression util filesystem renderer threading)
 
 add_granite_library(scene-formats
         gltf.cpp gltf.hpp
+        obj.cpp obj.hpp
         scene_formats.hpp scene_formats.cpp
         light_export.cpp light_export.hpp
         camera_export.cpp camera_export.hpp

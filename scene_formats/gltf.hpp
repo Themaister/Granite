@@ -55,7 +55,7 @@ enum class ScalarType
 class Parser
 {
 public:
-	Parser(const std::string &path);
+	explicit Parser(const std::string &path);
 
 	const std::vector<SceneNodes> &get_scenes() const
 	{

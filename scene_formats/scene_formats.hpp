@@ -159,7 +159,12 @@ struct MaterialInfo
 	struct Texture
 	{
 		std::string path;
-		VkComponentMapping swizzle;
+		VkComponentMapping swizzle = {
+			VK_COMPONENT_SWIZZLE_R,
+			VK_COMPONENT_SWIZZLE_G,
+			VK_COMPONENT_SWIZZLE_B,
+			VK_COMPONENT_SWIZZLE_A
+		};
 	};
 	Texture base_color;
 	Texture normal;

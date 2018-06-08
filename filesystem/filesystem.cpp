@@ -26,6 +26,7 @@
 #include "path.hpp"
 #include "util.hpp"
 #include <stdlib.h>
+#include <algorithm>
 
 using namespace std;
 
@@ -225,6 +226,10 @@ bool Filesystem::read_file_to_string(const std::string &path, std::string &str)
 		return false;
 
 	str = string(mapped, mapped + size);
+
+	// Remove DOS EOL.
+	str.erase(remove_if(begin(str), end(str), [](char c) { return c == '\r'; }), end(str));
+
 	return true;
 }
 

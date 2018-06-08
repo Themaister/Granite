@@ -171,5 +171,6 @@ std::string join(Ts &&... ts)
 
 std::vector<std::string> split(const std::string &str, const char *delim);
 std::vector<std::string> split_no_empty(const std::string &str, const char *delim);
+std::string strip_whitespace(const std::string &str);
 
 }

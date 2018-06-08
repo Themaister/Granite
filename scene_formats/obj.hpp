@@ -20,55 +20,58 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "util.hpp"
-using namespace std;
+#pragma once
 
-namespace Util
-{
-static vector<string> split(const string &str, const char *delim, bool allow_empty)
-{
-	if (str.empty())
-		return {};
-	vector<string> ret;
+#include <string>
+#include <vector>
+#include "math.hpp"
+#include "scene_formats.hpp"
 
-	size_t start_index = 0;
-	size_t index = 0;
-	while ((index = str.find_first_of(delim, start_index)) != string::npos)
+namespace OBJ
+{
+using namespace Granite;
+using namespace Granite::SceneFormats;
+
+class Parser
+{
+public:
+	explicit Parser(const std::string &path);
+
+	const std::vector<Mesh> &get_meshes() const
 	{
-		if (allow_empty || index > start_index)
-			ret.push_back(str.substr(start_index, index - start_index));
-		start_index = index + 1;
-
-		if (allow_empty && (index == str.size() - 1))
-			ret.emplace_back();
+		return meshes;
 	}
 
-	if (start_index < str.size())
-		ret.push_back(str.substr(start_index));
-	return ret;
-}
+	const std::vector<MaterialInfo> &get_materials() const
+	{
+		return materials;
+	}
 
-vector<string> split(const string &str, const char *delim)
-{
-	return split(str, delim, true);
-}
+	const std::vector<Node> &get_nodes() const
+	{
+		return nodes;
+	}
 
-vector<string> split_no_empty(const string &str, const char *delim)
-{
-	return split(str, delim, false);
-}
+private:
+	std::vector<MaterialInfo> materials;
+	std::vector<Node> nodes;
+	std::vector<Mesh> meshes;
+	std::unordered_map<std::string, unsigned> material_library;
 
-string strip_whitespace(const string &str)
-{
-	string ret;
-	auto index = str.find_first_not_of(" \t");
-	if (index == string::npos)
-		return "";
-	ret = str.substr(index, string::npos);
-	index = ret.find_last_not_of(" \t");
-	if (index != string::npos)
-		return ret.substr(0, index + 1);
-	else
-		return ret;
-}
+	std::vector<vec3> positions;
+	std::vector<vec3> normals;
+	std::vector<vec2> uvs;
+	std::vector<vec3> current_positions;
+	std::vector<vec3> current_normals;
+	std::vector<vec2> current_uvs;
+	int current_material = -1;
+
+	void load_material_library(const std::string &path);
+	void flush_mesh();
+
+	using OBJVertex = std::vector<std::string>;
+	void emit_vertex(const OBJVertex * const *face);
+	void emit_gltf_pbr_metallic_roughness(const std::string &metallic, const std::string &roughness);
+	Node root_node;
+};
 }

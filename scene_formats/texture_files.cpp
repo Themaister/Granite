@@ -96,7 +96,10 @@ SceneFormats::MemoryMappedTexture load_texture_from_memory(const void *data, siz
 		return mapped;
 	}
 	else
-		return {};
+	{
+		// YOLO!
+		return load_stb(data, size, color);
+	}
 }
 
 SceneFormats::MemoryMappedTexture load_texture_from_file(const std::string &path, ColorSpace color)

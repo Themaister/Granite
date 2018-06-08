@@ -194,8 +194,8 @@ mediump vec3 compute_lighting(
 	diffref += envdiff * material_ambient_factor * (1.0 - ibl_fresnel);
 	specref += envspec * material_ambient_factor;
 #else
-	diffref += (1.0 - ibl_fresnel) * material_ambient_factor;
-	specref += iblspec * material_ambient_factor;
+	diffref += 0.1 * material_ambient_factor;
+	//specref += 0.01 * iblspec * material_ambient_factor;
 #endif
 
 	mediump vec3 reflected_light = specref;

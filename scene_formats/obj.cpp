@@ -110,6 +110,82 @@ void Parser::flush_mesh()
 	meshes.push_back(move(mesh));
 }
 
+void Parser::emit_gltf_base_color(const std::string &base_color_path, const std::string &alpha_mask_path)
+{
+	MemoryMappedTexture alpha_mask;
+	MemoryMappedTexture output;
+
+	if (!alpha_mask_path.empty())
+	{
+		alpha_mask = load_texture_from_file(alpha_mask_path, ColorSpace::Linear);
+		if (alpha_mask.empty())
+		{
+			LOGE("Failed to open alpha mask texture, falling back to default material.\n");
+			return;
+		}
+	}
+	else
+	{
+		materials.back().base_color.path = base_color_path;
+		return;
+	}
+
+	auto base_color = load_texture_from_file(base_color_path, ColorSpace::sRGB);
+	if (base_color.empty())
+	{
+		LOGE("Failed to open base color texture, falling back to default material.\n");
+		return;
+	}
+
+	unsigned width = 0;
+	unsigned height = 0;
+	Hasher hasher;
+
+	if (base_color.get_layout().get_width() != alpha_mask.get_layout().get_width())
+	{
+		LOGE("Widths of textures do not match ... Falling back to default material.\n");
+		return;
+	}
+
+	if (base_color.get_layout().get_height() != alpha_mask.get_layout().get_height())
+	{
+		LOGE("Widths of textures do not match ... Falling back to default material.\n");
+		return;
+	}
+
+	if (base_color.get_layout().get_format() != VK_FORMAT_R8G8B8A8_SRGB)
+		LOGE("Unexpected format.");
+	if (alpha_mask.get_layout().get_format() != VK_FORMAT_R8G8B8A8_UNORM)
+		LOGE("Unexpected format.");
+
+	width = base_color.get_layout().get_width();
+	height = base_color.get_layout().get_height();
+	hasher.string(base_color_path);
+	hasher.string(alpha_mask_path);
+	string packed_path = string("memory://") + to_string(hasher.get()) + ".gtx";
+	materials.back().base_color.path = packed_path;
+	materials.back().pipeline = DrawPipeline::AlphaTest;
+	materials.back().two_sided = true;
+
+	output.set_2d(VK_FORMAT_R8G8B8A8_SRGB, width, height);
+	if (!output.map_write(packed_path))
+	{
+		LOGE("Failed to map texture for writing.\n");
+		return;
+	}
+
+	for (unsigned y = 0; y < height; y++)
+	{
+		for (unsigned x = 0; x < width; x++)
+		{
+			auto *dst = output.get_layout().data_2d<u8vec4>(x, y);
+			auto *b = base_color.get_layout().data_2d<u8vec4>(x, y);
+			auto *a = alpha_mask.get_layout().data_2d<u8vec4>(x, y);
+			*dst = u8vec4(b->x, b->y, b->z, a->x);
+		}
+	}
+}
+
 void Parser::emit_gltf_pbr_metallic_roughness(const std::string &metallic_path, const std::string &roughness_path)
 {
 	MemoryMappedTexture metallic;
@@ -295,6 +371,8 @@ void Parser::load_material_library(const std::string &path)
 	vector<string> lines = split_no_empty(mtl, "\n");
 	string metallic;
 	string roughness;
+	string base_color;
+	string alpha_mask;
 
 	for (auto &line : lines)
 	{
@@ -312,11 +390,15 @@ void Parser::load_material_library(const std::string &path)
 		{
 			if (!metallic.empty() || !roughness.empty())
 				emit_gltf_pbr_metallic_roughness(metallic, roughness);
+			if (!base_color.empty())
+				emit_gltf_base_color(base_color, alpha_mask);
 
 			material_library[elements.at(1)] = unsigned(materials.size());
 			materials.push_back({});
 			metallic.clear();
 			roughness.clear();
+			base_color.clear();
+			alpha_mask.clear();
 		}
 		else if (ident == "Kd")
 		{
@@ -329,7 +411,13 @@ void Parser::load_material_library(const std::string &path)
 		{
 			if (materials.empty())
 				throw logic_error("No material");
-			materials.back().base_color.path = Path::relpath(path, elements.at(1));
+			base_color = Path::relpath(path, elements.at(1));
+		}
+		else if (ident == "map_d")
+		{
+			if (materials.empty())
+				throw logic_error("No material");
+			alpha_mask = Path::relpath(path, elements.at(1));
 		}
 		else if (ident == "bump")
 		{
@@ -355,6 +443,8 @@ void Parser::load_material_library(const std::string &path)
 
 	if (!metallic.empty() || !roughness.empty())
 		emit_gltf_pbr_metallic_roughness(metallic, roughness);
+	if (!base_color.empty())
+		emit_gltf_base_color(base_color, alpha_mask);
 }
 
 Parser::Parser(const std::string &path)

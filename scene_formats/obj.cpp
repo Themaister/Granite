@@ -35,7 +35,7 @@ void Parser::flush_mesh()
 	if (current_positions.empty())
 		return;
 
-	Mesh mesh;
+	Mesh mesh = {};
 
 	if (current_material >= 0)
 	{
@@ -94,7 +94,7 @@ void Parser::flush_mesh()
 	{
 		if (current_uvs.size() != current_positions.size())
 			throw runtime_error("UV size != position size.");
-		mesh.attribute_layout[ecast(MeshAttribute::UV)].format = VK_FORMAT_R32G32B32_SFLOAT;
+		mesh.attribute_layout[ecast(MeshAttribute::UV)].format = VK_FORMAT_R32G32_SFLOAT;
 		static const size_t stride = sizeof(vec2);
 		mesh.attribute_stride = stride;
 		mesh.attributes.resize(stride * current_positions.size());
@@ -383,7 +383,7 @@ Parser::Parser(const std::string &path)
 		else if (ident == "vn")
 			normals.push_back(vec3(stof(elements.at(1)), stof(elements.at(2)), stof(elements.at(3))));
 		else if (ident == "vt")
-			uvs.push_back(vec2(stof(elements.at(1)), stof(elements.at(2))));
+			uvs.push_back(vec2(stof(elements.at(1)), 1.0f - stof(elements.at(2))));
 		else if (ident == "usemtl")
 		{
 			auto itr = material_library.find(elements.at(1));
@@ -408,7 +408,7 @@ Parser::Parser(const std::string &path)
 				auto v3 = split(elements.at(4), "/");
 
 				const OBJVertex *f0[3] = { &v0, &v1, &v2 };
-				const OBJVertex *f1[3] = { &v3, &v2, &v1 };
+				const OBJVertex *f1[3] = { &v0, &v2, &v3 };
 				emit_vertex(f0);
 				emit_vertex(f1);
 			}

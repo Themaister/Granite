@@ -30,7 +30,7 @@ using namespace Util;
 
 static void print_help()
 {
-	LOGI("Usage: --output <out.glb> input.obj\n");
+	LOGI("Usage: --output <out.glb> --scale <scale> input.obj\n");
 }
 
 int main(int argc, char *argv[])
@@ -39,10 +39,12 @@ int main(int argc, char *argv[])
 	{
 		string input;
 		string output;
+		float scale = 1.0f;
 	} args;
 
 	CLICallbacks cbs;
 	cbs.add("--output", [&](CLIParser &parser) { args.output = parser.next_string(); });
+	cbs.add("--scale", [&](CLIParser &parser) { args.scale = parser.next_double(); });
 	cbs.add("--help", [](CLIParser &parser) { print_help(); parser.end(); });
 	cbs.default_handler = [&](const char *arg) { args.input = arg; };
 	CLIParser cli_parser(move(cbs), argc - 1, argv + 1);
@@ -61,9 +63,12 @@ int main(int argc, char *argv[])
 
 	SceneFormats::SceneInformation info;
 	info.materials = parser.get_materials();
-	info.nodes = parser.get_nodes();
 	info.meshes = parser.get_meshes();
 	SceneFormats::ExportOptions options;
+
+	vector<SceneFormats::Node> nodes = parser.get_nodes();
+	nodes.front().transform.scale = vec3(args.scale);
+	info.nodes = nodes;
 
 	if (!SceneFormats::export_scene_to_glb(info, args.output, options))
 	{

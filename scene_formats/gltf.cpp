@@ -774,12 +774,10 @@ void Parser::parse(const string &original_path, const string &json)
 
 	const auto add_mesh = [&](const Value &mesh) {
 		auto &prims = mesh["primitives"];
+		MeshData data;
 		for (auto itr = prims.Begin(); itr != prims.End(); ++itr)
-		{
-			MeshData data;
 			data.primitives.push_back(parse_primitive(*itr));
-			json_meshes.push_back(move(data));
-		}
+		json_meshes.push_back(move(data));
 	};
 
 	const auto add_image = [&](const Value &image) {

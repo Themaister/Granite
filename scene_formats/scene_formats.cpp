@@ -278,6 +278,11 @@ Mesh mesh_optimize_index_buffer(const Mesh &mesh, bool stripify)
 	return optimized;
 }
 
+static vec3 project(const vec3 &v, const vec3 &n)
+{
+	return v - dot(v, n) * n;
+}
+
 bool recompute_tangents(Mesh &mesh, bool deduplicate_vertices)
 {
 	if (mesh.attribute_layout[ecast(MeshAttribute::Tangent)].format != VK_FORMAT_R32G32B32A32_SFLOAT)
@@ -406,10 +411,8 @@ bool recompute_tangents(Mesh &mesh, bool deduplicate_vertices)
 		auto &t = get_tangent(i);
 		auto &b = get_bitangent(i);
 
-		vec3 tmp = cross(n, t.xyz());
-		vec3 new_tangent = cross(tmp, n);
-		t = vec4(normalize(new_tangent), 0.0f);
-		b = normalize(b);
+		t = vec4(normalize(project(t.xyz(), n)), 0.0f);
+		b = normalize(project(b, n));
 
 		float sign = dot(cross(n, t.xyz()), b);
 		t.w = sign > 0.0f ? 1.0f : -1.0f;

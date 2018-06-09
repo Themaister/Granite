@@ -1985,7 +1985,12 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 					break;
 				}
 
-				prim.AddMember("primitiveRestart", m.primitive_restart, allocator);
+				if (m.primitive_restart)
+				{
+					Value extras(kObjectType);
+					extras.AddMember("primitiveRestart", m.primitive_restart, allocator);
+					prim.AddMember("extras", extras, allocator);
+				}
 				prim.AddMember("attributes", attribs, allocator);
 				primitives.PushBack(prim, allocator);
 			}

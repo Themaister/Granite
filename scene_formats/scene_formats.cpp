@@ -177,6 +177,22 @@ static vector<uint32_t> remap_indices(const vector<uint32_t> &indices, const vec
 	return remapped;
 }
 
+void mesh_deduplicate_vertices(Mesh &mesh)
+{
+	auto index_remap = build_index_remap_list(mesh);
+	auto index_buffer = build_canonical_index_buffer(mesh, index_remap.index_remap);
+	rebuild_new_attributes_remap_src(mesh.positions, mesh.position_stride,
+	                                 mesh.attributes, mesh.attribute_stride,
+	                                 mesh.positions, mesh.attributes, index_remap.unique_attrib_to_source_index);
+
+	mesh.index_type = VK_INDEX_TYPE_UINT32;
+	mesh.indices.resize(index_buffer.size() * sizeof(uint32_t));
+	size_t count = index_buffer.size();
+	for (size_t i = 0; i < count; i++)
+		reinterpret_cast<uint32_t *>(mesh.indices.data())[i] = index_buffer[i];
+	mesh.count = unsigned(index_buffer.size());
+}
+
 Mesh mesh_optimize_index_buffer(const Mesh &mesh, bool stripify)
 {
 	if (mesh.topology != VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
@@ -262,7 +278,147 @@ Mesh mesh_optimize_index_buffer(const Mesh &mesh, bool stripify)
 	return optimized;
 }
 
-bool recompute_normals(Mesh &mesh)
+bool recompute_tangents(Mesh &mesh, bool deduplicate_vertices)
+{
+	if (mesh.attribute_layout[ecast(MeshAttribute::Tangent)].format != VK_FORMAT_R32G32B32A32_SFLOAT)
+	{
+		LOGE("Unsupported format for tangents.\n");
+		return false;
+	}
+
+	if (mesh.attribute_layout[ecast(MeshAttribute::Normal)].format != VK_FORMAT_R32G32B32_SFLOAT)
+	{
+		LOGE("Unsupported format for normals.\n");
+		return false;
+	}
+
+	if (mesh.attribute_layout[ecast(MeshAttribute::UV)].format != VK_FORMAT_R32G32_SFLOAT)
+	{
+		LOGE("Unsupported format for UVs.\n");
+		return false;
+	}
+
+	if (deduplicate_vertices)
+		mesh_deduplicate_vertices(mesh);
+
+	if (mesh.topology != VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+	{
+		LOGE("Unsupported primitive topology for normal computation.\n");
+		return false;
+	}
+
+	auto attr_count = unsigned(mesh.attributes.size() / mesh.attribute_stride);
+	unsigned tangent_offset = mesh.attribute_layout[ecast(MeshAttribute::Tangent)].offset;
+	vector<vec3> bitangents(attr_count);
+
+	const auto get_tangent = [&](unsigned i) -> vec4 & {
+		return *reinterpret_cast<vec4 *>(mesh.attributes.data() + tangent_offset + i * mesh.attribute_stride);
+	};
+
+	const auto get_bitangent = [&](unsigned i) -> vec3 & {
+		return bitangents[i];
+	};
+
+	const auto get_normal = [&](unsigned i) -> const vec3 & {
+		return *reinterpret_cast<const vec3 *>(mesh.attributes.data() +
+		                                       mesh.attribute_layout[ecast(MeshAttribute::Normal)].offset +
+		                                       i * mesh.attribute_stride);
+	};
+
+	const auto get_position = [&](unsigned i) -> const vec3 & {
+		return *reinterpret_cast<const vec3 *>(mesh.positions.data() + i * mesh.position_stride);
+	};
+
+	const auto get_uv = [&](unsigned i) -> const vec2 & {
+		return *reinterpret_cast<const vec2 *>(mesh.attributes.data() +
+		                                       mesh.attribute_layout[ecast(MeshAttribute::UV)].offset +
+		                                       i * mesh.attribute_stride);
+	};
+
+	for (unsigned i = 0; i < attr_count; i++)
+	{
+		get_tangent(i) = vec4(0.0f);
+		get_bitangent(i) = vec3(0.0f);
+	}
+
+	uint32_t count = mesh.count;
+	uint32_t primitives = count / 3;
+
+	const auto accumulate_tangents_bitangents = [&](const auto &op) {
+		for (unsigned i = 0; i < primitives; i++)
+		{
+			vec3 pos[3];
+			vec2 uvs[3];
+
+			for (unsigned j = 0; j < 3; j++)
+			{
+				unsigned index = op(3 * i + j);
+				pos[j] = get_position(index);
+				uvs[j] = get_uv(index);
+			}
+
+			vec3 p1 = pos[1] - pos[0];
+			vec3 p2 = pos[2] - pos[0];
+			vec2 uv1 = uvs[1] - uvs[0];
+			vec2 uv2 = uvs[2] - uvs[0];
+
+			float det = 1.0f / (uv1.x * uv2.y - uv1.y * uv2.x);
+			vec3 t = det * (p1 * uv2.y - p2 * uv1.y);
+			vec3 b = det * (p2 * uv1.x - p1 * uv2.x);
+			t = normalize(t);
+			b = normalize(b);
+
+			for (unsigned j = 0; j < 3; j++)
+			{
+				unsigned index = op(3 * i + j);
+				get_tangent(index) += vec4(t, 0.0f);
+				get_bitangent(index) += b;
+			}
+		}
+	};
+
+	// Accumulate tangents and bitangents.
+	if (mesh.indices.empty())
+	{
+		accumulate_tangents_bitangents([&](unsigned i) {
+			return i;
+		});
+	}
+	else if (mesh.index_type == VK_INDEX_TYPE_UINT16)
+	{
+		auto *ibo = reinterpret_cast<uint16_t *>(mesh.indices.data());
+		accumulate_tangents_bitangents([&](unsigned i) {
+			return ibo[i];
+		});
+	}
+	else if (mesh.index_type == VK_INDEX_TYPE_UINT32)
+	{
+		auto *ibo = reinterpret_cast<uint32_t *>(mesh.indices.data());
+		accumulate_tangents_bitangents([&](unsigned i) {
+			return ibo[i];
+		});
+	}
+
+	// Adjust tangents.
+	for (uint32_t i = 0; i < attr_count; i++)
+	{
+		auto &n = get_normal(i);
+		auto &t = get_tangent(i);
+		auto &b = get_bitangent(i);
+
+		vec3 tmp = cross(n, t.xyz());
+		vec3 new_tangent = cross(tmp, n);
+		t = vec4(normalize(new_tangent), 0.0f);
+		b = normalize(b);
+
+		float sign = dot(cross(n, t.xyz()), b);
+		t.w = sign > 0.0f ? 1.0f : -1.0f;
+	}
+
+	return true;
+}
+
+bool recompute_normals(Mesh &mesh, bool deduplicate_vertices)
 {
 	if (mesh.attribute_layout[ecast(MeshAttribute::Position)].format != VK_FORMAT_R32G32B32_SFLOAT &&
 	    mesh.attribute_layout[ecast(MeshAttribute::Position)].format != VK_FORMAT_R32G32B32A32_SFLOAT)
@@ -277,13 +433,16 @@ bool recompute_normals(Mesh &mesh)
 		return false;
 	}
 
+	if (deduplicate_vertices)
+		mesh_deduplicate_vertices(mesh);
+
 	if (mesh.topology != VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
 	{
 		LOGE("Unsupported primitive topology for normal computation.\n");
 		return false;
 	}
 
-	unsigned attr_count = mesh.attributes.size() / mesh.attribute_stride;
+	auto attr_count = unsigned(mesh.attributes.size() / mesh.attribute_stride);
 	unsigned normal_offset = mesh.attribute_layout[ecast(MeshAttribute::Normal)].offset;
 
 	const auto get_normal = [&](unsigned i) -> vec3 & {

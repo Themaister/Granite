@@ -511,7 +511,7 @@ static MeshAttribute semantic_to_attribute(const char *semantic)
 	else if (!strcmp(semantic, "COLOR_0"))
 		return MeshAttribute::VertexColor;
 	else if (!strcmp(semantic, "TEXCOORD_1"))
-		return MeshAttribute::Count; // Ignore
+		return MeshAttribute::None; // Ignore
 	else
 		throw logic_error("Unsupported semantic.");
 }
@@ -752,8 +752,12 @@ void Parser::parse(const string &original_path, const string &json)
 		}
 
 		attr.primitive_restart = false;
-		if (primitive.HasMember("primitiveRestart"))
-			attr.primitive_restart = primitive["primitiveRestart"].GetBool();
+		if (primitive.HasMember("extras"))
+		{
+			auto &extras = primitive["extras"];
+			if (extras.HasMember("primitiveRestart"))
+				attr.primitive_restart = extras["primitiveRestart"].GetBool();
+		}
 
 		auto &attrs = primitive["attributes"];
 		for (auto itr = attrs.MemberBegin(); itr != attrs.MemberEnd(); ++itr)
@@ -762,7 +766,7 @@ void Parser::parse(const string &original_path, const string &json)
 			uint32_t accessor_index = itr->value.GetUint();
 			MeshAttribute attribute = semantic_to_attribute(semantic);
 
-			if (attribute != MeshAttribute::Count)
+			if (attribute != MeshAttribute::None)
 			{
 				attr.attributes[ecast(attribute)].accessor_index = accessor_index;
 				attr.attributes[ecast(attribute)].active = true;
@@ -1614,17 +1618,30 @@ void Parser::build_primitive(const MeshData::AttributeData &prim)
 	mesh.static_aabb = AABB(aabb_min, aabb_max);
 
 	bool rebuild_normals = false;
+	bool rebuild_tangents = false;
 
 	for (uint32_t i = 0; i < ecast(MeshAttribute::Count); i++)
 	{
 		if (i == ecast(MeshAttribute::Position) && !prim.attributes[i].active)
 			throw logic_error("Mesh must have POSITION semantic.");
-		else if (i == ecast(MeshAttribute::Normal) && !prim.attributes[i].active)
+		else if (i == ecast(MeshAttribute::Normal) &&
+		         !prim.attributes[i].active)
 		{
 			rebuild_normals = true;
 			mesh.attribute_layout[i].format = VK_FORMAT_R32G32B32_SFLOAT;
-			mesh.attribute_layout[i].offset = mesh.position_stride;
+			mesh.attribute_layout[i].offset = mesh.attribute_stride;
 			mesh.attribute_stride += 3 * sizeof(float);
+			continue;
+		}
+		else if (i == ecast(MeshAttribute::Tangent) &&
+		         mesh.has_material &&
+		         !prim.attributes[i].active &&
+		         !materials[mesh.material_index].normal.path.empty())
+		{
+			rebuild_tangents = true;
+			mesh.attribute_layout[i].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+			mesh.attribute_layout[i].offset = mesh.attribute_stride;
+			mesh.attribute_stride += 4 * sizeof(float);
 			continue;
 		}
 
@@ -1828,8 +1845,15 @@ void Parser::build_primitive(const MeshData::AttributeData &prim)
 		mesh.count = index_count;
 	}
 
-	if (rebuild_normals)
-		recompute_normals(mesh);
+	if (rebuild_normals && rebuild_tangents)
+	{
+		recompute_normals(mesh, true);
+		recompute_tangents(mesh, false);
+	}
+	else if (rebuild_normals)
+		recompute_normals(mesh, true);
+	else if (rebuild_tangents)
+		recompute_tangents(mesh, true);
 
 	meshes.push_back(move(mesh));
 }

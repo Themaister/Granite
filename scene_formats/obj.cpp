@@ -106,6 +106,8 @@ void Parser::flush_mesh()
 	current_normals.clear();
 	current_uvs.clear();
 
+	mesh_deduplicate_vertices(mesh);
+
 	root_node.meshes.push_back(meshes.size());
 	meshes.push_back(move(mesh));
 }

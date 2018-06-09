@@ -42,7 +42,8 @@ enum class MeshAttribute : unsigned
 	BoneIndex = 4,
 	BoneWeights = 5,
 	VertexColor = 6,
-	Count
+	Count,
+	None
 };
 
 enum MeshAttributeFlagBits

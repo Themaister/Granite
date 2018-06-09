@@ -1845,15 +1845,10 @@ void Parser::build_primitive(const MeshData::AttributeData &prim)
 		mesh.count = index_count;
 	}
 
-	if (rebuild_normals && rebuild_tangents)
-	{
-		recompute_normals(mesh, true);
-		recompute_tangents(mesh, false);
-	}
-	else if (rebuild_normals)
-		recompute_normals(mesh, true);
-	else if (rebuild_tangents)
-		recompute_tangents(mesh, true);
+	if (rebuild_normals)
+		recompute_normals(mesh);
+	if (rebuild_tangents)
+		recompute_tangents(mesh);
 
 	meshes.push_back(move(mesh));
 }

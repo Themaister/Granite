@@ -25,7 +25,9 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <mikktspace/mikktspace.h>
 #include "meshoptimizer.h"
+#include "mikktspace.h"
 
 using namespace Util;
 using namespace std;
@@ -177,6 +179,51 @@ static vector<uint32_t> remap_indices(const vector<uint32_t> &indices, const vec
 	return remapped;
 }
 
+static bool mesh_unroll_vertices(Mesh &mesh)
+{
+	if (mesh.topology != VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+		return false;
+	if (mesh.indices.empty())
+		return true;
+
+	vector<uint8_t> positions(mesh.count * mesh.position_stride);
+	vector<uint8_t> attributes(mesh.count * mesh.attribute_stride);
+
+	if (mesh.index_type == VK_INDEX_TYPE_UINT32)
+	{
+		const uint32_t *ibo = reinterpret_cast<const uint32_t *>(mesh.indices.data());
+		for (unsigned i = 0; i < mesh.count; i++)
+		{
+			uint32_t index = ibo[i];
+			memcpy(positions.data() + i * mesh.position_stride,
+			       mesh.positions.data() + index * mesh.position_stride,
+			       mesh.position_stride);
+			memcpy(attributes.data() + i * mesh.attribute_stride,
+			       mesh.attributes.data() + index * mesh.attribute_stride,
+			       mesh.attribute_stride);
+		}
+	}
+	else if (mesh.index_type == VK_INDEX_TYPE_UINT16)
+	{
+		const uint16_t *ibo = reinterpret_cast<const uint16_t *>(mesh.indices.data());
+		for (unsigned i = 0; i < mesh.count; i++)
+		{
+			uint16_t index = ibo[i];
+			memcpy(positions.data() + i * mesh.position_stride,
+			       mesh.positions.data() + index * mesh.position_stride,
+			       mesh.position_stride);
+			memcpy(attributes.data() + i * mesh.attribute_stride,
+			       mesh.attributes.data() + index * mesh.attribute_stride,
+			       mesh.attribute_stride);
+		}
+	}
+
+	mesh.positions = move(positions);
+	mesh.attributes = move(attributes);
+	mesh.indices.clear();
+	return true;
+}
+
 void mesh_deduplicate_vertices(Mesh &mesh)
 {
 	auto index_remap = build_index_remap_list(mesh);
@@ -278,12 +325,7 @@ Mesh mesh_optimize_index_buffer(const Mesh &mesh, bool stripify)
 	return optimized;
 }
 
-static vec3 project(const vec3 &v, const vec3 &n)
-{
-	return v - dot(v, n) * n;
-}
-
-bool recompute_tangents(Mesh &mesh, bool deduplicate_vertices)
+bool recompute_tangents(Mesh &mesh)
 {
 	if (mesh.attribute_layout[ecast(MeshAttribute::Tangent)].format != VK_FORMAT_R32G32B32A32_SFLOAT)
 	{
@@ -303,163 +345,67 @@ bool recompute_tangents(Mesh &mesh, bool deduplicate_vertices)
 		return false;
 	}
 
-	if (deduplicate_vertices)
-		mesh_deduplicate_vertices(mesh);
-
-	if (mesh.topology != VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
-	{
-		LOGE("Unsupported primitive topology for normal computation.\n");
+	if (!mesh_unroll_vertices(mesh))
 		return false;
-	}
 
-	auto attr_count = unsigned(mesh.attributes.size() / mesh.attribute_stride);
-	unsigned tangent_offset = mesh.attribute_layout[ecast(MeshAttribute::Tangent)].offset;
-	vector<vec3> bitangents(attr_count);
+	SMikkTSpaceInterface iface = {};
 
-	const auto get_tangent = [&](unsigned i) -> vec4 & {
-		return *reinterpret_cast<vec4 *>(mesh.attributes.data() + tangent_offset + i * mesh.attribute_stride);
+	iface.m_getNumFaces = [](const SMikkTSpaceContext *ctx) -> int {
+		const Mesh *m = static_cast<const Mesh *>(ctx->m_pUserData);
+		return m->count / 3;
 	};
 
-	const auto get_bitangent = [&](unsigned i) -> vec3 & {
-		return bitangents[i];
+	iface.m_getNumVerticesOfFace = [](const SMikkTSpaceContext *, const int) -> int {
+		return 3;
 	};
 
-	const auto get_normal = [&](unsigned i) -> const vec3 & {
-		return *reinterpret_cast<const vec3 *>(mesh.attributes.data() +
-		                                       mesh.attribute_layout[ecast(MeshAttribute::Normal)].offset +
-		                                       i * mesh.attribute_stride);
+	iface.m_getNormal = [](const SMikkTSpaceContext *ctx, float normals[],
+	                       const int iface, const int ivert) {
+		int i = iface * 3 + ivert;
+		const Mesh *m = static_cast<const Mesh *>(ctx->m_pUserData);
+		memcpy(normals, m->attributes.data() + i * m->attribute_stride +
+		                m->attribute_layout[ecast(MeshAttribute::Normal)].offset,
+		       sizeof(vec3));
 	};
 
-	const auto get_position = [&](unsigned i) -> const vec3 & {
-		return *reinterpret_cast<const vec3 *>(mesh.positions.data() + i * mesh.position_stride);
+	iface.m_getTexCoord = [](const SMikkTSpaceContext *ctx, float normals[],
+	                         const int iface, const int ivert) {
+		int i = iface * 3 + ivert;
+		const Mesh *m = static_cast<const Mesh *>(ctx->m_pUserData);
+		memcpy(normals, m->attributes.data() + i * m->attribute_stride +
+		                m->attribute_layout[ecast(MeshAttribute::UV)].offset,
+		       sizeof(vec2));
 	};
 
-	const auto get_uv = [&](unsigned i) -> const vec2 & {
-		return *reinterpret_cast<const vec2 *>(mesh.attributes.data() +
-		                                       mesh.attribute_layout[ecast(MeshAttribute::UV)].offset +
-		                                       i * mesh.attribute_stride);
+	iface.m_getPosition = [](const SMikkTSpaceContext *ctx, float normals[],
+	                         const int iface, const int ivert) {
+		int i = iface * 3 + ivert;
+		const Mesh *m = static_cast<const Mesh *>(ctx->m_pUserData);
+		memcpy(normals, m->positions.data() + i * m->position_stride,
+		       sizeof(vec3));
 	};
 
-	for (unsigned i = 0; i < attr_count; i++)
-	{
-		get_tangent(i) = vec4(0.0f);
-		get_bitangent(i) = vec3(0.0f);
-	}
-
-	uint32_t count = mesh.count;
-	uint32_t primitives = count / 3;
-
-	const auto accumulate_tangents_bitangents = [&](const auto &op) {
-		for (unsigned i = 0; i < primitives; i++)
-		{
-			vec3 pos[3];
-			vec2 uvs[3];
-
-			for (unsigned j = 0; j < 3; j++)
-			{
-				unsigned index = op(3 * i + j);
-				pos[j] = get_position(index);
-				uvs[j] = get_uv(index);
-			}
-
-			vec3 p1 = pos[1] - pos[0];
-			vec3 p2 = pos[2] - pos[0];
-			vec2 uv1 = uvs[1] - uvs[0];
-			vec2 uv2 = uvs[2] - uvs[0];
-
-			float det = 1.0f / (uv1.x * uv2.y - uv1.y * uv2.x);
-			vec3 t = det * (p1 * uv2.y - p2 * uv1.y);
-			vec3 b = det * (p2 * uv1.x - p1 * uv2.x);
-			t = normalize(t);
-			b = normalize(b);
-
-			for (unsigned j = 0; j < 3; j++)
-			{
-				unsigned index = op(3 * i + j);
-				get_tangent(index) += vec4(t, 0.0f);
-				get_bitangent(index) += b;
-			}
-		}
+	iface.m_setTSpaceBasic = [](const SMikkTSpaceContext *ctx, const float tangent[], const float sign,
+	                            const int iface, const int ivert) {
+		int i = iface * 3 + ivert;
+		Mesh *m = static_cast<Mesh *>(ctx->m_pUserData);
+		vec4 t(tangent[0], tangent[1], tangent[2], -sign);
+		memcpy(m->attributes.data() + i * m->attribute_stride +
+		       m->attribute_layout[ecast(MeshAttribute::Tangent)].offset,
+		       &t,
+		       sizeof(vec4));
 	};
 
-	const auto check_tangent_winding = [&](const auto &op) {
-		for (unsigned i = 0; i < primitives; i++)
-		{
-			float winding[3] = {};
-			for (unsigned j = 0; j < 3; j++)
-			{
-				unsigned index = op(3 * i + j);
-				winding[j] = get_tangent(index).w;
-			}
+	SMikkTSpaceContext ctx;
+	ctx.m_pUserData = &mesh;
+	ctx.m_pInterface = &iface;
+	genTangSpaceDefault(&ctx);
 
-			bool all_pos = winding[0] > 0.0f && winding[1] > 0.0f && winding[2] > 0.0f;
-			bool all_neg = winding[0] < 0.0f && winding[1] < 0.0f && winding[2] < 0.0f;
-			if (!all_pos || !all_neg)
-				LOGE("Tangent space error found!\n");
-		}
-	};
-
-	// Accumulate tangents and bitangents.
-	if (mesh.indices.empty())
-	{
-		accumulate_tangents_bitangents([&](unsigned i) {
-			return i;
-		});
-	}
-	else if (mesh.index_type == VK_INDEX_TYPE_UINT16)
-	{
-		auto *ibo = reinterpret_cast<uint16_t *>(mesh.indices.data());
-		accumulate_tangents_bitangents([&](unsigned i) {
-			return ibo[i];
-		});
-	}
-	else if (mesh.index_type == VK_INDEX_TYPE_UINT32)
-	{
-		auto *ibo = reinterpret_cast<uint32_t *>(mesh.indices.data());
-		accumulate_tangents_bitangents([&](unsigned i) {
-			return ibo[i];
-		});
-	}
-
-	// Adjust tangents.
-	for (uint32_t i = 0; i < attr_count; i++)
-	{
-		auto &n = get_normal(i);
-		auto &t = get_tangent(i);
-		auto &b = get_bitangent(i);
-
-		t = vec4(normalize(project(t.xyz(), n)), 0.0f);
-		b = normalize(project(b, n));
-
-		float sign = dot(cross(n, t.xyz()), b);
-		t.w = sign > 0.0f ? 1.0f : -1.0f;
-	}
-
-	if (mesh.indices.empty())
-	{
-		check_tangent_winding([&](unsigned i) {
-			return i;
-		});
-	}
-	else if (mesh.index_type == VK_INDEX_TYPE_UINT16)
-	{
-		auto *ibo = reinterpret_cast<uint16_t *>(mesh.indices.data());
-		check_tangent_winding([&](unsigned i) {
-			return ibo[i];
-		});
-	}
-	else if (mesh.index_type == VK_INDEX_TYPE_UINT32)
-	{
-		auto *ibo = reinterpret_cast<uint32_t *>(mesh.indices.data());
-		check_tangent_winding([&](unsigned i) {
-			return ibo[i];
-		});
-	}
-
+	mesh_deduplicate_vertices(mesh);
 	return true;
 }
 
-bool recompute_normals(Mesh &mesh, bool deduplicate_vertices)
+bool recompute_normals(Mesh &mesh)
 {
 	if (mesh.attribute_layout[ecast(MeshAttribute::Position)].format != VK_FORMAT_R32G32B32_SFLOAT &&
 	    mesh.attribute_layout[ecast(MeshAttribute::Position)].format != VK_FORMAT_R32G32B32A32_SFLOAT)
@@ -474,8 +420,7 @@ bool recompute_normals(Mesh &mesh, bool deduplicate_vertices)
 		return false;
 	}
 
-	if (deduplicate_vertices)
-		mesh_deduplicate_vertices(mesh);
+	mesh_deduplicate_vertices(mesh);
 
 	if (mesh.topology != VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
 	{

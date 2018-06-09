@@ -51,6 +51,7 @@ add_subdirectory(third_party/stb EXCLUDE_FROM_ALL)
 add_subdirectory(third_party/spirv-cross EXCLUDE_FROM_ALL)
 add_subdirectory(third_party/astc-encoder/Source EXCLUDE_FROM_ALL)
 add_subdirectory(third_party/meshoptimizer EXCLUDE_FROM_ALL)
+add_subdirectory(third_party/mikktspace EXCLUDE_FROM_ALL)
 
 set(FOSSILIZE_CLI OFF CACHE BOOL "Fossilize CLI." FORCE)
 set(FOSSILIZE_TESTS OFF CACHE BOOL "Fossilize tests." FORCE)

@@ -172,4 +172,5 @@ These are pulled in as submodules.
 - [volk](https://github.com/zeux/volk)
 - [meshoptimizer](https://github.com/zeux/meshoptimizer)
 - [Fossilize](https://github.com/Themaister/Fossilize)
+- MikkTSpace (inlined into `third_party/mikktspace`)
 

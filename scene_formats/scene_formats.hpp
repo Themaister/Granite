@@ -261,8 +261,8 @@ struct SceneInformation
 	const SceneNodes *scene_nodes = nullptr;
 };
 
-bool recompute_normals(Mesh &mesh, bool deduplicate_vertices);
-bool recompute_tangents(Mesh &mesh, bool deduplicate_vertices);
+bool recompute_normals(Mesh &mesh);
+bool recompute_tangents(Mesh &mesh);
 void mesh_deduplicate_vertices(Mesh &mesh);
 Mesh mesh_optimize_index_buffer(const Mesh &mesh, bool stripify);
 std::unordered_set<uint32_t> build_used_nodes_in_scene(const SceneNodes &scene, const std::vector<Node> &nodes);

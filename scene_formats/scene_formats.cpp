@@ -382,6 +382,23 @@ bool recompute_tangents(Mesh &mesh, bool deduplicate_vertices)
 		}
 	};
 
+	const auto check_tangent_winding = [&](const auto &op) {
+		for (unsigned i = 0; i < primitives; i++)
+		{
+			float winding[3] = {};
+			for (unsigned j = 0; j < 3; j++)
+			{
+				unsigned index = op(3 * i + j);
+				winding[j] = get_tangent(index).w;
+			}
+
+			bool all_pos = winding[0] > 0.0f && winding[1] > 0.0f && winding[2] > 0.0f;
+			bool all_neg = winding[0] < 0.0f && winding[1] < 0.0f && winding[2] < 0.0f;
+			if (!all_pos || !all_neg)
+				LOGE("Tangent space error found!\n");
+		}
+	};
+
 	// Accumulate tangents and bitangents.
 	if (mesh.indices.empty())
 	{
@@ -416,6 +433,27 @@ bool recompute_tangents(Mesh &mesh, bool deduplicate_vertices)
 
 		float sign = dot(cross(n, t.xyz()), b);
 		t.w = sign > 0.0f ? 1.0f : -1.0f;
+	}
+
+	if (mesh.indices.empty())
+	{
+		check_tangent_winding([&](unsigned i) {
+			return i;
+		});
+	}
+	else if (mesh.index_type == VK_INDEX_TYPE_UINT16)
+	{
+		auto *ibo = reinterpret_cast<uint16_t *>(mesh.indices.data());
+		check_tangent_winding([&](unsigned i) {
+			return ibo[i];
+		});
+	}
+	else if (mesh.index_type == VK_INDEX_TYPE_UINT32)
+	{
+		auto *ibo = reinterpret_cast<uint32_t *>(mesh.indices.data());
+		check_tangent_winding([&](unsigned i) {
+			return ibo[i];
+		});
 	}
 
 	return true;

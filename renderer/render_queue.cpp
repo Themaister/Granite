@@ -189,7 +189,7 @@ uint64_t RenderInfo::get_sprite_sort_key(Queue queue_type, Util::Hash pipeline_h
 	}
 	else
 	{
-#if 1
+#if 0
 		// Prioritize state changes over depth.
 		depth_key >>= 2;
 		return (uint64_t(ecast(layer)) << 62) | (uint64_t(pipeline_hash) << 30) | depth_key;

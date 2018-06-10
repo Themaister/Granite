@@ -1919,9 +1919,19 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 			if (material.normal >= 0)
 			{
 				Value n(kObjectType);
-				Value extras(kObjectType);
-				extras.AddMember("twoComponent", true, allocator);
-				n.AddMember("extras", extras, allocator);
+				unsigned image_index = state.texture_cache[material.normal].image;
+
+				bool two_component =
+						state.image_cache[image_index].compression != TextureCompressionFamily::Uncompressed &&
+						state.image_cache[image_index].compression != TextureCompressionFamily::PNG;
+
+				if (two_component)
+				{
+					Value extras(kObjectType);
+					extras.AddMember("twoComponent", true, allocator);
+					n.AddMember("extras", extras, allocator);
+				}
+
 				n.AddMember("index", material.normal, allocator);
 				n.AddMember("scale", material.normal_scale, allocator);
 				m.AddMember("normalTexture", n, allocator);

@@ -389,7 +389,7 @@ bool recompute_tangents(Mesh &mesh)
 	                            const int iface, const int ivert) {
 		int i = iface * 3 + ivert;
 		Mesh *m = static_cast<Mesh *>(ctx->m_pUserData);
-		vec4 t(tangent[0], tangent[1], tangent[2], -sign);
+		vec4 t(tangent[0], tangent[1], tangent[2], sign);
 		memcpy(m->attributes.data() + i * m->attribute_stride +
 		       m->attribute_layout[ecast(MeshAttribute::Tangent)].offset,
 		       &t,

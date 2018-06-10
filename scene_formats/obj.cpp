@@ -122,7 +122,8 @@ void Parser::emit_gltf_base_color(const std::string &base_color_path, const std:
 		alpha_mask = load_texture_from_file(alpha_mask_path, ColorSpace::Linear);
 		if (alpha_mask.empty())
 		{
-			LOGE("Failed to open alpha mask texture, falling back to default material.\n");
+			LOGE("Failed to open alpha mask texture %s, falling back to default material.\n",
+			     alpha_mask_path.c_str());
 			return;
 		}
 	}
@@ -135,7 +136,8 @@ void Parser::emit_gltf_base_color(const std::string &base_color_path, const std:
 	auto base_color = load_texture_from_file(base_color_path, ColorSpace::sRGB);
 	if (base_color.empty())
 	{
-		LOGE("Failed to open base color texture, falling back to default material.\n");
+		LOGE("Failed to open base color texture %s, falling back to default material.\n",
+		     base_color_path.c_str());
 		return;
 	}
 
@@ -199,7 +201,8 @@ void Parser::emit_gltf_pbr_metallic_roughness(const std::string &metallic_path, 
 		metallic = load_texture_from_file(metallic_path, ColorSpace::Linear);
 		if (metallic.empty())
 		{
-			LOGE("Failed to open metallic texture, falling back to default material.\n");
+			LOGE("Failed to open metallic texture %s, falling back to default material.\n",
+			     metallic_path.c_str());
 			return;
 		}
 	}
@@ -209,7 +212,8 @@ void Parser::emit_gltf_pbr_metallic_roughness(const std::string &metallic_path, 
 		roughness = load_texture_from_file(roughness_path, ColorSpace::Linear);
 		if (roughness.empty())
 		{
-			LOGE("Failed to open roughness texture, falling back to default material.\n");
+			LOGE("Failed to open roughness texture %s, falling back to default material.\n",
+			     roughness_path.c_str());
 			return;
 		}
 	}

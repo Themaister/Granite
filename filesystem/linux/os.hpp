@@ -55,6 +55,7 @@ public:
 	void uninstall_notification(FileNotifyHandle handle) override;
 	void poll_notifications() override;
 	int get_notification_fd() const override;
+	std::string get_filesystem_path(const std::string &path) override;
 
 private:
 	std::string base;

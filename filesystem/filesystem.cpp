@@ -263,6 +263,16 @@ std::unique_ptr<File> Filesystem::open(const std::string &path, FileMode mode)
 	return backend->open(paths.second, mode);
 }
 
+std::string Filesystem::get_filesystem_path(const std::string &path)
+{
+	auto paths = Path::protocol_split(path);
+	auto *backend = get_backend(paths.first);
+	if (!backend)
+		return "";
+
+	return backend->get_filesystem_path(paths.second);
+}
+
 bool Filesystem::stat(const std::string &path, FileStat &stat)
 {
 	auto paths = Path::protocol_split(path);

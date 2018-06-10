@@ -136,6 +136,11 @@ public:
 
 	virtual int get_notification_fd() const = 0;
 
+	inline virtual std::string get_filesystem_path(const std::string &)
+	{
+		return "";
+	}
+
 	void set_protocol(const std::string &proto)
 	{
 		protocol = proto;
@@ -184,6 +189,8 @@ public:
 	std::vector<ListEntry> list(const std::string &path);
 
 	std::unique_ptr<File> open(const std::string &path, FileMode mode = FileMode::ReadOnly);
+
+	std::string get_filesystem_path(const std::string &path);
 
 	bool read_file_to_string(const std::string &path, std::string &str);
 	bool write_string_to_file(const std::string &path, const std::string &str);

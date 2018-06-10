@@ -36,6 +36,8 @@ static SceneFormats::TextureCompressionFamily string_to_compression(const string
 		return SceneFormats::TextureCompressionFamily::BC;
 	else if (fmt == "astc")
 		return SceneFormats::TextureCompressionFamily::ASTC;
+	else if (fmt == "png")
+		return SceneFormats::TextureCompressionFamily::PNG;
 	else
 	{
 		LOGE("Unrecognized format, using uncompressed.\n");
@@ -58,6 +60,7 @@ static void print_help()
 	LOGI("[--optimize-meshes]\n");
 	LOGI("[--stripify-meshes]\n");
 	LOGI("[--quantize-attributes]\n");
+	LOGI("[--flip-tangent-w]\n");
 }
 
 int main(int argc, char *argv[])
@@ -73,6 +76,7 @@ int main(int argc, char *argv[])
 	string extra_lights;
 	string extra_cameras;
 	bool animate_cameras = false;
+	bool flip_tangent_w = false;
 
 	CLICallbacks cbs;
 	cbs.add("--output", [&](CLIParser &parser) { args.output = parser.next_string(); });
@@ -88,6 +92,7 @@ int main(int argc, char *argv[])
 	cbs.add("--extra-cameras", [&](CLIParser &parser) { extra_cameras = parser.next_string(); });
 	cbs.add("--scale", [&](CLIParser &parser) { scale = parser.next_double(); });
 	cbs.add("--animate-cameras", [&](CLIParser &) { animate_cameras = true; });
+	cbs.add("--flip-tangent-w", [&](CLIParser &) { flip_tangent_w = true; });
 
 	cbs.add("--fog-color", [&](CLIParser &parser) {
 		for (unsigned i = 0; i < 3; i++)
@@ -158,6 +163,28 @@ int main(int argc, char *argv[])
 		custom_nodes.node_indices.push_back(nodes.size());
 		info.scene_nodes = &custom_nodes;
 		nodes.push_back(root);
+	}
+
+	vector<SceneFormats::Mesh> meshes;
+	if (flip_tangent_w)
+	{
+		meshes = parser.get_meshes();
+		for (auto &mesh : meshes)
+		{
+			auto &t = mesh.attribute_layout[ecast(MeshAttribute::Tangent)];
+			if (t.format != VK_FORMAT_UNDEFINED)
+				continue;
+			if (t.format != VK_FORMAT_R32G32B32A32_SFLOAT)
+			{
+				LOGI("Found tangent, but got format: %u\n", unsigned(t.format));
+				continue;
+			}
+
+			size_t count = mesh.attributes.size() / mesh.attribute_stride;
+			for (size_t i = 0; i < count; i++)
+				reinterpret_cast<vec4 *>(mesh.attributes.data() + i * mesh.attribute_stride + t.offset)->w *= -1.0f;
+		}
+		info.meshes = meshes;
 	}
 
 	vector<SceneFormats::CameraInfo> cameras;

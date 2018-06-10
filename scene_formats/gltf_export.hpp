@@ -41,6 +41,7 @@ enum class TextureCompression
 	ASTC5x5,
 	ASTC6x6,
 	ASTC8x8,
+	PNG,
 	Uncompressed
 };
 
@@ -48,6 +49,7 @@ enum class TextureCompressionFamily
 {
 	BC,
 	ASTC,
+	PNG,
 	Uncompressed
 };
 

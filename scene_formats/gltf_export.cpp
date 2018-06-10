@@ -30,6 +30,7 @@
 #include <unordered_set>
 #include "texture_utils.hpp"
 #include "texture_format.hpp"
+#include "stb_image_write.h"
 
 using namespace std;
 using namespace rapidjson;
@@ -657,7 +658,10 @@ unsigned RemapState::emit_image(const MaterialInfo::Texture &texture, Material::
 	{
 		unsigned index = image_cache.size();
 		image_hash[h.get()] = index;
-		image_cache.push_back({ texture.path, to_string(h.get()) + ".gtx", "image/custom/granite-texture",
+
+		string extension = compression == TextureCompressionFamily::PNG ? ".png" : ".gtx";
+		const char *mime = compression == TextureCompressionFamily::PNG ? "image/png" : "image/custom/granite-texture";
+		image_cache.push_back({ texture.path, to_string(h.get()) + extension, mime,
 		                        compression, quality, mode, type, texture.swizzle, {} });
 		return index;
 	}
@@ -1138,6 +1142,7 @@ static VkFormat get_compression_format(TextureCompression compression, TextureMo
 	switch (compression)
 	{
 	case TextureCompression::Uncompressed:
+	case TextureCompression::PNG:
 		return srgb ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
 
 	case TextureCompression::BC1:
@@ -1291,6 +1296,9 @@ void AnalysisResult::deduce_compression(TextureCompressionFamily family)
 
 	switch (family)
 	{
+	case TextureCompressionFamily::PNG:
+		compression = TextureCompression::PNG;
+		break;
 	case TextureCompressionFamily::ASTC:
 		switch (type)
 		{
@@ -1497,7 +1505,11 @@ static void compress_image(ThreadGroup &workers, const string &target_path, shar
 	auto mipgen_task = workers.create_task([=]() {
 		if (result->image->get_layout().get_levels() == 1 && result->mode != TextureMode::HDR)
 		{
-			if (result->compression != TextureCompression::Uncompressed)
+			if (result->compression == TextureCompression::PNG)
+			{
+				// Do nothing, we don't need mipmaps.
+			}
+			else if (result->compression != TextureCompression::Uncompressed)
 				*result->image = generate_mipmaps(result->image->get_layout(), result->image->get_flags());
 			else
 				*result->image = generate_mipmaps_to_file(target_path, result->image->get_layout(), result->image->get_flags());
@@ -1506,7 +1518,39 @@ static void compress_image(ThreadGroup &workers, const string &target_path, shar
 		LOGI("Mapped input texture: %u bytes.\n", unsigned(result->image->get_required_size()));
 	});
 
-	if (result->compression != TextureCompression::Uncompressed)
+	if (result->compression == TextureCompression::PNG)
+	{
+		auto write_task = workers.create_task([=]() {
+			if (result->image->get_layout().get_format() != VK_FORMAT_R8G8B8A8_UNORM &&
+			    result->image->get_layout().get_format() != VK_FORMAT_R8G8B8A8_SRGB)
+			{
+				LOGE("PNG only supports RGBA8.\n");
+				return;
+			}
+
+			string real_path = Filesystem::get().get_filesystem_path(args.output);
+			if (real_path.empty())
+			{
+				LOGE("Can only use filesystem backend paths when writing PNG.\n");
+				return;
+			}
+
+			if (!stbi_write_png(real_path.c_str(),
+			                    result->image->get_layout().get_width(),
+			                    result->image->get_layout().get_height(), 4,
+			                    result->image->get_layout().data(),
+			                    result->image->get_layout().get_width() * 4))
+			{
+				LOGE("Failed to write PNG.\n");
+			}
+
+			LOGI("Unmapping %u bytes for texture writing.\n", unsigned(result->image->get_required_size()));
+			result->image.reset();
+		});
+		write_task->set_fence_counter_signal(signal);
+		workers.add_dependency(write_task, mipgen_task);
+	}
+	else if (result->compression != TextureCompression::Uncompressed)
 		compress_texture(workers, args, result->image, mipgen_task, signal);
 	else if (result->image->get_layout().get_levels() != 1 || result->mode == TextureMode::HDR)
 	{

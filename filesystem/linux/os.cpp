@@ -195,6 +195,11 @@ unique_ptr<File> OSFilesystem::open(const std::string &path, FileMode mode)
 	}
 }
 
+string OSFilesystem::get_filesystem_path(const string &path)
+{
+	return Path::join(base, path);
+}
+
 int OSFilesystem::get_notification_fd() const
 {
 	return notify_fd;

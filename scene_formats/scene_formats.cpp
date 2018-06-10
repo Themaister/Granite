@@ -325,7 +325,7 @@ Mesh mesh_optimize_index_buffer(const Mesh &mesh, bool stripify)
 	return optimized;
 }
 
-bool recompute_tangents(Mesh &mesh)
+bool mesh_recompute_tangents(Mesh &mesh)
 {
 	if (mesh.attribute_layout[ecast(MeshAttribute::Tangent)].format != VK_FORMAT_R32G32B32A32_SFLOAT)
 	{
@@ -405,7 +405,83 @@ bool recompute_tangents(Mesh &mesh)
 	return true;
 }
 
-bool recompute_normals(Mesh &mesh)
+template <typename T, typename Op>
+static void mesh_transform_attribute(Mesh &mesh, const Op &op, uint32_t offset)
+{
+	size_t count = mesh.attributes.size() / mesh.attribute_stride;
+	for (size_t i = 0; i < count; i++)
+	{
+		auto &attr = *reinterpret_cast<T *>(mesh.attributes.data() + i * mesh.attribute_stride + offset);
+		attr = op(attr);
+	}
+}
+
+bool mesh_renormalize_normals(Mesh &mesh)
+{
+	auto &n = mesh.attribute_layout[ecast(MeshAttribute::Normal)];
+	if (n.format == VK_FORMAT_UNDEFINED)
+		return false;
+	if (n.format != VK_FORMAT_R32G32B32_SFLOAT)
+	{
+		LOGI("Found normal, but got format: %u\n", unsigned(n.format));
+		return false;
+	}
+
+	mesh_transform_attribute<vec3>(mesh, [](const vec3 &v) -> vec3 {
+		float sqr = dot(v, v);
+		if (sqr < 0.000001f)
+		{
+			LOGI("Found degenerate normal.\n");
+			return vec3(1.0f, 0.0f, 0.0f);
+		}
+		else
+			return normalize(v);
+	}, n.offset);
+	return true;
+}
+
+bool mesh_renormalize_tangents(Mesh &mesh)
+{
+	auto &t = mesh.attribute_layout[ecast(MeshAttribute::Tangent)];
+	if (t.format == VK_FORMAT_UNDEFINED)
+		return false;
+	if (t.format != VK_FORMAT_R32G32B32A32_SFLOAT)
+	{
+		LOGI("Found tangent, but got format: %u\n", unsigned(t.format));
+		return false;
+	}
+
+	mesh_transform_attribute<vec3>(mesh, [](const vec3 &v) -> vec3 {
+		float sqr = dot(v, v);
+		if (sqr < 0.000001f)
+		{
+			LOGI("Found degenerate tangent.\n");
+			return vec3(1.0f, 0.0f, 0.0f);
+		}
+		else
+			return normalize(v);
+	}, t.offset);
+	return true;
+}
+
+bool mesh_flip_tangents_w(Mesh &mesh)
+{
+	auto &t = mesh.attribute_layout[ecast(MeshAttribute::Tangent)];
+	if (t.format == VK_FORMAT_UNDEFINED)
+		return false;
+	if (t.format != VK_FORMAT_R32G32B32A32_SFLOAT)
+	{
+		LOGI("Found tangent, but got format: %u\n", unsigned(t.format));
+		return false;
+	}
+
+	size_t count = mesh.attributes.size() / mesh.attribute_stride;
+	for (size_t i = 0; i < count; i++)
+		reinterpret_cast<vec4 *>(mesh.attributes.data() + i * mesh.attribute_stride + t.offset)->w *= -1.0f;
+	return true;
+}
+
+bool mesh_recompute_normals(Mesh &mesh)
 {
 	if (mesh.attribute_layout[ecast(MeshAttribute::Position)].format != VK_FORMAT_R32G32B32_SFLOAT &&
 	    mesh.attribute_layout[ecast(MeshAttribute::Position)].format != VK_FORMAT_R32G32B32A32_SFLOAT)

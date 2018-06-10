@@ -1846,9 +1846,9 @@ void Parser::build_primitive(const MeshData::AttributeData &prim)
 	}
 
 	if (rebuild_normals)
-		recompute_normals(mesh);
+		mesh_recompute_normals(mesh);
 	if (rebuild_tangents)
-		recompute_tangents(mesh);
+		mesh_recompute_tangents(mesh);
 
 	meshes.push_back(move(mesh));
 }

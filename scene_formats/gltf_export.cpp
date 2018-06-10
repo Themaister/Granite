@@ -52,7 +52,6 @@ struct BufferView
 {
 	size_t offset;
 	size_t length;
-	size_t stride;
 };
 
 struct EmittedMesh
@@ -193,7 +192,7 @@ struct RemapState
 	template<typename StateType, typename SceneType>
 	void filter_input(StateType &output, const SceneType &input);
 
-	unsigned emit_buffer(ArrayView<const uint8_t> view, uint32_t stride);
+	unsigned emit_buffer(ArrayView<const uint8_t> view);
 
 	unsigned emit_accessor(unsigned view_index, VkFormat format, unsigned offset, unsigned count);
 
@@ -325,11 +324,10 @@ void RemapState::filter_input(StateType &output, const SceneType &input)
 	}
 }
 
-unsigned RemapState::emit_buffer(ArrayView<const uint8_t> view, uint32_t stride)
+unsigned RemapState::emit_buffer(ArrayView<const uint8_t> view)
 {
 	Hasher h;
 	h.data(view.data(), view.size());
-	h.u32(stride);
 	auto itr = buffer_hash.find(h.get());
 
 	if (itr == end(buffer_hash))
@@ -339,7 +337,7 @@ unsigned RemapState::emit_buffer(ArrayView<const uint8_t> view, uint32_t stride)
 		offset = (offset + 15) & ~15;
 		glb_buffer_data.resize(offset + view.size());
 		memcpy(glb_buffer_data.data() + offset, view.data(), view.size());
-		buffer_views.push_back({offset, view.size(), stride});
+		buffer_views.push_back({offset, view.size()});
 		buffer_hash[h.get()] = index;
 		return index;
 	}
@@ -864,7 +862,7 @@ void RemapState::emit_mesh(unsigned remapped_index)
 
 	if (!mesh.indices.empty())
 	{
-		unsigned index = emit_buffer(mesh.indices, mesh.index_type == VK_INDEX_TYPE_UINT16 ? 2 : 4);
+		unsigned index = emit_buffer(mesh.indices);
 		emit.index_accessor = emit_accessor(index,
 		                                    mesh.index_type == VK_INDEX_TYPE_UINT16 ? VK_FORMAT_R16_UINT
 		                                                                            : VK_FORMAT_R32_UINT,
@@ -930,14 +928,14 @@ void RemapState::emit_mesh(unsigned remapped_index)
 
 			quantize_attribute_fp32_fp16(output.data(), mesh.positions.data(), mesh.position_stride, count);
 
-			buffer_index = emit_buffer(output, sizeof(u16vec4));
+			buffer_index = emit_buffer(output);
 			acc = emit_accessor(buffer_index,
 			                    VK_FORMAT_R16G16B16A16_SFLOAT,
 			                    0, count);
 		}
 		else
 		{
-			buffer_index = emit_buffer(mesh.positions, mesh.position_stride);
+			buffer_index = emit_buffer(mesh.positions);
 			acc = emit_accessor(buffer_index,
 			                    layout[ecast(MeshAttribute::Position)].format,
 			                    0, count);
@@ -1013,7 +1011,7 @@ void RemapState::emit_mesh(unsigned remapped_index)
 				}
 			}
 
-			auto buffer_index = emit_buffer(unpacked_buffer, format_size);
+			auto buffer_index = emit_buffer(unpacked_buffer);
 			emit.attribute_accessor[i] = emit_accessor(buffer_index, remapped_format, 0, attr_count);
 		}
 	}
@@ -1065,8 +1063,7 @@ void RemapState::emit_animations(ArrayView<const Animation> animations)
 		{
 			EmittedAnimation::Channel chan;
 			unsigned timestamp_view = emit_buffer({ reinterpret_cast<const uint8_t *>(channel.timestamps.data()),
-			                                        channel.timestamps.size() * sizeof(float) },
-			                                      sizeof(float));
+			                                        channel.timestamps.size() * sizeof(float) });
 
 			unsigned timestamp_accessor = emit_accessor(timestamp_view, VK_FORMAT_R32_SFLOAT, 0,
 			                                            channel.timestamps.size());
@@ -1079,40 +1076,35 @@ void RemapState::emit_animations(ArrayView<const Animation> animations)
 			case AnimationChannel::Type::Rotation:
 				chan.path = "rotation";
 				data_view = emit_buffer({ reinterpret_cast<const uint8_t *>(channel.spherical.values.data()),
-				                          channel.spherical.values.size() * sizeof(quat) },
-				                        sizeof(quat));
+				                          channel.spherical.values.size() * sizeof(quat) });
 				data_accessor = emit_accessor(data_view, VK_FORMAT_R32G32B32A32_SFLOAT, 0,
 				                              channel.spherical.values.size());
 				break;
 			case AnimationChannel::Type::CubicTranslation:
 				chan.path = "translation";
 				data_view = emit_buffer({ reinterpret_cast<const uint8_t *>(channel.cubic.values.data()),
-				                          channel.cubic.values.size() * sizeof(vec3) },
-				                        sizeof(vec3));
+				                          channel.cubic.values.size() * sizeof(vec3) });
 				data_accessor = emit_accessor(data_view, VK_FORMAT_R32G32B32_SFLOAT, 0,
 				                              channel.cubic.values.size());
 				break;
 			case AnimationChannel::Type::Translation:
 				chan.path = "translation";
 				data_view = emit_buffer({ reinterpret_cast<const uint8_t *>(channel.linear.values.data()),
-				                          channel.linear.values.size() * sizeof(vec3) },
-				                        sizeof(vec3));
+				                          channel.linear.values.size() * sizeof(vec3) });
 				data_accessor = emit_accessor(data_view, VK_FORMAT_R32G32B32_SFLOAT, 0,
 				                              channel.linear.values.size());
 				break;
 			case AnimationChannel::Type::CubicScale:
 				chan.path = "scale";
 				data_view = emit_buffer({ reinterpret_cast<const uint8_t *>(channel.cubic.values.data()),
-				                          channel.cubic.values.size() * sizeof(vec3) },
-				                        sizeof(vec3));
+				                          channel.cubic.values.size() * sizeof(vec3) });
 				data_accessor = emit_accessor(data_view, VK_FORMAT_R32G32B32_SFLOAT, 0,
 				                              channel.cubic.values.size());
 				break;
 			case AnimationChannel::Type::Scale:
 				chan.path = "scale";
 				data_view = emit_buffer({ reinterpret_cast<const uint8_t *>(channel.linear.values.data()),
-				                          channel.linear.values.size() * sizeof(vec3) },
-				                        sizeof(vec3));
+				                          channel.linear.values.size() * sizeof(vec3) });
 				data_accessor = emit_accessor(data_view, VK_FORMAT_R32G32B32_SFLOAT, 0,
 				                              channel.linear.values.size());
 				break;
@@ -1687,6 +1679,7 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 	}
 
 	// Buffer Views
+	if (!state.buffer_views.empty())
 	{
 		Value views(kArrayType);
 		for (auto &view : state.buffer_views)
@@ -1695,13 +1688,13 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 			v.AddMember("buffer", 0, allocator);
 			v.AddMember("byteLength", view.length, allocator);
 			v.AddMember("byteOffset", view.offset, allocator);
-			v.AddMember("byteStride", view.stride, allocator);
 			views.PushBack(v, allocator);
 		}
 		doc.AddMember("bufferViews", views, allocator);
 	}
 
 	// Accessors
+	if (!state.accessor_cache.empty())
 	{
 		Value accessors(kArrayType);
 		for (auto &accessor : state.accessor_cache)
@@ -1756,6 +1749,7 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 	}
 
 	// Samplers
+	if (!state.sampler_cache.empty())
 	{
 		Value samplers(kArrayType);
 		for (auto &sampler : state.sampler_cache)
@@ -1775,6 +1769,7 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 	}
 
 	// Images
+	if (!state.image_cache.empty())
 	{
 		Value images(kArrayType);
 
@@ -1864,6 +1859,7 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 	}
 
 	// Materials
+	if (!state.material_cache.empty())
 	{
 		Value materials(kArrayType);
 		for (auto &material : state.material_cache)
@@ -1957,6 +1953,7 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 	}
 
 	// Meshes
+	if (!state.mesh_group_cache.empty())
 	{
 		Value meshes(kArrayType);
 		for (auto &mesh : state.mesh_group_cache)
@@ -2055,6 +2052,7 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 	}
 
 	// Cameras
+	if (!scene.cameras.empty())
 	{
 		Value cameras(kArrayType);
 		for (auto &camera : scene.cameras)

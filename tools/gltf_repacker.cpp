@@ -61,6 +61,7 @@ static void print_help()
 	LOGI("[--stripify-meshes]\n");
 	LOGI("[--quantize-attributes]\n");
 	LOGI("[--flip-tangent-w]\n");
+	LOGI("[--renormalize-normals]\n");
 }
 
 int main(int argc, char *argv[])
@@ -77,6 +78,7 @@ int main(int argc, char *argv[])
 	string extra_cameras;
 	bool animate_cameras = false;
 	bool flip_tangent_w = false;
+	bool renormalize_normals = false;
 
 	CLICallbacks cbs;
 	cbs.add("--output", [&](CLIParser &parser) { args.output = parser.next_string(); });
@@ -93,6 +95,7 @@ int main(int argc, char *argv[])
 	cbs.add("--scale", [&](CLIParser &parser) { scale = parser.next_double(); });
 	cbs.add("--animate-cameras", [&](CLIParser &) { animate_cameras = true; });
 	cbs.add("--flip-tangent-w", [&](CLIParser &) { flip_tangent_w = true; });
+	cbs.add("--renormalize-normals", [&](CLIParser &) { renormalize_normals = true; });
 
 	cbs.add("--fog-color", [&](CLIParser &parser) {
 		for (unsigned i = 0; i < 3; i++)
@@ -166,23 +169,19 @@ int main(int argc, char *argv[])
 	}
 
 	vector<SceneFormats::Mesh> meshes;
-	if (flip_tangent_w)
+	if (renormalize_normals || flip_tangent_w)
 	{
 		meshes = parser.get_meshes();
 		for (auto &mesh : meshes)
 		{
-			auto &t = mesh.attribute_layout[ecast(MeshAttribute::Tangent)];
-			if (t.format != VK_FORMAT_UNDEFINED)
-				continue;
-			if (t.format != VK_FORMAT_R32G32B32A32_SFLOAT)
+			if (renormalize_normals)
 			{
-				LOGI("Found tangent, but got format: %u\n", unsigned(t.format));
-				continue;
+				mesh_renormalize_normals(mesh);
+				mesh_renormalize_tangents(mesh);
 			}
 
-			size_t count = mesh.attributes.size() / mesh.attribute_stride;
-			for (size_t i = 0; i < count; i++)
-				reinterpret_cast<vec4 *>(mesh.attributes.data() + i * mesh.attribute_stride + t.offset)->w *= -1.0f;
+			if (flip_tangent_w)
+				mesh_flip_tangents_w(mesh);
 		}
 		info.meshes = meshes;
 	}

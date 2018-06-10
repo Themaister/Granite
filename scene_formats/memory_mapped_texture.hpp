@@ -53,6 +53,7 @@ public:
 	bool map_copy(const void *mapped, size_t size);
 	bool map_write_scratch();
 	bool copy_to_path(const std::string &path);
+	void make_local_copy();
 
 	inline const Vulkan::TextureFormatLayout &get_layout() const
 	{

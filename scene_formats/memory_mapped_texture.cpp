@@ -180,6 +180,18 @@ struct ScratchFile : Granite::File
 	std::vector<uint8_t> data;
 };
 
+void MemoryMappedTexture::make_local_copy()
+{
+	if (empty())
+		return;
+
+	auto new_file = make_unique<ScratchFile>(mapped, get_required_size());
+	file = move(new_file);
+	mapped = static_cast<uint8_t *>(file->map());
+	layout.set_buffer(static_cast<uint8_t *>(mapped) + sizeof(MemoryMappedHeader),
+	                  get_required_size() - sizeof(MemoryMappedHeader));
+}
+
 bool MemoryMappedTexture::map_write_scratch()
 {
 	if (layout.get_required_size() == 0)

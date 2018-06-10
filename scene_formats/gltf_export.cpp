@@ -1182,6 +1182,8 @@ void AnalysisResult::swizzle_image(const VkComponentMapping &swizzle)
 	    swizzle.b != VK_COMPONENT_SWIZZLE_B ||
 	    swizzle.a != VK_COMPONENT_SWIZZLE_A)
 	{
+		image->make_local_copy();
+
 		auto &layout = image->get_layout();
 		if (layout.get_format() != VK_FORMAT_R8G8B8A8_SRGB && layout.get_format() != VK_FORMAT_R8G8B8A8_UNORM)
 			throw invalid_argument("Can only swizzle RGBA textures.");
@@ -1208,7 +1210,7 @@ void AnalysisResult::swizzle_image(const VkComponentMapping &swizzle)
 		swizzles.z = conv_swizzle(swizzle.b);
 		swizzles.w = conv_swizzle(swizzle.a);
 
-		transform_texture_layout<u8vec4>(layout, [swizzles](u8vec4 v) {
+		transform_texture_layout<u8vec4>(layout, [swizzles](const u8vec4 &v) {
 			return u8vec4(v[swizzles.x], v[swizzles.y], v[swizzles.z], v[swizzles.w]);
 		});
 	}
@@ -1451,16 +1453,17 @@ void AnalysisResult::deduce_compression(TextureCompressionFamily family)
 	}
 }
 
-static shared_ptr<AnalysisResult> analyze_image(TaskGroup &group,
+static shared_ptr<AnalysisResult> analyze_image(ThreadGroup &workers,
                                                 const string &src, const VkComponentMapping &swizzle,
                                                 Material::Textures type, TextureCompressionFamily family,
-                                                TextureMode mode)
+                                                TextureMode mode,
+                                                TaskSignal *signal)
 {
 	auto result = make_shared<AnalysisResult>();
 	result->mode = mode;
 	result->type = type;
 
-	group->enqueue_task([=]() {
+	auto group = workers.create_task([=]() {
 		if (!result->load_image(src, swizzle))
 		{
 			LOGE("Failed to load image.\n");
@@ -1469,6 +1472,7 @@ static shared_ptr<AnalysisResult> analyze_image(TaskGroup &group,
 
 		result->deduce_compression(family);
 	});
+	group->set_fence_counter_signal(signal);
 
 	return result;
 }
@@ -1775,14 +1779,18 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 
 		LOGI("Analyzing images ...\n");
 		// Load images, swizzle, and figure out which compression type is the most appropriate.
-		auto group = workers.create_task();
+		unsigned image_max_count = 0;
+		TaskSignal image_signal;
 		for (auto &image : state.image_cache)
 		{
-			image.loaded_image = analyze_image(group,
+			if (image_max_count > 8)
+				image_signal.wait_until_at_least(image_max_count - 8);
+			image.loaded_image = analyze_image(workers,
 			                                   image.source_path, image.swizzle,
-			                                   image.type, image.compression, image.mode);
+			                                   image.type, image.compression, image.mode,
+			                                   &image_signal);
 		}
-		group->wait();
+		workers.wait_idle();
 		LOGI("Analyzed images ...\n");
 
 		TaskSignal signal;

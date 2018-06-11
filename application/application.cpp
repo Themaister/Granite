@@ -32,6 +32,7 @@
 #include "light_export.hpp"
 #include "muglm/matrix_helper.hpp"
 #include "muglm/muglm_impl.hpp"
+#include "utils/image_utils.hpp"
 #include <float.h>
 
 using namespace std;
@@ -447,11 +448,89 @@ bool SceneViewerApplication::on_key_down(const KeyboardEvent &e)
 		break;
 	}
 
+	case Key::K:
+	{
+		capture_environment_probe();
+		break;
+	}
+
 	default:
 		break;
 	}
 
 	return true;
+}
+
+void SceneViewerApplication::capture_environment_probe()
+{
+	if (!config.clustered_lights)
+		LOGE("Clustered lights are not enabled, lights will not be captured in the environment!\n");
+
+	ImageCreateInfo info = ImageCreateInfo::render_target(512, 512, VK_FORMAT_R16G16B16A16_SFLOAT);
+	info.levels = 1;
+	info.layers = 6;
+	info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	info.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+	info.initial_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	auto &device = get_wsi().get_device();
+
+	auto handle = device.create_image(info, nullptr);
+	auto cmd = device.request_command_buffer();
+
+	for (unsigned face = 0; face < 6; face++)
+	{
+		ImageViewCreateInfo view_info = {};
+		view_info.layers = 1;
+		view_info.base_layer = face;
+		view_info.format = info.format;
+		view_info.levels = 1;
+		view_info.image = handle.get();
+		auto rt_view = device.create_image_view(view_info);
+
+		mat4 proj, view;
+		compute_cube_render_transform(selected_camera->get_position(), face, proj, view, 0.1f, 300.0f);
+		context.set_camera(proj, view);
+
+		RenderPassInfo rp = {};
+		rp.num_color_attachments = 1;
+		rp.color_attachments[0] = rt_view.get();
+		rp.store_attachments = 1;
+		rp.clear_attachments = 1;
+		rp.depth_stencil = &device.get_transient_attachment(512, 512, device.get_default_depth_format(), 0);
+		rp.op_flags = RENDER_PASS_OP_COLOR_OPTIMAL_BIT |
+		              RENDER_PASS_OP_DEPTH_STENCIL_OPTIMAL_BIT |
+		              RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT;
+		rp.clear_depth_stencil.depth = 1.0f;
+		rp.clear_depth_stencil.stencil = 0;
+		rp.clear_color[0].float32[0] = 0.0f;
+		rp.clear_color[0].float32[1] = 0.0f;
+		rp.clear_color[0].float32[2] = 0.0f;
+		rp.clear_color[0].float32[3] = 1.0f;
+		cmd->begin_render_pass(rp);
+
+		auto &scene = scene_loader.get_scene();
+		visible.clear();
+		scene.gather_visible_opaque_renderables(context.get_visibility_frustum(), visible);
+		scene.gather_visible_render_pass_sinks(context.get_render_parameters().camera_position, visible);
+		scene.gather_background_renderables(visible);
+		forward_renderer.set_mesh_renderer_options_from_lighting(lighting);
+		forward_renderer.set_mesh_renderer_options(forward_renderer.get_mesh_renderer_options() | config.pcf_flags);
+		forward_renderer.begin();
+		forward_renderer.push_renderables(context, visible);
+
+		Renderer::RendererOptionFlags opt = Renderer::FRONT_FACE_CLOCKWISE_BIT;
+		forward_renderer.flush(*cmd, context, opt);
+
+		cmd->end_render_pass();
+	}
+
+	cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+	                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+	                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+	handle->set_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+	device.submit(cmd);
+	auto buffer = save_image_to_cpu_buffer(device, *handle, CommandBuffer::Type::Generic);
+	save_image_buffer_to_gtx(device, buffer, "cache://environment.gtx");
 }
 
 void SceneViewerApplication::render_main_pass(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view)

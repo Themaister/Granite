@@ -285,6 +285,9 @@ bool save_image_buffer_to_gtx(Vulkan::Device &device, ImageReadback &readback, c
 
 	SceneFormats::MemoryMappedTexture tex;
 
+	if (info.levels == 1)
+		tex.set_generate_mipmaps_on_load();
+
 	switch (info.type)
 	{
 	case VK_IMAGE_TYPE_1D:

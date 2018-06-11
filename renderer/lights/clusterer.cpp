@@ -1092,6 +1092,7 @@ void LightClusterer::add_render_passes(RenderGraph &graph)
 	att.size_x = x;
 	att.size_y = y;
 	att.size_z = z * (ClusterHierarchies + 1);
+	att.aux_usage = VK_IMAGE_USAGE_SAMPLED_BIT;
 	att.persistent = true;
 
 	if (ImplementationQuirks::get().clustering_list_iteration || ImplementationQuirks::get().clustering_force_cpu)

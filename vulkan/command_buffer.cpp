@@ -1317,7 +1317,8 @@ void CommandBuffer::set_sampler(unsigned set, unsigned binding, StockSampler sto
 void CommandBuffer::set_storage_texture(unsigned set, unsigned binding, const ImageView &view)
 {
 	VK_ASSERT(view.get_image().get_create_info().usage & VK_IMAGE_USAGE_STORAGE_BIT);
-	set_texture(set, binding, view);
+	set_texture(set, binding, view.get_float_view(), view.get_integer_view(),
+	            view.get_image().get_layout(), view.get_cookie());
 }
 
 void CommandBuffer::flush_descriptor_set(uint32_t set)

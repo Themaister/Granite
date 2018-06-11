@@ -201,6 +201,7 @@ private:
 	unsigned last_frame_index = 0;
 
 	TemporalJitter jitter;
+	void capture_environment_probe();
 };
 
 extern Application *application_create(int argc, char *argv[]);

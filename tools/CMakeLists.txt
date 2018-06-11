@@ -7,6 +7,9 @@ target_link_libraries(ibl-brdf-lut-generate math util scene-formats)
 add_granite_offline_tool(convert-equirect-to-environment convert_equirect_to_environment.cpp)
 target_link_libraries(convert-equirect-to-environment scene-formats)
 
+add_granite_offline_tool(convert-cube-to-environment convert_cube_to_environment.cpp)
+target_link_libraries(convert-cube-to-environment scene-formats)
+
 add_granite_offline_tool(gtx-convert gtx_convert.cpp)
 target_link_libraries(gtx-convert texture-compression)
 

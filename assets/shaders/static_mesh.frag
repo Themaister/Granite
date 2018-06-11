@@ -92,7 +92,7 @@ void main()
 #endif
 
 #if defined(HAVE_OCCLUSIONMAP) && HAVE_OCCLUSIONMAP
-	mediump float ambient = textureGrad(uOcclusionMap, vUV, gradX, gradY).x;
+	mediump float ambient = texture(uOcclusionMap, vUV, registers.lod_bias).x;
 #else
     const mediump float ambient = 1.0;
 #endif

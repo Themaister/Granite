@@ -52,23 +52,10 @@ layout(std430, push_constant) uniform Constants
 
 #include "inc/render_target.h"
 
-#if defined(ALPHA_TEST) && !defined(ALPHA_TEST_ALPHA_TO_COVERAGE)
-#define NEED_GRADIENTS
-#endif
-
 void main()
 {
-#ifdef NEED_GRADIENTS
-    vec2 gradX = dFdx(vUV);
-    vec2 gradY = dFdy(vUV);
-#endif
-
 #if defined(HAVE_BASECOLORMAP) && HAVE_BASECOLORMAP
-    #ifdef NEED_GRADIENTS
-        mediump vec4 base_color = textureGrad(uBaseColormap, vUV, gradX, gradY) * registers.base_color;
-    #else
-        mediump vec4 base_color = texture(uBaseColormap, vUV, registers.lod_bias) * registers.base_color;
-    #endif
+	mediump vec4 base_color = texture(uBaseColormap, vUV, registers.lod_bias) * registers.base_color;
 #else
     mediump vec4 base_color = registers.base_color;
 #endif
@@ -77,22 +64,12 @@ void main()
     base_color *= vColor;
 #endif
 
-    // Ideally we want to discard ASAP, so we need to take explicit gradients first.
-#if defined(ALPHA_TEST) && !defined(ALPHA_TEST_ALPHA_TO_COVERAGE)
-    if (base_color.a < 0.5)
-        discard;
-#endif
-
 #if defined(HAVE_NORMAL) && HAVE_NORMAL
     mediump vec3 normal = normalize(vNormal);
     #if defined(HAVE_NORMALMAP) && HAVE_NORMALMAP
         mediump vec3 tangent = normalize(vTangent.xyz);
         mediump vec3 binormal = cross(normal, tangent) * vTangent.w;
-        #ifdef NEED_GRADIENTS
-            mediump vec2 tangent_space = textureGrad(uNormalmap, vUV, gradX, gradY).xy * 2.0 - 1.0;
-        #else
-            mediump vec2 tangent_space = texture(uNormalmap, vUV, registers.lod_bias).xy * 2.0 - 1.0;
-        #endif
+        mediump vec2 tangent_space = texture(uNormalmap, vUV, registers.lod_bias).xy * 2.0 - 1.0;
 
         // For 2-component compressed textures.
         mediump float tangent_z = sqrt(max(0.0, 1.0 - dot(tangent_space, tangent_space)));
@@ -106,11 +83,7 @@ void main()
 #endif
 
 #if defined(HAVE_METALLICROUGHNESSMAP) && HAVE_METALLICROUGHNESSMAP
-    #ifdef NEED_GRADIENTS
-        mediump vec2 mr = textureGrad(uMetallicRoughnessmap, vUV, gradX, gradY).bg;
-    #else
-        mediump vec2 mr = texture(uMetallicRoughnessmap, vUV, registers.lod_bias).bg;
-    #endif
+    mediump vec2 mr = texture(uMetallicRoughnessmap, vUV, registers.lod_bias).bg;
     mediump float metallic = mr.x * registers.metallic;
     mediump float roughness = mr.y * registers.roughness;
 #else
@@ -119,24 +92,23 @@ void main()
 #endif
 
 #if defined(HAVE_OCCLUSIONMAP) && HAVE_OCCLUSIONMAP
-    #ifdef NEED_GRADIENTS
-        mediump float ambient = textureGrad(uOcclusionMap, vUV, gradX, gradY).x;
-    #else
-        mediump float ambient = texture(uOcclusionMap, vUV, registers.lod_bias).x;
-    #endif
+	mediump float ambient = textureGrad(uOcclusionMap, vUV, gradX, gradY).x;
 #else
     const mediump float ambient = 1.0;
 #endif
 
 #if defined(HAVE_EMISSIVEMAP) && HAVE_EMISSIVEMAP
-    #ifdef NEED_GRADIENTS
-        mediump vec3 emissive = textureGrad(uEmissiveMap, vUV, gradX, gradY).rgb;
-    #else
-        mediump vec3 emissive = texture(uEmissiveMap, vUV, registers.lod_bias).rgb;
-    #endif
+	mediump vec3 emissive = texture(uEmissiveMap, vUV, registers.lod_bias).rgb;
     emissive *= registers.emissive.rgb;
 #else
     mediump vec3 emissive = registers.emissive.rgb;
+#endif
+
+    // Ideally we want to discard ASAP, but discarding early make derivatives undefined.
+    // Ideally, we'd ballot early.
+#if defined(ALPHA_TEST) && !defined(ALPHA_TEST_ALPHA_TO_COVERAGE)
+    if (base_color.a < 0.5)
+        discard;
 #endif
 
     emit_render_target(emissive, base_color, normal, metallic, roughness, ambient, vEyeVec);

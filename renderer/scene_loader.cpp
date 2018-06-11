@@ -289,16 +289,20 @@ void SceneLoader::parse_gltf(const std::string &path)
 
 		EntityHandle entity;
 		Util::IntrusivePtr<Skybox> skybox;
-		if (!env.cube.path.empty() && !env.reflection.path.empty() && !env.irradiance.path.empty())
+		if (!env.cube.path.empty())
 		{
 			skybox = Util::make_handle<Skybox>(env.cube.path, false);
 			entity = this->scene->create_renderable(skybox, nullptr);
-			skybox->enable_irradiance(env.irradiance.path, false);
-			skybox->enable_reflection(env.reflection.path, false);
-			auto *ibl = entity->allocate_component<IBLComponent>();
-			ibl->irradiance_path = env.irradiance.path;
-			ibl->reflection_path = env.reflection.path;
-			ibl->intensity = env.intensity;
+
+			if (!env.reflection.path.empty() && !env.irradiance.path.empty())
+			{
+				skybox->enable_irradiance(env.irradiance.path, false);
+				skybox->enable_reflection(env.reflection.path, false);
+				auto *ibl = entity->allocate_component<IBLComponent>();
+				ibl->irradiance_path = env.irradiance.path;
+				ibl->reflection_path = env.reflection.path;
+				ibl->intensity = env.intensity;
+			}
 		}
 
 		if (skybox)

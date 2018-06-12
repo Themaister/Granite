@@ -35,6 +35,8 @@ layout(std430, push_constant) uniform Registers
     vec2 inv_resolution;
 } registers;
 
+//#define POINT_DEBUG
+
 void main()
 {
     // Load material information.
@@ -46,6 +48,11 @@ void main()
     // Reconstruct positions.
     vec4 clip = registers.inverse_view_projection * vec4(2.0 * gl_FragCoord.xy * registers.inv_resolution - 1.0, depth, 1.0);
     vec3 pos = clip.xyz / clip.w;
+
+#ifdef POINT_DEBUG
+    FragColor = vec3(0.0, 1.0, 0.0);
+    return;
+#endif
 
     FragColor = compute_point_light(
 #ifdef INSTANCING

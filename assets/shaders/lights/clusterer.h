@@ -41,6 +41,8 @@ layout(std430, set = 1, binding = 13) readonly buffer ClusterList
 } cluster_list;
 #endif
 
+//#define CLUSTERING_DEBUG
+
 const float NUM_CLUSTER_HIERARCHIES = 8.0;
 const float MAX_CLUSTER_HIERARCHY = NUM_CLUSTER_HIERARCHIES - 1.0;
 const float INV_PADDED_NUM_CLUSTER_HIERARCHIES = 1.0 / (NUM_CLUSTER_HIERARCHIES + 1.0);
@@ -85,25 +87,26 @@ mediump vec3 compute_cluster_light(
 	uint spot_count = elements.y;
 	uint point_start = elements.z;
 	uint point_count = elements.w;
-#if 0
-	result.r = float(spot_count);
-	result.g = float(point_count);
+
+#ifdef CLUSTERING_DEBUG
+	result.x = float(spot_count);
+	result.y = float(point_count);
+	return result;
 #endif
 
-#if 1
 	for (uint i = 0u; i < spot_count; i++)
 		result += compute_spot_light(cluster_list.elements[spot_start + i], material, world_pos, camera_pos);
 	for (uint i = 0u; i < point_count; i++)
 		result += compute_point_light(cluster_list.elements[point_start + i], material, world_pos, camera_pos);
-#endif
 #else
 	uvec2 bits = textureLod(uCluster, cluster_pos, 0.0).xy;
-#if 0
-	result.r = float(bitCount(bits.x));
-	result.g = float(bitCount(bits.y));
+
+#ifdef CLUSTERING_DEBUG
+	result.x = float(bitCount(bits.x));
+	result.y = float(bitCount(bits.y));
+	return result;
 #endif
 
-#if 1
 	while (bits.x != 0u)
 	{
 		int index = findLSB(bits.x);
@@ -119,7 +122,6 @@ mediump vec3 compute_cluster_light(
 		                              material_metallic, material_roughness, world_pos, camera_pos);
 		bits.y &= ~(1u << uint(index));
 	}
-#endif
 #endif
 
 	return result;

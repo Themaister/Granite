@@ -200,7 +200,9 @@ bool MemoryMappedTexture::map_write_scratch()
 	auto new_file = make_unique<ScratchFile>(nullptr, get_required_size());
 	if (new_file->get_size() < sizeof(MemoryMappedHeader))
 		return false;
-	return map_write(move(new_file), new_file->map());
+
+	void *new_mapped = new_file->map();
+	return map_write(move(new_file), new_mapped);
 }
 
 size_t MemoryMappedTexture::get_required_size() const
@@ -213,7 +215,9 @@ bool MemoryMappedTexture::map_copy(const void *mapped_, size_t size)
 	auto new_file = make_unique<ScratchFile>(mapped_, size);
 	if (new_file->get_size() < sizeof(MemoryMappedHeader))
 		return false;
-	return map_read(move(file), new_file->map());
+
+	void *new_mapped = new_file->map();
+	return map_read(move(new_file), new_mapped);
 }
 
 bool MemoryMappedTexture::map_read(unique_ptr<Granite::File> new_file, void *mapped_)
@@ -265,7 +269,7 @@ bool MemoryMappedTexture::map_read(const std::string &path)
 	if (!mapped)
 		return false;
 
-	return map_read(move(file), mapped);
+	return map_read(move(loaded_file), mapped);
 }
 
 bool MemoryMappedTexture::is_header(const void *mapped_, size_t size)

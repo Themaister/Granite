@@ -191,7 +191,9 @@ void Texture::replace_image(ImageHandle handle)
 	auto old = this->handle.write_object(move(handle));
 	if (old)
 		device->keep_handle_alive(move(old));
-	device->get_texture_manager().notify_updated_texture(path, *this);
+
+	if (enable_notification)
+		device->get_texture_manager().notify_updated_texture(path, *this);
 }
 
 Image *Texture::get_image()
@@ -199,6 +201,11 @@ Image *Texture::get_image()
 	auto ret = handle.get();
 	VK_ASSERT(ret);
 	return ret;
+}
+
+void Texture::set_enable_notification(bool enable)
+{
+	enable_notification = enable;
 }
 
 TextureManager::TextureManager(Device *device)
@@ -241,16 +248,18 @@ void TextureManager::register_texture_update_notification(const std::string &mod
 	if (ret)
 		func(*ret);
 
-	//lock_guard<mutex> holder{notification_lock};
+	lock_guard<mutex> holder{notification_lock};
 	notifications[modified_path].push_back(move(func));
 }
 
 void TextureManager::notify_updated_texture(const std::string &path, Vulkan::Texture &texture)
 {
-	//lock_guard<mutex> holder{notification_lock};
-	for (auto &n : notifications[path])
-		if (n)
-			n(texture);
+	lock_guard<mutex> holder{notification_lock};
+	auto itr = notifications.find(path);
+	if (itr != end(notifications))
+		for (auto &f : itr->second)
+			if (f)
+				f(texture);
 }
 
 Texture *TextureManager::register_deferred_texture(const std::string &path)
@@ -264,6 +273,7 @@ Texture *TextureManager::register_deferred_texture(const std::string &path)
 	{
 		auto texture = make_unique<Texture>(device);
 		texture->set_path(path);
+		texture->set_enable_notification(false);
 		ret = deferred_textures.insert(hash, move(texture));
 	}
 	return ret;

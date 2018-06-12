@@ -56,6 +56,7 @@ public:
 	Image *get_image();
 
 	void replace_image(ImageHandle handle);
+	void set_enable_notification(bool enable);
 
 private:
 	Device *device;
@@ -70,6 +71,7 @@ private:
 	void load();
 	void unload();
 	void update(std::unique_ptr<Granite::File> file);
+	bool enable_notification = true;
 };
 
 class TextureManager

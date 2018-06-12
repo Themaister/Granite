@@ -296,8 +296,8 @@ void SceneLoader::parse_gltf(const std::string &path)
 
 			if (!env.reflection.path.empty() && !env.irradiance.path.empty())
 			{
-				skybox->enable_irradiance(env.irradiance.path, false);
-				skybox->enable_reflection(env.reflection.path, false);
+				skybox->enable_irradiance(env.irradiance.path);
+				skybox->enable_reflection(env.reflection.path);
 				auto *ibl = entity->allocate_component<IBLComponent>();
 				ibl->irradiance_path = env.irradiance.path;
 				ibl->reflection_path = env.reflection.path;
@@ -592,18 +592,23 @@ void SceneLoader::parse_scene_format(const std::string &path, const std::string 
 
 			if (use_ibl || (!reflection.empty() && !irradiance.empty()))
 			{
-				auto irradiance_path = irradiance.empty() ? (texture_path + ".irradiance") : irradiance;
-				auto reflection_path = reflection.empty() ? (texture_path + ".reflection") : reflection;
 				if (skybox)
 				{
-					skybox->enable_irradiance(irradiance_path, irradiance.empty());
-					skybox->enable_reflection(reflection_path, reflection.empty());
+					if (!reflection.empty() && !irradiance.empty())
+					{
+						skybox->enable_irradiance(irradiance);
+						skybox->enable_reflection(reflection);
+					}
 					entity->allocate_component<SkyboxComponent>()->skybox = skybox.get();
 				}
-				auto *ibl = entity->allocate_component<IBLComponent>();
-				ibl->irradiance_path = irradiance_path;
-				ibl->reflection_path = reflection_path;
-				ibl->intensity = 1.0f;
+
+				if (!reflection.empty() && !irradiance.empty())
+				{
+					auto *ibl = entity->allocate_component<IBLComponent>();
+					ibl->irradiance_path = irradiance;
+					ibl->reflection_path = reflection;
+					ibl->intensity = 1.0f;
+				}
 			}
 		}
 		else

@@ -33,6 +33,10 @@ def main():
     parser.add_argument('--stats',
                         help = 'Stat files',
                         nargs = '+')
+    parser.add_argument('--argument',
+                        help = 'Argument for diffing against',
+                        type = str,
+                        default = 'avg')
 
     args = parser.parse_args()
     if args.stats is None:
@@ -88,12 +92,18 @@ def main():
             if run is not None:
                 has_valid = True
                 if first:
-                    reference_time = run['avg']
+                    reference_time = run[args.argument]
 
-                if not first:
-                    result_string += '{:>25}'.format('{:.3f}'.format(run['avg'] / 1000.0) + ' ms ' + '({:6.2f} %)'.format(((run['avg'] - reference_time) / reference_time) * 100.0))
+                if args.argument == 'avg':
+                    if not first:
+                        result_string += '{:>25}'.format('{:.3f}'.format(run[args.argument] / 1000.0) + ' ms ' + '({:6.2f} %)'.format(((run[args.argument] - reference_time) / reference_time) * 100.0))
+                    else:
+                        result_string += '{:>25}'.format('{:.3f}'.format(run[args.argument] / 1000.0) + ' ms')
                 else:
-                    result_string += '{:>25}'.format('{:.3f}'.format(run['avg'] / 1000.0) + ' ms')
+                    if not first:
+                        result_string += '{:>25}'.format('{:.3f}'.format(run[args.argument] / 1000000.0) + ' M/frame ' + '({:6.2f} %)'.format(((run[args.argument] - reference_time) / reference_time) * 100.0))
+                    else:
+                        result_string += '{:>25}'.format('{:.3f}'.format(run[args.argument] / 1000000.0) + ' M/frame ')
 
                 first = False
             else:

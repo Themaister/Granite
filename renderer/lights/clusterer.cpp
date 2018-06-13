@@ -488,7 +488,7 @@ void LightClusterer::render_atlas_point(RenderContext &context)
 		{
 			mat4 view, proj;
 			compute_cube_render_transform(points.lights[i].position, face, proj, view,
-			                              0.01f / points.lights[i].inv_radius,
+			                              0.005f / points.lights[i].inv_radius,
 			                              1.0f / points.lights[i].inv_radius);
 			depth_context.set_camera(proj, view);
 
@@ -613,7 +613,7 @@ void LightClusterer::render_atlas_spot(RenderContext &context)
 		mat4 view = mat4_cast(look_at_arbitrary_up(spots.lights[i].direction)) *
 		            translate(-spots.lights[i].position);
 		mat4 proj = projection(range * 2.0f, 1.0f,
-		                       0.01f / spots.lights[i].inv_radius,
+		                       0.005f / spots.lights[i].inv_radius,
 		                       1.0f / spots.lights[i].inv_radius);
 
 		unsigned remapped = spots.index_remap[i];

@@ -16,6 +16,10 @@ def compute_stddev(values):
 
 def run_test(sweep, config, iterations, stat_file, sleep, adb):
     config_results = []
+    gpu_cycles = []
+    bandwidth_read = []
+    bandwidth_write = []
+
     for _ in range(iterations):
         print('Running scene with config:', config)
         subprocess.check_call(sweep)
@@ -32,6 +36,12 @@ def run_test(sweep, config, iterations, stat_file, sleep, adb):
             json_data = f.read()
             parsed = json.loads(json_data)
             config_results.append(parsed['averageFrameTimeUs'])
+            if 'gpuCycles' in parsed:
+                gpu_cycles.append(parsed['gpuCycles'])
+            if 'bandwidthRead' in parsed:
+                bandwidth_read.append(parsed['bandwidthRead'])
+            if 'bandwidthWrite' in parsed:
+                bandwidth_write.append(parsed['bandwidthWrite'])
 
     with open(stat_file, 'r') as f:
         json_data = f.read()
@@ -40,10 +50,14 @@ def run_test(sweep, config, iterations, stat_file, sleep, adb):
         version = parsed['driverVersion']
 
     avg, stddev = compute_stddev(config_results)
-    return avg, stddev, gpu, version
+    avg_gpu_cycles = 0.0 if len(gpu_cycles) == 0 else statistics.mean(gpu_cycles)
+    avg_bw_read = 0.0 if len(bandwidth_read) == 0 else statistics.mean(bandwidth_read)
+    avg_bw_write = 0.0 if len(bandwidth_write) == 0 else statistics.mean(bandwidth_write)
+    return avg, stddev, gpu, version, avg_gpu_cycles, avg_bw_read, avg_bw_write
 
 def map_result_to_json(result, width, height, gpu, version):
-    return { 'config': result[0], 'avg': result[1], 'stdev': result[2], 'width': width, 'height': height, 'gpu': gpu, 'version': version }
+    return { 'config': result[0], 'avg': result[1], 'stdev': result[2], 'width': width, 'height': height, 'gpu': gpu, 'version': version,
+            'gpuCycles': result[3], 'bandwidthRead': result[4], 'bandwidthWrite': result[5] }
 
 def config_to_path(c):
     res = ''
@@ -147,6 +161,9 @@ def main():
     parser.add_argument('--sleep',
                         help = 'Sleep for seconds in between runs',
                         type = int)
+    parser.add_argument('--hw-counter-lib',
+                        help = 'Helper library for HW counters',
+                        type = str)
 
     args = parser.parse_args()
 
@@ -216,6 +233,9 @@ def main():
             print('Pushing quirks config.')
             subprocess.check_call(['adb', 'push', args.quirks, '/data/local/tmp/granite/quirks.json'])
 
+        if args.hw_counter_lib is not None:
+            subprocess.check_call(['adb', 'push', args.hw_counter_lib, '/data/local/tmp/granite/hwcounter.so'])
+
         subprocess.check_call(['adb', 'push', args.builtin, '/data/local/tmp/granite/'])
 
         asset_dir = os.path.dirname(sweep_path)
@@ -249,6 +269,9 @@ def main():
         if args.quirks is not None:
             base_sweep.append('--quirks')
             base_sweep.append('/data/local/tmp/granite/quirks.json')
+        if args.hw_counter_lib is not None:
+            base_sweep.append('--hw-counter-lib')
+            base_sweep.append('/data/local/tmp/granite/hwcounter.so')
     else:
         binary = args.viewer_binary if args.viewer_binary is not None else './viewer/gltf-viewer-headless'
         base_sweep = [binary, '--frames', str(args.frames),
@@ -258,6 +281,9 @@ def main():
         if args.quirks is not None:
             base_sweep.append('--quirks')
             base_sweep.append(args.quirks)
+        if args.hw_counter_lib is not None:
+            base_sweep.append('--hw-counter-lib')
+            base_sweep.append(args.hw_counter_lib)
 
     results = []
     iterations = args.iterations if args.iterations is not None else 1
@@ -357,7 +383,7 @@ def main():
                     sweep.append('--png-reference-path')
                     sweep.append(os.path.join(args.png_result_dir, config_to_path(c)) + '.png')
 
-            avg, stddev, gpu, version = run_test(sweep, config_file, iterations, stat_file, args.sleep, args.android_viewer_binary is not None)
+            avg, stddev, gpu, version, gpu_cycles, bw_read, bw_write = run_test(sweep, config_file, iterations, stat_file, args.sleep, args.android_viewer_binary is not None)
 
             if (args.android_viewer_binary  is not None) and (args.png_result_dir is not None):
                 subprocess.check_call(['adb', 'pull', '/data/local/tmp/granite/ref.png', os.path.join(args.png_result_dir, config_to_path(c)) + '.png'])
@@ -380,7 +406,7 @@ def main():
                 config_name['pcf_width'] = 5
             config_name['variant'] = variant
 
-            results.append((config_name, avg, stddev))
+            results.append((config_name, avg, stddev, gpu_cycles, bw_read, bw_write))
 
     for res in results:
         print(res)

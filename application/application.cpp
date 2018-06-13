@@ -66,7 +66,7 @@ void SceneViewerApplication::read_quirks(const std::string &path)
 	string json;
 	if (!Filesystem::get().read_file_to_string(path, json))
 	{
-		LOGE("Failed to read config file. Assuming defaults.\n");
+		LOGE("Failed to read quirks file. Assuming defaults.\n");
 		return;
 	}
 

@@ -31,6 +31,8 @@
 #include "os.hpp"
 #include "rapidjson_wrapper.hpp"
 #include <limits.h>
+#include "dynamic_library.hpp"
+#include "hw_counters/hw_counter_interface.h"
 using namespace rapidjson;
 
 #ifdef _WIN32
@@ -141,6 +143,8 @@ public:
 	~WSIPlatformHeadless() override
 	{
 		release_resources();
+		if (hw_counter_handle)
+			hw_counter_iface.destroy(hw_counter_handle);
 	}
 
 	void release_resources() override
@@ -351,6 +355,44 @@ public:
 			thread->wait();
 	}
 
+	void setup_hw_counter_lib(const char *path)
+	{
+		try
+		{
+			hw_counter_lib = DynamicLibrary(path);
+			auto *get_iface = hw_counter_lib.get_symbol<get_hw_counter_interface_t>("get_hw_counter_interface");
+			if (!get_iface)
+			{
+				LOGE("Count not find symbol for HW counter interface!\n");
+				return;
+			}
+
+			if (!get_iface(&hw_counter_iface))
+			{
+				LOGE("Failed to get HW counter interface!\n");
+				return;
+			}
+
+			hw_counter_handle = hw_counter_iface.create();
+			if (!hw_counter_handle)
+			{
+				LOGE("Failed to create HW counter handle!\n");
+				return;
+			}
+		}
+		catch (const std::exception &e)
+		{
+			LOGE("Failed to load HW counter library: %s\n", e.what());
+		}
+	}
+
+	bool get_counters(hw_counter &counter)
+	{
+		if (!hw_counter_handle)
+			return false;
+		return hw_counter_iface.wait_sample(hw_counter_handle, &counter);
+	}
+
 private:
 	unsigned width = 0;
 	unsigned height = 0;
@@ -391,6 +433,9 @@ private:
 	}
 
 	Application *app = nullptr;
+	DynamicLibrary hw_counter_lib;
+	hw_counter_interface hw_counter_iface;
+	hw_counter_handle_t *hw_counter_handle = nullptr;
 };
 
 void application_dummy()
@@ -402,7 +447,7 @@ static void print_help()
 {
 	LOGI("[--png-path <path>] [--stat <output.json>]\n"
 	     "[--fs-assets <path>] [--fs-cache <path>] [--fs-builtin <path>]\n"
-	     "[--png-reference-path <path>] [--frames <frames>] [--width <width>] [--height <height>] [--time-step <step>].\n");
+	     "[--png-reference-path <path>] [--frames <frames>] [--width <width>] [--height <height>] [--time-step <step>] [--hw-counter-lib <lib>].\n");
 }
 
 #ifdef _WIN32
@@ -442,6 +487,7 @@ int main(int argc, char *argv[])
 		string assets;
 		string cache;
 		string builtin;
+		string hw_counter_lib;
 		unsigned max_frames = UINT_MAX;
 		unsigned width = 1280;
 		unsigned height = 720;
@@ -463,6 +509,7 @@ int main(int argc, char *argv[])
 	cbs.add("--fs-cache", [&](CLIParser &parser) { args.cache = parser.next_string(); });
 	cbs.add("--stat", [&](CLIParser &parser) { args.stat = parser.next_string(); });
 	cbs.add("--help", [](CLIParser &parser) { print_help(); parser.end(); });
+	cbs.add("--hw-counter-lib", [&](CLIParser &parser) { args.hw_counter_lib = parser.next_string(); });
 	cbs.default_handler = [&](const char *arg) { filtered_argv.push_back(const_cast<char *>(arg)); };
 	cbs.error_handler = [&]() { print_help(); };
 	CLIParser parser(move(cbs), argc - 1, argv + 1);
@@ -492,6 +539,10 @@ int main(int argc, char *argv[])
 	{
 		auto platform = make_unique<WSIPlatformHeadless>(args.width, args.height);
 		auto *p = platform.get();
+
+		if (!args.hw_counter_lib.empty())
+			p->setup_hw_counter_lib(args.hw_counter_lib.c_str());
+
 		if (!app->init_wsi(move(platform)))
 			return 1;
 
@@ -512,6 +563,9 @@ int main(int argc, char *argv[])
 		p->wait_threads();
 		app->get_wsi().get_device().wait_idle();
 
+		hw_counter start_counter, end_counter;
+		bool has_start_counters = p->get_counters(start_counter);
+
 		auto start_time = get_current_time_nsecs();
 		unsigned rendered_frames = 0;
 		while (app->poll())
@@ -524,6 +578,9 @@ int main(int argc, char *argv[])
 
 		p->wait_threads();
 		app->get_wsi().get_device().wait_idle();
+
+		bool has_end_counters = p->get_counters(end_counter);
+
 		auto end_time = get_current_time_nsecs();
 
 		if (rendered_frames)
@@ -540,6 +597,13 @@ int main(int argc, char *argv[])
 				doc.AddMember("averageFrameTimeUs", usec, allocator);
 				doc.AddMember("gpu", StringRef(app->get_wsi().get_context().get_gpu_props().deviceName), allocator);
 				doc.AddMember("driverVersion", app->get_wsi().get_context().get_gpu_props().driverVersion, allocator);
+
+				if (has_start_counters && has_end_counters)
+				{
+					doc.AddMember("gpuCycles", (end_counter.gpu_cycles - start_counter.gpu_cycles) / rendered_frames, allocator);
+					doc.AddMember("bandwidthRead", (end_counter.bandwidth_read - start_counter.bandwidth_read) / rendered_frames, allocator);
+					doc.AddMember("bandwidthWrite", (end_counter.bandwidth_write - start_counter.bandwidth_write) / rendered_frames, allocator);
+				}
 
 				StringBuffer buffer;
 				PrettyWriter<StringBuffer> writer(buffer);

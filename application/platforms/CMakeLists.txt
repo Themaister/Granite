@@ -5,7 +5,7 @@ endif()
 
 option(GRANITE_KHR_DISPLAY_ACQUIRE_XLIB "Try to acquire Xlib display when using VK_KHR_display." OFF)
 
-add_granite_library(application-headless application_headless.cpp)
+add_granite_library(application-headless application_headless.cpp hw_counters/hw_counter_interface.h)
 target_link_libraries(application-headless
 		volk application vulkan-backend
 		vulkan-wsi ui-renderer

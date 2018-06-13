@@ -377,11 +377,11 @@ bool mesh_recompute_tangents(Mesh &mesh)
 		       sizeof(vec2));
 	};
 
-	iface.m_getPosition = [](const SMikkTSpaceContext *ctx, float normals[],
+	iface.m_getPosition = [](const SMikkTSpaceContext *ctx, float positions[],
 	                         const int iface, const int ivert) {
 		int i = iface * 3 + ivert;
 		const Mesh *m = static_cast<const Mesh *>(ctx->m_pUserData);
-		memcpy(normals, m->positions.data() + i * m->position_stride,
+		memcpy(positions, m->positions.data() + i * m->position_stride,
 		       sizeof(vec3));
 	};
 
@@ -389,7 +389,8 @@ bool mesh_recompute_tangents(Mesh &mesh)
 	                            const int iface, const int ivert) {
 		int i = iface * 3 + ivert;
 		Mesh *m = static_cast<Mesh *>(ctx->m_pUserData);
-		vec4 t(tangent[0], tangent[1], tangent[2], sign);
+		// Invert the sign because of glTF convention.
+		vec4 t(tangent[0], tangent[1], tangent[2], -sign);
 		memcpy(m->attributes.data() + i * m->attribute_stride +
 		       m->attribute_layout[ecast(MeshAttribute::Tangent)].offset,
 		       &t,

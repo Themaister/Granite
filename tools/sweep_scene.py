@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import sys
+import time
 import os
 import argparse
 import json
@@ -13,12 +14,16 @@ def compute_stddev(values):
     avg = statistics.mean(values)
     return avg, stdev
 
-def run_test(sweep, config, iterations, stat_file, adb):
+def run_test(sweep, config, iterations, stat_file, sleep, adb):
     config_results = []
     for _ in range(iterations):
         print('Running scene with config:', config)
         subprocess.check_call(sweep)
         print('Ran scene ...')
+
+        if sleep is not None:
+            print('Sleeping for {} seconds ...'.format(sleep))
+            time.sleep(sleep)
 
         if adb:
             subprocess.check_call(['adb', 'pull', '/data/local/tmp/granite/stat.json', stat_file])
@@ -139,6 +144,9 @@ def main():
     parser.add_argument('--fast',
                         help = 'Run only the most relevant configs',
                         action = 'store_true')
+    parser.add_argument('--sleep',
+                        help = 'Sleep for seconds in between runs',
+                        type = int)
 
     args = parser.parse_args()
 
@@ -272,7 +280,7 @@ def main():
                     sweep.append('--png-reference-path')
                     sweep.append(os.path.join(args.png_result_dir, os.path.splitext(os.path.basename(config))[0]) + '.png')
 
-            avg, stddev, gpu, version = run_test(sweep, config, iterations, stat_file, args.android_viewer_binary is not None)
+            avg, stddev, gpu, version = run_test(sweep, config, iterations, stat_file, args.sleep, args.android_viewer_binary is not None)
 
             if (args.android_viewer_binary is not None) and (args.png_result_dir is not None):
                 subprocess.check_call(['adb', 'pull', '/data/local/tmp/granite/ref.png', os.path.join(args.png_result_dir, os.path.splitext(os.path.basename(config))[0]) + '.png'])
@@ -349,7 +357,7 @@ def main():
                     sweep.append('--png-reference-path')
                     sweep.append(os.path.join(args.png_result_dir, config_to_path(c)) + '.png')
 
-            avg, stddev, gpu, version = run_test(sweep, config_file, iterations, stat_file, args.android_viewer_binary is not None)
+            avg, stddev, gpu, version = run_test(sweep, config_file, iterations, stat_file, args.sleep, args.android_viewer_binary is not None)
 
             if (args.android_viewer_binary  is not None) and (args.png_result_dir is not None):
                 subprocess.check_call(['adb', 'pull', '/data/local/tmp/granite/ref.png', os.path.join(args.png_result_dir, config_to_path(c)) + '.png'])

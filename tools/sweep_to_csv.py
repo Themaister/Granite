@@ -32,12 +32,43 @@ def main():
 
     stats = read_stat_file(args.stat)
 
-    lines = [','.join(['Renderer', 'MSAA', 'Depth prepass', 'Clustered shading', 'Stencil culling', 'HDR bloom', 'Sun shadows', 'Positional shadows', 'Shadow type', 'Average time ' + stats['runs'][0]['gpu'], 'Stddev ' + stats['runs'][0]['gpu']]) + '\n']
+    entries = [
+            'Renderer',
+            'MSAA',
+            'Depth prepass',
+            'Clustered shading',
+            'Stencil culling',
+            'HDR bloom',
+            'Sun shadows',
+            'Positional shadows',
+            'Shadow type',
+            'Average time ' + stats['runs'][0]['gpu'],
+            'Stddev ' + stats['runs'][0]['gpu'],
+            'GPU cycles ' + stats['runs'][0]['gpu'],
+            'BW Read bytes ' + stats['runs'][0]['gpu'],
+            'BW Write bytes ' + stats['runs'][0]['gpu']
+            ]
+    lines = [','.join(entries) + ('\n' if args.output is not None else '')]
     for run in stats['runs']:
         config = run['config']
-        line = [config['renderer'], config['msaa'], config['prepass'], config['clustered'], config['stencil_culling'], config['hdr_bloom'], config['shadows'], config['pos_shadows'], shadow_type_to_str(config), run['avg'], run['stdev']]
+        line = [
+                config['renderer'],
+                config['msaa'],
+                config['prepass'],
+                config['clustered'],
+                config['stencil_culling'],
+                config['hdr_bloom'],
+                config['shadows'],
+                config['pos_shadows'],
+                shadow_type_to_str(config),
+                int(run['avg']),
+                int(run['stdev']),
+                int(run['gpuCycles']),
+                int(run['bandwidthRead']),
+                int(run['bandwidthWrite'])
+                ]
         line = [str(x) for x in line]
-        lines.append(','.join(line) + '\n')
+        lines.append(','.join(line) + ('\n' if args.output is not None else ''))
 
     if args.output is not None:
         with open(args.output, 'w') as f:

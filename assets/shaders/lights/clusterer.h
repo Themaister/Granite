@@ -89,8 +89,8 @@ mediump vec3 compute_cluster_light(
 	uint point_count = elements.w;
 
 #ifdef CLUSTERING_DEBUG
-	result.x = float(spot_count);
-	result.y = float(point_count);
+	result.x = 0.1 * float(spot_count);
+	result.y = 0.1 * float(point_count);
 	return result;
 #endif
 
@@ -102,8 +102,8 @@ mediump vec3 compute_cluster_light(
 	uvec2 bits = textureLod(uCluster, cluster_pos, 0.0).xy;
 
 #ifdef CLUSTERING_DEBUG
-	result.x = float(bitCount(bits.x));
-	result.y = float(bitCount(bits.y));
+	result.x = 0.1 * float(bitCount(bits.x));
+	result.y = 0.1 * float(bitCount(bits.y));
 	return result;
 #endif
 

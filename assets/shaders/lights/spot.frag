@@ -51,7 +51,7 @@ void main()
     vec3 pos = clip.xyz / clip.w;
 
 #ifdef SPOT_DEBUG
-    FragColor = vec3(1.0, 0.0, 0.0);
+    FragColor = vec3(0.1, 0.0, 0.0);
     return;
 #endif
 

@@ -272,94 +272,135 @@ CubeMesh::CubeMesh()
 	EVENT_MANAGER_REGISTER_LATCH(CubeMesh, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
 
+namespace CubeData
+{
+static const int8_t N = -128;
+static const int8_t P = +127;
+
+static const int8_t positions[] = {
+	// Near
+	N, N, P, P,
+	P, N, P, P,
+	N, P, P, P,
+	P, P, P, P,
+
+	// Far
+	P, N, N, P,
+	N, N, N, P,
+	P, P, N, P,
+	N, P, N, P,
+
+	// Left
+	N, N, N, P,
+	N, N, P, P,
+	N, P, N, P,
+	N, P, P, P,
+
+	// Right
+	P, N, P, P,
+	P, N, N, P,
+	P, P, P, P,
+	P, P, N, P,
+
+	// Top
+	N, P, P, P,
+	P, P, P, P,
+	N, P, N, P,
+	P, P, N, P,
+
+	// Bottom
+	N, N, N, P,
+	P, N, N, P,
+	N, N, P, P,
+	P, N, P, P,
+};
+
+static const int8_t attr[] = {
+	// Near
+	0, 0, P, 0, P, 0, 0, 0, 0, P,
+	0, 0, P, 0, P, 0, 0, 0, P, P,
+	0, 0, P, 0, P, 0, 0, 0, 0, 0,
+	0, 0, P, 0, P, 0, 0, 0, P, 0,
+
+	// Far
+	0, 0, N, 0, N, 0, 0, 0, 0, P,
+	0, 0, N, 0, N, 0, 0, 0, P, P,
+	0, 0, N, 0, N, 0, 0, 0, 0, 0,
+	0, 0, N, 0, N, 0, 0, 0, P, 0,
+
+	// Left
+	N, 0, 0, 0, 0, 0, P, 0, 0, P,
+	N, 0, 0, 0, 0, 0, P, 0, P, P,
+	N, 0, 0, 0, 0, 0, P, 0, 0, 0,
+	N, 0, 0, 0, 0, 0, P, 0, P, 0,
+
+	// Right
+	P, 0, 0, 0, 0, 0, N, 0, 0, P,
+	P, 0, 0, 0, 0, 0, N, 0, P, P,
+	P, 0, 0, 0, 0, 0, N, 0, 0, 0,
+	P, 0, 0, 0, 0, 0, N, 0, P, 0,
+
+	// Top
+	0, P, 0, 0, P, 0, 0, 0, 0, P,
+	0, P, 0, 0, P, 0, 0, 0, P, P,
+	0, P, 0, 0, P, 0, 0, 0, 0, 0,
+	0, P, 0, 0, P, 0, 0, 0, P, 0,
+
+	// Bottom
+	0, N, 0, 0, P, 0, 0, 0, 0, P,
+	0, N, 0, 0, P, 0, 0, 0, P, P,
+	0, N, 0, 0, P, 0, 0, 0, 0, 0,
+	0, N, 0, 0, P, 0, 0, 0, P, 0,
+};
+
+static const uint16_t indices[] = {
+	0, 1, 2, 3, 2, 1,
+	4, 5, 6, 7, 6, 5,
+	8, 9, 10, 11, 10, 9,
+	12, 13, 14, 15, 14, 13,
+	16, 17, 18, 19, 18, 17,
+	20, 21, 22, 23, 22, 21,
+};
+}
+
+Mesh CubeMesh::build_plain_mesh()
+{
+	Mesh mesh;
+
+	mesh.position_stride = 4;
+	mesh.positions.resize(sizeof(CubeData::positions));
+	memcpy(mesh.positions.data(), CubeData::positions, sizeof(CubeData::positions));
+
+	mesh.attribute_layout[ecast(MeshAttribute::Position)].offset = 0;
+	mesh.attribute_layout[ecast(MeshAttribute::Position)].format = VK_FORMAT_R8G8B8A8_SNORM;
+	mesh.attribute_layout[ecast(MeshAttribute::Normal)].offset = 0;
+	mesh.attribute_layout[ecast(MeshAttribute::Normal)].format = VK_FORMAT_R8G8B8A8_SNORM;
+	mesh.attribute_layout[ecast(MeshAttribute::Tangent)].offset = 4;
+	mesh.attribute_layout[ecast(MeshAttribute::Tangent)].format = VK_FORMAT_R8G8B8A8_SNORM;
+	mesh.attribute_layout[ecast(MeshAttribute::UV)].offset = 8;
+	mesh.attribute_layout[ecast(MeshAttribute::UV)].format = VK_FORMAT_R8G8_SNORM;
+	mesh.attribute_stride = 10;
+
+	mesh.attributes.resize(sizeof(CubeData::attr));
+	memcpy(mesh.attributes.data(), CubeData::attr, sizeof(CubeData::attr));
+
+	mesh.index_type = VK_INDEX_TYPE_UINT16;
+	mesh.indices.resize(sizeof(CubeData::indices));
+	mesh.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	mesh.count = sizeof(CubeData::indices) / sizeof(CubeData::indices[0]);
+	memcpy(mesh.indices.data(), CubeData::indices, sizeof(CubeData::indices));
+	return mesh;
+}
+
 void CubeMesh::on_device_created(const DeviceCreatedEvent &created)
 {
 	auto &device = created.get_device();
 
-	static const int8_t N = -128;
-	static const int8_t P = +127;
-
-	static const int8_t positions[] = {
-		// Near
-		N, N, P, P,
-		P, N, P, P,
-		N, P, P, P,
-		P, P, P, P,
-
-		// Far
-		P, N, N, P,
-		N, N, N, P,
-		P, P, N, P,
-		N, P, N, P,
-
-	    // Left
-		N, N, N, P,
-		N, N, P, P,
-		N, P, N, P,
-		N, P, P, P,
-
-	    // Right
-		P, N, P, P,
-		P, N, N, P,
-		P, P, P, P,
-		P, P, N, P,
-
-	    // Top
-		N, P, P, P,
-		P, P, P, P,
-		N, P, N, P,
-		P, P, N, P,
-
-	    // Bottom
-		N, N, N, P,
-		P, N, N, P,
-		N, N, P, P,
-		P, N, P, P,
-	};
-
-	static const int8_t attr[] = {
-		// Near
-		0, 0, P, 0, P, 0, 0, 0, 0, P,
-		0, 0, P, 0, P, 0, 0, 0, P, P,
-		0, 0, P, 0, P, 0, 0, 0, 0, 0,
-		0, 0, P, 0, P, 0, 0, 0, P, 0,
-
-	    // Far
-		0, 0, N, 0, N, 0, 0, 0, 0, P,
-		0, 0, N, 0, N, 0, 0, 0, P, P,
-		0, 0, N, 0, N, 0, 0, 0, 0, 0,
-		0, 0, N, 0, N, 0, 0, 0, P, 0,
-
-	    // Left
-		N, 0, 0, 0, 0, 0, P, 0, 0, P,
-		N, 0, 0, 0, 0, 0, P, 0, P, P,
-		N, 0, 0, 0, 0, 0, P, 0, 0, 0,
-		N, 0, 0, 0, 0, 0, P, 0, P, 0,
-
-		// Right
-		P, 0, 0, 0, 0, 0, N, 0, 0, P,
-		P, 0, 0, 0, 0, 0, N, 0, P, P,
-		P, 0, 0, 0, 0, 0, N, 0, 0, 0,
-		P, 0, 0, 0, 0, 0, N, 0, P, 0,
-
-		// Top
-		0, P, 0, 0, P, 0, 0, 0, 0, P,
-		0, P, 0, 0, P, 0, 0, 0, P, P,
-		0, P, 0, 0, P, 0, 0, 0, 0, 0,
-		0, P, 0, 0, P, 0, 0, 0, P, 0,
-
-		// Bottom
-		0, N, 0, 0, P, 0, 0, 0, 0, P,
-		0, N, 0, 0, P, 0, 0, 0, P, P,
-		0, N, 0, 0, P, 0, 0, 0, 0, 0,
-		0, N, 0, 0, P, 0, 0, 0, P, 0,
-	};
-
 	BufferCreateInfo vbo_info = {};
 	vbo_info.domain = BufferDomain::Device;
-	vbo_info.size = sizeof(positions);
+	vbo_info.size = sizeof(CubeData::positions);
 	vbo_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-	vbo_position = device.create_buffer(vbo_info, positions);
+	vbo_position = device.create_buffer(vbo_info, CubeData::positions);
 	position_stride = 4;
 
 	attributes[ecast(MeshAttribute::Position)].offset = 0;
@@ -373,22 +414,14 @@ void CubeMesh::on_device_created(const DeviceCreatedEvent &created)
 	attributes[ecast(MeshAttribute::UV)].format = VK_FORMAT_R8G8_SNORM;
 	attribute_stride = 10;
 
-	vbo_info.size = sizeof(attr);
-	vbo_attributes = device.create_buffer(vbo_info, attr);
+	vbo_info.size = sizeof(CubeData::attr);
+	vbo_attributes = device.create_buffer(vbo_info, CubeData::attr);
 
-	static const uint16_t indices[] = {
-		0, 1, 2, 3, 2, 1,
-		4, 5, 6, 7, 6, 5,
-		8, 9, 10, 11, 10, 9,
-		12, 13, 14, 15, 14, 13,
-		16, 17, 18, 19, 18, 17,
-		20, 21, 22, 23, 22, 21,
-	};
 	BufferCreateInfo ibo_info = {};
-	ibo_info.size = sizeof(indices);
+	ibo_info.size = sizeof(CubeData::indices);
 	ibo_info.domain = BufferDomain::Device;
 	ibo_info.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-	ibo = device.create_buffer(ibo_info, indices);
+	ibo = device.create_buffer(ibo_info, CubeData::indices);
 
 	vertex_offset = 0;
 	ibo_offset = 0;

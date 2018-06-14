@@ -61,6 +61,7 @@ class CubeMesh : public StaticMesh, public EventHandler
 {
 public:
 	CubeMesh();
+	static SceneFormats::Mesh build_plain_mesh();
 
 private:
 	void on_device_created(const Vulkan::DeviceCreatedEvent &event);

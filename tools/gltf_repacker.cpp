@@ -62,6 +62,7 @@ static void print_help()
 	LOGI("[--quantize-attributes]\n");
 	LOGI("[--flip-tangent-w]\n");
 	LOGI("[--renormalize-normals]\n");
+	LOGI("[--gltf]\n");
 }
 
 int main(int argc, char *argv[])
@@ -96,6 +97,7 @@ int main(int argc, char *argv[])
 	cbs.add("--animate-cameras", [&](CLIParser &) { animate_cameras = true; });
 	cbs.add("--flip-tangent-w", [&](CLIParser &) { flip_tangent_w = true; });
 	cbs.add("--renormalize-normals", [&](CLIParser &) { renormalize_normals = true; });
+	cbs.add("--gltf", [&](CLIParser &) { options.gltf = true; });
 
 	cbs.add("--fog-color", [&](CLIParser &parser) {
 		for (unsigned i = 0; i < 3; i++)

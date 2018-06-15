@@ -1673,8 +1673,37 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 	}
 	doc.AddMember("nodes", nodes, allocator);
 
-	// The baked GLB buffer.
+	if (options.gltf)
 	{
+		// The baked GLB buffer.
+		Value buffers(kArrayType);
+		Value buffer(kObjectType);
+		buffer.AddMember("byteLength", state.glb_buffer_data.size(), allocator);
+
+		auto uri = path + ".bin";
+		buffer.AddMember("uri", uri, allocator);
+
+		auto file = Filesystem::get().open(uri, FileMode::WriteOnly);
+		if (!file)
+		{
+			LOGE("Failed to open %s for writing.\n", uri.c_str());
+			return false;
+		}
+
+		void *mapped = file->map_write(state.glb_buffer_data.size());
+		if (!mapped)
+		{
+			LOGE("Failed to map buffer for writing.\n");
+			return false;
+		}
+
+		memcpy(mapped, state.glb_buffer_data.data(), state.glb_buffer_data.size());
+		buffers.PushBack(buffer, allocator);
+		doc.AddMember("buffers", buffers, allocator);
+	}
+	else
+	{
+		// The baked GLB buffer.
 		Value buffers(kArrayType);
 		Value buffer(kObjectType);
 		buffer.AddMember("byteLength", state.glb_buffer_data.size(), allocator);
@@ -2271,8 +2300,6 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 		memcpy(data, &v, sizeof(uint32_t));
 	};
 
-	size_t glb_size = 12 + 8 + aligned_size(buffer.GetLength()) + 8 + aligned_size(state.glb_buffer_data.size());
-
 	auto file = Filesystem::get().open(path, FileMode::WriteOnly);
 	if (!file)
 	{
@@ -2280,38 +2307,55 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 		return false;
 	}
 
-	uint8_t *mapped = static_cast<uint8_t *>(file->map_write(glb_size));
-	if (!mapped)
+	if (options.gltf)
 	{
-		LOGE("Failed to map file: %s\n", path.c_str());
-		return false;
+		uint8_t *mapped = static_cast<uint8_t *>(file->map_write(buffer.GetLength()));
+		if (!mapped)
+		{
+			LOGE("Failed to map file: %s\n", path.c_str());
+			return false;
+		}
+
+		const char *json_str = buffer.GetString();
+		memcpy(mapped, json_str, buffer.GetLength());
 	}
+	else
+	{
+		size_t glb_size = 12 + 8 + aligned_size(buffer.GetLength()) + 8 + aligned_size(state.glb_buffer_data.size());
 
-	memcpy(mapped, "glTF", 4);
-	mapped += 4;
-	write_u32(mapped, 2);
-	mapped += 4;
-	write_u32(mapped, glb_size);
-	mapped += 4;
+		uint8_t *mapped = static_cast<uint8_t *>(file->map_write(glb_size));
+		if (!mapped)
+		{
+			LOGE("Failed to map file: %s\n", path.c_str());
+			return false;
+		}
 
-	write_u32(mapped, aligned_size(buffer.GetLength()));
-	mapped += 4;
-	memcpy(mapped, "JSON", 4);
-	mapped += 4;
+		memcpy(mapped, "glTF", 4);
+		mapped += 4;
+		write_u32(mapped, 2);
+		mapped += 4;
+		write_u32(mapped, glb_size);
+		mapped += 4;
 
-	const char *json_str = buffer.GetString();
-	memcpy(mapped, json_str, buffer.GetLength());
-	size_t pad_length = aligned_size(buffer.GetLength()) - buffer.GetLength();
-	memset(mapped + buffer.GetLength(), ' ', pad_length);
-	mapped += aligned_size(buffer.GetLength());
+		write_u32(mapped, aligned_size(buffer.GetLength()));
+		mapped += 4;
+		memcpy(mapped, "JSON", 4);
+		mapped += 4;
 
-	write_u32(mapped, aligned_size(state.glb_buffer_data.size()));
-	mapped += 4;
-	memcpy(mapped, "BIN\0", 4);
-	mapped += 4;
-	memcpy(mapped, state.glb_buffer_data.data(), state.glb_buffer_data.size());
-	pad_length = aligned_size(state.glb_buffer_data.size()) - state.glb_buffer_data.size();
-	memset(mapped + state.glb_buffer_data.size(), 0, pad_length);
+		const char *json_str = buffer.GetString();
+		memcpy(mapped, json_str, buffer.GetLength());
+		size_t pad_length = aligned_size(buffer.GetLength()) - buffer.GetLength();
+		memset(mapped + buffer.GetLength(), ' ', pad_length);
+		mapped += aligned_size(buffer.GetLength());
+
+		write_u32(mapped, aligned_size(state.glb_buffer_data.size()));
+		mapped += 4;
+		memcpy(mapped, "BIN\0", 4);
+		mapped += 4;
+		memcpy(mapped, state.glb_buffer_data.data(), state.glb_buffer_data.size());
+		pad_length = aligned_size(state.glb_buffer_data.size()) - state.glb_buffer_data.size();
+		memset(mapped + state.glb_buffer_data.size(), 0, pad_length);
+	}
 
 	file->unmap();
 	return true;

@@ -5,7 +5,7 @@ layout(location = 0) in uvec4 aPosition;
 layout(location = 1) in vec4 aLODWeights;
 
 #ifndef RENDERER_DEPTH
-layout(location = 0) out mediump vec3 vEyeVec;
+layout(location = 0) out highp vec3 vPos;
 layout(location = 1) out highp vec2 vUV;
 #endif
 
@@ -87,7 +87,7 @@ void main()
 
     vec4 world = registers.Model * vec4(pos.x, height_displacement, pos.y, 1.0);
 #ifndef RENDERER_DEPTH
-    vEyeVec = world.xyz - global.camera_position;
+    vPos = world.xyz;
 #endif
     gl_Position = global.view_projection * world;
 }

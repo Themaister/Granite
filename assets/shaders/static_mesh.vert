@@ -5,7 +5,7 @@
 layout(location = 0) in highp vec3 Position;
 
 #ifndef RENDERER_DEPTH
-layout(location = 0) out mediump vec3 vEyeVec;
+layout(location = 0) out highp vec3 vPos;
 #endif
 
 #ifdef RENDERER_DEPTH
@@ -107,7 +107,7 @@ void main()
     gl_Position = global.view_projection * vec4(World, 1.0);
 
 #ifndef RENDERER_DEPTH
-    vEyeVec = World - global.camera_position;
+    vPos = World;
 #endif
 
 #ifndef RENDERER_DEPTH

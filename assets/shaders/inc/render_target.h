@@ -15,7 +15,7 @@ layout(location = 3) out mediump vec2 PBR;
 
 void emit_render_target(mediump vec3 emissive, mediump vec4 base_color, mediump vec3 normal,
         mediump float metallic, mediump float roughness,
-        mediump float ambient, vec3 eye_dir)
+        mediump float ambient, vec3 pos)
 {
 #if defined(HAVE_EMISSIVE) && HAVE_EMISSIVE
     Emissive = emissive;
@@ -31,10 +31,8 @@ layout(location = 0) out mediump vec4 Color;
 #include "../lights/fog.h"
 
 void emit_render_target(mediump vec3 emissive, mediump vec4 base_color, mediump vec3 normal,
-        mediump float metallic, mediump float roughness, mediump float ambient, vec3 eye_dir)
+        mediump float metallic, mediump float roughness, mediump float ambient, vec3 pos)
 {
-    vec3 pos = eye_dir + global.camera_position;
-
 #ifdef SHADOWS
 #ifdef SHADOW_CASCADES
     vec4 clip_shadow_near = shadow.near * vec4(pos, 1.0);
@@ -56,7 +54,7 @@ void emit_render_target(mediump vec3 emissive, mediump vec4 base_color, mediump 
 	);
 
 #ifdef FOG
-    lighting = apply_fog(lighting, eye_dir, fog.color, fog.falloff);
+    lighting = apply_fog(lighting, pos - global.camera_position, fog.color, fog.falloff);
 #endif
 
 #ifdef REFRACTION

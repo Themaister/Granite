@@ -1,7 +1,7 @@
 #version 450
 layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
 
-layout(rgba32ui, set = 0, binding = 0) uniform writeonly uimage3D uCluster;
+layout(rg32ui, set = 0, binding = 0) uniform writeonly uimage3D uCluster;
 #ifdef INHERIT
 layout(set = 0, binding = 1) uniform usampler3D uClusterInherit;
 #endif

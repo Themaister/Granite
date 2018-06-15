@@ -1114,6 +1114,8 @@ void LightClusterer::add_render_passes(RenderGraph &graph)
 	}
 	else
 	{
+		att.format = VK_FORMAT_R32G32_UINT;
+
 		AttachmentInfo att_prepass = att;
 		assert((x % ClusterPrepassDownsample) == 0);
 		assert((y % ClusterPrepassDownsample) == 0);

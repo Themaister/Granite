@@ -30,11 +30,19 @@ using namespace Vulkan;
 using namespace Util;
 using namespace std;
 
-struct ClusteringVizApplication : Granite::Application
+struct ClusteringVizApplication : Granite::Application, Granite::EventHandler
 {
 	ClusteringVizApplication()
 	{
 		cube = CubeMesh::build_plain_mesh();
+		EVENT_MANAGER_REGISTER(ClusteringVizApplication, on_key, KeyboardEvent);
+	}
+
+	bool on_key(const KeyboardEvent &e)
+	{
+		if (e.get_key() == Key::C && e.get_key_state() == KeyState::Pressed)
+			should_cull = !should_cull;
+		return true;
 	}
 
 	void render_frame(double, double)
@@ -85,19 +93,22 @@ struct ClusteringVizApplication : Granite::Application
 		for (unsigned level = 0; level < 5; level++)
 		{
 			unsigned scale_level_z = level == 0 ? 0 : (level - 1);
-			float scale_z = 0.25f * float(1u << scale_level_z);
-			float scale_xy = 0.25f * float(1u << level) * 0.5f;
+			float scale = 0.25f * float(1u << scale_level_z);
 			for (unsigned z = 0; z < res_z; z++)
 			{
 				float w = ((level == 0 ? z : (z + res_z)) + 0.5f) / (2.0f * res_z);
 				for (unsigned y = 0; y < res_y; y++)
 				{
 					float v = 2.0f * ((y + 0.5f) / res_y) - 1.0f;
+					if (should_cull && (fabs(v) > w))
+						continue;
 					for (unsigned x = 0; x < res_x; x++)
 					{
 						float u = 2.0f * (2.0f * ((x + 0.5f) / res_x) - 1.0f);
+						if (should_cull && (fabs(0.5f * u) > w))
+							continue;
 						cubes.push_back({
-							vec4(scale_xy * u, scale_xy * v, -scale_z * w, scale_xy / res_y),
+							vec4(scale * u, scale * v, -scale * w, scale / res_y),
 							vec4(colors[level], float(level)),
 						});
 					}
@@ -109,7 +120,7 @@ struct ClusteringVizApplication : Granite::Application
 			const vec3 &pos = context.get_render_parameters().camera_position;
 			float a_sqr = dot(a.pos.xyz() - pos, a.pos.xyz() - pos);
 			float b_sqr = dot(b.pos.xyz() - pos, b.pos.xyz() - pos);
-			return b_sqr > a_sqr;
+			return a_sqr < b_sqr;
 		});
 
 		memcpy(cmd->allocate_vertex_data(1, cubes.size() * sizeof(Cube), sizeof(Cube), VK_VERTEX_INPUT_RATE_INSTANCE),
@@ -121,7 +132,7 @@ struct ClusteringVizApplication : Granite::Application
 		//cmd->set_depth_test(false, false);
 		//cmd->set_blend_factors(VK_BLEND_FACTOR_SRC_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA);
 
-		cmd->draw_indexed(cube.count, instances);
+		cmd->draw_indexed(cube.count, cubes.size());
 		cmd->end_render_pass();
 		device.submit(cmd);
 	}
@@ -129,6 +140,7 @@ struct ClusteringVizApplication : Granite::Application
 	SceneFormats::Mesh cube;
 	FPSCamera cam;
 	RenderContext context;
+	bool should_cull = false;
 };
 
 namespace Granite

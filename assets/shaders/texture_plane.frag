@@ -2,7 +2,7 @@
 precision mediump float;
 
 layout(location = 0) in highp vec2 vUV;
-layout(location = 1) in mediump vec3 vEyeVec;
+layout(location = 1) in highp vec3 vPos;
 
 #include "inc/render_target.h"
 
@@ -38,7 +38,7 @@ void main()
 #if defined(HAVE_EMISSIVE_REFLECTION) && HAVE_EMISSIVE_REFLECTION
     vec2 reflection_uv = vUV + uv_offset;
     mediump vec3 reflection = texture(uPlaneReflection, reflection_uv, 1.0).rgb;
-    mediump float NoV = abs(clamp(dot(normal, normalize(vEyeVec)), -1.0, 1.0));
+    mediump float NoV = abs(clamp(dot(normal, normalize(vPos - global.camera_position)), -1.0, 1.0));
     mediump float reflection_coeff = 0.02 + 0.98 * pow(1.0 - NoV, 5.0);
     emissive += reflection * reflection_coeff;
 #endif
@@ -53,5 +53,5 @@ void main()
     emissive += refraction * refraction_coeff;
 #endif
 
-    emit_render_target(emissive, vec4(0.02, 0.02, 0.02, 1.0), normal, 1.0, 0.0, 1.0, vEyeVec);
+    emit_render_target(emissive, vec4(0.02, 0.02, 0.02, 1.0), normal, 1.0, 0.0, 1.0, vPos);
 }

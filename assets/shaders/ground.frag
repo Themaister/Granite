@@ -3,7 +3,7 @@ precision mediump float;
 
 #include "inc/render_target.h"
 
-layout(location = 0) in mediump vec3 vEyeVec;
+layout(location = 0) in highp vec3 vPos;
 
 layout(push_constant, std430) uniform Constants
 {
@@ -55,6 +55,6 @@ void main()
     terrain.xy += types.w * 0.5 * (texture(uDeepRoughNormals, uv).xy * 2.0 - 1.0);
     mediump vec3 normal = normalize(mat3(registers.Normal) * terrain.xzy); // Normal is +Y, Bitangent is +Z.
 
-    emit_render_target(vec3(0.0), vec4(base_color, 1.0), normal, 0.0, 1.0, texture(uOcclusionTerrain, vUV).x, vEyeVec);
+    emit_render_target(vec3(0.0), vec4(base_color, 1.0), normal, 0.0, 1.0, texture(uOcclusionTerrain, vUV).x, vPos);
 }
 

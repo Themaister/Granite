@@ -5,7 +5,7 @@ layout(location = 0) in vec2 Position;
 
 #ifndef RENDERER_DEPTH
 layout(location = 0) out highp vec2 vUV;
-layout(location = 1) out mediump vec3 vEyeVec;
+layout(location = 1) out highp vec3 vPos;
 #endif
 
 layout(std430, push_constant) uniform Registers
@@ -27,6 +27,6 @@ void main()
     gl_Position = global.view_projection * vec4(plane, 1.0);
 #ifndef RENDERER_DEPTH
     vUV = Position * 0.5 + 0.5;
-    vEyeVec = plane - global.camera_position;
+    vPos = plane;
 #endif
 }

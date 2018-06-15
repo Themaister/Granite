@@ -2,7 +2,7 @@
 precision highp float;
 precision highp int;
 
-layout(location = 0) in mediump vec3 vEyeVec;
+layout(location = 0) in highp vec3 vPos;
 
 #if HAVE_UV
 layout(location = 1) in highp vec2 vUV;
@@ -111,5 +111,5 @@ void main()
         discard;
 #endif
 
-    emit_render_target(emissive, base_color, normal, metallic, roughness, ambient, vEyeVec);
+    emit_render_target(emissive, base_color, normal, metallic, roughness, ambient, vPos);
 }

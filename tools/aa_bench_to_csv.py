@@ -29,19 +29,39 @@ def main():
 
     stats = read_stat_file(args.stat)
 
-    delta = 0.0
+    delta_avg = 0.0
+    delta_gpu_cycles = 0.0
+    delta_bw_read = 0.0
+    delta_bw_write = 0.0
     if args.subtract_blit_overhead:
         for run in stats['runs']:
             if run['method'] == 'none':
-                delta = -run['avg']
+                delta_avg = -run['avg']
+                delta_gpu_cycles = -run['gpuCycles']
+                delta_bw_read = -run['bandwidthRead']
+                delta_bw_write = -run['bandwidthWrite']
                 break
 
-    lines = [','.join(['Method', 'Average time ' + stats['runs'][0]['gpu']]) + '\n']
+    entries = [
+            'Method',
+            'Average time ' + stats['runs'][0]['gpu'],
+            'GPU cycles ' + stats['runs'][0]['gpu'],
+            'BW read bytes ' + stats['runs'][0]['gpu'],
+            'BW write bytes ' + stats['runs'][0]['gpu']
+            ]
+
+    lines = [','.join(entries) + ('\n' if args.output is not None else '')]
     for run in stats['runs']:
         method = run['method']
-        line = [method, max(run['avg'] + delta, 0.0)]
+        line = [
+                method,
+                max(run['avg'] + delta_avg, 0.0),
+                max(run['gpuCycles'] + delta_gpu_cycles, 0.0),
+                max(run['bandwidthRead'] + delta_bw_read, 0.0),
+                max(run['bandwidthWrite'] + delta_bw_write, 0.0)
+                ]
         line = [str(x) for x in line]
-        lines.append(','.join(line) + '\n')
+        lines.append(','.join(line) + ('\n' if args.output is not None else ''))
 
     if args.output is not None:
         with open(args.output, 'w') as f:

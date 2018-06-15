@@ -306,12 +306,12 @@ def main():
                     sweep.append('--png-reference-path')
                     sweep.append(os.path.join(args.png_result_dir, os.path.splitext(os.path.basename(config))[0]) + '.png')
 
-            avg, stddev, gpu, version = run_test(sweep, config, iterations, stat_file, args.sleep, args.android_viewer_binary is not None)
+            avg, stddev, gpu, version, gpu_cycles, bw_read, bw_write = run_test(sweep, config, iterations, stat_file, args.sleep, args.android_viewer_binary is not None)
 
             if (args.android_viewer_binary is not None) and (args.png_result_dir is not None):
                 subprocess.check_call(['adb', 'pull', '/data/local/tmp/granite/ref.png', os.path.join(args.png_result_dir, os.path.splitext(os.path.basename(config))[0]) + '.png'])
 
-            results.append((config, avg, stddev))
+            results.append((config, avg, stddev, gpu_cycles, bw_read, bw_write))
     elif args.gen_configs:
         for variant in range(1024):
             renderer = 'forward' if (variant & 512) != 0 else 'deferred'

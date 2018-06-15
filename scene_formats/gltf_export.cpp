@@ -1681,7 +1681,7 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 		buffer.AddMember("byteLength", state.glb_buffer_data.size(), allocator);
 
 		auto uri = path + ".bin";
-		buffer.AddMember("uri", uri, allocator);
+		buffer.AddMember("uri", Path::basename(uri), allocator);
 
 		auto file = Filesystem::get().open(uri, FileMode::WriteOnly);
 		if (!file)

@@ -8,7 +8,7 @@ layout(std430, set = 0, binding = 0) buffer LuminanceData
     float average_inv_linear_luminance;
 };
 
-layout(set = 0, binding = 1) uniform sampler2D uImage;
+layout(set = 0, binding = 1) uniform sampler2D uImage_LinearClamp;
 
 layout(std430, push_constant) uniform Registers
 {
@@ -35,7 +35,7 @@ void main()
             int sx = x * 8 + local_index.x;
             int sy = y * 8 + local_index.y;
             if (all(lessThan(ivec2(sx, sy), registers.size)))
-                total_log_lum += textureLod(uImage, (vec2(sx, sy) + 0.5) * inv_size, 0.0).a;
+                total_log_lum += textureLod(uImage_LinearClamp, (vec2(sx, sy) + 0.5) * inv_size, 0.0).a;
         }
     }
     shared_loglum[gl_LocalInvocationIndex] = total_log_lum;

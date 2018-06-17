@@ -1,8 +1,8 @@
 #version 310 es
 precision mediump float;
 
-layout(set = 0, binding = 0) uniform mediump sampler2D uHDR;
-layout(set = 0, binding = 1) uniform mediump sampler2D uBloom;
+layout(set = 0, binding = 0) uniform mediump sampler2D uHDR_LinearClamp;
+layout(set = 0, binding = 1) uniform mediump sampler2D uBloom_LinearClamp;
 
 layout(std140, set = 0, binding = 2) uniform LuminanceData
 {
@@ -55,16 +55,16 @@ mediump vec3 tonemap_reinhart(mediump vec3 color)
 
 void main()
 {
-    mediump vec3 color = textureLod(uHDR, vUV, 0.0).rgb;
+    mediump vec3 color = textureLod(uHDR_LinearClamp, vUV, 0.0).rgb;
     #if SHARPEN
         color *= 2.0;
-        color -= 0.25 * textureLod(uHDR, vUV + registers.inv_resolution * vec2(-0.5, -0.5), 0.0).rgb;
-        color -= 0.25 * textureLod(uHDR, vUV + registers.inv_resolution * vec2(+0.5, -0.5), 0.0).rgb;
-        color -= 0.25 * textureLod(uHDR, vUV + registers.inv_resolution * vec2(-0.5, +0.5), 0.0).rgb;
-        color -= 0.25 * textureLod(uHDR, vUV + registers.inv_resolution * vec2(+0.5, +0.5), 0.0).rgb;
+        color -= 0.25 * textureLod(uHDR_LinearClamp, vUV + registers.inv_resolution * vec2(-0.5, -0.5), 0.0).rgb;
+        color -= 0.25 * textureLod(uHDR_LinearClamp, vUV + registers.inv_resolution * vec2(+0.5, -0.5), 0.0).rgb;
+        color -= 0.25 * textureLod(uHDR_LinearClamp, vUV + registers.inv_resolution * vec2(-0.5, +0.5), 0.0).rgb;
+        color -= 0.25 * textureLod(uHDR_LinearClamp, vUV + registers.inv_resolution * vec2(+0.5, +0.5), 0.0).rgb;
         color = max(color, 0.0);
     #endif
-    mediump vec3 bloom = textureLod(uBloom, vUV, 0.0).rgb;
+    mediump vec3 bloom = textureLod(uBloom_LinearClamp, vUV, 0.0).rgb;
     color += bloom;
     FragColor = tonemap_filmic(color * average_inv_linear_luminance);
     //FragColor = 0.25 * color * average_inv_linear_luminance;

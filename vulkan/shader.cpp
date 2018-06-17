@@ -119,6 +119,30 @@ const char *Shader::stage_to_name(ShaderStage stage)
 	}
 }
 
+static bool get_stock_sampler(StockSampler &sampler, const string &name)
+{
+	if (name.find("NearestClamp") != string::npos)
+		sampler = StockSampler::NearestClamp;
+	else if (name.find("LinearClamp") != string::npos)
+		sampler = StockSampler::LinearClamp;
+	else if (name.find("TrilinearClamp") != string::npos)
+		sampler = StockSampler::TrilinearClamp;
+	else if (name.find("NearestWrap") != string::npos)
+		sampler = StockSampler::NearestWrap;
+	else if (name.find("LinearWrap") != string::npos)
+		sampler = StockSampler::LinearWrap;
+	else if (name.find("TrilinearWrap") != string::npos)
+		sampler = StockSampler::TrilinearWrap;
+	else if (name.find("NearestShadow") != string::npos)
+		sampler = StockSampler::NearestShadow;
+	else if (name.find("LinearShadow") != string::npos)
+		sampler = StockSampler::LinearShadow;
+	else
+		return false;
+
+	return true;
+}
+
 Shader::Shader(Hash hash, Device *device, const uint32_t *data, size_t size)
     : HashedObject(hash)
     , device(device)
@@ -154,6 +178,19 @@ Shader::Shader(Hash hash, Device *device, const uint32_t *data, size_t size)
 
 		if (compiler.get_type(type.image.type).basetype == SPIRType::BaseType::Float)
 			layout.sets[set].fp_mask |= 1u << binding;
+
+		const string &name = image.name;
+		StockSampler sampler;
+		if (type.image.dim != spv::DimBuffer && get_stock_sampler(sampler, name))
+		{
+			if (has_immutable_sampler(layout.sets[set], binding))
+			{
+				if (sampler != get_immutable_sampler(layout.sets[set], binding))
+					LOGE("Immutable sampler mismatch detected!\n");
+			}
+			else
+				set_immutable_sampler(layout.sets[set], binding, sampler);
+		}
 	}
 
 	for (auto &image : resources.subpass_inputs)
@@ -183,6 +220,19 @@ Shader::Shader(Hash hash, Device *device, const uint32_t *data, size_t size)
 		auto set = compiler.get_decoration(image.id, spv::DecorationDescriptorSet);
 		auto binding = compiler.get_decoration(image.id, spv::DecorationBinding);
 		layout.sets[set].sampler_mask |= 1u << binding;
+
+		const string &name = image.name;
+		StockSampler sampler;
+		if (get_stock_sampler(sampler, name))
+		{
+			if (has_immutable_sampler(layout.sets[set], binding))
+			{
+				if (sampler != get_immutable_sampler(layout.sets[set], binding))
+					LOGE("Immutable sampler mismatch detected!\n");
+			}
+			else
+				set_immutable_sampler(layout.sets[set], binding, sampler);
+		}
 	}
 
 	for (auto &image : resources.storage_images)

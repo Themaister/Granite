@@ -319,6 +319,19 @@ void Device::bake_program(Program &program)
 			layout.sets[set].separate_image_mask |= shader_layout.sets[set].separate_image_mask;
 			layout.sets[set].fp_mask |= shader_layout.sets[set].fp_mask;
 
+			for_each_bit(shader_layout.sets[set].immutable_sampler_mask, [&](uint32_t binding) {
+				StockSampler sampler = get_immutable_sampler(shader_layout.sets[set], binding);
+
+				// Do we already have an immutable sampler? Make sure it matches the layout.
+				if (has_immutable_sampler(layout.sets[set], binding))
+				{
+					if (sampler != get_immutable_sampler(layout.sets[set], binding))
+						LOGE("Immutable sampler mismatch detected!\n");
+				}
+
+				set_immutable_sampler(layout.sets[set], binding, sampler);
+			});
+
 			uint32_t active_binds =
 					shader_layout.sets[set].sampled_image_mask |
 					shader_layout.sets[set].storage_image_mask |
@@ -570,7 +583,7 @@ void Device::init_stock_samplers()
 			info.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
 			break;
 		}
-		samplers[i] = create_sampler(info);
+		samplers[i] = create_sampler(info, mode);
 		samplers[i]->set_internal_sync_object();
 	}
 }
@@ -2731,7 +2744,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 	return handle;
 }
 
-SamplerHandle Device::create_sampler(const SamplerCreateInfo &sampler_info)
+static VkSamplerCreateInfo fill_vk_sampler_info(const SamplerCreateInfo &sampler_info)
 {
 	VkSamplerCreateInfo info = { VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
 
@@ -2750,7 +2763,24 @@ SamplerHandle Device::create_sampler(const SamplerCreateInfo &sampler_info)
 	info.maxLod = sampler_info.maxLod;
 	info.borderColor = sampler_info.borderColor;
 	info.unnormalizedCoordinates = sampler_info.unnormalizedCoordinates;
+	return info;
+}
 
+SamplerHandle Device::create_sampler(const SamplerCreateInfo &sampler_info, StockSampler stock_sampler)
+{
+	auto info = fill_vk_sampler_info(sampler_info);
+	VkSampler sampler;
+	unsigned index = state_recorder.register_sampler(Fossilize::Hash(stock_sampler), info);
+	if (vkCreateSampler(device, &info, nullptr, &sampler) != VK_SUCCESS)
+		return SamplerHandle(nullptr);
+
+	state_recorder.set_sampler_handle(index, sampler);
+	return make_handle<Sampler>(this, sampler, sampler_info);
+}
+
+SamplerHandle Device::create_sampler(const SamplerCreateInfo &sampler_info)
+{
+	auto info = fill_vk_sampler_info(sampler_info);
 	VkSampler sampler;
 	if (vkCreateSampler(device, &info, nullptr, &sampler) != VK_SUCCESS)
 		return SamplerHandle(nullptr);
@@ -3032,9 +3062,10 @@ void Device::set_queue_lock(std::function<void()> lock_callback, std::function<v
 	queue_unlock_callback = move(unlock_callback);
 }
 
-bool Device::enqueue_create_sampler(Fossilize::Hash, unsigned, const VkSamplerCreateInfo *, VkSampler *)
+bool Device::enqueue_create_sampler(Fossilize::Hash hash, unsigned, const VkSamplerCreateInfo *, VkSampler *sampler)
 {
-	return false;
+	*sampler = get_stock_sampler(static_cast<StockSampler>(hash)).get_sampler();
+	return true;
 }
 
 bool Device::enqueue_create_descriptor_set_layout(Fossilize::Hash, unsigned, const VkDescriptorSetLayoutCreateInfo *, VkDescriptorSetLayout *layout)

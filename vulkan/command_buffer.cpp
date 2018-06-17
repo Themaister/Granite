@@ -1357,10 +1357,13 @@ void CommandBuffer::flush_descriptor_set(uint32_t set)
 	// Sampled images
 	for_each_bit(set_layout.sampled_image_mask, [&](uint32_t binding) {
 		h.u64(bindings.cookies[set][binding]);
-		h.u64(bindings.secondary_cookies[set][binding]);
+		if (!has_immutable_sampler(set_layout, binding))
+		{
+			h.u64(bindings.secondary_cookies[set][binding]);
+			VK_ASSERT(bindings.bindings[set][binding].image.fp.sampler != VK_NULL_HANDLE);
+		}
 		h.u32(bindings.bindings[set][binding].image.fp.imageLayout);
 		VK_ASSERT(bindings.bindings[set][binding].image.fp.imageView != VK_NULL_HANDLE);
-		VK_ASSERT(bindings.bindings[set][binding].image.fp.sampler != VK_NULL_HANDLE);
 	});
 
 	// Separate images
@@ -1371,7 +1374,7 @@ void CommandBuffer::flush_descriptor_set(uint32_t set)
 	});
 
 	// Separate samplers
-	for_each_bit(set_layout.sampler_mask, [&](uint32_t binding) {
+	for_each_bit(set_layout.sampler_mask & ~set_layout.immutable_sampler_mask, [&](uint32_t binding) {
 		h.u64(bindings.secondary_cookies[set][binding]);
 		VK_ASSERT(bindings.bindings[set][binding].image.fp.sampler != VK_NULL_HANDLE);
 	});
@@ -1474,7 +1477,7 @@ void CommandBuffer::flush_descriptor_set(uint32_t set)
 				write.pImageInfo = &bindings.bindings[set][binding].image.integer;
 		});
 
-		for_each_bit(set_layout.sampler_mask, [&](uint32_t binding) {
+		for_each_bit(set_layout.sampler_mask & ~set_layout.immutable_sampler_mask, [&](uint32_t binding) {
 			auto &write = writes[write_count++];
 			write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 			write.pNext = nullptr;

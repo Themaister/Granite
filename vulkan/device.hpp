@@ -380,6 +380,7 @@ private:
 	ShaderManager shader_manager;
 	TextureManager texture_manager;
 
+	SamplerHandle create_sampler(const SamplerCreateInfo &info, StockSampler sampler);
 	void init_pipeline_cache();
 	void init_pipeline_state();
 

@@ -26,6 +26,7 @@
 #include "object_pool.hpp"
 #include "temporary_hashmap.hpp"
 #include "vulkan.hpp"
+#include "sampler.hpp"
 #include <utility>
 #include <vector>
 #include "cookie.hpp"
@@ -44,7 +45,28 @@ struct DescriptorSetLayout
 	uint32_t sampler_mask = 0;
 	uint32_t separate_image_mask = 0;
 	uint32_t fp_mask = 0;
+	uint32_t immutable_sampler_mask = 0;
+	uint64_t immutable_samplers = 0;
 };
+
+// Avoid -Wclass-memaccess warnings since we hash DescriptorSetLayout.
+
+static inline bool has_immutable_sampler(const DescriptorSetLayout &layout, unsigned binding)
+{
+	return (layout.immutable_sampler_mask & (1u << binding)) != 0;
+}
+
+static inline StockSampler get_immutable_sampler(const DescriptorSetLayout &layout, unsigned binding)
+{
+	VK_ASSERT(has_immutable_sampler(layout, binding));
+	return static_cast<StockSampler>((layout.immutable_samplers >> (4 * binding)) & 0xf);
+}
+
+static inline void set_immutable_sampler(DescriptorSetLayout &layout, unsigned binding, StockSampler sampler)
+{
+	layout.immutable_samplers |= uint64_t(sampler) << (4 * binding);
+	layout.immutable_sampler_mask |= 1u << binding;
+}
 
 static const unsigned VULKAN_NUM_SETS_PER_POOL = 16;
 static const unsigned VULKAN_DESCRIPTOR_RING_SIZE = 8;

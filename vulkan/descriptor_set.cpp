@@ -49,7 +49,11 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device, const 
 		unsigned types = 0;
 		if (layout.sampled_image_mask & (1u << i))
 		{
-			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, stages, nullptr });
+			VkSampler sampler = VK_NULL_HANDLE;
+			if (has_immutable_sampler(layout, i))
+				sampler = device->get_stock_sampler(get_immutable_sampler(layout, i)).get_sampler();
+
+			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, stages, sampler != VK_NULL_HANDLE ? &sampler : nullptr });
 			pool_size.push_back({ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VULKAN_NUM_SETS_PER_POOL });
 			types++;
 		}
@@ -98,7 +102,11 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device, const 
 
 		if (layout.sampler_mask & (1u << i))
 		{
-			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_SAMPLER, 1, stages, nullptr });
+			VkSampler sampler = VK_NULL_HANDLE;
+			if (has_immutable_sampler(layout, i))
+				sampler = device->get_stock_sampler(get_immutable_sampler(layout, i)).get_sampler();
+
+			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_SAMPLER, 1, stages, sampler != VK_NULL_HANDLE ? &sampler : nullptr });
 			pool_size.push_back({ VK_DESCRIPTOR_TYPE_SAMPLER, VULKAN_NUM_SETS_PER_POOL });
 			types++;
 		}

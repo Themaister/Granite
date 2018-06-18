@@ -8,13 +8,13 @@ layout(std140, set = 0, binding = 1) uniform LuminanceData
     float average_inv_linear_luminance;
 };
 
-layout(set = 0, binding = 0) uniform mediump sampler2D uHDR_LinearClamp;
+layout(set = 0, binding = 0) uniform mediump sampler2D uHDR;
 layout(location = 0) out mediump vec4 FragColor;
 layout(location = 0) in highp vec2 vUV;
 
 void main()
 {
-    mediump vec3 color = textureLod(uHDR_LinearClamp, vUV, 0.0).rgb;
+    mediump vec3 color = textureLod(uHDR, vUV, 0.0).rgb;
     highp float luminance = max(max(color.x, color.y), color.z) + 0.0001;
     highp float loglum = log2(luminance);
 

@@ -51,7 +51,7 @@ static void luminance_build_render_pass(RenderPass &pass, Vulkan::CommandBuffer 
 	auto &output = pass.get_graph().get_physical_buffer_resource(pass.get_storage_outputs()[0]->get_physical_index());
 
 	cmd.set_storage_buffer(0, 0, output);
-	cmd.set_texture(0, 1, input);
+	cmd.set_texture(0, 1, input, Vulkan::StockSampler::LinearClamp);
 
 	unsigned half_width = input.get_image().get_create_info().width / 2;
 	unsigned half_height = input.get_image().get_create_info().height / 2;
@@ -82,7 +82,7 @@ static void luminance_build_compute(Vulkan::CommandBuffer &cmd, RenderGraph &gra
 	auto &output = graph.get_physical_buffer_resource(lum);
 
 	cmd.set_storage_buffer(0, 0, output);
-	cmd.set_texture(0, 1, input);
+	cmd.set_texture(0, 1, input, Vulkan::StockSampler::LinearClamp);
 
 	unsigned half_width = input.get_image().get_create_info().width / 2;
 	unsigned half_height = input.get_image().get_create_info().height / 2;
@@ -110,7 +110,7 @@ static void bloom_threshold_build_render_pass(RenderPass &pass, Vulkan::CommandB
 {
 	auto &input = pass.get_graph().get_physical_texture_resource(pass.get_texture_inputs()[0]->get_physical_index());
 	auto &ubo = pass.get_graph().get_physical_buffer_resource(pass.get_uniform_inputs()[0]->get_physical_index());
-	cmd.set_texture(0, 0, input);
+	cmd.set_texture(0, 0, input, Vulkan::StockSampler::LinearClamp);
 	cmd.set_uniform_buffer(0, 1, ubo);
 	Vulkan::CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/post/bloom_threshold.frag");
 }
@@ -122,7 +122,7 @@ static void bloom_threshold_build_compute(Vulkan::CommandBuffer &cmd, RenderGrap
 	auto &input = graph.get_physical_texture_resource(hdr);
 	auto &ubo = graph.get_physical_buffer_resource(lum);
 
-	cmd.set_texture(0, 0, input);
+	cmd.set_texture(0, 0, input, Vulkan::StockSampler::LinearClamp);
 	cmd.set_uniform_buffer(0, 1, ubo);
 	cmd.set_storage_texture(0, 2, output);
 
@@ -150,14 +150,14 @@ static void bloom_downsample_build_compute(Vulkan::CommandBuffer &cmd, RenderGra
 	auto &output = graph.get_physical_texture_resource(output_res);
 	auto &input = graph.get_physical_texture_resource(input_res);
 
-	cmd.set_texture(0, 0, input);
+	cmd.set_texture(0, 0, input, Vulkan::StockSampler::LinearClamp);
 	cmd.set_storage_texture(0, 1, output);
 
 	if (feedback)
 	{
 		auto *history = graph.get_physical_history_texture_resource(*feedback);
 		if (history)
-			cmd.set_texture(0, 2, *history);
+			cmd.set_texture(0, 2, *history, Vulkan::StockSampler::NearestClamp);
 		else
 			feedback = nullptr;
 	}
@@ -192,7 +192,7 @@ static void bloom_upsample_build_compute(Vulkan::CommandBuffer &cmd, RenderGraph
 	auto &output = graph.get_physical_texture_resource(output_res);
 	auto &input = graph.get_physical_texture_resource(input_res);
 
-	cmd.set_texture(0, 0, input);
+	cmd.set_texture(0, 0, input, Vulkan::StockSampler::LinearClamp);
 	cmd.set_storage_texture(0, 1, output);
 
 	auto *program = cmd.get_device().get_shader_manager().register_compute("builtin://shaders/post/bloom_upsample.comp");
@@ -218,7 +218,7 @@ static void bloom_upsample_build_compute(Vulkan::CommandBuffer &cmd, RenderGraph
 static void bloom_downsample_build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd, bool feedback)
 {
 	auto &input = pass.get_graph().get_physical_texture_resource(pass.get_texture_inputs()[0]->get_physical_index());
-	cmd.set_texture(0, 0, input);
+	cmd.set_texture(0, 0, input, Vulkan::StockSampler::LinearClamp);
 
 	if (feedback)
 	{
@@ -239,7 +239,7 @@ static void bloom_downsample_build_render_pass(RenderPass &pass, Vulkan::Command
 			push.lerp = lerp;
 			cmd.push_constants(&push, 0, sizeof(push));
 
-			cmd.set_texture(0, 1, *feedback_texture);
+			cmd.set_texture(0, 1, *feedback_texture, Vulkan::StockSampler::NearestClamp);
 			Vulkan::CommandBufferUtil::draw_quad(cmd,
 			                                     "builtin://shaders/quad.vert",
 			                                     "builtin://shaders/post/bloom_downsample.frag",
@@ -271,7 +271,7 @@ static void bloom_upsample_build_render_pass(RenderPass &pass, Vulkan::CommandBu
 	auto &input = pass.get_graph().get_physical_texture_resource(pass.get_texture_inputs()[0]->get_physical_index());
 	vec2 inv_size = vec2(1.0f / input.get_image().get_create_info().width, 1.0f / input.get_image().get_create_info().height);
 	cmd.push_constants(&inv_size, 0, sizeof(inv_size));
-	cmd.set_texture(0, 0, input);
+	cmd.set_texture(0, 0, input, Vulkan::StockSampler::LinearClamp);
 	Vulkan::CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/post/bloom_upsample.frag");
 }
 
@@ -280,8 +280,8 @@ static void tonemap_build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &c
 	auto &hdr = pass.get_graph().get_physical_texture_resource(pass.get_texture_inputs()[0]->get_physical_index());
 	auto &bloom = pass.get_graph().get_physical_texture_resource(pass.get_texture_inputs()[1]->get_physical_index());
 	auto &ubo = pass.get_graph().get_physical_buffer_resource(pass.get_uniform_inputs()[0]->get_physical_index());
-	cmd.set_texture(0, 0, hdr);
-	cmd.set_texture(0, 1, bloom);
+	cmd.set_texture(0, 0, hdr, Vulkan::StockSampler::LinearClamp);
+	cmd.set_texture(0, 1, bloom, Vulkan::StockSampler::LinearClamp);
 	cmd.set_uniform_buffer(0, 2, ubo);
 	vec2 inv_size = vec2(1.0f / hdr.get_image().get_create_info().width, 1.0f / hdr.get_image().get_create_info().height);
 	cmd.push_constants(&inv_size, 0, sizeof(inv_size));

@@ -35,7 +35,8 @@ void DeferredLights::refresh(RenderContext &context)
 		return;
 
 	visible.clear();
-	scene->gather_visible_positional_lights(context.get_visibility_frustum(), visible);
+	scene->gather_visible_positional_lights(context.get_visibility_frustum(), visible,
+	                                        max_spot_lights, max_point_lights);
 
 	clips.clear();
 	for (auto &cluster : clusters)
@@ -132,7 +133,8 @@ void DeferredLights::render_lights(Vulkan::CommandBuffer &cmd, RenderContext &co
 	else
 	{
 		visible.clear();
-		scene->gather_visible_positional_lights(context.get_visibility_frustum(), visible);
+		scene->gather_visible_positional_lights(context.get_visibility_frustum(), visible,
+		                                        max_spot_lights, max_point_lights);
 		deferred_renderer->begin();
 		deferred_renderer->push_renderables(context, visible);
 		deferred_renderer->flush(cmd, context);

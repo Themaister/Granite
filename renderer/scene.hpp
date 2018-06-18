@@ -52,7 +52,9 @@ public:
 	void gather_visible_transparent_renderables(const Frustum &frustum, VisibilityList &list);
 	void gather_visible_static_shadow_renderables(const Frustum &frustum, VisibilityList &list);
 	void gather_visible_dynamic_shadow_renderables(const Frustum &frustum, VisibilityList &list);
-	void gather_visible_positional_lights(const Frustum &frustum, VisibilityList &list);
+	void gather_visible_positional_lights(const Frustum &frustum, VisibilityList &list,
+	                                      unsigned max_spot_lights = std::numeric_limits<unsigned>::max(),
+	                                      unsigned max_point_lights = std::numeric_limits<unsigned>::max());
 	void gather_visible_render_pass_sinks(const vec3 &camera_pos, VisibilityList &list);
 	void gather_background_renderables(VisibilityList &list);
 	EnvironmentComponent *get_environment() const;

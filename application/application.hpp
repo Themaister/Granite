@@ -174,6 +174,9 @@ private:
 		float cascade_cutoff_distance = 10.0f;
 		int camera_index = -1;
 
+		unsigned max_spot_lights = 32;
+		unsigned max_point_lights = 32;
+
 		Renderer::RendererOptionFlags pcf_flags = 0;
 		bool directional_light_shadows = true;
 		bool directional_light_cascaded_shadows = true;

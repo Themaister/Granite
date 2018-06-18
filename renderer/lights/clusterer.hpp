@@ -67,6 +67,16 @@ public:
 
 	enum { MaxLights = 32, ClusterHierarchies = 8, ClusterPrepassDownsample = 4 };
 
+	void set_max_spot_lights(unsigned count)
+	{
+		max_spot_lights = count;
+	}
+
+	void set_max_point_lights(unsigned count)
+	{
+		max_point_lights = count;
+	}
+
 private:
 	void add_render_passes(RenderGraph &graph) override;
 	void setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target) override;
@@ -80,6 +90,8 @@ private:
 
 	unsigned x = 64, y = 32, z = 16;
 	unsigned shadow_resolution = 512;
+	unsigned max_spot_lights = MaxLights;
+	unsigned max_point_lights = MaxLights;
 	void build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view, const Vulkan::ImageView *pre_culled);
 	void build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view);
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);

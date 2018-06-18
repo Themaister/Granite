@@ -674,7 +674,7 @@ void LightClusterer::refresh(RenderContext &context)
 		{
 			auto &spot = static_cast<SpotLight &>(l);
 			spot.set_shadow_info(nullptr, {});
-			if (spots.count < MaxLights)
+			if (spots.count < max_spot_lights)
 			{
 				spots.lights[spots.count] = spot.get_shader_info(transform->transform->world_transform);
 				spots.handles[spots.count] = &spot;
@@ -685,7 +685,7 @@ void LightClusterer::refresh(RenderContext &context)
 		{
 			auto &point = static_cast<PointLight &>(l);
 			point.set_shadow_info(nullptr, {});
-			if (points.count < MaxLights)
+			if (points.count < max_point_lights)
 			{
 				points.lights[points.count] = point.get_shader_info(transform->transform->world_transform);
 				points.handles[points.count] = &point;

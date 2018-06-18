@@ -187,6 +187,11 @@ void SceneViewerApplication::read_config(const std::string &path)
 		auto *aa = doc["postAA"].GetString();
 		config.postaa_type = string_to_post_antialiasing_type(aa);
 	}
+
+	if (doc.HasMember("maxSpotLights"))
+		config.max_spot_lights = doc["maxSpotLights"].GetUint();
+	if (doc.HasMember("maxPointLights"))
+		config.max_point_lights = doc["maxPointLights"].GetUint();
 }
 
 SceneViewerApplication::SceneViewerApplication(const std::string &path, const std::string &config_path, const std::string &quirks_path)
@@ -277,6 +282,8 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 			cluster->set_base_render_context(&context);
 		}
 
+		cluster->set_max_spot_lights(config.max_spot_lights);
+		cluster->set_max_point_lights(config.max_point_lights);
 		cluster->set_enable_shadows(config.clustered_lights_shadows);
 		cluster->set_enable_clustering(config.clustered_lights);
 		cluster->set_force_update_shadows(config.force_shadow_map_update);
@@ -296,6 +303,8 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 	deferred_lights.set_scene(&scene_loader.get_scene());
 	deferred_lights.set_renderers(&depth_renderer, &deferred_renderer);
 	deferred_lights.set_enable_clustered_stencil_culling(config.deferred_clustered_stencil_culling);
+	deferred_lights.set_max_spot_lights(config.max_spot_lights);
+	deferred_lights.set_max_point_lights(config.max_point_lights);
 
 	context.set_camera(*selected_camera);
 

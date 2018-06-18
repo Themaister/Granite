@@ -175,9 +175,41 @@ void Scene::gather_visible_static_shadow_renderables(const Frustum &frustum, Vis
 	gather_visible_renderables(frustum, list, static_shadowing);
 }
 
-void Scene::gather_visible_positional_lights(const Frustum &frustum, VisibilityList &list)
+void Scene::gather_visible_positional_lights(const Frustum &frustum, VisibilityList &list,
+                                             unsigned max_spot_lights, unsigned max_point_lights)
 {
-	gather_visible_renderables(frustum, list, positional_lights);
+	unsigned spot_count = 0;
+	unsigned point_count = 0;
+
+	for (auto &o : positional_lights)
+	{
+		auto *transform = get<0>(o);
+		auto *renderable = get<1>(o);
+
+		if (transform->transform)
+		{
+			if (frustum.intersects_fast(transform->world_aabb))
+			{
+				const auto *light = static_cast<const PositionalLight *>(renderable->renderable.get());
+				if (light->get_type() == PositionalLight::Type::Point)
+				{
+					if (point_count >= max_point_lights)
+						continue;
+					point_count++;
+				}
+				else if (light->get_type() == PositionalLight::Type::Spot)
+				{
+					if (spot_count >= max_spot_lights)
+						continue;
+					spot_count++;
+				}
+
+				list.push_back({ renderable->renderable.get(), transform });
+			}
+		}
+		else
+			list.push_back({ renderable->renderable.get(), nullptr });
+	}
 }
 
 void Scene::gather_visible_dynamic_shadow_renderables(const Frustum &frustum, VisibilityList &list)

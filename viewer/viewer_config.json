@@ -21,5 +21,7 @@
 	"directionalLightShadowsForceUpdate": false,
 	"deferredClusteredStencilCulling": true,
 	"postAA": "none",
-	"showUi": true
+	"showUi": true,
+	"maxSpotLights": 32,
+	"maxPointLights": 32
 }

@@ -55,8 +55,9 @@ def map_result_to_json(result, width, height, gpu, version):
 
 def main():
     parser = argparse.ArgumentParser(description = 'Script for running AA benchmark.')
-    parser.add_argument('--image',
-                        help = 'The input image to test')
+    parser.add_argument('--images',
+                        help = 'The 2 input images to test',
+                        nargs = '+')
     parser.add_argument('--android-binary',
                         help = 'Path to android binary')
     parser.add_argument('--binary',
@@ -88,11 +89,12 @@ def main():
 
     args = parser.parse_args()
 
-    if args.image is None:
-        sys.stderr.write('Need --image.\n')
+    if len(args.images) != 2:
+        sys.stderr.write('Need --images.\n')
         sys.exit(1)
 
-    sweep_image = args.image
+    sweep_image0 = args.images[0]
+    sweep_image1 = args.images[1]
 
     if args.android_binary is not None:
         if args.builtin is None:
@@ -112,7 +114,8 @@ def main():
             subprocess.check_call(['adb', 'push', args.hw_counter_lib, '/data/local/tmp/granite/hwcounter.so'])
 
         print('Pushing test scene ...')
-        subprocess.check_call(['adb', 'push', sweep_image, '/data/local/tmp/granite/image.png'])
+        subprocess.check_call(['adb', 'push', sweep_image0, '/data/local/tmp/granite/image0.png'])
+        subprocess.check_call(['adb', 'push', sweep_image1, '/data/local/tmp/granite/image1.png'])
         print('Pushing builtin assets ...')
 
         subprocess.check_call(['adb', 'push', args.builtin, '/data/local/tmp/granite/'])
@@ -129,7 +132,7 @@ def main():
     if args.android_binary is not None:
         base_sweep = ['adb', 'shell', '/data/local/tmp/granite/aa-bench-headless', '--frames', str(args.frames),
                       '--width', str(args.width),
-                      '--height', str(args.height), '--input-image', '/data/local/tmp/granite/image.png',
+                      '--height', str(args.height), '--input-images', '/data/local/tmp/granite/image0.png', '/data/local/tmp/granite/image1.png',
                       '--stat', '/data/local/tmp/granite/stat.json',
                       '--fs-builtin /data/local/tmp/granite/assets',
                       '--fs-assets /data/local/tmp/granite/assets',
@@ -141,7 +144,7 @@ def main():
         binary = args.binary if args.binary is not None else './tools/aa-bench-headless'
         base_sweep = [binary, '--frames', str(args.frames),
                       '--width', str(args.width),
-                      '--height', str(args.height), '--input-image', sweep_image,
+                      '--height', str(args.height), '--input-images', sweep_image0, sweep_image1,
                       '--stat', stat_file]
         if args.hw_counter_lib is not None:
             base_sweep.append('--hw-counter-lib')

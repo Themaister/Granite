@@ -12,25 +12,27 @@ using namespace Vulkan;
 class AABenchApplication : public Application, public EventHandler
 {
 public:
-	AABenchApplication(const std::string &input, const char *method);
+	AABenchApplication(const std::string &input0, const std::string &input1, const char *method);
 	void render_frame(double, double) override;
 
 private:
-	std::string input_path;
+	std::string input_path0;
+	std::string input_path1;
 	PostAAType type;
 	void on_device_created(const DeviceCreatedEvent &e);
 	void on_device_destroyed(const DeviceCreatedEvent &e);
 	void on_swapchain_changed(const SwapchainParameterEvent &e);
 	void on_swapchain_destroyed(const SwapchainParameterEvent &e);
 
-	Texture *image = nullptr;
+	Texture *images[2] = {};
 	RenderGraph graph;
 	TemporalJitter jitter;
 	bool need_main_pass = false;
+	unsigned input_index = 0;
 };
 
-AABenchApplication::AABenchApplication(const std::string &input, const char *method)
-	: input_path(input)
+AABenchApplication::AABenchApplication(const std::string &input0, const std::string &input1, const char *method)
+	: input_path0(input0), input_path1(input1)
 {
 	type = string_to_post_antialiasing_type(method);
 
@@ -46,12 +48,14 @@ void AABenchApplication::render_frame(double, double)
 	auto &device = wsi.get_device();
 	graph.setup_attachments(device, &device.get_swapchain_view());
 	graph.enqueue_render_passes(device);
-	need_main_pass = false;
+	//need_main_pass = false;
 }
 
 void AABenchApplication::on_swapchain_changed(const SwapchainParameterEvent &swap)
 {
 	graph.reset();
+	ImplementationQuirks::get().use_async_compute_post = false;
+	ImplementationQuirks::get().render_graph_force_single_queue = true;
 
 	ResourceDimensions dim;
 	dim.width = swap.get_width();
@@ -73,8 +77,7 @@ void AABenchApplication::on_swapchain_changed(const SwapchainParameterEvent &swa
 		return need_main_pass;
 	});
 	pass.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
-		Vulkan::CommandBufferUtil::set_quad_vertex_state(cmd);
-		cmd.set_texture(0, 0, image->get_image()->get_view(), Vulkan::StockSampler::LinearClamp);
+		cmd.set_texture(0, 0, images[(input_index++) & 1]->get_image()->get_view(), Vulkan::StockSampler::LinearClamp);
 		Vulkan::CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/blit.frag", {});
 	});
 	pass.set_get_clear_depth_stencil([](VkClearDepthStencilValue *value) -> bool {
@@ -95,9 +98,12 @@ void AABenchApplication::on_swapchain_changed(const SwapchainParameterEvent &swa
 	tonemap.add_texture_input(resolved ? "HDR-resolved" : "HDR-main");
 	tonemap.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
 		auto &input = graph.get_physical_texture_resource(tonemap.get_texture_inputs()[0]->get_physical_index());
-		Vulkan::CommandBufferUtil::set_quad_vertex_state(cmd);
 		cmd.set_texture(0, 0, input, Vulkan::StockSampler::NearestClamp);
-		Vulkan::CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/blit.frag", {});
+
+		Vulkan::CommandBufferUtil::setup_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/blit.frag", {});
+		cmd.set_specialization_constant_mask(1);
+		cmd.set_specialization_constant(0, float((input_index % 3) + 1) / 3.0f);
+		cmd.draw(4);
 	});
 
 	if (setup_after_post_chain_antialiasing(type, graph, jitter,
@@ -116,13 +122,14 @@ void AABenchApplication::on_swapchain_destroyed(const SwapchainParameterEvent &)
 
 void AABenchApplication::on_device_created(const DeviceCreatedEvent &e)
 {
-	image = e.get_device().get_texture_manager().request_texture(input_path);
+	images[0] = e.get_device().get_texture_manager().request_texture(input_path0);
+	images[1] = e.get_device().get_texture_manager().request_texture(input_path1);
 	graph.set_device(&e.get_device());
 }
 
 void AABenchApplication::on_device_destroyed(const DeviceCreatedEvent &)
 {
-	image = nullptr;
+	memset(images, 0, sizeof(images));
 	graph.reset();
 	graph.set_device(nullptr);
 }
@@ -137,23 +144,25 @@ Application *application_create(int argc, char **argv)
 	application_dummy();
 
 	const char *aa_method = nullptr;
-	std::string input_image;
+	std::string input_image0;
+	std::string input_image1;
 
 #ifdef ANDROID
-	input_image = "assets://image.png";
+	input_image0 = "assets://image0.png";
+	input_image1 = "assets://image1.png";
 #endif
 
 	CLICallbacks cbs;
 	cbs.add("--aa-method", [&](CLIParser &parser) { aa_method = parser.next_string(); });
-	cbs.add("--input-image", [&](CLIParser &parser) { input_image = parser.next_string(); });
+	cbs.add("--input-images", [&](CLIParser &parser) { input_image0 = parser.next_string(); input_image1 = parser.next_string(); });
 
 	CLIParser parser(std::move(cbs), argc - 1, argv + 1);
 	if (!parser.parse())
 		return nullptr;
 
-	if (input_image.empty())
+	if (input_image0.empty() || input_image1.empty())
 	{
-		LOGE("Need path to input image.\n");
+		LOGE("Need path to input images.\n");
 		return nullptr;
 	}
 
@@ -167,7 +176,7 @@ Application *application_create(int argc, char **argv)
 
 	try
 	{
-		auto *app = new AABenchApplication(input_image, aa_method);
+		auto *app = new AABenchApplication(input_image0, input_image1, aa_method);
 		return app;
 	}
 	catch (const std::exception &e)

@@ -14,6 +14,15 @@ def compute_stddev(values):
     avg = statistics.mean(values)
     return avg, stdev
 
+def rewrite_config(target, source, spot, point):
+    with open(source, 'r') as f:
+        json_data = f.read()
+        parsed = json.loads(json_data)
+        parsed['maxSpotLights'] = spot
+        parsed['maxPointLights'] = point
+        with open(target, 'w') as f:
+            json.dump(parsed, f, indent = 4)
+
 def run_test(sweep, config, iterations, stat_file, sleep, adb):
     config_results = []
     gpu_cycles = []
@@ -164,6 +173,17 @@ def main():
     parser.add_argument('--hw-counter-lib',
                         help = 'Helper library for HW counters',
                         type = str)
+    parser.add_argument('--sweep-scene-lights',
+                        help = 'Sweep the max light count',
+                        action = 'store_true')
+    parser.add_argument('--max-spot-lights',
+                        help = 'Maximum spot lights when sweeping',
+                        type = int,
+                        default = 32)
+    parser.add_argument('--max-point-lights',
+                        help = 'Maximum point lights when sweeping',
+                        type = int,
+                        default = 32)
 
     args = parser.parse_args()
 
@@ -292,26 +312,43 @@ def main():
     version = None
 
     if args.configs is not None:
-        for config in args.configs:
+        light_counts = [(32, 32)]
+        if args.sweep_scene_lights:
+            light_counts = [(x, 0) for x in range(args.max_spot_lights + 1)] + [(0, x) for x in range(1, args.max_point_lights + 1)]
 
-            if args.android_viewer_binary is not None:
-                sweep = base_sweep + ['--config', '/data/local/tmp/granite/config.json']
-                if args.png_result_dir:
-                    sweep.append('--png-reference-path')
-                    sweep.append('/data/local/tmp/granite/ref.png')
-                subprocess.check_call(['adb', 'push', config, '/data/local/tmp/granite/config.json'])
-            else:
-                sweep = base_sweep + ['--config', config]
-                if args.png_result_dir:
-                    sweep.append('--png-reference-path')
-                    sweep.append(os.path.join(args.png_result_dir, os.path.splitext(os.path.basename(config))[0]) + '.png')
+        for l in light_counts:
+            spot_lights = l[0]
+            point_lights = l[1]
+            for config in args.configs:
+                rewrite_config(config_file, config, spot_lights, point_lights)
+                if args.android_viewer_binary is not None:
+                    sweep = base_sweep + ['--config', '/data/local/tmp/granite/config.json']
+                    if args.png_result_dir:
+                        sweep.append('--png-reference-path')
+                        sweep.append('/data/local/tmp/granite/ref.png')
+                    subprocess.check_call(['adb', 'push', config_file, '/data/local/tmp/granite/config.json'])
+                else:
+                    sweep = base_sweep + ['--config', config_file]
+                    if args.png_result_dir:
+                        sweep.append('--png-reference-path')
+                        sweep.append(os.path.join(args.png_result_dir,
+                                                  os.path.splitext(os.path.basename(config))[0]) + '_{}_{}.png'.format(spot_lights, point_lights))
 
-            avg, stddev, gpu, version, gpu_cycles, bw_read, bw_write = run_test(sweep, config, iterations, stat_file, args.sleep, args.android_viewer_binary is not None)
+                avg, stddev, gpu, version, gpu_cycles, bw_read, bw_write = run_test(sweep, config_file,
+                                                                                    iterations, stat_file, args.sleep,
+                                                                                    args.android_viewer_binary is not None)
 
-            if (args.android_viewer_binary is not None) and (args.png_result_dir is not None):
-                subprocess.check_call(['adb', 'pull', '/data/local/tmp/granite/ref.png', os.path.join(args.png_result_dir, os.path.splitext(os.path.basename(config))[0]) + '.png'])
+                if (args.android_viewer_binary is not None) and (args.png_result_dir is not None):
+                    subprocess.check_call(['adb', 'pull',
+                                           '/data/local/tmp/granite/ref.png',
+                                           os.path.join(args.png_result_dir,
+                                                        os.path.splitext(os.path.basename(config))[0]) + '_{}_{}.png'.format(spot_lights, point_lights)])
 
-            results.append((config, avg, stddev, gpu_cycles, bw_read, bw_write))
+                c = {}
+                c['configFile'] = config
+                c['maxSpotLights'] = spot_lights
+                c['maxPointLights'] = point_lights
+                results.append((c, avg, stddev, gpu_cycles, bw_read, bw_write))
     elif args.gen_configs:
         for variant in range(1024):
             renderer = 'forward' if (variant & 512) != 0 else 'deferred'

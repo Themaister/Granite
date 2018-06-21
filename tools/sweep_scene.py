@@ -184,6 +184,10 @@ def main():
                         help = 'Maximum point lights when sweeping',
                         type = int,
                         default = 32)
+    parser.add_argument('--max-pcf-size',
+                        help = 'Do not test large PCF kernels larger than certain size.',
+                        type = int,
+                        default = 5)
 
     args = parser.parse_args()
 
@@ -370,6 +374,10 @@ def main():
             if pos_shadows and renderer == 'forward' and (not clustered):
                 continue
             if shadow_type != 0 and (not shadows) and (not pos_shadows):
+                continue
+            if shadow_type == 1 and args.max_pcf_size < 3:
+                continue
+            if shadow_type == 2 and args.max_pcf_size < 5:
                 continue
 
             if args.fast:

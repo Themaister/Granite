@@ -323,6 +323,10 @@ public:
 	Util::IntrusivePtr<CommandBuffer> request_secondary_command_buffer(unsigned thread_index, unsigned subpass);
 
 	void set_program(Program &program);
+	// Convenience functions for one-off shader binds.
+	void set_program(const std::string &vertex, const std::string &fragment, const std::vector<std::pair<std::string, int>> &defines = {});
+	void set_program(const std::string &compute, const std::vector<std::pair<std::string, int>> &defines = {});
+
 	void set_buffer_view(unsigned set, unsigned binding, const BufferView &view);
 	void set_input_attachments(unsigned set, unsigned start_binding);
 	void set_texture(unsigned set, unsigned binding, const ImageView &view);

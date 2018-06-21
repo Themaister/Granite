@@ -997,6 +997,21 @@ void CommandBuffer::push_constants(const void *data, VkDeviceSize offset, VkDevi
 	set_dirty(COMMAND_BUFFER_DIRTY_PUSH_CONSTANTS_BIT);
 }
 
+void CommandBuffer::set_program(const std::string &compute, const std::vector<std::pair<std::string, int>> &defines)
+{
+	auto *p = device->get_shader_manager().register_compute(compute);
+	unsigned variant = p->register_variant(defines);
+	set_program(*p->get_program(variant));
+}
+
+void CommandBuffer::set_program(const std::string &vertex, const std::string &fragment,
+                                const std::vector<std::pair<std::string, int>> &defines)
+{
+	auto *p = device->get_shader_manager().register_graphics(vertex, fragment);
+	unsigned variant = p->register_variant(defines);
+	set_program(*p->get_program(variant));
+}
+
 void CommandBuffer::set_program(Program &program)
 {
 	if (current_program == &program)
@@ -1797,7 +1812,7 @@ void CommandBuffer::end_region()
 
 void CommandBufferUtil::set_quad_vertex_state(CommandBuffer &cmd)
 {
-	int8_t *data = static_cast<int8_t *>(cmd.allocate_vertex_data(0, 8, 2));
+	auto *data = static_cast<int8_t *>(cmd.allocate_vertex_data(0, 8, 2));
 	*data++ = -128;
 	*data++ = +127;
 	*data++ = +127;
@@ -1828,10 +1843,7 @@ void CommandBufferUtil::setup_quad(Vulkan::CommandBuffer &cmd, const std::string
                                    const std::vector<std::pair<std::string, int>> &defines, bool depth_test,
                                    bool depth_write, VkCompareOp depth_compare)
 {
-	auto &device = cmd.get_device();
-	auto *program = device.get_shader_manager().register_graphics(vertex, fragment);
-	unsigned variant = program->register_variant(defines);
-	cmd.set_program(*program->get_program(variant));
+	cmd.set_program(vertex, fragment, defines);
 	cmd.set_quad_state();
 	set_quad_vertex_state(cmd);
 	cmd.set_depth_test(depth_test, depth_write);

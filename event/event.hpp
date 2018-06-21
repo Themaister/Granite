@@ -79,7 +79,12 @@ constexpr uint64_t compile_time_fnv1(const char (&str)[len])
 using EventType = uint64_t;
 
 #define GRANITE_EVENT_TYPE_DECL(x) \
-	static inline constexpr ::Granite::EventType get_type_id() { return GRANITE_EVENT_TYPE_HASH(x); }
+enum class EventTypeWrapper : ::Granite::EventType { \
+	type_id = GRANITE_EVENT_TYPE_HASH(x) \
+}; \
+static inline constexpr ::Granite::EventType get_type_id() { \
+	return ::Granite::EventType(EventTypeWrapper::type_id); \
+}
 
 class Event
 {

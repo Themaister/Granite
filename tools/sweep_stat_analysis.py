@@ -32,6 +32,10 @@ def find_run(stat, config):
         'pcf_width'
         ]
 
+    # This run is irrelevant.
+    if config['renderer'] == 'forward' and not config['clustered']:
+        return None
+
     for run in stat['runs']:
         c = run['config']
         equal = True

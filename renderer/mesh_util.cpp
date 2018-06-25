@@ -629,10 +629,8 @@ static void skybox_render(CommandBuffer &cmd, const RenderQueueData *infos, unsi
 
 		cmd.push_constants(&info->color, 0, sizeof(info->color));
 
-		CommandBufferUtil::set_quad_vertex_state(cmd);
-		cmd.set_cull_mode(VK_CULL_MODE_NONE);
-		cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
-		cmd.draw(4);
+		CommandBufferUtil::set_fullscreen_quad_vertex_state(cmd);
+		CommandBufferUtil::draw_fullscreen_quad(cmd);
 	}
 }
 
@@ -765,10 +763,9 @@ static void texture_plane_render(CommandBuffer &cmd, const RenderQueueData *info
 			cmd.set_texture(2, 1, *info.refraction, Vulkan::StockSampler::TrilinearClamp);
 		cmd.set_texture(2, 2, *info.normal, Vulkan::StockSampler::TrilinearWrap);
 		CommandBufferUtil::set_quad_vertex_state(cmd);
-		cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
 		cmd.set_cull_mode(VK_CULL_MODE_NONE);
 		cmd.push_constants(&info.push, 0, sizeof(info.push));
-		cmd.draw(4);
+		CommandBufferUtil::draw_quad(cmd);
 	}
 }
 
@@ -939,41 +936,10 @@ void TexturePlane::add_render_pass(RenderGraph &graph, Type type)
 	reflection_blur_pass.add_color_output(name, reflection_blur);
 	reflection_blur_pass.set_build_render_pass([&reflection_blur_pass](Vulkan::CommandBuffer &cmd) {
 		reflection_blur_pass.set_texture_inputs(cmd, 0, 0, Vulkan::StockSampler::LinearClamp);
-		CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/blur.frag",
-		                             {{"METHOD", 6}});
+		CommandBufferUtil::draw_fullscreen_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/blur.frag",
+		                                        {{"METHOD", 6}});
 	});
 }
-
-#if 0
-void TexturePlane::apply_water_depth_tint(Vulkan::CommandBuffer &cmd)
-{
-	auto &device = cmd.get_device();
-	cmd.set_quad_state();
-	cmd.set_input_attachments(0, 1);
-	cmd.set_blend_enable(true);
-	cmd.set_blend_op(VK_BLEND_OP_ADD);
-	CommandBufferUtil::set_quad_vertex_state(cmd);
-	cmd.set_depth_test(true, false);
-	cmd.set_depth_compare(VK_COMPARE_OP_GREATER);
-
-	struct Tint
-	{
-		mat4 inv_view_proj;
-		vec3 falloff;
-	} tint;
-
-	tint.inv_view_proj = context.get_render_parameters().inv_view_projection;
-	tint.falloff = vec3(1.0f / 1.5f, 1.0f / 2.5f, 1.0f / 5.0f);
-	cmd.push_constants(&tint, 0, sizeof(tint));
-
-	cmd.set_blend_factors(VK_BLEND_FACTOR_ZERO, VK_BLEND_FACTOR_ZERO, VK_BLEND_FACTOR_SRC_COLOR, VK_BLEND_FACTOR_ZERO);
-	auto *program = device.get_shader_manager().register_graphics("builtin://shaders/water_tint.vert",
-	                                                              "builtin://shaders/water_tint.frag");
-	auto variant = program->register_variant({});
-	cmd.set_program(*program->get_program(variant));
-	cmd.draw(4);
-}
-#endif
 
 void TexturePlane::add_render_passes(RenderGraph &graph)
 {

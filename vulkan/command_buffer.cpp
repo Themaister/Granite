@@ -1825,27 +1825,54 @@ void CommandBufferUtil::set_quad_vertex_state(CommandBuffer &cmd)
 	cmd.set_vertex_attrib(0, 0, VK_FORMAT_R8G8_SNORM, 0);
 }
 
-void CommandBufferUtil::draw_quad(CommandBuffer &cmd, const std::string &vertex, const std::string &fragment,
-                                  const std::vector<std::pair<std::string, int>> &defines)
+void CommandBufferUtil::set_fullscreen_quad_vertex_state(CommandBuffer &cmd)
 {
-	draw_quad_depth(cmd, vertex, fragment, false, false, VK_COMPARE_OP_ALWAYS, defines);
+	auto *data = static_cast<float *>(cmd.allocate_vertex_data(0, 6 * sizeof(float), 2 * sizeof(float)));
+	*data++ = -1.0f;
+	*data++ = -3.0f;
+	*data++ = -1.0f;
+	*data++ = +1.0f;
+	*data++ = +3.0f;
+	*data++ = +1.0f;
+
+	cmd.set_vertex_attrib(0, 0, VK_FORMAT_R32G32_SFLOAT, 0);
 }
 
-void CommandBufferUtil::draw_quad_depth(CommandBuffer &cmd, const std::string &vertex, const std::string &fragment,
-                                        bool depth_test, bool depth_write, VkCompareOp depth_compare,
-                                        const std::vector<std::pair<std::string, int>> &defines)
+void CommandBufferUtil::draw_fullscreen_quad(CommandBuffer &cmd, unsigned instances)
 {
-	setup_quad(cmd, vertex, fragment, defines, depth_test, depth_write, depth_compare);
-	cmd.draw(4);
+	cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+	cmd.draw(3, instances);
 }
 
-void CommandBufferUtil::setup_quad(Vulkan::CommandBuffer &cmd, const std::string &vertex, const std::string &fragment,
-                                   const std::vector<std::pair<std::string, int>> &defines, bool depth_test,
-                                   bool depth_write, VkCompareOp depth_compare)
+void CommandBufferUtil::draw_quad(CommandBuffer &cmd, unsigned instances)
+{
+	cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
+	cmd.draw(4, instances);
+}
+
+void CommandBufferUtil::draw_fullscreen_quad(CommandBuffer &cmd, const std::string &vertex, const std::string &fragment,
+                                             const std::vector<std::pair<std::string, int>> &defines)
+{
+	draw_fullscreen_quad_depth(cmd, vertex, fragment, false, false, VK_COMPARE_OP_ALWAYS, defines);
+}
+
+void CommandBufferUtil::draw_fullscreen_quad_depth(CommandBuffer &cmd, const std::string &vertex,
+                                                   const std::string &fragment,
+                                                   bool depth_test, bool depth_write, VkCompareOp depth_compare,
+                                                   const std::vector<std::pair<std::string, int>> &defines)
+{
+	setup_fullscreen_quad(cmd, vertex, fragment, defines, depth_test, depth_write, depth_compare);
+	draw_fullscreen_quad(cmd);
+}
+
+void CommandBufferUtil::setup_fullscreen_quad(Vulkan::CommandBuffer &cmd, const std::string &vertex,
+                                              const std::string &fragment,
+                                              const std::vector<std::pair<std::string, int>> &defines, bool depth_test,
+                                              bool depth_write, VkCompareOp depth_compare)
 {
 	cmd.set_program(vertex, fragment, defines);
 	cmd.set_quad_state();
-	set_quad_vertex_state(cmd);
+	set_fullscreen_quad_vertex_state(cmd);
 	cmd.set_depth_test(depth_test, depth_write);
 	cmd.set_depth_compare(depth_compare);
 }

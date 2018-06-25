@@ -269,9 +269,8 @@ static void positional_render_full_screen(CommandBuffer &cmd, const RenderQueueD
 {
 	auto &light_info = *static_cast<const PositionalLightRenderInfo *>(infos[0].render_info);
 	cmd.set_program(*light_info.program);
-	CommandBufferUtil::set_quad_vertex_state(cmd);
+	CommandBufferUtil::set_fullscreen_quad_vertex_state(cmd);
 	cmd.set_cull_mode(VK_CULL_MODE_NONE);
-	cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
 
 	auto push = light_info.push;
 	push.inv_resolution = vec2(1.0f / cmd.get_viewport().width, 1.0f / cmd.get_viewport().height);
@@ -315,7 +314,7 @@ static void positional_render_full_screen(CommandBuffer &cmd, const RenderQueueD
 			}
 		}
 
-		cmd.draw(4, to_render);
+		CommandBufferUtil::draw_fullscreen_quad(cmd, to_render);
 		i += to_render;
 	}
 }

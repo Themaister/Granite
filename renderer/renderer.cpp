@@ -493,7 +493,7 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 	cmd.set_blend_enable(true);
 	cmd.set_blend_factors(VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_ONE);
 	cmd.set_blend_op(VK_BLEND_OP_ADD);
-	CommandBufferUtil::set_quad_vertex_state(cmd);
+	CommandBufferUtil::set_fullscreen_quad_vertex_state(cmd);
 
 	auto &device = cmd.get_device();
 	auto *program = device.get_shader_manager().register_graphics("builtin://shaders/lights/directional.vert",
@@ -587,14 +587,11 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 	push.camera_front = context.get_render_parameters().camera_front;
 	cmd.push_constants(&push, 0, sizeof(push));
 
-	cmd.draw(4);
+	CommandBufferUtil::draw_fullscreen_quad(cmd);
 
 	// Clustered lighting.
 	if (light.cluster && light.cluster->get_cluster_image())
 	{
-		auto *cluster_program = device.get_shader_manager().register_graphics("builtin://shaders/lights/clustering.vert",
-		                                                                      "builtin://shaders/lights/clustering.frag");
-
 		struct ClusterPush
 		{
 			vec4 inv_view_proj_col2;
@@ -620,15 +617,17 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 					cluster_defines.emplace_back("SHADOW_MAP_PCF_KERNEL_WIDTH", 3);
 			}
 		}
+
 		if (light.cluster->get_cluster_list_buffer())
 			cluster_defines.emplace_back("CLUSTER_LIST", 1);
-		unsigned cluster_variant = cluster_program->register_variant(move(cluster_defines));
 
-		cmd.set_program(*cluster_program->get_program(cluster_variant));
+		cmd.set_program("builtin://shaders/lights/clustering.vert",
+		                "builtin://shaders/lights/clustering.frag",
+		                cluster_defines);
 
 		cmd.push_constants(&cluster_push, 0, sizeof(cluster_push));
 		set_cluster_parameters(cmd, *light.cluster);
-		cmd.draw(4);
+		CommandBufferUtil::draw_fullscreen_quad(cmd);
 	}
 
 	// Skip fog for non-reflection passes.
@@ -647,11 +646,8 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 		cmd.push_constants(&fog, 0, sizeof(fog));
 
 		cmd.set_blend_factors(VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA, VK_BLEND_FACTOR_SRC_ALPHA);
-		program = device.get_shader_manager().register_graphics("builtin://shaders/lights/fog.vert",
-		                                                        "builtin://shaders/lights/fog.frag");
-		variant = program->register_variant({});
-		cmd.set_program(*program->get_program(variant));
-		cmd.draw(4);
+		cmd.set_program("builtin://shaders/lights/fog.vert", "builtin://shaders/lights/fog.frag");
+		CommandBufferUtil::draw_fullscreen_quad(cmd);
 	}
 }
 }

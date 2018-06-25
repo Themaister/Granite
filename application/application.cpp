@@ -820,7 +820,7 @@ void SceneViewerApplication::add_shadow_pass(Vulkan::Device &, const std::string
 			              1.0f / input.get_image().get_create_info().height);
 			cmd.push_constants(&inv_size, 0, sizeof(inv_size));
 			cmd.set_texture(0, 0, input, StockSampler::LinearClamp);
-			CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/post/vsm_down_blur.frag");
+			CommandBufferUtil::draw_fullscreen_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/post/vsm_down_blur.frag");
 		});
 
 		up_pass.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
@@ -829,7 +829,7 @@ void SceneViewerApplication::add_shadow_pass(Vulkan::Device &, const std::string
 			              1.0f / input.get_image().get_create_info().height);
 			cmd.set_texture(0, 0, input, StockSampler::LinearClamp);
 			cmd.push_constants(&inv_size, 0, sizeof(inv_size));
-			CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/post/vsm_up_blur.frag");
+			CommandBufferUtil::draw_fullscreen_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/post/vsm_up_blur.frag");
 		});
 	}
 	else

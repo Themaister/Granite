@@ -319,8 +319,8 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &de
 			vec2 inv_size(1.0f / scratch_vsm_rt->get_create_info().width,
 			              1.0f / scratch_vsm_rt->get_create_info().height);
 			cmd.push_constants(&inv_size, 0, sizeof(inv_size));
-			CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert",
-			                             "builtin://shaders/post/vsm_down_blur.frag");
+			CommandBufferUtil::draw_fullscreen_quad(cmd, "builtin://shaders/quad.vert",
+			                                        "builtin://shaders/post/vsm_down_blur.frag");
 			cmd.end_render_pass();
 		}
 
@@ -347,7 +347,8 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &de
 			              1.0f / scratch_vsm_down->get_create_info().height);
 			cmd.push_constants(&inv_size, 0, sizeof(inv_size));
 			cmd.set_texture(0, 0, scratch_vsm_down->get_view(), StockSampler::LinearClamp);
-			CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/post/vsm_up_blur.frag");
+			CommandBufferUtil::draw_fullscreen_quad(cmd, "builtin://shaders/quad.vert",
+			                                        "builtin://shaders/post/vsm_up_blur.frag");
 			cmd.end_render_pass();
 		}
 	}

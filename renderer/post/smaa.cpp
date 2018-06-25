@@ -127,12 +127,11 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 		                float(input_image.get_image().get_create_info().height));
 		cmd.push_constants(&rt_metrics, 0, sizeof(rt_metrics));
 
-		Vulkan::CommandBufferUtil::set_quad_vertex_state(cmd);
-		Vulkan::CommandBufferUtil::draw_quad_depth(cmd,
-		                                           "builtin://shaders/post/smaa_edge_detection.vert",
-		                                           "builtin://shaders/post/smaa_edge_detection.frag",
-		                                           edge, edge, VK_COMPARE_OP_ALWAYS,
-		                                           {{ "SMAA_QUALITY", q }});
+		Vulkan::CommandBufferUtil::draw_fullscreen_quad_depth(cmd,
+		                                                      "builtin://shaders/post/smaa_edge_detection.vert",
+		                                                      "builtin://shaders/post/smaa_edge_detection.frag",
+		                                                      edge, edge, VK_COMPARE_OP_ALWAYS,
+		                                                      {{"SMAA_QUALITY", q}});
 	});
 
 	smaa_edge.set_get_clear_color([](unsigned, VkClearColorValue *value) {
@@ -160,15 +159,14 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 		if (jitter.get_jitter_type() == TemporalJitter::Type::SMAA_T2X)
 			subpixel_mode = 1 + jitter.get_jitter_phase();
 
-		Vulkan::CommandBufferUtil::set_quad_vertex_state(cmd);
-		Vulkan::CommandBufferUtil::draw_quad_depth(cmd,
-		                                           "builtin://shaders/post/smaa_blend_weight.vert",
-		                                           "builtin://shaders/post/smaa_blend_weight.frag",
-		                                           edge, false, VK_COMPARE_OP_EQUAL,
-		                                           {
-				                                           { "SMAA_SUBPIXEL_MODE", subpixel_mode },
-				                                           { "SMAA_QUALITY", q }
-		                                           });
+		Vulkan::CommandBufferUtil::draw_fullscreen_quad_depth(cmd,
+		                                                      "builtin://shaders/post/smaa_blend_weight.vert",
+		                                                      "builtin://shaders/post/smaa_blend_weight.frag",
+		                                                      edge, false, VK_COMPARE_OP_EQUAL,
+		                                                      {
+				                                                      {"SMAA_SUBPIXEL_MODE", subpixel_mode},
+				                                                      {"SMAA_QUALITY",       q}
+		                                                      });
 	});
 
 	smaa_weight.set_get_clear_color([](unsigned, VkClearColorValue *value) {
@@ -189,11 +187,10 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 
 		cmd.push_constants(&rt_metrics, 0, sizeof(rt_metrics));
 
-		Vulkan::CommandBufferUtil::set_quad_vertex_state(cmd);
-		Vulkan::CommandBufferUtil::draw_quad(cmd,
-		                                     "builtin://shaders/post/smaa_neighbor_blend.vert",
-		                                     "builtin://shaders/post/smaa_neighbor_blend.frag",
-		                                     {{ "SMAA_QUALITY", q }});
+		Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd,
+		                                                "builtin://shaders/post/smaa_neighbor_blend.vert",
+		                                                "builtin://shaders/post/smaa_neighbor_blend.frag",
+		                                                {{"SMAA_QUALITY", q}});
 	});
 
 	if (t2x_enable)
@@ -243,11 +240,10 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 			                                1.0f / current.get_image().get_create_info().height);
 
 			cmd.push_constants(&push, 0, sizeof(push));
-			Vulkan::CommandBufferUtil::set_quad_vertex_state(cmd);
-			Vulkan::CommandBufferUtil::draw_quad(cmd,
-			                                     "builtin://shaders/quad.vert",
-			                                     "builtin://shaders/post/smaa_t2x_resolve.frag",
-			                                     {{ "REPROJECTION_HISTORY", prev ? 1 : 0 }});
+			Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd,
+			                                                "builtin://shaders/quad.vert",
+			                                                "builtin://shaders/post/smaa_t2x_resolve.frag",
+			                                                {{"REPROJECTION_HISTORY", prev ? 1 : 0}});
 		});
 	}
 }

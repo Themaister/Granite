@@ -70,10 +70,11 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
 		});
 
 		depth.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
-			CommandBufferUtil::setup_quad(cmd, "builtin://shaders/quad.vert", "assets://shaders/additive.frag");
+			CommandBufferUtil::setup_fullscreen_quad(cmd, "builtin://shaders/quad.vert",
+			                                         "assets://shaders/additive.frag");
 			cmd.set_blend_enable(true);
 			cmd.set_blend_factors(VK_BLEND_FACTOR_SRC_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA);
-			cmd.draw(4, 20);
+			CommandBufferUtil::draw_fullscreen_quad(cmd, 20);
 		});
 
 		// Pretend main rendering pass.
@@ -92,10 +93,11 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
 		});
 
 		graphics.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
-			CommandBufferUtil::setup_quad(cmd, "builtin://shaders/quad.vert", "assets://shaders/additive.frag");
+			CommandBufferUtil::setup_fullscreen_quad(cmd, "builtin://shaders/quad.vert",
+			                                         "assets://shaders/additive.frag");
 			cmd.set_blend_enable(true);
 			cmd.set_blend_factors(VK_BLEND_FACTOR_SRC_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA);
-			cmd.draw(4, 80);
+			CommandBufferUtil::draw_fullscreen_quad(cmd, 80);
 		});
 
 		// Post processing
@@ -120,7 +122,7 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
 		swap.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
 			cmd.set_texture(0, 0, graph.get_physical_texture_resource(i), StockSampler::LinearClamp);
 			cmd.set_texture(0, 1, graph.get_physical_texture_resource(first), StockSampler::LinearClamp);
-			CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/blit.frag");
+			CommandBufferUtil::draw_fullscreen_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/blit.frag");
 		});
 
 		graph.set_backbuffer_source("back");

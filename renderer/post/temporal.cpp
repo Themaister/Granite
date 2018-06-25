@@ -185,11 +185,9 @@ void setup_taa_resolve(RenderGraph &graph, TemporalJitter &jitter, const std::st
 				jitter.get_history_inv_view_proj(0);
 
 		cmd.push_constants(&push, 0, sizeof(push));
-		Vulkan::CommandBufferUtil::set_quad_vertex_state(cmd);
-		Vulkan::CommandBufferUtil::draw_quad(cmd,
+		Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd,
 		                                     "builtin://shaders/quad.vert",
-		                                     "builtin://shaders/post/depth_to_motion_vectors.frag",
-		                                     {});
+		                                     "builtin://shaders/post/depth_to_motion_vectors.frag");
 
 		// Technically, we should also render dynamic objects where appropriate, some day, some day ...
 	});
@@ -240,14 +238,13 @@ void setup_taa_resolve(RenderGraph &graph, TemporalJitter &jitter, const std::st
 		cmd.set_texture(0, 3, mvs, Vulkan::StockSampler::NearestClamp);
 #endif
 
-		Vulkan::CommandBufferUtil::set_quad_vertex_state(cmd);
-		Vulkan::CommandBufferUtil::draw_quad(cmd,
-		                                     "builtin://shaders/quad.vert",
-		                                     "builtin://shaders/post/taa_resolve.frag",
-		                                     {
-				                                     { "REPROJECTION_HISTORY", prev ? 1 : 0 },
-				                                     { "TAA_QUALITY", q }
-		                                     });
+		Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd,
+		                                                "builtin://shaders/quad.vert",
+		                                                "builtin://shaders/post/taa_resolve.frag",
+		                                                {
+				                                                {"REPROJECTION_HISTORY", prev ? 1 : 0},
+				                                                {"TAA_QUALITY",          q}
+		                                                });
 	});
 }
 
@@ -311,12 +308,14 @@ void setup_fxaa_2phase_postprocess(RenderGraph &graph, TemporalJitter &jitter, c
 		}
 
 		cmd.push_constants(&push, 0, sizeof(push));
-		Vulkan::CommandBufferUtil::set_quad_vertex_state(cmd);
-		Vulkan::CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/post/aa_sharpen_resolve.frag",
-		                                     {{ "REPROJECTION_HISTORY", history ? 1 : 0 },
-		                                      { "HORIZONTAL", jitter.get_jitter_phase() == 0 ? 1 : 0 },
-		                                      { "VERTICAL", jitter.get_jitter_phase() == 1 ? 1 : 0 }
-		                                     });
+		Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd, "builtin://shaders/quad.vert",
+		                                                "builtin://shaders/post/aa_sharpen_resolve.frag",
+		                                                {{"REPROJECTION_HISTORY", history ? 1 : 0},
+		                                                 {"HORIZONTAL",           jitter.get_jitter_phase() == 0 ? 1
+		                                                                                                         : 0},
+		                                                 {"VERTICAL",             jitter.get_jitter_phase() == 1 ? 1
+		                                                                                                         : 0}
+		                                                });
 	});
 }
 }

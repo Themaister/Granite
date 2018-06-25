@@ -78,7 +78,8 @@ void AABenchApplication::on_swapchain_changed(const SwapchainParameterEvent &swa
 	});
 	pass.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
 		cmd.set_texture(0, 0, images[(input_index++) & 1]->get_image()->get_view(), Vulkan::StockSampler::LinearClamp);
-		Vulkan::CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/blit.frag", {});
+		Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd, "builtin://shaders/quad.vert",
+		                                                "builtin://shaders/blit.frag", {});
 	});
 	pass.set_get_clear_depth_stencil([](VkClearDepthStencilValue *value) -> bool {
 		if (value)
@@ -100,10 +101,11 @@ void AABenchApplication::on_swapchain_changed(const SwapchainParameterEvent &swa
 		auto &input = graph.get_physical_texture_resource(tonemap.get_texture_inputs()[0]->get_physical_index());
 		cmd.set_texture(0, 0, input, Vulkan::StockSampler::NearestClamp);
 
-		Vulkan::CommandBufferUtil::setup_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/blit.frag", {});
+		Vulkan::CommandBufferUtil::setup_fullscreen_quad(cmd, "builtin://shaders/quad.vert",
+		                                                 "builtin://shaders/blit.frag", {});
 		cmd.set_specialization_constant_mask(1);
 		cmd.set_specialization_constant(0, float((input_index % 3) + 1) / 3.0f);
-		cmd.draw(4);
+		Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd);
 	});
 
 	if (setup_after_post_chain_antialiasing(type, graph, jitter,

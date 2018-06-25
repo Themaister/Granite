@@ -48,9 +48,9 @@ void setup_fxaa_postprocess(RenderGraph &graph, const std::string &input, const 
 		auto &output_image = graph.get_physical_texture_resource(fxaa.get_color_outputs()[0]->get_physical_index());
 		bool srgb = Vulkan::format_is_srgb(output_image.get_format());
 
-		Vulkan::CommandBufferUtil::set_quad_vertex_state(cmd);
-		Vulkan::CommandBufferUtil::draw_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/post/fxaa.frag",
-		                                     {{ "FXAA_TARGET_SRGB", srgb ? 1 : 0 }});
+		Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd, "builtin://shaders/quad.vert",
+		                                                "builtin://shaders/post/fxaa.frag",
+		                                                {{"FXAA_TARGET_SRGB", srgb ? 1 : 0}});
 	});
 }
 }

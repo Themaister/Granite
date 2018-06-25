@@ -89,10 +89,8 @@ ImageHandle convert_cube_to_ibl_specular(Device &device, ImageView &view)
 			Push push = { sample_lod, mix(0.001f, 1.0f, float(level) / (info.levels - 1)) };
 			cmd->push_constants(&push, 0, sizeof(push));
 
-			cmd->set_quad_state();
-			CommandBufferUtil::set_quad_vertex_state(*cmd);
-			CommandBufferUtil::draw_quad(*cmd, "builtin://shaders/skybox.vert",
-			                             "builtin://shaders/util/ibl_specular.frag");
+			CommandBufferUtil::draw_fullscreen_quad(*cmd, "builtin://shaders/skybox.vert",
+			                                        "builtin://shaders/util/ibl_specular.frag");
 
 			cmd->end_render_pass();
 		}
@@ -152,9 +150,8 @@ ImageHandle convert_cube_to_ibl_diffuse(Device &device, ImageView &view)
 		cmd->set_texture(2, 0, view, StockSampler::LinearWrap);
 
 		cmd->push_constants(&sample_lod, 0, sizeof(sample_lod));
-		cmd->set_quad_state();
-		CommandBufferUtil::set_quad_vertex_state(*cmd);
-		CommandBufferUtil::draw_quad(*cmd, "builtin://shaders/skybox.vert", "builtin://shaders/util/ibl_diffuse.frag");
+		CommandBufferUtil::draw_fullscreen_quad(*cmd, "builtin://shaders/skybox.vert",
+		                                        "builtin://shaders/util/ibl_diffuse.frag");
 
 		cmd->end_render_pass();
 	}
@@ -213,9 +210,7 @@ ImageHandle convert_equirect_to_cube(Device &device, ImageView &view, float scal
 
 		vec4 color = vec4(1.0f);
 		cmd->push_constants(&color, 0, sizeof(color));
-		cmd->set_quad_state();
-		CommandBufferUtil::set_quad_vertex_state(*cmd);
-		CommandBufferUtil::draw_quad(*cmd, "builtin://shaders/skybox.vert", "builtin://shaders/skybox_latlon.frag", {{ "HAVE_EMISSIVE", 1 }});
+		CommandBufferUtil::draw_fullscreen_quad(*cmd, "builtin://shaders/skybox.vert", "builtin://shaders/skybox_latlon.frag", {{ "HAVE_EMISSIVE", 1 }});
 
 		cmd->end_render_pass();
 	}

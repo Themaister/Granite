@@ -52,7 +52,10 @@ def find_run(stat, config):
 
 def negative_run(stat, arg, run):
     config = copy.deepcopy(run['config'])
-    config[arg] = False
+    if arg == 'renderer':
+        config[arg] = 'forward'
+    else:
+        config[arg] = False
     neg_run = find_run(stat, config)
     return neg_run
 
@@ -86,8 +89,12 @@ def main():
 
     # First, try to find all runs which use our argument.
     for run in stat['runs']:
-        if run['config'][args.config]:
-            positive_runs.append(run)
+        if args.config == 'renderer':
+            if run['config'][args.config] == 'deferred':
+                positive_runs.append(run)
+        else:
+            if run['config'][args.config]:
+                positive_runs.append(run)
 
     # Then, find the negatives (or None if a negative does not exist).
     negative_runs = [negative_run(stat, args.config, x) for x in positive_runs]

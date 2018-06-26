@@ -41,7 +41,7 @@ class EventHolder : public Util::IntrusivePtrEnabled<EventHolder, EventHolderDel
                     public InternalSyncEnabled
 {
 public:
-	friend class EventHolderDeleter;
+	friend struct EventHolderDeleter;
 
 	~EventHolder();
 

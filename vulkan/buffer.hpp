@@ -107,7 +107,7 @@ class Buffer : public Util::IntrusivePtrEnabled<Buffer, BufferDeleter, Util::Mul
                public Cookie, public InternalSyncEnabled
 {
 public:
-	friend class BufferDeleter;
+	friend struct BufferDeleter;
 	~Buffer();
 
 	VkBuffer get_buffer() const
@@ -153,7 +153,7 @@ class BufferView : public Util::IntrusivePtrEnabled<BufferView, BufferViewDelete
                    public Cookie, public InternalSyncEnabled
 {
 public:
-	friend class BufferViewDeleter;
+	friend struct BufferViewDeleter;
 	~BufferView();
 
 	VkBufferView get_view() const

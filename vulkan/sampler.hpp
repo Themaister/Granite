@@ -44,21 +44,21 @@ enum class StockSampler
 
 struct SamplerCreateInfo
 {
-	VkFilter magFilter;
-	VkFilter minFilter;
-	VkSamplerMipmapMode mipmapMode;
-	VkSamplerAddressMode addressModeU;
-	VkSamplerAddressMode addressModeV;
-	VkSamplerAddressMode addressModeW;
-	float mipLodBias;
-	VkBool32 anisotropyEnable;
-	float maxAnisotropy;
-	VkBool32 compareEnable;
-	VkCompareOp compareOp;
-	float minLod;
-	float maxLod;
-	VkBorderColor borderColor;
-	VkBool32 unnormalizedCoordinates;
+	VkFilter mag_filter;
+	VkFilter min_filter;
+	VkSamplerMipmapMode mipmap_mode;
+	VkSamplerAddressMode address_mode_u;
+	VkSamplerAddressMode address_mode_v;
+	VkSamplerAddressMode address_mode_w;
+	float mip_lod_bias;
+	VkBool32 anisotropy_enable;
+	float max_anisotropy;
+	VkBool32 compare_enable;
+	VkCompareOp compare_op;
+	float min_lod;
+	float max_lod;
+	VkBorderColor border_color;
+	VkBool32 unnormalized_coordinates;
 };
 
 class Sampler;
@@ -71,7 +71,7 @@ class Sampler : public Util::IntrusivePtrEnabled<Sampler, SamplerDeleter, Util::
                 public Cookie, public InternalSyncEnabled
 {
 public:
-	friend class SamplerDeleter;
+	friend struct SamplerDeleter;
 	~Sampler();
 
 	VkSampler get_sampler() const

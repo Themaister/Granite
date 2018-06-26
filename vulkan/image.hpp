@@ -192,7 +192,7 @@ class ImageView : public Util::IntrusivePtrEnabled<ImageView, ImageViewDeleter, 
                   public Cookie, public InternalSyncEnabled
 {
 public:
-	friend class ImageViewDeleter;
+	friend struct ImageViewDeleter;
 	ImageView(Device *device, VkImageView view, const ImageViewCreateInfo &info);
 	~ImageView();
 
@@ -387,7 +387,7 @@ class Image : public Util::IntrusivePtrEnabled<Image, ImageDeleter, Util::MultiT
               public Cookie, public InternalSyncEnabled
 {
 public:
-	friend class ImageDeleter;
+	friend struct ImageDeleter;
 	~Image();
 	Image(Image &&) = delete;
 	Image &operator=(Image &&) = delete;

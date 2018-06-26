@@ -39,7 +39,7 @@ struct FenceHolderDeleter
 class FenceHolder : public Util::IntrusivePtrEnabled<FenceHolder, FenceHolderDeleter, Util::MultiThreadCounter>
 {
 public:
-	friend class FenceHolderDeleter;
+	friend struct FenceHolderDeleter;
 
 	~FenceHolder();
 	void wait();

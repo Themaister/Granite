@@ -513,8 +513,8 @@ void Device::set_context(const Context &context)
 void Device::init_stock_samplers()
 {
 	SamplerCreateInfo info = {};
-	info.maxLod = VK_LOD_CLAMP_NONE;
-	info.maxAnisotropy = 1.0f;
+	info.max_lod = VK_LOD_CLAMP_NONE;
+	info.max_anisotropy = 1.0f;
 
 	for (unsigned i = 0; i < static_cast<unsigned>(StockSampler::Count); i++)
 	{
@@ -524,12 +524,12 @@ void Device::init_stock_samplers()
 		{
 		case StockSampler::NearestShadow:
 		case StockSampler::LinearShadow:
-			info.compareEnable = true;
-			info.compareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+			info.compare_enable = true;
+			info.compare_op = VK_COMPARE_OP_LESS_OR_EQUAL;
 			break;
 
 		default:
-			info.compareEnable = false;
+			info.compare_enable = false;
 			break;
 		}
 
@@ -537,11 +537,11 @@ void Device::init_stock_samplers()
 		{
 		case StockSampler::TrilinearClamp:
 		case StockSampler::TrilinearWrap:
-			info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+			info.mipmap_mode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
 			break;
 
 		default:
-			info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+			info.mipmap_mode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
 			break;
 		}
 
@@ -552,13 +552,13 @@ void Device::init_stock_samplers()
 		case StockSampler::TrilinearClamp:
 		case StockSampler::TrilinearWrap:
 		case StockSampler::LinearShadow:
-			info.magFilter = VK_FILTER_LINEAR;
-			info.minFilter = VK_FILTER_LINEAR;
+			info.mag_filter = VK_FILTER_LINEAR;
+			info.min_filter = VK_FILTER_LINEAR;
 			break;
 
 		default:
-			info.magFilter = VK_FILTER_NEAREST;
-			info.minFilter = VK_FILTER_NEAREST;
+			info.mag_filter = VK_FILTER_NEAREST;
+			info.min_filter = VK_FILTER_NEAREST;
 			break;
 		}
 
@@ -568,9 +568,9 @@ void Device::init_stock_samplers()
 		case StockSampler::LinearWrap:
 		case StockSampler::NearestWrap:
 		case StockSampler::TrilinearWrap:
-			info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-			info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-			info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+			info.address_mode_u = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+			info.address_mode_v = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+			info.address_mode_w = VK_SAMPLER_ADDRESS_MODE_REPEAT;
 			break;
 
 		case StockSampler::LinearClamp:
@@ -578,9 +578,9 @@ void Device::init_stock_samplers()
 		case StockSampler::TrilinearClamp:
 		case StockSampler::NearestShadow:
 		case StockSampler::LinearShadow:
-			info.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-			info.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-			info.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+			info.address_mode_u = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+			info.address_mode_v = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+			info.address_mode_w = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
 			break;
 		}
 		samplers[i] = create_sampler(info, mode);
@@ -2748,21 +2748,21 @@ static VkSamplerCreateInfo fill_vk_sampler_info(const SamplerCreateInfo &sampler
 {
 	VkSamplerCreateInfo info = { VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
 
-	info.magFilter = sampler_info.magFilter;
-	info.minFilter = sampler_info.minFilter;
-	info.mipmapMode = sampler_info.mipmapMode;
-	info.addressModeU = sampler_info.addressModeU;
-	info.addressModeV = sampler_info.addressModeV;
-	info.addressModeW = sampler_info.addressModeW;
-	info.mipLodBias = sampler_info.mipLodBias;
-	info.anisotropyEnable = sampler_info.anisotropyEnable;
-	info.maxAnisotropy = sampler_info.maxAnisotropy;
-	info.compareEnable = sampler_info.compareEnable;
-	info.compareOp = sampler_info.compareOp;
-	info.minLod = sampler_info.minLod;
-	info.maxLod = sampler_info.maxLod;
-	info.borderColor = sampler_info.borderColor;
-	info.unnormalizedCoordinates = sampler_info.unnormalizedCoordinates;
+	info.magFilter = sampler_info.mag_filter;
+	info.minFilter = sampler_info.min_filter;
+	info.mipmapMode = sampler_info.mipmap_mode;
+	info.addressModeU = sampler_info.address_mode_u;
+	info.addressModeV = sampler_info.address_mode_v;
+	info.addressModeW = sampler_info.address_mode_w;
+	info.mipLodBias = sampler_info.mip_lod_bias;
+	info.anisotropyEnable = sampler_info.anisotropy_enable;
+	info.maxAnisotropy = sampler_info.max_anisotropy;
+	info.compareEnable = sampler_info.compare_enable;
+	info.compareOp = sampler_info.compare_op;
+	info.minLod = sampler_info.min_lod;
+	info.maxLod = sampler_info.max_lod;
+	info.borderColor = sampler_info.border_color;
+	info.unnormalizedCoordinates = sampler_info.unnormalized_coordinates;
 	return info;
 }
 

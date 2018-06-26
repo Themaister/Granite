@@ -548,14 +548,14 @@ void SkyCylinder::on_device_created(const DeviceCreatedEvent &created)
 	count = indices.size();
 
 	Vulkan::SamplerCreateInfo sampler_info = {};
-	sampler_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-	sampler_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-	sampler_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-	sampler_info.maxAnisotropy = 1.0f;
-	sampler_info.magFilter = VK_FILTER_LINEAR;
-	sampler_info.minFilter = VK_FILTER_LINEAR;
-	sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
-	sampler_info.maxLod = VK_LOD_CLAMP_NONE;
+	sampler_info.address_mode_u = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	sampler_info.address_mode_v = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	sampler_info.address_mode_w = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	sampler_info.max_anisotropy = 1.0f;
+	sampler_info.mag_filter = VK_FILTER_LINEAR;
+	sampler_info.min_filter = VK_FILTER_LINEAR;
+	sampler_info.mipmap_mode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+	sampler_info.max_lod = VK_LOD_CLAMP_NONE;
 	sampler = device.create_sampler(sampler_info);
 }
 

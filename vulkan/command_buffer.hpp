@@ -205,7 +205,7 @@ class Device;
 class CommandBuffer : public Util::IntrusivePtrEnabled<CommandBuffer, CommandBufferDeleter, Util::MultiThreadCounter>
 {
 public:
-	friend class CommandBufferDeleter;
+	friend struct CommandBufferDeleter;
 	enum class Type
 	{
 		Generic,

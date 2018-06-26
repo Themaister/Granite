@@ -41,7 +41,7 @@ class SemaphoreHolder : public Util::IntrusivePtrEnabled<SemaphoreHolder, Semaph
                         public InternalSyncEnabled
 {
 public:
-	friend class SemaphoreHolderDeleter;
+	friend struct SemaphoreHolderDeleter;
 
 	~SemaphoreHolder();
 

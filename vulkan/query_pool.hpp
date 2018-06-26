@@ -39,7 +39,7 @@ struct QueryPoolResultDeleter
 class QueryPoolResult : public Util::IntrusivePtrEnabled<QueryPoolResult, QueryPoolResultDeleter, Util::MultiThreadCounter>
 {
 public:
-	friend class QueryPoolResultDeleter;
+	friend struct QueryPoolResultDeleter;
 
 	void signal_timestamp(double timestamp)
 	{

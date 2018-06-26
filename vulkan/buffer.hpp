@@ -91,10 +91,23 @@ struct BufferCreateInfo
 	BufferMiscFlags misc = 0;
 };
 
-class Buffer : public Util::ThreadSafeIntrusivePtrEnabled<Buffer>, public Cookie, public InternalSyncEnabled
+class Buffer;
+struct BufferDeleter
+{
+	void operator()(Buffer *buffer);
+};
+
+class BufferView;
+struct BufferViewDeleter
+{
+	void operator()(BufferView *view);
+};
+
+class Buffer : public Util::IntrusivePtrEnabled<Buffer, BufferDeleter, Util::MultiThreadCounter>,
+               public Cookie, public InternalSyncEnabled
 {
 public:
-	Buffer(Device *device, VkBuffer buffer, const DeviceAllocation &alloc, const BufferCreateInfo &info);
+	friend class BufferDeleter;
 	~Buffer();
 
 	VkBuffer get_buffer() const
@@ -118,6 +131,9 @@ public:
 	}
 
 private:
+	friend class Util::ObjectPool<Buffer>;
+	Buffer(Device *device, VkBuffer buffer, const DeviceAllocation &alloc, const BufferCreateInfo &info);
+
 	Device *device;
 	VkBuffer buffer;
 	DeviceAllocation alloc;
@@ -133,10 +149,11 @@ struct BufferViewCreateInfo
 	VkDeviceSize range;
 };
 
-class BufferView : public Util::ThreadSafeIntrusivePtrEnabled<BufferView>, public Cookie, public InternalSyncEnabled
+class BufferView : public Util::IntrusivePtrEnabled<BufferView, BufferViewDeleter, Util::MultiThreadCounter>,
+                   public Cookie, public InternalSyncEnabled
 {
 public:
-	BufferView(Device *device, VkBufferView view, const BufferViewCreateInfo &info);
+	friend class BufferViewDeleter;
 	~BufferView();
 
 	VkBufferView get_view() const
@@ -155,6 +172,9 @@ public:
 	}
 
 private:
+	friend class Util::ObjectPool<BufferView>;
+	BufferView(Device *device, VkBufferView view, const BufferViewCreateInfo &info);
+
 	Device *device;
 	VkBufferView view;
 	BufferViewCreateInfo info;

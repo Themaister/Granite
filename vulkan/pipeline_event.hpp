@@ -25,19 +25,23 @@
 #include "vulkan.hpp"
 #include "intrusive.hpp"
 #include "cookie.hpp"
+#include "object_pool.hpp"
 
 namespace Vulkan
 {
 class Device;
+class EventHolder;
 
-class EventHolder : public Util::ThreadSafeIntrusivePtrEnabled<EventHolder>, public InternalSyncEnabled
+struct EventHolderDeleter
+{
+	void operator()(EventHolder *event);
+};
+
+class EventHolder : public Util::IntrusivePtrEnabled<EventHolder, EventHolderDeleter, Util::MultiThreadCounter>,
+                    public InternalSyncEnabled
 {
 public:
-	EventHolder(Device *device, VkEvent event)
-	    : device(device)
-	    , event(event)
-	{
-	}
+	friend class EventHolderDeleter;
 
 	~EventHolder();
 
@@ -57,6 +61,13 @@ public:
 	}
 
 private:
+	friend class Util::ObjectPool<EventHolder>;
+	EventHolder(Device *device, VkEvent event)
+			: device(device)
+			, event(event)
+	{
+	}
+
 	Device *device;
 	VkEvent event;
 	VkPipelineStageFlags stages = 0;

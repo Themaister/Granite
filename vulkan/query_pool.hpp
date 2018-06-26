@@ -24,14 +24,23 @@
 
 #include "vulkan.hpp"
 #include "intrusive.hpp"
+#include "object_pool.hpp"
 
 namespace Vulkan
 {
 class Device;
+class QueryPoolResult;
 
-class QueryPoolResult : public Util::ThreadSafeIntrusivePtrEnabled<QueryPoolResult>
+struct QueryPoolResultDeleter
+{
+	void operator()(QueryPoolResult *query);
+};
+
+class QueryPoolResult : public Util::IntrusivePtrEnabled<QueryPoolResult, QueryPoolResultDeleter, Util::MultiThreadCounter>
 {
 public:
+	friend class QueryPoolResultDeleter;
+
 	void signal_timestamp(double timestamp)
 	{
 		this->timestamp = timestamp;
@@ -49,6 +58,11 @@ public:
 	}
 
 private:
+	friend class Util::ObjectPool<QueryPoolResult>;
+	QueryPoolResult(Device *device) : device(device)
+	{}
+
+	Device *device;
 	double timestamp = 0.0;
 	bool has_timestamp = false;
 };

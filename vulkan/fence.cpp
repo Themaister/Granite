@@ -41,4 +41,9 @@ bool FenceHolder::wait_timeout(uint64_t timeout)
 {
 	return vkWaitForFences(device->get_device(), 1, &fence, VK_TRUE, timeout) == VK_SUCCESS;
 }
+
+void FenceHolderDeleter::operator()(Vulkan::FenceHolder *fence)
+{
+	fence->device->get_handle_pool().fences.free(fence);
+}
 }

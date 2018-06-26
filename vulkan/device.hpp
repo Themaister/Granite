@@ -63,6 +63,20 @@ struct InitialImageBuffer
 	std::vector<VkBufferImageCopy> blits;
 };
 
+struct HandlePool
+{
+	Util::ThreadSafeObjectPool<Buffer> buffers;
+	Util::ThreadSafeObjectPool<Image> images;
+	Util::ThreadSafeObjectPool<ImageView> image_views;
+	Util::ThreadSafeObjectPool<BufferView> buffer_views;
+	Util::ThreadSafeObjectPool<Sampler> samplers;
+	Util::ThreadSafeObjectPool<FenceHolder> fences;
+	Util::ThreadSafeObjectPool<SemaphoreHolder> semaphores;
+	Util::ThreadSafeObjectPool<EventHolder> events;
+	Util::ThreadSafeObjectPool<QueryPoolResult> query;
+	Util::ThreadSafeObjectPool<CommandBuffer> command_buffers;
+};
+
 class Device : public Fossilize::StateCreatorInterface
 {
 public:
@@ -231,6 +245,11 @@ public:
 		return state_recorder;
 	}
 
+	HandlePool &get_handle_pool()
+	{
+		return handle_pool;
+	}
+
 private:
 	VkInstance instance = VK_NULL_HANDLE;
 	VkPhysicalDevice gpu = VK_NULL_HANDLE;
@@ -245,6 +264,9 @@ private:
 
 	DeviceFeatures ext;
 	void init_stock_samplers();
+
+	// Make sure this is deleted last.
+	HandlePool handle_pool;
 
 	struct Managers
 	{

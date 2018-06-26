@@ -182,9 +182,17 @@ struct ImageViewCreateInfo
 	};
 };
 
-class ImageView : public Util::ThreadSafeIntrusivePtrEnabled<ImageView>, public Cookie, public InternalSyncEnabled
+class ImageView;
+struct ImageViewDeleter
+{
+	void operator()(ImageView *view);
+};
+
+class ImageView : public Util::IntrusivePtrEnabled<ImageView, ImageViewDeleter, Util::MultiThreadCounter>,
+                  public Cookie, public InternalSyncEnabled
 {
 public:
+	friend class ImageViewDeleter;
 	ImageView(Device *device, VkImageView view, const ImageViewCreateInfo &info);
 	~ImageView();
 
@@ -369,11 +377,17 @@ struct ImageCreateInfo
 	}
 };
 
-class Image : public Util::ThreadSafeIntrusivePtrEnabled<Image>, public Cookie, public InternalSyncEnabled
+class Image;
+struct ImageDeleter
+{
+	void operator()(Image *image);
+};
+
+class Image : public Util::IntrusivePtrEnabled<Image, ImageDeleter, Util::MultiThreadCounter>,
+              public Cookie, public InternalSyncEnabled
 {
 public:
-	Image(Device *device, VkImage image, VkImageView default_view, const DeviceAllocation &alloc,
-	      const ImageCreateInfo &info);
+	friend class ImageDeleter;
 	~Image();
 	Image(Image &&) = delete;
 	Image &operator=(Image &&) = delete;
@@ -471,6 +485,10 @@ public:
 	}
 
 private:
+	friend class Util::ObjectPool<Image>;
+	Image(Device *device, VkImage image, VkImageView default_view, const DeviceAllocation &alloc,
+	      const ImageCreateInfo &info);
+
 	Device *device;
 	VkImage image;
 	ImageViewHandle view;

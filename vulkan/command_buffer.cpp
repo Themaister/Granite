@@ -1876,4 +1876,9 @@ void CommandBufferUtil::setup_fullscreen_quad(Vulkan::CommandBuffer &cmd, const 
 	cmd.set_depth_test(depth_test, depth_write);
 	cmd.set_depth_compare(depth_compare);
 }
+
+void CommandBufferDeleter::operator()(Vulkan::CommandBuffer *cmd)
+{
+	cmd->device->get_handle_pool().command_buffers.free(cmd);
+}
 }

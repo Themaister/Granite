@@ -48,6 +48,11 @@ Buffer::~Buffer()
 	}
 }
 
+void BufferDeleter::operator()(Buffer *buffer)
+{
+	buffer->device->get_handle_pool().buffers.free(buffer);
+}
+
 BufferView::BufferView(Device *device, VkBufferView view, const BufferViewCreateInfo &create_info)
     : Cookie(device)
     , device(device)
@@ -66,4 +71,10 @@ BufferView::~BufferView()
 			device->destroy_buffer_view(view);
 	}
 }
+
+void BufferViewDeleter::operator()(BufferView *view)
+{
+	view->device->get_handle_pool().buffer_views.free(view);
+}
+
 }

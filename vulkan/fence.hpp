@@ -24,18 +24,22 @@
 
 #include "intrusive.hpp"
 #include "vulkan.hpp"
+#include "object_pool.hpp"
 
 namespace Vulkan
 {
 class Device;
 
-class FenceHolder : public Util::ThreadSafeIntrusivePtrEnabled<FenceHolder>
+class FenceHolder;
+struct FenceHolderDeleter
+{
+	void operator()(FenceHolder *fence);
+};
+
+class FenceHolder : public Util::IntrusivePtrEnabled<FenceHolder, FenceHolderDeleter, Util::MultiThreadCounter>
 {
 public:
-	FenceHolder(Device *device, VkFence fence)
-	    : device(device), fence(fence)
-	{
-	}
+	friend class FenceHolderDeleter;
 
 	~FenceHolder();
 	void wait();
@@ -43,6 +47,11 @@ public:
 	bool wait_timeout(uint64_t nsec);
 
 private:
+	friend class Util::ObjectPool<FenceHolder>;
+	FenceHolder(Device *device, VkFence fence) : device(device), fence(fence)
+	{
+	}
+
 	Device *device;
 	VkFence fence;
 };

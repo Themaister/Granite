@@ -195,10 +195,17 @@ struct CommandBufferSavedState
 	DynamicState dynamic_state;
 };
 
+class CommandBuffer;
+struct CommandBufferDeleter
+{
+	void operator()(CommandBuffer *cmd);
+};
+
 class Device;
-class CommandBuffer : public Util::ThreadSafeIntrusivePtrEnabled<CommandBuffer>
+class CommandBuffer : public Util::IntrusivePtrEnabled<CommandBuffer, CommandBufferDeleter, Util::MultiThreadCounter>
 {
 public:
+	friend class CommandBufferDeleter;
 	enum class Type
 	{
 		Generic,
@@ -208,7 +215,6 @@ public:
 		Count
 	};
 
-	CommandBuffer(Device *device, VkCommandBuffer cmd, VkPipelineCache cache, Type type);
 	~CommandBuffer();
 	VkCommandBuffer get_command_buffer() const
 	{
@@ -594,6 +600,9 @@ public:
 	void end();
 
 private:
+	friend class Util::ObjectPool<CommandBuffer>;
+	CommandBuffer(Device *device, VkCommandBuffer cmd, VkPipelineCache cache, Type type);
+
 	Device *device;
 	VkCommandBuffer cmd;
 	VkPipelineCache cache;

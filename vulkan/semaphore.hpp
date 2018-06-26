@@ -25,20 +25,23 @@
 #include "intrusive.hpp"
 #include "vulkan.hpp"
 #include "cookie.hpp"
+#include "object_pool.hpp"
 
 namespace Vulkan
 {
 class Device;
 
-class SemaphoreHolder : public Util::ThreadSafeIntrusivePtrEnabled<SemaphoreHolder>, public InternalSyncEnabled
+class SemaphoreHolder;
+struct SemaphoreHolderDeleter
+{
+	void operator()(SemaphoreHolder *semaphore);
+};
+
+class SemaphoreHolder : public Util::IntrusivePtrEnabled<SemaphoreHolder, SemaphoreHolderDeleter, Util::MultiThreadCounter>,
+                        public InternalSyncEnabled
 {
 public:
-	SemaphoreHolder(Device *device, VkSemaphore semaphore, bool signalled)
-	    : device(device)
-	    , semaphore(semaphore)
-	    , signalled(signalled)
-	{
-	}
+	friend class SemaphoreHolderDeleter;
 
 	~SemaphoreHolder();
 
@@ -90,6 +93,14 @@ public:
 	}
 
 private:
+	friend class Util::ObjectPool<SemaphoreHolder>;
+	SemaphoreHolder(Device *device, VkSemaphore semaphore, bool signalled)
+	    : device(device)
+	    , semaphore(semaphore)
+	    , signalled(signalled)
+	{
+	}
+
 	Device *device;
 	VkSemaphore semaphore;
 	bool signalled = true;

@@ -85,7 +85,7 @@ Image::Image(Device *device, VkImage image, VkImageView default_view, const Devi
 		info.levels = create_info.levels;
 		info.base_layer = 0;
 		info.layers = create_info.layers;
-		view = Util::make_handle<ImageView>(device, default_view, info);
+		view = ImageViewHandle(device->get_handle_pool().image_views.allocate(device, default_view, info));
 	}
 }
 
@@ -104,5 +104,15 @@ Image::~Image()
 			device->free_memory(alloc);
 		}
 	}
+}
+
+void ImageViewDeleter::operator()(Vulkan::ImageView *view)
+{
+	view->device->get_handle_pool().image_views.free(view);
+}
+
+void ImageDeleter::operator()(Vulkan::Image *image)
+{
+	image->device->get_handle_pool().images.free(image);
 }
 }

@@ -25,6 +25,7 @@
 #include "cookie.hpp"
 #include "intrusive.hpp"
 #include "vulkan.hpp"
+#include "object_pool.hpp"
 
 namespace Vulkan
 {
@@ -60,10 +61,17 @@ struct SamplerCreateInfo
 	VkBool32 unnormalizedCoordinates;
 };
 
-class Sampler : public Util::IntrusivePtrEnabled<Sampler>, public Cookie, public InternalSyncEnabled
+class Sampler;
+struct SamplerDeleter
+{
+	void operator()(Sampler *sampler);
+};
+
+class Sampler : public Util::IntrusivePtrEnabled<Sampler, SamplerDeleter, Util::MultiThreadCounter>,
+                public Cookie, public InternalSyncEnabled
 {
 public:
-	Sampler(Device *device, VkSampler sampler, const SamplerCreateInfo &info);
+	friend class SamplerDeleter;
 	~Sampler();
 
 	VkSampler get_sampler() const
@@ -77,6 +85,9 @@ public:
 	}
 
 private:
+	friend class Util::ObjectPool<Sampler>;
+	Sampler(Device *device, VkSampler sampler, const SamplerCreateInfo &info);
+
 	Device *device;
 	VkSampler sampler;
 	SamplerCreateInfo create_info;

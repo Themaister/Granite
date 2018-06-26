@@ -63,7 +63,7 @@ Semaphore Device::request_semaphore()
 {
 	LOCK();
 	auto semaphore = managers.semaphore.request_cleared_semaphore();
-	auto ptr = make_handle<SemaphoreHolder>(this, semaphore, false);
+	Semaphore ptr(handle_pool.semaphores.allocate(this, semaphore, false));
 	return ptr;
 }
 
@@ -89,7 +89,7 @@ Semaphore Device::request_imported_semaphore(int fd, VkExternalSemaphoreHandleTy
 	import.semaphore = semaphore;
 	import.handleType = handle_type;
 	import.flags = VK_SEMAPHORE_IMPORT_TEMPORARY_BIT_KHR;
-	auto ptr = make_handle<SemaphoreHolder>(this, semaphore, false);
+	Semaphore ptr(handle_pool.semaphores.allocate(this, semaphore, false));
 
 	if (vkImportSemaphoreFdKHR(device, &import) != VK_SUCCESS)
 		return Semaphore(nullptr);
@@ -700,7 +700,7 @@ void Device::submit_nolock(CommandBufferHandle cmd, Fence *fence, unsigned semap
 	if (fence)
 	{
 		VK_ASSERT(!*fence);
-		*fence = make_handle<FenceHolder>(this, cleared_fence);
+		*fence = Fence(handle_pool.fences.allocate(this, cleared_fence));
 	}
 
 	decrement_frame_counter_nolock();
@@ -722,7 +722,7 @@ void Device::submit_empty_nolock(CommandBuffer::Type type, Fence *fence,
 	VkFence cleared_fence = VK_NULL_HANDLE;
 	submit_queue(type, fence ? &cleared_fence : nullptr, semaphore_count, semaphores);
 	if (fence)
-		*fence = make_handle<FenceHolder>(this, cleared_fence);
+		*fence = Fence(handle_pool.fences.allocate(this, cleared_fence));
 }
 
 void Device::submit_empty_inner(CommandBuffer::Type type, VkFence *fence,
@@ -754,7 +754,7 @@ void Device::submit_empty_inner(CommandBuffer::Type type, VkFence *fence,
 		VkSemaphore cleared_semaphore = managers.semaphore.request_cleared_semaphore();
 		signals.push_back(cleared_semaphore);
 		VK_ASSERT(!semaphores[i]);
-		semaphores[i] = make_handle<SemaphoreHolder>(this, cleared_semaphore, true);
+		semaphores[i] = Semaphore(handle_pool.semaphores.allocate(this, cleared_semaphore, true));
 	}
 
 	submit.signalSemaphoreCount = signals.size();
@@ -1025,7 +1025,7 @@ void Device::submit_queue(CommandBuffer::Type type, VkFence *fence,
 		VkSemaphore cleared_semaphore = managers.semaphore.request_cleared_semaphore();
 		signals[submits.size() - 1].push_back(cleared_semaphore);
 		VK_ASSERT(!semaphores[i]);
-		semaphores[i] = make_handle<SemaphoreHolder>(this, cleared_semaphore, true);
+		semaphores[i] = Semaphore(handle_pool.semaphores.allocate(this, cleared_semaphore, true));
 	}
 
 	for (unsigned i = 0; i < submits.size(); i++)
@@ -1284,7 +1284,7 @@ CommandBufferHandle Device::request_command_buffer_nolock(unsigned thread_index,
 	info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 	vkBeginCommandBuffer(cmd, &info);
 	add_frame_counter_nolock();
-	auto handle = make_handle<CommandBuffer>(this, cmd, pipeline_cache, type);
+	CommandBufferHandle handle(handle_pool.command_buffers.allocate(this, cmd, pipeline_cache, type));
 	handle->set_thread_index(thread_index);
 	return handle;
 }
@@ -1326,7 +1326,7 @@ CommandBufferHandle Device::request_secondary_command_buffer_for_thread(unsigned
 
 	vkBeginCommandBuffer(cmd, &info);
 	add_frame_counter_nolock();
-	auto handle = make_handle<CommandBuffer>(this, cmd, pipeline_cache, type);
+	CommandBufferHandle handle(handle_pool.command_buffers.allocate(this, cmd, pipeline_cache, type));
 	handle->set_thread_index(thread_index);
 	handle->set_is_secondary();
 	return handle;
@@ -1453,7 +1453,7 @@ void Device::init_swapchain(const vector<VkImage> &swapchain_images, unsigned wi
 		if (vkCreateImageView(device, &view_info, nullptr, &image_view) != VK_SUCCESS)
 			LOGE("Failed to create view for backbuffer.");
 
-		frame->backbuffer = make_handle<Image>(this, image, image_view, DeviceAllocation{}, info);
+		frame->backbuffer = ImageHandle(handle_pool.images.allocate(this, image, image_view, DeviceAllocation{}, info));
 		set_name(*frame->backbuffer, "backbuffer");
 		frame->backbuffer->set_swapchain_layout(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 		per_frame.emplace_back(move(frame));
@@ -1596,7 +1596,7 @@ void Device::destroy_event_nolock(VkEvent event)
 
 PipelineEvent Device::request_pipeline_event()
 {
-	return Util::make_handle<EventHolder>(this, managers.event.request_cleared_event());
+	return PipelineEvent(handle_pool.events.allocate(this, managers.event.request_cleared_event()));
 }
 
 void Device::destroy_image_nolock(VkImage image)
@@ -2005,7 +2005,7 @@ BufferViewHandle Device::create_buffer_view(const BufferViewCreateInfo &view_inf
 	if (res != VK_SUCCESS)
 		return BufferViewHandle(nullptr);
 
-	return make_handle<BufferView>(this, view, view_info);
+	return BufferViewHandle(handle_pool.buffer_views.allocate(this, view, view_info));
 }
 
 ImageViewHandle Device::create_image_view(const ImageViewCreateInfo &create_info)
@@ -2072,7 +2072,7 @@ ImageViewHandle Device::create_image_view(const ImageViewCreateInfo &create_info
 
 	ImageViewCreateInfo tmp = create_info;
 	tmp.format = format;
-	auto ret = make_handle<ImageView>(this, image_view, tmp);
+	ImageViewHandle ret(handle_pool.image_views.allocate(this, image_view, tmp));
 	ret->set_alt_views(depth_view, stencil_view);
 	ret->set_base_level_view(base_level_view);
 	return ret;
@@ -2220,7 +2220,7 @@ ImageHandle Device::create_imported_image(int fd, VkDeviceSize size, uint32_t me
 	}
 
 	auto allocation = DeviceAllocation::make_imported_allocation(memory, size, memory_type);
-	auto handle = make_handle<Image>(this, image, image_view, allocation, create_info);
+	ImageHandle handle(handle_pool.images.allocate(this, image, image_view, allocation, create_info));
 	handle->get_view().set_alt_views(depth_view, stencil_view);
 	handle->get_view().set_base_level_view(base_level_view);
 
@@ -2581,7 +2581,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		}
 	}
 
-	auto handle = make_handle<Image>(this, image, image_view, allocation, tmpinfo);
+	ImageHandle handle(handle_pool.images.allocate(this, image, image_view, allocation, tmpinfo));
 	handle->get_view().set_alt_views(depth_view, stencil_view);
 	handle->get_view().set_base_level_view(base_level_view);
 	handle->get_view().set_unorm_view(unorm_view);
@@ -2775,7 +2775,7 @@ SamplerHandle Device::create_sampler(const SamplerCreateInfo &sampler_info, Stoc
 		return SamplerHandle(nullptr);
 
 	state_recorder.set_sampler_handle(index, sampler);
-	return make_handle<Sampler>(this, sampler, sampler_info);
+	return SamplerHandle(handle_pool.samplers.allocate(this, sampler, sampler_info));
 }
 
 SamplerHandle Device::create_sampler(const SamplerCreateInfo &sampler_info)
@@ -2784,7 +2784,7 @@ SamplerHandle Device::create_sampler(const SamplerCreateInfo &sampler_info)
 	VkSampler sampler;
 	if (vkCreateSampler(device, &info, nullptr, &sampler) != VK_SUCCESS)
 		return SamplerHandle(nullptr);
-	return make_handle<Sampler>(this, sampler, sampler_info);
+	return SamplerHandle(handle_pool.samplers.allocate(this, sampler, sampler_info));
 }
 
 BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const void *initial)
@@ -2849,7 +2849,7 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 
 	auto tmpinfo = create_info;
 	tmpinfo.usage |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-	auto handle = make_handle<Buffer>(this, buffer, allocation, tmpinfo);
+	BufferHandle handle(handle_pool.buffers.allocate(this, buffer, allocation, tmpinfo));
 
 	if (create_info.domain == BufferDomain::Device && (initial || zero_initialize) && !memory_type_is_host_visible(memory_type))
 	{

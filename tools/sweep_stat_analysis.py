@@ -77,6 +77,9 @@ def main():
                         help = 'Counter to be analyzed',
                         type = str,
                         default = 'avg')
+    parser.add_argument('--ignore-large-pcf',
+                        help = 'Ignore PCF variants larger than 1.',
+                        action = 'store_true')
 
     args = parser.parse_args()
     if args.stat is None:
@@ -89,6 +92,9 @@ def main():
 
     # First, try to find all runs which use our argument.
     for run in stat['runs']:
+        if args.ignore_large_pcf:
+            if ('pcf_width' in run['config']) and (run['config']['pcf_width'] > 1):
+                continue
         if args.config == 'renderer':
             if run['config'][args.config] == 'deferred':
                 positive_runs.append(run)

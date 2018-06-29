@@ -485,6 +485,8 @@ bool WSI::init_swapchain(unsigned width, unsigned height)
 	swapchain_images.resize(image_count);
 	V(vkGetSwapchainImagesKHR(context->get_device(), swapchain, &image_count, swapchain_images.data()));
 
+	LOGI("Got %u swapchain images.\n", image_count);
+
 	auto &em = Granite::EventManager::get_global();
 	em.dequeue_all_latched(SwapchainParameterEvent::get_type_id());
 	em.enqueue_latched<SwapchainParameterEvent>(device.get(), this->width, this->height, aspect_ratio, image_count, info.imageFormat);

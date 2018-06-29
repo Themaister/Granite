@@ -24,12 +24,16 @@
 #include "application_events.hpp"
 #include "vulkan.hpp"
 #include <string.h>
+#include <signal.h>
 
 using namespace std;
 using namespace Vulkan;
 
 namespace Granite
 {
+struct WSIPlatformDisplay;
+static WSIPlatformDisplay *global_display;
+static void signal_handler(int);
 
 static bool vulkan_update_display_mode(unsigned *width, unsigned *height, const VkDisplayModePropertiesKHR *mode,
                                        unsigned desired_width, unsigned desired_height)
@@ -86,6 +90,14 @@ public:
 		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
 		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
+
+		global_display = this;
+		struct sigaction sa;
+		memset(&sa, 0, sizeof(sa));
+		sigemptyset(&sa.sa_mask);
+		sa.sa_handler = signal_handler;
+		sigaction(SIGINT, &sa, nullptr);
+		sigaction(SIGTERM, &sa, nullptr);
 	}
 
 	~WSIPlatformDisplay()
@@ -98,7 +110,7 @@ public:
 
 	bool alive(Vulkan::WSI &) override
 	{
-		return true;
+		return is_alive;
 	}
 
 	void poll_input() override
@@ -259,13 +271,25 @@ out:
 		this->height = height;
 	}
 
+	void signal_die()
+	{
+		is_alive = false;
+	}
+
 private:
 	unsigned width = 0;
 	unsigned height = 0;
 #ifdef KHR_DISPLAY_ACQUIRE_XLIB
 	Display *dpy = nullptr;
 #endif
+	bool is_alive = true;
 };
+
+static void signal_handler(int)
+{
+	LOGI("SIGINT or SIGTERM received.\n");
+	global_display->signal_die();
+}
 
 void application_dummy()
 {

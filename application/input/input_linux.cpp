@@ -132,10 +132,7 @@ bool LinuxInputManager::add_device(int fd, DeviceType type, const char *devnode,
 {
 	struct stat s;
 	if (fstat(fd, &s) < 0)
-	{
-		close(fd);
 		return false;
-	}
 
 	epoll_event event;
 	auto dev = make_unique<Device>();
@@ -143,47 +140,6 @@ bool LinuxInputManager::add_device(int fd, DeviceType type, const char *devnode,
 	dev->fd = fd;
 	dev->callback = callback;
 	dev->devnode = devnode;
-
-#if 0
-	input_absinfo absinfo;
-	switch (type)
-	{
-	case DeviceType::Touchpad:
-		if (ioctl(fd, EVIOCGABS(ABS_X), &absinfo) < 0)
-			return false;
-		dev->mouse.x_min = absinfo.minimum;
-		dev->mouse.x_max = absinfo.maximum;
-
-		if (ioctl(fd, EVIOCGABS(ABS_Y), &absinfo) < 0)
-			return false;
-		dev->mouse.y_min = absinfo.minimum;
-		dev->mouse.y_max = absinfo.maximum;
-		break;
-
-	case DeviceType::Mouse:
-		if (ioctl(fd, EVIOCGABS(ABS_X), &absinfo) >= 0)
-		{
-			if (absinfo.minimum >= absinfo.maximum)
-				return false;
-
-			dev->mouse.x_min = absinfo.minimum;
-			dev->mouse.x_max = absinfo.maximum;
-		}
-
-		if (ioctl(fd, EVIOCGABS(ABS_Y), &absinfo) >= 0)
-		{
-			if (absinfo.minimum >= absinfo.maximum)
-				return false;
-
-			dev->mouse.y_min = absinfo.minimum;
-			dev->mouse.y_max = absinfo.maximum;
-		}
-		break;
-
-	default:
-		break;
-	}
-#endif
 
 	event.data.ptr = dev.get();
 	event.events = EPOLLIN;
@@ -195,7 +151,6 @@ bool LinuxInputManager::add_device(int fd, DeviceType type, const char *devnode,
 	}
 
 	devices.push_back(move(dev));
-
 	return true;
 }
 
@@ -305,12 +260,6 @@ void LinuxInputManager::remove_device(const char *devnode)
 	auto itr = Util::unstable_remove_if(begin(devices), end(devices), [=](const unique_ptr<Device> &dev) {
 		return dev->devnode == devnode;
 	});
-
-	for (auto del_itr = itr; del_itr != end(devices); ++del_itr)
-	{
-		auto &d = *del_itr;
-		close(d->fd);
-	}
 
 	devices.erase(itr, end(devices));
 }
@@ -536,10 +485,12 @@ LinuxInputManager::~LinuxInputManager()
 		udev_unref(udev);
 	if (queue_fd >= 0)
 		close(queue_fd);
+}
 
-	for (auto &dev : devices)
-		if (dev->fd >= 0)
-			close(dev->fd);
+LinuxInputManager::Device::~Device()
+{
+	if (fd >= 0)
+		close(fd);
 }
 
 }

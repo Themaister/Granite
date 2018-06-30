@@ -55,29 +55,15 @@ private:
 		Joystick
 	};
 
-#if 0
-	struct MouseState
-	{
-		int32_t x_abs, y_abs;
-		int32_t x_min, y_min;
-		int32_t x_max, y_max;
-		int32_t x_rel, y_rel;
-		bool l, r, m, b4, b5;
-		bool wu, wd, whu, whd;
-	};
-#endif
-
 	struct Device;
 	using InputCallback = void (LinuxInputManager::*)(InputTracker &, Device &, const input_event &e);
 	struct Device
 	{
-		int fd;
+		~Device();
+		int fd = -1;
+		InputCallback callback = nullptr;
 		DeviceType type;
-		InputCallback callback;
 		std::string devnode;
-#if 0
-		MouseState mouse;
-#endif
 	};
 	std::vector<std::unique_ptr<Device>> devices;
 

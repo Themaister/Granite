@@ -1,3 +1,10 @@
 add_granite_library(application-input input.hpp input.cpp)
 target_include_directories(application-input PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(application-input vulkan-wsi math ui-renderer)
+
+if (${CMAKE_SYSTEM} MATCHES "Linux")
+    find_library(UDEV udev)
+    add_granite_library(input-linux input_linux.cpp input_linux.hpp)
+    target_include_directories(input-linux PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(input-linux util application-input ${UDEV})
+endif()

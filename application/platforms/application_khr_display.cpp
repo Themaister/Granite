@@ -20,6 +20,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include "input_linux.hpp"
 #include "application.hpp"
 #include "application_events.hpp"
 #include "vulkan.hpp"
@@ -98,6 +99,9 @@ public:
 		sa.sa_handler = signal_handler;
 		sigaction(SIGINT, &sa, nullptr);
 		sigaction(SIGTERM, &sa, nullptr);
+
+		if (!input_manager.init())
+			LOGI("Failed to initialize input manager.\n");
 	}
 
 	~WSIPlatformDisplay()
@@ -115,6 +119,7 @@ public:
 
 	void poll_input() override
 	{
+		input_manager.poll(get_input_tracker());
 		get_input_tracker().dispatch_current_state(get_frame_timer().get_frame_time());
 	}
 
@@ -283,6 +288,8 @@ private:
 	Display *dpy = nullptr;
 #endif
 	bool is_alive = true;
+
+	LinuxInputManager input_manager;
 };
 
 static void signal_handler(int)

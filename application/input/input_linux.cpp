@@ -29,13 +29,86 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
+#include <linux/kd.h>
 #include <poll.h>
 #include <string.h>
+#include <signal.h>
+#include <termio.h>
 
 using namespace std;
 
 namespace Granite
 {
+static long old_kbmd = 0xffff;
+static struct termios old_term;
+
+static void terminal_flush()
+{
+	tcsetattr(0, TCSAFLUSH, &old_term);
+}
+
+static void terminal_enable_input()
+{
+	if (old_kbmd == 0xffff)
+		return;
+
+	if (ioctl(0, KDSKBMODE, old_kbmd) < 0)
+		return;
+
+	terminal_flush();
+	old_kbmd = 0xffff;
+}
+
+static void terminal_restore_signal(int sig)
+{
+	terminal_enable_input();
+	kill(getpid(), sig);
+}
+
+static bool terminal_disable_input()
+{
+	if (!isatty(0))
+		return false;
+
+	if (old_kbmd != 0xffff)
+		return false;
+
+	if (tcgetattr(0, &old_term) < 0)
+		return false;
+
+	auto new_term = old_term;
+	new_term.c_lflag &= ~(ECHO | ICANON | ISIG);
+	new_term.c_iflag &= ~(ISTRIP | IGNCR | ICRNL | INLCR | IXOFF | IXON);
+	new_term.c_cc[VMIN] = 0;
+	new_term.c_cc[VTIME] = 0;
+
+	if (ioctl(0, KDGKBMODE, &old_kbmd) < 0)
+		return false;
+
+	if (tcsetattr(0, TCSAFLUSH, &new_term) < 0)
+		return false;
+
+	if (ioctl(0, KDSKBMODE, K_MEDIUMRAW) < 0)
+	{
+		terminal_flush();
+		return false;
+	}
+
+	struct sigaction sa = {};
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = SA_RESTART | SA_RESETHAND;
+	sa.sa_handler = terminal_restore_signal;
+
+	sigaction(SIGABRT, &sa, nullptr);
+	sigaction(SIGBUS, &sa, nullptr);
+	sigaction(SIGFPE, &sa, nullptr);
+	sigaction(SIGILL, &sa, nullptr);
+	sigaction(SIGQUIT, &sa, nullptr);
+	sigaction(SIGSEGV, &sa, nullptr);
+
+	atexit(terminal_enable_input);
+	return true;
+}
 
 const char *LinuxInputManager::get_device_type_string(DeviceType type)
 {
@@ -399,6 +472,7 @@ void LinuxInputManager::input_handle_joystick(InputTracker &, Device &, const in
 
 bool LinuxInputManager::init()
 {
+	terminal_disable_input();
 	init_key_table();
 
 	udev = udev_new();

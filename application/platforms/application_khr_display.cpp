@@ -97,6 +97,7 @@ public:
 		memset(&sa, 0, sizeof(sa));
 		sigemptyset(&sa.sa_mask);
 		sa.sa_handler = signal_handler;
+		sa.sa_flags = SA_RESTART | SA_RESETHAND;
 		sigaction(SIGINT, &sa, nullptr);
 		sigaction(SIGTERM, &sa, nullptr);
 

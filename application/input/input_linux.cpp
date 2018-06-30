@@ -62,7 +62,6 @@ bool LinuxInputManager::add_device(int fd, DeviceType type, const char *devnode,
 		return false;
 	}
 
-	input_absinfo absinfo;
 	epoll_event event;
 	auto dev = make_unique<Device>();
 	dev->type = type;
@@ -70,6 +69,8 @@ bool LinuxInputManager::add_device(int fd, DeviceType type, const char *devnode,
 	dev->callback = callback;
 	dev->devnode = devnode;
 
+#if 0
+	input_absinfo absinfo;
 	switch (type)
 	{
 	case DeviceType::Touchpad:
@@ -107,6 +108,7 @@ bool LinuxInputManager::add_device(int fd, DeviceType type, const char *devnode,
 	default:
 		break;
 	}
+#endif
 
 	event.data.ptr = dev.get();
 	event.events = EPOLLIN;
@@ -192,6 +194,9 @@ void LinuxInputManager::handle_hotplug()
 
 bool LinuxInputManager::poll(InputTracker &tracker)
 {
+	if (queue_fd < 0)
+		return false;
+
 	while (hotplug_available())
 		handle_hotplug();
 
@@ -246,7 +251,7 @@ bool LinuxInputManager::open_devices(DeviceType type, InputCallback callback)
 	udev_enumerate_scan_devices(enumerate);
 	udev_list_entry *devs = udev_enumerate_get_list_entry(enumerate);
 
-	for (auto *item = devs; item != nullptr; item = udev_list_entry_get_next(devs))
+	for (auto *item = devs; item != nullptr; item = udev_list_entry_get_next(item))
 	{
 		auto *name = udev_list_entry_get_name(item);
 		auto *dev = udev_device_new_from_syspath(udev, name);
@@ -274,8 +279,128 @@ bool LinuxInputManager::open_devices(DeviceType type, InputCallback callback)
 	return true;
 }
 
+void LinuxInputManager::init_key_table()
+{
+	for (auto &key : keyboard_to_key)
+		key = Key::Unknown;
+
+#define set_key(key) keyboard_to_key[KEY_##key] = Key::key
+	set_key(A);
+	set_key(B);
+	set_key(C);
+	set_key(D);
+	set_key(E);
+	set_key(F);
+	set_key(G);
+	set_key(H);
+	set_key(I);
+	set_key(J);
+	set_key(K);
+	set_key(L);
+	set_key(M);
+	set_key(N);
+	set_key(O);
+	set_key(P);
+	set_key(Q);
+	set_key(R);
+	set_key(S);
+	set_key(T);
+	set_key(U);
+	set_key(V);
+	set_key(W);
+	set_key(X);
+	set_key(Y);
+	set_key(Z);
+	keyboard_to_key[KEY_ESC] = Key::Escape;
+	keyboard_to_key[KEY_ENTER] = Key::Return;
+	keyboard_to_key[KEY_SPACE] = Key::Space;
+	keyboard_to_key[KEY_LEFTALT] = Key::LeftAlt;
+	keyboard_to_key[KEY_LEFTCTRL] = Key::LeftCtrl;
+	keyboard_to_key[KEY_LEFTSHIFT] = Key::LeftShift;
+#undef set_key
+}
+
+void LinuxInputManager::input_handle_keyboard(InputTracker &tracker, Device &, const input_event &e)
+{
+	switch (e.type)
+	{
+	case EV_KEY:
+	{
+		bool pressed = e.value != 0;
+		Key key = Key::Unknown;
+		if (e.code < KEY_MAX)
+			key = keyboard_to_key[e.code];
+
+		if (key != Key::Unknown)
+			tracker.key_event(key, pressed ? KeyState::Pressed : KeyState::Released);
+		break;
+	}
+
+	default:
+		break;
+	}
+}
+
+void LinuxInputManager::input_handle_mouse(InputTracker &tracker, Device &, const input_event &e)
+{
+	switch (e.type)
+	{
+	case EV_KEY:
+		switch (e.code)
+		{
+		case BTN_LEFT:
+			tracker.mouse_button_event(MouseButton::Left,
+			                           e.value != 0);
+			break;
+
+		case BTN_RIGHT:
+			tracker.mouse_button_event(MouseButton::Right,
+			                           e.value != 0);
+			break;
+
+		case BTN_MIDDLE:
+			tracker.mouse_button_event(MouseButton::Middle,
+			                           e.value != 0);
+			break;
+
+		default:
+			break;
+		}
+		break;
+
+	case EV_REL:
+		switch (e.code)
+		{
+		case REL_X:
+			tracker.mouse_move_event_relative(double(e.value), 0.0);
+			break;
+
+		case REL_Y:
+			tracker.mouse_move_event_relative(0.0, double(e.value));
+			break;
+
+		default:
+			break;
+		}
+		break;
+
+	default:
+		break;
+	}
+}
+
+void LinuxInputManager::input_handle_touchpad(InputTracker &, Device &, const input_event &)
+{
+}
+
+void LinuxInputManager::input_handle_joystick(InputTracker &, Device &, const input_event &)
+{
+}
+
 bool LinuxInputManager::init()
 {
+	init_key_table();
+
 	udev = udev_new();
 	if (!udev)
 	{
@@ -325,6 +450,20 @@ bool LinuxInputManager::init()
 	}
 
 	return true;
+}
+
+LinuxInputManager::~LinuxInputManager()
+{
+	if (udev_monitor)
+		udev_monitor_unref(udev_monitor);
+	if (udev)
+		udev_unref(udev);
+	if (queue_fd >= 0)
+		close(queue_fd);
+
+	for (auto &dev : devices)
+		if (dev->fd >= 0)
+			close(dev->fd);
 }
 
 }

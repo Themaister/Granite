@@ -256,6 +256,10 @@ out:
 
 		if (vkCreateDisplayPlaneSurfaceKHR(instance, &create_info, NULL, &surface) != VK_SUCCESS)
 			return VK_NULL_HANDLE;
+
+		get_input_tracker().set_relative_mouse_rect(0.0, 0.0, double(this->width), double(this->height));
+		get_input_tracker().mouse_enter(0.5 * this->width, 0.5 * this->height);
+		get_input_tracker().set_relative_mouse_speed(0.35, 0.35);
 		return surface;
 	}
 

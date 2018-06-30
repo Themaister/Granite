@@ -170,6 +170,11 @@ void InputTracker::key_event(Key key, KeyState state)
 		EventManager::get_global().dispatch_inline(event);
 }
 
+void InputTracker::mouse_button_event(Granite::MouseButton button, bool pressed)
+{
+	mouse_button_event(button, last_mouse_x, last_mouse_y, pressed);
+}
+
 void InputTracker::mouse_button_event(MouseButton button, double x, double y, bool pressed)
 {
 	if (pressed)
@@ -182,7 +187,25 @@ void InputTracker::mouse_button_event(MouseButton button, double x, double y, bo
 		EventManager::get_global().dispatch_inline(event);
 }
 
-void InputTracker::mouse_move_event(double x, double y)
+void InputTracker::mouse_move_event_relative(double x, double y)
+{
+	x *= mouse_speed_x;
+	y *= mouse_speed_y;
+	if (mouse_active)
+	{
+		last_mouse_x += x;
+		last_mouse_y += y;
+		last_mouse_x = clamp(last_mouse_x, mouse_relative_range_x,
+		                     mouse_relative_range_x + mouse_relative_range_width);
+		last_mouse_y = clamp(last_mouse_y, mouse_relative_range_y,
+		                     mouse_relative_range_y + mouse_relative_range_height);
+		MouseMoveEvent event(x, y, last_mouse_x, last_mouse_y, key_state, mouse_button_state);
+		if (UI::UIManager::get().filter_input_event(event))
+			EventManager::get_global().dispatch_inline(event);
+	}
+}
+
+void InputTracker::mouse_move_event_absolute(double x, double y)
 {
 	if (mouse_active)
 	{

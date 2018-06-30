@@ -26,6 +26,7 @@
 #include "event.hpp"
 #include <stdint.h>
 #include "math.hpp"
+#include <limits>
 
 namespace Granite
 {
@@ -135,7 +136,9 @@ class InputTracker
 public:
 	void key_event(Key key, KeyState state);
 	void mouse_button_event(MouseButton button, double x, double y, bool pressed);
-	void mouse_move_event(double x, double y);
+	void mouse_button_event(MouseButton button, bool pressed);
+	void mouse_move_event_absolute(double x, double y);
+	void mouse_move_event_relative(double x, double y);
 	void dispatch_current_state(double delta_time);
 	void orientation_event(quat rot);
 	void joypad_key_state(unsigned index, JoypadKey key, JoypadKeyState state);
@@ -165,6 +168,20 @@ public:
 		axis_deadzone = deadzone;
 	}
 
+	void set_relative_mouse_rect(double x, double y, double width, double height)
+	{
+		mouse_relative_range_x = x;
+		mouse_relative_range_y = y;
+		mouse_relative_range_width = width;
+		mouse_relative_range_height = height;
+	}
+
+	void set_relative_mouse_speed(double speed_x, double speed_y)
+	{
+		mouse_speed_x = speed_x;
+		mouse_speed_y = speed_y;
+	}
+
 private:
 	uint64_t key_state = 0;
 	uint8_t mouse_button_state = 0;
@@ -172,6 +189,12 @@ private:
 
 	double last_mouse_x = 0.0;
 	double last_mouse_y = 0.0;
+	double mouse_relative_range_x = 0.0;
+	double mouse_relative_range_y = 0.0;
+	double mouse_relative_range_width = std::numeric_limits<double>::max();
+	double mouse_relative_range_height = std::numeric_limits<double>::max();
+	double mouse_speed_x = 1.0;
+	double mouse_speed_y = 1.0;
 
 	enum { TouchCount = 16 };
 	enum { Joypads = 8 };

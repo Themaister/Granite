@@ -55,6 +55,7 @@ private:
 		Joystick
 	};
 
+#if 0
 	struct MouseState
 	{
 		int32_t x_abs, y_abs;
@@ -64,6 +65,7 @@ private:
 		bool l, r, m, b4, b5;
 		bool wu, wd, whu, whd;
 	};
+#endif
 
 	struct Device;
 	using InputCallback = void (LinuxInputManager::*)(InputTracker &, Device &, const input_event &e);
@@ -73,7 +75,9 @@ private:
 		DeviceType type;
 		InputCallback callback;
 		std::string devnode;
+#if 0
 		MouseState mouse;
+#endif
 	};
 	std::vector<std::unique_ptr<Device>> devices;
 
@@ -88,5 +92,8 @@ private:
 	void remove_device(const char *devnode);
 	bool hotplug_available();
 	void handle_hotplug();
+
+	void init_key_table();
+	Key keyboard_to_key[KEY_MAX];
 };
 }

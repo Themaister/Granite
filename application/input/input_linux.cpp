@@ -234,22 +234,26 @@ void LinuxInputManager::handle_hotplug()
 
 	InputCallback cb = nullptr;
 	DeviceType type;
-	if (val_key && strcmp(val_key, "1") == 0 && devnode)
+	if ((flags & LINUX_INPUT_MANAGER_KEYBOARD_BIT) &&
+	    val_key && strcmp(val_key, "1") == 0 && devnode)
 	{
 		type = DeviceType::Keyboard;
 		cb = &LinuxInputManager::input_handle_keyboard;
 	}
-	else if (val_mouse && strcmp(val_mouse, "1") == 0 && devnode)
+	else if ((flags & LINUX_INPUT_MANAGER_MOUSE_BIT) &&
+	         val_mouse && strcmp(val_mouse, "1") == 0 && devnode)
 	{
 		type = DeviceType::Mouse;
 		cb = &LinuxInputManager::input_handle_mouse;
 	}
-	else if (val_touchpad && strcmp(val_touchpad, "1") == 0 && devnode)
+	else if ((flags & LINUX_INPUT_MANAGER_TOUCHPAD_BIT) &&
+	         val_touchpad && strcmp(val_touchpad, "1") == 0 && devnode)
 	{
 		type = DeviceType::Touchpad;
 		cb = &LinuxInputManager::input_handle_touchpad;
 	}
-	else if (val_joystick && strcmp(val_joystick, "1") == 0 && devnode)
+	else if ((flags & LINUX_INPUT_MANAGER_JOYPAD_BIT) &&
+	         val_joystick && strcmp(val_joystick, "1") == 0 && devnode)
 	{
 		type = DeviceType::Joystick;
 		cb = &LinuxInputManager::input_handle_joystick;
@@ -627,8 +631,9 @@ void LinuxInputManager::input_handle_joystick(Device &dev, const input_event &e)
 	}
 }
 
-bool LinuxInputManager::init(InputTracker *tracker)
+bool LinuxInputManager::init(LinuxInputManagerFlags flags, InputTracker *tracker)
 {
+	this->flags = flags;
 	this->tracker = tracker;
 	terminal_disable_input();
 	init_key_table();
@@ -657,25 +662,29 @@ bool LinuxInputManager::init(InputTracker *tracker)
 		return false;
 	}
 
-	if (!open_devices(DeviceType::Keyboard, &LinuxInputManager::input_handle_keyboard))
+	if ((flags & LINUX_INPUT_MANAGER_KEYBOARD_BIT) &&
+	    !open_devices(DeviceType::Keyboard, &LinuxInputManager::input_handle_keyboard))
 	{
 		LOGE("Failed to open keyboards.\n");
 		return false;
 	}
 
-	if (!open_devices(DeviceType::Mouse, &LinuxInputManager::input_handle_mouse))
+	if ((flags & LINUX_INPUT_MANAGER_MOUSE_BIT) &&
+	    !open_devices(DeviceType::Mouse, &LinuxInputManager::input_handle_mouse))
 	{
 		LOGE("Failed to open keyboards.\n");
 		return false;
 	}
 
-	if (!open_devices(DeviceType::Touchpad, &LinuxInputManager::input_handle_touchpad))
+	if ((flags & LINUX_INPUT_MANAGER_TOUCHPAD_BIT) &&
+	    !open_devices(DeviceType::Touchpad, &LinuxInputManager::input_handle_touchpad))
 	{
 		LOGE("Failed to open keyboards.\n");
 		return false;
 	}
 
-	if (!open_devices(DeviceType::Joystick, &LinuxInputManager::input_handle_joystick))
+	if ((flags & LINUX_INPUT_MANAGER_JOYPAD_BIT) &&
+	    !open_devices(DeviceType::Joystick, &LinuxInputManager::input_handle_joystick))
 	{
 		LOGE("Failed to open joysticks.\n");
 		return false;

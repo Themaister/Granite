@@ -24,6 +24,9 @@
 #include "application_events.hpp"
 #include "vulkan.hpp"
 #include "GLFW/glfw3.h"
+#ifdef HAVE_LINUX_INPUT
+#include "input_linux.hpp"
+#endif
 
 #ifdef _WIN32
 #include <windows.h>
@@ -75,11 +78,19 @@ public:
 		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
 		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
+
+#ifdef HAVE_LINUX_INPUT
+		if (!input_manager.init(LINUX_INPUT_MANAGER_JOYPAD_BIT, &get_input_tracker()))
+			LOGE("Failed to initialize input manager.\n");
+#endif
 	}
 
 	bool alive(Vulkan::WSI &) override
 	{
 		glfwPollEvents();
+#ifdef HAVE_LINUX_INPUT
+		input_manager.poll();
+#endif
 		return !killed && !glfwWindowShouldClose(window);
 	}
 
@@ -157,6 +168,10 @@ private:
 	unsigned width = 0;
 	unsigned height = 0;
 	CachedWindow cached_window;
+
+#ifdef HAVE_LINUX_INPUT
+	LinuxInputManager input_manager;
+#endif
 };
 
 static void fb_size_cb(GLFWwindow *window, int width, int height)
@@ -285,7 +300,7 @@ static void button_cb(GLFWwindow *window, int button, int action, int)
 static void cursor_cb(GLFWwindow *window, double x, double y)
 {
 	auto *glfw = static_cast<WSIPlatformGLFW *>(glfwGetWindowUserPointer(window));
-	glfw->get_input_tracker().mouse_move_event(x, y);
+	glfw->get_input_tracker().mouse_move_event_absolute(x, y);
 }
 
 static void enter_cb(GLFWwindow *window, int entered)

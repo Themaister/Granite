@@ -31,11 +31,20 @@
 
 namespace Granite
 {
+enum LinuxInputManagerFlagBits
+{
+	LINUX_INPUT_MANAGER_KEYBOARD_BIT = 1 << 0,
+	LINUX_INPUT_MANAGER_MOUSE_BIT = 1 << 1,
+	LINUX_INPUT_MANAGER_TOUCHPAD_BIT = 1 << 2,
+	LINUX_INPUT_MANAGER_JOYPAD_BIT = 1 << 3
+};
+using LinuxInputManagerFlags = uint32_t;
+
 class LinuxInputManager
 {
 public:
 	LinuxInputManager() = default;
-	bool init(InputTracker *tracker);
+	bool init(LinuxInputManagerFlags flags, InputTracker *tracker);
 	~LinuxInputManager();
 	bool poll();
 
@@ -43,6 +52,7 @@ public:
 	void operator=(const LinuxInputManager &) = delete;
 
 private:
+	LinuxInputManagerFlags flags = 0;
 	InputTracker *tracker = nullptr;
 	struct udev *udev = nullptr;
 	struct udev_monitor *udev_monitor = nullptr;

@@ -20,7 +20,10 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#ifdef HAVE_LINUX_INPUT
 #include "input_linux.hpp"
+#endif
+
 #include "application.hpp"
 #include "application_events.hpp"
 #include "vulkan.hpp"
@@ -101,8 +104,17 @@ public:
 		sigaction(SIGINT, &sa, nullptr);
 		sigaction(SIGTERM, &sa, nullptr);
 
-		if (!input_manager.init(&get_input_tracker()))
+#ifdef HAVE_LINUX_INPUT
+		if (!input_manager.init(
+				LINUX_INPUT_MANAGER_JOYPAD_BIT |
+				LINUX_INPUT_MANAGER_KEYBOARD_BIT |
+				LINUX_INPUT_MANAGER_MOUSE_BIT |
+				LINUX_INPUT_MANAGER_TOUCHPAD_BIT,
+				&get_input_tracker()))
+		{
 			LOGI("Failed to initialize input manager.\n");
+		}
+#endif
 	}
 
 	~WSIPlatformDisplay()
@@ -294,7 +306,9 @@ private:
 #endif
 	bool is_alive = true;
 
+#ifdef HAVE_LINUX_INPUT
 	LinuxInputManager input_manager;
+#endif
 };
 
 static void signal_handler(int)

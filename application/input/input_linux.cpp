@@ -20,6 +20,8 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+// Loosely copied from RetroArch's udev implementation.
+
 #include "input_linux.hpp"
 #include "unstable_remove_if.hpp"
 #include "util.hpp"

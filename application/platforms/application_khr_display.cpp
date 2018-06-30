@@ -101,7 +101,7 @@ public:
 		sigaction(SIGINT, &sa, nullptr);
 		sigaction(SIGTERM, &sa, nullptr);
 
-		if (!input_manager.init())
+		if (!input_manager.init(&get_input_tracker()))
 			LOGI("Failed to initialize input manager.\n");
 	}
 
@@ -120,7 +120,7 @@ public:
 
 	void poll_input() override
 	{
-		input_manager.poll(get_input_tracker());
+		input_manager.poll();
 		get_input_tracker().dispatch_current_state(get_frame_timer().get_frame_time());
 	}
 

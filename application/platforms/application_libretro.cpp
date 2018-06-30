@@ -83,6 +83,8 @@ struct WSIPlatformLibretro : Vulkan::WSIPlatform
 			                                           retro_index, retro_id) * (1.0f / 0x7fff), -1.0f, 1.0f));
 		};
 
+		tracker.enable_joypad(0);
+		tracker.enable_joypad(1);
 		for (unsigned i = 0; i < 2; i++)
 		{
 			poll_key(i, JoypadKey::Left, RETRO_DEVICE_ID_JOYPAD_LEFT);

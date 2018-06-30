@@ -164,8 +164,12 @@ bool FPSCamera::on_joypad_state(const JoypadStateEvent &state)
 {
 	auto &p0 = state.get_state(0);
 
-	position += 3.0f * get_front() * -p0.get_axis(JoypadAxis::LeftY) * float(state.get_delta_time());
-	position += 3.0f * get_right() * p0.get_axis(JoypadAxis::LeftX) * float(state.get_delta_time());
+	float speed_scale = 1.0f;
+	if (p0.is_button_pressed(JoypadKey::R1))
+		speed_scale = 3.0f;
+
+	position += 3.0f * speed_scale * get_front() * -p0.get_axis(JoypadAxis::LeftY) * float(state.get_delta_time());
+	position += 3.0f * speed_scale * get_right() * p0.get_axis(JoypadAxis::LeftX) * float(state.get_delta_time());
 
 	float dx = 2.0f * p0.get_axis(JoypadAxis::RightX) * state.get_delta_time();
 	float dy = 1.0f * p0.get_axis(JoypadAxis::RightY) * state.get_delta_time();

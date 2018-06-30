@@ -32,6 +32,7 @@ namespace Granite
 {
 enum class JoypadKey
 {
+	Unknown,
 	Left,
 	Right,
 	Up,
@@ -182,6 +183,10 @@ public:
 		mouse_speed_y = speed_y;
 	}
 
+	void enable_joypad(unsigned index);
+	void disable_joypad(unsigned index);
+	int find_vacant_joypad_index() const;
+
 private:
 	uint64_t key_state = 0;
 	uint8_t mouse_button_state = 0;
@@ -199,10 +204,35 @@ private:
 	enum { TouchCount = 16 };
 	enum { Joypads = 8 };
 
+	uint8_t active_joypads = 0;
 	JoypadState joypads[Joypads] = {};
 	TouchState touch;
 
 	float axis_deadzone = 0.3f;
+};
+
+class JoypadConnectionEvent : public Granite::Event
+{
+public:
+	GRANITE_EVENT_TYPE_DECL(JoypadConnectionEvent)
+	JoypadConnectionEvent(unsigned index, bool connected)
+	    : index(index), connected(connected)
+	{
+	}
+
+	unsigned get_index() const
+	{
+		return index;
+	}
+
+	bool is_connected() const
+	{
+		return connected;
+	}
+
+private:
+	unsigned index;
+	bool connected;
 };
 
 class TouchGestureEvent : public Granite::Event

@@ -35,14 +35,15 @@ class LinuxInputManager
 {
 public:
 	LinuxInputManager() = default;
-	bool init();
+	bool init(InputTracker *tracker);
 	~LinuxInputManager();
-	bool poll(InputTracker &tracker);
+	bool poll();
 
 	LinuxInputManager(LinuxInputManager &&) = delete;
 	void operator=(const LinuxInputManager &) = delete;
 
 private:
+	InputTracker *tracker = nullptr;
 	struct udev *udev = nullptr;
 	struct udev_monitor *udev_monitor = nullptr;
 	int queue_fd = -1;
@@ -55,8 +56,21 @@ private:
 		Joystick
 	};
 
+	struct JoyaxisInfo
+	{
+		int lo;
+		int hi;
+	};
+
+	struct JoypadState
+	{
+		unsigned index = 0;
+		uint32_t button_state = 0;
+		JoyaxisInfo axis_x, axis_y, axis_rx, axis_ry, axis_z, axis_rz;
+	};
+
 	struct Device;
-	using InputCallback = void (LinuxInputManager::*)(InputTracker &, Device &, const input_event &e);
+	using InputCallback = void (LinuxInputManager::*)(Device &, const input_event &e);
 	struct Device
 	{
 		~Device();
@@ -64,6 +78,8 @@ private:
 		InputCallback callback = nullptr;
 		DeviceType type;
 		std::string devnode;
+		JoypadState joystate;
+		InputTracker *tracker = nullptr;
 	};
 	std::vector<std::unique_ptr<Device>> devices;
 
@@ -71,10 +87,10 @@ private:
 	bool add_device(int fd, DeviceType type, const char *devnode, InputCallback callback);
 	static const char *get_device_type_string(DeviceType type);
 
-	void input_handle_keyboard(InputTracker &tracker, Device &dev, const input_event &e);
-	void input_handle_mouse(InputTracker &tracker, Device &dev, const input_event &e);
-	void input_handle_touchpad(InputTracker &tracker, Device &dev, const input_event &e);
-	void input_handle_joystick(InputTracker &tracker, Device &dev, const input_event &e);
+	void input_handle_keyboard(Device &dev, const input_event &e);
+	void input_handle_mouse(Device &dev, const input_event &e);
+	void input_handle_touchpad(Device &dev, const input_event &e);
+	void input_handle_joystick(Device &dev, const input_event &e);
 	void remove_device(const char *devnode);
 	bool hotplug_available();
 	void handle_hotplug();

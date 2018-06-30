@@ -113,6 +113,8 @@ void InputTracker::joypad_key_state(unsigned index, JoypadKey key, JoypadKeyStat
 	if (index >= Joypads)
 		return;
 
+	assert(active_joypads & (1u << index));
+
 	auto &joy = joypads[index];
 	unsigned key_index = Util::ecast(key);
 	if (state == JoypadKeyState::Pressed)
@@ -141,6 +143,8 @@ void InputTracker::joyaxis_state(unsigned index, JoypadAxis axis, float value)
 {
 	if (index >= Joypads)
 		return;
+
+	assert(active_joypads & (1u << index));
 
 	if (std::abs(value) < axis_deadzone)
 		value = 0.0f;
@@ -235,6 +239,43 @@ void InputTracker::dispatch_current_state(double delta_time)
 {
 	EventManager::get_global().dispatch_inline(JoypadStateEvent{joypads, Joypads, delta_time});
 	EventManager::get_global().dispatch_inline(InputStateEvent{last_mouse_x, last_mouse_y, delta_time, key_state, mouse_button_state, mouse_active});
+}
+
+int InputTracker::find_vacant_joypad_index() const
+{
+	for (int i = 0; i < Joypads; i++)
+	{
+		if ((active_joypads & (1 << i)) == 0)
+			return i;
+	}
+
+	return -1;
+}
+
+void InputTracker::enable_joypad(unsigned index)
+{
+	if (index >= Joypads)
+		return;
+
+	if (active_joypads & (1u << index))
+		return;
+
+	active_joypads |= 1u << index;
+	JoypadConnectionEvent event(index, true);
+	EventManager::get_global().dispatch_inline(event);
+}
+
+void InputTracker::disable_joypad(unsigned index)
+{
+	if (index >= Joypads)
+		return;
+
+	if ((active_joypads & (1u << index)) == 0)
+		return;
+
+	active_joypads &= ~(1u << index);
+	JoypadConnectionEvent event(index, false);
+	EventManager::get_global().dispatch_inline(event);
 }
 
 }

@@ -36,6 +36,7 @@
 #include <string.h>
 #include <signal.h>
 #include <termio.h>
+#include <limits.h>
 
 using namespace std;
 
@@ -137,12 +138,69 @@ bool LinuxInputManager::add_device(int fd, DeviceType type, const char *devnode,
 	epoll_event event;
 	auto dev = make_unique<Device>();
 	dev->type = type;
-	dev->fd = fd;
 	dev->callback = callback;
 	dev->devnode = devnode;
+	dev->tracker = tracker;
 
+	if (type == DeviceType::Joystick)
+	{
+		int index = tracker->find_vacant_joypad_index();
+		if (index < 0)
+		{
+			LOGE("Got more joypads than what is supported.\n");
+			return false;
+		}
+		dev->joystate.index = unsigned(index);
+
+#define TEST_BIT(nr, addr) \
+	(((1ul << ((nr) % (sizeof(long) * CHAR_BIT))) & ((addr)[(nr) / (sizeof(long) * CHAR_BIT)])) != 0)
+#define NBITS(x) ((((x) - 1) / (sizeof(long) * CHAR_BIT)) + 1)
+		unsigned long evbit[NBITS(EV_MAX)] = {};
+		unsigned long keybit[NBITS(KEY_MAX)] = {};
+		unsigned long absbit[NBITS(ABS_MAX)] = {};
+
+		if (ioctl(fd, EVIOCGBIT(0, sizeof(evbit)), evbit) < 0)
+			return false;
+		if (ioctl(fd, EVIOCGBIT(EV_KEY, sizeof(keybit)), keybit) < 0)
+			return false;
+		if (ioctl(fd, EVIOCGBIT(EV_ABS, sizeof(absbit)), absbit) < 0)
+			return false;
+
+		const auto test_bit = [&](int code, unsigned long *bits, JoyaxisInfo *axis) -> bool {
+			if (TEST_BIT(code, bits))
+			{
+				if (axis)
+				{
+					input_absinfo absinfo;
+					if (ioctl(fd, EVIOCGABS(code), &absinfo) < 0)
+						return false;
+
+					axis->lo = absinfo.minimum;
+					axis->hi = absinfo.maximum;
+				}
+				return true;
+			}
+			else
+				return false;
+		};
+
+		if (!test_bit(EV_KEY, evbit, nullptr))
+			return false;
+
+		test_bit(ABS_X, absbit, &dev->joystate.axis_x);
+		test_bit(ABS_Y, absbit, &dev->joystate.axis_y);
+		test_bit(ABS_RX, absbit, &dev->joystate.axis_rx);
+		test_bit(ABS_RY, absbit, &dev->joystate.axis_ry);
+		test_bit(ABS_Z, absbit, &dev->joystate.axis_z);
+		test_bit(ABS_RZ, absbit, &dev->joystate.axis_rz);
+	}
+
+	dev->fd = fd;
 	event.data.ptr = dev.get();
 	event.events = EPOLLIN;
+
+	if (type == DeviceType::Joystick)
+		tracker->enable_joypad(dev->joystate.index);
 
 	if (epoll_ctl(queue_fd, EPOLL_CTL_ADD, fd, &event) < 0)
 	{
@@ -222,7 +280,7 @@ void LinuxInputManager::handle_hotplug()
 	udev_device_unref(dev);
 }
 
-bool LinuxInputManager::poll(InputTracker &tracker)
+bool LinuxInputManager::poll()
 {
 	if (queue_fd < 0)
 		return false;
@@ -246,7 +304,7 @@ bool LinuxInputManager::poll(InputTracker &tracker)
 				{
 					len /= sizeof(input_events[0]);
 					for (ssize_t j = 0; j < len; j++)
-						(this->*device.callback)(tracker, device, input_events[j]);
+						(this->*device.callback)(device, input_events[j]);
 				}
 			}
 		}
@@ -344,7 +402,7 @@ void LinuxInputManager::init_key_table()
 #undef set_key
 }
 
-void LinuxInputManager::input_handle_keyboard(InputTracker &tracker, Device &, const input_event &e)
+void LinuxInputManager::input_handle_keyboard(Device &, const input_event &e)
 {
 	switch (e.type)
 	{
@@ -356,7 +414,7 @@ void LinuxInputManager::input_handle_keyboard(InputTracker &tracker, Device &, c
 			key = keyboard_to_key[e.code];
 
 		if (key != Key::Unknown)
-			tracker.key_event(key, pressed ? KeyState::Pressed : KeyState::Released);
+			tracker->key_event(key, pressed ? KeyState::Pressed : KeyState::Released);
 		break;
 	}
 
@@ -365,7 +423,7 @@ void LinuxInputManager::input_handle_keyboard(InputTracker &tracker, Device &, c
 	}
 }
 
-void LinuxInputManager::input_handle_mouse(InputTracker &tracker, Device &, const input_event &e)
+void LinuxInputManager::input_handle_mouse(Device &, const input_event &e)
 {
 	switch (e.type)
 	{
@@ -373,18 +431,18 @@ void LinuxInputManager::input_handle_mouse(InputTracker &tracker, Device &, cons
 		switch (e.code)
 		{
 		case BTN_LEFT:
-			tracker.mouse_button_event(MouseButton::Left,
-			                           e.value != 0);
+			tracker->mouse_button_event(MouseButton::Left,
+			                            e.value != 0);
 			break;
 
 		case BTN_RIGHT:
-			tracker.mouse_button_event(MouseButton::Right,
-			                           e.value != 0);
+			tracker->mouse_button_event(MouseButton::Right,
+			                            e.value != 0);
 			break;
 
 		case BTN_MIDDLE:
-			tracker.mouse_button_event(MouseButton::Middle,
-			                           e.value != 0);
+			tracker->mouse_button_event(MouseButton::Middle,
+			                            e.value != 0);
 			break;
 
 		default:
@@ -396,11 +454,11 @@ void LinuxInputManager::input_handle_mouse(InputTracker &tracker, Device &, cons
 		switch (e.code)
 		{
 		case REL_X:
-			tracker.mouse_move_event_relative(double(e.value), 0.0);
+			tracker->mouse_move_event_relative(double(e.value), 0.0);
 			break;
 
 		case REL_Y:
-			tracker.mouse_move_event_relative(0.0, double(e.value));
+			tracker->mouse_move_event_relative(0.0, double(e.value));
 			break;
 
 		default:
@@ -413,16 +471,165 @@ void LinuxInputManager::input_handle_mouse(InputTracker &tracker, Device &, cons
 	}
 }
 
-void LinuxInputManager::input_handle_touchpad(InputTracker &, Device &, const input_event &)
+void LinuxInputManager::input_handle_touchpad(Device &, const input_event &)
 {
 }
 
-void LinuxInputManager::input_handle_joystick(InputTracker &, Device &, const input_event &)
+static JoypadKey translate_evdev_to_joykey(int code)
 {
+	switch (code)
+	{
+	case BTN_A:
+		return JoypadKey::B;
+	case BTN_B:
+		return JoypadKey::A;
+	case BTN_X:
+		return JoypadKey::Y;
+	case BTN_Y:
+		return JoypadKey::X;
+	case BTN_TL:
+		return JoypadKey::L1;
+	case BTN_TR:
+		return JoypadKey::R1;
+	case BTN_SELECT:
+		return JoypadKey::Select;
+	case BTN_START:
+		return JoypadKey::Start;
+	case BTN_THUMBL:
+		return JoypadKey::L3;
+	case BTN_THUMBR:
+		return JoypadKey::R3;
+	default:
+		return JoypadKey::Unknown;
+	}
 }
 
-bool LinuxInputManager::init()
+static float remap_axis(int v, int lo, int hi)
 {
+	return (2.0f * (float(v) - float(lo)) / (float(hi) - float(lo))) - 1.0f;
+}
+
+void LinuxInputManager::input_handle_joystick(Device &dev, const input_event &e)
+{
+	uint32_t old_buttons = dev.joystate.button_state;
+
+	// Use the "standard" Linux layout.
+	// Seems to work fine with Xbox360 controllers at least.
+	switch (e.type)
+	{
+	case EV_KEY:
+	{
+		auto key = translate_evdev_to_joykey(e.code);
+		if (key != JoypadKey::Unknown)
+		{
+			tracker->joypad_key_state(dev.joystate.index, key,
+			                          e.value ? JoypadKeyState::Pressed : JoypadKeyState::Released);
+
+			if (e.value)
+				dev.joystate.button_state |= 1u << Util::ecast(key);
+			else
+				dev.joystate.button_state &= ~(1u << Util::ecast(key));
+		}
+		break;
+	}
+
+	case EV_ABS:
+		switch (e.code)
+		{
+		case ABS_X:
+			tracker->joyaxis_state(dev.joystate.index, JoypadAxis::LeftX,
+			                       remap_axis(e.value, dev.joystate.axis_x.lo, dev.joystate.axis_x.hi));
+			break;
+
+		case ABS_Y:
+			tracker->joyaxis_state(dev.joystate.index, JoypadAxis::LeftY,
+			                       remap_axis(e.value, dev.joystate.axis_y.lo, dev.joystate.axis_y.hi));
+			break;
+
+		case ABS_RX:
+			tracker->joyaxis_state(dev.joystate.index, JoypadAxis::RightX,
+			                       remap_axis(e.value, dev.joystate.axis_rx.lo, dev.joystate.axis_rx.hi));
+			break;
+
+		case ABS_RY:
+			tracker->joyaxis_state(dev.joystate.index, JoypadAxis::RightY,
+			                       remap_axis(e.value, dev.joystate.axis_ry.lo, dev.joystate.axis_ry.hi));
+			break;
+
+		case ABS_Z:
+		{
+			float state = remap_axis(e.value, dev.joystate.axis_z.lo, dev.joystate.axis_z.hi);
+			if (state > 0.25f && (dev.joystate.button_state& (1u << Util::ecast(JoypadKey::L2))) == 0)
+				dev.joystate.button_state |= 1u << Util::ecast(JoypadKey::L2);
+			else if (state < -0.25f && (dev.joystate.button_state & (1u << Util::ecast(JoypadKey::L2))) != 0)
+				dev.joystate.button_state &= ~(1u << Util::ecast(JoypadKey::L2));
+			break;
+		}
+
+		case ABS_RZ:
+		{
+			float state = remap_axis(e.value, dev.joystate.axis_rz.lo, dev.joystate.axis_rz.hi);
+			if (state > 0.25f && (dev.joystate.button_state & (1u << Util::ecast(JoypadKey::R2))) == 0)
+				dev.joystate.button_state |= 1u << Util::ecast(JoypadKey::R2);
+			else if (state < -0.25f && (dev.joystate.button_state & (1u << Util::ecast(JoypadKey::R2))) != 0)
+				dev.joystate.button_state &= ~(1u << Util::ecast(JoypadKey::R2));
+			break;
+		}
+
+		case ABS_HAT0X:
+		{
+			bool left = e.value < 0;
+			bool right = e.value > 0;
+			dev.joystate.button_state &= ~(1u << Util::ecast(JoypadKey::Left));
+			dev.joystate.button_state &= ~(1u << Util::ecast(JoypadKey::Right));
+			if (left)
+				dev.joystate.button_state |= 1u << Util::ecast(JoypadKey::Left);
+			if (right)
+				dev.joystate.button_state |= 1u << Util::ecast(JoypadKey::Right);
+			break;
+		}
+
+		case ABS_HAT0Y:
+		{
+			bool up = e.value < 0;
+			bool down = e.value > 0;
+			dev.joystate.button_state &= ~(1u << Util::ecast(JoypadKey::Down));
+			dev.joystate.button_state &= ~(1u << Util::ecast(JoypadKey::Up));
+			if (up)
+				dev.joystate.button_state |= 1u << Util::ecast(JoypadKey::Up);
+			if (down)
+				dev.joystate.button_state |= 1u << Util::ecast(JoypadKey::Down);
+			break;
+		}
+
+		default:
+			break;
+		}
+		break;
+
+	default:
+		break;
+	}
+
+	if (dev.joystate.button_state != old_buttons)
+	{
+		uint32_t trigger_mask = dev.joystate.button_state & ~old_buttons;
+		Util::for_each_bit(trigger_mask, [&](unsigned bit) {
+			tracker->joypad_key_state(dev.joystate.index, static_cast<JoypadKey>(bit),
+			                          JoypadKeyState::Pressed);
+		});
+
+		uint32_t release_mask = ~dev.joystate.button_state & old_buttons;
+		Util::for_each_bit(release_mask, [&](unsigned bit) {
+			tracker->joypad_key_state(dev.joystate.index, static_cast<JoypadKey>(bit),
+			                          JoypadKeyState::Released);
+		});
+	}
+}
+
+bool LinuxInputManager::init(InputTracker *tracker)
+{
+	this->tracker = tracker;
 	terminal_disable_input();
 	init_key_table();
 
@@ -490,7 +697,11 @@ LinuxInputManager::~LinuxInputManager()
 LinuxInputManager::Device::~Device()
 {
 	if (fd >= 0)
+	{
+		if (type == DeviceType::Joystick)
+			tracker->disable_joypad(joystate.index);
 		close(fd);
+	}
 }
 
 }

@@ -525,7 +525,7 @@ public:
 	GRANITE_EVENT_TYPE_DECL(JoypadStateEvent)
 
 	JoypadStateEvent(uint8_t active_mask, const JoypadState *states, unsigned count, double delta_time)
-		: active_mask(active_mask), states(states), count(count), delta_time(delta_time)
+		: states(states), count(count), delta_time(delta_time), active_mask(active_mask)
 	{
 	}
 

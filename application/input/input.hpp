@@ -127,7 +127,7 @@ struct JoypadState
 		return axis[Util::ecast(a)];
 	}
 
-	float axis[Util::ecast(JoypadAxis::Count)];
+	float axis[Util::ecast(JoypadAxis::Count)] = {};
 	uint32_t button_mask = 0;
 };
 static_assert(Util::ecast(JoypadKey::Count) <= 32, "Cannot have more than 32 joypad buttons.");
@@ -524,9 +524,16 @@ class JoypadStateEvent : public Granite::Event
 public:
 	GRANITE_EVENT_TYPE_DECL(JoypadStateEvent)
 
-	JoypadStateEvent(const JoypadState *states, unsigned count, double delta_time)
-		: states(states), count(count), delta_time(delta_time)
+	JoypadStateEvent(uint8_t active_mask, const JoypadState *states, unsigned count, double delta_time)
+		: active_mask(active_mask), states(states), count(count), delta_time(delta_time)
 	{
+	}
+
+	bool is_connected(unsigned index) const
+	{
+		if (index >= count)
+			return false;
+		return (active_mask & (1u << index)) != 0;
 	}
 
 	unsigned get_num_indices() const
@@ -548,6 +555,7 @@ private:
 	const JoypadState *states;
 	unsigned count;
 	double delta_time;
+	uint8_t active_mask;
 };
 
 class InputStateEvent : public Granite::Event

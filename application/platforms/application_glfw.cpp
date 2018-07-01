@@ -26,6 +26,8 @@
 #include "GLFW/glfw3.h"
 #ifdef HAVE_LINUX_INPUT
 #include "input_linux.hpp"
+#elif defined(HAVE_XINPUT_WINDOWS)
+#include "xinput_windows.hpp"
 #endif
 
 #ifdef _WIN32
@@ -82,13 +84,16 @@ public:
 #ifdef HAVE_LINUX_INPUT
 		if (!input_manager.init(LINUX_INPUT_MANAGER_JOYPAD_BIT, &get_input_tracker()))
 			LOGE("Failed to initialize input manager.\n");
+#elif defined(HAVE_XINPUT_WINDOWS)
+		if (!input_manager.init(&get_input_tracker()))
+			LOGE("Failed to initialize input manager.\n");
 #endif
 	}
 
 	bool alive(Vulkan::WSI &) override
 	{
 		glfwPollEvents();
-#ifdef HAVE_LINUX_INPUT
+#if defined(HAVE_LINUX_INPUT) || defined(HAVE_XINPUT_WINDOWS)
 		input_manager.poll();
 #endif
 		return !killed && !glfwWindowShouldClose(window);
@@ -171,6 +176,8 @@ private:
 
 #ifdef HAVE_LINUX_INPUT
 	LinuxInputManager input_manager;
+#elif defined(HAVE_XINPUT_WINDOWS)
+	XInputManager input_manager;
 #endif
 };
 

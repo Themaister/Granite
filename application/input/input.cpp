@@ -237,7 +237,7 @@ void InputTracker::mouse_leave()
 
 void InputTracker::dispatch_current_state(double delta_time)
 {
-	EventManager::get_global().dispatch_inline(JoypadStateEvent{joypads, Joypads, delta_time});
+	EventManager::get_global().dispatch_inline(JoypadStateEvent{active_joypads, joypads, Joypads, delta_time});
 	EventManager::get_global().dispatch_inline(InputStateEvent{last_mouse_x, last_mouse_y, delta_time, key_state, mouse_button_state, mouse_active});
 }
 
@@ -261,6 +261,7 @@ void InputTracker::enable_joypad(unsigned index)
 		return;
 
 	active_joypads |= 1u << index;
+	joypads[index] = {};
 	JoypadConnectionEvent event(index, true);
 	EventManager::get_global().dispatch_inline(event);
 }
@@ -274,6 +275,7 @@ void InputTracker::disable_joypad(unsigned index)
 		return;
 
 	active_joypads &= ~(1u << index);
+	joypads[index] = {};
 	JoypadConnectionEvent event(index, false);
 	EventManager::get_global().dispatch_inline(event);
 }

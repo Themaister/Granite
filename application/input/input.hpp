@@ -37,16 +37,14 @@ enum class JoypadKey
 	Right,
 	Up,
 	Down,
-	A,
-	B,
-	X,
-	Y,
-	L1,
-	L2,
-	L3,
-	R1,
-	R2,
-	R3,
+	East,
+	South,
+	West,
+	North,
+	LeftShoulder,
+	RightShoulder,
+	LeftThumb,
+	RightThumb,
 	Start,
 	Select,
 	Count
@@ -58,6 +56,8 @@ enum class JoypadAxis
 	LeftY,
 	RightX,
 	RightY,
+	LeftTrigger,
+	RightTrigger,
 	Count
 };
 

@@ -39,7 +39,6 @@ private:
 	InputTracker *tracker = nullptr;
 	uint8_t active_pads = 0;
 	XINPUT_STATE pads[4] = {};
-	uint32_t tracked_buttons_states[4] = {};
 
 	void create_events(unsigned index, const XINPUT_STATE &state);
 	void try_polling_device(unsigned index);

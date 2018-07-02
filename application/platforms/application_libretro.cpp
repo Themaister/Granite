@@ -83,6 +83,11 @@ struct WSIPlatformLibretro : Vulkan::WSIPlatform
 			                                           retro_index, retro_id) * (1.0f / 0x7fff), -1.0f, 1.0f));
 		};
 
+		const auto poll_axis_button = [&](unsigned index, JoypadAxis axis, unsigned retro_key) {
+			tracker.joyaxis_state(index, axis,
+			                      input_state_cb(index, RETRO_DEVICE_JOYPAD, 0, retro_key) ? 1.0f : 0.0f);
+		};
+
 		tracker.enable_joypad(0);
 		tracker.enable_joypad(1);
 		for (unsigned i = 0; i < 2; i++)
@@ -93,21 +98,22 @@ struct WSIPlatformLibretro : Vulkan::WSIPlatform
 			poll_key(i, JoypadKey::Down, RETRO_DEVICE_ID_JOYPAD_DOWN);
 			poll_key(i, JoypadKey::Select, RETRO_DEVICE_ID_JOYPAD_SELECT);
 			poll_key(i, JoypadKey::Start, RETRO_DEVICE_ID_JOYPAD_START);
-			poll_key(i, JoypadKey::L1, RETRO_DEVICE_ID_JOYPAD_L);
-			poll_key(i, JoypadKey::L2, RETRO_DEVICE_ID_JOYPAD_L2);
-			poll_key(i, JoypadKey::L3, RETRO_DEVICE_ID_JOYPAD_L3);
-			poll_key(i, JoypadKey::R1, RETRO_DEVICE_ID_JOYPAD_R);
-			poll_key(i, JoypadKey::R2, RETRO_DEVICE_ID_JOYPAD_R2);
-			poll_key(i, JoypadKey::R3, RETRO_DEVICE_ID_JOYPAD_R3);
-			poll_key(i, JoypadKey::B, RETRO_DEVICE_ID_JOYPAD_B);
-			poll_key(i, JoypadKey::A, RETRO_DEVICE_ID_JOYPAD_A);
-			poll_key(i, JoypadKey::X, RETRO_DEVICE_ID_JOYPAD_X);
-			poll_key(i, JoypadKey::Y, RETRO_DEVICE_ID_JOYPAD_Y);
+			poll_key(i, JoypadKey::LeftShoulder, RETRO_DEVICE_ID_JOYPAD_L);
+			poll_key(i, JoypadKey::LeftThumb, RETRO_DEVICE_ID_JOYPAD_L3);
+			poll_key(i, JoypadKey::RightShoulder, RETRO_DEVICE_ID_JOYPAD_R);
+			poll_key(i, JoypadKey::RightThumb, RETRO_DEVICE_ID_JOYPAD_R3);
+			poll_key(i, JoypadKey::South, RETRO_DEVICE_ID_JOYPAD_B);
+			poll_key(i, JoypadKey::East, RETRO_DEVICE_ID_JOYPAD_A);
+			poll_key(i, JoypadKey::North, RETRO_DEVICE_ID_JOYPAD_X);
+			poll_key(i, JoypadKey::West, RETRO_DEVICE_ID_JOYPAD_Y);
 
 			poll_axis(i, JoypadAxis::LeftX, RETRO_DEVICE_INDEX_ANALOG_LEFT, RETRO_DEVICE_ID_ANALOG_X);
 			poll_axis(i, JoypadAxis::LeftY, RETRO_DEVICE_INDEX_ANALOG_LEFT, RETRO_DEVICE_ID_ANALOG_Y);
 			poll_axis(i, JoypadAxis::RightX, RETRO_DEVICE_INDEX_ANALOG_RIGHT, RETRO_DEVICE_ID_ANALOG_X);
 			poll_axis(i, JoypadAxis::RightY, RETRO_DEVICE_INDEX_ANALOG_RIGHT, RETRO_DEVICE_ID_ANALOG_Y);
+
+			poll_axis_button(i, JoypadAxis::LeftTrigger, RETRO_DEVICE_ID_JOYPAD_L2);
+			poll_axis_button(i, JoypadAxis::RightTrigger, RETRO_DEVICE_ID_JOYPAD_R2);
 		}
 
 		tracker.dispatch_current_state(app->get_platform().get_frame_timer().get_frame_time());

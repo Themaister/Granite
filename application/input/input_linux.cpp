@@ -484,25 +484,25 @@ static JoypadKey translate_evdev_to_joykey(int code)
 	switch (code)
 	{
 	case BTN_A:
-		return JoypadKey::B;
+		return JoypadKey::South;
 	case BTN_B:
-		return JoypadKey::A;
+		return JoypadKey::East;
 	case BTN_X:
-		return JoypadKey::Y;
+		return JoypadKey::West;
 	case BTN_Y:
-		return JoypadKey::X;
+		return JoypadKey::North;
 	case BTN_TL:
-		return JoypadKey::L1;
+		return JoypadKey::LeftShoulder;
 	case BTN_TR:
-		return JoypadKey::R1;
+		return JoypadKey::RightShoulder;
 	case BTN_SELECT:
 		return JoypadKey::Select;
 	case BTN_START:
 		return JoypadKey::Start;
 	case BTN_THUMBL:
-		return JoypadKey::L3;
+		return JoypadKey::LeftThumb;
 	case BTN_THUMBR:
-		return JoypadKey::R3;
+		return JoypadKey::RightThumb;
 	default:
 		return JoypadKey::Unknown;
 	}
@@ -562,21 +562,15 @@ void LinuxInputManager::input_handle_joystick(Device &dev, const input_event &e)
 
 		case ABS_Z:
 		{
-			float state = remap_axis(e.value, dev.joystate.axis_z.lo, dev.joystate.axis_z.hi);
-			if (state > 0.25f && (dev.joystate.button_state& (1u << Util::ecast(JoypadKey::L2))) == 0)
-				dev.joystate.button_state |= 1u << Util::ecast(JoypadKey::L2);
-			else if (state < -0.25f && (dev.joystate.button_state & (1u << Util::ecast(JoypadKey::L2))) != 0)
-				dev.joystate.button_state &= ~(1u << Util::ecast(JoypadKey::L2));
+			float state = 0.5f * remap_axis(e.value, dev.joystate.axis_z.lo, dev.joystate.axis_z.hi) + 0.5f;
+			tracker->joyaxis_state(dev.joystate.index, JoypadAxis::LeftTrigger, state);
 			break;
 		}
 
 		case ABS_RZ:
 		{
-			float state = remap_axis(e.value, dev.joystate.axis_rz.lo, dev.joystate.axis_rz.hi);
-			if (state > 0.25f && (dev.joystate.button_state & (1u << Util::ecast(JoypadKey::R2))) == 0)
-				dev.joystate.button_state |= 1u << Util::ecast(JoypadKey::R2);
-			else if (state < -0.25f && (dev.joystate.button_state & (1u << Util::ecast(JoypadKey::R2))) != 0)
-				dev.joystate.button_state &= ~(1u << Util::ecast(JoypadKey::R2));
+			float state = 0.5f * remap_axis(e.value, dev.joystate.axis_rz.lo, dev.joystate.axis_rz.hi) + 0.5f;
+			tracker->joyaxis_state(dev.joystate.index, JoypadAxis::RightTrigger, state);
 			break;
 		}
 

@@ -97,15 +97,6 @@ static float remap_axis(int v)
 	return f;
 }
 
-// Fake button defines
-#define XINPUT_GAMEPAD_L2 0x400
-#define XINPUT_GAMEPAD_R2 0x800
-
-static void mask_buttons(uint16_t &buttons)
-{
-	buttons &= ~(XINPUT_GAMEPAD_L2 | XINPUT_GAMEPAD_R2);
-}
-
 void XInputManager::create_events(unsigned index, const XINPUT_STATE &state)
 {
 	auto &pad = pads[index];
@@ -122,54 +113,17 @@ void XInputManager::create_events(unsigned index, const XINPUT_STATE &state)
 		JoypadKey::Right,
 		JoypadKey::Start,
 		JoypadKey::Select,
-		JoypadKey::L3,
-		JoypadKey::R3,
-		JoypadKey::L1,
-		JoypadKey::R1,
-		JoypadKey::L2,
-		JoypadKey::R2,
-		JoypadKey::B,
-		JoypadKey::A,
-		JoypadKey::Y,
-		JoypadKey::X
+		JoypadKey::LeftThumb,
+		JoypadKey::RightThumb,
+		JoypadKey::LeftShoulder,
+		JoypadKey::RightShoulder,
+		JoypadKey::Unknown,
+		JoypadKey::Unknown,
+		JoypadKey::South,
+		JoypadKey::East,
+		JoypadKey::West,
+		JoypadKey::North
 	};
-
-	mask_buttons(pressed);
-	mask_buttons(released);
-
-	if (tracked_buttons_states[index] & (1u << ecast(JoypadKey::L2)))
-	{
-		if (state.Gamepad.bLeftTrigger < XINPUT_GAMEPAD_TRIGGER_THRESHOLD)
-		{
-			released |= XINPUT_GAMEPAD_L2;
-			tracked_buttons_states[index] &= ~(1u << ecast(JoypadKey::L2));
-		}
-	}
-	else
-	{
-		if (state.Gamepad.bLeftTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD)
-		{
-			pressed |= XINPUT_GAMEPAD_L2;
-			tracked_buttons_states[index] |= 1u << ecast(JoypadKey::L2);
-		}
-	}
-
-	if (tracked_buttons_states[index] & (1u << ecast(JoypadKey::R2)))
-	{
-		if (state.Gamepad.bRightTrigger < XINPUT_GAMEPAD_TRIGGER_THRESHOLD)
-		{
-			released |= XINPUT_GAMEPAD_R2;
-			tracked_buttons_states[index] &= ~(1u << ecast(JoypadKey::R2));
-		}
-	}
-	else
-	{
-		if (state.Gamepad.bRightTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD)
-		{
-			pressed |= XINPUT_GAMEPAD_R2;
-			tracked_buttons_states[index] |= 1u << ecast(JoypadKey::R2);
-		}
-	}
 
 	for_each_bit(pressed, [&](unsigned bit) {
 		tracker->joypad_key_state(index, joykey_mapping[bit], JoypadKeyState::Pressed);
@@ -186,6 +140,10 @@ void XInputManager::create_events(unsigned index, const XINPUT_STATE &state)
 		tracker->joyaxis_state(index, JoypadAxis::LeftY, remap_axis(-int(state.Gamepad.sThumbLY)));
 	if (state.Gamepad.sThumbRY != pad.Gamepad.sThumbRY)
 		tracker->joyaxis_state(index, JoypadAxis::RightY, remap_axis(-int(state.Gamepad.sThumbRY)));
+	if (state.Gamepad.bLeftTrigger != pad.Gamepad.bLeftTrigger)
+		tracker->joyaxis_state(index, JoypadAxis::LeftTrigger, state.Gamepad.bLeftTrigger / 255.0f);
+	if (state.Gamepad.bRightTrigger != pad.Gamepad.bRightTrigger)
+		tracker->joyaxis_state(index, JoypadAxis::RightTrigger, state.Gamepad.bRightTrigger / 255.0f);
 	pad = state;
 }
 

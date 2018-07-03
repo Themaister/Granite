@@ -6,13 +6,13 @@
 	url = git://github.com/google/shaderc.git
 [submodule "third_party/glslang"]
 	path = third_party/glslang
-	url = https://github.com/google/glslang.git
+	url = git://github.com/google/glslang.git
 [submodule "third_party/spirv-tools"]
 	path = third_party/spirv-tools
-	url = https://github.com/KhronosGroup/SPIRV-Tools
+	url = git://github.com/KhronosGroup/SPIRV-Tools
 [submodule "third_party/spirv-headers"]
 	path = third_party/spirv-headers
-	url = https://github.com/KhronosGroup/SPIRV-Headers
+	url = git://github.com/KhronosGroup/SPIRV-Headers
 [submodule "third_party/glfw"]
 	path = third_party/glfw
 	url = git://github.com/glfw/glfw
@@ -24,7 +24,7 @@
 	url = git://github.com/nothings/stb
 [submodule "third_party/astc-encoder"]
 	path = third_party/astc-encoder
-	url = https://bitbucket.org/Themaister/astc-encoder
+	url = http://bitbucket.org/Themaister/astc-encoder
 [submodule "third_party/fossilize"]
 	path = third_party/fossilize
 	url = git://github.com/Themaister/Fossilize

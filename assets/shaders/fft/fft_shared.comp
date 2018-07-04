@@ -1,0 +1,179 @@
+/* Copyright (C) 2015 Hans-Kristian Arntzen <maister@archlinux.us>
+ *
+ * Permission is hereby granted, free of charge,
+ * to any person obtaining a copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+ * and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+ * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+// Most (all?) desktop GPUs have banked shared memory.
+// We want to avoid bank conflicts as much as possible.
+// If we don't pad the shared memory, threads in the same warp/wavefront will hit the same
+// shared memory banks, and stall as each bank and only process a fixed number of requests per cycle.
+// By padding, we "smear" out the requests to more banks, which greatly improves performance.
+
+// For architectures without banked shared memory,
+// this design makes no sense, so it's a pretty important performance bit to set correctly.
+
+#ifndef FFT_SHARED_BANKED
+#error FFT_SHARED_BANKED must be defined.
+#endif
+
+#if FFT_SHARED_BANKED
+#define FFT_BANK_CONFLICT_PADDING 1u
+#else
+#define FFT_BANK_CONFLICT_PADDING 0u
+#endif
+
+#define FFT_SHARED_SIZE (uint(FFT_RADIX) + FFT_BANK_CONFLICT_PADDING)
+
+uint get_shared_base(uint fft)
+{
+    return FFT_SHARED_SIZE * (gl_LocalInvocationID.y * gl_WorkGroupSize.x + fft);
+}
+
+#if FFT_SHARED_BANKED
+
+// Implementations with banked shared memory like to write 32-bit at a time,
+// since that's typically how big transactions each shared memory bank can handle.
+// If we try to write vec4s in one go (which will get split up to 4 writes anyways),
+// we end up with 4-way bank conflicts no matter what we do.
+
+#if defined(FFT_VEC8)
+shared uint tmpx[FFT_SHARED_SIZE * gl_WorkGroupSize.x * gl_WorkGroupSize.y];
+shared uint tmpy[FFT_SHARED_SIZE * gl_WorkGroupSize.x * gl_WorkGroupSize.y];
+shared uint tmpz[FFT_SHARED_SIZE * gl_WorkGroupSize.x * gl_WorkGroupSize.y];
+shared uint tmpw[FFT_SHARED_SIZE * gl_WorkGroupSize.x * gl_WorkGroupSize.y];
+#else
+shared float tmpx[FFT_SHARED_SIZE * gl_WorkGroupSize.x * gl_WorkGroupSize.y];
+shared float tmpy[FFT_SHARED_SIZE * gl_WorkGroupSize.x * gl_WorkGroupSize.y];
+#if defined(FFT_VEC4)
+shared float tmpz[FFT_SHARED_SIZE * gl_WorkGroupSize.x * gl_WorkGroupSize.y];
+shared float tmpw[FFT_SHARED_SIZE * gl_WorkGroupSize.x * gl_WorkGroupSize.y];
+#endif
+#endif
+
+void store_shared(uint offset, cfloat v)
+{
+    tmpx[offset] = v.x;
+    tmpy[offset] = v.y;
+#if defined(FFT_VEC4) || defined(FFT_VEC8)
+    tmpz[offset] = v.z;
+    tmpw[offset] = v.w;
+#endif
+}
+
+void load_shared(uint offset, out cfloat v)
+{
+    v.x = tmpx[offset];
+    v.y = tmpy[offset];
+#if defined(FFT_VEC4) || defined(FFT_VEC8)
+    v.z = tmpz[offset];
+    v.w = tmpw[offset];
+#endif
+}
+#else
+// For non-banked architectures, just store and load directly.
+shared cfloat tmp[FFT_SHARED_SIZE * gl_WorkGroupSize.x * gl_WorkGroupSize.y];
+
+void store_shared(uint offset, cfloat v)
+{
+    tmp[offset] = v;
+}
+
+void load_shared(uint offset, out cfloat v)
+{
+    v = tmp[offset];
+}
+#endif
+
+void store_shared(cfloat a, cfloat b, cfloat c, cfloat d, uint block, uint base)
+{
+    // Interleave and write out in bit-reversed order.
+#if FFT_CVECTOR_SIZE == 4
+    store_shared(base + 4u * block + 0u, cfloat(a.x, c.x, b.x, d.x));
+    store_shared(base + 4u * block + 1u, cfloat(a.y, c.y, b.y, d.y));
+    store_shared(base + 4u * block + 2u, cfloat(a.z, c.z, b.z, d.z));
+    store_shared(base + 4u * block + 3u, cfloat(a.w, c.w, b.w, d.w));
+#elif FFT_CVECTOR_SIZE == 2
+    store_shared(base + 4u * block + 0u, cfloat(a.xy, c.xy));
+    store_shared(base + 4u * block + 1u, cfloat(b.xy, d.xy));
+    store_shared(base + 4u * block + 2u, cfloat(a.zw, c.zw));
+    store_shared(base + 4u * block + 3u, cfloat(b.zw, d.zw));
+#else
+    store_shared(base + 4u * block + 0u, a);
+    store_shared(base + 4u * block + 1u, c);
+    store_shared(base + 4u * block + 2u, b);
+    store_shared(base + 4u * block + 3u, d);
+#endif
+
+    memoryBarrierShared();
+    barrier();
+}
+
+void load_shared(out cfloat a, out cfloat b, out cfloat c, out cfloat d, uint block, uint base)
+{
+    load_shared(base + block + 0u * gl_WorkGroupSize.z, a);
+    load_shared(base + block + 1u * gl_WorkGroupSize.z, b);
+    load_shared(base + block + 2u * gl_WorkGroupSize.z, c);
+    load_shared(base + block + 3u * gl_WorkGroupSize.z, d);
+}
+
+void store_shared(cfloat a, cfloat b, cfloat c, cfloat d, cfloat e, cfloat f, cfloat g, cfloat h, uint block, uint base)
+{
+    // Interleave and write out in bit-reversed order.
+#if FFT_CVECTOR_SIZE == 4
+    store_shared(base + 8u * block + 0u, cfloat(a.x, e.x, c.x, g.x));
+    store_shared(base + 8u * block + 1u, cfloat(b.x, f.x, d.x, h.x));
+    store_shared(base + 8u * block + 2u, cfloat(a.y, e.y, c.y, g.y));
+    store_shared(base + 8u * block + 3u, cfloat(b.y, f.y, d.y, h.y));
+    store_shared(base + 8u * block + 4u, cfloat(a.z, e.z, c.z, g.z));
+    store_shared(base + 8u * block + 5u, cfloat(b.z, f.z, d.z, h.z));
+    store_shared(base + 8u * block + 6u, cfloat(a.w, e.w, c.w, g.w));
+    store_shared(base + 8u * block + 7u, cfloat(b.w, f.w, d.w, h.w));
+#elif FFT_CVECTOR_SIZE == 2 
+    store_shared(base + 8u * block + 0u, cfloat(a.xy, e.xy));
+    store_shared(base + 8u * block + 1u, cfloat(c.xy, g.xy));
+    store_shared(base + 8u * block + 2u, cfloat(b.xy, f.xy));
+    store_shared(base + 8u * block + 3u, cfloat(d.xy, h.xy));
+    store_shared(base + 8u * block + 4u, cfloat(a.zw, e.zw));
+    store_shared(base + 8u * block + 5u, cfloat(c.zw, g.zw));
+    store_shared(base + 8u * block + 6u, cfloat(b.zw, f.zw));
+    store_shared(base + 8u * block + 7u, cfloat(d.zw, h.zw));
+#else
+    store_shared(base + 8u * block + 0u, a);
+    store_shared(base + 8u * block + 1u, e);
+    store_shared(base + 8u * block + 2u, c);
+    store_shared(base + 8u * block + 3u, g);
+    store_shared(base + 8u * block + 4u, b);
+    store_shared(base + 8u * block + 5u, f);
+    store_shared(base + 8u * block + 6u, d);
+    store_shared(base + 8u * block + 7u, h);
+#endif
+
+    memoryBarrierShared();
+    barrier();
+}
+
+void load_shared(out cfloat a, out cfloat b, out cfloat c, out cfloat d, out cfloat e, out cfloat f, out cfloat g, out cfloat h, uint block, uint base)
+{
+    load_shared(base + block + 0u * gl_WorkGroupSize.z, a);
+    load_shared(base + block + 1u * gl_WorkGroupSize.z, b);
+    load_shared(base + block + 2u * gl_WorkGroupSize.z, c);
+    load_shared(base + block + 3u * gl_WorkGroupSize.z, d);
+    load_shared(base + block + 4u * gl_WorkGroupSize.z, e);
+    load_shared(base + block + 5u * gl_WorkGroupSize.z, f);
+    load_shared(base + block + 6u * gl_WorkGroupSize.z, g);
+    load_shared(base + block + 7u * gl_WorkGroupSize.z, h);
+}
+

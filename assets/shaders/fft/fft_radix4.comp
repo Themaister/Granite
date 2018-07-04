@@ -1,0 +1,163 @@
+/* Copyright (C) 2015 Hans-Kristian Arntzen <maister@archlinux.us>
+ *
+ * Permission is hereby granted, free of charge,
+ * to any person obtaining a copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+ * and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+ * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+void FFT4_p1(inout cfloat a, inout cfloat b, inout cfloat c, inout cfloat d)
+{
+    butterfly_p1(a, c);
+    butterfly_p1_dir_j(b, d);
+    butterfly_p1(a, b);
+    butterfly_p1(c, d);
+}
+
+// FFT4 is implemented by in-place radix-2 twice.
+void FFT4(inout cfloat a, inout cfloat b, inout cfloat c, inout cfloat d, uint i, uint p)
+{
+    uint k = i & (p - 1u);
+
+    ctwiddle w = twiddle(k, p);
+    butterfly(a, c, w);
+    butterfly(b, d, w);
+
+    ctwiddle w0 = twiddle(k, 2u * p);
+    ctwiddle w1 = cmul_dir_j(w0);
+    butterfly(a, b, w0);
+    butterfly(c, d, w1);
+}
+
+void FFT4_p1_horiz(uvec2 i)
+{
+    uint quarter_samples = gl_NumWorkGroups.x * gl_WorkGroupSize.x;
+    uint offset = i.y * quarter_samples * 4u;
+
+#ifdef FFT_INPUT_TEXTURE
+    cfloat a = load_texture(i);
+    cfloat b = load_texture(i + uvec2(quarter_samples, 0u));
+    cfloat c = load_texture(i + uvec2(2u * quarter_samples, 0u));
+    cfloat d = load_texture(i + uvec2(3u * quarter_samples, 0u));
+#else
+    cfloat a = load_global(offset + i.x);
+    cfloat b = load_global(offset + i.x + quarter_samples);
+    cfloat c = load_global(offset + i.x + 2u * quarter_samples);
+    cfloat d = load_global(offset + i.x + 3u * quarter_samples);
+#endif
+    FFT4_p1(a, b, c, d);
+
+#ifndef FFT_OUTPUT_IMAGE
+#if FFT_CVECTOR_SIZE == 4
+    store_global(offset + 4u * i.x + 0u, cfloat(a.x, c.x, b.x, d.x));
+    store_global(offset + 4u * i.x + 1u, cfloat(a.y, c.y, b.y, d.y));
+    store_global(offset + 4u * i.x + 2u, cfloat(a.z, c.z, b.z, d.z));
+    store_global(offset + 4u * i.x + 3u, cfloat(a.w, c.w, b.w, d.w));
+#elif FFT_CVECTOR_SIZE == 2
+    store_global(offset + 4u * i.x + 0u, cfloat(a.xy, c.xy));
+    store_global(offset + 4u * i.x + 1u, cfloat(b.xy, d.xy));
+    store_global(offset + 4u * i.x + 2u, cfloat(a.zw, c.zw));
+    store_global(offset + 4u * i.x + 3u, cfloat(b.zw, d.zw));
+#else
+    store_global(offset + 4u * i.x + 0u, a);
+    store_global(offset + 4u * i.x + 1u, c);
+    store_global(offset + 4u * i.x + 2u, b);
+    store_global(offset + 4u * i.x + 3u, d);
+#endif
+#endif
+}
+
+void FFT4_p1_vert(uvec2 i)
+{
+    uvec2 quarter_samples = gl_NumWorkGroups.xy * gl_WorkGroupSize.xy;
+    uint stride = uStride;
+    uint y_stride = stride * quarter_samples.y;
+    uint offset = stride * i.y;
+
+#ifdef FFT_INPUT_TEXTURE
+    cfloat a = load_texture(i);
+    cfloat b = load_texture(i + uvec2(0u, quarter_samples.y));
+    cfloat c = load_texture(i + uvec2(0u, 2u * quarter_samples.y));
+    cfloat d = load_texture(i + uvec2(0u, 3u * quarter_samples.y));
+#else
+    cfloat a = load_global(offset + i.x + 0u * y_stride);
+    cfloat b = load_global(offset + i.x + 1u * y_stride);
+    cfloat c = load_global(offset + i.x + 2u * y_stride);
+    cfloat d = load_global(offset + i.x + 3u * y_stride);
+#endif
+    FFT4_p1(a, b, c, d);
+
+#ifndef FFT_OUTPUT_IMAGE
+    store_global((4u * i.y + 0u) * stride + i.x, a);
+    store_global((4u * i.y + 1u) * stride + i.x, c);
+    store_global((4u * i.y + 2u) * stride + i.x, b);
+    store_global((4u * i.y + 3u) * stride + i.x, d);
+#endif
+}
+
+void FFT4_horiz(uvec2 i, uint p)
+{
+    uint quarter_samples = gl_NumWorkGroups.x * gl_WorkGroupSize.x;
+    uint offset = i.y * quarter_samples * 4u;
+
+    cfloat a = load_global(offset + i.x);
+    cfloat b = load_global(offset + i.x + quarter_samples);
+    cfloat c = load_global(offset + i.x + 2u * quarter_samples);
+    cfloat d = load_global(offset + i.x + 3u * quarter_samples);
+    FFT4(a, b, c, d, i.x * FFT_OUTPUT_STEP, p);
+
+    uint k = (FFT_OUTPUT_STEP * i.x) & (p - 1u);
+    uint j = ((FFT_OUTPUT_STEP * i.x - k) * 4u) + k;
+
+#ifdef FFT_OUTPUT_IMAGE
+    store(ivec2(j + 0u * p, i.y), a);
+    store(ivec2(j + 1u * p, i.y), c);
+    store(ivec2(j + 2u * p, i.y), b);
+    store(ivec2(j + 3u * p, i.y), d);
+#else
+    store_global(offset + ((j + 0u * p) >> FFT_OUTPUT_SHIFT), a);
+    store_global(offset + ((j + 1u * p) >> FFT_OUTPUT_SHIFT), c);
+    store_global(offset + ((j + 2u * p) >> FFT_OUTPUT_SHIFT), b);
+    store_global(offset + ((j + 3u * p) >> FFT_OUTPUT_SHIFT), d);
+#endif
+}
+
+void FFT4_vert(uvec2 i, uint p)
+{
+    uvec2 quarter_samples = gl_NumWorkGroups.xy * gl_WorkGroupSize.xy;
+    uint stride = uStride;
+    uint y_stride = stride * quarter_samples.y;
+    uint offset = stride * i.y;
+
+    cfloat a = load_global(offset + i.x + 0u * y_stride);
+    cfloat b = load_global(offset + i.x + 1u * y_stride);
+    cfloat c = load_global(offset + i.x + 2u * y_stride);
+    cfloat d = load_global(offset + i.x + 3u * y_stride);
+    FFT4(a, b, c, d, i.y, p);
+
+    uint k = i.y & (p - 1u);
+    uint j = ((i.y - k) * 4u) + k;
+
+#ifdef FFT_OUTPUT_IMAGE
+    store(ivec2(i.x, j + 0u * p), a);
+    store(ivec2(i.x, j + 1u * p), c);
+    store(ivec2(i.x, j + 2u * p), b);
+    store(ivec2(i.x, j + 3u * p), d);
+#else
+    store_global(stride * (j + 0u * p) + i.x, a);
+    store_global(stride * (j + 1u * p) + i.x, c);
+    store_global(stride * (j + 2u * p) + i.x, b);
+    store_global(stride * (j + 3u * p) + i.x, d);
+#endif
+}
+

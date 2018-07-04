@@ -158,7 +158,14 @@ private:
 	float aspect_ratio = 1.0f;
 	VkFormat format = VK_FORMAT_UNDEFINED;
 
-	bool init_swapchain(unsigned width, unsigned height);
+	enum class SwapchainError
+	{
+		None,
+		NoSurface,
+		Error
+	};
+	SwapchainError init_swapchain(unsigned width, unsigned height);
+	bool blocking_init_swapchain(unsigned width, unsigned height);
 	uint32_t swapchain_index = 0;
 	VkSemaphore release_semaphore;
 	bool need_acquire = true;

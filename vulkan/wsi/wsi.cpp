@@ -20,6 +20,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include <thread>
 #include "wsi.hpp"
 #include "vulkan_events.hpp"
 #include "application_events.hpp"
@@ -113,7 +114,7 @@ bool WSI::init()
 	if (!supported)
 		return false;
 
-	if (!init_swapchain(width, height))
+	if (!blocking_init_swapchain(width, height))
 		return false;
 
 	device->init_swapchain(swapchain_images, this->width, this->height, format);
@@ -244,12 +245,18 @@ bool WSI::begin_frame()
 			semaphore_manager->recycle(device->set_acquire(acquire));
 			semaphore_manager->recycle(device->set_release(release_semaphore));
 		}
-		else if (result == VK_SUBOPTIMAL_KHR || result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_ERROR_SURFACE_LOST_KHR)
+		else if (result == VK_SUBOPTIMAL_KHR || result == VK_ERROR_OUT_OF_DATE_KHR)
 		{
 			VK_ASSERT(width != 0);
 			VK_ASSERT(height != 0);
 			vkDeviceWaitIdle(device->get_device());
 			vkDestroySemaphore(device->get_device(), acquire, nullptr);
+
+			if (swapchain != VK_NULL_HANDLE)
+			{
+				vkDestroySwapchainKHR(device->get_device(), swapchain, nullptr);
+				swapchain = VK_NULL_HANDLE;
+			}
 
 			auto old_acquire = device->set_acquire(VK_NULL_HANDLE);
 			auto old_release = device->set_release(VK_NULL_HANDLE);
@@ -258,7 +265,7 @@ bool WSI::begin_frame()
 			if (old_release != VK_NULL_HANDLE)
 				vkDestroySemaphore(device->get_device(), old_release, nullptr);
 
-			if (!init_swapchain(width, height))
+			if (!blocking_init_swapchain(width, height))
 				return false;
 			device->init_swapchain(swapchain_images, this->width, this->height, format);
 		}
@@ -317,8 +324,8 @@ void WSI::update_framebuffer(unsigned width, unsigned height)
 	vkDeviceWaitIdle(context->get_device());
 
 	aspect_ratio = platform->get_aspect_ratio();
-	init_swapchain(width, height);
-	device->init_swapchain(swapchain_images, this->width, this->height, format);
+	if (blocking_init_swapchain(width, height))
+		device->init_swapchain(swapchain_images, this->width, this->height, format);
 }
 
 void WSI::deinit_external()
@@ -350,12 +357,45 @@ void WSI::deinit_external()
 	context.reset();
 }
 
-bool WSI::init_swapchain(unsigned width, unsigned height)
+bool WSI::blocking_init_swapchain(unsigned width, unsigned height)
+{
+	SwapchainError err;
+	unsigned retry_counter = 0;
+	do
+	{
+		err = init_swapchain(width, height);
+		if (err == SwapchainError::Error)
+		{
+			if (++retry_counter > 3)
+				return false;
+
+			// Try to not reuse the swapchain.
+			vkDeviceWaitIdle(device->get_device());
+			if (swapchain != VK_NULL_HANDLE)
+				vkDestroySwapchainKHR(device->get_device(), swapchain, nullptr);
+			swapchain = VK_NULL_HANDLE;
+		}
+		else if (err == SwapchainError::NoSurface && platform->alive(*this))
+		{
+			platform->poll_input();
+			this_thread::sleep_for(std::chrono::milliseconds(10));
+		}
+	} while (err != SwapchainError::None);
+
+	return swapchain != VK_NULL_HANDLE;
+}
+
+WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 {
 	VkSurfaceCapabilitiesKHR surface_properties;
 	auto gpu = context->get_gpu();
 	if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu, surface, &surface_properties) != VK_SUCCESS)
-		return false;
+		return SwapchainError::Error;
+
+	// Happens on nVidia Windows when you minimize a window.
+	if (surface_properties.maxImageExtent.width == 0 &&
+	    surface_properties.maxImageExtent.height == 0)
+		return SwapchainError::NoSurface;
 
 	uint32_t format_count;
 	vkGetPhysicalDeviceSurfaceFormatsKHR(gpu, surface, &format_count, nullptr);
@@ -373,7 +413,7 @@ bool WSI::init_swapchain(unsigned width, unsigned height)
 		if (format_count == 0)
 		{
 			LOGE("Surface has no formats.\n");
-			return false;
+			return SwapchainError::Error;
 		}
 
 		bool found = false;
@@ -455,24 +495,24 @@ bool WSI::init_swapchain(unsigned width, unsigned height)
 	info.imageExtent.width = swapchain_size.width;
 	info.imageExtent.height = swapchain_size.height;
 	info.imageArrayLayers = 1;
-	info.imageUsage =
-	    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 	info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	info.preTransform = pre_transform;
 	info.compositeAlpha = composite_mode;
 	info.presentMode = swapchain_present_mode;
-	info.clipped = true;
+	info.clipped = VK_TRUE;
 	info.oldSwapchain = old_swapchain;
 
 	auto res = vkCreateSwapchainKHR(context->get_device(), &info, nullptr, &swapchain);
+	if (old_swapchain != VK_NULL_HANDLE)
+		vkDestroySwapchainKHR(context->get_device(), old_swapchain, nullptr);
+
 	if (res != VK_SUCCESS)
 	{
 		LOGE("Failed to create swapchain (code: %d)\n", int(res));
-		return false;
+		swapchain = VK_NULL_HANDLE;
+		return SwapchainError::Error;
 	}
-
-	if (old_swapchain != VK_NULL_HANDLE)
-		vkDestroySwapchainKHR(context->get_device(), old_swapchain, nullptr);
 
 	this->width = swapchain_size.width;
 	this->height = swapchain_size.height;
@@ -491,7 +531,7 @@ bool WSI::init_swapchain(unsigned width, unsigned height)
 	em.dequeue_all_latched(SwapchainParameterEvent::get_type_id());
 	em.enqueue_latched<SwapchainParameterEvent>(device.get(), this->width, this->height, aspect_ratio, image_count, info.imageFormat);
 
-	return true;
+	return SwapchainError::None;
 }
 
 WSI::~WSI()

@@ -52,18 +52,10 @@ public:
 	void unmap(GLFFT::Buffer *buffer) override;
 
 	bool supports_texture_readback() override;
-	void read_texture(void *buffer, GLFFT::Texture *texture, GLFFT::Format format) override;
+	void read_texture(void *buffer, GLFFT::Texture *texture) override;
 
 private:
 	Vulkan::Device &device;
 };
 
-class FFTCommandBuffer : public GLFFT::CommandBuffer
-{
-public:
-	FFTCommandBuffer(Vulkan::CommandBuffer &cmd);
-
-private:
-	Vulkan::CommandBuffer &cmd;
-};
 }

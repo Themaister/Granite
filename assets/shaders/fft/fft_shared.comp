@@ -49,25 +49,18 @@ uint get_shared_base(uint fft)
 // If we try to write vec4s in one go (which will get split up to 4 writes anyways),
 // we end up with 4-way bank conflicts no matter what we do.
 
-#if defined(FFT_VEC8)
-shared uint tmpx[FFT_SHARED_SIZE * gl_WorkGroupSize.x * gl_WorkGroupSize.y];
-shared uint tmpy[FFT_SHARED_SIZE * gl_WorkGroupSize.x * gl_WorkGroupSize.y];
-shared uint tmpz[FFT_SHARED_SIZE * gl_WorkGroupSize.x * gl_WorkGroupSize.y];
-shared uint tmpw[FFT_SHARED_SIZE * gl_WorkGroupSize.x * gl_WorkGroupSize.y];
-#else
 shared float tmpx[FFT_SHARED_SIZE * gl_WorkGroupSize.x * gl_WorkGroupSize.y];
 shared float tmpy[FFT_SHARED_SIZE * gl_WorkGroupSize.x * gl_WorkGroupSize.y];
 #if defined(FFT_VEC4)
 shared float tmpz[FFT_SHARED_SIZE * gl_WorkGroupSize.x * gl_WorkGroupSize.y];
 shared float tmpw[FFT_SHARED_SIZE * gl_WorkGroupSize.x * gl_WorkGroupSize.y];
 #endif
-#endif
 
 void store_shared(uint offset, cfloat v)
 {
     tmpx[offset] = v.x;
     tmpy[offset] = v.y;
-#if defined(FFT_VEC4) || defined(FFT_VEC8)
+#if defined(FFT_VEC4)
     tmpz[offset] = v.z;
     tmpw[offset] = v.w;
 #endif
@@ -77,7 +70,7 @@ void load_shared(uint offset, out cfloat v)
 {
     v.x = tmpx[offset];
     v.y = tmpy[offset];
-#if defined(FFT_VEC4) || defined(FFT_VEC8)
+#if defined(FFT_VEC4)
     v.z = tmpz[offset];
     v.w = tmpw[offset];
 #endif

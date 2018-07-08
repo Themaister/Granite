@@ -423,11 +423,6 @@ static uint16_t fp32_to_fp16(float v_)
     }
 }
 
-static inline uint32_t fp32_to_fp16(float x, float y)
-{
-    return fp32_to_fp16(x) | (fp32_to_fp16(y) << 16);
-}
-
 static inline float fp16_to_fp32(uint16_t v)
 {
     float sign = v & 0x8000 ? -1.0f : 1.0f;
@@ -457,36 +452,26 @@ static inline float fp16_to_fp32(uint16_t v)
     }
 }
 
-static inline pair<float, float> fp16_to_fp32(uint32_t v)
-{
-    uint16_t lower = v & 0xffff;
-    uint16_t upper = (v >> 16) & 0xffff;
-    return make_pair(fp16_to_fp32(lower), fp16_to_fp32(upper));
-}
-
 static mufft_buffer convert_fp32_fp16(const float *input, unsigned N)
 {
     auto buffer = alloc(N * sizeof(uint16_t));
-    auto ptr = static_cast<uint32_t*>(buffer.get());
+    auto ptr = static_cast<uint16_t*>(buffer.get());
 
-    for (unsigned i = 0; i < N; i += 2)
-    {
-        ptr[i >> 1] = fp32_to_fp16(input[i + 0], input[i + 1]);
-    }
+    for (unsigned i = 0; i < N; i++)
+        ptr[i] = fp32_to_fp16(input[i]);
 
     return buffer;
 }
 
-static mufft_buffer convert_fp16_fp32(const uint32_t *input, unsigned N)
+static mufft_buffer convert_fp16_fp32(const uint16_t *input, unsigned N)
 {
     auto buffer = alloc(N * sizeof(float));
     auto ptr = static_cast<float*>(buffer.get());
 
-    for (unsigned i = 0; i < N; i += 2)
+    for (unsigned i = 0; i < N; i++)
     {
-        auto v = fp16_to_fp32(input[i >> 1]);
-        ptr[i + 0] = v.first;
-        ptr[i + 1] = v.second;
+        auto v = fp16_to_fp32(input[i]);
+        ptr[i] = v;
     }
 
     return buffer;
@@ -529,7 +514,8 @@ static void run_test_ssbo(Context *context,
     auto output_data = readback(context, test_output.get(), output_size >> options.type.output_fp16);
     if (options.type.output_fp16)
     {
-        output_data = convert_fp16_fp32(static_cast<const uint32_t*>(output_data.get()), output_size / sizeof(float));
+        output_data = convert_fp16_fp32(static_cast<const uint16_t*>(output_data.get()),
+                                        output_size / sizeof(uint16_t));
     }
 
     float epsilon = options.type.output_fp16 || options.type.input_fp16 ? args.epsilon_fp16 : args.epsilon_fp32;
@@ -595,7 +581,8 @@ static void run_test_texture(Context *context,
     auto output_data = readback(context, test_output.get(), output_size >> options.type.output_fp16);
     if (options.type.output_fp16)
     {
-        output_data = convert_fp16_fp32(static_cast<const uint32_t*>(output_data.get()), output_size / sizeof(float));
+        output_data = convert_fp16_fp32(static_cast<const uint16_t*>(output_data.get()),
+                                        output_size / sizeof(uint16_t));
     }
 
     float epsilon = options.type.output_fp16 || options.type.input_fp16 ? args.epsilon_fp16 : args.epsilon_fp32;
@@ -611,26 +598,11 @@ static void run_test_texture(Context *context,
 
 static mufft_buffer readback_texture(Context *context, Texture *tex, unsigned components, unsigned Nx, unsigned Ny)
 {
-    auto buffer = alloc(Nx * Ny * components * sizeof(float));
+    unsigned count = Nx * Ny * components;
+    auto fp16_buffer = alloc(count * sizeof(uint16_t));
 
-    Format format = FormatUnknown;
-    switch (components)
-    {
-    case 1:
-        format = FormatR32Float;
-        break;
-
-    case 2:
-        format = FormatR32G32Float;
-        break;
-
-    case 4:
-        format = FormatR32G32B32A32Float;
-        break;
-    }
-
-    context->read_texture(buffer.get(), tex, format);
-    return buffer;
+    context->read_texture(fp16_buffer.get(), tex);
+    return convert_fp16_fp32(static_cast<uint16_t *>(fp16_buffer.get()), count);
 }
 
 static void run_test_image(Context *context, const TestSuiteArguments &args, unsigned Nx, unsigned Ny, Type type, Direction direction, const FFTOptions &options, const shared_ptr<ProgramCache> &cache)
@@ -737,8 +709,8 @@ static void enqueue_test(Context *context,
 static void test_fp32_fp16_convert()
 {
     auto input = create_input(256);
-    auto fp16_input = convert_fp32_fp16(static_cast<const float*>(input.get()), 256);
-    auto output = convert_fp16_fp32(static_cast<const uint32_t*>(fp16_input.get()), 256);
+    auto fp16_input = convert_fp32_fp16(static_cast<const float *>(input.get()), 256);
+    auto output = convert_fp16_fp32(static_cast<const uint16_t *>(fp16_input.get()), 256);
 
     for (unsigned i = 0; i < 256; i++)
     {

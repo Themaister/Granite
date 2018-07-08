@@ -60,12 +60,12 @@ enum AccessMode
 enum Format
 {
     FormatUnknown,
-    FormatR16G16B16A16Float,
-    FormatR32G32B32A32Float,
-    FormatR32G32Float,
-    FormatR32Float,
+    FormatR16Float,
     FormatR16G16Float,
-    FormatR32Uint
+    FormatR16G16B16A16Float,
+    FormatR32Float,
+    FormatR32G32Float,
+    FormatR32G32B32A32Float,
 };
 
 class CommandBuffer;
@@ -96,7 +96,7 @@ public:
     virtual void unmap(Buffer *buffer) = 0;
 
     virtual bool supports_texture_readback() = 0;
-    virtual void read_texture(void *buffer, Texture *texture, Format format) = 0;
+    virtual void read_texture(void *buffer, Texture *texture) = 0;
 
 protected:
     Context() = default;
@@ -108,7 +108,7 @@ public:
     virtual ~CommandBuffer() = default;
 
     virtual void bind_program(Program *program) = 0;
-    virtual void bind_storage_texture(unsigned binding, Texture *texture, Format format) = 0;
+    virtual void bind_storage_texture(unsigned binding, Texture *texture) = 0;
     virtual void bind_texture(unsigned binding, Texture *texture) = 0;
     virtual void bind_sampler(unsigned binding, Sampler *sampler) = 0;
     virtual void bind_storage_buffer(unsigned binding, Buffer *texture) = 0;
@@ -120,7 +120,7 @@ public:
     virtual void barrier() = 0;
 
     enum { MaxConstantDataSize = 64 };
-    virtual void push_constant_data(unsigned binding, const void *data, size_t size) = 0;
+    virtual void push_constant_data(const void *data, size_t size) = 0;
 
 protected:
     CommandBuffer() = default;

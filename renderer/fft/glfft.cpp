@@ -33,10 +33,9 @@ enum Bindings
     BindingSSBOIn = 0,
     BindingSSBOOut = 1,
     BindingSSBOAux = 2,
-    BindingUBO = 3,
-    BindingTexture0 = 4,
-    BindingTexture1 = 5,
-    BindingImage = 6
+    BindingTexture0 = 3,
+    BindingTexture1 = 4,
+    BindingImage = 5
 };
 
 struct WorkGroupSize
@@ -846,10 +845,6 @@ unique_ptr<Program> FFT::build_program(const Parameters &params)
     case 4:
         str += "#define FFT_VEC4\n";
         break;
-
-    case 8:
-        str += "#define FFT_VEC8\n";
-        break;
     }
 
     str += string("layout(local_size_x = ") +
@@ -888,7 +883,7 @@ unique_ptr<Program> FFT::build_program(const Parameters &params)
     auto prog = context->compile_compute_shader(str.c_str());
     if (!prog)
     {
-        LOGE("GLFFT error: %s\n", str.c_str());
+        LOGE("GLFFT error:\n%s\n", str.c_str());
     }
 
     return prog;
@@ -1038,33 +1033,7 @@ void FFT::process(CommandBuffer *cmd, Resource *output, Resource *input, Resourc
 
         if (pass.parameters.output_target != SSBO)
         {
-            Format format = FormatUnknown;
-
-            // TODO: Make this more flexible, would require shader variants per-format though.
-            if (pass.parameters.output_target == ImageReal)
-            {
-                format = FormatR32Float;
-            }
-            else
-            {
-                switch (pass.parameters.mode)
-                {
-                case VerticalDual:
-                case HorizontalDual:
-                    format = FormatR16G16B16A16Float;
-                    break;
-
-                case Vertical:
-                case Horizontal:
-                case ResolveRealToComplex:
-                    format = FormatR32Uint;
-                    break;
-
-                default:
-                    break;
-                }
-            }
-            cmd->bind_storage_texture(BindingImage, static_cast<Texture*>(output), format);
+            cmd->bind_storage_texture(BindingImage, static_cast<Texture*>(output));
         }
         else
         {
@@ -1081,7 +1050,7 @@ void FFT::process(CommandBuffer *cmd, Resource *output, Resource *input, Resourc
             }
         }
 
-        cmd->push_constant_data(BindingUBO, &constant_data, sizeof(constant_data));
+        cmd->push_constant_data(&constant_data, sizeof(constant_data));
         cmd->dispatch(pass.workgroups_x, pass.workgroups_y, 1);
 
         // For last pass, we don't know how our resource will be used afterwards,

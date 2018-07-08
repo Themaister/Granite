@@ -54,6 +54,8 @@ public:
 	bool supports_texture_readback() override;
 	void read_texture(void *buffer, GLFFT::Texture *texture) override;
 
+	std::string load_shader(const char *path) override;
+
 private:
 	Vulkan::Device &device;
 };

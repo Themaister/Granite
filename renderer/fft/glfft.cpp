@@ -22,8 +22,6 @@
 #include <numeric>
 #include <assert.h>
 #include <cmath>
-#include "filesystem.hpp"
-#include "util.hpp"
 
 using namespace std;
 using namespace GLFFT;
@@ -697,9 +695,9 @@ FFT::FFT(Context *context, unsigned Nx, unsigned Ny,
 
 string FFT::load_shader_string(const char *path)
 {
-    string str;
-    if (!Granite::Filesystem::get().read_file_to_string(path, str))
-        return "";
+    string str = context->load_shader(path);
+    if (str.empty())
+        throw std::runtime_error("Failed to load FFT shader.");
     return str;
 }
 
@@ -883,7 +881,7 @@ unique_ptr<Program> FFT::build_program(const Parameters &params)
     auto prog = context->compile_compute_shader(str.c_str());
     if (!prog)
     {
-        LOGE("GLFFT error:\n%s\n", str.c_str());
+        context->log("GLFFT error:\n%s\n", str.c_str());
     }
 
     return prog;

@@ -270,6 +270,14 @@ void FFTInterface::read_texture(void *buffer, GLFFT::Texture *texture)
 	device.unmap_host_buffer(*readback);
 }
 
+string FFTInterface::load_shader(const char *path)
+{
+	string str;
+	if (!Filesystem::get().read_file_to_string(Path::join("builtin://shaders/fft", path), str))
+		return "";
+	return str;
+}
+
 GLFFT::CommandBuffer *FFTInterface::request_command_buffer()
 {
 	auto *cmd = new FFTCommandBuffer(device.request_command_buffer());

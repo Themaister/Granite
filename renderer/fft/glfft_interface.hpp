@@ -98,6 +98,8 @@ public:
     virtual bool supports_texture_readback() = 0;
     virtual void read_texture(void *buffer, Texture *texture) = 0;
 
+    virtual std::string load_shader(const char *path) = 0;
+
 protected:
     Context() = default;
 };

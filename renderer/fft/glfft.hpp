@@ -197,7 +197,7 @@ private:
     std::shared_ptr<ProgramCache> cache;
 
     std::unique_ptr<Program> build_program(const Parameters &params);
-    static std::string load_shader_string(const char *path);
+    std::string load_shader_string(const char *path);
 
     Program* get_program(const Parameters &params);
 

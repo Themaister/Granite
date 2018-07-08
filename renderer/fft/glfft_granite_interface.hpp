@@ -60,4 +60,31 @@ private:
 	Vulkan::Device &device;
 };
 
+struct FFTCommandBuffer : GLFFT::CommandBuffer
+{
+	FFTCommandBuffer(Vulkan::CommandBufferHandle cmd_)
+		: cmd_holder(std::move(cmd_))
+	{
+		cmd = cmd_holder.get();
+	}
+
+	FFTCommandBuffer(Vulkan::CommandBuffer *cmd_)
+		: cmd(cmd_)
+	{
+	}
+
+	void barrier() override;
+	void bind_program(GLFFT::Program *program) override;
+	void bind_sampler(unsigned binding, GLFFT::Sampler *sampler) override;
+	void bind_storage_texture(unsigned binding, GLFFT::Texture *texture) override;
+	void bind_texture(unsigned binding, GLFFT::Texture *texture) override;
+	void bind_storage_buffer(unsigned binding, GLFFT::Buffer *buffer) override;
+	void bind_storage_buffer_range(unsigned binding, size_t offset, size_t length, GLFFT::Buffer *buffer) override;
+	void dispatch(unsigned x, unsigned y, unsigned z) override;
+	void push_constant_data(const void *data, size_t size) override;
+
+	Vulkan::CommandBuffer *cmd;
+	Vulkan::CommandBufferHandle cmd_holder;
+};
+
 }

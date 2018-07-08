@@ -50,26 +50,6 @@ struct FFTSampler : GLFFT::Sampler
 	const Vulkan::Sampler &sampler;
 };
 
-struct FFTCommandBuffer : GLFFT::CommandBuffer
-{
-	FFTCommandBuffer(Vulkan::CommandBufferHandle cmd)
-		: cmd(move(cmd))
-	{
-	}
-
-	void barrier() override;
-	void bind_program(GLFFT::Program *program) override;
-	void bind_sampler(unsigned binding, GLFFT::Sampler *sampler) override;
-	void bind_storage_texture(unsigned binding, GLFFT::Texture *texture) override;
-	void bind_texture(unsigned binding, GLFFT::Texture *texture) override;
-	void bind_storage_buffer(unsigned binding, GLFFT::Buffer *buffer) override;
-	void bind_storage_buffer_range(unsigned binding, size_t offset, size_t length, GLFFT::Buffer *buffer) override;
-	void dispatch(unsigned x, unsigned y, unsigned z) override;
-	void push_constant_data(const void *data, size_t size) override;
-
-	Vulkan::CommandBufferHandle cmd;
-};
-
 void FFTCommandBuffer::push_constant_data(const void *data, size_t size)
 {
 	cmd->push_constants(data, 0, size);
@@ -287,7 +267,8 @@ GLFFT::CommandBuffer *FFTInterface::request_command_buffer()
 void FFTInterface::submit_command_buffer(GLFFT::CommandBuffer *cmd_)
 {
 	auto *cmd = static_cast<FFTCommandBuffer *>(cmd_);
-	device.submit(cmd->cmd);
+	assert(cmd->cmd_holder);
+	device.submit(cmd->cmd_holder);
 	delete cmd;
 }
 

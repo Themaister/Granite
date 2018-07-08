@@ -20,6 +20,7 @@
 #include "glfft.hpp"
 #include "glfft_interface.hpp"
 #include <utility>
+#include <algorithm>
 
 #include "rapidjson_wrapper.hpp"
 using namespace rapidjson;
@@ -104,11 +105,11 @@ pair<double, FFTOptions::Performance> FFTWisdom::learn_optimal_options(Context *
 	}
 }
 
-void FFTWisdom::learn_optimal_options_exhaustive(Context *context, unsigned Nx, unsigned Ny, Type type,
+void FFTWisdom::learn_optimal_options_exhaustive(Context *context, unsigned Nx, unsigned Ny, GLFFT::Type type,
                                                  Target input_target, Target output_target,
                                                  const FFTOptions::Type &fft_type)
 {
-	bool learn_resolve = type == ComplexToReal || type == RealToComplex;
+	unsigned learn_resolve = unsigned(type == ComplexToReal || type == RealToComplex);
 	Mode vertical_mode = type == ComplexToComplexDual ? VerticalDual : Vertical;
 	Mode horizontal_mode = type == ComplexToComplexDual ? HorizontalDual : Horizontal;
 
@@ -171,7 +172,7 @@ void FFTWisdom::learn_optimal_options_exhaustive(Context *context, unsigned Nx, 
 	}
 
 	// If we need to do a resolve pass, train this case as well.
-	if (learn_resolve)
+	if (learn_resolve != 0)
 	{
 		try
 		{
@@ -232,7 +233,7 @@ std::pair<double, FFTOptions::Performance> FFTWisdom::study(Context *context, co
 
 	if (pass.pass.input_target == SSBO)
 	{
-		input = context->create_buffer(tmp.data(), tmp.size() * sizeof(float) >> type.input_fp16, AccessStaticCopy);
+		input = context->create_buffer(tmp.data(), tmp.size() * sizeof(float) >> unsigned(type.input_fp16), AccessStaticCopy);
 	}
 	else
 	{
@@ -266,7 +267,7 @@ std::pair<double, FFTOptions::Performance> FFTWisdom::study(Context *context, co
 
 	if (pass.pass.output_target == SSBO)
 	{
-		output = context->create_buffer(nullptr, tmp.size() * sizeof(float) >> type.output_fp16, AccessStreamCopy);
+		output = context->create_buffer(nullptr, tmp.size() * sizeof(float) >> unsigned(type.output_fp16), AccessStreamCopy);
 	}
 	else
 	{

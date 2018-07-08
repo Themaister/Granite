@@ -4,11 +4,12 @@ target_include_directories(rapidjson PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_
 add_library(volk STATIC volk/volk.c volk/volk.h)
 target_include_directories(volk PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/volk ${CMAKE_CURRENT_SOURCE_DIR}/khronos)
 
-add_library(muFFT STATIC
-        muFFT/kernel.c
-        muFFT/fft.h
-        muFFT/fft.c
-        muFFT/fft_internal.h
-        muFFT/cpu.c)
-target_include_directories(muFFT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/muFFT)
-
+if (NOT MSVC)
+    add_library(muFFT STATIC
+            muFFT/kernel.c
+            muFFT/fft.h
+            muFFT/fft.c
+            muFFT/fft_internal.h
+            muFFT/cpu.c)
+    target_include_directories(muFFT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/muFFT)
+endif()

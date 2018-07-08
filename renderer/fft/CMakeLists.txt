@@ -11,4 +11,6 @@ add_granite_library(glfft
 target_link_libraries(glfft rapidjson filesystem vulkan-backend)
 target_include_directories(glfft PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
-add_subdirectory(test)
+if (NOT MSVC)
+    add_subdirectory(test)
+endif()

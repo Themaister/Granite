@@ -502,7 +502,7 @@ FFT::FFT(Context *context, unsigned Nx, unsigned Ny, Type type, Direction direct
 	set_texture_offset_scale(0.5f / Nx, 0.5f / Ny, 1.0f / Nx, 1.0f / Ny);
 
 	size_t temp_buffer_size = Nx * Ny * sizeof(float) * (type == ComplexToComplexDual ? 4 : 2);
-	temp_buffer_size >>= options.type.output_fp16;
+	temp_buffer_size >>= unsigned(options.type.output_fp16);
 
 	temp_buffer = context->create_buffer(nullptr, temp_buffer_size, AccessStreamCopy);
 	if (output_target != SSBO)

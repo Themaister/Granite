@@ -22,13 +22,19 @@
 
 #pragma once
 
+#include "util.hpp"
 #ifndef RAPIDJSON_HAS_STDSTRING
 #define RAPIDJSON_HAS_STDSTRING 1
 #endif
 
-#include <stdexcept>
+#include <exception>
 #undef RAPIDJSON_ASSERT
-#define RAPIDJSON_ASSERT(x) do { if (!(x)) throw std::logic_error("JSON error"); } while(0)
+#define RAPIDJSON_ASSERT(x) do { \
+	if (!(x)) { \
+        LOGE("Rapidjson assert: %s\n", #x); \
+		std::terminate(); \
+    } \
+} while(0)
 
 #include "rapidjson/document.h"
 #include "rapidjson/prettywriter.h"

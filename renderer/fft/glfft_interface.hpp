@@ -86,7 +86,8 @@ public:
     virtual void submit_command_buffer(CommandBuffer *cmd) = 0;
     virtual void wait_idle() = 0;
 
-    virtual const char* get_renderer_string() = 0;
+    virtual uint32_t get_vendor_id() = 0;
+    virtual uint32_t get_product_id() = 0;
     virtual void log(const char *fmt, ...) = 0;
     virtual double get_time() = 0;
 

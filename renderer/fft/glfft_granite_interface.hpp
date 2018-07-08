@@ -42,7 +42,8 @@ public:
 	void submit_command_buffer(GLFFT::CommandBuffer *cmd) override;
 	void wait_idle() override;
 
-	const char *get_renderer_string() override;
+	uint32_t get_vendor_id() override;
+	uint32_t get_product_id() override;
 	void log(const char *fmt, ...) override;
 	double get_time() override;
 
@@ -60,8 +61,10 @@ private:
 	Vulkan::Device &device;
 };
 
-struct FFTCommandBuffer : GLFFT::CommandBuffer
+class FFTCommandBuffer : public GLFFT::CommandBuffer
 {
+public:
+	friend class FFTInterface;
 	FFTCommandBuffer(Vulkan::CommandBufferHandle cmd_)
 		: cmd_holder(std::move(cmd_))
 	{
@@ -83,6 +86,7 @@ struct FFTCommandBuffer : GLFFT::CommandBuffer
 	void dispatch(unsigned x, unsigned y, unsigned z) override;
 	void push_constant_data(const void *data, size_t size) override;
 
+private:
 	Vulkan::CommandBuffer *cmd;
 	Vulkan::CommandBufferHandle cmd_holder;
 };

@@ -169,9 +169,14 @@ unsigned FFTInterface::get_max_work_group_threads()
 	return device.get_gpu_properties().limits.maxComputeWorkGroupInvocations;
 }
 
-const char *FFTInterface::get_renderer_string()
+uint32_t FFTInterface::get_vendor_id()
 {
-	return device.get_gpu_properties().deviceName;
+	return device.get_gpu_properties().vendorID;
+}
+
+uint32_t FFTInterface::get_product_id()
+{
+	return device.get_gpu_properties().deviceID;
 }
 
 double FFTInterface::get_time()

@@ -31,10 +31,10 @@ FFTStaticWisdom FFTWisdom::get_static_wisdom_from_renderer(Context *context)
 {
     FFTStaticWisdom res;
 
-    const char *renderer = context->get_renderer_string();
+    uint32_t vid = context->get_vendor_id();
     unsigned threads = context->get_max_work_group_threads();
 
-    if (strstr(renderer, "GeForce") || strstr(renderer, "Quadro"))
+    if (vid == 0x10de)
     {
         context->log("Detected GeForce/Quadro GPU.\n");
         res.min_workgroup_size = 32; // Warp threads.
@@ -44,18 +44,18 @@ FFTStaticWisdom FFTWisdom::get_static_wisdom_from_renderer(Context *context)
         res.max_vector_size = 2;
         res.shared_banked = FFTStaticWisdom::True;
     }
-    else if (strstr(renderer, "Radeon"))
+    else if (vid == 0x1002)
     {
         context->log("Detected Radeon GPU.\n");
         res.min_workgroup_size = 64; // Wavefront threads (GCN).
-        res.min_workgroup_size_shared = 128;
+        res.min_workgroup_size_shared = 64;
         res.max_workgroup_size = min(threads, 256u); // Very unlikely that more than 256 threads will do anything good.
         // TODO: Find if we can restrict this to 2 or 4 always.
         res.min_vector_size = 2;
-        res.max_vector_size = 4;
+        res.max_vector_size = 2;
         res.shared_banked = FFTStaticWisdom::True;
     }
-    else if (strstr(renderer, "Mali"))
+    else if (vid == 0x13b5)
     {
         context->log("Detected Mali GPU.\n");
 
@@ -142,12 +142,6 @@ void FFTWisdom::learn_optimal_options_exhaustive(Context *context,
                 learn_optimal_options(context, Nx >> learn_resolve, Ny, radix, horizontal_mode, SSBO, output_target, fft_type);
             }
         }
-#ifdef GLFFT_CLI_ASYNC
-            catch (const AsyncCancellation &)
-        {
-            throw;
-        }
-#endif
         catch (...)
         {
             // If our default options cannot successfully create the radix pass (i.e. throws),
@@ -182,12 +176,6 @@ void FFTWisdom::learn_optimal_options_exhaustive(Context *context,
                 learn_optimal_options(context, Nx >> learn_resolve, Ny, 2, resolve_mode, resolve_input_target, SSBO, resolve_type);
             }
         }
-#ifdef GLFFT_CLI_ASYNC
-            catch (const AsyncCancellation &)
-        {
-            throw;
-        }
-#endif
         catch (...)
         {
             // If our default options cannot successfully create the radix pass (i.e. throws),
@@ -415,12 +403,6 @@ std::pair<double, FFTOptions::Performance> FFTWisdom::study(Context *context, co
                             minimum_cost = cost;
                         }
                     }
-#ifdef GLFFT_CLI_ASYNC
-                        catch (const AsyncCancellation &)
-                    {
-                        throw;
-                    }
-#endif
                     catch (...)
                     {
                         // If we pass in bogus parameters,

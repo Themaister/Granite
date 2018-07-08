@@ -1057,7 +1057,7 @@ void FFT::process(CommandBuffer *cmd, Resource *output, Resource *input, Resourc
         // so let barrier decisions be up to the API user.
         if (pass_index + 1 < passes.size())
         {
-            cmd->barrier(static_cast<Buffer*>(buffers[1]));
+            cmd->barrier();
         }
 
         if (pass_index == 0)

@@ -515,7 +515,7 @@ static void run_test_ssbo(Context *context,
     if (options.type.output_fp16)
     {
         output_data = convert_fp16_fp32(static_cast<const uint16_t*>(output_data.get()),
-                                        output_size / sizeof(uint16_t));
+                                        output_size / sizeof(float));
     }
 
     float epsilon = options.type.output_fp16 || options.type.input_fp16 ? args.epsilon_fp16 : args.epsilon_fp32;
@@ -582,7 +582,7 @@ static void run_test_texture(Context *context,
     if (options.type.output_fp16)
     {
         output_data = convert_fp16_fp32(static_cast<const uint16_t*>(output_data.get()),
-                                        output_size / sizeof(uint16_t));
+                                        output_size / sizeof(float));
     }
 
     float epsilon = options.type.output_fp16 || options.type.input_fp16 ? args.epsilon_fp16 : args.epsilon_fp32;
@@ -644,7 +644,7 @@ static void run_test_image(Context *context, const TestSuiteArguments &args, uns
         break;
 
     case ComplexToReal:
-        format = FormatR32Float;
+        format = FormatR16Float;
         components = 1;
         break;
     }
@@ -663,8 +663,8 @@ static void run_test_image(Context *context, const TestSuiteArguments &args, uns
 
     auto output_data = readback_texture(context, tex.get(), components, Nx, Ny);
 
-    float epsilon = components > 1 || options.type.output_fp16 || options.type.input_fp16 ? args.epsilon_fp16 : args.epsilon_fp32;
-    float min_snr = components > 1 || options.type.output_fp16 || options.type.input_fp16 ? args.min_snr_fp16 : args.min_snr_fp32;
+    float epsilon = args.epsilon_fp16;
+    float min_snr = args.min_snr_fp16;
     if (direction == InverseConvolve)
     {
         epsilon *= 1.5f;

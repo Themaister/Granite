@@ -58,8 +58,6 @@ struct FFTCommandBuffer : GLFFT::CommandBuffer
 	}
 
 	void barrier() override;
-	void barrier(GLFFT::Texture *) override;
-	void barrier(GLFFT::Buffer *) override;
 	void bind_program(GLFFT::Program *program) override;
 	void bind_sampler(unsigned binding, GLFFT::Sampler *sampler) override;
 	void bind_storage_texture(unsigned binding, GLFFT::Texture *texture) override;
@@ -81,16 +79,6 @@ void FFTCommandBuffer::barrier()
 {
 	cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
 	             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-}
-
-void FFTCommandBuffer::barrier(GLFFT::Texture *)
-{
-	barrier();
-}
-
-void FFTCommandBuffer::barrier(GLFFT::Buffer *)
-{
-	barrier();
 }
 
 void FFTCommandBuffer::bind_program(GLFFT::Program *program)

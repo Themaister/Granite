@@ -114,9 +114,6 @@ public:
     virtual void bind_storage_buffer(unsigned binding, Buffer *texture) = 0;
     virtual void bind_storage_buffer_range(unsigned binding, size_t offset, size_t length, Buffer *texture) = 0;
     virtual void dispatch(unsigned x, unsigned y, unsigned z) = 0;
-
-    virtual void barrier(Buffer *buffer) = 0;
-    virtual void barrier(Texture *buffer) = 0;
     virtual void barrier() = 0;
 
     enum { MaxConstantDataSize = 64 };

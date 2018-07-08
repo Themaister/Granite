@@ -16,9 +16,9 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include "device.hpp"
 #include "glfft_cli.hpp"
 #include "glfft_granite_interface.hpp"
-#include "device.hpp"
 
 using namespace GLFFT;
 using namespace Vulkan;
@@ -33,6 +33,5 @@ int main(int argc, char *argv[])
 	device.init_external_swapchain({ ImageHandle(nullptr) });
 	Granite::FFTInterface iface(device);
 
-    return cli_main(&iface, argc, argv);
+	return cli_main(&iface, argc, argv);
 }
-

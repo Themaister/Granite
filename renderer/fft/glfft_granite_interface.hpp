@@ -18,8 +18,8 @@
 
 #pragma once
 
-#include "glfft_interface.hpp"
 #include "command_buffer.hpp"
+#include "glfft_interface.hpp"
 
 namespace Granite
 {
@@ -28,12 +28,10 @@ class FFTInterface : public GLFFT::Context
 public:
 	FFTInterface(Vulkan::Device &device);
 
-	std::unique_ptr<GLFFT::Texture> create_texture(const void *initial_data,
-	                                               unsigned width, unsigned height,
+	std::unique_ptr<GLFFT::Texture> create_texture(const void *initial_data, unsigned width, unsigned height,
 	                                               GLFFT::Format format) override;
 
-	std::unique_ptr<GLFFT::Buffer> create_buffer(const void *initial_data,
-	                                             size_t size,
+	std::unique_ptr<GLFFT::Buffer> create_buffer(const void *initial_data, size_t size,
 	                                             GLFFT::AccessMode access) override;
 
 	std::unique_ptr<GLFFT::Program> compile_compute_shader(const char *source) override;
@@ -66,13 +64,13 @@ class FFTCommandBuffer : public GLFFT::CommandBuffer
 public:
 	friend class FFTInterface;
 	FFTCommandBuffer(Vulkan::CommandBufferHandle cmd_)
-		: cmd_holder(std::move(cmd_))
+	    : cmd_holder(std::move(cmd_))
 	{
 		cmd = cmd_holder.get();
 	}
 
 	FFTCommandBuffer(Vulkan::CommandBuffer *cmd_)
-		: cmd(cmd_)
+	    : cmd(cmd_)
 	{
 	}
 
@@ -91,4 +89,4 @@ private:
 	Vulkan::CommandBufferHandle cmd_holder;
 };
 
-}
+} // namespace Granite

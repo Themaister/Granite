@@ -17,8 +17,8 @@
  */
 
 #include "glfft_granite_interface.hpp"
-#include "device.hpp"
 #include "command_buffer.hpp"
+#include "device.hpp"
 #include "timer.hpp"
 #include <stdarg.h>
 using namespace std;
@@ -43,7 +43,7 @@ struct FFTProgram : GLFFT::Program
 struct FFTSampler : GLFFT::Sampler
 {
 	FFTSampler(const Vulkan::Sampler &sampler)
-		: sampler(sampler)
+	    : sampler(sampler)
 	{
 	}
 
@@ -57,8 +57,8 @@ void FFTCommandBuffer::push_constant_data(const void *data, size_t size)
 
 void FFTCommandBuffer::barrier()
 {
-	cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
-	             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+	cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+	             VK_ACCESS_SHADER_READ_BIT);
 }
 
 void FFTCommandBuffer::bind_program(GLFFT::Program *program)
@@ -74,7 +74,7 @@ void FFTCommandBuffer::bind_sampler(unsigned binding, GLFFT::Sampler *sampler)
 
 void FFTCommandBuffer::bind_storage_texture(unsigned binding, GLFFT::Texture *texture)
 {
-	cmd->set_storage_texture(0, binding, static_cast<FFTTexture*>(texture)->image->get_view());
+	cmd->set_storage_texture(0, binding, static_cast<FFTTexture *>(texture)->image->get_view());
 }
 
 void FFTCommandBuffer::bind_texture(unsigned binding, GLFFT::Texture *texture)
@@ -101,8 +101,7 @@ void FFTCommandBuffer::dispatch(unsigned x, unsigned y, unsigned z)
 const void *FFTInterface::map(GLFFT::Buffer *buffer_, size_t offset, size_t)
 {
 	auto *buffer = static_cast<FFTBuffer *>(buffer_);
-	return static_cast<uint8_t *>(device.map_host_buffer(*buffer->buffer,
-	                                                     Vulkan::MEMORY_ACCESS_READ)) + offset;
+	return static_cast<uint8_t *>(device.map_host_buffer(*buffer->buffer, Vulkan::MEMORY_ACCESS_READ)) + offset;
 }
 
 void FFTInterface::wait_idle()
@@ -110,15 +109,13 @@ void FFTInterface::wait_idle()
 	device.wait_idle();
 }
 
-unique_ptr<GLFFT::Buffer> FFTInterface::create_buffer(const void *initial_data, size_t size,
-                                                      GLFFT::AccessMode access)
+unique_ptr<GLFFT::Buffer> FFTInterface::create_buffer(const void *initial_data, size_t size, GLFFT::AccessMode access)
 {
 	Vulkan::BufferCreateInfo info = {};
 	info.size = size;
 	info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-	info.domain = access == GLFFT::AccessMode::AccessStreamRead ?
-	              Vulkan::BufferDomain::CachedHost :
-	              Vulkan::BufferDomain::Device;
+	info.domain =
+	    access == GLFFT::AccessMode::AccessStreamRead ? Vulkan::BufferDomain::CachedHost : Vulkan::BufferDomain::Device;
 
 	auto buffer = make_unique<FFTBuffer>();
 	buffer->buffer = device.create_buffer(info, initial_data);
@@ -160,7 +157,7 @@ unique_ptr<GLFFT::Texture> FFTInterface::create_texture(const void *initial_data
 
 	Vulkan::ImageInitialData init = {};
 	init.data = initial_data;
-	image->image= device.create_image(info, initial_data ? &init : nullptr);
+	image->image = device.create_image(info, initial_data ? &init : nullptr);
 	return image;
 }
 
@@ -199,8 +196,7 @@ unique_ptr<GLFFT::Program> FFTInterface::compile_compute_shader(const char *sour
 	auto spirv = compiler.compile();
 	if (spirv.empty())
 	{
-		LOGE("GLFFT: error: \n%s\n",
-		     compiler.get_error_message().c_str());
+		LOGE("GLFFT: error: \n%s\n", compiler.get_error_message().c_str());
 		return {};
 	}
 
@@ -231,22 +227,19 @@ void FFTInterface::read_texture(void *buffer, GLFFT::Texture *texture)
 {
 	auto &image = *static_cast<FFTTexture *>(texture)->image;
 	Vulkan::BufferCreateInfo info = {};
-	info.size = Vulkan::TextureFormatLayout::format_block_size(image.get_format()) *
-	            image.get_width() *
-	            image.get_height();
+	info.size =
+	    Vulkan::TextureFormatLayout::format_block_size(image.get_format()) * image.get_width() * image.get_height();
 	info.domain = Vulkan::BufferDomain::CachedHost;
 	info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 	auto readback = device.create_buffer(info, nullptr);
 
 	auto cmd = device.request_command_buffer();
-	cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
-	             VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
-	cmd->copy_image_to_buffer(*readback, image, 0, {},
-	                          { image.get_width(), image.get_height(), 1 },
-	                          0, 0,
+	cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+	             VK_ACCESS_TRANSFER_READ_BIT);
+	cmd->copy_image_to_buffer(*readback, image, 0, {}, { image.get_width(), image.get_height(), 1 }, 0, 0,
 	                          { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 });
-	cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-	             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
+	cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_HOST_BIT,
+	             VK_ACCESS_HOST_READ_BIT);
 
 	device.submit(cmd);
 	device.wait_idle();
@@ -278,8 +271,8 @@ void FFTInterface::submit_command_buffer(GLFFT::CommandBuffer *cmd_)
 }
 
 FFTInterface::FFTInterface(Vulkan::Device &device)
-	: device(device)
+    : device(device)
 {
 }
 
-}
+} // namespace Granite

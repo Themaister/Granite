@@ -18,29 +18,27 @@
 
 #pragma once
 
-#include <functional>
 #include "glfft_interface.hpp"
+#include <functional>
 
 namespace GLFFT
 {
-    namespace Internal
-    {
-        struct TestSuiteArguments
-        {
-            unsigned test_id_min = 0;
-            unsigned test_id_max = 0;
-            bool exhaustive = true;
-            bool throw_on_fail = false;
-            double min_snr_fp16 = 50.0;
-            double min_snr_fp32 = 100.0;
-            double epsilon_fp16 = 1e-3;
-            double epsilon_fp32 = 1e-6;
-        };
+namespace Internal
+{
+struct TestSuiteArguments
+{
+	unsigned test_id_min = 0;
+	unsigned test_id_max = 0;
+	bool exhaustive = true;
+	bool throw_on_fail = false;
+	double min_snr_fp16 = 50.0;
+	double min_snr_fp32 = 100.0;
+	double epsilon_fp16 = 1e-3;
+	double epsilon_fp32 = 1e-6;
+};
 
-        void run_test_suite(Context *context, const TestSuiteArguments &args);
-    }
+void run_test_suite(Context *context, const TestSuiteArguments &args);
+} // namespace Internal
 
-    int cli_main(
-            Context *context,
-            int argc, char *argv[]);
-}
+int cli_main(Context *context, int argc, char *argv[]);
+} // namespace GLFFT

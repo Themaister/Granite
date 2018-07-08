@@ -51,7 +51,7 @@ enum Mode
 	VerticalDual,
 
 	ResolveRealToComplex,
-	ResolveComplexToReal,
+	ResolveComplexToReal
 };
 
 enum Type

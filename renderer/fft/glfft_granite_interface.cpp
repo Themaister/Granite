@@ -119,7 +119,7 @@ unique_ptr<GLFFT::Buffer> FFTInterface::create_buffer(const void *initial_data, 
 
 	auto buffer = make_unique<FFTBuffer>();
 	buffer->buffer = device.create_buffer(info, initial_data);
-	return buffer;
+	return unique_ptr<GLFFT::Buffer>(move(buffer));
 }
 
 unique_ptr<GLFFT::Texture> FFTInterface::create_texture(const void *initial_data, unsigned width, unsigned height,
@@ -158,7 +158,7 @@ unique_ptr<GLFFT::Texture> FFTInterface::create_texture(const void *initial_data
 	Vulkan::ImageInitialData init = {};
 	init.data = initial_data;
 	image->image = device.create_image(info, initial_data ? &init : nullptr);
-	return image;
+	return unique_ptr<GLFFT::Texture>(move(image));
 }
 
 unsigned FFTInterface::get_max_work_group_threads()
@@ -204,7 +204,7 @@ unique_ptr<GLFFT::Program> FFTInterface::compile_compute_shader(const char *sour
 	Vulkan::Program *program = device.request_program(shader);
 	auto prog = make_unique<FFTProgram>();
 	prog->program = program;
-	return prog;
+	return unique_ptr<GLFFT::Program>(move(prog));
 }
 
 void FFTInterface::unmap(GLFFT::Buffer *buffer_)

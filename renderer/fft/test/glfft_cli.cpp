@@ -373,7 +373,7 @@ static int cli_test(Context *context, int argc, char *argv[])
 static void cli_bench_help(Context *context)
 {
 	context->log("Usage: bench [--width value] [--height value] [--warmup arg] [--iterations arg] [--dispatches arg] "
-	             "[--timeout arg] [--type type] [--input-texture] [--output-texture]\n"
+	             "[--timeout arg] [--type type] [--input-texture] [--output-texture] [--fp16]\n"
 	             "--type type: ComplexToComplex, ComplexToComplexDual, ComplexToReal, RealToComplex\n");
 }
 

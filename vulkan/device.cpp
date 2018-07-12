@@ -3071,14 +3071,14 @@ bool Device::enqueue_create_sampler(Fossilize::Hash hash, unsigned, const VkSamp
 bool Device::enqueue_create_descriptor_set_layout(Fossilize::Hash, unsigned, const VkDescriptorSetLayoutCreateInfo *, VkDescriptorSetLayout *layout)
 {
 	// We will create this naturally when building pipelines, can just emit dummy handles.
-	*layout = reinterpret_cast<VkDescriptorSetLayout>(uint64_t(-1));
+	*layout = (VkDescriptorSetLayout) uint64_t(-1);
 	return true;
 }
 
 bool Device::enqueue_create_pipeline_layout(Fossilize::Hash, unsigned, const VkPipelineLayoutCreateInfo *, VkPipelineLayout *layout)
 {
 	// We will create this naturally when building pipelines, can just emit dummy handles.
-	*layout = reinterpret_cast<VkPipelineLayout>(uint64_t(-1));
+	*layout = (VkPipelineLayout) uint64_t(-1);
 	return true;
 }
 

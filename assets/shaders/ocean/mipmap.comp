@@ -1,0 +1,43 @@
+#version 450
+layout(local_size_x = 8, local_size_y = 8) in;
+
+#if defined(MIPMAP_R16F)
+#define IMAGE_FORMAT r16f
+#elif defined(MIPMAP_RG16F)
+#define IMAGE_FORMAT rg16f
+#elif defined(MIPMAP_RGBA16F)
+#define IMAGE_FORMAT rgba16f
+#else
+#error "Unknown format"
+#endif
+
+layout(IMAGE_FORMAT, set = 0, binding = 0) writeonly uniform mediump image2D uImageOutput;
+layout(set = 0, binding = 1) uniform mediump sampler2D uInput;
+
+layout(std430, push_constant) uniform Registers
+{
+    vec2 inv_resolution;
+    uvec2 count;
+    float lod;
+} registers;
+
+#define D 0.5
+
+void main()
+{
+    if (all(lessThan(gl_GlobalInvocationID.xy, registers.count)))
+    {
+        vec2 uv = (2.0 * vec2(gl_GlobalInvocationID.xy) + 1.0) * registers.inv_resolution;
+        #ifdef MIPMAP_TEXEL_CENTER
+            mediump vec4 filtered = vec4(0.0);
+            filtered += textureLod(uInput, uv + vec2(-D, -D) * registers.inv_resolution, registers.lod);
+            filtered += textureLod(uInput, uv + vec2(+D, -D) * registers.inv_resolution, registers.lod);
+            filtered += textureLod(uInput, uv + vec2(-D, +D) * registers.inv_resolution, registers.lod);
+            filtered += textureLod(uInput, uv + vec2(+D, +D) * registers.inv_resolution, registers.lod);
+            filtered *= 0.25;
+        #else
+            mediump vec4 filtered = textureLod(uInput, uv, registers.lod);
+        #endif
+        imageStore(uImageOutput, ivec2(gl_GlobalInvocationID.xy), filtered);
+    }
+}

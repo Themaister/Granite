@@ -1,0 +1,72 @@
+#version 450
+layout(local_size_x = 64) in;
+
+layout(std430, binding = 0) readonly buffer InputDistribution
+{
+    vec2 distribution[];
+};
+
+layout(std430, binding = 1) writeonly buffer OutputFFT
+{
+    uint fft_input[];
+};
+
+layout(std430, push_constant) uniform Registers
+{
+    vec2 modulo;
+    uvec2 N;
+    float time;
+} registers;
+
+vec2 alias(vec2 i, vec2 N)
+{
+    return mix(i, i - N, greaterThan(i, 0.5 * registers.N));
+}
+
+vec2 cmul(vec2 a, vec2 b)
+{
+    vec2 r3 = a.yx;
+    vec2 r1 = b.xx;
+    vec2 R0 = a * r1;
+    vec2 r2 = b.yy;
+    vec2 R1 = r2 * r3;
+    return R0 + vec2(-R1.x, R1.y);
+}
+
+uint pack2(vec2 v)
+{
+    return packHalf2x16(v);
+}
+
+void main()
+{
+    uvec2 i = gl_GlobalInvocationID.xy;
+    uvec2 wi = mix(registers.N - i, uvec2(0u), equal(i, uvec2(0u)));
+
+    vec2 a = distribution[i.y * registers.N.x + i.x];
+    vec2 b = distribution[wi.y * registers.N.x + wi.x];
+
+    vec2 k = registers.modulo * alias(vec2(i), vec2(registers.N));
+    float k_len = length(k);
+
+    const float G = 9.81;
+    float w = sqrt(G * k_len) * registers.time;
+
+    float cw = cos(w);
+    float sw = sin(w);
+
+    a = cmul(a, vec2(cw, sw));
+    b = cmul(b, vec2(cw, sw));
+    b = vec2(b.x, -b.y);
+    vec2 res = a + b;
+
+#if defined(GRADIENT_NORMAL)
+    vec2 grad = cmul(res, vec2(-k.y, k.x));
+    res = grad;
+#elif defined(GRADIENT_DISPLACEMENT)
+    vec2 grad = cmul(res, vec2(-k.y / (k_len + 0.00001), k.x / (k_len + 0.00001)));
+    res = grad;
+#endif
+
+    fft_input[i.y * N.x + i.x] = pack2(res);
+}

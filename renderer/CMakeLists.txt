@@ -15,6 +15,7 @@ add_granite_library(renderer
         animation_system.hpp animation_system.cpp
         render_graph.cpp render_graph.hpp
         ground.hpp ground.cpp
+        ocean.hpp ocean.cpp
         post/hdr.hpp post/hdr.cpp
         post/fxaa.hpp post/fxaa.cpp
         post/smaa.hpp post/smaa.cpp

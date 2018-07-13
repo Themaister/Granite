@@ -248,7 +248,6 @@ private:
 	void setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target) override;
 	void setup_render_pass_resources(RenderGraph &graph) override;
 	void set_scene(Scene *scene) override;
-	RendererType get_renderer_type() override;
 
 	void render_main_pass(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view);
 };

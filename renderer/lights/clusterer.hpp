@@ -82,7 +82,6 @@ private:
 	void setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target) override;
 	void setup_render_pass_resources(RenderGraph &graph) override;
 	void refresh(RenderContext &context) override;
-	RendererType get_renderer_type() override;
 
 	Scene *scene = nullptr;
 	const RenderContext *context = nullptr;

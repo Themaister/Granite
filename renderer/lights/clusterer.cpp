@@ -94,11 +94,6 @@ void LightClusterer::setup_render_pass_dependencies(RenderGraph &, RenderPass &t
 	target.add_texture_input("light-cluster");
 }
 
-RendererType LightClusterer::get_renderer_type()
-{
-	return RendererType::External;
-}
-
 void LightClusterer::set_base_render_context(const RenderContext *context)
 {
 	this->context = context;

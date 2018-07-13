@@ -949,11 +949,6 @@ void TexturePlane::add_render_passes(RenderGraph &graph)
 		add_render_pass(graph, Refraction);
 }
 
-RendererType TexturePlane::get_renderer_type()
-{
-	return RendererType::GeneralForward;
-}
-
 void TexturePlane::set_base_renderer(Renderer *forward, Renderer *, Renderer *)
 {
 	this->renderer = forward;

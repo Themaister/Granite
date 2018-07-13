@@ -107,7 +107,6 @@ struct RenderPassCreator
 	virtual void setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target) = 0;
 	virtual void setup_render_pass_resources(RenderGraph &graph) = 0;
 	virtual void set_scene(Scene *scene) = 0;
-	virtual RendererType get_renderer_type() = 0;
 };
 
 struct RenderPassSinkComponent : ComponentBase

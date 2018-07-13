@@ -26,7 +26,8 @@ namespace Granite
 class FFTInterface : public GLFFT::Context
 {
 public:
-	FFTInterface(Vulkan::Device &device);
+	FFTInterface(Vulkan::Device *device);
+	FFTInterface() = default;
 
 	std::unique_ptr<GLFFT::Texture> create_texture(const void *initial_data, unsigned width, unsigned height,
 	                                               GLFFT::Format format) override;
@@ -56,7 +57,7 @@ public:
 	std::string load_shader(const char *path) override;
 
 private:
-	Vulkan::Device &device;
+	Vulkan::Device *device = nullptr;
 };
 
 class FFTCommandBuffer : public GLFFT::CommandBuffer
@@ -87,6 +88,40 @@ public:
 private:
 	Vulkan::CommandBuffer *cmd;
 	Vulkan::CommandBufferHandle cmd_holder;
+};
+
+struct FFTBuffer : GLFFT::Buffer
+{
+	FFTBuffer(Vulkan::Buffer *handle)
+		: buffer(handle)
+	{
+	}
+
+	FFTBuffer(Vulkan::BufferHandle handle)
+		: buffer_holder(std::move(handle))
+	{
+		buffer = buffer_holder.get();
+	}
+
+	Vulkan::Buffer *buffer;
+	Vulkan::BufferHandle buffer_holder;
+};
+
+struct FFTTexture : GLFFT::Texture
+{
+	FFTTexture(Vulkan::ImageView *handle)
+		: image(handle)
+	{
+	}
+
+	FFTTexture(Vulkan::ImageHandle handle)
+		: image_holder(std::move(handle))
+	{
+		image = &image_holder->get_view();
+	}
+
+	Vulkan::ImageView *image;
+	Vulkan::ImageHandle image_holder;
 };
 
 } // namespace Granite

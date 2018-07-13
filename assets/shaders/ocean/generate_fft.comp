@@ -1,19 +1,19 @@
 #version 450
 layout(local_size_x = 64) in;
 
-layout(std430, binding = 0) readonly buffer InputDistribution
+layout(std430, set = 0, binding = 0) readonly buffer InputDistribution
 {
     vec2 distribution[];
 };
 
-layout(std430, binding = 1) writeonly buffer OutputFFT
+layout(std430, set = 0, binding = 1) writeonly buffer OutputFFT
 {
     uint fft_input[];
 };
 
 layout(std430, push_constant) uniform Registers
 {
-    vec2 modulo;
+    vec2 mod_factor;
     uvec2 N;
     float time;
 } registers;
@@ -41,12 +41,12 @@ uint pack2(vec2 v)
 void main()
 {
     uvec2 i = gl_GlobalInvocationID.xy;
-    uvec2 wi = mix(registers.N - i, uvec2(0u), equal(i, uvec2(0u)));
+    uvec2 wi = (registers.N - i) & (registers.N - 1u);
 
     vec2 a = distribution[i.y * registers.N.x + i.x];
     vec2 b = distribution[wi.y * registers.N.x + wi.x];
 
-    vec2 k = registers.modulo * alias(vec2(i), vec2(registers.N));
+    vec2 k = registers.mod_factor * alias(vec2(i), vec2(registers.N));
     float k_len = length(k);
 
     const float G = 9.81;

@@ -25,17 +25,33 @@
 #include "abstract_renderable.hpp"
 #include "scene.hpp"
 #include "vulkan_events.hpp"
+#include "fft/glfft.hpp"
+#include "glfft_granite_interface.hpp"
+#include "application_events.hpp"
+#include <vector>
 
 namespace Granite
 {
+class RenderTextureResource;
+class RenderBufferResource;
+
 class Ocean : public AbstractRenderable,
               public PerFrameRefreshable,
-              public RenderPassCreator
+              public RenderPassCreator,
+              public EventHandler
 {
 public:
 	Ocean();
 
 private:
+	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
+	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &);
+	bool on_frame_tick(const FrameTickEvent &e);
+	std::unique_ptr<GLFFT::FFT> height_fft;
+	std::unique_ptr<GLFFT::FFT> normal_fft;
+	std::unique_ptr<GLFFT::FFT> displacement_fft;
+	FFTInterface fft_iface;
+
 	bool has_static_aabb() const override
 	{
 		return false;
@@ -45,7 +61,7 @@ private:
 	                     const CachedSpatialTransformComponent *transform,
 	                     RenderQueue &queue) const override;
 
-	vec2 size = vec2(1.0f);
+	const RenderContext *context = nullptr;
 
 	void refresh(RenderContext &context) override;
 
@@ -58,5 +74,40 @@ private:
 	                                    RenderPass &target) override;
 	void setup_render_pass_resources(RenderGraph &graph) override;
 	void set_scene(Scene *scene) override;
+
+	std::vector<Vulkan::ImageViewHandle> vertex_mip_views;
+	std::vector<Vulkan::ImageViewHandle> fragment_mip_views;
+	Vulkan::BufferHandle distribution_buffer;
+	RenderTextureResource *ocean_lod = nullptr;
+
+	RenderBufferResource *height_fft_input = nullptr;
+	RenderBufferResource *displacement_fft_input = nullptr;
+	RenderBufferResource *normal_fft_input = nullptr;
+
+	RenderTextureResource *height_fft_output = nullptr;
+	RenderTextureResource *displacement_fft_output = nullptr;
+	RenderTextureResource *normal_fft_output = nullptr;
+
+	RenderTextureResource *height_displacement_output = nullptr;
+	RenderTextureResource *gradient_jacobian_output = nullptr;
+
+	RenderGraph *graph = nullptr;
+
+	void update_lod_pass(Vulkan::CommandBuffer &cmd);
+	void update_fft_pass(Vulkan::CommandBuffer &cmd);
+	void update_fft_input(Vulkan::CommandBuffer &cmd);
+	void compute_fft(Vulkan::CommandBuffer &cmd);
+
+	unsigned grid_width = 32;
+	unsigned grid_height = 32;
+	vec2 size = vec2(1.0f);
+	vec2 size_normal = vec2(1.0f);
+	unsigned grid_resolution = 128;
+
+	unsigned height_fft_size = 256;
+	unsigned displacement_fft_size = 128;
+	unsigned normal_fft_size = 256;
+
+	double current_time = 0.0;
 };
 }

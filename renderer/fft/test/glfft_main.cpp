@@ -31,7 +31,7 @@ int main(int argc, char *argv[])
 	Device device;
 	device.set_context(context);
 	device.init_external_swapchain({ ImageHandle(nullptr) });
-	Granite::FFTInterface iface(device);
+	Granite::FFTInterface iface(&device);
 
 	return cli_main(&iface, argc, argv);
 }

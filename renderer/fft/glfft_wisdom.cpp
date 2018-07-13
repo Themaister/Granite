@@ -43,7 +43,7 @@ FFTStaticWisdom FFTWisdom::get_static_wisdom_from_renderer(Context *context)
 		res.max_workgroup_size = min(threads, 256u); // Very unlikely that more than 256 threads will do anything good.
 		res.min_vector_size = 2;
 		res.max_vector_size = 2;
-		res.shared_banked = FFTStaticWisdom::True;
+		res.shared_banked = FFTStaticWisdom::On;
 	}
 	else if (vid == 0x1002)
 	{
@@ -54,7 +54,7 @@ FFTStaticWisdom FFTWisdom::get_static_wisdom_from_renderer(Context *context)
 		// TODO: Find if we can restrict this to 2 or 4 always.
 		res.min_vector_size = 2;
 		res.max_vector_size = 2;
-		res.shared_banked = FFTStaticWisdom::True;
+		res.shared_banked = FFTStaticWisdom::On;
 	}
 	else if (vid == 0x13b5)
 	{
@@ -65,7 +65,7 @@ FFTStaticWisdom FFTWisdom::get_static_wisdom_from_renderer(Context *context)
 		res.max_workgroup_size = 64; // Going beyond 64 threads per WG is not a good idea.
 		res.min_vector_size = 4;
 		res.max_vector_size = 4;
-		res.shared_banked = FFTStaticWisdom::False;
+		res.shared_banked = FFTStaticWisdom::Off;
 	}
 	// TODO: Add more GPUs.
 
@@ -304,7 +304,7 @@ std::pair<double, FFTOptions::Performance> FFTWisdom::study(Context *context, co
 	FFTOptions::Performance best_perf;
 	double minimum_cost = bench(context, output.get(), input.get(), pass, { best_perf, type }, cache);
 
-	static const FFTStaticWisdom::Tristate shared_banked_values[] = { FFTStaticWisdom::False, FFTStaticWisdom::True };
+	static const FFTStaticWisdom::Tristate shared_banked_values[] = { FFTStaticWisdom::Off, FFTStaticWisdom::On };
 	static const unsigned vector_size_values[] = { 2, 4, 8 };
 	static const unsigned workgroup_size_x_values[] = { 4, 8, 16, 32, 64, 128, 256 };
 	static const unsigned workgroup_size_y_values[] = {

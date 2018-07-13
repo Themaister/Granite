@@ -78,8 +78,8 @@ struct FFTStaticWisdom
 {
 	enum Tristate
 	{
-		True = 1,
-		False = 0,
+		On = 1,
+		Off = 0,
 		DontCare = -1
 	};
 

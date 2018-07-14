@@ -93,7 +93,7 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 	auto &smaa_blend = graph.add_pass("smaa-blend", RenderGraph::get_default_post_graphics_queue());
 
 	smaa_edge.add_color_output("smaa-edge", smaa_edge_output);
-	smaa_edge.add_texture_input(input);
+	auto &edge_input_res = smaa_edge.add_texture_input(input);
 	if (masked_edge)
 	{
 		smaa_edge.set_depth_stencil_output("smaa-mask", smaa_depth);
@@ -108,17 +108,17 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 	}
 
 	smaa_weight.add_color_output("smaa-weights", smaa_weight_output);
-	smaa_weight.add_texture_input("smaa-edge");
+	auto &weight_input_res = smaa_weight.add_texture_input("smaa-edge");
 
 	if (masked_edge)
 		smaa_weight.set_depth_stencil_input("smaa-mask");
 
 	smaa_blend.add_color_output(t2x_enable ? string("smaa-sample") : output, smaa_output);
-	smaa_blend.add_texture_input(input);
-	smaa_blend.add_texture_input("smaa-weights");
+	auto &blend_input_res = smaa_blend.add_texture_input(input);
+	auto &blend_weight_res = smaa_blend.add_texture_input("smaa-weights");
 
 	smaa_edge.set_build_render_pass([&, edge = masked_edge, q = smaa_quality](Vulkan::CommandBuffer &cmd) {
-		auto &input_image = graph.get_physical_texture_resource(smaa_edge.get_texture_inputs()[0]->get_physical_index());
+		auto &input_image = graph.get_physical_texture_resource(edge_input_res);
 		cmd.set_unorm_texture(0, 0, input_image);
 		cmd.set_sampler(0, 0, Vulkan::StockSampler::LinearClamp);
 		vec4 rt_metrics(1.0f / input_image.get_image().get_create_info().width,
@@ -141,7 +141,7 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 	});
 
 	smaa_weight.set_build_render_pass([&, edge = masked_edge, q = smaa_quality](Vulkan::CommandBuffer &cmd) {
-		auto &input_image = graph.get_physical_texture_resource(smaa_weight.get_texture_inputs()[0]->get_physical_index());
+		auto &input_image = graph.get_physical_texture_resource(weight_input_res);
 		cmd.set_texture(0, 0, input_image, Vulkan::StockSampler::LinearClamp);
 		cmd.set_texture(0, 1,
 		                cmd.get_device().get_texture_manager().request_texture("builtin://textures/smaa/area.gtx")->get_image()->get_view(),
@@ -176,8 +176,8 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 	});
 
 	smaa_blend.set_build_render_pass([&, q = smaa_quality](Vulkan::CommandBuffer &cmd) {
-		auto &input_image = graph.get_physical_texture_resource(smaa_blend.get_texture_inputs()[0]->get_physical_index());
-		auto &blend_image = graph.get_physical_texture_resource(smaa_blend.get_texture_inputs()[1]->get_physical_index());
+		auto &input_image = graph.get_physical_texture_resource(blend_input_res);
+		auto &blend_image = graph.get_physical_texture_resource(blend_weight_res);
 		cmd.set_texture(0, 0, input_image, Vulkan::StockSampler::LinearClamp);
 		cmd.set_texture(0, 1, blend_image, Vulkan::StockSampler::LinearClamp);
 		vec4 rt_metrics(1.0f / input_image.get_image().get_create_info().width,
@@ -197,9 +197,9 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 	{
 		auto &smaa_resolve = graph.add_pass("smaa-t2x-resolve", RenderGraph::get_default_post_graphics_queue());
 		smaa_resolve.add_color_output(output, smaa_output);
-		smaa_resolve.add_texture_input("smaa-sample");
-		smaa_resolve.add_texture_input(input_depth);
-		smaa_resolve.add_history_input("smaa-sample");
+		auto &input_res = smaa_resolve.add_texture_input("smaa-sample");
+		auto &depth_res = smaa_resolve.add_texture_input(input_depth);
+		auto &history_res = smaa_resolve.add_history_input("smaa-sample");
 
 		AttachmentInfo variance;
 		variance.size_relative_name = input;
@@ -209,9 +209,9 @@ void setup_smaa_postprocess(RenderGraph &graph, TemporalJitter &jitter,
 		smaa_resolve.add_history_input("smaa-variance");
 
 		smaa_resolve.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
-			auto &current = graph.get_physical_texture_resource(smaa_resolve.get_texture_inputs()[0]->get_physical_index());
-			auto *prev = graph.get_physical_history_texture_resource(smaa_resolve.get_history_inputs()[0]->get_physical_index());
-			auto &depth = graph.get_physical_texture_resource(smaa_resolve.get_texture_inputs()[1]->get_physical_index());
+			auto &current = graph.get_physical_texture_resource(input_res);
+			auto *prev = graph.get_physical_history_texture_resource(history_res);
+			auto &depth = graph.get_physical_texture_resource(depth_res);
 
 			cmd.set_texture(0, 0, current, Vulkan::StockSampler::NearestClamp);
 			if (prev)

@@ -36,9 +36,9 @@ void setup_fxaa_postprocess(RenderGraph &graph, const std::string &input, const 
 	fxaa_output.format = output_format;
 
 	fxaa.add_color_output(output, fxaa_output);
-	fxaa.add_texture_input(input);
+	auto &fxaa_input = fxaa.add_texture_input(input);
 	fxaa.set_build_render_pass([&, input](Vulkan::CommandBuffer &cmd) {
-		auto &input_image = graph.get_physical_texture_resource(fxaa.get_texture_inputs()[0]->get_physical_index());
+		auto &input_image = graph.get_physical_texture_resource(fxaa_input);
 		cmd.set_unorm_texture(0, 0, input_image);
 		cmd.set_sampler(0, 0, Vulkan::StockSampler::LinearClamp);
 		vec2 inv_size(1.0f / input_image.get_image().get_create_info().width,

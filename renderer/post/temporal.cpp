@@ -195,20 +195,20 @@ void setup_taa_resolve(RenderGraph &graph, TemporalJitter &jitter, const std::st
 
 	auto &resolve = graph.add_pass("taa-resolve", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 	resolve.add_color_output(output, taa_output);
-	resolve.add_texture_input(input);
-	resolve.add_texture_input(input_depth);
+	auto &input_res = resolve.add_texture_input(input);
+	auto &input_depth_res = resolve.add_texture_input(input_depth);
 #if TAA_MOTION_VECTORS
 	resolve.add_texture_input("taa-mvs");
 #endif
-	resolve.add_history_input(output);
+	auto &history = resolve.add_history_input(output);
 
 	resolve.set_build_render_pass([&, q = Util::ecast(quality)](Vulkan::CommandBuffer &cmd) {
-		auto &image = graph.get_physical_texture_resource(resolve.get_texture_inputs()[0]->get_physical_index());
-		auto &depth = graph.get_physical_texture_resource(resolve.get_texture_inputs()[1]->get_physical_index());
+		auto &image = graph.get_physical_texture_resource(input_res);
+		auto &depth = graph.get_physical_texture_resource(input_depth_res);
 #if TAA_MOTION_VECTORS
 		auto &mvs = graph.get_physical_texture_resource(resolve.get_texture_inputs()[2]->get_physical_index());
 #endif
-		auto *prev = graph.get_physical_history_texture_resource(resolve.get_history_inputs()[0]->get_physical_index());
+		auto *prev = graph.get_physical_history_texture_resource(history);
 
 		struct Push
 		{
@@ -267,15 +267,14 @@ void setup_fxaa_2phase_postprocess(RenderGraph &graph, TemporalJitter &jitter, c
 
 	sharpen.add_color_output(output, backbuffer_att);
 	sharpen.add_color_output("fxaa-sharpen", att);
-	sharpen.add_texture_input("fxaa-pre");
-	sharpen.add_texture_input(input_depth);
-	sharpen.add_history_input("fxaa-sharpen");
+	auto &input_res = sharpen.add_texture_input("fxaa-pre");
+	auto &depth_res = sharpen.add_texture_input(input_depth);
+	auto &history_res = sharpen.add_history_input("fxaa-sharpen");
 
 	sharpen.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
-		auto *history = graph.get_physical_history_texture_resource(
-				sharpen.get_history_inputs()[0]->get_physical_index());
-		auto &fxaa = graph.get_physical_texture_resource(sharpen.get_texture_inputs()[0]->get_physical_index());
-		auto &depth = graph.get_physical_texture_resource(sharpen.get_texture_inputs()[1]->get_physical_index());
+		auto *history = graph.get_physical_history_texture_resource(history_res);
+		auto &fxaa = graph.get_physical_texture_resource(input_res);
+		auto &depth = graph.get_physical_texture_resource(depth_res);
 
 		struct Push
 		{

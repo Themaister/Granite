@@ -932,10 +932,10 @@ void TexturePlane::add_render_pass(RenderGraph &graph, Type type)
 	lighting.add_texture_input("shadow-main");
 
 	auto &reflection_blur_pass = graph.add_pass(name, RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
-	reflection_blur_pass.add_texture_input(name + "-HDR");
+	auto &reflection_input_res = reflection_blur_pass.add_texture_input(name + "-HDR");
 	reflection_blur_pass.add_color_output(name, reflection_blur);
-	reflection_blur_pass.set_build_render_pass([&reflection_blur_pass](Vulkan::CommandBuffer &cmd) {
-		reflection_blur_pass.set_texture_inputs(cmd, 0, 0, Vulkan::StockSampler::LinearClamp);
+	reflection_blur_pass.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
+		cmd.set_texture(0, 0, graph.get_physical_texture_resource(reflection_input_res), Vulkan::StockSampler::LinearClamp);
 		CommandBufferUtil::draw_fullscreen_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/blur.frag",
 		                                        {{"METHOD", 6}});
 	});

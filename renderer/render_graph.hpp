@@ -343,6 +343,23 @@ public:
 
 	enum { Unused = ~0u };
 
+	struct AccessedResource
+	{
+		VkPipelineStageFlags stages = 0;
+		VkAccessFlags access = 0;
+		VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
+	};
+
+	struct AccessedTextureResource : AccessedResource
+	{
+		RenderTextureResource *texture = nullptr;
+	};
+
+	struct AccessedBufferResource : AccessedResource
+	{
+		RenderBufferResource *buffer = nullptr;
+	};
+
 	RenderGraphQueueFlagBits get_queue() const
 	{
 		return queue;
@@ -362,22 +379,27 @@ public:
 	RenderTextureResource &set_depth_stencil_output(const std::string &name, const AttachmentInfo &info);
 	RenderTextureResource &add_color_output(const std::string &name, const AttachmentInfo &info, const std::string &input = "");
 	RenderTextureResource &add_resolve_output(const std::string &name, const AttachmentInfo &info);
-	RenderTextureResource &add_texture_input(const std::string &name);
 	RenderTextureResource &add_attachment_input(const std::string &name);
 	RenderTextureResource &add_history_input(const std::string &name);
 
-	RenderBufferResource &add_uniform_input(const std::string &name);
+	RenderTextureResource &add_texture_input(const std::string &name,
+	                                         VkPipelineStageFlags stages = 0);
+	RenderTextureResource &add_blit_texture_read_only_input(const std::string &name);
+	RenderBufferResource &add_uniform_input(const std::string &name,
+	                                        VkPipelineStageFlags stages = 0);
+	RenderBufferResource &add_storage_read_only_input(const std::string &name,
+	                                                  VkPipelineStageFlags stages = 0);
+
 	RenderBufferResource &add_storage_output(const std::string &name, const BufferInfo &info, const std::string &input = "");
-	RenderBufferResource &add_storage_read_only_input(const std::string &name);
 
 	RenderTextureResource &add_storage_texture_output(const std::string &name, const AttachmentInfo &info, const std::string &input = "");
 	RenderTextureResource &add_blit_texture_output(const std::string &name, const AttachmentInfo &info, const std::string &input = "");
-	RenderTextureResource &add_blit_texture_read_only_input(const std::string &name);
+
+	RenderBufferResource &add_vertex_buffer_input(const std::string &name);
+	RenderBufferResource &add_index_buffer_input(const std::string &name);
+	RenderBufferResource &add_indirect_buffer_input(const std::string &name);
 
 	void add_fake_resource_write_alias(const std::string &from, const std::string &to);
-
-	void set_texture_inputs(Vulkan::CommandBuffer &cmd, unsigned set, unsigned start_binding,
-	                        Vulkan::StockSampler sampler);
 
 	void make_color_input_scaled(unsigned index)
 	{
@@ -404,11 +426,6 @@ public:
 		return color_scale_inputs;
 	}
 
-	const std::vector<RenderTextureResource *> &get_texture_inputs() const
-	{
-		return texture_inputs;
-	}
-
 	const std::vector<RenderTextureResource *> &get_storage_texture_outputs() const
 	{
 		return storage_texture_outputs;
@@ -429,11 +446,6 @@ public:
 		return blit_texture_outputs;
 	}
 
-	const std::vector<RenderTextureResource *> &get_blit_texture_read_inputs() const
-	{
-		return blit_texture_read_inputs;
-	}
-
 	const std::vector<RenderTextureResource *> &get_attachment_inputs() const
 	{
 		return attachments_inputs;
@@ -444,24 +456,24 @@ public:
 		return history_inputs;
 	}
 
-	const std::vector<RenderBufferResource *> &get_uniform_inputs() const
-	{
-		return uniform_inputs;
-	}
-
 	const std::vector<RenderBufferResource *> &get_storage_inputs() const
 	{
 		return storage_inputs;
 	}
 
-	const std::vector<RenderBufferResource *> &get_storage_read_inputs() const
-	{
-		return storage_read_inputs;
-	}
-
 	const std::vector<RenderBufferResource *> &get_storage_outputs() const
 	{
 		return storage_outputs;
+	}
+
+	const std::vector<AccessedTextureResource> &get_generic_texture_inputs() const
+	{
+		return generic_texture;
+	}
+
+	const std::vector<AccessedBufferResource> &get_generic_buffer_inputs() const
+	{
+		return generic_buffer;
 	}
 
 	const std::vector<std::pair<RenderTextureResource *, RenderTextureResource *>> &get_fake_resource_aliases() const
@@ -568,22 +580,26 @@ private:
 	std::vector<RenderTextureResource *> resolve_outputs;
 	std::vector<RenderTextureResource *> color_inputs;
 	std::vector<RenderTextureResource *> color_scale_inputs;
-	std::vector<RenderTextureResource *> texture_inputs;
 	std::vector<RenderTextureResource *> storage_texture_inputs;
 	std::vector<RenderTextureResource *> storage_texture_outputs;
 	std::vector<RenderTextureResource *> blit_texture_inputs;
 	std::vector<RenderTextureResource *> blit_texture_outputs;
-	std::vector<RenderTextureResource *> blit_texture_read_inputs;
 	std::vector<RenderTextureResource *> attachments_inputs;
 	std::vector<RenderTextureResource *> history_inputs;
-	std::vector<RenderBufferResource *> uniform_inputs;
 	std::vector<RenderBufferResource *> storage_outputs;
-	std::vector<RenderBufferResource *> storage_read_inputs;
 	std::vector<RenderBufferResource *> storage_inputs;
+	std::vector<AccessedTextureResource> generic_texture;
+	std::vector<AccessedBufferResource> generic_buffer;
 	RenderTextureResource *depth_stencil_input = nullptr;
 	RenderTextureResource *depth_stencil_output = nullptr;
+
 	std::vector<std::pair<RenderTextureResource *, RenderTextureResource *>> fake_resource_alias;
 	std::string name;
+
+	RenderBufferResource &add_generic_buffer_input(const std::string &name,
+	                                               VkPipelineStageFlags stages,
+	                                               VkAccessFlags access,
+	                                               VkBufferUsageFlags usage);
 };
 
 class RenderGraph : public Vulkan::NoCopyNoMove, public EventHandler
@@ -648,18 +664,18 @@ public:
 		return *physical_buffers[index];
 	}
 
-	Vulkan::ImageView &get_physical_texture_resource(const RenderResource &resource)
+	Vulkan::ImageView &get_physical_texture_resource(const RenderTextureResource &resource)
 	{
 		assert(resource.get_physical_index() != RenderResource::Unused);
 		return get_physical_texture_resource(resource.get_physical_index());
 	}
 
-	Vulkan::ImageView *get_physical_history_texture_resource(const RenderResource &resource)
+	Vulkan::ImageView *get_physical_history_texture_resource(const RenderTextureResource &resource)
 	{
 		return get_physical_history_texture_resource(resource.get_physical_index());
 	}
 
-	Vulkan::Buffer &get_physical_buffer_resource(const RenderResource &resource)
+	Vulkan::Buffer &get_physical_buffer_resource(const RenderBufferResource &resource)
 	{
 		assert(resource.get_physical_index() != RenderResource::Unused);
 		return get_physical_buffer_resource(resource.get_physical_index());

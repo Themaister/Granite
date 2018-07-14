@@ -34,16 +34,6 @@ namespace Granite
 static const RenderGraphQueueFlags compute_queues = RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT |
                                                     RENDER_GRAPH_QUEUE_COMPUTE_BIT;
 
-void RenderPass::set_texture_inputs(Vulkan::CommandBuffer &cmd, unsigned set, unsigned start_binding,
-                                    Vulkan::StockSampler sampler)
-{
-	for (auto &tex : texture_inputs)
-	{
-		cmd.set_texture(set, start_binding, graph.get_physical_texture_resource(tex->get_physical_index()), sampler);
-		start_binding++;
-	}
-}
-
 RenderTextureResource &RenderPass::add_attachment_input(const std::string &name)
 {
 	auto &res = graph.get_texture_resource(name);
@@ -64,24 +54,71 @@ RenderTextureResource &RenderPass::add_history_input(const std::string &name)
 	return res;
 }
 
-RenderBufferResource &RenderPass::add_uniform_input(const std::string &name)
+RenderBufferResource &RenderPass::add_generic_buffer_input(const std::string &name, VkPipelineStageFlags stages,
+                                                           VkAccessFlags access, VkBufferUsageFlags usage)
 {
 	auto &res = graph.get_buffer_resource(name);
 	res.add_queue(queue);
 	res.read_in_pass(index);
-	res.add_buffer_usage(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
-	uniform_inputs.push_back(&res);
+	res.add_buffer_usage(usage);
+
+	AccessedBufferResource acc;
+	acc.buffer = &res;
+	acc.layout = VK_IMAGE_LAYOUT_GENERAL;
+	acc.access = access;
+	acc.stages = stages;
+	generic_buffer.push_back(acc);
 	return res;
 }
 
-RenderBufferResource &RenderPass::add_storage_read_only_input(const std::string &name)
+RenderBufferResource &RenderPass::add_vertex_buffer_input(const std::string &name)
 {
-	auto &res = graph.get_buffer_resource(name);
-	res.add_queue(queue);
-	res.read_in_pass(index);
-	res.add_buffer_usage(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
-	storage_read_inputs.push_back(&res);
-	return res;
+	return add_generic_buffer_input(name,
+	                                VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
+	                                VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT,
+	                                VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+}
+
+RenderBufferResource &RenderPass::add_index_buffer_input(const std::string &name)
+{
+	return add_generic_buffer_input(name,
+	                                VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
+	                                VK_ACCESS_INDEX_READ_BIT,
+	                                VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+}
+
+RenderBufferResource &RenderPass::add_indirect_buffer_input(const std::string &name)
+{
+	return add_generic_buffer_input(name,
+	                                VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
+	                                VK_ACCESS_INDIRECT_COMMAND_READ_BIT,
+	                                VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT);
+}
+
+RenderBufferResource &RenderPass::add_uniform_input(const std::string &name, VkPipelineStageFlags stages)
+{
+	if (stages == 0)
+	{
+		if ((queue & compute_queues) != 0)
+			stages = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+		else
+			stages = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+	}
+
+	return add_generic_buffer_input(name, stages, VK_ACCESS_UNIFORM_READ_BIT, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+}
+
+RenderBufferResource &RenderPass::add_storage_read_only_input(const std::string &name, VkPipelineStageFlags stages)
+{
+	if (stages == 0)
+	{
+		if ((queue & compute_queues) != 0)
+			stages = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+		else
+			stages = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+	}
+
+	return add_generic_buffer_input(name, stages, VK_ACCESS_SHADER_READ_BIT, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
 }
 
 RenderBufferResource &RenderPass::add_storage_output(const std::string &name, const BufferInfo &info, const std::string &input)
@@ -106,13 +143,26 @@ RenderBufferResource &RenderPass::add_storage_output(const std::string &name, co
 	return res;
 }
 
-RenderTextureResource &RenderPass::add_texture_input(const std::string &name)
+RenderTextureResource &RenderPass::add_texture_input(const std::string &name, VkPipelineStageFlags stages)
 {
 	auto &res = graph.get_texture_resource(name);
 	res.add_queue(queue);
 	res.read_in_pass(index);
 	res.add_image_usage(VK_IMAGE_USAGE_SAMPLED_BIT);
-	texture_inputs.push_back(&res);
+
+	AccessedTextureResource acc;
+	acc.texture = &res;
+	acc.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	acc.access = VK_ACCESS_SHADER_READ_BIT;
+
+	if (stages != 0)
+		acc.stages = stages;
+	else if ((queue & compute_queues) != 0)
+		acc.stages = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+	else
+		acc.stages = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+
+	generic_texture.push_back(acc);
 	return res;
 }
 
@@ -194,7 +244,14 @@ RenderTextureResource &RenderPass::add_blit_texture_read_only_input(const std::s
 	res.add_queue(queue);
 	res.read_in_pass(index);
 	res.add_image_usage(VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
-	blit_texture_read_inputs.push_back(&res);
+
+	AccessedTextureResource acc;
+	acc.texture = &res;
+	acc.layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+	acc.access = VK_ACCESS_TRANSFER_READ_BIT;
+	acc.stages = VK_PIPELINE_STAGE_TRANSFER_BIT;
+
+	generic_texture.push_back(acc);
 	return res;
 }
 
@@ -441,59 +498,31 @@ void RenderGraph::build_physical_resources()
 	{
 		auto &pass = *passes[pass_index];
 
-		for (auto *input : pass.get_texture_inputs())
+		for (auto &input : pass.get_generic_texture_inputs())
 		{
-			if (input->get_physical_index() == RenderResource::Unused)
+			if (input.texture->get_physical_index() == RenderResource::Unused)
 			{
-				physical_dimensions.push_back(get_resource_dimensions(*input));
-				input->set_physical_index(phys_index++);
+				physical_dimensions.push_back(get_resource_dimensions(*input.texture));
+				input.texture->set_physical_index(phys_index++);
 			}
 			else
 			{
-				physical_dimensions[input->get_physical_index()].queues |= input->get_used_queues();
-				physical_dimensions[input->get_physical_index()].image_usage |= input->get_image_usage();
+				physical_dimensions[input.texture->get_physical_index()].queues |= input.texture->get_used_queues();
+				physical_dimensions[input.texture->get_physical_index()].image_usage |= input.texture->get_image_usage();
 			}
 		}
 
-		for (auto *input : pass.get_uniform_inputs())
+		for (auto &input : pass.get_generic_buffer_inputs())
 		{
-			if (input->get_physical_index() == RenderResource::Unused)
+			if (input.buffer->get_physical_index() == RenderResource::Unused)
 			{
-				physical_dimensions.push_back(get_resource_dimensions(*input));
-				input->set_physical_index(phys_index++);
+				physical_dimensions.push_back(get_resource_dimensions(*input.buffer));
+				input.buffer->set_physical_index(phys_index++);
 			}
 			else
 			{
-				physical_dimensions[input->get_physical_index()].queues |= input->get_used_queues();
-				physical_dimensions[input->get_physical_index()].buffer_info.usage |= input->get_buffer_usage();
-			}
-		}
-
-		for (auto *input : pass.get_storage_read_inputs())
-		{
-			if (input->get_physical_index() == RenderResource::Unused)
-			{
-				physical_dimensions.push_back(get_resource_dimensions(*input));
-				input->set_physical_index(phys_index++);
-			}
-			else
-			{
-				physical_dimensions[input->get_physical_index()].queues |= input->get_used_queues();
-				physical_dimensions[input->get_physical_index()].buffer_info.usage |= input->get_buffer_usage();
-			}
-		}
-
-		for (auto *input : pass.get_blit_texture_read_inputs())
-		{
-			if (input->get_physical_index() == RenderResource::Unused)
-			{
-				physical_dimensions.push_back(get_resource_dimensions(*input));
-				input->set_physical_index(phys_index++);
-			}
-			else
-			{
-				physical_dimensions[input->get_physical_index()].queues |= input->get_used_queues();
-				physical_dimensions[input->get_physical_index()].image_usage |= input->get_image_usage();
+				physical_dimensions[input.buffer->get_physical_index()].queues |= input.buffer->get_used_queues();
+				physical_dimensions[input.buffer->get_physical_index()].image_usage |= input.buffer->get_buffer_usage();
 			}
 		}
 
@@ -1062,28 +1091,23 @@ void RenderGraph::build_physical_passes()
 		}
 
 		// Need non-local dependency, cannot merge.
-		for (auto *input : next.get_texture_inputs())
+		for (auto &input : next.get_generic_texture_inputs())
 		{
-			if (find_attachment(prev.get_color_outputs(), input))
+			if (find_attachment(prev.get_color_outputs(), input.texture))
 				return false;
-			if (find_attachment(prev.get_resolve_outputs(), input))
+			if (find_attachment(prev.get_resolve_outputs(), input.texture))
 				return false;
-			if (find_attachment(prev.get_storage_texture_outputs(), input))
+			if (find_attachment(prev.get_storage_texture_outputs(), input.texture))
 				return false;
-			if (find_attachment(prev.get_blit_texture_outputs(), input))
+			if (find_attachment(prev.get_blit_texture_outputs(), input.texture))
 				return false;
-			if (input && prev.get_depth_stencil_output() == input)
+			if (input.texture && prev.get_depth_stencil_output() == input.texture)
 				return false;
 		}
 
 		// Need non-local dependency, cannot merge.
-		for (auto *input : next.get_uniform_inputs())
-			if (find_buffer(prev.get_storage_outputs(), input))
-				return false;
-
-		// Need non-local dependency, cannot merge.
-		for (auto *input : next.get_storage_read_inputs())
-			if (find_buffer(prev.get_storage_outputs(), input))
+		for (auto &input : next.get_generic_buffer_inputs())
+			if (find_buffer(prev.get_storage_outputs(), input.buffer))
 				return false;
 
 		// Need non-local dependency, cannot merge.
@@ -1282,8 +1306,10 @@ void RenderGraph::log()
 				LOGI("        ResolveAttachment #%u: %u\n", unsigned(&output - pass.get_resolve_outputs().data()), output->get_physical_index());
 			for (auto &input : pass.get_attachment_inputs())
 				LOGI("        InputAttachment #%u: %u\n", unsigned(&input - pass.get_attachment_inputs().data()), input->get_physical_index());
-			for (auto &input : pass.get_texture_inputs())
-				LOGI("        Texture #%u: %u\n", unsigned(&input - pass.get_texture_inputs().data()), input->get_physical_index());
+			for (auto &input : pass.get_generic_texture_inputs())
+				LOGI("        Read-only texture #%u: %u\n", unsigned(&input - pass.get_generic_texture_inputs().data()), input.texture->get_physical_index());
+			for (auto &input : pass.get_generic_buffer_inputs())
+				LOGI("        Read-only buffer #%u: %u\n", unsigned(&input - pass.get_generic_buffer_inputs().data()), input.buffer->get_physical_index());
 
 			for (auto &input : pass.get_color_scale_inputs())
 			{
@@ -1470,11 +1496,9 @@ void RenderGraph::build_aliases()
 			register_reader(input, subpass.get_physical_pass_index());
 		for (auto *input : subpass.get_attachment_inputs())
 			register_reader(input, subpass.get_physical_pass_index());
-		for (auto *input : subpass.get_texture_inputs())
-			register_reader(input, subpass.get_physical_pass_index());
+		for (auto &input : subpass.get_generic_texture_inputs())
+			register_reader(input.texture, subpass.get_physical_pass_index());
 		for (auto *input : subpass.get_blit_texture_inputs())
-			register_reader(input, subpass.get_physical_pass_index());
-		for (auto *input : subpass.get_blit_texture_read_inputs())
 			register_reader(input, subpass.get_physical_pass_index());
 		for (auto *input : subpass.get_storage_texture_inputs())
 			register_reader(input, subpass.get_physical_pass_index());
@@ -2284,8 +2308,8 @@ void RenderGraph::traverse_dependencies(const RenderPass &pass, unsigned stack_c
 			depend_passes_recursive(pass, input->get_write_passes(), stack_count, false, false, false);
 	}
 
-	for (auto *input : pass.get_texture_inputs())
-		depend_passes_recursive(pass, input->get_write_passes(), stack_count, false, false, false);
+	for (auto &input : pass.get_generic_texture_inputs())
+		depend_passes_recursive(pass, input.texture->get_write_passes(), stack_count, false, false, false);
 
 	for (auto *input : pass.get_storage_inputs())
 	{
@@ -2305,22 +2329,10 @@ void RenderGraph::traverse_dependencies(const RenderPass &pass, unsigned stack_c
 			depend_passes_recursive(pass, input->get_write_passes(), stack_count, false, false, false);
 	}
 
-	for (auto *input : pass.get_uniform_inputs())
+	for (auto &input : pass.get_generic_buffer_inputs())
 	{
 		// There might be no writers of this resource if it's used in a feedback fashion.
-		depend_passes_recursive(pass, input->get_write_passes(), stack_count, true, false, false);
-	}
-
-	for (auto *input : pass.get_storage_read_inputs())
-	{
-		// There might be no writers of this resource if it's used in a feedback fashion.
-		depend_passes_recursive(pass, input->get_write_passes(), stack_count, true, false, false);
-	}
-
-	for (auto *input : pass.get_blit_texture_read_inputs())
-	{
-		// There might be no writers of this resource if it's used in a feedback fashion.
-		depend_passes_recursive(pass, input->get_write_passes(), stack_count, true, false, false);
+		depend_passes_recursive(pass, input.buffer->get_write_passes(), stack_count, true, false, false);
 	}
 }
 
@@ -2843,57 +2855,24 @@ void RenderGraph::build_barriers()
 			return get_access(barriers.flush, index, false);
 		};
 
-		for (auto *input : pass.get_uniform_inputs())
+		for (auto &input : pass.get_generic_buffer_inputs())
 		{
-			auto &barrier = get_invalidate_access(input->get_physical_index(), false);
-			barrier.access |= VK_ACCESS_UNIFORM_READ_BIT;
-			if ((pass.get_queue() & compute_queues) == 0)
-				barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; // TODO: Pick appropriate stage.
-			else
-				barrier.stages |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-
+			auto &barrier = get_invalidate_access(input.buffer->get_physical_index(), false);
+			barrier.access |= input.access;
+			barrier.stages |= input.stages;
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 				throw logic_error("Layout mismatch.");
-			barrier.layout = VK_IMAGE_LAYOUT_GENERAL; // It's a buffer, but use this as a sentinel.
+			barrier.layout = input.layout;
 		}
 
-		for (auto *input : pass.get_storage_read_inputs())
+		for (auto &input : pass.get_generic_texture_inputs())
 		{
-			auto &barrier = get_invalidate_access(input->get_physical_index(), false);
-			barrier.access |= VK_ACCESS_SHADER_READ_BIT;
-			if ((pass.get_queue() & compute_queues) == 0)
-				barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; // TODO: Pick appropriate stage.
-			else
-				barrier.stages |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-
+			auto &barrier = get_invalidate_access(input.texture->get_physical_index(), false);
+			barrier.access |= input.access;
+			barrier.stages |= input.stages;
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 				throw logic_error("Layout mismatch.");
-			barrier.layout = VK_IMAGE_LAYOUT_GENERAL; // It's a buffer, but use this as a sentinel.
-		}
-
-		for (auto *input : pass.get_blit_texture_read_inputs())
-		{
-			auto &barrier = get_invalidate_access(input->get_physical_index(), false);
-			barrier.access |= VK_ACCESS_TRANSFER_READ_BIT;
-			barrier.stages |= VK_PIPELINE_STAGE_TRANSFER_BIT;
-			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
-				throw logic_error("Layout mismatch.");
-			barrier.layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-		}
-
-		for (auto *input : pass.get_texture_inputs())
-		{
-			auto &barrier = get_invalidate_access(input->get_physical_index(), false);
-			barrier.access |= VK_ACCESS_SHADER_READ_BIT;
-
-			if ((pass.get_queue() & compute_queues) == 0)
-				barrier.stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; // TODO: VERTEX_SHADER can also read textures!
-			else
-				barrier.stages |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-
-			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
-				throw logic_error("Layout mismatch.");
-			barrier.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			barrier.layout = input.layout;
 		}
 
 		for (auto *input : pass.get_history_inputs())

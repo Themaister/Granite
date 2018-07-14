@@ -800,11 +800,11 @@ void SceneViewerApplication::add_shadow_pass(Vulkan::Device &, const std::string
 
 		auto &down_pass = graph.add_pass(tagcat("shadow-down", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 		down_pass.add_color_output(tagcat("shadow-down", tag), shadowmap_vsm_half);
-		down_pass.add_texture_input(tagcat("shadow-raw", tag));
+		auto &down_pass_res = down_pass.add_texture_input(tagcat("shadow-raw", tag));
 
 		auto &up_pass = graph.add_pass(tagcat("shadow-up", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 		up_pass.add_color_output(tagcat("shadow", tag), shadowmap_vsm_resolved_color);
-		up_pass.add_texture_input(tagcat("shadow-down", tag));
+		auto &up_pass_res = up_pass.add_texture_input(tagcat("shadow-down", tag));
 
 		down_pass.set_need_render_pass([this, type]() {
 			return type == DepthPassType::Main ? need_shadow_map_update : true;
@@ -815,7 +815,7 @@ void SceneViewerApplication::add_shadow_pass(Vulkan::Device &, const std::string
 		});
 
 		down_pass.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
-			auto &input = graph.get_physical_texture_resource(down_pass.get_texture_inputs()[0]->get_physical_index());
+			auto &input = graph.get_physical_texture_resource(down_pass_res);
 			vec2 inv_size(1.0f / input.get_image().get_create_info().width,
 			              1.0f / input.get_image().get_create_info().height);
 			cmd.push_constants(&inv_size, 0, sizeof(inv_size));
@@ -824,7 +824,7 @@ void SceneViewerApplication::add_shadow_pass(Vulkan::Device &, const std::string
 		});
 
 		up_pass.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
-			auto &input = graph.get_physical_texture_resource(up_pass.get_texture_inputs()[0]->get_physical_index());
+			auto &input = graph.get_physical_texture_resource(up_pass_res);
 			vec2 inv_size(1.0f / input.get_image().get_create_info().width,
 			              1.0f / input.get_image().get_create_info().height);
 			cmd.set_texture(0, 0, input, StockSampler::LinearClamp);

@@ -79,6 +79,8 @@ private:
 	std::vector<Vulkan::ImageViewHandle> fragment_mip_views;
 	Vulkan::BufferHandle distribution_buffer;
 	RenderTextureResource *ocean_lod = nullptr;
+	RenderBufferResource *lod_data = nullptr;
+	RenderBufferResource *lod_data_counters = nullptr;
 
 	RenderBufferResource *height_fft_input = nullptr;
 	RenderBufferResource *displacement_fft_input = nullptr;
@@ -100,8 +102,9 @@ private:
 
 	unsigned grid_width = 32;
 	unsigned grid_height = 32;
-	vec2 size = vec2(1.0f);
-	vec2 size_normal = vec2(1.0f);
+	vec3 last_camera_position = vec3(0.0f);
+	vec2 size = vec2(256.0f);
+	vec2 size_normal = vec2(256.0f / 7.3f);
 	unsigned grid_resolution = 128;
 
 	unsigned height_fft_size = 256;
@@ -109,5 +112,19 @@ private:
 	unsigned normal_fft_size = 256;
 
 	double current_time = 0.0;
+
+	struct LOD
+	{
+		Vulkan::BufferHandle vbo;
+		Vulkan::BufferHandle ibo;
+		unsigned count;
+	};
+	std::vector<LOD> quad_lod;
+
+	void build_buffers(Vulkan::Device &device);
+	void build_lod(Vulkan::Device &device, unsigned size, unsigned stride);
+
+	void add_lod_update_pass(RenderGraph &graph);
+	void add_fft_update_pass(RenderGraph &graph);
 };
 }

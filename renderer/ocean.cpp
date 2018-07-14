@@ -32,6 +32,12 @@ using namespace std;
 
 namespace Granite
 {
+struct OceanVertex
+{
+	uint8_t pos[4];
+	uint8_t weights[4];
+};
+
 Ocean::Ocean()
 {
 	EVENT_MANAGER_REGISTER_LATCH(Ocean, on_device_created, on_device_destroyed, Vulkan::DeviceCreatedEvent);
@@ -72,6 +78,8 @@ void Ocean::on_device_created(const Vulkan::DeviceCreatedEvent &e)
 	                                GLFFT::ComplexToComplex, GLFFT::Inverse,
 	                                GLFFT::SSBO, GLFFT::Image,
 	                                cache, options));
+
+	build_buffers(e.get_device());
 }
 
 void Ocean::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
@@ -83,10 +91,13 @@ void Ocean::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
 	normal_fft.reset();
 	displacement_fft.reset();
 	distribution_buffer.reset();
+
+	quad_lod.clear();
 }
 
-void Ocean::refresh(RenderContext &)
+void Ocean::refresh(RenderContext &context)
 {
+	last_camera_position = context.get_render_parameters().camera_position;
 }
 
 void Ocean::set_base_renderer(Renderer *,
@@ -116,7 +127,37 @@ void Ocean::setup_render_pass_resources(RenderGraph &graph)
 
 void Ocean::update_lod_pass(Vulkan::CommandBuffer &cmd)
 {
+	auto &lod = graph->get_physical_texture_resource(*ocean_lod);
+	cmd.set_storage_texture(0, 0, lod);
 
+	vec2 grid_size = size / vec2(grid_width, grid_height);
+	vec2 inv_grid_size = 1.0f / grid_size;
+
+	vec2 grid_center = round(last_camera_position.xz() * inv_grid_size);
+	vec2 grid_base = grid_center - 0.5f * grid_size;
+
+	struct Push
+	{
+		alignas(16) vec3 camera_pos;
+		alignas(4) float max_lod;
+		alignas(8) ivec2 image_offset;
+		alignas(8) ivec2 num_threads;
+		alignas(8) vec2 grid_base;
+		alignas(8) vec2 grid_size;
+	} push;
+	push.camera_pos = last_camera_position;
+	push.image_offset = ivec2(grid_center);
+	push.num_threads = ivec2(grid_width, grid_height);
+	push.grid_base = grid_base;
+	push.grid_size = size;
+	push.max_lod = 6.0f;
+	cmd.push_constants(&push, 0, sizeof(push));
+
+	cmd.set_program("builtin://shaders/ocean/update_lod.comp");
+	cmd.dispatch((grid_width + 7) / 8, (grid_height + 7) / 8, 1);
+
+	cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+	            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 }
 
 void Ocean::update_fft_input(Vulkan::CommandBuffer &cmd)
@@ -188,10 +229,8 @@ void Ocean::update_fft_pass(Vulkan::CommandBuffer &cmd)
 	            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 }
 
-void Ocean::add_render_passes(RenderGraph &graph)
+void Ocean::add_lod_update_pass(RenderGraph &graph)
 {
-	this->graph = &graph;
-
 	auto &update_lod = graph.add_pass("ocean-update-lods", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
 	AttachmentInfo lod_attachment;
 	lod_attachment.format = VK_FORMAT_R16_SFLOAT;
@@ -200,18 +239,30 @@ void Ocean::add_render_passes(RenderGraph &graph)
 	lod_attachment.size_class = SizeClass::Absolute;
 	ocean_lod = &update_lod.add_storage_texture_output("ocean-lods", lod_attachment);
 
+	BufferInfo lod_info_counter;
+	lod_info_counter.size = 16 * sizeof(uint32_t);
+	lod_info_counter.persistent = false;
+	lod_data_counters = &update_lod.add_storage_output("ocean-lod-counter", lod_info_counter);
+
+	BufferInfo lod_info;
+	lod_info.size = grid_width * grid_height * 16 * sizeof(uvec2);
+	lod_data = &update_lod.add_storage_output("ocean-lod-data", lod_info);
+
 	update_lod.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
 		update_lod_pass(cmd);
 	});
+}
 
+void Ocean::add_fft_update_pass(RenderGraph &graph)
+{
 	BufferInfo normal_info, height_info, displacement_info;
 	normal_info.size = normal_fft_size * normal_fft_size * sizeof(uint32_t);
 	height_info.size = height_fft_size * height_fft_size * sizeof(uint32_t);
 	displacement_info.size = displacement_fft_size * displacement_fft_size * sizeof(uint32_t);
 
 	AttachmentInfo normal_map;
-	AttachmentInfo height_map;
 	AttachmentInfo displacement_map;
+	AttachmentInfo height_map;
 
 	normal_map.size_class = SizeClass::Absolute;
 	normal_map.size_x = float(normal_fft_size);
@@ -262,11 +313,91 @@ void Ocean::add_render_passes(RenderGraph &graph)
 	});
 }
 
+void Ocean::add_render_passes(RenderGraph &graph)
+{
+	this->graph = &graph;
+	add_lod_update_pass(graph);
+	add_fft_update_pass(graph);
+}
+
 void Ocean::get_render_info(const RenderContext &context,
                             const CachedSpatialTransformComponent *,
                             RenderQueue &queue) const
 {
 
+}
+
+void Ocean::build_lod(Vulkan::Device &device, unsigned size, unsigned stride)
+{
+	unsigned size_1 = size + 1;
+	vector<OceanVertex> vertices;
+	vertices.reserve(size_1 * size_1);
+	vector<uint16_t> indices;
+	indices.reserve(size * (2 * size_1 + 1));
+
+	unsigned half_size = grid_resolution >> 1;
+
+	for (unsigned y = 0; y <= grid_resolution; y += stride)
+	{
+		for (unsigned x = 0; x <= grid_resolution; x += stride)
+		{
+			OceanVertex v = {};
+			v.pos[0] = uint8_t(x);
+			v.pos[1] = uint8_t(y);
+			v.pos[2] = uint8_t(x < half_size);
+			v.pos[3] = uint8_t(y < half_size);
+
+			if (x == 0)
+				v.weights[0] = 255;
+			else if (x == grid_resolution)
+				v.weights[1] = 255;
+			else if (y == 0)
+				v.weights[2] = 255;
+			else if (y == grid_resolution)
+				v.weights[3] = 255;
+
+			vertices.push_back(v);
+		}
+	}
+
+	unsigned slices = size;
+	for (unsigned slice = 0; slice < slices; slice++)
+	{
+		unsigned base = slice * size_1;
+		for (unsigned x = 0; x <= size; x++)
+		{
+			indices.push_back(base + x);
+			indices.push_back(base + size_1 + x);
+		}
+		indices.push_back(0xffffu);
+	}
+
+	Vulkan::BufferCreateInfo info = {};
+	info.size = vertices.size() * sizeof(OceanVertex);
+	info.domain = Vulkan::BufferDomain::Device;
+	info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+
+	LOD lod;
+	lod.vbo = device.create_buffer(info, vertices.data());
+
+	info.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+	info.size = indices.size() * sizeof(uint16_t);
+	lod.ibo = device.create_buffer(info, indices.data());
+	lod.count = indices.size();
+
+	quad_lod.push_back(lod);
+}
+
+void Ocean::build_buffers(Vulkan::Device &device)
+{
+	unsigned size = grid_resolution;
+	unsigned stride = 1;
+	while (size >= 2)
+	{
+		build_lod(device, size, stride);
+		size >>= 1;
+		stride <<= 1;
+	}
 }
 
 }

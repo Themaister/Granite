@@ -1,0 +1,31 @@
+#version 450
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(r16f, set = 0, binding = 0) writeonly uniform mediump image2D uLODs;
+
+layout(std430, push_constant) uniform Registers
+{
+    vec3 camera_pos;
+    float max_lod;
+    ivec2 image_offset;
+    ivec2 num_threads;
+    vec2 grid_base;
+    vec2 grid_size;
+} registers;
+
+void main()
+{
+    ivec2 id = ivec2(gl_GlobalInvocationID.xy);
+    if (any(greaterThanEqual(id, registers.num_threads)))
+        return;
+
+    vec2 center_pos = registers.grid_base + (vec2(id) + 0.5) * registers.grid_size;
+    vec3 dist = registers.camera_pos - vec3(center_pos.x, 0.0, center_pos.z);
+    float dist_sqr = dot(dist, dist);
+
+    float lod = log2(dist_sqr) - 3.0;
+
+    lod = clamp(lod, 0.0, registers.max_lod);
+    ivec2 image_coord = (id + registers.image_coord) & (registers.num_threads - 1);
+    imageStore(uLODs, image_coord, vec4(lod));
+}

@@ -189,7 +189,7 @@ void Ocean::build_lod_map(Vulkan::CommandBuffer &cmd)
 	push.num_threads = ivec2(grid_width, grid_height);
 	push.grid_base = grid_base;
 	push.grid_size = get_grid_size();
-	push.max_lod = 6.0f;
+	push.max_lod = float(quad_lod.size()) - 1.0f;
 	cmd.push_constants(&push, 0, sizeof(push));
 
 	cmd.set_program("builtin://shaders/ocean/update_lod.comp");

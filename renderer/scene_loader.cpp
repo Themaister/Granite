@@ -27,6 +27,7 @@
 #include "mesh_util.hpp"
 #include "enum_cast.hpp"
 #include "ground.hpp"
+#include "ocean.hpp"
 
 using namespace std;
 using namespace rapidjson;
@@ -60,6 +61,8 @@ void SceneLoader::load_scene(const std::string &path)
 			throw runtime_error("Failed to load GLTF file.");
 		parse_scene_format(path, json);
 	}
+
+	Ocean::add_to_scene(*scene);
 }
 
 Scene::NodeHandle SceneLoader::build_tree_for_subscene(const SubsceneData &subscene)

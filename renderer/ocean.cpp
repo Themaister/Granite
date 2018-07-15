@@ -32,6 +32,8 @@ using namespace std;
 
 namespace Granite
 {
+static constexpr unsigned MaxLODIndirect = 8;
+
 struct OceanVertex
 {
 	uint8_t pos[4];
@@ -42,6 +44,25 @@ Ocean::Ocean()
 {
 	EVENT_MANAGER_REGISTER_LATCH(Ocean, on_device_created, on_device_destroyed, Vulkan::DeviceCreatedEvent);
 	EVENT_MANAGER_REGISTER(Ocean, on_frame_tick, FrameTickEvent);
+}
+
+Ocean::Handles Ocean::add_to_scene(Scene &scene)
+{
+	Handles handles;
+	handles.entity = scene.create_entity();
+
+	auto ocean = Util::make_handle<Ocean>();
+
+	auto *update_component = handles.entity->allocate_component<PerFrameUpdateComponent>();
+	update_component->refresh = ocean.get();
+
+	auto *rp = handles.entity->allocate_component<RenderPassComponent>();
+	rp->creator = ocean.get();
+
+	auto *renderable = handles.entity->allocate_component<RenderableComponent>();
+	renderable->renderable = ocean;
+
+	return handles;
 }
 
 bool Ocean::on_frame_tick(const Granite::FrameTickEvent &e)
@@ -57,10 +78,12 @@ void Ocean::on_device_created(const Vulkan::DeviceCreatedEvent &e)
 	options.type.fp16 = true;
 	options.type.input_fp16 = true;
 	options.type.output_fp16 = true;
+#if 0
 	options.performance.shared_banked = true;
 	options.performance.workgroup_size_x = 64;
 	options.performance.workgroup_size_y = 1;
 	options.performance.vector_size = 2;
+#endif
 
 	auto cache = make_shared<GLFFT::ProgramCache>();
 
@@ -127,11 +150,21 @@ void Ocean::setup_render_pass_resources(RenderGraph &)
 
 }
 
+vec2 Ocean::get_grid_size() const
+{
+	return size / vec2(grid_width, grid_height);
+}
+
 vec2 Ocean::get_snapped_grid_center() const
 {
 	vec2 inv_grid_size = vec2(grid_width, grid_height) / size;
 	vec2 grid_center = round(last_camera_position.xz() * inv_grid_size);
 	return grid_center;
+}
+
+ivec2 Ocean::get_grid_base_coord() const
+{
+	return ivec2(get_snapped_grid_center()) - (ivec2(grid_width, grid_height) >> 1);
 }
 
 void Ocean::build_lod_map(Vulkan::CommandBuffer &cmd)
@@ -140,7 +173,7 @@ void Ocean::build_lod_map(Vulkan::CommandBuffer &cmd)
 	cmd.set_storage_texture(0, 0, lod);
 
 	vec2 grid_center = get_snapped_grid_center();
-	vec2 grid_base = grid_center - 0.5f * size;
+	vec2 grid_base = grid_center * get_grid_size() - 0.5f * size;
 
 	struct Push
 	{
@@ -152,10 +185,10 @@ void Ocean::build_lod_map(Vulkan::CommandBuffer &cmd)
 		alignas(8) vec2 grid_size;
 	} push;
 	push.camera_pos = last_camera_position;
-	push.image_offset = ivec2(grid_center) - (ivec2(grid_width, grid_height) >> 1);
+	push.image_offset = get_grid_base_coord();
 	push.num_threads = ivec2(grid_width, grid_height);
 	push.grid_base = grid_base;
-	push.grid_size = size;
+	push.grid_size = get_grid_size();
 	push.max_lod = 6.0f;
 	cmd.push_constants(&push, 0, sizeof(push));
 
@@ -170,7 +203,8 @@ void Ocean::init_counter_buffer(Vulkan::CommandBuffer &cmd)
 	for (unsigned i = 0; i < 16; i++)
 		vertex_counts[i] = (i < quad_lod.size()) ? quad_lod[i].count : 0;
 
-	cmd.set_program("builtin://shaders/ocean/init_counter_buffer.comp");
+	cmd.set_program("builtin://shaders/ocean/init_counter_buffer.comp",
+	                {{ "NUM_COUNTERS", int(MaxLODIndirect) }});
 	cmd.dispatch(1, 1, 1);
 }
 
@@ -187,17 +221,17 @@ void Ocean::cull_blocks(Vulkan::CommandBuffer &cmd)
 	} push;
 
 	vec2 grid_center = get_snapped_grid_center();
-	vec2 grid_base = grid_center - 0.5f * size;
+	vec2 grid_base = grid_center * get_grid_size() - 0.5f * size;
 
 	memcpy(cmd.allocate_typed_constant_data<vec4>(0, 3, 6),
 	       context->get_visibility_frustum().get_planes(),
 	       sizeof(vec4) * 6);
 
-	push.image_offset = ivec2(get_snapped_grid_center()) - (ivec2(grid_width, grid_height) >> 1);
+	push.image_offset = get_grid_base_coord();
 	push.num_threads = ivec2(grid_width, grid_height);
 	push.inv_num_threads = 1.0f / vec2(push.num_threads);
 	push.grid_base = grid_base;
-	push.grid_size = size / vec2(grid_width, grid_height);
+	push.grid_size = get_grid_size();
 	push.lod_stride = grid_width * grid_height;
 
 	cmd.push_constants(&push, 0, sizeof(push));
@@ -304,11 +338,11 @@ void Ocean::add_lod_update_pass(RenderGraph &graph)
 	ocean_lod = &update_lod.add_storage_texture_output("ocean-lods", lod_attachment);
 
 	BufferInfo lod_info_counter;
-	lod_info_counter.size = 16 * sizeof(uvec2);
+	lod_info_counter.size = MaxLODIndirect * (8 * sizeof(uint32_t));
 	lod_data_counters = &update_lod.add_storage_output("ocean-lod-counter", lod_info_counter);
 
 	BufferInfo lod_info;
-	lod_info.size = grid_width * grid_height * 16 * sizeof(uvec2);
+	lod_info.size = grid_width * grid_height * MaxLODIndirect * (2 * sizeof(uvec4));
 	lod_data = &update_lod.add_storage_output("ocean-lod-data", lod_info);
 
 	update_lod.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {

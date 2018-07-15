@@ -20,12 +20,12 @@ void main()
         return;
 
     vec2 center_pos = registers.grid_base + (vec2(id) + 0.5) * registers.grid_size;
-    vec3 dist = registers.camera_pos - vec3(center_pos.x, 0.0, center_pos.z);
+    vec3 dist = registers.camera_pos - vec3(center_pos.x, 0.0, center_pos.y);
     float dist_sqr = dot(dist, dist);
 
-    float lod = log2(dist_sqr) - 3.0;
+    float lod = 0.5 * log2(dist_sqr) - 3.0;
 
     lod = clamp(lod, 0.0, registers.max_lod);
-    ivec2 image_coord = (id + registers.image_coord) & (registers.num_threads - 1);
+    ivec2 image_coord = (id + registers.image_offset) & (registers.num_threads - 1);
     imageStore(uLODs, image_coord, vec4(lod));
 }

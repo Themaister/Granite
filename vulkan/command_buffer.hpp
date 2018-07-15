@@ -383,6 +383,9 @@ public:
 	                  int32_t vertex_offset = 0, uint32_t first_instance = 0);
 
 	void dispatch(uint32_t groups_x, uint32_t groups_y, uint32_t groups_z);
+
+	void draw_indirect(const Buffer &buffer, uint32_t offset, uint32_t draw_count, uint32_t stride);
+	void draw_indexed_indirect(const Buffer &buffer, uint32_t offset, uint32_t draw_count, uint32_t stride);
 	void dispatch_indirect(const Buffer &buffer, uint32_t offset);
 
 	void set_opaque_state();

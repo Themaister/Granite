@@ -417,11 +417,93 @@ void Ocean::add_render_passes(RenderGraph &graph)
 	add_fft_update_pass(graph);
 }
 
-void Ocean::get_render_info(const RenderContext &,
-                            const CachedSpatialTransformComponent *,
-                            RenderQueue &) const
+struct OceanInfo
+{
+	Vulkan::Program *program;
+	const Vulkan::Buffer *ubo;
+	const Vulkan::Buffer *indirect;
+	const Vulkan::Buffer *vbos[MaxLODIndirect];
+	const Vulkan::Buffer *ibos[MaxLODIndirect];
+	unsigned counts[MaxLODIndirect];
+	unsigned lod_stride;
+};
+
+struct OceanInstanceInfo
 {
 
+};
+
+struct OceanData
+{
+    vec2 uInvHeightmapSize;
+    vec2 uUVShift;
+    vec2 uUVTilingScale;
+    vec2 uTangentScale;
+};
+
+namespace RenderFunctions
+{
+static void ocean_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *infos, unsigned num_instances)
+{
+	auto &ocean_info = *static_cast<const OceanInfo *>(infos->render_info);
+
+	cmd.set_program(*ocean_info.program);
+	cmd.set_vertex_attrib(0, 0, VK_FORMAT_R8G8B8A8_UINT, offsetof(OceanVertex, pos));
+	cmd.set_vertex_attrib(1, 0, VK_FORMAT_R8G8B8A8_UNORM, offsetof(OceanVertex, weights));
+	cmd.set_primitive_restart(true);
+
+	for (unsigned instance = 0; instance < num_instances; instance++)
+	{
+		auto &ocean_data = *cmd.allocate_typed_constant_data<OceanData>(3, 1, 1);
+		memset(&ocean_data, 0, sizeof(ocean_data));
+
+		for (unsigned lod = 0; lod < MaxLODIndirect; lod++)
+		{
+			cmd.set_uniform_buffer(3, 0, *ocean_info.ubo,
+			                       ocean_info.lod_stride * lod,
+			                       ocean_info.lod_stride * 2 * sizeof(vec4));
+
+			cmd.set_vertex_binding(0, *ocean_info.vbos[lod], 0, 8);
+			cmd.set_index_buffer(*ocean_info.ibos[lod], 0, VK_INDEX_TYPE_UINT16);
+			cmd.draw_indexed_indirect(*ocean_info.indirect, 8 * sizeof(uint32_t) * lod, 1, 8 * sizeof(uint32_t));
+		}
+	}
+}
+}
+
+void Ocean::get_render_info(const RenderContext &,
+                            const CachedSpatialTransformComponent *,
+                            RenderQueue &queue) const
+{
+	Util::Hasher hasher;
+
+	auto &ubo = graph->get_physical_buffer_resource(*lod_data);
+	auto &indirect = graph->get_physical_buffer_resource(*lod_data_counters);
+
+	hasher.string("ocean");
+	hasher.u64(ubo.get_cookie());
+	hasher.u64(indirect.get_cookie());
+	auto instance_key = hasher.get();
+
+	auto *instance_data = queue.allocate_one<OceanInstanceInfo>();
+
+	auto *patch_data = queue.push<OceanInfo>(Queue::Opaque, instance_key, 0,
+	                                         RenderFunctions::ocean_render,
+	                                         instance_data);
+
+	if (patch_data)
+	{
+		OceanInfo ocean_info;
+		ocean_info.program =
+				queue.get_shader_suites()[Util::ecast(RenderableType::Ocean)].get_program(DrawPipeline::Opaque,
+				                                                                          MESH_ATTRIBUTE_POSITION_BIT,
+				                                                                          MATERIAL_TEXTURE_BASE_COLOR_BIT);
+
+		ocean_info.ubo = &ubo;
+		ocean_info.indirect = &indirect;
+		ocean_info.lod_stride = grid_width * grid_height;
+		*patch_data = ocean_info;
+	}
 }
 
 void Ocean::build_lod(Vulkan::Device &device, unsigned size, unsigned stride)

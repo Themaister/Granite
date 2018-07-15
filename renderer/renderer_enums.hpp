@@ -31,6 +31,7 @@ enum class RenderableType
 	Skybox,
 	SkyCylinder,
 	Ground,
+	Ocean,
 	Sprite,
 	LineUI,
 	TexturePlane,

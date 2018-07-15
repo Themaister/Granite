@@ -174,6 +174,8 @@ void Renderer::on_device_created(const DeviceCreatedEvent &created)
 		                                                   "builtin://shaders/skycylinder.frag");
 		suite[ecast(RenderableType::Ground)].init_graphics(&device.get_shader_manager(), "builtin://shaders/ground.vert",
 		                                                   "builtin://shaders/ground.frag");
+		suite[ecast(RenderableType::Ocean)].init_graphics(&device.get_shader_manager(), "builtin://shaders/ocean/ocean.vert",
+		                                                  "builtin://shaders/ocean/ocean.frag");
 		suite[ecast(RenderableType::TexturePlane)].init_graphics(&device.get_shader_manager(),
 		                                                         "builtin://shaders/texture_plane.vert",
 		                                                         "builtin://shaders/texture_plane.frag");

@@ -95,6 +95,9 @@ private:
 
 	RenderGraph *graph = nullptr;
 
+	void build_lod_map(Vulkan::CommandBuffer &cmd);
+	void cull_blocks(Vulkan::CommandBuffer &cmd);
+	void init_counter_buffer(Vulkan::CommandBuffer &cmd);
 	void update_lod_pass(Vulkan::CommandBuffer &cmd);
 	void update_fft_pass(Vulkan::CommandBuffer &cmd);
 	void update_fft_input(Vulkan::CommandBuffer &cmd);
@@ -126,5 +129,6 @@ private:
 
 	void add_lod_update_pass(RenderGraph &graph);
 	void add_fft_update_pass(RenderGraph &graph);
+	vec2 get_snapped_grid_center() const;
 };
 }

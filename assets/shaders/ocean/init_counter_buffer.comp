@@ -1,0 +1,36 @@
+#version 450
+layout(local_size_x = 16) in;
+
+layout(set = 0, binding = 0, std430) writeonly buffer LODCounter
+{
+    IndirectDraw draws[];
+};
+
+layout(set = 0, binding = 1, std140) uniform DrawCounters
+{
+    uvec4 counts[4];
+};
+
+struct IndirectDraw
+{
+    uint index_count;
+    uint instance_count;
+    uint first_index;
+    int vertex_offset;
+    uint first_instance;
+    uint padding0;
+    uint padding1;
+    uint padding2;
+};
+
+void main()
+{
+    uint index = gl_GlobalInvocationID.x >> 2u;
+    uint elem = gl_GlobalInvocationID.x & 3u;
+
+    IndirectDraw draw = IndirectDraw(
+        counts[index][elem], 0, 0, 0,
+        0, 0, 0, 0);
+
+    draws[gl_GlobalInvocationID.x] = draw;
+}

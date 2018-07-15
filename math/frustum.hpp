@@ -38,6 +38,11 @@ public:
 
 	static vec4 get_bounding_sphere(const mat4 &inv_projection, const mat4 &inv_view);
 
+	const vec4 *get_planes() const
+	{
+		return planes;
+	}
+
 private:
 	vec4 planes[6];
 	mat4 inv_view_projection;

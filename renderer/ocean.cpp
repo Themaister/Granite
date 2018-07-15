@@ -115,26 +115,32 @@ void Ocean::set_scene(Scene *)
 {
 }
 
-void Ocean::setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target)
+void Ocean::setup_render_pass_dependencies(RenderGraph &, RenderPass &target)
+{
+	target.add_indirect_buffer_input("ocean-lod-counter");
+	target.add_uniform_input("ocean-lod-data", VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
+	target.add_texture_input("ocean-lods", VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
+}
+
+void Ocean::setup_render_pass_resources(RenderGraph &)
 {
 
 }
 
-void Ocean::setup_render_pass_resources(RenderGraph &graph)
+vec2 Ocean::get_snapped_grid_center() const
 {
-
+	vec2 inv_grid_size = vec2(grid_width, grid_height) / size;
+	vec2 grid_center = round(last_camera_position.xz() * inv_grid_size);
+	return grid_center;
 }
 
-void Ocean::update_lod_pass(Vulkan::CommandBuffer &cmd)
+void Ocean::build_lod_map(Vulkan::CommandBuffer &cmd)
 {
 	auto &lod = graph->get_physical_texture_resource(*ocean_lod);
 	cmd.set_storage_texture(0, 0, lod);
 
-	vec2 grid_size = size / vec2(grid_width, grid_height);
-	vec2 inv_grid_size = 1.0f / grid_size;
-
-	vec2 grid_center = round(last_camera_position.xz() * inv_grid_size);
-	vec2 grid_base = grid_center - 0.5f * grid_size;
+	vec2 grid_center = get_snapped_grid_center();
+	vec2 grid_base = grid_center - 0.5f * size;
 
 	struct Push
 	{
@@ -146,7 +152,7 @@ void Ocean::update_lod_pass(Vulkan::CommandBuffer &cmd)
 		alignas(8) vec2 grid_size;
 	} push;
 	push.camera_pos = last_camera_position;
-	push.image_offset = ivec2(grid_center);
+	push.image_offset = ivec2(grid_center) - (ivec2(grid_width, grid_height) >> 1);
 	push.num_threads = ivec2(grid_width, grid_height);
 	push.grid_base = grid_base;
 	push.grid_size = size;
@@ -155,9 +161,67 @@ void Ocean::update_lod_pass(Vulkan::CommandBuffer &cmd)
 
 	cmd.set_program("builtin://shaders/ocean/update_lod.comp");
 	cmd.dispatch((grid_width + 7) / 8, (grid_height + 7) / 8, 1);
+}
+
+void Ocean::init_counter_buffer(Vulkan::CommandBuffer &cmd)
+{
+	cmd.set_storage_buffer(0, 0, graph->get_physical_buffer_resource(*lod_data_counters));
+	uint32_t *vertex_counts = cmd.allocate_typed_constant_data<uint32_t>(0, 1, 16);
+	for (unsigned i = 0; i < 16; i++)
+		vertex_counts[i] = (i < quad_lod.size()) ? quad_lod[i].count : 0;
+
+	cmd.set_program("builtin://shaders/ocean/init_counter_buffer.comp");
+	cmd.dispatch(1, 1, 1);
+}
+
+void Ocean::cull_blocks(Vulkan::CommandBuffer &cmd)
+{
+	struct Push
+	{
+		alignas(8) ivec2 image_offset;
+		alignas(8) ivec2 num_threads;
+		alignas(8) vec2 inv_num_threads;
+		alignas(8) vec2 grid_base;
+		alignas(8) vec2 grid_size;
+		alignas(4) uint lod_stride;
+	} push;
+
+	vec2 grid_center = get_snapped_grid_center();
+	vec2 grid_base = grid_center - 0.5f * size;
+
+	memcpy(cmd.allocate_typed_constant_data<vec4>(0, 3, 6),
+	       context->get_visibility_frustum().get_planes(),
+	       sizeof(vec4) * 6);
+
+	push.image_offset = ivec2(get_snapped_grid_center()) - (ivec2(grid_width, grid_height) >> 1);
+	push.num_threads = ivec2(grid_width, grid_height);
+	push.inv_num_threads = 1.0f / vec2(push.num_threads);
+	push.grid_base = grid_base;
+	push.grid_size = size / vec2(grid_width, grid_height);
+	push.lod_stride = grid_width * grid_height;
+
+	cmd.push_constants(&push, 0, sizeof(push));
+
+	auto &lod = graph->get_physical_texture_resource(*ocean_lod);
+	auto &lod_buffer = graph->get_physical_buffer_resource(*lod_data);
+	cmd.set_storage_buffer(0, 0, lod_buffer);
+	auto &lod_counter_buffer = graph->get_physical_buffer_resource(*lod_data_counters);
+	cmd.set_storage_buffer(0, 1, lod_counter_buffer);
+	cmd.set_texture(0, 2, lod, Vulkan::StockSampler::NearestWrap);
+
+	cmd.set_program("builtin://shaders/ocean/cull_blocks.comp");
+	cmd.dispatch((grid_width + 7) / 8, (grid_height + 7) / 8, 1);
+}
+
+void Ocean::update_lod_pass(Vulkan::CommandBuffer &cmd)
+{
+	build_lod_map(cmd);
+	init_counter_buffer(cmd);
 
 	cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
-	            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+	            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT);
+
+	cull_blocks(cmd);
 }
 
 void Ocean::update_fft_input(Vulkan::CommandBuffer &cmd)
@@ -240,8 +304,7 @@ void Ocean::add_lod_update_pass(RenderGraph &graph)
 	ocean_lod = &update_lod.add_storage_texture_output("ocean-lods", lod_attachment);
 
 	BufferInfo lod_info_counter;
-	lod_info_counter.size = 16 * sizeof(uint32_t);
-	lod_info_counter.persistent = false;
+	lod_info_counter.size = 16 * sizeof(uvec2);
 	lod_data_counters = &update_lod.add_storage_output("ocean-lod-counter", lod_info_counter);
 
 	BufferInfo lod_info;
@@ -320,9 +383,9 @@ void Ocean::add_render_passes(RenderGraph &graph)
 	add_fft_update_pass(graph);
 }
 
-void Ocean::get_render_info(const RenderContext &context,
+void Ocean::get_render_info(const RenderContext &,
                             const CachedSpatialTransformComponent *,
-                            RenderQueue &queue) const
+                            RenderQueue &) const
 {
 
 }

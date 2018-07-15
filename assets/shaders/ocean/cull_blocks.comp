@@ -1,0 +1,83 @@
+#version 450
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(std430, push_constant) uniform Registers
+{
+    ivec2 image_offset;
+    ivec2 num_threads;
+    vec2 inv_num_threads;
+    vec2 grid_base;
+    vec2 grid_size;
+    uint lod_stride;
+} registers;
+
+struct PatchData
+{
+    vec2 Offsets;
+    float InnerLOD;
+    float Padding;
+    vec4 LODs;
+};
+
+layout(std140, set = 0, binding = 3) uniform Frustum
+{
+    vec4 frustum[6];
+};
+
+layout(std430, set = 0, binding = 0) writeonly buffer LODOutput
+{
+    PatchData patches[];
+};
+
+struct IndirectDraw
+{
+    uint index_count;
+    uint instance_count;
+    uint first_index;
+    int vertex_offset;
+    uint first_instance;
+    uint padding0;
+    uint padding1;
+    uint padding2;
+};
+
+layout(std430, set = 0, binding = 1) buffer LODCounters
+{
+    IndirectDraw draws[];
+};
+
+layout(set = 0, binding = 2) uniform sampler2D uLODs;
+
+int compute_lod(vec4 lods)
+{
+    vec2 xy = min(lods.xy, lods.zw);
+    return int(min(xy.x, xy.y));
+}
+
+void main()
+{
+    ivec2 coord = ivec2(gl_GlobalInvocationID.xy) + registers.image_offset;
+    vec2 uv = (vec2(coord) + 0.5) * registers.inv_num_threads;
+
+    float lod_x0 = textureLodOffset(uLODs, uv, 0.0, ivec2(-1, 0)).x;
+    float lod_y0 = textureLodOffset(uLODs, uv, 0.0, ivec2(0, -1)).x;
+    float lod_center = textureLod(uLODs, uv, 0.0).x;
+    float lod_x1 = textureLodOffset(uLODs, uv, 0.0, ivec2(+1, 0)).x;
+    float lod_y1 = textureLodOffset(uLODs, uv, 0.0, ivec2(0, +1)).x;
+
+    vec4 lods = vec4(
+        min(lod_x0, lod_center),
+        min(lod_x1, lod_center),
+        min(lod_y0, lod_center),
+        min(lod_y1, lod_center));
+    float inner_lod = lod_center;
+
+    int lod = compute_lod(lods);
+    uint offset = atomicAdd(draws[lod].instance_count, 1u);
+    offset += registers.lod_stride * lod;
+
+    vec2 offsets = registers.grid_base + vec2(gl_GlobalInvocationID.xy) * registers.grid_size;
+
+    PatchData block = PatchData(offsets, inner_lod, 0.0, lods);
+    patches[offset] = block;
+}

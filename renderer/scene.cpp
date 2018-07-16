@@ -144,7 +144,7 @@ EntityPool &Scene::get_entity_pool()
 	return pool;
 }
 
-void Scene::gather_background_renderables(VisibilityList &list)
+void Scene::gather_unbounded_renderables(VisibilityList &list)
 {
 	for (auto &background : backgrounds)
 		list.push_back({ get<1>(background)->renderable.get(), nullptr });

@@ -71,6 +71,10 @@ struct UnboundedComponent : ComponentBase
 {
 };
 
+struct BackgroundComponent : ComponentBase
+{
+};
+
 struct EnvironmentComponent : ComponentBase
 {
 	FogParameters fog;

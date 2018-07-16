@@ -223,7 +223,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 		get<0>(box)->skybox->set_color_mod(vec3(skydome_intensity));
 
 	// Create a dummy background if there isn't any background.
-	if (scene_loader.get_scene().get_entity_pool().get_component_group<UnboundedComponent>().empty())
+	if (scene_loader.get_scene().get_entity_pool().get_component_group<BackgroundComponent>().empty())
 	{
 		auto cylinder = Util::make_handle<SkyCylinder>("builtin://textures/background.png");
 		cylinder->set_xz_scale(8.0f / pi<float>());
@@ -521,7 +521,7 @@ void SceneViewerApplication::capture_environment_probe()
 		visible.clear();
 		scene.gather_visible_opaque_renderables(context.get_visibility_frustum(), visible);
 		scene.gather_visible_render_pass_sinks(context.get_render_parameters().camera_position, visible);
-		scene.gather_background_renderables(visible);
+		scene.gather_unbounded_renderables(visible);
 		forward_renderer.set_mesh_renderer_options_from_lighting(lighting);
 		forward_renderer.set_mesh_renderer_options(forward_renderer.get_mesh_renderer_options() | config.pcf_flags);
 		forward_renderer.begin();
@@ -559,7 +559,7 @@ void SceneViewerApplication::render_main_pass(Vulkan::CommandBuffer &cmd, const 
 			depth_renderer.flush(cmd, context, Renderer::NO_COLOR);
 		}
 
-		scene.gather_background_renderables(visible);
+		scene.gather_unbounded_renderables(visible);
 
 		forward_renderer.set_mesh_renderer_options_from_lighting(lighting);
 		forward_renderer.set_mesh_renderer_options(forward_renderer.get_mesh_renderer_options() | config.pcf_flags);
@@ -574,7 +574,7 @@ void SceneViewerApplication::render_main_pass(Vulkan::CommandBuffer &cmd, const 
 	}
 	else if (config.renderer_type == RendererType::GeneralDeferred)
 	{
-		scene.gather_background_renderables(visible);
+		scene.gather_unbounded_renderables(visible);
 		deferred_renderer.begin();
 		deferred_renderer.push_renderables(context, visible);
 		deferred_renderer.flush(cmd, context);

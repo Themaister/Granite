@@ -296,6 +296,7 @@ void SceneLoader::parse_gltf(const std::string &path)
 		{
 			skybox = Util::make_handle<Skybox>(env.cube.path, false);
 			entity = this->scene->create_renderable(skybox, nullptr);
+			entity->allocate_component<BackgroundComponent>();
 
 			if (!env.reflection.path.empty() && !env.irradiance.path.empty())
 			{
@@ -592,6 +593,7 @@ void SceneLoader::parse_scene_format(const std::string &path, const std::string 
 				irradiance = Path::relpath(path, box["irradiance"].GetString());
 
 			entity = scene->create_renderable(renderable, nullptr);
+			entity->allocate_component<BackgroundComponent>();
 
 			if (use_ibl || (!reflection.empty() && !irradiance.empty()))
 			{

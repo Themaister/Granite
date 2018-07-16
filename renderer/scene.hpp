@@ -56,7 +56,7 @@ public:
 	                                      unsigned max_spot_lights = std::numeric_limits<unsigned>::max(),
 	                                      unsigned max_point_lights = std::numeric_limits<unsigned>::max());
 	void gather_visible_render_pass_sinks(const vec3 &camera_pos, VisibilityList &list);
-	void gather_background_renderables(VisibilityList &list);
+	void gather_unbounded_renderables(VisibilityList &list);
 	EnvironmentComponent *get_environment() const;
 	EntityPool &get_entity_pool();
 

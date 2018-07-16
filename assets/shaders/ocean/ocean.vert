@@ -1,13 +1,17 @@
 #version 450
-#include "inc/render_parameters.h"
+#include "../inc/render_parameters.h"
 
 layout(location = 0) in uvec4 aPosition;
 layout(location = 1) in vec4 aLODWeights;
 layout(location = 0) out vec3 vPos;
 layout(location = 1) out vec4 vGradNormalUV;
 
+#define NO_HEIGHTMAP
+
+#ifndef NO_HEIGHTMAP
 layout(set = 2, binding = 0) uniform sampler2D uHeightmap;
-layout(set = 2, binding = 3) uniform sampler2D uLodMap;
+#endif
+layout(set = 2, binding = 1) uniform sampler2D uLodMap;
 
 struct PatchData
 {
@@ -22,13 +26,12 @@ layout(set = 3, binding = 0, std140) uniform Patches
     PatchData data[512];
 } patches;
 
-layout(std140, set = 3, binding = 1) uniform OceanData
+layout(std430, push_constant) uniform Registers
 {
-    vec2 uInvHeightmapSize;
-    vec2 uUVShift;
-    vec2 uUVTilingScale;
-    vec2 uTangentScale;
-};
+    vec2 inv_heightmap_size;
+    vec2 normal_uv_scale;
+    vec2 integer_to_world_mod;
+} registers;
 
 vec2 warp_position()
 {
@@ -42,7 +45,7 @@ vec2 warp_position()
     uvec2 mask = (uvec2(1u) << uvec2(ufloor_lod, ufloor_lod + 1u)) - 1u;
     uvec4 rounding = aPosition.zwzw * mask.xxyy;
     vec4 lower_upper_snapped = vec4((aPosition.xyxy + rounding) & ~mask.xxyy);
-    return mix(lower_upper_snapped.xy, lower_upper_snapped.zw, fract_lod) + patches.data[gl_InstanceIndex].Offsets;
+    return mix(lower_upper_snapped.xy, lower_upper_snapped.zw, fract_lod);
 }
 
 mediump vec2 lod_factor(vec2 uv)
@@ -53,6 +56,7 @@ mediump vec2 lod_factor(vec2 uv)
     return vec2(floor_level, fract_level);
 }
 
+#ifndef NO_HEIGHTMAP
 mediump vec3 sample_height_displacement(vec2 uv, vec2 off, mediump vec2 lod)
 {
     return clamp(mix(
@@ -60,20 +64,28 @@ mediump vec3 sample_height_displacement(vec2 uv, vec2 off, mediump vec2 lod)
             textureLod(uHeightmap, uv + 1.0 * off, lod.x + 1.0).xyz,
             lod.y), -1.0, 1.0);
 }
+#endif
 
 void main()
 {
-    vec2 pos = warp_position() * uInvHeightmapSize;
-    vec2 uv = pos;
+    vec2 pos = warp_position();
+    pos += patches.data[gl_InstanceIndex].Offsets;
+    vec2 uv = pos * registers.inv_heightmap_size;
+
     mediump vec2 lod = lod_factor(uv);
-    uv += uUVShift;
 
     mediump float delta_mod = exp2(lod.x);
-    vec2 off = uInvHeightmapSize * delta_mod;
+    vec2 off = registers.inv_heightmap_size * delta_mod;
 
-    vGradNormalUV = vec4(uv + 0.5 * uInvHeightmapSize, uv * uScale.zw);
-    vec3 height_displacement = sample_height_displacement(uv, off, lod).xyz;
+    vec2 centered_uv = uv + 0.5 * registers.inv_heightmap_size;
+    vGradNormalUV = vec4(centered_uv, centered_uv * registers.normal_uv_scale);
+#ifndef NO_HEIGHTMAP
+    mediump vec3 height_displacement = sample_height_displacement(uv, off, lod).xyz;
+#else
+    mediump vec3 height_displacement = vec3(0.0);
+#endif
 
+    pos *= registers.integer_to_world_mod;
     pos += height_displacement.yz;
     vec3 world = vec3(pos.x, height_displacement.x, pos.y);
     vPos = world;

@@ -8,6 +8,7 @@ layout(std430, push_constant) uniform Registers
     vec2 inv_num_threads;
     vec2 grid_base;
     vec2 grid_size;
+    vec2 grid_resolution;
     uint lod_stride;
 } registers;
 
@@ -76,7 +77,7 @@ void main()
     uint offset = atomicAdd(draws[lod].instance_count, 1u);
     offset += registers.lod_stride * lod;
 
-    vec2 offsets = registers.grid_base + vec2(gl_GlobalInvocationID.xy) * registers.grid_size;
+    vec2 offsets = vec2(coord) * registers.grid_resolution;
 
     PatchData block = PatchData(offsets, inner_lod, 0.0, lods);
     patches[offset] = block;

@@ -62,6 +62,9 @@ Ocean::Handles Ocean::add_to_scene(Scene &scene)
 	auto *renderable = handles.entity->allocate_component<RenderableComponent>();
 	renderable->renderable = ocean;
 
+	handles.entity->allocate_component<OpaqueComponent>();
+	handles.entity->allocate_component<UnboundedComponent>();
+
 	return handles;
 }
 
@@ -217,6 +220,7 @@ void Ocean::cull_blocks(Vulkan::CommandBuffer &cmd)
 		alignas(8) vec2 inv_num_threads;
 		alignas(8) vec2 grid_base;
 		alignas(8) vec2 grid_size;
+		alignas(8) vec2 grid_resolution;
 		alignas(4) uint lod_stride;
 	} push;
 
@@ -233,6 +237,7 @@ void Ocean::cull_blocks(Vulkan::CommandBuffer &cmd)
 	push.grid_base = grid_base;
 	push.grid_size = get_grid_size();
 	push.lod_stride = grid_width * grid_height;
+	push.grid_resolution = vec2(grid_resolution);
 
 	cmd.push_constants(&push, 0, sizeof(push));
 
@@ -417,6 +422,13 @@ void Ocean::add_render_passes(RenderGraph &graph)
 	add_fft_update_pass(graph);
 }
 
+struct OceanData
+{
+	vec2 inv_heightmap_size;
+	vec2 normal_uv_scale;
+	vec2 integer_to_world_mod;
+};
+
 struct OceanInfo
 {
 	Vulkan::Program *program;
@@ -424,21 +436,15 @@ struct OceanInfo
 	const Vulkan::Buffer *indirect;
 	const Vulkan::Buffer *vbos[MaxLODIndirect];
 	const Vulkan::Buffer *ibos[MaxLODIndirect];
-	unsigned counts[MaxLODIndirect];
+	const Vulkan::ImageView *lod_map;
+	unsigned lods;
 	unsigned lod_stride;
+	OceanData data;
 };
 
 struct OceanInstanceInfo
 {
 
-};
-
-struct OceanData
-{
-    vec2 uInvHeightmapSize;
-    vec2 uUVShift;
-    vec2 uUVTilingScale;
-    vec2 uTangentScale;
 };
 
 namespace RenderFunctions
@@ -451,17 +457,19 @@ static void ocean_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *info
 	cmd.set_vertex_attrib(0, 0, VK_FORMAT_R8G8B8A8_UINT, offsetof(OceanVertex, pos));
 	cmd.set_vertex_attrib(1, 0, VK_FORMAT_R8G8B8A8_UNORM, offsetof(OceanVertex, weights));
 	cmd.set_primitive_restart(true);
+	cmd.set_wireframe(true);
+	cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
 
 	for (unsigned instance = 0; instance < num_instances; instance++)
 	{
-		auto &ocean_data = *cmd.allocate_typed_constant_data<OceanData>(3, 1, 1);
-		memset(&ocean_data, 0, sizeof(ocean_data));
+		cmd.push_constants(&ocean_info.data, 0, sizeof(ocean_info.data));
+		cmd.set_texture(2, 1, *ocean_info.lod_map, Vulkan::StockSampler::LinearWrap);
 
-		for (unsigned lod = 0; lod < MaxLODIndirect; lod++)
+		for (unsigned lod = 0; lod < ocean_info.lods; lod++)
 		{
 			cmd.set_uniform_buffer(3, 0, *ocean_info.ubo,
 			                       ocean_info.lod_stride * lod,
-			                       ocean_info.lod_stride * 2 * sizeof(vec4));
+			                       ocean_info.lod_stride);
 
 			cmd.set_vertex_binding(0, *ocean_info.vbos[lod], 0, 8);
 			cmd.set_index_buffer(*ocean_info.ibos[lod], 0, VK_INDEX_TYPE_UINT16);
@@ -479,30 +487,38 @@ void Ocean::get_render_info(const RenderContext &,
 
 	auto &ubo = graph->get_physical_buffer_resource(*lod_data);
 	auto &indirect = graph->get_physical_buffer_resource(*lod_data_counters);
+	auto &lod = graph->get_physical_texture_resource(*ocean_lod);
 
 	hasher.string("ocean");
 	hasher.u64(ubo.get_cookie());
 	hasher.u64(indirect.get_cookie());
 	auto instance_key = hasher.get();
 
-	auto *instance_data = queue.allocate_one<OceanInstanceInfo>();
-
-	auto *patch_data = queue.push<OceanInfo>(Queue::Opaque, instance_key, 0,
+	auto *patch_data = queue.push<OceanInfo>(Queue::Opaque, instance_key, 1,
 	                                         RenderFunctions::ocean_render,
-	                                         instance_data);
+	                                         nullptr);
 
 	if (patch_data)
 	{
-		OceanInfo ocean_info;
-		ocean_info.program =
+		patch_data->program =
 				queue.get_shader_suites()[Util::ecast(RenderableType::Ocean)].get_program(DrawPipeline::Opaque,
 				                                                                          MESH_ATTRIBUTE_POSITION_BIT,
 				                                                                          MATERIAL_TEXTURE_BASE_COLOR_BIT);
 
-		ocean_info.ubo = &ubo;
-		ocean_info.indirect = &indirect;
-		ocean_info.lod_stride = grid_width * grid_height;
-		*patch_data = ocean_info;
+		patch_data->lod_map = &lod;
+		patch_data->ubo = &ubo;
+		patch_data->indirect = &indirect;
+		patch_data->lod_stride = grid_width * grid_height * 2 * sizeof(vec4);
+		patch_data->lods = unsigned(quad_lod.size());
+		patch_data->data.inv_heightmap_size = 1.0f / vec2(height_fft_size);
+		patch_data->data.integer_to_world_mod = get_grid_size() / vec2(grid_resolution);
+		patch_data->data.normal_uv_scale = size / size_normal;
+
+		for (unsigned i = 0; i < unsigned(quad_lod.size()); i++)
+		{
+			patch_data->vbos[i] = quad_lod[i].vbo.get();
+			patch_data->ibos[i] = quad_lod[i].ibo.get();
+		}
 	}
 }
 

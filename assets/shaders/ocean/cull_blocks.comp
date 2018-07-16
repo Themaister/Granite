@@ -6,7 +6,7 @@ layout(local_size_x = 8, local_size_y = 8) in;
 layout(std430, push_constant) uniform Registers
 {
     ivec2 image_offset;
-    ivec2 num_threads;
+    uvec2 num_threads;
     vec2 inv_num_threads;
     vec2 grid_base;
     vec2 grid_size;
@@ -14,6 +14,7 @@ layout(std430, push_constant) uniform Registers
     vec2 heightmap_range;
     float guard_band;
     uint lod_stride;
+    float max_lod;
 } registers;
 
 layout(std140, set = 0, binding = 3) uniform Frustum
@@ -72,17 +73,19 @@ void main()
         ivec2 coord = ivec2(gl_GlobalInvocationID.xy) + registers.image_offset;
         vec2 uv = (vec2(coord) + 0.5) * registers.inv_num_threads;
 
-        float lod_x0 = textureLodOffset(uLODs, uv, 0.0, ivec2(-1, 0)).x;
-        float lod_y0 = textureLodOffset(uLODs, uv, 0.0, ivec2(0, -1)).x;
         float lod_center = textureLod(uLODs, uv, 0.0).x;
-        float lod_x1 = textureLodOffset(uLODs, uv, 0.0, ivec2(+1, 0)).x;
-        float lod_y1 = textureLodOffset(uLODs, uv, 0.0, ivec2(0, +1)).x;
-
         vec4 lods = vec4(
-            min(lod_x0, lod_center),
-            min(lod_x1, lod_center),
-            min(lod_y0, lod_center),
-            min(lod_y1, lod_center));
+            textureLodOffset(uLODs, uv, 0.0, ivec2(-1, 0)).x,
+            textureLodOffset(uLODs, uv, 0.0, ivec2(+1, 0)).x,
+            textureLodOffset(uLODs, uv, 0.0, ivec2(0, -1)).x,
+            textureLodOffset(uLODs, uv, 0.0, ivec2(0, +1)).x);
+
+        lods = mix(lods, vec4(registers.max_lod),
+                   equal(gl_GlobalInvocationID.xxyy,
+                         uvec4(0u, registers.num_threads.x - 1u,
+                               0u, registers.num_threads.y - 1u)));
+
+        lods = min(lods, vec4(lod_center));
         float inner_lod = lod_center;
 
         int lod = compute_lod(lods);

@@ -289,6 +289,7 @@ void Ocean::cull_blocks(Vulkan::CommandBuffer &cmd)
 		alignas(8) vec2 heightmap_range;
 		alignas(4) float guard_band;
 		alignas(4) uint lod_stride;
+		alignas(4) float max_lod;
 	} push;
 
 	vec2 grid_center = get_snapped_grid_center();
@@ -307,6 +308,7 @@ void Ocean::cull_blocks(Vulkan::CommandBuffer &cmd)
 	push.heightmap_range = vec2(-10.0f, 10.0f);
 	push.guard_band = 5.0f;
 	push.grid_resolution = vec2(config.grid_resolution);
+	push.max_lod = float(quad_lod.size()) - 1.0f;
 
 	cmd.push_constants(&push, 0, sizeof(push));
 

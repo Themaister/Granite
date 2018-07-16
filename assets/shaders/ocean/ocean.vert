@@ -7,8 +7,6 @@ layout(location = 1) in vec4 aLODWeights;
 layout(location = 0) out vec3 vPos;
 layout(location = 1) out vec4 vGradNormalUV;
 
-#define NO_HEIGHTMAP
-
 #ifndef NO_HEIGHTMAP
 layout(set = 2, binding = 0) uniform sampler2D uHeightmap;
 #endif
@@ -56,7 +54,7 @@ mediump vec3 sample_height_displacement(vec2 uv, vec2 off, mediump vec2 lod)
     return clamp(mix(
             textureLod(uHeightmap, uv + 0.5 * off, lod.x).xyz,
             textureLod(uHeightmap, uv + 1.0 * off, lod.x + 1.0).xyz,
-            lod.y), registers.heightmap_range.x, reigsters.heightmap_range.y);
+            lod.y), registers.heightmap_range.x, registers.heightmap_range.y);
 }
 #endif
 

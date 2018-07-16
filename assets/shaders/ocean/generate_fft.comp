@@ -68,5 +68,5 @@ void main()
     res = grad;
 #endif
 
-    fft_input[i.y * N.x + i.x] = pack2(res);
+    fft_input[i.y * registers.N.x + i.x] = pack2(res);
 }

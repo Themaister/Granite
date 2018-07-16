@@ -140,6 +140,7 @@ private:
 
 	void build_buffers(Vulkan::Device &device);
 	void build_lod(Vulkan::Device &device, unsigned size, unsigned stride);
+	void init_distributions(Vulkan::Device &device);
 
 	void add_lod_update_pass(RenderGraph &graph);
 	void add_fft_update_pass(RenderGraph &graph);

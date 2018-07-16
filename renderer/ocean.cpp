@@ -106,6 +106,7 @@ void Ocean::on_device_created(const Vulkan::DeviceCreatedEvent &e)
 	                                cache, options));
 
 	build_buffers(e.get_device());
+	init_distributions(e.get_device());
 }
 
 void Ocean::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
@@ -149,6 +150,10 @@ void Ocean::setup_render_pass_dependencies(RenderGraph &, RenderPass &target)
 	target.add_indirect_buffer_input("ocean-lod-counter");
 	target.add_uniform_input("ocean-lod-data", VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
 	target.add_texture_input("ocean-lods", VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
+
+	target.add_texture_input("ocean-height-displacement-output", VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
+	target.add_texture_input("ocean-gradient-jacobian-output", VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+	target.add_texture_input("ocean-normal-fft-output", VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 }
 
 void Ocean::setup_render_pass_resources(RenderGraph &graph)
@@ -332,14 +337,14 @@ void Ocean::update_fft_input(Vulkan::CommandBuffer &cmd)
 	cmd.set_storage_buffer(0, 0, *distribution_buffer);
 	cmd.set_storage_buffer(0, 1, graph->get_physical_buffer_resource(*height_fft_input));
 	cmd.push_constants(&push, 0, sizeof(push));
-	cmd.dispatch(height_fft_size / 64, 1, 1);
+	cmd.dispatch(height_fft_size / 64, height_fft_size, 1);
 
 	cmd.set_program(*program->get_program(displacement_variant));
 	push.N = uvec2(normal_fft_size, normal_fft_size);
 	cmd.set_storage_buffer(0, 0, *distribution_buffer_displacement);
 	cmd.set_storage_buffer(0, 1, graph->get_physical_buffer_resource(*displacement_fft_input));
 	cmd.push_constants(&push, 0, sizeof(push));
-	cmd.dispatch(displacement_fft_size / 64, 1, 1);
+	cmd.dispatch(displacement_fft_size / 64, displacement_fft_size, 1);
 
 	push.mod = vec2(2.0f * pi<float>()) / size_normal;
 	cmd.set_program(*program->get_program(normal_variant));
@@ -347,7 +352,7 @@ void Ocean::update_fft_input(Vulkan::CommandBuffer &cmd)
 	cmd.set_storage_buffer(0, 0, *distribution_buffer_normal);
 	cmd.set_storage_buffer(0, 1, graph->get_physical_buffer_resource(*normal_fft_input));
 	cmd.push_constants(&push, 0, sizeof(push));
-	cmd.dispatch(normal_fft_size / 64, 1, 1);
+	cmd.dispatch(normal_fft_size / 64, normal_fft_size, 1);
 }
 
 void Ocean::compute_fft(Vulkan::CommandBuffer &cmd)
@@ -426,7 +431,7 @@ void Ocean::generate_mipmaps(Vulkan::CommandBuffer &cmd)
 			cmd.push_constants(&push, 0, sizeof(push));
 			cmd.set_storage_texture(0, 0, *vertex_mip_views[i]);
 			cmd.set_texture(0, 1, *vertex_mip_views[i - 1], Vulkan::StockSampler::LinearWrap);
-			cmd.dispatch((height_fft_size + 7) / 8, (height_fft_size + 7) / 8, 1);
+			cmd.dispatch((push.count.x + 7) / 8, (push.count.y + 7) / 8, 1);
 		}
 
 		cmd.set_program("builtin://shaders/ocean/mipmap.comp",
@@ -442,11 +447,11 @@ void Ocean::generate_mipmaps(Vulkan::CommandBuffer &cmd)
 			cmd.push_constants(&push, 0, sizeof(push));
 			cmd.set_storage_texture(0, 0, *fragment_mip_views[i]);
 			cmd.set_texture(0, 1, *fragment_mip_views[i - 1], Vulkan::StockSampler::LinearWrap);
-			cmd.dispatch((height_fft_size + 7) / 8, (height_fft_size + 7) / 8, 1);
+			cmd.dispatch((push.count.x + 7) / 8, (push.count.y + 7) / 8, 1);
 		}
 
 		cmd.set_program("builtin://shaders/ocean/mipmap.comp",
-		                {{ "MIPMAP_RGBA16F", 1 }});
+		                {{ "MIPMAP_RG16F", 1 }});
 
 		if (i < normal.get_image().get_create_info().levels)
 		{
@@ -458,7 +463,7 @@ void Ocean::generate_mipmaps(Vulkan::CommandBuffer &cmd)
 			cmd.push_constants(&push, 0, sizeof(push));
 			cmd.set_storage_texture(0, 0, *normal_mip_views[i]);
 			cmd.set_texture(0, 1, *normal_mip_views[i - 1], Vulkan::StockSampler::LinearWrap);
-			cmd.dispatch((normal_fft_size + 7) / 8, (normal_fft_size + 7) / 8, 1);
+			cmd.dispatch((push.count.x + 7) / 8, (push.count.y + 7) / 8, 1);
 		}
 	}
 }
@@ -528,6 +533,10 @@ void Ocean::add_fft_update_pass(RenderGraph &graph)
 	height_map.size_y = float(height_fft_size);
 	height_map.format = VK_FORMAT_R16_SFLOAT;
 
+	height_map.aux_usage = VK_IMAGE_USAGE_SAMPLED_BIT;
+	displacement_map.aux_usage = VK_IMAGE_USAGE_SAMPLED_BIT;
+	normal_map.aux_usage = VK_IMAGE_USAGE_SAMPLED_BIT;
+
 	auto &update_fft = graph.add_pass("ocean-update-fft", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
 
 	height_fft_input = &update_fft.add_storage_output("ocean-height-fft-input",
@@ -589,15 +598,15 @@ struct OceanInfo
 	const Vulkan::Buffer *indirect;
 	const Vulkan::Buffer *vbos[MaxLODIndirect];
 	const Vulkan::Buffer *ibos[MaxLODIndirect];
+
+	const Vulkan::ImageView *heightmap;
 	const Vulkan::ImageView *lod_map;
+	const Vulkan::ImageView *grad_jacobian;
+	const Vulkan::ImageView *normal;
+
 	unsigned lods;
 	unsigned lod_stride;
 	OceanData data;
-};
-
-struct OceanInstanceInfo
-{
-
 };
 
 namespace RenderFunctions
@@ -616,7 +625,10 @@ static void ocean_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *info
 	for (unsigned instance = 0; instance < num_instances; instance++)
 	{
 		cmd.push_constants(&ocean_info.data, 0, sizeof(ocean_info.data));
+		cmd.set_texture(2, 0, *ocean_info.heightmap, Vulkan::StockSampler::LinearWrap);
 		cmd.set_texture(2, 1, *ocean_info.lod_map, Vulkan::StockSampler::LinearWrap);
+		cmd.set_texture(2, 2, *ocean_info.grad_jacobian, Vulkan::StockSampler::TrilinearWrap);
+		cmd.set_texture(2, 3, *ocean_info.normal, Vulkan::StockSampler::TrilinearWrap);
 
 		for (unsigned lod = 0; lod < ocean_info.lods; lod++)
 		{
@@ -641,8 +653,15 @@ void Ocean::get_render_info(const RenderContext &,
 	auto &ubo = graph->get_physical_buffer_resource(*lod_data);
 	auto &indirect = graph->get_physical_buffer_resource(*lod_data_counters);
 	auto &lod = graph->get_physical_texture_resource(*ocean_lod);
+	auto &normal = graph->get_physical_texture_resource(*normal_fft_output);
+	auto &height_displacement = graph->get_physical_texture_resource(*height_displacement_output);
+	auto &grad_jacobian = graph->get_physical_texture_resource(*gradient_jacobian_output);
 
 	hasher.string("ocean");
+	hasher.u64(lod.get_cookie());
+	hasher.u64(normal.get_cookie());
+	hasher.u64(height_displacement.get_cookie());
+	hasher.u64(grad_jacobian.get_cookie());
 	hasher.u64(ubo.get_cookie());
 	hasher.u64(indirect.get_cookie());
 	auto instance_key = hasher.get();
@@ -658,7 +677,11 @@ void Ocean::get_render_info(const RenderContext &,
 				                                                                          MESH_ATTRIBUTE_POSITION_BIT,
 				                                                                          MATERIAL_TEXTURE_BASE_COLOR_BIT);
 
+		patch_data->heightmap = &height_displacement;
 		patch_data->lod_map = &lod;
+		patch_data->grad_jacobian = &grad_jacobian;
+		patch_data->normal = &normal;
+
 		patch_data->ubo = &ubo;
 		patch_data->indirect = &indirect;
 		patch_data->lod_stride = grid_width * grid_height * 2 * sizeof(vec4);
@@ -747,6 +770,25 @@ void Ocean::build_buffers(Vulkan::Device &device)
 		size >>= 1;
 		stride <<= 1;
 	}
+}
+
+void Ocean::init_distributions(Vulkan::Device &device)
+{
+	Vulkan::BufferCreateInfo height_distribution = {};
+	height_distribution.domain = Vulkan::BufferDomain::Device;
+	height_distribution.misc = Vulkan::BUFFER_MISC_ZERO_INITIALIZE_BIT;
+	height_distribution.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+
+	auto displacement_distribution = height_distribution;
+	auto normal_distribution = height_distribution;
+
+	height_distribution.size = height_fft_size * height_fft_size * sizeof(vec2);
+	displacement_distribution.size = displacement_fft_size * displacement_fft_size * sizeof(vec2);
+	normal_distribution.size = normal_fft_size * normal_fft_size * sizeof(vec2);
+
+	distribution_buffer = device.create_buffer(height_distribution, nullptr);
+	distribution_buffer_displacement = device.create_buffer(displacement_distribution, nullptr);
+	distribution_buffer_normal = device.create_buffer(normal_distribution, nullptr);
 }
 
 }

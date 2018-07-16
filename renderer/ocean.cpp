@@ -221,6 +221,7 @@ void Ocean::cull_blocks(Vulkan::CommandBuffer &cmd)
 		alignas(8) vec2 grid_base;
 		alignas(8) vec2 grid_size;
 		alignas(8) vec2 grid_resolution;
+		alignas(8) vec2 heightmap_range;
 		alignas(4) uint lod_stride;
 	} push;
 
@@ -237,6 +238,7 @@ void Ocean::cull_blocks(Vulkan::CommandBuffer &cmd)
 	push.grid_base = grid_base;
 	push.grid_size = get_grid_size();
 	push.lod_stride = grid_width * grid_height;
+	push.heightmap_range = vec2(-10.0f, 10.0f);
 	push.grid_resolution = vec2(grid_resolution);
 
 	cmd.push_constants(&push, 0, sizeof(push));
@@ -427,6 +429,7 @@ struct OceanData
 	vec2 inv_heightmap_size;
 	vec2 normal_uv_scale;
 	vec2 integer_to_world_mod;
+	vec2 heightmap_range;
 };
 
 struct OceanInfo
@@ -513,6 +516,7 @@ void Ocean::get_render_info(const RenderContext &,
 		patch_data->data.inv_heightmap_size = 1.0f / vec2(height_fft_size);
 		patch_data->data.integer_to_world_mod = get_grid_size() / vec2(grid_resolution);
 		patch_data->data.normal_uv_scale = size / size_normal;
+		patch_data->data.heightmap_range = vec2(-10.0f, 10.0f);
 
 		for (unsigned i = 0; i < unsigned(quad_lod.size()); i++)
 		{

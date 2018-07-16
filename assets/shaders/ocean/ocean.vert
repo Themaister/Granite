@@ -31,6 +31,7 @@ layout(std430, push_constant) uniform Registers
     vec2 inv_heightmap_size;
     vec2 normal_uv_scale;
     vec2 integer_to_world_mod;
+    vec2 heightmap_range;
 } registers;
 
 vec2 warp_position()
@@ -62,7 +63,7 @@ mediump vec3 sample_height_displacement(vec2 uv, vec2 off, mediump vec2 lod)
     return clamp(mix(
             textureLod(uHeightmap, uv + 0.5 * off, lod.x).xyz,
             textureLod(uHeightmap, uv + 1.0 * off, lod.x + 1.0).xyz,
-            lod.y), -1.0, 1.0);
+            lod.y), registers.heightmap_range.x, reigsters.heightmap_range.y);
 }
 #endif
 

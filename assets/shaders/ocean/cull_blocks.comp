@@ -9,6 +9,7 @@ layout(std430, push_constant) uniform Registers
     vec2 grid_base;
     vec2 grid_size;
     vec2 grid_resolution;
+    vec2 heightmap_range;
     uint lod_stride;
 } registers;
 
@@ -55,30 +56,59 @@ int compute_lod(vec4 lods)
     return int(min(xy.x, xy.y));
 }
 
+bool is_inside_plane(vec3 lo, vec3 hi)
+{
+    bool ret = true;
+    for (int i = 0; i < 6; i++)
+    {
+        vec4 p = frustum[i];
+        bvec3 high_mask = greaterThan(p.xyz, vec3(0.0));
+        vec3 max_coord = mix(lo, hi, high_mask);
+        if (dot(vec4(max_coord, 1.0), p) < 0.0)
+        {
+            ret = false;
+            break;
+        }
+    }
+    return ret;
+}
+
+bool frustum_cull()
+{
+    vec2 min_xz = registers.grid_base + vec2(gl_GlobalInvocationID.xy) * registers.grid_size;
+    vec2 max_xz = min_xz + registers.grid_size;
+    vec3 lo = vec3(min_xz.x, registers.heightmap_range.x, min_xz.y);
+    vec3 hi = vec3(max_xz.x, registers.heightmap_range.y, max_xz.y);
+    return is_inside_plane(lo, hi);
+}
+
 void main()
 {
-    ivec2 coord = ivec2(gl_GlobalInvocationID.xy) + registers.image_offset;
-    vec2 uv = (vec2(coord) + 0.5) * registers.inv_num_threads;
+    if (frustum_cull())
+    {
+        ivec2 coord = ivec2(gl_GlobalInvocationID.xy) + registers.image_offset;
+        vec2 uv = (vec2(coord) + 0.5) * registers.inv_num_threads;
 
-    float lod_x0 = textureLodOffset(uLODs, uv, 0.0, ivec2(-1, 0)).x;
-    float lod_y0 = textureLodOffset(uLODs, uv, 0.0, ivec2(0, -1)).x;
-    float lod_center = textureLod(uLODs, uv, 0.0).x;
-    float lod_x1 = textureLodOffset(uLODs, uv, 0.0, ivec2(+1, 0)).x;
-    float lod_y1 = textureLodOffset(uLODs, uv, 0.0, ivec2(0, +1)).x;
+        float lod_x0 = textureLodOffset(uLODs, uv, 0.0, ivec2(-1, 0)).x;
+        float lod_y0 = textureLodOffset(uLODs, uv, 0.0, ivec2(0, -1)).x;
+        float lod_center = textureLod(uLODs, uv, 0.0).x;
+        float lod_x1 = textureLodOffset(uLODs, uv, 0.0, ivec2(+1, 0)).x;
+        float lod_y1 = textureLodOffset(uLODs, uv, 0.0, ivec2(0, +1)).x;
 
-    vec4 lods = vec4(
-        min(lod_x0, lod_center),
-        min(lod_x1, lod_center),
-        min(lod_y0, lod_center),
-        min(lod_y1, lod_center));
-    float inner_lod = lod_center;
+        vec4 lods = vec4(
+            min(lod_x0, lod_center),
+            min(lod_x1, lod_center),
+            min(lod_y0, lod_center),
+            min(lod_y1, lod_center));
+        float inner_lod = lod_center;
 
-    int lod = compute_lod(lods);
-    uint offset = atomicAdd(draws[lod].instance_count, 1u);
-    offset += registers.lod_stride * lod;
+        int lod = compute_lod(lods);
+        uint offset = atomicAdd(draws[lod].instance_count, 1u);
+        offset += registers.lod_stride * lod;
 
-    vec2 offsets = vec2(coord) * registers.grid_resolution;
+        vec2 offsets = vec2(coord) * registers.grid_resolution;
 
-    PatchData block = PatchData(offsets, inner_lod, 0.0, lods);
-    patches[offset] = block;
+        PatchData block = PatchData(offsets, inner_lod, 0.0, lods);
+        patches[offset] = block;
+    }
 }

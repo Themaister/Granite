@@ -80,12 +80,13 @@ void main()
             textureLodOffset(uLODs, uv, 0.0, ivec2(0, -1)).x,
             textureLodOffset(uLODs, uv, 0.0, ivec2(0, +1)).x);
 
+        lods = min(lods, vec4(lod_center));
+
         lods = mix(lods, vec4(registers.max_lod),
                    equal(gl_GlobalInvocationID.xxyy,
                          uvec4(0u, registers.num_threads.x - 1u,
                                0u, registers.num_threads.y - 1u)));
 
-        lods = min(lods, vec4(lod_center));
         float inner_lod = lod_center;
 
         int lod = compute_lod(lods);

@@ -80,7 +80,7 @@ void main()
             textureLodOffset(uLODs, uv, 0.0, ivec2(0, -1)).x,
             textureLodOffset(uLODs, uv, 0.0, ivec2(0, +1)).x);
 
-        lods = min(lods, vec4(lod_center));
+        lods = max(lods, vec4(lod_center));
 
         lods = mix(lods, vec4(registers.max_lod),
                    equal(gl_GlobalInvocationID.xxyy,

@@ -618,6 +618,10 @@ void Ocean::add_fft_update_pass(RenderGraph &graph)
 
 void Ocean::add_render_passes(RenderGraph &graph)
 {
+	normal_mip_views.clear();
+	vertex_mip_views.clear();
+	fragment_mip_views.clear();
+
 	this->graph = &graph;
 	add_lod_update_pass(graph);
 	add_fft_update_pass(graph);

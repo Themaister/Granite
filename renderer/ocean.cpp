@@ -112,11 +112,14 @@ void Ocean::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
 {
 	vertex_mip_views.clear();
 	fragment_mip_views.clear();
+	normal_mip_views.clear();
 
 	height_fft.reset();
 	normal_fft.reset();
 	displacement_fft.reset();
 	distribution_buffer.reset();
+	distribution_buffer_displacement.reset();
+	distribution_buffer_normal.reset();
 
 	quad_lod.clear();
 }
@@ -148,9 +151,51 @@ void Ocean::setup_render_pass_dependencies(RenderGraph &, RenderPass &target)
 	target.add_texture_input("ocean-lods", VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
 }
 
-void Ocean::setup_render_pass_resources(RenderGraph &)
+void Ocean::setup_render_pass_resources(RenderGraph &graph)
 {
+	if (!vertex_mip_views.empty() && !fragment_mip_views.empty() && !normal_mip_views.empty())
+		return;
 
+	auto &vertex = graph.get_physical_texture_resource(*height_displacement_output);
+	auto &fragment = graph.get_physical_texture_resource(*gradient_jacobian_output);
+	auto &normal = graph.get_physical_texture_resource(*normal_fft_output);
+
+	unsigned vertex_lods = muglm::min(unsigned(quad_lod.size()), vertex.get_image().get_create_info().levels);
+	unsigned fragment_lods = fragment.get_image().get_create_info().levels;
+	unsigned normal_lods = normal.get_image().get_create_info().levels;
+
+	for (unsigned i = 0; i < vertex_lods; i++)
+	{
+		Vulkan::ImageViewCreateInfo view;
+		view.image = &vertex.get_image();
+		view.format = vertex.get_format();
+		view.layers = 1;
+		view.levels = 1;
+		view.base_level = i;
+		vertex_mip_views.push_back(graph.get_device().create_image_view(view));
+	}
+
+	for (unsigned i = 0; i < fragment_lods; i++)
+	{
+		Vulkan::ImageViewCreateInfo view;
+		view.image = &fragment.get_image();
+		view.format = fragment.get_format();
+		view.layers = 1;
+		view.levels = 1;
+		view.base_level = i;
+		fragment_mip_views.push_back(graph.get_device().create_image_view(view));
+	}
+
+	for (unsigned i = 0; i < normal_lods; i++)
+	{
+		Vulkan::ImageViewCreateInfo view;
+		view.image = &normal.get_image();
+		view.format = normal.get_format();
+		view.layers = 1;
+		view.levels = 1;
+		view.base_level = i;
+		normal_mip_views.push_back(graph.get_device().create_image_view(view));
+	}
 }
 
 vec2 Ocean::get_grid_size() const
@@ -272,8 +317,6 @@ void Ocean::update_fft_input(Vulkan::CommandBuffer &cmd)
 	unsigned normal_variant = program->register_variant({{ "GRADIENT_NORMAL", 1 }});
 	unsigned displacement_variant = program->register_variant({{ "GRADIENT_DISPLACEMENT", 1 }});
 
-	cmd.set_storage_buffer(0, 0, *distribution_buffer);
-
 	struct Push
 	{
 		vec2 mod;
@@ -286,12 +329,14 @@ void Ocean::update_fft_input(Vulkan::CommandBuffer &cmd)
 
 	cmd.set_program(*program->get_program(height_variant));
 	push.N = uvec2(height_fft_size, height_fft_size);
+	cmd.set_storage_buffer(0, 0, *distribution_buffer);
 	cmd.set_storage_buffer(0, 1, graph->get_physical_buffer_resource(*height_fft_input));
 	cmd.push_constants(&push, 0, sizeof(push));
 	cmd.dispatch(height_fft_size / 64, 1, 1);
 
 	cmd.set_program(*program->get_program(displacement_variant));
 	push.N = uvec2(normal_fft_size, normal_fft_size);
+	cmd.set_storage_buffer(0, 0, *distribution_buffer_displacement);
 	cmd.set_storage_buffer(0, 1, graph->get_physical_buffer_resource(*displacement_fft_input));
 	cmd.push_constants(&push, 0, sizeof(push));
 	cmd.dispatch(displacement_fft_size / 64, 1, 1);
@@ -299,6 +344,7 @@ void Ocean::update_fft_input(Vulkan::CommandBuffer &cmd)
 	push.mod = vec2(2.0f * pi<float>()) / size_normal;
 	cmd.set_program(*program->get_program(normal_variant));
 	push.N = uvec2(normal_fft_size, normal_fft_size);
+	cmd.set_storage_buffer(0, 0, *distribution_buffer_normal);
 	cmd.set_storage_buffer(0, 1, graph->get_physical_buffer_resource(*normal_fft_input));
 	cmd.push_constants(&push, 0, sizeof(push));
 	cmd.dispatch(normal_fft_size / 64, 1, 1);
@@ -312,13 +358,109 @@ void Ocean::compute_fft(Vulkan::CommandBuffer &cmd)
 	FFTBuffer height_input(&graph->get_physical_buffer_resource(*height_fft_input));
 	height_fft->process(&cmd_wrapper, &height_output, &height_input);
 
-	FFTTexture normal_output(&graph->get_physical_texture_resource(*normal_fft_output));
+	FFTTexture normal_output(normal_mip_views.front().get());
 	FFTBuffer normal_input(&graph->get_physical_buffer_resource(*normal_fft_input));
 	normal_fft->process(&cmd_wrapper, &normal_output, &normal_input);
 
 	FFTTexture displacement_output(&graph->get_physical_texture_resource(*displacement_fft_output));
 	FFTBuffer displacement_input(&graph->get_physical_buffer_resource(*displacement_fft_input));
 	displacement_fft->process(&cmd_wrapper, &displacement_output, &displacement_input);
+}
+
+void Ocean::bake_maps(Vulkan::CommandBuffer &cmd)
+{
+	cmd.set_program("builtin://shaders/ocean/bake_maps.comp");
+
+	struct Push
+	{
+		vec4 inv_size;
+		vec4 scale;
+	} push;
+
+	push.inv_size = vec4(1.0f / vec2(height_fft_size), 1.0f / vec2(displacement_fft_size));
+	push.scale = vec4(1.0f);
+	cmd.push_constants(&push, 0, sizeof(push));
+
+	cmd.set_texture(0, 0,
+	                graph->get_physical_texture_resource(*height_fft_output),
+	                Vulkan::StockSampler::LinearWrap);
+	cmd.set_texture(0, 1,
+	                graph->get_physical_texture_resource(*displacement_fft_output),
+	                Vulkan::StockSampler::LinearWrap);
+	cmd.set_storage_texture(0, 2, *vertex_mip_views.front());
+	cmd.set_storage_texture(0, 3, *fragment_mip_views.front());
+
+	cmd.dispatch((height_fft_size + 7) / 8, (height_fft_size + 7) / 8, 1);
+}
+
+void Ocean::generate_mipmaps(Vulkan::CommandBuffer &cmd)
+{
+	auto &normal = graph->get_physical_texture_resource(*normal_fft_output);
+	auto num_passes = unsigned(muglm::max(vertex_mip_views.size(), fragment_mip_views.size()));
+	num_passes = muglm::max(num_passes, normal.get_image().get_create_info().levels);
+
+	struct Push
+	{
+		vec2 inv_resolution;
+		uvec2 count;
+		float lod;
+	} push;
+
+	for (unsigned i = 1; i < num_passes; i++)
+	{
+		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+
+		cmd.set_program("builtin://shaders/ocean/mipmap.comp",
+		                {{ "MIPMAP_RGBA16F", 1 }, { "MIPMAP_TEXEL_CENTER", 1 }});
+
+		push.lod = float(i - 1);
+
+		if (i < vertex_mip_views.size())
+		{
+			push.inv_resolution.x = 1.0f / vertex_mip_views.front()->get_image().get_width(i - 1);
+			push.inv_resolution.y = 1.0f / vertex_mip_views.front()->get_image().get_height(i - 1);
+			push.count.x = vertex_mip_views.front()->get_image().get_width(i);
+			push.count.y = vertex_mip_views.front()->get_image().get_height(i);
+
+			cmd.push_constants(&push, 0, sizeof(push));
+			cmd.set_storage_texture(0, 0, *vertex_mip_views[i]);
+			cmd.set_texture(0, 1, *vertex_mip_views[i - 1], Vulkan::StockSampler::LinearWrap);
+			cmd.dispatch((height_fft_size + 7) / 8, (height_fft_size + 7) / 8, 1);
+		}
+
+		cmd.set_program("builtin://shaders/ocean/mipmap.comp",
+		                {{ "MIPMAP_RGBA16F", 1 }});
+
+		if (i < fragment_mip_views.size())
+		{
+			push.inv_resolution.x = 1.0f / fragment_mip_views.front()->get_image().get_width(i - 1);
+			push.inv_resolution.y = 1.0f / fragment_mip_views.front()->get_image().get_height(i - 1);
+			push.count.x = fragment_mip_views.front()->get_image().get_width(i);
+			push.count.y = fragment_mip_views.front()->get_image().get_height(i);
+
+			cmd.push_constants(&push, 0, sizeof(push));
+			cmd.set_storage_texture(0, 0, *fragment_mip_views[i]);
+			cmd.set_texture(0, 1, *fragment_mip_views[i - 1], Vulkan::StockSampler::LinearWrap);
+			cmd.dispatch((height_fft_size + 7) / 8, (height_fft_size + 7) / 8, 1);
+		}
+
+		cmd.set_program("builtin://shaders/ocean/mipmap.comp",
+		                {{ "MIPMAP_RGBA16F", 1 }});
+
+		if (i < normal.get_image().get_create_info().levels)
+		{
+			push.inv_resolution.x = 1.0f / normal_mip_views.front()->get_image().get_width(i - 1);
+			push.inv_resolution.y = 1.0f / normal_mip_views.front()->get_image().get_height(i - 1);
+			push.count.x = normal_mip_views.front()->get_image().get_width(i);
+			push.count.y = normal_mip_views.front()->get_image().get_height(i);
+
+			cmd.push_constants(&push, 0, sizeof(push));
+			cmd.set_storage_texture(0, 0, *normal_mip_views[i]);
+			cmd.set_texture(0, 1, *normal_mip_views[i - 1], Vulkan::StockSampler::LinearWrap);
+			cmd.dispatch((normal_fft_size + 7) / 8, (normal_fft_size + 7) / 8, 1);
+		}
+	}
 }
 
 void Ocean::update_fft_pass(Vulkan::CommandBuffer &cmd)
@@ -332,6 +474,9 @@ void Ocean::update_fft_pass(Vulkan::CommandBuffer &cmd)
 
 	cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
 	            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+
+	bake_maps(cmd);
+	generate_mipmaps(cmd);
 }
 
 void Ocean::add_lod_update_pass(RenderGraph &graph)
@@ -405,9 +550,14 @@ void Ocean::add_fft_update_pass(RenderGraph &graph)
 	height_displacement.size_y = float(height_fft_size);
 	height_displacement.format = VK_FORMAT_R16G16B16A16_SFLOAT;
 
+	height_displacement.levels = unsigned(quad_lod.size());
+
 	height_displacement_output =
 			&update_fft.add_storage_texture_output("ocean-height-displacement-output",
 			                                       height_displacement);
+
+	height_displacement.levels = 0;
+
 	gradient_jacobian_output =
 			&update_fft.add_storage_texture_output("ocean-gradient-jacobian-output",
 			                                       height_displacement);

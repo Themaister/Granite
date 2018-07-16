@@ -20,7 +20,7 @@ mediump float jacobian(mediump vec2 dDdx, mediump vec2 dDdy)
 
 void main()
 {
-    vec4 uv = (vec2(gl_GlobalInvocationID.xy) * uInvSize.xy).xyxy + 0.5 * registers.inv_size;
+    vec4 uv = (vec2(gl_GlobalInvocationID.xy) * registers.inv_size.xy).xyxy + 0.5 * registers.inv_size;
 
     float h = textureLod(uHeight, uv.xy, 0.0).x;
 

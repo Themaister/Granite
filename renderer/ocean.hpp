@@ -85,7 +85,11 @@ private:
 
 	std::vector<Vulkan::ImageViewHandle> vertex_mip_views;
 	std::vector<Vulkan::ImageViewHandle> fragment_mip_views;
+	std::vector<Vulkan::ImageViewHandle> normal_mip_views;
+
 	Vulkan::BufferHandle distribution_buffer;
+	Vulkan::BufferHandle distribution_buffer_displacement;
+	Vulkan::BufferHandle distribution_buffer_normal;
 	RenderTextureResource *ocean_lod = nullptr;
 	RenderBufferResource *lod_data = nullptr;
 	RenderBufferResource *lod_data_counters = nullptr;
@@ -110,12 +114,14 @@ private:
 	void update_fft_pass(Vulkan::CommandBuffer &cmd);
 	void update_fft_input(Vulkan::CommandBuffer &cmd);
 	void compute_fft(Vulkan::CommandBuffer &cmd);
+	void bake_maps(Vulkan::CommandBuffer &cmd);
+	void generate_mipmaps(Vulkan::CommandBuffer &cmd);
 
 	unsigned grid_width = 32;
 	unsigned grid_height = 32;
 	vec3 last_camera_position = vec3(0.0f);
-	vec2 size = vec2(256.0f);
-	vec2 size_normal = vec2(256.0f / 7.3f);
+	vec2 size = vec2(512.0f);
+	vec2 size_normal = vec2(512.0f / 7.3f);
 	unsigned grid_resolution = 128;
 
 	unsigned height_fft_size = 256;

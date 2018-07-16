@@ -573,6 +573,7 @@ void Ocean::add_fft_update_pass(RenderGraph &graph)
 	height_map.aux_usage = VK_IMAGE_USAGE_SAMPLED_BIT;
 	displacement_map.aux_usage = VK_IMAGE_USAGE_SAMPLED_BIT;
 	normal_map.aux_usage = VK_IMAGE_USAGE_SAMPLED_BIT;
+	normal_map.levels = 0;
 
 	auto &update_fft = graph.add_pass("ocean-update-fft", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
 

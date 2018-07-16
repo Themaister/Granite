@@ -96,9 +96,9 @@ void AABenchApplication::on_swapchain_changed(const SwapchainParameterEvent &swa
 
 	auto &tonemap = graph.add_pass("tonemap", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 	tonemap.add_color_output("tonemap", swapchain_output);
-	tonemap.add_texture_input(resolved ? "HDR-resolved" : "HDR-main");
+	auto &tonemap_res = tonemap.add_texture_input(resolved ? "HDR-resolved" : "HDR-main");
 	tonemap.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
-		auto &input = graph.get_physical_texture_resource(tonemap.get_texture_inputs()[0]->get_physical_index());
+		auto &input = graph.get_physical_texture_resource(tonemap_res);
 		cmd.set_texture(0, 0, input, Vulkan::StockSampler::NearestClamp);
 
 		Vulkan::CommandBufferUtil::setup_fullscreen_quad(cmd, "builtin://shaders/quad.vert",

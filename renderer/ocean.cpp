@@ -27,12 +27,14 @@
 #include "render_context.hpp"
 #include "render_graph.hpp"
 #include "muglm/matrix_helper.hpp"
+#include <random>
 
 using namespace std;
 
 namespace Granite
 {
 static constexpr unsigned MaxLODIndirect = 8;
+static constexpr float G = 9.81f;
 
 struct OceanVertex
 {
@@ -40,8 +42,16 @@ struct OceanVertex
 	uint8_t weights[4];
 };
 
-Ocean::Ocean()
+Ocean::Ocean(const OceanConfig &config)
+	: config(config)
 {
+	wind_direction = normalize(config.wind_velocity);
+	phillips_L = dot(config.wind_velocity, config.wind_velocity) / G;
+
+	// Normalize amplitude based on the heightmap size.
+	vec2 height = heightmap_world_size();
+	this->config.amplitude *= 0.3f / muglm::sqrt(height.x * height.y);
+
 	EVENT_MANAGER_REGISTER_LATCH(Ocean, on_device_created, on_device_destroyed, Vulkan::DeviceCreatedEvent);
 	EVENT_MANAGER_REGISTER(Ocean, on_frame_tick, FrameTickEvent);
 }
@@ -51,7 +61,8 @@ Ocean::Handles Ocean::add_to_scene(Scene &scene)
 	Handles handles;
 	handles.entity = scene.create_entity();
 
-	auto ocean = Util::make_handle<Ocean>();
+	OceanConfig config;
+	auto ocean = Util::make_handle<Ocean>(config);
 
 	auto *update_component = handles.entity->allocate_component<PerFrameUpdateComponent>();
 	update_component->refresh = ocean.get();
@@ -90,17 +101,21 @@ void Ocean::on_device_created(const Vulkan::DeviceCreatedEvent &e)
 
 	auto cache = make_shared<GLFFT::ProgramCache>();
 
-	height_fft.reset(new GLFFT::FFT(&fft_iface, height_fft_size, height_fft_size,
+	height_fft.reset(new GLFFT::FFT(&fft_iface,
+	                                config.fft_resolution, config.fft_resolution,
 	                                GLFFT::ComplexToReal, GLFFT::Inverse,
 	                                GLFFT::SSBO, GLFFT::ImageReal,
 	                                cache, options));
 
-	displacement_fft.reset(new GLFFT::FFT(&fft_iface, displacement_fft_size, displacement_fft_size,
+	displacement_fft.reset(new GLFFT::FFT(&fft_iface,
+	                                      config.fft_resolution >> config.displacement_downsample,
+	                                      config.fft_resolution >> config.displacement_downsample,
 	                                      GLFFT::ComplexToComplex, GLFFT::Inverse,
 	                                      GLFFT::SSBO, GLFFT::Image,
 	                                      cache, options));
 
-	normal_fft.reset(new GLFFT::FFT(&fft_iface, normal_fft_size, normal_fft_size,
+	normal_fft.reset(new GLFFT::FFT(&fft_iface,
+	                                config.fft_resolution, config.fft_resolution,
 	                                GLFFT::ComplexToComplex, GLFFT::Inverse,
 	                                GLFFT::SSBO, GLFFT::Image,
 	                                cache, options));
@@ -205,19 +220,19 @@ void Ocean::setup_render_pass_resources(RenderGraph &graph)
 
 vec2 Ocean::get_grid_size() const
 {
-	return size / vec2(grid_width, grid_height);
+	return config.ocean_size / vec2(config.grid_count_x, config.grid_count_z);
 }
 
 vec2 Ocean::get_snapped_grid_center() const
 {
-	vec2 inv_grid_size = vec2(grid_width, grid_height) / size;
+	vec2 inv_grid_size = vec2(config.grid_count_x, config.grid_count_z) / config.ocean_size;
 	vec2 grid_center = round(last_camera_position.xz() * inv_grid_size);
 	return grid_center;
 }
 
 ivec2 Ocean::get_grid_base_coord() const
 {
-	return ivec2(get_snapped_grid_center()) - (ivec2(grid_width, grid_height) >> 1);
+	return ivec2(get_snapped_grid_center()) - (ivec2(config.grid_count_x, config.grid_count_z) >> 1);
 }
 
 void Ocean::build_lod_map(Vulkan::CommandBuffer &cmd)
@@ -226,7 +241,7 @@ void Ocean::build_lod_map(Vulkan::CommandBuffer &cmd)
 	cmd.set_storage_texture(0, 0, lod);
 
 	vec2 grid_center = get_snapped_grid_center();
-	vec2 grid_base = grid_center * get_grid_size() - 0.5f * size;
+	vec2 grid_base = grid_center * get_grid_size() - 0.5f * config.ocean_size;
 
 	struct Push
 	{
@@ -239,14 +254,14 @@ void Ocean::build_lod_map(Vulkan::CommandBuffer &cmd)
 	} push;
 	push.camera_pos = last_camera_position;
 	push.image_offset = get_grid_base_coord();
-	push.num_threads = ivec2(grid_width, grid_height);
+	push.num_threads = ivec2(config.grid_count_x, config.grid_count_z);
 	push.grid_base = grid_base;
 	push.grid_size = get_grid_size();
 	push.max_lod = float(quad_lod.size()) - 1.0f;
 	cmd.push_constants(&push, 0, sizeof(push));
 
 	cmd.set_program("builtin://shaders/ocean/update_lod.comp");
-	cmd.dispatch((grid_width + 7) / 8, (grid_height + 7) / 8, 1);
+	cmd.dispatch((config.grid_count_x + 7) / 8, (config.grid_count_z + 7) / 8, 1);
 }
 
 void Ocean::init_counter_buffer(Vulkan::CommandBuffer &cmd)
@@ -272,24 +287,26 @@ void Ocean::cull_blocks(Vulkan::CommandBuffer &cmd)
 		alignas(8) vec2 grid_size;
 		alignas(8) vec2 grid_resolution;
 		alignas(8) vec2 heightmap_range;
+		alignas(4) float guard_band;
 		alignas(4) uint lod_stride;
 	} push;
 
 	vec2 grid_center = get_snapped_grid_center();
-	vec2 grid_base = grid_center * get_grid_size() - 0.5f * size;
+	vec2 grid_base = grid_center * get_grid_size() - 0.5f * config.ocean_size;
 
 	memcpy(cmd.allocate_typed_constant_data<vec4>(0, 3, 6),
 	       context->get_visibility_frustum().get_planes(),
 	       sizeof(vec4) * 6);
 
 	push.image_offset = get_grid_base_coord();
-	push.num_threads = ivec2(grid_width, grid_height);
+	push.num_threads = ivec2(config.grid_count_x, config.grid_count_z);
 	push.inv_num_threads = 1.0f / vec2(push.num_threads);
 	push.grid_base = grid_base;
 	push.grid_size = get_grid_size();
-	push.lod_stride = grid_width * grid_height;
+	push.lod_stride = config.grid_count_x * config.grid_count_z;
 	push.heightmap_range = vec2(-10.0f, 10.0f);
-	push.grid_resolution = vec2(grid_resolution);
+	push.guard_band = 5.0f;
+	push.grid_resolution = vec2(config.grid_resolution);
 
 	cmd.push_constants(&push, 0, sizeof(push));
 
@@ -301,7 +318,7 @@ void Ocean::cull_blocks(Vulkan::CommandBuffer &cmd)
 	cmd.set_texture(0, 2, lod, Vulkan::StockSampler::NearestWrap);
 
 	cmd.set_program("builtin://shaders/ocean/cull_blocks.comp");
-	cmd.dispatch((grid_width + 7) / 8, (grid_height + 7) / 8, 1);
+	cmd.dispatch((config.grid_count_x + 7) / 8, (config.grid_count_z + 7) / 8, 1);
 }
 
 void Ocean::update_lod_pass(Vulkan::CommandBuffer &cmd)
@@ -313,6 +330,16 @@ void Ocean::update_lod_pass(Vulkan::CommandBuffer &cmd)
 	            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT);
 
 	cull_blocks(cmd);
+}
+
+vec2 Ocean::heightmap_world_size() const
+{
+	return get_grid_size() * float(config.fft_resolution) / float(config.grid_resolution);
+}
+
+vec2 Ocean::normalmap_world_size() const
+{
+	return heightmap_world_size() / config.normal_mod;
 }
 
 void Ocean::update_fft_input(Vulkan::CommandBuffer &cmd)
@@ -329,30 +356,32 @@ void Ocean::update_fft_input(Vulkan::CommandBuffer &cmd)
 		float time;
 	};
 	Push push;
-	push.mod = vec2(2.0f * pi<float>()) / size;
+	push.mod = vec2(2.0f * pi<float>()) / heightmap_world_size();
 	push.time = float(current_time);
 
 	cmd.set_program(*program->get_program(height_variant));
-	push.N = uvec2(height_fft_size, height_fft_size);
+	push.N = uvec2(config.fft_resolution);
 	cmd.set_storage_buffer(0, 0, *distribution_buffer);
 	cmd.set_storage_buffer(0, 1, graph->get_physical_buffer_resource(*height_fft_input));
 	cmd.push_constants(&push, 0, sizeof(push));
-	cmd.dispatch(height_fft_size / 64, height_fft_size, 1);
+	cmd.dispatch(config.fft_resolution / 64, config.fft_resolution, 1);
 
 	cmd.set_program(*program->get_program(displacement_variant));
-	push.N = uvec2(normal_fft_size, normal_fft_size);
+	push.N = uvec2(config.fft_resolution >> config.displacement_downsample);
 	cmd.set_storage_buffer(0, 0, *distribution_buffer_displacement);
 	cmd.set_storage_buffer(0, 1, graph->get_physical_buffer_resource(*displacement_fft_input));
 	cmd.push_constants(&push, 0, sizeof(push));
-	cmd.dispatch(displacement_fft_size / 64, displacement_fft_size, 1);
+	cmd.dispatch((config.fft_resolution >> config.displacement_downsample) / 64,
+	             config.fft_resolution >> config.displacement_downsample,
+	             1);
 
-	push.mod = vec2(2.0f * pi<float>()) / size_normal;
+	push.mod = vec2(2.0f * pi<float>()) / normalmap_world_size();
 	cmd.set_program(*program->get_program(normal_variant));
-	push.N = uvec2(normal_fft_size, normal_fft_size);
+	push.N = uvec2(config.fft_resolution);
 	cmd.set_storage_buffer(0, 0, *distribution_buffer_normal);
 	cmd.set_storage_buffer(0, 1, graph->get_physical_buffer_resource(*normal_fft_input));
 	cmd.push_constants(&push, 0, sizeof(push));
-	cmd.dispatch(normal_fft_size / 64, normal_fft_size, 1);
+	cmd.dispatch(config.fft_resolution / 64, config.fft_resolution, 1);
 }
 
 void Ocean::compute_fft(Vulkan::CommandBuffer &cmd)
@@ -382,8 +411,13 @@ void Ocean::bake_maps(Vulkan::CommandBuffer &cmd)
 		vec4 scale;
 	} push;
 
-	push.inv_size = vec4(1.0f / vec2(height_fft_size), 1.0f / vec2(displacement_fft_size));
-	push.scale = vec4(1.0f);
+	push.inv_size = vec4(1.0f / vec2(config.fft_resolution),
+	                     1.0f / vec2(config.fft_resolution >> config.displacement_downsample));
+
+	vec2 delta_heightmap = get_grid_size() / float(config.grid_resolution);
+	vec2 delta_displacement = delta_heightmap * float(1u << config.displacement_downsample);
+	push.scale = vec4(1.0f / delta_heightmap, 1.0f / delta_displacement);
+
 	cmd.push_constants(&push, 0, sizeof(push));
 
 	cmd.set_texture(0, 0,
@@ -395,7 +429,7 @@ void Ocean::bake_maps(Vulkan::CommandBuffer &cmd)
 	cmd.set_storage_texture(0, 2, *vertex_mip_views.front());
 	cmd.set_storage_texture(0, 3, *fragment_mip_views.front());
 
-	cmd.dispatch((height_fft_size + 7) / 8, (height_fft_size + 7) / 8, 1);
+	cmd.dispatch((config.fft_resolution + 7) / 8, (config.fft_resolution + 7) / 8, 1);
 }
 
 void Ocean::generate_mipmaps(Vulkan::CommandBuffer &cmd)
@@ -489,8 +523,8 @@ void Ocean::add_lod_update_pass(RenderGraph &graph)
 	auto &update_lod = graph.add_pass("ocean-update-lods", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
 	AttachmentInfo lod_attachment;
 	lod_attachment.format = VK_FORMAT_R16_SFLOAT;
-	lod_attachment.size_x = float(grid_width);
-	lod_attachment.size_y = float(grid_height);
+	lod_attachment.size_x = float(config.grid_count_x);
+	lod_attachment.size_y = float(config.grid_count_z);
 	lod_attachment.size_class = SizeClass::Absolute;
 	ocean_lod = &update_lod.add_storage_texture_output("ocean-lods", lod_attachment);
 
@@ -499,7 +533,7 @@ void Ocean::add_lod_update_pass(RenderGraph &graph)
 	lod_data_counters = &update_lod.add_storage_output("ocean-lod-counter", lod_info_counter);
 
 	BufferInfo lod_info;
-	lod_info.size = grid_width * grid_height * MaxLODIndirect * (2 * sizeof(uvec4));
+	lod_info.size = config.grid_count_x * config.grid_count_z * MaxLODIndirect * (2 * sizeof(uvec4));
 	lod_data = &update_lod.add_storage_output("ocean-lod-data", lod_info);
 
 	update_lod.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
@@ -510,27 +544,30 @@ void Ocean::add_lod_update_pass(RenderGraph &graph)
 void Ocean::add_fft_update_pass(RenderGraph &graph)
 {
 	BufferInfo normal_info, height_info, displacement_info;
-	normal_info.size = normal_fft_size * normal_fft_size * sizeof(uint32_t);
-	height_info.size = height_fft_size * height_fft_size * sizeof(uint32_t);
-	displacement_info.size = displacement_fft_size * displacement_fft_size * sizeof(uint32_t);
+	normal_info.size = config.fft_resolution * config.fft_resolution * sizeof(uint32_t);
+	height_info.size = config.fft_resolution * config.fft_resolution * sizeof(uint32_t);
+	displacement_info.size =
+			(config.fft_resolution >> config.displacement_downsample) *
+			(config.fft_resolution >> config.displacement_downsample) *
+			sizeof(uint32_t);
 
 	AttachmentInfo normal_map;
 	AttachmentInfo displacement_map;
 	AttachmentInfo height_map;
 
 	normal_map.size_class = SizeClass::Absolute;
-	normal_map.size_x = float(normal_fft_size);
-	normal_map.size_y = float(normal_fft_size);
+	normal_map.size_x = float(config.fft_resolution);
+	normal_map.size_y = float(config.fft_resolution);
 	normal_map.format = VK_FORMAT_R16G16_SFLOAT;
 
 	displacement_map.size_class = SizeClass::Absolute;
-	displacement_map.size_x = float(displacement_fft_size);
-	displacement_map.size_y = float(displacement_fft_size);
+	displacement_map.size_x = float(config.fft_resolution >> config.displacement_downsample);
+	displacement_map.size_y = float(config.fft_resolution >> config.displacement_downsample);
 	displacement_map.format = VK_FORMAT_R16G16_SFLOAT;
 
 	height_map.size_class = SizeClass::Absolute;
-	height_map.size_x = float(height_fft_size);
-	height_map.size_y = float(height_fft_size);
+	height_map.size_x = float(config.fft_resolution);
+	height_map.size_y = float(config.fft_resolution);
 	height_map.format = VK_FORMAT_R16_SFLOAT;
 
 	height_map.aux_usage = VK_IMAGE_USAGE_SAMPLED_BIT;
@@ -555,8 +592,8 @@ void Ocean::add_fft_update_pass(RenderGraph &graph)
 
 	AttachmentInfo height_displacement;
 	height_displacement.size_class = SizeClass::Absolute;
-	height_displacement.size_x = float(height_fft_size);
-	height_displacement.size_y = float(height_fft_size);
+	height_displacement.size_x = float(config.fft_resolution);
+	height_displacement.size_y = float(config.fft_resolution);
 	height_displacement.format = VK_FORMAT_R16G16B16A16_SFLOAT;
 
 	height_displacement.levels = unsigned(quad_lod.size());
@@ -619,7 +656,7 @@ static void ocean_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *info
 	cmd.set_vertex_attrib(0, 0, VK_FORMAT_R8G8B8A8_UINT, offsetof(OceanVertex, pos));
 	cmd.set_vertex_attrib(1, 0, VK_FORMAT_R8G8B8A8_UNORM, offsetof(OceanVertex, weights));
 	cmd.set_primitive_restart(true);
-	cmd.set_wireframe(true);
+	//cmd.set_wireframe(true);
 	cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
 
 	for (unsigned instance = 0; instance < num_instances; instance++)
@@ -684,11 +721,11 @@ void Ocean::get_render_info(const RenderContext &,
 
 		patch_data->ubo = &ubo;
 		patch_data->indirect = &indirect;
-		patch_data->lod_stride = grid_width * grid_height * 2 * sizeof(vec4);
+		patch_data->lod_stride = config.grid_count_x * config.grid_count_z * 2 * sizeof(vec4);
 		patch_data->lods = unsigned(quad_lod.size());
-		patch_data->data.inv_heightmap_size = 1.0f / vec2(height_fft_size);
-		patch_data->data.integer_to_world_mod = get_grid_size() / vec2(grid_resolution);
-		patch_data->data.normal_uv_scale = size / size_normal;
+		patch_data->data.inv_heightmap_size = 1.0f / vec2(config.fft_resolution);
+		patch_data->data.integer_to_world_mod = get_grid_size() / vec2(config.grid_resolution);
+		patch_data->data.normal_uv_scale = vec2(config.normal_mod);
 		patch_data->data.heightmap_range = vec2(-10.0f, 10.0f);
 
 		for (unsigned i = 0; i < unsigned(quad_lod.size()); i++)
@@ -707,11 +744,11 @@ void Ocean::build_lod(Vulkan::Device &device, unsigned size, unsigned stride)
 	vector<uint16_t> indices;
 	indices.reserve(size * (2 * size_1 + 1));
 
-	unsigned half_size = grid_resolution >> 1;
+	unsigned half_size = config.grid_resolution >> 1;
 
-	for (unsigned y = 0; y <= grid_resolution; y += stride)
+	for (unsigned y = 0; y <= config.grid_resolution; y += stride)
 	{
-		for (unsigned x = 0; x <= grid_resolution; x += stride)
+		for (unsigned x = 0; x <= config.grid_resolution; x += stride)
 		{
 			OceanVertex v = {};
 			v.pos[0] = uint8_t(x);
@@ -721,11 +758,11 @@ void Ocean::build_lod(Vulkan::Device &device, unsigned size, unsigned stride)
 
 			if (x == 0)
 				v.weights[0] = 255;
-			else if (x == grid_resolution)
+			else if (x == config.grid_resolution)
 				v.weights[1] = 255;
 			else if (y == 0)
 				v.weights[2] = 255;
-			else if (y == grid_resolution)
+			else if (y == config.grid_resolution)
 				v.weights[3] = 255;
 
 			vertices.push_back(v);
@@ -762,7 +799,7 @@ void Ocean::build_lod(Vulkan::Device &device, unsigned size, unsigned stride)
 
 void Ocean::build_buffers(Vulkan::Device &device)
 {
-	unsigned size = grid_resolution;
+	unsigned size = config.grid_resolution;
 	unsigned stride = 1;
 	while (size >= 2)
 	{
@@ -772,23 +809,117 @@ void Ocean::build_buffers(Vulkan::Device &device)
 	}
 }
 
+static inline unsigned square(unsigned x)
+{
+	return x * x;
+}
+
+static inline int alias(int x, int N)
+{
+	if (x > N / 2)
+		x -= N;
+	return x;
+}
+
+static float phillips(const vec2 &k, float max_l, const vec2 &wind_dir, float L)
+{
+	float k_len = length(k);
+	if (k_len == 0.0f)
+		return 0.0f;
+
+	float kL = k_len * L;
+	vec2 k_dir = normalize(k);
+	float kw = dot(k_dir, wind_dir);
+
+	return
+		muglm::pow(kw * kw, 1.0f) *
+		muglm::exp(-1.0f * k_len  * k_len * max_l * max_l) *
+		muglm::exp(-1.0f / (kL * kL)) *
+		muglm::pow(k_len, -4.0f);
+}
+
+static void downsample_distribution(vec2 *output, const vec2 *input,
+                                    unsigned Nx, unsigned Nz, unsigned rate_log2)
+{
+	unsigned out_width = Nx >> rate_log2;
+	unsigned out_height = Nz >> rate_log2;
+
+	for (unsigned z = 0; z < out_height; z++)
+	{
+		for (unsigned x = 0; x < out_width; x++)
+		{
+			int alias_x = alias(x, out_width);
+			int alias_z = alias(z, out_height);
+
+			if (alias_x < 0)
+				alias_x += Nx;
+			if (alias_z < 0)
+				alias_z += Nz;
+
+			output[z * out_width + x] = input[alias_z * Nx + alias_x];
+		}
+	}
+}
+
+static void generate_distribution(vec2 *output, const vec2 &mod, unsigned Nx, unsigned Nz,
+                                  float amplitude, float max_l, const vec2 &wind_dir, float L)
+{
+	normal_distribution<float> normal_dist(0.0f, 1.0f);
+	default_random_engine engine;
+
+	for (unsigned z = 0; z < Nz; z++)
+	{
+		for (unsigned x = 0; x < Nx; x++)
+		{
+			auto &v = output[z * Nx + x];
+			vec2 k = mod * vec2(alias(x, Nx), alias(z, Nz));
+
+			vec2 dist;
+			dist.x = normal_dist(engine);
+			dist.y = normal_dist(engine);
+
+			v = dist * amplitude * muglm::sqrt(0.5f * phillips(k, max_l, wind_dir, L));
+		}
+	}
+}
+
 void Ocean::init_distributions(Vulkan::Device &device)
 {
 	Vulkan::BufferCreateInfo height_distribution = {};
 	height_distribution.domain = Vulkan::BufferDomain::Device;
-	height_distribution.misc = Vulkan::BUFFER_MISC_ZERO_INITIALIZE_BIT;
 	height_distribution.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 
 	auto displacement_distribution = height_distribution;
 	auto normal_distribution = height_distribution;
 
-	height_distribution.size = height_fft_size * height_fft_size * sizeof(vec2);
-	displacement_distribution.size = displacement_fft_size * displacement_fft_size * sizeof(vec2);
-	normal_distribution.size = normal_fft_size * normal_fft_size * sizeof(vec2);
+	vector<vec2> init_height(square(config.fft_resolution));
+	vector<vec2> init_displacement(square(config.fft_resolution >> config.displacement_downsample));
+	vector<vec2> init_normal(square(config.fft_resolution));
 
-	distribution_buffer = device.create_buffer(height_distribution, nullptr);
-	distribution_buffer_displacement = device.create_buffer(displacement_distribution, nullptr);
-	distribution_buffer_normal = device.create_buffer(normal_distribution, nullptr);
+	generate_distribution(init_height.data(),
+	                      vec2(2.0f * pi<float>()) / heightmap_world_size(),
+	                      config.fft_resolution, config.fft_resolution,
+	                      config.amplitude, 0.02f, wind_direction, phillips_L);
+
+	generate_distribution(init_normal.data(),
+	                      vec2(2.0f * pi<float>()) / normalmap_world_size(),
+	                      config.fft_resolution, config.fft_resolution,
+	                      config.amplitude * config.normal_mod, 0.02f, wind_direction, phillips_L);
+
+	downsample_distribution(init_displacement.data(), init_height.data(),
+	                        config.fft_resolution, config.fft_resolution,
+	                        config.displacement_downsample);
+
+	height_distribution.size = init_height.size() * sizeof(vec2);
+	normal_distribution.size = init_normal.size() * sizeof(vec2);
+	displacement_distribution.size = init_displacement.size() * sizeof(vec2);
+
+	distribution_buffer = device.create_buffer(height_distribution,
+	                                           init_height.data());
+	distribution_buffer_displacement = device.create_buffer(displacement_distribution,
+	                                                        init_displacement.data());
+	distribution_buffer_normal = device.create_buffer(normal_distribution,
+	                                                  init_normal.data());
 }
 
 }

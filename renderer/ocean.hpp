@@ -35,13 +35,27 @@ namespace Granite
 class RenderTextureResource;
 class RenderBufferResource;
 
+struct OceanConfig
+{
+	unsigned fft_resolution = 256;
+	unsigned displacement_downsample = 1;
+	unsigned grid_count_x = 32;
+	unsigned grid_count_z = 32;
+	unsigned grid_resolution = 128;
+
+	vec2 ocean_size = vec2(512.0f);
+	vec2 wind_velocity = vec2(10.0f, 5.0f);
+	float normal_mod = 7.3f;
+	float amplitude = 1.0f;
+};
+
 class Ocean : public AbstractRenderable,
               public PerFrameRefreshable,
               public RenderPassCreator,
               public EventHandler
 {
 public:
-	Ocean();
+	Ocean(const OceanConfig &config);
 
 	struct Handles
 	{
@@ -52,6 +66,8 @@ public:
 	static Handles add_to_scene(Scene &scene);
 
 private:
+	OceanConfig config;
+
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &);
 	bool on_frame_tick(const FrameTickEvent &e);
@@ -117,18 +133,11 @@ private:
 	void bake_maps(Vulkan::CommandBuffer &cmd);
 	void generate_mipmaps(Vulkan::CommandBuffer &cmd);
 
-	unsigned grid_width = 32;
-	unsigned grid_height = 32;
 	vec3 last_camera_position = vec3(0.0f);
-	vec2 size = vec2(512.0f);
-	vec2 size_normal = vec2(512.0f / 7.3f);
-	unsigned grid_resolution = 128;
-
-	unsigned height_fft_size = 256;
-	unsigned displacement_fft_size = 128;
-	unsigned normal_fft_size = 256;
-
 	double current_time = 0.0;
+
+	vec2 wind_direction;
+	float phillips_L;
 
 	struct LOD
 	{
@@ -147,5 +156,7 @@ private:
 	vec2 get_snapped_grid_center() const;
 	vec2 get_grid_size() const;
 	ivec2 get_grid_base_coord() const;
+	vec2 heightmap_world_size() const;
+	vec2 normalmap_world_size() const;
 };
 }

@@ -12,6 +12,7 @@ layout(std430, push_constant) uniform Registers
     vec2 grid_size;
     vec2 grid_resolution;
     vec2 heightmap_range;
+    float guard_band;
     uint lod_stride;
 } registers;
 
@@ -59,8 +60,8 @@ bool frustum_cull()
 {
     vec2 min_xz = registers.grid_base + vec2(gl_GlobalInvocationID.xy) * registers.grid_size;
     vec2 max_xz = min_xz + registers.grid_size;
-    vec3 lo = vec3(min_xz.x, registers.heightmap_range.x, min_xz.y);
-    vec3 hi = vec3(max_xz.x, registers.heightmap_range.y, max_xz.y);
+    vec3 lo = vec3(min_xz.x - registers.guard_band, registers.heightmap_range.x, min_xz.y - registers.guard_band);
+    vec3 hi = vec3(max_xz.x + registers.guard_band, registers.heightmap_range.y, max_xz.y + registers.guard_band);
     return is_inside_plane(lo, hi);
 }
 

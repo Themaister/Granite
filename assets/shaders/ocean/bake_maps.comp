@@ -41,7 +41,7 @@ void main()
     vec2 dDdy = 0.5 * LAMBDA * (
         textureLodOffset(uDisplacement, uv.zw, 0.0, ivec2(0, +1)).xy -
         textureLodOffset(uDisplacement, uv.zw, 0.0, ivec2(0, -1)).xy);
-    float j = jacobian(dDdx * registers.scale.z, dDdy * registers.scale.z);
+    float j = jacobian(dDdx * registers.scale.z, dDdy * registers.scale.w);
 
     // Read by vertex shader/tess shader.
     imageStore(iHeightDisplacement, ivec2(gl_GlobalInvocationID.xy), vec4(h, displacement, 0.0));

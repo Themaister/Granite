@@ -18,6 +18,7 @@ void main()
     N += grad_jacobian.xy;
     mediump vec3 normal = normalize(vec3(-N.x, 1.0, -N.y));
 
-    const vec3 base_color = vec3(0.4, 0.6, 0.8);
-    emit_render_target(vec3(0.0), vec4(base_color, 1.0), normal, 1.0, 0.2 * turbulence, 1.0, vPos);
+    const vec3 base_color = vec3(1.0);
+    emit_render_target(vec3(0.0), vec4(base_color, 1.0), normal,
+                       1.0 - 0.3 * turbulence, 0.2 * turbulence, 1.0, vPos);
 }

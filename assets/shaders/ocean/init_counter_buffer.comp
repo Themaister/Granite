@@ -1,17 +1,6 @@
 #version 450
 layout(local_size_x = NUM_COUNTERS) in;
-
-struct IndirectDraw
-{
-    uint index_count;
-    uint instance_count;
-    uint first_index;
-    int vertex_offset;
-    uint first_instance;
-    uint padding0;
-    uint padding1;
-    uint padding2;
-};
+#include "ocean.inc"
 
 layout(set = 0, binding = 0, std430) writeonly buffer LODCounter
 {

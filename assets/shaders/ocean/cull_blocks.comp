@@ -1,6 +1,8 @@
 #version 450
 layout(local_size_x = 8, local_size_y = 8) in;
 
+#include "ocean.inc"
+
 layout(std430, push_constant) uniform Registers
 {
     ivec2 image_offset;
@@ -13,14 +15,6 @@ layout(std430, push_constant) uniform Registers
     uint lod_stride;
 } registers;
 
-struct PatchData
-{
-    vec2 Offsets;
-    float InnerLOD;
-    float Padding;
-    vec4 LODs;
-};
-
 layout(std140, set = 0, binding = 3) uniform Frustum
 {
     vec4 frustum[6];
@@ -29,18 +23,6 @@ layout(std140, set = 0, binding = 3) uniform Frustum
 layout(std430, set = 0, binding = 0) writeonly buffer LODOutput
 {
     PatchData patches[];
-};
-
-struct IndirectDraw
-{
-    uint index_count;
-    uint instance_count;
-    uint first_index;
-    int vertex_offset;
-    uint first_instance;
-    uint padding0;
-    uint padding1;
-    uint padding2;
 };
 
 layout(std430, set = 0, binding = 1) buffer LODCounters

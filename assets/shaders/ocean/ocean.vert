@@ -1,5 +1,6 @@
 #version 450
 #include "../inc/render_parameters.h"
+#include "ocean.inc"
 
 layout(location = 0) in uvec4 aPosition;
 layout(location = 1) in vec4 aLODWeights;
@@ -12,14 +13,6 @@ layout(location = 1) out vec4 vGradNormalUV;
 layout(set = 2, binding = 0) uniform sampler2D uHeightmap;
 #endif
 layout(set = 2, binding = 1) uniform sampler2D uLodMap;
-
-struct PatchData
-{
-    vec2 Offsets;
-    float InnerLOD;
-    float Padding;
-    vec4 LODs;
-};
 
 layout(set = 3, binding = 0, std140) uniform Patches
 {
@@ -72,9 +65,7 @@ void main()
     vec2 pos = warp_position();
     pos += patches.data[gl_InstanceIndex].Offsets;
     vec2 uv = pos * registers.inv_heightmap_size;
-
     mediump vec2 lod = lod_factor(uv);
-
     mediump float delta_mod = exp2(lod.x);
     vec2 off = registers.inv_heightmap_size * delta_mod;
 

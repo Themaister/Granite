@@ -39,8 +39,7 @@ struct OceanConfig
 {
 	unsigned fft_resolution = 256;
 	unsigned displacement_downsample = 1;
-	unsigned grid_count_x = 32;
-	unsigned grid_count_z = 32;
+	unsigned grid_count = 32;
 	unsigned grid_resolution = 128;
 
 	vec2 ocean_size = vec2(512.0f);
@@ -146,10 +145,15 @@ private:
 		unsigned count;
 	};
 	std::vector<LOD> quad_lod;
+	Vulkan::BufferHandle border_vbo;
+	Vulkan::BufferHandle border_ibo;
+	unsigned border_count = 0;
 
 	void build_buffers(Vulkan::Device &device);
 	void build_lod(Vulkan::Device &device, unsigned size, unsigned stride);
 	void init_distributions(Vulkan::Device &device);
+	void build_border(std::vector<vec3> &positions, std::vector<uint16_t> &indices,
+	                  ivec2 base, ivec2 dx, ivec2 dy);
 
 	void add_lod_update_pass(RenderGraph &graph);
 	void add_fft_update_pass(RenderGraph &graph);

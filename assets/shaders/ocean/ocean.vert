@@ -2,8 +2,19 @@
 #include "../inc/render_parameters.h"
 #include "ocean.inc"
 
+invariant gl_Position;
+
+#if defined(VARIANT_BIT_0)
+#define OCEAN_BORDER
+#endif
+
+#ifdef OCEAN_BORDER
+layout(location = 0) in vec3 aPosition;
+#else
 layout(location = 0) in uvec4 aPosition;
 layout(location = 1) in vec4 aLODWeights;
+#endif
+
 layout(location = 0) out vec3 vPos;
 layout(location = 1) out vec4 vGradNormalUV;
 
@@ -12,19 +23,24 @@ layout(set = 2, binding = 0) uniform sampler2D uHeightmap;
 #endif
 layout(set = 2, binding = 1) uniform sampler2D uLodMap;
 
+#ifndef OCEAN_BORDER
 layout(set = 3, binding = 0, std140) uniform Patches
 {
     PatchData data[512];
 } patches;
+#endif
 
 layout(std430, push_constant) uniform Registers
 {
     vec2 inv_heightmap_size;
+    vec2 inv_ocean_grid_count;
     vec2 normal_uv_scale;
     vec2 integer_to_world_mod;
     vec2 heightmap_range;
+    vec2 base_position;
 } registers;
 
+#ifndef OCEAN_BORDER
 vec2 warp_position()
 {
     float vlod = dot(aLODWeights, patches.data[gl_InstanceIndex].LODs);
@@ -39,10 +55,11 @@ vec2 warp_position()
     vec4 lower_upper_snapped = vec4((aPosition.xyxy + rounding) & ~mask.xxyy);
     return mix(lower_upper_snapped.xy, lower_upper_snapped.zw, fract_lod);
 }
+#endif
 
-mediump vec2 lod_factor(vec2 uv)
+mediump vec2 lod_factor(vec2 pos)
 {
-    mediump float level = textureLod(uLodMap, uv, 0.0).x;
+    mediump float level = textureLod(uLodMap, pos * registers.inv_ocean_grid_count, 0.0).x;
     mediump float floor_level = floor(level);
     mediump float fract_level = level - floor_level;
     return vec2(floor_level, fract_level);
@@ -60,11 +77,16 @@ mediump vec3 sample_height_displacement(vec2 uv, vec2 off, mediump vec2 lod)
 
 void main()
 {
+#ifdef OCEAN_BORDER
+    vec2 pos = aPosition.xy + registers.base_position;
+#else
     vec2 pos = warp_position();
     pos += patches.data[gl_InstanceIndex].Offsets;
-    vec2 uv = pos * registers.inv_heightmap_size;
-    mediump vec2 lod = lod_factor(uv);
+#endif
+    mediump vec2 lod = lod_factor(pos);
     mediump float delta_mod = exp2(lod.x);
+
+    vec2 uv = pos * registers.inv_heightmap_size;
     vec2 off = registers.inv_heightmap_size * delta_mod;
 
     vec2 centered_uv = uv + 0.5 * registers.inv_heightmap_size;
@@ -73,6 +95,10 @@ void main()
     mediump vec3 height_displacement = sample_height_displacement(uv, off, lod).xyz;
 #else
     mediump vec3 height_displacement = vec3(0.0);
+#endif
+
+#ifdef OCEAN_BORDER
+    height_displacement *= aPosition.z;
 #endif
 
     pos *= registers.integer_to_world_mod;

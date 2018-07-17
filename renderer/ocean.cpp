@@ -48,9 +48,11 @@ Ocean::Ocean(const OceanConfig &config)
 	wind_direction = normalize(config.wind_velocity);
 	phillips_L = dot(config.wind_velocity, config.wind_velocity) / G;
 
-	// Normalize amplitude based on the heightmap size.
-	vec2 height = heightmap_world_size();
-	this->config.amplitude *= 0.3f / muglm::sqrt(height.x * height.y);
+	// Normalize amplitude based on how dense the FFT frequency space is.
+	vec2 base_freq = 1.0f / heightmap_world_size();
+
+	// We're modelling noise, so assume we're integrating energy, not amplitude.
+	this->config.amplitude *= muglm::sqrt(base_freq.x * base_freq.y);
 
 	EVENT_MANAGER_REGISTER_LATCH(Ocean, on_device_created, on_device_destroyed, Vulkan::DeviceCreatedEvent);
 	EVENT_MANAGER_REGISTER(Ocean, on_frame_tick, FrameTickEvent);

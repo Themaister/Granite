@@ -37,7 +37,7 @@ class RenderBufferResource;
 
 struct OceanConfig
 {
-	unsigned fft_resolution = 256;
+	unsigned fft_resolution = 512;
 	unsigned displacement_downsample = 1;
 	unsigned grid_count = 32;
 	unsigned grid_resolution = 128;
@@ -45,7 +45,7 @@ struct OceanConfig
 	vec2 ocean_size = vec2(512.0f);
 	vec2 wind_velocity = vec2(10.0f, 5.0f);
 	float normal_mod = 7.3f;
-	float amplitude = 1.0f;
+	float amplitude = 0.2f;
 };
 
 class Ocean : public AbstractRenderable,

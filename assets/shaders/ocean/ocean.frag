@@ -20,5 +20,5 @@ void main()
 
     const vec3 base_color = vec3(1.0);
     emit_render_target(vec3(0.0), vec4(base_color, 1.0), normal,
-                       1.0 - 0.3 * turbulence, 0.2 * turbulence, 1.0, vPos);
+                       1.0 - 0.2 * turbulence, 0.2 * turbulence, 1.0, vPos);
 }

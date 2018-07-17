@@ -16,6 +16,7 @@ layout(set = 0, binding = 1) uniform mediump sampler2D uInput;
 
 layout(std430, push_constant) uniform Registers
 {
+    vec4 result_mod;
     vec2 inv_resolution;
     uvec2 count;
     float lod;
@@ -27,8 +28,8 @@ void main()
 {
     if (all(lessThan(gl_GlobalInvocationID.xy, registers.count)))
     {
-        vec2 uv = (2.0 * vec2(gl_GlobalInvocationID.xy) + 1.0) * registers.inv_resolution;
         #ifdef MIPMAP_TEXEL_CENTER
+            vec2 uv = (2.0 * vec2(gl_GlobalInvocationID.xy) + 0.5) * registers.inv_resolution;
             mediump vec4 filtered = vec4(0.0);
             filtered += textureLod(uInput, uv + vec2(-D, -D) * registers.inv_resolution, registers.lod);
             filtered += textureLod(uInput, uv + vec2(+D, -D) * registers.inv_resolution, registers.lod);
@@ -36,8 +37,9 @@ void main()
             filtered += textureLod(uInput, uv + vec2(+D, +D) * registers.inv_resolution, registers.lod);
             filtered *= 0.25;
         #else
+            vec2 uv = (2.0 * vec2(gl_GlobalInvocationID.xy) + 1.0) * registers.inv_resolution;
             mediump vec4 filtered = textureLod(uInput, uv, registers.lod);
         #endif
-        imageStore(uImageOutput, ivec2(gl_GlobalInvocationID.xy), filtered);
+        imageStore(uImageOutput, ivec2(gl_GlobalInvocationID.xy), registers.result_mod * filtered);
     }
 }

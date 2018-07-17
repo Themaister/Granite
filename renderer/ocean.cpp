@@ -444,6 +444,7 @@ void Ocean::generate_mipmaps(Vulkan::CommandBuffer &cmd)
 
 	struct Push
 	{
+		vec4 filter_mod;
 		vec2 inv_resolution;
 		uvec2 count;
 		float lod;
@@ -461,6 +462,12 @@ void Ocean::generate_mipmaps(Vulkan::CommandBuffer &cmd)
 
 		if (i < vertex_mip_views.size())
 		{
+			// Last heightmap level should go towards 0 to make padding edges transition cleaner.
+			if (i + 1 == vertex_mip_views.size())
+				push.filter_mod = vec4(0.0f, 1.0f, 1.0f, 1.0f);
+			else
+				push.filter_mod = vec4(1.0f);
+
 			push.inv_resolution.x = 1.0f / vertex_mip_views.front()->get_image().get_width(i - 1);
 			push.inv_resolution.y = 1.0f / vertex_mip_views.front()->get_image().get_height(i - 1);
 			push.count.x = vertex_mip_views.front()->get_image().get_width(i);
@@ -477,6 +484,7 @@ void Ocean::generate_mipmaps(Vulkan::CommandBuffer &cmd)
 
 		if (i < fragment_mip_views.size())
 		{
+			push.filter_mod = vec4(1.0f);
 			push.inv_resolution.x = 1.0f / fragment_mip_views.front()->get_image().get_width(i - 1);
 			push.inv_resolution.y = 1.0f / fragment_mip_views.front()->get_image().get_height(i - 1);
 			push.count.x = fragment_mip_views.front()->get_image().get_width(i);
@@ -493,6 +501,7 @@ void Ocean::generate_mipmaps(Vulkan::CommandBuffer &cmd)
 
 		if (i < normal.get_image().get_create_info().levels)
 		{
+			push.filter_mod = vec4(1.0f);
 			push.inv_resolution.x = 1.0f / normal_mip_views.front()->get_image().get_width(i - 1);
 			push.inv_resolution.y = 1.0f / normal_mip_views.front()->get_image().get_height(i - 1);
 			push.count.x = normal_mip_views.front()->get_image().get_width(i);

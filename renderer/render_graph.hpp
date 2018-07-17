@@ -115,7 +115,7 @@ struct ResourceDimensions
 		       depth == other.depth &&
 		       layers == other.layers &&
 		       levels == other.levels &&
-		       buffer_info == buffer_info &&
+		       buffer_info == other.buffer_info &&
 		       transient == other.transient &&
 		       persistent == other.persistent &&
 		       unorm_srgb == other.unorm_srgb;

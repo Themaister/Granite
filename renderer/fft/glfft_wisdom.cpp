@@ -28,6 +28,40 @@ using namespace rapidjson;
 using namespace std;
 using namespace GLFFT;
 
+FFTOptions::Performance FFTWisdom::get_static_performance_options_from_renderer(GLFFT::Context *context)
+{
+	FFTOptions::Performance perf;
+	uint32_t vid = context->get_vendor_id();
+
+	if (vid == 0x10de)
+	{
+		context->log("Detected GeForce/Quadro GPU.\n");
+		perf.shared_banked = true;
+		perf.workgroup_size_x = 8;
+		perf.workgroup_size_y = 4;
+		perf.vector_size = 2;
+	}
+	else if (vid == 0x1002)
+	{
+		context->log("Detected Radeon GPU.\n");
+		perf.shared_banked = true;
+		perf.workgroup_size_x = 16;
+		perf.workgroup_size_y = 4;
+		perf.vector_size = 2;
+	}
+	else if (vid == 0x13b5)
+	{
+		context->log("Detected Mali GPU.\n");
+		perf.shared_banked = false;
+		perf.workgroup_size_x = 16;
+		perf.workgroup_size_y = 1;
+		perf.vector_size = 2;
+	}
+	// TODO: Add more GPUs.
+
+	return perf;
+}
+
 FFTStaticWisdom FFTWisdom::get_static_wisdom_from_renderer(Context *context)
 {
 	FFTStaticWisdom res;

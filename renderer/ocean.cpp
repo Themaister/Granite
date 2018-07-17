@@ -94,12 +94,9 @@ void Ocean::on_device_created(const Vulkan::DeviceCreatedEvent &e)
 	options.type.fp16 = true;
 	options.type.input_fp16 = true;
 	options.type.output_fp16 = true;
-#if 0
-	options.performance.shared_banked = true;
-	options.performance.workgroup_size_x = 64;
-	options.performance.workgroup_size_y = 1;
-	options.performance.vector_size = 2;
-#endif
+
+	options.performance =
+			GLFFT::FFTWisdom::get_static_performance_options_from_renderer(&fft_iface);
 
 	auto cache = make_shared<GLFFT::ProgramCache>();
 

@@ -115,6 +115,7 @@ public:
 		this->static_wisdom = static_wisdom;
 	}
 	static FFTStaticWisdom get_static_wisdom_from_renderer(Context *context);
+	static FFTOptions::Performance get_static_performance_options_from_renderer(Context *context);
 
 	void set_bench_params(unsigned warmup, unsigned iterations, unsigned dispatches, double timeout)
 	{

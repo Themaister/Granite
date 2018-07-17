@@ -154,6 +154,8 @@ private:
 	void init_distributions(Vulkan::Device &device);
 	void build_border(std::vector<vec3> &positions, std::vector<uint16_t> &indices,
 	                  ivec2 base, ivec2 dx, ivec2 dy);
+	void build_corner(std::vector<vec3> &positions, std::vector<uint16_t> &indices,
+	                  ivec2 base, ivec2 dx, ivec2 dy);
 
 	void add_lod_update_pass(RenderGraph &graph);
 	void add_fft_update_pass(RenderGraph &graph);

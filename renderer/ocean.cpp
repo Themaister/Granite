@@ -787,6 +787,20 @@ void Ocean::build_border(vector<vec3> &positions, vector<uint16_t> &indices, ive
 	indices.push_back(0xffffu);
 }
 
+void Ocean::build_corner(vector<vec3> &positions, vector<uint16_t> &indices,
+                         ivec2 base, ivec2 dx, ivec2 dy)
+{
+	unsigned base_index = unsigned(positions.size());
+	for (unsigned i = 0; i < 4; i++)
+		indices.push_back(base_index++);
+	indices.push_back(0xffffu);
+
+	positions.push_back(vec3(ivec3(base, 1)));
+	positions.push_back(vec3(ivec3(base + dx, 0)));
+	positions.push_back(vec3(ivec3(base + dy, 0)));
+	positions.push_back(vec3(ivec3(base + dx + dy, 0)));
+}
+
 void Ocean::build_lod(Vulkan::Device &device, unsigned size, unsigned stride)
 {
 	unsigned size_1 = size + 1;
@@ -863,29 +877,56 @@ void Ocean::build_buffers(Vulkan::Device &device)
 	vector<vec3> positions;
 	vector<uint16_t> indices;
 
+	int outer_delta = int(config.grid_count * config.grid_resolution) >> 3;
+	int inner_delta = config.grid_resolution >> 1;
+
 	// Top border
 	build_border(positions, indices,
 	             ivec2(config.grid_count * config.grid_resolution, 0),
-	             ivec2(-int(config.grid_resolution >> 1), 0),
-	             ivec2(0, -(int(config.grid_count * config.grid_resolution) >> 3)));
+	             ivec2(-inner_delta, 0),
+	             ivec2(0, -outer_delta));
 
 	// Left border
 	build_border(positions, indices,
 	             ivec2(0, 0),
-	             ivec2(0, int(config.grid_resolution >> 1)),
-	             ivec2(-(int(config.grid_count * config.grid_resolution) >> 3), 0));
+	             ivec2(0, inner_delta),
+	             ivec2(-outer_delta, 0));
 
 	// Bottom border
 	build_border(positions, indices,
 	             ivec2(0, config.grid_count * config.grid_resolution),
-	             ivec2(int(config.grid_resolution >> 1), 0),
-	             ivec2(0, int(config.grid_count * config.grid_resolution) >> 3));
+	             ivec2(inner_delta, 0),
+	             ivec2(0, outer_delta));
 
 	// Right border
 	build_border(positions, indices,
 	             ivec2(config.grid_count * config.grid_resolution),
-	             ivec2(0, -int(config.grid_resolution >> 1)),
-	             ivec2(int(config.grid_count * config.grid_resolution) >> 3, 0));
+	             ivec2(0, -inner_delta),
+	             ivec2(outer_delta, 0));
+
+	// Top-left corner
+	build_corner(positions, indices,
+	             ivec2(0, 0),
+	             ivec2(0, -outer_delta),
+	             ivec2(-outer_delta, 0));
+
+	// Bottom-left corner
+	build_corner(positions, indices,
+	             ivec2(0, config.grid_count * config.grid_resolution),
+	             ivec2(-outer_delta, 0),
+	             ivec2(0, outer_delta));
+
+	// Top-right
+	build_corner(positions, indices,
+	             ivec2(config.grid_count * config.grid_resolution, 0),
+	             ivec2(outer_delta, 0),
+	             ivec2(0, -outer_delta));
+
+	// Bottom-right
+	build_corner(positions, indices,
+	             ivec2(config.grid_count * config.grid_resolution),
+	             ivec2(0, outer_delta),
+	             ivec2(outer_delta, 0));
 
 	Vulkan::BufferCreateInfo border_vbo_info;
 	border_vbo_info.size = positions.size() * sizeof(ivec3);

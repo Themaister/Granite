@@ -40,52 +40,173 @@ struct FFTSampler : GLFFT::Sampler
 	const Vulkan::Sampler &sampler;
 };
 
+void FFTDeferredCommandBuffer::ensure_command_list()
+{
+	if (command_counter >= commands.size())
+		commands.resize(command_counter + 1);
+}
+
+vector<function<void (Vulkan::CommandBuffer &)>> &FFTDeferredCommandBuffer::get_command_list()
+{
+	ensure_command_list();
+	return commands[command_counter];
+}
+
+void FFTDeferredCommandBuffer::push_constant_data(const void *data, size_t size)
+{
+	std::vector<uint8_t> buffer(static_cast<const uint8_t *>(data), static_cast<const uint8_t *>(data) + size);
+	get_command_list().push_back([buffer = move(buffer)](Vulkan::CommandBuffer &cmd) {
+		cmd.push_constants(buffer.data(), 0, buffer.size());
+	});
+}
+
+void FFTDeferredCommandBuffer::barrier()
+{
+	command_counter++;
+}
+
+void FFTDeferredCommandBuffer::dispatch(unsigned x, unsigned y, unsigned z)
+{
+	get_command_list().push_back([=](Vulkan::CommandBuffer &cmd) {
+		cmd.dispatch(x, y, z);
+	});
+}
+
+void FFTDeferredCommandBuffer::bind_storage_buffer(unsigned binding, GLFFT::Buffer *buffer)
+{
+	get_command_list().push_back(
+			[binding, buffer = static_cast<FFTBuffer *>(buffer)->buffer](Vulkan::CommandBuffer &cmd) {
+				cmd.set_storage_buffer(0, binding, *buffer);
+			});
+}
+
+void FFTDeferredCommandBuffer::bind_program(GLFFT::Program *program)
+{
+	get_command_list().push_back(
+			[program = static_cast<FFTProgram *>(program)->program](Vulkan::CommandBuffer &cmd) {
+				cmd.set_program(*program);
+			});
+}
+
+void FFTDeferredCommandBuffer::bind_storage_texture(unsigned binding, GLFFT::Texture *texture)
+{
+	get_command_list().push_back(
+			[binding, image = static_cast<FFTTexture *>(texture)->image](Vulkan::CommandBuffer &cmd) {
+				cmd.set_storage_texture(0, binding, *image);
+			});
+}
+
+void FFTDeferredCommandBuffer::bind_texture(unsigned binding, GLFFT::Texture *texture)
+{
+	get_command_list().push_back(
+			[binding, image = static_cast<FFTTexture *>(texture)->image](Vulkan::CommandBuffer &cmd) {
+				cmd.set_texture(0, binding, *image,
+				                Vulkan::StockSampler::NearestClamp);
+			});
+}
+
+void FFTDeferredCommandBuffer::bind_sampler(unsigned binding, GLFFT::Sampler *sampler)
+{
+	if (sampler)
+	{
+		get_command_list().push_back(
+				[binding, sampler = &static_cast<FFTSampler *>(sampler)->sampler](Vulkan::CommandBuffer &cmd)
+				{
+					cmd.set_sampler(0, binding, *sampler);
+				});
+	}
+}
+
+void FFTDeferredCommandBuffer::bind_storage_buffer_range(unsigned binding, size_t offset, size_t length,
+                                                         GLFFT::Buffer *buffer)
+{
+	get_command_list().push_back(
+			[=, buffer = static_cast<FFTBuffer *>(buffer)->buffer](Vulkan::CommandBuffer &cmd) {
+				cmd.set_storage_buffer(0, binding, *buffer, offset, length);
+			});
+}
+
+void FFTDeferredCommandBuffer::build(Vulkan::CommandBuffer &cmd)
+{
+	for (auto &list : commands)
+	{
+		for (auto &c : list)
+			c(cmd);
+
+		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+	}
+}
+
+void FFTDeferredCommandBuffer::reset_command_counter()
+{
+	command_counter = 0;
+}
+
+void FFTDeferredCommandBuffer::reset()
+{
+	reset_command_counter();
+	commands.clear();
+}
+
 void FFTCommandBuffer::push_constant_data(const void *data, size_t size)
 {
-	cmd->push_constants(data, 0, size);
+	if (cmd)
+		cmd->push_constants(data, 0, size);
 }
 
 void FFTCommandBuffer::barrier()
 {
-	cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-	             VK_ACCESS_SHADER_READ_BIT);
+	if (cmd)
+	{
+		cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+		             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+	}
 }
 
 void FFTCommandBuffer::bind_program(GLFFT::Program *program)
 {
-	cmd->set_program(*static_cast<FFTProgram *>(program)->program);
+	if (cmd)
+		cmd->set_program(*static_cast<FFTProgram *>(program)->program);
 }
 
 void FFTCommandBuffer::bind_sampler(unsigned binding, GLFFT::Sampler *sampler)
 {
-	if (sampler)
+	if (cmd && sampler)
 		cmd->set_sampler(0, binding, static_cast<FFTSampler *>(sampler)->sampler);
 }
 
 void FFTCommandBuffer::bind_storage_texture(unsigned binding, GLFFT::Texture *texture)
 {
-	cmd->set_storage_texture(0, binding, *static_cast<FFTTexture *>(texture)->image);
+	if (cmd)
+		cmd->set_storage_texture(0, binding, *static_cast<FFTTexture *>(texture)->image);
 }
 
 void FFTCommandBuffer::bind_texture(unsigned binding, GLFFT::Texture *texture)
 {
-	cmd->set_texture(0, binding, *static_cast<FFTTexture *>(texture)->image,
-	                 Vulkan::StockSampler::NearestClamp);
+	if (cmd)
+	{
+		cmd->set_texture(0, binding, *static_cast<FFTTexture *>(texture)->image,
+		                 Vulkan::StockSampler::NearestClamp);
+	}
 }
 
 void FFTCommandBuffer::bind_storage_buffer(unsigned binding, GLFFT::Buffer *buffer)
 {
-	cmd->set_storage_buffer(0, binding, *static_cast<FFTBuffer *>(buffer)->buffer);
+	if (cmd)
+		cmd->set_storage_buffer(0, binding, *static_cast<FFTBuffer *>(buffer)->buffer);
 }
 
 void FFTCommandBuffer::bind_storage_buffer_range(unsigned binding, size_t offset, size_t range, GLFFT::Buffer *buffer)
 {
-	cmd->set_storage_buffer(0, binding, *static_cast<FFTBuffer *>(buffer)->buffer, offset, range);
+	if (cmd)
+		cmd->set_storage_buffer(0, binding, *static_cast<FFTBuffer *>(buffer)->buffer, offset, range);
 }
 
 void FFTCommandBuffer::dispatch(unsigned x, unsigned y, unsigned z)
 {
-	cmd->dispatch(x, y, z);
+	if (cmd)
+		cmd->dispatch(x, y, z);
 }
 
 const void *FFTInterface::map(GLFFT::Buffer *buffer_, size_t offset, size_t)

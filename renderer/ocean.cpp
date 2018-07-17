@@ -177,48 +177,66 @@ void Ocean::setup_render_pass_dependencies(RenderGraph &, RenderPass &target)
 
 void Ocean::setup_render_pass_resources(RenderGraph &graph)
 {
-	if (!vertex_mip_views.empty() && !fragment_mip_views.empty() && !normal_mip_views.empty())
-		return;
-
-	auto &vertex = graph.get_physical_texture_resource(*height_displacement_output);
-	auto &fragment = graph.get_physical_texture_resource(*gradient_jacobian_output);
-	auto &normal = graph.get_physical_texture_resource(*normal_fft_output);
-
-	unsigned vertex_lods = muglm::min(unsigned(quad_lod.size()), vertex.get_image().get_create_info().levels);
-	unsigned fragment_lods = fragment.get_image().get_create_info().levels;
-	unsigned normal_lods = normal.get_image().get_create_info().levels;
-
-	for (unsigned i = 0; i < vertex_lods; i++)
+	if (vertex_mip_views.empty() && fragment_mip_views.empty() && normal_mip_views.empty())
 	{
-		Vulkan::ImageViewCreateInfo view;
-		view.image = &vertex.get_image();
-		view.format = vertex.get_format();
-		view.layers = 1;
-		view.levels = 1;
-		view.base_level = i;
-		vertex_mip_views.push_back(graph.get_device().create_image_view(view));
-	}
+		auto &vertex = graph.get_physical_texture_resource(*height_displacement_output);
+		auto &fragment = graph.get_physical_texture_resource(*gradient_jacobian_output);
+		auto &normal = graph.get_physical_texture_resource(*normal_fft_output);
 
-	for (unsigned i = 0; i < fragment_lods; i++)
-	{
-		Vulkan::ImageViewCreateInfo view;
-		view.image = &fragment.get_image();
-		view.format = fragment.get_format();
-		view.layers = 1;
-		view.levels = 1;
-		view.base_level = i;
-		fragment_mip_views.push_back(graph.get_device().create_image_view(view));
-	}
+		unsigned vertex_lods = muglm::min(unsigned(quad_lod.size()), vertex.get_image().get_create_info().levels);
+		unsigned fragment_lods = fragment.get_image().get_create_info().levels;
+		unsigned normal_lods = normal.get_image().get_create_info().levels;
 
-	for (unsigned i = 0; i < normal_lods; i++)
-	{
-		Vulkan::ImageViewCreateInfo view;
-		view.image = &normal.get_image();
-		view.format = normal.get_format();
-		view.layers = 1;
-		view.levels = 1;
-		view.base_level = i;
-		normal_mip_views.push_back(graph.get_device().create_image_view(view));
+		for (unsigned i = 0; i < vertex_lods; i++)
+		{
+			Vulkan::ImageViewCreateInfo view;
+			view.image = &vertex.get_image();
+			view.format = vertex.get_format();
+			view.layers = 1;
+			view.levels = 1;
+			view.base_level = i;
+			vertex_mip_views.push_back(graph.get_device().create_image_view(view));
+		}
+
+		for (unsigned i = 0; i < fragment_lods; i++)
+		{
+			Vulkan::ImageViewCreateInfo view;
+			view.image = &fragment.get_image();
+			view.format = fragment.get_format();
+			view.layers = 1;
+			view.levels = 1;
+			view.base_level = i;
+			fragment_mip_views.push_back(graph.get_device().create_image_view(view));
+		}
+
+		for (unsigned i = 0; i < normal_lods; i++)
+		{
+			Vulkan::ImageViewCreateInfo view;
+			view.image = &normal.get_image();
+			view.format = normal.get_format();
+			view.layers = 1;
+			view.levels = 1;
+			view.base_level = i;
+			normal_mip_views.push_back(graph.get_device().create_image_view(view));
+		}
+
+		// Prebuild the FFT commands and sort so we can avoid most barriers.
+		deferred_cmd.reset();
+
+		deferred_cmd.reset_command_counter();
+		FFTTexture height_output(&graph.get_physical_texture_resource(*height_fft_output));
+		FFTBuffer height_input(&graph.get_physical_buffer_resource(*height_fft_input));
+		height_fft->process(&deferred_cmd, &height_output, &height_input);
+
+		deferred_cmd.reset_command_counter();
+		FFTTexture normal_output(normal_mip_views.front().get());
+		FFTBuffer normal_input(&graph.get_physical_buffer_resource(*normal_fft_input));
+		normal_fft->process(&deferred_cmd, &normal_output, &normal_input);
+
+		deferred_cmd.reset_command_counter();
+		FFTTexture displacement_output(&graph.get_physical_texture_resource(*displacement_fft_output));
+		FFTBuffer displacement_input(&graph.get_physical_buffer_resource(*displacement_fft_input));
+		displacement_fft->process(&deferred_cmd, &displacement_output, &displacement_input);
 	}
 }
 
@@ -392,19 +410,7 @@ void Ocean::update_fft_input(Vulkan::CommandBuffer &cmd)
 
 void Ocean::compute_fft(Vulkan::CommandBuffer &cmd)
 {
-	FFTCommandBuffer cmd_wrapper(&cmd);
-
-	FFTTexture height_output(&graph->get_physical_texture_resource(*height_fft_output));
-	FFTBuffer height_input(&graph->get_physical_buffer_resource(*height_fft_input));
-	height_fft->process(&cmd_wrapper, &height_output, &height_input);
-
-	FFTTexture normal_output(normal_mip_views.front().get());
-	FFTBuffer normal_input(&graph->get_physical_buffer_resource(*normal_fft_input));
-	normal_fft->process(&cmd_wrapper, &normal_output, &normal_input);
-
-	FFTTexture displacement_output(&graph->get_physical_texture_resource(*displacement_fft_output));
-	FFTBuffer displacement_input(&graph->get_physical_buffer_resource(*displacement_fft_input));
-	displacement_fft->process(&cmd_wrapper, &displacement_output, &displacement_input);
+	deferred_cmd.build(cmd);
 }
 
 void Ocean::bake_maps(Vulkan::CommandBuffer &cmd)
@@ -525,10 +531,6 @@ void Ocean::update_fft_pass(Vulkan::CommandBuffer &cmd)
 	            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 
 	compute_fft(cmd);
-
-	cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
-	            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-
 	bake_maps(cmd);
 	generate_mipmaps(cmd);
 }

@@ -74,6 +74,7 @@ private:
 	std::unique_ptr<GLFFT::FFT> normal_fft;
 	std::unique_ptr<GLFFT::FFT> displacement_fft;
 	FFTInterface fft_iface;
+	FFTDeferredCommandBuffer deferred_cmd;
 
 	bool has_static_aabb() const override
 	{

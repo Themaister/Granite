@@ -20,6 +20,7 @@
 
 #include "command_buffer.hpp"
 #include "glfft_interface.hpp"
+#include <functional>
 
 namespace Granite
 {
@@ -88,6 +89,30 @@ public:
 private:
 	Vulkan::CommandBuffer *cmd;
 	Vulkan::CommandBufferHandle cmd_holder;
+};
+
+class FFTDeferredCommandBuffer : public GLFFT::CommandBuffer
+{
+public:
+	void barrier() override;
+	void bind_program(GLFFT::Program *program) override;
+	void bind_sampler(unsigned binding, GLFFT::Sampler *sampler) override;
+	void bind_storage_texture(unsigned binding, GLFFT::Texture *texture) override;
+	void bind_texture(unsigned binding, GLFFT::Texture *texture) override;
+	void bind_storage_buffer(unsigned binding, GLFFT::Buffer *buffer) override;
+	void bind_storage_buffer_range(unsigned binding, size_t offset, size_t length, GLFFT::Buffer *buffer) override;
+	void dispatch(unsigned x, unsigned y, unsigned z) override;
+	void push_constant_data(const void *data, size_t size) override;
+
+	void build(Vulkan::CommandBuffer &cmd);
+	void reset_command_counter();
+	void reset();
+
+private:
+	unsigned command_counter = 0;
+	std::vector<std::vector<std::function<void (Vulkan::CommandBuffer &)>>> commands;
+	void ensure_command_list();
+	std::vector<std::function<void (Vulkan::CommandBuffer &)>> &get_command_list();
 };
 
 struct FFTBuffer : GLFFT::Buffer

@@ -801,6 +801,35 @@ void Ocean::build_corner(vector<vec3> &positions, vector<uint16_t> &indices,
 	positions.push_back(vec3(ivec3(base + dx + dy, 0)));
 }
 
+void Ocean::build_fill_edge(vector<vec3> &positions, vector<uint16_t> &indices,
+                            vec2 base_outer, vec2 end_outer,
+                            ivec2 base_inner, ivec2 delta, ivec2 corner_delta)
+{
+	unsigned base_index = unsigned(positions.size());
+	unsigned count = config.grid_count * 2 + 3;
+
+	for (unsigned i = 0; i < count; i++)
+	{
+		if (i == 0)
+			positions.push_back(vec3(vec2(base_inner - corner_delta), 0.0f));
+		else if (i + 1 == count)
+			positions.push_back(vec3(vec2(base_inner + corner_delta), 0.0f));
+		else
+			positions.push_back(vec3(vec2(base_inner), 0.0f));
+
+		float outer_lerp = float(i) / float(count - 1);
+		vec2 outer_pos = muglm::round(mix(base_outer, end_outer, vec2(outer_lerp)));
+		positions.push_back(vec3(outer_pos, 0.0f));
+
+		if ((i + 2 < count) && (i != 0))
+			base_inner += delta;
+
+		indices.push_back(uint16_t(base_index++));
+		indices.push_back(uint16_t(base_index++));
+	}
+	indices.push_back(0xffffu);
+}
+
 void Ocean::build_lod(Vulkan::Device &device, unsigned size, unsigned stride)
 {
 	unsigned size_1 = size + 1;
@@ -927,6 +956,42 @@ void Ocean::build_buffers(Vulkan::Device &device)
 	             ivec2(config.grid_count * config.grid_resolution),
 	             ivec2(0, outer_delta),
 	             ivec2(outer_delta, 0));
+
+	const float neg_edge_size = float(-32 * 1024);
+	const float pos_edge_size = float(32 * 1024) + config.grid_count * config.grid_resolution;
+
+	// Top outer ring
+	build_fill_edge(positions, indices,
+	                vec2(pos_edge_size, neg_edge_size),
+	                vec2(neg_edge_size, neg_edge_size),
+	                ivec2(config.grid_count * config.grid_resolution, -outer_delta),
+	                ivec2(-inner_delta, 0),
+	                ivec2(-outer_delta, 0));
+
+	// Left outer ring
+	build_fill_edge(positions, indices,
+	                vec2(neg_edge_size, neg_edge_size),
+	                vec2(neg_edge_size, pos_edge_size),
+	                ivec2(-outer_delta, 0),
+	                ivec2(0, inner_delta),
+	                ivec2(0, outer_delta));
+
+	// Bottom outer ring
+	build_fill_edge(positions, indices,
+	                vec2(neg_edge_size, pos_edge_size),
+	                vec2(pos_edge_size, pos_edge_size),
+	                ivec2(0, outer_delta + config.grid_count * config.grid_resolution),
+	                ivec2(inner_delta, 0),
+	                ivec2(outer_delta, 0));
+
+	// Right outer ring
+	build_fill_edge(positions, indices,
+	                vec2(pos_edge_size, pos_edge_size),
+	                vec2(pos_edge_size, neg_edge_size),
+	                ivec2(outer_delta + config.grid_count * config.grid_resolution,
+	                      config.grid_count * config.grid_resolution),
+	                ivec2(0, -inner_delta),
+	                ivec2(0, -outer_delta));
 
 	Vulkan::BufferCreateInfo border_vbo_info;
 	border_vbo_info.size = positions.size() * sizeof(ivec3);

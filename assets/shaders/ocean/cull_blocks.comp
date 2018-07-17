@@ -34,10 +34,10 @@ layout(std430, set = 0, binding = 1) buffer LODCounters
 
 layout(set = 0, binding = 2) uniform sampler2D uLODs;
 
-int compute_lod(vec4 lods)
+int compute_lod(vec4 lods, float inner_lod)
 {
     vec2 xy = min(lods.xy, lods.zw);
-    return int(min(xy.x, xy.y));
+    return int(min(inner_lod, min(xy.x, xy.y)));
 }
 
 bool is_inside_plane(vec3 lo, vec3 hi)
@@ -89,7 +89,7 @@ void main()
 
         float inner_lod = lod_center;
 
-        int lod = compute_lod(lods);
+        int lod = compute_lod(lods, lod_center);
         uint offset = atomicAdd(draws[lod].instance_count, 1u);
         offset += registers.lod_stride * lod;
 

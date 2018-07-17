@@ -156,6 +156,9 @@ private:
 	                  ivec2 base, ivec2 dx, ivec2 dy);
 	void build_corner(std::vector<vec3> &positions, std::vector<uint16_t> &indices,
 	                  ivec2 base, ivec2 dx, ivec2 dy);
+	void build_fill_edge(std::vector<vec3> &positions, std::vector<uint16_t> &indices,
+	                     vec2 base_outer, vec2 end_outer,
+	                     ivec2 base_inner, ivec2 delta, ivec2 corner_delta);
 
 	void add_lod_update_pass(RenderGraph &graph);
 	void add_fft_update_pass(RenderGraph &graph);

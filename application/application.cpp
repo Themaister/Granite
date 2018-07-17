@@ -33,6 +33,7 @@
 #include "muglm/matrix_helper.hpp"
 #include "muglm/muglm_impl.hpp"
 #include "utils/image_utils.hpp"
+#include "ocean.hpp"
 #include <float.h>
 
 using namespace std;
@@ -205,6 +206,10 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 		read_quirks(quirks_path);
 
 	scene_loader.load_scene(path);
+
+	// Why not. :D
+	Ocean::add_to_scene(scene_loader.get_scene());
+
 	animation_system = scene_loader.consume_animation_system();
 	context.set_lighting_parameters(&lighting);
 	cam.set_depth_range(0.1f, 1000.0f);

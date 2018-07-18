@@ -208,7 +208,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 	scene_loader.load_scene(path);
 
 	// Why not. :D
-	Ocean::add_to_scene(scene_loader.get_scene());
+	//Ocean::add_to_scene(scene_loader.get_scene());
 
 	animation_system = scene_loader.consume_animation_system();
 	context.set_lighting_parameters(&lighting);

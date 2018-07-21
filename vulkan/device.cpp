@@ -424,6 +424,8 @@ void Device::init_pipeline_cache()
 		if (mapped && !init_pipeline_cache(mapped, size))
 			LOGE("Failed to initialize pipeline cache.\n");
 	}
+	else if (!init_pipeline_cache(nullptr, 0))
+		LOGE("Failed to initialize pipeline cache.\n");
 #endif
 }
 

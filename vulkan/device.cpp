@@ -39,7 +39,7 @@
 
 static inline unsigned get_current_thread_index()
 {
-	return ThreadGroup::get_current_thread_index();
+	return Granite::ThreadGroup::get_current_thread_index();
 }
 #else
 #define LOCK() ((void)0)
@@ -432,7 +432,7 @@ void Device::init_pipeline_cache()
 #ifdef GRANITE_VULKAN_FOSSILIZE
 void Device::init_pipeline_state()
 {
-	auto file = Granite::Filesystem::get().open("cache://pipelines.json", FileMode::ReadOnly);
+	auto file = Granite::Filesystem::get().open("cache://pipelines.json", Granite::FileMode::ReadOnly);
 	if (!file)
 		return;
 
@@ -460,7 +460,7 @@ void Device::init_pipeline_state()
 void Device::flush_pipeline_state()
 {
 	auto serial = state_recorder.serialize();
-	auto file = Granite::Filesystem::get().open("cache://pipelines.json", FileMode::WriteOnly);
+	auto file = Granite::Filesystem::get().open("cache://pipelines.json", Granite::FileMode::WriteOnly);
 	if (file)
 	{
 		uint8_t *data = static_cast<uint8_t *>(file->map_write(serial.size()));
@@ -1437,7 +1437,7 @@ bool Device::swapchain_touched() const
 Device::~Device()
 {
 #ifdef GRANITE_VULKAN_MT
-	ThreadGroup::get_global().wait_idle();
+	Granite::ThreadGroup::get_global().wait_idle();
 #endif
 	wait_idle();
 
@@ -1553,7 +1553,7 @@ Device::PerFrame::PerFrame(Device *device, Managers &managers,
     , query_pool(device)
 {
 #ifdef GRANITE_VULKAN_MT
-	unsigned count = ThreadGroup::get_global().get_num_threads() + 1;
+	unsigned count = Granite::ThreadGroup::get_global().get_num_threads() + 1;
 #else
 	unsigned count = 1;
 #endif

@@ -76,7 +76,7 @@ public:
 		return false;
 	}
 
-	Util::FrameTimer &get_frame_timer()
+	Granite::FrameTimer &get_frame_timer()
 	{
 		return timer;
 	}
@@ -100,7 +100,7 @@ protected:
 	bool killed = false;
 
 private:
-	Util::FrameTimer timer;
+	Granite::FrameTimer timer;
 	Granite::InputTracker tracker;
 };
 

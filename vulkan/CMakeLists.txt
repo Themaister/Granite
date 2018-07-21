@@ -15,9 +15,7 @@ add_granite_library(vulkan-backend
         render_pass.cpp render_pass.hpp
         buffer.cpp buffer.hpp
         semaphore.cpp semaphore.hpp
-        shader_manager.cpp shader_manager.hpp
         memory_allocator.cpp memory_allocator.hpp
-        texture_manager.cpp texture_manager.hpp
         fence.hpp fence.cpp
         format.hpp
         texture_format.hpp texture_format.cpp
@@ -28,6 +26,23 @@ add_granite_library(vulkan-backend
         pipeline_event.cpp pipeline_event.hpp
         query_pool.cpp query_pool.hpp
         vulkan_events.hpp)
+
+option(GRANITE_VULKAN_FILESYSTEM "Enable features which depend on a filesystem implementation." ON)
+if (GRANITE_VULKAN_FILESYSTEM)
+    target_sources(vulkan-backend PUBLIC
+            ${CMAKE_CURRENT_SOURCE_DIR}/managers/shader_manager.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/managers/shader_manager.hpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/managers/texture_manager.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/managers/texture_manager.hpp)
+
+    target_link_libraries(vulkan-backend
+            filesystem
+            compiler
+            scene-formats
+            stb)
+    target_compile_definitions(vulkan-backend PUBLIC GRANITE_VULKAN_FILESYSTEM)
+    target_include_directories(vulkan-backend PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/managers)
+endif()
 
 target_include_directories(vulkan-backend PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
@@ -63,12 +78,7 @@ target_link_libraries(vulkan-backend
         spirv-cross-core
         volk
         util
-        filesystem
-        compiler
-        stb
         event
-        math
-        scene-formats
         application-input
         application-events)
 

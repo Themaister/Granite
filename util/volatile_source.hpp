@@ -30,13 +30,12 @@
 
 namespace Util
 {
-using namespace Granite;
 template <typename T>
 class VolatileSource : public IntrusivePtrEnabled<VolatileSource<T>>
 {
 public:
 	VolatileSource(const std::string &path)
-		: path(Path::enforce_protocol(path))
+		: path(Granite::Path::enforce_protocol(path))
 	{
 	}
 
@@ -62,7 +61,7 @@ protected:
 		if (path.empty())
 			return;
 
-		auto file = Filesystem::get().open(path);
+		auto file = Granite::Filesystem::get().open(path);
 		if (!file)
 		{
 			LOGE("Failed to open volatile file: %s\n", path.c_str());
@@ -72,20 +71,20 @@ protected:
 		auto *self = static_cast<T *>(this);
 		self->update(move(file));
 
-		auto paths = Path::protocol_split(path);
-		auto *proto = Filesystem::get().get_backend(paths.first);
+		auto paths = Granite::Path::protocol_split(path);
+		auto *proto = Granite::Filesystem::get().get_backend(paths.first);
 		if (proto)
 		{
 			// Listen to directory so we can track file moves properly.
-			notify_handle = proto->install_notification(Path::basedir(paths.second), [&](const FileNotifyInfo &info) {
-				if (info.type == FileNotifyType::FileDeleted)
+			notify_handle = proto->install_notification(Granite::Path::basedir(paths.second), [&](const Granite::FileNotifyInfo &info) {
+				if (info.type == Granite::FileNotifyType::FileDeleted)
 					return;
 				if (info.path != path)
 					return;
 
 				try
 				{
-					auto file = Filesystem::get().open(info.path);
+					auto file = Granite::Filesystem::get().open(info.path);
 					if (!file)
 						return;
 					auto *self = static_cast<T *>(this);

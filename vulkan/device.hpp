@@ -36,13 +36,16 @@
 #include "event_manager.hpp"
 #include "shader.hpp"
 #include "vulkan.hpp"
-#include "shader_manager.hpp"
-#include "texture_manager.hpp"
 #include "query_pool.hpp"
 #include "buffer_pool.hpp"
 #include "thread_safe_cache.hpp"
 #include <memory>
 #include <vector>
+
+#ifdef GRANITE_VULKAN_FILESYSTEM
+#include "shader_manager.hpp"
+#include "texture_manager.hpp"
+#endif
 
 #ifdef GRANITE_VULKAN_MT
 #include <atomic>
@@ -144,8 +147,12 @@ public:
 	void init_external_swapchain(const std::vector<ImageHandle> &swapchain_images);
 	unsigned get_num_swapchain_images() const
 	{
-		return per_frame.size();
+		return unsigned(per_frame.size());
 	}
+
+	size_t get_pipeline_cache_size();
+	bool get_pipeline_cache_data(uint8_t *data, size_t size);
+	bool init_pipeline_cache(const uint8_t *data, size_t size);
 
 	// Frame-pushing interface.
 	void begin_frame(unsigned swapchain_index);
@@ -241,15 +248,8 @@ public:
 
 	const Sampler &get_stock_sampler(StockSampler sampler) const;
 
-	ShaderManager &get_shader_manager()
-	{
-		return shader_manager;
-	}
-
-	TextureManager &get_texture_manager()
-	{
-		return texture_manager;
-	}
+	ShaderManager &get_shader_manager();
+	TextureManager &get_texture_manager();
 
 	// For some platforms, the device and queue might be shared, possibly across threads, so need some mechanism to
 	// lock the global device and queue.
@@ -436,9 +436,6 @@ private:
 	PhysicalAttachmentAllocator physical_allocator;
 	VkPipelineCache pipeline_cache = VK_NULL_HANDLE;
 
-	ShaderManager shader_manager;
-	TextureManager texture_manager;
-
 	SamplerHandle create_sampler(const SamplerCreateInfo &info, StockSampler sampler);
 	void init_pipeline_cache();
 	void flush_pipeline_cache();
@@ -505,6 +502,11 @@ private:
 	void submit_secondary(CommandBuffer &primary, CommandBuffer &secondary);
 	void wait_idle_nolock();
 	void end_frame_nolock();
+
+#ifdef GRANITE_VULKAN_FILESYSTEM
+	ShaderManager shader_manager;
+	TextureManager texture_manager;
+#endif
 
 #ifdef GRANITE_VULKAN_FOSSILIZE
 	Fossilize::StateRecorder state_recorder;

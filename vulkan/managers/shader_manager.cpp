@@ -34,7 +34,7 @@ namespace Vulkan
 ShaderTemplate::ShaderTemplate(const std::string &shader_path)
 	: path(shader_path)
 {
-	compiler = make_unique<GLSLCompiler>();
+	compiler = make_unique<Granite::GLSLCompiler>();
 	compiler->set_source_from_file(shader_path);
 	if (!compiler->preprocess())
 		throw runtime_error(Util::join("Failed to pre-process shader: ", shader_path));
@@ -79,7 +79,7 @@ void ShaderTemplate::recompile()
 	// Recompile all variants.
 	try
 	{
-		auto newcompiler = make_unique<GLSLCompiler>();
+		auto newcompiler = make_unique<Granite::GLSLCompiler>();
 		newcompiler->set_source_from_file(path);
 		if (!newcompiler->preprocess())
 		{
@@ -296,10 +296,10 @@ void ShaderManager::register_dependency_nolock(ShaderTemplate *shader, const std
 	add_directory_watch(dependency);
 }
 
-void ShaderManager::recompile(const FileNotifyInfo &info)
+void ShaderManager::recompile(const Granite::FileNotifyInfo &info)
 {
 	std::lock_guard<std::mutex> holder{dependency_lock};
-	if (info.type == FileNotifyType::FileDeleted)
+	if (info.type == Granite::FileNotifyType::FileDeleted)
 		return;
 
 	auto &deps = dependees[info.path];
@@ -312,19 +312,19 @@ void ShaderManager::recompile(const FileNotifyInfo &info)
 
 void ShaderManager::add_directory_watch(const std::string &source)
 {
-	auto basedir = Path::basedir(source);
+	auto basedir = Granite::Path::basedir(source);
 	if (directory_watches.find(basedir) != end(directory_watches))
 		return;
 
-	auto paths = Path::protocol_split(basedir);
-	auto *backend = Filesystem::get().get_backend(paths.first);
+	auto paths = Granite::Path::protocol_split(basedir);
+	auto *backend = Granite::Filesystem::get().get_backend(paths.first);
 	if (!backend)
 		return;
 
-	FileNotifyHandle handle = -1;
+	Granite::FileNotifyHandle handle = -1;
 	if (backend)
 	{
-		handle = backend->install_notification(paths.second, [this](const FileNotifyInfo &info) {
+		handle = backend->install_notification(paths.second, [this](const Granite::FileNotifyInfo &info) {
 			recompile(info);
 		});
 	}

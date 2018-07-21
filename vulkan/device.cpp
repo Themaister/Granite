@@ -59,8 +59,10 @@ Device::Device()
     : framebuffer_allocator(this)
     , transient_allocator(this)
 	, physical_allocator(this)
+#ifdef GRANITE_VULKAN_FILESYSTEM
 	, shader_manager(this)
 	, texture_manager(this)
+#endif
 {
 #ifdef GRANITE_VULKAN_MT
 	cookie.store(0);
@@ -385,36 +387,50 @@ void Device::bake_program(Program &program)
 	program.set_pipeline_layout(request_pipeline_layout(layout));
 }
 
+bool Device::init_pipeline_cache(const uint8_t *data, size_t size)
+{
+	static const auto uuid_size = sizeof(gpu_props.pipelineCacheUUID);
+
+	VkPipelineCacheCreateInfo info = { VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO };
+	if (!data || size < uuid_size)
+	{
+		LOGI("Creating a fresh pipeline cache.\n");
+	}
+	else if (memcmp(data, gpu_props.pipelineCacheUUID, uuid_size) != 0)
+	{
+		LOGI("Pipeline cache UUID changed.\n");
+	}
+	else
+	{
+		info.initialDataSize = size - uuid_size;
+		info.pInitialData = data + uuid_size;
+		LOGI("Initializing pipeline cache.\n");
+	}
+
+	if (pipeline_cache != VK_NULL_HANDLE)
+		vkDestroyPipelineCache(device, pipeline_cache, nullptr);
+	pipeline_cache = VK_NULL_HANDLE;
+	return vkCreatePipelineCache(device, &info, nullptr, &pipeline_cache) == VK_SUCCESS;
+}
+
 void Device::init_pipeline_cache()
 {
-	auto file = Filesystem::get().open("cache://pipeline_cache.bin", FileMode::ReadOnly);
-	VkPipelineCacheCreateInfo info = { VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO };
-
+#ifdef GRANITE_VULKAN_FILESYSTEM
+	auto file = Granite::Filesystem::get().open("cache://pipeline_cache.bin", Granite::FileMode::ReadOnly);
 	if (file)
 	{
 		auto size = file->get_size();
-		static const auto uuid_size = sizeof(gpu_props.pipelineCacheUUID);
-		if (size >= uuid_size)
-		{
-			uint8_t *mapped = static_cast<uint8_t *>(file->map());
-			if (mapped)
-			{
-				if (memcmp(gpu_props.pipelineCacheUUID, mapped, uuid_size) == 0)
-				{
-					info.initialDataSize = size - uuid_size;
-					info.pInitialData = mapped + uuid_size;
-				}
-			}
-		}
+		auto *mapped = static_cast<uint8_t *>(file->map());
+		if (mapped && !init_pipeline_cache(mapped, size))
+			LOGE("Failed to initialize pipeline cache.\n");
 	}
-
-	vkCreatePipelineCache(device, &info, nullptr, &pipeline_cache);
+#endif
 }
 
 #ifdef GRANITE_VULKAN_FOSSILIZE
 void Device::init_pipeline_state()
 {
-	auto file = Filesystem::get().open("cache://pipelines.json", FileMode::ReadOnly);
+	auto file = Granite::Filesystem::get().open("cache://pipelines.json", FileMode::ReadOnly);
 	if (!file)
 		return;
 
@@ -442,7 +458,7 @@ void Device::init_pipeline_state()
 void Device::flush_pipeline_state()
 {
 	auto serial = state_recorder.serialize();
-	auto file = Filesystem::get().open("cache://pipelines.json", FileMode::WriteOnly);
+	auto file = Granite::Filesystem::get().open("cache://pipelines.json", FileMode::WriteOnly);
 	if (file)
 	{
 		uint8_t *data = static_cast<uint8_t *>(file->map_write(serial.size()));
@@ -457,36 +473,74 @@ void Device::flush_pipeline_state()
 }
 #endif
 
-void Device::flush_pipeline_cache()
+size_t Device::get_pipeline_cache_size()
 {
+	if (pipeline_cache == VK_NULL_HANDLE)
+		return 0;
+
 	static const auto uuid_size = sizeof(gpu_props.pipelineCacheUUID);
 	size_t size = 0;
 	if (vkGetPipelineCacheData(device, pipeline_cache, &size, nullptr) != VK_SUCCESS)
 	{
 		LOGE("Failed to get pipeline cache data.\n");
+		return 0;
+	}
+
+	return size + uuid_size;
+}
+
+bool Device::get_pipeline_cache_data(uint8_t *data, size_t size)
+{
+	if (pipeline_cache == VK_NULL_HANDLE)
+		return false;
+
+	static const auto uuid_size = sizeof(gpu_props.pipelineCacheUUID);
+	if (size < uuid_size)
+		return false;
+
+	size -= uuid_size;
+	memcpy(data, gpu_props.pipelineCacheUUID, uuid_size);
+	data += uuid_size;
+
+	if (vkGetPipelineCacheData(device, pipeline_cache, &size, data) != VK_SUCCESS)
+	{
+		LOGE("Failed to get pipeline cache data.\n");
+		return false;
+	}
+
+	return true;
+}
+
+void Device::flush_pipeline_cache()
+{
+#ifdef GRANITE_VULKAN_FILESYSTEM
+	size_t size = get_pipeline_cache_size();
+	if (!size)
+	{
+		LOGE("Failed to get pipeline cache size.\n");
 		return;
 	}
 
-	auto file = Filesystem::get().open("cache://pipeline_cache.bin", FileMode::WriteOnly);
+	auto file = Granite::Filesystem::get().open("cache://pipeline_cache.bin", Granite::FileMode::WriteOnly);
 	if (!file)
 	{
 		LOGE("Failed to get pipeline cache data.\n");
 		return;
 	}
 
-	uint8_t *data = static_cast<uint8_t *>(file->map_write(uuid_size + size));
+	uint8_t *data = static_cast<uint8_t *>(file->map_write(size));
 	if (!data)
 	{
 		LOGE("Failed to get pipeline cache data.\n");
 		return;
 	}
 
-	memcpy(data, gpu_props.pipelineCacheUUID, uuid_size);
-	if (vkGetPipelineCacheData(device, pipeline_cache, &size, data + uuid_size) != VK_SUCCESS)
+	if (!get_pipeline_cache_data(data, size))
 	{
 		LOGE("Failed to get pipeline cache data.\n");
 		return;
 	}
+#endif
 }
 
 void Device::set_context(const Context &context)
@@ -3192,6 +3246,26 @@ void Device::set_name(const CommandBuffer &cmd, const char *name)
 		info.pObjectName = name;
 		vkDebugMarkerSetObjectNameEXT(device, &info);
 	}
+}
+
+TextureManager &Device::get_texture_manager()
+{
+#ifdef GRANITE_VULKAN_FILESYSTEM
+	return texture_manager;
+#else
+	LOGE("Vulkan backend is compiled without filesystem support.\n");
+	std::terminate();
+#endif
+}
+
+ShaderManager &Device::get_shader_manager()
+{
+#ifdef GRANITE_VULKAN_FILESYSTEM
+	return shader_manager;
+#else
+	LOGE("Vulkan backend is compiled without filesystem support.\n");
+	std::terminate();
+#endif
 }
 
 }

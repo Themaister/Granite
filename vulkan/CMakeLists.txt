@@ -1,6 +1,7 @@
 add_granite_library(vulkan-backend
         vulkan.cpp vulkan.hpp
         device.cpp device.hpp
+        wsi.cpp wsi.hpp
         buffer_pool.cpp buffer_pool.hpp
         image.cpp image.hpp
         cookie.cpp cookie.hpp
@@ -28,14 +29,17 @@ add_granite_library(vulkan-backend
         query_pool.cpp query_pool.hpp
         vulkan_events.hpp)
 
-target_include_directories(vulkan-backend PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/khronos)
+target_include_directories(vulkan-backend PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/khronos)
 
 if (${CMAKE_BUILD_TYPE} MATCHES "Debug")
     target_compile_definitions(vulkan-backend PUBLIC VULKAN_DEBUG)
 endif()
 
 if (CMAKE_COMPILER_IS_GNUCXX OR (${CMAKE_CXX_COMPILER_ID} MATCHES "Clang"))
-    set_source_files_properties(texture_manager.cpp PROPERTIES COMPILE_FLAGS "-Wno-type-limits -Wno-pedantic -Wno-ignored-qualifiers -Wno-unused-parameter")
+    set_source_files_properties(texture_manager.cpp PROPERTIES
+            COMPILE_FLAGS "-Wno-type-limits -Wno-pedantic -Wno-ignored-qualifiers -Wno-unused-parameter")
 endif()
 
 option(GRANITE_SPIRV_DUMP "Dump compiled SPIR-V modules to cache." OFF)
@@ -45,23 +49,28 @@ endif()
 
 option(GRANITE_VULKAN_MT "Make Vulkan backend thread-safe." ON)
 if (GRANITE_VULKAN_MT)
-    target_compile_definitions(vulkan-backend PRIVATE VULKAN_MT)
+    target_compile_definitions(vulkan-backend PUBLIC GRANITE_VULKAN_MT)
     target_link_libraries(vulkan-backend threading)
 endif()
 
-add_subdirectory(wsi)
+option(GRANITE_VULKAN_FOSSILIZE "Enable support for Fossilize." ON)
+if (GRANITE_VULKAN_FOSSILIZE)
+    target_link_libraries(vulkan-backend fossilize)
+    target_compile_definitions(vulkan-backend PUBLIC GRANITE_VULKAN_FOSSILIZE)
+endif()
 
-target_link_libraries(vulkan-backend spirv-cross-core)
-target_link_libraries(vulkan-backend volk)
-target_link_libraries(vulkan-backend util)
-target_link_libraries(vulkan-backend vulkan-wsi)
-target_link_libraries(vulkan-backend filesystem)
-target_link_libraries(vulkan-backend compiler)
-target_link_libraries(vulkan-backend stb)
-target_link_libraries(vulkan-backend event)
-target_link_libraries(vulkan-backend math)
-target_link_libraries(vulkan-backend scene-formats)
-target_link_libraries(vulkan-backend fossilize)
+target_link_libraries(vulkan-backend
+        spirv-cross-core
+        volk
+        util
+        filesystem
+        compiler
+        stb
+        event
+        math
+        scene-formats
+        application-input
+        application-events)
 
 if (UNIX)
    target_link_libraries(vulkan-backend dl)

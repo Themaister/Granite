@@ -31,4 +31,4 @@ target_link_libraries(renderer vulkan-backend math scene-formats application-eve
 target_include_directories(renderer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_subdirectory(fft)
-target_link_libraries(renderer glfft)
+target_link_libraries(renderer glfft threading)

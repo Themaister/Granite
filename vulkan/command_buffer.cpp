@@ -542,11 +542,17 @@ VkPipeline CommandBuffer::build_compute_pipeline(Hash hash)
 	}
 
 	VkPipeline compute_pipeline;
+#ifdef GRANITE_VULKAN_FOSSILIZE
 	unsigned pipe_index = device->get_state_recorder().register_compute_pipeline(hash, info);
+#endif
+
 	LOGI("Creating compute pipeline.\n");
 	if (vkCreateComputePipelines(device->get_device(), cache, 1, &info, nullptr, &compute_pipeline) != VK_SUCCESS)
 		LOGE("Failed to create compute pipeline!\n");
+
+#ifdef GRANITE_VULKAN_FOSSILIZE
 	device->get_state_recorder().set_compute_pipeline_handle(pipe_index, compute_pipeline);
+#endif
 
 	return current_program->add_pipeline(hash, compute_pipeline);
 }
@@ -734,12 +740,18 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
 	pipe.stageCount = num_stages;
 
 	VkPipeline pipeline;
+#ifdef GRANITE_VULKAN_FOSSILIZE
 	unsigned pipe_index = device->get_state_recorder().register_graphics_pipeline(hash, pipe);
+#endif
+
 	LOGI("Creating graphics pipeline.\n");
 	VkResult res = vkCreateGraphicsPipelines(device->get_device(), cache, 1, &pipe, nullptr, &pipeline);
 	if (res != VK_SUCCESS)
 		LOGE("Failed to create graphics pipeline!\n");
+
+#ifdef GRANITE_VULKAN_FOSSILIZE
 	device->get_state_recorder().set_graphics_pipeline_handle(pipe_index, pipeline);
+#endif
 
 	return current_program->add_pipeline(hash, pipeline);
 }

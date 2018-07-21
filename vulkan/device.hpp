@@ -41,12 +41,18 @@
 #include "query_pool.hpp"
 #include "buffer_pool.hpp"
 #include "thread_safe_cache.hpp"
-#include "fossilize.hpp"
 #include <memory>
 #include <vector>
+
+#ifdef GRANITE_VULKAN_MT
 #include <atomic>
 #include <mutex>
 #include <condition_variable>
+#endif
+
+#ifdef GRANITE_VULKAN_FOSSILIZE
+#include "fossilize.hpp"
+#endif
 
 namespace Vulkan
 {
@@ -63,21 +69,36 @@ struct InitialImageBuffer
 	std::vector<VkBufferImageCopy> blits;
 };
 
+#ifdef GRANITE_VULKAN_MT
+template <typename T>
+using VulkanObjectPool = Util::ThreadSafeObjectPool<T>;
+template <typename T>
+using VulkanCache = Util::ThreadSafeCache<T>;
+#else
+template <typename T>
+using VulkanObjectPool = Util::ObjectPool<T>;
+template <typename T>
+using VulkanCache = Util::Cache<T>;
+#endif
+
 struct HandlePool
 {
-	Util::ThreadSafeObjectPool<Buffer> buffers;
-	Util::ThreadSafeObjectPool<Image> images;
-	Util::ThreadSafeObjectPool<ImageView> image_views;
-	Util::ThreadSafeObjectPool<BufferView> buffer_views;
-	Util::ThreadSafeObjectPool<Sampler> samplers;
-	Util::ThreadSafeObjectPool<FenceHolder> fences;
-	Util::ThreadSafeObjectPool<SemaphoreHolder> semaphores;
-	Util::ThreadSafeObjectPool<EventHolder> events;
-	Util::ThreadSafeObjectPool<QueryPoolResult> query;
-	Util::ThreadSafeObjectPool<CommandBuffer> command_buffers;
+	VulkanObjectPool<Buffer> buffers;
+	VulkanObjectPool<Image> images;
+	VulkanObjectPool<ImageView> image_views;
+	VulkanObjectPool<BufferView> buffer_views;
+	VulkanObjectPool<Sampler> samplers;
+	VulkanObjectPool<FenceHolder> fences;
+	VulkanObjectPool<SemaphoreHolder> semaphores;
+	VulkanObjectPool<EventHolder> events;
+	VulkanObjectPool<QueryPoolResult> query;
+	VulkanObjectPool<CommandBuffer> command_buffers;
 };
 
-class Device : public Fossilize::StateCreatorInterface
+class Device
+#ifdef GRANITE_VULKAN_FOSSILIZE
+	: public Fossilize::StateCreatorInterface
+#endif
 {
 public:
 	friend class EventHolder;
@@ -139,8 +160,8 @@ public:
 	Program *request_program(Shader *compute);
 	void bake_program(Program &program);
 
-	void *map_host_buffer(Buffer &buffer, MemoryAccessFlags access);
-	void unmap_host_buffer(const Buffer &buffer);
+	void *map_host_buffer(const Buffer &buffer, MemoryAccessFlags access);
+	void unmap_host_buffer(const Buffer &buffer, MemoryAccessFlags access);
 
 	BufferHandle create_buffer(const BufferCreateInfo &info, const void *initial);
 	ImageHandle create_image(const ImageCreateInfo &info, const ImageInitialData *initial);
@@ -240,10 +261,12 @@ public:
 	// lock the global device and queue.
 	void set_queue_lock(std::function<void ()> lock_callback, std::function<void ()> unlock_callback);
 
+#ifdef GRANITE_VULKAN_FOSSILIZE
 	Fossilize::StateRecorder &get_state_recorder()
 	{
 		return state_recorder;
 	}
+#endif
 
 	HandlePool &get_handle_pool()
 	{
@@ -257,7 +280,12 @@ private:
 	VkQueue graphics_queue = VK_NULL_HANDLE;
 	VkQueue compute_queue = VK_NULL_HANDLE;
 	VkQueue transfer_queue = VK_NULL_HANDLE;
+
+#ifdef GRANITE_VULKAN_MT
 	std::atomic<uint64_t> cookie;
+#else
+	uint64_t cookie = 0;
+#endif
 
 	VkPhysicalDeviceMemoryProperties mem_props;
 	VkPhysicalDeviceProperties gpu_props;
@@ -280,8 +308,10 @@ private:
 
 	struct
 	{
+#ifdef GRANITE_VULKAN_MT
 		std::mutex lock;
 		std::condition_variable cond;
+#endif
 		unsigned counter = 0;
 	} lock;
 	void add_frame_counter();
@@ -387,27 +417,23 @@ private:
 
 	SamplerHandle samplers[static_cast<unsigned>(StockSampler::Count)];
 
-	Util::ThreadSafeCache<PipelineLayout> pipeline_layouts;
-	Util::ThreadSafeCache<DescriptorSetAllocator> descriptor_set_allocators;
+	VulkanCache<PipelineLayout> pipeline_layouts;
+	VulkanCache<DescriptorSetAllocator> descriptor_set_allocators;
+	VulkanCache<RenderPass> render_passes;
+	VulkanCache<Shader> shaders;
+	VulkanCache<Program> programs;
 
 	FramebufferAllocator framebuffer_allocator;
 	TransientAttachmentAllocator transient_allocator;
 	PhysicalAttachmentAllocator physical_allocator;
-	Util::ThreadSafeCache<RenderPass> render_passes;
 	VkPipelineCache pipeline_cache = VK_NULL_HANDLE;
-
-	Util::ThreadSafeCache<Shader> shaders;
-	Util::ThreadSafeCache<Program> programs;
 
 	ShaderManager shader_manager;
 	TextureManager texture_manager;
 
 	SamplerHandle create_sampler(const SamplerCreateInfo &info, StockSampler sampler);
 	void init_pipeline_cache();
-	void init_pipeline_state();
-
 	void flush_pipeline_cache();
-	void flush_pipeline_state();
 
 	CommandPool &get_command_pool(CommandBuffer::Type type, unsigned thread);
 	QueueData &get_queue_data(CommandBuffer::Type type);
@@ -458,6 +484,7 @@ private:
 	void submit_secondary(CommandBuffer &primary, CommandBuffer &secondary);
 	void wait_idle_nolock();
 
+#ifdef GRANITE_VULKAN_FOSSILIZE
 	Fossilize::StateRecorder state_recorder;
 	bool enqueue_create_sampler(Fossilize::Hash hash, unsigned index, const VkSamplerCreateInfo *create_info, VkSampler *sampler) override;
 	bool enqueue_create_descriptor_set_layout(Fossilize::Hash hash, unsigned index, const VkDescriptorSetLayoutCreateInfo *create_info, VkDescriptorSetLayout *layout) override;
@@ -472,5 +499,9 @@ private:
 		std::unordered_map<VkShaderModule, Shader *> shader_map;
 		std::unordered_map<VkRenderPass, RenderPass *> render_pass_map;
 	} replayer_state;
+
+	void init_pipeline_state();
+	void flush_pipeline_state();
+#endif
 };
 }

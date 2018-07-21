@@ -32,7 +32,10 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <vector>
+
+#ifdef GRANITE_VULKAN_MT
 #include <mutex>
+#endif
 
 namespace Vulkan
 {
@@ -60,9 +63,9 @@ enum AllocationTiling
 
 enum MemoryAccessFlag
 {
-	MEMORY_ACCESS_WRITE = 1,
-	MEMORY_ACCESS_READ = 2,
-	MEMORY_ACCESS_READ_WRITE = MEMORY_ACCESS_WRITE | MEMORY_ACCESS_READ
+	MEMORY_ACCESS_WRITE_BIT = 1,
+	MEMORY_ACCESS_READ_BIT = 2,
+	MEMORY_ACCESS_READ_WRITE_BIT = MEMORY_ACCESS_WRITE_BIT | MEMORY_ACCESS_READ_BIT
 };
 using MemoryAccessFlags = uint32_t;
 
@@ -183,7 +186,6 @@ private:
 
 	uint8_t tiling = 0;
 	uint8_t memory_type = 0;
-	uint8_t access_flags = 0;
 	bool hierarchical = false;
 
 	void free_global(DeviceAllocator &allocator, uint32_t size, uint32_t memory_type);
@@ -238,7 +240,9 @@ private:
 	uint32_t sub_block_size_log2 = 0;
 	uint32_t tiling_mask = ~0u;
 	uint32_t memory_type = 0;
+#ifdef GRANITE_VULKAN_MT
 	std::mutex lock;
+#endif
 	DeviceAllocator *global_allocator = nullptr;
 
 	void set_global_allocator(DeviceAllocator *allocator)
@@ -319,8 +323,8 @@ public:
 	bool allocate_global(uint32_t size, uint32_t memory_type, DeviceAllocation *alloc);
 
 	void garbage_collect();
-	void *map_memory(DeviceAllocation *alloc, MemoryAccessFlags flags);
-	void unmap_memory(const DeviceAllocation &alloc);
+	void *map_memory(const DeviceAllocation &alloc, MemoryAccessFlags flags);
+	void unmap_memory(const DeviceAllocation &alloc, MemoryAccessFlags flags);
 
 	bool allocate(uint32_t size, uint32_t memory_type, VkDeviceMemory *memory, uint8_t **host_memory, VkImage dedicated_image);
 	void free(uint32_t size, uint32_t memory_type, VkDeviceMemory memory, uint8_t *host_memory);
@@ -331,7 +335,9 @@ private:
 	VkDevice device = VK_NULL_HANDLE;
 	VkPhysicalDeviceMemoryProperties mem_props;
 	VkDeviceSize atom_alignment = 1;
+#ifdef GRANITE_VULKAN_MT
 	std::mutex lock;
+#endif
 	bool use_dedicated = false;
 
 	struct Allocation

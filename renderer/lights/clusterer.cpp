@@ -797,7 +797,7 @@ void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::Image
 	compute_staging_info.size = res_x * res_y * res_z * (ClusterHierarchies + 1) * sizeof(uvec4);
 	compute_staging_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 	auto compute_staging = cmd.get_device().create_buffer(compute_staging_info, nullptr);
-	auto *image_data = static_cast<uvec4 *>(cmd.get_device().map_host_buffer(*compute_staging, MEMORY_ACCESS_WRITE));
+	auto *image_data = static_cast<uvec4 *>(cmd.get_device().map_host_buffer(*compute_staging, MEMORY_ACCESS_WRITE_BIT));
 
 	{
 		auto *copy_program = cmd.get_device().get_shader_manager().register_compute(

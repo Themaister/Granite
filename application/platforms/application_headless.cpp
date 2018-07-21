@@ -339,13 +339,13 @@ public:
 			readback_fence[index]->wait();
 			readback_fence[index].reset();
 
-			auto *ptr = static_cast<uint32_t *>(device.map_host_buffer(*readback_buffers[index], MEMORY_ACCESS_READ_WRITE));
+			auto *ptr = static_cast<uint32_t *>(device.map_host_buffer(*readback_buffers[index], MEMORY_ACCESS_READ_WRITE_BIT));
 			for (unsigned i = 0; i < width * height; i++)
 				ptr[i] |= 0xff000000u;
 
 			if (!stbi_write_png(path.c_str(), width, height, 4, ptr, width * 4))
 				LOGE("Failed to write PNG to disk.\n");
-			device.unmap_host_buffer(*readback_buffers[index]);
+			device.unmap_host_buffer(*readback_buffers[index], MEMORY_ACCESS_READ_WRITE_BIT);
 		};
 	}
 
@@ -420,7 +420,7 @@ private:
 
 		LOGI("Dumping frame: %u (index: %u)\n", frame, index);
 
-		auto *ptr = static_cast<uint32_t *>(device.map_host_buffer(*readback_buffers[index], MEMORY_ACCESS_READ_WRITE));
+		auto *ptr = static_cast<uint32_t *>(device.map_host_buffer(*readback_buffers[index], MEMORY_ACCESS_READ_WRITE_BIT));
 		for (unsigned i = 0; i < width * height; i++)
 			ptr[i] |= 0xff000000u;
 
@@ -429,7 +429,7 @@ private:
 		auto path = png_readback + buffer;
 		if (!stbi_write_png(path.c_str(), width, height, 4, ptr, width * 4))
 			LOGE("Failed to write PNG to disk.\n");
-		device.unmap_host_buffer(*readback_buffers[index]);
+		device.unmap_host_buffer(*readback_buffers[index], MEMORY_ACCESS_READ_WRITE_BIT);
 	}
 
 	Application *app = nullptr;

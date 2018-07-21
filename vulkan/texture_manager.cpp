@@ -23,9 +23,12 @@
 #include "texture_manager.hpp"
 #include "device.hpp"
 #include "stb_image.h"
-#include "texture_files.hpp"
-#include "thread_group.hpp"
 #include "memory_mapped_texture.hpp"
+#include "texture_files.hpp"
+
+#ifdef GRANITE_VULKAN_MT
+#include "thread_group.hpp"
+#endif
 
 using namespace std;
 using namespace Granite;
@@ -51,12 +54,11 @@ void Texture::set_path(const std::string &path)
 
 void Texture::update(std::unique_ptr<Granite::File> file)
 {
-	auto &workers = Granite::ThreadGroup::get_global();
-
-	// Workaround, cannot copy the lambda because of owning a unique_ptr.
 	auto *f = file.release();
-	auto task = workers.create_task([f, this]() {
+	auto work = [f, this]() {
+#ifdef GRANITE_VULKAN_MT
 		LOGI("Loading texture in thread index: %u\n", Granite::ThreadGroup::get_current_thread_index());
+#endif
 		unique_ptr<Granite::File> file{f};
 		auto size = file->get_size();
 		void *mapped = file->map();
@@ -75,8 +77,16 @@ void Texture::update(std::unique_ptr<Granite::File> file)
 			if (old)
 				device->keep_handle_alive(move(old));
 		}
-	});
+	};
+
+#ifdef GRANITE_VULKAN_MT
+	auto &workers = Granite::ThreadGroup::get_global();
+	// Workaround, cannot copy the lambda because of owning a unique_ptr.
+	auto task = workers.create_task(move(work));
 	task->flush();
+#else
+	work();
+#endif
 }
 
 void Texture::update_checkerboard()

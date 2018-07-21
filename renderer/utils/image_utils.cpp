@@ -311,9 +311,9 @@ bool save_image_buffer_to_gtx(Vulkan::Device &device, ImageReadback &readback, c
 	}
 
 	readback.fence->wait();
-	void *ptr = device.map_host_buffer(*readback.buffer, MEMORY_ACCESS_READ);
+	void *ptr = device.map_host_buffer(*readback.buffer, MEMORY_ACCESS_READ_BIT);
 	memcpy(tex.get_layout().data(), ptr, tex.get_layout().get_required_size());
-	device.unmap_host_buffer(*readback.buffer);
+	device.unmap_host_buffer(*readback.buffer, MEMORY_ACCESS_READ_BIT);
 
 	return true;
 }

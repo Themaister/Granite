@@ -25,7 +25,7 @@
 
 using namespace std;
 
-#ifdef VULKAN_MT
+#ifdef GRANITE_VULKAN_MT
 #define ALLOCATOR_LOCK() std::lock_guard<std::mutex> holder__{lock}
 #else
 #define ALLOCATOR_LOCK()
@@ -443,37 +443,35 @@ void DeviceAllocator::garbage_collect()
 		heap.garbage_collect(device);
 }
 
-void *DeviceAllocator::map_memory(DeviceAllocation *alloc, MemoryAccessFlags flags)
+void *DeviceAllocator::map_memory(const DeviceAllocation &alloc, MemoryAccessFlags flags)
 {
 	// This will only happen if the memory type is device local only, which we cannot possibly map.
-	if (!alloc->host_base)
+	if (!alloc.host_base)
 		return nullptr;
 
-	alloc->access_flags = flags;
-
-	if ((flags & MEMORY_ACCESS_READ) &&
-	    !(mem_props.memoryTypes[alloc->memory_type].propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))
+	if ((flags & MEMORY_ACCESS_READ_BIT) &&
+	    !(mem_props.memoryTypes[alloc.memory_type].propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))
 	{
-		VkDeviceSize offset = alloc->offset & ~(atom_alignment - 1);
-		VkDeviceSize size = (alloc->offset + alloc->get_size() - offset + atom_alignment - 1) & ~(atom_alignment - 1);
+		VkDeviceSize offset = alloc.offset & ~(atom_alignment - 1);
+		VkDeviceSize size = (alloc.offset + alloc.get_size() - offset + atom_alignment - 1) & ~(atom_alignment - 1);
 
 		// Have to invalidate cache here.
 		const VkMappedMemoryRange range = {
-			VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE, nullptr, alloc->base, offset, size,
+			VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE, nullptr, alloc.base, offset, size,
 		};
 		vkInvalidateMappedMemoryRanges(device, 1, &range);
 	}
 
-	return alloc->host_base;
+	return alloc.host_base;
 }
 
-void DeviceAllocator::unmap_memory(const DeviceAllocation &alloc)
+void DeviceAllocator::unmap_memory(const DeviceAllocation &alloc, MemoryAccessFlags flags)
 {
 	// This will only happen if the memory type is device local only, which we cannot possibly map.
 	if (!alloc.host_base)
 		return;
 
-	if ((alloc.access_flags & MEMORY_ACCESS_WRITE) &&
+	if ((flags & MEMORY_ACCESS_WRITE_BIT) &&
 	    !(mem_props.memoryTypes[alloc.memory_type].propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))
 	{
 		VkDeviceSize offset = alloc.offset & ~(atom_alignment - 1);

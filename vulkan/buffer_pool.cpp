@@ -59,7 +59,7 @@ BufferBlock BufferPool::allocate_block(VkDeviceSize size)
 	block.gpu->set_internal_sync_object();
 
 	// Try to map it, will fail unless the memory is host visible.
-	block.mapped = static_cast<uint8_t *>(device->map_host_buffer(*block.gpu, MEMORY_ACCESS_WRITE));
+	block.mapped = static_cast<uint8_t *>(device->map_host_buffer(*block.gpu, MEMORY_ACCESS_WRITE_BIT));
 	if (!block.mapped)
 	{
 		// Fall back to host memory, and remember to sync to gpu on submission time using DMA queue. :)
@@ -71,7 +71,7 @@ BufferBlock BufferPool::allocate_block(VkDeviceSize size)
 		block.cpu = device->create_buffer(cpu_info, nullptr);
 		block.cpu->set_internal_sync_object();
 		device->set_name(*block.cpu, "chain-allocated-block-cpu");
-		block.mapped = static_cast<uint8_t *>(device->map_host_buffer(*block.cpu, MEMORY_ACCESS_WRITE));
+		block.mapped = static_cast<uint8_t *>(device->map_host_buffer(*block.cpu, MEMORY_ACCESS_WRITE_BIT));
 	}
 	else
 		block.cpu = block.gpu;
@@ -93,7 +93,7 @@ BufferBlock BufferPool::request_block(VkDeviceSize minimum_size)
 		auto back = move(blocks.back());
 		blocks.pop_back();
 
-		back.mapped = static_cast<uint8_t *>(device->map_host_buffer(*back.cpu, MEMORY_ACCESS_WRITE));
+		back.mapped = static_cast<uint8_t *>(device->map_host_buffer(*back.cpu, MEMORY_ACCESS_WRITE_BIT));
 		back.offset = 0;
 		return back;
 	}

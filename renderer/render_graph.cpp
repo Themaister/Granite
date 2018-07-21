@@ -25,7 +25,6 @@
 #include "format.hpp"
 #include "quirks.hpp"
 #include <algorithm>
-#include "thread_group.hpp"
 
 using namespace std;
 

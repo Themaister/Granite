@@ -21,7 +21,6 @@
  */
 
 #include "application.hpp"
-#include <stdexcept>
 #include "sprite.hpp"
 #include "horizontal_packing.hpp"
 #include "image_widget.hpp"
@@ -34,6 +33,8 @@
 #include "muglm/muglm_impl.hpp"
 #include "utils/image_utils.hpp"
 #include "ocean.hpp"
+#include "thread_group.hpp"
+#include <stdexcept>
 #include <float.h>
 
 using namespace std;
@@ -45,6 +46,8 @@ Application::Application()
 {
 	EventManager::get_global();
 	Filesystem::get();
+	ThreadGroup::get_global();
+	ThreadGroup::register_main_thread();
 }
 
 bool Application::init_wsi(std::unique_ptr<WSIPlatform> new_platform)

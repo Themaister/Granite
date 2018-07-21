@@ -22,8 +22,11 @@
 
 #include "descriptor_set.hpp"
 #include "device.hpp"
-#include "thread_group.hpp"
 #include <vector>
+
+#ifdef GRANITE_VULKAN_MT
+#include "thread_group.hpp"
+#endif
 
 using namespace std;
 using namespace Util;
@@ -33,7 +36,11 @@ namespace Vulkan
 DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device, const DescriptorSetLayout &layout, const uint32_t *stages_for_binds)
     : HashedObject(hash), device(device)
 {
+#ifdef GRANITE_VULKAN_MT
 	unsigned count = ThreadGroup::get_global().get_num_threads() + 1;
+#else
+	unsigned count = 1;
+#endif
 	for (unsigned i = 0; i < count; i++)
 		per_thread.emplace_back(new PerThread);
 
@@ -121,11 +128,15 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device, const 
 		info.pBindings = bindings.data();
 	}
 
+#ifdef GRANITE_VULKAN_FOSSILIZE
 	unsigned desc_index = device->get_state_recorder().register_descriptor_set_layout(get_hash(), info);
+#endif
 	LOGI("Creating descriptor set layout.\n");
 	if (vkCreateDescriptorSetLayout(device->get_device(), &info, nullptr, &set_layout) != VK_SUCCESS)
 		LOGE("Failed to create descriptor set layout.");
+#ifdef GRANITE_VULKAN_FOSSILIZE
 	device->get_state_recorder().set_descriptor_set_layout_handle(desc_index, set_layout);
+#endif
 }
 
 void DescriptorSetAllocator::begin_frame()

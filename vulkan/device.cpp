@@ -22,23 +22,32 @@
 
 #include "device.hpp"
 #include "format.hpp"
-#include "thread_group.hpp"
 #include "type_to_string.hpp"
 #include "quirks.hpp"
 #include "enum_cast.hpp"
 #include <algorithm>
 #include <string.h>
 
-#ifdef VULKAN_MT
+#ifdef GRANITE_VULKAN_MT
+#include "thread_group.hpp"
 #define LOCK() std::lock_guard<std::mutex> holder__{lock.lock}
 #define DRAIN_FRAME_LOCK() \
 	std::unique_lock<std::mutex> holder__{lock.lock}; \
 	lock.cond.wait(holder__, [&]() { \
 		return lock.counter == 0; \
 	})
+
+static inline unsigned get_current_thread_index()
+{
+	return ThreadGroup::get_current_thread_index();
+}
 #else
 #define LOCK() ((void)0)
 #define DRAIN_FRAME_LOCK() VK_ASSERT(lock.counter == 0)
+static inline unsigned get_current_thread_index()
+{
+	return 0;
+}
 #endif
 
 using namespace std;
@@ -53,10 +62,9 @@ Device::Device()
 	, shader_manager(this)
 	, texture_manager(this)
 {
+#ifdef GRANITE_VULKAN_MT
 	cookie.store(0);
-
-	ThreadGroup::get_global();
-	ThreadGroup::register_main_thread();
+#endif
 }
 
 Semaphore Device::request_semaphore()
@@ -128,15 +136,15 @@ void Device::add_wait_semaphore_nolock(CommandBuffer::Type type, Semaphore semap
 	VK_ASSERT(data.wait_semaphores.size() < 16 * 1024);
 }
 
-void *Device::map_host_buffer(Buffer &buffer, MemoryAccessFlags access)
+void *Device::map_host_buffer(const Buffer &buffer, MemoryAccessFlags access)
 {
-	void *host = managers.memory.map_memory(&buffer.get_allocation(), access);
+	void *host = managers.memory.map_memory(buffer.get_allocation(), access);
 	return host;
 }
 
-void Device::unmap_host_buffer(const Buffer &buffer)
+void Device::unmap_host_buffer(const Buffer &buffer, MemoryAccessFlags access)
 {
-	managers.memory.unmap_memory(buffer.get_allocation());
+	managers.memory.unmap_memory(buffer.get_allocation(), access);
 }
 
 Shader *Device::request_shader(const uint32_t *data, size_t size)
@@ -151,6 +159,7 @@ Shader *Device::request_shader(const uint32_t *data, size_t size)
 	return ret;
 }
 
+#ifdef GRANITE_VULKAN_FOSSILIZE
 bool Device::enqueue_create_shader_module(Fossilize::Hash hash, unsigned, const VkShaderModuleCreateInfo *create_info, VkShaderModule *module)
 {
 	auto *ret = shaders.insert(hash, make_unique<Shader>(hash, this, create_info->pCode, create_info->codeSize));
@@ -173,7 +182,9 @@ bool Device::enqueue_create_compute_pipeline(Fossilize::Hash hash, unsigned,
 	// The layout is dummy, resolve it here.
 	info.layout = ret->get_pipeline_layout()->get_layout();
 
+#ifdef GRANITE_VULKAN_FOSSILIZE
 	get_state_recorder().register_compute_pipeline(hash, info);
+#endif
 	LOGI("Creating compute pipeline.\n");
 	VkResult res = vkCreateComputePipelines(device, pipeline_cache, 1, &info, nullptr, pipeline);
 	if (res != VK_SUCCESS)
@@ -181,6 +192,7 @@ bool Device::enqueue_create_compute_pipeline(Fossilize::Hash hash, unsigned,
 	*pipeline = ret->add_pipeline(hash, *pipeline);
 	return true;
 }
+#endif
 
 Program *Device::request_program(Vulkan::Shader *compute)
 {
@@ -200,6 +212,7 @@ Program *Device::request_program(const uint32_t *compute_data, size_t compute_si
 	return request_program(compute);
 }
 
+#ifdef GRANITE_VULKAN_FOSSILIZE
 bool Device::enqueue_create_graphics_pipeline(Fossilize::Hash hash, unsigned,
                                               const VkGraphicsPipelineCreateInfo *create_info, VkPipeline *pipeline)
 {
@@ -227,7 +240,9 @@ bool Device::enqueue_create_graphics_pipeline(Fossilize::Hash hash, unsigned,
 	// The layout is dummy, resolve it here.
 	info.layout = ret->get_pipeline_layout()->get_layout();
 
+#ifdef GRANITE_VULKAN_FOSSILIZE
 	get_state_recorder().register_graphics_pipeline(hash, info);
+#endif
 	LOGI("Creating graphics pipeline.\n");
 	VkResult res = vkCreateGraphicsPipelines(device, pipeline_cache, 1, &info, nullptr, pipeline);
 	if (res != VK_SUCCESS)
@@ -235,6 +250,7 @@ bool Device::enqueue_create_graphics_pipeline(Fossilize::Hash hash, unsigned,
 	*pipeline = ret->add_pipeline(hash, *pipeline);
 	return true;
 }
+#endif
 
 Program *Device::request_program(Vulkan::Shader *vertex, Vulkan::Shader *fragment)
 {
@@ -395,6 +411,7 @@ void Device::init_pipeline_cache()
 	vkCreatePipelineCache(device, &info, nullptr, &pipeline_cache);
 }
 
+#ifdef GRANITE_VULKAN_FOSSILIZE
 void Device::init_pipeline_state()
 {
 	auto file = Filesystem::get().open("cache://pipelines.json", FileMode::ReadOnly);
@@ -438,6 +455,7 @@ void Device::flush_pipeline_state()
 			LOGE("Failed to serialize pipeline data.\n");
 	}
 }
+#endif
 
 void Device::flush_pipeline_cache()
 {
@@ -489,7 +507,9 @@ void Device::set_context(const Context &context)
 
 	init_stock_samplers();
 	init_pipeline_cache();
+#ifdef GRANITE_VULKAN_FOSSILIZE
 	init_pipeline_state();
+#endif
 
 	ext = context.get_enabled_device_features();
 
@@ -592,7 +612,7 @@ static void request_block(Device &device, BufferBlock &block, VkDeviceSize size,
                           BufferPool &pool, std::vector<BufferBlock> *dma, std::vector<BufferBlock> &recycle)
 {
 	if (block.mapped)
-		device.unmap_host_buffer(*block.cpu);
+		device.unmap_host_buffer(*block.cpu, MEMORY_ACCESS_WRITE_BIT);
 
 	if (block.offset == 0)
 	{
@@ -1133,7 +1153,8 @@ void Device::sync_buffer_blocks()
 		return;
 
 	VkBufferUsageFlags usage = 0;
-	auto cmd = request_command_buffer_nolock(ThreadGroup::get_current_thread_index(), CommandBuffer::Type::AsyncTransfer);
+
+	auto cmd = request_command_buffer_nolock(get_current_thread_index(), CommandBuffer::Type::AsyncTransfer);
 
 	cmd->begin_region("buffer-block-sync");
 
@@ -1267,7 +1288,7 @@ vector<CommandBufferHandle> &Device::get_queue_submissions(CommandBuffer::Type t
 
 CommandBufferHandle Device::request_command_buffer(CommandBuffer::Type type)
 {
-	return request_command_buffer_for_thread(ThreadGroup::get_current_thread_index(), type);
+	return request_command_buffer_for_thread(get_current_thread_index(), type);
 }
 
 CommandBufferHandle Device::request_command_buffer_for_thread(unsigned thread_index, CommandBuffer::Type type)
@@ -1278,6 +1299,9 @@ CommandBufferHandle Device::request_command_buffer_for_thread(unsigned thread_in
 
 CommandBufferHandle Device::request_command_buffer_nolock(unsigned thread_index, CommandBuffer::Type type)
 {
+#ifndef GRANITE_VULKAN_MT
+	VK_ASSERT(thread_index == 0);
+#endif
 	auto cmd = get_command_pool(type, thread_index).request_command_buffer();
 
 	VkCommandBufferBeginInfo info = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
@@ -1356,7 +1380,9 @@ bool Device::swapchain_touched() const
 
 Device::~Device()
 {
+#ifdef GRANITE_VULKAN_MT
 	ThreadGroup::get_global().wait_idle();
+#endif
 	wait_idle();
 
 	if (wsi_acquire != VK_NULL_HANDLE)
@@ -1377,7 +1403,9 @@ Device::~Device()
 		vkDestroyPipelineCache(device, pipeline_cache, nullptr);
 	}
 
+#ifdef GRANITE_VULKAN_FOSSILIZE
 	flush_pipeline_state();
+#endif
 
 	framebuffer_allocator.clear();
 	transient_allocator.clear();
@@ -1468,7 +1496,12 @@ Device::PerFrame::PerFrame(Device *device, Managers &managers,
     , managers(managers)
     , query_pool(device)
 {
+#ifdef GRANITE_VULKAN_MT
 	unsigned count = ThreadGroup::get_global().get_num_threads() + 1;
+#else
+	unsigned count = 1;
+#endif
+
 	for (unsigned i = 0; i < count; i++)
 	{
 		graphics_cmd_pool.emplace_back(device->get_device(), graphics_queue_family_index);
@@ -1737,7 +1770,7 @@ void Device::decrement_frame_counter_nolock()
 {
 	VK_ASSERT(lock.counter > 0);
 	lock.counter--;
-#ifdef VULKAN_MT
+#ifdef GRANITE_VULKAN_MT
 	lock.cond.notify_one();
 #endif
 }
@@ -2242,9 +2275,9 @@ InitialImageBuffer Device::create_image_staging_buffer(const TextureFormatLayout
 	result.buffer = create_buffer(buffer_info, nullptr);
 	set_name(*result.buffer, "image-upload-staging-buffer");
 
-	auto *mapped = static_cast<uint8_t *>(map_host_buffer(*result.buffer, MEMORY_ACCESS_WRITE));
+	auto *mapped = static_cast<uint8_t *>(map_host_buffer(*result.buffer, MEMORY_ACCESS_WRITE_BIT));
 	memcpy(mapped, layout.data(), layout.get_required_size());
-	unmap_host_buffer(*result.buffer);
+	unmap_host_buffer(*result.buffer, MEMORY_ACCESS_WRITE_BIT);
 
 	layout.build_buffer_image_copies(result.blits);
 	return result;
@@ -2288,7 +2321,7 @@ InitialImageBuffer Device::create_image_staging_buffer(const ImageCreateInfo &in
 	set_name(*result.buffer, "image-upload-staging-buffer");
 
 	// And now, do the actual copy.
-	auto *mapped = static_cast<uint8_t *>(map_host_buffer(*result.buffer, MEMORY_ACCESS_WRITE));
+	auto *mapped = static_cast<uint8_t *>(map_host_buffer(*result.buffer, MEMORY_ACCESS_WRITE_BIT));
 	unsigned index = 0;
 
 	layout.set_buffer(mapped, layout.get_required_size());
@@ -2318,7 +2351,7 @@ InitialImageBuffer Device::create_image_staging_buffer(const ImageCreateInfo &in
 		}
 	}
 
-	unmap_host_buffer(*result.buffer);
+	unmap_host_buffer(*result.buffer, MEMORY_ACCESS_WRITE_BIT);
 	layout.build_buffer_image_copies(result.blits);
 	return result;
 }
@@ -2770,11 +2803,18 @@ SamplerHandle Device::create_sampler(const SamplerCreateInfo &sampler_info, Stoc
 {
 	auto info = fill_vk_sampler_info(sampler_info);
 	VkSampler sampler;
+
+#ifdef GRANITE_VULKAN_FOSSILIZE
 	unsigned index = state_recorder.register_sampler(Fossilize::Hash(stock_sampler), info);
+#else
+	(void)stock_sampler;
+#endif
 	if (vkCreateSampler(device, &info, nullptr, &sampler) != VK_SUCCESS)
 		return SamplerHandle(nullptr);
 
+#ifdef GRANITE_VULKAN_FOSSILIZE
 	state_recorder.set_sampler_handle(index, sampler);
+#endif
 	return SamplerHandle(handle_pool.samplers.allocate(this, sampler, sampler_info));
 }
 
@@ -2879,7 +2919,7 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 	}
 	else if (initial || zero_initialize)
 	{
-		void *ptr = managers.memory.map_memory(&allocation, MEMORY_ACCESS_WRITE);
+		void *ptr = managers.memory.map_memory(allocation, MEMORY_ACCESS_WRITE_BIT);
 		if (!ptr)
 			return BufferHandle(nullptr);
 
@@ -2887,7 +2927,7 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 			memcpy(ptr, initial, create_info.size);
 		else
 			memset(ptr, 0, create_info.size);
-		managers.memory.unmap_memory(allocation);
+		managers.memory.unmap_memory(allocation, MEMORY_ACCESS_WRITE_BIT);
 	}
 	return handle;
 }
@@ -2935,9 +2975,15 @@ VkFormat Device::get_default_depth_format() const
 uint64_t Device::allocate_cookie()
 {
 	// Reserve lower bits for "special purposes".
+#ifdef GRANITE_VULKAN_MT
 	return cookie.fetch_add(16, memory_order_relaxed) + 16;
+#else
+	cookie += 16;
+	return cookie;
+#endif
 }
 
+#ifdef GRANITE_VULKAN_FOSSILIZE
 bool Device::enqueue_create_render_pass(Fossilize::Hash hash, unsigned, const VkRenderPassCreateInfo *create_info, VkRenderPass *render_pass)
 {
 	auto *ret = render_passes.insert(hash, make_unique<RenderPass>(hash, this, *create_info));
@@ -2945,6 +2991,7 @@ bool Device::enqueue_create_render_pass(Fossilize::Hash hash, unsigned, const Vk
 	replayer_state.render_pass_map[*render_pass] = ret;
 	return true;
 }
+#endif
 
 const RenderPass &Device::request_render_pass(const RenderPassInfo &info)
 {
@@ -3062,6 +3109,7 @@ void Device::set_queue_lock(std::function<void()> lock_callback, std::function<v
 	queue_unlock_callback = move(unlock_callback);
 }
 
+#ifdef GRANITE_VULKAN_FOSSILIZE
 bool Device::enqueue_create_sampler(Fossilize::Hash hash, unsigned, const VkSamplerCreateInfo *, VkSampler *sampler)
 {
 	*sampler = get_stock_sampler(static_cast<StockSampler>(hash)).get_sampler();
@@ -3081,6 +3129,7 @@ bool Device::enqueue_create_pipeline_layout(Fossilize::Hash, unsigned, const VkP
 	*layout = (VkPipelineLayout) uint64_t(-1);
 	return true;
 }
+#endif
 
 void Device::set_name(const Buffer &buffer, const char *name)
 {

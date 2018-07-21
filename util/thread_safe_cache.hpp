@@ -30,27 +30,23 @@
 namespace Util
 {
 template <typename T>
-class ThreadSafeCache
+class Cache
 {
 public:
 	T *find(Hash hash) const
 	{
-		lock.lock_read();
 		auto itr = hashmap.find(hash);
 		auto *ret = itr != end(hashmap) ? itr->second.get() : nullptr;
-		lock.unlock_read();
 		return ret;
 	}
 
 	T *insert(Hash hash, std::unique_ptr<T> value)
 	{
-		lock.lock_write();
 		auto &cache = hashmap[hash];
 		if (!cache)
 			cache = std::move(value);
 
 		auto *ret = cache.get();
-		lock.unlock_write();
 		return ret;
 	}
 
@@ -66,6 +62,40 @@ public:
 
 private:
 	HashMap<std::unique_ptr<T>> hashmap;
+};
+
+template <typename T>
+class ThreadSafeCache
+{
+public:
+	T *find(Hash hash) const
+	{
+		lock.lock_read();
+		auto *ret = cache.find(hash);
+		lock.unlock_read();
+		return ret;
+	}
+
+	T *insert(Hash hash, std::unique_ptr<T> value)
+	{
+		lock.lock_write();
+		auto *ret = cache.insert(hash, std::move(value));
+		lock.unlock_write();
+		return ret;
+	}
+
+	HashMap<std::unique_ptr<T>> &get_hashmap()
+	{
+		return cache.get_hashmap();
+	}
+
+	const HashMap<std::unique_ptr<T>> &get_hashmap() const
+	{
+		return cache.get_hashmap();
+	}
+
+private:
+	Cache<T> cache;
 	mutable RWSpinLock lock;
 };
 }

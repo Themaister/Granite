@@ -8,7 +8,7 @@ option(GRANITE_KHR_DISPLAY_ACQUIRE_XLIB "Try to acquire Xlib display when using 
 add_granite_library(application-headless application_headless.cpp hw_counters/hw_counter_interface.h)
 target_link_libraries(application-headless
 		volk application vulkan-backend
-		vulkan-wsi ui-renderer
+		vulkan-backend ui-renderer
 		application-input application-events rapidjson)
 target_include_directories(application-headless PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -32,7 +32,7 @@ if (ANDROID)
 	target_compile_definitions(volk PUBLIC VK_USE_PLATFORM_ANDROID_KHR=1)
 elseif (${GRANITE_PLATFORM} MATCHES "libretro")
 	add_granite_library(retro-utils application_libretro_utils.cpp application_libretro_utils.hpp)
-	target_link_libraries(retro-utils vulkan-backend vulkan-wsi)
+	target_link_libraries(retro-utils vulkan-backend vulkan-backend)
 	target_include_directories(retro-utils PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 	target_link_libraries(retro-utils application)
 
@@ -81,7 +81,7 @@ endif()
 target_include_directories(application-main PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(application-main
 		application
-		volk vulkan-backend vulkan-wsi
+		volk vulkan-backend vulkan-backend
 		ui-renderer
 		application-input application-events)
 

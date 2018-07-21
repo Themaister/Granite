@@ -212,7 +212,7 @@ void FFTCommandBuffer::dispatch(unsigned x, unsigned y, unsigned z)
 const void *FFTInterface::map(GLFFT::Buffer *buffer_, size_t offset, size_t)
 {
 	auto *buffer = static_cast<FFTBuffer *>(buffer_);
-	return static_cast<uint8_t *>(device->map_host_buffer(*buffer->buffer, Vulkan::MEMORY_ACCESS_READ)) + offset;
+	return static_cast<uint8_t *>(device->map_host_buffer(*buffer->buffer, Vulkan::MEMORY_ACCESS_READ_BIT)) + offset;
 }
 
 void FFTInterface::wait_idle()
@@ -319,7 +319,7 @@ unique_ptr<GLFFT::Program> FFTInterface::compile_compute_shader(const char *sour
 void FFTInterface::unmap(GLFFT::Buffer *buffer_)
 {
 	auto *buffer = static_cast<FFTBuffer *>(buffer_);
-	device->unmap_host_buffer(*buffer->buffer);
+	device->unmap_host_buffer(*buffer->buffer, Vulkan::MEMORY_ACCESS_READ_BIT);
 }
 
 void FFTInterface::log(const char *fmt, ...)
@@ -354,8 +354,8 @@ void FFTInterface::read_texture(void *buffer, GLFFT::Texture *texture)
 	device->submit(cmd);
 	device->wait_idle();
 
-	memcpy(buffer, device->map_host_buffer(*readback, Vulkan::MEMORY_ACCESS_READ), info.size);
-	device->unmap_host_buffer(*readback);
+	memcpy(buffer, device->map_host_buffer(*readback, Vulkan::MEMORY_ACCESS_READ_BIT), info.size);
+	device->unmap_host_buffer(*readback, Vulkan::MEMORY_ACCESS_READ_BIT);
 }
 
 string FFTInterface::load_shader(const char *path)

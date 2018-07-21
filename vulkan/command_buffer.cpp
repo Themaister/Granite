@@ -1909,6 +1909,6 @@ void CommandBufferUtil::setup_fullscreen_quad(Vulkan::CommandBuffer &cmd, const 
 
 void CommandBufferDeleter::operator()(Vulkan::CommandBuffer *cmd)
 {
-	cmd->device->get_handle_pool().command_buffers.free(cmd);
+	cmd->device->handle_pool.command_buffers.free(cmd);
 }
 }

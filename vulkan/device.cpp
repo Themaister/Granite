@@ -681,7 +681,7 @@ void Device::request_staging_block_nolock(BufferBlock &block, VkDeviceSize size)
 	request_block(*this, block, size, managers.staging, nullptr, frame().staging_blocks);
 }
 
-void Device::submit(CommandBufferHandle cmd, Fence *fence, unsigned semaphore_count, Semaphore *semaphores)
+void Device::submit(CommandBufferHandle &cmd, Fence *fence, unsigned semaphore_count, Semaphore *semaphores)
 {
 	LOCK();
 	submit_nolock(move(cmd), fence, semaphore_count, semaphores);
@@ -858,7 +858,7 @@ void Device::submit_empty_inner(CommandBuffer::Type type, VkFence *fence,
 #endif
 }
 
-void Device::submit_staging(CommandBufferHandle cmd, VkBufferUsageFlags usage, bool flush)
+void Device::submit_staging(CommandBufferHandle &cmd, VkBufferUsageFlags usage, bool flush)
 {
 	auto access = buffer_usage_to_possible_access(usage);
 	auto stages = buffer_usage_to_possible_stages(usage);

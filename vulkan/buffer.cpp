@@ -50,7 +50,7 @@ Buffer::~Buffer()
 
 void BufferDeleter::operator()(Buffer *buffer)
 {
-	buffer->device->get_handle_pool().buffers.free(buffer);
+	buffer->device->handle_pool.buffers.free(buffer);
 }
 
 BufferView::BufferView(Device *device, VkBufferView view, const BufferViewCreateInfo &create_info)
@@ -74,7 +74,7 @@ BufferView::~BufferView()
 
 void BufferViewDeleter::operator()(BufferView *view)
 {
-	view->device->get_handle_pool().buffer_views.free(view);
+	view->device->handle_pool.buffer_views.free(view);
 }
 
 }

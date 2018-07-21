@@ -38,6 +38,6 @@ SemaphoreHolder::~SemaphoreHolder()
 
 void SemaphoreHolderDeleter::operator()(Vulkan::SemaphoreHolder *semaphore)
 {
-	semaphore->device->get_handle_pool().semaphores.free(semaphore);
+	semaphore->device->handle_pool.semaphores.free(semaphore);
 }
 }

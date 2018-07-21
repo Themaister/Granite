@@ -101,38 +101,58 @@ class Device
 #endif
 {
 public:
+	// Device-based objects which need to poke at internal data structures when their lifetimes end.
+	// Don't want to expose a lot of internal guts to make this work.
+	friend class QueryPool;
+	friend class QueryPoolResultDeleter;
 	friend class EventHolder;
+	friend class EventHolderDeleter;
 	friend class SemaphoreHolder;
+	friend class SemaphoreHolderDeleter;
+	friend class FenceHolder;
+	friend class FenceHolderDeleter;
 	friend class Sampler;
+	friend class SamplerDeleter;
 	friend class Buffer;
-	friend class Framebuffer;
+	friend class BufferDeleter;
 	friend class BufferView;
+	friend class BufferViewDeleter;
 	friend class ImageView;
+	friend class ImageViewDeleter;
 	friend class Image;
-	friend class Program;
+	friend class ImageDeleter;
 	friend class CommandBuffer;
+	friend class CommandBufferDeleter;
+	friend class Program;
+	friend class WSI;
+	friend class Cookie;
+	friend class Framebuffer;
+	friend class PipelineLayout;
+	friend class FramebufferAllocator;
+	friend class Texture;
 
 	Device();
 	~Device();
 
-	// Only called by main thread
+	// No move-copy.
+	void operator=(Device &&) = delete;
+	Device(Device &&) = delete;
+
+	// Only called by main thread, during setup phase.
 	void set_context(const Context &context);
 	void init_swapchain(const std::vector<VkImage> &swapchain_images, unsigned width, unsigned height, VkFormat format);
 	void init_external_swapchain(const std::vector<ImageHandle> &swapchain_images);
-	////
-
 	unsigned get_num_swapchain_images() const
 	{
 		return per_frame.size();
 	}
 
-	// Only called by main thread.
-	void begin_frame(unsigned index);
+	// Frame-pushing interface.
+	void begin_frame(unsigned swapchain_index);
 	void wait_idle();
 	void end_frame();
-	void end_frame_nolock();
-	////
 
+	// Set names for objects for debuggers and profilers.
 	void set_name(const Buffer &buffer, const char *name);
 	void set_name(const Image &image, const char *name);
 	void set_name(const CommandBuffer &cmd, const char *name);
@@ -141,31 +161,33 @@ public:
 	void flush_frame();
 	CommandBufferHandle request_command_buffer(CommandBuffer::Type type = CommandBuffer::Type::Generic);
 	CommandBufferHandle request_command_buffer_for_thread(unsigned thread_index, CommandBuffer::Type type = CommandBuffer::Type::Generic);
-
-	CommandBuffer::Type get_physical_queue_type(CommandBuffer::Type queue_type) const;
-	void submit(CommandBufferHandle cmd, Fence *fence = nullptr,
+	void submit(CommandBufferHandle &cmd, Fence *fence = nullptr,
 	            unsigned semaphore_count = 0, Semaphore *semaphore = nullptr);
 	void submit_empty(CommandBuffer::Type type,
 	                  Fence *fence = nullptr,
 	                  unsigned semaphore_count = 0,
 	                  Semaphore *semaphore = nullptr);
 	void add_wait_semaphore(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags stages, bool flush);
-	////
+	CommandBuffer::Type get_physical_queue_type(CommandBuffer::Type queue_type) const;
 
+	// Request shaders and programs. These objects are owned by the Device.
 	Shader *request_shader(const uint32_t *code, size_t size);
 	Program *request_program(const uint32_t *vertex_data, size_t vertex_size, const uint32_t *fragment_data,
 	                         size_t fragment_size);
 	Program *request_program(const uint32_t *compute_data, size_t compute_size);
 	Program *request_program(Shader *vertex, Shader *fragment);
 	Program *request_program(Shader *compute);
-	void bake_program(Program &program);
 
+	// Map and unmap buffer objects.
 	void *map_host_buffer(const Buffer &buffer, MemoryAccessFlags access);
 	void unmap_host_buffer(const Buffer &buffer, MemoryAccessFlags access);
 
+	// Create buffers and images.
 	BufferHandle create_buffer(const BufferCreateInfo &info, const void *initial);
 	ImageHandle create_image(const ImageCreateInfo &info, const ImageInitialData *initial);
 	ImageHandle create_image_from_staging_buffer(const ImageCreateInfo &info, const InitialImageBuffer *buffer);
+
+	// Create staging buffers for images.
 	InitialImageBuffer create_image_staging_buffer(const ImageCreateInfo &info, const ImageInitialData *initial);
 	InitialImageBuffer create_image_staging_buffer(const TextureFormatLayout &layout);
 
@@ -177,32 +199,15 @@ public:
 	                                  const ImageCreateInfo &create_info);
 #endif
 
+	// Create image view, buffer views and samplers.
 	ImageViewHandle create_image_view(const ImageViewCreateInfo &view_info);
 	BufferViewHandle create_buffer_view(const BufferViewCreateInfo &view_info);
 	SamplerHandle create_sampler(const SamplerCreateInfo &info);
 
-	// May be called from any thread at any time.
-	void destroy_buffer(VkBuffer buffer);
-	void destroy_image(VkImage image);
-	void destroy_image_view(VkImageView view);
-	void destroy_buffer_view(VkBufferView view);
-	void destroy_pipeline(VkPipeline pipeline);
-	void destroy_sampler(VkSampler sampler);
-	void destroy_framebuffer(VkFramebuffer framebuffer);
-	void destroy_semaphore(VkSemaphore semaphore);
-	void destroy_event(VkEvent event);
-	void free_memory(const DeviceAllocation &alloc);
-	void reset_fence(VkFence fence);
-	void keep_handle_alive(ImageHandle handle);
-	////
-
+	// Get a pipeline event.
 	PipelineEvent request_pipeline_event();
-	QueryPoolHandle write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlagBits stage);
 
-	VkSemaphore set_acquire(VkSemaphore acquire);
-	VkSemaphore set_release(VkSemaphore release);
-	bool swapchain_touched() const;
-
+	// Render pass helpers.
 	bool image_format_is_supported(VkFormat format, VkFormatFeatureFlags required) const;
 	VkFormat get_default_depth_stencil_format() const;
 	VkFormat get_default_depth_format() const;
@@ -210,24 +215,14 @@ public:
 	                                    unsigned index = 0, unsigned samples = 1);
 	ImageView &get_physical_attachment(unsigned width, unsigned height, VkFormat format,
 	                                   unsigned index = 0, unsigned samples = 1);
-
-	PipelineLayout *request_pipeline_layout(const CombinedResourceLayout &layout);
-	DescriptorSetAllocator *request_descriptor_set_allocator(const DescriptorSetLayout &layout, const uint32_t *stages_for_sets);
-	const Framebuffer &request_framebuffer(const RenderPassInfo &info);
-	const RenderPass &request_render_pass(const RenderPassInfo &info);
-
-	uint64_t allocate_cookie();
-
 	RenderPassInfo get_swapchain_render_pass(SwapchainRenderPass style);
+	ImageView &get_swapchain_view();
 
+	// Request semaphores.
 	Semaphore request_semaphore();
 #ifndef _WIN32
 	Semaphore request_imported_semaphore(int fd, VkExternalSemaphoreHandleTypeFlagBitsKHR handle_type);
 #endif
-	void request_vertex_block(BufferBlock &block, VkDeviceSize size);
-	void request_index_block(BufferBlock &block, VkDeviceSize size);
-	void request_uniform_block(BufferBlock &block, VkDeviceSize size);
-	void request_staging_block(BufferBlock &block, VkDeviceSize size);
 
 	VkDevice get_device()
 	{
@@ -244,7 +239,6 @@ public:
 		return gpu_props;
 	}
 
-	ImageView &get_swapchain_view();
 	const Sampler &get_stock_sampler(StockSampler sampler) const;
 
 	ShaderManager &get_shader_manager()
@@ -259,19 +253,8 @@ public:
 
 	// For some platforms, the device and queue might be shared, possibly across threads, so need some mechanism to
 	// lock the global device and queue.
-	void set_queue_lock(std::function<void ()> lock_callback, std::function<void ()> unlock_callback);
-
-#ifdef GRANITE_VULKAN_FOSSILIZE
-	Fossilize::StateRecorder &get_state_recorder()
-	{
-		return state_recorder;
-	}
-#endif
-
-	HandlePool &get_handle_pool()
-	{
-		return handle_pool;
-	}
+	void set_queue_lock(std::function<void ()> lock_callback,
+	                    std::function<void ()> unlock_callback);
 
 private:
 	VkInstance instance = VK_NULL_HANDLE;
@@ -286,6 +269,32 @@ private:
 #else
 	uint64_t cookie = 0;
 #endif
+
+	uint64_t allocate_cookie();
+	void bake_program(Program &program);
+
+#ifdef GRANITE_VULKAN_FOSSILIZE
+	Fossilize::StateRecorder &get_state_recorder()
+	{
+		return state_recorder;
+	}
+#endif
+
+	void request_vertex_block(BufferBlock &block, VkDeviceSize size);
+	void request_index_block(BufferBlock &block, VkDeviceSize size);
+	void request_uniform_block(BufferBlock &block, VkDeviceSize size);
+	void request_staging_block(BufferBlock &block, VkDeviceSize size);
+
+	QueryPoolHandle write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlagBits stage);
+
+	VkSemaphore set_acquire(VkSemaphore acquire);
+	VkSemaphore set_release(VkSemaphore release);
+	bool swapchain_touched() const;
+
+	PipelineLayout *request_pipeline_layout(const CombinedResourceLayout &layout);
+	DescriptorSetAllocator *request_descriptor_set_allocator(const DescriptorSetLayout &layout, const uint32_t *stages_for_sets);
+	const Framebuffer &request_framebuffer(const RenderPassInfo &info);
+	const RenderPass &request_render_pass(const RenderPassInfo &info);
 
 	VkPhysicalDeviceMemoryProperties mem_props;
 	VkPhysicalDeviceProperties gpu_props;
@@ -364,6 +373,9 @@ private:
 		bool swapchain_touched = false;
 		bool swapchain_consumed = false;
 	};
+	// The per frame structure must be destroyed after
+	// the hashmap data structures below, so it must be declared before.
+	std::vector<std::unique_ptr<PerFrame>> per_frame;
 
 	VkSemaphore wsi_acquire = VK_NULL_HANDLE;
 	VkSemaphore wsi_release = VK_NULL_HANDLE;
@@ -401,10 +413,6 @@ private:
 		return *per_frame[current_swapchain_index];
 	}
 
-	// The per frame structure must be destroyed after
-	// the hashmap data structures below, so it must be declared before.
-	std::vector<std::unique_ptr<PerFrame>> per_frame;
-
 	unsigned current_swapchain_index = 0;
 	uint32_t graphics_queue_family_index = 0;
 	uint32_t compute_queue_family_index = 0;
@@ -439,7 +447,7 @@ private:
 	QueueData &get_queue_data(CommandBuffer::Type type);
 	std::vector<CommandBufferHandle> &get_queue_submissions(CommandBuffer::Type type);
 	void clear_wait_semaphores();
-	void submit_staging(CommandBufferHandle cmd, VkBufferUsageFlags usage, bool flush);
+	void submit_staging(CommandBufferHandle &cmd, VkBufferUsageFlags usage, bool flush);
 
 	std::function<void ()> queue_lock_callback;
 	std::function<void ()> queue_unlock_callback;
@@ -448,6 +456,19 @@ private:
 	void submit_empty_inner(CommandBuffer::Type type, VkFence *fence,
 	                        unsigned semaphore_count,
 	                        Semaphore *semaphore);
+
+	void destroy_buffer(VkBuffer buffer);
+	void destroy_image(VkImage image);
+	void destroy_image_view(VkImageView view);
+	void destroy_buffer_view(VkBufferView view);
+	void destroy_pipeline(VkPipeline pipeline);
+	void destroy_sampler(VkSampler sampler);
+	void destroy_framebuffer(VkFramebuffer framebuffer);
+	void destroy_semaphore(VkSemaphore semaphore);
+	void destroy_event(VkEvent event);
+	void free_memory(const DeviceAllocation &alloc);
+	void reset_fence(VkFence fence);
+	void keep_handle_alive(ImageHandle handle);
 
 	void destroy_buffer_nolock(VkBuffer buffer);
 	void destroy_image_nolock(VkImage image);
@@ -483,6 +504,7 @@ private:
 	void decrement_frame_counter_nolock();
 	void submit_secondary(CommandBuffer &primary, CommandBuffer &secondary);
 	void wait_idle_nolock();
+	void end_frame_nolock();
 
 #ifdef GRANITE_VULKAN_FOSSILIZE
 	Fossilize::StateRecorder state_recorder;

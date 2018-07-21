@@ -293,8 +293,8 @@ bool WSI::end_frame()
 	// Take ownership of the release semaphore so that the external user can use it.
 	if (frame_is_external)
 	{
-		external_release = Semaphore(device->get_handle_pool().semaphores.allocate(device.get(),
-		                                                                           device->set_release(VK_NULL_HANDLE), true));
+		external_release = Semaphore(device->handle_pool.semaphores.allocate(device.get(),
+		                                                                     device->set_release(VK_NULL_HANDLE), true));
 		frame_is_external = false;
 	}
 	else

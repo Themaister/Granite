@@ -46,6 +46,6 @@ Sampler::~Sampler()
 
 void SamplerDeleter::operator()(Vulkan::Sampler *sampler)
 {
-	sampler->device->get_handle_pool().samplers.free(sampler);
+	sampler->device->handle_pool.samplers.free(sampler);
 }
 }

@@ -31,8 +31,6 @@
 #endif
 
 using namespace std;
-using namespace Granite;
-using namespace Granite::SceneFormats;
 
 namespace Vulkan
 {
@@ -64,7 +62,7 @@ void Texture::update(std::unique_ptr<Granite::File> file)
 		void *mapped = file->map();
 		if (size && mapped)
 		{
-			if (MemoryMappedTexture::is_header(mapped, size))
+			if (Granite::SceneFormats::MemoryMappedTexture::is_header(mapped, size))
 				update_gtx(move(file), mapped);
 			else
 				update_other(mapped, size);
@@ -111,7 +109,7 @@ void Texture::update_checkerboard()
 	replace_image(image);
 }
 
-void Texture::update_gtx(const MemoryMappedTexture &mapped_file)
+void Texture::update_gtx(const Granite::SceneFormats::MemoryMappedTexture &mapped_file)
 {
 	if (mapped_file.empty())
 	{
@@ -134,12 +132,12 @@ void Texture::update_gtx(const MemoryMappedTexture &mapped_file)
 	info.initial_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 	info.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
 	info.swizzle = swizzle;
-	info.flags = (mapped_file.get_flags() & SceneFormats::MEMORY_MAPPED_TEXTURE_CUBE_MAP_COMPATIBLE_BIT) ?
+	info.flags = (mapped_file.get_flags() & Granite::SceneFormats::MEMORY_MAPPED_TEXTURE_CUBE_MAP_COMPATIBLE_BIT) ?
 	             VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0;
 	info.misc = 0;
 
 	if (info.levels == 1 &&
-	    (mapped_file.get_flags() & SceneFormats::MEMORY_MAPPED_TEXTURE_GENERATE_MIPMAP_ON_LOAD_BIT) != 0 &&
+	    (mapped_file.get_flags() & Granite::SceneFormats::MEMORY_MAPPED_TEXTURE_GENERATE_MIPMAP_ON_LOAD_BIT) != 0 &&
 	    device->image_format_is_supported(info.format, VK_FORMAT_FEATURE_BLIT_SRC_BIT) &&
 	    device->image_format_is_supported(info.format, VK_FORMAT_FEATURE_BLIT_DST_BIT))
 	{
@@ -160,9 +158,9 @@ void Texture::update_gtx(const MemoryMappedTexture &mapped_file)
 	replace_image(image);
 }
 
-void Texture::update_gtx(unique_ptr<File> file, void *mapped)
+void Texture::update_gtx(unique_ptr<Granite::File> file, void *mapped)
 {
-	SceneFormats::MemoryMappedTexture mapped_file;
+	Granite::SceneFormats::MemoryMappedTexture mapped_file;
 	if (!mapped_file.map_read(move(file), mapped))
 	{
 		LOGE("Failed to read texture.\n");
@@ -174,12 +172,12 @@ void Texture::update_gtx(unique_ptr<File> file, void *mapped)
 
 void Texture::update_other(const void *data, size_t size)
 {
-	auto tex = load_texture_from_memory(data, size,
+	auto tex = Granite::load_texture_from_memory(data, size,
 	                                    (format == VK_FORMAT_R8G8B8A8_SRGB ||
 	                                     format == VK_FORMAT_UNDEFINED ||
 	                                     format == VK_FORMAT_B8G8R8A8_SRGB ||
 	                                     format == VK_FORMAT_A8B8G8R8_SRGB_PACK32) ?
-	                                    ColorSpace::sRGB : ColorSpace::Linear);
+	                                    Granite::ColorSpace::sRGB : Granite::ColorSpace::Linear);
 
 	update_gtx(tex);
 }
@@ -257,14 +255,11 @@ void TextureManager::register_texture_update_notification(const std::string &mod
 	auto *ret = deferred_textures.find(hash);
 	if (ret)
 		func(*ret);
-
-	lock_guard<mutex> holder{notification_lock};
 	notifications[modified_path].push_back(move(func));
 }
 
 void TextureManager::notify_updated_texture(const std::string &path, Vulkan::Texture &texture)
 {
-	lock_guard<mutex> holder{notification_lock};
 	auto itr = notifications.find(path);
 	if (itr != end(notifications))
 		for (auto &f : itr->second)

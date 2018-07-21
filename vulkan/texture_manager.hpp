@@ -26,7 +26,6 @@
 #include "image.hpp"
 #include "thread_safe_cache.hpp"
 #include "async_object_sink.hpp"
-#include <mutex>
 
 namespace Granite
 {
@@ -95,9 +94,14 @@ public:
 private:
 	Device *device;
 
+#ifdef GRANITE_VULKAN_MT
 	Util::ThreadSafeCache<Texture> textures;
 	Util::ThreadSafeCache<Texture> deferred_textures;
-	std::mutex notification_lock;
+#else
+	Util::Cache<Texture> textures;
+	Util::Cache<Texture> deferred_textures;
+#endif
+
 	std::unordered_map<std::string, std::vector<std::function<void (Texture &)>>> notifications;
 };
 }

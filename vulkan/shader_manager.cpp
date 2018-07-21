@@ -27,7 +27,6 @@
 #include "device.hpp"
 
 using namespace std;
-using namespace Granite;
 using namespace Util;
 
 namespace Vulkan

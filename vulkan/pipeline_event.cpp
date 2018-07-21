@@ -38,6 +38,6 @@ EventHolder::~EventHolder()
 
 void EventHolderDeleter::operator()(Vulkan::EventHolder *event)
 {
-	event->device->get_handle_pool().events.free(event);
+	event->device->handle_pool.events.free(event);
 }
 }

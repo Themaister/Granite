@@ -105,7 +105,7 @@ QueryPoolHandle QueryPool::write_timestamp(VkCommandBuffer cmd, VkPipelineStageF
 
 	auto &pool = pools[pool_index];
 
-	auto cookie = QueryPoolHandle(device->get_handle_pool().query.allocate(device));
+	auto cookie = QueryPoolHandle(device->handle_pool.query.allocate(device));
 	pool.cookies[pool.index] = cookie;
 
 	vkCmdResetQueryPool(cmd, pool.pool, pool.index, 1);
@@ -115,8 +115,8 @@ QueryPoolHandle QueryPool::write_timestamp(VkCommandBuffer cmd, VkPipelineStageF
 	return cookie;
 }
 
-void QueryPoolResultDeleter::operator()(Vulkan::QueryPoolResult *query)
+void QueryPoolResultDeleter::operator()(QueryPoolResult *query)
 {
-	query->device->get_handle_pool().query.free(query);
+	query->device->handle_pool.query.free(query);
 }
 }

@@ -21,7 +21,7 @@
  */
 
 #include "material_manager.hpp"
-#include "vulkan_events.hpp"
+#include "application_wsi_events.hpp"
 #include <string.h>
 #include "rapidjson_wrapper.hpp"
 #include "scene_formats.hpp"

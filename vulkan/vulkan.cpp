@@ -24,7 +24,6 @@
 #include <stdexcept>
 #include <vector>
 #include <algorithm>
-#include "vulkan_events.hpp"
 #include <string.h>
 
 #ifdef HAVE_DYLIB

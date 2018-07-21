@@ -95,6 +95,14 @@ public:
 	{
 	}
 
+	virtual void event_device_created(Device *device) = 0;
+	virtual void event_device_destroyed() = 0;
+	virtual void event_swapchain_created(Device *device, unsigned width, unsigned height,
+	                                     float aspect_ratio, size_t num_swapchain_images, VkFormat format) = 0;
+	virtual void event_swapchain_destroyed() = 0;
+	virtual void event_frame_tick(double frame, double elapsed) = 0;
+	virtual void event_swapchain_index(Device *device, unsigned index) = 0;
+
 protected:
 	bool resize = false;
 	bool killed = false;

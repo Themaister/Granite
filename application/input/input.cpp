@@ -21,7 +21,6 @@
  */
 
 #include "input.hpp"
-#include "vulkan_events.hpp"
 #include "event.hpp"
 #include <algorithm>
 #include <string.h>

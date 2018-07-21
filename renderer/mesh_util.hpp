@@ -23,7 +23,7 @@
 #pragma once
 
 #include "mesh.hpp"
-#include "vulkan_events.hpp"
+#include "application_wsi_events.hpp"
 #include "scene_formats.hpp"
 #include "render_components.hpp"
 #include "render_context.hpp"

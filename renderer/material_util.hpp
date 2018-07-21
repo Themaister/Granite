@@ -24,7 +24,7 @@
 
 #include "material.hpp"
 #include "event.hpp"
-#include "vulkan_events.hpp"
+#include "application_wsi_events.hpp"
 
 namespace Granite
 {

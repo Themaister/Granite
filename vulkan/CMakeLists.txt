@@ -24,8 +24,7 @@ add_granite_library(vulkan-backend
         quirks.hpp
         event_manager.cpp event_manager.hpp
         pipeline_event.cpp pipeline_event.hpp
-        query_pool.cpp query_pool.hpp
-        vulkan_events.hpp)
+        query_pool.cpp query_pool.hpp)
 
 option(GRANITE_VULKAN_FILESYSTEM "Enable features which depend on a filesystem implementation." ON)
 if (GRANITE_VULKAN_FILESYSTEM)
@@ -74,13 +73,7 @@ if (GRANITE_VULKAN_FOSSILIZE)
     target_compile_definitions(vulkan-backend PUBLIC GRANITE_VULKAN_FOSSILIZE)
 endif()
 
-target_link_libraries(vulkan-backend
-        spirv-cross-core
-        volk
-        util
-        event
-        application-input
-        application-events)
+target_link_libraries(vulkan-backend spirv-cross-core volk util)
 
 if (UNIX)
    target_link_libraries(vulkan-backend dl)

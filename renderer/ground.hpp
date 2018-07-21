@@ -24,7 +24,7 @@
 
 #include "abstract_renderable.hpp"
 #include "scene.hpp"
-#include "vulkan_events.hpp"
+#include "application_wsi_events.hpp"
 
 namespace Granite
 {

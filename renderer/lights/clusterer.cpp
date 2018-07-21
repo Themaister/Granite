@@ -25,9 +25,10 @@
 #include "scene.hpp"
 #include "render_context.hpp"
 #include "renderer.hpp"
-#include "thread_group.hpp"
+#include "application_wsi_events.hpp"
 #include "quirks.hpp"
 #include "muglm/matrix_helper.hpp"
+#include "thread_group.hpp"
 #include <string.h>
 
 using namespace Vulkan;

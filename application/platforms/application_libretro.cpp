@@ -22,6 +22,7 @@
 
 #include "application_libretro_utils.hpp"
 #include "application.hpp"
+#include "application_wsi.hpp"
 
 using namespace Granite;
 
@@ -39,7 +40,7 @@ static std::string application_internal_resolution;
 static unsigned current_width;
 static unsigned current_height;
 
-struct WSIPlatformLibretro : Vulkan::WSIPlatform
+struct WSIPlatformLibretro : Granite::GraniteWSIPlatform
 {
 	VkSurfaceKHR create_surface(VkInstance, VkPhysicalDevice) override
 	{

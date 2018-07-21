@@ -22,7 +22,7 @@
 
 #pragma once
 
-#include "vulkan_events.hpp"
+#include "application_wsi_events.hpp"
 #include "scene.hpp"
 #include "shader_suite.hpp"
 #include "renderer_enums.hpp"

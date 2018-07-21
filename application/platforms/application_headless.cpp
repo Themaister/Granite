@@ -22,6 +22,7 @@
 
 #include "application.hpp"
 #include "application_events.hpp"
+#include "application_wsi.hpp"
 #include "vulkan.hpp"
 #include <thread>
 #include <mutex>
@@ -123,7 +124,7 @@ FrameWorker::~FrameWorker()
 		thr.join();
 }
 
-struct WSIPlatformHeadless : Vulkan::WSIPlatform
+struct WSIPlatformHeadless : Granite::GraniteWSIPlatform
 {
 public:
 	WSIPlatformHeadless(unsigned width, unsigned height)

@@ -80,9 +80,8 @@ endif()
 
 target_include_directories(application-main PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(application-main
-		application
-		volk vulkan-backend vulkan-backend
+		application application-wsi
+		volk vulkan-backend
 		ui-renderer
 		application-input application-events)
-
 

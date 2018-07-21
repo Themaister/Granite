@@ -32,7 +32,7 @@
 #include "vulkan.hpp"
 #include "device.hpp"
 #include "stack_allocator.hpp"
-#include "vulkan_events.hpp"
+#include "application_wsi_events.hpp"
 #include "quirks.hpp"
 
 namespace Granite

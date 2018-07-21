@@ -29,7 +29,6 @@ namespace Vulkan
 {
 class Device;
 
-
 class DeviceCreatedEvent : public Granite::Event
 {
 public:

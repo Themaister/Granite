@@ -22,6 +22,7 @@
 
 #include "application.hpp"
 #include "application_events.hpp"
+#include "application_wsi.hpp"
 #include "vulkan.hpp"
 #include "os.hpp"
 #include "cli_parser.hpp"
@@ -42,7 +43,7 @@ using namespace Util;
 
 namespace Granite
 {
-struct WSIPlatformCustomSurface : Vulkan::WSIPlatform
+struct WSIPlatformCustomSurface : Granite::GraniteWSIPlatform
 {
 public:
 	WSIPlatformCustomSurface(unsigned width, unsigned height, const std::string &path)

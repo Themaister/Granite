@@ -24,6 +24,7 @@
 #include "util.hpp"
 #include "application.hpp"
 #include "application_events.hpp"
+#include "application_wsi.hpp"
 #include "vulkan.hpp"
 #include <jni.h>
 #include <android/sensor.h>
@@ -78,7 +79,7 @@ static void finishFromThread()
 }
 }
 
-struct WSIPlatformAndroid : Vulkan::WSIPlatform
+struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 {
 	WSIPlatformAndroid(unsigned width, unsigned height)
 		: width(width), height(height)

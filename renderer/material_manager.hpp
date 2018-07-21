@@ -27,7 +27,7 @@
 #include "device.hpp"
 #include "event.hpp"
 #include "scene_formats.hpp"
-#include "vulkan_events.hpp"
+#include "application_wsi_events.hpp"
 
 namespace Granite
 {

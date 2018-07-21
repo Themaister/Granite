@@ -22,6 +22,7 @@
 
 #include "application.hpp"
 #include "application_events.hpp"
+#include "application_wsi.hpp"
 #include "vulkan.hpp"
 #include "GLFW/glfw3.h"
 #ifdef HAVE_LINUX_INPUT
@@ -52,7 +53,7 @@ static VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL GetInstanceProcAddr(VkInstance i
 	return reinterpret_cast<PFN_vkVoidFunction>(glfwGetInstanceProcAddress(instance, name));
 }
 
-struct WSIPlatformGLFW : WSIPlatform
+struct WSIPlatformGLFW : GraniteWSIPlatform
 {
 public:
 	WSIPlatformGLFW(unsigned width, unsigned height)

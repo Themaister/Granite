@@ -22,8 +22,6 @@
 
 #include <thread>
 #include "wsi.hpp"
-#include "vulkan_events.hpp"
-#include "application_events.hpp"
 
 using namespace std;
 
@@ -44,14 +42,13 @@ bool WSI::init_external_context(std::unique_ptr<Vulkan::Context> fresh_context)
 {
 	context = move(fresh_context);
 
-	auto &em = Granite::EventManager::get_global();
 	// Need to have a dummy swapchain in place before we issue create device events.
 	device.reset(new Device);
 	device->set_context(*context);
 	semaphore_manager.reset(new SemaphoreManager);
 	semaphore_manager->init(context->get_device());
 	device->init_external_swapchain({ ImageHandle(nullptr) });
-	em.enqueue_latched<DeviceCreatedEvent>(device.get());
+	platform->event_device_created(device.get());
 	return true;
 }
 
@@ -69,10 +66,9 @@ bool WSI::init_external_swapchain(std::vector<Vulkan::ImageHandle> swapchain_ima
 
 	LOGI("Created swapchain %u x %u (fmt: %u).\n", this->width, this->height, static_cast<unsigned>(this->format));
 
-	auto &em = Granite::EventManager::get_global();
-	em.dequeue_all_latched(SwapchainParameterEvent::get_type_id());
-	em.enqueue_latched<SwapchainParameterEvent>(device.get(), this->width, this->height, aspect_ratio,
-	                                            external_swapchain_images.size(), this->format);
+	platform->event_swapchain_destroyed();
+	platform->event_swapchain_created(device.get(), this->width, this->height, aspect_ratio,
+	                                  external_swapchain_images.size(), this->format);
 
 	device->init_external_swapchain(this->external_swapchain_images);
 	platform->get_frame_timer().reset();
@@ -92,14 +88,14 @@ bool WSI::init()
 	auto device_ext = platform->get_device_extensions();
 	context.reset(new Context(instance_ext.data(), instance_ext.size(), device_ext.data(), device_ext.size()));
 
-	auto &em = Granite::EventManager::get_global();
 	// Need to have a dummy swapchain in place before we issue create device events.
 	device.reset(new Device);
 	device->set_context(*context);
 	semaphore_manager.reset(new SemaphoreManager);
 	semaphore_manager->init(context->get_device());
 	device->init_external_swapchain({ ImageHandle(nullptr) });
-	em.enqueue_latched<DeviceCreatedEvent>(device.get());
+
+	platform->event_device_created(device.get());
 
 	surface = platform->create_surface(context->get_instance(), context->get_gpu());
 	if (surface == VK_NULL_HANDLE)
@@ -157,8 +153,7 @@ void WSI::deinit_surface_and_swapchain()
 		vkDestroySurfaceKHR(context->get_instance(), surface, nullptr);
 	surface = VK_NULL_HANDLE;
 
-	auto &em = Granite::EventManager::get_global();
-	em.dequeue_all_latched(SwapchainParameterEvent::get_type_id());
+	platform->event_swapchain_destroyed();
 }
 
 void WSI::set_external_frame(unsigned index, Vulkan::Semaphore acquire_semaphore, double frame_time)
@@ -175,7 +170,6 @@ bool WSI::begin_frame_external()
 	if (!need_acquire)
 		return false;
 
-	auto &em = Granite::EventManager::get_global();
 	auto frame_time = platform->get_frame_timer().frame(external_frame_time);
 	auto elapsed_time = platform->get_frame_timer().get_elapsed();
 
@@ -183,12 +177,11 @@ bool WSI::begin_frame_external()
 	platform->poll_input();
 
 	swapchain_index = external_frame_index;
-	em.dispatch_inline(Granite::FrameTickEvent{frame_time, elapsed_time});
+	platform->event_frame_tick(frame_time, elapsed_time);
 
 	release_semaphore = semaphore_manager->request_cleared_semaphore();
 	device->begin_frame(swapchain_index);
-	em.dequeue_all_latched(SwapchainIndexEvent::get_type_id());
-	em.enqueue_latched<SwapchainIndexEvent>(device.get(), swapchain_index);
+	platform->event_swapchain_index(device.get(), swapchain_index);
 
 	if (external_acquire)
 		semaphore_manager->recycle(device->set_acquire(external_acquire->consume()));
@@ -230,18 +223,17 @@ bool WSI::begin_frame()
 
 		if (result == VK_SUCCESS)
 		{
-			auto &em = Granite::EventManager::get_global();
 			auto frame_time = platform->get_frame_timer().frame();
 			auto elapsed_time = platform->get_frame_timer().get_elapsed();
 
 			// Poll after acquire as well for optimal latency.
 			platform->poll_input();
-			em.dispatch_inline(Granite::FrameTickEvent{frame_time, elapsed_time});
+			platform->event_frame_tick(frame_time, elapsed_time);
 
 			release_semaphore = semaphore_manager->request_cleared_semaphore();
 			device->begin_frame(swapchain_index);
-			em.dequeue_all_latched(SwapchainIndexEvent::get_type_id());
-			em.enqueue_latched<SwapchainIndexEvent>(device.get(), swapchain_index);
+
+			platform->event_swapchain_index(device.get(), swapchain_index);
 			semaphore_manager->recycle(device->set_acquire(acquire));
 			semaphore_manager->recycle(device->set_release(release_semaphore));
 		}
@@ -330,8 +322,6 @@ void WSI::update_framebuffer(unsigned width, unsigned height)
 
 void WSI::deinit_external()
 {
-	auto &em = Granite::EventManager::get_global();
-
 	if (platform)
 		platform->release_resources();
 
@@ -340,7 +330,8 @@ void WSI::deinit_external()
 		vkDeviceWaitIdle(context->get_device());
 		semaphore_manager->recycle(device->set_acquire(VK_NULL_HANDLE));
 		semaphore_manager->recycle(device->set_release(VK_NULL_HANDLE));
-		em.dequeue_all_latched(SwapchainParameterEvent::get_type_id());
+
+		platform->event_swapchain_destroyed();
 		if (swapchain != VK_NULL_HANDLE)
 			vkDestroySwapchainKHR(context->get_device(), swapchain, nullptr);
 	}
@@ -348,7 +339,7 @@ void WSI::deinit_external()
 	if (surface != VK_NULL_HANDLE)
 		vkDestroySurfaceKHR(context->get_instance(), surface, nullptr);
 
-	em.dequeue_all_latched(DeviceCreatedEvent::get_type_id());
+	platform->event_device_destroyed();
 	external_release.reset();
 	external_acquire.reset();
 	external_swapchain_images.clear();
@@ -527,9 +518,8 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 
 	LOGI("Got %u swapchain images.\n", image_count);
 
-	auto &em = Granite::EventManager::get_global();
-	em.dequeue_all_latched(SwapchainParameterEvent::get_type_id());
-	em.enqueue_latched<SwapchainParameterEvent>(device.get(), this->width, this->height, aspect_ratio, image_count, info.imageFormat);
+	platform->event_swapchain_destroyed();
+	platform->event_swapchain_created(device.get(), this->width, this->height, aspect_ratio, image_count, info.imageFormat);
 
 	return SwapchainError::None;
 }

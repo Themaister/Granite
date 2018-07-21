@@ -26,6 +26,7 @@
 
 #include "application.hpp"
 #include "application_events.hpp"
+#include "application_wsi.hpp"
 #include "vulkan.hpp"
 #include <string.h>
 #include <signal.h>
@@ -79,7 +80,7 @@ static bool vulkan_update_display_mode(unsigned *width, unsigned *height, const 
 	}
 }
 
-struct WSIPlatformDisplay : Vulkan::WSIPlatform
+struct WSIPlatformDisplay : Granite::GraniteWSIPlatform
 {
 public:
 	WSIPlatformDisplay(unsigned width, unsigned height)

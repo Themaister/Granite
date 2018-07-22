@@ -159,7 +159,6 @@ private:
 	VkSwapchainKHR swapchain = VK_NULL_HANDLE;
 	std::vector<VkImage> swapchain_images;
 	std::unique_ptr<Device> device;
-	std::unique_ptr<SemaphoreManager> semaphore_manager;
 
 	unsigned width = 0;
 	unsigned height = 0;
@@ -174,8 +173,8 @@ private:
 	};
 	SwapchainError init_swapchain(unsigned width, unsigned height);
 	bool blocking_init_swapchain(unsigned width, unsigned height);
+
 	uint32_t swapchain_index = 0;
-	VkSemaphore release_semaphore;
 	bool need_acquire = true;
 
 	WSIPlatform *platform = nullptr;

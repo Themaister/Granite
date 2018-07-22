@@ -290,8 +290,8 @@ private:
 
 	QueryPoolHandle write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlagBits stage);
 
-	VkSemaphore set_acquire(VkSemaphore acquire);
-	VkSemaphore set_release(VkSemaphore release);
+	void set_acquire_semaphore(Semaphore acquire);
+	Semaphore consume_release_semaphore();
 	bool swapchain_touched() const;
 
 	PipelineLayout *request_pipeline_layout(const CombinedResourceLayout &layout);
@@ -380,8 +380,8 @@ private:
 	// the hashmap data structures below, so it must be declared before.
 	std::vector<std::unique_ptr<PerFrame>> per_frame;
 
-	VkSemaphore wsi_acquire = VK_NULL_HANDLE;
-	VkSemaphore wsi_release = VK_NULL_HANDLE;
+	Semaphore wsi_acquire;
+	Semaphore wsi_release;
 
 	struct QueueData
 	{

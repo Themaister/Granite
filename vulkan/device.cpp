@@ -1081,14 +1081,25 @@ void Device::submit_queue(CommandBuffer::Type type, VkFence *fence,
 		if (frame().swapchain_touched && !frame().swapchain_consumed)
 		{
 			static const VkFlags wait = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-			if (wsi_acquire != VK_NULL_HANDLE)
+			if (wsi_acquire && wsi_acquire->get_semaphore() != VK_NULL_HANDLE)
 			{
-				waits[index].push_back(wsi_acquire);
+				VK_ASSERT(wsi_acquire->is_signalled());
+				VkSemaphore sem = wsi_acquire->consume();
+				waits[index].push_back(sem);
+
+				if (wsi_acquire->can_recycle())
+					frame().recycled_semaphores.push_back(sem);
+				else
+					frame().destroyed_semaphores.push_back(sem);
+
 				stages[index].push_back(wait);
+				wsi_acquire.reset();
 			}
 
-			VK_ASSERT(wsi_release != VK_NULL_HANDLE);
-			signals[index].push_back(wsi_release);
+			VkSemaphore release = managers.semaphore.request_cleared_semaphore();
+			wsi_release = Semaphore(handle_pool.semaphores.allocate(this, release, true));
+			wsi_release->set_internal_sync_object();
+			signals[index].push_back(wsi_release->get_semaphore());
 			frame().swapchain_consumed = true;
 		}
 		last_cmd = cmds.size();
@@ -1412,16 +1423,21 @@ CommandBufferHandle Device::request_secondary_command_buffer_for_thread(unsigned
 	return handle;
 }
 
-VkSemaphore Device::set_acquire(VkSemaphore acquire)
+void Device::set_acquire_semaphore(Semaphore acquire)
 {
-	swap(acquire, wsi_acquire);
-	return acquire;
+	wsi_acquire = move(acquire);
+	if (wsi_acquire)
+	{
+		wsi_acquire->set_internal_sync_object();
+		VK_ASSERT(wsi_acquire->is_signalled());
+	}
 }
 
-VkSemaphore Device::set_release(VkSemaphore release)
+Semaphore Device::consume_release_semaphore()
 {
-	swap(release, wsi_release);
-	return release;
+	auto ret = move(wsi_release);
+	wsi_release.reset();
+	return ret;
 }
 
 const Sampler &Device::get_stock_sampler(StockSampler sampler) const
@@ -1441,17 +1457,8 @@ Device::~Device()
 #endif
 	wait_idle();
 
-	if (wsi_acquire != VK_NULL_HANDLE)
-	{
-		vkDestroySemaphore(device, wsi_acquire, nullptr);
-		wsi_acquire = VK_NULL_HANDLE;
-	}
-
-	if (wsi_release != VK_NULL_HANDLE)
-	{
-		vkDestroySemaphore(device, wsi_release, nullptr);
-		wsi_release = VK_NULL_HANDLE;
-	}
+	wsi_acquire.reset();
+	wsi_release.reset();
 
 	if (pipeline_cache != VK_NULL_HANDLE)
 	{

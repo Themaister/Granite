@@ -99,7 +99,7 @@ private:
 	DescriptorSetAllocator *set_allocators[VULKAN_NUM_DESCRIPTOR_SETS] = {};
 };
 
-class Shader : public Util::ThreadSafeIntrusivePtrEnabled<Shader>, public HashedObject
+class Shader : public HashedObject
 {
 public:
 	Shader(Util::Hash hash, Device *device, const uint32_t *data, size_t size);
@@ -122,9 +122,8 @@ private:
 	VkShaderModule module;
 	ResourceLayout layout;
 };
-using ShaderHandle = Util::IntrusivePtr<Shader>;
 
-class Program : public Util::ThreadSafeIntrusivePtrEnabled<Program>, public HashedObject, public InternalSyncEnabled
+class Program : public HashedObject, public InternalSyncEnabled
 {
 public:
 	Program(Util::Hash hash, Device *device, Shader *vertex, Shader *fragment);
@@ -157,5 +156,4 @@ private:
 	Util::HashMap<VkPipeline> pipelines;
 	mutable Util::RWSpinLock lock;
 };
-using ProgramHandle = Util::IntrusivePtr<Program>;
 }

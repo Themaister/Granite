@@ -23,7 +23,7 @@
 #pragma once
 
 #include "vulkan.hpp"
-#include "intrusive.hpp"
+#include "vulkan_common.hpp"
 #include "cookie.hpp"
 #include "object_pool.hpp"
 
@@ -37,7 +37,7 @@ struct EventHolderDeleter
 	void operator()(EventHolder *event);
 };
 
-class EventHolder : public Util::IntrusivePtrEnabled<EventHolder, EventHolderDeleter, Util::MultiThreadCounter>,
+class EventHolder : public Util::IntrusivePtrEnabled<EventHolder, EventHolderDeleter, HandleCounter>,
                     public InternalSyncEnabled
 {
 public:

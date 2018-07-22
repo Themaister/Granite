@@ -24,7 +24,7 @@
 
 #include "buffer.hpp"
 #include "image.hpp"
-#include "intrusive.hpp"
+#include "vulkan_common.hpp"
 #include "render_pass.hpp"
 #include "sampler.hpp"
 #include "shader.hpp"
@@ -202,7 +202,7 @@ struct CommandBufferDeleter
 };
 
 class Device;
-class CommandBuffer : public Util::IntrusivePtrEnabled<CommandBuffer, CommandBufferDeleter, Util::MultiThreadCounter>
+class CommandBuffer : public Util::IntrusivePtrEnabled<CommandBuffer, CommandBufferDeleter, HandleCounter>
 {
 public:
 	friend struct CommandBufferDeleter;

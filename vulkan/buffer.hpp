@@ -23,7 +23,7 @@
 #pragma once
 
 #include "cookie.hpp"
-#include "intrusive.hpp"
+#include "vulkan_common.hpp"
 #include "memory_allocator.hpp"
 
 namespace Vulkan
@@ -103,7 +103,7 @@ struct BufferViewDeleter
 	void operator()(BufferView *view);
 };
 
-class Buffer : public Util::IntrusivePtrEnabled<Buffer, BufferDeleter, Util::MultiThreadCounter>,
+class Buffer : public Util::IntrusivePtrEnabled<Buffer, BufferDeleter, HandleCounter>,
                public Cookie, public InternalSyncEnabled
 {
 public:
@@ -149,7 +149,7 @@ struct BufferViewCreateInfo
 	VkDeviceSize range;
 };
 
-class BufferView : public Util::IntrusivePtrEnabled<BufferView, BufferViewDeleter, Util::MultiThreadCounter>,
+class BufferView : public Util::IntrusivePtrEnabled<BufferView, BufferViewDeleter, HandleCounter>,
                    public Cookie, public InternalSyncEnabled
 {
 public:

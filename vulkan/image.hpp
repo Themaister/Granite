@@ -24,7 +24,7 @@
 
 #include "cookie.hpp"
 #include "format.hpp"
-#include "intrusive.hpp"
+#include "vulkan_common.hpp"
 #include "memory_allocator.hpp"
 #include "vulkan.hpp"
 #include <algorithm>
@@ -188,7 +188,7 @@ struct ImageViewDeleter
 	void operator()(ImageView *view);
 };
 
-class ImageView : public Util::IntrusivePtrEnabled<ImageView, ImageViewDeleter, Util::MultiThreadCounter>,
+class ImageView : public Util::IntrusivePtrEnabled<ImageView, ImageViewDeleter, HandleCounter>,
                   public Cookie, public InternalSyncEnabled
 {
 public:
@@ -383,7 +383,7 @@ struct ImageDeleter
 	void operator()(Image *image);
 };
 
-class Image : public Util::IntrusivePtrEnabled<Image, ImageDeleter, Util::MultiThreadCounter>,
+class Image : public Util::IntrusivePtrEnabled<Image, ImageDeleter, HandleCounter>,
               public Cookie, public InternalSyncEnabled
 {
 public:

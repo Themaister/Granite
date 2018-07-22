@@ -22,6 +22,7 @@ add_granite_library(vulkan-backend
         limits.hpp
         type_to_string.hpp
         quirks.hpp
+        vulkan_common.hpp
         event_manager.cpp event_manager.hpp
         pipeline_event.cpp pipeline_event.hpp
         query_pool.cpp query_pool.hpp)

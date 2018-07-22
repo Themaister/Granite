@@ -23,7 +23,7 @@
 #pragma once
 
 #include "vulkan.hpp"
-#include "intrusive.hpp"
+#include "vulkan_common.hpp"
 #include "object_pool.hpp"
 
 namespace Vulkan
@@ -36,7 +36,7 @@ struct QueryPoolResultDeleter
 	void operator()(QueryPoolResult *query);
 };
 
-class QueryPoolResult : public Util::IntrusivePtrEnabled<QueryPoolResult, QueryPoolResultDeleter, Util::MultiThreadCounter>
+class QueryPoolResult : public Util::IntrusivePtrEnabled<QueryPoolResult, QueryPoolResultDeleter, HandleCounter>
 {
 public:
 	friend struct QueryPoolResultDeleter;

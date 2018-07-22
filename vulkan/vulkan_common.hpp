@@ -22,39 +22,13 @@
 
 #pragma once
 
-#include "vulkan_common.hpp"
-#include "vulkan.hpp"
-#include "object_pool.hpp"
+#include "intrusive.hpp"
 
 namespace Vulkan
 {
-class Device;
-
-class FenceHolder;
-struct FenceHolderDeleter
-{
-	void operator()(FenceHolder *fence);
-};
-
-class FenceHolder : public Util::IntrusivePtrEnabled<FenceHolder, FenceHolderDeleter, HandleCounter>
-{
-public:
-	friend struct FenceHolderDeleter;
-
-	~FenceHolder();
-	void wait();
-
-	bool wait_timeout(uint64_t nsec);
-
-private:
-	friend class Util::ObjectPool<FenceHolder>;
-	FenceHolder(Device *device, VkFence fence) : device(device), fence(fence)
-	{
-	}
-
-	Device *device;
-	VkFence fence;
-};
-
-using Fence = Util::IntrusivePtr<FenceHolder>;
+#ifdef GRANITE_VULKAN_MT
+using HandleCounter = Util::MultiThreadCounter;
+#else
+using HandleCounter = Util::SingleThreadCounter;
+#endif
 }

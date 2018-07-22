@@ -23,7 +23,7 @@
 #pragma once
 
 #include "cookie.hpp"
-#include "intrusive.hpp"
+#include "vulkan_common.hpp"
 #include "vulkan.hpp"
 #include "object_pool.hpp"
 
@@ -67,7 +67,7 @@ struct SamplerDeleter
 	void operator()(Sampler *sampler);
 };
 
-class Sampler : public Util::IntrusivePtrEnabled<Sampler, SamplerDeleter, Util::MultiThreadCounter>,
+class Sampler : public Util::IntrusivePtrEnabled<Sampler, SamplerDeleter, HandleCounter>,
                 public Cookie, public InternalSyncEnabled
 {
 public:

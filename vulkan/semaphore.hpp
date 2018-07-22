@@ -22,7 +22,7 @@
 
 #pragma once
 
-#include "intrusive.hpp"
+#include "vulkan_common.hpp"
 #include "vulkan.hpp"
 #include "cookie.hpp"
 #include "object_pool.hpp"
@@ -37,7 +37,7 @@ struct SemaphoreHolderDeleter
 	void operator()(SemaphoreHolder *semaphore);
 };
 
-class SemaphoreHolder : public Util::IntrusivePtrEnabled<SemaphoreHolder, SemaphoreHolderDeleter, Util::MultiThreadCounter>,
+class SemaphoreHolder : public Util::IntrusivePtrEnabled<SemaphoreHolder, SemaphoreHolderDeleter, HandleCounter>,
                         public InternalSyncEnabled
 {
 public:

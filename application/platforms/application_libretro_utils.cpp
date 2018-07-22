@@ -133,7 +133,7 @@ void libretro_end_frame(retro_video_refresh_t video_cb, Vulkan::WSI &wsi)
 	                                       signal_semaphore->get_semaphore());
 	signal_semaphore->signal_external();
 
-	acquire_semaphore = wsi.get_external_release_semaphore();
+	acquire_semaphore = wsi.consume_external_release_semaphore();
 	if (acquire_semaphore && acquire_semaphore->get_semaphore() != VK_NULL_HANDLE)
 	{
 		vulkan_interface->set_image(vulkan_interface->handle,
@@ -165,9 +165,10 @@ void libretro_end_frame(retro_video_refresh_t video_cb, Vulkan::WSI &wsi)
 			cmd->clear_image(*swapchain_image, {});
 			cmd->image_barrier(*swapchain_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 			                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-			                   VK_PIPELINE_STAGE_TRANSFER_BIT, 0, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-			                   VK_ACCESS_SHADER_READ_BIT);
+			                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+			                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 			swapchain_image->set_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			device.submit(cmd);
 			video_cb(RETRO_HW_FRAME_BUFFER_VALID, swapchain_width, swapchain_height, 0);
 			can_dupe = true;
 		}

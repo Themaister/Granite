@@ -183,9 +183,11 @@ bool WSI::begin_frame_external()
 	return true;
 }
 
-Semaphore WSI::get_external_release_semaphore()
+Semaphore WSI::consume_external_release_semaphore()
 {
-	return device->consume_release_semaphore();
+	Semaphore sem;
+	swap(external_release, sem);
+	return sem;
 }
 
 bool WSI::begin_frame()

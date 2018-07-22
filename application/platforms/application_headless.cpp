@@ -274,7 +274,7 @@ public:
 	{
 		auto &wsi = app->get_wsi();
 		auto &device = wsi.get_device();
-		auto release_semaphore = wsi.get_external_release_semaphore();
+		auto release_semaphore = wsi.consume_external_release_semaphore();
 
 		if (release_semaphore && release_semaphore->get_semaphore() != VK_NULL_HANDLE)
 		{

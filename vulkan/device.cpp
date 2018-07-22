@@ -1635,6 +1635,12 @@ void Device::destroy_semaphore(VkSemaphore semaphore)
 	destroy_semaphore_nolock(semaphore);
 }
 
+void Device::recycle_semaphore(VkSemaphore semaphore)
+{
+	LOCK();
+	recycle_semaphore_nolock(semaphore);
+}
+
 void Device::free_memory(const DeviceAllocation &alloc)
 {
 	LOCK();
@@ -1675,6 +1681,11 @@ void Device::destroy_semaphore_nolock(VkSemaphore semaphore)
 {
 	VK_ASSERT(!exists(frame().destroyed_semaphores, semaphore));
 	frame().destroyed_semaphores.push_back(semaphore);
+}
+
+void Device::recycle_semaphore_nolock(VkSemaphore semaphore)
+{
+	managers.semaphore.recycle(semaphore);
 }
 
 void Device::destroy_event_nolock(VkEvent event)

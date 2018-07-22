@@ -30,9 +30,19 @@ SemaphoreHolder::~SemaphoreHolder()
 	if (semaphore)
 	{
 		if (internal_sync)
-			device->destroy_semaphore_nolock(semaphore);
+		{
+			if (is_signalled())
+				device->destroy_semaphore_nolock(semaphore);
+			else
+				device->recycle_semaphore_nolock(semaphore);
+		}
 		else
-			device->destroy_semaphore(semaphore);
+		{
+			if (is_signalled())
+				device->destroy_semaphore(semaphore);
+			else
+				device->recycle_semaphore(semaphore);
+		}
 	}
 }
 

@@ -1009,6 +1009,7 @@ void CommandBuffer::push_constants(const void *data, VkDeviceSize offset, VkDevi
 	set_dirty(COMMAND_BUFFER_DIRTY_PUSH_CONSTANTS_BIT);
 }
 
+#ifdef GRANITE_VULKAN_FILESYSTEM
 void CommandBuffer::set_program(const std::string &compute, const std::vector<std::pair<std::string, int>> &defines)
 {
 	auto *p = device->get_shader_manager().register_compute(compute);
@@ -1023,6 +1024,7 @@ void CommandBuffer::set_program(const std::string &vertex, const std::string &fr
 	unsigned variant = p->register_variant(defines);
 	set_program(*p->get_program(variant));
 }
+#endif
 
 void CommandBuffer::set_program(Program &program)
 {
@@ -1840,6 +1842,7 @@ void CommandBuffer::end_region()
 		vkCmdDebugMarkerEndEXT(cmd);
 }
 
+#ifdef GRANITE_VULKAN_FILESYSTEM
 void CommandBufferUtil::set_quad_vertex_state(CommandBuffer &cmd)
 {
 	auto *data = static_cast<int8_t *>(cmd.allocate_vertex_data(0, 8, 2));
@@ -1906,6 +1909,7 @@ void CommandBufferUtil::setup_fullscreen_quad(Vulkan::CommandBuffer &cmd, const 
 	cmd.set_depth_test(depth_test, depth_write);
 	cmd.set_depth_compare(depth_compare);
 }
+#endif
 
 void CommandBufferDeleter::operator()(Vulkan::CommandBuffer *cmd)
 {

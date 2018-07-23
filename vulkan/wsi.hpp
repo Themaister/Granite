@@ -26,7 +26,6 @@
 #include "semaphore_manager.hpp"
 #include "vulkan.hpp"
 #include "timer.hpp"
-#include "input.hpp"
 #include <memory>
 #include <vector>
 
@@ -76,14 +75,9 @@ public:
 		return false;
 	}
 
-	Granite::FrameTimer &get_frame_timer()
+	Util::FrameTimer &get_frame_timer()
 	{
 		return timer;
-	}
-
-	Granite::InputTracker &get_input_tracker()
-	{
-		return tracker;
 	}
 
 	void kill()
@@ -108,8 +102,7 @@ protected:
 	bool killed = false;
 
 private:
-	Granite::FrameTimer timer;
-	Granite::InputTracker tracker;
+	Util::FrameTimer timer;
 };
 
 class WSI

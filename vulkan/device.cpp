@@ -3268,24 +3268,16 @@ void Device::set_name(const CommandBuffer &cmd, const char *name)
 	}
 }
 
+#ifdef GRANITE_VULKAN_FILESYSTEM
 TextureManager &Device::get_texture_manager()
 {
-#ifdef GRANITE_VULKAN_FILESYSTEM
 	return texture_manager;
-#else
-	LOGE("Vulkan backend is compiled without filesystem support.\n");
-	std::terminate();
-#endif
 }
 
 ShaderManager &Device::get_shader_manager()
 {
-#ifdef GRANITE_VULKAN_FILESYSTEM
 	return shader_manager;
-#else
-	LOGE("Vulkan backend is compiled without filesystem support.\n");
-	std::terminate();
-#endif
 }
+#endif
 
 }

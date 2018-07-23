@@ -41,6 +41,7 @@
 #include "thread_safe_cache.hpp"
 #include <memory>
 #include <vector>
+#include <functional>
 
 #ifdef GRANITE_VULKAN_FILESYSTEM
 #include "shader_manager.hpp"
@@ -248,8 +249,10 @@ public:
 
 	const Sampler &get_stock_sampler(StockSampler sampler) const;
 
+#ifdef GRANITE_VULKAN_FILESYSTEM
 	ShaderManager &get_shader_manager();
 	TextureManager &get_texture_manager();
+#endif
 
 	// For some platforms, the device and queue might be shared, possibly across threads, so need some mechanism to
 	// lock the global device and queue.

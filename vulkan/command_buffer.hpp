@@ -329,9 +329,12 @@ public:
 	Util::IntrusivePtr<CommandBuffer> request_secondary_command_buffer(unsigned thread_index, unsigned subpass);
 
 	void set_program(Program &program);
+
+#ifdef GRANITE_VULKAN_FILESYSTEM
 	// Convenience functions for one-off shader binds.
 	void set_program(const std::string &vertex, const std::string &fragment, const std::vector<std::pair<std::string, int>> &defines = {});
 	void set_program(const std::string &compute, const std::vector<std::pair<std::string, int>> &defines = {});
+#endif
 
 	void set_buffer_view(unsigned set, unsigned binding, const BufferView &view);
 	void set_input_attachments(unsigned set, unsigned start_binding);
@@ -681,6 +684,7 @@ private:
 	                 uint64_t cookie);
 };
 
+#ifdef GRANITE_VULKAN_FILESYSTEM
 struct CommandBufferUtil
 {
 	static void draw_fullscreen_quad(CommandBuffer &cmd, const std::string &vertex, const std::string &fragment,
@@ -699,6 +703,7 @@ struct CommandBufferUtil
 	static void draw_fullscreen_quad(CommandBuffer &cmd, unsigned instances = 1);
 	static void draw_quad(CommandBuffer &cmd, unsigned instances = 1);
 };
+#endif
 
 using CommandBufferHandle = Util::IntrusivePtr<CommandBuffer>;
 }

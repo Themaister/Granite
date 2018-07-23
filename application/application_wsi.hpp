@@ -23,12 +23,20 @@
 #pragma once
 
 #include "wsi.hpp"
+#include "input.hpp"
 
 namespace Granite
 {
 class GraniteWSIPlatform : public Vulkan::WSIPlatform
 {
+public:
+	InputTracker &get_input_tracker()
+	{
+		return tracker;
+	}
+
 private:
+	InputTracker tracker;
 	void event_device_created(Vulkan::Device *device) override;
 	void event_device_destroyed() override;
 	void event_swapchain_created(Vulkan::Device *device, unsigned width, unsigned height,

@@ -25,7 +25,7 @@
 
 using namespace std;
 
-namespace Granite
+namespace Util
 {
 FrameTimer::FrameTimer()
 {

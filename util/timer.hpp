@@ -24,7 +24,7 @@
 
 #include <stdint.h>
 
-namespace Granite
+namespace Util
 {
 class FrameTimer
 {

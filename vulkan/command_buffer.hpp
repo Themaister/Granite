@@ -264,6 +264,11 @@ public:
 	                 VkDeviceSize size);
 	void copy_buffer(const Buffer &dst, const Buffer &src);
 	void copy_image(const Image &dst, const Image &src);
+	void copy_image(const Image &dst, const Image &src,
+	                const VkOffset3D &dst_offset, const VkOffset3D &src_offset,
+	                const VkExtent3D &extent,
+	                const VkImageSubresourceLayers &dst_subresource,
+	                const VkImageSubresourceLayers &src_subresource);
 
 	void copy_buffer_to_image(const Image &image, const Buffer &buffer, VkDeviceSize buffer_offset,
 	                          const VkOffset3D &offset, const VkExtent3D &extent, unsigned row_length,

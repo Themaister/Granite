@@ -75,6 +75,23 @@ void CommandBuffer::copy_buffer(const Buffer &dst, const Buffer &src)
 	copy_buffer(dst, 0, src, 0, dst.get_create_info().size);
 }
 
+void CommandBuffer::copy_image(const Vulkan::Image &dst, const Vulkan::Image &src, const VkOffset3D &dst_offset,
+                               const VkOffset3D &src_offset, const VkExtent3D &extent,
+                               const VkImageSubresourceLayers &dst_subresource,
+                               const VkImageSubresourceLayers &src_subresource)
+{
+	VkImageCopy region = {};
+	region.dstOffset = dst_offset;
+	region.srcOffset = src_offset;
+	region.extent = extent;
+	region.srcSubresource = src_subresource;
+	region.dstSubresource = dst_subresource;
+
+	vkCmdCopyImage(cmd, src.get_image(), src.get_layout(),
+	               dst.get_image(), dst.get_layout(),
+	               1, &region);
+}
+
 void CommandBuffer::copy_image(const Image &dst, const Image &src)
 {
 	uint32_t levels = src.get_create_info().levels;

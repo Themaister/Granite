@@ -3142,6 +3142,21 @@ ImageView &Device::get_swapchain_view()
 	return frame().backbuffer->get_view();
 }
 
+ImageView &Device::get_swapchain_view(unsigned index)
+{
+	return per_frame[index]->backbuffer->get_view();
+}
+
+unsigned Device::get_num_swapchain_images() const
+{
+	return unsigned(per_frame.size());
+}
+
+unsigned Device::get_swapchain_index() const
+{
+	return current_swapchain_index;
+}
+
 RenderPassInfo Device::get_swapchain_render_pass(SwapchainRenderPass style)
 {
 	RenderPassInfo info;

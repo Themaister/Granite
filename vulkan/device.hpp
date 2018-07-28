@@ -149,10 +149,10 @@ public:
 	void set_context(const Context &context);
 	void init_swapchain(const std::vector<VkImage> &swapchain_images, unsigned width, unsigned height, VkFormat format);
 	void init_external_swapchain(const std::vector<ImageHandle> &swapchain_images);
-	unsigned get_num_swapchain_images() const
-	{
-		return unsigned(per_frame.size());
-	}
+	ImageView &get_swapchain_view();
+	ImageView &get_swapchain_view(unsigned index);
+	unsigned get_num_swapchain_images() const;
+	unsigned get_swapchain_index() const;
 
 	size_t get_pipeline_cache_size();
 	bool get_pipeline_cache_data(uint8_t *data, size_t size);
@@ -224,7 +224,6 @@ public:
 	ImageView &get_physical_attachment(unsigned width, unsigned height, VkFormat format,
 	                                   unsigned index = 0, unsigned samples = 1);
 	RenderPassInfo get_swapchain_render_pass(SwapchainRenderPass style);
-	ImageView &get_swapchain_view();
 
 	// Request semaphores.
 	Semaphore request_semaphore();

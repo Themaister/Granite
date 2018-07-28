@@ -130,7 +130,11 @@ RenderPass::RenderPass(Hash hash, Device *device, const RenderPassInfo &info)
 	if (!info.subpasses)
 	{
 		default_subpass_info.num_color_attachments = info.num_color_attachments;
-		default_subpass_info.depth_stencil_mode = RenderPassInfo::DepthStencil::ReadWrite;
+		if (info.op_flags & RENDER_PASS_OP_DEPTH_STENCIL_READ_ONLY_BIT)
+			default_subpass_info.depth_stencil_mode = RenderPassInfo::DepthStencil::ReadOnly;
+		else
+			default_subpass_info.depth_stencil_mode = RenderPassInfo::DepthStencil::ReadWrite;
+
 		for (unsigned i = 0; i < info.num_color_attachments; i++)
 			default_subpass_info.color_attachments[i] = i;
 		num_subpasses = 1;

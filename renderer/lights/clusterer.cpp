@@ -302,7 +302,6 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &de
 		cmd.image_barrier(*scratch_vsm_rt, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
 		                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-		scratch_vsm_rt->set_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 		{
 			RenderPassInfo rp_vert = {};
@@ -323,7 +322,6 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &de
 		cmd.image_barrier(*scratch_vsm_down, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
 		                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-		scratch_vsm_down->set_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 		{
 			RenderPassInfo rp_horiz = {};
@@ -442,14 +440,12 @@ void LightClusterer::render_atlas_point(RenderContext &context)
 			cmd->barrier(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
 			             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
 			             0, nullptr, 0, nullptr, barrier_count, barriers);
-			points.atlas->set_layout(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 		}
 		else
 		{
 			cmd->barrier(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
 			             VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
 			             0, nullptr, 0, nullptr, barrier_count, barriers);
-			points.atlas->set_layout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 		}
 	}
 	else if (vsm)
@@ -458,7 +454,6 @@ void LightClusterer::render_atlas_point(RenderContext &context)
 		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
 		                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
 		                   VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT);
-		points.atlas->set_layout(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 	}
 	else
 	{
@@ -466,7 +461,6 @@ void LightClusterer::render_atlas_point(RenderContext &context)
 		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
 		                   VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
 		                   VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT);
-		points.atlas->set_layout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 	}
 
 	RenderContext depth_context;
@@ -553,8 +547,6 @@ void LightClusterer::render_atlas_point(RenderContext &context)
 		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 	}
 
-	points.atlas->set_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-
 	device.submit(cmd);
 }
 
@@ -589,11 +581,11 @@ void LightClusterer::render_atlas_spot(RenderContext &context)
 		auto stages = vsm ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT :
 		              (VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT);
 
-		cmd->image_barrier(*spots.atlas, partial_mask != ~0u ? spots.atlas->get_layout() : VK_IMAGE_LAYOUT_UNDEFINED,
-		                   vsm ? VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, stages, access);
-
-		spots.atlas->set_layout(vsm ? VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+		VkImageLayout layout = vsm ? VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+		cmd->image_barrier(*spots.atlas,
+		                   partial_mask != ~0u ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED, layout,
+		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+		                   stages, access);
 	}
 
 	RenderContext depth_context;
@@ -647,7 +639,6 @@ void LightClusterer::render_atlas_spot(RenderContext &context)
 		                   VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
 		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 	}
-	spots.atlas->set_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 	device.submit(cmd);
 }
@@ -1127,7 +1118,8 @@ void LightClusterer::add_render_passes(RenderGraph &graph)
 		pass.add_storage_texture_output("light-cluster-prepass", att_prepass);
 		pass.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
 			build_cluster(cmd, *pre_cull_target, nullptr);
-			cmd.image_barrier(pre_cull_target->get_image(), VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+			cmd.image_barrier(pre_cull_target->get_image(), VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
+			                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
 			                  VK_ACCESS_SHADER_WRITE_BIT,
 			                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 			build_cluster(cmd, *target, pre_cull_target);

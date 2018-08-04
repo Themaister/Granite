@@ -23,6 +23,7 @@
 #pragma once
 
 #include "shader.hpp"
+#include "vulkan_common.hpp"
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
@@ -31,8 +32,9 @@
 #include "compiler.hpp"
 #include "filesystem.hpp"
 #include "hashmap.hpp"
+#ifdef GRANITE_VULKAN_MT
 #include "read_write_lock.hpp"
-#include "thread_safe_cache.hpp"
+#endif
 
 namespace Vulkan
 {
@@ -57,7 +59,7 @@ public:
 private:
 	std::string path;
 	std::unique_ptr<Granite::GLSLCompiler> compiler;
-	Util::ThreadSafeCache<Variant> variants;
+	VulkanCache<Variant> variants;
 };
 
 class ShaderProgram
@@ -80,13 +82,17 @@ private:
 		const ShaderTemplate::Variant *stages[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
 		unsigned shader_instance[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
 		Vulkan::Program *program;
+#ifdef GRANITE_VULKAN_MT
 		std::unique_ptr<Util::RWSpinLock> instance_lock = std::make_unique<Util::RWSpinLock>();
+#endif
 	};
 
 	ShaderTemplate *stages[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
 	std::vector<Variant> variants;
 	std::vector<Util::Hash> variant_hashes;
+#ifdef GRANITE_VULKAN_MT
 	Util::RWSpinLock variant_lock;
+#endif
 };
 
 class ShaderManager
@@ -107,12 +113,14 @@ public:
 private:
 	Device *device;
 
-	Util::ThreadSafeCache<ShaderTemplate> shaders;
-	Util::ThreadSafeCache<ShaderProgram> programs;
+	VulkanCache<ShaderTemplate> shaders;
+	VulkanCache<ShaderProgram> programs;
 
 	ShaderTemplate *get_template(const std::string &source);
 	std::unordered_map<std::string, std::unordered_set<ShaderTemplate *>> dependees;
+#ifdef GRANITE_VULKAN_MT
 	std::mutex dependency_lock;
+#endif
 
 	struct Notify
 	{

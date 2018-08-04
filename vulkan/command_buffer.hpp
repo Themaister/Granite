@@ -303,8 +303,6 @@ public:
 	void image_barrier(const Image &image, VkImageLayout old_layout, VkImageLayout new_layout,
 	                   VkPipelineStageFlags src_stage, VkAccessFlags src_access, VkPipelineStageFlags dst_stage,
 	                   VkAccessFlags dst_access);
-	void image_barrier(const Image &image, VkPipelineStageFlags src_stage, VkAccessFlags src_access,
-	                   VkPipelineStageFlags dst_stage, VkAccessFlags dst_access);
 
 	void blit_image(const Image &dst, VkImageLayout dst_layout,
 	                const Image &src, VkImageLayout src_layout,

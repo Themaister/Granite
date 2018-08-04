@@ -2730,8 +2730,6 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		                            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT,
 		                            VK_ACCESS_TRANSFER_WRITE_BIT);
 
-		handle->set_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-
 		transfer_cmd->begin_region("copy-image-to-gpu");
 		transfer_cmd->copy_buffer_to_image(*handle, *staging_buffer->buffer, staging_buffer->blits.size(), staging_buffer->blits.data());
 		transfer_cmd->end_region();
@@ -2753,7 +2751,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 				release.dstAccessMask = 0;
 				release.srcQueueFamilyIndex = transfer_queue_family_index;
 				release.dstQueueFamilyIndex = graphics_queue_family_index;
-				release.oldLayout = handle->get_layout();
+				release.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 
 				if (generate_mips)
 				{
@@ -2767,7 +2765,6 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 					need_initial_barrier = false;
 				}
 
-				handle->set_layout(release.newLayout);
 				release.subresourceRange.aspectMask = format_to_aspect_mask(info.format);
 				release.subresourceRange.layerCount = info.arrayLayers;
 
@@ -2801,7 +2798,6 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 			graphics_cmd->barrier_prepare_generate_mipmap(*handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 			                                              VK_PIPELINE_STAGE_TRANSFER_BIT,
 			                                              prepare_src_access, need_mipmap_barrier);
-			handle->set_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 			graphics_cmd->generate_mipmap(*handle);
 			graphics_cmd->end_region();
 		}
@@ -2809,7 +2805,8 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		if (need_initial_barrier)
 		{
 			graphics_cmd->image_barrier(
-					*handle, handle->get_layout(), create_info.initial_layout,
+					*handle, generate_mips ? VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL : VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+					create_info.initial_layout,
 					VK_PIPELINE_STAGE_TRANSFER_BIT, final_transition_src_access,
 					handle->get_stage_flags(),
 					handle->get_access_flags() & image_layout_to_possible_access(create_info.initial_layout));
@@ -2847,7 +2844,6 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 			submit(cmd);
 	}
 
-	handle->set_layout(create_info.initial_layout);
 	return handle;
 }
 

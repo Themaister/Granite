@@ -87,8 +87,8 @@ void CommandBuffer::copy_image(const Vulkan::Image &dst, const Vulkan::Image &sr
 	region.srcSubresource = src_subresource;
 	region.dstSubresource = dst_subresource;
 
-	vkCmdCopyImage(cmd, src.get_image(), src.get_layout(),
-	               dst.get_image(), dst.get_layout(),
+	vkCmdCopyImage(cmd, src.get_image(), src.get_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL),
+	               dst.get_image(), dst.get_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL),
 	               1, &region);
 }
 
@@ -120,20 +120,23 @@ void CommandBuffer::copy_image(const Image &dst, const Image &src)
 		VK_ASSERT(region.srcSubresource.aspectMask == region.dstSubresource.aspectMask);
 	}
 
-	vkCmdCopyImage(cmd, src.get_image(), src.get_layout(), dst.get_image(), dst.get_layout(),
+	vkCmdCopyImage(cmd, src.get_image(), src.get_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL),
+	               dst.get_image(), dst.get_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL),
 	               levels, regions);
 }
 
 void CommandBuffer::copy_buffer_to_image(const Image &image, const Buffer &buffer, unsigned num_blits,
                                          const VkBufferImageCopy *blits)
 {
-	vkCmdCopyBufferToImage(cmd, buffer.get_buffer(), image.get_image(), image.get_layout(), num_blits, blits);
+	vkCmdCopyBufferToImage(cmd, buffer.get_buffer(),
+	                       image.get_image(), image.get_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL), num_blits, blits);
 }
 
 void CommandBuffer::copy_image_to_buffer(const Buffer &buffer, const Image &image, unsigned num_blits,
                                          const VkBufferImageCopy *blits)
 {
-	vkCmdCopyImageToBuffer(cmd, image.get_image(), image.get_layout(), buffer.get_buffer(), num_blits, blits);
+	vkCmdCopyImageToBuffer(cmd, image.get_image(), image.get_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL),
+	                       buffer.get_buffer(), num_blits, blits);
 }
 
 void CommandBuffer::copy_buffer_to_image(const Image &image, const Buffer &src, VkDeviceSize buffer_offset,
@@ -145,7 +148,8 @@ void CommandBuffer::copy_buffer_to_image(const Image &image, const Buffer &src, 
 		row_length != extent.width ? row_length : 0, slice_height != extent.height ? slice_height : 0,
 		subresource, offset, extent,
 	};
-	vkCmdCopyBufferToImage(cmd, src.get_buffer(), image.get_image(), image.get_layout(), 1, &region);
+	vkCmdCopyBufferToImage(cmd, src.get_buffer(), image.get_image(), image.get_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL),
+	                       1, &region);
 }
 
 void CommandBuffer::copy_image_to_buffer(const Buffer &buffer, const Image &image, VkDeviceSize buffer_offset,
@@ -157,7 +161,8 @@ void CommandBuffer::copy_image_to_buffer(const Buffer &buffer, const Image &imag
 		row_length != extent.width ? row_length : 0, slice_height != extent.height ? slice_height : 0,
 		subresource, offset, extent,
 	};
-	vkCmdCopyImageToBuffer(cmd, image.get_image(), image.get_layout(), buffer.get_buffer(), 1, &region);
+	vkCmdCopyImageToBuffer(cmd, image.get_image(), image.get_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL),
+	                       buffer.get_buffer(), 1, &region);
 }
 
 void CommandBuffer::clear_image(const Image &image, const VkClearValue &value)
@@ -173,9 +178,15 @@ void CommandBuffer::clear_image(const Image &image, const VkClearValue &value)
 	range.levelCount = image.get_create_info().levels;
 	range.layerCount = image.get_create_info().layers;
 	if (aspect & VK_IMAGE_ASPECT_COLOR_BIT)
-		vkCmdClearColorImage(cmd, image.get_image(), image.get_layout(), &value.color, 1, &range);
+	{
+		vkCmdClearColorImage(cmd, image.get_image(), image.get_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL),
+		                     &value.color, 1, &range);
+	}
 	else
-		vkCmdClearDepthStencilImage(cmd, image.get_image(), image.get_layout(), &value.depthStencil, 1, &range);
+	{
+		vkCmdClearDepthStencilImage(cmd, image.get_image(), image.get_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL),
+		                            &value.depthStencil, 1, &range);
+	}
 }
 
 void CommandBuffer::clear_quad(unsigned attachment, const VkClearRect &rect, const VkClearValue &value,
@@ -273,12 +284,6 @@ void CommandBuffer::image_barrier(const Image &image, VkImageLayout old_layout, 
 	vkCmdPipelineBarrier(cmd, src_stages, dst_stages, 0, 0, nullptr, 0, nullptr, 1, &barrier);
 }
 
-void CommandBuffer::image_barrier(const Image &image, VkPipelineStageFlags src_stages, VkAccessFlags src_access,
-                                  VkPipelineStageFlags dst_stages, VkAccessFlags dst_access)
-{
-	image_barrier(image, image.get_layout(), image.get_layout(), src_stages, src_access, dst_stages, dst_access);
-}
-
 void CommandBuffer::barrier_prepare_generate_mipmap(const Image &image, VkImageLayout base_level_layout,
                                                     VkPipelineStageFlags src_stage, VkAccessFlags src_access,
                                                     bool need_top_level_barrier)
@@ -328,7 +333,7 @@ void CommandBuffer::generate_mipmap(const Image &image)
 	VkOffset3D size = { int(create_info.width), int(create_info.height), int(create_info.depth) };
 	const VkOffset3D origin = { 0, 0, 0 };
 
-	VK_ASSERT(image.get_layout() == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+	VK_ASSERT(image.get_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 
 	VkImageMemoryBarrier b = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
 	b.image = image.get_image();
@@ -1312,7 +1317,7 @@ void CommandBuffer::set_texture(unsigned set, unsigned binding, const ImageView 
 {
 	VK_ASSERT(view.get_image().get_create_info().usage & VK_IMAGE_USAGE_SAMPLED_BIT);
 	set_texture(set, binding, view.get_float_view(), view.get_integer_view(),
-	            view.get_image().get_layout(), view.get_cookie());
+	            view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL), view.get_cookie());
 }
 
 enum CookieBits
@@ -1327,7 +1332,7 @@ void CommandBuffer::set_unorm_texture(unsigned set, unsigned binding, const Imag
 	auto unorm_view = view.get_unorm_view();
 	VK_ASSERT(unorm_view != VK_NULL_HANDLE);
 	set_texture(set, binding, unorm_view, unorm_view,
-	            view.get_image().get_layout(), view.get_cookie() | COOKIE_BIT_UNORM);
+	            view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL), view.get_cookie() | COOKIE_BIT_UNORM);
 }
 
 void CommandBuffer::set_srgb_texture(unsigned set, unsigned binding, const ImageView &view)
@@ -1336,7 +1341,7 @@ void CommandBuffer::set_srgb_texture(unsigned set, unsigned binding, const Image
 	auto srgb_view = view.get_srgb_view();
 	VK_ASSERT(srgb_view != VK_NULL_HANDLE);
 	set_texture(set, binding, srgb_view, srgb_view,
-	            view.get_image().get_layout(), view.get_cookie() | COOKIE_BIT_SRGB);
+	            view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL), view.get_cookie() | COOKIE_BIT_SRGB);
 }
 
 void CommandBuffer::set_texture(unsigned set, unsigned binding, const ImageView &view, const Sampler &sampler)
@@ -1364,7 +1369,7 @@ void CommandBuffer::set_storage_texture(unsigned set, unsigned binding, const Im
 {
 	VK_ASSERT(view.get_image().get_create_info().usage & VK_IMAGE_USAGE_STORAGE_BIT);
 	set_texture(set, binding, view.get_float_view(), view.get_integer_view(),
-	            view.get_image().get_layout(), view.get_cookie());
+	            view.get_image().get_layout(VK_IMAGE_LAYOUT_GENERAL), view.get_cookie());
 }
 
 void CommandBuffer::flush_descriptor_set(uint32_t set)

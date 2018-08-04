@@ -99,7 +99,6 @@ ImageHandle convert_cube_to_ibl_specular(Device &device, ImageView &view)
 	cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
 	                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-	handle->set_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 	Fence fence;
 	device.submit(cmd, &fence);
@@ -159,7 +158,6 @@ ImageHandle convert_cube_to_ibl_diffuse(Device &device, ImageView &view)
 	cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
 	                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-	handle->set_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 	Fence fence;
 	device.submit(cmd, &fence);
@@ -217,12 +215,10 @@ ImageHandle convert_equirect_to_cube(Device &device, ImageView &view, float scal
 
 	cmd->barrier_prepare_generate_mipmap(*handle, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 	                                     VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, true);
-	handle->set_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 	cmd->generate_mipmap(*handle);
 	cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	                   VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
 	                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-	handle->set_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 	device.submit(cmd);
 	return handle;
@@ -232,7 +228,6 @@ ImageReadback save_image_to_cpu_buffer(Vulkan::Device &device, const Vulkan::Ima
 {
 	ImageReadback readback;
 	readback.create_info = image.get_create_info();
-	assert(image.get_layout() == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL || image.get_layout() == VK_IMAGE_LAYOUT_GENERAL);
 
 	switch (image.get_create_info().type)
 	{

@@ -8,7 +8,7 @@ add_granite_library(glfft
         glfft_wisdom.cpp
         glfft_wisdom.hpp)
 
-target_link_libraries(glfft rapidjson filesystem vulkan-backend)
+target_link_libraries(glfft rapidjson filesystem vulkan-backend compiler)
 target_include_directories(glfft PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 if (NOT MSVC)

@@ -383,6 +383,12 @@ struct ImageDeleter
 	void operator()(Image *image);
 };
 
+enum class Layout
+{
+	Optimal,
+	General
+};
+
 class Image : public Util::IntrusivePtrEnabled<Image, ImageDeleter, HandleCounter>,
               public Cookie, public InternalSyncEnabled
 {
@@ -434,14 +440,14 @@ public:
 		return create_info;
 	}
 
-	VkImageLayout get_layout() const
+	VkImageLayout get_layout(VkImageLayout optimal) const
 	{
-		return layout;
+		return layout_type == Layout::Optimal ? optimal : VK_IMAGE_LAYOUT_GENERAL;
 	}
 
-	void set_layout(VkImageLayout new_layout)
+	void set_layout(Layout layout)
 	{
-		layout = new_layout;
+		layout_type = layout;
 	}
 
 	bool is_swapchain_image() const
@@ -495,7 +501,7 @@ private:
 	DeviceAllocation alloc;
 	ImageCreateInfo create_info;
 
-	VkImageLayout layout = VK_IMAGE_LAYOUT_GENERAL;
+	Layout layout_type = Layout::Optimal;
 	VkPipelineStageFlags stage_flags = 0;
 	VkAccessFlags access_flags = 0;
 	VkImageLayout swapchain_layout = VK_IMAGE_LAYOUT_UNDEFINED;

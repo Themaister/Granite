@@ -284,7 +284,6 @@ public:
 				                          VK_PIPELINE_STAGE_TRANSFER_BIT, true);
 
 				auto cmd = device.request_command_buffer(CommandBuffer::Type::AsyncTransfer);
-				swapchain_images[index]->set_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 
 				cmd->copy_image_to_buffer(*readback_buffers[index], *swapchain_images[index],
 				                          0, {}, {width, height, 1},
@@ -306,7 +305,6 @@ public:
 				                          VK_PIPELINE_STAGE_TRANSFER_BIT, true);
 
 				auto cmd = device.request_command_buffer(CommandBuffer::Type::AsyncTransfer);
-				swapchain_images[index]->set_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 
 				cmd->copy_image_to_buffer(*readback_buffers[index], *swapchain_images[index],
 				                          0, {}, {width, height, 1},

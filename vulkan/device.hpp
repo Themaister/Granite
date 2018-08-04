@@ -73,18 +73,6 @@ struct InitialImageBuffer
 	std::vector<VkBufferImageCopy> blits;
 };
 
-#ifdef GRANITE_VULKAN_MT
-template <typename T>
-using VulkanObjectPool = Util::ThreadSafeObjectPool<T>;
-template <typename T>
-using VulkanCache = Util::ThreadSafeCache<T>;
-#else
-template <typename T>
-using VulkanObjectPool = Util::ObjectPool<T>;
-template <typename T>
-using VulkanCache = Util::Cache<T>;
-#endif
-
 struct HandlePool
 {
 	VulkanObjectPool<Buffer> buffers;

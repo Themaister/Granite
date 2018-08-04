@@ -20,6 +20,7 @@
 #include "command_buffer.hpp"
 #include "device.hpp"
 #include "timer.hpp"
+#include "compiler.hpp"
 #include <stdarg.h>
 using namespace std;
 
@@ -287,7 +288,7 @@ uint32_t FFTInterface::get_product_id()
 
 double FFTInterface::get_time()
 {
-	return get_current_time_nsecs() * 1e-9;
+	return Util::get_current_time_nsecs() * 1e-9;
 }
 
 bool FFTInterface::supports_texture_readback()

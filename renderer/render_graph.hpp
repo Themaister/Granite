@@ -830,8 +830,8 @@ private:
 
 		// Stages to wait for are stored inside the events.
 		VkAccessFlags to_flush_access = 0;
-
 		VkAccessFlags invalidated_in_stage[32] = {};
+		VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
 	};
 
 	std::vector<PipelineEvent> physical_events;

@@ -29,6 +29,12 @@
 using namespace std;
 using namespace Util;
 
+#ifdef GRANITE_VULKAN_MT
+#define DEPENDENCY_LOCK() std::lock_guard<std::mutex> holder{dependency_lock}
+#else
+#define DEPENDENCY_LOCK() ((void)0)
+#endif
+
 namespace Vulkan
 {
 ShaderTemplate::ShaderTemplate(const std::string &shader_path)
@@ -130,23 +136,31 @@ Vulkan::Program *ShaderProgram::get_program(unsigned variant)
 	if (comp)
 	{
 		auto &comp_instance = var.shader_instance[static_cast<unsigned>(Vulkan::ShaderStage::Compute)];
+#ifdef GRANITE_VULKAN_MT
 		var.instance_lock->lock_read();
+#endif
 		if (comp_instance != comp->instance)
 		{
+#ifdef GRANITE_VULKAN_MT
 			var.instance_lock->promote_reader_to_writer();
+#endif
 			if (comp_instance != comp->instance)
 			{
 				comp_instance = comp->instance;
 				var.program = device->request_program(comp->spirv.data(), comp->spirv.size() * sizeof(uint32_t));
 			}
 			auto ret = var.program;
+#ifdef GRANITE_VULKAN_MT
 			var.instance_lock->unlock_write();
+#endif
 			return ret;
 		}
 		else
 		{
 			auto ret = var.program;
+#ifdef GRANITE_VULKAN_MT
 			var.instance_lock->unlock_read();
+#endif
 			return ret;
 		}
 	}
@@ -154,11 +168,15 @@ Vulkan::Program *ShaderProgram::get_program(unsigned variant)
 	{
 		auto &vert_instance = var.shader_instance[static_cast<unsigned>(Vulkan::ShaderStage::Vertex)];
 		auto &frag_instance = var.shader_instance[static_cast<unsigned>(Vulkan::ShaderStage::Fragment)];
+#ifdef GRANITE_VULKAN_MT
 		var.instance_lock->lock_read();
+#endif
 
 		if (vert_instance != vert->instance || frag_instance != frag->instance)
 		{
+#ifdef GRANITE_VULKAN_MT
 			var.instance_lock->promote_reader_to_writer();
+#endif
 			if (vert_instance != vert->instance || frag_instance != frag->instance)
 			{
 				vert_instance = vert->instance;
@@ -167,13 +185,17 @@ Vulkan::Program *ShaderProgram::get_program(unsigned variant)
 				                                      frag->spirv.data(), frag->spirv.size() * sizeof(uint32_t));
 			}
 			auto ret = var.program;
+#ifdef GRANITE_VULKAN_MT
 			var.instance_lock->unlock_write();
+#endif
 			return ret;
 		}
 		else
 		{
 			auto ret = var.program;
+#ifdef GRANITE_VULKAN_MT
 			var.instance_lock->unlock_read();
+#endif
 			return ret;
 		}
 	}
@@ -192,16 +214,22 @@ unsigned ShaderProgram::register_variant(const std::vector<std::pair<std::string
 
 	auto hash = h.get();
 
+#ifdef GRANITE_VULKAN_MT
 	variant_lock.lock_read();
+#endif
 	auto itr = find(begin(variant_hashes), end(variant_hashes), hash);
 	if (itr != end(variant_hashes))
 	{
 		auto ret = unsigned(itr - begin(variant_hashes));
+#ifdef GRANITE_VULKAN_MT
 		variant_lock.unlock_read();
+#endif
 		return ret;
 	}
 
+#ifdef GRANITE_VULKAN_MT
 	variant_lock.promote_reader_to_writer();
+#endif
 	auto index = unsigned(variants.size());
 	variants.emplace_back();
 	auto &var = variants.back();
@@ -213,7 +241,9 @@ unsigned ShaderProgram::register_variant(const std::vector<std::pair<std::string
 
 	// Make sure it's compiled correctly.
 	get_program(index);
+#ifdef GRANITE_VULKAN_MT
 	variant_lock.unlock_write();
+#endif
 
 	return index;
 }
@@ -247,7 +277,7 @@ ShaderTemplate *ShaderManager::get_template(const std::string &path)
 	{
 		auto shader = make_unique<ShaderTemplate>(path);
 		{
-			std::lock_guard<std::mutex> holder{dependency_lock};
+			DEPENDENCY_LOCK();
 			register_dependency_nolock(shader.get(), path);
 			shader->register_dependencies(*this);
 		}
@@ -286,7 +316,7 @@ ShaderManager::~ShaderManager()
 
 void ShaderManager::register_dependency(ShaderTemplate *shader, const std::string &dependency)
 {
-	std::lock_guard<std::mutex> holder{dependency_lock};
+	DEPENDENCY_LOCK();
 	register_dependency_nolock(shader, dependency);
 }
 
@@ -298,7 +328,7 @@ void ShaderManager::register_dependency_nolock(ShaderTemplate *shader, const std
 
 void ShaderManager::recompile(const Granite::FileNotifyInfo &info)
 {
-	std::lock_guard<std::mutex> holder{dependency_lock};
+	DEPENDENCY_LOCK();
 	if (info.type == Granite::FileNotifyType::FileDeleted)
 		return;
 

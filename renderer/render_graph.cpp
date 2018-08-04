@@ -1355,17 +1355,12 @@ void RenderGraph::enqueue_mipmap_requests(Vulkan::CommandBuffer &cmd, const std:
 	for (auto &req : requests)
 	{
 		auto &image = physical_attachments[req.physical_resource]->get_image();
-		auto old_layout = image.get_layout();
 
 		cmd.begin_region("render-graph-mipgen");
 		cmd.barrier_prepare_generate_mipmap(image, req.layout, req.stages, req.access);
 
-		image.set_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 		cmd.generate_mipmap(image);
 		cmd.end_region();
-
-		// Keep the old layout so that the flush barriers can detect that a transition has happened.
-		image.set_layout(old_layout);
 	}
 }
 
@@ -1620,10 +1615,8 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 			// If required, we could inject a pipeline barrier here which flushes caches.
 			// Generally, the last pass a resource is used, it will be *read*, not written to.
 			assert(events.to_flush_access == 0);
-
 			events.to_flush_access = 0;
-
-			physical_attachments[transfer.second]->get_image().set_layout(VK_IMAGE_LAYOUT_UNDEFINED);
+			physical_events[transfer.second].layout = VK_IMAGE_LAYOUT_UNDEFINED;
 		}
 	};
 
@@ -1703,7 +1696,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 		// Storage textures are preserved over multiple frames, don't discard.
 		for (auto &discard : physical_pass.discards)
 			if (!physical_dimensions[discard].is_buffer_like())
-				physical_attachments[discard]->get_image().set_layout(VK_IMAGE_LAYOUT_UNDEFINED);
+				physical_events[discard].layout = VK_IMAGE_LAYOUT_UNDEFINED;
 
 		// Queue up invalidates and change layouts.
 		for (auto &barrier : physical_pass.invalidate)
@@ -1757,7 +1750,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 				}
 
 				VkImageMemoryBarrier b = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
-				b.oldLayout = image->get_layout();
+				b.oldLayout = event.layout;
 				b.newLayout = barrier.layout;
 				b.srcAccessMask = event.to_flush_access;
 				b.dstAccessMask = barrier.access;
@@ -1768,7 +1761,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 				b.subresourceRange.aspectMask = Vulkan::format_to_aspect_mask(image->get_format());
 				b.subresourceRange.layerCount = image->get_create_info().layers;
 				b.subresourceRange.levelCount = image->get_create_info().levels;
-				image->set_layout(barrier.layout);
+				event.layout = barrier.layout;
 
 				layout_change = b.oldLayout != b.newLayout;
 
@@ -1804,7 +1797,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 					{
 						// ... or vkCmdPipelineBarrier from TOP_OF_PIPE_BIT if this is the first time we use the resource.
 						immediate_image_barriers.push_back(b);
-						if (b.oldLayout != VK_NULL_HANDLE)
+						if (b.oldLayout != VK_IMAGE_LAYOUT_UNDEFINED)
 							throw logic_error("Cannot do immediate image barriers from a layout other than UNDEFINED.");
 						immediate_dst_stages |= barrier.stages;
 					}
@@ -1970,7 +1963,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 				if (!image)
 					continue;
 
-				image->set_layout(barrier.layout);
+				physical_events[barrier.resource_index].layout = barrier.layout;
 			}
 
 			// Mark if there are pending writes from this pass.
@@ -2035,13 +2028,16 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 		auto &wait_semaphore = physical_queue_type == Vulkan::CommandBuffer::Type::Generic ?
 		                       physical_events[index].wait_graphics_semaphore : physical_events[index].wait_compute_semaphore;
 
+		auto target_layout = physical_dimensions[index].is_storage_image() ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
 		if (physical_events[index].event)
 		{
 			VkEvent event = physical_events[index].event->get_event();
 			VkImageMemoryBarrier barrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
 			barrier.image = image.get_image();
-			barrier.oldLayout = physical_attachments[index]->get_image().get_layout();
-			barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			barrier.oldLayout = physical_events[index].layout;
+
+			barrier.newLayout = target_layout;
 			barrier.srcAccessMask = physical_events[index].to_flush_access;
 			barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 			barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -2057,7 +2053,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 			                 0, nullptr,
 			                 1, &barrier);
 
-			physical_attachments[index]->get_image().set_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			physical_events[index].layout = target_layout;
 		}
 		else if (wait_semaphore)
 		{
@@ -2069,12 +2065,12 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 				                          VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, true);
 			}
 
-			if (image.get_layout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+			if (physical_events[index].layout != target_layout)
 			{
-				cmd->image_barrier(image, image.get_layout(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+				cmd->image_barrier(image, physical_events[index].layout, target_layout,
 				                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
 				                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-				image.set_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+				physical_events[index].layout = target_layout;
 			}
 		}
 		else
@@ -2204,6 +2200,10 @@ void RenderGraph::setup_physical_image(Vulkan::Device &device, unsigned attachme
 			info.misc |= Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_SECONDARY_GRAPHICS_BIT;
 
 		physical_image_attachments[attachment] = device.create_image(info, nullptr);
+		// Just keep storage images in GENERAL layout.
+		// There is no reason to try enabling compression.
+		if (att.is_storage_image())
+			physical_image_attachments[attachment]->set_layout(Vulkan::Layout::General);
 		device.set_name(*physical_image_attachments[attachment], att.name.c_str());
 		physical_events[attachment] = {};
 	}
@@ -2714,13 +2714,18 @@ void RenderGraph::build_physical_barriers()
 
 					if (itr == end(physical_pass.invalidate))
 					{
+						// Storage images should just be in GENERAL all the time instead of SHADER_READ_ONLY_OPTIMAL.
+						auto layout = physical_dimensions[invalidate.resource_index].is_storage_image() ?
+						              VK_IMAGE_LAYOUT_GENERAL :
+						              invalidate.layout;
+
 						// Special case history barriers. They are a bit different from other barriers.
 						// We just need to ensure the layout is right and that we avoid write-after-read.
 						// Even if we see these barriers in multiple render passes, they will not emit multiple barriers.
 						physical_pass.invalidate.push_back(
-							{ invalidate.resource_index, invalidate.layout, invalidate.access, invalidate.stages, true });
+							{ invalidate.resource_index, layout, invalidate.access, invalidate.stages, true });
 						physical_pass.flush.push_back(
-							{ invalidate.resource_index, invalidate.layout, 0, invalidate.stages, true });
+							{ invalidate.resource_index, layout, 0, invalidate.stages, true });
 					}
 
 					continue;
@@ -2731,7 +2736,15 @@ void RenderGraph::build_physical_barriers()
 				{
 					resource_state[invalidate.resource_index].invalidated_types |= invalidate.access;
 					resource_state[invalidate.resource_index].invalidated_stages |= invalidate.stages;
-					resource_state[invalidate.resource_index].initial_layout = invalidate.layout;
+
+					// Storage images should just be in GENERAL all the time instead of SHADER_READ_ONLY_OPTIMAL.
+					if (invalidate.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL &&
+					    physical_dimensions[invalidate.resource_index].is_storage_image())
+					{
+						resource_state[invalidate.resource_index].initial_layout = VK_IMAGE_LAYOUT_GENERAL;
+					}
+					else
+						resource_state[invalidate.resource_index].initial_layout = invalidate.layout;
 				}
 
 				// All pending flushes have been invalidated in the appropriate stages already.
@@ -2752,7 +2765,15 @@ void RenderGraph::build_physical_barriers()
 				// The last use of a resource in a physical pass needs to be handled externally.
 				resource_state[flush.resource_index].flushed_types |= flush.access;
 				resource_state[flush.resource_index].flushed_stages |= flush.stages;
-				resource_state[flush.resource_index].final_layout = flush.layout;
+
+				// Storage images should just be in GENERAL all the time instead of SHADER_READ_ONLY_OPTIMAL.
+				if (flush.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL &&
+					physical_dimensions[flush.resource_index].is_storage_image())
+				{
+					resource_state[flush.resource_index].final_layout = VK_IMAGE_LAYOUT_GENERAL;
+				}
+				else
+					resource_state[flush.resource_index].final_layout = flush.layout;
 
 				// If we didn't have an invalidation before first flush, we must invalidate first.
 				// Only first flush in a render pass needs a matching invalidation.

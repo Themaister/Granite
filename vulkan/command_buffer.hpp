@@ -257,6 +257,7 @@ public:
 	void clear_image(const Image &image, const VkClearValue &value);
 	void clear_quad(unsigned attachment, const VkClearRect &rect, const VkClearValue &value,
 	                VkImageAspectFlags = VK_IMAGE_ASPECT_COLOR_BIT);
+	void clear_quad(const VkClearRect &rect, const VkClearAttachment *attachments, unsigned num_attachments);
 
 	void fill_buffer(const Buffer &dst, uint32_t value);
 	void fill_buffer(const Buffer &dst, uint32_t value, VkDeviceSize offset, VkDeviceSize size);

@@ -201,6 +201,13 @@ void CommandBuffer::clear_quad(unsigned attachment, const VkClearRect &rect, con
 	vkCmdClearAttachments(cmd, 1, &att, 1, &rect);
 }
 
+void CommandBuffer::clear_quad(const VkClearRect &rect, const VkClearAttachment *attachments, unsigned num_attachments)
+{
+	VK_ASSERT(framebuffer);
+	VK_ASSERT(render_pass);
+	vkCmdClearAttachments(cmd, num_attachments, attachments, 1, &rect);
+}
+
 void CommandBuffer::full_barrier()
 {
 	VK_ASSERT(!render_pass);

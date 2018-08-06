@@ -488,6 +488,10 @@ RenderPass::RenderPass(Hash hash, Device *device, const RenderPassInfo &info)
 				color->layout = current_layout;
 				input->layout = current_layout;
 
+				// If the attachment is first used as a feedback attachment, the initial layout should actually be GENERAL.
+				if (!used && attachments[attachment].initialLayout != VK_IMAGE_LAYOUT_UNDEFINED)
+					attachments[attachment].initialLayout = current_layout;
+
 				// If first subpass changes the layout, we'll need to inject an external subpass dependency.
 				if (!used && attachments[attachment].initialLayout != current_layout)
 				{
@@ -524,6 +528,10 @@ RenderPass::RenderPass(Hash hash, Device *device, const RenderPassInfo &info)
 					depth_self_dependencies |= 1u << subpass;
 					current_layout = VK_IMAGE_LAYOUT_GENERAL;
 					depth_stencil_attachment_write |= 1u << subpass;
+
+					// If the attachment is first used as a feedback attachment, the initial layout should actually be GENERAL.
+					if (!used && attachments[attachment].initialLayout != VK_IMAGE_LAYOUT_UNDEFINED)
+						attachments[attachment].initialLayout = current_layout;
 				}
 				else
 				{

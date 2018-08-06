@@ -2698,6 +2698,8 @@ void RenderGraph::build_physical_barriers()
 
 			for (auto &invalidate : invalidates)
 			{
+				auto &res = resource_state[invalidate.resource_index];
+
 				// Transients and swapchain images are handled implicitly.
 				if (physical_dimensions[invalidate.resource_index].transient ||
 					invalidate.resource_index == swapchain_physical_index)
@@ -2731,26 +2733,34 @@ void RenderGraph::build_physical_barriers()
 				}
 
 				// Only the first use of a resource in a physical pass needs to be handled externally.
-				if (resource_state[invalidate.resource_index].initial_layout == VK_IMAGE_LAYOUT_UNDEFINED)
+				if (res.initial_layout == VK_IMAGE_LAYOUT_UNDEFINED)
 				{
-					resource_state[invalidate.resource_index].invalidated_types |= invalidate.access;
-					resource_state[invalidate.resource_index].invalidated_stages |= invalidate.stages;
+					res.invalidated_types |= invalidate.access;
+					res.invalidated_stages |= invalidate.stages;
 
 					// Storage images should just be in GENERAL all the time instead of SHADER_READ_ONLY_OPTIMAL.
 					if (physical_dimensions[invalidate.resource_index].is_storage_image())
-						resource_state[invalidate.resource_index].initial_layout = VK_IMAGE_LAYOUT_GENERAL;
+						res.initial_layout = VK_IMAGE_LAYOUT_GENERAL;
 					else
-						resource_state[invalidate.resource_index].initial_layout = invalidate.layout;
+						res.initial_layout = invalidate.layout;
 				}
+
+				// A read-only invalidation can change the layout.
+				if (physical_dimensions[invalidate.resource_index].is_storage_image())
+					res.final_layout = VK_IMAGE_LAYOUT_GENERAL;
+				else
+					res.final_layout = invalidate.layout;
 
 				// All pending flushes have been invalidated in the appropriate stages already.
 				// This is relevant if the invalidate happens in subpass #1 and beyond.
-				resource_state[invalidate.resource_index].flushed_types = 0;
-				resource_state[invalidate.resource_index].flushed_stages = 0;
+				res.flushed_types = 0;
+				res.flushed_stages = 0;
 			}
 
 			for (auto &flush : flushes)
 			{
+				auto &res = resource_state[flush.resource_index];
+
 				// Transients are handled implicitly.
 				if (physical_dimensions[flush.resource_index].transient ||
 				    flush.resource_index == swapchain_physical_index)
@@ -2759,31 +2769,31 @@ void RenderGraph::build_physical_barriers()
 				}
 
 				// The last use of a resource in a physical pass needs to be handled externally.
-				resource_state[flush.resource_index].flushed_types |= flush.access;
-				resource_state[flush.resource_index].flushed_stages |= flush.stages;
+				res.flushed_types |= flush.access;
+				res.flushed_stages |= flush.stages;
 
 				// Storage images should just be in GENERAL all the time instead of SHADER_READ_ONLY_OPTIMAL.
 				if (physical_dimensions[flush.resource_index].is_storage_image())
-					resource_state[flush.resource_index].final_layout = VK_IMAGE_LAYOUT_GENERAL;
+					res.final_layout = VK_IMAGE_LAYOUT_GENERAL;
 				else
-					resource_state[flush.resource_index].final_layout = flush.layout;
+					res.final_layout = flush.layout;
 
 				// If we didn't have an invalidation before first flush, we must invalidate first.
 				// Only first flush in a render pass needs a matching invalidation.
-				if (resource_state[flush.resource_index].initial_layout == VK_IMAGE_LAYOUT_UNDEFINED)
+				if (res.initial_layout == VK_IMAGE_LAYOUT_UNDEFINED)
 				{
 					// If we end in TRANSFER_SRC_OPTIMAL, we actually start in COLOR_ATTACHMENT_OPTIMAL.
 					if (flush.layout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
 					{
-						resource_state[flush.resource_index].initial_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-						resource_state[flush.resource_index].invalidated_stages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-						resource_state[flush.resource_index].invalidated_types = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+						res.initial_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+						res.invalidated_stages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+						res.invalidated_types = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
 					}
 					else
 					{
-						resource_state[flush.resource_index].initial_layout = flush.layout;
-						resource_state[flush.resource_index].invalidated_stages = flush.stages;
-						resource_state[flush.resource_index].invalidated_types = flush_access_to_invalidate(flush.access);
+						res.initial_layout = flush.layout;
+						res.invalidated_stages = flush.stages;
+						res.invalidated_types = flush_access_to_invalidate(flush.access);
 					}
 
 					// We're not reading the resource in this pass, so we might as well transition from UNDEFINED to discard the resource.
@@ -2800,14 +2810,9 @@ void RenderGraph::build_physical_barriers()
 			if (resource.final_layout == VK_IMAGE_LAYOUT_UNDEFINED && resource.initial_layout == VK_IMAGE_LAYOUT_UNDEFINED)
 				continue;
 
-			unsigned index = unsigned(&resource - resource_state.data());
+			VK_ASSERT(resource.final_layout != VK_IMAGE_LAYOUT_UNDEFINED);
 
-			if (resource.final_layout == VK_IMAGE_LAYOUT_UNDEFINED)
-			{
-				// If there are only invalidations in this pass it is read-only, and the final layout becomes the initial one.
-				// Promote the last initial layout to the final layout.
-				resource.final_layout = resource.initial_layout;
-			}
+			unsigned index = unsigned(&resource - resource_state.data());
 
 			physical_pass.invalidate.push_back(
 					{ index, resource.initial_layout, resource.invalidated_types, resource.invalidated_stages, false });

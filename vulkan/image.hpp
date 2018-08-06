@@ -445,6 +445,11 @@ public:
 		return layout_type == Layout::Optimal ? optimal : VK_IMAGE_LAYOUT_GENERAL;
 	}
 
+	Layout get_layout_type() const
+	{
+		return layout_type;
+	}
+
 	void set_layout(Layout layout)
 	{
 		layout_type = layout;

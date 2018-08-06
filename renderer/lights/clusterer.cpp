@@ -262,9 +262,7 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &de
 		}
 
 		RenderPassInfo rp;
-		rp.op_flags = RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT |
-		              RENDER_PASS_OP_DEPTH_STENCIL_OPTIMAL_BIT |
-		              RENDER_PASS_OP_COLOR_OPTIMAL_BIT;
+		rp.op_flags = RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT;
 		rp.clear_attachments = 1 << 0;
 		rp.store_attachments = 1 << 1;
 		rp.color_attachments[0] = &cmd.get_device().get_transient_attachment(shadow_resolution, shadow_resolution, VK_FORMAT_R32G32_SFLOAT, 0, 4);
@@ -308,7 +306,6 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &de
 			rp_vert.num_color_attachments = 1;
 			rp_vert.store_attachments = 1 << 0;
 			rp_vert.color_attachments[0] = &scratch_vsm_down->get_view();
-			rp_vert.op_flags = RENDER_PASS_OP_COLOR_OPTIMAL_BIT;
 			cmd.begin_render_pass(rp_vert);
 			cmd.set_texture(0, 0, scratch_vsm_rt->get_view(), StockSampler::LinearClamp);
 			vec2 inv_size(1.0f / scratch_vsm_rt->get_create_info().width,
@@ -328,7 +325,6 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &de
 			rp_horiz.num_color_attachments = 1;
 			rp_horiz.store_attachments = 1 << 0;
 			rp_horiz.color_attachments[0] = &rt;
-			rp_horiz.op_flags = RENDER_PASS_OP_COLOR_OPTIMAL_BIT;
 			rp_horiz.render_area.offset.x = off_x;
 			rp_horiz.render_area.offset.y = off_y;
 			rp_horiz.render_area.extent.width = res_x;
@@ -349,8 +345,7 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &de
 	else
 	{
 		RenderPassInfo rp;
-		rp.op_flags = RENDER_PASS_OP_DEPTH_STENCIL_OPTIMAL_BIT |
-		              RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT |
+		rp.op_flags = RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT |
 		              RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT;
 		rp.num_color_attachments = 0;
 		rp.depth_stencil = &rt;

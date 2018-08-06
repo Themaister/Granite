@@ -175,15 +175,15 @@ RenderPass::RenderPass(Hash hash, Device *device, const RenderPassInfo &info)
 	if (info.op_flags & RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT)
 		ds_store_op = VK_ATTACHMENT_STORE_OP_STORE;
 
-	VkImageLayout color_layout = info.op_flags & RENDER_PASS_OP_COLOR_OPTIMAL_BIT ?
-	                                 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL :
-	                                 VK_IMAGE_LAYOUT_GENERAL;
-
-	VkImageLayout depth_stencil_layout = VK_IMAGE_LAYOUT_GENERAL;
-	if (info.op_flags & RENDER_PASS_OP_DEPTH_STENCIL_OPTIMAL_BIT)
-		depth_stencil_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-	else if (info.op_flags & RENDER_PASS_OP_DEPTH_STENCIL_READ_ONLY_BIT)
-		depth_stencil_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+	bool ds_read_only = (info.op_flags & RENDER_PASS_OP_DEPTH_STENCIL_READ_ONLY_BIT) != 0;
+	VkImageLayout depth_stencil_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+	if (info.depth_stencil)
+	{
+		depth_stencil_layout = info.depth_stencil->get_image().get_layout(
+				ds_read_only ?
+				VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL :
+				VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+	}
 
 	for (unsigned i = 0; i < info.num_color_attachments; i++)
 	{
@@ -223,16 +223,16 @@ RenderPass::RenderPass(Hash hash, Device *device, const RenderPassInfo &info)
 		}
 		else
 		{
-			att.initialLayout = color_layout;
+			att.initialLayout = info.color_attachments[i]->get_image().get_layout(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
-			if (color_layout != VK_IMAGE_LAYOUT_GENERAL)
+			if (att.initialLayout != VK_IMAGE_LAYOUT_GENERAL)
 			{
 				// Undefined final layout here for now means that we will just use the layout of the last
 				// subpass which uses this attachment to avoid any dummy transition at the end.
 				att.finalLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 			}
 			else
-				att.finalLayout = color_layout;
+				att.finalLayout = att.initialLayout;
 		}
 	}
 

@@ -873,7 +873,6 @@ void RenderGraph::build_render_pass_info()
 		rp.clear_attachments = 0;
 		rp.load_attachments = 0;
 		rp.store_attachments = ~0u;
-		rp.op_flags = Vulkan::RENDER_PASS_OP_COLOR_OPTIMAL_BIT;
 		physical_pass.color_clear_requests.clear();
 		physical_pass.depth_clear_request = {};
 
@@ -969,7 +968,7 @@ void RenderGraph::build_render_pass_info()
 				if (res.second)
 					rp.load_attachments |= 1u << res.first;
 
-				rp.op_flags |= Vulkan::RENDER_PASS_OP_DEPTH_STENCIL_OPTIMAL_BIT | Vulkan::RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT;
+				rp.op_flags |= Vulkan::RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT;
 				physical_pass.subpasses[subpass_index].depth_stencil_mode = Vulkan::RenderPassInfo::DepthStencil::ReadWrite;
 			}
 			else if (ds_output)
@@ -983,7 +982,7 @@ void RenderGraph::build_render_pass_info()
 					physical_pass.depth_clear_request.target = &rp.clear_depth_stencil;
 				}
 
-				rp.op_flags |= Vulkan::RENDER_PASS_OP_DEPTH_STENCIL_OPTIMAL_BIT | Vulkan::RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT;
+				rp.op_flags |= Vulkan::RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT;
 				physical_pass.subpasses[subpass_index].depth_stencil_mode = Vulkan::RenderPassInfo::DepthStencil::ReadWrite;
 
 				assert(physical_pass.physical_depth_stencil_attachment == RenderResource::Unused ||
@@ -2738,11 +2737,8 @@ void RenderGraph::build_physical_barriers()
 					resource_state[invalidate.resource_index].invalidated_stages |= invalidate.stages;
 
 					// Storage images should just be in GENERAL all the time instead of SHADER_READ_ONLY_OPTIMAL.
-					if (invalidate.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL &&
-					    physical_dimensions[invalidate.resource_index].is_storage_image())
-					{
+					if (physical_dimensions[invalidate.resource_index].is_storage_image())
 						resource_state[invalidate.resource_index].initial_layout = VK_IMAGE_LAYOUT_GENERAL;
-					}
 					else
 						resource_state[invalidate.resource_index].initial_layout = invalidate.layout;
 				}
@@ -2767,11 +2763,8 @@ void RenderGraph::build_physical_barriers()
 				resource_state[flush.resource_index].flushed_stages |= flush.stages;
 
 				// Storage images should just be in GENERAL all the time instead of SHADER_READ_ONLY_OPTIMAL.
-				if (flush.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL &&
-					physical_dimensions[flush.resource_index].is_storage_image())
-				{
+				if (physical_dimensions[flush.resource_index].is_storage_image())
 					resource_state[flush.resource_index].final_layout = VK_IMAGE_LAYOUT_GENERAL;
-				}
 				else
 					resource_state[flush.resource_index].final_layout = flush.layout;
 

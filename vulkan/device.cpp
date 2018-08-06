@@ -3071,6 +3071,7 @@ const RenderPass &Device::request_render_pass(const RenderPassInfo &info)
 	VkFormat formats[VULKAN_NUM_ATTACHMENTS];
 	VkFormat depth_stencil;
 	uint32_t lazy = 0;
+	uint32_t optimal = 0;
 
 	for (unsigned i = 0; i < info.num_color_attachments; i++)
 	{
@@ -3078,12 +3079,19 @@ const RenderPass &Device::request_render_pass(const RenderPassInfo &info)
 		formats[i] = info.color_attachments[i]->get_format();
 		if (info.color_attachments[i]->get_image().get_create_info().domain == ImageDomain::Transient)
 			lazy |= 1u << i;
+		if (info.color_attachments[i]->get_image().get_layout_type() == Layout::Optimal)
+			optimal |= 1u << i;
 
 		h.u32(info.color_attachments[i]->get_image().get_swapchain_layout());
 	}
 
-	if (info.depth_stencil && info.depth_stencil->get_image().get_create_info().domain == ImageDomain::Transient)
-		lazy |= 1u << info.num_color_attachments;
+	if (info.depth_stencil)
+	{
+		if (info.depth_stencil->get_image().get_create_info().domain == ImageDomain::Transient)
+			lazy |= 1u << info.num_color_attachments;
+		if (info.depth_stencil->get_image().get_layout_type() == Layout::Optimal)
+			optimal |= 1u << info.num_color_attachments;
+	}
 
 	h.u32(info.num_subpasses);
 	for (unsigned i = 0; i < info.num_subpasses; i++)
@@ -3109,6 +3117,7 @@ const RenderPass &Device::request_render_pass(const RenderPassInfo &info)
 	h.u32(info.load_attachments);
 	h.u32(info.store_attachments);
 	h.u32(lazy);
+	h.u32(optimal);
 
 	auto hash = h.get();
 
@@ -3160,7 +3169,6 @@ RenderPassInfo Device::get_swapchain_render_pass(SwapchainRenderPass style)
 	RenderPassInfo info;
 	info.num_color_attachments = 1;
 	info.color_attachments[0] = &frame().backbuffer->get_view();
-	info.op_flags = RENDER_PASS_OP_COLOR_OPTIMAL_BIT;
 	info.clear_attachments = ~0u;
 	info.store_attachments = 1u << 0;
 
@@ -3168,7 +3176,7 @@ RenderPassInfo Device::get_swapchain_render_pass(SwapchainRenderPass style)
 	{
 	case SwapchainRenderPass::Depth:
 	{
-		info.op_flags |= RENDER_PASS_OP_DEPTH_STENCIL_OPTIMAL_BIT | RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT;
+		info.op_flags |= RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT;
 		info.depth_stencil =
 		    &get_transient_attachment(frame().backbuffer->get_create_info().width,
 		                              frame().backbuffer->get_create_info().height, get_default_depth_format());
@@ -3177,7 +3185,7 @@ RenderPassInfo Device::get_swapchain_render_pass(SwapchainRenderPass style)
 
 	case SwapchainRenderPass::DepthStencil:
 	{
-		info.op_flags |= RENDER_PASS_OP_DEPTH_STENCIL_OPTIMAL_BIT | RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT;
+		info.op_flags |= RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT;
 		info.depth_stencil =
 		    &get_transient_attachment(frame().backbuffer->get_create_info().width,
 		                              frame().backbuffer->get_create_info().height, get_default_depth_stencil_format());

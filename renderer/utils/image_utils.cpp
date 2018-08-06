@@ -69,7 +69,6 @@ ImageHandle convert_cube_to_ibl_specular(Device &device, ImageView &view)
 			rp.num_color_attachments = 1;
 			rp.color_attachments[0] = rt_view.get();
 			rp.store_attachments = 1;
-			rp.op_flags = RENDER_PASS_OP_COLOR_OPTIMAL_BIT;
 
 			cmd->begin_render_pass(rp);
 
@@ -137,7 +136,6 @@ ImageHandle convert_cube_to_ibl_diffuse(Device &device, ImageView &view)
 		rp.num_color_attachments = 1;
 		rp.color_attachments[0] = rt_view.get();
 		rp.store_attachments = 1;
-		rp.op_flags = RENDER_PASS_OP_COLOR_OPTIMAL_BIT;
 
 		cmd->begin_render_pass(rp);
 
@@ -195,7 +193,6 @@ ImageHandle convert_equirect_to_cube(Device &device, ImageView &view, float scal
 		rp.num_color_attachments = 1;
 		rp.color_attachments[0] = rt_view.get();
 		rp.store_attachments = 1;
-		rp.op_flags = RENDER_PASS_OP_COLOR_OPTIMAL_BIT;
 
 		cmd->begin_render_pass(rp);
 

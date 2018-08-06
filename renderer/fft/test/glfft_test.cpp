@@ -931,13 +931,18 @@ void GLFFT::Internal::run_test_suite(Context *context, const TestSuiteArguments 
 				test();
 				successful_tests++;
 			}
+			catch (const std::exception &e)
+			{
+				context->log("Failed test #%u (%s)!\n", index, e.what());
+				if (args.throw_on_fail)
+					throw;
+				failed_tests.push_back(index);
+			}
 			catch (...)
 			{
 				context->log("Failed test #%u!\n", index);
 				if (args.throw_on_fail)
-				{
 					throw;
-				}
 				failed_tests.push_back(index);
 			}
 			index++;

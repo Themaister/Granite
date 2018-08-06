@@ -65,6 +65,8 @@ Device::Device()
 #endif
 {
 #ifdef GRANITE_VULKAN_MT
+	Granite::ThreadGroup::get_global();
+	Granite::ThreadGroup::register_main_thread();
 	cookie.store(0);
 #endif
 }

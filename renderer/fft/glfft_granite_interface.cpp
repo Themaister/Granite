@@ -268,6 +268,7 @@ unique_ptr<GLFFT::Texture> FFTInterface::create_texture(const void *initial_data
 	Vulkan::ImageInitialData init = {};
 	init.data = initial_data;
 	auto image = make_unique<FFTTexture>(device->create_image(info, initial_data ? &init : nullptr));
+	image->image_holder->set_layout(Vulkan::Layout::General);
 	return unique_ptr<GLFFT::Texture>(move(image));
 }
 

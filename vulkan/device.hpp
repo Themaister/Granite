@@ -96,25 +96,25 @@ public:
 	// Device-based objects which need to poke at internal data structures when their lifetimes end.
 	// Don't want to expose a lot of internal guts to make this work.
 	friend class QueryPool;
-	friend class QueryPoolResultDeleter;
+	friend struct QueryPoolResultDeleter;
 	friend class EventHolder;
-	friend class EventHolderDeleter;
+	friend struct EventHolderDeleter;
 	friend class SemaphoreHolder;
-	friend class SemaphoreHolderDeleter;
+	friend struct SemaphoreHolderDeleter;
 	friend class FenceHolder;
-	friend class FenceHolderDeleter;
+	friend struct FenceHolderDeleter;
 	friend class Sampler;
-	friend class SamplerDeleter;
+	friend struct SamplerDeleter;
 	friend class Buffer;
-	friend class BufferDeleter;
+	friend struct BufferDeleter;
 	friend class BufferView;
-	friend class BufferViewDeleter;
+	friend struct BufferViewDeleter;
 	friend class ImageView;
-	friend class ImageViewDeleter;
+	friend struct ImageViewDeleter;
 	friend class Image;
-	friend class ImageDeleter;
+	friend struct ImageDeleter;
 	friend class CommandBuffer;
-	friend class CommandBufferDeleter;
+	friend struct CommandBufferDeleter;
 	friend class Program;
 	friend class WSI;
 	friend class Cookie;

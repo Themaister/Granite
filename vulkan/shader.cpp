@@ -24,6 +24,10 @@
 #include "device.hpp"
 #include "spirv_cross.hpp"
 
+#ifdef GRANITE_SPIRV_DUMP
+#include "filesystem.hpp"
+#endif
+
 using namespace std;
 using namespace spirv_cross;
 using namespace Util;
@@ -152,7 +156,7 @@ Shader::Shader(Hash hash, Device *device, const uint32_t *data, size_t size)
     , device(device)
 {
 #ifdef GRANITE_SPIRV_DUMP
-	if (!Filesystem::get().write_buffer_to_file(string("cache://spirv/") + to_string(hash) + ".spv", data, size))
+	if (!Granite::Filesystem::get().write_buffer_to_file(string("cache://spirv/") + to_string(hash) + ".spv", data, size))
 		LOGE("Failed to dump shader to file.\n");
 #endif
 

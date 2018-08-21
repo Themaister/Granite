@@ -150,6 +150,7 @@ public:
 	void begin_frame(unsigned swapchain_index);
 	void wait_idle();
 	void end_frame();
+	bool swapchain_touched() const;
 
 	// Set names for objects for debuggers and profilers.
 	void set_name(const Buffer &buffer, const char *name);
@@ -279,7 +280,6 @@ private:
 
 	void set_acquire_semaphore(Semaphore acquire);
 	Semaphore consume_release_semaphore();
-	bool swapchain_touched() const;
 
 	PipelineLayout *request_pipeline_layout(const CombinedResourceLayout &layout);
 	DescriptorSetAllocator *request_descriptor_set_allocator(const DescriptorSetLayout &layout, const uint32_t *stages_for_sets);

@@ -361,7 +361,7 @@ void CommandBuffer::generate_mipmap(const Image &image)
 		size.y = max(size.y >> 1, 1);
 		size.z = max(size.z >> 1, 1);
 
-		blit_image(image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+		blit_image(image, image,
 		           origin, size, origin, src_size, i, i - 1, 0, 0, create_info.layers, VK_FILTER_LINEAR);
 
 		b.subresourceRange.baseMipLevel = i;
@@ -370,8 +370,7 @@ void CommandBuffer::generate_mipmap(const Image &image)
 	}
 }
 
-void CommandBuffer::blit_image(const Image &dst, VkImageLayout dst_layout,
-                               const Image &src, VkImageLayout src_layout,
+void CommandBuffer::blit_image(const Image &dst, const Image &src,
                                const VkOffset3D &dst_offset,
                                const VkOffset3D &dst_extent, const VkOffset3D &src_offset, const VkOffset3D &src_extent,
                                unsigned dst_level, unsigned src_level, unsigned dst_base_layer, unsigned src_base_layer,
@@ -389,7 +388,10 @@ void CommandBuffer::blit_image(const Image &dst, VkImageLayout dst_layout,
 		{ dst_offset, add_offset(dst_offset, dst_extent) },
 	};
 
-	vkCmdBlitImage(cmd, src.get_image(), src_layout, dst.get_image(), dst_layout, 1, &blit, filter);
+	vkCmdBlitImage(cmd,
+	               src.get_image(), src.get_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL),
+	               dst.get_image(), dst.get_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL),
+	               1, &blit, filter);
 #else
 	// RADV workaround.
 	for (unsigned i = 0; i < num_layers; i++)
@@ -401,7 +403,10 @@ void CommandBuffer::blit_image(const Image &dst, VkImageLayout dst_layout,
 				{ dst_offset,                                          add_offset(dst_offset, dst_extent) },
 		};
 
-		vkCmdBlitImage(cmd, src.get_image(), src_layout, dst.get_image(), dst_layout, 1, &blit, filter);
+		vkCmdBlitImage(cmd,
+		               src.get_image(), src.get_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL),
+		               dst.get_image(), dst.get_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL),
+		               1, &blit, filter);
 	}
 #endif
 }

@@ -305,10 +305,10 @@ public:
 	                   VkPipelineStageFlags src_stage, VkAccessFlags src_access, VkPipelineStageFlags dst_stage,
 	                   VkAccessFlags dst_access);
 
-	void blit_image(const Image &dst, VkImageLayout dst_layout,
-	                const Image &src, VkImageLayout src_layout,
-	                const VkOffset3D &dst_offset, const VkOffset3D &dst_extent,
-	                const VkOffset3D &src_offset, const VkOffset3D &src_extent, unsigned dst_level, unsigned src_level,
+	void blit_image(const Image &dst,
+	                const Image &src,
+	                const VkOffset3D &dst_offset0, const VkOffset3D &dst_extent,
+	                const VkOffset3D &src_offset0, const VkOffset3D &src_extent, unsigned dst_level, unsigned src_level,
 	                unsigned dst_base_layer = 0, uint32_t src_base_layer = 0, unsigned num_layers = 1,
 	                VkFilter filter = VK_FILTER_LINEAR);
 

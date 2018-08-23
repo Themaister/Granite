@@ -219,11 +219,15 @@ Shader::Shader(Hash hash, Device *device, const uint32_t *data, size_t size)
 	{
 		auto set = compiler.get_decoration(image.id, spv::DecorationDescriptorSet);
 		auto binding = compiler.get_decoration(image.id, spv::DecorationBinding);
-		layout.sets[set].separate_image_mask |= 1u << binding;
 
 		auto &type = compiler.get_type(image.base_type_id);
 		if (compiler.get_type(type.image.type).basetype == SPIRType::BaseType::Float)
 			layout.sets[set].fp_mask |= 1u << binding;
+
+		if (type.image.dim == spv::DimBuffer)
+			layout.sets[set].sampled_buffer_mask |= 1u << binding;
+		else
+			layout.sets[set].separate_image_mask |= 1u << binding;
 	}
 
 	for (auto &image : resources.separate_samplers)

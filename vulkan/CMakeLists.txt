@@ -29,11 +29,11 @@ add_granite_library(vulkan-backend
 
 option(GRANITE_VULKAN_FILESYSTEM "Enable features which depend on a filesystem implementation." ON)
 if (GRANITE_VULKAN_FILESYSTEM)
-    target_sources(vulkan-backend PUBLIC
-            ${CMAKE_CURRENT_SOURCE_DIR}/managers/shader_manager.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/managers/shader_manager.hpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/managers/texture_manager.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/managers/texture_manager.hpp)
+    target_sources(vulkan-backend PRIVATE
+            managers/shader_manager.cpp
+            managers/shader_manager.hpp
+            managers/texture_manager.cpp
+            managers/texture_manager.hpp)
 
     target_link_libraries(vulkan-backend
             filesystem

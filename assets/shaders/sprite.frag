@@ -1,5 +1,6 @@
 #version 450
-precision mediump float;
+precision highp float;
+precision highp int;
 
 #if defined(VARIANT_BIT_0) && defined(HAVE_BASECOLORMAP) && HAVE_BASECOLORMAP
 #define BANDLIMITED_PIXEL

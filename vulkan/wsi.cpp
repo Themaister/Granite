@@ -195,10 +195,16 @@ bool WSI::begin_frame()
 	if (frame_is_external)
 		return begin_frame_external();
 
-	if (platform->should_resize())
+	if (swapchain == VK_NULL_HANDLE || platform->should_resize())
 	{
 		update_framebuffer(platform->get_surface_width(), platform->get_surface_height());
 		platform->acknowledge_resize();
+	}
+
+	if (swapchain == VK_NULL_HANDLE)
+	{
+		LOGE("Completely lost swapchain. Cannot continue.\n");
+		return false;
 	}
 
 	if (!need_acquire)
@@ -297,7 +303,10 @@ bool WSI::end_frame()
 		if (overall != VK_SUCCESS || result != VK_SUCCESS)
 		{
 			LOGE("vkQueuePresentKHR failed.\n");
+			device->wait_idle();
 			vkDestroySemaphore(device->get_device(), release_semaphore, nullptr);
+			vkDestroySwapchainKHR(device->get_device(), swapchain, nullptr);
+			swapchain = VK_NULL_HANDLE;
 			return false;
 		}
 		else

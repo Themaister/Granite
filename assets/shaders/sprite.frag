@@ -1,6 +1,12 @@
 #version 450
 precision mediump float;
 
+#if defined(VARIANT_BIT_0) && defined(HAVE_BASECOLORMAP) && HAVE_BASECOLORMAP
+#define BANDLIMITED_PIXEL
+#include "inc/bandlimited_pixel_filter.h"
+const int bandlimited_pixel_lod = 0;
+#endif
+
 layout(location = 0) out mediump vec4 Color;
 
 #if HAVE_VERTEX_COLOR
@@ -24,7 +30,13 @@ void main()
 #endif
 
 #if defined(HAVE_BASECOLORMAP) && HAVE_BASECOLORMAP
-    color *= texture(uTex, vTex);
+    #ifdef BANDLIMITED_PIXEL
+        vec2 size = textureSize(uTex, bandlimited_pixel_lod);
+        BandlimitedPixelInfo info = compute_pixel_weights(vTex, size, 1.0 / size);
+        color *= sample_bandlimited_pixel(uTex, vTex, info, float(bandlimited_pixel_lod));
+    #else
+        color *= texture(uTex, vTex);
+    #endif
     #if defined(ALPHA_TEST)
         if (color.a < 0.5)
             discard;

@@ -54,6 +54,7 @@ struct Material : public Util::IntrusivePtrEnabled<Material>
 	float metallic = 1.0f;
 	float lod_bias = 0.0f;
 	float normal_scale = 1.0f;
+	uint32_t shader_variant = 0;
 	DrawPipeline pipeline = DrawPipeline::Opaque;
 	Vulkan::StockSampler sampler = Vulkan::StockSampler::TrilinearWrap;
 	bool two_sided = false;
@@ -75,6 +76,7 @@ struct Material : public Util::IntrusivePtrEnabled<Material>
 		h.u32(Util::ecast(pipeline));
 		h.u32(Util::ecast(sampler));
 		h.u32(two_sided);
+		h.u32(shader_variant);
 		hash = h.get();
 		needs_emissive = any(notEqual(emissive, vec3(0.0f)));
 	}
@@ -99,6 +101,11 @@ enum MaterialTextureFlagBits
 	MATERIAL_EMISSIVE_BIT = 1u << 5,
 	MATERIAL_EMISSIVE_REFRACTION_BIT = 1u << 6,
 	MATERIAL_EMISSIVE_REFLECTION_BIT = 1u << 7
+};
+
+enum MaterialShaderVariantFlagBits
+{
+	MATERIAL_SHADER_VARIANT_BANDLIMITED_PIXEL_BIT = 1 << 0
 };
 
 using MaterialHandle = Util::IntrusivePtr<Material>;

@@ -235,6 +235,7 @@ void StaticMesh::get_render_info(const RenderContext &context, const CachedSpati
 	Hasher h;
 	h.u32(attrs);
 	h.u32(ecast(material->pipeline));
+	h.u32(material->shader_variant);
 	auto pipe_hash = h.get();
 
 	h.u64(material->get_hash());
@@ -264,7 +265,7 @@ void StaticMesh::get_render_info(const RenderContext &context, const CachedSpati
 
 		fill_render_info(*mesh_info);
 		mesh_info->program = queue.get_shader_suites()[ecast(RenderableType::Mesh)].get_program(material->pipeline, attrs,
-		                                                                                        textures, 1);
+		                                                                                        textures, material->shader_variant);
 	}
 }
 
@@ -286,6 +287,7 @@ void SkinnedMesh::get_render_info(const RenderContext &context, const CachedSpat
 	h.u32(attrs);
 	h.u32(textures);
 	h.u32(ecast(material->pipeline));
+	h.u32(material->shader_variant);
 	auto pipe_hash = h.get();
 
 	h.u64(material->get_hash());
@@ -311,7 +313,7 @@ void SkinnedMesh::get_render_info(const RenderContext &context, const CachedSpat
 	{
 		fill_render_info(*mesh_info);
 		mesh_info->program = queue.get_shader_suites()[ecast(RenderableType::Mesh)].get_program(material->pipeline, attrs,
-		                                                                                        textures);
+		                                                                                        textures, material->shader_variant);
 	}
 }
 

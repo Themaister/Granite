@@ -1,6 +1,12 @@
 #version 450
 precision highp float;
 
+#if defined(VARIANT_BIT_0) && defined(HAVE_BASECOLORMAP) && HAVE_BASECOLORMAP && defined(ALPHA_TEST)
+#define BANDLIMITED_PIXEL
+#include "inc/bandlimited_pixel_filter.h"
+const int bandlimited_pixel_lod = 0;
+#endif
+
 #if HAVE_UV && defined(ALPHA_TEST)
 layout(location = 1) in highp vec2 vUV;
 #endif
@@ -22,7 +28,14 @@ layout(location = 0) out highp vec2 VSM;
 void main()
 {
 #if defined(HAVE_BASECOLORMAP) && HAVE_BASECOLORMAP && defined(ALPHA_TEST)
-    mediump float base_alpha = texture(uBaseColormap, vUV).a;
+    #if defined(BANDLIMITED_PIXEL)
+        vec2 size = textureSize(uBaseColormap, bandlimited_pixel_lod);
+        BandlimitedPixelInfo info = compute_pixel_weights(vUV, size, 1.0 / size);
+        mediump float base_alpha = sample_bandlimited_pixel(uBaseColormap, vUV, info, float(bandlimited_pixel_lod)).a;
+    #else
+        mediump float base_alpha = texture(uBaseColormap, vUV).a;
+    #endif
+
     #if !defined(ALPHA_TEST_ALPHA_TO_COVERAGE)
         if (base_alpha < 0.5)
             discard;

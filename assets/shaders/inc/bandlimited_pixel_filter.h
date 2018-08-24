@@ -106,17 +106,17 @@ BandlimitedPixelInfo compute_pixel_weights(vec2 uv, vec2 size, vec2 inv_size)
 	return info;
 }
 
-mediump vec4 sample_bandlimited_pixel(sampler2D samp, vec2 uv, BandlimitedPixelInfo info)
+mediump vec4 sample_bandlimited_pixel(sampler2D samp, vec2 uv, BandlimitedPixelInfo info, float lod)
 {
 	mediump vec4 color = texture(samp, uv);
 	if (info.l > 0.0)
 	{
-		mediump vec4 bandlimited = info.weights.x * textureLod(samp, info.uv0, 4.0);
+		mediump vec4 bandlimited = info.weights.x * textureLod(samp, info.uv0, lod);
 		if (info.weights.x < 1.0)
 		{
-			bandlimited += info.weights.y * textureLod(samp, info.uv1, 4.0);
-			bandlimited += info.weights.z * textureLod(samp, info.uv2, 4.0);
-			bandlimited += info.weights.w * textureLod(samp, info.uv3, 4.0);
+			bandlimited += info.weights.y * textureLod(samp, info.uv1, lod);
+			bandlimited += info.weights.z * textureLod(samp, info.uv2, lod);
+			bandlimited += info.weights.w * textureLod(samp, info.uv3, lod);
 		}
 		color = mix(color, bandlimited, info.l);
 	}

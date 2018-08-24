@@ -2,6 +2,11 @@
 precision highp float;
 precision highp int;
 
+#if defined(VARIANT_BIT_0)
+#define BANDLIMITED_PIXEL
+#include "inc/bandlimited_pixel_filter.h"
+#endif
+
 layout(location = 0) in highp vec3 vPos;
 
 #if HAVE_UV
@@ -55,7 +60,13 @@ layout(std430, push_constant) uniform Constants
 void main()
 {
 #if defined(HAVE_BASECOLORMAP) && HAVE_BASECOLORMAP
-	mediump vec4 base_color = texture(uBaseColormap, vUV, registers.lod_bias) * registers.base_color;
+    #if defined(BANDLIMITED_PIXEL)
+        vec2 size = textureSize(uBaseColormap, 4);
+        BandlimitedPixelInfo info = compute_pixel_weights(vUV, size, 1.0 / size);
+        mediump vec4 base_color = sample_bandlimited_pixel(uBaseColormap, vUV, info);
+    #else
+        mediump vec4 base_color = texture(uBaseColormap, vUV, registers.lod_bias) * registers.base_color;
+    #endif
 #else
     mediump vec4 base_color = registers.base_color;
 #endif

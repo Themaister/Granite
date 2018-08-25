@@ -33,13 +33,47 @@ struct BandlimitedPixelTestApplication : Application, EventHandler
 	BandlimitedPixelTestApplication()
 	{
 		EVENT_MANAGER_REGISTER_LATCH(BandlimitedPixelTestApplication, on_swapchain_created, on_swapchain_destroyed, SwapchainParameterEvent);
+		EVENT_MANAGER_REGISTER(BandlimitedPixelTestApplication, on_key_pressed, KeyboardEvent);
 		cam.look_at(vec3(0.0f, 0.0f, 5.0f), vec3(0.0f));
+	}
+
+	bool on_key_pressed(const KeyboardEvent &e)
+	{
+		if (e.get_key_state() != KeyState::Pressed)
+			return true;
+
+		switch (e.get_key())
+		{
+		case Key::G:
+			debug = !debug;
+			break;
+
+		case Key::R:
+			rotate = !rotate;
+			break;
+
+		case Key::Z:
+			mode = 0;
+			break;
+
+		case Key::X:
+			mode = 1;
+			break;
+
+		case Key::C:
+			mode = 2;
+			break;
+
+		default:
+			break;
+		}
+		return true;
 	}
 
 	void on_swapchain_created(const SwapchainParameterEvent &e)
 	{
 		cam.set_aspect(e.get_aspect_ratio());
-		cam.set_fovy(half_pi<float>());
+		cam.set_fovy(0.6f * half_pi<float>());
 		cam.set_depth_range(0.05f, 100.0f);
 	}
 
@@ -47,8 +81,11 @@ struct BandlimitedPixelTestApplication : Application, EventHandler
 	{
 	}
 
-	void render_frame(double, double elapsed)
+	void render_frame(double frame_time, double)
 	{
+		if (rotate)
+			elapsed += frame_time;
+
 		auto &wsi = get_wsi();
 		auto &device = wsi.get_device();
 
@@ -64,19 +101,26 @@ struct BandlimitedPixelTestApplication : Application, EventHandler
 
 		cmd->set_program("assets://shaders/bandlimited_quad.vert",
 		                 "builtin://shaders/sprite.frag",
-		                 {{ "HAVE_BASECOLORMAP", 1 },
-		                  { "HAVE_VERTEX_COLOR", 1 },
-		                  { "HAVE_UV", 1 },
-		                  { "VARIANT_BIT_0", 1 }});
+		                 {
+				                 { "HAVE_BASECOLORMAP", 1 },
+				                 { "HAVE_VERTEX_COLOR", 1 },
+				                 { "HAVE_UV", 1 },
+				                 { "VARIANT_BIT_0", mode > 0 ? 1 : 0 },
+				                 { "BANDLIMITED_PIXEL_DEBUG", debug ? 1 : 0 },
+				                 { "BANDLIMITED_PIXEL_FAST_MODE", mode == 2 ? 1 : 0 }
+		                 });
 
 		auto *texture = device.get_texture_manager().request_texture("assets://textures/sprite.png");
-		cmd->set_texture(2, 0, texture->get_image()->get_view(), StockSampler::TrilinearWrap);
+		cmd->set_texture(2, 0, texture->get_image()->get_view(), mode == 0 ? StockSampler::NearestWrap : StockSampler::TrilinearWrap);
 
 		CommandBufferUtil::set_quad_vertex_state(*cmd);
 
-		quat rot = angleAxis(float(elapsed * 0.25), vec3(0.0f, 0.0f, 1.0f));
+		quat rot = angleAxis(float(elapsed * 0.05), vec3(0.0f, 0.0f, 1.0f));
 
-		mat4 mvp = cam.get_projection() * cam.get_view() * mat4_cast(rot) * scale(10.0f * vec3(320.0f / 200.0f, 1.0f, 1.0f));
+		auto width = texture->get_image()->get_width();
+		auto height = texture->get_image()->get_height();
+
+		mat4 mvp = cam.get_projection() * cam.get_view() * mat4_cast(rot) * scale(20.0f * vec3(float(width) / float(height), 1.0f, 1.0f));
 		cmd->push_constants(&mvp, 0, sizeof(mvp));
 
 		CommandBufferUtil::draw_quad(*cmd);
@@ -84,7 +128,11 @@ struct BandlimitedPixelTestApplication : Application, EventHandler
 		device.submit(cmd);
 	}
 
+	double elapsed = 0.0;
 	FPSCamera cam;
+	bool rotate = true;
+	bool debug = false;
+	unsigned mode = 1;
 };
 
 namespace Granite

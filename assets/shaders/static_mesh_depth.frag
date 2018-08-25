@@ -1,7 +1,7 @@
 #version 450
 precision highp float;
 
-#if defined(VARIANT_BIT_0) && defined(HAVE_BASECOLORMAP) && HAVE_BASECOLORMAP && defined(ALPHA_TEST)
+#if defined(VARIANT_BIT_0) && VARIANT_BIT_0 && defined(HAVE_BASECOLORMAP) && HAVE_BASECOLORMAP && defined(ALPHA_TEST)
 #define BANDLIMITED_PIXEL
 #include "inc/bandlimited_pixel_filter.h"
 const int bandlimited_pixel_lod = 0;

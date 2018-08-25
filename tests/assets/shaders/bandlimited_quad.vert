@@ -11,6 +11,6 @@ layout(std430, push_constant) uniform UBO
 void main()
 {
     gl_Position = MVP * Position;
-    vUV = Position.xy * 0.5 + 0.5;
+    vUV = Position.xy * 7.5 + 0.5;
     vColor = vec4(1.0);
 }

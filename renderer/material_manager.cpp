@@ -62,6 +62,7 @@ MaterialFile::MaterialFile(const MaterialInfo &info)
 	roughness = info.uniform_roughness;
 	pipeline = info.pipeline;
 	two_sided = info.two_sided;
+	shader_variant = info.bandlimited_pixel ? MATERIAL_SHADER_VARIANT_BANDLIMITED_PIXEL_BIT : 0;
 	lod_bias = info.lod_bias;
 	normal_scale = info.normal_scale;
 	sampler = info.sampler;

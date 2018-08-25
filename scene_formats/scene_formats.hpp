@@ -186,6 +186,7 @@ struct MaterialInfo
 	DrawPipeline pipeline = DrawPipeline::Opaque;
 	Vulkan::StockSampler sampler = Vulkan::StockSampler::TrilinearWrap;
 	bool two_sided = false;
+	bool bandlimited_pixel = false;
 };
 
 struct EnvironmentInfo

@@ -38,7 +38,7 @@ struct BandlimitedPixelInfo
 
 // The cosine filter convolved with rect has a support of 1.5 pixels.
 // We can sample 4x4 regions, so we can deal with 2.0 pixel range in our filter.
-const float maximum_support_extent = 2.0 / 1.5;
+const float maximum_support_extent = 2.5 / 1.5;
 
 // Our Taylor approximation is not exact, normalize so the peak is 1.
 const float taylor_pi_half = 1.00452485553;

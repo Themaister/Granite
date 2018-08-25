@@ -64,6 +64,10 @@ struct BandlimitedPixelTestApplication : Application, EventHandler
 			mode = 2;
 			break;
 
+		case Key::V:
+			mode = 3;
+			break;
+
 		default:
 			break;
 		}
@@ -105,9 +109,9 @@ struct BandlimitedPixelTestApplication : Application, EventHandler
 				                 { "HAVE_BASECOLORMAP", 1 },
 				                 { "HAVE_VERTEX_COLOR", 1 },
 				                 { "HAVE_UV", 1 },
-				                 { "VARIANT_BIT_0", mode > 0 ? 1 : 0 },
+				                 { "VARIANT_BIT_0", mode >= 2 ? 1 : 0 },
 				                 { "BANDLIMITED_PIXEL_DEBUG", debug ? 1 : 0 },
-				                 { "BANDLIMITED_PIXEL_FAST_MODE", mode == 2 ? 1 : 0 }
+				                 { "BANDLIMITED_PIXEL_FAST_MODE", mode == 3 ? 1 : 0 }
 		                 });
 
 		auto *texture = device.get_texture_manager().request_texture("assets://textures/sprite.png");

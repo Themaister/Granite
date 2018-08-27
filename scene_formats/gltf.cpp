@@ -947,13 +947,6 @@ void Parser::parse(const string &original_path, const string &json)
 		if (value.HasMember("doubleSided"))
 			info.two_sided = value["doubleSided"].GetBool();
 
-		if (value.HasMember("extras"))
-		{
-			auto &extras = value["extras"];
-			if (extras.HasMember("lodBias"))
-				info.lod_bias = extras["lodBias"].GetFloat();
-		}
-
 		info.pipeline = DrawPipeline::Opaque;
 		if (value.HasMember("alphaMode"))
 		{

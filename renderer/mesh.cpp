@@ -195,7 +195,6 @@ void StaticMesh::fill_render_info(StaticMeshInfo &info) const
 	info.fragment.metallic = material->metallic;
 	info.fragment.emissive = vec4(material->emissive, 0.0f);
 	info.fragment.base_color = material->base_color;
-	info.fragment.lod_bias = material->lod_bias;
 	info.fragment.normal_scale = material->normal_scale;
 
 	info.topology = topology;

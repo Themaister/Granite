@@ -52,7 +52,6 @@ layout(std430, push_constant) uniform Constants
     vec4 emissive;
     float roughness;
     float metallic;
-    float lod_bias;
     float normal_scale;
 } registers;
 
@@ -69,7 +68,7 @@ void main()
     #if defined(BANDLIMITED_PIXEL)
         mediump vec4 base_color = sample_bandlimited_pixel(uBaseColormap, vUV, info, float(bandlimited_pixel_lod));
     #else
-        mediump vec4 base_color = texture(uBaseColormap, vUV, registers.lod_bias) * registers.base_color;
+        mediump vec4 base_color = texture(uBaseColormap, vUV) * registers.base_color;
     #endif
 #else
     mediump vec4 base_color = registers.base_color;
@@ -87,7 +86,7 @@ void main()
         #if defined(BANDLIMITED_PIXEL)
             mediump vec2 tangent_space = sample_bandlimited_pixel(uNormalmap, vUV, info, float(bandlimited_pixel_lod)).xy * 2.0 - 1.0;
         #else
-            mediump vec2 tangent_space = texture(uNormalmap, vUV, registers.lod_bias).xy * 2.0 - 1.0;
+            mediump vec2 tangent_space = texture(uNormalmap, vUV).xy * 2.0 - 1.0;
         #endif
 
         // For 2-component compressed textures.
@@ -105,7 +104,7 @@ void main()
     #if defined(BANDLIMITED_PIXEL)
         mediump vec2 mr = sample_bandlimited_pixel(uMetallicRoughnessmap, vUV, info, float(bandlimited_pixel_lod)).bg;
     #else
-        mediump vec2 mr = texture(uMetallicRoughnessmap, vUV, registers.lod_bias).bg;
+        mediump vec2 mr = texture(uMetallicRoughnessmap, vUV).bg;
     #endif
     mediump float metallic = mr.x * registers.metallic;
     mediump float roughness = mr.y * registers.roughness;
@@ -118,7 +117,7 @@ void main()
     #if defined(BANDLIMITED_PIXEL)
         mediump float ambient = sample_bandlimited_pixel(uOcclusionMap, vUV, info, float(bandlimited_pixel_lod)).x;
     #else
-        mediump float ambient = texture(uOcclusionMap, vUV, registers.lod_bias).x;
+        mediump float ambient = texture(uOcclusionMap, vUV).x;
     #endif
 #else
     const mediump float ambient = 1.0;
@@ -128,7 +127,7 @@ void main()
     #if defined(BANDLIMITED_PIXEL)
         mediump vec3 emissive = sample_bandlimited_pixel(uEmissiveMap, vUV, info, float(bandlimited_pixel_lod)).rgb;
     #else
-        mediump vec3 emissive = texture(uEmissiveMap, vUV, registers.lod_bias).rgb;
+        mediump vec3 emissive = texture(uEmissiveMap, vUV).rgb;
     #endif
     emissive *= registers.emissive.rgb;
 #else

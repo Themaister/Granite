@@ -168,18 +168,34 @@ const VkApplicationInfo &Context::get_application_info()
 	return info;
 }
 
+void Context::notify_validation_error(const char *msg)
+{
+	if (message_callback)
+		message_callback(msg);
+}
+
+void Context::set_notification_callback(function<void(const char *)> func)
+{
+	message_callback = move(func);
+}
+
 #ifdef VULKAN_DEBUG
 static VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_messenger_cb(
 		VkDebugUtilsMessageSeverityFlagBitsEXT           messageSeverity,
 		VkDebugUtilsMessageTypeFlagsEXT                  messageType,
 		const VkDebugUtilsMessengerCallbackDataEXT*      pCallbackData,
-		void*)
+		void *pUserData)
 {
+	auto *context = static_cast<Context *>(pUserData);
+
 	switch (messageSeverity)
 	{
 	case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
 		if (messageType == VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT)
+		{
 			LOGE("[Vulkan]: Validation Error: %s\n", pCallbackData->pMessage);
+			context->notify_validation_error(pCallbackData->pMessage);
+		}
 		else
 			LOGE("[Vulkan]: Other Error: %s\n", pCallbackData->pMessage);
 		break;
@@ -231,8 +247,10 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_messenger_cb(
 static VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_debug_cb(VkDebugReportFlagsEXT flags,
                                                       VkDebugReportObjectTypeEXT, uint64_t,
                                                       size_t, int32_t messageCode, const char *pLayerPrefix,
-                                                      const char *pMessage, void *)
+                                                      const char *pMessage, void *pUserData)
 {
+	auto *context = static_cast<Context *>(pUserData);
+
 	// False positives about lack of srcAccessMask/dstAccessMask.
 	if (strcmp(pLayerPrefix, "DS") == 0 && messageCode == 10)
 		return VK_FALSE;
@@ -244,6 +262,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_debug_cb(VkDebugReportFlagsEXT flag
 	if (flags & VK_DEBUG_REPORT_ERROR_BIT_EXT)
 	{
 		LOGE("[Vulkan]: Error: %s: %s\n", pLayerPrefix, pMessage);
+		context->notify_validation_error(pMessage);
 	}
 	else if (flags & VK_DEBUG_REPORT_WARNING_BIT_EXT)
 	{
@@ -351,6 +370,7 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 		info.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
 		                   VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT |
 		                   VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT;
+		info.pUserData = this;
 
 		vkCreateDebugUtilsMessengerEXT(instance, &info, nullptr, &debug_messenger);
 	}
@@ -360,7 +380,8 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 			info.flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT |
 			             VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT;
 			info.pfnCallback = vulkan_debug_cb;
-			vkCreateDebugReportCallbackEXT(instance, &info, NULL, &debug_callback);
+			info.pUserData = this;
+			vkCreateDebugReportCallbackEXT(instance, &info, nullptr, &debug_callback);
 	}
 #endif
 

@@ -133,6 +133,8 @@ public:
 	bool begin_frame();
 	bool end_frame();
 	void set_external_frame(unsigned index, Vulkan::Semaphore acquire_semaphore, double frame_time);
+	void set_external_frame_with_external_semaphore(unsigned index, VkSemaphore acquire_semaphore, double frame_time);
+	void destroy_external_semaphore(VkSemaphore semaphore);
 	Vulkan::Semaphore consume_external_release_semaphore();
 
 	WSIPlatform &get_platform()

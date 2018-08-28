@@ -33,6 +33,7 @@
 #include "util.hpp"
 #include <memory>
 #include <stdexcept>
+#include <functional>
 #include "util.hpp"
 
 #define V_S(x) #x
@@ -171,6 +172,9 @@ public:
 
 	static const VkApplicationInfo &get_application_info();
 
+	void notify_validation_error(const char *msg);
+	void set_notification_callback(std::function<void (const char *)> func);
+
 private:
 	VkDevice device = VK_NULL_HANDLE;
 	VkInstance instance = VK_NULL_HANDLE;
@@ -199,6 +203,7 @@ private:
 	VkDebugReportCallbackEXT debug_callback = VK_NULL_HANDLE;
 	VkDebugUtilsMessengerEXT debug_messenger = VK_NULL_HANDLE;
 #endif
+	std::function<void (const char *)> message_callback;
 
 	void destroy();
 };

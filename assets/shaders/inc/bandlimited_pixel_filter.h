@@ -21,6 +21,12 @@
 #undef BANDLIMITED_PIXEL_DEBUG
 #endif
 
+// Use sin(x) instead of a Taylor approximation.
+// Will be faster if the GPU is half-decent at transcendentals.
+#ifndef BANDLIMITED_PIXEL_USE_TRANSCENDENTAL
+#define BANDLIMITED_PIXEL_USE_TRANSCENDENTAL 1
+#endif
+
 struct BandlimitedPixelInfo
 {
 	vec2 uv0;
@@ -51,6 +57,9 @@ const float PI_half = 0.5 * PI;
 // larger value blurs more (more blurry).
 const float extent_mod = 1.0;
 
+#if BANDLIMITED_PIXEL_USE_TRANSCENDENTAL
+#define taylor_sin(x) sin(x)
+#else
 // p must be in range [-pi, pi].
 #define gen_taylor(T) \
 mediump T taylor_sin(mediump T p) \
@@ -66,6 +75,7 @@ gen_taylor(float)
 gen_taylor(vec2)
 gen_taylor(vec3)
 gen_taylor(vec4)
+#endif
 
 // Given weights, compute a bilinear filter which implements the weight.
 // All weights are known to be non-negative, and separable.

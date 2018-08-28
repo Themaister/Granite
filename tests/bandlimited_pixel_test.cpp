@@ -111,7 +111,8 @@ struct BandlimitedPixelTestApplication : Application, EventHandler
 				                 { "HAVE_UV", 1 },
 				                 { "VARIANT_BIT_0", mode >= 2 ? 1 : 0 },
 				                 { "BANDLIMITED_PIXEL_DEBUG", debug ? 1 : 0 },
-				                 { "BANDLIMITED_PIXEL_FAST_MODE", mode == 3 ? 1 : 0 }
+				                 { "BANDLIMITED_PIXEL_FAST_MODE", mode == 3 ? 1 : 0 },
+				                 { "BANDLIMITED_PIXEL_USE_TRANSCENDENTAL", 1 },
 		                 });
 
 		auto *texture = device.get_texture_manager().request_texture("assets://textures/sprite.png");
@@ -134,9 +135,9 @@ struct BandlimitedPixelTestApplication : Application, EventHandler
 
 	double elapsed = 0.0;
 	FPSCamera cam;
-	bool rotate = true;
+	bool rotate = false;
 	bool debug = false;
-	unsigned mode = 1;
+	unsigned mode = 2;
 };
 
 namespace Granite

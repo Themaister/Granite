@@ -103,7 +103,6 @@ struct EmittedMaterial
 	vec3 uniform_emissive_color = vec3(0.0f);
 	float uniform_metallic = 1.0f;
 	float uniform_roughness = 1.0f;
-	float lod_bias = 0.0f;
 	float normal_scale = 1.0f;
 	DrawPipeline pipeline = DrawPipeline::Opaque;
 	bool two_sided = false;
@@ -296,7 +295,6 @@ Hash RemapState::hash(const MaterialInfo &mat)
 	h.f32(mat.uniform_roughness);
 	for (unsigned i = 0; i < 4; i++)
 		h.f32(mat.uniform_base_color[i]);
-	h.f32(mat.lod_bias);
 	for (unsigned i = 0; i < 3; i++)
 		h.f32(mat.uniform_emissive_color[i]);
 	h.u32(mat.two_sided);
@@ -769,7 +767,6 @@ void RemapState::emit_material(unsigned remapped_material)
 	output.uniform_emissive_color = material.uniform_emissive_color;
 	output.uniform_metallic = material.uniform_metallic;
 	output.uniform_roughness = material.uniform_roughness;
-	output.lod_bias = material.lod_bias;
 	output.normal_scale = material.normal_scale;
 	output.pipeline = material.pipeline;
 	output.two_sided = material.two_sided;

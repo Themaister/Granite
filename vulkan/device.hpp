@@ -206,6 +206,10 @@ public:
 
 	// Render pass helpers.
 	bool image_format_is_supported(VkFormat format, VkFormatFeatureFlags required) const;
+	void get_format_properties(VkFormat format, VkFormatProperties *properties);
+	bool get_image_format_properties(VkFormat format, VkImageType type, VkImageUsageFlags usage, VkImageCreateFlags flags,
+	                                 VkImageFormatProperties *properties);
+
 	VkFormat get_default_depth_stencil_format() const;
 	VkFormat get_default_depth_format() const;
 	ImageView &get_transient_attachment(unsigned width, unsigned height, VkFormat format,

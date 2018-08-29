@@ -3020,6 +3020,19 @@ bool Device::memory_type_is_host_visible(uint32_t type) const
 	return (mem_props.memoryTypes[type].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0;
 }
 
+void Device::get_format_properties(VkFormat format, VkFormatProperties *properties)
+{
+	vkGetPhysicalDeviceFormatProperties(gpu, format, properties);
+}
+
+bool Device::get_image_format_properties(VkFormat format, VkImageType type, VkImageUsageFlags usage, VkImageCreateFlags flags,
+                                         VkImageFormatProperties *properties)
+{
+	auto res = vkGetPhysicalDeviceImageFormatProperties(gpu, format, type, VK_IMAGE_TILING_OPTIMAL, usage, flags,
+	                                                    properties);
+	return res == VK_SUCCESS;
+}
+
 bool Device::image_format_is_supported(VkFormat format, VkFormatFeatureFlags required) const
 {
 	VkFormatProperties props;

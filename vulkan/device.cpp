@@ -2593,8 +2593,10 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 	VkImageView base_level_view = VK_NULL_HANDLE;
 	VkImageView unorm_view = VK_NULL_HANDLE;
 	VkImageView srgb_view = VK_NULL_HANDLE;
-	if (info.usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
-	                  VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT))
+
+	bool has_view = (info.usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+	                               VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT)) != 0;
+	if (has_view)
 	{
 		VkImageViewCreateInfo view_info = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
 		view_info.image = image;
@@ -2691,10 +2693,14 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 	}
 
 	ImageHandle handle(handle_pool.images.allocate(this, image, image_view, allocation, tmpinfo));
-	handle->get_view().set_alt_views(depth_view, stencil_view);
-	handle->get_view().set_base_level_view(base_level_view);
-	handle->get_view().set_unorm_view(unorm_view);
-	handle->get_view().set_srgb_view(srgb_view);
+
+	if (has_view)
+	{
+		handle->get_view().set_alt_views(depth_view, stencil_view);
+		handle->get_view().set_base_level_view(base_level_view);
+		handle->get_view().set_unorm_view(unorm_view);
+		handle->get_view().set_srgb_view(srgb_view);
+	}
 
 	// Set possible dstStage and dstAccess.
 	handle->set_stage_flags(image_usage_to_possible_stages(info.usage));

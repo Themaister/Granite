@@ -220,6 +220,7 @@ public:
 
 	// Request semaphores.
 	Semaphore request_semaphore();
+	Semaphore request_external_semaphore(VkSemaphore semaphore, bool signalled);
 #ifndef _WIN32
 	Semaphore request_imported_semaphore(int fd, VkExternalSemaphoreHandleTypeFlagBitsKHR handle_type);
 #endif

@@ -65,6 +65,14 @@ public:
 		return ret;
 	}
 
+	VkSemaphore release_semaphore()
+	{
+		auto ret = semaphore;
+		semaphore = VK_NULL_HANDLE;
+		signalled = false;
+		return ret;
+	}
+
 	bool can_recycle() const
 	{
 		return !should_destroy_on_consume;

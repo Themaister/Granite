@@ -79,6 +79,14 @@ Semaphore Device::request_semaphore()
 	return ptr;
 }
 
+Semaphore Device::request_external_semaphore(VkSemaphore semaphore, bool signalled)
+{
+	LOCK();
+	VK_ASSERT(semaphore);
+	Semaphore ptr(handle_pool.semaphores.allocate(this, semaphore, signalled));
+	return ptr;
+}
+
 #ifndef _WIN32
 Semaphore Device::request_imported_semaphore(int fd, VkExternalSemaphoreHandleTypeFlagBitsKHR handle_type)
 {

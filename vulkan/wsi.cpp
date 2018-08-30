@@ -156,18 +156,6 @@ void WSI::set_external_frame(unsigned index, Vulkan::Semaphore acquire_semaphore
 	external_frame_time = frame_time;
 }
 
-void WSI::set_external_frame_with_external_semaphore(unsigned index, VkSemaphore acquire_semaphore, double frame_time)
-{
-	VK_ASSERT(acquire_semaphore);
-	auto sem = Semaphore(device->handle_pool.semaphores.allocate(device.get(), acquire_semaphore, true));
-	set_external_frame(index, sem, frame_time);
-}
-
-void WSI::destroy_external_semaphore(VkSemaphore semaphore)
-{
-	device->destroy_semaphore(semaphore);
-}
-
 bool WSI::begin_frame_external()
 {
 	// Need to handle this stuff from outside.
@@ -279,10 +267,7 @@ bool WSI::end_frame()
 	device->end_frame();
 
 	if (!device->swapchain_touched())
-	{
-		device->wait_idle();
 		return true;
-	}
 
 	need_acquire = true;
 

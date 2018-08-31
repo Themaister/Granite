@@ -63,7 +63,8 @@ public:
 		BACKFACE_BIT = 1 << 4,
 		STENCIL_WRITE_REFERENCE_BIT = 1 << 5,
 		STENCIL_COMPARE_REFERENCE_BIT = 1 << 6,
-		SKIP_SORTING_BIT = 1 << 7
+		SKIP_SORTING_BIT = 1 << 7,
+		DEPTH_TEST_INVERT_BIT = 1 << 8
 	};
 	using RendererFlushFlags = uint32_t;
 

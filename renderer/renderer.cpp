@@ -351,6 +351,9 @@ void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context, Rendere
 		cmd.set_depth_compare(VK_COMPARE_OP_GREATER);
 	}
 
+	if (options & DEPTH_TEST_INVERT_BIT)
+		cmd.set_depth_compare(VK_COMPARE_OP_GREATER);
+
 	if (options & STENCIL_WRITE_REFERENCE_BIT)
 	{
 		cmd.set_stencil_test(true);

@@ -89,6 +89,8 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 
 		has_window = global_state.has_window;
 		active = global_state.active;
+
+		get_input_tracker().set_touch_resolution(width, height);
 	}
 
 	bool alive(Vulkan::WSI &wsi) override;

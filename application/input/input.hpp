@@ -113,6 +113,9 @@ struct TouchState
 	};
 	Pointer pointers[PointerCount] = {};
 	unsigned active_pointers = 0;
+
+	unsigned width;
+	unsigned height;
 };
 
 struct JoypadState
@@ -187,6 +190,12 @@ public:
 	void disable_joypad(unsigned index);
 	int find_vacant_joypad_index() const;
 
+	void set_touch_resolution(unsigned width, unsigned height)
+	{
+		touch.width = width;
+		touch.height = height;
+	}
+
 private:
 	uint64_t key_state = 0;
 	uint8_t mouse_button_state = 0;
@@ -259,8 +268,8 @@ class TouchDownEvent : public Granite::Event
 public:
 	GRANITE_EVENT_TYPE_DECL(TouchDownEvent)
 
-	TouchDownEvent(unsigned index, unsigned id, float x, float y)
-		: index(index), id(id), x(x), y(y)
+	TouchDownEvent(unsigned index, unsigned id, float x, float y, unsigned screen_width, unsigned screen_height)
+		: index(index), id(id), x(x), y(y), width(screen_width), height(screen_height)
 	{
 	}
 
@@ -284,9 +293,20 @@ public:
 		return id;
 	}
 
+	unsigned get_screen_width() const
+	{
+		return width;
+	}
+
+	unsigned get_screen_height() const
+	{
+		return height;
+	}
+
 private:
 	unsigned index, id;
 	float x, y;
+	unsigned width, height;
 };
 
 class TouchUpEvent : public Granite::Event
@@ -294,8 +314,8 @@ class TouchUpEvent : public Granite::Event
 public:
 	GRANITE_EVENT_TYPE_DECL(TouchUpEvent)
 
-	TouchUpEvent(unsigned id, float x, float y, float start_x, float start_y)
-		: id(id), x(x), y(y), start_x(start_x), start_y(start_y)
+	TouchUpEvent(unsigned id, float x, float y, float start_x, float start_y, unsigned screen_width, unsigned screen_height)
+		: id(id), x(x), y(y), start_x(start_x), start_y(start_y), width(screen_width), height(screen_height)
 	{
 	}
 
@@ -324,10 +344,21 @@ public:
 		return id;
 	}
 
+	unsigned get_screen_width() const
+	{
+		return width;
+	}
+
+	unsigned get_screen_height() const
+	{
+		return height;
+	}
+
 private:
 	unsigned id;
 	float x, y;
 	float start_x, start_y;
+	unsigned width, height;
 };
 
 class JoypadButtonEvent : public Granite::Event

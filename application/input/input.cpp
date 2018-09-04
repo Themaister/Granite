@@ -56,7 +56,7 @@ void InputTracker::on_touch_down(unsigned id, float x, float y)
 	pointer.x = x;
 	pointer.y = y;
 
-	TouchDownEvent event(index, id, x, y);
+	TouchDownEvent event(index, id, x, y, touch.width, touch.height);
 	if (UI::UIManager::get().filter_input_event(event))
 		EventManager::get_global().dispatch_inline(event);
 }
@@ -100,7 +100,7 @@ void InputTracker::on_touch_up(unsigned id, float x, float y)
 
 	auto index = itr - begin(pointers);
 
-	TouchUpEvent event(itr->id, x, y, itr->start_x, itr->start_y);
+	TouchUpEvent event(itr->id, x, y, itr->start_x, itr->start_y, touch.width, touch.height);
 	if (UI::UIManager::get().filter_input_event(event))
 		EventManager::get_global().dispatch_inline(event);
 	memmove(&pointers[index], &pointers[index + 1], (TouchCount - (index + 1)) * sizeof(TouchState::Pointer));

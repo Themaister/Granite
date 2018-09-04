@@ -78,6 +78,8 @@ private:
 
 	Widget *drag_receiver = nullptr;
 	vec2 drag_receiver_base = vec2(0.0f);
+
+	unsigned touch_emulation_id = ~0u;
 };
 }
 }

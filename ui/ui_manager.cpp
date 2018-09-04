@@ -96,14 +96,46 @@ Font& UIManager::get_font(FontSize size)
 	return *fonts[Util::ecast(size)];
 }
 
-bool UIManager::filter_input_event(const TouchUpEvent &)
+bool UIManager::filter_input_event(const TouchUpEvent &e)
 {
-	return true;
+	if (e.get_id() != touch_emulation_id)
+		return true;
+
+	touch_emulation_id = ~0u;
+	double x = e.get_x() * e.get_screen_width();
+	double y = e.get_y() * e.get_screen_height();
+	MouseButtonEvent mouse_btn(MouseButton::Left, x, y, false);
+	return filter_input_event(mouse_btn);
 }
 
-bool UIManager::filter_input_event(const TouchDownEvent &)
+bool UIManager::filter_input_event(const TouchDownEvent &e)
 {
-	return true;
+	if (e.get_index() != 0)
+		return true;
+
+	touch_emulation_id = e.get_id();
+
+	double x = e.get_x() * e.get_screen_width();
+	double y = e.get_y() * e.get_screen_height();
+
+	MouseButtonEvent mouse_btn(MouseButton::Left, x, y, true);
+	return filter_input_event(mouse_btn);
+}
+
+bool UIManager::filter_input_event(const TouchGestureEvent &e)
+{
+	auto &state = e.get_state();
+
+	auto &pointers = state.pointers;
+	auto itr = std::find_if(std::begin(pointers), std::begin(pointers) + state.active_pointers, [this](const TouchState::Pointer &pointer) {
+		return pointer.id == touch_emulation_id;
+	});
+
+	if (itr == std::end(pointers))
+		return true;
+
+	MouseMoveEvent move(0.0, 0.0, itr->x * state.width, itr->y * state.height, 0, 0);
+	return filter_input_event(move);
 }
 
 bool UIManager::filter_input_event(const KeyboardEvent &)
@@ -184,9 +216,5 @@ bool UIManager::filter_input_event(const OrientationEvent &)
 	return true;
 }
 
-bool UIManager::filter_input_event(const TouchGestureEvent &)
-{
-	return true;
-}
 }
 }

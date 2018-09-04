@@ -24,6 +24,7 @@
 
 #include "widget.hpp"
 #include "font.hpp"
+#include "ui_manager.hpp"
 #include <functional>
 
 namespace Granite
@@ -54,6 +55,8 @@ public:
 		click_cb = std::move(cb);
 	}
 
+	void set_font_size(FontSize size);
+
 private:
 	void reconfigure() override;
 	void reconfigure_to_canvas(vec2 offset, vec2 size) override;
@@ -67,6 +70,7 @@ private:
 
 	bool click_held = false;
 	std::function<void ()> click_cb;
+	FontSize font_size = FontSize::Small;
 };
 }
 }

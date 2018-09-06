@@ -35,8 +35,6 @@ if (GRANITE_SANITIZE_THREADS)
     set(GRANITE_LINK_FLAGS ${GRANITE_LINK_FLAGS} -fsanitize=thread)
 endif()
 
-option(VULKAN_WSI "Enable Vulkan WSI." ON)
-
 if(${GRANITE_PLATFORM} MATCHES "libretro")
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 endif()

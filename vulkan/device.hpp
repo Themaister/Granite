@@ -214,8 +214,6 @@ public:
 	VkFormat get_default_depth_format() const;
 	ImageView &get_transient_attachment(unsigned width, unsigned height, VkFormat format,
 	                                    unsigned index = 0, unsigned samples = 1);
-	ImageView &get_physical_attachment(unsigned width, unsigned height, VkFormat format,
-	                                   unsigned index = 0, unsigned samples = 1);
 	RenderPassInfo get_swapchain_render_pass(SwapchainRenderPass style);
 
 	// Request semaphores.
@@ -428,7 +426,6 @@ private:
 
 	FramebufferAllocator framebuffer_allocator;
 	TransientAttachmentAllocator transient_allocator;
-	PhysicalAttachmentAllocator physical_allocator;
 	VkPipelineCache pipeline_cache = VK_NULL_HANDLE;
 
 	SamplerHandle create_sampler(const SamplerCreateInfo &info, StockSampler sampler);

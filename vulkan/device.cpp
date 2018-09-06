@@ -58,7 +58,6 @@ namespace Vulkan
 Device::Device()
     : framebuffer_allocator(this)
     , transient_allocator(this)
-	, physical_allocator(this)
 #ifdef GRANITE_VULKAN_FILESYSTEM
 	, shader_manager(this)
 	, texture_manager(this)
@@ -1819,7 +1818,6 @@ void Device::begin_frame(unsigned index)
 
 	framebuffer_allocator.begin_frame();
 	transient_allocator.begin_frame();
-	physical_allocator.begin_frame();
 	for (auto &allocator : descriptor_set_allocators.get_hashmap())
 		allocator.second->begin_frame();
 
@@ -3163,12 +3161,6 @@ ImageView &Device::get_transient_attachment(unsigned width, unsigned height, VkF
                                             unsigned index, unsigned samples)
 {
 	return transient_allocator.request_attachment(width, height, format, index, samples);
-}
-
-ImageView &Device::get_physical_attachment(unsigned width, unsigned height, VkFormat format,
-                                           unsigned index, unsigned samples)
-{
-	return physical_allocator.request_attachment(width, height, format, index, samples);
 }
 
 ImageView &Device::get_swapchain_view()

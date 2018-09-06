@@ -19,6 +19,10 @@ Pull requests will likely be ignored or dismissed.**
 
 The code is licensed under MIT. Feel free to use it for whatever purpose.
 
+## High-level documentation
+
+See `OVERVIEW.md`.
+
 ## Low-level rendering backend
 
 The rendering backend focuses entirely on Vulkan,

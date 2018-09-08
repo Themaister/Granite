@@ -315,6 +315,13 @@ bool WSI::end_frame()
 		}
 	}
 
+	// Re-init swapchain.
+	if (present_mode != current_present_mode)
+	{
+		current_present_mode = present_mode;
+		update_framebuffer(this->width, this->height);
+	}
+
 	return true;
 }
 
@@ -323,6 +330,16 @@ void WSI::update_framebuffer(unsigned width, unsigned height)
 	vkDeviceWaitIdle(context->get_device());
 	if (blocking_init_swapchain(width, height))
 		device->init_swapchain(swapchain_images, this->width, this->height, format);
+}
+
+void WSI::set_present_mode(PresentMode mode)
+{
+	present_mode = mode;
+	if (need_acquire && present_mode != current_present_mode)
+	{
+		current_present_mode = present_mode;
+		update_framebuffer(this->width, this->height);
+	}
 }
 
 void WSI::deinit_external()
@@ -448,9 +465,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	vkGetPhysicalDeviceSurfacePresentModesKHR(gpu, surface, &num_present_modes, present_modes.data());
 
 	VkPresentModeKHR swapchain_present_mode = VK_PRESENT_MODE_FIFO_KHR;
-
-	const char *vsync = getenv("GRANITE_VULKAN_VSYNC");
-	bool use_vsync = !vsync || (strtoul(vsync, nullptr, 0) != 0);
+	bool use_vsync = current_present_mode == PresentMode::SyncToVBlank;
 	if (!use_vsync)
 	{
 		for (uint32_t i = 0; i < num_present_modes; i++)

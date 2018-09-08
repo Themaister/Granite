@@ -471,6 +471,16 @@ bool SceneViewerApplication::on_key_down(const KeyboardEvent &e)
 		break;
 	}
 
+	case Key::Space:
+	{
+		auto mode = get_wsi().get_present_mode();
+		if (mode == PresentMode::SyncToVBlank)
+			get_wsi().set_present_mode(PresentMode::Unlocked);
+		else
+			get_wsi().set_present_mode(PresentMode::SyncToVBlank);
+		break;
+	}
+
 	default:
 		break;
 	}

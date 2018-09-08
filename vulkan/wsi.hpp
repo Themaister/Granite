@@ -105,11 +105,22 @@ private:
 	Util::FrameTimer timer;
 };
 
+enum class PresentMode
+{
+	SyncToVBlank,
+	Unlocked
+};
+
 class WSI
 {
 public:
 	WSI();
 	void set_platform(WSIPlatform *platform);
+	void set_present_mode(PresentMode mode);
+	PresentMode get_present_mode() const
+	{
+		return present_mode;
+	}
 
 	bool init();
 
@@ -157,6 +168,8 @@ private:
 	unsigned height = 0;
 	float aspect_ratio = 1.0f;
 	VkFormat format = VK_FORMAT_UNDEFINED;
+	PresentMode current_present_mode = PresentMode::SyncToVBlank;
+	PresentMode present_mode = PresentMode::SyncToVBlank;
 
 	enum class SwapchainError
 	{

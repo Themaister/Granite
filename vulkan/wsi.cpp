@@ -321,8 +321,6 @@ bool WSI::end_frame()
 void WSI::update_framebuffer(unsigned width, unsigned height)
 {
 	vkDeviceWaitIdle(context->get_device());
-
-	aspect_ratio = platform->get_aspect_ratio();
 	if (blocking_init_swapchain(width, height))
 		device->init_swapchain(swapchain_images, this->width, this->height, format);
 }
@@ -347,7 +345,8 @@ void WSI::deinit_external()
 	if (surface != VK_NULL_HANDLE)
 		vkDestroySurfaceKHR(context->get_instance(), surface, nullptr);
 
-	platform->event_device_destroyed();
+	if (platform)
+		platform->event_device_destroyed();
 	external_release.reset();
 	external_acquire.reset();
 	external_swapchain_images.clear();
@@ -361,6 +360,7 @@ bool WSI::blocking_init_swapchain(unsigned width, unsigned height)
 	unsigned retry_counter = 0;
 	do
 	{
+		aspect_ratio = platform->get_aspect_ratio();
 		err = init_swapchain(width, height);
 		if (err == SwapchainError::Error)
 		{

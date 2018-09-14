@@ -2,6 +2,8 @@
 precision highp float;
 precision highp int;
 
+#define POSITIONAL_LIGHT_DEFERRED
+
 #if defined(VARIANT_BIT_2)
 #define INSTANCING
 #define POSITIONAL_LIGHT_INSTANCING

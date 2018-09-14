@@ -233,12 +233,16 @@ void Renderer::begin()
 
 static void set_cluster_parameters(Vulkan::CommandBuffer &cmd, const LightClusterer &cluster)
 {
-	cmd.set_texture(1, 5, *cluster.get_cluster_image(), StockSampler::NearestClamp);
-	memcpy(cmd.allocate_constant_data(1, 6, sizeof(mat4)), &cluster.get_cluster_transform(), sizeof(mat4));
-	memcpy(cmd.allocate_constant_data(1, 7, LightClusterer::MaxLights * sizeof(PositionalFragmentInfo)),
-	       cluster.get_active_spot_lights(), cluster.get_active_spot_light_count() * sizeof(PositionalFragmentInfo));
-	memcpy(cmd.allocate_constant_data(1, 8, LightClusterer::MaxLights * sizeof(PositionalFragmentInfo)),
-	       cluster.get_active_point_lights(), cluster.get_active_point_light_count() * sizeof(PositionalFragmentInfo));
+	auto &params = *cmd.allocate_typed_constant_data<ClustererParameters>(0, 2, 1);
+	memset(&params, 0, sizeof(params));
+
+	cmd.set_texture(1, 6, *cluster.get_cluster_image(), StockSampler::NearestClamp);
+
+	params.transform = cluster.get_cluster_transform();
+	memcpy(params.spots, cluster.get_active_spot_lights(),
+	       cluster.get_active_spot_light_count() * sizeof(PositionalFragmentInfo));
+	memcpy(params.points, cluster.get_active_point_lights(),
+	       cluster.get_active_point_light_count() * sizeof(PositionalFragmentInfo));
 
 	if (cluster.get_spot_light_shadows() && cluster.get_point_light_shadows())
 	{
@@ -247,17 +251,18 @@ static void set_cluster_parameters(Vulkan::CommandBuffer &cmd, const LightCluste
 		auto point_sampler = format_is_depth_stencil(cluster.get_point_light_shadows()->get_format()) ?
 		                     StockSampler::LinearShadow : StockSampler::LinearClamp;
 
-		cmd.set_texture(1, 9, *cluster.get_spot_light_shadows(), spot_sampler);
-		memcpy(cmd.allocate_constant_data(1, 10, LightClusterer::MaxLights * sizeof(mat4)),
-		       cluster.get_active_spot_light_shadow_matrices(), cluster.get_active_spot_light_count() * sizeof(mat4));
+		cmd.set_texture(1, 7, *cluster.get_spot_light_shadows(), spot_sampler);
+		cmd.set_texture(1, 8, *cluster.get_point_light_shadows(), point_sampler);
 
-		cmd.set_texture(1, 11, *cluster.get_point_light_shadows(), point_sampler);
-		memcpy(cmd.allocate_constant_data(1, 12, LightClusterer::MaxLights * sizeof(PointTransform)),
-		       cluster.get_active_point_light_shadow_transform(), cluster.get_active_point_light_count() * sizeof(PointTransform));
+		memcpy(params.spot_shadow_transforms, cluster.get_active_spot_light_shadow_matrices(),
+		       cluster.get_active_spot_light_count() * sizeof(mat4));
+
+		memcpy(params.point_shadow, cluster.get_active_point_light_shadow_transform(),
+		       cluster.get_active_point_light_count() * sizeof(PointTransform));
 	}
 
 	if (cluster.get_cluster_list_buffer())
-		cmd.set_storage_buffer(1, 13, *cluster.get_cluster_list_buffer());
+		cmd.set_storage_buffer(1, 9, *cluster.get_cluster_list_buffer());
 }
 
 void Renderer::set_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context)
@@ -265,44 +270,27 @@ void Renderer::set_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderC
 	auto *lighting = context.get_lighting_parameters();
 	assert(lighting);
 
-	struct EnvironmentParametersShader
-	{
-		float intensity;
-		float mipscale;
-	};
+	auto *combined = cmd.allocate_typed_constant_data<CombinedRenderParameters>(0, 1, 1);
+	memset(combined, 0, sizeof(*combined));
 
-	auto *environment = static_cast<EnvironmentParametersShader *>(cmd.allocate_constant_data(0, 1, sizeof(EnvironmentParametersShader)));
-	environment->intensity = lighting->environment.intensity;
+	combined->environment.intensity = lighting->environment.intensity;
 	if (lighting->environment_radiance)
-		environment->mipscale = float(lighting->environment_radiance->get_create_info().levels - 1);
-
-	// TODO: Should probably just merge all these UBOs.
+		combined->environment.mipscale = float(lighting->environment_radiance->get_create_info().levels - 1);
 
 	if (lighting->volumetric_fog)
 	{
-		// Seems a bit silly to have this small UBO, but w/e.
-		auto *fog = static_cast<float *>(cmd.allocate_constant_data(0, 2, sizeof(float)));
-		*fog = lighting->volumetric_fog->get_slice_z_log2_scale();
-		cmd.set_texture(1, 14, lighting->volumetric_fog->get_view(), StockSampler::LinearClamp);
+		cmd.set_texture(1, 5, lighting->volumetric_fog->get_view(), StockSampler::LinearClamp);
+		combined->volumetric_fog.slice_z_log2_scale = lighting->volumetric_fog->get_slice_z_log2_scale();
 	}
 	else
-	{
-		auto *fog = static_cast<FogParameters *>(cmd.allocate_constant_data(0, 2, sizeof(FogParameters)));
-		*fog = lighting->fog;
-	}
+		combined->fog = lighting->fog;
 
-	auto *shadow = static_cast<ShadowParameters *>(cmd.allocate_constant_data(0, 3, sizeof(ShadowParameters)));
-	*shadow = lighting->shadow;
+	combined->shadow = lighting->shadow;
+	combined->directional = lighting->directional;
+	combined->refraction = lighting->refraction;
 
-	auto *directional = static_cast<DirectionalParameters *>(cmd.allocate_constant_data(0, 4, sizeof(DirectionalParameters)));
-	*directional = lighting->directional;
-
-	auto *refraction = static_cast<RefractionParameters *>(cmd.allocate_constant_data(0, 5, sizeof(RefractionParameters)));
-	*refraction = lighting->refraction;
-
-	auto *resolution = static_cast<ResolutionParameters *>(cmd.allocate_constant_data(0, 6, sizeof(ResolutionParameters)));
-	resolution->resolution = vec2(cmd.get_viewport().width, cmd.get_viewport().height);
-	resolution->inv_resolution = vec2(1.0f / cmd.get_viewport().width, 1.0f / cmd.get_viewport().height);
+	combined->resolution.resolution = vec2(cmd.get_viewport().width, cmd.get_viewport().height);
+	combined->resolution.inv_resolution = vec2(1.0f / cmd.get_viewport().width, 1.0f / cmd.get_viewport().height);
 
 	cmd.set_texture(1, 2,
 	                cmd.get_device().get_texture_manager().request_texture("builtin://textures/ibl_brdf_lut.gtx")->get_image()->get_view(),

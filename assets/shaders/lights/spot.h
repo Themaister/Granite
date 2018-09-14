@@ -2,53 +2,26 @@
 #define SPOT_LIGHT_H_
 
 #include "pbr.h"
+#include "clusterer_data.h"
 
-struct SpotShaderInfo
+#ifdef POSITIONAL_LIGHT_DEFERRED
+layout(std140, set = 2, binding = 0) uniform SpotParameters
 {
-	mediump vec3 color;
-	mediump float spot_outer;
-
-	vec3 position;
-	mediump float spot_inner;
-
-	mediump vec3 direction;
-	mediump float inv_radius;
-};
-
-#ifndef SPOT_LIGHT_DATA_SET
-#define SPOT_LIGHT_DATA_SET 2
-#endif
-#ifndef SPOT_LIGHT_DATA_BINDING
-#define SPOT_LIGHT_DATA_BINDING 0
-#endif
-#ifndef SPOT_LIGHT_DATA_COUNT
-#define SPOT_LIGHT_DATA_COUNT 256
-#endif
-
-layout(std140, set = SPOT_LIGHT_DATA_SET, binding = SPOT_LIGHT_DATA_BINDING) uniform SpotParameters
-{
-#ifdef POSITIONAL_LIGHT_INSTANCING
-    SpotShaderInfo data[SPOT_LIGHT_DATA_COUNT];
-#else
-    SpotShaderInfo data;
-#endif
+    SpotShaderInfo data[256];
 } spot;
+#else
+#include "lighting_data.h"
+#endif
 
 #ifdef POSITIONAL_LIGHTS_SHADOW
-#ifndef SPOT_LIGHT_SHADOW_DATA_SET
-#define SPOT_LIGHT_SHADOW_DATA_SET 2
-#endif
-#ifndef SPOT_LIGHT_SHADOW_DATA_BINDING
-#define SPOT_LIGHT_SHADOW_DATA_BINDING 3
-#endif
-#ifndef SPOT_LIGHT_SHADOW_DATA_COUNT
-#define SPOT_LIGHT_SHADOW_DATA_COUNT 256
-#endif
-#ifndef SPOT_LIGHT_SHADOW_ATLAS_SET
+#ifdef POSITIONAL_LIGHT_DEFERRED
 #define SPOT_LIGHT_SHADOW_ATLAS_SET 2
-#endif
-#ifndef SPOT_LIGHT_SHADOW_ATLAS_BINDING
 #define SPOT_LIGHT_SHADOW_ATLAS_BINDING 2
+
+layout(std140, set = 2, binding = 3) uniform SpotShadowParameters
+{
+	mat4 data[256];
+} spot_shadow;
 #endif
 
 #ifdef POSITIONAL_SHADOW_VSM
@@ -58,23 +31,19 @@ layout(set = SPOT_LIGHT_SHADOW_ATLAS_SET, binding = SPOT_LIGHT_SHADOW_ATLAS_BIND
 #include "pcf.h"
 layout(set = SPOT_LIGHT_SHADOW_ATLAS_SET, binding = SPOT_LIGHT_SHADOW_ATLAS_BINDING) uniform sampler2DShadow uSpotShadowAtlas;
 #endif
-
-layout(std140, set = SPOT_LIGHT_SHADOW_DATA_SET, binding = SPOT_LIGHT_SHADOW_DATA_BINDING) uniform SpotShadow
-{
-#ifdef POSITIONAL_LIGHT_INSTANCING
-	mat4 transform[SPOT_LIGHT_SHADOW_DATA_COUNT];
-#else
-	mat4 transform;
-#endif
-} spot_shadow;
 #endif
 
-#ifdef POSITIONAL_LIGHT_INSTANCING
-#define SPOT_DATA(index) spot.data[index]
-#define SPOT_SHADOW_TRANSFORM(index) spot_shadow.transform[index]
+#ifdef POSITIONAL_LIGHT_DEFERRED
+	#ifdef POSITIONAL_LIGHT_INSTANCING
+		#define SPOT_DATA(index) spot.data[index]
+		#define SPOT_SHADOW_TRANSFORM(index) spot_shadow.data[index]
+	#else
+		#define SPOT_DATA(index) spot.data[0]
+		#define SPOT_SHADOW_TRANSFORM(index) spot_shadow.data[0]
+	#endif
 #else
-#define SPOT_DATA(index) spot.data
-#define SPOT_SHADOW_TRANSFORM(index) spot_shadow.transform
+	#define SPOT_DATA(index) clusterer.spots[index]
+	#define SPOT_SHADOW_TRANSFORM(index) clusterer.spot_shadow[index]
 #endif
 
 mediump vec3 compute_spot_light(int index,

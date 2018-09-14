@@ -24,6 +24,7 @@
 
 #include "math.hpp"
 #include "image.hpp"
+#include "lights/light_info.hpp"
 
 namespace Granite
 {
@@ -51,19 +52,18 @@ struct RenderParameters
 
 struct ResolutionParameters
 {
-	vec2 resolution;
-	vec2 inv_resolution;
+	alignas(8) vec2 resolution;
+	alignas(8) vec2 inv_resolution;
 };
 
 struct VolumetricFogParameters
 {
-	Vulkan::ImageView *volume;
 	float slice_z_log2_scale;
 };
 
 struct FogParameters
 {
-	vec3 color;
+	alignas(16) vec3 color;
 	float falloff;
 };
 
@@ -75,24 +75,47 @@ struct DirectionalParameters
 
 struct ShadowParameters
 {
-	mat4 near_transform;
-	mat4 far_transform;
+	alignas(16) mat4 near_transform;
+	alignas(16) mat4 far_transform;
 	float inv_cutoff_distance;
 };
 
 struct EnvironmentParameters
 {
 	float intensity;
+	float mipscale;
 };
 
 struct RefractionParameters
 {
-	vec3 falloff;
+	alignas(16) vec3 falloff;
 };
+
+#define CLUSTERER_MAX_LIGHTS 32
+struct ClustererParameters
+{
+	mat4 transform;
+	PositionalFragmentInfo spots[CLUSTERER_MAX_LIGHTS];
+	PositionalFragmentInfo points[CLUSTERER_MAX_LIGHTS];
+	mat4 spot_shadow_transforms[CLUSTERER_MAX_LIGHTS];
+	PointTransform point_shadow[CLUSTERER_MAX_LIGHTS];
+};
+
+struct CombinedRenderParameters
+{
+	EnvironmentParameters environment;
+	FogParameters fog;
+	VolumetricFogParameters volumetric_fog;
+	ShadowParameters shadow;
+	DirectionalParameters directional;
+	RefractionParameters refraction;
+	ResolutionParameters resolution;
+	ClustererParameters clusterer;
+};
+static_assert(sizeof(CombinedRenderParameters) <= 16 * 1024, "CombinedRenderParameters cannot fit in min-spec.");
 
 struct LightingParameters
 {
-	const VolumetricFog *volumetric_fog = nullptr;
 	FogParameters fog = {};
 	DirectionalParameters directional;
 	ShadowParameters shadow;
@@ -104,5 +127,6 @@ struct LightingParameters
 	Vulkan::ImageView *shadow_near = nullptr;
 	Vulkan::ImageView *shadow_far = nullptr;
 	const LightClusterer *cluster = nullptr;
+	const VolumetricFog *volumetric_fog = nullptr;
 };
 }

@@ -1,41 +1,24 @@
 #ifndef CLUSTERER_H_
 #define CLUSTERER_H_
 
-#define SPOT_LIGHT_DATA_SET 1
-#define SPOT_LIGHT_DATA_BINDING 7
-#define SPOT_LIGHT_DATA_COUNT 32
+#include "clusterer_data.h"
 
 #define SPOT_LIGHT_SHADOW_ATLAS_SET 1
-#define SPOT_LIGHT_SHADOW_ATLAS_BINDING 9
-
-#define SPOT_LIGHT_SHADOW_DATA_SET 1
-#define SPOT_LIGHT_SHADOW_DATA_BINDING 10
-#define SPOT_LIGHT_SHADOW_DATA_COUNT 32
-
-#define POINT_LIGHT_DATA_SET 1
-#define POINT_LIGHT_DATA_BINDING 8
-#define POINT_LIGHT_DATA_COUNT 32
-
+#define SPOT_LIGHT_SHADOW_ATLAS_BINDING 7
 #define POINT_LIGHT_SHADOW_ATLAS_SET 1
-#define POINT_LIGHT_SHADOW_ATLAS_BINDING 11
+#define POINT_LIGHT_SHADOW_ATLAS_BINDING 8
 
-#define POINT_LIGHT_SHADOW_DATA_SET 1
-#define POINT_LIGHT_SHADOW_DATA_BINDING 12
-#define POINT_LIGHT_SHADOW_DATA_COUNT 32
-
-#define POSITIONAL_LIGHT_INSTANCING
+layout(std140, set = 0, binding = 2) uniform ClusterParameters
+{
+	ClusterParameters clusterer;
+};
 
 #include "spot.h"
 #include "point.h"
 
-layout(std140, set = 1, binding = 6) uniform ClusterTransform
-{
-	mat4 transform;
-} cluster;
-
-layout(set = 1, binding = 5) uniform usampler3D uCluster;
+layout(set = 1, binding = 6) uniform usampler3D uCluster;
 #ifdef CLUSTER_LIST
-layout(std430, set = 1, binding = 13) readonly buffer ClusterList
+layout(std430, set = 1, binding = 9) readonly buffer ClusterList
 {
 	int elements[];
 } cluster_list;

@@ -5,7 +5,7 @@
 layout(std140, set = 2, binding = 1) uniform Parameters
 {
 #if defined(VARIANT_BIT_2)
-    mat4 transforms[256];
+    mat4 transforms[128];
 #else
     mat4 transform;
 #endif

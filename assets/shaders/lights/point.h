@@ -2,56 +2,27 @@
 #define POINT_LIGHT_H_
 
 #include "pbr.h"
+#include "clusterer_data.h"
 
-struct PointShaderInfo
+#ifdef POSITIONAL_LIGHT_DEFERRED
+layout(std140, set = 2, binding = 0) uniform PointParameters
 {
-	vec3 color;
-	vec3 position;
-	vec3 direction;
-	float inv_radius;
-};
-
-#ifndef POINT_LIGHT_DATA_SET
-#define POINT_LIGHT_DATA_SET 2
-#endif
-#ifndef POINT_LIGHT_DATA_BINDING
-#define POINT_LIGHT_DATA_BINDING 0
-#endif
-#ifndef POINT_LIGHT_DATA_COUNT
-#define POINT_LIGHT_DATA_COUNT 256
-#endif
-
-layout(std140, set = POINT_LIGHT_DATA_SET, binding = POINT_LIGHT_DATA_BINDING) uniform PointParameters
-{
-#ifdef POSITIONAL_LIGHT_INSTANCING
-    PointShaderInfo data[POINT_LIGHT_DATA_COUNT];
-#else
-    PointShaderInfo data;
-#endif
+    PointShaderInfo data[256];
 } point;
+#else
+#include "lighting_data.h"
+#endif
 
 #ifdef POSITIONAL_LIGHTS_SHADOW
-#ifndef POINT_LIGHT_SHADOW_DATA_SET
-#define POINT_LIGHT_SHADOW_DATA_SET 2
-#endif
-#ifndef POINT_LIGHT_SHADOW_DATA_BINDING
-#define POINT_LIGHT_SHADOW_DATA_BINDING 3
-#endif
-#ifndef POINT_LIGHT_SHADOW_DATA_COUNT
-#define POINT_LIGHT_SHADOW_DATA_COUNT 256
-#endif
-#ifndef POINT_LIGHT_SHADOW_ATLAS_SET
+#ifdef POSITIONAL_LIGHT_DEFERRED
 #define POINT_LIGHT_SHADOW_ATLAS_SET 2
-#endif
-#ifndef POINT_LIGHT_SHADOW_ATLAS_BINDING
 #define POINT_LIGHT_SHADOW_ATLAS_BINDING 2
-#endif
 
-struct PointShadowData
+layout(std140, set = 2, binding = 3) uniform PointShadowParameters
 {
-	vec4 transform;
-	vec4 slice;
-};
+	PointShadowData data[256];
+} point_shadow;
+#endif
 
 #ifdef POSITIONAL_SHADOW_VSM
 #include "vsm.h"
@@ -59,23 +30,19 @@ layout(set = POINT_LIGHT_SHADOW_ATLAS_SET, binding = POINT_LIGHT_SHADOW_ATLAS_BI
 #else
 layout(set = POINT_LIGHT_SHADOW_ATLAS_SET, binding = POINT_LIGHT_SHADOW_ATLAS_BINDING) uniform samplerCubeArrayShadow uPointShadowAtlas;
 #endif
-
-layout(std140, set = POINT_LIGHT_SHADOW_DATA_SET, binding = POINT_LIGHT_SHADOW_DATA_BINDING) uniform PointShadow
-{
-#ifdef POSITIONAL_LIGHT_INSTANCING
-	PointShadowData data[POINT_LIGHT_SHADOW_DATA_COUNT];
-#else
-	PointShadowData data;
-#endif
-} point_shadow;
 #endif
 
-#ifdef POSITIONAL_LIGHT_INSTANCING
-#define POINT_DATA(index) point.data[index]
-#define POINT_SHADOW_TRANSFORM(index) point_shadow.data[index]
+#ifdef POSITIONAL_LIGHT_DEFERRED
+	#ifdef POSITIONAL_LIGHT_INSTANCING
+		#define POINT_DATA(index) point.data[index]
+		#define POINT_SHADOW_TRANSFORM(index) point_shadow.data[index]
+	#else
+		#define POINT_DATA(index) point.data[0]
+		#define POINT_SHADOW_TRANSFORM(index) point_shadow.data[0]
+	#endif
 #else
-#define POINT_DATA(index) point.data
-#define POINT_SHADOW_TRANSFORM(index) point_shadow.data
+	#define POINT_DATA(index) clusterer.points[index]
+	#define POINT_SHADOW_TRANSFORM(index) clusterer.point_shadow[index]
 #endif
 
 vec3 compute_point_light(int index,

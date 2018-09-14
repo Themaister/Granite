@@ -29,6 +29,7 @@ layout(location = 0) out mediump vec4 Color;
 #include "render_parameters.h"
 #include "../lights/lighting.h"
 #include "../lights/fog.h"
+#include "../lights/volumetric_fog.h"
 
 void emit_render_target(mediump vec3 emissive, mediump vec4 base_color, mediump vec3 normal,
         mediump float metallic, mediump float roughness, mediump float ambient, vec3 pos)
@@ -53,7 +54,10 @@ void emit_render_target(mediump vec3 emissive, mediump vec4 base_color, mediump 
 #endif
 	);
 
-#ifdef FOG
+#if defined(VOLUMETRIC_FOG)
+    mediump vec4 fog = sample_volumetric_fog(uFogVolume, dot(pos - global.camera_position, global.camera_front), fog.slice_z_log2_scale);
+    lighting = fog.rgb + lighting * fog.a;
+#elif defined(FOG)
     lighting = apply_fog(lighting, pos - global.camera_position, fog.color, fog.falloff);
 #endif
 

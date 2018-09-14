@@ -375,12 +375,41 @@ void SceneViewerApplication::on_device_created(const DeviceCreatedEvent &device)
 	if (!skydome_irradiance.empty())
 		irradiance = device.get_device().get_texture_manager().request_texture(skydome_irradiance);
 	graph.set_device(&device.get_device());
+
+	ImageCreateInfo info = {};
+	info.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+	info.width = 160;
+	info.height = 90;
+	info.depth = 64;
+	info.domain = ImageDomain::Physical;
+	info.samples = VK_SAMPLE_COUNT_1_BIT;
+	info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+	info.initial_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	info.type = VK_IMAGE_TYPE_3D;
+	info.layers = 1;
+	info.levels = 1;
+	volumetric_fog = device.get_device().create_image(info, nullptr);
+
+	auto cmd = device.get_device().request_command_buffer();
+	VkClearValue v = {};
+	v.color.float32[0] = 0.1f;
+	v.color.float32[1] = 0.2f;
+	v.color.float32[2] = 0.3f;
+	v.color.float32[3] = 0.7f;
+	cmd->clear_image(*volumetric_fog, v);
+	lighting.volumetric_fog.volume = &volumetric_fog->get_view();
+	lighting.volumetric_fog.slice_z_log2_scale = 1.0f;
+	cmd->image_barrier(*volumetric_fog, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+	                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+	cmd->get_device().submit(cmd);
 }
 
 void SceneViewerApplication::on_device_destroyed(const DeviceCreatedEvent &)
 {
 	reflection = nullptr;
 	irradiance = nullptr;
+	volumetric_fog.reset();
 	graph.set_device(nullptr);
 }
 

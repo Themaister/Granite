@@ -17,6 +17,14 @@ layout(set = 0, binding = 2, std140) uniform FogData
 } fog;
 #endif
 
+#ifdef VOLUMETRIC_FOG
+layout(set = 0, binding = 2, std140) uniform FogData
+{
+	float slice_z_log2_scale;
+} fog;
+layout(set = 1, binding = 14) uniform mediump sampler3D uFogVolume;
+#endif
+
 #ifdef SHADOWS
 layout(set = 0, binding = 3, std140) uniform ShadowData
 {

@@ -205,6 +205,8 @@ private:
 
 	TemporalJitter jitter;
 	void capture_environment_probe();
+
+	Vulkan::ImageHandle volumetric_fog;
 };
 
 extern Application *application_create(int argc, char *argv[]);

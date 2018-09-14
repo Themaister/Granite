@@ -53,6 +53,12 @@ struct ResolutionParameters
 	vec2 inv_resolution;
 };
 
+struct VolumetricFogParameters
+{
+	Vulkan::ImageView *volume;
+	float slice_z_log2_scale;
+};
+
 struct FogParameters
 {
 	vec3 color;
@@ -84,7 +90,8 @@ struct RefractionParameters
 
 struct LightingParameters
 {
-	FogParameters fog;
+	VolumetricFogParameters volumetric_fog = {};
+	FogParameters fog = {};
 	DirectionalParameters directional;
 	ShadowParameters shadow;
 	EnvironmentParameters environment;

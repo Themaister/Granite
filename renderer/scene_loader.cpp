@@ -314,7 +314,7 @@ void SceneLoader::parse_gltf(const std::string &path)
 			if (!entity)
 				entity = this->scene->create_entity();
 
-			FogParameters params;
+			FogParameters params = {};
 			params.color = env.fog.color;
 			params.falloff = env.fog.falloff;
 			entity->allocate_component<EnvironmentComponent>()->fog = params;
@@ -621,7 +621,7 @@ void SceneLoader::parse_scene_format(const std::string &path, const std::string 
 			auto &fog = bg["fog"];
 			auto &color = fog["color"];
 
-			FogParameters params;
+			FogParameters params = {};
 			params.color = vec3(color[0].GetFloat(), color[1].GetFloat(), color[2].GetFloat());
 			params.falloff = fog["falloff"].GetFloat();
 			auto *environment = entity->allocate_component<EnvironmentComponent>();

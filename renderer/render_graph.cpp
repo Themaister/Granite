@@ -2181,7 +2181,7 @@ void RenderGraph::setup_physical_image(Vulkan::Device &device, unsigned attachme
 		info.type = att.depth > 1 ? VK_IMAGE_TYPE_3D : VK_IMAGE_TYPE_2D;
 		info.width = att.width;
 		info.height = att.height;
-		info.depth = att.depth == 0 ? 1u : att.depth;
+		info.depth = att.depth;
 		info.domain = Vulkan::ImageDomain::Physical;
 		info.levels = att.levels;
 		info.layers = att.layers;
@@ -2614,9 +2614,9 @@ ResourceDimensions RenderGraph::get_resource_dimensions(const RenderTextureResou
 		break;
 
 	case SizeClass::Absolute:
-		dim.width = unsigned(info.size_x);
-		dim.height = unsigned(info.size_y);
-		dim.depth = unsigned(info.size_z);
+		dim.width = std::max(unsigned(info.size_x), 1u);
+		dim.height = std::max(unsigned(info.size_y), 1u);
+		dim.depth = std::max(unsigned(info.size_z), 1u);
 		break;
 
 	case SizeClass::InputRelative:

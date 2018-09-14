@@ -1,0 +1,33 @@
+#version 450
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(rgba16f, set = 0, binding = 0) writeonly uniform mediump image3D uFog;
+layout(set = 0, binding = 1) uniform mediump sampler3D uLightDensity;
+
+layout(std430, push_constant) uniform Registers
+{
+    uvec3 count;
+} registers;
+
+mediump vec4 accumulate_scattering(mediump vec4 color_and_density_front, mediump vec4 color_and_density_back)
+{
+    vec3 light = color_and_density_front.rgb + exp2(-color_and_density_front.a) * color_and_density_back.rgb;
+    return vec4(light, color_and_density_front.a + color_and_density_back.a);
+}
+
+void main()
+{
+    if (any(greaterThanEqual(gl_GlobalInvocationID.xy, registers.count.xy)))
+        return;
+
+    mediump int slices = int(registers.count.z);
+    mediump ivec2 xy = ivec2(gl_GlobalInvocationID.xy);
+    mediump vec4 front = vec4(0.0);
+    for (mediump int z = 0; z < slices; z++)
+    {
+        mediump vec4 back = texelFetch(uLightDensity, ivec3(xy, z), 0);
+        front = accumulate_scattering(front, back);
+        mediump vec4 color_and_density = vec4(front.rgb, exp2(-front.a));
+        imageStore(uFog, ivec3(xy, z), color_and_density);
+    }
+}

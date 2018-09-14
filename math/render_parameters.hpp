@@ -28,6 +28,8 @@
 namespace Granite
 {
 class LightClusterer;
+class VolumetricFog;
+
 struct RenderParameters
 {
 	mat4 projection;
@@ -90,7 +92,7 @@ struct RefractionParameters
 
 struct LightingParameters
 {
-	VolumetricFogParameters volumetric_fog = {};
+	const VolumetricFog *volumetric_fog = nullptr;
 	FogParameters fog = {};
 	DirectionalParameters directional;
 	ShadowParameters shadow;

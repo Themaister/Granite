@@ -1,0 +1,18 @@
+#version 450
+layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
+
+layout(rgba16f, set = 0, binding = 0) writeonly uniform mediump image3D uLight;
+layout(set = 0, binding = 1) uniform mediump sampler3D uDensity;
+
+layout(std430, push_constant) uniform Registers
+{
+    uvec3 count;
+} registers;
+
+void main()
+{
+    if (any(greaterThanEqual(gl_GlobalInvocationID, registers.count)))
+        return;
+    vec4 fog = texelFetch(uDensity, ivec3(gl_GlobalInvocationID), 0);
+    imageStore(uLight, ivec3(gl_GlobalInvocationID), fog);
+}

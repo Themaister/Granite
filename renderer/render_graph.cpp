@@ -2181,7 +2181,7 @@ void RenderGraph::setup_physical_image(Vulkan::Device &device, unsigned attachme
 		info.type = att.depth > 1 ? VK_IMAGE_TYPE_3D : VK_IMAGE_TYPE_2D;
 		info.width = att.width;
 		info.height = att.height;
-		info.depth = att.depth;
+		info.depth = att.depth == 0 ? 1u : att.depth;
 		info.domain = Vulkan::ImageDomain::Physical;
 		info.levels = att.levels;
 		info.layers = att.layers;

@@ -24,6 +24,7 @@ add_granite_library(renderer
         utils/image_utils.hpp utils/image_utils.cpp
         lights/lights.cpp lights/lights.hpp
         lights/clusterer.cpp lights/clusterer.hpp
+        lights/volumetric_fog.cpp lights/volumetric_fog.hpp
         lights/light_info.hpp
         lights/deferred_lights.hpp lights/deferred_lights.cpp
         scene_loader.cpp scene_loader.hpp)

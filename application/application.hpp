@@ -35,6 +35,7 @@
 #include "render_graph.hpp"
 #include "mesh_util.hpp"
 #include "lights/clusterer.hpp"
+#include "lights/volumetric_fog.hpp"
 #include "lights/deferred_lights.hpp"
 #include "camera_export.hpp"
 #include "post/aa.hpp"
@@ -137,6 +138,7 @@ protected:
 	AABB shadow_scene_aabb;
 
 	std::unique_ptr<LightClusterer> cluster;
+	std::unique_ptr<VolumetricFog> volumetric_fog;
 	DeferredLights deferred_lights;
 
 	void update_shadow_scene_aabb();
@@ -205,8 +207,6 @@ private:
 
 	TemporalJitter jitter;
 	void capture_environment_probe();
-
-	Vulkan::ImageHandle volumetric_fog;
 };
 
 extern Application *application_create(int argc, char *argv[]);

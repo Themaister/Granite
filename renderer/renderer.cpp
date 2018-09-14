@@ -25,8 +25,9 @@
 #include "render_context.hpp"
 #include "sprite.hpp"
 #include "lights/clusterer.hpp"
+#include "lights/volumetric_fog.hpp"
+#include "render_parameters.hpp"
 #include <string.h>
-#include <render_parameters.hpp>
 
 using namespace Vulkan;
 using namespace Util;
@@ -142,7 +143,7 @@ void Renderer::set_mesh_renderer_options_from_lighting(const LightingParameters 
 	if (lighting.shadow_near && lighting.shadow_far)
 		flags |= Renderer::SHADOW_CASCADE_ENABLE_BIT;
 
-	if (lighting.volumetric_fog.volume)
+	if (lighting.volumetric_fog)
 		flags |= Renderer::VOLUMETRIC_FOG_ENABLE_BIT;
 	else if (lighting.fog.falloff > 0.0f)
 		flags |= Renderer::FOG_ENABLE_BIT;
@@ -277,12 +278,12 @@ void Renderer::set_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderC
 
 	// TODO: Should probably just merge all these UBOs.
 
-	if (lighting->volumetric_fog.volume)
+	if (lighting->volumetric_fog)
 	{
 		// Seems a bit silly to have this small UBO, but w/e.
 		auto *fog = static_cast<float *>(cmd.allocate_constant_data(0, 2, sizeof(float)));
-		*fog = lighting->volumetric_fog.slice_z_log2_scale;
-		cmd.set_texture(1, 14, *lighting->volumetric_fog.volume, StockSampler::LinearClamp);
+		*fog = lighting->volumetric_fog->get_slice_z_log2_scale();
+		cmd.set_texture(1, 14, lighting->volumetric_fog->get_view(), StockSampler::LinearClamp);
 	}
 	else
 	{
@@ -655,7 +656,7 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 	}
 
 	// Skip fog for non-reflection passes.
-	if (light.volumetric_fog.volume != nullptr)
+	if (light.volumetric_fog != nullptr)
 	{
 		struct Fog
 		{
@@ -665,10 +666,10 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 
 		fog.inv_z = vec4(context.get_render_parameters().inv_projection[2].zw(),
 		                 context.get_render_parameters().inv_projection[3].zw());
-		fog.slice_z_log2_scale = light.volumetric_fog.slice_z_log2_scale;
+		fog.slice_z_log2_scale = light.volumetric_fog->get_slice_z_log2_scale();
 		cmd.push_constants(&fog, 0, sizeof(fog));
 
-		cmd.set_texture(2, 0, *light.volumetric_fog.volume, StockSampler::LinearClamp);
+		cmd.set_texture(2, 0, light.volumetric_fog->get_view(), StockSampler::LinearClamp);
 		cmd.set_program("builtin://shaders/lights/volumetric_fog.vert", "builtin://shaders/lights/volumetric_fog.frag");
 		cmd.set_blend_factors(VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_SRC_ALPHA);
 		CommandBufferUtil::draw_fullscreen_quad(cmd);

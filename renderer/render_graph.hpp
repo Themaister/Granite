@@ -61,7 +61,7 @@ struct AttachmentInfo
 	SizeClass size_class = SizeClass::SwapchainRelative;
 	float size_x = 1.0f;
 	float size_y = 1.0f;
-	float size_z = 1.0f;
+	float size_z = 0.0f;
 	VkFormat format = VK_FORMAT_UNDEFINED;
 	std::string size_relative_name;
 	unsigned samples = 1;

@@ -303,7 +303,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 			cluster->set_shadow_type(LightClusterer::ShadowType::PCF);
 	}
 
-	if (true)
+	if (false)
 	{
 		volumetric_fog = make_unique<VolumetricFog>();
 		volumetric_fog->set_resolution(320, 180, 256);

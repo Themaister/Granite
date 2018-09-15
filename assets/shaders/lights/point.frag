@@ -1,6 +1,4 @@
 #version 450
-precision highp float;
-precision highp int;
 
 #define POSITIONAL_LIGHT_DEFERRED
 
@@ -25,10 +23,10 @@ layout(location = 0) out mediump vec3 FragColor;
 layout(location = 0) flat in int vIndex;
 #endif
 
-layout(input_attachment_index = 0, set = 1, binding = 0) uniform mediump subpassInput BaseColor;
-layout(input_attachment_index = 1, set = 1, binding = 1) uniform mediump subpassInput Normal;
-layout(input_attachment_index = 2, set = 1, binding = 2) uniform mediump subpassInput PBR;
-layout(input_attachment_index = 3, set = 1, binding = 3) uniform subpassInput Depth;
+layout(input_attachment_index = 0, set = 3, binding = 0) uniform mediump subpassInput BaseColor;
+layout(input_attachment_index = 1, set = 3, binding = 1) uniform mediump subpassInput Normal;
+layout(input_attachment_index = 2, set = 3, binding = 2) uniform mediump subpassInput PBR;
+layout(input_attachment_index = 3, set = 3, binding = 3) uniform subpassInput Depth;
 
 layout(std430, push_constant) uniform Registers
 {

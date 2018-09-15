@@ -115,6 +115,20 @@ void Renderer::set_mesh_renderer_options_internal(RendererOptionFlags flags)
 	point.get_base_defines() = global_defines;
 	point.bake_base_defines();
 
+	// Skybox renderers only depend on VOLUMETRIC_FOG.
+	ShaderSuite *suites[] = {
+		&suite[ecast(RenderableType::Skybox)],
+		&suite[ecast(RenderableType::SkyCylinder)],
+	};
+
+	for (auto *suite : suites)
+	{
+		suite->get_base_defines().clear();
+		if (flags & VOLUMETRIC_FOG_ENABLE_BIT)
+			suite->get_base_defines().emplace_back("VOLUMETRIC_FOG", 1);
+		suite->bake_base_defines();
+	}
+
 	renderer_options = flags;
 }
 
@@ -379,7 +393,7 @@ void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context, Rendere
 	{
 		// General deferred renderers can render light volumes.
 		cmd.restore_state(state);
-		cmd.set_input_attachments(1, 0);
+		cmd.set_input_attachments(3, 0);
 		cmd.set_depth_test(true, false);
 		cmd.set_blend_enable(true);
 		cmd.set_blend_factors(VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_ONE);
@@ -502,7 +516,7 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
                                          Renderer::RendererOptionFlags flags)
 {
 	cmd.set_quad_state();
-	cmd.set_input_attachments(0, 1);
+	cmd.set_input_attachments(3, 0);
 	cmd.set_blend_enable(true);
 	cmd.set_blend_factors(VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_ONE);
 	cmd.set_blend_op(VK_BLEND_OP_ADD);
@@ -634,7 +648,6 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 		if (light.cluster->get_cluster_list_buffer())
 			cluster_defines.emplace_back("CLUSTER_LIST", 1);
 
-		cmd.set_input_attachments(3, 0);
 		cmd.set_program("builtin://shaders/lights/clustering.vert",
 		                "builtin://shaders/lights/clustering.frag",
 		                cluster_defines);
@@ -661,6 +674,7 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 		cmd.set_texture(2, 0, light.volumetric_fog->get_view(), StockSampler::LinearClamp);
 		cmd.set_program("builtin://shaders/lights/volumetric_fog.vert", "builtin://shaders/lights/volumetric_fog.frag");
 		cmd.set_blend_factors(VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_SRC_ALPHA);
+		// Always render volumetric fog.
 		cmd.set_depth_test(false, false);
 		cmd.set_stencil_test(false);
 		CommandBufferUtil::draw_fullscreen_quad(cmd);

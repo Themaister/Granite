@@ -31,10 +31,6 @@ layout(location = 0) out mediump vec4 Color;
 #include "../lights/fog.h"
 #include "../lights/volumetric_fog.h"
 
-#ifdef VOLUMETRIC_FOG
-layout(set = 1, binding = 5) uniform mediump sampler3D uFogVolume;
-#endif
-
 void emit_render_target(mediump vec3 emissive, mediump vec4 base_color, mediump vec3 normal,
         mediump float metallic, mediump float roughness, mediump float ambient, vec3 pos)
 {

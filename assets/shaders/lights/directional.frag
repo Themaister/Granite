@@ -4,10 +4,10 @@ precision highp int;
 
 #include "lighting.h"
 
-layout(input_attachment_index = 0, set = 0, binding = 1) uniform mediump subpassInput BaseColor;
-layout(input_attachment_index = 1, set = 0, binding = 2) uniform mediump subpassInput Normal;
-layout(input_attachment_index = 2, set = 0, binding = 3) uniform mediump subpassInput PBR;
-layout(input_attachment_index = 3, set = 0, binding = 4) uniform subpassInput Depth;
+layout(input_attachment_index = 0, set = 3, binding = 0) uniform mediump subpassInput BaseColor;
+layout(input_attachment_index = 1, set = 3, binding = 1) uniform mediump subpassInput Normal;
+layout(input_attachment_index = 2, set = 3, binding = 2) uniform mediump subpassInput PBR;
+layout(input_attachment_index = 3, set = 3, binding = 3) uniform subpassInput Depth;
 
 layout(location = 0) out mediump vec3 FragColor;
 layout(location = 0) in vec4 vClip;

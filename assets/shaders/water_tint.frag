@@ -7,7 +7,7 @@ layout(std430, push_constant) uniform Registers
     vec3 falloff;
 } registers;
 
-layout(input_attachment_index = 3, set = 0, binding = 4) uniform highp subpassInput Depth;
+layout(input_attachment_index = 3, set = 3, binding = 3) uniform highp subpassInput Depth;
 layout(location = 0) in highp vec4 vClip;
 layout(location = 0) out mediump vec3 FragColor;
 

@@ -334,6 +334,14 @@ struct ImageCreateInfo
 		return info;
 	}
 
+	static ImageCreateInfo immutable_3d_image(unsigned width, unsigned height, unsigned depth, VkFormat format, bool mipmapped = false)
+	{
+		ImageCreateInfo info = immutable_2d_image(width, height, format, mipmapped);
+		info.depth = depth;
+		info.type = VK_IMAGE_TYPE_3D;
+		return info;
+	}
+
 	static ImageCreateInfo render_target(unsigned width, unsigned height, VkFormat format)
 	{
 		ImageCreateInfo info;

@@ -306,7 +306,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 	if (true)
 	{
 		volumetric_fog = make_unique<VolumetricFog>();
-		volumetric_fog->set_resolution(320, 180, 256);
+		volumetric_fog->set_resolution(320, 180, 128);
 		volumetric_fog->set_z_range(100.0f);
 		lighting.volumetric_fog = volumetric_fog.get();
 		auto entity = scene_loader.get_scene().create_entity();

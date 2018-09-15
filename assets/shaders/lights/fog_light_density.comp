@@ -10,6 +10,7 @@ layout(push_constant, std430) uniform Registers
     mat4 inv_view_projection;
     vec4 z_transform;
     uvec3 count;
+    float dither_offset;
     vec3 inv_resolution;
     float in_scatter_strength;
     vec2 xy_scale;
@@ -24,6 +25,7 @@ float to_clip_z(float world_z)
 }
 
 layout(rgba16f, set = 2, binding = 0) writeonly uniform image3D uLightDensity;
+layout(set = 2, binding = 2) uniform mediump sampler3D uDitherLUT;
 layout(std140, set = 2, binding = 1) uniform BlockExtents
 {
     vec4 slice_extents[1024 / 4];
@@ -77,6 +79,13 @@ void main()
     if (any(greaterThanEqual(gl_GlobalInvocationID, registers.count)))
         return;
     vec3 uvw = (vec3(gl_GlobalInvocationID) + 0.5) * registers.inv_resolution;
+    vec3 dither = textureLod(uDitherLUT, 4.0 * (vec3(gl_GlobalInvocationID) + registers.dither_offset + 0.5) * registers.inv_resolution, 0.0).xyz;
+    dither.x -= 0.5;
+    dither.y -= 0.5;
+    dither.z = -dither.z;
+    uvw += dither * registers.inv_resolution;
+    uvw = clamp(uvw, vec3(0.0, 0.0, 0.001), vec3(1.0));
+
     vec3 pos = get_world_position(uvw);
     float albedo = get_fog_albedo(uvw);
     vec3 in_scatter_light = registers.in_scatter_strength * compute_inscatter_light(pos);

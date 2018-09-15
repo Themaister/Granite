@@ -23,6 +23,7 @@
 #include "volumetric_fog.hpp"
 #include "render_graph.hpp"
 #include "render_context.hpp"
+#include <random>
 
 using namespace Vulkan;
 using namespace std;
@@ -32,6 +33,16 @@ namespace Granite
 VolumetricFog::VolumetricFog()
 {
 	set_z_range(z_range);
+	EVENT_MANAGER_REGISTER_LATCH(VolumetricFog, on_device_created, on_device_destroyed, DeviceCreatedEvent);
+}
+
+void VolumetricFog::on_device_created(const DeviceCreatedEvent &)
+{
+}
+
+void VolumetricFog::on_device_destroyed(const DeviceCreatedEvent &)
+{
+	dither_lut.reset();
 }
 
 void VolumetricFog::set_z_range(float range)
@@ -69,6 +80,7 @@ void VolumetricFog::build_light_density(CommandBuffer &cmd, ImageView &light_den
 		alignas(16) mat4 inv_view_projection;
 		alignas(16) vec4 z_transform;
 		alignas(16) uvec3 count;
+		alignas(4) float dither_offset;
 		alignas(16) vec3 inv_resolution;
 		alignas(4) float inscatter_strength;
 		alignas(8) vec2 xy_scale;
@@ -85,6 +97,8 @@ void VolumetricFog::build_light_density(CommandBuffer &cmd, ImageView &light_den
 	push.slice_z_log2_scale = get_slice_z_log2_scale();
 	push.density_mod = 0.1f;
 	push.inscatter_strength = 0.25f;
+	push.dither_offset = float(dither_offset & 1023);
+	dither_offset++;
 
 	cmd.push_constants(&push, 0, sizeof(push));
 
@@ -100,6 +114,7 @@ void VolumetricFog::build_light_density(CommandBuffer &cmd, ImageView &light_den
 	memcpy(cmd.allocate_typed_constant_data<float>(2, 1, depth),
 	       slice_extents,
 	       sizeof(float) * depth);
+	cmd.set_texture(2, 2, dither_lut->get_view(), StockSampler::NearestWrap);
 
 	cmd.dispatch((width + 3) / 4, (height + 3) / 4, (depth + 3) / 4);
 }
@@ -123,6 +138,7 @@ void VolumetricFog::build_fog(CommandBuffer &cmd, ImageView &fog, ImageView &lig
 void VolumetricFog::add_render_passes(RenderGraph &graph)
 {
 	compute_slice_extents();
+	dither_lut.reset();
 
 	AttachmentInfo volume;
 	volume.size_x = float(width);
@@ -167,11 +183,14 @@ void VolumetricFog::set_base_render_context(const RenderContext *context)
 	this->context = context;
 }
 
-void VolumetricFog::setup_render_pass_dependencies(RenderGraph &, RenderPass &target)
+void VolumetricFog::setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target)
 {
 	target.add_texture_input("volumetric-fog-output");
 	for (auto &dep : texture_dependencies)
 		pass->add_texture_input(dep);
+
+	if (!dither_lut)
+		build_dither_lut(graph.get_device());
 }
 
 void VolumetricFog::setup_render_pass_resources(RenderGraph &graph)
@@ -181,5 +200,26 @@ void VolumetricFog::setup_render_pass_resources(RenderGraph &graph)
 
 void VolumetricFog::set_scene(Scene *)
 {
+}
+
+void VolumetricFog::build_dither_lut(Device &device)
+{
+	auto info = ImageCreateInfo::immutable_3d_image(width / 4, height / 4, depth / 4, VK_FORMAT_A2B10G10R10_UNORM_PACK32);
+
+	mt19937 rnd;
+	uniform_int_distribution<uint32_t> dist(0, 1023);
+
+	vector<uint32_t> buffer((width * height * depth) / (4 * 4 * 4));
+	for (auto &elem : buffer)
+	{
+		uint32_t b = dist(rnd);
+		uint32_t g = dist(rnd);
+		uint32_t r = dist(rnd);
+		elem = (b << 20) | (g << 10) | (r << 0);
+	}
+
+	ImageInitialData init = {};
+	init.data = buffer.data();
+	dither_lut = device.create_image(info, &init);
 }
 }

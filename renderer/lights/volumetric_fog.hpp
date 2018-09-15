@@ -34,7 +34,7 @@ namespace Granite
 class RenderTextureResource;
 class RenderPass;
 
-class VolumetricFog : public RenderPassCreator
+class VolumetricFog : public RenderPassCreator, public EventHandler
 {
 public:
 	VolumetricFog();
@@ -47,6 +47,9 @@ public:
 
 private:
 	std::vector<std::string> texture_dependencies;
+	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
+	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
+	Vulkan::ImageHandle dither_lut;
 
 	unsigned width = 160;
 	unsigned height = 90;
@@ -71,5 +74,7 @@ private:
 
 	float slice_extents[1024];
 	void compute_slice_extents();
+	void build_dither_lut(Vulkan::Device &device);
+	unsigned dither_offset = 0;
 };
 }

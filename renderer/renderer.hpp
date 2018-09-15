@@ -71,6 +71,13 @@ public:
 
 	void set_mesh_renderer_options(RendererOptionFlags flags);
 	void set_mesh_renderer_options_from_lighting(const LightingParameters &params);
+
+	static RendererOptionFlags get_mesh_renderer_options_from_lighting(const LightingParameters &params);
+	static std::vector<std::pair<std::string, int>> build_defines_from_renderer_options(
+			RendererType type, RendererOptionFlags flags);
+	static void bind_global_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context);
+	static void bind_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context);
+
 	void set_stencil_reference(uint8_t compare_mask, uint8_t write_mask, uint8_t ref);
 	RendererOptionFlags get_mesh_renderer_options() const;
 
@@ -112,7 +119,6 @@ private:
 	uint8_t stencil_write_mask = 0;
 	uint8_t stencil_reference = 0;
 
-	void set_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context);
 	void set_mesh_renderer_options_internal(RendererOptionFlags flags);
 };
 

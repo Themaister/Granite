@@ -49,6 +49,54 @@ Renderer::Renderer(RendererType type)
 
 void Renderer::set_mesh_renderer_options_internal(RendererOptionFlags flags)
 {
+	auto global_defines = build_defines_from_renderer_options(type, flags);
+
+	auto &meshes = suite[ecast(RenderableType::Mesh)];
+	meshes.get_base_defines() = global_defines;
+	meshes.bake_base_defines();
+	auto &ground = suite[ecast(RenderableType::Ground)];
+	ground.get_base_defines() = global_defines;
+	ground.bake_base_defines();
+	auto &plane = suite[ecast(RenderableType::TexturePlane)];
+	plane.get_base_defines() = global_defines;
+	plane.bake_base_defines();
+	auto &spot = suite[ecast(RenderableType::SpotLight)];
+	spot.get_base_defines() = global_defines;
+	spot.bake_base_defines();
+	auto &point = suite[ecast(RenderableType::PointLight)];
+	point.get_base_defines() = global_defines;
+	point.bake_base_defines();
+
+	// Skybox renderers only depend on VOLUMETRIC_FOG.
+	ShaderSuite *suites[] = {
+		&suite[ecast(RenderableType::Skybox)],
+		&suite[ecast(RenderableType::SkyCylinder)],
+	};
+
+	for (auto *suite : suites)
+	{
+		suite->get_base_defines().clear();
+		if (flags & VOLUMETRIC_FOG_ENABLE_BIT)
+			suite->get_base_defines().emplace_back("VOLUMETRIC_FOG", 1);
+		suite->bake_base_defines();
+	}
+
+	renderer_options = flags;
+}
+
+Renderer::RendererOptionFlags Renderer::get_mesh_renderer_options() const
+{
+	return renderer_options;
+}
+
+void Renderer::set_mesh_renderer_options(RendererOptionFlags flags)
+{
+	if (renderer_options != flags)
+		set_mesh_renderer_options_internal(flags);
+}
+
+vector<pair<string, int>> Renderer::build_defines_from_renderer_options(RendererType type, RendererOptionFlags flags)
+{
 	vector<pair<string, int>> global_defines;
 	if (flags & SHADOW_ENABLE_BIT)
 		global_defines.emplace_back("SHADOWS", 1);
@@ -99,82 +147,47 @@ void Renderer::set_mesh_renderer_options_internal(RendererOptionFlags flags)
 		break;
 	}
 
-	auto &meshes = suite[ecast(RenderableType::Mesh)];
-	meshes.get_base_defines() = global_defines;
-	meshes.bake_base_defines();
-	auto &ground = suite[ecast(RenderableType::Ground)];
-	ground.get_base_defines() = global_defines;
-	ground.bake_base_defines();
-	auto &plane = suite[ecast(RenderableType::TexturePlane)];
-	plane.get_base_defines() = global_defines;
-	plane.bake_base_defines();
-	auto &spot = suite[ecast(RenderableType::SpotLight)];
-	spot.get_base_defines() = global_defines;
-	spot.bake_base_defines();
-	auto &point = suite[ecast(RenderableType::PointLight)];
-	point.get_base_defines() = global_defines;
-	point.bake_base_defines();
+	return global_defines;
+}
 
-	// Skybox renderers only depend on VOLUMETRIC_FOG.
-	ShaderSuite *suites[] = {
-		&suite[ecast(RenderableType::Skybox)],
-		&suite[ecast(RenderableType::SkyCylinder)],
-	};
-
-	for (auto *suite : suites)
+Renderer::RendererOptionFlags Renderer::get_mesh_renderer_options_from_lighting(const LightingParameters &lighting)
+{
+	uint32_t flags = 0;
+	if (lighting.environment_irradiance && lighting.environment_radiance)
+		flags |= ENVIRONMENT_ENABLE_BIT;
+	if (lighting.shadow_far)
 	{
-		suite->get_base_defines().clear();
-		if (flags & VOLUMETRIC_FOG_ENABLE_BIT)
-			suite->get_base_defines().emplace_back("VOLUMETRIC_FOG", 1);
-		suite->bake_base_defines();
+		flags |= SHADOW_ENABLE_BIT;
+		if (!Vulkan::format_is_depth_stencil(lighting.shadow_far->get_format()))
+			flags |= SHADOW_VSM_BIT;
+	}
+	if (lighting.shadow_near && lighting.shadow_far)
+		flags |= SHADOW_CASCADE_ENABLE_BIT;
+
+	if (lighting.volumetric_fog)
+		flags |= VOLUMETRIC_FOG_ENABLE_BIT;
+	else if (lighting.fog.falloff > 0.0f)
+		flags |= FOG_ENABLE_BIT;
+
+	if (lighting.cluster && lighting.cluster->get_cluster_image())
+	{
+		flags |= POSITIONAL_LIGHT_ENABLE_BIT;
+		if (lighting.cluster->get_spot_light_shadows() && lighting.cluster->get_point_light_shadows())
+		{
+			flags |= POSITIONAL_LIGHT_SHADOW_ENABLE_BIT;
+			if (!format_is_depth_stencil(lighting.cluster->get_spot_light_shadows()->get_format()))
+				flags |= POSITIONAL_LIGHT_SHADOW_VSM_BIT;
+		}
+		if (lighting.cluster->get_cluster_list_buffer())
+			flags |= POSITIONAL_LIGHT_CLUSTER_LIST_BIT;
 	}
 
-	renderer_options = flags;
-}
-
-Renderer::RendererOptionFlags Renderer::get_mesh_renderer_options() const
-{
-	return renderer_options;
-}
-
-void Renderer::set_mesh_renderer_options(RendererOptionFlags flags)
-{
-	if (renderer_options != flags)
-		set_mesh_renderer_options_internal(flags);
+	return flags;
 }
 
 void Renderer::set_mesh_renderer_options_from_lighting(const LightingParameters &lighting)
 {
-	uint32_t flags = 0;
-	if (lighting.environment_irradiance && lighting.environment_radiance)
-		flags |= Renderer::ENVIRONMENT_ENABLE_BIT;
-	if (lighting.shadow_far)
-	{
-		flags |= Renderer::SHADOW_ENABLE_BIT;
-		if (!Vulkan::format_is_depth_stencil(lighting.shadow_far->get_format()))
-			flags |= Renderer::SHADOW_VSM_BIT;
-	}
-	if (lighting.shadow_near && lighting.shadow_far)
-		flags |= Renderer::SHADOW_CASCADE_ENABLE_BIT;
-
-	if (lighting.volumetric_fog)
-		flags |= Renderer::VOLUMETRIC_FOG_ENABLE_BIT;
-	else if (lighting.fog.falloff > 0.0f)
-		flags |= Renderer::FOG_ENABLE_BIT;
-
-	if (lighting.cluster && lighting.cluster->get_cluster_image())
-	{
-		flags |= Renderer::POSITIONAL_LIGHT_ENABLE_BIT;
-		if (lighting.cluster->get_spot_light_shadows() && lighting.cluster->get_point_light_shadows())
-		{
-			flags |= Renderer::POSITIONAL_LIGHT_SHADOW_ENABLE_BIT;
-			if (!format_is_depth_stencil(lighting.cluster->get_spot_light_shadows()->get_format()))
-				flags |= Renderer::POSITIONAL_LIGHT_SHADOW_VSM_BIT;
-		}
-		if (lighting.cluster->get_cluster_list_buffer())
-			flags |= Renderer::POSITIONAL_LIGHT_CLUSTER_LIST_BIT;
-	}
-
+	auto flags = get_mesh_renderer_options_from_lighting(lighting);
 	set_mesh_renderer_options(flags);
 }
 
@@ -279,7 +292,7 @@ static void set_cluster_parameters(Vulkan::CommandBuffer &cmd, const LightCluste
 		cmd.set_storage_buffer(1, 9, *cluster.get_cluster_list_buffer());
 }
 
-void Renderer::set_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context)
+void Renderer::bind_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context)
 {
 	auto *lighting = context.get_lighting_parameters();
 	assert(lighting);
@@ -340,12 +353,17 @@ void Renderer::set_stencil_reference(uint8_t compare_mask, uint8_t write_mask, u
 	stencil_reference = ref;
 }
 
+void Renderer::bind_global_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context)
+{
+	auto *global = cmd.allocate_typed_constant_data<RenderParameters>(0, 0, 1);
+	*global = context.get_render_parameters();
+}
+
 void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context, RendererFlushFlags options)
 {
-	auto *global = static_cast<RenderParameters *>(cmd.allocate_constant_data(0, 0, sizeof(RenderParameters)));
-	*global = context.get_render_parameters();
+	bind_global_parameters(cmd, context);
 	if (type == RendererType::GeneralForward)
-		set_lighting_parameters(cmd, context);
+		bind_lighting_parameters(cmd, context);
 
 	if ((options & SKIP_SORTING_BIT) == 0)
 		queue.sort();

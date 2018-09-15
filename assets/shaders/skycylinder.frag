@@ -3,6 +3,7 @@
 #ifdef VOLUMETRIC_FOG
 #include "lights/lighting_data.h"
 #include "inc/render_parameters.h"
+#include "lights/volumetric_fog.h"
 #endif
 
 layout(location = 0) out mediump vec3 Emissive;

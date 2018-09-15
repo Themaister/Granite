@@ -43,16 +43,17 @@ layout(set = POINT_LIGHT_SHADOW_ATLAS_SET, binding = POINT_LIGHT_SHADOW_ATLAS_BI
 	#define POINT_SHADOW_TRANSFORM(index) cluster.point_shadow[index]
 #endif
 
-vec3 compute_point_light(int index,
-                         mediump vec3 material_base_color,
-                         mediump vec3 material_normal,
-                         mediump float material_metallic,
-                         mediump float material_roughness,
-                         vec3 world_pos, vec3 camera_pos)
+mediump float point_scatter_phase_function(mediump float VoL)
+{
+	// Very crude :)
+	return 0.5 - 0.5 * VoL;
+}
+
+mediump vec3 compute_point_color(int index, vec3 world_pos, out mediump vec3 light_dir)
 {
 	vec3 light_pos = POINT_DATA(index).position;
 	vec3 light_dir_full = world_pos - light_pos;
-	mediump vec3 light_dir = normalize(-light_dir_full);
+	light_dir = normalize(-light_dir_full);
 
 #ifdef POSITIONAL_LIGHTS_SHADOW
 	vec3 dir_abs = abs(light_dir_full);
@@ -74,6 +75,27 @@ vec3 compute_point_light(int index,
 	mediump float light_dist = length(light_dir_full);
 	mediump float static_falloff = shadow_falloff * (1.0 - smoothstep(0.9, 1.0, light_dist * POINT_DATA(index).inv_radius));
 	mediump vec3 point_color = POINT_DATA(index).color * (static_falloff / (light_dist * light_dist));
+
+	return point_color;
+}
+
+mediump vec3 compute_point_scatter_light(int index, vec3 world_pos, vec3 camera_pos)
+{
+	mediump vec3 light_dir;
+	mediump vec3 point_color = compute_point_color(index, world_pos, light_dir);
+	float VoL = dot(normalize(camera_pos - world_pos), normalize(POINT_DATA(index).position - world_pos));
+	return point_color * point_scatter_phase_function(VoL);
+}
+
+mediump vec3 compute_point_light(int index,
+                         mediump vec3 material_base_color,
+                         mediump vec3 material_normal,
+                         mediump float material_metallic,
+                         mediump float material_roughness,
+                         vec3 world_pos, vec3 camera_pos)
+{
+	mediump vec3 light_dir;
+	mediump vec3 point_color = compute_point_color(index, world_pos, light_dir);
 
 #ifdef POINT_LIGHT_EARLY_OUT
 	if (all(equal(point_color, vec3(0.0))))

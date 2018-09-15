@@ -47,6 +47,26 @@ Renderer::Renderer(RendererType type)
 		set_mesh_renderer_options(0);
 }
 
+static const char *renderer_to_define(RendererType type)
+{
+	switch (type)
+	{
+	case RendererType::GeneralForward:
+		return "RENDERER_FORWARD";
+
+	case RendererType::GeneralDeferred:
+		return "RENDERER_DEFERRED";
+
+	case RendererType::DepthOnly:
+		return "RENDERER_DEPTH";
+
+	default:
+		break;
+	}
+
+	return "";
+}
+
 void Renderer::set_mesh_renderer_options_internal(RendererOptionFlags flags)
 {
 	auto global_defines = build_defines_from_renderer_options(type, flags);
@@ -78,6 +98,7 @@ void Renderer::set_mesh_renderer_options_internal(RendererOptionFlags flags)
 		suite->get_base_defines().clear();
 		if (flags & VOLUMETRIC_FOG_ENABLE_BIT)
 			suite->get_base_defines().emplace_back("VOLUMETRIC_FOG", 1);
+		suite->get_base_defines().emplace_back(renderer_to_define(type), 1);
 		suite->bake_base_defines();
 	}
 
@@ -129,23 +150,7 @@ vector<pair<string, int>> Renderer::build_defines_from_renderer_options(Renderer
 	else if (flags & SHADOW_PCF_KERNEL_WIDTH_3_BIT)
 		global_defines.emplace_back("SHADOW_MAP_PCF_KERNEL_WIDTH", 3);
 
-	switch (type)
-	{
-	case RendererType::GeneralForward:
-		global_defines.emplace_back("RENDERER_FORWARD", 1);
-		break;
-
-	case RendererType::GeneralDeferred:
-		global_defines.emplace_back("RENDERER_DEFERRED", 1);
-		break;
-
-	case RendererType::DepthOnly:
-		global_defines.emplace_back("RENDERER_DEPTH", 1);
-		break;
-
-	default:
-		break;
-	}
+	global_defines.emplace_back(renderer_to_define(type), 1);
 
 	return global_defines;
 }

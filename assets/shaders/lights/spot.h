@@ -44,12 +44,13 @@ layout(set = SPOT_LIGHT_SHADOW_ATLAS_SET, binding = SPOT_LIGHT_SHADOW_ATLAS_BIND
 	#define SPOT_SHADOW_TRANSFORM(index) cluster.spot_shadow[index]
 #endif
 
-mediump vec3 compute_spot_light(int index,
-                                mediump vec3 material_base_color,
-                                mediump vec3 material_normal,
-                                mediump float material_metallic,
-                                mediump float material_roughness,
-                                vec3 world_pos, vec3 camera_pos)
+mediump float spot_scatter_phase_function(mediump float VoL)
+{
+	// Very crude :)
+	return 0.5 - 0.5 * VoL;
+}
+
+mediump vec3 compute_spot_color(int index, vec3 world_pos, out mediump vec3 light_dir)
 {
 	vec3 light_pos = SPOT_DATA(index).position;
 	vec3 light_primary_direction = SPOT_DATA(index).direction;
@@ -68,13 +69,35 @@ mediump vec3 compute_spot_light(int index,
 #else
 	const float shadow_falloff = 1.0;
 #endif
+
 	mediump vec3 light_dir_full = light_pos - world_pos;
-	mediump vec3 light_dir = normalize(light_dir_full);
+	light_dir = normalize(light_dir_full);
 	mediump float light_dist = length(light_dir_full);
 	mediump float cone_angle = dot(normalize(world_pos - light_pos), light_primary_direction);
 	mediump float cone_falloff = smoothstep(SPOT_DATA(index).spot_outer, SPOT_DATA(index).spot_inner, cone_angle);
 	mediump float static_falloff = shadow_falloff * (1.0 - smoothstep(0.9, 1.0, light_dist * SPOT_DATA(index).inv_radius));
 	mediump vec3 spot_color = SPOT_DATA(index).color * ((static_falloff * cone_falloff) / (light_dist * light_dist));
+
+	return spot_color;
+}
+
+mediump vec3 compute_spot_scatter_light(int index, vec3 world_pos, vec3 camera_pos)
+{
+	mediump vec3 light_dir;
+	mediump vec3 spot_color = compute_spot_color(index, world_pos, light_dir);
+	float VoL = dot(normalize(camera_pos - world_pos), normalize(SPOT_DATA(index).position - world_pos));
+	return spot_color * spot_scatter_phase_function(VoL);
+}
+
+mediump vec3 compute_spot_light(int index,
+                                mediump vec3 material_base_color,
+                                mediump vec3 material_normal,
+                                mediump float material_metallic,
+                                mediump float material_roughness,
+                                vec3 world_pos, vec3 camera_pos)
+{
+	mediump vec3 light_dir;
+	mediump vec3 spot_color = compute_spot_color(index, world_pos, light_dir);
 
 #ifdef SPOT_LIGHT_EARLY_OUT
 	if (all(equal(spot_color, vec3(0.0))))

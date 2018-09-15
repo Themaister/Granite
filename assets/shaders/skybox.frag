@@ -3,6 +3,7 @@
 #ifdef VOLUMETRIC_FOG
 #include "lights/lighting_data.h"
 #include "inc/render_parameters.h"
+#include "lights/volumetric_fog.h"
 #endif
 
 #if defined(HAVE_EMISSIVE) && HAVE_EMISSIVE

@@ -2570,7 +2570,10 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 	VK_ASSERT(image_format_is_supported(create_info.format, image_usage_to_features(info.usage)));
 
 	if (vkCreateImage(device, &info, nullptr, &image) != VK_SUCCESS)
+	{
+		LOGE("Failed to create image in vkCreateImage.\n");
 		return ImageHandle(nullptr);
+	}
 
 	vkGetImageMemoryRequirements(device, image, &reqs);
 	uint32_t memory_type = find_memory_type(create_info.domain, reqs.memoryTypeBits);
@@ -2578,6 +2581,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 	                                           &allocation, image))
 	{
 		vkDestroyImage(device, image, nullptr);
+		LOGE("Failed to allocate image memory (type %u, size: %u).\n", unsigned(memory_type), unsigned(reqs.size));
 		return ImageHandle(nullptr);
 	}
 
@@ -2585,6 +2589,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 	{
 		allocation.free_immediate(managers.memory);
 		vkDestroyImage(device, image, nullptr);
+		LOGE("Failed to bind image memory.\n");
 		return ImageHandle(nullptr);
 	}
 

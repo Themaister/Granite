@@ -2,7 +2,7 @@
 layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
 
 #include "volumetric_fog.h"
-#include "lighting_resources.h"
+#include "lighting_scatter.h"
 #include "../inc/render_parameters.h"
 
 layout(push_constant, std430) uniform Registers
@@ -45,10 +45,30 @@ float get_fog_albedo(vec3 uvw)
     return albedo;
 }
 
-vec3 compute_inscatter_light(vec3 pos, vec3 camera_position)
+vec3 compute_inscatter_light(vec3 pos)
 {
-    vec3 to_camera = normalize(camera_position - pos);
-    return vec3(0.5);
+#ifdef SHADOWS
+#ifdef SHADOW_CASCADES
+    vec4 clip_shadow_near = shadow.near * vec4(pos, 1.0);
+#else
+    vec4 clip_shadow_near = vec4(0.0);
+#endif
+    vec4 clip_shadow_far = shadow.far * vec4(pos, 1.0);
+#endif
+
+    return compute_scatter_lighting(
+        pos,
+        global.camera_position,
+        global.camera_front,
+        directional.direction,
+        directional.color
+#ifdef SHADOWS
+		, clip_shadow_near, clip_shadow_far, shadow.inv_cutoff_distance
+#endif
+#ifdef ENVIRONMENT
+        , environment.intensity
+#endif
+    );
 }
 
 void main()
@@ -58,7 +78,7 @@ void main()
     vec3 uvw = (vec3(gl_GlobalInvocationID) + 0.5) * registers.inv_resolution;
     vec3 pos = get_world_position(uvw);
     float albedo = get_fog_albedo(uvw);
-    vec3 in_scatter_light = compute_inscatter_light(pos, global.camera_position);
+    vec3 in_scatter_light = compute_inscatter_light(pos);
 
     imageStore(uLightDensity, ivec3(gl_GlobalInvocationID), vec4(in_scatter_light * albedo, albedo));
 }

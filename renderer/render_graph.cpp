@@ -2201,6 +2201,8 @@ void RenderGraph::setup_physical_image(Vulkan::Device &device, unsigned attachme
 		physical_image_attachments[attachment] = device.create_image(info, nullptr);
 		// Just keep storage images in GENERAL layout.
 		// There is no reason to try enabling compression.
+		if (!physical_image_attachments[attachment])
+			LOGE("Failed to create render graph image!\n");
 		if (att.is_storage_image())
 			physical_image_attachments[attachment]->set_layout(Vulkan::Layout::General);
 		device.set_name(*physical_image_attachments[attachment], att.name.c_str());

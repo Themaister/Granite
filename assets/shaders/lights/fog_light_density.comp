@@ -1,0 +1,65 @@
+#version 450
+layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
+
+#include "volumetric_fog.h"
+#include "lighting_resources.h"
+#include "../inc/render_parameters.h"
+
+layout(push_constant, std430) uniform Registers
+{
+    mat4 inv_view_projection;
+    vec4 z_transform;
+    uvec3 count;
+    vec3 inv_resolution;
+    vec2 xy_scale;
+    float slice_z_log2_scale;
+    float density_mod;
+} registers;
+
+float to_clip_z(float world_z)
+{
+    vec2 zw = registers.z_transform.zw - registers.z_transform.xy * world_z;
+    return zw.x / zw.y;
+}
+
+layout(rgba16f, set = 2, binding = 0) writeonly uniform image3D uLightDensity;
+layout(std140, set = 2, binding = 1) uniform BlockExtents
+{
+    vec4 slice_extents[1024 / 4];
+};
+
+vec3 get_world_position(vec3 uvw)
+{
+    float world_z = volumetric_fog_texture_z_to_world(uvw.z, registers.slice_z_log2_scale);
+    float clip_z = to_clip_z(world_z);
+    vec4 clip = registers.inv_view_projection * vec4(uvw.xy * 2.0 - 1.0, clip_z, 1.0);
+    vec3 pos = clip.xyz / clip.w;
+    return pos;
+}
+
+float get_fog_albedo(vec3 uvw)
+{
+    // TODO: Modulate density based on pos.
+    vec3 normalized_dir = vec3(1.0, (uvw.xy * 2.0 - 1.0) * registers.xy_scale);
+    float length_mod = length(normalized_dir);
+    float albedo = registers.density_mod * slice_extents[gl_WorkGroupID.z][gl_LocalInvocationID.z] * length_mod;
+    return albedo;
+}
+
+vec3 compute_inscatter_light(vec3 pos, vec3 camera_position)
+{
+    vec3 to_camera = normalize(camera_position - pos);
+    return vec3(0.5);
+}
+
+void main()
+{
+    if (any(greaterThanEqual(gl_GlobalInvocationID, registers.count)))
+        return;
+    vec3 uvw = (vec3(gl_GlobalInvocationID) + 0.5) * registers.inv_resolution;
+    vec3 pos = get_world_position(uvw);
+    float albedo = get_fog_albedo(uvw);
+    vec3 in_scatter_light = compute_inscatter_light(pos, global.camera_position);
+
+    imageStore(uLightDensity, ivec3(gl_GlobalInvocationID), vec4(in_scatter_light * albedo, albedo));
+}

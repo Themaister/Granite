@@ -66,8 +66,7 @@ private:
 	RenderTextureResource *fog_volume = nullptr;
 	RenderPass *pass = nullptr;
 
-	void build_density(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &density);
-	void build_light(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &light, Vulkan::ImageView &density);
+	void build_light_density(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &light_density);
 	void build_fog(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &fog, Vulkan::ImageView &light);
 
 	float slice_extents[1024];

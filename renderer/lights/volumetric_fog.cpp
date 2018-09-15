@@ -62,10 +62,8 @@ void VolumetricFog::compute_slice_extents()
 	}
 }
 
-void VolumetricFog::build_density(CommandBuffer &cmd, ImageView &density)
+void VolumetricFog::build_light_density(CommandBuffer &cmd, ImageView &light_density)
 {
-	cmd.set_program("builtin://shaders/lights/fog_density.comp");
-
 	struct Push
 	{
 		alignas(16) mat4 inv_view_projection;
@@ -87,28 +85,20 @@ void VolumetricFog::build_density(CommandBuffer &cmd, ImageView &density)
 	push.density_mod = 0.01f;
 
 	cmd.push_constants(&push, 0, sizeof(push));
-	cmd.set_storage_texture(0, 0, density);
 
-	memcpy(cmd.allocate_typed_constant_data<float>(0, 1, depth),
+	auto flags = Renderer::get_mesh_renderer_options_from_lighting(*context->get_lighting_parameters());
+	flags &= ~Renderer::VOLUMETRIC_FOG_ENABLE_BIT;
+	auto defines = Renderer::build_defines_from_renderer_options(RendererType::GeneralForward, flags);
+	cmd.set_program("builtin://shaders/lights/fog_light_density.comp", defines);
+	Renderer::bind_global_parameters(cmd, *context);
+	Renderer::bind_lighting_parameters(cmd, *context);
+
+	cmd.push_constants(&push, 0, sizeof(push));
+	cmd.set_storage_texture(2, 0, light_density);
+	memcpy(cmd.allocate_typed_constant_data<float>(2, 1, depth),
 	       slice_extents,
 	       sizeof(float) * depth);
 
-	cmd.dispatch((width + 3) / 4, (height + 3) / 4, (depth + 3) / 4);
-}
-
-void VolumetricFog::build_light(CommandBuffer &cmd, ImageView &light, ImageView &density)
-{
-	cmd.set_program("builtin://shaders/lights/fog_light.comp");
-	struct Push
-	{
-		alignas(16) uvec3 count;
-	} push;
-
-	push.count = uvec3(width, height, depth);
-
-	cmd.push_constants(&push, 0, sizeof(push));
-	cmd.set_storage_texture(0, 0, light);
-	cmd.set_texture(0, 1, density, StockSampler::NearestClamp);
 	cmd.dispatch((width + 3) / 4, (height + 3) / 4, (depth + 3) / 4);
 }
 
@@ -142,19 +132,14 @@ void VolumetricFog::add_render_passes(RenderGraph &graph)
 
 	pass = &graph.add_pass("volumetric-fog", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
 
-	auto &density_resource = pass->add_storage_texture_output("volumetric-fog-density", volume);
 	auto &in_scatter_volume = pass->add_storage_texture_output("volumetric-fog-inscatter", volume);
 	fog_volume = &pass->add_storage_texture_output("volumetric-fog-output", volume);
 
 	pass->set_build_render_pass([&](CommandBuffer &cmd) {
-		auto &d = graph.get_physical_texture_resource(density_resource);
 		auto &l = graph.get_physical_texture_resource(in_scatter_volume);
 		auto &f = graph.get_physical_texture_resource(*fog_volume);
 
-		build_density(cmd, d);
-		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
-		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-		build_light(cmd, l, d);
+		build_light_density(cmd, l);
 		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
 		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 		build_fog(cmd, f, l);

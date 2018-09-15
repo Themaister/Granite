@@ -40,8 +40,7 @@ vec3 get_world_position(vec3 uvw)
 float get_fog_albedo(vec3 uvw)
 {
     // TODO: Modulate density based on pos.
-    vec3 normalized_dir = vec3(1.0, (uvw.xy * 2.0 - 1.0) * registers.xy_scale);
-    float length_mod = length(normalized_dir);
+    float length_mod = length(vec3(1.0, (uvw.xy * 2.0 - 1.0) * registers.xy_scale));
     float albedo = registers.density_mod * slice_extents[gl_WorkGroupID.z][gl_LocalInvocationID.z] * length_mod;
     return albedo;
 }

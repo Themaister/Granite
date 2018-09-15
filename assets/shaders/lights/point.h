@@ -9,8 +9,6 @@ layout(std140, set = 2, binding = 0) uniform PointParameters
 {
     PointShaderInfo data[256];
 } point;
-#else
-#include "lighting_data.h"
 #endif
 
 #ifdef POSITIONAL_LIGHTS_SHADOW
@@ -41,8 +39,8 @@ layout(set = POINT_LIGHT_SHADOW_ATLAS_SET, binding = POINT_LIGHT_SHADOW_ATLAS_BI
 		#define POINT_SHADOW_TRANSFORM(index) point_shadow.data[0]
 	#endif
 #else
-	#define POINT_DATA(index) clusterer.points[index]
-	#define POINT_SHADOW_TRANSFORM(index) clusterer.point_shadow[index]
+	#define POINT_DATA(index) cluster.points[index]
+	#define POINT_SHADOW_TRANSFORM(index) cluster.point_shadow[index]
 #endif
 
 vec3 compute_point_light(int index,

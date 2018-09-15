@@ -260,7 +260,10 @@ std::unique_ptr<File> Filesystem::open(const std::string &path, FileMode mode)
 	if (!backend)
 		return {};
 
-	return backend->open(paths.second, mode);
+	auto file = backend->open(paths.second, mode);
+	if (!file)
+		LOGE("Failed to open file: %s\n", path.c_str());
+	return file;
 }
 
 std::string Filesystem::get_filesystem_path(const std::string &path)

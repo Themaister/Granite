@@ -9,8 +9,6 @@ layout(std140, set = 2, binding = 0) uniform SpotParameters
 {
     SpotShaderInfo data[256];
 } spot;
-#else
-#include "lighting_data.h"
 #endif
 
 #ifdef POSITIONAL_LIGHTS_SHADOW
@@ -42,8 +40,8 @@ layout(set = SPOT_LIGHT_SHADOW_ATLAS_SET, binding = SPOT_LIGHT_SHADOW_ATLAS_BIND
 		#define SPOT_SHADOW_TRANSFORM(index) spot_shadow.data[0]
 	#endif
 #else
-	#define SPOT_DATA(index) clusterer.spots[index]
-	#define SPOT_SHADOW_TRANSFORM(index) clusterer.spot_shadow[index]
+	#define SPOT_DATA(index) cluster.spots[index]
+	#define SPOT_SHADOW_TRANSFORM(index) cluster.spot_shadow[index]
 #endif
 
 mediump vec3 compute_spot_light(int index,

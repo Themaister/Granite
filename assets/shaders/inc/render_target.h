@@ -62,7 +62,7 @@ void emit_render_target(mediump vec3 emissive, mediump vec4 base_color, mediump 
     mediump vec4 fog = sample_volumetric_fog(uFogVolume,
         gl_FragCoord.xy * resolution.inv_resolution,
         dot(pos - global.camera_position, global.camera_front),
-        fog.slice_z_log2_scale);
+        volumetric_fog.slice_z_log2_scale);
     lighting = fog.rgb + lighting * fog.a;
 #elif defined(FOG)
     lighting = apply_fog(lighting, pos - global.camera_position, fog.color, fog.falloff);

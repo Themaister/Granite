@@ -10,7 +10,7 @@
 
 layout(std140, set = 0, binding = 2) uniform ClusterParameters
 {
-	ClusterParameters clusterer;
+	ClustererParameters cluster;
 };
 
 #include "spot.h"

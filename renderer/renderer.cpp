@@ -634,6 +634,7 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 		if (light.cluster->get_cluster_list_buffer())
 			cluster_defines.emplace_back("CLUSTER_LIST", 1);
 
+		cmd.set_input_attachments(3, 0);
 		cmd.set_program("builtin://shaders/lights/clustering.vert",
 		                "builtin://shaders/lights/clustering.frag",
 		                cluster_defines);
@@ -660,6 +661,8 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 		cmd.set_texture(2, 0, light.volumetric_fog->get_view(), StockSampler::LinearClamp);
 		cmd.set_program("builtin://shaders/lights/volumetric_fog.vert", "builtin://shaders/lights/volumetric_fog.frag");
 		cmd.set_blend_factors(VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_SRC_ALPHA);
+		cmd.set_depth_test(false, false);
+		cmd.set_stencil_test(false);
 		CommandBufferUtil::draw_fullscreen_quad(cmd);
 	}
 	else if (light.fog.falloff > 0.0f)

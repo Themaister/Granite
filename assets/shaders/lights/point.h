@@ -49,6 +49,8 @@ mediump float point_scatter_phase_function(mediump float VoL)
 	return 0.5 - 0.5 * VoL;
 }
 
+const float MIN_POINT_DIST = 0.1;
+
 mediump vec3 compute_point_color(int index, vec3 world_pos, out mediump vec3 light_dir)
 {
 	vec3 light_pos = POINT_DATA(index).position;
@@ -72,7 +74,7 @@ mediump vec3 compute_point_color(int index, vec3 world_pos, out mediump vec3 lig
 	const float shadow_falloff = 1.0;
 #endif
 
-	mediump float light_dist = length(light_dir_full);
+	mediump float light_dist = max(MIN_POINT_DIST, length(light_dir_full));
 	mediump float static_falloff = shadow_falloff * (1.0 - smoothstep(0.9, 1.0, light_dist * POINT_DATA(index).inv_radius));
 	mediump vec3 point_color = POINT_DATA(index).color * (static_falloff / (light_dist * light_dist));
 

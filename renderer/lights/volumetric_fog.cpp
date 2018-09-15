@@ -70,6 +70,7 @@ void VolumetricFog::build_light_density(CommandBuffer &cmd, ImageView &light_den
 		alignas(16) vec4 z_transform;
 		alignas(16) uvec3 count;
 		alignas(16) vec3 inv_resolution;
+		alignas(4) float inscatter_strength;
 		alignas(8) vec2 xy_scale;
 		alignas(4) float slice_z_log2_scale;
 		alignas(4) float density_mod;
@@ -82,7 +83,8 @@ void VolumetricFog::build_light_density(CommandBuffer &cmd, ImageView &light_den
 	push.xy_scale = vec2(context->get_render_parameters().inv_projection[0].x,
 	                     context->get_render_parameters().inv_projection[1].y);
 	push.slice_z_log2_scale = get_slice_z_log2_scale();
-	push.density_mod = 0.01f;
+	push.density_mod = 0.1f;
+	push.inscatter_strength = 0.25f;
 
 	cmd.push_constants(&push, 0, sizeof(push));
 

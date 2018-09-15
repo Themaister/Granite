@@ -13,7 +13,7 @@ mediump vec4 sample_volumetric_fog(sampler3D FogVolume, mediump vec2 uv, mediump
     return textureLod(FogVolume, vec3(uv, texture_z), 0.0);
 }
 
-#ifdef RENDERER_FORWARD
+#if defined(RENDERER_FORWARD) && defined(VOLUMETRIC_FOG)
 layout(set = 1, binding = 5) uniform mediump sampler3D uFogVolume;
 #endif
 

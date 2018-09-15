@@ -11,6 +11,7 @@ layout(push_constant, std430) uniform Registers
     vec4 z_transform;
     uvec3 count;
     vec3 inv_resolution;
+    float in_scatter_strength;
     vec2 xy_scale;
     float slice_z_log2_scale;
     float density_mod;
@@ -78,7 +79,7 @@ void main()
     vec3 uvw = (vec3(gl_GlobalInvocationID) + 0.5) * registers.inv_resolution;
     vec3 pos = get_world_position(uvw);
     float albedo = get_fog_albedo(uvw);
-    vec3 in_scatter_light = compute_inscatter_light(pos);
+    vec3 in_scatter_light = registers.in_scatter_strength * compute_inscatter_light(pos);
 
     imageStore(uLightDensity, ivec3(gl_GlobalInvocationID), vec4(in_scatter_light * albedo, albedo));
 }

@@ -31,9 +31,10 @@ int main()
 {
 	Mixer mixer;
 	auto *stream = create_vorbis_stream("/tmp/test.ogg");
-	mixer.add_mixer_stream(stream);
+	if (stream)
+		mixer.add_mixer_stream(stream);
 
-	auto backend = create_default_audio_backend(44100.0f, 2);
+	auto backend = create_default_audio_backend(32000.0f, 2);
 	backend->start(&mixer);
 	std::this_thread::sleep_for(std::chrono::seconds(100));
 	backend->stop();

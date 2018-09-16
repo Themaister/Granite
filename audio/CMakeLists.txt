@@ -1,8 +1,10 @@
 include(FindPkgConfig)
 
-add_granite_library(audio-backend audio_interface.cpp audio_interface.hpp)
+add_granite_library(audio-backend
+        audio_interface.cpp audio_interface.hpp
+        vorbis_stream.hpp vorbis_stream.cpp)
 target_include_directories(audio-backend PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(audio-backend util)
+target_link_libraries(audio-backend util stb-vorbis filesystem)
 
 if (NOT WIN32)
     pkg_check_modules(PULSEAUDIO libpulse)

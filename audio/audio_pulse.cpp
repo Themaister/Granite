@@ -100,13 +100,13 @@ static void stream_success_cb(pa_stream *, int success, void *data)
 	pa_threaded_mainloop_signal(pa->mainloop, 0);
 }
 
-static void context_state_cb(pa_context *c, void *data)
+static void context_state_cb(pa_context *, void *data)
 {
 	auto *pa = static_cast<Pulse *>(data);
 	pa_threaded_mainloop_signal(pa->mainloop, 0);
 }
 
-static void stream_state_cb(pa_stream *s, void *data)
+static void stream_state_cb(pa_stream *, void *data)
 {
 	auto *pa = static_cast<Pulse *>(data);
 	pa_threaded_mainloop_signal(pa->mainloop, 0);

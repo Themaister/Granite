@@ -1,5 +1,6 @@
 #include "audio_interface.hpp"
 #include "timer.hpp"
+#include "vorbis_stream.hpp"
 #include <chrono>
 #include <thread>
 #include <cmath>
@@ -29,12 +30,13 @@ struct SineAudio : BackendCallback
 int main()
 {
 	SineAudio cb;
+	auto stream = create_vorbis_stream("/tmp/test.ogg");
 
 	auto backend = create_default_audio_backend(44100.0f, 2);
-	backend->start(&cb);
-	std::this_thread::sleep_for(std::chrono::seconds(2));
+	backend->start(stream.get());
+	std::this_thread::sleep_for(std::chrono::seconds(100));
 	backend->stop();
-	std::this_thread::sleep_for(std::chrono::seconds(2));
-	backend->start(&cb);
-	std::this_thread::sleep_for(std::chrono::seconds(2));
+	std::this_thread::sleep_for(std::chrono::seconds(3));
+	backend->start(stream.get());
+	std::this_thread::sleep_for(std::chrono::seconds(100));
 }

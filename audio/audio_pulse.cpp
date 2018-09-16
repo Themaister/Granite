@@ -27,7 +27,6 @@
 #include <string.h>
 
 static constexpr size_t MAX_NUM_SAMPLES = 256;
-
 using namespace std;
 
 namespace Granite
@@ -65,6 +64,7 @@ struct Pulse : Backend
 	pa_stream *stream = nullptr;
 	size_t buffer_size = 0;
 	int success = -1;
+	bool has_success = false;
 	bool is_active = false;
 };
 
@@ -96,6 +96,7 @@ static void stream_success_cb(pa_stream *, int success, void *data)
 {
 	auto *pa = static_cast<Pulse *>(data);
 	pa->success = success;
+	pa->has_success = true;
 	pa_threaded_mainloop_signal(pa->mainloop, 0);
 }
 
@@ -161,19 +162,10 @@ static void stream_request_cb(pa_stream *s, size_t length, void *data)
 	}
 }
 
-static void stream_latency_update_cb(pa_stream *, void *data)
-{
-	auto *pa = static_cast<Pulse *>(data);
-	pa_threaded_mainloop_signal(pa->mainloop, 0);
-}
-
 bool Pulse::init(float sample_rate, unsigned channels)
 {
 	this->sample_rate = sample_rate;
 	this->channels = channels;
-
-	pa_sample_spec spec = {};
-	pa_buffer_attr buffer_attr = {};
 
 	mainloop = pa_threaded_mainloop_new();
 	if (!mainloop)
@@ -201,9 +193,10 @@ bool Pulse::init(float sample_rate, unsigned channels)
 		return false;
 	}
 
-	spec.format   = PA_SAMPLE_FLOAT32;
+	pa_sample_spec spec = {};
+	spec.format = PA_SAMPLE_FLOAT32NE;
 	spec.channels = uint8_t(channels);
-	spec.rate     = uint32_t(sample_rate);
+	spec.rate = uint32_t(sample_rate);
 
 	stream = pa_stream_new(context, "audio", &spec, nullptr);
 	if (!stream)
@@ -214,13 +207,13 @@ bool Pulse::init(float sample_rate, unsigned channels)
 
 	pa_stream_set_state_callback(stream, stream_state_cb, this);
 	pa_stream_set_write_callback(stream, stream_request_cb, this);
-	pa_stream_set_latency_update_callback(stream, stream_latency_update_cb, this);
 
+	pa_buffer_attr buffer_attr = {};
 	buffer_attr.maxlength = -1u;
-	buffer_attr.tlength   = pa_usec_to_bytes(50000, &spec);
-	buffer_attr.prebuf    = -1u;
-	buffer_attr.minreq    = -1u;
-	buffer_attr.fragsize  = -1u;
+	buffer_attr.tlength = pa_usec_to_bytes(50000, &spec);
+	buffer_attr.prebuf = -1u;
+	buffer_attr.minreq = -1u;
+	buffer_attr.fragsize = -1u;
 
 	if (pa_stream_connect_playback(stream, nullptr, &buffer_attr,
 	                               static_cast<pa_stream_flags_t>(PA_STREAM_ADJUST_LATENCY | PA_STREAM_START_CORKED),
@@ -248,14 +241,21 @@ bool Pulse::start(BackendCallback *cb)
 	if (is_active)
 		return false;
 
+	has_success = false;
 	pa_threaded_mainloop_lock(mainloop);
 	callback = cb;
 	callback->on_backend_start(sample_rate, channels, MAX_NUM_SAMPLES);
 	pa_stream_cork(stream, 0, stream_success_cb, this);
-	pa_threaded_mainloop_wait(mainloop);
+
+	while (!has_success)
+		pa_threaded_mainloop_wait(mainloop);
 	pa_threaded_mainloop_unlock(mainloop);
+
 	is_active = true;
-	return true;
+	has_success = false;
+	if (success < 0)
+		LOGE("Pulse::start() failed.\n");
+	return success == 0;
 }
 
 bool Pulse::stop()
@@ -263,16 +263,22 @@ bool Pulse::stop()
 	if (!is_active)
 		return false;
 
+	has_success = false;
 	pa_threaded_mainloop_lock(mainloop);
 	pa_stream_cork(stream, 1, stream_success_cb, this);
-	pa_threaded_mainloop_wait(mainloop);
-	pa_threaded_mainloop_signal(mainloop, 0);
+
+	while (!has_success)
+		pa_threaded_mainloop_wait(mainloop);
+
 	callback->on_backend_stop();
 	callback = nullptr;
 	pa_threaded_mainloop_unlock(mainloop);
 
 	is_active = false;
-	return true;
+	has_success = false;
+	if (success < 0)
+		LOGE("Pulse::stop() failed.\n");
+	return success == 0;
 }
 
 std::unique_ptr<Backend> create_pulse_backend(float sample_rate, unsigned channels)

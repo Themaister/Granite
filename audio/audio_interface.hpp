@@ -33,7 +33,7 @@ class BackendCallback
 {
 public:
 	virtual ~BackendCallback() = default;
-	virtual void mix_samples(float * const *channels, size_t num_frames) = 0;
+	virtual void mix_samples(float * const *channels, size_t num_frames) noexcept = 0;
 
 	virtual void on_backend_start(float sample_rate, unsigned channels, size_t max_num_frames);
 	virtual void on_backend_stop();
@@ -42,6 +42,7 @@ public:
 class Backend
 {
 public:
+	enum { MaxAudioChannels = 8 };
 	virtual ~Backend() = default;
 
 	virtual const char *get_backend_name() = 0;

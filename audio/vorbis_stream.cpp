@@ -32,24 +32,44 @@ namespace Granite
 {
 namespace Audio
 {
-struct VorbisStream : BackendCallback
+struct VorbisStream : MixerStream
 {
 	~VorbisStream();
 	bool init(const string &path);
 
-	void mix_samples(float * const *channels, size_t num_frames) override;
-	void on_backend_start(float sample_rate, unsigned channels, size_t max_num_samples) override;
+	size_t accumulate_samples(float * const *channels, const float *gains, size_t num_frames) noexcept override;
+
+	float get_sample_rate() const override
+	{
+		return sample_rate;
+	}
+
+	unsigned get_num_channels() const override
+	{
+		return num_channels;
+	}
+
+	void set_max_num_frames(size_t num_frames)
+	{
+		for (auto &mix : mix_buffer)
+			mix.clear();
+
+		for (unsigned c = 0; c < num_channels; c++)
+		{
+			mix_buffer[c].resize(num_frames);
+			mix_channels[c] = mix_buffer[c].data();
+		}
+	}
 
 	stb_vorbis *file = nullptr;
 	unique_ptr<File> filesystem_file;
 
+	float sample_rate = 0.0f;
 	unsigned num_channels = 0;
-};
 
-void VorbisStream::on_backend_start(float, unsigned num_channels, size_t)
-{
-	this->num_channels = num_channels;
-}
+	std::vector<float> mix_buffer[Backend::MaxAudioChannels];
+	float *mix_channels[Backend::MaxAudioChannels] = {};
+};
 
 bool VorbisStream::init(const string &path)
 {
@@ -72,14 +92,19 @@ bool VorbisStream::init(const string &path)
 		return false;
 	}
 
+	auto info = stb_vorbis_get_info(file);
+	sample_rate = info.sample_rate;
+	num_channels = unsigned(info.channels);
+
 	return true;
 }
 
-void VorbisStream::mix_samples(float *const *channels, size_t num_frames)
+size_t VorbisStream::accumulate_samples(float *const *channels, const float *gains, size_t num_frames) noexcept
 {
-	auto actual_frames = stb_vorbis_get_samples_float(file, num_channels, const_cast<float **>(channels), int(num_frames));
-	for (unsigned c = 0; c < 2; c++)
-		memset(channels[c] + actual_frames, 0, (num_frames - actual_frames) * sizeof(float));
+	auto actual_frames = stb_vorbis_get_samples_float(file, num_channels, mix_channels, int(num_frames));
+	for (unsigned c = 0; c < num_channels; c++)
+		DSP::accumulate_channel(channels[c], mix_channels[c], gains[c], size_t(actual_frames));
+	return size_t(actual_frames);
 }
 
 VorbisStream::~VorbisStream()
@@ -88,14 +113,16 @@ VorbisStream::~VorbisStream()
 		stb_vorbis_close(file);
 }
 
-unique_ptr<BackendCallback> create_vorbis_stream(const string &path)
+MixerStream *create_vorbis_stream(const string &path)
 {
-	auto vorbis = make_unique<VorbisStream>();
-	if (!vorbis)
-		return {};
+	auto vorbis = new VorbisStream;
 	if (!vorbis->init(path))
-		return {};
-	return move(vorbis);
+	{
+		vorbis->dispose();
+		return nullptr;
+	}
+
+	return vorbis;
 }
 }
 }

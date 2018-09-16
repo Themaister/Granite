@@ -1,4 +1,4 @@
-#include "audio_interface.hpp"
+#include "audio_mixer.hpp"
 #include "timer.hpp"
 #include "vorbis_stream.hpp"
 #include <chrono>
@@ -10,7 +10,7 @@ using namespace std;
 
 struct SineAudio : BackendCallback
 {
-	void mix_samples(float * const *channels, size_t num_frames) override
+	void mix_samples(float * const *channels, size_t num_frames) noexcept override
 	{
 		float *left = channels[0];
 		float *right = channels[1];
@@ -29,14 +29,15 @@ struct SineAudio : BackendCallback
 
 int main()
 {
-	SineAudio cb;
-	auto stream = create_vorbis_stream("/tmp/test.ogg");
+	Mixer mixer;
+	auto *stream = create_vorbis_stream("/tmp/test.ogg");
+	mixer.add_mixer_stream(stream);
 
 	auto backend = create_default_audio_backend(44100.0f, 2);
-	backend->start(stream.get());
+	backend->start(&mixer);
 	std::this_thread::sleep_for(std::chrono::seconds(100));
 	backend->stop();
 	std::this_thread::sleep_for(std::chrono::seconds(3));
-	backend->start(stream.get());
+	backend->start(&mixer);
 	std::this_thread::sleep_for(std::chrono::seconds(100));
 }

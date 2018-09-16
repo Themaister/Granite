@@ -116,17 +116,10 @@ static void stream_request_cb(pa_stream *s, size_t length, void *data)
 {
 	auto *pa = static_cast<Pulse *>(data);
 
-	float mix_channels[8][MAX_NUM_SAMPLES];
-	float *mix_channel_ptr[8] = {
-		mix_channels[0],
-		mix_channels[1],
-		mix_channels[2],
-		mix_channels[3],
-		mix_channels[4],
-		mix_channels[5],
-		mix_channels[6],
-		mix_channels[7],
-	};
+	float mix_channels[Backend::MaxAudioChannels][MAX_NUM_SAMPLES];
+	float *mix_channel_ptr[Backend::MaxAudioChannels];
+	for (unsigned i = 0; i < pa->channels; i++)
+		mix_channel_ptr[i] = mix_channels[i];
 
 	void *out_data;
 	if (pa_stream_begin_write(s, &out_data, &length) < 0)
@@ -166,6 +159,8 @@ bool Pulse::init(float sample_rate, unsigned channels)
 {
 	this->sample_rate = sample_rate;
 	this->channels = channels;
+	if (channels > MaxAudioChannels)
+		return false;
 
 	mainloop = pa_threaded_mainloop_new();
 	if (!mainloop)

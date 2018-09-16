@@ -22,13 +22,13 @@
 
 #pragma once
 
-#include "audio_interface.hpp"
+#include "audio_mixer.hpp"
 #include <string>
 
 namespace Granite
 {
 namespace Audio
 {
-std::unique_ptr<BackendCallback> create_vorbis_stream(const std::string &path);
+MixerStream *create_vorbis_stream(const std::string &path);
 }
 }

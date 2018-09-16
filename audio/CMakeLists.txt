@@ -2,6 +2,7 @@ include(FindPkgConfig)
 
 add_granite_library(audio-backend
         audio_interface.cpp audio_interface.hpp
+        audio_mixer.cpp audio_mixer.hpp
         vorbis_stream.hpp vorbis_stream.cpp)
 target_include_directories(audio-backend PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(audio-backend util stb-vorbis filesystem)

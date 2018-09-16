@@ -139,7 +139,7 @@ void WSI::deinit_surface_and_swapchain()
 	if (swapchain != VK_NULL_HANDLE)
 		vkDestroySwapchainKHR(context->get_device(), swapchain, nullptr);
 	swapchain = VK_NULL_HANDLE;
-	need_acquire = true;
+	has_acquired_swapchain_index = false;
 
 	if (surface != VK_NULL_HANDLE)
 		vkDestroySurfaceKHR(context->get_instance(), surface, nullptr);
@@ -159,7 +159,7 @@ void WSI::set_external_frame(unsigned index, Vulkan::Semaphore acquire_semaphore
 bool WSI::begin_frame_external()
 {
 	// Need to handle this stuff from outside.
-	if (!need_acquire)
+	if (has_acquired_swapchain_index)
 		return false;
 
 	auto frame_time = platform->get_frame_timer().frame(external_frame_time);
@@ -207,7 +207,7 @@ bool WSI::begin_frame()
 		return false;
 	}
 
-	if (!need_acquire)
+	if (has_acquired_swapchain_index)
 		return true;
 
 	external_release.reset();
@@ -222,6 +222,7 @@ bool WSI::begin_frame()
 
 		if (result == VK_SUCCESS)
 		{
+			has_acquired_swapchain_index = true;
 			acquire->signal_external();
 
 			auto frame_time = platform->get_frame_timer().frame();
@@ -269,7 +270,7 @@ bool WSI::end_frame()
 	if (!device->swapchain_touched())
 		return true;
 
-	need_acquire = true;
+	has_acquired_swapchain_index = false;
 
 	// Take ownership of the release semaphore so that the external user can use it.
 	if (frame_is_external)
@@ -335,7 +336,7 @@ void WSI::update_framebuffer(unsigned width, unsigned height)
 void WSI::set_present_mode(PresentMode mode)
 {
 	present_mode = mode;
-	if (need_acquire && present_mode != current_present_mode)
+	if (!has_acquired_swapchain_index && present_mode != current_present_mode)
 	{
 		current_present_mode = present_mode;
 		update_framebuffer(this->width, this->height);
@@ -357,6 +358,7 @@ void WSI::deinit_external()
 		platform->event_swapchain_destroyed();
 		if (swapchain != VK_NULL_HANDLE)
 			vkDestroySwapchainKHR(context->get_device(), swapchain, nullptr);
+		has_acquired_swapchain_index = false;
 	}
 
 	if (surface != VK_NULL_HANDLE)
@@ -519,6 +521,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	auto res = vkCreateSwapchainKHR(context->get_device(), &info, nullptr, &swapchain);
 	if (old_swapchain != VK_NULL_HANDLE)
 		vkDestroySwapchainKHR(context->get_device(), old_swapchain, nullptr);
+	has_acquired_swapchain_index = false;
 
 	if (res != VK_SUCCESS)
 	{

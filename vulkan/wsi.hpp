@@ -181,7 +181,7 @@ private:
 	bool blocking_init_swapchain(unsigned width, unsigned height);
 
 	uint32_t swapchain_index = 0;
-	bool need_acquire = true;
+	bool has_acquired_swapchain_index = false;
 
 	WSIPlatform *platform = nullptr;
 

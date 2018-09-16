@@ -18,3 +18,6 @@ target_link_libraries(thread-group-test threading)
 
 add_granite_offline_tool(intrusive-test intrusive_ptr_test.cpp)
 target_link_libraries(intrusive-test util)
+
+add_granite_offline_tool(audio-test audio_test.cpp)
+target_link_libraries(audio-test audio-backend)

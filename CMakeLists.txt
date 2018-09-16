@@ -146,6 +146,7 @@ add_subdirectory(renderer)
 add_subdirectory(ui)
 add_subdirectory(scene_formats)
 add_subdirectory(application)
+add_subdirectory(audio)
 
 option(GRANITE_TOOLS "Build Granite tools." ON)
 

@@ -32,7 +32,7 @@ int main()
 	Mixer mixer;
 	auto *stream = create_vorbis_stream("/tmp/test.ogg");
 
-	auto backend = create_default_audio_backend(10000.0f, 2);
+	auto backend = create_default_audio_backend(44100.0f, 2);
 	backend->start(&mixer);
 
 	if (stream)

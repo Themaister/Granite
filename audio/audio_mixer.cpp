@@ -190,7 +190,17 @@ void Mixer::mix_samples(float *const *channels, size_t num_frames) noexcept
 StreamID Mixer::add_mixer_stream(MixerStream *stream)
 {
 	if (!is_active)
+	{
+		LOGE("Mixer is not active, cannot add streams.\n");
 		return StreamID(-1);
+	}
+
+	// Cannot deal with this yet.
+	if (stream->get_num_channels() != num_channels)
+	{
+		LOGE("Number of audio channels in stream does not match mixer.\n");
+		return StreamID(-1);
+	}
 
 	// add_mixer_stream is only called by non-critical threads,
 	// so it's fine to lock.

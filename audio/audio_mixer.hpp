@@ -108,10 +108,5 @@ private:
 	bool is_active = false;
 };
 
-namespace DSP
-{
-void accumulate_channel(float *output, const float *input, float gain, size_t count);
-}
-
 }
 }

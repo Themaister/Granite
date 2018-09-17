@@ -22,6 +22,7 @@
 
 #include "vorbis_stream.hpp"
 #include "filesystem.hpp"
+#include "dsp/dsp.hpp"
 #include "stb_vorbis.h"
 #include "util.hpp"
 #include <string.h>

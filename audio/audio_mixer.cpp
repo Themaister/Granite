@@ -268,14 +268,5 @@ void Mixer::set_stream_mixer_parameters(StreamID id, float gain_db, float pannin
 	gain_linear[index].store(f32_to_u32(std::pow(10.0f, gain_db / 20.0f)));
 	this->panning[index].store(f32_to_u32(panning));
 }
-
-namespace DSP
-{
-void accumulate_channel(float *output, const float *input, float gain, size_t count)
-{
-	for (size_t i = 0; i < count; i++)
-		output[i] += input[i] * gain;
-}
-}
 }
 }

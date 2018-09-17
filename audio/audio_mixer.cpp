@@ -21,6 +21,7 @@
  */
 
 #include "audio_mixer.hpp"
+#include "audio_resampler.hpp"
 #include "util.hpp"
 #include <string.h>
 #include <cmath>
@@ -47,9 +48,10 @@ void Mixer::on_backend_start(float sample_rate, unsigned channels, size_t max_nu
 		Util::for_each_bit(active_mask, [&](unsigned bit) {
 			MixerStream *stream = mixer_streams[bit + 32 * i];
 			if (stream)
-				stream->set_max_num_frames(max_num_samples);
+				stream->setup(sample_rate, channels, max_num_samples);
 		});
 	}
+	is_active = true;
 }
 
 static float u32_to_f32(uint32_t v)
@@ -97,6 +99,7 @@ Mixer::Mixer()
 void Mixer::on_backend_stop()
 {
 	dispose_dead_streams();
+	is_active = false;
 }
 
 Mixer::~Mixer()
@@ -186,6 +189,9 @@ void Mixer::mix_samples(float *const *channels, size_t num_frames) noexcept
 
 StreamID Mixer::add_mixer_stream(MixerStream *stream)
 {
+	if (!is_active)
+		return StreamID(-1);
+
 	// add_mixer_stream is only called by non-critical threads,
 	// so it's fine to lock.
 	// It is unsafe for multiple threads to create a stream here, since they might allocate
@@ -206,8 +212,16 @@ StreamID Mixer::add_mixer_stream(MixerStream *stream)
 
 		MixerStream *old_stream = mixer_streams[index];
 		StreamID id = generate_stream_id(index);
+
+		if (stream->get_sample_rate() != sample_rate)
+		{
+			auto *resample_stream = new ResampledStream(stream);
+			stream = resample_stream;
+		}
+
 		mixer_streams[index] = stream;
-		stream->set_max_num_frames(max_num_samples);
+		stream->setup(sample_rate, num_channels, max_num_samples);
+
 		active_channel_mask[i].fetch_or(1u << subindex, memory_order_release);
 
 		if (old_stream)

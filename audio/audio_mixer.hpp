@@ -43,8 +43,11 @@ public:
 		delete this;
 	}
 
-	virtual void set_max_num_frames(size_t)
+	virtual void setup(float mixer_output_rate, unsigned mixer_channels, size_t max_num_frames)
 	{
+		(void)mixer_output_rate;
+		(void)mixer_channels;
+		(void)max_num_frames;
 	}
 
 	// Must increment.
@@ -101,6 +104,8 @@ private:
 	bool verify_stream_id(StreamID id);
 	unsigned get_stream_index(StreamID id);
 	uint64_t get_stream_generation(StreamID id);
+
+	bool is_active = false;
 };
 
 namespace DSP

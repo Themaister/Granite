@@ -49,7 +49,7 @@ struct VorbisStream : MixerStream
 		return num_channels;
 	}
 
-	void set_max_num_frames(size_t num_frames)
+	void setup(float, unsigned, size_t num_frames) override
 	{
 		for (auto &mix : mix_buffer)
 			mix.clear();

@@ -33,6 +33,10 @@
 #include "os.hpp"
 #include "rapidjson_wrapper.hpp"
 
+#ifdef HAVE_GRANITE_AUDIO
+#include "audio_opensl.hpp"
+#endif
+
 using namespace std;
 using namespace Vulkan;
 
@@ -59,6 +63,8 @@ struct JNI
 	jclass granite;
 	jmethodID finishFromThread;
 	jmethodID getDisplayRotation;
+	jmethodID getAudioNativeSampleRate;
+	jmethodID getAudioNativeBlockFrames;
 	jclass classLoaderClass;
 	jobject classLoader;
 
@@ -76,6 +82,24 @@ static void finishFromThread()
 	global_state.app->activity->vm->AttachCurrentThread(&env, nullptr);
 	env->CallVoidMethod(global_state.app->activity->clazz, jni.finishFromThread);
 	global_state.app->activity->vm->DetachCurrentThread();
+}
+
+static int getAudioNativeSampleRate()
+{
+	JNIEnv *env = nullptr;
+	global_state.app->activity->vm->AttachCurrentThread(&env, nullptr);
+	int ret = env->CallIntMethod(global_state.app->activity->clazz, jni.getAudioNativeSampleRate);
+	global_state.app->activity->vm->DetachCurrentThread();
+	return ret;
+}
+
+static int getAudioNativeBlockFrames()
+{
+	JNIEnv *env = nullptr;
+	global_state.app->activity->vm->AttachCurrentThread(&env, nullptr);
+	int ret = env->CallIntMethod(global_state.app->activity->clazz, jni.getAudioNativeBlockFrames);
+	global_state.app->activity->vm->DetachCurrentThread();
+	return ret;
 }
 }
 
@@ -512,9 +536,17 @@ static void init_jni()
 	jni.granite = static_cast<jclass>(env->CallObjectMethod(jni.classLoader, loadClass, str));
 	jni.finishFromThread = env->GetMethodID(jni.granite, "finishFromThread", "()V");
 	jni.getDisplayRotation = env->GetMethodID(jni.granite, "getDisplayRotation", "()I");
+	jni.getAudioNativeSampleRate = env->GetMethodID(jni.granite, "getAudioNativeSampleRate", "()I");
+	jni.getAudioNativeBlockFrames = env->GetMethodID(jni.granite, "getAudioNativeBlockFrames", "()I");
 
 	env->DeleteLocalRef(str);
 	app->activity->vm->DetachCurrentThread();
+
+#ifdef HAVE_GRANITE_AUDIO
+	int sample_rate = App::getAudioNativeSampleRate();
+	int block_frames = App::getAudioNativeBlockFrames();
+	Granite::Audio::set_opensl_low_latency_parameters(sample_rate, block_frames);
+#endif
 }
 
 static void init_sensors()

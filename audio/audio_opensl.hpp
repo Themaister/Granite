@@ -20,43 +20,13 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#pragma once
-
-#include "audio_mixer.hpp"
-#include "dsp/sinc_resampler.hpp"
-#include <memory>
+#include "audio_interface.hpp"
 
 namespace Granite
 {
 namespace Audio
 {
-class ResampledStream : public MixerStream
-{
-public:
-	ResampledStream(MixerStream *source);
-	~ResampledStream();
-
-	void setup(float output_rate, unsigned channels, size_t frames) override;
-	size_t accumulate_samples(float * const *channels, const float *gain, size_t num_frames) noexcept override;
-
-	float get_sample_rate() const override
-	{
-		return sample_rate;
-	}
-
-	unsigned get_num_channels() const override
-	{
-		return num_channels;
-	}
-
-private:
-	MixerStream *source;
-	float sample_rate = 0.0f;
-	unsigned num_channels = 0;
-	size_t max_num_frames = 0;
-
-	std::vector<float> input_buffer[Backend::MaxAudioChannels];
-	std::unique_ptr<DSP::SincResampler> resamplers[Backend::MaxAudioChannels];
-};
+std::unique_ptr<Backend> create_opensl_backend(float sample_rate, unsigned channels);
+void set_opensl_low_latency_parameters(unsigned sample_rate, unsigned block_frames);
 }
 }

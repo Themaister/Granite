@@ -74,6 +74,7 @@ size_t ResampledStream::accumulate_samples(float *const *channels, const float *
 	for (unsigned c = 0; c < num_channels; c++)
 	{
 		size_t output = resamplers[c]->process_and_accumulate(channels[c], output_channels[c], num_frames);
+		(void)output;
 		assert(output == need_samples);
 	}
 

@@ -20,51 +20,58 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "audio_interface.hpp"
-#ifdef AUDIO_HAVE_PULSE
-#include "audio_pulse.hpp"
-#endif
-#ifdef AUDIO_HAVE_OPENSL
 #include "audio_opensl.hpp"
-#endif
+#include <SLES/OpenSLES_Android.h>
+#include "util.hpp"
+#include <string.h>
+
+using namespace std;
 
 namespace Granite
 {
 namespace Audio
 {
+static unsigned target_sample_rate;
+static unsigned target_block_frames;
 
-void BackendCallback::on_backend_stop()
+struct OpenSLESBackend : Backend
 {
-}
+	~OpenSLESBackend();
+	bool init(float sample_rate, unsigned channels);
 
-void BackendCallback::on_backend_start(float, unsigned, size_t)
-{
-}
+	vector<vector<int16_t>> buffers;
+	vector<vector<float>> mix_buffers;
+	unsigned buffer_index = 0;
+	unsigned buffer_count = 0;
 
-using BackendCreationCallback = std::unique_ptr<Backend> (*)(float, unsigned);
+	SLObjectItf engine_object = nullptr;
+	SLEngineItf engine = nullptr;
+	SLObjectItf output_mix = nullptr;
+	SLObjectItf buffer_queue_object = nullptr;
+	SLAndroidSimpleBufferQueueItf buffer_queue = nullptr;
+	SLPlayItf player = nullptr;
 
-static const BackendCreationCallback backends[] = {
-#ifdef AUDIO_HAVE_PULSE
-		create_pulse_backend,
-#endif
-#ifdef AUDIO_HAVE_OPENSL
-		create_opensl_backend,
-#endif
-		nullptr,
+	void callback() noexcept;
 };
 
-std::unique_ptr<Backend> create_default_audio_backend(float target_sample_rate, unsigned target_channels)
+static void opensl_callback(SLAndroidSimpleBufferQueueItf, void *ctx)
 {
-	for (auto &backend : backends)
-	{
-		if (backend)
-		{
-			auto iface = backend(target_sample_rate, target_channels);
-			if (iface)
-				return iface;
-		}
-	}
-	return {};
+	auto *sl = static_cast<OpenSLESBackend *>(ctx);
+	sl->callback();
+}
+
+std::unique_ptr<Backend> create_opensl_backend(float sample_rate, unsigned channels)
+{
+	auto sl = make_unique<OpenSLESBackend>();
+	if (!sl->init(sample_rate, channels))
+		return {};
+	return move(sl);
+}
+
+void set_opensl_low_latency_parameters(unsigned sample_rate, unsigned block_frames)
+{
+	target_sample_rate = sample_rate;
+	target_block_frames = block_frames;
 }
 }
 }

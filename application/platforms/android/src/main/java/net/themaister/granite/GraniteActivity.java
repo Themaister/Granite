@@ -23,6 +23,8 @@
 package net.themaister.granite;
 
 import android.app.ActionBar;
+import android.content.Context;
+import android.media.AudioManager;
 import android.os.Bundle;
 import android.view.Display;
 import android.view.View;
@@ -76,5 +78,33 @@ public class GraniteActivity extends android.app.NativeActivity
             return 0;
 
         return display.getRotation();
+    }
+
+    public int getAudioNativeSampleRate()
+    {
+        AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+        if (am == null)
+            return 0;
+
+        String sampleRate = am.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE);
+        if (sampleRate == null)
+            return 0;
+
+        int rate = Integer.parseInt(sampleRate);
+        return rate;
+    }
+
+    public int getAudioNativeBlockFrames()
+    {
+        AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+        if (am == null)
+            return 0;
+
+        String frames = am.getProperty(AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER);
+        if (frames == null)
+            return 0;
+
+        int count = Integer.parseInt(frames);
+        return count;
     }
 }

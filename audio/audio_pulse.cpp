@@ -22,7 +22,6 @@
 
 #include "audio_pulse.hpp"
 #include <pulse/pulseaudio.h>
-#include <thread>
 #include "util.hpp"
 #include <string.h>
 

@@ -36,8 +36,25 @@ namespace DSP
 {
 static inline void accumulate_channel(float * __restrict output, const float * __restrict input, float gain, size_t count)
 {
+#ifdef __ARM_NEON
+	size_t rounded_count = count & ~3;
+	for (size_t i = 0; i < rounded_count; i += 4)
+	{
+		float32x4_t acc = vld1q_f32(output);
+		float32x4_t in = vld1q_f32(input);
+		acc = vfmaq_n_f32(acc, in, gain);
+		vst1q_f32(output, acc);
+
+		output += 4;
+		input += 4;
+	}
+
+	for (size_t i = rounded_count; i < count; i++)
+		output[i] += input[i] * gain;
+#else
 	for (size_t i = 0; i < count; i++)
 		output[i] += input[i] * gain;
+#endif
 }
 
 static int16_t f32_to_i16(float v)

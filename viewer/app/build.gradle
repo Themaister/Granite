@@ -25,7 +25,8 @@ android {
                             "-DGRANITE_SPIRV_DUMP=OFF",
                             "-DCMAKE_BUILD_TYPE=Debug",
                             "-DANDROID_PLATFORM=android-24",
-                            "-DGRANITE_AUDIO=ON"
+                            "-DGRANITE_AUDIO=ON",
+                            "-DANDROID_ARM_NEON=ON"
 
                     targets "gltf-viewer", "gltf-viewer-headless", "aa-bench-headless"
                 }
@@ -43,7 +44,8 @@ android {
                             "-DGRANITE_SPIRV_DUMP=OFF",
                             "-DCMAKE_BUILD_TYPE=Release",
                             "-DANDROID_PLATFORM=android-24",
-                            "-DGRANITE_AUDIO=ON"
+                            "-DGRANITE_AUDIO=ON",
+                            "-DANDROID_ARM_NEON=ON"
 
                     targets "gltf-viewer", "gltf-viewer-headless", "aa-bench-headless"
                 }

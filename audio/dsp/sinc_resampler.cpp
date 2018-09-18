@@ -92,8 +92,10 @@
 #include <cmath>
 #include <cstdlib>
 
-#ifdef __SSE__
+#if defined(__SSE__)
 #include <xmmintrin.h>
+#elif defined(__ARM_NEON)
+#include <arm_neon.h>
 #endif
 
 namespace Granite
@@ -330,6 +332,23 @@ size_t SincResampler::process_and_accumulate(float *output, const float *input, 
 			sum = _mm_add_ps(_mm_shuffle_ps(sum, sum, _MM_SHUFFLE(2, 3, 2, 3)), sum);
 			sum = _mm_add_ss(_mm_shuffle_ps(sum, sum, _MM_SHUFFLE(1, 1, 1, 1)), sum);
 			_mm_store_ss(output, _mm_add_ss(_mm_load_ss(output), sum));
+#elif defined(__ARM_NEON)
+			float delta = float(time & subphase_mask) * subphase_mod;
+			float32x4_t sum = vdupq_n_f32(0.0f);
+			for (unsigned i = 0; i < taps; i += 4)
+			{
+				float32x4_t phases = vld1q_f32(phase_table + i);
+				float32x4_t deltas = vld1q_f32(delta_table + i);
+				float32x4_t buf = vld1q_f32(buffer + i);
+				float32x4_t _sinc = vfmaq_n_f32(phases, deltas, delta);
+				sum = vfmaq_f32(sum, buf, _sinc);
+			}
+
+			float32x2_t half = vadd_f32(vget_low_f32(sum), vget_high_f32(sum));
+			float32x2_t res = vpadd_f32(half, half);
+			float32x2_t o = vld1_dup_f32(output);
+			res = vadd_f32(o, res);
+			vst1_lane_f32(output, res, 0);
 #else
 			float delta = float(time & subphase_mask) * subphase_mod;
 			float sum = 0.0f;

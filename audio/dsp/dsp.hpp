@@ -24,6 +24,10 @@
 
 #include <cmath>
 
+#ifdef __ARM_NEON
+#include <arm_neon.h>
+#endif
+
 namespace Granite
 {
 namespace Audio
@@ -52,11 +56,40 @@ static inline void interleave_stereo_f32_i16(int16_t * __restrict target,
                                              const float * __restrict right,
                                              size_t count)
 {
+#ifdef __ARM_NEON
+	size_t rounded_count = count & ~3;
+	for (size_t i = 0; i < rounded_count; i += 4)
+	{
+		float32x4_t l = vld1q_f32(left);
+		float32x4_t r = vld1q_f32(right);
+
+		l = vmulq_n_f32(l, float(0x8000));
+		r = vmulq_n_f32(r, float(0x8000));
+
+		int32x4_t il = vcvtq_s32_f32(l);
+		int32x4_t ir = vcvtq_s32_f32(r);
+		int16x4_t sl = vqmovn_s32(il);
+		int16x4_t sr = vqmovn_s32(ir);
+		int16x4x2_t stereo = { sl, sr };
+		vst2_s16(target, stereo);
+
+		left += 4;
+		right += 4;
+		target += 8;
+	}
+
+	for (size_t i = rounded_count; i < count; i++)
+	{
+		*target++ = f32_to_i16(*left++);
+		*target++ = f32_to_i16(*right++);
+	}
+#else
 	for (size_t i = 0; i < count; i++)
 	{
 		*target++ = f32_to_i16(*left++);
 		*target++ = f32_to_i16(*right++);
 	}
+#endif
 }
 }
 }

@@ -172,17 +172,20 @@ bool OpenSLESBackend::init(float target_sample_rate, unsigned)
 
 void OpenSLESBackend::thread_callback() noexcept
 {
-	float *channels[2] = { mix_buffers[0].data(), mix_buffers[1].data() };
-	callback->mix_samples(channels, block_frames);
+	if (callback)
+	{
+		float *channels[2] = { mix_buffers[0].data(), mix_buffers[1].data() };
+		callback->mix_samples(channels, block_frames);
 
-	DSP::interleave_stereo_f32_i16(buffers[buffer_index].data(),
-	                               channels[0], channels[1], block_frames);
+		DSP::interleave_stereo_f32_i16(buffers[buffer_index].data(),
+		                               channels[0], channels[1], block_frames);
 
-	(*buffer_queue)->Enqueue(buffer_queue,
-	                         buffers[buffer_index].data(),
-	                         SLuint32(buffers[buffer_index].size() * sizeof(int16_t)));
+		(*buffer_queue)->Enqueue(buffer_queue,
+		                         buffers[buffer_index].data(),
+		                         SLuint32(buffers[buffer_index].size() * sizeof(int16_t)));
 
-	buffer_index = (buffer_index + 1) % buffer_count;
+		buffer_index = (buffer_index + 1) % buffer_count;
+	}
 }
 
 bool OpenSLESBackend::start(BackendCallback *cb)
@@ -210,9 +213,15 @@ bool OpenSLESBackend::start(BackendCallback *cb)
 
 bool OpenSLESBackend::stop()
 {
-	if ((*player)->SetPlayState(player, SL_PLAYSTATE_STOPPED) != SL_RESULT_SUCCESS)
-		return false;
-	callback->on_backend_stop();
+	if (callback)
+	{
+		if ((*player)->SetPlayState(player, SL_PLAYSTATE_STOPPED) != SL_RESULT_SUCCESS)
+			return false;
+		if ((*buffer_queue)->Clear(buffer_queue))
+			return false;
+		callback->on_backend_stop();
+	}
+	callback = nullptr;
 	return true;
 }
 

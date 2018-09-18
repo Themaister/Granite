@@ -157,6 +157,23 @@ bool FPSCamera::on_input_state(const InputStateEvent &state)
 		position += 3.0f * get_right() * float(state.get_delta_time());
 	else if (state.get_key_pressed(Key::A))
 		position -= 3.0f * get_right() * float(state.get_delta_time());
+
+	float dx = 0.0f;
+	float dy = 0.0f;
+	if (state.get_key_pressed(Key::Left))
+		dx -= 2.0f * state.get_delta_time();
+	if (state.get_key_pressed(Key::Right))
+		dx += 2.0f * state.get_delta_time();
+
+	if (state.get_key_pressed(Key::Up))
+		dy -= 1.0f * state.get_delta_time();
+	if (state.get_key_pressed(Key::Down))
+		dy += 1.0f * state.get_delta_time();
+
+	quat pitch = angleAxis(dy, vec3(1.0f, 0.0f, 0.0f));
+	quat yaw = angleAxis(dx, vec3(0.0f, 1.0f, 0.0f));
+	rotation = normalize(pitch * rotation * yaw);
+
 	return true;
 }
 

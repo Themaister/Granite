@@ -226,6 +226,10 @@ static Key glfw_key_to_granite(int key)
 	k(ENTER, Return);
 	k(SPACE, Space);
 	k(ESCAPE, Escape);
+	k(LEFT, Left);
+	k(RIGHT, Right);
+	k(UP, Up);
+	k(DOWN, Down);
 	default:
 		return Key::Unknown;
 	}

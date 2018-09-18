@@ -403,6 +403,10 @@ void LinuxInputManager::init_key_table()
 	keyboard_to_key[KEY_LEFTALT] = Key::LeftAlt;
 	keyboard_to_key[KEY_LEFTCTRL] = Key::LeftCtrl;
 	keyboard_to_key[KEY_LEFTSHIFT] = Key::LeftShift;
+	keyboard_to_key[KEY_LEFT] = Key::Left;
+	keyboard_to_key[KEY_RIGHT] = Key::Right;
+	keyboard_to_key[KEY_UP] = Key::Up;
+	keyboard_to_key[KEY_DOWN] = Key::Down;
 #undef set_key
 }
 

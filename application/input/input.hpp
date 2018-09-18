@@ -78,6 +78,7 @@ enum class Key
 	LeftShift,
 	Space,
 	Escape,
+	Left, Right, Up, Down,
 	Count
 };
 

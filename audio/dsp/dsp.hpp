@@ -22,6 +22,8 @@
 
 #pragma once
 
+#include <cmath>
+
 namespace Granite
 {
 namespace Audio
@@ -32,6 +34,29 @@ static inline void accumulate_channel(float * __restrict output, const float * _
 {
 	for (size_t i = 0; i < count; i++)
 		output[i] += input[i] * gain;
+}
+
+static int16_t f32_to_i16(float v)
+{
+	int32_t i = int32_t(std::round(v * 0x8000));
+	if (i > 0x7fff)
+		return 0x7fff;
+	else if (i < -0x8000)
+		return -0x8000;
+	else
+		return int16_t(i);
+}
+
+static inline void interleave_stereo_f32_i16(int16_t * __restrict target,
+                                             const float * __restrict left,
+                                             const float * __restrict right,
+                                             size_t count)
+{
+	for (size_t i = 0; i < count; i++)
+	{
+		*target++ = f32_to_i16(*left++);
+		*target++ = f32_to_i16(*right++);
+	}
 }
 }
 }

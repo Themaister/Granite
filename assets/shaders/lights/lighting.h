@@ -45,7 +45,7 @@ mediump vec3 compute_lighting(
 	mediump vec3 N = material_normal;
 
 	mediump float NoV = clamp(dot(N, V), 0.001, 1.0);
-	mediump float NoL = clamp(dot(N, L), 0.0, 1.0);
+	mediump float NoL = clamp(dot(N, L), 0.001, 1.0);
 	mediump float HoV = clamp(dot(H, V), 0.001, 1.0);
 	mediump float LoV = clamp(dot(L, V), 0.001, 1.0);
 

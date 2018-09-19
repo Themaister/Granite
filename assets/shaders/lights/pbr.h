@@ -7,19 +7,19 @@
 
 mediump float D_GGX(mediump float roughness, mediump vec3 N, mediump vec3 H)
 {
-#if 0
-	mediump float NoH = clamp(dot(N, H), 0.0, 1.0);
-    mediump float m = roughness * roughness;
-    mediump float m2 = m * m;
-    mediump float d = (NoH * m2 - NoH) * NoH + 1.0;
+#if 1
+    float NoH = clamp(dot(N, H), 0.0001, 1.0);
+    float m = roughness * roughness;
+    float m2 = m * m;
+    float d = (NoH * m2 - NoH) * NoH + 1.0;
     return m2 / (PI * d * d);
 #else
-	mediump float NoH = clamp(dot(N, H), 0.0, 1.0);
+	mediump float NoH = clamp(dot(N, H), 0.001, 1.0);
 	mediump vec3 NxH = cross(N, H);
 	mediump float one_minus_NoH_squared = min(dot(NxH, NxH), 1.0);
 	mediump float linear_roughness = roughness * roughness;
 	mediump float a = NoH * linear_roughness;
-	mediump float k = linear_roughness / (one_minus_NoH_squared + a * a);
+	mediump float k = linear_roughness / max(one_minus_NoH_squared + a * a, 0.0001);
 	mediump float d = k * k * (1.0 / PI);
 	return d;
 #endif
@@ -31,7 +31,7 @@ mediump float G_schlick(mediump float roughness, mediump float NoV, mediump floa
     mediump float k = r * r * (1.0 / 8.0);
     mediump float V = NoV * (1.0 - k) + k;
     mediump float L = NoL * (1.0 - k) + k;
-    return 0.25 / (V * L); // 1 / (4 * NoV * NoL) is folded in here.
+    return 0.25 / max(V * L, 0.001); // 1 / (4 * NoV * NoL) is folded in here.
 }
 
 mediump vec3 cook_torrance_specular(mediump vec3 N, mediump vec3 H, mediump float NoL, mediump float NoV, mediump vec3 specular, mediump float roughness)

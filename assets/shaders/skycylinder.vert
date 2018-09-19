@@ -18,6 +18,6 @@ void main()
     pos.xz *= registers.xz_scale;
 
     gl_Position = global.view_projection * vec4(pos, 0.0);
-    gl_Position.z = 0.0;
+    gl_Position.z = 0.99999 * gl_Position.w;
     vUV = UV;
 }

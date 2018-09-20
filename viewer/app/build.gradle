@@ -2,7 +2,7 @@ apply plugin: 'com.android.application'
 
 android {
     compileSdkVersion 26
-    buildToolsVersion '27.0.0'
+    buildToolsVersion '28.0.2'
 
     defaultConfig {
         minSdkVersion 24
@@ -73,5 +73,5 @@ android {
 }
 
 dependencies {
-	compile project(':..:application:platforms:android')
+	api project(':..:application:platforms:android')
 }

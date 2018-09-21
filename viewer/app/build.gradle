@@ -62,6 +62,7 @@ android {
             resources.srcDirs = ['res']
             res.srcDirs = ['res']
             assets.srcDirs = ['../../assets', '../assets']
+            jniLibs.srcDirs = ['../../application/platforms/android/renderdoc']
         }
     }
 

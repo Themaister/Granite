@@ -165,6 +165,6 @@ void main()
         return;
 
     vec3 xyz = registers.freq * (vec3(gl_GlobalInvocationID) + 0.5) * registers.inv_resolution;
-    float density = max(0.5 * cnoise(vec4(xyz, registers.t), vec4(vec3(registers.freq), 10.0)) + 0.5, 0.0);
+    float density = max(0.5 * cnoise(vec4(xyz, 2.0 * registers.t), vec4(vec3(registers.freq), 2.0 * 10.0)) + 0.5, 0.0);
     imageStore(uFogVolume, ivec3(gl_GlobalInvocationID), vec4(density));
 }

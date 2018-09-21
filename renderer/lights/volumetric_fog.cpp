@@ -24,6 +24,7 @@
 #include "render_graph.hpp"
 #include "render_context.hpp"
 #include <random>
+#include <cmath>
 
 using namespace Vulkan;
 using namespace std;
@@ -34,6 +35,14 @@ VolumetricFog::VolumetricFog()
 {
 	set_z_range(z_range);
 	EVENT_MANAGER_REGISTER_LATCH(VolumetricFog, on_device_created, on_device_destroyed, DeviceCreatedEvent);
+	EVENT_MANAGER_REGISTER(VolumetricFog, on_frame_tick, FrameTickEvent);
+}
+
+bool VolumetricFog::on_frame_tick(const FrameTickEvent &e)
+{
+	const double period = 10.0;
+	mod_time = float(fmod(e.get_elapsed_time(), period));
+	return true;
 }
 
 void VolumetricFog::on_device_created(const DeviceCreatedEvent &)
@@ -88,7 +97,7 @@ void VolumetricFog::build_density(CommandBuffer &cmd, ImageView &fog_density)
 	push.z_transform = vec4(context->get_render_parameters().projection[2].zw(),
 	                        context->get_render_parameters().projection[3].zw());
 	push.count = uvec3(width, height, depth);
-	push.t = 0.0f;
+	push.t = mod_time;
 	push.count = uvec3(
 			fog_density.get_image().get_width(),
 			fog_density.get_image().get_height(),

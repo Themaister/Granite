@@ -28,6 +28,7 @@
 #include "shader_manager.hpp"
 #include "renderer.hpp"
 #include "clusterer.hpp"
+#include "application_events.hpp"
 
 namespace Granite
 {
@@ -49,6 +50,7 @@ private:
 	std::vector<std::string> texture_dependencies;
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
+	bool on_frame_tick(const FrameTickEvent &e);
 	Vulkan::ImageHandle dither_lut;
 
 	unsigned width = 160;
@@ -56,6 +58,7 @@ private:
 	unsigned depth = 64;
 	float z_range = 1024.0f;
 	float slice_z_log2_scale;
+	float mod_time = 0.0f;
 
 	void add_render_passes(RenderGraph &graph) override;
 	void setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target) override;

@@ -24,5 +24,7 @@ if (GRANITE_AUDIO)
     target_link_libraries(audio-test audio-backend)
 
     add_granite_application(audio-application audio_application.cpp)
-    target_compile_definitions(audio-application PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
+    if (NOT ANDROID)
+        target_compile_definitions(audio-application PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
+    endif()
 endif()

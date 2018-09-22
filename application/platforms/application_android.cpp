@@ -299,6 +299,7 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 		Granite::Global::event_manager()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		Granite::Global::event_manager()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
 		global_state.active = true;
+		Granite::Global::start_audio_system();
 		break;
 	}
 
@@ -309,6 +310,7 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 		Granite::Global::event_manager()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		Granite::Global::event_manager()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
 		global_state.active = false;
+		Granite::Global::stop_audio_system();
 		break;
 	}
 
@@ -679,6 +681,7 @@ void android_main(android_app *app)
 					LOGI("Application returned %d.\n", ret);
 					Granite::Global::event_manager()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 					App::finishFromThread();
+					app.reset();
 					Global::deinit();
 					return;
 				}

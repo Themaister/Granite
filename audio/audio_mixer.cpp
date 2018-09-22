@@ -218,6 +218,9 @@ void Mixer::mix_samples(float *const *channels, size_t num_frames) noexcept
 
 StreamID Mixer::add_mixer_stream(MixerStream *stream)
 {
+	if (!stream)
+		return StreamID(-1);
+
 	// Cannot deal with this yet.
 	if (stream->get_num_channels() != num_channels)
 	{
@@ -246,16 +249,20 @@ StreamID Mixer::add_mixer_stream(MixerStream *stream)
 		MixerStream *old_stream = mixer_streams[index];
 		StreamID id = generate_stream_id(index);
 
+		stream->setup(sample_rate, num_channels, max_num_samples);
+
 		if (stream->get_sample_rate() != sample_rate)
 		{
 			auto *resample_stream = new ResampledStream(stream);
 			stream = resample_stream;
+			stream->setup(sample_rate, num_channels, max_num_samples);
 		}
 
 		mixer_streams[index] = stream;
-		stream->setup(sample_rate, num_channels, max_num_samples);
 		stream_raw_play_cursors[index] = 0;
 		stream_adjusted_play_cursors_usec[index].store(0, memory_order_relaxed);
+		gain_linear[index].store(f32_to_u32(1.0f), memory_order_relaxed);
+		panning[index].store(f32_to_u32(0.0f), memory_order_relaxed);
 		active_channel_mask[i].fetch_or(1u << subindex, memory_order_release);
 
 		if (old_stream)
@@ -278,6 +285,7 @@ void Mixer::dispose_dead_streams()
 			MixerStream *old_stream = mixer_streams[bit + 32 * i];
 			if (old_stream)
 				old_stream->dispose();
+			mixer_streams[bit + 32 * i] = nullptr;
 		});
 	}
 }
@@ -289,8 +297,8 @@ void Mixer::set_stream_mixer_parameters(StreamID id, float gain_db, float pannin
 		return;
 
 	unsigned index = get_stream_index(id);
-	gain_linear[index].store(f32_to_u32(std::pow(10.0f, gain_db / 20.0f)));
-	this->panning[index].store(f32_to_u32(panning));
+	gain_linear[index].store(f32_to_u32(std::pow(10.0f, gain_db / 20.0f)), memory_order_release);
+	this->panning[index].store(f32_to_u32(panning), memory_order_release);
 }
 }
 }

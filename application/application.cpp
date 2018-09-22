@@ -37,6 +37,10 @@
 #include <stdexcept>
 #include <float.h>
 
+#ifdef HAVE_GRANITE_AUDIO
+#include "audio_mixer.hpp"
+#endif
+
 using namespace std;
 using namespace Vulkan;
 
@@ -1164,6 +1168,11 @@ bool Application::poll()
 		fs->poll_notifications();
 	if (em)
 		em->dispatch();
+#ifdef HAVE_GRANITE_AUDIO
+	auto *am = Global::audio_mixer();
+	if (am)
+		am->dispose_dead_streams();
+#endif
 	return true;
 }
 

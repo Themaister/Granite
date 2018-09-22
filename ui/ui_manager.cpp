@@ -101,6 +101,9 @@ Font& UIManager::get_font(FontSize size)
 		case FontSize::Large:
 			pix_size = 24;
 			break;
+
+		default:
+			break;
 		}
 
 		font.reset(new Font("builtin://fonts/font.ttf", pix_size));

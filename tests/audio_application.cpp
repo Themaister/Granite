@@ -41,6 +41,8 @@ struct AudioApplication : Application, EventHandler
 	}
 
 	Mixer *mixer = nullptr;
+	StreamID id = 0;
+
 	void on_mixer_start(const MixerStartEvent &e)
 	{
 		mixer = &e.get_mixer();
@@ -57,9 +59,9 @@ struct AudioApplication : Application, EventHandler
 			return false;
 
 		if (e.get_x() < 0.5f)
-			mixer->add_mixer_stream(create_vorbis_stream("assets://audio/a.ogg"));
+			id = mixer->add_mixer_stream(create_vorbis_stream("assets://audio/a.ogg"));
 		else
-			mixer->add_mixer_stream(create_vorbis_stream("assets://audio/b.ogg"));
+			id = mixer->add_mixer_stream(create_vorbis_stream("assets://audio/b.ogg"));
 
 		return true;
 	}
@@ -74,11 +76,19 @@ struct AudioApplication : Application, EventHandler
 		switch (e.get_key())
 		{
 		case Key::A:
-			mixer->add_mixer_stream(create_vorbis_stream("assets://audio/a.ogg"));
+			id = mixer->add_mixer_stream(create_vorbis_stream("assets://audio/a.ogg"));
 			break;
 
 		case Key::B:
-			mixer->add_mixer_stream(create_vorbis_stream("assets://audio/b.ogg"));
+			id = mixer->add_mixer_stream(create_vorbis_stream("assets://audio/b.ogg"));
+			break;
+
+		case Key::C:
+			mixer->pause_stream(id);
+			break;
+
+		case Key::D:
+			mixer->play_stream(id);
 			break;
 
 		default:

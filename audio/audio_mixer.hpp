@@ -71,20 +71,32 @@ public:
 	// Atomically adds a mixer stream. Might also dispose and replace an old stream.
 	// Can only be called from a non-critical thread.
 	// Returns StreamID(-1) if a mixer stream slot cannot be found.
-	StreamID add_mixer_stream(MixerStream *stream);
-	void kill_stream(StreamID index);
+	StreamID add_mixer_stream(MixerStream *stream, bool start_playing = true,
+	                          float gain_db = 0.0f, float panning = 0.0f);
+	void kill_stream(StreamID id);
 
 	// Garbage collection. Should be called regularly from a non-critical thread.
 	void dispose_dead_streams();
 
 	// Atomically sets stream parameters, such as gain and panning.
 	// Panning is -1 (left), 0 (center), 1 (right).
-	void set_stream_mixer_parameters(StreamID index, float gain_db, float panning);
+	void set_stream_mixer_parameters(StreamID id, float gain_db, float panning);
 
 	// Returns latency-adjusted play cursor in seconds from add_mixer_stream.
 	// The play cursor monotonically increases.
 	// Returns a negative number if the stream no longer exists.
-	double get_play_cursor(StreamID index);
+	double get_play_cursor(StreamID id);
+
+	enum class StreamState
+	{
+		Playing,
+		Paused,
+		Dead
+	};
+	StreamState get_stream_state(StreamID id);
+
+	bool pause_stream(StreamID id);
+	bool play_stream(StreamID id);
 
 private:
 	enum { MaxSources = 128 };
@@ -95,6 +107,7 @@ private:
 	std::atomic<uint32_t> panning[MaxSources];
 	std::atomic<uint32_t> gain_linear[MaxSources];
 	std::atomic<uint32_t> latency;
+	std::atomic<bool> stream_playing[MaxSources];
 
 	uint64_t stream_raw_play_cursors[MaxSources];
 	std::atomic<uint64_t> stream_adjusted_play_cursors_usec[MaxSources];

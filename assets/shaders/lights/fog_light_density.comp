@@ -113,9 +113,9 @@ void main()
         vec3 old_ndc = old_clip.xyz / old_clip.w;
         if (all(lessThanEqual(abs(old_ndc.xy), vec2(1.0))))
         {
-            float old_world_z = to_world_z(old_ndc.z);
-            if (old_world_z > 0.0)
+            if (old_ndc.z > 0.0)
             {
+                float old_world_z = to_world_z(old_ndc.z);
                 float tex_z = volumetric_fog_world_to_texture_z(old_world_z, registers.slice_z_log2_scale);
                 old_in_scatter_light_albedo = textureLod(uOldLightDensity, vec3(0.5 * old_ndc.xy + 0.5, tex_z), 0.0);
                 w = 0.10;
@@ -133,7 +133,7 @@ void main()
 
     vec3 pos = get_world_position(uvw);
 
-    mediump float fog_density = textureLod(uFogDensity, pos * POSITION_MOD, 0.0).x;
+    mediump float fog_density = 10.0 * textureLod(uFogDensity, pos * POSITION_MOD, 0.0).x * exp(min(0.0, -pos.y));
     mediump float albedo = get_fog_albedo(uvw) * fog_density;
     mediump vec3 in_scatter_light = vec3(0.0);
     if (albedo > 0.0)

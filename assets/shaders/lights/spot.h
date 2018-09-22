@@ -47,7 +47,7 @@ layout(set = SPOT_LIGHT_SHADOW_ATLAS_SET, binding = SPOT_LIGHT_SHADOW_ATLAS_BIND
 mediump float spot_scatter_phase_function(mediump float VoL)
 {
 	// Very crude :)
-	return 0.5 - 0.5 * VoL;
+	return 0.55 - 0.45 * VoL;
 }
 
 const float MIN_SPOT_DIST = 0.1;

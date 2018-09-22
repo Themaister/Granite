@@ -6,7 +6,7 @@
 mediump float directional_scatter_phase_function(mediump float VoL)
 {
 	// Very crude :)
-	return 0.5 - 0.5 * VoL;
+	return 0.55 - 0.45 * VoL;
 }
 
 mediump vec3 compute_scatter_lighting(

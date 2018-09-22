@@ -385,7 +385,13 @@ void LightClusterer::render_atlas_point(RenderContext &context)
 		info.layers = 6 * MaxLights;
 		info.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
 		info.initial_layout = vsm ? VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-		info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | (vsm ? VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT : VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
+		info.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
+
+		if (vsm)
+			info.usage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+		else
+			info.usage |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+
 		points.atlas = device.create_image(info, nullptr);
 
 		for (unsigned i = 0; i < 6 * MaxLights; i++)
@@ -563,9 +569,27 @@ void LightClusterer::render_atlas_spot(RenderContext &context)
 	{
 		auto format = vsm ? VK_FORMAT_R32G32_SFLOAT : VK_FORMAT_D16_UNORM;
 		ImageCreateInfo info = ImageCreateInfo::render_target(shadow_resolution * 8, shadow_resolution * 4, format);
-		info.initial_layout = vsm ? VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-		info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | (vsm ? VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT : VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
+		info.initial_layout = vsm ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+		info.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
+
+		if (vsm)
+			info.usage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+		else
+			info.usage |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
 		spots.atlas = device.create_image(info, nullptr);
+
+		// Make sure we have a cleared atlas so we don't spuriously filter against NaN.
+		if (vsm)
+		{
+			cmd->image_barrier(*spots.atlas, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			                   VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
+			                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+			cmd->clear_image(*spots.atlas, {});
+			cmd->image_barrier(*spots.atlas, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			                   VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+			                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
+		}
 	}
 	else
 	{

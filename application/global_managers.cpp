@@ -31,6 +31,7 @@
 #ifdef HAVE_GRANITE_AUDIO
 #include "audio_interface.hpp"
 #include "audio_mixer.hpp"
+#include "audio_events.hpp"
 #endif
 
 namespace Granite
@@ -136,7 +137,7 @@ void init(ManagerFeatureFlags flags)
 	if (!global_managers.audio_mixer)
 		global_managers.audio_mixer = new Audio::Mixer;
 	if (!global_managers.audio_backend)
-		global_managers.audio_backend = Audio::create_default_audio_backend(*global_managers.audio_mixer, 48000.0f, 2);
+		global_managers.audio_backend = Audio::create_default_audio_backend(*global_managers.audio_mixer, 44100.0f, 2);
 #endif
 }
 
@@ -162,6 +163,37 @@ void deinit()
 	global_managers.audio_mixer = nullptr;
 #endif
 }
+
+void start_audio_system()
+{
+#ifdef HAVE_GRANITE_AUDIO
+	if (!global_managers.audio_backend)
+		return;
+
+	if (!global_managers.audio_backend->start())
+	{
+		LOGE("Failed to start audio subsystem!\n");
+		return;
+	}
+
+	if (global_managers.event_manager)
+		global_managers.event_manager->enqueue_latched<Audio::MixerStartEvent>(*global_managers.audio_mixer);
+#endif
+}
+
+void stop_audio_system()
+{
+#ifdef HAVE_GRANITE_AUDIO
+	if (!global_managers.audio_backend)
+		return;
+
+	if (!global_managers.audio_backend->stop())
+		LOGE("Failed to stop audio subsystem!\n");
+	if (global_managers.event_manager)
+		global_managers.event_manager->dequeue_latched(Audio::MixerStartEvent::get_type_id());
+#endif
+}
+
 }
 }
 

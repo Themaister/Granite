@@ -359,6 +359,7 @@ static void engine_handle_cmd(android_app *app, int32_t cmd)
 		Granite::Global::event_manager()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		Granite::Global::event_manager()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
 		enable_sensors();
+		Granite::Global::start_audio_system();
 
 		state.active = true;
 		if (state.wsi_idle)
@@ -375,6 +376,7 @@ static void engine_handle_cmd(android_app *app, int32_t cmd)
 		Granite::Global::event_manager()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 		Granite::Global::event_manager()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
 		disable_sensors();
+		Granite::Global::stop_audio_system();
 
 		state.active = false;
 		state.get_frame_timer().enter_idle();

@@ -380,8 +380,10 @@ int main(int argc, char *argv[])
 		if (!app->init_wsi(make_unique<Granite::WSIPlatformGLFW>(1280, 720)))
 			return 1;
 
+		Granite::Global::start_audio_system();
 		while (app->poll())
 			app->run_frame();
+		Granite::Global::stop_audio_system();
 		return 0;
 	}
 	else

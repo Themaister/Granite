@@ -528,7 +528,7 @@ int main(int argc, char *argv[])
 
 	filtered_argv.push_back(nullptr);
 
-	Granite::Global::init();
+	Granite::Global::init(Granite::Global::MANAGER_FEATURE_ALL_BITS & ~Granite::Global::MANAGER_FEATURE_AUDIO_BIT);
 
 	if (!args.assets.empty())
 		Global::filesystem()->register_protocol("assets", make_unique<OSFilesystem>(args.assets));

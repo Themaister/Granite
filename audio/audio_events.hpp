@@ -22,51 +22,28 @@
 
 #pragma once
 
-#include <stdint.h>
+#include "event.hpp"
 
 namespace Granite
 {
-class Filesystem;
-class ThreadGroup;
-class EventManager;
-namespace UI
-{
-class UIManager;
-}
-
 namespace Audio
 {
-class Backend;
-class Mixer;
-}
+class MixerStartEvent : public Event
+{
+public:
+	GRANITE_EVENT_TYPE_DECL(MixerStartEvent)
+	MixerStartEvent(Mixer &mixer)
+		: mixer(mixer)
+	{
+	}
 
-namespace Global
-{
-enum ManagerFeatureFlagBits
-{
-	MANAGER_FEATURE_FILESYSTEM_BIT = 1 << 0,
-	MANAGER_FEATURE_EVENT_BIT = 1 << 1,
-	MANAGER_FEATURE_THREAD_GROUP_BIT = 1 << 2,
-	MANAGER_FEATURE_UI_MANAGER_BIT = 1 << 3,
-	MANAGER_FEATURE_AUDIO_BIT = 1 << 4,
-	MANAGER_FEATURE_ALL_BITS = 0x7fffffff
+	Mixer &get_mixer()
+	{
+		return mixer;
+	}
+
+private:
+	Mixer &mixer;
 };
-using ManagerFeatureFlags = uint32_t;
-
-void init(ManagerFeatureFlags flags = MANAGER_FEATURE_ALL_BITS);
-void deinit();
-
-void start_audio_system();
-void stop_audio_system();
-
-Filesystem *filesystem();
-EventManager *event_manager();
-ThreadGroup *thread_group();
-UI::UIManager *ui_manager();
-#ifdef HAVE_GRANITE_AUDIO
-Audio::Backend *audio_backend();
-Audio::Mixer *audio_mixer();
-#endif
 }
-
 }

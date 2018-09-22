@@ -209,6 +209,7 @@ int main(int argc, char *argv[])
 			return 1;
 
 		unsigned run_frames = 0;
+		Granite::Global::start_audio_system();
 		while (app->poll())
 		{
 			app->run_frame();
@@ -221,6 +222,7 @@ int main(int argc, char *argv[])
 				break;
 			}
 		}
+		Granite::Global::stop_audio_system();
 		return 0;
 	}
 	else

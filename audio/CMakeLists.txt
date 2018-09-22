@@ -9,9 +9,10 @@ if (GRANITE_AUDIO)
 			audio_resampler.cpp audio_resampler.hpp
 			dsp/sinc_resampler.cpp dsp/sinc_resampler.hpp
 			dsp/dsp.hpp
+			audio_events.hpp
 			vorbis_stream.hpp vorbis_stream.cpp)
 	target_include_directories(audio-backend PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-	target_link_libraries(audio-backend util stb-vorbis filesystem)
+	target_link_libraries(audio-backend util stb-vorbis filesystem event)
 	target_compile_definitions(audio-backend PUBLIC HAVE_GRANITE_AUDIO=1)
 
 	if (ANDROID)

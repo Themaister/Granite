@@ -24,7 +24,9 @@
 
 #include <cmath>
 
-#ifdef __ARM_NEON
+#if defined(__SSE__)
+#include <xmmintrin.h>
+#elif defined(__ARM_NEON)
 #include <arm_neon.h>
 #endif
 
@@ -66,6 +68,40 @@ static int16_t f32_to_i16(float v)
 		return -0x8000;
 	else
 		return int16_t(i);
+}
+
+static inline void interleave_stereo_f32(float * __restrict target,
+                                         const float * __restrict left,
+                                         const float * __restrict right,
+                                         size_t count)
+{
+#ifdef __SSE__
+	size_t rounded_count = count & ~3;
+	for (size_t i = 0; i < rounded_count; i += 4)
+	{
+		__m128 l = _mm_loadu_ps(left);
+		__m128 r = _mm_loadu_ps(right);
+		left += 4;
+		right += 4;
+		__m128 interleaved0 = _mm_unpacklo_ps(l, r);
+		__m128 interleaved1 = _mm_unpackhi_ps(l, r);
+		_mm_storeu_ps(target, interleaved0);
+		_mm_storeu_ps(target + 4, interleaved1);
+		target += 8;
+	}
+
+	for (size_t i = rounded_count; i < count; i++)
+	{
+		*target++ = *left++;
+		*target++ = *right++;
+	}
+#else
+	for (size_t i = 0; i < count; i++)
+	{
+		*target++ = *left++;
+		*target++ = *right++;
+	}
+#endif
 }
 
 static inline void interleave_stereo_f32_i16(int16_t * __restrict target,

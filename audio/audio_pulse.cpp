@@ -22,6 +22,7 @@
 
 #include "audio_pulse.hpp"
 #include <pulse/pulseaudio.h>
+#include "dsp/dsp.hpp"
 #include "util.hpp"
 #include <string.h>
 
@@ -143,9 +144,17 @@ static void stream_request_cb(pa_stream *s, size_t length, void *data)
 			pa->get_callback().mix_samples(mix_channel_ptr, to_write);
 			out_frames -= to_write;
 
-			for (size_t f = 0; f < to_write; f++)
-				for (unsigned c = 0; c < channels; c++)
-					*out_interleaved++ = mix_channels[c][f];
+			if (channels == 2)
+			{
+				DSP::interleave_stereo_f32(out_interleaved, mix_channels[0], mix_channels[1], to_write);
+				out_interleaved += to_write * channels;
+			}
+			else
+			{
+				for (size_t f = 0; f < to_write; f++)
+					for (unsigned c = 0; c < channels; c++)
+						*out_interleaved++ = mix_channels[c][f];
+			}
 		}
 	}
 	else

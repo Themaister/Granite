@@ -84,6 +84,7 @@ static void finishFromThread()
 	global_state.app->activity->vm->DetachCurrentThread();
 }
 
+#ifdef HAVE_GRANITE_AUDIO
 static int getAudioNativeSampleRate()
 {
 	JNIEnv *env = nullptr;
@@ -101,6 +102,7 @@ static int getAudioNativeBlockFrames()
 	global_state.app->activity->vm->DetachCurrentThread();
 	return ret;
 }
+#endif
 }
 
 struct WSIPlatformAndroid : Granite::GraniteWSIPlatform

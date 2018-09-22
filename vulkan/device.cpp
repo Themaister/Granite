@@ -168,41 +168,6 @@ Shader *Device::request_shader(const uint32_t *data, size_t size)
 	return ret;
 }
 
-#ifdef GRANITE_VULKAN_FOSSILIZE
-bool Device::enqueue_create_shader_module(Fossilize::Hash hash, unsigned, const VkShaderModuleCreateInfo *create_info, VkShaderModule *module)
-{
-	auto *ret = shaders.insert(hash, make_unique<Shader>(hash, this, create_info->pCode, create_info->codeSize));
-	*module = ret->get_module();
-	replayer_state.shader_map[*module] = ret;
-	return true;
-}
-
-bool Device::enqueue_create_compute_pipeline(Fossilize::Hash hash, unsigned,
-                                             const VkComputePipelineCreateInfo *create_info, VkPipeline *pipeline)
-{
-	auto info = *create_info;
-
-	// Find the Shader* associated with this VkShaderModule and just use that.
-	auto itr = replayer_state.shader_map.find(create_info->stage.module);
-	if (itr == end(replayer_state.shader_map))
-		return false;
-
-	auto *ret = request_program(itr->second);
-	// The layout is dummy, resolve it here.
-	info.layout = ret->get_pipeline_layout()->get_layout();
-
-#ifdef GRANITE_VULKAN_FOSSILIZE
-	get_state_recorder().register_compute_pipeline(hash, info);
-#endif
-	LOGI("Creating compute pipeline.\n");
-	VkResult res = vkCreateComputePipelines(device, pipeline_cache, 1, &info, nullptr, pipeline);
-	if (res != VK_SUCCESS)
-		LOGE("Failed to create compute pipeline!\n");
-	*pipeline = ret->add_pipeline(hash, *pipeline);
-	return true;
-}
-#endif
-
 Program *Device::request_program(Vulkan::Shader *compute)
 {
 	Util::Hasher hasher;
@@ -222,42 +187,123 @@ Program *Device::request_program(const uint32_t *compute_data, size_t compute_si
 }
 
 #ifdef GRANITE_VULKAN_FOSSILIZE
-bool Device::enqueue_create_graphics_pipeline(Fossilize::Hash hash, unsigned,
-                                              const VkGraphicsPipelineCreateInfo *create_info, VkPipeline *pipeline)
+bool Device::enqueue_create_shader_module(Fossilize::Hash hash, unsigned, const VkShaderModuleCreateInfo *create_info, VkShaderModule *module)
 {
-	auto info = *create_info;
+	auto *ret = shaders.insert(hash, make_unique<Shader>(hash, this, create_info->pCode, create_info->codeSize));
+	*module = ret->get_module();
+	replayer_state.shader_map[*module] = ret;
+	return true;
+}
 
+void Device::wait_enqueue()
+{
+#ifdef GRANITE_VULKAN_MT
+	if (replayer_state.pipeline_group)
+	{
+		replayer_state.pipeline_group->wait();
+		replayer_state.pipeline_group.reset();
+	}
+#endif
+}
+
+VkPipeline Device::fossilize_create_graphics_pipeline(Fossilize::Hash hash, VkGraphicsPipelineCreateInfo &info)
+{
 	if (info.stageCount != 2)
-		return false;
+		return VK_NULL_HANDLE;
 	if (info.pStages[0].stage != VK_SHADER_STAGE_VERTEX_BIT)
-		return false;
+		return VK_NULL_HANDLE;
 	if (info.pStages[1].stage != VK_SHADER_STAGE_FRAGMENT_BIT)
-		return false;
+		return VK_NULL_HANDLE;
 
 	// Find the Shader* associated with this VkShaderModule and just use that.
 	auto vertex_itr = replayer_state.shader_map.find(info.pStages[0].module);
 	if (vertex_itr == end(replayer_state.shader_map))
-		return false;
+		return VK_NULL_HANDLE;
 
 	// Find the Shader* associated with this VkShaderModule and just use that.
 	auto fragment_itr = replayer_state.shader_map.find(info.pStages[1].module);
 	if (fragment_itr == end(replayer_state.shader_map))
-		return false;
+		return VK_NULL_HANDLE;
 
 	auto *ret = request_program(vertex_itr->second, fragment_itr->second);
 
 	// The layout is dummy, resolve it here.
 	info.layout = ret->get_pipeline_layout()->get_layout();
 
-#ifdef GRANITE_VULKAN_FOSSILIZE
-	get_state_recorder().register_graphics_pipeline(hash, info);
-#endif
+	{
+		lock_guard<mutex> holder{state_recorder_lock};
+		get_state_recorder().register_graphics_pipeline(hash, info);
+	}
+
 	LOGI("Creating graphics pipeline.\n");
-	VkResult res = vkCreateGraphicsPipelines(device, pipeline_cache, 1, &info, nullptr, pipeline);
+	VkPipeline pipeline = VK_NULL_HANDLE;
+	VkResult res = vkCreateGraphicsPipelines(device, pipeline_cache, 1, &info, nullptr, &pipeline);
 	if (res != VK_SUCCESS)
 		LOGE("Failed to create graphics pipeline!\n");
-	*pipeline = ret->add_pipeline(hash, *pipeline);
+	return ret->add_pipeline(hash, pipeline);
+}
+
+VkPipeline Device::fossilize_create_compute_pipeline(Fossilize::Hash hash, VkComputePipelineCreateInfo &info)
+{
+	// Find the Shader* associated with this VkShaderModule and just use that.
+	auto itr = replayer_state.shader_map.find(info.stage.module);
+	if (itr == end(replayer_state.shader_map))
+		return VK_NULL_HANDLE;
+
+	auto *ret = request_program(itr->second);
+
+	// The layout is dummy, resolve it here.
+	info.layout = ret->get_pipeline_layout()->get_layout();
+
+	{
+		lock_guard<mutex> holder{state_recorder_lock};
+		get_state_recorder().register_compute_pipeline(hash, info);
+	}
+
+	LOGI("Creating compute pipeline.\n");
+	VkPipeline pipeline = VK_NULL_HANDLE;
+	VkResult res = vkCreateComputePipelines(device, pipeline_cache, 1, &info, nullptr, &pipeline);
+	if (res != VK_SUCCESS)
+		LOGE("Failed to create compute pipeline!\n");
+	return ret->add_pipeline(hash, pipeline);
+}
+
+bool Device::enqueue_create_graphics_pipeline(Fossilize::Hash hash, unsigned,
+                                              const VkGraphicsPipelineCreateInfo *create_info, VkPipeline *pipeline)
+{
+#ifdef GRANITE_VULKAN_MT
+	if (!replayer_state.pipeline_group)
+		replayer_state.pipeline_group = Granite::Global::thread_group()->create_task();
+
+	replayer_state.pipeline_group->enqueue_task([this, info = *create_info, hash, pipeline]() mutable {
+		*pipeline = fossilize_create_graphics_pipeline(hash, info);
+	});
+
 	return true;
+#else
+	auto info = *create_info;
+	*pipeline = fossilize_create_graphics_pipeline(hash, info);
+	return *pipeline != VK_NULL_HANDLE;
+#endif
+}
+
+bool Device::enqueue_create_compute_pipeline(Fossilize::Hash hash, unsigned,
+                                             const VkComputePipelineCreateInfo *create_info, VkPipeline *pipeline)
+{
+#ifdef GRANITE_VULKAN_MT
+	if (!replayer_state.pipeline_group)
+		replayer_state.pipeline_group = Granite::Global::thread_group()->create_task();
+
+	replayer_state.pipeline_group->enqueue_task([this, info = *create_info, hash, pipeline]() mutable {
+		*pipeline = fossilize_create_compute_pipeline(hash, info);
+	});
+
+	return true;
+#else
+	auto info = *create_info;
+	*pipeline = fossilize_create_compute_pipeline(hash, info);
+	return *pipeline != VK_NULL_HANDLE;
+#endif
 }
 #endif
 

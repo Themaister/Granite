@@ -52,6 +52,7 @@
 #include <atomic>
 #include <mutex>
 #include <condition_variable>
+#include "thread_group.hpp"
 #endif
 
 #ifdef GRANITE_VULKAN_FOSSILIZE
@@ -505,6 +506,7 @@ private:
 
 #ifdef GRANITE_VULKAN_FOSSILIZE
 	Fossilize::StateRecorder state_recorder;
+	std::mutex state_recorder_lock;
 	bool enqueue_create_sampler(Fossilize::Hash hash, unsigned index, const VkSamplerCreateInfo *create_info, VkSampler *sampler) override;
 	bool enqueue_create_descriptor_set_layout(Fossilize::Hash hash, unsigned index, const VkDescriptorSetLayoutCreateInfo *create_info, VkDescriptorSetLayout *layout) override;
 	bool enqueue_create_pipeline_layout(Fossilize::Hash hash, unsigned index, const VkPipelineLayoutCreateInfo *create_info, VkPipelineLayout *layout) override;
@@ -512,11 +514,17 @@ private:
 	bool enqueue_create_render_pass(Fossilize::Hash hash, unsigned index, const VkRenderPassCreateInfo *create_info, VkRenderPass *render_pass) override;
 	bool enqueue_create_compute_pipeline(Fossilize::Hash hash, unsigned index, const VkComputePipelineCreateInfo *create_info, VkPipeline *pipeline) override;
 	bool enqueue_create_graphics_pipeline(Fossilize::Hash hash, unsigned index, const VkGraphicsPipelineCreateInfo *create_info, VkPipeline *pipeline) override;
+	void wait_enqueue() override;
+	VkPipeline fossilize_create_graphics_pipeline(Fossilize::Hash hash, VkGraphicsPipelineCreateInfo &info);
+	VkPipeline fossilize_create_compute_pipeline(Fossilize::Hash hash, VkComputePipelineCreateInfo &info);
 
 	struct
 	{
 		std::unordered_map<VkShaderModule, Shader *> shader_map;
 		std::unordered_map<VkRenderPass, RenderPass *> render_pass_map;
+#ifdef GRANITE_VULKAN_MT
+		Granite::TaskGroup pipeline_group;
+#endif
 	} replayer_state;
 
 	void init_pipeline_state();

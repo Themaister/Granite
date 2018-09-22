@@ -114,9 +114,12 @@ void main()
         if (all(lessThanEqual(abs(old_ndc.xy), vec2(1.0))))
         {
             float old_world_z = to_world_z(old_ndc.z);
-            float tex_z = volumetric_fog_world_to_texture_z(old_world_z, registers.slice_z_log2_scale);
-            old_in_scatter_light_albedo = textureLod(uOldLightDensity, vec3(0.5 * old_ndc.xy + 0.5, tex_z), 0.0);
-            w = 0.10;
+            if (old_world_z > 0.0)
+            {
+                float tex_z = volumetric_fog_world_to_texture_z(old_world_z, registers.slice_z_log2_scale);
+                old_in_scatter_light_albedo = textureLod(uOldLightDensity, vec3(0.5 * old_ndc.xy + 0.5, tex_z), 0.0);
+                w = 0.10;
+            }
         }
     }
 #endif

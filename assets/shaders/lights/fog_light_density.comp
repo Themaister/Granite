@@ -5,6 +5,10 @@ layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
 #include "lighting_scatter.h"
 #include "../inc/render_parameters.h"
 
+#ifndef TEMPORAL_REPROJECTION
+#define TEMPORAL_REPROJECTION 0
+#endif
+
 layout(push_constant, std430) uniform Registers
 {
     mat4 inv_view_projection;
@@ -24,7 +28,7 @@ float to_clip_z(float world_z)
     return zw.x / zw.y;
 }
 
-layout(constant_id = 0) const float POSITION_MOD = 1.2;
+layout(constant_id = 0) const float POSITION_MOD = 0.4;
 
 layout(rgba16f, set = 2, binding = 0) writeonly uniform image3D uLightDensity;
 layout(set = 2, binding = 2) uniform mediump sampler3D uDitherLUT;
@@ -33,6 +37,21 @@ layout(std140, set = 2, binding = 1) uniform BlockExtents
 {
     vec4 slice_extents[1024 / 4];
 };
+
+#if TEMPORAL_REPROJECTION
+layout(set = 2, binding = 4) uniform mediump sampler3D uOldLightDensity;
+layout(std140, set = 2, binding = 5) uniform Temporal
+{
+    mat4 old_view_projection;
+    vec4 inv_z_transform;
+};
+
+float to_world_z(float clip_z)
+{
+    vec2 zw = inv_z_transform.xy * clip_z + inv_z_transform.zw;
+    return -zw.x / zw.y;
+}
+#endif
 
 vec3 get_world_position(vec3 uvw)
 {
@@ -81,7 +100,27 @@ void main()
 {
     if (any(greaterThanEqual(gl_GlobalInvocationID, registers.count)))
         return;
+
     vec3 uvw = (vec3(gl_GlobalInvocationID) + 0.5) * registers.inv_resolution;
+
+#if TEMPORAL_REPROJECTION
+    mediump vec3 old_in_scatter_light = vec3(0.0);
+    mediump float w = 1.0;
+    vec3 undither_pos = get_world_position(uvw);
+    vec4 old_clip = old_view_projection * vec4(undither_pos, 1.0);
+    if (old_clip.w > 0.0)
+    {
+        vec3 old_ndc = old_clip.xyz / old_clip.w;
+        if (all(lessThanEqual(abs(old_ndc.xy), vec2(1.0))))
+        {
+            float old_world_z = to_world_z(old_ndc.z);
+            float tex_z = volumetric_fog_world_to_texture_z(old_world_z, registers.slice_z_log2_scale);
+            old_in_scatter_light = textureLod(uOldLightDensity, vec3(0.5 * old_ndc.xy + 0.5, tex_z), 0.0).rgb;
+            w = 0.1;
+        }
+    }
+#endif
+
     vec3 dither = textureLod(uDitherLUT, 4.0 * (vec3(gl_GlobalInvocationID) + registers.dither_offset + 0.5) * registers.inv_resolution, 0.0).xyz;
     dither.x -= 0.5;
     dither.y -= 0.5;
@@ -90,8 +129,14 @@ void main()
     uvw = clamp(uvw, vec3(0.0, 0.0, 0.001), vec3(1.0));
 
     vec3 pos = get_world_position(uvw);
-    float albedo = get_fog_albedo(uvw) * textureLod(uFogDensity, pos * POSITION_MOD, 0.0).x;
-    vec3 in_scatter_light = registers.in_scatter_strength * compute_inscatter_light(pos);
+
+    mediump float fog_density = textureLod(uFogDensity, pos * POSITION_MOD, 0.0).x;
+    mediump float albedo = get_fog_albedo(uvw) * fog_density;
+    mediump vec3 in_scatter_light = registers.in_scatter_strength * compute_inscatter_light(pos);
+
+#if TEMPORAL_REPROJECTION
+    in_scatter_light = mix(old_in_scatter_light, in_scatter_light, w);
+#endif
 
     imageStore(uLightDensity, ivec3(gl_GlobalInvocationID), vec4(in_scatter_light, albedo));
 }

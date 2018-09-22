@@ -73,12 +73,17 @@ private:
 	RenderPass *pass = nullptr;
 
 	void build_density(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &fog_density);
-	void build_light_density(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &light_density, Vulkan::ImageView &fog_density);
+	void build_light_density(Vulkan::CommandBuffer &cmd,
+	                         Vulkan::ImageView &light_density,
+	                         Vulkan::ImageView &fog_density,
+	                         Vulkan::ImageView *light_density_history);
 	void build_fog(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &fog, Vulkan::ImageView &light);
 
 	float slice_extents[1024];
 	void compute_slice_extents();
 	void build_dither_lut(Vulkan::Device &device);
 	unsigned dither_offset = 0;
+
+	mat4 old_projection;
 };
 }

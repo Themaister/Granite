@@ -117,7 +117,8 @@ void VolumetricFog::build_density(CommandBuffer &cmd, ImageView &fog_density)
 	             (fog_density.get_image().get_depth() + 3) / 4);
 }
 
-void VolumetricFog::build_light_density(CommandBuffer &cmd, ImageView &light_density, ImageView &fog_density)
+void VolumetricFog::build_light_density(CommandBuffer &cmd, ImageView &light_density, ImageView &fog_density,
+                                        ImageView *light_density_history)
 {
 	struct Push
 	{
@@ -149,6 +150,24 @@ void VolumetricFog::build_light_density(CommandBuffer &cmd, ImageView &light_den
 	auto flags = Renderer::get_mesh_renderer_options_from_lighting(*context->get_lighting_parameters());
 	flags &= ~Renderer::VOLUMETRIC_FOG_ENABLE_BIT;
 	auto defines = Renderer::build_defines_from_renderer_options(RendererType::GeneralForward, flags);
+	if (light_density_history)
+	{
+		defines.emplace_back("TEMPORAL_REPROJECTION", 1);
+		cmd.set_texture(2, 4, *light_density_history, StockSampler::LinearClamp);
+
+		struct Temporal
+		{
+			mat4 old_projection;
+			vec4 inv_z_transform;
+		};
+		auto *temporal = cmd.allocate_typed_constant_data<Temporal>(2, 5, 1);
+		temporal->old_projection = old_projection;
+		temporal->inv_z_transform = vec4(
+				context->get_render_parameters().inv_projection[2].zw(),
+				context->get_render_parameters().inv_projection[3].zw());
+	}
+	old_projection = context->get_render_parameters().view_projection;
+
 	cmd.set_program("builtin://shaders/lights/fog_light_density.comp", defines);
 	Renderer::bind_global_parameters(cmd, *context);
 	Renderer::bind_lighting_parameters(cmd, *context);
@@ -206,16 +225,18 @@ void VolumetricFog::add_render_passes(RenderGraph &graph)
 	auto &in_scatter_volume = pass->add_storage_texture_output("volumetric-fog-inscatter", volume);
 	auto &density_volume = pass->add_storage_texture_output("volumetric-fog-density", density);
 	fog_volume = &pass->add_storage_texture_output("volumetric-fog-output", volume);
+	pass->add_history_input("volumetric-fog-inscatter");
 
 	pass->set_build_render_pass([&](CommandBuffer &cmd) {
 		auto &d = graph.get_physical_texture_resource(density_volume);
 		auto &l = graph.get_physical_texture_resource(in_scatter_volume);
 		auto &f = graph.get_physical_texture_resource(*fog_volume);
+		auto *l_history = graph.get_physical_history_texture_resource(in_scatter_volume);
 
 		build_density(cmd, d);
 		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
 		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-		build_light_density(cmd, l, d);
+		build_light_density(cmd, l, d, l_history);
 		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
 		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 		build_fog(cmd, f, l);

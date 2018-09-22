@@ -38,6 +38,11 @@ static unsigned global_target_block_frames;
 
 struct OpenSLESBackend : Backend
 {
+	OpenSLESBackend(BackendCallback &callback)
+		: Backend(callback)
+	{
+	}
+
 	~OpenSLESBackend();
 	bool init(float target_sample_rate, unsigned channels);
 
@@ -71,12 +76,12 @@ struct OpenSLESBackend : Backend
 		return num_channels;
 	}
 
-	bool start(BackendCallback *callback) override;
+	bool start() override;
 	bool stop() override;
 
 	float sample_rate = 0.0f;
 	unsigned num_channels = 0;
-	BackendCallback *callback = nullptr;
+	bool is_active = false;
 };
 
 static void opensl_callback(SLAndroidSimpleBufferQueueItf itf, void *ctx);
@@ -167,15 +172,21 @@ bool OpenSLESBackend::init(float target_sample_rate, unsigned)
 	if ((*buffer_queue)->RegisterCallback(buffer_queue, opensl_callback, this) != SL_RESULT_SUCCESS)
 		return false;
 
+	callback.set_backend_parameters(this->sample_rate, num_channels, block_frames);
+
+	double latency = double(buffer_count * block_frames) / this->sample_rate;
+	uint32_t latency_usec = uint32_t(latency * 1e6);
+	callback.set_latency_usec(latency_usec);
+
 	return true;
 }
 
 void OpenSLESBackend::thread_callback() noexcept
 {
-	if (callback)
+	if (is_active)
 	{
 		float *channels[2] = { mix_buffers[0].data(), mix_buffers[1].data() };
-		callback->mix_samples(channels, block_frames);
+		callback.mix_samples(channels, block_frames);
 
 		DSP::interleave_stereo_f32_i16(buffers[buffer_index].data(),
 		                               channels[0], channels[1], block_frames);
@@ -188,10 +199,10 @@ void OpenSLESBackend::thread_callback() noexcept
 	}
 }
 
-bool OpenSLESBackend::start(BackendCallback *cb)
+bool OpenSLESBackend::start()
 {
-	callback = cb;
-	callback->on_backend_start(sample_rate, num_channels, block_frames);
+	if (is_active)
+		return false;
 
 	buffer_index = 0;
 	if ((*buffer_queue)->Clear(buffer_queue) != SL_RESULT_SUCCESS)
@@ -205,23 +216,29 @@ bool OpenSLESBackend::start(BackendCallback *cb)
 			return false;
 	}
 
+	is_active = true;
+	callback.on_backend_start();
+
 	if ((*player)->SetPlayState(player, SL_PLAYSTATE_PLAYING) != SL_RESULT_SUCCESS)
+	{
+		is_active = false;
 		return false;
+	}
 
 	return true;
 }
 
 bool OpenSLESBackend::stop()
 {
-	if (callback)
-	{
-		if ((*player)->SetPlayState(player, SL_PLAYSTATE_STOPPED) != SL_RESULT_SUCCESS)
-			return false;
-		if ((*buffer_queue)->Clear(buffer_queue))
-			return false;
-		callback->on_backend_stop();
-	}
-	callback = nullptr;
+	if (!is_active)
+		return false;
+	is_active = false;
+	callback.on_backend_stop();
+
+	if ((*player)->SetPlayState(player, SL_PLAYSTATE_STOPPED) != SL_RESULT_SUCCESS)
+		return false;
+	if ((*buffer_queue)->Clear(buffer_queue))
+		return false;
 	return true;
 }
 
@@ -246,9 +263,9 @@ static void opensl_callback(SLAndroidSimpleBufferQueueItf, void *ctx)
 	sl->thread_callback();
 }
 
-Backend *create_opensl_backend(float sample_rate, unsigned channels)
+Backend *create_opensl_backend(BackendCallback &callback, float sample_rate, unsigned channels)
 {
-	auto *sl = new OpenSLESBackend;
+	auto *sl = new OpenSLESBackend(callback);
 	if (!sl->init(sample_rate, channels))
 	{
 		delete sl;

@@ -366,6 +366,8 @@ int main(int argc, char *argv[])
 	}
 #endif
 
+	Granite::Global::init();
+
 	auto app = unique_ptr<Granite::Application>(Granite::application_create(argc, argv));
 
 #ifdef _WIN32

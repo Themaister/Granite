@@ -528,6 +528,8 @@ int main(int argc, char *argv[])
 
 	filtered_argv.push_back(nullptr);
 
+	Granite::Global::init();
+
 	if (!args.assets.empty())
 		Global::filesystem()->register_protocol("assets", make_unique<OSFilesystem>(args.assets));
 	if (!args.builtin.empty())

@@ -583,6 +583,8 @@ void android_main(android_app *app)
 	global_state.app = app;
 	init_jni();
 
+	Global::init();
+
 	LOGI("Starting Granite!\n");
 
 #ifdef ANDROID_APK_FILESYSTEM
@@ -675,6 +677,7 @@ void android_main(android_app *app)
 					LOGI("Application returned %d.\n", ret);
 					Granite::Global::event_manager()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 					App::finishFromThread();
+					Global::deinit();
 					return;
 				}
 				catch (const std::exception &e)

@@ -26,6 +26,7 @@
 #include "filesystem.hpp"
 #include "event.hpp"
 #include "ui_manager.hpp"
+#include <thread>
 
 #ifdef HAVE_GRANITE_AUDIO
 #include "audio_interface.hpp"
@@ -80,6 +81,7 @@ ThreadGroup *thread_group()
 	{
 		LOGI("Thread group was not initialized. Lazily initializing. This is not thread safe!\n");
 		global_managers.thread_group = new ThreadGroup;
+		global_managers.thread_group->start(std::thread::hardware_concurrency());
 	}
 
 	return global_managers.thread_group;
@@ -103,20 +105,38 @@ Audio::Mixer *audio_mixer() { return global_managers.audio_mixer; }
 
 void init(ManagerFeatureFlags flags)
 {
-	deinit();
-
 	if (flags & MANAGER_FEATURE_FILESYSTEM_BIT)
-		global_managers.filesystem = new Filesystem;
+	{
+		if (!global_managers.filesystem)
+			global_managers.filesystem = new Filesystem;
+	}
+
 	if (flags & MANAGER_FEATURE_EVENT_BIT)
-		global_managers.event_manager = new EventManager;
+	{
+		if (!global_managers.event_manager)
+			global_managers.event_manager = new EventManager;
+	}
+
 	if (flags & MANAGER_FEATURE_THREAD_GROUP_BIT)
-		global_managers.thread_group = new ThreadGroup;
+	{
+		if (!global_managers.thread_group)
+		{
+			global_managers.thread_group = new ThreadGroup;
+			global_managers.thread_group->start(std::thread::hardware_concurrency());
+		}
+	}
+
 	if (flags & MANAGER_FEATURE_UI_MANAGER_BIT)
-		global_managers.ui_manager = new UI::UIManager;
+	{
+		if (!global_managers.ui_manager)
+			global_managers.ui_manager = new UI::UIManager;
+	}
 
 #ifdef HAVE_GRANITE_AUDIO
-	global_managers.audio_mixer = new Audio::Mixer;
-	global_managers.audio_backend = Audio::create_default_audio_backend(*global_managers.audio_mixer, 48000.0f, 2);
+	if (!global_managers.audio_mixer)
+		global_managers.audio_mixer = new Audio::Mixer;
+	if (!global_managers.audio_backend)
+		global_managers.audio_backend = Audio::create_default_audio_backend(*global_managers.audio_mixer, 48000.0f, 2);
 #endif
 }
 

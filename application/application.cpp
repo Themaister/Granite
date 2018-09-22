@@ -44,9 +44,6 @@ namespace Granite
 {
 Application::Application()
 {
-	auto *tg = Global::thread_group();
-	if (tg)
-		tg->register_main_thread();
 }
 
 bool Application::init_wsi(std::unique_ptr<WSIPlatform> new_platform)

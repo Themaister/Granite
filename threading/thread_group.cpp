@@ -114,15 +114,6 @@ TaskGroup::~TaskGroup()
 }
 }
 
-struct ThreadGroupHolder
-{
-	ThreadGroup group;
-	ThreadGroupHolder()
-	{
-		group.start(thread::hardware_concurrency());
-	}
-};
-
 static thread_local unsigned thread_id_to_index = ~0u;
 
 unsigned ThreadGroup::get_current_thread_index()
@@ -313,6 +304,7 @@ void ThreadGroup::thread_looper(unsigned index)
 
 ThreadGroup::ThreadGroup()
 {
+	register_main_thread();
 	total_tasks.store(0);
 	completed_tasks.store(0);
 }

@@ -64,8 +64,6 @@ Device::Device()
 #endif
 {
 #ifdef GRANITE_VULKAN_MT
-	auto &tg = *Granite::Global::thread_group();
-	tg.register_main_thread();
 	cookie.store(0);
 #endif
 }

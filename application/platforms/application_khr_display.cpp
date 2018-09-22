@@ -333,6 +333,7 @@ void application_dummy()
 
 int main(int argc, char *argv[])
 {
+	Granite::Global::init();
 	auto app = unique_ptr<Granite::Application>(Granite::application_create(argc, argv));
 	if (app)
 	{

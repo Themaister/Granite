@@ -271,7 +271,7 @@ bool Pulse::start()
 	has_success = false;
 	if (success < 0)
 		LOGE("Pulse::start() failed.\n");
-	return success == 0;
+	return success >= 0;
 }
 
 bool Pulse::stop()
@@ -293,7 +293,7 @@ bool Pulse::stop()
 	has_success = false;
 	if (success < 0)
 		LOGE("Pulse::stop() failed.\n");
-	return success == 0;
+	return success >= 0;
 }
 
 Backend *create_pulse_backend(BackendCallback &callback, float sample_rate, unsigned channels)

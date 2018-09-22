@@ -37,7 +37,7 @@ public:
 	{
 	}
 
-	Mixer &get_mixer()
+	Mixer &get_mixer() const
 	{
 		return mixer;
 	}

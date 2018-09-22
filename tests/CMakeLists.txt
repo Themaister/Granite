@@ -20,6 +20,9 @@ add_granite_offline_tool(intrusive-test intrusive_ptr_test.cpp)
 target_link_libraries(intrusive-test util)
 
 if (GRANITE_AUDIO)
-	add_granite_offline_tool(audio-test audio_test.cpp)
-	target_link_libraries(audio-test audio-backend)
+    add_granite_offline_tool(audio-test audio_test.cpp)
+    target_link_libraries(audio-test audio-backend)
+
+    add_granite_application(audio-application audio_application.cpp)
+    target_compile_definitions(audio-application PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
 endif()

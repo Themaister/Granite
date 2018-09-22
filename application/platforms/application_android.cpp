@@ -296,8 +296,8 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 	{
 		LOGI("Lifecycle resume\n");
 		enable_sensors();
-		Granite::EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		Granite::EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
+		Granite::Global::event_manager()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+		Granite::Global::event_manager()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
 		global_state.active = true;
 		break;
 	}
@@ -306,8 +306,8 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 	{
 		LOGI("Lifecycle pause\n");
 		disable_sensors();
-		Granite::EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		Granite::EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
+		Granite::Global::event_manager()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+		Granite::Global::event_manager()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
 		global_state.active = false;
 		break;
 	}
@@ -315,16 +315,16 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 	case APP_CMD_START:
 	{
 		LOGI("Lifecycle start\n");
-		Granite::EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		Granite::EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
+		Granite::Global::event_manager()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+		Granite::Global::event_manager()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
 		break;
 	}
 
 	case APP_CMD_STOP:
 	{
 		LOGI("Lifecycle stop\n");
-		Granite::EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		Granite::EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
+		Granite::Global::event_manager()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+		Granite::Global::event_manager()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
 		break;
 	}
 
@@ -356,8 +356,8 @@ static void engine_handle_cmd(android_app *app, int32_t cmd)
 	case APP_CMD_RESUME:
 	{
 		LOGI("Lifecycle resume\n");
-		Granite::EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		Granite::EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
+		Granite::Global::event_manager()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+		Granite::Global::event_manager()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
 		enable_sensors();
 
 		state.active = true;
@@ -372,8 +372,8 @@ static void engine_handle_cmd(android_app *app, int32_t cmd)
 	case APP_CMD_PAUSE:
 	{
 		LOGI("Lifecycle pause\n");
-		Granite::EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		Granite::EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
+		Granite::Global::event_manager()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+		Granite::Global::event_manager()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
 		disable_sensors();
 
 		state.active = false;
@@ -385,16 +385,16 @@ static void engine_handle_cmd(android_app *app, int32_t cmd)
 	case APP_CMD_START:
 	{
 		LOGI("Lifecycle start\n");
-		Granite::EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		Granite::EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
+		Granite::Global::event_manager()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+		Granite::Global::event_manager()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
 		break;
 	}
 
 	case APP_CMD_STOP:
 	{
 		LOGI("Lifecycle stop\n");
-		Granite::EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		Granite::EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
+		Granite::Global::event_manager()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+		Granite::Global::event_manager()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
 		break;
 	}
 
@@ -595,9 +595,9 @@ void android_main(android_app *app)
 #define ANDROID_ASSET_PATH ""
 #endif
 
-	Filesystem::get().register_protocol("builtin", make_unique<AssetManagerFilesystem>(ANDROID_BUILTIN_ASSET_PATH, app->activity->assetManager));
-	Filesystem::get().register_protocol("assets", make_unique<AssetManagerFilesystem>(ANDROID_ASSET_PATH, app->activity->assetManager));
-	Filesystem::get().register_protocol("cache", make_unique<OSFilesystem>(app->activity->internalDataPath));
+	Global::filesystem()->register_protocol("builtin", make_unique<AssetManagerFilesystem>(ANDROID_BUILTIN_ASSET_PATH, app->activity->assetManager));
+	Global::filesystem()->register_protocol("assets", make_unique<AssetManagerFilesystem>(ANDROID_ASSET_PATH, app->activity->assetManager));
+	Global::filesystem()->register_protocol("cache", make_unique<OSFilesystem>(app->activity->internalDataPath));
 #endif
 
 	app->onAppCmd = engine_handle_cmd_init;
@@ -606,12 +606,12 @@ void android_main(android_app *app)
 
 	init_sensors();
 
-	Granite::EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
+	Granite::Global::event_manager()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
 
 	unsigned width = 1280;
 	unsigned height = 720;
 	string android_config;
-	Filesystem::get().read_file_to_string("assets://android.json", android_config);
+	Global::filesystem()->read_file_to_string("assets://android.json", android_config);
 	if (!android_config.empty())
 	{
 		rapidjson::Document doc;
@@ -637,7 +637,7 @@ void android_main(android_app *app)
 
 			if (app->destroyRequested)
 			{
-				Granite::EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+				Granite::Global::event_manager()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 				return;
 			}
 
@@ -673,7 +673,7 @@ void android_main(android_app *app)
 						ret = 1;
 
 					LOGI("Application returned %d.\n", ret);
-					Granite::EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+					Granite::Global::event_manager()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 					App::finishFromThread();
 					return;
 				}

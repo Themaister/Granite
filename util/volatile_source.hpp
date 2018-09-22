@@ -27,6 +27,7 @@
 #include "util.hpp"
 #include "path.hpp"
 #include <string>
+#include "global_managers.hpp"
 
 namespace Util
 {
@@ -61,7 +62,7 @@ protected:
 		if (path.empty())
 			return;
 
-		auto file = Granite::Filesystem::get().open(path);
+		auto file = Granite::Global::filesystem()->open(path);
 		if (!file)
 		{
 			LOGE("Failed to open volatile file: %s\n", path.c_str());
@@ -72,7 +73,7 @@ protected:
 		self->update(move(file));
 
 		auto paths = Granite::Path::protocol_split(path);
-		auto *proto = Granite::Filesystem::get().get_backend(paths.first);
+		auto *proto = Granite::Global::filesystem()->get_backend(paths.first);
 		if (proto)
 		{
 			// Listen to directory so we can track file moves properly.
@@ -84,7 +85,7 @@ protected:
 
 				try
 				{
-					auto file = Granite::Filesystem::get().open(info.path);
+					auto file = Granite::Global::filesystem()->open(info.path);
 					if (!file)
 						return;
 					auto *self = static_cast<T *>(this);

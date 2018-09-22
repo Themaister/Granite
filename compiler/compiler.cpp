@@ -57,7 +57,7 @@ Stage GLSLCompiler::stage_from_path(const std::string &path)
 
 void GLSLCompiler::set_source_from_file(const string &path)
 {
-	if (!Filesystem::get().read_file_to_string(path, source))
+	if (!Global::filesystem()->read_file_to_string(path, source))
 	{
 		LOGE("Failed to load shader: %s\n", path.c_str());
 		throw runtime_error("Failed to load shader.");
@@ -82,7 +82,7 @@ bool GLSLCompiler::parse_variants(const string &source, const string &path)
 
 			include_path = Path::relpath(path, include_path);
 			string included_source;
-			if (!Filesystem::get().read_file_to_string(include_path, included_source))
+			if (!Global::filesystem()->read_file_to_string(include_path, included_source))
 			{
 				LOGE("Failed to include GLSL file: %s\n", include_path.c_str());
 				return false;

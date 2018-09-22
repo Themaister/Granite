@@ -80,7 +80,8 @@ void Window::reconfigure_to_canvas(vec2 offset, vec2 size)
 
 	if (title_bar)
 	{
-		auto &font = UIManager::get().get_font(FontSize::Large);
+		auto &ui = *Global::ui_manager();
+		auto &font = ui.get_font(FontSize::Large);
 		vec2 text_geom = font.get_text_geometry(title.c_str());
 		vec2 text_offset = font.get_aligned_offset(Font::Alignment::TopCenter, text_geom, size);
 		line_y = text_geom.y + text_offset.y + geometry.margin;
@@ -111,7 +112,8 @@ float Window::render(FlatRenderer &renderer, float layer, vec2 offset, vec2 size
 
 	if (title_bar)
 	{
-		auto &font = UIManager::get().get_font(FontSize::Large);
+		auto &ui = *Global::ui_manager();
+		auto &font = ui.get_font(FontSize::Large);
 
 		vec2 offsets[] = {
 			{offset.x + geometry.margin,          line_y + offset.y},
@@ -140,7 +142,8 @@ void Window::reconfigure()
 
 	if (title_bar)
 	{
-		auto &font = UIManager::get().get_font(FontSize::Large);
+		auto &ui = *Global::ui_manager();
+		auto &font = ui.get_font(FontSize::Large);
 		vec2 text_geom = font.get_text_geometry(title.c_str());
 		float line_y = text_geom.y + geometry.margin + 2.0f;
 

@@ -195,7 +195,7 @@ int main(int argc, char *argv[])
 		cameras = parser.get_cameras();
 
 		string json;
-		if (!Filesystem::get().read_file_to_string(extra_cameras, json))
+		if (!Global::filesystem()->read_file_to_string(extra_cameras, json))
 		{
 			LOGE("Failed to read config file for lights.\n");
 			return 1;
@@ -293,7 +293,7 @@ int main(int argc, char *argv[])
 		lights = parser.get_lights();
 
 		string json;
-		if (!Filesystem::get().read_file_to_string(extra_lights, json))
+		if (!Global::filesystem()->read_file_to_string(extra_lights, json))
 		{
 			LOGE("Failed to read config file for lights.\n");
 			return 1;

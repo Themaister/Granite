@@ -75,12 +75,16 @@ public:
 		glfwSetCursorPosCallback(window, cursor_cb);
 		glfwSetCursorEnterCallback(window, enter_cb);
 
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
+		auto *em = Global::event_manager();
+		if (em)
+		{
+			em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+			em->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
+			em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+			em->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
+			em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+			em->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
+		}
 
 #ifdef HAVE_LINUX_INPUT
 		if (!input_manager.init(LINUX_INPUT_MANAGER_JOYPAD_BIT, &get_input_tracker()))
@@ -138,10 +142,14 @@ public:
 
 	~WSIPlatformGLFW()
 	{
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
+		auto *em = Global::event_manager();
+		if (em)
+		{
+			em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+			em->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
+			em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+			em->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
+		}
 
 		if (window)
 			glfwDestroyWindow(window);

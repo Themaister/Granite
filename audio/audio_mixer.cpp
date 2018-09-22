@@ -35,23 +35,22 @@ namespace Granite
 {
 namespace Audio
 {
-void Mixer::on_backend_start(float sample_rate, unsigned channels, size_t max_num_samples)
+void Mixer::set_backend_parameters(float sample_rate, unsigned channels, size_t max_num_samples)
 {
 	this->max_num_samples = max_num_samples;
 	this->sample_rate = sample_rate;
 	this->num_channels = channels;
+	inv_sample_rate = 1.0 / sample_rate;
+}
 
-	constexpr unsigned iter = MaxSources / 32;
-	for (unsigned i = 0; i < iter; i++)
-	{
-		uint32_t active_mask = active_channel_mask[i].load(memory_order_acquire);
-		Util::for_each_bit(active_mask, [&](unsigned bit) {
-			MixerStream *stream = mixer_streams[bit + 32 * i];
-			if (stream)
-				stream->setup(sample_rate, channels, max_num_samples);
-		});
-	}
+void Mixer::on_backend_start()
+{
 	is_active = true;
+}
+
+void Mixer::set_latency_usec(uint32_t usec)
+{
+	latency.store(usec, memory_order_release);
 }
 
 static float u32_to_f32(uint32_t v)
@@ -94,6 +93,7 @@ Mixer::Mixer()
 		gain = f32_to_u32(1.0f);
 	for (auto &active : active_channel_mask)
 		active = 0;
+	latency = 0;
 }
 
 void Mixer::on_backend_stop()
@@ -147,11 +147,36 @@ void Mixer::kill_stream(StreamID id)
 	active_channel_mask[index].fetch_and(subindex, memory_order_release);
 }
 
+double Mixer::get_play_cursor(StreamID id)
+{
+	NON_CRITICAL_THREAD_LOCK();
+	if (!verify_stream_id(id))
+		return -1.0;
+
+	unsigned index = get_stream_index(id);
+	return stream_adjusted_play_cursors_usec[index].load(memory_order_acquire) * 1e-6;
+}
+
+void Mixer::update_stream_play_cursor(unsigned index, double latency) noexcept
+{
+	double t = double(stream_raw_play_cursors[index]) * inv_sample_rate;
+	t -= latency;
+	if (t < 0.0)
+		t = 0.0;
+	auto t_usec = uint64_t(t * 1e6);
+
+	uint64_t old_cursor = stream_adjusted_play_cursors_usec[index].load(memory_order_relaxed);
+	if (t_usec > old_cursor)
+		stream_adjusted_play_cursors_usec[index].store(t_usec, memory_order_release);
+}
+
 void Mixer::mix_samples(float *const *channels, size_t num_frames) noexcept
 {
 	for (unsigned c = 0; c < num_channels; c++)
 		memset(channels[c], 0, num_frames * sizeof(float));
 	float gains[Backend::MaxAudioChannels];
+
+	auto current_latency = double(latency.load(memory_order_acquire)) * 1e-6;
 
 	constexpr unsigned iter = MaxSources / 32;
 	for (unsigned i = 0; i < iter; i++)
@@ -179,6 +204,10 @@ void Mixer::mix_samples(float *const *channels, size_t num_frames) noexcept
 			}
 
 			size_t got = mixer_streams[index]->accumulate_samples(channels, gains, num_frames);
+
+			stream_raw_play_cursors[index] += got;
+			update_stream_play_cursor(index, current_latency);
+
 			if (got < num_frames)
 				dead_mask |= 1u << bit;
 		});
@@ -189,12 +218,6 @@ void Mixer::mix_samples(float *const *channels, size_t num_frames) noexcept
 
 StreamID Mixer::add_mixer_stream(MixerStream *stream)
 {
-	if (!is_active)
-	{
-		LOGE("Mixer is not active, cannot add streams.\n");
-		return StreamID(-1);
-	}
-
 	// Cannot deal with this yet.
 	if (stream->get_num_channels() != num_channels)
 	{
@@ -231,7 +254,8 @@ StreamID Mixer::add_mixer_stream(MixerStream *stream)
 
 		mixer_streams[index] = stream;
 		stream->setup(sample_rate, num_channels, max_num_samples);
-
+		stream_raw_play_cursors[index] = 0;
+		stream_adjusted_play_cursors_usec[index].store(0, memory_order_relaxed);
 		active_channel_mask[i].fetch_or(1u << subindex, memory_order_release);
 
 		if (old_stream)

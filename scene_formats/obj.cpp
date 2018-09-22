@@ -371,7 +371,7 @@ void Parser::emit_vertex(const OBJVertex * const *face)
 void Parser::load_material_library(const std::string &path)
 {
 	string mtl;
-	if (!Filesystem::get().read_file_to_string(path, mtl))
+	if (!Granite::Global::filesystem()->read_file_to_string(path, mtl))
 		throw runtime_error("Failed to load material library.");
 
 	vector<string> lines = split_no_empty(mtl, "\n");
@@ -456,7 +456,7 @@ void Parser::load_material_library(const std::string &path)
 Parser::Parser(const std::string &path)
 {
 	string obj;
-	if (!Filesystem::get().read_file_to_string(path, obj))
+	if (!Global::filesystem()->read_file_to_string(path, obj))
 		throw runtime_error("Failed to load OBJ.");
 
 	vector<string> lines = split_no_empty(obj, "\n");

@@ -89,12 +89,16 @@ public:
 		if (!Context::init_loader(nullptr))
 			throw runtime_error("Failed to initialize Vulkan loader.");
 
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
+		auto *em = Global::event_manager();
+		if (em)
+		{
+			em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+			em->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
+			em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+			em->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
+			em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+			em->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
+		}
 
 		global_display = this;
 		struct sigaction sa;
@@ -120,10 +124,14 @@ public:
 
 	~WSIPlatformDisplay()
 	{
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
+		auto *em = Global::event_manager();
+		if (em)
+		{
+			em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+			em->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
+			em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+			em->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
+		}
 	}
 
 	bool alive(Vulkan::WSI &) override

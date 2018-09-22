@@ -133,12 +133,16 @@ public:
 		if (!Context::init_loader(nullptr))
 			throw runtime_error("Failed to initialize Vulkan loader.");
 
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
+		auto *em = Global::event_manager();
+		if (em)
+		{
+			em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+			em->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
+			em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+			em->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
+			em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+			em->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
+		}
 	}
 
 	~WSIPlatformHeadless() override
@@ -153,10 +157,14 @@ public:
 		for (auto &thread : worker_threads)
 			thread->wait();
 
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
+		auto *em = Global::event_manager();
+		if (em)
+		{
+			em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+			em->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
+			em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+			em->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
+		}
 
 		swapchain_images.clear();
 		readback_buffers.clear();
@@ -521,11 +529,11 @@ int main(int argc, char *argv[])
 	filtered_argv.push_back(nullptr);
 
 	if (!args.assets.empty())
-		Filesystem::get().register_protocol("assets", make_unique<OSFilesystem>(args.assets));
+		Global::filesystem()->register_protocol("assets", make_unique<OSFilesystem>(args.assets));
 	if (!args.builtin.empty())
-		Filesystem::get().register_protocol("builtin", make_unique<OSFilesystem>(args.builtin));
+		Global::filesystem()->register_protocol("builtin", make_unique<OSFilesystem>(args.builtin));
 	if (!args.cache.empty())
-		Filesystem::get().register_protocol("cache", make_unique<OSFilesystem>(args.cache));
+		Global::filesystem()->register_protocol("cache", make_unique<OSFilesystem>(args.cache));
 
 	auto app = unique_ptr<Application>(Granite::application_create(int(filtered_argv.size() - 1), filtered_argv.data()));
 
@@ -609,7 +617,7 @@ int main(int argc, char *argv[])
 				//Writer<StringBuffer> writer(buffer);
 				doc.Accept(writer);
 
-				if (!Filesystem::get().write_string_to_file(args.stat, buffer.GetString()))
+				if (!Global::filesystem()->write_string_to_file(args.stat, buffer.GetString()))
 					LOGE("Failed to write stat file to disk.\n");
 			}
 		}

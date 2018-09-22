@@ -27,11 +27,12 @@
 #include <unordered_map>
 #include <stdexcept>
 #include <utility>
+#include "global_managers.hpp"
 
 #define EVENT_MANAGER_REGISTER(clazz, member, event) \
-	::Granite::EventManager::get_global().register_handler<clazz, event, &clazz::member>(this)
+	::Granite::Global::event_manager()->register_handler<clazz, event, &clazz::member>(this)
 #define EVENT_MANAGER_REGISTER_LATCH(clazz, up_event, down_event, event) \
-	::Granite::EventManager::get_global().register_latch_handler<clazz, event, &clazz::up_event, &clazz::down_event>(this)
+	::Granite::Global::event_manager()->register_latch_handler<clazz, event, &clazz::up_event, &clazz::down_event>(this)
 
 namespace Granite
 {
@@ -122,12 +123,6 @@ private:
 class EventManager
 {
 public:
-	static EventManager &get_global()
-	{
-		static EventManager static_manager;
-		return static_manager;
-	}
-
 	template<typename T, typename... P>
 	void enqueue(P&&... p)
 	{

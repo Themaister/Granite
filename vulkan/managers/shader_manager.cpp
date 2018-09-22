@@ -347,7 +347,7 @@ void ShaderManager::add_directory_watch(const std::string &source)
 		return;
 
 	auto paths = Granite::Path::protocol_split(basedir);
-	auto *backend = Granite::Filesystem::get().get_backend(paths.first);
+	auto *backend = Granite::Global::filesystem()->get_backend(paths.first);
 	if (!backend)
 		return;
 

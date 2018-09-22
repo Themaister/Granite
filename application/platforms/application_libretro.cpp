@@ -130,10 +130,12 @@ static retro_hw_render_callback hw_render;
 
 RETRO_API void retro_init(void)
 {
+	Global::init();
 }
 
 RETRO_API void retro_deinit(void)
 {
+	Global::deinit();
 }
 
 static void setup_variables()

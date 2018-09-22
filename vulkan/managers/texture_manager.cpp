@@ -78,7 +78,7 @@ void Texture::update(std::unique_ptr<Granite::File> file)
 	};
 
 #ifdef GRANITE_VULKAN_MT
-	auto &workers = Granite::ThreadGroup::get_global();
+	auto &workers = *Granite::Global::thread_group();
 	// Workaround, cannot copy the lambda because of owning a unique_ptr.
 	auto task = workers.create_task(move(work));
 	task->flush();

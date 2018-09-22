@@ -34,8 +34,12 @@ namespace Granite
 void InputTracker::orientation_event(quat rot)
 {
 	OrientationEvent event(rot);
-	if (UI::UIManager::get().filter_input_event(event))
-		EventManager::get_global().dispatch_inline(event);
+
+	auto *ui = Global::ui_manager();
+	auto *event_manager = Global::event_manager();
+	if (ui && ui->filter_input_event(event))
+		if (event_manager)
+			event_manager->dispatch_inline(event);
 }
 
 void InputTracker::on_touch_down(unsigned id, float x, float y)
@@ -57,15 +61,23 @@ void InputTracker::on_touch_down(unsigned id, float x, float y)
 	pointer.y = y;
 
 	TouchDownEvent event(index, id, x, y, touch.width, touch.height);
-	if (UI::UIManager::get().filter_input_event(event))
-		EventManager::get_global().dispatch_inline(event);
+
+	auto *ui = Global::ui_manager();
+	auto *event_manager = Global::event_manager();
+	if (ui && ui->filter_input_event(event))
+		if (event_manager)
+			event_manager->dispatch_inline(event);
 }
 
 void InputTracker::dispatch_touch_gesture()
 {
 	TouchGestureEvent event(touch);
-	if (UI::UIManager::get().filter_input_event(event))
-		EventManager::get_global().dispatch_inline(event);
+
+	auto *ui = Global::ui_manager();
+	auto *event_manager = Global::event_manager();
+	if (ui && ui->filter_input_event(event))
+		if (event_manager)
+			event_manager->dispatch_inline(event);
 }
 
 void InputTracker::on_touch_move(unsigned id, float x, float y)
@@ -101,8 +113,13 @@ void InputTracker::on_touch_up(unsigned id, float x, float y)
 	auto index = itr - begin(pointers);
 
 	TouchUpEvent event(itr->id, x, y, itr->start_x, itr->start_y, touch.width, touch.height);
-	if (UI::UIManager::get().filter_input_event(event))
-		EventManager::get_global().dispatch_inline(event);
+
+	auto *ui = Global::ui_manager();
+	auto *event_manager = Global::event_manager();
+	if (ui && ui->filter_input_event(event))
+		if (event_manager)
+			event_manager->dispatch_inline(event);
+
 	memmove(&pointers[index], &pointers[index + 1], (TouchCount - (index + 1)) * sizeof(TouchState::Pointer));
 	touch.active_pointers--;
 }
@@ -121,8 +138,12 @@ void InputTracker::joypad_key_state(unsigned index, JoypadKey key, JoypadKeyStat
 		if ((joy.button_mask & key_index) == 0)
 		{
 			JoypadButtonEvent event(index, key, state);
-			if (UI::UIManager::get().filter_input_event(event))
-				EventManager::get_global().dispatch_inline(event);
+
+			auto *ui = Global::ui_manager();
+			auto *event_manager = Global::event_manager();
+			if (ui && ui->filter_input_event(event))
+				if (event_manager)
+					event_manager->dispatch_inline(event);
 		}
 		joy.button_mask |= 1u << key_index;
 	}
@@ -131,8 +152,12 @@ void InputTracker::joypad_key_state(unsigned index, JoypadKey key, JoypadKeyStat
 		if ((joy.button_mask & key_index) == 1)
 		{
 			JoypadButtonEvent event(index, key, state);
-			if (UI::UIManager::get().filter_input_event(event))
-				EventManager::get_global().dispatch_inline(event);
+
+			auto *ui = Global::ui_manager();
+			auto *event_manager = Global::event_manager();
+			if (ui && ui->filter_input_event(event))
+				if (event_manager)
+					event_manager->dispatch_inline(event);
 		}
 		joy.button_mask &= ~(1u << key_index);
 	}
@@ -154,8 +179,12 @@ void InputTracker::joyaxis_state(unsigned index, JoypadAxis axis, float value)
 	if (a != value)
 	{
 		JoypadAxisEvent event(index, axis, value);
-		if (UI::UIManager::get().filter_input_event(event))
-			EventManager::get_global().dispatch_inline(event);
+
+		auto *ui = Global::ui_manager();
+		auto *event_manager = Global::event_manager();
+		if (ui && ui->filter_input_event(event))
+			if (event_manager)
+				event_manager->dispatch_inline(event);
 	}
 
 	a = value;
@@ -169,8 +198,12 @@ void InputTracker::key_event(Key key, KeyState state)
 		key_state |= 1ull << ecast(key);
 
 	KeyboardEvent event(key, state);
-	if (UI::UIManager::get().filter_input_event(event))
-		EventManager::get_global().dispatch_inline(event);
+
+	auto *ui = Global::ui_manager();
+	auto *event_manager = Global::event_manager();
+	if (ui && ui->filter_input_event(event))
+		if (event_manager)
+			event_manager->dispatch_inline(event);
 }
 
 void InputTracker::mouse_button_event(Granite::MouseButton button, bool pressed)
@@ -186,8 +219,12 @@ void InputTracker::mouse_button_event(MouseButton button, double x, double y, bo
 		mouse_button_state &= ~(1ull << ecast(button));
 
 	MouseButtonEvent event(button, x, y, pressed);
-	if (UI::UIManager::get().filter_input_event(event))
-		EventManager::get_global().dispatch_inline(event);
+
+	auto *ui = Global::ui_manager();
+	auto *event_manager = Global::event_manager();
+	if (ui && ui->filter_input_event(event))
+		if (event_manager)
+			event_manager->dispatch_inline(event);
 }
 
 void InputTracker::mouse_move_event_relative(double x, double y)
@@ -203,8 +240,12 @@ void InputTracker::mouse_move_event_relative(double x, double y)
 		last_mouse_y = clamp(last_mouse_y, mouse_relative_range_y,
 		                     mouse_relative_range_y + mouse_relative_range_height);
 		MouseMoveEvent event(x, y, last_mouse_x, last_mouse_y, key_state, mouse_button_state);
-		if (UI::UIManager::get().filter_input_event(event))
-			EventManager::get_global().dispatch_inline(event);
+
+		auto *ui = Global::ui_manager();
+		auto *event_manager = Global::event_manager();
+		if (ui && ui->filter_input_event(event))
+			if (event_manager)
+				event_manager->dispatch_inline(event);
 	}
 }
 
@@ -217,8 +258,12 @@ void InputTracker::mouse_move_event_absolute(double x, double y)
 		last_mouse_x = x;
 		last_mouse_y = y;
 		MouseMoveEvent event(delta_x, delta_y, x, y, key_state, mouse_button_state);
-		if (UI::UIManager::get().filter_input_event(event))
-			EventManager::get_global().dispatch_inline(event);
+
+		auto *ui = Global::ui_manager();
+		auto *event_manager = Global::event_manager();
+		if (ui && ui->filter_input_event(event))
+			if (event_manager)
+				event_manager->dispatch_inline(event);
 	}
 }
 
@@ -236,8 +281,13 @@ void InputTracker::mouse_leave()
 
 void InputTracker::dispatch_current_state(double delta_time)
 {
-	EventManager::get_global().dispatch_inline(JoypadStateEvent{active_joypads, joypads, Joypads, delta_time});
-	EventManager::get_global().dispatch_inline(InputStateEvent{last_mouse_x, last_mouse_y, delta_time, key_state, mouse_button_state, mouse_active});
+	auto *event_manager = Global::event_manager();
+	if (event_manager)
+	{
+		event_manager->dispatch_inline(JoypadStateEvent{active_joypads, joypads, Joypads, delta_time});
+		event_manager->dispatch_inline(
+				InputStateEvent{last_mouse_x, last_mouse_y, delta_time, key_state, mouse_button_state, mouse_active});
+	}
 }
 
 int InputTracker::find_vacant_joypad_index() const
@@ -262,7 +312,10 @@ void InputTracker::enable_joypad(unsigned index)
 	active_joypads |= 1u << index;
 	joypads[index] = {};
 	JoypadConnectionEvent event(index, true);
-	EventManager::get_global().dispatch_inline(event);
+
+	auto *event_manager = Global::event_manager();
+	if (event_manager)
+		event_manager->dispatch_inline(event);
 }
 
 void InputTracker::disable_joypad(unsigned index)
@@ -276,7 +329,10 @@ void InputTracker::disable_joypad(unsigned index)
 	active_joypads &= ~(1u << index);
 	joypads[index] = {};
 	JoypadConnectionEvent event(index, false);
-	EventManager::get_global().dispatch_inline(event);
+
+	auto *event_manager = Global::event_manager();
+	if (event_manager)
+		event_manager->dispatch_inline(event);
 }
 
 }

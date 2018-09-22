@@ -22,49 +22,48 @@
 
 #pragma once
 
-#include <memory>
-#include <stddef.h>
+#include <stdint.h>
 
 namespace Granite
 {
+class Filesystem;
+class ThreadGroup;
+class EventManager;
+namespace UI
+{
+class UIManager;
+}
+
 namespace Audio
 {
-class BackendCallback
-{
-public:
-	virtual ~BackendCallback() = default;
-	virtual void mix_samples(float * const *channels, size_t num_frames) noexcept = 0;
-
-	virtual void set_backend_parameters(float sample_rate, unsigned channels, size_t max_num_frames) = 0;
-	virtual void on_backend_stop() = 0;
-	virtual void on_backend_start() = 0;
-	virtual void set_latency_usec(uint32_t usec) = 0;
-};
-
-class Backend
-{
-public:
-	Backend(BackendCallback &callback);
-
-	enum { MaxAudioChannels = 8 };
-	virtual ~Backend() = default;
-
-	virtual const char *get_backend_name() = 0;
-	virtual float get_sample_rate() = 0;
-	virtual unsigned get_num_channels() = 0;
-
-	inline BackendCallback &get_callback()
-	{
-		return callback;
-	}
-
-	virtual bool start() = 0;
-	virtual bool stop() = 0;
-
-protected:
-	BackendCallback &callback;
-};
-
-Backend *create_default_audio_backend(BackendCallback &callback, float target_sample_rate, unsigned target_channels);
+class Backend;
+class Mixer;
 }
+
+namespace Global
+{
+enum ManagerFeatureFlagBits
+{
+	MANAGER_FEATURE_FILESYSTEM_BIT = 1 << 0,
+	MANAGER_FEATURE_EVENT_BIT = 1 << 1,
+	MANAGER_FEATURE_THREAD_GROUP_BIT = 1 << 2,
+	MANAGER_FEATURE_UI_MANAGER_BIT = 1 << 3,
+	MANAGER_FEATURE_AUDIO_BIT = 1 << 4,
+	MANAGER_FEATURE_ALL_BITS = 0x7fffffff
+};
+using ManagerFeatureFlags = uint32_t;
+
+void init(ManagerFeatureFlags flags = MANAGER_FEATURE_ALL_BITS);
+void deinit();
+
+Filesystem *filesystem();
+EventManager *event_manager();
+ThreadGroup *thread_group();
+UI::UIManager *ui_manager();
+#ifdef HAVE_GRANITE_AUDIO
+Audio::Backend *audio_backend();
+Audio::Mixer *audio_mixer();
+#endif
+}
+
 }

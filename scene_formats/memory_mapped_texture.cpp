@@ -93,7 +93,7 @@ bool MemoryMappedTexture::copy_to_path(const std::string &path)
 	if (layout.get_required_size() == 0 || !mapped)
 		return false;
 
-	auto target_file = Filesystem::get().open(path, FileMode::WriteOnly);
+	auto target_file = Global::filesystem()->open(path, FileMode::WriteOnly);
 	if (!target_file)
 		return false;
 
@@ -133,7 +133,7 @@ bool MemoryMappedTexture::map_write(const std::string &path)
 	if (layout.get_required_size() == 0)
 		return false;
 
-	auto new_file = Granite::Filesystem::get().open(path, Granite::FileMode::WriteOnly);
+	auto new_file = Granite::Global::filesystem()->open(path, Granite::FileMode::WriteOnly);
 	if (!new_file)
 		return false;
 
@@ -258,7 +258,7 @@ bool MemoryMappedTexture::map_read(unique_ptr<Granite::File> new_file, void *map
 
 bool MemoryMappedTexture::map_read(const std::string &path)
 {
-	auto loaded_file = Granite::Filesystem::get().open(path, Granite::FileMode::ReadOnly);
+	auto loaded_file = Granite::Global::filesystem()->open(path, Granite::FileMode::ReadOnly);
 	if (!loaded_file)
 		return false;
 

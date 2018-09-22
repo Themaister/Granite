@@ -32,16 +32,7 @@ namespace Granite
 {
 namespace Audio
 {
-
-void BackendCallback::on_backend_stop()
-{
-}
-
-void BackendCallback::on_backend_start(float, unsigned, size_t)
-{
-}
-
-using BackendCreationCallback = std::unique_ptr<Backend> (*)(float, unsigned);
+using BackendCreationCallback = Backend *(*)(BackendCallback &, float, unsigned);
 
 static const BackendCreationCallback backends[] = {
 #ifdef AUDIO_HAVE_PULSE
@@ -53,18 +44,23 @@ static const BackendCreationCallback backends[] = {
 		nullptr,
 };
 
-std::unique_ptr<Backend> create_default_audio_backend(float target_sample_rate, unsigned target_channels)
+Backend::Backend(BackendCallback &callback)
+	: callback(callback)
+{
+}
+
+Backend *create_default_audio_backend(BackendCallback &callback, float target_sample_rate, unsigned target_channels)
 {
 	for (auto &backend : backends)
 	{
 		if (backend)
 		{
-			auto iface = backend(target_sample_rate, target_channels);
+			auto iface = backend(callback, target_sample_rate, target_channels);
 			if (iface)
 				return iface;
 		}
 	}
-	return {};
+	return nullptr;
 }
 }
 }

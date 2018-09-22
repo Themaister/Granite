@@ -814,7 +814,7 @@ void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::Image
 
 	cluster_list_buffer.clear();
 
-	auto &workers = ThreadGroup::get_global();
+	auto &workers = *Global::thread_group();
 	auto task = workers.create_task();
 
 	// Naive and simple multithreading :)

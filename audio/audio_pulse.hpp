@@ -26,6 +26,6 @@ namespace Granite
 {
 namespace Audio
 {
-std::unique_ptr<Backend> create_pulse_backend(float sample_rate, unsigned channels);
+Backend *create_pulse_backend(BackendCallback &callback, float sample_rate, unsigned channels);
 }
 }

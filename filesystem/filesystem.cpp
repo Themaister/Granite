@@ -105,12 +105,6 @@ StdioFile::~StdioFile()
 	fclose(file);
 }
 
-Filesystem &Filesystem::get()
-{
-	static Filesystem fs;
-	return fs;
-}
-
 vector<ListEntry> FilesystemBackend::walk(const std::string &path)
 {
 	auto entries = list(path);
@@ -178,7 +172,9 @@ Filesystem::Filesystem()
 void Filesystem::register_protocol(const std::string &proto, std::unique_ptr<FilesystemBackend> fs)
 {
 	fs->set_protocol(proto);
-	EventManager::get_global().dispatch_inline(FilesystemProtocolEvent(proto, *fs));
+	auto *em = Global::event_manager();
+	if (em)
+		em->dispatch_inline(FilesystemProtocolEvent(proto, *fs));
 	protocols[proto] = move(fs);
 }
 

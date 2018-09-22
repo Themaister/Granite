@@ -123,12 +123,6 @@ struct ThreadGroupHolder
 	}
 };
 
-ThreadGroup &ThreadGroup::get_global()
-{
-	static ThreadGroupHolder group;
-	return group.group;
-}
-
 static thread_local unsigned thread_id_to_index = ~0u;
 
 unsigned ThreadGroup::get_current_thread_index()

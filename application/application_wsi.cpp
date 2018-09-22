@@ -30,39 +30,47 @@ namespace Granite
 void GraniteWSIPlatform::event_swapchain_created(Vulkan::Device *device, unsigned width, unsigned height,
                                                  float aspect_ratio, size_t image_count, VkFormat format)
 {
-	auto &em = EventManager::get_global();
-	em.enqueue_latched<Vulkan::SwapchainParameterEvent>(device, width, height, aspect_ratio, image_count, format);
+	auto *em = Global::event_manager();
+	if (em)
+		em->enqueue_latched<Vulkan::SwapchainParameterEvent>(device, width, height, aspect_ratio, image_count, format);
 }
 
 void GraniteWSIPlatform::event_swapchain_destroyed()
 {
-	auto &em = EventManager::get_global();
-	em.dequeue_all_latched(Vulkan::SwapchainParameterEvent::get_type_id());
+	auto *em = Global::event_manager();
+	if (em)
+		em->dequeue_all_latched(Vulkan::SwapchainParameterEvent::get_type_id());
 }
 
 void GraniteWSIPlatform::event_device_created(Vulkan::Device *device)
 {
-	auto &em = EventManager::get_global();
-	em.enqueue_latched<Vulkan::DeviceCreatedEvent>(device);
+	auto *em = Global::event_manager();
+	if (em)
+		em->enqueue_latched<Vulkan::DeviceCreatedEvent>(device);
 }
 
 void GraniteWSIPlatform::event_device_destroyed()
 {
-	auto &em = EventManager::get_global();
-	em.dequeue_all_latched(Vulkan::DeviceCreatedEvent::get_type_id());
+	auto *em = Global::event_manager();
+	if (em)
+		em->dequeue_all_latched(Vulkan::DeviceCreatedEvent::get_type_id());
 }
 
 void GraniteWSIPlatform::event_swapchain_index(Vulkan::Device *device, unsigned index)
 {
-	auto &em = EventManager::get_global();
-	em.dequeue_all_latched(Vulkan::SwapchainIndexEvent::get_type_id());
-	em.enqueue_latched<Vulkan::SwapchainIndexEvent>(device, index);
+	auto *em = Global::event_manager();
+	if (em)
+	{
+		em->dequeue_all_latched(Vulkan::SwapchainIndexEvent::get_type_id());
+		em->enqueue_latched<Vulkan::SwapchainIndexEvent>(device, index);
+	}
 }
 
 void GraniteWSIPlatform::event_frame_tick(double frame, double elapsed)
 {
-	auto &em = EventManager::get_global();
-	em.dispatch_inline(FrameTickEvent{frame, elapsed});
+	auto *em = Global::event_manager();
+	if (em)
+		em->dispatch_inline(FrameTickEvent{frame, elapsed});
 }
 
 }

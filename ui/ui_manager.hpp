@@ -42,7 +42,7 @@ enum class FontSize
 class UIManager : public EventHandler
 {
 public:
-	static UIManager &get();
+	UIManager();
 
 	bool filter_input_event(const TouchDownEvent &e);
 	bool filter_input_event(const TouchUpEvent &e);
@@ -70,7 +70,6 @@ public:
 	void reset_children();
 
 private:
-	UIManager();
 	FlatRenderer renderer;
 	std::vector<WidgetHandle> widgets;
 	std::unique_ptr<Font> fonts[Util::ecast(FontSize::Count)];

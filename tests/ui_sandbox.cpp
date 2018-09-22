@@ -53,7 +53,7 @@ void UIApplication::on_device_destroyed(const DeviceCreatedEvent &)
 void UIApplication::on_device_created(const DeviceCreatedEvent &e)
 {
 	auto &device = e.get_device();
-	auto &ui = UI::UIManager::get();
+	auto &ui = *Global::ui_manager();
 	ui.reset_children();
 
 	auto window = make_handle<UI::Window>();
@@ -147,7 +147,7 @@ void UIApplication::render_frame(double, double)
 	auto cmd = device.request_command_buffer();
 	auto rp = device.get_swapchain_render_pass(SwapchainRenderPass::Depth);
 	cmd->begin_render_pass(rp);
-	UI::UIManager::get().render(*cmd);
+	Global::ui_manager()->render(*cmd);
 	cmd->end_render_pass();
 	device.submit(cmd);
 }
@@ -163,7 +163,7 @@ Application *application_create(int, char **)
 	if (!asset_dir)
 		asset_dir = ASSET_DIRECTORY;
 
-	Filesystem::get().register_protocol("assets", std::unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir)));
+	Global::filesystem()->register_protocol("assets", std::unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir)));
 #endif
 
 	try

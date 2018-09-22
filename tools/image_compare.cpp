@@ -153,11 +153,11 @@ int main(int argc, char *argv[])
 	workers.start(thread::hardware_concurrency());
 
 	FileStat a_stat, b_stat;
-	if (Filesystem::get().stat(args.inputs[0], a_stat) && a_stat.type == PathType::Directory &&
-	    Filesystem::get().stat(args.inputs[1], b_stat) && b_stat.type == PathType::Directory)
+	if (Global::filesystem()->stat(args.inputs[0], a_stat) && a_stat.type == PathType::Directory &&
+	    Global::filesystem()->stat(args.inputs[1], b_stat) && b_stat.type == PathType::Directory)
 	{
-		auto a_list = Filesystem::get().list(args.inputs[0]);
-		auto b_list = Filesystem::get().list(args.inputs[1]);
+		auto a_list = Global::filesystem()->list(args.inputs[0]);
+		auto b_list = Global::filesystem()->list(args.inputs[1]);
 
 		std::sort(begin(a_list), end(a_list), [](const ListEntry &a, const ListEntry &b) {
 			return strcmp(a.path.c_str(), b.path.c_str()) < 0;

@@ -154,7 +154,6 @@ public:
 	void submit(TaskGroup &group);
 	void wait_idle();
 
-	static ThreadGroup &get_global();
 	static void register_main_thread();
 
 private:

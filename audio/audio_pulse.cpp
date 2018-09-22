@@ -34,9 +34,14 @@ namespace Audio
 {
 struct Pulse : Backend
 {
+	Pulse(BackendCallback &callback)
+		: Backend(callback)
+	{
+	}
+
 	~Pulse();
 	bool init(float sample_rate, unsigned channels);
-	bool start(BackendCallback *cb) override;
+	bool start() override;
 	bool stop() override;
 
 	const char *get_backend_name() override
@@ -54,7 +59,6 @@ struct Pulse : Backend
 		return channels;
 	}
 
-	BackendCallback *callback = nullptr;
 	float sample_rate = 0.0f;
 	unsigned channels = 0;
 
@@ -127,16 +131,16 @@ static void stream_request_cb(pa_stream *s, size_t length, void *data)
 		return;
 	}
 
-	if (pa->callback)
-	{
-		float *out_interleaved = static_cast<float *>(out_data);
-		size_t out_frames = length / (sizeof(float) * pa->channels);
-		unsigned channels = pa->channels;
+	float *out_interleaved = static_cast<float *>(out_data);
+	size_t out_frames = length / (sizeof(float) * pa->channels);
+	unsigned channels = pa->channels;
 
+	if (pa->is_active)
+	{
 		while (out_frames != 0)
 		{
 			size_t to_write = std::min<size_t>(out_frames, MAX_NUM_SAMPLES);
-			pa->callback->mix_samples(mix_channel_ptr, to_write);
+			pa->get_callback().mix_samples(mix_channel_ptr, to_write);
 			out_frames -= to_write;
 
 			for (size_t f = 0; f < to_write; f++)
@@ -145,19 +149,30 @@ static void stream_request_cb(pa_stream *s, size_t length, void *data)
 		}
 	}
 	else
-		memset(out_data, 0, length);
+		memset(out_interleaved, 0, sizeof(float) * channels * out_frames);
 
 	if (pa_stream_write(s, out_data, length, nullptr, 0, PA_SEEK_RELATIVE) < 0)
 	{
 		LOGE("pa_stream_write() failed.\n");
 		return;
 	}
+
+	// Update latency information.
+	pa_usec_t latency_usec;
+	int negative = 0;
+	if (pa_stream_get_latency(s, &latency_usec, &negative) != 0)
+		latency_usec = 0;
+	if (negative)
+		latency_usec = 0;
+
+	pa->get_callback().set_latency_usec(uint32_t(latency_usec));
 }
 
 bool Pulse::init(float sample_rate, unsigned channels)
 {
 	this->sample_rate = sample_rate;
 	this->channels = channels;
+
 	if (channels > MaxAudioChannels)
 		return false;
 
@@ -210,7 +225,11 @@ bool Pulse::init(float sample_rate, unsigned channels)
 	buffer_attr.fragsize = -1u;
 
 	if (pa_stream_connect_playback(stream, nullptr, &buffer_attr,
-	                               static_cast<pa_stream_flags_t>(PA_STREAM_ADJUST_LATENCY | PA_STREAM_START_CORKED),
+	                               static_cast<pa_stream_flags_t>(PA_STREAM_AUTO_TIMING_UPDATE |
+	                                                              PA_STREAM_ADJUST_LATENCY |
+	                                                              PA_STREAM_INTERPOLATE_TIMING |
+	                                                              PA_STREAM_FIX_RATE |
+	                                                              PA_STREAM_START_CORKED),
 	                               nullptr, nullptr) < 0)
 	{
 		pa_threaded_mainloop_unlock(mainloop);
@@ -226,19 +245,22 @@ bool Pulse::init(float sample_rate, unsigned channels)
 		return false;
 	}
 
+	auto *stream_spec = pa_stream_get_sample_spec(stream);
+	this->sample_rate = float(stream_spec->rate);
+	callback.set_backend_parameters(this->sample_rate, channels, MAX_NUM_SAMPLES);
+
 	pa_threaded_mainloop_unlock(mainloop);
 	return true;
 }
 
-bool Pulse::start(BackendCallback *cb)
+bool Pulse::start()
 {
 	if (is_active)
 		return false;
 
 	has_success = false;
 	pa_threaded_mainloop_lock(mainloop);
-	callback = cb;
-	callback->on_backend_start(sample_rate, channels, MAX_NUM_SAMPLES);
+	callback.on_backend_start();
 	pa_stream_cork(stream, 0, stream_success_cb, this);
 
 	while (!has_success)
@@ -264,8 +286,7 @@ bool Pulse::stop()
 	while (!has_success)
 		pa_threaded_mainloop_wait(mainloop);
 
-	callback->on_backend_stop();
-	callback = nullptr;
+	callback.on_backend_stop();
 	pa_threaded_mainloop_unlock(mainloop);
 
 	is_active = false;
@@ -275,13 +296,16 @@ bool Pulse::stop()
 	return success == 0;
 }
 
-std::unique_ptr<Backend> create_pulse_backend(float sample_rate, unsigned channels)
+Backend *create_pulse_backend(BackendCallback &callback, float sample_rate, unsigned channels)
 {
-	auto backend = make_unique<Pulse>();
+	auto *backend = new Pulse(callback);
 	if (!backend->init(sample_rate, channels))
-		return {};
+	{
+		delete backend;
+		return nullptr;
+	}
 
-	return move(backend);
+	return backend;
 }
 }
 }

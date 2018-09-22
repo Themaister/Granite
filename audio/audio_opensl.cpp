@@ -246,12 +246,15 @@ static void opensl_callback(SLAndroidSimpleBufferQueueItf, void *ctx)
 	sl->thread_callback();
 }
 
-std::unique_ptr<Backend> create_opensl_backend(float sample_rate, unsigned channels)
+Backend *create_opensl_backend(float sample_rate, unsigned channels)
 {
-	auto sl = make_unique<OpenSLESBackend>();
+	auto *sl = new OpenSLESBackend;
 	if (!sl->init(sample_rate, channels))
-		return {};
-	return move(sl);
+	{
+		delete sl;
+		return nullptr;
+	}
+	return sl;
 }
 
 void set_opensl_low_latency_parameters(unsigned sample_rate, unsigned block_frames)

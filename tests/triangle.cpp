@@ -102,7 +102,7 @@ Application *application_create(int, char **)
 	if (!asset_dir)
 		asset_dir = ASSET_DIRECTORY;
 
-	Filesystem::get().register_protocol("assets", std::unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir)));
+	Global::filesystem()->register_protocol("assets", std::unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir)));
 #endif
 
 	try

@@ -1478,7 +1478,7 @@ static void compress_image(ThreadGroup &workers, const string &target_path, shar
                            unsigned quality, TaskSignal *signal)
 {
 	FileStat src_stat, dst_stat;
-	if (Filesystem::get().stat(result->src_path, src_stat) && Filesystem::get().stat(target_path, dst_stat))
+	if (Global::filesystem()->stat(result->src_path, src_stat) && Global::filesystem()->stat(target_path, dst_stat))
 	{
 		if (src_stat.last_modified < dst_stat.last_modified)
 		{
@@ -1521,7 +1521,7 @@ static void compress_image(ThreadGroup &workers, const string &target_path, shar
 				return;
 			}
 
-			string real_path = Filesystem::get().get_filesystem_path(args.output);
+			string real_path = Global::filesystem()->get_filesystem_path(args.output);
 			if (real_path.empty())
 			{
 				LOGE("Can only use filesystem backend paths when writing PNG.\n");
@@ -1680,7 +1680,7 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 		auto uri = path + ".bin";
 		buffer.AddMember("uri", Path::basename(uri), allocator);
 
-		auto file = Filesystem::get().open(uri, FileMode::WriteOnly);
+		auto file = Global::filesystem()->open(uri, FileMode::WriteOnly);
 		if (!file)
 		{
 			LOGE("Failed to open %s for writing.\n", uri.c_str());
@@ -2297,7 +2297,7 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 		memcpy(data, &v, sizeof(uint32_t));
 	};
 
-	auto file = Filesystem::get().open(path, FileMode::WriteOnly);
+	auto file = Global::filesystem()->open(path, FileMode::WriteOnly);
 	if (!file)
 	{
 		LOGE("Failed to open file: %s\n", path.c_str());

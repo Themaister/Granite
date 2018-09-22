@@ -43,7 +43,7 @@ struct FilesystemHandler : LooperHandler
 	bool handle(Looper &, EventFlags flags) override
 	{
 		if (flags & EVENT_IN)
-			Filesystem::get().poll_notifications();
+			Global::filesystem()->poll_notifications();
 
 		return true;
 	}
@@ -62,7 +62,7 @@ struct NotificationSystem : EventHandler
 		: looper(looper)
 	{
 		EVENT_MANAGER_REGISTER(NotificationSystem, on_filesystem, FilesystemProtocolEvent);
-		for (auto &proto : Filesystem::get().get_protocols())
+		for (auto &proto : Global::filesystem()->get_protocols())
 		{
 			auto &fs = proto.second;
 			if (fs->get_notification_fd() >= 0)
@@ -278,7 +278,7 @@ struct FSHandler : LooperHandler
 
 	bool begin_write_file(Looper &looper, const string &arg)
 	{
-		file = Filesystem::get().open(arg, FileMode::WriteOnly);
+		file = Global::filesystem()->open(arg, FileMode::WriteOnly);
 		if (!file)
 		{
 			reply_builder.begin();
@@ -300,7 +300,7 @@ struct FSHandler : LooperHandler
 
 	bool begin_read_file(const string &arg)
 	{
-		file = Filesystem::get().open(arg);
+		file = Global::filesystem()->open(arg);
 		mapped = nullptr;
 		if (file)
 			mapped = file->map();
@@ -354,7 +354,7 @@ struct FSHandler : LooperHandler
 		FileStat s;
 		reply_builder.begin();
 		reply_builder.add_u32(NETFS_BEGIN_CHUNK_REPLY);
-		if (Filesystem::get().stat(arg, s))
+		if (Global::filesystem()->stat(arg, s))
 		{
 			reply_builder.add_u32(NETFS_ERROR_OK);
 			reply_builder.add_u64(8 + 4 + 8);
@@ -384,14 +384,14 @@ struct FSHandler : LooperHandler
 
 	bool begin_list(const string &arg)
 	{
-		auto list = Filesystem::get().list(arg);
+		auto list = Global::filesystem()->list(arg);
 		write_string_list(list);
 		return true;
 	}
 
 	bool begin_walk(const string &arg)
 	{
-		auto list = Filesystem::get().walk(arg);
+		auto list = Global::filesystem()->walk(arg);
 		write_string_list(list);
 		return true;
 	}

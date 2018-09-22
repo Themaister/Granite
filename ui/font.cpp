@@ -36,7 +36,7 @@ namespace Granite
 {
 Font::Font(const std::string &path, unsigned size)
 {
-	auto file = Filesystem::get().open(path, FileMode::ReadOnly);
+	auto file = Global::filesystem()->open(path, FileMode::ReadOnly);
 	if (!file)
 		throw runtime_error("Failed to open font.");
 

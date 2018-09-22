@@ -275,20 +275,28 @@ bool libretro_load_game(retro_environment_t environ_cb)
 		return false;
 	}
 
-	EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-	EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
-	EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-	EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
-	EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-	EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
+	auto *em = Global::event_manager();
+	if (em)
+	{
+		em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+		em->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
+		em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+		em->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
+		em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+		em->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
+	}
 	return true;
 }
 
 void libretro_unload_game()
 {
-	EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-	EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
-	EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-	EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
+	auto *em = Global::event_manager();
+	if (em)
+	{
+		em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+		em->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
+		em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+		em->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
+	}
 }
 }

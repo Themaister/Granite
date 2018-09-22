@@ -74,7 +74,7 @@ struct VorbisStream : MixerStream
 
 bool VorbisStream::init(const string &path)
 {
-	filesystem_file = Filesystem::get().open(path, FileMode::ReadOnly);
+	filesystem_file = Global::filesystem()->open(path, FileMode::ReadOnly);
 	if (!filesystem_file)
 		return false;
 

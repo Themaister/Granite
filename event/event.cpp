@@ -220,8 +220,12 @@ EventHandler::~EventHandler()
 {
 	if (need_unregister)
 	{
-		EventManager::get_global().unregister_handler(this);
-		EventManager::get_global().unregister_latch_handler(this);
+		auto *em = Global::event_manager();
+		if (em)
+		{
+			em->unregister_handler(this);
+			em->unregister_latch_handler(this);
+		}
 	}
 }
 

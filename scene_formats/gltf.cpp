@@ -39,7 +39,7 @@ namespace GLTF
 
 Parser::Buffer Parser::read_buffer(const string &path, uint64_t length)
 {
-	auto file = Filesystem::get().open(path);
+	auto file = Global::filesystem()->open(path);
 	if (!file)
 		throw runtime_error("Failed to open GLTF buffer.");
 
@@ -126,7 +126,7 @@ Parser::Parser(const std::string &path)
 	string json;
 
 	{
-		auto file = Filesystem::get().open(path, FileMode::ReadOnly);
+		auto file = Global::filesystem()->open(path, FileMode::ReadOnly);
 		if (!file)
 			throw runtime_error("Failed to load GLTF file.");
 
@@ -831,7 +831,7 @@ void Parser::parse(const string &original_path, const string &json)
 			auto &view = json_views[index];
 			auto fake_path = string("memory://") + original_path + "_buffer_view_" + to_string(index);
 
-			auto file = Filesystem::get().open(fake_path, FileMode::WriteOnly);
+			auto file = Global::filesystem()->open(fake_path, FileMode::WriteOnly);
 			if (!file)
 				throw runtime_error("Failed to open memory file.");
 
@@ -868,7 +868,7 @@ void Parser::parse(const string &original_path, const string &json)
 				auto base64_buffer = read_base64(uri + strlen(base64_type_jpg), data_length);
 				auto fake_path = string("memory://") + original_path + "_base64_" + to_string(json_images.size());
 
-				auto file = Filesystem::get().open(fake_path, FileMode::WriteOnly);
+				auto file = Global::filesystem()->open(fake_path, FileMode::WriteOnly);
 				if (!file)
 					throw runtime_error("Failed to open memory file.");
 

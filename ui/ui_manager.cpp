@@ -29,12 +29,6 @@ namespace Granite
 {
 namespace UI
 {
-UIManager &UIManager::get()
-{
-	static UIManager manager;
-	return manager;
-}
-
 UIManager::UIManager()
 {
 	fonts[ecast(FontSize::Small)].reset(new Font("builtin://fonts/font.ttf", 12));

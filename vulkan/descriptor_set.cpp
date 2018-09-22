@@ -37,7 +37,7 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device, const 
     : HashedObject(hash), device(device)
 {
 #ifdef GRANITE_VULKAN_MT
-	unsigned count = Granite::ThreadGroup::get_global().get_num_threads() + 1;
+	unsigned count = Granite::Global::thread_group()->get_num_threads() + 1;
 #else
 	unsigned count = 1;
 #endif

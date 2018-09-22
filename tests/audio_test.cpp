@@ -4,6 +4,7 @@
 #include <chrono>
 #include <thread>
 #include <cmath>
+#include "util.hpp"
 
 using namespace Granite::Audio;
 using namespace std;
@@ -32,15 +33,21 @@ int main()
 	Mixer mixer;
 	auto *stream = create_vorbis_stream("/tmp/test.ogg");
 
-	auto backend = create_default_audio_backend(44100.0f, 2);
-	backend->start(&mixer);
+	auto backend = create_default_audio_backend(mixer, 48000.0f, 2);
+	backend->start();
 
+	StreamID id = 0;
 	if (stream)
-		mixer.add_mixer_stream(stream);
+		id = mixer.add_mixer_stream(stream);
 
-	std::this_thread::sleep_for(std::chrono::seconds(100));
+	for (unsigned i = 0; i < 10000; i++)
+	{
+		std::this_thread::sleep_for(std::chrono::milliseconds(5));
+		LOGI("Play time: %.3f s\n", mixer.get_play_cursor(id));
+	}
+
 	backend->stop();
 	std::this_thread::sleep_for(std::chrono::seconds(3));
-	backend->start(&mixer);
+	backend->start();
 	std::this_thread::sleep_for(std::chrono::seconds(100));
 }

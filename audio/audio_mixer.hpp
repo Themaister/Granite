@@ -81,6 +81,11 @@ public:
 	// Panning is -1 (left), 0 (center), 1 (right).
 	void set_stream_mixer_parameters(StreamID index, float gain_db, float panning);
 
+	// Returns latency-adjusted play cursor in seconds from add_mixer_stream.
+	// The play cursor monotonically increases.
+	// Returns a negative number if the stream no longer exists.
+	double get_play_cursor(StreamID index);
+
 private:
 	enum { MaxSources = 128 };
 	std::atomic<uint32_t> active_channel_mask[MaxSources / 32];
@@ -89,6 +94,10 @@ private:
 	// Actually float, bitcasted.
 	std::atomic<uint32_t> panning[MaxSources];
 	std::atomic<uint32_t> gain_linear[MaxSources];
+	std::atomic<uint32_t> latency;
+
+	uint64_t stream_raw_play_cursors[MaxSources];
+	std::atomic<uint64_t> stream_adjusted_play_cursors_usec[MaxSources];
 
 	uint64_t stream_generation[MaxSources] = {};
 	std::mutex non_critical_lock;
@@ -96,9 +105,12 @@ private:
 	size_t max_num_samples = 0;
 	unsigned num_channels = 0;
 	float sample_rate = 0.0f;
+	double inv_sample_rate = 0.0;
 
-	void on_backend_start(float sample_rate, unsigned channels, size_t max_num_samples) override;
+	void set_backend_parameters(float sample_rate, unsigned channels, size_t max_num_sample_count) override;
+	void on_backend_start() override;
 	void on_backend_stop() override;
+	void set_latency_usec(uint32_t usec) override;
 
 	StreamID generate_stream_id(unsigned index);
 	bool verify_stream_id(StreamID id);
@@ -106,6 +118,8 @@ private:
 	uint64_t get_stream_generation(StreamID id);
 
 	bool is_active = false;
+
+	void update_stream_play_cursor(unsigned index, double latency) noexcept;
 };
 
 }

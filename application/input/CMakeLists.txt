@@ -1,6 +1,6 @@
 add_granite_library(application-input input.hpp input.cpp)
 target_include_directories(application-input PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(application-input vulkan-backend math ui-renderer event)
+target_link_libraries(application-input math ui-renderer event)
 
 if (${CMAKE_SYSTEM} MATCHES "Linux")
     include(FindPkgConfig)

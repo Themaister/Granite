@@ -56,7 +56,7 @@ void SceneLoader::load_scene(const std::string &path)
 	else
 	{
 		string json;
-		if (!Filesystem::get().read_file_to_string(path, json))
+		if (!Global::filesystem()->read_file_to_string(path, json))
 			throw runtime_error("Failed to load GLTF file.");
 		parse_scene_format(path, json);
 	}
@@ -170,7 +170,7 @@ Scene::NodeHandle SceneLoader::build_tree_for_subscene(const SubsceneData &subsc
 void SceneLoader::load_animation(const std::string &path, SceneFormats::Animation &animation)
 {
 	string str;
-	if (!Filesystem::get().read_file_to_string(path, str))
+	if (!Global::filesystem()->read_file_to_string(path, str))
 	{
 		LOGE("Failed to load file: %s\n", path.c_str());
 		return;
@@ -672,7 +672,7 @@ void SceneLoader::parse_scene_format(const std::string &path, const std::string 
 		{
 			auto patch_path = Path::relpath(path, terrain["patchData"].GetString());
 			string json;
-			if (Filesystem::get().read_file_to_string(patch_path, json))
+			if (Global::filesystem()->read_file_to_string(patch_path, json))
 			{
 				Document patch_doc;
 				patch_doc.Parse(json);

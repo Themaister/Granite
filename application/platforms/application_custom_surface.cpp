@@ -52,20 +52,28 @@ public:
 		if (!Context::init_loader(nullptr))
 			throw runtime_error("Failed to initialize Vulkan loader.");
 
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
+		auto *em = Global::event_manager();
+		if (em)
+		{
+			em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+			em->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
+			em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+			em->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
+			em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+			em->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
+		}
 	}
 
 	~WSIPlatformCustomSurface()
 	{
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
-		EventManager::get_global().dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		EventManager::get_global().enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
+		auto *em = Global::event_manager();
+		if (em)
+		{
+			em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+			em->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
+			em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+			em->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
+		}
 	}
 
 	bool alive(Vulkan::WSI &) override
@@ -179,11 +187,11 @@ int main(int argc, char *argv[])
 	filtered_argv.push_back(nullptr);
 
 	if (!args.assets.empty())
-		Filesystem::get().register_protocol("assets", make_unique<OSFilesystem>(args.assets));
+		Global::filesystem()->register_protocol("assets", make_unique<OSFilesystem>(args.assets));
 	if (!args.builtin.empty())
-		Filesystem::get().register_protocol("builtin", make_unique<OSFilesystem>(args.builtin));
+		Global::filesystem()->register_protocol("builtin", make_unique<OSFilesystem>(args.builtin));
 	if (!args.cache.empty())
-		Filesystem::get().register_protocol("cache", make_unique<OSFilesystem>(args.cache));
+		Global::filesystem()->register_protocol("cache", make_unique<OSFilesystem>(args.cache));
 
 	if (args.library.empty())
 	{

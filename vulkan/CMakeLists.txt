@@ -1,3 +1,9 @@
+add_granite_library(vulkan-interface texture_format.cpp texture_format.hpp)
+target_include_directories(vulkan-interface PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/khronos)
+target_link_libraries(vulkan-interface volk util)
+
 add_granite_library(vulkan-backend
         vulkan.cpp vulkan.hpp
         device.cpp device.hpp
@@ -18,7 +24,6 @@ add_granite_library(vulkan-backend
         memory_allocator.cpp memory_allocator.hpp
         fence.hpp fence.cpp
         format.hpp
-        texture_format.hpp texture_format.cpp
         limits.hpp
         type_to_string.hpp
         quirks.hpp
@@ -44,9 +49,7 @@ if (GRANITE_VULKAN_FILESYSTEM)
     target_include_directories(vulkan-backend PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/managers)
 endif()
 
-target_include_directories(vulkan-backend PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/khronos)
+target_include_directories(vulkan-backend PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 if (${CMAKE_BUILD_TYPE} MATCHES "Debug")
     target_compile_definitions(vulkan-backend PUBLIC VULKAN_DEBUG)
@@ -74,7 +77,7 @@ if (GRANITE_VULKAN_FOSSILIZE)
     target_compile_definitions(vulkan-backend PUBLIC GRANITE_VULKAN_FOSSILIZE)
 endif()
 
-target_link_libraries(vulkan-backend spirv-cross-core volk util)
+target_link_libraries(vulkan-backend vulkan-interface spirv-cross-core)
 
 if (UNIX)
    target_link_libraries(vulkan-backend dl)

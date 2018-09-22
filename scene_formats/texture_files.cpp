@@ -104,7 +104,7 @@ SceneFormats::MemoryMappedTexture load_texture_from_memory(const void *data, siz
 
 SceneFormats::MemoryMappedTexture load_texture_from_file(const std::string &path, ColorSpace color)
 {
-	auto file = Filesystem::get().open(path, FileMode::ReadOnly);
+	auto file = Granite::Global::filesystem()->open(path, FileMode::ReadOnly);
 	if (!file)
 		return {};
 

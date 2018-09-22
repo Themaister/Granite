@@ -178,7 +178,7 @@ private:
 class Filesystem
 {
 public:
-	static Filesystem &get();
+	Filesystem();
 
 	void register_protocol(const std::string &proto, std::unique_ptr<FilesystemBackend> fs);
 
@@ -206,8 +206,6 @@ public:
 	}
 
 private:
-	Filesystem();
-
 	std::unordered_map<std::string, std::unique_ptr<FilesystemBackend>> protocols;
 };
 

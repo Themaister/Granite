@@ -31,9 +31,9 @@ add_granite_library(renderer
 
 add_subdirectory(fft)
 target_link_libraries(renderer
-        vulkan-backend
         math
         scene-formats
+        vulkan-backend
         application-events
         application-input
         application-wsi

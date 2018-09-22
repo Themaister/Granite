@@ -31,9 +31,6 @@ namespace UI
 {
 UIManager::UIManager()
 {
-	fonts[ecast(FontSize::Small)].reset(new Font("builtin://fonts/font.ttf", 12));
-	fonts[ecast(FontSize::Normal)].reset(new Font("builtin://fonts/font.ttf", 16));
-	fonts[ecast(FontSize::Large)].reset(new Font("builtin://fonts/font.ttf", 24));
 }
 
 void UIManager::add_child(WidgetHandle handle)
@@ -87,7 +84,28 @@ void UIManager::render(Vulkan::CommandBuffer &cmd)
 
 Font& UIManager::get_font(FontSize size)
 {
-	return *fonts[Util::ecast(size)];
+	auto &font = fonts[Util::ecast(size)];
+	if (!font)
+	{
+		unsigned pix_size = 0;
+		switch (size)
+		{
+		case FontSize::Small:
+			pix_size = 12;
+			break;
+
+		case FontSize::Normal:
+			pix_size = 16;
+			break;
+
+		case FontSize::Large:
+			pix_size = 24;
+			break;
+		}
+
+		font.reset(new Font("builtin://fonts/font.ttf", pix_size));
+	}
+	return *font;
 }
 
 bool UIManager::filter_input_event(const TouchUpEvent &e)

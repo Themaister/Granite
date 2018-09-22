@@ -127,13 +127,11 @@ void init(ManagerFeatureFlags flags)
 		}
 	}
 
-#if 0
 	if (flags & MANAGER_FEATURE_UI_MANAGER_BIT)
 	{
 		if (!global_managers.ui_manager)
 			global_managers.ui_manager = new UI::UIManager;
 	}
-#endif
 
 #ifdef HAVE_GRANITE_AUDIO
 	if (!global_managers.audio_mixer)

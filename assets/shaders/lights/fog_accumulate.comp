@@ -11,7 +11,8 @@ layout(std430, push_constant) uniform Registers
 
 mediump vec4 accumulate_scattering(mediump vec4 color_and_density_front, mediump vec4 color_and_density_back)
 {
-    vec3 light = color_and_density_front.rgb + exp2(-color_and_density_front.a) * color_and_density_back.rgb;
+    vec3 light = color_and_density_front.rgb +
+                 color_and_density_back.rgb * (exp2(-color_and_density_front.a) * color_and_density_back.a);
     return vec4(light, color_and_density_front.a + color_and_density_back.a);
 }
 

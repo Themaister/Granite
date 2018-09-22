@@ -93,5 +93,5 @@ void main()
     float albedo = get_fog_albedo(uvw) * textureLod(uFogDensity, pos * POSITION_MOD, 0.0).x;
     vec3 in_scatter_light = registers.in_scatter_strength * compute_inscatter_light(pos);
 
-    imageStore(uLightDensity, ivec3(gl_GlobalInvocationID), vec4(in_scatter_light * albedo, albedo));
+    imageStore(uLightDensity, ivec3(gl_GlobalInvocationID), vec4(in_scatter_light, albedo));
 }

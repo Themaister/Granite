@@ -21,6 +21,7 @@
  */
 
 #include "device.hpp"
+#include "timer.hpp"
 
 using namespace std;
 
@@ -28,21 +29,25 @@ namespace Vulkan
 {
 void Device::set_render_pass_handle(unsigned index, VkRenderPass render_pass)
 {
+	lock_guard<mutex> holder{state_recorder_lock};
 	state_recorder.set_render_pass_handle(index, render_pass);
 }
 
 void Device::set_descriptor_set_layout_handle(unsigned index, VkDescriptorSetLayout set_layout)
 {
+	lock_guard<mutex> holder{state_recorder_lock};
 	state_recorder.set_descriptor_set_layout_handle(index, set_layout);
 }
 
 void Device::set_shader_module_handle(unsigned index, VkShaderModule module)
 {
+	lock_guard<mutex> holder{state_recorder_lock};
 	state_recorder.set_shader_module_handle(index, module);
 }
 
 void Device::set_pipeline_layout_handle(unsigned index, VkPipelineLayout layout)
 {
+	lock_guard<mutex> holder{state_recorder_lock};
 	state_recorder.set_pipeline_layout_handle(index, layout);
 }
 
@@ -240,8 +245,10 @@ void Device::init_pipeline_state()
 	{
 		LOGI("Replaying cached state.\n");
 		Fossilize::StateReplayer replayer;
+		auto start = Util::get_current_time_nsecs();
 		replayer.parse(*this, static_cast<const char *>(mapped), file->get_size());
-		LOGI("Completed replaying cached state.\n");
+		auto end = Util::get_current_time_nsecs();
+		LOGI("Completed replaying cached state in %.3f ms.\n", (end - start) * 1e-6);
 		replayer_state = {};
 	}
 	catch (const exception &e)

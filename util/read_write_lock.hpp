@@ -36,20 +36,19 @@ public:
 	enum { Reader = 2, Writer = 1 };
 	RWSpinLock()
 	{
-		counter.store(0, std::memory_order_relaxed);
+		counter.store(0);
 	}
 
 	inline void lock_read()
 	{
-		unsigned v = counter.fetch_add(Reader, std::memory_order_relaxed);
+		unsigned v = counter.fetch_add(Reader, std::memory_order_acquire);
 		while ((v & Writer) != 0)
 		{
 #ifdef __SSE2__
 			_mm_pause();
 #endif
-			v = counter.load(std::memory_order_relaxed);
+			v = counter.load(std::memory_order_acquire);
 		}
-		std::atomic_thread_fence(std::memory_order_acquire);
 	}
 
 	inline void unlock_read()
@@ -61,7 +60,7 @@ public:
 	{
 		uint32_t expected = 0;
 		while (!counter.compare_exchange_weak(expected, Writer,
-		                                      std::memory_order_relaxed,
+		                                      std::memory_order_acquire,
 		                                      std::memory_order_relaxed))
 		{
 #ifdef __SSE2__
@@ -69,7 +68,6 @@ public:
 #endif
 			expected = 0;
 		}
-		std::atomic_thread_fence(std::memory_order_acquire);
 	}
 
 	inline void unlock_write()
@@ -81,7 +79,7 @@ public:
 	{
 		uint32_t expected = Reader;
 		while (!counter.compare_exchange_weak(expected, Writer,
-		                                      std::memory_order_relaxed,
+		                                      std::memory_order_acquire,
 		                                      std::memory_order_relaxed))
 		{
 #ifdef __SSE2__
@@ -89,7 +87,6 @@ public:
 #endif
 			expected = Reader;
 		}
-		std::atomic_thread_fence(std::memory_order_acquire);
 	}
 
 private:

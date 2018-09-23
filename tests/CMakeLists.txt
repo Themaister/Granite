@@ -22,6 +22,7 @@ target_link_libraries(intrusive-test util)
 if (GRANITE_AUDIO)
     add_granite_offline_tool(audio-test audio_test.cpp)
     target_link_libraries(audio-test audio-backend)
+	target_compile_definitions(audio-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
 
     add_granite_application(audio-application audio_application.cpp)
     if (NOT ANDROID)

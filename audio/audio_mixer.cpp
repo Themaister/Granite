@@ -324,6 +324,7 @@ bool Mixer::play_stream(StreamID id)
 
 	unsigned index = get_stream_index(id);
 	stream_playing[index].store(true, memory_order_release);
+	return true;
 }
 
 bool Mixer::pause_stream(StreamID id)
@@ -334,6 +335,7 @@ bool Mixer::pause_stream(StreamID id)
 
 	unsigned index = get_stream_index(id);
 	stream_playing[index].store(false, memory_order_release);
+	return true;
 }
 
 void Mixer::set_stream_mixer_parameters(StreamID id, float gain_db, float panning)

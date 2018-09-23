@@ -24,6 +24,10 @@
 
 #include <cmath>
 
+#ifdef _WIN32
+#define __SSE__
+#endif
+
 #if defined(__SSE__)
 #include <xmmintrin.h>
 #elif defined(__ARM_NEON)
@@ -36,7 +40,7 @@ namespace Audio
 {
 namespace DSP
 {
-static inline void accumulate_channel(float * __restrict output, const float * __restrict input, float gain, size_t count)
+static inline void accumulate_channel(float * __restrict output, const float * __restrict input, float gain, size_t count) noexcept
 {
 #ifdef __ARM_NEON
 	size_t rounded_count = count & ~3;
@@ -59,7 +63,7 @@ static inline void accumulate_channel(float * __restrict output, const float * _
 #endif
 }
 
-static int16_t f32_to_i16(float v)
+static int16_t f32_to_i16(float v) noexcept
 {
 	int32_t i = int32_t(std::round(v * 0x8000));
 	if (i > 0x7fff)
@@ -73,7 +77,7 @@ static int16_t f32_to_i16(float v)
 static inline void interleave_stereo_f32(float * __restrict target,
                                          const float * __restrict left,
                                          const float * __restrict right,
-                                         size_t count)
+                                         size_t count) noexcept
 {
 #ifdef __SSE__
 	size_t rounded_count = count & ~3;
@@ -107,7 +111,7 @@ static inline void interleave_stereo_f32(float * __restrict target,
 static inline void interleave_stereo_f32_i16(int16_t * __restrict target,
                                              const float * __restrict left,
                                              const float * __restrict right,
-                                             size_t count)
+                                             size_t count) noexcept
 {
 #ifdef __ARM_NEON
 	size_t rounded_count = count & ~3;

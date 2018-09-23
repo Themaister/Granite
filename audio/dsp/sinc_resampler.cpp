@@ -88,9 +88,17 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#ifdef _WIN32
+#define __SSE__
+#endif
+
 #include "sinc_resampler.hpp"
 #include <cmath>
 #include <cstdlib>
+
+#ifndef PI
+#define PI 3.14159265359
+#endif
 
 #if defined(__SSE__)
 #include <xmmintrin.h>
@@ -181,7 +189,7 @@ void SincResampler::init_table_kaiser(double cutoff, unsigned phases, unsigned t
 			double window_phase = double(n) / double(phases * taps); /* [0, 1). */
 			window_phase = 2.0 * window_phase - 1.0; /* [-1, 1) */
 			double sinc_phase = sidelobes * window_phase;
-			float val = float(cutoff * sinc(M_PI * sinc_phase * cutoff) * kaiser_window_function(window_phase, beta) / window_mod);
+			float val = float(cutoff * sinc(PI * sinc_phase * cutoff) * kaiser_window_function(window_phase, beta) / window_mod);
 			phase_table[i * stride * taps + j] = val;
 		}
 	}
@@ -203,7 +211,7 @@ void SincResampler::init_table_kaiser(double cutoff, unsigned phases, unsigned t
 		window_phase = 2.0 * window_phase - 1.0; /* (-1, 1] */
 		double sinc_phase = sidelobes * window_phase;
 
-		float val = float(cutoff * sinc(M_PI * sinc_phase * cutoff) * kaiser_window_function(window_phase, beta) / window_mod);
+		float val = float(cutoff * sinc(PI * sinc_phase * cutoff) * kaiser_window_function(window_phase, beta) / window_mod);
 		float delta = (val - phase_table[phase * stride * taps + j]);
 		phase_table[(phase * stride + 1) * taps + j] = delta;
 	}

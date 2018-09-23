@@ -20,53 +20,14 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#pragma once
+
 #include "audio_interface.hpp"
-#ifdef AUDIO_HAVE_PULSE
-#include "audio_pulse.hpp"
-#endif
-#ifdef AUDIO_HAVE_OPENSL
-#include "audio_opensl.hpp"
-#endif
-#ifdef AUDIO_HAVE_WASAPI
-#include "audio_wasapi.hpp"
-#endif
 
 namespace Granite
 {
 namespace Audio
 {
-using BackendCreationCallback = Backend *(*)(BackendCallback &, float, unsigned);
-
-static const BackendCreationCallback backends[] = {
-#ifdef AUDIO_HAVE_PULSE
-		create_pulse_backend,
-#endif
-#ifdef AUDIO_HAVE_OPENSL
-		create_opensl_backend,
-#endif
-#ifdef AUDIO_HAVE_WASAPI
-		create_wasapi_backend,
-#endif
-		nullptr,
-};
-
-Backend::Backend(BackendCallback &callback)
-	: callback(callback)
-{
-}
-
-Backend *create_default_audio_backend(BackendCallback &callback, float target_sample_rate, unsigned target_channels)
-{
-	for (auto &backend : backends)
-	{
-		if (backend)
-		{
-			auto iface = backend(callback, target_sample_rate, target_channels);
-			if (iface)
-				return iface;
-		}
-	}
-	return nullptr;
-}
+Backend *create_wasapi_backend(BackendCallback &callback, float sample_rate, unsigned channels);
 }
 }

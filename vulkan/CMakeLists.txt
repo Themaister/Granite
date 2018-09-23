@@ -75,6 +75,7 @@ option(GRANITE_VULKAN_FOSSILIZE "Enable support for Fossilize." ON)
 if (GRANITE_VULKAN_FOSSILIZE)
     target_link_libraries(vulkan-backend fossilize)
     target_compile_definitions(vulkan-backend PUBLIC GRANITE_VULKAN_FOSSILIZE)
+    target_sources(vulkan-backend PRIVATE device_fossilize.cpp)
 endif()
 
 target_link_libraries(vulkan-backend vulkan-interface spirv-cross-core)

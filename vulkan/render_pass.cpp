@@ -105,13 +105,13 @@ RenderPass::RenderPass(Util::Hash hash, Vulkan::Device *device, const VkRenderPa
 	setup_subpasses(create_info);
 
 #ifdef GRANITE_VULKAN_FOSSILIZE
-	unsigned rp_index = device->get_state_recorder().register_render_pass(get_hash(), create_info);
+	unsigned rp_index = device->register_render_pass(get_hash(), create_info);
 #endif
 	LOGI("Creating render pass.\n");
 	if (vkCreateRenderPass(device->get_device(), &create_info, nullptr, &render_pass) != VK_SUCCESS)
 		LOGE("Failed to create render pass.");
 #ifdef GRANITE_VULKAN_FOSSILIZE
-	device->get_state_recorder().set_render_pass_handle(rp_index, render_pass);
+	device->set_render_pass_handle(rp_index, render_pass);
 #endif
 }
 
@@ -756,13 +756,13 @@ RenderPass::RenderPass(Hash hash, Device *device, const RenderPassInfo &info)
 	setup_subpasses(rp_info);
 
 #ifdef GRANITE_VULKAN_FOSSILIZE
-	unsigned rp_index = device->get_state_recorder().register_render_pass(get_hash(), rp_info);
+	unsigned rp_index = device->register_render_pass(get_hash(), rp_info);
 #endif
 	LOGI("Creating render pass.\n");
 	if (vkCreateRenderPass(device->get_device(), &rp_info, nullptr, &render_pass) != VK_SUCCESS)
 		LOGE("Failed to create render pass.");
 #ifdef GRANITE_VULKAN_FOSSILIZE
-	device->get_state_recorder().set_render_pass_handle(rp_index, render_pass);
+	device->set_render_pass_handle(rp_index, render_pass);
 #endif
 }
 

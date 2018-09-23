@@ -268,13 +268,6 @@ private:
 	uint64_t allocate_cookie();
 	void bake_program(Program &program);
 
-#ifdef GRANITE_VULKAN_FOSSILIZE
-	Fossilize::StateRecorder &get_state_recorder()
-	{
-		return state_recorder;
-	}
-#endif
-
 	void request_vertex_block(BufferBlock &block, VkDeviceSize size);
 	void request_index_block(BufferBlock &block, VkDeviceSize size);
 	void request_uniform_block(BufferBlock &block, VkDeviceSize size);
@@ -517,6 +510,18 @@ private:
 	void wait_enqueue() override;
 	VkPipeline fossilize_create_graphics_pipeline(Fossilize::Hash hash, VkGraphicsPipelineCreateInfo &info);
 	VkPipeline fossilize_create_compute_pipeline(Fossilize::Hash hash, VkComputePipelineCreateInfo &info);
+
+	unsigned register_graphics_pipeline(Fossilize::Hash hash, const VkGraphicsPipelineCreateInfo &info);
+	unsigned register_compute_pipeline(Fossilize::Hash hash, const VkComputePipelineCreateInfo &info);
+	unsigned register_render_pass(Fossilize::Hash hash, const VkRenderPassCreateInfo &info);
+	unsigned register_descriptor_set_layout(Fossilize::Hash hash, const VkDescriptorSetLayoutCreateInfo &info);
+	unsigned register_pipeline_layout(Fossilize::Hash hash, const VkPipelineLayoutCreateInfo &info);
+	unsigned register_shader_module(Fossilize::Hash hash, const VkShaderModuleCreateInfo &info);
+
+	void set_render_pass_handle(unsigned index, VkRenderPass render_pass);
+	void set_descriptor_set_layout_handle(unsigned index, VkDescriptorSetLayout set_layout);
+	void set_pipeline_layout_handle(unsigned index, VkPipelineLayout layout);
+	void set_shader_module_handle(unsigned index, VkShaderModule module);
 
 	struct
 	{

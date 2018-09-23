@@ -90,13 +90,13 @@ PipelineLayout::PipelineLayout(Hash hash, Device *device, const CombinedResource
 	}
 
 #ifdef GRANITE_VULKAN_FOSSILIZE
-	unsigned layout_index = device->get_state_recorder().register_pipeline_layout(get_hash(), info);
+	unsigned layout_index = device->register_pipeline_layout(get_hash(), info);
 #endif
 	LOGI("Creating pipeline layout.\n");
 	if (vkCreatePipelineLayout(device->get_device(), &info, nullptr, &pipe_layout) != VK_SUCCESS)
 		LOGE("Failed to create pipeline layout.\n");
 #ifdef GRANITE_VULKAN_FOSSILIZE
-	device->get_state_recorder().set_pipeline_layout_handle(layout_index, pipe_layout);
+	device->set_pipeline_layout_handle(layout_index, pipe_layout);
 #endif
 }
 
@@ -165,13 +165,13 @@ Shader::Shader(Hash hash, Device *device, const uint32_t *data, size_t size)
 	info.pCode = data;
 
 #ifdef GRANITE_VULKAN_FOSSILIZE
-	unsigned module_index = device->get_state_recorder().register_shader_module(get_hash(), info);
+	unsigned module_index = device->register_shader_module(get_hash(), info);
 #endif
 	LOGI("Creating shader module.\n");
 	if (vkCreateShaderModule(device->get_device(), &info, nullptr, &module) != VK_SUCCESS)
 		LOGE("Failed to create shader module.\n");
 #ifdef GRANITE_VULKAN_FOSSILIZE
-	device->get_state_recorder().set_shader_module_handle(module_index, module);
+	device->set_shader_module_handle(module_index, module);
 #endif
 
 	Compiler compiler(data, size / sizeof(uint32_t));

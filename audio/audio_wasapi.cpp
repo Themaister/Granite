@@ -33,6 +33,7 @@
 #include <mmdeviceapi.h>
 #include "audio_interface.hpp"
 #include "dsp/dsp.hpp"
+#include "util.hpp"
 
 using namespace std;
 
@@ -121,29 +122,51 @@ static double reference_time_to_seconds(REFERENCE_TIME t)
 bool WASAPIBackend::init(float, unsigned channels)
 {
 	if (FAILED(CoInitialize(nullptr)))
+	{
+		LOGE("WASAPI: Failed to initialize COM!\n");
 		return false;
+	}
 
 	if (FAILED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr,
 	                            CLSCTX_ALL, __uuidof(IMMDeviceEnumerator),
 	                            reinterpret_cast<void **>(&pEnumerator))))
+	{
+		LOGE("WASAPI: Failed to create MM instance.\n");
 		return false;
+	}
 
 	if (FAILED(pEnumerator->GetDefaultAudioEndpoint(eRender, eMultimedia, &pDevice)))
+	{
+		LOGE("WASAPI: Failed to get default audio endpoint.\n");
 		return false;
+	}
 
 	if (FAILED(pDevice->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr,
 	                             reinterpret_cast<void **>(&pAudioClient))))
+	{
+		LOGE("WASAPI: Failed to activate AudioClient.\n");
 		return false;
+	}
 
 	if (FAILED(pAudioClient->GetMixFormat(&format)))
+	{
+		LOGE("WASAPI: Failed to get mix format.\n");
 		return false;
+	}
 
 	if (format->wFormatTag != WAVE_FORMAT_EXTENSIBLE)
+	{
+		LOGE("WASAPI: Mix format is weird.\n");
 		return false;
+	}
 
 	auto *ex = reinterpret_cast<WAVEFORMATEXTENSIBLE *>(format);
-	if (ex->SubFormat != _KSDATAFORMAT_SUBTYPE_IEEE_FLOAT)
+	if (ex->SubFormat != _KSDATAFORMAT_SUBTYPE_IEEE_FLOAT ||
+	    format->wBitsPerSample != 32)
+	{
+		LOGE("WASAPI: Mix format is not FP32.\n");
 		return false;
+	}
 
 	format->nChannels = WORD(channels);
 
@@ -152,18 +175,31 @@ bool WASAPIBackend::init(float, unsigned channels)
 
 	if (FAILED(pAudioClient->Initialize(AUDCLNT_SHAREMODE_SHARED,
 	                                    0, reference_time, 0, format, nullptr)))
+	{
+		LOGE("WASAPI: Failed to initialize audio client.\n");
 		return false;
+	}
 
 	if (FAILED(pAudioClient->GetBufferSize(&buffer_frames)))
+	{
+		LOGE("WASAPI: Failed to get buffer size.\n");
 		return false;
+	}
 
 	if (FAILED(pAudioClient->GetService(__uuidof(IAudioRenderClient),
 	                                    reinterpret_cast<void **>(&pRenderClient))))
+	{
+		LOGE("WASAPI: Failed to get render client service.\n");
 		return false;
+	}
 
 	REFERENCE_TIME latency;
 	if (FAILED(pAudioClient->GetStreamLatency(&latency)))
+	{
+		LOGE("WASAPI: Failed to get stream latency.\n");
 		return false;
+	}
+
 	double server_latency = reference_time_to_seconds(latency);
 	server_latency += double(buffer_frames) / get_sample_rate();
 	callback.set_latency_usec(uint32_t(server_latency * 1e6));
@@ -218,13 +254,22 @@ void WASAPIBackend::thread_runner() noexcept
 {
 	float *interleaved = nullptr;
 	if (FAILED(pRenderClient->GetBuffer(buffer_frames, reinterpret_cast<BYTE **>(&interleaved))))
+	{
+		LOGE("WASAPI: Failed to get buffer (start).\n");
 		return;
+	}
 
 	if (FAILED(pRenderClient->ReleaseBuffer(buffer_frames, AUDCLNT_BUFFERFLAGS_SILENT)))
+	{
+		LOGE("WASAPI: Failed to release buffer (start).\n");
 		return;
+	}
 
 	if (FAILED(pAudioClient->Start()))
+	{
+		LOGE("WASAPI: Failed to start audio client.\n");
 		return;
+	}
 
 	float mix_channels[Backend::MaxAudioChannels][MAX_NUM_FRAMES];
 	float *mix_channel_ptr[Backend::MaxAudioChannels];
@@ -235,7 +280,10 @@ void WASAPIBackend::thread_runner() noexcept
 	{
 		UINT32 padding;
 		if (FAILED(pAudioClient->GetCurrentPadding(&padding)))
+		{
+			LOGE("WASAPI: Failed to get buffer padding.\n");
 			break;
+		}
 
 		UINT32 write_avail = buffer_frames - padding;
 		bool done = false;
@@ -259,7 +307,11 @@ void WASAPIBackend::thread_runner() noexcept
 			}
 
 			if (FAILED(pAudioClient->GetCurrentPadding(&padding)))
+			{
+				LOGE("WASAPI: Failed to get buffer padding.\n");
 				return;
+			}
+
 			write_avail = buffer_frames - padding;
 		}
 
@@ -267,7 +319,10 @@ void WASAPIBackend::thread_runner() noexcept
 			break;
 
 		if (FAILED(pRenderClient->GetBuffer(write_avail, reinterpret_cast<BYTE **>(&interleaved))))
+		{
+			LOGE("WASAPI: Failed to get buffer.\n");
 			break;
+		}
 
 		UINT32 to_release = write_avail;
 
@@ -291,13 +346,23 @@ void WASAPIBackend::thread_runner() noexcept
 		}
 
 		if (FAILED(pRenderClient->ReleaseBuffer(to_release, 0)))
+		{
+			LOGE("WASAPI: Failed to release buffer.\n");
 			break;
+		}
 	}
 
 	if (FAILED(pAudioClient->Stop()))
+	{
+		LOGE("WASAPI: Failed to stop audio client.\n");
 		return;
+	}
+
 	if (FAILED(pAudioClient->Reset()))
+	{
+		LOGE("WASAPI: Failed to reset audio client.\n");
 		return;
+	}
 }
 
 Backend *create_wasapi_backend(BackendCallback &callback, float sample_rate, unsigned channels)

@@ -88,7 +88,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(__SSE__)
 #define __SSE__
 #endif
 

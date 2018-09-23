@@ -2407,7 +2407,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 
 	// Only do this conditionally.
 	// On AMD, using CONCURRENT with async compute disables compression.
-	uint32_t sharing_indices[3];
+	uint32_t sharing_indices[3] = {};
 
 	uint32_t queue_flags = create_info.misc & (IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT |
 	                                           IMAGE_MISC_CONCURRENT_QUEUE_COMPUTE_BIT |

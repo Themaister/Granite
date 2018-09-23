@@ -24,7 +24,7 @@
 
 #include <cmath>
 
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(__SSE__)
 #define __SSE__
 #endif
 

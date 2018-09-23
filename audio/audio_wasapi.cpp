@@ -38,6 +38,11 @@ using namespace std;
 
 static const size_t MAX_NUM_FRAMES = 256;
 
+// Doesn't link properly on MinGW.
+const static GUID _KSDATAFORMAT_SUBTYPE_IEEE_FLOAT = {
+	0x00000003, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}
+};
+
 namespace Granite
 {
 namespace Audio
@@ -137,12 +142,12 @@ bool WASAPIBackend::init(float, unsigned channels)
 		return false;
 
 	auto *ex = reinterpret_cast<WAVEFORMATEXTENSIBLE *>(format);
-	if (ex->SubFormat != KSDATAFORMAT_SUBTYPE_IEEE_FLOAT)
+	if (ex->SubFormat != _KSDATAFORMAT_SUBTYPE_IEEE_FLOAT)
 		return false;
 
-	format->nChannels = channels;
+	format->nChannels = WORD(channels);
 
-	const double target_latency = 0.050;
+	const double target_latency = 0.030;
 	auto reference_time = seconds_to_reference_time(target_latency);
 
 	if (FAILED(pAudioClient->Initialize(AUDCLNT_SHAREMODE_SHARED,

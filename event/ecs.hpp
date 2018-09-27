@@ -170,7 +170,7 @@ public:
 	{
 		if (has_all_components<Ts...>(entity))
 		{
-			entities.push_back(&entity);
+			//entities.push_back(&entity);
 			groups.push_back(std::make_tuple(entity.get_component<Ts>()...));
 		}
 	}
@@ -188,10 +188,10 @@ public:
 		if (offset != groups.size() - 1)
 		{
 			std::swap(groups[offset], groups.back());
-			std::swap(entities[offset], entities.back());
+			//std::swap(entities[offset], entities.back());
 		}
 		groups.pop_back();
-		entities.pop_back();
+		//entities.pop_back();
 	}
 
 	std::vector<std::tuple<Ts *...>> &get_groups()
@@ -201,7 +201,7 @@ public:
 
 private:
 	std::vector<std::tuple<Ts *...>> groups;
-	std::vector<Entity *> entities;
+	//std::vector<Entity *> entities;
 
 	template <typename... Us>
 	struct HasAllComponents;
@@ -316,14 +316,8 @@ public:
 
 		auto *allocator = static_cast<ComponentAllocator<T> *>(itr->second.get());
 		auto &comp = entity.get_components()[id];
-		if (comp)
-		{
-			allocator->free_component(comp);
-			comp = allocator->pool.allocate(std::forward<Ts>(ts)...);
-			for (auto &group : component_to_groups[id])
-				groups[group]->add_entity(entity);
-		}
-		else
+		assert(!comp);
+		if (!comp)
 		{
 			comp = allocator->pool.allocate(std::forward<Ts>(ts)...);
 			for (auto &group : component_to_groups[id])

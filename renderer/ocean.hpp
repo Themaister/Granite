@@ -46,6 +46,10 @@ struct OceanConfig
 	vec2 wind_velocity = vec2(10.0f, 5.0f);
 	float normal_mod = 7.3f;
 	float amplitude = 0.2f;
+
+	std::string refraction_path;
+	float refraction_uv_scale = 0.01f;
+	float refraction_depth = 3.0f;
 };
 
 class Ocean : public AbstractRenderable,
@@ -62,7 +66,7 @@ public:
 		Ocean *ocean;
 	};
 
-	static Handles add_to_scene(Scene &scene);
+	static Handles add_to_scene(Scene &scene, const OceanConfig &config = {});
 
 private:
 	OceanConfig config;
@@ -168,5 +172,7 @@ private:
 	ivec2 get_grid_base_coord() const;
 	vec2 heightmap_world_size() const;
 	vec2 normalmap_world_size() const;
+
+	Vulkan::ImageView *refraction = nullptr;
 };
 }

@@ -77,6 +77,9 @@ void Renderer::set_mesh_renderer_options_internal(RendererOptionFlags flags)
 	auto &ground = suite[ecast(RenderableType::Ground)];
 	ground.get_base_defines() = global_defines;
 	ground.bake_base_defines();
+	auto &ocean = suite[ecast(RenderableType::Ocean)];
+	ocean.get_base_defines() = global_defines;
+	ocean.bake_base_defines();
 	auto &plane = suite[ecast(RenderableType::TexturePlane)];
 	plane.get_base_defines() = global_defines;
 	plane.bake_base_defines();

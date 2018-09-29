@@ -50,12 +50,8 @@ const float maximum_support_extent = 1.5;
 // Our Taylor approximation is not exact, normalize so the peak is 1.
 const float taylor_pi_half = 1.00452485553;
 const float taylor_normalization = 1.0 / taylor_pi_half;
-const float PI = 3.14159265359;
-const float PI_half = 0.5 * PI;
-
-// Smaller value sharpens (more aliasing),
-// larger value blurs more (more blurry).
-const float extent_mod = 1.0;
+const float bandlimited_PI = 3.14159265359;
+const float bandlimited_PI_half = 0.5 * bandlimited_PI;
 
 #if BANDLIMITED_PIXEL_USE_TRANSCENDENTAL
 #define taylor_sin(x) sin(x)
@@ -89,7 +85,9 @@ mediump vec3 compute_uv_phase_weight(mediump vec2 weights_u, mediump vec2 weight
 	return vec3(x, y, w);
 }
 
-BandlimitedPixelInfo compute_pixel_weights(vec2 uv, vec2 size, vec2 inv_size)
+// Smaller value for extent_mod sharpens (more aliasing),
+// larger value blurs more (more blurry).
+BandlimitedPixelInfo compute_pixel_weights(vec2 uv, vec2 size, vec2 inv_size, mediump float extent_mod)
 {
 	// Get derivatives in texel space.
 	// Need a non-zero derivative.
@@ -115,7 +113,7 @@ BandlimitedPixelInfo compute_pixel_weights(vec2 uv, vec2 size, vec2 inv_size)
 	{
 		// We can resolve the filter by just sampling a single 2x2 block.
 		// Lerp between normal sampling at LOD 0, and bandlimited pixel filter at LOD -1.
-		mediump vec2 shift = 0.5 + 0.5 * taylor_sin(PI_half * clamp((phase - 0.5) / min(extent, vec2(0.5)), -1.0, 1.0));
+		mediump vec2 shift = 0.5 + 0.5 * taylor_sin(bandlimited_PI_half * clamp((phase - 0.5) / min(extent, vec2(0.5)), -1.0, 1.0));
 		mediump float max_extent = max(extent.x, extent.y);
 		mediump float l = clamp(2.0 - 2.0 * max_extent, 0.0, 1.0); // max_extent = 1 -> l = 0, max_extent = 0.5 -> l = 1.
 		info = BandlimitedPixelInfo((base_pixel + 0.5 + shift) * inv_size, l
@@ -139,7 +137,7 @@ BandlimitedPixelInfo compute_pixel_weights(vec2 uv, vec2 size, vec2 inv_size)
 	else if (all(lessThanEqual(extent, vec2(0.5))))
 	{
 		// We can resolve the filter by just sampling a single 2x2 block.
-		mediump vec2 shift = 0.5 + 0.5 * taylor_sin(PI_half * clamp(inv_extent * (phase - 0.5), -1.0, 1.0));
+		mediump vec2 shift = 0.5 + 0.5 * taylor_sin(bandlimited_PI_half * clamp(inv_extent * (phase - 0.5), -1.0, 1.0));
 		info = BandlimitedPixelInfo((base_pixel + 0.5 + shift) * inv_size, vec2(0.0), vec2(0.0), vec2(0.0),
 		                            vec4(1.0, 0.0, 0.0, 0.0), 1.0
 #ifdef BANDLIMITED_PIXEL_DEBUG
@@ -156,13 +154,13 @@ BandlimitedPixelInfo compute_pixel_weights(vec2 uv, vec2 size, vec2 inv_size)
 		mediump float max_extent = max(extent.x, extent.y);
 		mediump float l = clamp(1.0 - (max_extent - 1.0) / (maximum_support_extent - 1.0), 0.0, 1.0);
 
-		mediump vec4 sine_phases_x = PI_half * clamp(inv_extent.x * (phase.x + vec4(1.5, 0.5, -0.5, -1.5)), -1.0, 1.0);
+		mediump vec4 sine_phases_x = bandlimited_PI_half * clamp(inv_extent.x * (phase.x + vec4(1.5, 0.5, -0.5, -1.5)), -1.0, 1.0);
 		mediump vec4 sines_x = taylor_sin(sine_phases_x);
 
-		mediump vec4 sine_phases_y = PI_half * clamp(inv_extent.y * (phase.y + vec4(1.5, 0.5, -0.5, -1.5)), -1.0, 1.0);
+		mediump vec4 sine_phases_y = bandlimited_PI_half * clamp(inv_extent.y * (phase.y + vec4(1.5, 0.5, -0.5, -1.5)), -1.0, 1.0);
 		mediump vec4 sines_y = taylor_sin(sine_phases_y);
 
-		mediump vec2 sine_phases_end = PI_half * clamp(inv_extent * (phase - 2.5), -1.0, 1.0);
+		mediump vec2 sine_phases_end = bandlimited_PI_half * clamp(inv_extent * (phase - 2.5), -1.0, 1.0);
 		mediump vec2 sines_end = taylor_sin(sine_phases_end);
 
 		mediump vec4 weights_x = 0.5 * (sines_x - vec4(sines_x.yzw, sines_end.x));
@@ -188,22 +186,22 @@ BandlimitedPixelInfo compute_pixel_weights(vec2 uv, vec2 size, vec2 inv_size)
 	return info;
 }
 
-mediump vec4 sample_bandlimited_pixel(sampler2D samp, vec2 uv, BandlimitedPixelInfo info, float lod)
+mediump vec4 sample_bandlimited_pixel(sampler2D samp, vec2 uv, BandlimitedPixelInfo info, mediump float lod_bias)
 {
-	mediump vec4 color = texture(samp, uv);
+	mediump vec4 color = texture(samp, uv, lod_bias);
 	if (info.l > 0.0)
 	{
 #ifndef BANDLIMITED_PIXEL_FAST_MODE
-		mediump vec4 bandlimited = info.weights.x * textureLod(samp, info.uv0, lod);
+		mediump vec4 bandlimited = info.weights.x * textureLod(samp, info.uv0, 0.0);
 		if (info.weights.x < 1.0)
 		{
-			bandlimited += info.weights.y * textureLod(samp, info.uv1, lod);
-			bandlimited += info.weights.z * textureLod(samp, info.uv2, lod);
-			bandlimited += info.weights.w * textureLod(samp, info.uv3, lod);
+			bandlimited += info.weights.y * textureLod(samp, info.uv1, 0.0);
+			bandlimited += info.weights.z * textureLod(samp, info.uv2, 0.0);
+			bandlimited += info.weights.w * textureLod(samp, info.uv3, 0.0);
 		}
 		color = mix(color, bandlimited, info.l);
 #else
-		mediump vec4 bandlimited = textureLod(samp, info.uv0, lod);
+		mediump vec4 bandlimited = textureLod(samp, info.uv0, 0.0);
 		color = mix(color, bandlimited, info.l);
 #endif
 	}

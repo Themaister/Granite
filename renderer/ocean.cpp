@@ -58,12 +58,11 @@ Ocean::Ocean(const OceanConfig &config)
 	EVENT_MANAGER_REGISTER(Ocean, on_frame_tick, FrameTickEvent);
 }
 
-Ocean::Handles Ocean::add_to_scene(Scene &scene)
+Ocean::Handles Ocean::add_to_scene(Scene &scene, const OceanConfig &config)
 {
 	Handles handles;
 	handles.entity = scene.create_entity();
 
-	OceanConfig config;
 	auto ocean = Util::make_handle<Ocean>(config);
 
 	auto *update_component = handles.entity->allocate_component<PerFrameUpdateComponent>();
@@ -234,6 +233,12 @@ void Ocean::setup_render_pass_resources(RenderGraph &graph)
 		FFTTexture displacement_output(&graph.get_physical_texture_resource(*displacement_fft_output));
 		FFTBuffer displacement_input(&graph.get_physical_buffer_resource(*displacement_fft_input));
 		displacement_fft->process(&deferred_cmd, &displacement_output, &displacement_input);
+	}
+
+	if (!config.refraction_path.empty())
+	{
+		auto *texture = graph.get_device().get_texture_manager().request_texture(config.refraction_path);
+		refraction = &texture->get_image()->get_view();
 	}
 }
 
@@ -649,6 +654,13 @@ struct OceanData
 	vec2 base_position;
 };
 
+struct RefractionData
+{
+	vec4 texture_size;
+	float uv_scale;
+	float depth;
+};
+
 struct OceanInfo
 {
 	Vulkan::Program *program;
@@ -670,6 +682,9 @@ struct OceanInfo
 	unsigned lods;
 	unsigned lod_stride;
 	OceanData data;
+
+	const Vulkan::ImageView *refraction;
+	RefractionData refraction_data;
 };
 
 namespace RenderFunctions
@@ -692,6 +707,12 @@ static void ocean_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *info
 		cmd.set_texture(2, 1, *ocean_info.lod_map, Vulkan::StockSampler::LinearWrap);
 		cmd.set_texture(2, 2, *ocean_info.grad_jacobian, Vulkan::StockSampler::TrilinearWrap);
 		cmd.set_texture(2, 3, *ocean_info.normal, Vulkan::StockSampler::TrilinearWrap);
+
+		if (ocean_info.refraction)
+		{
+			cmd.set_texture(2, 4, *ocean_info.refraction, Vulkan::StockSampler::TrilinearWrap);
+			*cmd.allocate_typed_constant_data<RefractionData>(2, 5, 1) = ocean_info.refraction_data;
+		}
 
 		for (unsigned lod = 0; lod < ocean_info.lods; lod++)
 		{
@@ -733,25 +754,32 @@ void Ocean::get_render_info(const RenderContext &,
 	hasher.u64(grad_jacobian.get_cookie());
 	hasher.u64(ubo.get_cookie());
 	hasher.u64(indirect.get_cookie());
+	if (refraction)
+		hasher.u64(refraction->get_cookie());
+	else
+		hasher.u32(0);
+
 	auto instance_key = hasher.get();
 
-	auto *patch_data = queue.push<OceanInfo>(Queue::Opaque, instance_key, 1,
+	auto *patch_data = queue.push<OceanInfo>(Queue::OpaqueEmissive, instance_key, 1,
 	                                         RenderFunctions::ocean_render,
 	                                         nullptr);
 
 	if (patch_data)
 	{
+		uint32_t refraction_flag = refraction ? 2 : 0;
+
 		patch_data->program =
 				queue.get_shader_suites()[Util::ecast(RenderableType::Ocean)].get_program(DrawPipeline::Opaque,
 				                                                                          MESH_ATTRIBUTE_POSITION_BIT,
 				                                                                          MATERIAL_TEXTURE_BASE_COLOR_BIT,
-				                                                                          0);
+				                                                                          0 | refraction_flag);
 
 		patch_data->border_program =
 				queue.get_shader_suites()[Util::ecast(RenderableType::Ocean)].get_program(DrawPipeline::Opaque,
 				                                                                          MESH_ATTRIBUTE_POSITION_BIT,
 				                                                                          MATERIAL_TEXTURE_BASE_COLOR_BIT,
-				                                                                          1);
+				                                                                          1 | refraction_flag);
 
 		patch_data->heightmap = &height_displacement;
 		patch_data->lod_map = &lod;
@@ -772,6 +800,15 @@ void Ocean::get_render_info(const RenderContext &,
 		patch_data->border_vbo = border_vbo.get();
 		patch_data->border_ibo = border_ibo.get();
 		patch_data->border_count = border_count;
+
+		patch_data->refraction = refraction;
+		patch_data->refraction_data.texture_size = vec4(
+				float(refraction->get_image().get_width()),
+				float(refraction->get_image().get_height()),
+				1.0f / float(refraction->get_image().get_width()),
+				1.0f / float(refraction->get_image().get_height()));
+		patch_data->refraction_data.uv_scale = config.refraction_uv_scale;
+		patch_data->refraction_data.depth = config.refraction_depth;
 
 		for (unsigned i = 0; i < unsigned(quad_lod.size()); i++)
 		{

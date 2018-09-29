@@ -183,6 +183,10 @@ RenderTextureResource &RenderPass::add_color_output(const std::string &name, con
 	res.written_in_pass(index);
 	res.set_attachment_info(info);
 	res.add_image_usage(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
+
+	if (info.levels != 1)
+		res.add_image_usage(VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+
 	color_outputs.push_back(&res);
 
 	if (!input.empty())

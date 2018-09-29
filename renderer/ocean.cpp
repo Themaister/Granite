@@ -673,6 +673,7 @@ struct RefractionData
 	vec4 texture_size;
 	float uv_scale;
 	float depth;
+	float emissive_mod;
 };
 
 struct OceanInfo
@@ -830,6 +831,7 @@ void Ocean::get_render_info(const RenderContext &,
 
 			patch_data->refraction_data.uv_scale = config.refraction.uv_scale;
 			patch_data->refraction_data.depth = config.refraction.depth;
+			patch_data->refraction_data.emissive_mod = config.refraction.emissive_mod;
 		}
 
 		for (unsigned i = 0; i < unsigned(quad_lod.size()); i++)

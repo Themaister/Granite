@@ -133,7 +133,7 @@ void main()
 
     vec3 pos = get_world_position(uvw);
 
-    mediump float fog_density = clamp(textureLod(uFogDensity, pos * POSITION_MOD, 0.0).x;
+    mediump float fog_density = textureLod(uFogDensity, pos * POSITION_MOD, 0.0).x;
     mediump float albedo = get_fog_albedo(uvw) * fog_density;
     mediump vec3 in_scatter_light = vec3(0.0);
     if (albedo > 0.0)

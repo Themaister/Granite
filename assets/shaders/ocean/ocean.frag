@@ -28,6 +28,7 @@ layout(set = 2, binding = 5, std140) uniform Refraction
     vec4 refraction_size;
     float refraction_uv_scale;
     float refraction_depth;
+    float refraction_emissive_mod;
 };
 #endif
 
@@ -62,8 +63,8 @@ void main()
         mediump vec2 refracted_xz_offset = refracted_dir.xz * ((refraction_depth + vPos.y) / dir_to_bottom);
         mediump vec3 refracted_pos_offset = vec3(refracted_xz_offset.x, vPos.y + refraction_depth, refracted_xz_offset.y);
         mediump float fade_length = length(refracted_pos_offset);
-        uv = (2.0 * refraction_uv_scale) * (refracted_xz_offset + vPos.xz);
-        emissive_mod = exp2(-vec3(0.8, 0.7, 0.6) * fade_length);
+        uv = refraction_uv_scale * (refracted_xz_offset + vPos.xz);
+        emissive_mod = refraction_emissive_mod * exp2(-vec3(0.4, 0.3, 0.2) * fade_length);
     }
 #if VARIANT_BIT_2
     BandlimitedPixelInfo info =

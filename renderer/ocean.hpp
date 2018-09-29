@@ -52,6 +52,7 @@ struct OceanConfig
 		std::string input;
 		float uv_scale = 0.01f;
 		float depth = 3.0f;
+		float emissive_mod = 1.0f;
 		bool bandlimited_pixel = false;
 		bool input_is_render_graph = false;
 	} refraction;

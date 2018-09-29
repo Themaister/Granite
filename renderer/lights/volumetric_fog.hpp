@@ -52,6 +52,16 @@ public:
 	};
 	void set_floor_lighting(const std::string &input, const FloorLighting &info);
 
+	void set_density_mod(float mod)
+	{
+		density_mod = mod;
+	}
+
+	void set_in_scatter_mod(float mod)
+	{
+		inscatter_mod = mod;
+	}
+
 	float get_slice_z_log2_scale() const;
 	const Vulkan::ImageView &get_view() const;
 
@@ -76,6 +86,8 @@ private:
 	float z_range = 80.0f;
 	float slice_z_log2_scale;
 	float mod_time = 0.0f;
+	float density_mod = 0.1f;
+	float inscatter_mod = 0.25f;
 
 	void add_render_passes(RenderGraph &graph) override;
 	void setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target) override;

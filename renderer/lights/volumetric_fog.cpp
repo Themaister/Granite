@@ -140,8 +140,8 @@ void VolumetricFog::build_light_density(CommandBuffer &cmd, ImageView &light_den
 	push.xy_scale = vec2(context->get_render_parameters().inv_projection[0].x,
 	                     context->get_render_parameters().inv_projection[1].y);
 	push.slice_z_log2_scale = get_slice_z_log2_scale();
-	push.density_mod = 0.1f;
-	push.inscatter_strength = 0.25f;
+	push.density_mod = density_mod;
+	push.inscatter_strength = inscatter_mod;
 	push.dither_offset = float(dither_offset & 1023);
 	dither_offset++;
 

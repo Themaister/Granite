@@ -168,9 +168,7 @@ void main()
     fog_density = fog_density;
 
     mediump float albedo = get_fog_albedo(uvw) * fog_density;
-    mediump vec3 in_scatter_light = vec3(0.0);
-    if (albedo > 0.0)
-        in_scatter_light = registers.in_scatter_strength * compute_inscatter_light(pos);
+    mediump vec3 in_scatter_light = registers.in_scatter_strength * compute_inscatter_light(pos);
 
 #ifdef FLOOR_LIGHTING
     in_scatter_light += compute_floor_inscatter_light(pos);

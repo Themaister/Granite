@@ -67,6 +67,7 @@ struct VorbisStream : MixerStream
 
 	float sample_rate = 0.0f;
 	unsigned num_channels = 0;
+	bool looping = false;
 
 	std::vector<float> mix_buffer[Backend::MaxAudioChannels];
 	float *mix_channels[Backend::MaxAudioChannels] = {};
@@ -103,8 +104,21 @@ bool VorbisStream::init(const string &path)
 size_t VorbisStream::accumulate_samples(float *const *channels, const float *gains, size_t num_frames) noexcept
 {
 	auto actual_frames = stb_vorbis_get_samples_float(file, num_channels, mix_channels, int(num_frames));
+	if (actual_frames < 0)
+		return 0;
+
 	for (unsigned c = 0; c < num_channels; c++)
 		DSP::accumulate_channel(channels[c], mix_channels[c], gains[c], size_t(actual_frames));
+
+	if (looping && size_t(actual_frames) < num_frames)
+	{
+		stb_vorbis_seek_start(file);
+		float *moved_channels[Backend::MaxAudioChannels];
+		for (unsigned c = 0; c < num_channels; c++)
+			moved_channels[c] = channels[c] + actual_frames;
+
+		actual_frames += accumulate_samples(moved_channels, gains, num_frames - actual_frames);
+	}
 	return size_t(actual_frames);
 }
 
@@ -114,7 +128,7 @@ VorbisStream::~VorbisStream()
 		stb_vorbis_close(file);
 }
 
-MixerStream *create_vorbis_stream(const string &path)
+MixerStream *create_vorbis_stream(const string &path, bool looping)
 {
 	auto vorbis = new VorbisStream;
 	if (!vorbis->init(path))
@@ -123,6 +137,7 @@ MixerStream *create_vorbis_stream(const string &path)
 		return nullptr;
 	}
 
+	vorbis->looping = looping;
 	return vorbis;
 }
 }

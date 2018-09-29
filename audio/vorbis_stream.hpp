@@ -29,6 +29,6 @@ namespace Granite
 {
 namespace Audio
 {
-MixerStream *create_vorbis_stream(const std::string &path);
+MixerStream *create_vorbis_stream(const std::string &path, bool looping = false);
 }
 }

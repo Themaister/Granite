@@ -43,6 +43,15 @@ public:
 	void set_resolution(unsigned width, unsigned height, unsigned depth);
 	void set_z_range(float range);
 
+	struct FloorLighting
+	{
+		float position_mod = 0.01f;
+		float base_y = -3.0f;
+		float y_mod = 1.0f;
+		float scatter_mod = 1.0f;
+	};
+	void set_floor_lighting(const std::string &input, const FloorLighting &info);
+
 	float get_slice_z_log2_scale() const;
 	const Vulkan::ImageView &get_view() const;
 
@@ -52,6 +61,14 @@ private:
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
 	bool on_frame_tick(const FrameTickEvent &e);
 	Vulkan::ImageHandle dither_lut;
+
+	struct
+	{
+		std::string input;
+		FloorLighting info;
+		RenderTextureResource *input_resource = nullptr;
+		const Vulkan::ImageView *input_view = nullptr;
+	} floor;
 
 	unsigned width = 160;
 	unsigned height = 92;

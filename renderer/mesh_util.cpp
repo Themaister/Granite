@@ -634,48 +634,23 @@ static void skybox_render(CommandBuffer &cmd, const RenderQueueData *infos, unsi
 	}
 }
 
-void Skybox::update_irradiance()
-{
-	if (device && !irradiance_path.empty() && !irradiance_texture)
-	{
-		auto &texture_manager = device->get_texture_manager();
-		irradiance_texture = texture_manager.request_texture(irradiance_path);
-	}
-}
-
-void Skybox::update_reflection()
-{
-	if (device && !reflection_path.empty() && !reflection_texture)
-	{
-		auto &texture_manager = device->get_texture_manager();
-		reflection_texture = texture_manager.request_texture(reflection_path);
-	}
-}
-
-void Skybox::enable_irradiance(const std::string &path)
-{
-	irradiance_path = path;
-	update_irradiance();
-}
-
-void Skybox::enable_reflection(const std::string &path)
-{
-	reflection_path = path;
-	update_reflection();
-}
-
 void Skybox::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *,
                              RenderQueue &queue) const
 {
 	SkyboxRenderInfo info;
 
-	if (texture)
+	if (image)
+		info.view = &image->get_view();
+	else if (texture)
 		info.view = &texture->get_image()->get_view();
 	else
 		info.view = nullptr;
 
 	Hasher h;
-	h.pointer(info.view);
+	if (info.view)
+		h.u64(info.view->get_cookie());
+	else
+		h.u32(0);
 
 	auto instance_key = h.get();
 	auto sorting_key = RenderInfo::get_background_sort_key(Queue::OpaqueEmissive, 0, 0);
@@ -689,7 +664,7 @@ void Skybox::get_render_info(const RenderContext &context, const CachedSpatialTr
 
 	if (skydome_info)
 	{
-		auto flags = texture ? MATERIAL_EMISSIVE_BIT : 0;
+		auto flags = info.view ? MATERIAL_EMISSIVE_BIT : 0;
 		info.program = queue.get_shader_suites()[ecast(RenderableType::Skybox)].get_program(DrawPipeline::Opaque, 0, flags);
 		*skydome_info = info;
 	}
@@ -716,18 +691,19 @@ void Skybox::on_device_created(const Vulkan::DeviceCreatedEvent &created)
 		}
 		else
 			texture = created.get_device().get_texture_manager().request_texture(bg_path);
-
-		update_irradiance();
-		update_reflection();
 	}
+}
+
+void Skybox::set_image(Vulkan::ImageHandle skybox)
+{
+	image = std::move(skybox);
 }
 
 void Skybox::on_device_destroyed(const DeviceCreatedEvent &)
 {
 	device = nullptr;
 	texture = nullptr;
-	irradiance_texture = nullptr;
-	reflection_texture = nullptr;
+	image.reset();
 }
 
 struct TexturePlaneInfo

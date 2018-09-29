@@ -168,6 +168,13 @@ void VolumetricFog::build_light_density(CommandBuffer &cmd, ImageView &light_den
 	}
 	old_projection = context->get_render_parameters().view_projection;
 
+	if (floor.input_view)
+	{
+		defines.emplace_back("FLOOR_LIGHTING", 1);
+		cmd.set_texture(2, 7, *floor.input_view, Vulkan::StockSampler::TrilinearWrap);
+		*cmd.allocate_typed_constant_data<FloorLighting>(2, 8, 1) = floor.info;
+	}
+
 	cmd.set_program("builtin://shaders/lights/fog_light_density.comp", defines);
 	Renderer::bind_global_parameters(cmd, *context);
 	Renderer::bind_lighting_parameters(cmd, *context);
@@ -182,6 +189,12 @@ void VolumetricFog::build_light_density(CommandBuffer &cmd, ImageView &light_den
 	cmd.set_texture(2, 4, fog_density_low_freq, StockSampler::LinearWrap);
 
 	cmd.dispatch((width + 3) / 4, (height + 3) / 4, (depth + 3) / 4);
+}
+
+void VolumetricFog::set_floor_lighting(const std::string &input, const FloorLighting &info)
+{
+	floor.input = input;
+	floor.info = info;
 }
 
 void VolumetricFog::build_fog(CommandBuffer &cmd, ImageView &fog, ImageView &light)
@@ -274,11 +287,20 @@ void VolumetricFog::setup_render_pass_dependencies(RenderGraph &graph, RenderPas
 
 	if (!dither_lut)
 		build_dither_lut(graph.get_device());
+
+	if (!floor.input.empty())
+		floor.input_resource = &pass->add_texture_input(floor.input);
+	else
+		floor.input_resource = nullptr;
 }
 
 void VolumetricFog::setup_render_pass_resources(RenderGraph &graph)
 {
 	view = &graph.get_physical_texture_resource(*fog_volume);
+	if (floor.input_resource)
+		floor.input_view = &graph.get_physical_texture_resource(*floor.input_resource);
+	else
+		floor.input_view = nullptr;
 }
 
 void VolumetricFog::set_scene(Scene *)

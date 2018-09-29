@@ -297,8 +297,6 @@ void SceneLoader::parse_gltf(const std::string &path)
 
 			if (!env.reflection.path.empty() && !env.irradiance.path.empty())
 			{
-				skybox->enable_irradiance(env.irradiance.path);
-				skybox->enable_reflection(env.reflection.path);
 				auto *ibl = entity->allocate_component<IBLComponent>();
 				ibl->irradiance_path = env.irradiance.path;
 				ibl->reflection_path = env.reflection.path;
@@ -595,14 +593,7 @@ void SceneLoader::parse_scene_format(const std::string &path, const std::string 
 			if (use_ibl || (!reflection.empty() && !irradiance.empty()))
 			{
 				if (skybox)
-				{
-					if (!reflection.empty() && !irradiance.empty())
-					{
-						skybox->enable_irradiance(irradiance);
-						skybox->enable_reflection(reflection);
-					}
 					entity->allocate_component<SkyboxComponent>()->skybox = skybox.get();
-				}
 
 				if (!reflection.empty() && !irradiance.empty())
 				{

@@ -99,8 +99,7 @@ ImageHandle convert_cube_to_ibl_specular(Device &device, ImageView &view)
 	                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
 	                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 
-	Fence fence;
-	device.submit(cmd, &fence);
+	device.submit(cmd);
 	return handle;
 }
 
@@ -157,8 +156,7 @@ ImageHandle convert_cube_to_ibl_diffuse(Device &device, ImageView &view)
 	                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
 	                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 
-	Fence fence;
-	device.submit(cmd, &fence);
+	device.submit(cmd);
 	return handle;
 }
 

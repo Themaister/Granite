@@ -29,7 +29,7 @@ float to_clip_z(float world_z)
 }
 
 layout(constant_id = 0) const float POSITION_MOD = 0.1;
-layout(constant_id = 1) const float POSITION_MOD_LOW_FREQ = 0.028943;
+layout(constant_id = 1) const float POSITION_MOD_LOW_FREQ = 0.022556;
 
 layout(rgba16f, set = 2, binding = 0) writeonly uniform image3D uLightDensity;
 layout(set = 2, binding = 2) uniform mediump sampler3D uDitherLUT;
@@ -100,6 +100,31 @@ vec3 compute_inscatter_light(vec3 pos)
     );
 }
 
+#ifdef FLOOR_LIGHTING
+layout(set = 2, binding = 7) uniform mediump sampler2D uFloorLight;
+layout(set = 2, binding = 8, std140) uniform FloorData
+{
+    float pos_mod;
+    float base_y;
+    float y_mod;
+    float scatter_mod;
+} floor_lighting;
+
+mediump vec3 compute_floor_inscatter_light(vec3 pos)
+{
+    vec2 uv = pos.xz * floor_lighting.pos_mod;
+    mediump float y = pos.y - floor_lighting.base_y;
+    y *= floor_lighting.y_mod;
+    y = max(y, 0.0) + 1.0;
+
+    mediump float lod = log2(y);
+    mediump float dir_y = normalize(pos - global.camera_position).y;
+    mediump float phase = 0.55 - 0.45 * dir_y;
+
+    return textureLod(uFloorLight, uv, lod).rgb * (phase * floor_lighting.scatter_mod);
+}
+#endif
+
 void main()
 {
     if (any(greaterThanEqual(gl_GlobalInvocationID, registers.count)))
@@ -138,12 +163,18 @@ void main()
     vec3 pos = get_world_position(uvw);
 
     mediump float fog_density = textureLod(uFogDensity, pos * POSITION_MOD, 0.0).x +
-                                textureLod(uFogDensityLowFreq, (pos + 1.0) * POSITION_MOD_LOW_FREQ, 0.0).x;
+                                0.5 * textureLod(uFogDensityLowFreq, (pos + 1.0) * POSITION_MOD_LOW_FREQ, 0.0).x;
+
+    fog_density = fog_density;
 
     mediump float albedo = get_fog_albedo(uvw) * fog_density;
     mediump vec3 in_scatter_light = vec3(0.0);
     if (albedo > 0.0)
         in_scatter_light = registers.in_scatter_strength * compute_inscatter_light(pos);
+
+#ifdef FLOOR_LIGHTING
+    in_scatter_light += compute_floor_inscatter_light(pos);
+#endif
 
 #if TEMPORAL_REPROJECTION
     in_scatter_light = mix(old_in_scatter_light_albedo.rgb, in_scatter_light, w);

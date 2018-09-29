@@ -47,7 +47,6 @@ void main()
 #if VARIANT_BIT_1
     mediump vec3 to_ocean = normalize(vPos - global.camera_position);
     vec2 uv = vPos.xz * refraction_uv_scale;
-    mediump vec3 emissive_mod = vec3(0.0);
 
     mediump vec3 refracted_dir = refract(to_ocean, normal, 1.0 / 1.33);
     mediump float dir_to_bottom = -refracted_dir.y;
@@ -64,14 +63,13 @@ void main()
         mediump vec3 refracted_pos_offset = vec3(refracted_xz_offset.x, vPos.y + refraction_depth, refracted_xz_offset.y);
         mediump float fade_length = length(refracted_pos_offset);
         uv = refraction_uv_scale * (refracted_xz_offset + vPos.xz);
-        emissive_mod = refraction_emissive_mod * exp2(-vec3(0.4, 0.3, 0.2) * fade_length);
     }
 #if VARIANT_BIT_2
     BandlimitedPixelInfo info =
         compute_pixel_weights(uv, refraction_size.xy, refraction_size.zw, exp2(3.0 * turbulence));
-    mediump vec3 emissive = emissive_mod * sample_bandlimited_pixel(uDirectRefraction, uv, info, 3.0 * turbulence).rgb;
+    mediump vec3 emissive = refraction_emissive_mod * sample_bandlimited_pixel(uDirectRefraction, uv, info, 3.0 * turbulence).rgb;
 #else
-    mediump vec3 emissive = emissive_mod * texture(uDirectRefraction, uv, 3.0 * turbulence).rgb;
+    mediump vec3 emissive = refraction_emissive_mod * texture(uDirectRefraction, uv, 3.0 * turbulence).rgb;
 #endif
 #else
     const mediump vec3 emissive = vec3(0.0);

@@ -47,9 +47,14 @@ struct OceanConfig
 	float normal_mod = 7.3f;
 	float amplitude = 0.2f;
 
-	std::string refraction_path;
-	float refraction_uv_scale = 0.01f;
-	float refraction_depth = 3.0f;
+	struct
+	{
+		std::string input;
+		float uv_scale = 0.01f;
+		float depth = 3.0f;
+		bool bandlimited_pixel = false;
+		bool input_is_render_graph = false;
+	} refraction;
 };
 
 class Ocean : public AbstractRenderable,
@@ -174,5 +179,6 @@ private:
 	vec2 normalmap_world_size() const;
 
 	Vulkan::ImageView *refraction = nullptr;
+	RenderTextureResource *refraction_resource = nullptr;
 };
 }

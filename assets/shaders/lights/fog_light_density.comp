@@ -28,7 +28,7 @@ float to_clip_z(float world_z)
     return zw.x / zw.y;
 }
 
-layout(constant_id = 0) const float POSITION_MOD = 0.4;
+layout(constant_id = 0) const float POSITION_MOD = 0.1;
 
 layout(rgba16f, set = 2, binding = 0) writeonly uniform image3D uLightDensity;
 layout(set = 2, binding = 2) uniform mediump sampler3D uDitherLUT;
@@ -133,7 +133,7 @@ void main()
 
     vec3 pos = get_world_position(uvw);
 
-    mediump float fog_density = 10.0 * textureLod(uFogDensity, pos * POSITION_MOD, 0.0).x * exp(min(0.0, -pos.y));
+    mediump float fog_density = clamp(textureLod(uFogDensity, pos * POSITION_MOD, 0.0).x;
     mediump float albedo = get_fog_albedo(uvw) * fog_density;
     mediump vec3 in_scatter_light = vec3(0.0);
     if (albedo > 0.0)

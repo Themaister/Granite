@@ -54,9 +54,9 @@ private:
 	Vulkan::ImageHandle dither_lut;
 
 	unsigned width = 160;
-	unsigned height = 90;
+	unsigned height = 92;
 	unsigned depth = 64;
-	float z_range = 1024.0f;
+	float z_range = 80.0f;
 	float slice_z_log2_scale;
 	float mod_time = 0.0f;
 

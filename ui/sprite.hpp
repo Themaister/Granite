@@ -63,9 +63,9 @@ struct Sprite : AbstractRenderable
 	Vulkan::Texture *texture = nullptr;
 	Vulkan::StockSampler sampler = Vulkan::StockSampler::LinearWrap;
 
-	ivec2 tex_offset;
-	ivec2 size;
-	uint8_t color[4];
+	ivec2 tex_offset = ivec2(0);
+	ivec2 size = ivec2(0);
+	uint8_t color[4] = { 0xff, 0xff, 0xff, 0xff };
 
 	void get_sprite_render_info(const SpriteTransformInfo &transform, RenderQueue &queue) const override;
 	void get_render_info(const RenderContext &, const CachedSpatialTransformComponent *, RenderQueue &) const override

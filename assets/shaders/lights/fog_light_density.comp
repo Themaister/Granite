@@ -29,18 +29,22 @@ float to_clip_z(float world_z)
 }
 
 layout(constant_id = 0) const float POSITION_MOD = 0.1;
+layout(constant_id = 1) const float POSITION_MOD_LOW_FREQ = 0.028943;
 
 layout(rgba16f, set = 2, binding = 0) writeonly uniform image3D uLightDensity;
 layout(set = 2, binding = 2) uniform mediump sampler3D uDitherLUT;
+
 layout(set = 2, binding = 3) uniform mediump sampler3D uFogDensity;
+layout(set = 2, binding = 4) uniform mediump sampler3D uFogDensityLowFreq;
+
 layout(std140, set = 2, binding = 1) uniform BlockExtents
 {
     vec4 slice_extents[1024 / 4];
 };
 
 #if TEMPORAL_REPROJECTION
-layout(set = 2, binding = 4) uniform mediump sampler3D uOldLightDensity;
-layout(std140, set = 2, binding = 5) uniform Temporal
+layout(set = 2, binding = 5) uniform mediump sampler3D uOldLightDensity;
+layout(std140, set = 2, binding = 6) uniform Temporal
 {
     mat4 old_view_projection;
     vec4 inv_z_transform;
@@ -133,7 +137,9 @@ void main()
 
     vec3 pos = get_world_position(uvw);
 
-    mediump float fog_density = textureLod(uFogDensity, pos * POSITION_MOD, 0.0).x;
+    mediump float fog_density = textureLod(uFogDensity, pos * POSITION_MOD, 0.0).x +
+                                textureLod(uFogDensityLowFreq, (pos + 1.0) * POSITION_MOD_LOW_FREQ, 0.0).x;
+
     mediump float albedo = get_fog_albedo(uvw) * fog_density;
     mediump vec3 in_scatter_light = vec3(0.0);
     if (albedo > 0.0)

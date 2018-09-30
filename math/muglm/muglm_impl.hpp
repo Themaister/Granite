@@ -705,6 +705,13 @@ MUGLM_VECTORIZED_FUNC3(clamp)
 // mix
 template <typename T, typename Lerp> inline T mix(const T &a, const T &b, const Lerp &lerp) { return a + (b - a) * lerp; }
 
+// smoothstep
+template <typename T> inline T smoothstep(const T &lo, const T &hi, T val)
+{
+	val = clamp((val - lo) / (hi - lo), T(0.0f), T(1.0f));
+	return val * val * (3.0f - 2.0f * val);
+}
+
 // cross
 inline vec3 cross(const vec3 &a, const vec3 &b) { return vec3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x); }
 
@@ -715,6 +722,10 @@ MUGLM_VECTORIZED_FUNC1(sqrt)
 // floor
 inline float floor(float v) { return std::floor(v); }
 MUGLM_VECTORIZED_FUNC1(floor)
+
+// fract
+template <typename T>
+inline T fract(const T &v) { return v - floor(v); }
 
 // ceil
 inline float ceil(float v) { return std::ceil(v); }

@@ -424,7 +424,7 @@ void Ocean::update_fft_input(Vulkan::CommandBuffer &cmd)
 	Push push;
 	push.mod = vec2(2.0f * pi<float>()) / heightmap_world_size();
 	push.time = float(current_time);
-	push.freq_to_band_mod = (float(FrequencyBands - 1) * muglm::sqrt(2.0f)) / float(config.fft_resolution);
+	push.freq_to_band_mod = (float(FrequencyBands - 1) * 2.0f) / float(config.fft_resolution);
 
 	if (freq_band_modulation)
 	{

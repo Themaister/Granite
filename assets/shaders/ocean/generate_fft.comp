@@ -47,7 +47,7 @@ vec2 cmul(vec2 a, vec2 b)
 float freq_to_band_amplitude(vec2 aliased_freq)
 {
     vec2 F = aliased_freq * registers.freq_to_band_mod;
-    float band = length(F);
+    float band = max(F.x, F.y);
     band = clamp(band, 0.0, float(NUM_FREQ_BANDS) - 1.001);
 
     int low_band = int(band);

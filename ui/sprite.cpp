@@ -173,6 +173,7 @@ void Sprite::get_sprite_render_info(const SpriteTransformInfo &transform, Render
 	Util::Hasher hasher;
 	hasher.s32(transparent);
 	hasher.s32(bandlimited_pixel);
+	hasher.s32(luma_to_alpha);
 	hasher.s32(texture_alt ? 1 : 0);
 	auto pipe_hash = hasher.get();
 
@@ -197,9 +198,11 @@ void Sprite::get_sprite_render_info(const SpriteTransformInfo &transform, Render
 
 		uint32_t flags = 0;
 		if (bandlimited_pixel)
-			flags |= 1;
+			flags |= 1 << 0;
 		if (sprite.textures[1])
-			flags |= 2;
+			flags |= 1 << 1;
+		if (luma_to_alpha)
+			flags |= 1 << 2;
 
 		sprite.program = suite.get_program(pipeline,
 		                                   MESH_ATTRIBUTE_POSITION_BIT |

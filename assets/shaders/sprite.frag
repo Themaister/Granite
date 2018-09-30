@@ -42,35 +42,43 @@ layout(location = 0) flat in mediump vec4 vColor;
 
 void main()
 {
-#if HAVE_VERTEX_COLOR
-    mediump vec4 color = vColor;
-#else
-    mediump vec4 color = vec4(1.0);
-#endif
-
 #if defined(HAVE_BASECOLORMAP) && HAVE_BASECOLORMAP
     #ifdef BANDLIMITED_PIXEL
         BandlimitedPixelInfo info = compute_pixel_weights(vTex.xy, constants.tex_resolution, constants.inv_tex_resolution, 1.0);
         #ifdef SPRITE_BLENDING
             mediump vec4 c0 = sample_bandlimited_pixel(uTex, vTex.xy, info, 0.0);
             mediump vec4 c1 = sample_bandlimited_pixel(uTexAlt, vTex.xy, info, 0.0);
-            color *= mix(c0, c1, vTex.z);
+            mediump vec4 color = mix(c0, c1, vTex.z);
         #else
-            color *= sample_bandlimited_pixel(uTex, vTex, info, 0.0);
+            mediump vec4 color = sample_bandlimited_pixel(uTex, vTex, info, 0.0);
         #endif
     #else
         #ifdef SPRITE_BLENDING
             mediump vec4 c0 = texture(uTex, vTex.xy);
             mediump vec4 c1 = texture(uTexAlt, vTex.xy);
-            color *= mix(c0, c1, vTex.z);
+            mediump vec4 color = mix(c0, c1, vTex.z);
         #else
-            color *= texture(uTex, vTex);
+            mediump vec4 color = texture(uTex, vTex);
         #endif
     #endif
     #if defined(ALPHA_TEST)
         if (color.a < 0.5)
             discard;
     #endif
+#else
+    mediump vec4 color = vec4(1.0);
 #endif
+
+#if defined(VARIANT_BIT_2) && VARIANT_BIT_2
+    float luma = max(color.b, max(color.r, color.g));
+    #if HAVE_VERTEX_COLOR
+        color *= vColor;
+    #endif
+    Color = vec4(color.rgb, sqrt(clamp(luma, 0.0, 1.0)));
+#else
+    #if HAVE_VERTEX_COLOR
+        color *= vColor;
+    #endif
     Color = color;
+#endif
 }

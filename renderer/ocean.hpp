@@ -74,6 +74,10 @@ public:
 
 	static Handles add_to_scene(Scene &scene, const OceanConfig &config = {});
 
+	enum { FrequencyBands = 8 };
+	void set_frequency_band_amplitude(unsigned band, float amplitude);
+	void set_frequency_band_modulation(bool enable);
+
 private:
 	OceanConfig config;
 
@@ -85,6 +89,9 @@ private:
 	std::unique_ptr<GLFFT::FFT> displacement_fft;
 	FFTInterface fft_iface;
 	FFTDeferredCommandBuffer deferred_cmd;
+
+	float frequency_bands[FrequencyBands];
+	bool freq_band_modulation = false;
 
 	bool has_static_aabb() const override
 	{

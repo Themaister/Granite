@@ -1,6 +1,15 @@
 #version 450
 layout(local_size_x = 64) in;
 
+layout(constant_id = 0) const int NUM_FREQ_BANDS = 8;
+
+#if FREQ_BAND_MODULATION
+layout(std140, set = 1, binding = 0) uniform FreqBands
+{
+    vec4 freq_bands[NUM_FREQ_BANDS / 4];
+};
+#endif
+
 layout(std430, set = 0, binding = 0) readonly buffer InputDistribution
 {
     vec2 distribution[];
@@ -15,6 +24,7 @@ layout(std430, push_constant) uniform Registers
 {
     vec2 mod_factor;
     uvec2 N;
+    float freq_to_band_mod;
     float time;
 } registers;
 
@@ -33,10 +43,20 @@ vec2 cmul(vec2 a, vec2 b)
     return R0 + vec2(-R1.x, R1.y);
 }
 
-uint pack2(vec2 v)
+#if FREQ_BAND_MODULATION
+float freq_to_band_amplitude(vec2 aliased_freq)
 {
-    return packHalf2x16(v);
+    vec2 F = aliased_freq * registers.freq_to_band_mod;
+    float band = length(F);
+    band = clamp(band, 0.0, float(NUM_FREQ_BANDS) - 1.001);
+
+    int low_band = int(band);
+    float lo = freq_bands[low_band >> 2][low_band & 3];
+    low_band++;
+    float hi = freq_bands[low_band >> 2][low_band & 3];
+    return mix(lo, hi, fract(band));
 }
+#endif
 
 void main()
 {
@@ -46,7 +66,12 @@ void main()
     vec2 a = distribution[i.y * registers.N.x + i.x];
     vec2 b = distribution[wi.y * registers.N.x + wi.x];
 
-    vec2 k = registers.mod_factor * alias(vec2(i), vec2(registers.N));
+    vec2 aliased_freq = alias(vec2(i), vec2(registers.N));
+#if FREQ_BAND_MODULATION
+    float band_amplitude = freq_to_band_amplitude(aliased_freq);
+#endif
+
+    vec2 k = registers.mod_factor * aliased_freq;
     float k_len = length(k);
 
     const float G = 9.81;
@@ -68,5 +93,8 @@ void main()
     res = grad;
 #endif
 
-    fft_input[i.y * registers.N.x + i.x] = pack2(res);
+#if FREQ_BAND_MODULATION
+    res *= band_amplitude;
+#endif
+    fft_input[i.y * registers.N.x + i.x] = packHalf2x16(res);
 }

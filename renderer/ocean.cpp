@@ -45,6 +45,9 @@ struct OceanVertex
 Ocean::Ocean(const OceanConfig &config)
 	: config(config)
 {
+	for (auto &f : frequency_bands)
+		f = 1.0f;
+
 	wind_direction = normalize(config.wind_velocity);
 	phillips_L = dot(config.wind_velocity, config.wind_velocity) / G;
 
@@ -56,6 +59,17 @@ Ocean::Ocean(const OceanConfig &config)
 
 	EVENT_MANAGER_REGISTER_LATCH(Ocean, on_device_created, on_device_destroyed, Vulkan::DeviceCreatedEvent);
 	EVENT_MANAGER_REGISTER(Ocean, on_frame_tick, FrameTickEvent);
+}
+
+void Ocean::set_frequency_band_amplitude(unsigned band, float amplitude)
+{
+	assert(band < FrequencyBands);
+	frequency_bands[band] = amplitude;
+}
+
+void Ocean::set_frequency_band_modulation(bool enable)
+{
+	freq_band_modulation = enable;
 }
 
 Ocean::Handles Ocean::add_to_scene(Scene &scene, const OceanConfig &config)
@@ -76,6 +90,7 @@ Ocean::Handles Ocean::add_to_scene(Scene &scene, const OceanConfig &config)
 
 	handles.entity->allocate_component<OpaqueComponent>();
 	handles.entity->allocate_component<UnboundedComponent>();
+	handles.ocean = ocean.get();
 
 	return handles;
 }
@@ -385,19 +400,37 @@ vec2 Ocean::normalmap_world_size() const
 void Ocean::update_fft_input(Vulkan::CommandBuffer &cmd)
 {
 	auto *program = cmd.get_device().get_shader_manager().register_compute("builtin://shaders/ocean/generate_fft.comp");
-	unsigned height_variant = program->register_variant({});
-	unsigned normal_variant = program->register_variant({{ "GRADIENT_NORMAL", 1 }});
-	unsigned displacement_variant = program->register_variant({{ "GRADIENT_DISPLACEMENT", 1 }});
+	unsigned height_variant = program->register_variant({
+			                                                    { "FREQ_BAND_MODULATION", freq_band_modulation ? 1 : 0 }
+	                                                    });
+
+	unsigned normal_variant = program->register_variant({
+			                                                    { "GRADIENT_NORMAL", 1 },
+			                                                    { "FREQ_BAND_MODULATION", freq_band_modulation ? 1 : 0 }
+	                                                    });
+
+	unsigned displacement_variant = program->register_variant({
+			                                                          { "GRADIENT_DISPLACEMENT", 1 },
+			                                                          { "FREQ_BAND_MODULATION", freq_band_modulation ? 1 : 0}
+	                                                          });
 
 	struct Push
 	{
 		vec2 mod;
 		uvec2 N;
+		float freq_to_band_mod;
 		float time;
 	};
 	Push push;
 	push.mod = vec2(2.0f * pi<float>()) / heightmap_world_size();
 	push.time = float(current_time);
+	push.freq_to_band_mod = (float(FrequencyBands - 1) * muglm::sqrt(2.0f)) / float(config.fft_resolution);
+
+	if (freq_band_modulation)
+	{
+		memcpy(cmd.allocate_typed_constant_data<float>(1, 0, FrequencyBands),
+		       frequency_bands, sizeof(frequency_bands));
+	}
 
 	cmd.set_program(*program->get_program(height_variant));
 	push.N = uvec2(config.fft_resolution);

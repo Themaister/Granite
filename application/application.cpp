@@ -1162,6 +1162,9 @@ bool Application::poll()
 	if (!get_platform().alive(wsi))
 		return false;
 
+	if (requested_shutdown)
+		return false;
+
 	auto *fs = Global::filesystem();
 	auto *em = Global::event_manager();
 	if (fs)

@@ -85,9 +85,16 @@ public:
 	bool poll();
 	void run_frame();
 
+protected:
+	void request_shutdown()
+	{
+		requested_shutdown = true;
+	}
+
 private:
 	std::unique_ptr<Vulkan::WSIPlatform> platform;
 	Vulkan::WSI wsi;
+	bool requested_shutdown = false;
 };
 
 class SceneViewerApplication : public Application, public EventHandler

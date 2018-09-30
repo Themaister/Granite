@@ -78,14 +78,23 @@ void sprite_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *infos, uns
 	auto &info = *static_cast<const SpriteRenderInfo *>(infos->render_info);
 	cmd.set_program(*info.program);
 
-	if (info.texture)
+	if (info.textures[0])
 	{
-		float inv_res[2] = {
-			1.0f / info.texture->get_image().get_create_info().width,
-			1.0f / info.texture->get_image().get_create_info().height,
-		};
-		cmd.push_constants(inv_res, 0, sizeof(inv_res));
-		cmd.set_texture(2, 0, *info.texture, info.sampler);
+		struct Push
+		{
+			alignas(8) vec2 resolution;
+			alignas(8) vec2 inv_resolution;
+		} push;
+
+		push.resolution.x = info.textures[0]->get_image().get_width();
+		push.resolution.y = info.textures[0]->get_image().get_height();
+		push.inv_resolution = 1.0f / push.resolution;
+
+		cmd.push_constants(&push, 0, sizeof(push));
+
+		cmd.set_texture(2, 0, *info.textures[0], info.sampler);
+		if (info.textures[1])
+			cmd.set_texture(2, 1, *info.textures[1], info.sampler);
 	}
 
 	VkRect2D sci;
@@ -119,6 +128,8 @@ void sprite_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *infos, uns
 	cmd.set_vertex_attrib(3, 1, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(QuadData, rotation));
 	cmd.set_vertex_attrib(4, 1, VK_FORMAT_R8G8B8A8_UNORM, offsetof(QuadData, color));
 	cmd.set_vertex_attrib(5, 1, VK_FORMAT_R32_SFLOAT, offsetof(QuadData, layer));
+	if (info.textures[1])
+		cmd.set_vertex_attrib(6, 1, VK_FORMAT_R32_SFLOAT, offsetof(QuadData, blend_factor));
 	cmd.draw(4, quads);
 }
 }
@@ -130,7 +141,9 @@ void Sprite::get_sprite_render_info(const SpriteTransformInfo &transform, Render
 	SpriteRenderInfo sprite;
 
 	if (texture)
-		sprite.texture = &texture->get_image()->get_view();
+		sprite.textures[0] = &texture->get_image()->get_view();
+	if (texture_alt)
+		sprite.textures[1] = &texture_alt->get_image()->get_view();
 	sprite.sampler = sampler;
 
 	auto *instance_data = queue.allocate_one<SpriteInstanceInfo>();
@@ -154,14 +167,19 @@ void Sprite::get_sprite_render_info(const SpriteTransformInfo &transform, Render
 	quads->rotation[2] = transform.rotation[1].x;
 	quads->rotation[3] = transform.rotation[1].y;
 	quads->layer = transform.position.z;
+	quads->blend_factor = texture_blending_factor;
 	sprite.clip_quad = transform.clip;
 
 	Util::Hasher hasher;
-	hasher.u32(transparent);
+	hasher.s32(transparent);
+	hasher.s32(bandlimited_pixel);
+	hasher.s32(texture_alt ? 1 : 0);
 	auto pipe_hash = hasher.get();
+
 	hasher.pointer(texture);
-	hasher.u32(ecast(sampler));
-	hasher.u32(ecast(pipeline));
+	hasher.pointer(texture_alt);
+	hasher.s32(ecast(sampler));
+	hasher.s32(ecast(pipeline));
 	hasher.s32(transform.clip.x);
 	hasher.s32(transform.clip.y);
 	hasher.s32(transform.clip.z);
@@ -176,11 +194,19 @@ void Sprite::get_sprite_render_info(const SpriteTransformInfo &transform, Render
 	if (sprite_data)
 	{
 		auto &suite = queue.get_shader_suites()[ecast(RenderableType::Sprite)];
+
+		uint32_t flags = 0;
+		if (bandlimited_pixel)
+			flags |= 1;
+		if (sprite.textures[1])
+			flags |= 2;
+
 		sprite.program = suite.get_program(pipeline,
 		                                   MESH_ATTRIBUTE_POSITION_BIT |
 		                                   MESH_ATTRIBUTE_VERTEX_COLOR_BIT |
 		                                   (texture ? MESH_ATTRIBUTE_UV_BIT : 0),
-		                                   texture ? MATERIAL_TEXTURE_BASE_COLOR_BIT : 0);
+		                                   texture ? MATERIAL_TEXTURE_BASE_COLOR_BIT : 0,
+		                                   flags);
 		*sprite_data = sprite;
 	}
 }

@@ -166,7 +166,7 @@ void Font::render_text(RenderQueue &queue, const char *text, const vec3 &offset,
 
 	size_t len = strlen(text);
 	SpriteRenderInfo sprite;
-	sprite.texture = view.get();
+	sprite.textures[0] = view.get();
 	sprite.sampler = StockSampler::LinearWrap;
 
 	auto *instance_data = queue.allocate_one<SpriteInstanceInfo>();
@@ -224,8 +224,8 @@ void Font::render_text(RenderQueue &queue, const char *text, const vec3 &offset,
 		sprite.clip_quad = ivec4(ivec2(clip_offset), ivec2(clip_size));
 
 	Hasher hasher;
-	hasher.pointer(sprite.texture);
-	hasher.u32(ecast(sprite.sampler));
+	hasher.pointer(sprite.textures[0]);
+	hasher.s32(ecast(sprite.sampler));
 	hasher.s32(sprite.clip_quad.x);
 	hasher.s32(sprite.clip_quad.y);
 	hasher.s32(sprite.clip_quad.z);

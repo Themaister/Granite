@@ -125,7 +125,7 @@ void FlatRenderer::render_quad(const ImageView *view, Vulkan::StockSampler sampl
 
 	Hasher h;
 	h.string("quad");
-	h.u32(transparent);
+	h.s32(transparent);
 	auto pipe_hash = h.get();
 	h.s32(sprite.clip_quad.x);
 	h.s32(sprite.clip_quad.y);
@@ -134,10 +134,10 @@ void FlatRenderer::render_quad(const ImageView *view, Vulkan::StockSampler sampl
 
 	if (view)
 	{
-		sprite.texture = view;
+		sprite.textures[0] = view;
 		sprite.sampler = sampler;
 		h.u64(view->get_cookie());
-		h.u32(ecast(sampler));
+		h.s32(ecast(sampler));
 	}
 
 	auto instance_key = h.get();

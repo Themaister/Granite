@@ -7,6 +7,18 @@ precision highp int;
 #include "inc/bandlimited_pixel_filter.h"
 #endif
 
+#if defined(VARIANT_BIT_1) && VARIANT_BIT_1 && defined(HAVE_BASECOLORMAP) && HAVE_BASECOLORMAP
+#define SPRITE_BLENDING
+#endif
+
+#ifdef BANDLIMITED_PIXEL
+layout(push_constant, std430) uniform Globals
+{
+    vec2 tex_resolution;
+    vec2 inv_tex_resolution;
+} constants;
+#endif
+
 layout(location = 0) out mediump vec4 Color;
 
 #if HAVE_VERTEX_COLOR
@@ -14,11 +26,18 @@ layout(location = 0) flat in mediump vec4 vColor;
 #endif
 
 #if defined(HAVE_UV) && HAVE_UV
-layout(location = 1) in highp vec2 vTex;
+    #ifdef SPRITE_BLENDING
+        layout(location = 1) in highp vec3 vTex;
+    #else
+        layout(location = 1) in highp vec2 vTex;
+    #endif
 #endif
 
 #if defined(HAVE_BASECOLORMAP) && HAVE_BASECOLORMAP
-layout(set = 2, binding = 0) uniform mediump sampler2D uTex;
+    layout(set = 2, binding = 0) uniform mediump sampler2D uTex;
+    #ifdef SPRITE_BLENDING
+        layout(set = 2, binding = 1) uniform mediump sampler2D uTexAlt;
+    #endif
 #endif
 
 void main()
@@ -31,11 +50,22 @@ void main()
 
 #if defined(HAVE_BASECOLORMAP) && HAVE_BASECOLORMAP
     #ifdef BANDLIMITED_PIXEL
-        vec2 size = textureSize(uTex, 0);
-        BandlimitedPixelInfo info = compute_pixel_weights(vTex, size, 1.0 / size, 1.0);
-        color *= sample_bandlimited_pixel(uTex, vTex, info, 0.0);
+        BandlimitedPixelInfo info = compute_pixel_weights(vTex.xy, constants.tex_resolution, constants.inv_tex_resolution, 1.0);
+        #ifdef SPRITE_BLENDING
+            mediump vec4 c0 = sample_bandlimited_pixel(uTex, vTex.xy, info, 0.0);
+            mediump vec4 c1 = sample_bandlimited_pixel(uTexAlt, vTex.xy, info, 0.0);
+            color *= mix(c0, c1, vTex.z);
+        #else
+            color *= sample_bandlimited_pixel(uTex, vTex, info, 0.0);
+        #endif
     #else
-        color *= texture(uTex, vTex);
+        #ifdef SPRITE_BLENDING
+            mediump vec4 c0 = texture(uTex, vTex.xy);
+            mediump vec4 c1 = texture(uTexAlt, vTex.xy);
+            color *= mix(c0, c1, vTex.z);
+        #else
+            color *= texture(uTex, vTex);
+        #endif
     #endif
     #if defined(ALPHA_TEST)
         if (color.a < 0.5)

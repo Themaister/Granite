@@ -51,6 +51,7 @@ struct OpenSLESBackend : Backend
 	unsigned buffer_index = 0;
 	unsigned buffer_count = 0;
 	unsigned block_frames = 0;
+	unsigned enqueued_blocks = 0;
 
 	SLObjectItf engine_object = nullptr;
 	SLEngineItf engine = nullptr;
@@ -185,17 +186,30 @@ void OpenSLESBackend::thread_callback() noexcept
 {
 	if (is_active)
 	{
-		float *channels[2] = { mix_buffers[0].data(), mix_buffers[1].data() };
-		callback.mix_samples(channels, block_frames);
+		assert(enqueued_blocks > 0);
+		enqueued_blocks--;
 
-		DSP::interleave_stereo_f32_i16(buffers[buffer_index].data(),
-		                               channels[0], channels[1], block_frames);
+		while (enqueued_blocks < buffer_count)
+		{
+			float *channels[2] = { mix_buffers[0].data(), mix_buffers[1].data() };
+			callback.mix_samples(channels, block_frames);
 
-		(*buffer_queue)->Enqueue(buffer_queue,
-		                         buffers[buffer_index].data(),
-		                         SLuint32(buffers[buffer_index].size() * sizeof(int16_t)));
+			DSP::interleave_stereo_f32_i16(buffers[buffer_index].data(),
+			                               channels[0], channels[1], block_frames);
 
-		buffer_index = (buffer_index + 1) % buffer_count;
+			if ((*buffer_queue)->Enqueue(buffer_queue,
+			                             buffers[buffer_index].data(),
+			                             SLuint32(buffers[buffer_index].size() * sizeof(int16_t)))
+			    != SL_RESULT_SUCCESS)
+			{
+				LOGE("Failed Enqueue in thread callback!\n");
+			}
+			else
+			{
+				buffer_index = (buffer_index + 1) % buffer_count;
+				enqueued_blocks++;
+			}
+		}
 	}
 }
 
@@ -204,28 +218,24 @@ bool OpenSLESBackend::start()
 	if (is_active)
 		return false;
 
-	buffer_index = 0;
 	if ((*buffer_queue)->Clear(buffer_queue) != SL_RESULT_SUCCESS)
 		return false;
-	for (unsigned i = 0; i < buffer_count; i++)
+
+	buffer_index = 1;
+	enqueued_blocks = 1;
+
+	// Kick with one silent buffer.
+	memset(buffers[0].data(), 0, buffers[0].size() * sizeof(int16_t));
+	if ((*buffer_queue)->Enqueue(buffer_queue,
+	                             buffers[0].data(),
+	                             SLuint32(buffers[0].size() * sizeof(int16_t))) != SL_RESULT_SUCCESS)
 	{
-		memset(buffers[i].data(), 0, buffers[i].size() * sizeof(int16_t));
-		if ((*buffer_queue)->Enqueue(buffer_queue,
-		                             buffers[i].data(),
-		                             SLuint32(buffers[i].size() * sizeof(int16_t))) != SL_RESULT_SUCCESS)
-			return false;
+		return false;
 	}
 
 	is_active = true;
 	callback.on_backend_start();
-
-	if ((*player)->SetPlayState(player, SL_PLAYSTATE_PLAYING) != SL_RESULT_SUCCESS)
-	{
-		is_active = false;
-		return false;
-	}
-
-	return true;
+	return (*player)->SetPlayState(player, SL_PLAYSTATE_PLAYING) == SL_RESULT_SUCCESS;
 }
 
 bool OpenSLESBackend::stop()

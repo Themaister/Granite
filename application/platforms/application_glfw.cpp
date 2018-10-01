@@ -101,7 +101,7 @@ public:
 #if defined(HAVE_LINUX_INPUT) || defined(HAVE_XINPUT_WINDOWS)
 		input_manager.poll();
 #endif
-		return !killed && !glfwWindowShouldClose(window);
+		return !glfwWindowShouldClose(window);
 	}
 
 	void poll_input() override

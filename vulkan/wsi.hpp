@@ -80,11 +80,6 @@ public:
 		return timer;
 	}
 
-	void kill()
-	{
-		killed = true;
-	}
-
 	virtual void release_resources()
 	{
 	}
@@ -99,7 +94,6 @@ public:
 
 protected:
 	bool resize = false;
-	bool killed = false;
 
 private:
 	Util::FrameTimer timer;

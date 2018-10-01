@@ -471,7 +471,7 @@ bool WSIPlatformAndroid::alive(Vulkan::WSI &wsi)
 	android_poll_source *source;
 	state.wsi = &wsi;
 
-	if (state.killed || global_state.app->destroyRequested)
+	if (global_state.app->destroyRequested)
 		return false;
 
 	bool once = false;
@@ -575,6 +575,26 @@ static void init_sensors()
 
 using namespace Granite;
 
+static void wait_for_complete_teardown(android_app *app)
+{
+	// If we requested to be torn down with App::finishFromThread(),
+	// at least make sure we observe and pump through all takedown events,
+	// or we get a deadlock.
+	while (!app->destroyRequested)
+	{
+		android_poll_source *source = nullptr;
+		int events = 0;
+
+		if (ALooper_pollAll(-1, nullptr, &events, reinterpret_cast<void **>(&source)) >= 0)
+		{
+			if (source)
+				source->process(app, source);
+		}
+	}
+
+	assert(global_state.app->activityState == APP_CMD_STOP);
+}
+
 void android_main(android_app *app)
 {
 #pragma GCC diagnostic push
@@ -646,6 +666,7 @@ void android_main(android_app *app)
 			if (app->destroyRequested)
 			{
 				Granite::Global::event_manager()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+				Global::deinit();
 				return;
 			}
 
@@ -683,6 +704,9 @@ void android_main(android_app *app)
 					LOGI("Application returned %d.\n", ret);
 					Granite::Global::event_manager()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 					App::finishFromThread();
+
+					wait_for_complete_teardown(global_state.app);
+
 					app.reset();
 					Global::deinit();
 					return;

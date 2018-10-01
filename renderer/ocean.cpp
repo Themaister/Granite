@@ -725,6 +725,7 @@ struct OceanInfo
 	Vulkan::Program *border_program;
 	const Vulkan::Buffer *border_vbo;
 	const Vulkan::Buffer *border_ibo;
+	VkIndexType index_type;
 	unsigned border_count;
 
 	unsigned lods;
@@ -769,14 +770,14 @@ static void ocean_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *info
 			                       ocean_info.lod_stride);
 
 			cmd.set_vertex_binding(0, *ocean_info.vbos[lod], 0, 8);
-			cmd.set_index_buffer(*ocean_info.ibos[lod], 0, VK_INDEX_TYPE_UINT16);
+			cmd.set_index_buffer(*ocean_info.ibos[lod], 0, ocean_info.index_type);
 			cmd.draw_indexed_indirect(*ocean_info.indirect, 8 * sizeof(uint32_t) * lod, 1, 8 * sizeof(uint32_t));
 		}
 
 		cmd.set_program(*ocean_info.border_program);
 		cmd.set_vertex_attrib(0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0);
 		cmd.set_vertex_binding(0, *ocean_info.border_vbo, 0, sizeof(vec3));
-		cmd.set_index_buffer(*ocean_info.border_ibo, 0, VK_INDEX_TYPE_UINT16);
+		cmd.set_index_buffer(*ocean_info.border_ibo, 0, ocean_info.index_type);
 		cmd.draw_indexed(ocean_info.border_count);
 	}
 }
@@ -851,6 +852,7 @@ void Ocean::get_render_info(const RenderContext &,
 
 		patch_data->border_vbo = border_vbo.get();
 		patch_data->border_ibo = border_ibo.get();
+		patch_data->index_type = index_type;
 		patch_data->border_count = border_count;
 
 		patch_data->refraction = refraction;
@@ -988,8 +990,23 @@ void Ocean::build_lod(Vulkan::Device &device, unsigned size, unsigned stride)
 	lod.vbo = device.create_buffer(info, vertices.data());
 
 	info.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-	info.size = indices.size() * sizeof(uint16_t);
-	lod.ibo = device.create_buffer(info, indices.data());
+	if (device.get_gpu_properties().vendorID == Vulkan::VENDOR_ID_ARM)
+	{
+		// Workaround driver bug with primitive restart + 16-bit indices + indirect on some versions.
+		// Pad to 32-bit indices to work around this.
+		vector<uint32_t> padded_indices;
+		padded_indices.reserve(indices.size());
+		for (auto &i : indices)
+			padded_indices.push_back(i == 0xffffu ? 0xffffffffu : i);
+		info.size = padded_indices.size() * sizeof(uint32_t);
+		lod.ibo = device.create_buffer(info, padded_indices.data());
+	}
+	else
+	{
+		info.size = indices.size() * sizeof(uint16_t);
+		lod.ibo = device.create_buffer(info, indices.data());
+	}
+
 	lod.count = indices.size();
 
 	quad_lod.push_back(lod);
@@ -1104,10 +1121,26 @@ void Ocean::build_buffers(Vulkan::Device &device)
 	border_vbo = device.create_buffer(border_vbo_info, positions.data());
 
 	Vulkan::BufferCreateInfo border_ibo_info;
-	border_ibo_info.size = indices.size() * sizeof(uint16_t);
 	border_ibo_info.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
 	border_ibo_info.domain = Vulkan::BufferDomain::Device;
-	border_ibo = device.create_buffer(border_ibo_info, indices.data());
+	if (device.get_gpu_properties().vendorID == Vulkan::VENDOR_ID_ARM)
+	{
+		// Workaround driver bug with primitive restart + 16-bit indices + indirect on some versions.
+		// Pad to 32-bit indices to work around this.
+		vector<uint32_t> padded_indices;
+		padded_indices.reserve(indices.size());
+		for (auto &i : indices)
+			padded_indices.push_back(i == 0xffffu ? 0xffffffffu : i);
+		border_ibo_info.size = padded_indices.size() * sizeof(uint32_t);
+		border_ibo = device.create_buffer(border_ibo_info, padded_indices.data());
+		index_type = VK_INDEX_TYPE_UINT32;
+	}
+	else
+	{
+		border_ibo_info.size = indices.size() * sizeof(uint16_t);
+		border_ibo = device.create_buffer(border_ibo_info, indices.data());
+		index_type = VK_INDEX_TYPE_UINT16;
+	}
 
 	border_count = unsigned(indices.size());
 }

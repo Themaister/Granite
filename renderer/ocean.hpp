@@ -166,6 +166,7 @@ private:
 	Vulkan::BufferHandle border_vbo;
 	Vulkan::BufferHandle border_ibo;
 	unsigned border_count = 0;
+	VkIndexType index_type = VK_INDEX_TYPE_UINT16;
 
 	void build_buffers(Vulkan::Device &device);
 	void build_lod(Vulkan::Device &device, unsigned size, unsigned stride);

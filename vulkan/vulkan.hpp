@@ -85,6 +85,14 @@ struct DeviceFeatures
 	VkPhysicalDeviceFeatures enabled_features = {};
 };
 
+enum VendorID
+{
+	VENDOR_ID_AMD = 0x1002,
+	VENDOR_ID_NVIDIA = 0x10de,
+	VENDOR_ID_INTEL = 0x8086,
+	VENDOR_ID_ARM = 0x13b5
+};
+
 class Context
 {
 public:

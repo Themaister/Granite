@@ -55,7 +55,8 @@ static inline void accumulate_channel(float * __restrict output, const float * _
 		input += 4;
 	}
 
-	for (size_t i = rounded_count; i < count; i++)
+	size_t overflow_count = count & 3;
+	for (size_t i = 0; i < overflow_count; i++)
 		output[i] += input[i] * gain;
 #else
 	for (size_t i = 0; i < count; i++)

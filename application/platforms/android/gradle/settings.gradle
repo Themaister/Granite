@@ -1,0 +1,2 @@
+include '$$GRANITE_ANDROID_ACTIVITY$$'
+include '$$APP$$'

@@ -1,0 +1,78 @@
+apply plugin: 'com.android.application'
+
+android {
+    compileSdkVersion 26
+    buildToolsVersion '28.0.2'
+
+    defaultConfig {
+        minSdkVersion 24
+        targetSdkVersion 26
+
+        ndk {
+            abiFilters $$ABIS$$
+        }
+    }
+
+    buildTypes {
+        debug {
+            externalNativeBuild {
+                cmake {
+                    arguments "-DANDROID_TOOLCHAIN=clang",
+                            "-DANDROID_STL=c++_static",
+                            "-DANDROID_ARM_MODE=arm",
+                            "-DANDROID_CPP_FEATURES=exceptions",
+                            "-DGRANITE_SHADER_COMPILER_OPTIMIZE=OFF",
+                            "-DGRANITE_SPIRV_DUMP=OFF",
+                            "-DCMAKE_BUILD_TYPE=Debug",
+                            "-DANDROID_PLATFORM=android-24",
+                            "-DGRANITE_AUDIO=OFF",
+                            "-DANDROID_ARM_NEON=ON"
+
+                    targets "$$TARGET$$"
+                }
+            }
+            jniDebuggable true
+        }
+        release {
+            externalNativeBuild {
+                cmake {
+                    arguments "-DANDROID_TOOLCHAIN=clang",
+                            "-DANDROID_STL=c++_static",
+                            "-DANDROID_ARM_MODE=arm",
+                            "-DANDROID_CPP_FEATURES=exceptions",
+                            "-DGRANITE_SHADER_COMPILER_OPTIMIZE=OFF",
+                            "-DGRANITE_SPIRV_DUMP=OFF",
+                            "-DCMAKE_BUILD_TYPE=Release",
+                            "-DANDROID_PLATFORM=android-24",
+                            "-DGRANITE_AUDIO=OFF",
+                            "-DANDROID_ARM_NEON=ON"
+
+                    targets "$$TARGET$$"
+                }
+            }
+            debuggable true
+            signingConfig signingConfigs.debug
+            jniDebuggable true
+        }
+    }
+
+    sourceSets {
+        main {
+            manifest.srcFile 'AndroidManifest.xml'
+            resources.srcDirs = ['res']
+            res.srcDirs = ['res']
+            assets.srcDirs = ['$$ASSETS$$', '$$GRANITE_ASSETS$$']
+            jniLibs.srcDirs = ['$$RENDERDOC_JNI$$']
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path "$$CMAKELISTS$$"
+        }
+    }
+}
+
+dependencies {
+	api project($$GRANITE_ANDROID_ACTIVITY$$)
+}

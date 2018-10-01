@@ -3,7 +3,7 @@
       package="$$PACKAGE$$"
       android:versionCode="$$VERSION_CODE$$"
       android:versionName="$$VERSION_NAME$$">
-    <application android:label="@string/app_name" android:icon="@android:drawable/$$LOGO$$">
+    <application android:label="@string/app_name" android:icon="@drawable/$$ICON$$">
         <activity android:name="net.themaister.granite.GraniteActivity"
                   android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
                   android:screenOrientation="landscape"

@@ -74,5 +74,5 @@ android {
 }
 
 dependencies {
-	api project($$GRANITE_ANDROID_ACTIVITY$$)
+	api project('$$GRANITE_ANDROID_ACTIVITY$$')
 }

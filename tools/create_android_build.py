@@ -3,7 +3,7 @@
 import os
 import sys
 import argparse
-from shutil import copyfile
+from shutil import copyfile, copytree, rmtree
 
 def canonical_path(p):
     if not os.path.isabs(p):
@@ -20,31 +20,30 @@ def find_relative_path(from_path, to_path):
     return relpath
 
 def main():
-    parser = argparse.ArgumentParser(description = 'Script for automatically creating Android Gradle builds.')
+    parser = argparse.ArgumentParser(description = 'Script for automatically creating Android Gradle builds')
     parser.add_argument('--output-gradle',
                         help = 'Path where the Gradle build shall be placed',
                         required = True,
                         default = 'app')
-    parser.add_argument('--resource-drawable-dir',
-                        help = 'Directory where the application provided res/drawable folder is found.',
+    parser.add_argument('--resource-dir',
+                        help = 'Directory where the application provided res/drawable-* folders are found',
+                        type = str)
+    parser.add_argument('--activity-icon-drawable',
+                        help = 'The name of the logo drawable ID found in the res/ folders',
                         type = str,
-                        required = True)
-    parser.add_argument('--activity-logo-drawable',
-                        help = 'The name of the logo drawable ID found in the res/ folders.',
-                        type = str,
-                        default = 'logo')
+                        default = 'icon')
     parser.add_argument('--application-id',
                         required = True,
-                        help = 'The application app ID, like com.foo.shinyapp.')
+                        help = 'The application app ID, like com.foo.shinyapp')
     parser.add_argument('--granite-dir',
-                        help = 'Path to a Granite checkout.',
+                        help = 'Path to a Granite checkout',
                         default = 'granite')
     parser.add_argument('--native-target',
                         help = 'The CMake target to build',
                         required = True,
                         type = str)
     parser.add_argument('--app-name',
-                        help = 'The app name, as shown to the user.',
+                        help = 'The app name, as shown to the user',
                         type = str,
                         required = True)
     parser.add_argument('--abis',
@@ -90,13 +89,20 @@ def main():
     os.makedirs(args.output_gradle, exist_ok = True)
     os.makedirs(os.path.join(args.output_gradle, 'res'), exist_ok = True)
     os.makedirs(os.path.join(args.output_gradle, 'res/values'), exist_ok = True)
+    output_toplevel_build_gradle = 'build.gradle'
+    output_settings_gradle = 'settings.gradle'
+
+    resource_dir = os.path.join(args.granite_dir, 'application/platforms/android/gradle/res') if not args.resource_dir else args.resource_dir
+    granite_android_activity = find_relative_path(output_settings_gradle, os.path.join(args.granite_dir,
+                                                                                       'application/platforms/android'))
+    granite_android_activity = transform_gradle_path(granite_android_activity)
 
     # Write out AndroidManifest.xml
     with open(manifest, 'r') as f:
         manifest_data = f.read()
         manifest_data = manifest_data \
             .replace('$$PACKAGE$$', args.application_id) \
-            .replace('$$LOGO$$', args.activity_logo_drawable) \
+            .replace('$$ICON$$', args.activity_icon_drawable) \
             .replace('$$NATIVE_TARGET$$', args.native_target) \
             .replace('$$VERSION_CODE$$', args.version_code) \
             .replace('$$VERSION_NAME$$', args.version_name)
@@ -120,13 +126,8 @@ def main():
         cmakelists = find_relative_path(target_build_gradle, args.cmake_lists_toplevel)
         assets = find_relative_path(target_build_gradle, args.assets)
         granite_assets = find_relative_path(target_build_gradle, os.path.join(args.granite_dir, 'assets'))
-        granite_android_activity = find_relative_path(target_build_gradle, os.path.join(args.granite_dir,
-                                                                                        'application/platforms/android'))
-
         renderdoc_jni = find_relative_path(target_build_gradle, os.path.join(args.granite_dir,
                                                                              'application/platform/android/renderdoc'))
-
-        granite_android_activity = transform_gradle_path(granite_android_activity)
 
         target_abis = ', '.join(["'" + x + "'" for x in abis])
 
@@ -143,18 +144,12 @@ def main():
             print(data, file = dump_file)
 
 
-    output_toplevel_build_gradle = 'build.gradle'
     copyfile(toplevel_gradle, output_toplevel_build_gradle)
 
     # Write out settings.gradle
-    output_settings_gradle = 'settings.gradle'
     with open(settings_gradle, 'r') as f:
         data = f.read()
-        granite_android_activity = find_relative_path(output_settings_gradle, os.path.join(args.granite_dir,
-                                                                                        'application/platforms/android'))
         granite_app = find_relative_path(output_settings_gradle, args.output_gradle)
-
-        granite_android_activity = transform_gradle_path(granite_android_activity)
         granite_app = transform_gradle_path(granite_app)
 
         data = data \
@@ -163,8 +158,22 @@ def main():
 
         with open(output_settings_gradle, 'w') as dump_file:
             print(data, file = dump_file)
-    return
 
+    drawables = [
+        'drawable-mdpi',
+        'drawable-hdpi',
+        'drawable-xhdpi',
+        'drawable-xxhdpi',
+        'drawable-xxxhdpi'
+    ]
+    target_res = os.path.join(args.output_gradle, 'res')
+    for drawable in drawables:
+        src = os.path.join(resource_dir, drawable)
+        dst = os.path.join(target_res, drawable)
+        if os.path.isdir(src):
+            if os.path.isdir(dst):
+                rmtree(dst)
+            copytree(src, dst)
 
 if __name__ == '__main__':
     main()

@@ -1990,6 +1990,9 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 		else
 			device.submit(cmd);
 
+		if (Vulkan::ImplementationQuirks::get().queue_wait_on_submission)
+			device.flush_frame();
+
 		// Assign semaphores to resources which are cross-queue.
 		if (need_submission_semaphore)
 		{
@@ -2094,6 +2097,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 			e = 0;
 		physical_events[index].invalidated_in_stage[trailing_zeroes(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT)] = VK_ACCESS_SHADER_READ_BIT;
 
+		cmd->end_region();
 		if (physical_dimensions[index].uses_semaphore())
 		{
 			Vulkan::Semaphore semaphores[2];
@@ -2106,7 +2110,9 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 			physical_events[index].event = cmd->signal_event(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 			device.submit(cmd);
 		}
-		cmd->end_region();
+
+		if (Vulkan::ImplementationQuirks::get().queue_wait_on_submission)
+			device.flush_frame();
 	}
 }
 

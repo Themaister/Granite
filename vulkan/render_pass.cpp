@@ -214,7 +214,7 @@ RenderPass::RenderPass(Hash hash, Device *device, const RenderPassInfo &info)
 		else if (image.is_swapchain_image())
 		{
 			if (att.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD)
-				att.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+				att.initialLayout = image.get_swapchain_layout();
 			else
 				att.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 

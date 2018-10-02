@@ -34,6 +34,33 @@ namespace Granite
 {
 bool XInputManager::init(Granite::InputTracker *tracker)
 {
+	if (!lib)
+	{
+		try
+		{
+			lib = DynamicLibrary("xinput1_4");
+			LOGI("Found XInput 1.4!\n");
+		}
+		catch (...)
+		{
+		}
+	}
+
+	if (!lib)
+	{
+		try
+		{
+			lib = DynamicLibrary("xinput1_3");
+			LOGI("Found XInput 1.3!\n");
+		}
+		catch (...)
+		{
+		}
+	}
+
+	if (lib)
+		pXInputGetState = lib.get_symbol<decltype(&XInputGetState)>("XInputGetState");
+
 	this->tracker = tracker;
 
 	for (unsigned i = 0; i < 4; i++)
@@ -46,10 +73,12 @@ void XInputManager::try_polling_device(unsigned index)
 {
 	if (active_pads & (1u << index))
 		return;
+	if (!pXInputGetState)
+		return;
 
 	XINPUT_STATE new_state;
 	memset(&new_state, 0, sizeof(new_state));
-	if (XInputGetState(index, &new_state) != ERROR_DEVICE_NOT_CONNECTED)
+	if (pXInputGetState(index, &new_state) != ERROR_DEVICE_NOT_CONNECTED)
 	{
 		tracker->enable_joypad(index);
 		create_events(index, new_state);
@@ -59,6 +88,9 @@ void XInputManager::try_polling_device(unsigned index)
 
 bool XInputManager::poll()
 {
+	if (!pXInputGetState)
+		return true;
+
 	for (unsigned i = 0; i < 4; i++)
 	{
 		if ((active_pads & (1u << i)) == 0)
@@ -66,7 +98,7 @@ bool XInputManager::poll()
 
 		XINPUT_STATE new_state;
 		memset(&new_state, 0, sizeof(new_state));
-		if (XInputGetState(i, &new_state) != ERROR_DEVICE_NOT_CONNECTED)
+		if (pXInputGetState(i, &new_state) != ERROR_DEVICE_NOT_CONNECTED)
 			create_events(i, new_state);
 		else
 		{

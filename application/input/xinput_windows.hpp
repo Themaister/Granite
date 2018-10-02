@@ -27,6 +27,8 @@
 #include <windows.h>
 #include <xinput.h>
 
+#include "dynamic_library.hpp"
+
 namespace Granite
 {
 class XInputManager
@@ -43,5 +45,8 @@ private:
 	void create_events(unsigned index, const XINPUT_STATE &state);
 	void try_polling_device(unsigned index);
 	unsigned poll_count = 0;
+
+	Util::DynamicLibrary lib;
+	decltype(&XInputGetState) pXInputGetState = nullptr;
 };
 }

@@ -45,6 +45,15 @@ public:
 		return reinterpret_cast<Func>(get_symbol_internal(symbol));
 	}
 
+	explicit operator bool() const
+	{
+#if _WIN32
+		return module != nullptr;
+#else
+		return dylib != nullptr;
+#endif
+	}
+
 private:
 #if _WIN32
 	HMODULE module = nullptr;

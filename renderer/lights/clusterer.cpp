@@ -197,7 +197,7 @@ static uint32_t reassign_indices(T &type)
 		if (itr != end(type.cookie))
 		{
 			auto index = std::distance(begin(type.cookie), itr);
-			if (i != index)
+			if (i != unsigned(index))
 			{
 				// Reuse the shadow data from the atlas.
 				swap(type.cookie[i], type.cookie[index]);
@@ -214,7 +214,7 @@ static uint32_t reassign_indices(T &type)
 			if (itr != end(type.cookie))
 			{
 				auto index = std::distance(begin(type.cookie), itr);
-				if (i != index)
+				if (i != unsigned(index))
 				{
 					// Reuse the shadow data from the atlas.
 					swap(type.cookie[i], type.cookie[index]);

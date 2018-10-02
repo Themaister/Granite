@@ -24,6 +24,14 @@
 #include "util.hpp"
 #include <algorithm>
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#else
+#include <unistd.h>
+#include <linux/limits.h>
+#endif
+
 using namespace std;
 
 namespace Granite
@@ -206,6 +214,34 @@ pair<string, string> protocol_split(const string &path)
 		return make_pair(string(""), path);
 
 	return make_pair(path.substr(0, index), path.substr(index + 3, string::npos));
+}
+
+string get_executable_path()
+{
+#ifdef _WIN32
+	char target[4096];
+	DWORD ret = GetModuleFileNameA(GetModuleHandle(nullptr), target, sizeof(target));
+	target[ret] = '\0';
+	return string(target);
+#else
+	pid_t pid = getpid();
+	static const char *exts[] = { "exe", "file", "a.out" };
+	char link_path[PATH_MAX];
+	char target[PATH_MAX];
+
+	for (auto *ext : exts)
+	{
+		snprintf(link_path, sizeof(link_path), "/proc/%u/%s",
+		         unsigned(pid), ext);
+		ssize_t ret = readlink(link_path, target, sizeof(target) - 1);
+		if (ret >= 0)
+			target[ret] = '\0';
+
+		return string(target);
+	}
+
+	return "";
+#endif
 }
 }
 }

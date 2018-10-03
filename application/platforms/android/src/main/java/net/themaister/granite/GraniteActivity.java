@@ -24,6 +24,7 @@ package net.themaister.granite;
 
 import android.app.ActionBar;
 import android.content.Context;
+import android.content.Intent;
 import android.media.AudioManager;
 import android.os.Bundle;
 import android.view.Display;
@@ -106,5 +107,16 @@ public class GraniteActivity extends android.app.NativeActivity
 
         int count = Integer.parseInt(frames);
         return count;
+    }
+
+    public String getCommandLineArgument(String key)
+    {
+        Intent intent = getIntent();
+        if (intent == null)
+            return "";
+        String extra = intent.getStringExtra(key);
+        if (extra == null)
+            return "";
+        return extra;
     }
 }

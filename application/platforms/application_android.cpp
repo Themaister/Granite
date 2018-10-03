@@ -65,6 +65,7 @@ struct JNI
 	jmethodID getDisplayRotation;
 	jmethodID getAudioNativeSampleRate;
 	jmethodID getAudioNativeBlockFrames;
+	jmethodID getCommandLineArgument;
 	jclass classLoaderClass;
 	jobject classLoader;
 
@@ -82,6 +83,32 @@ static void finishFromThread()
 	global_state.app->activity->vm->AttachCurrentThread(&env, nullptr);
 	env->CallVoidMethod(global_state.app->activity->clazz, jni.finishFromThread);
 	global_state.app->activity->vm->DetachCurrentThread();
+}
+
+static string getCommandLine()
+{
+	string result;
+	JNIEnv *env = nullptr;
+	global_state.app->activity->vm->AttachCurrentThread(&env, nullptr);
+
+	jstring key = env->NewStringUTF("granite");
+	jstring str = static_cast<jstring>(env->CallObjectMethod(global_state.app->activity->clazz,
+	                                                         jni.getCommandLineArgument,
+	                                                         key));
+	env->DeleteLocalRef(key);
+
+	if (str)
+	{
+		const char *data = env->GetStringUTFChars(str, nullptr);
+		if (data)
+		{
+			result = data;
+			env->ReleaseStringUTFChars(str, data);
+		}
+		env->DeleteLocalRef(str);
+	}
+	global_state.app->activity->vm->DetachCurrentThread();
+	return result;
 }
 
 #ifdef HAVE_GRANITE_AUDIO
@@ -544,6 +571,7 @@ static void init_jni()
 	jni.getDisplayRotation = env->GetMethodID(jni.granite, "getDisplayRotation", "()I");
 	jni.getAudioNativeSampleRate = env->GetMethodID(jni.granite, "getAudioNativeSampleRate", "()I");
 	jni.getAudioNativeBlockFrames = env->GetMethodID(jni.granite, "getAudioNativeBlockFrames", "()I");
+	jni.getCommandLineArgument = env->GetMethodID(jni.granite, "getCommandLineArgument", "(Ljava/lang/String;)Ljava/lang/String;");
 
 	env->DeleteLocalRef(str);
 	app->activity->vm->DetachCurrentThread();
@@ -679,22 +707,36 @@ void android_main(android_app *app)
 
 				try
 				{
-					int ret;
-					int argc = 1;
-					char arg[] = "granite";
-					char *argv[] = { arg, nullptr };
+					vector<const char *> argv;
+					argv.push_back("granite");
 
-					auto app = unique_ptr<Granite::Application>(Granite::application_create(argc, argv));
-					if (app)
+					string cli_arguments = App::getCommandLine();
+					if (!cli_arguments.empty())
+					{
+						auto arguments = Util::split_no_empty(cli_arguments, " ");
+						for (auto &arg : arguments)
+						{
+							LOGI("Command line argument: %s\n", arg.c_str());
+							argv.push_back(arg.c_str());
+						}
+					}
+					argv.push_back(nullptr);
+
+					auto app_handle = unique_ptr<Granite::Application>(
+							Granite::application_create(int(argv.size()) - 1,
+							                            const_cast<char **>(argv.data())));
+
+					int ret;
+					if (app_handle)
 					{
 						auto platform = make_unique<Granite::WSIPlatformAndroid>(width, height);
 						global_state.app->userData = platform.get();
-						if (!app->init_wsi(move(platform)))
+						if (!app_handle->init_wsi(move(platform)))
 							ret = 1;
 						else
 						{
-							while (app->poll())
-								app->run_frame();
+							while (app_handle->poll())
+								app_handle->run_frame();
 							ret = 0;
 						}
 					}
@@ -707,7 +749,7 @@ void android_main(android_app *app)
 
 					wait_for_complete_teardown(global_state.app);
 
-					app.reset();
+					app_handle.reset();
 					Global::deinit();
 					return;
 				}

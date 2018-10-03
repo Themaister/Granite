@@ -95,6 +95,12 @@ bool GLSLCompiler::parse_variants(const string &source, const string &path)
 
 			dependencies.insert(include_path);
 		}
+		else if (line.find("#pragma optimize off") == 0)
+		{
+			force_no_optimize = true;
+			preprocessed_source += "// #pragma optimize off";
+			preprocessed_source += '\n';
+		}
 		else
 		{
 			preprocessed_source += line;
@@ -187,15 +193,15 @@ vector<uint32_t> GLSLCompiler::compile(const vector<pair<string, int>> *defines)
 	vector<uint32_t> compiled_spirv(result.cbegin(), result.cend());
 
 #if GRANITE_COMPILER_OPTIMIZE
-	spvtools::Optimizer optimizer(SPV_ENV_VULKAN_1_0);
-	optimizer.RegisterPerformancePasses();
-	//optimizer.RegisterPass(spvtools::CreateMergeReturnPass());
-	//optimizer.RegisterPass(spvtools::CreateInlineExhaustivePass());
-	//optimizer.RegisterPass(spvtools::CreateEliminateDeadFunctionsPass());
-	if (!optimizer.Run(compiled_spirv.data(), compiled_spirv.size(), &compiled_spirv))
+	if (!force_no_optimize)
 	{
-		LOGE("Failed to optimize SPIR-V.\n");
-		return {};
+		spvtools::Optimizer optimizer(SPV_ENV_VULKAN_1_0);
+		optimizer.RegisterPerformancePasses();
+		if (!optimizer.Run(compiled_spirv.data(), compiled_spirv.size(), &compiled_spirv))
+		{
+			LOGE("Failed to optimize SPIR-V.\n");
+			return {};
+		}
 	}
 #endif
 

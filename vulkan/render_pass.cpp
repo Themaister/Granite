@@ -107,8 +107,14 @@ RenderPass::RenderPass(Util::Hash hash, Vulkan::Device *device, const VkRenderPa
 #ifdef GRANITE_VULKAN_FOSSILIZE
 	unsigned rp_index = device->register_render_pass(get_hash(), create_info);
 #endif
+
+	// Fixup after, we want the Fossilize render pass to be generic.
+	auto info = create_info;
+	VkAttachmentDescription fixup_attachments[VULKAN_NUM_ATTACHMENTS + 1];
+	fixup_render_pass_nvidia(info, fixup_attachments);
+
 	LOGI("Creating render pass.\n");
-	if (vkCreateRenderPass(device->get_device(), &create_info, nullptr, &render_pass) != VK_SUCCESS)
+	if (vkCreateRenderPass(device->get_device(), &info, nullptr, &render_pass) != VK_SUCCESS)
 		LOGE("Failed to create render pass.");
 #ifdef GRANITE_VULKAN_FOSSILIZE
 	device->set_render_pass_handle(rp_index, render_pass);
@@ -758,12 +764,37 @@ RenderPass::RenderPass(Hash hash, Device *device, const RenderPassInfo &info)
 #ifdef GRANITE_VULKAN_FOSSILIZE
 	unsigned rp_index = device->register_render_pass(get_hash(), rp_info);
 #endif
+
+	// Fixup after, we want the Fossilize render pass to be generic.
+	VkAttachmentDescription fixup_attachments[VULKAN_NUM_ATTACHMENTS + 1];
+	fixup_render_pass_nvidia(rp_info, fixup_attachments);
+
 	LOGI("Creating render pass.\n");
 	if (vkCreateRenderPass(device->get_device(), &rp_info, nullptr, &render_pass) != VK_SUCCESS)
 		LOGE("Failed to create render pass.");
 #ifdef GRANITE_VULKAN_FOSSILIZE
 	device->set_render_pass_handle(rp_index, render_pass);
 #endif
+}
+
+void RenderPass::fixup_render_pass_nvidia(VkRenderPassCreateInfo &create_info, VkAttachmentDescription *attachments)
+{
+	if (device->get_gpu_properties().vendorID == VENDOR_ID_NVIDIA)
+	{
+		// Workaround a bug on NV where depth-stencil input attachments break if we have STORE_OP_DONT_CARE.
+		// Force STORE_OP_STORE for all attachments.
+		memcpy(attachments, create_info.pAttachments, create_info.attachmentCount * sizeof(attachments[0]));
+		create_info.pAttachments = attachments;
+		for (uint32_t i = 0; i < create_info.attachmentCount; i++)
+		{
+			VkFormat format = attachments[i].format;
+			if (!format_is_stencil(format))
+				attachments[i].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+			if (format_is_depth_stencil(format) || format_is_stencil(format))
+				attachments[i].stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
+		}
+	}
 }
 
 RenderPass::~RenderPass()

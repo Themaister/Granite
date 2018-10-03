@@ -27,9 +27,6 @@
 #include "filesystem.hpp"
 
 #include "spirv-tools/libspirv.hpp"
-#if GRANITE_COMPILER_OPTIMIZE
-#include "spirv-tools/optimizer.hpp"
-#endif
 
 using namespace std;
 
@@ -97,8 +94,14 @@ bool GLSLCompiler::parse_variants(const string &source, const string &path)
 		}
 		else if (line.find("#pragma optimize off") == 0)
 		{
-			force_no_optimize = true;
+			optimization = Optimization::ForceOff;
 			preprocessed_source += "// #pragma optimize off";
+			preprocessed_source += '\n';
+		}
+		else if (line.find("#pragma optimize on") == 0)
+		{
+			optimization = Optimization::ForceOn;
+			preprocessed_source += "// #pragma optimize on";
 			preprocessed_source += '\n';
 		}
 		else
@@ -145,7 +148,13 @@ vector<uint32_t> GLSLCompiler::compile(const vector<pair<string, int>> *defines)
 			options.AddMacroDefinition(define.first, to_string(define.second));
 
 #if GRANITE_COMPILER_OPTIMIZE
-	options.SetOptimizationLevel(shaderc_optimization_level_size);
+	if (optimization != Optimization::ForceOff)
+		options.SetOptimizationLevel(shaderc_optimization_level_performance);
+	else
+	{
+		options.SetOptimizationLevel(shaderc_optimization_level_zero);
+		options.SetGenerateDebugInfo();
+	}
 #else
 	options.SetOptimizationLevel(shaderc_optimization_level_zero);
 	options.SetGenerateDebugInfo();
@@ -191,19 +200,6 @@ vector<uint32_t> GLSLCompiler::compile(const vector<pair<string, int>> *defines)
 	}
 
 	vector<uint32_t> compiled_spirv(result.cbegin(), result.cend());
-
-#if GRANITE_COMPILER_OPTIMIZE
-	if (!force_no_optimize)
-	{
-		spvtools::Optimizer optimizer(SPV_ENV_VULKAN_1_0);
-		optimizer.RegisterPerformancePasses();
-		if (!optimizer.Run(compiled_spirv.data(), compiled_spirv.size(), &compiled_spirv))
-		{
-			LOGE("Failed to optimize SPIR-V.\n");
-			return {};
-		}
-	}
-#endif
 
 	spvtools::SpirvTools core(SPV_ENV_VULKAN_1_0);
 

@@ -80,6 +80,13 @@ private:
 
 	static Stage stage_from_path(const std::string &path);
 	bool parse_variants(const std::string &source, const std::string &path);
-	bool force_no_optimize = false;
+
+	enum class Optimization
+	{
+		ForceOff,
+		ForceOn,
+		Default
+	};
+	Optimization optimization = Optimization::Default;
 };
 }

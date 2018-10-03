@@ -89,7 +89,7 @@ RenderPass::RenderPass(Util::Hash hash, Vulkan::Device *device, const VkRenderPa
 	if (create_info.attachmentCount > 0)
 	{
 		auto &att = create_info.pAttachments[create_info.attachmentCount - 1];
-		if (format_is_depth_stencil(att.format))
+		if (format_has_depth_or_stencil_aspect(att.format))
 		{
 			depth_stencil = att.format;
 			num_color_attachments = create_info.attachmentCount - 1;
@@ -788,10 +788,10 @@ void RenderPass::fixup_render_pass_nvidia(VkRenderPassCreateInfo &create_info, V
 		for (uint32_t i = 0; i < create_info.attachmentCount; i++)
 		{
 			VkFormat format = attachments[i].format;
-			if (!format_is_stencil(format))
+			auto aspect = format_to_aspect_mask(format);
+			if ((aspect & (VK_IMAGE_ASPECT_COLOR_BIT | VK_IMAGE_ASPECT_DEPTH_BIT)) != 0)
 				attachments[i].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-
-			if (format_is_depth_stencil(format) || format_is_stencil(format))
+			if ((aspect & VK_IMAGE_ASPECT_STENCIL_BIT) != 0)
 				attachments[i].stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
 		}
 	}

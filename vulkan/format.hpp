@@ -45,7 +45,7 @@ static inline bool format_is_srgb(VkFormat format)
 	}
 }
 
-static inline bool format_is_depth(VkFormat format)
+static inline bool format_has_depth_aspect(VkFormat format)
 {
 	switch (format)
 	{
@@ -62,10 +62,13 @@ static inline bool format_is_depth(VkFormat format)
 	}
 }
 
-static inline bool format_is_stencil(VkFormat format)
+static inline bool format_has_stencil_aspect(VkFormat format)
 {
 	switch (format)
 	{
+	case VK_FORMAT_D16_UNORM_S8_UINT:
+	case VK_FORMAT_D24_UNORM_S8_UINT:
+	case VK_FORMAT_D32_SFLOAT_S8_UINT:
 	case VK_FORMAT_S8_UINT:
 		return true;
 
@@ -74,9 +77,9 @@ static inline bool format_is_stencil(VkFormat format)
 	}
 }
 
-static inline bool format_is_depth_stencil(VkFormat format)
+static inline bool format_has_depth_or_stencil_aspect(VkFormat format)
 {
-	return format_is_depth(format) || format_is_stencil(format);
+	return format_has_depth_aspect(format) || format_has_stencil_aspect(format);
 }
 
 static inline VkImageAspectFlags format_to_aspect_mask(VkFormat format)

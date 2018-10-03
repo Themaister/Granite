@@ -352,7 +352,7 @@ struct ImageCreateInfo
 		info.format = format;
 		info.type = VK_IMAGE_TYPE_2D;
 		info.layers = 1;
-		info.usage = (format_is_depth_stencil(format) ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT :
+		info.usage = (format_has_depth_or_stencil_aspect(format) ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT :
 		                                                VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) |
 		             VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
@@ -374,7 +374,7 @@ struct ImageCreateInfo
 		info.format = format;
 		info.type = VK_IMAGE_TYPE_2D;
 		info.layers = 1;
-		info.usage = (format_is_depth_stencil(format) ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT :
+		info.usage = (format_has_depth_or_stencil_aspect(format) ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT :
 		                                                VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) |
 		             VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
 		info.samples = VK_SAMPLE_COUNT_1_BIT;

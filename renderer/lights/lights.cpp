@@ -278,7 +278,7 @@ static void positional_render_full_screen(CommandBuffer &cmd, const RenderQueueD
 
 	if (light_info.atlas)
 	{
-		auto sampler = format_is_depth_stencil(light_info.atlas->get_format()) ?
+		auto sampler = format_has_depth_or_stencil_aspect(light_info.atlas->get_format()) ?
 		               Vulkan::StockSampler::LinearShadow :
 		               Vulkan::StockSampler::LinearClamp;
 		cmd.set_texture(2, 2, *light_info.atlas, sampler);
@@ -377,7 +377,7 @@ static void positional_render_common(CommandBuffer &cmd, const RenderQueueData *
 
 	if (light_info.atlas)
 	{
-		auto sampler = format_is_depth_stencil(light_info.atlas->get_format()) ?
+		auto sampler = format_has_depth_or_stencil_aspect(light_info.atlas->get_format()) ?
 		               Vulkan::StockSampler::LinearShadow :
 		               Vulkan::StockSampler::LinearClamp;
 		cmd.set_texture(2, 2, *light_info.atlas, sampler);
@@ -548,7 +548,7 @@ void SpotLight::get_render_info(const RenderContext &context, const CachedSpatia
 		if (atlas)
 		{
 			variant |= POSITIONAL_VARIANT_SHADOW_BIT;
-			if (!format_is_depth_stencil(atlas->get_format()))
+			if (!format_has_depth_or_stencil_aspect(atlas->get_format()))
 				variant |= POSITIONAL_VARIANT_VSM_BIT;
 		}
 
@@ -693,7 +693,7 @@ void PointLight::get_render_info(const RenderContext &context, const CachedSpati
 		if (shadow_atlas)
 		{
 			variant |= POSITIONAL_VARIANT_SHADOW_BIT;
-			if (!format_is_depth_stencil(shadow_atlas->get_format()))
+			if (!format_has_depth_or_stencil_aspect(shadow_atlas->get_format()))
 				variant |= POSITIONAL_VARIANT_VSM_BIT;
 		}
 

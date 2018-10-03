@@ -166,7 +166,7 @@ Renderer::RendererOptionFlags Renderer::get_mesh_renderer_options_from_lighting(
 	if (lighting.shadow_far)
 	{
 		flags |= SHADOW_ENABLE_BIT;
-		if (!Vulkan::format_is_depth_stencil(lighting.shadow_far->get_format()))
+		if (!Vulkan::format_has_depth_or_stencil_aspect(lighting.shadow_far->get_format()))
 			flags |= SHADOW_VSM_BIT;
 	}
 	if (lighting.shadow_near && lighting.shadow_far)
@@ -183,7 +183,7 @@ Renderer::RendererOptionFlags Renderer::get_mesh_renderer_options_from_lighting(
 		if (lighting.cluster->get_spot_light_shadows() && lighting.cluster->get_point_light_shadows())
 		{
 			flags |= POSITIONAL_LIGHT_SHADOW_ENABLE_BIT;
-			if (!format_is_depth_stencil(lighting.cluster->get_spot_light_shadows()->get_format()))
+			if (!format_has_depth_or_stencil_aspect(lighting.cluster->get_spot_light_shadows()->get_format()))
 				flags |= POSITIONAL_LIGHT_SHADOW_VSM_BIT;
 		}
 		if (lighting.cluster->get_cluster_list_buffer())
@@ -281,9 +281,9 @@ static void set_cluster_parameters(Vulkan::CommandBuffer &cmd, const LightCluste
 
 	if (cluster.get_spot_light_shadows() && cluster.get_point_light_shadows())
 	{
-		auto spot_sampler = format_is_depth_stencil(cluster.get_spot_light_shadows()->get_format()) ?
+		auto spot_sampler = format_has_depth_or_stencil_aspect(cluster.get_spot_light_shadows()->get_format()) ?
 		                    StockSampler::LinearShadow : StockSampler::LinearClamp;
-		auto point_sampler = format_is_depth_stencil(cluster.get_point_light_shadows()->get_format()) ?
+		auto point_sampler = format_has_depth_or_stencil_aspect(cluster.get_point_light_shadows()->get_format()) ?
 		                     StockSampler::LinearShadow : StockSampler::LinearClamp;
 
 		cmd.set_texture(1, 7, *cluster.get_spot_light_shadows(), spot_sampler);
@@ -338,14 +338,14 @@ void Renderer::bind_lighting_parameters(Vulkan::CommandBuffer &cmd, const Render
 
 	if (lighting->shadow_far != nullptr)
 	{
-		auto sampler = format_is_depth_stencil(lighting->shadow_far->get_format()) ? StockSampler::LinearShadow
+		auto sampler = format_has_depth_or_stencil_aspect(lighting->shadow_far->get_format()) ? StockSampler::LinearShadow
 		                                                                           : StockSampler::LinearClamp;
 		cmd.set_texture(1, 3, *lighting->shadow_far, sampler);
 	}
 
 	if (lighting->shadow_near != nullptr)
 	{
-		auto sampler = format_is_depth_stencil(lighting->shadow_near->get_format()) ? StockSampler::LinearShadow
+		auto sampler = format_has_depth_or_stencil_aspect(lighting->shadow_near->get_format()) ? StockSampler::LinearShadow
 		                                                                            : StockSampler::LinearClamp;
 		cmd.set_texture(1, 4, *lighting->shadow_near, sampler);
 	}
@@ -562,7 +562,7 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 	if (light.shadow_far)
 	{
 		defines.emplace_back("SHADOWS", 1);
-		if (!format_is_depth_stencil(light.shadow_far->get_format()))
+		if (!format_has_depth_or_stencil_aspect(light.shadow_far->get_format()))
 			defines.emplace_back("DIRECTIONAL_SHADOW_VSM", 1);
 		else
 		{
@@ -589,14 +589,14 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 
 	if (light.shadow_far)
 	{
-		auto sampler = format_is_depth_stencil(light.shadow_far->get_format()) ? StockSampler::LinearShadow
+		auto sampler = format_has_depth_or_stencil_aspect(light.shadow_far->get_format()) ? StockSampler::LinearShadow
 		                                                                       : StockSampler::LinearClamp;
 		cmd.set_texture(1, 3, *light.shadow_far, sampler);
 	}
 
 	if (light.shadow_near)
 	{
-		auto sampler = format_is_depth_stencil(light.shadow_near->get_format()) ? StockSampler::LinearShadow
+		auto sampler = format_has_depth_or_stencil_aspect(light.shadow_near->get_format()) ? StockSampler::LinearShadow
 		                                                                        : StockSampler::LinearClamp;
 		cmd.set_texture(1, 4, *light.shadow_near, sampler);
 	}
@@ -660,7 +660,7 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 		if (light.cluster->get_spot_light_shadows())
 		{
 			cluster_defines.emplace_back("POSITIONAL_LIGHTS_SHADOW", 1);
-			if (!format_is_depth_stencil(light.cluster->get_spot_light_shadows()->get_format()))
+			if (!format_has_depth_or_stencil_aspect(light.cluster->get_spot_light_shadows()->get_format()))
 				cluster_defines.emplace_back("POSITIONAL_SHADOW_VSM", 1);
 			else
 			{

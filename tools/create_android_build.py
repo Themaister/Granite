@@ -127,7 +127,7 @@ def main():
         assets = find_relative_path(target_build_gradle, args.assets)
         granite_assets = find_relative_path(target_build_gradle, os.path.join(args.granite_dir, 'assets'))
         renderdoc_jni = find_relative_path(target_build_gradle, os.path.join(args.granite_dir,
-                                                                             'application/platform/android/renderdoc'))
+                                                                             'application/platforms/android/renderdoc'))
 
         target_abis = ', '.join(["'" + x + "'" for x in abis])
 

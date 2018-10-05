@@ -180,7 +180,7 @@ Vulkan::Program *ShaderProgram::get_program(unsigned variant)
 				{
 					var.program = device->request_program(comp->spirv.data(), comp->spirv.size() * sizeof(uint32_t));
 					auto spirv_hash = var.program->get_shader(ShaderStage::Compute)->get_hash();
-					cache.insert(comp->hash, make_unique<Hash>(spirv_hash));
+					cache.insert_replace(comp->hash, make_unique<Hash>(spirv_hash));
 				}
 			}
 			auto ret = var.program;
@@ -223,7 +223,7 @@ Vulkan::Program *ShaderProgram::get_program(unsigned variant)
 				else
 				{
 					vert_shader = device->request_shader(vert->spirv.data(), vert->spirv.size() * sizeof(uint32_t));
-					cache.insert(vert->hash, make_unique<Hash>(vert_shader->get_hash()));
+					cache.insert_replace(vert->hash, make_unique<Hash>(vert_shader->get_hash()));
 				}
 
 				if (frag->spirv.empty())
@@ -231,7 +231,7 @@ Vulkan::Program *ShaderProgram::get_program(unsigned variant)
 				else
 				{
 					frag_shader = device->request_shader(frag->spirv.data(), frag->spirv.size() * sizeof(uint32_t));
-					cache.insert(frag->hash, make_unique<Hash>(frag_shader->get_hash()));
+					cache.insert_replace(frag->hash, make_unique<Hash>(frag_shader->get_hash()));
 				}
 
 				var.program = device->request_program(vert_shader, frag_shader);

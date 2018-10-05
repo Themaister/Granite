@@ -50,6 +50,15 @@ public:
 		return ret;
 	}
 
+	T *insert_replace(Hash hash, std::unique_ptr<T> value)
+	{
+		auto &cache = hashmap[hash];
+		cache = std::move(value);
+
+		auto *ret = cache.get();
+		return ret;
+	}
+
 	HashMap<std::unique_ptr<T>> &get_hashmap()
 	{
 		return hashmap;
@@ -80,6 +89,14 @@ public:
 	{
 		lock.lock_write();
 		auto *ret = cache.insert(hash, std::move(value));
+		lock.unlock_write();
+		return ret;
+	}
+
+	T *insert_replace(Hash hash, std::unique_ptr<T> value)
+	{
+		lock.lock_write();
+		auto *ret = cache.insert_replace(hash, std::move(value));
 		lock.unlock_write();
 		return ret;
 	}

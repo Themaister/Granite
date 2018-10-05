@@ -230,7 +230,10 @@ bool Device::enqueue_create_pipeline_layout(Fossilize::Hash, unsigned, const VkP
 
 void Device::init_pipeline_state()
 {
-	auto file = Granite::Global::filesystem()->open("cache://pipelines.json", Granite::FileMode::ReadOnly);
+	auto file = Granite::Global::filesystem()->open("assets://pipelines.json", Granite::FileMode::ReadOnly);
+	if (!file)
+		file = Granite::Global::filesystem()->open("cache://pipelines.json", Granite::FileMode::ReadOnly);
+
 	if (!file)
 		return;
 

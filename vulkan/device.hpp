@@ -173,6 +173,7 @@ public:
 
 	// Request shaders and programs. These objects are owned by the Device.
 	Shader *request_shader(const uint32_t *code, size_t size);
+	Shader *request_shader_by_hash(Util::Hash hash);
 	Program *request_program(const uint32_t *vertex_data, size_t vertex_size, const uint32_t *fragment_data,
 	                         size_t fragment_size);
 	Program *request_program(const uint32_t *compute_data, size_t compute_size);
@@ -244,6 +245,8 @@ public:
 #ifdef GRANITE_VULKAN_FILESYSTEM
 	ShaderManager &get_shader_manager();
 	TextureManager &get_texture_manager();
+	void init_shader_manager_cache();
+	void flush_shader_manager_cache();
 #endif
 
 	// For some platforms, the device and queue might be shared, possibly across threads, so need some mechanism to

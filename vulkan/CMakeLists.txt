@@ -33,6 +33,7 @@ add_granite_library(vulkan-backend
         query_pool.cpp query_pool.hpp)
 
 option(GRANITE_VULKAN_FILESYSTEM "Enable features which depend on a filesystem implementation." ON)
+option(GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER "Enable Vulkan GLSL runtime compiler." ON)
 if (GRANITE_VULKAN_FILESYSTEM)
     target_sources(vulkan-backend PRIVATE
             managers/shader_manager.cpp
@@ -42,11 +43,15 @@ if (GRANITE_VULKAN_FILESYSTEM)
 
     target_link_libraries(vulkan-backend
             filesystem
-            compiler
             scene-formats
+            rapidjson
             stb)
     target_compile_definitions(vulkan-backend PUBLIC GRANITE_VULKAN_FILESYSTEM)
     target_include_directories(vulkan-backend PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/managers)
+    if (GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER)
+        target_link_libraries(vulkan-backend compiler)
+        target_compile_definitions(vulkan-backend PUBLIC GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER=1)
+    endif()
 endif()
 
 target_include_directories(vulkan-backend PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

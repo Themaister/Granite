@@ -29,7 +29,9 @@
 #include <unordered_set>
 #include <string>
 #include <vector>
+#ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 #include "compiler.hpp"
+#endif
 #include "filesystem.hpp"
 #include "hashmap.hpp"
 #ifdef GRANITE_VULKAN_MT
@@ -38,15 +40,19 @@
 
 namespace Vulkan
 {
+using PrecomputedShaderCache = VulkanCache<Util::Hash>;
+
 class ShaderManager;
 class Device;
 class ShaderTemplate
 {
 public:
-	ShaderTemplate(const std::string &shader_path);
+	ShaderTemplate(const std::string &shader_path, PrecomputedShaderCache &cache, Util::Hash path_hash);
 
 	struct Variant
 	{
+		Util::Hash hash = 0;
+		Util::Hash spirv_hash = 0;
 		std::vector<uint32_t> spirv;
 		std::vector<std::pair<std::string, int>> defines;
 		unsigned instance = 0;
@@ -56,17 +62,26 @@ public:
 	void recompile();
 	void register_dependencies(ShaderManager &manager);
 
+	Util::Hash get_path_hash() const
+	{
+		return path_hash;
+	}
+
 private:
 	std::string path;
+	PrecomputedShaderCache &cache;
+#ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 	std::unique_ptr<Granite::GLSLCompiler> compiler;
+#endif
 	VulkanCache<Variant> variants;
+	Util::Hash path_hash = 0;
 };
 
 class ShaderProgram
 {
 public:
-	ShaderProgram(Device *device)
-		: device(device)
+	ShaderProgram(Device *device, PrecomputedShaderCache &cache)
+		: device(device), cache(cache)
 	{
 	}
 
@@ -76,6 +91,7 @@ public:
 
 private:
 	Device *device;
+	PrecomputedShaderCache &cache;
 
 	struct Variant
 	{
@@ -103,16 +119,22 @@ public:
 	{
 	}
 
+	bool load_shader_cache(const std::string &path);
+	bool save_shader_cache(const std::string &path);
+
 	~ShaderManager();
 	ShaderProgram *register_graphics(const std::string &vertex, const std::string &fragment);
 	ShaderProgram *register_compute(const std::string &compute);
 
+#ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 	void register_dependency(ShaderTemplate *shader, const std::string &dependency);
 	void register_dependency_nolock(ShaderTemplate *shader, const std::string &dependency);
+#endif
 
 private:
 	Device *device;
 
+	PrecomputedShaderCache shader_cache;
 	VulkanCache<ShaderTemplate> shaders;
 	VulkanCache<ShaderProgram> programs;
 
@@ -122,6 +144,7 @@ private:
 	std::mutex dependency_lock;
 #endif
 
+#ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 	struct Notify
 	{
 		Granite::FilesystemBackend *backend;
@@ -130,5 +153,6 @@ private:
 	std::unordered_map<std::string, Notify> directory_watches;
 	void add_directory_watch(const std::string &source);
 	void recompile(const Granite::FileNotifyInfo &info);
+#endif
 };
 }

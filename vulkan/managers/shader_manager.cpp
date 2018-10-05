@@ -25,6 +25,7 @@
 #include "path.hpp"
 #include "shader_manager.hpp"
 #include "device.hpp"
+#include "rapidjson_wrapper.hpp"
 
 using namespace std;
 using namespace Util;
@@ -37,13 +38,17 @@ using namespace Util;
 
 namespace Vulkan
 {
-ShaderTemplate::ShaderTemplate(const std::string &shader_path)
-	: path(shader_path)
+ShaderTemplate::ShaderTemplate(const std::string &shader_path,
+                               PrecomputedShaderCache &cache,
+                               Util::Hash path_hash)
+	: path(shader_path), cache(cache), path_hash(path_hash)
 {
+#ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 	compiler = make_unique<Granite::GLSLCompiler>();
 	compiler->set_source_from_file(shader_path);
 	if (!compiler->preprocess())
 		throw runtime_error(Util::join("Failed to pre-process shader: ", shader_path));
+#endif
 }
 
 const ShaderTemplate::Variant *ShaderTemplate::register_variant(const std::vector<std::pair<std::string, int>> *defines)
@@ -59,16 +64,33 @@ const ShaderTemplate::Variant *ShaderTemplate::register_variant(const std::vecto
 	}
 
 	auto hash = h.get();
+	h.u64(path_hash);
+	auto complete_hash = h.get();
+
 	auto *ret = variants.find(hash);
 	if (!ret)
 	{
 		auto variant = make_unique<Variant>();
+		variant->hash = complete_hash;
 
-		variant->spirv = compiler->compile(defines);
-		if (variant->spirv.empty())
+		auto *spirv_hash = cache.find(complete_hash);
+		if (spirv_hash)
 		{
-			LOGE("Shader error:\n%s\n", compiler->get_error_message().c_str());
-			throw runtime_error("Shader compile failed.");
+			variant->spirv_hash = *spirv_hash;
+		}
+		else
+		{
+#ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
+			variant->spirv = compiler->compile(defines);
+			if (variant->spirv.empty())
+			{
+				LOGE("Shader error:\n%s\n", compiler->get_error_message().c_str());
+				throw runtime_error("Shader compile failed.");
+			}
+#else
+			LOGE("Could not find shader variant for %s in cache.\n", path.c_str());
+			return nullptr;
+#endif
 		}
 
 		variant->instance++;
@@ -80,6 +102,7 @@ const ShaderTemplate::Variant *ShaderTemplate::register_variant(const std::vecto
 	return ret;
 }
 
+#ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 void ShaderTemplate::recompile()
 {
 	// Recompile all variants.
@@ -120,6 +143,7 @@ void ShaderTemplate::register_dependencies(ShaderManager &manager)
 	for (auto &dep : compiler->get_dependencies())
 		manager.register_dependency_nolock(this, dep);
 }
+#endif
 
 void ShaderProgram::set_stage(Vulkan::ShaderStage stage, ShaderTemplate *shader)
 {
@@ -147,7 +171,17 @@ Vulkan::Program *ShaderProgram::get_program(unsigned variant)
 			if (comp_instance != comp->instance)
 			{
 				comp_instance = comp->instance;
-				var.program = device->request_program(comp->spirv.data(), comp->spirv.size() * sizeof(uint32_t));
+				if (comp->spirv.empty())
+				{
+					auto *shader = device->request_shader_by_hash(comp->spirv_hash);
+					var.program = device->request_program(shader);
+				}
+				else
+				{
+					var.program = device->request_program(comp->spirv.data(), comp->spirv.size() * sizeof(uint32_t));
+					auto spirv_hash = var.program->get_shader(ShaderStage::Compute)->get_hash();
+					cache.insert(comp->hash, make_unique<Hash>(spirv_hash));
+				}
 			}
 			auto ret = var.program;
 #ifdef GRANITE_VULKAN_MT
@@ -181,8 +215,26 @@ Vulkan::Program *ShaderProgram::get_program(unsigned variant)
 			{
 				vert_instance = vert->instance;
 				frag_instance = frag->instance;
-				var.program = device->request_program(vert->spirv.data(), vert->spirv.size() * sizeof(uint32_t),
-				                                      frag->spirv.data(), frag->spirv.size() * sizeof(uint32_t));
+				Shader *vert_shader = nullptr;
+				Shader *frag_shader = nullptr;
+
+				if (vert->spirv.empty())
+					vert_shader = device->request_shader_by_hash(vert->spirv_hash);
+				else
+				{
+					vert_shader = device->request_shader(vert->spirv.data(), vert->spirv.size() * sizeof(uint32_t));
+					cache.insert(vert->hash, make_unique<Hash>(vert_shader->get_hash()));
+				}
+
+				if (frag->spirv.empty())
+					frag_shader = device->request_shader_by_hash(frag->spirv_hash);
+				else
+				{
+					frag_shader = device->request_shader(frag->spirv.data(), frag->spirv.size() * sizeof(uint32_t));
+					cache.insert(frag->hash, make_unique<Hash>(frag_shader->get_hash()));
+				}
+
+				var.program = device->request_program(vert_shader, frag_shader);
 			}
 			auto ret = var.program;
 #ifdef GRANITE_VULKAN_MT
@@ -253,13 +305,13 @@ ShaderProgram *ShaderManager::register_compute(const std::string &compute)
 	auto *tmpl = get_template(compute);
 
 	Util::Hasher h;
-	h.pointer(tmpl);
+	h.u64(tmpl->get_path_hash());
 	auto hash = h.get();
 
 	auto *ret = programs.find(hash);
 	if (!ret)
 	{
-		auto prog = make_unique<ShaderProgram>(device);
+		auto prog = make_unique<ShaderProgram>(device, shader_cache);
 		prog->set_stage(Vulkan::ShaderStage::Compute, tmpl);
 		ret = programs.insert(hash, move(prog));
 	}
@@ -275,12 +327,14 @@ ShaderTemplate *ShaderManager::get_template(const std::string &path)
 	auto *ret = shaders.find(hash);
 	if (!ret)
 	{
-		auto shader = make_unique<ShaderTemplate>(path);
+		auto shader = make_unique<ShaderTemplate>(path, shader_cache, hasher.get());
+#ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 		{
 			DEPENDENCY_LOCK();
 			register_dependency_nolock(shader.get(), path);
 			shader->register_dependencies(*this);
 		}
+#endif
 		ret = shaders.insert(hash, move(shader));
 	}
 	return ret;
@@ -292,14 +346,14 @@ ShaderProgram *ShaderManager::register_graphics(const std::string &vertex, const
 	auto *frag_tmpl = get_template(fragment);
 
 	Util::Hasher h;
-	h.pointer(vert_tmpl);
-	h.pointer(frag_tmpl);
+	h.u64(vert_tmpl->get_path_hash());
+	h.u64(frag_tmpl->get_path_hash());
 	auto hash = h.get();
 
 	auto *ret = programs.find(hash);
 	if (!ret)
 	{
-		auto prog = make_unique<ShaderProgram>(device);
+		auto prog = make_unique<ShaderProgram>(device, shader_cache);
 		prog->set_stage(Vulkan::ShaderStage::Vertex, vert_tmpl);
 		prog->set_stage(Vulkan::ShaderStage::Fragment, frag_tmpl);
 		ret = programs.insert(hash, move(prog));
@@ -309,11 +363,14 @@ ShaderProgram *ShaderManager::register_graphics(const std::string &vertex, const
 
 ShaderManager::~ShaderManager()
 {
+#ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 	for (auto &dir : directory_watches)
 		if (dir.second.backend)
 			dir.second.backend->uninstall_notification(dir.second.handle);
+#endif
 }
 
+#ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 void ShaderManager::register_dependency(ShaderTemplate *shader, const std::string &dependency)
 {
 	DEPENDENCY_LOCK();
@@ -361,5 +418,77 @@ void ShaderManager::add_directory_watch(const std::string &source)
 
 	if (handle >= 0)
 		directory_watches[basedir] = { backend, handle };
+}
+#endif
+
+bool ShaderManager::load_shader_cache(const string &path)
+{
+	using namespace rapidjson;
+
+	string json;
+	if (!Granite::Global::filesystem()->read_file_to_string(path, json))
+	{
+		LOGE("Failed to load shader cache %s from disk. Skipping ...\n", path.c_str());
+		return false;
+	}
+
+	Document doc;
+	doc.Parse(json);
+	if (doc.HasParseError())
+	{
+		LOGE("Failed to parse shader cache format!\n");
+		return false;
+	}
+
+	auto &maps = doc["maps"];
+	for (auto itr = maps.Begin(); itr != maps.End(); ++itr)
+	{
+		auto &value = *itr;
+		shader_cache.insert(value["variant"].GetUint64(), make_unique<Hash>(value["spirvHash"].GetUint64()));
+	}
+
+	return true;
+}
+
+bool ShaderManager::save_shader_cache(const string &path)
+{
+	using namespace rapidjson;
+	Document doc;
+	doc.SetObject();
+	auto &allocator = doc.GetAllocator();
+
+	Value maps(kArrayType);
+
+	for (auto &entry : shader_cache.get_hashmap())
+	{
+		Value map_entry(kObjectType);
+		map_entry.AddMember("variant", entry.first, allocator);
+		map_entry.AddMember("spirvHash", *entry.second, allocator);
+		maps.PushBack(map_entry, allocator);
+	}
+
+	doc.AddMember("maps", maps, allocator);
+
+	StringBuffer buffer;
+	PrettyWriter<StringBuffer> writer(buffer);
+	doc.Accept(writer);
+
+	auto file = Granite::Global::filesystem()->open(path, Granite::FileMode::WriteOnly);
+	if (!file)
+	{
+		LOGE("Failed to open %s for writing.\n", path.c_str());
+		return false;
+	}
+
+	void *mapped = file->map_write(buffer.GetSize());
+	if (!mapped)
+	{
+		LOGE("Failed to map buffer %s for writing.\n", path.c_str());
+		return false;
+	}
+
+	memcpy(mapped, buffer.GetString(), buffer.GetSize());
+	file->unmap();
+	return true;
 }
 }

@@ -50,6 +50,16 @@ Application *application_create(int argc, char **argv)
 	cbs.add("--quirks", [&](CLIParser &parser) { quirks = parser.next_string(); });
 	cbs.default_handler = [&](const char *arg) { path = arg; };
 
+	auto self_dir = Path::basedir(Path::get_executable_path());
+	auto assets_dir = Path::join(self_dir, "assets");
+	auto builtin_dir = Path::join(self_dir, "builtin/assets");
+
+	FileStat s;
+	if (Global::filesystem()->stat(assets_dir, s) && s.type == PathType::Directory)
+		Global::filesystem()->register_protocol("assets", std::make_unique<OSFilesystem>(assets_dir));
+	if (Global::filesystem()->stat(builtin_dir, s) && s.type == PathType::Directory)
+		Global::filesystem()->register_protocol("builtin", std::make_unique<OSFilesystem>(builtin_dir));
+
 	CLIParser parser(std::move(cbs), argc - 1, argv + 1);
 	if (!parser.parse())
 		return nullptr;

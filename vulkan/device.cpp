@@ -168,6 +168,11 @@ Shader *Device::request_shader(const uint32_t *data, size_t size)
 	return ret;
 }
 
+Shader *Device::request_shader_by_hash(Hash hash)
+{
+	return shaders.find(hash);
+}
+
 Program *Device::request_program(Vulkan::Shader *compute)
 {
 	Util::Hasher hasher;
@@ -186,7 +191,7 @@ Program *Device::request_program(const uint32_t *compute_data, size_t compute_si
 	return request_program(compute);
 }
 
-Program *Device::request_program(Vulkan::Shader *vertex, Vulkan::Shader *fragment)
+Program *Device::request_program(Shader *vertex, Shader *fragment)
 {
 	Util::Hasher hasher;
 	hasher.u64(vertex->get_hash());
@@ -451,6 +456,9 @@ void Device::set_context(const Context &context)
 	init_pipeline_cache();
 #ifdef GRANITE_VULKAN_FOSSILIZE
 	init_pipeline_state();
+#endif
+#ifdef GRANITE_VULKAN_FILESYSTEM
+	init_shader_manager_cache();
 #endif
 
 	ext = context.get_enabled_device_features();
@@ -1351,6 +1359,10 @@ Device::~Device()
 		flush_pipeline_cache();
 		vkDestroyPipelineCache(device, pipeline_cache, nullptr);
 	}
+
+#ifdef GRANITE_VULKAN_FILESYSTEM
+	flush_shader_manager_cache();
+#endif
 
 #ifdef GRANITE_VULKAN_FOSSILIZE
 	flush_pipeline_state();
@@ -3167,6 +3179,20 @@ TextureManager &Device::get_texture_manager()
 ShaderManager &Device::get_shader_manager()
 {
 	return shader_manager;
+}
+#endif
+
+#ifdef GRANITE_VULKAN_FILESYSTEM
+void Device::init_shader_manager_cache()
+{
+	Granite::FileStat s;
+	if (Granite::Global::filesystem()->stat("assets://shader_cache.json", s) && s.type == Granite::PathType::File)
+		shader_manager.load_shader_cache("assets://shader_cache.json");
+}
+
+void Device::flush_shader_manager_cache()
+{
+	shader_manager.save_shader_cache("cache://shader_cache.json");
 }
 #endif
 

@@ -67,6 +67,10 @@ Application *application_create(int argc, char **argv)
 	{
 		Global::filesystem()->register_protocol("assets", std::make_unique<OSFilesystem>(assets_dir));
 		LOGI("Redirecting filesystem \"assets\" to %s.\n", assets_dir.c_str());
+
+		auto cache_dir = Path::join(self_dir, "cache");
+		Global::filesystem()->register_protocol("cache", std::make_unique<OSFilesystem>(cache_dir));
+		LOGI("Redirecting filesystem \"cache\" to %s.\n", cache_dir.c_str());
 	}
 
 	if (Global::filesystem()->stat(builtin_dir, s) && s.type == PathType::Directory)

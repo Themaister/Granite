@@ -779,7 +779,7 @@ RenderPass::RenderPass(Hash hash, Device *device, const RenderPassInfo &info)
 
 void RenderPass::fixup_render_pass_nvidia(VkRenderPassCreateInfo &create_info, VkAttachmentDescription *attachments)
 {
-	if (false && device->get_gpu_properties().vendorID == VENDOR_ID_NVIDIA)
+	if (device->get_gpu_properties().vendorID == VENDOR_ID_NVIDIA)
 	{
 		// Workaround a bug on NV where depth-stencil input attachments break if we have STORE_OP_DONT_CARE.
 		// Force STORE_OP_STORE for all attachments.

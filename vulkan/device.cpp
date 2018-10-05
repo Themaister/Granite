@@ -3185,9 +3185,7 @@ ShaderManager &Device::get_shader_manager()
 #ifdef GRANITE_VULKAN_FILESYSTEM
 void Device::init_shader_manager_cache()
 {
-	Granite::FileStat s;
-	if (Granite::Global::filesystem()->stat("assets://shader_cache.json", s) && s.type == Granite::PathType::File)
-		shader_manager.load_shader_cache("assets://shader_cache.json");
+	shader_manager.load_shader_cache("assets://shader_cache.json");
 }
 
 void Device::flush_shader_manager_cache()

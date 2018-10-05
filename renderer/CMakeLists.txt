@@ -15,7 +15,6 @@ add_granite_library(renderer
         animation_system.hpp animation_system.cpp
         render_graph.cpp render_graph.hpp
         ground.hpp ground.cpp
-        ocean.hpp ocean.cpp
         post/hdr.hpp post/hdr.cpp
         post/fxaa.hpp post/fxaa.cpp
         post/smaa.hpp post/smaa.cpp
@@ -29,7 +28,6 @@ add_granite_library(renderer
         lights/deferred_lights.hpp lights/deferred_lights.cpp
         scene_loader.cpp scene_loader.hpp)
 
-add_subdirectory(fft)
 target_link_libraries(renderer
         math
         scene-formats
@@ -38,7 +36,15 @@ target_link_libraries(renderer
         application-input
         application-wsi
         threading
-        rapidjson
+        rapidjson)
+
+add_subdirectory(fft EXCLUDE_FROM_ALL)
+add_granite_library(renderer-ocean ocean.hpp ocean.cpp)
+target_link_libraries(renderer-ocean
+        math
+        vulkan-backend
         glfft)
+
 target_include_directories(renderer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(renderer-ocean PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 

@@ -32,7 +32,7 @@
 #include "muglm/matrix_helper.hpp"
 #include "muglm/muglm_impl.hpp"
 #include "utils/image_utils.hpp"
-#include "ocean.hpp"
+//#include "ocean.hpp"
 #include "thread_group.hpp"
 #include <stdexcept>
 #include <float.h>

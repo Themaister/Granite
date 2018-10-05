@@ -222,7 +222,7 @@ string get_executable_path()
 	char target[4096];
 	DWORD ret = GetModuleFileNameA(GetModuleHandle(nullptr), target, sizeof(target));
 	target[ret] = '\0';
-	return string(target);
+	return canonicalize_path(string(target));
 #else
 	pid_t pid = getpid();
 	static const char *exts[] = { "exe", "file", "a.out" };

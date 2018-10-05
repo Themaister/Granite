@@ -447,6 +447,7 @@ bool ShaderManager::load_shader_cache(const string &path)
 		shader_cache.insert(value["variant"].GetUint64(), make_unique<Hash>(value["spirvHash"].GetUint64()));
 	}
 
+	LOGI("Loaded shader manager cache from %s.\n", path.c_str());
 	return true;
 }
 
@@ -489,6 +490,8 @@ bool ShaderManager::save_shader_cache(const string &path)
 
 	memcpy(mapped, buffer.GetString(), buffer.GetSize());
 	file->unmap();
+
+	LOGI("Saved shader manager cache to %s.\n", path.c_str());
 	return true;
 }
 }

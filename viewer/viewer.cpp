@@ -42,8 +42,8 @@ Application *application_create(int argc, char **argv)
 #ifdef ANDROID
 	config = "assets://config.json";
 	quirks = "assets://quirks.json";
-	path = "assets://scene.glb";
 #endif
+	path = "assets://scene.glb";
 
 	CLICallbacks cbs;
 	cbs.add("--config", [&](CLIParser &parser) { config = parser.next_string(); });
@@ -54,11 +54,26 @@ Application *application_create(int argc, char **argv)
 	auto assets_dir = Path::join(self_dir, "assets");
 	auto builtin_dir = Path::join(self_dir, "builtin/assets");
 
+#ifdef ASSET_DIRECTORY
+	const char *asset_dir = getenv("ASSET_DIRECTORY");
+	if (!asset_dir)
+		asset_dir = ASSET_DIRECTORY;
+
+	Global::filesystem()->register_protocol("assets", std::unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir)));
+#endif
+
 	FileStat s;
 	if (Global::filesystem()->stat(assets_dir, s) && s.type == PathType::Directory)
+	{
 		Global::filesystem()->register_protocol("assets", std::make_unique<OSFilesystem>(assets_dir));
+		LOGI("Redirecting filesystem \"assets\" to %s.\n", assets_dir.c_str());
+	}
+
 	if (Global::filesystem()->stat(builtin_dir, s) && s.type == PathType::Directory)
+	{
 		Global::filesystem()->register_protocol("builtin", std::make_unique<OSFilesystem>(builtin_dir));
+		LOGI("Redirecting filesystem \"builtin\" to %s.\n", builtin_dir.c_str());
+	}
 
 	CLIParser parser(std::move(cbs), argc - 1, argv + 1);
 	if (!parser.parse())
@@ -69,14 +84,6 @@ Application *application_create(int argc, char **argv)
 		LOGE("Need path to scene file.\n");
 		return nullptr;
 	}
-
-#ifdef ASSET_DIRECTORY
-	const char *asset_dir = getenv("ASSET_DIRECTORY");
-	if (!asset_dir)
-		asset_dir = ASSET_DIRECTORY;
-
-	Global::filesystem()->register_protocol("assets", std::unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir)));
-#endif
 
 	try
 	{

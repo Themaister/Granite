@@ -1703,7 +1703,10 @@ void CommandBuffer::set_transparent_sprite_state()
 	state.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
 	state.write_mask = ~0u;
 
-	set_blend_factors(VK_BLEND_FACTOR_SRC_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA);
+	// The alpha layer should start at 1 (fully transparent).
+	// As layers are blended in, the transparency is multiplied with other transparencies (1 - alpha).
+	set_blend_factors(VK_BLEND_FACTOR_SRC_ALPHA, VK_BLEND_FACTOR_ZERO,
+	                  VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA);
 	set_blend_op(VK_BLEND_OP_ADD);
 
 	set_dirty(COMMAND_BUFFER_DIRTY_STATIC_STATE_BIT);

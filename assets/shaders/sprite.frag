@@ -81,4 +81,8 @@ void main()
     #endif
     Color = color;
 #endif
+
+#if defined(VARIANT_BIT_3)
+    Color.a = 0.0;
+#endif
 }

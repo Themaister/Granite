@@ -149,6 +149,14 @@ RenderTextureResource &RenderPass::add_texture_input(const std::string &name, Vk
 	res.read_in_pass(index);
 	res.add_image_usage(VK_IMAGE_USAGE_SAMPLED_BIT);
 
+	// Support duplicate add_texture_inputs.
+	auto itr = find_if(begin(generic_texture), end(generic_texture), [&](const AccessedTextureResource &acc) {
+		return acc.texture == &res;
+	});
+
+	if (itr != end(generic_texture))
+		return *itr->texture;
+
 	AccessedTextureResource acc;
 	acc.texture = &res;
 	acc.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;

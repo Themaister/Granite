@@ -35,6 +35,8 @@ namespace Granite
 class RenderTextureResource;
 class RenderBufferResource;
 
+static constexpr unsigned OceanLayers = 4;
+
 struct OceanConfig
 {
 	unsigned fft_resolution = 512;
@@ -49,9 +51,9 @@ struct OceanConfig
 
 	struct
 	{
-		std::string input;
+		std::string inputs[OceanLayers];
 		float uv_scale = 0.01f;
-		float depth = 3.0f;
+		float depth[OceanLayers] = { 2.0f, 4.0f, 6.0f, 8.0f };
 		float emissive_mod = 1.0f;
 		bool bandlimited_pixel = false;
 		bool input_is_render_graph = false;
@@ -187,7 +189,7 @@ private:
 	vec2 heightmap_world_size() const;
 	vec2 normalmap_world_size() const;
 
-	Vulkan::ImageView *refraction = nullptr;
-	RenderTextureResource *refraction_resource = nullptr;
+	Vulkan::ImageView *refractions[OceanLayers];
+	RenderTextureResource *refraction_resources[OceanLayers] = {};
 };
 }

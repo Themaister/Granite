@@ -71,6 +71,7 @@ struct Sprite : AbstractRenderable
 	float texture_blending_factor = 0.0f;
 	bool bandlimited_pixel = false;
 	bool luma_to_alpha = false;
+	bool clear_alpha_to_zero = false;
 
 	void get_sprite_render_info(const SpriteTransformInfo &transform, RenderQueue &queue) const override;
 	void get_render_info(const RenderContext &, const CachedSpatialTransformComponent *, RenderQueue &) const override

@@ -1898,14 +1898,8 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 				timestamps.timestamps_fragment_begin[physical_pass_index] = cmd->write_timestamp(VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 			}
 
-			unsigned layers = ~0u;
-			for (unsigned i = 0; i < physical_pass.render_pass_info.num_color_attachments; i++)
-				layers = std::min(physical_pass.render_pass_info.color_attachments[i]->get_create_info().layers, layers);
-			if (physical_pass.render_pass_info.depth_stencil)
-				layers = std::min(physical_pass.render_pass_info.depth_stencil->get_create_info().layers, layers);
-			VK_ASSERT(layers != ~0u);
-
-			for (unsigned layer = 0; layer < layers; layer++)
+			VK_ASSERT(physical_pass.layers != ~0u);
+			for (unsigned layer = 0; layer < physical_pass.layers; layer++)
 			{
 				physical_pass.render_pass_info.layer = layer;
 				cmd->begin_region("begin-render-pass");
@@ -2280,7 +2274,7 @@ void RenderGraph::setup_attachments(Vulkan::Device &device, Vulkan::ImageView *s
 			else if (i == swapchain_physical_index)
 				physical_attachments[i] = swapchain;
 			else if (att.transient)
-				physical_attachments[i] = &device.get_transient_attachment(att.width, att.height, att.format, i, att.samples, att.layers);
+				physical_attachments[i] = &device.get_transient_attachment(att.width, att.height, att.format, i, att.samples, 1);
 			else
 				setup_physical_image(device, i);
 		}
@@ -2289,14 +2283,28 @@ void RenderGraph::setup_attachments(Vulkan::Device &device, Vulkan::ImageView *s
 	// Assign concrete ImageViews to the render pass.
 	for (auto &physical_pass : physical_passes)
 	{
+		unsigned layers = ~0u;
+
 		unsigned num_attachments = physical_pass.physical_color_attachments.size();
 		for (unsigned i = 0; i < num_attachments; i++)
-			physical_pass.render_pass_info.color_attachments[i] = physical_attachments[physical_pass.physical_color_attachments[i]];
+		{
+			auto &att = physical_pass.render_pass_info.color_attachments[i];
+			att = physical_attachments[physical_pass.physical_color_attachments[i]];
+			if (att->get_image().get_create_info().domain == Vulkan::ImageDomain::Physical)
+				layers = std::min(layers, att->get_image().get_create_info().layers);
+		}
 
 		if (physical_pass.physical_depth_stencil_attachment != RenderResource::Unused)
-			physical_pass.render_pass_info.depth_stencil = physical_attachments[physical_pass.physical_depth_stencil_attachment];
+		{
+			auto &ds = physical_pass.render_pass_info.depth_stencil;
+			ds = physical_attachments[physical_pass.physical_depth_stencil_attachment];
+			if (ds->get_image().get_create_info().domain == Vulkan::ImageDomain::Physical)
+				layers = std::min(layers, ds->get_image().get_create_info().layers);
+		}
 		else
 			physical_pass.render_pass_info.depth_stencil = nullptr;
+
+		physical_pass.layers = layers;
 	}
 }
 

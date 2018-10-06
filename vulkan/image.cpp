@@ -38,6 +38,10 @@ ImageView::ImageView(Device *device, VkImageView view, const ImageViewCreateInfo
 
 VkImageView ImageView::get_render_target_view(unsigned layer) const
 {
+	// Transient images just have one layer.
+	if (info.image->get_create_info().domain == ImageDomain::Transient)
+		return view;
+
 	VK_ASSERT(layer < get_create_info().layers);
 
 	if (render_target_views.empty())

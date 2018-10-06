@@ -800,6 +800,7 @@ private:
 
 		std::vector<std::vector<ScaledClearRequests>> scaled_clear_requests;
 		std::vector<MipmapRequests> mipmap_requests;
+		unsigned layers = 1;
 	};
 	std::vector<PhysicalPass> physical_passes;
 	void build_physical_passes();

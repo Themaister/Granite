@@ -215,7 +215,7 @@ public:
 	VkFormat get_default_depth_stencil_format() const;
 	VkFormat get_default_depth_format() const;
 	ImageView &get_transient_attachment(unsigned width, unsigned height, VkFormat format,
-	                                    unsigned index = 0, unsigned samples = 1);
+	                                    unsigned index = 0, unsigned samples = 1, unsigned layers = 1);
 	RenderPassInfo get_swapchain_render_pass(SwapchainRenderPass style);
 
 	// Request semaphores.

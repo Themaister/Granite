@@ -530,9 +530,12 @@ public:
 			return false;
 	}
 
-	void build_render_pass(Vulkan::CommandBuffer &cmd)
+	void build_render_pass(Vulkan::CommandBuffer &cmd, unsigned layer)
 	{
-		build_render_pass_cb(cmd);
+		if (build_render_pass_layered_cb)
+			build_render_pass_layered_cb(layer, cmd);
+		else if (build_render_pass_cb)
+			build_render_pass_cb(cmd);
 	}
 
 	void set_need_render_pass(std::function<bool ()> func)
@@ -543,6 +546,11 @@ public:
 	void set_build_render_pass(std::function<void (Vulkan::CommandBuffer &)> func)
 	{
 		build_render_pass_cb = std::move(func);
+	}
+
+	void set_build_render_pass_layered(std::function<void (unsigned, Vulkan::CommandBuffer &)> func)
+	{
+		build_render_pass_layered_cb = std::move(func);
 	}
 
 	void set_get_clear_depth_stencil(std::function<bool (VkClearDepthStencilValue *)> func)
@@ -572,6 +580,7 @@ private:
 	RenderGraphQueueFlagBits queue;
 
 	std::function<void (Vulkan::CommandBuffer &)> build_render_pass_cb;
+	std::function<void (unsigned, Vulkan::CommandBuffer &)> build_render_pass_layered_cb;
 	std::function<bool ()> need_render_pass_cb;
 	std::function<bool (VkClearDepthStencilValue *)> get_clear_depth_stencil_cb;
 	std::function<bool (unsigned, VkClearColorValue *)> get_clear_color_cb;

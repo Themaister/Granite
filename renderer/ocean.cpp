@@ -185,13 +185,10 @@ void Ocean::setup_render_pass_dependencies(RenderGraph &, RenderPass &target)
 	target.add_texture_input("ocean-gradient-jacobian-output", VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 	target.add_texture_input("ocean-normal-fft-output", VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 
-	for (unsigned i = 0; i < OceanLayers; i++)
-	{
-		if (!config.refraction.inputs[i].empty() && config.refraction.input_is_render_graph)
-			refraction_resources[i] = &target.add_texture_input(config.refraction.inputs[i]);
-		else
-			refraction_resources[i] = nullptr;
-	}
+	if (!config.refraction.input.empty() && config.refraction.input_is_render_graph)
+		refraction_resource = &target.add_texture_input(config.refraction.input);
+	else
+		refraction_resource = nullptr;
 }
 
 void Ocean::setup_render_pass_resources(RenderGraph &graph)
@@ -258,21 +255,18 @@ void Ocean::setup_render_pass_resources(RenderGraph &graph)
 		displacement_fft->process(&deferred_cmd, &displacement_output, &displacement_input);
 	}
 
-	for (unsigned i = 0; i < OceanLayers; i++)
+	refraction = nullptr;
+	if (!config.refraction.input.empty())
 	{
-		refractions[i] = nullptr;
-		if (!config.refraction.inputs[i].empty())
+		if (config.refraction.input_is_render_graph)
 		{
-			if (config.refraction.input_is_render_graph)
-			{
-				refractions[i] = &graph.get_physical_texture_resource(*refraction_resources[i]);
-			}
-			else
-			{
-				auto *texture = graph.get_device().get_texture_manager().request_texture(config.refraction.inputs[i]);
-				if (texture)
-					refractions[i] = &texture->get_image()->get_view();
-			}
+			refraction = &graph.get_physical_texture_resource(*refraction_resource);
+		}
+		else
+		{
+			auto *texture = graph.get_device().get_texture_manager().request_texture(config.refraction.input);
+			if (texture)
+				refraction = &texture->get_image()->get_view();
 		}
 	}
 }
@@ -713,6 +707,7 @@ struct RefractionData
 	vec4 depths;
 	float uv_scale;
 	float emissive_mod;
+	uint32_t layers;
 };
 
 struct OceanInfo
@@ -738,7 +733,7 @@ struct OceanInfo
 	unsigned lod_stride;
 	OceanData data;
 
-	const Vulkan::ImageView *refractions[OceanLayers];
+	const Vulkan::ImageView *refraction;
 	RefractionData refraction_data;
 };
 
@@ -763,18 +758,11 @@ static void ocean_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *info
 		cmd.set_texture(2, 2, *ocean_info.grad_jacobian, Vulkan::StockSampler::TrilinearWrap);
 		cmd.set_texture(2, 3, *ocean_info.normal, Vulkan::StockSampler::TrilinearWrap);
 
-		bool has_refraction = false;
-		for (unsigned i = 0; i < 4; i++)
+		if (ocean_info.refraction)
 		{
-			if (ocean_info.refractions[i])
-			{
-				cmd.set_texture(2, 4 + i, *ocean_info.refractions[i], Vulkan::StockSampler::TrilinearWrap);
-				has_refraction = true;
-			}
+			cmd.set_texture(2, 4, *ocean_info.refraction, Vulkan::StockSampler::TrilinearWrap);
+			*cmd.allocate_typed_constant_data<RefractionData>(2, 5, 1) = ocean_info.refraction_data;
 		}
-
-		if (has_refraction)
-			*cmd.allocate_typed_constant_data<RefractionData>(2, 8, 1) = ocean_info.refraction_data;
 
 		for (unsigned lod = 0; lod < ocean_info.lods; lod++)
 		{
@@ -817,21 +805,14 @@ void Ocean::get_render_info(const RenderContext &,
 	hasher.u64(ubo.get_cookie());
 	hasher.u64(indirect.get_cookie());
 
-	bool has_refraction = false;
-	for (unsigned i = 0; i < 4; i++)
-	{
-		if (refractions[i])
-		{
-			hasher.u64(refractions[i]->get_cookie());
-			has_refraction = true;
-		}
-		else
-			hasher.u32(0);
-	}
+	if (refraction)
+		hasher.u64(refraction->get_cookie());
+	else
+		hasher.u32(0);
 
 	auto instance_key = hasher.get();
 
-	auto *patch_data = queue.push<OceanInfo>(has_refraction ?
+	auto *patch_data = queue.push<OceanInfo>(refraction ?
 	                                         Queue::OpaqueEmissive : Queue::Opaque,
 	                                         instance_key, 1,
 	                                         RenderFunctions::ocean_render,
@@ -839,7 +820,7 @@ void Ocean::get_render_info(const RenderContext &,
 
 	if (patch_data)
 	{
-		uint32_t refraction_flag = has_refraction ? 2 : 0;
+		uint32_t refraction_flag = refraction ? 2 : 0;
 		if (config.refraction.bandlimited_pixel)
 			refraction_flag |= 4;
 
@@ -876,21 +857,22 @@ void Ocean::get_render_info(const RenderContext &,
 		patch_data->index_type = index_type;
 		patch_data->border_count = border_count;
 
-		memcpy(patch_data->refractions, refractions, sizeof(refractions));
-		if (has_refraction)
+		patch_data->refraction = refraction;
+		if (refraction)
 		{
 			patch_data->refraction_data.texture_size = vec4(
-					float(refractions[0]->get_image().get_width()),
-					float(refractions[0]->get_image().get_height()),
-					1.0f / float(refractions[0]->get_image().get_width()),
-					1.0f / float(refractions[0]->get_image().get_height()));
+					float(refraction->get_image().get_width()),
+					float(refraction->get_image().get_height()),
+					1.0f / float(refraction->get_image().get_width()),
+					1.0f / float(refraction->get_image().get_height()));
 
 			patch_data->refraction_data.uv_scale = config.refraction.uv_scale;
 
-			for (unsigned i = 0; i < OceanLayers; i++)
+			for (unsigned i = 0; i < MaxOceanLayers; i++)
 				patch_data->refraction_data.depths[i] = config.refraction.depth[i];
 
 			patch_data->refraction_data.emissive_mod = config.refraction.emissive_mod;
+			patch_data->refraction_data.layers = std::min(4u, refraction->get_create_info().layers);
 		}
 
 		for (unsigned i = 0; i < unsigned(quad_lod.size()); i++)

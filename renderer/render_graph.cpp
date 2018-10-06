@@ -1898,33 +1898,45 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 				timestamps.timestamps_fragment_begin[physical_pass_index] = cmd->write_timestamp(VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 			}
 
-			cmd->begin_region("begin-render-pass");
-			cmd->begin_render_pass(physical_pass.render_pass_info);
-			cmd->end_region();
+			unsigned layers = ~0u;
+			for (unsigned i = 0; i < physical_pass.render_pass_info.num_color_attachments; i++)
+				layers = std::min(physical_pass.render_pass_info.color_attachments[i]->get_create_info().layers, layers);
+			if (physical_pass.render_pass_info.depth_stencil)
+				layers = std::min(physical_pass.render_pass_info.depth_stencil->get_create_info().layers, layers);
+			VK_ASSERT(layers != ~0u);
 
-			for (auto &subpass : physical_pass.passes)
+			for (unsigned layer = 0; layer < layers; layer++)
 			{
-				auto subpass_index = unsigned(&subpass - physical_pass.passes.data());
-				auto &scaled_requests = physical_pass.scaled_clear_requests[subpass_index];
-				enqueue_scaled_requests(*cmd, scaled_requests);
-
-				auto &pass = *passes[subpass];
-
-				// If we have started the render pass, we have to do it, even if a lone subpass might not be required,
-				// due to clearing and so on.
-				// This should be an extremely unlikely scenario.
-				// Either you need all subpasses or none.
-				cmd->begin_region(pass.get_name().c_str());
-				pass.build_render_pass(*cmd);
+				physical_pass.render_pass_info.layer = layer;
+				cmd->begin_region("begin-render-pass");
+				cmd->begin_render_pass(physical_pass.render_pass_info);
 				cmd->end_region();
 
-				if (&subpass != &physical_pass.passes.back())
-					cmd->next_subpass();
+				for (auto &subpass : physical_pass.passes)
+				{
+					auto subpass_index = unsigned(&subpass - physical_pass.passes.data());
+					auto &scaled_requests = physical_pass.scaled_clear_requests[subpass_index];
+					enqueue_scaled_requests(*cmd, scaled_requests);
+
+					auto &pass = *passes[subpass];
+
+					// If we have started the render pass, we have to do it, even if a lone subpass might not be required,
+					// due to clearing and so on.
+					// This should be an extremely unlikely scenario.
+					// Either you need all subpasses or none.
+					cmd->begin_region(pass.get_name().c_str());
+					pass.build_render_pass(*cmd, layer);
+					cmd->end_region();
+
+					if (&subpass != &physical_pass.passes.back())
+						cmd->next_subpass();
+				}
+
+				cmd->begin_region("end-render-pass");
+				cmd->end_render_pass();
+				cmd->end_region();
 			}
 
-			cmd->begin_region("end-render-pass");
-			cmd->end_render_pass();
-			cmd->end_region();
 			if (enabled_timestamps)
 			{
 				timestamps.timestamps_vertex_end[physical_pass_index] = cmd->write_timestamp(VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
@@ -1939,7 +1951,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 			if (enabled_timestamps)
 				timestamps.timestamps_compute_begin[physical_pass_index] = cmd->write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 			cmd->begin_region(pass.get_name().c_str());
-			pass.build_render_pass(*cmd);
+			pass.build_render_pass(*cmd, 0);
 			cmd->end_region();
 			if (enabled_timestamps)
 				timestamps.timestamps_compute_end[physical_pass_index] = cmd->write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
@@ -2268,7 +2280,7 @@ void RenderGraph::setup_attachments(Vulkan::Device &device, Vulkan::ImageView *s
 			else if (i == swapchain_physical_index)
 				physical_attachments[i] = swapchain;
 			else if (att.transient)
-				physical_attachments[i] = &device.get_transient_attachment(att.width, att.height, att.format, i, att.samples);
+				physical_attachments[i] = &device.get_transient_attachment(att.width, att.height, att.format, i, att.samples, att.layers);
 			else
 				setup_physical_image(device, i);
 		}

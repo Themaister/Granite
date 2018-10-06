@@ -211,4 +211,29 @@ mediump vec4 sample_bandlimited_pixel(sampler2D samp, vec2 uv, BandlimitedPixelI
 	return color;
 }
 
+mediump vec4 sample_bandlimited_pixel_array(sampler2DArray samp, vec3 uv, BandlimitedPixelInfo info, mediump float lod_bias)
+{
+	mediump vec4 color = texture(samp, uv, lod_bias);
+	if (info.l > 0.0)
+	{
+#ifndef BANDLIMITED_PIXEL_FAST_MODE
+		mediump vec4 bandlimited = info.weights.x * textureLod(samp, vec3(info.uv0, uv.z), 0.0);
+		if (info.weights.x < 1.0)
+		{
+			bandlimited += info.weights.y * textureLod(samp, vec3(info.uv1, uv.z), 0.0);
+			bandlimited += info.weights.z * textureLod(samp, vec3(info.uv2, uv.z), 0.0);
+			bandlimited += info.weights.w * textureLod(samp, vec3(info.uv3, uv.z), 0.0);
+		}
+		color = mix(color, bandlimited, info.l);
+#else
+		mediump vec4 bandlimited = textureLod(samp, vec3(info.uv0, uv.z), 0.0);
+		color = mix(color, bandlimited, info.l);
+#endif
+	}
+#ifdef BANDLIMITED_PIXEL_DEBUG
+	color *= info.debug_tint;
+#endif
+	return color;
+}
+
 #endif

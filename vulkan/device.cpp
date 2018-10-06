@@ -2546,7 +2546,11 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		}
 	}
 
-	VK_ASSERT(image_format_is_supported(create_info.format, image_usage_to_features(info.usage)));
+	if (!image_format_is_supported(create_info.format, image_usage_to_features(info.usage)))
+	{
+		LOGE("Format %u is not supported for usage flags!\n", unsigned(create_info.format));
+		return ImageHandle(nullptr);
+	}
 
 	if (vkCreateImage(device, &info, nullptr, &holder.image) != VK_SUCCESS)
 	{
@@ -3034,9 +3038,9 @@ const Framebuffer &Device::request_framebuffer(const RenderPassInfo &info)
 }
 
 ImageView &Device::get_transient_attachment(unsigned width, unsigned height, VkFormat format,
-                                            unsigned index, unsigned samples)
+                                            unsigned index, unsigned samples, unsigned layers)
 {
-	return transient_allocator.request_attachment(width, height, format, index, samples);
+	return transient_allocator.request_attachment(width, height, format, index, samples, layers);
 }
 
 ImageView &Device::get_swapchain_view()

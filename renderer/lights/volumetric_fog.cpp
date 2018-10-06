@@ -60,6 +60,11 @@ void VolumetricFog::set_z_range(float range)
 	slice_z_log2_scale = 1.0f / log2(1.0f + range);
 }
 
+void VolumetricFog::set_fog_density(float density)
+{
+	density_mod = density;
+}
+
 void VolumetricFog::set_resolution(unsigned width, unsigned height, unsigned depth)
 {
 	this->width = width;

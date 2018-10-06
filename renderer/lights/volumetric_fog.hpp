@@ -42,6 +42,7 @@ public:
 	void add_texture_dependency(std::string name);
 	void set_resolution(unsigned width, unsigned height, unsigned depth);
 	void set_z_range(float range);
+	void set_fog_density(float density);
 
 	struct FloorLighting
 	{
@@ -86,7 +87,7 @@ private:
 	float z_range = 80.0f;
 	float slice_z_log2_scale;
 	float mod_time = 0.0f;
-	float density_mod = 0.1f;
+	float density_mod = 0.5f;
 	float inscatter_mod = 0.25f;
 
 	void add_render_passes(RenderGraph &graph) override;

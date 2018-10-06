@@ -64,13 +64,13 @@ void main()
         dir_to_bottom = 1.0;
 
 #if VARIANT_BIT_2
-    mediump float turbulence_extent_mod = exp(2.0 * turbulence);
+    mediump float turbulence_extent_mod = exp(1.0 * turbulence);
     int layer = refraction_layers - 1;
     mediump float depth = (refraction_depths[layer] + vPos.y) / dir_to_bottom;
     mediump vec2 refracted_xz_offset = refracted_dir.xz * depth;
     vec2 uv = refraction_uv_scale * (refracted_xz_offset + vPos.xz);
     BandlimitedPixelInfo info = compute_pixel_weights(uv, refraction_size.xy, refraction_size.zw, turbulence_extent_mod);
-    mediump vec3 emissive = sample_bandlimited_pixel_array(uDirectRefraction, vec3(uv, float(layer)), info, 2.0 * turbulence).rgb;
+    mediump vec3 emissive = sample_bandlimited_pixel_array(uDirectRefraction, vec3(uv, float(layer)), info, 1.0 * turbulence).rgb;
 
     for (int l = layer - 1; l >= 0; l--)
     {
@@ -78,7 +78,7 @@ void main()
         mediump vec2 refracted_xz_offset = refracted_dir.xz * depth;
         vec2 uv = refraction_uv_scale * (refracted_xz_offset + vPos.xz);
         BandlimitedPixelInfo info = compute_pixel_weights(uv, refraction_size.xy, refraction_size.zw, turbulence_extent_mod);
-        mediump vec4 c = sample_bandlimited_pixel_array(uDirectRefraction, vec3(uv, float(l)), info, 2.0 * turbulence);
+        mediump vec4 c = sample_bandlimited_pixel_array(uDirectRefraction, vec3(uv, float(l)), info, 1.0 * turbulence);
         emissive = mix(c.rgb, emissive, c.a);
     }
     emissive *= refraction_emissive_mod;
@@ -87,14 +87,14 @@ void main()
     mediump float depth = (refraction_depths[layer] + vPos.y) / dir_to_bottom;
     mediump vec2 refracted_xz_offset = refracted_dir.xz * depth;
     vec2 uv = refraction_uv_scale * (refracted_xz_offset + vPos.xz);
-    mediump vec3 emissive = texture(uDirectRefraction, vec3(uv, float(layer)), 2.0 * turbulence).rgb;
+    mediump vec3 emissive = texture(uDirectRefraction, vec3(uv, float(layer)), 1.0 * turbulence).rgb;
 
     for (int l = layer - 1; l >= 0; l--)
     {
         mediump float depth = (refraction_depths[l] + vPos.y) / dir_to_bottom;
         mediump vec2 refracted_xz_offset = refracted_dir.xz * depth;
         vec2 uv = refraction_uv_scale * (refracted_xz_offset + vPos.xz);
-        mediump vec4 c = texture(uDirectRefraction, vec3(uv, float(l)), 2.0 * turbulence);
+        mediump vec4 c = texture(uDirectRefraction, vec3(uv, float(l)), 1.0 * turbulence);
         emissive = mix(c.rgb, emissive, c.a);
     }
     emissive *= refraction_emissive_mod;

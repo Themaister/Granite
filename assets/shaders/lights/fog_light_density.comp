@@ -165,8 +165,6 @@ void main()
     mediump float fog_density = textureLod(uFogDensity, pos * POSITION_MOD, 0.0).x +
                                 0.5 * textureLod(uFogDensityLowFreq, (pos + 1.0) * POSITION_MOD_LOW_FREQ, 0.0).x;
 
-    fog_density = fog_density;
-
     mediump float albedo = get_fog_albedo(uvw) * fog_density;
     mediump vec3 in_scatter_light = registers.in_scatter_strength * compute_inscatter_light(pos);
 

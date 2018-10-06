@@ -2095,12 +2095,16 @@ private:
 	{
 		rt_views.reserve(info.subresourceRange.layerCount);
 
+		if (info.viewType == VK_IMAGE_VIEW_TYPE_3D)
+			return true;
+
 		// If we have a render target, and non-trivial case (layers = 1, levels = 1),
 		// create an array of render targets which correspond to each layer (mip 0).
 		if ((image_create_info.usage & (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)) != 0 &&
 		    ((info.subresourceRange.levelCount > 1) || (info.subresourceRange.layerCount > 1)))
 		{
 			auto view_info = info;
+			view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
 			view_info.subresourceRange.baseMipLevel = info.subresourceRange.baseMipLevel;
 			for (uint32_t layer = 0; layer < info.subresourceRange.layerCount; layer++)
 			{
@@ -2121,6 +2125,13 @@ private:
 
 	bool create_alt_views(const ImageCreateInfo &image_create_info, const VkImageViewCreateInfo &info)
 	{
+		if (info.viewType == VK_IMAGE_VIEW_TYPE_CUBE ||
+		    info.viewType == VK_IMAGE_VIEW_TYPE_CUBE_ARRAY ||
+		    info.viewType == VK_IMAGE_VIEW_TYPE_3D)
+		{
+			return true;
+		}
+
 		if (info.subresourceRange.aspectMask == (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT))
 		{
 			if ((image_create_info.usage & ~VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0)

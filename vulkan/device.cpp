@@ -2012,8 +2012,184 @@ BufferViewHandle Device::create_buffer_view(const BufferViewCreateInfo &view_inf
 	return BufferViewHandle(handle_pool.buffer_views.allocate(this, view, view_info));
 }
 
+class ImageResourceHolder
+{
+public:
+	ImageResourceHolder(VkDevice device)
+		: device(device)
+	{
+	}
+
+	~ImageResourceHolder()
+	{
+		if (owned)
+			cleanup();
+	}
+
+	VkDevice device;
+
+	VkImage image = VK_NULL_HANDLE;
+	VkDeviceMemory memory = VK_NULL_HANDLE;
+	VkImageView image_view = VK_NULL_HANDLE;
+	VkImageView depth_view = VK_NULL_HANDLE;
+	VkImageView stencil_view = VK_NULL_HANDLE;
+	VkImageView unorm_view = VK_NULL_HANDLE;
+	VkImageView srgb_view = VK_NULL_HANDLE;
+	vector<VkImageView> rt_views;
+	DeviceAllocation allocation;
+	DeviceAllocator *allocator = nullptr;
+	bool owned = true;
+
+	bool create_default_views(const ImageCreateInfo &create_info, const VkImageViewCreateInfo *view_info,
+	                          bool create_unorm_srgb_views = false, const VkFormat *view_formats = nullptr)
+	{
+		if ((create_info.usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+		                          VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT)) == 0)
+		{
+			LOGE("Cannot create image view unless certain usage flags are present.\n");
+			return false;
+		}
+
+		VkImageViewCreateInfo default_view_info = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+		if (!view_info)
+		{
+			default_view_info.image = image;
+			default_view_info.format = create_info.format;
+			default_view_info.components = create_info.swizzle;
+			default_view_info.subresourceRange.aspectMask = format_to_aspect_mask(default_view_info.format);
+			default_view_info.viewType = get_image_view_type(create_info, nullptr);
+			default_view_info.subresourceRange.baseMipLevel = 0;
+			default_view_info.subresourceRange.baseArrayLayer = 0;
+			default_view_info.subresourceRange.levelCount = create_info.levels;
+			default_view_info.subresourceRange.layerCount = create_info.layers;
+			view_info = &default_view_info;
+		}
+
+		if (!create_alt_views(create_info, *view_info))
+			return false;
+
+		if (!create_render_target_views(create_info, *view_info))
+			return false;
+
+		if (!create_default_view(*view_info))
+			return false;
+
+		if (create_unorm_srgb_views)
+		{
+			auto info = *view_info;
+
+			info.format = view_formats[0];
+			if (vkCreateImageView(device, &info, nullptr, &unorm_view) != VK_SUCCESS)
+				return false;
+
+			info.format = view_formats[1];
+			if (vkCreateImageView(device, &info, nullptr, &srgb_view) != VK_SUCCESS)
+				return false;
+		}
+
+		return true;
+	}
+
+private:
+	bool create_render_target_views(const ImageCreateInfo &image_create_info, const VkImageViewCreateInfo &info)
+	{
+		rt_views.reserve(info.subresourceRange.layerCount);
+
+		// If we have a render target, and non-trivial case (layers = 1, levels = 1),
+		// create an array of render targets which correspond to each layer (mip 0).
+		if ((image_create_info.usage & (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)) != 0 &&
+		    ((info.subresourceRange.levelCount > 1) || (info.subresourceRange.layerCount > 1)))
+		{
+			auto view_info = info;
+			view_info.subresourceRange.baseMipLevel = info.subresourceRange.baseMipLevel;
+			for (uint32_t layer = 0; layer < info.subresourceRange.layerCount; layer++)
+			{
+				view_info.subresourceRange.levelCount = 1;
+				view_info.subresourceRange.layerCount = 1;
+				view_info.subresourceRange.baseArrayLayer = layer + info.subresourceRange.baseArrayLayer;
+
+				VkImageView rt_view;
+				if (vkCreateImageView(device, &view_info, nullptr, &rt_view) != VK_SUCCESS)
+					return false;
+
+				rt_views.push_back(rt_view);
+			}
+		}
+
+		return true;
+	}
+
+	bool create_alt_views(const ImageCreateInfo &image_create_info, const VkImageViewCreateInfo &info)
+	{
+		if (info.subresourceRange.aspectMask == (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT))
+		{
+			if ((image_create_info.usage & ~VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0)
+			{
+				// Sanity check. Don't want to implement layered views for this.
+				if (info.subresourceRange.levelCount > 1)
+				{
+					LOGE("Cannot create depth stencil attachments with more than 1 mip level currently, and non-DS usage flags.\n");
+					return false;
+				}
+
+				if (info.subresourceRange.layerCount > 1)
+				{
+					LOGE("Cannot create layered depth stencil attachments with non-DS usage flags.\n");
+					return false;
+				}
+
+				auto view_info = info;
+
+				// We need this to be able to sample the texture, or otherwise use it as a non-pure DS attachment.
+				view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+				if (vkCreateImageView(device, &view_info, nullptr, &depth_view) != VK_SUCCESS)
+					return false;
+
+				view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_STENCIL_BIT;
+				if (vkCreateImageView(device, &view_info, nullptr, &stencil_view) != VK_SUCCESS)
+					return false;
+			}
+		}
+
+		return true;
+	}
+
+	bool create_default_view(const VkImageViewCreateInfo &info)
+	{
+		// Create the normal image view. This one contains every subresource.
+		if (vkCreateImageView(device, &info, nullptr, &image_view) != VK_SUCCESS)
+			return false;
+
+		return true;
+	}
+
+	void cleanup()
+	{
+		if (image_view)
+			vkDestroyImageView(device, image_view, nullptr);
+		if (depth_view)
+			vkDestroyImageView(device, depth_view, nullptr);
+		if (stencil_view)
+			vkDestroyImageView(device, stencil_view, nullptr);
+		if (unorm_view)
+			vkDestroyImageView(device, unorm_view, nullptr);
+		if (srgb_view)
+			vkDestroyImageView(device, srgb_view, nullptr);
+		for (auto &view : rt_views)
+			vkDestroyImageView(device, view, nullptr);
+
+		if (image)
+			vkDestroyImage(device, image, nullptr);
+		if (memory)
+			vkFreeMemory(device, memory, nullptr);
+		if (allocator)
+			allocation.free_immediate(*allocator);
+	}
+};
+
 ImageViewHandle Device::create_image_view(const ImageViewCreateInfo &create_info)
 {
+	ImageResourceHolder holder(device);
 	auto &image_create_info = create_info.image->get_create_info();
 
 	VkFormat format = create_info.format != VK_FORMAT_UNDEFINED ? create_info.format : image_create_info.format;
@@ -2035,51 +2211,30 @@ ImageViewHandle Device::create_image_view(const ImageViewCreateInfo &create_info
 	else
 		num_levels = view_info.subresourceRange.levelCount;
 
-	VkImageView image_view = VK_NULL_HANDLE;
-	VkImageView depth_view = VK_NULL_HANDLE;
-	VkImageView stencil_view = VK_NULL_HANDLE;
-	VkImageView base_level_view = VK_NULL_HANDLE;
-	if (vkCreateImageView(device, &view_info, nullptr, &image_view) != VK_SUCCESS)
+	unsigned num_layers;
+	if (view_info.subresourceRange.layerCount == VK_REMAINING_ARRAY_LAYERS)
+		num_layers = create_info.image->get_create_info().layers - view_info.subresourceRange.baseArrayLayer;
+	else
+		num_layers = view_info.subresourceRange.layerCount;
+
+	view_info.subresourceRange.levelCount = num_levels;
+	view_info.subresourceRange.layerCount = num_layers;
+
+	if (!holder.create_default_views(image_create_info, &view_info))
 		return ImageViewHandle(nullptr);
-
-	if (num_levels > 1)
-	{
-		view_info.subresourceRange.levelCount = 1;
-		if (vkCreateImageView(device, &view_info, nullptr, &base_level_view) != VK_SUCCESS)
-		{
-			vkDestroyImageView(device, image_view, nullptr);
-			return ImageViewHandle(nullptr);
-		}
-		view_info.subresourceRange.levelCount = create_info.levels;
-	}
-
-	// If the image has multiple aspects, make split up images.
-	if (view_info.subresourceRange.aspectMask == (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT))
-	{
-		view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-		if (vkCreateImageView(device, &view_info, nullptr, &depth_view) != VK_SUCCESS)
-		{
-			vkDestroyImageView(device, image_view, nullptr);
-			vkDestroyImageView(device, base_level_view, nullptr);
-			return ImageViewHandle(nullptr);
-		}
-
-		view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_STENCIL_BIT;
-		if (vkCreateImageView(device, &view_info, nullptr, &stencil_view) != VK_SUCCESS)
-		{
-			vkDestroyImageView(device, image_view, nullptr);
-			vkDestroyImageView(device, depth_view, nullptr);
-			vkDestroyImageView(device, base_level_view, nullptr);
-			return ImageViewHandle(nullptr);
-		}
-	}
 
 	ImageViewCreateInfo tmp = create_info;
 	tmp.format = format;
-	ImageViewHandle ret(handle_pool.image_views.allocate(this, image_view, tmp));
-	ret->set_alt_views(depth_view, stencil_view);
-	ret->set_base_level_view(base_level_view);
-	return ret;
+	ImageViewHandle ret(handle_pool.image_views.allocate(this, holder.image_view, tmp));
+	if (ret)
+	{
+		holder.owned = false;
+		ret->set_alt_views(holder.depth_view, holder.stencil_view);
+		ret->set_render_target_views(move(holder.rt_views));
+		return ret;
+	}
+	else
+		return ImageViewHandle(nullptr);
 }
 
 #ifndef _WIN32
@@ -2089,6 +2244,8 @@ ImageHandle Device::create_imported_image(int fd, VkDeviceSize size, uint32_t me
 {
 	if (!ext.supports_external)
 		return {};
+
+	ImageResourceHolder holder(device);
 
 	VkImageCreateInfo info = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
 	info.format = create_info.format;
@@ -2112,8 +2269,7 @@ ImageHandle Device::create_imported_image(int fd, VkDeviceSize size, uint32_t me
 
 	VK_ASSERT(image_format_is_supported(create_info.format, image_usage_to_features(info.usage)));
 
-	VkImage image;
-	if (vkCreateImage(device, &info, nullptr, &image) != VK_SUCCESS)
+	if (vkCreateImage(device, &info, nullptr, &holder.image) != VK_SUCCESS)
 		return ImageHandle(nullptr);
 
 	VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
@@ -2121,7 +2277,7 @@ ImageHandle Device::create_imported_image(int fd, VkDeviceSize size, uint32_t me
 	alloc_info.memoryTypeIndex = memory_type;
 
 	VkMemoryDedicatedAllocateInfoKHR dedicated_info = { VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR };
-	dedicated_info.image = image;
+	dedicated_info.image = holder.image;
 	alloc_info.pNext = &dedicated_info;
 
 	VkImportMemoryFdInfoKHR fd_info = { VK_STRUCTURE_TYPE_IMPORT_MEMORY_FD_INFO_KHR };
@@ -2129,109 +2285,44 @@ ImageHandle Device::create_imported_image(int fd, VkDeviceSize size, uint32_t me
 	fd_info.fd = fd;
 	dedicated_info.pNext = &fd_info;
 
-	VkDeviceMemory memory;
-
 	VkMemoryRequirements reqs;
-	vkGetImageMemoryRequirements(device, image, &reqs);
+	vkGetImageMemoryRequirements(device, holder.image, &reqs);
 	if (reqs.size > size)
-	{
-		vkDestroyImage(device, image, nullptr);
 		return ImageHandle(nullptr);
-	}
 
 	if (((1u << memory_type) & reqs.memoryTypeBits) == 0)
-	{
-		vkDestroyImage(device, image, nullptr);
 		return ImageHandle(nullptr);
-	}
 
-	if (vkAllocateMemory(device, &alloc_info, nullptr, &memory) != VK_SUCCESS)
-	{
-		vkDestroyImage(device, image, nullptr);
+	if (vkAllocateMemory(device, &alloc_info, nullptr, &holder.memory) != VK_SUCCESS)
 		return ImageHandle(nullptr);
-	}
 
-	if (vkBindImageMemory(device, image, memory, 0) != VK_SUCCESS)
-	{
-		vkDestroyImage(device, image, nullptr);
-		vkFreeMemory(device, memory, nullptr);
+	if (vkBindImageMemory(device, holder.image, holder.memory, 0) != VK_SUCCESS)
 		return ImageHandle(nullptr);
-	}
 
-	// Create a default image view.
-	VkImageView image_view = VK_NULL_HANDLE;
-	VkImageView depth_view = VK_NULL_HANDLE;
-	VkImageView stencil_view = VK_NULL_HANDLE;
-	VkImageView base_level_view = VK_NULL_HANDLE;
+	// Create default image views.
+	// App could of course to this on its own, but it's very handy to have these being created automatically for you.
 	if (info.usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
 	                  VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT))
 	{
-		VkImageViewCreateInfo view_info = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
-		view_info.image = image;
-		view_info.format = create_info.format;
-		view_info.components = create_info.swizzle;
-		view_info.subresourceRange.aspectMask = format_to_aspect_mask(view_info.format);
-		view_info.subresourceRange.baseMipLevel = 0;
-		view_info.subresourceRange.baseArrayLayer = 0;
-		view_info.subresourceRange.levelCount = info.mipLevels;
-		view_info.subresourceRange.layerCount = info.arrayLayers;
-		view_info.viewType = get_image_view_type(create_info, nullptr);
-
-		if (vkCreateImageView(device, &view_info, nullptr, &image_view) != VK_SUCCESS)
-		{
-			vkFreeMemory(device, memory, nullptr);
-			vkDestroyImage(device, image, nullptr);
+		if (!holder.create_default_views(create_info, nullptr))
 			return ImageHandle(nullptr);
-		}
-
-		if (info.mipLevels > 1)
-		{
-			view_info.subresourceRange.levelCount = 1;
-			if (vkCreateImageView(device, &view_info, nullptr, &base_level_view) != VK_SUCCESS)
-			{
-				vkFreeMemory(device, memory, nullptr);
-				vkDestroyImage(device, image, nullptr);
-				vkDestroyImageView(device, image_view, nullptr);
-				return ImageHandle(nullptr);
-			}
-			view_info.subresourceRange.levelCount = info.mipLevels;
-		}
-
-		// If the image has multiple aspects, make split up images.
-		if (view_info.subresourceRange.aspectMask == (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT))
-		{
-			view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-			if (vkCreateImageView(device, &view_info, nullptr, &depth_view) != VK_SUCCESS)
-			{
-				vkFreeMemory(device, memory, nullptr);
-				vkDestroyImageView(device, image_view, nullptr);
-				vkDestroyImageView(device, base_level_view, nullptr);
-				vkDestroyImage(device, image, nullptr);
-				return ImageHandle(nullptr);
-			}
-
-			view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_STENCIL_BIT;
-			if (vkCreateImageView(device, &view_info, nullptr, &stencil_view) != VK_SUCCESS)
-			{
-				vkFreeMemory(device, memory, nullptr);
-				vkDestroyImageView(device, image_view, nullptr);
-				vkDestroyImageView(device, depth_view, nullptr);
-				vkDestroyImageView(device, base_level_view, nullptr);
-				vkDestroyImage(device, image, nullptr);
-				return ImageHandle(nullptr);
-			}
-		}
 	}
 
-	auto allocation = DeviceAllocation::make_imported_allocation(memory, size, memory_type);
-	ImageHandle handle(handle_pool.images.allocate(this, image, image_view, allocation, create_info));
-	handle->get_view().set_alt_views(depth_view, stencil_view);
-	handle->get_view().set_base_level_view(base_level_view);
+	auto allocation = DeviceAllocation::make_imported_allocation(holder.memory, size, memory_type);
+	ImageHandle handle(handle_pool.images.allocate(this, holder.image, holder.image_view, allocation, create_info));
+	if (handle)
+	{
+		holder.owned = false;
+		handle->get_view().set_alt_views(holder.depth_view, holder.stencil_view);
+		handle->get_view().set_render_target_views(move(holder.rt_views));
 
-	// Set possible dstStage and dstAccess.
-	handle->set_stage_flags(image_usage_to_possible_stages(info.usage));
-	handle->set_access_flags(image_usage_to_possible_access(info.usage));
-	return handle;
+		// Set possible dstStage and dstAccess.
+		handle->set_stage_flags(image_usage_to_possible_stages(info.usage));
+		handle->set_access_flags(image_usage_to_possible_access(info.usage));
+		return handle;
+	}
+	else
+		return ImageHandle(nullptr);
 }
 #endif
 
@@ -2368,9 +2459,8 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &create_info,
                                                      const InitialImageBuffer *staging_buffer)
 {
-	VkImage image;
+	ImageResourceHolder holder(device);
 	VkMemoryRequirements reqs;
-	DeviceAllocation allocation;
 
 	VkImageCreateInfo info = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
 	info.format = create_info.format;
@@ -2458,26 +2548,23 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 
 	VK_ASSERT(image_format_is_supported(create_info.format, image_usage_to_features(info.usage)));
 
-	if (vkCreateImage(device, &info, nullptr, &image) != VK_SUCCESS)
+	if (vkCreateImage(device, &info, nullptr, &holder.image) != VK_SUCCESS)
 	{
 		LOGE("Failed to create image in vkCreateImage.\n");
 		return ImageHandle(nullptr);
 	}
 
-	vkGetImageMemoryRequirements(device, image, &reqs);
+	vkGetImageMemoryRequirements(device, holder.image, &reqs);
 	uint32_t memory_type = find_memory_type(create_info.domain, reqs.memoryTypeBits);
 	if (!managers.memory.allocate_image_memory(reqs.size, reqs.alignment, memory_type, ALLOCATION_TILING_OPTIMAL,
-	                                           &allocation, image))
+	                                           &holder.allocation, holder.image))
 	{
-		vkDestroyImage(device, image, nullptr);
 		LOGE("Failed to allocate image memory (type %u, size: %u).\n", unsigned(memory_type), unsigned(reqs.size));
 		return ImageHandle(nullptr);
 	}
 
-	if (vkBindImageMemory(device, image, allocation.get_memory(), allocation.get_offset()) != VK_SUCCESS)
+	if (vkBindImageMemory(device, holder.image, holder.allocation.get_memory(), holder.allocation.get_offset()) != VK_SUCCESS)
 	{
-		allocation.free_immediate(managers.memory);
-		vkDestroyImage(device, image, nullptr);
 		LOGE("Failed to bind image memory.\n");
 		return ImageHandle(nullptr);
 	}
@@ -2486,125 +2573,30 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 	tmpinfo.usage = info.usage;
 	tmpinfo.levels = info.mipLevels;
 
-	// Create a default image view.
-	VkImageView image_view = VK_NULL_HANDLE;
-	VkImageView depth_view = VK_NULL_HANDLE;
-	VkImageView stencil_view = VK_NULL_HANDLE;
-	VkImageView base_level_view = VK_NULL_HANDLE;
-	VkImageView unorm_view = VK_NULL_HANDLE;
-	VkImageView srgb_view = VK_NULL_HANDLE;
-
 	bool has_view = (info.usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
 	                               VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT)) != 0;
 	if (has_view)
 	{
-		VkImageViewCreateInfo view_info = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
-		view_info.image = image;
-		view_info.format = create_info.format;
-		view_info.components = create_info.swizzle;
-		view_info.subresourceRange.aspectMask = format_to_aspect_mask(view_info.format);
-		view_info.subresourceRange.baseMipLevel = 0;
-		view_info.subresourceRange.baseArrayLayer = 0;
-		view_info.subresourceRange.levelCount = info.mipLevels;
-		view_info.subresourceRange.layerCount = info.arrayLayers;
-		view_info.viewType = get_image_view_type(tmpinfo, nullptr);
-
-		if (vkCreateImageView(device, &view_info, nullptr, &image_view) != VK_SUCCESS)
-		{
-			allocation.free_immediate(managers.memory);
-			vkDestroyImage(device, image, nullptr);
+		if (!holder.create_default_views(tmpinfo, nullptr, create_unorm_srgb_views, view_formats))
 			return ImageHandle(nullptr);
-		}
-
-		if (create_unorm_srgb_views)
-		{
-			view_info.format = view_formats[0];
-			if (vkCreateImageView(device, &view_info, nullptr, &unorm_view) != VK_SUCCESS)
-			{
-				allocation.free_immediate(managers.memory);
-				vkDestroyImageView(device, image_view, nullptr);
-				vkDestroyImage(device, image, nullptr);
-				return ImageHandle(nullptr);
-			}
-
-			view_info.format = view_formats[1];
-			if (vkCreateImageView(device, &view_info, nullptr, &srgb_view) != VK_SUCCESS)
-			{
-				allocation.free_immediate(managers.memory);
-				vkDestroyImageView(device, image_view, nullptr);
-				if (unorm_view != VK_NULL_HANDLE)
-					vkDestroyImageView(device, unorm_view, nullptr);
-				vkDestroyImage(device, image, nullptr);
-				return ImageHandle(nullptr);
-			}
-
-			view_info.format = create_info.format;
-		}
-
-		if (info.mipLevels > 1)
-		{
-			view_info.subresourceRange.levelCount = 1;
-			if (vkCreateImageView(device, &view_info, nullptr, &base_level_view) != VK_SUCCESS)
-			{
-				allocation.free_immediate(managers.memory);
-				vkDestroyImage(device, image, nullptr);
-				vkDestroyImageView(device, image_view, nullptr);
-				if (unorm_view != VK_NULL_HANDLE)
-					vkDestroyImageView(device, unorm_view, nullptr);
-				if (srgb_view != VK_NULL_HANDLE)
-					vkDestroyImageView(device, srgb_view, nullptr);
-				return ImageHandle(nullptr);
-			}
-			view_info.subresourceRange.levelCount = info.mipLevels;
-		}
-
-		// If the image has multiple aspects, make split up images.
-		if (view_info.subresourceRange.aspectMask == (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT))
-		{
-			view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-			if (vkCreateImageView(device, &view_info, nullptr, &depth_view) != VK_SUCCESS)
-			{
-				allocation.free_immediate(managers.memory);
-				vkDestroyImageView(device, image_view, nullptr);
-				vkDestroyImageView(device, base_level_view, nullptr);
-				if (unorm_view != VK_NULL_HANDLE)
-					vkDestroyImageView(device, unorm_view, nullptr);
-				if (srgb_view != VK_NULL_HANDLE)
-					vkDestroyImageView(device, srgb_view, nullptr);
-				vkDestroyImage(device, image, nullptr);
-				return ImageHandle(nullptr);
-			}
-
-			view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_STENCIL_BIT;
-			if (vkCreateImageView(device, &view_info, nullptr, &stencil_view) != VK_SUCCESS)
-			{
-				allocation.free_immediate(managers.memory);
-				vkDestroyImageView(device, image_view, nullptr);
-				vkDestroyImageView(device, depth_view, nullptr);
-				vkDestroyImageView(device, base_level_view, nullptr);
-				if (unorm_view != VK_NULL_HANDLE)
-					vkDestroyImageView(device, unorm_view, nullptr);
-				if (srgb_view != VK_NULL_HANDLE)
-					vkDestroyImageView(device, srgb_view, nullptr);
-				vkDestroyImage(device, image, nullptr);
-				return ImageHandle(nullptr);
-			}
-		}
 	}
 
-	ImageHandle handle(handle_pool.images.allocate(this, image, image_view, allocation, tmpinfo));
-
-	if (has_view)
+	ImageHandle handle(handle_pool.images.allocate(this, holder.image, holder.image_view, holder.allocation, tmpinfo));
+	if (handle)
 	{
-		handle->get_view().set_alt_views(depth_view, stencil_view);
-		handle->get_view().set_base_level_view(base_level_view);
-		handle->get_view().set_unorm_view(unorm_view);
-		handle->get_view().set_srgb_view(srgb_view);
-	}
+		holder.owned = false;
+		if (has_view)
+		{
+			handle->get_view().set_alt_views(holder.depth_view, holder.stencil_view);
+			handle->get_view().set_render_target_views(move(holder.rt_views));
+			handle->get_view().set_unorm_view(holder.unorm_view);
+			handle->get_view().set_srgb_view(holder.srgb_view);
+		}
 
-	// Set possible dstStage and dstAccess.
-	handle->set_stage_flags(image_usage_to_possible_stages(info.usage));
-	handle->set_access_flags(image_usage_to_possible_access(info.usage));
+		// Set possible dstStage and dstAccess.
+		handle->set_stage_flags(image_usage_to_possible_stages(info.usage));
+		handle->set_access_flags(image_usage_to_possible_access(info.usage));
+	}
 
 	// Copy initial data to texture.
 	if (staging_buffer)

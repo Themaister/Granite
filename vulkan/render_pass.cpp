@@ -822,7 +822,7 @@ Framebuffer::Framebuffer(Device *device, const RenderPass &rp, const RenderPassI
 		unsigned lod = info.color_attachments[i]->get_create_info().base_level;
 		width = min(width, info.color_attachments[i]->get_image().get_width(lod));
 		height = min(height, info.color_attachments[i]->get_image().get_height(lod));
-		views[num_views++] = info.color_attachments[i]->get_base_level_view();
+		views[num_views++] = info.color_attachments[i]->get_render_target_view(info.layer);
 		attachments.push_back(info.color_attachments[i]);
 	}
 
@@ -831,7 +831,7 @@ Framebuffer::Framebuffer(Device *device, const RenderPass &rp, const RenderPassI
 		unsigned lod = info.depth_stencil->get_create_info().base_level;
 		width = min(width, info.depth_stencil->get_image().get_width(lod));
 		height = min(height, info.depth_stencil->get_image().get_height(lod));
-		views[num_views++] = info.depth_stencil->get_base_level_view();
+		views[num_views++] = info.depth_stencil->get_render_target_view(info.layer);
 		attachments.push_back(info.depth_stencil);
 	}
 
@@ -886,6 +886,8 @@ Framebuffer &FramebufferAllocator::request_framebuffer(const RenderPassInfo &inf
 	if (info.depth_stencil)
 		h.u64(info.depth_stencil->get_cookie());
 
+	h.u32(info.layer);
+
 	auto hash = h.get();
 
 	LOCK();
@@ -907,7 +909,7 @@ void AttachmentAllocator::begin_frame()
 }
 
 ImageView &AttachmentAllocator::request_attachment(unsigned width, unsigned height, VkFormat format,
-                                                   unsigned index, unsigned samples)
+                                                   unsigned index, unsigned samples, unsigned layers)
 {
 	Hasher h;
 	h.u32(width);
@@ -915,6 +917,7 @@ ImageView &AttachmentAllocator::request_attachment(unsigned width, unsigned heig
 	h.u32(format);
 	h.u32(index);
 	h.u32(samples);
+	h.u32(layers);
 
 	auto hash = h.get();
 
@@ -936,6 +939,7 @@ ImageView &AttachmentAllocator::request_attachment(unsigned width, unsigned heig
 	}
 
 	image_info.samples = static_cast<VkSampleCountFlagBits>(samples);
+	image_info.layers = layers;
 	node = attachments.emplace(hash, device->create_image(image_info, nullptr));
 	node->handle->set_internal_sync_object();
 	node->handle->get_view().set_internal_sync_object();

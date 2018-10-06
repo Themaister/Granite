@@ -204,9 +204,10 @@ public:
 		stencil_view = stencil;
 	}
 
-	void set_base_level_view(VkImageView view)
+	void set_render_target_views(std::vector<VkImageView> views)
 	{
-		base_level_view = view;
+		VK_ASSERT(render_target_views.empty());
+		render_target_views = std::move(views);
 	}
 
 	void set_unorm_view(VkImageView view)
@@ -228,10 +229,7 @@ public:
 		return view;
 	}
 
-	VkImageView get_base_level_view() const
-	{
-		return base_level_view != VK_NULL_HANDLE ? base_level_view : view;
-	}
+	VkImageView get_render_target_view(unsigned layer) const;
 
 	// Gets an image view which only includes floating point domains.
 	// Takes effect when we want to sample from an image which is Depth/Stencil,
@@ -282,7 +280,7 @@ public:
 private:
 	Device *device;
 	VkImageView view;
-	VkImageView base_level_view = VK_NULL_HANDLE;
+	std::vector<VkImageView> render_target_views;
 	VkImageView depth_view = VK_NULL_HANDLE;
 	VkImageView stencil_view = VK_NULL_HANDLE;
 	VkImageView unorm_view = VK_NULL_HANDLE;

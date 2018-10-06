@@ -52,6 +52,7 @@ struct RenderPassInfo
 	uint32_t clear_attachments = 0;
 	uint32_t load_attachments = 0;
 	uint32_t store_attachments = 0;
+	uint32_t layer = 0;
 
 	// Render area will be clipped to the actual framebuffer.
 	VkRect2D render_area = { { 0, 0 }, { UINT32_MAX, UINT32_MAX } };
@@ -249,7 +250,7 @@ public:
 	}
 
 	ImageView &request_attachment(unsigned width, unsigned height, VkFormat format,
-	                              unsigned index = 0, unsigned samples = 1);
+	                              unsigned index = 0, unsigned samples = 1, unsigned layers = 1);
 
 	void begin_frame();
 	void clear();

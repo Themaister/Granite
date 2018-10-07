@@ -58,6 +58,25 @@ static inline void accumulate_channel(float * __restrict output, const float * _
 	size_t overflow_count = count & 3;
 	for (size_t i = 0; i < overflow_count; i++)
 		output[i] += input[i] * gain;
+
+#elif defined(__SSE__)
+	size_t rounded_count = count & ~3;
+	__m128 gain_splat = _mm_set1_ps(gain);
+	for (size_t i = 0; i < rounded_count; i += 4)
+	{
+		__m128 acc = _mm_loadu_ps(output);
+		__m128 in = _mm_loadu_ps(input);
+		acc = _mm_add_ps(acc, _mm_mul_ps(in, gain_splat));
+		_mm_storeu_ps(output, acc);
+
+		output += 4;
+		input += 4;
+	}
+
+	size_t overflow_count = count & 3;
+	for (size_t i = 0; i < overflow_count; i++)
+		output[i] += input[i] * gain;
+
 #else
 	for (size_t i = 0; i < count; i++)
 		output[i] += input[i] * gain;

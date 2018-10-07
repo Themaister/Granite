@@ -28,6 +28,7 @@
 #include "render_graph.hpp"
 #include "muglm/matrix_helper.hpp"
 #include <random>
+#include "timer.hpp"
 
 using namespace std;
 
@@ -112,6 +113,9 @@ void Ocean::on_device_created(const Vulkan::DeviceCreatedEvent &e)
 	options.performance =
 			GLFFT::FFTWisdom::get_static_performance_options_from_renderer(&fft_iface);
 
+	Util::Timer timer;
+	timer.start();
+
 	auto cache = make_shared<GLFFT::ProgramCache>();
 
 	height_fft.reset(new GLFFT::FFT(&fft_iface,
@@ -132,6 +136,8 @@ void Ocean::on_device_created(const Vulkan::DeviceCreatedEvent &e)
 	                                GLFFT::ComplexToComplex, GLFFT::Inverse,
 	                                GLFFT::SSBO, GLFFT::Image,
 	                                cache, options));
+
+	LOGI("Creating GLFFT took %.3f ms!\n", timer.end() * 1000.0);
 
 	build_buffers(e.get_device());
 	init_distributions(e.get_device());

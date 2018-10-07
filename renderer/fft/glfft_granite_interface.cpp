@@ -299,19 +299,37 @@ bool FFTInterface::supports_texture_readback()
 
 unique_ptr<GLFFT::Program> FFTInterface::compile_compute_shader(const char *source)
 {
-	GLSLCompiler compiler;
-	compiler.set_source(source, "compute.glsl");
-	if (!compiler.preprocess())
-		return {};
-	compiler.set_stage(Stage::Compute);
-	auto spirv = compiler.compile();
-	if (spirv.empty())
+	Util::Hasher hasher;
+	hasher.string(source);
+	Util::Hash hash = hasher.get();
+
+	Util::Hash shader_hash;
+	Vulkan::Shader *shader = nullptr;
+
+	if (device->get_shader_manager().get_shader_hash_by_variant_hash(hash, shader_hash))
+		shader = device->request_shader_by_hash(shader_hash);
+
+	if (!shader)
 	{
-		LOGE("GLFFT: error: \n%s\n", compiler.get_error_message().c_str());
-		return {};
+		// We don't have a shader, need to compile in runtime :(
+		GLSLCompiler compiler;
+		compiler.set_source(source, "compute.glsl");
+		if (!compiler.preprocess())
+			return {};
+		compiler.set_stage(Stage::Compute);
+		auto spirv = compiler.compile();
+		if (spirv.empty())
+		{
+			LOGE("GLFFT: error: \n%s\n", compiler.get_error_message().c_str());
+			return {};
+		}
+
+		shader = device->request_shader(spirv.data(), spirv.size() * sizeof(uint32_t));
+
+		// Register this mapping for next time, hopefully ... :)
+		device->get_shader_manager().register_shader_hash_from_variant_hash(hash, shader->get_hash());
 	}
 
-	Vulkan::Shader *shader = device->request_shader(spirv.data(), spirv.size() * sizeof(uint32_t));
 	Vulkan::Program *program = device->request_program(shader);
 	auto prog = make_unique<FFTProgram>();
 	prog->program = program;

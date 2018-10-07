@@ -421,6 +421,23 @@ void ShaderManager::add_directory_watch(const std::string &source)
 }
 #endif
 
+void ShaderManager::register_shader_hash_from_variant_hash(Hash variant_hash, Hash shader_hash)
+{
+	shader_cache.insert_replace(variant_hash, make_unique<Hash>(shader_hash));
+}
+
+bool ShaderManager::get_shader_hash_by_variant_hash(Hash variant_hash, Hash &shader_hash)
+{
+	auto *itr = shader_cache.find(variant_hash);
+	if (itr)
+	{
+		shader_hash = *itr;
+		return true;
+	}
+	else
+		return false;
+}
+
 bool ShaderManager::load_shader_cache(const string &path)
 {
 	using namespace rapidjson;
@@ -444,7 +461,7 @@ bool ShaderManager::load_shader_cache(const string &path)
 	for (auto itr = maps.Begin(); itr != maps.End(); ++itr)
 	{
 		auto &value = *itr;
-		shader_cache.insert(value["variant"].GetUint64(), make_unique<Hash>(value["spirvHash"].GetUint64()));
+		shader_cache.insert_replace(value["variant"].GetUint64(), make_unique<Hash>(value["spirvHash"].GetUint64()));
 	}
 
 	LOGI("Loaded shader manager cache from %s.\n", path.c_str());

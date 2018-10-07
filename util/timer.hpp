@@ -49,5 +49,15 @@ private:
 	int64_t get_time();
 };
 
+class Timer
+{
+public:
+	void start();
+	double end();
+
+private:
+	int64_t t = 0;
+};
+
 int64_t get_current_time_nsecs();
 }

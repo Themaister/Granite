@@ -132,10 +132,12 @@ public:
 	void operator=(ThreadGroup &&) = delete;
 
 	void start(unsigned num_threads);
+
 	unsigned get_num_threads() const
 	{
-		return thread_group.size();
+		return unsigned(thread_group.size());
 	}
+
 	void stop();
 
 	static unsigned get_current_thread_index();

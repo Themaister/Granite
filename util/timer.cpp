@@ -86,4 +86,15 @@ int64_t get_current_time_nsecs()
 	auto nsecs = chrono::duration_cast<chrono::nanoseconds>(current);
 	return nsecs.count();
 }
+
+void Timer::start()
+{
+	t = get_current_time_nsecs();
+}
+
+double Timer::end()
+{
+	auto nt = get_current_time_nsecs();
+	return double(nt - t) * 1e-9;
+}
 }

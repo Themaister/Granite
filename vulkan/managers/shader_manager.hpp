@@ -131,6 +131,9 @@ public:
 	void register_dependency_nolock(ShaderTemplate *shader, const std::string &dependency);
 #endif
 
+	bool get_shader_hash_by_variant_hash(Util::Hash variant_hash, Util::Hash &shader_hash);
+	void register_shader_hash_from_variant_hash(Util::Hash variant_hash, Util::Hash shader_hash);
+
 private:
 	Device *device;
 

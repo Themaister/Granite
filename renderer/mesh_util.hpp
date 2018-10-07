@@ -98,6 +98,7 @@ class Skybox : public AbstractRenderable, public EventHandler
 public:
 	Skybox(std::string bg_path = "", bool latlon = false);
 	void set_image(Vulkan::ImageHandle skybox);
+	void set_image(Vulkan::Texture *skybox);
 
 	void get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
 	                     RenderQueue &queue) const override;

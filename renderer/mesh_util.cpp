@@ -699,6 +699,11 @@ void Skybox::set_image(Vulkan::ImageHandle skybox)
 	image = std::move(skybox);
 }
 
+void Skybox::set_image(Vulkan::Texture *skybox)
+{
+	texture = skybox;
+}
+
 void Skybox::on_device_destroyed(const DeviceCreatedEvent &)
 {
 	device = nullptr;

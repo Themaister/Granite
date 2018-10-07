@@ -153,6 +153,7 @@ public:
 
 	void submit(TaskGroup &group);
 	void wait_idle();
+	bool is_idle();
 
 	static void register_main_thread();
 

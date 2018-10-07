@@ -262,6 +262,11 @@ void ThreadGroup::wait_idle()
 	});
 }
 
+bool ThreadGroup::is_idle()
+{
+	return total_tasks.load(memory_order_acquire) == completed_tasks.load(memory_order_acquire);
+}
+
 void ThreadGroup::thread_looper(unsigned index)
 {
 	thread_id_to_index = index;

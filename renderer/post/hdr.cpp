@@ -287,7 +287,8 @@ static void bloom_upsample_build_render_pass(RenderPass &pass, Vulkan::CommandBu
 static void tonemap_build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd,
                                       RenderTextureResource &hdr_res,
                                       RenderTextureResource &bloom_res,
-                                      RenderBufferResource &ubo_res)
+                                      RenderBufferResource &ubo_res,
+                                      const HDRDynamicExposureInterface *iface)
 {
 	auto &hdr = pass.get_graph().get_physical_texture_resource(hdr_res);
 	auto &bloom = pass.get_graph().get_physical_texture_resource(bloom_res);
@@ -295,13 +296,19 @@ static void tonemap_build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &c
 	cmd.set_texture(0, 0, hdr, Vulkan::StockSampler::LinearClamp);
 	cmd.set_texture(0, 1, bloom, Vulkan::StockSampler::LinearClamp);
 	cmd.set_uniform_buffer(0, 2, ubo);
-	vec2 inv_size = vec2(1.0f / hdr.get_image().get_create_info().width, 1.0f / hdr.get_image().get_create_info().height);
-	cmd.push_constants(&inv_size, 0, sizeof(inv_size));
+
+	struct Push
+	{
+		float dynamic_exposure;
+	} push;
+	push.dynamic_exposure = iface ? iface->get_exposure() : 1.0f;
+	cmd.push_constants(&push, 0, sizeof(push));
 	Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd, "builtin://shaders/quad.vert",
 	                                                "builtin://shaders/post/tonemap.frag");
 }
 
-void setup_hdr_postprocess_compute(RenderGraph &graph, const std::string &input, const std::string &output)
+void setup_hdr_postprocess_compute(RenderGraph &graph, const std::string &input, const std::string &output,
+                                   const HDRDynamicExposureInterface *iface)
 {
 	BufferInfo buffer_info;
 	buffer_info.size = 3 * sizeof(float);
@@ -376,14 +383,15 @@ void setup_hdr_postprocess_compute(RenderGraph &graph, const std::string &input,
 		auto &hdr_res = tonemap.add_texture_input(input);
 		auto &bloom_res = tonemap.add_texture_input("upsample-0");
 		auto &ubo_res = tonemap.add_uniform_input("average-luminance");
-		tonemap.set_build_render_pass([&](Vulkan::CommandBuffer &cmd)
+		tonemap.set_build_render_pass([&, interface = iface](Vulkan::CommandBuffer &cmd)
 		                              {
-			                              tonemap_build_render_pass(tonemap, cmd, hdr_res, bloom_res, ubo_res);
+			                              tonemap_build_render_pass(tonemap, cmd, hdr_res, bloom_res, ubo_res, interface);
 		                              });
 	}
 }
 
-void setup_hdr_postprocess(RenderGraph &graph, const std::string &input, const std::string &output)
+void setup_hdr_postprocess(RenderGraph &graph, const std::string &input, const std::string &output,
+                           const HDRDynamicExposureInterface *iface)
 {
 	BufferInfo buffer_info;
 	buffer_info.size = 3 * sizeof(float);
@@ -524,9 +532,9 @@ void setup_hdr_postprocess(RenderGraph &graph, const std::string &input, const s
 		auto &hdr_res = tonemap.add_texture_input(input);
 		auto &bloom_res = tonemap.add_texture_input("bloom-upsample-2");
 		auto &ubo_res = tonemap.add_uniform_input("average-luminance-updated");
-		tonemap.set_build_render_pass([&](Vulkan::CommandBuffer &cmd)
+		tonemap.set_build_render_pass([&, interface = iface](Vulkan::CommandBuffer &cmd)
 		                              {
-			                              tonemap_build_render_pass(tonemap, cmd, hdr_res, bloom_res, ubo_res);
+			                              tonemap_build_render_pass(tonemap, cmd, hdr_res, bloom_res, ubo_res, interface);
 		                              });
 	}
 }

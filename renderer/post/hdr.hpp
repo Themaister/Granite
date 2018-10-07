@@ -26,6 +26,14 @@
 
 namespace Granite
 {
-void setup_hdr_postprocess(RenderGraph &graph, const std::string &input, const std::string &output);
-void setup_hdr_postprocess_compute(RenderGraph &graph, const std::string &input, const std::string &output);
+struct HDRDynamicExposureInterface
+{
+	virtual ~HDRDynamicExposureInterface() = default;
+	virtual float get_exposure() const = 0;
+};
+
+void setup_hdr_postprocess(RenderGraph &graph, const std::string &input, const std::string &output,
+                           const HDRDynamicExposureInterface *iface = nullptr);
+void setup_hdr_postprocess_compute(RenderGraph &graph, const std::string &input, const std::string &output,
+                                   const HDRDynamicExposureInterface *iface = nullptr);
 }

@@ -86,7 +86,7 @@ void main()
     for (int l = layer - 1; l >= 0; l--)
     {
         mediump vec4 c = sample_refraction_layer(l, turbulence, refracted_dir_xz, pos_xz);
-        emissive = mix(c.rgb, emissive, c.a);
+        emissive = c.rgb + c.a * emissive;
     }
     emissive *= refraction_emissive_mod;
 #else

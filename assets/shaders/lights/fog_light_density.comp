@@ -121,7 +121,7 @@ mediump vec3 compute_floor_inscatter_light(vec3 pos)
     mediump float dir_y = normalize(pos - global.camera_position).y;
     mediump float phase = 0.55 - 0.45 * dir_y;
 
-    return textureLod(uFloorLight, uv, lod).rgb * (phase * floor_lighting.scatter_mod);
+    return textureLod(uFloorLight, uv, lod).rgb * (phase * floor_lighting.scatter_mod / (1.0 + 2.0 * lod));
 }
 #endif
 

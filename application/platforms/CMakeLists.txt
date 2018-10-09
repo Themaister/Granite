@@ -12,6 +12,10 @@ target_link_libraries(application-headless
 		application-input application-events rapidjson)
 target_include_directories(application-headless PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
+if (GRANITE_AUDIO)
+	target_link_libraries(application-headless audio-backend)
+endif()
+
 if (ANDROID)
 	option(GRANITE_ANDROID_APK_FILESYSTEM "Use APK file system for assets and builtin files." ON)
 	add_granite_library(application-main application_android.cpp)

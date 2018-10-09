@@ -34,6 +34,12 @@
 #include <limits.h>
 #include "dynamic_library.hpp"
 #include "hw_counters/hw_counter_interface.h"
+
+#ifdef HAVE_GRANITE_AUDIO
+#include "audio_interface.hpp"
+#include "audio_mixer.hpp"
+#endif
+
 using namespace rapidjson;
 
 #ifdef _WIN32
@@ -453,6 +459,7 @@ void application_dummy()
 static void print_help()
 {
 	LOGI("[--png-path <path>] [--stat <output.json>]\n"
+	     "[--audio-dump <sample rate> <data path (fp32 interleaved stereo raw)>]\n"
 	     "[--fs-assets <path>] [--fs-cache <path>] [--fs-builtin <path>]\n"
 	     "[--png-reference-path <path>] [--frames <frames>] [--width <width>] [--height <height>] [--time-step <step>] [--hw-counter-lib <lib>].\n");
 }
@@ -499,6 +506,9 @@ int main(int argc, char *argv[])
 		unsigned width = 1280;
 		unsigned height = 720;
 		double time_step = 0.01;
+		double sample_rate = 44100.0;
+		string audio_output;
+		bool audio_dump = false;
 	} args;
 
 	std::vector<char *> filtered_argv;
@@ -517,6 +527,11 @@ int main(int argc, char *argv[])
 	cbs.add("--stat", [&](CLIParser &parser) { args.stat = parser.next_string(); });
 	cbs.add("--help", [](CLIParser &parser) { print_help(); parser.end(); });
 	cbs.add("--hw-counter-lib", [&](CLIParser &parser) { args.hw_counter_lib = parser.next_string(); });
+	cbs.add("--audio-dump", [&](CLIParser &parser) {
+		args.sample_rate = parser.next_double();
+		args.audio_output = parser.next_string();
+		args.audio_dump = true;
+	});
 	cbs.default_handler = [&](const char *arg) { filtered_argv.push_back(const_cast<char *>(arg)); };
 	cbs.error_handler = [&]() { print_help(); };
 	CLIParser parser(move(cbs), argc - 1, argv + 1);
@@ -536,6 +551,26 @@ int main(int argc, char *argv[])
 		Global::filesystem()->register_protocol("builtin", make_unique<OSFilesystem>(args.builtin));
 	if (!args.cache.empty())
 		Global::filesystem()->register_protocol("cache", make_unique<OSFilesystem>(args.cache));
+
+#ifdef HAVE_GRANITE_AUDIO
+	Audio::DumpBackend *audio_dumper = nullptr;
+	if (args.audio_dump)
+	{
+		if (args.max_frames != UINT_MAX)
+		{
+			auto *mixer = new Audio::Mixer;
+			audio_dumper = new Audio::DumpBackend(*mixer, args.audio_output,
+			                                      float(args.sample_rate), 2,
+			                                      unsigned(std::round(args.sample_rate * args.time_step)),
+			                                      args.max_frames + 1);
+			Global::install_audio_system(audio_dumper, mixer);
+		}
+		else
+		{
+			LOGI("Need to use --frames to dump audio.\n");
+		}
+	}
+#endif
 
 	auto app = unique_ptr<Application>(Granite::application_create(int(filtered_argv.size() - 1), filtered_argv.data()));
 
@@ -561,12 +596,20 @@ int main(int argc, char *argv[])
 		p->set_time_step(args.time_step);
 		p->init(app.get());
 
+#ifdef HAVE_GRANITE_AUDIO
+		Global::start_audio_system();
+#endif
+
 		// Run warm-up frame.
 		if (app->poll())
 		{
 			p->begin_frame();
 			app->run_frame();
 			p->end_frame();
+#ifdef HAVE_GRANITE_AUDIO
+			if (audio_dumper)
+				audio_dumper->frame();
+#endif
 		}
 
 		p->wait_threads();
@@ -583,6 +626,10 @@ int main(int argc, char *argv[])
 			app->run_frame();
 			p->end_frame();
 			rendered_frames++;
+#ifdef HAVE_GRANITE_AUDIO
+			if (audio_dumper)
+				audio_dumper->frame();
+#endif
 		}
 
 		p->wait_threads();
@@ -591,6 +638,10 @@ int main(int argc, char *argv[])
 		bool has_end_counters = p->get_counters(end_counter);
 
 		auto end_time = get_current_time_nsecs();
+
+#ifdef HAVE_GRANITE_AUDIO
+		Global::stop_audio_system();
+#endif
 
 		if (rendered_frames)
 		{
@@ -630,6 +681,10 @@ int main(int argc, char *argv[])
 			p->begin_frame();
 			app->run_frame();
 			p->end_frame();
+#ifdef HAVE_GRANITE_AUDIO
+			if (audio_dumper)
+				audio_dumper->frame();
+#endif
 		}
 
 		p->wait_threads();

@@ -66,5 +66,25 @@ protected:
 };
 
 Backend *create_default_audio_backend(BackendCallback &callback, float target_sample_rate, unsigned target_channels);
+
+class DumpBackend : public Backend
+{
+public:
+	DumpBackend(BackendCallback &callback, const std::string &path,
+	            float target_sample_rate, unsigned target_channels,
+	            unsigned frames_per_tick, unsigned frames);
+	~DumpBackend();
+	void frame();
+
+	const char *get_backend_name() override;
+	float get_sample_rate() override;
+	unsigned get_num_channels() override;
+	bool start() override;
+	bool stop() override;
+
+private:
+	struct Impl;
+	std::unique_ptr<Impl> impl;
+};
 }
 }

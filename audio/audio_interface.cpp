@@ -20,7 +20,10 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include "filesystem.hpp"
 #include "audio_interface.hpp"
+#include "util.hpp"
+#include "dsp/dsp.hpp"
 #ifdef AUDIO_HAVE_PULSE
 #include "audio_pulse.hpp"
 #endif
@@ -68,5 +71,123 @@ Backend *create_default_audio_backend(BackendCallback &callback, float target_sa
 	}
 	return nullptr;
 }
+
+struct DumpBackend::Impl
+{
+	std::string path;
+
+	std::unique_ptr<File> file;
+	float *mapped = nullptr;
+
+	std::vector<float> mix_buffers[Backend::MaxAudioChannels];
+	float *mix_buffers_ptr[Backend::MaxAudioChannels] = {};
+
+	float target_sample_rate = 0;
+	unsigned target_channels = 0;
+	unsigned frames_per_tick = 0;
+	unsigned frames = 0;
+	unsigned frame_offset = 0;
+};
+
+DumpBackend::DumpBackend(BackendCallback &callback, const std::string &path, float target_sample_rate,
+                         unsigned target_channels, unsigned frames_per_tick, unsigned frames)
+	: Backend(callback)
+{
+	impl.reset(new Impl);
+	impl->path = path;
+	impl->target_sample_rate = target_sample_rate;
+	impl->target_channels = target_channels;
+	impl->frames = frames;
+	impl->frames_per_tick = frames_per_tick;
+
+	callback.set_backend_parameters(target_sample_rate, target_channels, frames_per_tick);
+	callback.set_latency_usec(0);
+
+	for (unsigned c = 0; c < target_channels; c++)
+	{
+		impl->mix_buffers[c].resize(frames_per_tick);
+		impl->mix_buffers_ptr[c] = impl->mix_buffers[c].data();
+	}
+}
+
+DumpBackend::~DumpBackend()
+{
+}
+
+void DumpBackend::frame()
+{
+	if ((impl->frame_offset < impl->frames) && impl->mapped)
+	{
+		callback.mix_samples(impl->mix_buffers_ptr, impl->frames_per_tick);
+
+		if (impl->target_channels == 2)
+		{
+			DSP::interleave_stereo_f32(impl->mapped, impl->mix_buffers_ptr[0], impl->mix_buffers_ptr[1], impl->frames_per_tick);
+			impl->mapped += impl->frames_per_tick * impl->target_channels;
+		}
+		else
+		{
+			unsigned channels = impl->target_channels;
+			size_t frames_per_tick = impl->frames_per_tick;
+			for (size_t f = 0; f < frames_per_tick; f++)
+				for (unsigned c = 0; c < channels; c++)
+					*impl->mapped++ = impl->mix_buffers_ptr[c][f];
+		}
+	}
+
+	impl->frame_offset++;
+}
+
+bool DumpBackend::start()
+{
+	size_t target_size = impl->frames * impl->frames_per_tick * impl->target_channels * sizeof(float);
+
+	impl->file = Granite::Global::filesystem()->open(impl->path, Granite::FileMode::WriteOnly);
+	if (!impl->file)
+	{
+		LOGE("Failed to open dump file for writing.\n");
+		return false;
+	}
+
+	impl->mapped = static_cast<float *>(impl->file->map_write(target_size));
+	if (!impl->mapped)
+	{
+		LOGE("Failed to map dump file for writing.\n");
+		return false;
+	}
+
+	callback.on_backend_start();
+	return true;
+}
+
+bool DumpBackend::stop()
+{
+	if (impl->file && impl->mapped)
+	{
+		impl->file->unmap();
+		impl->mapped = nullptr;
+		impl->frame_offset = 0;
+	}
+
+	impl->file.reset();
+	callback.on_backend_stop();
+	return true;
+}
+
+float DumpBackend::get_sample_rate()
+{
+	return impl->target_sample_rate;
+}
+
+unsigned DumpBackend::get_num_channels()
+{
+	return impl->target_channels;
+}
+
+const char *DumpBackend::get_backend_name()
+{
+	return "dump";
+}
+
 }
 }

@@ -66,6 +66,7 @@ UI::UIManager *ui_manager();
 #ifdef HAVE_GRANITE_AUDIO
 Audio::Backend *audio_backend();
 Audio::Mixer *audio_mixer();
+void install_audio_system(Audio::Backend *backend, Audio::Mixer *mixer);
 #endif
 }
 

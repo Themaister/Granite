@@ -102,6 +102,17 @@ UI::UIManager *ui_manager()
 #ifdef HAVE_GRANITE_AUDIO
 Audio::Backend *audio_backend() { return global_managers.audio_backend; }
 Audio::Mixer *audio_mixer() { return global_managers.audio_mixer; }
+
+void install_audio_system(Audio::Backend *backend, Audio::Mixer *mixer)
+{
+	if (global_managers.audio_mixer)
+		delete global_managers.audio_mixer;
+	global_managers.audio_mixer = mixer;
+
+	if (global_managers.audio_backend)
+		delete global_managers.audio_backend;
+	global_managers.audio_backend = backend;
+}
 #endif
 
 void init(ManagerFeatureFlags flags)

@@ -33,7 +33,7 @@
 #include "compiler.hpp"
 #endif
 #include "filesystem.hpp"
-#include "hashmap.hpp"
+#include "hash.hpp"
 #ifdef GRANITE_VULKAN_MT
 #include "read_write_lock.hpp"
 #endif

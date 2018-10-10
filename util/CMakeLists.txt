@@ -3,7 +3,7 @@ add_granite_library(util
         array_view.hpp
         variant.hpp
         enum_cast.hpp
-        hashmap.hpp
+        hash.hpp
         intrusive.hpp
         intrusive_list.hpp
         object_pool.hpp
@@ -14,6 +14,7 @@ add_granite_library(util
         thread_safe_cache.hpp
         async_object_sink.hpp
         unstable_remove_if.hpp
+        intrusive_hash_map.hpp
         cli_parser.cpp cli_parser.hpp
         dynamic_library.cpp dynamic_library.hpp
         timer.hpp timer.cpp)

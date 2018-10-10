@@ -24,7 +24,7 @@
 
 #include "cookie.hpp"
 #include "descriptor_set.hpp"
-#include "hashmap.hpp"
+#include "hash.hpp"
 #include "intrusive.hpp"
 #include "limits.hpp"
 #include "vulkan.hpp"

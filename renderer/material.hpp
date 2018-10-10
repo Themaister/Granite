@@ -29,7 +29,7 @@
 #include "enum_cast.hpp"
 #include "sampler.hpp"
 #include "abstract_renderable.hpp"
-#include "hashmap.hpp"
+#include "hash.hpp"
 
 namespace Granite
 {

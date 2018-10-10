@@ -27,7 +27,7 @@
 #include <type_traits>
 #include <stdexcept>
 #include <command_buffer.hpp>
-#include "hashmap.hpp"
+#include "hash.hpp"
 #include "enum_cast.hpp"
 #include "math.hpp"
 

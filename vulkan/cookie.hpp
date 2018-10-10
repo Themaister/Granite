@@ -23,7 +23,7 @@
 #pragma once
 
 #include <stdint.h>
-#include "hashmap.hpp"
+#include "hash.hpp"
 
 namespace Vulkan
 {

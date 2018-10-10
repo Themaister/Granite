@@ -24,7 +24,7 @@
 
 #include "abstract_renderable.hpp"
 #include "buffer.hpp"
-#include "hashmap.hpp"
+#include "hash.hpp"
 #include "material.hpp"
 #include "aabb.hpp"
 #include "render_queue.hpp"

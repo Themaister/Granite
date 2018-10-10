@@ -22,7 +22,7 @@
 
 #pragma once
 
-#include "hashmap.hpp"
+#include "hash.hpp"
 #include "object_pool.hpp"
 #include "intrusive_list.hpp"
 #include <vector>

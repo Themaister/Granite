@@ -22,7 +22,7 @@
 
 #pragma once
 
-#include "hashmap.hpp"
+#include "hash.hpp"
 #include "read_write_lock.hpp"
 #include <memory>
 #include <utility>

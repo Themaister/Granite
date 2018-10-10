@@ -21,6 +21,7 @@
  */
 
 #include "intrusive.hpp"
+#include "intrusive_hash_map.hpp"
 #include "util.hpp"
 #include <vector>
 
@@ -41,8 +42,75 @@ struct B : A
 	int b = 10;
 };
 
+struct Value : IntrusiveHashMapEnabled<Value>
+{
+	Value(int v)
+		: value(v)
+	{
+	}
+
+	int value;
+};
+
 int main()
 {
+	IntrusiveHashMap<Value> hash_map;
+
+	const auto emplace_integer = [&](int key, int value) {
+		Hasher h;
+		h.s32(key);
+		auto hash = h.get();
+		hash_map.emplace_yield(hash, value);
+	};
+
+	const auto emplace_replace = [&](int key, int value) {
+		Hasher h;
+		h.s32(key);
+		auto hash = h.get();
+		hash_map.emplace_replace(hash, value);
+	};
+
+	const auto find = [&](int key) -> Value * {
+		Hasher h;
+		h.s32(key);
+		auto hash = h.get();
+		return hash_map.find(hash);
+	};
+
+	emplace_integer(1, 10);
+	emplace_integer(1, 20);
+	emplace_integer(2, 100);
+	emplace_integer(3, 1000);
+	emplace_integer(4, 9999);
+	emplace_replace(4, 10000);
+
+	for (auto &v : hash_map)
+		LOGI("Value: %d\n", v.value);
+
+	Value *v;
+	v = find(1);
+	assert(v && v->value == 10);
+	v = find(2);
+	assert(v && v->value == 100);
+	v = find(3);
+	assert(v && v->value == 1000);
+	v = find(4);
+	assert(v && v->value == 10000);
+
+	hash_map.erase(find(2));
+
+	for (auto &v : hash_map)
+		LOGI("Value: %d\n", v.value);
+
+	v = find(1);
+	assert(v && v->value == 10);
+	v = find(2);
+	assert(!v);
+	v = find(3);
+	assert(v && v->value == 1000);
+	v = find(4);
+	assert(v && v->value == 10000);
+
 	std::vector<IntrusivePtr<A>> as;
 
 	{

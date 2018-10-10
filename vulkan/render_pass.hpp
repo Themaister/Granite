@@ -23,7 +23,7 @@
 #pragma once
 
 #include "cookie.hpp"
-#include "hashmap.hpp"
+#include "hash.hpp"
 #include "image.hpp"
 #include "intrusive.hpp"
 #include "limits.hpp"

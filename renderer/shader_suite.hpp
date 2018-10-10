@@ -23,8 +23,8 @@
 #pragma once
 
 #include "shader_manager.hpp"
+#include "intrusive_hash_map.hpp"
 #include "mesh.hpp"
-#include "thread_safe_cache.hpp"
 
 namespace Granite
 {
@@ -46,7 +46,7 @@ private:
 	Util::Hash base_define_hash = 0;
 	Vulkan::ShaderManager *manager = nullptr;
 	Vulkan::ShaderProgram *program = nullptr;
-	Util::ThreadSafeCache<unsigned> variants;
+	Util::ThreadSafeIntrusiveHashMap<Util::IntrusivePODWrapper<unsigned>> variants;
 	std::vector<std::pair<std::string, int>> base_defines;
 };
 }

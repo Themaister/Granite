@@ -70,13 +70,13 @@ const ShaderTemplate::Variant *ShaderTemplate::register_variant(const std::vecto
 	auto *ret = variants.find(hash);
 	if (!ret)
 	{
-		auto variant = make_unique<Variant>();
+		auto *variant = variants.allocate();
 		variant->hash = complete_hash;
 
 		auto *spirv_hash = cache.find(complete_hash);
 		if (spirv_hash)
 		{
-			variant->spirv_hash = *spirv_hash;
+			variant->spirv_hash = spirv_hash->get();
 		}
 		else
 		{
@@ -85,10 +85,12 @@ const ShaderTemplate::Variant *ShaderTemplate::register_variant(const std::vecto
 			if (variant->spirv.empty())
 			{
 				LOGE("Shader error:\n%s\n", compiler->get_error_message().c_str());
+				variants.free(variant);
 				throw runtime_error("Shader compile failed.");
 			}
 #else
 			LOGE("Could not find shader variant for %s in cache.\n", path.c_str());
+			variants.free(variant);
 			return nullptr;
 #endif
 		}
@@ -97,7 +99,7 @@ const ShaderTemplate::Variant *ShaderTemplate::register_variant(const std::vecto
 		if (defines)
 			variant->defines = *defines;
 
-		ret = variants.insert(hash, move(variant));
+		ret = variants.insert_replace(hash, variant);
 	}
 	return ret;
 }
@@ -117,19 +119,19 @@ void ShaderTemplate::recompile()
 		}
 		compiler = move(newcompiler);
 
-		for (auto &variant : variants.get_hashmap())
+		for (auto &variant : variants)
 		{
-			auto newspirv = compiler->compile(&variant.second->defines);
+			auto newspirv = compiler->compile(&variant.defines);
 			if (newspirv.empty())
 			{
 				LOGE("Failed to compile shader: %s\n%s\n", path.c_str(), compiler->get_error_message().c_str());
-				for (auto &define : variant.second->defines)
+				for (auto &define : variant.defines)
 					LOGE("  Define: %s = %d\n", define.first.c_str(), define.second);
 				continue;
 			}
 
-			variant.second->spirv = move(newspirv);
-			variant.second->instance++;
+			variant.spirv = move(newspirv);
+			variant.instance++;
 		}
 	}
 	catch (const std::exception &e)
@@ -180,7 +182,7 @@ Vulkan::Program *ShaderProgram::get_program(unsigned variant)
 				{
 					var.program = device->request_program(comp->spirv.data(), comp->spirv.size() * sizeof(uint32_t));
 					auto spirv_hash = var.program->get_shader(ShaderStage::Compute)->get_hash();
-					cache.insert_replace(comp->hash, make_unique<Hash>(spirv_hash));
+					cache.emplace_replace(comp->hash, spirv_hash);
 				}
 			}
 			auto ret = var.program;
@@ -223,7 +225,7 @@ Vulkan::Program *ShaderProgram::get_program(unsigned variant)
 				else
 				{
 					vert_shader = device->request_shader(vert->spirv.data(), vert->spirv.size() * sizeof(uint32_t));
-					cache.insert_replace(vert->hash, make_unique<Hash>(vert_shader->get_hash()));
+					cache.emplace_replace(vert->hash, vert_shader->get_hash());
 				}
 
 				if (frag->spirv.empty())
@@ -231,7 +233,7 @@ Vulkan::Program *ShaderProgram::get_program(unsigned variant)
 				else
 				{
 					frag_shader = device->request_shader(frag->spirv.data(), frag->spirv.size() * sizeof(uint32_t));
-					cache.insert_replace(frag->hash, make_unique<Hash>(frag_shader->get_hash()));
+					cache.emplace_replace(frag->hash, frag_shader->get_hash());
 				}
 
 				var.program = device->request_program(vert_shader, frag_shader);
@@ -310,11 +312,7 @@ ShaderProgram *ShaderManager::register_compute(const std::string &compute)
 
 	auto *ret = programs.find(hash);
 	if (!ret)
-	{
-		auto prog = make_unique<ShaderProgram>(device, shader_cache);
-		prog->set_stage(Vulkan::ShaderStage::Compute, tmpl);
-		ret = programs.insert(hash, move(prog));
-	}
+		ret = programs.emplace_yield(hash, device, shader_cache, tmpl);
 	return ret;
 }
 
@@ -327,15 +325,15 @@ ShaderTemplate *ShaderManager::get_template(const std::string &path)
 	auto *ret = shaders.find(hash);
 	if (!ret)
 	{
-		auto shader = make_unique<ShaderTemplate>(path, shader_cache, hasher.get());
+		auto *shader = shaders.allocate(hash, path, shader_cache, hasher.get());
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 		{
 			DEPENDENCY_LOCK();
-			register_dependency_nolock(shader.get(), path);
+			register_dependency_nolock(shader, path);
 			shader->register_dependencies(*this);
 		}
 #endif
-		ret = shaders.insert(hash, move(shader));
+		ret = shaders.insert_yield(hash, shader);
 	}
 	return ret;
 }
@@ -352,12 +350,7 @@ ShaderProgram *ShaderManager::register_graphics(const std::string &vertex, const
 
 	auto *ret = programs.find(hash);
 	if (!ret)
-	{
-		auto prog = make_unique<ShaderProgram>(device, shader_cache);
-		prog->set_stage(Vulkan::ShaderStage::Vertex, vert_tmpl);
-		prog->set_stage(Vulkan::ShaderStage::Fragment, frag_tmpl);
-		ret = programs.insert(hash, move(prog));
-	}
+		ret = programs.emplace_yield(hash, device, shader_cache, vert_tmpl, frag_tmpl);
 	return ret;
 }
 
@@ -423,7 +416,7 @@ void ShaderManager::add_directory_watch(const std::string &source)
 
 void ShaderManager::register_shader_hash_from_variant_hash(Hash variant_hash, Hash shader_hash)
 {
-	shader_cache.insert_replace(variant_hash, make_unique<Hash>(shader_hash));
+	shader_cache.emplace_replace(variant_hash, shader_hash);
 }
 
 bool ShaderManager::get_shader_hash_by_variant_hash(Hash variant_hash, Hash &shader_hash)
@@ -431,7 +424,7 @@ bool ShaderManager::get_shader_hash_by_variant_hash(Hash variant_hash, Hash &sha
 	auto *itr = shader_cache.find(variant_hash);
 	if (itr)
 	{
-		shader_hash = *itr;
+		shader_hash = itr->get();
 		return true;
 	}
 	else
@@ -461,7 +454,7 @@ bool ShaderManager::load_shader_cache(const string &path)
 	for (auto itr = maps.Begin(); itr != maps.End(); ++itr)
 	{
 		auto &value = *itr;
-		shader_cache.insert_replace(value["variant"].GetUint64(), make_unique<Hash>(value["spirvHash"].GetUint64()));
+		shader_cache.emplace_replace(value["variant"].GetUint64(), value["spirvHash"].GetUint64());
 	}
 
 	LOGI("Loaded shader manager cache from %s.\n", path.c_str());
@@ -477,11 +470,11 @@ bool ShaderManager::save_shader_cache(const string &path)
 
 	Value maps(kArrayType);
 
-	for (auto &entry : shader_cache.get_hashmap())
+	for (auto &entry : shader_cache)
 	{
 		Value map_entry(kObjectType);
-		map_entry.AddMember("variant", entry.first, allocator);
-		map_entry.AddMember("spirvHash", *entry.second, allocator);
+		map_entry.AddMember("variant", entry.intrusive_hashmap_key, allocator);
+		map_entry.AddMember("spirvHash", entry.get(), allocator);
 		maps.PushBack(map_entry, allocator);
 	}
 

@@ -71,10 +71,10 @@ struct CombinedResourceLayout
 	Util::Hash push_constant_layout_hash = 0;
 };
 
-class PipelineLayout : public HashedObject
+class PipelineLayout : public HashedObject<PipelineLayout>
 {
 public:
-	PipelineLayout(Util::Hash hash, Device *device, const CombinedResourceLayout &layout);
+	PipelineLayout(Device *device, const CombinedResourceLayout &layout);
 	~PipelineLayout();
 
 	const CombinedResourceLayout &get_resource_layout() const
@@ -99,10 +99,10 @@ private:
 	DescriptorSetAllocator *set_allocators[VULKAN_NUM_DESCRIPTOR_SETS] = {};
 };
 
-class Shader : public HashedObject
+class Shader : public HashedObject<Shader>
 {
 public:
-	Shader(Util::Hash hash, Device *device, const uint32_t *data, size_t size);
+	Shader(Device *device, const uint32_t *data, size_t size);
 	~Shader();
 
 	const ResourceLayout &get_layout() const
@@ -123,11 +123,11 @@ private:
 	ResourceLayout layout;
 };
 
-class Program : public HashedObject, public InternalSyncEnabled
+class Program : public HashedObject<Program>, public InternalSyncEnabled
 {
 public:
-	Program(Util::Hash hash, Device *device, Shader *vertex, Shader *fragment);
-	Program(Util::Hash hash, Device *device, Shader *compute);
+	Program(Device *device, Shader *vertex, Shader *fragment);
+	Program(Device *device, Shader *compute);
 	~Program();
 
 	inline const Shader *get_shader(ShaderStage stage) const

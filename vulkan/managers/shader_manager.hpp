@@ -40,16 +40,16 @@
 
 namespace Vulkan
 {
-using PrecomputedShaderCache = VulkanCache<Util::Hash>;
+using PrecomputedShaderCache = VulkanCache<Util::IntrusivePODWrapper<Util::Hash>>;
 
 class ShaderManager;
 class Device;
-class ShaderTemplate
+class ShaderTemplate : public Util::IntrusiveHashMapEnabled<ShaderTemplate>
 {
 public:
 	ShaderTemplate(const std::string &shader_path, PrecomputedShaderCache &cache, Util::Hash path_hash);
 
-	struct Variant
+	struct Variant : public Util::IntrusiveHashMapEnabled<Variant>
 	{
 		Util::Hash hash = 0;
 		Util::Hash spirv_hash = 0;
@@ -77,12 +77,20 @@ private:
 	Util::Hash path_hash = 0;
 };
 
-class ShaderProgram
+class ShaderProgram : public Util::IntrusiveHashMapEnabled<ShaderProgram>
 {
 public:
-	ShaderProgram(Device *device, PrecomputedShaderCache &cache)
+	ShaderProgram(Device *device, PrecomputedShaderCache &cache, ShaderTemplate *compute)
 		: device(device), cache(cache)
 	{
+		set_stage(Vulkan::ShaderStage::Compute, compute);
+	}
+
+	ShaderProgram(Device *device, PrecomputedShaderCache &cache, ShaderTemplate *vert, ShaderTemplate *frag)
+		: device(device), cache(cache)
+	{
+		set_stage(Vulkan::ShaderStage::Vertex, vert);
+		set_stage(Vulkan::ShaderStage::Fragment, frag);
 	}
 
 	Vulkan::Program *get_program(unsigned variant);

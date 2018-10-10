@@ -25,6 +25,7 @@
 #include "intrusive_list.hpp"
 #include "hash.hpp"
 #include "object_pool.hpp"
+#include "read_write_lock.hpp"
 #include <vector>
 #include <assert.h>
 
@@ -34,6 +35,28 @@ template <typename T>
 struct IntrusiveHashMapEnabled : IntrusiveListEnabled<T>
 {
 	Hash intrusive_hashmap_key;
+};
+
+template <typename T>
+struct IntrusivePODWrapper : public IntrusiveHashMapEnabled<IntrusivePODWrapper<T>>
+{
+	template <typename U>
+	IntrusivePODWrapper(U&& value_)
+		: value(std::forward<U>(value_))
+	{
+	}
+
+	T& get()
+	{
+		return value;
+	}
+
+	const T& get() const
+	{
+		return value;
+	}
+
+	T value;
 };
 
 // This HashMap is non-owning. It just arranges a list of pointers.
@@ -48,13 +71,11 @@ class IntrusiveHashMapHolder
 public:
 	enum { InitialSize = 16 };
 
-	IntrusiveHashMapHolder()
-	{
-		values.resize(InitialSize);
-	}
-
 	T *find(Hash hash) const
 	{
+		if (values.empty())
+			return nullptr;
+
 		auto masked = hash & hash_mask;
 		while (values[masked])
 		{
@@ -73,7 +94,7 @@ public:
 	T *insert_yield(T *&value)
 	{
 		// If we grow beyond 50%, resize.
-		if (count > (hash_mask >> 1))
+		if (count >= (hash_mask >> 1))
 			grow();
 
 		auto masked = get_hash(value) & hash_mask;
@@ -98,7 +119,7 @@ public:
 	T *insert_replace(T *value)
 	{
 		// If we grow beyond 50%, resize.
-		if (count > (hash_mask >> 1))
+		if (count >= (hash_mask >> 1))
 			grow();
 
 		auto masked = get_hash(value) & hash_mask;
@@ -138,8 +159,7 @@ public:
 	{
 		list.clear();
 		values.clear();
-		values.resize(InitialSize);
-		hash_mask = InitialSize - 1;
+		hash_mask = 0;
 	}
 
 	typename IntrusiveList<T>::Iterator begin()
@@ -191,8 +211,16 @@ private:
 		for (auto &v : values)
 			v = nullptr;
 
-		values.resize(values.size() * 2);
-		hash_mask = Hash(values.size()) - 1;
+		if (values.empty())
+		{
+			values.resize(InitialSize);
+			hash_mask = Hash(values.size()) - 1;
+		}
+		else
+		{
+			values.resize(values.size() * 2);
+			hash_mask = Hash(values.size()) - 1;
+		}
 
 		// Re-insert.
 		for (auto &t : list)
@@ -201,7 +229,7 @@ private:
 
 	std::vector<T *> values;
 	IntrusiveList<T> list;
-	Hash hash_mask = InitialSize - 1;
+	Hash hash_mask = 0;
 	size_t count = 0;
 };
 
@@ -209,6 +237,22 @@ template <typename T>
 class IntrusiveHashMap
 {
 public:
+	~IntrusiveHashMap()
+	{
+		clear();
+	}
+
+	IntrusiveHashMap() = default;
+	IntrusiveHashMap(const IntrusiveHashMap &) = delete;
+	void operator=(const IntrusiveHashMap &) = delete;
+
+	void clear()
+	{
+		for (auto &t : hashmap)
+			pool.free(&t);
+		hashmap.clear();
+	}
+
 	T *find(Hash hash) const
 	{
 		return hashmap.find(hash);
@@ -234,24 +278,15 @@ public:
 		return insert_yield(hash, t);
 	}
 
-	typename IntrusiveList<T>::Iterator begin()
-	{
-		return hashmap.begin();
-	}
-
-	typename IntrusiveList<T>::Iterator end()
-	{
-		return hashmap.end();
-	}
-
-private:
-	IntrusiveHashMapHolder<T> hashmap;
-	ObjectPool<T> pool;
-
 	template <typename... P>
 	T *allocate(P&&... p)
 	{
 		return pool.allocate(std::forward<P>(p)...);
+	}
+
+	void free(T *value)
+	{
+		pool.free(value);
 	}
 
 	T *insert_replace(Hash hash, T *value)
@@ -271,5 +306,127 @@ private:
 			pool.free(to_delete);
 		return value;
 	}
+
+	typename IntrusiveList<T>::Iterator begin()
+	{
+		return hashmap.begin();
+	}
+
+	typename IntrusiveList<T>::Iterator end()
+	{
+		return hashmap.end();
+	}
+
+	IntrusiveHashMap &get_thread_unsafe()
+	{
+		return *this;
+	}
+
+private:
+	IntrusiveHashMapHolder<T> hashmap;
+	ObjectPool<T> pool;
+};
+
+template <typename T>
+class ThreadSafeIntrusiveHashMap
+{
+public:
+	T *find(Hash hash) const
+	{
+		lock.lock_read();
+		T *t = hashmap.find(hash);
+		lock.unlock_read();
+
+		// We can race with the intrusive list internal pointers,
+		// but that's an internal detail which should never be touched outside the hashmap.
+		return t;
+	}
+
+	void clear()
+	{
+		lock.lock_write();
+		hashmap.clear();
+		lock.unlock_write();
+	}
+
+	// Assumption is that readers will not be erased while in use by any other thread.
+	void erase(T *value)
+	{
+		lock.lock_write();
+		hashmap.erase(value);
+		lock.unlock_write();
+	}
+
+	template <typename... P>
+	T *allocate(P&&... p)
+	{
+		lock.lock_write();
+		T *t = hashmap.allocate(std::forward<P>(p)...);
+		lock.unlock_write();
+		return t;
+	}
+
+	void free(T *value)
+	{
+		lock.lock_write();
+		hashmap.free(value);
+		lock.unlock_write();
+	}
+
+	T *insert_replace(Hash hash, T *value)
+	{
+		lock.lock_write();
+		value = hashmap.insert_replace(hash, value);
+		lock.unlock_write();
+		return value;
+	}
+
+	T *insert_yield(Hash hash, T *value)
+	{
+		lock.lock_write();
+		value = hashmap.insert_yield(hash, value);
+		lock.unlock_write();
+		return value;
+	}
+
+	// This one is very sketchy, since callers need to make sure there are no readers of this hash.
+	template <typename... P>
+	T *emplace_replace(Hash hash, P&&... p)
+	{
+		lock.lock_write();
+		T *t = hashmap.emplace_replace(hash, std::forward<P>(p)...);
+		lock.unlock_write();
+		return t;
+	}
+
+	template <typename... P>
+	T *emplace_yield(Hash hash, P&&... p)
+	{
+		lock.lock_write();
+		T *t = hashmap.emplace_yield(hash, std::forward<P>(p)...);
+		lock.unlock_write();
+		return t;
+	}
+
+	// Not supposed to be called in racy conditions,
+	// we could have a global read lock and unlock while iterating if necessary.
+	typename IntrusiveList<T>::Iterator begin()
+	{
+		return hashmap.begin();
+	}
+
+	typename IntrusiveList<T>::Iterator end()
+	{
+		return hashmap.end();
+	}
+
+	IntrusiveHashMap<T> &get_thread_unsafe()
+	{
+		return hashmap;
+	}
+
+private:
+	IntrusiveHashMap<T> hashmap;
+	mutable RWSpinLock lock;
 };
 }

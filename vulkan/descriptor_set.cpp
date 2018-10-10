@@ -33,8 +33,8 @@ using namespace Util;
 
 namespace Vulkan
 {
-DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device, const DescriptorSetLayout &layout, const uint32_t *stages_for_binds)
-    : HashedObject(hash), device(device)
+DescriptorSetAllocator::DescriptorSetAllocator(Device *device, const DescriptorSetLayout &layout, const uint32_t *stages_for_binds)
+    : device(device)
 {
 #ifdef GRANITE_VULKAN_MT
 	unsigned count = Granite::Global::thread_group()->get_num_threads() + 1;

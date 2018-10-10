@@ -23,8 +23,8 @@
 #pragma once
 
 #include "intrusive.hpp"
-#include "thread_safe_cache.hpp"
 #include "object_pool.hpp"
+#include "intrusive_hash_map.hpp"
 
 namespace Vulkan
 {
@@ -38,11 +38,11 @@ using HandleCounter = Util::SingleThreadCounter;
 template <typename T>
 using VulkanObjectPool = Util::ThreadSafeObjectPool<T>;
 template <typename T>
-using VulkanCache = Util::ThreadSafeCache<T>;
+using VulkanCache = Util::ThreadSafeIntrusiveHashMap<T>;
 #else
 template <typename T>
 using VulkanObjectPool = Util::ObjectPool<T>;
 template <typename T>
-using VulkanCache = Util::Cache<T>;
+using VulkanCache = Util::IntrusiveHashMap<T>;
 #endif
 }

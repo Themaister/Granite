@@ -82,7 +82,7 @@ struct RenderPassInfo
 	unsigned num_subpasses = 0;
 };
 
-class RenderPass : public HashedObject, public NoCopyNoMove
+class RenderPass : public HashedObject<RenderPass>, public NoCopyNoMove
 {
 public:
 	struct SubpassInfo
@@ -96,8 +96,8 @@ public:
 		unsigned samples;
 	};
 
-	RenderPass(Util::Hash hash, Device *device, const RenderPassInfo &info);
-	RenderPass(Util::Hash hash, Device *device, const VkRenderPassCreateInfo &create_info);
+	RenderPass(Device *device, const RenderPassInfo &info);
+	RenderPass(Device *device, const VkRenderPassCreateInfo &create_info);
 	~RenderPass();
 
 	unsigned get_num_subpasses() const

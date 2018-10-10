@@ -34,9 +34,8 @@ using namespace Util;
 
 namespace Vulkan
 {
-PipelineLayout::PipelineLayout(Hash hash, Device *device, const CombinedResourceLayout &layout)
-    : HashedObject(hash)
-    , device(device)
+PipelineLayout::PipelineLayout(Device *device, const CombinedResourceLayout &layout)
+    : device(device)
     , layout(layout)
 {
 	VkDescriptorSetLayout layouts[VULKAN_NUM_DESCRIPTOR_SETS] = {};
@@ -151,9 +150,8 @@ static bool get_stock_sampler(StockSampler &sampler, const string &name)
 	return true;
 }
 
-Shader::Shader(Hash hash, Device *device, const uint32_t *data, size_t size)
-    : HashedObject(hash)
-    , device(device)
+Shader::Shader(Device *device, const uint32_t *data, size_t size)
+    : device(device)
 {
 #ifdef GRANITE_SPIRV_DUMP
 	if (!Granite::Filesystem::get().write_buffer_to_file(string("cache://spirv/") + to_string(hash) + ".spv", data, size))
@@ -320,18 +318,16 @@ void Program::set_shader(ShaderStage stage, Shader *handle)
 	shaders[Util::ecast(stage)] = handle;
 }
 
-Program::Program(Hash hash, Device *device, Shader *vertex, Shader *fragment)
-    : HashedObject(hash)
-    , device(device)
+Program::Program(Device *device, Shader *vertex, Shader *fragment)
+    : device(device)
 {
 	set_shader(ShaderStage::Vertex, vertex);
 	set_shader(ShaderStage::Fragment, fragment);
 	device->bake_program(*this);
 }
 
-Program::Program(Hash hash, Device *device, Shader *compute)
-    : HashedObject(hash)
-    , device(device)
+Program::Program(Device *device, Shader *compute)
+    : device(device)
 {
 	set_shader(ShaderStage::Compute, compute);
 	device->bake_program(*this);

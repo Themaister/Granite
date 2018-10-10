@@ -33,7 +33,7 @@ void ShaderSuite::init_graphics(ShaderManager *manager, const std::string &verte
 {
 	this->manager = manager;
 	program = manager->register_graphics(vertex, fragment);
-	variants.get_hashmap().clear();
+	variants.clear();
 	base_defines.clear();
 }
 
@@ -41,7 +41,7 @@ void ShaderSuite::init_compute(Vulkan::ShaderManager *manager, const std::string
 {
 	this->manager = manager;
 	program = manager->register_compute(compute);
-	variants.get_hashmap().clear();
+	variants.clear();
 	base_defines.clear();
 }
 
@@ -108,10 +108,10 @@ Vulkan::Program *ShaderSuite::get_program(DrawPipeline pipeline, uint32_t attrib
 		}
 
 		unsigned var_id = program->register_variant(defines);
-		variant = variants.insert(hash, make_unique<unsigned>(var_id));
+		variant = variants.emplace_yield(hash, var_id);
 	}
 
-	return program->get_program(*variant);
+	return program->get_program(variant->get());
 }
 
 }

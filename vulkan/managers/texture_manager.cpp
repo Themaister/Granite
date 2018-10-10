@@ -241,8 +241,7 @@ Texture *TextureManager::request_texture(const std::string &path, VkFormat forma
 	if (ret)
 		return ret;
 
-	auto texture = make_unique<Texture>(device, path, format, mapping);
-	ret = textures.insert(hash, move(texture));
+	ret = textures.emplace_yield(hash, device, path, format, mapping);
 	return ret;
 }
 
@@ -276,10 +275,10 @@ Texture *TextureManager::register_deferred_texture(const std::string &path)
 	auto *ret = deferred_textures.find(hash);
 	if (!ret)
 	{
-		auto texture = make_unique<Texture>(device);
+		auto *texture = deferred_textures.allocate(device);
 		texture->set_path(path);
 		texture->set_enable_notification(false);
-		ret = deferred_textures.insert(hash, move(texture));
+		ret = deferred_textures.insert_yield(hash, texture);
 	}
 	return ret;
 }

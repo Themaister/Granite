@@ -24,7 +24,6 @@
 
 #include "volatile_source.hpp"
 #include "image.hpp"
-#include "thread_safe_cache.hpp"
 #include "async_object_sink.hpp"
 
 namespace Granite
@@ -37,7 +36,8 @@ class MemoryMappedTexture;
 
 namespace Vulkan
 {
-class Texture : public Util::VolatileSource<Texture>
+class Texture : public Util::VolatileSource<Texture>,
+                public Util::IntrusiveHashMapEnabled<Texture>
 {
 public:
 	friend class Util::VolatileSource<Texture>;
@@ -94,13 +94,8 @@ public:
 private:
 	Device *device;
 
-#ifdef GRANITE_VULKAN_MT
-	Util::ThreadSafeCache<Texture> textures;
-	Util::ThreadSafeCache<Texture> deferred_textures;
-#else
-	Util::Cache<Texture> textures;
-	Util::Cache<Texture> deferred_textures;
-#endif
+	VulkanCache<Texture> textures;
+	VulkanCache<Texture> deferred_textures;
 
 	std::unordered_map<std::string, std::vector<std::function<void (Texture &)>>> notifications;
 };

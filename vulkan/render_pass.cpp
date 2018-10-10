@@ -81,9 +81,8 @@ void RenderPass::setup_subpasses(const VkRenderPassCreateInfo &create_info)
 	}
 }
 
-RenderPass::RenderPass(Util::Hash hash, Vulkan::Device *device, const VkRenderPassCreateInfo &create_info)
-    : HashedObject(hash)
-    , device(device)
+RenderPass::RenderPass(Vulkan::Device *device, const VkRenderPassCreateInfo &create_info)
+    : device(device)
 {
 	unsigned num_color_attachments = 0;
 	if (create_info.attachmentCount > 0)
@@ -121,9 +120,8 @@ RenderPass::RenderPass(Util::Hash hash, Vulkan::Device *device, const VkRenderPa
 #endif
 }
 
-RenderPass::RenderPass(Hash hash, Device *device, const RenderPassInfo &info)
-    : HashedObject(hash)
-    , device(device)
+RenderPass::RenderPass(Device *device, const RenderPassInfo &info)
+    : device(device)
 {
 	fill(begin(color_attachments), end(color_attachments), VK_FORMAT_UNDEFINED);
 

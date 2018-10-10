@@ -164,7 +164,7 @@ Shader *Device::request_shader(const uint32_t *data, size_t size)
 	auto hash = hasher.get();
 	auto *ret = shaders.find(hash);
 	if (!ret)
-		ret = shaders.insert(hash, make_unique<Shader>(hash, this, data, size));
+		ret = shaders.emplace_yield(hash, this, data, size);
 	return ret;
 }
 
@@ -181,7 +181,7 @@ Program *Device::request_program(Vulkan::Shader *compute)
 	auto hash = hasher.get();
 	auto *ret = programs.find(hash);
 	if (!ret)
-		ret = programs.insert(hash, make_unique<Program>(hash, this, compute));
+		ret = programs.emplace_yield(hash, this, compute);
 	return ret;
 }
 
@@ -201,7 +201,7 @@ Program *Device::request_program(Shader *vertex, Shader *fragment)
 	auto *ret = programs.find(hash);
 
 	if (!ret)
-		ret = programs.insert(hash, make_unique<Program>(hash, this, vertex, fragment));
+		ret = programs.emplace_yield(hash, this, vertex, fragment);
 	return ret;
 }
 
@@ -226,7 +226,7 @@ PipelineLayout *Device::request_pipeline_layout(const CombinedResourceLayout &la
 	auto hash = h.get();
 	auto *ret = pipeline_layouts.find(hash);
 	if (!ret)
-		ret = pipeline_layouts.insert(hash, make_unique<PipelineLayout>(hash, this, layout));
+		ret = pipeline_layouts.emplace_yield(hash, this, layout);
 	return ret;
 }
 
@@ -239,7 +239,7 @@ DescriptorSetAllocator *Device::request_descriptor_set_allocator(const Descripto
 
 	auto *ret = descriptor_set_allocators.find(hash);
 	if (!ret)
-		ret = descriptor_set_allocators.insert(hash, make_unique<DescriptorSetAllocator>(hash, this, layout, stages_for_bindings));
+		ret = descriptor_set_allocators.emplace_yield(hash, this, layout, stages_for_bindings);
 	return ret;
 }
 
@@ -1682,8 +1682,8 @@ void Device::wait_idle_nolock()
 
 	framebuffer_allocator.clear();
 	transient_allocator.clear();
-	for (auto &allocator : descriptor_set_allocators.get_hashmap())
-		allocator.second->clear();
+	for (auto &allocator : descriptor_set_allocators)
+		allocator.clear();
 
 	for (auto &frame : per_frame)
 	{
@@ -1707,8 +1707,8 @@ void Device::begin_frame(unsigned index)
 
 	framebuffer_allocator.begin_frame();
 	transient_allocator.begin_frame();
-	for (auto &allocator : descriptor_set_allocators.get_hashmap())
-		allocator.second->begin_frame();
+	for (auto &allocator : descriptor_set_allocators)
+		allocator.begin_frame();
 
 	current_swapchain_index = index;
 	frame().begin();
@@ -3039,7 +3039,7 @@ const RenderPass &Device::request_render_pass(const RenderPassInfo &info)
 
 	auto *ret = render_passes.find(hash);
 	if (!ret)
-		ret = render_passes.insert(hash, make_unique<RenderPass>(hash, this, info));
+		ret = render_passes.emplace_yield(hash, this, info);
 	return *ret;
 }
 

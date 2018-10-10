@@ -89,7 +89,7 @@ unsigned Device::register_render_pass(Fossilize::Hash hash, const VkRenderPassCr
 
 bool Device::enqueue_create_shader_module(Fossilize::Hash hash, unsigned, const VkShaderModuleCreateInfo *create_info, VkShaderModule *module)
 {
-	auto *ret = shaders.insert(hash, make_unique<Shader>(hash, this, create_info->pCode, create_info->codeSize));
+	auto *ret = shaders.emplace_yield(hash, this, create_info->pCode, create_info->codeSize);
 	*module = ret->get_module();
 	replayer_state.shader_map[*module] = ret;
 	return true;
@@ -202,7 +202,7 @@ bool Device::enqueue_create_compute_pipeline(Fossilize::Hash hash, unsigned,
 
 bool Device::enqueue_create_render_pass(Fossilize::Hash hash, unsigned, const VkRenderPassCreateInfo *create_info, VkRenderPass *render_pass)
 {
-	auto *ret = render_passes.insert(hash, make_unique<RenderPass>(hash, this, *create_info));
+	auto *ret = render_passes.emplace_yield(hash, this, *create_info);
 	*render_pass = ret->get_render_pass();
 	replayer_state.render_pass_map[*render_pass] = ret;
 	return true;

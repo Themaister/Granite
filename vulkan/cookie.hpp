@@ -24,6 +24,7 @@
 
 #include <stdint.h>
 #include "hash.hpp"
+#include "intrusive_hash_map.hpp"
 
 namespace Vulkan
 {
@@ -43,20 +44,14 @@ private:
 	uint64_t cookie;
 };
 
-class HashedObject
+template <typename T>
+class HashedObject : public Util::IntrusiveHashMapEnabled<T>
 {
 public:
-	HashedObject(Util::Hash hash)
-		: hash(hash)
-	{}
-
 	Util::Hash get_hash() const
 	{
-		return hash;
+		return Util::IntrusiveHashMapEnabled<T>::intrusive_hashmap_key;
 	}
-
-private:
-	Util::Hash hash = 0;
 };
 
 class InternalSyncEnabled

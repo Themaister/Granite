@@ -38,7 +38,6 @@
 #include "vulkan.hpp"
 #include "query_pool.hpp"
 #include "buffer_pool.hpp"
-#include "thread_safe_cache.hpp"
 #include <memory>
 #include <vector>
 #include <functional>

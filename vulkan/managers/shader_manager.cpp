@@ -99,7 +99,7 @@ const ShaderTemplate::Variant *ShaderTemplate::register_variant(const std::vecto
 		if (defines)
 			variant->defines = *defines;
 
-		ret = variants.insert_replace(hash, variant);
+		ret = variants.insert_yield(hash, variant);
 	}
 	return ret;
 }

@@ -209,36 +209,55 @@ private:
 		return get_hash(values[masked]);
 	}
 
-	void insert_inner(T *value)
+	bool insert_inner(T *value)
 	{
 		auto hash = get_hash(value);
 		auto masked = hash & hash_mask;
-		while (values[masked])
+
+		for (unsigned i = 0; i < load_count; i++)
+		{
+			if (!values[masked])
+			{
+				values[masked] = value;
+				return true;
+			}
 			masked = (masked + 1) & hash_mask;
-		values[masked] = value;
+		}
+		return false;
 	}
 
 	void grow()
 	{
-		if (values.empty())
+		bool success;
+		do
 		{
-			values.resize(InitialSize);
-			load_count = InitialLoadCount;
-		}
-		else
-		{
-			values.resize(values.size() * 2);
-			load_count++;
-		}
+			if (values.empty())
+			{
+				values.resize(InitialSize);
+				load_count = InitialLoadCount;
+			}
+			else
+			{
+				values.resize(values.size() * 2);
+				load_count++;
+			}
 
-		for (auto &v : values)
-			v = nullptr;
+			for (auto &v : values)
+				v = nullptr;
 
-		hash_mask = Hash(values.size()) - 1;
+			hash_mask = Hash(values.size()) - 1;
 
-		// Re-insert.
-		for (auto &t : list)
-			insert_inner(&t);
+			// Re-insert.
+			success = true;
+			for (auto &t : list)
+			{
+				if (!insert_inner(&t))
+				{
+					success = false;
+					break;
+				}
+			}
+		} while (!success);
 	}
 
 	std::vector<T *> values;

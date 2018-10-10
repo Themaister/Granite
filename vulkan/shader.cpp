@@ -335,32 +335,13 @@ Program::Program(Device *device, Shader *compute)
 
 VkPipeline Program::get_pipeline(Hash hash) const
 {
-	lock.lock_read();
-	auto itr = pipelines.find(hash);
-	if (itr != end(pipelines))
-	{
-		auto ret = itr->second;
-		lock.unlock_read();
-		return ret;
-	}
-	else
-	{
-		lock.unlock_read();
-		return VK_NULL_HANDLE;
-	}
+	auto *ret = pipelines.find(hash);
+	return ret ? ret->get() : nullptr;
 }
 
 VkPipeline Program::add_pipeline(Hash hash, VkPipeline pipeline)
 {
-	lock.lock_write();
-	auto &cache = pipelines[hash];
-	if (cache == VK_NULL_HANDLE)
-		cache = pipeline;
-	else
-		vkDestroyPipeline(device->get_device(), pipeline, nullptr);
-	auto ret = cache;
-	lock.unlock_write();
-	return ret;
+	return pipelines.emplace_yield(hash, pipeline)->get();
 }
 
 Program::~Program()
@@ -368,9 +349,9 @@ Program::~Program()
 	for (auto &pipe : pipelines)
 	{
 		if (internal_sync)
-			device->destroy_pipeline_nolock(pipe.second);
+			device->destroy_pipeline_nolock(pipe.get());
 		else
-			device->destroy_pipeline(pipe.second);
+			device->destroy_pipeline(pipe.get());
 	}
 }
 }

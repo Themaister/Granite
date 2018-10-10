@@ -325,7 +325,7 @@ ShaderTemplate *ShaderManager::get_template(const std::string &path)
 	auto *ret = shaders.find(hash);
 	if (!ret)
 	{
-		auto *shader = shaders.allocate(hash, path, shader_cache, hasher.get());
+		auto *shader = shaders.allocate(path, shader_cache, hasher.get());
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 		{
 			DEPENDENCY_LOCK();

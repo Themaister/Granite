@@ -28,7 +28,6 @@
 #include "intrusive.hpp"
 #include "limits.hpp"
 #include "vulkan.hpp"
-#include "read_write_lock.hpp"
 #include "enum_cast.hpp"
 
 namespace Vulkan
@@ -153,7 +152,6 @@ private:
 	Device *device;
 	Shader *shaders[Util::ecast(ShaderStage::Count)] = {};
 	PipelineLayout *layout = nullptr;
-	Util::HashMap<VkPipeline> pipelines;
-	mutable Util::RWSpinLock lock;
+	VulkanCache<Util::IntrusivePODWrapper<VkPipeline>> pipelines;
 };
 }

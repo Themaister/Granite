@@ -42,74 +42,51 @@ struct B : A
 	int b = 10;
 };
 
-struct Value : IntrusiveHashMapEnabled<Value>
-{
-	Value(int v)
-		: value(v)
-	{
-	}
+static unsigned destructor_count = 0;
 
-	int value;
+struct NonPOD : IntrusiveHashMapEnabled<NonPOD>
+{
+	NonPOD(int a) { v = a; }
+	~NonPOD()
+	{
+		destructor_count++;
+	}
+	int get() { return v; }
+	int v;
 };
+
+static Hash get_key(int v)
+{
+	return ((v & 7) << 24) | (v >> 3);
+}
 
 int main()
 {
-	IntrusiveHashMap<Value> hash_map;
+	ThreadSafeIntrusiveHashMap<NonPOD> hash_map;
 
-	const auto emplace_integer = [&](int key, int value) {
-		Hasher h;
-		h.s32(key);
-		auto hash = h.get();
-		hash_map.emplace_yield(hash, value);
-	};
+	for (int i = 0; i < 100000; i++)
+	{
+		hash_map.emplace_yield(get_key(i), i + 2000000);
+		hash_map.emplace_replace(get_key(i), i + 3000000);
+	}
 
-	const auto emplace_replace = [&](int key, int value) {
-		Hasher h;
-		h.s32(key);
-		auto hash = h.get();
-		hash_map.emplace_replace(hash, value);
-	};
+	assert(destructor_count == 100000);
 
-	const auto find = [&](int key) -> Value * {
-		Hasher h;
-		h.s32(key);
-		auto hash = h.get();
-		return hash_map.find(hash);
-	};
+	for (int i = 0; i < 100000; i += 2)
+	{
+		hash_map.erase(hash_map.find(get_key(i)));
+	}
 
-	emplace_integer(1, 10);
-	emplace_integer(1, 20);
-	emplace_integer(2, 100);
-	emplace_integer(3, 1000);
-	emplace_integer(4, 9999);
-	emplace_replace(4, 10000);
+	assert(destructor_count == 150000);
 
-	for (auto &v : hash_map)
-		LOGI("Value: %d\n", v.value);
+	for (int i = 1; i < 100000; i += 2)
+	{
+		auto *v = hash_map.find(get_key(i));
+		assert(v && v->get() == i + 3000000);
+	}
 
-	Value *v;
-	v = find(1);
-	assert(v && v->value == 10);
-	v = find(2);
-	assert(v && v->value == 100);
-	v = find(3);
-	assert(v && v->value == 1000);
-	v = find(4);
-	assert(v && v->value == 10000);
-
-	hash_map.erase(find(2));
-
-	for (auto &v : hash_map)
-		LOGI("Value: %d\n", v.value);
-
-	v = find(1);
-	assert(v && v->value == 10);
-	v = find(2);
-	assert(!v);
-	v = find(3);
-	assert(v && v->value == 1000);
-	v = find(4);
-	assert(v && v->value == 10000);
+	hash_map.clear();
+	assert(destructor_count == 200000);
 
 	std::vector<IntrusivePtr<A>> as;
 

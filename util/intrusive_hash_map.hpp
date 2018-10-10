@@ -69,7 +69,7 @@ template <typename T>
 class IntrusiveHashMapHolder
 {
 public:
-	enum { InitialSize = 16 };
+	enum { InitialSize = 16, InitialLoadCount = 4 };
 
 	T *find(Hash hash) const
 	{
@@ -77,9 +77,9 @@ public:
 			return nullptr;
 
 		auto masked = hash & hash_mask;
-		while (values[masked])
+		for (unsigned i = 0; i < load_count; i++)
 		{
-			if (get_key_for_index(masked) == hash)
+			if (values[masked] && get_hash(values[masked]) == hash)
 				return values[masked];
 			masked = (masked + 1) & hash_mask;
 		}
@@ -93,66 +93,84 @@ public:
 	// Returns nullptr if nothing was in the hashmap for this key.
 	T *insert_yield(T *&value)
 	{
-		// If we grow beyond 50%, resize.
-		if (count >= (hash_mask >> 1))
+		if (values.empty())
 			grow();
 
-		auto masked = get_hash(value) & hash_mask;
-		while (hash_conflict(masked, value))
-			masked = (masked + 1) & hash_mask;
+		auto hash = get_hash(value);
+		auto masked = hash & hash_mask;
 
-		if (hash_match(masked, value))
+		for (unsigned i = 0; i < load_count; i++)
 		{
-			T *ret = value;
-			value = values[masked];
-			return ret;
+			if (values[masked] && get_hash(values[masked]) == hash)
+			{
+				T *ret = value;
+				value = values[masked];
+				return ret;
+			}
+			else if (!values[masked])
+			{
+				values[masked] = value;
+				list.insert_front(value);
+				count++;
+				return nullptr;
+			}
+			masked = (masked + 1) & hash_mask;
 		}
-		else
-		{
-			values[masked] = value;
-			list.insert_front(value);
-			count++;
-			return nullptr;
-		}
+
+		grow();
+		return insert_yield(value);
 	}
 
 	T *insert_replace(T *value)
 	{
-		// If we grow beyond 50%, resize.
-		if (count >= (hash_mask >> 1))
+		if (values.empty())
 			grow();
 
-		auto masked = get_hash(value) & hash_mask;
-		while (hash_conflict(masked, value))
-			masked = (masked + 1) & hash_mask;
+		auto hash = get_hash(value);
+		auto masked = hash & hash_mask;
 
-		if (hash_match(masked, value))
+		for (unsigned i = 0; i < load_count; i++)
 		{
-			std::swap(values[masked], value);
-			list.erase(value);
-			list.insert_front(values[masked]);
-			return value;
+			if (values[masked] && get_hash(values[masked]) == hash)
+			{
+				std::swap(values[masked], value);
+				list.erase(value);
+				list.insert_front(values[masked]);
+				return value;
+			}
+			else if (!values[masked])
+			{
+				assert(!values[masked]);
+				values[masked] = value;
+				list.insert_front(value);
+				count++;
+				return nullptr;
+			}
+			masked = (masked + 1) & hash_mask;
 		}
-		else
-		{
-			values[masked] = value;
-			list.insert_front(value);
-			count++;
-			return nullptr;
-		}
+
+		grow();
+		return insert_replace(value);
 	}
 
 	void erase(T *value)
 	{
-		auto masked = get_hash(value) & hash_mask;
-		while (values[masked] && !compare_key(masked, get_hash(value)))
-			masked = (masked + 1) & hash_mask;
+		auto hash = get_hash(value);
+		auto masked = hash & hash_mask;
 
-		assert(values[masked] == value);
-		assert(count > 0);
-		values[masked] = nullptr;
-		list.erase(value);
-		count--;
+		for (unsigned i = 0; i < load_count; i++)
+		{
+			if (values[masked] && get_hash(values[masked]) == hash)
+			{
+				assert(values[masked] == value);
+				assert(count > 0);
+				values[masked] = nullptr;
+				list.erase(value);
+				count--;
+				return;
+			}
+			masked = (masked + 1) & hash_mask;
+		}
 	}
 
 	void clear()
@@ -160,6 +178,8 @@ public:
 		list.clear();
 		values.clear();
 		hash_mask = 0;
+		count = 0;
+		load_count = 0;
 	}
 
 	typename IntrusiveList<T>::Iterator begin()
@@ -173,10 +193,6 @@ public:
 	}
 
 private:
-	inline Hash get_key_for_index(Hash masked) const
-	{
-		return static_cast<IntrusiveHashMapEnabled<T> *>(values[masked])->intrusive_hashmap_key;
-	}
 
 	inline bool compare_key(Hash masked, Hash hash) const
 	{
@@ -188,39 +204,37 @@ private:
 		return static_cast<const IntrusiveHashMapEnabled<T> *>(value)->intrusive_hashmap_key;
 	}
 
-	inline bool hash_conflict(Hash masked_hash, const T *value) const
+	inline Hash get_key_for_index(Hash masked) const
 	{
-		return values[masked_hash] && !compare_key(masked_hash, get_hash(value));
-	}
-
-	inline bool hash_match(Hash masked_hash, const T *value) const
-	{
-		return values[masked_hash] && compare_key(masked_hash, get_hash(value));
+		return get_hash(values[masked]);
 	}
 
 	void insert_inner(T *value)
 	{
-		auto masked = get_hash(value) & hash_mask;
-		while (hash_conflict(masked, value))
+		auto hash = get_hash(value);
+		auto masked = hash & hash_mask;
+		while (values[masked])
 			masked = (masked + 1) & hash_mask;
 		values[masked] = value;
 	}
 
 	void grow()
 	{
-		for (auto &v : values)
-			v = nullptr;
-
 		if (values.empty())
 		{
 			values.resize(InitialSize);
-			hash_mask = Hash(values.size()) - 1;
+			load_count = InitialLoadCount;
 		}
 		else
 		{
 			values.resize(values.size() * 2);
-			hash_mask = Hash(values.size()) - 1;
+			load_count++;
 		}
+
+		for (auto &v : values)
+			v = nullptr;
+
+		hash_mask = Hash(values.size()) - 1;
 
 		// Re-insert.
 		for (auto &t : list)
@@ -231,6 +245,7 @@ private:
 	IntrusiveList<T> list;
 	Hash hash_mask = 0;
 	size_t count = 0;
+	unsigned load_count = 0;
 };
 
 template <typename T>

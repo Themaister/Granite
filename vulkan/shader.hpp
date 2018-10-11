@@ -73,7 +73,7 @@ struct CombinedResourceLayout
 class PipelineLayout : public HashedObject<PipelineLayout>
 {
 public:
-	PipelineLayout(Device *device, const CombinedResourceLayout &layout);
+	PipelineLayout(Util::Hash hash, Device *device, const CombinedResourceLayout &layout);
 	~PipelineLayout();
 
 	const CombinedResourceLayout &get_resource_layout() const
@@ -101,7 +101,7 @@ private:
 class Shader : public HashedObject<Shader>
 {
 public:
-	Shader(Device *device, const uint32_t *data, size_t size);
+	Shader(Util::Hash hash, Device *device, const uint32_t *data, size_t size);
 	~Shader();
 
 	const ResourceLayout &get_layout() const

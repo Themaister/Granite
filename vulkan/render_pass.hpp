@@ -96,13 +96,13 @@ public:
 		unsigned samples;
 	};
 
-	RenderPass(Device *device, const RenderPassInfo &info);
-	RenderPass(Device *device, const VkRenderPassCreateInfo &create_info);
+	RenderPass(Util::Hash hash, Device *device, const RenderPassInfo &info);
+	RenderPass(Util::Hash hash, Device *device, const VkRenderPassCreateInfo &create_info);
 	~RenderPass();
 
 	unsigned get_num_subpasses() const
 	{
-		return subpasses.size();
+		return unsigned(subpasses.size());
 	}
 
 	VkRenderPass get_render_pass() const

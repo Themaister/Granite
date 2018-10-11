@@ -34,9 +34,10 @@ using namespace Util;
 
 namespace Vulkan
 {
-PipelineLayout::PipelineLayout(Device *device, const CombinedResourceLayout &layout)
-    : device(device)
-    , layout(layout)
+PipelineLayout::PipelineLayout(Hash hash, Device *device, const CombinedResourceLayout &layout)
+	: IntrusiveHashMapEnabled<PipelineLayout>(hash)
+	, device(device)
+	, layout(layout)
 {
 	VkDescriptorSetLayout layouts[VULKAN_NUM_DESCRIPTOR_SETS] = {};
 	unsigned num_sets = 0;
@@ -150,8 +151,9 @@ static bool get_stock_sampler(StockSampler &sampler, const string &name)
 	return true;
 }
 
-Shader::Shader(Device *device, const uint32_t *data, size_t size)
-    : device(device)
+Shader::Shader(Hash hash, Device *device, const uint32_t *data, size_t size)
+	: IntrusiveHashMapEnabled<Shader>(hash)
+	, device(device)
 {
 #ifdef GRANITE_SPIRV_DUMP
 	if (!Granite::Filesystem::get().write_buffer_to_file(string("cache://spirv/") + to_string(hash) + ".spv", data, size))

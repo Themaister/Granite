@@ -26,15 +26,34 @@
 #include "hash.hpp"
 #include "object_pool.hpp"
 #include "read_write_lock.hpp"
+#include "util.hpp"
 #include <vector>
 #include <assert.h>
 
 namespace Util
 {
 template <typename T>
-struct IntrusiveHashMapEnabled : IntrusiveListEnabled<T>
+class IntrusiveHashMapEnabled : public IntrusiveListEnabled<T>
 {
-	Hash intrusive_hashmap_key;
+public:
+	IntrusiveHashMapEnabled() = default;
+	IntrusiveHashMapEnabled(Util::Hash hash)
+		: intrusive_hashmap_key(hash)
+	{
+	}
+
+	void set_hash(Util::Hash hash)
+	{
+		intrusive_hashmap_key = hash;
+	}
+
+	Util::Hash get_hash() const
+	{
+		return intrusive_hashmap_key;
+	}
+
+private:
+	Hash intrusive_hashmap_key = 0;
 };
 
 template <typename T>
@@ -85,6 +104,19 @@ public:
 		}
 
 		return nullptr;
+	}
+
+	template <typename P>
+	bool find_and_consume_pod(Hash hash, P &p) const
+	{
+		T *t = find(hash);
+		if (t)
+		{
+			p = t->get();
+			return true;
+		}
+		else
+			return false;
 	}
 
 	// Inserts, if value already exists, insertion does not happen.
@@ -201,7 +233,7 @@ private:
 
 	inline Hash get_hash(const T *value) const
 	{
-		return static_cast<const IntrusiveHashMapEnabled<T> *>(value)->intrusive_hashmap_key;
+		return static_cast<const IntrusiveHashMapEnabled<T> *>(value)->get_hash();
 	}
 
 	inline Hash get_key_for_index(Hash masked) const
@@ -235,10 +267,12 @@ private:
 			{
 				values.resize(InitialSize);
 				load_count = InitialLoadCount;
+				LOGI("Growing hashmap to %u elements.\n", InitialSize);
 			}
 			else
 			{
 				values.resize(values.size() * 2);
+				LOGI("Growing hashmap to %u elements.\n", unsigned(values.size()));
 				load_count++;
 			}
 
@@ -292,6 +326,12 @@ public:
 		return hashmap.find(hash);
 	}
 
+	template <typename P>
+	bool find_and_consume_pod(Hash hash, P &p) const
+	{
+		return hashmap.find_and_consume_pod(hash, p);
+	}
+
 	void erase(T *value)
 	{
 		hashmap.erase(value);
@@ -325,7 +365,7 @@ public:
 
 	T *insert_replace(Hash hash, T *value)
 	{
-		static_cast<IntrusiveHashMapEnabled<T> *>(value)->intrusive_hashmap_key = hash;
+		static_cast<IntrusiveHashMapEnabled<T> *>(value)->set_hash(hash);
 		T *to_delete = hashmap.insert_replace(value);
 		if (to_delete)
 			pool.free(to_delete);
@@ -334,7 +374,7 @@ public:
 
 	T *insert_yield(Hash hash, T *value)
 	{
-		static_cast<IntrusiveHashMapEnabled<T> *>(value)->intrusive_hashmap_key = hash;
+		static_cast<IntrusiveHashMapEnabled<T> *>(value)->set_hash(hash);
 		T *to_delete = hashmap.insert_yield(value);
 		if (to_delete)
 			pool.free(to_delete);
@@ -374,6 +414,15 @@ public:
 		// We can race with the intrusive list internal pointers,
 		// but that's an internal detail which should never be touched outside the hashmap.
 		return t;
+	}
+
+	template <typename P>
+	bool find_and_consume_pod(Hash hash, P &p) const
+	{
+		lock.lock_read();
+		bool ret = hashmap.find_and_consume_pod(hash, p);
+		lock.unlock_read();
+		return ret;
 	}
 
 	void clear()

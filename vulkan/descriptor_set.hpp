@@ -74,7 +74,7 @@ static const unsigned VULKAN_DESCRIPTOR_RING_SIZE = 8;
 class DescriptorSetAllocator : public HashedObject<DescriptorSetAllocator>
 {
 public:
-	DescriptorSetAllocator(Device *device, const DescriptorSetLayout &layout, const uint32_t *stages_for_bindings);
+	DescriptorSetAllocator(Util::Hash hash, Device *device, const DescriptorSetLayout &layout, const uint32_t *stages_for_bindings);
 	~DescriptorSetAllocator();
 	void operator=(const DescriptorSetAllocator &) = delete;
 	DescriptorSetAllocator(const DescriptorSetAllocator &) = delete;

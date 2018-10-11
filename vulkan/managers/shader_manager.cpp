@@ -73,12 +73,7 @@ const ShaderTemplate::Variant *ShaderTemplate::register_variant(const std::vecto
 		auto *variant = variants.allocate();
 		variant->hash = complete_hash;
 
-		auto *spirv_hash = cache.find(complete_hash);
-		if (spirv_hash)
-		{
-			variant->spirv_hash = spirv_hash->get();
-		}
-		else
+		if (!cache.find_and_consume_pod(complete_hash, variant->spirv_hash))
 		{
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 			variant->spirv = compiler->compile(defines);
@@ -421,14 +416,7 @@ void ShaderManager::register_shader_hash_from_variant_hash(Hash variant_hash, Ha
 
 bool ShaderManager::get_shader_hash_by_variant_hash(Hash variant_hash, Hash &shader_hash)
 {
-	auto *itr = shader_cache.find(variant_hash);
-	if (itr)
-	{
-		shader_hash = itr->get();
-		return true;
-	}
-	else
-		return false;
+	return shader_cache.find_and_consume_pod(variant_hash, shader_hash);
 }
 
 bool ShaderManager::load_shader_cache(const string &path)
@@ -473,7 +461,7 @@ bool ShaderManager::save_shader_cache(const string &path)
 	for (auto &entry : shader_cache)
 	{
 		Value map_entry(kObjectType);
-		map_entry.AddMember("variant", entry.intrusive_hashmap_key, allocator);
+		map_entry.AddMember("variant", entry.get_hash(), allocator);
 		map_entry.AddMember("spirvHash", entry.get(), allocator);
 		maps.PushBack(map_entry, allocator);
 	}

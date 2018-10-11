@@ -164,7 +164,7 @@ Shader *Device::request_shader(const uint32_t *data, size_t size)
 	auto hash = hasher.get();
 	auto *ret = shaders.find(hash);
 	if (!ret)
-		ret = shaders.emplace_yield(hash, this, data, size);
+		ret = shaders.emplace_yield(hash, hash, this, data, size);
 	return ret;
 }
 
@@ -226,7 +226,7 @@ PipelineLayout *Device::request_pipeline_layout(const CombinedResourceLayout &la
 	auto hash = h.get();
 	auto *ret = pipeline_layouts.find(hash);
 	if (!ret)
-		ret = pipeline_layouts.emplace_yield(hash, this, layout);
+		ret = pipeline_layouts.emplace_yield(hash, hash, this, layout);
 	return ret;
 }
 
@@ -239,7 +239,7 @@ DescriptorSetAllocator *Device::request_descriptor_set_allocator(const Descripto
 
 	auto *ret = descriptor_set_allocators.find(hash);
 	if (!ret)
-		ret = descriptor_set_allocators.emplace_yield(hash, this, layout, stages_for_bindings);
+		ret = descriptor_set_allocators.emplace_yield(hash, hash, this, layout, stages_for_bindings);
 	return ret;
 }
 
@@ -3039,7 +3039,7 @@ const RenderPass &Device::request_render_pass(const RenderPassInfo &info)
 
 	auto *ret = render_passes.find(hash);
 	if (!ret)
-		ret = render_passes.emplace_yield(hash, this, info);
+		ret = render_passes.emplace_yield(hash, hash, this, info);
 	return *ret;
 }
 

@@ -45,14 +45,7 @@ private:
 };
 
 template <typename T>
-class HashedObject : public Util::IntrusiveHashMapEnabled<T>
-{
-public:
-	Util::Hash get_hash() const
-	{
-		return Util::IntrusiveHashMapEnabled<T>::intrusive_hashmap_key;
-	}
-};
+using HashedObject = Util::IntrusiveHashMapEnabled<T>;
 
 class InternalSyncEnabled
 {

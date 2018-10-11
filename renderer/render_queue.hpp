@@ -29,6 +29,7 @@
 #include <command_buffer.hpp>
 #include "hash.hpp"
 #include "enum_cast.hpp"
+#include "intrusive_hash_map.hpp"
 #include "math.hpp"
 
 namespace Granite
@@ -105,10 +106,10 @@ public:
 		Util::Hasher h(instance_key);
 		h.pointer(render);
 
-		auto itr = render_infos.find(h.get());
-		if (itr != std::end(render_infos))
+		auto *itr = render_infos.find(h.get());
+		if (itr)
 		{
-			enqueue_queue_data(queue, { render, itr->second, instance_data, sorting_key });
+			enqueue_queue_data(queue, { render, itr->get(), instance_data, sorting_key });
 			return nullptr;
 		}
 		else
@@ -118,7 +119,7 @@ public:
 				throw std::bad_alloc();
 
 			T *t = new(buffer) T();
-			render_infos[h.get()] = t;
+			render_infos.emplace_replace(h.get(), t);
 			enqueue_queue_data(queue, { render, t, instance_data, sorting_key });
 			return t;
 		}
@@ -204,6 +205,6 @@ private:
 	Chain::iterator insert_large_block(size_t size, size_t alignment);
 
 	ShaderSuite *shader_suites = nullptr;
-	Util::HashMap<void *> render_infos;
+	Util::IntrusiveHashMap<Util::IntrusivePODWrapper<void *>> render_infos;
 };
 }

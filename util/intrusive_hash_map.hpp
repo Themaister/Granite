@@ -88,7 +88,7 @@ template <typename T>
 class IntrusiveHashMapHolder
 {
 public:
-	enum { InitialSize = 16, InitialLoadCount = 4 };
+	enum { InitialSize = 64, InitialLoadCount = 4 };
 
 	T *find(Hash hash) const
 	{
@@ -143,7 +143,6 @@ public:
 			{
 				values[masked] = value;
 				list.insert_front(value);
-				count++;
 				return nullptr;
 			}
 			masked = (masked + 1) & hash_mask;
@@ -175,7 +174,6 @@ public:
 				assert(!values[masked]);
 				values[masked] = value;
 				list.insert_front(value);
-				count++;
 				return nullptr;
 			}
 			masked = (masked + 1) & hash_mask;
@@ -185,24 +183,27 @@ public:
 		return insert_replace(value);
 	}
 
-	void erase(T *value)
+	T *erase(Hash hash)
 	{
-		auto hash = get_hash(value);
 		auto masked = hash & hash_mask;
 
 		for (unsigned i = 0; i < load_count; i++)
 		{
 			if (values[masked] && get_hash(values[masked]) == hash)
 			{
-				assert(values[masked] == value);
-				assert(count > 0);
-				values[masked] = nullptr;
+				auto *value = values[masked];
 				list.erase(value);
-				count--;
-				return;
+				values[masked] = nullptr;
+				return value;
 			}
 			masked = (masked + 1) & hash_mask;
 		}
+		return nullptr;
+	}
+
+	void erase(T *value)
+	{
+		erase(get_hash(value));
 	}
 
 	void clear()
@@ -210,7 +211,6 @@ public:
 		list.clear();
 		values.clear();
 		hash_mask = 0;
-		count = 0;
 		load_count = 0;
 	}
 
@@ -263,21 +263,21 @@ private:
 		bool success;
 		do
 		{
+			for (auto &v : values)
+				v = nullptr;
+
 			if (values.empty())
 			{
 				values.resize(InitialSize);
 				load_count = InitialLoadCount;
-				LOGI("Growing hashmap to %u elements.\n", InitialSize);
+				//LOGI("Growing hashmap to %u elements.\n", InitialSize);
 			}
 			else
 			{
 				values.resize(values.size() * 2);
-				LOGI("Growing hashmap to %u elements.\n", unsigned(values.size()));
+				//LOGI("Growing hashmap to %u elements.\n", unsigned(values.size()));
 				load_count++;
 			}
-
-			for (auto &v : values)
-				v = nullptr;
 
 			hash_mask = Hash(values.size()) - 1;
 
@@ -336,6 +336,13 @@ public:
 	{
 		hashmap.erase(value);
 		pool.free(value);
+	}
+
+	void erase(Hash hash)
+	{
+		auto *value = hashmap.erase(hash);
+		if (value)
+			pool.free(value);
 	}
 
 	template <typename... P>
@@ -437,6 +444,13 @@ public:
 	{
 		lock.lock_write();
 		hashmap.erase(value);
+		lock.unlock_write();
+	}
+
+	void erase(Hash hash)
+	{
+		lock.lock_write();
+		hashmap.erase(hash);
 		lock.unlock_write();
 	}
 

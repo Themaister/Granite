@@ -105,8 +105,14 @@ static string getCommandLine()
 			result = data;
 			env->ReleaseStringUTFChars(str, data);
 		}
+		else
+			LOGE("Failed to get JNI string data.\n");
+
 		env->DeleteLocalRef(str);
 	}
+	else
+		LOGE("Failed to get JNI string from getCommandLine().\n");
+
 	global_state.app->activity->vm->DetachCurrentThread();
 	return result;
 }
@@ -213,6 +219,9 @@ static void disable_sensors()
 
 static void handle_sensors()
 {
+	if (!global_state.app->userData)
+		return;
+
 	auto &state = *static_cast<WSIPlatformAndroid *>(global_state.app->userData);
 
 	if (!ASensorEventQueue_hasEvents(jni.sensor_queue))
@@ -252,6 +261,9 @@ static void handle_sensors()
 
 static int32_t engine_handle_input(android_app *app, AInputEvent *event)
 {
+	if (!app->userData)
+		return 0;
+
 	auto &state = *static_cast<WSIPlatformAndroid *>(app->userData);
 	bool handled = false;
 
@@ -380,6 +392,8 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 
 static void engine_handle_cmd(android_app *app, int32_t cmd)
 {
+	if (!app->userData)
+		return;
 	auto &state = *static_cast<WSIPlatformAndroid *>(app->userData);
 
 	switch (cmd)
@@ -711,9 +725,11 @@ void android_main(android_app *app)
 					argv.push_back("granite");
 
 					string cli_arguments = App::getCommandLine();
+					vector<string> arguments;
+					LOGI("Intent arguments: %s\n", cli_arguments.c_str());
 					if (!cli_arguments.empty())
 					{
-						auto arguments = Util::split_no_empty(cli_arguments, " ");
+						arguments = Util::split_no_empty(cli_arguments, " ");
 						for (auto &arg : arguments)
 						{
 							LOGI("Command line argument: %s\n", arg.c_str());
@@ -741,7 +757,10 @@ void android_main(android_app *app)
 						}
 					}
 					else
+					{
+						global_state.app->userData = nullptr;
 						ret = 1;
+					}
 
 					LOGI("Application returned %d.\n", ret);
 					Granite::Global::event_manager()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());

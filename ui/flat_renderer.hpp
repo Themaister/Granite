@@ -72,7 +72,7 @@ struct LineStripInfo
 class FlatRenderer : public EventHandler
 {
 public:
-	FlatRenderer();
+	FlatRenderer(const ShaderSuiteResolver *resolver = nullptr);
 
 	void begin();
 	void push_sprite(const SpriteInfo &info);
@@ -101,6 +101,7 @@ private:
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
 	Vulkan::Device *device = nullptr;
+	const ShaderSuiteResolver *resolver = nullptr;
 	RenderQueue queue;
 	ShaderSuite suite[Util::ecast(RenderableType::Count)];
 

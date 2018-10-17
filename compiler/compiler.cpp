@@ -64,6 +64,37 @@ void GLSLCompiler::set_source_from_file(const string &path)
 	stage = stage_from_path(path);
 }
 
+void GLSLCompiler::set_include_directories(const std::vector<std::string> *include_directories)
+{
+	this->include_directories = include_directories;
+}
+
+bool GLSLCompiler::find_include_path(const string &source_path, const string &include_path,
+                                     string &included_path, string &included_source)
+{
+	auto relpath = Path::relpath(source_path, include_path);
+	if (Global::filesystem()->read_file_to_string(relpath, included_source))
+	{
+		included_path = relpath;
+		return true;
+	}
+
+	if (include_directories)
+	{
+		for (auto &include_dir : *include_directories)
+		{
+			auto path = Path::join(include_dir, include_path);
+			if (Global::filesystem()->read_file_to_string(path, included_source))
+			{
+				included_path = path;
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
 bool GLSLCompiler::parse_variants(const string &source, const string &path)
 {
 	auto lines = Util::split(source, "\n");
@@ -77,9 +108,8 @@ bool GLSLCompiler::parse_variants(const string &source, const string &path)
 			if (!include_path.empty() && include_path.back() == '"')
 				include_path.pop_back();
 
-			include_path = Path::relpath(path, include_path);
 			string included_source;
-			if (!Global::filesystem()->read_file_to_string(include_path, included_source))
+			if (!find_include_path(path, include_path, include_path, included_source))
 			{
 				LOGE("Failed to include GLSL file: %s\n", include_path.c_str());
 				return false;

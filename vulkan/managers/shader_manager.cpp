@@ -40,14 +40,21 @@ namespace Vulkan
 {
 ShaderTemplate::ShaderTemplate(const std::string &shader_path,
                                PrecomputedShaderCache &cache,
-                               Util::Hash path_hash)
+                               Util::Hash path_hash,
+                               const std::vector<std::string> &include_directories)
 	: path(shader_path), cache(cache), path_hash(path_hash)
+#ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
+	, include_directories(include_directories)
+#endif
 {
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 	compiler = make_unique<Granite::GLSLCompiler>();
 	compiler->set_source_from_file(shader_path);
+	compiler->set_include_directories(&include_directories);
 	if (!compiler->preprocess())
 		throw runtime_error(Util::join("Failed to pre-process shader: ", shader_path));
+#else
+	(void)include_directories;
 #endif
 }
 
@@ -107,6 +114,7 @@ void ShaderTemplate::recompile()
 	{
 		auto newcompiler = make_unique<Granite::GLSLCompiler>();
 		newcompiler->set_source_from_file(path);
+		newcompiler->set_include_directories(&include_directories);
 		if (!newcompiler->preprocess())
 		{
 			LOGE("Failed to preprocess updated shader: %s\n", path.c_str());
@@ -320,7 +328,7 @@ ShaderTemplate *ShaderManager::get_template(const std::string &path)
 	auto *ret = shaders.find(hash);
 	if (!ret)
 	{
-		auto *shader = shaders.allocate(path, shader_cache, hasher.get());
+		auto *shader = shaders.allocate(path, shader_cache, hasher.get(), include_directories);
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 		{
 			DEPENDENCY_LOCK();
@@ -417,6 +425,12 @@ void ShaderManager::register_shader_hash_from_variant_hash(Hash variant_hash, Ha
 bool ShaderManager::get_shader_hash_by_variant_hash(Hash variant_hash, Hash &shader_hash)
 {
 	return shader_cache.find_and_consume_pod(variant_hash, shader_hash);
+}
+
+void ShaderManager::add_include_directory(const string &path)
+{
+	if (find(begin(include_directories), end(include_directories), path) == end(include_directories))
+		include_directories.push_back(path);
 }
 
 bool ShaderManager::load_shader_cache(const string &path)

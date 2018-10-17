@@ -36,8 +36,8 @@ using namespace std;
 namespace Granite
 {
 
-Renderer::Renderer(RendererType type)
-	: type(type)
+Renderer::Renderer(RendererType type, const ShaderSuiteResolver *resolver)
+	: type(type), resolver(resolver)
 {
 	EVENT_MANAGER_REGISTER_LATCH(Renderer, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 
@@ -199,56 +199,18 @@ void Renderer::set_mesh_renderer_options_from_lighting(const LightingParameters 
 	set_mesh_renderer_options(flags);
 }
 
+void Renderer::setup_shader_suite(Device &device, RendererType type)
+{
+	ShaderSuiteResolver default_resolver;
+	auto *res = resolver ? resolver : &default_resolver;
+	for (unsigned i = 0; i < ecast(RenderableType::Count); i++)
+		res->init_shader_suite(device, suite[i], type, static_cast<RenderableType>(i));
+}
+
 void Renderer::on_device_created(const DeviceCreatedEvent &created)
 {
 	auto &device = created.get_device();
-
-	if (type == RendererType::GeneralDeferred || type == RendererType::GeneralForward)
-	{
-		suite[ecast(RenderableType::Mesh)].init_graphics(&device.get_shader_manager(),
-		                                                 "builtin://shaders/static_mesh.vert",
-		                                                 "builtin://shaders/static_mesh.frag");
-		suite[ecast(RenderableType::DebugMesh)].init_graphics(&device.get_shader_manager(),
-		                                                      "builtin://shaders/debug_mesh.vert",
-		                                                      "builtin://shaders/debug_mesh.frag");
-		suite[ecast(RenderableType::Skybox)].init_graphics(&device.get_shader_manager(), "builtin://shaders/skybox.vert",
-		                                                   "builtin://shaders/skybox.frag");
-		suite[ecast(RenderableType::SkyCylinder)].init_graphics(&device.get_shader_manager(), "builtin://shaders/skycylinder.vert",
-		                                                   "builtin://shaders/skycylinder.frag");
-		suite[ecast(RenderableType::Ground)].init_graphics(&device.get_shader_manager(), "builtin://shaders/ground.vert",
-		                                                   "builtin://shaders/ground.frag");
-		suite[ecast(RenderableType::Ocean)].init_graphics(&device.get_shader_manager(), "builtin://shaders/ocean/ocean.vert",
-		                                                  "builtin://shaders/ocean/ocean.frag");
-		suite[ecast(RenderableType::TexturePlane)].init_graphics(&device.get_shader_manager(),
-		                                                         "builtin://shaders/texture_plane.vert",
-		                                                         "builtin://shaders/texture_plane.frag");
-	}
-	else if (type == RendererType::DepthOnly)
-	{
-		suite[ecast(RenderableType::Mesh)].init_graphics(&device.get_shader_manager(),
-		                                                 "builtin://shaders/static_mesh.vert",
-		                                                 "builtin://shaders/static_mesh_depth.frag");
-		suite[ecast(RenderableType::Ground)].init_graphics(&device.get_shader_manager(), "builtin://shaders/ground.vert",
-		                                                   "builtin://shaders/dummy_depth.frag");
-		suite[ecast(RenderableType::TexturePlane)].init_graphics(&device.get_shader_manager(), "builtin://shaders/texture_plane.vert",
-		                                                         "builtin://shaders/dummy_depth.frag");
-		suite[ecast(RenderableType::SpotLight)].init_graphics(&device.get_shader_manager(),
-		                                                      "builtin://shaders/lights/spot.vert",
-		                                                      "builtin://shaders/dummy.frag");
-		suite[ecast(RenderableType::PointLight)].init_graphics(&device.get_shader_manager(),
-		                                                       "builtin://shaders/lights/point.vert",
-		                                                       "builtin://shaders/dummy.frag");
-	}
-
-	if (type == RendererType::GeneralDeferred)
-	{
-		suite[ecast(RenderableType::SpotLight)].init_graphics(&device.get_shader_manager(),
-		                                                      "builtin://shaders/lights/spot.vert",
-		                                                      "builtin://shaders/lights/spot.frag");
-		suite[ecast(RenderableType::PointLight)].init_graphics(&device.get_shader_manager(),
-		                                                      "builtin://shaders/lights/point.vert",
-		                                                      "builtin://shaders/lights/point.frag");
-	}
+	setup_shader_suite(device, type);
 
 	set_mesh_renderer_options_internal(renderer_options);
 	for (auto &s : suite)
@@ -724,4 +686,91 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 		CommandBufferUtil::draw_fullscreen_quad(cmd);
 	}
 }
+
+void ShaderSuiteResolver::init_shader_suite(Device &device, ShaderSuite &suite,
+                                            RendererType renderer,
+                                            RenderableType drawable) const
+{
+	if (renderer == RendererType::GeneralDeferred ||
+	    renderer == RendererType::GeneralForward)
+	{
+		switch (drawable)
+		{
+		case RenderableType::Mesh:
+			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/static_mesh.vert", "builtin://shaders/static_mesh.frag");
+			break;
+
+		case RenderableType::DebugMesh:
+			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/debug_mesh.vert", "builtin://shaders/debug_mesh.frag");
+			break;
+
+		case RenderableType::Skybox:
+			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/skybox.vert", "builtin://shaders/skybox.frag");
+			break;
+
+		case RenderableType::SkyCylinder:
+			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/skycylinder.vert", "builtin://shaders/skycylinder.frag");
+			break;
+
+		case RenderableType::Ground:
+			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/ground.vert", "builtin://shaders/ground.frag");
+			break;
+
+		case RenderableType::Ocean:
+			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/ocean/ocean.vert", "builtin://shaders/ocean/ocean.frag");
+			break;
+
+		case RenderableType::TexturePlane:
+			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/texture_plane.vert", "builtin://shaders/texture_plane.frag");
+			break;
+
+		default:
+			break;
+		}
+	}
+	else if (renderer == RendererType::DepthOnly)
+	{
+		switch (drawable)
+		{
+		case RenderableType::Mesh:
+			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/static_mesh.vert", "builtin://shaders/static_mesh_depth.frag");
+			break;
+
+		case RenderableType::Ground:
+			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/ground.vert", "builtin://shaders/dummy_depth.frag");
+			break;
+
+		case RenderableType::TexturePlane:
+			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/texture_plane.vert", "builtin://shaders/dummy_depth.frag");
+			break;
+
+		case RenderableType::SpotLight:
+			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/lights/spot.vert", "builtin://shaders/dummy.frag");
+			break;
+
+		case RenderableType::PointLight:
+			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/lights/point.vert", "builtin://shaders/dummy.frag");
+			break;
+
+		default:
+			break;
+		}
+	}
+	else if (renderer == RendererType::Flat)
+	{
+		if (drawable == RenderableType::Sprite)
+			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/sprite.vert", "builtin://shaders/sprite.frag");
+		else if (drawable == RenderableType::LineUI)
+			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/line_ui.vert", "builtin://shaders/debug_mesh.frag");
+	}
+
+	if (renderer == RendererType::GeneralDeferred)
+	{
+		if (drawable == RenderableType::SpotLight)
+			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/lights/spot.vert", "builtin://shaders/lights/spot.frag");
+		else if (drawable == RenderableType::PointLight)
+			suite.init_graphics(&device.get_shader_manager(), "builtin://shaders/lights/point.vert", "builtin://shaders/lights/point.frag");
+	}
+}
+
 }

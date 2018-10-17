@@ -45,6 +45,7 @@ enum class RendererType
 	GeneralForward,
 	GeneralDeferred,
 	DepthOnly,
+	Flat,
 	External
 };
 }

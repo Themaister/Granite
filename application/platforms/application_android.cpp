@@ -634,7 +634,7 @@ static void wait_for_complete_teardown(android_app *app)
 		}
 	}
 
-	assert(global_state.app->activityState == APP_CMD_STOP);
+	assert(app->activityState == APP_CMD_STOP);
 }
 
 void android_main(android_app *app)

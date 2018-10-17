@@ -139,6 +139,7 @@ void static_mesh_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *rende
 void debug_mesh_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *render, unsigned instances);
 void line_strip_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *render, unsigned instances);
 void skinned_mesh_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *render, unsigned instances);
+void mesh_set_state(Vulkan::CommandBuffer &cmd, const StaticMeshInfo &info);
 }
 
 struct StaticMesh : AbstractRenderable

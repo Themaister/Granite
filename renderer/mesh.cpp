@@ -72,7 +72,7 @@ Hash StaticMesh::get_baked_instance_key() const
 
 namespace RenderFunctions
 {
-static void mesh_set_state(CommandBuffer &cmd, const StaticMeshInfo &info)
+void mesh_set_state(CommandBuffer &cmd, const StaticMeshInfo &info)
 {
 	cmd.set_program(*info.program);
 

@@ -47,7 +47,8 @@ class Device;
 class ShaderTemplate : public Util::IntrusiveHashMapEnabled<ShaderTemplate>
 {
 public:
-	ShaderTemplate(const std::string &shader_path, PrecomputedShaderCache &cache, Util::Hash path_hash);
+	ShaderTemplate(const std::string &shader_path, PrecomputedShaderCache &cache, Util::Hash path_hash,
+	               const std::vector<std::string> &include_directories);
 
 	struct Variant : public Util::IntrusiveHashMapEnabled<Variant>
 	{
@@ -70,11 +71,12 @@ public:
 private:
 	std::string path;
 	PrecomputedShaderCache &cache;
+	Util::Hash path_hash = 0;
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 	std::unique_ptr<Granite::GLSLCompiler> compiler;
+	const std::vector<std::string> &include_directories;
 #endif
 	VulkanCache<Variant> variants;
-	Util::Hash path_hash = 0;
 };
 
 class ShaderProgram : public Util::IntrusiveHashMapEnabled<ShaderProgram>
@@ -130,6 +132,8 @@ public:
 	bool load_shader_cache(const std::string &path);
 	bool save_shader_cache(const std::string &path);
 
+	void add_include_directory(const std::string &path);
+
 	~ShaderManager();
 	ShaderProgram *register_graphics(const std::string &vertex, const std::string &fragment);
 	ShaderProgram *register_compute(const std::string &compute);
@@ -148,14 +152,16 @@ private:
 	PrecomputedShaderCache shader_cache;
 	VulkanCache<ShaderTemplate> shaders;
 	VulkanCache<ShaderProgram> programs;
+	std::vector<std::string> include_directories;
 
 	ShaderTemplate *get_template(const std::string &source);
+
+#ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 	std::unordered_map<std::string, std::unordered_set<ShaderTemplate *>> dependees;
 #ifdef GRANITE_VULKAN_MT
 	std::mutex dependency_lock;
 #endif
 
-#ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 	struct Notify
 	{
 		Granite::FilesystemBackend *backend;

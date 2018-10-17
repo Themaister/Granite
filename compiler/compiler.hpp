@@ -54,6 +54,8 @@ public:
 		source_path = std::move(path);
 	}
 
+	void set_include_directories(const std::vector<std::string> *include_directories);
+
 	void set_source_from_file(const std::string &path);
 	bool preprocess();
 
@@ -72,6 +74,7 @@ public:
 private:
 	std::string source;
 	std::string source_path;
+	const std::vector<std::string> *include_directories = nullptr;
 	Stage stage = Stage::Compute;
 
 	std::unordered_set<std::string> dependencies;
@@ -88,5 +91,8 @@ private:
 		Default
 	};
 	Optimization optimization = Optimization::Default;
+
+	bool find_include_path(const std::string &source_path, const std::string &include_path,
+	                       std::string &included_path, std::string &included_source);
 };
 }

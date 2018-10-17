@@ -32,10 +32,19 @@ namespace Granite
 struct Sprite;
 class LightClusterer;
 
+class ShaderSuiteResolver
+{
+public:
+	virtual ~ShaderSuiteResolver() = default;
+	virtual void init_shader_suite(Vulkan::Device &device, ShaderSuite &suite,
+	                               RendererType renderer, RenderableType drawable) const;
+};
+
 class Renderer : public EventHandler
 {
 public:
-	Renderer(RendererType type = RendererType::GeneralDeferred);
+	Renderer(RendererType type = RendererType::GeneralDeferred, const ShaderSuiteResolver *resolver = nullptr);
+	virtual ~Renderer() = default;
 
 	enum RendererOptionBits
 	{
@@ -102,6 +111,9 @@ public:
 		return type;
 	}
 
+protected:
+	ShaderSuite suite[Util::ecast(RenderableType::Count)];
+
 private:
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
 
@@ -109,11 +121,12 @@ private:
 
 	Vulkan::Device *device = nullptr;
 	RenderQueue queue;
-	ShaderSuite suite[Util::ecast(RenderableType::Count)];
 
 	DebugMeshInstanceInfo &render_debug(RenderContext &context, unsigned count);
+	void setup_shader_suite(Vulkan::Device &device, RendererType type);
 
 	RendererType type;
+	const ShaderSuiteResolver *resolver = nullptr;
 	uint32_t renderer_options = ~0u;
 	uint8_t stencil_compare_mask = 0;
 	uint8_t stencil_write_mask = 0;

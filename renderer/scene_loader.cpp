@@ -37,7 +37,8 @@ namespace Granite
 
 SceneLoader::SceneLoader()
 {
-	scene.reset(new Scene);
+	scene = make_unique<Scene>();
+	animation_system = make_unique<AnimationSystem>();
 }
 
 unique_ptr<AnimationSystem> SceneLoader::consume_animation_system()
@@ -45,21 +46,31 @@ unique_ptr<AnimationSystem> SceneLoader::consume_animation_system()
 	return move(animation_system);
 }
 
-void SceneLoader::load_scene(const std::string &path)
+AnimationSystem &SceneLoader::get_animation_system()
 {
-	animation_system.reset(new AnimationSystem);
+	return *animation_system;
+}
+
+Scene::NodeHandle SceneLoader::load_scene_to_root_node(const std::string &path)
+{
 	auto ext = Path::ext(path);
 	if (ext == "gltf" || ext == "glb")
 	{
-		parse_gltf(path);
+		return parse_gltf(path);
 	}
 	else
 	{
 		string json;
 		if (!Global::filesystem()->read_file_to_string(path, json))
 			throw runtime_error("Failed to load GLTF file.");
-		parse_scene_format(path, json);
+		return parse_scene_format(path, json);
 	}
+}
+
+void SceneLoader::load_scene(const std::string &path)
+{
+	auto node = load_scene_to_root_node(path);
+	scene->set_root_node(node);
 }
 
 Scene::NodeHandle SceneLoader::build_tree_for_subscene(const SubsceneData &subscene)
@@ -250,10 +261,10 @@ void SceneLoader::load_animation(const std::string &path, SceneFormats::Animatio
 	animation.update_length();
 }
 
-void SceneLoader::parse_gltf(const std::string &path)
+Scene::NodeHandle SceneLoader::parse_gltf(const std::string &path)
 {
 	SubsceneData scene;
-	scene.parser.reset(new GLTF::Parser(path));
+	scene.parser = make_unique<GLTF::Parser>(path);
 
 	for (auto &mesh : scene.parser->get_meshes())
 	{
@@ -319,11 +330,10 @@ void SceneLoader::parse_gltf(const std::string &path)
 		}
 	}
 
-	auto root_node = build_tree_for_subscene(scene);
-	this->scene->set_root_node(root_node);
+	return build_tree_for_subscene(scene);
 }
 
-void SceneLoader::parse_scene_format(const std::string &path, const std::string &json)
+Scene::NodeHandle SceneLoader::parse_scene_format(const std::string &path, const std::string &json)
 {
 	Document doc;
 	doc.Parse(json);
@@ -535,8 +545,6 @@ void SceneLoader::parse_scene_format(const std::string &path, const std::string 
 		if (!node->get_parent())
 			root->add_child(node);
 
-	scene->set_root_node(root);
-
 	if (doc.HasMember("background"))
 	{
 		auto &bg = doc["background"];
@@ -731,6 +739,8 @@ void SceneLoader::parse_scene_format(const std::string &path, const std::string 
 			rpass->creator = plane.get();
 		}
 	}
+
+	return root;
 }
 
 }

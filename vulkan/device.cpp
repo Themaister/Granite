@@ -2998,6 +2998,7 @@ const RenderPass &Device::request_render_pass(const RenderPassInfo &info, bool c
 		if (info.color_attachments[i]->get_image().get_layout_type() == Layout::Optimal)
 			optimal |= 1u << i;
 
+		// This can change external subpass dependencies, so it must always be hashed.
 		h.u32(info.color_attachments[i]->get_image().get_swapchain_layout());
 	}
 
@@ -3037,8 +3038,10 @@ const RenderPass &Device::request_render_pass(const RenderPassInfo &info, bool c
 		h.u32(info.load_attachments);
 		h.u32(info.store_attachments);
 		h.u32(optimal);
-		h.u32(lazy);
 	}
+
+	// Lazy flag can change external subpass dependencies, which is not compatible.
+	h.u32(lazy);
 
 	auto hash = h.get();
 

@@ -331,7 +331,8 @@ public:
 		return current_subpass;
 	}
 	Util::IntrusivePtr<CommandBuffer> request_secondary_command_buffer(unsigned thread_index, unsigned subpass);
-	Util::IntrusivePtr<CommandBuffer> request_secondary_command_buffer(const RenderPassInfo &rp, unsigned thread_index, unsigned subpass);
+	static Util::IntrusivePtr<CommandBuffer> request_secondary_command_buffer(Device &device,
+	                                                                          const RenderPassInfo &rp, unsigned thread_index, unsigned subpass);
 
 	void set_program(Program &program);
 

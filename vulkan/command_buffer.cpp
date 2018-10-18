@@ -450,19 +450,18 @@ void CommandBuffer::init_viewport_scissor(const RenderPassInfo &info, const Fram
 	scissor = rect;
 }
 
-CommandBufferHandle CommandBuffer::request_secondary_command_buffer(const RenderPassInfo &info,
+CommandBufferHandle CommandBuffer::request_secondary_command_buffer(Device &device, const RenderPassInfo &info,
                                                                     unsigned thread_index, unsigned subpass)
 {
-	VK_ASSERT(!is_secondary);
-	auto *fb = &device->request_framebuffer(info);
-	auto cmd = device->request_secondary_command_buffer_for_thread(thread_index, fb, subpass);
+	auto *fb = &device.request_framebuffer(info);
+	auto cmd = device.request_secondary_command_buffer_for_thread(thread_index, fb, subpass);
 	cmd->begin_graphics();
 
-	cmd->framebuffer = framebuffer;
-	cmd->compatible_render_pass = compatible_render_pass;
-	cmd->actual_render_pass = &device->request_render_pass(info, false);
+	cmd->framebuffer = fb;
+	cmd->compatible_render_pass = &fb->get_compatible_render_pass();
+	cmd->actual_render_pass = &device.request_render_pass(info, false);
 
-	init_viewport_scissor(info, fb);
+	cmd->init_viewport_scissor(info, fb);
 	cmd->current_subpass = subpass;
 	cmd->current_contents = VK_SUBPASS_CONTENTS_INLINE;
 

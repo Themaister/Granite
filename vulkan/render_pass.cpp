@@ -155,6 +155,7 @@ RenderPass::RenderPass(Hash hash, Device *device, const RenderPassInfo &info)
 	const unsigned num_attachments = info.num_color_attachments + (info.depth_stencil ? 1 : 0);
 	VkAttachmentDescription attachments[VULKAN_NUM_ATTACHMENTS + 1];
 	uint32_t implicit_transitions = 0;
+	uint32_t implicit_bottom_of_pipe = 0;
 
 	VkAttachmentLoadOp ds_load_op = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 	VkAttachmentStoreOp ds_store_op = VK_ATTACHMENT_STORE_OP_DONT_CARE;
@@ -239,6 +240,12 @@ RenderPass::RenderPass(Hash hash, Device *device, const RenderPassInfo &info)
 				att.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
 			att.finalLayout = image.get_swapchain_layout();
+
+			// If we transition from PRESENT_SRC_KHR, this came from an implicit external subpass dependency
+			// which happens in BOTTOM_OF_PIPE. To properly transition away from it, we must wait for BOTTOM_OF_PIPE,
+			// without any memory barriers, since memory has been made available in the implicit barrier.
+			if (att.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD)
+				implicit_bottom_of_pipe |= 1u << i;
 			implicit_transitions |= 1u << i;
 		}
 		else
@@ -427,6 +434,7 @@ RenderPass::RenderPass(Hash hash, Device *device, const RenderPassInfo &info)
 	uint32_t external_color_dependencies = 0;
 	uint32_t external_depth_dependencies = 0;
 	uint32_t external_input_dependencies = 0;
+	uint32_t external_bottom_of_pipe_dependencies = 0;
 
 	for (unsigned attachment = 0; attachment < num_attachments; attachment++)
 	{
@@ -464,6 +472,9 @@ RenderPass::RenderPass(Hash hash, Device *device, const RenderPassInfo &info)
 				if (input)
 					external_input_dependencies |= 1u << subpass;
 			}
+
+			if (!used && (implicit_bottom_of_pipe & (1u << attachment)))
+				external_bottom_of_pipe_dependencies |= 1u << subpass;
 
 			if (resolve)
 			{
@@ -644,31 +655,32 @@ RenderPass::RenderPass(Hash hash, Device *device, const RenderPassInfo &info)
 		             dep.srcSubpass = VK_SUBPASS_EXTERNAL;
 		             dep.dstSubpass = subpass;
 
+		             if (external_bottom_of_pipe_dependencies & (1u << subpass))
+			             dep.srcStageMask |= VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+
 		             if (external_color_dependencies & (1u << subpass))
 		             {
 			             dep.srcStageMask |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 			             dep.dstStageMask |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 			             dep.srcAccessMask |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-			             dep.dstAccessMask |=
-				             VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+			             dep.dstAccessMask |= VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 		             }
 
 		             if (external_depth_dependencies & (1u << subpass))
 		             {
-			             dep.srcStageMask |=
-				             VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-			             dep.dstStageMask |=
-				             VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+			             dep.srcStageMask |= VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+			             dep.dstStageMask |= VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
 			             dep.srcAccessMask |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-			             dep.dstAccessMask |=
-				             VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+			             dep.dstAccessMask |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
 		             }
 
 		             if (external_input_dependencies & (1u << subpass))
 		             {
-			             dep.srcStageMask |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+			             dep.srcStageMask |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+			                                 VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
 			             dep.dstStageMask |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-			             dep.srcAccessMask |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+			             dep.srcAccessMask |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+			                                  VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 			             dep.dstAccessMask |= VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
 		             }
 	             });
@@ -776,6 +788,7 @@ void RenderPass::fixup_render_pass_nvidia(VkRenderPassCreateInfo &create_info, V
 		// Force STORE_OP_STORE for all attachments.
 		memcpy(attachments, create_info.pAttachments, create_info.attachmentCount * sizeof(attachments[0]));
 		create_info.pAttachments = attachments;
+
 		for (uint32_t i = 0; i < create_info.attachmentCount; i++)
 		{
 			VkFormat format = attachments[i].format;

@@ -331,6 +331,7 @@ public:
 		return current_subpass;
 	}
 	Util::IntrusivePtr<CommandBuffer> request_secondary_command_buffer(unsigned thread_index, unsigned subpass);
+	Util::IntrusivePtr<CommandBuffer> request_secondary_command_buffer(const RenderPassInfo &rp, unsigned thread_index, unsigned subpass);
 
 	void set_program(Program &program);
 
@@ -619,7 +620,8 @@ private:
 	Type type;
 
 	const Framebuffer *framebuffer = nullptr;
-	const RenderPass *render_pass = nullptr;
+	const RenderPass *actual_render_pass = nullptr;
+	const RenderPass *compatible_render_pass = nullptr;
 
 	VertexAttribState attribs[VULKAN_NUM_VERTEX_ATTRIBS] = {};
 	IndexState index = {};
@@ -686,6 +688,8 @@ private:
 	void set_texture(unsigned set, unsigned binding, VkImageView float_view, VkImageView integer_view,
 	                 VkImageLayout layout,
 	                 uint64_t cookie);
+
+	void init_viewport_scissor(const RenderPassInfo &info, const Framebuffer *framebuffer);
 };
 
 #ifdef GRANITE_VULKAN_FILESYSTEM

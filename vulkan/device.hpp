@@ -283,7 +283,7 @@ private:
 	PipelineLayout *request_pipeline_layout(const CombinedResourceLayout &layout);
 	DescriptorSetAllocator *request_descriptor_set_allocator(const DescriptorSetLayout &layout, const uint32_t *stages_for_sets);
 	const Framebuffer &request_framebuffer(const RenderPassInfo &info);
-	const RenderPass &request_render_pass(const RenderPassInfo &info);
+	const RenderPass &request_render_pass(const RenderPassInfo &info, bool compatible);
 
 	VkPhysicalDeviceMemoryProperties mem_props;
 	VkPhysicalDeviceProperties gpu_props;

@@ -1304,7 +1304,7 @@ CommandBufferHandle Device::request_secondary_command_buffer_for_thread(unsigned
 	VkCommandBufferInheritanceInfo inherit = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO };
 
 	inherit.framebuffer = framebuffer->get_framebuffer();
-	inherit.renderPass = framebuffer->get_render_pass().get_render_pass();
+	inherit.renderPass = framebuffer->get_compatible_render_pass().get_render_pass();
 	inherit.subpass = subpass;
 	info.pInheritanceInfo = &inherit;
 	info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
@@ -2981,7 +2981,7 @@ uint64_t Device::allocate_cookie()
 #endif
 }
 
-const RenderPass &Device::request_render_pass(const RenderPassInfo &info)
+const RenderPass &Device::request_render_pass(const RenderPassInfo &info, bool compatible)
 {
 	Hasher h;
 	VkFormat formats[VULKAN_NUM_ATTACHMENTS];
@@ -3028,12 +3028,17 @@ const RenderPass &Device::request_render_pass(const RenderPassInfo &info)
 	h.data(formats, info.num_color_attachments * sizeof(VkFormat));
 	h.u32(info.num_color_attachments);
 	h.u32(depth_stencil);
-	h.u32(info.op_flags);
-	h.u32(info.clear_attachments);
-	h.u32(info.load_attachments);
-	h.u32(info.store_attachments);
-	h.u32(lazy);
-	h.u32(optimal);
+
+	// Compatible render passes do not care about load/store, or image layouts.
+	if (!compatible)
+	{
+		h.u32(info.op_flags);
+		h.u32(info.clear_attachments);
+		h.u32(info.load_attachments);
+		h.u32(info.store_attachments);
+		h.u32(optimal);
+		h.u32(lazy);
+	}
 
 	auto hash = h.get();
 

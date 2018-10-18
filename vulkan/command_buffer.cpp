@@ -168,7 +168,7 @@ void CommandBuffer::copy_image_to_buffer(const Buffer &buffer, const Image &imag
 void CommandBuffer::clear_image(const Image &image, const VkClearValue &value)
 {
 	VK_ASSERT(!framebuffer);
-	VK_ASSERT(!render_pass);
+	VK_ASSERT(!actual_render_pass);
 
 	auto aspect = format_to_aspect_mask(image.get_format());
 	VkImageSubresourceRange range = {};
@@ -193,7 +193,7 @@ void CommandBuffer::clear_quad(unsigned attachment, const VkClearRect &rect, con
                                VkImageAspectFlags aspect)
 {
 	VK_ASSERT(framebuffer);
-	VK_ASSERT(render_pass);
+	VK_ASSERT(actual_render_pass);
 	VkClearAttachment att = {};
 	att.clearValue = value;
 	att.colorAttachment = attachment;
@@ -204,13 +204,13 @@ void CommandBuffer::clear_quad(unsigned attachment, const VkClearRect &rect, con
 void CommandBuffer::clear_quad(const VkClearRect &rect, const VkClearAttachment *attachments, unsigned num_attachments)
 {
 	VK_ASSERT(framebuffer);
-	VK_ASSERT(render_pass);
+	VK_ASSERT(actual_render_pass);
 	vkCmdClearAttachments(cmd, num_attachments, attachments, 1, &rect);
 }
 
 void CommandBuffer::full_barrier()
 {
-	VK_ASSERT(!render_pass);
+	VK_ASSERT(!actual_render_pass);
 	VK_ASSERT(!framebuffer);
 	barrier(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
 	        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT |
@@ -223,7 +223,7 @@ void CommandBuffer::full_barrier()
 
 void CommandBuffer::pixel_barrier()
 {
-	VK_ASSERT(render_pass);
+	VK_ASSERT(actual_render_pass);
 	VK_ASSERT(framebuffer);
 	VkMemoryBarrier barrier = { VK_STRUCTURE_TYPE_MEMORY_BARRIER };
 	barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
@@ -235,7 +235,7 @@ void CommandBuffer::pixel_barrier()
 void CommandBuffer::barrier(VkPipelineStageFlags src_stages, VkAccessFlags src_access, VkPipelineStageFlags dst_stages,
                             VkAccessFlags dst_access)
 {
-	VK_ASSERT(!render_pass);
+	VK_ASSERT(!actual_render_pass);
 	VK_ASSERT(!framebuffer);
 	VkMemoryBarrier barrier = { VK_STRUCTURE_TYPE_MEMORY_BARRIER };
 	barrier.srcAccessMask = src_access;
@@ -248,7 +248,7 @@ void CommandBuffer::barrier(VkPipelineStageFlags src_stages, VkPipelineStageFlag
                             const VkBufferMemoryBarrier *buffers, unsigned image_barriers,
                             const VkImageMemoryBarrier *images)
 {
-	VK_ASSERT(!render_pass);
+	VK_ASSERT(!actual_render_pass);
 	VK_ASSERT(!framebuffer);
 	vkCmdPipelineBarrier(cmd, src_stages, dst_stages, 0, barriers, globals, buffer_barriers, buffers, image_barriers, images);
 }
@@ -256,7 +256,7 @@ void CommandBuffer::barrier(VkPipelineStageFlags src_stages, VkPipelineStageFlag
 void CommandBuffer::buffer_barrier(const Buffer &buffer, VkPipelineStageFlags src_stages, VkAccessFlags src_access,
                                    VkPipelineStageFlags dst_stages, VkAccessFlags dst_access)
 {
-	VK_ASSERT(!render_pass);
+	VK_ASSERT(!actual_render_pass);
 	VK_ASSERT(!framebuffer);
 	VkBufferMemoryBarrier barrier = { VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER };
 	barrier.srcAccessMask = src_access;
@@ -272,7 +272,7 @@ void CommandBuffer::image_barrier(const Image &image, VkImageLayout old_layout, 
                                   VkPipelineStageFlags src_stages, VkAccessFlags src_access,
                                   VkPipelineStageFlags dst_stages, VkAccessFlags dst_access)
 {
-	VK_ASSERT(!render_pass);
+	VK_ASSERT(!actual_render_pass);
 	VK_ASSERT(!framebuffer);
 	VK_ASSERT(image.get_create_info().domain == ImageDomain::Physical);
 
@@ -438,6 +438,37 @@ void CommandBuffer::begin_graphics()
 	begin_context();
 }
 
+void CommandBuffer::init_viewport_scissor(const RenderPassInfo &info, const Framebuffer *framebuffer)
+{
+	VkRect2D rect = info.render_area;
+	rect.offset.x = min(framebuffer->get_width(), uint32_t(rect.offset.x));
+	rect.offset.y = min(framebuffer->get_height(), uint32_t(rect.offset.y));
+	rect.extent.width = min(framebuffer->get_width() - rect.offset.x, rect.extent.width);
+	rect.extent.height = min(framebuffer->get_height() - rect.offset.y, rect.extent.height);
+
+	viewport = { 0.0f, 0.0f, float(framebuffer->get_width()), float(framebuffer->get_height()), 0.0f, 1.0f };
+	scissor = rect;
+}
+
+CommandBufferHandle CommandBuffer::request_secondary_command_buffer(const RenderPassInfo &info,
+                                                                    unsigned thread_index, unsigned subpass)
+{
+	VK_ASSERT(!is_secondary);
+	auto *fb = &device->request_framebuffer(info);
+	auto cmd = device->request_secondary_command_buffer_for_thread(thread_index, fb, subpass);
+	cmd->begin_graphics();
+
+	cmd->framebuffer = framebuffer;
+	cmd->compatible_render_pass = compatible_render_pass;
+	cmd->actual_render_pass = &device->request_render_pass(info, false);
+
+	init_viewport_scissor(info, fb);
+	cmd->current_subpass = subpass;
+	cmd->current_contents = VK_SUBPASS_CONTENTS_INLINE;
+
+	return cmd;
+}
+
 CommandBufferHandle CommandBuffer::request_secondary_command_buffer(unsigned thread_index, unsigned subpass)
 {
 	VK_ASSERT(framebuffer);
@@ -445,8 +476,11 @@ CommandBufferHandle CommandBuffer::request_secondary_command_buffer(unsigned thr
 
 	auto cmd = device->request_secondary_command_buffer_for_thread(thread_index, framebuffer, subpass);
 	cmd->begin_graphics();
+
 	cmd->framebuffer = framebuffer;
-	cmd->render_pass = render_pass;
+	cmd->compatible_render_pass = compatible_render_pass;
+	cmd->actual_render_pass = actual_render_pass;
+
 	cmd->current_subpass = subpass;
 	cmd->viewport = viewport;
 	cmd->scissor = scissor;
@@ -468,9 +502,10 @@ void CommandBuffer::submit_secondary(CommandBufferHandle secondary)
 void CommandBuffer::next_subpass(VkSubpassContents contents)
 {
 	VK_ASSERT(framebuffer);
-	VK_ASSERT(render_pass);
+	VK_ASSERT(compatible_render_pass);
+	VK_ASSERT(actual_render_pass);
 	current_subpass++;
-	VK_ASSERT(current_subpass < render_pass->get_num_subpasses());
+	VK_ASSERT(current_subpass < actual_render_pass->get_num_subpasses());
 	vkCmdNextSubpass(cmd, contents);
 	current_contents = contents;
 	begin_graphics();
@@ -479,16 +514,14 @@ void CommandBuffer::next_subpass(VkSubpassContents contents)
 void CommandBuffer::begin_render_pass(const RenderPassInfo &info, VkSubpassContents contents)
 {
 	VK_ASSERT(!framebuffer);
-	VK_ASSERT(!render_pass);
+	VK_ASSERT(!compatible_render_pass);
+	VK_ASSERT(!actual_render_pass);
 
 	framebuffer = &device->request_framebuffer(info);
-	render_pass = &framebuffer->get_render_pass();
+	compatible_render_pass = &framebuffer->get_compatible_render_pass();
+	actual_render_pass = &device->request_render_pass(info, false);
 
-	VkRect2D rect = info.render_area;
-	rect.offset.x = min(framebuffer->get_width(), uint32_t(rect.offset.x));
-	rect.offset.y = min(framebuffer->get_height(), uint32_t(rect.offset.y));
-	rect.extent.width = min(framebuffer->get_width() - rect.offset.x, rect.extent.width);
-	rect.extent.height = min(framebuffer->get_height() - rect.offset.y, rect.extent.height);
+	init_viewport_scissor(info, framebuffer);
 
 	VkClearValue clear_values[VULKAN_NUM_ATTACHMENTS + 1];
 	unsigned num_clear_values = 0;
@@ -513,16 +546,14 @@ void CommandBuffer::begin_render_pass(const RenderPassInfo &info, VkSubpassConte
 	}
 
 	VkRenderPassBeginInfo begin_info = { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
-	begin_info.renderPass = render_pass->get_render_pass();
+	begin_info.renderPass = actual_render_pass->get_render_pass();
 	begin_info.framebuffer = framebuffer->get_framebuffer();
-	begin_info.renderArea = rect;
+	begin_info.renderArea = scissor;
 	begin_info.clearValueCount = num_clear_values;
 	begin_info.pClearValues = clear_values;
 
 	vkCmdBeginRenderPass(cmd, &begin_info, contents);
 
-	viewport = { 0.0f, 0.0f, float(framebuffer->get_width()), float(framebuffer->get_height()), 0.0f, 1.0f };
-	scissor = rect;
 	current_contents = contents;
 	begin_graphics();
 }
@@ -530,12 +561,14 @@ void CommandBuffer::begin_render_pass(const RenderPassInfo &info, VkSubpassConte
 void CommandBuffer::end_render_pass()
 {
 	VK_ASSERT(framebuffer);
-	VK_ASSERT(render_pass);
+	VK_ASSERT(actual_render_pass);
+	VK_ASSERT(compatible_render_pass);
 
 	vkCmdEndRenderPass(cmd);
 
 	framebuffer = nullptr;
-	render_pass = nullptr;
+	actual_render_pass = nullptr;
+	compatible_render_pass = nullptr;
 	begin_compute();
 }
 
@@ -614,14 +647,14 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
 	// Blend state
 	VkPipelineColorBlendAttachmentState blend_attachments[VULKAN_NUM_ATTACHMENTS];
 	VkPipelineColorBlendStateCreateInfo blend = { VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO };
-	blend.attachmentCount = render_pass->get_num_color_attachments(current_subpass);
+	blend.attachmentCount = compatible_render_pass->get_num_color_attachments(current_subpass);
 	blend.pAttachments = blend_attachments;
 	for (unsigned i = 0; i < blend.attachmentCount; i++)
 	{
 		auto &att = blend_attachments[i];
 		att = {};
 
-		if (render_pass->get_color_attachment(current_subpass, i).attachment != VK_ATTACHMENT_UNUSED &&
+		if (compatible_render_pass->get_color_attachment(current_subpass, i).attachment != VK_ATTACHMENT_UNUSED &&
 			(current_layout->get_resource_layout().render_target_mask & (1u << i)))
 		{
 			att.colorWriteMask = (static_state.state.write_mask >> (4 * i)) & 0xf;
@@ -641,9 +674,9 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
 
 	// Depth state
 	VkPipelineDepthStencilStateCreateInfo ds = { VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO };
-	ds.stencilTestEnable = render_pass->has_stencil(current_subpass) && static_state.state.stencil_test;
-	ds.depthTestEnable = render_pass->has_depth(current_subpass) && static_state.state.depth_test;
-	ds.depthWriteEnable = render_pass->has_depth(current_subpass) && static_state.state.depth_write;
+	ds.stencilTestEnable = compatible_render_pass->has_stencil(current_subpass) && static_state.state.stencil_test;
+	ds.depthTestEnable = compatible_render_pass->has_depth(current_subpass) && static_state.state.depth_test;
+	ds.depthWriteEnable = compatible_render_pass->has_depth(current_subpass) && static_state.state.depth_write;
 
 	if (ds.depthTestEnable)
 		ds.depthCompareOp = static_cast<VkCompareOp>(static_state.state.depth_compare);
@@ -691,9 +724,9 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
 
 	// Multisample
 	VkPipelineMultisampleStateCreateInfo ms = { VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO };
-	ms.rasterizationSamples = static_cast<VkSampleCountFlagBits>(render_pass->get_sample_count(current_subpass));
+	ms.rasterizationSamples = static_cast<VkSampleCountFlagBits>(compatible_render_pass->get_sample_count(current_subpass));
 
-	if (render_pass->get_sample_count(current_subpass) > 1)
+	if (compatible_render_pass->get_sample_count(current_subpass) > 1)
 	{
 		ms.alphaToCoverageEnable = static_state.state.alpha_to_coverage;
 		ms.alphaToOneEnable = static_state.state.alpha_to_one;
@@ -712,7 +745,6 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
 	// Stages
 	VkPipelineShaderStageCreateInfo stages[static_cast<unsigned>(ShaderStage::Count)];
 	unsigned num_stages = 0;
-
 
 	VkSpecializationInfo spec_info[ecast(ShaderStage::Count)] = {};
 	VkSpecializationMapEntry spec_entries[ecast(ShaderStage::Count)][VULKAN_NUM_SPEC_CONSTANTS];
@@ -755,7 +787,7 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
 
 	VkGraphicsPipelineCreateInfo pipe = { VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
 	pipe.layout = current_pipeline_layout;
-	pipe.renderPass = render_pass->get_render_pass();
+	pipe.renderPass = compatible_render_pass->get_render_pass();
 	pipe.subpass = current_subpass;
 
 	pipe.pViewportState = &vp;
@@ -820,7 +852,7 @@ void CommandBuffer::flush_graphics_pipeline()
 		h.u32(vbo.strides[bit]);
 	});
 
-	h.u64(render_pass->get_hash());
+	h.u64(compatible_render_pass->get_hash());
 	h.u32(current_subpass);
 	h.u64(current_program->get_hash());
 	h.data(static_state.words, sizeof(static_state.words));
@@ -946,7 +978,7 @@ void CommandBuffer::wait_events(unsigned num_events, const VkEvent *events,
                                 const VkImageMemoryBarrier *images)
 {
 	VK_ASSERT(!framebuffer);
-	VK_ASSERT(!render_pass);
+	VK_ASSERT(!actual_render_pass);
 	vkCmdWaitEvents(cmd, num_events, events, src_stages, dst_stages,
 	                barriers, globals, buffer_barriers, buffers, image_barriers, images);
 }
@@ -954,7 +986,7 @@ void CommandBuffer::wait_events(unsigned num_events, const VkEvent *events,
 PipelineEvent CommandBuffer::signal_event(VkPipelineStageFlags stages)
 {
 	VK_ASSERT(!framebuffer);
-	VK_ASSERT(!render_pass);
+	VK_ASSERT(!actual_render_pass);
 	auto event = device->request_pipeline_event();
 	vkCmdSetEvent(cmd, event->get_event(), stages);
 	event->set_stages(stages);
@@ -1269,11 +1301,11 @@ void CommandBuffer::set_buffer_view(unsigned set, unsigned binding, const Buffer
 void CommandBuffer::set_input_attachments(unsigned set, unsigned start_binding)
 {
 	VK_ASSERT(set < VULKAN_NUM_DESCRIPTOR_SETS);
-	VK_ASSERT(start_binding + render_pass->get_num_input_attachments(current_subpass) <= VULKAN_NUM_BINDINGS);
-	unsigned num_input_attachments = render_pass->get_num_input_attachments(current_subpass);
+	VK_ASSERT(start_binding + actual_render_pass->get_num_input_attachments(current_subpass) <= VULKAN_NUM_BINDINGS);
+	unsigned num_input_attachments = actual_render_pass->get_num_input_attachments(current_subpass);
 	for (unsigned i = 0; i < num_input_attachments; i++)
 	{
-		auto &ref = render_pass->get_input_attachment(current_subpass, i);
+		auto &ref = actual_render_pass->get_input_attachment(current_subpass, i);
 		if (ref.attachment == VK_ATTACHMENT_UNUSED)
 			continue;
 
@@ -1578,7 +1610,7 @@ void CommandBuffer::flush_descriptor_set(uint32_t set)
 		vkUpdateDescriptorSets(device->get_device(), write_count, writes, 0, nullptr);
 	}
 
-	vkCmdBindDescriptorSets(cmd, render_pass ? VK_PIPELINE_BIND_POINT_GRAPHICS : VK_PIPELINE_BIND_POINT_COMPUTE,
+	vkCmdBindDescriptorSets(cmd, actual_render_pass ? VK_PIPELINE_BIND_POINT_GRAPHICS : VK_PIPELINE_BIND_POINT_COMPUTE,
 	                        current_pipeline_layout, set, 1, &allocated.first, num_dynamic_offsets, dynamic_offsets);
 }
 

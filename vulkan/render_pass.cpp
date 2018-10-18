@@ -129,6 +129,10 @@ RenderPass::RenderPass(Hash hash, Device *device, const RenderPassInfo &info)
 
 	VK_ASSERT(info.num_color_attachments || info.depth_stencil);
 
+	// Want to make load/store to transient a very explicit thing to do, since it will kill performance.
+	bool enable_transient_store = (info.op_flags & RENDER_PASS_OP_ENABLE_TRANSIENT_STORE_BIT) != 0;
+	bool enable_transient_load = (info.op_flags & RENDER_PASS_OP_ENABLE_TRANSIENT_LOAD_BIT) != 0;
+
 	// Set up default subpass info structure if we don't have it.
 	auto *subpass_infos = info.subpasses;
 	unsigned num_subpasses = info.num_subpasses;
@@ -204,17 +208,27 @@ RenderPass::RenderPass(Hash hash, Device *device, const RenderPassInfo &info)
 		att.storeOp = color_store_op(i);
 		att.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 		att.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+		// Undefined final layout here for now means that we will just use the layout of the last
+		// subpass which uses this attachment to avoid any dummy transition at the end.
+		att.finalLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
 		if (image.get_create_info().domain == ImageDomain::Transient)
 		{
-			VK_ASSERT(att.loadOp != VK_ATTACHMENT_LOAD_OP_LOAD);
-			if (att.storeOp == VK_ATTACHMENT_STORE_OP_STORE)
+			if (enable_transient_load)
+			{
+				// The transient will behave like a normal image.
+				att.initialLayout = info.color_attachments[i]->get_image().get_layout(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+			}
+			else
+			{
+				// Force a clean discard.
+				VK_ASSERT(att.loadOp != VK_ATTACHMENT_LOAD_OP_LOAD);
+				att.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			}
+
+			if (!enable_transient_store)
 				att.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 
-			att.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-			// Undefined final layout here for now means that we will just use the layout of the last
-			// subpass which uses this attachment to avoid any dummy transition at the end.
-			att.finalLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 			implicit_transitions |= 1u << i;
 		}
 		else if (image.is_swapchain_image())
@@ -228,18 +242,7 @@ RenderPass::RenderPass(Hash hash, Device *device, const RenderPassInfo &info)
 			implicit_transitions |= 1u << i;
 		}
 		else
-		{
 			att.initialLayout = info.color_attachments[i]->get_image().get_layout(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-
-			if (att.initialLayout != VK_IMAGE_LAYOUT_GENERAL)
-			{
-				// Undefined final layout here for now means that we will just use the layout of the last
-				// subpass which uses this attachment to avoid any dummy transition at the end.
-				att.finalLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-			}
-			else
-				att.finalLayout = att.initialLayout;
-		}
 	}
 
 	depth_stencil = info.depth_stencil ? info.depth_stencil->get_format() : VK_FORMAT_UNDEFINED;
@@ -252,6 +255,9 @@ RenderPass::RenderPass(Hash hash, Device *device, const RenderPassInfo &info)
 		att.samples = image.get_create_info().samples;
 		att.loadOp = ds_load_op;
 		att.storeOp = ds_store_op;
+		// Undefined final layout here for now means that we will just use the layout of the last
+		// subpass which uses this attachment to avoid any dummy transition at the end.
+		att.finalLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
 		if (format_to_aspect_mask(depth_stencil) & VK_IMAGE_ASPECT_STENCIL_BIT)
 		{
@@ -266,36 +272,32 @@ RenderPass::RenderPass(Hash hash, Device *device, const RenderPassInfo &info)
 
 		if (image.get_create_info().domain == ImageDomain::Transient)
 		{
-			if (att.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD)
-				att.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-			if (att.storeOp == VK_ATTACHMENT_STORE_OP_STORE)
+			if (enable_transient_load)
+			{
+				// The transient will behave like a normal image.
+				att.initialLayout = depth_stencil_layout;
+			}
+			else
+			{
+				if (att.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD)
+					att.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+				if (att.stencilLoadOp == VK_ATTACHMENT_LOAD_OP_LOAD)
+					att.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+
+				// For transient attachments we force the layouts.
+				att.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			}
+
+			if (!enable_transient_store)
+			{
 				att.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-			if (att.stencilLoadOp == VK_ATTACHMENT_LOAD_OP_LOAD)
-				att.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-			if (att.stencilStoreOp == VK_ATTACHMENT_STORE_OP_STORE)
 				att.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+			}
 
-			// For transient attachments we force the layouts.
-			att.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-
-			// Undefined final layout here for now means that we will just use the layout of the last
-			// subpass which uses this attachment to avoid any dummy transition at the end.
-			att.finalLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 			implicit_transitions |= 1u << info.num_color_attachments;
 		}
 		else
-		{
 			att.initialLayout = depth_stencil_layout;
-
-			if (att.initialLayout != VK_IMAGE_LAYOUT_GENERAL)
-			{
-				// Undefined final layout here for now means that we will just use the layout of the last
-				// subpass which uses this attachment to avoid any dummy transition at the end.
-				att.finalLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-			}
-			else
-				att.finalLayout = att.initialLayout;
-		}
 	}
 
 	Util::StackAllocator<VkAttachmentReference, 1024> reference_allocator;
@@ -365,17 +367,6 @@ RenderPass::RenderPass(Hash hash, Device *device, const RenderPassInfo &info)
 			depth->attachment = VK_ATTACHMENT_UNUSED;
 			depth->layout = VK_IMAGE_LAYOUT_UNDEFINED;
 		}
-
-		// No need for this yet, and it breaks current RADV.
-#if 0
-		static const VkAttachmentReference dummy_attachment = { VK_ATTACHMENT_UNUSED, VK_IMAGE_LAYOUT_UNDEFINED };
-		if (subpass.colorAttachmentCount == 0)
-		{
-			// So we can support alpha-to-coverage in depth only modes.
-			subpass.colorAttachmentCount = 1;
-			subpass.pColorAttachments = &dummy_attachment;
-		}
-#endif
 	}
 
 	const auto find_color = [&](unsigned subpass, unsigned attachment) -> VkAttachmentReference * {
@@ -875,7 +866,7 @@ void FramebufferAllocator::begin_frame()
 
 Framebuffer &FramebufferAllocator::request_framebuffer(const RenderPassInfo &info)
 {
-	auto &rp = device->request_render_pass(info);
+	auto &rp = device->request_render_pass(info, true);
 	Hasher h;
 	h.u64(rp.get_hash());
 

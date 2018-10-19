@@ -24,6 +24,7 @@
 #include "os.hpp"
 #include "mesh_util.hpp"
 #include <string.h>
+#include "device.hpp"
 
 using namespace Granite;
 using namespace Vulkan;

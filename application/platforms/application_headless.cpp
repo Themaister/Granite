@@ -456,9 +456,6 @@ private:
 	hw_counter_handle_t *hw_counter_handle = nullptr;
 };
 
-void application_dummy()
-{
-}
 }
 
 static void print_help()
@@ -469,32 +466,10 @@ static void print_help()
 	     "[--png-reference-path <path>] [--frames <frames>] [--width <width>] [--height <height>] [--time-step <step>] [--hw-counter-lib <lib>].\n");
 }
 
-#ifdef _WIN32
-int CALLBACK WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
-#else
-int main(int argc, char *argv[])
-#endif
+namespace Granite
 {
-#ifdef _WIN32
-	int argc;
-	wchar_t **wide_argv = CommandLineToArgvW(GetCommandLineW(), &argc);
-	vector<char *> argv_buffer(argc + 1);
-	char **argv = nullptr;
-
-	if (wide_argv)
-	{
-		argv = argv_buffer.data();
-		for (int i = 0; i < argc; i++)
-		{
-			auto length = wcslen(wide_argv[i]);
-			argv_buffer[i] = new char[length + 1];
-			size_t num_converted;
-			wcstombs_s(&num_converted, argv_buffer[i], length + 1, wide_argv[i], length + 1);
-		}
-	}
-#endif
-
-	using namespace Granite;
+int application_main_headless(Application *(*create_application)(int, char **), int argc, char *argv[])
+{
 	if (argc < 1)
 		return 1;
 
@@ -530,9 +505,14 @@ int main(int argc, char *argv[])
 	cbs.add("--fs-builtin", [&](CLIParser &parser) { args.builtin = parser.next_string(); });
 	cbs.add("--fs-cache", [&](CLIParser &parser) { args.cache = parser.next_string(); });
 	cbs.add("--stat", [&](CLIParser &parser) { args.stat = parser.next_string(); });
-	cbs.add("--help", [](CLIParser &parser) { print_help(); parser.end(); });
+	cbs.add("--help", [](CLIParser &parser)
+	{
+		print_help();
+		parser.end();
+	});
 	cbs.add("--hw-counter-lib", [&](CLIParser &parser) { args.hw_counter_lib = parser.next_string(); });
-	cbs.add("--audio-dump", [&](CLIParser &parser) {
+	cbs.add("--audio-dump", [&](CLIParser &parser)
+	{
 		args.sample_rate = parser.next_double();
 		args.audio_output = parser.next_string();
 		args.audio_dump = true;
@@ -565,9 +545,9 @@ int main(int argc, char *argv[])
 		{
 			auto *mixer = new Audio::Mixer;
 			audio_dumper = new Audio::DumpBackend(*mixer, args.audio_output,
-			                                      float(args.sample_rate), 2,
-			                                      unsigned(std::round(args.sample_rate * args.time_step)),
-			                                      args.max_frames + 1);
+												  float(args.sample_rate), 2,
+												  unsigned(std::round(args.sample_rate * args.time_step)),
+												  args.max_frames + 1);
 			Global::install_audio_system(audio_dumper, mixer);
 		}
 		else
@@ -577,12 +557,8 @@ int main(int argc, char *argv[])
 	}
 #endif
 
-	auto app = unique_ptr<Application>(Granite::application_create(int(filtered_argv.size() - 1), filtered_argv.data()));
-
-#ifdef _WIN32
-	for (auto &arg : argv_buffer)
-		delete[] arg;
-#endif
+	auto app = unique_ptr<Application>(
+			create_application(int(filtered_argv.size() - 1), filtered_argv.data()));
 
 	if (app)
 	{
@@ -665,9 +641,14 @@ int main(int argc, char *argv[])
 
 				if (has_start_counters && has_end_counters)
 				{
-					doc.AddMember("gpuCycles", (end_counter.gpu_cycles - start_counter.gpu_cycles) / rendered_frames, allocator);
-					doc.AddMember("bandwidthRead", (end_counter.bandwidth_read - start_counter.bandwidth_read) / rendered_frames, allocator);
-					doc.AddMember("bandwidthWrite", (end_counter.bandwidth_write - start_counter.bandwidth_write) / rendered_frames, allocator);
+					doc.AddMember("gpuCycles", (end_counter.gpu_cycles - start_counter.gpu_cycles) / rendered_frames,
+					              allocator);
+					doc.AddMember("bandwidthRead",
+					              (end_counter.bandwidth_read - start_counter.bandwidth_read) / rendered_frames,
+					              allocator);
+					doc.AddMember("bandwidthWrite",
+					              (end_counter.bandwidth_write - start_counter.bandwidth_write) / rendered_frames,
+					              allocator);
 				}
 
 				StringBuffer buffer;
@@ -697,4 +678,5 @@ int main(int argc, char *argv[])
 	}
 	else
 		return 1;
+}
 }

@@ -216,6 +216,9 @@ private:
 	void capture_environment_probe();
 };
 
+int application_main(Application *(*create_application)(int, char **), int argc, char **argv);
+int application_main_headless(Application *(*create_application)(int, char **), int argc, char **argv);
+
 extern Application *application_create(int argc, char *argv[]);
 
 // Call this to ensure application-main is linked in correctly without having to mess around

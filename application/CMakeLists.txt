@@ -17,3 +17,11 @@ add_granite_library(application-wsi application_wsi.cpp application_wsi.hpp appl
 target_include_directories(application-wsi PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(application-wsi vulkan-backend event application-input)
 
+if (NOT ANDROID)
+    add_granite_library(application-entry application_entry.cpp)
+    target_link_libraries(application-entry granite)
+endif()
+
+add_granite_library(application-entry-headless application_entry.cpp)
+target_link_libraries(application-entry-headless granite)
+target_compile_definitions(application-entry-headless PRIVATE APPLICATION_ENTRY_HEADLESS=1)

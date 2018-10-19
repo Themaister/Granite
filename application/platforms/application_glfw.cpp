@@ -341,45 +341,14 @@ static void enter_cb(GLFWwindow *window, int entered)
 	else
 		glfw->get_input_tracker().mouse_leave();
 }
-
-void application_dummy()
-{
-}
 }
 
-#ifdef _WIN32
-int CALLBACK WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
-#else
-int main(int argc, char *argv[])
-#endif
+namespace Granite
 {
-#ifdef _WIN32
-	int argc;
-	wchar_t **wide_argv = CommandLineToArgvW(GetCommandLineW(), &argc);
-	vector<char *> argv_buffer(argc + 1);
-	char **argv = nullptr;
-
-	if (wide_argv)
-	{
-		argv = argv_buffer.data();
-		for (int i = 0; i < argc; i++)
-		{
-			auto length = wcslen(wide_argv[i]);
-			argv_buffer[i] = new char[length + 1];
-			size_t num_converted;
-			wcstombs_s(&num_converted, argv_buffer[i], length + 1, wide_argv[i], length + 1);
-		}
-	}
-#endif
-
+int application_main(Application *(*create_application)(int, char **), int argc, char *argv[])
+{
 	Granite::Global::init();
-
-	auto app = unique_ptr<Granite::Application>(Granite::application_create(argc, argv));
-
-#ifdef _WIN32
-	for (auto &arg : argv_buffer)
-		delete[] arg;
-#endif
+	auto app = unique_ptr<Granite::Application>(create_application(argc, argv));
 
 	if (app)
 	{
@@ -394,4 +363,5 @@ int main(int argc, char *argv[])
 	}
 	else
 		return 1;
+}
 }

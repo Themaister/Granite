@@ -9,4 +9,3 @@ else()
     target_compile_definitions(compiler PRIVATE GRANITE_COMPILER_OPTIMIZE=0)
 endif()
 target_link_libraries(compiler SPIRV-Tools)
-

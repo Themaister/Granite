@@ -25,16 +25,17 @@
 #include <tuple>
 #include <vector>
 #include <memory>
-#include <unordered_set>
-#include <unordered_map>
 #include <algorithm>
 #include "object_pool.hpp"
 #include "intrusive.hpp"
+#include "intrusive_hash_map.hpp"
+#include "compile_time_hash.hpp"
+#include "enum_cast.hpp"
 #include <assert.h>
 
 namespace Granite
 {
-struct ComponentBase
+struct ComponentBase : Util::IntrusiveHashMapEnabled<ComponentBase>
 {
 };
 
@@ -64,29 +65,61 @@ struct HasComponent<0>
 
 class Entity;
 
-struct ComponentIDMapping
+#define GRANITE_COMPONENT_TYPE_HASH(x) ::Util::compile_time_fnv1(#x)
+using ComponentType = uint64_t;
+
+#define GRANITE_COMPONENT_TYPE_DECL(x) \
+enum class ComponentTypeWrapper : ::Granite::ComponentType { \
+	type_id = GRANITE_COMPONENT_TYPE_HASH(x) \
+}; \
+static inline constexpr ::Granite::ComponentType get_component_id_hash() { \
+	return ::Granite::ComponentType(ComponentTypeWrapper::type_id); \
+}
+
+struct ComponentSetKey : Util::IntrusiveHashMapEnabled<ComponentSetKey>
+{
+};
+
+class ComponentSet : public Util::IntrusiveHashMapEnabled<ComponentSet>
 {
 public:
-	template <typename T>
-	static uint32_t get_id()
+	void insert(ComponentType type);
+
+	Util::IntrusiveList<ComponentSetKey>::Iterator begin()
 	{
-		static uint32_t id = ids++;
-		return id;
+		return set.begin();
 	}
 
-	template <typename... Ts>
-	static uint32_t get_group_id()
+	Util::IntrusiveList<ComponentSetKey>::Iterator end()
 	{
-		static uint32_t id = group_ids++;
-		return id;
+		return set.end();
 	}
 
 private:
-	static uint32_t ids;
-	static uint32_t group_ids;
+	Util::IntrusiveHashMap<ComponentSetKey> set;
 };
 
-class EntityGroupBase
+using ComponentHashMap = Util::IntrusiveHashMapHolder<ComponentBase>;
+using ComponentGroupHashMap = Util::IntrusiveHashMap<ComponentSet>;
+
+struct ComponentIDMapping
+{
+	template <typename T>
+	constexpr static Util::Hash get_id()
+	{
+		enum class Result : Util::Hash { result = T::get_component_id_hash() };
+		return Util::Hash(Result::result);
+	}
+
+	template <typename... Ts>
+	constexpr static Util::Hash get_group_id()
+	{
+		enum class Result : Util::Hash { result = Util::compile_time_fnv1_merged(Ts::get_component_id_hash()...) };
+		return Util::Hash(Result::result);
+	}
+};
+
+class EntityGroupBase : public Util::IntrusiveHashMapEnabled<EntityGroupBase>
 {
 public:
 	virtual ~EntityGroupBase() = default;
@@ -104,15 +137,17 @@ struct EntityDeleter
 class Entity : public Util::IntrusivePtrEnabled<Entity, EntityDeleter>
 {
 public:
+	friend class EntityPool;
+
 	Entity(EntityPool *pool)
 		: pool(pool)
 	{
 	}
 
-	bool has_component(uint32_t id) const
+	bool has_component(ComponentType id) const
 	{
 		auto itr = components.find(id);
-		return itr != std::end(components) && itr->second;
+		return itr != nullptr;
 	}
 
 	template <typename T>
@@ -124,21 +159,15 @@ public:
 	template <typename T>
 	T *get_component()
 	{
-		auto itr = components.find(ComponentIDMapping::get_id<T>());
-		if (itr == std::end(components))
-			return nullptr;
-
-		return static_cast<T *>(itr->second);
+		auto *t = components.find(ComponentIDMapping::get_id<T>());
+		return static_cast<T *>(t);
 	}
 
 	template <typename T>
 	const T *get_component() const
 	{
-		auto itr = components.find(ComponentIDMapping::get_id<T>());
-		if (itr == std::end(components))
-			return nullptr;
-
-		return static_cast<T *>(itr->second);
+		auto *t = components.find(ComponentIDMapping::get_id<T>());
+		return static_cast<T *>(t);
 	}
 
 	template <typename T, typename... Ts>
@@ -147,7 +176,7 @@ public:
 	template <typename T>
 	void free_component();
 
-	std::unordered_map<uint32_t, ComponentBase *> &get_components()
+	ComponentHashMap &get_components()
 	{
 		return components;
 	}
@@ -159,7 +188,7 @@ public:
 
 private:
 	EntityPool *pool;
-	std::unordered_map<uint32_t, ComponentBase *> components;
+	ComponentHashMap components;
 };
 
 template <typename... Ts>
@@ -169,10 +198,7 @@ public:
 	void add_entity(Entity &entity) override final
 	{
 		if (has_all_components<Ts...>(entity))
-		{
-			//entities.push_back(&entity);
 			groups.push_back(std::make_tuple(entity.get_component<Ts>()...));
-		}
 	}
 
 	void remove_component(ComponentBase *component) override final
@@ -186,12 +212,8 @@ public:
 
 		auto offset = size_t(itr - begin(groups));
 		if (offset != groups.size() - 1)
-		{
 			std::swap(groups[offset], groups.back());
-			//std::swap(entities[offset], entities.back());
-		}
 		groups.pop_back();
-		//entities.pop_back();
 	}
 
 	std::vector<std::tuple<Ts *...>> &get_groups()
@@ -201,7 +223,6 @@ public:
 
 private:
 	std::vector<std::tuple<Ts *...>> groups;
-	//std::vector<Entity *> entities;
 
 	template <typename... Us>
 	struct HasAllComponents;
@@ -238,7 +259,7 @@ private:
 	}
 };
 
-class ComponentAllocatorBase
+class ComponentAllocatorBase : public Util::IntrusiveHashMapEnabled<ComponentAllocatorBase>
 {
 public:
 	virtual ~ComponentAllocatorBase() = default;
@@ -261,6 +282,12 @@ using EntityHandle = Util::IntrusivePtr<Entity>;
 class EntityPool
 {
 public:
+	~EntityPool();
+
+	EntityPool() = default;
+	void operator=(const EntityPool &) = delete;
+	EntityPool(const EntityPool &) = delete;
+
 	EntityHandle create_entity()
 	{
 		auto itr = EntityHandle(entity_pool.allocate(this));
@@ -270,10 +297,17 @@ public:
 
 	void delete_entity(Entity *entity)
 	{
-		auto &components = entity->get_components();
-		for (auto &component : components)
-			if (component.second)
-				free_component(component.first, component.second);
+		{
+			auto &components = entity->get_components();
+			auto &list = components.inner_list();
+			auto itr = list.begin();
+			while (itr != list.end())
+			{
+				auto *component = itr.get();
+				itr = list.erase(itr);
+				free_component(component->get_hash(), component);
+			}
+		}
 		entity_pool.free(entity);
 
 		auto itr = std::find(std::begin(entities), std::end(entities), entity);
@@ -286,60 +320,82 @@ public:
 	template <typename... Ts>
 	std::vector<std::tuple<Ts *...>> &get_component_group()
 	{
-		uint32_t group_id = ComponentIDMapping::get_group_id<Ts...>();
-		auto itr = groups.find(group_id);
-		if (itr == std::end(groups))
+		ComponentType group_id = ComponentIDMapping::get_group_id<Ts...>();
+		auto *t = groups.find(group_id);
+		if (!t)
 		{
 			register_group<Ts...>(group_id);
-			auto tmp = groups.insert(std::make_pair(group_id, std::unique_ptr<EntityGroupBase>(new EntityGroup<Ts...>())));
-			itr = tmp.first;
 
-			auto *group = static_cast<EntityGroup<Ts...> *>(itr->second.get());
+			t = new EntityGroup<Ts...>();
+			t->set_hash(group_id);
+			groups.insert_yield(t);
+
+			auto *group = static_cast<EntityGroup<Ts...> *>(t);
 			for (auto &entity : entities)
 				group->add_entity(*entity);
 		}
 
-		auto *group = static_cast<EntityGroup<Ts...> *>(itr->second.get());
+		auto *group = static_cast<EntityGroup<Ts...> *>(t);
 		return group->get_groups();
 	}
 
 	template <typename T, typename... Ts>
 	T *allocate_component(Entity &entity, Ts&&... ts)
 	{
-		uint32_t id = ComponentIDMapping::get_id<T>();
-		auto itr = components.find(id);
-		if (itr == std::end(components))
+		ComponentType id = ComponentIDMapping::get_id<T>();
+		auto *t = components.find(id);
+		if (!t)
 		{
-			auto tmp = components.insert(std::make_pair(id, std::unique_ptr<ComponentAllocatorBase>(new ComponentAllocator<T>)));
-			itr = tmp.first;
+			t = new ComponentAllocator<T>();
+			t->set_hash(id);
+			components.insert_yield(t);
 		}
 
-		auto *allocator = static_cast<ComponentAllocator<T> *>(itr->second.get());
-		auto &comp = entity.get_components()[id];
-		assert(!comp);
-		if (!comp)
-		{
-			comp = allocator->pool.allocate(std::forward<Ts>(ts)...);
-			for (auto &group : component_to_groups[id])
-				groups[group]->add_entity(entity);
-		}
+		auto *allocator = static_cast<ComponentAllocator<T> *>(t);
+		auto *comp = allocator->pool.allocate(std::forward<Ts>(ts)...);
+		comp->set_hash(id);
+		auto *to_delete = entity.components.insert_replace(comp);
+		if (to_delete)
+			allocator->free_component(to_delete);
+
+		auto *component_groups = component_to_groups.find(id);
+
+		if (to_delete && component_groups)
+			for (auto &group : *component_groups)
+				groups.find(group.get_hash())->remove_component(to_delete);
+
+		if (component_groups)
+			for (auto &group : *component_groups)
+				groups.find(group.get_hash())->add_entity(entity);
+
 		return static_cast<T *>(comp);
 	}
 
-	void free_component(uint32_t id, ComponentBase *component)
+	void free_component(ComponentType id, ComponentBase *component)
 	{
-		components[id]->free_component(component);
-		for (auto &group : component_to_groups[id])
-			groups[group]->remove_component(component);
+		auto *c = components.find(id);
+		if (c)
+			c->free_component(component);
+
+		auto *component_groups = component_to_groups.find(id);
+		if (component_groups)
+		{
+			for (auto &group : *component_groups)
+			{
+				auto *g = groups.find(group.get_hash());
+				if (g)
+					g->remove_component(component);
+			}
+		}
 	}
 
 	void reset_groups();
 
 private:
 	Util::ObjectPool<Entity> entity_pool;
-	std::unordered_map<uint32_t, std::unique_ptr<EntityGroupBase>> groups;
-	std::unordered_map<uint32_t, std::unique_ptr<ComponentAllocatorBase>> components;
-	std::unordered_map<uint32_t, std::unordered_set<uint32_t>> component_to_groups;
+	Util::IntrusiveHashMapHolder<EntityGroupBase> groups;
+	Util::IntrusiveHashMapHolder<ComponentAllocatorBase> components;
+	ComponentGroupHashMap component_to_groups;
 	std::vector<Entity *> entities;
 
 	template <typename... Us>
@@ -348,10 +404,10 @@ private:
 	template <typename U, typename... Us>
 	struct GroupRegisters<U, Us...>
 	{
-		static void register_group(std::unordered_map<uint32_t, std::unordered_set<uint32_t>> &groups,
-		                           uint32_t group_id)
+		static void register_group(ComponentGroupHashMap &groups,
+		                           ComponentType group_id)
 		{
-			groups[ComponentIDMapping::get_id<U>()].insert(group_id);
+			groups.emplace_yield(ComponentIDMapping::get_id<U>())->insert(group_id);
 			GroupRegisters<Us...>::register_group(groups, group_id);
 		}
 	};
@@ -359,15 +415,15 @@ private:
 	template <typename U>
 	struct GroupRegisters<U>
 	{
-		static void register_group(std::unordered_map<uint32_t, std::unordered_set<uint32_t>> &groups,
-		                           uint32_t group_id)
+		static void register_group(ComponentGroupHashMap &groups,
+		                           ComponentType group_id)
 		{
-			groups[ComponentIDMapping::get_id<U>()].insert(group_id);
+			groups.emplace_yield(ComponentIDMapping::get_id<U>())->insert(group_id);
 		}
 	};
 
 	template <typename U, typename... Us>
-	void register_group(uint32_t group_id)
+	void register_group(ComponentType group_id)
 	{
 		GroupRegisters<U, Us...>::register_group(component_to_groups, group_id);
 	}
@@ -383,12 +439,11 @@ template <typename T>
 void Entity::free_component()
 {
 	auto id = ComponentIDMapping::get_id<T>();
-	auto itr = components.find(id);
-	if (itr != std::end(components))
+	auto *t = components.find(id);
+	if (t)
 	{
-		assert(itr->second);
-		pool->free_component(id, itr->second);
-		components.erase(itr);
+		components.erase(t);
+		pool->free_component(t->get_hash(), t);
 	}
 }
 

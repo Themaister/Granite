@@ -65,6 +65,8 @@ struct IntrusivePODWrapper : public IntrusiveHashMapEnabled<IntrusivePODWrapper<
 	{
 	}
 
+	IntrusivePODWrapper() = default;
+
 	T& get()
 	{
 		return value;
@@ -75,7 +77,7 @@ struct IntrusivePODWrapper : public IntrusiveHashMapEnabled<IntrusivePODWrapper<
 		return value;
 	}
 
-	T value;
+	T value = {};
 };
 
 // This HashMap is non-owning. It just arranges a list of pointers.
@@ -224,6 +226,11 @@ public:
 		return list.end();
 	}
 
+	IntrusiveList<T> &inner_list()
+	{
+		return list;
+	}
+
 private:
 
 	inline bool compare_key(Hash masked, Hash hash) const
@@ -316,8 +323,15 @@ public:
 
 	void clear()
 	{
-		for (auto &t : hashmap)
-			pool.free(&t);
+		auto &list = hashmap.inner_list();
+		auto itr = list.begin();
+		while (itr != list.end())
+		{
+			auto *to_free = itr.get();
+			itr = list.erase(itr);
+			pool.free(to_free);
+		}
+
 		hashmap.clear();
 	}
 
@@ -407,6 +421,9 @@ private:
 	IntrusiveHashMapHolder<T> hashmap;
 	ObjectPool<T> pool;
 };
+
+template <typename T>
+using IntrusiveHashMapWrapper = IntrusiveHashMap<IntrusivePODWrapper<T>>;
 
 template <typename T>
 class ThreadSafeIntrusiveHashMap

@@ -543,7 +543,7 @@ EntityHandle Scene::create_renderable(AbstractRenderableHandle renderable, Node 
 	return entity;
 }
 
-void Scene::remove_entities_with_component(uint32_t id)
+void Scene::remove_entities_with_component(ComponentType id)
 {
 	auto itr = remove_if(begin(nodes), end(nodes), [id](const EntityHandle &entity) {
 		return entity->has_component(id);

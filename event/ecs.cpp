@@ -24,8 +24,21 @@
 
 namespace Granite
 {
-uint32_t ComponentIDMapping::ids;
-uint32_t ComponentIDMapping::group_ids;
+EntityPool::~EntityPool()
+{
+	{
+		auto &list = components.inner_list();
+		auto itr = list.begin();
+		while (itr != list.end())
+		{
+			auto *to_free = itr.get();
+			itr = list.erase(itr);
+			delete to_free;
+		}
+	}
+
+	reset_groups();
+}
 
 void EntityDeleter::operator()(Entity *entity)
 {
@@ -35,6 +48,22 @@ void EntityDeleter::operator()(Entity *entity)
 void EntityPool::reset_groups()
 {
 	component_to_groups.clear();
+
+	{
+		auto &list = groups.inner_list();
+		auto itr = list.begin();
+		while (itr != list.end())
+		{
+			auto *to_free = itr.get();
+			itr = list.erase(itr);
+			delete to_free;
+		}
+	}
 	groups.clear();
+}
+
+void ComponentSet::insert(ComponentType type)
+{
+	set.emplace_yield(type);
 }
 }

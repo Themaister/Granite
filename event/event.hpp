@@ -28,6 +28,7 @@
 #include <stdexcept>
 #include <utility>
 #include "global_managers.hpp"
+#include "compile_time_hash.hpp"
 
 #define EVENT_MANAGER_REGISTER(clazz, member, event) \
 	::Granite::Global::event_manager()->register_handler<clazz, event, &clazz::member>(this)
@@ -44,39 +45,7 @@ Return member_function_invoker(void *object, const Event &e)
 	return (static_cast<T *>(object)->*callback)(static_cast<const EventType &>(e));
 }
 
-namespace Detail
-{
-
-#ifdef _MSC_VER
-// MSVC generates bogus warnings here.
-#pragma warning(disable: 4307)
-#endif
-
-constexpr uint64_t fnv_iterate(uint64_t hash, char c)
-{
-	return (hash * 0x100000001b3ull) ^ uint8_t(c);
-}
-
-template<size_t index>
-constexpr uint64_t compile_time_fnv1_inner(uint64_t hash, const char *str)
-{
-	return compile_time_fnv1_inner<index - 1>(fnv_iterate(hash, str[index]), str);
-}
-
-template<>
-constexpr uint64_t compile_time_fnv1_inner<size_t(-1)>(uint64_t hash, const char *)
-{
-	return hash;
-}
-
-template<size_t len>
-constexpr uint64_t compile_time_fnv1(const char (&str)[len])
-{
-	return compile_time_fnv1_inner<len - 1>(0xcbf29ce484222325ull, str);
-}
-}
-
-#define GRANITE_EVENT_TYPE_HASH(x) ::Granite::Detail::compile_time_fnv1(#x)
+#define GRANITE_EVENT_TYPE_HASH(x) ::Util::compile_time_fnv1(#x)
 using EventType = uint64_t;
 
 #define GRANITE_EVENT_TYPE_DECL(x) \

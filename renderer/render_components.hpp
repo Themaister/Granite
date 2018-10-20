@@ -64,29 +64,35 @@ struct CachedSkinTransform
 
 struct BoundedComponent : ComponentBase
 {
+	GRANITE_COMPONENT_TYPE_DECL(BoundedComponent)
 	const AABB *aabb;
 };
 
 struct UnboundedComponent : ComponentBase
 {
+	GRANITE_COMPONENT_TYPE_DECL(UnboundedComponent)
 };
 
 struct BackgroundComponent : ComponentBase
 {
+	GRANITE_COMPONENT_TYPE_DECL(BackgroundComponent)
 };
 
 struct EnvironmentComponent : ComponentBase
 {
+	GRANITE_COMPONENT_TYPE_DECL(EnvironmentComponent)
 	FogParameters fog;
 };
 
 struct SkyboxComponent : ComponentBase
 {
+	GRANITE_COMPONENT_TYPE_DECL(SkyboxComponent)
 	Skybox *skybox;
 };
 
 struct IBLComponent : ComponentBase
 {
+	GRANITE_COMPONENT_TYPE_DECL(IBLComponent)
 	std::string reflection_path;
 	std::string irradiance_path;
 	float intensity;
@@ -94,11 +100,13 @@ struct IBLComponent : ComponentBase
 
 struct RenderableComponent : ComponentBase
 {
+	GRANITE_COMPONENT_TYPE_DECL(RenderableComponent)
 	AbstractRenderableHandle renderable;
 };
 
 struct CameraComponent : ComponentBase
 {
+	GRANITE_COMPONENT_TYPE_DECL(CameraComponent)
 	Camera camera;
 };
 
@@ -115,20 +123,24 @@ struct RenderPassCreator
 
 struct RenderPassSinkComponent : ComponentBase
 {
+	GRANITE_COMPONENT_TYPE_DECL(RenderPassSinkComponent)
 };
 
 struct CullPlaneComponent : ComponentBase
 {
+	GRANITE_COMPONENT_TYPE_DECL(CullPlaneComponent)
 	vec4 plane;
 };
 
 struct GroundComponent : ComponentBase
 {
+	GRANITE_COMPONENT_TYPE_DECL(GroundComponent)
 	Ground *ground = nullptr;
 };
 
 struct RenderPassComponent : ComponentBase
 {
+	GRANITE_COMPONENT_TYPE_DECL(RenderPassComponent)
 	RenderPassCreator *creator = nullptr;
 };
 
@@ -146,16 +158,19 @@ struct PerFrameRefreshable
 
 struct PerFrameUpdateTransformComponent : ComponentBase
 {
+	GRANITE_COMPONENT_TYPE_DECL(PerFrameUpdateTransformComponent)
 	PerFrameRefreshableTransform *refresh = nullptr;
 };
 
 struct PerFrameUpdateComponent : ComponentBase
 {
+	GRANITE_COMPONENT_TYPE_DECL(PerFrameUpdateComponent)
 	PerFrameRefreshable *refresh = nullptr;
 };
 
 struct CachedSpatialTransformComponent : ComponentBase
 {
+	GRANITE_COMPONENT_TYPE_DECL(CachedSpatialTransformComponent)
 	AABB world_aabb;
 	CachedTransform *transform = nullptr;
 	CachedSkinTransform *skin_transform = nullptr;
@@ -163,45 +178,54 @@ struct CachedSpatialTransformComponent : ComponentBase
 
 struct CachedTransformComponent : ComponentBase
 {
+	GRANITE_COMPONENT_TYPE_DECL(CachedTransformComponent)
 	CachedTransform *transform = nullptr;
 };
 
 struct CachedSpatialTransformTimestampComponent : ComponentBase
 {
+	GRANITE_COMPONENT_TYPE_DECL(CachedSpatialTransformTimestampComponent)
 	uint32_t last_timestamp = ~0u;
 	const uint32_t *current_timestamp = nullptr;
 };
 
 struct OpaqueComponent : ComponentBase
 {
+	GRANITE_COMPONENT_TYPE_DECL(OpaqueComponent)
 };
 
 struct TransparentComponent : ComponentBase
 {
+	GRANITE_COMPONENT_TYPE_DECL(TransparentComponent)
 };
 
 struct PositionalLightComponent : ComponentBase
 {
+	GRANITE_COMPONENT_TYPE_DECL(PositionalLightComponent)
 	PositionalLight *light;
 };
 
 struct DirectionalLightComponent : ComponentBase
 {
+	GRANITE_COMPONENT_TYPE_DECL(DirectionalLightComponent)
 	vec3 color;
 	vec3 direction;
 };
 
 struct AmbientLightComponent : ComponentBase
 {
+	GRANITE_COMPONENT_TYPE_DECL(AmbientLightComponent)
 	vec3 color;
 };
 
 struct CastsStaticShadowComponent : ComponentBase
 {
+	GRANITE_COMPONENT_TYPE_DECL(CastsStaticShadowComponent)
 };
 
 struct CastsDynamicShadowComponent : ComponentBase
 {
+	GRANITE_COMPONENT_TYPE_DECL(CastsDynamicShadowComponent)
 };
 
 }

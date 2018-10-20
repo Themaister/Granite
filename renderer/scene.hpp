@@ -173,7 +173,7 @@ public:
 		remove_entities_with_component(ComponentIDMapping::get_id<T>());
 	}
 
-	void remove_entities_with_component(uint32_t id);
+	void remove_entities_with_component(ComponentType id);
 
 private:
 	EntityPool pool;

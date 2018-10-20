@@ -116,7 +116,7 @@ public:
 		return Iterator();
 	}
 
-	void erase(Iterator itr)
+	Iterator erase(Iterator itr)
 	{
 		auto *node = itr.get();
 		auto *next = node->next;
@@ -129,6 +129,8 @@ public:
 
 		if (next)
 			next->prev = prev;
+
+		return next;
 	}
 
 	void insert_front(Iterator itr)

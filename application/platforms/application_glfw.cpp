@@ -177,6 +177,12 @@ public:
 		cached_window = win;
 	}
 
+	void set_window_title(const string &title)
+	{
+		if (window)
+			glfwSetWindowTitle(window, title.c_str());
+	}
+
 private:
 	GLFWwindow *window = nullptr;
 	unsigned width = 0;

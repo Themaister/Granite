@@ -94,6 +94,8 @@ public:
 
 	virtual float get_estimated_frame_presentation_duration();
 
+	virtual void set_window_title(const std::string &title);
+
 protected:
 	bool resize = false;
 
@@ -152,6 +154,7 @@ public:
 	void init_surface_and_swapchain(VkSurfaceKHR new_surface);
 
 	float get_estimated_video_latency();
+	void set_window_title(const std::string &title);
 
 private:
 	void update_framebuffer(unsigned width, unsigned height);

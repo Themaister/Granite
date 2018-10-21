@@ -31,6 +31,16 @@ WSI::WSI()
 {
 }
 
+void WSIPlatform::set_window_title(const string &)
+{
+}
+
+void WSI::set_window_title(const string &title)
+{
+	if (platform)
+		platform->set_window_title(title);
+}
+
 float WSIPlatform::get_estimated_frame_presentation_duration()
 {
 	// Just assume 60 FPS for now.

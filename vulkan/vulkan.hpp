@@ -82,6 +82,7 @@ struct DeviceFeatures
 	bool supports_image_format_list = false;
 	bool supports_debug_marker = false;
 	bool supports_debug_utils = false;
+	bool supports_mirror_clamp_to_edge = false;
 	VkPhysicalDeviceFeatures enabled_features = {};
 };
 

@@ -605,6 +605,12 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 		enabled_extensions.push_back(VK_EXT_DEBUG_MARKER_EXTENSION_NAME);
 	}
 
+	if (has_extension(VK_KHR_SAMPLER_MIRROR_CLAMP_TO_EDGE_EXTENSION_NAME))
+	{
+		ext.supports_mirror_clamp_to_edge = true;
+		enabled_extensions.push_back(VK_KHR_SAMPLER_MIRROR_CLAMP_TO_EDGE_EXTENSION_NAME);
+	}
+
 #ifdef _WIN32
 	ext.supports_external = false;
 #else

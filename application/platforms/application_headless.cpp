@@ -151,6 +151,11 @@ public:
 		}
 	}
 
+	float get_estimated_video_latency() override
+	{
+		return 0.0f;
+	}
+
 	~WSIPlatformHeadless() override
 	{
 		release_resources();

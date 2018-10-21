@@ -92,6 +92,8 @@ public:
 	virtual void event_frame_tick(double frame, double elapsed) = 0;
 	virtual void event_swapchain_index(Device *device, unsigned index) = 0;
 
+	virtual float get_estimated_video_latency();
+
 protected:
 	bool resize = false;
 
@@ -148,6 +150,8 @@ public:
 
 	void deinit_surface_and_swapchain();
 	void init_surface_and_swapchain(VkSurfaceKHR new_surface);
+
+	float get_estimated_video_latency();
 
 private:
 	void update_framebuffer(unsigned width, unsigned height);

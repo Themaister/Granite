@@ -31,6 +31,21 @@ WSI::WSI()
 {
 }
 
+float WSIPlatform::get_estimated_video_latency()
+{
+	// About two frames.
+	// TODO: Be more intelligent.
+	return 0.030f;
+}
+
+float WSI::get_estimated_video_latency()
+{
+	if (platform)
+		return platform->get_estimated_video_latency();
+	else
+		return 0.0f;
+}
+
 bool WSI::reinit_external_swapchain(std::vector<Vulkan::ImageHandle> external_images)
 {
 	if (!init_external_swapchain(move(external_images)))

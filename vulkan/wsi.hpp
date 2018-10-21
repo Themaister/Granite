@@ -92,7 +92,7 @@ public:
 	virtual void event_frame_tick(double frame, double elapsed) = 0;
 	virtual void event_swapchain_index(Device *device, unsigned index) = 0;
 
-	virtual float get_estimated_video_latency();
+	virtual float get_estimated_frame_presentation_duration();
 
 protected:
 	bool resize = false;

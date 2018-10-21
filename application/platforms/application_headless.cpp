@@ -151,7 +151,7 @@ public:
 		}
 	}
 
-	float get_estimated_video_latency() override
+	float get_estimated_frame_presentation_duration() override
 	{
 		return 0.0f;
 	}

@@ -31,17 +31,21 @@ WSI::WSI()
 {
 }
 
-float WSIPlatform::get_estimated_video_latency()
+float WSIPlatform::get_estimated_frame_presentation_duration()
 {
-	// About two frames.
+	// Just assume 60 FPS for now.
 	// TODO: Be more intelligent.
-	return 0.030f;
+	return 1.0f / 60.0f;
 }
 
 float WSI::get_estimated_video_latency()
 {
+	unsigned latency_frames = device->get_num_swapchain_images();
+	if (latency_frames > 0)
+		latency_frames--;
+
 	if (platform)
-		return platform->get_estimated_video_latency();
+		return platform->get_estimated_frame_presentation_duration() * float(latency_frames);
 	else
 		return 0.0f;
 }

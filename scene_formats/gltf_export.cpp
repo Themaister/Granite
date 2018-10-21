@@ -25,7 +25,7 @@
 #include "texture_files.hpp"
 
 #include "rapidjson_wrapper.hpp"
-#include "hash.hpp"
+#include "hashmap.hpp"
 #include "thread_group.hpp"
 #include <unordered_set>
 #include "texture_utils.hpp"

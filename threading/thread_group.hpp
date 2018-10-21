@@ -32,7 +32,6 @@
 #include <object_pool.hpp>
 #include "variant.hpp"
 #include "intrusive.hpp"
-#include <unordered_map>
 
 namespace Granite
 {

@@ -24,11 +24,11 @@
 
 #include <vector>
 #include <memory>
-#include <unordered_map>
 #include <stdexcept>
 #include <utility>
 #include "global_managers.hpp"
 #include "compile_time_hash.hpp"
+#include "intrusive_hash_map.hpp"
 
 #define EVENT_MANAGER_REGISTER(clazz, member, event) \
 	::Granite::Global::event_manager()->register_handler<clazz, event, &clazz::member>(this)
@@ -209,7 +209,7 @@ private:
 		EventHandler *unregister_key;
 	};
 
-	struct EventTypeData
+	struct EventTypeData : Util::IntrusiveHashMapEnabled<EventTypeData>
 	{
 		std::vector<std::unique_ptr<Event>> queued_events;
 		std::vector<Handler> handlers;
@@ -220,7 +220,7 @@ private:
 		void flush_recursive_handlers();
 	};
 
-	struct LatchEventTypeData
+	struct LatchEventTypeData : Util::IntrusiveHashMapEnabled<LatchEventTypeData>
 	{
 		std::vector<std::unique_ptr<Event>> queued_events;
 		std::vector<LatchHandler> handlers;
@@ -242,15 +242,8 @@ private:
 #endif
 	void unregister_latch_handler(const LatchHandler &handler);
 
-	struct EventHasher
-	{
-		size_t operator()(EventType hash) const
-		{
-			return static_cast<size_t>(hash);
-		}
-	};
-	std::unordered_map<EventType, EventTypeData, EventHasher> events;
-	std::unordered_map<EventType, LatchEventTypeData, EventHasher> latched_events;
+	Util::IntrusiveHashMap<EventTypeData> events;
+	Util::IntrusiveHashMap<LatchEventTypeData> latched_events;
 	uint64_t cookie_counter = 0;
 };
 }

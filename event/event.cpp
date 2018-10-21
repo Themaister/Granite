@@ -34,9 +34,9 @@ EventManager::~EventManager()
 	dispatch();
 	for (auto &event_type : latched_events)
 	{
-		for (auto &handler : event_type.second.handlers)
+		for (auto &handler : event_type.handlers)
 		{
-			dispatch_down_events(event_type.second.queued_events, handler);
+			dispatch_down_events(event_type.queued_events, handler);
 
 			// Before the event manager dies, make sure no stale EventHandler objects try to unregister themselves.
 			if (handler.unregister_key)
@@ -49,8 +49,8 @@ void EventManager::dispatch()
 {
 	for (auto &event_type : events)
 	{
-		auto &handlers = event_type.second.handlers;
-		auto &queued_events = event_type.second.queued_events;
+		auto &handlers = event_type.handlers;
+		auto &queued_events = event_type.queued_events;
 		auto itr = remove_if(begin(handlers), end(handlers), [&](const Handler &handler) {
 			for (auto &event : queued_events)
 				if (!handler.mem_fn(handler.handler, *event))
@@ -119,15 +119,15 @@ void EventManager::unregister_handler(EventHandler *handler)
 {
 	for (auto &event_type : events)
 	{
-		auto itr = remove_if(begin(event_type.second.handlers), end(event_type.second.handlers), [&](const Handler &h) {
+		auto itr = remove_if(begin(event_type.handlers), end(event_type.handlers), [&](const Handler &h) {
 			return h.unregister_key == handler;
 		});
 
-		if (itr != end(event_type.second.handlers) && event_type.second.dispatching)
+		if (itr != end(event_type.handlers) && event_type.dispatching)
 			throw logic_error("Unregistering handlers while dispatching events.");
 
-		if (itr != end(event_type.second.handlers))
-			event_type.second.handlers.erase(itr, end(event_type.second.handlers));
+		if (itr != end(event_type.handlers))
+			event_type.handlers.erase(itr, end(event_type.handlers));
 	}
 }
 
@@ -154,12 +154,12 @@ void EventManager::unregister_latch_handler(EventHandler *handler)
 {
 	for (auto &event_type : latched_events)
 	{
-		auto itr = remove_if(begin(event_type.second.handlers), end(event_type.second.handlers), [&](const LatchHandler &h) {
+		auto itr = remove_if(begin(event_type.handlers), end(event_type.handlers), [&](const LatchHandler &h) {
 			return h.unregister_key == handler;
 		});
 
-		if (itr != end(event_type.second.handlers))
-			event_type.second.handlers.erase(itr, end(event_type.second.handlers));
+		if (itr != end(event_type.handlers))
+			event_type.handlers.erase(itr, end(event_type.handlers));
 	}
 }
 
@@ -167,18 +167,18 @@ void EventManager::unregister_latch_handler(const LatchHandler &handler)
 {
 	for (auto &event_type : latched_events)
 	{
-		auto itr = remove_if(begin(event_type.second.handlers), end(event_type.second.handlers), [&](const LatchHandler &h) {
+		auto itr = remove_if(begin(event_type.handlers), end(event_type.handlers), [&](const LatchHandler &h) {
 			bool signal = h.unregister_key == handler.unregister_key && h.up_fn == handler.up_fn && h.down_fn == handler.down_fn;
 			if (signal)
-				dispatch_down_events(event_type.second.queued_events, h);
+				dispatch_down_events(event_type.queued_events, h);
 			return signal;
 		});
 
-		if (itr != end(event_type.second.handlers) && event_type.second.dispatching)
+		if (itr != end(event_type.handlers) && event_type.dispatching)
 			throw logic_error("Unregistering handlers while dispatching events.");
 
-		if (itr != end(event_type.second.handlers))
-			event_type.second.handlers.erase(itr, end(event_type.second.handlers));
+		if (itr != end(event_type.handlers))
+			event_type.handlers.erase(itr, end(event_type.handlers));
 	}
 }
 
@@ -186,19 +186,19 @@ void EventManager::dequeue_latched(uint64_t cookie)
 {
 	for (auto &event_type : latched_events)
 	{
-		auto &events = event_type.second.queued_events;
-		if (event_type.second.enqueueing)
+		auto &events = event_type.queued_events;
+		if (event_type.enqueueing)
 			throw logic_error("Dequeueing latched while queueing events.");
-		event_type.second.enqueueing = true;
+		event_type.enqueueing = true;
 
 		auto itr = remove_if(begin(events), end(events), [&](const unique_ptr<Event> &event) {
 			bool signal = event->get_cookie() == cookie;
 			if (signal)
-				dispatch_down_event(event_type.second, *event);
+				dispatch_down_event(event_type, *event);
 			return signal;
 		});
 
-		event_type.second.enqueueing = false;
+		event_type.enqueueing = false;
 		events.erase(itr, end(events));
 	}
 }

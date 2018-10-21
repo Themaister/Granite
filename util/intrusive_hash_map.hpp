@@ -340,6 +340,14 @@ public:
 		return hashmap.find(hash);
 	}
 
+	T &operator[](Hash hash)
+	{
+		auto *t = find(hash);
+		if (!t)
+			t = emplace_yield(hash);
+		return *t;
+	}
+
 	template <typename P>
 	bool find_and_consume_pod(Hash hash, P &p) const
 	{

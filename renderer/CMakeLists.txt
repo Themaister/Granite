@@ -36,6 +36,7 @@ target_link_libraries(renderer
         application-input
         application-wsi
         threading
+        ecs
         rapidjson)
 
 add_subdirectory(fft EXCLUDE_FROM_ALL)

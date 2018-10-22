@@ -26,7 +26,7 @@
 #include <algorithm>
 #include <string.h>
 
-#ifdef HAVE_DYLIB
+#ifndef _WIN32
 #include <dlfcn.h>
 #elif defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
@@ -62,7 +62,7 @@ bool Context::init_loader(PFN_vkGetInstanceProcAddr addr)
 {
 	if (!addr)
 	{
-#if defined(HAVE_DYLIB)
+#ifndef _WIN32
 		static void *module;
 		if (!module)
 		{
@@ -80,7 +80,7 @@ bool Context::init_loader(PFN_vkGetInstanceProcAddr addr)
 		addr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(dlsym(module, "vkGetInstanceProcAddr"));
 		if (!addr)
 			return false;
-#elif defined(_WIN32)
+#else
 		static HMODULE module;
 		if (!module)
 		{
@@ -92,8 +92,6 @@ bool Context::init_loader(PFN_vkGetInstanceProcAddr addr)
 		addr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(GetProcAddress(module, "vkGetInstanceProcAddr"));
 		if (!addr)
 			return false;
-#else
-		return false;
 #endif
 	}
 

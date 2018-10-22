@@ -541,20 +541,26 @@ endif()
 target_link_libraries(granite
         PUBLIC
             volk
-            rapidjson
         PRIVATE
-            stb
-            mikktspace
-            meshoptimizer
-            spirv-cross-core
-            shaderc
-            SPIRV-Tools)
+            spirv-cross-core)
 
-target_include_directories(granite PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/stb/stb)
+if (NOT GRANITE_VULKAN_ONLY)
+    target_link_libraries(granite
+            PUBLIC
+                rapidjson
+            PRIVATE
+                stb
+                mikktspace
+                meshoptimizer
+                shaderc
+                SPIRV-Tools)
+    target_include_directories(granite PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/third_party/stb/stb)
+endif()
 
 if (NOT WIN32)
     target_link_libraries(granite PRIVATE -pthread dl m)
+else()
+    target_link_libraries(granite PRIVATE ws2_32)
 endif()
 
 if (NOT GRANITE_VULKAN_ONLY)

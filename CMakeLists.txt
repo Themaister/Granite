@@ -560,7 +560,7 @@ endif()
 if (NOT WIN32)
     target_link_libraries(granite PRIVATE -pthread dl m)
 else()
-    target_link_libraries(granite PRIVATE ws2_32)
+    target_link_libraries(granite PUBLIC ws2_32)
 endif()
 
 if (NOT GRANITE_VULKAN_ONLY)

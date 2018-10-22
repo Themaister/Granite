@@ -31,11 +31,6 @@
 #include "xinput_windows.hpp"
 #endif
 
-#ifdef _WIN32
-#include <windows.h>
-#include <shellapi.h>
-#endif
-
 using namespace std;
 using namespace Vulkan;
 

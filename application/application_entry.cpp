@@ -21,6 +21,12 @@
  */
 
 #include "application.hpp"
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <shellapi.h>
+#include <vector>
+#endif
 
 namespace Granite
 {
@@ -39,7 +45,7 @@ int main(int argc, char *argv[])
 #ifdef _WIN32
 	int argc;
 	wchar_t **wide_argv = CommandLineToArgvW(GetCommandLineW(), &argc);
-	vector<char *> argv_buffer(argc + 1);
+	std::vector<char *> argv_buffer(argc + 1);
 	char **argv = nullptr;
 
 	if (wide_argv)

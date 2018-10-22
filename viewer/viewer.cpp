@@ -20,7 +20,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "application.hpp"
+#include "scene_viewer_application.hpp"
 #include "os_filesystem.hpp"
 #include "cli_parser.hpp"
 

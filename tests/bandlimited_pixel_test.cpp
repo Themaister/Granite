@@ -23,6 +23,7 @@
 #include "application.hpp"
 #include "os_filesystem.hpp"
 #include "muglm/matrix_helper.hpp"
+#include "muglm/muglm_impl.hpp"
 #include <string.h>
 
 using namespace Granite;

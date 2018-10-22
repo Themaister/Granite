@@ -32,6 +32,7 @@
 #include "os_filesystem.hpp"
 #include "rapidjson_wrapper.hpp"
 #include <limits.h>
+#include <cmath>
 #include "dynamic_library.hpp"
 #include "hw_counters/hw_counter_interface.h"
 

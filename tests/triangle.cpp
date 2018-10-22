@@ -24,6 +24,7 @@
 #include "command_buffer.hpp"
 #include "device.hpp"
 #include "os_filesystem.hpp"
+#include "math.hpp"
 #include <string.h>
 
 using namespace Granite;

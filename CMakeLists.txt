@@ -56,6 +56,9 @@ endif()
 
 if (GRANITE_SHARED)
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+    if (MSVC)
+        set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+    endif()
 endif()
 
 if (${GRANITE_PLATFORM} MATCHES "libretro")
@@ -116,6 +119,7 @@ function(add_granite_executable NAME)
     else()
         add_executable(${NAME} ${ARGN})
     endif()
+    target_link_libraries(${NAME} granite)
     target_compile_options(${NAME} PRIVATE ${GRANITE_CXX_FLAGS})
     if (GRANITE_SANITIZE_ADDRESS OR GRANITE_SANITIZE_THREADS)
         set_target_properties(${NAME} PROPERTIES LINK_FLAGS "${GRANITE_LINK_FLAGS}")
@@ -149,7 +153,7 @@ function(add_granite_headless_application TARGET_NAME)
     if (ANDROID)
         target_link_libraries(${TARGET_NAME} log android)
     endif()
-    target_link_libraries(${TARGET_NAME} math granite-application-entry-headless)
+    target_link_libraries(${TARGET_NAME} granite-application-entry-headless)
     if (WIN32)
         if (CMAKE_COMPILER_IS_GNUCXX OR (${CMAKE_CXX_COMPILER_ID} MATCHES "Clang"))
             set_target_properties(${TARGET_NAME} PROPERTIES LINK_FLAGS -mwindows)
@@ -178,20 +182,70 @@ add_subdirectory(third_party EXCLUDE_FROM_ALL)
 set(GRANITE_ISPC_LIBRARY_DIR "" CACHE TYPE PATH)
 set(GRANITE_ISPC_INCLUDE_DIR "" CACHE TYPE PATH)
 
-if (NOT ANDROID)
-    add_library(granite-application-entry STATIC application/application_entry.cpp)
-    target_link_libraries(granite-application-entry granite)
-endif()
+target_include_directories(granite PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/util ${CMAKE_CURRENT_SOURCE_DIR}/vulkan)
 
-add_library(granite-application-entry-headless STATIC application/application_entry.cpp)
-target_link_libraries(granite-application-entry-headless granite)
-target_compile_definitions(granite-application-entry-headless PRIVATE APPLICATION_ENTRY_HEADLESS=1)
+target_sources(granite PRIVATE
+        application/application.hpp
+        application/application_wsi.hpp
 
-target_compile_definitions(granite PRIVATE GRANITE_DEFAULT_BUILTIN_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
-target_compile_definitions(granite PRIVATE GRANITE_DEFAULT_CACHE_DIRECTORY=\"${CMAKE_BINARY_DIR}/cache\")
-target_compile_definitions(granite PUBLIC NOMINMAX)
+        util/util.hpp
+        util/array_view.hpp
+        util/variant.hpp
+        util/enum_cast.hpp
+        util/hash.hpp
+        util/intrusive.hpp
+        util/intrusive_list.hpp
+        util/object_pool.hpp
+        util/stack_allocator.hpp
+        util/temporary_hashmap.hpp
+        util/volatile_source.hpp
+        util/read_write_lock.hpp
+        util/async_object_sink.hpp
+        util/unstable_remove_if.hpp
+        util/intrusive_hash_map.hpp
+
+        vulkan/texture_format.cpp vulkan/texture_format.hpp
+        vulkan/vulkan.cpp vulkan/vulkan.hpp
+        vulkan/device.cpp vulkan/device.hpp
+        vulkan/wsi.cpp vulkan/wsi.hpp
+        vulkan/buffer_pool.cpp vulkan/buffer_pool.hpp
+        vulkan/image.cpp vulkan/image.hpp
+        vulkan/cookie.cpp vulkan/cookie.hpp
+        vulkan/sampler.cpp vulkan/sampler.hpp
+        vulkan/command_pool.cpp vulkan/command_pool.hpp
+        vulkan/fence_manager.cpp vulkan/fence_manager.hpp
+        vulkan/descriptor_set.cpp vulkan/descriptor_set.hpp
+        vulkan/semaphore_manager.cpp vulkan/semaphore_manager.hpp
+        vulkan/command_buffer.cpp vulkan/command_buffer.hpp
+        vulkan/shader.cpp vulkan/shader.hpp
+        vulkan/render_pass.cpp vulkan/render_pass.hpp
+        vulkan/buffer.cpp vulkan/buffer.hpp
+        vulkan/semaphore.cpp vulkan/semaphore.hpp
+        vulkan/memory_allocator.cpp vulkan/memory_allocator.hpp
+        vulkan/fence.hpp vulkan/fence.cpp
+        vulkan/format.hpp
+        vulkan/limits.hpp
+        vulkan/type_to_string.hpp
+        vulkan/quirks.hpp
+        vulkan/vulkan_common.hpp
+        vulkan/event_manager.cpp vulkan/event_manager.hpp
+        vulkan/pipeline_event.cpp vulkan/pipeline_event.hpp
+        vulkan/query_pool.cpp vulkan/query_pool.hpp)
 
 if (NOT GRANITE_VULKAN_ONLY)
+    if (NOT ANDROID)
+        add_library(granite-application-entry STATIC application/application_entry.cpp)
+        target_link_libraries(granite-application-entry granite)
+    endif()
+
+    add_library(granite-application-entry-headless STATIC application/application_entry.cpp)
+    target_link_libraries(granite-application-entry-headless granite)
+    target_compile_definitions(granite-application-entry-headless PRIVATE APPLICATION_ENTRY_HEADLESS=1)
+
+    target_compile_definitions(granite PRIVATE GRANITE_DEFAULT_BUILTIN_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
+    target_compile_definitions(granite PRIVATE GRANITE_DEFAULT_CACHE_DIRECTORY=\"${CMAKE_BINARY_DIR}/cache\")
+    target_compile_definitions(granite PUBLIC NOMINMAX)
+
     target_include_directories(granite PUBLIC
             ${CMAKE_CURRENT_SOURCE_DIR}/application
             ${CMAKE_CURRENT_SOURCE_DIR}/application/input
@@ -212,20 +266,15 @@ if (NOT GRANITE_VULKAN_ONLY)
             ${CMAKE_CURRENT_SOURCE_DIR}/filesystem/netfs
             ${CMAKE_CURRENT_SOURCE_DIR}/threading
     )
-endif()
 
-target_include_directories(granite PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/util
-        ${CMAKE_CURRENT_SOURCE_DIR}/vulkan)
-
-if (NOT GRANITE_VULKAN_ONLY)
     target_sources(granite PRIVATE
             application/global_managers.hpp application/global_managers.cpp
-            application/application.cpp application/application.hpp
-            application/application_wsi.cpp application/application_wsi.hpp application/application_wsi_events.hpp
+            application/application.cpp
+            application/application_wsi.cpp application/application_wsi_events.hpp
             application/platforms/application_headless.cpp application/platforms/hw_counters/hw_counter_interface.h
             application/input/input.hpp application/input/input.cpp
             application/events/application_events.hpp application/events/application_events.cpp
+            application/scene_viewer_application.cpp application/scene_viewer_application.hpp
 
             compiler/compiler.cpp compiler/compiler.hpp
 
@@ -314,58 +363,26 @@ if (NOT GRANITE_VULKAN_ONLY)
             ui/click_button.cpp ui/click_button.hpp
             ui/toggle_button.cpp ui/toggle_button.hpp
             ui/ui_manager.hpp ui/ui_manager.cpp
+
+            util/cli_parser.cpp util/cli_parser.hpp
+            util/dynamic_library.cpp util/dynamic_library.hpp
+            util/timer.hpp util/timer.cpp
+            util/util.cpp
     )
-endif()
 
-target_sources(granite PRIVATE
-        util/util.hpp util/util.cpp
-        util/array_view.hpp
-        util/variant.hpp
-        util/enum_cast.hpp
-        util/hash.hpp
-        util/intrusive.hpp
-        util/intrusive_list.hpp
-        util/object_pool.hpp
-        util/stack_allocator.hpp
-        util/temporary_hashmap.hpp
-        util/volatile_source.hpp
-        util/read_write_lock.hpp
-        util/async_object_sink.hpp
-        util/unstable_remove_if.hpp
-        util/intrusive_hash_map.hpp
-        util/cli_parser.cpp util/cli_parser.hpp
-        util/dynamic_library.cpp util/dynamic_library.hpp
-        util/timer.hpp util/timer.cpp
+    if (${CMAKE_SYSTEM} MATCHES "Linux")
+        include(FindPkgConfig)
+        pkg_check_modules(HOTPLUG_UDEV libudev)
+        if (HOTPLUG_UDEV_FOUND)
+            target_sources(granite PRIVATE application/input/input_linux.cpp application/input/input_linux.hpp)
+            target_include_directories(granite PUBLIC ${HOTPLUG_UDEV_INCLUDE_DIRS})
+            target_link_libraries(granite PRIVATE ${HOTPLUG_UDEV_LIBRARIES})
+            target_compile_options(granite PRIVATE ${HOTPLUG_UDEV_CFLAGS_OTHER})
+        endif()
+    elseif (WIN32)
+        target_sources(granite PRIVATE application/input/xinput_windows.cpp application/input/xinput_windows.hpp)
+    endif()
 
-        vulkan/texture_format.cpp vulkan/texture_format.hpp
-        vulkan/vulkan.cpp vulkan/vulkan.hpp
-        vulkan/device.cpp vulkan/device.hpp
-        vulkan/wsi.cpp vulkan/wsi.hpp
-        vulkan/buffer_pool.cpp vulkan/buffer_pool.hpp
-        vulkan/image.cpp vulkan/image.hpp
-        vulkan/cookie.cpp vulkan/cookie.hpp
-        vulkan/sampler.cpp vulkan/sampler.hpp
-        vulkan/command_pool.cpp vulkan/command_pool.hpp
-        vulkan/fence_manager.cpp vulkan/fence_manager.hpp
-        vulkan/descriptor_set.cpp vulkan/descriptor_set.hpp
-        vulkan/semaphore_manager.cpp vulkan/semaphore_manager.hpp
-        vulkan/command_buffer.cpp vulkan/command_buffer.hpp
-        vulkan/shader.cpp vulkan/shader.hpp
-        vulkan/render_pass.cpp vulkan/render_pass.hpp
-        vulkan/buffer.cpp vulkan/buffer.hpp
-        vulkan/semaphore.cpp vulkan/semaphore.hpp
-        vulkan/memory_allocator.cpp vulkan/memory_allocator.hpp
-        vulkan/fence.hpp vulkan/fence.cpp
-        vulkan/format.hpp
-        vulkan/limits.hpp
-        vulkan/type_to_string.hpp
-        vulkan/quirks.hpp
-        vulkan/vulkan_common.hpp
-        vulkan/event_manager.cpp vulkan/event_manager.hpp
-        vulkan/pipeline_event.cpp vulkan/pipeline_event.hpp
-        vulkan/query_pool.cpp vulkan/query_pool.hpp)
-
-if (NOT GRANITE_VULKAN_ONLY)
     target_sources(granite PRIVATE
             vulkan/managers/shader_manager.cpp
             vulkan/managers/shader_manager.hpp
@@ -376,53 +393,136 @@ if (NOT GRANITE_VULKAN_ONLY)
     if (GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER)
         target_compile_definitions(granite PUBLIC GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER=1)
     endif()
-endif()
 
-if (GRANITE_AUDIO)
-	include(FindPkgConfig)
-
-	target_sources(granite PRIVATE
-			audio/audio_interface.cpp audio/audio_interface.hpp
-			audio/audio_mixer.cpp audio/audio_mixer.hpp
-			audio/audio_resampler.cpp audio/audio_resampler.hpp
-			audio/dsp/sinc_resampler.cpp audio/dsp/sinc_resampler.hpp
-			audio/dsp/dsp.hpp
-			audio/audio_events.hpp
-			audio/vorbis_stream.hpp audio/vorbis_stream.cpp)
-
-	target_include_directories(granite PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/audio)
-	target_link_libraries(granite PRIVATE stb-vorbis)
-	target_compile_definitions(granite PUBLIC HAVE_GRANITE_AUDIO=1)
-
-	if (ANDROID)
-		target_sources(granite PRIVATE audio/audio_opensl.cpp audio/audio_opensl.hpp)
-		target_link_libraries(granite PRIVATE OpenSLES)
-		target_compile_definitions(granite PRIVATE AUDIO_HAVE_OPENSL=1)
-	elseif (NOT WIN32)
-		pkg_check_modules(PULSEAUDIO libpulse)
-		if (PULSEAUDIO_FOUND)
-			target_sources(granite PRIVATE audio/audio_pulse.cpp audio/audio_pulse.hpp)
-			target_link_libraries(granite PRIVATE ${PULSEAUDIO_LIBRARIES})
-			target_include_directories(granite PRIVATE ${PULSEAUDIO_INCLUDEDIR})
-			target_compile_definitions(granite PRIVATE AUDIO_HAVE_PULSE=1)
-		endif()
-	elseif (WIN32)
-		target_sources(granite PRIVATE audio/audio_wasapi.cpp audio/audio_wasapi.hpp)
-		target_compile_definitions(granite PRIVATE AUDIO_HAVE_WASAPI=1)
-	endif()
-endif()
-
-if (${CMAKE_SYSTEM} MATCHES "Linux")
-    include(FindPkgConfig)
-    pkg_check_modules(HOTPLUG_UDEV libudev)
     if (HOTPLUG_UDEV_FOUND)
-        target_sources(granite PRIVATE application/input/input_linux.cpp application/input/input_linux.hpp)
-        target_include_directories(granite PUBLIC ${HOTPLUG_UDEV_INCLUDE_DIRS})
-        target_link_libraries(granite PRIVATE ${HOTPLUG_UDEV_LIBRARIES})
-        target_compile_options(granite PRIVATE ${HOTPLUG_UDEV_CFLAGS_OTHER})
+		target_compile_definitions(granite PRIVATE HAVE_LINUX_INPUT)
+	elseif (WIN32)
+		target_compile_definitions(granite PRIVATE HAVE_XINPUT_WINDOWS)
+	endif()
+
+    if (WIN32)
+        target_sources(granite PRIVATE filesystem/windows/os_filesystem.cpp filesystem/windows/os_filesystem.hpp)
+        target_link_libraries(granite PRIVATE ws2_32)
+        target_include_directories(granite PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/filesystem/windows)
+    elseif (ANDROID)
+        target_sources(granite PRIVATE filesystem/linux/os_filesystem.cpp filesystem/linux/os_filesystem.hpp)
+        target_sources(granite PRIVATE filesystem/android/android.cpp filesystem/android/android.hpp)
+        target_include_directories(granite PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/filesystem/linux)
+    else()
+        target_sources(granite PRIVATE filesystem/linux/os_filesystem.cpp filesystem/linux/os_filesystem.hpp)
+        target_include_directories(granite PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/filesystem/linux)
     endif()
-elseif (WIN32)
-    target_sources(granite PRIVATE xinput_windows.cpp xinput_windows.hpp)
+
+    if (GRANITE_AUDIO)
+        include(FindPkgConfig)
+
+        target_sources(granite PRIVATE
+                audio/audio_interface.cpp audio/audio_interface.hpp
+                audio/audio_mixer.cpp audio/audio_mixer.hpp
+                audio/audio_resampler.cpp audio/audio_resampler.hpp
+                audio/dsp/sinc_resampler.cpp audio/dsp/sinc_resampler.hpp
+                audio/dsp/dsp.hpp
+                audio/audio_events.hpp
+                audio/vorbis_stream.hpp audio/vorbis_stream.cpp)
+
+        target_include_directories(granite PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/audio)
+        target_link_libraries(granite PRIVATE stb-vorbis)
+        target_compile_definitions(granite PUBLIC HAVE_GRANITE_AUDIO=1)
+
+        if (ANDROID)
+            target_sources(granite PRIVATE audio/audio_opensl.cpp audio/audio_opensl.hpp)
+            target_link_libraries(granite PRIVATE OpenSLES)
+            target_compile_definitions(granite PRIVATE AUDIO_HAVE_OPENSL=1)
+        elseif (NOT WIN32)
+            pkg_check_modules(PULSEAUDIO libpulse)
+            if (PULSEAUDIO_FOUND)
+                target_sources(granite PRIVATE audio/audio_pulse.cpp audio/audio_pulse.hpp)
+                target_link_libraries(granite PRIVATE ${PULSEAUDIO_LIBRARIES})
+                target_include_directories(granite PRIVATE ${PULSEAUDIO_INCLUDEDIR})
+                target_compile_definitions(granite PRIVATE AUDIO_HAVE_PULSE=1)
+            endif()
+        elseif (WIN32)
+            target_sources(granite PRIVATE audio/audio_wasapi.cpp audio/audio_wasapi.hpp)
+            target_compile_definitions(granite PRIVATE AUDIO_HAVE_WASAPI=1)
+        endif()
+    endif()
+
+    if (GRANITE_ISPC_TEXTURE_COMPRESSION)
+        find_library(ISPC_LIBRARY NAMES ispc_texcomp HINTS ${GRANITE_ISPC_LIBRARY_DIR})
+        find_path(ISPC_INCLUDE_DIR NAMES ispc_texcomp.h HINTS ${GRANITE_ISPC_INCLUDE_DIR})
+        if (ISPC_LIBRARY AND ISPC_INCLUDE_DIR)
+            message("Enabling ISPC texture compression.")
+            target_link_libraries(granite PRIVATE ${ISPC_LIBRARY})
+            target_compile_definitions(granite PRIVATE HAVE_ISPC)
+            target_include_directories(granite PUBLIC ${ISPC_INCLUDE_DIR})
+        else()
+            message("Could not find ISPC texture compression.")
+        endif()
+    endif()
+
+    if (GRANITE_ASTC_ENCODER_COMPRESSION)
+        target_link_libraries(granite PRIVATE astc-encoder)
+        target_compile_definitions(granite PRIVATE HAVE_ASTC_ENCODER)
+    endif()
+
+    if (GRANITE_VULKAN_MT)
+        target_compile_definitions(granite PUBLIC GRANITE_VULKAN_MT)
+    endif()
+
+    if (GRANITE_VULKAN_FOSSILIZE)
+        target_compile_definitions(granite PUBLIC GRANITE_VULKAN_FOSSILIZE)
+        target_sources(granite PRIVATE vulkan/device_fossilize.cpp)
+        target_link_libraries(granite PUBLIC fossilize)
+    endif()
+
+    if (GRANITE_SHADER_COMPILER_OPTIMIZE)
+        target_compile_definitions(granite PRIVATE GRANITE_COMPILER_OPTIMIZE=1)
+    else()
+        target_compile_definitions(granite PRIVATE GRANITE_COMPILER_OPTIMIZE=0)
+    endif()
+
+    if (NOT GRANITE_PLATFORM)
+       set(GRANITE_PLATFORM "GLFW")
+    endif()
+
+    if (ANDROID)
+        target_sources(granite PRIVATE
+                application/platforms/application_android.cpp)
+        add_library(android-glue STATIC
+                ${ANDROID_NDK}/sources/android/native_app_glue/android_native_app_glue.c
+                ${ANDROID_NDK}/sources/android/cpufeatures/cpu-features.c)
+        target_include_directories(android-glue PUBLIC ${ANDROID_NDK}/sources/android/native_app_glue)
+        target_link_libraries(granite PRIVATE android-glue)
+        if (GRANITE_ANDROID_APK_FILESYSTEM)
+            target_compile_definitions(granite PRIVATE ANDROID_APK_FILESYSTEM)
+        endif()
+        target_compile_definitions(volk PUBLIC VK_USE_PLATFORM_ANDROID_KHR=1)
+    elseif (${GRANITE_PLATFORM} MATCHES "libretro")
+        target_sources(granite PRIVATE
+                application/platforms/application_libretro.cpp
+                application/platforms/application_libretro_utils.cpp
+                application/platforms/application_libretro_utils.hpp)
+        target_compile_definitions(granite PUBLIC HAVE_LIBRETRO)
+    elseif (${GRANITE_PLATFORM} MATCHES "GLFW")
+        set(GLFW_BUILD_TESTS OFF)
+        add_subdirectory(third_party/glfw EXCLUDE_FROM_ALL)
+        target_sources(granite PRIVATE
+                application/platforms/application_glfw.cpp)
+        target_link_libraries(granite PRIVATE glfw)
+    elseif (${GRANITE_PLATFORM} MATCHES "CUSTOM_SURFACE")
+        target_sources(granite PRIVATE
+                application/platforms/application_custom_surface.cpp)
+    elseif (${GRANITE_PLATFORM} MATCHES "KHR_DISPLAY")
+        target_sources(granite PRIVATE
+                application/platforms/application_khr_display.cpp)
+        if (GRANITE_KHR_DISPLAY_ACQUIRE_XLIB)
+            target_link_libraries(granite PRIVATE X11)
+            target_compile_definitions(granite PRIVATE "KHR_DISPLAY_ACQUIRE_XLIB")
+            target_compile_definitions(volk PUBLIC VK_USE_PLATFORM_XLIB_XRANDR_EXT=1)
+        endif()
+    else()
+        message(FATAL "GRANITE_PLATFORM is not set.")
+    endif()
 endif()
 
 if (${CMAKE_BUILD_TYPE} MATCHES "Debug")
@@ -430,136 +530,41 @@ if (${CMAKE_BUILD_TYPE} MATCHES "Debug")
 endif()
 
 if (CMAKE_COMPILER_IS_GNUCXX OR (${CMAKE_CXX_COMPILER_ID} MATCHES "Clang"))
-    set_source_files_properties(vulkan/managers/texture_manager.cpp PROPERTIES
-            COMPILE_FLAGS "-Wno-type-limits -Wno-pedantic -Wno-ignored-qualifiers -Wno-unused-parameter")
+    set_source_files_properties(vulkan/managers/texture_manager.cpp PROPERTIES COMPILE_FLAGS "-Wno-type-limits -Wno-pedantic -Wno-ignored-qualifiers -Wno-unused-parameter")
 endif()
 
 if (GRANITE_SPIRV_DUMP)
     target_compile_definitions(granite PRIVATE GRANITE_SPIRV_DUMP)
 endif()
 
-if (GRANITE_VULKAN_MT)
-    if (GRANITE_VULKAN_ONLY)
-        message(FATAL "Cannot build with MT if only Vulkan build is enabled.")
-    endif()
-    target_compile_definitions(granite PUBLIC GRANITE_VULKAN_MT)
-endif()
-
-if (GRANITE_VULKAN_FOSSILIZE)
-    target_compile_definitions(granite PUBLIC GRANITE_VULKAN_FOSSILIZE)
-    target_sources(granite PRIVATE vulkan/device_fossilize.cpp)
-    target_link_libraries(granite PUBLIC fossilize)
-endif()
-
-if (WIN32)
-    target_sources(granite PRIVATE filesystem/windows/os_filesystem.cpp filesystem/windows/os_filesystem.hpp)
-    target_link_libraries(granite PRIVATE ws2_32)
-    target_include_directories(granite PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/filesystem/windows)
-elseif (ANDROID)
-    target_sources(granite PRIVATE filesystem/linux/os_filesystem.cpp filesystem/linux/os_filesystem.hpp)
-    target_sources(granite PRIVATE filesystem/android/android.cpp filesystem/android/android.hpp)
-    target_include_directories(granite PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/filesystem/linux)
-else()
-    target_sources(granite PRIVATE filesystem/linux/os_filesystem.cpp filesystem/linux/os_filesystem.hpp)
-    target_include_directories(granite PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/filesystem/linux)
-endif()
-
-if (GRANITE_SHADER_COMPILER_OPTIMIZE)
-    target_compile_definitions(granite PRIVATE GRANITE_COMPILER_OPTIMIZE=1)
-else()
-    target_compile_definitions(granite PRIVATE GRANITE_COMPILER_OPTIMIZE=0)
-endif()
-
-if (GRANITE_ISPC_TEXTURE_COMPRESSION)
-    find_library(ISPC_LIBRARY NAMES ispc_texcomp HINTS ${GRANITE_ISPC_LIBRARY_DIR})
-    find_path(ISPC_INCLUDE_DIR NAMES ispc_texcomp.h HINTS ${GRANITE_ISPC_INCLUDE_DIR})
-    if (ISPC_LIBRARY AND ISPC_INCLUDE_DIR)
-        message("Enabling ISPC texture compression.")
-        target_link_libraries(granite PRIVATE ${ISPC_LIBRARY})
-        target_compile_definitions(granite PRIVATE HAVE_ISPC)
-        target_include_directories(granite PUBLIC ${ISPC_INCLUDE_DIR})
-    else()
-        message("Could not find ISPC texture compression.")
-    endif()
-endif()
-
-if (GRANITE_ASTC_ENCODER_COMPRESSION)
-    target_link_libraries(granite PRIVATE astc-encoder)
-    target_compile_definitions(granite PRIVATE HAVE_ASTC_ENCODER)
-endif()
-
-if (NOT GRANITE_PLATFORM)
-   set(GRANITE_PLATFORM "GLFW")
-endif()
-
-if (ANDROID)
-	target_sources(granite PRIVATE
-            application/platforms/application_android.cpp)
-	add_library(android-glue STATIC
-			${ANDROID_NDK}/sources/android/native_app_glue/android_native_app_glue.c
-			${ANDROID_NDK}/sources/android/cpufeatures/cpu-features.c)
-	target_include_directories(android-glue PUBLIC ${ANDROID_NDK}/sources/android/native_app_glue)
-	target_link_libraries(granite PRIVATE android-glue)
-	if (GRANITE_ANDROID_APK_FILESYSTEM)
-		target_compile_definitions(granite PRIVATE ANDROID_APK_FILESYSTEM)
-	endif()
-	target_compile_definitions(volk PUBLIC VK_USE_PLATFORM_ANDROID_KHR=1)
-elseif (${GRANITE_PLATFORM} MATCHES "libretro")
-	target_sources(granite PRIVATE
-            application/platforms/application_libretro.cpp
-            application/platforms/application_libretro_utils.cpp
-            application/platforms/application_libretro_utils.hpp)
-	target_compile_definitions(granite PUBLIC HAVE_LIBRETRO)
-elseif (${GRANITE_PLATFORM} MATCHES "GLFW")
-	set(GLFW_BUILD_TESTS OFF)
-	add_subdirectory(third_party/glfw EXCLUDE_FROM_ALL)
-	target_sources(granite PRIVATE
-            application/platforms/application_glfw.cpp)
-	target_link_libraries(granite PRIVATE glfw)
-	if (HOTPLUG_UDEV_FOUND)
-		target_compile_definitions(granite PRIVATE HAVE_LINUX_INPUT)
-	elseif (WIN32)
-		target_compile_definitions(granite PRIVATE HAVE_XINPUT_WINDOWS)
-	endif()
-elseif (${GRANITE_PLATFORM} MATCHES "CUSTOM_SURFACE")
-	target_sources(granite PRIVATE
-            application/platforms/application_custom_surface.cpp)
-elseif (${GRANITE_PLATFORM} MATCHES "KHR_DISPLAY")
-	target_sources(granite PRIVATE
-            application/platforms/application_khr_display.cpp)
-	if (HOTPLUG_UDEV_FOUND)
-		target_compile_definitions(granite PRIVATE HAVE_LINUX_INPUT)
-	endif()
-	if (GRANITE_KHR_DISPLAY_ACQUIRE_XLIB)
-		target_link_libraries(granite PRIVATE X11)
-		target_compile_definitions(granite PRIVATE "KHR_DISPLAY_ACQUIRE_XLIB")
-		target_compile_definitions(volk PUBLIC VK_USE_PLATFORM_XLIB_XRANDR_EXT=1)
-	endif()
-else()
-    message(FATAL "GRANITE_PLATFORM is not set.")
-endif()
-
 target_link_libraries(granite
         PUBLIC
-            volk rapidjson stb
+            volk
+            rapidjson
         PRIVATE
+            stb
             mikktspace
             meshoptimizer
             spirv-cross-core
             shaderc
             SPIRV-Tools)
 
+target_include_directories(granite PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/stb/stb)
+
 if (NOT WIN32)
-    target_link_libraries(granite PRIVATE -pthread dl)
+    target_link_libraries(granite PRIVATE -pthread dl m)
 endif()
 
-add_subdirectory(tests)
-add_subdirectory(viewer)
+if (NOT GRANITE_VULKAN_ONLY)
+    add_subdirectory(tests)
+    add_subdirectory(viewer)
 
-if (GRANITE_TOOLS)
-    add_subdirectory(tools)
-    add_granite_executable(netfs-server network/netfs_server.cpp)
-    if (NOT MSVC)
-        add_subdirectory(renderer/fft/test EXCLUDE_FROM_ALL)
+    if (GRANITE_TOOLS)
+        add_subdirectory(tools)
+        add_granite_executable(netfs-server network/netfs_server.cpp)
+        if (NOT MSVC)
+            add_subdirectory(renderer/fft/test EXCLUDE_FROM_ALL)
+        endif()
     endif()
 endif()

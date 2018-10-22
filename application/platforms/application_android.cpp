@@ -32,6 +32,7 @@
 #include "android.hpp"
 #include "os_filesystem.hpp"
 #include "rapidjson_wrapper.hpp"
+#include "muglm/muglm_impl.hpp"
 
 #ifdef HAVE_GRANITE_AUDIO
 #include "audio_opensl.hpp"

@@ -90,13 +90,14 @@ template <typename T>
 class IntrusiveHashMapHolder
 {
 public:
-	enum { InitialSize = 64, InitialLoadCount = 4 };
+	enum { InitialSize = 16, InitialLoadCount = 3 };
 
 	T *find(Hash hash) const
 	{
 		if (values.empty())
 			return nullptr;
 
+		Hash hash_mask = values.size() - 1;
 		auto masked = hash & hash_mask;
 		for (unsigned i = 0; i < load_count; i++)
 		{
@@ -130,6 +131,7 @@ public:
 		if (values.empty())
 			grow();
 
+		Hash hash_mask = values.size() - 1;
 		auto hash = get_hash(value);
 		auto masked = hash & hash_mask;
 
@@ -159,6 +161,7 @@ public:
 		if (values.empty())
 			grow();
 
+		Hash hash_mask = values.size() - 1;
 		auto hash = get_hash(value);
 		auto masked = hash & hash_mask;
 
@@ -187,6 +190,7 @@ public:
 
 	T *erase(Hash hash)
 	{
+		Hash hash_mask = values.size() - 1;
 		auto masked = hash & hash_mask;
 
 		for (unsigned i = 0; i < load_count; i++)
@@ -212,7 +216,6 @@ public:
 	{
 		list.clear();
 		values.clear();
-		hash_mask = 0;
 		load_count = 0;
 	}
 
@@ -250,6 +253,7 @@ private:
 
 	bool insert_inner(T *value)
 	{
+		Hash hash_mask = values.size() - 1;
 		auto hash = get_hash(value);
 		auto masked = hash & hash_mask;
 
@@ -286,8 +290,6 @@ private:
 				load_count++;
 			}
 
-			hash_mask = Hash(values.size()) - 1;
-
 			// Re-insert.
 			success = true;
 			for (auto &t : list)
@@ -303,7 +305,6 @@ private:
 
 	std::vector<T *> values;
 	IntrusiveList<T> list;
-	Hash hash_mask = 0;
 	size_t count = 0;
 	unsigned load_count = 0;
 };

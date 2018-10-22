@@ -338,7 +338,7 @@ Program::Program(Device *device, Shader *compute)
 VkPipeline Program::get_pipeline(Hash hash) const
 {
 	auto *ret = pipelines.find(hash);
-	return ret ? ret->get() : nullptr;
+	return ret ? ret->get() : VK_NULL_HANDLE;
 }
 
 VkPipeline Program::add_pipeline(Hash hash, VkPipeline pipeline)

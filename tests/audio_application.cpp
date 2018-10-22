@@ -21,7 +21,7 @@
  */
 
 #include "application.hpp"
-#include "os.hpp"
+#include "os_filesystem.hpp"
 #include "muglm/matrix_helper.hpp"
 #include "audio_events.hpp"
 #include "vorbis_stream.hpp"

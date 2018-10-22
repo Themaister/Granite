@@ -29,7 +29,7 @@
 #include <condition_variable>
 #include "stb_image_write.h"
 #include "cli_parser.hpp"
-#include "os.hpp"
+#include "os_filesystem.hpp"
 #include "rapidjson_wrapper.hpp"
 #include <limits.h>
 #include "dynamic_library.hpp"

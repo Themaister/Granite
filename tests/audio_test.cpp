@@ -7,7 +7,7 @@
 #include "util.hpp"
 #include "global_managers.hpp"
 #include "filesystem.hpp"
-#include "os.hpp"
+#include "os_filesystem.hpp"
 
 using namespace Granite;
 using namespace Granite::Audio;

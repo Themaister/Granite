@@ -21,10 +21,10 @@
  */
 
 #include "input.hpp"
+#include "ui_manager.hpp"
 #include "event.hpp"
 #include <algorithm>
 #include <string.h>
-#include <ui_manager.hpp>
 
 using namespace Util;
 using namespace std;

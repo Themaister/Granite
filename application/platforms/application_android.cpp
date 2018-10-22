@@ -30,7 +30,7 @@
 #include <android/sensor.h>
 
 #include "android.hpp"
-#include "os.hpp"
+#include "os_filesystem.hpp"
 #include "rapidjson_wrapper.hpp"
 
 #ifdef HAVE_GRANITE_AUDIO

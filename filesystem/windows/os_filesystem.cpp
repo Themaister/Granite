@@ -20,7 +20,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "os.hpp"
+#include "os_filesystem.hpp"
 #include "../path.hpp"
 #include "util.hpp"
 #include <sys/types.h>

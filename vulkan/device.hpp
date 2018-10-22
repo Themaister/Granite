@@ -41,6 +41,7 @@
 #include <memory>
 #include <vector>
 #include <functional>
+#include <unordered_map>
 
 #ifdef GRANITE_VULKAN_FILESYSTEM
 #include "shader_manager.hpp"

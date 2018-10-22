@@ -22,7 +22,7 @@
 
 #include "application.hpp"
 #include "render_graph.hpp"
-#include "os.hpp"
+#include "os_filesystem.hpp"
 #include <string.h>
 
 using namespace Granite;

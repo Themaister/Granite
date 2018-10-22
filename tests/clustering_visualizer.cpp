@@ -21,7 +21,7 @@
  */
 
 #include "application.hpp"
-#include "os.hpp"
+#include "os_filesystem.hpp"
 #include "mesh_util.hpp"
 #include <string.h>
 #include "device.hpp"

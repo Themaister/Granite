@@ -21,7 +21,7 @@
  */
 
 #include "filesystem.hpp"
-#include "os.hpp"
+#include "os_filesystem.hpp"
 #include "fs-netfs.hpp"
 #include "path.hpp"
 #include "util.hpp"

@@ -26,6 +26,7 @@
 #include "stb_vorbis.h"
 #include "util.hpp"
 #include <string.h>
+#include <algorithm>
 
 using namespace std;
 

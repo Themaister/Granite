@@ -203,7 +203,7 @@ void Renderer::setup_shader_suite(Device &device, RendererType type)
 {
 	ShaderSuiteResolver default_resolver;
 	auto *res = resolver ? resolver : &default_resolver;
-	for (unsigned i = 0; i < ecast(RenderableType::Count); i++)
+	for (int i = 0; i < ecast(RenderableType::Count); i++)
 		res->init_shader_suite(device, suite[i], type, static_cast<RenderableType>(i));
 }
 

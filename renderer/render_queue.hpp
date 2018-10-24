@@ -89,6 +89,16 @@ struct RenderQueueData
 	uint64_t sorting_key;
 };
 
+struct QueueDataWrappedErased : Util::IntrusiveHashMapEnabled<QueueDataWrappedErased>
+{
+};
+
+template <typename T>
+struct QueueDataWrapped : QueueDataWrappedErased
+{
+	T data;
+};
+
 class RenderQueue
 {
 public:
@@ -106,22 +116,26 @@ public:
 		Util::Hasher h(instance_key);
 		h.pointer(render);
 
+		using WrappedT = QueueDataWrapped<T>;
+
 		auto *itr = render_infos.find(h.get());
 		if (itr)
 		{
-			enqueue_queue_data(queue, { render, itr->get(), instance_data, sorting_key });
+			auto *t = static_cast<WrappedT *>(itr);
+			enqueue_queue_data(queue, { render, &t->data, instance_data, sorting_key });
 			return nullptr;
 		}
 		else
 		{
-			void *buffer = allocate(sizeof(T), alignof(T));
+			void *buffer = allocate(sizeof(WrappedT), alignof(WrappedT));
 			if (!buffer)
 				throw std::bad_alloc();
 
-			T *t = new(buffer) T();
-			render_infos.emplace_replace(h.get(), t);
-			enqueue_queue_data(queue, { render, t, instance_data, sorting_key });
-			return t;
+			auto *t = new(buffer) WrappedT();
+			t->set_hash(h.get());
+			render_infos.insert_replace(t);
+			enqueue_queue_data(queue, { render, &t->data, instance_data, sorting_key });
+			return &t->data;
 		}
 	}
 
@@ -205,6 +219,6 @@ private:
 	Chain::iterator insert_large_block(size_t size, size_t alignment);
 
 	ShaderSuite *shader_suites = nullptr;
-	Util::IntrusiveHashMap<Util::IntrusivePODWrapper<void *>> render_infos;
+	Util::IntrusiveHashMapHolder<QueueDataWrappedErased> render_infos;
 };
 }

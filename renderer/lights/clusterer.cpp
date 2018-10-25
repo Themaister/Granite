@@ -670,8 +670,8 @@ void LightClusterer::refresh(RenderContext &context)
 
 	for (auto &light : *lights)
 	{
-		auto &l = *get<0>(light)->light;
-		auto *transform = get<1>(light);
+		auto &l = *get_component<PositionalLightComponent>(light)->light;
+		auto *transform = get_component<CachedSpatialTransformComponent>(light);
 
 		// Frustum cull lights here.
 		if (!frustum.intersects(transform->world_aabb))

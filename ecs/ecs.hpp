@@ -39,6 +39,12 @@ struct ComponentBase : Util::IntrusiveHashMapEnabled<ComponentBase>
 {
 };
 
+template <typename T, typename Tup>
+inline T *get_component(Tup &t)
+{
+	return std::get<T *>(t);
+}
+
 namespace Internal
 {
 template <size_t Index>

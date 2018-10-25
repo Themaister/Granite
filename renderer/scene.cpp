@@ -62,8 +62,8 @@ static void gather_visible_renderables(const Frustum &frustum, VisibilityList &l
 {
 	for (auto &o : objects)
 	{
-		auto *transform = get<0>(o);
-		auto *renderable = get<1>(o);
+		auto *transform = get_component<CachedSpatialTransformComponent>(o);
+		auto *renderable = get_component<RenderableComponent>(o);
 
 		if (transform->transform)
 		{
@@ -79,7 +79,7 @@ void Scene::add_render_passes(RenderGraph &graph)
 {
 	for (auto &pass : render_pass_creators)
 	{
-		auto *rpass = get<0>(pass)->creator;
+		auto *rpass = get_component<RenderPassComponent>(pass)->creator;
 		rpass->add_render_passes(graph);
 	}
 }
@@ -88,7 +88,7 @@ void Scene::add_render_pass_dependencies(RenderGraph &graph, RenderPass &main_pa
 {
 	for (auto &pass : render_pass_creators)
 	{
-		auto *rpass = get<0>(pass)->creator;
+		auto *rpass = get_component<RenderPassComponent>(pass)->creator;
 		rpass->setup_render_pass_dependencies(graph, main_pass);
 	}
 }
@@ -97,7 +97,7 @@ void Scene::set_render_pass_data(Renderer *forward, Renderer *deferred, Renderer
 {
 	for (auto &pass : render_pass_creators)
 	{
-		auto *rpass = get<0>(pass)->creator;
+		auto *rpass = get_component<RenderPassComponent>(pass)->creator;
 		rpass->set_base_renderer(forward, deferred, depth);
 		rpass->set_base_render_context(context);
 		rpass->set_scene(this);
@@ -108,7 +108,7 @@ void Scene::bind_render_graph_resources(RenderGraph &graph)
 {
 	for (auto &pass : render_pass_creators)
 	{
-		auto *rpass = get<0>(pass)->creator;
+		auto *rpass = get_component<RenderPassComponent>(pass)->creator;
 		rpass->setup_render_pass_resources(graph);
 	}
 }
@@ -117,15 +117,15 @@ void Scene::refresh_per_frame(RenderContext &context)
 {
 	for (auto &update : per_frame_update_transforms)
 	{
-		auto *refresh = get<0>(update)->refresh;
-		auto *transform = get<1>(update);
+		auto *refresh = get_component<PerFrameUpdateTransformComponent>(update)->refresh;
+		auto *transform = get_component<CachedSpatialTransformComponent>(update);
 		if (refresh)
 			refresh->refresh(context, transform);
 	}
 
 	for (auto &update : per_frame_updates)
 	{
-		auto *refresh = get<0>(update)->refresh;
+		auto *refresh = get_component<PerFrameUpdateComponent>(update)->refresh;
 		if (refresh)
 			refresh->refresh(context);
 	}
@@ -136,7 +136,7 @@ EnvironmentComponent *Scene::get_environment() const
 	if (environments.empty())
 		return nullptr;
 	else
-		return get<0>(environments.front());
+		return get_component<EnvironmentComponent>(environments.front());
 }
 
 EntityPool &Scene::get_entity_pool()
@@ -147,16 +147,16 @@ EntityPool &Scene::get_entity_pool()
 void Scene::gather_unbounded_renderables(VisibilityList &list)
 {
 	for (auto &background : backgrounds)
-		list.push_back({ get<1>(background)->renderable.get(), nullptr });
+		list.push_back({ get_component<RenderableComponent>(background)->renderable.get(), nullptr });
 }
 
 void Scene::gather_visible_render_pass_sinks(const vec3 &camera_pos, VisibilityList &list)
 {
 	for (auto &sink : render_pass_sinks)
 	{
-		auto &plane = get<2>(sink)->plane;
+		auto &plane = get_component<CullPlaneComponent>(sink)->plane;
 		if (dot(vec4(camera_pos, 1.0f), plane) > 0.0f)
-			list.push_back({get<1>(sink)->renderable.get(), nullptr});
+			list.push_back({get_component<RenderableComponent>(sink)->renderable.get(), nullptr});
 	}
 }
 
@@ -183,8 +183,8 @@ void Scene::gather_visible_positional_lights(const Frustum &frustum, VisibilityL
 
 	for (auto &o : positional_lights)
 	{
-		auto *transform = get<0>(o);
-		auto *renderable = get<1>(o);
+		auto *transform = get_component<CachedSpatialTransformComponent>(o);
+		auto *renderable = get_component<RenderableComponent>(o);
 
 		if (transform->transform)
 		{
@@ -216,7 +216,7 @@ void Scene::gather_visible_dynamic_shadow_renderables(const Frustum &frustum, Vi
 {
 	gather_visible_renderables(frustum, list, dynamic_shadowing);
 	for (auto &object : render_pass_shadowing)
-		list.push_back({ get<1>(object)->renderable.get(), nullptr });
+		list.push_back({ get_component<RenderableComponent>(object)->renderable.get(), nullptr });
 }
 
 #if 0

@@ -198,7 +198,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 	auto &ibl = scene_loader.get_scene().get_entity_pool().get_component_group<IBLComponent>();
 	if (!ibl.empty())
 	{
-		auto *ibl_component = get<0>(ibl.front());
+		auto *ibl_component = get_component<IBLComponent>(ibl.front());
 		skydome_reflection = ibl_component->reflection_path;
 		skydome_irradiance = ibl_component->irradiance_path;
 		skydome_intensity = ibl_component->intensity;
@@ -206,7 +206,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 
 	auto &skybox = scene_loader.get_scene().get_entity_pool().get_component_group<SkyboxComponent>();
 	for (auto &box : skybox)
-		get<0>(box)->skybox->set_color_mod(vec3(skydome_intensity));
+		get_component<SkyboxComponent>(box)->skybox->set_color_mod(vec3(skydome_intensity));
 
 	// Create a dummy background if there isn't any background.
 	if (scene_loader.get_scene().get_entity_pool().get_component_group<BackgroundComponent>().empty())
@@ -233,7 +233,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 		if (!scene_cameras.empty())
 		{
 			if (unsigned(config.camera_index) < scene_cameras.size())
-				selected_camera = &get<0>(scene_cameras[config.camera_index])->camera;
+				selected_camera = &get_component<CameraComponent>(scene_cameras[config.camera_index])->camera;
 			else
 				LOGE("Camera index is out of bounds, using normal camera.");
 		}
@@ -244,7 +244,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 	default_directional_light.direction = light_direction();
 	auto &dir_lights = scene_loader.get_scene().get_entity_pool().get_component_group<DirectionalLightComponent>();
 	if (!dir_lights.empty())
-		selected_directional = get<0>(dir_lights.front());
+		selected_directional = get_component<DirectionalLightComponent>(dir_lights.front());
 	else
 		selected_directional = &default_directional_light;
 
@@ -357,7 +357,7 @@ void SceneViewerApplication::rescale_scene(float radius)
 	AABB aabb(vec3(FLT_MAX), vec3(-FLT_MAX));
 	auto &objects = scene_loader.get_scene().get_entity_pool().get_component_group<CachedSpatialTransformComponent, RenderableComponent>();
 	for (auto &caster : objects)
-		aabb.expand(get<0>(caster)->world_aabb);
+		aabb.expand(get_component<CachedSpatialTransformComponent>(caster)->world_aabb);
 
 	float scale_factor = radius / aabb.get_radius();
 	auto root_node = scene_loader.get_scene().get_root_node();
@@ -1153,7 +1153,7 @@ void SceneViewerApplication::update_shadow_scene_aabb()
 			scene.get_entity_pool().get_component_group<CachedSpatialTransformComponent, RenderableComponent, CastsStaticShadowComponent>();
 	AABB aabb(vec3(FLT_MAX), vec3(-FLT_MAX));
 	for (auto &caster : shadow_casters)
-		aabb.expand(get<0>(caster)->world_aabb);
+		aabb.expand(get_component<CachedSpatialTransformComponent>(caster)->world_aabb);
 	shadow_scene_aabb = aabb;
 }
 

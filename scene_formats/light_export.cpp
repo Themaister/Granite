@@ -57,8 +57,8 @@ std::string export_lights_to_json(const DirectionalParameters &dir, Scene &scene
 
 	for (auto &light : pos)
 	{
-		auto *l = std::get<0>(light)->light;
-		auto *t = std::get<1>(light)->transform;
+		auto *l = get_component<PositionalLightComponent>(light)->light;
+		auto *t = get_component<CachedSpatialTransformComponent>(light)->transform;
 
 		Value pos(kArrayType);
 		pos.PushBack(t->world_transform[3].x, allocator);

@@ -281,7 +281,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 			cluster->set_shadow_type(LightClusterer::ShadowType::PCF);
 	}
 
-	if (true)
+#if 0
 	{
 		volumetric_fog = make_unique<VolumetricFog>();
 		volumetric_fog->set_resolution(160, 92, 64);
@@ -300,6 +300,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 				volumetric_fog->add_texture_dependency("shadow-near");
 		}
 	}
+#endif
 
 	if (config.deferred_clustered_stencil_culling)
 	{

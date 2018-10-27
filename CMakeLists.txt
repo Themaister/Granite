@@ -282,8 +282,6 @@ if (NOT GRANITE_VULKAN_ONLY)
             application/events/application_events.hpp application/events/application_events.cpp
             application/scene_viewer_application.cpp application/scene_viewer_application.hpp
 
-            compiler/compiler.cpp compiler/compiler.hpp
-
             event/event.cpp event/event.hpp
             ecs/ecs.cpp ecs/ecs.hpp
 
@@ -320,7 +318,6 @@ if (NOT GRANITE_VULKAN_ONLY)
             renderer/animation_system.hpp renderer/animation_system.cpp
             renderer/render_graph.cpp renderer/render_graph.hpp
             renderer/ground.hpp renderer/ground.cpp
-            renderer/ocean.hpp renderer/ocean.cpp
             renderer/post/hdr.hpp renderer/post/hdr.cpp
             renderer/post/fxaa.hpp renderer/post/fxaa.cpp
             renderer/post/smaa.hpp renderer/post/smaa.cpp
@@ -333,14 +330,6 @@ if (NOT GRANITE_VULKAN_ONLY)
             renderer/lights/light_info.hpp
             renderer/lights/deferred_lights.hpp renderer/lights/deferred_lights.cpp
             renderer/scene_loader.cpp renderer/scene_loader.hpp
-            renderer/fft/glfft.cpp
-            renderer/fft/glfft.hpp
-            renderer/fft/glfft_common.hpp
-            renderer/fft/glfft_interface.hpp
-            renderer/fft/glfft_granite_interface.hpp
-            renderer/fft/glfft_granite_interface.cpp
-            renderer/fft/glfft_wisdom.cpp
-            renderer/fft/glfft_wisdom.hpp
 
             scene_formats/texture_compression.hpp scene_formats/texture_compression.cpp
             scene_formats/gltf.cpp scene_formats/gltf.hpp
@@ -398,6 +387,19 @@ if (NOT GRANITE_VULKAN_ONLY)
     target_compile_definitions(granite PUBLIC GRANITE_VULKAN_FILESYSTEM)
     if (GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER)
         target_compile_definitions(granite PUBLIC GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER=1)
+        target_sources(granite PRIVATE
+            compiler/compiler.cpp compiler/compiler.hpp
+
+            renderer/ocean.hpp renderer/ocean.cpp
+            renderer/fft/glfft.cpp
+            renderer/fft/glfft.hpp
+            renderer/fft/glfft_common.hpp
+            renderer/fft/glfft_interface.hpp
+            renderer/fft/glfft_granite_interface.hpp
+            renderer/fft/glfft_granite_interface.cpp
+            renderer/fft/glfft_wisdom.cpp
+            renderer/fft/glfft_wisdom.hpp)
+		target_link_libraries(granite PRIVATE shaderc SPIRV-Tools)
     endif()
 
     if (HOTPLUG_UDEV_FOUND)
@@ -557,9 +559,7 @@ if (NOT GRANITE_VULKAN_ONLY)
             PRIVATE
                 stb
                 mikktspace
-                meshoptimizer
-                shaderc
-                SPIRV-Tools)
+                meshoptimizer)
     target_include_directories(granite PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/third_party/stb/stb)
 endif()
 

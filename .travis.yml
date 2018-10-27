@@ -1,0 +1,47 @@
+language:
+  - cpp
+  - python
+
+matrix:
+  include:
+    - os: linux
+      dist: xenial
+      compiler: gcc
+      before_install:
+        - sudo apt-get install xorg-dev
+      env:
+        - GENERATOR="Unix Makefiles"
+    - os: linux
+      dist: xenial
+      compiler: clang
+      before_install:
+        - sudo apt-get install xorg-dev
+      env:
+        - GENERATOR="Unix Makefiles"
+    - os: windows
+      before_install:
+        - choco install python2
+        - export PATH="/c/Python27:/c/Python27/Scripts:$PATH"
+      env:
+        - GENERATOR="Visual Studio 15 2017"
+    - os: windows
+      before_install:
+        - choco install python2
+        - export PATH="/c/Python27:/c/Python27/Scripts:$PATH"
+      env:
+        - GENERATOR="Visual Studio 15 2017 Win64"
+
+before_script:
+  - git submodule update --init
+
+script:
+  - mkdir build
+  - cd build
+  - cmake .. -DCMAKE_BUILD_TYPE=Release -G "${GENERATOR}"
+  - cmake --build . --config Release
+  - cmake .. -DGRANITE_PLATFORM=KHR_DISPLAY
+  - cmake --build . --config Release
+  - cmake .. -DGRANITE_PLATFORM=CUSTOM_SURFACE
+  - cmake --build . --config Release
+  - cmake .. -DGRANITE_PLATFORM=libretro
+  - cmake --build . --config Release

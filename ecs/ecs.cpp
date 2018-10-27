@@ -34,11 +34,12 @@ EntityHandle EntityPool::create_entity()
 	return itr;
 }
 
-void EntityPool::free_component(Entity &entity, ComponentType id, ComponentBase *component)
+void EntityPool::free_component(Entity &entity, ComponentType id, ComponentNode *component)
 {
 	auto *c = component_types.find(id);
-	if (c)
-		c->free_component(component);
+	assert(c);
+	c->free_component(component->get());
+	component_nodes.free(component);
 
 	auto *component_groups = component_to_groups.find(id);
 	if (component_groups)

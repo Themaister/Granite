@@ -35,7 +35,7 @@
 
 namespace Granite
 {
-struct ComponentBase : Util::IntrusiveHashMapEnabled<ComponentBase>
+struct ComponentBase
 {
 };
 
@@ -81,7 +81,8 @@ private:
 	Util::IntrusiveHashMap<ComponentSetKey> set;
 };
 
-using ComponentHashMap = Util::IntrusiveHashMapHolder<ComponentBase>;
+using ComponentNode = Util::IntrusivePODWrapper<ComponentBase *>;
+using ComponentHashMap = Util::IntrusiveHashMapHolder<ComponentNode>;
 using ComponentGroupHashMap = Util::IntrusiveHashMap<ComponentSet>;
 
 struct ComponentIDMapping
@@ -142,14 +143,20 @@ public:
 	T *get_component()
 	{
 		auto *t = components.find(ComponentIDMapping::get_id<T>());
-		return static_cast<T *>(t);
+		if (t)
+			return static_cast<T *>(t->get());
+		else
+			return nullptr;
 	}
 
 	template <typename T>
 	const T *get_component() const
 	{
 		auto *t = components.find(ComponentIDMapping::get_id<T>());
-		return static_cast<T *>(t);
+		if (t)
+			return static_cast<const T *>(t->get());
+		else
+			return nullptr;
 	}
 
 	template <typename T, typename... Ts>
@@ -316,10 +323,16 @@ public:
 
 		auto *allocator = static_cast<ComponentAllocator<T> *>(t);
 		auto *comp = allocator->pool.allocate(std::forward<Ts>(ts)...);
-		comp->set_hash(id);
-		auto *to_delete = entity.components.insert_replace(comp);
+
+		auto *node = component_nodes.allocate(comp);
+		node->set_hash(id);
+		auto *to_delete = entity.components.insert_replace(node);
+
 		if (to_delete)
-			allocator->free_component(to_delete);
+		{
+			allocator->free_component(to_delete->get());
+			component_nodes.free(to_delete);
+		}
 
 		auto *component_groups = component_to_groups.find(id);
 
@@ -336,13 +349,14 @@ public:
 		return comp;
 	}
 
-	void free_component(Entity &entity, ComponentType id, ComponentBase *component);
+	void free_component(Entity &entity, ComponentType id, ComponentNode *component);
 	void reset_groups();
 
 private:
 	Util::ObjectPool<Entity> entity_pool;
 	Util::IntrusiveHashMapHolder<EntityGroupBase> groups;
 	Util::IntrusiveHashMapHolder<ComponentAllocatorBase> component_types;
+	Util::ObjectPool<ComponentNode> component_nodes;
 	ComponentGroupHashMap component_to_groups;
 	std::vector<Entity *> entities;
 	uint64_t cookie = 0;

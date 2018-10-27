@@ -11,25 +11,53 @@ matrix:
         - sudo apt-get install xorg-dev
       env:
         - GENERATOR="Unix Makefiles"
+        - PLATFORM=GLFW
     - os: linux
       dist: xenial
       compiler: clang
-      before_install:
-        - sudo apt-get install xorg-dev
       env:
         - GENERATOR="Unix Makefiles"
+        - PLATFORM=KHR_DISPLAY
+    - os: linux
+      dist: xenial
+      compiler: gcc
+      env:
+        - GENERATOR="Unix Makefiles"
+        - PLATFORM=CUSTOM_SURFACE
+    - os: linux
+      dist: xenial
+      compiler: clang
+      env:
+        - GENERATOR="Unix Makefiles"
+        - PLATFORM=libretro
     - os: windows
       before_install:
         - choco install python2
         - export PATH="/c/Python27:/c/Python27/Scripts:$PATH"
       env:
         - GENERATOR="Visual Studio 15 2017"
+        - PLATFORM=GLFW
     - os: windows
       before_install:
         - choco install python2
         - export PATH="/c/Python27:/c/Python27/Scripts:$PATH"
       env:
         - GENERATOR="Visual Studio 15 2017 Win64"
+        - PLATFORM=GLFW
+    - os: windows
+      before_install:
+        - choco install python2
+        - export PATH="/c/Python27:/c/Python27/Scripts:$PATH"
+      env:
+        - GENERATOR="Visual Studio 15 2017"
+        - PLATFORM=libretro
+    - os: windows
+      before_install:
+        - choco install python2
+        - export PATH="/c/Python27:/c/Python27/Scripts:$PATH"
+      env:
+        - GENERATOR="Visual Studio 15 2017 Win64"
+        - PLATFORM=libretro
 
 before_script:
   - git submodule update --init
@@ -37,11 +65,5 @@ before_script:
 script:
   - mkdir build
   - cd build
-  - cmake .. -DCMAKE_BUILD_TYPE=Release -G "${GENERATOR}"
-  - cmake --build . --config Release
-  - cmake .. -DGRANITE_PLATFORM=KHR_DISPLAY
-  - cmake --build . --config Release
-  - cmake .. -DGRANITE_PLATFORM=CUSTOM_SURFACE
-  - cmake --build . --config Release
-  - cmake .. -DGRANITE_PLATFORM=libretro
+  - cmake .. -DCMAKE_BUILD_TYPE=Release -DGRANITE_PLATFORM=${PLATFORM} -G "${GENERATOR}"
   - cmake --build . --config Release

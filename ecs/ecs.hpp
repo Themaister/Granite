@@ -322,31 +322,30 @@ public:
 		}
 
 		auto *allocator = static_cast<ComponentAllocator<T> *>(t);
-		auto *comp = allocator->pool.allocate(std::forward<Ts>(ts)...);
+		auto *existing = entity.components.find(id);
 
-		auto *node = component_nodes.allocate(comp);
-		node->set_hash(id);
-		auto *to_delete = entity.components.insert_replace(node);
-
-		if (to_delete)
+		if (existing)
 		{
-			allocator->free_component(to_delete->get());
-			component_nodes.free(to_delete);
+			auto *comp = static_cast<T *>(existing->get());
+			// In-place modify. Destroy old data, and in-place construct.
+			// Do not need to fiddle with data structures internally.
+			comp->~T();
+			return new (comp) T(std::forward<Ts>(ts)...);
 		}
-
-		auto *component_groups = component_to_groups.find(id);
-
-		if (component_groups)
+		else
 		{
-			if (to_delete)
+			auto *comp = allocator->pool.allocate(std::forward<Ts>(ts)...);
+			auto *node = component_nodes.allocate(comp);
+			node->set_hash(id);
+			entity.components.insert_replace(node);
+
+			auto *component_groups = component_to_groups.find(id);
+			if (component_groups)
 				for (auto &group : *component_groups)
-					groups.find(group.get_hash())->remove_entity(entity);
+					groups.find(group.get_hash())->add_entity(entity);
 
-			for (auto &group : *component_groups)
-				groups.find(group.get_hash())->add_entity(entity);
+			return comp;
 		}
-
-		return comp;
 	}
 
 	void free_component(Entity &entity, ComponentType id, ComponentNode *component);

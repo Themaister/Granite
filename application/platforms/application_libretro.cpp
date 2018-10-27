@@ -23,6 +23,7 @@
 #include "application_libretro_utils.hpp"
 #include "application.hpp"
 #include "application_wsi.hpp"
+#include "muglm/muglm_impl.hpp"
 
 using namespace Granite;
 
@@ -71,7 +72,7 @@ struct WSIPlatformLibretro : Granite::GraniteWSIPlatform
 	{
 		input_poll_cb();
 
-		auto &tracker = app->get_platform().get_input_tracker();
+		auto &tracker = get_input_tracker();
 		const auto poll_key = [&](unsigned index, JoypadKey key, unsigned retro_key) {
 			tracker.joypad_key_state(index, key,
 			                         input_state_cb(index, RETRO_DEVICE_JOYPAD, 0, retro_key)

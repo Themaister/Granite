@@ -24,10 +24,61 @@
 
 namespace Granite
 {
+EntityHandle EntityPool::create_entity()
+{
+	Util::Hasher hasher;
+	hasher.u64(++cookie);
+	auto itr = EntityHandle(entity_pool.allocate(this, hasher.get()));
+	itr->pool_offset = entities.size();
+	entities.push_back(itr.get());
+	return itr;
+}
+
+void EntityPool::free_component(Entity &entity, ComponentType id, ComponentBase *component)
+{
+	auto *c = component_types.find(id);
+	if (c)
+		c->free_component(component);
+
+	auto *component_groups = component_to_groups.find(id);
+	if (component_groups)
+	{
+		for (auto &group : *component_groups)
+		{
+			auto *g = groups.find(group.get_hash());
+			if (g)
+				g->remove_entity(entity);
+		}
+	}
+}
+
+void EntityPool::delete_entity(Entity *entity)
+{
+	{
+		auto &components = entity->get_components();
+		auto &list = components.inner_list();
+		auto itr = list.begin();
+		while (itr != list.end())
+		{
+			auto *component = itr.get();
+			itr = list.erase(itr);
+			free_component(*entity, component->get_hash(), component);
+		}
+	}
+
+	auto offset = entity->pool_offset;
+	assert(offset < entities.size());
+
+	entities[offset] = entities.back();
+	entities[offset]->pool_offset = offset;
+	entities.pop_back();
+	entity_pool.free(entity);
+}
+
 EntityPool::~EntityPool()
 {
 	{
-		auto &list = components.inner_list();
+		auto &list = component_types.inner_list();
 		auto itr = list.begin();
 		while (itr != list.end())
 		{

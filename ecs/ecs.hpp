@@ -45,30 +45,6 @@ inline T *get_component(Tup &t)
 	return std::get<T *>(t);
 }
 
-namespace Internal
-{
-template <size_t Index>
-struct HasComponent
-{
-	template <typename T>
-	static bool has_component(const T &t, const ComponentBase *component)
-	{
-		return static_cast<ComponentBase *>(std::get<Index>(t)) == component ||
-		       HasComponent<Index - 1>::has_component(t, component);
-	}
-};
-
-template <>
-struct HasComponent<0>
-{
-	template <typename T>
-	static bool has_component(const T &t, const ComponentBase *component)
-	{
-		return static_cast<ComponentBase *>(std::get<0>(t)) == component;
-	}
-};
-}
-
 class Entity;
 
 #define GRANITE_COMPONENT_TYPE_HASH(x) ::Util::compile_time_fnv1(#x)
@@ -130,7 +106,7 @@ class EntityGroupBase : public Util::IntrusiveHashMapEnabled<EntityGroupBase>
 public:
 	virtual ~EntityGroupBase() = default;
 	virtual void add_entity(Entity &entity) = 0;
-	virtual void remove_component(ComponentBase *component) = 0;
+	virtual void remove_entity(const Entity &entity) = 0;
 };
 
 class EntityPool;
@@ -145,8 +121,8 @@ class Entity : public Util::IntrusivePtrEnabled<Entity, EntityDeleter>
 public:
 	friend class EntityPool;
 
-	Entity(EntityPool *pool)
-		: pool(pool)
+	Entity(EntityPool *pool, Util::Hash hash)
+		: pool(pool), hash(hash)
 	{
 	}
 
@@ -192,8 +168,15 @@ public:
 		return pool;
 	}
 
+	Util::Hash get_hash() const
+	{
+		return hash;
+	}
+
 private:
 	EntityPool *pool;
+	Util::Hash hash;
+	size_t pool_offset = 0;
 	ComponentHashMap components;
 };
 
@@ -204,22 +187,26 @@ public:
 	void add_entity(Entity &entity) override final
 	{
 		if (has_all_components<Ts...>(entity))
+		{
+			entity_to_index[entity.get_hash()].get() = entities.size();
 			groups.push_back(std::make_tuple(entity.get_component<Ts>()...));
+			entities.push_back(&entity);
+		}
 	}
 
-	void remove_component(ComponentBase *component) override final
+	void remove_entity(const Entity &entity) override final
 	{
-		auto itr = std::find_if(std::begin(groups), std::end(groups), [&](const std::tuple<Ts *...> &t) {
-			return has_component(t, component);
-		});
+		size_t offset;
+		if (entity_to_index.find_and_consume_pod(entity.get_hash(), offset))
+		{
+			entities[offset] = entities.back();
+			groups[offset] = groups.back();
+			entity_to_index[entities[offset]->get_hash()].get() = offset;
 
-		if (itr == end(groups))
-			return;
-
-		auto offset = size_t(itr - begin(groups));
-		if (offset != groups.size() - 1)
-			std::swap(groups[offset], groups.back());
-		groups.pop_back();
+			entity_to_index.erase(entity.get_hash());
+			entities.pop_back();
+			groups.pop_back();
+		}
 	}
 
 	std::vector<std::tuple<Ts *...>> &get_groups()
@@ -229,6 +216,8 @@ public:
 
 private:
 	std::vector<std::tuple<Ts *...>> groups;
+	std::vector<Entity *> entities;
+	Util::IntrusiveHashMap<Util::IntrusivePODWrapper<size_t>> entity_to_index;
 
 	template <typename... Us>
 	struct HasAllComponents;
@@ -256,12 +245,6 @@ private:
 	bool has_all_components(const Entity &entity)
 	{
 		return HasAllComponents<Us...>::has_component(entity);
-	}
-
-	template <typename... Us>
-	static bool has_component(const std::tuple<Us *...> &t, const ComponentBase *component)
-	{
-		return Internal::HasComponent<sizeof...(Us) - 1>::has_component(t, component);
 	}
 };
 
@@ -294,34 +277,8 @@ public:
 	void operator=(const EntityPool &) = delete;
 	EntityPool(const EntityPool &) = delete;
 
-	EntityHandle create_entity()
-	{
-		auto itr = EntityHandle(entity_pool.allocate(this));
-		entities.push_back(itr.get());
-		return itr;
-	}
-
-	void delete_entity(Entity *entity)
-	{
-		{
-			auto &components = entity->get_components();
-			auto &list = components.inner_list();
-			auto itr = list.begin();
-			while (itr != list.end())
-			{
-				auto *component = itr.get();
-				itr = list.erase(itr);
-				free_component(component->get_hash(), component);
-			}
-		}
-		entity_pool.free(entity);
-
-		auto itr = std::find(std::begin(entities), std::end(entities), entity);
-		auto offset = size_t(itr - std::begin(entities));
-		if (offset != entities.size() - 1)
-			std::swap(entities[offset], entities.back());
-		entities.pop_back();
-	}
+	EntityHandle create_entity();
+	void delete_entity(Entity *entity);
 
 	template <typename... Ts>
 	std::vector<std::tuple<Ts *...>> &get_component_group()
@@ -349,12 +306,12 @@ public:
 	T *allocate_component(Entity &entity, Ts&&... ts)
 	{
 		ComponentType id = ComponentIDMapping::get_id<T>();
-		auto *t = components.find(id);
+		auto *t = component_types.find(id);
 		if (!t)
 		{
 			t = new ComponentAllocator<T>();
 			t->set_hash(id);
-			components.insert_yield(t);
+			component_types.insert_yield(t);
 		}
 
 		auto *allocator = static_cast<ComponentAllocator<T> *>(t);
@@ -366,43 +323,29 @@ public:
 
 		auto *component_groups = component_to_groups.find(id);
 
-		if (to_delete && component_groups)
-			for (auto &group : *component_groups)
-				groups.find(group.get_hash())->remove_component(to_delete);
-
-		if (component_groups)
-			for (auto &group : *component_groups)
-				groups.find(group.get_hash())->add_entity(entity);
-
-		return static_cast<T *>(comp);
-	}
-
-	void free_component(ComponentType id, ComponentBase *component)
-	{
-		auto *c = components.find(id);
-		if (c)
-			c->free_component(component);
-
-		auto *component_groups = component_to_groups.find(id);
 		if (component_groups)
 		{
+			if (to_delete)
+				for (auto &group : *component_groups)
+					groups.find(group.get_hash())->remove_entity(entity);
+
 			for (auto &group : *component_groups)
-			{
-				auto *g = groups.find(group.get_hash());
-				if (g)
-					g->remove_component(component);
-			}
+				groups.find(group.get_hash())->add_entity(entity);
 		}
+
+		return comp;
 	}
 
+	void free_component(Entity &entity, ComponentType id, ComponentBase *component);
 	void reset_groups();
 
 private:
 	Util::ObjectPool<Entity> entity_pool;
 	Util::IntrusiveHashMapHolder<EntityGroupBase> groups;
-	Util::IntrusiveHashMapHolder<ComponentAllocatorBase> components;
+	Util::IntrusiveHashMapHolder<ComponentAllocatorBase> component_types;
 	ComponentGroupHashMap component_to_groups;
 	std::vector<Entity *> entities;
+	uint64_t cookie = 0;
 
 	template <typename... Us>
 	struct GroupRegisters;
@@ -449,7 +392,7 @@ void Entity::free_component()
 	if (t)
 	{
 		components.erase(t);
-		pool->free_component(t->get_hash(), t);
+		pool->free_component(*this, t->get_hash(), t);
 	}
 }
 

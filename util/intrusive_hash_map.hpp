@@ -60,7 +60,7 @@ template <typename T>
 struct IntrusivePODWrapper : public IntrusiveHashMapEnabled<IntrusivePODWrapper<T>>
 {
 	template <typename U>
-	IntrusivePODWrapper(U&& value_)
+	explicit IntrusivePODWrapper(U&& value_)
 		: value(std::forward<U>(value_))
 	{
 	}
@@ -305,7 +305,6 @@ private:
 
 	std::vector<T *> values;
 	IntrusiveList<T> list;
-	size_t count = 0;
 	unsigned load_count = 0;
 };
 

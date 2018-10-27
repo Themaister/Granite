@@ -131,7 +131,7 @@ static retro_hw_render_callback hw_render;
 
 RETRO_API void retro_init(void)
 {
-	Global::init();
+	Global::init(Global::MANAGER_FEATURE_ALL_BITS & ~Global::MANAGER_FEATURE_AUDIO_BIT);
 }
 
 RETRO_API void retro_deinit(void)

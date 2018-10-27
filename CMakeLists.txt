@@ -399,7 +399,7 @@ if (NOT GRANITE_VULKAN_ONLY)
             renderer/fft/glfft_granite_interface.cpp
             renderer/fft/glfft_wisdom.cpp
             renderer/fft/glfft_wisdom.hpp)
-		target_link_libraries(granite PRIVATE shaderc SPIRV-Tools)
+        target_link_libraries(granite PRIVATE shaderc SPIRV-Tools)
     endif()
 
     if (HOTPLUG_UDEV_FOUND)

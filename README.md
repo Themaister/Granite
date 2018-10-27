@@ -1,5 +1,7 @@
 # Granite
 
+[![Build Status](https://travis-ci.org/Themaister/Granite.svg?branch=master)](https://travis-ci.org/Themaister/Granite)
+
 Granite is my personal Vulkan renderer project.
 
 ## Why release this?

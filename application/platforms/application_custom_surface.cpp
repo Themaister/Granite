@@ -137,11 +137,6 @@ private:
 	unsigned height = 0;
 	DynamicLibrary library;
 };
-
-void application_dummy()
-{
-}
-
 }
 
 static void print_help()
@@ -150,7 +145,9 @@ static void print_help()
 	     "[--width <width>] [--height <height>] [--library <path>] [--frames <frames>].\n");
 }
 
-int main(int argc, char *argv[])
+namespace Granite
+{
+int application_main(Application *(*create_application)(int, char **), int argc, char *argv[])
 {
 	struct Args
 	{
@@ -174,7 +171,11 @@ int main(int argc, char *argv[])
 	cbs.add("--fs-cache", [&](CLIParser &parser) { args.cache = parser.next_string(); });
 	cbs.add("--library", [&](CLIParser &parser) { args.library = parser.next_string(); });
 	cbs.add("--frames", [&](CLIParser &parser) { args.frames = parser.next_uint(); });
-	cbs.add("--help", [](CLIParser &parser) { print_help(); parser.end(); });
+	cbs.add("--help", [](CLIParser &parser)
+	{
+		print_help();
+		parser.end();
+	});
 	cbs.default_handler = [&](const char *arg) { filtered_argv.push_back(const_cast<char *>(arg)); };
 	cbs.error_handler = [&]() { print_help(); };
 	CLIParser parser(move(cbs), argc - 1, argv + 1);
@@ -186,7 +187,7 @@ int main(int argc, char *argv[])
 
 	filtered_argv.push_back(nullptr);
 
-	Granite::Global::init();
+	Global::init();
 
 	if (!args.assets.empty())
 		Global::filesystem()->register_protocol("assets", make_unique<OSFilesystem>(args.assets));
@@ -201,7 +202,7 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	auto app = unique_ptr<Application>(application_create(int(filtered_argv.size() - 1), filtered_argv.data()));
+	auto app = unique_ptr<Application>(create_application(int(filtered_argv.size() - 1), filtered_argv.data()));
 
 	if (app)
 	{
@@ -209,7 +210,7 @@ int main(int argc, char *argv[])
 			return 1;
 
 		unsigned run_frames = 0;
-		Granite::Global::start_audio_system();
+		Global::start_audio_system();
 		while (app->poll())
 		{
 			app->run_frame();
@@ -222,9 +223,10 @@ int main(int argc, char *argv[])
 				break;
 			}
 		}
-		Granite::Global::stop_audio_system();
+		Global::stop_audio_system();
 		return 0;
 	}
 	else
 		return 1;
+}
 }

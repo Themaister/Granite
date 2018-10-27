@@ -325,16 +325,14 @@ static void signal_handler(int)
 	LOGI("SIGINT or SIGTERM received.\n");
 	global_display->signal_die();
 }
-
-void application_dummy()
-{
-}
 }
 
-int main(int argc, char *argv[])
+namespace Granite
 {
-	Granite::Global::init();
-	auto app = unique_ptr<Granite::Application>(Granite::application_create(argc, argv));
+int application_main(Application *(*create_application)(int, char **), int argc, char *argv[])
+{
+	Global::init();
+	auto app = unique_ptr<Granite::Application>(create_application(argc, argv));
 	if (app)
 	{
 		if (!app->init_wsi(make_unique<Granite::WSIPlatformDisplay>(1280, 720)))
@@ -348,4 +346,5 @@ int main(int argc, char *argv[])
 	}
 	else
 		return 1;
+}
 }

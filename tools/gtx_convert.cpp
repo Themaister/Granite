@@ -103,7 +103,7 @@ int main(int argc, char *argv[])
 		else
 			*input = generate_mipmaps(input->get_layout(), input->get_flags());
 
-		if (!input->get_layout().get_required_size() == 0)
+		if (input->get_layout().get_required_size() == 0)
 		{
 			LOGE("Failed to save texture: %s\n", args.output.c_str());
 			return 1;

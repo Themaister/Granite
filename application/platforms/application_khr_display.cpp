@@ -141,7 +141,9 @@ public:
 
 	void poll_input() override
 	{
+#ifdef HAVE_LINUX_INPUT
 		input_manager.poll();
+#endif
 		get_input_tracker().dispatch_current_state(get_frame_timer().get_frame_time());
 	}
 

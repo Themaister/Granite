@@ -75,7 +75,6 @@ private:
 	struct JoypadState
 	{
 		unsigned index = 0;
-		uint32_t button_state = 0;
 		JoyaxisInfo axis_x, axis_y, axis_rx, axis_ry, axis_z, axis_rz;
 	};
 
@@ -107,5 +106,7 @@ private:
 
 	void init_key_table();
 	Key keyboard_to_key[KEY_MAX];
+
+	void setup_joypad_remapper(int fd, unsigned index);
 };
 }

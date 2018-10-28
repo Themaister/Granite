@@ -89,7 +89,11 @@ void JoypadRemapper::axis_event(InputTracker &tracker, unsigned index, unsigned 
 	value = muglm::clamp(value * axis->axis_mod, -1.0f, 1.0f);
 
 	if (axis->axis != JoypadAxis::Unknown)
+	{
+		if (axis->axis == JoypadAxis::LeftTrigger || axis->axis == JoypadAxis::RightTrigger)
+			value = 0.5f * value + 0.5f;
 		tracker.joyaxis_state(index, axis->axis, value);
+	}
 
 	if (axis->pos_edge != JoypadKey::Unknown)
 	{

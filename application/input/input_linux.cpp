@@ -129,6 +129,45 @@ const char *LinuxInputManager::get_device_type_string(DeviceType type)
 	return nullptr;
 }
 
+void LinuxInputManager::setup_joypad_remapper(int fd, unsigned index)
+{
+	auto &remapper = tracker->get_joypad_remapper(index);
+	remapper.reset();
+
+	char ident[1024];
+	if (ioctl(fd, EVIOCGNAME(sizeof(ident)), ident) < 0)
+		return;
+
+	LOGI("Plugged joypad: %s\n", ident);
+
+	input_id id;
+	if (ioctl(fd, EVIOCGID, &id) < 0)
+		return;
+
+	LOGI("    VID: 0x%x, PID: 0x%x\n", id.vendor, id.product);
+
+	// TODO: Make this data-driven.
+	// This seems to be the "standard" layout however. It's the same for both Xbox and DS4 controllers.
+	remapper.register_button(BTN_EAST, JoypadKey::East, JoypadAxis::Unknown);
+	remapper.register_button(BTN_WEST, JoypadKey::West, JoypadAxis::Unknown);
+	remapper.register_button(BTN_NORTH, JoypadKey::North, JoypadAxis::Unknown);
+	remapper.register_button(BTN_SOUTH, JoypadKey::South, JoypadAxis::Unknown);
+	remapper.register_button(BTN_START, JoypadKey::Start, JoypadAxis::Unknown);
+	remapper.register_button(BTN_SELECT, JoypadKey::Select, JoypadAxis::Unknown);
+	remapper.register_button(BTN_THUMBL, JoypadKey::LeftThumb, JoypadAxis::Unknown);
+	remapper.register_button(BTN_THUMBR, JoypadKey::RightThumb, JoypadAxis::Unknown);
+	remapper.register_button(BTN_TL, JoypadKey::LeftShoulder, JoypadAxis::Unknown);
+	remapper.register_button(BTN_TR, JoypadKey::RightShoulder, JoypadAxis::Unknown);
+	remapper.register_axis(ABS_X, JoypadAxis::LeftX, 1.0f, JoypadKey::Unknown, JoypadKey::Unknown);
+	remapper.register_axis(ABS_Y, JoypadAxis::LeftY, 1.0f, JoypadKey::Unknown, JoypadKey::Unknown);
+	remapper.register_axis(ABS_RX, JoypadAxis::RightX, 1.0f, JoypadKey::Unknown, JoypadKey::Unknown);
+	remapper.register_axis(ABS_RY, JoypadAxis::RightY, 1.0f, JoypadKey::Unknown, JoypadKey::Unknown);
+	remapper.register_axis(ABS_Z, JoypadAxis::LeftTrigger, 1.0f, JoypadKey::Unknown, JoypadKey::Unknown);
+	remapper.register_axis(ABS_RZ, JoypadAxis::RightTrigger, 1.0f, JoypadKey::Unknown, JoypadKey::Unknown);
+	remapper.register_axis(ABS_HAT0X, JoypadAxis::Unknown, 1.0f, JoypadKey::Left, JoypadKey::Right);
+	remapper.register_axis(ABS_HAT0Y, JoypadAxis::Unknown, 1.0f, JoypadKey::Up, JoypadKey::Down);
+}
+
 bool LinuxInputManager::add_device(int fd, DeviceType type, const char *devnode, InputCallback callback)
 {
 	struct stat s;
@@ -200,7 +239,10 @@ bool LinuxInputManager::add_device(int fd, DeviceType type, const char *devnode,
 	event.events = EPOLLIN;
 
 	if (type == DeviceType::Joystick)
+	{
 		tracker->enable_joypad(dev->joystate.index);
+		setup_joypad_remapper(fd, dev->joystate.index);
+	}
 
 	if (epoll_ctl(queue_fd, EPOLL_CTL_ADD, fd, &event) < 0)
 	{
@@ -483,48 +525,6 @@ void LinuxInputManager::input_handle_touchpad(Device &, const input_event &)
 {
 }
 
-static JoypadKey translate_evdev_to_joykey(int code)
-{
-	switch (code)
-	{
-	case BTN_SOUTH:
-		return JoypadKey::South;
-	case BTN_EAST:
-		return JoypadKey::East;
-	case BTN_WEST:
-		return JoypadKey::West;
-	case BTN_NORTH:
-		return JoypadKey::North;
-	case BTN_TL:
-		return JoypadKey::LeftShoulder;
-	case BTN_TR:
-		return JoypadKey::RightShoulder;
-	case BTN_SELECT:
-		return JoypadKey::Select;
-	case BTN_START:
-		return JoypadKey::Start;
-	case BTN_THUMBL:
-		return JoypadKey::LeftThumb;
-	case BTN_THUMBR:
-		return JoypadKey::RightThumb;
-	default:
-		return JoypadKey::Unknown;
-	}
-}
-
-static JoypadAxis translate_evdev_to_joyaxis(int code)
-{
-	switch (code)
-	{
-	case BTN_TL2:
-		return JoypadAxis::LeftTrigger;
-	case BTN_TR2:
-		return JoypadAxis::RightTrigger;
-	default:
-		return JoypadAxis::Unknown;
-	}
-}
-
 static float remap_axis(int v, int lo, int hi)
 {
 	return (2.0f * (float(v) - float(lo)) / (float(hi) - float(lo))) - 1.0f;
@@ -532,94 +532,43 @@ static float remap_axis(int v, int lo, int hi)
 
 void LinuxInputManager::input_handle_joystick(Device &dev, const input_event &e)
 {
-	uint32_t old_buttons = dev.joystate.button_state;
-
-	// Use the "standard" Linux layout.
-	// Seems to work fine with Xbox360 controllers at least.
 	switch (e.type)
 	{
 	case EV_KEY:
-	{
-		auto key = translate_evdev_to_joykey(e.code);
-		auto axis = translate_evdev_to_joyaxis(e.code);
-
-		if (key != JoypadKey::Unknown)
-		{
-			tracker->joypad_key_state(dev.joystate.index, key,
-			                          e.value ? JoypadKeyState::Pressed : JoypadKeyState::Released);
-
-			if (e.value)
-				dev.joystate.button_state |= 1u << Util::ecast(key);
-			else
-				dev.joystate.button_state &= ~(1u << Util::ecast(key));
-		}
-		else if (axis != JoypadAxis::Unknown)
-			tracker->joyaxis_state(dev.joystate.index, axis, e.value ? 1.0f : 0.0f);
+		tracker->joypad_key_state_raw(dev.joystate.index, e.code, e.value != 0);
 		break;
-	}
 
 	case EV_ABS:
 		switch (e.code)
 		{
 		case ABS_X:
-			tracker->joyaxis_state(dev.joystate.index, JoypadAxis::LeftX,
-			                       remap_axis(e.value, dev.joystate.axis_x.lo, dev.joystate.axis_x.hi));
+			tracker->joyaxis_state_raw(dev.joystate.index, e.code, remap_axis(e.value, dev.joystate.axis_x.lo, dev.joystate.axis_x.hi));
 			break;
 
 		case ABS_Y:
-			tracker->joyaxis_state(dev.joystate.index, JoypadAxis::LeftY,
-			                       remap_axis(e.value, dev.joystate.axis_y.lo, dev.joystate.axis_y.hi));
+			tracker->joyaxis_state_raw(dev.joystate.index, e.code, remap_axis(e.value, dev.joystate.axis_y.lo, dev.joystate.axis_y.hi));
 			break;
 
 		case ABS_RX:
-			tracker->joyaxis_state(dev.joystate.index, JoypadAxis::RightX,
-			                       remap_axis(e.value, dev.joystate.axis_rx.lo, dev.joystate.axis_rx.hi));
+			tracker->joyaxis_state_raw(dev.joystate.index, e.code, remap_axis(e.value, dev.joystate.axis_rx.lo, dev.joystate.axis_rx.hi));
 			break;
 
 		case ABS_RY:
-			tracker->joyaxis_state(dev.joystate.index, JoypadAxis::RightY,
-			                       remap_axis(e.value, dev.joystate.axis_ry.lo, dev.joystate.axis_ry.hi));
+			tracker->joyaxis_state_raw(dev.joystate.index, e.code, remap_axis(e.value, dev.joystate.axis_ry.lo, dev.joystate.axis_ry.hi));
 			break;
 
 		case ABS_Z:
-		{
-			float state = 0.5f * remap_axis(e.value, dev.joystate.axis_z.lo, dev.joystate.axis_z.hi) + 0.5f;
-			tracker->joyaxis_state(dev.joystate.index, JoypadAxis::LeftTrigger, state);
+			tracker->joyaxis_state_raw(dev.joystate.index, e.code, remap_axis(e.value, dev.joystate.axis_z.lo, dev.joystate.axis_z.hi));
 			break;
-		}
 
 		case ABS_RZ:
-		{
-			float state = 0.5f * remap_axis(e.value, dev.joystate.axis_rz.lo, dev.joystate.axis_rz.hi) + 0.5f;
-			tracker->joyaxis_state(dev.joystate.index, JoypadAxis::RightTrigger, state);
+			tracker->joyaxis_state_raw(dev.joystate.index, e.code, remap_axis(e.value, dev.joystate.axis_rz.lo, dev.joystate.axis_rz.hi));
 			break;
-		}
 
 		case ABS_HAT0X:
-		{
-			bool left = e.value < 0;
-			bool right = e.value > 0;
-			dev.joystate.button_state &= ~(1u << Util::ecast(JoypadKey::Left));
-			dev.joystate.button_state &= ~(1u << Util::ecast(JoypadKey::Right));
-			if (left)
-				dev.joystate.button_state |= 1u << Util::ecast(JoypadKey::Left);
-			if (right)
-				dev.joystate.button_state |= 1u << Util::ecast(JoypadKey::Right);
-			break;
-		}
-
 		case ABS_HAT0Y:
-		{
-			bool up = e.value < 0;
-			bool down = e.value > 0;
-			dev.joystate.button_state &= ~(1u << Util::ecast(JoypadKey::Down));
-			dev.joystate.button_state &= ~(1u << Util::ecast(JoypadKey::Up));
-			if (up)
-				dev.joystate.button_state |= 1u << Util::ecast(JoypadKey::Up);
-			if (down)
-				dev.joystate.button_state |= 1u << Util::ecast(JoypadKey::Down);
+			tracker->joyaxis_state_raw(dev.joystate.index, e.code, float(e.value));
 			break;
-		}
 
 		default:
 			break;
@@ -628,21 +577,6 @@ void LinuxInputManager::input_handle_joystick(Device &dev, const input_event &e)
 
 	default:
 		break;
-	}
-
-	if (dev.joystate.button_state != old_buttons)
-	{
-		uint32_t trigger_mask = dev.joystate.button_state & ~old_buttons;
-		Util::for_each_bit(trigger_mask, [&](unsigned bit) {
-			tracker->joypad_key_state(dev.joystate.index, static_cast<JoypadKey>(bit),
-			                          JoypadKeyState::Pressed);
-		});
-
-		uint32_t release_mask = ~dev.joystate.button_state & old_buttons;
-		Util::for_each_bit(release_mask, [&](unsigned bit) {
-			tracker->joypad_key_state(dev.joystate.index, static_cast<JoypadKey>(bit),
-			                          JoypadKeyState::Released);
-		});
 	}
 }
 

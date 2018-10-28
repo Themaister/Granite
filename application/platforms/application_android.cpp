@@ -151,6 +151,8 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 		active = global_state.active;
 
 		get_input_tracker().set_touch_resolution(width, height);
+		for (auto &id : gamepad_ids)
+			id = -1;
 	}
 
 	bool alive(Vulkan::WSI &wsi) override;
@@ -176,6 +178,23 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 		return float(global_state.base_width) / global_state.base_height;
 	}
 
+	unsigned register_gamepad_id(int32_t id)
+	{
+		for (unsigned i = 0; i < InputTracker::Joypads; i++)
+		{
+			if (gamepad_ids[i] == -1)
+			{
+				gamepad_ids[i] = id;
+				return i;
+			}
+			else if (gamepad_ids[i] == id)
+				return i;
+		}
+
+		// Fallback to gamepad 0.
+		return 0;
+	}
+
 	VkSurfaceKHR create_surface(VkInstance instance, VkPhysicalDevice) override;
 
 	unsigned width, height;
@@ -187,6 +206,7 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 
 	bool pending_native_window_init = false;
 	bool pending_native_window_term = false;
+	int32_t gamepad_ids[InputTracker::Joypads];
 };
 
 static VkSurfaceKHR create_surface_from_native_window(VkInstance instance, ANativeWindow *window)
@@ -260,6 +280,35 @@ static void handle_sensors()
 	}
 }
 
+static JoypadKey keycode_to_joykey(int32_t code)
+{
+	switch (code)
+	{
+	case AKEYCODE_BUTTON_A:
+		return JoypadKey::West;
+	case AKEYCODE_BUTTON_B:
+		return JoypadKey::South;
+	case AKEYCODE_BUTTON_C:
+		return JoypadKey::East;
+	case AKEYCODE_BUTTON_X:
+		return JoypadKey::North;
+	case AKEYCODE_BUTTON_Y:
+		return JoypadKey::LeftShoulder;
+	case AKEYCODE_BUTTON_L1:
+		return JoypadKey::LeftThumb;
+	case AKEYCODE_BUTTON_Z:
+		return JoypadKey::RightShoulder;
+	case AKEYCODE_BUTTON_R1:
+		return JoypadKey::RightThumb;
+	case AKEYCODE_BUTTON_R2:
+		return JoypadKey::Start;
+	case AKEYCODE_BUTTON_L2:
+		return JoypadKey::Select;
+	default:
+		return JoypadKey::Unknown;
+	}
+}
+
 static int32_t engine_handle_input(android_app *app, AInputEvent *event)
 {
 	if (!app->userData)
@@ -269,56 +318,125 @@ static int32_t engine_handle_input(android_app *app, AInputEvent *event)
 	bool handled = false;
 
 	auto type = AInputEvent_getType(event);
+	auto source = AInputEvent_getSource(event);
+	auto device_id = AInputEvent_getDeviceId(event);
+	//auto source_class = source & AINPUT_SOURCE_CLASS_MASK;
+	source &= AINPUT_SOURCE_ANY;
+
 	switch (type)
 	{
+	case AINPUT_EVENT_TYPE_KEY:
+	{
+		if (source & AINPUT_SOURCE_GAMEPAD)
+		{
+			auto action = AKeyEvent_getAction(event);
+			auto code = AKeyEvent_getKeyCode(event);
+
+			bool pressed = action == AKEY_EVENT_ACTION_DOWN;
+			bool released = action == AKEY_EVENT_ACTION_UP;
+			auto key = keycode_to_joykey(code);
+
+			if ((pressed || released) && key != JoypadKey::Unknown)
+			{
+				unsigned joypad_index = state.register_gamepad_id(device_id);
+
+				auto &tracker = state.get_input_tracker();
+				tracker.enable_joypad(joypad_index);
+				tracker.joypad_key_state(joypad_index, key,
+				                         pressed ? JoypadKeyState::Pressed
+				                                 : JoypadKeyState::Released);
+
+				if (pressed)
+					LOGI("Pressed keycode: %d\n", code);
+				else
+					LOGI("Released keycode: %d\n", code);
+			}
+
+			handled = true;
+		}
+		break;
+	}
+
 	case AINPUT_EVENT_TYPE_MOTION:
 	{
 		auto pointer = AMotionEvent_getAction(event);
 		auto action = pointer & AMOTION_EVENT_ACTION_MASK;
+		auto index = (pointer & AMOTION_EVENT_ACTION_POINTER_INDEX_MASK) >> AMOTION_EVENT_ACTION_POINTER_INDEX_SHIFT;
 
-		switch (action)
+		if (source & AINPUT_SOURCE_JOYSTICK)
 		{
-		case AMOTION_EVENT_ACTION_DOWN:
-		case AMOTION_EVENT_ACTION_POINTER_DOWN:
-		{
-			auto index = (pointer & AMOTION_EVENT_ACTION_POINTER_INDEX_MASK) >> AMOTION_EVENT_ACTION_POINTER_INDEX_SHIFT;
-			auto x = AMotionEvent_getX(event, index) / global_state.base_width;
-			auto y = AMotionEvent_getY(event, index) / global_state.base_height;
-			int id = AMotionEvent_getPointerId(event, index);
-			state.get_input_tracker().on_touch_down(id, x, y);
-			handled = true;
-			break;
+			if (action == AMOTION_EVENT_ACTION_MOVE)
+			{
+				unsigned joypad_index = state.register_gamepad_id(device_id);
+
+				float x = AMotionEvent_getAxisValue(event, AMOTION_EVENT_AXIS_X, index);
+				float y = AMotionEvent_getAxisValue(event, AMOTION_EVENT_AXIS_Y, index);
+				float z = AMotionEvent_getAxisValue(event, AMOTION_EVENT_AXIS_Z, index);
+				float rz = AMotionEvent_getAxisValue(event, AMOTION_EVENT_AXIS_RZ, index);
+				float hatx = AMotionEvent_getAxisValue(event, AMOTION_EVENT_AXIS_HAT_X, index);
+				float haty = AMotionEvent_getAxisValue(event, AMOTION_EVENT_AXIS_HAT_Y, index);
+
+				auto &tracker = state.get_input_tracker();
+				tracker.enable_joypad(joypad_index);
+				tracker.joyaxis_state(joypad_index, JoypadAxis::LeftX, x);
+				tracker.joyaxis_state(joypad_index, JoypadAxis::LeftY, y);
+				tracker.joyaxis_state(joypad_index, JoypadAxis::RightX, z);
+				tracker.joyaxis_state(joypad_index, JoypadAxis::RightY, rz);
+				tracker.joypad_key_state(joypad_index, JoypadKey::Left,
+				                         hatx < 0.0f ? JoypadKeyState::Pressed : JoypadKeyState::Released);
+				tracker.joypad_key_state(joypad_index, JoypadKey::Right,
+				                         hatx > 0.0f ? JoypadKeyState::Pressed : JoypadKeyState::Released);
+				tracker.joypad_key_state(joypad_index, JoypadKey::Up,
+				                         haty < 0.0f ? JoypadKeyState::Pressed : JoypadKeyState::Released);
+				tracker.joypad_key_state(joypad_index, JoypadKey::Down,
+				                         haty > 0.0f ? JoypadKeyState::Pressed : JoypadKeyState::Released);
+				handled = true;
+			}
 		}
-
-		case AMOTION_EVENT_ACTION_MOVE:
+		else if (source & AINPUT_SOURCE_TOUCHSCREEN)
 		{
-			size_t count = AMotionEvent_getPointerCount(event);
-			for (size_t index = 0; index < count; index++)
+			switch (action)
+			{
+			case AMOTION_EVENT_ACTION_DOWN:
+			case AMOTION_EVENT_ACTION_POINTER_DOWN:
 			{
 				auto x = AMotionEvent_getX(event, index) / global_state.base_width;
 				auto y = AMotionEvent_getY(event, index) / global_state.base_height;
 				int id = AMotionEvent_getPointerId(event, index);
-				state.get_input_tracker().on_touch_move(id, x, y);
+				state.get_input_tracker().on_touch_down(id, x, y);
+				handled = true;
+				break;
 			}
-			state.get_input_tracker().dispatch_touch_gesture();
-			handled = true;
-			break;
-		}
 
-		case AMOTION_EVENT_ACTION_UP:
-		case AMOTION_EVENT_ACTION_POINTER_UP:
-		{
-			auto index = (pointer & AMOTION_EVENT_ACTION_POINTER_INDEX_MASK) >> AMOTION_EVENT_ACTION_POINTER_INDEX_SHIFT;
-			auto x = AMotionEvent_getX(event, index) / global_state.base_width;
-			auto y = AMotionEvent_getY(event, index) / global_state.base_height;
-			int id = AMotionEvent_getPointerId(event, index);
-			state.get_input_tracker().on_touch_up(id, x, y);
-			handled = true;
-			break;
-		}
+			case AMOTION_EVENT_ACTION_MOVE:
+			{
+				size_t count = AMotionEvent_getPointerCount(event);
+				for (size_t index = 0; index < count; index++)
+				{
+					auto x = AMotionEvent_getX(event, index) / global_state.base_width;
+					auto y = AMotionEvent_getY(event, index) / global_state.base_height;
+					int id = AMotionEvent_getPointerId(event, index);
+					state.get_input_tracker().on_touch_move(id, x, y);
+				}
+				state.get_input_tracker().dispatch_touch_gesture();
+				handled = true;
+				break;
+			}
 
-		default:
-			break;
+			case AMOTION_EVENT_ACTION_UP:
+			case AMOTION_EVENT_ACTION_POINTER_UP:
+			{
+				auto x = AMotionEvent_getX(event, index) / global_state.base_width;
+				auto y = AMotionEvent_getY(event, index) / global_state.base_height;
+				int id = AMotionEvent_getPointerId(event, index);
+				state.get_input_tracker().on_touch_up(id, x, y);
+				handled = true;
+				break;
+			}
+
+			default:
+				break;
+			}
 		}
 		break;
 	}

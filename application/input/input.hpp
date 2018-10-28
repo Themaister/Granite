@@ -197,6 +197,9 @@ public:
 		touch.height = height;
 	}
 
+	enum { TouchCount = 16 };
+	enum { Joypads = 8 };
+
 private:
 	uint64_t key_state = 0;
 	uint8_t mouse_button_state = 0;
@@ -210,9 +213,6 @@ private:
 	double mouse_relative_range_height = std::numeric_limits<double>::max();
 	double mouse_speed_x = 1.0;
 	double mouse_speed_y = 1.0;
-
-	enum { TouchCount = 16 };
-	enum { Joypads = 8 };
 
 	uint8_t active_joypads = 0;
 	JoypadState joypads[Joypads] = {};

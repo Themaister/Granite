@@ -487,13 +487,13 @@ static JoypadKey translate_evdev_to_joykey(int code)
 {
 	switch (code)
 	{
-	case BTN_A:
+	case BTN_SOUTH:
 		return JoypadKey::South;
-	case BTN_B:
+	case BTN_EAST:
 		return JoypadKey::East;
-	case BTN_X:
+	case BTN_WEST:
 		return JoypadKey::West;
-	case BTN_Y:
+	case BTN_NORTH:
 		return JoypadKey::North;
 	case BTN_TL:
 		return JoypadKey::LeftShoulder;
@@ -509,6 +509,19 @@ static JoypadKey translate_evdev_to_joykey(int code)
 		return JoypadKey::RightThumb;
 	default:
 		return JoypadKey::Unknown;
+	}
+}
+
+static JoypadAxis translate_evdev_to_joyaxis(int code)
+{
+	switch (code)
+	{
+	case BTN_TL2:
+		return JoypadAxis::LeftTrigger;
+	case BTN_TR2:
+		return JoypadAxis::RightTrigger;
+	default:
+		return JoypadAxis::Unknown;
 	}
 }
 
@@ -528,6 +541,8 @@ void LinuxInputManager::input_handle_joystick(Device &dev, const input_event &e)
 	case EV_KEY:
 	{
 		auto key = translate_evdev_to_joykey(e.code);
+		auto axis = translate_evdev_to_joyaxis(e.code);
+
 		if (key != JoypadKey::Unknown)
 		{
 			tracker->joypad_key_state(dev.joystate.index, key,
@@ -538,6 +553,8 @@ void LinuxInputManager::input_handle_joystick(Device &dev, const input_event &e)
 			else
 				dev.joystate.button_state &= ~(1u << Util::ecast(key));
 		}
+		else if (axis != JoypadAxis::Unknown)
+			tracker->joyaxis_state(dev.joystate.index, axis, e.value ? 1.0f : 0.0f);
 		break;
 	}
 

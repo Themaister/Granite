@@ -137,6 +137,43 @@ struct JoypadState
 };
 static_assert(Util::ecast(JoypadKey::Count) <= 32, "Cannot have more than 32 joypad buttons.");
 
+class InputTracker;
+
+class JoypadRemapper
+{
+public:
+	struct ButtonMap : Util::IntrusiveHashMapEnabled<ButtonMap>
+	{
+		JoypadKey key;
+		JoypadAxis axis;
+	};
+
+	struct AxisMap : Util::IntrusiveHashMapEnabled<AxisMap>
+	{
+		JoypadAxis axis;
+		JoypadKey neg_edge;
+		JoypadKey pos_edge;
+		float axis_mod;
+	};
+
+	const ButtonMap *map_button(unsigned code) const;
+	const AxisMap *map_axis(unsigned code) const;
+
+	void register_button(unsigned code, JoypadKey key, JoypadAxis axis);
+	void register_axis(unsigned code,
+	                   JoypadAxis axis, float axis_mod,
+	                   JoypadKey neg_edge, JoypadKey pos_edge);
+
+	void button_event(InputTracker &tracker, unsigned index, unsigned code, bool pressed);
+	void axis_event(InputTracker &tracker, unsigned index, unsigned code, float value);
+
+	void reset();
+
+private:
+	Util::IntrusiveHashMap<ButtonMap> button_map;
+	Util::IntrusiveHashMap<AxisMap> axis_map;
+};
+
 class InputTracker
 {
 public:
@@ -149,6 +186,9 @@ public:
 	void orientation_event(quat rot);
 	void joypad_key_state(unsigned index, JoypadKey key, JoypadKeyState state);
 	void joyaxis_state(unsigned index, JoypadAxis axis, float value);
+
+	void joypad_key_state_raw(unsigned index, unsigned code, bool pressed);
+	void joyaxis_state_raw(unsigned index, unsigned code, float value);
 
 	void on_touch_down(unsigned id, float x, float y);
 	void on_touch_move(unsigned id, float x, float y);
@@ -198,6 +238,12 @@ public:
 		touch.height = height;
 	}
 
+	JoypadRemapper &get_joypad_remapper(unsigned index)
+	{
+		assert(index < Joypads);
+		return remappers[index];
+	}
+
 	enum { TouchCount = 16 };
 	enum { Joypads = 8 };
 
@@ -217,11 +263,11 @@ private:
 
 	uint8_t active_joypads = 0;
 	JoypadState joypads[Joypads] = {};
+	JoypadRemapper remappers[Joypads];
 	TouchState touch;
 
 	float axis_deadzone = 0.3f;
 };
-
 class JoypadConnectionEvent : public Granite::Event
 {
 public:

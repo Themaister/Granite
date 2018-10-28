@@ -179,11 +179,12 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 		string name;
 		int vid = 0;
 		int pid = 0;
+		void init_remap_table(JoypadRemapper &remapper);
 	};
 
-	GamepadInfo query_gamepad_info(int32_t id)
+	void query_gamepad_info(unsigned index, int32_t id)
 	{
-		GamepadInfo info;
+		auto &info = gamepad_info[index];
 
 		jobject device = jni.env->CallStaticObjectMethod(jni.inputDeviceClass, jni.getDevice, id);
 		if (device)
@@ -205,7 +206,10 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 			jni.env->DeleteLocalRef(device);
 		}
 
-		return info;
+		LOGI("Found gamepad: %s (VID: 0x%x, PID: 0x%x)\n",
+		     info.name.c_str(), info.vid, info.pid);
+
+		info.init_remap_table(get_input_tracker().get_joypad_remapper(index));
 	}
 
 	unsigned register_gamepad_id(int32_t id)
@@ -214,8 +218,9 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 		{
 			if (gamepad_ids[i] == -1)
 			{
+				get_input_tracker().enable_joypad(i);
 				gamepad_ids[i] = id;
-				gamepad_info[i] = query_gamepad_info(id);
+				query_gamepad_info(i, id);
 				return i;
 			}
 			else if (gamepad_ids[i] == id)
@@ -240,6 +245,44 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 	int32_t gamepad_ids[InputTracker::Joypads];
 	GamepadInfo gamepad_info[InputTracker::Joypads];
 };
+
+void WSIPlatformAndroid::GamepadInfo::init_remap_table(JoypadRemapper &remapper)
+{
+	remapper.reset();
+
+	// TODO: Make this data-driven.
+	if (vid == 0x54c && pid == 0x9cc)
+	{
+		name = "PlayStation 4 Controller - Wireless";
+		LOGI("Autodetected joypad: %s\n", name.c_str());
+
+		remapper.register_button(AKEYCODE_BUTTON_A, JoypadKey::West, JoypadAxis::Unknown);
+		remapper.register_button(AKEYCODE_BUTTON_B, JoypadKey::South, JoypadAxis::Unknown);
+		remapper.register_button(AKEYCODE_BUTTON_C, JoypadKey::East, JoypadAxis::Unknown);
+		remapper.register_button(AKEYCODE_BUTTON_X, JoypadKey::North, JoypadAxis::Unknown);
+		remapper.register_button(AKEYCODE_BUTTON_Y, JoypadKey::LeftShoulder, JoypadAxis::Unknown);
+		remapper.register_button(AKEYCODE_BUTTON_START, JoypadKey::RightThumb, JoypadAxis::Unknown);
+		remapper.register_button(AKEYCODE_BUTTON_Z, JoypadKey::RightShoulder, JoypadAxis::Unknown);
+		remapper.register_button(AKEYCODE_BUTTON_SELECT, JoypadKey::LeftThumb, JoypadAxis::Unknown);
+		remapper.register_button(AKEYCODE_BUTTON_R2, JoypadKey::Start, JoypadAxis::Unknown);
+		remapper.register_button(AKEYCODE_BUTTON_L2, JoypadKey::Select, JoypadAxis::Unknown);
+		remapper.register_button(AKEYCODE_BUTTON_L1, JoypadKey::Unknown, JoypadAxis::LeftTrigger);
+		remapper.register_button(AKEYCODE_BUTTON_R1, JoypadKey::Unknown, JoypadAxis::RightTrigger);
+
+		remapper.register_axis(AMOTION_EVENT_AXIS_X, JoypadAxis::LeftX, 1.0f, JoypadKey::Unknown,
+		                       JoypadKey::Unknown);
+		remapper.register_axis(AMOTION_EVENT_AXIS_Y, JoypadAxis::LeftY, 1.0f, JoypadKey::Unknown,
+		                       JoypadKey::Unknown);
+		remapper.register_axis(AMOTION_EVENT_AXIS_Z, JoypadAxis::RightX, 1.0f, JoypadKey::Unknown,
+		                       JoypadKey::Unknown);
+		remapper.register_axis(AMOTION_EVENT_AXIS_RZ, JoypadAxis::RightY, 1.0f, JoypadKey::Unknown,
+		                       JoypadKey::Unknown);
+		remapper.register_axis(AMOTION_EVENT_AXIS_HAT_X, JoypadAxis::Unknown, 1.0f, JoypadKey::Left,
+		                       JoypadKey::Right);
+		remapper.register_axis(AMOTION_EVENT_AXIS_HAT_Y, JoypadAxis::Unknown, 1.0f, JoypadKey::Up,
+		                       JoypadKey::Down);
+	}
+}
 
 static VkSurfaceKHR create_surface_from_native_window(VkInstance instance, ANativeWindow *window)
 {
@@ -312,49 +355,6 @@ static void handle_sensors()
 	}
 }
 
-static JoypadKey keycode_to_joykey(int32_t code)
-{
-	// Hardcoded for DS4 over bluetooth for now.
-	switch (code)
-	{
-	case AKEYCODE_BUTTON_A:
-		return JoypadKey::West;
-	case AKEYCODE_BUTTON_B:
-		return JoypadKey::South;
-	case AKEYCODE_BUTTON_C:
-		return JoypadKey::East;
-	case AKEYCODE_BUTTON_X:
-		return JoypadKey::North;
-	case AKEYCODE_BUTTON_Y:
-		return JoypadKey::LeftShoulder;
-	case AKEYCODE_BUTTON_START:
-		return JoypadKey::RightThumb;
-	case AKEYCODE_BUTTON_Z:
-		return JoypadKey::RightShoulder;
-	case AKEYCODE_BUTTON_SELECT:
-		return JoypadKey::LeftThumb;
-	case AKEYCODE_BUTTON_R2:
-		return JoypadKey::Start;
-	case AKEYCODE_BUTTON_L2:
-		return JoypadKey::Select;
-	default:
-		return JoypadKey::Unknown;
-	}
-}
-
-static JoypadAxis keycode_to_axis(int32_t code)
-{
-	switch (code)
-	{
-	case AKEYCODE_BUTTON_L1:
-		return JoypadAxis::LeftTrigger;
-	case AKEYCODE_BUTTON_R1:
-		return JoypadAxis::RightTrigger;
-	default:
-		return JoypadAxis::Unknown;
-	}
-}
-
 static int32_t engine_handle_input(android_app *app, AInputEvent *event)
 {
 	if (!app->userData)
@@ -380,24 +380,12 @@ static int32_t engine_handle_input(android_app *app, AInputEvent *event)
 
 			bool pressed = action == AKEY_EVENT_ACTION_DOWN;
 			bool released = action == AKEY_EVENT_ACTION_UP;
-			auto key = keycode_to_joykey(code);
-			auto axis = keycode_to_axis(code);
 
-			if ((pressed || released) && (key != JoypadKey::Unknown || axis != JoypadAxis::Unknown))
+			if (pressed || released)
 			{
 				unsigned joypad_index = state.register_gamepad_id(device_id);
-
 				auto &tracker = state.get_input_tracker();
-				tracker.enable_joypad(joypad_index);
-
-				if (key != JoypadKey::Unknown)
-				{
-					tracker.joypad_key_state(joypad_index, key,
-					                         pressed ? JoypadKeyState::Pressed
-					                                 : JoypadKeyState::Released);
-				}
-				else
-					tracker.joyaxis_state(joypad_index, axis, pressed ? 1.0f : 0.0f);
+				tracker.joypad_key_state_raw(joypad_index, code, pressed);
 			}
 
 			handled = true;
@@ -416,29 +404,24 @@ static int32_t engine_handle_input(android_app *app, AInputEvent *event)
 			if (action == AMOTION_EVENT_ACTION_MOVE)
 			{
 				unsigned joypad_index = state.register_gamepad_id(device_id);
-
-				float x = AMotionEvent_getAxisValue(event, AMOTION_EVENT_AXIS_X, index);
-				float y = AMotionEvent_getAxisValue(event, AMOTION_EVENT_AXIS_Y, index);
-				float z = AMotionEvent_getAxisValue(event, AMOTION_EVENT_AXIS_Z, index);
-				float rz = AMotionEvent_getAxisValue(event, AMOTION_EVENT_AXIS_RZ, index);
-				float hatx = AMotionEvent_getAxisValue(event, AMOTION_EVENT_AXIS_HAT_X, index);
-				float haty = AMotionEvent_getAxisValue(event, AMOTION_EVENT_AXIS_HAT_Y, index);
-
-				// Mapping hardcoded for DS4 over bluetooth.
 				auto &tracker = state.get_input_tracker();
-				tracker.enable_joypad(joypad_index);
-				tracker.joyaxis_state(joypad_index, JoypadAxis::LeftX, x);
-				tracker.joyaxis_state(joypad_index, JoypadAxis::LeftY, y);
-				tracker.joyaxis_state(joypad_index, JoypadAxis::RightX, z);
-				tracker.joyaxis_state(joypad_index, JoypadAxis::RightY, rz);
-				tracker.joypad_key_state(joypad_index, JoypadKey::Left,
-				                         hatx < 0.0f ? JoypadKeyState::Pressed : JoypadKeyState::Released);
-				tracker.joypad_key_state(joypad_index, JoypadKey::Right,
-				                         hatx > 0.0f ? JoypadKeyState::Pressed : JoypadKeyState::Released);
-				tracker.joypad_key_state(joypad_index, JoypadKey::Up,
-				                         haty < 0.0f ? JoypadKeyState::Pressed : JoypadKeyState::Released);
-				tracker.joypad_key_state(joypad_index, JoypadKey::Down,
-				                         haty > 0.0f ? JoypadKeyState::Pressed : JoypadKeyState::Released);
+
+				static const int axes[] = {
+					AMOTION_EVENT_AXIS_X,
+					AMOTION_EVENT_AXIS_Y,
+					AMOTION_EVENT_AXIS_Z,
+					AMOTION_EVENT_AXIS_RZ,
+					AMOTION_EVENT_AXIS_HAT_X,
+					AMOTION_EVENT_AXIS_HAT_Y,
+					AMOTION_EVENT_AXIS_LTRIGGER,
+					AMOTION_EVENT_AXIS_RTRIGGER,
+					AMOTION_EVENT_AXIS_GAS,
+					AMOTION_EVENT_AXIS_BRAKE,
+				};
+
+				for (int ax : axes)
+					tracker.joyaxis_state_raw(joypad_index, ax, AMotionEvent_getAxisValue(event, ax, index));
+
 				handled = true;
 			}
 		}
@@ -757,9 +740,7 @@ static void init_jni()
 	jni.granite = static_cast<jclass>(jni.env->CallObjectMethod(jni.classLoader, loadClass, granite_str));
 	jni.env->DeleteLocalRef(granite_str);
 
-	jstring input_device_str = jni.env->NewStringUTF("android.view.InputDevice");
-	jni.inputDeviceClass = static_cast<jclass>(jni.env->CallObjectMethod(jni.classLoader, loadClass, input_device_str));
-	jni.env->DeleteLocalRef(input_device_str);
+	jni.inputDeviceClass = jni.env->FindClass("android/view/InputDevice");
 
 	jni.finishFromThread = jni.env->GetMethodID(jni.granite, "finishFromThread", "()V");
 	jni.getDisplayRotation = jni.env->GetMethodID(jni.granite, "getDisplayRotation", "()I");

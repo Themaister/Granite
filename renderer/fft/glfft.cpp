@@ -451,6 +451,7 @@ FFT::FFT(Context *context, unsigned Nx, unsigned Ny, unsigned radix, unsigned p,
 	passes.push_back(pass);
 }
 
+#if 0
 static inline void print_radix_splits(Context *context, const vector<Radix> radices[2])
 {
 	context->log("Transform #1\n");
@@ -471,6 +472,7 @@ static inline void print_radix_splits(Context *context, const vector<Radix> radi
 		context->log("  VectorSize: %u\n\n", radix.vector_size);
 	}
 }
+#endif
 
 static inline unsigned type_to_input_components(Type type)
 {

@@ -769,7 +769,7 @@ static void init_jni()
 
 static void init_sensors()
 {
-	auto *manager = ASensorManager_getInstance();
+	auto *manager = ASensorManager_getInstanceForPackage("net.themaister.GraniteActivity");
 	if (!manager)
 		return;
 

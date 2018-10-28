@@ -4,7 +4,7 @@ android {
     compileSdkVersion 26
 
     defaultConfig {
-        minSdkVersion 24
+        minSdkVersion 26
         targetSdkVersion 26
 
         ndk {
@@ -23,7 +23,7 @@ android {
                             "-DGRANITE_SHADER_COMPILER_OPTIMIZE=OFF",
                             "-DGRANITE_SPIRV_DUMP=OFF",
                             "-DCMAKE_BUILD_TYPE=Debug",
-                            "-DANDROID_PLATFORM=android-24",
+                            "-DANDROID_PLATFORM=android-26",
                             "-DGRANITE_AUDIO=OFF",
                             "-DANDROID_ARM_NEON=ON"
 
@@ -42,7 +42,7 @@ android {
                             "-DGRANITE_SHADER_COMPILER_OPTIMIZE=OFF",
                             "-DGRANITE_SPIRV_DUMP=OFF",
                             "-DCMAKE_BUILD_TYPE=Release",
-                            "-DANDROID_PLATFORM=android-24",
+                            "-DANDROID_PLATFORM=android-26",
                             "-DGRANITE_AUDIO=OFF",
                             "-DANDROID_ARM_NEON=ON"
 

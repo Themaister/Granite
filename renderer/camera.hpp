@@ -121,7 +121,10 @@ private:
 	bool on_touch_up(const TouchUpEvent &e);
 	void on_swapchain(const Vulkan::SwapchainParameterEvent &e);
 	bool on_joypad_state(const JoypadStateEvent &e);
+	bool on_joy_button(const JoypadButtonEvent &e);
+	bool on_joy_axis(const JoypadAxisEvent &e);
 
 	unsigned pointer_count = 0;
+	bool ignore_orientation = false;
 };
 }

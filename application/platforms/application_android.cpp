@@ -61,6 +61,7 @@ struct GlobalState
 
 struct JNI
 {
+	JNIEnv *env;
 	jclass granite;
 	jmethodID finishFromThread;
 	jmethodID getDisplayRotation;
@@ -69,6 +70,12 @@ struct JNI
 	jmethodID getCommandLineArgument;
 	jclass classLoaderClass;
 	jobject classLoader;
+
+	jmethodID getVendorId;
+	jmethodID getProductId;
+	jmethodID getDeviceName;
+	jmethodID getDevice;
+	jclass inputDeviceClass;
 
 	ASensorEventQueue *sensor_queue;
 	const ASensor *rotation_sensor;
@@ -80,59 +87,48 @@ namespace App
 {
 static void finishFromThread()
 {
-	JNIEnv *env = nullptr;
-	global_state.app->activity->vm->AttachCurrentThread(&env, nullptr);
-	env->CallVoidMethod(global_state.app->activity->clazz, jni.finishFromThread);
-	global_state.app->activity->vm->DetachCurrentThread();
+	jni.env->CallVoidMethod(global_state.app->activity->clazz, jni.finishFromThread);
 }
 
 static string getCommandLine()
 {
 	string result;
-	JNIEnv *env = nullptr;
-	global_state.app->activity->vm->AttachCurrentThread(&env, nullptr);
 
-	jstring key = env->NewStringUTF("granite");
-	jstring str = static_cast<jstring>(env->CallObjectMethod(global_state.app->activity->clazz,
-	                                                         jni.getCommandLineArgument,
-	                                                         key));
-	env->DeleteLocalRef(key);
+	jstring key = jni.env->NewStringUTF("granite");
+	jstring str = static_cast<jstring>(jni.env->CallObjectMethod(global_state.app->activity->clazz,
+	                                                             jni.getCommandLineArgument,
+	                                                             key));
+	jni.env->DeleteLocalRef(key);
 
 	if (str)
 	{
-		const char *data = env->GetStringUTFChars(str, nullptr);
+		const char *data = jni.env->GetStringUTFChars(str, nullptr);
 		if (data)
 		{
 			result = data;
-			env->ReleaseStringUTFChars(str, data);
+			jni.env->ReleaseStringUTFChars(str, data);
 		}
 		else
 			LOGE("Failed to get JNI string data.\n");
 
-		env->DeleteLocalRef(str);
+		jni.env->DeleteLocalRef(str);
 	}
 	else
 		LOGE("Failed to get JNI string from getCommandLine().\n");
 
-	global_state.app->activity->vm->DetachCurrentThread();
 	return result;
 }
 
 #ifdef HAVE_GRANITE_AUDIO
 static int getAudioNativeSampleRate()
 {
-	JNIEnv *env = nullptr;
-	global_state.app->activity->vm->AttachCurrentThread(&env, nullptr);
-	int ret = env->CallIntMethod(global_state.app->activity->clazz, jni.getAudioNativeSampleRate);
-	global_state.app->activity->vm->DetachCurrentThread();
+	int ret = jni.env->CallIntMethod(global_state.app->activity->clazz, jni.getAudioNativeSampleRate);
 	return ret;
 }
 
 static int getAudioNativeBlockFrames()
 {
-	JNIEnv *env = nullptr;
-	global_state.app->activity->vm->AttachCurrentThread(&env, nullptr);
-	int ret = env->CallIntMethod(global_state.app->activity->clazz, jni.getAudioNativeBlockFrames);
+	int ret = jni.env->CallIntMethod(global_state.app->activity->clazz, jni.getAudioNativeBlockFrames);
 	global_state.app->activity->vm->DetachCurrentThread();
 	return ret;
 }
@@ -178,6 +174,40 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 		return float(global_state.base_width) / global_state.base_height;
 	}
 
+	struct GamepadInfo
+	{
+		string name;
+		int vid = 0;
+		int pid = 0;
+	};
+
+	GamepadInfo query_gamepad_info(int32_t id)
+	{
+		GamepadInfo info;
+
+		jobject device = jni.env->CallStaticObjectMethod(jni.inputDeviceClass, jni.getDevice, id);
+		if (device)
+		{
+			jstring name = static_cast<jstring>(jni.env->CallObjectMethod(device, jni.getDeviceName));
+			if (name)
+			{
+				const char *str = jni.env->GetStringUTFChars(name, nullptr);
+				if (str)
+				{
+					info.name = str;
+					jni.env->ReleaseStringUTFChars(name, str);
+				}
+
+				jni.env->DeleteLocalRef(name);
+			}
+			info.vid = jni.env->CallIntMethod(device, jni.getVendorId);
+			info.pid = jni.env->CallIntMethod(device, jni.getProductId);
+			jni.env->DeleteLocalRef(device);
+		}
+
+		return info;
+	}
+
 	unsigned register_gamepad_id(int32_t id)
 	{
 		for (unsigned i = 0; i < InputTracker::Joypads; i++)
@@ -185,6 +215,7 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 			if (gamepad_ids[i] == -1)
 			{
 				gamepad_ids[i] = id;
+				gamepad_info[i] = query_gamepad_info(id);
 				return i;
 			}
 			else if (gamepad_ids[i] == id)
@@ -207,6 +238,7 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 	bool pending_native_window_init = false;
 	bool pending_native_window_term = false;
 	int32_t gamepad_ids[InputTracker::Joypads];
+	GamepadInfo gamepad_info[InputTracker::Joypads];
 };
 
 static VkSurfaceKHR create_surface_from_native_window(VkInstance instance, ANativeWindow *window)
@@ -282,6 +314,7 @@ static void handle_sensors()
 
 static JoypadKey keycode_to_joykey(int32_t code)
 {
+	// Hardcoded for DS4 over bluetooth for now.
 	switch (code)
 	{
 	case AKEYCODE_BUTTON_A:
@@ -376,6 +409,7 @@ static int32_t engine_handle_input(android_app *app, AInputEvent *event)
 				float hatx = AMotionEvent_getAxisValue(event, AMOTION_EVENT_AXIS_HAT_X, index);
 				float haty = AMotionEvent_getAxisValue(event, AMOTION_EVENT_AXIS_HAT_Y, index);
 
+				// Mapping hardcoded for DS4 over bluetooth.
 				auto &tracker = state.get_input_tracker();
 				tracker.enable_joypad(joypad_index);
 				tracker.joyaxis_state(joypad_index, JoypadAxis::LeftX, x);
@@ -500,10 +534,7 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 			global_state.base_height = ANativeWindow_getHeight(app->window);
 		}
 
-		JNIEnv *env = nullptr;
-		app->activity->vm->AttachCurrentThread(&env, nullptr);
-		global_state.orientation = env->CallIntMethod(app->activity->clazz, jni.getDisplayRotation);
-		app->activity->vm->DetachCurrentThread();
+		global_state.orientation = jni.env->CallIntMethod(app->activity->clazz, jni.getDisplayRotation);
 		break;
 	}
 	}
@@ -678,36 +709,60 @@ bool WSIPlatformAndroid::alive(Vulkan::WSI &wsi)
 	return true;
 }
 
+static void deinit_jni()
+{
+	if (jni.env && global_state.app)
+	{
+		global_state.app->activity->vm->DetachCurrentThread();
+		jni.env = nullptr;
+	}
+}
+
 static void init_jni()
 {
-	JNIEnv *env = nullptr;
 	auto *app = global_state.app;
-	app->activity->vm->AttachCurrentThread(&env, nullptr);
+	app->activity->vm->AttachCurrentThread(&jni.env, nullptr);
 
-	jclass clazz = env->GetObjectClass(app->activity->clazz);
-	jmethodID getApplication = env->GetMethodID(clazz, "getApplication", "()Landroid/app/Application;");
-	jobject application = env->CallObjectMethod(app->activity->clazz, getApplication);
+	jclass clazz = jni.env->GetObjectClass(app->activity->clazz);
+	jmethodID getApplication = jni.env->GetMethodID(clazz, "getApplication", "()Landroid/app/Application;");
+	jobject application = jni.env->CallObjectMethod(app->activity->clazz, getApplication);
 
-	jclass applicationClass = env->GetObjectClass(application);
-	jmethodID getApplicationContext = env->GetMethodID(applicationClass, "getApplicationContext", "()Landroid/content/Context;");
-	jobject context = env->CallObjectMethod(application, getApplicationContext);
+	jclass applicationClass = jni.env->GetObjectClass(application);
+	jmethodID getApplicationContext = jni.env->GetMethodID(applicationClass, "getApplicationContext", "()Landroid/content/Context;");
+	jobject context = jni.env->CallObjectMethod(application, getApplicationContext);
 
-	jclass contextClass = env->GetObjectClass(context);
-	jmethodID getClassLoader = env->GetMethodID(contextClass, "getClassLoader", "()Ljava/lang/ClassLoader;");
-	jni.classLoader = env->CallObjectMethod(context, getClassLoader);
+	jclass contextClass = jni.env->GetObjectClass(context);
+	jmethodID getClassLoader = jni.env->GetMethodID(contextClass, "getClassLoader", "()Ljava/lang/ClassLoader;");
+	jni.classLoader = jni.env->CallObjectMethod(context, getClassLoader);
 
-	jni.classLoaderClass = env->GetObjectClass(jni.classLoader);
-	jmethodID loadClass = env->GetMethodID(jni.classLoaderClass, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
-	jstring str = env->NewStringUTF("net.themaister.granite.GraniteActivity");
-	jni.granite = static_cast<jclass>(env->CallObjectMethod(jni.classLoader, loadClass, str));
-	jni.finishFromThread = env->GetMethodID(jni.granite, "finishFromThread", "()V");
-	jni.getDisplayRotation = env->GetMethodID(jni.granite, "getDisplayRotation", "()I");
-	jni.getAudioNativeSampleRate = env->GetMethodID(jni.granite, "getAudioNativeSampleRate", "()I");
-	jni.getAudioNativeBlockFrames = env->GetMethodID(jni.granite, "getAudioNativeBlockFrames", "()I");
-	jni.getCommandLineArgument = env->GetMethodID(jni.granite, "getCommandLineArgument", "(Ljava/lang/String;)Ljava/lang/String;");
+	jni.classLoaderClass = jni.env->GetObjectClass(jni.classLoader);
+	jmethodID loadClass = jni.env->GetMethodID(jni.classLoaderClass, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
 
-	env->DeleteLocalRef(str);
-	app->activity->vm->DetachCurrentThread();
+	jstring granite_str = jni.env->NewStringUTF("net.themaister.granite.GraniteActivity");
+	jni.granite = static_cast<jclass>(jni.env->CallObjectMethod(jni.classLoader, loadClass, granite_str));
+	jni.env->DeleteLocalRef(granite_str);
+
+	jstring input_device_str = jni.env->NewStringUTF("android.view.InputDevice");
+	jni.inputDeviceClass = static_cast<jclass>(jni.env->CallObjectMethod(jni.classLoader, loadClass, input_device_str));
+	jni.env->DeleteLocalRef(input_device_str);
+
+	jni.finishFromThread = jni.env->GetMethodID(jni.granite, "finishFromThread", "()V");
+	jni.getDisplayRotation = jni.env->GetMethodID(jni.granite, "getDisplayRotation", "()I");
+	jni.getAudioNativeSampleRate = jni.env->GetMethodID(jni.granite, "getAudioNativeSampleRate", "()I");
+	jni.getAudioNativeBlockFrames = jni.env->GetMethodID(jni.granite, "getAudioNativeBlockFrames", "()I");
+	jni.getCommandLineArgument = jni.env->GetMethodID(jni.granite, "getCommandLineArgument", "(Ljava/lang/String;)Ljava/lang/String;");
+
+	if (jni.inputDeviceClass)
+	{
+		jni.getDevice = jni.env->GetStaticMethodID(jni.inputDeviceClass, "getDevice",
+		                                           "(I)Landroid/view/InputDevice;");
+		jni.getDeviceName = jni.env->GetMethodID(jni.inputDeviceClass, "getName",
+		                                         "()Ljava/lang/String;");
+		jni.getVendorId = jni.env->GetMethodID(jni.inputDeviceClass, "getVendorId",
+		                                       "()I");
+		jni.getProductId = jni.env->GetMethodID(jni.inputDeviceClass, "getProductId",
+		                                        "()I");
+	}
 
 #ifdef HAVE_GRANITE_AUDIO
 	int sample_rate = App::getAudioNativeSampleRate();
@@ -828,6 +883,7 @@ void android_main(android_app *app)
 			{
 				Granite::Global::event_manager()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 				Global::deinit();
+				deinit_jni();
 				return;
 			}
 
@@ -889,11 +945,13 @@ void android_main(android_app *app)
 
 					app_handle.reset();
 					Global::deinit();
+					deinit_jni();
 					return;
 				}
 				catch (const std::exception &e)
 				{
 					LOGE("Application threw exception: %s\n", e.what());
+					deinit_jni();
 					exit(1);
 				}
 			}

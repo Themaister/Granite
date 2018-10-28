@@ -124,7 +124,23 @@ FPSCamera::FPSCamera()
 	EVENT_MANAGER_REGISTER(FPSCamera, on_touch_up, TouchUpEvent);
 	EVENT_MANAGER_REGISTER(FPSCamera, on_input_state, InputStateEvent);
 	EVENT_MANAGER_REGISTER(FPSCamera, on_joypad_state, JoypadStateEvent);
+	EVENT_MANAGER_REGISTER(FPSCamera, on_joy_button, JoypadButtonEvent);
+	EVENT_MANAGER_REGISTER(FPSCamera, on_joy_axis, JoypadAxisEvent);
 	EVENT_MANAGER_REGISTER_LATCH(FPSCamera, on_swapchain, on_swapchain, SwapchainParameterEvent);
+}
+
+bool FPSCamera::on_joy_button(const JoypadButtonEvent &)
+{
+	// If we ever get a joypad event, start ignoring orientation events on Android.
+	ignore_orientation = true;
+	return false;
+}
+
+bool FPSCamera::on_joy_axis(const JoypadAxisEvent &)
+{
+	// If we ever get a joypad event, start ignoring orientation events on Android.
+	ignore_orientation = true;
+	return false;
 }
 
 bool FPSCamera::on_touch_down(const TouchDownEvent &)
@@ -214,7 +230,8 @@ bool FPSCamera::on_mouse_move(const MouseMoveEvent &m)
 
 bool FPSCamera::on_orientation(const OrientationEvent &o)
 {
-	rotation = conjugate(o.get_rotation());
-	return true;
+	if (!ignore_orientation)
+		rotation = conjugate(o.get_rotation());
+	return !ignore_orientation;
 }
 }

@@ -32,7 +32,6 @@ namespace Granite
 {
 enum class JoypadKey
 {
-	Unknown,
 	Left,
 	Right,
 	Up,
@@ -47,7 +46,8 @@ enum class JoypadKey
 	RightThumb,
 	Start,
 	Select,
-	Count
+	Count,
+	Unknown
 };
 
 enum class JoypadAxis
@@ -58,7 +58,8 @@ enum class JoypadAxis
 	RightY,
 	LeftTrigger,
 	RightTrigger,
-	Count
+	Count,
+	Unknown
 };
 
 enum class JoypadKeyState

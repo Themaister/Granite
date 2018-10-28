@@ -327,18 +327,31 @@ static JoypadKey keycode_to_joykey(int32_t code)
 		return JoypadKey::North;
 	case AKEYCODE_BUTTON_Y:
 		return JoypadKey::LeftShoulder;
-	case AKEYCODE_BUTTON_L1:
-		return JoypadKey::LeftThumb;
+	case AKEYCODE_BUTTON_START:
+		return JoypadKey::RightThumb;
 	case AKEYCODE_BUTTON_Z:
 		return JoypadKey::RightShoulder;
-	case AKEYCODE_BUTTON_R1:
-		return JoypadKey::RightThumb;
+	case AKEYCODE_BUTTON_SELECT:
+		return JoypadKey::LeftThumb;
 	case AKEYCODE_BUTTON_R2:
 		return JoypadKey::Start;
 	case AKEYCODE_BUTTON_L2:
 		return JoypadKey::Select;
 	default:
 		return JoypadKey::Unknown;
+	}
+}
+
+static JoypadAxis keycode_to_axis(int32_t code)
+{
+	switch (code)
+	{
+	case AKEYCODE_BUTTON_L1:
+		return JoypadAxis::LeftTrigger;
+	case AKEYCODE_BUTTON_R1:
+		return JoypadAxis::RightTrigger;
+	default:
+		return JoypadAxis::Unknown;
 	}
 }
 
@@ -368,21 +381,23 @@ static int32_t engine_handle_input(android_app *app, AInputEvent *event)
 			bool pressed = action == AKEY_EVENT_ACTION_DOWN;
 			bool released = action == AKEY_EVENT_ACTION_UP;
 			auto key = keycode_to_joykey(code);
+			auto axis = keycode_to_axis(code);
 
-			if ((pressed || released) && key != JoypadKey::Unknown)
+			if ((pressed || released) && (key != JoypadKey::Unknown || axis != JoypadAxis::Unknown))
 			{
 				unsigned joypad_index = state.register_gamepad_id(device_id);
 
 				auto &tracker = state.get_input_tracker();
 				tracker.enable_joypad(joypad_index);
-				tracker.joypad_key_state(joypad_index, key,
-				                         pressed ? JoypadKeyState::Pressed
-				                                 : JoypadKeyState::Released);
 
-				if (pressed)
-					LOGI("Pressed keycode: %d\n", code);
+				if (key != JoypadKey::Unknown)
+				{
+					tracker.joypad_key_state(joypad_index, key,
+					                         pressed ? JoypadKeyState::Pressed
+					                                 : JoypadKeyState::Released);
+				}
 				else
-					LOGI("Released keycode: %d\n", code);
+					tracker.joyaxis_state(joypad_index, axis, pressed ? 1.0f : 0.0f);
 			}
 
 			handled = true;

@@ -769,7 +769,11 @@ static void init_jni()
 
 static void init_sensors()
 {
+#if __ANDROID_API__ >= 26
 	auto *manager = ASensorManager_getInstanceForPackage("net.themaister.GraniteActivity");
+#else
+	auto *manager = ASensorManager_getInstance();
+#endif
 	if (!manager)
 		return;
 

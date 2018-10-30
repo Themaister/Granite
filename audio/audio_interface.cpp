@@ -64,6 +64,10 @@ Backend::Backend(BackendCallback &callback)
 {
 }
 
+void Backend::heartbeat()
+{
+}
+
 Backend *create_default_audio_backend(BackendCallback &callback, float target_sample_rate, unsigned target_channels)
 {
 	for (auto &backend : backends)

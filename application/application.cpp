@@ -71,6 +71,9 @@ bool Application::poll()
 	if (em)
 		em->dispatch();
 #ifdef HAVE_GRANITE_AUDIO
+	auto *backend = Global::audio_backend();
+	if (backend)
+		backend->heartbeat();
 	auto *am = Global::audio_mixer();
 	if (am)
 		am->dispose_dead_streams();

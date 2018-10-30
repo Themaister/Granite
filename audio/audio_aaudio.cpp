@@ -35,12 +35,14 @@ namespace Granite
 namespace Audio
 {
 static aaudio_data_callback_result_t aaudio_callback(AAudioStream *stream, void *userData, void *audioData, int32_t numFrames);
+static void aaudio_error_callback(AAudioStream *stream, void *userData, aaudio_result_t error);
 
 struct AAudioBackend : Backend
 {
 	AAudioBackend(BackendCallback &callback)
 			: Backend(callback)
 	{
+		device_alive.test_and_set();
 	}
 
 	~AAudioBackend();
@@ -63,8 +65,12 @@ struct AAudioBackend : Backend
 
 	bool start() override;
 	bool stop() override;
+	void heartbeat() override;
 
 	void thread_callback(void *data, int32_t num_frames) noexcept;
+	void thread_error(aaudio_result_t error) noexcept;
+
+	bool reinit();
 
 	AAudioStream *stream = nullptr;
 
@@ -80,29 +86,14 @@ struct AAudioBackend : Backend
 	bool is_active = false;
 
 	double last_latency = 0.0;
+	std::atomic_flag device_alive;
+
+	bool create_stream(float sample_rate, unsigned channels);
+	bool update_buffer_size();
 };
 
-bool AAudioBackend::init(float, unsigned channels)
+bool AAudioBackend::update_buffer_size()
 {
-	aaudio_result_t res;
-	AAudioStreamBuilder *builder = nullptr;
-	if ((res = AAudio_createStreamBuilder(&builder)) != AAUDIO_OK)
-		return false;
-
-	AAudioStreamBuilder_setChannelCount(builder, channels);
-	//AAudioStreamBuilder_setSharingMode(builder, AAUDIO_SHARING_MODE_EXCLUSIVE);
-	AAudioStreamBuilder_setPerformanceMode(builder, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
-	AAudioStreamBuilder_setDirection(builder, AAUDIO_DIRECTION_OUTPUT);
-	AAudioStreamBuilder_setDataCallback(builder, aaudio_callback, this);
-
-	if ((res = AAudioStreamBuilder_openStream(builder, &stream)) != AAUDIO_OK) {
-		AAudioStreamBuilder_delete(builder);
-		return false;
-	}
-
-	sample_rate = float(AAudioStream_getSampleRate(stream));
-	inv_sample_rate = 1.0 / sample_rate;
-	num_channels = AAudioStream_getChannelCount(stream);
 	format = AAudioStream_getFormat(stream);
 
 	int32_t burst_frames = AAudioStream_getFramesPerBurst(stream);
@@ -112,31 +103,120 @@ bool AAudioBackend::init(float, unsigned channels)
 	int32_t target_blocks = int(std::ceil(20.0f * sample_rate / (1000.0f * burst_frames)));
 	target_blocks = std::max(target_blocks, 2);
 
-	if (AAudioStream_setBufferSizeInFrames(stream, std::min(max_frames, target_blocks * burst_frames)) < 0)
-		return false;
-
-	frames_per_callback = AAudioStream_getFramesPerDataCallback(stream);
-	if (frames_per_callback == AAUDIO_UNSPECIFIED)
-		frames_per_callback = burst_frames;
-
-	for (unsigned c = 0; c < num_channels; c++)
+	aaudio_result_t res;
+	if ((res = AAudioStream_setBufferSizeInFrames(stream, std::min(max_frames, target_blocks * burst_frames))) < 0)
 	{
-		mix_buffers[c].resize(frames_per_callback);
-		mix_buffers_ptr[c] = mix_buffers[c].data();
+		LOGE("AAudio: Failed to set buffer size: %s\n", AAudio_convertResultToText(res));
+		return false;
 	}
 
-	callback.set_backend_parameters(sample_rate, num_channels, size_t(frames_per_callback));
+	if (!frames_per_callback)
+	{
+		// frames_per_callback is an internal detail so we have some idea how much memory to allocate for mix buffers.
+		// It shouldn't change on reinit.
+		frames_per_callback = AAudioStream_getFramesPerDataCallback(stream);
+		if (frames_per_callback == AAUDIO_UNSPECIFIED)
+			frames_per_callback = AAudioStream_getFramesPerBurst(stream);
+
+		for (unsigned c = 0; c < num_channels; c++)
+		{
+			mix_buffers[c].resize(frames_per_callback);
+			mix_buffers_ptr[c] = mix_buffers[c].data();
+		}
+
+		callback.set_backend_parameters(sample_rate, num_channels, size_t(frames_per_callback));
+	}
 
 	// Set initial latency estimate.
 	last_latency = double(AAudioStream_getBufferSizeInFrames(stream)) * inv_sample_rate;
 	callback.set_latency_usec(uint32_t(last_latency * 1e6));
+	return true;
+}
+
+bool AAudioBackend::create_stream(float request_sample_rate, unsigned channels)
+{
+	aaudio_result_t res;
+	AAudioStreamBuilder *builder = nullptr;
+	if ((res = AAudio_createStreamBuilder(&builder)) != AAUDIO_OK)
+	{
+		LOGE("AAudio: Failed to create stream builder: %s\n", AAudio_convertResultToText(res));
+		return false;
+	}
+
+	AAudioStreamBuilder_setChannelCount(builder, num_channels);
+	AAudioStreamBuilder_setPerformanceMode(builder, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
+
+	// Only set explicit sampling rate if requested.
+	if (request_sample_rate != 0.0f)
+		AAudioStreamBuilder_setSampleRate(builder, int32_t(request_sample_rate));
+	AAudioStreamBuilder_setDirection(builder, AAUDIO_DIRECTION_OUTPUT);
+	AAudioStreamBuilder_setDataCallback(builder, aaudio_callback, this);
+	AAudioStreamBuilder_setErrorCallback(builder, aaudio_error_callback, this);
+
+	if ((res = AAudioStreamBuilder_openStream(builder, &stream)) != AAUDIO_OK)
+	{
+		LOGE("AAudio: Failed to create stream: %s\n", AAudio_convertResultToText(res));
+		stream = nullptr;
+	}
+
+	sample_rate = AAudioStream_getSampleRate(stream);
+	if (request_sample_rate != 0.0f && sample_rate != int32_t(request_sample_rate))
+	{
+		LOGE("AAudio: requested explicitly %f Hz sample rate, but got %d :(\n",
+		     request_sample_rate, AAudioStream_getSampleRate(stream));
+		AAudioStream_close(stream);
+		stream = nullptr;
+	}
+
+	inv_sample_rate = 1.0 / sample_rate;
+	num_channels = channels;
+	AAudioStreamBuilder_delete(builder);
+	return stream != nullptr;
+}
+
+bool AAudioBackend::reinit()
+{
+	if (!create_stream(sample_rate, num_channels))
+		return false;
+	if (!update_buffer_size())
+		return false;
+
+	if (is_active)
+	{
+		is_active = false;
+		if (!start())
+			return false;
+
+		LOGI("AAudio: Recovered from error! sample rate %f, frames per callback: %d, buffer frames: %d.\n",
+		     sample_rate, frames_per_callback, AAudioStream_getBufferSizeInFrames(stream));
+	}
 
 	return true;
+}
+
+bool AAudioBackend::init(float, unsigned channels)
+{
+	if (!create_stream(0.0f, channels))
+		return false;
+	if (!update_buffer_size())
+		return false;
+
+	LOGI("AAudio: sample rate %f, frames per callback: %d, buffer frames: %d.\n",
+	     sample_rate, frames_per_callback, AAudioStream_getBufferSizeInFrames(stream));
+
+	return true;
+}
+
+void AAudioBackend::thread_error(aaudio_result_t error) noexcept
+{
+	// Need to deal with this on another thread later.
+	device_alive.clear(std::memory_order_release);
 }
 
 void AAudioBackend::thread_callback(void *data, int32_t numFrames) noexcept
 {
 	// Update measured latency.
+	// Can fail spuriously, don't update latency estimate in that case.
 	int64_t frame_position, time_ns;
 	if (AAudioStream_getTimestamp(stream, CLOCK_MONOTONIC, &frame_position, &time_ns) == AAUDIO_OK)
 	{
@@ -157,7 +237,7 @@ void AAudioBackend::thread_callback(void *data, int32_t numFrames) noexcept
 			last_latency = 0.95 * last_latency + 0.05 * latency;
 			callback.set_latency_usec(uint32_t(last_latency * 1e6));
 
-			LOGI("Measured latency: %.3f ms\n", last_latency * 1000.0);
+			//LOGI("Measured latency: %.3f ms\n", last_latency * 1000.0);
 		}
 	}
 
@@ -211,9 +291,37 @@ static aaudio_data_callback_result_t aaudio_callback(AAudioStream *, void *userD
 	return AAUDIO_CALLBACK_RESULT_CONTINUE;
 }
 
+static void aaudio_error_callback(AAudioStream *, void *userData, aaudio_result_t error)
+{
+	auto *backend = static_cast<AAudioBackend *>(userData);
+	backend->thread_error(error);
+}
+
+void AAudioBackend::heartbeat()
+{
+	if (!device_alive.test_and_set(std::memory_order_acquire))
+	{
+		// Whoops. We're dead. Try to recover.
+		LOGE("AAudio device was lost, trying to recover!\n");
+		if (stream)
+			AAudioStream_close(stream);
+		stream = nullptr;
+		callback.on_backend_stop();
+
+		if (!reinit())
+		{
+			// Try again next heartbeat ...
+			device_alive.clear(std::memory_order_release);
+		}
+	}
+}
+
 bool AAudioBackend::start()
 {
 	if (is_active)
+		return false;
+
+	if (!stream)
 		return false;
 
 	callback.on_backend_start();
@@ -221,7 +329,10 @@ bool AAudioBackend::start()
 
 	aaudio_result_t res;
 	if ((res = AAudioStream_requestStart(stream)) != AAUDIO_OK)
+	{
+		LOGE("AAudio: Failed to request stream start: %s\n", AAudio_convertResultToText(res));
 		return false;
+	}
 
 #if 0
 	aaudio_stream_state_t current_state = AAudioStream_getState(stream);
@@ -245,22 +356,29 @@ bool AAudioBackend::stop()
 	if (!is_active)
 		return false;
 
-	aaudio_result_t res;
-	if ((res = AAudioStream_requestStop(stream)) != AAUDIO_OK)
+	if (!stream)
 		return false;
 
-#if 0
+	aaudio_result_t res;
+	if ((res = AAudioStream_requestStop(stream)) != AAUDIO_OK)
+	{
+		LOGE("AAudio: Failed to request stream stop: %s\n", AAudio_convertResultToText(res));
+		return false;
+	}
+
 	aaudio_stream_state_t current_state = AAudioStream_getState(stream);
 	aaudio_stream_state_t input_state = current_state;
-	while (res == AAUDIO_OK && current_state != AAUDIO_STREAM_STATE_STOPPED)
+	while ((res == AAUDIO_OK || res == AAUDIO_ERROR_TIMEOUT) && current_state != AAUDIO_STREAM_STATE_STOPPED)
 	{
 		res = AAudioStream_waitForStateChange(stream, input_state, &current_state, 10000000);
 		input_state = current_state;
 	}
 
 	if (input_state != AAUDIO_STREAM_STATE_STOPPED)
+	{
+		LOGE("AAudio: Failed to stop stream!\n");
 		return false;
-#endif
+	}
 
 	callback.on_backend_stop();
 	is_active = false;

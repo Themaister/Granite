@@ -62,6 +62,9 @@ public:
 	virtual bool start() = 0;
 	virtual bool stop() = 0;
 
+	// Call periodically, used for automatic recovery for backends which need it.
+	virtual void heartbeat();
+
 protected:
 	BackendCallback &callback;
 };

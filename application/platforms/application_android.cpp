@@ -98,8 +98,6 @@ static string getCommandLine()
 	jstring str = static_cast<jstring>(jni.env->CallObjectMethod(global_state.app->activity->clazz,
 	                                                             jni.getCommandLineArgument,
 	                                                             key));
-	jni.env->DeleteLocalRef(key);
-
 	if (str)
 	{
 		const char *data = jni.env->GetStringUTFChars(str, nullptr);
@@ -110,8 +108,6 @@ static string getCommandLine()
 		}
 		else
 			LOGE("Failed to get JNI string data.\n");
-
-		jni.env->DeleteLocalRef(str);
 	}
 	else
 		LOGE("Failed to get JNI string from getCommandLine().\n");
@@ -197,12 +193,9 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 					info.name = str;
 					jni.env->ReleaseStringUTFChars(name, str);
 				}
-
-				jni.env->DeleteLocalRef(name);
 			}
 			info.vid = jni.env->CallIntMethod(device, jni.getVendorId);
 			info.pid = jni.env->CallIntMethod(device, jni.getProductId);
-			jni.env->DeleteLocalRef(device);
 		}
 
 		LOGI("Found gamepad: %s (VID: 0x%x, PID: 0x%x)\n",
@@ -737,7 +730,6 @@ static void init_jni()
 
 	jstring granite_str = jni.env->NewStringUTF("net.themaister.granite.GraniteActivity");
 	jni.granite = static_cast<jclass>(jni.env->CallObjectMethod(jni.classLoader, loadClass, granite_str));
-	jni.env->DeleteLocalRef(granite_str);
 
 	jni.inputDeviceClass = jni.env->FindClass("android/view/InputDevice");
 

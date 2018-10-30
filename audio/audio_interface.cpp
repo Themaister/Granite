@@ -27,6 +27,9 @@
 #ifdef AUDIO_HAVE_PULSE
 #include "audio_pulse.hpp"
 #endif
+#ifdef AUDIO_HAVE_AAUDIO
+#include "audio_aaudio.hpp"
+#endif
 #ifdef AUDIO_HAVE_OPENSL
 #include "audio_opensl.hpp"
 #endif
@@ -43,6 +46,9 @@ using BackendCreationCallback = Backend *(*)(BackendCallback &, float, unsigned)
 static const BackendCreationCallback backends[] = {
 #ifdef AUDIO_HAVE_PULSE
 		create_pulse_backend,
+#endif
+#ifdef AUDIO_HAVE_AAUDIO
+		create_aaudio_backend,
 #endif
 #ifdef AUDIO_HAVE_OPENSL
 		create_opensl_backend,

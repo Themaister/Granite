@@ -129,7 +129,6 @@ static int getAudioNativeSampleRate()
 static int getAudioNativeBlockFrames()
 {
 	int ret = jni.env->CallIntMethod(global_state.app->activity->clazz, jni.getAudioNativeBlockFrames);
-	global_state.app->activity->vm->DetachCurrentThread();
 	return ret;
 }
 #endif
@@ -823,8 +822,8 @@ void android_main(android_app *app)
 	jni = {};
 
 	global_state.app = app;
-	init_jni();
 
+	init_jni();
 	Global::init();
 
 	LOGI("Starting Granite!\n");

@@ -94,15 +94,22 @@ struct AAudioBackend : Backend
 
 bool AAudioBackend::update_buffer_size()
 {
+	// We didn't ask for S16 or F32, let driver decide, we can deal with it.
 	format = AAudioStream_getFormat(stream);
 
+	// What's the hardware burst size? We should align on that.
 	int32_t burst_frames = AAudioStream_getFramesPerBurst(stream);
+
+	// We can tweak the buffer size dynamically up to this size.
 	int32_t max_frames = AAudioStream_getBufferCapacityInFrames(stream);
 
-	// Target 20 ms latency.
+	// Target 20 ms latency (can make it dynamic, but hey).
 	int32_t target_blocks = int(std::ceil(20.0f * sample_rate / (1000.0f * burst_frames)));
+
+	// At least double-buffer.
 	target_blocks = std::max(target_blocks, 2);
 
+	// Resize the buffer, need to ask for actual value later.
 	aaudio_result_t res;
 	if ((res = AAudioStream_setBufferSizeInFrames(stream, std::min(max_frames, target_blocks * burst_frames))) < 0)
 	{
@@ -110,14 +117,20 @@ bool AAudioBackend::update_buffer_size()
 		return false;
 	}
 
+	// Set up our mixer on first run-through.
 	if (!frames_per_callback)
 	{
 		// frames_per_callback is an internal detail so we have some idea how much memory to allocate for mix buffers.
 		// It shouldn't change on reinit.
 		frames_per_callback = AAudioStream_getFramesPerDataCallback(stream);
+
+		// It might be unspecified, so you get arbitrary amounts every callback,
+		// limit ourselves internally to the more likely burst size.
 		if (frames_per_callback == AAUDIO_UNSPECIFIED)
 			frames_per_callback = AAudioStream_getFramesPerBurst(stream);
 
+		// Allocate mix-buffers.
+		// If we have to generate more than this in a callback, iterate multiple times ...
 		for (unsigned c = 0; c < num_channels; c++)
 		{
 			mix_buffers[c].resize(frames_per_callback);
@@ -144,12 +157,16 @@ bool AAudioBackend::create_stream(float request_sample_rate, unsigned channels)
 	}
 
 	AAudioStreamBuilder_setChannelCount(builder, num_channels);
+
+	// Of course we want this ;)
 	AAudioStreamBuilder_setPerformanceMode(builder, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
 
 	// Only set explicit sampling rate if requested.
 	if (request_sample_rate != 0.0f)
 		AAudioStreamBuilder_setSampleRate(builder, int32_t(request_sample_rate));
 	AAudioStreamBuilder_setDirection(builder, AAUDIO_DIRECTION_OUTPUT);
+
+	// Data callback is better for latency.
 	AAudioStreamBuilder_setDataCallback(builder, aaudio_callback, this);
 	AAudioStreamBuilder_setErrorCallback(builder, aaudio_error_callback, this);
 
@@ -159,6 +176,10 @@ bool AAudioBackend::create_stream(float request_sample_rate, unsigned channels)
 		stream = nullptr;
 	}
 
+	// Query actual sample rate.
+	// FIXME: First time around we set up any sampling rate,
+	// but the mixer is currently unable to change sampling rate on the fly,
+	// so make sure we actually get what we ask for.
 	sample_rate = AAudioStream_getSampleRate(stream);
 	if (request_sample_rate != 0.0f && sample_rate != int32_t(request_sample_rate))
 	{
@@ -213,6 +234,7 @@ void AAudioBackend::thread_error(aaudio_result_t error) noexcept
 	device_alive.clear(std::memory_order_release);
 }
 
+// This must be hard-realtime safe!
 void AAudioBackend::thread_callback(void *data, int32_t numFrames) noexcept
 {
 	// Update measured latency.
@@ -251,12 +273,15 @@ void AAudioBackend::thread_callback(void *data, int32_t numFrames) noexcept
 	} u;
 	u.data = data;
 
+	// Ideally we'll only run this once, but you never know ...
 	while (numFrames)
 	{
 		auto to_render = std::min(numFrames, frames_per_callback);
 
 		callback.mix_samples(mix_buffers_ptr, size_t(to_render));
 
+		// Deal with whatever format AAudio wants.
+		// Convert from deinterleaved F32 to whatever.
 		if (format == AAUDIO_FORMAT_PCM_FLOAT && num_channels == 2)
 		{
 			DSP::interleave_stereo_f32(u.f32, mix_buffers_ptr[0], mix_buffers_ptr[1], size_t(to_render));
@@ -297,6 +322,7 @@ static void aaudio_error_callback(AAudioStream *, void *userData, aaudio_result_
 	backend->thread_error(error);
 }
 
+// Called periodically from the main loop, just in case we need to recover from a device lost.
 void AAudioBackend::heartbeat()
 {
 	if (!device_alive.test_and_set(std::memory_order_acquire))
@@ -327,25 +353,13 @@ bool AAudioBackend::start()
 	callback.on_backend_start();
 	frame_count = 0;
 
+	// Starts async, and will pull from callback.
 	aaudio_result_t res;
 	if ((res = AAudioStream_requestStart(stream)) != AAUDIO_OK)
 	{
 		LOGE("AAudio: Failed to request stream start: %s\n", AAudio_convertResultToText(res));
 		return false;
 	}
-
-#if 0
-	aaudio_stream_state_t current_state = AAudioStream_getState(stream);
-	aaudio_stream_state_t input_state = current_state;
-	while (res == AAUDIO_OK && current_state != AAUDIO_STREAM_STATE_STARTED)
-	{
-		res = AAudioStream_waitForStateChange(stream, input_state, &current_state, 1000000000);
-		input_state = current_state;
-	}
-
-	if (input_state != AAUDIO_STREAM_STATE_STARTED)
-		return false;
-#endif
 
 	is_active = true;
 	return true;
@@ -366,6 +380,7 @@ bool AAudioBackend::stop()
 		return false;
 	}
 
+	// To be safe, wait for the stream to go idle.
 	aaudio_stream_state_t current_state = AAudioStream_getState(stream);
 	aaudio_stream_state_t input_state = current_state;
 	while ((res == AAUDIO_OK || res == AAUDIO_ERROR_TIMEOUT) && current_state != AAUDIO_STREAM_STATE_STOPPED)

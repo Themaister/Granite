@@ -47,9 +47,10 @@ static const BackendCreationCallback backends[] = {
 #ifdef AUDIO_HAVE_PULSE
 		create_pulse_backend,
 #endif
-#ifdef AUDIO_HAVE_AAUDIO
-		create_aaudio_backend,
-#endif
+		// Buggy on Android 8.0, should work fine on 8.1?
+//#ifdef AUDIO_HAVE_AAUDIO
+//		create_aaudio_backend,
+//#endif
 #ifdef AUDIO_HAVE_OPENSL
 		create_opensl_backend,
 #endif

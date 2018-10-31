@@ -39,6 +39,7 @@ struct RenderParameters
 	mat4 inv_projection;
 	mat4 inv_view;
 	mat4 inv_view_projection;
+	mat4 local_view_projection;
 	mat4 inv_local_view_projection;
 
 	alignas(16) vec3 camera_position;

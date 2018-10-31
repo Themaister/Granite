@@ -40,6 +40,13 @@ public:
 	                               RendererType renderer, RenderableType drawable) const;
 };
 
+class RenderContextParameterBinder
+{
+public:
+	virtual ~RenderContextParameterBinder() = default;
+	virtual void bind_render_context_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context) = 0;
+};
+
 class Renderer : public EventHandler
 {
 public:
@@ -111,6 +118,8 @@ public:
 		return type;
 	}
 
+	void set_render_context_parameter_binder(RenderContextParameterBinder *binder);
+
 protected:
 	ShaderSuite suite[Util::ecast(RenderableType::Count)];
 
@@ -127,6 +136,7 @@ private:
 
 	RendererType type;
 	const ShaderSuiteResolver *resolver = nullptr;
+	RenderContextParameterBinder *render_context_parameter_binder = nullptr;
 	uint32_t renderer_options = ~0u;
 	uint8_t stencil_compare_mask = 0;
 	uint8_t stencil_write_mask = 0;

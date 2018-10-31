@@ -329,11 +329,23 @@ void Renderer::bind_global_parameters(Vulkan::CommandBuffer &cmd, const RenderCo
 	*global = context.get_render_parameters();
 }
 
+void Renderer::set_render_context_parameter_binder(RenderContextParameterBinder *binder)
+{
+	render_context_parameter_binder = binder;
+}
+
 void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context, RendererFlushFlags options)
 {
-	bind_global_parameters(cmd, context);
-	if (type == RendererType::GeneralForward)
-		bind_lighting_parameters(cmd, context);
+	if (render_context_parameter_binder)
+	{
+		render_context_parameter_binder->bind_render_context_parameters(cmd, context);
+	}
+	else
+	{
+		bind_global_parameters(cmd, context);
+		if (type == RendererType::GeneralForward)
+			bind_lighting_parameters(cmd, context);
+	}
 
 	if ((options & SKIP_SORTING_BIT) == 0)
 		queue.sort();

@@ -218,6 +218,8 @@ bool WSI::begin_frame()
 	if (frame_is_external)
 		return begin_frame_external();
 
+	device->next_frame_context();
+
 	if (swapchain == VK_NULL_HANDLE || platform->should_resize())
 	{
 		update_framebuffer(platform->get_surface_width(), platform->get_surface_height());
@@ -255,7 +257,6 @@ bool WSI::begin_frame()
 			platform->poll_input();
 			platform->event_frame_tick(frame_time, elapsed_time);
 
-			device->next_frame_context();
 			platform->event_swapchain_index(device.get(), swapchain_index);
 			device->set_acquire_semaphore(swapchain_index, acquire);
 		}

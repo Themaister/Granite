@@ -39,6 +39,7 @@ struct BufferBlockAllocation
 
 struct BufferBlock
 {
+	~BufferBlock();
 	Util::IntrusivePtr<Buffer> gpu;
 	Util::IntrusivePtr<Buffer> cpu;
 	VkDeviceSize offset = 0;
@@ -63,6 +64,7 @@ struct BufferBlock
 class BufferPool
 {
 public:
+	~BufferPool();
 	void init(Device *device, VkDeviceSize block_size, VkDeviceSize alignment, VkBufferUsageFlags usage, bool need_device_local);
 	void reset();
 

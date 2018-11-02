@@ -37,6 +37,10 @@ void BufferPool::init(Device *device, VkDeviceSize block_size, VkDeviceSize alig
 	this->need_device_local = need_device_local;
 }
 
+BufferBlock::~BufferBlock()
+{
+}
+
 void BufferPool::reset()
 {
 	blocks.clear();
@@ -103,6 +107,11 @@ void BufferPool::recycle_block(BufferBlock &&block)
 {
 	VK_ASSERT(block.size == block_size);
 	blocks.push_back(move(block));
+}
+
+BufferPool::~BufferPool()
+{
+	VK_ASSERT(blocks.empty());
 }
 
 }

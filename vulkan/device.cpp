@@ -461,6 +461,8 @@ void Device::set_context(const Context &context)
 	init_shader_manager_cache();
 #endif
 
+	init_frame_contexts(2); // By default, regular double buffer between CPU and GPU.
+
 	ext = context.get_enabled_device_features();
 
 	managers.memory.init(gpu, device);
@@ -938,7 +940,7 @@ void Device::submit_queue(CommandBuffer::Type type, VkFence *fence,
 
 	for (auto &cmd : submissions)
 	{
-		if (cmd->swapchain_touched() && !frame().swapchain_touched && !frame().swapchain_consumed)
+		if (cmd->swapchain_touched() && !wsi.touched && !wsi.consumed)
 		{
 			if (!cmds.empty())
 			{
@@ -953,7 +955,7 @@ void Device::submit_queue(CommandBuffer::Type type, VkFence *fence,
 				submit.pCommandBuffers = cmds.data() + last_cmd;
 				last_cmd = cmds.size();
 			}
-			frame().swapchain_touched = true;
+			wsi.touched = true;
 		}
 
 		cmds.push_back(cmd->get_command_buffer());
@@ -972,29 +974,29 @@ void Device::submit_queue(CommandBuffer::Type type, VkFence *fence,
 		submit.pNext = nullptr;
 		submit.commandBufferCount = cmds.size() - last_cmd;
 		submit.pCommandBuffers = cmds.data() + last_cmd;
-		if (frame().swapchain_touched && !frame().swapchain_consumed)
+		if (wsi.touched && !wsi.consumed)
 		{
 			static const VkFlags wait = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-			if (wsi_acquire && wsi_acquire->get_semaphore() != VK_NULL_HANDLE)
+			if (wsi.acquire && wsi.acquire->get_semaphore() != VK_NULL_HANDLE)
 			{
-				VK_ASSERT(wsi_acquire->is_signalled());
-				VkSemaphore sem = wsi_acquire->consume();
+				VK_ASSERT(wsi.acquire->is_signalled());
+				VkSemaphore sem = wsi.acquire->consume();
 				waits[index].push_back(sem);
 
-				if (wsi_acquire->can_recycle())
+				if (wsi.acquire->can_recycle())
 					frame().recycled_semaphores.push_back(sem);
 				else
 					frame().destroyed_semaphores.push_back(sem);
 
 				stages[index].push_back(wait);
-				wsi_acquire.reset();
+				wsi.acquire.reset();
 			}
 
 			VkSemaphore release = managers.semaphore.request_cleared_semaphore();
-			wsi_release = Semaphore(handle_pool.semaphores.allocate(this, release, true));
-			wsi_release->set_internal_sync_object();
-			signals[index].push_back(wsi_release->get_semaphore());
-			frame().swapchain_consumed = true;
+			wsi.release = Semaphore(handle_pool.semaphores.allocate(this, release, true));
+			wsi.release->set_internal_sync_object();
+			signals[index].push_back(wsi.release->get_semaphore());
+			wsi.consumed = true;
 		}
 		last_cmd = cmds.size();
 	}
@@ -1151,7 +1153,7 @@ void Device::sync_buffer_blocks()
 	submit_staging(cmd, usage, false);
 }
 
-void Device::end_frame()
+void Device::end_frame_context()
 {
 	DRAIN_FRAME_LOCK();
 	end_frame_nolock();
@@ -1317,20 +1319,24 @@ CommandBufferHandle Device::request_secondary_command_buffer_for_thread(unsigned
 	return handle;
 }
 
-void Device::set_acquire_semaphore(Semaphore acquire)
+void Device::set_acquire_semaphore(unsigned index, Semaphore acquire)
 {
-	wsi_acquire = move(acquire);
-	if (wsi_acquire)
+	wsi.acquire = move(acquire);
+	wsi.index = index;
+	wsi.touched = false;
+	wsi.consumed = false;
+
+	if (wsi.acquire)
 	{
-		wsi_acquire->set_internal_sync_object();
-		VK_ASSERT(wsi_acquire->is_signalled());
+		wsi.acquire->set_internal_sync_object();
+		VK_ASSERT(wsi.acquire->is_signalled());
 	}
 }
 
 Semaphore Device::consume_release_semaphore()
 {
-	auto ret = move(wsi_release);
-	wsi_release.reset();
+	auto ret = move(wsi.release);
+	wsi.release.reset();
 	return ret;
 }
 
@@ -1341,7 +1347,7 @@ const Sampler &Device::get_stock_sampler(StockSampler sampler) const
 
 bool Device::swapchain_touched() const
 {
-	return frame().swapchain_touched;
+	return wsi.touched;
 }
 
 Device::~Device()
@@ -1351,8 +1357,9 @@ Device::~Device()
 #endif
 	wait_idle();
 
-	wsi_acquire.reset();
-	wsi_release.reset();
+	wsi.acquire.reset();
+	wsi.release.reset();
+	wsi.swapchain.clear();
 
 	if (pipeline_cache != VK_NULL_HANDLE)
 	{
@@ -1372,12 +1379,9 @@ Device::~Device()
 	transient_allocator.clear();
 	for (auto &sampler : samplers)
 		sampler.reset();
-
-	for (auto &frame : per_frame)
-		frame->release_owned_resources();
 }
 
-void Device::init_external_swapchain(const vector<ImageHandle> &swapchain_images)
+void Device::init_frame_contexts(unsigned count)
 {
 	DRAIN_FRAME_LOCK();
 	wait_idle_nolock();
@@ -1385,45 +1389,48 @@ void Device::init_external_swapchain(const vector<ImageHandle> &swapchain_images
 	// Clear out caches which might contain stale data from now on.
 	framebuffer_allocator.clear();
 	transient_allocator.clear();
-
-	for (auto &frame : per_frame)
-		frame->release_owned_resources();
 	per_frame.clear();
 
+	for (unsigned i = 0; i < count; i++)
+	{
+		auto frame = make_unique<PerFrame>(this);
+		per_frame.emplace_back(move(frame));
+	}
+}
+
+void Device::init_external_swapchain(const vector<ImageHandle> &swapchain_images)
+{
+	DRAIN_FRAME_LOCK();
+	wsi.swapchain.clear();
+	wait_idle_nolock();
+
+	wsi.index = 0;
+	wsi.touched = false;
+	wsi.consumed = false;
 	for (auto &image : swapchain_images)
 	{
-		auto frame = make_unique<PerFrame>(this, managers,
-		                                   graphics_queue_family_index,
-		                                   compute_queue_family_index,
-		                                   transfer_queue_family_index);
-
-		frame->backbuffer = image;
-		per_frame.emplace_back(move(frame));
+		wsi.swapchain.push_back(image);
+		if (image)
+		{
+			wsi.swapchain.back()->set_internal_sync_object();
+			wsi.swapchain.back()->get_view().set_internal_sync_object();
+		}
 	}
 }
 
 void Device::init_swapchain(const vector<VkImage> &swapchain_images, unsigned width, unsigned height, VkFormat format)
 {
 	DRAIN_FRAME_LOCK();
+	wsi.swapchain.clear();
 	wait_idle_nolock();
-
-	// Clear out caches which might contain stale data from now on.
-	framebuffer_allocator.clear();
-	transient_allocator.clear();
-
-	for (auto &frame : per_frame)
-		frame->release_owned_resources();
-	per_frame.clear();
 
 	const auto info = ImageCreateInfo::render_target(width, height, format);
 
+	wsi.index = 0;
+	wsi.touched = false;
+	wsi.consumed = false;
 	for (auto &image : swapchain_images)
 	{
-		auto frame = make_unique<PerFrame>(this, managers,
-		                                   graphics_queue_family_index,
-		                                   compute_queue_family_index,
-		                                   transfer_queue_family_index);
-
 		VkImageViewCreateInfo view_info = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
 		view_info.image = image;
 		view_info.format = format;
@@ -1442,19 +1449,18 @@ void Device::init_swapchain(const vector<VkImage> &swapchain_images, unsigned wi
 		if (vkCreateImageView(device, &view_info, nullptr, &image_view) != VK_SUCCESS)
 			LOGE("Failed to create view for backbuffer.");
 
-		frame->backbuffer = ImageHandle(handle_pool.images.allocate(this, image, image_view, DeviceAllocation{}, info));
-		set_name(*frame->backbuffer, "backbuffer");
-		frame->backbuffer->set_swapchain_layout(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
-		per_frame.emplace_back(move(frame));
+		auto backbuffer = ImageHandle(handle_pool.images.allocate(this, image, image_view, DeviceAllocation{}, info));
+		backbuffer->set_internal_sync_object();
+		backbuffer->get_view().set_internal_sync_object();
+		wsi.swapchain.push_back(backbuffer);
+		set_name(*backbuffer, "backbuffer");
+		backbuffer->set_swapchain_layout(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 	}
 }
 
-Device::PerFrame::PerFrame(Device *device, Managers &managers,
-                           uint32_t graphics_queue_family_index,
-                           uint32_t compute_queue_family_index,
-                           uint32_t transfer_queue_family_index)
+Device::PerFrame::PerFrame(Device *device)
     : device(device->get_device())
-    , managers(managers)
+    , managers(device->managers)
     , query_pool(device)
 {
 #ifdef GRANITE_VULKAN_MT
@@ -1465,9 +1471,9 @@ Device::PerFrame::PerFrame(Device *device, Managers &managers,
 
 	for (unsigned i = 0; i < count; i++)
 	{
-		graphics_cmd_pool.emplace_back(device->get_device(), graphics_queue_family_index);
-		compute_cmd_pool.emplace_back(device->get_device(), compute_queue_family_index);
-		transfer_cmd_pool.emplace_back(device->get_device(), transfer_queue_family_index);
+		graphics_cmd_pool.emplace_back(device->get_device(), device->graphics_queue_family_index);
+		compute_cmd_pool.emplace_back(device->get_device(), device->compute_queue_family_index);
+		transfer_cmd_pool.emplace_back(device->get_device(), device->transfer_queue_family_index);
 	}
 }
 
@@ -1687,18 +1693,13 @@ void Device::wait_idle_nolock()
 
 	for (auto &frame : per_frame)
 	{
-		// Avoid double-wait-on-semaphore scenarios.
-		bool touched_swapchain = frame->swapchain_touched;
-
 		// We have done WaitIdle, no need to wait for extra fences, it's also not safe.
 		frame->wait_fences.clear();
-
 		frame->begin();
-		frame->swapchain_touched = touched_swapchain;
 	}
 }
 
-void Device::begin_frame(unsigned index)
+void Device::next_frame_context()
 {
 	DRAIN_FRAME_LOCK();
 
@@ -1710,7 +1711,11 @@ void Device::begin_frame(unsigned index)
 	for (auto &allocator : descriptor_set_allocators)
 		allocator.begin_frame();
 
-	current_swapchain_index = index;
+	VK_ASSERT(!per_frame.empty());
+	frame_context_index++;
+	if (frame_context_index >= per_frame.size())
+		frame_context_index = 0;
+
 	frame().begin();
 }
 
@@ -1830,19 +1835,6 @@ void Device::PerFrame::begin()
 	recycled_semaphores.clear();
 	recycled_events.clear();
 	allocations.clear();
-
-	swapchain_touched = false;
-	swapchain_consumed = false;
-}
-
-void Device::PerFrame::release_owned_resources()
-{
-	if (backbuffer)
-	{
-		backbuffer->set_internal_sync_object();
-		backbuffer->get_view().set_internal_sync_object();
-	}
-	backbuffer.reset();
 }
 
 Device::PerFrame::~PerFrame()
@@ -3064,29 +3056,31 @@ ImageView &Device::get_transient_attachment(unsigned width, unsigned height, VkF
 
 ImageView &Device::get_swapchain_view()
 {
-	return frame().backbuffer->get_view();
+	VK_ASSERT(wsi.index < wsi.swapchain.size());
+	return wsi.swapchain[wsi.index]->get_view();
 }
 
 ImageView &Device::get_swapchain_view(unsigned index)
 {
-	return per_frame[index]->backbuffer->get_view();
+	VK_ASSERT(index < wsi.swapchain.size());
+	return wsi.swapchain[index]->get_view();
 }
 
 unsigned Device::get_num_swapchain_images() const
 {
-	return unsigned(per_frame.size());
+	return unsigned(wsi.swapchain.size());
 }
 
 unsigned Device::get_swapchain_index() const
 {
-	return current_swapchain_index;
+	return wsi.index;
 }
 
 RenderPassInfo Device::get_swapchain_render_pass(SwapchainRenderPass style)
 {
 	RenderPassInfo info;
 	info.num_color_attachments = 1;
-	info.color_attachments[0] = &frame().backbuffer->get_view();
+	info.color_attachments[0] = &get_swapchain_view();
 	info.clear_attachments = ~0u;
 	info.store_attachments = 1u << 0;
 
@@ -3096,8 +3090,8 @@ RenderPassInfo Device::get_swapchain_render_pass(SwapchainRenderPass style)
 	{
 		info.op_flags |= RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT;
 		info.depth_stencil =
-		    &get_transient_attachment(frame().backbuffer->get_create_info().width,
-		                              frame().backbuffer->get_create_info().height, get_default_depth_format());
+		    &get_transient_attachment(wsi.swapchain[wsi.index]->get_create_info().width,
+		                              wsi.swapchain[wsi.index]->get_create_info().height, get_default_depth_format());
 		break;
 	}
 
@@ -3105,8 +3099,8 @@ RenderPassInfo Device::get_swapchain_render_pass(SwapchainRenderPass style)
 	{
 		info.op_flags |= RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT;
 		info.depth_stencil =
-		    &get_transient_attachment(frame().backbuffer->get_create_info().width,
-		                              frame().backbuffer->get_create_info().height, get_default_depth_stencil_format());
+		    &get_transient_attachment(wsi.swapchain[wsi.index]->get_create_info().width,
+		                              wsi.swapchain[wsi.index]->get_create_info().height, get_default_depth_stencil_format());
 		break;
 	}
 

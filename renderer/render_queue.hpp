@@ -188,7 +188,7 @@ private:
 		uintptr_t begin = 0;
 		uintptr_t end = 0;
 
-		Block(size_t size)
+		explicit Block(size_t size)
 		{
 			buffer.resize(size);
 			begin = reinterpret_cast<uintptr_t>(buffer.data());

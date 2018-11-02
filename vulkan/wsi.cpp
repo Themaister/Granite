@@ -115,10 +115,8 @@ bool WSI::init()
 	auto device_ext = platform->get_device_extensions();
 	context.reset(new Context(instance_ext.data(), instance_ext.size(), device_ext.data(), device_ext.size()));
 
-	// Need to have a dummy swapchain in place before we issue create device events.
 	device.reset(new Device);
 	device->set_context(*context);
-	device->init_external_swapchain({ ImageHandle(nullptr) });
 
 	platform->event_device_created(device.get());
 
@@ -162,7 +160,7 @@ void WSI::deinit_surface_and_swapchain()
 	LOGI("deinit_surface_and_swapchain()\n");
 	device->wait_idle();
 
-	device->set_acquire_semaphore(Semaphore{});
+	device->set_acquire_semaphore(0, Semaphore{});
 	device->consume_release_semaphore();
 
 	if (swapchain != VK_NULL_HANDLE)
@@ -187,6 +185,8 @@ void WSI::set_external_frame(unsigned index, Vulkan::Semaphore acquire_semaphore
 
 bool WSI::begin_frame_external()
 {
+	device->next_frame_context();
+
 	// Need to handle this stuff from outside.
 	if (has_acquired_swapchain_index)
 		return false;
@@ -200,14 +200,8 @@ bool WSI::begin_frame_external()
 	swapchain_index = external_frame_index;
 	platform->event_frame_tick(frame_time, elapsed_time);
 
-	device->begin_frame(swapchain_index);
 	platform->event_swapchain_index(device.get(), swapchain_index);
-
-	if (external_acquire)
-		device->set_acquire_semaphore(external_acquire);
-	else
-		device->set_acquire_semaphore(Semaphore{});
-
+	device->set_acquire_semaphore(swapchain_index, external_acquire);
 	external_acquire.reset();
 	return true;
 }
@@ -261,9 +255,9 @@ bool WSI::begin_frame()
 			platform->poll_input();
 			platform->event_frame_tick(frame_time, elapsed_time);
 
-			device->begin_frame(swapchain_index);
+			device->next_frame_context();
 			platform->event_swapchain_index(device.get(), swapchain_index);
-			device->set_acquire_semaphore(acquire);
+			device->set_acquire_semaphore(swapchain_index, acquire);
 		}
 		else if (result == VK_SUBOPTIMAL_KHR || result == VK_ERROR_OUT_OF_DATE_KHR)
 		{
@@ -277,7 +271,7 @@ bool WSI::begin_frame()
 				swapchain = VK_NULL_HANDLE;
 			}
 
-			device->set_acquire_semaphore(Semaphore{});
+			device->set_acquire_semaphore(0, Semaphore{});
 			device->consume_release_semaphore();
 
 			if (!blocking_init_swapchain(width, height))
@@ -294,23 +288,24 @@ bool WSI::begin_frame()
 
 bool WSI::end_frame()
 {
-	device->end_frame();
-
-	if (!device->swapchain_touched())
-		return true;
-
-	has_acquired_swapchain_index = false;
+	device->end_frame_context();
 
 	// Take ownership of the release semaphore so that the external user can use it.
 	if (frame_is_external)
 	{
+		// If we didn't render into the swapchain this frame, we will return a blank semaphore.
 		external_release = device->consume_release_semaphore();
-		VK_ASSERT(external_release);
-		VK_ASSERT(external_release->is_signalled());
+		if (external_release && !external_release->is_signalled())
+			std::abort();
 		frame_is_external = false;
 	}
 	else
 	{
+		if (!device->swapchain_touched())
+			return true;
+
+		has_acquired_swapchain_index = false;
+
 		auto release = device->consume_release_semaphore();
 		VK_ASSERT(release);
 		VK_ASSERT(release->is_signalled());
@@ -318,7 +313,7 @@ bool WSI::end_frame()
 		VK_ASSERT(release_semaphore != VK_NULL_HANDLE);
 
 		VkResult result = VK_SUCCESS;
-		VkPresentInfoKHR info = { VK_STRUCTURE_TYPE_PRESENT_INFO_KHR };
+		VkPresentInfoKHR info = {VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
 		info.waitSemaphoreCount = 1;
 		info.pWaitSemaphores = &release_semaphore;
 		info.swapchainCount = 1;
@@ -343,13 +338,13 @@ bool WSI::end_frame()
 			else
 				device->frame().destroyed_semaphores.push_back(release_semaphore);
 		}
-	}
 
-	// Re-init swapchain.
-	if (present_mode != current_present_mode)
-	{
-		current_present_mode = present_mode;
-		update_framebuffer(this->width, this->height);
+		// Re-init swapchain.
+		if (present_mode != current_present_mode)
+		{
+			current_present_mode = present_mode;
+			update_framebuffer(this->width, this->height);
+		}
 	}
 
 	return true;
@@ -381,7 +376,7 @@ void WSI::deinit_external()
 	{
 		vkDeviceWaitIdle(context->get_device());
 
-		device->set_acquire_semaphore(Semaphore{});
+		device->set_acquire_semaphore(0, Semaphore{});
 		device->consume_release_semaphore();
 
 		platform->event_swapchain_destroyed();

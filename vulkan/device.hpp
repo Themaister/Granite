@@ -138,6 +138,7 @@ public:
 	void set_context(const Context &context);
 	void init_swapchain(const std::vector<VkImage> &swapchain_images, unsigned width, unsigned height, VkFormat format);
 	void init_external_swapchain(const std::vector<ImageHandle> &swapchain_images);
+	void init_frame_contexts(unsigned count);
 	ImageView &get_swapchain_view();
 	ImageView &get_swapchain_view(unsigned index);
 	unsigned get_num_swapchain_images() const;
@@ -148,10 +149,9 @@ public:
 	bool init_pipeline_cache(const uint8_t *data, size_t size);
 
 	// Frame-pushing interface.
-	void begin_frame(unsigned swapchain_index);
+	void next_frame_context();
 	void wait_idle();
-	void end_frame();
-	bool swapchain_touched() const;
+	void end_frame_context();
 
 	// Set names for objects for debuggers and profilers.
 	void set_name(const Buffer &buffer, const char *name);
@@ -278,8 +278,9 @@ private:
 
 	QueryPoolHandle write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlagBits stage);
 
-	void set_acquire_semaphore(Semaphore acquire);
+	void set_acquire_semaphore(unsigned index, Semaphore acquire);
 	Semaphore consume_release_semaphore();
+	bool swapchain_touched() const;
 
 	PipelineLayout *request_pipeline_layout(const CombinedResourceLayout &layout);
 	DescriptorSetAllocator *request_descriptor_set_allocator(const DescriptorSetLayout &layout, const uint32_t *stages_for_sets);
@@ -318,24 +319,18 @@ private:
 
 	struct PerFrame
 	{
-		PerFrame(Device *device,
-		         Managers &managers,
-		         uint32_t graphics_queue_family_index,
-		         uint32_t compute_queue_family_index,
-		         uint32_t transfer_queue_family_index);
+		PerFrame(Device *device);
 		~PerFrame();
 		void operator=(const PerFrame &) = delete;
 		PerFrame(const PerFrame &) = delete;
 
 		void begin();
-		void release_owned_resources();
 
 		VkDevice device;
 		Managers &managers;
 		std::vector<CommandPool> graphics_cmd_pool;
 		std::vector<CommandPool> compute_cmd_pool;
 		std::vector<CommandPool> transfer_cmd_pool;
-		ImageHandle backbuffer;
 		QueryPool query_pool;
 
 		std::vector<BufferBlock> vbo_blocks;
@@ -360,15 +355,20 @@ private:
 		std::vector<VkEvent> recycled_events;
 		std::vector<VkSemaphore> destroyed_semaphores;
 		std::vector<ImageHandle> keep_alive_images;
-		bool swapchain_touched = false;
-		bool swapchain_consumed = false;
 	};
 	// The per frame structure must be destroyed after
 	// the hashmap data structures below, so it must be declared before.
 	std::vector<std::unique_ptr<PerFrame>> per_frame;
 
-	Semaphore wsi_acquire;
-	Semaphore wsi_release;
+	struct
+	{
+		Semaphore acquire;
+		Semaphore release;
+		bool touched = false;
+		bool consumed = false;
+		std::vector<ImageHandle> swapchain;
+		unsigned index = 0;
+	} wsi;
 
 	struct QueueData
 	{
@@ -391,19 +391,19 @@ private:
 
 	PerFrame &frame()
 	{
-		VK_ASSERT(current_swapchain_index < per_frame.size());
-		VK_ASSERT(per_frame[current_swapchain_index]);
-		return *per_frame[current_swapchain_index];
+		VK_ASSERT(frame_context_index < per_frame.size());
+		VK_ASSERT(per_frame[frame_context_index]);
+		return *per_frame[frame_context_index];
 	}
 
 	const PerFrame &frame() const
 	{
-		VK_ASSERT(current_swapchain_index < per_frame.size());
-		VK_ASSERT(per_frame[current_swapchain_index]);
-		return *per_frame[current_swapchain_index];
+		VK_ASSERT(frame_context_index < per_frame.size());
+		VK_ASSERT(per_frame[frame_context_index]);
+		return *per_frame[frame_context_index];
 	}
 
-	unsigned current_swapchain_index = 0;
+	unsigned frame_context_index = 0;
 	uint32_t graphics_queue_family_index = 0;
 	uint32_t compute_queue_family_index = 0;
 	uint32_t transfer_queue_family_index = 0;

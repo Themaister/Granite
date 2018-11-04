@@ -60,14 +60,24 @@ float WSIPlatform::get_estimated_frame_presentation_duration()
 
 float WSI::get_estimated_video_latency()
 {
-	unsigned latency_frames = device->get_num_swapchain_images();
-	if (latency_frames > 0)
-		latency_frames--;
-
-	if (platform)
-		return platform->get_estimated_frame_presentation_duration() * float(latency_frames);
+	if (using_display_timing)
+	{
+		// Very accurate estimate.
+		double latency = timing.get_current_latency();
+		return float(latency);
+	}
 	else
-		return 0.0f;
+	{
+		// Very rough estimate.
+		unsigned latency_frames = device->get_num_swapchain_images();
+		if (latency_frames > 0)
+			latency_frames--;
+
+		if (platform)
+			return platform->get_estimated_frame_presentation_duration() * float(latency_frames);
+		else
+			return 0.0f;
+	}
 }
 
 bool WSI::reinit_external_swapchain(std::vector<Vulkan::ImageHandle> external_images)
@@ -267,11 +277,8 @@ bool WSI::begin_frame()
 			auto frame_time = platform->get_frame_timer().frame();
 			auto elapsed_time = platform->get_frame_timer().get_elapsed();
 
-			if (context->get_enabled_device_features().supports_google_display_timing &&
-			    present_mode == PresentMode::SyncToVBlank)
-			{
+			if (using_display_timing)
 				timing.begin_frame(frame_time, elapsed_time);
-			}
 
 			smooth_frame_time = frame_time;
 			smooth_elapsed_time = elapsed_time;
@@ -350,8 +357,7 @@ bool WSI::end_frame()
 		present_timing.swapchainCount = 1;
 		present_timing.pTimes = &present_time;
 
-		if (context->get_enabled_device_features().supports_google_display_timing &&
-		    timing.fill_present_info_timing(present_time))
+		if (using_display_timing && timing.fill_present_info_timing(present_time))
 		{
 			info.pNext = &present_timing;
 		}
@@ -430,6 +436,8 @@ void WSI::deinit_external()
 	external_swapchain_images.clear();
 	device.reset();
 	context.reset();
+
+	using_display_timing = false;
 }
 
 bool WSI::blocking_init_swapchain(unsigned width, unsigned height)
@@ -582,10 +590,16 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 		vkDestroySwapchainKHR(context->get_device(), old_swapchain, nullptr);
 	has_acquired_swapchain_index = false;
 
-	WSITimingOptions timing_options;
-	timing_options.swap_interval = 1;
-	timing_options.latency_limiter = LatencyLimiter::IdealPipeline;
-	timing.init(device->get_device(), swapchain, timing_options);
+	if (use_vsync && context->get_enabled_device_features().supports_google_display_timing)
+	{
+		WSITimingOptions timing_options;
+		timing_options.swap_interval = 1;
+		timing_options.latency_limiter = LatencyLimiter::IdealPipeline;
+		timing.init(device->get_device(), swapchain, timing_options);
+		using_display_timing = true;
+	}
+	else
+		using_display_timing = false;
 
 	if (res != VK_SUCCESS)
 	{

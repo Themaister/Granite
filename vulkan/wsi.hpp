@@ -196,6 +196,7 @@ private:
 	Vulkan::Semaphore external_acquire;
 	Vulkan::Semaphore external_release;
 	bool frame_is_external = false;
+	bool using_display_timing = false;
 	bool begin_frame_external();
 	double external_frame_time = 0.0;
 

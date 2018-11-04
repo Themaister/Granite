@@ -49,6 +49,7 @@ public:
 	void begin_frame(double &frame_time, double &elapsed_time);
 
 	bool fill_present_info_timing(VkPresentTimeGOOGLE &time);
+	double get_current_latency() const;
 
 private:
 	VkDevice device = VK_NULL_HANDLE;
@@ -76,6 +77,7 @@ private:
 		uint64_t refresh_interval = 0;
 		Timing past_timings[NUM_TIMINGS];
 		std::vector<VkPastPresentationTimingGOOGLE> timing_buffer;
+		double latency = 0.0;
 	} feedback;
 
 	struct Pacing

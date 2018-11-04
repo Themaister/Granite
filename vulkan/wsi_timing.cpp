@@ -109,6 +109,7 @@ void WSITiming::update_past_presentation_timing()
 	if (timing && timing->timing.actualPresentTime >= timing->wall_frame_begin)
 	{
 		auto total_latency = timing->timing.actualPresentTime - timing->wall_frame_begin;
+		feedback.latency = 0.99 * feedback.latency + 0.01 * total_latency;
 
 		if (int64_t(timing->timing.presentMargin) < 0)
 			LOGE("Present margin is negative (%lld) ... ?!\n", static_cast<long long>(timing->timing.presentMargin));
@@ -252,6 +253,11 @@ void WSITiming::update_frame_time_smoothing(double &frame_time, double &elapsed_
 
 	elapsed_time = smoothing.elapsed + smoothing.offset;
 	frame_time = target_frame_time;
+}
+
+double WSITiming::get_current_latency() const
+{
+	return feedback.latency;
 }
 
 void WSITiming::begin_frame(double &frame_time, double &elapsed_time)

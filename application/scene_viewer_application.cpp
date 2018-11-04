@@ -1268,6 +1268,9 @@ void SceneViewerApplication::render_ui(Vulkan::CommandBuffer &cmd)
 	char max_text[64];
 	sprintf(max_text, "Max: %10.3f ms", max_time * 1000.0f);
 
+	char latency_text[64];
+	sprintf(latency_text, "Latency: %10.3f ms", get_wsi().get_estimated_video_latency() * 1e-6f);
+
 	vec3 offset(5.0f, 5.0f, 0.0f);
 	vec2 size(cmd.get_viewport().width - 10.0f, cmd.get_viewport().height - 10.0f);
 	vec4 color(1.0f, 1.0f, 0.0f, 1.0f);
@@ -1279,6 +1282,8 @@ void SceneViewerApplication::render_ui(Vulkan::CommandBuffer &cmd)
 	                          offset + vec3(0.0f, 20.0f, 0.0f), size - vec2(0.0f, 20.0f), color, alignment, 1.0f);
 	flat_renderer.render_text(Global::ui_manager()->get_font(UI::FontSize::Large), max_text,
 	                          offset + vec3(0.0f, 40.0f, 0.0f), size - vec2(0.0f, 40.0f), color, alignment, 1.0f);
+	flat_renderer.render_text(Global::ui_manager()->get_font(UI::FontSize::Large), latency_text,
+	                          offset + vec3(0.0f, 60.0f, 0.0f), size - vec2(0.0f, 60.0f), color, alignment, 1.0f);
 
 	flat_renderer.flush(cmd, vec3(0.0f), vec3(cmd.get_viewport().width, cmd.get_viewport().height, 1.0f));
 }

@@ -216,6 +216,7 @@ target_sources(granite PRIVATE
         vulkan/vulkan.cpp vulkan/vulkan.hpp
         vulkan/device.cpp vulkan/device.hpp
         vulkan/wsi.cpp vulkan/wsi.hpp
+        vulkan/wsi_timing.cpp vulkan/wsi_timing.hpp
         vulkan/buffer_pool.cpp vulkan/buffer_pool.hpp
         vulkan/image.cpp vulkan/image.hpp
         vulkan/cookie.cpp vulkan/cookie.hpp

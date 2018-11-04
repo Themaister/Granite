@@ -250,6 +250,9 @@ bool WSI::begin_frame()
 			has_acquired_swapchain_index = true;
 			acquire->signal_external();
 
+			if (context->get_enabled_device_features().supports_google_display_timing)
+				timing.begin_frame();
+
 			auto frame_time = platform->get_frame_timer().frame();
 			auto elapsed_time = platform->get_frame_timer().get_elapsed();
 
@@ -321,6 +324,17 @@ bool WSI::end_frame()
 		info.pSwapchains = &swapchain;
 		info.pImageIndices = &swapchain_index;
 		info.pResults = &result;
+
+		VkPresentTimeGOOGLE present_time;
+		VkPresentTimesInfoGOOGLE present_timing = { VK_STRUCTURE_TYPE_PRESENT_TIMES_INFO_GOOGLE };
+		present_timing.swapchainCount = 1;
+		present_timing.pTimes = &present_time;
+
+		if (context->get_enabled_device_features().supports_google_display_timing &&
+		    timing.fill_present_info_timing(present_time))
+		{
+			info.pNext = &present_timing;
+		}
 
 		VkResult overall = vkQueuePresentKHR(context->get_graphics_queue(), &info);
 		if (overall != VK_SUCCESS || result != VK_SUCCESS)
@@ -547,6 +561,8 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	if (old_swapchain != VK_NULL_HANDLE)
 		vkDestroySwapchainKHR(context->get_device(), old_swapchain, nullptr);
 	has_acquired_swapchain_index = false;
+
+	timing.init(device->get_device(), swapchain);
 
 	if (res != VK_SUCCESS)
 	{

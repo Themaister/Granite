@@ -26,6 +26,7 @@
 #include "semaphore_manager.hpp"
 #include "vulkan.hpp"
 #include "timer.hpp"
+#include "wsi_timing.hpp"
 #include <memory>
 #include <vector>
 
@@ -194,5 +195,7 @@ private:
 	bool frame_is_external = false;
 	bool begin_frame_external();
 	double external_frame_time = 0.0;
+
+	WSITiming timing;
 };
 }

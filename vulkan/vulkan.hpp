@@ -83,6 +83,7 @@ struct DeviceFeatures
 	bool supports_debug_marker = false;
 	bool supports_debug_utils = false;
 	bool supports_mirror_clamp_to_edge = false;
+	bool supports_google_display_timing = false;
 	VkPhysicalDeviceFeatures enabled_features = {};
 };
 

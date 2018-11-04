@@ -41,6 +41,16 @@ void WSI::set_window_title(const string &title)
 		platform->set_window_title(title);
 }
 
+double WSI::get_smooth_elapsed_time() const
+{
+	return smooth_elapsed_time;
+}
+
+double WSI::get_smooth_frame_time() const
+{
+	return smooth_frame_time;
+}
+
 float WSIPlatform::get_estimated_frame_presentation_duration()
 {
 	// Just assume 60 FPS for now.
@@ -194,6 +204,10 @@ bool WSI::begin_frame_external()
 	auto frame_time = platform->get_frame_timer().frame(external_frame_time);
 	auto elapsed_time = platform->get_frame_timer().get_elapsed();
 
+	// Assume we have been given a smooth frame pacing.
+	smooth_frame_time = frame_time;
+	smooth_elapsed_time = elapsed_time;
+
 	// Poll after acquire as well for optimal latency.
 	platform->poll_input();
 
@@ -250,11 +264,17 @@ bool WSI::begin_frame()
 			has_acquired_swapchain_index = true;
 			acquire->signal_external();
 
-			if (context->get_enabled_device_features().supports_google_display_timing)
-				timing.begin_frame();
-
 			auto frame_time = platform->get_frame_timer().frame();
 			auto elapsed_time = platform->get_frame_timer().get_elapsed();
+
+			if (context->get_enabled_device_features().supports_google_display_timing &&
+			    present_mode == PresentMode::SyncToVBlank)
+			{
+				timing.begin_frame(frame_time, elapsed_time);
+			}
+
+			smooth_frame_time = frame_time;
+			smooth_elapsed_time = elapsed_time;
 
 			// Poll after acquire as well for optimal latency.
 			platform->poll_input();
@@ -562,7 +582,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 		vkDestroySwapchainKHR(context->get_device(), old_swapchain, nullptr);
 	has_acquired_swapchain_index = false;
 
-	timing.init(device->get_device(), swapchain);
+	timing.init(device->get_device(), swapchain, 1);
 
 	if (res != VK_SUCCESS)
 	{

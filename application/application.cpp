@@ -84,8 +84,7 @@ bool Application::poll()
 void Application::run_frame()
 {
 	wsi.begin_frame();
-	render_frame(wsi.get_platform().get_frame_timer().get_frame_time(),
-	             wsi.get_platform().get_frame_timer().get_elapsed());
+	render_frame(wsi.get_smooth_frame_time(), wsi.get_smooth_elapsed_time());
 	wsi.end_frame();
 }
 

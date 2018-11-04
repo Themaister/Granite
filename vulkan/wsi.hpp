@@ -157,6 +157,9 @@ public:
 	float get_estimated_video_latency();
 	void set_window_title(const std::string &title);
 
+	double get_smooth_frame_time() const;
+	double get_smooth_elapsed_time() const;
+
 private:
 	void update_framebuffer(unsigned width, unsigned height);
 
@@ -195,6 +198,9 @@ private:
 	bool frame_is_external = false;
 	bool begin_frame_external();
 	double external_frame_time = 0.0;
+
+	double smooth_frame_time = 0.0;
+	double smooth_elapsed_time = 0.0;
 
 	WSITiming timing;
 };

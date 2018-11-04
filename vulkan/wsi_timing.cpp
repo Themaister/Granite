@@ -109,7 +109,7 @@ void WSITiming::update_past_presentation_timing()
 	if (timing && timing->timing.actualPresentTime >= timing->wall_frame_begin)
 	{
 		auto total_latency = timing->timing.actualPresentTime - timing->wall_frame_begin;
-		feedback.latency = 0.99 * feedback.latency + 0.01 * total_latency;
+		feedback.latency = 0.99 * feedback.latency + 0.01e-9 * total_latency;
 
 		if (int64_t(timing->timing.presentMargin) < 0)
 			LOGE("Present margin is negative (%lld) ... ?!\n", static_cast<long long>(timing->timing.presentMargin));
@@ -124,12 +124,19 @@ void WSITiming::update_past_presentation_timing()
 
 		if (last_frame.serial && timing->wall_serial != last_frame.serial)
 		{
+			double frame_time_ns = double(timing->timing.actualPresentTime - last_frame.present_time) /
+			                       double(timing->wall_serial - last_frame.serial);
+
+			if (feedback.refresh_interval && (frame_time_ns > 1.1 * options.swap_interval * feedback.refresh_interval))
+			{
+				LOGE("*** HITCH DETECTED ***\n");
+			}
+
 			if (options.debug)
 			{
 				LOGI("Frame time ID #%u: %.3f ms\n",
 				     timing->wall_serial,
-				     1e-6 * double(timing->timing.actualPresentTime - last_frame.present_time) /
-				     double(timing->wall_serial - last_frame.serial));
+				     1e-6 * frame_time_ns);
 			}
 		}
 
@@ -314,9 +321,9 @@ void WSITiming::begin_frame(double &frame_time, double &elapsed_time)
 			else if (options.latency_limiter == LatencyLimiter::IdealPipeline)
 			{
 				// In the ideal pipeline we have one frame for CPU to work,
-				// then one frame for GPU to work in parallel, so we should strive for ~1.5 frames of latency here.
+				// then one frame for GPU to work in parallel, so we should strive for a little under 2 frames of latency here.
 				// The assumption is that we can kick some work to GPU at least mid-way through our frame.
-				int64_t latency = (feedback.refresh_interval * 3) >> 1;
+				int64_t latency = (feedback.refresh_interval * 3) / 2;
 				wait_until(target - latency);
 
 				uint64_t old_time = new_timing.wall_frame_begin;
@@ -358,7 +365,7 @@ uint64_t WSITiming::compute_target_present_time_for_serial(uint32_t serial)
 	// Want to set the desired target close enough,
 	// but not exactly at estimated target, since we have a rounding error cliff.
 	uint64_t target = pacing.base_present + feedback.refresh_interval * frame_delta;
-	target -= feedback.refresh_interval >> 3;
+	target -= feedback.refresh_interval >> 2;
 
 	return target;
 }

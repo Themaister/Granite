@@ -461,7 +461,11 @@ void Device::set_context(const Context &context)
 	init_shader_manager_cache();
 #endif
 
+#ifdef ANDROID
+	init_frame_contexts(3); // Android needs a bit more ... ;)
+#else
 	init_frame_contexts(2); // By default, regular double buffer between CPU and GPU.
+#endif
 
 	ext = context.get_enabled_device_features();
 

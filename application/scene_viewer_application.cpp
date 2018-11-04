@@ -1269,7 +1269,7 @@ void SceneViewerApplication::render_ui(Vulkan::CommandBuffer &cmd)
 	sprintf(max_text, "Max: %10.3f ms", max_time * 1000.0f);
 
 	char latency_text[64];
-	sprintf(latency_text, "Latency: %10.3f ms", get_wsi().get_estimated_video_latency() * 1e-6f);
+	sprintf(latency_text, "Latency: %10.3f ms", get_wsi().get_estimated_video_latency() * 1e3f);
 
 	vec3 offset(5.0f, 5.0f, 0.0f);
 	vec2 size(cmd.get_viewport().width - 10.0f, cmd.get_viewport().height - 10.0f);

@@ -74,9 +74,12 @@ float WSI::get_estimated_video_latency()
 			latency_frames--;
 
 		if (platform)
-			return platform->get_estimated_frame_presentation_duration() * float(latency_frames);
+		{
+			float frame_duration = platform->get_estimated_frame_presentation_duration();
+			return frame_duration * float(latency_frames);
+		}
 		else
-			return 0.0f;
+			return -1.0f;
 	}
 }
 
@@ -594,7 +597,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	{
 		WSITimingOptions timing_options;
 		timing_options.swap_interval = 1;
-		timing_options.latency_limiter = LatencyLimiter::IdealPipeline;
+		//timing_options.latency_limiter = LatencyLimiter::IdealPipeline;
 		timing.init(device->get_device(), swapchain, timing_options);
 		using_display_timing = true;
 	}

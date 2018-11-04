@@ -26,10 +26,26 @@
 
 namespace Vulkan
 {
+enum class LatencyLimiter
+{
+	None,
+	AdaptiveLowLatency,
+	IdealPipeline
+};
+
+struct WSITimingOptions
+{
+	uint32_t swap_interval = 1;
+	LatencyLimiter latency_limiter = LatencyLimiter::None;
+	bool adaptive_swap_interval = false;
+	bool debug = false;
+};
+
 class WSITiming
 {
 public:
-	void init(VkDevice device, VkSwapchainKHR swapchain, uint32_t swap_interval = 1);
+
+	void init(VkDevice device, VkSwapchainKHR swapchain, const WSITimingOptions &options = {});
 	void begin_frame(double &frame_time, double &elapsed_time);
 
 	bool fill_present_info_timing(VkPresentTimeGOOGLE &time);
@@ -37,7 +53,7 @@ public:
 private:
 	VkDevice device = VK_NULL_HANDLE;
 	VkSwapchainKHR swapchain = VK_NULL_HANDLE;
-	uint32_t swap_interval = 0;
+	WSITimingOptions options;
 
 	enum { NUM_TIMINGS = 32, NUM_TIMING_MASK = NUM_TIMINGS - 1 };
 
@@ -50,6 +66,8 @@ private:
 	{
 		uint32_t wall_serial = 0;
 		uint64_t wall_frame_begin = 0;
+		int64_t slack = 0;
+		int64_t pipeline_latency = 0;
 		VkPastPresentationTimingGOOGLE timing = {};
 	};
 
@@ -87,5 +105,7 @@ private:
 	void update_frame_pacing(uint32_t id, uint64_t present_time, bool wall_time);
 	void update_refresh_interval();
 	void update_frame_time_smoothing(double &frame_time, double &elapsed_time);
+	bool get_conservative_latency(int64_t &latency) const;
+	void wait_until(int64_t nsecs);
 };
 }

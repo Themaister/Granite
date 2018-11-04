@@ -31,10 +31,11 @@
 
 namespace Vulkan
 {
-void WSITiming::init(VkDevice device, VkSwapchainKHR swapchain, uint32_t interval)
+void WSITiming::init(VkDevice device, VkSwapchainKHR swapchain, const WSITimingOptions &options)
 {
 	this->device = device;
 	this->swapchain = swapchain;
+	this->options = options;
 
 	serial = {};
 	pacing = {};
@@ -42,7 +43,6 @@ void WSITiming::init(VkDevice device, VkSwapchainKHR swapchain, uint32_t interva
 	feedback = {};
 	smoothing = {};
 	feedback.timing_buffer.resize(64);
-	swap_interval = interval;
 }
 
 void WSITiming::update_refresh_interval()
@@ -92,7 +92,13 @@ void WSITiming::update_past_presentation_timing()
 			{
 				auto &t = feedback.past_timings[feedback.timing_buffer[i].presentID & NUM_TIMING_MASK];
 				if (t.wall_serial == feedback.timing_buffer[i].presentID)
+				{
 					t.timing = feedback.timing_buffer[i];
+
+					uint64_t gpu_done_time = (t.timing.earliestPresentTime - t.timing.presentMargin);
+					t.slack = int64_t(t.timing.actualPresentTime - gpu_done_time);
+					t.pipeline_latency = int64_t(gpu_done_time - t.wall_frame_begin);
+				}
 
 				update_frame_pacing(t.wall_serial, t.timing.actualPresentTime, false);
 			}
@@ -103,7 +109,6 @@ void WSITiming::update_past_presentation_timing()
 	if (timing && timing->timing.actualPresentTime >= timing->wall_frame_begin)
 	{
 		auto total_latency = timing->timing.actualPresentTime - timing->wall_frame_begin;
-		auto rendering_complete = timing->timing.earliestPresentTime - timing->timing.presentMargin;
 
 		if (int64_t(timing->timing.presentMargin) < 0)
 			LOGE("Present margin is negative (%lld) ... ?!\n", static_cast<long long>(timing->timing.presentMargin));
@@ -112,20 +117,36 @@ void WSITiming::update_past_presentation_timing()
 			LOGE("Earliest present time is > actual present time ... Bug?\n");
 
 		// How much can we squeeze latency?
-		auto slack = int64_t(timing->timing.actualPresentTime - rendering_complete);
-		LOGI("Total latency: %.3f ms, slack time: %.3f\n", total_latency * 1e-6, slack * 1e-6);
+		auto slack = timing->slack;
+		if (options.debug)
+			LOGI("Total latency: %.3f ms, slack time: %.3f\n", total_latency * 1e-6, slack * 1e-6);
 
 		if (last_frame.serial && timing->wall_serial != last_frame.serial)
 		{
-			LOGI("Frame time ID #%u: %.3f ms\n",
-				 timing->wall_serial,
-				 1e-6 * double(timing->timing.actualPresentTime - last_frame.present_time) /
-				 double(timing->wall_serial - last_frame.serial));
+			if (options.debug)
+			{
+				LOGI("Frame time ID #%u: %.3f ms\n",
+				     timing->wall_serial,
+				     1e-6 * double(timing->timing.actualPresentTime - last_frame.present_time) /
+				     double(timing->wall_serial - last_frame.serial));
+			}
 		}
 
 		last_frame.serial = timing->wall_serial;
 		last_frame.present_time = timing->timing.actualPresentTime;
 	}
+}
+
+void WSITiming::wait_until(int64_t nsecs)
+{
+#ifndef _WIN32
+	timespec ts;
+	ts.tv_sec = nsecs / 1000000000;
+	ts.tv_nsec = nsecs % 1000000000;
+	clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &ts, nullptr);
+#else
+	(void)nsecs;
+#endif
 }
 
 uint64_t WSITiming::get_wall_time()
@@ -181,7 +202,7 @@ void WSITiming::update_frame_pacing(uint32_t serial, uint64_t present_time, bool
 
 		// Extrapolate timing from current.
 		uint64_t extrapolated_present_time =
-				pacing.base_present + feedback.refresh_interval * swap_interval * (serial - pacing.base_serial);
+				pacing.base_present + feedback.refresh_interval * options.swap_interval * (serial - pacing.base_serial);
 		int64_t error = std::abs(int64_t(extrapolated_present_time - present_time));
 
 		// If the delta is close enough (expected frame pace),
@@ -203,7 +224,7 @@ void WSITiming::update_frame_time_smoothing(double &frame_time, double &elapsed_
 {
 	double target_frame_time = frame_time;
 	if (feedback.refresh_interval)
-		target_frame_time = double(swap_interval * feedback.refresh_interval) * 1e-9;
+		target_frame_time = double(options.swap_interval * feedback.refresh_interval) * 1e-9;
 
 	double actual_elapsed = elapsed_time - smoothing.offset;
 	smoothing.elapsed += target_frame_time;
@@ -211,7 +232,8 @@ void WSITiming::update_frame_time_smoothing(double &frame_time, double &elapsed_
 	double delta = actual_elapsed - smoothing.elapsed;
 	if (delta > std::fabs(target_frame_time * 4.0)) // We're way off, something must have happened, reset the smoothing.
 	{
-		LOGI("Detected discontinuity in smoothing algorithm!\n");
+		if (options.debug)
+			LOGI("Detected discontinuity in smoothing algorithm!\n");
 		smoothing.offset = elapsed_time;
 		smoothing.elapsed = 0.0;
 		return;
@@ -219,11 +241,11 @@ void WSITiming::update_frame_time_smoothing(double &frame_time, double &elapsed_
 
 	double jitter_offset = 0.0;
 
-	// Accept up to 2% jitter to catch up or slow down smoothly to our target elapsed time.
+	// Accept up to 0.5% jitter to catch up or slow down smoothly to our target elapsed time.
 	if (delta > 0.1 * target_frame_time)
-		jitter_offset = 0.02 * target_frame_time;
+		jitter_offset = 0.005 * target_frame_time;
 	else if (delta < -0.1 * target_frame_time)
-		jitter_offset = -0.02 * target_frame_time;
+		jitter_offset = -0.005 * target_frame_time;
 
 	target_frame_time += jitter_offset;
 	smoothing.elapsed += jitter_offset;
@@ -258,7 +280,65 @@ void WSITiming::begin_frame(double &frame_time, double &elapsed_time)
 	update_past_presentation_timing();
 	update_frame_time_smoothing(frame_time, elapsed_time);
 
-	// TODO: Here we could choose to hold the application back in case we have too much latency for our own good.
+	if (options.latency_limiter != LatencyLimiter::None)
+	{
+		// Try to squeeze timings by sleeping, quite shaky, but very fun :)
+		if (feedback.refresh_interval)
+		{
+			int64_t target = int64_t(compute_target_present_time_for_serial(serial.serial));
+
+			if (options.latency_limiter == LatencyLimiter::AdaptiveLowLatency)
+			{
+				int64_t latency = 0;
+				if (get_conservative_latency(latency))
+				{
+					// Keep quarter frame as buffer in case this frame is heavier than normal.
+					latency += feedback.refresh_interval >> 2;
+					wait_until(target - latency);
+
+					uint64_t old_time = new_timing.wall_frame_begin;
+					new_timing.wall_frame_begin = get_wall_time();
+					if (options.debug)
+					{
+						LOGI("Slept for %.3f ms for latency tuning.\n",
+						     1e-6 * (new_timing.wall_frame_begin - old_time));
+					}
+				}
+			}
+			else if (options.latency_limiter == LatencyLimiter::IdealPipeline)
+			{
+				// In the ideal pipeline we have one frame for CPU to work,
+				// then one frame for GPU to work in parallel, so we should strive for ~1.5 frames of latency here.
+				// The assumption is that we can kick some work to GPU at least mid-way through our frame.
+				int64_t latency = (feedback.refresh_interval * 3) >> 1;
+				wait_until(target - latency);
+
+				uint64_t old_time = new_timing.wall_frame_begin;
+				new_timing.wall_frame_begin = get_wall_time();
+				if (options.debug)
+				{
+					LOGI("Slept for %.3f ms for latency tuning.\n",
+					     1e-6 * (new_timing.wall_frame_begin - old_time));
+				}
+			}
+		}
+	}
+}
+
+bool WSITiming::get_conservative_latency(int64_t &latency) const
+{
+	latency = 0;
+	unsigned valid_latencies = 0;
+	for (auto &timing : feedback.past_timings)
+	{
+		if (timing.timing.actualPresentTime >= timing.wall_frame_begin)
+		{
+			latency = std::max(latency, timing.pipeline_latency);
+			valid_latencies++;
+		}
+	}
+
+	return valid_latencies > (NUM_TIMINGS / 2);
 }
 
 uint64_t WSITiming::compute_target_present_time_for_serial(uint32_t serial)
@@ -267,7 +347,7 @@ uint64_t WSITiming::compute_target_present_time_for_serial(uint32_t serial)
 		return 0;
 
 	uint64_t frame_delta = serial - pacing.base_serial;
-	frame_delta *= swap_interval;
+	frame_delta *= options.swap_interval;
 
 	// Want to set the desired target close enough,
 	// but not exactly at estimated target, since we have a rounding error cliff.

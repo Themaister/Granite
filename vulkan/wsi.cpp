@@ -582,7 +582,10 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 		vkDestroySwapchainKHR(context->get_device(), old_swapchain, nullptr);
 	has_acquired_swapchain_index = false;
 
-	timing.init(device->get_device(), swapchain, 1);
+	WSITimingOptions timing_options;
+	timing_options.swap_interval = 1;
+	timing_options.latency_limiter = LatencyLimiter::IdealPipeline;
+	timing.init(device->get_device(), swapchain, timing_options);
 
 	if (res != VK_SUCCESS)
 	{

@@ -52,7 +52,7 @@ private:
 	Timing past_timings[NUM_TIMINGS];
 	std::vector<VkPastPresentationTimingGOOGLE> timing_buffer;
 
-	uint32_t swap_interval = 2;
+	uint32_t swap_interval = 0;
 
 	uint64_t compute_target_present_time_for_id(uint32_t id);
 	uint64_t get_wall_time();
@@ -65,5 +65,8 @@ private:
 	bool have_real_pacing_estimate = false;
 	void update_frame_pacing(uint32_t id, uint64_t present_time, bool wall_time);
 	void update_refresh_interval();
+
+	uint64_t last_time_stamp = 0;
+	uint64_t last_time_id = 0;
 };
 }

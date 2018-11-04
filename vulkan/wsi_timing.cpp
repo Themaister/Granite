@@ -41,7 +41,10 @@ void WSITiming::init(VkDevice device, VkSwapchainKHR swapchain)
 	have_pacing_estimate = false;
 	have_real_pacing_estimate = false;
 
-	swap_interval = 2;
+	last_time_id = 0;
+	last_time_stamp = 0;
+
+	swap_interval = 1;
 	refresh_interval = 0;
 	timing_buffer.resize(64);
 	memset(past_timings, 0, sizeof(past_timings));
@@ -109,9 +112,25 @@ void WSITiming::update_past_presentation_timing()
 			auto latency = timing->timing.actualPresentTime - timing->wall_time;
 			auto complete = timing->timing.earliestPresentTime - timing->timing.presentMargin;
 
-			auto slack = timing->timing.actualPresentTime - complete;
+			if (int64_t(timing->timing.presentMargin) < 0)
+				LOGE("Present margin is negative (%lld) ... ?!\n", static_cast<long long>(timing->timing.presentMargin));
+
+			if (timing->timing.earliestPresentTime > timing->timing.actualPresentTime)
+				LOGE("Earliest present time is > actual present time ... Bug?\n");
+
+			auto slack = int64_t(timing->timing.actualPresentTime - complete);
 			LOGI("Latency: %.3f ms, slack: %.3f\n", latency * 1e-6, slack * 1e-6);
 		}
+
+		if (last_time_id && timing->wall_id != last_time_id)
+		{
+			LOGI("Frame time ID #%u: %.3f ms\n",
+			     timing->wall_id,
+			     1e-6 * double(timing->timing.actualPresentTime - last_time_stamp) / (timing->wall_id - last_time_id));
+		}
+
+		last_time_id = timing->wall_id;
+		last_time_stamp = timing->timing.actualPresentTime;
 	}
 }
 

@@ -45,6 +45,22 @@ void WSITiming::init(VkDevice device, VkSwapchainKHR swapchain, const WSITimingO
 	feedback.timing_buffer.resize(64);
 }
 
+void WSITiming::set_swap_interval(unsigned interval)
+{
+	if (interval == options.swap_interval || interval == 0)
+		return;
+
+	// First, extrapolate to our current serial so we can make a more correct target time using the new swap interval.
+	uint64_t target = compute_target_present_time_for_serial(serial.serial);
+	if (target)
+	{
+		pacing.base_serial = serial.serial;
+		pacing.base_present = target;
+	}
+
+	options.swap_interval = interval;
+}
+
 void WSITiming::update_refresh_interval()
 {
 	VkRefreshCycleDurationGOOGLE refresh;
@@ -58,7 +74,7 @@ void WSITiming::update_refresh_interval()
 		LOGE("Failed to get refresh cycle duration.\n");
 }
 
-const WSITiming::Timing *WSITiming::find_latest_timestamp(uint32_t start_serial) const
+WSITiming::Timing *WSITiming::find_latest_timestamp(uint32_t start_serial)
 {
 	for (uint32_t i = 1; i < NUM_TIMINGS - 1; i++)
 	{
@@ -98,6 +114,19 @@ void WSITiming::update_past_presentation_timing()
 					uint64_t gpu_done_time = (t.timing.earliestPresentTime - t.timing.presentMargin);
 					t.slack = int64_t(t.timing.actualPresentTime - gpu_done_time);
 					t.pipeline_latency = int64_t(gpu_done_time - t.wall_frame_begin);
+
+					// Expected result unless proven otherwise.
+					t.result = TimingResult::Expected;
+
+					// Feed the heuristics on when to drop frame rate or promote it.
+					if ((feedback.refresh_interval != 0) &&
+					    (t.timing.earliestPresentTime < t.timing.actualPresentTime) &&
+					    (t.timing.presentMargin > feedback.refresh_interval / 4))
+					{
+						// We could have presented earlier, and we had decent GPU margin to do so.
+						// Deal with frame dropping later.
+						t.result = TimingResult::VeryEarly;
+					}
 				}
 
 				update_frame_pacing(t.wall_serial, t.timing.actualPresentTime, false);
@@ -111,25 +140,52 @@ void WSITiming::update_past_presentation_timing()
 		auto total_latency = timing->timing.actualPresentTime - timing->wall_frame_begin;
 		feedback.latency = 0.99 * feedback.latency + 0.01e-9 * total_latency;
 
+		if (options.debug)
+		{
+			LOGI("Have presentation timing for %u frames in the past.\n",
+			     serial.serial - timing->timing.presentID);
+		}
+
 		if (int64_t(timing->timing.presentMargin) < 0)
 			LOGE("Present margin is negative (%lld) ... ?!\n", static_cast<long long>(timing->timing.presentMargin));
 
 		if (timing->timing.earliestPresentTime > timing->timing.actualPresentTime)
 			LOGE("Earliest present time is > actual present time ... Bug?\n");
 
+		if (timing->timing.actualPresentTime < timing->timing.desiredPresentTime)
+		{
+			LOGE("Image was presented before desired present time, bug? (actual: %llu, desired: %llu)\n",
+			     static_cast<unsigned long long>(timing->timing.actualPresentTime),
+			     static_cast<unsigned long long>(timing->timing.desiredPresentTime));
+		}
+		else if (feedback.refresh_interval != 0 && timing->timing.desiredPresentTime != 0)
+		{
+			uint64_t delta = timing->timing.actualPresentTime - timing->timing.desiredPresentTime;
+			if (delta >= feedback.refresh_interval)
+			{
+				LOGE("*** Image was presented %u frames late compared to desired target. "
+				     "This normally happens in startup phase, but otherwise it's either a real hitch or app bug. ***\n",
+				     unsigned(delta / feedback.refresh_interval));
+			}
+		}
+
 		// How much can we squeeze latency?
-		auto slack = timing->slack;
 		if (options.debug)
-			LOGI("Total latency: %.3f ms, slack time: %.3f\n", total_latency * 1e-6, slack * 1e-6);
+			LOGI("Total latency: %.3f ms, slack time: %.3f\n", total_latency * 1e-6, timing->slack * 1e-6);
 
 		if (last_frame.serial && timing->wall_serial != last_frame.serial)
 		{
 			double frame_time_ns = double(timing->timing.actualPresentTime - last_frame.present_time) /
 			                       double(timing->wall_serial - last_frame.serial);
 
-			if (feedback.refresh_interval && (frame_time_ns > 1.1 * options.swap_interval * feedback.refresh_interval))
+			// We only detect a hitch if we have the same swap interval target,
+			// otherwise it might as well just be a transient state thing.
+			if ((timing->swap_interval_target == options.swap_interval) &&
+			    (feedback.refresh_interval != 0) &&
+			    (frame_time_ns > 1.1 * options.swap_interval * feedback.refresh_interval))
 			{
 				LOGE("*** HITCH DETECTED ***\n");
+				timing->result = TimingResult::TooLate;
 			}
 
 			if (options.debug)
@@ -267,32 +323,8 @@ double WSITiming::get_current_latency() const
 	return feedback.latency;
 }
 
-void WSITiming::begin_frame(double &frame_time, double &elapsed_time)
+void WSITiming::limit_latency(Timing &new_timing)
 {
-	// Update initial frame elapsed estimate,
-	// from here, we'll try to lock the frame time to refresh_rate +/- epsilon.
-	if (serial.serial == 0)
-	{
-		smoothing.offset = elapsed_time;
-		smoothing.elapsed = 0.0;
-	}
-	serial.serial++;
-
-	// On X11, this is found over time by observation, so we need to adapt it.
-	// Only after we have observed the refresh cycle duration, we can start syncing against it.
-	if ((serial.serial & 7) == 0)
-		update_refresh_interval();
-
-	auto &new_timing = feedback.past_timings[serial.serial & NUM_TIMING_MASK];
-	new_timing.wall_serial = serial.serial;
-	new_timing.wall_frame_begin = get_wall_time();
-	new_timing.timing = {};
-
-	// Absolute minimum case, just get some initial data.
-	update_frame_pacing(serial.serial, new_timing.wall_frame_begin, true);
-	update_past_presentation_timing();
-	update_frame_time_smoothing(frame_time, elapsed_time);
-
 	if (options.latency_limiter != LatencyLimiter::None)
 	{
 		// Try to squeeze timings by sleeping, quite shaky, but very fun :)
@@ -322,8 +354,9 @@ void WSITiming::begin_frame(double &frame_time, double &elapsed_time)
 			{
 				// In the ideal pipeline we have one frame for CPU to work,
 				// then one frame for GPU to work in parallel, so we should strive for a little under 2 frames of latency here.
-				// The assumption is that we can kick some work to GPU at least mid-way through our frame.
-				int64_t latency = (feedback.refresh_interval * 3) / 2;
+				// The assumption is that we can kick some work to GPU at least mid-way through our frame,
+				// which will become our slack factor.
+				int64_t latency = feedback.refresh_interval * 2;
 				wait_until(target - latency);
 
 				uint64_t old_time = new_timing.wall_frame_begin;
@@ -336,6 +369,38 @@ void WSITiming::begin_frame(double &frame_time, double &elapsed_time)
 			}
 		}
 	}
+}
+
+void WSITiming::begin_frame(double &frame_time, double &elapsed_time)
+{
+	promote_or_demote_frame_rate();
+
+	// Update initial frame elapsed estimate,
+	// from here, we'll try to lock the frame time to refresh_rate +/- epsilon.
+	if (serial.serial == 0)
+	{
+		smoothing.offset = elapsed_time;
+		smoothing.elapsed = 0.0;
+	}
+	serial.serial++;
+
+	// On X11, this is found over time by observation, so we need to adapt it.
+	// Only after we have observed the refresh cycle duration, we can start syncing against it.
+	if (feedback.refresh_interval == 0 && (serial.serial & 7) == 0)
+		update_refresh_interval();
+
+	auto &new_timing = feedback.past_timings[serial.serial & NUM_TIMING_MASK];
+	new_timing.wall_serial = serial.serial;
+	new_timing.wall_frame_begin = get_wall_time();
+	new_timing.swap_interval_target = options.swap_interval;
+	new_timing.result = TimingResult::Unknown;
+	new_timing.timing = {};
+
+	// Absolute minimum case, just get some initial data.
+	update_frame_pacing(serial.serial, new_timing.wall_frame_begin, true);
+	update_past_presentation_timing();
+	update_frame_time_smoothing(frame_time, elapsed_time);
+	limit_latency(new_timing);
 }
 
 bool WSITiming::get_conservative_latency(int64_t &latency) const
@@ -361,19 +426,78 @@ uint64_t WSITiming::compute_target_present_time_for_serial(uint32_t serial)
 
 	uint64_t frame_delta = serial - pacing.base_serial;
 	frame_delta *= options.swap_interval;
-
-	// Want to set the desired target close enough,
-	// but not exactly at estimated target, since we have a rounding error cliff.
 	uint64_t target = pacing.base_present + feedback.refresh_interval * frame_delta;
-	target -= feedback.refresh_interval >> 2;
-
 	return target;
+}
+
+void WSITiming::promote_or_demote_frame_rate()
+{
+	if (!options.adaptive_swap_interval)
+		return;
+
+	if (feedback.refresh_interval == 0)
+		return;
+
+	// Analyze if we should do something with frame rate.
+	// The heuristic is something like:
+	// - If we observe at least 2 hitches the last window of timing events, demote frame rate.
+	// - If we observe consistent earliestPresent < actualPresent and presentMargin is at least a quarter frame,
+	//   promote frame rate.
+
+	// We can only make an analysis if all timings come from same swap interval.
+	// This also limits how often we can automatically change frame rate.
+
+	unsigned frame_drops = 0;
+	unsigned early_frames = 0;
+	unsigned total = 0;
+	for (auto &timing : feedback.past_timings)
+	{
+		if (timing.result == TimingResult::Unknown)
+			continue;
+		if (options.swap_interval != timing.swap_interval_target)
+			return;
+
+		total++;
+		if (timing.result == TimingResult::VeryEarly)
+			early_frames++;
+		else if (timing.result == TimingResult::TooLate)
+			frame_drops++;
+	}
+
+	// Don't have enough data.
+	if (total < NUM_TIMINGS / 2)
+		return;
+
+	if (early_frames == total && options.swap_interval > 1)
+	{
+		// We can go down in swap interval, great!
+		set_swap_interval(options.swap_interval - 1);
+		LOGI("Adjusted swap interval down to %u!\n", options.swap_interval);
+	}
+	else if (frame_drops > 1)
+	{
+		if (options.swap_interval < 8) // swap interval of 8, lol
+		{
+			set_swap_interval(options.swap_interval + 1);
+			LOGI("Too much hitching detected, increasing swap interval to %u!\n", options.swap_interval);
+		}
+		else
+			LOGI("Still detecting hitching, but reached swap interval limit.\n");
+	}
 }
 
 bool WSITiming::fill_present_info_timing(VkPresentTimeGOOGLE &time)
 {
 	time.presentID = serial.serial;
+
 	time.desiredPresentTime = compute_target_present_time_for_serial(serial.serial);
+
+	// Want to set the desired target close enough,
+	// but not exactly at estimated target, since we have a rounding error cliff.
+	// Set the target a quarter frame away from real target.
+	if (time.desiredPresentTime != 0 && feedback.refresh_interval != 0)
+		time.desiredPresentTime -= feedback.refresh_interval >> 2;
+
 	return true;
 }
 

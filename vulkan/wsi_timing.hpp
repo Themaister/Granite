@@ -44,12 +44,13 @@ struct WSITimingOptions
 class WSITiming
 {
 public:
-
 	void init(VkDevice device, VkSwapchainKHR swapchain, const WSITimingOptions &options = {});
 	void begin_frame(double &frame_time, double &elapsed_time);
 
 	bool fill_present_info_timing(VkPresentTimeGOOGLE &time);
 	double get_current_latency() const;
+
+	void set_swap_interval(unsigned interval);
 
 private:
 	VkDevice device = VK_NULL_HANDLE;
@@ -63,10 +64,20 @@ private:
 		uint32_t serial = 0;
 	} serial;
 
+	enum class TimingResult
+	{
+		Unknown,
+		VeryEarly,
+		TooLate,
+		Expected
+	};
+
 	struct Timing
 	{
 		uint32_t wall_serial = 0;
 		uint64_t wall_frame_begin = 0;
+		uint32_t swap_interval_target = 0;
+		TimingResult result = TimingResult::Unknown;
 		int64_t slack = 0;
 		int64_t pipeline_latency = 0;
 		VkPastPresentationTimingGOOGLE timing = {};
@@ -103,11 +114,13 @@ private:
 	uint64_t compute_target_present_time_for_serial(uint32_t serial);
 	uint64_t get_wall_time();
 	void update_past_presentation_timing();
-	const Timing *find_latest_timestamp(uint32_t start_serial) const;
+	Timing *find_latest_timestamp(uint32_t start_serial);
 	void update_frame_pacing(uint32_t id, uint64_t present_time, bool wall_time);
 	void update_refresh_interval();
 	void update_frame_time_smoothing(double &frame_time, double &elapsed_time);
 	bool get_conservative_latency(int64_t &latency) const;
 	void wait_until(int64_t nsecs);
+	void limit_latency(Timing &new_timing);
+	void promote_or_demote_frame_rate();
 };
 }

@@ -49,33 +49,6 @@ PipelineLayout::PipelineLayout(Hash hash, Device *device, const CombinedResource
 			num_sets = i + 1;
 	}
 
-	unsigned num_ranges = 0;
-	VkPushConstantRange ranges[static_cast<unsigned>(ShaderStage::Count)];
-
-	for (auto &range : layout.ranges)
-	{
-		if (range.size != 0)
-		{
-			bool unique = true;
-			for (unsigned i = 0; i < num_ranges; i++)
-			{
-				// Try to merge equivalent ranges for multiple stages.
-				if (ranges[i].offset == range.offset && ranges[i].size == range.size)
-				{
-					unique = false;
-					ranges[i].stageFlags |= range.stageFlags;
-					break;
-				}
-			}
-
-			if (unique)
-				ranges[num_ranges++] = range;
-		}
-	}
-
-	memcpy(this->layout.ranges, ranges, num_ranges * sizeof(ranges[0]));
-	this->layout.num_ranges = num_ranges;
-
 	VkPipelineLayoutCreateInfo info = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
 	if (num_sets)
 	{
@@ -83,10 +56,10 @@ PipelineLayout::PipelineLayout(Hash hash, Device *device, const CombinedResource
 		info.pSetLayouts = layouts;
 	}
 
-	if (num_ranges)
+	if (layout.push_constant_range.stageFlags != 0)
 	{
-		info.pushConstantRangeCount = num_ranges;
-		info.pPushConstantRanges = ranges;
+		info.pushConstantRangeCount = 1;
+		info.pPushConstantRanges = &layout.push_constant_range;
 	}
 
 #ifdef GRANITE_VULKAN_FOSSILIZE
@@ -289,11 +262,12 @@ Shader::Shader(Hash hash, Device *device, const uint32_t *data, size_t size)
 
 	if (!resources.push_constant_buffers.empty())
 	{
-		// Need to declare the entire block.
-		size_t size =
+		// Don't bother trying to extract which part of a push constant block we're using.
+		// Just assume we're accessing everything. At least on older validation layers,
+		// it did not do a static analysis to determine similar information, so we got a lot
+		// of false positives.
+		layout.push_constant_size =
 		    compiler.get_declared_struct_size(compiler.get_type(resources.push_constant_buffers.front().base_type_id));
-		layout.push_constant_offset = 0;
-		layout.push_constant_range = size;
 	}
 
 	auto spec_constants = compiler.get_specialization_constants();

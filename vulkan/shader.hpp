@@ -49,8 +49,7 @@ struct ResourceLayout
 {
 	uint32_t input_mask = 0;
 	uint32_t output_mask = 0;
-	uint32_t push_constant_offset = 0;
-	uint32_t push_constant_range = 0;
+	uint32_t push_constant_size = 0;
 	uint32_t spec_constant_mask = 0;
 	DescriptorSetLayout sets[VULKAN_NUM_DESCRIPTOR_SETS];
 };
@@ -62,8 +61,7 @@ struct CombinedResourceLayout
 	DescriptorSetLayout sets[VULKAN_NUM_DESCRIPTOR_SETS] = {};
 	uint32_t stages_for_bindings[VULKAN_NUM_DESCRIPTOR_SETS][VULKAN_NUM_BINDINGS] = {};
 	uint32_t stages_for_sets[VULKAN_NUM_DESCRIPTOR_SETS] = {};
-	VkPushConstantRange ranges[static_cast<unsigned>(ShaderStage::Count)] = {};
-	uint32_t num_ranges = 0;
+	VkPushConstantRange push_constant_range = {};
 	uint32_t descriptor_set_mask = 0;
 	uint32_t spec_constant_mask[Util::ecast(ShaderStage::Count)] = {};
 	uint32_t combined_spec_constant_mask = 0;

@@ -218,7 +218,8 @@ PipelineLayout *Device::request_pipeline_layout(const CombinedResourceLayout &la
 	Hasher h;
 	h.data(reinterpret_cast<const uint32_t *>(layout.sets), sizeof(layout.sets));
 	h.data(&layout.stages_for_bindings[0][0], sizeof(layout.stages_for_bindings));
-	h.data(reinterpret_cast<const uint32_t *>(layout.ranges), sizeof(layout.ranges));
+	h.u32(layout.push_constant_range.stageFlags);
+	h.u32(layout.push_constant_range.size);
 	h.data(layout.spec_constant_mask, sizeof(layout.spec_constant_mask));
 	h.u32(layout.attribute_mask);
 	h.u32(layout.render_target_mask);
@@ -305,9 +306,15 @@ void Device::bake_program(Program &program)
 			});
 		}
 
-		layout.ranges[i].stageFlags = 1u << i;
-		layout.ranges[i].offset = shader_layout.push_constant_offset;
-		layout.ranges[i].size = shader_layout.push_constant_range;
+		// Merge push constant ranges into one range.
+		// Do not try to split into multiple ranges as it just complicates things for no obvious gain.
+		if (shader_layout.push_constant_size != 0)
+		{
+			layout.push_constant_range.stageFlags |= 1u << i;
+			layout.push_constant_range.size =
+					std::max(layout.push_constant_range.size, shader_layout.push_constant_size);
+		}
+
 		layout.spec_constant_mask[i] = shader_layout.spec_constant_mask;
 		layout.combined_spec_constant_mask |= shader_layout.spec_constant_mask;
 	}
@@ -319,7 +326,8 @@ void Device::bake_program(Program &program)
 	}
 
 	Hasher h;
-	h.data(reinterpret_cast<uint32_t *>(layout.ranges), sizeof(layout.ranges));
+	h.u32(layout.push_constant_range.stageFlags);
+	h.u32(layout.push_constant_range.size);
 	layout.push_constant_layout_hash = h.get();
 	program.set_pipeline_layout(request_pipeline_layout(layout));
 }

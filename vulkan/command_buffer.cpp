@@ -901,12 +901,13 @@ void CommandBuffer::flush_compute_state()
 
 	if (get_and_clear(COMMAND_BUFFER_DIRTY_PUSH_CONSTANTS_BIT))
 	{
-		uint32_t num_ranges = current_layout->get_resource_layout().num_ranges;
-		for (unsigned i = 0; i < num_ranges; i++)
+		auto &range = current_layout->get_resource_layout().push_constant_range;
+		if (range.stageFlags != 0)
 		{
-			auto &range = current_layout->get_resource_layout().ranges[i];
-			vkCmdPushConstants(cmd, current_pipeline_layout, range.stageFlags, range.offset, range.size,
-			                   bindings.push_constant_data + range.offset);
+			VK_ASSERT(range.offset == 0);
+			vkCmdPushConstants(cmd, current_pipeline_layout, range.stageFlags,
+			                   0, range.size,
+			                   bindings.push_constant_data);
 		}
 	}
 }
@@ -933,12 +934,13 @@ void CommandBuffer::flush_render_state()
 
 	if (get_and_clear(COMMAND_BUFFER_DIRTY_PUSH_CONSTANTS_BIT))
 	{
-		uint32_t num_ranges = current_layout->get_resource_layout().num_ranges;
-		for (unsigned i = 0; i < num_ranges; i++)
+		auto &range = current_layout->get_resource_layout().push_constant_range;
+		if (range.stageFlags != 0)
 		{
-			auto &range = current_layout->get_resource_layout().ranges[i];
-			vkCmdPushConstants(cmd, current_pipeline_layout, range.stageFlags, range.offset, range.size,
-			                   bindings.push_constant_data + range.offset);
+			VK_ASSERT(range.offset == 0);
+			vkCmdPushConstants(cmd, current_pipeline_layout, range.stageFlags,
+			                   0, range.size,
+			                   bindings.push_constant_data);
 		}
 	}
 

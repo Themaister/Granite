@@ -52,6 +52,9 @@ public:
 
 	void set_swap_interval(unsigned interval);
 
+	// Can return 0 if we don't know the refresh interval yet.
+	uint64_t get_refresh_interval() const;
+
 private:
 	VkDevice device = VK_NULL_HANDLE;
 	VkSwapchainKHR swapchain = VK_NULL_HANDLE;

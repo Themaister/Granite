@@ -294,8 +294,12 @@ void WSITiming::update_frame_time_smoothing(double &frame_time, double &elapsed_
 	smoothing.elapsed += target_frame_time;
 
 	double delta = actual_elapsed - smoothing.elapsed;
-	if (delta > std::fabs(target_frame_time * 4.0)) // We're way off, something must have happened, reset the smoothing.
+	if (delta > std::fabs(target_frame_time * 4.0))
 	{
+		// We're way off, something must have happened, reset the smoothing.
+		// Don't jump skip the frame time, other than keeping the frame_time as-is.
+		// We might have had a natural pause, and it doesn't make sense to report absurd frame times.
+		// Apps needing to sync to wall time over time could use elapsed_time as a guiding hand.
 		if (options.debug)
 			LOGI("Detected discontinuity in smoothing algorithm!\n");
 		smoothing.offset = elapsed_time;
@@ -316,6 +320,11 @@ void WSITiming::update_frame_time_smoothing(double &frame_time, double &elapsed_
 
 	elapsed_time = smoothing.elapsed + smoothing.offset;
 	frame_time = target_frame_time;
+}
+
+uint64_t WSITiming::get_refresh_interval() const
+{
+	return feedback.refresh_interval;
 }
 
 double WSITiming::get_current_latency() const

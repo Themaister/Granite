@@ -160,6 +160,8 @@ public:
 	double get_smooth_frame_time() const;
 	double get_smooth_elapsed_time() const;
 
+	double get_estimated_refresh_interval() const;
+
 private:
 	void update_framebuffer(unsigned width, unsigned height);
 

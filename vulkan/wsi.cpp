@@ -631,6 +631,17 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	return SwapchainError::None;
 }
 
+double WSI::get_estimated_refresh_interval() const
+{
+	uint64_t interval = timing.get_refresh_interval();
+	if (interval)
+		return interval * 1e-9;
+	else if (platform)
+		return platform->get_estimated_frame_presentation_duration();
+	else
+		return 0.0;
+}
+
 WSI::~WSI()
 {
 	deinit_external();

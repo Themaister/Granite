@@ -141,6 +141,8 @@ void WSITiming::update_past_presentation_timing()
 						// We could have presented earlier, and we had decent GPU margin to do so.
 						// Deal with frame dropping later.
 						t.result = TimingResult::VeryEarly;
+						if (options.debug)
+							LOGI("Frame completed very early!\n");
 					}
 				}
 

@@ -41,10 +41,12 @@ struct WSITimingOptions
 	bool debug = false;
 };
 
+class WSIPlatform;
+
 class WSITiming
 {
 public:
-	void init(VkDevice device, VkSwapchainKHR swapchain, const WSITimingOptions &options = {});
+	void init(WSIPlatform *platform, VkDevice device, VkSwapchainKHR swapchain, const WSITimingOptions &options = {});
 	void begin_frame(double &frame_time, double &elapsed_time);
 
 	bool fill_present_info_timing(VkPresentTimeGOOGLE &time);
@@ -60,6 +62,7 @@ public:
 	const WSITimingOptions &get_options() const;
 
 private:
+	WSIPlatform *platform = nullptr;
 	VkDevice device = VK_NULL_HANDLE;
 	VkSwapchainKHR swapchain = VK_NULL_HANDLE;
 	WSITimingOptions options;

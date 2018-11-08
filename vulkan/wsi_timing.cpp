@@ -21,6 +21,7 @@
  */
 
 #include "wsi_timing.hpp"
+#include "wsi.hpp"
 #include <string.h>
 #include <algorithm>
 #include <cmath>
@@ -31,8 +32,9 @@
 
 namespace Vulkan
 {
-void WSITiming::init(VkDevice device, VkSwapchainKHR swapchain, const WSITimingOptions &options)
+void WSITiming::init(WSIPlatform *platform, VkDevice device, VkSwapchainKHR swapchain, const WSITimingOptions &options)
 {
+	this->platform = platform;
 	this->device = device;
 	this->swapchain = swapchain;
 	this->options = options;
@@ -142,7 +144,7 @@ void WSITiming::update_past_presentation_timing()
 						// Deal with frame dropping later.
 						t.result = TimingResult::VeryEarly;
 						if (options.debug)
-							LOGI("Frame completed very early!\n");
+							LOGI("Frame completed very early, but was held back by swap interval!\n");
 					}
 				}
 
@@ -203,6 +205,15 @@ void WSITiming::update_past_presentation_timing()
 			{
 				LOGE("*** HITCH DETECTED ***\n");
 				timing->result = TimingResult::TooLate;
+
+				if (platform)
+				{
+					unsigned frame_delta = unsigned(round(frame_time_ns / (options.swap_interval *
+					                                                       feedback.refresh_interval)));
+					VK_ASSERT(frame_delta);
+					unsigned dropped_frames = frame_delta - 1;
+					platform->event_display_timing_stutter(serial.serial, timing->wall_serial, dropped_frames);
+				}
 			}
 
 			if (options.debug)

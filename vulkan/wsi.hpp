@@ -92,6 +92,8 @@ public:
 	virtual void event_swapchain_destroyed() = 0;
 	virtual void event_frame_tick(double frame, double elapsed) = 0;
 	virtual void event_swapchain_index(Device *device, unsigned index) = 0;
+	virtual void event_display_timing_stutter(uint32_t current_serial, uint32_t observed_serial,
+	                                          unsigned dropped_frames) = 0;
 
 	virtual float get_estimated_frame_presentation_duration();
 

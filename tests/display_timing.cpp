@@ -36,6 +36,14 @@ struct DisplayTimingApplication : Granite::Application, Granite::EventHandler
 	{
 		EVENT_MANAGER_REGISTER(DisplayTimingApplication, on_key_down, KeyboardEvent);
 		EVENT_MANAGER_REGISTER(DisplayTimingApplication, on_touch_down, TouchDownEvent);
+		EVENT_MANAGER_REGISTER(DisplayTimingApplication, on_stutter, DisplayTimingStutterEvent);
+	}
+
+	bool on_stutter(const DisplayTimingStutterEvent &stutter)
+	{
+		red = 0.8f;
+		LOGE("Observed %u dropped frames!\n", stutter.get_dropped_frames());
+		return true;
 	}
 
 	bool on_touch_down(const TouchDownEvent &)
@@ -63,9 +71,10 @@ struct DisplayTimingApplication : Granite::Application, Granite::EventHandler
 		auto cmd = device.request_command_buffer();
 
 		auto rp = device.get_swapchain_render_pass(SwapchainRenderPass::ColorOnly);
-		rp.clear_color[0].float32[0] = 0.1f;
+		rp.clear_color[0].float32[0] = red;
 		rp.clear_color[0].float32[1] = 0.2f;
 		rp.clear_color[0].float32[2] = 0.3f;
+		red *= 0.95f;
 		cmd->begin_render_pass(rp);
 
 		struct Push
@@ -93,6 +102,7 @@ struct DisplayTimingApplication : Granite::Application, Granite::EventHandler
 		total_time += frame_time;
 	}
 
+	float red = 0.0f;
 	double total_time = 0.0;
 	bool color_flip = false;
 };

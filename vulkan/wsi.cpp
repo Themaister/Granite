@@ -612,7 +612,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 		timing_options.swap_interval = 1;
 		//timing_options.adaptive_swap_interval = true;
 		//timing_options.latency_limiter = LatencyLimiter::IdealPipeline;
-		timing.init(device->get_device(), swapchain, timing_options);
+		timing.init(platform, device->get_device(), swapchain, timing_options);
 		using_display_timing = true;
 	}
 	else

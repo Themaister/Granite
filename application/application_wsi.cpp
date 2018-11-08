@@ -73,4 +73,12 @@ void GraniteWSIPlatform::event_frame_tick(double frame, double elapsed)
 		em->dispatch_inline(FrameTickEvent{frame, elapsed});
 }
 
+void GraniteWSIPlatform::event_display_timing_stutter(uint32_t current_serial, uint32_t observed_serial,
+                                                      unsigned dropped_frames)
+{
+	auto *em = Global::event_manager();
+	if (em)
+		em->dispatch_inline(Vulkan::DisplayTimingStutterEvent{current_serial, observed_serial, dropped_frames});
+}
+
 }

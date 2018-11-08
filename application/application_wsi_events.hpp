@@ -47,6 +47,40 @@ private:
 	Device &device;
 };
 
+class DisplayTimingStutterEvent : public Granite::Event
+{
+public:
+	GRANITE_EVENT_TYPE_DECL(WSIStutterEvent)
+
+	DisplayTimingStutterEvent(uint32_t current_serial, uint32_t observed_serial,
+	                          unsigned dropped_frames)
+		: current_serial(current_serial),
+		  observed_serial(observed_serial),
+		  dropped_frames(dropped_frames)
+	{
+	}
+
+	uint32_t get_current_serial() const
+	{
+		return current_serial;
+	}
+
+	uint32_t get_observed_serial() const
+	{
+		return observed_serial;
+	}
+
+	unsigned get_dropped_frames() const
+	{
+		return dropped_frames;
+	}
+
+private:
+	uint32_t current_serial;
+	uint32_t observed_serial;
+	unsigned dropped_frames;
+};
+
 class SwapchainParameterEvent : public Granite::Event
 {
 public:

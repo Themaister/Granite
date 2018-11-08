@@ -4,6 +4,7 @@ layout(location = 0) out vec2 vQuad;
 
 layout(push_constant, std430) uniform Registers
 {
+    vec4 color;
     float phase;
 } registers;
 

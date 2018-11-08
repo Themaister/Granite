@@ -30,8 +30,29 @@
 using namespace Granite;
 using namespace Vulkan;
 
-struct DisplayTimingApplication : Granite::Application
+struct DisplayTimingApplication : Granite::Application, Granite::EventHandler
 {
+	DisplayTimingApplication()
+	{
+		EVENT_MANAGER_REGISTER(DisplayTimingApplication, on_key_down, KeyboardEvent);
+		EVENT_MANAGER_REGISTER(DisplayTimingApplication, on_touch_down, TouchDownEvent);
+	}
+
+	bool on_touch_down(const TouchDownEvent &)
+	{
+		color_flip = !color_flip;
+		return true;
+	}
+
+	bool on_key_down(const KeyboardEvent &e)
+	{
+		if (e.get_key_state() == KeyState::Pressed && e.get_key() == Key::Space)
+		{
+			color_flip = !color_flip;
+		}
+		return true;
+	}
+
 	void render_frame(double frame_time, double) override
 	{
 		get_wsi().get_timing().set_debug_enable(true);
@@ -47,9 +68,17 @@ struct DisplayTimingApplication : Granite::Application
 		rp.clear_color[0].float32[2] = 0.3f;
 		cmd->begin_render_pass(rp);
 
-		float phase = float(muglm::fract(total_time / 3.0)) * 0.8f + 0.1f;
-		phase = 2.0f * phase - 1.0f;
-		cmd->push_constants(&phase, 0, sizeof(phase));
+		struct Push
+		{
+			vec4 color;
+			float phase;
+		} push;
+
+		push.color = color_flip ? vec4(1.0f, 0.0f, 1.0f, 1.0f) : vec4(0.0f, 1.0f, 0.0f, 1.0f);
+
+		push.phase = float(muglm::fract(total_time / 3.0)) * 0.8f + 0.1f;
+		push.phase = 2.0f * push.phase - 1.0f;
+		cmd->push_constants(&push, 0, sizeof(push));
 
 		cmd->set_transparent_sprite_state();
 		cmd->set_program("assets://shaders/test_quad.vert", "assets://shaders/test_quad.frag");
@@ -65,6 +94,7 @@ struct DisplayTimingApplication : Granite::Application
 	}
 
 	double total_time = 0.0;
+	bool color_flip = false;
 };
 
 namespace Granite

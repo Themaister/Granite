@@ -495,6 +495,8 @@ private:
 	void wait_idle_nolock();
 	void end_frame_nolock();
 
+	Fence request_fence();
+
 #ifdef GRANITE_VULKAN_FILESYSTEM
 	ShaderManager shader_manager;
 	TextureManager texture_manager;

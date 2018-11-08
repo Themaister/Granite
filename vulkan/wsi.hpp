@@ -162,6 +162,11 @@ public:
 
 	double get_estimated_refresh_interval() const;
 
+	WSITiming &get_timing()
+	{
+		return timing;
+	}
+
 private:
 	void update_framebuffer(unsigned width, unsigned height);
 

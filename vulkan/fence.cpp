@@ -31,6 +31,11 @@ FenceHolder::~FenceHolder()
 		device->reset_fence(fence);
 }
 
+VkFence FenceHolder::get_fence() const
+{
+	return fence;
+}
+
 void FenceHolder::wait()
 {
 	if (vkWaitForFences(device->get_device(), 1, &fence, VK_TRUE, UINT64_MAX) != VK_SUCCESS)

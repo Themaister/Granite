@@ -822,6 +822,12 @@ void Device::submit_empty_inner(CommandBuffer::Type type, VkFence *fence,
 #endif
 }
 
+Fence Device::request_fence()
+{
+	VkFence fence = managers.fence.request_cleared_fence();
+	return Fence(handle_pool.fences.allocate(this, fence));
+}
+
 void Device::submit_staging(CommandBufferHandle &cmd, VkBufferUsageFlags usage, bool flush)
 {
 	auto access = buffer_usage_to_possible_access(usage);

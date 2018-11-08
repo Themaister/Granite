@@ -45,6 +45,21 @@ void WSITiming::init(VkDevice device, VkSwapchainKHR swapchain, const WSITimingO
 	feedback.timing_buffer.resize(64);
 }
 
+void WSITiming::set_debug_enable(bool enable)
+{
+	options.debug = enable;
+}
+
+void WSITiming::set_latency_limiter(LatencyLimiter limiter)
+{
+	options.latency_limiter = limiter;
+}
+
+const WSITimingOptions &WSITiming::get_options() const
+{
+	return options;
+}
+
 void WSITiming::set_swap_interval(unsigned interval)
 {
 	if (interval == options.swap_interval || interval == 0)
@@ -66,7 +81,7 @@ void WSITiming::update_refresh_interval()
 	VkRefreshCycleDurationGOOGLE refresh;
 	if (vkGetRefreshCycleDurationGOOGLE(device, swapchain, &refresh) == VK_SUCCESS)
 	{
-		if (!feedback.refresh_interval)
+		if (!feedback.refresh_interval || options.debug)
 			LOGI("Observed refresh rate: %.6f Hz.\n", 1e9 / refresh.refreshDuration);
 		feedback.refresh_interval = refresh.refreshDuration;
 	}
@@ -395,7 +410,7 @@ void WSITiming::begin_frame(double &frame_time, double &elapsed_time)
 
 	// On X11, this is found over time by observation, so we need to adapt it.
 	// Only after we have observed the refresh cycle duration, we can start syncing against it.
-	if (feedback.refresh_interval == 0 && (serial.serial & 7) == 0)
+	if ((serial.serial & 7) == 0)
 		update_refresh_interval();
 
 	auto &new_timing = feedback.past_timings[serial.serial & NUM_TIMING_MASK];
@@ -449,7 +464,7 @@ void WSITiming::promote_or_demote_frame_rate()
 
 	// Analyze if we should do something with frame rate.
 	// The heuristic is something like:
-	// - If we observe at least 2 hitches the last window of timing events, demote frame rate.
+	// - If we observe at least 3 hitches the last window of timing events, demote frame rate.
 	// - If we observe consistent earliestPresent < actualPresent and presentMargin is at least a quarter frame,
 	//   promote frame rate.
 
@@ -483,7 +498,7 @@ void WSITiming::promote_or_demote_frame_rate()
 		set_swap_interval(options.swap_interval - 1);
 		LOGI("Adjusted swap interval down to %u!\n", options.swap_interval);
 	}
-	else if (frame_drops > 1)
+	else if (frame_drops >= 3)
 	{
 		if (options.swap_interval < 8) // swap interval of 8, lol
 		{

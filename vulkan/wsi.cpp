@@ -268,9 +268,22 @@ bool WSI::begin_frame()
 	do
 	{
 		auto acquire = device->request_semaphore();
+
+		// For adaptive low latency we don't want to observe the time it takes to wait for
+		// WSI semaphore as part of our latency,
+		// which means we will never get sub-frame latency on some implementations,
+		// so block on that first.
+		Fence fence;
+		if (timing.get_options().latency_limiter == LatencyLimiter::AdaptiveLowLatency)
+			fence = device->request_fence();
+
 		result = vkAcquireNextImageKHR(context->get_device(), swapchain, UINT64_MAX,
-		                               acquire->get_semaphore(), VK_NULL_HANDLE,
+		                               acquire->get_semaphore(),
+		                               fence ? fence->get_fence() : VK_NULL_HANDLE,
 		                               &swapchain_index);
+
+		if (fence)
+			fence->wait();
 
 		if (result == VK_SUCCESS)
 		{

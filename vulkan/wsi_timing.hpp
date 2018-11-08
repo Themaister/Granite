@@ -51,9 +51,13 @@ public:
 	double get_current_latency() const;
 
 	void set_swap_interval(unsigned interval);
+	void set_debug_enable(bool enable);
+	void set_latency_limiter(LatencyLimiter limiter);
 
 	// Can return 0 if we don't know the refresh interval yet.
 	uint64_t get_refresh_interval() const;
+
+	const WSITimingOptions &get_options() const;
 
 private:
 	VkDevice device = VK_NULL_HANDLE;

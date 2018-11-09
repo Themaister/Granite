@@ -86,6 +86,7 @@ private:
 	{
 		uint32_t wall_serial = 0;
 		uint64_t wall_frame_begin = 0;
+		uint64_t wall_frame_target = 0;
 		uint32_t swap_interval_target = 0;
 		TimingResult result = TimingResult::Unknown;
 		int64_t slack = 0;

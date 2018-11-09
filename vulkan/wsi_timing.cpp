@@ -182,9 +182,12 @@ void WSITiming::update_past_presentation_timing()
 			uint64_t delta = timing->timing.actualPresentTime - timing->timing.desiredPresentTime;
 			if (delta >= feedback.refresh_interval)
 			{
-				LOGE("*** Image was presented %u frames late compared to desired target. "
+				LOGE("*** Image was presented %u frames late "
+				     "(target: %.3f ms, rounded target: %.3f ms, actual: %.3f ms) compared to desired target. "
 				     "This normally happens in startup phase, but otherwise it's either a real hitch or app bug. ***\n",
-				     unsigned(delta / feedback.refresh_interval));
+				     unsigned(delta / feedback.refresh_interval),
+				     timing->wall_frame_target * 1e-6, timing->timing.desiredPresentTime * 1e-6,
+				     timing->timing.actualPresentTime * 1e-6);
 			}
 		}
 
@@ -255,22 +258,24 @@ uint64_t WSITiming::get_wall_time()
 
 void WSITiming::update_frame_pacing(uint32_t serial, uint64_t present_time, bool wall_time)
 {
-	if (!pacing.have_estimate)
-	{
-		pacing.base_serial = serial;
-		pacing.base_present = present_time;
-		pacing.have_estimate = true;
-		return;
-	}
-
-	if (!wall_time)
-		pacing.have_real_estimate = true;
-
 	if (wall_time && !pacing.have_real_estimate)
 	{
 		// We don't have a refresh interval yet, just update the estimate from CPU.
 		pacing.base_serial = serial;
 		pacing.base_present = present_time;
+		pacing.have_estimate = true;
+		return;
+	}
+	else if (!wall_time && !pacing.have_real_estimate)
+	{
+		pacing.base_serial = serial;
+		pacing.base_present = present_time;
+		pacing.have_real_estimate = true;
+		return;
+	}
+	else if (wall_time)
+	{
+		// We already have a correct estimate, don't update.
 		return;
 	}
 
@@ -308,6 +313,11 @@ void WSITiming::update_frame_pacing(uint32_t serial, uint64_t present_time, bool
 			// Update our base estimate.
 			pacing.base_serial = serial;
 			pacing.base_present = present_time;
+			if (options.debug)
+			{
+				LOGI("Updating frame pacing base to serial: %u (delta: %.3f ms)\n", pacing.base_serial,
+				     1e-6 * int64_t(present_time - extrapolated_present_time));
+			}
 		}
 	}
 }
@@ -421,6 +431,9 @@ void WSITiming::begin_frame(double &frame_time, double &elapsed_time)
 	}
 	serial.serial++;
 
+	if (options.debug)
+		LOGI("Starting WSITiming frame serial: %u\n", serial.serial);
+
 	// On X11, this is found over time by observation, so we need to adapt it.
 	// Only after we have observed the refresh cycle duration, we can start syncing against it.
 	if ((serial.serial & 7) == 0)
@@ -433,11 +446,13 @@ void WSITiming::begin_frame(double &frame_time, double &elapsed_time)
 	new_timing.result = TimingResult::Unknown;
 	new_timing.timing = {};
 
-	// Absolute minimum case, just get some initial data.
-	update_frame_pacing(serial.serial, new_timing.wall_frame_begin, true);
 	update_past_presentation_timing();
+	// Absolute minimum case, just get some initial data before we have some real estimates.
+	update_frame_pacing(serial.serial, new_timing.wall_frame_begin, true);
 	update_frame_time_smoothing(frame_time, elapsed_time);
 	limit_latency(new_timing);
+
+	new_timing.wall_frame_target = compute_target_present_time_for_serial(serial.serial);
 }
 
 bool WSITiming::get_conservative_latency(int64_t &latency) const
@@ -533,7 +548,7 @@ bool WSITiming::fill_present_info_timing(VkPresentTimeGOOGLE &time)
 	// but not exactly at estimated target, since we have a rounding error cliff.
 	// Set the target a quarter frame away from real target.
 	if (time.desiredPresentTime != 0 && feedback.refresh_interval != 0)
-		time.desiredPresentTime -= feedback.refresh_interval >> 2;
+		time.desiredPresentTime -= feedback.refresh_interval >> 4;
 
 	return true;
 }

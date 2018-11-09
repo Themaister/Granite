@@ -563,7 +563,18 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 		}
 	}
 
-	uint32_t desired_swapchain_images = surface_properties.minImageCount + 1;
+	uint32_t desired_swapchain_images = 3;
+	{
+		const char *num_images = getenv("GRANITE_VULKAN_SWAPCHAIN_IMAGES");
+		if (num_images)
+			desired_swapchain_images = uint32_t(strtoul(num_images, nullptr, 0));
+	}
+
+	LOGI("Targeting %u swapchain images.\n", desired_swapchain_images);
+
+	if (desired_swapchain_images < surface_properties.minImageCount)
+		desired_swapchain_images = surface_properties.minImageCount;
+
 	if ((surface_properties.maxImageCount > 0) && (desired_swapchain_images > surface_properties.maxImageCount))
 		desired_swapchain_images = surface_properties.maxImageCount;
 

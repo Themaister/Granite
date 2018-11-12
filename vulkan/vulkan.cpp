@@ -406,6 +406,14 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 			VkPhysicalDeviceProperties props;
 			vkGetPhysicalDeviceProperties(gpu, &props);
 			LOGI("Found Vulkan GPU: %s\n", props.deviceName);
+			LOGI("    API: %u.%u.%u\n",
+			     VK_VERSION_MAJOR(props.apiVersion),
+			     VK_VERSION_MINOR(props.apiVersion),
+			     VK_VERSION_PATCH(props.apiVersion));
+			LOGI("    Driver: %u.%u.%u\n",
+			     VK_VERSION_MAJOR(props.driverVersion),
+			     VK_VERSION_MINOR(props.driverVersion),
+			     VK_VERSION_PATCH(props.driverVersion));
 		}
 
 		const char *gpu_index = getenv("GRANITE_VULKAN_DEVICE_INDEX");

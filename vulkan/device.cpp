@@ -358,10 +358,33 @@ bool Device::init_pipeline_cache(const uint8_t *data, size_t size)
 	return vkCreatePipelineCache(device, &info, nullptr, &pipeline_cache) == VK_SUCCESS;
 }
 
+static inline char to_hex(uint8_t v)
+{
+	if (v < 10)
+		return char('0' + v);
+	else
+		return char('a' + (v - 10));
+}
+
+string Device::get_pipeline_cache_string() const
+{
+	string res;
+	res.reserve(sizeof(gpu_props.pipelineCacheUUID) * 2);
+
+	for (auto &c : gpu_props.pipelineCacheUUID)
+	{
+		res += to_hex(uint8_t((c >> 4) & 0xf));
+		res += to_hex(uint8_t(c & 0xf));
+	}
+
+	return res;
+}
+
 void Device::init_pipeline_cache()
 {
 #ifdef GRANITE_VULKAN_FILESYSTEM
-	auto file = Granite::Global::filesystem()->open("cache://pipeline_cache.bin", Granite::FileMode::ReadOnly);
+	auto file = Granite::Global::filesystem()->open(Util::join("cache://pipeline_cache_", get_pipeline_cache_string(), ".bin"),
+	                                                Granite::FileMode::ReadOnly);
 	if (file)
 	{
 		auto size = file->get_size();
@@ -422,7 +445,8 @@ void Device::flush_pipeline_cache()
 		return;
 	}
 
-	auto file = Granite::Global::filesystem()->open("cache://pipeline_cache.bin", Granite::FileMode::WriteOnly);
+	auto file = Granite::Global::filesystem()->open(Util::join("cache://pipeline_cache_", get_pipeline_cache_string(), ".bin"),
+	                                                Granite::FileMode::WriteOnly);
 	if (!file)
 	{
 		LOGE("Failed to get pipeline cache data.\n");

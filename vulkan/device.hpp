@@ -528,6 +528,8 @@ private:
 	void set_pipeline_layout_handle(unsigned index, VkPipelineLayout layout);
 	void set_shader_module_handle(unsigned index, VkShaderModule module);
 
+	std::string get_pipeline_cache_string() const;
+
 	struct
 	{
 		std::unordered_map<VkShaderModule, Shader *> shader_map;

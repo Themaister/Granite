@@ -666,6 +666,8 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 			enabled_features.fragmentStoresAndAtomics = VK_TRUE;
 		if (features.shaderStorageImageExtendedFormats)
 			enabled_features.shaderStorageImageExtendedFormats = VK_TRUE;
+		if (features.largePoints)
+			enabled_features.largePoints = VK_TRUE;
 	}
 
 	device_info.pEnabledFeatures = &enabled_features;

@@ -40,6 +40,12 @@ enum class DrawPipeline : unsigned
 	AlphaBlend,
 };
 
+enum RenderableFlagBits
+{
+	RENDERABLE_FORCE_VISIBLE_BIT = 1 << 0
+};
+using RenderableFlags = uint32_t;
+
 class AbstractRenderable : public Util::IntrusivePtrEnabled<AbstractRenderable>
 {
 public:
@@ -70,6 +76,8 @@ public:
 	{
 		return DrawPipeline::Opaque;
 	}
+
+	RenderableFlags flags = 0;
 };
 using AbstractRenderableHandle = Util::IntrusivePtr<AbstractRenderable>;
 }

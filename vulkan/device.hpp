@@ -502,6 +502,8 @@ private:
 	TextureManager texture_manager;
 #endif
 
+	std::string get_pipeline_cache_string() const;
+
 #ifdef GRANITE_VULKAN_FOSSILIZE
 	Fossilize::StateRecorder state_recorder;
 	std::mutex state_recorder_lock;
@@ -527,8 +529,6 @@ private:
 	void set_descriptor_set_layout_handle(unsigned index, VkDescriptorSetLayout set_layout);
 	void set_pipeline_layout_handle(unsigned index, VkPipelineLayout layout);
 	void set_shader_module_handle(unsigned index, VkShaderModule module);
-
-	std::string get_pipeline_cache_string() const;
 
 	struct
 	{

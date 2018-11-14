@@ -240,12 +240,23 @@ Semaphore WSI::consume_external_release_semaphore()
 	return sem;
 }
 
+//#define VULKAN_WSI_TIMING_DEBUG
+
 bool WSI::begin_frame()
 {
 	if (frame_is_external)
 		return begin_frame_external();
 
+#ifdef VULKAN_WSI_TIMING_DEBUG
+	auto next_frame_start = Util::get_current_time_nsecs();
+#endif
+
 	device->next_frame_context();
+
+#ifdef VULKAN_WSI_TIMING_DEBUG
+	auto next_frame_end = Util::get_current_time_nsecs();
+	LOGI("Waited for vacant frame context for %.3f ms.\n", (next_frame_end - next_frame_start) * 1e-6);
+#endif
 
 	if (swapchain == VK_NULL_HANDLE || platform->should_resize())
 	{
@@ -277,6 +288,10 @@ bool WSI::begin_frame()
 		if (timing.get_options().latency_limiter == LatencyLimiter::AdaptiveLowLatency)
 			fence = device->request_fence();
 
+#ifdef VULKAN_WSI_TIMING_DEBUG
+		auto acquire_start = Util::get_current_time_nsecs();
+#endif
+
 		result = vkAcquireNextImageKHR(context->get_device(), swapchain, UINT64_MAX,
 		                               acquire->get_semaphore(),
 		                               fence ? fence->get_fence() : VK_NULL_HANDLE,
@@ -284,6 +299,11 @@ bool WSI::begin_frame()
 
 		if (fence)
 			fence->wait();
+
+#ifdef VULKAN_WSI_TIMING_DEBUG
+		auto acquire_end = Util::get_current_time_nsecs();
+		LOGI("vkAcquireNextImageKHR took %.3f ms.\n", (acquire_end - acquire_start) * 1e-6);
+#endif
 
 		if (result == VK_SUCCESS)
 		{
@@ -378,7 +398,17 @@ bool WSI::end_frame()
 			info.pNext = &present_timing;
 		}
 
+#ifdef VULKAN_WSI_TIMING_DEBUG
+		auto present_start = Util::get_current_time_nsecs();
+#endif
+
 		VkResult overall = vkQueuePresentKHR(context->get_graphics_queue(), &info);
+
+#ifdef VULKAN_WSI_TIMING_DEBUG
+		auto present_end = Util::get_current_time_nsecs();
+		LOGI("vkQueuePresentKHR took %.3f ms.\n", (present_end - present_start) * 1e-6);
+#endif
+
 		if (overall != VK_SUCCESS || result != VK_SUCCESS)
 		{
 			LOGE("vkQueuePresentKHR failed.\n");

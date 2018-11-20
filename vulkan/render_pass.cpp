@@ -23,6 +23,7 @@
 #include "render_pass.hpp"
 #include "stack_allocator.hpp"
 #include "device.hpp"
+#include "quirks.hpp"
 #include <utility>
 #include <cstring>
 
@@ -112,6 +113,8 @@ RenderPass::RenderPass(Hash hash, Device *device, const VkRenderPassCreateInfo &
 	auto info = create_info;
 	VkAttachmentDescription fixup_attachments[VULKAN_NUM_ATTACHMENTS + 1];
 	fixup_render_pass_nvidia(info, fixup_attachments);
+	if (device->get_workarounds().wsi_acquire_barrier_is_expensive)
+		fixup_wsi_barrier(info, fixup_attachments);
 
 	LOGI("Creating render pass.\n");
 	if (vkCreateRenderPass(device->get_device(), &info, nullptr, &render_pass) != VK_SUCCESS)
@@ -771,6 +774,8 @@ RenderPass::RenderPass(Hash hash, Device *device, const RenderPassInfo &info)
 	// Fixup after, we want the Fossilize render pass to be generic.
 	VkAttachmentDescription fixup_attachments[VULKAN_NUM_ATTACHMENTS + 1];
 	fixup_render_pass_nvidia(rp_info, fixup_attachments);
+	if (device->get_workarounds().wsi_acquire_barrier_is_expensive)
+		fixup_wsi_barrier(rp_info, fixup_attachments);
 
 	LOGI("Creating render pass.\n");
 	if (vkCreateRenderPass(device->get_device(), &rp_info, nullptr, &render_pass) != VK_SUCCESS)
@@ -780,14 +785,35 @@ RenderPass::RenderPass(Hash hash, Device *device, const RenderPassInfo &info)
 #endif
 }
 
+void RenderPass::fixup_wsi_barrier(VkRenderPassCreateInfo &create_info, VkAttachmentDescription *attachments)
+{
+	// We have transitioned ahead of time in this case,
+	// so make initialLayout COLOR_ATTACHMENT_OPTIMAL for any WSI-attachments.
+	if (attachments != create_info.pAttachments)
+	{
+		memcpy(attachments, create_info.pAttachments, create_info.attachmentCount * sizeof(attachments[0]));
+		create_info.pAttachments = attachments;
+	}
+
+	for (uint32_t i = 0; i < create_info.attachmentCount; i++)
+	{
+		auto &att = attachments[i];
+		if (att.initialLayout == VK_IMAGE_LAYOUT_UNDEFINED && att.finalLayout == VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
+			att.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	}
+}
+
 void RenderPass::fixup_render_pass_nvidia(VkRenderPassCreateInfo &create_info, VkAttachmentDescription *attachments)
 {
 	if (device->get_gpu_properties().vendorID == VENDOR_ID_NVIDIA)
 	{
 		// Workaround a bug on NV where depth-stencil input attachments break if we have STORE_OP_DONT_CARE.
 		// Force STORE_OP_STORE for all attachments.
-		memcpy(attachments, create_info.pAttachments, create_info.attachmentCount * sizeof(attachments[0]));
-		create_info.pAttachments = attachments;
+		if (attachments != create_info.pAttachments)
+		{
+			memcpy(attachments, create_info.pAttachments, create_info.attachmentCount * sizeof(attachments[0]));
+			create_info.pAttachments = attachments;
+		}
 
 		for (uint32_t i = 0; i < create_info.attachmentCount; i++)
 		{

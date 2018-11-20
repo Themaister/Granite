@@ -468,6 +468,24 @@ void Device::flush_pipeline_cache()
 #endif
 }
 
+void Device::init_workarounds()
+{
+#if 0
+	workarounds.wsi_acquire_barrier_is_expensive = true;
+	workarounds.emulate_event_as_pipeline_barrier = true;
+	workarounds.optimize_all_graphics_barrier = true;
+#else
+	// UNDEFINED -> COLOR_ATTACHMENT_OPTIMAL stalls, so need to acquire async.
+	workarounds.wsi_acquire_barrier_is_expensive = gpu_props.vendorID == VENDOR_ID_ARM;
+
+	// VkEvent is suboptimal in some cases or not supported (MoltenVK later?).
+	workarounds.emulate_event_as_pipeline_barrier = gpu_props.vendorID == VENDOR_ID_ARM;
+
+	// srcStageMask = ALL_GRAPHICS_BIT causes some weird stalls compared to waiting for fragment only.
+	workarounds.optimize_all_graphics_barrier = gpu_props.vendorID == VENDOR_ID_ARM;
+#endif
+}
+
 void Device::set_context(const Context &context)
 {
 	instance = context.get_instance();
@@ -483,6 +501,8 @@ void Device::set_context(const Context &context)
 
 	mem_props = context.get_mem_props();
 	gpu_props = context.get_gpu_props();
+
+	init_workarounds();
 
 	init_stock_samplers();
 	init_pipeline_cache();
@@ -505,7 +525,7 @@ void Device::set_context(const Context &context)
 	managers.memory.set_supports_dedicated_allocation(ext.supports_dedicated);
 	managers.semaphore.init(device);
 	managers.fence.init(device);
-	managers.event.init(device);
+	managers.event.init(this);
 	managers.vbo.init(this, 4 * 1024, 16, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
 	                  ImplementationQuirks::get().staging_need_device_local);
 	managers.ibo.init(this, 4 * 1024, 16, VK_BUFFER_USAGE_INDEX_BUFFER_BIT,

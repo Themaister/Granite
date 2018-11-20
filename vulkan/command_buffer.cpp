@@ -232,6 +232,21 @@ void CommandBuffer::pixel_barrier()
 	                     VK_DEPENDENCY_BY_REGION_BIT, 1, &barrier, 0, nullptr, 0, nullptr);
 }
 
+static inline void fixup_src_stage(VkPipelineStageFlags &src_stages, bool fixup)
+{
+	// ALL_GRAPHICS_BIT waits for vertex as well which causes performance issues on some drivers.
+	// It shouldn't matter, but hey.
+	//
+	// We aren't using vertex with side-effects on relevant hardware so dropping VERTEX_SHADER_BIT is fine.
+	if ((src_stages & VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT) != 0 && fixup)
+	{
+		src_stages &= ~VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
+		src_stages |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+		              VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+		              VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+	}
+}
+
 void CommandBuffer::barrier(VkPipelineStageFlags src_stages, VkAccessFlags src_access, VkPipelineStageFlags dst_stages,
                             VkAccessFlags dst_access)
 {
@@ -240,6 +255,7 @@ void CommandBuffer::barrier(VkPipelineStageFlags src_stages, VkAccessFlags src_a
 	VkMemoryBarrier barrier = { VK_STRUCTURE_TYPE_MEMORY_BARRIER };
 	barrier.srcAccessMask = src_access;
 	barrier.dstAccessMask = dst_access;
+	fixup_src_stage(src_stages, device->get_workarounds().optimize_all_graphics_barrier);
 	vkCmdPipelineBarrier(cmd, src_stages, dst_stages, 0, 1, &barrier, 0, nullptr, 0, nullptr);
 }
 
@@ -250,6 +266,7 @@ void CommandBuffer::barrier(VkPipelineStageFlags src_stages, VkPipelineStageFlag
 {
 	VK_ASSERT(!actual_render_pass);
 	VK_ASSERT(!framebuffer);
+	fixup_src_stage(src_stages, device->get_workarounds().optimize_all_graphics_barrier);
 	vkCmdPipelineBarrier(cmd, src_stages, dst_stages, 0, barriers, globals, buffer_barriers, buffers, image_barriers, images);
 }
 
@@ -265,6 +282,7 @@ void CommandBuffer::buffer_barrier(const Buffer &buffer, VkPipelineStageFlags sr
 	barrier.offset = 0;
 	barrier.size = buffer.get_create_info().size;
 
+	fixup_src_stage(src_stages, device->get_workarounds().optimize_all_graphics_barrier);
 	vkCmdPipelineBarrier(cmd, src_stages, dst_stages, 0, 0, nullptr, 1, &barrier, 0, nullptr);
 }
 
@@ -288,6 +306,7 @@ void CommandBuffer::image_barrier(const Image &image, VkImageLayout old_layout, 
 	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 
+	fixup_src_stage(src_stages, device->get_workarounds().optimize_all_graphics_barrier);
 	vkCmdPipelineBarrier(cmd, src_stages, dst_stages, 0, 0, nullptr, 0, nullptr, 1, &barrier);
 }
 
@@ -980,8 +999,19 @@ void CommandBuffer::wait_events(unsigned num_events, const VkEvent *events,
 {
 	VK_ASSERT(!framebuffer);
 	VK_ASSERT(!actual_render_pass);
-	vkCmdWaitEvents(cmd, num_events, events, src_stages, dst_stages,
-	                barriers, globals, buffer_barriers, buffers, image_barriers, images);
+
+	if (device->get_workarounds().emulate_event_as_pipeline_barrier)
+	{
+		barrier(src_stages, dst_stages,
+		        barriers, globals,
+		        buffer_barriers, buffers,
+		        image_barriers, images);
+	}
+	else
+	{
+		vkCmdWaitEvents(cmd, num_events, events, src_stages, dst_stages,
+		                barriers, globals, buffer_barriers, buffers, image_barriers, images);
+	}
 }
 
 PipelineEvent CommandBuffer::signal_event(VkPipelineStageFlags stages)
@@ -989,7 +1019,8 @@ PipelineEvent CommandBuffer::signal_event(VkPipelineStageFlags stages)
 	VK_ASSERT(!framebuffer);
 	VK_ASSERT(!actual_render_pass);
 	auto event = device->request_pipeline_event();
-	vkCmdSetEvent(cmd, event->get_event(), stages);
+	if (!device->get_workarounds().emulate_event_as_pipeline_barrier)
+		vkCmdSetEvent(cmd, event->get_event(), stages);
 	event->set_stages(stages);
 	return event;
 }

@@ -43,4 +43,11 @@ struct ImplementationQuirks
 		return quirks;
 	}
 };
+
+struct ImplementationWorkarounds
+{
+	bool emulate_event_as_pipeline_barrier = false;
+	bool wsi_acquire_barrier_is_expensive = false;
+	bool optimize_all_graphics_barrier = false;
+};
 }

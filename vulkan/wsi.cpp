@@ -22,6 +22,7 @@
 
 #include <thread>
 #include "wsi.hpp"
+#include "quirks.hpp"
 
 using namespace std;
 
@@ -324,6 +325,22 @@ bool WSI::begin_frame()
 			platform->event_frame_tick(frame_time, elapsed_time);
 
 			platform->event_swapchain_index(device.get(), swapchain_index);
+
+			if (device->get_workarounds().wsi_acquire_barrier_is_expensive)
+			{
+				// Acquire async. Use the async graphics queue, as it's most likely not being used right away.
+				device->add_wait_semaphore(CommandBuffer::Type::AsyncGraphics, acquire, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, true);
+				auto cmd = device->request_command_buffer(CommandBuffer::Type::AsyncGraphics);
+				cmd->image_barrier(device->get_swapchain_view(swapchain_index).get_image(),
+				                   VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+				                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0,
+				                   VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0);
+
+				// Get a new acquire semaphore.
+				acquire.reset();
+				device->submit(cmd, nullptr, 1, &acquire);
+			}
+
 			device->set_acquire_semaphore(swapchain_index, acquire);
 		}
 		else if (result == VK_SUBOPTIMAL_KHR || result == VK_ERROR_OUT_OF_DATE_KHR)

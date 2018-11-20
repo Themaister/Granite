@@ -27,10 +27,11 @@
 
 namespace Vulkan
 {
+class Device;
 class EventManager
 {
 public:
-	void init(VkDevice device);
+	void init(Device *device);
 	~EventManager();
 
 	VkEvent request_cleared_event();
@@ -39,5 +40,7 @@ public:
 private:
 	VkDevice device = VK_NULL_HANDLE;
 	std::vector<VkEvent> events;
+	uint64_t workaround_counter = 0;
+	bool workaround = false;
 };
 }

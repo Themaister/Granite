@@ -59,6 +59,8 @@
 #include "fossilize.hpp"
 #endif
 
+#include "quirks.hpp"
+
 namespace Vulkan
 {
 enum class SwapchainRenderPass
@@ -253,6 +255,11 @@ public:
 	// lock the global device and queue.
 	void set_queue_lock(std::function<void ()> lock_callback,
 	                    std::function<void ()> unlock_callback);
+
+	const ImplementationWorkarounds &get_workarounds() const
+	{
+		return workarounds;
+	}
 
 private:
 	VkInstance instance = VK_NULL_HANDLE;
@@ -542,5 +549,8 @@ private:
 	void init_pipeline_state();
 	void flush_pipeline_state();
 #endif
+
+	ImplementationWorkarounds workarounds;
+	void init_workarounds();
 };
 }

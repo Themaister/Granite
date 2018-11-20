@@ -21,23 +21,20 @@
  */
 
 #include "event_manager.hpp"
+#include "device.hpp"
 
 namespace Vulkan
 {
-void EventManager::init(VkDevice device)
-{
-	this->device = device;
-}
-
 EventManager::~EventManager()
 {
-	for (auto &event : events)
-		vkDestroyEvent(device, event, nullptr);
+	if (!workaround)
+		for (auto &event : events)
+			vkDestroyEvent(device, event, nullptr);
 }
 
 void EventManager::recycle(VkEvent event)
 {
-	if (event != VK_NULL_HANDLE)
+	if (!workaround && event != VK_NULL_HANDLE)
 	{
 		vkResetEvent(device, event);
 		events.push_back(event);
@@ -46,7 +43,12 @@ void EventManager::recycle(VkEvent event)
 
 VkEvent EventManager::request_cleared_event()
 {
-	if (events.empty())
+	if (workaround)
+	{
+		// Can't use reinterpret_cast because of MSVC.
+		return (VkEvent) ++workaround_counter;
+	}
+	else if (events.empty())
 	{
 		VkEvent event;
 		VkEventCreateInfo info = { VK_STRUCTURE_TYPE_EVENT_CREATE_INFO };
@@ -59,5 +61,11 @@ VkEvent EventManager::request_cleared_event()
 		events.pop_back();
 		return event;
 	}
+}
+
+void EventManager::init(Device *device)
+{
+	this->device = device->get_device();
+	workaround = device->get_workarounds().emulate_event_as_pipeline_barrier;
 }
 }

@@ -26,6 +26,7 @@
 #include "filesystem.hpp"
 #include "event.hpp"
 #include "ui_manager.hpp"
+#include "common_renderer_data.hpp"
 #include <thread>
 
 #ifdef HAVE_GRANITE_AUDIO
@@ -46,6 +47,7 @@ struct GlobalManagers
 	EventManager *event_manager;
 	ThreadGroup *thread_group;
 	UI::UIManager *ui_manager;
+	CommonRendererData *common_renderer_data;
 #ifdef HAVE_GRANITE_AUDIO
 	Audio::Backend *audio_backend;
 	Audio::Mixer *audio_mixer;
@@ -99,6 +101,17 @@ UI::UIManager *ui_manager()
 	return global_managers.ui_manager;
 }
 
+CommonRendererData *common_renderer_data()
+{
+	if (!global_managers.common_renderer_data)
+	{
+		LOGI("Common GPU data was not initialized. Lazily initializing. This is not thread safe!\n");
+		global_managers.common_renderer_data = new CommonRendererData;
+	}
+
+	return global_managers.common_renderer_data;
+}
+
 #ifdef HAVE_GRANITE_AUDIO
 Audio::Backend *audio_backend() { return global_managers.audio_backend; }
 Audio::Mixer *audio_mixer() { return global_managers.audio_mixer; }
@@ -117,16 +130,16 @@ void install_audio_system(Audio::Backend *backend, Audio::Mixer *mixer)
 
 void init(ManagerFeatureFlags flags)
 {
-	if (flags & MANAGER_FEATURE_FILESYSTEM_BIT)
-	{
-		if (!global_managers.filesystem)
-			global_managers.filesystem = new Filesystem;
-	}
-
 	if (flags & MANAGER_FEATURE_EVENT_BIT)
 	{
 		if (!global_managers.event_manager)
 			global_managers.event_manager = new EventManager;
+	}
+
+	if (flags & MANAGER_FEATURE_FILESYSTEM_BIT)
+	{
+		if (!global_managers.filesystem)
+			global_managers.filesystem = new Filesystem;
 	}
 
 	if (flags & MANAGER_FEATURE_THREAD_GROUP_BIT)
@@ -144,6 +157,12 @@ void init(ManagerFeatureFlags flags)
 			global_managers.ui_manager = new UI::UIManager;
 	}
 
+	if (flags & MANAGER_FEATURE_COMMON_RENDERER_DATA_BIT)
+	{
+		if (!global_managers.common_renderer_data)
+			global_managers.common_renderer_data = new CommonRendererData;
+	}
+
 #ifdef HAVE_GRANITE_AUDIO
 	if (!global_managers.audio_mixer)
 		global_managers.audio_mixer = new Audio::Mixer;
@@ -154,16 +173,6 @@ void init(ManagerFeatureFlags flags)
 
 void deinit()
 {
-	delete global_managers.filesystem;
-	delete global_managers.event_manager;
-	delete global_managers.thread_group;
-	delete global_managers.ui_manager;
-
-	global_managers.filesystem = nullptr;
-	global_managers.event_manager = nullptr;
-	global_managers.thread_group = nullptr;
-	global_managers.ui_manager = nullptr;
-
 #ifdef HAVE_GRANITE_AUDIO
 	if (global_managers.audio_backend)
 		global_managers.audio_backend->stop();
@@ -173,6 +182,18 @@ void deinit()
 	global_managers.audio_backend = nullptr;
 	global_managers.audio_mixer = nullptr;
 #endif
+
+	delete global_managers.common_renderer_data;
+	delete global_managers.ui_manager;
+	delete global_managers.thread_group;
+	delete global_managers.filesystem;
+	delete global_managers.event_manager;
+
+	global_managers.common_renderer_data = nullptr;
+	global_managers.filesystem = nullptr;
+	global_managers.event_manager = nullptr;
+	global_managers.thread_group = nullptr;
+	global_managers.ui_manager = nullptr;
 }
 
 void start_audio_system()

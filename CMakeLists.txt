@@ -333,6 +333,7 @@ if (NOT GRANITE_VULKAN_ONLY)
             renderer/lights/light_info.hpp
             renderer/lights/deferred_lights.hpp renderer/lights/deferred_lights.cpp
             renderer/scene_loader.cpp renderer/scene_loader.hpp
+            renderer/common_renderer_data.cpp renderer/common_renderer_data.hpp
 
             scene_formats/texture_compression.hpp scene_formats/texture_compression.cpp
             scene_formats/gltf.cpp scene_formats/gltf.hpp

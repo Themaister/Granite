@@ -22,55 +22,48 @@
 
 #pragma once
 
-#include <stdint.h>
+#include "buffer.hpp"
+#include "event.hpp"
+#include "application_wsi_events.hpp"
+#include "application_events.hpp"
 
 namespace Granite
 {
-class Filesystem;
-class ThreadGroup;
-class EventManager;
-class CommonRendererData;
-namespace UI
+class PersistentFrameEvent : public EventHandler
 {
-class UIManager;
-}
+public:
+	PersistentFrameEvent();
+	float frame_time = 0.0f;
 
-namespace Audio
-{
-class Backend;
-class Mixer;
-}
-
-namespace Global
-{
-enum ManagerFeatureFlagBits
-{
-	MANAGER_FEATURE_FILESYSTEM_BIT = 1 << 0,
-	MANAGER_FEATURE_EVENT_BIT = 1 << 1,
-	MANAGER_FEATURE_THREAD_GROUP_BIT = 1 << 2,
-	MANAGER_FEATURE_UI_MANAGER_BIT = 1 << 3,
-	MANAGER_FEATURE_AUDIO_BIT = 1 << 4,
-	MANAGER_FEATURE_COMMON_RENDERER_DATA_BIT = 1 << 5,
-	MANAGER_FEATURE_ALL_BITS = 0x7fffffff
+private:
+	bool on_frame_time(const FrameTickEvent &tick);
 };
-using ManagerFeatureFlags = uint32_t;
 
-void init(ManagerFeatureFlags flags = MANAGER_FEATURE_ALL_BITS);
-void deinit();
+class LightMesh : public EventHandler
+{
+public:
+	LightMesh();
 
-void start_audio_system();
-void stop_audio_system();
+	Vulkan::BufferHandle spot_vbo;
+	Vulkan::BufferHandle spot_ibo;
+	unsigned spot_count = 0;
 
-Filesystem *filesystem();
-EventManager *event_manager();
-ThreadGroup *thread_group();
-UI::UIManager *ui_manager();
-CommonRendererData *common_renderer_data();
-#ifdef HAVE_GRANITE_AUDIO
-Audio::Backend *audio_backend();
-Audio::Mixer *audio_mixer();
-void install_audio_system(Audio::Backend *backend, Audio::Mixer *mixer);
-#endif
-}
+	Vulkan::BufferHandle point_vbo;
+	Vulkan::BufferHandle point_ibo;
+	unsigned point_count = 0;
 
+private:
+	void create_point_mesh(const Vulkan::DeviceCreatedEvent &e);
+	void create_spot_mesh(const Vulkan::DeviceCreatedEvent &e);
+
+	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
+	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &);
+};
+
+class CommonRendererData
+{
+public:
+	LightMesh light_mesh;
+	PersistentFrameEvent frame_tick;
+};
 }

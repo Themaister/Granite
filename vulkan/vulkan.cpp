@@ -158,12 +158,16 @@ Context::~Context()
 	destroy();
 }
 
-const VkApplicationInfo &Context::get_application_info()
+const VkApplicationInfo &Context::get_application_info(bool supports_vulkan_11)
 {
+	static const VkApplicationInfo info_11 = {
+		VK_STRUCTURE_TYPE_APPLICATION_INFO, nullptr, "Granite", 0, "Granite", 0, VK_API_VERSION_1_1,
+	};
+
 	static const VkApplicationInfo info = {
 		VK_STRUCTURE_TYPE_APPLICATION_INFO, nullptr, "Granite", 0, "Granite", 0, VK_MAKE_VERSION(1, 0, 57),
 	};
-	return info;
+	return supports_vulkan_11 ? info_11 : info;
 }
 
 void Context::notify_validation_error(const char *msg)
@@ -281,8 +285,10 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_debug_cb(VkDebugReportFlagsEXT flag
 
 bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_count)
 {
+	ext.supports_vulkan_11_instance = volkGetInstanceVersion() >= VK_API_VERSION_1_1;
+
 	VkInstanceCreateInfo info = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
-	info.pApplicationInfo = &get_application_info();
+	info.pApplicationInfo = &get_application_info(ext.supports_vulkan_11_instance);
 
 	vector<const char *> instance_exts;
 	vector<const char *> instance_layers;
@@ -374,12 +380,12 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 	}
 	else if (has_extension(VK_EXT_DEBUG_REPORT_EXTENSION_NAME))
 	{
-			VkDebugReportCallbackCreateInfoEXT info = { VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT };
-			info.flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT |
-			             VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT;
-			info.pfnCallback = vulkan_debug_cb;
-			info.pUserData = this;
-			vkCreateDebugReportCallbackEXT(instance, &info, nullptr, &debug_callback);
+		VkDebugReportCallbackCreateInfoEXT info = { VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT };
+		info.flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT |
+		             VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT;
+		info.pfnCallback = vulkan_debug_cb;
+		info.pUserData = this;
+		vkCreateDebugReportCallbackEXT(instance, &info, nullptr, &debug_callback);
 	}
 #endif
 
@@ -467,6 +473,26 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 	vkGetPhysicalDeviceMemoryProperties(gpu, &mem_props);
 
 	LOGI("Selected Vulkan GPU: %s\n", gpu_props.deviceName);
+
+	if (gpu_props.apiVersion >= VK_API_VERSION_1_1)
+	{
+		ext.supports_vulkan_11_device = ext.supports_vulkan_11_instance;
+		LOGI("GPU supports Vulkan 1.1.\n");
+	}
+	else if (gpu_props.apiVersion >= VK_API_VERSION_1_0)
+	{
+		ext.supports_vulkan_11_device = false;
+		LOGI("GPU supports Vulkan 1.0.\n");
+	}
+
+	// Only need GetPhysicalDeviceProperties2 for Vulkan 1.1-only code, so don't bother getting KHR variant.
+	ext.subgroup_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES };
+	if (ext.supports_vulkan_11_instance && ext.supports_vulkan_11_device)
+	{
+		VkPhysicalDeviceProperties2 props = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
+		props.pNext = &ext.subgroup_properties;
+		vkGetPhysicalDeviceProperties2(gpu, &props);
+	}
 
 	uint32_t queue_count;
 	vkGetPhysicalDeviceQueueFamilyProperties(gpu, &queue_count, nullptr);
@@ -642,6 +668,7 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 		ext.supports_external = false;
 #endif
 
+	// Enable device features we might care about.
 	VkPhysicalDeviceFeatures enabled_features = *required_features;
 	{
 		VkPhysicalDeviceFeatures features;

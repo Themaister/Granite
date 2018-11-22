@@ -84,6 +84,9 @@ struct DeviceFeatures
 	bool supports_debug_utils = false;
 	bool supports_mirror_clamp_to_edge = false;
 	bool supports_google_display_timing = false;
+	bool supports_vulkan_11_instance = false;
+	bool supports_vulkan_11_device = false;
+	VkPhysicalDeviceSubgroupProperties subgroup_properties = {};
 	VkPhysicalDeviceFeatures enabled_features = {};
 };
 
@@ -180,7 +183,7 @@ public:
 		return ext;
 	}
 
-	static const VkApplicationInfo &get_application_info();
+	static const VkApplicationInfo &get_application_info(bool supports_vulkan_11);
 
 	void notify_validation_error(const char *msg);
 	void set_notification_callback(std::function<void (const char *)> func);

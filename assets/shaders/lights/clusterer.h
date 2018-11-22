@@ -87,7 +87,14 @@ mediump vec3 compute_cluster_scatter_light(vec3 world_pos, vec3 camera_pos)
 	for (uint i = 0u; i < point_count; i++)
 		result += compute_point_scatter_light(cluster_list.elements[point_start + i], world_pos, camera_pos);
 #else
+
+#if !defined(CLUSTERER_NO_HELPER_INVOCATION) && defined(CLUSTERING_WAVE_UNIFORM)
+	uvec2 bits = uvec2(0u);
+	if (!gl_HelperInvocation)
+		bits = textureLod(uCluster, cluster_pos, 0.0).xy;
+#else
 	uvec2 bits = textureLod(uCluster, cluster_pos, 0.0).xy;
+#endif
 
 #ifdef CLUSTERING_DEBUG
 	result.x = 0.1 * float(bitCount(bits.x));
@@ -98,10 +105,8 @@ mediump vec3 compute_cluster_scatter_light(vec3 world_pos, vec3 camera_pos)
 #ifdef CLUSTERING_WAVE_UNIFORM
 	// Make cluster mask wave uniform for some load optimizations! :D
 	uint bits_x = subgroupBroadcastFirst(subgroupOr(bits.x));
-	uint bits_y = subgroupBroadcastFirst(subgroupOr(bits.y));
 #else
 	uint bits_x = bits.x;
-	uint bits_y = bits.y;
 #endif
 
 	while (bits_x != 0u)
@@ -110,6 +115,13 @@ mediump vec3 compute_cluster_scatter_light(vec3 world_pos, vec3 camera_pos)
 		result += compute_spot_scatter_light(index, world_pos, camera_pos);
 		bits_x ^= 1u << uint(index);
 	}
+
+#ifdef CLUSTERING_WAVE_UNIFORM
+	// Make cluster mask wave uniform for some load optimizations! :D
+	uint bits_y = subgroupBroadcastFirst(subgroupOr(bits.y));
+#else
+	uint bits_y = bits.y;
+#endif
 
 	while (bits_y != 0u)
 	{
@@ -159,7 +171,14 @@ mediump vec3 compute_cluster_light(
 			material_metallic, material_roughness, world_pos, camera_pos);
 	}
 #else
+
+#if !defined(CLUSTERER_NO_HELPER_INVOCATION) && defined(CLUSTERING_WAVE_UNIFORM)
+	uvec2 bits = uvec2(0u);
+	if (!gl_HelperInvocation)
+		bits = textureLod(uCluster, cluster_pos, 0.0).xy;
+#else
 	uvec2 bits = textureLod(uCluster, cluster_pos, 0.0).xy;
+#endif
 
 #ifdef CLUSTERING_DEBUG
 	result.x = 0.1 * float(bitCount(bits.x));
@@ -170,10 +189,8 @@ mediump vec3 compute_cluster_light(
 #ifdef CLUSTERING_WAVE_UNIFORM
 	// Make cluster mask wave uniform for some UBO load optimizations! :D
 	uint bits_x = subgroupBroadcastFirst(subgroupOr(bits.x));
-	uint bits_y = subgroupBroadcastFirst(subgroupOr(bits.y));
 #else
 	uint bits_x = bits.x;
-	uint bits_y = bits.y;
 #endif
 
 	while (bits_x != 0u)
@@ -183,6 +200,12 @@ mediump vec3 compute_cluster_light(
 		                             material_metallic, material_roughness, world_pos, camera_pos);
 		bits_x ^= 1u << uint(index);
 	}
+
+#ifdef CLUSTERING_WAVE_UNIFORM
+	uint bits_y = subgroupBroadcastFirst(subgroupOr(bits.y));
+#else
+	uint bits_y = bits.y;
+#endif
 
 	while (bits_y != 0u)
 	{

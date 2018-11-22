@@ -1,6 +1,8 @@
 #version 450
 layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
 
+#define CLUSTERER_NO_HELPER_INVOCATION
+
 #include "volumetric_fog.h"
 #include "lighting_scatter.h"
 #include "../inc/render_parameters.h"

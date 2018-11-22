@@ -1,0 +1,45 @@
+#version 450
+#if WAVE_UNIFORM
+#extension GL_KHR_shader_subgroup_ballot : require
+#extension GL_KHR_shader_subgroup_arithmetic : require
+#endif
+
+layout(local_size_x = 64) in;
+
+layout(set = 0, binding = 0) uniform usamplerBuffer uCluster;
+
+layout(std140, set = 0, binding = 1) uniform Data
+{
+    vec4 data[32];
+};
+
+layout(std430, set = 0, binding = 2) buffer Output
+{
+    vec4 outp[];
+};
+
+vec4 process(vec4 a, vec4 b)
+{
+    return abs(b - a);
+}
+
+void main()
+{
+    uint mask = texelFetch(uCluster, int(gl_GlobalInvocationID.x)).x;
+    vec4 per_thread_data = outp[gl_GlobalInvocationID.x];
+
+#if WAVE_UNIFORM
+    uint merged_mask = subgroupBroadcastFirst(subgroupOr(mask));
+#else
+    uint merged_mask = mask;
+#endif
+
+    while (merged_mask != 0u)
+    {
+        int bit = findLSB(merged_mask);
+        per_thread_data = process(per_thread_data, data[bit]);
+        merged_mask ^= 1u << uint(bit);
+    }
+
+    outp[gl_GlobalInvocationID.x] = per_thread_data;
+}

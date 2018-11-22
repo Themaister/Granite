@@ -74,6 +74,8 @@ void SceneViewerApplication::read_quirks(const std::string &path)
 		ImplementationQuirks::get().use_async_compute_post = doc["useAsyncComputePost"].GetBool();
 	if (doc.HasMember("renderGraphForceSingleQueue"))
 		ImplementationQuirks::get().render_graph_force_single_queue = doc["renderGraphForceSingleQueue"].GetBool();
+	if (doc.HasMember("forceNoSubgroups"))
+		ImplementationQuirks::get().force_no_subgroups = doc["forceNoSubgroups"].GetBool();
 }
 
 void SceneViewerApplication::read_config(const std::string &path)

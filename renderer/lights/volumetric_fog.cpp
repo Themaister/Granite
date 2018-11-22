@@ -171,6 +171,23 @@ void VolumetricFog::build_light_density(CommandBuffer &cmd, ImageView &light_den
 				context->get_render_parameters().inv_projection[2].zw(),
 				context->get_render_parameters().inv_projection[3].zw());
 	}
+
+	if (flags & Renderer::POSITIONAL_LIGHT_ENABLE_BIT)
+	{
+		// Try to enable wave-optimizations.
+		static const VkSubgroupFeatureFlags required_subgroup =
+				VK_SUBGROUP_FEATURE_BALLOT_BIT |
+				VK_SUBGROUP_FEATURE_ARITHMETIC_BIT;
+
+		auto &subgroup = cmd.get_device().get_device_features().subgroup_properties;
+		if ((subgroup.supportedStages & VK_SHADER_STAGE_FRAGMENT_BIT) != 0 &&
+		    !ImplementationQuirks::get().force_no_subgroups &&
+		    (subgroup.supportedOperations & required_subgroup) == required_subgroup)
+		{
+			defines.emplace_back("CLUSTERING_WAVE_UNIFORM", 1);
+		}
+	}
+
 	old_projection = context->get_render_parameters().view_projection;
 
 	if (floor.input_view)

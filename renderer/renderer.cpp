@@ -71,6 +71,22 @@ void Renderer::set_mesh_renderer_options_internal(RendererOptionFlags flags)
 {
 	auto global_defines = build_defines_from_renderer_options(type, flags);
 
+	if (flags & POSITIONAL_LIGHT_ENABLE_BIT)
+	{
+		// Try to enable wave-optimizations.
+		static const VkSubgroupFeatureFlags required_subgroup =
+				VK_SUBGROUP_FEATURE_BALLOT_BIT |
+				VK_SUBGROUP_FEATURE_ARITHMETIC_BIT;
+
+		auto &subgroup = device->get_device_features().subgroup_properties;
+		if ((subgroup.supportedStages & VK_SHADER_STAGE_FRAGMENT_BIT) != 0 &&
+		    !ImplementationQuirks::get().force_no_subgroups &&
+		    (subgroup.supportedOperations & required_subgroup) == required_subgroup)
+		{
+			global_defines.emplace_back("CLUSTERING_WAVE_UNIFORM", 1);
+		}
+	}
+
 	auto &meshes = suite[ecast(RenderableType::Mesh)];
 	meshes.get_base_defines() = global_defines;
 	meshes.bake_base_defines();
@@ -647,6 +663,16 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 
 		if (light.cluster->get_cluster_list_buffer())
 			cluster_defines.emplace_back("CLUSTER_LIST", 1);
+
+		// Try to enable wave-optimizations.
+		static const VkSubgroupFeatureFlags required_subgroup = VK_SUBGROUP_FEATURE_BALLOT_BIT | VK_SUBGROUP_FEATURE_ARITHMETIC_BIT;
+		auto &subgroup = device.get_device_features().subgroup_properties;
+		if ((subgroup.supportedStages & VK_SHADER_STAGE_FRAGMENT_BIT) != 0 &&
+		    !ImplementationQuirks::get().force_no_subgroups &&
+		    (subgroup.supportedOperations & required_subgroup) == required_subgroup)
+		{
+			cluster_defines.emplace_back("CLUSTERING_WAVE_UNIFORM", 1);
+		}
 
 		cmd.set_program("builtin://shaders/lights/clustering.vert",
 		                "builtin://shaders/lights/clustering.frag",

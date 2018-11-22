@@ -1,6 +1,10 @@
 #ifndef CLUSTERER_H_
 #define CLUSTERER_H_
 
+#ifdef CLUSTERING_WAVE_UNIFORM
+#extension GL_KHR_shader_subgroup_arithmetic : require
+#extension GL_KHR_shader_subgroup_ballot : require
+#endif
 #include "clusterer_data.h"
 
 #define SPOT_LIGHT_SHADOW_ATLAS_SET 1
@@ -91,18 +95,27 @@ mediump vec3 compute_cluster_scatter_light(vec3 world_pos, vec3 camera_pos)
 	return result;
 #endif
 
-	while (bits.x != 0u)
+#ifdef CLUSTERING_WAVE_UNIFORM
+	// Make cluster mask wave uniform for some load optimizations! :D
+	uint bits_x = subgroupBroadcastFirst(subgroupOr(bits.x));
+	uint bits_y = subgroupBroadcastFirst(subgroupOr(bits.y));
+#else
+	uint bits_x = bits.x;
+	uint bits_y = bits.y;
+#endif
+
+	while (bits_x != 0u)
 	{
-		int index = findLSB(bits.x);
+		int index = findLSB(bits_x);
 		result += compute_spot_scatter_light(index, world_pos, camera_pos);
-		bits.x &= ~(1u << uint(index));
+		bits_x ^= 1u << uint(index);
 	}
 
-	while (bits.y != 0u)
+	while (bits_y != 0u)
 	{
-		int index = findLSB(bits.y);
+		int index = findLSB(bits_y);
 		result += compute_point_scatter_light(index, world_pos, camera_pos);
-		bits.y &= ~(1u << uint(index));
+		bits_y ^= 1u << uint(index);
 	}
 #endif
 
@@ -154,20 +167,29 @@ mediump vec3 compute_cluster_light(
 	return result;
 #endif
 
-	while (bits.x != 0u)
+#ifdef CLUSTERING_WAVE_UNIFORM
+	// Make cluster mask wave uniform for some UBO load optimizations! :D
+	uint bits_x = subgroupBroadcastFirst(subgroupOr(bits.x));
+	uint bits_y = subgroupBroadcastFirst(subgroupOr(bits.y));
+#else
+	uint bits_x = bits.x;
+	uint bits_y = bits.y;
+#endif
+
+	while (bits_x != 0u)
 	{
-		int index = findLSB(bits.x);
+		int index = findLSB(bits_x);
 		result += compute_spot_light(index, material_base_color, material_normal,
 		                             material_metallic, material_roughness, world_pos, camera_pos);
-		bits.x &= ~(1u << uint(index));
+		bits_x ^= 1u << uint(index);
 	}
 
-	while (bits.y != 0u)
+	while (bits_y != 0u)
 	{
-		int index = findLSB(bits.y);
+		int index = findLSB(bits_y);
 		result += compute_point_light(index, material_base_color, material_normal,
 		                              material_metallic, material_roughness, world_pos, camera_pos);
-		bits.y &= ~(1u << uint(index));
+		bits_y ^= 1u << uint(index);
 	}
 #endif
 

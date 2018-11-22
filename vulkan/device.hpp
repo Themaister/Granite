@@ -261,6 +261,11 @@ public:
 		return workarounds;
 	}
 
+	const DeviceFeatures &get_device_features() const
+	{
+		return ext;
+	}
+
 private:
 	VkInstance instance = VK_NULL_HANDLE;
 	VkPhysicalDevice gpu = VK_NULL_HANDLE;

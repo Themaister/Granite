@@ -47,7 +47,7 @@ class Device;
 class ShaderTemplate : public Util::IntrusiveHashMapEnabled<ShaderTemplate>
 {
 public:
-	ShaderTemplate(const std::string &shader_path, PrecomputedShaderCache &cache, Util::Hash path_hash,
+	ShaderTemplate(Device *device, const std::string &shader_path, PrecomputedShaderCache &cache, Util::Hash path_hash,
 	               const std::vector<std::string> &include_directories);
 
 	struct Variant : public Util::IntrusiveHashMapEnabled<Variant>
@@ -69,6 +69,7 @@ public:
 	}
 
 private:
+	Device *device;
 	std::string path;
 	PrecomputedShaderCache &cache;
 	Util::Hash path_hash = 0;

@@ -190,7 +190,11 @@ vector<uint32_t> GLSLCompiler::compile(const vector<pair<string, int>> *defines)
 	options.SetGenerateDebugInfo();
 #endif
 
-	options.SetTargetEnvironment(shaderc_target_env_vulkan, 0);
+	options.SetTargetEnvironment(shaderc_target_env_vulkan,
+	                             target == Target::Vulkan11 ?
+	                             shaderc_env_version_vulkan_1_1 :
+	                             shaderc_env_version_vulkan_1_0);
+
 	options.SetSourceLanguage(shaderc_source_language_glsl);
 
 	shaderc_shader_kind kind;
@@ -231,7 +235,7 @@ vector<uint32_t> GLSLCompiler::compile(const vector<pair<string, int>> *defines)
 
 	vector<uint32_t> compiled_spirv(result.cbegin(), result.cend());
 
-	spvtools::SpirvTools core(SPV_ENV_VULKAN_1_0);
+	spvtools::SpirvTools core(target == Target::Vulkan11 ? SPV_ENV_VULKAN_1_1 : SPV_ENV_VULKAN_1_0);
 
 	core.SetMessageConsumer([this](spv_message_level_t, const char *, const spv_position_t&, const char *message) {
 		error_message = message;

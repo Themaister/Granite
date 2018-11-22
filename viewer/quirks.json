@@ -8,5 +8,6 @@
 	"queueWaitOnSubmission": false,
 	"stagingNeedDeviceLocal" : false,
 	"useAsyncComputePost": true,
-	"renderGraphForceSingleQueue" : false
+	"renderGraphForceSingleQueue" : false,
+	"forceNoSubgroups" : false
 }

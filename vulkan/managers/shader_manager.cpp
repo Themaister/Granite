@@ -38,17 +38,19 @@ using namespace Util;
 
 namespace Vulkan
 {
-ShaderTemplate::ShaderTemplate(const std::string &shader_path,
+ShaderTemplate::ShaderTemplate(Device *device, const std::string &shader_path,
                                PrecomputedShaderCache &cache,
                                Util::Hash path_hash,
                                const std::vector<std::string> &include_directories)
-	: path(shader_path), cache(cache), path_hash(path_hash)
+	: device(device), path(shader_path), cache(cache), path_hash(path_hash)
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 	, include_directories(include_directories)
 #endif
 {
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 	compiler = make_unique<Granite::GLSLCompiler>();
+	if (device->get_device_features().supports_vulkan_11_device)
+		compiler->set_target(Granite::Target::Vulkan11);
 	compiler->set_source_from_file(shader_path);
 	compiler->set_include_directories(&include_directories);
 	if (!compiler->preprocess())
@@ -113,6 +115,8 @@ void ShaderTemplate::recompile()
 	try
 	{
 		auto newcompiler = make_unique<Granite::GLSLCompiler>();
+		if (device->get_device_features().supports_vulkan_11_device)
+			compiler->set_target(Granite::Target::Vulkan11);
 		newcompiler->set_source_from_file(path);
 		newcompiler->set_include_directories(&include_directories);
 		if (!newcompiler->preprocess())
@@ -328,7 +332,7 @@ ShaderTemplate *ShaderManager::get_template(const std::string &path)
 	auto *ret = shaders.find(hash);
 	if (!ret)
 	{
-		auto *shader = shaders.allocate(path, shader_cache, hasher.get(), include_directories);
+		auto *shader = shaders.allocate(device, path, shader_cache, hasher.get(), include_directories);
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 		{
 			DEPENDENCY_LOCK();

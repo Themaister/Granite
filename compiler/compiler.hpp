@@ -40,9 +40,20 @@ enum class Stage
 	Compute
 };
 
+enum class Target
+{
+	Vulkan10,
+	Vulkan11
+};
+
 class GLSLCompiler
 {
 public:
+	void set_target(Target target)
+	{
+		this->target = target;
+	}
+
 	void set_stage(Stage stage)
 	{
 		this->stage = stage;
@@ -80,6 +91,8 @@ private:
 	std::unordered_set<std::string> dependencies;
 	std::string preprocessed_source;
 	std::string error_message;
+
+	Target target = Target::Vulkan10;
 
 	static Stage stage_from_path(const std::string &path);
 	bool parse_variants(const std::string &source, const std::string &path);

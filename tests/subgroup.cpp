@@ -71,7 +71,7 @@ struct SubgroupApplication : Granite::Application, Granite::EventHandler
 
 		auto cmd = device.request_command_buffer();
 		cmd->set_buffer_view(0, 0, *input_view);
-		cmd->allocate_constant_data(0, 1, 64 * sizeof(vec4));
+		cmd->allocate_constant_data(0, 1, 64 * 3 * sizeof(vec4));
 		cmd->set_storage_buffer(0, 2, *test_buffer);
 		cmd->set_program("assets://shaders/subgroup.comp", {{ "WAVE_UNIFORM", 1 }});
 		cmd->dispatch(1, 1, 1);

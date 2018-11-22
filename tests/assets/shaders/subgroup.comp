@@ -8,9 +8,16 @@ layout(local_size_x = 64) in;
 
 layout(set = 0, binding = 0) uniform usamplerBuffer uCluster;
 
+struct PerMaskData
+{
+    vec4 a;
+    vec4 b;
+    vec4 c;
+};
+
 layout(std140, set = 0, binding = 1) uniform Data
 {
-    vec4 data[32];
+    PerMaskData data[32];
 };
 
 layout(std430, set = 0, binding = 2) buffer Output
@@ -37,7 +44,9 @@ void main()
     while (merged_mask != 0u)
     {
         int bit = findLSB(merged_mask);
-        per_thread_data = process(per_thread_data, data[bit]);
+        per_thread_data = process(per_thread_data, data[bit].a);
+        per_thread_data = process(per_thread_data, data[bit].b);
+        per_thread_data = process(per_thread_data, data[bit].c);
         merged_mask ^= 1u << uint(bit);
     }
 

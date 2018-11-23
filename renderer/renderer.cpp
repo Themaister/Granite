@@ -226,12 +226,12 @@ void Renderer::setup_shader_suite(Device &device, RendererType type)
 void Renderer::on_device_created(const DeviceCreatedEvent &created)
 {
 	auto &device = created.get_device();
-	setup_shader_suite(device, type);
+	this->device = &device;
 
+	setup_shader_suite(device, type);
 	set_mesh_renderer_options_internal(renderer_options);
 	for (auto &s : suite)
 		s.bake_base_defines();
-	this->device = &device;
 }
 
 void Renderer::on_device_destroyed(const DeviceCreatedEvent &)

@@ -41,13 +41,13 @@ endif()
 set(GRANITE_LINK_FLAGS)
 if (GRANITE_SANITIZE_ADDRESS)
     set(GRANITE_CXX_FLAGS ${GRANITE_CXX_FLAGS} -fsanitize=address)
-    set(GRANITE_LINK_FLAGS ${GRANITE_LINK_FLAGS} -fsanitize=address)
+    set(GRANITE_LINK_FLAGS "${GRANITE_LINK_FLAGS} -fsanitize=address")
 endif()
 
 option(GRANITE_SANITIZE_THREADS "Sanitize threads" OFF)
 if (GRANITE_SANITIZE_THREADS)
     set(GRANITE_CXX_FLAGS ${GRANITE_CXX_FLAGS} -fsanitize=thread)
-    set(GRANITE_LINK_FLAGS ${GRANITE_LINK_FLAGS} -fsanitize=thread)
+    set(GRANITE_LINK_FLAGS "${GRANITE_LINK_FLAGS} -fsanitize=thread")
 endif()
 
 if (ANDROID)
@@ -77,16 +77,24 @@ set(SHADERC_SKIP_TESTS ON)
 set(FOSSILIZE_RAPIDJSON_INCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/third_party/rapidjson/include" CACHE STRING "Fossilize rapidjson path." FORCE)
 set(FOSSILIZE_VULKAN_INCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/third_party/khronos/vulkan" CACHE STRING "Fossilize Vulkan path." FORCE)
 
-add_subdirectory(third_party/shaderc EXCLUDE_FROM_ALL)
-add_subdirectory(third_party/stb EXCLUDE_FROM_ALL)
 add_subdirectory(third_party/spirv-cross EXCLUDE_FROM_ALL)
-add_subdirectory(third_party/astc-encoder/Source EXCLUDE_FROM_ALL)
-add_subdirectory(third_party/meshoptimizer EXCLUDE_FROM_ALL)
-add_subdirectory(third_party/mikktspace EXCLUDE_FROM_ALL)
+add_library(volk STATIC third_party/volk/volk.c third_party/volk/volk.h)
+target_include_directories(volk PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/third_party/volk ${CMAKE_CURRENT_SOURCE_DIR}/third_party/khronos)
+
+if (NOT GRANITE_VULKAN_ONLY)
+    add_subdirectory(third_party/shaderc EXCLUDE_FROM_ALL)
+    add_subdirectory(third_party/stb EXCLUDE_FROM_ALL)
+    add_subdirectory(third_party/astc-encoder/Source EXCLUDE_FROM_ALL)
+    add_subdirectory(third_party/meshoptimizer EXCLUDE_FROM_ALL)
+    add_subdirectory(third_party/mikktspace EXCLUDE_FROM_ALL)
+    add_subdirectory(third_party EXCLUDE_FROM_ALL)
+endif()
 
 set(FOSSILIZE_CLI OFF CACHE BOOL "Fossilize CLI." FORCE)
 set(FOSSILIZE_TESTS OFF CACHE BOOL "Fossilize tests." FORCE)
-add_subdirectory(third_party/fossilize EXCLUDE_FROM_ALL)
+if (GRANITE_VULKAN_FOSSILIZE)
+    add_subdirectory(third_party/fossilize EXCLUDE_FROM_ALL)
+endif()
 
 if (GRANITE_SHARED)
     add_library(granite SHARED)
@@ -185,8 +193,6 @@ function(add_granite_offline_tool TARGET_NAME)
     endif()
 endfunction()
 
-add_subdirectory(third_party EXCLUDE_FROM_ALL)
-
 set(GRANITE_ISPC_LIBRARY_DIR "" CACHE TYPE PATH)
 set(GRANITE_ISPC_INCLUDE_DIR "" CACHE TYPE PATH)
 
@@ -211,6 +217,7 @@ target_sources(granite PRIVATE
         util/async_object_sink.hpp
         util/unstable_remove_if.hpp
         util/intrusive_hash_map.hpp
+        util/timer.hpp util/timer.cpp
 
         vulkan/texture_format.cpp vulkan/texture_format.hpp
         vulkan/vulkan.cpp vulkan/vulkan.hpp
@@ -365,7 +372,6 @@ if (NOT GRANITE_VULKAN_ONLY)
 
             util/cli_parser.cpp util/cli_parser.hpp
             util/dynamic_library.cpp util/dynamic_library.hpp
-            util/timer.hpp util/timer.cpp
             util/util.cpp
     )
 

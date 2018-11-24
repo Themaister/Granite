@@ -266,6 +266,8 @@ public:
 		return ext;
 	}
 
+	bool swapchain_touched() const;
+
 private:
 	VkInstance instance = VK_NULL_HANDLE;
 	VkPhysicalDevice gpu = VK_NULL_HANDLE;
@@ -292,7 +294,6 @@ private:
 
 	void set_acquire_semaphore(unsigned index, Semaphore acquire);
 	Semaphore consume_release_semaphore();
-	bool swapchain_touched() const;
 
 	PipelineLayout *request_pipeline_layout(const CombinedResourceLayout &layout);
 	DescriptorSetAllocator *request_descriptor_set_allocator(const DescriptorSetLayout &layout, const uint32_t *stages_for_sets);

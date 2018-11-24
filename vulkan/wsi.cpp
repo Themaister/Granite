@@ -84,13 +84,6 @@ float WSI::get_estimated_video_latency()
 	}
 }
 
-bool WSI::reinit_external_swapchain(std::vector<Vulkan::ImageHandle> external_images)
-{
-	if (!init_external_swapchain(move(external_images)))
-		return false;
-	return true;
-}
-
 bool WSI::init_external_context(std::unique_ptr<Vulkan::Context> fresh_context)
 {
 	context = move(fresh_context);

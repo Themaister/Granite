@@ -21,15 +21,15 @@
  */
 
 #include "scene_viewer_application.hpp"
-#include "thread_group.hpp"
-#include "rapidjson_wrapper.hpp"
 #include "light_export.hpp"
-#include "utils/image_utils.hpp"
-#include "post/hdr.hpp"
 #include "muglm/matrix_helper.hpp"
+#include "post/hdr.hpp"
+#include "rapidjson_wrapper.hpp"
+#include "thread_group.hpp"
+#include "utils/image_utils.hpp"
 //#include "ocean.hpp"
-#include <stdexcept>
 #include <float.h>
+#include <stdexcept>
 
 using namespace std;
 using namespace Vulkan;
@@ -179,9 +179,9 @@ void SceneViewerApplication::read_config(const std::string &path)
 
 SceneViewerApplication::SceneViewerApplication(const std::string &path, const std::string &config_path,
                                                const std::string &quirks_path)
-		: forward_renderer(RendererType::GeneralForward),
-		  deferred_renderer(RendererType::GeneralDeferred),
-		  depth_renderer(RendererType::DepthOnly)
+    : forward_renderer(RendererType::GeneralForward)
+    , deferred_renderer(RendererType::GeneralDeferred)
+    , depth_renderer(RendererType::DepthOnly)
 {
 	if (!config_path.empty())
 		read_config(config_path);
@@ -358,7 +358,9 @@ void SceneViewerApplication::rescale_scene(float radius)
 	scene_loader.get_scene().update_cached_transforms();
 
 	AABB aabb(vec3(FLT_MAX), vec3(-FLT_MAX));
-	auto &objects = scene_loader.get_scene().get_entity_pool().get_component_group<CachedSpatialTransformComponent, RenderableComponent>();
+	auto &objects = scene_loader.get_scene()
+	                    .get_entity_pool()
+	                    .get_component_group<CachedSpatialTransformComponent, RenderableComponent>();
 	for (auto &caster : objects)
 		aabb.expand(get_component<CachedSpatialTransformComponent>(caster)->world_aabb);
 
@@ -559,7 +561,7 @@ void SceneViewerApplication::capture_environment_probe()
 	save_image_buffer_to_gtx(device, buffer, "cache://environment.gtx");
 }
 
-void SceneViewerApplication::render_main_pass(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view)
+void SceneViewerApplication::render_main_pass(CommandBuffer &cmd, const mat4 &proj, const mat4 &view)
 {
 	auto &scene = scene_loader.get_scene();
 	context.set_camera(jitter.get_jitter_matrix() * proj, view);
@@ -598,7 +600,7 @@ void SceneViewerApplication::render_main_pass(Vulkan::CommandBuffer &cmd, const 
 	}
 }
 
-void SceneViewerApplication::render_transparent_objects(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view)
+void SceneViewerApplication::render_transparent_objects(CommandBuffer &cmd, const mat4 &proj, const mat4 &view)
 {
 	auto &scene = scene_loader.get_scene();
 	context.set_camera(jitter.get_jitter_matrix() * proj, view);
@@ -611,14 +613,13 @@ void SceneViewerApplication::render_transparent_objects(Vulkan::CommandBuffer &c
 	forward_renderer.flush(cmd, context);
 }
 
-void
-SceneViewerApplication::render_positional_lights_prepass(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view)
+void SceneViewerApplication::render_positional_lights_prepass(CommandBuffer &cmd, const mat4 &proj, const mat4 &view)
 {
 	context.set_camera(jitter.get_jitter_matrix() * proj, view);
 	deferred_lights.render_prepass_lights(cmd, context);
 }
 
-void SceneViewerApplication::render_positional_lights(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view)
+void SceneViewerApplication::render_positional_lights(CommandBuffer &cmd, const mat4 &proj, const mat4 &view)
 {
 	context.set_camera(jitter.get_jitter_matrix() * proj, view);
 	deferred_lights.render_lights(cmd, context, config.pcf_flags);
@@ -629,445 +630,263 @@ static inline string tagcat(const std::string &a, const std::string &b)
 	return a + "-" + b;
 }
 
-void SceneViewerApplication::add_main_pass_forward(Vulkan::Device & device,
-const std::string &tag
-)
+void SceneViewerApplication::add_main_pass_forward(Device &device, const std::string &tag)
 {
-AttachmentInfo color, depth;
+	AttachmentInfo color, depth;
 
-bool supports_32bpp = device.image_format_is_supported(VK_FORMAT_B10G11R11_UFLOAT_PACK32,
-                                                       VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT);
+	bool supports_32bpp =
+	    device.image_format_is_supported(VK_FORMAT_B10G11R11_UFLOAT_PACK32, VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT);
 
-if (config.hdr_bloom)
-color.
-format = (config.rt_fp16 || !supports_32bpp) ? VK_FORMAT_R16G16B16A16_SFLOAT : VK_FORMAT_B10G11R11_UFLOAT_PACK32;
-else
-color.
-format = VK_FORMAT_UNDEFINED; // Swapchain format.
+	if (config.hdr_bloom)
+		color.format =
+		    (config.rt_fp16 || !supports_32bpp) ? VK_FORMAT_R16G16B16A16_SFLOAT : VK_FORMAT_B10G11R11_UFLOAT_PACK32;
+	else
+		color.format = VK_FORMAT_UNDEFINED; // Swapchain format.
 
-depth.
-format = device.get_default_depth_format();
-color.
-samples = config.msaa;
-depth.
-samples = config.msaa;
+	depth.format = device.get_default_depth_format();
+	color.samples = config.msaa;
+	depth.samples = config.msaa;
 
-auto resolved = color;
-resolved.
-samples = 1;
+	auto resolved = color;
+	resolved.samples = 1;
 
-auto &lighting = graph.add_pass(tagcat("lighting", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
+	auto &lighting = graph.add_pass(tagcat("lighting", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 
-if (color.samples > 1)
-{
-lighting.
-add_color_output(tagcat("HDR-MS", tag), color
-);
-lighting.
-add_resolve_output(tagcat("HDR", tag), resolved
-);
-}
-else
-lighting.
-add_color_output(tagcat("HDR", tag), color
-);
+	if (color.samples > 1)
+	{
+		lighting.add_color_output(tagcat("HDR-MS", tag), color);
+		lighting.add_resolve_output(tagcat("HDR", tag), resolved);
+	}
+	else
+		lighting.add_color_output(tagcat("HDR", tag), color);
 
-lighting.
-set_depth_stencil_output(tagcat("depth", tag), depth
-);
+	lighting.set_depth_stencil_output(tagcat("depth", tag), depth);
 
-lighting.set_get_clear_depth_stencil([](
-VkClearDepthStencilValue *value
-) -> bool {
-if (value)
-{
-value->
-depth = 1.0f;
-value->
-stencil = 0;
-}
-return true;
-});
+	lighting.set_get_clear_depth_stencil([](VkClearDepthStencilValue *value) -> bool {
+		if (value)
+		{
+			value->depth = 1.0f;
+			value->stencil = 0;
+		}
+		return true;
+	});
 
-lighting.set_get_clear_color([](unsigned,
-VkClearColorValue *value
-) -> bool {
-if (value)
-memset(value,
-0, sizeof(*value));
-return true;
-});
+	lighting.set_get_clear_color([](unsigned, VkClearColorValue *value) -> bool {
+		if (value)
+			memset(value, 0, sizeof(*value));
+		return true;
+	});
 
-lighting.set_build_render_pass([this](
-Vulkan::CommandBuffer &cmd
-) {
-render_main_pass(cmd, selected_camera
-->
+	lighting.set_build_render_pass([this](CommandBuffer &cmd) {
+		render_main_pass(cmd, selected_camera->get_projection(), selected_camera->get_view());
+		render_transparent_objects(cmd, selected_camera->get_projection(), selected_camera->get_view());
+	});
 
-get_projection(), selected_camera
-
-->
-
-get_view()
-
-);
-render_transparent_objects(cmd, selected_camera
-->
-
-get_projection(), selected_camera
-
-->
-
-get_view()
-
-);
-});
-
-if (config.directional_light_shadows)
-{
-lighting.add_texture_input("shadow-main");
-if (config.directional_light_cascaded_shadows)
-lighting.add_texture_input("shadow-near");
-}
-scene_loader.
-
-get_scene()
-
-.
-add_render_pass_dependencies(graph, lighting
-);
+	if (config.directional_light_shadows)
+	{
+		lighting.add_texture_input("shadow-main");
+		if (config.directional_light_cascaded_shadows)
+			lighting.add_texture_input("shadow-near");
+	}
+	scene_loader.get_scene().add_render_pass_dependencies(graph, lighting);
 }
 
-void SceneViewerApplication::add_main_pass_deferred(Vulkan::Device & device,
-const std::string &tag
-)
+void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::string &tag)
 {
-bool supports_32bpp = device.image_format_is_supported(VK_FORMAT_B10G11R11_UFLOAT_PACK32,
-                                                       VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT);
-AttachmentInfo emissive, albedo, normal, pbr, depth;
-if (config.hdr_bloom)
-emissive.
-format = (config.rt_fp16 || !supports_32bpp) ? VK_FORMAT_R16G16B16A16_SFLOAT : VK_FORMAT_B10G11R11_UFLOAT_PACK32;
-else
-emissive.
-format = VK_FORMAT_UNDEFINED;
+	bool supports_32bpp =
+	    device.image_format_is_supported(VK_FORMAT_B10G11R11_UFLOAT_PACK32, VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT);
+	AttachmentInfo emissive, albedo, normal, pbr, depth;
+	if (config.hdr_bloom)
+		emissive.format =
+		    (config.rt_fp16 || !supports_32bpp) ? VK_FORMAT_R16G16B16A16_SFLOAT : VK_FORMAT_B10G11R11_UFLOAT_PACK32;
+	else
+		emissive.format = VK_FORMAT_UNDEFINED;
 
-albedo.
-format = VK_FORMAT_R8G8B8A8_SRGB;
-normal.
-format = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
-pbr.
-format = VK_FORMAT_R8G8_UNORM;
-depth.
-format = device.get_default_depth_stencil_format();
+	albedo.format = VK_FORMAT_R8G8B8A8_SRGB;
+	normal.format = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
+	pbr.format = VK_FORMAT_R8G8_UNORM;
+	depth.format = device.get_default_depth_stencil_format();
 
-auto &gbuffer = graph.add_pass(tagcat("gbuffer", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
-gbuffer.
-add_color_output(tagcat("emissive", tag), emissive
-);
-gbuffer.
-add_color_output(tagcat("albedo", tag), albedo
-);
-gbuffer.
-add_color_output(tagcat("normal", tag), normal
-);
-gbuffer.
-add_color_output(tagcat("pbr", tag), pbr
-);
-gbuffer.
-set_depth_stencil_output(tagcat("depth-transient", tag), depth
-);
-gbuffer.set_build_render_pass([this](
-Vulkan::CommandBuffer &cmd
-) {
-render_main_pass(cmd, selected_camera
-->
+	auto &gbuffer = graph.add_pass(tagcat("gbuffer", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
+	gbuffer.add_color_output(tagcat("emissive", tag), emissive);
+	gbuffer.add_color_output(tagcat("albedo", tag), albedo);
+	gbuffer.add_color_output(tagcat("normal", tag), normal);
+	gbuffer.add_color_output(tagcat("pbr", tag), pbr);
+	gbuffer.set_depth_stencil_output(tagcat("depth-transient", tag), depth);
+	gbuffer.set_build_render_pass([this](CommandBuffer &cmd) {
+		render_main_pass(cmd, selected_camera->get_projection(), selected_camera->get_view());
+		if (!config.clustered_lights && config.deferred_clustered_stencil_culling)
+			render_positional_lights_prepass(cmd, selected_camera->get_projection(), selected_camera->get_view());
+	});
 
-get_projection(), selected_camera
+	gbuffer.set_get_clear_depth_stencil([](VkClearDepthStencilValue *value) -> bool {
+		if (value)
+		{
+			value->depth = 1.0f;
+			value->stencil = 0;
+		}
+		return true;
+	});
 
-->
+	gbuffer.set_get_clear_color([](unsigned, VkClearColorValue *value) -> bool {
+		if (value)
+		{
+			value->float32[0] = 0.0f;
+			value->float32[1] = 0.0f;
+			value->float32[2] = 0.0f;
+			value->float32[3] = 0.0f;
+		}
+		return true;
+	});
 
-get_view()
+	auto &lighting = graph.add_pass(tagcat("lighting", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
+	lighting.add_color_output(tagcat("HDR", tag), emissive, tagcat("emissive", tag));
+	lighting.add_attachment_input(tagcat("albedo", tag));
+	lighting.add_attachment_input(tagcat("normal", tag));
+	lighting.add_attachment_input(tagcat("pbr", tag));
+	lighting.add_attachment_input(tagcat("depth-transient", tag));
+	lighting.set_depth_stencil_input(tagcat("depth-transient", tag));
+	lighting.add_fake_resource_write_alias(tagcat("depth-transient", tag), tagcat("depth", tag));
 
-);
-if (!config.
-clustered_lights &&config
-.deferred_clustered_stencil_culling)
-render_positional_lights_prepass(cmd, selected_camera
-->
+	if (config.directional_light_shadows)
+	{
+		lighting.add_texture_input("shadow-main");
+		if (config.directional_light_cascaded_shadows)
+			lighting.add_texture_input("shadow-near");
+	}
 
-get_projection(), selected_camera
+	scene_loader.get_scene().add_render_pass_dependencies(graph, gbuffer);
 
-->
-
-get_view()
-
-);
-});
-
-gbuffer.set_get_clear_depth_stencil([](
-VkClearDepthStencilValue *value
-) -> bool {
-if (value)
-{
-value->
-depth = 1.0f;
-value->
-stencil = 0;
-}
-return true;
-});
-
-gbuffer.set_get_clear_color([](unsigned,
-VkClearColorValue *value
-) -> bool {
-if (value)
-{
-value->float32[0] = 0.0f;
-value->float32[1] = 0.0f;
-value->float32[2] = 0.0f;
-value->float32[3] = 0.0f;
-}
-return true;
-});
-
-auto &lighting = graph.add_pass(tagcat("lighting", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
-lighting.
-add_color_output(tagcat("HDR", tag), emissive, tagcat("emissive", tag)
-);
-lighting.
-add_attachment_input(tagcat("albedo", tag)
-);
-lighting.
-add_attachment_input(tagcat("normal", tag)
-);
-lighting.
-add_attachment_input(tagcat("pbr", tag)
-);
-lighting.
-add_attachment_input(tagcat("depth-transient", tag)
-);
-lighting.
-set_depth_stencil_input(tagcat("depth-transient", tag)
-);
-lighting.
-add_fake_resource_write_alias(tagcat("depth-transient", tag), tagcat("depth", tag)
-);
-
-if (config.directional_light_shadows)
-{
-lighting.add_texture_input("shadow-main");
-if (config.directional_light_cascaded_shadows)
-lighting.add_texture_input("shadow-near");
+	lighting.set_build_render_pass([this](CommandBuffer &cmd) {
+		if (!config.clustered_lights)
+			render_positional_lights(cmd, selected_camera->get_projection(), selected_camera->get_view());
+		DeferredLightRenderer::render_light(cmd, context, config.pcf_flags);
+		render_transparent_objects(cmd, selected_camera->get_projection(), selected_camera->get_view());
+	});
 }
 
-scene_loader.
+void SceneViewerApplication::add_main_pass(Device &device, const std::string &tag)
+{
+	switch (config.renderer_type)
+	{
+	case RendererType::GeneralForward:
+		add_main_pass_forward(device, tag);
+		break;
 
-get_scene()
+	case RendererType::GeneralDeferred:
+		add_main_pass_deferred(device, tag);
+		break;
 
-.
-add_render_pass_dependencies(graph, gbuffer
-);
-
-lighting.set_build_render_pass([this](
-Vulkan::CommandBuffer &cmd
-) {
-if (!config.clustered_lights)
-render_positional_lights(cmd, selected_camera
-->
-
-get_projection(), selected_camera
-
-->
-
-get_view()
-
-);
-DeferredLightRenderer::render_light(cmd, context, config
-.pcf_flags);
-render_transparent_objects(cmd, selected_camera
-->
-
-get_projection(), selected_camera
-
-->
-
-get_view()
-
-);
-});
+	default:
+		break;
+	}
 }
 
-void SceneViewerApplication::add_main_pass(Vulkan::Device & device,
-const std::string &tag
-)
+void SceneViewerApplication::add_shadow_pass(Device &, const std::string &tag, DepthPassType type)
 {
-switch (config.renderer_type)
-{
-case RendererType::GeneralForward:
-add_main_pass_forward(device, tag
-);
-break;
+	AttachmentInfo shadowmap;
+	shadowmap.format = VK_FORMAT_D16_UNORM;
+	shadowmap.samples = config.directional_light_shadows_vsm ? 4 : 1;
+	shadowmap.size_class = SizeClass::Absolute;
 
-case RendererType::GeneralDeferred:
-add_main_pass_deferred(device, tag
-);
-break;
+	if (type == DepthPassType::Main)
+	{
+		shadowmap.size_x = config.shadow_map_resolution_main;
+		shadowmap.size_y = config.shadow_map_resolution_main;
+	}
+	else
+	{
+		shadowmap.size_x = config.shadow_map_resolution_near;
+		shadowmap.size_y = config.shadow_map_resolution_near;
+	}
 
-default:
-break;
-}
-}
+	auto &shadowpass = graph.add_pass(tagcat("shadow", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 
-void SceneViewerApplication::add_shadow_pass(Vulkan::Device & ,
-const std::string &tag, DepthPassType
-type)
-{
-AttachmentInfo shadowmap;
-shadowmap.
-format = VK_FORMAT_D16_UNORM;
-shadowmap.
-samples = config.directional_light_shadows_vsm ? 4 : 1;
-shadowmap.
-size_class = SizeClass::Absolute;
+	if (config.directional_light_shadows_vsm)
+	{
+		auto shadowmap_vsm_color = shadowmap;
+		auto shadowmap_vsm_resolved_color = shadowmap;
+		shadowmap_vsm_color.format = VK_FORMAT_R32G32_SFLOAT;
+		shadowmap_vsm_color.samples = 4;
+		shadowmap_vsm_resolved_color.format = VK_FORMAT_R32G32_SFLOAT;
+		shadowmap_vsm_resolved_color.samples = 1;
 
-if (type == DepthPassType::Main)
-{
-shadowmap.
-size_x = config.shadow_map_resolution_main;
-shadowmap.
-size_y = config.shadow_map_resolution_main;
-}
-else
-{
-shadowmap.
-size_x = config.shadow_map_resolution_near;
-shadowmap.
-size_y = config.shadow_map_resolution_near;
-}
+		auto shadowmap_vsm_half = shadowmap_vsm_resolved_color;
+		shadowmap_vsm_half.size_x *= 0.5f;
+		shadowmap_vsm_half.size_y *= 0.5f;
 
-auto &shadowpass = graph.add_pass(tagcat("shadow", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
+		shadowpass.set_depth_stencil_output(tagcat("shadow-depth", tag), shadowmap);
+		shadowpass.add_color_output(tagcat("shadow-msaa", tag), shadowmap_vsm_color);
+		shadowpass.add_resolve_output(tagcat("shadow-raw", tag), shadowmap_vsm_resolved_color);
 
-if (config.directional_light_shadows_vsm)
-{
-auto shadowmap_vsm_color = shadowmap;
-auto shadowmap_vsm_resolved_color = shadowmap;
-shadowmap_vsm_color.
-format = VK_FORMAT_R32G32_SFLOAT;
-shadowmap_vsm_color.
-samples = 4;
-shadowmap_vsm_resolved_color.
-format = VK_FORMAT_R32G32_SFLOAT;
-shadowmap_vsm_resolved_color.
-samples = 1;
+		auto &down_pass = graph.add_pass(tagcat("shadow-down", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
+		down_pass.add_color_output(tagcat("shadow-down", tag), shadowmap_vsm_half);
+		auto &down_pass_res = down_pass.add_texture_input(tagcat("shadow-raw", tag));
 
-auto shadowmap_vsm_half = shadowmap_vsm_resolved_color;
-shadowmap_vsm_half.size_x *= 0.5f;
-shadowmap_vsm_half.size_y *= 0.5f;
+		auto &up_pass = graph.add_pass(tagcat("shadow-up", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
+		up_pass.add_color_output(tagcat("shadow", tag), shadowmap_vsm_resolved_color);
+		auto &up_pass_res = up_pass.add_texture_input(tagcat("shadow-down", tag));
 
-shadowpass.
-set_depth_stencil_output(tagcat("shadow-depth", tag), shadowmap
-);
-shadowpass.
-add_color_output(tagcat("shadow-msaa", tag), shadowmap_vsm_color
-);
-shadowpass.
-add_resolve_output(tagcat("shadow-raw", tag), shadowmap_vsm_resolved_color
-);
+		down_pass.set_need_render_pass(
+		    [this, type]() { return type == DepthPassType::Main ? need_shadow_map_update : true; });
 
-auto &down_pass = graph.add_pass(tagcat("shadow-down", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
-down_pass.
-add_color_output(tagcat("shadow-down", tag), shadowmap_vsm_half
-);
-auto &down_pass_res = down_pass.add_texture_input(tagcat("shadow-raw", tag));
+		up_pass.set_need_render_pass(
+		    [this, type]() { return type == DepthPassType::Main ? need_shadow_map_update : true; });
 
-auto &up_pass = graph.add_pass(tagcat("shadow-up", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
-up_pass.
-add_color_output(tagcat("shadow", tag), shadowmap_vsm_resolved_color
-);
-auto &up_pass_res = up_pass.add_texture_input(tagcat("shadow-down", tag));
+		down_pass.set_build_render_pass([&](CommandBuffer &cmd) {
+			auto &input = graph.get_physical_texture_resource(down_pass_res);
+			vec2 inv_size(1.0f / input.get_image().get_create_info().width,
+			              1.0f / input.get_image().get_create_info().height);
+			cmd.push_constants(&inv_size, 0, sizeof(inv_size));
+			cmd.set_texture(0, 0, input, StockSampler::LinearClamp);
+			CommandBufferUtil::draw_fullscreen_quad(cmd, "builtin://shaders/quad.vert",
+			                                        "builtin://shaders/post/vsm_down_blur.frag");
+		});
 
-down_pass.set_need_render_pass([this, type]() {
-return type == DepthPassType::Main ? need_shadow_map_update : true;
-});
+		up_pass.set_build_render_pass([&](CommandBuffer &cmd) {
+			auto &input = graph.get_physical_texture_resource(up_pass_res);
+			vec2 inv_size(1.0f / input.get_image().get_create_info().width,
+			              1.0f / input.get_image().get_create_info().height);
+			cmd.set_texture(0, 0, input, StockSampler::LinearClamp);
+			cmd.push_constants(&inv_size, 0, sizeof(inv_size));
+			CommandBufferUtil::draw_fullscreen_quad(cmd, "builtin://shaders/quad.vert",
+			                                        "builtin://shaders/post/vsm_up_blur.frag");
+		});
+	}
+	else
+	{
+		shadowpass.set_depth_stencil_output(tagcat("shadow", tag), shadowmap);
+	}
 
-up_pass.set_need_render_pass([this, type]() {
-return type == DepthPassType::Main ? need_shadow_map_update : true;
-});
+	shadowpass.set_build_render_pass([this, type](CommandBuffer &cmd) {
+		if (type == DepthPassType::Main)
+			render_shadow_map_far(cmd);
+		else
+			render_shadow_map_near(cmd);
+	});
 
-down_pass.set_build_render_pass([&](
-Vulkan::CommandBuffer &cmd
-) {
-auto &input = graph.get_physical_texture_resource(down_pass_res);
-vec2 inv_size(1.0f / input.get_image().get_create_info().width,
-              1.0f / input.get_image().get_create_info().height);
-cmd.
-push_constants(&inv_size,
-0, sizeof(inv_size));
-cmd.set_texture(0, 0, input, StockSampler::LinearClamp);
-CommandBufferUtil::draw_fullscreen_quad(cmd,
-"builtin://shaders/quad.vert", "builtin://shaders/post/vsm_down_blur.frag");
-});
+	shadowpass.set_get_clear_color([](unsigned, VkClearColorValue *value) -> bool {
+		if (value)
+		{
+			value->float32[0] = 1.0f;
+			value->float32[1] = 1.0f;
+			value->float32[2] = 0.0f;
+			value->float32[3] = 0.0f;
+		}
+		return true;
+	});
 
-up_pass.set_build_render_pass([&](
-Vulkan::CommandBuffer &cmd
-) {
-auto &input = graph.get_physical_texture_resource(up_pass_res);
-vec2 inv_size(1.0f / input.get_image().get_create_info().width,
-              1.0f / input.get_image().get_create_info().height);
-cmd.set_texture(0, 0, input, StockSampler::LinearClamp);
-cmd.
-push_constants(&inv_size,
-0, sizeof(inv_size));
-CommandBufferUtil::draw_fullscreen_quad(cmd,
-"builtin://shaders/quad.vert", "builtin://shaders/post/vsm_up_blur.frag");
-});
-}
-else
-{
-shadowpass.
-set_depth_stencil_output(tagcat("shadow", tag), shadowmap
-);
-}
+	shadowpass.set_get_clear_depth_stencil([](VkClearDepthStencilValue *value) -> bool {
+		if (value)
+		{
+			value->depth = 1.0f;
+			value->stencil = 0;
+		}
+		return true;
+	});
 
-shadowpass.set_build_render_pass([this, type](
-Vulkan::CommandBuffer &cmd
-) {
-if (type == DepthPassType::Main)
-render_shadow_map_far(cmd);
-else
-render_shadow_map_near(cmd);
-});
-
-shadowpass.set_get_clear_color([](unsigned,
-VkClearColorValue *value
-) -> bool {
-if (value)
-{
-value->float32[0] = 1.0f;
-value->float32[1] = 1.0f;
-value->float32[2] = 0.0f;
-value->float32[3] = 0.0f;
-}
-return true;
-});
-
-shadowpass.set_get_clear_depth_stencil([](
-VkClearDepthStencilValue *value
-) -> bool {
-if (value)
-{
-value->
-depth = 1.0f;
-value->
-stencil = 0;
-}
-return true;
-});
-
-shadowpass.set_need_render_pass([this, type]() {
-return type == DepthPassType::Main ? need_shadow_map_update : true;
-});
+	shadowpass.set_need_render_pass(
+	    [this, type]() { return type == DepthPassType::Main ? need_shadow_map_update : true; });
 }
 
 void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent &swap)
@@ -1098,17 +917,16 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 
 	if (config.hdr_bloom)
 	{
-		bool resolved = setup_before_post_chain_antialiasing(config.postaa_type,
-		                                                     graph, jitter,
-		                                                     "HDR-main", "depth-main", "HDR-resolved");
+		bool resolved = setup_before_post_chain_antialiasing(config.postaa_type, graph, jitter, "HDR-main",
+		                                                     "depth-main", "HDR-resolved");
 		if (ImplementationQuirks::get().use_async_compute_post)
 			setup_hdr_postprocess_compute(graph, resolved ? "HDR-resolved" : "HDR-main", "tonemapped");
 		else
 			setup_hdr_postprocess(graph, resolved ? "HDR-resolved" : "HDR-main", "tonemapped");
 	}
 
-	if (setup_after_post_chain_antialiasing(config.postaa_type, graph, jitter,
-	                                        ui_source, "depth-main", "post-aa-output"))
+	if (setup_after_post_chain_antialiasing(config.postaa_type, graph, jitter, ui_source, "depth-main",
+	                                        "post-aa-output"))
 	{
 		ui_source = "post-aa-output";
 	}
@@ -1116,23 +934,19 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 	if (config.show_ui)
 	{
 		auto &ui = graph.add_pass("ui", config.hdr_bloom || config.postaa_type != PostAAType::None ?
-		                                RenderGraph::get_default_post_graphics_queue()
-		                                                                                           : RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
+		                                    RenderGraph::get_default_post_graphics_queue() :
+		                                    RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 
 		AttachmentInfo ui_info;
 		ui.add_color_output("ui-output", ui_info, ui_source);
 		graph.set_backbuffer_source("ui-output");
 
-		ui.set_get_clear_color([](unsigned, VkClearColorValue *value)
-		                       {
-			                       memset(value, 0, sizeof(*value));
-			                       return true;
-		                       });
+		ui.set_get_clear_color([](unsigned, VkClearColorValue *value) {
+			memset(value, 0, sizeof(*value));
+			return true;
+		});
 
-		ui.set_build_render_pass([this](CommandBuffer &cmd)
-		                         {
-			                         render_ui(cmd);
-		                         });
+		ui.set_build_render_pass([this](CommandBuffer &cmd) { render_ui(cmd); });
 	}
 	else
 		graph.set_backbuffer_source(ui_source);
@@ -1153,7 +967,8 @@ void SceneViewerApplication::update_shadow_scene_aabb()
 	// Get the scene AABB for shadow casters.
 	auto &scene = scene_loader.get_scene();
 	auto &shadow_casters =
-			scene.get_entity_pool().get_component_group<CachedSpatialTransformComponent, RenderableComponent, CastsStaticShadowComponent>();
+	    scene.get_entity_pool()
+	        .get_component_group<CachedSpatialTransformComponent, RenderableComponent, CastsStaticShadowComponent>();
 	AABB aabb(vec3(FLT_MAX), vec3(-FLT_MAX));
 	for (auto &caster : shadow_casters)
 		aabb.expand(get_component<CachedSpatialTransformComponent>(caster)->world_aabb);
@@ -1181,13 +996,13 @@ void SceneViewerApplication::update_shadow_map()
 	depth_renderer.push_depth_renderables(depth_context, depth_visible);
 }
 
-void SceneViewerApplication::render_shadow_map_far(Vulkan::CommandBuffer &cmd)
+void SceneViewerApplication::render_shadow_map_far(CommandBuffer &cmd)
 {
 	update_shadow_map();
 	depth_renderer.flush(cmd, depth_context, Renderer::DEPTH_BIAS_BIT);
 }
 
-void SceneViewerApplication::render_shadow_map_near(Vulkan::CommandBuffer &cmd)
+void SceneViewerApplication::render_shadow_map_near(CommandBuffer &cmd)
 {
 	auto &scene = scene_loader.get_scene();
 	depth_visible.clear();
@@ -1246,7 +1061,7 @@ void SceneViewerApplication::update_scene(double frame_time, double elapsed_time
 	scene.refresh_per_frame(context);
 }
 
-void SceneViewerApplication::render_ui(Vulkan::CommandBuffer &cmd)
+void SceneViewerApplication::render_ui(CommandBuffer &cmd)
 {
 	flat_renderer.begin();
 
@@ -1278,8 +1093,8 @@ void SceneViewerApplication::render_ui(Vulkan::CommandBuffer &cmd)
 	vec4 color(1.0f, 1.0f, 0.0f, 1.0f);
 	Font::Alignment alignment = Font::Alignment::TopRight;
 
-	flat_renderer.render_text(Global::ui_manager()->get_font(UI::FontSize::Large), avg_text,
-	                          offset, size, color, alignment, 1.0f);
+	flat_renderer.render_text(Global::ui_manager()->get_font(UI::FontSize::Large), avg_text, offset, size, color,
+	                          alignment, 1.0f);
 	flat_renderer.render_text(Global::ui_manager()->get_font(UI::FontSize::Large), min_text,
 	                          offset + vec3(0.0f, 20.0f, 0.0f), size - vec2(0.0f, 20.0f), color, alignment, 1.0f);
 	flat_renderer.render_text(Global::ui_manager()->get_font(UI::FontSize::Large), max_text,
@@ -1308,13 +1123,13 @@ void SceneViewerApplication::render_scene()
 	lighting.shadow_far = nullptr;
 	if (config.directional_light_shadows)
 	{
-		lighting.shadow_far = &graph.get_physical_texture_resource(
-				graph.get_texture_resource("shadow-main").get_physical_index());
+		lighting.shadow_far =
+		    &graph.get_physical_texture_resource(graph.get_texture_resource("shadow-main").get_physical_index());
 
 		if (config.directional_light_cascaded_shadows)
 		{
-			lighting.shadow_near = &graph.get_physical_texture_resource(
-					graph.get_texture_resource("shadow-near").get_physical_index());
+			lighting.shadow_near =
+			    &graph.get_physical_texture_resource(graph.get_texture_resource("shadow-near").get_physical_index());
 		}
 	}
 
@@ -1330,4 +1145,4 @@ void SceneViewerApplication::render_frame(double frame_time, double elapsed_time
 	render_scene();
 }
 
-}
+} // namespace Granite

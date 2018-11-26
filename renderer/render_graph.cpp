@@ -2218,9 +2218,9 @@ void RenderGraph::setup_physical_image(Vulkan::Device &device, unsigned attachme
 		if (att.queues & (RENDER_GRAPH_QUEUE_GRAPHICS_BIT | RENDER_GRAPH_QUEUE_COMPUTE_BIT))
 			info.misc |= Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT;
 		if (att.queues & RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT)
-			info.misc |= Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_COMPUTE_BIT;
+			info.misc |= Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT;
 		if (att.queues & RENDER_GRAPH_QUEUE_ASYNC_GRAPHICS_BIT)
-			info.misc |= Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_SECONDARY_GRAPHICS_BIT;
+			info.misc |= Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT;
 
 		physical_image_attachments[attachment] = device.create_image(info, nullptr);
 		// Just keep storage images in GENERAL layout.

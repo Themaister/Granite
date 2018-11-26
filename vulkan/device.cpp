@@ -145,6 +145,95 @@ void Device::add_wait_semaphore_nolock(CommandBuffer::Type type, Semaphore semap
 	VK_ASSERT(data.wait_semaphores.size() < 16 * 1024);
 }
 
+LinearHostImageHandle Device::create_linear_host_image(const LinearHostImageCreateInfo &info)
+{
+	if ((info.usage & ~VK_IMAGE_USAGE_SAMPLED_BIT) != 0)
+		return LinearHostImageHandle(nullptr);
+
+	ImageCreateInfo create_info;
+	create_info.width = info.width;
+	create_info.height = info.height;
+	create_info.domain =
+			(info.flags & LINEAR_HOST_IMAGE_HOST_CACHED_BIT) != 0 ?
+			ImageDomain::LinearHostCached :
+			ImageDomain::LinearHost;
+	create_info.levels = 1;
+	create_info.layers = 1;
+	create_info.initial_layout = VK_IMAGE_LAYOUT_GENERAL;
+	create_info.format = info.format;
+	create_info.samples = VK_SAMPLE_COUNT_1_BIT;
+	create_info.usage = info.usage;
+	create_info.type = VK_IMAGE_TYPE_2D;
+
+	if ((info.flags & LINEAR_HOST_IMAGE_REQUIRE_LINEAR_FILTER_BIT) != 0)
+		create_info.misc |= IMAGE_MISC_VERIFY_FORMAT_FEATURE_SAMPLED_LINEAR_FILTER_BIT;
+	if ((info.flags & LINEAR_HOST_IMAGE_IGNORE_DEVICE_LOCAL_BIT) != 0)
+		create_info.misc |= IMAGE_MISC_LINEAR_IMAGE_IGNORE_DEVICE_LOCAL_BIT;
+
+	BufferHandle cpu_image;
+	auto gpu_image = create_image(create_info);
+	if (!gpu_image)
+	{
+		// Fall-back to staging buffer.
+		create_info.domain = ImageDomain::Physical;
+		create_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+		create_info.misc = IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT | IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT;
+		create_info.usage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+		gpu_image = create_image(create_info);
+		if (!gpu_image)
+			return LinearHostImageHandle(nullptr);
+
+		BufferCreateInfo buffer;
+		buffer.domain =
+				(info.flags & LINEAR_HOST_IMAGE_HOST_CACHED_BIT) != 0 ?
+				BufferDomain::CachedHost :
+				BufferDomain::Host;
+		buffer.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+		buffer.size = info.width * info.height * TextureFormatLayout::format_block_size(info.format);
+		cpu_image = create_buffer(buffer);
+		if (!cpu_image)
+			return LinearHostImageHandle(nullptr);
+	}
+	else
+		gpu_image->set_layout(Layout::General);
+
+	return LinearHostImageHandle(handle_pool.linear_images.allocate(this, move(gpu_image), move(cpu_image), info.stages));
+}
+
+void *Device::map_linear_host_image(const LinearHostImage &image, MemoryAccessFlags access)
+{
+	void *host = managers.memory.map_memory(image.get_host_visible_allocation(), access);
+	return host;
+}
+
+void Device::unmap_linear_host_image_and_sync(const LinearHostImage &image, MemoryAccessFlags access)
+{
+	managers.memory.unmap_memory(image.get_host_visible_allocation(), access);
+	if (image.need_staging_copy())
+	{
+		// Kinda icky fallback, shouldn't really be used on discrete cards.
+		auto cmd = request_command_buffer(CommandBuffer::Type::AsyncTransfer);
+		cmd->image_barrier(image.get_image(), VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		                   VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
+		                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+		cmd->copy_buffer_to_image(image.get_image(), image.get_host_visible_buffer(),
+		                          0, {},
+		                          { image.get_image().get_width(), image.get_image().get_height(), 1 },
+		                          0, 0, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 });
+
+		// Don't care about dstAccessMask, semaphore takes care of everything.
+		cmd->image_barrier(image.get_image(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+		                   VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0);
+
+		Semaphore sem;
+		submit(cmd, nullptr, 1, &sem);
+
+		// The queue type is an assumption. Should add some parameter for that.
+		add_wait_semaphore(CommandBuffer::Type::Generic, sem, image.get_used_pipeline_stages(), true);
+	}
+}
+
 void *Device::map_host_buffer(const Buffer &buffer, MemoryAccessFlags access)
 {
 	void *host = managers.memory.map_memory(buffer.get_allocation(), access);
@@ -1967,6 +2056,16 @@ uint32_t Device::find_memory_type(ImageDomain domain, uint32_t mask)
 		desired = VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT;
 		fallback = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 		break;
+
+	case ImageDomain::LinearHostCached:
+		desired = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+		fallback = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+		break;
+
+	case ImageDomain::LinearHost:
+		desired = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+		fallback = 0;
+		break;
 	}
 
 	for (uint32_t i = 0; i < mem_props.memoryTypeCount; i++)
@@ -2332,7 +2431,7 @@ ImageHandle Device::create_imported_image(int fd, VkDeviceSize size, uint32_t me
 	externalInfo.handleTypes = handle_type;
 	info.pNext = &externalInfo;
 
-	VK_ASSERT(image_format_is_supported(create_info.format, image_usage_to_features(info.usage)));
+	VK_ASSERT(image_format_is_supported(create_info.format, image_usage_to_features(info.usage), info.tiling));
 
 	if (vkCreateImage(device, &info, nullptr, &holder.image) != VK_SUCCESS)
 		return ImageHandle(nullptr);
@@ -2536,8 +2635,18 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 	info.mipLevels = create_info.levels;
 	info.arrayLayers = create_info.layers;
 	info.samples = create_info.samples;
-	info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	info.tiling = VK_IMAGE_TILING_OPTIMAL;
+
+	if (create_info.domain == ImageDomain::LinearHostCached || create_info.domain == ImageDomain::LinearHost)
+	{
+		info.tiling = VK_IMAGE_TILING_LINEAR;
+		info.initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED;
+	}
+	else
+	{
+		info.tiling = VK_IMAGE_TILING_OPTIMAL;
+		info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	}
+
 	info.usage = create_info.usage;
 	info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	if (create_info.domain == ImageDomain::Transient)
@@ -2546,6 +2655,9 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		info.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
 	info.flags = create_info.flags;
+
+	if (info.mipLevels == 0)
+		info.mipLevels = image_num_miplevels(info.extent);
 
 	VkImageFormatListCreateInfoKHR format_info = { VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO_KHR };
 	VkFormat view_formats[2];
@@ -2569,17 +2681,14 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		info.flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
 	}
 
-	if (info.mipLevels == 0)
-		info.mipLevels = image_num_miplevels(info.extent);
-
 	// Only do this conditionally.
 	// On AMD, using CONCURRENT with async compute disables compression.
 	uint32_t sharing_indices[3] = {};
 
 	uint32_t queue_flags = create_info.misc & (IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT |
-	                                           IMAGE_MISC_CONCURRENT_QUEUE_COMPUTE_BIT |
-	                                           IMAGE_MISC_CONCURRENT_QUEUE_SECONDARY_GRAPHICS_BIT |
-	                                           IMAGE_MISC_CONCURRENT_QUEUE_TRANSFER_BIT);
+	                                           IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT |
+	                                           IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT |
+	                                           IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT);
 	bool concurrent_queue = queue_flags != 0;
 	if (concurrent_queue)
 	{
@@ -2594,11 +2703,11 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 			sharing_indices[info.queueFamilyIndexCount++] = family;
 		};
 
-		if (queue_flags & (IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT | IMAGE_MISC_CONCURRENT_QUEUE_SECONDARY_GRAPHICS_BIT))
+		if (queue_flags & (IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT | IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT))
 			add_unique_family(graphics_queue_family_index);
-		if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_COMPUTE_BIT)
+		if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT)
 			add_unique_family(compute_queue_family_index);
-		if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_TRANSFER_BIT)
+		if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT)
 			add_unique_family(transfer_queue_family_index);
 
 		if (info.queueFamilyIndexCount > 1)
@@ -2611,7 +2720,40 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		}
 	}
 
-	if (!image_format_is_supported(create_info.format, image_usage_to_features(info.usage)))
+	VkFormatFeatureFlags check_extra_features = 0;
+	if ((create_info.misc & IMAGE_MISC_VERIFY_FORMAT_FEATURE_SAMPLED_LINEAR_FILTER_BIT) != 0)
+		check_extra_features |= VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+
+	if (info.tiling == VK_IMAGE_TILING_LINEAR)
+	{
+		if (staging_buffer)
+			return ImageHandle(nullptr);
+
+		// Do some more stringent checks.
+		if (info.mipLevels > 1)
+			return ImageHandle(nullptr);
+		if (info.arrayLayers > 1)
+			return ImageHandle(nullptr);
+		if (info.imageType != VK_IMAGE_TYPE_2D)
+			return ImageHandle(nullptr);
+		if (info.samples != VK_SAMPLE_COUNT_1_BIT)
+			return ImageHandle(nullptr);
+
+		VkImageFormatProperties props;
+		if (!get_image_format_properties(info.format, info.imageType, info.tiling, info.usage, info.flags, &props))
+			return ImageHandle(nullptr);
+
+		if (!props.maxArrayLayers ||
+		    !props.maxMipLevels ||
+		    (info.extent.width > props.maxExtent.width) ||
+		    (info.extent.height > props.maxExtent.height) ||
+		    (info.extent.depth > props.maxExtent.depth))
+		{
+			return ImageHandle(nullptr);
+		}
+	}
+
+	if (!image_format_is_supported(create_info.format, image_usage_to_features(info.usage) | check_extra_features, info.tiling))
 	{
 		LOGE("Format %u is not supported for usage flags!\n", unsigned(create_info.format));
 		return ImageHandle(nullptr);
@@ -2625,7 +2767,17 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 
 	vkGetImageMemoryRequirements(device, holder.image, &reqs);
 	uint32_t memory_type = find_memory_type(create_info.domain, reqs.memoryTypeBits);
-	if (!managers.memory.allocate_image_memory(reqs.size, reqs.alignment, memory_type, ALLOCATION_TILING_OPTIMAL,
+
+	if (info.tiling == VK_IMAGE_TILING_LINEAR &&
+	    (create_info.misc & IMAGE_MISC_LINEAR_IMAGE_IGNORE_DEVICE_LOCAL_BIT) == 0)
+	{
+		// Is it also device local?
+		if ((mem_props.memoryTypes[memory_type].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) == 0)
+			return ImageHandle(nullptr);
+	}
+
+	if (!managers.memory.allocate_image_memory(reqs.size, reqs.alignment, memory_type,
+	                                           info.tiling == VK_IMAGE_TILING_OPTIMAL ? ALLOCATION_TILING_OPTIMAL : ALLOCATION_TILING_LINEAR,
 	                                           &holder.allocation, holder.image))
 	{
 		LOGE("Failed to allocate image memory (type %u, size: %u).\n", unsigned(memory_type), unsigned(reqs.size));
@@ -2796,7 +2948,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 	{
 		VK_ASSERT(create_info.domain != ImageDomain::Transient);
 		auto cmd = request_command_buffer(CommandBuffer::Type::Generic);
-		cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_UNDEFINED, create_info.initial_layout,
+		cmd->image_barrier(*handle, info.initialLayout, create_info.initial_layout,
 		                   VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, handle->get_stage_flags(),
 		                   handle->get_access_flags() &
 		                   image_layout_to_possible_access(create_info.initial_layout));
@@ -2986,27 +3138,28 @@ void Device::get_format_properties(VkFormat format, VkFormatProperties *properti
 	vkGetPhysicalDeviceFormatProperties(gpu, format, properties);
 }
 
-bool Device::get_image_format_properties(VkFormat format, VkImageType type, VkImageUsageFlags usage, VkImageCreateFlags flags,
+bool Device::get_image_format_properties(VkFormat format, VkImageType type, VkImageTiling tiling,
+                                         VkImageUsageFlags usage, VkImageCreateFlags flags,
                                          VkImageFormatProperties *properties)
 {
-	auto res = vkGetPhysicalDeviceImageFormatProperties(gpu, format, type, VK_IMAGE_TILING_OPTIMAL, usage, flags,
+	auto res = vkGetPhysicalDeviceImageFormatProperties(gpu, format, type, tiling, usage, flags,
 	                                                    properties);
 	return res == VK_SUCCESS;
 }
 
-bool Device::image_format_is_supported(VkFormat format, VkFormatFeatureFlags required) const
+bool Device::image_format_is_supported(VkFormat format, VkFormatFeatureFlags required, VkImageTiling tiling) const
 {
 	VkFormatProperties props;
 	vkGetPhysicalDeviceFormatProperties(gpu, format, &props);
-	auto flags = props.optimalTilingFeatures;
+	auto flags = tiling == VK_IMAGE_TILING_OPTIMAL ? props.optimalTilingFeatures : props.linearTilingFeatures;
 	return (flags & required) == required;
 }
 
 VkFormat Device::get_default_depth_stencil_format() const
 {
-	if (image_format_is_supported(VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT))
+	if (image_format_is_supported(VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_IMAGE_TILING_OPTIMAL))
 		return VK_FORMAT_D24_UNORM_S8_UINT;
-	if (image_format_is_supported(VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT))
+	if (image_format_is_supported(VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_IMAGE_TILING_OPTIMAL))
 		return VK_FORMAT_D32_SFLOAT_S8_UINT;
 
 	return VK_FORMAT_UNDEFINED;
@@ -3014,11 +3167,11 @@ VkFormat Device::get_default_depth_stencil_format() const
 
 VkFormat Device::get_default_depth_format() const
 {
-	if (image_format_is_supported(VK_FORMAT_D32_SFLOAT, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT))
+	if (image_format_is_supported(VK_FORMAT_D32_SFLOAT, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_IMAGE_TILING_OPTIMAL))
 		return VK_FORMAT_D32_SFLOAT;
-	if (image_format_is_supported(VK_FORMAT_X8_D24_UNORM_PACK32, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT))
+	if (image_format_is_supported(VK_FORMAT_X8_D24_UNORM_PACK32, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_IMAGE_TILING_OPTIMAL))
 		return VK_FORMAT_X8_D24_UNORM_PACK32;
-	if (image_format_is_supported(VK_FORMAT_D16_UNORM, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT))
+	if (image_format_is_supported(VK_FORMAT_D16_UNORM, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_IMAGE_TILING_OPTIMAL))
 		return VK_FORMAT_D16_UNORM;
 
 	return VK_FORMAT_UNDEFINED;

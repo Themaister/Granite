@@ -80,6 +80,7 @@ struct HandlePool
 {
 	VulkanObjectPool<Buffer> buffers;
 	VulkanObjectPool<Image> images;
+	VulkanObjectPool<LinearHostImage> linear_images;
 	VulkanObjectPool<ImageView> image_views;
 	VulkanObjectPool<BufferView> buffer_views;
 	VulkanObjectPool<Sampler> samplers;
@@ -116,6 +117,7 @@ public:
 	friend struct ImageViewDeleter;
 	friend class Image;
 	friend struct ImageDeleter;
+	friend struct LinearHostImageDeleter;
 	friend class CommandBuffer;
 	friend struct CommandBufferDeleter;
 	friend class Program;
@@ -186,10 +188,14 @@ public:
 	void *map_host_buffer(const Buffer &buffer, MemoryAccessFlags access);
 	void unmap_host_buffer(const Buffer &buffer, MemoryAccessFlags access);
 
+	void *map_linear_host_image(const LinearHostImage &image, MemoryAccessFlags access);
+	void unmap_linear_host_image_and_sync(const LinearHostImage &image, MemoryAccessFlags access);
+
 	// Create buffers and images.
-	BufferHandle create_buffer(const BufferCreateInfo &info, const void *initial);
-	ImageHandle create_image(const ImageCreateInfo &info, const ImageInitialData *initial);
+	BufferHandle create_buffer(const BufferCreateInfo &info, const void *initial = nullptr);
+	ImageHandle create_image(const ImageCreateInfo &info, const ImageInitialData *initial = nullptr);
 	ImageHandle create_image_from_staging_buffer(const ImageCreateInfo &info, const InitialImageBuffer *buffer);
+	LinearHostImageHandle create_linear_host_image(const LinearHostImageCreateInfo &info);
 
 	// Create staging buffers for images.
 	InitialImageBuffer create_image_staging_buffer(const ImageCreateInfo &info, const ImageInitialData *initial);
@@ -209,9 +215,9 @@ public:
 	SamplerHandle create_sampler(const SamplerCreateInfo &info);
 
 	// Render pass helpers.
-	bool image_format_is_supported(VkFormat format, VkFormatFeatureFlags required) const;
+	bool image_format_is_supported(VkFormat format, VkFormatFeatureFlags required, VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL) const;
 	void get_format_properties(VkFormat format, VkFormatProperties *properties);
-	bool get_image_format_properties(VkFormat format, VkImageType type, VkImageUsageFlags usage, VkImageCreateFlags flags,
+	bool get_image_format_properties(VkFormat format, VkImageType type, VkImageTiling tiling, VkImageUsageFlags usage, VkImageCreateFlags flags,
 	                                 VkImageFormatProperties *properties);
 
 	VkFormat get_default_depth_stencil_format() const;

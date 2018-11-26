@@ -292,7 +292,7 @@ void CommandBuffer::image_barrier(const Image &image, VkImageLayout old_layout, 
 {
 	VK_ASSERT(!actual_render_pass);
 	VK_ASSERT(!framebuffer);
-	VK_ASSERT(image.get_create_info().domain == ImageDomain::Physical);
+	VK_ASSERT(image.get_create_info().domain != ImageDomain::Transient);
 
 	VkImageMemoryBarrier barrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
 	barrier.srcAccessMask = src_access;

@@ -155,9 +155,11 @@ enum ImageMiscFlagBits
 	IMAGE_MISC_FORCE_ARRAY_BIT = 1 << 1,
 	IMAGE_MISC_MUTABLE_SRGB_BIT = 1 << 2,
 	IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT = 1 << 3,
-	IMAGE_MISC_CONCURRENT_QUEUE_COMPUTE_BIT = 1 << 4,
-	IMAGE_MISC_CONCURRENT_QUEUE_SECONDARY_GRAPHICS_BIT = 1 << 5,
-	IMAGE_MISC_CONCURRENT_QUEUE_TRANSFER_BIT = 1 << 6
+	IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT = 1 << 4,
+	IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT = 1 << 5,
+	IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT = 1 << 6,
+	IMAGE_MISC_VERIFY_FORMAT_FEATURE_SAMPLED_LINEAR_FILTER_BIT = 1 << 7,
+	IMAGE_MISC_LINEAR_IMAGE_IGNORE_DEVICE_LOCAL_BIT = 1 << 8
 };
 using ImageMiscFlags = uint32_t;
 
@@ -168,6 +170,7 @@ enum ImageViewMiscFlagBits
 using ImageViewMiscFlags = uint32_t;
 
 class Image;
+
 struct ImageViewCreateInfo
 {
 	Image *image = nullptr;
@@ -178,11 +181,12 @@ struct ImageViewCreateInfo
 	unsigned layers = VK_REMAINING_ARRAY_LAYERS;
 	ImageViewMiscFlags misc = 0;
 	VkComponentMapping swizzle = {
-		VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A,
+			VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A,
 	};
 };
 
 class ImageView;
+
 struct ImageViewDeleter
 {
 	void operator()(ImageView *view);
@@ -193,7 +197,9 @@ class ImageView : public Util::IntrusivePtrEnabled<ImageView, ImageViewDeleter, 
 {
 public:
 	friend struct ImageViewDeleter;
+
 	ImageView(Device *device, VkImageView view, const ImageViewCreateInfo &info);
+
 	~ImageView();
 
 	void set_alt_views(VkImageView depth, VkImageView stencil)
@@ -287,12 +293,15 @@ private:
 	VkImageView srgb_view = VK_NULL_HANDLE;
 	ImageViewCreateInfo info;
 };
+
 using ImageViewHandle = Util::IntrusivePtr<ImageView>;
 
 enum class ImageDomain
 {
 	Physical,
-	Transient
+	Transient,
+	LinearHostCached,
+	LinearHost
 };
 
 struct ImageCreateInfo
@@ -311,7 +320,7 @@ struct ImageCreateInfo
 	ImageMiscFlags misc = 0;
 	VkImageLayout initial_layout = VK_IMAGE_LAYOUT_GENERAL;
 	VkComponentMapping swizzle = {
-		VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A,
+			VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A,
 	};
 
 	static ImageCreateInfo immutable_2d_image(unsigned width, unsigned height, VkFormat format, bool mipmapped = false)
@@ -332,7 +341,8 @@ struct ImageCreateInfo
 		return info;
 	}
 
-	static ImageCreateInfo immutable_3d_image(unsigned width, unsigned height, unsigned depth, VkFormat format, bool mipmapped = false)
+	static ImageCreateInfo
+	immutable_3d_image(unsigned width, unsigned height, unsigned depth, VkFormat format, bool mipmapped = false)
 	{
 		ImageCreateInfo info = immutable_2d_image(width, height, format, mipmapped);
 		info.depth = depth;
@@ -351,7 +361,7 @@ struct ImageCreateInfo
 		info.type = VK_IMAGE_TYPE_2D;
 		info.layers = 1;
 		info.usage = (format_has_depth_or_stencil_aspect(format) ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT :
-		                                                VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) |
+		              VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) |
 		             VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
 		info.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -373,7 +383,7 @@ struct ImageCreateInfo
 		info.type = VK_IMAGE_TYPE_2D;
 		info.layers = 1;
 		info.usage = (format_has_depth_or_stencil_aspect(format) ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT :
-		                                                VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) |
+		              VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) |
 		             VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
 		info.samples = VK_SAMPLE_COUNT_1_BIT;
 		info.flags = 0;
@@ -384,6 +394,7 @@ struct ImageCreateInfo
 };
 
 class Image;
+
 struct ImageDeleter
 {
 	void operator()(Image *image);
@@ -400,8 +411,11 @@ class Image : public Util::IntrusivePtrEnabled<Image, ImageDeleter, HandleCounte
 {
 public:
 	friend struct ImageDeleter;
+
 	~Image();
+
 	Image(Image &&) = delete;
+
 	Image &operator=(Image &&) = delete;
 
 	const ImageView &get_view() const
@@ -503,6 +517,7 @@ public:
 
 private:
 	friend class Util::ObjectPool<Image>;
+
 	Image(Device *device, VkImage image, VkImageView default_view, const DeviceAllocation &alloc,
 	      const ImageCreateInfo &info);
 
@@ -519,4 +534,61 @@ private:
 };
 
 using ImageHandle = Util::IntrusivePtr<Image>;
+
+class LinearHostImage;
+struct LinearHostImageDeleter
+{
+	void operator()(LinearHostImage *image);
+};
+
+class Buffer;
+
+enum LinearHostImageCreateInfoFlagBits
+{
+	LINEAR_HOST_IMAGE_HOST_CACHED_BIT = 1 << 0,
+	LINEAR_HOST_IMAGE_REQUIRE_LINEAR_FILTER_BIT = 1 << 1,
+	LINEAR_HOST_IMAGE_IGNORE_DEVICE_LOCAL_BIT = 1 << 2
+};
+using LinearHostImageCreateInfoFlags = uint32_t;
+
+struct LinearHostImageCreateInfo
+{
+	unsigned width = 0;
+	unsigned height = 0;
+	VkFormat format = VK_FORMAT_UNDEFINED;
+	VkImageUsageFlags usage = 0;
+	VkPipelineStageFlags stages = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+	LinearHostImageCreateInfoFlags flags = 0;
+};
+
+// Special image type which supports direct CPU mapping.
+// Useful optimization for UMA implementations of Vulkan where we don't necessarily need
+// to perform staging copies. It gracefully falls back to staging buffer as needed.
+// Only usage flag SAMPLED_BIT is currently supported.
+class LinearHostImage : public Util::IntrusivePtrEnabled<LinearHostImage, LinearHostImageDeleter, HandleCounter>
+{
+public:
+	friend struct LinearHostImageDeleter;
+
+	size_t get_row_pitch_bytes() const;
+	size_t get_offset() const;
+	const ImageView &get_view() const;
+	const Image &get_image() const;
+	const DeviceAllocation &get_host_visible_allocation() const;
+	const Buffer &get_host_visible_buffer() const;
+	bool need_staging_copy() const;
+	VkPipelineStageFlags get_used_pipeline_stages() const;
+
+private:
+	friend class Util::ObjectPool<LinearHostImage>;
+	LinearHostImage(Device *device, ImageHandle gpu_image, Util::IntrusivePtr<Buffer> cpu_image,
+	                VkPipelineStageFlags stages);
+	Device *device;
+	ImageHandle gpu_image;
+	Util::IntrusivePtr<Buffer> cpu_image;
+	VkPipelineStageFlags stages;
+	size_t row_pitch;
+	size_t row_offset;
+};
+using LinearHostImageHandle = Util::IntrusivePtr<LinearHostImage>;
 }

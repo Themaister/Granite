@@ -22,6 +22,7 @@
 
 #include "image.hpp"
 #include "device.hpp"
+#include "buffer.hpp"
 
 using namespace std;
 
@@ -125,13 +126,79 @@ Image::~Image()
 	}
 }
 
-void ImageViewDeleter::operator()(Vulkan::ImageView *view)
+const Buffer &LinearHostImage::get_host_visible_buffer() const
+{
+	return *cpu_image;
+}
+
+bool LinearHostImage::need_staging_copy() const
+{
+	return gpu_image->get_create_info().domain != ImageDomain::LinearHostCached &&
+	       gpu_image->get_create_info().domain != ImageDomain::LinearHost;
+}
+
+const DeviceAllocation &LinearHostImage::get_host_visible_allocation() const
+{
+	return need_staging_copy() ? cpu_image->get_allocation() : gpu_image->get_allocation();
+}
+
+const ImageView &LinearHostImage::get_view() const
+{
+	return gpu_image->get_view();
+}
+
+const Image &LinearHostImage::get_image() const
+{
+	return *gpu_image;
+}
+
+size_t LinearHostImage::get_offset() const
+{
+	return row_offset;
+}
+
+size_t LinearHostImage::get_row_pitch_bytes() const
+{
+	return row_pitch;
+}
+
+VkPipelineStageFlags LinearHostImage::get_used_pipeline_stages() const
+{
+	return stages;
+}
+
+LinearHostImage::LinearHostImage(Device *device, ImageHandle gpu_image_, BufferHandle cpu_image_, VkPipelineStageFlags stages)
+	: device(device), gpu_image(move(gpu_image_)), cpu_image(move(cpu_image_)), stages(stages)
+{
+	if (gpu_image->get_create_info().domain == ImageDomain::LinearHostCached ||
+	    gpu_image->get_create_info().domain == ImageDomain::LinearHost)
+	{
+		VkImageSubresource sub = {};
+		sub.aspectMask = format_to_aspect_mask(gpu_image->get_format());
+		VkSubresourceLayout layout;
+		vkGetImageSubresourceLayout(device->get_device(), gpu_image->get_image(), &sub, &layout);
+		row_pitch = layout.rowPitch;
+		row_offset = layout.offset;
+	}
+	else
+	{
+		row_pitch = gpu_image->get_width() * TextureFormatLayout::format_block_size(gpu_image->get_format());
+		row_offset = 0;
+	}
+}
+
+void ImageViewDeleter::operator()(ImageView *view)
 {
 	view->device->handle_pool.image_views.free(view);
 }
 
-void ImageDeleter::operator()(Vulkan::Image *image)
+void ImageDeleter::operator()(Image *image)
 {
 	image->device->handle_pool.images.free(image);
+}
+
+void LinearHostImageDeleter::operator()(LinearHostImage *image)
+{
+	image->device->handle_pool.linear_images.free(image);
 }
 }

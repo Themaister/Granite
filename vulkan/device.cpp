@@ -3281,6 +3281,11 @@ ImageView &Device::get_swapchain_view(unsigned index)
 	return wsi.swapchain[index]->get_view();
 }
 
+unsigned Device::get_num_frame_contexts() const
+{
+	return unsigned(per_frame.size());
+}
+
 unsigned Device::get_num_swapchain_images() const
 {
 	return unsigned(wsi.swapchain.size());
@@ -3289,6 +3294,11 @@ unsigned Device::get_num_swapchain_images() const
 unsigned Device::get_swapchain_index() const
 {
 	return wsi.index;
+}
+
+unsigned Device::get_current_frame_context() const
+{
+	return frame_context_index;
 }
 
 RenderPassInfo Device::get_swapchain_render_pass(SwapchainRenderPass style)

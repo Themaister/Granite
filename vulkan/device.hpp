@@ -143,10 +143,13 @@ public:
 	void init_swapchain(const std::vector<VkImage> &swapchain_images, unsigned width, unsigned height, VkFormat format);
 	void init_external_swapchain(const std::vector<ImageHandle> &swapchain_images);
 	void init_frame_contexts(unsigned count);
+
 	ImageView &get_swapchain_view();
 	ImageView &get_swapchain_view(unsigned index);
 	unsigned get_num_swapchain_images() const;
+	unsigned get_num_frame_contexts() const;
 	unsigned get_swapchain_index() const;
+	unsigned get_current_frame_context() const;
 
 	size_t get_pipeline_cache_size();
 	bool get_pipeline_cache_data(uint8_t *data, size_t size);

@@ -1,6 +1,11 @@
 add_granite_application(ui-sandbox ui_sandbox.cpp)
 target_compile_definitions(ui-sandbox PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
 
+add_granite_application(linear-image-test linear_image_test.cpp)
+if (NOT ANDROID)
+    target_compile_definitions(linear-image-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
+endif()
+
 add_granite_application(triangle-test triangle.cpp)
 if (NOT ANDROID)
 	target_compile_definitions(triangle-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")

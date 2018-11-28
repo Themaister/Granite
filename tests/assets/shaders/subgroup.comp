@@ -6,49 +6,61 @@
 
 layout(local_size_x = 64) in;
 
-layout(set = 0, binding = 0) uniform usamplerBuffer uCluster;
+layout(set = 0, binding = 0) uniform usamplerBuffer uLightBits;
 
-struct PerMaskData
+struct PerLightData
 {
-    vec4 a;
-    vec4 b;
-    vec4 c;
+    vec4 position;
+    vec4 color;
+    vec4 parameters;
 };
 
-layout(std140, set = 0, binding = 1) uniform Data
+layout(std140, set = 0, binding = 1) uniform LightData
 {
-    PerMaskData data[32];
+    PerLightData data[32];
 };
 
-layout(std430, set = 0, binding = 2) buffer Output
+layout(std430, set = 0, binding = 2) buffer ColorOutput
 {
     vec4 outp[];
 };
 
-vec4 process(vec4 a, vec4 b)
+vec4 process_light(vec4 col, vec4 position, vec4 color, vec4 parameters)
 {
-    return abs(b - a);
+	// Some pretend light computation.
+    return col + col * position * (col - color) * (col + parameters);
 }
 
 void main()
 {
-    uint mask = texelFetch(uCluster, int(gl_GlobalInvocationID.x)).x;
-    vec4 per_thread_data = outp[gl_GlobalInvocationID.x];
+	// Get a bitmask for all lights which might affect our pixel.
+    uint mask = texelFetch(uLightBits, int(gl_GlobalInvocationID.x)).x;
+
+	// Read current light.
+    vec4 col = outp[gl_GlobalInvocationID.x];
 
 #if WAVE_UNIFORM
+	// The trick. All threads in the subgroup will see the same result.
+	// This makes the loop uniform across a subgroup and the compiler can optimize a lot!
     uint merged_mask = subgroupBroadcastFirst(subgroupOr(mask));
 #else
+	// Normal method.
+	// Every invocation in the subgroup can have different results.
     uint merged_mask = mask;
 #endif
 
+	// Classic bit-loop.
     while (merged_mask != 0u)
     {
         int bit = findLSB(merged_mask);
-        per_thread_data = process(per_thread_data, data[bit].a);
-        per_thread_data = process(per_thread_data, data[bit].b);
-        per_thread_data = process(per_thread_data, data[bit].c);
+
+		// Apply pretend light.
+        col = process_light(col, data[bit].position, data[bit].color, data[bit].parameters);
+
+		// Complete the bit.
         merged_mask ^= 1u << uint(bit);
     }
 
-    outp[gl_GlobalInvocationID.x] = per_thread_data;
+	// Write out result.
+    outp[gl_GlobalInvocationID.x] = col;
 }

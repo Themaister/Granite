@@ -23,5 +23,6 @@
 	"postAA": "none",
 	"showUi": true,
 	"maxSpotLights": 32,
-	"maxPointLights": 32
+	"maxPointLights": 32,
+	"volumetricFog": false
 }

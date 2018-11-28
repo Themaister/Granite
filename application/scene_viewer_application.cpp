@@ -175,6 +175,8 @@ void SceneViewerApplication::read_config(const std::string &path)
 		config.max_spot_lights = doc["maxSpotLights"].GetUint();
 	if (doc.HasMember("maxPointLights"))
 		config.max_point_lights = doc["maxPointLights"].GetUint();
+	if (doc.HasMember("volumetricFog"))
+		config.volumetric_fog = doc["volumetricFog"].GetBool();
 }
 
 SceneViewerApplication::SceneViewerApplication(const std::string &path, const std::string &config_path,
@@ -283,7 +285,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 			cluster->set_shadow_type(LightClusterer::ShadowType::PCF);
 	}
 
-#if 0
+	if (config.volumetric_fog)
 	{
 		volumetric_fog = make_unique<VolumetricFog>();
 		volumetric_fog->set_resolution(160, 92, 64);
@@ -302,7 +304,6 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 				volumetric_fog->add_texture_dependency("shadow-near");
 		}
 	}
-#endif
 
 	if (config.deferred_clustered_stencil_culling)
 	{

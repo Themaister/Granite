@@ -42,12 +42,14 @@ extern retro_log_printf_t libretro_log;
 #include <windows.h>
 #define LOGE(...) do { \
     fprintf(stderr, "[ERROR]: " __VA_ARGS__); \
+    fflush(stderr); \
     char buffer[4096]; \
     sprintf(buffer, "[ERROR]: " __VA_ARGS__); \
     OutputDebugStringA(buffer); \
 } while(false)
 #define LOGI(...) do { \
     fprintf(stderr, "[INFO]: " __VA_ARGS__); \
+    fflush(stderr); \
     char buffer[4096]; \
     sprintf(buffer, "[INFO]: " __VA_ARGS__); \
     OutputDebugStringA(buffer); \
@@ -61,12 +63,14 @@ extern retro_log_printf_t libretro_log;
     do                                \
     {                                 \
         fprintf(stderr, "[ERROR]: " __VA_ARGS__); \
+        fflush(stderr); \
     } while (false)
 
 #define LOGI(...)                     \
     do                                \
     {                                 \
         fprintf(stderr, "[INFO]: " __VA_ARGS__); \
+        fflush(stderr); \
     } while (false)
 #endif
 

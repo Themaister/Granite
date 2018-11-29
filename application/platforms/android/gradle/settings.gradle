@@ -1,2 +1,3 @@
-include '$$GRANITE_ANDROID_ACTIVITY$$'
+include 'granite:android'
+project(':granite:android').projectDir = file('$$GRANITE_ANDROID_ACTIVITY_PATH$$')
 include '$$APP$$'

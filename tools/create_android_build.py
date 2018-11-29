@@ -95,7 +95,6 @@ def main():
     resource_dir = os.path.join(args.granite_dir, 'application/platforms/android/gradle/res') if not args.resource_dir else args.resource_dir
     granite_android_activity = find_relative_path(output_settings_gradle, os.path.join(args.granite_dir,
                                                                                        'application/platforms/android'))
-    granite_android_activity = transform_gradle_path(granite_android_activity)
 
     # Write out AndroidManifest.xml
     with open(manifest, 'r') as f:
@@ -136,7 +135,6 @@ def main():
             .replace('$$CMAKELISTS$$', cmakelists) \
             .replace('$$ASSETS$$', assets) \
             .replace('$$GRANITE_ASSETS$$', granite_assets) \
-            .replace('$$GRANITE_ANDROID_ACTIVITY$$', granite_android_activity) \
             .replace('$$RENDERDOC_JNI$$', renderdoc_jni) \
             .replace('$$ABIS$$', target_abis)
 
@@ -154,7 +152,7 @@ def main():
 
         data = data \
             .replace('$$APP$$', granite_app) \
-            .replace('$$GRANITE_ANDROID_ACTIVITY$$', granite_android_activity)
+            .replace('$$GRANITE_ANDROID_ACTIVITY_PATH$$', granite_android_activity)
 
         with open(output_settings_gradle, 'w') as dump_file:
             print(data, file = dump_file)

@@ -2,6 +2,10 @@
 precision highp float;
 precision highp int;
 
+#if defined(ALPHA_TEST)
+#include "inc/subgroup_discard.h"
+#endif
+
 #if defined(VARIANT_BIT_0) && VARIANT_BIT_0 && defined(HAVE_BASECOLORMAP) && HAVE_BASECOLORMAP
 #define BANDLIMITED_PIXEL
 #include "inc/bandlimited_pixel_filter.h"
@@ -74,6 +78,17 @@ void main()
     mediump vec4 base_color = registers.base_color;
 #endif
 
+#if defined(ALPHA_TEST)
+    bool should_discard = gl_HelperInvocation ||
+    #ifdef ALPHA_TEST_ALPHA_TO_COVERAGE
+        (base_color.a == 0.0);
+    #else
+        (base_color.a < 0.5);
+    #endif
+    // If all threads in a quad can discard, just kill the quad early, since we won't need derivatives.
+    quad_discard(should_discard);
+#endif
+
 #if HAVE_VERTEX_COLOR
     base_color *= vColor;
 #endif
@@ -136,8 +151,8 @@ void main()
 
     // Ideally we want to discard ASAP, but discarding early make derivatives undefined.
     // Ideally, we'd ballot early.
-#if defined(ALPHA_TEST) && !defined(ALPHA_TEST_ALPHA_TO_COVERAGE)
-    if (base_color.a < 0.5)
+#if defined(ALPHA_TEST)
+    if (should_discard)
         discard;
 #endif
 

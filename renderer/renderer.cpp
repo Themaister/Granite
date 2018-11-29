@@ -71,19 +71,36 @@ void Renderer::set_mesh_renderer_options_internal(RendererOptionFlags flags)
 {
 	auto global_defines = build_defines_from_renderer_options(type, flags);
 
-	if (flags & POSITIONAL_LIGHT_ENABLE_BIT)
+	if (device)
 	{
-		// Try to enable wave-optimizations.
-		static const VkSubgroupFeatureFlags required_subgroup =
-				VK_SUBGROUP_FEATURE_BALLOT_BIT |
-				VK_SUBGROUP_FEATURE_ARITHMETIC_BIT;
-
+		// Used for early-kill alpha testing.
 		auto &subgroup = device->get_device_features().subgroup_properties;
 		if ((subgroup.supportedStages & VK_SHADER_STAGE_FRAGMENT_BIT) != 0 &&
 		    !ImplementationQuirks::get().force_no_subgroups &&
-		    (subgroup.supportedOperations & required_subgroup) == required_subgroup)
+		    subgroup.subgroupSize >= 4)
 		{
-			global_defines.emplace_back("CLUSTERING_WAVE_UNIFORM", 1);
+			if ((subgroup.supportedOperations & VK_SUBGROUP_FEATURE_BASIC_BIT) != 0)
+				global_defines.emplace_back("SUBGROUP_BASIC", 1);
+
+			if ((subgroup.supportedOperations & VK_SUBGROUP_FEATURE_CLUSTERED_BIT) != 0)
+				global_defines.emplace_back("SUBGROUP_CLUSTERED", 1);
+			if ((subgroup.supportedOperations & VK_SUBGROUP_FEATURE_QUAD_BIT) != 0)
+				global_defines.emplace_back("SUBGROUP_QUAD", 1);
+			if ((subgroup.supportedOperations & VK_SUBGROUP_FEATURE_BALLOT_BIT) != 0)
+				global_defines.emplace_back("SUBGROUP_BALLOT", 1);
+			if ((subgroup.supportedOperations & VK_SUBGROUP_FEATURE_VOTE_BIT) != 0)
+				global_defines.emplace_back("SUBGROUP_VOTE", 1);
+
+			if (flags & POSITIONAL_LIGHT_ENABLE_BIT)
+			{
+				// Try to enable wave-optimizations.
+				static const VkSubgroupFeatureFlags required_subgroup =
+						VK_SUBGROUP_FEATURE_BALLOT_BIT |
+						VK_SUBGROUP_FEATURE_ARITHMETIC_BIT;
+
+				if ((subgroup.supportedOperations & required_subgroup) == required_subgroup)
+					global_defines.emplace_back("CLUSTERING_WAVE_UNIFORM", 1);
+			}
 		}
 	}
 

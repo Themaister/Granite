@@ -34,6 +34,8 @@ void setup_ssao(RenderGraph &graph, const RenderContext &context,
 	info.format = VK_FORMAT_R8_UNORM;
 	info.size_class = SizeClass::InputRelative;
 	info.size_relative_name = input_depth;
+	info.size_x = 0.5f;
+	info.size_y = 0.5f;
 
 	auto &ssao = graph.add_pass("ssao", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 	auto &depth = ssao.add_texture_input(input_depth);

@@ -18,7 +18,7 @@ layout(std140, set = 1, binding = 0) uniform Registers
 
 vec3 reconstruct_tangent(vec3 normal)
 {
-    vec3 up = normal.zxy;
+    vec3 up = abs(normal.y) > 0.999 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0);
     vec3 tangent = normalize(cross(normal, up));
     return tangent;
 }
@@ -34,11 +34,17 @@ vec3 project(vec4 c)
     return c.xyz / c.w;
 }
 
+float min4(vec4 v)
+{
+    vec2 v2 = min(v.xy, v.zw);
+    return min(v2.x, v2.y);
+}
+
 layout(constant_id = 0) const float HALO_THRESHOLD = 0.1;
 
 void main()
 {
-    float d = textureLod(uDepth, vUV, 0.0).x;
+    float d = min4(textureGather(uDepth, vUV));
     if (d == 1.0)
         discard;
 

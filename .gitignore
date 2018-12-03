@@ -20,3 +20,6 @@ perf.data
 /cmake-build-release
 /cmake-build-relwithdebinfo
 /application/platforms/android/renderdoc
+/viewer/settings.gradle
+/viewer/build.gradle
+/viewer/android

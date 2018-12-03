@@ -160,5 +160,9 @@ private:
 
 	TemporalJitter jitter;
 	void capture_environment_probe();
+
+	RenderTextureResource *ssao_output = nullptr;
+	RenderTextureResource *shadow_near = nullptr;
+	RenderTextureResource *shadow_main = nullptr;
 };
 }

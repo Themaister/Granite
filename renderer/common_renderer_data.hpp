@@ -23,6 +23,7 @@
 #pragma once
 
 #include "buffer.hpp"
+#include "image.hpp"
 #include "event.hpp"
 #include "application_wsi_events.hpp"
 #include "application_events.hpp"
@@ -60,10 +61,27 @@ private:
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &);
 };
 
+class SSAOLookupTables : public EventHandler
+{
+public:
+	SSAOLookupTables();
+
+	Vulkan::BufferHandle kernel;
+	unsigned kernel_size = 0;
+
+	Vulkan::ImageHandle noise;
+	unsigned noise_resolution = 4;
+
+private:
+	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
+	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
+};
+
 class CommonRendererData
 {
 public:
 	LightMesh light_mesh;
 	PersistentFrameEvent frame_tick;
+	SSAOLookupTables ssao_luts;
 };
 }

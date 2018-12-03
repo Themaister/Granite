@@ -147,6 +147,7 @@ private:
 		bool force_shadow_map_update = false;
 		bool show_ui = true;
 		bool volumetric_fog = false;
+		bool ssao = true;
 		PostAAType postaa_type = PostAAType::None;
 	};
 	Config config;
@@ -160,5 +161,9 @@ private:
 
 	TemporalJitter jitter;
 	void capture_environment_probe();
+
+	RenderTextureResource *ssao_output = nullptr;
+	RenderTextureResource *shadow_near = nullptr;
+	RenderTextureResource *shadow_main = nullptr;
 };
 }

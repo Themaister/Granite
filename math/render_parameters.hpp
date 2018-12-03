@@ -127,6 +127,7 @@ struct LightingParameters
 	Vulkan::ImageView *environment_irradiance = nullptr;
 	Vulkan::ImageView *shadow_near = nullptr;
 	Vulkan::ImageView *shadow_far = nullptr;
+	Vulkan::ImageView *ambient_occlusion = nullptr;
 	const LightClusterer *cluster = nullptr;
 	const VolumetricFog *volumetric_fog = nullptr;
 };

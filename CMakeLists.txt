@@ -333,6 +333,7 @@ if (NOT GRANITE_VULKAN_ONLY)
             renderer/post/smaa.hpp renderer/post/smaa.cpp
             renderer/post/temporal.hpp renderer/post/temporal.cpp
             renderer/post/aa.hpp renderer/post/aa.cpp
+            renderer/post/ssao.hpp renderer/post/ssao.cpp
             renderer/utils/image_utils.hpp renderer/utils/image_utils.cpp
             renderer/lights/lights.cpp renderer/lights/lights.hpp
             renderer/lights/clusterer.cpp renderer/lights/clusterer.hpp

@@ -24,5 +24,6 @@
 	"showUi": true,
 	"maxSpotLights": 32,
 	"maxPointLights": 32,
-	"volumetricFog": false
+	"volumetricFog": false,
+	"ssao": true
 }

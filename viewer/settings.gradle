@@ -1,2 +1,0 @@
-include ':..:application:platforms:android'
-include ':app'

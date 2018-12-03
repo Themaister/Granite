@@ -347,6 +347,9 @@ void Renderer::bind_lighting_parameters(Vulkan::CommandBuffer &cmd, const Render
 
 	if (lighting->cluster && lighting->cluster->get_cluster_image())
 		set_cluster_parameters(cmd, *lighting->cluster);
+
+	if (lighting->ambient_occlusion)
+		cmd.set_texture(1, 10, *lighting->ambient_occlusion, StockSampler::LinearClamp);
 }
 
 void Renderer::set_stencil_reference(uint8_t compare_mask, uint8_t write_mask, uint8_t ref)
@@ -579,6 +582,8 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 				defines.emplace_back("SHADOW_MAP_PCF_KERNEL_WIDTH", 3);
 		}
 	}
+	if (light.ambient_occlusion)
+		defines.emplace_back("AMBIENT_OCCLUSION", 1);
 
 	unsigned variant = program->register_variant(defines);
 	cmd.set_program(*program->get_program(variant));
@@ -608,15 +613,19 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 		cmd.set_texture(1, 4, *light.shadow_near, sampler);
 	}
 
+	if (light.ambient_occlusion)
+		cmd.set_texture(1, 10, *light.ambient_occlusion, Vulkan::StockSampler::LinearClamp);
+
 	struct DirectionalLightPush
 	{
-		vec4 inv_view_proj_col2;
-		vec4 shadow_col2;
-		vec4 shadow_near_col2;
-		vec4 direction_inv_cutoff;
-		vec4 color_env_intensity;
-		vec4 camera_pos_mipscale;
-		vec3 camera_front;
+		alignas(16) vec4 inv_view_proj_col2;
+		alignas(16) vec4 shadow_col2;
+		alignas(16) vec4 shadow_near_col2;
+		alignas(16) vec4 direction_inv_cutoff;
+		alignas(16) vec4 color_env_intensity;
+		alignas(16) vec4 camera_pos_mipscale;
+		alignas(16) vec3 camera_front;
+		alignas(8) vec2 inv_resolution;
 	} push;
 
 	mat4 total_shadow_transform = light.shadow.far_transform * context.get_render_parameters().inv_view_projection;
@@ -645,6 +654,8 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 
 	push.camera_pos_mipscale = vec4(context.get_render_parameters().camera_position, mipscale);
 	push.camera_front = context.get_render_parameters().camera_front;
+	push.inv_resolution.x = 1.0f / cmd.get_viewport().width;
+	push.inv_resolution.y = 1.0f / cmd.get_viewport().height;
 	cmd.push_constants(&push, 0, sizeof(push));
 
 	CommandBufferUtil::draw_fullscreen_quad(cmd);

@@ -24,6 +24,7 @@
 #include "light_export.hpp"
 #include "muglm/matrix_helper.hpp"
 #include "post/hdr.hpp"
+#include "post/ssao.hpp"
 #include "rapidjson_wrapper.hpp"
 #include "thread_group.hpp"
 #include "utils/image_utils.hpp"
@@ -103,6 +104,9 @@ void SceneViewerApplication::read_config(const std::string &path)
 
 	if (doc.HasMember("msaa"))
 		config.msaa = doc["msaa"].GetUint();
+
+	if (doc.HasMember("ssao"))
+		config.ssao = doc["ssao"].GetBool();
 
 	if (doc.HasMember("directionalLightShadows"))
 		config.directional_light_shadows = doc["directionalLightShadows"].GetBool();
@@ -683,11 +687,13 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 		render_transparent_objects(cmd, selected_camera->get_projection(), selected_camera->get_view());
 	});
 
+	shadow_main = nullptr;
+	shadow_near = nullptr;
 	if (config.directional_light_shadows)
 	{
-		lighting.add_texture_input("shadow-main");
+		shadow_main = &lighting.add_texture_input("shadow-main");
 		if (config.directional_light_cascaded_shadows)
-			lighting.add_texture_input("shadow-near");
+			shadow_near = &lighting.add_texture_input("shadow-near");
 	}
 	scene_loader.get_scene().add_render_pass_dependencies(graph, lighting);
 }
@@ -740,6 +746,11 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 		return true;
 	});
 
+	if (config.ssao)
+	{
+		setup_ssao(graph, context, tagcat("ssao-output", tag), tagcat("depth-transient", tag), tagcat("normal", tag));
+	}
+
 	auto &lighting = graph.add_pass(tagcat("lighting", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 	lighting.add_color_output(tagcat("HDR", tag), emissive, tagcat("emissive", tag));
 	lighting.add_attachment_input(tagcat("albedo", tag));
@@ -749,11 +760,18 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 	lighting.set_depth_stencil_input(tagcat("depth-transient", tag));
 	lighting.add_fake_resource_write_alias(tagcat("depth-transient", tag), tagcat("depth", tag));
 
+	if (config.ssao)
+		ssao_output = &lighting.add_texture_input(tagcat("ssao-output", tag));
+	else
+		ssao_output = nullptr;
+
+	shadow_main = nullptr;
+	shadow_near = nullptr;
 	if (config.directional_light_shadows)
 	{
-		lighting.add_texture_input("shadow-main");
+		shadow_main = &lighting.add_texture_input("shadow-main");
 		if (config.directional_light_cascaded_shadows)
-			lighting.add_texture_input("shadow-near");
+			shadow_near = &lighting.add_texture_input("shadow-near");
 	}
 
 	scene_loader.get_scene().add_render_pass_dependencies(graph, gbuffer);
@@ -893,6 +911,11 @@ void SceneViewerApplication::add_shadow_pass(Device &, const std::string &tag, D
 void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent &swap)
 {
 	auto physical_buffers = graph.consume_physical_buffers();
+
+	shadow_main = nullptr;
+	shadow_near = nullptr;
+	ssao_output = nullptr;
+
 	graph.reset();
 	graph.set_device(&swap.get_device());
 
@@ -1119,20 +1142,9 @@ void SceneViewerApplication::render_scene()
 		update_shadow_scene_aabb();
 
 	graph.setup_attachments(device, &device.get_swapchain_view());
-
-	lighting.shadow_near = nullptr;
-	lighting.shadow_far = nullptr;
-	if (config.directional_light_shadows)
-	{
-		lighting.shadow_far =
-		    &graph.get_physical_texture_resource(graph.get_texture_resource("shadow-main").get_physical_index());
-
-		if (config.directional_light_cascaded_shadows)
-		{
-			lighting.shadow_near =
-			    &graph.get_physical_texture_resource(graph.get_texture_resource("shadow-near").get_physical_index());
-		}
-	}
+	lighting.shadow_near = graph.maybe_get_physical_texture_resource(shadow_near);
+	lighting.shadow_far = graph.maybe_get_physical_texture_resource(shadow_main);
+	lighting.ambient_occlusion = graph.maybe_get_physical_texture_resource(ssao_output);
 
 	scene.bind_render_graph_resources(graph);
 	graph.enqueue_render_passes(device);

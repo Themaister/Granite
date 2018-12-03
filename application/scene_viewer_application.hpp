@@ -147,6 +147,7 @@ private:
 		bool force_shadow_map_update = false;
 		bool show_ui = true;
 		bool volumetric_fog = false;
+		bool ssao = true;
 		PostAAType postaa_type = PostAAType::None;
 	};
 	Config config;

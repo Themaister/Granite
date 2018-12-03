@@ -105,6 +105,9 @@ void SceneViewerApplication::read_config(const std::string &path)
 	if (doc.HasMember("msaa"))
 		config.msaa = doc["msaa"].GetUint();
 
+	if (doc.HasMember("ssao"))
+		config.ssao = doc["ssao"].GetBool();
+
 	if (doc.HasMember("directionalLightShadows"))
 		config.directional_light_shadows = doc["directionalLightShadows"].GetBool();
 	if (doc.HasMember("directionalLightShadowsCascaded"))
@@ -743,8 +746,7 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 		return true;
 	});
 
-	const bool enable_ssao = true;
-	if (enable_ssao)
+	if (config.ssao)
 	{
 		setup_ssao(graph, context, tagcat("ssao-output", tag), tagcat("depth-transient", tag), tagcat("normal", tag));
 	}
@@ -758,7 +760,7 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 	lighting.set_depth_stencil_input(tagcat("depth-transient", tag));
 	lighting.add_fake_resource_write_alias(tagcat("depth-transient", tag), tagcat("depth", tag));
 
-	if (enable_ssao)
+	if (config.ssao)
 		ssao_output = &lighting.add_texture_input(tagcat("ssao-output", tag));
 	else
 		ssao_output = nullptr;

@@ -911,6 +911,11 @@ void SceneViewerApplication::add_shadow_pass(Device &, const std::string &tag, D
 void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent &swap)
 {
 	auto physical_buffers = graph.consume_physical_buffers();
+
+	shadow_main = nullptr;
+	shadow_near = nullptr;
+	ssao_output = nullptr;
+
 	graph.reset();
 	graph.set_device(&swap.get_device());
 

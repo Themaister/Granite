@@ -79,7 +79,7 @@ void setup_ssao(RenderGraph &graph, const RenderContext &context,
 				cmd.get_viewport().height / float(Global::common_renderer_data()->ssao_luts.noise_resolution));
 
 		cmd.push_constants(&push, 0, sizeof(push));
-		Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/post/ssao.frag");
+		Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd, "builtin://shaders/post/ssao.vert", "builtin://shaders/post/ssao.frag");
 	});
 }
 }

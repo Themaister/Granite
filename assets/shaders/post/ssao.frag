@@ -1,6 +1,7 @@
 #version 450
 layout(location = 0) out float AO;
 layout(location = 0) in vec2 vUV;
+layout(location = 1) in vec4 vClip;
 
 #pragma optimize off
 
@@ -53,8 +54,8 @@ void main()
     if (d == 1.0)
         discard;
 
-    vec4 clip = vec4(vUV * 2.0 - 1.0, d, 1.0);
-    vec3 world = project(registers.inv_view_projection * clip);
+    vec4 world4 = vClip + d * registers.inv_view_projection[2];
+    vec3 world = project(world4);
 
     // Implementation heavily inspired from
     // http://john-chapman-graphics.blogspot.com/2013/01/ssao-tutorial.html

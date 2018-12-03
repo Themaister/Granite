@@ -39,18 +39,22 @@ void setup_ssao(RenderGraph &graph, const RenderContext &context,
 	info.size_x = 0.5f;
 	info.size_y = 0.5f;
 
-	auto &ssao = graph.add_pass("ssao", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
-	auto &depth = ssao.add_texture_input(input_depth);
-	auto &normal = ssao.add_texture_input(input_normal);
-	ssao.add_color_output(output, info);
+	auto info_blurred = info;
+	info_blurred.size_x = 0.25f;
+	info_blurred.size_y = 0.25f;
 
-	ssao.set_get_clear_color([](unsigned, VkClearColorValue *value) {
+	auto &ssao_first = graph.add_pass(output + "-first", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
+	auto &depth = ssao_first.add_texture_input(input_depth);
+	auto &normal = ssao_first.add_texture_input(input_normal);
+	auto &noisy_output = ssao_first.add_color_output(output + "-noise", info);
+
+	ssao_first.set_get_clear_color([](unsigned, VkClearColorValue *value) {
 		if (value)
 			value->float32[0] = 1.0f;
 		return true;
 	});
 
-	ssao.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
+	ssao_first.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
 		cmd.set_texture(0, 0, graph.get_physical_texture_resource(depth), Vulkan::StockSampler::NearestClamp);
 		cmd.set_texture(0, 1, graph.get_physical_texture_resource(normal), Vulkan::StockSampler::NearestClamp);
 		cmd.set_texture(0, 2, Global::common_renderer_data()->ssao_luts.noise->get_view(), Vulkan::StockSampler::NearestWrap);
@@ -80,6 +84,14 @@ void setup_ssao(RenderGraph &graph, const RenderContext &context,
 
 		cmd.push_constants(&push, 0, sizeof(push));
 		Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd, "builtin://shaders/post/ssao.vert", "builtin://shaders/post/ssao.frag");
+	});
+
+	auto &ssao_blur = graph.add_pass(output + "-blur", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
+	ssao_blur.add_texture_input(output + "-noise");
+	ssao_blur.add_color_output(output, info_blurred);
+	ssao_blur.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
+		cmd.set_texture(0, 0, graph.get_physical_texture_resource(noisy_output), Vulkan::StockSampler::LinearClamp);
+		Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/post/ssao_blur.frag");
 	});
 }
 }

@@ -1135,17 +1135,9 @@ void SceneViewerApplication::render_scene()
 		update_shadow_scene_aabb();
 
 	graph.setup_attachments(device, &device.get_swapchain_view());
-
-	lighting.shadow_near = nullptr;
-	lighting.shadow_far = nullptr;
-	lighting.ambient_occlusion = nullptr;
-
-	if (shadow_near && shadow_near->get_physical_index() != RenderResource::Unused)
-		lighting.shadow_near = &graph.get_physical_texture_resource(*shadow_near);
-	if (shadow_main && shadow_main->get_physical_index() != RenderResource::Unused)
-		lighting.shadow_far = &graph.get_physical_texture_resource(*shadow_main);
-	if (ssao_output && ssao_output->get_physical_index() != RenderResource::Unused)
-		lighting.ambient_occlusion = &graph.get_physical_texture_resource(*ssao_output);
+	lighting.shadow_near = graph.maybe_get_physical_texture_resource(shadow_near);
+	lighting.shadow_far = graph.maybe_get_physical_texture_resource(shadow_main);
+	lighting.ambient_occlusion = graph.maybe_get_physical_texture_resource(ssao_output);
 
 	scene.bind_render_graph_resources(graph);
 	graph.enqueue_render_passes(device);

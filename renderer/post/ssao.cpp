@@ -22,6 +22,8 @@
 
 #include "ssao.hpp"
 #include "muglm/matrix_helper.hpp"
+#include "global_managers.hpp"
+#include "common_renderer_data.hpp"
 
 using namespace std;
 
@@ -51,24 +53,30 @@ void setup_ssao(RenderGraph &graph, const RenderContext &context,
 	ssao.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
 		cmd.set_texture(0, 0, graph.get_physical_texture_resource(depth), Vulkan::StockSampler::NearestClamp);
 		cmd.set_texture(0, 1, graph.get_physical_texture_resource(normal), Vulkan::StockSampler::NearestClamp);
+		cmd.set_texture(0, 2, Global::common_renderer_data()->ssao_luts.noise->get_view(), Vulkan::StockSampler::NearestWrap);
+		cmd.set_uniform_buffer(0, 3, *Global::common_renderer_data()->ssao_luts.kernel);
+
+		cmd.set_specialization_constant_mask(3);
+		cmd.set_specialization_constant(0, Global::common_renderer_data()->ssao_luts.kernel_size);
+		cmd.set_specialization_constant(1, 0.15f);
 
 		struct Push
 		{
-			mat4 view_projection;
 			mat4 shadow_matrix;
 			mat4 inv_view_projection;
 			vec4 inv_z_transform;
-			float radius;
+			vec2 noise_scale;
 		};
 
 		auto *push = cmd.allocate_typed_constant_data<Push>(1, 0, 1);
-		push->view_projection = context.get_render_parameters().view_projection;
 		push->shadow_matrix = translate(vec3(0.5f, 0.5f, 0.0f)) * scale(vec3(0.5f, 0.5f, 1.0f)) * context.get_render_parameters().view_projection;
 		push->inv_view_projection = context.get_render_parameters().inv_view_projection;
 		push->inv_z_transform = vec4(
 				context.get_render_parameters().inv_projection[2].zw(),
 				context.get_render_parameters().inv_projection[3].zw());
-		push->radius = 0.05f;
+		push->noise_scale = vec2(
+				cmd.get_viewport().width / float(Global::common_renderer_data()->ssao_luts.noise_resolution),
+				cmd.get_viewport().height / float(Global::common_renderer_data()->ssao_luts.noise_resolution));
 
 		cmd.push_constants(&push, 0, sizeof(push));
 		Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/post/ssao.frag");

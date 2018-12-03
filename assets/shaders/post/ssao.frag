@@ -4,16 +4,23 @@ layout(location = 0) in vec2 vUV;
 
 #pragma optimize off
 
+layout(constant_id = 0) const int KERNEL_SIZE = 64;
+layout(constant_id = 1) const float HALO_THRESHOLD = 0.1;
+
 layout(set = 0, binding = 0) uniform sampler2D uDepth;
 layout(set = 0, binding = 1) uniform sampler2D uNormal;
+layout(set = 0, binding = 2) uniform sampler2D uNoise;
+layout(set = 0, binding = 3, std140) uniform Kernel
+{
+    vec3 hemisphere_kernel[KERNEL_SIZE];
+};
 
 layout(std140, set = 1, binding = 0) uniform Registers
 {
-    mat4 view_projection;
     mat4 shadow_matrix;
     mat4 inv_view_projection;
     vec4 inv_z_transform;
-    float radius;
+    vec2 noise_scale;
 } registers;
 
 vec3 reconstruct_tangent(vec3 normal)
@@ -40,8 +47,6 @@ float min4(vec4 v)
     return min(v2.x, v2.y);
 }
 
-layout(constant_id = 0) const float HALO_THRESHOLD = 0.1;
-
 void main()
 {
     float d = min4(textureGather(uDepth, vUV));
@@ -51,53 +56,41 @@ void main()
     vec4 clip = vec4(vUV * 2.0 - 1.0, d, 1.0);
     vec3 world = project(registers.inv_view_projection * clip);
 
-    vec3 normal = normalize(textureLod(uNormal, vUV, 0.0).xyz * 2.0 - 1.0);
-    vec3 tangent = reconstruct_tangent(normal);
-    vec3 bitangent = cross(normal, tangent);
+    // Implementation heavily inspired from
+    // http://john-chapman-graphics.blogspot.com/2013/01/ssao-tutorial.html
 
-    vec3 delta_x = tangent * registers.radius;
-    vec3 delta_y = bitangent * registers.radius;
-    vec3 delta_z = normal * registers.radius;
+    vec3 normal = normalize(textureLod(uNormal, vUV, 0.0).xyz * 2.0 - 1.0);
+    vec3 rvec = vec3(textureLod(uNoise, vUV * registers.noise_scale, 0.0).xy, 0.0);
+    vec3 tangent = normalize(rvec - normal * dot(rvec, normal));
+    vec3 bitangent = cross(normal, tangent);
+    mat3 tbn = mat3(tangent, bitangent, normal);
 
     float ao = 0.0;
-    float w = 0.0;
 
-    for (int y = 0; y < 8; y++)
+    for (int i = 0; i < KERNEL_SIZE; i++)
     {
-        for (int x = 0; x < 8; x++)
+        vec3 samp = tbn * hemisphere_kernel[i];
+        vec3 near_world = world + HALO_THRESHOLD * samp;
+        vec4 c = registers.shadow_matrix * vec4(near_world, 1.0);
+
+        if (c.w >= 0.0)
         {
-            // TODO: Importance-sample hemisphere?
-            vec2 amp = (vec2(x, y) - 3.5) / 4.0;
-            float z_amp = sqrt(max(1.0 - dot(amp, amp), 0.0));
+            vec3 C = c.xyz / c.w;
+            float ref_depth = to_world_depth(C.z);
+            float sampled_depth = to_world_depth(textureLod(uDepth, C.xy, 0.0).x);
+            float delta = ref_depth - sampled_depth;
 
-            vec3 near_world = world +
-                amp.x * delta_x +
-                amp.y * delta_y +
-                z_amp * delta_z;
-
-            vec4 c = registers.shadow_matrix * vec4(near_world, 1.0);
-
-            if (c.w >= 0.0)
+            if (delta < 0.0)
             {
-                vec3 C = c.xyz / c.w;
-                float ref_depth = to_world_depth(C.z);
-                float sampled_depth = to_world_depth(textureLod(uDepth, C.xy, 0.0).x);
-                float delta = ref_depth - sampled_depth;
-
-                if (delta < 0.0)
-                {
-                    ao += z_amp;
-                    w += z_amp;
-                }
-                else
-                {
-                    float v = smoothstep(0.0, HALO_THRESHOLD, delta);
-                    ao += v * z_amp;
-                    w += z_amp;
-                }
+                ao += 1.0;
+            }
+            else
+            {
+                float v = smoothstep(0.9 * HALO_THRESHOLD, HALO_THRESHOLD, delta);
+                ao += v;
             }
         }
     }
 
-    AO = ao / max(w, 0.001);
+    AO = ao / float(KERNEL_SIZE);
 }

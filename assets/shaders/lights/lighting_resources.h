@@ -113,4 +113,8 @@ mediump float get_directional_shadow_term(
 #include "clusterer.h"
 #endif
 
+#ifdef AMBIENT_OCCLUSION
+layout(set = 1, binding = 10) uniform mediump sampler2D uAmbientOcclusion;
+#endif
+
 #endif

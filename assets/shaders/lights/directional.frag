@@ -26,7 +26,10 @@ layout(std430, push_constant) uniform Registers
     vec3 camera_pos;
 	float environment_mipscale;
 	vec3 camera_front;
+	vec2 inv_resolution;
 } registers;
+
+//#undef AMBIENT_OCCLUSION
 
 void main()
 {
@@ -42,8 +45,14 @@ void main()
     vec4 clip_shadow_near = vShadowNearClip + depth * registers.shadow_projection_near_col2;
     vec4 clip_shadow = vShadowClip + depth * registers.shadow_projection_col2;
 
+#ifdef AMBIENT_OCCLUSION
+    mediump float base_ambient = textureLod(uAmbientOcclusion, gl_FragCoord.xy * registers.inv_resolution, 0.0).x;
+#else
+    const mediump float base_ambient = 1.0;
+#endif
+
     FragColor = compute_lighting(
-		base_color_ambient.rgb, N, mr.x, mr.y, base_color_ambient.a, 1.0,
+		base_color_ambient.rgb, N, mr.x, mr.y, base_color_ambient.a * base_ambient, 1.0,
 		pos, registers.camera_pos, registers.camera_front, registers.direction, registers.color
 #ifdef SHADOWS
         , clip_shadow_near, clip_shadow, registers.inv_cutoff_distance

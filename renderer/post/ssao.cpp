@@ -21,6 +21,7 @@
  */
 
 #include "ssao.hpp"
+#include "muglm/matrix_helper.hpp"
 
 using namespace std;
 
@@ -52,17 +53,20 @@ void setup_ssao(RenderGraph &graph, const RenderContext &context,
 		struct Push
 		{
 			mat4 view_projection;
+			mat4 shadow_matrix;
+			mat4 inv_view_projection;
 			vec4 inv_z_transform;
 			float radius;
-		} push;
+		};
 
-		push.view_projection = context.get_render_parameters().view_projection;
-
-		push.inv_z_transform = vec4(
+		auto *push = cmd.allocate_typed_constant_data<Push>(1, 0, 1);
+		push->view_projection = context.get_render_parameters().view_projection;
+		push->shadow_matrix = translate(vec3(0.5f, 0.5f, 0.0f)) * scale(vec3(0.5f, 0.5f, 1.0f)) * context.get_render_parameters().view_projection;
+		push->inv_view_projection = context.get_render_parameters().inv_view_projection;
+		push->inv_z_transform = vec4(
 				context.get_render_parameters().inv_projection[2].zw(),
 				context.get_render_parameters().inv_projection[3].zw());
-
-		push.radius = 0.05f;
+		push->radius = 0.05f;
 
 		cmd.push_constants(&push, 0, sizeof(push));
 		Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd, "builtin://shaders/quad.vert", "builtin://shaders/post/ssao.frag");

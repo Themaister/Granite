@@ -400,6 +400,12 @@ void FFTInterface::submit_command_buffer(GLFFT::CommandBuffer *cmd_)
 	delete cmd;
 }
 
+bool FFTInterface::supports_native_fp16()
+{
+	return device->get_device_features().storage_16bit_features.storageBuffer16BitAccess &&
+	       device->get_device_features().float16_int8_features.shaderFloat16;
+}
+
 FFTInterface::FFTInterface(Vulkan::Device *device)
     : device(device)
 {

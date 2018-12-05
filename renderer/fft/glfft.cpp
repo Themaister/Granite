@@ -732,6 +732,9 @@ unique_ptr<Program> FFT::build_program(const Parameters &params)
 
 	str += "#version 450\n";
 
+	if ((params.fft_fp16 || params.input_fp16 || params.output_fp16) && context->supports_native_fp16())
+		str += "#define FFT_NATIVE_FP16\n";
+
 	if (params.p1)
 	{
 		str += "#define FFT_P1\n";

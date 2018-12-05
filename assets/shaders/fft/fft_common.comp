@@ -16,8 +16,11 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#if defined(FFT_FP16)
-precision mediump float;
+#if defined(FFT_NATIVE_FP16)
+    #extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
+    #extension GL_EXT_16bit_storage : require
+#elif defined(FFT_FP16)
+    precision mediump float;
 #endif
 
 #define BINDING_SSBO_IN 0
@@ -47,32 +50,50 @@ layout(std430, push_constant) uniform UBO
 // For complex-to-real or real-to-complex transforms, we consider two adjacent real samples to be a complex number as-is.
 // Separate "resolve" passes are added to make the transform correct.
 
-#if defined(FFT_VEC2)
-#define cfloat vec2
-#define cfloat_buffer_fp16 uint
-#elif defined(FFT_VEC4)
-#define cfloat vec4
-#define cfloat_buffer_fp16 uvec2
+#if defined(FFT_FP16) && defined(FFT_NATIVE_FP16)
+    #define native_float float16_t
+    #define native_vec2 f16vec2
+    #define native_vec4 f16vec4
 #else
-#error FFT_VEC2 or FFT_VEC4 must be defined.
+    #define native_float float
+    #define native_vec2 vec2
+    #define native_vec4 vec4
+#endif
+
+#if defined(FFT_VEC2)
+    #define cfloat native_vec2
+    #if defined(FFT_NATIVE_FP16)
+        #define cfloat_buffer_fp16 f16vec2
+    #else
+        #define cfloat_buffer_fp16 uint
+    #endif
+#elif defined(FFT_VEC4)
+    #define cfloat native_vec4
+    #if defined(FFT_NATIVE_FP16)
+        #define cfloat_buffer_fp16 f16vec4
+    #else
+        #define cfloat_buffer_fp16 uvec2
+    #endif
+#else
+    #error FFT_VEC2 or FFT_VEC4 must be defined.
 #endif
 
 #ifdef FFT_INPUT_FP16
-#define cfloat_buffer_in cfloat_buffer_fp16
+    #define cfloat_buffer_in cfloat_buffer_fp16
 #else
-#define cfloat_buffer_in cfloat
+    #define cfloat_buffer_in cfloat
 #endif
 
 #ifdef FFT_OUTPUT_FP16
-#define cfloat_buffer_out cfloat_buffer_fp16
+    #define cfloat_buffer_out cfloat_buffer_fp16
 #else
-#define cfloat_buffer_out cfloat
+    #define cfloat_buffer_out cfloat
 #endif
 
 // Normally this would be sqrt(1 / radix), but we'd have to apply normalization
 // for every pass instead of just half of them. Also, 1 / 2^n is "lossless" in FP math.
 #ifdef FFT_NORMALIZE
-#define FFT_NORM_FACTOR (1.0 / float(FFT_RADIX))
+    #define FFT_NORM_FACTOR native_float(1.0 / float(FFT_RADIX))
 #endif
 
 // FFT_CVECTOR_SIZE defines an interleaving stride for the first pass.
@@ -82,46 +103,42 @@ layout(std430, push_constant) uniform UBO
 // in the vector are from different transforms when we do vertical transforms.
 
 #if defined(FFT_P1) && ((!defined(FFT_DUAL) && defined(FFT_HORIZ) && defined(FFT_VEC4)))
-#define FFT_CVECTOR_SIZE 2
+    #define FFT_CVECTOR_SIZE 2
 #else
-#define FFT_CVECTOR_SIZE 1
+    #define FFT_CVECTOR_SIZE 1
 #endif
 
-#define FFT_HIGHP highp
-
 // Complex multiply.
-vec4 cmul(vec4 a, vec4 b)
+native_vec4 cmul(native_vec4 a, native_vec4 b)
 {
-    vec4 r3 = a.yxwz;
-    vec4 r1 = b.xxzz;
-    vec4 R0 = a * r1;
-    vec4 r2 = b.yyww;
-    vec4 R1 = r2 * r3;
+    native_vec4 r3 = a.yxwz;
+    native_vec4 r1 = b.xxzz;
+    native_vec4 R0 = a * r1;
+    native_vec4 r2 = b.yyww;
+    native_vec4 R1 = r2 * r3;
     return R0 + vec4(-R1.x, R1.y, -R1.z, R1.w);
 }
 
-vec2 cmul(vec2 a, vec2 b)
+native_vec2 cmul(native_vec2 a, native_vec2 b)
 {
-    vec2 r3 = a.yx;
-    vec2 r1 = b.xx;
-    vec2 R0 = a * r1;
-    vec2 r2 = b.yy;
-    vec2 R1 = r2 * r3;
+    native_vec2 r3 = a.yx;
+    native_vec2 r1 = b.xx;
+    native_vec2 R0 = a * r1;
+    native_vec2 r2 = b.yy;
+    native_vec2 R1 = r2 * r3;
     return R0 + vec2(-R1.x, R1.y);
 }
 
 #ifdef FFT_INPUT_TEXTURE
 
 #ifndef FFT_P1
-#error Input texture can only be used when P == 1.
+    #error Input texture can only be used when P == 1.
 #endif
 
-#ifdef GL_ES
 #if defined(FFT_INPUT_FP16) || defined(FFT_FP16)
-precision mediump sampler2D;
+    precision mediump sampler2D;
 #else
-precision highp sampler2D;
-#endif
+    precision highp sampler2D;
 #endif
 
 #define uTexelOffset constant_data.texture_offset_scale.xy
@@ -134,30 +151,30 @@ layout(binding = BINDING_TEXTURE1) uniform sampler2D uTexture2;
 
 cfloat load_texture(sampler2D samp, uvec2 coord)
 {
-    FFT_HIGHP vec2 uv = vec2(coord) * uTexelScale + uTexelOffset;
+    highp vec2 uv = vec2(coord) * uTexelScale + uTexelOffset;
 
     // Quite messy, this :)
 #if defined(FFT_VEC4)
     #if defined(FFT_INPUT_REAL)
-    return vec4(
+    return cfloat(
         textureLodOffset(samp, uv, 0.0, ivec2(0, 0)).x,
         textureLodOffset(samp, uv, 0.0, ivec2(1, 0)).x,
         textureLodOffset(samp, uv, 0.0, ivec2(2, 0)).x,
         textureLodOffset(samp, uv, 0.0, ivec2(3, 0)).x);
     #elif defined(FFT_DUAL)
-    return textureLod(samp, uv, 0.0);
+    return cfloat(textureLod(samp, uv, 0.0));
     #else
-    return vec4(
+    return cfloat(
         textureLodOffset(samp, uv, 0.0, ivec2(0, 0)).xy,
         textureLodOffset(samp, uv, 0.0, ivec2(1, 0)).xy);
     #endif
 #elif defined(FFT_VEC2)
     #if defined(FFT_INPUT_REAL)
-    return vec2(
+    return cfloat(
         textureLodOffset(samp, uv, 0.0, ivec2(0, 0)).x,
         textureLodOffset(samp, uv, 0.0, ivec2(1, 0)).x);
     #else
-    return textureLod(samp, uv, 0.0).xy;
+    return cfloat(textureLod(samp, uv, 0.0).xy);
     #endif
 #endif
 }
@@ -197,11 +214,19 @@ cfloat load_global(uint offset)
 {
     // Convolution in frequency domain is multiplication.
 #if defined(FFT_INPUT_FP16) && defined(FFT_VEC2)
-    return cmul(unpackHalf2x16(fft_in.data[offset]), unpackHalf2x16(fft_in2.data[offset]));
+    #if defined(FFT_NATIVE_FP16)
+        return cmul(fft_in.data[offset], fft_in2.data[offset]);
+    #else
+        return cmul(unpackHalf2x16(fft_in.data[offset]), unpackHalf2x16(fft_in2.data[offset]));
+    #endif
 #elif defined(FFT_INPUT_FP16) && defined(FFT_VEC4)
-    uvec2 data = fft_in.data[offset];
-    uvec2 data2 = fft_in2.data[offset];
-    return cmul(vec4(unpackHalf2x16(data.x), unpackHalf2x16(data.y)), vec4(unpackHalf2x16(data2.x), unpackHalf2x16(data2.y)));
+    #if defined(FFT_NATIVE_FP16)
+        return cmul(fft_in.data[offset], fft_in2.data[offset]);
+    #else
+        uvec2 data = fft_in.data[offset];
+        uvec2 data2 = fft_in2.data[offset];
+        return cmul(vec4(unpackHalf2x16(data.x), unpackHalf2x16(data.y)), vec4(unpackHalf2x16(data2.x), unpackHalf2x16(data2.y)));
+    #endif
 #else
     return cmul(fft_in.data[offset], fft_in2.data[offset]);
 #endif
@@ -210,10 +235,18 @@ cfloat load_global(uint offset)
 cfloat load_global(uint offset)
 {
 #if defined(FFT_INPUT_FP16) && defined(FFT_VEC2)
-    return unpackHalf2x16(fft_in.data[offset]);
+    #if defined(FFT_NATIVE_FP16)
+        return fft_in.data[offset];
+    #else
+        return unpackHalf2x16(fft_in.data[offset]);
+    #endif
 #elif defined(FFT_INPUT_FP16) && defined(FFT_VEC4)
-    uvec2 data = fft_in.data[offset];
-    return vec4(unpackHalf2x16(data.x), unpackHalf2x16(data.y));
+    #if defined(FFT_NATIVE_FP16)
+        return fft_in.data[offset];
+    #else
+        uvec2 data = fft_in.data[offset];
+        return cfloat(unpackHalf2x16(data.x), unpackHalf2x16(data.y));
+    #endif
 #else
     return fft_in.data[offset];
 #endif
@@ -233,9 +266,9 @@ void store_global(uint offset, cfloat v)
     v *= FFT_NORM_FACTOR;
 #endif
 
-#if defined(FFT_OUTPUT_FP16) && defined(FFT_VEC2)
+#if defined(FFT_OUTPUT_FP16) && defined(FFT_VEC2) && !defined(FFT_NATIVE_FP16)
     fft_out.data[offset] = packHalf2x16(v);
-#elif defined(FFT_OUTPUT_FP16) && defined(FFT_VEC4)
+#elif defined(FFT_OUTPUT_FP16) && defined(FFT_VEC4) && !defined(FFT_NATIVE_FP16)
     fft_out.data[offset] = uvec2(packHalf2x16(v.xy), packHalf2x16(v.zw));
 #else
     fft_out.data[offset] = v;
@@ -262,7 +295,7 @@ layout(r16f, binding = BINDING_IMAGE) uniform writeonly image2D uImage;
 layout(rg16f, binding = BINDING_IMAGE) uniform writeonly image2D uImage;
 #endif
 
-void store(ivec2 coord, vec4 value)
+void store(ivec2 coord, native_vec4 value)
 {
 #ifdef FFT_NORM_FACTOR
     value *= FFT_NORM_FACTOR;
@@ -296,7 +329,7 @@ void store(ivec2 coord, vec4 value)
 }
 
 #ifndef FFT_DUAL
-void store(ivec2 coord, vec2 value)
+void store(ivec2 coord, native_vec2 value)
 {
 #ifdef FFT_NORM_FACTOR
     value *= FFT_NORM_FACTOR;
@@ -324,8 +357,8 @@ void store(ivec2 coord, vec2 value)
 
 #endif
 
-#define PI 3.14159265359
-#define SQRT_1_2 0.70710678118
+#define PI native_float(3.14159265359)
+#define SQRT_1_2 native_float(0.70710678118)
 
 #ifdef FFT_INVERSE
 #define PI_DIR (+PI)
@@ -342,22 +375,22 @@ void store(ivec2 coord, vec2 value)
 #if (!defined(FFT_DUAL) && defined(FFT_HORIZ) && defined(FFT_VEC4))
 #define FFT_OUTPUT_STEP 2u
 #define FFT_OUTPUT_SHIFT 1u
-#define ctwiddle vec4
+#define ctwiddle native_vec4
 ctwiddle twiddle(uint k, uint p)
 {
     // Trancendentals should always be done in highp.
-    FFT_HIGHP vec2 angles = PI_DIR * (float(k) + vec2(0.0, 1.0)) / float(p);
-    FFT_HIGHP vec2 cos_a = cos(angles);
-    FFT_HIGHP vec2 sin_a = sin(angles);
+    highp vec2 angles = PI_DIR * (float(k) + vec2(0.0, 1.0)) / float(p);
+    highp vec2 cos_a = cos(angles);
+    highp vec2 sin_a = sin(angles);
     return ctwiddle(cos_a.x, sin_a.x, cos_a.y, sin_a.y);
 }
 
 #ifdef FFT_INVERSE
-#define TWIDDLE_1_8 (vec2(+SQRT_1_2, +SQRT_1_2).xyxy)
-#define TWIDDLE_3_8 (vec2(-SQRT_1_2, +SQRT_1_2).xyxy)
+    #define TWIDDLE_1_8 (native_vec2(+SQRT_1_2, +SQRT_1_2).xyxy)
+    #define TWIDDLE_3_8 (native_vec2(-SQRT_1_2, +SQRT_1_2).xyxy)
 #else
-#define TWIDDLE_1_8 (vec2(+SQRT_1_2, -SQRT_1_2).xyxy)
-#define TWIDDLE_3_8 (vec2(-SQRT_1_2, -SQRT_1_2).xyxy)
+    #define TWIDDLE_1_8 (native_vec2(+SQRT_1_2, -SQRT_1_2).xyxy)
+    #define TWIDDLE_3_8 (native_vec2(-SQRT_1_2, -SQRT_1_2).xyxy)
 #endif
 
 // 1-component twiddle, pack in vec2.
@@ -365,44 +398,44 @@ ctwiddle twiddle(uint k, uint p)
 
 #define FFT_OUTPUT_STEP 1u
 #define FFT_OUTPUT_SHIFT 0u
-#define ctwiddle vec2
+#define ctwiddle native_vec2
 ctwiddle twiddle(uint k, uint p)
 {
     // Trancendentals should always be done in highp.
-    FFT_HIGHP float angle = PI_DIR * float(k) / float(p);
+    highp float angle = PI_DIR * float(k) / float(p);
     return ctwiddle(cos(angle), sin(angle));
 }
 
 #ifdef FFT_INVERSE
-#define TWIDDLE_1_8 (vec2(+SQRT_1_2, +SQRT_1_2))
-#define TWIDDLE_3_8 (vec2(-SQRT_1_2, +SQRT_1_2))
+    #define TWIDDLE_1_8 (native_vec2(+SQRT_1_2, +SQRT_1_2))
+    #define TWIDDLE_3_8 (native_vec2(-SQRT_1_2, +SQRT_1_2))
 #else
-#define TWIDDLE_1_8 (vec2(+SQRT_1_2, -SQRT_1_2))
-#define TWIDDLE_3_8 (vec2(-SQRT_1_2, -SQRT_1_2))
+    #define TWIDDLE_1_8 (native_vec2(+SQRT_1_2, -SQRT_1_2))
+    #define TWIDDLE_3_8 (native_vec2(-SQRT_1_2, -SQRT_1_2))
 #endif
 
 #endif
 
 // Complex multiply by v * -j. Trivial case which can avoid mul/add.
-vec4 cmul_minus_j(vec4 v)
+native_vec4 cmul_minus_j(native_vec4 v)
 {
-    return vec4(v.y, -v.x, v.w, -v.z);
+    return native_vec4(v.y, -v.x, v.w, -v.z);
 }
 
-vec2 cmul_minus_j(vec2 v)
+native_vec2 cmul_minus_j(native_vec2 v)
 {
-    return vec2(v.y, -v.x);
+    return native_vec2(v.y, -v.x);
 }
 
 // Complex multiply by v * +j. Trivial case which can avoid mul/add.
-vec4 cmul_plus_j(vec4 v)
+native_vec4 cmul_plus_j(native_vec4 v)
 {
-    return vec4(-v.y, v.x, -v.w, v.z);
+    return native_vec4(-v.y, v.x, -v.w, v.z);
 }
 
-vec2 cmul_plus_j(vec2 v)
+native_vec2 cmul_plus_j(native_vec2 v)
 {
-    return vec2(-v.y, v.x);
+    return native_vec2(-v.y, v.x);
 }
 
 #ifdef FFT_INVERSE
@@ -420,69 +453,69 @@ vec2 cmul_plus_j(vec2 v)
 //        /   \
 // w * b ------- a - wb
 //
-void butterfly(inout vec4 a, inout vec4 b, vec4 w)
+void butterfly(inout native_vec4 a, inout native_vec4 b, native_vec4 w)
 {
-    vec4 t = cmul(b, w);
+    native_vec4 t = cmul(b, w);
     b = a - t;
     a = a + t;
 }
 
 // Computes butterflies, but the twiddle factors for the two butterflies are
 // identical.
-void butterfly(inout vec4 a, inout vec4 b, vec2 w)
+void butterfly(inout native_vec4 a, inout native_vec4 b, native_vec2 w)
 {
     butterfly(a, b, w.xyxy);
 }
 
-void butterfly(inout vec2 a, inout vec2 b, vec2 w)
+void butterfly(inout native_vec2 a, inout native_vec2 b, native_vec2 w)
 {
-    vec2 t = cmul(b, w);
+    native_vec2 t = cmul(b, w);
     b = a - t;
     a = a + t;
 }
 
 // First pass butterfly, special case where w = 1.
-void butterfly_p1(inout vec4 a, inout vec4 b)
+void butterfly_p1(inout native_vec4 a, inout native_vec4 b)
 {
-    vec4 t = b;
+    native_vec4 t = b;
     b = a - t;
     a = a + t;
 }
 
 // First pass butterfly, but also multiply in a twiddle factor of -j to b afterwards.
 // Used in P == 1 transforms for radix-4, radix-8 etc.
-void butterfly_p1_minus_j(inout vec4 a, inout vec4 b)
+void butterfly_p1_minus_j(inout native_vec4 a, inout native_vec4 b)
 {
-    vec4 t = b;
-    b = vec4(1.0, -1.0, 1.0, -1.0) * (a.yxwz - t.yxwz);
+    native_vec4 t = b;
+    b = native_vec4(1.0, -1.0, 1.0, -1.0) * (a.yxwz - t.yxwz);
     a = a + t;
 }
 
-void butterfly_p1_plus_j(inout vec4 a, inout vec4 b)
+void butterfly_p1_plus_j(inout native_vec4 a, inout native_vec4 b)
 {
-    vec4 t = b;
-    b = vec4(-1.0, 1.0, -1.0, 1.0) * (a.yxwz - t.yxwz);
+    native_vec4 t = b;
+    b = native_vec4(-1.0, 1.0, -1.0, 1.0) * (a.yxwz - t.yxwz);
     a = a + t;
 }
 
-void butterfly_p1(inout vec2 a, inout vec2 b)
+void butterfly_p1(inout native_vec2 a, inout native_vec2 b)
 {
-    vec2 t = b;
+    native_vec2 t = b;
     b = a - t;
     a = a + t;
 }
 
-void butterfly_p1_minus_j(inout vec2 a, inout vec2 b)
+void butterfly_p1_minus_j(inout native_vec2 a, inout native_vec2 b)
 {
-    vec2 t = b;
-    b = vec2(1.0, -1.0) * (a.yx - t.yx);
+    native_vec2 t = b;
+    b = native_vec2(1.0, -1.0) * (a.yx - t.yx);
     a = a + t;
 }
 
-void butterfly_p1_plus_j(inout vec2 a, inout vec2 b)
+void butterfly_p1_plus_j(inout native_vec2 a, inout native_vec2 b)
 {
-    vec2 t = b;
-    b = vec2(-1.0, 1.0) * (a.yx - t.yx);
+    native_vec2 t = b;
+    b = native_vec2(-1.0, 1.0) * (a.yx - t.yx);
     a = a + t;
 }
 
@@ -493,10 +526,10 @@ void butterfly_p1_plus_j(inout vec2 a, inout vec2 b)
 #endif
 
 #ifdef FFT_RESOLVE_REAL_TO_COMPLEX
-vec2 r2c_twiddle(uint i, uint p)
+native_vec2 r2c_twiddle(uint i, uint p)
 {
-    vec2 w = -twiddle(i, p);
-    return vec2(-w.y, w.x);
+    native_vec2 w = -twiddle(i, p);
+    return native_vec2(-w.y, w.x);
 }
 
 // See http://www.engineeringproductivitytools.com/stuff/T0001/PT10.HTM for
@@ -520,46 +553,46 @@ void FFT_real_to_complex(uvec2 i)
     if (i.x == 0u)
     {
 #ifdef FFT_INPUT_TEXTURE
-        vec2 x = load_texture(i);
+        native_vec2 x = load_texture(i);
 #else
-        vec2 x = load_global(offset);
+        native_vec2 x = load_global(offset);
 #endif
 
 #ifdef FFT_OUTPUT_IMAGE
-        store(ivec2(i), vec2(x.x + x.y, 0.0));
-        store(ivec2(i) + ivec2(stride, 0), vec2(x.x - x.y, 0.0));
+        store(ivec2(i), native_vec2(x.x + x.y, 0.0));
+        store(ivec2(i) + ivec2(stride, 0), native_vec2(x.x - x.y, 0.0));
 #else
-        store_global(2u * offset, vec2(x.x + x.y, 0.0));
-        store_global(2u * offset + stride, vec2(x.x - x.y, 0.0));
+        store_global(2u * offset, native_vec2(x.x + x.y, 0.0));
+        store_global(2u * offset + stride, native_vec2(x.x - x.y, 0.0));
 #endif
     }
     else
     {
 #ifdef FFT_INPUT_TEXTURE
-        vec2 a = load_texture(i);
-        vec2 b = load_texture(uvec2(stride - i.x, i.y));
+        native_vec2 a = load_texture(i);
+        native_vec2 b = load_texture(uvec2(stride - i.x, i.y));
 #else
-        vec2 a = load_global(offset + i.x);
-        vec2 b = load_global(offset + stride - i.x);
+        native_vec2 a = load_global(offset + i.x);
+        native_vec2 b = load_global(offset + stride - i.x);
 #endif
-        b = vec2(b.x, -b.y);
-        vec2 fe = a + b;
-        vec2 fo = cmul(a - b, r2c_twiddle(i.x, stride));
+        b = native_vec2(b.x, -b.y);
+        native_vec2 fe = a + b;
+        native_vec2 fo = cmul(a - b, r2c_twiddle(i.x, stride));
 
 #ifdef FFT_OUTPUT_IMAGE
-        store(ivec2(i), 0.5 * (fe + fo));
+        store(ivec2(i), native_float(0.5) * (fe + fo));
 #else
-        store_global(2u * offset + i.x, 0.5 * (fe + fo));
+        store_global(2u * offset + i.x, native_float(0.5) * (fe + fo));
 #endif
     }
 }
 #endif
 
 #ifdef FFT_RESOLVE_COMPLEX_TO_REAL
-vec2 c2r_twiddle(uint i, uint p)
+native_vec2 c2r_twiddle(uint i, uint p)
 {
-    vec2 w = twiddle(i, p);
-    return vec2(-w.y, w.x);
+    native_vec2 w = twiddle(i, p);
+    return native_vec2(-w.y, w.x);
 }
 
 void FFT_complex_to_real(uvec2 i)
@@ -568,15 +601,15 @@ void FFT_complex_to_real(uvec2 i)
     uint offset = i.y * stride;
 
 #ifdef FFT_INPUT_TEXTURE
-    vec2 a = load_texture(i);
-    vec2 b = load_texture(uvec2(stride - i.x, i.y));
+    native_vec2 a = load_texture(i);
+    native_vec2 b = load_texture(uvec2(stride - i.x, i.y));
 #else
-    vec2 a = load_global(2u * offset + i.x);
-    vec2 b = load_global(2u * offset + stride - i.x);
+    native_vec2 a = load_global(2u * offset + i.x);
+    native_vec2 b = load_global(2u * offset + stride - i.x);
 #endif
-    b = vec2(b.x, -b.y);
-    vec2 even = a + b;
-    vec2 odd = cmul(a - b, c2r_twiddle(i.x, stride));
+    b = native_vec2(b.x, -b.y);
+    native_vec2 even = a + b;
+    native_vec2 odd = cmul(a - b, c2r_twiddle(i.x, stride));
 
     store_global(offset + i.x, even + odd);
 }

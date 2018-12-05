@@ -57,6 +57,8 @@ public:
 
 	std::string load_shader(const char *path) override;
 
+	bool supports_native_fp16() override;
+
 private:
 	Vulkan::Device *device = nullptr;
 };

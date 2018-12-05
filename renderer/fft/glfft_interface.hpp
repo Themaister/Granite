@@ -108,6 +108,8 @@ public:
 
 	virtual std::string load_shader(const char *path) = 0;
 
+	virtual bool supports_native_fp16() = 0;
+
 protected:
 	Context() = default;
 };

@@ -792,7 +792,7 @@ CommandBuffer::Type Device::get_physical_queue_type(CommandBuffer::Type queue_ty
 	}
 	else
 	{
-		if (graphics_queue_family_index == compute_queue_family_index)
+		if (graphics_queue_family_index == compute_queue_family_index && graphics_queue != compute_queue)
 			return CommandBuffer::Type::AsyncCompute;
 		else
 			return CommandBuffer::Type::Generic;
@@ -2844,8 +2844,14 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		// For concurrent queue mode, we just need to inject a semaphore.
 		// For non-concurrent queue mode, we will have to inject ownership transfer barrier if the queue families do not match.
 
-		auto transfer_cmd = request_command_buffer(CommandBuffer::Type::AsyncTransfer);
 		auto graphics_cmd = request_command_buffer(CommandBuffer::Type::Generic);
+		CommandBufferHandle transfer_cmd;
+
+		// Don't split the upload into multiple command buffers unless we have to.
+		if (transfer_queue != graphics_queue)
+			transfer_cmd = request_command_buffer(CommandBuffer::Type::AsyncTransfer);
+		else
+			transfer_cmd = graphics_cmd;
 
 		transfer_cmd->image_barrier(*handle, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 		                            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT,
@@ -2910,8 +2916,6 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 			submit(transfer_cmd, nullptr, 1, &sem);
 			add_wait_semaphore(CommandBuffer::Type::Generic, sem, dst_stages, true);
 		}
-		else
-			submit(transfer_cmd);
 
 		if (generate_mips)
 		{
@@ -2933,13 +2937,20 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 					handle->get_access_flags() & image_layout_to_possible_access(create_info.initial_layout));
 		}
 
+		bool share_compute = concurrent_queue && graphics_queue != compute_queue;
+		bool share_async_graphics = get_physical_queue_type(CommandBuffer::Type::AsyncGraphics) == CommandBuffer::Type::AsyncCompute;
+
 		// For concurrent queue, make sure that compute can see the final image as well.
-		if (concurrent_queue && graphics_queue != compute_queue)
+		// Also add semaphore if the compute queue can be used for async graphics as well.
+		if (share_compute || share_async_graphics)
 		{
 			Semaphore sem;
 			submit(graphics_cmd, nullptr, 1, &sem);
-			add_wait_semaphore(CommandBuffer::Type::AsyncCompute,
-			                   sem, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT, true);
+
+			VkPipelineStageFlags dst_stages = handle->get_stage_flags();
+			if (graphics_queue_family_index != compute_queue_family_index)
+				dst_stages &= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT;
+			add_wait_semaphore(CommandBuffer::Type::AsyncCompute, sem, dst_stages, true);
 		}
 		else
 			submit(graphics_cmd);

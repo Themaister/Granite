@@ -49,11 +49,11 @@ uint get_shared_base(uint fft)
 // If we try to write vec4s in one go (which will get split up to 4 writes anyways),
 // we end up with 4-way bank conflicts no matter what we do.
 
-shared float tmpx[FFT_SHARED_SIZE * gl_WorkGroupSize.x * gl_WorkGroupSize.y];
-shared float tmpy[FFT_SHARED_SIZE * gl_WorkGroupSize.x * gl_WorkGroupSize.y];
+shared native_float tmpx[FFT_SHARED_SIZE * gl_WorkGroupSize.x * gl_WorkGroupSize.y];
+shared native_float tmpy[FFT_SHARED_SIZE * gl_WorkGroupSize.x * gl_WorkGroupSize.y];
 #if defined(FFT_VEC4)
-shared float tmpz[FFT_SHARED_SIZE * gl_WorkGroupSize.x * gl_WorkGroupSize.y];
-shared float tmpw[FFT_SHARED_SIZE * gl_WorkGroupSize.x * gl_WorkGroupSize.y];
+shared native_float tmpz[FFT_SHARED_SIZE * gl_WorkGroupSize.x * gl_WorkGroupSize.y];
+shared native_float tmpw[FFT_SHARED_SIZE * gl_WorkGroupSize.x * gl_WorkGroupSize.y];
 #endif
 
 void store_shared(uint offset, cfloat v)

@@ -116,7 +116,7 @@ native_vec4 cmul(native_vec4 a, native_vec4 b)
     native_vec4 R0 = a * r1;
     native_vec4 r2 = b.yyww;
     native_vec4 R1 = r2 * r3;
-    return R0 + vec4(-R1.x, R1.y, -R1.z, R1.w);
+    return R0 + native_vec4(-R1.x, R1.y, -R1.z, R1.w);
 }
 
 native_vec2 cmul(native_vec2 a, native_vec2 b)
@@ -126,7 +126,7 @@ native_vec2 cmul(native_vec2 a, native_vec2 b)
     native_vec2 R0 = a * r1;
     native_vec2 r2 = b.yy;
     native_vec2 R1 = r2 * r3;
-    return R0 + vec2(-R1.x, R1.y);
+    return R0 + native_vec2(-R1.x, R1.y);
 }
 
 #ifdef FFT_INPUT_TEXTURE
@@ -213,42 +213,26 @@ layout(std430, binding = BINDING_SSBO_AUX) readonly buffer Block2
 cfloat load_global(uint offset)
 {
     // Convolution in frequency domain is multiplication.
-#if defined(FFT_INPUT_FP16) && defined(FFT_VEC2)
-    #if defined(FFT_NATIVE_FP16)
-        return cmul(fft_in.data[offset], fft_in2.data[offset]);
-    #else
-        return cmul(unpackHalf2x16(fft_in.data[offset]), unpackHalf2x16(fft_in2.data[offset]));
-    #endif
-#elif defined(FFT_INPUT_FP16) && defined(FFT_VEC4)
-    #if defined(FFT_NATIVE_FP16)
-        return cmul(fft_in.data[offset], fft_in2.data[offset]);
-    #else
-        uvec2 data = fft_in.data[offset];
-        uvec2 data2 = fft_in2.data[offset];
-        return cmul(vec4(unpackHalf2x16(data.x), unpackHalf2x16(data.y)), vec4(unpackHalf2x16(data2.x), unpackHalf2x16(data2.y)));
-    #endif
+#if defined(FFT_INPUT_FP16) && defined(FFT_VEC2) && !defined(FFT_NATIVE_FP16)
+    return cmul(unpackHalf2x16(fft_in.data[offset]), unpackHalf2x16(fft_in2.data[offset]));
+#elif defined(FFT_INPUT_FP16) && defined(FFT_VEC4) && !defined(FFT_NATIVE_FP16)
+    uvec2 data = fft_in.data[offset];
+    uvec2 data2 = fft_in2.data[offset];
+    return cmul(vec4(unpackHalf2x16(data.x), unpackHalf2x16(data.y)), vec4(unpackHalf2x16(data2.x), unpackHalf2x16(data2.y)));
 #else
-    return cmul(fft_in.data[offset], fft_in2.data[offset]);
+    return cmul(cfloat(fft_in.data[offset]), cfloat(fft_in2.data[offset]));
 #endif
 }
 #else
 cfloat load_global(uint offset)
 {
-#if defined(FFT_INPUT_FP16) && defined(FFT_VEC2)
-    #if defined(FFT_NATIVE_FP16)
-        return fft_in.data[offset];
-    #else
-        return unpackHalf2x16(fft_in.data[offset]);
-    #endif
-#elif defined(FFT_INPUT_FP16) && defined(FFT_VEC4)
-    #if defined(FFT_NATIVE_FP16)
-        return fft_in.data[offset];
-    #else
-        uvec2 data = fft_in.data[offset];
-        return cfloat(unpackHalf2x16(data.x), unpackHalf2x16(data.y));
-    #endif
+#if defined(FFT_INPUT_FP16) && defined(FFT_VEC2) && !defined(FFT_NATIVE_FP16)
+    return unpackHalf2x16(fft_in.data[offset]);
+#elif defined(FFT_INPUT_FP16) && defined(FFT_VEC4) && !defined(FFT_NATIVE_FP16)
+    uvec2 data = fft_in.data[offset];
+    return cfloat(unpackHalf2x16(data.x), unpackHalf2x16(data.y));
 #else
-    return fft_in.data[offset];
+    return cfloat(fft_in.data[offset]);
 #endif
 }
 #endif
@@ -271,7 +255,7 @@ void store_global(uint offset, cfloat v)
 #elif defined(FFT_OUTPUT_FP16) && defined(FFT_VEC4) && !defined(FFT_NATIVE_FP16)
     fft_out.data[offset] = uvec2(packHalf2x16(v.xy), packHalf2x16(v.zw));
 #else
-    fft_out.data[offset] = v;
+    fft_out.data[offset] = cfloat_buffer_out(v);
 #endif
 }
 #endif

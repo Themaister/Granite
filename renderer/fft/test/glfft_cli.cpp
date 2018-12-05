@@ -315,7 +315,7 @@ static void cli_test_help(Context *context)
 {
 	context->log(
 	    "Usage: test [--test testid] [--test-all] [--test-range testidmin testidmax] [--exit-on-fail] "
-	    "[--minimum-snr-fp16 value-db] [--maximum-snr-fp32 value-db] [--epsilon-fp16 value] [--epsilon-fp32 value]\n"
+	    "[--minimum-snr-fp16 value-db] [--minimum-snr-fp32 value-db] [--epsilon-fp16 value] [--epsilon-fp32 value]\n"
 	    "       --test testid: Run a specific test, indexed by number.\n"
 	    "       --test-all: Run all tests.\n"
 	    "       --test-range testidmin testidmax: Run specific tests between testidmin and testidmax, indexed by "

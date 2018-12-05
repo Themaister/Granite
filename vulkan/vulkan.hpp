@@ -77,6 +77,7 @@ namespace Vulkan
 {
 struct DeviceFeatures
 {
+	bool supports_physical_device_properties2 = false;
 	bool supports_external = false;
 	bool supports_dedicated = false;
 	bool supports_image_format_list = false;
@@ -87,6 +88,9 @@ struct DeviceFeatures
 	bool supports_vulkan_11_instance = false;
 	bool supports_vulkan_11_device = false;
 	VkPhysicalDeviceSubgroupProperties subgroup_properties = {};
+	VkPhysicalDevice8BitStorageFeaturesKHR storage_8bit_features = {};
+	VkPhysicalDevice16BitStorageFeaturesKHR storage_16bit_features = {};
+	VkPhysicalDeviceFloat16Int8FeaturesKHR float16_int8_features = {};
 	VkPhysicalDeviceFeatures enabled_features = {};
 };
 

@@ -318,7 +318,13 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 		if (!has_extension(instance_ext[i]))
 			return false;
 
-	if (has_extension(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME) &&
+	if (has_extension(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME))
+	{
+		ext.supports_physical_device_properties2 = true;
+		instance_exts.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
+	}
+
+	if (ext.supports_physical_device_properties2 &&
 	    has_extension(VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME) &&
 	    has_extension(VK_KHR_EXTERNAL_SEMAPHORE_CAPABILITIES_EXTENSION_NAME))
 	{
@@ -487,12 +493,17 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 
 	// Only need GetPhysicalDeviceProperties2 for Vulkan 1.1-only code, so don't bother getting KHR variant.
 	ext.subgroup_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES };
+	VkPhysicalDeviceProperties2 props = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
+	void **ppNext = &props.pNext;
+
 	if (ext.supports_vulkan_11_instance && ext.supports_vulkan_11_device)
 	{
-		VkPhysicalDeviceProperties2 props = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
-		props.pNext = &ext.subgroup_properties;
-		vkGetPhysicalDeviceProperties2(gpu, &props);
+		*ppNext = &ext.subgroup_properties;
+		ppNext = &ext.subgroup_properties.pNext;
 	}
+
+	if (ext.supports_vulkan_11_instance && ext.supports_vulkan_11_device)
+		vkGetPhysicalDeviceProperties2(gpu, &props);
 
 	uint32_t queue_count;
 	vkGetPhysicalDeviceQueueFamilyProperties(gpu, &queue_count, nullptr);
@@ -668,37 +679,75 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 		ext.supports_external = false;
 #endif
 
-	// Enable device features we might care about.
-	VkPhysicalDeviceFeatures enabled_features = *required_features;
+	VkPhysicalDeviceFeatures2KHR features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2_KHR };
+	ext.storage_8bit_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES_KHR };
+	ext.storage_16bit_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES_KHR };
+	ext.float16_int8_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FLOAT16_INT8_FEATURES_KHR };
+	ppNext = &features.pNext;
+
+	if (has_extension(VK_KHR_STORAGE_BUFFER_STORAGE_CLASS_EXTENSION_NAME))
+		enabled_extensions.push_back(VK_KHR_STORAGE_BUFFER_STORAGE_CLASS_EXTENSION_NAME);
+
+	if (ext.supports_physical_device_properties2 && has_extension(VK_KHR_8BIT_STORAGE_EXTENSION_NAME))
 	{
-		VkPhysicalDeviceFeatures features;
-		vkGetPhysicalDeviceFeatures(gpu, &features);
-		if (features.textureCompressionETC2)
-			enabled_features.textureCompressionETC2 = VK_TRUE;
-		if (features.textureCompressionBC)
-			enabled_features.textureCompressionBC = VK_TRUE;
-		if (features.textureCompressionASTC_LDR)
-			enabled_features.textureCompressionASTC_LDR = VK_TRUE;
-		if (features.fullDrawIndexUint32)
-			enabled_features.fullDrawIndexUint32 = VK_TRUE;
-		if (features.imageCubeArray)
-			enabled_features.imageCubeArray = VK_TRUE;
-		if (features.fillModeNonSolid)
-			enabled_features.fillModeNonSolid = VK_TRUE;
-		if (features.independentBlend)
-			enabled_features.independentBlend = VK_TRUE;
-		if (features.sampleRateShading)
-			enabled_features.sampleRateShading = VK_TRUE;
-		if (features.fragmentStoresAndAtomics)
-			enabled_features.fragmentStoresAndAtomics = VK_TRUE;
-		if (features.shaderStorageImageExtendedFormats)
-			enabled_features.shaderStorageImageExtendedFormats = VK_TRUE;
-		if (features.largePoints)
-			enabled_features.largePoints = VK_TRUE;
+		enabled_extensions.push_back(VK_KHR_8BIT_STORAGE_EXTENSION_NAME);
+		*ppNext = &ext.storage_8bit_features;
+		ppNext = &ext.storage_8bit_features.pNext;
 	}
 
-	device_info.pEnabledFeatures = &enabled_features;
-	ext.enabled_features = enabled_features;
+	if (ext.supports_physical_device_properties2 && has_extension(VK_KHR_16BIT_STORAGE_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_KHR_16BIT_STORAGE_EXTENSION_NAME);
+		*ppNext = &ext.storage_16bit_features;
+		ppNext = &ext.storage_16bit_features.pNext;
+	}
+
+	if (ext.supports_physical_device_properties2 && has_extension(VK_KHR_SHADER_FLOAT16_INT8_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_KHR_SHADER_FLOAT16_INT8_EXTENSION_NAME);
+		*ppNext = &ext.float16_int8_features;
+		ppNext = &ext.float16_int8_features.pNext;
+	}
+
+	if (ext.supports_physical_device_properties2)
+		vkGetPhysicalDeviceFeatures2KHR(gpu, &features);
+	else
+		vkGetPhysicalDeviceFeatures(gpu, &features.features);
+
+	// Enable device features we might care about.
+	{
+		VkPhysicalDeviceFeatures enabled_features = *required_features;
+		if (features.features.textureCompressionETC2)
+			enabled_features.textureCompressionETC2 = VK_TRUE;
+		if (features.features.textureCompressionBC)
+			enabled_features.textureCompressionBC = VK_TRUE;
+		if (features.features.textureCompressionASTC_LDR)
+			enabled_features.textureCompressionASTC_LDR = VK_TRUE;
+		if (features.features.fullDrawIndexUint32)
+			enabled_features.fullDrawIndexUint32 = VK_TRUE;
+		if (features.features.imageCubeArray)
+			enabled_features.imageCubeArray = VK_TRUE;
+		if (features.features.fillModeNonSolid)
+			enabled_features.fillModeNonSolid = VK_TRUE;
+		if (features.features.independentBlend)
+			enabled_features.independentBlend = VK_TRUE;
+		if (features.features.sampleRateShading)
+			enabled_features.sampleRateShading = VK_TRUE;
+		if (features.features.fragmentStoresAndAtomics)
+			enabled_features.fragmentStoresAndAtomics = VK_TRUE;
+		if (features.features.shaderStorageImageExtendedFormats)
+			enabled_features.shaderStorageImageExtendedFormats = VK_TRUE;
+		if (features.features.largePoints)
+			enabled_features.largePoints = VK_TRUE;
+
+		features.features = enabled_features;
+		ext.enabled_features = enabled_features;
+	}
+
+	if (ext.supports_physical_device_properties2)
+		device_info.pNext = &features;
+	else
+		device_info.pEnabledFeatures = &features.features;
 
 #ifdef VULKAN_DEBUG
 	{

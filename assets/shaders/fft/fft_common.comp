@@ -17,8 +17,8 @@
  */
 
 #if defined(FFT_NATIVE_FP16)
-    #extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
-    #extension GL_EXT_16bit_storage : require
+    #extension GL_EXT_shader_explicit_arithmetic_types : require
+    #extension GL_EXT_shader_16bit_storage : require
 #elif defined(FFT_FP16)
     precision mediump float;
 #endif

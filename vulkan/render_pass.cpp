@@ -805,7 +805,12 @@ void RenderPass::fixup_wsi_barrier(VkRenderPassCreateInfo &create_info, VkAttach
 
 void RenderPass::fixup_render_pass_nvidia(VkRenderPassCreateInfo &create_info, VkAttachmentDescription *attachments)
 {
-	if (device->get_gpu_properties().vendorID == VENDOR_ID_NVIDIA)
+	if (device->get_gpu_properties().vendorID == VENDOR_ID_NVIDIA &&
+#ifdef _WIN32
+	    VK_VERSION_MAJOR(device->get_gpu_properties().driverVersion) < 417)
+#else
+	    VK_VERSION_MAJOR(device->get_gpu_properties().driverVersion) < 415)
+#endif
 	{
 		// Workaround a bug on NV where depth-stencil input attachments break if we have STORE_OP_DONT_CARE.
 		// Force STORE_OP_STORE for all attachments.

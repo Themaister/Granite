@@ -1544,7 +1544,7 @@ void Device::init_frame_contexts(unsigned count)
 
 	for (unsigned i = 0; i < count; i++)
 	{
-		auto frame = make_unique<PerFrame>(this);
+		auto frame = unique_ptr<PerFrame>(new PerFrame(this));
 		per_frame.emplace_back(move(frame));
 	}
 }

@@ -30,7 +30,7 @@
 #include <type_traits>
 
 #if defined(HAVE_LIBRETRO)
-#include "libretro/libretro.h"
+#include "libretro.h"
 namespace Granite
 {
 extern retro_log_printf_t libretro_log;

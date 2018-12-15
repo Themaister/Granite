@@ -524,6 +524,7 @@ if (NOT GRANITE_VULKAN_ONLY)
                 application/platforms/application_libretro_utils.cpp
                 application/platforms/application_libretro_utils.hpp)
         target_compile_definitions(granite PUBLIC HAVE_LIBRETRO)
+        target_include_directories(granite PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/application/platforms/libretro)
     elseif (${GRANITE_PLATFORM} MATCHES "GLFW")
         set(GLFW_BUILD_TESTS OFF)
         add_subdirectory(third_party/glfw EXCLUDE_FROM_ALL)

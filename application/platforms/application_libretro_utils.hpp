@@ -23,8 +23,8 @@
 #pragma once
 
 #include "vulkan.hpp"
-#include "libretro/libretro.h"
-#include "libretro/libretro_vulkan.h"
+#include "libretro.h"
+#include "libretro_vulkan.h"
 #include "wsi.hpp"
 
 // Various utilities to make writing a libretro Vulkan interface easier.

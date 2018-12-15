@@ -479,7 +479,30 @@ RenderPass::RenderPass(Hash hash, Device *device, const RenderPassInfo &info)
 			if (!used && (implicit_bottom_of_pipe & (1u << attachment)))
 				external_bottom_of_pipe_dependencies |= 1u << subpass;
 
-			if (resolve)
+			if (resolve && input) // If used as both resolve attachment and input attachment in same subpass, need GENERAL.
+			{
+				current_layout = VK_IMAGE_LAYOUT_GENERAL;
+				resolve->layout = current_layout;
+				input->layout = current_layout;
+
+				// If the attachment is first used as a feedback attachment, the initial layout should actually be GENERAL.
+				if (!used && attachments[attachment].initialLayout != VK_IMAGE_LAYOUT_UNDEFINED)
+					attachments[attachment].initialLayout = current_layout;
+
+				// If first subpass changes the layout, we'll need to inject an external subpass dependency.
+				if (!used && attachments[attachment].initialLayout != current_layout)
+				{
+					external_color_dependencies |= 1u << subpass;
+					external_input_dependencies |= 1u << subpass;
+				}
+
+				used = true;
+				last_subpass_for_attachment[attachment] = subpass;
+
+				color_attachment_read_write |= 1u << subpass;
+				input_attachment_read |= 1u << subpass;
+			}
+			else if (resolve)
 			{
 				if (current_layout != VK_IMAGE_LAYOUT_GENERAL)
 					current_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;

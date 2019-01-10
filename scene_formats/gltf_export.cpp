@@ -1675,7 +1675,7 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 		// The baked GLB buffer.
 		Value buffers(kArrayType);
 		Value buffer(kObjectType);
-		buffer.AddMember("byteLength", state.glb_buffer_data.size(), allocator);
+		buffer.AddMember("byteLength", uint32_t(state.glb_buffer_data.size()), allocator);
 
 		auto uri = path + ".bin";
 		buffer.AddMember("uri", Path::basename(uri), allocator);
@@ -1703,7 +1703,7 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 		// The baked GLB buffer.
 		Value buffers(kArrayType);
 		Value buffer(kObjectType);
-		buffer.AddMember("byteLength", state.glb_buffer_data.size(), allocator);
+		buffer.AddMember("byteLength", uint32_t(state.glb_buffer_data.size()), allocator);
 		buffers.PushBack(buffer, allocator);
 		doc.AddMember("buffers", buffers, allocator);
 	}
@@ -1716,8 +1716,8 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 		{
 			Value v(kObjectType);
 			v.AddMember("buffer", 0, allocator);
-			v.AddMember("byteLength", view.length, allocator);
-			v.AddMember("byteOffset", view.offset, allocator);
+			v.AddMember("byteLength", uint32_t(view.length), allocator);
+			v.AddMember("byteOffset", uint32_t(view.offset), allocator);
 			views.PushBack(v, allocator);
 		}
 		doc.AddMember("bufferViews", views, allocator);
@@ -2277,7 +2277,7 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 
 		for (size_t i = 0; i < scene.nodes.size(); i++)
 			if (!is_child.count(i))
-				scene_nodes.PushBack(i, allocator);
+				scene_nodes.PushBack(uint32_t(i), allocator);
 	}
 
 	scene_info.AddMember("nodes", scene_nodes, allocator);

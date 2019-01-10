@@ -172,7 +172,7 @@ public:
 		cached_window = win;
 	}
 
-	void set_window_title(const string &title)
+	void set_window_title(const string &title) override
 	{
 		if (window)
 			glfwSetWindowTitle(window, title.c_str());

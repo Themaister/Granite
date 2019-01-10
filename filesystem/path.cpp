@@ -29,7 +29,9 @@
 #include <windows.h>
 #else
 #include <unistd.h>
+#ifdef __linux__
 #include <linux/limits.h>
+#endif
 #endif
 
 using namespace std;

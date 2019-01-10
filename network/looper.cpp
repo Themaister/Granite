@@ -22,7 +22,7 @@
 
 #include "network.hpp"
 
-#ifndef _WIN32
+#ifdef __linux__
 #include <stdexcept>
 #include <sys/epoll.h>
 #include <sys/types.h>
@@ -45,7 +45,7 @@ LooperHandler::LooperHandler(std::unique_ptr<Socket> socket)
 
 Looper::Looper()
 {
-#ifndef _WIN32
+#ifdef __linux__
 	fd = epoll_create1(0);
 	if (fd < 0)
 		throw runtime_error("Failed to create epoller.");
@@ -66,7 +66,7 @@ Looper::Looper()
 
 Looper::~Looper()
 {
-#ifndef _WIN32
+#ifdef __linux__
 	for (auto &handler : handlers)
 		handler.second->get_socket().set_parent_looper(nullptr);
 
@@ -79,7 +79,7 @@ Looper::~Looper()
 
 bool Looper::modify_handler(EventFlags events, LooperHandler &handler)
 {
-#ifndef _WIN32
+#ifdef __linux__
 	int flags = 0;
 	if (events & EVENT_IN)
 		flags |= EPOLLIN;
@@ -101,7 +101,7 @@ bool Looper::modify_handler(EventFlags events, LooperHandler &handler)
 
 bool Looper::register_handler(EventFlags events, unique_ptr<LooperHandler> handler)
 {
-#ifndef _WIN32
+#ifdef __linux__
 	int flags = 0;
 	if (events & EVENT_IN)
 		flags |= EPOLLIN;
@@ -124,7 +124,7 @@ bool Looper::register_handler(EventFlags events, unique_ptr<LooperHandler> handl
 
 void Looper::unregister_handler(Socket &sock)
 {
-#ifndef _WIN32
+#ifdef __linux__
 	epoll_ctl(fd, EPOLL_CTL_DEL, sock.get_fd(), nullptr);
 	sock.set_parent_looper(nullptr);
 
@@ -135,7 +135,7 @@ void Looper::unregister_handler(Socket &sock)
 
 void Looper::run_in_looper(std::function<void()> func)
 {
-#ifndef _WIN32
+#ifdef __linux__
 	{
 		lock_guard<mutex> holder{queue_lock};
 		func_queue.push_back(move(func));
@@ -148,7 +148,7 @@ void Looper::run_in_looper(std::function<void()> func)
 
 void Looper::kill()
 {
-#ifndef _WIN32
+#ifdef __linux__
 	{
 		lock_guard<mutex> holder{queue_lock};
 		func_queue.push_back([this]() {
@@ -162,7 +162,7 @@ void Looper::kill()
 
 void Looper::handle_deferred_funcs()
 {
-#ifndef _WIN32
+#ifdef __linux__
 	uint64_t count = 0;
 	if (::read(event_fd, &count, sizeof(count)) < 0)
 		return;
@@ -178,7 +178,7 @@ void Looper::handle_deferred_funcs()
 
 int Looper::wait_idle(int timeout)
 {
-#ifndef _WIN32
+#ifdef __linux__
 	if (dead)
 		return -1;
 
@@ -227,7 +227,7 @@ int Looper::wait_idle(int timeout)
 
 int Looper::wait(int timeout)
 {
-#ifndef _WIN32
+#ifdef __linux__
 	if (handlers.empty())
 		return -1;
 

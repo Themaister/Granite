@@ -123,17 +123,20 @@ target_compile_options(granite PRIVATE ${GRANITE_CXX_FLAGS})
 function(add_granite_executable NAME)
     if (ANDROID)
         add_library(${NAME} SHARED ${ARGN})
-        target_link_libraries(${NAME} log android)
+        target_link_libraries(${NAME} PRIVATE log android)
     elseif(${GRANITE_PLATFORM} MATCHES "libretro")
         add_library(${NAME} SHARED ${ARGN})
-        target_link_libraries(${NAME})
         if (CMAKE_COMPILER_IS_GNUCXX OR (${CMAKE_CXX_COMPILER_ID} MATCHES "Clang"))
             set_target_properties(${NAME} PROPERTIES LINK_FLAGS "-Wl,--no-undefined")
         endif()
     else()
         add_executable(${NAME} ${ARGN})
     endif()
-    target_link_libraries(${NAME} granite)
+    # Need this for some reason on OSX.
+    if (APPLE)
+        set_target_properties(${NAME} PROPERTIES LINK_FLAGS "-Wl,-all_load")
+    endif()
+    target_link_libraries(${NAME} PRIVATE granite)
     target_compile_options(${NAME} PRIVATE ${GRANITE_CXX_FLAGS})
     if (GRANITE_SANITIZE_ADDRESS OR GRANITE_SANITIZE_THREADS)
         set_target_properties(${NAME} PROPERTIES LINK_FLAGS "${GRANITE_LINK_FLAGS}")
@@ -143,11 +146,11 @@ endfunction()
 function(add_granite_application TARGET_NAME)
     add_granite_executable(${TARGET_NAME} ${ARGN})
     if (ANDROID)
-        target_link_libraries(${TARGET_NAME} granite)
+        target_link_libraries(${TARGET_NAME} PRIVATE granite)
     elseif (${GRANITE_PLATFORM} MATCHES "libretro")
-        target_link_libraries(${TARGET_NAME} granite)
+        target_link_libraries(${TARGET_NAME} PRIVATE granite)
     else()
-        target_link_libraries(${TARGET_NAME} granite-application-entry)
+        target_link_libraries(${TARGET_NAME} PRIVATE granite-application-entry)
     endif()
     if (NOT ${GRANITE_PLATFORM} MATCHES "libretro")
         if (WIN32)
@@ -181,7 +184,6 @@ endfunction()
 
 function(add_granite_offline_tool TARGET_NAME)
     add_granite_executable(${TARGET_NAME} ${ARGN})
-    target_link_libraries(${TARGET_NAME} granite)
     if (NOT ${GRANITE_PLATFORM} MATCHES "libretro")
         if (WIN32)
             if (CMAKE_COMPILER_IS_GNUCXX OR (${CMAKE_CXX_COMPILER_ID} MATCHES "Clang"))
@@ -289,7 +291,7 @@ if (NOT GRANITE_VULKAN_ONLY)
             application/application_wsi.cpp application/application_wsi_events.hpp
             application/platforms/application_headless.cpp application/platforms/hw_counters/hw_counter_interface.h
             application/input/input.hpp application/input/input.cpp
-            application/events/application_events.hpp application/events/application_events.cpp
+            application/events/application_events.hpp
             application/scene_viewer_application.cpp application/scene_viewer_application.hpp
 
             event/event.cpp event/event.hpp
@@ -559,11 +561,7 @@ if (GRANITE_SPIRV_DUMP)
     target_compile_definitions(granite PRIVATE GRANITE_SPIRV_DUMP)
 endif()
 
-target_link_libraries(granite
-        PUBLIC
-            volk
-        PRIVATE
-            spirv-cross-core)
+target_link_libraries(granite PUBLIC volk PRIVATE spirv-cross-core)
 
 if (NOT GRANITE_VULKAN_ONLY)
     target_link_libraries(granite

@@ -31,9 +31,11 @@
 #include <unistd.h>
 #include <dirent.h>
 #include <string.h>
-#include <sys/inotify.h>
 #include <fcntl.h>
 #include <sys/mman.h>
+#ifdef __linux__
+#include <sys/inotify.h>
+#endif
 
 using namespace std;
 
@@ -163,30 +165,35 @@ MMapFile::~MMapFile()
 OSFilesystem::OSFilesystem(const std::string &base)
 	: base(base)
 {
+#ifdef __linux__
 	notify_fd = inotify_init1(IN_NONBLOCK);
 	if (notify_fd < 0)
 	{
 		LOGE("Failed to init inotify.\n");
 		throw runtime_error("inotify");
 	}
+#else
+	notify_fd = -1;
+#endif
 }
 
 OSFilesystem::~OSFilesystem()
 {
+#ifdef __linux__
 	if (notify_fd > 0)
 	{
 		for (auto &handler : handlers)
 			inotify_rm_watch(notify_fd, handler.first);
 		close(notify_fd);
 	}
+#endif
 }
 
 unique_ptr<File> OSFilesystem::open(const std::string &path, FileMode mode)
 {
 	try
 	{
-		unique_ptr<File> file(new MMapFile(Path::join(base, path), mode));
-		return file;
+		return make_unique<MMapFile>(Path::join(base, path), mode);
 	}
 	catch (const std::exception &e)
 	{
@@ -207,6 +214,7 @@ int OSFilesystem::get_notification_fd() const
 
 void OSFilesystem::poll_notifications()
 {
+#ifdef __linux__
 	for (;;)
 	{
 		alignas(inotify_event) char buffer[sizeof(inotify_event) + NAME_MAX + 1];
@@ -255,10 +263,12 @@ void OSFilesystem::poll_notifications()
 			}
 		}
 	}
+#endif
 }
 
 void OSFilesystem::uninstall_notification(FileNotifyHandle handle)
 {
+#ifdef __linux__
 	if (handle < 0)
 		return;
 
@@ -288,11 +298,15 @@ void OSFilesystem::uninstall_notification(FileNotifyHandle handle)
 	}
 
 	virtual_to_real.erase(real);
+#else
+	(void)handle;
+#endif
 }
 
 FileNotifyHandle OSFilesystem::install_notification(const string &path,
                                                     function<void (const FileNotifyInfo &)> func)
 {
+#ifdef __linux__
 	//LOGI("Installing notification for: %s\n", path.c_str());
 
 	FileStat s;
@@ -320,6 +334,11 @@ FileNotifyHandle OSFilesystem::install_notification(const string &path,
 
 	virtual_to_real[virtual_handle] = wd;
 	return static_cast<FileNotifyHandle>(virtual_handle);
+#else
+	(void)path;
+	(void)func;
+	return -1;
+#endif
 }
 
 vector<ListEntry> OSFilesystem::list(const string &path)
@@ -380,7 +399,11 @@ bool OSFilesystem::stat(const std::string &path, FileStat &stat)
 		stat.type = PathType::Special;
 
 	stat.size = uint64_t(buf.st_size);
+#ifdef __linux__
 	stat.last_modified = buf.st_mtim.tv_sec * 1000000000ull + buf.st_mtim.tv_nsec;
+#else
+	stat.last_modified = buf.st_mtimespec.tv_sec * 1000000000ull + buf.st_mtimespec.tv_nsec;
+#endif
 	return true;
 }
 

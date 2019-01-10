@@ -559,10 +559,9 @@ void Device::flush_pipeline_cache()
 
 void Device::init_workarounds()
 {
-#if 0
-	workarounds.wsi_acquire_barrier_is_expensive = true;
+#ifdef __APPLE__
+	// Events are not supported in MoltenVK.
 	workarounds.emulate_event_as_pipeline_barrier = true;
-	workarounds.optimize_all_graphics_barrier = true;
 #else
 	// UNDEFINED -> COLOR_ATTACHMENT_OPTIMAL stalls, so need to acquire async.
 	workarounds.wsi_acquire_barrier_is_expensive = gpu_props.vendorID == VENDOR_ID_ARM;

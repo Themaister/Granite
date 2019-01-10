@@ -234,7 +234,7 @@ void WSITiming::update_past_presentation_timing()
 
 void WSITiming::wait_until(int64_t nsecs)
 {
-#ifndef _WIN32
+#ifdef __linux__
 	timespec ts;
 	ts.tv_sec = nsecs / 1000000000;
 	ts.tv_nsec = nsecs % 1000000000;

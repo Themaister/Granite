@@ -317,40 +317,40 @@ static const int8_t positions[] = {
 
 static const int8_t attr[] = {
 	// Near
-	0, 0, P, 0, P, 0, 0, 0, 0, P,
-	0, 0, P, 0, P, 0, 0, 0, P, P,
-	0, 0, P, 0, P, 0, 0, 0, 0, 0,
-	0, 0, P, 0, P, 0, 0, 0, P, 0,
+	0, 0, P, 0, P, 0, 0, 0, 0, P, 0, 0,
+	0, 0, P, 0, P, 0, 0, 0, P, P, 0, 0,
+	0, 0, P, 0, P, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, P, 0, P, 0, 0, 0, P, 0, 0, 0,
 
 	// Far
-	0, 0, N, 0, N, 0, 0, 0, 0, P,
-	0, 0, N, 0, N, 0, 0, 0, P, P,
-	0, 0, N, 0, N, 0, 0, 0, 0, 0,
-	0, 0, N, 0, N, 0, 0, 0, P, 0,
+	0, 0, N, 0, N, 0, 0, 0, 0, P, 0, 0,
+	0, 0, N, 0, N, 0, 0, 0, P, P, 0, 0,
+	0, 0, N, 0, N, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, N, 0, N, 0, 0, 0, P, 0, 0, 0,
 
 	// Left
-	N, 0, 0, 0, 0, 0, P, 0, 0, P,
-	N, 0, 0, 0, 0, 0, P, 0, P, P,
-	N, 0, 0, 0, 0, 0, P, 0, 0, 0,
-	N, 0, 0, 0, 0, 0, P, 0, P, 0,
+	N, 0, 0, 0, 0, 0, P, 0, 0, P, 0, 0,
+	N, 0, 0, 0, 0, 0, P, 0, P, P, 0, 0,
+	N, 0, 0, 0, 0, 0, P, 0, 0, 0, 0, 0,
+	N, 0, 0, 0, 0, 0, P, 0, P, 0, 0, 0,
 
 	// Right
-	P, 0, 0, 0, 0, 0, N, 0, 0, P,
-	P, 0, 0, 0, 0, 0, N, 0, P, P,
-	P, 0, 0, 0, 0, 0, N, 0, 0, 0,
-	P, 0, 0, 0, 0, 0, N, 0, P, 0,
+	P, 0, 0, 0, 0, 0, N, 0, 0, P, 0, 0,
+	P, 0, 0, 0, 0, 0, N, 0, P, P, 0, 0,
+	P, 0, 0, 0, 0, 0, N, 0, 0, 0, 0, 0,
+	P, 0, 0, 0, 0, 0, N, 0, P, 0, 0, 0,
 
 	// Top
-	0, P, 0, 0, P, 0, 0, 0, 0, P,
-	0, P, 0, 0, P, 0, 0, 0, P, P,
-	0, P, 0, 0, P, 0, 0, 0, 0, 0,
-	0, P, 0, 0, P, 0, 0, 0, P, 0,
+	0, P, 0, 0, P, 0, 0, 0, 0, P, 0, 0,
+	0, P, 0, 0, P, 0, 0, 0, P, P, 0, 0,
+	0, P, 0, 0, P, 0, 0, 0, 0, 0, 0, 0,
+	0, P, 0, 0, P, 0, 0, 0, P, 0, 0, 0,
 
 	// Bottom
-	0, N, 0, 0, P, 0, 0, 0, 0, P,
-	0, N, 0, 0, P, 0, 0, 0, P, P,
-	0, N, 0, 0, P, 0, 0, 0, 0, 0,
-	0, N, 0, 0, P, 0, 0, 0, P, 0,
+	0, N, 0, 0, P, 0, 0, 0, 0, P, 0, 0,
+	0, N, 0, 0, P, 0, 0, 0, P, P, 0, 0,
+	0, N, 0, 0, P, 0, 0, 0, 0, 0, 0, 0,
+	0, N, 0, 0, P, 0, 0, 0, P, 0, 0, 0,
 };
 
 static const uint16_t indices[] = {
@@ -378,8 +378,8 @@ Mesh CubeMesh::build_plain_mesh()
 	mesh.attribute_layout[ecast(MeshAttribute::Tangent)].offset = 4;
 	mesh.attribute_layout[ecast(MeshAttribute::Tangent)].format = VK_FORMAT_R8G8B8A8_SNORM;
 	mesh.attribute_layout[ecast(MeshAttribute::UV)].offset = 8;
-	mesh.attribute_layout[ecast(MeshAttribute::UV)].format = VK_FORMAT_R8G8_SNORM;
-	mesh.attribute_stride = 10;
+	mesh.attribute_layout[ecast(MeshAttribute::UV)].format = VK_FORMAT_R8G8B8A8_SNORM;
+	mesh.attribute_stride = 12;
 
 	mesh.attributes.resize(sizeof(CubeData::attr));
 	memcpy(mesh.attributes.data(), CubeData::attr, sizeof(CubeData::attr));
@@ -411,8 +411,8 @@ void CubeMesh::on_device_created(const DeviceCreatedEvent &created)
 	attributes[ecast(MeshAttribute::Tangent)].offset = 4;
 	attributes[ecast(MeshAttribute::Tangent)].format = VK_FORMAT_R8G8B8A8_SNORM;
 	attributes[ecast(MeshAttribute::UV)].offset = 8;
-	attributes[ecast(MeshAttribute::UV)].format = VK_FORMAT_R8G8_SNORM;
-	attribute_stride = 10;
+	attributes[ecast(MeshAttribute::UV)].format = VK_FORMAT_R8G8B8A8_SNORM;
+	attribute_stride = 12;
 
 	vbo_info.size = sizeof(CubeData::attr);
 	vbo_attributes = device.create_buffer(vbo_info, CubeData::attr);

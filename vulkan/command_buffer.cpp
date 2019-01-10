@@ -1938,17 +1938,41 @@ void CommandBuffer::end_region()
 #ifdef GRANITE_VULKAN_FILESYSTEM
 void CommandBufferUtil::set_quad_vertex_state(CommandBuffer &cmd)
 {
+#ifdef __APPLE__
+	// For *some* reason, Metal does not support tightly packed R8G8 ...
+	// Have to use RGBA8 <_<.
+	auto *data = static_cast<int8_t *>(cmd.allocate_vertex_data(0, 16, 4));
+	*data++ = -127;
+	*data++ = +127;
+	*data++ = 0;
+	*data++ = +127;
+	*data++ = +127;
+	*data++ = +127;
+	*data++ = 0;
+	*data++ = +127;
+	*data++ = -127;
+	*data++ = -127;
+	*data++ = 0;
+	*data++ = +127;
+	*data++ = +127;
+	*data++ = -127;
+	*data++ = 0;
+	*data++ = +127;
+
+	cmd.set_vertex_attrib(0, 0, VK_FORMAT_R8G8B8A8_SNORM, 0);
+#else
 	auto *data = static_cast<int8_t *>(cmd.allocate_vertex_data(0, 8, 2));
-	*data++ = -128;
+	*data++ = -127;
 	*data++ = +127;
 	*data++ = +127;
 	*data++ = +127;
-	*data++ = -128;
-	*data++ = -128;
+	*data++ = -127;
+	*data++ = -127;
 	*data++ = +127;
-	*data++ = -128;
+	*data++ = -127;
 
 	cmd.set_vertex_attrib(0, 0, VK_FORMAT_R8G8_SNORM, 0);
+#endif
 }
 
 void CommandBufferUtil::set_fullscreen_quad_vertex_state(CommandBuffer &cmd)

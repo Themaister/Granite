@@ -90,7 +90,7 @@ void sprite_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *infos, uns
 		push.resolution.y = info.textures[0]->get_image().get_height();
 		push.inv_resolution = 1.0f / push.resolution;
 
-		cmd.push_constants(&push, 0, sizeof(push));
+		*cmd.allocate_typed_constant_data<Push>(3, 0, 1) = push;
 
 		cmd.set_texture(2, 0, *info.textures[0], info.sampler);
 		if (info.textures[1])

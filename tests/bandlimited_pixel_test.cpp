@@ -129,6 +129,15 @@ struct BandlimitedPixelTestApplication : Application, EventHandler
 		mat4 mvp = cam.get_projection() * cam.get_view() * mat4_cast(rot) * scale(20.0f * vec3(float(width) / float(height), 1.0f, 1.0f));
 		cmd->push_constants(&mvp, 0, sizeof(mvp));
 
+		struct TexInfo
+		{
+			alignas(8) vec2 res;
+			alignas(8) vec2 inv_res;
+		} tex;
+		tex.res = vec2(width, height);
+		tex.inv_res = 1.0f / tex.res;
+		*cmd->allocate_typed_constant_data<TexInfo>(3, 0, 1) = tex;
+
 		CommandBufferUtil::draw_quad(*cmd);
 		cmd->end_render_pass();
 		device.submit(cmd);

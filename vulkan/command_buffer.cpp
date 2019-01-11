@@ -23,6 +23,7 @@
 #include "command_buffer.hpp"
 #include "device.hpp"
 #include "format.hpp"
+#include <stdexcept>
 #include <string.h>
 
 using namespace std;
@@ -633,7 +634,10 @@ VkPipeline CommandBuffer::build_compute_pipeline(Hash hash)
 
 	LOGI("Creating compute pipeline.\n");
 	if (vkCreateComputePipelines(device->get_device(), cache, 1, &info, nullptr, &compute_pipeline) != VK_SUCCESS)
+	{
 		LOGE("Failed to create compute pipeline!\n");
+		throw runtime_error("vkCreateComputePipelines failed.");
+	}
 
 	return current_program->add_pipeline(hash, compute_pipeline);
 }
@@ -827,7 +831,10 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
 	LOGI("Creating graphics pipeline.\n");
 	VkResult res = vkCreateGraphicsPipelines(device->get_device(), cache, 1, &pipe, nullptr, &pipeline);
 	if (res != VK_SUCCESS)
+	{
 		LOGE("Failed to create graphics pipeline!\n");
+		throw runtime_error("vkCreateGraphicsPipelines failed.");
+	}
 
 	return current_program->add_pipeline(hash, pipeline);
 }

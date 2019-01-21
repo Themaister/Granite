@@ -248,7 +248,7 @@ private:
 	std::unordered_set<unsigned> written_in_passes;
 	std::unordered_set<unsigned> read_in_passes;
 	std::string name;
-	VkPipelineStageFlags used_queues = 0;
+	RenderGraphQueueFlags used_queues = 0;
 };
 
 class RenderBufferResource : public RenderResource

@@ -2601,7 +2601,7 @@ void RenderGraph::bake()
 
 	backbuffer_dim.transient = false;
 	backbuffer_dim.persistent = swapchain_dimensions.persistent;
-	if (!can_alias_backbuffer && physical_dimensions[swapchain_physical_index] != swapchain_dimensions)
+	if (!can_alias_backbuffer || backbuffer_dim != swapchain_dimensions)
 	{
 		swapchain_physical_index = RenderResource::Unused;
 		if ((backbuffer_dim.queues & RENDER_GRAPH_QUEUE_GRAPHICS_BIT) == 0)

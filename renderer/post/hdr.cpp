@@ -93,31 +93,37 @@ static void luminance_build_compute(Vulkan::CommandBuffer &cmd, RenderGraph &gra
 }
 
 static void bloom_threshold_build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd,
-                                              RenderTextureResource &input_res,
-                                              RenderBufferResource &ubo_res)
+                                              const RenderTextureResource &input_res,
+                                              const RenderBufferResource *ubo_res)
 {
 	auto &input = pass.get_graph().get_physical_texture_resource(input_res);
-	auto &ubo = pass.get_graph().get_physical_buffer_resource(ubo_res);
+	auto *ubo = ubo_res ? &pass.get_graph().get_physical_buffer_resource(*ubo_res) : nullptr;
 	cmd.set_texture(0, 0, input, Vulkan::StockSampler::LinearClamp);
-	cmd.set_uniform_buffer(0, 1, ubo);
+	if (ubo)
+		cmd.set_uniform_buffer(0, 1, *ubo);
+
 	Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd, "builtin://shaders/quad.vert",
-	                                                "builtin://shaders/post/bloom_threshold.frag");
+	                                                "builtin://shaders/post/bloom_threshold.frag",
+	                                                {{ "DYNAMIC_EXPOSURE", ubo ? 1 : 0 }});
 }
 
 static void bloom_threshold_build_compute(Vulkan::CommandBuffer &cmd, RenderGraph &graph,
-                                          const RenderTextureResource &threshold, const RenderTextureResource &hdr, const RenderBufferResource &lum)
+                                          const RenderTextureResource &threshold,
+                                          const RenderTextureResource &hdr,
+                                          const RenderBufferResource *ubo_res)
 {
 	auto &output = graph.get_physical_texture_resource(threshold);
 	auto &input = graph.get_physical_texture_resource(hdr);
-	auto &ubo = graph.get_physical_buffer_resource(lum);
+	auto *ubo = ubo_res ? &graph.get_physical_buffer_resource(*ubo_res) : nullptr;
 
 	cmd.set_texture(0, 0, input, Vulkan::StockSampler::LinearClamp);
-	cmd.set_uniform_buffer(0, 1, ubo);
+	if (ubo)
+		cmd.set_uniform_buffer(0, 1, *ubo);
 	cmd.set_storage_texture(0, 2, output);
 
-	auto *program = cmd.get_device().get_shader_manager().register_compute("builtin://shaders/post/bloom_threshold.comp");
-	unsigned variant = program->register_variant({});
-	cmd.set_program(*program->get_program(variant));
+	cmd.set_program(
+			"builtin://shaders/post/bloom_threshold.comp",
+			{{ "DYNAMIC_EXPOSURE", ubo ? 1 : 0 }});
 
 	struct Registers
 	{
@@ -269,17 +275,18 @@ static void bloom_upsample_build_render_pass(RenderPass &pass, Vulkan::CommandBu
 }
 
 static void tonemap_build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &cmd,
-                                      RenderTextureResource &hdr_res,
-                                      RenderTextureResource &bloom_res,
-                                      RenderBufferResource &ubo_res,
+                                      const RenderTextureResource &hdr_res,
+                                      const RenderTextureResource &bloom_res,
+                                      const RenderBufferResource *ubo_res,
                                       const HDRDynamicExposureInterface *iface)
 {
 	auto &hdr = pass.get_graph().get_physical_texture_resource(hdr_res);
 	auto &bloom = pass.get_graph().get_physical_texture_resource(bloom_res);
-	auto &ubo = pass.get_graph().get_physical_buffer_resource(ubo_res);
+	auto *ubo = ubo_res ? &pass.get_graph().get_physical_buffer_resource(*ubo_res) : nullptr;
 	cmd.set_texture(0, 0, hdr, Vulkan::StockSampler::LinearClamp);
 	cmd.set_texture(0, 1, bloom, Vulkan::StockSampler::LinearClamp);
-	cmd.set_uniform_buffer(0, 2, ubo);
+	if (ubo)
+		cmd.set_uniform_buffer(0, 2, *ubo);
 
 	struct Push
 	{
@@ -288,10 +295,12 @@ static void tonemap_build_render_pass(RenderPass &pass, Vulkan::CommandBuffer &c
 	push.dynamic_exposure = iface ? iface->get_exposure() : 1.0f;
 	cmd.push_constants(&push, 0, sizeof(push));
 	Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd, "builtin://shaders/quad.vert",
-	                                                "builtin://shaders/post/tonemap.frag");
+	                                                "builtin://shaders/post/tonemap.frag",
+	                                                {{ "DYNAMIC_EXPOSURE", ubo ? 1 : 0 }});
 }
 
 void setup_hdr_postprocess_compute(RenderGraph &graph, const std::string &input, const std::string &output,
+                                   const HDROptions &options,
                                    const HDRDynamicExposureInterface *iface)
 {
 	BufferInfo buffer_info;
@@ -329,11 +338,15 @@ void setup_hdr_postprocess_compute(RenderGraph &graph, const std::string &input,
 	auto &d2 = bloom_pass.add_storage_texture_output("downsample-2", downsample_info2);
 	auto &u2 = bloom_pass.add_storage_texture_output("upsample-2", downsample_info2);
 	auto &d3 = bloom_pass.add_storage_texture_output("downsample-3", downsample_info3);
-	auto &lum = bloom_pass.add_storage_output("average-luminance", buffer_info);
+
+	const RenderBufferResource *lum = nullptr;
+	if (options.dynamic_exposure)
+		lum = &bloom_pass.add_storage_output("average-luminance", buffer_info);
+
 	auto &hdr = bloom_pass.add_texture_input(input);
 	bloom_pass.add_history_input("downsample-3");
-	bloom_pass.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
-		bloom_threshold_build_compute(cmd, graph, t, hdr, lum);
+	bloom_pass.set_build_render_pass([&, ubo = lum](Vulkan::CommandBuffer &cmd) {
+		bloom_threshold_build_compute(cmd, graph, t, hdr, ubo);
 		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
 		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 		bloom_downsample_build_compute(cmd, graph, d0, t, nullptr);
@@ -348,7 +361,8 @@ void setup_hdr_postprocess_compute(RenderGraph &graph, const std::string &input,
 		bloom_downsample_build_compute(cmd, graph, d3, d2, &d3);
 		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
 		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-		luminance_build_compute(cmd, graph, lum, d3);
+		if (ubo)
+			luminance_build_compute(cmd, graph, *ubo, d3);
 		bloom_upsample_build_compute(cmd, graph, u2, d3);
 		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
 		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_UNIFORM_READ_BIT);
@@ -366,15 +380,20 @@ void setup_hdr_postprocess_compute(RenderGraph &graph, const std::string &input,
 		tonemap.add_color_output(output, tonemap_info);
 		auto &hdr_res = tonemap.add_texture_input(input);
 		auto &bloom_res = tonemap.add_texture_input("upsample-0");
-		auto &ubo_res = tonemap.add_uniform_input("average-luminance");
-		tonemap.set_build_render_pass([&, interface = iface](Vulkan::CommandBuffer &cmd)
+
+		const RenderBufferResource *ubo_res = nullptr;
+		if (options.dynamic_exposure)
+			ubo_res = &tonemap.add_uniform_input("average-luminance");
+
+		tonemap.set_build_render_pass([&, interface = iface, ubo = ubo_res](Vulkan::CommandBuffer &cmd)
 		                              {
-			                              tonemap_build_render_pass(tonemap, cmd, hdr_res, bloom_res, ubo_res, interface);
+			                              tonemap_build_render_pass(tonemap, cmd, hdr_res, bloom_res, ubo, interface);
 		                              });
 	}
 }
 
 void setup_hdr_postprocess(RenderGraph &graph, const std::string &input, const std::string &output,
+                           const HDROptions &options,
                            const HDRDynamicExposureInterface *iface)
 {
 	BufferInfo buffer_info;
@@ -382,17 +401,21 @@ void setup_hdr_postprocess(RenderGraph &graph, const std::string &input, const s
 	buffer_info.persistent = true;
 	buffer_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
 
-	auto &lum = graph.get_buffer_resource("average-luminance");
-	lum.set_buffer_info(buffer_info);
-
+	if (options.dynamic_exposure)
 	{
-		auto &adapt_pass = graph.add_pass("adapt-luminance", RenderGraph::get_default_compute_queue());
-		auto &output_res = adapt_pass.add_storage_output("average-luminance-updated", buffer_info, "average-luminance");
-		auto &input_res = adapt_pass.add_texture_input("bloom-downsample-3");
-		adapt_pass.set_build_render_pass([&](Vulkan::CommandBuffer &cmd)
-		                                 {
-			                                 luminance_build_render_pass(adapt_pass, cmd, input_res, output_res);
-		                                 });
+		auto &lum = graph.get_buffer_resource("average-luminance");
+		lum.set_buffer_info(buffer_info);
+
+		{
+			auto &adapt_pass = graph.add_pass("adapt-luminance", RenderGraph::get_default_compute_queue());
+			auto &output_res = adapt_pass.add_storage_output("average-luminance-updated", buffer_info,
+			                                                 "average-luminance");
+			auto &input_res = adapt_pass.add_texture_input("bloom-downsample-3");
+			adapt_pass.set_build_render_pass([&](Vulkan::CommandBuffer &cmd)
+			                                 {
+				                                 luminance_build_render_pass(adapt_pass, cmd, input_res, output_res);
+			                                 });
+		}
 	}
 
 	{
@@ -405,10 +428,14 @@ void setup_hdr_postprocess(RenderGraph &graph, const std::string &input, const s
 		threshold_info.size_relative_name = input;
 		threshold.add_color_output("threshold", threshold_info);
 		auto &input_res = threshold.add_texture_input(input);
-		auto &ubo_res = threshold.add_uniform_input("average-luminance");
-		threshold.set_build_render_pass([&](Vulkan::CommandBuffer &cmd)
+
+		const RenderBufferResource *ubo_res = nullptr;
+		if (options.dynamic_exposure)
+			ubo_res = &threshold.add_uniform_input("average-luminance");
+
+		threshold.set_build_render_pass([&, ubo = ubo_res](Vulkan::CommandBuffer &cmd)
 		                                {
-			                                bloom_threshold_build_render_pass(threshold, cmd, input_res, ubo_res);
+			                                bloom_threshold_build_render_pass(threshold, cmd, input_res, ubo);
 		                                });
 	}
 
@@ -515,10 +542,13 @@ void setup_hdr_postprocess(RenderGraph &graph, const std::string &input, const s
 		tonemap.add_color_output(output, tonemap_info);
 		auto &hdr_res = tonemap.add_texture_input(input);
 		auto &bloom_res = tonemap.add_texture_input("bloom-upsample-2");
-		auto &ubo_res = tonemap.add_uniform_input("average-luminance-updated");
-		tonemap.set_build_render_pass([&, interface = iface](Vulkan::CommandBuffer &cmd)
+		const RenderBufferResource *ubo_res = nullptr;
+		if (options.dynamic_exposure)
+			ubo_res = &tonemap.add_uniform_input("average-luminance-updated");
+
+		tonemap.set_build_render_pass([&, interface = iface, ubo = ubo_res](Vulkan::CommandBuffer &cmd)
 		                              {
-			                              tonemap_build_render_pass(tonemap, cmd, hdr_res, bloom_res, ubo_res, interface);
+			                              tonemap_build_render_pass(tonemap, cmd, hdr_res, bloom_res, ubo, interface);
 		                              });
 	}
 }

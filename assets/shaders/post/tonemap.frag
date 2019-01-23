@@ -4,12 +4,14 @@ precision mediump float;
 layout(set = 0, binding = 0) uniform mediump sampler2D uHDR;
 layout(set = 0, binding = 1) uniform mediump sampler2D uBloom;
 
+#if DYNAMIC_EXPOSURE
 layout(std140, set = 0, binding = 2) uniform LuminanceData
 {
     float average_log_luminance;
     float average_linear_luminance;
     float average_inv_linear_luminance;
 };
+#endif
 
 layout(std430, push_constant) uniform Registers
 {
@@ -55,6 +57,10 @@ void main()
     mediump vec3 color = textureLod(uHDR, vUV, 0.0).rgb;
     mediump vec3 bloom = textureLod(uBloom, vUV, 0.0).rgb;
     color += bloom;
+#if DYNAMIC_EXPOSURE
     FragColor = tonemap_filmic(color * (average_inv_linear_luminance * registers.dynamic_exposure));
+#else
+    FragColor = tonemap_filmic(color * registers.dynamic_exposure);
+#endif
     //FragColor = 0.25 * color * average_inv_linear_luminance;
 }

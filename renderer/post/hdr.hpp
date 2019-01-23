@@ -32,8 +32,15 @@ struct HDRDynamicExposureInterface
 	virtual float get_exposure() const = 0;
 };
 
+struct HDROptions
+{
+	bool dynamic_exposure = true;
+};
+
 void setup_hdr_postprocess(RenderGraph &graph, const std::string &input, const std::string &output,
+                           const HDROptions &options,
                            const HDRDynamicExposureInterface *iface = nullptr);
 void setup_hdr_postprocess_compute(RenderGraph &graph, const std::string &input, const std::string &output,
+                                   const HDROptions &options,
                                    const HDRDynamicExposureInterface *iface = nullptr);
 }

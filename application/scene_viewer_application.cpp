@@ -139,6 +139,8 @@ void SceneViewerApplication::read_config(const std::string &path)
 		config.clustered_lights_shadows_vsm = doc["clusteredLightsShadowsVSM"].GetBool();
 	if (doc.HasMember("hdrBloom"))
 		config.hdr_bloom = doc["hdrBloom"].GetBool();
+	if (doc.HasMember("hdrBloomDynamicExposure"))
+		config.hdr_bloom_dynamic_exposure = doc["hdrBloomDynamicExposure"].GetBool();
 	if (doc.HasMember("showUi"))
 		config.show_ui = doc["showUi"].GetBool();
 	if (doc.HasMember("forwardDepthPrepass"))
@@ -943,10 +945,14 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 	{
 		bool resolved = setup_before_post_chain_antialiasing(config.postaa_type, graph, jitter, "HDR-main",
 		                                                     "depth-main", "HDR-resolved");
+
+		HDROptions opts;
+		opts.dynamic_exposure = config.hdr_bloom_dynamic_exposure;
+
 		if (ImplementationQuirks::get().use_async_compute_post)
-			setup_hdr_postprocess_compute(graph, resolved ? "HDR-resolved" : "HDR-main", "tonemapped");
+			setup_hdr_postprocess_compute(graph, resolved ? "HDR-resolved" : "HDR-main", "tonemapped", opts);
 		else
-			setup_hdr_postprocess(graph, resolved ? "HDR-resolved" : "HDR-main", "tonemapped");
+			setup_hdr_postprocess(graph, resolved ? "HDR-resolved" : "HDR-main", "tonemapped", opts);
 	}
 
 	if (setup_after_post_chain_antialiasing(config.postaa_type, graph, jitter, ui_source, "depth-main",

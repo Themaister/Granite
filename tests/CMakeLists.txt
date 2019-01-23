@@ -25,6 +25,9 @@ target_compile_definitions(subgroup-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRE
 add_granite_application(fragment-output-components fragment_output_components.cpp)
 target_compile_definitions(fragment-output-components PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
 
+add_granite_application(basic-compute basic_compute.cpp)
+target_compile_definitions(basic-compute PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
+
 add_granite_application(render-graph-sandbox render_graph_sandbox.cpp)
 target_compile_definitions(render-graph-sandbox PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
 

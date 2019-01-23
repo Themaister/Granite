@@ -104,10 +104,10 @@ struct ClustererParameters
 
 struct CombinedRenderParameters
 {
-	EnvironmentParameters environment;
 	FogParameters fog;
-	VolumetricFogParameters volumetric_fog;
+	EnvironmentParameters environment;
 	ShadowParameters shadow;
+	VolumetricFogParameters volumetric_fog;
 	DirectionalParameters directional;
 	RefractionParameters refraction;
 	ResolutionParameters resolution;

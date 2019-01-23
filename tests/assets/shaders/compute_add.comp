@@ -1,48 +1,26 @@
 #version 450
 layout(local_size_x = 8, local_size_y = 4) in;
 
-layout(set = 1, binding = 0, std430) readonly buffer SSBO1
+struct Foo
 {
-    float a[];
+    float a;
+    float b;
+    float c;
 };
 
-layout(set = 1, binding = 1, std430) readonly buffer SSBO2
+struct Bar
 {
-    float b[];
+    vec3 c;
+    float d;
 };
 
-layout(set = 1, binding = 2, std430) writeonly buffer SSBOOut
+layout(std430, binding = 0, set = 0) buffer SSBO
 {
-    float c[];
+    Foo foo;
+    Bar bar;
 };
-
-layout(set = 0, binding = 1, rgba16f) writeonly uniform image2D uImage;
-
-layout(set = 0, binding = 0, std140) uniform UBO
-{
-    float dummy_ubo;
-};
-
-layout(std430, push_constant) uniform Registers
-{
-    float multiplier;
-} registers;
-
-shared float shared_values[32];
 
 void main()
 {
-    uint id = gl_LocalInvocationIndex + 32 * gl_WorkGroupID.x;
-    shared_values[gl_LocalInvocationIndex] = (registers.multiplier + float(id) + dummy_ubo) * (a[id] + b[id]);
-    for (int i = 0; i < int(dummy_ubo); i++)
-    {
-        memoryBarrierShared();
-        barrier();
-        shared_values[gl_LocalInvocationIndex ^ 15u] -= 10.0;
-    }
-
-    memoryBarrierShared();
-    barrier();
-    c[id] = shared_values[gl_LocalInvocationIndex ^ 15u];
-    imageStore(uImage, ivec2(gl_GlobalInvocationID.xy), vec4(shared_values[gl_LocalInvocationIndex]));
+    bar.c = vec3(1.0);
 }

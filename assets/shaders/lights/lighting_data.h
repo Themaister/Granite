@@ -44,10 +44,10 @@ struct ResolutionParameters
 
 layout(set = 0, binding = 1, std140) uniform LightingParameters
 {
-	EnvironmentParameters environment;
 	FogParameters fog;
-	VolumetricFogParameters volumetric_fog;
+	EnvironmentParameters environment;
 	ShadowParameters shadow;
+	VolumetricFogParameters volumetric_fog;
 	DirectionalParameters directional;
 	RefractionParameters refraction;
 	ResolutionParameters resolution;

@@ -65,6 +65,16 @@ struct Sprite : AbstractRenderable
 	Vulkan::Texture *texture_alt = nullptr;
 	Vulkan::StockSampler sampler = Vulkan::StockSampler::LinearWrap;
 
+	enum ShaderVariantFlagBits
+	{
+		BANDLIMITED_PIXEL_BIT = 1 << 0,
+		BLEND_TEXUTRE_BIT = 1 << 1,
+		LUMA_TO_ALPHA_BIT = 1 << 2,
+		CLEAR_ALPHA_TO_ZERO_BIT = 1 << 3,
+		ALPHA_TEXTURE_BIT = 1 << 4
+	};
+	using ShaderVariantFlags = uint32_t;
+
 	ivec2 tex_offset = ivec2(0);
 	ivec2 size = ivec2(0);
 	uint8_t color[4] = { 0xff, 0xff, 0xff, 0xff };

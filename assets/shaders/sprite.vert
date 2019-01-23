@@ -30,7 +30,7 @@ layout(location = 0) flat out mediump vec4 vColor;
     #else
         layout(location = 1) out highp vec2 vTex;
     #endif
-    layout(push_constant, std430) uniform Globals
+    layout(set = 3, binding = 0, std140) uniform Globals
     {
         vec2 tex_resolution;
         vec2 inv_tex_resolution;

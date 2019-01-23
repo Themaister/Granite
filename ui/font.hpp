@@ -60,7 +60,6 @@ public:
 
 private:
 	Vulkan::ImageHandle texture;
-	Vulkan::ImageViewHandle view;
 	stbtt_bakedchar baked_chars[128 - 32];
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);

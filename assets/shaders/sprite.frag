@@ -61,6 +61,11 @@ void main()
             mediump vec4 color = texture(uTex, vTex);
         #endif
     #endif
+
+    #if defined(VARIANT_BIT_4) && VARIANT_BIT_4
+        color = vec4(1.0, 1.0, 1.0, color.r);
+    #endif
+
     #if defined(ALPHA_TEST)
         if (color.a < 0.5)
             discard;

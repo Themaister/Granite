@@ -166,7 +166,7 @@ void Font::render_text(RenderQueue &queue, const char *text, const vec3 &offset,
 
 	size_t len = strlen(text);
 	SpriteRenderInfo sprite;
-	sprite.textures[0] = view.get();
+	sprite.textures[0] = &texture->get_view();
 	sprite.sampler = StockSampler::LinearWrap;
 
 	auto *instance_data = queue.allocate_one<SpriteInstanceInfo>();
@@ -224,6 +224,7 @@ void Font::render_text(RenderQueue &queue, const char *text, const vec3 &offset,
 		sprite.clip_quad = ivec4(ivec2(clip_offset), ivec2(clip_size));
 
 	Hasher hasher;
+	hasher.string("font");
 	hasher.pointer(sprite.textures[0]);
 	hasher.s32(ecast(sprite.sampler));
 	hasher.s32(sprite.clip_quad.x);
@@ -244,7 +245,8 @@ void Font::render_text(RenderQueue &queue, const char *text, const vec3 &offset,
 		                                                                                      MESH_ATTRIBUTE_UV_BIT |
 		                                                                                      MESH_ATTRIBUTE_POSITION_BIT |
 		                                                                                      MESH_ATTRIBUTE_VERTEX_COLOR_BIT,
-		                                                                                      MATERIAL_TEXTURE_BASE_COLOR_BIT);
+		                                                                                      MATERIAL_TEXTURE_BASE_COLOR_BIT,
+		                                                                                      Sprite::ALPHA_TEXTURE_BIT);
 
 		*sprite_data = sprite;
 	}
@@ -259,22 +261,10 @@ void Font::on_device_created(const DeviceCreatedEvent &created)
 	initial.data = bitmap.data();
 	texture = device.create_image(info, &initial);
 	device.set_name(*texture, "font");
-
-	ImageViewCreateInfo view_info;
-	view_info.image = texture.get();
-	view_info.swizzle.r = VK_COMPONENT_SWIZZLE_ONE;
-	view_info.swizzle.g = VK_COMPONENT_SWIZZLE_ONE;
-	view_info.swizzle.b = VK_COMPONENT_SWIZZLE_ONE;
-	view_info.swizzle.a = VK_COMPONENT_SWIZZLE_R;
-	view_info.format = VK_FORMAT_R8_UNORM;
-	view_info.levels = 1;
-	view_info.layers = 1;
-	view = device.create_image_view(view_info);
 }
 
 void Font::on_device_destroyed(const DeviceCreatedEvent &)
 {
-	view.reset();
 	texture.reset();
 }
 

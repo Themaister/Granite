@@ -199,13 +199,13 @@ void Sprite::get_sprite_render_info(const SpriteTransformInfo &transform, Render
 
 		uint32_t flags = 0;
 		if (bandlimited_pixel)
-			flags |= 1 << 0;
+			flags |= BANDLIMITED_PIXEL_BIT;
 		if (sprite.textures[1])
-			flags |= 1 << 1;
+			flags |= BLEND_TEXUTRE_BIT;
 		if (luma_to_alpha)
-			flags |= 1 << 2;
+			flags |= LUMA_TO_ALPHA_BIT;
 		if (clear_alpha_to_zero)
-			flags |= 1 << 3;
+			flags |= CLEAR_ALPHA_TO_ZERO_BIT;
 
 		sprite.program = suite.get_program(pipeline,
 		                                   MESH_ATTRIBUTE_POSITION_BIT |

@@ -24,6 +24,7 @@
 #include "command_buffer.hpp"
 #include "device.hpp"
 #include "os_filesystem.hpp"
+#include "muglm/muglm_impl.hpp"
 
 using namespace Granite;
 using namespace Vulkan;
@@ -52,6 +53,34 @@ struct BasicComputeTest : Granite::Application, Granite::EventHandler
 		return get_wsi().get_device().create_buffer(info, data);
 	}
 
+	void readback_image(void *data, size_t size, const Image &src)
+	{
+		BufferCreateInfo info = {};
+		info.size = size;
+		info.domain = BufferDomain::CachedHost;
+		info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+		auto buffer = get_wsi().get_device().create_buffer(info);
+
+		auto cmd = get_wsi().get_device().request_command_buffer(CommandBuffer::Type::AsyncTransfer);
+		cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+		             VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+		cmd->copy_image_to_buffer(*buffer, src, 0, {}, { src.get_width(), src.get_height(), src.get_depth() }, 0, 0,
+								  { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 });
+		cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+		             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
+
+		Fence fence;
+		Semaphore sem;
+		get_wsi().get_device().submit(cmd, &fence, 1, &sem);
+		fence->wait();
+
+		get_wsi().get_device().add_wait_semaphore(CommandBuffer::Type::AsyncCompute, sem, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, true);
+
+		auto *mapped = get_wsi().get_device().map_host_buffer(*buffer, MEMORY_ACCESS_READ_BIT);
+		memcpy(data, mapped, size);
+		get_wsi().get_device().unmap_host_buffer(*buffer, MEMORY_ACCESS_READ_BIT);
+	}
+
 	void readback_ssbo(void *data, size_t size, const Buffer &src)
 	{
 		BufferCreateInfo info = {};
@@ -60,7 +89,7 @@ struct BasicComputeTest : Granite::Application, Granite::EventHandler
 		info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 		auto buffer = get_wsi().get_device().create_buffer(info);
 
-		auto cmd = get_wsi().get_device().request_command_buffer(CommandBuffer::Type::Generic);
+		auto cmd = get_wsi().get_device().request_command_buffer(CommandBuffer::Type::AsyncTransfer);
 		cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
 		             VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
 		cmd->copy_buffer(*buffer, src);
@@ -68,8 +97,11 @@ struct BasicComputeTest : Granite::Application, Granite::EventHandler
 		             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 
 		Fence fence;
-		get_wsi().get_device().submit(cmd, &fence);
+		Semaphore sem;
+		get_wsi().get_device().submit(cmd, &fence, 1, &sem);
 		fence->wait();
+
+		get_wsi().get_device().add_wait_semaphore(CommandBuffer::Type::AsyncCompute, sem, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, true);
 
 		auto *mapped = get_wsi().get_device().map_host_buffer(*buffer, MEMORY_ACCESS_READ_BIT);
 		memcpy(data, mapped, size);
@@ -79,7 +111,7 @@ struct BasicComputeTest : Granite::Application, Granite::EventHandler
 	void render_frame(double, double) override
 	{
 		auto &device = get_wsi().get_device();
-		auto cmd = device.request_command_buffer(CommandBuffer::Type::Generic);
+		auto cmd = device.request_command_buffer(CommandBuffer::Type::AsyncCompute);
 
 		float a[64];
 		float b[64];
@@ -92,17 +124,49 @@ struct BasicComputeTest : Granite::Application, Granite::EventHandler
 		auto buffer_b = create_ssbo(b, sizeof(b));
 		auto buffer_c = create_ssbo(nullptr, sizeof(a));
 
-		cmd->set_program("assets://shaders/compute_add.comp");
-		cmd->set_storage_buffer(0, 0, *buffer_a);
-		cmd->set_storage_buffer(0, 1, *buffer_b);
-		cmd->set_storage_buffer(0, 2, *buffer_c);
-		cmd->dispatch(1, 1, 1);
-		device.submit(cmd);
+		ImageHandle img;
+		{
+			ImageCreateInfo info = ImageCreateInfo::immutable_2d_image(8, 4, VK_FORMAT_R16G16B16A16_SFLOAT);
+			info.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+			info.initial_layout = VK_IMAGE_LAYOUT_GENERAL;
+			img = device.create_image(info);
+			img->set_layout(Layout::General);
+		}
 
-		float c[64];
+		cmd->set_program("assets://shaders/compute_add.comp");
+		cmd->set_storage_buffer(1, 0, *buffer_a);
+		cmd->set_storage_buffer(1, 1, *buffer_b);
+		cmd->set_storage_buffer(1, 2, *buffer_c);
+		cmd->set_storage_texture(0, 1, img->get_view());
+		*cmd->allocate_typed_constant_data<float>(0, 0, 1) = 2.0f;
+		float push = 10.0f;
+		cmd->push_constants(&push, 0, sizeof(push));
+		cmd->dispatch(1, 1, 1);
+		cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+					 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT);
+		push = 0.0f;
+		cmd->push_constants(&push, 0, sizeof(push));
+		cmd->dispatch(1, 1, 1);
+
+		Semaphore sem;
+		device.submit(cmd, nullptr, 1, &sem);
+		device.add_wait_semaphore(CommandBuffer::Type::AsyncTransfer, sem, VK_PIPELINE_STAGE_TRANSFER_BIT, true);
+
+		float c[64] = {};
 		readback_ssbo(c, sizeof(c), *buffer_c);
 		for (auto &v : c)
 			LOGI("c[] = %f\n", v);
+
+		u16vec4 cs[64];
+		readback_image(cs, sizeof(cs), *img);
+		for (auto &v : cs)
+			LOGI("cs[] = 0x%x\n", v.x);
+
+		cmd = device.request_command_buffer();
+		auto rp = device.get_swapchain_render_pass(SwapchainRenderPass::ColorOnly);
+		cmd->begin_render_pass(rp);
+		cmd->end_render_pass();
+		device.submit(cmd);
 	}
 };
 

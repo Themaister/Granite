@@ -2214,6 +2214,9 @@ void RenderGraph::setup_physical_image(Vulkan::Device &device, unsigned attachme
 		info.samples = static_cast<VkSampleCountFlagBits>(att.samples);
 		info.flags = flags;
 
+		if (Vulkan::format_has_depth_or_stencil_aspect(info.format))
+			info.usage &= ~VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
 		info.misc = misc;
 		if (att.queues & (RENDER_GRAPH_QUEUE_GRAPHICS_BIT | RENDER_GRAPH_QUEUE_COMPUTE_BIT))
 			info.misc |= Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT;

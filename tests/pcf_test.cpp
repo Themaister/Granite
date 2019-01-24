@@ -75,7 +75,8 @@ struct PCFTest : Granite::Application, Granite::EventHandler
 
 		auto rp = device.get_swapchain_render_pass(SwapchainRenderPass::ColorOnly);
 		cmd->begin_render_pass(rp);
-		cmd->set_texture(0, 0, depth_buffer->get_view(), StockSampler::LinearShadow);
+		cmd->set_texture(0, 0, depth_buffer->get_view(), StockSampler::NearestClamp);
+		cmd->set_texture(1, 1, depth_buffer->get_view(), StockSampler::LinearShadow);
 		CommandBufferUtil::draw_fullscreen_quad(*cmd, "builtin://shaders/quad.vert",
 		                                        "assets://shaders/sample_pcf.frag");
 		cmd->end_render_pass();

@@ -69,11 +69,10 @@ struct BasicComputeTest : Granite::Application, Granite::EventHandler
 		             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 
 		Fence fence;
-		Semaphore sem;
-		get_wsi().get_device().submit(cmd, &fence, 1, &sem);
+		Semaphore sem[2];
+		get_wsi().get_device().submit(cmd, &fence, 2, sem);
+		get_wsi().get_device().add_wait_semaphore(CommandBuffer::Type::AsyncCompute, sem[0], VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, true);
 		fence->wait();
-
-		get_wsi().get_device().add_wait_semaphore(CommandBuffer::Type::AsyncCompute, sem, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, true);
 
 		auto *mapped = get_wsi().get_device().map_host_buffer(*buffer, MEMORY_ACCESS_READ_BIT);
 		memcpy(data, mapped, size);
@@ -92,9 +91,10 @@ struct BasicComputeTest : Granite::Application, Granite::EventHandler
 		cmd->set_storage_buffer(0, 0, *buffer_a);
 		cmd->dispatch(1, 1, 1);
 
-		Semaphore sem;
-		device.submit(cmd, nullptr, 1, &sem);
-		device.add_wait_semaphore(CommandBuffer::Type::AsyncTransfer, sem, VK_PIPELINE_STAGE_TRANSFER_BIT, true);
+		Semaphore sem[2];
+		device.submit(cmd, nullptr, 2, sem);
+		device.add_wait_semaphore(CommandBuffer::Type::AsyncTransfer, sem[0], VK_PIPELINE_STAGE_TRANSFER_BIT, true);
+		device.add_wait_semaphore(CommandBuffer::Type::Generic, sem[1], VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, true);
 
 		readback_ssbo(a, sizeof(a), *buffer_a);
 		for (unsigned i = 0; i < 16; i++)

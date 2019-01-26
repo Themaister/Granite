@@ -41,14 +41,14 @@ struct CubeArrayTest : Granite::Application, Granite::EventHandler
 
 	void on_device_create(const DeviceCreatedEvent &e)
 	{
-		ImageCreateInfo info = ImageCreateInfo::render_target(16, 16, VK_FORMAT_D16_UNORM);
-		info.layers = 6 * 256;
-		info.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+		ImageCreateInfo info = ImageCreateInfo::render_target(16, 16, VK_FORMAT_D32_SFLOAT);
+		info.layers = 6 * 64;
+		//info.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
 		info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 		info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
 		cube = e.get_device().create_image(info);
 
-		info = ImageCreateInfo::render_target(6, 256, VK_FORMAT_R8G8B8A8_UNORM);
+		info = ImageCreateInfo::render_target(6, 64, VK_FORMAT_R8G8B8A8_UNORM);
 		info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 		info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
 		cube_sample = e.get_device().create_image(info);
@@ -70,17 +70,15 @@ struct CubeArrayTest : Granite::Application, Granite::EventHandler
 		                   VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
 		                   VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
 
-		for (unsigned slice = 0; slice < 256; slice++)
+		for (unsigned slice = 0; slice < 64; slice++)
 		{
 			for (unsigned face = 0; face < 6; face++)
 			{
 				RenderPassInfo cube_rp;
 				cube_rp.layer = face + slice * 6;
-				cube_rp.clear_attachments = 1;
-				cube_rp.store_attachments = 1;
 				cube_rp.op_flags = RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT | RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT;
 				cube_rp.depth_stencil = &cube->get_view();
-				cube_rp.clear_depth_stencil.depth = float(cube_rp.layer) / float(256 * 6);
+				cube_rp.clear_depth_stencil.depth = 1.0f - 1.0f * float(cube_rp.layer) / float(64 * 6);
 				cmd->begin_render_pass(cube_rp);
 				cmd->end_render_pass();
 			}
@@ -98,7 +96,7 @@ struct CubeArrayTest : Granite::Application, Granite::EventHandler
 		read_rp.color_attachments[0] = &cube_sample->get_view();
 		read_rp.store_attachments = 1;
 		cmd->begin_render_pass(read_rp);
-		cmd->set_texture(0, 0, cube->get_view(), StockSampler::LinearShadow);
+		cmd->set_texture(0, 0, cube->get_view(), StockSampler::NearestShadow);
 		CommandBufferUtil::draw_fullscreen_quad(*cmd, "builtin://shaders/quad.vert",
 		                                        "assets://shaders/sample_cube_array.frag");
 		cmd->end_render_pass();

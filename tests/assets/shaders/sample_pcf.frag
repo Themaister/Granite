@@ -6,6 +6,6 @@ layout(set = 1, binding = 1) uniform sampler2DShadow uPCF;
 
 void main()
 {
-    vec4 clip = vec4(vUV, 0.5, 2.0);
+    vec4 clip = vec4(vUV, 1.0, 2.0);
     FragColor = mix(texture(uPlain, vUV).xxxx, vec4(textureProjLod(uPCF, clip, 0.0)), 0.9);
 }

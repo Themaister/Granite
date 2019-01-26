@@ -1,5 +1,5 @@
 #version 450
-layout(set = 0, binding = 0) uniform samplerCubeArray uCube;
+layout(set = 0, binding = 0) uniform samplerCubeArrayShadow uCube;
 layout(location = 0) out vec4 FragColor;
 
 const vec3 directions[] = vec3[](
@@ -14,5 +14,8 @@ void main()
 {
     int face = int(gl_FragCoord.x);
     float slice = floor(gl_FragCoord.y);
-    FragColor = texture(uCube, vec4(directions[face], slice));
+    FragColor.z = texture(uCube, vec4(directions[face], slice), 0.25);
+    FragColor.y = texture(uCube, vec4(directions[face], slice), 0.50);
+    FragColor.x = texture(uCube, vec4(directions[face], slice), 0.75);
+    FragColor.w = texture(uCube, vec4(directions[face], slice), 1.0);
 }

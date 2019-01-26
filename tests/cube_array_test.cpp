@@ -41,7 +41,7 @@ struct CubeArrayTest : Granite::Application, Granite::EventHandler
 
 	void on_device_create(const DeviceCreatedEvent &e)
 	{
-		ImageCreateInfo info = ImageCreateInfo::render_target(16, 16, VK_FORMAT_R8G8B8A8_UNORM);
+		ImageCreateInfo info = ImageCreateInfo::render_target(16, 16, VK_FORMAT_D16_UNORM);
 		info.layers = 6 * 256;
 		info.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
 		info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -65,9 +65,10 @@ struct CubeArrayTest : Granite::Application, Granite::EventHandler
 		auto &device = get_wsi().get_device();
 		auto cmd = device.request_command_buffer();
 
-		cmd->image_barrier(*cube, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		cmd->image_barrier(*cube, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
 		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
-		                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
+		                   VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+		                   VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
 
 		for (unsigned slice = 0; slice < 256; slice++)
 		{
@@ -77,59 +78,16 @@ struct CubeArrayTest : Granite::Application, Granite::EventHandler
 				cube_rp.layer = face + slice * 6;
 				cube_rp.clear_attachments = 1;
 				cube_rp.store_attachments = 1;
-				cube_rp.num_color_attachments = 1;
-				cube_rp.color_attachments[0] = &cube->get_view();
-				cube_rp.clear_color[0].float32[0] = float(slice) / 255.0f;
-				cube_rp.clear_color[0].float32[1] = float(slice) / 255.0f;
-				cube_rp.clear_color[0].float32[2] = float(slice) / 255.0f;
-				cube_rp.clear_color[0].float32[3] = float(slice) / 255.0f;
-
-				switch (face)
-				{
-				case 0:
-					cube_rp.clear_color[0].float32[0] *= 1.0f;
-					cube_rp.clear_color[0].float32[1] *= 0.0f;
-					cube_rp.clear_color[0].float32[2] *= 0.0f;
-					cube_rp.clear_color[0].float32[3] *= 0.0f;
-					break;
-				case 1:
-					cube_rp.clear_color[0].float32[0] *= 0.0f;
-					cube_rp.clear_color[0].float32[1] *= 1.0f;
-					cube_rp.clear_color[0].float32[2] *= 0.0f;
-					cube_rp.clear_color[0].float32[3] *= 0.0f;
-					break;
-				case 2:
-					cube_rp.clear_color[0].float32[0] *= 0.0f;
-					cube_rp.clear_color[0].float32[1] *= 0.0f;
-					cube_rp.clear_color[0].float32[2] *= 1.0f;
-					cube_rp.clear_color[0].float32[3] *= 0.0f;
-					break;
-				case 3:
-					cube_rp.clear_color[0].float32[0] *= 1.0f;
-					cube_rp.clear_color[0].float32[1] *= 1.0f;
-					cube_rp.clear_color[0].float32[2] *= 0.0f;
-					cube_rp.clear_color[0].float32[3] *= 0.0f;
-					break;
-				case 4:
-					cube_rp.clear_color[0].float32[0] *= 1.0f;
-					cube_rp.clear_color[0].float32[1] *= 0.0f;
-					cube_rp.clear_color[0].float32[2] *= 1.0f;
-					cube_rp.clear_color[0].float32[3] *= 0.0f;
-					break;
-				case 5:
-					cube_rp.clear_color[0].float32[0] *= 1.0f;
-					cube_rp.clear_color[0].float32[1] *= 1.0f;
-					cube_rp.clear_color[0].float32[2] *= 1.0f;
-					cube_rp.clear_color[0].float32[3] *= 0.0f;
-					break;
-				}
+				cube_rp.op_flags = RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT | RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT;
+				cube_rp.depth_stencil = &cube->get_view();
+				cube_rp.clear_depth_stencil.depth = float(cube_rp.layer) / float(256 * 6);
 				cmd->begin_render_pass(cube_rp);
 				cmd->end_render_pass();
 			}
 		}
 
-		cmd->image_barrier(*cube, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-		                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+		cmd->image_barrier(*cube, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		                   VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
 		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 		cmd->image_barrier(*cube_sample, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
@@ -140,7 +98,7 @@ struct CubeArrayTest : Granite::Application, Granite::EventHandler
 		read_rp.color_attachments[0] = &cube_sample->get_view();
 		read_rp.store_attachments = 1;
 		cmd->begin_render_pass(read_rp);
-		cmd->set_texture(0, 0, cube->get_view(), StockSampler::NearestClamp);
+		cmd->set_texture(0, 0, cube->get_view(), StockSampler::LinearShadow);
 		CommandBufferUtil::draw_fullscreen_quad(*cmd, "builtin://shaders/quad.vert",
 		                                        "assets://shaders/sample_cube_array.frag");
 		cmd->end_render_pass();

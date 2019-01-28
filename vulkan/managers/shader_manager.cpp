@@ -322,6 +322,8 @@ unsigned ShaderProgram::register_variant(const std::vector<std::pair<std::string
 ShaderProgram *ShaderManager::register_compute(const std::string &compute)
 {
 	auto *tmpl = get_template(compute);
+	if (!tmpl)
+		return nullptr;
 
 	Util::Hasher h;
 	h.u64(tmpl->get_path_hash());
@@ -365,6 +367,8 @@ ShaderProgram *ShaderManager::register_graphics(const std::string &vertex, const
 {
 	auto *vert_tmpl = get_template(vertex);
 	auto *frag_tmpl = get_template(fragment);
+	if (!vert_tmpl || !frag_tmpl)
+		return nullptr;
 
 	Util::Hasher h;
 	h.u64(vert_tmpl->get_path_hash());

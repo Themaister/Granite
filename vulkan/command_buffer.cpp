@@ -912,8 +912,9 @@ void CommandBuffer::flush_graphics_pipeline()
 
 bool CommandBuffer::flush_compute_state()
 {
+	if (!current_program)
+		return false;
 	VK_ASSERT(current_layout);
-	VK_ASSERT(current_program);
 
 	if (get_and_clear(COMMAND_BUFFER_DIRTY_PIPELINE_BIT))
 	{
@@ -949,8 +950,9 @@ bool CommandBuffer::flush_compute_state()
 
 bool CommandBuffer::flush_render_state()
 {
+	if (!current_program)
+		return false;
 	VK_ASSERT(current_layout);
-	VK_ASSERT(current_program);
 
 	// We've invalidated pipeline state, update the VkPipeline.
 	if (get_and_clear(COMMAND_BUFFER_DIRTY_STATIC_STATE_BIT | COMMAND_BUFFER_DIRTY_PIPELINE_BIT |
@@ -1128,16 +1130,26 @@ void CommandBuffer::push_constants(const void *data, VkDeviceSize offset, VkDevi
 void CommandBuffer::set_program(const std::string &compute, const std::vector<std::pair<std::string, int>> &defines)
 {
 	auto *p = device->get_shader_manager().register_compute(compute);
-	unsigned variant = p->register_variant(defines);
-	set_program(p->get_program(variant));
+	if (p)
+	{
+		unsigned variant = p->register_variant(defines);
+		set_program(p->get_program(variant));
+	}
+	else
+		set_program(nullptr);
 }
 
 void CommandBuffer::set_program(const std::string &vertex, const std::string &fragment,
                                 const std::vector<std::pair<std::string, int>> &defines)
 {
 	auto *p = device->get_shader_manager().register_graphics(vertex, fragment);
-	unsigned variant = p->register_variant(defines);
-	set_program(p->get_program(variant));
+	if (p)
+	{
+		unsigned variant = p->register_variant(defines);
+		set_program(p->get_program(variant));
+	}
+	else
+		set_program(nullptr);
 }
 #endif
 
@@ -1683,54 +1695,60 @@ void CommandBuffer::flush_descriptor_sets()
 
 void CommandBuffer::draw(uint32_t vertex_count, uint32_t instance_count, uint32_t first_vertex, uint32_t first_instance)
 {
-	VK_ASSERT(current_program);
 	VK_ASSERT(!is_compute);
-	flush_render_state();
-	vkCmdDraw(cmd, vertex_count, instance_count, first_vertex, first_instance);
+	if (flush_render_state())
+		vkCmdDraw(cmd, vertex_count, instance_count, first_vertex, first_instance);
+	else
+		LOGE("Failed to flush render state, draw call will be dropped.\n");
 }
 
 void CommandBuffer::draw_indexed(uint32_t index_count, uint32_t instance_count, uint32_t first_index,
                                  int32_t vertex_offset, uint32_t first_instance)
 {
-	VK_ASSERT(current_program);
 	VK_ASSERT(!is_compute);
 	VK_ASSERT(index.buffer != VK_NULL_HANDLE);
 	if (flush_render_state())
 		vkCmdDrawIndexed(cmd, index_count, instance_count, first_index, vertex_offset, first_instance);
+	else
+		LOGE("Failed to flush render state, draw call will be dropped.\n");
 }
 
 void CommandBuffer::draw_indirect(const Vulkan::Buffer &buffer,
                                   uint32_t offset, uint32_t draw_count, uint32_t stride)
 {
-	VK_ASSERT(current_program);
 	VK_ASSERT(!is_compute);
 	if (flush_render_state())
 		vkCmdDrawIndirect(cmd, buffer.get_buffer(), offset, draw_count, stride);
+	else
+		LOGE("Failed to flush render state, draw call will be dropped.\n");
 }
 
 void CommandBuffer::draw_indexed_indirect(const Vulkan::Buffer &buffer,
                                           uint32_t offset, uint32_t draw_count, uint32_t stride)
 {
-	VK_ASSERT(current_program);
 	VK_ASSERT(!is_compute);
 	if (flush_render_state())
 		vkCmdDrawIndexedIndirect(cmd, buffer.get_buffer(), offset, draw_count, stride);
+	else
+		LOGE("Failed to flush render state, draw call will be dropped.\n");
 }
 
 void CommandBuffer::dispatch_indirect(const Buffer &buffer, uint32_t offset)
 {
-	VK_ASSERT(current_program);
 	VK_ASSERT(is_compute);
 	if (flush_compute_state())
 		vkCmdDispatchIndirect(cmd, buffer.get_buffer(), offset);
+	else
+		LOGE("Failed to flush render state, dispatch will be dropped.\n");
 }
 
 void CommandBuffer::dispatch(uint32_t groups_x, uint32_t groups_y, uint32_t groups_z)
 {
-	VK_ASSERT(current_program);
 	VK_ASSERT(is_compute);
 	if (flush_compute_state())
 		vkCmdDispatch(cmd, groups_x, groups_y, groups_z);
+	else
+		LOGE("Failed to flush render state, dispatch will be dropped.\n");
 }
 
 void CommandBuffer::set_opaque_state()

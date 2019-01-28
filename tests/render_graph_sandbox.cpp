@@ -108,7 +108,7 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
 			auto &device = get_wsi().get_device();
 			auto *program = device.get_shader_manager().register_compute("assets://shaders/image_write.comp");
 			unsigned variant = program->register_variant({});
-			cmd.set_program(*program->get_program(variant));
+			cmd.set_program(program->get_program(variant));
 			cmd.set_storage_texture(0, 0, graph.get_physical_texture_resource(i));
 			cmd.set_texture(0, 1, graph.get_physical_texture_resource(first), StockSampler::LinearClamp);
 			cmd.dispatch(1280 / 8, 720 / 8, 40);

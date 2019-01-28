@@ -69,7 +69,7 @@ struct ClusteringVizApplication : Granite::Application, Granite::EventHandler
 
 		auto *program = device.get_shader_manager().register_graphics("assets://shaders/clustering_viz.vert", "assets://shaders/clustering_viz.frag");
 		auto variant = program->register_variant({});
-		cmd->set_program(*program->get_program(variant));
+		cmd->set_program(program->get_program(variant));
 
 		static const unsigned res_x = 64 / 4;
 		static const unsigned res_y = 32 / 4;

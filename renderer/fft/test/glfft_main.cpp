@@ -27,7 +27,9 @@ int main(int argc, char *argv[])
 {
 	if (!Vulkan::Context::init_loader(nullptr))
 		return EXIT_FAILURE;
-	Vulkan::Context context(nullptr, 0, nullptr, 0);
+	Vulkan::Context context;
+	if (!context.init_instance_and_device(nullptr, 0, nullptr, 0))
+		return EXIT_FAILURE;
 	Device device;
 	device.set_context(context);
 	device.init_external_swapchain({ ImageHandle(nullptr) });

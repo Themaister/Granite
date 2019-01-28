@@ -149,7 +149,7 @@ struct TriangleApplication : Granite::Application, Granite::EventHandler
 
 		auto *program = device.get_shader_manager().register_graphics("assets://shaders/triangle.vert", "assets://shaders/triangle.frag");
 		auto variant = program->register_variant({});
-		cmd->set_program(*program->get_program(variant));
+		cmd->set_program(program->get_program(variant));
 		cmd->set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
 
 		static const vec2 vertices[] = {

@@ -64,7 +64,10 @@ int main(int argc, char *argv[])
 	}
 
 	Context::init_loader(nullptr);
-	Context context(nullptr, 0, nullptr, 0);
+	Context context;
+	if (!context.init_instance_and_device(nullptr, 0, nullptr, 0))
+		return 1;
+
 	Device device;
 	device.set_context(context);
 	device.init_external_swapchain({ ImageHandle(nullptr) });

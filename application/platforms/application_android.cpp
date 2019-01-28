@@ -917,16 +917,21 @@ void android_main(android_app *app)
 					int ret;
 					if (app_handle)
 					{
-						auto platform = make_unique<Granite::WSIPlatformAndroid>(width, height);
-						global_state.app->userData = platform.get();
-						if (!app_handle->init_wsi(move(platform)))
-							ret = 1;
-						else
+						auto platform = make_unique<Granite::WSIPlatformAndroid>();
+						if (platform->init(width, height))
 						{
-							while (app_handle->poll())
-								app_handle->run_frame();
-							ret = 0;
+							global_state.app->userData = platform.get();
+							if (!app_handle->init_wsi(move(platform)))
+								ret = 1;
+							else
+							{
+								while (app_handle->poll())
+									app_handle->run_frame();
+								ret = 0;
+							}
 						}
+						else
+							ret = 1;
 					}
 					else
 					{

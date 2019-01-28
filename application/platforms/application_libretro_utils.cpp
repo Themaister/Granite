@@ -80,10 +80,13 @@ bool libretro_create_device(
 	if (!Vulkan::Context::init_loader(get_instance_proc_addr))
 		return false;
 
-	vulkan_context.reset(
-			new Vulkan::Context(instance, gpu, surface, required_device_extensions, num_required_device_extensions,
-			                    required_device_layers, num_required_device_layers,
-			                    required_features));
+	vulkan_context.reset(new Vulkan::Context);
+	if (!vulkan_context->init_device_from_instance(instance, gpu, surface, required_device_extensions, num_required_device_extensions,
+	                                               required_device_layers, num_required_device_layers,
+	                                               required_features))
+	{
+		return false;
+	}
 
 	vulkan_context->release_device();
 	context->gpu = vulkan_context->get_gpu();

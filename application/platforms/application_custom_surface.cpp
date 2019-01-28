@@ -50,7 +50,7 @@ public:
 	{
 		width = width_;
 		height = height_;
-		library = DynamicLibrary(path.c_str());
+		library = DynamicLibrary(path_.c_str());
 		if (!library)
 			return false;
 
@@ -216,7 +216,10 @@ int application_main(Application *(*create_application)(int, char **), int argc,
 
 	if (app)
 	{
-		if (!app->init_wsi(make_unique<WSIPlatformCustomSurface>(args.width, args.height, args.library)))
+		auto platform = make_unique<WSIPlatformCustomSurface>();
+		if (!platform->init(args.width, args.height, args.library))
+			return 1;
+		if (!app->init_wsi(move(platform)))
 			return 1;
 
 		unsigned run_frames = 0;

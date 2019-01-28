@@ -731,7 +731,7 @@ NetworkFile::~NetworkFile()
 
 NetworkFile *NetworkFile::open(Granite::Looper &looper, const std::string &path, Granite::FileMode mode)
 {
-	auto *file = NetworkFile::open(looper, path, mode);
+	auto *file = new NetworkFile;
 	if (!file->init(looper, path, mode))
 	{
 		delete file;

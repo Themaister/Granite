@@ -130,7 +130,9 @@ bool WSI::init()
 {
 	auto instance_ext = platform->get_instance_extensions();
 	auto device_ext = platform->get_device_extensions();
-	context.reset(new Context(instance_ext.data(), instance_ext.size(), device_ext.data(), device_ext.size()));
+	context.reset(new Context);
+	if (!context->init_instance_and_device(instance_ext.data(), instance_ext.size(), device_ext.data(), device_ext.size()))
+		return false;
 
 	device.reset(new Device);
 	device->set_context(*context);
@@ -683,9 +685,11 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	LOGI("Created swapchain %u x %u (fmt: %u).\n", this->width, this->height, static_cast<unsigned>(this->format));
 
 	uint32_t image_count;
-	V(vkGetSwapchainImagesKHR(context->get_device(), swapchain, &image_count, nullptr));
+	if (vkGetSwapchainImagesKHR(context->get_device(), swapchain, &image_count, nullptr) != VK_SUCCESS)
+		return SwapchainError::Error;
 	swapchain_images.resize(image_count);
-	V(vkGetSwapchainImagesKHR(context->get_device(), swapchain, &image_count, swapchain_images.data()));
+	if (vkGetSwapchainImagesKHR(context->get_device(), swapchain, &image_count, swapchain_images.data()) != VK_SUCCESS)
+		return SwapchainError::Error;
 
 	LOGI("Got %u swapchain images.\n", image_count);
 

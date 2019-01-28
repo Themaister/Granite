@@ -30,7 +30,7 @@ namespace Granite
 class AssetFile : public File
 {
 public:
-	AssetFile(AAssetManager *mgr, const std::string &path, FileMode mode);
+	static AssetFile *open(AAssetManager *mgr, const std::string &path, FileMode mode);
 	~AssetFile();
 	void *map() override;
 	void *map_write(size_t size) override;
@@ -39,6 +39,8 @@ public:
 	bool reopen() override;
 
 private:
+	AssetFile() = default;
+	bool init(AAssetManager *mgr, const std::string &path, FileMode mode);
 	AAsset *asset = nullptr;
 	void *mapped = nullptr;
 	size_t size = 0;

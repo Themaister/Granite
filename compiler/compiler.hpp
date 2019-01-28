@@ -67,7 +67,7 @@ public:
 
 	void set_include_directories(const std::vector<std::string> *include_directories);
 
-	void set_source_from_file(const std::string &path);
+	bool set_source_from_file(const std::string &path);
 	bool preprocess();
 
 	std::vector<uint32_t> compile(const std::vector<std::pair<std::string, int>> *defines = nullptr);

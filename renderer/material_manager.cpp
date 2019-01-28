@@ -37,7 +37,8 @@ namespace Granite
 MaterialFile::MaterialFile(const std::string &path)
 	: VolatileSource(path)
 {
-	init();
+	if (!init())
+		throw runtime_error("Failed to load material file.");
 
 	EVENT_MANAGER_REGISTER_LATCH(MaterialFile, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }

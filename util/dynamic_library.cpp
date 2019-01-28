@@ -21,6 +21,7 @@
  */
 
 #include "dynamic_library.hpp"
+#include "util.hpp"
 #include <stdexcept>
 
 #ifdef _WIN32
@@ -36,11 +37,11 @@ DynamicLibrary::DynamicLibrary(const char *path)
 #ifdef _WIN32
 	module = LoadLibrary(path);
 	if (!module)
-		throw std::runtime_error("Failed to load dynamic library.");
+		LOGE("Failed to load dynamic library.\n");
 #else
 	dylib = dlopen(path, RTLD_NOW);
 	if (!dylib)
-		throw std::runtime_error("Failed to load dynamic library.");
+		LOGE("Failed to load dynamic library.\n");
 #endif
 }
 

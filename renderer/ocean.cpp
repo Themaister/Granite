@@ -438,14 +438,14 @@ void Ocean::update_fft_input(Vulkan::CommandBuffer &cmd)
 		       frequency_bands, sizeof(frequency_bands));
 	}
 
-	cmd.set_program(*program->get_program(height_variant));
+	cmd.set_program(program->get_program(height_variant));
 	push.N = uvec2(config.fft_resolution);
 	cmd.set_storage_buffer(0, 0, *distribution_buffer);
 	cmd.set_storage_buffer(0, 1, graph->get_physical_buffer_resource(*height_fft_input));
 	cmd.push_constants(&push, 0, sizeof(push));
 	cmd.dispatch(config.fft_resolution / 64, config.fft_resolution, 1);
 
-	cmd.set_program(*program->get_program(displacement_variant));
+	cmd.set_program(program->get_program(displacement_variant));
 	push.N = uvec2(config.fft_resolution >> config.displacement_downsample);
 	cmd.set_storage_buffer(0, 0, *distribution_buffer_displacement);
 	cmd.set_storage_buffer(0, 1, graph->get_physical_buffer_resource(*displacement_fft_input));
@@ -455,7 +455,7 @@ void Ocean::update_fft_input(Vulkan::CommandBuffer &cmd)
 	             1);
 
 	push.mod = vec2(2.0f * pi<float>()) / normalmap_world_size();
-	cmd.set_program(*program->get_program(normal_variant));
+	cmd.set_program(program->get_program(normal_variant));
 	push.N = uvec2(config.fft_resolution);
 	cmd.set_storage_buffer(0, 0, *distribution_buffer_normal);
 	cmd.set_storage_buffer(0, 1, graph->get_physical_buffer_resource(*normal_fft_input));
@@ -755,7 +755,7 @@ static void ocean_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *info
 
 	for (unsigned instance = 0; instance < num_instances; instance++)
 	{
-		cmd.set_program(*ocean_info.program);
+		cmd.set_program(ocean_info.program);
 		cmd.set_vertex_attrib(0, 0, VK_FORMAT_R8G8B8A8_UINT, offsetof(OceanVertex, pos));
 		cmd.set_vertex_attrib(1, 0, VK_FORMAT_R8G8B8A8_UNORM, offsetof(OceanVertex, weights));
 		cmd.push_constants(&ocean_info.data, 0, sizeof(ocean_info.data));
@@ -781,7 +781,7 @@ static void ocean_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *info
 			cmd.draw_indexed_indirect(*ocean_info.indirect, 8 * sizeof(uint32_t) * lod, 1, 8 * sizeof(uint32_t));
 		}
 
-		cmd.set_program(*ocean_info.border_program);
+		cmd.set_program(ocean_info.border_program);
 		cmd.set_vertex_attrib(0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0);
 		cmd.set_vertex_binding(0, *ocean_info.border_vbo, 0, sizeof(vec3));
 		cmd.set_index_buffer(*ocean_info.border_ibo, 0, ocean_info.index_type);

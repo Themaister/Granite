@@ -469,7 +469,7 @@ static void skycylinder_render(CommandBuffer &cmd, const RenderQueueData *infos,
 	{
 		auto *info = static_cast<const SkyCylinderRenderInfo *>(infos[i].render_info);
 
-		cmd.set_program(*info->program);
+		cmd.set_program(info->program);
 		cmd.set_texture(2, 0, *info->view, *info->sampler);
 
 		vec4 color_scale(info->color, info->scale);
@@ -622,7 +622,7 @@ static void skybox_render(CommandBuffer &cmd, const RenderQueueData *infos, unsi
 	{
 		auto *info = static_cast<const SkyboxRenderInfo *>(infos[i].render_info);
 
-		cmd.set_program(*info->program);
+		cmd.set_program(info->program);
 
 		if (info->view)
 			cmd.set_texture(2, 0, *info->view, *info->sampler);
@@ -737,7 +737,7 @@ static void texture_plane_render(CommandBuffer &cmd, const RenderQueueData *info
 	for (unsigned i = 0; i < instances; i++)
 	{
 		auto &info = *static_cast<const TexturePlaneInfo *>(infos[i].render_info);
-		cmd.set_program(*info.program);
+		cmd.set_program(info.program);
 		if (info.reflection)
 			cmd.set_texture(2, 0, *info.reflection, Vulkan::StockSampler::TrilinearClamp);
 		if (info.refraction)

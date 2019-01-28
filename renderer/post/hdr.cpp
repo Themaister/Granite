@@ -44,7 +44,7 @@ static void luminance_build_render_pass(RenderPass &pass, Vulkan::CommandBuffer 
 
 	auto *program = cmd.get_device().get_shader_manager().register_compute("builtin://shaders/post/luminance.comp");
 	unsigned variant = program->register_variant({});
-	cmd.set_program(*program->get_program(variant));
+	cmd.set_program(program->get_program(variant));
 
 	struct Registers
 	{
@@ -75,7 +75,7 @@ static void luminance_build_compute(Vulkan::CommandBuffer &cmd, RenderGraph &gra
 
 	auto *program = cmd.get_device().get_shader_manager().register_compute("builtin://shaders/post/luminance.comp");
 	unsigned variant = program->register_variant({});
-	cmd.set_program(*program->get_program(variant));
+	cmd.set_program(program->get_program(variant));
 
 	struct Registers
 	{
@@ -159,7 +159,7 @@ static void bloom_downsample_build_compute(Vulkan::CommandBuffer &cmd, RenderGra
 
 	auto *program = cmd.get_device().get_shader_manager().register_compute("builtin://shaders/post/bloom_downsample.comp");
 	unsigned variant = program->register_variant({{ "FEEDBACK", feedback ? 1 : 0 }});
-	cmd.set_program(*program->get_program(variant));
+	cmd.set_program(program->get_program(variant));
 
 	struct Registers
 	{
@@ -192,7 +192,7 @@ static void bloom_upsample_build_compute(Vulkan::CommandBuffer &cmd, RenderGraph
 
 	auto *program = cmd.get_device().get_shader_manager().register_compute("builtin://shaders/post/bloom_upsample.comp");
 	unsigned variant = program->register_variant({});
-	cmd.set_program(*program->get_program(variant));
+	cmd.set_program(program->get_program(variant));
 
 	struct Registers
 	{

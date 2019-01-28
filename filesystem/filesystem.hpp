@@ -93,7 +93,7 @@ enum class FileMode
 class StdioFile : public File
 {
 public:
-	StdioFile(const std::string &path, FileMode mode);
+	static StdioFile *open(const std::string &path, FileMode mode);
 
 	~StdioFile();
 
@@ -108,6 +108,8 @@ public:
 	bool reopen() override;
 
 private:
+	StdioFile() = default;
+	bool init(const std::string &path, FileMode mode);
 	FILE *file = nullptr;
 	size_t size = 0;
 	FileMode mode;

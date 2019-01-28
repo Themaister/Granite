@@ -46,11 +46,19 @@ namespace Granite
 struct WSIPlatformCustomSurface : Granite::GraniteWSIPlatform
 {
 public:
-	WSIPlatformCustomSurface(unsigned width, unsigned height, const std::string &path)
-		: width(width), height(height), library(path.c_str())
+	bool init(unsigned width_, unsigned height_, const std::string &path_)
 	{
+		width = width_;
+		height = height_;
+		library = DynamicLibrary(path.c_str());
+		if (!library)
+			return false;
+
 		if (!Context::init_loader(nullptr))
-			throw runtime_error("Failed to initialize Vulkan loader.");
+		{
+			LOGE("Failed to initialize Vulkan loader.\n");
+			return false;
+		}
 
 		auto *em = Global::event_manager();
 		if (em)
@@ -62,6 +70,8 @@ public:
 			em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 			em->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
 		}
+
+		return true;
 	}
 
 	~WSIPlatformCustomSurface()

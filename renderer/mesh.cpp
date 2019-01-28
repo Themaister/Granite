@@ -74,7 +74,7 @@ namespace RenderFunctions
 {
 void mesh_set_state(CommandBuffer &cmd, const StaticMeshInfo &info)
 {
-	cmd.set_program(*info.program);
+	cmd.set_program(info.program);
 
 	if (info.alpha_test)
 		cmd.set_multisample_state(false, false, true);
@@ -107,7 +107,7 @@ void debug_mesh_render(CommandBuffer &cmd, const RenderQueueData *infos, unsigne
 {
 	auto *info = static_cast<const DebugMeshInfo *>(infos->render_info);
 
-	cmd.set_program(*info->program);
+	cmd.set_program(info->program);
 	cmd.push_constants(&info->MVP, 0, sizeof(info->MVP));
 	cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_LINE_LIST);
 	cmd.set_vertex_attrib(0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0);

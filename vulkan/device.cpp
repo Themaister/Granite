@@ -264,6 +264,9 @@ Shader *Device::request_shader_by_hash(Hash hash)
 
 Program *Device::request_program(Vulkan::Shader *compute)
 {
+	if (!compute)
+		return nullptr;
+
 	Util::Hasher hasher;
 	hasher.u64(compute->get_hash());
 
@@ -276,12 +279,18 @@ Program *Device::request_program(Vulkan::Shader *compute)
 
 Program *Device::request_program(const uint32_t *compute_data, size_t compute_size)
 {
+	if (!compute_size)
+		return nullptr;
+
 	auto *compute = request_shader(compute_data, compute_size);
 	return request_program(compute);
 }
 
 Program *Device::request_program(Shader *vertex, Shader *fragment)
 {
+	if (!vertex || !fragment)
+		return nullptr;
+
 	Util::Hasher hasher;
 	hasher.u64(vertex->get_hash());
 	hasher.u64(fragment->get_hash());
@@ -297,6 +306,9 @@ Program *Device::request_program(Shader *vertex, Shader *fragment)
 Program *Device::request_program(const uint32_t *vertex_data, size_t vertex_size, const uint32_t *fragment_data,
                                  size_t fragment_size)
 {
+	if (!vertex_size || !fragment_size)
+		return nullptr;
+
 	auto *vertex = request_shader(vertex_data, vertex_size);
 	auto *fragment = request_shader(fragment_data, fragment_size);
 	return request_program(vertex, fragment);
@@ -2038,7 +2050,7 @@ uint32_t Device::find_memory_type(BufferDomain domain, uint32_t mask)
 		}
 	}
 
-	throw runtime_error("Couldn't find memory type.");
+	return UINT32_MAX;
 }
 
 uint32_t Device::find_memory_type(ImageDomain domain, uint32_t mask)
@@ -2087,7 +2099,7 @@ uint32_t Device::find_memory_type(ImageDomain domain, uint32_t mask)
 		}
 	}
 
-	throw runtime_error("Couldn't find memory type.");
+	return UINT32_MAX;
 }
 
 static inline VkImageViewType get_image_view_type(const ImageCreateInfo &create_info, const ImageViewCreateInfo *view)
@@ -2766,6 +2778,11 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 
 	vkGetImageMemoryRequirements(device, holder.image, &reqs);
 	uint32_t memory_type = find_memory_type(create_info.domain, reqs.memoryTypeBits);
+	if (memory_type == UINT32_MAX)
+	{
+		LOGE("Failed to find memory type.\n");
+		return ImageHandle(nullptr);
+	}
 
 	if (info.tiling == VK_IMAGE_TILING_LINEAR &&
 	    (create_info.misc & IMAGE_MISC_LINEAR_IMAGE_IGNORE_DEVICE_LOCAL_BIT) == 0)
@@ -3074,6 +3091,11 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 	vkGetBufferMemoryRequirements(device, buffer, &reqs);
 
 	uint32_t memory_type = find_memory_type(create_info.domain, reqs.memoryTypeBits);
+	if (memory_type == UINT32_MAX)
+	{
+		LOGE("Failed to find memory type.\n");
+		return BufferHandle(nullptr);
+	}
 
 	if (!managers.memory.allocate(reqs.size, reqs.alignment, memory_type, ALLOCATION_TILING_LINEAR, &allocation))
 	{

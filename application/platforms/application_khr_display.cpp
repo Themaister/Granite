@@ -83,11 +83,16 @@ static bool vulkan_update_display_mode(unsigned *width, unsigned *height, const 
 struct WSIPlatformDisplay : Granite::GraniteWSIPlatform
 {
 public:
-	WSIPlatformDisplay(unsigned width, unsigned height)
-		: width(width), height(height)
+	bool init(unsigned width_, unsigned height_)
 	{
+		width = width_;
+		height = height_;
+
 		if (!Context::init_loader(nullptr))
-			throw runtime_error("Failed to initialize Vulkan loader.");
+		{
+			LOGE("Failed to initialize Vulkan loader.\n");
+			return false;
+		}
 
 		auto *em = Global::event_manager();
 		if (em)
@@ -120,6 +125,7 @@ public:
 			LOGI("Failed to initialize input manager.\n");
 		}
 #endif
+		return true;
 	}
 
 	~WSIPlatformDisplay()

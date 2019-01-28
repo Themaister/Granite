@@ -134,24 +134,6 @@ FrameWorker::~FrameWorker()
 struct WSIPlatformHeadless : Granite::GraniteWSIPlatform
 {
 public:
-	WSIPlatformHeadless(unsigned width, unsigned height)
-		: width(width), height(height)
-	{
-		if (!Context::init_loader(nullptr))
-			throw runtime_error("Failed to initialize Vulkan loader.");
-
-		auto *em = Global::event_manager();
-		if (em)
-		{
-			em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-			em->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
-			em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-			em->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
-			em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-			em->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
-		}
-	}
-
 	float get_estimated_frame_presentation_duration() override
 	{
 		return 0.0f;
@@ -236,12 +218,39 @@ public:
 		return true;
 	}
 
-	void init(Application *app)
+	bool init(unsigned width_, unsigned height_)
 	{
-		this->app = app;
+		width = width_;
+		height = height_;
+		if (!Context::init_loader(nullptr))
+		{
+			LOGE("Failed to initialize Vulkan loader.\n");
+			return false;
+		}
+
+		auto *em = Global::event_manager();
+		if (em)
+		{
+			em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+			em->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
+			em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+			em->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
+			em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+			em->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
+		}
+
+		return true;
+	}
+
+	bool init_headless(Application *app_)
+	{
+		app = app_;
 
 		auto &wsi = app->get_wsi();
-		wsi.init_external_context(make_unique<Context>(nullptr, 0, nullptr, 0));
+		auto context = make_unique<Context>();
+		if (!context->init_instance_and_device(nullptr, 0, nullptr, 0))
+			return false;
+		wsi.init_external_context(move(context));
 
 		auto &device = wsi.get_device();
 
@@ -269,6 +278,7 @@ public:
 			swap->set_swapchain_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 
 		wsi.init_external_swapchain(swapchain_images);
+		return true;
 	}
 
 	void set_time_step(double t)
@@ -376,32 +386,31 @@ public:
 
 	void setup_hw_counter_lib(const char *path)
 	{
-		try
+		hw_counter_lib = DynamicLibrary(path);
+		if (!hw_counter_lib)
 		{
-			hw_counter_lib = DynamicLibrary(path);
-			auto *get_iface = hw_counter_lib.get_symbol<get_hw_counter_interface_t>("get_hw_counter_interface");
-			if (!get_iface)
-			{
-				LOGE("Count not find symbol for HW counter interface!\n");
-				return;
-			}
-
-			if (!get_iface(&hw_counter_iface))
-			{
-				LOGE("Failed to get HW counter interface!\n");
-				return;
-			}
-
-			hw_counter_handle = hw_counter_iface.create();
-			if (!hw_counter_handle)
-			{
-				LOGE("Failed to create HW counter handle!\n");
-				return;
-			}
+			LOGE("Failed to load HW counter library.\n");
+			return;
 		}
-		catch (const std::exception &e)
+
+		auto *get_iface = hw_counter_lib.get_symbol<get_hw_counter_interface_t>("get_hw_counter_interface");
+		if (!get_iface)
 		{
-			LOGE("Failed to load HW counter library: %s\n", e.what());
+			LOGE("Count not find symbol for HW counter interface!\n");
+			return;
+		}
+
+		if (!get_iface(&hw_counter_iface))
+		{
+			LOGE("Failed to get HW counter interface!\n");
+			return;
+		}
+
+		hw_counter_handle = hw_counter_iface.create();
+		if (!hw_counter_handle)
+		{
+			LOGE("Failed to create HW counter handle!\n");
+			return;
 		}
 	}
 
@@ -563,7 +572,10 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 
 	if (app)
 	{
-		auto platform = make_unique<WSIPlatformHeadless>(args.width, args.height);
+		auto platform = make_unique<WSIPlatformHeadless>();
+		if (!platform->init(args.width, args.height))
+			return 1;
+
 		auto *p = platform.get();
 
 		if (!args.hw_counter_lib.empty())
@@ -576,7 +588,7 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 			p->enable_png_readback(args.png_path);
 		p->set_max_frames(args.max_frames);
 		p->set_time_step(args.time_step);
-		p->init(app.get());
+		p->init_headless(app.get());
 
 #ifdef HAVE_GRANITE_AUDIO
 		Global::start_audio_system();

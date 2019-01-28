@@ -57,16 +57,16 @@ protected:
 		notify_handle = -1;
 	}
 
-	void init()
+	bool init()
 	{
 		if (path.empty())
-			return;
+			return false;
 
 		auto file = Granite::Global::filesystem()->open(path);
 		if (!file)
 		{
 			LOGE("Failed to open volatile file: %s\n", path.c_str());
-			throw std::runtime_error("file open error");
+			return false;
 		}
 
 		auto *self = static_cast<T *>(this);
@@ -97,6 +97,8 @@ protected:
 				}
 			});
 		}
+
+		return true;
 	}
 
 private:

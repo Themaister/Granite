@@ -52,16 +52,17 @@ Stage GLSLCompiler::stage_from_path(const std::string &path)
 		throw logic_error("invalid extension");
 }
 
-void GLSLCompiler::set_source_from_file(const string &path)
+bool GLSLCompiler::set_source_from_file(const string &path)
 {
 	if (!Global::filesystem()->read_file_to_string(path, source))
 	{
 		LOGE("Failed to load shader: %s\n", path.c_str());
-		throw runtime_error("Failed to load shader.");
+		return false;
 	}
 
 	source_path = path;
 	stage = stage_from_path(path);
+	return true;
 }
 
 void GLSLCompiler::set_include_directories(const std::vector<std::string> *include_directories)

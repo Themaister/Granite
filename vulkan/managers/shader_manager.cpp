@@ -38,26 +38,37 @@ using namespace Util;
 
 namespace Vulkan
 {
-ShaderTemplate::ShaderTemplate(Device *device, const std::string &shader_path,
-                               PrecomputedShaderCache &cache,
-                               Util::Hash path_hash,
-                               const std::vector<std::string> &include_directories)
-	: device(device), path(shader_path), cache(cache), path_hash(path_hash)
+ShaderTemplate::ShaderTemplate(Device *device_, const std::string &shader_path,
+                               PrecomputedShaderCache &cache_,
+                               Util::Hash path_hash_,
+                               const std::vector<std::string> &include_directories_)
+	: device(device_), path(shader_path), cache(cache_), path_hash(path_hash_)
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
-	, include_directories(include_directories)
+	, include_directories(include_directories_)
 #endif
+{
+}
+
+bool ShaderTemplate::init()
 {
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 	compiler = make_unique<Granite::GLSLCompiler>();
 	if (device->get_device_features().supports_vulkan_11_device)
 		compiler->set_target(Granite::Target::Vulkan11);
-	compiler->set_source_from_file(shader_path);
+	if (!compiler->set_source_from_file(path))
+		return false;
 	compiler->set_include_directories(&include_directories);
 	if (!compiler->preprocess())
-		throw runtime_error(Util::join("Failed to pre-process shader: ", shader_path));
+	{
+		LOGE("Failed to pre-process shader: %s", path.c_str());
+		compiler.reset();
+		return false;
+	}
 #else
 	(void)include_directories;
 #endif
+
+	return true;
 }
 
 const ShaderTemplate::Variant *ShaderTemplate::register_variant(const std::vector<std::pair<std::string, int>> *defines)
@@ -85,13 +96,18 @@ const ShaderTemplate::Variant *ShaderTemplate::register_variant(const std::vecto
 		if (!cache.find_and_consume_pod(complete_hash, variant->spirv_hash))
 		{
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
-			variant->spirv = compiler->compile(defines);
-			if (variant->spirv.empty())
+			if (compiler)
 			{
-				LOGE("Shader error:\n%s\n", compiler->get_error_message().c_str());
-				variants.free(variant);
-				throw runtime_error("Shader compile failed.");
+				variant->spirv = compiler->compile(defines);
+				if (variant->spirv.empty())
+				{
+					LOGE("Shader error:\n%s\n", compiler->get_error_message().c_str());
+					variants.free(variant);
+					return nullptr;
+				}
 			}
+			else
+				return nullptr;
 #else
 			LOGE("Could not find shader variant for %s in cache.\n", path.c_str());
 			variants.free(variant);
@@ -112,38 +128,32 @@ const ShaderTemplate::Variant *ShaderTemplate::register_variant(const std::vecto
 void ShaderTemplate::recompile()
 {
 	// Recompile all variants.
-	try
+	auto newcompiler = make_unique<Granite::GLSLCompiler>();
+	if (device->get_device_features().supports_vulkan_11_device)
+		newcompiler->set_target(Granite::Target::Vulkan11);
+	if (!newcompiler->set_source_from_file(path))
+		return;
+	newcompiler->set_include_directories(&include_directories);
+	if (!newcompiler->preprocess())
 	{
-		auto newcompiler = make_unique<Granite::GLSLCompiler>();
-		if (device->get_device_features().supports_vulkan_11_device)
-			compiler->set_target(Granite::Target::Vulkan11);
-		newcompiler->set_source_from_file(path);
-		newcompiler->set_include_directories(&include_directories);
-		if (!newcompiler->preprocess())
-		{
-			LOGE("Failed to preprocess updated shader: %s\n", path.c_str());
-			return;
-		}
-		compiler = move(newcompiler);
-
-		for (auto &variant : variants)
-		{
-			auto newspirv = compiler->compile(&variant.defines);
-			if (newspirv.empty())
-			{
-				LOGE("Failed to compile shader: %s\n%s\n", path.c_str(), compiler->get_error_message().c_str());
-				for (auto &define : variant.defines)
-					LOGE("  Define: %s = %d\n", define.first.c_str(), define.second);
-				continue;
-			}
-
-			variant.spirv = move(newspirv);
-			variant.instance++;
-		}
+		LOGE("Failed to preprocess updated shader: %s\n", path.c_str());
+		return;
 	}
-	catch (const std::exception &e)
+	compiler = move(newcompiler);
+
+	for (auto &variant : variants)
 	{
-		LOGE("Exception caught: %s\n", e.what());
+		auto newspirv = compiler->compile(&variant.defines);
+		if (newspirv.empty())
+		{
+			LOGE("Failed to compile shader: %s\n%s\n", path.c_str(), compiler->get_error_message().c_str());
+			for (auto &define : variant.defines)
+				LOGE("  Define: %s = %d\n", define.first.c_str(), define.second);
+			continue;
+		}
+
+		variant.spirv = move(newspirv);
+		variant.instance++;
 	}
 }
 
@@ -333,6 +343,12 @@ ShaderTemplate *ShaderManager::get_template(const std::string &path)
 	if (!ret)
 	{
 		auto *shader = shaders.allocate(device, path, shader_cache, hasher.get(), include_directories);
+		if (!shader->init())
+		{
+			shaders.free(shader);
+			return nullptr;
+		}
+
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 		{
 			DEPENDENCY_LOCK();
@@ -443,10 +459,7 @@ bool ShaderManager::load_shader_cache(const string &path)
 
 	string json;
 	if (!Granite::Global::filesystem()->read_file_to_string(path, json))
-	{
-		LOGE("Failed to load shader cache %s from disk. Skipping ...\n", path.c_str());
 		return false;
-	}
 
 	Document doc;
 	doc.Parse(json);

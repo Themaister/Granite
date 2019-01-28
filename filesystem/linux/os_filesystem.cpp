@@ -64,7 +64,19 @@ static bool ensure_directory(const std::string &path)
 	return ensure_directory_inner(basedir);
 }
 
-MMapFile::MMapFile(const std::string &path, FileMode mode)
+MMapFile *MMapFile::open(const std::string &path, FileMode mode)
+{
+	auto *file = new MMapFile();
+	if (!file->init(path, mode))
+	{
+		delete file;
+		return nullptr;
+	}
+	else
+		return file;
+}
+
+bool MMapFile::init(const std::string &path, FileMode mode)
 {
 	int modeflags = 0;
 	switch (mode)
@@ -75,28 +87,34 @@ MMapFile::MMapFile(const std::string &path, FileMode mode)
 
 	case FileMode::WriteOnly:
 		if (!ensure_directory(path))
-			throw runtime_error("MMapFile failed to create directory");
+		{
+			LOGE("MMapFile failed to create directory.\n");
+			return false;
+		}
 		modeflags = O_RDWR | O_CREAT | O_TRUNC; // Need read access for mmap.
 		break;
 
 	case FileMode::ReadWrite:
 		if (!ensure_directory(path))
-			throw runtime_error("MMapFile failed to create directory");
+		{
+			LOGE("MMapFile failed to create directory.\n");
+			return false;
+		}
 		modeflags = O_RDWR | O_CREAT;
 		break;
 	}
-	fd = open(path.c_str(), modeflags, 0640);
+
+	fd = ::open(path.c_str(), modeflags, 0640);
 	if (fd < 0)
-	{
-		LOGE("open(), error: %s\n", strerror(errno));
-		throw runtime_error("MMapFile failed to open file");
-	}
+		return false;
 
 	if (!reopen())
 	{
 		close(fd);
-		throw runtime_error("fstat failed");
+		return false;
 	}
+
+	return true;
 }
 
 void *MMapFile::map_write(size_t size)
@@ -168,10 +186,7 @@ OSFilesystem::OSFilesystem(const std::string &base)
 #ifdef __linux__
 	notify_fd = inotify_init1(IN_NONBLOCK);
 	if (notify_fd < 0)
-	{
 		LOGE("Failed to init inotify.\n");
-		throw runtime_error("inotify");
-	}
 #else
 	notify_fd = -1;
 #endif
@@ -191,15 +206,7 @@ OSFilesystem::~OSFilesystem()
 
 unique_ptr<File> OSFilesystem::open(const std::string &path, FileMode mode)
 {
-	try
-	{
-		return make_unique<MMapFile>(Path::join(base, path), mode);
-	}
-	catch (const std::exception &e)
-	{
-		LOGE("OSFilesystem::open(): %s\n", e.what());
-		return {};
-	}
+	return unique_ptr<MMapFile>(MMapFile::open(Path::join(base, path), mode));
 }
 
 string OSFilesystem::get_filesystem_path(const string &path)
@@ -215,6 +222,9 @@ int OSFilesystem::get_notification_fd() const
 void OSFilesystem::poll_notifications()
 {
 #ifdef __linux__
+	if (notify_fd < 0)
+		return;
+
 	for (;;)
 	{
 		alignas(inotify_event) char buffer[sizeof(inotify_event) + NAME_MAX + 1];
@@ -223,7 +233,7 @@ void OSFilesystem::poll_notifications()
 		if (ret < 0)
 		{
 			if (errno != EAGAIN)
-				throw runtime_error("failed to read inotify fd");
+				LOGE("failed to read inotify fd.\n");
 			break;
 		}
 
@@ -272,22 +282,34 @@ void OSFilesystem::uninstall_notification(FileNotifyHandle handle)
 	if (handle < 0)
 		return;
 
+	if (notify_fd < 0)
+		return;
+
 	//LOGI("Uninstalling notification: %d\n", handle);
 
 	auto real = virtual_to_real.find(handle);
 	if (real == end(virtual_to_real))
-		throw runtime_error("unknown virtual inotify handler");
+	{
+		LOGE("unknown virtual inotify handler.\n");
+		return;
+	}
 
 	auto itr = handlers.find(static_cast<int>(real->second));
 	if (itr == end(handlers))
-		throw runtime_error("unknown inotify handler");
+	{
+		LOGE("unknown inotify handler.\n");
+		return;
+	}
 
 	auto handler_instance = find_if(begin(itr->second.funcs), end(itr->second.funcs), [=](const VirtualHandler &v) {
 		return v.virtual_handle == handle;
 	});
 
 	if (handler_instance == end(itr->second.funcs))
-		throw runtime_error("unknown inotify handler path");
+	{
+		LOGE("unknown inotify handler path.\n");
+		return;
+	}
 
 	itr->second.funcs.erase(handler_instance);
 
@@ -308,10 +330,15 @@ FileNotifyHandle OSFilesystem::install_notification(const string &path,
 {
 #ifdef __linux__
 	//LOGI("Installing notification for: %s\n", path.c_str());
+	if (notify_fd < 0)
+		return -1;
 
-	FileStat s;
+	FileStat s = {};
 	if (!stat(path, s))
-		throw runtime_error("path doesn't exist");
+	{
+		LOGE("inotify: path doesn't exist.\n");
+		return -1;
+	}
 
 	auto resolved_path = Path::join(base, path);
 	int wd = inotify_add_watch(notify_fd, resolved_path.c_str(),

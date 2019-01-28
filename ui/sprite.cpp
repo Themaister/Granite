@@ -35,7 +35,7 @@ namespace RenderFunctions
 void line_strip_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *infos, unsigned instances)
 {
 	auto &info = *static_cast<const LineStripInfo *>(infos[0].render_info);
-	cmd.set_program(*info.program);
+	cmd.set_program(info.program);
 
 	cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_LINE_STRIP);
 	cmd.set_primitive_restart(true);
@@ -76,7 +76,7 @@ void line_strip_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *infos,
 void sprite_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *infos, unsigned num_instances)
 {
 	auto &info = *static_cast<const SpriteRenderInfo *>(infos->render_info);
-	cmd.set_program(*info.program);
+	cmd.set_program(info.program);
 
 	if (info.textures[0])
 	{

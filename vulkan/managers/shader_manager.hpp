@@ -50,6 +50,8 @@ public:
 	ShaderTemplate(Device *device, const std::string &shader_path, PrecomputedShaderCache &cache, Util::Hash path_hash,
 	               const std::vector<std::string> &include_directories);
 
+	bool init();
+
 	struct Variant : public Util::IntrusiveHashMapEnabled<Variant>
 	{
 		Util::Hash hash = 0;

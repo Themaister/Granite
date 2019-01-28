@@ -55,7 +55,19 @@ static bool ensure_directory(const std::string &path)
 	return ensure_directory_inner(basedir);
 }
 
-MappedFile::MappedFile(const string &path, FileMode mode)
+MappedFile *MappedFile::open(const std::string &path, Granite::FileMode mode)
+{
+	auto *file = new MappedFile();
+	if (!file->init(path, mode))
+	{
+		delete file;
+		return nullptr;
+	}
+	else
+		return file;
+}
+
+bool MappedFile::init(const string &path, FileMode mode)
 {
 	DWORD access = 0;
 	DWORD disposition = 0;
@@ -69,14 +81,22 @@ MappedFile::MappedFile(const string &path, FileMode mode)
 
 	case FileMode::ReadWrite:
 		if (!ensure_directory(path))
-			throw runtime_error("MappedFile failed to create directory");
+		{
+			LOGE("MappedFile failed to create directory.\n");
+			return false;
+		}
+
 		access = GENERIC_READ | GENERIC_WRITE;
 		disposition = OPEN_ALWAYS;
 		break;
 
 	case FileMode::WriteOnly:
 		if (!ensure_directory(path))
-			throw runtime_error("MappedFile failed to create directory");
+		{
+			LOGE("MappedFile failed to create directory.\n");
+			return false;
+		}
+
 		access = GENERIC_READ | GENERIC_WRITE;
 		disposition = CREATE_ALWAYS;
 		break;
@@ -84,10 +104,7 @@ MappedFile::MappedFile(const string &path, FileMode mode)
 
 	file = CreateFileA(path.c_str(), access, FILE_SHARE_READ, nullptr, disposition, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, INVALID_HANDLE_VALUE);
 	if (file == INVALID_HANDLE_VALUE)
-	{
-		LOGE("Failed to open file: %s.\n", path.c_str());
-		throw runtime_error("MappedFile::MappedFile()");
-	}
+		return false;
 
 	if (mode != FileMode::WriteOnly)
 	{
@@ -95,6 +112,8 @@ MappedFile::MappedFile(const string &path, FileMode mode)
 		DWORD lo = GetFileSize(file, &hi);
 		size = size_t((uint64_t(hi) << 32) | uint32_t(lo));
 	}
+
+	return true;
 }
 
 size_t MappedFile::get_size()
@@ -175,16 +194,7 @@ string OSFilesystem::get_filesystem_path(const string &path)
 
 unique_ptr<File> OSFilesystem::open(const std::string &path, FileMode mode)
 {
-	try
-	{
-		unique_ptr<File> file(new MappedFile(Path::join(base, path), mode));
-		return file;
-	}
-	catch (const std::exception &e)
-	{
-		LOGE("OSFilesystem::open(): %s\n", e.what());
-		return {};
-	}
+	return unique_ptr<File>(MappedFile::open(Path::join(base, path), mode));
 }
 
 void OSFilesystem::poll_notifications()

@@ -49,11 +49,11 @@ public:
 			        VK_COMPONENT_SWIZZLE_B,
 			        VK_COMPONENT_SWIZZLE_A });
 
-	Texture(Device *device);
+	explicit Texture(Device *device);
+
+	bool init_texture();
 	void set_path(const std::string &path);
-
 	Image *get_image();
-
 	void replace_image(ImageHandle handle);
 	void set_enable_notification(bool enable);
 

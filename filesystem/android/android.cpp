@@ -30,16 +30,32 @@ using namespace std;
 
 namespace Granite
 {
-AssetFile::AssetFile(AAssetManager *mgr, const string &path, FileMode mode)
+bool AssetFile::init(AAssetManager *mgr, const string &path, FileMode mode)
 {
 	if (mode != FileMode::ReadOnly)
-		throw invalid_argument("Asset files must be opened read-only.");
+	{
+		LOGE("Asset files must be opened read-only.\n");
+		return false;
+	}
 
 	asset = AAssetManager_open(mgr, path.c_str(), AASSET_MODE_BUFFER);
 	if (!asset)
-		throw runtime_error("Failed to open file.");
+		return false;
 
 	size = AAsset_getLength(asset);
+	return true;
+}
+
+AssetFile *AssetFile::open(AAssetManager *mgr, const std::string &path, Granite::FileMode mode)
+{
+	auto *file = new AssetFile();
+	if (!file->init(mgr, path, mode))
+	{
+		delete file;
+		return nullptr;
+	}
+	else
+		return file;
 }
 
 bool AssetFile::reopen()
@@ -81,16 +97,7 @@ AssetManagerFilesystem::AssetManagerFilesystem(const std::string &base, AAssetMa
 
 unique_ptr<File> AssetManagerFilesystem::open(const std::string &path, FileMode mode)
 {
-	try
-	{
-		unique_ptr<File> file(new AssetFile(mgr, Path::join(base, Path::canonicalize_path(path)), mode));
-		return file;
-	}
-	catch (const std::exception &e)
-	{
-		LOGE("AssetManagerFilesystem::open(): %s\n", e.what());
-		return {};
-	}
+	return unique_ptr<File>(AssetFile::open(mgr, Path::join(base, Path::canonicalize_path(path)), mode));
 }
 
 int AssetManagerFilesystem::get_notification_fd() const

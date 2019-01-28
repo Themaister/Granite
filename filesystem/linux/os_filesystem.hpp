@@ -29,7 +29,7 @@ namespace Granite
 class MMapFile : public File
 {
 public:
-	MMapFile(const std::string &path, FileMode mode);
+	static MMapFile *open(const std::string &path, FileMode mode);
 	~MMapFile();
 	void *map() override;
 	void *map_write(size_t size) override;
@@ -38,6 +38,8 @@ public:
 	bool reopen() override;
 
 private:
+	MMapFile() = default;
+	bool init(const std::string &path, FileMode mode);
 	int fd = -1;
 	void *mapped = nullptr;
 	size_t size = 0;

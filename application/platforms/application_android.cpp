@@ -132,11 +132,15 @@ static int getAudioNativeBlockFrames()
 
 struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 {
-	WSIPlatformAndroid(unsigned width, unsigned height)
-		: width(width), height(height)
+	bool init(unsigned width_, unsigned height_)
 	{
+		width = width_;
+		height = height_;
 		if (!Vulkan::Context::init_loader(nullptr))
-			throw runtime_error("Failed to init Vulkan loader.");
+		{
+			LOGE("Failed to init Vulkan loader.\n");
+			return false;
+		}
 
 		has_window = global_state.has_window;
 		active = global_state.active;
@@ -144,6 +148,8 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 		get_input_tracker().set_touch_resolution(width, height);
 		for (auto &id : gamepad_ids)
 			id = -1;
+
+		return true;
 	}
 
 	bool alive(Vulkan::WSI &wsi) override;

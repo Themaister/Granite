@@ -729,17 +729,40 @@ NetworkFile::~NetworkFile()
 	unmap();
 }
 
-NetworkFile::NetworkFile(Looper &looper, const std::string &path, FileMode mode)
-	: path(path), mode(mode), looper(looper)
+NetworkFile *NetworkFile::open(Granite::Looper &looper, const std::string &path, Granite::FileMode mode)
 {
+	auto *file = NetworkFile::open(looper, path, mode);
+	if (!file->init(looper, path, mode))
+	{
+		delete file;
+		return nullptr;
+	}
+	else
+		return file;
+}
+
+bool NetworkFile::init(Looper &looper_, const std::string &path_, FileMode mode_)
+{
+	path = path_;
+	mode = mode_;
+	looper = &looper_;
+
 	if (mode == FileMode::ReadWrite)
-		throw runtime_error("Unsupported file mode.");
+	{
+		LOGE("Unsupported file mode.\n");
+		return false;
+	}
 
 	if (mode == FileMode::ReadOnly)
 	{
 		if (!reopen())
-			throw runtime_error("Failed to connect to server.");
+		{
+			LOGE("Failed to connect to server.\n");
+			return false;
+		}
 	}
+
+	return true;
 }
 
 void NetworkFile::unmap()
@@ -753,8 +776,8 @@ void NetworkFile::unmap()
 
 		auto handler = unique_ptr<FSWriteCommand>(new FSWriteCommand(path, buffer, move(socket)));
 		auto reply = handler->result.get_future();
-		looper.run_in_looper([&handler, this]() {
-			looper.register_handler(EVENT_OUT | EVENT_IN, move(handler));
+		looper->run_in_looper([&handler, this]() {
+			looper->register_handler(EVENT_OUT | EVENT_IN, move(handler));
 		});
 
 		try
@@ -783,8 +806,8 @@ bool NetworkFile::reopen()
 		future = handler->result.get_future();
 
 		// Capture-by-move would be nice here.
-		looper.run_in_looper([handler, this]() {
-			looper.register_handler(EVENT_OUT, unique_ptr<FSReader>(handler));
+		looper->run_in_looper([handler, this]() {
+			looper->register_handler(EVENT_OUT, unique_ptr<FSReader>(handler));
 		});
 	}
 	return true;
@@ -834,16 +857,8 @@ size_t NetworkFile::get_size()
 
 unique_ptr<File> NetworkFilesystem::open(const std::string &path, FileMode mode)
 {
-	try
-	{
-		auto joined = protocol + "://" + path;
-		return unique_ptr<File>(new NetworkFile(looper, move(joined), mode));
-	}
-	catch (const std::exception &e)
-	{
-		LOGE("NetworkFilesystem::open(): %s\n", e.what());
-		return {};
-	}
+	auto joined = protocol + "://" + path;
+	return unique_ptr<File>(NetworkFile::open(looper, move(joined), mode));
 }
 
 bool NetworkFilesystem::stat(const std::string &path, FileStat &stat)

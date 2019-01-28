@@ -175,7 +175,7 @@ struct PositionalShaderInfo
 static void positional_render_full_screen(CommandBuffer &cmd, const RenderQueueData *infos, unsigned num_instances)
 {
 	auto &light_info = *static_cast<const PositionalLightRenderInfo *>(infos[0].render_info);
-	cmd.set_program(*light_info.program);
+	cmd.set_program(light_info.program);
 	CommandBufferUtil::set_fullscreen_quad_vertex_state(cmd);
 	cmd.set_cull_mode(VK_CULL_MODE_NONE);
 
@@ -229,7 +229,7 @@ static void positional_render_full_screen(CommandBuffer &cmd, const RenderQueueD
 static void positional_render_depth(CommandBuffer &cmd, const RenderQueueData *infos, unsigned num_instances)
 {
 	auto &light_info = *static_cast<const PositionalLightRenderInfo *>(infos[0].render_info);
-	cmd.set_program(*light_info.program);
+	cmd.set_program(light_info.program);
 	cmd.set_vertex_binding(0, *light_info.vbo, 0, sizeof(vec3));
 	cmd.set_vertex_attrib(0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0);
 	cmd.set_index_buffer(*light_info.ibo, 0, VK_INDEX_TYPE_UINT16);
@@ -262,7 +262,7 @@ static void positional_render_depth(CommandBuffer &cmd, const RenderQueueData *i
 static void positional_render_common(CommandBuffer &cmd, const RenderQueueData *infos, unsigned num_instances)
 {
 	auto &light_info = *static_cast<const PositionalLightRenderInfo *>(infos[0].render_info);
-	cmd.set_program(*light_info.program);
+	cmd.set_program(light_info.program);
 	cmd.set_vertex_binding(0, *light_info.vbo, 0, sizeof(vec3));
 	cmd.set_vertex_attrib(0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0);
 	cmd.set_index_buffer(*light_info.ibo, 0, VK_INDEX_TYPE_UINT16);

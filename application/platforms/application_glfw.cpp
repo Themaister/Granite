@@ -51,14 +51,21 @@ static VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL GetInstanceProcAddr(VkInstance i
 struct WSIPlatformGLFW : GraniteWSIPlatform
 {
 public:
-	WSIPlatformGLFW(unsigned width, unsigned height)
-		: width(width), height(height)
+	bool init(unsigned width_, unsigned height_)
 	{
+		width = width_;
+		height = height_;
 		if (!glfwInit())
-			throw runtime_error("Failed to initialize GLFW.");
+		{
+			LOGE("Failed to initialize GLFW.\n");
+			return false;
+		}
 
 		if (!Context::init_loader(GetInstanceProcAddr))
-			throw runtime_error("Failed to initialize Vulkan loader.");
+		{
+			LOGE("Failed to initialize Vulkan loader.\n");
+			return false;
+		}
 
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 		window = glfwCreateWindow(width, height, "GLFW Window", nullptr, nullptr);
@@ -88,6 +95,7 @@ public:
 		if (!input_manager.init(&get_input_tracker()))
 			LOGE("Failed to initialize input manager.\n");
 #endif
+		return true;
 	}
 
 	bool alive(Vulkan::WSI &) override
@@ -347,7 +355,11 @@ int application_main(Application *(*create_application)(int, char **), int argc,
 
 	if (app)
 	{
-		if (!app->init_wsi(make_unique<Granite::WSIPlatformGLFW>(1280, 720)))
+		auto platform = make_unique<Granite::WSIPlatformGLFW>();
+		if (!platform->init(1280, 720))
+			return 1;
+
+		if (!app->init_wsi(move(platform)))
 			return 1;
 
 		Granite::Global::start_audio_system();

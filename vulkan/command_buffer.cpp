@@ -636,7 +636,7 @@ VkPipeline CommandBuffer::build_compute_pipeline(Hash hash)
 	if (vkCreateComputePipelines(device->get_device(), cache, 1, &info, nullptr, &compute_pipeline) != VK_SUCCESS)
 	{
 		LOGE("Failed to create compute pipeline!\n");
-		throw runtime_error("vkCreateComputePipelines failed.");
+		return VK_NULL_HANDLE;
 	}
 
 	return current_program->add_pipeline(hash, compute_pipeline);
@@ -833,7 +833,7 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
 	if (res != VK_SUCCESS)
 	{
 		LOGE("Failed to create graphics pipeline!\n");
-		throw runtime_error("vkCreateGraphicsPipelines failed.");
+		return VK_NULL_HANDLE;
 	}
 
 	return current_program->add_pipeline(hash, pipeline);
@@ -910,7 +910,7 @@ void CommandBuffer::flush_graphics_pipeline()
 		current_pipeline = build_graphics_pipeline(hash);
 }
 
-void CommandBuffer::flush_compute_state()
+bool CommandBuffer::flush_compute_state()
 {
 	VK_ASSERT(current_layout);
 	VK_ASSERT(current_program);
@@ -919,9 +919,16 @@ void CommandBuffer::flush_compute_state()
 	{
 		VkPipeline old_pipe = current_pipeline;
 		flush_compute_pipeline();
+
+		if (current_pipeline == VK_NULL_HANDLE)
+			return false;
+
 		if (old_pipe != current_pipeline)
 			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, current_pipeline);
 	}
+
+	if (current_pipeline == VK_NULL_HANDLE)
+		return false;
 
 	flush_descriptor_sets();
 
@@ -936,9 +943,11 @@ void CommandBuffer::flush_compute_state()
 			                   bindings.push_constant_data);
 		}
 	}
+
+	return true;
 }
 
-void CommandBuffer::flush_render_state()
+bool CommandBuffer::flush_render_state()
 {
 	VK_ASSERT(current_layout);
 	VK_ASSERT(current_program);
@@ -949,12 +958,19 @@ void CommandBuffer::flush_render_state()
 	{
 		VkPipeline old_pipe = current_pipeline;
 		flush_graphics_pipeline();
+
+		if (current_pipeline == VK_NULL_HANDLE)
+			return false;
+
 		if (old_pipe != current_pipeline)
 		{
 			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, current_pipeline);
 			set_dirty(COMMAND_BUFFER_DYNAMIC_BITS);
 		}
 	}
+
+	if (current_pipeline == VK_NULL_HANDLE)
+		return false;
 
 	flush_descriptor_sets();
 
@@ -995,6 +1011,8 @@ void CommandBuffer::flush_render_state()
 		vkCmdBindVertexBuffers(cmd, binding, binding_count, vbo.buffers + binding, vbo.offsets + binding);
 	});
 	dirty_vbos &= ~update_vbo_mask;
+
+	return true;
 }
 
 void CommandBuffer::wait_events(unsigned num_events, const VkEvent *events,
@@ -1111,7 +1129,7 @@ void CommandBuffer::set_program(const std::string &compute, const std::vector<st
 {
 	auto *p = device->get_shader_manager().register_compute(compute);
 	unsigned variant = p->register_variant(defines);
-	set_program(*p->get_program(variant));
+	set_program(p->get_program(variant));
 }
 
 void CommandBuffer::set_program(const std::string &vertex, const std::string &fragment,
@@ -1119,34 +1137,36 @@ void CommandBuffer::set_program(const std::string &vertex, const std::string &fr
 {
 	auto *p = device->get_shader_manager().register_graphics(vertex, fragment);
 	unsigned variant = p->register_variant(defines);
-	set_program(*p->get_program(variant));
+	set_program(p->get_program(variant));
 }
 #endif
 
-void CommandBuffer::set_program(Program &program)
+void CommandBuffer::set_program(Program *program)
 {
-	if (current_program == &program)
+	if (current_program == program)
 		return;
 
-	current_program = &program;
+	current_program = program;
 	current_pipeline = VK_NULL_HANDLE;
+
+	set_dirty(COMMAND_BUFFER_DIRTY_PIPELINE_BIT | COMMAND_BUFFER_DYNAMIC_BITS);
+	if (!program)
+		return;
 
 	VK_ASSERT((framebuffer && current_program->get_shader(ShaderStage::Vertex)) ||
 	          (!framebuffer && current_program->get_shader(ShaderStage::Compute)));
-
-	set_dirty(COMMAND_BUFFER_DIRTY_PIPELINE_BIT | COMMAND_BUFFER_DYNAMIC_BITS);
 
 	if (!current_layout)
 	{
 		dirty_sets = ~0u;
 		set_dirty(COMMAND_BUFFER_DIRTY_PUSH_CONSTANTS_BIT);
 
-		current_layout = program.get_pipeline_layout();
+		current_layout = program->get_pipeline_layout();
 		current_pipeline_layout = current_layout->get_layout();
 	}
-	else if (program.get_pipeline_layout()->get_hash() != current_layout->get_hash())
+	else if (program->get_pipeline_layout()->get_hash() != current_layout->get_hash())
 	{
-		auto &new_layout = program.get_pipeline_layout()->get_resource_layout();
+		auto &new_layout = program->get_pipeline_layout()->get_resource_layout();
 		auto &old_layout = current_layout->get_resource_layout();
 
 		// If the push constant layout changes, all descriptor sets
@@ -1159,7 +1179,7 @@ void CommandBuffer::set_program(Program &program)
 		else
 		{
 			// Find the first set whose descriptor set layout differs.
-			auto *new_pipe_layout = program.get_pipeline_layout();
+			auto *new_pipe_layout = program->get_pipeline_layout();
 			for (unsigned set = 0; set < VULKAN_NUM_DESCRIPTOR_SETS; set++)
 			{
 				if (new_pipe_layout->get_allocator(set) != current_layout->get_allocator(set))
@@ -1169,7 +1189,7 @@ void CommandBuffer::set_program(Program &program)
 				}
 			}
 		}
-		current_layout = program.get_pipeline_layout();
+		current_layout = program->get_pipeline_layout();
 		current_pipeline_layout = current_layout->get_layout();
 	}
 }
@@ -1675,8 +1695,8 @@ void CommandBuffer::draw_indexed(uint32_t index_count, uint32_t instance_count, 
 	VK_ASSERT(current_program);
 	VK_ASSERT(!is_compute);
 	VK_ASSERT(index.buffer != VK_NULL_HANDLE);
-	flush_render_state();
-	vkCmdDrawIndexed(cmd, index_count, instance_count, first_index, vertex_offset, first_instance);
+	if (flush_render_state())
+		vkCmdDrawIndexed(cmd, index_count, instance_count, first_index, vertex_offset, first_instance);
 }
 
 void CommandBuffer::draw_indirect(const Vulkan::Buffer &buffer,
@@ -1684,8 +1704,8 @@ void CommandBuffer::draw_indirect(const Vulkan::Buffer &buffer,
 {
 	VK_ASSERT(current_program);
 	VK_ASSERT(!is_compute);
-	flush_render_state();
-	vkCmdDrawIndirect(cmd, buffer.get_buffer(), offset, draw_count, stride);
+	if (flush_render_state())
+		vkCmdDrawIndirect(cmd, buffer.get_buffer(), offset, draw_count, stride);
 }
 
 void CommandBuffer::draw_indexed_indirect(const Vulkan::Buffer &buffer,
@@ -1693,24 +1713,24 @@ void CommandBuffer::draw_indexed_indirect(const Vulkan::Buffer &buffer,
 {
 	VK_ASSERT(current_program);
 	VK_ASSERT(!is_compute);
-	flush_render_state();
-	vkCmdDrawIndexedIndirect(cmd, buffer.get_buffer(), offset, draw_count, stride);
+	if (flush_render_state())
+		vkCmdDrawIndexedIndirect(cmd, buffer.get_buffer(), offset, draw_count, stride);
 }
 
 void CommandBuffer::dispatch_indirect(const Buffer &buffer, uint32_t offset)
 {
 	VK_ASSERT(current_program);
 	VK_ASSERT(is_compute);
-	flush_compute_state();
-	vkCmdDispatchIndirect(cmd, buffer.get_buffer(), offset);
+	if (flush_compute_state())
+		vkCmdDispatchIndirect(cmd, buffer.get_buffer(), offset);
 }
 
 void CommandBuffer::dispatch(uint32_t groups_x, uint32_t groups_y, uint32_t groups_z)
 {
 	VK_ASSERT(current_program);
 	VK_ASSERT(is_compute);
-	flush_compute_state();
-	vkCmdDispatch(cmd, groups_x, groups_y, groups_z);
+	if (flush_compute_state())
+		vkCmdDispatch(cmd, groups_x, groups_y, groups_z);
 }
 
 void CommandBuffer::set_opaque_state()

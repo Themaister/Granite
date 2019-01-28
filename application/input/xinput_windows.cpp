@@ -35,28 +35,9 @@ namespace Granite
 bool XInputManager::init(Granite::InputTracker *tracker)
 {
 	if (!lib)
-	{
-		try
-		{
-			lib = DynamicLibrary("xinput1_4");
-			LOGI("Found XInput 1.4!\n");
-		}
-		catch (...)
-		{
-		}
-	}
-
+		lib = DynamicLibrary("xinput1_4");
 	if (!lib)
-	{
-		try
-		{
-			lib = DynamicLibrary("xinput1_3");
-			LOGI("Found XInput 1.3!\n");
-		}
-		catch (...)
-		{
-		}
-	}
+		lib = DynamicLibrary("xinput1_3");
 
 	if (lib)
 		pXInputGetState = lib.get_symbol<decltype(&XInputGetState)>("XInputGetState");

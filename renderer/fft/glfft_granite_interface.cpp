@@ -85,7 +85,7 @@ void FFTDeferredCommandBuffer::bind_program(GLFFT::Program *program)
 {
 	get_command_list().push_back(
 			[program = static_cast<FFTProgram *>(program)->program](Vulkan::CommandBuffer &cmd) {
-				cmd.set_program(*program);
+				cmd.set_program(program);
 			});
 }
 
@@ -168,7 +168,7 @@ void FFTCommandBuffer::barrier()
 void FFTCommandBuffer::bind_program(GLFFT::Program *program)
 {
 	if (cmd)
-		cmd->set_program(*static_cast<FFTProgram *>(program)->program);
+		cmd->set_program(static_cast<FFTProgram *>(program)->program);
 }
 
 void FFTCommandBuffer::bind_sampler(unsigned binding, GLFFT::Sampler *sampler)

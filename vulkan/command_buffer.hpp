@@ -334,7 +334,7 @@ public:
 	static Util::IntrusivePtr<CommandBuffer> request_secondary_command_buffer(Device &device,
 	                                                                          const RenderPassInfo &rp, unsigned thread_index, unsigned subpass);
 
-	void set_program(Program &program);
+	void set_program(Program *program);
 
 #ifdef GRANITE_VULKAN_FILESYSTEM
 	// Convenience functions for one-off shader binds.
@@ -668,7 +668,9 @@ private:
 	              "Hashable pipeline state is not large enough!");
 #endif
 
-	void flush_render_state();
+	bool flush_render_state();
+	bool flush_compute_state();
+
 	VkPipeline build_graphics_pipeline(Util::Hash hash);
 	VkPipeline build_compute_pipeline(Util::Hash hash);
 	void flush_graphics_pipeline();
@@ -678,8 +680,6 @@ private:
 	void flush_descriptor_set(uint32_t set);
 	void begin_compute();
 	void begin_context();
-
-	void flush_compute_state();
 
 	BufferBlock vbo_block;
 	BufferBlock ibo_block;

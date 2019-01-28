@@ -36,19 +36,6 @@
 #include <functional>
 #include "util.hpp"
 
-#define V_S(x) #x
-#define V_S_(x) V_S(x)
-#define S__LINE__ V_S_(__LINE__)
-
-#define V(x)                                                                                           \
-	do                                                                                                 \
-	{                                                                                                  \
-		VkResult err = x;                                                                              \
-		if (err != VK_SUCCESS && err != VK_INCOMPLETE)                                                 \
-			throw std::runtime_error("Vulkan call failed at " __FILE__ ":" S__LINE__ ".\n"); \
-	} while (0)
-
-
 #ifdef VULKAN_DEBUG
 #define VK_ASSERT(x)                                             \
 	do                                                           \
@@ -105,12 +92,13 @@ enum VendorID
 class Context
 {
 public:
-	Context(const char **instance_ext, uint32_t instance_ext_count, const char **device_ext, uint32_t device_ext_count);
-	Context(VkInstance instance, VkPhysicalDevice gpu, VkDevice device, VkQueue queue, uint32_t queue_family);
-	Context(VkInstance instance, VkPhysicalDevice gpu, VkSurfaceKHR surface, const char **required_device_extensions,
-	        unsigned num_required_device_extensions, const char **required_device_layers,
-	        unsigned num_required_device_layers, const VkPhysicalDeviceFeatures *required_features);
+	bool init_instance_and_device(const char **instance_ext, uint32_t instance_ext_count, const char **device_ext, uint32_t device_ext_count);
+	bool init_from_instance_and_device(VkInstance instance, VkPhysicalDevice gpu, VkDevice device, VkQueue queue, uint32_t queue_family);
+	bool init_device_from_instance(VkInstance instance, VkPhysicalDevice gpu, VkSurfaceKHR surface, const char **required_device_extensions,
+	                               unsigned num_required_device_extensions, const char **required_device_layers,
+	                               unsigned num_required_device_layers, const VkPhysicalDeviceFeatures *required_features);
 
+	Context() = default;
 	Context(const Context &) = delete;
 	void operator=(const Context &) = delete;
 	static bool init_loader(PFN_vkGetInstanceProcAddr addr);

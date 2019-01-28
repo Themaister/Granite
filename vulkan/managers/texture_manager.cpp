@@ -34,10 +34,17 @@ using namespace std;
 
 namespace Vulkan
 {
+bool Texture::init_texture()
+{
+	if (!path.empty())
+		return init();
+	else
+		return true;
+}
+
 Texture::Texture(Device *device, const std::string &path, VkFormat format, const VkComponentMapping &swizzle)
 	: VolatileSource(path), device(device), format(format), swizzle(swizzle)
 {
-	init();
 }
 
 Texture::Texture(Device *device)
@@ -45,9 +52,9 @@ Texture::Texture(Device *device)
 {
 }
 
-void Texture::set_path(const std::string &path)
+void Texture::set_path(const std::string &path_)
 {
-	this->path = path;
+	path = path_;
 }
 
 void Texture::update(std::unique_ptr<Granite::File> file)
@@ -242,7 +249,10 @@ Texture *TextureManager::request_texture(const std::string &path, VkFormat forma
 		return ret;
 
 	ret = textures.emplace_yield(hash, device, path, format, mapping);
-	return ret;
+	if (ret->init_texture())
+		return ret;
+	else
+		return nullptr;
 }
 
 void TextureManager::register_texture_update_notification(const std::string &modified_path,

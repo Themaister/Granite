@@ -39,23 +39,29 @@ using namespace std;
 
 namespace Vulkan
 {
-Context::Context(const char **instance_ext, uint32_t instance_ext_count, const char **device_ext,
-                 uint32_t device_ext_count)
-    : owned_instance(true)
-    , owned_device(true)
+bool Context::init_instance_and_device(const char **instance_ext, uint32_t instance_ext_count, const char **device_ext,
+                                       uint32_t device_ext_count)
 {
+	destroy();
+
+	owned_instance = true;
+	owned_device = true;
 	if (!create_instance(instance_ext, instance_ext_count))
 	{
 		destroy();
-		throw runtime_error("Failed to create Vulkan instance.");
+		LOGE("Failed to create Vulkan instance.\n");
+		return false;
 	}
 
 	VkPhysicalDeviceFeatures features = {};
 	if (!create_device(VK_NULL_HANDLE, VK_NULL_HANDLE, device_ext, device_ext_count, nullptr, 0, &features))
 	{
 		destroy();
-		throw runtime_error("Failed to create Vulkan device.");
+		LOGE("Failed to create Vulkan device.\n");
+		return false;
 	}
+
+	return true;
 }
 
 bool Context::init_loader(PFN_vkGetInstanceProcAddr addr)
@@ -104,40 +110,49 @@ bool Context::init_loader(PFN_vkGetInstanceProcAddr addr)
 	return true;
 }
 
-Context::Context(VkInstance instance, VkPhysicalDevice gpu, VkDevice device, VkQueue queue, uint32_t queue_family)
-    : device(device)
-    , instance(instance)
-    , gpu(gpu)
-    , graphics_queue(queue)
-    , compute_queue(queue)
-    , transfer_queue(queue)
-    , graphics_queue_family(queue_family)
-    , compute_queue_family(queue_family)
-    , transfer_queue_family(queue_family)
-    , owned_instance(false)
-    , owned_device(false)
+bool Context::init_from_instance_and_device(VkInstance instance_, VkPhysicalDevice gpu_, VkDevice device_, VkQueue queue_, uint32_t queue_family_)
 {
+	destroy();
+
+	device = device_;
+	instance = instance_;
+	gpu = gpu_;
+	graphics_queue = queue_;
+	compute_queue = queue_;
+	transfer_queue = queue_;
+	graphics_queue_family = queue_family_;
+	compute_queue_family = queue_family_;
+	transfer_queue_family = queue_family_;
+	owned_instance = false;
+	owned_device = true;
+
 	volkLoadInstance(instance);
 	volkLoadDevice(device);
 	vkGetPhysicalDeviceProperties(gpu, &gpu_props);
 	vkGetPhysicalDeviceMemoryProperties(gpu, &mem_props);
+	return true;
 }
 
-Context::Context(VkInstance instance, VkPhysicalDevice gpu, VkSurfaceKHR surface,
-                 const char **required_device_extensions, unsigned num_required_device_extensions,
-                 const char **required_device_layers, unsigned num_required_device_layers,
-                 const VkPhysicalDeviceFeatures *required_features)
-    : instance(instance)
-    , owned_instance(false)
-    , owned_device(true)
+bool Context::init_device_from_instance(VkInstance instance_, VkPhysicalDevice gpu, VkSurfaceKHR surface,
+                                        const char **required_device_extensions, unsigned num_required_device_extensions,
+                                        const char **required_device_layers, unsigned num_required_device_layers,
+                                        const VkPhysicalDeviceFeatures *required_features)
 {
+	destroy();
+
+	instance = instance_;
+	owned_instance = false;
+	owned_device = true;
 	volkLoadInstance(instance);
 	if (!create_device(gpu, surface, required_device_extensions, num_required_device_extensions, required_device_layers,
 	                   num_required_device_layers, required_features))
 	{
 		destroy();
-		throw runtime_error("Failed to create Vulkan device.");
+		LOGE("Failed to create Vulkan device.\n");
+		return false;
 	}
+
+	return true;
 }
 
 void Context::destroy()
@@ -150,6 +165,8 @@ void Context::destroy()
 		vkDestroyDebugReportCallbackEXT(instance, debug_callback, nullptr);
 	if (debug_messenger)
 		vkDestroyDebugUtilsMessengerEXT(instance, debug_messenger, nullptr);
+	debug_callback = VK_NULL_HANDLE;
+	debug_messenger = VK_NULL_HANDLE;
 #endif
 
 	if (owned_device && device != VK_NULL_HANDLE)
@@ -410,13 +427,15 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 	if (gpu == VK_NULL_HANDLE)
 	{
 		uint32_t gpu_count = 0;
-		V(vkEnumeratePhysicalDevices(instance, &gpu_count, nullptr));
+		if (vkEnumeratePhysicalDevices(instance, &gpu_count, nullptr) != VK_SUCCESS)
+			return false;
 
 		if (gpu_count == 0)
 			return false;
 
 		vector<VkPhysicalDevice> gpus(gpu_count);
-		V(vkEnumeratePhysicalDevices(instance, &gpu_count, gpus.data()));
+		if (vkEnumeratePhysicalDevices(instance, &gpu_count, gpus.data()) != VK_SUCCESS)
+			return false;
 
 		for (auto &gpu : gpus)
 		{

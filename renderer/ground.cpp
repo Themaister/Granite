@@ -91,7 +91,7 @@ static void ground_patch_render(Vulkan::CommandBuffer &cmd, const RenderQueueDat
 {
 	auto &patch = *static_cast<const PatchInfo *>(infos->render_info);
 
-	cmd.set_program(*patch.program);
+	cmd.set_program(patch.program);
 	cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
 	//cmd.set_wireframe(true);
 	cmd.set_primitive_restart(true);

@@ -31,7 +31,7 @@ namespace Granite
 class MappedFile : public File
 {
 public:
-	MappedFile(const std::string &path, FileMode mode);
+	static MappedFile *open(const std::string &path, FileMode mode);
 	~MappedFile();
 
 	virtual void *map() override;
@@ -41,6 +41,8 @@ public:
 	virtual bool reopen() override;
 
 private:
+	bool init(const std::string &path, FileMode mode);
+	MappedFile() = default;
 	HANDLE file = nullptr;
 	void *mapped = nullptr;
 	size_t size = 0;

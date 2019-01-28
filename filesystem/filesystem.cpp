@@ -32,9 +32,10 @@ using namespace std;
 
 namespace Granite
 {
-StdioFile::StdioFile(const std::string &path, FileMode mode)
-	: mode(mode)
+bool StdioFile::init(const std::string &path, FileMode mode_)
 {
+	mode = mode_;
+
 	const char *filemode = nullptr;
 	switch (mode)
 	{
@@ -53,10 +54,7 @@ StdioFile::StdioFile(const std::string &path, FileMode mode)
 
 	file = fopen(path.c_str(), filemode);
 	if (!file)
-	{
-		LOGE("Failed to open file: %s\n", path.c_str());
-		throw runtime_error("fopen() failed.");
-	}
+		return false;
 
 	if (mode != FileMode::WriteOnly)
 	{
@@ -64,6 +62,8 @@ StdioFile::StdioFile(const std::string &path, FileMode mode)
 		size = ftell(file);
 		rewind(file);
 	}
+
+	return true;
 }
 
 size_t StdioFile::get_size()
@@ -95,14 +95,30 @@ void StdioFile::unmap()
 {
 }
 
+StdioFile *StdioFile::open(const std::string &path, Granite::FileMode mode)
+{
+	auto *file = new StdioFile();
+	if (!file->init(path, mode))
+	{
+		delete file;
+		return nullptr;
+	}
+	else
+		return file;
+}
+
 StdioFile::~StdioFile()
 {
-	if (mode != FileMode::ReadOnly)
+	if (file)
 	{
-		rewind(file);
-		fwrite(buffer.data(), 1, size, file);
+		if (mode != FileMode::ReadOnly)
+		{
+			rewind(file);
+			fwrite(buffer.data(), 1, size, file);
+		}
+
+		fclose(file);
 	}
-	fclose(file);
 }
 
 vector<ListEntry> FilesystemBackend::walk(const std::string &path)
@@ -257,8 +273,6 @@ std::unique_ptr<File> Filesystem::open(const std::string &path, FileMode mode)
 		return {};
 
 	auto file = backend->open(paths.second, mode);
-	if (!file)
-		LOGE("Failed to open file: %s\n", path.c_str());
 	return file;
 }
 

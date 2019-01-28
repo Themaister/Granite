@@ -78,9 +78,7 @@ void Texture::update(std::unique_ptr<Granite::File> file)
 		else
 		{
 			LOGE("Failed to map texture file ...\n");
-			auto old = handle.write_object({});
-			if (old)
-				device->keep_handle_alive(move(old));
+			update_checkerboard();
 		}
 	};
 
@@ -249,10 +247,9 @@ Texture *TextureManager::request_texture(const std::string &path, VkFormat forma
 		return ret;
 
 	ret = textures.emplace_yield(hash, device, path, format, mapping);
-	if (ret->init_texture())
-		return ret;
-	else
-		return nullptr;
+	if (!ret->init_texture())
+		ret->update_checkerboard();
+	return ret;
 }
 
 void TextureManager::register_texture_update_notification(const std::string &modified_path,

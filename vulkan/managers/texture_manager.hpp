@@ -41,7 +41,16 @@ class Texture : public Util::VolatileSource<Texture>,
 {
 public:
 	friend class Util::VolatileSource<Texture>;
+	friend class TextureManager;
+	friend class Util::ObjectPool<Texture>;
 
+	bool init_texture();
+	void set_path(const std::string &path);
+	Image *get_image();
+	void replace_image(ImageHandle handle);
+	void set_enable_notification(bool enable);
+
+private:
 	Texture(Device *device, const std::string &path, VkFormat format = VK_FORMAT_UNDEFINED,
 	        const VkComponentMapping &swizzle = {
 			        VK_COMPONENT_SWIZZLE_R,
@@ -51,13 +60,6 @@ public:
 
 	explicit Texture(Device *device);
 
-	bool init_texture();
-	void set_path(const std::string &path);
-	Image *get_image();
-	void replace_image(ImageHandle handle);
-	void set_enable_notification(bool enable);
-
-private:
 	Device *device;
 	Util::AsyncObjectSink<ImageHandle> handle;
 	VkFormat format;

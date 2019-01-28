@@ -59,7 +59,7 @@
 	var += 0.0625 * SAMPLE_PCF(tex, clip_uv, +1, +1); \
 }
 #elif SHADOW_MAP_PCF_KERNEL_WIDTH == 1
-#define SAMPLE_PCF_KERNEL(var, tex, uv) var = textureLod(tex, (uv).xyz / (uv).w, 0.0)
+#define SAMPLE_PCF_KERNEL(var, tex, uv) var = textureProjLod(tex, uv, 0.0)
 #else
 #error "Unsupported PCF kernel width."
 #endif

@@ -343,7 +343,10 @@ int application_main(Application *(*create_application)(int, char **), int argc,
 	auto app = unique_ptr<Granite::Application>(create_application(argc, argv));
 	if (app)
 	{
-		if (!app->init_wsi(make_unique<Granite::WSIPlatformDisplay>(1280, 720)))
+		auto platform = make_unique<Granite::WSIPlatformDisplay>();
+		if (!platform->init(1280, 720))
+			return 1;
+		if (!app->init_wsi(move(platform)))
 			return 1;
 
 		Granite::Global::start_audio_system();

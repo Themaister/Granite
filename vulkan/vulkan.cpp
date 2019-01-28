@@ -226,9 +226,9 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_messenger_cb(
 
 	case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
 		if (messageType == VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT)
-			LOGE("[Vulkan]: Validation Warning: %s\n", pCallbackData->pMessage);
+			LOGW("[Vulkan]: Validation Warning: %s\n", pCallbackData->pMessage);
 		else
-			LOGE("[Vulkan]: Other Warning: %s\n", pCallbackData->pMessage);
+			LOGW("[Vulkan]: Other Warning: %s\n", pCallbackData->pMessage);
 		break;
 
 #if 0
@@ -290,15 +290,15 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_debug_cb(VkDebugReportFlagsEXT flag
 	}
 	else if (flags & VK_DEBUG_REPORT_WARNING_BIT_EXT)
 	{
-		LOGE("[Vulkan]: Warning: %s: %s\n", pLayerPrefix, pMessage);
+		LOGW("[Vulkan]: Warning: %s: %s\n", pLayerPrefix, pMessage);
 	}
 	else if (flags & VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT)
 	{
-		//LOGE("[Vulkan]: Performance warning: %s: %s\n", pLayerPrefix, pMessage);
+		//LOGW("[Vulkan]: Performance warning: %s: %s\n", pLayerPrefix, pMessage);
 	}
 	else
 	{
-		LOGE("[Vulkan]: Information: %s: %s\n", pLayerPrefix, pMessage);
+		LOGI("[Vulkan]: Information: %s: %s\n", pLayerPrefix, pMessage);
 	}
 
 	return VK_FALSE;

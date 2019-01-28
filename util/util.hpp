@@ -36,6 +36,7 @@ namespace Granite
 extern retro_log_printf_t libretro_log;
 }
 #define LOGE(...) do { if (::Granite::libretro_log) ::Granite::libretro_log(RETRO_LOG_ERROR, __VA_ARGS__); } while(0)
+#define LOGW(...) do { if (::Granite::libretro_log) ::Granite::libretro_log(RETRO_LOG_WARN, __VA_ARGS__); } while(0)
 #define LOGI(...) do { if (::Granite::libretro_log) ::Granite::libretro_log(RETRO_LOG_INFO, __VA_ARGS__); } while(0)
 #elif defined(_MSC_VER)
 #define WIN32_LEAN_AND_MEAN
@@ -47,6 +48,15 @@ extern retro_log_printf_t libretro_log;
     sprintf(buffer, "[ERROR]: " __VA_ARGS__); \
     OutputDebugStringA(buffer); \
 } while(false)
+
+#define LOGW(...) do { \
+    fprintf(stderr, "[WARN]: " __VA_ARGS__); \
+    fflush(stderr); \
+    char buffer[4096]; \
+    sprintf(buffer, "[WARN]: " __VA_ARGS__); \
+    OutputDebugStringA(buffer); \
+} while(false)
+
 #define LOGI(...) do { \
     fprintf(stderr, "[INFO]: " __VA_ARGS__); \
     fflush(stderr); \
@@ -57,12 +67,20 @@ extern retro_log_printf_t libretro_log;
 #elif defined(ANDROID)
 #include <android/log.h>
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "Granite", __VA_ARGS__)
+#define LOGW(...) __android_log_print(ANDROID_LOG_WARN, "Granite", __VA_ARGS__)
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, "Granite", __VA_ARGS__)
 #else
 #define LOGE(...)                     \
     do                                \
     {                                 \
         fprintf(stderr, "[ERROR]: " __VA_ARGS__); \
+        fflush(stderr); \
+    } while (false)
+
+#define LOGW(...)                     \
+    do                                \
+    {                                 \
+        fprintf(stderr, "[WARN]: " __VA_ARGS__); \
         fflush(stderr); \
     } while (false)
 

@@ -37,7 +37,8 @@ enum class Stage
 	TessEvaluation,
 	Geometry,
 	Fragment,
-	Compute
+	Compute,
+	Unknown
 };
 
 enum class Target
@@ -86,7 +87,7 @@ private:
 	std::string source;
 	std::string source_path;
 	const std::vector<std::string> *include_directories = nullptr;
-	Stage stage = Stage::Compute;
+	Stage stage = Stage::Unknown;
 
 	std::unordered_set<std::string> dependencies;
 	std::string preprocessed_source;

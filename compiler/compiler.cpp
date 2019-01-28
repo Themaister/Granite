@@ -49,7 +49,7 @@ Stage GLSLCompiler::stage_from_path(const std::string &path)
 	else if (ext == "comp")
 		return Stage::Compute;
 	else
-		throw logic_error("invalid extension");
+		return Stage::Unknown;
 }
 
 bool GLSLCompiler::set_source_from_file(const string &path)
@@ -62,7 +62,7 @@ bool GLSLCompiler::set_source_from_file(const string &path)
 
 	source_path = path;
 	stage = stage_from_path(path);
-	return true;
+	return stage != Stage::Unknown;
 }
 
 void GLSLCompiler::set_include_directories(const std::vector<std::string> *include_directories)
@@ -224,6 +224,9 @@ vector<uint32_t> GLSLCompiler::compile(const vector<pair<string, int>> *defines)
 	case Stage::Compute:
 		kind = shaderc_glsl_compute_shader;
 		break;
+
+	default:
+		return {};
 	}
 	shaderc::SpvCompilationResult result = compiler.CompileGlslToSpv(preprocessed_source, kind, source_path.c_str(), options);
 

@@ -414,6 +414,8 @@ if (NOT GRANITE_VULKAN_ONLY)
             renderer/fft/glfft_wisdom.cpp
             renderer/fft/glfft_wisdom.hpp)
         target_link_libraries(granite PRIVATE shaderc SPIRV-Tools)
+        # Workaround an upstream shaderc issue.
+        target_include_directories(granite PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/shaderc/libshaderc_util/include)
     endif()
 
     if (HOTPLUG_UDEV_FOUND)

@@ -45,6 +45,8 @@ using namespace Vulkan;
 
 namespace Granite
 {
+uint32_t android_api_version;
+
 void application_dummy()
 {
 }
@@ -814,6 +816,8 @@ void android_main(android_app *app)
 #pragma GCC diagnostic ignored "-Wdeprecated"
 	app_dummy();
 #pragma GCC diagnostic pop
+
+	android_api_version = uint32_t(app->activity->sdkVersion);
 
 	// Statics on Android might not be cleared out.
 	global_state = {};

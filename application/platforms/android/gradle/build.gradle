@@ -20,11 +20,13 @@ android {
                             "-DANDROID_STL=c++_static",
                             "-DANDROID_ARM_MODE=arm",
                             "-DANDROID_CPP_FEATURES=exceptions",
-                            "-DGRANITE_SHADER_COMPILER_OPTIMIZE=OFF",
+                            "-DGRANITE_SHADER_COMPILER_OPTIMIZE=ON",
                             "-DGRANITE_SPIRV_DUMP=OFF",
                             "-DCMAKE_BUILD_TYPE=Debug",
                             "-DANDROID_PLATFORM=android-26",
-                            "-DGRANITE_AUDIO=OFF",
+                            "-DGRANITE_ISPC_TEXTURE_COMPRESSION=OFF",
+                            "-DGRANITE_ASTC_ENCODER_COMPRESSION=OFF",
+                            "-DGRANITE_AUDIO=$$AUDIO$$",
                             "-DANDROID_ARM_NEON=ON"
 
                     targets "$$TARGET$$"
@@ -39,11 +41,13 @@ android {
                             "-DANDROID_STL=c++_static",
                             "-DANDROID_ARM_MODE=arm",
                             "-DANDROID_CPP_FEATURES=exceptions",
-                            "-DGRANITE_SHADER_COMPILER_OPTIMIZE=OFF",
+                            "-DGRANITE_SHADER_COMPILER_OPTIMIZE=ON",
                             "-DGRANITE_SPIRV_DUMP=OFF",
                             "-DCMAKE_BUILD_TYPE=Release",
                             "-DANDROID_PLATFORM=android-26",
-                            "-DGRANITE_AUDIO=OFF",
+                            "-DGRANITE_ISPC_TEXTURE_COMPRESSION=OFF",
+                            "-DGRANITE_ASTC_ENCODER_COMPRESSION=OFF",
+                            "-DGRANITE_AUDIO=$$AUDIO$$",
                             "-DANDROID_ARM_NEON=ON"
 
                     targets "$$TARGET$$"

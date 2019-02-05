@@ -23,6 +23,7 @@
 #include "audio_aaudio.hpp"
 #include "dsp/dsp.hpp"
 #include "util.hpp"
+#include <dlfcn.h>
 #include <stdint.h>
 #include <aaudio/AAudio.h>
 #include <time.h>
@@ -32,6 +33,7 @@
 
 namespace Granite
 {
+extern uint32_t android_api_version;
 namespace Audio
 {
 static aaudio_data_callback_result_t aaudio_callback(AAudioStream *stream, void *userData, void *audioData, int32_t numFrames);
@@ -82,6 +84,7 @@ struct AAudioBackend : Backend
 	unsigned num_channels = 0;
 	int64_t frame_count = 0;
 	int32_t frames_per_callback = 0;
+	int32_t old_underrun_count = 0;
 	aaudio_format_t format;
 	bool is_active = false;
 
@@ -103,8 +106,8 @@ bool AAudioBackend::update_buffer_size()
 	// We can tweak the buffer size dynamically up to this size.
 	int32_t max_frames = AAudioStream_getBufferCapacityInFrames(stream);
 
-	// Target 20 ms latency (can make it dynamic, but hey).
-	int32_t target_blocks = int(std::ceil(20.0f * sample_rate / (1000.0f * burst_frames)));
+	// Target 50 ms latency (can make it dynamic, but hey).
+	int32_t target_blocks = int(std::ceil(50.0f * sample_rate / (1000.0f * burst_frames)));
 
 	// At least double-buffer.
 	target_blocks = std::max(target_blocks, 2);
@@ -170,6 +173,19 @@ bool AAudioBackend::create_stream(float request_sample_rate, unsigned channels)
 	AAudioStreamBuilder_setDataCallback(builder, aaudio_callback, this);
 	AAudioStreamBuilder_setErrorCallback(builder, aaudio_error_callback, this);
 
+	if (android_api_version >= 28)
+	{
+		auto *set_usage = reinterpret_cast<void (*)(AAudioStreamBuilder *, aaudio_usage_t)>(
+				dlsym(RTLD_NEXT, "AAudioStreamBuilder_setUsage"));
+		if (set_usage)
+			set_usage(builder, AAUDIO_USAGE_GAME);
+
+		auto *set_content_type = reinterpret_cast<void (*)(AAudioStreamBuilder *, aaudio_content_type_t)>(
+				dlsym(RTLD_NEXT, "AAudioStreamBuilder_setContentType"));
+		if (set_content_type)
+			set_content_type(builder, AAUDIO_CONTENT_TYPE_MUSIC);
+	}
+
 	if ((res = AAudioStreamBuilder_openStream(builder, &stream)) != AAUDIO_OK)
 	{
 		LOGE("AAudio: Failed to create stream: %s\n", AAudio_convertResultToText(res));
@@ -228,7 +244,7 @@ bool AAudioBackend::init(float, unsigned channels)
 	return true;
 }
 
-void AAudioBackend::thread_error(aaudio_result_t error) noexcept
+void AAudioBackend::thread_error(aaudio_result_t) noexcept
 {
 	// Need to deal with this on another thread later.
 	device_alive.clear(std::memory_order_release);
@@ -237,6 +253,13 @@ void AAudioBackend::thread_error(aaudio_result_t error) noexcept
 // This must be hard-realtime safe!
 void AAudioBackend::thread_callback(void *data, int32_t numFrames) noexcept
 {
+	int32_t underrun_count = AAudioStream_getXRunCount(stream);
+	if (underrun_count > old_underrun_count)
+	{
+		LOGW("AAudio: observed %d new underruns.", underrun_count - old_underrun_count);
+		old_underrun_count = underrun_count;
+	}
+
 	// Update measured latency.
 	// Can fail spuriously, don't update latency estimate in that case.
 	int64_t frame_position, time_ns;
@@ -352,6 +375,7 @@ bool AAudioBackend::start()
 
 	callback.on_backend_start();
 	frame_count = 0;
+	old_underrun_count = 0;
 
 	// Starts async, and will pull from callback.
 	aaudio_result_t res;
@@ -409,6 +433,12 @@ AAudioBackend::~AAudioBackend()
 
 Backend *create_aaudio_backend(BackendCallback &callback, float sample_rate, unsigned channels)
 {
+	if (android_api_version < 27) // Android 8.1.0
+	{
+		LOGE("AAudio is known to be broken on Android 8.0, falling back ...");
+		return nullptr;
+	}
+
 	auto *aa = new AAudioBackend(callback);
 	if (!aa->init(sample_rate, channels))
 	{

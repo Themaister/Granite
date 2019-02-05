@@ -277,6 +277,8 @@ SincResampler::SincResampler(float out_rate, float in_rate, Quality quality)
 	if (!main_buffer)
 		throw std::bad_alloc();
 
+	memset(main_buffer, 0, sizeof(float) * elems);
+
 	phase_table = main_buffer;
 	window_buffer = main_buffer + phase_elems;
 

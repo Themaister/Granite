@@ -162,7 +162,8 @@ bool AAudioBackend::create_stream(float request_sample_rate, unsigned channels)
 	AAudioStreamBuilder_setChannelCount(builder, num_channels);
 
 	// Of course we want this ;)
-	AAudioStreamBuilder_setPerformanceMode(builder, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
+	//AAudioStreamBuilder_setPerformanceMode(builder, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
+	AAudioStreamBuilder_setPerformanceMode(builder, AAUDIO_PERFORMANCE_MODE_NONE);
 
 	// Only set explicit sampling rate if requested.
 	if (request_sample_rate != 0.0f)

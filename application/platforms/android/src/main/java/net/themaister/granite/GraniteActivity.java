@@ -64,6 +64,7 @@ public class GraniteActivity extends android.app.NativeActivity
     {
         super.onCreate(savedState);
         setImmersiveMode();
+        setVolumeControlStream(AudioManager.STREAM_MUSIC);
     }
 
     @Override

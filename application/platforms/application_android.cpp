@@ -34,8 +34,11 @@
 #include "rapidjson_wrapper.hpp"
 #include "muglm/muglm_impl.hpp"
 
-#ifdef HAVE_GRANITE_AUDIO
+#ifdef AUDIO_HAVE_OPENSL
 #include "audio_opensl.hpp"
+#endif
+#ifdef AUDIO_HAVE_OBOE
+#include "audio_oboe.hpp"
 #endif
 
 using namespace std;
@@ -762,7 +765,12 @@ static void init_jni()
 #ifdef HAVE_GRANITE_AUDIO
 	int sample_rate = App::getAudioNativeSampleRate();
 	int block_frames = App::getAudioNativeBlockFrames();
+#ifdef AUDIO_HAVE_OPENSL
 	Granite::Audio::set_opensl_low_latency_parameters(sample_rate, block_frames);
+#endif
+#ifdef AUDIO_HAVE_OBOE
+	Granite::Audio::set_oboe_low_latency_parameters(sample_rate, block_frames);
+#endif
 #endif
 }
 

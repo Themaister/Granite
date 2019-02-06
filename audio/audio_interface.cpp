@@ -30,6 +30,9 @@
 #ifdef AUDIO_HAVE_AAUDIO
 #include "audio_aaudio.hpp"
 #endif
+#ifdef AUDIO_HAVE_OBOE
+#include "audio_oboe.hpp"
+#endif
 #ifdef AUDIO_HAVE_OPENSL
 #include "audio_opensl.hpp"
 #endif
@@ -46,6 +49,9 @@ using BackendCreationCallback = Backend *(*)(BackendCallback &, float, unsigned)
 static const BackendCreationCallback backends[] = {
 #ifdef AUDIO_HAVE_PULSE
 		create_pulse_backend,
+#endif
+#ifdef AUDIO_HAVE_OBOE
+		create_oboe_backend,
 #endif
 		// Buggy on Android 8.0, should work fine on 8.1?
 #ifdef AUDIO_HAVE_AAUDIO

@@ -129,7 +129,11 @@ void OboeBackend::setup_stream_builder(oboe::AudioStreamBuilder &builder)
 	builder.setDirection(oboe::Direction::Output);
 	builder.setPerformanceMode(oboe::PerformanceMode::LowLatency);
 	builder.setCallback(this);
-	//builder.setAudioApi(oboe::AudioApi::OpenSLES);
+	// XXX: AAudio is broken on my device. See
+	// https://github.com/google/oboe/issues/380
+	// https://github.com/google/oboe/issues/381
+	// Force OpenSLES for now. It works quite well.
+	builder.setAudioApi(oboe::AudioApi::OpenSLES);
 	builder.setChannelCount(num_channels);
 	builder.setContentType(oboe::ContentType::Music);
 	builder.setSharingMode(oboe::SharingMode::Shared);

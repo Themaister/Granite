@@ -44,6 +44,7 @@ struct OboeBackend : Backend, oboe::AudioStreamCallback
 	OboeBackend(BackendCallback &callback)
 			: Backend(callback)
 	{
+		device_alive.test_and_set();
 	}
 
 	~OboeBackend();
@@ -86,6 +87,13 @@ struct OboeBackend : Backend, oboe::AudioStreamCallback
 	oboe::DataCallbackResult onAudioReady(oboe::AudioStream *oboe_stream,
 	                                      void *audio_data,
 	                                      int32_t num_frames) override;
+
+	void onErrorBeforeClose(oboe::AudioStream *oboe_stream, oboe::Result error) override;
+	void onErrorAfterClose(oboe::AudioStream *oboe_stream, oboe::Result error) override;
+
+	void setup_stream_builder(oboe::AudioStreamBuilder &builder);
+	bool reinit();
+	std::atomic_flag device_alive;
 };
 
 OboeBackend::~OboeBackend()
@@ -96,17 +104,48 @@ OboeBackend::~OboeBackend()
 	stream = nullptr;
 }
 
-bool OboeBackend::init(float, unsigned channels)
+bool OboeBackend::reinit()
 {
-	oboe::AudioStreamBuilder builder;
+	// Apparently the error callbacks can be called multiple times
+	// from reading some Oboe samples.
+	bool ret = init(0.0f, num_channels);
+	if (!ret)
+		return false;
+
+	if (is_active)
+	{
+		is_active = false;
+		if (!start())
+			return false;
+
+		LOGI("Oboe: Recovered from disconnect!\n");
+	}
+
+	return true;
+}
+
+void OboeBackend::setup_stream_builder(oboe::AudioStreamBuilder &builder)
+{
 	builder.setDirection(oboe::Direction::Output);
 	builder.setPerformanceMode(oboe::PerformanceMode::LowLatency);
 	builder.setCallback(this);
-	builder.setAudioApi(oboe::AudioApi::OpenSLES);
-	builder.setChannelCount(channels);
+	//builder.setAudioApi(oboe::AudioApi::OpenSLES);
+	builder.setChannelCount(num_channels);
 	builder.setContentType(oboe::ContentType::Music);
 	builder.setSharingMode(oboe::SharingMode::Shared);
 	builder.setUsage(oboe::Usage::Game);
+
+	// If we have already committed to a sample rate, keep using it.
+	if (sample_rate != 0.0f)
+		builder.setSampleRate(int32_t(sample_rate));
+}
+
+bool OboeBackend::init(float, unsigned channels)
+{
+	num_channels = channels;
+	oboe::AudioStreamBuilder builder;
+	setup_stream_builder(builder);
+
 	if (builder.openStream(&stream) != oboe::Result::OK)
 	{
 		LOGE("Failed to create Oboe stream!\n");
@@ -117,24 +156,41 @@ bool OboeBackend::init(float, unsigned channels)
 	inv_sample_rate = 1.0 / sample_rate;
 	num_channels = unsigned(stream->getChannelCount());
 	format = stream->getFormat();
-	frames_per_callback = stream->getFramesPerCallback();
 
-	if (frames_per_callback == oboe::kUnspecified)
-		frames_per_callback = stream->getFramesPerBurst();
-
-	// Allocate mix-buffers.
-	// If we have to generate more than this in a callback, iterate multiple times ...
-	for (unsigned c = 0; c < num_channels; c++)
+	if (!frames_per_callback)
 	{
-		mix_buffers[c].resize(frames_per_callback);
-		mix_buffers_ptr[c] = mix_buffers[c].data();
+		frames_per_callback = stream->getFramesPerCallback();
+		if (frames_per_callback == oboe::kUnspecified)
+			frames_per_callback = stream->getFramesPerBurst();
+
+		// Allocate mix-buffers.
+		// If we have to generate more than this in a callback, iterate multiple times ...
+		for (unsigned c = 0; c < num_channels; c++)
+		{
+			mix_buffers[c].resize(frames_per_callback);
+			mix_buffers_ptr[c] = mix_buffers[c].data();
+		}
+
+		callback.set_backend_parameters(sample_rate, num_channels, size_t(frames_per_callback));
 	}
 
-	callback.set_backend_parameters(sample_rate, num_channels, size_t(frames_per_callback));
 	// Set initial latency estimate.
 	last_latency = double(stream->getBufferSizeInFrames()) * inv_sample_rate;
 	callback.set_latency_usec(uint32_t(last_latency * 1e6));
+
 	return true;
+}
+
+void OboeBackend::onErrorBeforeClose(oboe::AudioStream *, oboe::Result error)
+{
+	LOGW("Oboe: Error before close: %s.\n", oboe::convertToText(error));
+}
+
+void OboeBackend::onErrorAfterClose(oboe::AudioStream *, oboe::Result error)
+{
+	LOGW("Oboe: Error after close: %s.\n", oboe::convertToText(error));
+	if (error == oboe::Result::ErrorDisconnected)
+		device_alive.clear(std::memory_order_release);
 }
 
 oboe::DataCallbackResult OboeBackend::onAudioReady(
@@ -189,7 +245,7 @@ oboe::DataCallbackResult OboeBackend::onAudioReady(
 	} u;
 	u.data = audio_data;
 
-	// Ideally we'll only run this once, but you never know ...
+	// Ideally we'll only run this loop once, but you never know ...
 	while (num_frames)
 	{
 		auto to_render = std::min(num_frames, frames_per_callback);
@@ -230,6 +286,12 @@ oboe::DataCallbackResult OboeBackend::onAudioReady(
 // Called periodically from the main loop, just in case we need to recover from a device lost.
 void OboeBackend::heartbeat()
 {
+	if (!device_alive.test_and_set(std::memory_order_acquire))
+	{
+		stream = nullptr;
+		if (!reinit())
+			LOGE("Oboe: Failed to reinit stream.\n");
+	}
 }
 
 bool OboeBackend::start()

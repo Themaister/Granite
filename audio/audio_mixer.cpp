@@ -147,7 +147,7 @@ void Mixer::kill_stream(StreamID id)
 	unsigned index = get_stream_index(id);
 	unsigned subindex = index & 31;
 	index /= 32;
-	active_channel_mask[index].fetch_and(subindex, memory_order_release);
+	active_channel_mask[index].fetch_and(~(1u << subindex), memory_order_release);
 }
 
 double Mixer::get_play_cursor(StreamID id)

@@ -40,10 +40,14 @@ public:
 	{
 		if (source)
 			source->dispose();
-		if (conv)
-			mufft_free_plan_conv(conv);
+		if (fft_r2c)
+			mufft_free_plan_1d(fft_r2c);
+		if (fft_c2r)
+			mufft_free_plan_1d(fft_c2r);
 		if (data_fft)
 			mufft_free(data_fft);
+		if (conv_fft)
+			mufft_free(conv_fft);
 		if (filter_fft)
 			mufft_free(filter_fft);
 
@@ -64,18 +68,27 @@ public:
 		block_size = std::max(16u, Util::next_pow2(coeff_count));
 		fft_block_size = block_size * 2;
 
-		conv = mufft_create_plan_conv(fft_block_size,
-		                              MUFFT_FLAG_CPU_ANY,
-		                              MUFFT_CONV_METHOD_FLAG_MONO_MONO |
-		                              MUFFT_CONV_METHOD_FLAG_ZERO_PAD_UPPER_HALF_FIRST |
-		                              MUFFT_CONV_METHOD_FLAG_ZERO_PAD_UPPER_HALF_SECOND);
+		fft_r2c = mufft_create_plan_1d_r2c(fft_block_size,
+		                                   MUFFT_FLAG_ZERO_PAD_UPPER_HALF |
+		                                   MUFFT_FLAG_CPU_ANY);
+		if (!fft_r2c)
+			return false;
+
+		fft_c2r = mufft_create_plan_1d_c2r(fft_block_size, MUFFT_FLAG_CPU_ANY);
+		if (!fft_c2r)
+			return false;
 
 		auto *tmp = static_cast<float *>(mufft_calloc(block_size * sizeof(float)));
 		filter_fft = static_cast<std::complex<float> *>(mufft_calloc(fft_block_size * sizeof(std::complex<float>)));
 		data_fft = static_cast<std::complex<float> *>(mufft_calloc(fft_block_size * sizeof(std::complex<float>)));
+		conv_fft = static_cast<std::complex<float> *>(mufft_calloc(fft_block_size * sizeof(std::complex<float>)));
 		memcpy(tmp, filter_coeffs, coeff_count * sizeof(float));
-		mufft_execute_conv_input(conv, MUFFT_CONV_BLOCK_SECOND, filter_fft, tmp);
+		mufft_execute_plan_1d(fft_r2c, filter_fft, tmp);
 		mufft_free(tmp);
+
+		convolve_func = mufft_get_convolve_func(MUFFT_FLAG_CPU_ANY);
+		normalization = 1.0f / float(fft_block_size);
+
 		return true;
 	}
 
@@ -145,15 +158,14 @@ public:
 
 				for (unsigned c = 0; c < num_channels; c++)
 				{
-					mufft_execute_conv_input(conv,
-					                         MUFFT_CONV_BLOCK_FIRST,
-					                         data_fft,
-					                         mix_buffers[mix_iteration][c]);
+					mufft_execute_plan_1d(fft_r2c,
+					                      data_fft,
+					                      mix_buffers[mix_iteration][c]);
+					convolve_func(conv_fft, data_fft, filter_fft, normalization, fft_block_size);
 
-					mufft_execute_conv_output(conv,
-					                          mix_buffers_conv[mix_iteration][c],
-					                          data_fft,
-					                          filter_fft);
+					mufft_execute_plan_1d(fft_c2r,
+					                      mix_buffers_conv[mix_iteration][c],
+					                      conv_fft);
 
 					// Overlapped FFT convolution, add in the results from previous block tail.
 					DSP::accumulate_channel_nogain(mix_buffers_conv[mix_iteration][c],
@@ -183,15 +195,20 @@ private:
 	unsigned num_channels = 0;
 	float sample_rate = 0.0f;
 
-	mufft_plan_conv *conv = nullptr;
+	mufft_plan_1d *fft_r2c = nullptr;
+	mufft_plan_1d *fft_c2r = nullptr;
 	std::complex<float> *filter_fft = nullptr;
 	std::complex<float> *data_fft = nullptr;
+	std::complex<float> *conv_fft = nullptr;
 	size_t current_read = 0;
 
 	float *mix_buffers[2][Backend::MaxAudioChannels] = {};
 	float *mix_buffers_conv[2][Backend::MaxAudioChannels] = {};
 	unsigned mix_iteration = 0;
 	bool is_stopping = false;
+
+	mufft_convolve_func convolve_func = nullptr;
+	float normalization = 0.0f;
 };
 
 MixerStream *create_fft_eq_stream(MixerStream *source,

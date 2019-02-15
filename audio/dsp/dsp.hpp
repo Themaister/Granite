@@ -23,6 +23,7 @@
 #pragma once
 
 #include <math.h>
+#include <stdint.h>
 
 #if defined(_WIN32) && !defined(__SSE__)
 #define __SSE__

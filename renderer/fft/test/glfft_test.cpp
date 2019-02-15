@@ -515,8 +515,8 @@ static void run_test_ssbo(Context *context, const TestSuiteArguments &args, unsi
 		input = convert_fp32_fp16(static_cast<const float *>(input.get()), input_size / sizeof(float));
 	}
 
-	test_input = context->create_buffer(input.get(), input_size >> options.type.input_fp16, AccessStreamCopy);
-	test_output = context->create_buffer(nullptr, output_size >> options.type.output_fp16, AccessStreamRead);
+	test_input = context->create_buffer(input.get(), input_size >> unsigned(options.type.input_fp16), AccessStreamCopy);
+	test_output = context->create_buffer(nullptr, output_size >> unsigned(options.type.output_fp16), AccessStreamRead);
 
 	FFT fft(context, Nx, Ny, type, direction, SSBO, SSBO, cache, options);
 
@@ -526,7 +526,7 @@ static void run_test_ssbo(Context *context, const TestSuiteArguments &args, unsi
 	context->submit_command_buffer(cmd);
 	context->wait_idle();
 
-	auto output_data = readback(context, test_output.get(), output_size >> options.type.output_fp16);
+	auto output_data = readback(context, test_output.get(), output_size >> unsigned(options.type.output_fp16));
 	if (options.type.output_fp16)
 	{
 		output_data = convert_fp16_fp32(static_cast<const uint16_t *>(output_data.get()), output_size / sizeof(float));
@@ -583,7 +583,7 @@ static void run_test_texture(Context *context, const TestSuiteArguments &args, u
 
 	test_input = context->create_texture(input.get(), Nx, Ny, format);
 
-	test_output = context->create_buffer(nullptr, output_size >> options.type.output_fp16, AccessStreamRead);
+	test_output = context->create_buffer(nullptr, output_size >> unsigned(options.type.output_fp16), AccessStreamRead);
 
 	FFT fft(context, Nx, Ny, type, direction, type == RealToComplex ? ImageReal : Image, SSBO, cache, options);
 	fft.set_texture_offset_scale(0.5f / Nx, 0.5f / Ny, 1.0f / Nx, 1.0f / Ny);
@@ -594,7 +594,7 @@ static void run_test_texture(Context *context, const TestSuiteArguments &args, u
 	context->submit_command_buffer(cmd);
 	context->wait_idle();
 
-	auto output_data = readback(context, test_output.get(), output_size >> options.type.output_fp16);
+	auto output_data = readback(context, test_output.get(), output_size >> unsigned(options.type.output_fp16));
 	if (options.type.output_fp16)
 	{
 		output_data = convert_fp16_fp32(static_cast<const uint16_t *>(output_data.get()), output_size / sizeof(float));
@@ -644,7 +644,7 @@ static void run_test_image(Context *context, const TestSuiteArguments &args, uns
 		input = convert_fp32_fp16(static_cast<const float *>(input.get()), input_size / sizeof(float));
 	}
 
-	test_input = context->create_buffer(input.get(), input_size >> options.type.input_fp16, AccessStreamCopy);
+	test_input = context->create_buffer(input.get(), input_size >> unsigned(options.type.input_fp16), AccessStreamCopy);
 
 	Format format = FormatUnknown;
 	unsigned components = 0;

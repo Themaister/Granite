@@ -27,6 +27,7 @@
 #include <vector>
 #include <complex>
 #include <string.h>
+#include <algorithm>
 
 namespace Granite
 {

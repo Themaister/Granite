@@ -93,6 +93,7 @@
 #endif
 
 #include "sinc_resampler.hpp"
+#include "dsp.hpp"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -113,72 +114,10 @@ namespace Audio
 {
 namespace DSP
 {
-static void *memalign_alloc(size_t boundary, size_t size)
-{
-	void **place = NULL;
-	uintptr_t addr = 0;
-	void *ptr = malloc(boundary + size + sizeof(uintptr_t));
-	if (!ptr)
-		return NULL;
-
-	addr = ((uintptr_t)ptr + sizeof(uintptr_t) + boundary) & ~(boundary - 1);
-	place = (void**)addr;
-	place[-1] = ptr;
-
-	return (void*)addr;
-}
-
-static void memalign_free(void *ptr)
-{
-	void **p = NULL;
-	if (!ptr)
-		return;
-
-	p = (void**)ptr;
-	free(p[-1]);
-}
-
-/* Modified Bessel function of first order.
- * Check Wiki for mathematical definition ... */
-static inline double besseli0(double x)
-{
-	double sum = 0.0;
-	double factorial = 1.0;
-	double factorial_mult = 0.0;
-	double x_pow = 1.0;
-	double two_div_pow = 1.0;
-	double x_sqr = x * x;
-
-	/* Approximate. This is an infinite sum.
-	 * Luckily, it converges rather fast. */
-	for (unsigned i = 0; i < 18; i++)
-	{
-		sum += x_pow * two_div_pow / (factorial * factorial);
-
-		factorial_mult += 1.0;
-		x_pow *= x_sqr;
-		two_div_pow *= 0.25;
-		factorial *= factorial_mult;
-	}
-
-	return sum;
-}
-
-static inline double sinc(double val)
-{
-	if (fabs(val) < 0.00001)
-		return 1.0;
-	return sin(val) / val;
-}
-
-static inline double kaiser_window_function(double index, double beta)
-{
-	return besseli0(beta * sqrt(1.0 - index * index));
-}
 
 void SincResampler::init_table_kaiser(double cutoff, unsigned phases, unsigned taps, double beta)
 {
-	double window_mod = kaiser_window_function(0.0, beta);
+	double window_mod = DSP::kaiser_window_function(0.0, beta);
 	const unsigned stride = 2;
 	double sidelobes = taps / 2.0;
 
@@ -190,7 +129,7 @@ void SincResampler::init_table_kaiser(double cutoff, unsigned phases, unsigned t
 			double window_phase = double(n) / double(phases * taps); /* [0, 1). */
 			window_phase = 2.0 * window_phase - 1.0; /* [-1, 1) */
 			double sinc_phase = sidelobes * window_phase;
-			float val = float(cutoff * sinc(PI * sinc_phase * cutoff) * kaiser_window_function(window_phase, beta) / window_mod);
+			float val = float(cutoff * DSP::sinc(PI * sinc_phase * cutoff) * DSP::kaiser_window_function(window_phase, beta) / window_mod);
 			phase_table[i * stride * taps + j] = val;
 		}
 	}
@@ -212,7 +151,7 @@ void SincResampler::init_table_kaiser(double cutoff, unsigned phases, unsigned t
 		window_phase = 2.0 * window_phase - 1.0; /* (-1, 1] */
 		double sinc_phase = sidelobes * window_phase;
 
-		float val = float(cutoff * sinc(PI * sinc_phase * cutoff) * kaiser_window_function(window_phase, beta) / window_mod);
+		float val = float(cutoff * DSP::sinc(PI * sinc_phase * cutoff) * kaiser_window_function(window_phase, beta) / window_mod);
 		float delta = (val - phase_table[phase * stride * taps + j]);
 		phase_table[(phase * stride + 1) * taps + j] = delta;
 	}

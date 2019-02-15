@@ -46,7 +46,13 @@ public:
 			mufft_free(data_fft);
 		if (filter_fft)
 			mufft_free(filter_fft);
+
 		for (auto &iter : mix_buffers)
+			for (auto &m : iter)
+				if (m)
+					mufft_free(m);
+
+		for (auto &iter : mix_buffers_conv)
 			for (auto &m : iter)
 				if (m)
 					mufft_free(m);
@@ -82,6 +88,11 @@ public:
 		for (auto &iter : mix_buffers)
 			for (unsigned c = 0; c < mixer_channels; c++)
 				iter[c] = static_cast<float *>(mufft_calloc(fft_block_size * sizeof(float)));
+
+		for (auto &iter : mix_buffers_conv)
+			for (unsigned c = 0; c < mixer_channels; c++)
+				iter[c] = static_cast<float *>(mufft_calloc(fft_block_size * sizeof(float)));
+
 		current_read = block_size;
 	}
 
@@ -106,7 +117,7 @@ public:
 				size_t to_read = std::min(num_frames, available_in_mix_buffer);
 				for (unsigned c = 0; c < num_channels; c++)
 				{
-					DSP::accumulate_channel(channels_copy[c], mix_buffers[mix_iteration][c] + current_read, gain[c], to_read);
+					DSP::accumulate_channel(channels_copy[c], mix_buffers_conv[mix_iteration][c] + current_read, gain[c], to_read);
 					channels_copy[c] += to_read;
 				}
 
@@ -140,13 +151,13 @@ public:
 					                         mix_buffers[mix_iteration][c]);
 
 					mufft_execute_conv_output(conv,
-					                          mix_buffers[mix_iteration][c],
+					                          mix_buffers_conv[mix_iteration][c],
 					                          data_fft,
 					                          filter_fft);
 
 					// Overlapped FFT convolution, add in the results from previous block tail.
-					DSP::accumulate_channel_nogain(mix_buffers[mix_iteration][c],
-					                               mix_buffers[1 - mix_iteration][c] + block_size,
+					DSP::accumulate_channel_nogain(mix_buffers_conv[mix_iteration][c],
+					                               mix_buffers_conv[1 - mix_iteration][c] + block_size,
 					                               block_size);
 				}
 			}
@@ -178,6 +189,7 @@ private:
 	size_t current_read = 0;
 
 	float *mix_buffers[2][Backend::MaxAudioChannels] = {};
+	float *mix_buffers_conv[2][Backend::MaxAudioChannels] = {};
 	unsigned mix_iteration = 0;
 	bool is_stopping = false;
 };

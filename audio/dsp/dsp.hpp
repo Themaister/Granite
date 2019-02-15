@@ -22,7 +22,7 @@
 
 #pragma once
 
-#include <cmath>
+#include <math.h>
 
 #if defined(_WIN32) && !defined(__SSE__)
 #define __SSE__
@@ -123,7 +123,7 @@ static inline void accumulate_channel_nogain(float * __restrict output, const fl
 
 static int16_t f32_to_i16(float v) noexcept
 {
-	int32_t i = int32_t(std::round(v * 0x8000));
+	auto i = int32_t(roundf(v * 0x8000));
 	if (i > 0x7fff)
 		return 0x7fff;
 	else if (i < -0x8000)
@@ -206,6 +206,28 @@ static inline void interleave_stereo_f32_i16(int16_t * __restrict target,
 	}
 #endif
 }
+
+struct EqualizerParameter
+{
+	float freq;
+	float gain_db;
+};
+
+float gain_to_db(float gain);
+float db_to_gain(float db);
+
+// Parameters must come in sorted order.
+void create_parametric_eq_filter(float *coeffs, unsigned num_coeffs,
+                                 float sample_rate,
+                                 const EqualizerParameter *parameters,
+                                 unsigned num_parameters);
+
+void *memalign_alloc(size_t boundary, size_t size);
+void memalign_free(void *ptr);
+
+double sinc(double val);
+double kaiser_window_function(double index, double beta);
+
 }
 }
 }

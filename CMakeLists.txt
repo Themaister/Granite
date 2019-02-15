@@ -452,7 +452,7 @@ if (NOT GRANITE_VULKAN_ONLY)
                 audio/audio_mixer.cpp audio/audio_mixer.hpp
                 audio/audio_resampler.cpp audio/audio_resampler.hpp
                 audio/dsp/sinc_resampler.cpp audio/dsp/sinc_resampler.hpp
-                audio/dsp/dsp.hpp
+                audio/dsp/dsp.hpp audio/dsp/dsp.cpp
                 audio/audio_events.hpp
                 audio/audio_fft_eq.cpp audio/audio_fft_eq.hpp
                 audio/vorbis_stream.hpp audio/vorbis_stream.cpp)

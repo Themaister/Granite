@@ -58,7 +58,6 @@ static inline void accumulate_channel(float * __restrict output, const float * _
 	size_t overflow_count = count & 3;
 	for (size_t i = 0; i < overflow_count; i++)
 		output[i] += input[i] * gain;
-
 #elif defined(__SSE__)
 	size_t rounded_count = count & ~3;
 	__m128 gain_splat = _mm_set1_ps(gain);
@@ -76,10 +75,49 @@ static inline void accumulate_channel(float * __restrict output, const float * _
 	size_t overflow_count = count & 3;
 	for (size_t i = 0; i < overflow_count; i++)
 		output[i] += input[i] * gain;
-
 #else
 	for (size_t i = 0; i < count; i++)
 		output[i] += input[i] * gain;
+#endif
+}
+
+static inline void accumulate_channel_nogain(float * __restrict output, const float * __restrict input, size_t count) noexcept
+{
+#ifdef __ARM_NEON
+	size_t rounded_count = count & ~3;
+	for (size_t i = 0; i < rounded_count; i += 4)
+	{
+		float32x4_t acc = vld1q_f32(output);
+		float32x4_t in = vld1q_f32(input);
+		acc = vaddq_f32(acc, in);
+		vst1q_f32(output, acc);
+
+		output += 4;
+		input += 4;
+	}
+
+	size_t overflow_count = count & 3;
+	for (size_t i = 0; i < overflow_count; i++)
+		output[i] += input[i];
+#elif defined(__SSE__)
+	size_t rounded_count = count & ~3;
+	for (size_t i = 0; i < rounded_count; i += 4)
+	{
+		__m128 acc = _mm_loadu_ps(output);
+		__m128 in = _mm_loadu_ps(input);
+		acc = _mm_add_ps(acc, in);
+		_mm_storeu_ps(output, acc);
+
+		output += 4;
+		input += 4;
+	}
+
+	size_t overflow_count = count & 3;
+	for (size_t i = 0; i < overflow_count; i++)
+		output[i] += input[i];
+#else
+	for (size_t i = 0; i < count; i++)
+		output[i] += input[i];
 #endif
 }
 

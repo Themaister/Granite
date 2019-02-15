@@ -25,6 +25,7 @@
 #include "muglm/matrix_helper.hpp"
 #include "audio_events.hpp"
 #include "vorbis_stream.hpp"
+#include "audio_fft_eq.hpp"
 #include <string.h>
 
 using namespace Granite;
@@ -58,10 +59,17 @@ struct AudioApplication : Application, EventHandler
 		if (!mixer)
 			return false;
 
+		static const float coeff[] = {
+			0.05f, 0.05f, 0.05f, 0.05f,
+			0.05f, 0.05f, 0.05f, 0.05f,
+			0.05f, 0.05f, 0.05f, 0.05f,
+			0.05f, 0.05f, 0.05f, 0.05f,
+		};
+
 		if (e.get_x() < 0.5f)
-			id = mixer->add_mixer_stream(create_vorbis_stream("assets://audio/a.ogg"));
+			id = mixer->add_mixer_stream(create_fft_eq_stream(create_vorbis_stream("assets://audio/a.ogg"), coeff, 16));
 		else
-			id = mixer->add_mixer_stream(create_vorbis_stream("assets://audio/b.ogg"));
+			id = mixer->add_mixer_stream(create_fft_eq_stream(create_vorbis_stream("assets://audio/b.ogg"), coeff, 16));
 
 		return true;
 	}
@@ -73,14 +81,23 @@ struct AudioApplication : Application, EventHandler
 		if (e.get_key_state() != KeyState::Pressed)
 			return true;
 
+		static const float coeff[] = {
+			0.05f, 0.05f, 0.05f, 0.05f,
+			0.05f, 0.05f, 0.05f, 0.05f,
+			0.05f, 0.05f, 0.05f, 0.05f,
+			0.05f, 0.05f, 0.05f, 0.05f,
+		};
+
 		switch (e.get_key())
 		{
 		case Key::A:
-			id = mixer->add_mixer_stream(create_vorbis_stream("assets://audio/a.ogg"));
+			//id = mixer->add_mixer_stream(create_vorbis_stream("assets://audio/a.ogg"));
+			id = mixer->add_mixer_stream(create_fft_eq_stream(create_vorbis_stream("assets://audio/a.ogg"), coeff, 16));
 			break;
 
 		case Key::B:
-			id = mixer->add_mixer_stream(create_vorbis_stream("assets://audio/b.ogg"));
+			//id = mixer->add_mixer_stream(create_vorbis_stream("assets://audio/b.ogg"));
+			id = mixer->add_mixer_stream(create_fft_eq_stream(create_vorbis_stream("assets://audio/b.ogg"), coeff, 16));
 			break;
 
 		case Key::C:

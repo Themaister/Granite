@@ -5,6 +5,9 @@ project(Granite LANGUAGES CXX C)
 
 if (CMAKE_COMPILER_IS_GNUCXX OR (${CMAKE_CXX_COMPILER_ID} MATCHES "Clang"))
     set(GRANITE_CXX_FLAGS -Wall -Wextra -Wno-comment -Wno-missing-field-initializers -Wno-empty-body -ffast-math)
+    if (${CMAKE_CXX_COMPILER_ID} MATCHES "Clang")
+        set(GRANITE_CXX_FLAGS ${GRANITE_CXX_FLAGS} -Wno-backslash-newline-escape)
+    endif()
 elseif (MSVC)
     set(GRANITE_CXX_FLAGS /D_CRT_SECURE_NO_WARNINGS /wd4267 /wd4244 /wd4309 /wd4005 /MP /DNOMINMAX)
 endif()
@@ -451,10 +454,11 @@ if (NOT GRANITE_VULKAN_ONLY)
                 audio/dsp/sinc_resampler.cpp audio/dsp/sinc_resampler.hpp
                 audio/dsp/dsp.hpp
                 audio/audio_events.hpp
+                audio/audio_fft_eq.cpp audio/audio_fft_eq.hpp
                 audio/vorbis_stream.hpp audio/vorbis_stream.cpp)
 
         target_include_directories(granite PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/audio)
-        target_link_libraries(granite PRIVATE stb-vorbis)
+        target_link_libraries(granite PRIVATE stb-vorbis muFFT)
         target_compile_definitions(granite PUBLIC HAVE_GRANITE_AUDIO=1)
 
         if (ANDROID)

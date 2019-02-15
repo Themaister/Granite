@@ -93,8 +93,9 @@
 #endif
 
 #include "sinc_resampler.hpp"
-#include <cmath>
-#include <cstdlib>
+#include <math.h>
+#include <stdlib.h>
+#include <string.h>
 
 #ifndef PI
 #define PI 3.14159265359
@@ -165,14 +166,14 @@ static inline double besseli0(double x)
 
 static inline double sinc(double val)
 {
-	if (std::fabs(val) < 0.00001)
+	if (fabs(val) < 0.00001)
 		return 1.0;
 	return sin(val) / val;
 }
 
 static inline double kaiser_window_function(double index, double beta)
 {
-	return besseli0(beta * std::sqrt(1.0 - index * index));
+	return besseli0(beta * sqrt(1.0 - index * index));
 }
 
 void SincResampler::init_table_kaiser(double cutoff, unsigned phases, unsigned taps, double beta)

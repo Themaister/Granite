@@ -453,8 +453,10 @@ if (NOT GRANITE_VULKAN_ONLY)
                 audio/audio_resampler.cpp audio/audio_resampler.hpp
                 audio/dsp/sinc_resampler.cpp audio/dsp/sinc_resampler.hpp
                 audio/dsp/dsp.hpp audio/dsp/dsp.cpp
+                audio/dsp/tone_filter.hpp audio/dsp/tone_filter.cpp
+                audio/dsp/tone_filter_stream.hpp audio/dsp/tone_filter_stream.cpp
                 audio/audio_events.hpp
-                audio/audio_fft_eq.cpp audio/audio_fft_eq.hpp
+                audio/dsp/audio_fft_eq.cpp audio/dsp/audio_fft_eq.hpp
                 audio/vorbis_stream.hpp audio/vorbis_stream.cpp)
 
         target_include_directories(granite PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/audio)

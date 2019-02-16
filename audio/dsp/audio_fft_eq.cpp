@@ -33,6 +33,8 @@ namespace Granite
 {
 namespace Audio
 {
+namespace DSP
+{
 // Need to make sure we get aligned data for muFFT, so have to use raw alloc/free.
 class FFTEq : public MixerStream
 {
@@ -107,7 +109,7 @@ public:
 	}
 
 	// Must increment.
-	size_t accumulate_samples(float * const *channels, const float *gain, size_t num_frames) noexcept override
+	size_t accumulate_samples(float *const *channels, const float *gain, size_t num_frames) noexcept override
 	{
 		size_t ret = 0;
 
@@ -127,7 +129,8 @@ public:
 				size_t to_read = std::min(num_frames, available_in_mix_buffer);
 				for (unsigned c = 0; c < num_channels; c++)
 				{
-					DSP::accumulate_channel(channels_copy[c], mix_buffers_conv[mix_iteration][c] + current_read, gain[c], to_read);
+					DSP::accumulate_channel(channels_copy[c], mix_buffers_conv[mix_iteration][c] + current_read,
+					                        gain[c], to_read);
 					channels_copy[c] += to_read;
 				}
 
@@ -220,4 +223,4 @@ MixerStream *create_fft_eq_stream(MixerStream *source,
 }
 }
 }
-
+}

@@ -25,7 +25,7 @@
 #include "muglm/matrix_helper.hpp"
 #include "audio_events.hpp"
 #include "vorbis_stream.hpp"
-#include "audio_fft_eq.hpp"
+#include "dsp/tone_filter_stream.hpp"
 #include <string.h>
 #include <dsp/dsp.hpp>
 
@@ -60,17 +60,10 @@ struct AudioApplication : Application, EventHandler
 		if (!mixer)
 			return false;
 
-		static const float coeff[] = {
-			0.05f, 0.05f, 0.05f, 0.05f,
-			0.05f, 0.05f, 0.05f, 0.05f,
-			0.05f, 0.05f, 0.05f, 0.05f,
-			0.05f, 0.05f, 0.05f, 0.05f,
-		};
-
 		if (e.get_x() < 0.5f)
-			id = mixer->add_mixer_stream(create_fft_eq_stream(create_vorbis_stream("assets://audio/a.ogg"), coeff, 16));
+			id = mixer->add_mixer_stream(DSP::create_tone_filter_stream(create_vorbis_stream("assets://audio/a.ogg")));
 		else
-			id = mixer->add_mixer_stream(create_fft_eq_stream(create_vorbis_stream("assets://audio/b.ogg"), coeff, 16));
+			id = mixer->add_mixer_stream(DSP::create_tone_filter_stream(create_vorbis_stream("assets://audio/b.ogg")));
 
 		return true;
 	}
@@ -82,38 +75,16 @@ struct AudioApplication : Application, EventHandler
 		if (e.get_key_state() != KeyState::Pressed)
 			return true;
 
-		float coeff[256];
-#if 1
-		const DSP::EqualizerParameter param[] = {
-			{ 1.0f, -60.0f },
-			{ 100.0f, -40.0f },
-			{ 200.0f, 0.0f },
-			{ 1000.0f, 0.0f },
-			{ 2000.0f, -40.0f },
-			{ 4000.0f, -80.0f },
-			{ 64000.0f, -300.0f },
-		};
-#else
-		const DSP::EqualizerParameter param[] = {
-			{ 1.0f, 0.0f },
-			{ 1000000.0f, 0.0f },
-		};
-#endif
-
-		DSP::create_parametric_eq_filter(coeff, sizeof(coeff) / sizeof(*coeff),
-		                                 48000.0f,
-		                                 param, sizeof(param) / sizeof(*param));
-
 		switch (e.get_key())
 		{
 		case Key::A:
 			//id = mixer->add_mixer_stream(create_vorbis_stream("assets://audio/a.ogg"));
-			id = mixer->add_mixer_stream(create_fft_eq_stream(create_vorbis_stream("/tmp/test.ogg"), coeff, 256));
+			id = mixer->add_mixer_stream(DSP::create_tone_filter_stream(create_vorbis_stream("/tmp/test.ogg")));
 			break;
 
 		case Key::B:
 			//id = mixer->add_mixer_stream(create_vorbis_stream("assets://audio/b.ogg"));
-			id = mixer->add_mixer_stream(create_fft_eq_stream(create_vorbis_stream("assets://audio/b.ogg"), coeff, 256));
+			id = mixer->add_mixer_stream(DSP::create_tone_filter_stream(create_vorbis_stream("assets://audio/b.ogg")));
 			break;
 
 		case Key::C:

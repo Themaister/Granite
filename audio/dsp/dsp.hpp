@@ -122,6 +122,21 @@ static inline void accumulate_channel_nogain(float * __restrict output, const fl
 #endif
 }
 
+static inline void convert_to_mono(float * __restrict output,
+                                   const float * __restrict const *input,
+                                   unsigned num_channels,
+                                   size_t count) noexcept
+{
+	float inv_channels = 1.0f / num_channels;
+	for (size_t i = 0; i < count; i++)
+	{
+		float ret = 0.0f;
+		for (unsigned c = 0; c < num_channels; c++)
+			ret += input[c][i];
+		output[i] = ret * inv_channels;
+	}
+}
+
 static int16_t f32_to_i16(float v) noexcept
 {
 	auto i = int32_t(roundf(v * 0x8000));

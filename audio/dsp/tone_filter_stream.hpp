@@ -21,13 +21,16 @@
  */
 
 #pragma once
+
 #include "audio_mixer.hpp"
 
 namespace Granite
 {
 namespace Audio
 {
-MixerStream *create_fft_eq_stream(MixerStream *source,
-                                  const float *filter_coeffs, unsigned coeff_count);
+namespace DSP
+{
+MixerStream *create_tone_filter_stream(MixerStream *source, float tuning_rate = 440.0f);
+}
 }
 }

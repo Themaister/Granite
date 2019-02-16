@@ -113,27 +113,41 @@ void create_parametric_eq_filter(float *coeffs, unsigned num_coeffs,
 
 void *memalign_alloc(size_t boundary, size_t size)
 {
-	void **place = NULL;
-	uintptr_t addr = 0;
-	void *ptr = malloc(boundary + size + sizeof(uintptr_t));
-	if (!ptr)
-		return NULL;
+#if defined(_ISOC11_SOURCE)
+    return aligned_alloc(boundary, size);
+#elif (_POSIX_C_SOURCE >= 200112L) || (_XOPEN_SOURCE >= 600)
+    void *ptr = nullptr;
+    if (posix_memalign(&ptr, boundary, size) < 0)
+        return nullptr;
+    return ptr;
+#else
+    // Align stuff ourselves. Kinda ugly, but will work anywhere.
+    void **place;
+    uintptr_t addr = 0;
+    void *ptr = malloc(boundary + size + sizeof(uintptr_t));
 
-	addr = ((uintptr_t)ptr + sizeof(uintptr_t) + boundary) & ~(boundary - 1);
-	place = (void**)addr;
-	place[-1] = ptr;
+    if (ptr == nullptr)
+        return nullptr;
 
-	return (void*)addr;
+    addr = ((uintptr_t)ptr + sizeof(uintptr_t) + boundary) & ~(boundary - 1);
+    place = (void**)addr;
+    place[-1] = ptr;
+
+    return (void*)addr;
+#endif
 }
 
 void memalign_free(void *ptr)
 {
-	void **p = NULL;
-	if (!ptr)
-		return;
-
-	p = (void**)ptr;
-	free(p[-1]);
+#if !defined(_ISOC11_SOURCE) && !((_POSIX_C_SOURCE >= 200112L) || (_XOPEN_SOURCE >= 600))
+    if (ptr != nullptr)
+    {
+        void **p = (void**)ptr;
+        free(p[-1]);
+    }
+#else
+    free(ptr);
+#endif
 }
 
 /* Modified Bessel function of first order.

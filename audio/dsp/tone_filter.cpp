@@ -47,6 +47,7 @@ struct ToneFilter::Impl : Util::AlignedAllocation<ToneFilter::Impl>
 	alignas(64) float fir_coeff[FilterTaps + 1][ToneCount] = {};
 	alignas(64) float iir_coeff[FilterTaps][ToneCount] = {};
 	alignas(64) float running_power[ToneCount] = {};
+	alignas(64) float running_total_power = {};
 	unsigned index = 0;
 
 	unsigned iir_filter_taps = 0;
@@ -74,7 +75,7 @@ void ToneFilter::init(float sample_rate, float tuning_freq)
 
 		// Add a crap-load of poles. 8-tap IIR.
 		// We're going to create a resonator around the desired tone we're looking for.
-		designer.add_pole(0.9995, angular_freq);
+		designer.add_pole(0.9998, angular_freq);
 #else
 		designer.add_pole(0.9995, 0.0);
 		designer.add_pole(0.999, 0.0);
@@ -132,6 +133,7 @@ void ToneFilter::Impl::filter(float *out_samples, const float *in_samples, unsig
 	{
 		float final_sample = 0.0f;
 		float in_sample = in_samples[samp];
+		running_total_power = running_total_power * 0.9995f + 0.0005f * in_sample * in_sample;
 
 		for (int tone = 0; tone < ToneCount; tone++)
 		{
@@ -145,16 +147,16 @@ void ToneFilter::Impl::filter(float *out_samples, const float *in_samples, unsig
 			iir_history[(index - 1) & (FilterTaps - 1)][tone] = ret;
 
 			float new_power = ret * ret;
-			constexpr float threshold = 0.001f;
+			float threshold = 0.01f * running_total_power;
 			if (new_power < threshold)
-				new_power = new_power * new_power / threshold;
+				new_power = new_power * new_power / (threshold + 0.00001f);
 			new_power = 0.9995f * running_power[tone] + 0.0005f * new_power;
 			running_power[tone] = new_power;
 
 			float rms = std::sqrt(new_power);
 
 			//assert(abs(ret) < 1000.0f);
-			final_sample += rms * distort(ret * 10.0f / (rms + 0.0001f));
+			final_sample += rms * distort(ret * 40.0f / (rms + 0.001f));
 		}
 
 		out_samples[samp] = final_sample;

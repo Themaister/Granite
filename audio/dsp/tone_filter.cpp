@@ -46,6 +46,7 @@ struct ToneFilter::Impl : Util::AlignedAllocation<ToneFilter::Impl>
 	alignas(64) float iir_history[FilterTaps][ToneCount] = {};
 	alignas(64) float fir_coeff[FilterTaps + 1][ToneCount] = {};
 	alignas(64) float iir_coeff[FilterTaps][ToneCount] = {};
+	alignas(64) float running_power[ToneCount] = {};
 	unsigned index = 0;
 
 	unsigned iir_filter_taps = 0;
@@ -143,8 +144,17 @@ void ToneFilter::Impl::filter(float *out_samples, const float *in_samples, unsig
 			fir_history[(index - 1) & (FilterTaps - 1)][tone] = in_sample;
 			iir_history[(index - 1) & (FilterTaps - 1)][tone] = ret;
 
-			assert(abs(ret) < 1000.0f);
-			final_sample += 0.5f * distort(ret * 100.0f) * (1.0f / 10.0f);
+			float new_power = ret * ret;
+			constexpr float threshold = 0.001f;
+			if (new_power < threshold)
+				new_power = new_power * new_power / threshold;
+			new_power = 0.9995f * running_power[tone] + 0.0005f * new_power;
+			running_power[tone] = new_power;
+
+			float rms = std::sqrt(new_power);
+
+			//assert(abs(ret) < 1000.0f);
+			final_sample += rms * distort(ret * 10.0f / (rms + 0.0001f));
 		}
 
 		out_samples[samp] = final_sample;

@@ -66,7 +66,7 @@ void ToneFilter::init(float sample_rate, float tuning_freq)
 	{
 		designer.reset();
 
-		float freq = tuning_freq * std::exp2(float(i) / 12.0f);
+		float freq = tuning_freq * std::exp2(float(i - 12) / 12.0f);
 		float angular_freq = freq * TwoPI / sample_rate;
 
 		// Ad-hoc sloppy IIR filter design, wooo.

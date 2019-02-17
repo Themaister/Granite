@@ -32,12 +32,16 @@ namespace DSP
 class PoleZeroFilterDesigner
 {
 public:
-	enum { MaxTaps = 256 };
+	enum { MaxTaps = 64 };
 
 	// Adds two taps to the numerator.
 	void add_zero(double amplitude, double phase);
 	// Adds two taps to the denominator.
 	void add_pole(double amplitude, double phase);
+
+	// Adds one tap, no need for conjugate pairs.
+	void add_zero_nyquist(double amplitude);
+	void add_zero_dc(double amplitude);
 
 	// The output is in H(z) form.
 	// H(z) = (num[0] + num[1] * z^-1 + num[2] * z^-2) / (den[0] + den[1] * z^-1 + den[2] + z^-2)

@@ -108,16 +108,16 @@ static void design_dual_tap(double (&coeffs)[3], double amplitude, double phase)
 	coeffs[2] = amplitude * amplitude;
 }
 
-static void add_convolve(double *coeffs, unsigned &count, const double (&new_coeffs)[3])
+static void add_convolve(double *coeffs, unsigned &count, const double *new_coeffs, unsigned new_count)
 {
 	double tmp_coeffs[PoleZeroFilterDesigner::MaxTaps];
 	std::copy(coeffs, coeffs + count, tmp_coeffs);
 
-	int output_count = int(count) + 2;
+	int output_count = int(count) + int(new_count) - 1;
 	for (int x = 0; x < output_count; x++)
 	{
 		double result = 0.0f;
-		int max_t = std::min(2, x);
+		int max_t = std::min(int(new_count) - 1, x);
 		int min_t = std::max(0, x - int(count) + 1);
 		for (int t = min_t; t <= max_t; t++)
 			result += new_coeffs[t] * tmp_coeffs[x - t];
@@ -125,7 +125,7 @@ static void add_convolve(double *coeffs, unsigned &count, const double (&new_coe
 		coeffs[x] = result;
 	}
 
-	count += 2;
+	count += new_count - 1;
 }
 
 void PoleZeroFilterDesigner::add_filter(double *coeffs, unsigned &count, double amplitude, double phase)
@@ -133,7 +133,7 @@ void PoleZeroFilterDesigner::add_filter(double *coeffs, unsigned &count, double 
 	assert(count + 2 < MaxTaps);
 	double tap_coeffs[3];
 	design_dual_tap(tap_coeffs, amplitude, phase);
-	add_convolve(coeffs, count, tap_coeffs);
+	add_convolve(coeffs, count, tap_coeffs, 3);
 }
 
 void PoleZeroFilterDesigner::add_pole(double amplitude, double phase)
@@ -144,6 +144,18 @@ void PoleZeroFilterDesigner::add_pole(double amplitude, double phase)
 void PoleZeroFilterDesigner::add_zero(double amplitude, double phase)
 {
 	add_filter(numerator, numerator_count, amplitude, phase);
+}
+
+void PoleZeroFilterDesigner::add_zero_dc(double amplitude)
+{
+	double tap_coeffs[2] = { 1.0, -amplitude };
+	add_convolve(numerator, numerator_count, tap_coeffs, 2);
+}
+
+void PoleZeroFilterDesigner::add_zero_nyquist(double amplitude)
+{
+	double tap_coeffs[2] = { 1.0, amplitude };
+	add_convolve(numerator, numerator_count, tap_coeffs, 2);
 }
 }
 }

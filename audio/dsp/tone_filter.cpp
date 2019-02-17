@@ -35,10 +35,10 @@ namespace Audio
 {
 namespace DSP
 {
-enum { ToneCount = 48, FilterTaps = 8 };
+enum { ToneCount = 48, FilterTaps = 2 };
 
-static const double TwoPI = 2.0f * 3.141592653589793;
-static const double OnePI = 3.141592653589793;
+static const float TwoPI = 2.0f * 3.141592653589793f;
+static const float OnePI = 3.141592653589793f;
 
 struct ToneFilter::Impl : Util::AlignedAllocation<ToneFilter::Impl>
 {
@@ -53,6 +53,9 @@ struct ToneFilter::Impl : Util::AlignedAllocation<ToneFilter::Impl>
 	unsigned iir_filter_taps = 0;
 	unsigned fir_filter_taps = 0;
 
+	float tone_power_lerp = 0.002f;
+	float total_tone_power_lerp = 0.0005f;
+
 	void filter(float *out_samples, const float *in_samples, unsigned count);
 };
 
@@ -66,26 +69,22 @@ void ToneFilter::init(float sample_rate, float tuning_freq)
 		float freq = tuning_freq * std::exp2(float(i) / 12.0f);
 		float angular_freq = freq * TwoPI / sample_rate;
 
-		// Ad-hoc IIR filter design, wooo.
+		// Ad-hoc sloppy IIR filter design, wooo.
 
-#if 1
 		// Add some zeroes to balance out the filter.
-		designer.add_zero(1.0, 0.0);
-		designer.add_zero(1.0, OnePI);
+		designer.add_zero_dc(1.0);
+		designer.add_zero_nyquist(1.0);
 
-		// Add a crap-load of poles. 8-tap IIR.
 		// We're going to create a resonator around the desired tone we're looking for.
-		designer.add_pole(0.9998, angular_freq);
-#else
-		designer.add_pole(0.9995, 0.0);
-		designer.add_pole(0.999, 0.0);
-#endif
+		designer.add_pole(0.9999, angular_freq);
+
+		// Look ma', a biquad!
 
 		impl->fir_filter_taps = designer.get_numerator_count() - 1;
 		impl->iir_filter_taps = designer.get_denominator_count() - 1;
 
-		assert(designer.get_denominator_count() <= FilterTaps);
-		assert(designer.get_numerator_count() <= FilterTaps);
+		assert(impl->fir_filter_taps <= FilterTaps);
+		assert(impl->iir_filter_taps <= FilterTaps);
 
 		// Normalize the FIR part.
 		double inv_response = 1.0 / std::abs(designer.evaluate_response(angular_freq));
@@ -95,19 +94,6 @@ void ToneFilter::init(float sample_rate, float tuning_freq)
 		// IIR part. To apply the filter, we need to negate the Z-form coeffs.
 		for (unsigned coeff = 0; coeff < impl->iir_filter_taps; coeff++)
 			impl->iir_coeff[coeff][i] = float(-designer.get_denominator()[coeff + 1]);
-
-#if 0
-		double impulse[16 * 1024];
-		designer.impulse_response(impulse, 16 * 1024);
-		if (i == 0)
-		{
-			for (auto &i : impulse)
-				LOGI("Impulse[%d] = %f\n", unsigned(&i - impulse), i);
-
-			double response = std::abs(designer.evaluate_response(0.0));
-			LOGI("Total response: %f\n", response);
-		}
-#endif
 	}
 }
 
@@ -123,8 +109,8 @@ ToneFilter::~ToneFilter()
 
 static float distort(float v)
 {
-	// TODO: Find something faster.
-	return std::atan(v);
+	float abs_v = std::abs(v);
+	return std::copysign(1.0f, v) * (1.0f - std::exp(-abs_v));
 }
 
 void ToneFilter::Impl::filter(float *out_samples, const float *in_samples, unsigned count)
@@ -133,7 +119,8 @@ void ToneFilter::Impl::filter(float *out_samples, const float *in_samples, unsig
 	{
 		float final_sample = 0.0f;
 		float in_sample = in_samples[samp];
-		running_total_power = running_total_power * 0.9995f + 0.0005f * in_sample * in_sample;
+		running_total_power = running_total_power * (1.0f - total_tone_power_lerp) +
+		                      total_tone_power_lerp * in_sample * in_sample;
 
 		for (int tone = 0; tone < ToneCount; tone++)
 		{
@@ -147,19 +134,31 @@ void ToneFilter::Impl::filter(float *out_samples, const float *in_samples, unsig
 			iir_history[(index - 1) & (FilterTaps - 1)][tone] = ret;
 
 			float new_power = ret * ret;
-			float threshold = 0.01f * running_total_power;
-			if (new_power < threshold)
-				new_power = new_power * new_power / (threshold + 0.00001f);
-			new_power = 0.9995f * running_power[tone] + 0.0005f * new_power;
+			float low_threshold = 0.02f * running_total_power;
+			float high_threshold = 0.10f * running_total_power;
+
+			if (new_power < low_threshold)
+				new_power = new_power * new_power / (low_threshold + 0.00001f);
+			if (new_power > high_threshold)
+				new_power = high_threshold;
+
+			new_power = (1.0f - tone_power_lerp) * running_power[tone] + tone_power_lerp * new_power;
 			running_power[tone] = new_power;
 
 			float rms = std::sqrt(new_power);
-
-			//assert(abs(ret) < 1000.0f);
 			final_sample += rms * distort(ret * 40.0f / (rms + 0.001f));
 		}
 
-		out_samples[samp] = final_sample;
+#if 0
+		static float max_final = 0.0f;
+		if (std::abs(final_sample) > max_final)
+		{
+			max_final = std::abs(final_sample);
+			LOGI("New max final sample: %f.\n", max_final);
+		}
+#endif
+
+		out_samples[samp] = distort(2.0f * final_sample);
 		index = (index - 1) & (FilterTaps - 1);
 	}
 }

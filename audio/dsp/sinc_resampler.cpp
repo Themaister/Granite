@@ -93,6 +93,7 @@
 #endif
 
 #include "sinc_resampler.hpp"
+#include "aligned_alloc.hpp"
 #include "dsp.hpp"
 #include <math.h>
 #include <stdlib.h>
@@ -213,11 +214,9 @@ SincResampler::SincResampler(float out_rate, float in_rate, Quality quality)
 	phase_elems = phase_elems * 2;
 	unsigned elems = phase_elems + 2 * taps;
 
-	main_buffer = (float*)memalign_alloc(128, sizeof(float) * elems);
+	main_buffer = static_cast<float *>(Util::memalign_calloc(128, sizeof(float) * elems));
 	if (!main_buffer)
 		throw std::bad_alloc();
-
-	memset(main_buffer, 0, sizeof(float) * elems);
 
 	phase_table = main_buffer;
 	window_buffer = main_buffer + phase_elems;
@@ -231,7 +230,7 @@ SincResampler::SincResampler(float out_rate, float in_rate, Quality quality)
 
 SincResampler::~SincResampler()
 {
-	memalign_free(main_buffer);
+	Util::memalign_free(main_buffer);
 }
 
 size_t SincResampler::get_maximum_input_for_output_frames(size_t out_frames) const noexcept

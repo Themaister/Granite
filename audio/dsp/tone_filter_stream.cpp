@@ -107,6 +107,9 @@ struct ToneFilterStream : MixerStream
 
 MixerStream *create_tone_filter_stream(MixerStream *source, float tuning_rate)
 {
+	if (!source)
+		return nullptr;
+
 	auto *filt = new ToneFilterStream;
 	if (!filt->init(source, tuning_rate))
 	{

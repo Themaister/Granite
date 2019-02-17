@@ -21,6 +21,7 @@
  */
 
 #include "tone_filter.hpp"
+#include "aligned_alloc.hpp"
 #include "dsp.hpp"
 #include <complex>
 #include <cmath>
@@ -35,7 +36,7 @@ enum { ToneCount = 48 };
 
 static const float TwoPI = 2.0f * 3.141592653589793f;
 
-struct ToneFilter::Impl
+struct ToneFilter::Impl : Util::AlignedAllocation<ToneFilter::Impl>
 {
 	alignas(64) std::complex<float> tone_oscillator[ToneCount] = {};
 	alignas(64) std::complex<float> tone_speed[ToneCount] = {};
@@ -59,12 +60,12 @@ void ToneFilter::init(float sample_rate, float tuning_freq)
 
 ToneFilter::ToneFilter()
 {
-	impl = static_cast<Impl *>(memalign_alloc(64, sizeof(Impl)));
+	impl = new Impl;
 }
 
 ToneFilter::~ToneFilter()
 {
-	memalign_free(impl);
+	delete impl;
 }
 
 static std::complex<float> normalize(std::complex<float> v)

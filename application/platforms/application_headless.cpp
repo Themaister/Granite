@@ -687,6 +687,8 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 		}
 
 		p->wait_threads();
+		app.reset();
+		Granite::Global::deinit();
 		return 0;
 	}
 	else

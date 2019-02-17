@@ -237,6 +237,7 @@ int application_main(Application *(*create_application)(int, char **), int argc,
 			}
 		}
 		Global::stop_audio_system();
+		Global::deinit();
 		return 0;
 	}
 	else

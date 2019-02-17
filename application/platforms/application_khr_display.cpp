@@ -353,6 +353,8 @@ int application_main(Application *(*create_application)(int, char **), int argc,
 		while (app->poll())
 			app->run_frame();
 		Granite::Global::stop_audio_system();
+		app.reset();
+		Granite::Global::deinit();
 		return 0;
 	}
 	else

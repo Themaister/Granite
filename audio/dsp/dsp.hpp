@@ -238,9 +238,6 @@ void create_parametric_eq_filter(float *coeffs, unsigned num_coeffs,
                                  const EqualizerParameter *parameters,
                                  unsigned num_parameters);
 
-void *memalign_alloc(size_t boundary, size_t size);
-void memalign_free(void *ptr);
-
 double sinc(double val);
 double kaiser_window_function(double index, double beta);
 

@@ -458,6 +458,7 @@ if (NOT GRANITE_VULKAN_ONLY)
                 audio/dsp/tone_filter_stream.hpp audio/dsp/tone_filter_stream.cpp
                 audio/audio_events.hpp
                 audio/dsp/audio_fft_eq.cpp audio/dsp/audio_fft_eq.hpp
+                audio/dsp/pole_zero_filter_design.cpp audio/dsp/pole_zero_filter_design.hpp
                 audio/vorbis_stream.hpp audio/vorbis_stream.cpp)
 
         target_include_directories(granite PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/audio)

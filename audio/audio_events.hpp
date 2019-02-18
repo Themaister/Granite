@@ -76,8 +76,6 @@ public:
 	{
 		// Must have been allocated with padding.
 		payload = reinterpret_cast<float *>(this + 1);
-		if (payload_count > 4 * 1024)
-			payload_count = 4 * 1024;
 		memcpy(payload, data, payload_count * sizeof(float));
 	}
 

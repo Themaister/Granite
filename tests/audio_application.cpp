@@ -40,12 +40,30 @@ struct AudioApplication : Application, EventHandler
 		EVENT_MANAGER_REGISTER(AudioApplication, on_key_pressed, KeyboardEvent);
 		EVENT_MANAGER_REGISTER(AudioApplication, on_touch_down, TouchDownEvent);
 		EVENT_MANAGER_REGISTER(AudioApplication, on_stream_event, StreamStoppedEvent);
+		EVENT_MANAGER_REGISTER(AudioApplication, on_audio_samples, AudioMonitorSamplesEvent);
 		EVENT_MANAGER_REGISTER_LATCH(AudioApplication, on_mixer_start, on_mixer_stop, MixerStartEvent);
 	}
+
+	float ring[8 * 1024] = {};
+	unsigned offset = 0;
 
 	bool on_stream_event(const StreamStoppedEvent &e)
 	{
 		LOGI("Stream %u stopped.\n", e.get_index());
+		return true;
+	}
+
+	bool on_audio_samples(const AudioMonitorSamplesEvent &e)
+	{
+		if (e.get_channel_index() != 0)
+			return true;
+
+		unsigned count = e.get_sample_count();
+		const float *data = e.get_payload();
+		for (unsigned i = 0; i < count; i++)
+			ring[(offset + i) & (8 * 1024 - 1)] = data[i];
+		offset += count;
+
 		return true;
 	}
 
@@ -121,6 +139,16 @@ struct AudioApplication : Application, EventHandler
 		rp.clear_color[0].float32[2] = 0.3f;
 		rp.clear_color[0].float32[3] = 0.4f;
 		cmd->begin_render_pass(rp);
+		cmd->set_opaque_state();
+		cmd->set_program("assets://shaders/music_viz.vert", "assets://shaders/music_viz.frag");
+		auto *cmd_buffer = static_cast<float *>(cmd->allocate_vertex_data(0, 8 * 1024 * sizeof(float), sizeof(float)));
+		for (unsigned i = 0; i < 8 * 1024; i++)
+			cmd_buffer[i] = ring[(i + offset) & (8 * 1024 - 1)];
+		cmd->set_vertex_attrib(0, 0, VK_FORMAT_R32_SFLOAT, 0);
+		cmd->set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_LINE_STRIP);
+		float inv_res = 1.0f / (8 * 1024 - 1);
+		cmd->push_constants(&inv_res, 0, sizeof(inv_res));
+		cmd->draw(8 * 1024);
 		cmd->end_render_pass();
 		device.submit(cmd);
 	}

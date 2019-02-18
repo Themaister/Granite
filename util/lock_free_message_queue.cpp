@@ -72,7 +72,7 @@ bool LockFreeMessageQueue::push_written_payload(MessageQueuePayload payload) noe
 
 void LockFreeMessageQueue::recycle_payload(MessageQueuePayload payload) noexcept
 {
-	for (unsigned i = 0; i < 3; i++)
+	for (unsigned i = 0; i < 8; i++)
 	{
 		if (payload.get_capacity() == payload_capacity[i])
 		{
@@ -86,7 +86,7 @@ void LockFreeMessageQueue::recycle_payload(MessageQueuePayload payload) noexcept
 MessageQueuePayload LockFreeMessageQueue::allocate_write_payload(size_t size) noexcept
 {
 	MessageQueuePayload payload;
-	for (unsigned i = 0; i < 3; i++)
+	for (unsigned i = 0; i < 8; i++)
 	{
 		if (size <= payload_capacity[i])
 		{

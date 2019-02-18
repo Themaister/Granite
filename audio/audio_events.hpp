@@ -24,6 +24,7 @@
 
 #include "event.hpp"
 #include "lock_free_message_queue.hpp"
+#include <string.h>
 
 namespace Granite
 {
@@ -66,8 +67,43 @@ private:
 	unsigned index;
 };
 
+class AudioMonitorSamplesEvent : public Event
+{
+public:
+	GRANITE_EVENT_TYPE_DECL(AudioMonitorSamplesEvent)
+	explicit AudioMonitorSamplesEvent(unsigned channel_, const float *data, unsigned count)
+		: Event(get_type_id()), channel(channel_), payload_count(count)
+	{
+		// Must have been allocated with padding.
+		payload = reinterpret_cast<float *>(this + 1);
+		if (payload_count > 4 * 1024)
+			payload_count = 4 * 1024;
+		memcpy(payload, data, payload_count * sizeof(float));
+	}
+
+	unsigned get_channel_index() const
+	{
+		return channel;
+	}
+
+	const float *get_payload() const
+	{
+		return payload;
+	}
+
+	unsigned get_sample_count() const
+	{
+		return payload_count;
+	}
+
+private:
+	unsigned channel;
+	unsigned payload_count;
+	float *payload = nullptr;
+};
+
 template <typename T, typename... Ts>
-bool emplace_audio_event_on_queue(Util::LockFreeMessageQueue &queue, Ts&&... ts) noexcept
+bool emplace_padded_audio_event_on_queue(Util::LockFreeMessageQueue &queue, size_t padding, Ts&&... ts) noexcept
 {
 	// Event has a virtual destructor so this will not work.
 	// Will probably just have to make this an informal requirement.
@@ -76,7 +112,7 @@ bool emplace_audio_event_on_queue(Util::LockFreeMessageQueue &queue, Ts&&... ts)
 	static_assert(std::is_base_of<Event, T>::value,
 	              "Can only push types which inherit from Granite::Event.");
 
-	auto payload = queue.allocate_write_payload(sizeof(T));
+	auto payload = queue.allocate_write_payload(sizeof(T) + padding);
 	if (!payload)
 		return false;
 
@@ -87,5 +123,12 @@ bool emplace_audio_event_on_queue(Util::LockFreeMessageQueue &queue, Ts&&... ts)
 	payload.set_payload_handle(e);
 	return queue.push_written_payload(std::move(payload));
 }
+
+template <typename T, typename... Ts>
+bool emplace_audio_event_on_queue(Util::LockFreeMessageQueue &queue, Ts&&... ts) noexcept
+{
+	return emplace_padded_audio_event_on_queue<T>(queue, 0, std::forward<Ts>(ts)...);
+}
+
 }
 }

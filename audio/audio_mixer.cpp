@@ -242,6 +242,13 @@ void Mixer::mix_samples(float *const *channels, size_t num_frames) noexcept
 
 		active_channel_mask[i].fetch_and(~dead_mask, memory_order_release);
 	}
+
+	// Pump audio data to the event queue, so applications can monitor the audio backend visually :3
+	for (unsigned c = 0; c < num_channels; c++)
+	{
+		emplace_padded_audio_event_on_queue<AudioMonitorSamplesEvent>(message_queue, num_frames * sizeof(float),
+		                                                              c, channels[c], num_frames);
+	}
 }
 
 StreamID Mixer::add_mixer_stream(MixerStream *stream, bool start_playing,

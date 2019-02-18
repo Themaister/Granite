@@ -24,6 +24,7 @@
 #include "util.hpp"
 #include "aligned_alloc.hpp"
 #include <stdlib.h>
+#include <algorithm>
 
 namespace Util
 {

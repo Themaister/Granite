@@ -23,6 +23,7 @@
 #pragma once
 
 #include "event.hpp"
+#include "lock_free_message_queue.hpp"
 
 namespace Granite
 {
@@ -32,7 +33,8 @@ class MixerStartEvent : public Event
 {
 public:
 	GRANITE_EVENT_TYPE_DECL(MixerStartEvent)
-	MixerStartEvent(Mixer &mixer)
+
+	explicit MixerStartEvent(Mixer &mixer)
 		: mixer(mixer)
 	{
 	}
@@ -45,5 +47,45 @@ public:
 private:
 	Mixer &mixer;
 };
+
+class StreamStoppedEvent : public Event
+{
+public:
+	GRANITE_EVENT_TYPE_DECL(StreamStoppedEvent)
+	explicit StreamStoppedEvent(unsigned index_)
+		: Event(get_type_id()), index(index_)
+	{
+	}
+
+	unsigned get_index() const
+	{
+		return index;
+	}
+
+private:
+	unsigned index;
+};
+
+template <typename T, typename... Ts>
+bool emplace_audio_event_on_queue(Util::LockFreeMessageQueue &queue, Ts&&... ts) noexcept
+{
+	// Event has a virtual destructor so this will not work.
+	// Will probably just have to make this an informal requirement.
+	//static_assert(std::is_trivially_destructible<T>::value,
+	//              "Event placed on queue must be trivially destructible.");
+	static_assert(std::is_base_of<Event, T>::value,
+	              "Can only push types which inherit from Granite::Event.");
+
+	auto payload = queue.allocate_write_payload(sizeof(T));
+	if (!payload)
+		return false;
+
+	// Construct in-place.
+	// We need a pointer to the base event.
+	Event *e = new (payload.get_payload_data()) T(std::forward<Ts>(ts)...);
+	assert(e->get_type_id() != 0);
+	payload.set_payload_handle(e);
+	return queue.push_written_payload(std::move(payload));
+}
 }
 }

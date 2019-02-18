@@ -70,14 +70,30 @@ bool Application::poll()
 		fs->poll_notifications();
 	if (em)
 		em->dispatch();
+
 #ifdef HAVE_GRANITE_AUDIO
 	auto *backend = Global::audio_backend();
 	if (backend)
 		backend->heartbeat();
 	auto *am = Global::audio_mixer();
 	if (am)
+	{
+		// Pump through events from audio thread.
+		auto &queue = am->get_message_queue();
+		Util::MessageQueuePayload payload;
+		while ((payload = queue.read_message()))
+		{
+			auto &event = payload.as<Event>();
+			if (em)
+				em->dispatch_inline(event);
+			queue.recycle_payload(std::move(payload));
+		}
+
+		// Recycle dead streams.
 		am->dispose_dead_streams();
+	}
 #endif
+
 	return true;
 }
 

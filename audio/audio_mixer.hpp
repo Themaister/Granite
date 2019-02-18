@@ -23,6 +23,7 @@
 #pragma once
 
 #include "audio_interface.hpp"
+#include "lock_free_message_queue.hpp"
 #include <atomic>
 #include <vector>
 #include <mutex>
@@ -43,6 +44,8 @@ public:
 		delete this;
 	}
 
+	void install_message_queue(Util::LockFreeMessageQueue *queue);
+
 	virtual void setup(float mixer_output_rate, unsigned mixer_channels, size_t max_num_frames)
 	{
 		(void)mixer_output_rate;
@@ -55,6 +58,9 @@ public:
 
 	virtual unsigned get_num_channels() const = 0;
 	virtual float get_sample_rate() const = 0;
+
+protected:
+	Util::LockFreeMessageQueue *message_queue = nullptr;
 };
 
 using StreamID = uint64_t;
@@ -97,6 +103,9 @@ public:
 
 	bool pause_stream(StreamID id);
 	bool play_stream(StreamID id);
+	unsigned get_stream_index(StreamID id);
+
+	Util::LockFreeMessageQueue &get_message_queue();
 
 private:
 	enum { MaxSources = 128 };
@@ -127,12 +136,13 @@ private:
 
 	StreamID generate_stream_id(unsigned index);
 	bool verify_stream_id(StreamID id);
-	unsigned get_stream_index(StreamID id);
 	uint64_t get_stream_generation(StreamID id);
 
 	bool is_active = false;
 
 	void update_stream_play_cursor(unsigned index, double latency) noexcept;
+
+	Util::LockFreeMessageQueue message_queue;
 };
 
 }

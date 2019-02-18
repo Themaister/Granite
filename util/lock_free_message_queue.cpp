@@ -43,7 +43,7 @@ LockFreeMessageQueue::LockFreeMessageQueue()
 	// Pre-fill the rings.
 	for (unsigned i = 0; i < 8; i++)
 	{
-		unsigned count = 1024u >> i;
+		unsigned count = 512u >> i;
 		for (unsigned j = 0; j < count; j++)
 		{
 			MessageQueuePayload payload;
@@ -53,19 +53,24 @@ LockFreeMessageQueue::LockFreeMessageQueue()
 	}
 }
 
-size_t LockFreeMessageQueue::available_read_messages() const
+size_t LockFreeMessageQueue::available_read_messages() const noexcept
 {
 	return read_ring.read_avail();
 }
 
-MessageQueuePayload LockFreeMessageQueue::read_message()
+MessageQueuePayload LockFreeMessageQueue::read_message() noexcept
 {
 	MessageQueuePayload payload;
 	read_ring.read_and_move(payload);
 	return payload;
 }
 
-void LockFreeMessageQueue::recycle_payload(MessageQueuePayload payload)
+bool LockFreeMessageQueue::push_written_payload(MessageQueuePayload payload) noexcept
+{
+	return read_ring.write_and_move(std::move(payload));
+}
+
+void LockFreeMessageQueue::recycle_payload(MessageQueuePayload payload) noexcept
 {
 	for (unsigned i = 0; i < 3; i++)
 	{
@@ -78,7 +83,7 @@ void LockFreeMessageQueue::recycle_payload(MessageQueuePayload payload)
 	}
 }
 
-MessageQueuePayload LockFreeMessageQueue::allocate_write_payload(size_t size)
+MessageQueuePayload LockFreeMessageQueue::allocate_write_payload(size_t size) noexcept
 {
 	MessageQueuePayload payload;
 	for (unsigned i = 0; i < 3; i++)

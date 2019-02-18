@@ -22,6 +22,7 @@
 
 #include "audio_mixer.hpp"
 #include "audio_resampler.hpp"
+#include "audio_events.hpp"
 #include "util.hpp"
 #include <string.h>
 #include <cmath>
@@ -35,6 +36,11 @@ namespace Granite
 {
 namespace Audio
 {
+void MixerStream::install_message_queue(Util::LockFreeMessageQueue *queue)
+{
+	message_queue = queue;
+}
+
 void Mixer::set_backend_parameters(float sample_rate, unsigned channels, size_t max_num_samples)
 {
 	this->max_num_samples = max_num_samples;
@@ -228,7 +234,10 @@ void Mixer::mix_samples(float *const *channels, size_t num_frames) noexcept
 			update_stream_play_cursor(index, current_latency);
 
 			if (got < num_frames)
+			{
 				dead_mask |= 1u << bit;
+				emplace_audio_event_on_queue<StreamStoppedEvent>(message_queue, bit + 32 * i);
+			}
 		});
 
 		active_channel_mask[i].fetch_and(~dead_mask, memory_order_release);
@@ -247,6 +256,8 @@ StreamID Mixer::add_mixer_stream(MixerStream *stream, bool start_playing,
 		LOGE("Number of audio channels in stream does not match mixer.\n");
 		return StreamID(-1);
 	}
+
+	stream->install_message_queue(&message_queue);
 
 	// add_mixer_stream is only called by non-critical threads,
 	// so it's fine to lock.
@@ -314,6 +325,11 @@ void Mixer::dispose_dead_streams()
 			stream_generation[bit + 32 * i] = 0;
 		});
 	}
+}
+
+Util::LockFreeMessageQueue &Mixer::get_message_queue()
+{
+	return message_queue;
 }
 
 bool Mixer::play_stream(StreamID id)

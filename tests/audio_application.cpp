@@ -39,7 +39,14 @@ struct AudioApplication : Application, EventHandler
 	{
 		EVENT_MANAGER_REGISTER(AudioApplication, on_key_pressed, KeyboardEvent);
 		EVENT_MANAGER_REGISTER(AudioApplication, on_touch_down, TouchDownEvent);
+		EVENT_MANAGER_REGISTER(AudioApplication, on_stream_event, StreamStoppedEvent);
 		EVENT_MANAGER_REGISTER_LATCH(AudioApplication, on_mixer_start, on_mixer_stop, MixerStartEvent);
+	}
+
+	bool on_stream_event(const StreamStoppedEvent &e)
+	{
+		LOGI("Stream %u stopped.\n", e.get_index());
+		return true;
 	}
 
 	Mixer *mixer = nullptr;

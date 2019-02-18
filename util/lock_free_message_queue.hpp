@@ -52,24 +52,24 @@ public:
 		write_count.store(0);
 	}
 
-	size_t read_avail() const
+	size_t read_avail() const noexcept
 	{
 		return write_count.load(std::memory_order_acquire) -
 		read_count.load(std::memory_order_relaxed);
 	}
 
-	size_t write_avail() const
+	size_t write_avail() const noexcept
 	{
 		return ring.size() -
 		       (write_count.load(std::memory_order_relaxed) -
 		        read_count.load(std::memory_order_acquire));
 	}
 
-	bool write_and_move(T *values, size_t count)
+	bool write_and_move(T *values, size_t count) noexcept
 	{
 		size_t current_written = read_count.load(std::memory_order_relaxed);
 		size_t current_read = write_count.load(std::memory_order_acquire);
-		if (count >= ring.size() - (current_written - current_read))
+		if (count > ring.size() - (current_written - current_read))
 			return false;
 
 		size_t can_write_first = std::min(ring.size() - write_offset, count);
@@ -89,11 +89,11 @@ public:
 		return true;
 	}
 
-	bool read_and_move(T *values, size_t count)
+	bool read_and_move(T *values, size_t count) noexcept
 	{
 		size_t current_read = read_count.load(std::memory_order_relaxed);
 		size_t current_written = write_count.load(std::memory_order_acquire);
-		if (count >= current_written - current_read)
+		if (count > current_written - current_read)
 			return false;
 
 		size_t can_read_first = std::min(ring.size() - read_offset, count);
@@ -113,12 +113,12 @@ public:
 		return true;
 	}
 
-	bool write_and_move(T value)
+	bool write_and_move(T value) noexcept
 	{
 		return write_and_move(&value, 1);
 	}
 
-	bool read_and_move(T &value)
+	bool read_and_move(T &value) noexcept
 	{
 		return read_and_move(&value, 1);
 	}
@@ -142,8 +142,16 @@ public:
 	template <typename T>
 	T &as()
 	{
-		assert(payload);
-		return *static_cast<T *>(payload.get());
+		assert(handle);
+		return *static_cast<T *>(handle);
+	}
+
+	// The handle might be slightly different from payload if we allocated
+	// with multiple-inheritance and the base class we care about is not the first one in the inheritance list.
+	template <typename T>
+	void set_payload_handle(T *t)
+	{
+		handle = t;
 	}
 
 	explicit operator bool() const
@@ -168,6 +176,11 @@ public:
 		payload_capacity = size;
 	}
 
+	void *get_payload_data() const
+	{
+		return payload.get();
+	}
+
 	size_t get_capacity() const
 	{
 		return payload_capacity;
@@ -175,6 +188,7 @@ public:
 
 private:
 	std::unique_ptr<void, MessageQueuePayloadDeleter> payload;
+	void *handle = nullptr;
 	size_t payload_size = 0;
 	size_t payload_capacity = 0;
 };
@@ -184,13 +198,12 @@ class LockFreeMessageQueue
 public:
 	LockFreeMessageQueue();
 
-	MessageQueuePayload allocate_write_payload(size_t size);
-	void push_written_payload(MessageQueuePayload payload);
+	MessageQueuePayload allocate_write_payload(size_t size) noexcept;
+	bool push_written_payload(MessageQueuePayload payload) noexcept;
 
-	size_t available_read_messages() const;
-	MessageQueuePayload read_message();
-
-	void recycle_payload(MessageQueuePayload payload);
+	size_t available_read_messages() const noexcept;
+	MessageQueuePayload read_message() noexcept;
+	void recycle_payload(MessageQueuePayload payload) noexcept;
 
 private:
 	LockFreeRingBuffer<MessageQueuePayload> read_ring;

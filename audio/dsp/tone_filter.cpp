@@ -37,8 +37,8 @@ namespace DSP
 {
 enum { ToneCount = 48, FilterTaps = 2 };
 
-static const float TwoPI = 2.0f * 3.141592653589793f;
-static const float OnePI = 3.141592653589793f;
+static const double TwoPI = 2.0 * 3.141592653589793;
+static const double OnePI = 3.141592653589793;
 
 struct ToneFilter::Impl : Util::AlignedAllocation<ToneFilter::Impl>
 {
@@ -56,6 +56,8 @@ struct ToneFilter::Impl : Util::AlignedAllocation<ToneFilter::Impl>
 	float tone_power_lerp = 0.002f;
 	float total_tone_power_lerp = 0.0005f;
 
+	float final_history = 0.0f;
+
 	void filter(float *out_samples, const float *in_samples, unsigned count);
 };
 
@@ -66,8 +68,8 @@ void ToneFilter::init(float sample_rate, float tuning_freq)
 	{
 		designer.reset();
 
-		float freq = tuning_freq * std::exp2(float(i - 12) / 12.0f);
-		float angular_freq = freq * TwoPI / sample_rate;
+		double freq = tuning_freq * std::exp2(double(i - 12) / 12.0);
+		double angular_freq = freq * TwoPI / sample_rate;
 
 		// Ad-hoc sloppy IIR filter design, wooo.
 
@@ -148,6 +150,10 @@ void ToneFilter::Impl::filter(float *out_samples, const float *in_samples, unsig
 			float rms = std::sqrt(new_power);
 			final_sample += rms * distort(ret * 40.0f / (rms + 0.001f));
 		}
+
+		// Trivial 1-pole IIR filter to serve as a slight low-pass to dampen the worst high-end.
+		final_sample = 0.5f * final_history + 0.5f * final_sample;
+		final_history = final_sample;
 
 #if 0
 		static float max_final = 0.0f;

@@ -24,6 +24,7 @@
 
 #include <stddef.h>
 #include <stdexcept>
+#include <new>
 
 namespace Util
 {

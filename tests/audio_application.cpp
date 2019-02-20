@@ -49,6 +49,7 @@ struct AudioApplication : Application, EventHandler
 
 	enum { RingSize = 512 };
 	float ring[RingSize] = {};
+	float power_ratio[DSP::ToneFilter::ToneCount / 12][12] = {};
 	unsigned offset = 0;
 	float tone_ring[DSP::ToneFilter::ToneCount / 12][12][RingSize] = {};
 	unsigned tone_offset[DSP::ToneFilter::ToneCount / 12][12] = {};
@@ -63,6 +64,8 @@ struct AudioApplication : Application, EventHandler
 	{
 		unsigned count = e.get_sample_count();
 		const float *data = e.get_payload();
+
+		power_ratio[e.get_tone_index() / 12][e.get_tone_index() % 12] = e.get_power_ratio();
 
 		auto &r = tone_ring[e.get_tone_index() / 12][e.get_tone_index() % 12];
 		auto &off = tone_offset[e.get_tone_index() / 12][e.get_tone_index() % 12];
@@ -154,10 +157,10 @@ struct AudioApplication : Application, EventHandler
 		auto cmd = device.request_command_buffer();
 
 		auto rp = device.get_swapchain_render_pass(SwapchainRenderPass::ColorOnly);
-		rp.clear_color[0].float32[0] = 0.1f;
-		rp.clear_color[0].float32[1] = 0.2f;
-		rp.clear_color[0].float32[2] = 0.3f;
-		rp.clear_color[0].float32[3] = 0.4f;
+		rp.clear_color[0].float32[0] = 0.0f;
+		rp.clear_color[0].float32[1] = 0.0f;
+		rp.clear_color[0].float32[2] = 0.0f;
+		rp.clear_color[0].float32[3] = 1.0f;
 		cmd->begin_render_pass(rp);
 		cmd->set_opaque_state();
 		cmd->set_program("assets://shaders/music_viz.vert", "assets://shaders/music_viz.frag");
@@ -192,14 +195,32 @@ struct AudioApplication : Application, EventHandler
 				push.color.y = (5.5f - abs(tone - 5.5f)) / 5.5f;
 				cmd->push_constants(&push, 0, sizeof(push));
 
-				cmd->set_viewport({
+				const VkViewport vp = {
 					width * float(tone) / 12.0f,
 					height * 12.0f * float(octave) / DSP::ToneFilter::ToneCount,
 					width / 12.0f,
 					12.0f * height / DSP::ToneFilter::ToneCount,
 					0.0f,
 					1.0f,
-				});
+				};
+
+				VkClearRect clear_rect = {};
+				VkClearValue clear_value = {};
+				clear_rect.layerCount = 1;
+				clear_rect.rect.offset.x = vp.x;
+				clear_rect.rect.offset.y = vp.y;
+				clear_rect.rect.extent.width  = vp.width;
+				clear_rect.rect.extent.height = vp.height;
+
+				float ratio = power_ratio[octave][tone];
+				if (ratio < 0.01f)
+					clear_value.color.float32[2] = ratio / 0.01f;
+				else if (ratio < 0.09f)
+					clear_value.color.float32[1] = (ratio - 0.01f) * 20.0f;
+				else
+					clear_value.color.float32[0] = 100.0f * (ratio - 0.09f);
+				cmd->clear_quad(0, clear_rect, clear_value);
+				cmd->set_viewport(vp);
 				cmd->draw(RingSize / 4);
 			}
 		}

@@ -72,8 +72,8 @@ class ToneFilterWave : public Event
 {
 public:
 	GRANITE_EVENT_TYPE_DECL(ToneFilterWave)
-	ToneFilterWave(StreamID id, unsigned index_, const float *data, unsigned count_)
-		: Event(get_type_id()), stream_id(id), index(index_), count(count_)
+	ToneFilterWave(StreamID id, unsigned index_, float power_ratio_, const float *data, unsigned count_)
+		: Event(get_type_id()), stream_id(id), power_ratio(power_ratio_), index(index_), count(count_)
 	{
 		// Allocation must be padded.
 		payload = reinterpret_cast<float *>(this + 1);
@@ -90,6 +90,11 @@ public:
 		return index;
 	}
 
+	float get_power_ratio() const
+	{
+		return power_ratio;
+	}
+
 	const float *get_payload() const
 	{
 		return payload;
@@ -102,6 +107,7 @@ public:
 
 private:
 	StreamID stream_id;
+	float power_ratio;
 	unsigned index;
 	float *payload = nullptr;
 	unsigned count = 0;

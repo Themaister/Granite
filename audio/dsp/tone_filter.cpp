@@ -72,6 +72,7 @@ void ToneFilter::flush_debug_info(Util::LockFreeMessageQueue &queue, StreamID id
 		emplace_padded_audio_event_on_queue<ToneFilterWave>(queue,
 		                                                    impl->tone_buffers[i].size() * sizeof(float),
 		                                                    id, i,
+		                                                    impl->running_power[i] / (impl->running_total_power + 0.000001f),
 		                                                    impl->tone_buffers[i].data(),
 		                                                    impl->tone_buffers[i].size());
 		impl->tone_buffers[i].clear();
@@ -145,6 +146,8 @@ void ToneFilter::Impl::filter(float *out_samples, const float *in_samples, unsig
 		float in_sample = in_samples[samp];
 		running_total_power = running_total_power * (1.0f - total_tone_power_lerp) +
 		                      total_tone_power_lerp * in_sample * in_sample;
+		float low_threshold = 0.01f * running_total_power;
+		float high_threshold = 0.10f * running_total_power;
 
 		for (int tone = 0; tone < ToneCount; tone++)
 		{
@@ -158,11 +161,9 @@ void ToneFilter::Impl::filter(float *out_samples, const float *in_samples, unsig
 			iir_history[(index - 1) & (FilterTaps - 1)][tone] = ret;
 
 			float new_power = ret * ret;
-			float low_threshold = 0.02f * running_total_power;
-			float high_threshold = 0.20f * running_total_power;
 
 			if (new_power < low_threshold)
-				new_power = new_power * new_power / (low_threshold + 0.00001f);
+				new_power = new_power * new_power * new_power / (low_threshold * low_threshold + 0.00001f);
 			if (new_power > high_threshold)
 				new_power = high_threshold;
 

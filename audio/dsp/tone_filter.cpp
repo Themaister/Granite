@@ -149,6 +149,8 @@ void ToneFilter::Impl::filter(float *out_samples, const float *in_samples, unsig
 		float low_threshold = 0.01f * running_total_power;
 		float high_threshold = 0.10f * running_total_power;
 
+		float low_threshold_divider = 1.0f / (low_threshold * low_threshold * low_threshold + 0.00000001f);
+
 		for (int tone = 0; tone < ToneCount; tone++)
 		{
 			float ret = fir_coeff[0][tone] * in_sample;
@@ -163,7 +165,7 @@ void ToneFilter::Impl::filter(float *out_samples, const float *in_samples, unsig
 			float new_power = ret * ret;
 
 			if (new_power < low_threshold)
-				new_power = new_power * new_power * new_power / (low_threshold * low_threshold + 0.00001f);
+				new_power = new_power * new_power * new_power * new_power * low_threshold_divider;
 			if (new_power > high_threshold)
 				new_power = high_threshold;
 

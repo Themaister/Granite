@@ -36,8 +36,9 @@ namespace Granite
 {
 namespace Audio
 {
-void MixerStream::install_message_queue(Util::LockFreeMessageQueue *queue)
+void MixerStream::install_message_queue(StreamID id, Util::LockFreeMessageQueue *queue)
 {
+	stream_id = id;
 	message_queue = queue;
 }
 
@@ -264,8 +265,6 @@ StreamID Mixer::add_mixer_stream(MixerStream *stream, bool start_playing,
 		return StreamID(-1);
 	}
 
-	stream->install_message_queue(&message_queue);
-
 	// add_mixer_stream is only called by non-critical threads,
 	// so it's fine to lock.
 	// It is unsafe for multiple threads to create a stream here, since they might allocate
@@ -286,6 +285,7 @@ StreamID Mixer::add_mixer_stream(MixerStream *stream, bool start_playing,
 
 		MixerStream *old_stream = mixer_streams[index];
 		StreamID id = generate_stream_id(index);
+		stream->install_message_queue(id, &message_queue);
 
 		stream->setup(sample_rate, num_channels, max_num_samples);
 

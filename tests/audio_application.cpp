@@ -26,6 +26,8 @@
 #include "audio_events.hpp"
 #include "vorbis_stream.hpp"
 #include "dsp/tone_filter_stream.hpp"
+#include "dsp/tone_filter.hpp"
+#include "muglm/muglm_impl.hpp"
 #include <string.h>
 #include <dsp/dsp.hpp>
 
@@ -41,15 +43,33 @@ struct AudioApplication : Application, EventHandler
 		EVENT_MANAGER_REGISTER(AudioApplication, on_touch_down, TouchDownEvent);
 		EVENT_MANAGER_REGISTER(AudioApplication, on_stream_event, StreamStoppedEvent);
 		EVENT_MANAGER_REGISTER(AudioApplication, on_audio_samples, AudioMonitorSamplesEvent);
+		EVENT_MANAGER_REGISTER(AudioApplication, on_tone_samples, DSP::ToneFilterWave);
 		EVENT_MANAGER_REGISTER_LATCH(AudioApplication, on_mixer_start, on_mixer_stop, MixerStartEvent);
 	}
 
-	float ring[8 * 1024] = {};
+	enum { RingSize = 512 };
+	float ring[RingSize] = {};
 	unsigned offset = 0;
+	float tone_ring[DSP::ToneFilter::ToneCount / 12][12][RingSize] = {};
+	unsigned tone_offset[DSP::ToneFilter::ToneCount / 12][12] = {};
 
 	bool on_stream_event(const StreamStoppedEvent &e)
 	{
 		LOGI("Stream %u stopped.\n", e.get_index());
+		return true;
+	}
+
+	bool on_tone_samples(const DSP::ToneFilterWave &e)
+	{
+		unsigned count = e.get_sample_count();
+		const float *data = e.get_payload();
+
+		auto &r = tone_ring[e.get_tone_index() / 12][e.get_tone_index() % 12];
+		auto &off = tone_offset[e.get_tone_index() / 12][e.get_tone_index() % 12];
+		for (unsigned i = 0; i < count; i++)
+			r[(off + i) & (RingSize - 1)] = data[i];
+		off += count;
+
 		return true;
 	}
 
@@ -61,7 +81,7 @@ struct AudioApplication : Application, EventHandler
 		unsigned count = e.get_sample_count();
 		const float *data = e.get_payload();
 		for (unsigned i = 0; i < count; i++)
-			ring[(offset + i) & (8 * 1024 - 1)] = data[i];
+			ring[(offset + i) & (RingSize - 1)] = data[i];
 		offset += count;
 
 		return true;
@@ -141,14 +161,49 @@ struct AudioApplication : Application, EventHandler
 		cmd->begin_render_pass(rp);
 		cmd->set_opaque_state();
 		cmd->set_program("assets://shaders/music_viz.vert", "assets://shaders/music_viz.frag");
-		auto *cmd_buffer = static_cast<float *>(cmd->allocate_vertex_data(0, 8 * 1024 * sizeof(float), sizeof(float)));
-		for (unsigned i = 0; i < 8 * 1024; i++)
-			cmd_buffer[i] = ring[(i + offset) & (8 * 1024 - 1)];
-		cmd->set_vertex_attrib(0, 0, VK_FORMAT_R32_SFLOAT, 0);
-		cmd->set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_LINE_STRIP);
-		float inv_res = 1.0f / (8 * 1024 - 1);
-		cmd->push_constants(&inv_res, 0, sizeof(inv_res));
-		cmd->draw(8 * 1024);
+
+		float width = cmd->get_viewport().width;
+		float height = cmd->get_viewport().height;
+
+		for (unsigned octave = 0; octave < DSP::ToneFilter::ToneCount / 12; octave++)
+		{
+			for (unsigned tone = 0; tone < 12; tone++)
+			{
+				unsigned off = tone_offset[octave][tone];
+				auto *cmd_buffer = static_cast<float *>(cmd->allocate_vertex_data(0, (RingSize / 4) * sizeof(float),
+				                                                                  sizeof(float)));
+				for (unsigned i = 0; i < RingSize; cmd_buffer++, i += 4)
+				{
+					float val = 0.0f;
+					for (unsigned j = 0; j < 4; j++)
+						val += 0.25f * tone_ring[octave][tone][(i + j + off) & (RingSize - 1)];
+					*cmd_buffer = val;
+				}
+				cmd->set_vertex_attrib(0, 0, VK_FORMAT_R32_SFLOAT, 0);
+				cmd->set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_LINE_STRIP);
+
+				struct Push
+				{
+					vec3 color;
+					float inv_res;
+				} push;
+				push.inv_res = 1.0f / (RingSize / 4 - 1);
+				push.color = mix(vec3(1.0f, 0.0f, 0.0f), vec3(0.0f, 0.0f, 1.0f), float(tone) / 11.0f);
+				push.color.y = (5.5f - abs(tone - 5.5f)) / 5.5f;
+				cmd->push_constants(&push, 0, sizeof(push));
+
+				cmd->set_viewport({
+					width * float(tone) / 12.0f,
+					height * 12.0f * float(octave) / DSP::ToneFilter::ToneCount,
+					width / 12.0f,
+					12.0f * height / DSP::ToneFilter::ToneCount,
+					0.0f,
+					1.0f,
+				});
+				cmd->draw(RingSize / 4);
+			}
+		}
+
 		cmd->end_render_pass();
 		device.submit(cmd);
 	}

@@ -32,6 +32,8 @@ namespace Granite
 {
 namespace Audio
 {
+using StreamID = uint64_t;
+
 class MixerStream
 {
 public:
@@ -44,7 +46,7 @@ public:
 		delete this;
 	}
 
-	void install_message_queue(Util::LockFreeMessageQueue *queue);
+	void install_message_queue(StreamID id, Util::LockFreeMessageQueue *queue);
 
 	virtual void setup(float mixer_output_rate, unsigned mixer_channels, size_t max_num_frames)
 	{
@@ -60,10 +62,20 @@ public:
 	virtual float get_sample_rate() const = 0;
 
 protected:
+	StreamID get_stream_id() const
+	{
+		return stream_id;
+	}
+
+	Util::LockFreeMessageQueue &get_message_queue()
+	{
+		return *message_queue;
+	}
+
+private:
+	StreamID stream_id = StreamID(-1);
 	Util::LockFreeMessageQueue *message_queue = nullptr;
 };
-
-using StreamID = uint64_t;
 
 class Mixer : public BackendCallback
 {
@@ -103,7 +115,7 @@ public:
 
 	bool pause_stream(StreamID id);
 	bool play_stream(StreamID id);
-	unsigned get_stream_index(StreamID id);
+	static unsigned get_stream_index(StreamID id);
 
 	Util::LockFreeMessageQueue &get_message_queue();
 

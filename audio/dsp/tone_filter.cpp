@@ -29,16 +29,17 @@
 #include <cmath>
 #include <assert.h>
 
+#ifdef TONE_DEBUG
+#include "audio_events.hpp"
+#endif
+
 namespace Granite
 {
 namespace Audio
 {
 namespace DSP
 {
-enum { ToneCount = 48, FilterTaps = 2 };
-
 static const double TwoPI = 2.0 * 3.141592653589793;
-static const double OnePI = 3.141592653589793;
 
 struct ToneFilter::Impl : Util::AlignedAllocation<ToneFilter::Impl>
 {
@@ -52,14 +53,31 @@ struct ToneFilter::Impl : Util::AlignedAllocation<ToneFilter::Impl>
 
 	unsigned iir_filter_taps = 0;
 	unsigned fir_filter_taps = 0;
-
 	float tone_power_lerp = 0.002f;
 	float total_tone_power_lerp = 0.0005f;
-
 	float final_history = 0.0f;
 
 	void filter(float *out_samples, const float *in_samples, unsigned count);
+
+#ifdef TONE_DEBUG
+	std::vector<float> tone_buffers[ToneCount];
+#endif
 };
+
+#ifdef TONE_DEBUG
+void ToneFilter::flush_debug_info(Util::LockFreeMessageQueue &queue, StreamID id)
+{
+	for (int i = 0; i < ToneCount; i++)
+	{
+		emplace_padded_audio_event_on_queue<ToneFilterWave>(queue,
+		                                                    impl->tone_buffers[i].size() * sizeof(float),
+		                                                    id, i,
+		                                                    impl->tone_buffers[i].data(),
+		                                                    impl->tone_buffers[i].size());
+		impl->tone_buffers[i].clear();
+	}
+}
+#endif
 
 void ToneFilter::init(float sample_rate, float tuning_freq)
 {
@@ -96,6 +114,10 @@ void ToneFilter::init(float sample_rate, float tuning_freq)
 		// IIR part. To apply the filter, we need to negate the Z-form coeffs.
 		for (unsigned coeff = 0; coeff < impl->iir_filter_taps; coeff++)
 			impl->iir_coeff[coeff][i] = float(-designer.get_denominator()[coeff + 1]);
+
+#ifdef TONE_DEBUG
+		impl->tone_buffers[i].reserve(1024);
+#endif
 	}
 }
 
@@ -148,7 +170,12 @@ void ToneFilter::Impl::filter(float *out_samples, const float *in_samples, unsig
 			running_power[tone] = new_power;
 
 			float rms = std::sqrt(new_power);
-			final_sample += rms * distort(ret * 40.0f / (rms + 0.001f));
+			float final = rms * distort(ret * 40.0f / (rms + 0.001f));
+			final_sample += final;
+
+#ifdef TONE_DEBUG
+			tone_buffers[tone].push_back(final);
+#endif
 		}
 
 		// Trivial 1-pole IIR filter to serve as a slight low-pass to dampen the worst high-end.

@@ -83,6 +83,10 @@ struct ToneFilterStream : MixerStream
 			accumulate_channel(channels[c], mix_channels_mono.data(), gain[c] * 0.5f, ret);
 		}
 
+#ifdef TONE_DEBUG
+		filter.flush_debug_info(get_message_queue(), get_stream_id());
+#endif
+
 		return ret;
 	}
 

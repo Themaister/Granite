@@ -159,7 +159,7 @@ void ToneFilter::Impl::filter(float *out_samples, const float *in_samples, unsig
 
 			float new_power = ret * ret;
 			float low_threshold = 0.02f * running_total_power;
-			float high_threshold = 0.10f * running_total_power;
+			float high_threshold = 0.20f * running_total_power;
 
 			if (new_power < low_threshold)
 				new_power = new_power * new_power / (low_threshold + 0.00001f);

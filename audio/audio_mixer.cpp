@@ -23,6 +23,7 @@
 #include "audio_mixer.hpp"
 #include "audio_resampler.hpp"
 #include "audio_events.hpp"
+#include "timer.hpp"
 #include "util.hpp"
 #include <string.h>
 #include <cmath>
@@ -229,7 +230,11 @@ void Mixer::mix_samples(float *const *channels, size_t num_frames) noexcept
 				gains[1] = gain * saturate(1.0f + pan);
 			}
 
+			//auto start_time = Util::get_current_time_nsecs();
 			size_t got = mixer_streams[index]->accumulate_samples(channels, gains, num_frames);
+			//auto end_time = Util::get_current_time_nsecs();
+			//emplace_audio_event_on_queue<AudioStreamPerformanceEvent>(message_queue, mixer_streams[index]->get_stream_id(),
+			//                                                          1e-9 * (end_time - start_time), got);
 
 			stream_raw_play_cursors[index] += got;
 			update_stream_play_cursor(index, current_latency);

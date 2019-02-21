@@ -24,6 +24,7 @@
 
 #include "event.hpp"
 #include "lock_free_message_queue.hpp"
+#include "audio_mixer.hpp"
 #include <string.h>
 
 namespace Granite
@@ -65,6 +66,36 @@ public:
 
 private:
 	unsigned index;
+};
+
+class AudioStreamPerformanceEvent : public Event
+{
+public:
+	GRANITE_EVENT_TYPE_DECL(AudioStreamPerformanceEvent)
+	explicit AudioStreamPerformanceEvent(StreamID id_, double time_, unsigned samples_)
+		: Event(get_type_id()), id(id_), time(time_), samples(samples_)
+	{
+	}
+
+	StreamID get_stream_id() const
+	{
+		return id;
+	}
+
+	double get_time() const
+	{
+		return time;
+	}
+
+	unsigned get_sample_count() const
+	{
+		return samples;
+	}
+
+private:
+	StreamID id;
+	double time;
+	unsigned samples;
 };
 
 class AudioMonitorSamplesEvent : public Event

@@ -44,6 +44,7 @@ struct AudioApplication : Application, EventHandler
 		EVENT_MANAGER_REGISTER(AudioApplication, on_stream_event, StreamStoppedEvent);
 		EVENT_MANAGER_REGISTER(AudioApplication, on_audio_samples, AudioMonitorSamplesEvent);
 		EVENT_MANAGER_REGISTER(AudioApplication, on_tone_samples, DSP::ToneFilterWave);
+		EVENT_MANAGER_REGISTER(AudioApplication, on_audio_perf, AudioStreamPerformanceEvent);
 		EVENT_MANAGER_REGISTER_LATCH(AudioApplication, on_mixer_start, on_mixer_stop, MixerStartEvent);
 	}
 
@@ -53,6 +54,16 @@ struct AudioApplication : Application, EventHandler
 	unsigned offset = 0;
 	float tone_ring[DSP::ToneFilter::ToneCount / 12][12][RingSize] = {};
 	unsigned tone_offset[DSP::ToneFilter::ToneCount / 12][12] = {};
+
+	double total_time = 0.0;
+	uint64_t total_samples = 0;
+
+	bool on_audio_perf(const AudioStreamPerformanceEvent &e)
+	{
+		total_time += e.get_time();
+		total_samples += e.get_sample_count();
+		return true;
+	}
 
 	bool on_stream_event(const StreamStoppedEvent &e)
 	{
@@ -151,6 +162,8 @@ struct AudioApplication : Application, EventHandler
 
 	void render_frame(double, double) override
 	{
+		if (total_time > 0.0)
+			LOGI("Samples / s = %f M/s\n", 1e-6 * double(total_samples) / total_time);
 		auto &wsi = get_wsi();
 		auto &device = wsi.get_device();
 

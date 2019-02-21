@@ -61,12 +61,12 @@ public:
 	virtual unsigned get_num_channels() const = 0;
 	virtual float get_sample_rate() const = 0;
 
-protected:
 	StreamID get_stream_id() const
 	{
 		return stream_id;
 	}
 
+protected:
 	Util::LockFreeMessageQueue &get_message_queue()
 	{
 		return *message_queue;

@@ -159,6 +159,16 @@ static inline float distort(float v)
 
 #if ENABLE_SIMD && defined(__SSE__)
 alignas(16) static const uint32_t absmask[4] = {0x7fffffffu, 0x7fffffffu, 0x7fffffffu, 0x7fffffffu};
+
+static inline __m128 div_ps(__m128 a, __m128 b)
+{
+	return _mm_mul_ps(a, _mm_rcp_ps(b));
+}
+
+static inline __m128 sqrt_ps(__m128 v)
+{
+	return _mm_mul_ps(v, _mm_rsqrt_ps(_mm_max_ps(v, _mm_set1_ps(1e-30f))));
+}
 #endif
 
 void ToneFilter::Impl::filter(float *out_samples, const float *in_samples, unsigned count)
@@ -213,14 +223,14 @@ void ToneFilter::Impl::filter(float *out_samples, const float *in_samples, unsig
 					_mm_mul_ps(new_power, _mm_set1_ps(tone_power_lerp)));
 			_mm_store_ps(running_power + tone, new_power);
 
-			__m128 rms = _mm_sqrt_ps(new_power);
+			__m128 rms = sqrt_ps(new_power);
 
-			__m128 distorted = _mm_div_ps(
+			__m128 distorted = div_ps(
 					_mm_mul_ps(ret, _mm_set1_ps(40.0f)),
 					_mm_add_ps(rms, _mm_set1_ps(0.001f)));
 			__m128 distorted_abs = _mm_and_ps(distorted, _mm_load_ps(reinterpret_cast<const float *>(absmask)));
 			__m128 distorted_div = _mm_add_ps(_mm_set1_ps(1.0f), distorted_abs);
-			distorted = _mm_div_ps(distorted, distorted_div);
+			distorted = div_ps(distorted, distorted_div);
 			__m128 final = _mm_mul_ps(rms, distorted);
 			final_sample_vec = _mm_add_ps(final, final_sample_vec);
 

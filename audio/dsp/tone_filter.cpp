@@ -39,13 +39,7 @@
 #if defined(__SSE__) && ENABLE_SIMD
 #include <xmmintrin.h>
 #elif defined(__ARM_NEON) && ENABLE_SIMD
-#ifdef __aarch64__
 #include <arm_neon.h>
-// Need sqrt and div, which is only in aarch64. Needs very high precision.
-#else
-#undef ENABLE_SIMD
-#define ENABLE_SIMD 0
-#endif
 #endif
 
 namespace Granite
@@ -157,7 +151,8 @@ static inline float distort(float v)
 	return v / (1.0f + abs_v);
 }
 
-#if ENABLE_SIMD && defined(__SSE__)
+#if ENABLE_SIMD
+#if defined(__SSE__)
 alignas(16) static const uint32_t absmask[4] = {0x7fffffffu, 0x7fffffffu, 0x7fffffffu, 0x7fffffffu};
 
 static inline __m128 div_ps(__m128 a, __m128 b)
@@ -169,6 +164,17 @@ static inline __m128 sqrt_ps(__m128 v)
 {
 	return _mm_mul_ps(v, _mm_rsqrt_ps(_mm_max_ps(v, _mm_set1_ps(1e-30f))));
 }
+#elif defined(__ARM_NEON)
+static inline float32x4_t div_ps(float32x4_t a, float32x4_t b)
+{
+	return vmulq_f32(a, vrecpeq_f32(b));
+}
+
+static inline float32x4_t sqrt_ps(float32x4_t v)
+{
+	return vmulq_f32(v, vrsqrteq_f32(vmaxq_f32(v, vdupq_n_f32(1e-30f))));
+}
+#endif
 #endif
 
 void ToneFilter::Impl::filter(float *out_samples, const float *in_samples, unsigned count)
@@ -277,14 +283,14 @@ void ToneFilter::Impl::filter(float *out_samples, const float *in_samples, unsig
 			                        1.0f - tone_power_lerp);
 			vst1q_f32(running_power + tone, new_power);
 
-			float32x4_t rms = vsqrtq_f32(new_power);
+			float32x4_t rms = sqrt_ps(new_power);
 
-			float32x4_t distorted = vdivq_f32(
+			float32x4_t distorted = div_ps(
 					vmulq_n_f32(ret, 40.0f),
 					vaddq_f32(rms, vdupq_n_f32(0.001f)));
 			float32x4_t distorted_abs = vabsq_f32(distorted);
 			float32x4_t distorted_div = vaddq_f32(vdupq_n_f32(1.0f), distorted_abs);
-			distorted = vdivq_f32(distorted, distorted_div);
+			distorted = div_ps(distorted, distorted_div);
 			float32x4_t final = vmulq_f32(rms, distorted);
 			final_sample_vec = vaddq_f32(final, final_sample_vec);
 #ifdef TONE_DEBUG

@@ -2,11 +2,46 @@
 #include "timer.hpp"
 #include "util.hpp"
 #include <random>
+#include <cmath>
 
 using namespace Granite::Audio;
 
+#if defined(__SSE__)
+#include <xmmintrin.h>
+#elif defined(__ARM_NEON)
+#include <arm_neon.h>
+#endif
+
+static float recp(float v)
+{
+	float32x2_t vs = vdup_n_f32(v);
+	vs = vrecpe_f32(vs);
+	return vget_lane_f32(vs, 0);
+}
+
+static float rsqrt(float v)
+{
+	float32x2_t vs = vdup_n_f32(v);
+	vs = vmul_f32(vs, vrsqrte_f32(vmax_f32(vs, vdup_n_f32(1e-30f))));
+	return vget_lane_f32(vs, 0);
+}
+
+static void test_div_sqrt()
+{
+	float inputs[41];
+	for (int i = 0; i <= 40; i++)
+		inputs[i] = 3.0f * std::pow(10.0f, float(i) - 20.0f);
+
+	for (auto i : inputs)
+		LOGI("recp(%g) = %g\n", i, recp(i));
+	for (auto i : inputs)
+		LOGI("sqrt(%g) = %g\n", i, rsqrt(i));
+}
+
 int main()
 {
+	test_div_sqrt();
+
 	DSP::ToneFilter filter;
 	filter.init(44100.0f);
 

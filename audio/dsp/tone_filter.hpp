@@ -26,7 +26,7 @@
 #include <memory>
 #include "audio_mixer.hpp"
 
-#define TONE_DEBUG
+//#define TONE_DEBUG
 #include <string.h>
 #include "event.hpp"
 

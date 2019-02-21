@@ -33,6 +33,8 @@ using namespace std;
 #define NON_CRITICAL_THREAD_LOCK() \
 	lock_guard<mutex> holder{non_critical_lock}
 
+//#define AUDIO_MIXER_DEBUG
+
 namespace Granite
 {
 namespace Audio
@@ -230,11 +232,18 @@ void Mixer::mix_samples(float *const *channels, size_t num_frames) noexcept
 				gains[1] = gain * saturate(1.0f + pan);
 			}
 
-			//auto start_time = Util::get_current_time_nsecs();
+#ifdef AUDIO_MIXER_DEBUG
+			auto start_time = Util::get_current_time_nsecs();
+#endif
+
 			size_t got = mixer_streams[index]->accumulate_samples(channels, gains, num_frames);
-			//auto end_time = Util::get_current_time_nsecs();
-			//emplace_audio_event_on_queue<AudioStreamPerformanceEvent>(message_queue, mixer_streams[index]->get_stream_id(),
-			//                                                          1e-9 * (end_time - start_time), got);
+
+#ifdef AUDIO_MIXER_DEBUG
+			auto end_time = Util::get_current_time_nsecs();
+			emplace_audio_event_on_queue<AudioStreamPerformanceEvent>(message_queue, mixer_streams[index]->get_stream_id(),
+			                                                          1e-9 * (end_time - start_time), got);
+
+#endif
 
 			stream_raw_play_cursors[index] += got;
 			update_stream_play_cursor(index, current_latency);
@@ -249,12 +258,14 @@ void Mixer::mix_samples(float *const *channels, size_t num_frames) noexcept
 		active_channel_mask[i].fetch_and(~dead_mask, memory_order_release);
 	}
 
+#ifdef AUDIO_MIXER_DEBUG
 	// Pump audio data to the event queue, so applications can monitor the audio backend visually :3
 	for (unsigned c = 0; c < num_channels; c++)
 	{
 		emplace_padded_audio_event_on_queue<AudioMonitorSamplesEvent>(message_queue, num_frames * sizeof(float),
 		                                                              c, channels[c], num_frames);
 	}
+#endif
 }
 
 StreamID Mixer::add_mixer_stream(MixerStream *stream, bool start_playing,

@@ -8,12 +8,12 @@ endif()
 
 add_granite_application(triangle-test triangle.cpp)
 if (NOT ANDROID)
-	target_compile_definitions(triangle-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
+    target_compile_definitions(triangle-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
 endif()
 
 add_granite_application(display-timing-test display_timing.cpp)
 if (NOT ANDROID)
-	target_compile_definitions(display-timing-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
+    target_compile_definitions(display-timing-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
 endif()
 
 add_granite_application(clustering-visualizer clustering_visualizer.cpp)
@@ -46,7 +46,8 @@ add_granite_offline_tool(ecs-test ecs_test.cpp)
 
 if (GRANITE_AUDIO)
     add_granite_offline_tool(audio-test audio_test.cpp)
-	target_compile_definitions(audio-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
+    add_granite_offline_tool(tone-filter-bench tone_filter_bench.cpp)
+    target_compile_definitions(audio-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
 
     add_granite_application(audio-application audio_application.cpp)
     if (NOT ANDROID)

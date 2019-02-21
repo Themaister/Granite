@@ -135,7 +135,7 @@ ToneFilter::~ToneFilter()
 static float distort(float v)
 {
 	float abs_v = std::abs(v);
-	return std::copysign(1.0f, v) * (1.0f - std::exp(-abs_v));
+	return v / (1.0f + abs_v);
 }
 
 void ToneFilter::Impl::filter(float *out_samples, const float *in_samples, unsigned count)

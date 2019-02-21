@@ -27,11 +27,8 @@
 #include "audio_mixer.hpp"
 
 #define TONE_DEBUG
-
-#ifdef TONE_DEBUG
 #include <string.h>
 #include "event.hpp"
-#endif
 
 namespace Util
 {
@@ -67,7 +64,6 @@ private:
 	Impl *impl;
 };
 
-#ifdef TONE_DEBUG
 class ToneFilterWave : public Event
 {
 public:
@@ -112,7 +108,6 @@ private:
 	float *payload = nullptr;
 	unsigned count = 0;
 };
-#endif
 }
 }
 }

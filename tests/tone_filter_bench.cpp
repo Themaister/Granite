@@ -6,6 +6,7 @@
 
 using namespace Granite::Audio;
 
+#if 0
 #if defined(__SSE__)
 #include <xmmintrin.h>
 #elif defined(__ARM_NEON)
@@ -37,10 +38,13 @@ static void test_div_sqrt()
 	for (auto i : inputs)
 		LOGI("sqrt(%g) = %g\n", i, rsqrt(i));
 }
+#endif
 
 int main()
 {
+#if 0
 	test_div_sqrt();
+#endif
 
 	DSP::ToneFilter filter;
 	filter.init(44100.0f);

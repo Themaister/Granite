@@ -27,10 +27,19 @@
 #include "util.hpp"
 #include <complex>
 #include <cmath>
+#include <algorithm>
 #include <assert.h>
 
 #ifdef TONE_DEBUG
 #include "audio_events.hpp"
+#endif
+
+#define ENABLE_SIMD 1
+
+#if defined(__SSE__) && ENABLE_SIMD
+#include <xmmintrin.h>
+#elif defined(__ARM_NEON) && ENABLE_SIMD
+#include <arm_neon.h>
 #endif
 
 namespace Granite
@@ -43,7 +52,7 @@ static const double TwoPI = 2.0 * 3.141592653589793;
 
 struct ToneFilter::Impl : Util::AlignedAllocation<ToneFilter::Impl>
 {
-	alignas(64) float fir_history[FilterTaps][ToneCount] = {};
+	alignas(64) float fir_history[FilterTaps] = {};
 	alignas(64) float iir_history[FilterTaps][ToneCount] = {};
 	alignas(64) float fir_coeff[FilterTaps + 1][ToneCount] = {};
 	alignas(64) float iir_coeff[FilterTaps][ToneCount] = {};
@@ -132,42 +141,101 @@ ToneFilter::~ToneFilter()
 	delete impl;
 }
 
-static float distort(float v)
+static inline float distort(float v)
 {
 	float abs_v = std::abs(v);
 	return v / (1.0f + abs_v);
 }
 
+#if ENABLE_SIMD
+alignas(16) static const uint32_t absmask[4] = { 0x7fffffffu, 0x7fffffffu, 0x7fffffffu, 0x7fffffffu };
+#endif
+
 void ToneFilter::Impl::filter(float *out_samples, const float *in_samples, unsigned count)
 {
 	for (unsigned samp = 0; samp < count; samp++)
 	{
-		float final_sample = 0.0f;
 		float in_sample = in_samples[samp];
-		running_total_power = running_total_power * (1.0f - total_tone_power_lerp) +
-		                      total_tone_power_lerp * in_sample * in_sample;
+		running_total_power =
+				running_total_power * (1.0f - total_tone_power_lerp) +
+				total_tone_power_lerp * in_sample * in_sample;
 		float low_threshold = 0.01f * running_total_power;
 		float high_threshold = 0.10f * running_total_power;
+		float low_threshold_divider = 1.0f / std::max(0.000000001f, low_threshold * low_threshold * low_threshold);
 
-		float low_threshold_divider = 1.0f / (low_threshold * low_threshold * low_threshold + 0.00000001f);
+#if defined(__SSE__) && ENABLE_SIMD
+		__m128 final_sample_vec = _mm_setzero_ps();
+		__m128 in_sample_splat = _mm_set1_ps(in_sample);
+		for (int tone = 0; tone < ToneCount; tone += 4)
+		{
+			__m128 ret = _mm_mul_ps(_mm_load_ps(fir_coeff[0] + tone), in_sample_splat);
 
+			for (unsigned x = 0; x < fir_filter_taps; x++)
+			{
+				__m128 history = _mm_load_ss(&fir_history[(index + x) & (FilterTaps - 1)]);
+				history = _mm_shuffle_ps(history, history, _MM_SHUFFLE(0, 0, 0, 0));
+
+				ret = _mm_add_ps(ret, _mm_mul_ps(
+						_mm_load_ps(fir_coeff[x + 1] + tone),
+						history));
+			}
+
+			for (unsigned x = 0; x < iir_filter_taps; x++)
+			{
+				ret = _mm_add_ps(ret, _mm_mul_ps(
+						_mm_load_ps(iir_coeff[x] + tone),
+						_mm_load_ps(iir_history[(index + x) & (FilterTaps - 1)] + tone)));
+			}
+
+			_mm_store_ps(iir_history[(index - 1) & (FilterTaps - 1)] + tone, ret);
+
+			__m128 new_power = _mm_mul_ps(ret, ret);
+			__m128 new_power_4 = _mm_mul_ps(new_power, new_power);
+			new_power_4 = _mm_mul_ps(new_power_4, new_power_4);
+			new_power_4 = _mm_mul_ps(new_power_4, _mm_set1_ps(low_threshold_divider));
+
+			new_power = _mm_min_ps(new_power, new_power_4);
+			new_power = _mm_min_ps(new_power, _mm_set1_ps(high_threshold));
+
+			new_power = _mm_add_ps(
+					_mm_mul_ps(_mm_load_ps(running_power + tone), _mm_set1_ps(1.0f - tone_power_lerp)),
+					_mm_mul_ps(new_power, _mm_set1_ps(tone_power_lerp)));
+			_mm_store_ps(running_power + tone, new_power);
+
+			__m128 rms = _mm_sqrt_ps(new_power);
+
+			__m128 distorted = _mm_mul_ps(
+					_mm_mul_ps(ret, _mm_set1_ps(40.0f)),
+					_mm_rcp_ps(_mm_add_ps(rms, _mm_set1_ps(0.001f))));
+			__m128 distorted_abs = _mm_and_ps(distorted, _mm_load_ps(reinterpret_cast<const float *>(absmask)));
+			__m128 distorted_div = _mm_rcp_ps(_mm_add_ps(_mm_set1_ps(1.0f), distorted_abs));
+			distorted = _mm_mul_ps(distorted, distorted_div);
+			__m128 final = _mm_mul_ps(rms, distorted);
+			final_sample_vec = _mm_add_ps(final, final_sample_vec);
+
+#ifdef TONE_DEBUG
+			float final_buffers[4];
+			_mm_storeu_ps(final_buffers, final);
+			for (unsigned j = 0; j < 4; j++)
+				tone_buffers[tone + j].push_back(final_buffers[j]);
+#endif
+		}
+#else
+		float final_sample = 0.0f;
 		for (int tone = 0; tone < ToneCount; tone++)
 		{
 			float ret = fir_coeff[0][tone] * in_sample;
 			for (unsigned x = 0; x < fir_filter_taps; x++)
-				ret += fir_coeff[x + 1][tone] * fir_history[(index + x) & (FilterTaps - 1)][tone];
+				ret += fir_coeff[x + 1][tone] * fir_history[(index + x) & (FilterTaps - 1)];
 			for (unsigned x = 0; x < iir_filter_taps; x++)
 				ret += iir_coeff[x][tone] * iir_history[(index + x) & (FilterTaps - 1)][tone];
 
-			fir_history[(index - 1) & (FilterTaps - 1)][tone] = in_sample;
 			iir_history[(index - 1) & (FilterTaps - 1)][tone] = ret;
 
 			float new_power = ret * ret;
 
-			if (new_power < low_threshold)
-				new_power = new_power * new_power * new_power * new_power * low_threshold_divider;
-			if (new_power > high_threshold)
-				new_power = high_threshold;
+			new_power = std::min(new_power, new_power * new_power * new_power * new_power * low_threshold_divider);
+			new_power = std::min(new_power, high_threshold);
 
 			new_power = (1.0f - tone_power_lerp) * running_power[tone] + tone_power_lerp * new_power;
 			running_power[tone] = new_power;
@@ -180,20 +248,25 @@ void ToneFilter::Impl::filter(float *out_samples, const float *in_samples, unsig
 			tone_buffers[tone].push_back(final);
 #endif
 		}
+#endif
 
+#if defined(__SSE__) && ENABLE_SIMD
+		float final_sample;
+		__m128 final_sample_half = _mm_add_ps(final_sample_vec,
+		                                      _mm_movehl_ps(final_sample_vec, final_sample_vec));
+		final_sample_half =
+				_mm_add_ss(final_sample_half,
+				           _mm_shuffle_ps(final_sample_half, final_sample_half, _MM_SHUFFLE(1, 1, 1, 1)));
+		final_sample_half = _mm_mul_ss(_mm_set1_ps(0.5f), _mm_add_ss(final_sample_half, _mm_load_ss(&final_history)));
+		_mm_store_ss(&final_history, final_sample_half);
+		_mm_store_ss(&final_sample, final_sample_half);
+#else
 		// Trivial 1-pole IIR filter to serve as a slight low-pass to dampen the worst high-end.
 		final_sample = 0.5f * final_history + 0.5f * final_sample;
 		final_history = final_sample;
-
-#if 0
-		static float max_final = 0.0f;
-		if (std::abs(final_sample) > max_final)
-		{
-			max_final = std::abs(final_sample);
-			LOGI("New max final sample: %f.\n", max_final);
-		}
 #endif
 
+		fir_history[(index - 1) & (FilterTaps - 1)] = in_sample;
 		out_samples[samp] = distort(2.0f * final_sample);
 		index = (index - 1) & (FilterTaps - 1);
 	}

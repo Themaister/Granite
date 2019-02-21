@@ -62,8 +62,8 @@ struct ToneFilter::Impl : Util::AlignedAllocation<ToneFilter::Impl>
 
 	unsigned iir_filter_taps = 0;
 	unsigned fir_filter_taps = 0;
-	float tone_power_lerp = 0.002f;
-	float total_tone_power_lerp = 0.0005f;
+	float tone_power_lerp = 0.00012f;
+	float total_tone_power_lerp = 0.0001f;
 	float final_history = 0.0f;
 
 	void filter(float *out_samples, const float *in_samples, unsigned count);
@@ -159,9 +159,9 @@ void ToneFilter::Impl::filter(float *out_samples, const float *in_samples, unsig
 		running_total_power =
 				running_total_power * (1.0f - total_tone_power_lerp) +
 				total_tone_power_lerp * in_sample * in_sample;
-		float low_threshold = 0.01f * running_total_power;
+		float low_threshold = 0.0002f * running_total_power;
 		float high_threshold = 0.10f * running_total_power;
-		float low_threshold_divider = 1.0f / std::max(0.000000001f, low_threshold * low_threshold * low_threshold);
+		float low_threshold_divider = 1.0f / std::max(0.00000000001f, low_threshold * low_threshold * low_threshold);
 
 #if defined(__SSE__) && ENABLE_SIMD
 		__m128 final_sample_vec = _mm_setzero_ps();

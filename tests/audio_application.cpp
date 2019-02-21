@@ -213,10 +213,10 @@ struct AudioApplication : Application, EventHandler
 				clear_rect.rect.extent.height = vp.height;
 
 				float ratio = power_ratio[octave][tone];
-				if (ratio < 0.01f)
-					clear_value.color.float32[2] = ratio / 0.01f;
+				if (ratio < 0.0002f)
+					clear_value.color.float32[2] = ratio / 0.0002f;
 				else if (ratio < 0.09f)
-					clear_value.color.float32[1] = (ratio - 0.01f) * 20.0f;
+					clear_value.color.float32[1] = (ratio - 0.0001f) * 20.0f;
 				else
 					clear_value.color.float32[0] = 100.0f * (ratio - 0.09f);
 				cmd->clear_quad(0, clear_rect, clear_value);

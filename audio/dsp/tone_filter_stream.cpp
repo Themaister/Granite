@@ -79,8 +79,8 @@ struct ToneFilterStream : MixerStream
 
 		for (unsigned c = 0; c < num_channels; c++)
 		{
-			accumulate_channel(channels[c], mix_ptrs[c], gain[c] * 0.2f, ret);
-			accumulate_channel(channels[c], mix_channels_mono.data(), gain[c] * 0.8f, ret);
+			accumulate_channel(channels[c], mix_ptrs[c], gain[c] * 0.5f, ret);
+			accumulate_channel(channels[c], mix_channels_mono.data(), gain[c] * 0.5f, ret);
 		}
 
 #ifdef TONE_DEBUG

@@ -36,7 +36,9 @@
 
 #define ENABLE_SIMD 1
 
-#if defined(__SSE__) && ENABLE_SIMD
+#if defined(__AVX__) && ENABLE_SIMD
+#include <immintrin.h>
+#elif defined(__SSE__) && ENABLE_SIMD
 #include <xmmintrin.h>
 #elif defined(__ARM_NEON) && ENABLE_SIMD
 #include <arm_neon.h>
@@ -152,7 +154,27 @@ static inline float distort(float v)
 }
 
 #if ENABLE_SIMD
-#if defined(__SSE__)
+#if defined(__AVX__)
+alignas(16) static const uint32_t absmask = 0x7fffffffu;
+static inline __m256 div_ps(__m256 a, __m256 b)
+{
+	return _mm256_mul_ps(a, _mm256_rcp_ps(b));
+}
+
+static inline __m256 sqrt_ps(__m256 v)
+{
+	return _mm256_mul_ps(v, _mm256_rsqrt_ps(_mm256_max_ps(v, _mm256_set1_ps(1e-30f))));
+}
+
+static inline __m256 fma_ps(__m256 c, __m256 a, __m256 b)
+{
+#ifdef __FMA__
+	return _mm256_fmadd_ps(a, b, c);
+#else
+	return _mm256_add_ps(_mm256_mul_ps(a, b), c);
+#endif
+}
+#elif defined(__SSE__)
 alignas(16) static const uint32_t absmask[4] = {0x7fffffffu, 0x7fffffffu, 0x7fffffffu, 0x7fffffffu};
 
 static inline __m128 div_ps(__m128 a, __m128 b)
@@ -190,7 +212,63 @@ void ToneFilter::Impl::filter(float *out_samples, const float *in_samples, unsig
 		float low_threshold_divider =
 				1.0f / std::max(0.00000000001f, low_threshold * low_threshold * low_threshold);
 
-#if defined(__SSE__) && ENABLE_SIMD
+#if defined(__AVX__) && ENABLE_SIMD
+		__m256 final_sample_vec = _mm256_setzero_ps();
+		__m256 in_sample_splat = _mm256_set1_ps(in_sample);
+		for (int tone = 0; tone < ToneCount; tone += 8)
+		{
+			__m256 ret = _mm256_mul_ps(_mm256_load_ps(fir_coeff[0] + tone), in_sample_splat);
+
+			for (unsigned x = 0; x < fir_filter_taps; x++)
+			{
+				__m256 history = _mm256_broadcast_ss(&fir_history[(index + x) & (FilterTaps - 1)]);
+				ret = fma_ps(ret,
+				             _mm256_load_ps(fir_coeff[x + 1] + tone),
+				             history);
+			}
+
+			for (unsigned x = 0; x < iir_filter_taps; x++)
+			{
+				ret = fma_ps(ret,
+				             _mm256_load_ps(iir_coeff[x] + tone),
+				             _mm256_load_ps(iir_history[(index + x) & (FilterTaps - 1)] + tone));
+			}
+
+			_mm256_store_ps(iir_history[(index - 1) & (FilterTaps - 1)] + tone, ret);
+
+			__m256 new_power = _mm256_mul_ps(ret, ret);
+			__m256 new_power_4 = _mm256_mul_ps(new_power, new_power);
+			new_power_4 = _mm256_mul_ps(new_power_4, new_power_4);
+			new_power_4 = _mm256_mul_ps(new_power_4, _mm256_set1_ps(low_threshold_divider));
+
+			new_power = _mm256_min_ps(new_power, new_power_4);
+			new_power = _mm256_min_ps(new_power, _mm256_set1_ps(high_threshold));
+
+			new_power = _mm256_mul_ps(new_power, _mm256_set1_ps(tone_power_lerp));
+			new_power = fma_ps(new_power,
+			                   _mm256_load_ps(running_power + tone),
+			                   _mm256_set1_ps(1.0f - tone_power_lerp));
+
+			_mm256_store_ps(running_power + tone, new_power);
+			__m256 rms = sqrt_ps(new_power);
+
+			__m256 distorted = div_ps(
+					_mm256_mul_ps(ret, _mm256_set1_ps(40.0f)),
+					_mm256_add_ps(rms, _mm256_set1_ps(0.001f)));
+			__m256 distorted_abs = _mm256_and_ps(distorted, _mm256_broadcast_ss(reinterpret_cast<const float *>(&absmask)));
+			__m256 distorted_div = _mm256_add_ps(_mm256_set1_ps(1.0f), distorted_abs);
+			distorted = div_ps(distorted, distorted_div);
+			final_sample_vec = fma_ps(final_sample_vec, rms, distorted);
+
+#ifdef TONE_DEBUG
+			__m256 final = _mm256_mul_ps(rms, distorted);
+			float final_buffers[8];
+			_mm256_storeu_ps(final_buffers, final);
+			for (unsigned j = 0; j < 8; j++)
+				tone_buffers[tone + j].push_back(final_buffers[j]);
+#endif
+		}
+#elif defined(__SSE__) && ENABLE_SIMD
 		__m128 final_sample_vec = _mm_setzero_ps();
 		__m128 in_sample_splat = _mm_set1_ps(in_sample);
 		for (int tone = 0; tone < ToneCount; tone += 4)
@@ -291,9 +369,9 @@ void ToneFilter::Impl::filter(float *out_samples, const float *in_samples, unsig
 			float32x4_t distorted_abs = vabsq_f32(distorted);
 			float32x4_t distorted_div = vaddq_f32(vdupq_n_f32(1.0f), distorted_abs);
 			distorted = div_ps(distorted, distorted_div);
-			float32x4_t final = vmulq_f32(rms, distorted);
-			final_sample_vec = vaddq_f32(final, final_sample_vec);
+			final_sample_vec = vmlaq_f32(final_sample_vec, rms, distorted);
 #ifdef TONE_DEBUG
+			float32x4_t final = vmulq_f32(rms, distorted);
 			float final_buffers[4];
 			vst1q_f32(final_buffers, final);
 			for (unsigned j = 0; j < 4; j++)
@@ -330,7 +408,20 @@ void ToneFilter::Impl::filter(float *out_samples, const float *in_samples, unsig
 		}
 #endif
 
-#if defined(__SSE__) && ENABLE_SIMD
+#if defined(__AVX__) && ENABLE_SIMD
+		float final_sample;
+		__m128 final_sample128 = _mm_add_ps(
+				_mm256_extractf128_ps(final_sample_vec, 0),
+				_mm256_extractf128_ps(final_sample_vec, 1));
+		__m128 final_sample_half = _mm_add_ps(final_sample128,
+		                                      _mm_movehl_ps(final_sample128, final_sample128));
+		final_sample_half =
+				_mm_add_ss(final_sample_half,
+				           _mm_shuffle_ps(final_sample_half, final_sample_half, _MM_SHUFFLE(1, 1, 1, 1)));
+		final_sample_half = _mm_mul_ss(_mm_set1_ps(0.5f), _mm_add_ss(final_sample_half, _mm_load_ss(&final_history)));
+		_mm_store_ss(&final_history, final_sample_half);
+		_mm_store_ss(&final_sample, final_sample_half);
+#elif defined(__SSE__) && ENABLE_SIMD
 		float final_sample;
 		__m128 final_sample_half = _mm_add_ps(final_sample_vec,
 											  _mm_movehl_ps(final_sample_vec, final_sample_vec));
@@ -357,6 +448,10 @@ void ToneFilter::Impl::filter(float *out_samples, const float *in_samples, unsig
 		out_samples[samp] = distort(2.0f * final_sample);
 		index = (index - 1) & (FilterTaps - 1);
 	}
+
+#if defined(__AVX__) && ENABLE_SIMD
+	_mm256_zeroupper();
+#endif
 }
 
 void ToneFilter::filter(float *out_samples, const float *in_samples, unsigned count)

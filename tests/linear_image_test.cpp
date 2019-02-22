@@ -51,11 +51,11 @@ struct LinearImageTest : Granite::Application, Granite::EventHandler
 		linear = e.get_device().create_linear_host_image(info);
 
 		static const uint32_t odd[] = {
-			-1u, 0u, -1u, 0u,
+			~0u, 0u, ~0u, 0u,
 		};
 
 		static const uint32_t even[] = {
-			0u, -1u, 0u, -1u,
+			0u, ~0u, 0u, ~0u,
 		};
 
 		auto *mapped = static_cast<uint8_t *>(e.get_device().map_linear_host_image(*linear, MEMORY_ACCESS_WRITE_BIT));

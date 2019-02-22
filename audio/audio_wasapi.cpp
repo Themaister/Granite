@@ -27,6 +27,7 @@
 #include <condition_variable>
 #include <vector>
 #include <algorithm>
+#include <atomic>
 
 #include <audioclient.h>
 #include <audiopolicy.h>
@@ -53,6 +54,7 @@ struct WASAPIBackend : Backend
 	WASAPIBackend(BackendCallback &callback)
 		: Backend(callback)
 	{
+		dead = false;
 	}
 
 	~WASAPIBackend();
@@ -81,7 +83,7 @@ struct WASAPIBackend : Backend
 	thread thr;
 	mutex lock;
 	condition_variable cond;
-	bool dead = false;
+	std::atomic<bool> dead;
 
 	IMMDeviceEnumerator *pEnumerator = nullptr;
 	IMMDevice *pDevice = nullptr;
@@ -230,7 +232,7 @@ bool WASAPIBackend::stop()
 	{
 		{
 			lock_guard<mutex> holder{ lock };
-			dead = true;
+			dead.store(true, std::memory_order_relaxed);
 			cond.notify_all();
 		}
 		thr.join();
@@ -276,7 +278,7 @@ void WASAPIBackend::thread_runner() noexcept
 	for (unsigned i = 0; i < format->nChannels; i++)
 		mix_channel_ptr[i] = mix_channels[i];
 
-	for (;;)
+	while (!dead.load(std::memory_order_relaxed))
 	{
 		UINT32 padding;
 		if (FAILED(pAudioClient->GetCurrentPadding(&padding)))
@@ -295,15 +297,17 @@ void WASAPIBackend::thread_runner() noexcept
 			auto now = chrono::high_resolution_clock::now();
 			now += chrono::microseconds(padding_to_wait_period_us(padding));
 
-			unique_lock<mutex> holder{ lock };
-			cond.wait_until(holder, now, [this]() {
-				return dead;
-			});
-
-			if (dead)
 			{
-				done = true;
-				break;
+				unique_lock<mutex> holder{ lock };
+				cond.wait_until(holder, now, [this]() {
+					return dead.load(std::memory_order_relaxed);
+				});
+
+				if (dead.load(std::memory_order_relaxed))
+				{
+					done = true;
+					break;
+				}
 			}
 
 			if (FAILED(pAudioClient->GetCurrentPadding(&padding)))

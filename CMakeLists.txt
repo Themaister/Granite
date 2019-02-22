@@ -280,6 +280,7 @@ if (NOT GRANITE_VULKAN_ONLY)
     if (NOT ANDROID)
         add_library(granite-application-entry STATIC application/application_entry.cpp)
         target_link_libraries(granite-application-entry granite)
+        target_compile_options(granite-application-entry PRIVATE ${GRANITE_CXX_FLAGS})
     endif()
 
     add_library(granite-application-entry-headless STATIC application/application_entry.cpp)

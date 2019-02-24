@@ -37,6 +37,8 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
+	Global::init();
+
 	std::vector<MemoryMappedTexture> inputs;
 	VkFormat fmt = VK_FORMAT_UNDEFINED;
 	unsigned width = 0;
@@ -134,7 +136,7 @@ int main(int argc, char *argv[])
 			{
 				auto *dst = array.get_layout().data(output_layer, level);
 				auto *src = layout.data(layer, level);
-				size_t size = array.get_layout().get_block_stride() * layout.get_width(level) * layout.get_height(level);
+				size_t size = array.get_layout().get_layer_size(level);
 				memcpy(dst, src, size);
 			}
 

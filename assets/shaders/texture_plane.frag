@@ -5,6 +5,7 @@ layout(location = 0) in highp vec2 vUV;
 layout(location = 1) in highp vec3 vPos;
 
 #include "inc/render_target.h"
+#include "inc/render_parameters.h"
 
 #if defined(HAVE_EMISSIVE_REFLECTION) && HAVE_EMISSIVE_REFLECTION
 layout(set = 2, binding = 0) uniform mediump sampler2D uPlaneReflection;

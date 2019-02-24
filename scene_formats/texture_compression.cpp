@@ -160,6 +160,7 @@ struct CompressorState : enable_shared_from_this<CompressorState>
 	void enqueue_compression_block_ispc(TaskGroup &group, const CompressorArguments &args, unsigned layer, unsigned level);
 	void enqueue_compression_block_astc(TaskGroup &group, const CompressorArguments &args, unsigned layer, unsigned level, TextureMode mode);
 	void enqueue_compression_block_rgtc(TaskGroup &group, const CompressorArguments &args, unsigned layer, unsigned level);
+	void enqueue_compression_copy(TaskGroup &group, const CompressorArguments &args, unsigned layer, unsigned level);
 
 	double total_error[4] = {};
 	mutex lock;
@@ -405,6 +406,20 @@ void CompressorState::setup(const CompressorArguments &args)
 	}
 }
 
+void CompressorState::enqueue_compression_copy(TaskGroup &group, const CompressorArguments &,
+                                               unsigned layer, unsigned level)
+{
+	group->enqueue_task([=]() {
+		auto &input_layout = input->get_layout();
+		auto &output_layout = output->get_layout();
+
+		void *output = output_layout.data(layer, level);
+		void *input = input_layout.data(layer, level);
+		size_t layer_size = input_layout.get_layer_size(level);
+		memcpy(output, input, layer_size);
+	});
+}
+
 void CompressorState::enqueue_compression_block_rgtc(TaskGroup &group, const CompressorArguments &args, unsigned layer, unsigned level)
 {
 	auto &layout = input->get_layout();
@@ -417,6 +432,7 @@ void CompressorState::enqueue_compression_block_rgtc(TaskGroup &group, const Com
 		for (int x = 0; x < width; x += block_size_x)
 		{
 			group->enqueue_task([=, format = args.format]() {
+				auto &layout = input->get_layout();
 				uint8_t padded_red[4 * 4];
 				uint8_t padded_green[4 * 4];
 				auto *src = static_cast<const uint8_t *>(layout.data(layer, level));
@@ -519,6 +535,7 @@ void CompressorState::enqueue_compression_block_ispc(TaskGroup &group, const Com
 		for (int x = 0; x < width; x += grid_stride_x)
 		{
 			group->enqueue_task([=, format = args.format]() {
+				auto &layout = input->get_layout();
 				uint8_t padded_buffer[32 * 32 * 8];
 				uint8_t encode_buffer[16 * 8 * 8];
 				rgba_surface surface = {};
@@ -814,7 +831,6 @@ void CompressorState::enqueue_compression(ThreadGroup &group, const CompressorAr
 				enqueue_compression_block_rgtc(compression_task, args, layer, level);
 				break;
 
-#ifdef HAVE_ISPC
 			case VK_FORMAT_BC6H_UFLOAT_BLOCK:
 			case VK_FORMAT_BC7_SRGB_BLOCK:
 			case VK_FORMAT_BC7_UNORM_BLOCK:
@@ -824,9 +840,10 @@ void CompressorState::enqueue_compression(ThreadGroup &group, const CompressorAr
 			case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:
 			case VK_FORMAT_BC3_SRGB_BLOCK:
 			case VK_FORMAT_BC3_UNORM_BLOCK:
+#ifdef HAVE_ISPC
 				enqueue_compression_block_ispc(compression_task, args, layer, level);
-				break;
 #endif
+				break;
 
 			case VK_FORMAT_ASTC_4x4_SRGB_BLOCK:
 			case VK_FORMAT_ASTC_4x4_UNORM_BLOCK:
@@ -849,7 +866,8 @@ void CompressorState::enqueue_compression(ThreadGroup &group, const CompressorAr
 				break;
 
 			default:
-				return;
+				enqueue_compression_copy(compression_task, args, layer, level);
+				break;
 			}
 		}
 	}
@@ -906,6 +924,8 @@ void compress_texture(ThreadGroup &group, const CompressorArguments &args, const
 		if (!output->output->map_write(args.output))
 		{
 			LOGE("Failed to map output texture for writing.\n");
+			if (output->signal)
+				output->signal->signal_increment();
 			return;
 		}
 

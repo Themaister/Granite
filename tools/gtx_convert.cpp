@@ -39,6 +39,8 @@ static void print_help()
 
 int main(int argc, char *argv[])
 {
+	Global::init();
+
 	string input_path;
 	bool generate_mipmap = false;
 	CompressorArguments args;
@@ -62,9 +64,16 @@ int main(int argc, char *argv[])
 		return 0;
 
 	if (args.format == VK_FORMAT_UNDEFINED)
+	{
+		LOGE("Must provide a format.\n");
 		return 1;
+	}
+
 	if (args.output.empty() || input_path.empty())
+	{
+		LOGE("Must provide input and output paths.\n");
 		return 1;
+	}
 
 	Granite::ColorSpace color;
 	switch (args.format)
@@ -98,11 +107,7 @@ int main(int argc, char *argv[])
 
 	if (generate_mipmap)
 	{
-		if (args.format == VK_FORMAT_R8G8B8A8_UNORM || args.format == VK_FORMAT_R8G8B8A8_SRGB)
-			*input = generate_mipmaps_to_file(args.output, input->get_layout(), input->get_flags());
-		else
-			*input = generate_mipmaps(input->get_layout(), input->get_flags());
-
+		*input = generate_mipmaps(input->get_layout(), input->get_flags());
 		if (input->get_layout().get_required_size() == 0)
 		{
 			LOGE("Failed to save texture: %s\n", args.output.c_str());

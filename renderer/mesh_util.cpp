@@ -256,6 +256,7 @@ void SphereMesh::on_device_created(const DeviceCreatedEvent &event)
 	index_type = VK_INDEX_TYPE_UINT16;
 	count = mesh.indices.size();
 	topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+	primitive_restart = true;
 
 	bake();
 }

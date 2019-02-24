@@ -2,6 +2,10 @@
 precision highp float;
 precision highp int;
 
+#ifdef ALPHA_TEST_DISABLE
+#undef ALPHA_TEST
+#endif
+
 #if defined(VARIANT_BIT_0) && VARIANT_BIT_0 && defined(HAVE_BASECOLORMAP) && HAVE_BASECOLORMAP
 #define BANDLIMITED_PIXEL
 #include "inc/bandlimited_pixel_filter.h"

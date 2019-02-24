@@ -97,6 +97,7 @@ protected:
 	void render_shadow_map_near(Vulkan::CommandBuffer &cmd);
 	void render_shadow_map_far(Vulkan::CommandBuffer &cmd);
 	void render_main_pass(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view);
+	void render_main_pass_prepass(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view);
 	void render_transparent_objects(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view);
 	void render_positional_lights(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view);
 	void render_positional_lights_prepass(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view);

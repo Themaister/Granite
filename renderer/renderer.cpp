@@ -186,6 +186,9 @@ vector<pair<string, int>> Renderer::build_defines_from_renderer_options(Renderer
 	else if (flags & SHADOW_PCF_KERNEL_WIDTH_3_BIT)
 		global_defines.emplace_back("SHADOW_MAP_PCF_KERNEL_WIDTH", 3);
 
+	if (flags & ALPHA_TEST_DISABLE_BIT)
+		global_defines.emplace_back("ALPHA_TEST_DISABLE", 1);
+
 	global_defines.emplace_back(renderer_to_define(type), 1);
 
 	return global_defines;
@@ -391,10 +394,10 @@ void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context, Rendere
 	if (options & FRONT_FACE_CLOCKWISE_BIT)
 		cmd.set_front_face(VK_FRONT_FACE_CLOCKWISE);
 
-	if (options & NO_COLOR)
+	if (options & NO_COLOR_BIT)
 		cmd.set_color_write_mask(0);
 
-	if (options & DEPTH_STENCIL_READ_ONLY)
+	if (options & DEPTH_STENCIL_READ_ONLY_BIT)
 		cmd.set_depth_test(true, false);
 
 	if (options & DEPTH_BIAS_BIT)
@@ -409,7 +412,9 @@ void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context, Rendere
 		cmd.set_depth_compare(VK_COMPARE_OP_GREATER);
 	}
 
-	if (options & DEPTH_TEST_INVERT_BIT)
+	if (options & DEPTH_TEST_EQUAL_BIT)
+		cmd.set_depth_compare(VK_COMPARE_OP_EQUAL);
+	else if (options & DEPTH_TEST_INVERT_BIT)
 		cmd.set_depth_compare(VK_COMPARE_OP_GREATER);
 
 	if (options & STENCIL_WRITE_REFERENCE_BIT)

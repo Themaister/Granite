@@ -2,6 +2,10 @@
 precision highp float;
 precision highp int;
 
+#ifdef ALPHA_TEST_DISABLE
+#undef ALPHA_TEST
+#endif
+
 #if defined(ALPHA_TEST)
 #include "inc/subgroup_discard.h"
 #endif

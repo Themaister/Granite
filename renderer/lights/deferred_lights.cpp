@@ -103,9 +103,9 @@ void DeferredLights::render_prepass_lights(Vulkan::CommandBuffer &cmd, RenderCon
 		depth_renderer->push_depth_renderables(context, clusters[cluster]);
 		depth_renderer->set_stencil_reference(0xff, 2 << cluster, 2 << cluster);
 		depth_renderer->flush(cmd, context,
-		                      Renderer::NO_COLOR |
+		                      Renderer::NO_COLOR_BIT |
 		                      Renderer::BACKFACE_BIT |
-		                      Renderer::DEPTH_STENCIL_READ_ONLY |
+		                      Renderer::DEPTH_STENCIL_READ_ONLY_BIT |
 		                      Renderer::STENCIL_WRITE_REFERENCE_BIT);
 	}
 }

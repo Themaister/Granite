@@ -109,6 +109,12 @@ public:
 	}
 
 	template <typename T>
+	inline T *data_generic() const
+	{
+		return data_generic<T>(0, 0, 0, 0);
+	}
+
+	template <typename T>
 	inline T *data_1d(uint32_t x, uint32_t layer = 0, uint32_t mip = 0) const
 	{
 		assert(sizeof(T) == block_stride);

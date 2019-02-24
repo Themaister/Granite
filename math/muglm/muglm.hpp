@@ -851,6 +851,13 @@ using mat2 = tmat2<float>;
 using mat3 = tmat3<float>;
 using mat4 = tmat4<float>;
 
+using dvec2 = tvec2<double>;
+using dvec3 = tvec3<double>;
+using dvec4 = tvec4<double>;
+using dmat2 = tmat2<double>;
+using dmat3 = tmat3<double>;
+using dmat4 = tmat4<double>;
+
 using ivec2 = tvec2<int32_t>;
 using ivec3 = tvec3<int32_t>;
 using ivec4 = tvec4<int32_t>;

@@ -669,6 +669,8 @@ template <typename T> T log(T v) { return std::log(v); }
 template <typename T> T exp2(T v) { return std::exp2(v); }
 template <typename T> T exp(T v) { return std::exp(v); }
 template <typename T> T pow(T a, T b) { return std::pow(a, b); }
+template <typename T> T radians(T a) { return a * (T(pi<T>() / T(180))); }
+template <typename T> T degrees(T a) { return a * (T(180) / pi<T>()); }
 
 #define MUGLM_VECTORIZED_FUNC1(func) \
 template <typename T> inline tvec2<T> func(const tvec2<T> &a) { return tvec2<T>(func(a.x), func(a.y)); } \
@@ -755,6 +757,72 @@ inline float uintBitsToFloat(uint v)
 	return u.f32;
 }
 MUGLM_VECTORIZED_FUNC1(uintBitsToFloat)
+
+inline float halfToFloat(uint16_t u16_value)
+{
+	// Based on the GLM implementation.
+	int s = (u16_value >> 15) & 0x1;
+	int e = (u16_value >> 10) & 0x1f;
+	int m = (u16_value >> 0) & 0x3ff;
+
+	union {
+		float f32;
+		uint32_t u32;
+	} u;
+
+	if (e == 0)
+	{
+		if (m == 0)
+		{
+			u.u32 = uint32_t(s) << 31;
+			return u.f32;
+		}
+		else
+		{
+			while ((m & 0x400) == 0)
+			{
+				m <<= 1;
+				e--;
+			}
+
+			e++;
+			m &= ~0x400;
+		}
+	}
+	else if (e == 31)
+	{
+		if (m == 0)
+		{
+			u.u32 = (uint32_t(s) << 31) | 0x7f800000u;
+			return u.f32;
+		}
+		else
+		{
+			u.u32 = (uint32_t(s) << 31) | 0x7f800000u | (m << 13);
+			return u.f32;
+		}
+	}
+
+	e += 127 - 15;
+	m <<= 13;
+	u.u32 = (uint32_t(s) << 31) | (e << 23) | m;
+	return u.f32;
+}
+
+inline vec2 halfToFloat(const u16vec2 &v)
+{
+	return vec2(halfToFloat(v.x), halfToFloat(v.y));
+}
+
+inline vec3 floatToHalf(const u16vec3 &v)
+{
+	return vec3(halfToFloat(v.x), halfToFloat(v.y), halfToFloat(v.z));
+}
+
+inline vec4 floatToHalf(const u16vec4 &v)
+{
+	return vec4(halfToFloat(v.x), halfToFloat(v.y), halfToFloat(v.z), halfToFloat(v.w));
+}
 
 inline uint16_t floatToHalf(float v)
 {
@@ -880,6 +948,21 @@ inline quat angleAxis(float angle, const vec3 &axis)
 inline quat conjugate(const quat &q)
 {
 	return quat(q.w, -q.x, -q.y, -q.z);
+}
+
+inline vec3 rotateX(const vec3 &v, float angle)
+{
+	return angleAxis(angle, vec3(1.0f, 0.0f, 0.0f)) * v;
+}
+
+inline vec3 rotateY(const vec3 &v, float angle)
+{
+	return angleAxis(angle, vec3(0.0f, 1.0f, 0.0f)) * v;
+}
+
+inline vec3 rotateZ(const vec3 &v, float angle)
+{
+	return angleAxis(angle, vec3(0.0f, 0.0f, 1.0f)) * v;
 }
 
 }

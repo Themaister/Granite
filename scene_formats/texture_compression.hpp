@@ -44,6 +44,7 @@ struct CompressorArguments
 	VkFormat format = VK_FORMAT_UNDEFINED;
 	unsigned quality = 3;
 	TextureMode mode = TextureMode::Unknown;
+	bool deferred_mipgen = false;
 };
 
 VkFormat string_to_format(const std::string &s);

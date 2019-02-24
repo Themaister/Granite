@@ -116,7 +116,7 @@ bool MemoryMappedTexture::map_write(unique_ptr<Granite::File> new_file, void *ma
 	header.width = layout.get_width();
 	header.height = layout.get_height();
 	header.depth = layout.get_depth();
-	header.flags = cube ? MEMORY_MAPPED_TEXTURE_CUBE_MAP_COMPATIBLE_BIT : 0;
+	header.flags = get_flags();
 	header.layers = layout.get_layers();
 	header.levels = layout.get_levels();
 	header.payload_size = layout.get_required_size();

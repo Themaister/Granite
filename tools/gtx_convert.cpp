@@ -34,7 +34,7 @@ using namespace Util;
 
 static void print_help()
 {
-	LOGI("Usage: [--mipgen] [--quality [1-5]] [--format <format>] --output <out.gtx> <in.gtx>\n");
+	LOGI("Usage: [--mipgen] [--deferred-mipgen [--quality [1-5]] [--format <format>] --output <out.gtx> <in.gtx>\n");
 }
 
 int main(int argc, char *argv[])
@@ -43,6 +43,7 @@ int main(int argc, char *argv[])
 
 	string input_path;
 	bool generate_mipmap = false;
+	bool deferred_generate_mipmap = false;
 	CompressorArguments args;
 
 	args.mode = TextureMode::RGB;
@@ -54,6 +55,7 @@ int main(int argc, char *argv[])
 	cbs.add("--output", [&](CLIParser &parser) { args.output = parser.next_string(); });
 	cbs.add("--alpha", [&](CLIParser &) { args.mode = TextureMode::RGBA; });
 	cbs.add("--mipgen", [&](CLIParser &) { generate_mipmap = true; });
+	cbs.add("--deferred-mipgen", [&](CLIParser &) { deferred_generate_mipmap = true; });
 	cbs.default_handler = [&](const char *arg) { input_path = arg; };
 	cbs.error_handler = []() { print_help(); };
 	CLIParser parser(move(cbs), argc - 1, argv + 1);
@@ -104,6 +106,8 @@ int main(int argc, char *argv[])
 		LOGE("Failed to load texture %s.\n", input_path.c_str());
 		return 1;
 	}
+
+	args.deferred_mipgen = deferred_generate_mipmap;
 
 	if (generate_mipmap)
 	{

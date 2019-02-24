@@ -45,6 +45,7 @@ int main(int argc, char *argv[])
 	unsigned height = 0;
 	unsigned levels = 0;
 	unsigned total_layers = 0;
+	bool generate_mips = false;
 
 	bool cube = strcmp(argv[2], "cube") == 0;
 	bool type_2d = strcmp(argv[2], "2D") == 0;
@@ -101,6 +102,9 @@ int main(int argc, char *argv[])
 		height = tex.get_layout().get_height();
 		levels = tex.get_layout().get_levels();
 
+		if (tex.get_flags() & MEMORY_MAPPED_TEXTURE_GENERATE_MIPMAP_ON_LOAD_BIT)
+			generate_mips = true;
+
 		total_layers += tex.get_layout().get_layers();
 		inputs.push_back(std::move(tex));
 	}
@@ -119,6 +123,9 @@ int main(int argc, char *argv[])
 	{
 		array.set_2d(fmt, width, height, total_layers, levels);
 	}
+
+	if (generate_mips)
+		array.set_generate_mipmaps_on_load(true);
 
 	if (!array.map_write(argv[1]))
 	{

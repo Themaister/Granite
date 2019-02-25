@@ -427,14 +427,31 @@ void Device::bake_program(Program &program)
 		layout.combined_spec_constant_mask |= shader_layout.spec_constant_mask;
 	}
 
-	for (unsigned i = 0; i < VULKAN_NUM_DESCRIPTOR_SETS; i++)
+	for (unsigned set = 0; set < VULKAN_NUM_DESCRIPTOR_SETS; set++)
 	{
-		if (layout.stages_for_sets[i] != 0)
+		if (layout.stages_for_sets[set] != 0)
 		{
-			layout.descriptor_set_mask |= 1u << i;
-			for (auto &size : layout.sets[i].array_size)
-				if (size == 0)
-					size = 1;
+			layout.descriptor_set_mask |= 1u << set;
+
+			for (unsigned binding = 0; binding < VULKAN_NUM_BINDINGS; binding++)
+			{
+				auto &array_size = layout.sets[set].array_size[binding];
+				if (array_size == 0)
+				{
+					array_size = 1;
+				}
+				else
+				{
+					for (unsigned i = 1; i < array_size; i++)
+					{
+						if (layout.stages_for_bindings[set][binding + i] != 0)
+						{
+							LOGE("Detected binding aliasing for (%u, %u). Binding array with %u elements starting at (%u, %u) overlaps.\n",
+							     set, binding + i, array_size, set, binding);
+						}
+					}
+				}
+			}
 		}
 	}
 

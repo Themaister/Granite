@@ -215,6 +215,7 @@ Shader::Shader(Hash hash, Device *device, const uint32_t *data, size_t size)
 		auto &type = compiler.get_type(image.type_id);
 		if (compiler.get_type(type.image.type).basetype == SPIRType::BaseType::Float)
 			layout.sets[set].fp_mask |= 1u << binding;
+		update_array_info(type, set, binding);
 	}
 
 	for (auto &image : resources.separate_images)

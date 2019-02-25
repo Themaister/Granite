@@ -404,6 +404,13 @@ void Device::bake_program(Program &program)
 
 			for_each_bit(active_binds, [&](uint32_t bit) {
 				layout.stages_for_bindings[set][bit] |= stage_mask;
+
+				auto &combined_size = layout.sets[set].array_size[bit];
+				auto &shader_size = shader_layout.sets[set].array_size[bit];
+				if (combined_size && combined_size != shader_size)
+					LOGE("Mismatch between array sizes in different shaders.\n");
+				else
+					combined_size = shader_size;
 			});
 		}
 
@@ -423,7 +430,12 @@ void Device::bake_program(Program &program)
 	for (unsigned i = 0; i < VULKAN_NUM_DESCRIPTOR_SETS; i++)
 	{
 		if (layout.stages_for_sets[i] != 0)
+		{
 			layout.descriptor_set_mask |= 1u << i;
+			for (auto &size : layout.sets[i].array_size)
+				if (size == 0)
+					size = 1;
+		}
 	}
 
 	Hasher h;

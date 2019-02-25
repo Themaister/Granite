@@ -54,6 +54,8 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device, const 
 		if (stages == 0)
 			continue;
 
+		unsigned array_size = layout.array_size[i];
+
 		unsigned types = 0;
 		if (layout.sampled_image_mask & (1u << i))
 		{
@@ -61,50 +63,50 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device, const 
 			if (has_immutable_sampler(layout, i))
 				sampler = device->get_stock_sampler(get_immutable_sampler(layout, i)).get_sampler();
 
-			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, stages, sampler != VK_NULL_HANDLE ? &sampler : nullptr });
-			pool_size.push_back({ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VULKAN_NUM_SETS_PER_POOL });
+			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, array_size, stages, sampler != VK_NULL_HANDLE ? &sampler : nullptr });
+			pool_size.push_back({ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, array_size * VULKAN_NUM_SETS_PER_POOL });
 			types++;
 		}
 
 		if (layout.sampled_buffer_mask & (1u << i))
 		{
-			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1, stages, nullptr });
-			pool_size.push_back({ VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, VULKAN_NUM_SETS_PER_POOL });
+			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, array_size, stages, nullptr });
+			pool_size.push_back({ VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, array_size * VULKAN_NUM_SETS_PER_POOL });
 			types++;
 		}
 
 		if (layout.storage_image_mask & (1u << i))
 		{
-			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, stages, nullptr });
+			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, array_size, stages, nullptr });
 			pool_size.push_back({ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VULKAN_NUM_SETS_PER_POOL });
 			types++;
 		}
 
 		if (layout.uniform_buffer_mask & (1u << i))
 		{
-			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1, stages, nullptr });
-			pool_size.push_back({ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, VULKAN_NUM_SETS_PER_POOL });
+			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, array_size, stages, nullptr });
+			pool_size.push_back({ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, array_size * VULKAN_NUM_SETS_PER_POOL });
 			types++;
 		}
 
 		if (layout.storage_buffer_mask & (1u << i))
 		{
-			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, stages, nullptr });
-			pool_size.push_back({ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VULKAN_NUM_SETS_PER_POOL });
+			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, array_size, stages, nullptr });
+			pool_size.push_back({ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, array_size * VULKAN_NUM_SETS_PER_POOL });
 			types++;
 		}
 
 		if (layout.input_attachment_mask & (1u << i))
 		{
-			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1, stages, nullptr });
-			pool_size.push_back({ VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, VULKAN_NUM_SETS_PER_POOL });
+			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, array_size, stages, nullptr });
+			pool_size.push_back({ VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, array_size * VULKAN_NUM_SETS_PER_POOL });
 			types++;
 		}
 
 		if (layout.separate_image_mask & (1u << i))
 		{
-			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1, stages, nullptr });
-			pool_size.push_back({ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, VULKAN_NUM_SETS_PER_POOL });
+			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, array_size, stages, nullptr });
+			pool_size.push_back({ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, array_size * VULKAN_NUM_SETS_PER_POOL });
 			types++;
 		}
 
@@ -114,8 +116,8 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device, const 
 			if (has_immutable_sampler(layout, i))
 				sampler = device->get_stock_sampler(get_immutable_sampler(layout, i)).get_sampler();
 
-			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_SAMPLER, 1, stages, sampler != VK_NULL_HANDLE ? &sampler : nullptr });
-			pool_size.push_back({ VK_DESCRIPTOR_TYPE_SAMPLER, VULKAN_NUM_SETS_PER_POOL });
+			bindings.push_back({ i, VK_DESCRIPTOR_TYPE_SAMPLER, array_size, stages, sampler != VK_NULL_HANDLE ? &sampler : nullptr });
+			pool_size.push_back({ VK_DESCRIPTOR_TYPE_SAMPLER, array_size * VULKAN_NUM_SETS_PER_POOL });
 			types++;
 		}
 

@@ -30,6 +30,11 @@
 #include "vulkan.hpp"
 #include "enum_cast.hpp"
 
+namespace spirv_cross
+{
+class SPIRType;
+}
+
 namespace Vulkan
 {
 class Device;
@@ -118,6 +123,8 @@ private:
 	Device *device;
 	VkShaderModule module;
 	ResourceLayout layout;
+
+	void update_array_info(const spirv_cross::SPIRType &type, unsigned set, unsigned binding);
 };
 
 class Program : public HashedObject<Program>, public InternalSyncEnabled

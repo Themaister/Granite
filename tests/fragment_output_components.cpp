@@ -33,8 +33,8 @@ using namespace Vulkan;
 
 struct FragmentOutputComponents : Granite::Application, Granite::EventHandler
 {
-	FragmentOutputComponents(unsigned fb_components, unsigned output_components)
-		: fb_components(fb_components), output_components(output_components)
+	FragmentOutputComponents(unsigned fb_components, unsigned output_components, unsigned ubo_index)
+		: fb_components(fb_components), output_components(output_components), index(ubo_index)
 	{
 		EVENT_MANAGER_REGISTER_LATCH(FragmentOutputComponents, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 	}
@@ -80,6 +80,11 @@ struct FragmentOutputComponents : Granite::Application, Granite::EventHandler
 		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
 		                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
 		cmd->begin_render_pass(rp_info);
+		*cmd->allocate_typed_constant_data<vec4>(0, 0, 1) = vec4(1.0f, 0.0f, 0.0f, 1.0f);
+		*cmd->allocate_typed_constant_data<vec4>(0, 1, 1) = vec4(0.0f, 1.0f, 0.0f, 1.0f);
+		*cmd->allocate_typed_constant_data<vec4>(0, 2, 1) = vec4(0.0f, 0.0f, 1.0f, 1.0f);
+		*cmd->allocate_typed_constant_data<vec4>(0, 3, 1) = vec4(1.0f, 1.0f, 1.0f, 1.0f);
+		cmd->push_constants(&index, 0, sizeof(index));
 		CommandBufferUtil::draw_fullscreen_quad(*cmd, "builtin://shaders/quad.vert", "assets://shaders/fill_flat.frag", {{ "OUTPUT_COMPONENTS", output_components }});
 		cmd->end_render_pass();
 		cmd->image_barrier(*render_target, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
@@ -100,6 +105,7 @@ struct FragmentOutputComponents : Granite::Application, Granite::EventHandler
 	ImageHandle render_target;
 	unsigned fb_components;
 	unsigned output_components;
+	uint32_t index;
 };
 
 namespace Granite
@@ -118,10 +124,12 @@ Application *application_create(int argc, char **argv)
 
 	unsigned fb_components = 4;
 	unsigned output_components = 4;
+	unsigned ubo_index = 0;
 
 	Util::CLICallbacks cbs;
 	cbs.add("--fb-components", [&](Util::CLIParser &parser) { fb_components = parser.next_uint(); });
 	cbs.add("--output-components", [&](Util::CLIParser &parser) { output_components = parser.next_uint(); });
+	cbs.add("--ubo-index", [&](Util::CLIParser &parser) { ubo_index = parser.next_uint(); });
 	Util::CLIParser parser(std::move(cbs), argc - 1, argv + 1);
 
 	if (!parser.parse())
@@ -131,7 +139,7 @@ Application *application_create(int argc, char **argv)
 
 	try
 	{
-		auto *app = new FragmentOutputComponents(fb_components, output_components);
+		auto *app = new FragmentOutputComponents(fb_components, output_components, ubo_index);
 		return app;
 	}
 	catch (const std::exception &e)

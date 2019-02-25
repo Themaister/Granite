@@ -766,6 +766,15 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 		if (features.features.largePoints)
 			enabled_features.largePoints = VK_TRUE;
 
+		if (features.features.shaderSampledImageArrayDynamicIndexing)
+			enabled_features.shaderSampledImageArrayDynamicIndexing = VK_TRUE;
+		if (features.features.shaderUniformBufferArrayDynamicIndexing)
+			enabled_features.shaderUniformBufferArrayDynamicIndexing = VK_TRUE;
+		if (features.features.shaderStorageBufferArrayDynamicIndexing)
+			enabled_features.shaderStorageBufferArrayDynamicIndexing = VK_TRUE;
+		if (features.features.shaderStorageImageArrayDynamicIndexing)
+			enabled_features.shaderStorageImageArrayDynamicIndexing = VK_TRUE;
+
 		features.features = enabled_features;
 		ext.enabled_features = enabled_features;
 	}

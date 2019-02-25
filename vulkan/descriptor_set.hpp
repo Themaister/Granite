@@ -27,6 +27,7 @@
 #include "temporary_hashmap.hpp"
 #include "vulkan.hpp"
 #include "sampler.hpp"
+#include "limits.hpp"
 #include <utility>
 #include <vector>
 #include "cookie.hpp"
@@ -47,6 +48,7 @@ struct DescriptorSetLayout
 	uint32_t fp_mask = 0;
 	uint32_t immutable_sampler_mask = 0;
 	uint64_t immutable_samplers = 0;
+	uint8_t array_size[VULKAN_NUM_BINDINGS] = {};
 };
 
 // Avoid -Wclass-memaccess warnings since we hash DescriptorSetLayout.

@@ -124,6 +124,33 @@ static bool get_stock_sampler(StockSampler &sampler, const string &name)
 	return true;
 }
 
+void Shader::update_array_info(const SPIRType &type, unsigned set, unsigned binding)
+{
+	auto &size = layout.sets[set].array_size[binding];
+	if (!type.array.empty())
+	{
+		if (type.array.size() != 1)
+			LOGE("Array dimension must be 1.\n");
+		else if (!type.array_size_literal.front())
+			LOGE("Array dimension must be a literal.\n");
+		else
+		{
+			if (size && size != type.array.front())
+				LOGE("Array dimension for (%u, %u) is inconsistent.\n", set, binding);
+			else if (type.array.front() + binding > VULKAN_NUM_BINDINGS)
+				LOGE("Binding array will go out of bounds.\n");
+			else
+				size = uint8_t(type.array.front());
+		}
+	}
+	else
+	{
+		if (size && size != 1)
+			LOGE("Array dimension for (%u, %u) is inconsistent.\n", set, binding);
+		size = 1;
+	}
+}
+
 Shader::Shader(Hash hash, Device *device, const uint32_t *data, size_t size)
 	: IntrusiveHashMapEnabled<Shader>(hash)
 	, device(device)
@@ -154,7 +181,7 @@ Shader::Shader(Hash hash, Device *device, const uint32_t *data, size_t size)
 	{
 		auto set = compiler.get_decoration(image.id, spv::DecorationDescriptorSet);
 		auto binding = compiler.get_decoration(image.id, spv::DecorationBinding);
-		auto &type = compiler.get_type(image.base_type_id);
+		auto &type = compiler.get_type(image.type_id);
 		if (type.image.dim == spv::DimBuffer)
 			layout.sets[set].sampled_buffer_mask |= 1u << binding;
 		else
@@ -175,6 +202,8 @@ Shader::Shader(Hash hash, Device *device, const uint32_t *data, size_t size)
 			else
 				set_immutable_sampler(layout.sets[set], binding, sampler);
 		}
+
+		update_array_info(type, set, binding);
 	}
 
 	for (auto &image : resources.subpass_inputs)
@@ -183,7 +212,7 @@ Shader::Shader(Hash hash, Device *device, const uint32_t *data, size_t size)
 		auto binding = compiler.get_decoration(image.id, spv::DecorationBinding);
 		layout.sets[set].input_attachment_mask |= 1u << binding;
 
-		auto &type = compiler.get_type(image.base_type_id);
+		auto &type = compiler.get_type(image.type_id);
 		if (compiler.get_type(type.image.type).basetype == SPIRType::BaseType::Float)
 			layout.sets[set].fp_mask |= 1u << binding;
 	}
@@ -193,7 +222,7 @@ Shader::Shader(Hash hash, Device *device, const uint32_t *data, size_t size)
 		auto set = compiler.get_decoration(image.id, spv::DecorationDescriptorSet);
 		auto binding = compiler.get_decoration(image.id, spv::DecorationBinding);
 
-		auto &type = compiler.get_type(image.base_type_id);
+		auto &type = compiler.get_type(image.type_id);
 		if (compiler.get_type(type.image.type).basetype == SPIRType::BaseType::Float)
 			layout.sets[set].fp_mask |= 1u << binding;
 
@@ -201,6 +230,8 @@ Shader::Shader(Hash hash, Device *device, const uint32_t *data, size_t size)
 			layout.sets[set].sampled_buffer_mask |= 1u << binding;
 		else
 			layout.sets[set].separate_image_mask |= 1u << binding;
+
+		update_array_info(type, set, binding);
 	}
 
 	for (auto &image : resources.separate_samplers)
@@ -221,6 +252,8 @@ Shader::Shader(Hash hash, Device *device, const uint32_t *data, size_t size)
 			else
 				set_immutable_sampler(layout.sets[set], binding, sampler);
 		}
+
+		update_array_info(compiler.get_type(image.type_id), set, binding);
 	}
 
 	for (auto &image : resources.storage_images)
@@ -229,9 +262,11 @@ Shader::Shader(Hash hash, Device *device, const uint32_t *data, size_t size)
 		auto binding = compiler.get_decoration(image.id, spv::DecorationBinding);
 		layout.sets[set].storage_image_mask |= 1u << binding;
 
-		auto &type = compiler.get_type(image.base_type_id);
+		auto &type = compiler.get_type(image.type_id);
 		if (compiler.get_type(type.image.type).basetype == SPIRType::BaseType::Float)
 			layout.sets[set].fp_mask |= 1u << binding;
+
+		update_array_info(type, set, binding);
 	}
 
 	for (auto &buffer : resources.uniform_buffers)
@@ -239,6 +274,7 @@ Shader::Shader(Hash hash, Device *device, const uint32_t *data, size_t size)
 		auto set = compiler.get_decoration(buffer.id, spv::DecorationDescriptorSet);
 		auto binding = compiler.get_decoration(buffer.id, spv::DecorationBinding);
 		layout.sets[set].uniform_buffer_mask |= 1u << binding;
+		update_array_info(compiler.get_type(buffer.type_id), set, binding);
 	}
 
 	for (auto &buffer : resources.storage_buffers)
@@ -246,6 +282,7 @@ Shader::Shader(Hash hash, Device *device, const uint32_t *data, size_t size)
 		auto set = compiler.get_decoration(buffer.id, spv::DecorationDescriptorSet);
 		auto binding = compiler.get_decoration(buffer.id, spv::DecorationBinding);
 		layout.sets[set].storage_buffer_mask |= 1u << binding;
+		update_array_info(compiler.get_type(buffer.type_id), set, binding);
 	}
 
 	for (auto &attrib : resources.stage_inputs)

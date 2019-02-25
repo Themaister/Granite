@@ -2390,7 +2390,11 @@ ImageViewHandle Device::create_image_view(const ImageViewCreateInfo &create_info
 	view_info.subresourceRange.baseArrayLayer = create_info.base_layer;
 	view_info.subresourceRange.levelCount = create_info.levels;
 	view_info.subresourceRange.layerCount = create_info.layers;
-	view_info.viewType = get_image_view_type(image_create_info, &create_info);
+
+	if (create_info.view_type == VK_IMAGE_VIEW_TYPE_RANGE_SIZE)
+		view_info.viewType = get_image_view_type(image_create_info, &create_info);
+	else
+		view_info.viewType = create_info.view_type;
 
 	unsigned num_levels;
 	if (view_info.subresourceRange.levelCount == VK_REMAINING_MIP_LEVELS)

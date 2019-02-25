@@ -1088,9 +1088,9 @@ void Parser::parse(const string &original_path, const string &json)
 		if (value.HasMember("extensions"))
 		{
 			auto &ext = value["extensions"];
-			if (ext.HasMember("KHR_lights"))
+			if (ext.HasMember("KHR_lights_punctual"))
 			{
-				auto &cmn = ext["KHR_lights"];
+				auto &cmn = ext["KHR_lights_punctual"];
 				if (cmn.HasMember("light"))
 				{
 					auto index = cmn["light"].GetUint();
@@ -1390,9 +1390,9 @@ void Parser::parse(const string &original_path, const string &json)
 	if (doc.HasMember("extensions"))
 	{
 		auto &ext = doc["extensions"];
-		if (ext.HasMember("KHR_lights") && ext["KHR_lights"].HasMember("lights"))
+		if (ext.HasMember("KHR_lights_punctual") && ext["KHR_lights_punctual"].HasMember("lights"))
 		{
-			auto &lights = ext["KHR_lights"]["lights"];
+			auto &lights = ext["KHR_lights_punctual"]["lights"];
 			iterate_elements(lights, add_light);
 		}
 	}

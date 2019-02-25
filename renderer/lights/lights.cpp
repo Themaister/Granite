@@ -123,11 +123,14 @@ PositionalFragmentInfo SpotLight::get_shader_info(const mat4 &transform) const
 	// This assumes a uniform scale.
 	float max_range = min(falloff_range, cutoff_range) * scale_factor;
 
+	float spot_scale = 1.0f / max(0.001f, inner_cone - outer_cone);
+	float spot_bias = -outer_cone * spot_scale;
+
 	return {
 		color * (scale_factor * scale_factor),
-		outer_cone,
+		spot_scale,
 		transform[3].xyz(),
-		inner_cone,
+		spot_bias,
 		-normalize(transform[2].xyz()),
 		1.0f / max_range,
 	};

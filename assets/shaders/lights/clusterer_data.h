@@ -6,10 +6,10 @@
 struct SpotShaderInfo
 {
 	mediump vec3 color;
-	mediump float spot_outer;
+	mediump float spot_scale;
 
 	vec3 position;
-	mediump float spot_inner;
+	mediump float spot_bias;
 
 	mediump vec3 direction;
 	mediump float inv_radius;

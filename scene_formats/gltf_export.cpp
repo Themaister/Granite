@@ -1578,11 +1578,11 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 	if (!scene.lights.empty())
 	{
 		Value req(kArrayType);
-		req.PushBack("KHR_lights", allocator);
+		req.PushBack("KHR_lights_punctual", allocator);
 		doc.AddMember("extensionsRequired", req, allocator);
 
 		Value used(kArrayType);
-		used.PushBack("KHR_lights", allocator);
+		used.PushBack("KHR_lights_punctual", allocator);
 		doc.AddMember("extensionsUsed", used, allocator);
 	}
 
@@ -1634,7 +1634,7 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 				Value ext(kObjectType);
 				Value cmn(kObjectType);
 				cmn.AddMember("light", uint32_t(&light - scene.lights.data()), allocator);
-				ext.AddMember("KHR_lights", cmn, allocator);
+				ext.AddMember("KHR_lights_punctual", cmn, allocator);
 				n.AddMember("extensions", ext, allocator);
 				break;
 			}
@@ -2173,7 +2173,7 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 		}
 
 		khr_lights.AddMember("lights", lights, allocator);
-		ext.AddMember("KHR_lights", khr_lights, allocator);
+		ext.AddMember("KHR_lights_punctual", khr_lights, allocator);
 		doc.AddMember("extensions", ext, allocator);
 	}
 

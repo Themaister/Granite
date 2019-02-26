@@ -30,8 +30,8 @@ float to_clip_z(float world_z)
     return zw.x / zw.y;
 }
 
-layout(constant_id = 0) const float POSITION_MOD = 0.1;
-layout(constant_id = 1) const float POSITION_MOD_LOW_FREQ = 0.022556;
+layout(constant_id = 0) const float POSITION_MOD = 0.4;
+layout(constant_id = 1) const float POSITION_MOD_LOW_FREQ = 0.0922556;
 
 layout(rgba16f, set = 2, binding = 0) writeonly uniform image3D uLightDensity;
 layout(set = 2, binding = 2) uniform mediump sampler3D uDitherLUT;
@@ -149,7 +149,7 @@ void main()
                 float old_world_z = to_world_z(old_ndc.z);
                 float tex_z = volumetric_fog_world_to_texture_z(old_world_z, registers.slice_z_log2_scale);
                 old_in_scatter_light_albedo = textureLod(uOldLightDensity, vec3(0.5 * old_ndc.xy + 0.5, tex_z), 0.0);
-                w = 0.10;
+                w = 1.0 / 10.0;
             }
         }
     }

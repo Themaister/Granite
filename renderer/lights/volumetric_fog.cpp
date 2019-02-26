@@ -224,9 +224,13 @@ void VolumetricFog::build_fog(CommandBuffer &cmd, ImageView &fog, ImageView &lig
 	cmd.set_program("builtin://shaders/lights/fog_accumulate.comp");
 	struct Push
 	{
+		alignas(16) vec3 inv_resolution;
 		alignas(16) uvec3 count;
 	} push;
 
+	push.inv_resolution.x = 1.0f / float(light.get_image().get_width());
+	push.inv_resolution.y = 1.0f / float(light.get_image().get_height());
+	push.inv_resolution.z = 1.0f / float(light.get_image().get_depth());
 	push.count = uvec3(width, height, depth);
 
 	cmd.push_constants(&push, 0, sizeof(push));

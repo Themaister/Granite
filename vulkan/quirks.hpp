@@ -51,5 +51,6 @@ struct ImplementationWorkarounds
 	bool wsi_acquire_barrier_is_expensive = false;
 	bool optimize_all_graphics_barrier = false;
 	bool force_store_in_render_pass = false;
+	bool broken_color_write_mask = false;
 };
 }

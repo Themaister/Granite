@@ -622,7 +622,9 @@ void Device::init_workarounds()
 	{
 		// Apparently, we need to use STORE_OP_STORE in all render passes no matter what ...
 		workarounds.force_store_in_render_pass = true;
+		workarounds.broken_color_write_mask = true;
 		LOGW("Detected workaround for render pass STORE_OP_STORE.\n");
+		LOGW("Detected workaround for broken color write masks.\n");
 	}
 
 	// UNDEFINED -> COLOR_ATTACHMENT_OPTIMAL stalls, so need to acquire async.

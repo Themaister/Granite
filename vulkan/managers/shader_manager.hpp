@@ -149,6 +149,11 @@ public:
 	bool get_shader_hash_by_variant_hash(Util::Hash variant_hash, Util::Hash &shader_hash);
 	void register_shader_hash_from_variant_hash(Util::Hash variant_hash, Util::Hash shader_hash);
 
+	Device *get_device()
+	{
+		return device;
+	}
+
 private:
 	Device *device;
 

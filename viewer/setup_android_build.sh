@@ -5,6 +5,6 @@
 	--granite-dir .. \
 	--native-target gltf-viewer \
 	--app-name "Granite glTF Viewer" \
-	--abis arm64-v8a \
+	--abis armeabi-v7a \
 	--cmake-lists-toplevel ../CMakeLists.txt \
 	--assets assets

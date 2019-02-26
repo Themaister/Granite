@@ -600,18 +600,43 @@ void Device::flush_pipeline_cache()
 
 void Device::init_workarounds()
 {
+	workarounds = {};
+
 #ifdef __APPLE__
 	// Events are not supported in MoltenVK.
 	workarounds.emulate_event_as_pipeline_barrier = true;
+	LOGW("Emulating events as pipeline barriers on Metal emulation.\n");
 #else
+	if (gpu_props.vendorID == VENDOR_ID_NVIDIA &&
+#ifdef _WIN32
+	    VK_VERSION_MAJOR(gpu_props.driverVersion) < 417)
+#else
+	    VK_VERSION_MAJOR(gpu_props.driverVersion) < 415)
+#endif
+	{
+		workarounds.force_store_in_render_pass = true;
+		LOGW("Detected workaround for render pass STORE_OP_STORE.\n");
+	}
+
+	if (gpu_props.vendorID == VENDOR_ID_QCOM)
+	{
+		// Apparently, we need to use STORE_OP_STORE in all render passes no matter what ...
+		workarounds.force_store_in_render_pass = true;
+		LOGW("Detected workaround for render pass STORE_OP_STORE.\n");
+	}
+
 	// UNDEFINED -> COLOR_ATTACHMENT_OPTIMAL stalls, so need to acquire async.
-	workarounds.wsi_acquire_barrier_is_expensive = gpu_props.vendorID == VENDOR_ID_ARM;
+	if (gpu_props.vendorID == VENDOR_ID_ARM)
+	{
+		LOGW("Workaround applied: Acquiring WSI images early on Mali.\n");
+		LOGW("Workaround applied: Emulating events as pipeline barriers.\n");
+		LOGW("Workaround applied: Optimize ALL_GRAPHICS_BIT barriers.\n");
 
-	// VkEvent is suboptimal in some cases or not supported (MoltenVK later?).
-	workarounds.emulate_event_as_pipeline_barrier = gpu_props.vendorID == VENDOR_ID_ARM;
-
-	// srcStageMask = ALL_GRAPHICS_BIT causes some weird stalls compared to waiting for fragment only.
-	workarounds.optimize_all_graphics_barrier = gpu_props.vendorID == VENDOR_ID_ARM;
+		// All performance related workarounds.
+		workarounds.wsi_acquire_barrier_is_expensive = true;
+		workarounds.emulate_event_as_pipeline_barrier = true;
+		workarounds.optimize_all_graphics_barrier = true;
+	}
 #endif
 }
 

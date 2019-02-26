@@ -112,7 +112,7 @@ RenderPass::RenderPass(Hash hash, Device *device, const VkRenderPassCreateInfo &
 	// Fixup after, we want the Fossilize render pass to be generic.
 	auto info = create_info;
 	VkAttachmentDescription fixup_attachments[VULKAN_NUM_ATTACHMENTS + 1];
-	fixup_render_pass_nvidia(info, fixup_attachments);
+	fixup_render_pass_workaround(info, fixup_attachments);
 	if (device->get_workarounds().wsi_acquire_barrier_is_expensive)
 		fixup_wsi_barrier(info, fixup_attachments);
 
@@ -796,7 +796,7 @@ RenderPass::RenderPass(Hash hash, Device *device, const RenderPassInfo &info)
 
 	// Fixup after, we want the Fossilize render pass to be generic.
 	VkAttachmentDescription fixup_attachments[VULKAN_NUM_ATTACHMENTS + 1];
-	fixup_render_pass_nvidia(rp_info, fixup_attachments);
+	fixup_render_pass_workaround(rp_info, fixup_attachments);
 	if (device->get_workarounds().wsi_acquire_barrier_is_expensive)
 		fixup_wsi_barrier(rp_info, fixup_attachments);
 
@@ -826,14 +826,9 @@ void RenderPass::fixup_wsi_barrier(VkRenderPassCreateInfo &create_info, VkAttach
 	}
 }
 
-void RenderPass::fixup_render_pass_nvidia(VkRenderPassCreateInfo &create_info, VkAttachmentDescription *attachments)
+void RenderPass::fixup_render_pass_workaround(VkRenderPassCreateInfo &create_info, VkAttachmentDescription *attachments)
 {
-	if (device->get_gpu_properties().vendorID == VENDOR_ID_NVIDIA &&
-#ifdef _WIN32
-	    VK_VERSION_MAJOR(device->get_gpu_properties().driverVersion) < 417)
-#else
-	    VK_VERSION_MAJOR(device->get_gpu_properties().driverVersion) < 415)
-#endif
+	if (device->get_workarounds().force_store_in_render_pass)
 	{
 		// Workaround a bug on NV where depth-stencil input attachments break if we have STORE_OP_DONT_CARE.
 		// Force STORE_OP_STORE for all attachments.

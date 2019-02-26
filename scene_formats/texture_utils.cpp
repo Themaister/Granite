@@ -38,7 +38,7 @@ struct MipmapGeneratorU8
 	inline void write(const Vulkan::TextureFormatLayout &layout, const uvec2 &coord,
 	                  uint32_t layer, uint32_t mip, const vec4 &v) const
 	{
-		float q = clamp(round(v.x * 255.0f), 0.0f, 255.0f);
+		float q = muglm::clamp(muglm::round(v.x * 255.0f), 0.0f, 255.0f);
 		*layout.data_generic<uint8_t>(coord.x, coord.y, layer, mip) = uint8_t(q);
 	}
 };

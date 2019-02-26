@@ -59,6 +59,10 @@ VkFormat string_to_format(const string &s)
 		return VK_FORMAT_BC3_UNORM_BLOCK;
 	else if (s == "bc3_srgb")
 		return VK_FORMAT_BC3_SRGB_BLOCK;
+	else if (s == "bc4_unorm")
+		return VK_FORMAT_BC4_UNORM_BLOCK;
+	else if (s == "bc5_unorm")
+		return VK_FORMAT_BC5_UNORM_BLOCK;
 	else if (s == "rgba8_unorm")
 		return VK_FORMAT_R8G8B8A8_UNORM;
 	else if (s == "rgba8_srgb")
@@ -236,12 +240,21 @@ void CompressorState::setup(const CompressorArguments &args)
 	switch (args.format)
 	{
 	case VK_FORMAT_BC4_UNORM_BLOCK:
+		block_size_x = 4;
+		block_size_y = 4;
+		if (!is_unorm() && layout.get_format() != VK_FORMAT_R8_UNORM)
+		{
+			LOGE("Input format to bc4 must be RGBA8 or R8.\n");
+			return;
+		}
+		break;
+
 	case VK_FORMAT_BC5_UNORM_BLOCK:
 		block_size_x = 4;
 		block_size_y = 4;
-		if (!is_unorm())
+		if (!is_unorm() && layout.get_format() != VK_FORMAT_R8G8_UNORM)
 		{
-			LOGE("Input format to bc4 must be RGBA8.\n");
+			LOGE("Input format to bc5 must be RGBA8 or RG8.\n");
 			return;
 		}
 		break;
@@ -437,6 +450,7 @@ void CompressorState::enqueue_compression_block_rgtc(TaskGroup &group, const Com
 				uint8_t padded_red[4 * 4];
 				uint8_t padded_green[4 * 4];
 				auto *src = static_cast<const uint8_t *>(layout.data(layer, level));
+				unsigned pixel_stride = layout.get_block_stride();
 
 				const auto get_block_data = [&](int block_size) -> uint8_t * {
 					auto *dst = static_cast<uint8_t *>(output->get_layout().data(layer, level));
@@ -452,7 +466,7 @@ void CompressorState::enqueue_compression_block_rgtc(TaskGroup &group, const Com
 				const auto get_component = [&](int sx, int sy, int c) -> uint8_t {
 					sx = std::min(sx, width - 1);
 					sy = std::min(sy, height - 1);
-					return src[4 * (sy * width + sx) + c];
+					return src[pixel_stride * (sy * width + sx) + c];
 				};
 
 				for (int sy = 0; sy < 4; sy++)
@@ -460,7 +474,8 @@ void CompressorState::enqueue_compression_block_rgtc(TaskGroup &group, const Com
 					for (int sx = 0; sx < 4; sx++)
 					{
 						padded_red[sy * 4 + sx] = get_component(x + sx, y + sy, 0);
-						padded_green[sy * 4 + sx] = get_component(x + sx, y + sy, 1);
+						if (pixel_stride > 1)
+							padded_green[sy * 4 + sx] = get_component(x + sx, y + sy, 1);
 					}
 				}
 

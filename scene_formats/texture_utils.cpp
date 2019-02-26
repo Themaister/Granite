@@ -26,7 +26,24 @@ namespace Granite
 {
 namespace SceneFormats
 {
-struct MipmapGeneratorUnorm
+struct MipmapGeneratorU8
+{
+	inline vec4 sample(const Vulkan::TextureFormatLayout &layout, const uvec2 &coord,
+	                   uint32_t layer, uint32_t mip) const
+	{
+		uint8_t &v = *layout.data_generic<uint8_t>(coord.x, coord.y, layer, mip);
+		return vec4(float(v) * (1.0f / 255.0f), 0.0f, 0.0f, 1.0f);
+	}
+
+	inline void write(const Vulkan::TextureFormatLayout &layout, const uvec2 &coord,
+	                  uint32_t layer, uint32_t mip, const vec4 &v) const
+	{
+		float q = clamp(round(v.x * 255.0f), 0.0f, 255.0f);
+		*layout.data_generic<uint8_t>(coord.x, coord.y, layer, mip) = uint8_t(q);
+	}
+};
+
+struct MipmapGeneratorRGBA8Unorm
 {
 	inline vec4 sample(const Vulkan::TextureFormatLayout &layout, const uvec2 &coord,
 	                   uint32_t layer, uint32_t mip) const
@@ -43,7 +60,7 @@ struct MipmapGeneratorUnorm
 	}
 };
 
-struct MipmapGeneratorSrgb
+struct MipmapGeneratorRGBA8Srgb
 {
 	static inline float srgb_gamma_to_linear(float v)
 	{
@@ -176,14 +193,18 @@ static void generate(const MemoryMappedTexture &mapped, const Vulkan::TextureFor
 
 	switch (layout.get_format())
 	{
+	case VK_FORMAT_R8_UNORM:
+		generate_mipmaps(dst_layout, layout, MipmapGeneratorU8());
+		break;
+
 	case VK_FORMAT_R8G8B8A8_SRGB:
 	case VK_FORMAT_B8G8R8A8_SRGB:
-		generate_mipmaps(dst_layout, layout, MipmapGeneratorSrgb());
+		generate_mipmaps(dst_layout, layout, MipmapGeneratorRGBA8Srgb());
 		break;
 
 	case VK_FORMAT_R8G8B8A8_UNORM:
 	case VK_FORMAT_B8G8R8A8_UNORM:
-		generate_mipmaps(dst_layout, layout, MipmapGeneratorUnorm());
+		generate_mipmaps(dst_layout, layout, MipmapGeneratorRGBA8Unorm());
 		break;
 
 	default:

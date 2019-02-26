@@ -128,8 +128,8 @@ def main():
         cmakelists = find_relative_path(target_build_gradle, args.cmake_lists_toplevel)
         assets = find_relative_path(target_build_gradle, args.assets)
         granite_assets = find_relative_path(target_build_gradle, os.path.join(args.granite_dir, 'assets'))
-        renderdoc_jni = find_relative_path(target_build_gradle, os.path.join(args.granite_dir,
-                                                                             'application/platforms/android/renderdoc'))
+        external_jni = find_relative_path(target_build_gradle, os.path.join(args.granite_dir,
+                                                                            'application/platforms/android/external_layers'))
 
         target_abis = ', '.join(["'" + x + "'" for x in abis])
 
@@ -138,7 +138,7 @@ def main():
             .replace('$$CMAKELISTS$$', cmakelists) \
             .replace('$$ASSETS$$', assets) \
             .replace('$$GRANITE_ASSETS$$', granite_assets) \
-            .replace('$$RENDERDOC_JNI$$', renderdoc_jni) \
+            .replace('$$EXTERNAL_JNI$$', external_jni) \
             .replace('$$ABIS$$', target_abis) \
             .replace('$$AUDIO$$', 'ON' if args.audio else 'OFF')
 

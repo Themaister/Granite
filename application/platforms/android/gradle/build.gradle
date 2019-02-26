@@ -65,7 +65,7 @@ android {
             resources.srcDirs = ['res']
             res.srcDirs = ['res']
             assets.srcDirs = ['$$ASSETS$$', '$$GRANITE_ASSETS$$']
-            jniLibs.srcDirs = ['$$RENDERDOC_JNI$$']
+            jniLibs.srcDirs = ['$$EXTERNAL_JNI$$']
         }
     }
 

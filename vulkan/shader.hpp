@@ -32,7 +32,7 @@
 
 namespace spirv_cross
 {
-class SPIRType;
+struct SPIRType;
 }
 
 namespace Vulkan

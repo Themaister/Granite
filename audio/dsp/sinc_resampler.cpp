@@ -289,8 +289,8 @@ size_t SincResampler::process_and_accumulate(float *output, const float *input, 
 				float32x4_t phases = vld1q_f32(phase_table + i);
 				float32x4_t deltas = vld1q_f32(delta_table + i);
 				float32x4_t buf = vld1q_f32(buffer + i);
-				float32x4_t _sinc = vfmaq_n_f32(phases, deltas, delta);
-				sum = vfmaq_f32(sum, buf, _sinc);
+				float32x4_t _sinc = vmlaq_n_f32(phases, deltas, delta);
+				sum = vmlaq_f32(sum, buf, _sinc);
 			}
 
 			float32x2_t half = vadd_f32(vget_low_f32(sum), vget_high_f32(sum));

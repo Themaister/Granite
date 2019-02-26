@@ -49,7 +49,7 @@ static inline void accumulate_channel(float * __restrict output, const float * _
 	{
 		float32x4_t acc = vld1q_f32(output);
 		float32x4_t in = vld1q_f32(input);
-		acc = vfmaq_n_f32(acc, in, gain);
+		acc = vmlaq_n_f32(acc, in, gain);
 		vst1q_f32(output, acc);
 
 		output += 4;

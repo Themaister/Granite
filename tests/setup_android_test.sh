@@ -7,6 +7,6 @@ shift
 	--granite-dir .. \
 	--native-target "$TARGET" \
 	--app-name "Granite Test" \
-	--abis arm64-v8a \
+	--abis armeabi-v7a \
 	--cmake-lists-toplevel ../CMakeLists.txt \
 	--assets assets $@

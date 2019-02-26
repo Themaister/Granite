@@ -177,6 +177,9 @@ void main()
 #if TEMPORAL_REPROJECTION
     in_scatter_light = mix(old_in_scatter_light_albedo.rgb, in_scatter_light, w);
     albedo = mix(old_in_scatter_light_albedo.w, albedo, w);
+    // Avoid albedo hitting infinity, since it will trigger NaN later in the pipeline.
+    // i.e. exp2(-inf) * inf == NaN.
+    albedo = clamp(albedo, 0.0, 10000.0);
 #endif
 
     imageStore(uLightDensity, ivec3(gl_GlobalInvocationID), vec4(in_scatter_light, albedo));

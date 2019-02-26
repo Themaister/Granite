@@ -1,11 +1,13 @@
 #version 450
-precision mediump float;
+precision highp float;
+precision highp int;
 
 layout(location = 0) in highp vec2 vUV;
 layout(location = 1) in highp vec3 vPos;
 
 #include "inc/render_target.h"
 #include "inc/render_parameters.h"
+#include "inc/two_component_normal.h"
 
 #if defined(HAVE_EMISSIVE_REFLECTION) && HAVE_EMISSIVE_REFLECTION
 layout(set = 2, binding = 0) uniform mediump sampler2D uPlaneReflection;
@@ -30,7 +32,7 @@ layout(std430, push_constant) uniform Registers
 
 void main()
 {
-    mediump vec3 tangent = texture(uNormal, registers.normal_offset_scale.zw * vUV + registers.normal_offset_scale.xy).xyz * 2.0 - 1.0;
+    mediump vec3 tangent = two_component_normal(texture(uNormal, registers.normal_offset_scale.zw * vUV + registers.normal_offset_scale.xy).xy * 2.0 - 1.0);
     mediump vec3 normal = normalize(registers.normal * tangent.z + registers.tangent * tangent.x + registers.bitangent * tangent.y);
 
     vec2 uv_offset = tangent.xy * 0.01;

@@ -16,6 +16,8 @@ precision highp int;
 const int bandlimited_pixel_lod = 0;
 #endif
 
+#include "inc/two_component_normal.h"
+
 layout(location = 0) in highp vec3 vPos;
 
 #if HAVE_UV
@@ -109,9 +111,8 @@ void main()
         #endif
 
         // For 2-component compressed textures.
-        mediump float tangent_z = sqrt(max(0.0, 1.0 - dot(tangent_space, tangent_space)));
         tangent_space *= registers.normal_scale;
-        normal = normalize(mat3(tangent, binormal, normal) * vec3(tangent_space, tangent_z));
+        normal = normalize(mat3(tangent, binormal, normal) * two_component_normal(tangent_space));
     #endif
     if (!gl_FrontFacing)
         normal = -normal;

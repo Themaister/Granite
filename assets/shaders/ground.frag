@@ -2,6 +2,7 @@
 precision mediump float;
 
 #include "inc/render_target.h"
+#include "inc/two_component_normal.h"
 
 layout(location = 0) in highp vec3 vPos;
 
@@ -51,7 +52,7 @@ void main()
         types.z * texture(uBaseColor, vec3(uv, 2.0), lod).rgb +
         types.w * texture(uBaseColor, vec3(uv, 3.0), lod).rgb;
 
-    mediump vec3 terrain = texture(uNormalsTerrain, vUV).xyz * 2.0 - 1.0;
+    mediump vec3 terrain = two_component_normal(texture(uNormalsTerrain, vUV).xy * 2.0 - 1.0);
     terrain.xy += types.w * 0.5 * (texture(uDeepRoughNormals, uv).xy * 2.0 - 1.0);
     mediump vec3 normal = normalize(mat3(registers.Normal) * terrain.xzy); // Normal is +Y, Bitangent is +Z.
 

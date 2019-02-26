@@ -159,13 +159,15 @@ float cnoise(vec4 P, vec4 rep)
     return 2.2 * n_xyzw;
 }
 
+layout(constant_id = 0) const float UPDATE_FREQ = 0.5;
+
 void main()
 {
     if (any(greaterThanEqual(gl_GlobalInvocationID, registers.count)))
         return;
 
     vec3 xyz = registers.freq * (vec3(gl_GlobalInvocationID) + 0.5) * registers.inv_resolution;
-    float density = max(0.5 * cnoise(vec4(xyz, 2.0 * registers.t), vec4(vec3(registers.freq), 2.0 * 10.0)) + 0.5, 0.0);
+    float density = max(0.5 * cnoise(vec4(xyz, UPDATE_FREQ * registers.t), vec4(vec3(registers.freq), UPDATE_FREQ * 10.0)) + 0.5, 0.0);
     density = pow(density, 4.0);
     imageStore(uFogVolume, ivec3(gl_GlobalInvocationID), vec4(density));
 }

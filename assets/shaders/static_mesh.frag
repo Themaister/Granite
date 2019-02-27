@@ -104,7 +104,7 @@ void main()
     #if defined(HAVE_NORMALMAP) && HAVE_NORMALMAP
         mediump vec3 tangent = normalize(vTangent.xyz);
         mediump vec3 binormal = cross(normal, tangent) * vTangent.w;
-        #if defined(BANDLIMITED_PIXEL)
+        #if 0 && defined(BANDLIMITED_PIXEL)
             mediump vec2 tangent_space = sample_bandlimited_pixel(uNormalmap, vUV, info, float(bandlimited_pixel_lod)).xy * 2.0 - 1.0;
         #else
             mediump vec2 tangent_space = texture(uNormalmap, vUV).xy * 2.0 - 1.0;
@@ -121,7 +121,7 @@ void main()
 #endif
 
 #if defined(HAVE_METALLICROUGHNESSMAP) && HAVE_METALLICROUGHNESSMAP
-    #if defined(BANDLIMITED_PIXEL)
+    #if 0 && defined(BANDLIMITED_PIXEL)
         mediump vec2 mr = sample_bandlimited_pixel(uMetallicRoughnessmap, vUV, info, float(bandlimited_pixel_lod)).bg;
     #else
         mediump vec2 mr = texture(uMetallicRoughnessmap, vUV).bg;
@@ -134,7 +134,7 @@ void main()
 #endif
 
 #if defined(HAVE_OCCLUSIONMAP) && HAVE_OCCLUSIONMAP
-    #if defined(BANDLIMITED_PIXEL)
+    #if 0 && defined(BANDLIMITED_PIXEL)
         mediump float ambient = sample_bandlimited_pixel(uOcclusionMap, vUV, info, float(bandlimited_pixel_lod)).x;
     #else
         mediump float ambient = texture(uOcclusionMap, vUV).x;

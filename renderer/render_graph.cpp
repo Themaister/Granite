@@ -1551,13 +1551,26 @@ void RenderGraph::build_aliases()
 
 			if (physical_dimensions[i] == physical_dimensions[j])
 			{
-				if (pass_range[i].disjoint_lifetime(pass_range[j])) // We can alias.
+				// Only alias if the resources are used in the same queue, this way we avoid introducing
+				// multi-queue shenanigans. We can only use events to pass aliasing barriers.
+				// Also, only alias if we have one single queue.
+				bool same_single_queue = physical_dimensions[i].queues == physical_dimensions[j].queues;
+				if ((physical_dimensions[i].queues & (physical_dimensions[i].queues - 1)) != 0)
+					same_single_queue = false;
+
+				if (pass_range[i].disjoint_lifetime(pass_range[j]) && same_single_queue)
 				{
+					// We can alias!
 					physical_aliases[i] = j;
 					if (alias_chains[j].empty())
 						alias_chains[j].push_back(j);
 					alias_chains[j].push_back(i);
 
+					// We might have different image usage, propagate this information.
+					auto merged_image_usage =
+							physical_dimensions[j].image_usage |= physical_dimensions[i].image_usage;
+					physical_dimensions[i].image_usage = merged_image_usage;
+					physical_dimensions[j].image_usage = merged_image_usage;
 					break;
 				}
 			}
@@ -1627,7 +1640,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device)
 			// Generally, the last pass a resource is used, it will be *read*, not written to.
 			assert(events.to_flush_access == 0);
 			events.to_flush_access = 0;
-			physical_events[transfer.second].layout = VK_IMAGE_LAYOUT_UNDEFINED;
+			events.layout = VK_IMAGE_LAYOUT_UNDEFINED;
 		}
 	};
 

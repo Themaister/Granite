@@ -63,6 +63,7 @@ public:
 	void set_generate_mipmaps_on_load(bool enable = true);
 
 	MemoryMappedTextureFlags get_flags() const;
+	void set_flags(MemoryMappedTextureFlags flags);
 
 	size_t get_required_size() const;
 

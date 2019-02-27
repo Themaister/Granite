@@ -54,6 +54,13 @@ void MemoryMappedTexture::set_generate_mipmaps_on_load(bool enable)
 	mipgen_on_load = enable;
 }
 
+void MemoryMappedTexture::set_flags(MemoryMappedTextureFlags flags)
+{
+	bool new_cube = (flags & MEMORY_MAPPED_TEXTURE_CUBE_MAP_COMPATIBLE_BIT) != 0;
+	assert(new_cube == cube);
+	set_generate_mipmaps_on_load((flags & MEMORY_MAPPED_TEXTURE_GENERATE_MIPMAP_ON_LOAD_BIT) != 0);
+}
+
 MemoryMappedTextureFlags MemoryMappedTexture::get_flags() const
 {
 	MemoryMappedTextureFlags flags = 0;

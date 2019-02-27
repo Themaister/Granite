@@ -34,7 +34,14 @@ using namespace Util;
 
 static void print_help()
 {
-	LOGI("Usage: [--mipgen] [--deferred-mipgen [--quality [1-5]] [--format <format>] --output <out.gtx> <in.gtx>\n");
+	LOGI("Usage: \n"
+	     "\t[--mipgen]\n"
+	     "\t[--fixup-alpha]\n"
+	     "\t[--deferred-mipgen]\n"
+	     "\t[--quality [1-5]]\n"
+	     "\t[--format <format>]\n"
+	     "\t--output <out.gtx>\n"
+	     "\t<in.gtx>\n");
 }
 
 int main(int argc, char *argv[])
@@ -44,6 +51,7 @@ int main(int argc, char *argv[])
 	string input_path;
 	bool generate_mipmap = false;
 	bool deferred_generate_mipmap = false;
+	bool fixup_alpha = false;
 	CompressorArguments args;
 
 	args.mode = TextureMode::RGB;
@@ -54,6 +62,7 @@ int main(int argc, char *argv[])
 	cbs.add("--format", [&](CLIParser &parser) { args.format = string_to_format(parser.next_string()); });
 	cbs.add("--output", [&](CLIParser &parser) { args.output = parser.next_string(); });
 	cbs.add("--alpha", [&](CLIParser &) { args.mode = TextureMode::RGBA; });
+	cbs.add("--fixup-alpha", [&](CLIParser &) { fixup_alpha = true; });
 	cbs.add("--mipgen", [&](CLIParser &) { generate_mipmap = true; });
 	cbs.add("--deferred-mipgen", [&](CLIParser &) { deferred_generate_mipmap = true; });
 	cbs.default_handler = [&](const char *arg) { input_path = arg; };
@@ -112,6 +121,16 @@ int main(int argc, char *argv[])
 	if (generate_mipmap)
 	{
 		*input = generate_mipmaps(input->get_layout(), input->get_flags());
+		if (input->get_layout().get_required_size() == 0)
+		{
+			LOGE("Failed to save texture: %s\n", args.output.c_str());
+			return 1;
+		}
+	}
+
+	if (fixup_alpha)
+	{
+		*input = fixup_alpha_edges(input->get_layout(), input->get_flags());
 		if (input->get_layout().get_required_size() == 0)
 		{
 			LOGE("Failed to save texture: %s\n", args.output.c_str());

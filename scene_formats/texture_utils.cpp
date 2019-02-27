@@ -26,7 +26,7 @@ namespace Granite
 {
 namespace SceneFormats
 {
-struct MipmapGeneratorU8
+struct TextureFormatUnorm8
 {
 	inline vec4 sample(const Vulkan::TextureFormatLayout &layout, const uvec2 &coord,
 	                   uint32_t layer, uint32_t mip) const
@@ -43,7 +43,7 @@ struct MipmapGeneratorU8
 	}
 };
 
-struct MipmapGeneratorRGBA8Unorm
+struct TextureFormatRGBA8Unorm
 {
 	inline vec4 sample(const Vulkan::TextureFormatLayout &layout, const uvec2 &coord,
 	                   uint32_t layer, uint32_t mip) const
@@ -60,7 +60,7 @@ struct MipmapGeneratorRGBA8Unorm
 	}
 };
 
-struct MipmapGeneratorRGBA8Srgb
+struct TextureFormatRGBA8Srgb
 {
 	static inline float srgb_gamma_to_linear(float v)
 	{
@@ -194,21 +194,90 @@ static void generate(const MemoryMappedTexture &mapped, const Vulkan::TextureFor
 	switch (layout.get_format())
 	{
 	case VK_FORMAT_R8_UNORM:
-		generate_mipmaps(dst_layout, layout, MipmapGeneratorU8());
+		generate_mipmaps(dst_layout, layout, TextureFormatUnorm8());
 		break;
 
 	case VK_FORMAT_R8G8B8A8_SRGB:
 	case VK_FORMAT_B8G8R8A8_SRGB:
-		generate_mipmaps(dst_layout, layout, MipmapGeneratorRGBA8Srgb());
+		generate_mipmaps(dst_layout, layout, TextureFormatRGBA8Srgb());
 		break;
 
 	case VK_FORMAT_R8G8B8A8_UNORM:
 	case VK_FORMAT_B8G8R8A8_UNORM:
-		generate_mipmaps(dst_layout, layout, MipmapGeneratorRGBA8Unorm());
+		generate_mipmaps(dst_layout, layout, TextureFormatRGBA8Unorm());
 		break;
 
 	default:
 		throw std::logic_error("Unsupported format for generate_mipmaps.");
+	}
+}
+
+template <typename Ops>
+inline void fixup_edges(const Vulkan::TextureFormatLayout &dst_layout,
+                        const Vulkan::TextureFormatLayout &layout, const Ops &op)
+{
+	for (uint32_t layer = 0; layer < dst_layout.get_layers(); layer++)
+	{
+		for (uint32_t level = 0; level < dst_layout.get_levels(); level++)
+		{
+			auto &mip = dst_layout.get_mip_info(level);
+			int width = mip.block_row_length;
+			int height = mip.block_image_height;
+			ivec2 max_coord(width - 1, height - 1);
+
+			for (int y = 0; y < height; y++)
+			{
+				for (int x = 0; x < width; x++)
+				{
+					vec4 source = op.sample(layout, uvec2(x, y), layer, level);
+					if (source.w == 1.0f)
+					{
+						op.write(dst_layout, uvec2(x, y), layer, level, source);
+					}
+					else
+					{
+						vec3 rgb = vec3(0.0f);
+						float w = 0.0f;
+						for (int off_y = -1; off_y <= 1; off_y++)
+						{
+							for (int off_x = -1; off_x <= 1; off_x++)
+							{
+								if (off_x == 0 && off_y == 0)
+									continue;
+
+								auto coord = uvec2(clamp(ivec2(x + off_x, y + off_y), ivec2(0), max_coord));
+								vec4 v = op.sample(layout, coord, layer, level);
+								rgb += v.xyz() * v.w;
+								w += v.w;
+							}
+						}
+
+						rgb *= 1.0f / muglm::max(0.0000001f, w);
+						vec3 filtered = mix(rgb, source.xyz(), source.w);
+						op.write(dst_layout, uvec2(x, y), layer, level, vec4(filtered, source.w));
+					}
+				}
+			}
+		}
+	}
+}
+
+static void fixup_edges(const MemoryMappedTexture &mapped, const Vulkan::TextureFormatLayout &layout)
+{
+	auto &dst_layout = mapped.get_layout();
+
+	switch (layout.get_format())
+	{
+	case VK_FORMAT_R8G8B8A8_UNORM:
+		fixup_edges(dst_layout, layout, TextureFormatRGBA8Unorm());
+		break;
+
+	case VK_FORMAT_R8G8B8A8_SRGB:
+		fixup_edges(dst_layout, layout, TextureFormatRGBA8Srgb());
+		break;
+
+	default:
+		throw std::logic_error("Unsupported format for fixup_edges.");
 	}
 }
 
@@ -229,6 +298,16 @@ MemoryMappedTexture generate_mipmaps(const Vulkan::TextureFormatLayout &layout, 
 	if (!mapped.map_write_scratch())
 		return {};
 	generate(mapped, layout);
+	return mapped;
+}
+
+MemoryMappedTexture fixup_alpha_edges(const Vulkan::TextureFormatLayout &layout, MemoryMappedTextureFlags flags)
+{
+	MemoryMappedTexture mapped;
+	copy_dimensions(mapped, layout, flags);
+	if (!mapped.map_write_scratch())
+		return {};
+	fixup_edges(mapped, layout);
 	return mapped;
 }
 }

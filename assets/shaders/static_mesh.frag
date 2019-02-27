@@ -70,8 +70,8 @@ layout(std430, push_constant) uniform Constants
 void main()
 {
 #if defined(BANDLIMITED_PIXEL)
-    vec2 size = textureSize(uBaseColormap, bandlimited_pixel_lod);
-    BandlimitedPixelInfo info = compute_pixel_weights(vUV, size, 1.0 / size);
+    vec2 size = vec2(textureSize(uBaseColormap, bandlimited_pixel_lod));
+    BandlimitedPixelInfo info = compute_pixel_weights(vUV, size, 1.0 / size, 1.0);
 #endif
 
 #if defined(HAVE_BASECOLORMAP) && HAVE_BASECOLORMAP

@@ -69,11 +69,7 @@ static void gather_visible_renderables(const Frustum &frustum, VisibilityList &l
 		if (transform->transform)
 		{
 			if ((renderable->renderable->flags & RENDERABLE_FORCE_VISIBLE_BIT) != 0 ||
-#if 1
 			    SIMD::frustum_cull(transform->world_aabb, frustum.get_planes()))
-#else
-				frustum.intersects_fast(transform->world_aabb))
-#endif
 			{
 				list.push_back({ renderable->renderable.get(), transform });
 			}
@@ -318,12 +314,13 @@ void Scene::update_cached_transforms()
 					// TODO: Isolate the AABB per bone.
 					cached_transform->world_aabb = AABB(vec3(FLT_MAX), vec3(-FLT_MAX));
 					for (auto &m : cached_transform->skin_transform->bone_world_transforms)
-						cached_transform->world_aabb.expand(aabb->aabb->transform(m));
+						SIMD::transform_and_expand_aabb(cached_transform->world_aabb, *aabb->aabb, m);
 				}
 				else
 				{
-					cached_transform->world_aabb = aabb->aabb->transform(
-						cached_transform->transform->world_transform);
+					SIMD::transform_aabb(cached_transform->world_aabb,
+					                     *aabb->aabb,
+					                     cached_transform->transform->world_transform);
 				}
 			}
 			timestamp->last_timestamp = *timestamp->current_timestamp;

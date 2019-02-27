@@ -63,6 +63,16 @@ public:
 		return maximum.v4;
 	}
 
+	vec4 &get_minimum4()
+	{
+		return minimum.v4;
+	}
+
+	vec4 &get_maximum4()
+	{
+		return maximum.v4;
+	}
+
 	vec3 get_corner(unsigned i) const
 	{
 		float x = i & 1 ? maximum.v3.x : minimum.v3.x;

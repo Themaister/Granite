@@ -127,5 +127,64 @@ static inline void mul(mat4 &c, const mat4 &a, const mat4 &b)
 #endif
 }
 
+static inline void transform_aabb(AABB &output, const AABB &aabb, const mat4 &m)
+{
+#if defined(__SSE__)
+	__m128 lo = _mm_loadu_ps(aabb.get_minimum4().data);
+	__m128 hi = _mm_loadu_ps(aabb.get_maximum4().data);
+
+	__m128 m0 = _mm_loadu_ps(m[0].data);
+	__m128 m1 = _mm_loadu_ps(m[1].data);
+	__m128 m2 = _mm_loadu_ps(m[2].data);
+	__m128 m3 = _mm_loadu_ps(m[3].data);
+
+	__m128 m0_pos = _mm_cmpgt_ps(m0, _mm_setzero_ps());
+	__m128 m1_pos = _mm_cmpgt_ps(m1, _mm_setzero_ps());
+	__m128 m2_pos = _mm_cmpgt_ps(m2, _mm_setzero_ps());
+
+	__m128 hi0 = _mm_shuffle_ps(hi, hi, _MM_SHUFFLE(0, 0, 0, 0));
+	__m128 hi1 = _mm_shuffle_ps(hi, hi, _MM_SHUFFLE(1, 1, 1, 1));
+	__m128 hi2 = _mm_shuffle_ps(hi, hi, _MM_SHUFFLE(2, 2, 2, 2));
+	__m128 lo0 = _mm_shuffle_ps(lo, lo, _MM_SHUFFLE(0, 0, 0, 0));
+	__m128 lo1 = _mm_shuffle_ps(lo, lo, _MM_SHUFFLE(1, 1, 1, 1));
+	__m128 lo2 = _mm_shuffle_ps(lo, lo, _MM_SHUFFLE(2, 2, 2, 2));
+
+	__m128 hi_result = m3;
+	hi_result = _mm_add_ps(hi_result, _mm_mul_ps(m0, _mm_or_ps(_mm_and_ps(m0_pos, hi0), _mm_andnot_ps(m0_pos, lo0))));
+	hi_result = _mm_add_ps(hi_result, _mm_mul_ps(m1, _mm_or_ps(_mm_and_ps(m1_pos, hi1), _mm_andnot_ps(m1_pos, lo1))));
+	hi_result = _mm_add_ps(hi_result, _mm_mul_ps(m2, _mm_or_ps(_mm_and_ps(m2_pos, hi2), _mm_andnot_ps(m2_pos, lo2))));
+
+	__m128 lo_result = m3;
+	lo_result = _mm_add_ps(lo_result, _mm_mul_ps(m0, _mm_or_ps(_mm_andnot_ps(m0_pos, hi0), _mm_and_ps(m0_pos, lo0))));
+	lo_result = _mm_add_ps(lo_result, _mm_mul_ps(m1, _mm_or_ps(_mm_andnot_ps(m1_pos, hi1), _mm_and_ps(m1_pos, lo1))));
+	lo_result = _mm_add_ps(lo_result, _mm_mul_ps(m2, _mm_or_ps(_mm_andnot_ps(m2_pos, hi2), _mm_and_ps(m2_pos, lo2))));
+
+	_mm_storeu_ps(output.get_minimum4().data, lo_result);
+	_mm_storeu_ps(output.get_maximum4().data, hi_result);
+#elif defined(__ARM_NEON)
+#error "Implement me."
+#else
+	return aabb.transform(m);
+#endif
+}
+
+static inline void transform_and_expand_aabb(AABB &expandee, const AABB &aabb, const mat4 &m)
+{
+	alignas(16) AABB tmp;
+	transform_aabb(tmp, aabb, m);
+#if defined(__SSE__)
+	__m128 lo = _mm_min_ps(_mm_load_ps(tmp.get_minimum4().data), _mm_loadu_ps(expandee.get_minimum4().data));
+	__m128 hi = _mm_max_ps(_mm_load_ps(tmp.get_maximum4().data), _mm_loadu_ps(expandee.get_maximum4().data));
+	_mm_storeu_ps(expandee.get_minimum4().data, lo);
+	_mm_storeu_ps(expandee.get_maximum4().data, hi);
+#elif defined(__ARM_NEON)
+#error "Implement me."
+#else
+	auto &output_min = expandee.get_minimum4();
+	auto &output_max = expandee.get_maximum4();
+	output_min = min(output_min, tmp.get_minimum4());
+	output_max = max(output_max, tmp.get_maximum4());
+#endif
+}
 }
 }

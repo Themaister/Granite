@@ -1,13 +1,15 @@
 #include "simd.hpp"
 #include "muglm/muglm_impl.hpp"
+#include "muglm/matrix_helper.hpp"
 #include "util.hpp"
 #include "transforms.hpp"
+#include "frustum.hpp"
 #include <assert.h>
 #include <string.h>
 
 using namespace Granite;
 
-int main()
+static void test_matrix_multiply()
 {
 	mat4 a(vec4(1, 2, 3, 4), vec4(5, 6, 7, 8), vec4(9, 10, 11, 12), vec4(13, 14, 15, 16));
 	mat4 b(vec4(1, 2, 3, 4), vec4(-5, 6, 7, -8), vec4(9, 10, 11, 12), vec4(13, -14, 15, 16));
@@ -18,9 +20,12 @@ int main()
 	if (memcmp(&ref, &c, sizeof(mat4)) != 0)
 	{
 		LOGE("Error!\n");
-		return 1;
+		exit(1);
 	}
+}
 
+static void test_aabb_transform()
+{
 	mat4 test_transform;
 	compute_model_transform(test_transform, vec3(8.0f, 6.0f, -3.0f), angleAxis(0.8f, vec3(0.1f, 0.2f, 0.3f)), vec3(8.0f, 1.0f, -0.5f), mat4(1.0f));
 
@@ -31,12 +36,44 @@ int main()
 	if (distance(ref_aabb.get_minimum4(), optim_aabb.get_minimum4()) > 0.00001f)
 	{
 		LOGE("Error!\n");
-		return 1;
+		exit(1);
 	}
 
 	if (distance(ref_aabb.get_maximum4(), optim_aabb.get_maximum4()) > 0.00001f)
 	{
 		LOGE("Error!\n");
-		return 1;
+		exit(1);
 	}
+}
+
+static void test_frustum_cull()
+{
+	mat4 m = projection(0.4f, 1.0f, 0.1f, 5.0f);
+	Frustum frustum;
+	frustum.build_planes(inverse(m));
+
+	for (int z = -10; z <= 10; z++)
+	{
+		for (int y = -10; y <= 10; y++)
+		{
+			for (int x = -10; x <= 10; x++)
+			{
+				AABB aabb(vec3(x, y, z) * 0.25f - 0.1f, vec3(x, y, z) * 0.25f + 0.1f);
+				bool slow_test = frustum.intersects(aabb);
+				bool fast_test = SIMD::frustum_cull(aabb, frustum.get_planes());
+				if (slow_test != fast_test)
+				{
+					LOGE("Frustum cull mismatch.\n");
+					exit(1);
+				}
+			}
+		}
+	}
+}
+
+int main()
+{
+	test_matrix_multiply();
+	test_aabb_transform();
+	test_frustum_cull();
 }

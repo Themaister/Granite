@@ -50,16 +50,10 @@ layout(std140, set = 3, binding = 1) uniform BonesWorld
 {
     mat4 BoneWorldTransforms[256];
 };
-
-layout(std140, set = 3, binding = 2) uniform BonesNormal
-{
-    mat4 BoneNormalTransforms[256];
-};
 #else
 struct StaticMeshInfo
 {
     mat4 Model;
-    mat4 Normal;
 };
 
 layout(set = 3, binding = 0, std140) uniform PerVertexData
@@ -73,37 +67,41 @@ invariant gl_Position;
 void main()
 {
 #if HAVE_BONE_INDEX && HAVE_BONE_WEIGHT
-    vec3 World =
-        (
+    vec3 world_col0 =
         BoneWorldTransforms[BoneIndices.x][0].xyz * BoneWeights.x +
         BoneWorldTransforms[BoneIndices.y][0].xyz * BoneWeights.y +
         BoneWorldTransforms[BoneIndices.z][0].xyz * BoneWeights.z +
-        BoneWorldTransforms[BoneIndices.w][0].xyz * BoneWeights.w) * Position.x +
+        BoneWorldTransforms[BoneIndices.w][0].xyz * BoneWeights.w;
 
-        (
+    vec3 world_col1 =
         BoneWorldTransforms[BoneIndices.x][1].xyz * BoneWeights.x +
         BoneWorldTransforms[BoneIndices.y][1].xyz * BoneWeights.y +
         BoneWorldTransforms[BoneIndices.z][1].xyz * BoneWeights.z +
-        BoneWorldTransforms[BoneIndices.w][1].xyz * BoneWeights.w) * Position.y +
+        BoneWorldTransforms[BoneIndices.w][1].xyz * BoneWeights.w;
 
-        (
+    vec3 world_col2 =
         BoneWorldTransforms[BoneIndices.x][2].xyz * BoneWeights.x +
         BoneWorldTransforms[BoneIndices.y][2].xyz * BoneWeights.y +
         BoneWorldTransforms[BoneIndices.z][2].xyz * BoneWeights.z +
-        BoneWorldTransforms[BoneIndices.w][2].xyz * BoneWeights.w) * Position.z +
+        BoneWorldTransforms[BoneIndices.w][2].xyz * BoneWeights.w;
 
-        (
+    vec3 world_col3 =
         BoneWorldTransforms[BoneIndices.x][3].xyz * BoneWeights.x +
         BoneWorldTransforms[BoneIndices.y][3].xyz * BoneWeights.y +
         BoneWorldTransforms[BoneIndices.z][3].xyz * BoneWeights.z +
-        BoneWorldTransforms[BoneIndices.w][3].xyz * BoneWeights.w);
+        BoneWorldTransforms[BoneIndices.w][3].xyz * BoneWeights.w;
+
 #else
-    vec3 World =
-        infos[gl_InstanceIndex].Model[0].xyz * Position.x +
-        infos[gl_InstanceIndex].Model[1].xyz * Position.y +
-        infos[gl_InstanceIndex].Model[2].xyz * Position.z +
-        infos[gl_InstanceIndex].Model[3].xyz;
+    vec3 world_col0 = infos[gl_InstanceIndex].Model[0].xyz;
+    vec3 world_col1 = infos[gl_InstanceIndex].Model[1].xyz;
+    vec3 world_col2 = infos[gl_InstanceIndex].Model[2].xyz;
+    vec3 world_col3 = infos[gl_InstanceIndex].Model[3].xyz;
 #endif
+    vec3 World =
+        world_col0 * Position.x +
+        world_col1 * Position.y +
+        world_col2 * Position.z +
+        world_col3;
     gl_Position = global.view_projection * vec4(World, 1.0);
 
 #ifndef RENDERER_DEPTH
@@ -112,20 +110,16 @@ void main()
 
 #ifndef RENDERER_DEPTH
 #if HAVE_NORMAL
+    mat3 NormalTransform = mat3(world_col0, world_col1, world_col2);
     #if HAVE_BONE_INDEX && HAVE_BONE_WEIGHT
-        mat3 NormalTransform =
-            mat3(BoneNormalTransforms[BoneIndices.x]) * BoneWeights.x +
-            mat3(BoneNormalTransforms[BoneIndices.y]) * BoneWeights.y +
-            mat3(BoneNormalTransforms[BoneIndices.z]) * BoneWeights.z +
-            mat3(BoneNormalTransforms[BoneIndices.w]) * BoneWeights.w;
         vNormal = normalize(NormalTransform * Normal);
         #if HAVE_TANGENT
             vTangent = vec4(normalize(NormalTransform * Tangent.xyz), Tangent.w);
         #endif
     #else
-        vNormal = normalize(mat3(infos[gl_InstanceIndex].Normal) * Normal);
+        vNormal = normalize(NormalTransform * Normal);
         #if HAVE_TANGENT
-            vTangent = vec4(normalize(mat3(infos[gl_InstanceIndex].Normal) * Tangent.xyz), Tangent.w);
+            vTangent = vec4(normalize(NormalTransform * Tangent.xyz), Tangent.w);
         #endif
     #endif
 #endif

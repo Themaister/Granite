@@ -53,13 +53,13 @@ struct Transform
 struct CachedTransform
 {
 	mat4 world_transform;
-	mat4 normal_transform;
+	//mat4 normal_transform;
 };
 
 struct CachedSkinTransform
 {
 	std::vector<mat4> bone_world_transforms;
-	std::vector<mat4> bone_normal_transforms;
+	//std::vector<mat4> bone_normal_transforms;
 };
 
 struct BoundedComponent : ComponentBase

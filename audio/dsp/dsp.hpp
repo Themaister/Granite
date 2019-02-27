@@ -24,16 +24,7 @@
 
 #include <math.h>
 #include <stdint.h>
-
-#if defined(_WIN32) && !defined(__SSE__)
-#define __SSE__
-#endif
-
-#if defined(__SSE__)
-#include <xmmintrin.h>
-#elif defined(__ARM_NEON)
-#include <arm_neon.h>
-#endif
+#include "simd_headers.hpp"
 
 namespace Granite
 {

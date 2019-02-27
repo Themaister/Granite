@@ -88,10 +88,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#if defined(_WIN32) && !defined(__SSE__)
-#define __SSE__
-#endif
-
+#include "simd_headers.hpp"
 #include "sinc_resampler.hpp"
 #include "aligned_alloc.hpp"
 #include "dsp.hpp"
@@ -101,12 +98,6 @@
 
 #ifndef PI
 #define PI 3.14159265359
-#endif
-
-#if defined(__SSE__)
-#include <xmmintrin.h>
-#elif defined(__ARM_NEON)
-#include <arm_neon.h>
 #endif
 
 namespace Granite

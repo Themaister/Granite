@@ -35,13 +35,8 @@
 #endif
 
 #define ENABLE_SIMD 1
-
-#if defined(__AVX__) && ENABLE_SIMD
-#include <immintrin.h>
-#elif defined(__SSE__) && ENABLE_SIMD
-#include <xmmintrin.h>
-#elif defined(__ARM_NEON) && ENABLE_SIMD
-#include <arm_neon.h>
+#if ENABLE_SIMD
+#include "simd_headers.hpp"
 #endif
 
 namespace Granite

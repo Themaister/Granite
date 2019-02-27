@@ -24,12 +24,7 @@
 
 #include "math.hpp"
 #include "aabb.hpp"
-
-#ifdef __SSE3__
-#include <pmmintrin.h>
-#elif defined(__ARM_NEON)
-#include <arm_neon.h>
-#endif
+#include "simd_headers.hpp"
 
 namespace Granite
 {
@@ -59,6 +54,7 @@ static inline bool frustum_cull(const AABB &aabb, const vec4 *planes)
 	__m128 merged0123 = _mm_hadd_ps(merged01, merged23);
 	merged45 = _mm_hadd_ps(merged45, merged45);
 	__m128 merged = _mm_or_ps(merged0123, merged45);
+	// Sets bit if the sign bit is set.
 	int mask = _mm_movemask_ps(merged);
 	return mask == 0;
 #elif defined(__ARM_NEON)

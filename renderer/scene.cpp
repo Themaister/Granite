@@ -254,11 +254,11 @@ void Scene::update_skinning(Node &node)
 	{
 		unsigned len = unsigned(node.get_skin().cached_skin.size());
 		assert(node.get_skin().cached_skin.size() == node.cached_skin_transform.bone_world_transforms.size());
-		assert(node.get_skin().cached_skin.size() == node.cached_skin_transform.bone_normal_transforms.size());
+		//assert(node.get_skin().cached_skin.size() == node.cached_skin_transform.bone_normal_transforms.size());
 		for (unsigned i = 0; i < len; i++)
 		{
 			node.cached_skin_transform.bone_world_transforms[i] = node.get_skin().cached_skin[i]->world_transform;
-			node.cached_skin_transform.bone_normal_transforms[i] = node.get_skin().cached_skin[i]->normal_transform;
+			//node.cached_skin_transform.bone_normal_transforms[i] = node.get_skin().cached_skin[i]->normal_transform;
 		}
 
 		//log_node_transforms(node);
@@ -291,7 +291,7 @@ void Scene::update_transform_tree(Node &node, const mat4 &transform, bool parent
 		          node.cached_transform.world_transform,
 		          node.initial_transform);
 
-		compute_normal_transform(node.cached_transform.normal_transform, node.cached_transform.world_transform);
+		//compute_normal_transform(node.cached_transform.normal_transform, node.cached_transform.world_transform);
 		update_skinning(node);
 		node.update_timestamp();
 	}
@@ -380,7 +380,7 @@ Scene::NodeHandle Scene::create_skinned_node(const SceneFormats::Skin &skin)
 	}
 
 	node->cached_skin_transform.bone_world_transforms.resize(skin.joint_transforms.size());
-	node->cached_skin_transform.bone_normal_transforms.resize(skin.joint_transforms.size());
+	//node->cached_skin_transform.bone_normal_transforms.resize(skin.joint_transforms.size());
 
 	auto &node_skin = node->get_skin();
 	node_skin.cached_skin.reserve(skin.joint_transforms.size());

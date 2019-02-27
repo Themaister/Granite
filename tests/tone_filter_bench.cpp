@@ -7,11 +7,7 @@
 using namespace Granite::Audio;
 
 #if 0
-#if defined(__SSE__)
-#include <xmmintrin.h>
-#elif defined(__ARM_NEON)
-#include <arm_neon.h>
-#endif
+#include "simd_headers.hpp"
 
 static float recp(float v)
 {

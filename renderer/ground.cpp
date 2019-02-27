@@ -25,6 +25,7 @@
 #include "renderer.hpp"
 #include "render_context.hpp"
 #include "muglm/matrix_helper.hpp"
+#include "transforms.hpp"
 
 using namespace Vulkan;
 using namespace std;
@@ -297,7 +298,10 @@ void Ground::get_render_info(const RenderContext &context, const CachedSpatialTr
 	// The normalmaps are generated with the reference that neighbor pixels are certain length apart.
 	// However, the base mesh [0, normal_size) is squashed to [0, 1] size in X/Z direction.
 	// We compensate for this scaling by doing the inverse transposed normal matrix properly here.
-	patch.push[1] = transform->transform->normal_transform * scale(vec3(info.normal_size, 1.0f, info.normal_size));
+	//patch.push[1] = transform->transform->normal_transform * scale(vec3(info.normal_size, 1.0f, info.normal_size));
+	mat4 normal_transform;
+	compute_normal_transform(normal_transform, transform->transform->world_transform);
+	patch.push[1] = normal_transform * scale(vec3(info.normal_size, 1.0f, info.normal_size));
 
 	// Find something concrete to put here.
 	patch.tangent_scale = vec2(1.0f / 10.0f);

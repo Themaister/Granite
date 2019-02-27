@@ -22,6 +22,7 @@
 
 #include "transforms.hpp"
 #include "aabb.hpp"
+#include "simd.hpp"
 #include "muglm/matrix_helper.hpp"
 
 namespace Granite
@@ -102,8 +103,10 @@ void compute_model_transform(mat4 &world, vec3 s, quat rot, vec3 trans, const ma
 	mat4 R = mat4_cast(rot);
 	mat4 T = translate(trans);
 
-	mat4 model = R * S;
-	world = parent * T * model;
+	mat4 model;
+	SIMD::mul(model, R, S);
+	SIMD::mul(model, T, model);
+	SIMD::mul(world, parent, model);
 }
 
 void compute_normal_transform(mat4 &normal, const mat4 &world)

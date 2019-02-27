@@ -43,6 +43,7 @@ target_compile_definitions(bandlimited-pixel-test PRIVATE ASSET_DIRECTORY=\"${CM
 add_granite_offline_tool(thread-group-test thread_group_test.cpp)
 add_granite_offline_tool(intrusive-test intrusive_ptr_test.cpp)
 add_granite_offline_tool(ecs-test ecs_test.cpp)
+add_granite_offline_tool(simd-test simd_test.cpp)
 
 if (GRANITE_AUDIO)
     add_granite_offline_tool(audio-test audio_test.cpp)

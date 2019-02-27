@@ -8,8 +8,12 @@ if (CMAKE_COMPILER_IS_GNUCXX OR (${CMAKE_CXX_COMPILER_ID} MATCHES "Clang"))
     if (${CMAKE_CXX_COMPILER_ID} MATCHES "Clang")
         set(GRANITE_CXX_FLAGS ${GRANITE_CXX_FLAGS} -Wno-backslash-newline-escape)
     endif()
+    if (CMAKE_SYSTEM_PROCESSOR MATCHES "(x86)|(X86)|(amd64)|(AMD64)")
+        message("Enabling SSE3 support.")
+        set(GRANITE_CXX_FLAGS ${GRANITE_CXX_FLAGS} -msse3)
+    endif()
 elseif (MSVC)
-    set(GRANITE_CXX_FLAGS /D_CRT_SECURE_NO_WARNINGS /wd4267 /wd4244 /wd4309 /wd4005 /MP /DNOMINMAX)
+    set(GRANITE_CXX_FLAGS /arch:SSE3 /D_CRT_SECURE_NO_WARNINGS /wd4267 /wd4244 /wd4309 /wd4005 /MP /DNOMINMAX)
 endif()
 
 option(GRANITE_SHARED "Build Granite as a shared library." OFF)
@@ -339,6 +343,7 @@ if (NOT GRANITE_VULKAN_ONLY)
             math/muglm/muglm.cpp math/muglm/muglm.hpp
             math/muglm/muglm_impl.hpp math/muglm/matrix_helper.hpp
             math/transforms.cpp math/transforms.hpp
+            math/simd.hpp
 
             renderer/render_queue.hpp renderer/render_queue.cpp
             renderer/mesh.hpp renderer/mesh.cpp

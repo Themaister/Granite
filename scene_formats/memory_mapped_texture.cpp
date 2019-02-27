@@ -22,6 +22,7 @@
 
 #include "memory_mapped_texture.hpp"
 #include <string.h>
+#include <stdlib.h>
 
 using namespace std;
 
@@ -57,7 +58,8 @@ void MemoryMappedTexture::set_generate_mipmaps_on_load(bool enable)
 void MemoryMappedTexture::set_flags(MemoryMappedTextureFlags flags)
 {
 	bool new_cube = (flags & MEMORY_MAPPED_TEXTURE_CUBE_MAP_COMPATIBLE_BIT) != 0;
-	assert(new_cube == cube);
+	if (new_cube != cube)
+		abort();
 	set_generate_mipmaps_on_load((flags & MEMORY_MAPPED_TEXTURE_GENERATE_MIPMAP_ON_LOAD_BIT) != 0);
 }
 

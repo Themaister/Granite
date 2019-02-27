@@ -23,6 +23,7 @@
 #include "scene.hpp"
 #include "transforms.hpp"
 #include "lights/lights.hpp"
+#include "simd.hpp"
 #include <float.h>
 
 using namespace std;
@@ -68,7 +69,11 @@ static void gather_visible_renderables(const Frustum &frustum, VisibilityList &l
 		if (transform->transform)
 		{
 			if ((renderable->renderable->flags & RENDERABLE_FORCE_VISIBLE_BIT) != 0 ||
-			    frustum.intersects_fast(transform->world_aabb))
+#if 1
+			    SIMD::frustum_cull(transform->world_aabb, frustum.get_planes()))
+#else
+				frustum.intersects_fast(transform->world_aabb))
+#endif
 			{
 				list.push_back({ renderable->renderable.get(), transform });
 			}
@@ -282,7 +287,9 @@ void Scene::update_transform_tree(Node &node, const mat4 &transform, bool parent
 			update_transform_tree(*child, node.cached_transform.world_transform, true);
 
 		// Apply the first transformation in the sequence, this is used for skinning.
-		node.cached_transform.world_transform = node.cached_transform.world_transform * node.initial_transform;
+		SIMD::mul(node.cached_transform.world_transform,
+		          node.cached_transform.world_transform,
+		          node.initial_transform);
 
 		compute_normal_transform(node.cached_transform.normal_transform, node.cached_transform.world_transform);
 		update_skinning(node);

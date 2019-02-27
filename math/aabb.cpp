@@ -44,13 +44,13 @@ AABB AABB::transform(const mat4 &m) const
 
 vec3 AABB::get_coord(float dx, float dy, float dz) const
 {
-	return mix(minimum, maximum, vec3(dx, dy, dz));
+	return mix(minimum.v3, maximum.v3, vec3(dx, dy, dz));
 }
 
 void AABB::expand(const AABB &aabb)
 {
-	minimum = min(minimum, aabb.minimum);
-	maximum = max(maximum, aabb.maximum);
+	minimum.v3 = min(minimum.v3, aabb.minimum.v3);
+	maximum.v3 = max(maximum.v3, aabb.maximum.v3);
 }
 
 }

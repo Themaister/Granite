@@ -30,9 +30,10 @@ namespace Granite
 class AABB
 {
 public:
-	AABB(vec3 minimum, vec3 maximum)
-		: minimum(minimum), maximum(maximum)
+	AABB(vec3 minimum_, vec3 maximum_)
 	{
+		minimum.v4 = vec4(minimum_, 1.0f);
+		maximum.v4 = vec4(maximum_, 1.0f);
 	}
 
 	AABB() = default;
@@ -44,34 +45,47 @@ public:
 
 	const vec3 &get_minimum() const
 	{
-		return minimum;
+		return minimum.v3;
 	}
 
 	const vec3 &get_maximum() const
 	{
-		return maximum;
+		return maximum.v3;
+	}
+
+	const vec4 &get_minimum4() const
+	{
+		return minimum.v4;
+	}
+
+	const vec4 &get_maximum4() const
+	{
+		return maximum.v4;
 	}
 
 	vec3 get_corner(unsigned i) const
 	{
-		float x = i & 1 ? maximum.x : minimum.x;
-		float y = i & 2 ? maximum.y : minimum.y;
-		float z = i & 4 ? maximum.z : minimum.z;
+		float x = i & 1 ? maximum.v3.x : minimum.v3.x;
+		float y = i & 2 ? maximum.v3.y : minimum.v3.y;
+		float z = i & 4 ? maximum.v3.z : minimum.v3.z;
 		return vec3(x, y, z);
 	}
 
 	vec3 get_center() const
 	{
-		return minimum + (maximum - minimum) * vec3(0.5f);
+		return minimum.v3 + (maximum.v3 - minimum.v3) * vec3(0.5f);
 	}
 
 	float get_radius() const
 	{
-		return 0.5f * distance(minimum, maximum);
+		return 0.5f * distance(minimum.v3, maximum.v3);
 	}
 
 private:
-	vec3 minimum;
-	vec3 maximum;
+	union
+	{
+		vec3 v3;
+		vec4 v4;
+	} minimum, maximum;
 };
 }

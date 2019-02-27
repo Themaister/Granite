@@ -118,9 +118,16 @@ public:
 	WSI();
 	void set_platform(WSIPlatform *platform);
 	void set_present_mode(PresentMode mode);
+	void set_backbuffer_srgb(bool enable);
+
 	PresentMode get_present_mode() const
 	{
 		return present_mode;
+	}
+
+	bool get_backbuffer_srgb() const
+	{
+		return srgb_backbuffer_enable;
 	}
 
 	bool init();
@@ -205,6 +212,8 @@ private:
 	Vulkan::Semaphore external_release;
 	bool frame_is_external = false;
 	bool using_display_timing = false;
+	bool srgb_backbuffer_enable = true;
+	bool current_srgb_backbuffer_enable = true;
 	bool begin_frame_external();
 	double external_frame_time = 0.0;
 

@@ -439,9 +439,11 @@ bool WSI::end_frame()
 		}
 
 		// Re-init swapchain.
-		if (present_mode != current_present_mode)
+		if (present_mode != current_present_mode ||
+		    srgb_backbuffer_enable != current_srgb_backbuffer_enable)
 		{
 			current_present_mode = present_mode;
+			current_srgb_backbuffer_enable = srgb_backbuffer_enable;
 			update_framebuffer(this->width, this->height);
 		}
 	}
@@ -451,9 +453,12 @@ bool WSI::end_frame()
 
 void WSI::update_framebuffer(unsigned width, unsigned height)
 {
-	vkDeviceWaitIdle(context->get_device());
-	if (blocking_init_swapchain(width, height))
-		device->init_swapchain(swapchain_images, this->width, this->height, format);
+	if (context && device)
+	{
+		vkDeviceWaitIdle(context->get_device());
+		if (blocking_init_swapchain(width, height))
+			device->init_swapchain(swapchain_images, this->width, this->height, format);
+	}
 }
 
 void WSI::set_present_mode(PresentMode mode)
@@ -462,6 +467,16 @@ void WSI::set_present_mode(PresentMode mode)
 	if (!has_acquired_swapchain_index && present_mode != current_present_mode)
 	{
 		current_present_mode = present_mode;
+		update_framebuffer(this->width, this->height);
+	}
+}
+
+void WSI::set_backbuffer_srgb(bool enable)
+{
+	srgb_backbuffer_enable = enable;
+	if (!has_acquired_swapchain_index && srgb_backbuffer_enable != current_srgb_backbuffer_enable)
+	{
+		current_srgb_backbuffer_enable = srgb_backbuffer_enable;
 		update_framebuffer(this->width, this->height);
 	}
 }
@@ -561,12 +576,25 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 		bool found = false;
 		for (unsigned i = 0; i < format_count; i++)
 		{
-			if (formats[i].format == VK_FORMAT_R8G8B8A8_SRGB ||
-			    formats[i].format == VK_FORMAT_B8G8R8A8_SRGB ||
-			    formats[i].format == VK_FORMAT_A8B8G8R8_SRGB_PACK32)
+			if (current_srgb_backbuffer_enable)
 			{
-				format = formats[i];
-				found = true;
+				if (formats[i].format == VK_FORMAT_R8G8B8A8_SRGB ||
+				    formats[i].format == VK_FORMAT_B8G8R8A8_SRGB ||
+				    formats[i].format == VK_FORMAT_A8B8G8R8_SRGB_PACK32)
+				{
+					format = formats[i];
+					found = true;
+				}
+			}
+			else
+			{
+				if (formats[i].format == VK_FORMAT_R8G8B8A8_UNORM ||
+				    formats[i].format == VK_FORMAT_B8G8R8A8_UNORM ||
+				    formats[i].format == VK_FORMAT_A8B8G8R8_UNORM_PACK32)
+				{
+					format = formats[i];
+					found = true;
+				}
 			}
 		}
 

@@ -492,6 +492,12 @@ bool SceneViewerApplication::on_key_down(const KeyboardEvent &e)
 		break;
 	}
 
+	case Key::M:
+	{
+		get_wsi().set_backbuffer_srgb(!get_wsi().get_backbuffer_srgb());
+		break;
+	}
+
 	default:
 		break;
 	}

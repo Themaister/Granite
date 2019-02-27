@@ -106,6 +106,7 @@ struct EmittedMaterial
 	float normal_scale = 1.0f;
 	DrawPipeline pipeline = DrawPipeline::Opaque;
 	bool two_sided = false;
+	bool bandlimited_pixel = false;
 };
 
 struct EmittedTexture
@@ -297,7 +298,8 @@ Hash RemapState::hash(const MaterialInfo &mat)
 		h.f32(mat.uniform_base_color[i]);
 	for (unsigned i = 0; i < 3; i++)
 		h.f32(mat.uniform_emissive_color[i]);
-	h.u32(mat.two_sided);
+	h.s32(mat.two_sided);
+	h.s32(mat.bandlimited_pixel);
 	h.u32(ecast(mat.pipeline));
 
 	return h.get();
@@ -770,6 +772,7 @@ void RemapState::emit_material(unsigned remapped_material)
 	output.normal_scale = material.normal_scale;
 	output.pipeline = material.pipeline;
 	output.two_sided = material.two_sided;
+	output.bandlimited_pixel = material.bandlimited_pixel;
 }
 
 static void quantize_attribute_fp32_fp16(uint8_t *output,
@@ -1907,6 +1910,13 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 
 			if (material.two_sided)
 				m.AddMember("doubleSided", true, allocator);
+
+			if (material.bandlimited_pixel)
+			{
+				Value extras(kObjectType);
+				extras.AddMember("bandlimitedPixel", true, allocator);
+				m.AddMember("extras", extras, allocator);
+			}
 
 			if (any(notEqual(material.uniform_emissive_color, vec3(0.0f))))
 			{

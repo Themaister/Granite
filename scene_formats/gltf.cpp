@@ -959,6 +959,13 @@ void Parser::parse(const string &original_path, const string &json)
 				info.pipeline = DrawPipeline::AlphaBlend;
 		}
 
+		if (value.HasMember("extras"))
+		{
+			auto &extras = value["extras"];
+			if (extras.HasMember("bandlimitedPixel"))
+				info.bandlimited_pixel = extras["bandlimitedPixel"].GetBool();
+		}
+
 		if (value.HasMember("emissiveFactor"))
 		{
 			auto &e = value["emissiveFactor"];

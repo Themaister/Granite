@@ -19,7 +19,7 @@ static void test_matrix_multiply()
 
 	if (memcmp(&ref, &c, sizeof(mat4)) != 0)
 	{
-		LOGE("Error!\n");
+		LOGE("Error in matrix multiply!\n");
 		exit(1);
 	}
 }
@@ -35,13 +35,13 @@ static void test_aabb_transform()
 	SIMD::transform_aabb(optim_aabb, aabb, test_transform);
 	if (distance(ref_aabb.get_minimum4(), optim_aabb.get_minimum4()) > 0.00001f)
 	{
-		LOGE("Error!\n");
+		LOGE("Error aabb!\n");
 		exit(1);
 	}
 
 	if (distance(ref_aabb.get_maximum4(), optim_aabb.get_maximum4()) > 0.00001f)
 	{
-		LOGE("Error!\n");
+		LOGE("Error aabb!\n");
 		exit(1);
 	}
 }
@@ -74,6 +74,7 @@ static void test_frustum_cull()
 int main()
 {
 	test_matrix_multiply();
-	test_aabb_transform();
 	test_frustum_cull();
+	test_aabb_transform();
+	LOGI(":D\n");
 }

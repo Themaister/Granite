@@ -660,6 +660,9 @@ Scene::NodeHandle SceneLoader::parse_scene_format(const std::string &path, const
 		info.normalmap_fine = Path::relpath(path, terrain["normalTexture"].GetString());
 		info.splatmap = Path::relpath(path, terrain["splatmapTexture"].GetString());
 
+		if (terrain.HasMember("bandlimitedPixel"))
+			info.bandlimited_pixel = terrain["bandlimitedPixel"].GetBool();
+
 		float tiling_factor = 1.0f;
 		if (terrain.HasMember("tilingFactor"))
 			tiling_factor = terrain["tilingFactor"].GetFloat();

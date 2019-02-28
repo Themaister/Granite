@@ -4,6 +4,12 @@ precision mediump float;
 #include "inc/render_target.h"
 #include "inc/two_component_normal.h"
 
+#if defined(VARIANT_BIT_0) && VARIANT_BIT_0
+#define BANDLIMITED_PIXEL
+#include "inc/bandlimited_pixel_filter.h"
+const int bandlimited_pixel_lod = 0;
+#endif
+
 layout(location = 0) in highp vec3 vPos;
 
 layout(push_constant, std430) uniform Constants
@@ -45,12 +51,21 @@ void main()
     mediump float weight = 1.0 / dot(types, vec4(1.0));
     types *= weight;
 
-    const mediump float lod = 0.5;
+#ifdef BANDLIMITED_PIXEL
+    vec2 size = vec2(textureSize(uBaseColor, bandlimited_pixel_lod).xy);
+    BandlimitedPixelInfo info = compute_pixel_weights(uv, size, 1.0 / size, 1.0);
     mediump vec3 base_color =
-        types.x * texture(uBaseColor, vec3(uv, 0.0), lod).rgb +
-        types.y * texture(uBaseColor, vec3(uv, 1.0), lod).rgb +
-        types.z * texture(uBaseColor, vec3(uv, 2.0), lod).rgb +
-        types.w * texture(uBaseColor, vec3(uv, 3.0), lod).rgb;
+        types.x * sample_bandlimited_pixel_array(uBaseColor, vec3(uv, 0.0), info, 0.0).rgb +
+        types.y * sample_bandlimited_pixel_array(uBaseColor, vec3(uv, 1.0), info, 0.0).rgb +
+        types.z * sample_bandlimited_pixel_array(uBaseColor, vec3(uv, 2.0), info, 0.0).rgb +
+        types.w * sample_bandlimited_pixel_array(uBaseColor, vec3(uv, 3.0), info, 0.0).rgb;
+#else
+    mediump vec3 base_color =
+        types.x * texture(uBaseColor, vec3(uv, 0.0)).rgb +
+        types.y * texture(uBaseColor, vec3(uv, 1.0)).rgb +
+        types.z * texture(uBaseColor, vec3(uv, 2.0)).rgb +
+        types.w * texture(uBaseColor, vec3(uv, 3.0)).rgb;
+#endif
 
     mediump vec3 terrain = two_component_normal(texture(uNormalsTerrain, vUV).xy * 2.0 - 1.0);
     terrain.xy += types.w * 0.5 * (texture(uDeepRoughNormals, uv).xy * 2.0 - 1.0);

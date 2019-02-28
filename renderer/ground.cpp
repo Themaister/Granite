@@ -341,6 +341,7 @@ void Ground::get_render_info(const RenderContext &context, const CachedSpatialTr
 	hasher.string("ground");
 	auto pipe_hash = hasher.get();
 	hasher.s32(base_lod);
+	hasher.s32(info.bandlimited_pixel);
 	auto sorting_key = RenderInfo::get_sort_key(context, Queue::Opaque, pipe_hash, hasher.get(),
 	                                            transform->world_aabb.get_center(),
 	                                            StaticLayer::Last);
@@ -365,9 +366,14 @@ void Ground::get_render_info(const RenderContext &context, const CachedSpatialTr
 
 	if (patch_data)
 	{
+		uint32_t flags = 0;
+		if (info.bandlimited_pixel)
+			flags |= 1u << 0;
+
 		patch.program = queue.get_shader_suites()[ecast(RenderableType::Ground)].get_program(DrawPipeline::Opaque,
 		                                                                                     MESH_ATTRIBUTE_POSITION_BIT,
-		                                                                                     MATERIAL_TEXTURE_BASE_COLOR_BIT);
+		                                                                                     MATERIAL_TEXTURE_BASE_COLOR_BIT,
+		                                                                                     flags);
 
 		*patch_data = patch;
 	}

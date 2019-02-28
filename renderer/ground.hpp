@@ -97,6 +97,7 @@ public:
 		float max_lod = 5.0f;
 		std::vector<float> patch_lod_bias;
 		std::vector<vec2> patch_range;
+		bool bandlimited_pixel = false;
 	};
 	Ground(unsigned size, const TerrainInfo &info);
 

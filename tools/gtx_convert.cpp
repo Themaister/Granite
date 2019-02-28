@@ -89,6 +89,8 @@ int main(int argc, char *argv[])
 	Granite::ColorSpace color;
 	switch (args.format)
 	{
+	case VK_FORMAT_R8_UNORM:
+	case VK_FORMAT_R8G8_UNORM:
 	case VK_FORMAT_R8G8B8A8_UNORM:
 	case VK_FORMAT_BC1_RGB_UNORM_BLOCK:
 	case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:

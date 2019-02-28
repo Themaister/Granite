@@ -65,6 +65,10 @@ VkFormat string_to_format(const string &s)
 		return VK_FORMAT_BC5_UNORM_BLOCK;
 	else if (s == "rgba8_unorm")
 		return VK_FORMAT_R8G8B8A8_UNORM;
+	else if (s == "rg8_unorm")
+		return VK_FORMAT_R8G8_UNORM;
+	else if (s == "r8_unorm")
+		return VK_FORMAT_R8_UNORM;
 	else if (s == "rgba8_srgb")
 		return VK_FORMAT_R8G8B8A8_SRGB;
 	else if (s == "astc_4x4_srgb")
@@ -179,23 +183,23 @@ void CompressorState::setup(const CompressorArguments &args)
 #endif
 	auto &layout = input->get_layout();
 
-	const auto is_8bit = [&]() -> bool {
+	const auto is_8bit_rgba = [&]() -> bool {
 		return layout.get_format() == VK_FORMAT_R8G8B8A8_SRGB ||
 		       layout.get_format() == VK_FORMAT_R8G8B8A8_UNORM;
 	};
 
-	const auto is_unorm = [&]() -> bool {
+	const auto is_unorm_rgba = [&]() -> bool {
 		return layout.get_format() == VK_FORMAT_R8G8B8A8_UNORM;
 	};
 
-	const auto is_16bit = [&]() -> bool {
+	const auto is_16bit_rgba = [&]() -> bool {
 		return layout.get_format() == VK_FORMAT_R16G16B16A16_SFLOAT;
 	};
 
 	const auto handle_astc_ldr_format = [&](unsigned x, unsigned y) -> bool {
 		block_size_x = x;
 		block_size_y = y;
-		if (!is_8bit())
+		if (!is_8bit_rgba())
 		{
 			LOGE("Input format to ASTC LDR must be RGBA8.\n");
 			return false;
@@ -242,7 +246,7 @@ void CompressorState::setup(const CompressorArguments &args)
 	case VK_FORMAT_BC4_UNORM_BLOCK:
 		block_size_x = 4;
 		block_size_y = 4;
-		if (!is_unorm() && layout.get_format() != VK_FORMAT_R8_UNORM)
+		if (!is_unorm_rgba() && layout.get_format() != VK_FORMAT_R8_UNORM)
 		{
 			LOGE("Input format to bc4 must be RGBA8 or R8.\n");
 			return;
@@ -252,7 +256,7 @@ void CompressorState::setup(const CompressorArguments &args)
 	case VK_FORMAT_BC5_UNORM_BLOCK:
 		block_size_x = 4;
 		block_size_y = 4;
-		if (!is_unorm() && layout.get_format() != VK_FORMAT_R8G8_UNORM)
+		if (!is_unorm_rgba() && layout.get_format() != VK_FORMAT_R8G8_UNORM)
 		{
 			LOGE("Input format to bc5 must be RGBA8 or RG8.\n");
 			return;
@@ -263,7 +267,7 @@ void CompressorState::setup(const CompressorArguments &args)
 	case VK_FORMAT_BC6H_UFLOAT_BLOCK:
 		block_size_x = 4;
 		block_size_y = 4;
-		if (!is_16bit())
+		if (!is_16bit_rgba())
 		{
 			LOGE("Input format to bc6h must be RGBA16_SFLOAT.\n");
 			return;
@@ -301,7 +305,7 @@ void CompressorState::setup(const CompressorArguments &args)
 	case VK_FORMAT_BC7_UNORM_BLOCK:
 		block_size_x = 4;
 		block_size_y = 4;
-		if (!is_8bit())
+		if (!is_8bit_rgba())
 		{
 			LOGE("Input format to bc7 must be RGBA8.\n");
 			return;
@@ -358,7 +362,7 @@ void CompressorState::setup(const CompressorArguments &args)
 	case VK_FORMAT_BC3_UNORM_BLOCK:
 		block_size_x = 4;
 		block_size_y = 4;
-		if (!is_8bit())
+		if (!is_8bit_rgba())
 		{
 			LOGE("Input format to bc1 or bc3 must be RGBA8.\n");
 			return;
@@ -368,7 +372,7 @@ void CompressorState::setup(const CompressorArguments &args)
 
 	case VK_FORMAT_ASTC_4x4_UNORM_BLOCK:
 	case VK_FORMAT_ASTC_4x4_SRGB_BLOCK:
-		if (is_16bit())
+		if (is_16bit_rgba())
 		{
 			if (!handle_astc_hdr_format(4, 4))
 				return;
@@ -379,7 +383,7 @@ void CompressorState::setup(const CompressorArguments &args)
 
 	case VK_FORMAT_ASTC_5x5_UNORM_BLOCK:
 	case VK_FORMAT_ASTC_5x5_SRGB_BLOCK:
-		if (is_16bit())
+		if (is_16bit_rgba())
 		{
 			if (!handle_astc_hdr_format(5, 5))
 				return;
@@ -390,7 +394,7 @@ void CompressorState::setup(const CompressorArguments &args)
 
 	case VK_FORMAT_ASTC_6x6_UNORM_BLOCK:
 	case VK_FORMAT_ASTC_6x6_SRGB_BLOCK:
-		if (is_16bit())
+		if (is_16bit_rgba())
 		{
 			if (!handle_astc_hdr_format(6, 6))
 				return;
@@ -401,7 +405,7 @@ void CompressorState::setup(const CompressorArguments &args)
 
 	case VK_FORMAT_ASTC_8x8_UNORM_BLOCK:
 	case VK_FORMAT_ASTC_8x8_SRGB_BLOCK:
-		if (is_16bit())
+		if (is_16bit_rgba())
 		{
 			if (!handle_astc_hdr_format(8, 8))
 				return;
@@ -412,6 +416,8 @@ void CompressorState::setup(const CompressorArguments &args)
 
 	case VK_FORMAT_R8G8B8A8_UNORM:
 	case VK_FORMAT_R8G8B8A8_SRGB:
+	case VK_FORMAT_R8G8_UNORM:
+	case VK_FORMAT_R8_UNORM:
 		break;
 
 	default:
@@ -426,11 +432,28 @@ void CompressorState::enqueue_compression_copy(TaskGroup &group, const Compresso
 	group->enqueue_task([=]() {
 		auto &input_layout = input->get_layout();
 		auto &output_layout = output->get_layout();
+		auto input_stride = input_layout.get_block_stride();
+		auto output_stride = output_layout.get_block_stride();
 
-		void *output = output_layout.data(layer, level);
-		void *input = input_layout.data(layer, level);
-		size_t layer_size = input_layout.get_layer_size(level);
-		memcpy(output, input, layer_size);
+		if (input_stride <= sizeof(u8vec4) && output_stride <= sizeof(u8vec4))
+		{
+			unsigned width = input_layout.get_width(level);
+			unsigned height = input_layout.get_height(level);
+			u8vec4 tmp(0, 0, 0, 255);
+
+			for (unsigned y = 0; y < height; y++)
+			{
+				for (unsigned x = 0; x < width; x++)
+				{
+					void *output = output_layout.data_opaque(x, y, layer, level);
+					void *input = input_layout.data_opaque(x, y, layer, level);
+					memcpy(tmp.data, input, input_stride);
+					memcpy(output, tmp.data, output_stride);
+				}
+			}
+		}
+		else
+			LOGE("Format is not as expected.\n");
 	});
 }
 

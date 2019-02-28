@@ -108,6 +108,16 @@ public:
 		return slice;
 	}
 
+	inline void *data_opaque(uint32_t x, uint32_t y, uint32_t slice_index, uint32_t mip = 0) const
+	{
+		auto &mip_info = mips[mip];
+		uint8_t *slice = buffer + mip_info.offset;
+		size_t off = slice_index * mip_info.block_row_length * mip_info.block_image_height;
+		off += y * mip_info.block_row_length;
+		off += x;
+		return slice + off * block_stride;
+	}
+
 	template <typename T>
 	inline T *data_generic() const
 	{

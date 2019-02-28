@@ -28,7 +28,7 @@
 #if defined(_INCLUDED_PMM) && !defined(__SSE3__)
 #define __SSE3__ 1
 #endif
-#if defined(_INCLUDED_XMM) && !defined(__SSE__)
+#if !defined(__SSE__)
 #define __SSE__ 1
 #endif
 #if defined(_INCLUDED_IMM) && !defined(__AVX__)

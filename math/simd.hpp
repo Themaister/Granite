@@ -194,7 +194,7 @@ static inline void mul(mat4 &c, const mat4 &a, const mat4 &b)
 	vst1q_f32(c[2].data, col2);
 	vst1q_f32(c[3].data, col3);
 #else
-	*c = (*a) * (*b);
+	c = a * b;
 #endif
 }
 
@@ -265,7 +265,7 @@ static inline void transform_aabb(AABB &output, const AABB &aabb, const mat4 &m)
 	vst1q_f32(output.get_minimum4().data, lo_result);
 	vst1q_f32(output.get_maximum4().data, hi_result);
 #else
-	return aabb.transform(m);
+	output = aabb.transform(m);
 #endif
 }
 

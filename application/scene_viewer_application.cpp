@@ -658,7 +658,8 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 	AttachmentInfo color, depth;
 
 	bool supports_32bpp =
-	    device.image_format_is_supported(VK_FORMAT_B10G11R11_UFLOAT_PACK32, VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT);
+			device.image_format_is_supported(VK_FORMAT_B10G11R11_UFLOAT_PACK32,
+			                                 VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT);
 
 	if (config.hdr_bloom)
 		color.format =

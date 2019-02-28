@@ -76,6 +76,7 @@ struct GroundData
 	vec2 uv_shift;
 	vec2 uv_tiling_scale;
 	vec2 tangent_scale;
+	vec4 texture_info;
 };
 
 struct PatchData
@@ -115,6 +116,10 @@ static void ground_patch_render(Vulkan::CommandBuffer &cmd, const RenderQueueDat
 	data->uv_shift = vec2(0.0f);
 	data->uv_tiling_scale = patch.tiling_factor;
 	data->tangent_scale = patch.tangent_scale;
+	data->texture_info.x = float(patch.base_color->get_image().get_width(0));
+	data->texture_info.y = float(patch.base_color->get_image().get_height(0));
+	data->texture_info.z = 1.0f / float(patch.base_color->get_image().get_width(0));
+	data->texture_info.w = 1.0f / float(patch.base_color->get_image().get_height(0));
 
 	cmd.push_constants(patch.push, 0, sizeof(patch.push));
 

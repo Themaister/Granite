@@ -32,6 +32,7 @@ layout(std140, set = 3, binding = 1) uniform GroundData
     vec2 uUVShift;
     vec2 uUVTilingScale;
     vec2 uTangentScale;
+    vec4 uColorSize;
 };
 
 float horiz_max(vec4 v)
@@ -52,8 +53,7 @@ void main()
     types *= weight;
 
 #ifdef BANDLIMITED_PIXEL
-    vec2 size = vec2(textureSize(uBaseColor, bandlimited_pixel_lod).xy);
-    BandlimitedPixelInfo info = compute_pixel_weights(uv, size, 1.0 / size, 1.0);
+    BandlimitedPixelInfo info = compute_pixel_weights(uv, uColorSize.xy, uColorSize.zw, 1.0);
     mediump vec3 base_color =
         types.x * sample_bandlimited_pixel_array(uBaseColor, vec3(uv, 0.0), info, 0.0).rgb +
         types.y * sample_bandlimited_pixel_array(uBaseColor, vec3(uv, 1.0), info, 0.0).rgb +

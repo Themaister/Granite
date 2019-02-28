@@ -838,9 +838,12 @@ void TexturePlane::set_zfar(float zfar)
 void TexturePlane::add_render_pass(RenderGraph &graph, Type type)
 {
 	auto &device = graph.get_device();
+	bool supports_32bpp =
+			device.image_format_is_supported(VK_FORMAT_B10G11R11_UFLOAT_PACK32,
+			                                 VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT);
 
 	AttachmentInfo color, depth, reflection_blur;
-	color.format = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
+	color.format = supports_32bpp ? VK_FORMAT_B10G11R11_UFLOAT_PACK32 : VK_FORMAT_R16G16B16A16_SFLOAT;
 	depth.format = device.get_default_depth_format();
 
 	color.size_x = scale_x;

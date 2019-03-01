@@ -1,5 +1,6 @@
 #version 450
-precision mediump float;
+precision highp float;
+precision highp int;
 
 #include "inc/render_target.h"
 #include "inc/two_component_normal.h"
@@ -35,9 +36,9 @@ layout(std140, set = 3, binding = 1) uniform GroundData
     vec4 uColorSize;
 };
 
-float horiz_max(vec4 v)
+mediump float horiz_max(mediump vec4 v)
 {
-    vec2 x = max(v.xy, v.zw);
+    mediump vec2 x = max(v.xy, v.zw);
     return max(x.x, x.y);
 }
 

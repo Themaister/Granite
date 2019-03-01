@@ -46,7 +46,9 @@ static void print_help()
 
 int main(int argc, char *argv[])
 {
-	Global::init();
+	Global::init(Global::MANAGER_FEATURE_THREAD_GROUP_BIT |
+	             Global::MANAGER_FEATURE_FILESYSTEM_BIT |
+	             Global::MANAGER_FEATURE_EVENT_BIT);
 
 	string input_path;
 	bool generate_mipmap = false;
@@ -143,8 +145,7 @@ int main(int argc, char *argv[])
 	if (input->get_layout().get_format() == VK_FORMAT_R16G16B16A16_SFLOAT)
 		args.mode = TextureMode::HDR;
 
-	ThreadGroup group;
-	group.start(std::thread::hardware_concurrency());
+	ThreadGroup &group = *Global::thread_group();
 
 	auto dummy = group.create_task();
 	compress_texture(group, args, input, dummy, nullptr);

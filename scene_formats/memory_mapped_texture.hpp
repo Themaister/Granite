@@ -32,7 +32,12 @@ namespace SceneFormats
 enum MemoryMappedTextureFlagBits
 {
 	MEMORY_MAPPED_TEXTURE_CUBE_MAP_COMPATIBLE_BIT = 1 << 0,
-	MEMORY_MAPPED_TEXTURE_GENERATE_MIPMAP_ON_LOAD_BIT = 1 << 1
+	MEMORY_MAPPED_TEXTURE_GENERATE_MIPMAP_ON_LOAD_BIT = 1 << 1,
+	MEMORY_MAPPED_TEXTURE_SWIZZLE_R_SHIFT = 16,
+	MEMORY_MAPPED_TEXTURE_SWIZZLE_G_SHIFT = 19,
+	MEMORY_MAPPED_TEXTURE_SWIZZLE_B_SHIFT = 22,
+	MEMORY_MAPPED_TEXTURE_SWIZZLE_A_SHIFT = 25,
+	MEMORY_MAPPED_TEXTURE_SWIZZLE_MASK = 0x7
 };
 using MemoryMappedTextureFlags = uint32_t;
 
@@ -66,6 +71,9 @@ public:
 	void set_flags(MemoryMappedTextureFlags flags);
 
 	size_t get_required_size() const;
+	void set_swizzle(const VkComponentMapping &swizzle);
+
+	void remap_swizzle(VkComponentMapping &mapping) const;
 
 	inline bool empty() const
 	{
@@ -78,6 +86,12 @@ private:
 	uint8_t *mapped = nullptr;
 	bool cube = false;
 	bool mipgen_on_load = false;
+	VkComponentMapping swizzle = {
+		VK_COMPONENT_SWIZZLE_R,
+		VK_COMPONENT_SWIZZLE_G,
+		VK_COMPONENT_SWIZZLE_B,
+		VK_COMPONENT_SWIZZLE_A,
+	};
 };
 }
 }

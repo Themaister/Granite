@@ -45,6 +45,7 @@ int main(int argc, char *argv[])
 	unsigned height = 0;
 	unsigned levels = 0;
 	unsigned total_layers = 0;
+	MemoryMappedTextureFlags flags = 0;
 	bool generate_mips = false;
 
 	bool cube = strcmp(argv[2], "cube") == 0;
@@ -89,6 +90,12 @@ int main(int argc, char *argv[])
 				LOGE("Mismatch levels\n");
 				return 1;
 			}
+
+			if (tex.get_flags() != flags)
+			{
+				LOGE("Mismatch flags\n");
+				return 1;
+			}
 		}
 
 		if (tex.get_layout().get_image_type() != VK_IMAGE_TYPE_2D)
@@ -101,6 +108,7 @@ int main(int argc, char *argv[])
 		width = tex.get_layout().get_width();
 		height = tex.get_layout().get_height();
 		levels = tex.get_layout().get_levels();
+		flags = tex.get_flags();
 
 		if (tex.get_flags() & MEMORY_MAPPED_TEXTURE_GENERATE_MIPMAP_ON_LOAD_BIT)
 			generate_mips = true;
@@ -118,10 +126,12 @@ int main(int argc, char *argv[])
 			return 1;
 		}
 		array.set_cube(fmt, width, total_layers / 6, levels);
+		array.set_flags(flags | MEMORY_MAPPED_TEXTURE_CUBE_MAP_COMPATIBLE_BIT);
 	}
 	else
 	{
 		array.set_2d(fmt, width, height, total_layers, levels);
+		array.set_flags(flags & ~MEMORY_MAPPED_TEXTURE_CUBE_MAP_COMPATIBLE_BIT);
 	}
 
 	if (generate_mips)

@@ -43,6 +43,23 @@ struct TextureFormatUnorm8
 	}
 };
 
+struct TextureFormatRG8Unorm
+{
+	inline vec4 sample(const Vulkan::TextureFormatLayout &layout, const uvec2 &coord,
+	                   uint32_t layer, uint32_t mip) const
+	{
+		u8vec2 &v = *layout.data_generic<u8vec2>(coord.x, coord.y, layer, mip);
+		return vec4(vec2(v) * (1.0f / 255.0f), 0.0f, 1.0f);
+	}
+
+	inline void write(const Vulkan::TextureFormatLayout &layout, const uvec2 &coord,
+	                  uint32_t layer, uint32_t mip, const vec4 &v) const
+	{
+		auto q = clamp(round(v.xy() * 255.0f), vec2(0.0f), vec2(255.0f));
+		*layout.data_generic<u8vec2>(coord.x, coord.y, layer, mip) = u8vec2(q);
+	}
+};
+
 struct TextureFormatRGBA8Unorm
 {
 	inline vec4 sample(const Vulkan::TextureFormatLayout &layout, const uvec2 &coord,
@@ -185,6 +202,8 @@ static void copy_dimensions(MemoryMappedTexture &mapped, const Vulkan::TextureFo
 	default:
 		throw std::logic_error("Unknown image type.");
 	}
+
+	mapped.set_flags(flags & ~MEMORY_MAPPED_TEXTURE_GENERATE_MIPMAP_ON_LOAD_BIT);
 }
 
 static void generate(const MemoryMappedTexture &mapped, const Vulkan::TextureFormatLayout &layout)
@@ -195,6 +214,10 @@ static void generate(const MemoryMappedTexture &mapped, const Vulkan::TextureFor
 	{
 	case VK_FORMAT_R8_UNORM:
 		generate_mipmaps(dst_layout, layout, TextureFormatUnorm8());
+		break;
+
+	case VK_FORMAT_R8G8_UNORM:
+		generate_mipmaps(dst_layout, layout, TextureFormatRG8Unorm());
 		break;
 
 	case VK_FORMAT_R8G8B8A8_SRGB:

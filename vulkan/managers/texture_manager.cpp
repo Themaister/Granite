@@ -141,6 +141,8 @@ void Texture::update_gtx(const Granite::SceneFormats::MemoryMappedTexture &mappe
 	             VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0;
 	info.misc = 0;
 
+	mapped_file.remap_swizzle(info.swizzle);
+
 	if (info.levels == 1 &&
 	    (mapped_file.get_flags() & Granite::SceneFormats::MEMORY_MAPPED_TEXTURE_GENERATE_MIPMAP_ON_LOAD_BIT) != 0 &&
 	    device->image_format_is_supported(info.format, VK_FORMAT_FEATURE_BLIT_SRC_BIT) &&

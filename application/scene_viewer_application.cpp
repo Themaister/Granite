@@ -574,20 +574,6 @@ void SceneViewerApplication::capture_environment_probe()
 	save_image_buffer_to_gtx(device, buffer, "cache://environment.gtx");
 }
 
-void SceneViewerApplication::render_main_pass_prepass(Vulkan::CommandBuffer &cmd, const muglm::mat4 &proj,
-                                                      const muglm::mat4 &view)
-{
-	auto &scene = scene_loader.get_scene();
-	context.set_camera(jitter.get_jitter_matrix() * proj, view);
-	visible.clear();
-	scene.gather_visible_opaque_renderables(context.get_visibility_frustum(), visible);
-	scene.gather_visible_render_pass_sinks(context.get_render_parameters().camera_position, visible);
-
-	depth_renderer.begin();
-	depth_renderer.push_renderables(context, visible);
-	depth_renderer.flush(cmd, context, Renderer::NO_COLOR_BIT);
-}
-
 void SceneViewerApplication::render_main_pass(CommandBuffer &cmd, const mat4 &proj, const mat4 &view)
 {
 	auto &scene = scene_loader.get_scene();
@@ -598,6 +584,13 @@ void SceneViewerApplication::render_main_pass(CommandBuffer &cmd, const mat4 &pr
 
 	if (config.renderer_type == RendererType::GeneralForward)
 	{
+		if (config.forward_depth_prepass)
+		{
+			depth_renderer.begin();
+			depth_renderer.push_renderables(context, visible);
+			depth_renderer.flush(cmd, context, Renderer::NO_COLOR_BIT);
+		}
+
 		scene.gather_unbounded_renderables(visible);
 
 		forward_renderer.set_mesh_renderer_options_from_lighting(lighting);
@@ -674,23 +667,6 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 	auto resolved = color;
 	resolved.samples = 1;
 
-	if (config.forward_depth_prepass)
-	{
-		auto &prepass = graph.add_pass(tagcat("depth", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
-		prepass.set_depth_stencil_output(tagcat("depth", tag), depth);
-		prepass.set_get_clear_depth_stencil([](VkClearDepthStencilValue *value) -> bool {
-			if (value)
-			{
-				value->depth = 1.0f;
-				value->stencil = 0;
-			}
-			return true;
-		});
-		prepass.set_build_render_pass([this](CommandBuffer &cmd) {
-			render_main_pass_prepass(cmd, selected_camera->get_projection(), selected_camera->get_view());
-		});
-	}
-
 	auto &lighting = graph.add_pass(tagcat("lighting", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 
 	if (color.samples > 1)
@@ -701,10 +677,7 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 	else
 		lighting.add_color_output(tagcat("HDR", tag), color);
 
-	if (config.forward_depth_prepass)
-		lighting.set_depth_stencil_input(tagcat("depth", tag));
-	else
-		lighting.set_depth_stencil_output(tagcat("depth", tag), depth);
+	lighting.set_depth_stencil_output(tagcat("depth", tag), depth);
 
 	lighting.set_get_clear_depth_stencil([](VkClearDepthStencilValue *value) -> bool {
 		if (value)

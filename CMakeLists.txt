@@ -18,7 +18,9 @@ endif()
 
 # We are overriding settings in subdirectories.
 # Avoid warnings.
-cmake_policy(SET CMP0077 NEW)
+if (POLICY CMP0077)
+	cmake_policy(SET CMP0077 NEW)
+endif()
 
 option(GRANITE_SHARED "Build Granite as a shared library." OFF)
 option(GRANITE_ISPC_TEXTURE_COMPRESSION "Enable ISPC texture compression" ON)

@@ -16,6 +16,10 @@ elseif (MSVC)
     set(GRANITE_CXX_FLAGS /D_CRT_SECURE_NO_WARNINGS /wd4267 /wd4244 /wd4309 /wd4005 /MP /DNOMINMAX)
 endif()
 
+# We are overriding settings in subdirectories.
+# Avoid warnings.
+cmake_policy(SET CMP0077 NEW)
+
 option(GRANITE_SHARED "Build Granite as a shared library." OFF)
 option(GRANITE_ISPC_TEXTURE_COMPRESSION "Enable ISPC texture compression" ON)
 option(GRANITE_ASTC_ENCODER_COMPRESSION "Enable astc-encoder texture compression" ON)

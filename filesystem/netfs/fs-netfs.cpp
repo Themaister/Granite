@@ -27,7 +27,6 @@
 #include <assert.h>
 
 #define HOST_IP "localhost"
-
 using namespace std;
 
 namespace Granite

@@ -23,9 +23,9 @@
 #include "os_filesystem.hpp"
 #include "../path.hpp"
 #include "util.hpp"
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <stdexcept>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 using namespace std;
 
@@ -102,7 +102,8 @@ bool MappedFile::init(const string &path, FileMode mode)
 		break;
 	}
 
-	file = CreateFileA(path.c_str(), access, FILE_SHARE_READ, nullptr, disposition, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, INVALID_HANDLE_VALUE);
+	file = CreateFileA(path.c_str(), access, FILE_SHARE_READ, nullptr, disposition,
+	                   FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, INVALID_HANDLE_VALUE);
 	if (file == INVALID_HANDLE_VALUE)
 		return false;
 
@@ -179,12 +180,18 @@ MappedFile::~MappedFile()
 }
 
 OSFilesystem::OSFilesystem(const std::string &base)
-	: base(base)
+    : base(base)
 {
 }
 
 OSFilesystem::~OSFilesystem()
 {
+	for (auto &handler : handlers)
+	{
+		CancelIo(handler.second.handle);
+		CloseHandle(handler.second.handle);
+		CloseHandle(handler.second.event);
+	}
 }
 
 string OSFilesystem::get_filesystem_path(const string &path)
@@ -199,16 +206,142 @@ unique_ptr<File> OSFilesystem::open(const std::string &path, FileMode mode)
 
 void OSFilesystem::poll_notifications()
 {
+	for (auto &handler : handlers)
+	{
+		if (WaitForSingleObject(handler.second.event, 0) != WAIT_OBJECT_0)
+			continue;
+
+		DWORD bytes_returned;
+		if (!GetOverlappedResult(handler.second.handle, &handler.second.overlapped, &bytes_returned, TRUE))
+			continue;
+
+		size_t offset = 0;
+		const FILE_NOTIFY_INFORMATION *info = nullptr;
+		do
+		{
+			info = reinterpret_cast<const FILE_NOTIFY_INFORMATION *>(
+			    reinterpret_cast<const uint8_t *>(handler.second.async_buffer) + offset);
+
+			FileNotifyInfo notify;
+			notify.handle = handler.first;
+
+			char char_buffer[MAX_PATH];
+			// Don't think we can deal properly with UTF-8 yet.
+			auto ret = WideCharToMultiByte(CP_ACP, 0, info->FileName, info->FileNameLength / sizeof(WCHAR), char_buffer,
+			                               sizeof(char_buffer) - 1, nullptr, nullptr);
+			if (ret < 0)
+			{
+				kick_async(handler.second);
+				continue;
+			}
+
+			char_buffer[ret] = '\0';
+			notify.path = Path::join(handler.second.path, char_buffer);
+
+			switch (info->Action)
+			{
+			case FILE_ACTION_ADDED:
+			case FILE_ACTION_RENAMED_NEW_NAME:
+				notify.type = FileNotifyType::FileCreated;
+				if (handler.second.func)
+					handler.second.func(notify);
+				break;
+
+			case FILE_ACTION_REMOVED:
+			case FILE_ACTION_RENAMED_OLD_NAME:
+				notify.type = FileNotifyType::FileDeleted;
+				if (handler.second.func)
+					handler.second.func(notify);
+				break;
+
+			case FILE_ACTION_MODIFIED:
+				notify.type = FileNotifyType::FileChanged;
+				if (handler.second.func)
+					handler.second.func(notify);
+				break;
+
+			default:
+				LOGE("Invalid notify type.\n");
+				break;
+			}
+
+			offset += info->NextEntryOffset;
+		} while (info->NextEntryOffset != 0);
+
+		kick_async(handler.second);
+	}
 }
 
-void OSFilesystem::uninstall_notification(FileNotifyHandle)
+void OSFilesystem::uninstall_notification(FileNotifyHandle id)
 {
+	auto itr = handlers.find(id);
+	if (itr != end(handlers))
+	{
+		CancelIo(itr->second.handle);
+		CloseHandle(itr->second.handle);
+		CloseHandle(itr->second.event);
+		handlers.erase(itr);
+	}
 }
 
-FileNotifyHandle OSFilesystem::install_notification(const string &,
-                                                    function<void (const FileNotifyInfo &)>)
+void OSFilesystem::kick_async(Handler &handler)
 {
-    return -1;
+	handler.overlapped = {};
+	handler.overlapped.hEvent = handler.event;
+
+	auto ret = ReadDirectoryChangesW(handler.handle, handler.async_buffer, sizeof(handler.async_buffer), FALSE,
+	                                 FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_CREATION | FILE_NOTIFY_CHANGE_FILE_NAME,
+	                                 nullptr, &handler.overlapped, nullptr);
+
+	if (!ret && GetLastError() != ERROR_IO_PENDING)
+	{
+		LOGE("Failed to read directory changes async.\n");
+	}
+}
+
+FileNotifyHandle OSFilesystem::install_notification(const string &path, function<void(const FileNotifyInfo &)> func)
+{
+	FileStat s = {};
+	if (!stat(path, s))
+	{
+		LOGE("Window inotify: path doesn't exist.\n");
+		return -1;
+	}
+
+	if (s.type != PathType::Directory)
+	{
+		LOGE("Windows inotify: Implementation only supports directories.\n");
+		return -1;
+	}
+
+	auto resolved_path = Path::join(base, path);
+	HANDLE handle =
+	    CreateFile(resolved_path.c_str(), FILE_LIST_DIRECTORY, FILE_SHARE_WRITE | FILE_SHARE_READ | FILE_SHARE_DELETE,
+	               nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED, nullptr);
+	if (handle == INVALID_HANDLE_VALUE)
+	{
+		LOGE("Failed to open directory for watching.\n");
+		return -1;
+	}
+
+	HANDLE event = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+	if (event == nullptr)
+	{
+		CloseHandle(handle);
+		return -1;
+	}
+
+	handle_id++;
+	Handler handler;
+	handler.path = protocol + "://" + path;
+	handler.func = move(func);
+	handler.handle = handle;
+	handler.event = event;
+	auto &h = handlers[handle_id];
+	h = move(handler);
+	kick_async(h);
+
+	return handle_id;
 }
 
 vector<ListEntry> OSFilesystem::list(const string &path)
@@ -216,9 +349,12 @@ vector<ListEntry> OSFilesystem::list(const string &path)
 	vector<ListEntry> entries;
 	WIN32_FIND_DATAA result;
 	auto joined = Path::join(base, path);
-	for (HANDLE handle = FindFirstFileA(joined.c_str(), &result);
-		handle != INVALID_HANDLE_VALUE;
-		handle = FindFirstFileA(joined.c_str(), &result))
+
+	HANDLE handle = FindFirstFileA(joined.c_str(), &result);
+	if (handle == INVALID_HANDLE_VALUE)
+		return entries;
+
+	do
 	{
 		ListEntry entry;
 		if (result.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
@@ -230,7 +366,8 @@ vector<ListEntry> OSFilesystem::list(const string &path)
 
 		entry.path = Path::join(path, result.cFileName);
 		entries.push_back(move(entry));
-	}
+	} while (FindNextFileA(handle, &result));
+	CloseHandle(handle);
 	return entries;
 }
 
@@ -238,7 +375,7 @@ bool OSFilesystem::stat(const std::string &path, FileStat &stat)
 {
 	auto joined = Path::join(base, path);
 	struct _stat buf;
-	if (_stat(path.c_str(), &buf) < 0)
+	if (_stat(joined.c_str(), &buf) < 0)
 		return false;
 
 	if (buf.st_mode & _S_IFREG)
@@ -255,7 +392,7 @@ bool OSFilesystem::stat(const std::string &path, FileStat &stat)
 
 int OSFilesystem::get_notification_fd() const
 {
-    return -1;
+	return -1;
 }
 
-}
+} // namespace Granite

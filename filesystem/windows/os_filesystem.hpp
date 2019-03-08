@@ -64,5 +64,19 @@ public:
 
 private:
 	std::string base;
+
+	struct Handler
+	{
+		std::string path;
+		std::function<void (const FileNotifyInfo &)> func;
+		HANDLE handle = nullptr;
+		HANDLE event = nullptr;
+		DWORD async_buffer[1024];
+		OVERLAPPED overlapped;
+	};
+
+	std::unordered_map<FileNotifyHandle, Handler> handlers;
+	FileNotifyHandle handle_id = 0;
+	void kick_async(Handler &handler);
 };
 }

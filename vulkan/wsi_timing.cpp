@@ -25,6 +25,7 @@
 #include <string.h>
 #include <algorithm>
 #include <cmath>
+#include <inttypes.h>
 
 #ifndef _WIN32
 #include <time.h>
@@ -166,16 +167,16 @@ void WSITiming::update_past_presentation_timing()
 		}
 
 		if (int64_t(timing->timing.presentMargin) < 0)
-			LOGE("Present margin is negative (%lld) ... ?!\n", static_cast<long long>(timing->timing.presentMargin));
+			LOGE("Present margin is negative (%" PRId64 ") ... ?!\n", timing->timing.presentMargin);
 
 		if (timing->timing.earliestPresentTime > timing->timing.actualPresentTime)
 			LOGE("Earliest present time is > actual present time ... Bug?\n");
 
 		if (timing->timing.actualPresentTime < timing->timing.desiredPresentTime)
 		{
-			LOGE("Image was presented before desired present time, bug? (actual: %llu, desired: %llu)\n",
-			     static_cast<unsigned long long>(timing->timing.actualPresentTime),
-			     static_cast<unsigned long long>(timing->timing.desiredPresentTime));
+			LOGE("Image was presented before desired present time, bug? (actual: %" PRIu64 ", desired: %" PRIu64 "\n",
+			     timing->timing.actualPresentTime,
+			     timing->timing.desiredPresentTime);
 		}
 		else if (feedback.refresh_interval != 0 && timing->timing.desiredPresentTime != 0)
 		{

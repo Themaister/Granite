@@ -40,5 +40,12 @@ bool is_root_path(const std::string &path);
 std::string canonicalize_path(const std::string &path);
 std::string enforce_protocol(const std::string &path);
 std::string get_executable_path();
+
+#ifdef _WIN32
+std::string to_utf8(const wchar_t *wstr, size_t len);
+std::wstring to_utf16(const char *str, size_t len);
+std::string to_utf8(const std::wstring &wstr);
+std::wstring to_utf16(const std::string &str);
+#endif
 }
 }

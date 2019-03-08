@@ -36,15 +36,17 @@ static bool ensure_directory_inner(const std::string &path)
 	if (Path::is_root_path(path))
 		return false;
 
-	struct _stat s;
-	if (::_stat(path.c_str(), &s) >= 0 && (s.st_mode & _S_IFDIR) != 0)
+	auto wpath = Path::to_utf16(path);
+
+	struct __stat64 s;
+	if (::_wstat64(wpath.c_str(), &s) >= 0 && (s.st_mode & _S_IFDIR) != 0)
 		return true;
 
 	auto basedir = Path::basedir(path);
 	if (!ensure_directory_inner(basedir))
 		return false;
 
-	if (!CreateDirectory(path.c_str(), nullptr))
+	if (!CreateDirectoryW(wpath.c_str(), nullptr))
 		return GetLastError() == ERROR_ALREADY_EXISTS;
 	return true;
 }
@@ -71,6 +73,8 @@ bool MappedFile::init(const string &path, FileMode mode)
 {
 	DWORD access = 0;
 	DWORD disposition = 0;
+
+	auto wpath = Path::to_utf16(path);
 
 	switch (mode)
 	{
@@ -102,7 +106,7 @@ bool MappedFile::init(const string &path, FileMode mode)
 		break;
 	}
 
-	file = CreateFileA(path.c_str(), access, FILE_SHARE_READ, nullptr, disposition,
+	file = CreateFileW(wpath.c_str(), access, FILE_SHARE_READ, nullptr, disposition,
 	                   FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, INVALID_HANDLE_VALUE);
 	if (file == INVALID_HANDLE_VALUE)
 		return false;
@@ -132,7 +136,7 @@ void *MappedFile::map()
 	if (mapped)
 		unmap();
 
-	HANDLE file_view = CreateFileMappingA(file, nullptr, PAGE_READONLY, 0, 0, nullptr);
+	HANDLE file_view = CreateFileMappingW(file, nullptr, PAGE_READONLY, 0, 0, nullptr);
 	if (file_view == INVALID_HANDLE_VALUE)
 		return nullptr;
 
@@ -156,7 +160,7 @@ void *MappedFile::map_write(size_t size)
 	DWORD lo = DWORD(size);
 #endif
 
-	HANDLE file_view = CreateFileMappingA(file, nullptr, PAGE_READWRITE, hi, lo, nullptr);
+	HANDLE file_view = CreateFileMappingW(file, nullptr, PAGE_READWRITE, hi, lo, nullptr);
 	if (file_view == INVALID_HANDLE_VALUE)
 		return nullptr;
 
@@ -224,19 +228,9 @@ void OSFilesystem::poll_notifications()
 
 			FileNotifyInfo notify;
 			notify.handle = handler.first;
-
-			char char_buffer[MAX_PATH];
-			// Don't think we can deal properly with UTF-8 yet.
-			auto ret = WideCharToMultiByte(CP_ACP, 0, info->FileName, info->FileNameLength / sizeof(WCHAR), char_buffer,
-			                               sizeof(char_buffer) - 1, nullptr, nullptr);
-			if (ret < 0)
-			{
-				kick_async(handler.second);
-				continue;
-			}
-
-			char_buffer[ret] = '\0';
-			notify.path = Path::join(handler.second.path, char_buffer);
+			notify.path = Path::join(handler.second.path,
+			                         Path::to_utf8(info->FileName,
+			                                       info->FileNameLength / sizeof(wchar_t)));
 
 			switch (info->Action)
 			{
@@ -314,10 +308,10 @@ FileNotifyHandle OSFilesystem::install_notification(const string &path, function
 		return -1;
 	}
 
-	auto resolved_path = Path::join(base, path);
+	auto resolved_path = Path::to_utf16(Path::join(base, path));
 	HANDLE handle =
-	    CreateFile(resolved_path.c_str(), FILE_LIST_DIRECTORY, FILE_SHARE_WRITE | FILE_SHARE_READ | FILE_SHARE_DELETE,
-	               nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED, nullptr);
+	    CreateFileW(resolved_path.c_str(), FILE_LIST_DIRECTORY, FILE_SHARE_WRITE | FILE_SHARE_READ | FILE_SHARE_DELETE,
+	                nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED, nullptr);
 	if (handle == INVALID_HANDLE_VALUE)
 	{
 		LOGE("Failed to open directory for watching.\n");
@@ -347,10 +341,10 @@ FileNotifyHandle OSFilesystem::install_notification(const string &path, function
 vector<ListEntry> OSFilesystem::list(const string &path)
 {
 	vector<ListEntry> entries;
-	WIN32_FIND_DATAA result;
-	auto joined = Path::join(base, path);
+	WIN32_FIND_DATAW result;
+	auto joined = Path::to_utf16(Path::join(base, path));
 
-	HANDLE handle = FindFirstFileA(joined.c_str(), &result);
+	HANDLE handle = FindFirstFileW(joined.c_str(), &result);
 	if (handle == INVALID_HANDLE_VALUE)
 		return entries;
 
@@ -364,9 +358,10 @@ vector<ListEntry> OSFilesystem::list(const string &path)
 		else
 			entry.type = PathType::Special;
 
-		entry.path = Path::join(path, result.cFileName);
+		entry.path = Path::join(path, Path::to_utf8(result.cFileName));
 		entries.push_back(move(entry));
-	} while (FindNextFileA(handle, &result));
+	} while (FindNextFileW(handle, &result));
+
 	CloseHandle(handle);
 	return entries;
 }
@@ -374,8 +369,8 @@ vector<ListEntry> OSFilesystem::list(const string &path)
 bool OSFilesystem::stat(const std::string &path, FileStat &stat)
 {
 	auto joined = Path::join(base, path);
-	struct _stat buf;
-	if (_stat(joined.c_str(), &buf) < 0)
+	struct __stat64 buf;
+	if (_wstat64(Path::to_utf16(joined).c_str(), &buf) < 0)
 		return false;
 
 	if (buf.st_mode & _S_IFREG)

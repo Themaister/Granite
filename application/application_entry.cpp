@@ -47,16 +47,15 @@ int main(int argc, char *argv[])
 	wchar_t **wide_argv = CommandLineToArgvW(GetCommandLineW(), &argc);
 	std::vector<char *> argv_buffer(argc + 1);
 	char **argv = nullptr;
+	std::vector<std::string> argv_strings(argc);
 
 	if (wide_argv)
 	{
 		argv = argv_buffer.data();
 		for (int i = 0; i < argc; i++)
 		{
-			auto length = wcslen(wide_argv[i]);
-			argv_buffer[i] = new char[length + 1];
-			size_t num_converted;
-			wcstombs_s(&num_converted, argv_buffer[i], length + 1, wide_argv[i], length + 1);
+			argv_strings[i] = Granite::Path::to_utf8(wide_argv[i]);
+			argv_buffer[i] = const_cast<char *>(argv_strings[i].c_str());
 		}
 	}
 #endif
@@ -65,11 +64,6 @@ int main(int argc, char *argv[])
 	int ret = Granite::application_main_headless(Granite::application_create, argc, argv);
 #else
 	int ret = Granite::application_main(Granite::application_create, argc, argv);
-#endif
-
-#ifdef _WIN32
-	for (auto &arg : argv_buffer)
-		delete[] arg;
 #endif
 
 	return ret;

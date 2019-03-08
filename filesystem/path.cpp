@@ -221,10 +221,9 @@ pair<string, string> protocol_split(const string &path)
 string get_executable_path()
 {
 #ifdef _WIN32
-	char target[4096];
-	DWORD ret = GetModuleFileNameA(GetModuleHandle(nullptr), target, sizeof(target));
-	target[ret] = '\0';
-	return canonicalize_path(string(target));
+	wchar_t target[4096];
+	DWORD ret = GetModuleFileNameW(GetModuleHandle(nullptr), target, sizeof(target) / sizeof(wchar_t));
+	return canonicalize_path(Path::to_utf8(target, ret));
 #else
 	pid_t pid = getpid();
 	static const char *exts[] = { "exe", "file", "a.out" };
@@ -245,5 +244,39 @@ string get_executable_path()
 	return "";
 #endif
 }
+
+#ifdef _WIN32
+string to_utf8(const wchar_t *wstr, size_t len)
+{
+	vector<char> char_buffer;
+	auto ret = WideCharToMultiByte(CP_UTF8, 0, wstr, len, nullptr, 0, nullptr, nullptr);
+	if (ret < 0)
+		return "";
+	char_buffer.resize(ret);
+	WideCharToMultiByte(CP_UTF8, 0, wstr, len, char_buffer.data(), char_buffer.size(), nullptr, nullptr);
+	return string(char_buffer.data(), char_buffer.size());
+}
+
+wstring to_utf16(const char *str, size_t len)
+{
+	vector<wchar_t> wchar_buffer;
+	auto ret = MultiByteToWideChar(CP_UTF8, 0, str, len, nullptr, 0);
+	if (ret < 0)
+		return L"";
+	wchar_buffer.resize(ret);
+	MultiByteToWideChar(CP_UTF8, 0, str, len, wchar_buffer.data(), wchar_buffer.size());
+	return wstring(wchar_buffer.data(), wchar_buffer.size());
+}
+
+string to_utf8(const wstring &wstr)
+{
+	return to_utf8(wstr.data(), wstr.size());
+}
+
+wstring to_utf16(const string &str)
+{
+	return to_utf16(str.data(), str.size());
+}
+#endif
 }
 }

@@ -38,7 +38,7 @@ extern retro_log_printf_t libretro_log;
 #define LOGE(...) do { if (::Granite::libretro_log) ::Granite::libretro_log(RETRO_LOG_ERROR, __VA_ARGS__); } while(0)
 #define LOGW(...) do { if (::Granite::libretro_log) ::Granite::libretro_log(RETRO_LOG_WARN, __VA_ARGS__); } while(0)
 #define LOGI(...) do { if (::Granite::libretro_log) ::Granite::libretro_log(RETRO_LOG_INFO, __VA_ARGS__); } while(0)
-#elif defined(_MSC_VER)
+#elif defined(_MSC_VER) && 0
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #define LOGE(...) do { \

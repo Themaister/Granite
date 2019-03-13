@@ -288,6 +288,8 @@ static void run_benchmark(Context *context, const BenchArguments &args)
 	wisdom.learn_optimal_options_exhaustive(context, args.width, args.height, args.type, input_target, output_target,
 	                                        options.type);
 
+	context->wait_idle();
+
 	FFT fft(context, args.width, args.height, args.type, args.type == ComplexToReal ? Inverse : Forward, input_target,
 	        output_target, cache, options, wisdom);
 
@@ -299,7 +301,7 @@ static void run_benchmark(Context *context, const BenchArguments &args)
 	context->log("  %s -> %s\n", input_target == SSBO ? "SSBO" : "Texture", output_target == SSBO ? "SSBO" : "Image");
 	context->log("  Size: %u x %u %s %s\n", args.width, args.height, args.string_for_type, args.fp16 ? "FP16" : "FP32");
 
-	double dispatch_time = fft.bench(context, output.get(), input.get(), 5, 100, 100, 5.0);
+	double dispatch_time = fft.bench(context, output.get(), input.get(), args.warmup, args.iterations, args.dispatches, args.timeout);
 	context->log("  %8.3f ms\n", 1000.0 * dispatch_time);
 	context->log("  %8.3f GFlop/s (estimated)\n", estimated_gflops / dispatch_time);
 	context->log("  %8.3f GB/s global memory bandwidth (estimated)\n", estimated_bandwidth_gb / dispatch_time);

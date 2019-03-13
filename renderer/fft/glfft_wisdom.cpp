@@ -339,7 +339,7 @@ std::pair<double, FFTOptions::Performance> FFTWisdom::study(Context *context, co
 	double minimum_cost = bench(context, output.get(), input.get(), pass, { best_perf, type }, cache);
 
 	static const FFTStaticWisdom::Tristate shared_banked_values[] = { FFTStaticWisdom::Off, FFTStaticWisdom::On };
-	static const unsigned vector_size_values[] = { 2, 4, 8 };
+	static const unsigned vector_size_values[] = { 2, 4 };
 	static const unsigned workgroup_size_x_values[] = { 4, 8, 16, 32, 64, 128, 256 };
 	static const unsigned workgroup_size_y_values[] = {
 		1,
@@ -377,12 +377,6 @@ std::pair<double, FFTOptions::Performance> FFTWisdom::study(Context *context, co
 				continue;
 			}
 
-			// We can only use vector_size 8 with FP16.
-			if (vector_size == 8 && (!type.fp16 || !type.input_fp16 || !type.output_fp16))
-			{
-				continue;
-			}
-
 			// Makes little sense to test since since vector_size will be bumped to 4 anyways.
 			if (test_dual && vector_size < 4)
 			{
@@ -405,24 +399,19 @@ std::pair<double, FFTOptions::Performance> FFTWisdom::study(Context *context, co
 
 					bool fair_workgroup_size =
 					    workgroup_size <= static_wisdom.max_workgroup_size && workgroup_size >= min_workgroup_size;
+
 					if (pass.pass.Ny == 1 && workgroup_size_y > 1)
-					{
 						fair_workgroup_size = false;
-					}
 
 					if (!fair_workgroup_size)
-					{
 						continue;
-					}
 
 					// If we have dual mode, accept vector sizes larger than max.
 					bool fair_vector_size =
 					    test_resolve || (vector_size <= max_vector_size && vector_size >= min_vector_size);
 
 					if (!fair_vector_size)
-					{
 						continue;
-					}
 
 					FFTOptions::Performance perf;
 					perf.shared_banked = shared_banked;

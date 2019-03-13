@@ -99,6 +99,7 @@ public:
 	virtual double get_time() = 0;
 
 	virtual unsigned get_max_work_group_threads() = 0;
+	virtual unsigned get_max_shared_memory_size() = 0;
 
 	virtual const void *map(Buffer *buffer, size_t offset, size_t size) = 0;
 	virtual void unmap(Buffer *buffer) = 0;

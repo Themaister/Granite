@@ -277,6 +277,11 @@ unsigned FFTInterface::get_max_work_group_threads()
 	return device->get_gpu_properties().limits.maxComputeWorkGroupInvocations;
 }
 
+unsigned FFTInterface::get_max_shared_memory_size()
+{
+	return device->get_gpu_properties().limits.maxComputeSharedMemorySize;
+}
+
 uint32_t FFTInterface::get_vendor_id()
 {
 	return device->get_gpu_properties().vendorID;

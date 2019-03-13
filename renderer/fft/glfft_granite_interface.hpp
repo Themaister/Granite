@@ -48,6 +48,7 @@ public:
 	double get_time() override;
 
 	unsigned get_max_work_group_threads() override;
+	unsigned get_max_shared_memory_size() override;
 
 	const void *map(GLFFT::Buffer *buffer, size_t offset, size_t size) override;
 	void unmap(GLFFT::Buffer *buffer) override;

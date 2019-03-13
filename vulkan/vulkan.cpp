@@ -684,6 +684,14 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 		enabled_extensions.push_back(VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME);
 	}
 
+#ifdef VULKAN_DEBUG
+	if (has_extension(VK_NV_DEVICE_DIAGNOSTIC_CHECKPOINTS_EXTENSION_NAME))
+	{
+		ext.supports_nv_device_diagnostic_checkpoints = true;
+		enabled_extensions.push_back(VK_NV_DEVICE_DIAGNOSTIC_CHECKPOINTS_EXTENSION_NAME);
+	}
+#endif
+
 #ifdef _WIN32
 	ext.supports_external = false;
 #else

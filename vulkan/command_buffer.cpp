@@ -26,6 +26,14 @@
 #include <stdexcept>
 #include <string.h>
 
+//#define FULL_BACKTRACE_CHECKPOINTS
+#ifdef FULL_BACKTRACE_CHECKPOINTS
+#ifdef __linux__
+#include <execinfo.h>
+#endif
+#include <sstream>
+#endif
+
 using namespace std;
 using namespace Util;
 
@@ -1770,7 +1778,10 @@ void CommandBuffer::draw(uint32_t vertex_count, uint32_t instance_count, uint32_
 {
 	VK_ASSERT(!is_compute);
 	if (flush_render_state())
+	{
+		set_backtrace_checkpoint();
 		vkCmdDraw(cmd, vertex_count, instance_count, first_vertex, first_instance);
+	}
 	else
 		LOGE("Failed to flush render state, draw call will be dropped.\n");
 }
@@ -1781,7 +1792,10 @@ void CommandBuffer::draw_indexed(uint32_t index_count, uint32_t instance_count, 
 	VK_ASSERT(!is_compute);
 	VK_ASSERT(index.buffer != VK_NULL_HANDLE);
 	if (flush_render_state())
+	{
+		set_backtrace_checkpoint();
 		vkCmdDrawIndexed(cmd, index_count, instance_count, first_index, vertex_offset, first_instance);
+	}
 	else
 		LOGE("Failed to flush render state, draw call will be dropped.\n");
 }
@@ -1791,7 +1805,10 @@ void CommandBuffer::draw_indirect(const Vulkan::Buffer &buffer,
 {
 	VK_ASSERT(!is_compute);
 	if (flush_render_state())
+	{
+		set_backtrace_checkpoint();
 		vkCmdDrawIndirect(cmd, buffer.get_buffer(), offset, draw_count, stride);
+	}
 	else
 		LOGE("Failed to flush render state, draw call will be dropped.\n");
 }
@@ -1801,7 +1818,10 @@ void CommandBuffer::draw_indexed_indirect(const Vulkan::Buffer &buffer,
 {
 	VK_ASSERT(!is_compute);
 	if (flush_render_state())
+	{
 		vkCmdDrawIndexedIndirect(cmd, buffer.get_buffer(), offset, draw_count, stride);
+		set_backtrace_checkpoint();
+	}
 	else
 		LOGE("Failed to flush render state, draw call will be dropped.\n");
 }
@@ -1810,7 +1830,10 @@ void CommandBuffer::dispatch_indirect(const Buffer &buffer, uint32_t offset)
 {
 	VK_ASSERT(is_compute);
 	if (flush_compute_state())
+	{
+		set_backtrace_checkpoint();
 		vkCmdDispatchIndirect(cmd, buffer.get_buffer(), offset);
+	}
 	else
 		LOGE("Failed to flush render state, dispatch will be dropped.\n");
 }
@@ -1819,7 +1842,10 @@ void CommandBuffer::dispatch(uint32_t groups_x, uint32_t groups_y, uint32_t grou
 {
 	VK_ASSERT(is_compute);
 	if (flush_compute_state())
+	{
+		set_backtrace_checkpoint();
 		vkCmdDispatch(cmd, groups_x, groups_y, groups_z);
+	}
 	else
 		LOGE("Failed to flush render state, dispatch will be dropped.\n");
 }
@@ -1986,6 +2012,28 @@ void CommandBuffer::save_state(CommandBufferSaveStateFlags flags, CommandBufferS
 QueryPoolHandle CommandBuffer::write_timestamp(VkPipelineStageFlagBits stage)
 {
 	return device->write_timestamp(cmd, stage);
+}
+
+void CommandBuffer::add_checkpoint(const char *tag)
+{
+	if (device->get_device_features().supports_nv_device_diagnostic_checkpoints)
+		vkCmdSetCheckpointNV(cmd, tag);
+}
+
+void CommandBuffer::set_backtrace_checkpoint()
+{
+#if defined(FULL_BACKTRACE_CHECKPOINTS) && defined(__linux__)
+	void *arr[1024];
+	int ret = backtrace(arr, 1024);
+
+	ostringstream str;
+	for (int i = 0; i < ret; i++)
+		str << arr[i] << endl;
+	auto s = str.str();
+
+	// Never free the duped string for now.
+	add_checkpoint(strdup(s.c_str()));
+#endif
 }
 
 void CommandBuffer::end()

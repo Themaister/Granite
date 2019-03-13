@@ -567,5 +567,6 @@ private:
 
 	ImplementationWorkarounds workarounds;
 	void init_workarounds();
+	void report_checkpoints();
 };
 }

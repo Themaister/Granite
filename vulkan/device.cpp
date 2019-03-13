@@ -980,6 +980,8 @@ void Device::submit_empty_inner(CommandBuffer::Type type, VkFence *fence,
 
 	if (result != VK_SUCCESS)
 		LOGE("vkQueueSubmit failed (code: %d).\n", int(result));
+	if (result == VK_ERROR_DEVICE_LOST)
+		report_checkpoints();
 
 	if (fence)
 	{
@@ -1272,6 +1274,8 @@ void Device::submit_queue(CommandBuffer::Type type, VkFence *fence,
 		queue_unlock_callback();
 	if (result != VK_SUCCESS)
 		LOGE("vkQueueSubmit failed (code: %d).\n", int(result));
+	if (result == VK_ERROR_DEVICE_LOST)
+		report_checkpoints();
 	submissions.clear();
 
 	if (fence)
@@ -1884,7 +1888,11 @@ void Device::wait_idle_nolock()
 	{
 		if (queue_lock_callback)
 			queue_lock_callback();
-		vkDeviceWaitIdle(device);
+		auto result = vkDeviceWaitIdle(device);
+		if (result != VK_SUCCESS)
+			LOGE("vkDeviceWaitIdle failed with code: %d\n", result);
+		if (result == VK_ERROR_DEVICE_LOST)
+			report_checkpoints();
 		if (queue_unlock_callback)
 			queue_unlock_callback();
 	}
@@ -3493,6 +3501,54 @@ void Device::set_name(const CommandBuffer &cmd, const char *name)
 		info.object = (uint64_t)cmd.get_command_buffer();
 		info.pObjectName = name;
 		vkDebugMarkerSetObjectNameEXT(device, &info);
+	}
+}
+
+void Device::report_checkpoints()
+{
+	if (!ext.supports_nv_device_diagnostic_checkpoints)
+		return;
+
+	uint32_t graphics_count;
+	vkGetQueueCheckpointDataNV(graphics_queue, &graphics_count, nullptr);
+	vector<VkCheckpointDataNV> graphics_data(graphics_count);
+	for (auto &g : graphics_data)
+		g.sType = VK_STRUCTURE_TYPE_CHECKPOINT_DATA_NV;
+	vkGetQueueCheckpointDataNV(graphics_queue, &graphics_count, graphics_data.data());
+
+	uint32_t compute_count;
+	vkGetQueueCheckpointDataNV(compute_queue, &compute_count, nullptr);
+	vector<VkCheckpointDataNV> compute_data(compute_count);
+	for (auto &g : compute_data)
+		g.sType = VK_STRUCTURE_TYPE_CHECKPOINT_DATA_NV;
+	vkGetQueueCheckpointDataNV(compute_queue, &compute_count, compute_data.data());
+
+	uint32_t transfer_count;
+	vkGetQueueCheckpointDataNV(transfer_queue, &transfer_count, nullptr);
+	vector<VkCheckpointDataNV> transfer_data(compute_count);
+	for (auto &g : transfer_data)
+		g.sType = VK_STRUCTURE_TYPE_CHECKPOINT_DATA_NV;
+	vkGetQueueCheckpointDataNV(transfer_queue, &transfer_count, transfer_data.data());
+
+	if (!graphics_data.empty())
+	{
+		LOGI("Checkpoints for graphics queue:\n");
+		for (auto &g : graphics_data)
+			LOGI("Stage %u:\n%s\n", g.stage, static_cast<const char *>(g.pCheckpointMarker));
+	}
+
+	if (!compute_data.empty())
+	{
+		LOGI("Checkpoints for compute queue:\n");
+		for (auto &g : compute_data)
+			LOGI("    Stage %u:\n%s\n", g.stage, static_cast<const char *>(g.pCheckpointMarker));
+	}
+
+	if (!transfer_data.empty())
+	{
+		LOGI("Checkpoints for transfer queue:\n");
+		for (auto &g : transfer_data)
+			LOGI("    Stage %u:\n%s\n", g.stage, static_cast<const char *>(g.pCheckpointMarker));
 	}
 }
 

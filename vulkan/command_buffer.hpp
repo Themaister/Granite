@@ -608,6 +608,8 @@ public:
 	}
 
 	QueryPoolHandle write_timestamp(VkPipelineStageFlagBits stage);
+	void add_checkpoint(const char *tag);
+	void set_backtrace_checkpoint();
 
 	void end();
 

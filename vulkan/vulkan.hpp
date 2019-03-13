@@ -72,6 +72,7 @@ struct DeviceFeatures
 	bool supports_debug_utils = false;
 	bool supports_mirror_clamp_to_edge = false;
 	bool supports_google_display_timing = false;
+	bool supports_nv_device_diagnostic_checkpoints = false;
 	bool supports_vulkan_11_instance = false;
 	bool supports_vulkan_11_device = false;
 	VkPhysicalDeviceSubgroupProperties subgroup_properties = {};

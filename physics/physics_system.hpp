@@ -25,6 +25,7 @@
 #include "scene.hpp"
 #include "object_pool.hpp"
 #include "math.hpp"
+#include "ecs.hpp"
 #include <memory>
 
 class btDefaultCollisionConfiguration;
@@ -38,6 +39,13 @@ namespace Granite
 {
 struct PhysicsHandle;
 
+struct PhysicsComponent : ComponentBase
+{
+	GRANITE_COMPONENT_TYPE_DECL(PhysicsComponent)
+	PhysicsHandle *handle = nullptr;
+	~PhysicsComponent();
+};
+
 class PhysicsSystem
 {
 public:
@@ -48,6 +56,8 @@ public:
 	PhysicsHandle *add_sphere(Scene::Node *node, float mass);
 	PhysicsHandle *add_infinite_plane(const vec4 &plane);
 	void remove_body(PhysicsHandle *handle);
+
+	void apply_impulse(PhysicsHandle *handle, const vec3 &impulse, const vec3 &relative);
 
 	void iterate(double frame_time);
 

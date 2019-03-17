@@ -102,17 +102,18 @@ struct PhysicsSandboxApplication : Application, EventHandler
 	void init_scene()
 	{
 		auto root_node = scene.create_node();
-		scene.create_renderable(plane, root_node.get());
-
-		Global::physics()->add_infinite_plane(vec4(0.0f, 1.0f, 0.0f, 0.0f));
+		auto entity = scene.create_renderable(plane, root_node.get());
+		entity->allocate_component<PhysicsComponent>()->handle =
+				Global::physics()->add_infinite_plane(vec4(0.0f, 1.0f, 0.0f, 0.0f));
 
 		{
 			auto cube_node = scene.create_node();
 			cube_node->transform.translation = vec3(5.0f, 3.0f, 0.0f);
 			cube_node->invalidate_cached_transform();
 			root_node->add_child(cube_node);
-			scene.create_renderable(cube, cube_node.get());
-			Global::physics()->add_cube(cube_node.get(), 5.0f);
+			auto entity = scene.create_renderable(cube, cube_node.get());
+			sphere_physics = entity->allocate_component<PhysicsComponent>()->handle =
+					Global::physics()->add_cube(cube_node.get(), 5.0f);
 		}
 
 		{
@@ -120,8 +121,9 @@ struct PhysicsSandboxApplication : Application, EventHandler
 			sphere_node->transform.translation = vec3(3.8f, 18.0f, 1.1f);
 			sphere_node->invalidate_cached_transform();
 			root_node->add_child(sphere_node);
-			scene.create_renderable(sphere, sphere_node.get());
-			Global::physics()->add_sphere(sphere_node.get(), 5.0f);
+			auto entity = scene.create_renderable(sphere, sphere_node.get());
+			entity->allocate_component<PhysicsComponent>()->handle =
+					Global::physics()->add_sphere(sphere_node.get(), 5.0f);
 		}
 
 		scene.set_root_node(root_node);
@@ -131,6 +133,12 @@ struct PhysicsSandboxApplication : Application, EventHandler
 
 	bool on_key(const KeyboardEvent &e)
 	{
+		if (e.get_key() == Key::Space && e.get_key_state() == KeyState::Pressed)
+		{
+			Global::physics()->apply_impulse(sphere_physics,
+					vec3(0.0f, 12.0f, -4.0f),
+					vec3(0.2f, 0.0f, 0.0f));
+		}
 
 		return true;
 	}
@@ -172,6 +180,8 @@ struct PhysicsSandboxApplication : Application, EventHandler
 	LightingParameters lighting;
 	VisibilityList visible;
 	Renderer renderer;
+
+	PhysicsHandle *sphere_physics = nullptr;
 };
 
 namespace Granite

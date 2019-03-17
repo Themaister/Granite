@@ -166,4 +166,18 @@ PhysicsHandle *PhysicsSystem::add_infinite_plane(const vec4 &plane)
 	return add_shape(nullptr, 0.0f, shape);
 }
 
+void PhysicsSystem::apply_impulse(PhysicsHandle *handle, const vec3 &impulse, const vec3 &relative)
+{
+	auto *body = btRigidBody::upcast(handle->bt_object);
+	body->applyImpulse(
+			btVector3(impulse.x, impulse.y, impulse.z),
+			btVector3(relative.x, relative.y, relative.z));
+}
+
+PhysicsComponent::~PhysicsComponent()
+{
+	if (handle)
+		Global::physics()->remove_body(handle);
+}
+
 }

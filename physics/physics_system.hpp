@@ -22,61 +22,45 @@
 
 #pragma once
 
-#include <stdint.h>
+#include "scene.hpp"
+#include "object_pool.hpp"
+#include "math.hpp"
+#include <memory>
+
+class btDefaultCollisionConfiguration;
+class btCollisionDispatcher;
+class btDbvtBroadphase;
+class btSequentialImpulseConstraintSolver;
+class btDiscreteDynamicsWorld;
+class btCollisionShape;
 
 namespace Granite
 {
-class Filesystem;
-class ThreadGroup;
-class EventManager;
-class CommonRendererData;
-class PhysicsSystem;
-namespace UI
-{
-class UIManager;
-}
+struct PhysicsHandle;
 
-namespace Audio
+class PhysicsSystem
 {
-class Backend;
-class Mixer;
-}
+public:
+	PhysicsSystem();
+	~PhysicsSystem();
 
-namespace Global
-{
-enum ManagerFeatureFlagBits
-{
-	MANAGER_FEATURE_FILESYSTEM_BIT = 1 << 0,
-	MANAGER_FEATURE_EVENT_BIT = 1 << 1,
-	MANAGER_FEATURE_THREAD_GROUP_BIT = 1 << 2,
-	MANAGER_FEATURE_UI_MANAGER_BIT = 1 << 3,
-	MANAGER_FEATURE_AUDIO_BIT = 1 << 4,
-	MANAGER_FEATURE_COMMON_RENDERER_DATA_BIT = 1 << 5,
-	MANAGER_FEATURE_PHYSICS_BIT = 1 << 6,
-	MANAGER_FEATURE_ALL_BITS = 0x7fffffff
+	PhysicsHandle *add_cube(Scene::Node *node, float mass);
+	PhysicsHandle *add_sphere(Scene::Node *node, float mass);
+	PhysicsHandle *add_infinite_plane(const vec4 &plane);
+	void remove_body(PhysicsHandle *handle);
+
+	void iterate(double frame_time);
+
+private:
+	std::unique_ptr<btDefaultCollisionConfiguration> collision_config;
+	std::unique_ptr<btCollisionDispatcher> dispatcher;
+	std::unique_ptr<btDbvtBroadphase> broadphase;
+	std::unique_ptr<btSequentialImpulseConstraintSolver> solver;
+	std::unique_ptr<btDiscreteDynamicsWorld> world;
+
+	Util::ObjectPool<PhysicsHandle> handle_pool;
+	std::vector<PhysicsHandle *> handles;
+
+	PhysicsHandle *add_shape(Scene::Node *node, float mass, btCollisionShape *shape);
 };
-using ManagerFeatureFlags = uint32_t;
-
-void init(ManagerFeatureFlags flags = MANAGER_FEATURE_ALL_BITS);
-void deinit();
-
-void start_audio_system();
-void stop_audio_system();
-
-Filesystem *filesystem();
-EventManager *event_manager();
-ThreadGroup *thread_group();
-UI::UIManager *ui_manager();
-CommonRendererData *common_renderer_data();
-#ifdef HAVE_GRANITE_AUDIO
-Audio::Backend *audio_backend();
-Audio::Mixer *audio_mixer();
-void install_audio_system(Audio::Backend *backend, Audio::Mixer *mixer);
-#endif
-
-#ifdef HAVE_GRANITE_PHYSICS
-PhysicsSystem *physics();
-#endif
-}
-
 }

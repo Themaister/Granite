@@ -33,7 +33,7 @@ namespace Granite
 struct RenderableInfo
 {
 	AbstractRenderable *renderable;
-	const CachedSpatialTransformComponent *transform;
+	const RenderInfoComponent *transform;
 };
 using VisibilityList = std::vector<RenderableInfo>;
 
@@ -178,19 +178,19 @@ public:
 private:
 	EntityPool pool;
 	NodeHandle root_node;
-	std::vector<std::tuple<BoundedComponent*, CachedSpatialTransformComponent*, CachedSpatialTransformTimestampComponent *>> &spatials;
-	std::vector<std::tuple<CachedSpatialTransformComponent*, RenderableComponent*, OpaqueComponent*>> &opaque;
-	std::vector<std::tuple<CachedSpatialTransformComponent*, RenderableComponent*, TransparentComponent*>> &transparent;
-	std::vector<std::tuple<CachedSpatialTransformComponent*, RenderableComponent*, PositionalLightComponent*>> &positional_lights;
-	std::vector<std::tuple<CachedSpatialTransformComponent*, RenderableComponent*, CastsStaticShadowComponent*>> &static_shadowing;
-	std::vector<std::tuple<CachedSpatialTransformComponent*, RenderableComponent*, CastsDynamicShadowComponent*>> &dynamic_shadowing;
+	std::vector<std::tuple<BoundedComponent*, RenderInfoComponent*, CachedSpatialTransformTimestampComponent *>> &spatials;
+	std::vector<std::tuple<RenderInfoComponent*, RenderableComponent*, OpaqueComponent*>> &opaque;
+	std::vector<std::tuple<RenderInfoComponent*, RenderableComponent*, TransparentComponent*>> &transparent;
+	std::vector<std::tuple<RenderInfoComponent*, RenderableComponent*, PositionalLightComponent*>> &positional_lights;
+	std::vector<std::tuple<RenderInfoComponent*, RenderableComponent*, CastsStaticShadowComponent*>> &static_shadowing;
+	std::vector<std::tuple<RenderInfoComponent*, RenderableComponent*, CastsDynamicShadowComponent*>> &dynamic_shadowing;
 	std::vector<std::tuple<RenderPassComponent*, RenderableComponent*, CastsDynamicShadowComponent*>> &render_pass_shadowing;
 	std::vector<std::tuple<UnboundedComponent*, RenderableComponent*>> &backgrounds;
 	std::vector<std::tuple<CameraComponent*, CachedTransformComponent*>> &cameras;
 	std::vector<std::tuple<DirectionalLightComponent*, CachedTransformComponent*>> &directional_lights;
 	std::vector<std::tuple<AmbientLightComponent*>> &ambient_lights;
 	std::vector<std::tuple<PerFrameUpdateComponent*>> &per_frame_updates;
-	std::vector<std::tuple<PerFrameUpdateTransformComponent*, CachedSpatialTransformComponent*>> &per_frame_update_transforms;
+	std::vector<std::tuple<PerFrameUpdateTransformComponent*, RenderInfoComponent*>> &per_frame_update_transforms;
 	std::vector<std::tuple<EnvironmentComponent*>> &environments;
 	std::vector<std::tuple<RenderPassSinkComponent*, RenderableComponent*, CullPlaneComponent*>> &render_pass_sinks;
 	std::vector<std::tuple<RenderPassComponent*>> &render_pass_creators;

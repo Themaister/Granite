@@ -568,7 +568,7 @@ void SkyCylinder::on_device_destroyed(const DeviceCreatedEvent &)
 	sampler.reset();
 }
 
-void SkyCylinder::get_render_info(const RenderContext &, const CachedSpatialTransformComponent *,
+void SkyCylinder::get_render_info(const RenderContext &, const RenderInfoComponent *,
                                   RenderQueue &queue) const
 {
 	SkyCylinderRenderInfo info;
@@ -635,7 +635,7 @@ static void skybox_render(CommandBuffer &cmd, const RenderQueueData *infos, unsi
 	}
 }
 
-void Skybox::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *,
+void Skybox::get_render_info(const RenderContext &context, const RenderInfoComponent *,
                              RenderQueue &queue) const
 {
 	SkyboxRenderInfo info;
@@ -944,7 +944,7 @@ void TexturePlane::set_base_render_context(const RenderContext *context)
 	base_context = context;
 }
 
-void TexturePlane::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *,
+void TexturePlane::get_render_info(const RenderContext &context, const RenderInfoComponent *,
                                    RenderQueue &queue) const
 {
 	TexturePlaneInfo info;

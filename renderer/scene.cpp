@@ -32,19 +32,19 @@ namespace Granite
 {
 
 Scene::Scene()
-	: spatials(pool.get_component_group<BoundedComponent, CachedSpatialTransformComponent, CachedSpatialTransformTimestampComponent>()),
-	  opaque(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, OpaqueComponent>()),
-	  transparent(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, TransparentComponent>()),
-	  positional_lights(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, PositionalLightComponent>()),
-	  static_shadowing(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, CastsStaticShadowComponent>()),
-	  dynamic_shadowing(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, CastsDynamicShadowComponent>()),
+	: spatials(pool.get_component_group<BoundedComponent, RenderInfoComponent, CachedSpatialTransformTimestampComponent>()),
+	  opaque(pool.get_component_group<RenderInfoComponent, RenderableComponent, OpaqueComponent>()),
+	  transparent(pool.get_component_group<RenderInfoComponent, RenderableComponent, TransparentComponent>()),
+	  positional_lights(pool.get_component_group<RenderInfoComponent, RenderableComponent, PositionalLightComponent>()),
+	  static_shadowing(pool.get_component_group<RenderInfoComponent, RenderableComponent, CastsStaticShadowComponent>()),
+	  dynamic_shadowing(pool.get_component_group<RenderInfoComponent, RenderableComponent, CastsDynamicShadowComponent>()),
 	  render_pass_shadowing(pool.get_component_group<RenderPassComponent, RenderableComponent, CastsDynamicShadowComponent>()),
 	  backgrounds(pool.get_component_group<UnboundedComponent, RenderableComponent>()),
 	  cameras(pool.get_component_group<CameraComponent, CachedTransformComponent>()),
 	  directional_lights(pool.get_component_group<DirectionalLightComponent, CachedTransformComponent>()),
 	  ambient_lights(pool.get_component_group<AmbientLightComponent>()),
 	  per_frame_updates(pool.get_component_group<PerFrameUpdateComponent>()),
-	  per_frame_update_transforms(pool.get_component_group<PerFrameUpdateTransformComponent, CachedSpatialTransformComponent>()),
+	  per_frame_update_transforms(pool.get_component_group<PerFrameUpdateTransformComponent, RenderInfoComponent>()),
 	  environments(pool.get_component_group<EnvironmentComponent>()),
 	  render_pass_sinks(pool.get_component_group<RenderPassSinkComponent, RenderableComponent, CullPlaneComponent>()),
 	  render_pass_creators(pool.get_component_group<RenderPassComponent>())
@@ -63,7 +63,7 @@ static void gather_visible_renderables(const Frustum &frustum, VisibilityList &l
 {
 	for (auto &o : objects)
 	{
-		auto *transform = get_component<CachedSpatialTransformComponent>(o);
+		auto *transform = get_component<RenderInfoComponent>(o);
 		auto *renderable = get_component<RenderableComponent>(o);
 
 		if (transform->transform)
@@ -122,7 +122,7 @@ void Scene::refresh_per_frame(RenderContext &context)
 	for (auto &update : per_frame_update_transforms)
 	{
 		auto *refresh = get_component<PerFrameUpdateTransformComponent>(update)->refresh;
-		auto *transform = get_component<CachedSpatialTransformComponent>(update);
+		auto *transform = get_component<RenderInfoComponent>(update);
 		if (refresh)
 			refresh->refresh(context, transform);
 	}
@@ -187,7 +187,7 @@ void Scene::gather_visible_positional_lights(const Frustum &frustum, VisibilityL
 
 	for (auto &o : positional_lights)
 	{
-		auto *transform = get_component<CachedSpatialTransformComponent>(o);
+		auto *transform = get_component<RenderInfoComponent>(o);
 		auto *renderable = get_component<RenderableComponent>(o);
 
 		if (transform->transform)
@@ -301,7 +301,7 @@ void Scene::update_cached_transforms()
 	for (auto &s : spatials)
 	{
 		BoundedComponent *aabb;
-		CachedSpatialTransformComponent *cached_transform;
+		RenderInfoComponent *cached_transform;
 		CachedSpatialTransformTimestampComponent *timestamp;
 		tie(aabb, cached_transform, timestamp) = s;
 
@@ -488,7 +488,7 @@ EntityHandle Scene::create_light(const SceneFormats::LightInfo &light, Node *nod
 		entity->allocate_component<PositionalLightComponent>()->light = &positional;
 		entity->allocate_component<RenderableComponent>()->renderable = renderable;
 
-		auto *transform = entity->allocate_component<CachedSpatialTransformComponent>();
+		auto *transform = entity->allocate_component<RenderInfoComponent>();
 		auto *timestamp = entity->allocate_component<CachedSpatialTransformTimestampComponent>();
 		if (node)
 		{
@@ -511,7 +511,7 @@ EntityHandle Scene::create_renderable(AbstractRenderableHandle renderable, Node 
 
 	if (renderable->has_static_aabb())
 	{
-		auto *transform = entity->allocate_component<CachedSpatialTransformComponent>();
+		auto *transform = entity->allocate_component<RenderInfoComponent>();
 		auto *timestamp = entity->allocate_component<CachedSpatialTransformTimestampComponent>();
 		if (node)
 		{

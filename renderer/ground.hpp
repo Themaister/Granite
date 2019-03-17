@@ -72,12 +72,12 @@ private:
 		return &aabb;
 	}
 
-	void get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform, RenderQueue &queue) const override;
+	void get_render_info(const RenderContext &context, const RenderInfoComponent *transform, RenderQueue &queue) const override;
 	vec2 offset = vec2(0.0f);
 	vec2 size = vec2(1.0f);
 	AABB aabb;
 
-	void refresh(RenderContext &context, const CachedSpatialTransformComponent *transform) override;
+	void refresh(RenderContext &context, const RenderInfoComponent *transform) override;
 };
 
 class Ground : public Util::IntrusivePtrEnabled<Ground>, public PerFrameRefreshable, public EventHandler
@@ -115,7 +115,7 @@ public:
 
 	static Handles add_to_scene(Scene &scene, unsigned size, float tiling_factor, const TerrainInfo &info);
 
-	void get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform, RenderQueue &queue,
+	void get_render_info(const RenderContext &context, const RenderInfoComponent *transform, RenderQueue &queue,
 	                     const GroundPatch &patch) const;
 
 	float *get_lod_pointer(unsigned x, unsigned z)

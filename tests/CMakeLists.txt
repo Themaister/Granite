@@ -55,3 +55,8 @@ if (GRANITE_AUDIO)
         target_compile_definitions(audio-application PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
     endif()
 endif()
+
+if (GRANITE_BULLET)
+    add_granite_offline_tool(bullet-test bullet_test.cpp)
+    target_link_libraries(bullet-test PRIVATE granite-physics)
+endif()

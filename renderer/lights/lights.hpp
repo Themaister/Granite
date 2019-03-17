@@ -91,9 +91,9 @@ class SpotLight : public PositionalLight
 public:
 	SpotLight();
 
-	void get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
+	void get_render_info(const RenderContext &context, const RenderInfoComponent *transform,
 	                     RenderQueue &queue) const override;
-	void get_depth_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
+	void get_depth_render_info(const RenderContext &context, const RenderInfoComponent *transform,
 	                           RenderQueue &queue) const override;
 
 	void set_spot_parameters(float inner_cone, float outer_cone);
@@ -133,9 +133,9 @@ class PointLight : public PositionalLight
 public:
 	PointLight();
 
-	void get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
+	void get_render_info(const RenderContext &context, const RenderInfoComponent *transform,
 	                     RenderQueue &queue) const override;
-	void get_depth_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
+	void get_depth_render_info(const RenderContext &context, const RenderInfoComponent *transform,
 	                           RenderQueue &queue) const override;
 	PositionalFragmentInfo get_shader_info(const mat4 &transform) const;
 

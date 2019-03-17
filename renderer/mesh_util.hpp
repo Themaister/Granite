@@ -100,7 +100,7 @@ public:
 	void set_image(Vulkan::ImageHandle skybox);
 	void set_image(Vulkan::Texture *skybox);
 
-	void get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
+	void get_render_info(const RenderContext &context, const RenderInfoComponent *transform,
 	                     RenderQueue &queue) const override;
 
 	void set_color_mod(const vec3 &color)
@@ -126,7 +126,7 @@ class SkyCylinder : public AbstractRenderable, public EventHandler
 public:
 	SkyCylinder(std::string bg_path);
 
-	void get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
+	void get_render_info(const RenderContext &context, const RenderInfoComponent *transform,
 	                     RenderQueue &queue) const override;
 
 	void set_color_mod(const vec3 &color)
@@ -182,7 +182,7 @@ public:
 		return vec4(normal, -dot(normal, position));
 	}
 
-	void get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
+	void get_render_info(const RenderContext &context, const RenderInfoComponent *transform,
 	                     RenderQueue &queue) const override;
 
 	void set_plane(const vec3 &position, const vec3 &normal, const vec3 &up, float extent_up, float extent_across);

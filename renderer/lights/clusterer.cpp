@@ -74,7 +74,7 @@ void LightClusterer::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
 void LightClusterer::set_scene(Scene *scene)
 {
 	this->scene = scene;
-	lights = &scene->get_entity_pool().get_component_group<PositionalLightComponent, CachedSpatialTransformComponent>();
+	lights = &scene->get_entity_pool().get_component_group<PositionalLightComponent, RenderInfoComponent>();
 }
 
 void LightClusterer::set_resolution(unsigned x, unsigned y, unsigned z)
@@ -671,7 +671,7 @@ void LightClusterer::refresh(RenderContext &context)
 	for (auto &light : *lights)
 	{
 		auto &l = *get_component<PositionalLightComponent>(light)->light;
-		auto *transform = get_component<CachedSpatialTransformComponent>(light);
+		auto *transform = get_component<RenderInfoComponent>(light);
 
 		// Frustum cull lights here.
 		if (!frustum.intersects(transform->world_aabb))

@@ -147,7 +147,7 @@ struct RenderPassComponent : ComponentBase
 struct PerFrameRefreshableTransform
 {
 	virtual ~PerFrameRefreshableTransform() = default;
-	virtual void refresh(RenderContext &context, const CachedSpatialTransformComponent *transform) = 0;
+	virtual void refresh(RenderContext &context, const RenderInfoComponent *transform) = 0;
 };
 
 struct PerFrameRefreshable
@@ -168,12 +168,16 @@ struct PerFrameUpdateComponent : ComponentBase
 	PerFrameRefreshable *refresh = nullptr;
 };
 
-struct CachedSpatialTransformComponent : ComponentBase
+struct RenderInfoComponent : ComponentBase
 {
-	GRANITE_COMPONENT_TYPE_DECL(CachedSpatialTransformComponent)
+	GRANITE_COMPONENT_TYPE_DECL(RenderInfoComponent)
 	AABB world_aabb;
 	CachedTransform *transform = nullptr;
 	CachedSkinTransform *skin_transform = nullptr;
+
+	// Can be used to pass non-spatial transform related data to an AbstractRenderable,
+	// e.g. per instance material information.
+	const void *extra_data = nullptr;
 };
 
 struct CachedTransformComponent : ComponentBase

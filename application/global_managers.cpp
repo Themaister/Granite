@@ -35,6 +35,10 @@
 #include "audio_events.hpp"
 #endif
 
+#ifdef HAVE_GRANITE_PHYSICS
+#include "physics_system.hpp"
+#endif
+
 namespace Granite
 {
 namespace Global
@@ -51,6 +55,9 @@ struct GlobalManagers
 #ifdef HAVE_GRANITE_AUDIO
 	Audio::Backend *audio_backend;
 	Audio::Mixer *audio_mixer;
+#endif
+#ifdef HAVE_GRANITE_PHYSICS
+	PhysicsSystem *physics;
 #endif
 };
 
@@ -126,6 +133,19 @@ void install_audio_system(Audio::Backend *backend, Audio::Mixer *mixer)
 }
 #endif
 
+#ifdef HAVE_GRANITE_PHYSICS
+PhysicsSystem *physics()
+{
+	if (!global_managers.physics)
+	{
+		LOGI("Physics system was not initialized. Lazily initializing. This is not thread safe!\n");
+		global_managers.physics = new PhysicsSystem;
+	}
+
+	return global_managers.physics;
+}
+#endif
+
 void init(ManagerFeatureFlags flags)
 {
 	if (flags & MANAGER_FEATURE_EVENT_BIT)
@@ -161,6 +181,12 @@ void init(ManagerFeatureFlags flags)
 			global_managers.common_renderer_data = new CommonRendererData;
 	}
 
+	if (flags & MANAGER_FEATURE_PHYSICS_BIT)
+	{
+		if (!global_managers.physics)
+			global_managers.physics = new PhysicsSystem;
+	}
+
 #ifdef HAVE_GRANITE_AUDIO
 	if (!global_managers.audio_mixer)
 		global_managers.audio_mixer = new Audio::Mixer;
@@ -179,6 +205,10 @@ void deinit()
 	delete global_managers.audio_mixer;
 	global_managers.audio_backend = nullptr;
 	global_managers.audio_mixer = nullptr;
+#endif
+
+#ifdef HAVE_GRANITE_PHYSICS
+	delete global_managers.physics;
 #endif
 
 	delete global_managers.common_renderer_data;

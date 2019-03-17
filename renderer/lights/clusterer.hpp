@@ -85,7 +85,7 @@ private:
 
 	Scene *scene = nullptr;
 	const RenderContext *context = nullptr;
-	std::vector<std::tuple<PositionalLightComponent *, CachedSpatialTransformComponent *>> *lights = nullptr;
+	std::vector<std::tuple<PositionalLightComponent *, RenderInfoComponent *>> *lights = nullptr;
 
 	unsigned x = 64, y = 32, z = 16;
 	unsigned shadow_resolution = 512;

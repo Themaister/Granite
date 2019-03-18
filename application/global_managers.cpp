@@ -181,11 +181,13 @@ void init(ManagerFeatureFlags flags)
 			global_managers.common_renderer_data = new CommonRendererData;
 	}
 
+#ifdef HAVE_GRANITE_PHYSICS
 	if (flags & MANAGER_FEATURE_PHYSICS_BIT)
 	{
 		if (!global_managers.physics)
 			global_managers.physics = new PhysicsSystem;
 	}
+#endif
 
 #ifdef HAVE_GRANITE_AUDIO
 	if (!global_managers.audio_mixer)

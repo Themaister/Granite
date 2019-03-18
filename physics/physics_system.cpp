@@ -33,6 +33,7 @@ struct PhysicsHandle
 	Scene::Node *node = nullptr;
 	btCollisionObject *bt_object = nullptr;
 	btCollisionShape *bt_shape = nullptr;
+	void *userdata = nullptr;
 };
 
 PhysicsSystem::PhysicsSystem()
@@ -93,6 +94,16 @@ void PhysicsSystem::iterate(double frame_time)
 
 		handle->node->invalidate_cached_transform();
 	}
+}
+
+void *PhysicsSystem::get_handle_userdata(PhysicsHandle *handle)
+{
+	return handle->userdata;
+}
+
+void PhysicsSystem::set_handle_userdata(PhysicsHandle *handle, void *userdata)
+{
+	handle->userdata = userdata;
 }
 
 void PhysicsSystem::remove_body(PhysicsHandle *handle)

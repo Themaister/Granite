@@ -103,8 +103,9 @@ struct PhysicsSandboxApplication : Application, EventHandler
 	{
 		auto root_node = scene.create_node();
 		auto entity = scene.create_renderable(plane, root_node.get());
-		entity->allocate_component<PhysicsComponent>()->handle =
-				Global::physics()->add_infinite_plane(vec4(0.0f, 1.0f, 0.0f, 0.0f));
+		auto *plane = Global::physics()->add_infinite_plane(vec4(0.0f, 1.0f, 0.0f, 0.0f));
+		entity->allocate_component<PhysicsComponent>()->handle = plane;
+		Global::physics()->set_handle_userdata(plane, entity.get());
 
 		{
 			auto cube_node = scene.create_node();
@@ -112,8 +113,9 @@ struct PhysicsSandboxApplication : Application, EventHandler
 			cube_node->invalidate_cached_transform();
 			root_node->add_child(cube_node);
 			auto entity = scene.create_renderable(cube, cube_node.get());
-			sphere_physics = entity->allocate_component<PhysicsComponent>()->handle =
-					Global::physics()->add_cube(cube_node.get(), 5.0f);
+			auto *cube = Global::physics()->add_cube(cube_node.get(), 5.0f);
+			sphere_physics = entity->allocate_component<PhysicsComponent>()->handle = cube;
+			Global::physics()->set_handle_userdata(cube, entity.get());
 		}
 
 		{
@@ -122,8 +124,9 @@ struct PhysicsSandboxApplication : Application, EventHandler
 			sphere_node->invalidate_cached_transform();
 			root_node->add_child(sphere_node);
 			auto entity = scene.create_renderable(sphere, sphere_node.get());
-			entity->allocate_component<PhysicsComponent>()->handle =
-					Global::physics()->add_sphere(sphere_node.get(), 5.0f);
+			auto *sphere = Global::physics()->add_sphere(sphere_node.get(), 5.0f);
+			entity->allocate_component<PhysicsComponent>()->handle = sphere;
+			Global::physics()->set_handle_userdata(sphere, entity.get());
 		}
 
 		scene.set_root_node(root_node);

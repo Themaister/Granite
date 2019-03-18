@@ -33,8 +33,47 @@ struct PhysicsHandle
 	Scene::Node *node = nullptr;
 	btCollisionObject *bt_object = nullptr;
 	btCollisionShape *bt_shape = nullptr;
-	void *userdata = nullptr;
+	Entity *entity = nullptr;
 };
+
+static void tick_callback_wrapper(btDynamicsWorld *world, btScalar time_step)
+{
+	static_cast<PhysicsSystem *>(world->getWorldUserInfo())->tick_callback(time_step);
+}
+
+void PhysicsSystem::tick_callback(float)
+{
+	auto *dispatcher = world->getDispatcher();
+	int num_manifolds = dispatcher->getNumManifolds();
+	for (int i = 0; i < num_manifolds; i++)
+	{
+		btPersistentManifold *contact = dispatcher->getManifoldByIndexInternal(i);
+		auto *handle0 = static_cast<PhysicsHandle *>(contact->getBody0()->getUserPointer());
+		auto *handle1 = static_cast<PhysicsHandle *>(contact->getBody1()->getUserPointer());
+		int num_contacts = contact->getNumContacts();
+		for (int j = 0; j < num_contacts; j++)
+		{
+			auto &pt = contact->getContactPoint(j);
+			if (pt.m_lifeTime == 1)
+			{
+				new_collision_buffer.emplace_back(handle0->entity, handle1->entity,
+				                                  handle0, handle1,
+				                                  vec3(pt.getPositionWorldOnB().x(),
+				                                       pt.getPositionWorldOnB().y(),
+				                                       pt.getPositionWorldOnB().z()),
+				                                  vec3(pt.m_normalWorldOnB.x(),
+				                                       pt.m_normalWorldOnB.y(),
+				                                       pt.m_normalWorldOnB.z()));
+			}
+		}
+	}
+
+	auto *em = Global::event_manager();
+	if (em)
+		for (auto &collision : new_collision_buffer)
+			em->dispatch_inline(collision);
+	new_collision_buffer.clear();
+}
 
 PhysicsSystem::PhysicsSystem()
 {
@@ -46,6 +85,7 @@ PhysicsSystem::PhysicsSystem()
 	                                             solver.get(), collision_config.get());
 
 	world->setGravity(btVector3(0.0f, -9.81f, 0.0f));
+	world->setInternalTickCallback(tick_callback_wrapper, this);
 }
 
 PhysicsSystem::~PhysicsSystem()
@@ -96,14 +136,14 @@ void PhysicsSystem::iterate(double frame_time)
 	}
 }
 
-void *PhysicsSystem::get_handle_userdata(PhysicsHandle *handle)
+Entity *PhysicsSystem::get_handle_parent(PhysicsHandle *handle)
 {
-	return handle->userdata;
+	return handle->entity;
 }
 
-void PhysicsSystem::set_handle_userdata(PhysicsHandle *handle, void *userdata)
+void PhysicsSystem::set_handle_parent(PhysicsHandle *handle, Entity *entity)
 {
-	handle->userdata = userdata;
+	handle->entity = entity;
 }
 
 void PhysicsSystem::remove_body(PhysicsHandle *handle)
@@ -150,6 +190,7 @@ PhysicsHandle *PhysicsSystem::add_shape(Scene::Node *node, float mass, btCollisi
 	world->addRigidBody(body);
 
 	auto *handle = handle_pool.allocate();
+	body->setUserPointer(handle);
 	handle->node = node;
 	handle->bt_object = body;
 	handle->bt_shape = shape;

@@ -46,6 +46,58 @@ struct PhysicsComponent : ComponentBase
 	~PhysicsComponent();
 };
 
+class CollisionEvent : public Event
+{
+public:
+	GRANITE_EVENT_TYPE_DECL(CollisionEvent)
+	CollisionEvent(Entity *entity0_, Entity *entity1_,
+	               PhysicsHandle *object0_, PhysicsHandle *object1_,
+	               const vec3 &world_point_, const vec3 &normal_)
+		: entity0(entity0_), entity1(entity1_),
+		  object0(object0_), object1(object1_),
+		  world_point(world_point_), normal(normal_)
+	{
+	}
+
+	Entity *get_first_entity() const
+	{
+		return entity0;
+	}
+
+	Entity *get_second_entity() const
+	{
+		return entity1;
+	}
+
+	PhysicsHandle *get_first_handle() const
+	{
+		return object0;
+	}
+
+	PhysicsHandle *get_second_handle() const
+	{
+		return object1;
+	}
+
+	vec3 get_world_contact() const
+	{
+		return world_point;
+	}
+
+	vec3 get_world_normal() const
+	{
+		return normal;
+	}
+
+private:
+	Entity *entity0;
+	Entity *entity1;
+	PhysicsHandle *object0;
+	PhysicsHandle *object1;
+	vec3 world_point;
+	vec3 normal;
+};
+
 class PhysicsSystem
 {
 public:
@@ -56,12 +108,14 @@ public:
 	PhysicsHandle *add_sphere(Scene::Node *node, float mass);
 	PhysicsHandle *add_infinite_plane(const vec4 &plane);
 	void remove_body(PhysicsHandle *handle);
-	void set_handle_userdata(PhysicsHandle *handle, void *userdata);
-	void *get_handle_userdata(PhysicsHandle *handle);
+	void set_handle_parent(PhysicsHandle *handle, Entity *entity);
+	Entity *get_handle_parent(PhysicsHandle *handle);
 
 	void apply_impulse(PhysicsHandle *handle, const vec3 &impulse, const vec3 &relative);
 
 	void iterate(double frame_time);
+
+	void tick_callback(float tick_time);
 
 private:
 	std::unique_ptr<btDefaultCollisionConfiguration> collision_config;
@@ -74,5 +128,6 @@ private:
 	std::vector<PhysicsHandle *> handles;
 
 	PhysicsHandle *add_shape(Scene::Node *node, float mass, btCollisionShape *shape);
+	std::vector<CollisionEvent> new_collision_buffer;
 };
 }

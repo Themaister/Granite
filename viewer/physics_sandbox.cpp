@@ -136,7 +136,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 		if (e.get_key() == Key::Space && e.get_key_state() == KeyState::Pressed)
 		{
 			Global::physics()->apply_impulse(sphere_physics,
-					vec3(0.0f, 12.0f, -4.0f),
+					vec3(0.0f, 22.0f, -4.0f),
 					vec3(0.2f, 0.0f, 0.0f));
 		}
 

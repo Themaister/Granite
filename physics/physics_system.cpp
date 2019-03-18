@@ -64,7 +64,7 @@ PhysicsSystem::~PhysicsSystem()
 
 void PhysicsSystem::iterate(double frame_time)
 {
-	world->stepSimulation(btScalar(frame_time), 10);
+	world->stepSimulation(btScalar(frame_time), 50, 1.0f / 300.0f);
 
 	for (auto *handle : handles)
 	{
@@ -169,6 +169,7 @@ PhysicsHandle *PhysicsSystem::add_infinite_plane(const vec4 &plane)
 void PhysicsSystem::apply_impulse(PhysicsHandle *handle, const vec3 &impulse, const vec3 &relative)
 {
 	auto *body = btRigidBody::upcast(handle->bt_object);
+	body->activate();
 	body->applyImpulse(
 			btVector3(impulse.x, impulse.y, impulse.z),
 			btVector3(relative.x, relative.y, relative.z));

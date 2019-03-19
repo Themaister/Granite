@@ -195,13 +195,13 @@ void PhysicsSystem::remove_body(PhysicsHandle *handle)
 		handles.erase(itr);
 }
 
-PhysicsHandle *PhysicsSystem::add_shape(Scene::Node *node, float mass, btCollisionShape *shape)
+PhysicsHandle *PhysicsSystem::add_shape(Scene::Node *node, const MaterialInfo &info, btCollisionShape *shape)
 {
 	btTransform t;
 	t.setIdentity();
 	btVector3 local_inertia(0, 0, 0);
-	if (mass != 0.0f)
-		shape->calculateLocalInertia(mass, local_inertia);
+	if (info.mass != 0.0f)
+		shape->calculateLocalInertia(info.mass, local_inertia);
 
 	if (node)
 	{
@@ -217,7 +217,15 @@ PhysicsHandle *PhysicsSystem::add_shape(Scene::Node *node, float mass, btCollisi
 	}
 
 	auto *motion = new btDefaultMotionState(t);
-	btRigidBody::btRigidBodyConstructionInfo rb_info(mass, motion, shape, local_inertia);
+	btRigidBody::btRigidBodyConstructionInfo rb_info(info.mass, motion, shape, local_inertia);
+	if (info.mass != 0.0f)
+	{
+		rb_info.m_restitution = info.restitution;
+		rb_info.m_linearDamping = info.linear_damping;
+		rb_info.m_angularDamping = info.angular_damping;
+	}
+	else
+		rb_info.m_restitution = 1.0f;
 
 	auto *body = new btRigidBody(rb_info);
 	world->addRigidBody(body);
@@ -231,24 +239,31 @@ PhysicsHandle *PhysicsSystem::add_shape(Scene::Node *node, float mass, btCollisi
 	return handle;
 }
 
-PhysicsHandle *PhysicsSystem::add_cube(Scene::Node *node, float mass)
+PhysicsHandle *PhysicsSystem::add_cube(Scene::Node *node, const MaterialInfo &info)
 {
 	auto *shape = new btBoxShape(btVector3(node->transform.scale.x,
 	                                       node->transform.scale.y,
 	                                       node->transform.scale.z));
-	return add_shape(node, mass, shape);
+	auto *handle = add_shape(node, info, shape);
+	return handle;
 }
 
-PhysicsHandle *PhysicsSystem::add_sphere(Scene::Node *node, float mass)
+PhysicsHandle *PhysicsSystem::add_sphere(Scene::Node *node, const MaterialInfo &info)
 {
 	auto *shape = new btSphereShape(btScalar(node->transform.scale.x));
-	return add_shape(node, mass, shape);
+	auto *handle = add_shape(node, info, shape);
+	return handle;
 }
 
 PhysicsHandle *PhysicsSystem::add_infinite_plane(const vec4 &plane)
 {
 	auto *shape = new btStaticPlaneShape(btVector3(plane.x, plane.y, plane.z), plane.w);
-	return add_shape(nullptr, 0.0f, shape);
+
+	MaterialInfo info;
+	info.mass = 0.0f;
+
+	auto *handle = add_shape(nullptr, info, shape);
+	return handle;
 }
 
 void PhysicsSystem::apply_impulse(PhysicsHandle *handle, const vec3 &impulse, const vec3 &relative)

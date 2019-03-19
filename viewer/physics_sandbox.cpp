@@ -149,31 +149,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 		auto *plane = Global::physics()->add_infinite_plane(vec4(0.0f, 1.0f, 0.0f, 0.0f));
 		entity->allocate_component<PhysicsComponent>()->handle = plane;
 		PhysicsSystem::set_handle_parent(plane, entity);
-
-		{
-			auto cube_node = scene.create_node();
-			cube_node->transform.translation = vec3(5.0f, 3.0f, 0.0f);
-			cube_node->invalidate_cached_transform();
-			root_node->add_child(cube_node);
-			auto *entity = scene.create_renderable(cube, cube_node.get());
-			auto *cube = Global::physics()->add_cube(cube_node.get(), 5.0f);
-			sphere_physics = entity->allocate_component<PhysicsComponent>()->handle = cube;
-			PhysicsSystem::set_handle_parent(cube, entity);
-		}
-
-		{
-			auto sphere_node = scene.create_node();
-			sphere_node->transform.translation = vec3(3.8f, 18.0f, 1.1f);
-			sphere_node->invalidate_cached_transform();
-			root_node->add_child(sphere_node);
-			auto *entity = scene.create_renderable(sphere, sphere_node.get());
-			auto *sphere = Global::physics()->add_sphere(sphere_node.get(), 5.0f);
-			entity->allocate_component<PhysicsComponent>()->handle = sphere;
-			PhysicsSystem::set_handle_parent(sphere, entity);
-		}
-
 		scene.set_root_node(root_node);
-
 		context.set_lighting_parameters(&lighting);
 	}
 
@@ -181,9 +157,75 @@ struct PhysicsSandboxApplication : Application, EventHandler
 	{
 		if (e.get_key() == Key::Space && e.get_key_state() == KeyState::Pressed)
 		{
-			Global::physics()->apply_impulse(sphere_physics,
-					vec3(0.0f, 22.0f, -4.0f),
-					vec3(0.2f, 0.0f, 0.0f));
+			auto &handles = scene.get_entity_pool().get_component_group<PhysicsComponent>();
+			for (auto &handle : handles)
+			{
+				auto *h = get_component<PhysicsComponent>(handle);
+				if (!PhysicsSystem::get_scene_node(h->handle))
+					continue;
+
+				Global::physics()->apply_impulse(h->handle,
+				                                 vec3(0.0f, 22.0f, -4.0f),
+				                                 vec3(0.2f, 0.0f, 0.0f));
+			}
+		}
+		else if (e.get_key() == Key::R && e.get_key_state() == KeyState::Pressed)
+		{
+			auto result = Global::physics()->query_closest_hit_ray(
+					camera.get_position(), camera.get_front(), 100.0f);
+
+			if (result.entity && PhysicsSystem::get_scene_node(result.handle))
+			{
+				auto *node = PhysicsSystem::get_scene_node(result.handle);
+				if (node && node->get_children().empty())
+					Scene::Node::remove_node_from_hierarchy(node);
+				scene.destroy_entity(result.entity);
+			}
+		}
+		else if (e.get_key() == Key::O && e.get_key_state() == KeyState::Pressed)
+		{
+			auto result = Global::physics()->query_closest_hit_ray(
+					camera.get_position(), camera.get_front(), 100.0f);
+
+			if (result.entity)
+			{
+				auto cube_node = scene.create_node();
+				cube_node->transform.translation = result.world_pos + vec3(0.0f, 20.0f, 0.0f);
+				cube_node->invalidate_cached_transform();
+				scene.get_root_node()->add_child(cube_node);
+				auto *entity = scene.create_renderable(cube, cube_node.get());
+				PhysicsSystem::MaterialInfo info;
+				info.mass = 10.0f;
+				info.restitution = 0.05f;
+				info.angular_damping = 0.3f;
+				info.linear_damping = 0.3f;
+				auto *cube = Global::physics()->add_cube(cube_node.get(), info);
+				entity->allocate_component<PhysicsComponent>()->handle = cube;
+				PhysicsSystem::set_handle_parent(cube, entity);
+			}
+		}
+		else if (e.get_key() == Key::P && e.get_key_state() == KeyState::Pressed)
+		{
+			auto result = Global::physics()->query_closest_hit_ray(
+					camera.get_position(), camera.get_front(), 100.0f);
+
+			if (result.entity)
+			{
+				auto sphere_node = scene.create_node();
+				sphere_node->transform.translation = result.world_pos + vec3(0.0f, 20.0f, 0.0f);
+				sphere_node->transform.scale = vec3(0.1f);
+				sphere_node->invalidate_cached_transform();
+				scene.get_root_node()->add_child(sphere_node);
+				auto *entity = scene.create_renderable(sphere, sphere_node.get());
+				PhysicsSystem::MaterialInfo info;
+				info.mass = 2.0f;
+				info.restitution = 0.9f;
+				info.angular_damping = 0.3f;
+				info.linear_damping = 0.3f;
+				auto *sphere = Global::physics()->add_sphere(sphere_node.get(), info);
+				entity->allocate_component<PhysicsComponent>()->handle = sphere;
+				PhysicsSystem::set_handle_parent(sphere, entity);
+			}
 		}
 
 		return true;
@@ -226,8 +268,6 @@ struct PhysicsSandboxApplication : Application, EventHandler
 	LightingParameters lighting;
 	VisibilityList visible;
 	Renderer renderer;
-
-	PhysicsHandle *sphere_physics = nullptr;
 };
 
 namespace Granite

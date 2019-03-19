@@ -113,8 +113,16 @@ public:
 	PhysicsSystem();
 	~PhysicsSystem();
 
-	PhysicsHandle *add_cube(Scene::Node *node, float mass);
-	PhysicsHandle *add_sphere(Scene::Node *node, float mass);
+	struct MaterialInfo
+	{
+		float mass = 1.0f;
+		float restitution = 0.5f;
+		float linear_damping = 0.1f;
+		float angular_damping = 0.1f;
+	};
+
+	PhysicsHandle *add_cube(Scene::Node *node, const MaterialInfo &info);
+	PhysicsHandle *add_sphere(Scene::Node *node, const MaterialInfo &info);
 	PhysicsHandle *add_infinite_plane(const vec4 &plane);
 	void remove_body(PhysicsHandle *handle);
 	static void set_handle_parent(PhysicsHandle *handle, Entity *entity);
@@ -137,7 +145,7 @@ private:
 	Util::ObjectPool<PhysicsHandle> handle_pool;
 	std::vector<PhysicsHandle *> handles;
 
-	PhysicsHandle *add_shape(Scene::Node *node, float mass, btCollisionShape *shape);
+	PhysicsHandle *add_shape(Scene::Node *node, const MaterialInfo &info, btCollisionShape *shape);
 	std::vector<CollisionEvent> new_collision_buffer;
 };
 }

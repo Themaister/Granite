@@ -117,7 +117,7 @@ struct EntityDeleter
 	void operator()(Entity *entity);
 };
 
-class Entity : public Util::IntrusivePtrEnabled<Entity, EntityDeleter>
+class Entity : public Util::IntrusiveListEnabled<Entity>
 {
 public:
 	friend class EntityPool;
@@ -273,8 +273,6 @@ struct ComponentAllocator : public ComponentAllocatorBase
 	}
 };
 
-using EntityHandle = Util::IntrusivePtr<Entity>;
-
 class EntityPool
 {
 public:
@@ -284,7 +282,7 @@ public:
 	void operator=(const EntityPool &) = delete;
 	EntityPool(const EntityPool &) = delete;
 
-	EntityHandle create_entity();
+	Entity *create_entity();
 	void delete_entity(Entity *entity);
 
 	template <typename... Ts>

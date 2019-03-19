@@ -437,17 +437,17 @@ void Scene::Node::invalidate_cached_transform()
 	}
 }
 
-EntityHandle Scene::create_entity()
+Entity *Scene::create_entity()
 {
-	EntityHandle entity = pool.create_entity();
-	nodes.push_back(entity);
+	Entity *entity = pool.create_entity();
+	entities.insert_front(entity);
 	return entity;
 }
 
-EntityHandle Scene::create_light(const SceneFormats::LightInfo &light, Node *node)
+Entity *Scene::create_light(const SceneFormats::LightInfo &light, Node *node)
 {
-	EntityHandle entity = pool.create_entity();
-	nodes.push_back(entity);
+	Entity *entity = pool.create_entity();
+	entities.insert_front(entity);
 
 	switch (light.type)
 	{
@@ -504,10 +504,10 @@ EntityHandle Scene::create_light(const SceneFormats::LightInfo &light, Node *nod
 	return entity;
 }
 
-EntityHandle Scene::create_renderable(AbstractRenderableHandle renderable, Node *node)
+Entity *Scene::create_renderable(AbstractRenderableHandle renderable, Node *node)
 {
-	EntityHandle entity = pool.create_entity();
-	nodes.push_back(entity);
+	Entity *entity = pool.create_entity();
+	entities.insert_front(entity);
 
 	if (renderable->has_static_aabb())
 	{
@@ -552,11 +552,27 @@ EntityHandle Scene::create_renderable(AbstractRenderableHandle renderable, Node 
 
 void Scene::remove_entities_with_component(ComponentType id)
 {
-	auto itr = remove_if(begin(nodes), end(nodes), [id](const EntityHandle &entity) {
-		return entity->has_component(id);
-	});
+	auto itr = entities.begin();
+	while (itr != entities.end())
+	{
+		if (itr->has_component(id))
+		{
+			auto *to_free = itr.get();
+			itr = entities.erase(itr);
+			to_free->get_pool()->delete_entity(to_free);
+		}
+		else
+			++itr;
+	}
+}
 
-	nodes.erase(itr, end(nodes));
+void Scene::destroy_entity(Entity *entity)
+{
+	if (entity)
+	{
+		entities.erase(entity);
+		entity->get_pool()->delete_entity(entity);
+	}
 }
 
 }

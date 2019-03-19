@@ -70,7 +70,7 @@ public:
 
 	struct Handles
 	{
-		EntityHandle entity;
+		Entity *entity;
 		Ocean *ocean;
 	};
 

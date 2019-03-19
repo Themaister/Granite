@@ -59,14 +59,6 @@ struct PhysicsSandboxApplication : Application, EventHandler
 
 			if (result.entity)
 			{
-				LOGI("Raycast hit! W = (%f, %f, %f), N = (%f, %f, %f)\n",
-				     result.world_pos.x,
-				     result.world_pos.y,
-				     result.world_pos.z,
-				     result.world_normal.x,
-				     result.world_normal.y,
-				     result.world_normal.z);
-
 				auto *cached = result.entity->get_component<RenderInfoComponent>();
 				vec4 local_world = inverse(cached->transform->world_transform) * vec4(result.world_pos, 1.0f);
 				vec3 local_normal = inverse(mat3(cached->transform->world_transform)) * result.world_normal;
@@ -153,20 +145,20 @@ struct PhysicsSandboxApplication : Application, EventHandler
 	void init_scene()
 	{
 		auto root_node = scene.create_node();
-		auto entity = scene.create_renderable(plane, root_node.get());
+		auto *entity = scene.create_renderable(plane, root_node.get());
 		auto *plane = Global::physics()->add_infinite_plane(vec4(0.0f, 1.0f, 0.0f, 0.0f));
 		entity->allocate_component<PhysicsComponent>()->handle = plane;
-		Global::physics()->set_handle_parent(plane, entity.get());
+		PhysicsSystem::set_handle_parent(plane, entity);
 
 		{
 			auto cube_node = scene.create_node();
 			cube_node->transform.translation = vec3(5.0f, 3.0f, 0.0f);
 			cube_node->invalidate_cached_transform();
 			root_node->add_child(cube_node);
-			auto entity = scene.create_renderable(cube, cube_node.get());
+			auto *entity = scene.create_renderable(cube, cube_node.get());
 			auto *cube = Global::physics()->add_cube(cube_node.get(), 5.0f);
 			sphere_physics = entity->allocate_component<PhysicsComponent>()->handle = cube;
-			Global::physics()->set_handle_parent(cube, entity.get());
+			PhysicsSystem::set_handle_parent(cube, entity);
 		}
 
 		{
@@ -174,10 +166,10 @@ struct PhysicsSandboxApplication : Application, EventHandler
 			sphere_node->transform.translation = vec3(3.8f, 18.0f, 1.1f);
 			sphere_node->invalidate_cached_transform();
 			root_node->add_child(sphere_node);
-			auto entity = scene.create_renderable(sphere, sphere_node.get());
+			auto *entity = scene.create_renderable(sphere, sphere_node.get());
 			auto *sphere = Global::physics()->add_sphere(sphere_node.get(), 5.0f);
 			entity->allocate_component<PhysicsComponent>()->handle = sphere;
-			Global::physics()->set_handle_parent(sphere, entity.get());
+			PhysicsSystem::set_handle_parent(sphere, entity);
 		}
 
 		scene.set_root_node(root_node);
@@ -197,7 +189,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 		return true;
 	}
 
-	void render_frame(double frame_time, double elapsed_time) override
+	void render_frame(double frame_time, double) override
 	{
 		Global::physics()->iterate(frame_time);
 		scene.update_cached_transforms();
@@ -240,11 +232,8 @@ struct PhysicsSandboxApplication : Application, EventHandler
 
 namespace Granite
 {
-Application *application_create(int argc, char **argv)
+Application *application_create(int, char **)
 {
-	if (argc < 1)
-		return nullptr;
-
 	application_dummy();
 
 	try

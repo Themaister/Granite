@@ -163,9 +163,10 @@ public:
 		return root_node;
 	}
 
-	EntityHandle create_renderable(AbstractRenderableHandle renderable, Node *node);
-	EntityHandle create_light(const SceneFormats::LightInfo &light, Node *node);
-	EntityHandle create_entity();
+	Entity *create_renderable(AbstractRenderableHandle renderable, Node *node);
+	Entity *create_light(const SceneFormats::LightInfo &light, Node *node);
+	Entity *create_entity();
+	void destroy_entity(Entity *entity);
 
 	template <typename T>
 	void remove_entities_with_component()
@@ -194,7 +195,7 @@ private:
 	std::vector<std::tuple<EnvironmentComponent*>> &environments;
 	std::vector<std::tuple<RenderPassSinkComponent*, RenderableComponent*, CullPlaneComponent*>> &render_pass_sinks;
 	std::vector<std::tuple<RenderPassComponent*>> &render_pass_creators;
-	std::vector<EntityHandle> nodes;
+	Util::IntrusiveList<Entity> entities;
 	void update_transform_tree(Node &node, const mat4 &transform, bool parent_is_dirty);
 
 	void update_skinning(Node &node);

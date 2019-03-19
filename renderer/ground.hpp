@@ -108,7 +108,7 @@ public:
 
 	struct Handles
 	{
-		EntityHandle entity;
+		Entity *entity;
 		Scene::NodeHandle node;
 		Ground *ground;
 	};

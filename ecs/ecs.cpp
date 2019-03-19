@@ -24,14 +24,14 @@
 
 namespace Granite
 {
-EntityHandle EntityPool::create_entity()
+Entity *EntityPool::create_entity()
 {
 	Util::Hasher hasher;
 	hasher.u64(++cookie);
-	auto itr = EntityHandle(entity_pool.allocate(this, hasher.get()));
-	itr->pool_offset = entities.size();
-	entities.push_back(itr.get());
-	return itr;
+	auto *entity = entity_pool.allocate(this, hasher.get());
+	entity->pool_offset = entities.size();
+	entities.push_back(entity);
+	return entity;
 }
 
 void EntityPool::free_component(Entity &entity, ComponentType id, ComponentNode *component)

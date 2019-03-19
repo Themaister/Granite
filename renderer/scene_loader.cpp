@@ -298,7 +298,7 @@ Scene::NodeHandle SceneLoader::parse_gltf(const std::string &path)
 	{
 		auto &env = scene.parser->get_environments().front();
 
-		EntityHandle entity;
+		Entity *entity = nullptr;
 		Util::IntrusivePtr<Skybox> skybox;
 		if (!env.cube.path.empty())
 		{
@@ -549,7 +549,7 @@ Scene::NodeHandle SceneLoader::parse_scene_format(const std::string &path, const
 	{
 		auto &bg = doc["background"];
 
-		EntityHandle entity;
+		Entity *entity = nullptr;
 
 		if (bg.HasMember("skybox"))
 		{

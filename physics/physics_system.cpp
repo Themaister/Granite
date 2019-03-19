@@ -75,6 +75,34 @@ void PhysicsSystem::tick_callback(float)
 	new_collision_buffer.clear();
 }
 
+RaycastResult PhysicsSystem::query_closest_hit_ray(const vec3 &from, const vec3 &dir, float t)
+{
+	vec3 to = from + dir * t;
+	btVector3 ray_from_world(from.x, from.y, from.z);
+	btVector3 ray_to_world(to.x, to.y, to.z);
+	btCollisionWorld::ClosestRayResultCallback cb(ray_from_world, ray_to_world);
+	world->rayTest(ray_from_world, ray_to_world, cb);
+
+	RaycastResult result = {};
+	if (cb.hasHit())
+	{
+		auto *object = cb.m_collisionObject;
+		if (object)
+		{
+			result.handle = static_cast<PhysicsHandle *>(object->getUserPointer());
+			result.entity = result.handle->entity;
+		}
+		result.world_pos.x = cb.m_hitPointWorld.x();
+		result.world_pos.y = cb.m_hitPointWorld.y();
+		result.world_pos.z = cb.m_hitPointWorld.z();
+		result.world_normal.x = cb.m_hitNormalWorld.x();
+		result.world_normal.y = cb.m_hitNormalWorld.y();
+		result.world_normal.z = cb.m_hitNormalWorld.z();
+		result.t = cb.m_closestHitFraction * t;
+	}
+	return result;
+}
+
 PhysicsSystem::PhysicsSystem()
 {
 	collision_config = make_unique<btDefaultCollisionConfiguration>();
@@ -139,6 +167,11 @@ void PhysicsSystem::iterate(double frame_time)
 Entity *PhysicsSystem::get_handle_parent(PhysicsHandle *handle)
 {
 	return handle->entity;
+}
+
+Scene::Node *PhysicsSystem::get_scene_node(PhysicsHandle *handle)
+{
+	return handle->node;
 }
 
 void PhysicsSystem::set_handle_parent(PhysicsHandle *handle, Entity *entity)

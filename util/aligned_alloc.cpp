@@ -30,7 +30,7 @@ namespace Util
 void *memalign_alloc(size_t boundary, size_t size)
 {
 #if defined(_WIN32)
-    return _aligned_alloc(size, boundary);
+    return _aligned_malloc(size, boundary);
 #elif defined(_ISOC11_SOURCE)
     return aligned_alloc(boundary, size);
 #elif (_POSIX_C_SOURCE >= 200112L) || (_XOPEN_SOURCE >= 600)

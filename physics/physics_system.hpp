@@ -98,6 +98,15 @@ private:
 	vec3 normal;
 };
 
+struct RaycastResult
+{
+	Entity *entity;
+	PhysicsHandle *handle;
+	vec3 world_pos;
+	vec3 world_normal;
+	float t;
+};
+
 class PhysicsSystem
 {
 public:
@@ -108,14 +117,15 @@ public:
 	PhysicsHandle *add_sphere(Scene::Node *node, float mass);
 	PhysicsHandle *add_infinite_plane(const vec4 &plane);
 	void remove_body(PhysicsHandle *handle);
-	void set_handle_parent(PhysicsHandle *handle, Entity *entity);
-	Entity *get_handle_parent(PhysicsHandle *handle);
+	static void set_handle_parent(PhysicsHandle *handle, Entity *entity);
+	static Entity *get_handle_parent(PhysicsHandle *handle);
+	static Scene::Node *get_scene_node(PhysicsHandle *handle);
 
 	void apply_impulse(PhysicsHandle *handle, const vec3 &impulse, const vec3 &relative);
-
 	void iterate(double frame_time);
-
 	void tick_callback(float tick_time);
+
+	RaycastResult query_closest_hit_ray(const vec3 &from, const vec3 &dir, float length);
 
 private:
 	std::unique_ptr<btDefaultCollisionConfiguration> collision_config;

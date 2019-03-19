@@ -30,6 +30,7 @@
 #include "render_components.hpp"
 #include "global_managers.hpp"
 #include "physics_system.hpp"
+#include "muglm/matrix_helper.hpp"
 
 using namespace Granite;
 
@@ -46,6 +47,44 @@ struct PhysicsSandboxApplication : Application, EventHandler
 		EVENT_MANAGER_REGISTER_LATCH(PhysicsSandboxApplication, on_swapchain_created, on_swapchain_destroyed, Vulkan::SwapchainParameterEvent);
 		EVENT_MANAGER_REGISTER(PhysicsSandboxApplication, on_key, KeyboardEvent);
 		EVENT_MANAGER_REGISTER(PhysicsSandboxApplication, on_collision, CollisionEvent);
+		EVENT_MANAGER_REGISTER(PhysicsSandboxApplication, on_mouse, MouseButtonEvent);
+	}
+
+	bool on_mouse(const MouseButtonEvent &e)
+	{
+		if (e.get_pressed() && e.get_button() == MouseButton::Left)
+		{
+			auto result = Global::physics()->query_closest_hit_ray(
+					camera.get_position(), camera.get_front(), 100.0f);
+
+			if (result.entity)
+			{
+				LOGI("Raycast hit! W = (%f, %f, %f), N = (%f, %f, %f)\n",
+				     result.world_pos.x,
+				     result.world_pos.y,
+				     result.world_pos.z,
+				     result.world_normal.x,
+				     result.world_normal.y,
+				     result.world_normal.z);
+
+				auto *cached = result.entity->get_component<RenderInfoComponent>();
+				vec4 local_world = inverse(cached->transform->world_transform) * vec4(result.world_pos, 1.0f);
+				vec3 local_normal = inverse(mat3(cached->transform->world_transform)) * result.world_normal;
+				auto *new_parent = PhysicsSystem::get_scene_node(result.handle);
+				auto node = scene.create_node();
+				if (new_parent)
+					new_parent->add_child(node);
+				else
+					scene.get_root_node()->add_child(node);
+
+				node->transform.scale = vec3(0.05f);
+				node->transform.translation = local_world.xyz() + local_normal * 0.05f;
+				node->invalidate_cached_transform();
+				scene.create_renderable(sphere, node.get());
+			}
+		}
+
+		return true;
 	}
 
 	bool on_collision(const CollisionEvent &e)

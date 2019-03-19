@@ -34,6 +34,7 @@ class btDbvtBroadphase;
 class btSequentialImpulseConstraintSolver;
 class btDiscreteDynamicsWorld;
 class btCollisionShape;
+class btBvhTriangleMeshShape;
 
 namespace Granite
 {
@@ -44,6 +45,12 @@ struct PhysicsComponent : ComponentBase
 	GRANITE_COMPONENT_TYPE_DECL(PhysicsComponent)
 	PhysicsHandle *handle = nullptr;
 	~PhysicsComponent();
+};
+
+struct CollisionMeshComponent : ComponentBase
+{
+	GRANITE_COMPONENT_TYPE_DECL(CollisionMeshComponent)
+	SceneFormats::CollisionMesh mesh;
 };
 
 class CollisionEvent : public Event
@@ -119,8 +126,25 @@ public:
 		float restitution = 0.5f;
 		float linear_damping = 0.1f;
 		float angular_damping = 0.1f;
+		float friction = 0.2f;
+		float rolling_friction = 0.2f;
 	};
 
+	struct CollisionMesh
+	{
+		unsigned num_triangles = 0;
+		unsigned num_vertices = 0;
+		const uint32_t *indices = nullptr;
+		size_t index_stride_triangle = 0;
+		const float *positions = nullptr;
+		size_t position_stride = 0;
+		AABB aabb;
+
+		float margin = 0.1f;
+	};
+
+	unsigned register_collision_mesh(const CollisionMesh &mesh);
+	PhysicsHandle *add_mesh(Scene::Node *node, unsigned index);
 	PhysicsHandle *add_cube(Scene::Node *node, const MaterialInfo &info);
 	PhysicsHandle *add_sphere(Scene::Node *node, const MaterialInfo &info);
 	PhysicsHandle *add_infinite_plane(const vec4 &plane);
@@ -152,5 +176,6 @@ private:
 
 	PhysicsHandle *add_shape(Scene::Node *node, const MaterialInfo &info, btCollisionShape *shape);
 	std::vector<CollisionEvent> new_collision_buffer;
+	std::vector<btBvhTriangleMeshShape *> mesh_collision_shapes;
 };
 }

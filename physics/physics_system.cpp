@@ -129,6 +129,8 @@ PhysicsSystem::~PhysicsSystem()
 
 	for (auto *handle : handles)
 		delete handle->bt_shape;
+	for (auto *shape : mesh_collision_shapes)
+		delete shape;
 }
 
 void PhysicsSystem::iterate(double frame_time)
@@ -205,6 +207,27 @@ void PhysicsSystem::remove_body(PhysicsHandle *handle)
 		handles.erase(itr);
 }
 
+unsigned PhysicsSystem::register_collision_mesh(const CollisionMesh &mesh)
+{
+	static_assert(sizeof(int) == sizeof(uint32_t), "You're on a really weird platform.");
+	auto *index_vertex_array = new btTriangleIndexVertexArray(mesh.num_triangles,
+	                                                          const_cast<int *>(reinterpret_cast<const int *>(mesh.indices)),
+	                                                          mesh.index_stride_triangle,
+	                                                          mesh.num_vertices,
+	                                                          const_cast<btScalar *>(mesh.positions), mesh.position_stride);
+
+	const vec3 &lo = mesh.aabb.get_minimum();
+	const vec3 &hi = mesh.aabb.get_maximum();
+	index_vertex_array->setPremadeAabb(btVector3(lo.x, lo.y, lo.z), btVector3(hi.x, hi.y, hi.z));
+	const bool quantized_aabb_compression = false;
+	auto *shape = new btBvhTriangleMeshShape(index_vertex_array, quantized_aabb_compression);
+	shape->setMargin(mesh.margin);
+
+	auto index = unsigned(mesh_collision_shapes.size());
+	mesh_collision_shapes.push_back(shape);
+	return index;
+}
+
 PhysicsHandle *PhysicsSystem::add_shape(Scene::Node *node, const MaterialInfo &info, btCollisionShape *shape)
 {
 	btTransform t;
@@ -237,6 +260,9 @@ PhysicsHandle *PhysicsSystem::add_shape(Scene::Node *node, const MaterialInfo &i
 	else
 		rb_info.m_restitution = 1.0f;
 
+	rb_info.m_friction = info.friction;
+	rb_info.m_rollingFriction = info.rolling_friction;
+
 	auto *body = new btRigidBody(rb_info);
 	world->addRigidBody(body);
 
@@ -246,6 +272,22 @@ PhysicsHandle *PhysicsSystem::add_shape(Scene::Node *node, const MaterialInfo &i
 	handle->bt_object = body;
 	handle->bt_shape = shape;
 	handles.push_back(handle);
+	return handle;
+}
+
+PhysicsHandle *PhysicsSystem::add_mesh(Scene::Node *node, unsigned index)
+{
+	assert(index < mesh_collision_shapes.size());
+	auto *shape = new btScaledBvhTriangleMeshShape(mesh_collision_shapes[index],
+	                                               btVector3(node->transform.scale.x,
+	                                                         node->transform.scale.y,
+	                                                         node->transform.scale.z));
+
+	// Mesh objects cannot be dynamic.
+	MaterialInfo info;
+	info.mass = 0.0f;
+
+	auto *handle = add_shape(node, info, shape);
 	return handle;
 }
 

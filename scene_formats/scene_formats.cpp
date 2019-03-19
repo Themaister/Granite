@@ -589,5 +589,55 @@ unordered_set<uint32_t> build_used_nodes_in_scene(const SceneNodes &scene, const
 		touch_node_children(touched, nodes, node);
 	return touched;
 }
+
+bool extract_collision_mesh(CollisionMesh &col, const Mesh &mesh)
+{
+	if (mesh.topology != VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+		return false;
+
+	col.indices.clear();
+	col.positions.clear();
+
+	size_t vertex_count = mesh.positions.size() / mesh.position_stride;
+	col.positions.reserve(vertex_count);
+
+	switch (mesh.attribute_layout[ecast(MeshAttribute::Position)].format)
+	{
+	case VK_FORMAT_R32G32B32_SFLOAT:
+	case VK_FORMAT_R32G32B32A32_SFLOAT:
+		for (size_t i = 0; i < vertex_count; i++)
+		{
+			const auto *v = reinterpret_cast<const vec3 *>(mesh.positions.data() + i * mesh.position_stride);
+			col.positions.emplace_back(*v, 1.0f);
+		}
+		break;
+
+	default:
+		return false;
+	}
+
+	if (mesh.indices.empty())
+	{
+		col.indices.reserve(vertex_count);
+		for (size_t i = 0; i < vertex_count; i++)
+			col.indices.push_back(uint32_t(i));
+	}
+	else if (mesh.index_type == VK_INDEX_TYPE_UINT16)
+	{
+		col.indices.reserve(mesh.count);
+		for (unsigned i = 0; i < mesh.count; i++)
+			col.indices.push_back(reinterpret_cast<const uint16_t *>(mesh.indices.data())[i]);
+	}
+	else if (mesh.index_type == VK_INDEX_TYPE_UINT32)
+	{
+		col.indices.reserve(mesh.count);
+		for (unsigned i = 0; i < mesh.count; i++)
+			col.indices.push_back(reinterpret_cast<const uint32_t *>(mesh.indices.data())[i]);
+	}
+	else
+		return false;
+
+	return true;
+}
 }
 }

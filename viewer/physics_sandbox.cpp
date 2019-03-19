@@ -31,13 +31,14 @@
 #include "global_managers.hpp"
 #include "physics_system.hpp"
 #include "muglm/matrix_helper.hpp"
+#include "gltf.hpp"
 
 using namespace Granite;
 
 struct PhysicsSandboxApplication : Application, EventHandler
 {
-	PhysicsSandboxApplication()
-		: renderer(RendererType::GeneralForward)
+	PhysicsSandboxApplication(const std::string &gltf_path_)
+		: renderer(RendererType::GeneralForward), gltf_path(gltf_path_)
 	{
 		camera.set_position(vec3(0.0f, 2.0f, 8.0f));
 		cube = Util::make_handle<CubeMesh>();
@@ -151,6 +152,38 @@ struct PhysicsSandboxApplication : Application, EventHandler
 		PhysicsSystem::set_handle_parent(plane, entity);
 		scene.set_root_node(root_node);
 		context.set_lighting_parameters(&lighting);
+
+		GLTF::Parser parser(gltf_path);
+		auto &mesh = parser.get_meshes().front();
+		auto *model = scene.create_entity();
+		auto &collision_mesh = model->allocate_component<CollisionMeshComponent>()->mesh;
+
+		if (SceneFormats::extract_collision_mesh(collision_mesh, mesh))
+		{
+			PhysicsSystem::CollisionMesh c;
+			c.indices = collision_mesh.indices.data();
+			c.num_triangles = collision_mesh.indices.size() / 3;
+			c.index_stride_triangle = 3 * sizeof(uint32_t);
+			c.num_vertices = collision_mesh.positions.size();
+			c.positions = collision_mesh.positions.front().data;
+			c.position_stride = sizeof(vec4);
+			c.aabb = mesh.static_aabb;
+			gltf_mesh_physics_index = Global::physics()->register_collision_mesh(c);
+		}
+
+		if (mesh.has_material)
+		{
+			gltf_mesh = Util::make_handle<ImportedMesh>(mesh,
+			                                            parser.get_materials()[mesh.material_index]);
+		}
+		else
+		{
+			SceneFormats::MaterialInfo default_material;
+			default_material.uniform_base_color = vec4(0.3f, 1.0f, 0.3f, 1.0f);
+			default_material.uniform_metallic = 0.0f;
+			default_material.uniform_roughness = 1.0f;
+			gltf_mesh = Util::make_handle<ImportedMesh>(mesh, default_material);
+		}
 	}
 
 	bool on_key(const KeyboardEvent &e)
@@ -202,6 +235,23 @@ struct PhysicsSandboxApplication : Application, EventHandler
 				auto *cube = Global::physics()->add_cube(cube_node.get(), info);
 				entity->allocate_component<PhysicsComponent>()->handle = cube;
 				PhysicsSystem::set_handle_parent(cube, entity);
+			}
+		}
+		else if (e.get_key() == Key::L && e.get_key_state() == KeyState::Pressed)
+		{
+			auto result = Global::physics()->query_closest_hit_ray(
+					camera.get_position(), camera.get_front(), 100.0f);
+
+			if (result.entity)
+			{
+				auto mesh_node = scene.create_node();
+				mesh_node->transform.translation = result.world_pos + vec3(0.0f, 1.0f, 0.0f);
+				mesh_node->invalidate_cached_transform();
+				scene.get_root_node()->add_child(mesh_node);
+				auto *entity = scene.create_renderable(gltf_mesh, mesh_node.get());
+				auto *mesh = Global::physics()->add_mesh(mesh_node.get(), gltf_mesh_physics_index);
+				entity->allocate_component<PhysicsComponent>()->handle = mesh;
+				PhysicsSystem::set_handle_parent(mesh, entity);
 			}
 		}
 		else if (e.get_key() == Key::K && e.get_key_state() == KeyState::Pressed)
@@ -267,7 +317,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 				auto *entity = scene.create_renderable(sphere, sphere_node.get());
 				PhysicsSystem::MaterialInfo info;
 				info.mass = 2.0f;
-				info.restitution = 0.9f;
+				info.restitution = 0.2f;
 				info.angular_damping = 0.3f;
 				info.linear_damping = 0.3f;
 				auto *sphere = Global::physics()->add_sphere(sphere_node.get(), info);
@@ -316,17 +366,23 @@ struct PhysicsSandboxApplication : Application, EventHandler
 	LightingParameters lighting;
 	VisibilityList visible;
 	Renderer renderer;
+	std::string gltf_path;
+
+	AbstractRenderableHandle gltf_mesh;
+	unsigned gltf_mesh_physics_index = 0;
 };
 
 namespace Granite
 {
-Application *application_create(int, char **)
+Application *application_create(int argc, char **argv)
 {
+	if (argc < 2)
+		return nullptr;
 	application_dummy();
 
 	try
 	{
-		auto *app = new PhysicsSandboxApplication();
+		auto *app = new PhysicsSandboxApplication(argv[1]);
 		return app;
 	}
 	catch (const std::exception &e)

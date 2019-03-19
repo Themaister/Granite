@@ -46,6 +46,10 @@ public:
 	Scene();
 	~Scene();
 
+	// Non-copyable, movable.
+	Scene(const Scene &) = delete;
+	void operator=(const Scene &) = delete;
+
 	void refresh_per_frame(RenderContext &context);
 	void update_cached_transforms();
 	void gather_visible_opaque_renderables(const Frustum &frustum, VisibilityList &list);
@@ -65,16 +69,29 @@ public:
 	void set_render_pass_data(Renderer *forward_renderer, Renderer *deferred_renderer, Renderer *depth_renderer, const RenderContext *context);
 	void bind_render_graph_resources(RenderGraph &graph);
 
-	class Node : public Util::IntrusivePtrEnabled<Node>
+	class Node;
+	struct NodeDeleter
+	{
+		void operator()(Node *node);
+	};
+
+	class Node : public Util::IntrusivePtrEnabled<Node, NodeDeleter>
 	{
 	public:
+		Node(Scene *parent_)
+			: parent_scene(parent_)
+		{
+		}
+
+		Scene *parent_scene;
 		Transform transform;
 		CachedTransform cached_transform;
 		CachedSkinTransform cached_skin_transform;
 
 		void invalidate_cached_transform();
 		void add_child(Util::IntrusivePtr<Node> node);
-		void remove_child(Node &node);
+		Util::IntrusivePtr<Node> remove_child(Node *node);
+		static Util::IntrusivePtr<Node> remove_node_from_hierarchy(Node *node);
 
 		const std::vector<Util::IntrusivePtr<Node>> &get_children() const
 		{
@@ -153,6 +170,11 @@ public:
 	NodeHandle create_node();
 	NodeHandle create_skinned_node(const SceneFormats::Skin &skin);
 
+	Util::ObjectPool<Node> &get_node_pool()
+	{
+		return node_pool;
+	}
+
 	void set_root_node(NodeHandle node)
 	{
 		root_node = node;
@@ -178,6 +200,7 @@ public:
 
 private:
 	EntityPool pool;
+	Util::ObjectPool<Node> node_pool;
 	NodeHandle root_node;
 	std::vector<std::tuple<BoundedComponent*, RenderInfoComponent*, CachedSpatialTransformTimestampComponent *>> &spatials;
 	std::vector<std::tuple<RenderInfoComponent*, RenderableComponent*, OpaqueComponent*>> &opaque;

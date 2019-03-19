@@ -350,7 +350,12 @@ void Scene::update_cached_transforms()
 
 Scene::NodeHandle Scene::create_node()
 {
-	return Util::make_handle<Node>();
+	return Scene::NodeHandle(node_pool.allocate(this));
+}
+
+void Scene::NodeDeleter::operator()(Node *node)
+{
+	node->parent_scene->get_node_pool().free(node);
 }
 
 static void add_bone(Scene::NodeHandle *bones, uint32_t parent, const SceneFormats::Skin::Bone &bone)
@@ -411,20 +416,30 @@ void Scene::Node::add_child(NodeHandle node)
 	children.push_back(node);
 }
 
-void Scene::Node::remove_child(Node &node)
+Scene::NodeHandle Scene::Node::remove_child(Node *node)
 {
-	assert(node.parent == this);
-	node.parent = nullptr;
+	assert(node->parent == this);
+	node->parent = nullptr;
+	auto handle = node->reference_from_this();
 
 	// Force parents to be notified.
-	node.cached_transform_dirty = false;
-	node.invalidate_cached_transform();
+	node->cached_transform_dirty = false;
+	node->invalidate_cached_transform();
 
 	auto itr = remove_if(begin(children), end(children), [&](const NodeHandle &h) {
-		return &node == h.get();
+		return node == h.get();
 	});
 	assert(itr != end(children));
 	children.erase(itr, end(children));
+	return handle;
+}
+
+Scene::NodeHandle Scene::Node::remove_node_from_hierarchy(Node *node)
+{
+	if (node->parent)
+		return node->parent->remove_child(node);
+	else
+		return Scene::NodeHandle(nullptr);
 }
 
 void Scene::Node::invalidate_cached_transform()

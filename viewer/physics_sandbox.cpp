@@ -204,6 +204,54 @@ struct PhysicsSandboxApplication : Application, EventHandler
 				PhysicsSystem::set_handle_parent(cube, entity);
 			}
 		}
+		else if (e.get_key() == Key::K && e.get_key_state() == KeyState::Pressed)
+		{
+			auto result = Global::physics()->query_closest_hit_ray(
+					camera.get_position(), camera.get_front(), 100.0f);
+
+			if (result.entity)
+			{
+				PhysicsSystem::MaterialInfo info;
+				info.mass = 10.0f;
+				info.restitution = 0.05f;
+				info.angular_damping = 0.3f;
+				info.linear_damping = 0.3f;
+
+				auto cube_node_left = scene.create_node();
+				cube_node_left->transform.translation = result.world_pos + vec3(0.0f, 20.0f, 0.0f);
+				cube_node_left->invalidate_cached_transform();
+				scene.get_root_node()->add_child(cube_node_left);
+				auto *entity_left = scene.create_renderable(cube, cube_node_left.get());
+				auto *cube_left = Global::physics()->add_cube(cube_node_left.get(), info);
+				entity_left->allocate_component<PhysicsComponent>()->handle = cube_left;
+				PhysicsSystem::set_handle_parent(cube_left, entity_left);
+
+				auto cube_left_hinge = scene.create_node();
+				cube_node_left->add_child(cube_left_hinge);
+				cube_left_hinge->transform.scale = vec3(0.75f, 0.1f, 0.1f);
+				cube_left_hinge->transform.translation = vec3(1.75f, 0.0f, 0.0f);
+				scene.create_renderable(cube, cube_left_hinge.get());
+
+				auto cube_node_right = scene.create_node();
+				cube_node_right->transform.translation = result.world_pos + vec3(5.0f, 20.0f, 0.0f);
+				cube_node_right->invalidate_cached_transform();
+				scene.get_root_node()->add_child(cube_node_right);
+				auto *entity_right = scene.create_renderable(cube, cube_node_right.get());
+				auto *cube_right = Global::physics()->add_cube(cube_node_right.get(), info);
+				entity_right->allocate_component<PhysicsComponent>()->handle = cube_right;
+				PhysicsSystem::set_handle_parent(cube_right, entity_right);
+
+				auto cube_right_hinge = scene.create_node();
+				cube_node_right->add_child(cube_right_hinge);
+				cube_right_hinge->transform.scale = vec3(0.75f, 0.1f, 0.1f);
+				cube_right_hinge->transform.translation = vec3(-1.75f, 0.0f, 0.0f);
+				scene.create_renderable(cube, cube_right_hinge.get());
+
+				Global::physics()->add_point_constraint(cube_left, cube_right,
+				                                        vec3(2.5f, 0.0f, 0.0f),
+				                                        vec3(-2.5f, 0.0f, 0.0f));
+			}
+		}
 		else if (e.get_key() == Key::P && e.get_key_state() == KeyState::Pressed)
 		{
 			auto result = Global::physics()->query_closest_hit_ray(

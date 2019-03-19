@@ -135,6 +135,11 @@ public:
 
 	RaycastResult query_closest_hit_ray(const vec3 &from, const vec3 &dir, float length);
 
+	void add_point_constraint(PhysicsHandle *handle, const vec3 &local_pivot);
+	void add_point_constraint(PhysicsHandle *handle0, PhysicsHandle *handle1,
+	                          const vec3 &local_pivot0, const vec3 &local_pivot1,
+	                          bool skip_collision = false);
+
 private:
 	std::unique_ptr<btDefaultCollisionConfiguration> collision_config;
 	std::unique_ptr<btCollisionDispatcher> dispatcher;

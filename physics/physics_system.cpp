@@ -185,6 +185,16 @@ void PhysicsSystem::remove_body(PhysicsHandle *handle)
 	btRigidBody *body = btRigidBody::upcast(obj);
 	if (body && body->getMotionState())
 		delete body->getMotionState();
+
+	if (body)
+	{
+		for (int i = body->getNumConstraintRefs() - 1; i >= 0; i--)
+		{
+			btTypedConstraint *constraint = body->getConstraintRef(i);
+			world->removeConstraint(constraint);
+		}
+	}
+
 	world->removeCollisionObject(obj);
 	delete handle->bt_shape;
 	handle_pool.free(handle);
@@ -275,10 +285,43 @@ void PhysicsSystem::apply_impulse(PhysicsHandle *handle, const vec3 &impulse, co
 			btVector3(relative.x, relative.y, relative.z));
 }
 
+void PhysicsSystem::add_point_constraint(PhysicsHandle *handle, const vec3 &local_pivot)
+{
+	auto *body = btRigidBody::upcast(handle->bt_object);
+	if (!body)
+		return;
+
+	auto *constraint = new btPoint2PointConstraint(
+			*body,
+			btVector3(local_pivot.x, local_pivot.y, local_pivot.z));
+
+	world->addConstraint(constraint, false);
+	body->addConstraintRef(constraint);
+}
+
+void PhysicsSystem::add_point_constraint(PhysicsHandle *handle0, PhysicsHandle *handle1,
+                                         const vec3 &local_pivot0, const vec3 &local_pivot1,
+                                         bool skip_collision)
+{
+	auto *body0 = btRigidBody::upcast(handle0->bt_object);
+	auto *body1 = btRigidBody::upcast(handle1->bt_object);
+	if (!body0 || !body1)
+		return;
+
+	auto *constraint = new btPoint2PointConstraint(
+			*body0,
+			*body1,
+			btVector3(local_pivot0.x, local_pivot0.y, local_pivot0.z),
+			btVector3(local_pivot1.x, local_pivot1.y, local_pivot1.z));
+
+	world->addConstraint(constraint, skip_collision);
+	body0->addConstraintRef(constraint);
+	body1->addConstraintRef(constraint);
+}
+
 PhysicsComponent::~PhysicsComponent()
 {
 	if (handle)
 		Global::physics()->remove_body(handle);
 }
-
 }

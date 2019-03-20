@@ -144,10 +144,13 @@ public:
 	};
 
 	unsigned register_collision_mesh(const CollisionMesh &mesh);
-	PhysicsHandle *add_mesh(Scene::Node *node, unsigned index);
+	PhysicsHandle *add_mesh(Scene::Node *node, unsigned index, const MaterialInfo &info);
 	PhysicsHandle *add_cube(Scene::Node *node, const MaterialInfo &info);
 	PhysicsHandle *add_sphere(Scene::Node *node, const MaterialInfo &info);
-	PhysicsHandle *add_infinite_plane(const vec4 &plane);
+	PhysicsHandle *add_cone(Scene::Node *node, float height, float radius, const MaterialInfo &info);
+	PhysicsHandle *add_infinite_plane(const vec4 &plane, const MaterialInfo &info);
+	void set_linear_velocity(PhysicsHandle *handle, const vec3 &v);
+	void set_angular_velocity(PhysicsHandle *handle, const vec3 &v);
 	void remove_body(PhysicsHandle *handle);
 	static void set_handle_parent(PhysicsHandle *handle, Entity *entity);
 	static Entity *get_handle_parent(PhysicsHandle *handle);

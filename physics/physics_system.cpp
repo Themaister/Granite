@@ -135,7 +135,7 @@ PhysicsSystem::~PhysicsSystem()
 
 void PhysicsSystem::iterate(double frame_time)
 {
-	world->stepSimulation(btScalar(frame_time), 50, 1.0f / 300.0f);
+	world->stepSimulation(btScalar(frame_time), 20, 1.0f / 300.0f);
 
 	for (auto *handle : handles)
 	{
@@ -275,7 +275,7 @@ PhysicsHandle *PhysicsSystem::add_shape(Scene::Node *node, const MaterialInfo &i
 	return handle;
 }
 
-PhysicsHandle *PhysicsSystem::add_mesh(Scene::Node *node, unsigned index)
+PhysicsHandle *PhysicsSystem::add_mesh(Scene::Node *node, unsigned index, const MaterialInfo &info)
 {
 	assert(index < mesh_collision_shapes.size());
 	auto *shape = new btScaledBvhTriangleMeshShape(mesh_collision_shapes[index],
@@ -284,10 +284,11 @@ PhysicsHandle *PhysicsSystem::add_mesh(Scene::Node *node, unsigned index)
 	                                                         node->transform.scale.z));
 
 	// Mesh objects cannot be dynamic.
-	MaterialInfo info;
-	info.mass = 0.0f;
+	MaterialInfo tmp = info;
+	tmp.mass = 0.0f;
+	tmp.restitution = 1.0f;
 
-	auto *handle = add_shape(node, info, shape);
+	auto *handle = add_shape(node, tmp, shape);
 	return handle;
 }
 
@@ -300,6 +301,25 @@ PhysicsHandle *PhysicsSystem::add_cube(Scene::Node *node, const MaterialInfo &in
 	return handle;
 }
 
+PhysicsHandle *PhysicsSystem::add_cone(Scene::Node *node, float height, float radius, const MaterialInfo &info)
+{
+	auto *shape = new btConeShape(radius * node->transform.scale.x, height * node->transform.scale.y);
+	auto *handle = add_shape(node, info, shape);
+	return handle;
+}
+
+void PhysicsSystem::set_linear_velocity(PhysicsHandle *handle, const vec3 &v)
+{
+	auto *body = btRigidBody::upcast(handle->bt_object);
+	body->setLinearVelocity(btVector3(v.x, v.y, v.z));
+}
+
+void PhysicsSystem::set_angular_velocity(PhysicsHandle *handle, const vec3 &v)
+{
+	auto *body = btRigidBody::upcast(handle->bt_object);
+	body->setAngularVelocity(btVector3(v.x, v.y, v.z));
+}
+
 PhysicsHandle *PhysicsSystem::add_sphere(Scene::Node *node, const MaterialInfo &info)
 {
 	auto *shape = new btSphereShape(btScalar(node->transform.scale.x));
@@ -307,14 +327,15 @@ PhysicsHandle *PhysicsSystem::add_sphere(Scene::Node *node, const MaterialInfo &
 	return handle;
 }
 
-PhysicsHandle *PhysicsSystem::add_infinite_plane(const vec4 &plane)
+PhysicsHandle *PhysicsSystem::add_infinite_plane(const vec4 &plane, const MaterialInfo &info)
 {
 	auto *shape = new btStaticPlaneShape(btVector3(plane.x, plane.y, plane.z), plane.w);
 
-	MaterialInfo info;
-	info.mass = 0.0f;
+	MaterialInfo tmp = info;
+	tmp.mass = 0.0f;
+	tmp.restitution = 1.0f;
 
-	auto *handle = add_shape(nullptr, info, shape);
+	auto *handle = add_shape(nullptr, tmp, shape);
 	return handle;
 }
 

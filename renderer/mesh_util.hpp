@@ -68,7 +68,7 @@ private:
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
 };
 
-struct SphereMeshData
+struct GeneratedMeshData
 {
 	struct Attribute
 	{
@@ -79,16 +79,39 @@ struct SphereMeshData
 	std::vector<vec3> positions;
 	std::vector<Attribute> attributes;
 	std::vector<uint16_t> indices;
-};
-SphereMeshData create_sphere_mesh(unsigned density);
 
-class SphereMesh : public StaticMesh, public EventHandler
+	VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	bool primitive_restart = false;
+};
+GeneratedMeshData create_sphere_mesh(unsigned density);
+GeneratedMeshData create_cone_mesh(unsigned density, float height, float radius);
+
+class GeneratedMesh : public StaticMesh
+{
+protected:
+	void setup_from_generated_mesh(Vulkan::Device &device, const GeneratedMeshData &generated);
+};
+
+class SphereMesh : public GeneratedMesh, public EventHandler
 {
 public:
 	SphereMesh(unsigned density = 16);
 
 private:
 	unsigned density;
+	void on_device_created(const Vulkan::DeviceCreatedEvent &event);
+	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
+};
+
+class ConeMesh : public GeneratedMesh, public EventHandler
+{
+public:
+	ConeMesh(unsigned density, float height, float radius);
+
+private:
+	unsigned density;
+	float height;
+	float radius;
 	void on_device_created(const Vulkan::DeviceCreatedEvent &event);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
 };

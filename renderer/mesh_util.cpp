@@ -147,17 +147,10 @@ void ImportedMesh::on_device_destroyed(const DeviceCreatedEvent &)
 	ibo.reset();
 }
 
-SphereMesh::SphereMesh(unsigned density)
-	: density(density)
-{
-	static_aabb = AABB(vec3(-1.0f), vec3(1.0f));
-	material = StockMaterials::get().get_checkerboard();
-	EVENT_MANAGER_REGISTER_LATCH(SphereMesh, on_device_created, on_device_destroyed, DeviceCreatedEvent);
-}
 
-SphereMeshData create_sphere_mesh(unsigned density)
+GeneratedMeshData create_sphere_mesh(unsigned density)
 {
-	SphereMeshData mesh;
+	GeneratedMeshData mesh;
 	mesh.positions.reserve(6 * density * density);
 	mesh.attributes.reserve(6 * density * density);
 	mesh.indices.reserve(2 * density * density * 6);
@@ -222,32 +215,146 @@ SphereMeshData create_sphere_mesh(unsigned density)
 		}
 	}
 
+	mesh.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+	mesh.primitive_restart = true;
 	return mesh;
 }
 
-void SphereMesh::on_device_created(const DeviceCreatedEvent &event)
+GeneratedMeshData create_cone_mesh(unsigned density, float height, float radius)
 {
-	auto &device = event.get_device();
+	GeneratedMeshData mesh;
+	mesh.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	mesh.primitive_restart = false;
 
-	auto mesh = create_sphere_mesh(density);
+	mesh.positions.resize(4 * density + 2);
+	mesh.attributes.resize(4 * density + 2);
 
+	// Top center
+	mesh.positions[0] = vec3(0.0f, height, 0.0f);
+	mesh.attributes[0].normal = vec3(0.0f, 1.0f, 0.0f);
+	mesh.attributes[0].uv = vec2(0.5f);
+	// Bottom center
+	mesh.positions[1] = vec3(0.0f, 0.0f, 0.0f);
+	mesh.attributes[1].normal = vec3(0.0f, -1.0f, 0.0f);
+	mesh.attributes[1].uv = vec2(0.5f);
+
+	float inv_density = 1.0f / float(density);
+
+	const float top_ring_h = 0.95f * height;
+	const float top_ring_r = (1.0f - 0.95f) * radius;
+	const float low_ring_h = 0.05f * height;
+	const float low_ring_r = (1.0f - 0.05f) * radius;
+
+	// Top ring
+	for (unsigned i = 0; i < density; i++)
+	{
+		float rad = 2.0f * pi<float>() * (i + 0.5f) * inv_density;
+		mesh.positions[i + 2] = vec3(top_ring_r * cos(rad), top_ring_h, -top_ring_r * sin(rad));
+		mesh.attributes[i + 2].normal = normalize(vec3(height * cos(rad), radius, -height * sin(rad)));
+		mesh.attributes[i + 2].uv = mesh.positions[i + 2].xz() * 0.5f / radius + 0.5f;
+	}
+
+	// Low ring
+	for (unsigned i = 0; i < density; i++)
+	{
+		float rad = 2.0f * pi<float>() * (i + 0.5f) * inv_density;
+		mesh.positions[density + i + 2] = vec3(low_ring_r * cos(rad), low_ring_h, -low_ring_r * sin(rad));
+		mesh.attributes[density + i + 2].normal = normalize(vec3(height * cos(rad), radius, -height * sin(rad)));
+		mesh.attributes[density + i + 2].uv = mesh.positions[density + i + 2].xz() * 0.5f / radius + 0.5f;
+	}
+
+	// Bottom ring
+	for (unsigned i = 0; i < density; i++)
+	{
+		float rad = 2.0f * pi<float>() * (i + 0.5f) * inv_density;
+		mesh.positions[2 * density + i + 2] = vec3(radius * cos(rad), 0.0f, -radius * sin(rad));
+		mesh.attributes[2 * density + i + 2].normal = normalize(vec3(cos(rad), 0.0f, -sin(rad)));
+		mesh.attributes[2 * density + i + 2].uv = mesh.positions[2 * density + i + 2].xz() * 0.5f / radius + 0.5f;
+	}
+
+	// Inner ring
+	for (unsigned i = 0; i < density; i++)
+	{
+		float rad = 2.0f * pi<float>() * (i + 0.5f) * inv_density;
+		mesh.positions[3 * density + i + 2] = vec3(0.95f * radius * cos(rad), 0.0f, 0.95f * -radius * sin(rad));
+		mesh.attributes[3 * density + i + 2].normal = vec3(0.0f, -1.0f, 0.0f);
+		mesh.attributes[3 * density + i + 2].uv = mesh.positions[2 * density + i + 2].xz() * 0.5f / radius + 0.5f;
+	}
+
+	for (auto &pos : mesh.positions)
+		pos -= vec3(0.0f, 0.5f * height, 0.0f);
+
+	// Link up top vertices.
+	for (unsigned i = 0; i < density; i++)
+	{
+		mesh.indices.push_back(0);
+		mesh.indices.push_back(i + 2);
+		mesh.indices.push_back(((i + 1) % density) + 2);
+	}
+
+	// Link up bottom vertices.
+	for (unsigned i = 0; i < density; i++)
+	{
+		mesh.indices.push_back(1);
+		mesh.indices.push_back(3 * density + ((i + 1) % density) + 2);
+		mesh.indices.push_back(3 * density + i + 2);
+	}
+
+	// Link up top and low rings.
+	for (unsigned i = 0; i < density; i++)
+	{
+		mesh.indices.push_back(i + 2);
+		mesh.indices.push_back(density + i + 2);
+		mesh.indices.push_back(((i + 1) % density) + 2);
+		mesh.indices.push_back(density + ((i + 1) % density) + 2);
+		mesh.indices.push_back(((i + 1) % density) + 2);
+		mesh.indices.push_back(density + i + 2);
+	}
+
+	// Link up low and bottom rings.
+	for (unsigned i = 0; i < density; i++)
+	{
+		mesh.indices.push_back(density + i + 2);
+		mesh.indices.push_back(2 * density + i + 2);
+		mesh.indices.push_back(density + ((i + 1) % density) + 2);
+		mesh.indices.push_back(2 * density + ((i + 1) % density) + 2);
+		mesh.indices.push_back(density + ((i + 1) % density) + 2);
+		mesh.indices.push_back(2 * density + i + 2);
+	}
+
+	// Link up bottom and inner rings.
+	for (unsigned i = 0; i < density; i++)
+	{
+		mesh.indices.push_back(2 * density + i + 2);
+		mesh.indices.push_back(3 * density + i + 2);
+		mesh.indices.push_back(2 * density + ((i + 1) % density) + 2);
+		mesh.indices.push_back(3 * density + ((i + 1) % density) + 2);
+		mesh.indices.push_back(2 * density + ((i + 1) % density) + 2);
+		mesh.indices.push_back(3 * density + i + 2);
+	}
+
+	return mesh;
+}
+
+void GeneratedMesh::setup_from_generated_mesh(Vulkan::Device &device, const GeneratedMeshData &mesh)
+{
 	BufferCreateInfo info = {};
 	info.size = mesh.positions.size() * sizeof(vec3);
 	info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
 	info.domain = BufferDomain::Device;
 	vbo_position = device.create_buffer(info, mesh.positions.data());
 
-	info.size = mesh.attributes.size() * sizeof(SphereMeshData::Attribute);
+	info.size = mesh.attributes.size() * sizeof(GeneratedMeshData::Attribute);
 	vbo_attributes = device.create_buffer(info, mesh.attributes.data());
 
 	this->attributes[ecast(MeshAttribute::Position)].format = VK_FORMAT_R32G32B32_SFLOAT;
 	this->attributes[ecast(MeshAttribute::Position)].offset = 0;
 	this->attributes[ecast(MeshAttribute::Normal)].format = VK_FORMAT_R32G32B32_SFLOAT;
-	this->attributes[ecast(MeshAttribute::Normal)].offset = offsetof(SphereMeshData::Attribute, normal);
+	this->attributes[ecast(MeshAttribute::Normal)].offset = offsetof(GeneratedMeshData::Attribute, normal);
 	this->attributes[ecast(MeshAttribute::UV)].format = VK_FORMAT_R32G32_SFLOAT;
-	this->attributes[ecast(MeshAttribute::UV)].offset = offsetof(SphereMeshData::Attribute, uv);
+	this->attributes[ecast(MeshAttribute::UV)].offset = offsetof(GeneratedMeshData::Attribute, uv);
 	position_stride = sizeof(vec3);
-	attribute_stride = sizeof(SphereMeshData::Attribute);
+	attribute_stride = sizeof(GeneratedMeshData::Attribute);
 
 	info.size = mesh.indices.size() * sizeof(uint16_t);
 	info.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
@@ -255,13 +362,48 @@ void SphereMesh::on_device_created(const DeviceCreatedEvent &event)
 	ibo_offset = 0;
 	index_type = VK_INDEX_TYPE_UINT16;
 	count = mesh.indices.size();
-	topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
-	primitive_restart = true;
+	topology = mesh.topology;
+	primitive_restart = mesh.primitive_restart;
 
 	bake();
 }
 
+SphereMesh::SphereMesh(unsigned density)
+	: density(density)
+{
+	static_aabb = AABB(vec3(-1.0f), vec3(1.0f));
+	material = StockMaterials::get().get_checkerboard();
+	EVENT_MANAGER_REGISTER_LATCH(SphereMesh, on_device_created, on_device_destroyed, DeviceCreatedEvent);
+}
+
+void SphereMesh::on_device_created(const DeviceCreatedEvent &event)
+{
+	auto &device = event.get_device();
+	auto mesh = create_sphere_mesh(density);
+	setup_from_generated_mesh(device, mesh);
+}
+
 void SphereMesh::on_device_destroyed(const DeviceCreatedEvent &)
+{
+	reset();
+}
+
+ConeMesh::ConeMesh(unsigned density_, float height_, float radius_)
+	: density(density_), height(height_), radius(radius_)
+{
+	static_aabb = AABB(vec3(-1.0f), vec3(1.0f));
+	material = StockMaterials::get().get_checkerboard();
+	EVENT_MANAGER_REGISTER_LATCH(ConeMesh, on_device_created, on_device_destroyed, DeviceCreatedEvent);
+}
+
+void ConeMesh::on_device_created(const DeviceCreatedEvent &event)
+{
+	auto &device = event.get_device();
+	auto mesh = create_cone_mesh(density, height, radius);
+	setup_from_generated_mesh(device, mesh);
+}
+
+void ConeMesh::on_device_destroyed(const DeviceCreatedEvent &)
 {
 	reset();
 }

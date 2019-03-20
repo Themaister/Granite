@@ -43,6 +43,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 		camera.set_position(vec3(0.0f, 2.0f, 8.0f));
 		cube = Util::make_handle<CubeMesh>();
 		sphere = Util::make_handle<SphereMesh>();
+		cone = Util::make_handle<ConeMesh>(16, 1.0f, 0.5f);
 		init_plane();
 		init_scene();
 		EVENT_MANAGER_REGISTER_LATCH(PhysicsSandboxApplication, on_swapchain_created, on_swapchain_destroyed, Vulkan::SwapchainParameterEvent);
@@ -147,7 +148,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 	{
 		auto root_node = scene.create_node();
 		auto *entity = scene.create_renderable(plane, root_node.get());
-		auto *plane = Global::physics()->add_infinite_plane(vec4(0.0f, 1.0f, 0.0f, 0.0f));
+		auto *plane = Global::physics()->add_infinite_plane(vec4(0.0f, 1.0f, 0.0f, 0.0f), {});
 		entity->allocate_component<PhysicsComponent>()->handle = plane;
 		PhysicsSystem::set_handle_parent(plane, entity);
 		scene.set_root_node(root_node);
@@ -249,7 +250,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 				mesh_node->invalidate_cached_transform();
 				scene.get_root_node()->add_child(mesh_node);
 				auto *entity = scene.create_renderable(gltf_mesh, mesh_node.get());
-				auto *mesh = Global::physics()->add_mesh(mesh_node.get(), gltf_mesh_physics_index);
+				auto *mesh = Global::physics()->add_mesh(mesh_node.get(), gltf_mesh_physics_index, {});
 				entity->allocate_component<PhysicsComponent>()->handle = mesh;
 				PhysicsSystem::set_handle_parent(mesh, entity);
 			}
@@ -311,16 +312,15 @@ struct PhysicsSandboxApplication : Application, EventHandler
 			{
 				auto sphere_node = scene.create_node();
 				sphere_node->transform.translation = result.world_pos + vec3(0.0f, 20.0f, 0.0f);
-				sphere_node->transform.scale = vec3(0.1f);
 				sphere_node->invalidate_cached_transform();
 				scene.get_root_node()->add_child(sphere_node);
-				auto *entity = scene.create_renderable(sphere, sphere_node.get());
+				auto *entity = scene.create_renderable(cone, sphere_node.get());
 				PhysicsSystem::MaterialInfo info;
 				info.mass = 2.0f;
 				info.restitution = 0.2f;
 				info.angular_damping = 0.3f;
 				info.linear_damping = 0.3f;
-				auto *sphere = Global::physics()->add_sphere(sphere_node.get(), info);
+				auto *sphere = Global::physics()->add_cone(sphere_node.get(), 1.0f, 0.5f, info);
 				entity->allocate_component<PhysicsComponent>()->handle = sphere;
 				PhysicsSystem::set_handle_parent(sphere, entity);
 			}
@@ -359,6 +359,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 
 	Scene scene;
 	AbstractRenderableHandle cube;
+	AbstractRenderableHandle cone;
 	AbstractRenderableHandle sphere;
 	AbstractRenderableHandle plane;
 	FPSCamera camera;

@@ -85,6 +85,7 @@ struct GeneratedMeshData
 };
 GeneratedMeshData create_sphere_mesh(unsigned density);
 GeneratedMeshData create_cone_mesh(unsigned density, float height, float radius);
+GeneratedMeshData create_cylinder_mesh(unsigned density, float height, float radius);
 
 class GeneratedMesh : public StaticMesh
 {
@@ -107,6 +108,19 @@ class ConeMesh : public GeneratedMesh, public EventHandler
 {
 public:
 	ConeMesh(unsigned density, float height, float radius);
+
+private:
+	unsigned density;
+	float height;
+	float radius;
+	void on_device_created(const Vulkan::DeviceCreatedEvent &event);
+	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
+};
+
+class CylinderMesh : public GeneratedMesh, public EventHandler
+{
+public:
+	CylinderMesh(unsigned density, float height, float radius);
 
 private:
 	unsigned density;

@@ -34,6 +34,19 @@ struct PhysicsHandle
 	btCollisionObject *bt_object = nullptr;
 	btCollisionShape *bt_shape = nullptr;
 	Entity *entity = nullptr;
+
+	~PhysicsHandle()
+	{
+		if (bt_object)
+		{
+			btRigidBody *body = btRigidBody::upcast(bt_object);
+			if (body && body->getMotionState())
+				delete body->getMotionState();
+		}
+
+		delete bt_object;
+		delete bt_shape;
+	}
 };
 
 static void tick_callback_wrapper(btDynamicsWorld *world, btScalar time_step)
@@ -121,16 +134,11 @@ PhysicsSystem::~PhysicsSystem()
 	for (int i = world->getNumCollisionObjects() - 1; i >= 0; i--)
 	{
 		auto *obj = world->getCollisionObjectArray()[i];
-		btRigidBody *body = btRigidBody::upcast(obj);
-		if (body && body->getMotionState())
-			delete body->getMotionState();
 		world->removeCollisionObject(obj);
 	}
 
 	for (auto *handle : handles)
-		delete handle->bt_shape;
-	for (auto *shape : mesh_collision_shapes)
-		delete shape;
+		handle_pool.free(handle);
 }
 
 void PhysicsSystem::iterate(double frame_time)
@@ -185,8 +193,6 @@ void PhysicsSystem::remove_body(PhysicsHandle *handle)
 {
 	auto *obj = handle->bt_object;
 	btRigidBody *body = btRigidBody::upcast(obj);
-	if (body && body->getMotionState())
-		delete body->getMotionState();
 
 	if (body)
 	{
@@ -198,7 +204,6 @@ void PhysicsSystem::remove_body(PhysicsHandle *handle)
 	}
 
 	world->removeCollisionObject(obj);
-	delete handle->bt_shape;
 	handle_pool.free(handle);
 
 	// TODO: Avoid O(n).
@@ -224,7 +229,8 @@ unsigned PhysicsSystem::register_collision_mesh(const CollisionMesh &mesh)
 	shape->setMargin(mesh.margin);
 
 	auto index = unsigned(mesh_collision_shapes.size());
-	mesh_collision_shapes.push_back(shape);
+	mesh_collision_shapes.emplace_back(shape);
+	index_vertex_arrays.emplace_back(index_vertex_array);
 	return index;
 }
 
@@ -278,7 +284,7 @@ PhysicsHandle *PhysicsSystem::add_shape(Scene::Node *node, const MaterialInfo &i
 PhysicsHandle *PhysicsSystem::add_mesh(Scene::Node *node, unsigned index, const MaterialInfo &info)
 {
 	assert(index < mesh_collision_shapes.size());
-	auto *shape = new btScaledBvhTriangleMeshShape(mesh_collision_shapes[index],
+	auto *shape = new btScaledBvhTriangleMeshShape(mesh_collision_shapes[index].get(),
 	                                               btVector3(node->transform.scale.x,
 	                                                         node->transform.scale.y,
 	                                                         node->transform.scale.z));
@@ -304,6 +310,13 @@ PhysicsHandle *PhysicsSystem::add_cube(Scene::Node *node, const MaterialInfo &in
 PhysicsHandle *PhysicsSystem::add_cone(Scene::Node *node, float height, float radius, const MaterialInfo &info)
 {
 	auto *shape = new btConeShape(radius * node->transform.scale.x, height * node->transform.scale.y);
+	auto *handle = add_shape(node, info, shape);
+	return handle;
+}
+
+PhysicsHandle *PhysicsSystem::add_cylinder(Scene::Node *node, float height, float radius, const MaterialInfo &info)
+{
+	auto *shape = new btCylinderShape(btVector3(radius * node->transform.scale.x, height * node->transform.scale.y, radius * node->transform.scale.z));
 	auto *handle = add_shape(node, info, shape);
 	return handle;
 }

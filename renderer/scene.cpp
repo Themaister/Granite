@@ -56,6 +56,14 @@ Scene::~Scene()
 {
 	// Makes shutdown way faster :)
 	pool.reset_groups();
+
+	auto itr = entities.begin();
+	while (itr != entities.end())
+	{
+		auto *to_free = itr.get();
+		itr = entities.erase(itr);
+		to_free->get_pool()->delete_entity(to_free);
+	}
 }
 
 template <typename T>

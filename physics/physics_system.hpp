@@ -30,11 +30,12 @@
 
 class btDefaultCollisionConfiguration;
 class btCollisionDispatcher;
-class btDbvtBroadphase;
+struct btDbvtBroadphase;
 class btSequentialImpulseConstraintSolver;
 class btDiscreteDynamicsWorld;
 class btCollisionShape;
 class btBvhTriangleMeshShape;
+class btTriangleIndexVertexArray;
 
 namespace Granite
 {
@@ -148,6 +149,7 @@ public:
 	PhysicsHandle *add_cube(Scene::Node *node, const MaterialInfo &info);
 	PhysicsHandle *add_sphere(Scene::Node *node, const MaterialInfo &info);
 	PhysicsHandle *add_cone(Scene::Node *node, float height, float radius, const MaterialInfo &info);
+	PhysicsHandle *add_cylinder(Scene::Node *node, float height, float radius, const MaterialInfo &info);
 	PhysicsHandle *add_infinite_plane(const vec4 &plane, const MaterialInfo &info);
 	void set_linear_velocity(PhysicsHandle *handle, const vec3 &v);
 	void set_angular_velocity(PhysicsHandle *handle, const vec3 &v);
@@ -179,6 +181,7 @@ private:
 
 	PhysicsHandle *add_shape(Scene::Node *node, const MaterialInfo &info, btCollisionShape *shape);
 	std::vector<CollisionEvent> new_collision_buffer;
-	std::vector<btBvhTriangleMeshShape *> mesh_collision_shapes;
+	std::vector<std::unique_ptr<btBvhTriangleMeshShape>> mesh_collision_shapes;
+	std::vector<std::unique_ptr<btTriangleIndexVertexArray>> index_vertex_arrays;
 };
 }

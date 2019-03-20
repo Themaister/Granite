@@ -129,6 +129,7 @@ public:
 		float angular_damping = 0.1f;
 		float friction = 0.2f;
 		float rolling_friction = 0.2f;
+		bool ghost = false;
 	};
 
 	struct CollisionMesh

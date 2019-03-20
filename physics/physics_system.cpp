@@ -383,6 +383,7 @@ PhysicsHandle *PhysicsSystem::add_mesh(Scene::Node *node, unsigned index, const 
 
 	// Mesh objects cannot be dynamic.
 	MaterialInfo tmp = info;
+	tmp.type = ObjectType::Static;
 	tmp.mass = 0.0f;
 	tmp.restitution = 1.0f;
 
@@ -461,6 +462,7 @@ PhysicsHandle *PhysicsSystem::add_infinite_plane(const vec4 &plane, const Materi
 	auto *shape = new btStaticPlaneShape(btVector3(plane.x, plane.y, plane.z), plane.w);
 
 	MaterialInfo tmp = info;
+	tmp.type = ObjectType::Static;
 	tmp.mass = 0.0f;
 	tmp.restitution = 1.0f;
 

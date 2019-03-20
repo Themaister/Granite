@@ -357,6 +357,9 @@ PhysicsHandle *PhysicsSystem::add_shape(Scene::Node *node, const MaterialInfo &i
 		rb_info.m_rollingFriction = info.rolling_friction;
 
 		auto *body = new btRigidBody(rb_info);
+		if (info.type == ObjectType::Static)
+			body->setCollisionFlags(body->getCollisionFlags() | btCollisionObject::CF_STATIC_OBJECT);
+
 		world->addRigidBody(body);
 
 		handle = handle_pool.allocate();

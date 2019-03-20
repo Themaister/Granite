@@ -193,7 +193,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 			auto *camera_entity = scene.create_entity();
 			auto *phys = camera_entity->allocate_component<PhysicsComponent>();
 			PhysicsSystem::MaterialInfo info;
-			info.ghost = true;
+			info.type = PhysicsSystem::ObjectType::Kinematic;
 			phys->handle = Global::physics()->add_sphere(camera_node.get(), info);
 			camera_handle = phys->handle;
 		}

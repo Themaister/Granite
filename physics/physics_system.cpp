@@ -35,6 +35,7 @@ struct PhysicsHandle
 	btCollisionObject *bt_object = nullptr;
 	btCollisionShape *bt_shape = nullptr;
 	Entity *entity = nullptr;
+	bool copy_transform_from_node = false;
 
 	~PhysicsHandle()
 	{
@@ -150,23 +151,38 @@ void PhysicsSystem::iterate(double frame_time)
 	// Update ghost object locations.
 	for (auto *handle : handles)
 	{
-		if (!handle->node)
+		if (!handle->node || !handle->copy_transform_from_node)
 			continue;
 
 		auto *obj = handle->bt_object;
 		auto *ghost = btGhostObject::upcast(obj);
-		if (!ghost)
-			continue;
+		auto *body = btRigidBody::upcast(obj);
 
-		btTransform t;
-		t.setIdentity();
-		auto &rot = handle->node->transform.rotation;
-		auto &pos = handle->node->transform.translation;
-		t.setOrigin(btVector3(pos.x, pos.y, pos.z));
-		t.setRotation(btQuaternion(rot.x, rot.y, rot.z, rot.w));
-		ghost->setWorldTransform(t);
-		if (ghost->getBroadphaseHandle())
-			world->updateSingleAabb(ghost);
+		if (ghost)
+		{
+			btTransform t;
+			t.setIdentity();
+			auto &rot = handle->node->transform.rotation;
+			auto &pos = handle->node->transform.translation;
+			t.setOrigin(btVector3(pos.x, pos.y, pos.z));
+			t.setRotation(btQuaternion(rot.x, rot.y, rot.z, rot.w));
+			ghost->setWorldTransform(t);
+			if (ghost->getBroadphaseHandle())
+				world->updateSingleAabb(ghost);
+		}
+		else if (body)
+		{
+			btTransform t;
+			t.setIdentity();
+			auto &rot = handle->node->transform.rotation;
+			auto &pos = handle->node->transform.translation;
+			t.setOrigin(btVector3(pos.x, pos.y, pos.z));
+			t.setRotation(btQuaternion(rot.x, rot.y, rot.z, rot.w));
+			if (body->getMotionState())
+				body->getMotionState()->setWorldTransform(t);
+			else
+				body->setWorldTransform(t);
+		}
 	}
 
 	world->stepSimulation(btScalar(frame_time), 20, 1.0f / 300.0f);
@@ -174,7 +190,7 @@ void PhysicsSystem::iterate(double frame_time)
 	// Update node transforms from physics engine.
 	for (auto *handle : handles)
 	{
-		if (!handle->node)
+		if (!handle->node || handle->copy_transform_from_node)
 			continue;
 
 		auto *obj = handle->bt_object;
@@ -270,7 +286,7 @@ PhysicsHandle *PhysicsSystem::add_shape(Scene::Node *node, const MaterialInfo &i
 	btTransform t;
 	t.setIdentity();
 	btVector3 local_inertia(0, 0, 0);
-	if (info.mass != 0.0f)
+	if (info.mass != 0.0f && info.type != ObjectType::Static)
 		shape->calculateLocalInertia(info.mass, local_inertia);
 
 	if (node)
@@ -288,7 +304,7 @@ PhysicsHandle *PhysicsSystem::add_shape(Scene::Node *node, const MaterialInfo &i
 
 	PhysicsHandle *handle = nullptr;
 
-	if (info.ghost)
+	if (info.type == ObjectType::Ghost)
 	{
 		auto *body = new btGhostObject();
 		body->setCollisionShape(shape);
@@ -300,13 +316,35 @@ PhysicsHandle *PhysicsSystem::add_shape(Scene::Node *node, const MaterialInfo &i
 		handle->node = node;
 		handle->bt_object = body;
 		handle->bt_shape = shape;
+		handle->copy_transform_from_node = true;
+		handles.push_back(handle);
+	}
+	else if (info.type == ObjectType::Kinematic)
+	{
+		auto *motion = new btDefaultMotionState(t);
+		btRigidBody::btRigidBodyConstructionInfo rb_info(info.type == ObjectType::Static ? 0.0f : info.mass,
+		                                                 motion, shape, local_inertia);
+
+		auto *body = new btRigidBody(rb_info);
+		body->setCollisionShape(shape);
+		body->setCollisionFlags(body->getCollisionFlags() | btCollisionObject::CF_KINEMATIC_OBJECT);
+		body->setActivationState(DISABLE_DEACTIVATION);
+
+		world->addRigidBody(body);
+		handle = handle_pool.allocate();
+		body->setUserPointer(handle);
+		handle->node = node;
+		handle->bt_object = body;
+		handle->bt_shape = shape;
+		handle->copy_transform_from_node = true;
 		handles.push_back(handle);
 	}
 	else
 	{
 		auto *motion = new btDefaultMotionState(t);
-		btRigidBody::btRigidBodyConstructionInfo rb_info(info.mass, motion, shape, local_inertia);
-		if (info.mass != 0.0f)
+		btRigidBody::btRigidBodyConstructionInfo rb_info(info.type == ObjectType::Static ? 0.0f : info.mass,
+		                                                 motion, shape, local_inertia);
+		if (info.mass != 0.0f && info.type == ObjectType::Dynamic)
 		{
 			rb_info.m_restitution = info.restitution;
 			rb_info.m_linearDamping = info.linear_damping;

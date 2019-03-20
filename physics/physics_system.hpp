@@ -122,15 +122,23 @@ public:
 	PhysicsSystem();
 	~PhysicsSystem();
 
+	enum class ObjectType
+	{
+		Ghost,
+		Static,
+		Dynamic,
+		Kinematic
+	};
+
 	struct MaterialInfo
 	{
+		ObjectType type = ObjectType::Dynamic;
 		float mass = 1.0f;
 		float restitution = 0.5f;
 		float linear_damping = 0.1f;
 		float angular_damping = 0.1f;
 		float friction = 0.2f;
 		float rolling_friction = 0.2f;
-		bool ghost = false;
 	};
 
 	struct CollisionMesh

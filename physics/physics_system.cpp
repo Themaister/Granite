@@ -424,6 +424,28 @@ void PhysicsSystem::set_angular_velocity(PhysicsHandle *handle, const vec3 &v)
 		body->setAngularVelocity(btVector3(v.x, v.y, v.z));
 }
 
+void PhysicsSystem::apply_force(PhysicsHandle *handle, const vec3 &v)
+{
+	auto *body = btRigidBody::upcast(handle->bt_object);
+	if (body)
+	{
+		body->activate();
+		body->applyCentralForce(btVector3(v.x, v.y, v.z));
+	}
+}
+
+void PhysicsSystem::apply_force(PhysicsHandle *handle, const vec3 &v, const vec3 &world_pos)
+{
+	auto *body = btRigidBody::upcast(handle->bt_object);
+	if (body)
+	{
+		body->activate();
+		body->applyForce(btVector3(v.x, v.y, v.z),
+		                 btVector3(world_pos.x, world_pos.y, world_pos.z) -
+		                 body->getCenterOfMassPosition());
+	}
+}
+
 PhysicsHandle *PhysicsSystem::add_sphere(Scene::Node *node, const MaterialInfo &info)
 {
 	auto *shape = new btSphereShape(btScalar(node->transform.scale.x));

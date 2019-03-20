@@ -189,6 +189,9 @@ struct PhysicsSandboxApplication : Application, EventHandler
 
 	bool on_key(const KeyboardEvent &e)
 	{
+		if (e.get_key() == Key::M)
+			apply_anti_gravity = e.get_key_state() != KeyState::Released;
+
 		if (e.get_key() == Key::Space && e.get_key_state() == KeyState::Pressed)
 		{
 			auto &handles = scene.get_entity_pool().get_component_group<PhysicsComponent>();
@@ -331,6 +334,16 @@ struct PhysicsSandboxApplication : Application, EventHandler
 
 	void render_frame(double frame_time, double) override
 	{
+		if (apply_anti_gravity)
+		{
+			auto &phys = scene.get_entity_pool().get_component_group<PhysicsComponent>();
+			for (auto &p : phys)
+			{
+				Global::physics()->apply_force(get_component<PhysicsComponent>(p)->handle,
+				                               vec3(0.0f, 300.0f, 0.0f));
+			}
+		}
+
 		auto *node = PhysicsSystem::get_scene_node(camera_handle);
 		node->transform.translation = camera.get_position();
 
@@ -385,6 +398,8 @@ struct PhysicsSandboxApplication : Application, EventHandler
 	AbstractRenderableHandle gltf_mesh;
 	unsigned gltf_mesh_physics_index = 0;
 	PhysicsHandle *camera_handle = nullptr;
+
+	bool apply_anti_gravity = false;
 };
 
 namespace Granite

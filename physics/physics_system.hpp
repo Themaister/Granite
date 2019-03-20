@@ -163,6 +163,9 @@ public:
 	PhysicsHandle *add_infinite_plane(const vec4 &plane, const MaterialInfo &info);
 	void set_linear_velocity(PhysicsHandle *handle, const vec3 &v);
 	void set_angular_velocity(PhysicsHandle *handle, const vec3 &v);
+	void apply_force(PhysicsHandle *handle, const vec3 &v);
+	void apply_force(PhysicsHandle *handle, const vec3 &v, const vec3 &world_pos);
+
 	void remove_body(PhysicsHandle *handle);
 	static void set_handle_parent(PhysicsHandle *handle, Entity *entity);
 	static Entity *get_handle_parent(PhysicsHandle *handle);

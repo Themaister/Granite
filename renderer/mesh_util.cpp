@@ -285,7 +285,7 @@ GeneratedMeshData create_cylinder_mesh(unsigned density, float height, float rad
 	for (unsigned i = 0; i < density; i++)
 	{
 		float rad = 2.0f * pi<float>() * (i + 0.5f) * inv_density;
-		mesh.positions[4 * density + i + 2] = vec3(radius * cos(rad), 0.0f, -radius * sin(rad));
+		mesh.positions[4 * density + i + 2] = vec3(radius * cos(rad), -half_height, -radius * sin(rad));
 		mesh.attributes[4 * density + i + 2].normal = normalize(vec3(cos(rad), -1.0f, -sin(rad)));
 		mesh.attributes[4 * density + i + 2].uv = vec2(0.5f);
 	}
@@ -298,9 +298,6 @@ GeneratedMeshData create_cylinder_mesh(unsigned density, float height, float rad
 		mesh.attributes[5 * density + i + 2].normal = vec3(0.0f, -1.0f, 0.0f);
 		mesh.attributes[5 * density + i + 2].uv = vec2(0.5f);
 	}
-
-	for (auto &pos : mesh.positions)
-		pos -= vec3(0.0f, 0.5f * height, 0.0f);
 
 	// Link up top vertices.
 	for (unsigned i = 0; i < density; i++)

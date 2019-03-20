@@ -23,6 +23,7 @@
 #include "physics_system.hpp"
 #include <btBulletDynamicsCommon.h>
 #include <btBulletCollisionCommon.h>
+#include <BulletCollision/CollisionDispatch/btGhostObject.h>
 
 using namespace std;
 
@@ -127,6 +128,9 @@ PhysicsSystem::PhysicsSystem()
 
 	world->setGravity(btVector3(0.0f, -9.81f, 0.0f));
 	world->setInternalTickCallback(tick_callback_wrapper, this);
+
+	ghost_callback.reset(new btGhostPairCallback);
+	world->getPairCache()->setInternalGhostPairCallback(ghost_callback.get());
 }
 
 PhysicsSystem::~PhysicsSystem()
@@ -143,14 +147,41 @@ PhysicsSystem::~PhysicsSystem()
 
 void PhysicsSystem::iterate(double frame_time)
 {
-	world->stepSimulation(btScalar(frame_time), 20, 1.0f / 300.0f);
-
+	// Update ghost object locations.
 	for (auto *handle : handles)
 	{
 		if (!handle->node)
 			continue;
 
 		auto *obj = handle->bt_object;
+		auto *ghost = btGhostObject::upcast(obj);
+		if (!ghost)
+			continue;
+
+		btTransform t;
+		t.setIdentity();
+		auto &rot = handle->node->transform.rotation;
+		auto &pos = handle->node->transform.translation;
+		t.setOrigin(btVector3(pos.x, pos.y, pos.z));
+		t.setRotation(btQuaternion(rot.x, rot.y, rot.z, rot.w));
+		ghost->setWorldTransform(t);
+		if (ghost->getBroadphaseHandle())
+			world->updateSingleAabb(ghost);
+	}
+
+	world->stepSimulation(btScalar(frame_time), 20, 1.0f / 300.0f);
+
+	// Update node transforms from physics engine.
+	for (auto *handle : handles)
+	{
+		if (!handle->node)
+			continue;
+
+		auto *obj = handle->bt_object;
+		auto *ghost = btGhostObject::upcast(obj);
+		if (ghost)
+			continue;
+
 		auto *body = btRigidBody::upcast(obj);
 		btTransform t;
 		if (body && body->getMotionState())
@@ -255,32 +286,49 @@ PhysicsHandle *PhysicsSystem::add_shape(Scene::Node *node, const MaterialInfo &i
 				node->transform.rotation.w));
 	}
 
-	auto *motion = new btDefaultMotionState(t);
-	btRigidBody::btRigidBodyConstructionInfo rb_info(info.mass, motion, shape, local_inertia);
-	if (info.mass != 0.0f)
-	{
-		rb_info.m_restitution = info.restitution;
-		rb_info.m_linearDamping = info.linear_damping;
-		rb_info.m_angularDamping = info.angular_damping;
-	}
-	else
-		rb_info.m_restitution = 1.0f;
+	PhysicsHandle *handle = nullptr;
 
-	rb_info.m_friction = info.friction;
-	rb_info.m_rollingFriction = info.rolling_friction;
-
-	auto *body = new btRigidBody(rb_info);
 	if (info.ghost)
+	{
+		auto *body = new btGhostObject();
+		body->setCollisionShape(shape);
 		body->setCollisionFlags(body->getCollisionFlags() | btCollisionObject::CF_NO_CONTACT_RESPONSE);
 
-	world->addRigidBody(body);
+		world->addCollisionObject(body);
+		handle = handle_pool.allocate();
+		body->setUserPointer(handle);
+		handle->node = node;
+		handle->bt_object = body;
+		handle->bt_shape = shape;
+		handles.push_back(handle);
+	}
+	else
+	{
+		auto *motion = new btDefaultMotionState(t);
+		btRigidBody::btRigidBodyConstructionInfo rb_info(info.mass, motion, shape, local_inertia);
+		if (info.mass != 0.0f)
+		{
+			rb_info.m_restitution = info.restitution;
+			rb_info.m_linearDamping = info.linear_damping;
+			rb_info.m_angularDamping = info.angular_damping;
+		}
+		else
+			rb_info.m_restitution = 1.0f;
 
-	auto *handle = handle_pool.allocate();
-	body->setUserPointer(handle);
-	handle->node = node;
-	handle->bt_object = body;
-	handle->bt_shape = shape;
-	handles.push_back(handle);
+		rb_info.m_friction = info.friction;
+		rb_info.m_rollingFriction = info.rolling_friction;
+
+		auto *body = new btRigidBody(rb_info);
+		world->addRigidBody(body);
+
+		handle = handle_pool.allocate();
+		body->setUserPointer(handle);
+		handle->node = node;
+		handle->bt_object = body;
+		handle->bt_shape = shape;
+		handles.push_back(handle);
+	}
+
 	return handle;
 }
 
@@ -319,7 +367,7 @@ PhysicsHandle *PhysicsSystem::add_cone(Scene::Node *node, float height, float ra
 
 PhysicsHandle *PhysicsSystem::add_cylinder(Scene::Node *node, float height, float radius, const MaterialInfo &info)
 {
-	auto *shape = new btCylinderShape(btVector3(radius * node->transform.scale.x, height * node->transform.scale.y, radius * node->transform.scale.z));
+	auto *shape = new btCylinderShape(btVector3(radius * node->transform.scale.x, 0.5f * height * node->transform.scale.y, radius * node->transform.scale.z));
 	auto *handle = add_shape(node, info, shape);
 	return handle;
 }
@@ -327,13 +375,15 @@ PhysicsHandle *PhysicsSystem::add_cylinder(Scene::Node *node, float height, floa
 void PhysicsSystem::set_linear_velocity(PhysicsHandle *handle, const vec3 &v)
 {
 	auto *body = btRigidBody::upcast(handle->bt_object);
-	body->setLinearVelocity(btVector3(v.x, v.y, v.z));
+	if (body)
+		body->setLinearVelocity(btVector3(v.x, v.y, v.z));
 }
 
 void PhysicsSystem::set_angular_velocity(PhysicsHandle *handle, const vec3 &v)
 {
 	auto *body = btRigidBody::upcast(handle->bt_object);
-	body->setAngularVelocity(btVector3(v.x, v.y, v.z));
+	if (body)
+		body->setAngularVelocity(btVector3(v.x, v.y, v.z));
 }
 
 PhysicsHandle *PhysicsSystem::add_sphere(Scene::Node *node, const MaterialInfo &info)
@@ -358,10 +408,13 @@ PhysicsHandle *PhysicsSystem::add_infinite_plane(const vec4 &plane, const Materi
 void PhysicsSystem::apply_impulse(PhysicsHandle *handle, const vec3 &impulse, const vec3 &relative)
 {
 	auto *body = btRigidBody::upcast(handle->bt_object);
-	body->activate();
-	body->applyImpulse(
-			btVector3(impulse.x, impulse.y, impulse.z),
-			btVector3(relative.x, relative.y, relative.z));
+	if (body)
+	{
+		body->activate();
+		body->applyImpulse(
+				btVector3(impulse.x, impulse.y, impulse.z),
+				btVector3(relative.x, relative.y, relative.z));
+	}
 }
 
 void PhysicsSystem::add_point_constraint(PhysicsHandle *handle, const vec3 &local_pivot)
@@ -396,6 +449,39 @@ void PhysicsSystem::add_point_constraint(PhysicsHandle *handle0, PhysicsHandle *
 	world->addConstraint(constraint, skip_collision);
 	body0->addConstraintRef(constraint);
 	body1->addConstraintRef(constraint);
+}
+
+struct TriggerContactResultCallback : btCollisionWorld::ContactResultCallback
+{
+	bool hit = false;
+
+	btScalar addSingleResult(btManifoldPoint &,
+	                         const btCollisionObjectWrapper *, int, int,
+	                         const btCollisionObjectWrapper *, int, int) override
+	{
+		hit = true;
+		return 1.0f;
+	}
+};
+
+bool PhysicsSystem::get_overlapping_objects(PhysicsHandle *handle, vector<PhysicsHandle *> &other)
+{
+	other.clear();
+	auto *ghost = btGhostObject::upcast(handle->bt_object);
+	if (!ghost)
+		return false;
+
+	int count = ghost->getNumOverlappingObjects();
+	other.reserve(count);
+	for (int i = 0; i < count; i++)
+	{
+		TriggerContactResultCallback cb;
+		world->contactPairTest(ghost, ghost->getOverlappingObject(i), cb);
+		if (cb.hit)
+			other.push_back(static_cast<PhysicsHandle *>(ghost->getOverlappingObject(i)->getUserPointer()));
+	}
+
+	return true;
 }
 
 PhysicsComponent::~PhysicsComponent()

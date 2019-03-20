@@ -36,6 +36,7 @@ class btDiscreteDynamicsWorld;
 class btCollisionShape;
 class btBvhTriangleMeshShape;
 class btTriangleIndexVertexArray;
+class btGhostPairCallback;
 
 namespace Granite
 {
@@ -170,6 +171,8 @@ public:
 	                          const vec3 &local_pivot0, const vec3 &local_pivot1,
 	                          bool skip_collision = false);
 
+	bool get_overlapping_objects(PhysicsHandle *handle, std::vector<PhysicsHandle *> &other);
+
 private:
 	std::unique_ptr<btDefaultCollisionConfiguration> collision_config;
 	std::unique_ptr<btCollisionDispatcher> dispatcher;
@@ -184,5 +187,6 @@ private:
 	std::vector<CollisionEvent> new_collision_buffer;
 	std::vector<std::unique_ptr<btBvhTriangleMeshShape>> mesh_collision_shapes;
 	std::vector<std::unique_ptr<btTriangleIndexVertexArray>> index_vertex_arrays;
+	std::unique_ptr<btGhostPairCallback> ghost_callback;
 };
 }

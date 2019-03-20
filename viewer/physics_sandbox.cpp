@@ -186,6 +186,17 @@ struct PhysicsSandboxApplication : Application, EventHandler
 			default_material.uniform_roughness = 1.0f;
 			gltf_mesh = Util::make_handle<ImportedMesh>(mesh, default_material);
 		}
+
+		{
+			auto camera_node = scene.create_node();
+			root_node->add_child(camera_node);
+			auto *camera_entity = scene.create_entity();
+			auto *phys = camera_entity->allocate_component<PhysicsComponent>();
+			PhysicsSystem::MaterialInfo info;
+			info.ghost = true;
+			phys->handle = Global::physics()->add_sphere(camera_node.get(), info);
+			camera_handle = phys->handle;
+		}
 	}
 
 	bool on_key(const KeyboardEvent &e)
@@ -332,8 +343,20 @@ struct PhysicsSandboxApplication : Application, EventHandler
 
 	void render_frame(double frame_time, double) override
 	{
+		auto *node = PhysicsSystem::get_scene_node(camera_handle);
+		node->transform.translation = camera.get_position();
+
 		Global::physics()->iterate(frame_time);
 		scene.update_cached_transforms();
+
+#if 0
+		{
+			std::vector<PhysicsHandle *> ghost_collisions;
+			Global::physics()->get_overlapping_objects(camera_handle, ghost_collisions);
+			if (!ghost_collisions.empty())
+				LOGI("Overlapping with %u objects!\n", unsigned(ghost_collisions.size()));
+		}
+#endif
 
 		lighting.directional.direction = normalize(vec3(1.0f, 0.5f, 1.0f));
 		lighting.directional.color = vec3(1.0f, 0.8f, 0.6f);
@@ -373,6 +396,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 
 	AbstractRenderableHandle gltf_mesh;
 	unsigned gltf_mesh_physics_index = 0;
+	PhysicsHandle *camera_handle = nullptr;
 };
 
 namespace Granite

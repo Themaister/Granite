@@ -18,7 +18,7 @@ endif()
 
 # We are overriding settings in subdirectories.
 # Avoid warnings.
-if (${CMAKE_VERSION} VERSION_GREATER "3.12.0")
+if (${CMAKE_VERSION} VERSION_GREATER "3.13.0")
    message("Setting CMake policy CMP0077.")
    cmake_policy(SET CMP0077 NEW)
 endif()

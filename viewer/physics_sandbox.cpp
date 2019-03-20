@@ -63,7 +63,9 @@ struct PhysicsSandboxApplication : Application, EventHandler
 			if (result.entity)
 			{
 				auto *cached = result.entity->get_component<RenderInfoComponent>();
-				vec4 local_world = inverse(cached->transform->world_transform) * vec4(result.world_pos, 1.0f);
+				Global::physics()->apply_impulse(result.handle,
+						20.0f * camera.get_front(), result.world_pos);
+#if 0
 				vec3 local_normal = inverse(mat3(cached->transform->world_transform)) * result.world_normal;
 				auto *new_parent = PhysicsSystem::get_scene_node(result.handle);
 				auto node = scene.create_node();
@@ -76,6 +78,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 				node->transform.translation = local_world.xyz() + local_normal * 0.05f;
 				node->invalidate_cached_transform();
 				scene.create_renderable(sphere, node.get());
+#endif
 			}
 		}
 

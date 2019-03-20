@@ -168,7 +168,7 @@ public:
 	static Entity *get_handle_parent(PhysicsHandle *handle);
 	static Scene::Node *get_scene_node(PhysicsHandle *handle);
 
-	void apply_impulse(PhysicsHandle *handle, const vec3 &impulse, const vec3 &relative);
+	void apply_impulse(PhysicsHandle *handle, const vec3 &impulse, const vec3 &world_position);
 	void iterate(double frame_time);
 	void tick_callback(float tick_time);
 

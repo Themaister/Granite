@@ -443,7 +443,7 @@ PhysicsHandle *PhysicsSystem::add_infinite_plane(const vec4 &plane, const Materi
 	return handle;
 }
 
-void PhysicsSystem::apply_impulse(PhysicsHandle *handle, const vec3 &impulse, const vec3 &relative)
+void PhysicsSystem::apply_impulse(PhysicsHandle *handle, const vec3 &impulse, const vec3 &world_position)
 {
 	auto *body = btRigidBody::upcast(handle->bt_object);
 	if (body)
@@ -451,7 +451,8 @@ void PhysicsSystem::apply_impulse(PhysicsHandle *handle, const vec3 &impulse, co
 		body->activate();
 		body->applyImpulse(
 				btVector3(impulse.x, impulse.y, impulse.z),
-				btVector3(relative.x, relative.y, relative.z));
+				btVector3(world_position.x, world_position.y, world_position.z) -
+				body->getCenterOfMassPosition());
 	}
 }
 

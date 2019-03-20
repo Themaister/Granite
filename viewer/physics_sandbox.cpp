@@ -62,23 +62,8 @@ struct PhysicsSandboxApplication : Application, EventHandler
 
 			if (result.entity)
 			{
-				auto *cached = result.entity->get_component<RenderInfoComponent>();
 				Global::physics()->apply_impulse(result.handle,
 						20.0f * camera.get_front(), result.world_pos);
-#if 0
-				vec3 local_normal = inverse(mat3(cached->transform->world_transform)) * result.world_normal;
-				auto *new_parent = PhysicsSystem::get_scene_node(result.handle);
-				auto node = scene.create_node();
-				if (new_parent)
-					new_parent->add_child(node);
-				else
-					scene.get_root_node()->add_child(node);
-
-				node->transform.scale = vec3(0.05f);
-				node->transform.translation = local_world.xyz() + local_normal * 0.05f;
-				node->invalidate_cached_transform();
-				scene.create_renderable(sphere, node.get());
-#endif
 			}
 		}
 
@@ -331,7 +316,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 				scene.get_root_node()->add_child(sphere_node);
 				auto *entity = scene.create_renderable(cylinder, sphere_node.get());
 				PhysicsSystem::MaterialInfo info;
-				info.mass = 2.0f;
+				info.mass = 30.0f;
 				info.restitution = 0.2f;
 				info.angular_damping = 0.3f;
 				info.linear_damping = 0.3f;

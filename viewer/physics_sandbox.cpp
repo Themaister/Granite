@@ -45,6 +45,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 		sphere = Util::make_handle<SphereMesh>();
 		cone = Util::make_handle<ConeMesh>(16, 1.0f, 0.5f);
 		cylinder = Util::make_handle<CylinderMesh>(16, 1.0f, 0.5f);
+		capsule = Util::make_handle<CapsuleMesh>(16, 1.0f, 0.5f);
 		init_plane();
 		init_scene();
 		EVENT_MANAGER_REGISTER_LATCH(PhysicsSandboxApplication, on_swapchain_created, on_swapchain_destroyed, Vulkan::SwapchainParameterEvent);
@@ -317,13 +318,13 @@ struct PhysicsSandboxApplication : Application, EventHandler
 				sphere_node->transform.translation = result.world_pos + vec3(0.0f, 20.0f, 0.0f);
 				sphere_node->invalidate_cached_transform();
 				scene.get_root_node()->add_child(sphere_node);
-				auto *entity = scene.create_renderable(cylinder, sphere_node.get());
+				auto *entity = scene.create_renderable(capsule, sphere_node.get());
 				PhysicsSystem::MaterialInfo info;
 				info.mass = 30.0f;
 				info.restitution = 0.2f;
 				info.angular_damping = 0.3f;
 				info.linear_damping = 0.3f;
-				auto *sphere = Global::physics()->add_cylinder(sphere_node.get(), 1.0f, 0.5f, info);
+				auto *sphere = Global::physics()->add_capsule(sphere_node.get(), 1.0f, 0.5f, info);
 				entity->allocate_component<PhysicsComponent>()->handle = sphere;
 				PhysicsSystem::set_handle_parent(sphere, entity);
 			}
@@ -386,6 +387,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 	AbstractRenderableHandle cube;
 	AbstractRenderableHandle cone;
 	AbstractRenderableHandle cylinder;
+	AbstractRenderableHandle capsule;
 	AbstractRenderableHandle sphere;
 	AbstractRenderableHandle plane;
 	FPSCamera camera;

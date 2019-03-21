@@ -414,6 +414,13 @@ PhysicsHandle *PhysicsSystem::add_cylinder(Scene::Node *node, float height, floa
 	return handle;
 }
 
+PhysicsHandle *PhysicsSystem::add_capsule(Scene::Node *node, float height, float radius, const MaterialInfo &info)
+{
+	auto *shape = new btCapsuleShape(radius * node->transform.scale.x, 0.5f * height * node->transform.scale.y);
+	auto *handle = add_shape(node, info, shape);
+	return handle;
+}
+
 void PhysicsSystem::set_linear_velocity(PhysicsHandle *handle, const vec3 &v)
 {
 	auto *body = btRigidBody::upcast(handle->bt_object);

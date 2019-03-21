@@ -154,6 +154,7 @@ GeneratedMeshData create_sphere_mesh(unsigned density)
 	mesh.positions.reserve(6 * density * density);
 	mesh.attributes.reserve(6 * density * density);
 	mesh.indices.reserve(2 * density * density * 6);
+	mesh.has_uvs = true;
 
 	float density_mod = 1.0f / float(density - 1);
 	const auto to_uv = [&](unsigned x, unsigned y) -> vec2 {
@@ -220,6 +221,92 @@ GeneratedMeshData create_sphere_mesh(unsigned density)
 	return mesh;
 }
 
+GeneratedMeshData create_capsule_mesh(unsigned density, float height, float radius)
+{
+	GeneratedMeshData mesh;
+	mesh.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	mesh.primitive_restart = false;
+
+	const unsigned inner_rings = density / 2;
+	mesh.positions.resize(2 * inner_rings * density + 2);
+	mesh.attributes.resize(2 * inner_rings * density + 2);
+
+	const float half_height = 0.5f * height;
+
+	// Top center
+	mesh.positions[0] = vec3(0.0f, half_height + radius, 0.0f);
+	mesh.attributes[0].normal = vec3(0.0f, 1.0f, 0.0f);
+	// Bottom center
+	mesh.positions[1] = vec3(0.0f, -half_height - radius, 0.0f);
+	mesh.attributes[1].normal = vec3(0.0f, -1.0f, 0.0f);
+
+	float inv_density = 1.0f / float(density);
+
+	// Top rings
+	for (unsigned ring = 0; ring < inner_rings; ring++)
+	{
+		float w = float(ring + 1) / float(inner_rings);
+		float extra_h = radius * sqrt(1.0f - w * w);
+		unsigned offset = ring * density + 2;
+		for (unsigned i = 0; i < density; i++)
+		{
+			float rad = 2.0f * pi<float>() * (i + 0.5f) * inv_density;
+			auto &pos = mesh.positions[offset + i];
+			pos = vec3(w * radius * cos(rad), half_height + extra_h, -w * radius * sin(rad));
+			mesh.attributes[offset + i].normal = normalize(vec3(pos.x, extra_h, pos.z));
+		}
+	}
+
+	// Bottom rings
+	for (unsigned ring = 0; ring < inner_rings; ring++)
+	{
+		float w = float(inner_rings - ring) / float(inner_rings);
+		float extra_h = radius * sqrt(1.0f - w * w);
+		unsigned offset = (ring + inner_rings) * density + 2;
+		for (unsigned i = 0; i < density; i++)
+		{
+			float rad = 2.0f * pi<float>() * (i + 0.5f) * inv_density;
+			auto &pos = mesh.positions[offset + i];
+			pos = vec3(w * radius * cos(rad), -half_height - extra_h, -w * radius * sin(rad));
+			mesh.attributes[offset + i].normal = normalize(vec3(pos.x, -extra_h, pos.z));
+		}
+	}
+
+	// Link up top vertices.
+	for (unsigned i = 0; i < density; i++)
+	{
+		mesh.indices.push_back(0);
+		mesh.indices.push_back(i + 2);
+		mesh.indices.push_back(((i + 1) % density) + 2);
+	}
+
+	// Link up bottom vertices.
+	for (unsigned i = 0; i < density; i++)
+	{
+		mesh.indices.push_back(1);
+		mesh.indices.push_back((2 * inner_rings - 1) * density + ((i + 1) % density) + 2);
+		mesh.indices.push_back((2 * inner_rings - 1) * density + i + 2);
+	}
+
+	// Link up rings.
+	for (unsigned ring = 0; ring < 2 * inner_rings - 1; ring++)
+	{
+		unsigned off0 = ring * density + 2;
+		unsigned off1 = off0 + density;
+		for (unsigned i = 0; i < density; i++)
+		{
+			mesh.indices.push_back(off0 + i);
+			mesh.indices.push_back(off1 + i);
+			mesh.indices.push_back(off0 + ((i + 1) % density));
+			mesh.indices.push_back(off1 + ((i + 1) % density));
+			mesh.indices.push_back(off0 + ((i + 1) % density));
+			mesh.indices.push_back(off1 + i);
+		}
+	}
+
+	return mesh;
+}
+
 GeneratedMeshData create_cylinder_mesh(unsigned density, float height, float radius)
 {
 	GeneratedMeshData mesh;
@@ -234,11 +321,9 @@ GeneratedMeshData create_cylinder_mesh(unsigned density, float height, float rad
 	// Top center
 	mesh.positions[0] = vec3(0.0f, half_height, 0.0f);
 	mesh.attributes[0].normal = vec3(0.0f, 1.0f, 0.0f);
-	mesh.attributes[0].uv = vec2(0.5f);
 	// Bottom center
 	mesh.positions[1] = vec3(0.0f, -half_height, 0.0f);
 	mesh.attributes[1].normal = vec3(0.0f, -1.0f, 0.0f);
-	mesh.attributes[1].uv = vec2(0.5f);
 
 	float inv_density = 1.0f / float(density);
 
@@ -251,7 +336,6 @@ GeneratedMeshData create_cylinder_mesh(unsigned density, float height, float rad
 		float rad = 2.0f * pi<float>() * (i + 0.5f) * inv_density;
 		mesh.positions[i + 2] = vec3(0.95f * radius * cos(rad), half_height, -0.95f * radius * sin(rad));
 		mesh.attributes[i + 2].normal = vec3(0.0f, 1.0f, 0.0f);
-		mesh.attributes[i + 2].uv = vec2(0.5f);
 	}
 
 	// Top ring
@@ -260,7 +344,6 @@ GeneratedMeshData create_cylinder_mesh(unsigned density, float height, float rad
 		float rad = 2.0f * pi<float>() * (i + 0.5f) * inv_density;
 		mesh.positions[density + i + 2] = vec3(radius * cos(rad), half_height, -radius * sin(rad));
 		mesh.attributes[density + i + 2].normal = normalize(vec3(cos(rad), 1.0f, -sin(rad)));
-		mesh.attributes[density + i + 2].uv = vec2(0.5f);
 	}
 
 	// High ring
@@ -269,7 +352,6 @@ GeneratedMeshData create_cylinder_mesh(unsigned density, float height, float rad
 		float rad = 2.0f * pi<float>() * (i + 0.5f) * inv_density;
 		mesh.positions[2 * density + i + 2] = vec3(radius * cos(rad), high_ring_h, -radius * sin(rad));
 		mesh.attributes[2 * density + i + 2].normal = vec3(cos(rad), 0.0f, -sin(rad));
-		mesh.attributes[2 * density + i + 2].uv = vec2(0.5f);
 	}
 
 	// Low ring
@@ -278,7 +360,6 @@ GeneratedMeshData create_cylinder_mesh(unsigned density, float height, float rad
 		float rad = 2.0f * pi<float>() * (i + 0.5f) * inv_density;
 		mesh.positions[3 * density + i + 2] = vec3(radius * cos(rad), low_ring_h, -radius * sin(rad));
 		mesh.attributes[3 * density + i + 2].normal = vec3(cos(rad), 0.0f, -sin(rad));
-		mesh.attributes[3 * density + i + 2].uv = vec2(0.5f);
 	}
 
 	// Bottom ring
@@ -287,7 +368,6 @@ GeneratedMeshData create_cylinder_mesh(unsigned density, float height, float rad
 		float rad = 2.0f * pi<float>() * (i + 0.5f) * inv_density;
 		mesh.positions[4 * density + i + 2] = vec3(radius * cos(rad), -half_height, -radius * sin(rad));
 		mesh.attributes[4 * density + i + 2].normal = normalize(vec3(cos(rad), -1.0f, -sin(rad)));
-		mesh.attributes[4 * density + i + 2].uv = vec2(0.5f);
 	}
 
 	// Bottom inner ring
@@ -296,7 +376,6 @@ GeneratedMeshData create_cylinder_mesh(unsigned density, float height, float rad
 		float rad = 2.0f * pi<float>() * (i + 0.5f) * inv_density;
 		mesh.positions[5 * density + i + 2] = vec3(0.95f * radius * cos(rad), -half_height, 0.95f * -radius * sin(rad));
 		mesh.attributes[5 * density + i + 2].normal = vec3(0.0f, -1.0f, 0.0f);
-		mesh.attributes[5 * density + i + 2].uv = vec2(0.5f);
 	}
 
 	// Link up top vertices.
@@ -346,11 +425,9 @@ GeneratedMeshData create_cone_mesh(unsigned density, float height, float radius)
 	// Top center
 	mesh.positions[0] = vec3(0.0f, height, 0.0f);
 	mesh.attributes[0].normal = vec3(0.0f, 1.0f, 0.0f);
-	mesh.attributes[0].uv = vec2(0.5f);
 	// Bottom center
 	mesh.positions[1] = vec3(0.0f, 0.0f, 0.0f);
 	mesh.attributes[1].normal = vec3(0.0f, -1.0f, 0.0f);
-	mesh.attributes[1].uv = vec2(0.5f);
 
 	float inv_density = 1.0f / float(density);
 
@@ -365,7 +442,6 @@ GeneratedMeshData create_cone_mesh(unsigned density, float height, float radius)
 		float rad = 2.0f * pi<float>() * (i + 0.5f) * inv_density;
 		mesh.positions[i + 2] = vec3(top_ring_r * cos(rad), top_ring_h, -top_ring_r * sin(rad));
 		mesh.attributes[i + 2].normal = normalize(vec3(height * cos(rad), radius, -height * sin(rad)));
-		mesh.attributes[i + 2].uv = mesh.positions[i + 2].xz() * 0.5f / radius + 0.5f;
 	}
 
 	// Low ring
@@ -374,7 +450,6 @@ GeneratedMeshData create_cone_mesh(unsigned density, float height, float radius)
 		float rad = 2.0f * pi<float>() * (i + 0.5f) * inv_density;
 		mesh.positions[density + i + 2] = vec3(low_ring_r * cos(rad), low_ring_h, -low_ring_r * sin(rad));
 		mesh.attributes[density + i + 2].normal = normalize(vec3(height * cos(rad), radius, -height * sin(rad)));
-		mesh.attributes[density + i + 2].uv = mesh.positions[density + i + 2].xz() * 0.5f / radius + 0.5f;
 	}
 
 	// Bottom ring
@@ -383,7 +458,6 @@ GeneratedMeshData create_cone_mesh(unsigned density, float height, float radius)
 		float rad = 2.0f * pi<float>() * (i + 0.5f) * inv_density;
 		mesh.positions[2 * density + i + 2] = vec3(radius * cos(rad), 0.0f, -radius * sin(rad));
 		mesh.attributes[2 * density + i + 2].normal = normalize(vec3(cos(rad), 0.0f, -sin(rad)));
-		mesh.attributes[2 * density + i + 2].uv = mesh.positions[2 * density + i + 2].xz() * 0.5f / radius + 0.5f;
 	}
 
 	// Inner ring
@@ -392,7 +466,6 @@ GeneratedMeshData create_cone_mesh(unsigned density, float height, float radius)
 		float rad = 2.0f * pi<float>() * (i + 0.5f) * inv_density;
 		mesh.positions[3 * density + i + 2] = vec3(0.95f * radius * cos(rad), 0.0f, 0.95f * -radius * sin(rad));
 		mesh.attributes[3 * density + i + 2].normal = vec3(0.0f, -1.0f, 0.0f);
-		mesh.attributes[3 * density + i + 2].uv = mesh.positions[2 * density + i + 2].xz() * 0.5f / radius + 0.5f;
 	}
 
 	for (auto &pos : mesh.positions)
@@ -465,8 +538,11 @@ void GeneratedMesh::setup_from_generated_mesh(Vulkan::Device &device, const Gene
 	this->attributes[ecast(MeshAttribute::Position)].offset = 0;
 	this->attributes[ecast(MeshAttribute::Normal)].format = VK_FORMAT_R32G32B32_SFLOAT;
 	this->attributes[ecast(MeshAttribute::Normal)].offset = offsetof(GeneratedMeshData::Attribute, normal);
-	this->attributes[ecast(MeshAttribute::UV)].format = VK_FORMAT_R32G32_SFLOAT;
-	this->attributes[ecast(MeshAttribute::UV)].offset = offsetof(GeneratedMeshData::Attribute, uv);
+	if (mesh.has_uvs)
+	{
+		this->attributes[ecast(MeshAttribute::UV)].format = VK_FORMAT_R32G32_SFLOAT;
+		this->attributes[ecast(MeshAttribute::UV)].offset = offsetof(GeneratedMeshData::Attribute, uv);
+	}
 	position_stride = sizeof(vec3);
 	attribute_stride = sizeof(GeneratedMeshData::Attribute);
 
@@ -538,6 +614,26 @@ void CylinderMesh::on_device_created(const DeviceCreatedEvent &event)
 }
 
 void CylinderMesh::on_device_destroyed(const DeviceCreatedEvent &)
+{
+	reset();
+}
+
+CapsuleMesh::CapsuleMesh(unsigned density_, float height_, float radius_)
+	: density(density_), height(height_), radius(radius_)
+{
+	static_aabb = AABB(vec3(-1.0f), vec3(1.0f));
+	material = StockMaterials::get().get_checkerboard();
+	EVENT_MANAGER_REGISTER_LATCH(CapsuleMesh, on_device_created, on_device_destroyed, DeviceCreatedEvent);
+}
+
+void CapsuleMesh::on_device_created(const DeviceCreatedEvent &event)
+{
+	auto &device = event.get_device();
+	auto mesh = create_capsule_mesh(density, height, radius);
+	setup_from_generated_mesh(device, mesh);
+}
+
+void CapsuleMesh::on_device_destroyed(const DeviceCreatedEvent &)
 {
 	reset();
 }

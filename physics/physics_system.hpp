@@ -159,6 +159,7 @@ public:
 	PhysicsHandle *add_cube(Scene::Node *node, const MaterialInfo &info);
 	PhysicsHandle *add_sphere(Scene::Node *node, const MaterialInfo &info);
 	PhysicsHandle *add_cone(Scene::Node *node, float height, float radius, const MaterialInfo &info);
+	PhysicsHandle *add_capsule(Scene::Node *node, float height, float radius, const MaterialInfo &info);
 	PhysicsHandle *add_cylinder(Scene::Node *node, float height, float radius, const MaterialInfo &info);
 	PhysicsHandle *add_infinite_plane(const vec4 &plane, const MaterialInfo &info);
 	void set_linear_velocity(PhysicsHandle *handle, const vec3 &v);

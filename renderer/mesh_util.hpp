@@ -82,10 +82,12 @@ struct GeneratedMeshData
 
 	VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 	bool primitive_restart = false;
+	bool has_uvs = false;
 };
 GeneratedMeshData create_sphere_mesh(unsigned density);
 GeneratedMeshData create_cone_mesh(unsigned density, float height, float radius);
 GeneratedMeshData create_cylinder_mesh(unsigned density, float height, float radius);
+GeneratedMeshData create_capsule_mesh(unsigned density, float height, float radius);
 
 class GeneratedMesh : public StaticMesh
 {
@@ -121,6 +123,19 @@ class CylinderMesh : public GeneratedMesh, public EventHandler
 {
 public:
 	CylinderMesh(unsigned density, float height, float radius);
+
+private:
+	unsigned density;
+	float height;
+	float radius;
+	void on_device_created(const Vulkan::DeviceCreatedEvent &event);
+	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
+};
+
+class CapsuleMesh : public GeneratedMesh, public EventHandler
+{
+public:
+	CapsuleMesh(unsigned density, float height, float radius);
 
 private:
 	unsigned density;

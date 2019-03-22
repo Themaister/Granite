@@ -246,7 +246,7 @@ GeneratedMeshData create_capsule_mesh(unsigned density, float height, float radi
 	for (unsigned ring = 0; ring < inner_rings; ring++)
 	{
 		float w = float(ring + 1) / float(inner_rings);
-		float extra_h = radius * sqrt(1.0f - w * w);
+		float extra_h = radius * muglm::sqrt(1.0f - w * w);
 		unsigned offset = ring * density + 2;
 		for (unsigned i = 0; i < density; i++)
 		{
@@ -261,7 +261,7 @@ GeneratedMeshData create_capsule_mesh(unsigned density, float height, float radi
 	for (unsigned ring = 0; ring < inner_rings; ring++)
 	{
 		float w = float(inner_rings - ring) / float(inner_rings);
-		float extra_h = radius * sqrt(1.0f - w * w);
+		float extra_h = radius * muglm::sqrt(1.0f - w * w);
 		unsigned offset = (ring + inner_rings) * density + 2;
 		for (unsigned i = 0; i < density; i++)
 		{

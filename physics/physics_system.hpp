@@ -156,6 +156,7 @@ public:
 
 	unsigned register_collision_mesh(const CollisionMesh &mesh);
 	PhysicsHandle *add_mesh(Scene::Node *node, unsigned index, const MaterialInfo &info);
+	PhysicsHandle *add_convex_hull(Scene::Node *node, unsigned index, const MaterialInfo &info);
 	PhysicsHandle *add_cube(Scene::Node *node, const MaterialInfo &info);
 	PhysicsHandle *add_sphere(Scene::Node *node, const MaterialInfo &info);
 	PhysicsHandle *add_cone(Scene::Node *node, float height, float radius, const MaterialInfo &info);

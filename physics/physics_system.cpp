@@ -391,6 +391,31 @@ PhysicsHandle *PhysicsSystem::add_mesh(Scene::Node *node, unsigned index, const 
 	return handle;
 }
 
+PhysicsHandle *PhysicsSystem::add_convex_hull(Scene::Node *node, unsigned index, const MaterialInfo &info)
+{
+	assert(index < mesh_collision_shapes.size());
+
+	auto *mesh = mesh_collision_shapes[index]->getMeshInterface();
+	const unsigned char *vertex_base = nullptr;
+	int num_verts = 0;
+	PHY_ScalarType type;
+	int stride = 0;
+	const unsigned char *index_base = nullptr;
+	int index_stride;
+	int num_faces;
+	PHY_ScalarType indices_type;
+
+	mesh->getLockedReadOnlyVertexIndexBase(&vertex_base, num_verts, type, stride,
+	                                       &index_base, index_stride, num_faces, indices_type);
+
+	if (type != PHY_FLOAT)
+		return nullptr;
+
+	auto *shape = new btConvexHullShape(reinterpret_cast<const btScalar *>(vertex_base), num_verts, stride);
+	auto *handle = add_shape(node, info, shape);
+	return handle;
+}
+
 PhysicsHandle *PhysicsSystem::add_cube(Scene::Node *node, const MaterialInfo &info)
 {
 	auto *shape = new btBoxShape(btVector3(node->transform.scale.x,

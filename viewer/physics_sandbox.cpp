@@ -254,7 +254,9 @@ struct PhysicsSandboxApplication : Application, EventHandler
 				mesh_node->invalidate_cached_transform();
 				scene.get_root_node()->add_child(mesh_node);
 				auto *entity = scene.create_renderable(gltf_mesh, mesh_node.get());
-				auto *mesh = Global::physics()->add_mesh(mesh_node.get(), gltf_mesh_physics_index, {});
+				PhysicsSystem::MaterialInfo info;
+				info.mass = 25.0f;
+				auto *mesh = Global::physics()->add_convex_hull(mesh_node.get(), gltf_mesh_physics_index, info);
 				entity->allocate_component<PhysicsComponent>()->handle = mesh;
 				PhysicsSystem::set_handle_parent(mesh, entity);
 			}

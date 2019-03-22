@@ -342,7 +342,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 			{
 				auto sphere_node = scene.create_node();
 				sphere_node->transform.translation = result.world_pos + vec3(0.0f, 20.0f, 0.0f);
-				sphere_node->transform.scale = vec3(0.2f);
+				sphere_node->transform.scale = vec3(1.2f);
 				sphere_node->invalidate_cached_transform();
 				scene.get_root_node()->add_child(sphere_node);
 				auto *entity = scene.create_renderable(capsule, sphere_node.get());

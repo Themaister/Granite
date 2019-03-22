@@ -231,7 +231,7 @@ GeneratedMeshData create_capsule_mesh(unsigned density, float height, float radi
 	mesh.positions.resize(2 * inner_rings * density + 2);
 	mesh.attributes.resize(2 * inner_rings * density + 2);
 
-	const float half_height = 0.5f * height;
+	const float half_height = 0.5f * height - 0.5f * radius;
 
 	// Top center
 	mesh.positions[0] = vec3(0.0f, half_height + radius, 0.0f);

@@ -227,19 +227,43 @@ struct PhysicsSandboxApplication : Application, EventHandler
 
 			if (result.entity)
 			{
+				auto top_node = scene.create_node();
+				top_node->transform.translation = result.world_pos + vec3(0.0f, 20.0f, 0.0f);
+				top_node->invalidate_cached_transform();
+
+				scene.get_root_node()->add_child(top_node);
 				auto cube_node = scene.create_node();
-				cube_node->transform.translation = result.world_pos + vec3(0.0f, 20.0f, 0.0f);
-				cube_node->invalidate_cached_transform();
-				scene.get_root_node()->add_child(cube_node);
-				auto *entity = scene.create_renderable(cube, cube_node.get());
+				auto cylinder_node = scene.create_node();
+				top_node->add_child(cube_node);
+				top_node->add_child(cylinder_node);
+
+				{
+					scene.create_renderable(cube, cube_node.get());
+					cube_node->transform.scale = vec3(3.0f);
+				}
+
+				{
+					cylinder_node->transform.translation = vec3(0.0f, 4.5f, 0.0f);
+					cylinder_node->transform.scale = vec3(3.0f);
+					scene.create_renderable(cylinder, cylinder_node.get());
+				}
+
+				PhysicsSystem::CompoundMeshPart parts[2];
+				parts[0].type = PhysicsSystem::MeshType::Cube;
+				parts[1].type = PhysicsSystem::MeshType::Cylinder;
+				parts[1].radius = 0.5f;
+				parts[0].child_node = cube_node.get();
+				parts[1].child_node = cylinder_node.get();
+
 				PhysicsSystem::MaterialInfo info;
 				info.mass = 10.0f;
 				info.restitution = 0.05f;
 				info.angular_damping = 0.3f;
 				info.linear_damping = 0.3f;
-				auto *cube = Global::physics()->add_cube(cube_node.get(), info);
-				entity->allocate_component<PhysicsComponent>()->handle = cube;
-				PhysicsSystem::set_handle_parent(cube, entity);
+				auto *compound = Global::physics()->add_compound(top_node.get(), parts, 2, info);
+				auto *top_entity = scene.create_entity();
+				top_entity->allocate_component<PhysicsComponent>()->handle = compound;
+				PhysicsSystem::set_handle_parent(compound, top_entity);
 			}
 		}
 		else if (e.get_key() == Key::L && e.get_key_state() == KeyState::Pressed)
@@ -318,6 +342,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 			{
 				auto sphere_node = scene.create_node();
 				sphere_node->transform.translation = result.world_pos + vec3(0.0f, 20.0f, 0.0f);
+				sphere_node->transform.scale = vec3(0.2f);
 				sphere_node->invalidate_cached_transform();
 				scene.get_root_node()->add_child(sphere_node);
 				auto *entity = scene.create_renderable(capsule, sphere_node.get());

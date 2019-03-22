@@ -155,6 +155,31 @@ public:
 	};
 
 	unsigned register_collision_mesh(const CollisionMesh &mesh);
+
+	enum class MeshType
+	{
+		None,
+		ConvexHull,
+		Cube,
+		Sphere,
+		Cone,
+		Capsule,
+		Cylinder
+	};
+
+	struct CompoundMeshPart
+	{
+		MeshType type = MeshType::None;
+		const Scene::Node *child_node = nullptr;
+		unsigned index = 0;
+		float height = 1.0f;
+		float radius = 1.0f;
+	};
+
+	PhysicsHandle *add_compound(Scene::Node *node,
+	                            const CompoundMeshPart *parts, unsigned num_parts,
+	                            const MaterialInfo &info);
+
 	PhysicsHandle *add_mesh(Scene::Node *node, unsigned index, const MaterialInfo &info);
 	PhysicsHandle *add_convex_hull(Scene::Node *node, unsigned index, const MaterialInfo &info);
 	PhysicsHandle *add_cube(Scene::Node *node, const MaterialInfo &info);
@@ -163,6 +188,7 @@ public:
 	PhysicsHandle *add_capsule(Scene::Node *node, float height, float radius, const MaterialInfo &info);
 	PhysicsHandle *add_cylinder(Scene::Node *node, float height, float radius, const MaterialInfo &info);
 	PhysicsHandle *add_infinite_plane(const vec4 &plane, const MaterialInfo &info);
+
 	void set_linear_velocity(PhysicsHandle *handle, const vec3 &v);
 	void set_angular_velocity(PhysicsHandle *handle, const vec3 &v);
 	void apply_force(PhysicsHandle *handle, const vec3 &v);

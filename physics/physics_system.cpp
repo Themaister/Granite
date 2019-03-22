@@ -44,6 +44,15 @@ struct PhysicsHandle
 			btRigidBody *body = btRigidBody::upcast(bt_object);
 			if (body && body->getMotionState())
 				delete body->getMotionState();
+
+
+		}
+
+		if (bt_shape && bt_shape->getShapeType() == COMPOUND_SHAPE_PROXYTYPE)
+		{
+			auto *shape = static_cast<btCompoundShape *>(bt_shape);
+			for (int i = 0; i < shape->getNumChildShapes(); i++)
+				delete shape->getChildShape(i);
 		}
 
 		delete bt_object;
@@ -285,9 +294,6 @@ PhysicsHandle *PhysicsSystem::add_shape(Scene::Node *node, const MaterialInfo &i
 {
 	btTransform t;
 	t.setIdentity();
-	btVector3 local_inertia(0, 0, 0);
-	if (info.mass != 0.0f && info.type != ObjectType::Static)
-		shape->calculateLocalInertia(info.mass, local_inertia);
 
 	if (node)
 	{
@@ -300,7 +306,14 @@ PhysicsHandle *PhysicsSystem::add_shape(Scene::Node *node, const MaterialInfo &i
 				node->transform.rotation.y,
 				node->transform.rotation.z,
 				node->transform.rotation.w));
+		shape->setLocalScaling(btVector3(node->transform.scale.x,
+		                                 node->transform.scale.y,
+		                                 node->transform.scale.z));
 	}
+
+	btVector3 local_inertia(0, 0, 0);
+	if (info.mass != 0.0f && info.type != ObjectType::Static)
+		shape->calculateLocalInertia(info.mass, local_inertia);
 
 	PhysicsHandle *handle = nullptr;
 
@@ -373,13 +386,93 @@ PhysicsHandle *PhysicsSystem::add_shape(Scene::Node *node, const MaterialInfo &i
 	return handle;
 }
 
+PhysicsHandle *PhysicsSystem::add_compound(Scene::Node *node,
+                                           const CompoundMeshPart *parts, unsigned num_parts,
+                                           const MaterialInfo &info)
+{
+	auto *compound_shape = new btCompoundShape();
+
+	for (unsigned i = 0; i < num_parts; i++)
+	{
+		auto &part = parts[i];
+		btCollisionShape *shape = nullptr;
+		switch (part.type)
+		{
+		case MeshType::Cylinder:
+			shape = new btCylinderShape(btVector3(
+					part.radius,
+					0.5f * part.height,
+					part.radius));
+			break;
+
+		case MeshType::Cone:
+			shape = new btConeShape(part.radius, 0.5f * part.height);
+			break;
+
+		case MeshType::Capsule:
+			shape = new btCapsuleShape(part.radius, 0.5f * part.height);
+			break;
+
+		case MeshType::Cube:
+			shape = new btBoxShape(btVector3(1.0f, 1.0f, 1.0f));
+			break;
+
+		case MeshType::Sphere:
+			shape = new btSphereShape(1.0f);
+			break;
+
+		case MeshType::ConvexHull:
+		{
+			assert(part.index < mesh_collision_shapes.size());
+
+			auto *mesh = mesh_collision_shapes[part.index]->getMeshInterface();
+			const unsigned char *vertex_base = nullptr;
+			int num_verts = 0;
+			PHY_ScalarType type;
+			int stride = 0;
+			const unsigned char *index_base = nullptr;
+			int index_stride;
+			int num_faces;
+			PHY_ScalarType indices_type;
+
+			mesh->getLockedReadOnlyVertexIndexBase(&vertex_base, num_verts, type, stride,
+			                                       &index_base, index_stride, num_faces, indices_type);
+
+			if (type != PHY_FLOAT)
+				break;
+
+			shape = new btConvexHullShape(reinterpret_cast<const btScalar *>(vertex_base), num_verts, stride);
+			break;
+		}
+
+		case MeshType::None:
+			break;
+		}
+
+		if (shape)
+		{
+			btTransform t;
+			t.setIdentity();
+			if (part.child_node)
+			{
+				auto &child_t = part.child_node->transform;
+				shape->setLocalScaling(btVector3(child_t.scale.x, child_t.scale.y, child_t.scale.z));
+				t.setRotation(btQuaternion(child_t.rotation.x, child_t.rotation.y, child_t.rotation.z, child_t.rotation.w));
+				t.setOrigin(btVector3(child_t.translation.x, child_t.translation.y, child_t.translation.z));
+			}
+			compound_shape->addChildShape(t, shape);
+		}
+	}
+
+	auto *handle = add_shape(node, info, compound_shape);
+	return handle;
+}
+
 PhysicsHandle *PhysicsSystem::add_mesh(Scene::Node *node, unsigned index, const MaterialInfo &info)
 {
 	assert(index < mesh_collision_shapes.size());
 	auto *shape = new btScaledBvhTriangleMeshShape(mesh_collision_shapes[index].get(),
-	                                               btVector3(node->transform.scale.x,
-	                                                         node->transform.scale.y,
-	                                                         node->transform.scale.z));
+	                                               btVector3(1.0f, 1.0f, 1.0f));
 
 	// Mesh objects cannot be dynamic.
 	MaterialInfo tmp = info;
@@ -418,30 +511,28 @@ PhysicsHandle *PhysicsSystem::add_convex_hull(Scene::Node *node, unsigned index,
 
 PhysicsHandle *PhysicsSystem::add_cube(Scene::Node *node, const MaterialInfo &info)
 {
-	auto *shape = new btBoxShape(btVector3(node->transform.scale.x,
-	                                       node->transform.scale.y,
-	                                       node->transform.scale.z));
+	auto *shape = new btBoxShape(btVector3(1.0f, 1.0f, 1.0f));
 	auto *handle = add_shape(node, info, shape);
 	return handle;
 }
 
 PhysicsHandle *PhysicsSystem::add_cone(Scene::Node *node, float height, float radius, const MaterialInfo &info)
 {
-	auto *shape = new btConeShape(radius * node->transform.scale.x, height * node->transform.scale.y);
+	auto *shape = new btConeShape(radius, height);
 	auto *handle = add_shape(node, info, shape);
 	return handle;
 }
 
 PhysicsHandle *PhysicsSystem::add_cylinder(Scene::Node *node, float height, float radius, const MaterialInfo &info)
 {
-	auto *shape = new btCylinderShape(btVector3(radius * node->transform.scale.x, 0.5f * height * node->transform.scale.y, radius * node->transform.scale.z));
+	auto *shape = new btCylinderShape(btVector3(radius, 0.5f * height, radius));
 	auto *handle = add_shape(node, info, shape);
 	return handle;
 }
 
 PhysicsHandle *PhysicsSystem::add_capsule(Scene::Node *node, float height, float radius, const MaterialInfo &info)
 {
-	auto *shape = new btCapsuleShape(radius * node->transform.scale.x, 0.5f * height * node->transform.scale.y);
+	auto *shape = new btCapsuleShape(radius, 0.5f * height);
 	auto *handle = add_shape(node, info, shape);
 	return handle;
 }

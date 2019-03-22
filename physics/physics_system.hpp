@@ -37,6 +37,7 @@ class btCollisionShape;
 class btBvhTriangleMeshShape;
 class btTriangleIndexVertexArray;
 class btGhostPairCallback;
+class btDynamicsWorld;
 
 namespace Granite
 {
@@ -53,6 +54,25 @@ struct CollisionMeshComponent : ComponentBase
 {
 	GRANITE_COMPONENT_TYPE_DECL(CollisionMeshComponent)
 	SceneFormats::CollisionMesh mesh;
+};
+
+class KinematicCharacter
+{
+public:
+	KinematicCharacter();
+	KinematicCharacter(btDynamicsWorld *world, Scene::NodeHandle node);
+	~KinematicCharacter();
+
+	KinematicCharacter(KinematicCharacter &&other) noexcept;
+	KinematicCharacter &operator=(KinematicCharacter &&other) noexcept;
+
+	void set_move_velocity(const vec3 &v);
+	bool is_grounded();
+	void jump(const vec3 &v);
+
+private:
+	struct Impl;
+	std::unique_ptr<Impl> impl;
 };
 
 class CollisionEvent : public Event
@@ -149,7 +169,7 @@ public:
 		size_t index_stride_triangle = 0;
 		const float *positions = nullptr;
 		size_t position_stride = 0;
-		AABB aabb;
+		AABB aabb = {};
 
 		float margin = 0.1f;
 	};
@@ -188,6 +208,8 @@ public:
 	PhysicsHandle *add_capsule(Scene::Node *node, float height, float radius, const MaterialInfo &info);
 	PhysicsHandle *add_cylinder(Scene::Node *node, float height, float radius, const MaterialInfo &info);
 	PhysicsHandle *add_infinite_plane(const vec4 &plane, const MaterialInfo &info);
+
+	KinematicCharacter add_kinematic_character(Scene::NodeHandle node);
 
 	void set_linear_velocity(PhysicsHandle *handle, const vec3 &v);
 	void set_angular_velocity(PhysicsHandle *handle, const vec3 &v);

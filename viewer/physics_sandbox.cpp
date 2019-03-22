@@ -52,6 +52,23 @@ struct PhysicsSandboxApplication : Application, EventHandler
 		EVENT_MANAGER_REGISTER(PhysicsSandboxApplication, on_key, KeyboardEvent);
 		EVENT_MANAGER_REGISTER(PhysicsSandboxApplication, on_collision, CollisionEvent);
 		EVENT_MANAGER_REGISTER(PhysicsSandboxApplication, on_mouse, MouseButtonEvent);
+		EVENT_MANAGER_REGISTER(PhysicsSandboxApplication, on_input_state, InputStateEvent);
+	}
+
+	bool on_input_state(const InputStateEvent &e)
+	{
+		vec3 walk_direction = vec3(0.0f);
+		if (e.get_key_pressed(Key::F))
+			walk_direction.x -= 3.0f;
+		if (e.get_key_pressed(Key::H))
+			walk_direction.x += 3.0f;
+		if (e.get_key_pressed(Key::T))
+			walk_direction.z -= 3.0f;
+		if (e.get_key_pressed(Key::G))
+			walk_direction.z += 3.0f;
+
+		kinematic.set_move_velocity(walk_direction);
+		return true;
 	}
 
 	bool on_mouse(const MouseButtonEvent &e)
@@ -177,14 +194,11 @@ struct PhysicsSandboxApplication : Application, EventHandler
 		}
 
 		{
-			auto camera_node = scene.create_node();
-			root_node->add_child(camera_node);
-			auto *camera_entity = scene.create_entity();
-			auto *phys = camera_entity->allocate_component<PhysicsComponent>();
-			PhysicsSystem::MaterialInfo info;
-			info.type = PhysicsSystem::ObjectType::Kinematic;
-			phys->handle = Global::physics()->add_sphere(camera_node.get(), info);
-			camera_handle = phys->handle;
+			auto player_node = scene.create_node();
+			player_node->transform.translation.y = 2.0f;
+			root_node->add_child(player_node);
+			auto *player_entity = scene.create_renderable(sphere, player_node.get());
+			kinematic = Global::physics()->add_kinematic_character(player_node);
 		}
 	}
 
@@ -192,6 +206,10 @@ struct PhysicsSandboxApplication : Application, EventHandler
 	{
 		if (e.get_key() == Key::M)
 			apply_anti_gravity = e.get_key_state() != KeyState::Released;
+
+		if (e.get_key() == Key::V && e.get_key_state() == KeyState::Pressed)
+			if (kinematic.is_grounded())
+				kinematic.jump(vec3(0.0f, 20.0f, 0.0f));
 
 		if (e.get_key() == Key::Space && e.get_key_state() == KeyState::Pressed)
 		{
@@ -372,20 +390,8 @@ struct PhysicsSandboxApplication : Application, EventHandler
 			}
 		}
 
-		auto *node = PhysicsSystem::get_scene_node(camera_handle);
-		node->transform.translation = camera.get_position();
-
 		Global::physics()->iterate(frame_time);
 		scene.update_cached_transforms();
-
-#if 0
-		{
-			std::vector<PhysicsHandle *> ghost_collisions;
-			Global::physics()->get_overlapping_objects(camera_handle, ghost_collisions);
-			if (!ghost_collisions.empty())
-				LOGI("Overlapping with %u objects!\n", unsigned(ghost_collisions.size()));
-		}
-#endif
 
 		lighting.directional.direction = normalize(vec3(1.0f, 0.5f, 1.0f));
 		lighting.directional.color = vec3(1.0f, 0.8f, 0.6f);
@@ -411,6 +417,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 	}
 
 	Scene scene;
+	KinematicCharacter kinematic;
 	AbstractRenderableHandle cube;
 	AbstractRenderableHandle cone;
 	AbstractRenderableHandle cylinder;
@@ -426,7 +433,6 @@ struct PhysicsSandboxApplication : Application, EventHandler
 
 	AbstractRenderableHandle gltf_mesh;
 	unsigned gltf_mesh_physics_index = 0;
-	PhysicsHandle *camera_handle = nullptr;
 
 	bool apply_anti_gravity = false;
 };

@@ -24,11 +24,14 @@
 #include <btBulletDynamicsCommon.h>
 #include <btBulletCollisionCommon.h>
 #include <BulletCollision/CollisionDispatch/btGhostObject.h>
+#include <BulletDynamics/Character/btKinematicCharacterController.h>
 
 using namespace std;
 
 namespace Granite
 {
+static const float PHYSICS_TICK = 1.0f / 300.0f;
+
 struct PhysicsHandle
 {
 	Scene::Node *node = nullptr;
@@ -80,7 +83,8 @@ void PhysicsSystem::tick_callback(float)
 			auto &pt = contact->getContactPoint(j);
 			if (pt.m_lifeTime == 1)
 			{
-				new_collision_buffer.emplace_back(handle0->entity, handle1->entity,
+				new_collision_buffer.emplace_back(handle0 ? handle0->entity : nullptr,
+				                                  handle1 ? handle1->entity : nullptr,
 				                                  handle0, handle1,
 				                                  vec3(pt.getPositionWorldOnB().x(),
 				                                       pt.getPositionWorldOnB().y(),
@@ -89,6 +93,15 @@ void PhysicsSystem::tick_callback(float)
 				                                       pt.m_normalWorldOnB.y(),
 				                                       pt.m_normalWorldOnB.z()));
 			}
+		}
+
+		// Activate dynamic objects if kinematic bodies collide into them.
+		if (num_contacts > 0)
+		{
+			if (!handle0 && handle1)
+				handle1->bt_object->activate();
+			else if (!handle1 && handle0)
+				handle0->bt_object->activate();
 		}
 	}
 
@@ -143,6 +156,117 @@ PhysicsSystem::PhysicsSystem()
 	world->getPairCache()->setInternalGhostPairCallback(ghost_callback.get());
 }
 
+struct KinematicCharacter::Impl : btKinematicCharacterController
+{
+	Impl(btPairCachingGhostObject *ghost_, btConvexShape *shape_, float step_height, const btVector3 &up)
+		: btKinematicCharacterController(ghost_, shape_, step_height, up),
+		  ghost(ghost_), shape(shape_)
+	{
+
+	}
+
+	void updateAction(btCollisionWorld *collision_world, btScalar delta_time) override
+	{
+		btKinematicCharacterController::updateAction(collision_world, delta_time);
+		if (node)
+		{
+			node->transform.translation = vec3(m_currentPosition.x(),
+			                                   m_currentPosition.y(),
+			                                   m_currentPosition.z());
+			node->transform.rotation = quat(m_currentOrientation.w(),
+			                                m_currentOrientation.x(),
+			                                m_currentOrientation.y(),
+			                                m_currentOrientation.z());
+			node->invalidate_cached_transform();
+		}
+	}
+
+	~Impl() override
+	{
+		if (world && ghost)
+			world->removeCollisionObject(ghost);
+		if (world)
+			world->removeCharacter(this);
+		delete shape;
+		delete ghost;
+	}
+
+	btPairCachingGhostObject *ghost;
+	btConvexShape *shape;
+	btDynamicsWorld *world = nullptr;
+	Scene::NodeHandle node;
+	float tick = 0.0f;
+};
+
+KinematicCharacter::KinematicCharacter(btDynamicsWorld *world, Scene::NodeHandle node)
+{
+	auto *ghost = new btPairCachingGhostObject();
+	auto *shape = new btSphereShape(btScalar(1.0f));
+	shape->setLocalScaling(btVector3(node->transform.scale.x,
+	                                 node->transform.scale.y,
+	                                 node->transform.scale.y));
+	ghost->setCollisionShape(shape);
+	world->addCollisionObject(ghost);
+
+	btTransform t;
+	t.setIdentity();
+	t.setOrigin(btVector3(node->transform.translation.x,
+	                      node->transform.translation.y,
+	                      node->transform.translation.z));
+	t.setRotation(btQuaternion(node->transform.rotation.x,
+	                           node->transform.rotation.y,
+	                           node->transform.rotation.z,
+	                           node->transform.rotation.w));
+	ghost->setWorldTransform(t);
+	impl.reset(new Impl(ghost, shape, 0.01f, btVector3(0.0f, 1.0f, 0.0f)));
+	impl->world = world;
+	impl->node = node;
+	impl->tick = PHYSICS_TICK;
+	world->addCharacter(impl.get());
+}
+
+KinematicCharacter &KinematicCharacter::operator=(KinematicCharacter &&other) noexcept
+{
+	impl = move(other.impl);
+	return *this;
+}
+
+void KinematicCharacter::set_move_velocity(const vec3 &v)
+{
+	impl->setWalkDirection(btVector3(v.x * impl->tick,
+	                                 v.y * impl->tick,
+	                                 v.z * impl->tick));
+}
+
+bool KinematicCharacter::is_grounded()
+{
+	return impl->onGround();
+}
+
+void KinematicCharacter::jump(const vec3 &v)
+{
+	impl->jump(btVector3(v.x, v.y, v.z));
+}
+
+KinematicCharacter::KinematicCharacter(KinematicCharacter &&other) noexcept
+{
+	*this = move(other);
+}
+
+KinematicCharacter::KinematicCharacter()
+{
+}
+
+KinematicCharacter::~KinematicCharacter()
+{
+}
+
+KinematicCharacter PhysicsSystem::add_kinematic_character(Scene::NodeHandle node)
+{
+	KinematicCharacter character(world.get(), node);
+	return character;
+}
+
 PhysicsSystem::~PhysicsSystem()
 {
 	for (int i = world->getNumCollisionObjects() - 1; i >= 0; i--)
@@ -194,7 +318,7 @@ void PhysicsSystem::iterate(double frame_time)
 		}
 	}
 
-	world->stepSimulation(btScalar(frame_time), 20, 1.0f / 300.0f);
+	world->stepSimulation(btScalar(frame_time), 20, PHYSICS_TICK);
 
 	// Update node transforms from physics engine.
 	for (auto *handle : handles)

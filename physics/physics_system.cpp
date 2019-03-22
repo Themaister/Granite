@@ -127,7 +127,7 @@ RaycastResult PhysicsSystem::query_closest_hit_ray(const vec3 &from, const vec3 
 		if (object)
 		{
 			result.handle = static_cast<PhysicsHandle *>(object->getUserPointer());
-			result.entity = result.handle->entity;
+			result.entity = result.handle ? result.handle->entity : nullptr;
 		}
 		result.world_pos.x = cb.m_hitPointWorld.x();
 		result.world_pos.y = cb.m_hitPointWorld.y();
@@ -162,7 +162,8 @@ struct KinematicCharacter::Impl : btKinematicCharacterController
 		: btKinematicCharacterController(ghost_, shape_, step_height, up),
 		  ghost(ghost_), shape(shape_)
 	{
-
+		setMaxSlope(0.4f);
+		setMaxJumpHeight(3.0f);
 	}
 
 	void updateAction(btCollisionWorld *collision_world, btScalar delta_time) override
@@ -186,7 +187,7 @@ struct KinematicCharacter::Impl : btKinematicCharacterController
 		if (world && ghost)
 			world->removeCollisionObject(ghost);
 		if (world)
-			world->removeCharacter(this);
+			world->removeAction(this);
 		delete shape;
 		delete ghost;
 	}
@@ -206,7 +207,8 @@ KinematicCharacter::KinematicCharacter(btDynamicsWorld *world, Scene::NodeHandle
 	                                 node->transform.scale.y,
 	                                 node->transform.scale.y));
 	ghost->setCollisionShape(shape);
-	world->addCollisionObject(ghost);
+	ghost->setCollisionFlags(btCollisionObject::CF_CHARACTER_OBJECT);
+	world->addCollisionObject(ghost, btBroadphaseProxy::CharacterFilter);
 
 	btTransform t;
 	t.setIdentity();
@@ -222,7 +224,7 @@ KinematicCharacter::KinematicCharacter(btDynamicsWorld *world, Scene::NodeHandle
 	impl->world = world;
 	impl->node = node;
 	impl->tick = PHYSICS_TICK;
-	world->addCharacter(impl.get());
+	world->addAction(impl.get());
 }
 
 KinematicCharacter &KinematicCharacter::operator=(KinematicCharacter &&other) noexcept

@@ -94,15 +94,6 @@ void PhysicsSystem::tick_callback(float)
 				                                       pt.m_normalWorldOnB.z()));
 			}
 		}
-
-		// Activate dynamic objects if kinematic bodies collide into them.
-		if (num_contacts > 0)
-		{
-			if (!handle0 && handle1)
-				handle1->bt_object->activate();
-			else if (!handle1 && handle0)
-				handle0->bt_object->activate();
-		}
 	}
 
 	auto *em = Global::event_manager();
@@ -208,6 +199,7 @@ KinematicCharacter::KinematicCharacter(btDynamicsWorld *world, Scene::NodeHandle
 	                                 node->transform.scale.y));
 	ghost->setCollisionShape(shape);
 	ghost->setCollisionFlags(btCollisionObject::CF_CHARACTER_OBJECT);
+	ghost->setActivationState(DISABLE_DEACTIVATION);
 	world->addCollisionObject(ghost, btBroadphaseProxy::CharacterFilter);
 
 	btTransform t;

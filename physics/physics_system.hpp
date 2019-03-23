@@ -159,6 +159,7 @@ public:
 		float angular_damping = 0.1f;
 		float friction = 0.2f;
 		float rolling_friction = 0.2f;
+		float margin = 0.01f;
 	};
 
 	struct CollisionMesh
@@ -187,7 +188,7 @@ public:
 		Cylinder
 	};
 
-	struct CompoundMeshPart
+	struct ConvexMeshPart
 	{
 		MeshType type = MeshType::None;
 		const Scene::Node *child_node = nullptr;
@@ -196,9 +197,12 @@ public:
 		float radius = 1.0f;
 	};
 
-	PhysicsHandle *add_compound(Scene::Node *node,
-	                            const CompoundMeshPart *parts, unsigned num_parts,
-	                            const MaterialInfo &info);
+	PhysicsHandle *add_compound_object(Scene::Node *node,
+	                                   const ConvexMeshPart *parts, unsigned num_parts,
+	                                   const MaterialInfo &info);
+	PhysicsHandle *add_object(Scene::Node *node,
+	                          const ConvexMeshPart &part,
+	                          const MaterialInfo &info);
 
 	PhysicsHandle *add_mesh(Scene::Node *node, unsigned index, const MaterialInfo &info);
 	PhysicsHandle *add_convex_hull(Scene::Node *node, unsigned index, const MaterialInfo &info);
@@ -249,5 +253,7 @@ private:
 	std::vector<std::unique_ptr<btBvhTriangleMeshShape>> mesh_collision_shapes;
 	std::vector<std::unique_ptr<btTriangleIndexVertexArray>> index_vertex_arrays;
 	std::unique_ptr<btGhostPairCallback> ghost_callback;
+
+	btCollisionShape *create_shape(const ConvexMeshPart &part);
 };
 }

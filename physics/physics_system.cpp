@@ -103,12 +103,29 @@ void PhysicsSystem::tick_callback(float)
 	new_collision_buffer.clear();
 }
 
+struct ClosestRayCallback : btCollisionWorld::ClosestRayResultCallback
+{
+	using btCollisionWorld::ClosestRayResultCallback::ClosestRayResultCallback;
+
+	btScalar addSingleResult(btCollisionWorld::LocalRayResult &rayResult, bool normalInWorldSpace) override
+	{
+		auto *obj = rayResult.m_collisionObject;
+
+		// Ignore ray casts against characters.
+		auto mask = obj->getBroadphaseHandle()->m_collisionFilterGroup & ~btBroadphaseProxy::CharacterFilter;
+		if (mask != 0)
+			return btCollisionWorld::ClosestRayResultCallback::addSingleResult(rayResult, normalInWorldSpace);
+		else
+			return 1.0f;
+	}
+};
+
 RaycastResult PhysicsSystem::query_closest_hit_ray(const vec3 &from, const vec3 &dir, float t)
 {
 	vec3 to = from + dir * t;
 	btVector3 ray_from_world(from.x, from.y, from.z);
 	btVector3 ray_to_world(to.x, to.y, to.z);
-	btCollisionWorld::ClosestRayResultCallback cb(ray_from_world, ray_to_world);
+	ClosestRayCallback cb(ray_from_world, ray_to_world);
 	world->rayTest(ray_from_world, ray_to_world, cb);
 
 	RaycastResult result = {};
@@ -127,6 +144,8 @@ RaycastResult PhysicsSystem::query_closest_hit_ray(const vec3 &from, const vec3 
 		result.world_normal.y = cb.m_hitNormalWorld.y();
 		result.world_normal.z = cb.m_hitNormalWorld.z();
 		result.t = cb.m_closestHitFraction * t;
+
+		//LOGI("Ray hit: %f, %f, %f\n", result.world_pos.x, result.world_pos.y, result.world_pos.z);
 	}
 	return result;
 }
@@ -309,6 +328,9 @@ void PhysicsSystem::iterate(double frame_time)
 				body->getMotionState()->setWorldTransform(t);
 			else
 				body->setWorldTransform(t);
+			body->setCenterOfMassTransform(t);
+			if (body->getBroadphaseHandle())
+				world->updateSingleAabb(body);
 		}
 	}
 
@@ -429,6 +451,7 @@ PhysicsHandle *PhysicsSystem::add_shape(Scene::Node *node, const MaterialInfo &i
 		                                 node->transform.scale.z));
 	}
 
+	shape->setMargin(info.margin);
 	btVector3 local_inertia(0, 0, 0);
 	if (info.mass != 0.0f && info.type != ObjectType::Static)
 		shape->calculateLocalInertia(info.mass, local_inertia);
@@ -473,7 +496,7 @@ PhysicsHandle *PhysicsSystem::add_shape(Scene::Node *node, const MaterialInfo &i
 	else
 	{
 		auto *motion = new btDefaultMotionState(t);
-		btRigidBody::btRigidBodyConstructionInfo rb_info(info.type == ObjectType::Static ? 0.0f : info.mass,
+		btRigidBody::btRigidBodyConstructionInfo rb_info(info.type != ObjectType::Dynamic ? 0.0f : info.mass,
 		                                                 motion, shape, local_inertia);
 		if (info.mass != 0.0f && info.type == ObjectType::Dynamic)
 		{
@@ -488,7 +511,7 @@ PhysicsHandle *PhysicsSystem::add_shape(Scene::Node *node, const MaterialInfo &i
 		rb_info.m_rollingFriction = info.rolling_friction;
 
 		auto *body = new btRigidBody(rb_info);
-		if (info.type == ObjectType::Static)
+		if (info.type != ObjectType::Dynamic)
 			body->setCollisionFlags(body->getCollisionFlags() | btCollisionObject::CF_STATIC_OBJECT);
 
 		world->addRigidBody(body);
@@ -504,68 +527,89 @@ PhysicsHandle *PhysicsSystem::add_shape(Scene::Node *node, const MaterialInfo &i
 	return handle;
 }
 
-PhysicsHandle *PhysicsSystem::add_compound(Scene::Node *node,
-                                           const CompoundMeshPart *parts, unsigned num_parts,
-                                           const MaterialInfo &info)
+btCollisionShape *PhysicsSystem::create_shape(const ConvexMeshPart &part)
+{
+	btCollisionShape *shape = nullptr;
+	switch (part.type)
+	{
+	case MeshType::Cylinder:
+		shape = new btCylinderShape(btVector3(
+				part.radius,
+				0.5f * part.height,
+				part.radius));
+		break;
+
+	case MeshType::Cone:
+		shape = new btConeShape(part.radius, 0.5f * part.height);
+		break;
+
+	case MeshType::Capsule:
+		shape = new btCapsuleShape(part.radius, 0.5f * part.height);
+		break;
+
+	case MeshType::Cube:
+		shape = new btBoxShape(btVector3(1.0f, 1.0f, 1.0f));
+		break;
+
+	case MeshType::Sphere:
+		shape = new btSphereShape(1.0f);
+		break;
+
+	case MeshType::ConvexHull:
+	{
+		assert(part.index < mesh_collision_shapes.size());
+
+		auto *mesh = mesh_collision_shapes[part.index]->getMeshInterface();
+		const unsigned char *vertex_base = nullptr;
+		int num_verts = 0;
+		PHY_ScalarType type;
+		int stride = 0;
+		const unsigned char *index_base = nullptr;
+		int index_stride;
+		int num_faces;
+		PHY_ScalarType indices_type;
+
+		mesh->getLockedReadOnlyVertexIndexBase(&vertex_base, num_verts, type, stride,
+		                                       &index_base, index_stride, num_faces, indices_type);
+
+		if (type != PHY_FLOAT)
+			break;
+
+		shape = new btConvexHullShape(reinterpret_cast<const btScalar *>(vertex_base), num_verts, stride);
+		break;
+	}
+
+	case MeshType::None:
+		break;
+	}
+
+	return shape;
+}
+
+PhysicsHandle *PhysicsSystem::add_object(Scene::Node *node,
+                                         const ConvexMeshPart &part,
+                                         const MaterialInfo &info)
+{
+	auto *shape = create_shape(part);
+	if (shape)
+	{
+		auto *handle = add_shape(node, info, shape);
+		return handle;
+	}
+	else
+		return nullptr;
+}
+
+PhysicsHandle *PhysicsSystem::add_compound_object(Scene::Node *node,
+                                                  const ConvexMeshPart *parts, unsigned num_parts,
+                                                  const MaterialInfo &info)
 {
 	auto *compound_shape = new btCompoundShape();
 
 	for (unsigned i = 0; i < num_parts; i++)
 	{
 		auto &part = parts[i];
-		btCollisionShape *shape = nullptr;
-		switch (part.type)
-		{
-		case MeshType::Cylinder:
-			shape = new btCylinderShape(btVector3(
-					part.radius,
-					0.5f * part.height,
-					part.radius));
-			break;
-
-		case MeshType::Cone:
-			shape = new btConeShape(part.radius, 0.5f * part.height);
-			break;
-
-		case MeshType::Capsule:
-			shape = new btCapsuleShape(part.radius, 0.5f * part.height);
-			break;
-
-		case MeshType::Cube:
-			shape = new btBoxShape(btVector3(1.0f, 1.0f, 1.0f));
-			break;
-
-		case MeshType::Sphere:
-			shape = new btSphereShape(1.0f);
-			break;
-
-		case MeshType::ConvexHull:
-		{
-			assert(part.index < mesh_collision_shapes.size());
-
-			auto *mesh = mesh_collision_shapes[part.index]->getMeshInterface();
-			const unsigned char *vertex_base = nullptr;
-			int num_verts = 0;
-			PHY_ScalarType type;
-			int stride = 0;
-			const unsigned char *index_base = nullptr;
-			int index_stride;
-			int num_faces;
-			PHY_ScalarType indices_type;
-
-			mesh->getLockedReadOnlyVertexIndexBase(&vertex_base, num_verts, type, stride,
-			                                       &index_base, index_stride, num_faces, indices_type);
-
-			if (type != PHY_FLOAT)
-				break;
-
-			shape = new btConvexHullShape(reinterpret_cast<const btScalar *>(vertex_base), num_verts, stride);
-			break;
-		}
-
-		case MeshType::None:
-			break;
-		}
+		auto *shape = create_shape(part);
 
 		if (shape)
 		{

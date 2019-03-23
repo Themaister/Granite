@@ -197,8 +197,22 @@ struct PhysicsSandboxApplication : Application, EventHandler
 			auto player_node = scene.create_node();
 			player_node->transform.translation.y = 2.0f;
 			root_node->add_child(player_node);
-			auto *player_entity = scene.create_renderable(sphere, player_node.get());
+			scene.create_renderable(sphere, player_node.get());
 			kinematic = Global::physics()->add_kinematic_character(player_node);
+		}
+
+		{
+			auto static_node = scene.create_node();
+			static_node->transform.translation.z = -5.0f;
+			static_node->transform.translation.y = 1.0f;
+			root_node->add_child(static_node);
+			auto *renderable = scene.create_renderable(cube, static_node.get());
+
+			PhysicsSystem::MaterialInfo info;
+			info.type = PhysicsSystem::ObjectType::Kinematic;
+			info.mass = 0.0f;
+			animated_cube = Global::physics()->add_cube(static_node.get(), info);
+			PhysicsSystem::set_handle_parent(animated_cube, renderable);
 		}
 	}
 
@@ -266,7 +280,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 					scene.create_renderable(cylinder, cylinder_node.get());
 				}
 
-				PhysicsSystem::CompoundMeshPart parts[2];
+				PhysicsSystem::ConvexMeshPart parts[2];
 				parts[0].type = PhysicsSystem::MeshType::Cube;
 				parts[1].type = PhysicsSystem::MeshType::Cylinder;
 				parts[1].radius = 0.5f;
@@ -278,7 +292,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 				info.restitution = 0.05f;
 				info.angular_damping = 0.3f;
 				info.linear_damping = 0.3f;
-				auto *compound = Global::physics()->add_compound(top_node.get(), parts, 2, info);
+				auto *compound = Global::physics()->add_compound_object(top_node.get(), parts, 2, info);
 				auto *top_entity = scene.create_entity();
 				top_entity->allocate_component<PhysicsComponent>()->handle = compound;
 				PhysicsSystem::set_handle_parent(compound, top_entity);
@@ -378,7 +392,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 		return true;
 	}
 
-	void render_frame(double frame_time, double) override
+	void render_frame(double frame_time, double elapsed_time) override
 	{
 		if (apply_anti_gravity)
 		{
@@ -388,6 +402,12 @@ struct PhysicsSandboxApplication : Application, EventHandler
 				Global::physics()->apply_force(get_component<PhysicsComponent>(p)->handle,
 				                               vec3(0.0f, 300.0f, 0.0f));
 			}
+		}
+
+		{
+			auto *node = PhysicsSystem::get_scene_node(animated_cube);
+			node->transform.translation.x = float(3.0 * sin(0.2 * elapsed_time));
+			node->invalidate_cached_transform();
 		}
 
 		Global::physics()->iterate(frame_time);
@@ -435,6 +455,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 	unsigned gltf_mesh_physics_index = 0;
 
 	bool apply_anti_gravity = false;
+	PhysicsHandle *animated_cube = nullptr;
 };
 
 namespace Granite

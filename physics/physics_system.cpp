@@ -32,6 +32,26 @@ namespace Granite
 {
 static const float PHYSICS_TICK = 1.0f / 300.0f;
 
+static btVector3 convert(const vec3 &v)
+{
+	return { v.x, v.y, v.z };
+}
+
+static btQuaternion convert(const quat &q)
+{
+	return { q.x, q.y, q.z, q.w };
+}
+
+static vec3 convert(const btVector3 &v)
+{
+	return { v.x(), v.y(), v.z() };
+}
+
+static quat convert(const btQuaternion &q)
+{
+	return { q.w(), q.x(), q.y(), q.z() };
+}
+
 struct PhysicsHandle
 {
 	Scene::Node *node = nullptr;
@@ -87,12 +107,8 @@ void PhysicsSystem::tick_callback(float)
 				new_collision_buffer.emplace_back(handle0 ? handle0->entity : nullptr,
 				                                  handle1 ? handle1->entity : nullptr,
 				                                  handle0, handle1,
-				                                  vec3(pt.getPositionWorldOnB().x(),
-				                                       pt.getPositionWorldOnB().y(),
-				                                       pt.getPositionWorldOnB().z()),
-				                                  vec3(pt.m_normalWorldOnB.x(),
-				                                       pt.m_normalWorldOnB.y(),
-				                                       pt.m_normalWorldOnB.z()));
+				                                  convert(pt.getPositionWorldOnB()),
+				                                  convert(pt.m_normalWorldOnB));
 			}
 		}
 	}
@@ -108,8 +124,8 @@ RaycastResult PhysicsSystem::query_closest_hit_ray(const vec3 &from, const vec3 
                                                    InteractionTypeFlags flags)
 {
 	vec3 to = from + dir * t;
-	btVector3 ray_from_world(from.x, from.y, from.z);
-	btVector3 ray_to_world(to.x, to.y, to.z);
+	btVector3 ray_from_world = convert(from);
+	btVector3 ray_to_world = convert(to);
 	btCollisionWorld::ClosestRayResultCallback cb(ray_from_world, ray_to_world);
 
 	cb.m_collisionFilterMask = 0;
@@ -167,6 +183,12 @@ PhysicsSystem::PhysicsSystem()
 	world->getPairCache()->setInternalGhostPairCallback(ghost_callback.get());
 }
 
+void PhysicsSystem::set_scene(Scene *scene_)
+{
+	scene = scene_;
+	forces = &scene->get_entity_pool().get_component_group<PhysicsComponent, ForceComponent>();
+}
+
 struct KinematicCharacter::Impl : btKinematicCharacterController
 {
 	Impl(btPairCachingGhostObject *ghost_, btConvexShape *shape_, float step_height, const btVector3 &up)
@@ -182,13 +204,8 @@ struct KinematicCharacter::Impl : btKinematicCharacterController
 		btKinematicCharacterController::updateAction(collision_world, delta_time);
 		if (node)
 		{
-			node->transform.translation = vec3(m_currentPosition.x(),
-			                                   m_currentPosition.y(),
-			                                   m_currentPosition.z());
-			node->transform.rotation = quat(m_currentOrientation.w(),
-			                                m_currentOrientation.x(),
-			                                m_currentOrientation.y(),
-			                                m_currentOrientation.z());
+			node->transform.translation = convert(m_currentPosition);
+			node->transform.rotation = convert(m_currentOrientation);
 			node->invalidate_cached_transform();
 		}
 	}
@@ -214,9 +231,7 @@ KinematicCharacter::KinematicCharacter(btDynamicsWorld *world, Scene::NodeHandle
 {
 	auto *ghost = new btPairCachingGhostObject();
 	auto *shape = new btSphereShape(btScalar(1.0f));
-	shape->setLocalScaling(btVector3(node->transform.scale.x,
-	                                 node->transform.scale.y,
-	                                 node->transform.scale.y));
+	shape->setLocalScaling(convert(node->transform.scale));
 	ghost->setCollisionShape(shape);
 	ghost->setCollisionFlags(btCollisionObject::CF_CHARACTER_OBJECT);
 	ghost->setActivationState(DISABLE_DEACTIVATION);
@@ -224,13 +239,8 @@ KinematicCharacter::KinematicCharacter(btDynamicsWorld *world, Scene::NodeHandle
 
 	btTransform t;
 	t.setIdentity();
-	t.setOrigin(btVector3(node->transform.translation.x,
-	                      node->transform.translation.y,
-	                      node->transform.translation.z));
-	t.setRotation(btQuaternion(node->transform.rotation.x,
-	                           node->transform.rotation.y,
-	                           node->transform.rotation.z,
-	                           node->transform.rotation.w));
+	t.setOrigin(convert(node->transform.translation));
+	t.setRotation(convert(node->transform.rotation));
 	ghost->setWorldTransform(t);
 	impl.reset(new Impl(ghost, shape, 0.01f, btVector3(0.0f, 1.0f, 0.0f)));
 	impl->world = world;
@@ -247,9 +257,7 @@ KinematicCharacter &KinematicCharacter::operator=(KinematicCharacter &&other) no
 
 void KinematicCharacter::set_move_velocity(const vec3 &v)
 {
-	impl->setWalkDirection(btVector3(v.x * impl->tick,
-	                                 v.y * impl->tick,
-	                                 v.z * impl->tick));
+	impl->setWalkDirection(convert(v * impl->tick));
 }
 
 bool KinematicCharacter::is_grounded()
@@ -259,7 +267,7 @@ bool KinematicCharacter::is_grounded()
 
 void KinematicCharacter::jump(const vec3 &v)
 {
-	impl->jump(btVector3(v.x, v.y, v.z));
+	impl->jump(convert(v));
 }
 
 KinematicCharacter::KinematicCharacter(KinematicCharacter &&other) noexcept
@@ -295,6 +303,24 @@ PhysicsSystem::~PhysicsSystem()
 
 void PhysicsSystem::iterate(double frame_time)
 {
+	// System which applies forces to objects every iteration.
+	if (forces)
+	{
+		for (auto &force : *forces)
+		{
+			auto *handle = get_component<PhysicsComponent>(force)->handle;
+			auto *body = btRigidBody::upcast(handle->bt_object);
+			if (body)
+			{
+				auto *f = get_component<ForceComponent>(force);
+				if (any(notEqual(f->linear_force, vec3(0.0f))) || any(notEqual(f->torque, vec3(0.0f))))
+					body->activate();
+				body->applyCentralForce(convert(f->linear_force));
+				body->applyTorque(convert(f->torque));
+			}
+		}
+	}
+
 	// Update ghost object locations.
 	for (auto *handle : handles)
 	{
@@ -311,8 +337,8 @@ void PhysicsSystem::iterate(double frame_time)
 			t.setIdentity();
 			auto &rot = handle->node->transform.rotation;
 			auto &pos = handle->node->transform.translation;
-			t.setOrigin(btVector3(pos.x, pos.y, pos.z));
-			t.setRotation(btQuaternion(rot.x, rot.y, rot.z, rot.w));
+			t.setOrigin(convert(pos));
+			t.setRotation(convert(rot));
 			ghost->setWorldTransform(t);
 			if (ghost->getBroadphaseHandle())
 				world->updateSingleAabb(ghost);
@@ -323,8 +349,8 @@ void PhysicsSystem::iterate(double frame_time)
 			t.setIdentity();
 			auto &rot = handle->node->transform.rotation;
 			auto &pos = handle->node->transform.translation;
-			t.setOrigin(btVector3(pos.x, pos.y, pos.z));
-			t.setRotation(btQuaternion(rot.x, rot.y, rot.z, rot.w));
+			t.setOrigin(convert(pos));
+			t.setRotation(convert(rot));
 			if (body->getMotionState())
 				body->getMotionState()->setWorldTransform(t);
 			else
@@ -420,7 +446,7 @@ unsigned PhysicsSystem::register_collision_mesh(const CollisionMesh &mesh)
 
 	const vec3 &lo = mesh.aabb.get_minimum();
 	const vec3 &hi = mesh.aabb.get_maximum();
-	index_vertex_array->setPremadeAabb(btVector3(lo.x, lo.y, lo.z), btVector3(hi.x, hi.y, hi.z));
+	index_vertex_array->setPremadeAabb(convert(lo), convert(hi));
 	const bool quantized_aabb_compression = false;
 	auto *shape = new btBvhTriangleMeshShape(index_vertex_array, quantized_aabb_compression);
 	shape->setMargin(mesh.margin);
@@ -438,18 +464,9 @@ PhysicsHandle *PhysicsSystem::add_shape(Scene::Node *node, const MaterialInfo &i
 
 	if (node)
 	{
-		t.setOrigin(btVector3(
-				node->transform.translation.x,
-				node->transform.translation.y,
-				node->transform.translation.z));
-		t.setRotation(btQuaternion(
-				node->transform.rotation.x,
-				node->transform.rotation.y,
-				node->transform.rotation.z,
-				node->transform.rotation.w));
-		shape->setLocalScaling(btVector3(node->transform.scale.x,
-		                                 node->transform.scale.y,
-		                                 node->transform.scale.z));
+		t.setOrigin(convert(node->transform.translation));
+		t.setRotation(convert(node->transform.rotation));
+		shape->setLocalScaling(convert(node->transform.scale));
 	}
 
 	shape->setMargin(info.margin);
@@ -633,9 +650,9 @@ PhysicsHandle *PhysicsSystem::add_compound_object(Scene::Node *node,
 			if (part.child_node)
 			{
 				auto &child_t = part.child_node->transform;
-				shape->setLocalScaling(btVector3(child_t.scale.x, child_t.scale.y, child_t.scale.z));
-				t.setRotation(btQuaternion(child_t.rotation.x, child_t.rotation.y, child_t.rotation.z, child_t.rotation.w));
-				t.setOrigin(btVector3(child_t.translation.x, child_t.translation.y, child_t.translation.z));
+				shape->setLocalScaling(convert(child_t.scale));
+				t.setRotation(convert(child_t.rotation));
+				t.setOrigin(convert(child_t.translation));
 			}
 			compound_shape->addChildShape(t, shape);
 		}
@@ -718,14 +735,14 @@ void PhysicsSystem::set_linear_velocity(PhysicsHandle *handle, const vec3 &v)
 {
 	auto *body = btRigidBody::upcast(handle->bt_object);
 	if (body)
-		body->setLinearVelocity(btVector3(v.x, v.y, v.z));
+		body->setLinearVelocity(convert(v));
 }
 
 void PhysicsSystem::set_angular_velocity(PhysicsHandle *handle, const vec3 &v)
 {
 	auto *body = btRigidBody::upcast(handle->bt_object);
 	if (body)
-		body->setAngularVelocity(btVector3(v.x, v.y, v.z));
+		body->setAngularVelocity(convert(v));
 }
 
 void PhysicsSystem::apply_force(PhysicsHandle *handle, const vec3 &v)
@@ -734,7 +751,7 @@ void PhysicsSystem::apply_force(PhysicsHandle *handle, const vec3 &v)
 	if (body)
 	{
 		body->activate();
-		body->applyCentralForce(btVector3(v.x, v.y, v.z));
+		body->applyCentralForce(convert(v));
 	}
 }
 
@@ -744,9 +761,7 @@ void PhysicsSystem::apply_force(PhysicsHandle *handle, const vec3 &v, const vec3
 	if (body)
 	{
 		body->activate();
-		body->applyForce(btVector3(v.x, v.y, v.z),
-		                 btVector3(world_pos.x, world_pos.y, world_pos.z) -
-		                 body->getCenterOfMassPosition());
+		body->applyForce(convert(v), convert(world_pos) -body->getCenterOfMassPosition());
 	}
 }
 
@@ -759,7 +774,7 @@ PhysicsHandle *PhysicsSystem::add_sphere(Scene::Node *node, const MaterialInfo &
 
 PhysicsHandle *PhysicsSystem::add_infinite_plane(const vec4 &plane, const MaterialInfo &info)
 {
-	auto *shape = new btStaticPlaneShape(btVector3(plane.x, plane.y, plane.z), plane.w);
+	auto *shape = new btStaticPlaneShape(convert(plane.xyz()), plane.w);
 
 	MaterialInfo tmp = info;
 	tmp.type = InteractionType::Static;
@@ -776,10 +791,7 @@ void PhysicsSystem::apply_impulse(PhysicsHandle *handle, const vec3 &impulse, co
 	if (body)
 	{
 		body->activate();
-		body->applyImpulse(
-				btVector3(impulse.x, impulse.y, impulse.z),
-				btVector3(world_position.x, world_position.y, world_position.z) -
-				body->getCenterOfMassPosition());
+		body->applyImpulse(convert(impulse), convert(world_position) - body->getCenterOfMassPosition());
 	}
 }
 
@@ -789,10 +801,7 @@ void PhysicsSystem::add_point_constraint(PhysicsHandle *handle, const vec3 &loca
 	if (!body)
 		return;
 
-	auto *constraint = new btPoint2PointConstraint(
-			*body,
-			btVector3(local_pivot.x, local_pivot.y, local_pivot.z));
-
+	auto *constraint = new btPoint2PointConstraint(*body, convert(local_pivot));
 	world->addConstraint(constraint, false);
 	body->addConstraintRef(constraint);
 }
@@ -809,8 +818,8 @@ void PhysicsSystem::add_point_constraint(PhysicsHandle *handle0, PhysicsHandle *
 	auto *constraint = new btPoint2PointConstraint(
 			*body0,
 			*body1,
-			btVector3(local_pivot0.x, local_pivot0.y, local_pivot0.z),
-			btVector3(local_pivot1.x, local_pivot1.y, local_pivot1.z));
+			convert(local_pivot0),
+			convert(local_pivot1));
 
 	world->addConstraint(constraint, skip_collision);
 	body0->addConstraintRef(constraint);

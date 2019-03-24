@@ -154,6 +154,8 @@ struct PhysicsSandboxApplication : Application, EventHandler
 
 	void init_scene()
 	{
+		Global::physics()->set_scene(&scene);
+
 		auto root_node = scene.create_node();
 		auto *entity = scene.create_renderable(plane, root_node.get());
 		auto *plane = Global::physics()->add_infinite_plane(vec4(0.0f, 1.0f, 0.0f, 0.0f), {});
@@ -379,6 +381,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 				sphere_node->invalidate_cached_transform();
 				scene.get_root_node()->add_child(sphere_node);
 				auto *entity = scene.create_renderable(capsule, sphere_node.get());
+				entity->allocate_component<ForceComponent>();
 				PhysicsSystem::MaterialInfo info;
 				info.mass = 30.0f;
 				info.restitution = 0.2f;
@@ -395,23 +398,31 @@ struct PhysicsSandboxApplication : Application, EventHandler
 
 	void render_frame(double frame_time, double elapsed_time) override
 	{
+		auto &phys = scene.get_entity_pool().get_component_group<ForceComponent>();
 		if (apply_anti_gravity)
 		{
-			auto &phys = scene.get_entity_pool().get_component_group<PhysicsComponent>();
 			for (auto &p : phys)
-			{
-				Global::physics()->apply_force(get_component<PhysicsComponent>(p)->handle,
-				                               vec3(0.0f, 300.0f, 0.0f));
-			}
+				get_component<ForceComponent>(p)->linear_force = vec3(0.0f, 300.0f, 0.0f);
+		}
+		else
+		{
+			for (auto &p : phys)
+				get_component<ForceComponent>(p)->linear_force = vec3(0.0f);
 		}
 
-#if 0
 		{
 			std::vector<PhysicsHandle *> overlapping;
 			Global::physics()->get_overlapping_objects(animated_cube, overlapping);
-			LOGI("Overlapping: %zu\n", overlapping.size());
+			for (auto *o : overlapping)
+			{
+				if (!o)
+					continue;
+				auto *entity = PhysicsSystem::get_handle_parent(o);
+				auto *comp = entity->get_component<ForceComponent>();
+				if (comp)
+					comp->linear_force += vec3(0.0f, 400.0f, 0.0f);
+			}
 		}
-#endif
 
 		Global::physics()->iterate(frame_time);
 		scene.update_cached_transforms();

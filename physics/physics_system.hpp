@@ -56,6 +56,13 @@ struct CollisionMeshComponent : ComponentBase
 	SceneFormats::CollisionMesh mesh;
 };
 
+struct ForceComponent : ComponentBase
+{
+	GRANITE_COMPONENT_TYPE_DECL(ForceComponent)
+	vec3 linear_force = vec3(0.0f);
+	vec3 torque = vec3(0.0f);
+};
+
 class KinematicCharacter
 {
 public:
@@ -141,6 +148,7 @@ class PhysicsSystem
 public:
 	PhysicsSystem();
 	~PhysicsSystem();
+	void set_scene(Scene *scene);
 
 	enum class InteractionType
 	{
@@ -218,6 +226,8 @@ public:
 
 	void set_linear_velocity(PhysicsHandle *handle, const vec3 &v);
 	void set_angular_velocity(PhysicsHandle *handle, const vec3 &v);
+
+	// Prefer ForceComponent.
 	void apply_force(PhysicsHandle *handle, const vec3 &v);
 	void apply_force(PhysicsHandle *handle, const vec3 &v, const vec3 &world_pos);
 
@@ -275,5 +285,7 @@ private:
 	std::unique_ptr<btGhostPairCallback> ghost_callback;
 
 	btCollisionShape *create_shape(const ConvexMeshPart &part);
+	Scene *scene = nullptr;
+	std::vector<std::tuple<PhysicsComponent *, ForceComponent *>> *forces = nullptr;
 };
 }

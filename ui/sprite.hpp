@@ -84,7 +84,7 @@ struct Sprite : AbstractRenderable
 	bool clear_alpha_to_zero = false;
 
 	void get_sprite_render_info(const SpriteTransformInfo &transform, RenderQueue &queue) const override;
-	void get_render_info(const RenderContext &, const CachedSpatialTransformComponent *, RenderQueue &) const override
+	void get_render_info(const RenderContext &, const RenderInfoComponent *, RenderQueue &) const override
 	{
 	}
 

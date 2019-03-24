@@ -367,9 +367,9 @@ void SceneViewerApplication::rescale_scene(float radius)
 	AABB aabb(vec3(FLT_MAX), vec3(-FLT_MAX));
 	auto &objects = scene_loader.get_scene()
 	                    .get_entity_pool()
-	                    .get_component_group<CachedSpatialTransformComponent, RenderableComponent>();
+	                    .get_component_group<RenderInfoComponent, RenderableComponent>();
 	for (auto &caster : objects)
-		aabb.expand(get_component<CachedSpatialTransformComponent>(caster)->world_aabb);
+		aabb.expand(get_component<RenderInfoComponent>(caster)->world_aabb);
 
 	float scale_factor = radius / aabb.get_radius();
 	auto root_node = scene_loader.get_scene().get_root_node();
@@ -1008,10 +1008,10 @@ void SceneViewerApplication::update_shadow_scene_aabb()
 	auto &scene = scene_loader.get_scene();
 	auto &shadow_casters =
 	    scene.get_entity_pool()
-	        .get_component_group<CachedSpatialTransformComponent, RenderableComponent, CastsStaticShadowComponent>();
+	        .get_component_group<RenderInfoComponent, RenderableComponent, CastsStaticShadowComponent>();
 	AABB aabb(vec3(FLT_MAX), vec3(-FLT_MAX));
 	for (auto &caster : shadow_casters)
-		aabb.expand(get_component<CachedSpatialTransformComponent>(caster)->world_aabb);
+		aabb.expand(get_component<RenderInfoComponent>(caster)->world_aabb);
 	shadow_scene_aabb = aabb;
 }
 

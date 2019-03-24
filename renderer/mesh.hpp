@@ -165,7 +165,7 @@ struct StaticMesh : AbstractRenderable
 
 	AABB static_aabb;
 
-	void get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
+	void get_render_info(const RenderContext &context, const RenderInfoComponent *transform,
 	                     RenderQueue &queue) const override;
 
 	DrawPipeline get_mesh_draw_pipeline() const override
@@ -194,7 +194,7 @@ private:
 
 struct SkinnedMesh : public StaticMesh
 {
-	void get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
+	void get_render_info(const RenderContext &context, const RenderInfoComponent *transform,
 	                     RenderQueue &queue) const override;
 };
 }

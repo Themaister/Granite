@@ -791,7 +791,7 @@ static void ocean_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *info
 }
 
 void Ocean::get_render_info(const RenderContext &,
-                            const CachedSpatialTransformComponent *,
+                            const RenderInfoComponent *,
                             RenderQueue &queue) const
 {
 	Util::Hasher hasher;

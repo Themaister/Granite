@@ -254,6 +254,13 @@ struct Mesh
 	uint32_t count = 0;
 };
 
+// A simplified mesh representation for CPU use.
+struct CollisionMesh
+{
+	std::vector<vec4> positions;
+	std::vector<uint32_t> indices;
+};
+
 struct SceneInformation
 {
 	Util::ArrayView<const MaterialInfo> materials;
@@ -271,6 +278,7 @@ bool mesh_recompute_tangents(Mesh &mesh);
 bool mesh_renormalize_normals(Mesh &mesh);
 bool mesh_renormalize_tangents(Mesh &mesh);
 bool mesh_flip_tangents_w(Mesh &mesh);
+bool extract_collision_mesh(CollisionMesh &collision_mesh, const Mesh &mesh);
 
 void mesh_deduplicate_vertices(Mesh &mesh);
 Mesh mesh_optimize_index_buffer(const Mesh &mesh, bool stripify);

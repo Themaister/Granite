@@ -158,7 +158,7 @@ GroundPatch::~GroundPatch()
 {
 }
 
-void GroundPatch::refresh(RenderContext &context, const CachedSpatialTransformComponent *transform)
+void GroundPatch::refresh(RenderContext &context, const RenderInfoComponent *transform)
 {
 	vec3 center = transform->world_aabb.get_center();
 	const auto &camera_pos = context.get_render_parameters().camera_position;
@@ -167,7 +167,7 @@ void GroundPatch::refresh(RenderContext &context, const CachedSpatialTransformCo
 	*lod = clamp(dist_log2 + lod_bias + ground->get_base_lod_bias(), 0.0f, ground->get_info().max_lod);
 }
 
-void GroundPatch::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
+void GroundPatch::get_render_info(const RenderContext &context, const RenderInfoComponent *transform,
                                   RenderQueue &queue) const
 {
 	ground->get_render_info(context, transform, queue, *this);
@@ -294,7 +294,7 @@ void Ground::on_device_destroyed(const DeviceCreatedEvent &)
 	lod_map.reset();
 }
 
-void Ground::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
+void Ground::get_render_info(const RenderContext &context, const RenderInfoComponent *transform,
                              RenderQueue &queue, const GroundPatch &ground_patch) const
 {
 	PatchInfo patch;
@@ -423,7 +423,7 @@ Ground::Handles Ground::add_to_scene(Scene &scene, unsigned size, float tiling_f
 	auto *update_component = handles.entity->allocate_component<PerFrameUpdateComponent>();
 	update_component->refresh = ground.get();
 
-	auto *cached_transform = handles.entity->allocate_component<CachedSpatialTransformComponent>();
+	auto *cached_transform = handles.entity->allocate_component<RenderInfoComponent>();
 	cached_transform->transform = &handles.node->cached_transform;
 	cached_transform->skin_transform = nullptr;
 

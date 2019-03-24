@@ -30,6 +30,7 @@ class Filesystem;
 class ThreadGroup;
 class EventManager;
 class CommonRendererData;
+class PhysicsSystem;
 namespace UI
 {
 class UIManager;
@@ -51,6 +52,7 @@ enum ManagerFeatureFlagBits
 	MANAGER_FEATURE_UI_MANAGER_BIT = 1 << 3,
 	MANAGER_FEATURE_AUDIO_BIT = 1 << 4,
 	MANAGER_FEATURE_COMMON_RENDERER_DATA_BIT = 1 << 5,
+	MANAGER_FEATURE_PHYSICS_BIT = 1 << 6,
 	MANAGER_FEATURE_ALL_BITS = 0x7fffffff
 };
 using ManagerFeatureFlags = uint32_t;
@@ -70,6 +72,10 @@ CommonRendererData *common_renderer_data();
 Audio::Backend *audio_backend();
 Audio::Mixer *audio_mixer();
 void install_audio_system(Audio::Backend *backend, Audio::Mixer *mixer);
+#endif
+
+#ifdef HAVE_GRANITE_PHYSICS
+PhysicsSystem *physics();
 #endif
 }
 

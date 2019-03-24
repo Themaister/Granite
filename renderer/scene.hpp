@@ -33,7 +33,7 @@ namespace Granite
 struct RenderableInfo
 {
 	AbstractRenderable *renderable;
-	const CachedSpatialTransformComponent *transform;
+	const RenderInfoComponent *transform;
 };
 using VisibilityList = std::vector<RenderableInfo>;
 
@@ -45,6 +45,10 @@ class Scene
 public:
 	Scene();
 	~Scene();
+
+	// Non-copyable, movable.
+	Scene(const Scene &) = delete;
+	void operator=(const Scene &) = delete;
 
 	void refresh_per_frame(RenderContext &context);
 	void update_cached_transforms();
@@ -65,16 +69,29 @@ public:
 	void set_render_pass_data(Renderer *forward_renderer, Renderer *deferred_renderer, Renderer *depth_renderer, const RenderContext *context);
 	void bind_render_graph_resources(RenderGraph &graph);
 
-	class Node : public Util::IntrusivePtrEnabled<Node>
+	class Node;
+	struct NodeDeleter
+	{
+		void operator()(Node *node);
+	};
+
+	class Node : public Util::IntrusivePtrEnabled<Node, NodeDeleter>
 	{
 	public:
+		Node(Scene *parent_)
+			: parent_scene(parent_)
+		{
+		}
+
+		Scene *parent_scene;
 		Transform transform;
 		CachedTransform cached_transform;
 		CachedSkinTransform cached_skin_transform;
 
 		void invalidate_cached_transform();
 		void add_child(Util::IntrusivePtr<Node> node);
-		void remove_child(Node &node);
+		Util::IntrusivePtr<Node> remove_child(Node *node);
+		static Util::IntrusivePtr<Node> remove_node_from_hierarchy(Node *node);
 
 		const std::vector<Util::IntrusivePtr<Node>> &get_children() const
 		{
@@ -153,6 +170,11 @@ public:
 	NodeHandle create_node();
 	NodeHandle create_skinned_node(const SceneFormats::Skin &skin);
 
+	Util::ObjectPool<Node> &get_node_pool()
+	{
+		return node_pool;
+	}
+
 	void set_root_node(NodeHandle node)
 	{
 		root_node = node;
@@ -163,9 +185,10 @@ public:
 		return root_node;
 	}
 
-	EntityHandle create_renderable(AbstractRenderableHandle renderable, Node *node);
-	EntityHandle create_light(const SceneFormats::LightInfo &light, Node *node);
-	EntityHandle create_entity();
+	Entity *create_renderable(AbstractRenderableHandle renderable, Node *node);
+	Entity *create_light(const SceneFormats::LightInfo &light, Node *node);
+	Entity *create_entity();
+	void destroy_entity(Entity *entity);
 
 	template <typename T>
 	void remove_entities_with_component()
@@ -177,24 +200,25 @@ public:
 
 private:
 	EntityPool pool;
+	Util::ObjectPool<Node> node_pool;
 	NodeHandle root_node;
-	std::vector<std::tuple<BoundedComponent*, CachedSpatialTransformComponent*, CachedSpatialTransformTimestampComponent *>> &spatials;
-	std::vector<std::tuple<CachedSpatialTransformComponent*, RenderableComponent*, OpaqueComponent*>> &opaque;
-	std::vector<std::tuple<CachedSpatialTransformComponent*, RenderableComponent*, TransparentComponent*>> &transparent;
-	std::vector<std::tuple<CachedSpatialTransformComponent*, RenderableComponent*, PositionalLightComponent*>> &positional_lights;
-	std::vector<std::tuple<CachedSpatialTransformComponent*, RenderableComponent*, CastsStaticShadowComponent*>> &static_shadowing;
-	std::vector<std::tuple<CachedSpatialTransformComponent*, RenderableComponent*, CastsDynamicShadowComponent*>> &dynamic_shadowing;
+	std::vector<std::tuple<BoundedComponent*, RenderInfoComponent*, CachedSpatialTransformTimestampComponent *>> &spatials;
+	std::vector<std::tuple<RenderInfoComponent*, RenderableComponent*, OpaqueComponent*>> &opaque;
+	std::vector<std::tuple<RenderInfoComponent*, RenderableComponent*, TransparentComponent*>> &transparent;
+	std::vector<std::tuple<RenderInfoComponent*, RenderableComponent*, PositionalLightComponent*>> &positional_lights;
+	std::vector<std::tuple<RenderInfoComponent*, RenderableComponent*, CastsStaticShadowComponent*>> &static_shadowing;
+	std::vector<std::tuple<RenderInfoComponent*, RenderableComponent*, CastsDynamicShadowComponent*>> &dynamic_shadowing;
 	std::vector<std::tuple<RenderPassComponent*, RenderableComponent*, CastsDynamicShadowComponent*>> &render_pass_shadowing;
 	std::vector<std::tuple<UnboundedComponent*, RenderableComponent*>> &backgrounds;
 	std::vector<std::tuple<CameraComponent*, CachedTransformComponent*>> &cameras;
 	std::vector<std::tuple<DirectionalLightComponent*, CachedTransformComponent*>> &directional_lights;
 	std::vector<std::tuple<AmbientLightComponent*>> &ambient_lights;
 	std::vector<std::tuple<PerFrameUpdateComponent*>> &per_frame_updates;
-	std::vector<std::tuple<PerFrameUpdateTransformComponent*, CachedSpatialTransformComponent*>> &per_frame_update_transforms;
+	std::vector<std::tuple<PerFrameUpdateTransformComponent*, RenderInfoComponent*>> &per_frame_update_transforms;
 	std::vector<std::tuple<EnvironmentComponent*>> &environments;
 	std::vector<std::tuple<RenderPassSinkComponent*, RenderableComponent*, CullPlaneComponent*>> &render_pass_sinks;
 	std::vector<std::tuple<RenderPassComponent*>> &render_pass_creators;
-	std::vector<EntityHandle> nodes;
+	Util::IntrusiveList<Entity> entities;
 	void update_transform_tree(Node &node, const mat4 &transform, bool parent_is_dirty);
 
 	void update_skinning(Node &node);

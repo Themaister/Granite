@@ -341,7 +341,7 @@ static void positional_render_back(CommandBuffer &cmd, const RenderQueueData *in
 	positional_render_common(cmd, infos, num_instances);
 }
 
-void SpotLight::get_depth_render_info(const RenderContext &, const CachedSpatialTransformComponent *transform,
+void SpotLight::get_depth_render_info(const RenderContext &, const RenderInfoComponent *transform,
                                       RenderQueue &queue) const
 {
 	RenderFunc func = positional_render_depth;
@@ -401,7 +401,7 @@ vec2 SpotLight::get_z_range(const RenderContext &context, const mat4 &transform)
 	return range;
 }
 
-void SpotLight::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
+void SpotLight::get_render_info(const RenderContext &context, const RenderInfoComponent *transform,
                                 RenderQueue &queue) const
 {
 	auto &params = context.get_render_parameters();
@@ -515,7 +515,7 @@ void PointLight::set_shadow_info(const Vulkan::ImageView *shadow, const PointTra
 	shadow_transform = transform;
 }
 
-void PointLight::get_depth_render_info(const RenderContext &, const CachedSpatialTransformComponent *transform,
+void PointLight::get_depth_render_info(const RenderContext &, const RenderInfoComponent *transform,
                                        RenderQueue &queue) const
 {
 	RenderFunc func = positional_render_depth;
@@ -547,7 +547,7 @@ void PointLight::get_depth_render_info(const RenderContext &, const CachedSpatia
 	}
 }
 
-void PointLight::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform,
+void PointLight::get_render_info(const RenderContext &context, const RenderInfoComponent *transform,
                                  RenderQueue &queue) const
 {
 	auto &params = context.get_render_parameters();

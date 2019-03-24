@@ -117,7 +117,7 @@ struct EntityDeleter
 	void operator()(Entity *entity);
 };
 
-class Entity : public Util::IntrusivePtrEnabled<Entity, EntityDeleter>
+class Entity : public Util::IntrusiveListEnabled<Entity>
 {
 public:
 	friend class EntityPool;
@@ -221,6 +221,11 @@ public:
 		return groups;
 	}
 
+	const std::vector<Entity *> &get_entities() const
+	{
+		return entities;
+	}
+
 private:
 	std::vector<std::tuple<Ts *...>> groups;
 	std::vector<Entity *> entities;
@@ -273,8 +278,6 @@ struct ComponentAllocator : public ComponentAllocatorBase
 	}
 };
 
-using EntityHandle = Util::IntrusivePtr<Entity>;
-
 class EntityPool
 {
 public:
@@ -284,11 +287,11 @@ public:
 	void operator=(const EntityPool &) = delete;
 	EntityPool(const EntityPool &) = delete;
 
-	EntityHandle create_entity();
+	Entity *create_entity();
 	void delete_entity(Entity *entity);
 
 	template <typename... Ts>
-	std::vector<std::tuple<Ts *...>> &get_component_group()
+	EntityGroup<Ts...> *get_component_group_holder()
 	{
 		ComponentType group_id = ComponentIDMapping::get_group_id<Ts...>();
 		auto *t = groups.find(group_id);
@@ -305,8 +308,21 @@ public:
 				group->add_entity(*entity);
 		}
 
-		auto *group = static_cast<EntityGroup<Ts...> *>(t);
+		return static_cast<EntityGroup<Ts...> *>(t);
+	}
+
+	template <typename... Ts>
+	std::vector<std::tuple<Ts *...>> &get_component_group()
+	{
+		auto *group = get_component_group_holder<Ts...>();
 		return group->get_groups();
+	}
+
+	template <typename... Ts>
+	const std::vector<Entity *> &get_component_entities()
+	{
+		auto *group = get_component_group_holder<Ts...>();
+		return group->get_entities();
 	}
 
 	template <typename T, typename... Ts>

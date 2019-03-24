@@ -32,19 +32,19 @@ namespace Granite
 {
 
 Scene::Scene()
-	: spatials(pool.get_component_group<BoundedComponent, CachedSpatialTransformComponent, CachedSpatialTransformTimestampComponent>()),
-	  opaque(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, OpaqueComponent>()),
-	  transparent(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, TransparentComponent>()),
-	  positional_lights(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, PositionalLightComponent>()),
-	  static_shadowing(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, CastsStaticShadowComponent>()),
-	  dynamic_shadowing(pool.get_component_group<CachedSpatialTransformComponent, RenderableComponent, CastsDynamicShadowComponent>()),
+	: spatials(pool.get_component_group<BoundedComponent, RenderInfoComponent, CachedSpatialTransformTimestampComponent>()),
+	  opaque(pool.get_component_group<RenderInfoComponent, RenderableComponent, OpaqueComponent>()),
+	  transparent(pool.get_component_group<RenderInfoComponent, RenderableComponent, TransparentComponent>()),
+	  positional_lights(pool.get_component_group<RenderInfoComponent, RenderableComponent, PositionalLightComponent>()),
+	  static_shadowing(pool.get_component_group<RenderInfoComponent, RenderableComponent, CastsStaticShadowComponent>()),
+	  dynamic_shadowing(pool.get_component_group<RenderInfoComponent, RenderableComponent, CastsDynamicShadowComponent>()),
 	  render_pass_shadowing(pool.get_component_group<RenderPassComponent, RenderableComponent, CastsDynamicShadowComponent>()),
 	  backgrounds(pool.get_component_group<UnboundedComponent, RenderableComponent>()),
 	  cameras(pool.get_component_group<CameraComponent, CachedTransformComponent>()),
 	  directional_lights(pool.get_component_group<DirectionalLightComponent, CachedTransformComponent>()),
 	  ambient_lights(pool.get_component_group<AmbientLightComponent>()),
 	  per_frame_updates(pool.get_component_group<PerFrameUpdateComponent>()),
-	  per_frame_update_transforms(pool.get_component_group<PerFrameUpdateTransformComponent, CachedSpatialTransformComponent>()),
+	  per_frame_update_transforms(pool.get_component_group<PerFrameUpdateTransformComponent, RenderInfoComponent>()),
 	  environments(pool.get_component_group<EnvironmentComponent>()),
 	  render_pass_sinks(pool.get_component_group<RenderPassSinkComponent, RenderableComponent, CullPlaneComponent>()),
 	  render_pass_creators(pool.get_component_group<RenderPassComponent>())
@@ -56,6 +56,14 @@ Scene::~Scene()
 {
 	// Makes shutdown way faster :)
 	pool.reset_groups();
+
+	auto itr = entities.begin();
+	while (itr != entities.end())
+	{
+		auto *to_free = itr.get();
+		itr = entities.erase(itr);
+		to_free->get_pool()->delete_entity(to_free);
+	}
 }
 
 template <typename T>
@@ -63,7 +71,7 @@ static void gather_visible_renderables(const Frustum &frustum, VisibilityList &l
 {
 	for (auto &o : objects)
 	{
-		auto *transform = get_component<CachedSpatialTransformComponent>(o);
+		auto *transform = get_component<RenderInfoComponent>(o);
 		auto *renderable = get_component<RenderableComponent>(o);
 
 		if (transform->transform)
@@ -122,7 +130,7 @@ void Scene::refresh_per_frame(RenderContext &context)
 	for (auto &update : per_frame_update_transforms)
 	{
 		auto *refresh = get_component<PerFrameUpdateTransformComponent>(update)->refresh;
-		auto *transform = get_component<CachedSpatialTransformComponent>(update);
+		auto *transform = get_component<RenderInfoComponent>(update);
 		if (refresh)
 			refresh->refresh(context, transform);
 	}
@@ -187,7 +195,7 @@ void Scene::gather_visible_positional_lights(const Frustum &frustum, VisibilityL
 
 	for (auto &o : positional_lights)
 	{
-		auto *transform = get_component<CachedSpatialTransformComponent>(o);
+		auto *transform = get_component<RenderInfoComponent>(o);
 		auto *renderable = get_component<RenderableComponent>(o);
 
 		if (transform->transform)
@@ -301,7 +309,7 @@ void Scene::update_cached_transforms()
 	for (auto &s : spatials)
 	{
 		BoundedComponent *aabb;
-		CachedSpatialTransformComponent *cached_transform;
+		RenderInfoComponent *cached_transform;
 		CachedSpatialTransformTimestampComponent *timestamp;
 		tie(aabb, cached_transform, timestamp) = s;
 
@@ -350,7 +358,12 @@ void Scene::update_cached_transforms()
 
 Scene::NodeHandle Scene::create_node()
 {
-	return Util::make_handle<Node>();
+	return Scene::NodeHandle(node_pool.allocate(this));
+}
+
+void Scene::NodeDeleter::operator()(Node *node)
+{
+	node->parent_scene->get_node_pool().free(node);
 }
 
 static void add_bone(Scene::NodeHandle *bones, uint32_t parent, const SceneFormats::Skin::Bone &bone)
@@ -411,20 +424,30 @@ void Scene::Node::add_child(NodeHandle node)
 	children.push_back(node);
 }
 
-void Scene::Node::remove_child(Node &node)
+Scene::NodeHandle Scene::Node::remove_child(Node *node)
 {
-	assert(node.parent == this);
-	node.parent = nullptr;
+	assert(node->parent == this);
+	node->parent = nullptr;
+	auto handle = node->reference_from_this();
 
 	// Force parents to be notified.
-	node.cached_transform_dirty = false;
-	node.invalidate_cached_transform();
+	node->cached_transform_dirty = false;
+	node->invalidate_cached_transform();
 
 	auto itr = remove_if(begin(children), end(children), [&](const NodeHandle &h) {
-		return &node == h.get();
+		return node == h.get();
 	});
 	assert(itr != end(children));
 	children.erase(itr, end(children));
+	return handle;
+}
+
+Scene::NodeHandle Scene::Node::remove_node_from_hierarchy(Node *node)
+{
+	if (node->parent)
+		return node->parent->remove_child(node);
+	else
+		return Scene::NodeHandle(nullptr);
 }
 
 void Scene::Node::invalidate_cached_transform()
@@ -437,17 +460,17 @@ void Scene::Node::invalidate_cached_transform()
 	}
 }
 
-EntityHandle Scene::create_entity()
+Entity *Scene::create_entity()
 {
-	EntityHandle entity = pool.create_entity();
-	nodes.push_back(entity);
+	Entity *entity = pool.create_entity();
+	entities.insert_front(entity);
 	return entity;
 }
 
-EntityHandle Scene::create_light(const SceneFormats::LightInfo &light, Node *node)
+Entity *Scene::create_light(const SceneFormats::LightInfo &light, Node *node)
 {
-	EntityHandle entity = pool.create_entity();
-	nodes.push_back(entity);
+	Entity *entity = pool.create_entity();
+	entities.insert_front(entity);
 
 	switch (light.type)
 	{
@@ -488,7 +511,7 @@ EntityHandle Scene::create_light(const SceneFormats::LightInfo &light, Node *nod
 		entity->allocate_component<PositionalLightComponent>()->light = &positional;
 		entity->allocate_component<RenderableComponent>()->renderable = renderable;
 
-		auto *transform = entity->allocate_component<CachedSpatialTransformComponent>();
+		auto *transform = entity->allocate_component<RenderInfoComponent>();
 		auto *timestamp = entity->allocate_component<CachedSpatialTransformTimestampComponent>();
 		if (node)
 		{
@@ -504,14 +527,14 @@ EntityHandle Scene::create_light(const SceneFormats::LightInfo &light, Node *nod
 	return entity;
 }
 
-EntityHandle Scene::create_renderable(AbstractRenderableHandle renderable, Node *node)
+Entity *Scene::create_renderable(AbstractRenderableHandle renderable, Node *node)
 {
-	EntityHandle entity = pool.create_entity();
-	nodes.push_back(entity);
+	Entity *entity = pool.create_entity();
+	entities.insert_front(entity);
 
 	if (renderable->has_static_aabb())
 	{
-		auto *transform = entity->allocate_component<CachedSpatialTransformComponent>();
+		auto *transform = entity->allocate_component<RenderInfoComponent>();
 		auto *timestamp = entity->allocate_component<CachedSpatialTransformTimestampComponent>();
 		if (node)
 		{
@@ -552,11 +575,27 @@ EntityHandle Scene::create_renderable(AbstractRenderableHandle renderable, Node 
 
 void Scene::remove_entities_with_component(ComponentType id)
 {
-	auto itr = remove_if(begin(nodes), end(nodes), [id](const EntityHandle &entity) {
-		return entity->has_component(id);
-	});
+	auto itr = entities.begin();
+	while (itr != entities.end())
+	{
+		if (itr->has_component(id))
+		{
+			auto *to_free = itr.get();
+			itr = entities.erase(itr);
+			to_free->get_pool()->delete_entity(to_free);
+		}
+		else
+			++itr;
+	}
+}
 
-	nodes.erase(itr, end(nodes));
+void Scene::destroy_entity(Entity *entity)
+{
+	if (entity)
+	{
+		entities.erase(entity);
+		entity->get_pool()->delete_entity(entity);
+	}
 }
 
 }

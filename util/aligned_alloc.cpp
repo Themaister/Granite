@@ -23,12 +23,15 @@
 #include "aligned_alloc.hpp"
 #include <stdlib.h>
 #include <string.h>
+#include <malloc.h>
 
 namespace Util
 {
 void *memalign_alloc(size_t boundary, size_t size)
 {
-#if defined(_ISOC11_SOURCE)
+#if defined(_WIN32)
+    return _aligned_malloc(size, boundary);
+#elif defined(_ISOC11_SOURCE)
     return aligned_alloc(boundary, size);
 #elif (_POSIX_C_SOURCE >= 200112L) || (_XOPEN_SOURCE >= 600)
 	void *ptr = nullptr;
@@ -62,7 +65,9 @@ void *memalign_calloc(size_t boundary, size_t size)
 
 void memalign_free(void *ptr)
 {
-#if !defined(_ISOC11_SOURCE) && !((_POSIX_C_SOURCE >= 200112L) || (_XOPEN_SOURCE >= 600))
+#if defined(_WIN32)
+    _aligned_free(ptr);
+#elif !defined(_ISOC11_SOURCE) && !((_POSIX_C_SOURCE >= 200112L) || (_XOPEN_SOURCE >= 600))
     if (ptr != nullptr)
     {
         void **p = (void **) ptr;

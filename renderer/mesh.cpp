@@ -222,7 +222,7 @@ static Queue material_to_queue(const Material &mat)
 		return Queue::Opaque;
 }
 
-void StaticMesh::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform, RenderQueue &queue) const
+void StaticMesh::get_render_info(const RenderContext &context, const RenderInfoComponent *transform, RenderQueue &queue) const
 {
 	auto type = material_to_queue(*material);
 	uint32_t attrs = 0;
@@ -268,7 +268,7 @@ void StaticMesh::get_render_info(const RenderContext &context, const CachedSpati
 	}
 }
 
-void SkinnedMesh::get_render_info(const RenderContext &context, const CachedSpatialTransformComponent *transform, RenderQueue &queue) const
+void SkinnedMesh::get_render_info(const RenderContext &context, const RenderInfoComponent *transform, RenderQueue &queue) const
 {
 	auto type = material_to_queue(*material);
 	uint32_t attrs = 0;

@@ -38,6 +38,7 @@ struct PhysicsHandle
 	btCollisionObject *bt_object = nullptr;
 	btCollisionShape *bt_shape = nullptr;
 	Entity *entity = nullptr;
+	PhysicsSystem::InteractionType type = PhysicsSystem::InteractionType::Ghost;
 	bool copy_transform_from_node = false;
 
 	~PhysicsHandle()
@@ -103,29 +104,29 @@ void PhysicsSystem::tick_callback(float)
 	new_collision_buffer.clear();
 }
 
-struct ClosestRayCallback : btCollisionWorld::ClosestRayResultCallback
-{
-	using btCollisionWorld::ClosestRayResultCallback::ClosestRayResultCallback;
-
-	btScalar addSingleResult(btCollisionWorld::LocalRayResult &rayResult, bool normalInWorldSpace) override
-	{
-		auto *obj = rayResult.m_collisionObject;
-
-		// Ignore ray casts against characters.
-		auto mask = obj->getBroadphaseHandle()->m_collisionFilterGroup & ~btBroadphaseProxy::CharacterFilter;
-		if (mask != 0)
-			return btCollisionWorld::ClosestRayResultCallback::addSingleResult(rayResult, normalInWorldSpace);
-		else
-			return 1.0f;
-	}
-};
-
-RaycastResult PhysicsSystem::query_closest_hit_ray(const vec3 &from, const vec3 &dir, float t)
+RaycastResult PhysicsSystem::query_closest_hit_ray(const vec3 &from, const vec3 &dir, float t,
+                                                   InteractionTypeFlags flags)
 {
 	vec3 to = from + dir * t;
 	btVector3 ray_from_world(from.x, from.y, from.z);
 	btVector3 ray_to_world(to.x, to.y, to.z);
-	ClosestRayCallback cb(ray_from_world, ray_to_world);
+	btCollisionWorld::ClosestRayResultCallback cb(ray_from_world, ray_to_world);
+
+	cb.m_collisionFilterMask = 0;
+	if (flags == INTERACTION_TYPE_ALL_BITS)
+		cb.m_collisionFilterMask = btBroadphaseProxy::AllFilter;
+	else
+	{
+		if (flags & INTERACTION_TYPE_STATIC_BIT)
+			cb.m_collisionFilterMask |= btBroadphaseProxy::StaticFilter;
+		if (flags & INTERACTION_TYPE_DYNAMIC_BIT)
+			cb.m_collisionFilterMask |= btBroadphaseProxy::DefaultFilter;
+		if (flags & INTERACTION_TYPE_INVISIBLE_BIT)
+			cb.m_collisionFilterMask |= btBroadphaseProxy::SensorTrigger;
+		if (flags & INTERACTION_TYPE_KINEMATIC_BIT)
+			cb.m_collisionFilterMask |= btBroadphaseProxy::CharacterFilter;
+	}
+
 	world->rayTest(ray_from_world, ray_to_world, cb);
 
 	RaycastResult result = {};
@@ -301,7 +302,7 @@ void PhysicsSystem::iterate(double frame_time)
 			continue;
 
 		auto *obj = handle->bt_object;
-		auto *ghost = btGhostObject::upcast(obj);
+		auto *ghost = btPairCachingGhostObject::upcast(obj);
 		auto *body = btRigidBody::upcast(obj);
 
 		if (ghost)
@@ -343,7 +344,7 @@ void PhysicsSystem::iterate(double frame_time)
 			continue;
 
 		auto *obj = handle->bt_object;
-		auto *ghost = btGhostObject::upcast(obj);
+		auto *ghost = btPairCachingGhostObject::upcast(obj);
 		if (ghost)
 			continue;
 
@@ -453,30 +454,36 @@ PhysicsHandle *PhysicsSystem::add_shape(Scene::Node *node, const MaterialInfo &i
 
 	shape->setMargin(info.margin);
 	btVector3 local_inertia(0, 0, 0);
-	if (info.mass != 0.0f && info.type != ObjectType::Static)
+	if (info.mass != 0.0f && info.type != InteractionType::Static)
 		shape->calculateLocalInertia(info.mass, local_inertia);
 
 	PhysicsHandle *handle = nullptr;
 
-	if (info.type == ObjectType::Ghost)
+	if (info.type == InteractionType::Ghost || info.type == InteractionType::Area)
 	{
-		auto *body = new btGhostObject();
+		auto *body = new btPairCachingGhostObject();
 		body->setCollisionShape(shape);
 		body->setCollisionFlags(body->getCollisionFlags() | btCollisionObject::CF_NO_CONTACT_RESPONSE);
+		body->setWorldTransform(t);
 
-		world->addCollisionObject(body);
+		// Don't collide against other static objects and sensors.
+		world->addCollisionObject(body,
+		                          btBroadphaseProxy::SensorTrigger,
+		                          btBroadphaseProxy::AllFilter &
+		                          ~(btBroadphaseProxy::SensorTrigger | btBroadphaseProxy::StaticFilter));
+
 		handle = handle_pool.allocate();
 		body->setUserPointer(handle);
 		handle->node = node;
 		handle->bt_object = body;
 		handle->bt_shape = shape;
-		handle->copy_transform_from_node = true;
+		handle->copy_transform_from_node = info.type == InteractionType::Ghost;
 		handles.push_back(handle);
 	}
-	else if (info.type == ObjectType::Kinematic)
+	else if (info.type == InteractionType::Kinematic)
 	{
 		auto *motion = new btDefaultMotionState(t);
-		btRigidBody::btRigidBodyConstructionInfo rb_info(info.type == ObjectType::Static ? 0.0f : info.mass,
+		btRigidBody::btRigidBodyConstructionInfo rb_info(info.type == InteractionType::Static ? 0.0f : info.mass,
 		                                                 motion, shape, local_inertia);
 
 		auto *body = new btRigidBody(rb_info);
@@ -484,7 +491,7 @@ PhysicsHandle *PhysicsSystem::add_shape(Scene::Node *node, const MaterialInfo &i
 		body->setCollisionFlags(body->getCollisionFlags() | btCollisionObject::CF_KINEMATIC_OBJECT);
 		body->setActivationState(DISABLE_DEACTIVATION);
 
-		world->addRigidBody(body);
+		world->addRigidBody(body, btBroadphaseProxy::CharacterFilter, btBroadphaseProxy::AllFilter);
 		handle = handle_pool.allocate();
 		body->setUserPointer(handle);
 		handle->node = node;
@@ -496,9 +503,9 @@ PhysicsHandle *PhysicsSystem::add_shape(Scene::Node *node, const MaterialInfo &i
 	else
 	{
 		auto *motion = new btDefaultMotionState(t);
-		btRigidBody::btRigidBodyConstructionInfo rb_info(info.type != ObjectType::Dynamic ? 0.0f : info.mass,
+		btRigidBody::btRigidBodyConstructionInfo rb_info(info.type != InteractionType::Dynamic ? 0.0f : info.mass,
 		                                                 motion, shape, local_inertia);
-		if (info.mass != 0.0f && info.type == ObjectType::Dynamic)
+		if (info.mass != 0.0f && info.type == InteractionType::Dynamic)
 		{
 			rb_info.m_restitution = info.restitution;
 			rb_info.m_linearDamping = info.linear_damping;
@@ -511,10 +518,12 @@ PhysicsHandle *PhysicsSystem::add_shape(Scene::Node *node, const MaterialInfo &i
 		rb_info.m_rollingFriction = info.rolling_friction;
 
 		auto *body = new btRigidBody(rb_info);
-		if (info.type != ObjectType::Dynamic)
+		if (info.type != InteractionType::Dynamic)
 			body->setCollisionFlags(body->getCollisionFlags() | btCollisionObject::CF_STATIC_OBJECT);
 
-		world->addRigidBody(body);
+		world->addRigidBody(body, info.type == InteractionType::Dynamic ?
+		                          btBroadphaseProxy::DefaultFilter : btBroadphaseProxy::StaticFilter,
+		                          btBroadphaseProxy::AllFilter);
 
 		handle = handle_pool.allocate();
 		body->setUserPointer(handle);
@@ -524,7 +533,13 @@ PhysicsHandle *PhysicsSystem::add_shape(Scene::Node *node, const MaterialInfo &i
 		handles.push_back(handle);
 	}
 
+	handle->type = info.type;
 	return handle;
+}
+
+PhysicsSystem::InteractionType PhysicsSystem::get_interaction_type(PhysicsHandle *handle)
+{
+	return handle->type;
 }
 
 btCollisionShape *PhysicsSystem::create_shape(const ConvexMeshPart &part)
@@ -638,7 +653,7 @@ PhysicsHandle *PhysicsSystem::add_mesh(Scene::Node *node, unsigned index, const 
 
 	// Mesh objects cannot be dynamic.
 	MaterialInfo tmp = info;
-	tmp.type = ObjectType::Static;
+	tmp.type = InteractionType::Static;
 	tmp.mass = 0.0f;
 	tmp.restitution = 1.0f;
 
@@ -747,7 +762,7 @@ PhysicsHandle *PhysicsSystem::add_infinite_plane(const vec4 &plane, const Materi
 	auto *shape = new btStaticPlaneShape(btVector3(plane.x, plane.y, plane.z), plane.w);
 
 	MaterialInfo tmp = info;
-	tmp.type = ObjectType::Static;
+	tmp.type = InteractionType::Static;
 	tmp.mass = 0.0f;
 	tmp.restitution = 1.0f;
 
@@ -806,30 +821,57 @@ struct TriggerContactResultCallback : btCollisionWorld::ContactResultCallback
 {
 	bool hit = false;
 
-	btScalar addSingleResult(btManifoldPoint &,
+	btScalar addSingleResult(btManifoldPoint &point,
 	                         const btCollisionObjectWrapper *, int, int,
 	                         const btCollisionObjectWrapper *, int, int) override
 	{
-		hit = true;
-		return 1.0f;
+		if (point.getDistance() <= 0.0f)
+		{
+			hit = true;
+			return btScalar(0);
+		}
+		else
+			return btScalar(1);
 	}
 };
 
-bool PhysicsSystem::get_overlapping_objects(PhysicsHandle *handle, vector<PhysicsHandle *> &other)
+bool PhysicsSystem::get_overlapping_objects(PhysicsHandle *handle, vector<PhysicsHandle *> &other,
+                                            OverlapMethod method)
 {
 	other.clear();
-	auto *ghost = btGhostObject::upcast(handle->bt_object);
+	auto *ghost = btPairCachingGhostObject::upcast(handle->bt_object);
 	if (!ghost)
 		return false;
 
-	int count = ghost->getNumOverlappingObjects();
+	auto &pairs = ghost->getOverlappingPairs();
+
+	int count = pairs.size();
 	other.reserve(count);
 	for (int i = 0; i < count; i++)
 	{
-		TriggerContactResultCallback cb;
-		world->contactPairTest(ghost, ghost->getOverlappingObject(i), cb);
-		if (cb.hit)
-			other.push_back(static_cast<PhysicsHandle *>(ghost->getOverlappingObject(i)->getUserPointer()));
+		auto *object = pairs[i];
+
+		bool response = (ghost->getBroadphaseHandle()->m_collisionFilterGroup &
+		                 object->getBroadphaseHandle()->m_collisionFilterMask) != 0;
+
+		response = response &&
+				(object->getBroadphaseHandle()->m_collisionFilterGroup &
+				 ghost->getBroadphaseHandle()->m_collisionFilterMask) != 0;
+
+		if (!response)
+			continue;
+
+		if (method == OverlapMethod::Broadphase)
+		{
+			other.push_back(static_cast<PhysicsHandle *>(object->getUserPointer()));
+		}
+		else if (method == OverlapMethod::Nearphase)
+		{
+			TriggerContactResultCallback cb;
+			world->contactPairTest(ghost, object, cb);
+			if (cb.hit)
+				other.push_back(static_cast<PhysicsHandle *>(object->getUserPointer()));
+		}
 	}
 
 	return true;

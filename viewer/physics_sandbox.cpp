@@ -76,7 +76,8 @@ struct PhysicsSandboxApplication : Application, EventHandler
 		if (e.get_pressed() && e.get_button() == MouseButton::Left)
 		{
 			auto result = Global::physics()->query_closest_hit_ray(
-					camera.get_position(), camera.get_front(), 100.0f);
+					camera.get_position(), camera.get_front(), 100.0f,
+					PhysicsSystem::INTERACTION_TYPE_DYNAMIC_BIT);
 
 			if (result.entity)
 			{
@@ -209,7 +210,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 			auto *renderable = scene.create_renderable(cube, static_node.get());
 
 			PhysicsSystem::MaterialInfo info;
-			info.type = PhysicsSystem::ObjectType::Kinematic;
+			info.type = PhysicsSystem::InteractionType::Area;
 			info.mass = 0.0f;
 			animated_cube = Global::physics()->add_cube(static_node.get(), info);
 			PhysicsSystem::set_handle_parent(animated_cube, renderable);
@@ -404,11 +405,13 @@ struct PhysicsSandboxApplication : Application, EventHandler
 			}
 		}
 
+#if 0
 		{
-			auto *node = PhysicsSystem::get_scene_node(animated_cube);
-			node->transform.translation.x = float(3.0 * sin(0.2 * elapsed_time));
-			node->invalidate_cached_transform();
+			std::vector<PhysicsHandle *> overlapping;
+			Global::physics()->get_overlapping_objects(animated_cube, overlapping);
+			LOGI("Overlapping: %zu\n", overlapping.size());
 		}
+#endif
 
 		Global::physics()->iterate(frame_time);
 		scene.update_cached_transforms();

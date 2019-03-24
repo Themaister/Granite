@@ -142,9 +142,10 @@ public:
 	PhysicsSystem();
 	~PhysicsSystem();
 
-	enum class ObjectType
+	enum class InteractionType
 	{
 		Ghost,
+		Area,
 		Static,
 		Dynamic,
 		Kinematic
@@ -152,7 +153,7 @@ public:
 
 	struct MaterialInfo
 	{
-		ObjectType type = ObjectType::Dynamic;
+		InteractionType type = InteractionType::Dynamic;
 		float mass = 1.0f;
 		float restitution = 0.5f;
 		float linear_damping = 0.1f;
@@ -224,19 +225,38 @@ public:
 	static void set_handle_parent(PhysicsHandle *handle, Entity *entity);
 	static Entity *get_handle_parent(PhysicsHandle *handle);
 	static Scene::Node *get_scene_node(PhysicsHandle *handle);
+	static InteractionType get_interaction_type(PhysicsHandle *handle);
 
 	void apply_impulse(PhysicsHandle *handle, const vec3 &impulse, const vec3 &world_position);
 	void iterate(double frame_time);
 	void tick_callback(float tick_time);
 
-	RaycastResult query_closest_hit_ray(const vec3 &from, const vec3 &dir, float length);
+	enum InteractionTypeFlagBits
+	{
+		INTERACTION_TYPE_STATIC_BIT = 1 << 0,
+		INTERACTION_TYPE_DYNAMIC_BIT = 1 << 1,
+		INTERACTION_TYPE_INVISIBLE_BIT = 1 << 2,
+		INTERACTION_TYPE_KINEMATIC_BIT = 1 << 3,
+		INTERACTION_TYPE_ALL_BITS = 0x7fffffff
+	};
+	using InteractionTypeFlags = uint32_t;
+
+	RaycastResult query_closest_hit_ray(const vec3 &from, const vec3 &dir, float length,
+	                                    InteractionTypeFlags mask = INTERACTION_TYPE_ALL_BITS);
 
 	void add_point_constraint(PhysicsHandle *handle, const vec3 &local_pivot);
 	void add_point_constraint(PhysicsHandle *handle0, PhysicsHandle *handle1,
 	                          const vec3 &local_pivot0, const vec3 &local_pivot1,
 	                          bool skip_collision = false);
 
-	bool get_overlapping_objects(PhysicsHandle *handle, std::vector<PhysicsHandle *> &other);
+	enum class OverlapMethod
+	{
+		Broadphase,
+		Nearphase
+	};
+
+	bool get_overlapping_objects(PhysicsHandle *handle, std::vector<PhysicsHandle *> &other,
+	                             OverlapMethod method = OverlapMethod::Nearphase);
 
 private:
 	std::unique_ptr<btDefaultCollisionConfiguration> collision_config;

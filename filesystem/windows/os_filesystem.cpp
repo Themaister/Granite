@@ -145,12 +145,12 @@ void *MappedFile::map()
 	return mapped;
 }
 
-void *MappedFile::map_write(size_t size)
+void *MappedFile::map_write(size_t size_)
 {
 	if (mapped)
 		unmap();
 
-	this->size = size;
+	size = size_;
 
 #ifdef _WIN64
 	DWORD hi = DWORD(size >> 32);
@@ -183,8 +183,8 @@ MappedFile::~MappedFile()
 		CloseHandle(file);
 }
 
-OSFilesystem::OSFilesystem(const std::string &base)
-    : base(base)
+OSFilesystem::OSFilesystem(const std::string &base_)
+    : base(base_)
 {
 }
 

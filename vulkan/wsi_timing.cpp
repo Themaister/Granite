@@ -20,12 +20,15 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#define __USE_MINGW_ANSI_STDIO 1
+#define __STDC_FORMAT_MACROS 1
+#include <inttypes.h>
+
 #include "wsi_timing.hpp"
 #include "wsi.hpp"
 #include <string.h>
 #include <algorithm>
 #include <cmath>
-#include <inttypes.h>
 
 #ifndef _WIN32
 #include <time.h>

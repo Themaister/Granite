@@ -32,7 +32,7 @@ using namespace std;
 
 namespace Granite
 {
-bool XInputManager::init(Granite::InputTracker *tracker)
+bool XInputManager::init(Granite::InputTracker *tracker_)
 {
 	if (!lib)
 		lib = DynamicLibrary("xinput1_4");
@@ -42,7 +42,7 @@ bool XInputManager::init(Granite::InputTracker *tracker)
 	if (lib)
 		pXInputGetState = lib.get_symbol<decltype(&XInputGetState)>("XInputGetState");
 
-	this->tracker = tracker;
+	tracker = tracker_;
 
 	for (unsigned i = 0; i < 4; i++)
 		try_polling_device(i);

@@ -402,13 +402,13 @@ bool DeviceAllocator::allocate_global(uint32_t size, uint32_t memory_type, Devic
 	return allocators[memory_type]->allocate_global(size, alloc);
 }
 
-void DeviceAllocator::Heap::garbage_collect(VkDevice device)
+void DeviceAllocator::Heap::garbage_collect(VkDevice device_)
 {
 	for (auto &block : blocks)
 	{
 		if (block.host_memory)
-			vkUnmapMemory(device, block.memory);
-		vkFreeMemory(device, block.memory, nullptr);
+			vkUnmapMemory(device_, block.memory);
+		vkFreeMemory(device_, block.memory, nullptr);
 		size -= block.size;
 	}
 }

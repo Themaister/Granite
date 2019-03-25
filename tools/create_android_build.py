@@ -69,6 +69,9 @@ def main():
     parser.add_argument('--audio',
                         help = 'Enable audio support',
                         action = 'store_true')
+    parser.add_argument('--physics',
+                        help = 'Enable physics support',
+                        action = 'store_true')
 
     args = parser.parse_args()
     abis = ['arm64-v8a'] if args.abis is None else args.abis
@@ -140,7 +143,8 @@ def main():
             .replace('$$GRANITE_ASSETS$$', granite_assets) \
             .replace('$$EXTERNAL_JNI$$', external_jni) \
             .replace('$$ABIS$$', target_abis) \
-            .replace('$$AUDIO$$', 'ON' if args.audio else 'OFF')
+            .replace('$$AUDIO$$', 'ON' if args.audio else 'OFF') \
+            .replace('$$PHYSICS$$', 'ON' if args.physics else 'OFF')
 
         with open(target_build_gradle, 'w') as dump_file:
             print(data, file = dump_file)

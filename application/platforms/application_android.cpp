@@ -238,7 +238,7 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 
 	unsigned width, height;
 	Application *app = nullptr;
-	Vulkan::WSI *wsi = nullptr;
+	Vulkan::WSI *app_wsi = nullptr;
 	bool active = false;
 	bool has_window = true;
 	bool wsi_idle = false;
@@ -446,11 +446,11 @@ static int32_t engine_handle_input(android_app *app, AInputEvent *event)
 			case AMOTION_EVENT_ACTION_MOVE:
 			{
 				size_t count = AMotionEvent_getPointerCount(event);
-				for (size_t index = 0; index < count; index++)
+				for (size_t i = 0; i < count; i++)
 				{
-					auto x = AMotionEvent_getX(event, index) / global_state.base_width;
-					auto y = AMotionEvent_getY(event, index) / global_state.base_height;
-					int id = AMotionEvent_getPointerId(event, index);
+					auto x = AMotionEvent_getX(event, i) / global_state.base_width;
+					auto y = AMotionEvent_getY(event, i) / global_state.base_height;
+					int id = AMotionEvent_getPointerId(event, i);
 					state.get_input_tracker().on_touch_move(id, x, y);
 				}
 				state.get_input_tracker().dispatch_touch_gesture();
@@ -604,11 +604,11 @@ static void engine_handle_cmd(android_app *app, int32_t cmd)
 			global_state.base_height = ANativeWindow_getHeight(app->window);
 			LOGI("New window size %d x %d\n", global_state.base_width, global_state.base_height);
 
-			if (state.wsi)
+			if (state.app_wsi)
 			{
 				LOGI("Lifecycle init window\n");
-				auto surface = create_surface_from_native_window(state.wsi->get_context().get_instance(), app->window);
-				state.wsi->init_surface_and_swapchain(surface);
+				auto surface = create_surface_from_native_window(state.app_wsi->get_context().get_instance(), app->window);
+				state.app_wsi->init_surface_and_swapchain(surface);
 			}
 			else
 				state.pending_native_window_init = true;
@@ -617,10 +617,10 @@ static void engine_handle_cmd(android_app *app, int32_t cmd)
 
 	case APP_CMD_TERM_WINDOW:
 		state.has_window = false;
-		if (state.wsi)
+		if (state.app_wsi)
 		{
 			LOGI("Lifecycle deinit window\n");
-			state.wsi->deinit_surface_and_swapchain();
+			state.app_wsi->deinit_surface_and_swapchain();
 		}
 		else
 			state.pending_native_window_term = true;
@@ -639,7 +639,7 @@ void WSIPlatformAndroid::poll_input()
 	int events;
 	int ident;
 	android_poll_source *source;
-	state.wsi = nullptr;
+	state.app_wsi = nullptr;
 	while ((ident = ALooper_pollAll(1, nullptr, &events, reinterpret_cast<void **>(&source))) >= 0)
 	{
 		if (source)
@@ -661,7 +661,7 @@ bool WSIPlatformAndroid::alive(Vulkan::WSI &wsi)
 	int events;
 	int ident;
 	android_poll_source *source;
-	state.wsi = &wsi;
+	state.app_wsi = &wsi;
 
 	if (global_state.app->destroyRequested)
 		return false;

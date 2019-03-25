@@ -53,6 +53,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 		EVENT_MANAGER_REGISTER(PhysicsSandboxApplication, on_collision, CollisionEvent);
 		EVENT_MANAGER_REGISTER(PhysicsSandboxApplication, on_mouse, MouseButtonEvent);
 		EVENT_MANAGER_REGISTER(PhysicsSandboxApplication, on_input_state, InputStateEvent);
+		EVENT_MANAGER_REGISTER(PhysicsSandboxApplication, on_touch_down, TouchDownEvent);
 	}
 
 	bool on_input_state(const InputStateEvent &e)
@@ -68,6 +69,47 @@ struct PhysicsSandboxApplication : Application, EventHandler
 			walk_direction.z += 3.0f;
 
 		kinematic.set_move_velocity(walk_direction);
+		return true;
+	}
+
+	bool on_touch_down(const TouchDownEvent &e)
+	{
+		if (e.get_index() == 0)
+		{
+			auto result = Global::physics()->query_closest_hit_ray(
+					camera.get_position(), camera.get_front(), 100.0f,
+					PhysicsSystem::INTERACTION_TYPE_DYNAMIC_BIT);
+
+			if (result.entity)
+			{
+				Global::physics()->apply_impulse(result.handle,
+						20.0f * camera.get_front(), result.world_pos);
+			}
+		}
+		else if (e.get_index() == 1)
+		{
+			auto result = Global::physics()->query_closest_hit_ray(
+					camera.get_position(), camera.get_front(), 100.0f);
+
+			if (result.entity)
+			{
+				auto sphere_node = scene.create_node();
+				sphere_node->transform.translation = result.world_pos + vec3(0.0f, 20.0f, 0.0f);
+				sphere_node->transform.scale = vec3(1.2f);
+				sphere_node->invalidate_cached_transform();
+				scene.get_root_node()->add_child(sphere_node);
+				auto *entity = scene.create_renderable(capsule, sphere_node.get());
+				entity->allocate_component<ForceComponent>();
+				PhysicsSystem::MaterialInfo info;
+				info.mass = 30.0f;
+				info.restitution = 0.2f;
+				info.angular_damping = 0.3f;
+				info.linear_damping = 0.3f;
+				auto *sphere = Global::physics()->add_capsule(sphere_node.get(), 1.0f, 0.5f, info);
+				entity->allocate_component<PhysicsComponent>()->handle = sphere;
+				PhysicsSystem::set_handle_parent(sphere, entity);
+			}
+		}
 		return true;
 	}
 
@@ -164,36 +206,39 @@ struct PhysicsSandboxApplication : Application, EventHandler
 		scene.set_root_node(root_node);
 		context.set_lighting_parameters(&lighting);
 
-		GLTF::Parser parser(gltf_path);
-		auto &mesh = parser.get_meshes().front();
-		auto *model = scene.create_entity();
-		auto &collision_mesh = model->allocate_component<CollisionMeshComponent>()->mesh;
+		if (!gltf_path.empty())
+		{
+			GLTF::Parser parser(gltf_path);
+			auto &mesh = parser.get_meshes().front();
+			auto *model = scene.create_entity();
+			auto &collision_mesh = model->allocate_component<CollisionMeshComponent>()->mesh;
 
-		if (SceneFormats::extract_collision_mesh(collision_mesh, mesh))
-		{
-			PhysicsSystem::CollisionMesh c;
-			c.indices = collision_mesh.indices.data();
-			c.num_triangles = collision_mesh.indices.size() / 3;
-			c.index_stride_triangle = 3 * sizeof(uint32_t);
-			c.num_vertices = collision_mesh.positions.size();
-			c.positions = collision_mesh.positions.front().data;
-			c.position_stride = sizeof(vec4);
-			c.aabb = mesh.static_aabb;
-			gltf_mesh_physics_index = Global::physics()->register_collision_mesh(c);
-		}
+			if (SceneFormats::extract_collision_mesh(collision_mesh, mesh))
+			{
+				PhysicsSystem::CollisionMesh c;
+				c.indices = collision_mesh.indices.data();
+				c.num_triangles = collision_mesh.indices.size() / 3;
+				c.index_stride_triangle = 3 * sizeof(uint32_t);
+				c.num_vertices = collision_mesh.positions.size();
+				c.positions = collision_mesh.positions.front().data;
+				c.position_stride = sizeof(vec4);
+				c.aabb = mesh.static_aabb;
+				gltf_mesh_physics_index = Global::physics()->register_collision_mesh(c);
+			}
 
-		if (mesh.has_material)
-		{
-			gltf_mesh = Util::make_handle<ImportedMesh>(mesh,
-			                                            parser.get_materials()[mesh.material_index]);
-		}
-		else
-		{
-			SceneFormats::MaterialInfo default_material;
-			default_material.uniform_base_color = vec4(0.3f, 1.0f, 0.3f, 1.0f);
-			default_material.uniform_metallic = 0.0f;
-			default_material.uniform_roughness = 1.0f;
-			gltf_mesh = Util::make_handle<ImportedMesh>(mesh, default_material);
+			if (mesh.has_material)
+			{
+				gltf_mesh = Util::make_handle<ImportedMesh>(mesh,
+				                                            parser.get_materials()[mesh.material_index]);
+			}
+			else
+			{
+				SceneFormats::MaterialInfo default_material;
+				default_material.uniform_base_color = vec4(0.3f, 1.0f, 0.3f, 1.0f);
+				default_material.uniform_metallic = 0.0f;
+				default_material.uniform_roughness = 1.0f;
+				gltf_mesh = Util::make_handle<ImportedMesh>(mesh, default_material);
+			}
 		}
 
 		{
@@ -476,13 +521,11 @@ namespace Granite
 {
 Application *application_create(int argc, char **argv)
 {
-	if (argc < 2)
-		return nullptr;
 	application_dummy();
 
 	try
 	{
-		auto *app = new PhysicsSandboxApplication(argv[1]);
+		auto *app = new PhysicsSandboxApplication(argc >= 2 ? argv[1] : "");
 		return app;
 	}
 	catch (const std::exception &e)

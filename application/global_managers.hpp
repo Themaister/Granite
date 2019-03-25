@@ -24,6 +24,7 @@
 
 #include <stdint.h>
 #include <memory>
+#include <limits>
 
 namespace Granite
 {
@@ -58,7 +59,8 @@ enum ManagerFeatureFlagBits
 };
 using ManagerFeatureFlags = uint32_t;
 
-void init(ManagerFeatureFlags flags = MANAGER_FEATURE_ALL_BITS);
+void init(ManagerFeatureFlags flags = MANAGER_FEATURE_ALL_BITS,
+          unsigned max_threads = std::numeric_limits<unsigned>::max());
 void deinit();
 
 // Used if the application wants to use multiple instances of Granite in the same process.

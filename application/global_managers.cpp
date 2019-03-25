@@ -172,7 +172,7 @@ PhysicsSystem *physics()
 }
 #endif
 
-void init(ManagerFeatureFlags flags)
+void init(ManagerFeatureFlags flags, unsigned max_threads)
 {
 	if (flags & MANAGER_FEATURE_EVENT_BIT)
 	{
@@ -225,7 +225,12 @@ void init(ManagerFeatureFlags flags)
 
 	// Kick threads after all global managers are set up.
 	if (kick_threads)
-		global_managers.thread_group->start(std::thread::hardware_concurrency());
+	{
+		unsigned cpu_threads = std::thread::hardware_concurrency();
+		if (cpu_threads > max_threads)
+			cpu_threads = max_threads;
+		global_managers.thread_group->start(cpu_threads);
+	}
 }
 
 void deinit()

@@ -31,8 +31,8 @@ namespace Granite
 {
 namespace UI
 {
-Image::Image(const std::string &path)
-	: path(path)
+Image::Image(const std::string &path_)
+	: path(path_)
 {
 	EVENT_MANAGER_REGISTER_LATCH(Image, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }

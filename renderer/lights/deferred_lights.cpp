@@ -81,15 +81,15 @@ void DeferredLights::refresh(RenderContext &context)
 	}
 }
 
-void DeferredLights::set_scene(Scene *scene)
+void DeferredLights::set_scene(Scene *scene_)
 {
-	this->scene = scene;
+	scene = scene_;
 }
 
-void DeferredLights::set_renderers(Renderer *depth_renderer, Renderer *deferred_renderer)
+void DeferredLights::set_renderers(Renderer *depth_renderer_, Renderer *deferred_renderer_)
 {
-	this->depth_renderer = depth_renderer;
-	this->deferred_renderer = deferred_renderer;
+	depth_renderer = depth_renderer_;
+	deferred_renderer = deferred_renderer_;
 }
 
 void DeferredLights::render_prepass_lights(Vulkan::CommandBuffer &cmd, RenderContext &context)

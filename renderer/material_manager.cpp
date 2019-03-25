@@ -34,8 +34,8 @@ using namespace Granite::SceneFormats;
 
 namespace Granite
 {
-MaterialFile::MaterialFile(const std::string &path)
-	: VolatileSource(path)
+MaterialFile::MaterialFile(const std::string &path_)
+	: VolatileSource(path_)
 {
 	if (!init())
 		throw runtime_error("Failed to load material file.");
@@ -123,31 +123,31 @@ void MaterialFile::update(std::unique_ptr<File> file)
 				paths[ecast(Material::Textures::MetallicRoughness)] = mr.GetString();
 			else if (mr.IsArray())
 			{
-				this->metallic = mr[0].GetFloat();
-				this->roughness = mr[1].GetFloat();
+				metallic = mr[0].GetFloat();
+				roughness = mr[1].GetFloat();
 			}
 			else
 			{
-				this->metallic = 1.0f;
-				this->roughness = 1.0f;
+				metallic = 1.0f;
+				roughness = 1.0f;
 			}
 
-			assert(this->metallic >= 0.0f && this->metallic <= 1.0f);
-			assert(this->roughness >= 0.0f && this->roughness <= 1.0f);
+			assert(metallic >= 0.0f && metallic <= 1.0f);
+			assert(roughness >= 0.0f && roughness <= 1.0f);
 		}
 		else
 		{
-			this->metallic = 1.0f;
-			this->roughness = 1.0f;
+			metallic = 1.0f;
+			roughness = 1.0f;
 		}
 
 		if (mat.HasMember("emissive"))
 		{
-			auto &emissive = mat["emissive"];
-			this->emissive = vec3(emissive[0].GetFloat(), emissive[1].GetFloat(), emissive[2].GetFloat());
+			auto &e = mat["emissive"];
+			emissive = vec3(e[0].GetFloat(), e[1].GetFloat(), e[2].GetFloat());
 		}
 		else
-			this->emissive = vec3(0.0f);
+			emissive = vec3(0.0f);
 	}
 	catch (const char *)
 	{

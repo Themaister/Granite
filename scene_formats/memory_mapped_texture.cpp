@@ -334,11 +334,11 @@ bool MemoryMappedTexture::map_read(const std::string &path)
 	if (loaded_file->get_size() < sizeof(MemoryMappedHeader))
 		return false;
 
-	uint8_t *mapped = static_cast<uint8_t *>(loaded_file->map());
-	if (!mapped)
+	uint8_t *new_mapped = static_cast<uint8_t *>(loaded_file->map());
+	if (!new_mapped)
 		return false;
 
-	return map_read(move(loaded_file), mapped);
+	return map_read(move(loaded_file), new_mapped);
 }
 
 bool MemoryMappedTexture::is_header(const void *mapped_, size_t size)

@@ -50,7 +50,8 @@ public:
 
 private:
 	friend class Util::ObjectPool<FenceHolder>;
-	FenceHolder(Device *device, VkFence fence) : device(device), fence(fence)
+	FenceHolder(Device *device_, VkFence fence_)
+		: device(device_), fence(fence_)
 	{
 	}
 

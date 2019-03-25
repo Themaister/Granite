@@ -60,11 +60,11 @@ void line_strip_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *infos,
 	unsigned index = 0;
 	for (unsigned i = 0; i < instances; i++)
 	{
-		auto &info = *static_cast<const LineInfo *>(infos[i].instance_data);
-		for (unsigned x = 0; x < info.count; x++)
+		auto &instance_info = *static_cast<const LineInfo *>(infos[i].instance_data);
+		for (unsigned x = 0; x < instance_info.count; x++)
 		{
-			*positions++ = info.positions[x];
-			*colors++ = info.colors[x];
+			*positions++ = instance_info.positions[x];
+			*colors++ = instance_info.colors[x];
 			*indices++ = index++;
 		}
 		*indices++ = 0xffffffffu;
@@ -118,9 +118,9 @@ void sprite_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *infos, uns
 	quads = 0;
 	for (unsigned i = 0; i < num_instances; i++)
 	{
-		auto &info = *static_cast<const SpriteInstanceInfo *>(infos[i].instance_data);
-		memcpy(data + quads, info.quads, info.count * sizeof(*data));
-		quads += info.count;
+		auto &instance_info = *static_cast<const SpriteInstanceInfo *>(infos[i].instance_data);
+		memcpy(data + quads, instance_info.quads, instance_info.count * sizeof(*data));
+		quads += instance_info.count;
 	}
 
 	cmd.set_vertex_attrib(1, 1, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(QuadData, pos_off_x));
@@ -197,22 +197,22 @@ void Sprite::get_sprite_render_info(const SpriteTransformInfo &transform, Render
 	{
 		auto &suite = queue.get_shader_suites()[ecast(RenderableType::Sprite)];
 
-		uint32_t flags = 0;
+		uint32_t shader_flags = 0;
 		if (bandlimited_pixel)
-			flags |= BANDLIMITED_PIXEL_BIT;
+			shader_flags |= BANDLIMITED_PIXEL_BIT;
 		if (sprite.textures[1])
-			flags |= BLEND_TEXUTRE_BIT;
+			shader_flags |= BLEND_TEXUTRE_BIT;
 		if (luma_to_alpha)
-			flags |= LUMA_TO_ALPHA_BIT;
+			shader_flags |= LUMA_TO_ALPHA_BIT;
 		if (clear_alpha_to_zero)
-			flags |= CLEAR_ALPHA_TO_ZERO_BIT;
+			shader_flags |= CLEAR_ALPHA_TO_ZERO_BIT;
 
 		sprite.program = suite.get_program(pipeline,
 		                                   MESH_ATTRIBUTE_POSITION_BIT |
 		                                   MESH_ATTRIBUTE_VERTEX_COLOR_BIT |
 		                                   (texture ? MESH_ATTRIBUTE_UV_BIT : 0),
 		                                   texture ? MATERIAL_TEXTURE_BASE_COLOR_BIT : 0,
-		                                   flags);
+		                                   shader_flags);
 		*sprite_data = sprite;
 	}
 }

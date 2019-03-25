@@ -184,10 +184,10 @@ private:
 	std::vector<VkImage> swapchain_images;
 	std::unique_ptr<Device> device;
 
-	unsigned width = 0;
-	unsigned height = 0;
-	float aspect_ratio = 1.0f;
-	VkFormat format = VK_FORMAT_UNDEFINED;
+	unsigned swapchain_width = 0;
+	unsigned swapchain_height = 0;
+	float swapchain_aspect_ratio = 1.0f;
+	VkFormat swapchain_format = VK_FORMAT_UNDEFINED;
 	PresentMode current_present_mode = PresentMode::SyncToVBlank;
 	PresentMode present_mode = PresentMode::SyncToVBlank;
 

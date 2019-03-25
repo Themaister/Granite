@@ -27,67 +27,37 @@ using namespace std;
 
 namespace Vulkan
 {
-void Device::set_render_pass_handle(unsigned index, VkRenderPass render_pass)
+void Device::register_descriptor_set_layout(VkDescriptorSetLayout layout, Fossilize::Hash hash, const VkDescriptorSetLayoutCreateInfo &info)
 {
-	lock_guard<mutex> holder{state_recorder_lock};
-	state_recorder.set_render_pass_handle(index, render_pass);
+	state_recorder.record_descriptor_set_layout(layout, info, hash);
 }
 
-void Device::set_descriptor_set_layout_handle(unsigned index, VkDescriptorSetLayout set_layout)
+void Device::register_pipeline_layout(VkPipelineLayout layout, Fossilize::Hash hash, const VkPipelineLayoutCreateInfo &info)
 {
-	lock_guard<mutex> holder{state_recorder_lock};
-	state_recorder.set_descriptor_set_layout_handle(index, set_layout);
+	return state_recorder.record_pipeline_layout(layout, info, hash);
 }
 
-void Device::set_shader_module_handle(unsigned index, VkShaderModule module)
+void Device::register_shader_module(VkShaderModule module, Fossilize::Hash hash, const VkShaderModuleCreateInfo &info)
 {
-	lock_guard<mutex> holder{state_recorder_lock};
-	state_recorder.set_shader_module_handle(index, module);
+	return state_recorder.record_shader_module(module, info, hash);
 }
 
-void Device::set_pipeline_layout_handle(unsigned index, VkPipelineLayout layout)
+void Device::register_compute_pipeline(Fossilize::Hash hash, const VkComputePipelineCreateInfo &info)
 {
-	lock_guard<mutex> holder{state_recorder_lock};
-	state_recorder.set_pipeline_layout_handle(index, layout);
+	return state_recorder.record_compute_pipeline(VK_NULL_HANDLE, info, nullptr, 0, hash);
 }
 
-unsigned Device::register_descriptor_set_layout(Fossilize::Hash hash, const VkDescriptorSetLayoutCreateInfo &info)
+void Device::register_graphics_pipeline(Fossilize::Hash hash, const VkGraphicsPipelineCreateInfo &info)
 {
-	lock_guard<mutex> holder{state_recorder_lock};
-	return state_recorder.register_descriptor_set_layout(hash, info);
+	return state_recorder.record_graphics_pipeline(VK_NULL_HANDLE, info, nullptr, 0, hash);
 }
 
-unsigned Device::register_pipeline_layout(Fossilize::Hash hash, const VkPipelineLayoutCreateInfo &info)
+void Device::register_render_pass(VkRenderPass render_pass, Fossilize::Hash hash, const VkRenderPassCreateInfo &info)
 {
-	lock_guard<mutex> holder{state_recorder_lock};
-	return state_recorder.register_pipeline_layout(hash, info);
+	return state_recorder.record_render_pass(render_pass, info, hash);
 }
 
-unsigned Device::register_shader_module(Fossilize::Hash hash, const VkShaderModuleCreateInfo &info)
-{
-	lock_guard<mutex> holder{state_recorder_lock};
-	return state_recorder.register_shader_module(hash, info);
-}
-
-unsigned Device::register_compute_pipeline(Fossilize::Hash hash, const VkComputePipelineCreateInfo &info)
-{
-	lock_guard<mutex> holder{state_recorder_lock};
-	return state_recorder.register_compute_pipeline(hash, info);
-}
-
-unsigned Device::register_graphics_pipeline(Fossilize::Hash hash, const VkGraphicsPipelineCreateInfo &info)
-{
-	lock_guard<mutex> holder{state_recorder_lock};
-	return state_recorder.register_graphics_pipeline(hash, info);
-}
-
-unsigned Device::register_render_pass(Fossilize::Hash hash, const VkRenderPassCreateInfo &info)
-{
-	lock_guard<mutex> holder{state_recorder_lock};
-	return state_recorder.register_render_pass(hash, info);
-}
-
-bool Device::enqueue_create_shader_module(Fossilize::Hash hash, unsigned, const VkShaderModuleCreateInfo *create_info, VkShaderModule *module)
+bool Device::enqueue_create_shader_module(Fossilize::Hash hash, const VkShaderModuleCreateInfo *create_info, VkShaderModule *module)
 {
 	auto *ret = shaders.emplace_yield(hash, hash, this, create_info->pCode, create_info->codeSize);
 	*module = ret->get_module();
@@ -95,7 +65,7 @@ bool Device::enqueue_create_shader_module(Fossilize::Hash hash, unsigned, const 
 	return true;
 }
 
-void Device::wait_enqueue()
+void Device::notify_replayed_resources_for_type()
 {
 #ifdef GRANITE_VULKAN_MT
 	if (replayer_state.pipeline_group)
@@ -162,8 +132,9 @@ VkPipeline Device::fossilize_create_compute_pipeline(Fossilize::Hash hash, VkCom
 	return ret->add_pipeline(hash, pipeline);
 }
 
-bool Device::enqueue_create_graphics_pipeline(Fossilize::Hash hash, unsigned,
-                                              const VkGraphicsPipelineCreateInfo *create_info, VkPipeline *pipeline)
+bool Device::enqueue_create_graphics_pipeline(Fossilize::Hash hash,
+                                              const VkGraphicsPipelineCreateInfo *create_info,
+                                              VkPipeline *pipeline)
 {
 #ifdef GRANITE_VULKAN_MT
 	if (!replayer_state.pipeline_group)
@@ -181,8 +152,9 @@ bool Device::enqueue_create_graphics_pipeline(Fossilize::Hash hash, unsigned,
 #endif
 }
 
-bool Device::enqueue_create_compute_pipeline(Fossilize::Hash hash, unsigned,
-                                             const VkComputePipelineCreateInfo *create_info, VkPipeline *pipeline)
+bool Device::enqueue_create_compute_pipeline(Fossilize::Hash hash,
+                                             const VkComputePipelineCreateInfo *create_info,
+                                             VkPipeline *pipeline)
 {
 #ifdef GRANITE_VULKAN_MT
 	if (!replayer_state.pipeline_group)
@@ -200,7 +172,9 @@ bool Device::enqueue_create_compute_pipeline(Fossilize::Hash hash, unsigned,
 #endif
 }
 
-bool Device::enqueue_create_render_pass(Fossilize::Hash hash, unsigned, const VkRenderPassCreateInfo *create_info, VkRenderPass *render_pass)
+bool Device::enqueue_create_render_pass(Fossilize::Hash hash,
+                                        const VkRenderPassCreateInfo *create_info,
+                                        VkRenderPass *render_pass)
 {
 	auto *ret = render_passes.emplace_yield(hash, hash, this, *create_info);
 	*render_pass = ret->get_render_pass();
@@ -208,20 +182,20 @@ bool Device::enqueue_create_render_pass(Fossilize::Hash hash, unsigned, const Vk
 	return true;
 }
 
-bool Device::enqueue_create_sampler(Fossilize::Hash hash, unsigned, const VkSamplerCreateInfo *, VkSampler *sampler)
+bool Device::enqueue_create_sampler(Fossilize::Hash hash, const VkSamplerCreateInfo *, VkSampler *sampler)
 {
-	*sampler = get_stock_sampler(static_cast<StockSampler>(hash)).get_sampler();
+	*sampler = get_stock_sampler(static_cast<StockSampler>(hash & 0xffffu)).get_sampler();
 	return true;
 }
 
-bool Device::enqueue_create_descriptor_set_layout(Fossilize::Hash, unsigned, const VkDescriptorSetLayoutCreateInfo *, VkDescriptorSetLayout *layout)
+bool Device::enqueue_create_descriptor_set_layout(Fossilize::Hash, const VkDescriptorSetLayoutCreateInfo *, VkDescriptorSetLayout *layout)
 {
 	// We will create this naturally when building pipelines, can just emit dummy handles.
 	*layout = (VkDescriptorSetLayout) uint64_t(-1);
 	return true;
 }
 
-bool Device::enqueue_create_pipeline_layout(Fossilize::Hash, unsigned, const VkPipelineLayoutCreateInfo *, VkPipelineLayout *layout)
+bool Device::enqueue_create_pipeline_layout(Fossilize::Hash, const VkPipelineLayoutCreateInfo *, VkPipelineLayout *layout)
 {
 	// We will create this naturally when building pipelines, can just emit dummy handles.
 	*layout = (VkPipelineLayout) uint64_t(-1);
@@ -230,6 +204,8 @@ bool Device::enqueue_create_pipeline_layout(Fossilize::Hash, unsigned, const VkP
 
 void Device::init_pipeline_state()
 {
+	state_recorder.init_recording_thread(nullptr);
+
 	auto file = Granite::Global::filesystem()->open("assets://pipelines.json", Granite::FileMode::ReadOnly);
 	if (!file)
 		file = Granite::Global::filesystem()->open("cache://pipelines.json", Granite::FileMode::ReadOnly);
@@ -249,7 +225,7 @@ void Device::init_pipeline_state()
 		LOGI("Replaying cached state.\n");
 		Fossilize::StateReplayer replayer;
 		auto start = Util::get_current_time_nsecs();
-		replayer.parse(*this, static_cast<const char *>(mapped), file->get_size());
+		replayer.parse(*this, nullptr, static_cast<const char *>(mapped), file->get_size());
 		auto end = Util::get_current_time_nsecs();
 		LOGI("Completed replaying cached state in %.3f ms.\n", (end - start) * 1e-6);
 		replayer_state = {};
@@ -262,18 +238,27 @@ void Device::init_pipeline_state()
 
 void Device::flush_pipeline_state()
 {
-	auto serial = state_recorder.serialize();
+	uint8_t *serialized = nullptr;
+	size_t serialized_size = 0;
+	if (!state_recorder.serialize(&serialized, &serialized_size))
+	{
+		LOGE("Failed to serialize Fossilize state.\n");
+		return;
+	}
+
 	auto file = Granite::Global::filesystem()->open("cache://pipelines.json", Granite::FileMode::WriteOnly);
 	if (file)
 	{
-		uint8_t *data = static_cast<uint8_t *>(file->map_write(serial.size()));
+		auto *data = static_cast<uint8_t *>(file->map_write(serialized_size));
 		if (data)
 		{
-			memcpy(data, serial.data(), serial.size());
+			memcpy(data, serialized, serialized_size);
 			file->unmap();
 		}
 		else
 			LOGE("Failed to serialize pipeline data.\n");
+
 	}
+	state_recorder.free_serialized(serialized);
 }
 }

@@ -39,8 +39,8 @@ class ApplicationLifecycleEvent : public Event
 public:
 	GRANITE_EVENT_TYPE_DECL(ApplicationLifecycleEvent)
 
-	ApplicationLifecycleEvent(ApplicationLifecycle lifecycle)
-		: lifecycle(lifecycle)
+	explicit ApplicationLifecycleEvent(ApplicationLifecycle lifecycle_)
+		: lifecycle(lifecycle_)
 	{
 	}
 
@@ -58,8 +58,8 @@ class FrameTickEvent : public Granite::Event
 public:
 	GRANITE_EVENT_TYPE_DECL(FrameTickEvent)
 
-	FrameTickEvent(double frame_time, double elapsed_time)
-		: frame_time(frame_time), elapsed_time(elapsed_time)
+	FrameTickEvent(double frame_time_, double elapsed_time_)
+		: frame_time(frame_time_), elapsed_time(elapsed_time_)
 	{
 	}
 

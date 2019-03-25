@@ -30,9 +30,9 @@ namespace Granite
 {
 namespace UI
 {
-void Slider::set_text(string text)
+void Slider::set_text(string text_)
 {
-	this->text = move(text);
+	text = move(text_);
 }
 
 void Slider::reconfigure()
@@ -83,17 +83,17 @@ void Slider::set_range(float minimum, float maximum)
 		value_cb(value);
 }
 
-void Slider::set_value(float value)
+void Slider::set_value(float new_value)
 {
-	value = clamp(value, value_minimum, value_maximum);
-	normalized_value = (value - value_minimum) / (value_maximum - value_minimum);
+	new_value = clamp(new_value, value_minimum, value_maximum);
+	normalized_value = (new_value - value_minimum) / (value_maximum - value_minimum);
 	geometry_changed();
 
 	if (value_cb)
-		value_cb(value);
+		value_cb(new_value);
 }
 
-void Slider::reconfigure_to_canvas(vec2, vec2 size)
+void Slider::reconfigure_to_canvas(vec2, vec2 canvas_size)
 {
 	auto &ui = *Global::ui_manager();
 	auto &font = ui.get_font(FontSize::Small);
@@ -107,40 +107,40 @@ void Slider::reconfigure_to_canvas(vec2, vec2 size)
 	if (orientation == Orientation::Horizontal)
 	{
 		if (label_enable)
-			label_size = vec2(minimum.x, size.y - 2.0f * geometry.margin);
+			label_size = vec2(minimum.x, canvas_size.y - 2.0f * geometry.margin);
 
 		if (value_enable)
-			value_offset = vec2(size.x - geometry.margin - minimum_value.x, geometry.margin);
+			value_offset = vec2(canvas_size.x - geometry.margin - minimum_value.x, geometry.margin);
 		else
-			value_offset = vec2(size.x - geometry.margin, geometry.margin);
+			value_offset = vec2(canvas_size.x - geometry.margin, geometry.margin);
 
 		slider_offset = vec2(label_offset.x + label_size.x + gap + geometry.margin, geometry.margin);
-		slider_size = vec2(value_offset.x - slider_offset.x - gap - geometry.margin, size.y - 2.0f * geometry.margin);
-		float y_squash = slider_size.y - this->size.y;
+		slider_size = vec2(value_offset.x - slider_offset.x - gap - geometry.margin, canvas_size.y - 2.0f * geometry.margin);
+		float y_squash = slider_size.y - size.y;
 		slider_size.y -= y_squash;
 		slider_offset.y += 0.5f * y_squash;
 
 		if (value_enable)
-			value_size = vec2(minimum_value.x, size.y - 2.0f * geometry.margin);
+			value_size = vec2(minimum_value.x, canvas_size.y - 2.0f * geometry.margin);
 	}
 	else
 	{
 		if (label_enable)
-			label_size = vec2(size.x - 2.0f * geometry.margin, minimum.y);
+			label_size = vec2(canvas_size.x - 2.0f * geometry.margin, minimum.y);
 
 		if (value_enable)
-			value_offset = vec2(geometry.margin, size.y - geometry.margin - minimum_value.y);
+			value_offset = vec2(geometry.margin, canvas_size.y - geometry.margin - minimum_value.y);
 		else
-			value_offset = vec2(geometry.margin, size.y - geometry.margin);
+			value_offset = vec2(geometry.margin, canvas_size.y - geometry.margin);
 
 		slider_offset = vec2(geometry.margin, label_offset.y + label_size.y + gap + geometry.margin);
-		slider_size = vec2(size.x - 2.0f * geometry.margin, value_offset.y - slider_offset.y - gap - geometry.margin);
-		float x_squash = slider_size.x - this->size.x;
+		slider_size = vec2(canvas_size.x - 2.0f * geometry.margin, value_offset.y - slider_offset.y - gap - geometry.margin);
+		float x_squash = slider_size.x - size.x;
 		slider_size.x -= x_squash;
 		slider_offset.x += 0.5f * x_squash;
 
 		if (value_enable)
-			value_size = vec2(size.x - 2.0f * geometry.margin, minimum_value.y);
+			value_size = vec2(canvas_size.x - 2.0f * geometry.margin, minimum_value.y);
 	}
 }
 

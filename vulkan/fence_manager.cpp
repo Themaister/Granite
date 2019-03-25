@@ -24,9 +24,9 @@
 
 namespace Vulkan
 {
-void FenceManager::init(VkDevice device)
+void FenceManager::init(VkDevice device_)
 {
-	this->device = device;
+	device = device_;
 }
 
 VkFence FenceManager::request_cleared_fence()

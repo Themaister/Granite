@@ -1002,36 +1002,36 @@ void Parser::parse(const string &original_path, const string &json)
 			{
 				if (itr->name == "KHR_materials_pbrSpecularGlossiness")
 				{
-					auto &value = itr->value;
-					if (value.HasMember("diffuseFactor"))
+					auto &pbr_value = itr->value;
+					if (pbr_value.HasMember("diffuseFactor"))
 					{
-						auto &diff = value["diffuseFactor"];
+						auto &diff = pbr_value["diffuseFactor"];
 						info.uniform_base_color = vec4(diff[0].GetFloat(), diff[1].GetFloat(),
 						                               diff[2].GetFloat(), diff[3].GetFloat());
 					}
 
-					if (value.HasMember("glossinessFactor"))
+					if (pbr_value.HasMember("glossinessFactor"))
 					{
-						auto &gloss = value["glossinessFactor"];
+						auto &gloss = pbr_value["glossinessFactor"];
 						// Probably some remapping needed.
 						info.uniform_roughness = clamp(1.0f - gloss.GetFloat(), 0.0f, 1.0f);
 					}
 
-					if (value.HasMember("specularFactor"))
+					if (pbr_value.HasMember("specularFactor"))
 					{
-						auto &spec = value["specularFactor"];
+						auto &spec = pbr_value["specularFactor"];
 						// No idea how to remap ...
 						info.uniform_metallic = muglm::max(muglm::max(spec[0].GetFloat(), spec[1].GetFloat()), spec[2].GetFloat());
 					}
 
-					if (value.HasMember("diffuseTexture"))
+					if (pbr_value.HasMember("diffuseTexture"))
 					{
-						auto &tex = value["diffuseTexture"]["index"];
+						auto &tex = pbr_value["diffuseTexture"]["index"];
 						info.base_color = json_images[json_textures[tex.GetUint()].image_index];
 						info.sampler = json_textures[tex.GetUint()].sampler;
 					}
 
-					if (value.HasMember("specularGlossinessTexture"))
+					if (pbr_value.HasMember("specularGlossinessTexture"))
 					{
 						LOGE("Specular glossiness texture not supported, use PBR!\n");
 					}
@@ -1540,9 +1540,9 @@ void Parser::parse(const string &original_path, const string &json)
 
 	if (doc.HasMember("animations"))
 	{
-		auto &animations = doc["animations"];
+		auto &animation_list = doc["animations"];
 		unsigned counter = 0;
-		for (auto itr = animations.Begin(); itr != animations.End(); ++itr)
+		for (auto itr = animation_list.Begin(); itr != animation_list.End(); ++itr)
 		{
 			string name;
 
@@ -1557,7 +1557,7 @@ void Parser::parse(const string &original_path, const string &json)
 			json_animation_names.push_back(move(name));
 			counter++;
 		}
-		iterate_elements(animations, add_animation);
+		iterate_elements(animation_list, add_animation);
 	}
 
 	if (doc.HasMember("scenes"))
@@ -1573,8 +1573,8 @@ void Parser::parse(const string &original_path, const string &json)
 
 			if (s.HasMember("nodes"))
 			{
-				auto &nodes = s["nodes"];
-				for (auto node_itr = nodes.Begin(); node_itr != nodes.End(); ++node_itr)
+				auto &scene_nodes = s["nodes"];
+				for (auto node_itr = scene_nodes.Begin(); node_itr != scene_nodes.End(); ++node_itr)
 					sc.node_indices.push_back(node_itr->GetUint());
 			}
 
@@ -1609,12 +1609,16 @@ void Parser::build_primitive(const MeshData::AttributeData &prim)
 
 	vec3 aabb_min(0.0f);
 	vec3 aabb_max(0.0f);
-	auto &attr = json_accessors[prim.attributes[ecast(MeshAttribute::Position)].accessor_index];
-	for (unsigned i = 0; i < std::min(3u, attr.components); i++)
+
 	{
-		aabb_min[i] = attr.min[i].f32;
-		aabb_max[i] = attr.max[i].f32;
+		auto &attr = json_accessors[prim.attributes[ecast(MeshAttribute::Position)].accessor_index];
+		for (unsigned i = 0; i < std::min(3u, attr.components); i++)
+		{
+			aabb_min[i] = attr.min[i].f32;
+			aabb_max[i] = attr.max[i].f32;
+		}
 	}
+
 	mesh.static_aabb = AABB(aabb_min, aabb_max);
 
 	bool rebuild_normals = false;

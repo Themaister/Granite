@@ -67,17 +67,17 @@ struct ToneFilterStream : MixerStream
 		for (auto &g : gains)
 			g = 1.0f;
 
-		auto num_channels = get_num_channels();
-		for (unsigned c = 0; c < num_channels; c++)
+		auto channel_count = get_num_channels();
+		for (unsigned c = 0; c < channel_count; c++)
 			memset(mix_ptrs[c], 0, num_frames * sizeof(float));
 
 		auto ret = source->accumulate_samples(mix_ptrs, gains, num_frames);
-		for (unsigned c = 0; c < num_channels; c++)
+		for (unsigned c = 0; c < channel_count; c++)
 			convert_to_mono(mix_channels_mono.data(), mix_ptrs, source->get_num_channels(), ret);
 
 		filter.filter(mix_channels_mono.data(), mix_channels_mono.data(), ret);
 
-		for (unsigned c = 0; c < num_channels; c++)
+		for (unsigned c = 0; c < channel_count; c++)
 		{
 			accumulate_channel(channels[c], mix_ptrs[c], gain[c] * 0.5f, ret);
 			accumulate_channel(channels[c], mix_channels_mono.data(), gain[c] * 0.5f, ret);

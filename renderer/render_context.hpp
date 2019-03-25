@@ -39,14 +39,14 @@ class RenderContext : public EventHandler
 public:
 	RenderContext();
 
-	void set_scene(Scene *scene)
+	void set_scene(Scene *scene_)
 	{
-		this->scene = scene;
+		scene = scene_;
 	}
 
-	void set_queue(RenderQueue *queue)
+	void set_queue(RenderQueue *queue_)
 	{
-		this->queue = queue;
+		queue = queue_;
 	}
 
 	void set_camera(const mat4 &projection, const mat4 &view);
@@ -57,9 +57,9 @@ public:
 		return camera;
 	}
 
-	void set_lighting_parameters(const LightingParameters *lighting)
+	void set_lighting_parameters(const LightingParameters *lighting_)
 	{
-		this->lighting = lighting;
+		lighting = lighting_;
 	}
 
 	const LightingParameters *get_lighting_parameters() const

@@ -57,11 +57,11 @@ void DeviceAllocation::free_immediate(DeviceAllocator &allocator)
 	}
 }
 
-void DeviceAllocation::free_global(DeviceAllocator &allocator, uint32_t size, uint32_t memory_type)
+void DeviceAllocation::free_global(DeviceAllocator &allocator, uint32_t size_, uint32_t memory_type_)
 {
 	if (base)
 	{
-		allocator.free(size, memory_type, base, host_base);
+		allocator.free(size_, memory_type_, base, host_base);
 		base = VK_NULL_HANDLE;
 		mask = 0;
 		offset = 0;
@@ -99,7 +99,7 @@ void Block::free(uint32_t mask)
 	update_longest_run();
 }
 
-void ClassAllocator::suballocate(uint32_t num_blocks, uint32_t tiling, uint32_t memory_type, MiniHeap &heap,
+void ClassAllocator::suballocate(uint32_t num_blocks, uint32_t tiling, uint32_t memory_type_, MiniHeap &heap,
                                  DeviceAllocation *alloc)
 {
 	heap.heap.allocate(num_blocks, alloc);
@@ -111,7 +111,7 @@ void ClassAllocator::suballocate(uint32_t num_blocks, uint32_t tiling, uint32_t 
 
 	alloc->offset += heap.allocation.offset;
 	alloc->tiling = tiling;
-	alloc->memory_type = memory_type;
+	alloc->memory_type = memory_type_;
 	alloc->alloc = this;
 	alloc->size = num_blocks << sub_block_size_log2;
 }
@@ -533,18 +533,18 @@ bool DeviceAllocator::allocate(uint32_t size, uint32_t memory_type, VkDeviceMemo
 	else
 	{
 		// Look through our heap and see if there are blocks of other types we can free.
-		auto itr = begin(heap.blocks);
+		auto block_itr = begin(heap.blocks);
 		while (res != VK_SUCCESS && itr != end(heap.blocks))
 		{
-			if (itr->host_memory)
-				vkUnmapMemory(device, itr->memory);
-			vkFreeMemory(device, itr->memory, nullptr);
-			heap.size -= itr->size;
+			if (block_itr->host_memory)
+				vkUnmapMemory(device, block_itr->memory);
+			vkFreeMemory(device, block_itr->memory, nullptr);
+			heap.size -= block_itr->size;
 			res = vkAllocateMemory(device, &info, nullptr, &device_memory);
-			++itr;
+			++block_itr;
 		}
 
-		heap.blocks.erase(begin(heap.blocks), itr);
+		heap.blocks.erase(begin(heap.blocks), block_itr);
 
 		if (res == VK_SUCCESS)
 		{

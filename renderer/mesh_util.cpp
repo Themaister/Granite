@@ -38,8 +38,8 @@ using namespace Granite::SceneFormats;
 
 namespace Granite
 {
-ImportedSkinnedMesh::ImportedSkinnedMesh(const Mesh &mesh, const MaterialInfo &info)
-	: mesh(mesh), info(info)
+ImportedSkinnedMesh::ImportedSkinnedMesh(const Mesh &mesh_, const MaterialInfo &info_)
+	: mesh(mesh_), info(info_)
 {
 	topology = mesh.topology;
 	index_type = mesh.index_type;
@@ -62,24 +62,24 @@ void ImportedSkinnedMesh::on_device_created(const DeviceCreatedEvent &created)
 {
 	auto &device = created.get_device();
 
-	BufferCreateInfo info = {};
-	info.domain = BufferDomain::Device;
-	info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+	BufferCreateInfo buffer_info = {};
+	buffer_info.domain = BufferDomain::Device;
+	buffer_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
 
-	info.size = mesh.positions.size();
-	vbo_position = device.create_buffer(info, mesh.positions.data());
+	buffer_info.size = mesh.positions.size();
+	vbo_position = device.create_buffer(buffer_info, mesh.positions.data());
 
 	if (!mesh.attributes.empty())
 	{
-		info.size = mesh.attributes.size();
-		vbo_attributes = device.create_buffer(info, mesh.attributes.data());
+		buffer_info.size = mesh.attributes.size();
+		vbo_attributes = device.create_buffer(buffer_info, mesh.attributes.data());
 	}
 
 	if (!mesh.indices.empty())
 	{
-		info.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-		info.size = mesh.indices.size();
-		ibo = device.create_buffer(info, mesh.indices.data());
+		buffer_info.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+		buffer_info.size = mesh.indices.size();
+		ibo = device.create_buffer(buffer_info, mesh.indices.data());
 	}
 
 	bake();
@@ -92,8 +92,8 @@ void ImportedSkinnedMesh::on_device_destroyed(const DeviceCreatedEvent &)
 	ibo.reset();
 }
 
-ImportedMesh::ImportedMesh(const Mesh &mesh, const MaterialInfo &info)
-	: mesh(mesh), info(info)
+ImportedMesh::ImportedMesh(const Mesh &mesh_, const MaterialInfo &info_)
+	: mesh(mesh_), info(info_)
 {
 	topology = mesh.topology;
 	primitive_restart = mesh.primitive_restart;
@@ -117,24 +117,24 @@ void ImportedMesh::on_device_created(const DeviceCreatedEvent &created)
 {
 	auto &device = created.get_device();
 
-	BufferCreateInfo info = {};
-	info.domain = BufferDomain::Device;
-	info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+	BufferCreateInfo buffer_info = {};
+	buffer_info.domain = BufferDomain::Device;
+	buffer_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
 
-	info.size = mesh.positions.size();
-	vbo_position = device.create_buffer(info, mesh.positions.data());
+	buffer_info.size = mesh.positions.size();
+	vbo_position = device.create_buffer(buffer_info, mesh.positions.data());
 
 	if (!mesh.attributes.empty())
 	{
-		info.size = mesh.attributes.size();
-		vbo_attributes = device.create_buffer(info, mesh.attributes.data());
+		buffer_info.size = mesh.attributes.size();
+		vbo_attributes = device.create_buffer(buffer_info, mesh.attributes.data());
 	}
 
 	if (!mesh.indices.empty())
 	{
-		info.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-		info.size = mesh.indices.size();
-		ibo = device.create_buffer(info, mesh.indices.data());
+		buffer_info.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+		buffer_info.size = mesh.indices.size();
+		ibo = device.create_buffer(buffer_info, mesh.indices.data());
 	}
 
 	bake();
@@ -558,8 +558,8 @@ void GeneratedMesh::setup_from_generated_mesh(Vulkan::Device &device, const Gene
 	bake();
 }
 
-SphereMesh::SphereMesh(unsigned density)
-	: density(density)
+SphereMesh::SphereMesh(unsigned density_)
+	: density(density_)
 {
 	static_aabb = AABB(vec3(-1.0f), vec3(1.0f));
 	material = StockMaterials::get().get_checkerboard();
@@ -807,8 +807,8 @@ void CubeMesh::on_device_destroyed(const DeviceCreatedEvent &)
 	reset();
 }
 
-SkyCylinder::SkyCylinder(std::string bg_path)
-	: bg_path(move(bg_path))
+SkyCylinder::SkyCylinder(std::string bg_path_)
+	: bg_path(move(bg_path_))
 {
 	EVENT_MANAGER_REGISTER_LATCH(SkyCylinder, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
@@ -971,8 +971,8 @@ void SkyCylinder::get_render_info(const RenderContext &, const RenderInfoCompone
 	}
 }
 
-Skybox::Skybox(std::string bg_path, bool latlon)
-	: bg_path(move(bg_path)), is_latlon(latlon)
+Skybox::Skybox(std::string bg_path_, bool latlon)
+	: bg_path(move(bg_path_)), is_latlon(latlon)
 {
 	EVENT_MANAGER_REGISTER_LATCH(Skybox, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 }
@@ -1037,8 +1037,8 @@ void Skybox::get_render_info(const RenderContext &context, const RenderInfoCompo
 
 	if (skydome_info)
 	{
-		auto flags = info.view ? MATERIAL_EMISSIVE_BIT : 0;
-		info.program = queue.get_shader_suites()[ecast(RenderableType::Skybox)].get_program(DrawPipeline::Opaque, 0, flags);
+		auto shader_flags = info.view ? MATERIAL_EMISSIVE_BIT : 0;
+		info.program = queue.get_shader_suites()[ecast(RenderableType::Skybox)].get_program(DrawPipeline::Opaque, 0, shader_flags);
 		*skydome_info = info;
 	}
 }
@@ -1123,8 +1123,8 @@ static void texture_plane_render(CommandBuffer &cmd, const RenderQueueData *info
 	}
 }
 
-TexturePlane::TexturePlane(const std::string &normal)
-	: normal_path(normal)
+TexturePlane::TexturePlane(const std::string &normal_)
+	: normal_path(normal_)
 {
 	EVENT_MANAGER_REGISTER_LATCH(TexturePlane, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 	EVENT_MANAGER_REGISTER(TexturePlane, on_frame_time, FrameTickEvent);
@@ -1165,9 +1165,9 @@ void TexturePlane::setup_render_pass_dependencies(RenderGraph &, RenderPass &tar
 		target.add_texture_input(refraction_name);
 }
 
-void TexturePlane::set_scene(Scene *scene)
+void TexturePlane::set_scene(Scene *scene_)
 {
-	this->scene = scene;
+	scene = scene_;
 }
 
 void TexturePlane::render_main_pass(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view)
@@ -1189,12 +1189,12 @@ void TexturePlane::render_main_pass(Vulkan::CommandBuffer &cmd, const mat4 &proj
 	renderer->flush(cmd, context);
 }
 
-void TexturePlane::set_plane(const vec3 &position, const vec3 &normal, const vec3 &up, float extent_up,
+void TexturePlane::set_plane(const vec3 &position_, const vec3 &normal_, const vec3 &up_, float extent_up,
                              float extent_across)
 {
-	this->position = position;
-	this->normal = normal;
-	this->up = up;
+	position = position_;
+	normal = normal_;
+	up = up_;
 	rad_up = extent_up;
 	rad_x = extent_across;
 
@@ -1202,9 +1202,9 @@ void TexturePlane::set_plane(const vec3 &position, const vec3 &normal, const vec
 	dpdy = normalize(up) * -extent_up;
 }
 
-void TexturePlane::set_zfar(float zfar)
+void TexturePlane::set_zfar(float zfar_)
 {
-	this->zfar = zfar;
+	zfar = zfar_;
 }
 
 void TexturePlane::add_render_pass(RenderGraph &graph, Type type)
@@ -1311,12 +1311,12 @@ void TexturePlane::set_base_renderer(Renderer *forward, Renderer *, Renderer *)
 	this->renderer = forward;
 }
 
-void TexturePlane::set_base_render_context(const RenderContext *context)
+void TexturePlane::set_base_render_context(const RenderContext *context_)
 {
-	base_context = context;
+	base_context = context_;
 }
 
-void TexturePlane::get_render_info(const RenderContext &context, const RenderInfoComponent *,
+void TexturePlane::get_render_info(const RenderContext &context_, const RenderInfoComponent *,
                                    RenderQueue &queue) const
 {
 	TexturePlaneInfo info;
@@ -1345,7 +1345,7 @@ void TexturePlane::get_render_info(const RenderContext &context, const RenderInf
 
 	h.u64(info.normal->get_cookie());
 	auto instance_key = h.get();
-	auto sorting_key = RenderInfo::get_sort_key(context, Queue::OpaqueEmissive, h.get(), h.get(), position);
+	auto sorting_key = RenderInfo::get_sort_key(context_, Queue::OpaqueEmissive, h.get(), h.get(), position);
 	auto *plane_info = queue.push<TexturePlaneInfo>(Queue::OpaqueEmissive, instance_key, sorting_key,
 	                                                texture_plane_render, nullptr);
 

@@ -65,15 +65,15 @@ bool GLSLCompiler::set_source_from_file(const string &path)
 	return stage != Stage::Unknown;
 }
 
-void GLSLCompiler::set_include_directories(const std::vector<std::string> *include_directories)
+void GLSLCompiler::set_include_directories(const std::vector<std::string> *include_directories_)
 {
-	this->include_directories = include_directories;
+	include_directories = include_directories_;
 }
 
-bool GLSLCompiler::find_include_path(const string &source_path, const string &include_path,
+bool GLSLCompiler::find_include_path(const string &source_path_, const string &include_path,
                                      string &included_path, string &included_source)
 {
-	auto relpath = Path::relpath(source_path, include_path);
+	auto relpath = Path::relpath(source_path_, include_path);
 	if (Global::filesystem()->read_file_to_string(relpath, included_source))
 	{
 		included_path = relpath;
@@ -96,9 +96,9 @@ bool GLSLCompiler::find_include_path(const string &source_path, const string &in
 	return false;
 }
 
-bool GLSLCompiler::parse_variants(const string &source, const string &path)
+bool GLSLCompiler::parse_variants(const string &source_, const string &path)
 {
-	auto lines = Util::split(source, "\n");
+	auto lines = Util::split(source_, "\n");
 
 	unsigned line_index = 0;
 	for (auto &line : lines)

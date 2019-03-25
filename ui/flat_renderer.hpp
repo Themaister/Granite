@@ -33,13 +33,13 @@ struct SpriteTransformInfo
 {
 	SpriteTransformInfo() = default;
 
-	SpriteTransformInfo(const vec3 &pos, const vec2 &scale = vec2(1.0f, 1.0f),
+	SpriteTransformInfo(const vec3 &pos, const vec2 &scale_ = vec2(1.0f, 1.0f),
 	                    const mat2 &rot = mat2(1.0f),
-	                    const ivec4 &clip = ivec4(0, 0, 0x4000, 0x4000))
+	                    const ivec4 &clip_ = ivec4(0, 0, 0x4000, 0x4000))
 		: position(pos),
-	      scale(scale),
+	      scale(scale_),
 	      rotation(rot),
-	      clip(clip)
+	      clip(clip_)
 	{
 	}
 

@@ -73,15 +73,15 @@ void EventManager::dispatch_event(std::vector<Handler> &handlers, const Event &e
 	handlers.erase(itr, end(handlers));
 }
 
-void EventManager::dispatch_up_events(std::vector<std::unique_ptr<Event>> &events, const LatchHandler &handler)
+void EventManager::dispatch_up_events(std::vector<std::unique_ptr<Event>> &up_events, const LatchHandler &handler)
 {
-	for (auto &event : events)
+	for (auto &event : up_events)
 		handler.up_fn(handler.handler, *event);
 }
 
-void EventManager::dispatch_down_events(std::vector<std::unique_ptr<Event>> &events, const LatchHandler &handler)
+void EventManager::dispatch_down_events(std::vector<std::unique_ptr<Event>> &down_events, const LatchHandler &handler)
 {
-	for (auto &event : events)
+	for (auto &event : down_events)
 		handler.down_fn(handler.handler, *event);
 }
 
@@ -186,12 +186,12 @@ void EventManager::dequeue_latched(uint64_t cookie)
 {
 	for (auto &event_type : latched_events)
 	{
-		auto &events = event_type.queued_events;
+		auto &queued_events = event_type.queued_events;
 		if (event_type.enqueueing)
 			throw logic_error("Dequeueing latched while queueing events.");
 		event_type.enqueueing = true;
 
-		auto itr = remove_if(begin(events), end(events), [&](const unique_ptr<Event> &event) {
+		auto itr = remove_if(begin(queued_events), end(queued_events), [&](const unique_ptr<Event> &event) {
 			bool signal = event->get_cookie() == cookie;
 			if (signal)
 				dispatch_down_event(event_type, *event);
@@ -199,7 +199,7 @@ void EventManager::dequeue_latched(uint64_t cookie)
 		});
 
 		event_type.enqueueing = false;
-		events.erase(itr, end(events));
+		queued_events.erase(itr, end(queued_events));
 	}
 }
 

@@ -18,6 +18,7 @@
 
 #include "glfft_cli.hpp"
 #include "glfft.hpp"
+#include "cli_parser.hpp"
 #include <cmath>
 #include <cstdlib>
 #include <functional>
@@ -28,115 +29,8 @@
 
 using namespace GLFFT;
 using namespace GLFFT::Internal;
+using namespace Util;
 using namespace std;
-
-struct CLIParser;
-struct CLICallbacks
-{
-	void add(const char *cli, const function<void(CLIParser &)> &func)
-	{
-		callbacks[cli] = func;
-	}
-	unordered_map<string, function<void(CLIParser &)>> callbacks;
-	function<void()> error_handler;
-};
-
-struct CLIParser
-{
-	CLIParser(CLICallbacks cbs, int argc, char *argv[])
-	    : cbs(move(cbs))
-	    , argc(argc)
-	    , argv(argv)
-	{
-	}
-
-	bool parse()
-	{
-		try
-		{
-			while (argc && !ended_state)
-			{
-				const char *next = *argv++;
-				argc--;
-
-				auto itr = cbs.callbacks.find(next);
-				if (itr == ::end(cbs.callbacks))
-				{
-					throw logic_error("Invalid argument.\n");
-				}
-
-				itr->second(*this);
-			}
-
-			return true;
-		}
-		catch (...)
-		{
-			if (cbs.error_handler)
-			{
-				cbs.error_handler();
-			}
-			return false;
-		}
-	}
-
-	void end()
-	{
-		ended_state = true;
-	}
-
-	unsigned next_uint()
-	{
-		if (!argc)
-		{
-			throw logic_error("Tried to parse uint, but nothing left in arguments.\n");
-		}
-
-		unsigned val = stoul(*argv);
-		if (val > numeric_limits<unsigned>::max())
-		{
-			throw out_of_range("next_uint() out of range.\n");
-		}
-
-		argc--;
-		argv++;
-
-		return val;
-	}
-
-	double next_double()
-	{
-		if (!argc)
-		{
-			throw logic_error("Tried to parse double, but nothing left in arguments.\n");
-		}
-
-		double val = stod(*argv);
-
-		argc--;
-		argv++;
-
-		return val;
-	}
-
-	const char *next_string()
-	{
-		if (!argc)
-		{
-			throw logic_error("Tried to parse string, but nothing left in arguments.\n");
-		}
-
-		const char *ret = *argv;
-		argc--;
-		argv++;
-		return ret;
-	}
-
-	CLICallbacks cbs;
-	int argc;
-	char **argv;
-	bool ended_state = false;
-};
 
 struct BenchArguments
 {
@@ -363,7 +257,7 @@ static int cli_test(Context *context, int argc, char *argv[])
 	{
 		return EXIT_FAILURE;
 	}
-	else if (parser.ended_state)
+	else if (parser.is_ended_state())
 	{
 		return EXIT_SUCCESS;
 	}
@@ -444,7 +338,7 @@ static int cli_bench(Context *context, int argc, char *argv[])
 	{
 		return EXIT_FAILURE;
 	}
-	else if (parser.ended_state)
+	else if (parser.is_ended_state())
 	{
 		return EXIT_SUCCESS;
 	}

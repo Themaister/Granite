@@ -262,18 +262,18 @@ Shader *Device::request_shader_by_hash(Hash hash)
 	return shaders.find(hash);
 }
 
-Program *Device::request_program(Vulkan::Shader *compute)
+Program *Device::request_program(Vulkan::Shader *compute_shader)
 {
-	if (!compute)
+	if (!compute_shader)
 		return nullptr;
 
 	Util::Hasher hasher;
-	hasher.u64(compute->get_hash());
+	hasher.u64(compute_shader->get_hash());
 
 	auto hash = hasher.get();
 	auto *ret = programs.find(hash);
 	if (!ret)
-		ret = programs.emplace_yield(hash, this, compute);
+		ret = programs.emplace_yield(hash, this, compute_shader);
 	return ret;
 }
 
@@ -282,8 +282,8 @@ Program *Device::request_program(const uint32_t *compute_data, size_t compute_si
 	if (!compute_size)
 		return nullptr;
 
-	auto *compute = request_shader(compute_data, compute_size);
-	return request_program(compute);
+	auto *compute_shader = request_shader(compute_data, compute_size);
+	return request_program(compute_shader);
 }
 
 Program *Device::request_program(Shader *vertex, Shader *fragment)
@@ -1680,10 +1680,10 @@ void Device::init_swapchain(const vector<VkImage> &swapchain_images, unsigned wi
 	}
 }
 
-Device::PerFrame::PerFrame(Device *device)
-    : device(device->get_device())
-    , managers(device->managers)
-    , query_pool(device)
+Device::PerFrame::PerFrame(Device *device_)
+    : device(device_->get_device())
+    , managers(device_->managers)
+    , query_pool(device_)
 {
 #ifdef GRANITE_VULKAN_MT
 	unsigned count = Granite::Global::thread_group()->get_num_threads() + 1;
@@ -1693,9 +1693,9 @@ Device::PerFrame::PerFrame(Device *device)
 
 	for (unsigned i = 0; i < count; i++)
 	{
-		graphics_cmd_pool.emplace_back(device->get_device(), device->graphics_queue_family_index);
-		compute_cmd_pool.emplace_back(device->get_device(), device->compute_queue_family_index);
-		transfer_cmd_pool.emplace_back(device->get_device(), device->transfer_queue_family_index);
+		graphics_cmd_pool.emplace_back(device_->get_device(), device_->graphics_queue_family_index);
+		compute_cmd_pool.emplace_back(device_->get_device(), device_->compute_queue_family_index);
+		transfer_cmd_pool.emplace_back(device_->get_device(), device_->transfer_queue_family_index);
 	}
 }
 
@@ -2243,8 +2243,8 @@ BufferViewHandle Device::create_buffer_view(const BufferViewCreateInfo &view_inf
 class ImageResourceHolder
 {
 public:
-	ImageResourceHolder(VkDevice device)
-		: device(device)
+	explicit ImageResourceHolder(VkDevice device_)
+		: device(device_)
 	{
 	}
 
@@ -3090,16 +3090,13 @@ SamplerHandle Device::create_sampler(const SamplerCreateInfo &sampler_info, Stoc
 	auto info = fill_vk_sampler_info(sampler_info);
 	VkSampler sampler;
 
-#ifdef GRANITE_VULKAN_FOSSILIZE
-	unsigned index = state_recorder.register_sampler(Fossilize::Hash(stock_sampler), info);
-#else
-	(void)stock_sampler;
-#endif
+
 	if (vkCreateSampler(device, &info, nullptr, &sampler) != VK_SUCCESS)
 		return SamplerHandle(nullptr);
-
 #ifdef GRANITE_VULKAN_FOSSILIZE
-	state_recorder.set_sampler_handle(index, sampler);
+	state_recorder.record_sampler(sampler, info, Fossilize::Hash(stock_sampler) | 0x10000);
+#else
+	(void)stock_sampler;
 #endif
 	return SamplerHandle(handle_pool.samplers.allocate(this, sampler, sampler_info));
 }

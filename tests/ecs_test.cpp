@@ -6,8 +6,8 @@ using namespace std;
 struct AComponent : ComponentBase
 {
 	GRANITE_COMPONENT_TYPE_DECL(AComponent)
-	AComponent(int v)
-		: v(v)
+	AComponent(int v_)
+		: v(v_)
 	{
 	}
 	int v;
@@ -16,8 +16,8 @@ struct AComponent : ComponentBase
 struct BComponent : ComponentBase
 {
 	GRANITE_COMPONENT_TYPE_DECL(BComponent)
-	BComponent(int v)
-		: v(v)
+	BComponent(int v_)
+		: v(v_)
 	{
 	}
 	int v;
@@ -26,8 +26,8 @@ struct BComponent : ComponentBase
 struct CComponent : ComponentBase
 {
 	GRANITE_COMPONENT_TYPE_DECL(CComponent)
-	CComponent(int v)
-		: v(v)
+	CComponent(int v_)
+		: v(v_)
 	{
 	}
 	int v;

@@ -159,8 +159,8 @@ struct MaterialInfo
 	struct Texture
 	{
 		Texture() = default;
-		Texture(std::string path, VkComponentMapping swiz)
-			: path(std::move(path)), swizzle(swiz)
+		Texture(std::string path_, VkComponentMapping swiz_)
+			: path(std::move(path_)), swizzle(swiz_)
 		{}
 
 		std::string path;

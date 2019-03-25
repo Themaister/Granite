@@ -35,13 +35,13 @@ namespace Audio
 {
 struct Pulse : Backend
 {
-	Pulse(BackendCallback &callback)
-		: Backend(callback)
+	Pulse(BackendCallback &callback_)
+		: Backend(callback_)
 	{
 	}
 
 	~Pulse();
-	bool init(float sample_rate, unsigned channels);
+	bool init(float sample_rate_, unsigned channels_);
 	bool start() override;
 	bool stop() override;
 
@@ -177,12 +177,12 @@ static void stream_request_cb(pa_stream *s, size_t length, void *data)
 	pa->get_callback().set_latency_usec(uint32_t(latency_usec));
 }
 
-bool Pulse::init(float sample_rate, unsigned channels)
+bool Pulse::init(float sample_rate_, unsigned channels_)
 {
-	this->sample_rate = sample_rate;
-	this->channels = channels;
+	sample_rate = sample_rate_;
+	channels = channels_;
 
-	if (channels > MaxAudioChannels)
+	if (channels_ > MaxAudioChannels)
 		return false;
 
 	mainloop = pa_threaded_mainloop_new();
@@ -213,8 +213,8 @@ bool Pulse::init(float sample_rate, unsigned channels)
 
 	pa_sample_spec spec = {};
 	spec.format = PA_SAMPLE_FLOAT32NE;
-	spec.channels = uint8_t(channels);
-	spec.rate = uint32_t(sample_rate);
+	spec.channels = uint8_t(channels_);
+	spec.rate = uint32_t(sample_rate_);
 
 	stream = pa_stream_new(context, "audio", &spec, nullptr);
 	if (!stream)
@@ -256,7 +256,7 @@ bool Pulse::init(float sample_rate, unsigned channels)
 
 	auto *stream_spec = pa_stream_get_sample_spec(stream);
 	this->sample_rate = float(stream_spec->rate);
-	callback.set_backend_parameters(this->sample_rate, channels, MAX_NUM_SAMPLES);
+	callback.set_backend_parameters(this->sample_rate, channels_, MAX_NUM_SAMPLES);
 
 	pa_threaded_mainloop_unlock(mainloop);
 	return true;

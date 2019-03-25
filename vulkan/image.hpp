@@ -217,16 +217,16 @@ public:
 		render_target_views = std::move(views);
 	}
 
-	void set_unorm_view(VkImageView view)
+	void set_unorm_view(VkImageView view_)
 	{
 		VK_ASSERT(unorm_view == VK_NULL_HANDLE);
-		unorm_view = view;
+		unorm_view = view_;
 	}
 
-	void set_srgb_view(VkImageView view)
+	void set_srgb_view(VkImageView view_)
 	{
 		VK_ASSERT(srgb_view == VK_NULL_HANDLE);
-		srgb_view = view;
+		srgb_view = view_;
 	}
 
 	// By default, gets a combined view which includes all aspects in the image.

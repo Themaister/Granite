@@ -60,15 +60,15 @@ std::string export_lights_to_json(const DirectionalParameters &dir, Scene &scene
 		auto *l = get_component<PositionalLightComponent>(light)->light;
 		auto *t = get_component<RenderInfoComponent>(light)->transform;
 
-		Value pos(kArrayType);
-		pos.PushBack(t->world_transform[3].x, allocator);
-		pos.PushBack(t->world_transform[3].y, allocator);
-		pos.PushBack(t->world_transform[3].z, allocator);
+		Value light_pos(kArrayType);
+		light_pos.PushBack(t->world_transform[3].x, allocator);
+		light_pos.PushBack(t->world_transform[3].y, allocator);
+		light_pos.PushBack(t->world_transform[3].z, allocator);
 
-		Value dir(kArrayType);
-		dir.PushBack(-t->world_transform[2].x, allocator);
-		dir.PushBack(-t->world_transform[2].y, allocator);
-		dir.PushBack(-t->world_transform[2].z, allocator);
+		Value light_dir(kArrayType);
+		light_dir.PushBack(-t->world_transform[2].x, allocator);
+		light_dir.PushBack(-t->world_transform[2].y, allocator);
+		light_dir.PushBack(-t->world_transform[2].z, allocator);
 
 		if (l->get_type() == PositionalLight::Type::Spot)
 		{
@@ -76,27 +76,27 @@ std::string export_lights_to_json(const DirectionalParameters &dir, Scene &scene
 			auto &s = *static_cast<SpotLight *>(l);
 			spot.AddMember("innerCone", s.get_inner_cone(), allocator);
 			spot.AddMember("outerCone", s.get_outer_cone(), allocator);
-			Value color(kArrayType);
-			color.PushBack(s.get_color().x, allocator);
-			color.PushBack(s.get_color().y, allocator);
-			color.PushBack(s.get_color().z, allocator);
-			spot.AddMember("color", color, allocator);
+			Value spot_color(kArrayType);
+			spot_color.PushBack(s.get_color().x, allocator);
+			spot_color.PushBack(s.get_color().y, allocator);
+			spot_color.PushBack(s.get_color().z, allocator);
+			spot.AddMember("color", spot_color, allocator);
 			spot.AddMember("range", s.get_maximum_range(), allocator);
-			spot.AddMember("position", pos, allocator);
-			spot.AddMember("direction", dir, allocator);
+			spot.AddMember("position", light_pos, allocator);
+			spot.AddMember("direction", light_dir, allocator);
 			spots.PushBack(spot, allocator);
 		}
 		else
 		{
 			Value point(kObjectType);
 			auto &p = *static_cast<PointLight *>(l);
-			Value color(kArrayType);
-			color.PushBack(p.get_color().x, allocator);
-			color.PushBack(p.get_color().y, allocator);
-			color.PushBack(p.get_color().z, allocator);
-			point.AddMember("color", color, allocator);
+			Value point_color(kArrayType);
+			point_color.PushBack(p.get_color().x, allocator);
+			point_color.PushBack(p.get_color().y, allocator);
+			point_color.PushBack(p.get_color().z, allocator);
+			point.AddMember("color", point_color, allocator);
 			point.AddMember("range", p.get_maximum_range(), allocator);
-			point.AddMember("position", pos, allocator);
+			point.AddMember("position", light_pos, allocator);
 			points.PushBack(point, allocator);
 		}
 	}

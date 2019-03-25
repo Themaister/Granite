@@ -43,8 +43,8 @@ struct OceanVertex
 	uint8_t weights[4];
 };
 
-Ocean::Ocean(const OceanConfig &config)
-	: config(config)
+Ocean::Ocean(const OceanConfig &config_)
+	: config(config_)
 {
 	for (auto &f : frequency_bands)
 		f = 1.0f;
@@ -161,9 +161,9 @@ void Ocean::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
 	border_ibo.reset();
 }
 
-void Ocean::refresh(RenderContext &context)
+void Ocean::refresh(RenderContext &context_)
 {
-	last_camera_position = context.get_render_parameters().camera_position;
+	last_camera_position = context_.get_render_parameters().camera_position;
 }
 
 void Ocean::set_base_renderer(Renderer *,
@@ -172,9 +172,9 @@ void Ocean::set_base_renderer(Renderer *,
 {
 }
 
-void Ocean::set_base_render_context(const RenderContext *context)
+void Ocean::set_base_render_context(const RenderContext *context_)
 {
-	this->context = context;
+	context = context_;
 }
 
 void Ocean::set_scene(Scene *)
@@ -197,13 +197,13 @@ void Ocean::setup_render_pass_dependencies(RenderGraph &, RenderPass &target)
 		refraction_resource = nullptr;
 }
 
-void Ocean::setup_render_pass_resources(RenderGraph &graph)
+void Ocean::setup_render_pass_resources(RenderGraph &graph_)
 {
 	if (vertex_mip_views.empty() && fragment_mip_views.empty() && normal_mip_views.empty())
 	{
-		auto &vertex = graph.get_physical_texture_resource(*height_displacement_output);
-		auto &fragment = graph.get_physical_texture_resource(*gradient_jacobian_output);
-		auto &normal = graph.get_physical_texture_resource(*normal_fft_output);
+		auto &vertex = graph_.get_physical_texture_resource(*height_displacement_output);
+		auto &fragment = graph_.get_physical_texture_resource(*gradient_jacobian_output);
+		auto &normal = graph_.get_physical_texture_resource(*normal_fft_output);
 
 		unsigned vertex_lods = muglm::min(unsigned(quad_lod.size()), vertex.get_image().get_create_info().levels);
 		unsigned fragment_lods = fragment.get_image().get_create_info().levels;
@@ -217,7 +217,7 @@ void Ocean::setup_render_pass_resources(RenderGraph &graph)
 			view.layers = 1;
 			view.levels = 1;
 			view.base_level = i;
-			vertex_mip_views.push_back(graph.get_device().create_image_view(view));
+			vertex_mip_views.push_back(graph_.get_device().create_image_view(view));
 		}
 
 		for (unsigned i = 0; i < fragment_lods; i++)
@@ -228,7 +228,7 @@ void Ocean::setup_render_pass_resources(RenderGraph &graph)
 			view.layers = 1;
 			view.levels = 1;
 			view.base_level = i;
-			fragment_mip_views.push_back(graph.get_device().create_image_view(view));
+			fragment_mip_views.push_back(graph_.get_device().create_image_view(view));
 		}
 
 		for (unsigned i = 0; i < normal_lods; i++)
@@ -239,25 +239,25 @@ void Ocean::setup_render_pass_resources(RenderGraph &graph)
 			view.layers = 1;
 			view.levels = 1;
 			view.base_level = i;
-			normal_mip_views.push_back(graph.get_device().create_image_view(view));
+			normal_mip_views.push_back(graph_.get_device().create_image_view(view));
 		}
 
 		// Prebuild the FFT commands and sort so we can avoid most barriers.
 		deferred_cmd.reset();
 
 		deferred_cmd.reset_command_counter();
-		FFTTexture height_output(&graph.get_physical_texture_resource(*height_fft_output));
-		FFTBuffer height_input(&graph.get_physical_buffer_resource(*height_fft_input));
+		FFTTexture height_output(&graph_.get_physical_texture_resource(*height_fft_output));
+		FFTBuffer height_input(&graph_.get_physical_buffer_resource(*height_fft_input));
 		height_fft->process(&deferred_cmd, &height_output, &height_input);
 
 		deferred_cmd.reset_command_counter();
 		FFTTexture normal_output(normal_mip_views.front().get());
-		FFTBuffer normal_input(&graph.get_physical_buffer_resource(*normal_fft_input));
+		FFTBuffer normal_input(&graph_.get_physical_buffer_resource(*normal_fft_input));
 		normal_fft->process(&deferred_cmd, &normal_output, &normal_input);
 
 		deferred_cmd.reset_command_counter();
-		FFTTexture displacement_output(&graph.get_physical_texture_resource(*displacement_fft_output));
-		FFTBuffer displacement_input(&graph.get_physical_buffer_resource(*displacement_fft_input));
+		FFTTexture displacement_output(&graph_.get_physical_texture_resource(*displacement_fft_output));
+		FFTBuffer displacement_input(&graph_.get_physical_buffer_resource(*displacement_fft_input));
 		displacement_fft->process(&deferred_cmd, &displacement_output, &displacement_input);
 	}
 
@@ -266,11 +266,11 @@ void Ocean::setup_render_pass_resources(RenderGraph &graph)
 	{
 		if (config.refraction.input_is_render_graph)
 		{
-			refraction = &graph.get_physical_texture_resource(*refraction_resource);
+			refraction = &graph_.get_physical_texture_resource(*refraction_resource);
 		}
 		else
 		{
-			auto *texture = graph.get_device().get_texture_manager().request_texture(config.refraction.input);
+			auto *texture = graph_.get_device().get_texture_manager().request_texture(config.refraction.input);
 			if (texture)
 				refraction = &texture->get_image()->get_view();
 		}
@@ -590,9 +590,9 @@ void Ocean::update_fft_pass(Vulkan::CommandBuffer &cmd)
 	generate_mipmaps(cmd);
 }
 
-void Ocean::add_lod_update_pass(RenderGraph &graph)
+void Ocean::add_lod_update_pass(RenderGraph &graph_)
 {
-	auto &update_lod = graph.add_pass("ocean-update-lods", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
+	auto &update_lod = graph_.add_pass("ocean-update-lods", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
 	AttachmentInfo lod_attachment;
 	lod_attachment.format = VK_FORMAT_R16_SFLOAT;
 	lod_attachment.size_x = float(config.grid_count);
@@ -613,7 +613,7 @@ void Ocean::add_lod_update_pass(RenderGraph &graph)
 	});
 }
 
-void Ocean::add_fft_update_pass(RenderGraph &graph)
+void Ocean::add_fft_update_pass(RenderGraph &graph_)
 {
 	BufferInfo normal_info, height_info, displacement_info;
 	normal_info.size = config.fft_resolution * config.fft_resolution * sizeof(uint32_t);
@@ -647,7 +647,7 @@ void Ocean::add_fft_update_pass(RenderGraph &graph)
 	normal_map.aux_usage = VK_IMAGE_USAGE_SAMPLED_BIT;
 	normal_map.levels = 0;
 
-	auto &update_fft = graph.add_pass("ocean-update-fft", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
+	auto &update_fft = graph_.add_pass("ocean-update-fft", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
 
 	height_fft_input = &update_fft.add_storage_output("ocean-height-fft-input",
 	                                                  height_info);
@@ -686,15 +686,15 @@ void Ocean::add_fft_update_pass(RenderGraph &graph)
 	});
 }
 
-void Ocean::add_render_passes(RenderGraph &graph)
+void Ocean::add_render_passes(RenderGraph &graph_)
 {
 	normal_mip_views.clear();
 	vertex_mip_views.clear();
 	fragment_mip_views.clear();
 
-	this->graph = &graph;
-	add_lod_update_pass(graph);
-	add_fft_update_pass(graph);
+	graph = &graph_;
+	add_lod_update_pass(graph_);
+	add_fft_update_pass(graph_);
 }
 
 struct OceanData

@@ -164,8 +164,8 @@ public:
 
 	enum { Unused = ~0u };
 
-	RenderResource(Type type, unsigned index)
-		: resource_type(type), index(index)
+	RenderResource(Type type_, unsigned index_)
+		: resource_type(type_), index(index_)
 	{
 	}
 
@@ -176,14 +176,14 @@ public:
 		return resource_type;
 	}
 
-	void written_in_pass(unsigned index)
+	void written_in_pass(unsigned index_)
 	{
-		written_in_passes.insert(index);
+		written_in_passes.insert(index_);
 	}
 
-	void read_in_pass(unsigned index)
+	void read_in_pass(unsigned index_)
 	{
-		read_in_passes.insert(index);
+		read_in_passes.insert(index_);
 	}
 
 	const std::unordered_set<unsigned> &get_read_passes() const
@@ -211,9 +211,9 @@ public:
 		return index;
 	}
 
-	void set_physical_index(unsigned index)
+	void set_physical_index(unsigned index_)
 	{
-		physical_index = index;
+		physical_index = index_;
 	}
 
 	unsigned get_physical_index() const
@@ -221,9 +221,9 @@ public:
 		return physical_index;
 	}
 
-	void set_name(const std::string &name)
+	void set_name(const std::string &name_)
 	{
-		this->name = name;
+		name = name_;
 	}
 
 	const std::string &get_name() const
@@ -254,14 +254,14 @@ private:
 class RenderBufferResource : public RenderResource
 {
 public:
-	RenderBufferResource(unsigned index)
-		: RenderResource(RenderResource::Type::Buffer, index)
+	explicit RenderBufferResource(unsigned index_)
+		: RenderResource(RenderResource::Type::Buffer, index_)
 	{
 	}
 
-	void set_buffer_info(const BufferInfo &info)
+	void set_buffer_info(const BufferInfo &info_)
 	{
-		this->info = info;
+		info = info_;
 	}
 
 	const BufferInfo &get_buffer_info() const
@@ -287,14 +287,14 @@ private:
 class RenderTextureResource : public RenderResource
 {
 public:
-	RenderTextureResource(unsigned index)
-		: RenderResource(RenderResource::Type::Texture, index)
+	explicit RenderTextureResource(unsigned index_)
+		: RenderResource(RenderResource::Type::Texture, index_)
 	{
 	}
 
-	void set_attachment_info(const AttachmentInfo &info)
+	void set_attachment_info(const AttachmentInfo &info_)
 	{
-		this->info = info;
+		info = info_;
 	}
 
 	const AttachmentInfo &get_attachment_info() const
@@ -336,8 +336,8 @@ private:
 class RenderPass
 {
 public:
-	RenderPass(RenderGraph &graph, unsigned index, RenderGraphQueueFlagBits queue)
-		: graph(graph), index(index), queue(queue)
+	RenderPass(RenderGraph &graph_, unsigned index_, RenderGraphQueueFlagBits queue_)
+		: graph(graph_), index(index_), queue(queue_)
 	{
 	}
 
@@ -401,9 +401,9 @@ public:
 
 	void add_fake_resource_write_alias(const std::string &from, const std::string &to);
 
-	void make_color_input_scaled(unsigned index)
+	void make_color_input_scaled(unsigned index_)
 	{
-		std::swap(color_scale_inputs[index], color_inputs[index]);
+		std::swap(color_scale_inputs[index_], color_inputs[index_]);
 	}
 
 	const std::vector<RenderTextureResource *> &get_color_outputs() const
@@ -496,9 +496,9 @@ public:
 		return physical_pass;
 	}
 
-	void set_physical_pass_index(unsigned index)
+	void set_physical_pass_index(unsigned index_)
 	{
-		physical_pass = index;
+		physical_pass = index_;
 	}
 
 	bool need_render_pass()
@@ -514,10 +514,10 @@ public:
 		return bool(need_render_pass_cb);
 	}
 
-	bool get_clear_color(unsigned index, VkClearColorValue * value = nullptr)
+	bool get_clear_color(unsigned index_, VkClearColorValue * value = nullptr)
 	{
 		if (get_clear_color_cb)
-			return get_clear_color_cb(index, value);
+			return get_clear_color_cb(index_, value);
 		else
 			return false;
 	}
@@ -565,12 +565,12 @@ public:
 
 	void set_name(const std::string &name)
 	{
-		this->name = name;
+		pass_name = name;
 	}
 
 	const std::string &get_name() const
 	{
-		return name;
+		return pass_name;
 	}
 
 private:
@@ -603,7 +603,7 @@ private:
 	RenderTextureResource *depth_stencil_output = nullptr;
 
 	std::vector<std::pair<RenderTextureResource *, RenderTextureResource *>> fake_resource_alias;
-	std::string name;
+	std::string pass_name;
 
 	RenderBufferResource &add_generic_buffer_input(const std::string &name,
 	                                               VkPipelineStageFlags stages,
@@ -616,9 +616,9 @@ class RenderGraph : public Vulkan::NoCopyNoMove, public EventHandler
 public:
 	RenderGraph();
 
-	void set_device(Vulkan::Device *device)
+	void set_device(Vulkan::Device *device_)
 	{
-		this->device = device;
+		device = device_;
 	}
 
 	Vulkan::Device &get_device()

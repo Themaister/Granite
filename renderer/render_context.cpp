@@ -42,9 +42,9 @@ void RenderContext::on_device_destroyed(const DeviceCreatedEvent &)
 {
 }
 
-void RenderContext::set_camera(const Camera &camera)
+void RenderContext::set_camera(const Camera &camera_)
 {
-	set_camera(camera.get_projection(), camera.get_view());
+	set_camera(camera_.get_projection(), camera_.get_view());
 }
 
 void RenderContext::set_camera(const mat4 &projection, const mat4 &view)

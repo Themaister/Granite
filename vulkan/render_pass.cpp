@@ -57,12 +57,12 @@ void RenderPass::setup_subpasses(const VkRenderPassCreateInfo &create_info)
 		       subpass.inputAttachmentCount * sizeof(*subpass.pInputAttachments));
 
 		unsigned samples = 0;
-		for (unsigned i = 0; i < subpass_info.num_color_attachments; i++)
+		for (unsigned att = 0; att < subpass_info.num_color_attachments; att++)
 		{
-			if (subpass_info.color_attachments[i].attachment == VK_ATTACHMENT_UNUSED)
+			if (subpass_info.color_attachments[att].attachment == VK_ATTACHMENT_UNUSED)
 				continue;
 
-			unsigned samp = attachments[subpass_info.color_attachments[i].attachment].samples;
+			unsigned samp = attachments[subpass_info.color_attachments[att].attachment].samples;
 			if (samples && (samp != samples))
 				VK_ASSERT(samp == samples);
 			samples = samp;
@@ -78,13 +78,13 @@ void RenderPass::setup_subpasses(const VkRenderPassCreateInfo &create_info)
 
 		VK_ASSERT(samples > 0);
 		subpass_info.samples = samples;
-		this->subpasses.push_back(subpass_info);
+		subpasses_info.push_back(subpass_info);
 	}
 }
 
-RenderPass::RenderPass(Hash hash, Device *device, const VkRenderPassCreateInfo &create_info)
+RenderPass::RenderPass(Hash hash, Device *device_, const VkRenderPassCreateInfo &create_info)
 	: IntrusiveHashMapEnabled<RenderPass>(hash)
-	, device(device)
+	, device(device_)
 {
 	unsigned num_color_attachments = 0;
 	if (create_info.attachmentCount > 0)
@@ -105,10 +105,6 @@ RenderPass::RenderPass(Hash hash, Device *device, const VkRenderPassCreateInfo &
 	// Store the important subpass information for later.
 	setup_subpasses(create_info);
 
-#ifdef GRANITE_VULKAN_FOSSILIZE
-	unsigned rp_index = device->register_render_pass(get_hash(), create_info);
-#endif
-
 	// Fixup after, we want the Fossilize render pass to be generic.
 	auto info = create_info;
 	VkAttachmentDescription fixup_attachments[VULKAN_NUM_ATTACHMENTS + 1];
@@ -119,14 +115,15 @@ RenderPass::RenderPass(Hash hash, Device *device, const VkRenderPassCreateInfo &
 	LOGI("Creating render pass.\n");
 	if (vkCreateRenderPass(device->get_device(), &info, nullptr, &render_pass) != VK_SUCCESS)
 		LOGE("Failed to create render pass.");
+
 #ifdef GRANITE_VULKAN_FOSSILIZE
-	device->set_render_pass_handle(rp_index, render_pass);
+	device->register_render_pass(render_pass, get_hash(), create_info);
 #endif
 }
 
-RenderPass::RenderPass(Hash hash, Device *device, const RenderPassInfo &info)
+RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 	: IntrusiveHashMapEnabled<RenderPass>(hash)
-	, device(device)
+	, device(device_)
 {
 	fill(begin(color_attachments), end(color_attachments), VK_FORMAT_UNDEFINED);
 
@@ -790,10 +787,6 @@ RenderPass::RenderPass(Hash hash, Device *device, const RenderPassInfo &info)
 	// Store the important subpass information for later.
 	setup_subpasses(rp_info);
 
-#ifdef GRANITE_VULKAN_FOSSILIZE
-	unsigned rp_index = device->register_render_pass(get_hash(), rp_info);
-#endif
-
 	// Fixup after, we want the Fossilize render pass to be generic.
 	VkAttachmentDescription fixup_attachments[VULKAN_NUM_ATTACHMENTS + 1];
 	fixup_render_pass_workaround(rp_info, fixup_attachments);
@@ -803,8 +796,9 @@ RenderPass::RenderPass(Hash hash, Device *device, const RenderPassInfo &info)
 	LOGI("Creating render pass.\n");
 	if (vkCreateRenderPass(device->get_device(), &rp_info, nullptr, &render_pass) != VK_SUCCESS)
 		LOGE("Failed to create render pass.");
+
 #ifdef GRANITE_VULKAN_FOSSILIZE
-	device->set_render_pass_handle(rp_index, render_pass);
+	device->register_render_pass(render_pass, get_hash(), rp_info);
 #endif
 }
 
@@ -856,11 +850,11 @@ RenderPass::~RenderPass()
 		vkDestroyRenderPass(device->get_device(), render_pass, nullptr);
 }
 
-Framebuffer::Framebuffer(Device *device, const RenderPass &rp, const RenderPassInfo &info)
-    : Cookie(device)
-    , device(device)
+Framebuffer::Framebuffer(Device *device_, const RenderPass &rp, const RenderPassInfo &info_)
+    : Cookie(device_)
+    , device(device_)
     , render_pass(rp)
-    , info(info)
+    , info(info_)
 {
 	width = UINT32_MAX;
 	height = UINT32_MAX;
@@ -911,8 +905,8 @@ Framebuffer::~Framebuffer()
 	}
 }
 
-FramebufferAllocator::FramebufferAllocator(Device *device)
-    : device(device)
+FramebufferAllocator::FramebufferAllocator(Device *device_)
+    : device(device_)
 {
 }
 

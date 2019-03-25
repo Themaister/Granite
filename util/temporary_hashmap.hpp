@@ -34,14 +34,14 @@ template <typename T>
 class TemporaryHashmapEnabled
 {
 public:
-	void set_hash(Hash hash)
+	void set_hash(Hash hash_)
 	{
-		this->hash = hash;
+		hash = hash_;
 	}
 
-	void set_index(unsigned index)
+	void set_index(unsigned index_)
 	{
-		this->index = index;
+		index = index_;
 	}
 
 	Hash get_hash()

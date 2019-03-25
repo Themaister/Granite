@@ -117,16 +117,16 @@ bool MMapFile::init(const std::string &path, FileMode mode)
 	return true;
 }
 
-void *MMapFile::map_write(size_t size)
+void *MMapFile::map_write(size_t map_size)
 {
 	if (mapped)
 		return nullptr;
 
-	if (ftruncate(fd, size) < 0)
+	if (ftruncate(fd, map_size) < 0)
 		return nullptr;
-	this->size = size;
+	this->size = map_size;
 
-	mapped = mmap(nullptr, size, PROT_WRITE | PROT_READ, MAP_SHARED, fd, 0);
+	mapped = mmap(nullptr, map_size, PROT_WRITE | PROT_READ, MAP_SHARED, fd, 0);
 	if (mapped == MAP_FAILED)
 	{
 		LOGE("Failed to mmap: %s\n", strerror(errno));
@@ -180,8 +180,8 @@ MMapFile::~MMapFile()
 		close(fd);
 }
 
-OSFilesystem::OSFilesystem(const std::string &base)
-	: base(base)
+OSFilesystem::OSFilesystem(const std::string &base_)
+	: base(base_)
 {
 #ifdef __linux__
 	notify_fd = inotify_init1(IN_NONBLOCK);

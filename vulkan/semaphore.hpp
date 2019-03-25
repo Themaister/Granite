@@ -102,10 +102,10 @@ public:
 
 private:
 	friend class Util::ObjectPool<SemaphoreHolder>;
-	SemaphoreHolder(Device *device, VkSemaphore semaphore, bool signalled)
-	    : device(device)
-	    , semaphore(semaphore)
-	    , signalled(signalled)
+	SemaphoreHolder(Device *device_, VkSemaphore semaphore_, bool signalled_)
+	    : device(device_)
+	    , semaphore(semaphore_)
+	    , signalled(signalled_)
 	{
 	}
 

@@ -40,9 +40,9 @@ public:
 		return text;
 	}
 
-	void set_font_alignment(Font::Alignment alignment)
+	void set_font_alignment(Font::Alignment alignment_)
 	{
-		this->alignment = alignment;
+		alignment = alignment_;
 		geometry_changed();
 	}
 
@@ -51,9 +51,9 @@ public:
 		return alignment;
 	}
 
-	void set_color(vec4 color)
+	void set_color(vec4 color_)
 	{
-		this->color = color;
+		color = color_;
 	}
 
 	vec4 get_color() const

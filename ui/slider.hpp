@@ -50,14 +50,14 @@ public:
 		geometry_changed();
 	}
 
-	void set_size(vec2 size)
+	void set_size(vec2 size_)
 	{
-		this->size = size;
+		size = size_;
 	}
 
-	void set_color(vec4 color)
+	void set_color(vec4 color_)
 	{
-		this->color = color;
+		color = color_;
 	}
 
 	vec4 get_color() const
@@ -65,9 +65,9 @@ public:
 		return color;
 	}
 
-	void set_label_slider_gap(float size)
+	void set_label_slider_gap(float gap_size)
 	{
-		gap = size;
+		gap = gap_size;
 	}
 
 	void set_range(float minimum, float maximum);

@@ -44,8 +44,8 @@ public:
 	{
 	public:
 		friend class IntrusiveList<T>;
-		Iterator(IntrusiveListEnabled<T> *node)
-		    : node(node)
+		Iterator(IntrusiveListEnabled<T> *node_)
+		    : node(node_)
 		{
 		}
 

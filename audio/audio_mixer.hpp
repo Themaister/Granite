@@ -90,7 +90,7 @@ public:
 	// Can only be called from a non-critical thread.
 	// Returns StreamID(-1) if a mixer stream slot cannot be found.
 	StreamID add_mixer_stream(MixerStream *stream, bool start_playing = true,
-	                          float gain_db = 0.0f, float panning = 0.0f);
+	                          float initial_gain_db = 0.0f, float initial_panning = 0.0f);
 	void kill_stream(StreamID id);
 
 	// Garbage collection. Should be called regularly from a non-critical thread.
@@ -98,7 +98,7 @@ public:
 
 	// Atomically sets stream parameters, such as gain and panning.
 	// Panning is -1 (left), 0 (center), 1 (right).
-	void set_stream_mixer_parameters(StreamID id, float gain_db, float panning);
+	void set_stream_mixer_parameters(StreamID id, float new_gain_db, float new_panning);
 
 	// Returns latency-adjusted play cursor in seconds from add_mixer_stream.
 	// The play cursor monotonically increases.
@@ -152,7 +152,7 @@ private:
 
 	bool is_active = false;
 
-	void update_stream_play_cursor(unsigned index, double latency) noexcept;
+	void update_stream_play_cursor(unsigned index, double new_latency) noexcept;
 
 	Util::LockFreeMessageQueue message_queue;
 };

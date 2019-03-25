@@ -66,8 +66,8 @@ static const BackendCreationCallback backends[] = {
 		nullptr,
 };
 
-Backend::Backend(BackendCallback &callback)
-	: callback(callback)
+Backend::Backend(BackendCallback &callback_)
+	: callback(callback_)
 {
 }
 
@@ -106,9 +106,9 @@ struct DumpBackend::Impl
 	unsigned frame_offset = 0;
 };
 
-DumpBackend::DumpBackend(BackendCallback &callback, const std::string &path, float target_sample_rate,
+DumpBackend::DumpBackend(BackendCallback &callback_, const std::string &path, float target_sample_rate,
                          unsigned target_channels, unsigned frames_per_tick, unsigned frames)
-	: Backend(callback)
+	: Backend(callback_)
 {
 	impl.reset(new Impl);
 	impl->path = path;
@@ -117,8 +117,8 @@ DumpBackend::DumpBackend(BackendCallback &callback, const std::string &path, flo
 	impl->frames = frames;
 	impl->frames_per_tick = frames_per_tick;
 
-	callback.set_backend_parameters(target_sample_rate, target_channels, frames_per_tick);
-	callback.set_latency_usec(0);
+	callback_.set_backend_parameters(target_sample_rate, target_channels, frames_per_tick);
+	callback_.set_latency_usec(0);
 
 	for (unsigned c = 0; c < target_channels; c++)
 	{

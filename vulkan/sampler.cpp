@@ -25,10 +25,10 @@
 
 namespace Vulkan
 {
-Sampler::Sampler(Device *device, VkSampler sampler, const SamplerCreateInfo &info)
-    : Cookie(device)
-    , device(device)
-    , sampler(sampler)
+Sampler::Sampler(Device *device_, VkSampler sampler_, const SamplerCreateInfo &info)
+    : Cookie(device_)
+    , device(device_)
+    , sampler(sampler_)
     , create_info(info)
 {
 }

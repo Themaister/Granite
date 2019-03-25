@@ -88,9 +88,9 @@ public:
 	Socket(Socket &&) = delete;
 	void operator=(Socket &&) = delete;
 
-	void set_parent_looper(Looper *looper)
+	void set_parent_looper(Looper *looper_)
 	{
-		this->looper = looper;
+		looper = looper_;
 	}
 
 	Looper *get_parent_looper()

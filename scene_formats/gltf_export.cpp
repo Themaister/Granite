@@ -125,7 +125,7 @@ struct AnalysisResult
 	VkComponentMapping swizzle;
 
 	bool load_image(const string &src, const VkComponentMapping &swizzle);
-	void swizzle_image(const VkComponentMapping &swizzle);
+	void swizzle_image(const VkComponentMapping &swizzle_);
 	void deduce_compression(TextureCompressionFamily family);
 
 	enum class MetallicRoughnessMode
@@ -186,7 +186,7 @@ struct EmittedAnimation
 struct RemapState
 {
 	const ExportOptions *options = nullptr;
-	Hash hash(const Mesh &mesh);
+	Hash hash(const Mesh &m);
 	Hash hash(const MaterialInfo &mesh);
 
 	template<typename StateType, typename SceneType>
@@ -245,22 +245,22 @@ struct RemapState
 	vector<vector<unsigned>> mesh_group_cache;
 };
 
-Hash RemapState::hash(const Mesh &mesh)
+Hash RemapState::hash(const Mesh &m)
 {
 	Hasher h;
 
-	h.u32(mesh.topology);
-	h.u32(mesh.index_type);
-	h.u32(mesh.attribute_stride);
-	h.u32(mesh.position_stride);
-	h.u32(mesh.has_material);
-	h.u32(mesh.primitive_restart);
-	if (mesh.has_material)
-		h.u32(material.to_index[mesh.material_index]);
-	h.data(reinterpret_cast<const uint8_t *>(mesh.attribute_layout), sizeof(mesh.attribute_layout));
+	h.u32(m.topology);
+	h.u32(m.index_type);
+	h.u32(m.attribute_stride);
+	h.u32(m.position_stride);
+	h.u32(m.has_material);
+	h.u32(m.primitive_restart);
+	if (m.has_material)
+		h.u32(material.to_index[m.material_index]);
+	h.data(reinterpret_cast<const uint8_t *>(m.attribute_layout), sizeof(m.attribute_layout));
 
-	auto lo = mesh.static_aabb.get_minimum();
-	auto hi = mesh.static_aabb.get_maximum();
+	auto lo = m.static_aabb.get_minimum();
+	auto hi = m.static_aabb.get_maximum();
 	h.f32(lo.x);
 	h.f32(lo.y);
 	h.f32(lo.z);
@@ -269,16 +269,16 @@ Hash RemapState::hash(const Mesh &mesh)
 	h.f32(hi.z);
 
 	h.u32(0xff);
-	if (!mesh.positions.empty())
-		h.data(mesh.positions.data(), mesh.positions.size() * sizeof(mesh.positions[0]));
+	if (!m.positions.empty())
+		h.data(m.positions.data(), m.positions.size() * sizeof(m.positions[0]));
 	h.u32(0xff);
-	if (!mesh.indices.empty())
-		h.data(mesh.indices.data(), mesh.indices.size() * sizeof(mesh.indices[0]));
+	if (!m.indices.empty())
+		h.data(m.indices.data(), m.indices.size() * sizeof(m.indices[0]));
 	h.u32(0xff);
-	if (!mesh.attributes.empty())
-		h.data(mesh.attributes.data(), mesh.attributes.size() * sizeof(mesh.attributes[0]));
+	if (!m.attributes.empty())
+		h.data(m.attributes.data(), m.attributes.size() * sizeof(m.attributes[0]));
 
-	h.u32(mesh.count);
+	h.u32(m.count);
 	return h.get();
 }
 
@@ -729,50 +729,50 @@ void RemapState::emit_environment(const string &cube, const string &reflection, 
 
 void RemapState::emit_material(unsigned remapped_material)
 {
-	auto &material = *this->material.info[remapped_material];
+	auto &mat = *material.info[remapped_material];
 	material_cache.resize(std::max<size_t>(material_cache.size(), remapped_material + 1));
 	auto &output = material_cache[remapped_material];
 
-	if (!material.normal.path.empty())
+	if (!mat.normal.path.empty())
 	{
-		output.normal = emit_texture(material.normal, material.sampler, Material::Textures::Normal,
+		output.normal = emit_texture(mat.normal, mat.sampler, Material::Textures::Normal,
 		                             options->compression, options->texcomp_quality, TextureMode::RGB);
 	}
 
-	if (!material.occlusion.path.empty())
+	if (!mat.occlusion.path.empty())
 	{
-		output.occlusion = emit_texture(material.occlusion, material.sampler, Material::Textures::Occlusion,
+		output.occlusion = emit_texture(mat.occlusion, mat.sampler, Material::Textures::Occlusion,
 		                                options->compression, options->texcomp_quality, TextureMode::RGB);
 	}
 
-	if (!material.base_color.path.empty())
+	if (!mat.base_color.path.empty())
 	{
-		output.base_color = emit_texture(material.base_color, material.sampler, Material::Textures::BaseColor,
+		output.base_color = emit_texture(mat.base_color, mat.sampler, Material::Textures::BaseColor,
 		                                 options->compression, options->texcomp_quality,
-		                                 material.pipeline != DrawPipeline::Opaque ? TextureMode::sRGBA : TextureMode::sRGB);
+		                                 mat.pipeline != DrawPipeline::Opaque ? TextureMode::sRGBA : TextureMode::sRGB);
 	}
 
-	if (!material.metallic_roughness.path.empty())
+	if (!mat.metallic_roughness.path.empty())
 	{
-		output.metallic_roughness = emit_texture(material.metallic_roughness, material.sampler,
+		output.metallic_roughness = emit_texture(mat.metallic_roughness, mat.sampler,
 		                                         Material::Textures::MetallicRoughness,
 		                                         options->compression, options->texcomp_quality, TextureMode::RGB);
 	}
 
-	if (!material.emissive.path.empty())
+	if (!mat.emissive.path.empty())
 	{
-		output.emissive = emit_texture(material.emissive, material.sampler, Material::Textures::Emissive,
+		output.emissive = emit_texture(mat.emissive, mat.sampler, Material::Textures::Emissive,
 		                               options->compression, options->texcomp_quality, TextureMode::sRGB);
 	}
 
-	output.uniform_base_color = material.uniform_base_color;
-	output.uniform_emissive_color = material.uniform_emissive_color;
-	output.uniform_metallic = material.uniform_metallic;
-	output.uniform_roughness = material.uniform_roughness;
-	output.normal_scale = material.normal_scale;
-	output.pipeline = material.pipeline;
-	output.two_sided = material.two_sided;
-	output.bandlimited_pixel = material.bandlimited_pixel;
+	output.uniform_base_color = mat.uniform_base_color;
+	output.uniform_emissive_color = mat.uniform_emissive_color;
+	output.uniform_metallic = mat.uniform_metallic;
+	output.uniform_roughness = mat.uniform_roughness;
+	output.normal_scale = mat.normal_scale;
+	output.pipeline = mat.pipeline;
+	output.two_sided = mat.two_sided;
+	output.bandlimited_pixel = mat.bandlimited_pixel;
 }
 
 static void quantize_attribute_fp32_fp16(uint8_t *output,
@@ -850,31 +850,31 @@ void RemapState::emit_mesh(unsigned remapped_index)
 {
 	Mesh new_mesh;
 	if (options->optimize_meshes)
-		new_mesh = mesh_optimize_index_buffer(*this->mesh.info[remapped_index], options->stripify_meshes);
-	auto &mesh = options->optimize_meshes ? new_mesh : *this->mesh.info[remapped_index];
+		new_mesh = mesh_optimize_index_buffer(*mesh.info[remapped_index], options->stripify_meshes);
+	auto &output_mesh = options->optimize_meshes ? new_mesh : *mesh.info[remapped_index];
 
 	mesh_cache.resize(std::max<size_t>(mesh_cache.size(), remapped_index + 1));
 
 	auto &emit = mesh_cache[remapped_index];
-	emit.material = mesh.has_material ? int(mesh.material_index) : -1;
-	emit.topology = mesh.topology;
-	emit.primitive_restart = mesh.primitive_restart;
+	emit.material = output_mesh.has_material ? int(output_mesh.material_index) : -1;
+	emit.topology = output_mesh.topology;
+	emit.primitive_restart = output_mesh.primitive_restart;
 
-	if (!mesh.indices.empty())
+	if (!output_mesh.indices.empty())
 	{
-		unsigned index = emit_buffer(mesh.indices);
+		unsigned index = emit_buffer(output_mesh.indices);
 		emit.index_accessor = emit_accessor(index,
-		                                    mesh.index_type == VK_INDEX_TYPE_UINT16 ? VK_FORMAT_R16_UINT
+		                                    output_mesh.index_type == VK_INDEX_TYPE_UINT16 ? VK_FORMAT_R16_UINT
 		                                                                            : VK_FORMAT_R32_UINT,
-		                                    0, mesh.count);
+		                                    0, output_mesh.count);
 
 		uint32_t min_index = ~0u;
 		uint32_t max_index = 0;
 
-		if (mesh.index_type == VK_INDEX_TYPE_UINT16)
+		if (output_mesh.index_type == VK_INDEX_TYPE_UINT16)
 		{
-			const auto *indices = reinterpret_cast<const uint16_t *>(mesh.indices.data());
-			for (uint32_t i = 0; i < mesh.count; i++)
+			const auto *indices = reinterpret_cast<const uint16_t *>(output_mesh.indices.data());
+			for (uint32_t i = 0; i < output_mesh.count; i++)
 			{
 				min_index = muglm::min(min_index, uint32_t(indices[i]));
 				max_index = muglm::max(max_index, uint32_t(indices[i]));
@@ -882,8 +882,8 @@ void RemapState::emit_mesh(unsigned remapped_index)
 		}
 		else
 		{
-			const auto *indices = reinterpret_cast<const uint32_t *>(mesh.indices.data());
-			for (uint32_t i = 0; i < mesh.count; i++)
+			const auto *indices = reinterpret_cast<const uint32_t *>(output_mesh.indices.data());
+			for (uint32_t i = 0; i < output_mesh.count; i++)
 			{
 				min_index = muglm::min(min_index, indices[i]);
 				max_index = muglm::max(max_index, indices[i]);
@@ -897,9 +897,9 @@ void RemapState::emit_mesh(unsigned remapped_index)
 	else
 		emit.index_accessor = -1;
 
-	if (mesh.has_material)
+	if (output_mesh.has_material)
 	{
-		unsigned remapped_material = material.to_index[mesh.material_index];
+		unsigned remapped_material = material.to_index[output_mesh.material_index];
 		if (!material_hash.count(remapped_material))
 		{
 			emit_material(remapped_material);
@@ -907,13 +907,13 @@ void RemapState::emit_mesh(unsigned remapped_index)
 		}
 	}
 
-	const auto &layout = mesh.attribute_layout;
+	const auto &layout = output_mesh.attribute_layout;
 
 	emit.attribute_mask = 0;
-	if (!mesh.positions.empty())
+	if (!output_mesh.positions.empty())
 	{
 		uint32_t buffer_index = 0;
-		uint32_t count = uint32_t(mesh.positions.size() / mesh.position_stride);
+		uint32_t count = uint32_t(output_mesh.positions.size() / output_mesh.position_stride);
 		int &acc = emit.attribute_accessor[ecast(MeshAttribute::Position)];
 		VkFormat format = layout[ecast(MeshAttribute::Position)].format;
 
@@ -921,12 +921,12 @@ void RemapState::emit_mesh(unsigned remapped_index)
 		                      format == VK_FORMAT_R32G32B32A32_SFLOAT;
 
 		if (options->quantize_attributes && format_is_fp32 &&
-		    all(greaterThan(mesh.static_aabb.get_minimum(), vec3(-0x8000))) &&
-		    all(lessThan(mesh.static_aabb.get_maximum(), vec3(0x8000))))
+		    all(greaterThan(output_mesh.static_aabb.get_minimum(), vec3(-0x8000))) &&
+		    all(lessThan(output_mesh.static_aabb.get_maximum(), vec3(0x8000))))
 		{
 			vector<uint8_t> output(sizeof(u16vec4) * count);
 
-			quantize_attribute_fp32_fp16(output.data(), mesh.positions.data(), mesh.position_stride, count);
+			quantize_attribute_fp32_fp16(output.data(), output_mesh.positions.data(), output_mesh.position_stride, count);
 
 			buffer_index = emit_buffer(output);
 			acc = emit_accessor(buffer_index,
@@ -935,20 +935,20 @@ void RemapState::emit_mesh(unsigned remapped_index)
 		}
 		else
 		{
-			buffer_index = emit_buffer(mesh.positions);
+			buffer_index = emit_buffer(output_mesh.positions);
 			acc = emit_accessor(buffer_index,
 			                    layout[ecast(MeshAttribute::Position)].format,
 			                    0, count);
 		}
 
-		accessor_cache[acc].aabb = mesh.static_aabb;
+		accessor_cache[acc].aabb = output_mesh.static_aabb;
 		accessor_cache[acc].use_aabb = true;
 		emit.attribute_mask |= 1u << ecast(MeshAttribute::Position);
 	}
 
-	if (!mesh.attributes.empty())
+	if (!output_mesh.attributes.empty())
 	{
-		auto attr_count = unsigned(mesh.attributes.size() / mesh.attribute_stride);
+		auto attr_count = unsigned(output_mesh.attributes.size() / output_mesh.attribute_stride);
 
 		for (unsigned i = 0; i < ecast(MeshAttribute::Count); i++)
 		{
@@ -962,7 +962,7 @@ void RemapState::emit_mesh(unsigned remapped_index)
 			vector<uint8_t> unpacked_buffer(attr_count * format_size);
 
 			extract_attribute(unpacked_buffer.data(), format_size,
-			                  mesh.attributes.data() + layout[i].offset, mesh.attribute_stride, format_size, attr_count);
+			                  output_mesh.attributes.data() + layout[i].offset, output_mesh.attribute_stride, format_size, attr_count);
 
 			VkFormat remapped_format = layout[i].format;
 
@@ -1023,9 +1023,9 @@ unsigned RemapState::emit_meshes(ArrayView<const unsigned> meshes)
 	vector<unsigned> mesh_group;
 	mesh_group.reserve(meshes.size());
 
-	for (auto &mesh : meshes)
+	for (auto &remapped_mesh : meshes)
 	{
-		unsigned remapped_index = this->mesh.to_index[mesh];
+		unsigned remapped_index = mesh.to_index[remapped_mesh];
 		emit_hash.u32(remapped_index);
 		mesh_group.push_back(remapped_index);
 
@@ -1050,9 +1050,9 @@ unsigned RemapState::emit_meshes(ArrayView<const unsigned> meshes)
 	return index;
 }
 
-void RemapState::emit_animations(ArrayView<const Animation> animations)
+void RemapState::emit_animations(ArrayView<const Animation> animation_list)
 {
-	for (auto &animation : animations)
+	for (auto &animation : animation_list)
 	{
 		EmittedAnimation anim;
 		anim.name = animation.name;
@@ -1175,12 +1175,12 @@ static VkFormat get_compression_format(TextureCompression compression, TextureMo
 	}
 }
 
-void AnalysisResult::swizzle_image(const VkComponentMapping &swizzle)
+void AnalysisResult::swizzle_image(const VkComponentMapping &swizzle_)
 {
-	if (swizzle.r != VK_COMPONENT_SWIZZLE_R ||
-	    swizzle.g != VK_COMPONENT_SWIZZLE_G ||
-	    swizzle.b != VK_COMPONENT_SWIZZLE_B ||
-	    swizzle.a != VK_COMPONENT_SWIZZLE_A)
+	if (swizzle_.r != VK_COMPONENT_SWIZZLE_R ||
+	    swizzle_.g != VK_COMPONENT_SWIZZLE_G ||
+	    swizzle_.b != VK_COMPONENT_SWIZZLE_B ||
+	    swizzle_.a != VK_COMPONENT_SWIZZLE_A)
 	{
 		image->make_local_copy();
 
@@ -1205,10 +1205,10 @@ void AnalysisResult::swizzle_image(const VkComponentMapping &swizzle)
 			}
 		};
 
-		swizzles.x = conv_swizzle(swizzle.r);
-		swizzles.y = conv_swizzle(swizzle.g);
-		swizzles.z = conv_swizzle(swizzle.b);
-		swizzles.w = conv_swizzle(swizzle.a);
+		swizzles.x = conv_swizzle(swizzle_.r);
+		swizzles.y = conv_swizzle(swizzle_.g);
+		swizzles.z = conv_swizzle(swizzle_.b);
+		swizzles.w = conv_swizzle(swizzle_.a);
 
 		transform_texture_layout<u8vec4>(layout, [swizzles](const u8vec4 &v) {
 			return u8vec4(v[swizzles.x], v[swizzles.y], v[swizzles.z], v[swizzles.w]);
@@ -1263,7 +1263,7 @@ AnalysisResult::MetallicRoughnessMode AnalysisResult::deduce_metallic_roughness_
 		return MetallicRoughnessMode::Default;
 }
 
-bool AnalysisResult::load_image(const string &src, const VkComponentMapping &swizzle)
+bool AnalysisResult::load_image(const string &src, const VkComponentMapping &swizzle_)
 {
 	src_path = src;
 	image = make_shared<MemoryMappedTexture>();
@@ -1274,8 +1274,8 @@ bool AnalysisResult::load_image(const string &src, const VkComponentMapping &swi
 	if (image->get_layout().get_required_size() == 0)
 		return false;
 
-	swizzle_image(swizzle);
-	this->swizzle = {
+	swizzle_image(swizzle_);
+	swizzle = {
 		VK_COMPONENT_SWIZZLE_R,
 		VK_COMPONENT_SWIZZLE_G,
 		VK_COMPONENT_SWIZZLE_B,
@@ -2010,9 +2010,9 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 				Value prim(kObjectType);
 				Value attribs(kObjectType);
 
-				auto &m = state.mesh_cache[submesh];
+				auto &cached_mesh = state.mesh_cache[submesh];
 
-				for_each_bit(m.attribute_mask, [&](unsigned bit) {
+				for_each_bit(cached_mesh.attribute_mask, [&](unsigned bit) {
 					auto attr = static_cast<MeshAttribute>(bit);
 					const char *semantic = nullptr;
 					switch (attr)
@@ -2041,16 +2041,16 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 					default:
 						return;
 					}
-					attribs.AddMember(StringRef(semantic), m.attribute_accessor[bit], allocator);
+					attribs.AddMember(StringRef(semantic), cached_mesh.attribute_accessor[bit], allocator);
 				});
 
-				if (m.index_accessor >= 0)
-					prim.AddMember("indices", m.index_accessor, allocator);
+				if (cached_mesh.index_accessor >= 0)
+					prim.AddMember("indices", cached_mesh.index_accessor, allocator);
 
-				if (m.material >= 0)
-					prim.AddMember("material", state.material.to_index[m.material], allocator);
+				if (cached_mesh.material >= 0)
+					prim.AddMember("material", state.material.to_index[cached_mesh.material], allocator);
 
-				switch (m.topology)
+				switch (cached_mesh.topology)
 				{
 				case VK_PRIMITIVE_TOPOLOGY_POINT_LIST:
 					prim.AddMember("mode", 0, allocator);
@@ -2080,10 +2080,10 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 					break;
 				}
 
-				if (m.primitive_restart)
+				if (cached_mesh.primitive_restart)
 				{
 					Value extras(kObjectType);
-					extras.AddMember("primitiveRestart", m.primitive_restart, allocator);
+					extras.AddMember("primitiveRestart", cached_mesh.primitive_restart, allocator);
 					prim.AddMember("extras", extras, allocator);
 				}
 				prim.AddMember("attributes", attribs, allocator);

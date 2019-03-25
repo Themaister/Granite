@@ -48,7 +48,7 @@ enum PositionalLightVariantBits
 
 struct LightCookie
 {
-	LightCookie()
+	LightCookie() noexcept
 	{
 		count.store(0);
 	}
@@ -62,15 +62,15 @@ struct LightCookie
 };
 static LightCookie light_cookie;
 
-PositionalLight::PositionalLight(Type type)
-	: type(type)
+PositionalLight::PositionalLight(Type type_)
+	: type(type_)
 {
 	cookie = light_cookie.get_cookie();
 }
 
-void PositionalLight::set_color(vec3 color)
+void PositionalLight::set_color(vec3 color_)
 {
-	this->color = color;
+	color = color_;
 	recompute_range();
 }
 
@@ -89,10 +89,10 @@ void PositionalLight::recompute_range()
 	set_range(d);
 }
 
-void SpotLight::set_spot_parameters(float inner_cone, float outer_cone)
+void SpotLight::set_spot_parameters(float inner_cone_, float outer_cone_)
 {
-	this->inner_cone = clamp(inner_cone, 0.001f, 1.0f);
-	this->outer_cone = clamp(outer_cone, 0.001f, 1.0f);
+	inner_cone = clamp(inner_cone_, 0.001f, 1.0f);
+	outer_cone = clamp(outer_cone_, 0.001f, 1.0f);
 	recompute_range();
 }
 

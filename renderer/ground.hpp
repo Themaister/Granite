@@ -42,12 +42,12 @@ public:
 		lod = ptr;
 	}
 
-	void set_neighbors(const GroundPatch *nx, const GroundPatch *px, const GroundPatch *nz, const GroundPatch *pz)
+	void set_neighbors(const GroundPatch *nx_, const GroundPatch *px_, const GroundPatch *nz_, const GroundPatch *pz_)
 	{
-		this->nx = nx;
-		this->px = px;
-		this->nz = nz;
-		this->pz = pz;
+		nx = nx_;
+		px = px_;
+		nz = nz_;
+		pz = pz_;
 	}
 
 private:

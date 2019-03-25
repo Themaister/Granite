@@ -354,39 +354,40 @@ void TextureFormatLayout::fill_mipinfo(uint32_t width, uint32_t height, uint32_t
 	required_size = offset;
 }
 
-void TextureFormatLayout::set_1d(VkFormat format, uint32_t width, uint32_t array_layers, uint32_t mip_levels)
+void TextureFormatLayout::set_1d(VkFormat format_, uint32_t width, uint32_t array_layers_, uint32_t mip_levels_)
 {
-	this->image_type = VK_IMAGE_TYPE_1D;
-	this->format = format;
-	this->array_layers = array_layers;
-	this->mip_levels = mip_levels;
+	image_type = VK_IMAGE_TYPE_1D;
+	format = format_;
+	array_layers = array_layers_;
+	mip_levels = mip_levels_;
 
 	fill_mipinfo(width, 1, 1);
 }
 
-void TextureFormatLayout::set_2d(VkFormat format, uint32_t width, uint32_t height, uint32_t array_layers, uint32_t mip_levels)
+void TextureFormatLayout::set_2d(VkFormat format_, uint32_t width, uint32_t height,
+                                 uint32_t array_layers_, uint32_t mip_levels_)
 {
-	this->image_type = VK_IMAGE_TYPE_2D;
-	this->format = format;
-	this->array_layers = array_layers;
-	this->mip_levels = mip_levels;
+	image_type = VK_IMAGE_TYPE_2D;
+	format = format_;
+	array_layers = array_layers_;
+	mip_levels = mip_levels_;
 
 	fill_mipinfo(width, height, 1);
 }
 
-void TextureFormatLayout::set_3d(VkFormat format, uint32_t width, uint32_t height, uint32_t depth, uint32_t mip_levels)
+void TextureFormatLayout::set_3d(VkFormat format_, uint32_t width, uint32_t height, uint32_t depth, uint32_t mip_levels_)
 {
-	this->image_type = VK_IMAGE_TYPE_3D;
-	this->format = format;
-	this->array_layers = 1;
-	this->mip_levels = mip_levels;
+	image_type = VK_IMAGE_TYPE_3D;
+	format = format_;
+	array_layers = 1;
+	mip_levels = mip_levels_;
 
 	fill_mipinfo(width, height, depth);
 }
 
-void TextureFormatLayout::set_buffer(void *buffer, size_t size)
+void TextureFormatLayout::set_buffer(void *buffer_, size_t size)
 {
-	this->buffer = static_cast<uint8_t *>(buffer);
+	buffer = static_cast<uint8_t *>(buffer_);
 	buffer_size = size;
 }
 

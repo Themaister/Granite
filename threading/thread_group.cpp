@@ -32,8 +32,8 @@ namespace Granite
 
 namespace Internal
 {
-TaskGroup::TaskGroup(ThreadGroup *group)
-	: group(group)
+TaskGroup::TaskGroup(ThreadGroup *group_)
+	: group(group_)
 {
 }
 

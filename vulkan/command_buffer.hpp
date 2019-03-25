@@ -234,9 +234,9 @@ public:
 		return uses_swapchain;
 	}
 
-	void set_thread_index(unsigned index)
+	void set_thread_index(unsigned index_)
 	{
-		thread_index = index;
+		thread_index = index_;
 	}
 
 	unsigned get_thread_index() const
@@ -627,7 +627,7 @@ private:
 	const RenderPass *compatible_render_pass = nullptr;
 
 	VertexAttribState attribs[VULKAN_NUM_VERTEX_ATTRIBS] = {};
-	IndexState index = {};
+	IndexState index_state = {};
 	VertexBindingState vbo = {};
 	ResourceBindings bindings;
 

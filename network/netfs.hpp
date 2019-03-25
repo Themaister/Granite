@@ -87,20 +87,20 @@ public:
 		return ret;
 	}
 
-	void poke_u32(size_t offset, uint32_t value)
+	void poke_u32(size_t offset_, uint32_t value)
 	{
 		value = htonl(value);
-		memcpy(buffer.data() + offset, &value, 4);
+		memcpy(buffer.data() + offset_, &value, 4);
 	}
 
-	void poke_u64(size_t offset, uint64_t value)
+	void poke_u64(size_t offset_, uint64_t value)
 	{
 		uint32_t value0 = uint32_t(value >> 32);
 		uint32_t value1 = uint32_t(value >> 0);
 		value0 = htonl(value0);
 		value1 = htonl(value1);
-		memcpy(buffer.data() + offset, &value0, 4);
-		memcpy(buffer.data() + offset + 4, &value1, 4);
+		memcpy(buffer.data() + offset_, &value0, 4);
+		memcpy(buffer.data() + offset_ + 4, &value1, 4);
 	}
 
 	size_t add_string(const std::string &str)

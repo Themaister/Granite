@@ -63,9 +63,9 @@ VkEvent EventManager::request_cleared_event()
 	}
 }
 
-void EventManager::init(Device *device)
+void EventManager::init(Device *device_)
 {
-	this->device = device->get_device();
-	workaround = device->get_workarounds().emulate_event_as_pipeline_barrier;
+	device = device_->get_device();
+	workaround = device_->get_workarounds().emulate_event_as_pipeline_barrier;
 }
 }

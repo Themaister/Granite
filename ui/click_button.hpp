@@ -40,14 +40,14 @@ public:
 		return text;
 	}
 
-	void set_label_alignment(Font::Alignment alignment)
+	void set_label_alignment(Font::Alignment alignment_)
 	{
-		this->alignment = alignment;
+		alignment = alignment_;
 	}
 
-	void set_font_color(vec4 color)
+	void set_font_color(vec4 color_)
 	{
-		this->color = color;
+		color = color_;
 	}
 
 	void on_click(std::function<void ()> cb)

@@ -34,10 +34,10 @@ using namespace Util;
 
 namespace Vulkan
 {
-PipelineLayout::PipelineLayout(Hash hash, Device *device, const CombinedResourceLayout &layout)
+PipelineLayout::PipelineLayout(Hash hash, Device *device_, const CombinedResourceLayout &layout_)
 	: IntrusiveHashMapEnabled<PipelineLayout>(hash)
-	, device(device)
-	, layout(layout)
+	, device(device_)
+	, layout(layout_)
 {
 	VkDescriptorSetLayout layouts[VULKAN_NUM_DESCRIPTOR_SETS] = {};
 	unsigned num_sets = 0;
@@ -62,14 +62,11 @@ PipelineLayout::PipelineLayout(Hash hash, Device *device, const CombinedResource
 		info.pPushConstantRanges = &layout.push_constant_range;
 	}
 
-#ifdef GRANITE_VULKAN_FOSSILIZE
-	unsigned layout_index = device->register_pipeline_layout(get_hash(), info);
-#endif
 	LOGI("Creating pipeline layout.\n");
 	if (vkCreatePipelineLayout(device->get_device(), &info, nullptr, &pipe_layout) != VK_SUCCESS)
 		LOGE("Failed to create pipeline layout.\n");
 #ifdef GRANITE_VULKAN_FOSSILIZE
-	device->set_pipeline_layout_handle(layout_index, pipe_layout);
+	device->register_pipeline_layout(pipe_layout, get_hash(), info);
 #endif
 }
 
@@ -151,9 +148,9 @@ void Shader::update_array_info(const SPIRType &type, unsigned set, unsigned bind
 	}
 }
 
-Shader::Shader(Hash hash, Device *device, const uint32_t *data, size_t size)
+Shader::Shader(Hash hash, Device *device_, const uint32_t *data, size_t size)
 	: IntrusiveHashMapEnabled<Shader>(hash)
-	, device(device)
+	, device(device_)
 {
 #ifdef GRANITE_SPIRV_DUMP
 	if (!Granite::Filesystem::get().write_buffer_to_file(string("cache://spirv/") + to_string(hash) + ".spv", data, size))
@@ -164,14 +161,12 @@ Shader::Shader(Hash hash, Device *device, const uint32_t *data, size_t size)
 	info.codeSize = size;
 	info.pCode = data;
 
-#ifdef GRANITE_VULKAN_FOSSILIZE
-	unsigned module_index = device->register_shader_module(get_hash(), info);
-#endif
 	LOGI("Creating shader module.\n");
 	if (vkCreateShaderModule(device->get_device(), &info, nullptr, &module) != VK_SUCCESS)
 		LOGE("Failed to create shader module.\n");
+
 #ifdef GRANITE_VULKAN_FOSSILIZE
-	device->set_shader_module_handle(module_index, module);
+	device->register_shader_module(module, get_hash(), info);
 #endif
 
 	Compiler compiler(data, size / sizeof(uint32_t));
@@ -332,18 +327,18 @@ void Program::set_shader(ShaderStage stage, Shader *handle)
 	shaders[Util::ecast(stage)] = handle;
 }
 
-Program::Program(Device *device, Shader *vertex, Shader *fragment)
-    : device(device)
+Program::Program(Device *device_, Shader *vertex, Shader *fragment)
+    : device(device_)
 {
 	set_shader(ShaderStage::Vertex, vertex);
 	set_shader(ShaderStage::Fragment, fragment);
 	device->bake_program(*this);
 }
 
-Program::Program(Device *device, Shader *compute)
-    : device(device)
+Program::Program(Device *device_, Shader *compute_shader)
+    : device(device_)
 {
-	set_shader(ShaderStage::Compute, compute);
+	set_shader(ShaderStage::Compute, compute_shader);
 	device->bake_program(*this);
 }
 

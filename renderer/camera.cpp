@@ -31,10 +31,10 @@ using namespace Vulkan;
 
 namespace Granite
 {
-void Camera::set_depth_range(float znear, float zfar)
+void Camera::set_depth_range(float znear_, float zfar_)
 {
-	this->znear = znear;
-	this->zfar = zfar;
+	znear = znear_;
+	zfar = zfar_;
 }
 
 void Camera::set_ortho(bool enable, float height)
@@ -43,14 +43,14 @@ void Camera::set_ortho(bool enable, float height)
 	ortho_height = height;
 }
 
-void Camera::set_aspect(float aspect)
+void Camera::set_aspect(float aspect_)
 {
-	this->aspect = aspect;
+	aspect = aspect_;
 }
 
-void Camera::set_fovy(float fovy)
+void Camera::set_fovy(float fovy_)
 {
-	this->fovy = fovy;
+	fovy = fovy_;
 }
 
 mat4 Camera::get_view() const

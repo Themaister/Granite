@@ -33,8 +33,8 @@ namespace Granite
 {
 struct FSNotifyCommand : LooperHandler
 {
-	FSNotifyCommand(const string &protocol, unique_ptr<Socket> socket)
-		: LooperHandler(move(socket))
+	FSNotifyCommand(const string &protocol, unique_ptr<Socket> socket_)
+		: LooperHandler(move(socket_)), expected(false)
 	{
 		reply_queue.emplace();
 		auto &reply = reply_queue.back();
@@ -47,7 +47,6 @@ struct FSNotifyCommand : LooperHandler
 		command_reader.start(result_reply.get_buffer());
 
 		state = NotificationLoop;
-		expected = false;
 	}
 
 	void expected_destruction()
@@ -271,8 +270,8 @@ struct FSReadCommand : LooperHandler
 {
 	virtual ~FSReadCommand() = default;
 
-	FSReadCommand(const string &path, NetFSCommand command, unique_ptr<Socket> socket)
-		: LooperHandler(move(socket))
+	FSReadCommand(const string &path, NetFSCommand command, unique_ptr<Socket> socket_)
+		: LooperHandler(move(socket_))
 	{
 		reply_builder.begin();
 		reply_builder.add_u32(command);
@@ -361,8 +360,8 @@ struct FSReadCommand : LooperHandler
 
 struct FSReader : FSReadCommand
 {
-	FSReader(const string &path, unique_ptr<Socket> socket)
-		: FSReadCommand(path, NETFS_READ_FILE, move(socket))
+	FSReader(const string &path, unique_ptr<Socket> socket_)
+		: FSReadCommand(path, NETFS_READ_FILE, move(socket_))
 	{
 	}
 
@@ -390,8 +389,8 @@ struct FSReader : FSReadCommand
 
 struct FSList : FSReadCommand
 {
-	FSList(const string &path, unique_ptr<Socket> socket)
-		: FSReadCommand(path, NETFS_LIST, move(socket))
+	FSList(const string &path, unique_ptr<Socket> socket_)
+		: FSReadCommand(path, NETFS_LIST, move(socket_))
 	{
 	}
 
@@ -440,8 +439,8 @@ struct FSList : FSReadCommand
 
 struct FSStat : FSReadCommand
 {
-	FSStat(const string &path, unique_ptr<Socket> socket)
-		: FSReadCommand(path, NETFS_STAT, move(socket))
+	FSStat(const string &path, unique_ptr<Socket> socket_)
+		: FSReadCommand(path, NETFS_STAT, move(socket_))
 	{
 	}
 
@@ -490,8 +489,8 @@ struct FSStat : FSReadCommand
 
 struct FSWriteCommand : LooperHandler
 {
-	FSWriteCommand(const string &path, const vector<uint8_t> &buffer, unique_ptr<Socket> socket)
-		: LooperHandler(move(socket))
+	FSWriteCommand(const string &path, const vector<uint8_t> &buffer, unique_ptr<Socket> socket_)
+		: LooperHandler(move(socket_))
 	{
 		target_size = buffer.size();
 

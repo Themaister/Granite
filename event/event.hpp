@@ -189,8 +189,8 @@ public:
 			handler, handler };
 
 		static constexpr auto type_id = EventType::get_type_id();
-		auto &events = latched_events[type_id];
-		dispatch_up_events(events.queued_events, h);
+		auto &levents = latched_events[type_id];
+		dispatch_up_events(levents.queued_events, h);
 
 		auto &l = latched_events[type_id];
 		if (l.dispatching)

@@ -29,14 +29,14 @@ namespace Granite
 {
 namespace UI
 {
-Label::Label(string text, FontSize font_size)
-	: text(move(text)), font_size(font_size)
+Label::Label(string text_, FontSize font_size_)
+	: text(move(text_)), font_size(font_size_)
 {
 }
 
-void Label::set_text(std::string text)
+void Label::set_text(std::string text_)
 {
-	this->text = move(text);
+	text = move(text_);
 }
 
 void Label::reconfigure_to_canvas(vec2, vec2)

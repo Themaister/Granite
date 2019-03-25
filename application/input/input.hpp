@@ -272,8 +272,8 @@ class JoypadConnectionEvent : public Granite::Event
 {
 public:
 	GRANITE_EVENT_TYPE_DECL(JoypadConnectionEvent)
-	JoypadConnectionEvent(unsigned index, bool connected)
-	    : index(index), connected(connected)
+	JoypadConnectionEvent(unsigned index_, bool connected_)
+	    : index(index_), connected(connected_)
 	{
 	}
 
@@ -297,8 +297,8 @@ class TouchGestureEvent : public Granite::Event
 public:
 	GRANITE_EVENT_TYPE_DECL(TouchGestureEvent)
 
-	TouchGestureEvent(const TouchState &state)
-		: state(state)
+	explicit TouchGestureEvent(const TouchState &state_)
+		: state(state_)
 	{
 	}
 
@@ -316,8 +316,12 @@ class TouchDownEvent : public Granite::Event
 public:
 	GRANITE_EVENT_TYPE_DECL(TouchDownEvent)
 
-	TouchDownEvent(unsigned index, unsigned id, float x, float y, unsigned screen_width, unsigned screen_height)
-		: index(index), id(id), x(x), y(y), width(screen_width), height(screen_height)
+	TouchDownEvent(unsigned index_, unsigned id_,
+	               float x_, float y_,
+	               unsigned screen_width_, unsigned screen_height_)
+		: index(index_), id(id_),
+		  x(x_), y(y_),
+		  width(screen_width_), height(screen_height_)
 	{
 	}
 
@@ -362,8 +366,12 @@ class TouchUpEvent : public Granite::Event
 public:
 	GRANITE_EVENT_TYPE_DECL(TouchUpEvent)
 
-	TouchUpEvent(unsigned id, float x, float y, float start_x, float start_y, unsigned screen_width, unsigned screen_height)
-		: id(id), x(x), y(y), start_x(start_x), start_y(start_y), width(screen_width), height(screen_height)
+	TouchUpEvent(unsigned id_, float x_, float y_,
+	             float start_x_, float start_y_,
+	             unsigned screen_width_, unsigned screen_height_)
+		: id(id_), x(x_), y(y_),
+		  start_x(start_x_), start_y(start_y_),
+		  width(screen_width_), height(screen_height_)
 	{
 	}
 
@@ -414,8 +422,8 @@ class JoypadButtonEvent : public Granite::Event
 public:
 	GRANITE_EVENT_TYPE_DECL(JoypadButtonEvent)
 
-	JoypadButtonEvent(unsigned index, JoypadKey key, JoypadKeyState state)
-		: index(index), key(key), state(state)
+	JoypadButtonEvent(unsigned index_, JoypadKey key_, JoypadKeyState state_)
+		: index(index_), key(key_), state(state_)
 	{
 	}
 
@@ -445,8 +453,8 @@ class JoypadAxisEvent : public Granite::Event
 public:
 	GRANITE_EVENT_TYPE_DECL(JoypadAxisEvent)
 
-	JoypadAxisEvent(unsigned index, JoypadAxis axis, float value)
-			: index(index), axis(axis), value(value)
+	JoypadAxisEvent(unsigned index_, JoypadAxis axis_, float value_)
+		: index(index_), axis(axis_), value(value_)
 	{
 	}
 
@@ -476,8 +484,8 @@ class KeyboardEvent : public Granite::Event
 public:
 	GRANITE_EVENT_TYPE_DECL(KeyboardEvent)
 
-	KeyboardEvent(Key key, KeyState state)
-		: key(key), state(state)
+	KeyboardEvent(Key key_, KeyState state_)
+		: key(key_), state(state_)
 	{
 	}
 
@@ -500,8 +508,8 @@ class OrientationEvent : public Granite::Event
 {
 public:
 	GRANITE_EVENT_TYPE_DECL(OrientationEvent)
-	OrientationEvent(quat rot)
-		: rot(rot)
+	explicit OrientationEvent(const quat &rot_)
+		: rot(rot_)
 	{
 	}
 
@@ -519,8 +527,8 @@ class MouseButtonEvent : public Granite::Event
 public:
 	GRANITE_EVENT_TYPE_DECL(MouseButtonEvent)
 
-	MouseButtonEvent(MouseButton button, double abs_x, double abs_y, bool pressed)
-		: button(button), abs_x(abs_x), abs_y(abs_y), pressed(pressed)
+	MouseButtonEvent(MouseButton button_, double abs_x_, double abs_y_, bool pressed_)
+		: button(button_), abs_x(abs_x_), abs_y(abs_y_), pressed(pressed_)
 	{
 	}
 
@@ -556,9 +564,11 @@ class MouseMoveEvent : public Granite::Event
 public:
 	GRANITE_EVENT_TYPE_DECL(MouseMoveEvent);
 
-	MouseMoveEvent(double delta_x, double delta_y, double abs_x, double abs_y,
-	               uint64_t key_mask, uint8_t btn_mask)
-		: delta_x(delta_x), delta_y(delta_y), abs_x(abs_x), abs_y(abs_y), key_mask(key_mask), btn_mask(btn_mask)
+	MouseMoveEvent(double delta_x_, double delta_y_, double abs_x_, double abs_y_,
+	               uint64_t key_mask_, uint8_t btn_mask_)
+		: delta_x(delta_x_), delta_y(delta_y_),
+		  abs_x(abs_x_), abs_y(abs_y_),
+		  key_mask(key_mask_), btn_mask(btn_mask_)
 	{
 	}
 
@@ -603,8 +613,9 @@ class JoypadStateEvent : public Granite::Event
 public:
 	GRANITE_EVENT_TYPE_DECL(JoypadStateEvent)
 
-	JoypadStateEvent(uint8_t active_mask, const JoypadState *states, unsigned count, double delta_time)
-		: states(states), count(count), delta_time(delta_time), active_mask(active_mask)
+	JoypadStateEvent(uint8_t active_mask_, const JoypadState *states_,
+	                 unsigned count_, double delta_time_)
+		: states(states_), count(count_), delta_time(delta_time_), active_mask(active_mask_)
 	{
 	}
 
@@ -642,8 +653,11 @@ class InputStateEvent : public Granite::Event
 public:
 	GRANITE_EVENT_TYPE_DECL(InputStateEvent)
 
-	InputStateEvent(double abs_x, double abs_y, double delta_time, uint64_t key_mask, uint8_t btn_mask, bool mouse_active)
-		: abs_x(abs_x), abs_y(abs_y), delta_time(delta_time), key_mask(key_mask), btn_mask(btn_mask), mouse_active(mouse_active)
+	InputStateEvent(double abs_x_, double abs_y_,
+	                double delta_time_, uint64_t key_mask_, uint8_t btn_mask_, bool mouse_active_)
+		: abs_x(abs_x_), abs_y(abs_y_),
+		  delta_time(delta_time_), key_mask(key_mask_),
+		  btn_mask(btn_mask_), mouse_active(mouse_active_)
 	{
 	}
 

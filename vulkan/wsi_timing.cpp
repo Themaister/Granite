@@ -33,14 +33,14 @@
 
 namespace Vulkan
 {
-void WSITiming::init(WSIPlatform *platform, VkDevice device, VkSwapchainKHR swapchain, const WSITimingOptions &options)
+void WSITiming::init(WSIPlatform *platform_, VkDevice device_, VkSwapchainKHR swapchain_, const WSITimingOptions &options_)
 {
-	this->platform = platform;
-	this->device = device;
-	this->swapchain = swapchain;
-	this->options = options;
+	platform = platform_;
+	device = device_;
+	swapchain = swapchain_;
+	options = options_;
 
-	serial = {};
+	serial_info = {};
 	pacing = {};
 	last_frame = {};
 	feedback = {};
@@ -69,10 +69,10 @@ void WSITiming::set_swap_interval(unsigned interval)
 		return;
 
 	// First, extrapolate to our current serial so we can make a more correct target time using the new swap interval.
-	uint64_t target = compute_target_present_time_for_serial(serial.serial);
+	uint64_t target = compute_target_present_time_for_serial(serial_info.serial);
 	if (target)
 	{
-		pacing.base_serial = serial.serial;
+		pacing.base_serial = serial_info.serial;
 		pacing.base_present = target;
 	}
 
@@ -154,7 +154,7 @@ void WSITiming::update_past_presentation_timing()
 		}
 	}
 
-	auto *timing = find_latest_timestamp(serial.serial);
+	auto *timing = find_latest_timestamp(serial_info.serial);
 	if (timing && timing->timing.actualPresentTime >= timing->wall_frame_begin)
 	{
 		auto total_latency = timing->timing.actualPresentTime - timing->wall_frame_begin;
@@ -163,7 +163,7 @@ void WSITiming::update_past_presentation_timing()
 		if (options.debug)
 		{
 			LOGI("Have presentation timing for %u frames in the past.\n",
-			     serial.serial - timing->timing.presentID);
+			     serial_info.serial - timing->timing.presentID);
 		}
 
 		if (int64_t(timing->timing.presentMargin) < 0)
@@ -216,7 +216,7 @@ void WSITiming::update_past_presentation_timing()
 					                                                       feedback.refresh_interval)));
 					VK_ASSERT(frame_delta);
 					unsigned dropped_frames = frame_delta - 1;
-					platform->event_display_timing_stutter(serial.serial, timing->wall_serial, dropped_frames);
+					platform->event_display_timing_stutter(serial_info.serial, timing->wall_serial, dropped_frames);
 				}
 			}
 
@@ -378,7 +378,7 @@ void WSITiming::limit_latency(Timing &new_timing)
 		// Try to squeeze timings by sleeping, quite shaky, but very fun :)
 		if (feedback.refresh_interval)
 		{
-			int64_t target = int64_t(compute_target_present_time_for_serial(serial.serial));
+			int64_t target = int64_t(compute_target_present_time_for_serial(serial_info.serial));
 
 			if (options.latency_limiter == LatencyLimiter::AdaptiveLowLatency)
 			{
@@ -425,23 +425,23 @@ void WSITiming::begin_frame(double &frame_time, double &elapsed_time)
 
 	// Update initial frame elapsed estimate,
 	// from here, we'll try to lock the frame time to refresh_rate +/- epsilon.
-	if (serial.serial == 0)
+	if (serial_info.serial == 0)
 	{
 		smoothing.offset = elapsed_time;
 		smoothing.elapsed = 0.0;
 	}
-	serial.serial++;
+	serial_info.serial++;
 
 	if (options.debug)
-		LOGI("Starting WSITiming frame serial: %u\n", serial.serial);
+		LOGI("Starting WSITiming frame serial: %u\n", serial_info.serial);
 
 	// On X11, this is found over time by observation, so we need to adapt it.
 	// Only after we have observed the refresh cycle duration, we can start syncing against it.
-	if ((serial.serial & 7) == 0)
+	if ((serial_info.serial & 7) == 0)
 		update_refresh_interval();
 
-	auto &new_timing = feedback.past_timings[serial.serial & NUM_TIMING_MASK];
-	new_timing.wall_serial = serial.serial;
+	auto &new_timing = feedback.past_timings[serial_info.serial & NUM_TIMING_MASK];
+	new_timing.wall_serial = serial_info.serial;
 	new_timing.wall_frame_begin = get_wall_time();
 	new_timing.swap_interval_target = options.swap_interval;
 	new_timing.result = TimingResult::Unknown;
@@ -449,11 +449,11 @@ void WSITiming::begin_frame(double &frame_time, double &elapsed_time)
 
 	update_past_presentation_timing();
 	// Absolute minimum case, just get some initial data before we have some real estimates.
-	update_frame_pacing(serial.serial, new_timing.wall_frame_begin, true);
+	update_frame_pacing(serial_info.serial, new_timing.wall_frame_begin, true);
 	update_frame_time_smoothing(frame_time, elapsed_time);
 	limit_latency(new_timing);
 
-	new_timing.wall_frame_target = compute_target_present_time_for_serial(serial.serial);
+	new_timing.wall_frame_target = compute_target_present_time_for_serial(serial_info.serial);
 }
 
 bool WSITiming::get_conservative_latency(int64_t &latency) const
@@ -541,9 +541,9 @@ void WSITiming::promote_or_demote_frame_rate()
 
 bool WSITiming::fill_present_info_timing(VkPresentTimeGOOGLE &time)
 {
-	time.presentID = serial.serial;
+	time.presentID = serial_info.serial;
 
-	time.desiredPresentTime = compute_target_present_time_for_serial(serial.serial);
+	time.desiredPresentTime = compute_target_present_time_for_serial(serial_info.serial);
 
 	// Want to set the desired target close enough,
 	// but not exactly at estimated target, since we have a rounding error cliff.

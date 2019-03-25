@@ -122,8 +122,8 @@ class Entity : public Util::IntrusiveListEnabled<Entity>
 public:
 	friend class EntityPool;
 
-	Entity(EntityPool *pool, Util::Hash hash)
-		: pool(pool), hash(hash)
+	Entity(EntityPool *pool_, Util::Hash hash_)
+		: pool(pool_), hash(hash_)
 	{
 	}
 

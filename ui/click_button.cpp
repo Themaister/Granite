@@ -30,9 +30,9 @@ namespace Granite
 {
 namespace UI
 {
-void ClickButton::set_text(std::string text)
+void ClickButton::set_text(std::string text_)
 {
-	this->text = move(text);
+	text = move(text_);
 	geometry_changed();
 }
 

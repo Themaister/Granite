@@ -41,9 +41,9 @@ class QueryPoolResult : public Util::IntrusivePtrEnabled<QueryPoolResult, QueryP
 public:
 	friend struct QueryPoolResultDeleter;
 
-	void signal_timestamp(double timestamp)
+	void signal_timestamp(double timestamp_)
 	{
-		this->timestamp = timestamp;
+		timestamp = timestamp_;
 		has_timestamp = true;
 	}
 
@@ -59,7 +59,8 @@ public:
 
 private:
 	friend class Util::ObjectPool<QueryPoolResult>;
-	QueryPoolResult(Device *device) : device(device)
+	explicit QueryPoolResult(Device *device_)
+		: device(device_)
 	{}
 
 	Device *device;
@@ -71,7 +72,7 @@ using QueryPoolHandle = Util::IntrusivePtr<QueryPoolResult>;
 class QueryPool
 {
 public:
-	QueryPool(Device *device);
+	explicit QueryPool(Device *device);
 	~QueryPool();
 
 	void begin();
@@ -93,7 +94,6 @@ private:
 	double query_period = 0.0;
 
 	void add_pool();
-	void flush_callbacks();
 	bool supports_timestamp = false;
 };
 }

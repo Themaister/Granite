@@ -33,8 +33,8 @@ struct FFTProgram : GLFFT::Program
 
 struct FFTSampler : GLFFT::Sampler
 {
-	FFTSampler(const Vulkan::Sampler &sampler)
-	    : sampler(sampler)
+	explicit FFTSampler(const Vulkan::Sampler &sampler_)
+	    : sampler(sampler_)
 	{
 	}
 
@@ -411,8 +411,8 @@ bool FFTInterface::supports_native_fp16()
 	       device->get_device_features().float16_int8_features.shaderFloat16;
 }
 
-FFTInterface::FFTInterface(Vulkan::Device *device)
-    : device(device)
+FFTInterface::FFTInterface(Vulkan::Device *device_)
+    : device(device_)
 {
 }
 

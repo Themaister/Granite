@@ -38,7 +38,7 @@ public:
 
 	Vulkan::WSI &get_wsi()
 	{
-		return wsi;
+		return application_wsi;
 	}
 
 	Vulkan::WSIPlatform &get_platform()
@@ -77,7 +77,7 @@ protected:
 
 private:
 	std::unique_ptr<Vulkan::WSIPlatform> platform;
-	Vulkan::WSI wsi;
+	Vulkan::WSI application_wsi;
 	bool requested_shutdown = false;
 };
 

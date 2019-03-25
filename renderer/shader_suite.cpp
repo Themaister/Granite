@@ -30,17 +30,17 @@ using namespace Vulkan;
 namespace Granite
 {
 
-void ShaderSuite::init_graphics(ShaderManager *manager, const std::string &vertex, const std::string &fragment)
+void ShaderSuite::init_graphics(ShaderManager *manager_, const std::string &vertex, const std::string &fragment)
 {
-	this->manager = manager;
+	manager = manager_;
 	program = manager->register_graphics(vertex, fragment);
 	variants.clear();
 	base_defines.clear();
 }
 
-void ShaderSuite::init_compute(Vulkan::ShaderManager *manager, const std::string &compute)
+void ShaderSuite::init_compute(Vulkan::ShaderManager *manager_, const std::string &compute)
 {
-	this->manager = manager;
+	manager = manager_;
 	program = manager->register_compute(compute);
 	variants.clear();
 	base_defines.clear();

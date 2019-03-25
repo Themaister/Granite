@@ -360,8 +360,8 @@ bool mesh_recompute_tangents(Mesh &mesh)
 	};
 
 	iface.m_getNormal = [](const SMikkTSpaceContext *ctx, float normals[],
-	                       const int iface, const int ivert) {
-		int i = iface * 3 + ivert;
+	                       const int face_index, const int vert_index) {
+		int i = face_index * 3 + vert_index;
 		const Mesh *m = static_cast<const Mesh *>(ctx->m_pUserData);
 		memcpy(normals, m->attributes.data() + i * m->attribute_stride +
 		                m->attribute_layout[ecast(MeshAttribute::Normal)].offset,
@@ -369,8 +369,8 @@ bool mesh_recompute_tangents(Mesh &mesh)
 	};
 
 	iface.m_getTexCoord = [](const SMikkTSpaceContext *ctx, float normals[],
-	                         const int iface, const int ivert) {
-		int i = iface * 3 + ivert;
+	                         const int face_index, const int vert_index) {
+		int i = face_index * 3 + vert_index;
 		const Mesh *m = static_cast<const Mesh *>(ctx->m_pUserData);
 		memcpy(normals, m->attributes.data() + i * m->attribute_stride +
 		                m->attribute_layout[ecast(MeshAttribute::UV)].offset,
@@ -378,16 +378,16 @@ bool mesh_recompute_tangents(Mesh &mesh)
 	};
 
 	iface.m_getPosition = [](const SMikkTSpaceContext *ctx, float positions[],
-	                         const int iface, const int ivert) {
-		int i = iface * 3 + ivert;
+	                         const int face_index, const int vert_index) {
+		int i = face_index * 3 + vert_index;
 		const Mesh *m = static_cast<const Mesh *>(ctx->m_pUserData);
 		memcpy(positions, m->positions.data() + i * m->position_stride,
 		       sizeof(vec3));
 	};
 
 	iface.m_setTSpaceBasic = [](const SMikkTSpaceContext *ctx, const float tangent[], const float sign,
-	                            const int iface, const int ivert) {
-		int i = iface * 3 + ivert;
+	                            const int face_index, const int vert_index) {
+		int i = face_index * 3 + vert_index;
 		Mesh *m = static_cast<Mesh *>(ctx->m_pUserData);
 		// Invert the sign because of glTF convention.
 		vec4 t(tangent[0], tangent[1], tangent[2], -sign);

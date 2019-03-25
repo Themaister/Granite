@@ -46,9 +46,9 @@ public:
 		return keep_aspect;
 	}
 
-	void set_filter(Vulkan::StockSampler sampler)
+	void set_filter(Vulkan::StockSampler sampler_)
 	{
-		this->sampler = sampler;
+		sampler = sampler_;
 	}
 
 	void reconfigure() override;

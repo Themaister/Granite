@@ -33,9 +33,9 @@ using namespace Util;
 
 namespace Vulkan
 {
-DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device, const DescriptorSetLayout &layout, const uint32_t *stages_for_binds)
+DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device_, const DescriptorSetLayout &layout, const uint32_t *stages_for_binds)
 	: IntrusiveHashMapEnabled<DescriptorSetAllocator>(hash)
-	, device(device)
+	, device(device_)
 {
 #ifdef GRANITE_VULKAN_MT
 	unsigned count = Granite::Global::thread_group()->get_num_threads() + 1;
@@ -131,14 +131,11 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device, const 
 		info.pBindings = bindings.data();
 	}
 
-#ifdef GRANITE_VULKAN_FOSSILIZE
-	unsigned desc_index = device->register_descriptor_set_layout(get_hash(), info);
-#endif
 	LOGI("Creating descriptor set layout.\n");
 	if (vkCreateDescriptorSetLayout(device->get_device(), &info, nullptr, &set_layout) != VK_SUCCESS)
 		LOGE("Failed to create descriptor set layout.");
 #ifdef GRANITE_VULKAN_FOSSILIZE
-	device->set_descriptor_set_layout_handle(desc_index, set_layout);
+	device->register_descriptor_set_layout(set_layout, get_hash(), info);
 #endif
 }
 

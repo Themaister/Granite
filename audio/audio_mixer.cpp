@@ -45,11 +45,11 @@ void MixerStream::install_message_queue(StreamID id, Util::LockFreeMessageQueue 
 	message_queue = queue;
 }
 
-void Mixer::set_backend_parameters(float sample_rate, unsigned channels, size_t max_num_samples)
+void Mixer::set_backend_parameters(float sample_rate_, unsigned channels_, size_t max_num_samples_)
 {
-	this->max_num_samples = max_num_samples;
-	this->sample_rate = sample_rate;
-	this->num_channels = channels;
+	max_num_samples = max_num_samples_;
+	sample_rate = sample_rate_;
+	num_channels = channels_;
 	inv_sample_rate = 1.0 / sample_rate;
 }
 
@@ -183,10 +183,10 @@ Mixer::StreamState Mixer::get_stream_state(Granite::Audio::StreamID id)
 	return stream_playing[index].load(memory_order_relaxed) ? StreamState::Playing : StreamState::Paused;
 }
 
-void Mixer::update_stream_play_cursor(unsigned index, double latency) noexcept
+void Mixer::update_stream_play_cursor(unsigned index, double new_latency) noexcept
 {
 	double t = double(stream_raw_play_cursors[index]) * inv_sample_rate;
-	t -= latency;
+	t -= new_latency;
 	if (t < 0.0)
 		t = 0.0;
 	auto t_usec = uint64_t(t * 1e6);
@@ -269,7 +269,7 @@ void Mixer::mix_samples(float *const *channels, size_t num_frames) noexcept
 }
 
 StreamID Mixer::add_mixer_stream(MixerStream *stream, bool start_playing,
-                                 float gain_db, float panning)
+                                 float initial_gain_db, float initial_panning)
 {
 	if (!stream)
 		return StreamID(-1);
@@ -317,8 +317,8 @@ StreamID Mixer::add_mixer_stream(MixerStream *stream, bool start_playing,
 		mixer_streams[index] = stream;
 		stream_raw_play_cursors[index] = 0;
 		stream_adjusted_play_cursors_usec[index].store(0, memory_order_relaxed);
-		gain_linear[index].store(f32_to_u32(std::pow(10.0f, gain_db / 20.0f)), memory_order_relaxed);
-		this->panning[index].store(f32_to_u32(panning), memory_order_relaxed);
+		gain_linear[index].store(f32_to_u32(std::pow(10.0f, initial_gain_db / 20.0f)), memory_order_relaxed);
+		panning[index].store(f32_to_u32(initial_panning), memory_order_relaxed);
 		stream_playing[index].store(start_playing, memory_order_relaxed);
 
 		// Kick mixer thread.
@@ -377,15 +377,15 @@ bool Mixer::pause_stream(StreamID id)
 	return true;
 }
 
-void Mixer::set_stream_mixer_parameters(StreamID id, float gain_db, float panning)
+void Mixer::set_stream_mixer_parameters(StreamID id, float new_gain_db, float new_panning)
 {
 	NON_CRITICAL_THREAD_LOCK();
 	if (!verify_stream_id(id))
 		return;
 
 	unsigned index = get_stream_index(id);
-	gain_linear[index].store(f32_to_u32(std::pow(10.0f, gain_db / 20.0f)), memory_order_release);
-	this->panning[index].store(f32_to_u32(panning), memory_order_release);
+	gain_linear[index].store(f32_to_u32(std::pow(10.0f, new_gain_db / 20.0f)), memory_order_release);
+	panning[index].store(f32_to_u32(new_panning), memory_order_release);
 }
 }
 }

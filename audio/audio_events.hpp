@@ -36,8 +36,8 @@ class MixerStartEvent : public Event
 public:
 	GRANITE_EVENT_TYPE_DECL(MixerStartEvent)
 
-	explicit MixerStartEvent(Mixer &mixer)
-		: mixer(mixer)
+	explicit MixerStartEvent(Mixer &mixer_)
+		: mixer(mixer_)
 	{
 	}
 

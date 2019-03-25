@@ -155,9 +155,9 @@ public:
 	void get_render_info(const RenderContext &context, const RenderInfoComponent *transform,
 	                     RenderQueue &queue) const override;
 
-	void set_color_mod(const vec3 &color)
+	void set_color_mod(const vec3 &color_)
 	{
-		this->color = color;
+		color = color_;
 	}
 
 private:
@@ -181,14 +181,14 @@ public:
 	void get_render_info(const RenderContext &context, const RenderInfoComponent *transform,
 	                     RenderQueue &queue) const override;
 
-	void set_color_mod(const vec3 &color)
+	void set_color_mod(const vec3 &color_)
 	{
-		this->color = color;
+		color = color_;
 	}
 
-	void set_xz_scale(float scale)
+	void set_xz_scale(float scale_)
 	{
-		this->scale = scale;
+		scale = scale_;
 	}
 
 private:

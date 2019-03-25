@@ -92,7 +92,7 @@ public:
 	///
 	/// Mostly used internally by GLFFT wisdom, glfft_cli's bench, and so on.
 	///
-	/// @param context                  The graphics context.
+	/// @param bench_context                  The graphics context.
 	/// @param output                   Output buffer or image.
 	///                                 NOTE: For images, the texture must be using immutable storage, i.e. glTexStorage2D!
 	/// @param input                    Input buffer or texture.
@@ -104,7 +104,7 @@ public:
 	/// @param max_time                 The max time the benchmark should run. Will be checked after each iteration is complete.
 	///
 	/// @returns Average GPU time per process() call.
-	double bench(Context *context, Resource *output, Resource *input, unsigned warmup_iterations, unsigned iterations,
+	double bench(Context *bench_context, Resource *output, Resource *input, unsigned warmup_iterations, unsigned iterations,
 	             unsigned dispatches_per_iteration, double max_time = std::numeric_limits<double>::max());
 
 	/// @brief Returns cost for a process() call. Only used for debugging.

@@ -33,8 +33,10 @@ TemporalJitter::TemporalJitter()
 	init(Type::None, vec2(0.0f));
 }
 
-void TemporalJitter::init(Type type, vec2 backbuffer_resolution)
+void TemporalJitter::init(Type type_, vec2 backbuffer_resolution)
 {
+	type = type_;
+
 	switch (type)
 	{
 	case Type::FXAA_2Phase:
@@ -91,8 +93,6 @@ void TemporalJitter::init(Type type, vec2 backbuffer_resolution)
 		jitter_table[0] = mat4(1.0f);
 		break;
 	}
-
-	this->type = type;
 }
 
 void TemporalJitter::step(const mat4 &proj, const mat4 &view)

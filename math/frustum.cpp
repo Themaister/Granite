@@ -97,9 +97,9 @@ vec4 Frustum::get_bounding_sphere(const mat4 &inv_projection, const mat4 &inv_vi
 	return vec4(center, radius);
 }
 
-void Frustum::build_planes(const mat4 &inv_view_projection)
+void Frustum::build_planes(const mat4 &inv_view_projection_)
 {
-	this->inv_view_projection = inv_view_projection;
+	inv_view_projection = inv_view_projection_;
 	static const vec4 tln(-1.0f, -1.0f, 0.0f, 1.0f);
 	static const vec4 tlf(-1.0f, -1.0f, 1.0f, 1.0f);
 	static const vec4 bln(-1.0f, +1.0f, 0.0f, 1.0f);

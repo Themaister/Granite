@@ -158,11 +158,11 @@ public:
 			glfwDestroyWindow(window);
 	}
 
-	void notify_resize(unsigned width, unsigned height)
+	void notify_resize(unsigned width_, unsigned height_)
 	{
 		resize = true;
-		this->width = width;
-		this->height = height;
+		width = width_;
+		height = height_;
 	}
 
 	struct CachedWindow

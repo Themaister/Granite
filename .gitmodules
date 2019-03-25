@@ -27,7 +27,7 @@
 	url = http://bitbucket.org/Themaister/astc-encoder
 [submodule "third_party/fossilize"]
 	path = third_party/fossilize
-	url = git://github.com/Themaister/Fossilize
+	url = git://github.com/ValveSoftware/Fossilize
 [submodule "third_party/volk"]
 	path = third_party/volk
 	url = git://github.com/zeux/volk

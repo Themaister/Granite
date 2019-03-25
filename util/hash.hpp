@@ -31,8 +31,8 @@ using Hash = uint64_t;
 class Hasher
 {
 public:
-	Hasher(Hash h)
-		: h(h)
+	explicit Hasher(Hash h_)
+		: h(h_)
 	{
 	}
 

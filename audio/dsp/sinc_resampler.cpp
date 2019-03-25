@@ -107,45 +107,45 @@ namespace Audio
 namespace DSP
 {
 
-void SincResampler::init_table_kaiser(double cutoff, unsigned phases, unsigned taps, double beta)
+void SincResampler::init_table_kaiser(double cutoff, unsigned phase_count, unsigned num_taps, double beta)
 {
 	double window_mod = DSP::kaiser_window_function(0.0, beta);
 	const unsigned stride = 2;
-	double sidelobes = taps / 2.0;
+	double sidelobes = num_taps / 2.0;
 
-	for (unsigned i = 0; i < phases; i++)
+	for (unsigned i = 0; i < phase_count; i++)
 	{
-		for (unsigned j = 0; j < taps; j++)
+		for (unsigned j = 0; j < num_taps; j++)
 		{
-			unsigned n = j * phases + i;
-			double window_phase = double(n) / double(phases * taps); /* [0, 1). */
+			unsigned n = j * phase_count + i;
+			double window_phase = double(n) / double(phase_count * num_taps); /* [0, 1). */
 			window_phase = 2.0 * window_phase - 1.0; /* [-1, 1) */
 			double sinc_phase = sidelobes * window_phase;
 			float val = float(cutoff * DSP::sinc(PI * sinc_phase * cutoff) * DSP::kaiser_window_function(window_phase, beta) / window_mod);
-			phase_table[i * stride * taps + j] = val;
+			phase_table[i * stride * num_taps + j] = val;
 		}
 	}
 
-	for (unsigned p = 0; p < phases - 1; p++)
+	for (unsigned p = 0; p < phase_count - 1; p++)
 	{
-		for (unsigned j = 0; j < taps; j++)
+		for (unsigned j = 0; j < num_taps; j++)
 		{
-			float delta = phase_table[(p + 1) * stride * taps + j] - phase_table[p * stride * taps + j];
-			phase_table[(p * stride + 1) * taps + j] = delta;
+			float delta = phase_table[(p + 1) * stride * num_taps + j] - phase_table[p * stride * num_taps + j];
+			phase_table[(p * stride + 1) * num_taps + j] = delta;
 		}
 	}
 
-	unsigned phase = phases - 1;
-	for (unsigned j = 0; j < taps; j++)
+	unsigned phase = phase_count - 1;
+	for (unsigned j = 0; j < num_taps; j++)
 	{
-		unsigned n = j * phases + (phase + 1);
-		double window_phase = double(n) / double(phases * taps); /* (0, 1]. */
+		unsigned n = j * phase_count + (phase + 1);
+		double window_phase = double(n) / double(phase_count * num_taps); /* (0, 1]. */
 		window_phase = 2.0 * window_phase - 1.0; /* (-1, 1] */
 		double sinc_phase = sidelobes * window_phase;
 
 		float val = float(cutoff * DSP::sinc(PI * sinc_phase * cutoff) * kaiser_window_function(window_phase, beta) / window_mod);
-		float delta = (val - phase_table[phase * stride * taps + j]);
-		phase_table[(phase * stride + 1) * taps + j] = delta;
+		float delta = (val - phase_table[phase * stride * num_taps + j]);
+		phase_table[(phase * stride + 1) * num_taps + j] = delta;
 	}
 }
 
@@ -251,20 +251,20 @@ size_t SincResampler::process_and_accumulate(float *output, const float *input, 
 		while (out_frames && time < phases)
 		{
 			const float *buffer = window_buffer + ptr;
-			unsigned taps = this->taps;
+			unsigned num_taps = taps;
 			unsigned phase = time >> subphase_bits;
 
-			const float *phase_table = this->phase_table + phase * taps * 2;
-			const float *delta_table = phase_table + taps;
+			const float *sample_phase_table = phase_table + phase * num_taps * 2;
+			const float *delta_table = sample_phase_table + num_taps;
 
 #ifdef __SSE__
 			__m128 sum = _mm_setzero_ps();
 			__m128 delta = _mm_set1_ps(float(time & subphase_mask) * subphase_mod);
-			for (unsigned i = 0; i < taps; i += 4)
+			for (unsigned i = 0; i < num_taps; i += 4)
 			{
 				__m128 buf = _mm_loadu_ps(buffer + i);
 				__m128 deltas = _mm_load_ps(delta_table + i);
-				__m128 _sinc  = _mm_add_ps(_mm_load_ps(phase_table + i), _mm_mul_ps(deltas, delta));
+				__m128 _sinc  = _mm_add_ps(_mm_load_ps(sample_phase_table + i), _mm_mul_ps(deltas, delta));
 				sum = _mm_add_ps(sum, _mm_mul_ps(buf, _sinc));
 			}
 

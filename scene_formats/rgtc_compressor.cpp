@@ -252,8 +252,8 @@ void compress_rgtc_red_block(uint8_t *output_r, const uint8_t *input_r)
 				int partition_lo = sorted_block[lo];
 				int partition_hi = sorted_block[hi];
 				assert(partition_hi >= partition_lo);
-				int range = partition_hi - partition_lo;
-				int divider = divider_lut.lut5(range);
+				int partition_range = partition_hi - partition_lo;
+				int partition_divider = divider_lut.lut5(partition_range);
 
 				int error = 0;
 
@@ -266,9 +266,9 @@ void compress_rgtc_red_block(uint8_t *output_r, const uint8_t *input_r)
 
 				for (int i = lo; i <= hi; i++)
 				{
-					int code = ((sorted_block[i] - partition_lo) * divider + 0x80000) >> 20;
+					int code = ((sorted_block[i] - partition_lo) * partition_divider + 0x80000) >> 20;
 					assert(code <= 7);
-					int interpolated_value = partition_lo + ((range * code * div_5 + 0x80000) >> 20);
+					int interpolated_value = partition_lo + ((partition_range * code * div_5 + 0x80000) >> 20);
 					int diff = interpolated_value - sorted_block[i];
 					error += diff * diff;
 				}
@@ -300,8 +300,8 @@ void compress_rgtc_red_block(uint8_t *output_r, const uint8_t *input_r)
 
 			block = 0;
 			assert(partition_hi >= partition_lo);
-			int range = partition_hi - partition_lo;
-			int divider = divider_lut.lut5(range);
+			int partition_range = partition_hi - partition_lo;
+			int partition_divider = divider_lut.lut5(partition_range);
 
 			for (int i = 0; i < 16; i++)
 			{
@@ -322,7 +322,7 @@ void compress_rgtc_red_block(uint8_t *output_r, const uint8_t *input_r)
 				}
 				else
 				{
-					code = ((input_r[i] - partition_lo) * divider + 0x80000) >> 20;
+					code = ((input_r[i] - partition_lo) * partition_divider + 0x80000) >> 20;
 					assert(code <= 5);
 					if (code == 5)
 						code = 1;

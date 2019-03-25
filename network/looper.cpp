@@ -38,8 +38,8 @@ using namespace std;
 
 namespace Granite
 {
-LooperHandler::LooperHandler(std::unique_ptr<Socket> socket)
-	: socket(move(socket))
+LooperHandler::LooperHandler(std::unique_ptr<Socket> socket_)
+	: socket(move(socket_))
 {
 }
 

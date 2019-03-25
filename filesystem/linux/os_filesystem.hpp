@@ -32,7 +32,7 @@ public:
 	static MMapFile *open(const std::string &path, FileMode mode);
 	~MMapFile();
 	void *map() override;
-	void *map_write(size_t size) override;
+	void *map_write(size_t map_size) override;
 	void unmap() override;
 	size_t get_size() override;
 	bool reopen() override;

@@ -42,8 +42,10 @@ private:
 
 	struct AnimationState
 	{
-		AnimationState(std::vector<std::pair<Transform *, Scene::Node *>> channel_targets, const SceneFormats::Animation &anim, double start_time, bool repeating)
-			: channel_targets(std::move(channel_targets)), animation(anim), start_time(start_time), repeating(repeating)
+		AnimationState(std::vector<std::pair<Transform *, Scene::Node *>> channel_targets_,
+		               const SceneFormats::Animation &anim, double start_time_, bool repeating_)
+			: channel_targets(std::move(channel_targets_)), animation(anim),
+			  start_time(start_time_), repeating(repeating_)
 		{
 		}
 		std::vector<std::pair<Transform *, Scene::Node *>> channel_targets;

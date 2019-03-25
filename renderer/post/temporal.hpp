@@ -39,7 +39,7 @@ public:
 	};
 	TemporalJitter();
 	void reset();
-	void init(Type type, vec2 backbuffer_resolution);
+	void init(Type type_, vec2 backbuffer_resolution);
 
 	void step(const mat4 &projection, const mat4 &view);
 	const mat4 &get_jitter_matrix() const;

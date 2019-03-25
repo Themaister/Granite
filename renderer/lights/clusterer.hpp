@@ -81,13 +81,13 @@ private:
 	void add_render_passes(RenderGraph &graph) override;
 	void setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target) override;
 	void setup_render_pass_resources(RenderGraph &graph) override;
-	void refresh(RenderContext &context) override;
+	void refresh(RenderContext &context_) override;
 
 	Scene *scene = nullptr;
 	const RenderContext *context = nullptr;
 	std::vector<std::tuple<PositionalLightComponent *, RenderInfoComponent *>> *lights = nullptr;
 
-	unsigned x = 64, y = 32, z = 16;
+	unsigned resolution_x = 64, resolution_y = 32, resolution_z = 16;
 	unsigned shadow_resolution = 512;
 	unsigned max_spot_lights = MaxLights;
 	unsigned max_point_lights = MaxLights;
@@ -130,8 +130,8 @@ private:
 
 	Renderer *depth_renderer = nullptr;
 	Vulkan::ImageViewHandle shadow_atlas_rt[6 * MaxLights];
-	void render_atlas_spot(RenderContext &context);
-	void render_atlas_point(RenderContext &context);
+	void render_atlas_spot(RenderContext &context_);
+	void render_atlas_point(RenderContext &context_);
 
 	bool enable_shadows = true;
 	bool enable_clustering = true;

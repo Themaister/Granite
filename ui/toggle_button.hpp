@@ -40,9 +40,9 @@ public:
 		return text;
 	}
 
-	void set_label_alignment(Font::Alignment alignment)
+	void set_label_alignment(Font::Alignment alignment_)
 	{
-		this->alignment = alignment;
+		alignment = alignment_;
 	}
 
 	void set_untoggled_font_color(vec4 color)

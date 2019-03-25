@@ -71,17 +71,17 @@ void LightClusterer::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
 	fill(begin(points.cookie), end(points.cookie), 0);
 }
 
-void LightClusterer::set_scene(Scene *scene)
+void LightClusterer::set_scene(Scene *scene_)
 {
-	this->scene = scene;
+	scene = scene_;
 	lights = &scene->get_entity_pool().get_component_group<PositionalLightComponent, RenderInfoComponent>();
 }
 
 void LightClusterer::set_resolution(unsigned x, unsigned y, unsigned z)
 {
-	this->x = x;
-	this->y = y;
-	this->z = z;
+	resolution_x = x;
+	resolution_y = y;
+	resolution_z = z;
 }
 
 void LightClusterer::set_shadow_resolution(unsigned res)
@@ -89,15 +89,15 @@ void LightClusterer::set_shadow_resolution(unsigned res)
 	shadow_resolution = res;
 }
 
-void LightClusterer::setup_render_pass_dependencies(RenderGraph &, RenderPass &target)
+void LightClusterer::setup_render_pass_dependencies(RenderGraph &, RenderPass &target_)
 {
 	// TODO: Other passes might want this?
-	target.add_texture_input("light-cluster");
+	target_.add_texture_input("light-cluster");
 }
 
-void LightClusterer::set_base_render_context(const RenderContext *context)
+void LightClusterer::set_base_render_context(const RenderContext *context_)
 {
-	this->context = context;
+	context = context_;
 }
 
 void LightClusterer::setup_render_pass_resources(RenderGraph &graph)
@@ -142,9 +142,9 @@ void LightClusterer::set_enable_clustering(bool enable)
 	enable_clustering = enable;
 }
 
-void LightClusterer::set_shadow_type(ShadowType shadow_type)
+void LightClusterer::set_shadow_type(ShadowType shadow_type_)
 {
-	this->shadow_type = shadow_type;
+	shadow_type = shadow_type_;
 }
 
 void LightClusterer::set_enable_shadows(bool enable)
@@ -209,11 +209,11 @@ static uint32_t reassign_indices(T &type)
 		// Try to find an atlas slot which has never been used.
 		if (type.handles[i]->get_cookie() != type.cookie[i] && type.cookie[i] != 0)
 		{
-			auto itr = find(begin(type.cookie), end(type.cookie), 0);
+			auto cookie_itr = find(begin(type.cookie), end(type.cookie), 0);
 
-			if (itr != end(type.cookie))
+			if (cookie_itr != end(type.cookie))
 			{
-				auto index = std::distance(begin(type.cookie), itr);
+				auto index = std::distance(begin(type.cookie), cookie_itr);
 				if (i != unsigned(index))
 				{
 					// Reuse the shadow data from the atlas.
@@ -363,7 +363,7 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &de
 	}
 }
 
-void LightClusterer::render_atlas_point(RenderContext &context)
+void LightClusterer::render_atlas_point(RenderContext &context_)
 {
 	bool vsm = shadow_type == ShadowType::VSM;
 	uint32_t partial_mask = reassign_indices(points);
@@ -375,7 +375,7 @@ void LightClusterer::render_atlas_point(RenderContext &context)
 		return;
 
 	bool partial_update = partial_mask != ~0u;
-	auto &device = context.get_device();
+	auto &device = context_.get_device();
 	auto cmd = device.request_command_buffer();
 
 	if (!points.atlas)
@@ -551,7 +551,7 @@ void LightClusterer::render_atlas_point(RenderContext &context)
 	device.submit(cmd);
 }
 
-void LightClusterer::render_atlas_spot(RenderContext &context)
+void LightClusterer::render_atlas_spot(RenderContext &context_)
 {
 	bool vsm = shadow_type == ShadowType::VSM;
 	uint32_t partial_mask = reassign_indices(spots);
@@ -562,7 +562,7 @@ void LightClusterer::render_atlas_spot(RenderContext &context)
 	if (partial_mask == 0 && spots.atlas && !force_update_shadows)
 		return;
 
-	auto &device = context.get_device();
+	auto &device = context_.get_device();
 	auto cmd = device.request_command_buffer();
 
 	if (!spots.atlas)
@@ -662,11 +662,11 @@ void LightClusterer::render_atlas_spot(RenderContext &context)
 	device.submit(cmd);
 }
 
-void LightClusterer::refresh(RenderContext &context)
+void LightClusterer::refresh(RenderContext &context_)
 {
 	points.count = 0;
 	spots.count = 0;
-	auto &frustum = context.get_visibility_frustum();
+	auto &frustum = context_.get_visibility_frustum();
 
 	for (auto &light : *lights)
 	{
@@ -702,7 +702,7 @@ void LightClusterer::refresh(RenderContext &context)
 	}
 
 	// Figure out aabb bounds in view space.
-	auto &inv_proj = context.get_render_parameters().inv_projection;
+	auto &inv_proj = context_.get_render_parameters().inv_projection;
 	const auto project = [](const vec4 &v) -> vec3 {
 		return v.xyz() / v.w;
 	};
@@ -720,14 +720,14 @@ void LightClusterer::refresh(RenderContext &context)
 	mat4 ortho_box = ortho(AABB(min_view, max_view));
 
 	if (points.count || spots.count)
-		cluster_transform = scale(vec3(1 << (ClusterHierarchies - 1))) * ortho_box * context.get_render_parameters().view;
+		cluster_transform = scale(vec3(1 << (ClusterHierarchies - 1))) * ortho_box * context_.get_render_parameters().view;
 	else
 		cluster_transform = scale(vec3(0.0f, 0.0f, 0.0f));
 
 	if (enable_shadows)
 	{
-		render_atlas_spot(context);
-		render_atlas_point(context);
+		render_atlas_spot(context_);
+		render_atlas_point(context_);
 	}
 	else
 	{
@@ -794,9 +794,9 @@ uvec2 LightClusterer::cluster_lights_cpu(int x, int y, int z, const CPUGlobalAcc
 
 void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view)
 {
-	unsigned res_x = x;
-	unsigned res_y = y;
-	unsigned res_z = z;
+	unsigned res_x = resolution_x;
+	unsigned res_y = resolution_y;
+	unsigned res_z = resolution_z;
 
 #ifdef CLUSTERER_FORCE_TRANSFER_UPDATE
 	auto &image = view.get_image();
@@ -1033,9 +1033,9 @@ void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::Image
 
 void LightClusterer::build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view, const Vulkan::ImageView *pre_culled)
 {
-	unsigned res_x = x;
-	unsigned res_y = y;
-	unsigned res_z = z;
+	unsigned res_x = resolution_x;
+	unsigned res_y = resolution_y;
+	unsigned res_z = resolution_z;
 	if (!pre_culled)
 	{
 		res_x /= ClusterPrepassDownsample;
@@ -1096,9 +1096,9 @@ void LightClusterer::add_render_passes(RenderGraph &graph)
 	att.format = VK_FORMAT_R32G32B32A32_UINT;
 	att.samples = 1;
 	att.size_class = SizeClass::Absolute;
-	att.size_x = x;
-	att.size_y = y;
-	att.size_z = z * (ClusterHierarchies + 1);
+	att.size_x = resolution_x;
+	att.size_y = resolution_y;
+	att.size_z = resolution_z * (ClusterHierarchies + 1);
 	att.aux_usage = VK_IMAGE_USAGE_SAMPLED_BIT;
 	att.persistent = true;
 
@@ -1124,10 +1124,10 @@ void LightClusterer::add_render_passes(RenderGraph &graph)
 		att.format = VK_FORMAT_R32G32_UINT;
 
 		AttachmentInfo att_prepass = att;
-		assert((x % ClusterPrepassDownsample) == 0);
-		assert((y % ClusterPrepassDownsample) == 0);
-		assert((z % ClusterPrepassDownsample) == 0);
-		assert((z & (z - 1)) == 0);
+		assert((resolution_x % ClusterPrepassDownsample) == 0);
+		assert((resolution_y % ClusterPrepassDownsample) == 0);
+		assert((resolution_z % ClusterPrepassDownsample) == 0);
+		assert((resolution_z & (resolution_z - 1)) == 0);
 		att_prepass.size_x /= ClusterPrepassDownsample;
 		att_prepass.size_y /= ClusterPrepassDownsample;
 		att_prepass.size_z /= ClusterPrepassDownsample;

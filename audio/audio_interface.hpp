@@ -74,7 +74,7 @@ Backend *create_default_audio_backend(BackendCallback &callback, float target_sa
 class DumpBackend : public Backend
 {
 public:
-	DumpBackend(BackendCallback &callback, const std::string &path,
+	DumpBackend(BackendCallback &callback_, const std::string &path,
 	            float target_sample_rate, unsigned target_channels,
 	            unsigned frames_per_tick, unsigned frames);
 	~DumpBackend();

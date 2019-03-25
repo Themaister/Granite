@@ -35,8 +35,8 @@ struct FSHandler;
 
 struct FilesystemHandler : LooperHandler
 {
-	FilesystemHandler(unique_ptr<Socket> socket, FilesystemBackend &backend)
-		: LooperHandler(move(socket)), backend(backend)
+	FilesystemHandler(unique_ptr<Socket> socket_, FilesystemBackend &backend_)
+		: LooperHandler(move(socket_)), backend(backend_)
 	{
 	}
 
@@ -58,8 +58,8 @@ struct FilesystemHandler : LooperHandler
 
 struct NotificationSystem : EventHandler
 {
-	NotificationSystem(Looper &looper)
-		: looper(looper)
+	explicit NotificationSystem(Looper &looper_)
+		: looper(looper_)
 	{
 		EVENT_MANAGER_REGISTER(NotificationSystem, on_filesystem, FilesystemProtocolEvent);
 		for (auto &proto : Global::filesystem()->get_protocols())
@@ -119,8 +119,8 @@ struct NotificationSystem : EventHandler
 
 struct FSHandler : LooperHandler
 {
-	FSHandler(NotificationSystem &notify_system, unique_ptr<Socket> socket)
-		: LooperHandler(move(socket)), notify_system(notify_system)
+	FSHandler(NotificationSystem &notify_system_, unique_ptr<Socket> socket_)
+		: LooperHandler(move(socket_)), notify_system(notify_system_)
 	{
 		reply_builder.begin(4);
 		command_reader.start(reply_builder.get_buffer());
@@ -711,8 +711,8 @@ void FilesystemHandler::uninstall_all_notifications(FSHandler *handler)
 
 struct ListenerHandler : TCPListener
 {
-	ListenerHandler(NotificationSystem &notify_system, uint16_t port)
-		: TCPListener(port), notify_system(notify_system)
+	ListenerHandler(NotificationSystem &notify_system_, uint16_t port)
+		: TCPListener(port), notify_system(notify_system_)
 	{
 	}
 

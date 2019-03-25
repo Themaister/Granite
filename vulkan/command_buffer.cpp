@@ -39,11 +39,11 @@ using namespace Util;
 
 namespace Vulkan
 {
-CommandBuffer::CommandBuffer(Device *device, VkCommandBuffer cmd, VkPipelineCache cache, Type type)
-    : device(device)
-    , cmd(cmd)
-    , cache(cache)
-    , type(type)
+CommandBuffer::CommandBuffer(Device *device_, VkCommandBuffer cmd_, VkPipelineCache cache_, Type type_)
+    : device(device_)
+    , cmd(cmd_)
+    , cache(cache_)
+    , type(type_)
 {
 	begin_compute();
 	set_opaque_state();
@@ -450,7 +450,7 @@ void CommandBuffer::begin_context()
 	current_program = nullptr;
 	memset(bindings.cookies, 0, sizeof(bindings.cookies));
 	memset(bindings.secondary_cookies, 0, sizeof(bindings.secondary_cookies));
-	memset(&index, 0, sizeof(index));
+	memset(&index_state, 0, sizeof(index_state));
 	memset(vbo.buffers, 0, sizeof(vbo.buffers));
 }
 
@@ -466,15 +466,15 @@ void CommandBuffer::begin_graphics()
 	begin_context();
 }
 
-void CommandBuffer::init_viewport_scissor(const RenderPassInfo &info, const Framebuffer *framebuffer)
+void CommandBuffer::init_viewport_scissor(const RenderPassInfo &info, const Framebuffer *fb)
 {
 	VkRect2D rect = info.render_area;
-	rect.offset.x = min(framebuffer->get_width(), uint32_t(rect.offset.x));
-	rect.offset.y = min(framebuffer->get_height(), uint32_t(rect.offset.y));
-	rect.extent.width = min(framebuffer->get_width() - rect.offset.x, rect.extent.width);
-	rect.extent.height = min(framebuffer->get_height() - rect.offset.y, rect.extent.height);
+	rect.offset.x = min(fb->get_width(), uint32_t(rect.offset.x));
+	rect.offset.y = min(fb->get_height(), uint32_t(rect.offset.y));
+	rect.extent.width = min(fb->get_width() - rect.offset.x, rect.extent.width);
+	rect.extent.height = min(fb->get_height() - rect.offset.y, rect.extent.height);
 
-	viewport = { 0.0f, 0.0f, float(framebuffer->get_width()), float(framebuffer->get_height()), 0.0f, 1.0f };
+	viewport = { 0.0f, 0.0f, float(fb->get_width()), float(fb->get_height()), 0.0f, 1.0f };
 	scissor = rect;
 }
 
@@ -496,24 +496,24 @@ CommandBufferHandle CommandBuffer::request_secondary_command_buffer(Device &devi
 	return cmd;
 }
 
-CommandBufferHandle CommandBuffer::request_secondary_command_buffer(unsigned thread_index, unsigned subpass)
+CommandBufferHandle CommandBuffer::request_secondary_command_buffer(unsigned thread_index_, unsigned subpass_)
 {
 	VK_ASSERT(framebuffer);
 	VK_ASSERT(!is_secondary);
 
-	auto cmd = device->request_secondary_command_buffer_for_thread(thread_index, framebuffer, subpass);
-	cmd->begin_graphics();
+	auto secondary_cmd = device->request_secondary_command_buffer_for_thread(thread_index_, framebuffer, subpass_);
+	secondary_cmd->begin_graphics();
 
-	cmd->framebuffer = framebuffer;
-	cmd->compatible_render_pass = compatible_render_pass;
-	cmd->actual_render_pass = actual_render_pass;
+	secondary_cmd->framebuffer = framebuffer;
+	secondary_cmd->compatible_render_pass = compatible_render_pass;
+	secondary_cmd->actual_render_pass = actual_render_pass;
 
-	cmd->current_subpass = subpass;
-	cmd->viewport = viewport;
-	cmd->scissor = scissor;
-	cmd->current_contents = VK_SUBPASS_CONTENTS_INLINE;
+	secondary_cmd->current_subpass = subpass_;
+	secondary_cmd->viewport = viewport;
+	secondary_cmd->scissor = scissor;
+	secondary_cmd->current_contents = VK_SUBPASS_CONTENTS_INLINE;
 
-	return cmd;
+	return secondary_cmd;
 }
 
 void CommandBuffer::submit_secondary(CommandBufferHandle secondary)
@@ -1079,12 +1079,16 @@ void CommandBuffer::set_vertex_attrib(uint32_t attrib, uint32_t binding, VkForma
 
 void CommandBuffer::set_index_buffer(const Buffer &buffer, VkDeviceSize offset, VkIndexType index_type)
 {
-	if (index.buffer == buffer.get_buffer() && index.offset == offset && index.index_type == index_type)
+	if (index_state.buffer == buffer.get_buffer() &&
+	    index_state.offset == offset &&
+	    index_state.index_type == index_type)
+	{
 		return;
+	}
 
-	index.buffer = buffer.get_buffer();
-	index.offset = offset;
-	index.index_type = index_type;
+	index_state.buffer = buffer.get_buffer();
+	index_state.offset = offset;
+	index_state.index_type = index_type;
 	vkCmdBindIndexBuffer(cmd, buffer.get_buffer(), offset, index_type);
 }
 
@@ -1106,16 +1110,16 @@ void CommandBuffer::set_vertex_binding(uint32_t binding, const Buffer &buffer, V
 	vbo.input_rates[binding] = step_rate;
 }
 
-void CommandBuffer::set_viewport(const VkViewport &viewport)
+void CommandBuffer::set_viewport(const VkViewport &viewport_)
 {
 	VK_ASSERT(framebuffer);
-	this->viewport = viewport;
+	viewport = viewport_;
 	set_dirty(COMMAND_BUFFER_DIRTY_VIEWPORT_BIT);
 }
 
 const VkViewport &CommandBuffer::get_viewport() const
 {
-	return this->viewport;
+	return viewport;
 }
 
 void CommandBuffer::set_scissor(const VkRect2D &rect)
@@ -1790,7 +1794,7 @@ void CommandBuffer::draw_indexed(uint32_t index_count, uint32_t instance_count, 
                                  int32_t vertex_offset, uint32_t first_instance)
 {
 	VK_ASSERT(!is_compute);
-	VK_ASSERT(index.buffer != VK_NULL_HANDLE);
+	VK_ASSERT(index_state.buffer != VK_NULL_HANDLE);
 	if (flush_render_state())
 	{
 		set_backtrace_checkpoint();

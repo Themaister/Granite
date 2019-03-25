@@ -55,16 +55,16 @@ public:
 		return stages;
 	}
 
-	void set_stages(VkPipelineStageFlags stages)
+	void set_stages(VkPipelineStageFlags stages_)
 	{
-		this->stages = stages;
+		stages = stages_;
 	}
 
 private:
 	friend class Util::ObjectPool<EventHolder>;
-	EventHolder(Device *device, VkEvent event)
-			: device(device)
-			, event(event)
+	EventHolder(Device *device_, VkEvent event_)
+		: device(device_)
+		, event(event_)
 	{
 	}
 

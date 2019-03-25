@@ -25,12 +25,12 @@
 
 namespace Vulkan
 {
-Buffer::Buffer(Device *device, VkBuffer buffer, const DeviceAllocation &alloc, const BufferCreateInfo &info)
-    : Cookie(device)
-    , device(device)
-    , buffer(buffer)
-    , alloc(alloc)
-    , info(info)
+Buffer::Buffer(Device *device_, VkBuffer buffer_, const DeviceAllocation &alloc_, const BufferCreateInfo &info_)
+    : Cookie(device_)
+    , device(device_)
+    , buffer(buffer_)
+    , alloc(alloc_)
+    , info(info_)
 {
 }
 
@@ -53,11 +53,11 @@ void BufferDeleter::operator()(Buffer *buffer)
 	buffer->device->handle_pool.buffers.free(buffer);
 }
 
-BufferView::BufferView(Device *device, VkBufferView view, const BufferViewCreateInfo &create_info)
-    : Cookie(device)
-    , device(device)
-    , view(view)
-    , info(create_info)
+BufferView::BufferView(Device *device_, VkBufferView view_, const BufferViewCreateInfo &create_info_)
+    : Cookie(device_)
+    , device(device_)
+    , view(view_)
+    , info(create_info_)
 {
 }
 

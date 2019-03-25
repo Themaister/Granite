@@ -32,8 +32,8 @@ using namespace Util;
 
 namespace Granite
 {
-FlatRenderer::FlatRenderer(const ShaderSuiteResolver *resolver)
-	: resolver(resolver)
+FlatRenderer::FlatRenderer(const ShaderSuiteResolver *resolver_)
+	: resolver(resolver_)
 {
 	EVENT_MANAGER_REGISTER_LATCH(FlatRenderer, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 	reset_scissor();
@@ -58,18 +58,18 @@ void FlatRenderer::pop_scissor()
 
 void FlatRenderer::on_device_created(const DeviceCreatedEvent &created)
 {
-	auto &device = created.get_device();
+	auto &dev = created.get_device();
 
 	ShaderSuiteResolver default_resolver;
 	auto *res = resolver ? resolver : &default_resolver;
 
-	res->init_shader_suite(device, suite[ecast(RenderableType::Sprite)], RendererType::Flat, RenderableType::Sprite);
-	res->init_shader_suite(device, suite[ecast(RenderableType::LineUI)], RendererType::Flat, RenderableType::LineUI);
+	res->init_shader_suite(dev, suite[ecast(RenderableType::Sprite)], RendererType::Flat, RenderableType::Sprite);
+	res->init_shader_suite(dev, suite[ecast(RenderableType::LineUI)], RendererType::Flat, RenderableType::LineUI);
 
 	for (auto &s : suite)
 		s.bake_base_defines();
 
-	this->device = &device;
+	device = &dev;
 }
 
 void FlatRenderer::on_device_destroyed(const DeviceCreatedEvent &)

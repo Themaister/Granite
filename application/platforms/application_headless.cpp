@@ -201,16 +201,16 @@ public:
 		return height;
 	}
 
-	void notify_resize(unsigned width, unsigned height)
+	void notify_resize(unsigned width_, unsigned height_)
 	{
 		resize = true;
-		this->width = width;
-		this->height = height;
+		width = width_;
+		height = height_;
 	}
 
-	void set_max_frames(unsigned max_frames)
+	void set_max_frames(unsigned max_frames_)
 	{
-		this->max_frames = max_frames;
+		max_frames = max_frames_;
 	}
 
 	bool has_external_swapchain() override
@@ -289,9 +289,9 @@ public:
 	void begin_frame()
 	{
 		auto &wsi = app->get_wsi();
-		wsi.set_external_frame(index, acquire_semaphore[index], time_step);
-		acquire_semaphore[index].reset();
-		worker_threads[index]->wait();
+		wsi.set_external_frame(frame_index, acquire_semaphore[frame_index], time_step);
+		acquire_semaphore[frame_index].reset();
+		worker_threads[frame_index]->wait();
 	}
 
 	void wait_workers()
@@ -315,16 +315,16 @@ public:
 
 				auto cmd = device.request_command_buffer(CommandBuffer::Type::AsyncTransfer);
 
-				cmd->copy_image_to_buffer(*readback_buffers[index], *swapchain_images[index],
+				cmd->copy_image_to_buffer(*readback_buffers[frame_index], *swapchain_images[frame_index],
 				                          0, {}, {width, height, 1},
 				                          0, 0, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1});
 
 				cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 				             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 
-				device.submit(cmd, &readback_fence[index], 1, &acquire_semaphore[index]);
+				device.submit(cmd, &readback_fence[frame_index], 1, &acquire_semaphore[frame_index]);
 
-				worker_threads[index]->set_work([cb = next_readback_cb, index = this->index]() {
+				worker_threads[frame_index]->set_work([cb = next_readback_cb, index = frame_index]() {
 					cb(index);
 				});
 				next_readback_cb = {};
@@ -336,45 +336,45 @@ public:
 
 				auto cmd = device.request_command_buffer(CommandBuffer::Type::AsyncTransfer);
 
-				cmd->copy_image_to_buffer(*readback_buffers[index], *swapchain_images[index],
+				cmd->copy_image_to_buffer(*readback_buffers[frame_index], *swapchain_images[frame_index],
 				                          0, {}, {width, height, 1},
 				                          0, 0, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1});
 
 				cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 				             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 
-				device.submit(cmd, &readback_fence[index], 1, &acquire_semaphore[index]);
+				device.submit(cmd, &readback_fence[frame_index], 1, &acquire_semaphore[frame_index]);
 
-				worker_threads[index]->set_work([this, index = this->index, frame = this->frames]() {
+				worker_threads[frame_index]->set_work([this, index = frame_index, frame = this->frames]() {
 					dump_frame(frame, index);
 				});
 			}
 			else
 			{
-				acquire_semaphore[index] = release_semaphore;
+				acquire_semaphore[frame_index] = release_semaphore;
 			}
 		}
 		release_semaphore.reset();
-		index = (index + 1) % SwapchainImages;
+		frame_index = (frame_index + 1) % SwapchainImages;
 		frames++;
 	}
 
 	void set_next_readback(const std::string &path)
 	{
-		next_readback_cb = [this, path](unsigned index) {
+		next_readback_cb = [this, path](unsigned rb_index) {
 			auto &wsi = app->get_wsi();
 			auto &device = wsi.get_device();
 
-			readback_fence[index]->wait();
-			readback_fence[index].reset();
+			readback_fence[rb_index]->wait();
+			readback_fence[rb_index].reset();
 
-			auto *ptr = static_cast<uint32_t *>(device.map_host_buffer(*readback_buffers[index], MEMORY_ACCESS_READ_WRITE_BIT));
+			auto *ptr = static_cast<uint32_t *>(device.map_host_buffer(*readback_buffers[rb_index], MEMORY_ACCESS_READ_WRITE_BIT));
 			for (unsigned i = 0; i < width * height; i++)
 				ptr[i] |= 0xff000000u;
 
 			if (!stbi_write_png(path.c_str(), width, height, 4, ptr, width * 4))
 				LOGE("Failed to write PNG to disk.\n");
-			device.unmap_host_buffer(*readback_buffers[index], MEMORY_ACCESS_READ_WRITE_BIT);
+			device.unmap_host_buffer(*readback_buffers[rb_index], MEMORY_ACCESS_READ_WRITE_BIT);
 		};
 	}
 
@@ -426,7 +426,7 @@ private:
 	unsigned height = 0;
 	unsigned frames = 0;
 	unsigned max_frames = UINT_MAX;
-	unsigned index = 0;
+	unsigned frame_index = 0;
 	double time_step = 0.01;
 	string png_readback;
 	enum { SwapchainImages = 4 };

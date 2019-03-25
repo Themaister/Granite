@@ -85,14 +85,14 @@ private:
 class ShaderProgram : public Util::IntrusiveHashMapEnabled<ShaderProgram>
 {
 public:
-	ShaderProgram(Device *device, PrecomputedShaderCache &cache, ShaderTemplate *compute)
-		: device(device), cache(cache)
+	ShaderProgram(Device *device_, PrecomputedShaderCache &cache_, ShaderTemplate *compute)
+		: device(device_), cache(cache_)
 	{
 		set_stage(Vulkan::ShaderStage::Compute, compute);
 	}
 
-	ShaderProgram(Device *device, PrecomputedShaderCache &cache, ShaderTemplate *vert, ShaderTemplate *frag)
-		: device(device), cache(cache)
+	ShaderProgram(Device *device_, PrecomputedShaderCache &cache_, ShaderTemplate *vert, ShaderTemplate *frag)
+		: device(device_), cache(cache_)
 	{
 		set_stage(Vulkan::ShaderStage::Vertex, vert);
 		set_stage(Vulkan::ShaderStage::Fragment, frag);
@@ -127,8 +127,8 @@ private:
 class ShaderManager
 {
 public:
-	ShaderManager(Device *device)
-		: device(device)
+	explicit ShaderManager(Device *device_)
+		: device(device_)
 	{
 	}
 

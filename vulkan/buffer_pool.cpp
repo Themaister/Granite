@@ -28,13 +28,15 @@ using namespace std;
 
 namespace Vulkan
 {
-void BufferPool::init(Device *device, VkDeviceSize block_size, VkDeviceSize alignment, VkBufferUsageFlags usage, bool need_device_local)
+void BufferPool::init(Device *device_, VkDeviceSize block_size_,
+                      VkDeviceSize alignment_, VkBufferUsageFlags usage_,
+                      bool need_device_local_)
 {
-	this->device = device;
-	this->block_size = block_size;
-	this->alignment = alignment;
-	this->usage = usage;
-	this->need_device_local = need_device_local;
+	device = device_;
+	block_size = block_size_;
+	alignment = alignment_;
+	usage = usage_;
+	need_device_local = need_device_local_;
 }
 
 BufferBlock::~BufferBlock()

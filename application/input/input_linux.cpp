@@ -580,10 +580,10 @@ void LinuxInputManager::input_handle_joystick(Device &dev, const input_event &e)
 	}
 }
 
-bool LinuxInputManager::init(LinuxInputManagerFlags flags, InputTracker *tracker)
+bool LinuxInputManager::init(LinuxInputManagerFlags flags_, InputTracker *tracker_)
 {
-	this->flags = flags;
-	this->tracker = tracker;
+	flags = flags_;
+	tracker = tracker_;
 	terminal_disable_input();
 	init_key_table();
 

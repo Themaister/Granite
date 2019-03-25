@@ -667,19 +667,19 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 	auto resolved = color;
 	resolved.samples = 1;
 
-	auto &lighting = graph.add_pass(tagcat("lighting", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
+	auto &lighting_pass = graph.add_pass(tagcat("lighting", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 
 	if (color.samples > 1)
 	{
-		lighting.add_color_output(tagcat("HDR-MS", tag), color);
-		lighting.add_resolve_output(tagcat("HDR", tag), resolved);
+		lighting_pass.add_color_output(tagcat("HDR-MS", tag), color);
+		lighting_pass.add_resolve_output(tagcat("HDR", tag), resolved);
 	}
 	else
-		lighting.add_color_output(tagcat("HDR", tag), color);
+		lighting_pass.add_color_output(tagcat("HDR", tag), color);
 
-	lighting.set_depth_stencil_output(tagcat("depth", tag), depth);
+	lighting_pass.set_depth_stencil_output(tagcat("depth", tag), depth);
 
-	lighting.set_get_clear_depth_stencil([](VkClearDepthStencilValue *value) -> bool {
+	lighting_pass.set_get_clear_depth_stencil([](VkClearDepthStencilValue *value) -> bool {
 		if (value)
 		{
 			value->depth = 1.0f;
@@ -688,13 +688,13 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 		return true;
 	});
 
-	lighting.set_get_clear_color([](unsigned, VkClearColorValue *value) -> bool {
+	lighting_pass.set_get_clear_color([](unsigned, VkClearColorValue *value) -> bool {
 		if (value)
 			memset(value, 0, sizeof(*value));
 		return true;
 	});
 
-	lighting.set_build_render_pass([this](CommandBuffer &cmd) {
+	lighting_pass.set_build_render_pass([this](CommandBuffer &cmd) {
 		render_main_pass(cmd, selected_camera->get_projection(), selected_camera->get_view());
 		render_transparent_objects(cmd, selected_camera->get_projection(), selected_camera->get_view());
 	});
@@ -703,11 +703,11 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 	shadow_near = nullptr;
 	if (config.directional_light_shadows)
 	{
-		shadow_main = &lighting.add_texture_input("shadow-main");
+		shadow_main = &lighting_pass.add_texture_input("shadow-main");
 		if (config.directional_light_cascaded_shadows)
-			shadow_near = &lighting.add_texture_input("shadow-near");
+			shadow_near = &lighting_pass.add_texture_input("shadow-near");
 	}
-	scene_loader.get_scene().add_render_pass_dependencies(graph, lighting);
+	scene_loader.get_scene().add_render_pass_dependencies(graph, lighting_pass);
 }
 
 void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::string &tag)
@@ -763,17 +763,17 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 		setup_ssao(graph, context, tagcat("ssao-output", tag), tagcat("depth-transient", tag), tagcat("normal", tag));
 	}
 
-	auto &lighting = graph.add_pass(tagcat("lighting", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
-	lighting.add_color_output(tagcat("HDR", tag), emissive, tagcat("emissive", tag));
-	lighting.add_attachment_input(tagcat("albedo", tag));
-	lighting.add_attachment_input(tagcat("normal", tag));
-	lighting.add_attachment_input(tagcat("pbr", tag));
-	lighting.add_attachment_input(tagcat("depth-transient", tag));
-	lighting.set_depth_stencil_input(tagcat("depth-transient", tag));
-	lighting.add_fake_resource_write_alias(tagcat("depth-transient", tag), tagcat("depth", tag));
+	auto &lighting_pass = graph.add_pass(tagcat("lighting", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
+	lighting_pass.add_color_output(tagcat("HDR", tag), emissive, tagcat("emissive", tag));
+	lighting_pass.add_attachment_input(tagcat("albedo", tag));
+	lighting_pass.add_attachment_input(tagcat("normal", tag));
+	lighting_pass.add_attachment_input(tagcat("pbr", tag));
+	lighting_pass.add_attachment_input(tagcat("depth-transient", tag));
+	lighting_pass.set_depth_stencil_input(tagcat("depth-transient", tag));
+	lighting_pass.add_fake_resource_write_alias(tagcat("depth-transient", tag), tagcat("depth", tag));
 
 	if (config.ssao)
-		ssao_output = &lighting.add_texture_input(tagcat("ssao-output", tag));
+		ssao_output = &lighting_pass.add_texture_input(tagcat("ssao-output", tag));
 	else
 		ssao_output = nullptr;
 
@@ -781,14 +781,14 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 	shadow_near = nullptr;
 	if (config.directional_light_shadows)
 	{
-		shadow_main = &lighting.add_texture_input("shadow-main");
+		shadow_main = &lighting_pass.add_texture_input("shadow-main");
 		if (config.directional_light_cascaded_shadows)
-			shadow_near = &lighting.add_texture_input("shadow-near");
+			shadow_near = &lighting_pass.add_texture_input("shadow-near");
 	}
 
 	scene_loader.get_scene().add_render_pass_dependencies(graph, gbuffer);
 
-	lighting.set_build_render_pass([this](CommandBuffer &cmd) {
+	lighting_pass.set_build_render_pass([this](CommandBuffer &cmd) {
 		if (!config.clustered_lights)
 			render_positional_lights(cmd, selected_camera->get_projection(), selected_camera->get_view());
 		DeferredLightRenderer::render_light(cmd, context, config.pcf_flags);

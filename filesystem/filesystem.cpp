@@ -79,10 +79,10 @@ void *StdioFile::map()
 	return buffer.data();
 }
 
-void *StdioFile::map_write(size_t size)
+void *StdioFile::map_write(size_t size_)
 {
+	size = size_;
 	buffer.resize(size);
-	this->size = size;
 	return buffer.data();
 }
 
@@ -339,8 +339,8 @@ std::vector<ListEntry> ScratchFilesystem::list(const std::string &)
 
 struct ScratchFilesystemFile : File
 {
-	ScratchFilesystemFile(std::vector<uint8_t> &data)
-		: data(data)
+	explicit ScratchFilesystemFile(std::vector<uint8_t> &data_)
+		: data(data_)
 	{
 	}
 

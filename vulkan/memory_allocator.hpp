@@ -284,11 +284,11 @@ public:
 		alloc->free_immediate();
 	}
 
-	void set_memory_type(uint32_t memory_type)
+	void set_memory_type(uint32_t memory_type_)
 	{
+		memory_type = memory_type_;
 		for (auto &sub : classes)
 			sub.set_memory_type(memory_type);
-		this->memory_type = memory_type;
 	}
 
 	void set_global_allocator(DeviceAllocator *allocator)

@@ -91,11 +91,11 @@ static void tick_callback_wrapper(btDynamicsWorld *world, btScalar time_step)
 
 void PhysicsSystem::tick_callback(float)
 {
-	auto *dispatcher = world->getDispatcher();
-	int num_manifolds = dispatcher->getNumManifolds();
+	auto *collision_dispatcher = world->getDispatcher();
+	int num_manifolds = collision_dispatcher->getNumManifolds();
 	for (int i = 0; i < num_manifolds; i++)
 	{
-		btPersistentManifold *contact = dispatcher->getManifoldByIndexInternal(i);
+		btPersistentManifold *contact = collision_dispatcher->getManifoldByIndexInternal(i);
 		auto *handle0 = static_cast<PhysicsHandle *>(contact->getBody0()->getUserPointer());
 		auto *handle1 = static_cast<PhysicsHandle *>(contact->getBody1()->getUserPointer());
 		int num_contacts = contact->getNumContacts();

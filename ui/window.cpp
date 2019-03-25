@@ -35,9 +35,9 @@ Window::Window()
 	set_floating(true);
 }
 
-void Window::set_title(const std::string &title)
+void Window::set_title(const std::string &title_)
 {
-	this->title = title;
+	title = title_;
 	geometry_changed();
 }
 
@@ -145,10 +145,10 @@ void Window::reconfigure()
 		auto &ui = *Global::ui_manager();
 		auto &font = ui.get_font(FontSize::Large);
 		vec2 text_geom = font.get_text_geometry(title.c_str());
-		float line_y = text_geom.y + geometry.margin + 2.0f;
+		float y = text_geom.y + geometry.margin + 2.0f;
 
 		vec2 minimum = geometry.minimum;
-		minimum.y += line_y;
+		minimum.y += y;
 		minimum.x = max(text_geom.x + 2.0f * geometry.margin, minimum.x);
 		geometry.minimum = minimum;
 	}

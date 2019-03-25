@@ -155,8 +155,8 @@ protected:
 class FilesystemProtocolEvent : public Event
 {
 public:
-	FilesystemProtocolEvent(const std::string &protocol, FilesystemBackend &backend)
-		: protocol(protocol), backend(backend)
+	FilesystemProtocolEvent(const std::string &protocol_, FilesystemBackend &backend_)
+		: protocol(protocol_), backend(backend_)
 	{
 	}
 

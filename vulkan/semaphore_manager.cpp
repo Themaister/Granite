@@ -24,9 +24,9 @@
 
 namespace Vulkan
 {
-void SemaphoreManager::init(VkDevice device)
+void SemaphoreManager::init(VkDevice device_)
 {
-	this->device = device;
+	device = device_;
 }
 
 SemaphoreManager::~SemaphoreManager()

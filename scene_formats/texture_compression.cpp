@@ -512,10 +512,10 @@ void CompressorState::enqueue_compression_copy_16bit(TaskGroup &group, const Com
 			{
 				for (unsigned x = 0; x < width; x++)
 				{
-					void *output = output_layout.data_opaque(x, y, layer, level);
-					void *input = input_layout.data_opaque(x, y, layer, level);
-					memcpy(tmp.data, input, input_stride);
-					memcpy(output, tmp.data, output_stride);
+					void *output_opaque = output_layout.data_opaque(x, y, layer, level);
+					void *input_opaque = input_layout.data_opaque(x, y, layer, level);
+					memcpy(tmp.data, input_opaque, input_stride);
+					memcpy(output_opaque, tmp.data, output_stride);
 				}
 			}
 		}
@@ -543,10 +543,10 @@ void CompressorState::enqueue_compression_copy_8bit(TaskGroup &group, const Comp
 			{
 				for (unsigned x = 0; x < width; x++)
 				{
-					void *output = output_layout.data_opaque(x, y, layer, level);
-					void *input = input_layout.data_opaque(x, y, layer, level);
-					memcpy(tmp.data, input, input_stride);
-					memcpy(output, tmp.data, output_stride);
+					void *output_opaque = output_layout.data_opaque(x, y, layer, level);
+					void *input_opaque = input_layout.data_opaque(x, y, layer, level);
+					memcpy(tmp.data, input_opaque, input_stride);
+					memcpy(output_opaque, tmp.data, output_stride);
 				}
 			}
 		}
@@ -557,9 +557,8 @@ void CompressorState::enqueue_compression_copy_8bit(TaskGroup &group, const Comp
 
 void CompressorState::enqueue_compression_block_rgtc(TaskGroup &group, const CompressorArguments &args, unsigned layer, unsigned level)
 {
-	auto &layout = input->get_layout();
-	int width = layout.get_width(level);
-	int height = layout.get_height(level);
+	int width = input->get_layout().get_width(level);
+	int height = input->get_layout().get_height(level);
 	int blocks_x = (width + block_size_x - 1) / block_size_x;
 
 	for (int y = 0; y < height; y += block_size_y)
@@ -661,9 +660,8 @@ void CompressorState::enqueue_compression_block_rgtc(TaskGroup &group, const Com
 void CompressorState::enqueue_compression_block_ispc(TaskGroup &group, const CompressorArguments &args,
                                                      unsigned layer, unsigned level)
 {
-	auto &layout = input->get_layout();
-	int width = layout.get_width(level);
-	int height = layout.get_height(level);
+	int width = input->get_layout().get_width(level);
+	int height = input->get_layout().get_height(level);
 	int grid_stride_x = (32 / block_size_x) * block_size_x;
 	int grid_stride_y = (32 / block_size_y) * block_size_y;
 

@@ -94,8 +94,8 @@ public:
 private:
 	struct DescriptorSetNode : Util::TemporaryHashmapEnabled<DescriptorSetNode>, Util::IntrusiveListEnabled<DescriptorSetNode>
 	{
-		DescriptorSetNode(VkDescriptorSet set)
-		    : set(set)
+		explicit DescriptorSetNode(VkDescriptorSet set_)
+		    : set(set_)
 		{
 		}
 

@@ -133,7 +133,7 @@ bool Context::init_from_instance_and_device(VkInstance instance_, VkPhysicalDevi
 	return true;
 }
 
-bool Context::init_device_from_instance(VkInstance instance_, VkPhysicalDevice gpu, VkSurfaceKHR surface,
+bool Context::init_device_from_instance(VkInstance instance_, VkPhysicalDevice gpu_, VkSurfaceKHR surface,
                                         const char **required_device_extensions, unsigned num_required_device_extensions,
                                         const char **required_device_layers, unsigned num_required_device_layers,
                                         const VkPhysicalDeviceFeatures *required_features)
@@ -144,7 +144,7 @@ bool Context::init_device_from_instance(VkInstance instance_, VkPhysicalDevice g
 	owned_instance = false;
 	owned_device = true;
 	volkLoadInstance(instance);
-	if (!create_device(gpu, surface, required_device_extensions, num_required_device_extensions, required_device_layers,
+	if (!create_device(gpu_, surface, required_device_extensions, num_required_device_extensions, required_device_layers,
 	                   num_required_device_layers, required_features))
 	{
 		destroy();
@@ -393,37 +393,38 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 #ifdef VULKAN_DEBUG
 	if (ext.supports_debug_utils)
 	{
-		VkDebugUtilsMessengerCreateInfoEXT info = { VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT };
-		info.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT |
-		                       VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
-		                       VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
-		                       VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT;
-		info.pfnUserCallback = vulkan_messenger_cb;
-		info.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
-		                   VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT |
-		                   VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT;
-		info.pUserData = this;
+		VkDebugUtilsMessengerCreateInfoEXT debug_info = { VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT };
+		debug_info.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT |
+		                             VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
+		                             VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
+		                             VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT;
+		debug_info.pfnUserCallback = vulkan_messenger_cb;
+		debug_info.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+		                         VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT |
+		                         VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT;
+		debug_info.pUserData = this;
 
-		vkCreateDebugUtilsMessengerEXT(instance, &info, nullptr, &debug_messenger);
+		vkCreateDebugUtilsMessengerEXT(instance, &debug_info, nullptr, &debug_messenger);
 	}
 	else if (has_extension(VK_EXT_DEBUG_REPORT_EXTENSION_NAME))
 	{
-		VkDebugReportCallbackCreateInfoEXT info = { VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT };
-		info.flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT |
-		             VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT;
-		info.pfnCallback = vulkan_debug_cb;
-		info.pUserData = this;
-		vkCreateDebugReportCallbackEXT(instance, &info, nullptr, &debug_callback);
+		VkDebugReportCallbackCreateInfoEXT debug_info = { VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT };
+		debug_info.flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT |
+		                   VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT;
+		debug_info.pfnCallback = vulkan_debug_cb;
+		debug_info.pUserData = this;
+		vkCreateDebugReportCallbackEXT(instance, &debug_info, nullptr, &debug_callback);
 	}
 #endif
 
 	return true;
 }
 
-bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const char **required_device_extensions,
+bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const char **required_device_extensions,
                             unsigned num_required_device_extensions, const char **required_device_layers,
                             unsigned num_required_device_layers, const VkPhysicalDeviceFeatures *required_features)
 {
+	gpu = gpu_;
 	if (gpu == VK_NULL_HANDLE)
 	{
 		uint32_t gpu_count = 0;
@@ -437,10 +438,10 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 		if (vkEnumeratePhysicalDevices(instance, &gpu_count, gpus.data()) != VK_SUCCESS)
 			return false;
 
-		for (auto &gpu : gpus)
+		for (auto &g : gpus)
 		{
 			VkPhysicalDeviceProperties props;
-			vkGetPhysicalDeviceProperties(gpu, &props);
+			vkGetPhysicalDeviceProperties(g, &props);
 			LOGI("Found Vulkan GPU: %s\n", props.deviceName);
 			LOGI("    API: %u.%u.%u\n",
 			     VK_VERSION_MAJOR(props.apiVersion),
@@ -498,7 +499,6 @@ bool Context::create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const ch
 		if (!has_layer(required_device_layers[i]))
 			return false;
 
-	this->gpu = gpu;
 	vkGetPhysicalDeviceProperties(gpu, &gpu_props);
 	vkGetPhysicalDeviceMemoryProperties(gpu, &mem_props);
 

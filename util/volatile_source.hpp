@@ -35,8 +35,8 @@ template <typename T>
 class VolatileSource : public IntrusivePtrEnabled<VolatileSource<T>>
 {
 public:
-	VolatileSource(const std::string &path)
-		: path(Granite::Path::enforce_protocol(path))
+	explicit VolatileSource(const std::string &path_)
+		: path(Granite::Path::enforce_protocol(path_))
 	{
 	}
 
@@ -85,11 +85,11 @@ protected:
 
 				try
 				{
-					auto file = Granite::Global::filesystem()->open(info.path);
+					auto f = Granite::Global::filesystem()->open(info.path);
 					if (!file)
 						return;
-					auto *self = static_cast<T *>(this);
-					self->update(std::move(file));
+					auto *s = static_cast<T *>(this);
+					s->update(std::move(f));
 				}
 				catch (const std::exception &e)
 				{

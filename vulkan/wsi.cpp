@@ -96,23 +96,26 @@ bool WSI::init_external_context(std::unique_ptr<Vulkan::Context> fresh_context)
 	return true;
 }
 
-bool WSI::init_external_swapchain(std::vector<Vulkan::ImageHandle> swapchain_images)
+bool WSI::init_external_swapchain(std::vector<Vulkan::ImageHandle> swapchain_images_)
 {
-	width = platform->get_surface_width();
-	height = platform->get_surface_height();
-	aspect_ratio = platform->get_aspect_ratio();
+	swapchain_width = platform->get_surface_width();
+	swapchain_height = platform->get_surface_height();
+	swapchain_aspect_ratio = platform->get_aspect_ratio();
 
-	external_swapchain_images = move(swapchain_images);
+	external_swapchain_images = move(swapchain_images_);
 
-	this->width = external_swapchain_images.front()->get_width();
-	this->height = external_swapchain_images.front()->get_height();
-	this->format = external_swapchain_images.front()->get_format();
+	swapchain_width = external_swapchain_images.front()->get_width();
+	swapchain_height = external_swapchain_images.front()->get_height();
+	swapchain_format = external_swapchain_images.front()->get_format();
 
-	LOGI("Created swapchain %u x %u (fmt: %u).\n", this->width, this->height, static_cast<unsigned>(this->format));
+	LOGI("Created swapchain %u x %u (fmt: %u).\n",
+	     swapchain_width, swapchain_height, static_cast<unsigned>(swapchain_format));
 
 	platform->event_swapchain_destroyed();
-	platform->event_swapchain_created(device.get(), this->width, this->height, aspect_ratio,
-	                                  external_swapchain_images.size(), this->format);
+	platform->event_swapchain_created(device.get(), swapchain_width, swapchain_height,
+	                                  swapchain_aspect_ratio,
+	                                  external_swapchain_images.size(),
+	                                  swapchain_format);
 
 	device->init_external_swapchain(this->external_swapchain_images);
 	platform->get_frame_timer().reset();
@@ -121,9 +124,9 @@ bool WSI::init_external_swapchain(std::vector<Vulkan::ImageHandle> swapchain_ima
 	return true;
 }
 
-void WSI::set_platform(WSIPlatform *platform)
+void WSI::set_platform(WSIPlatform *platform_)
 {
-	this->platform = platform;
+	platform = platform_;
 }
 
 bool WSI::init()
@@ -145,7 +148,7 @@ bool WSI::init()
 
 	unsigned width = platform->get_surface_width();
 	unsigned height = platform->get_surface_height();
-	aspect_ratio = platform->get_aspect_ratio();
+	swapchain_aspect_ratio = platform->get_aspect_ratio();
 
 	VkBool32 supported = VK_FALSE;
 	vkGetPhysicalDeviceSurfaceSupportKHR(context->get_gpu(), context->get_graphics_queue_family(), surface, &supported);
@@ -155,7 +158,7 @@ bool WSI::init()
 	if (!blocking_init_swapchain(width, height))
 		return false;
 
-	device->init_swapchain(swapchain_images, this->width, this->height, format);
+	device->init_swapchain(swapchain_images, swapchain_width, swapchain_height, swapchain_format);
 	platform->get_frame_timer().reset();
 	return true;
 }
@@ -169,9 +172,9 @@ void WSI::init_surface_and_swapchain(VkSurfaceKHR new_surface)
 		surface = new_surface;
 	}
 
-	width = platform->get_surface_width();
-	height = platform->get_surface_height();
-	update_framebuffer(width, height);
+	swapchain_width = platform->get_surface_width();
+	swapchain_height = platform->get_surface_height();
+	update_framebuffer(swapchain_width, swapchain_height);
 }
 
 void WSI::deinit_surface_and_swapchain()
@@ -340,8 +343,8 @@ bool WSI::begin_frame()
 		}
 		else if (result == VK_SUBOPTIMAL_KHR || result == VK_ERROR_OUT_OF_DATE_KHR)
 		{
-			VK_ASSERT(width != 0);
-			VK_ASSERT(height != 0);
+			VK_ASSERT(swapchain_width != 0);
+			VK_ASSERT(swapchain_height != 0);
 			vkDeviceWaitIdle(device->get_device());
 
 			if (swapchain != VK_NULL_HANDLE)
@@ -353,9 +356,9 @@ bool WSI::begin_frame()
 			device->set_acquire_semaphore(0, Semaphore{});
 			device->consume_release_semaphore();
 
-			if (!blocking_init_swapchain(width, height))
+			if (!blocking_init_swapchain(swapchain_width, swapchain_height))
 				return false;
-			device->init_swapchain(swapchain_images, this->width, this->height, format);
+			device->init_swapchain(swapchain_images, swapchain_width, swapchain_height, swapchain_format);
 		}
 		else
 		{
@@ -444,7 +447,7 @@ bool WSI::end_frame()
 		{
 			current_present_mode = present_mode;
 			current_srgb_backbuffer_enable = srgb_backbuffer_enable;
-			update_framebuffer(this->width, this->height);
+			update_framebuffer(swapchain_width, swapchain_height);
 		}
 	}
 
@@ -457,7 +460,7 @@ void WSI::update_framebuffer(unsigned width, unsigned height)
 	{
 		vkDeviceWaitIdle(context->get_device());
 		if (blocking_init_swapchain(width, height))
-			device->init_swapchain(swapchain_images, this->width, this->height, format);
+			device->init_swapchain(swapchain_images, swapchain_width, swapchain_height, swapchain_format);
 	}
 }
 
@@ -467,7 +470,7 @@ void WSI::set_present_mode(PresentMode mode)
 	if (!has_acquired_swapchain_index && present_mode != current_present_mode)
 	{
 		current_present_mode = present_mode;
-		update_framebuffer(this->width, this->height);
+		update_framebuffer(swapchain_width, swapchain_height);
 	}
 }
 
@@ -477,7 +480,7 @@ void WSI::set_backbuffer_srgb(bool enable)
 	if (!has_acquired_swapchain_index && srgb_backbuffer_enable != current_srgb_backbuffer_enable)
 	{
 		current_srgb_backbuffer_enable = srgb_backbuffer_enable;
-		update_framebuffer(this->width, this->height);
+		update_framebuffer(swapchain_width, swapchain_height);
 	}
 }
 
@@ -519,7 +522,7 @@ bool WSI::blocking_init_swapchain(unsigned width, unsigned height)
 	unsigned retry_counter = 0;
 	do
 	{
-		aspect_ratio = platform->get_aspect_ratio();
+		swapchain_aspect_ratio = platform->get_aspect_ratio();
 		err = init_swapchain(width, height);
 		if (err == SwapchainError::Error)
 		{
@@ -706,11 +709,12 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 		return SwapchainError::Error;
 	}
 
-	this->width = swapchain_size.width;
-	this->height = swapchain_size.height;
-	this->format = format.format;
+	swapchain_width = swapchain_size.width;
+	swapchain_height = swapchain_size.height;
+	swapchain_format = format.format;
 
-	LOGI("Created swapchain %u x %u (fmt: %u).\n", this->width, this->height, static_cast<unsigned>(this->format));
+	LOGI("Created swapchain %u x %u (fmt: %u).\n", swapchain_width, swapchain_height,
+	     static_cast<unsigned>(swapchain_format));
 
 	uint32_t image_count;
 	if (vkGetSwapchainImagesKHR(context->get_device(), swapchain, &image_count, nullptr) != VK_SUCCESS)
@@ -722,7 +726,8 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	LOGI("Got %u swapchain images.\n", image_count);
 
 	platform->event_swapchain_destroyed();
-	platform->event_swapchain_created(device.get(), this->width, this->height, aspect_ratio, image_count, info.imageFormat);
+	platform->event_swapchain_created(device.get(), swapchain_width, swapchain_height,
+	                                  swapchain_aspect_ratio, image_count, info.imageFormat);
 
 	return SwapchainError::None;
 }

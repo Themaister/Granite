@@ -72,7 +72,7 @@ private:
 	struct Serial
 	{
 		uint32_t serial = 0;
-	} serial;
+	} serial_info;
 
 	enum class TimingResult
 	{

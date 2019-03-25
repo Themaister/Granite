@@ -29,8 +29,8 @@ using namespace std;
 namespace Vulkan
 {
 
-QueryPool::QueryPool(Device *device)
-	: device(device)
+QueryPool::QueryPool(Device *device_)
+	: device(device_)
 {
 	query_period = 1e-9 * device->get_gpu_properties().limits.timestampPeriod;
 	supports_timestamp = device->get_gpu_properties().limits.timestampComputeAndGraphics;

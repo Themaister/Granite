@@ -42,13 +42,13 @@ bool Texture::init_texture()
 		return true;
 }
 
-Texture::Texture(Device *device, const std::string &path, VkFormat format, const VkComponentMapping &swizzle)
-	: VolatileSource(path), device(device), format(format), swizzle(swizzle)
+Texture::Texture(Device *device_, const std::string &path_, VkFormat format_, const VkComponentMapping &swizzle_)
+	: VolatileSource(path_), device(device_), format(format_), swizzle(swizzle_)
 {
 }
 
-Texture::Texture(Device *device)
-	: device(device), format(VK_FORMAT_UNDEFINED)
+Texture::Texture(Device *device_)
+	: device(device_), format(VK_FORMAT_UNDEFINED)
 {
 }
 
@@ -64,13 +64,13 @@ void Texture::update(std::unique_ptr<Granite::File> file)
 #ifdef GRANITE_VULKAN_MT
 		LOGI("Loading texture in thread index: %u\n", Granite::ThreadGroup::get_current_thread_index());
 #endif
-		unique_ptr<Granite::File> file{f};
-		auto size = file->get_size();
-		void *mapped = file->map();
+		unique_ptr<Granite::File> updated_file{f};
+		auto size = updated_file->get_size();
+		void *mapped = updated_file->map();
 		if (size && mapped)
 		{
 			if (Granite::SceneFormats::MemoryMappedTexture::is_header(mapped, size))
-				update_gtx(move(file), mapped);
+				update_gtx(move(updated_file), mapped);
 			else
 				update_other(mapped, size);
 			device->get_texture_manager().notify_updated_texture(path, *this);
@@ -201,9 +201,9 @@ void Texture::unload()
 	handle.reset();
 }
 
-void Texture::replace_image(ImageHandle handle)
+void Texture::replace_image(ImageHandle handle_)
 {
-	auto old = this->handle.write_object(move(handle));
+	auto old = this->handle.write_object(move(handle_));
 	if (old)
 		device->keep_handle_alive(move(old));
 
@@ -223,8 +223,8 @@ void Texture::set_enable_notification(bool enable)
 	enable_notification = enable;
 }
 
-TextureManager::TextureManager(Device *device)
-	: device(device)
+TextureManager::TextureManager(Device *device_)
+	: device(device_)
 {
 }
 

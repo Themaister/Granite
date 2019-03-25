@@ -36,17 +36,17 @@ using namespace std;
 
 namespace Granite
 {
-void SocketReader::start(void *data, size_t size)
+void SocketReader::start(void *data_, size_t size_)
 {
-	this->data = data;
-	this->size = size;
+	data = data_;
+	size = size_;
 	offset = 0;
 }
 
-void SocketWriter::start(const void *data, size_t size)
+void SocketWriter::start(const void *data_, size_t size_)
 {
-	this->data = data;
-	this->size = size;
+	data = data_;
+	size = size_;
 	offset = 0;
 }
 
@@ -72,8 +72,8 @@ int SocketWriter::process(Socket &socket)
 	return offset;
 }
 
-Socket::Socket(int fd, bool owned)
-	: fd(fd), owned(owned)
+Socket::Socket(int fd_, bool owned_)
+	: fd(fd_), owned(owned_)
 {
 }
 

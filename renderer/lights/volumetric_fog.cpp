@@ -65,11 +65,11 @@ void VolumetricFog::set_fog_density(float density)
 	density_mod = density;
 }
 
-void VolumetricFog::set_resolution(unsigned width, unsigned height, unsigned depth)
+void VolumetricFog::set_resolution(unsigned width_, unsigned height_, unsigned depth_)
 {
-	this->width = width;
-	this->height = height;
-	this->depth = depth;
+	width = width_;
+	height = height_;
+	depth = depth_;
 }
 
 void VolumetricFog::add_texture_dependency(string name)
@@ -300,9 +300,9 @@ void VolumetricFog::set_base_renderer(Renderer *, Renderer *, Renderer *)
 {
 }
 
-void VolumetricFog::set_base_render_context(const RenderContext *context)
+void VolumetricFog::set_base_render_context(const RenderContext *context_)
 {
-	this->context = context;
+	context = context_;
 }
 
 void VolumetricFog::setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target)

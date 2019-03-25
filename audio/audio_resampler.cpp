@@ -28,8 +28,8 @@ namespace Granite
 {
 namespace Audio
 {
-ResampledStream::ResampledStream(Granite::Audio::MixerStream *source)
-	: source(source)
+ResampledStream::ResampledStream(Granite::Audio::MixerStream *source_)
+	: source(source_)
 {
 }
 

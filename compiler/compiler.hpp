@@ -50,19 +50,19 @@ enum class Target
 class GLSLCompiler
 {
 public:
-	void set_target(Target target)
+	void set_target(Target target_)
 	{
-		this->target = target;
+		target = target_;
 	}
 
-	void set_stage(Stage stage)
+	void set_stage(Stage stage_)
 	{
-		this->stage = stage;
+		stage = stage_;
 	}
 
-	void set_source(std::string source, std::string path)
+	void set_source(std::string source_, std::string path)
 	{
-		this->source = std::move(source);
+		source = std::move(source_);
 		source_path = std::move(path);
 	}
 

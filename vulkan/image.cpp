@@ -29,11 +29,11 @@ using namespace std;
 namespace Vulkan
 {
 
-ImageView::ImageView(Device *device, VkImageView view, const ImageViewCreateInfo &info)
-    : Cookie(device)
-    , device(device)
-    , view(view)
-    , info(info)
+ImageView::ImageView(Device *device_, VkImageView view_, const ImageViewCreateInfo &info_)
+    : Cookie(device_)
+    , device(device_)
+    , view(view_)
+    , info(info_)
 {
 }
 
@@ -68,8 +68,8 @@ ImageView::~ImageView()
 		if (srgb_view != VK_NULL_HANDLE)
 			device->destroy_image_view_nolock(srgb_view);
 
-		for (auto &view : render_target_views)
-			device->destroy_image_view_nolock(view);
+		for (auto &v : render_target_views)
+			device->destroy_image_view_nolock(v);
 	}
 	else
 	{
@@ -83,18 +83,18 @@ ImageView::~ImageView()
 		if (srgb_view != VK_NULL_HANDLE)
 			device->destroy_image_view(srgb_view);
 
-		for (auto &view : render_target_views)
-			device->destroy_image_view(view);
+		for (auto &v : render_target_views)
+			device->destroy_image_view(v);
 	}
 }
 
-Image::Image(Device *device, VkImage image, VkImageView default_view, const DeviceAllocation &alloc,
-             const ImageCreateInfo &create_info)
-    : Cookie(device)
-    , device(device)
-    , image(image)
-    , alloc(alloc)
-    , create_info(create_info)
+Image::Image(Device *device_, VkImage image_, VkImageView default_view, const DeviceAllocation &alloc_,
+             const ImageCreateInfo &create_info_)
+    : Cookie(device_)
+    , device(device_)
+    , image(image_)
+    , alloc(alloc_)
+    , create_info(create_info_)
 {
 	if (default_view != VK_NULL_HANDLE)
 	{
@@ -167,8 +167,8 @@ VkPipelineStageFlags LinearHostImage::get_used_pipeline_stages() const
 	return stages;
 }
 
-LinearHostImage::LinearHostImage(Device *device, ImageHandle gpu_image_, BufferHandle cpu_image_, VkPipelineStageFlags stages)
-	: device(device), gpu_image(move(gpu_image_)), cpu_image(move(cpu_image_)), stages(stages)
+LinearHostImage::LinearHostImage(Device *device_, ImageHandle gpu_image_, BufferHandle cpu_image_, VkPipelineStageFlags stages_)
+	: device(device_), gpu_image(move(gpu_image_)), cpu_image(move(cpu_image_)), stages(stages_)
 {
 	if (gpu_image->get_create_info().domain == ImageDomain::LinearHostCached ||
 	    gpu_image->get_create_info().domain == ImageDomain::LinearHost)

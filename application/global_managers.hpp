@@ -23,6 +23,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <memory>
 
 namespace Granite
 {
@@ -59,6 +60,19 @@ using ManagerFeatureFlags = uint32_t;
 
 void init(ManagerFeatureFlags flags = MANAGER_FEATURE_ALL_BITS);
 void deinit();
+
+// Used if the application wants to use multiple instances of Granite in the same process.
+// This allows each thread to be associated to a global context.
+struct GlobalManagers;
+struct GlobalManagerDeleter
+{
+	void operator()(GlobalManagers *managers);
+};
+using GlobalManagersHandle = std::unique_ptr<GlobalManagers, GlobalManagerDeleter>;
+GlobalManagersHandle create_thread_context();
+void delete_thread_context(GlobalManagers *managers);
+void set_thread_context(const GlobalManagers &managers);
+void clear_thread_context();
 
 void start_audio_system();
 void stop_audio_system();

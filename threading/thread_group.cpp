@@ -24,6 +24,7 @@
 #include <assert.h>
 #include <stdexcept>
 #include "util.hpp"
+#include "global_managers.hpp"
 
 using namespace std;
 
@@ -139,10 +140,15 @@ void ThreadGroup::start(unsigned num_threads)
 
 	thread_group.resize(num_threads);
 
+	// Make sure the worker threads have the correct global data references.
+	auto ctx = std::shared_ptr<Global::GlobalManagers>(Global::create_thread_context().release(),
+	                                                   Global::delete_thread_context);
+
 	unsigned self_index = 1;
 	for (auto &t : thread_group)
 	{
-		t = make_unique<thread>([this, self_index]() {
+		t = make_unique<thread>([this, ctx, self_index]() {
+			Global::set_thread_context(*ctx);
 			thread_looper(self_index);
 		});
 		self_index++;

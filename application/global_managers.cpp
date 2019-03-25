@@ -61,13 +61,38 @@ struct GlobalManagers
 #endif
 };
 
-static GlobalManagers global_managers;
+static thread_local GlobalManagers global_managers;
+
+GlobalManagersHandle create_thread_context()
+{
+	return GlobalManagersHandle(new GlobalManagers(global_managers));
+}
+
+void delete_thread_context(GlobalManagers *managers)
+{
+	delete managers;
+}
+
+void GlobalManagerDeleter::operator()(GlobalManagers *managers)
+{
+	delete_thread_context(managers);
+}
+
+void set_thread_context(const GlobalManagers &managers)
+{
+	global_managers = managers;
+}
+
+void clear_thread_context()
+{
+	global_managers = {};
+}
 
 Filesystem *filesystem()
 {
 	if (!global_managers.filesystem)
 	{
-		LOGI("Filesystem was not initialized. Lazily initializing. This is not thread safe!\n");
+		LOGI("Filesystem was not initialized. Lazily initializing.\n");
 		global_managers.filesystem = new Filesystem;
 	}
 
@@ -78,7 +103,7 @@ EventManager *event_manager()
 {
 	if (!global_managers.event_manager)
 	{
-		LOGI("Event manager was not initialized. Lazily initializing. This is not thread safe!\n");
+		LOGI("Event manager was not initialized. Lazily initializing.\n");
 		global_managers.event_manager = new EventManager;
 	}
 
@@ -89,8 +114,9 @@ ThreadGroup *thread_group()
 {
 	if (!global_managers.thread_group)
 	{
-		LOGI("Thread group was not initialized. Lazily initializing. This is not thread safe!\n");
-		global_managers.thread_group = new ThreadGroup;
+		LOGI("Thread group was not initialized. Lazily initializing.\n"
+		     "This is potentially dangerous if worker threads use globals.\n");
+		global_managers.thread_group = new ThreadGroup();
 		global_managers.thread_group->start(std::thread::hardware_concurrency());
 	}
 
@@ -101,7 +127,7 @@ UI::UIManager *ui_manager()
 {
 	if (!global_managers.ui_manager)
 	{
-		LOGI("UI manager was not initialized. Lazily initializing. This is not thread safe!\n");
+		LOGI("UI manager was not initialized. Lazily initializing.\n");
 		global_managers.ui_manager = new UI::UIManager;
 	}
 
@@ -112,7 +138,7 @@ CommonRendererData *common_renderer_data()
 {
 	if (!global_managers.common_renderer_data)
 	{
-		LOGI("Common GPU data was not initialized. Lazily initializing. This is not thread safe!\n");
+		LOGI("Common GPU data was not initialized. Lazily initializing.\n");
 		global_managers.common_renderer_data = new CommonRendererData;
 	}
 
@@ -138,7 +164,7 @@ PhysicsSystem *physics()
 {
 	if (!global_managers.physics)
 	{
-		LOGI("Physics system was not initialized. Lazily initializing. This is not thread safe!\n");
+		LOGI("Physics system was not initialized. Lazily initializing.\n");
 		global_managers.physics = new PhysicsSystem;
 	}
 
@@ -160,12 +186,13 @@ void init(ManagerFeatureFlags flags)
 			global_managers.filesystem = new Filesystem;
 	}
 
+	bool kick_threads = false;
 	if (flags & MANAGER_FEATURE_THREAD_GROUP_BIT)
 	{
 		if (!global_managers.thread_group)
 		{
 			global_managers.thread_group = new ThreadGroup;
-			global_managers.thread_group->start(std::thread::hardware_concurrency());
+			kick_threads = true;
 		}
 	}
 
@@ -195,6 +222,10 @@ void init(ManagerFeatureFlags flags)
 	if (!global_managers.audio_backend)
 		global_managers.audio_backend = Audio::create_default_audio_backend(*global_managers.audio_mixer, 44100.0f, 2);
 #endif
+
+	// Kick threads after all global managers are set up.
+	if (kick_threads)
+		global_managers.thread_group->start(std::thread::hardware_concurrency());
 }
 
 void deinit()

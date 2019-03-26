@@ -73,6 +73,45 @@ static inline void accumulate_channel(float * __restrict output, const float * _
 #endif
 }
 
+static inline void replace_channel(float * __restrict output, const float * __restrict input, float gain, size_t count) noexcept
+{
+#ifdef __ARM_NEON
+	size_t rounded_count = count & ~3;
+	for (size_t i = 0; i < rounded_count; i += 4)
+	{
+		float32x4_t in = vld1q_f32(input);
+		in = vmulq_n_f32(in, gain);
+		vst1q_f32(output, in);
+
+		output += 4;
+		input += 4;
+	}
+
+	size_t overflow_count = count & 3;
+	for (size_t i = 0; i < overflow_count; i++)
+		output[i] = input[i] * gain;
+#elif defined(__SSE__)
+	size_t rounded_count = count & ~3;
+	__m128 gain_splat = _mm_set1_ps(gain);
+	for (size_t i = 0; i < rounded_count; i += 4)
+	{
+		__m128 in = _mm_loadu_ps(input);
+		in = _mm_mul_ps(in, gain_splat);
+		_mm_storeu_ps(output, in);
+
+		output += 4;
+		input += 4;
+	}
+
+	size_t overflow_count = count & 3;
+	for (size_t i = 0; i < overflow_count; i++)
+		output[i] = input[i] * gain;
+#else
+	for (size_t i = 0; i < count; i++)
+		output[i] = input[i] * gain;
+#endif
+}
+
 static inline void accumulate_channel_nogain(float * __restrict output, const float * __restrict input, size_t count) noexcept
 {
 #ifdef __ARM_NEON

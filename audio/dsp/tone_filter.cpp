@@ -92,6 +92,10 @@ void ToneFilter::flush_debug_info(Util::LockFreeMessageQueue &queue, StreamID id
 
 void ToneFilter::init(float sample_rate, float tuning_freq)
 {
+	// Readjust falloff based on sample rate.
+	impl->tone_power_lerp = float(1.0 - exp(log(0.00503) / sample_rate));
+	impl->total_tone_power_lerp = float(1.0 - exp(log(0.01215) / sample_rate));
+
 	PoleZeroFilterDesigner designer;
 	for (int i = 0; i < ToneCount; i++)
 	{

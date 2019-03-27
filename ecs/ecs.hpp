@@ -45,6 +45,9 @@ inline T *get_component(Tup &t)
 	return std::get<T *>(t);
 }
 
+template <typename... Ts>
+using ComponentGroupVector = std::vector<std::tuple<Ts *...>>;
+
 class Entity;
 
 #define GRANITE_COMPONENT_TYPE_HASH(x) ::Util::compile_time_fnv1(#x)
@@ -225,7 +228,7 @@ public:
 		}
 	}
 
-	std::vector<std::tuple<Ts *...>> &get_groups()
+	ComponentGroupVector<Ts...> &get_groups()
 	{
 		return groups;
 	}
@@ -243,7 +246,7 @@ public:
 	}
 
 private:
-	std::vector<std::tuple<Ts *...>> groups;
+	ComponentGroupVector<Ts...> groups;
 	std::vector<Entity *> entities;
 	Util::IntrusiveHashMap<Util::IntrusivePODWrapper<size_t>> entity_to_index;
 
@@ -328,7 +331,7 @@ public:
 	}
 
 	template <typename... Ts>
-	std::vector<std::tuple<Ts *...>> &get_component_group()
+	ComponentGroupVector<Ts...> &get_component_group()
 	{
 		auto *group = get_component_group_holder<Ts...>();
 		return group->get_groups();

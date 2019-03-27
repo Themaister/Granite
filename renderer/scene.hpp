@@ -25,7 +25,6 @@
 #include "ecs.hpp"
 #include "render_components.hpp"
 #include "frustum.hpp"
-#include <tuple>
 #include "scene_formats.hpp"
 
 namespace Granite
@@ -78,7 +77,7 @@ public:
 	class Node : public Util::IntrusivePtrEnabled<Node, NodeDeleter>
 	{
 	public:
-		Node(Scene *parent_)
+		explicit Node(Scene *parent_)
 			: parent_scene(parent_)
 		{
 		}
@@ -177,7 +176,7 @@ public:
 
 	void set_root_node(NodeHandle node)
 	{
-		root_node = node;
+		root_node = std::move(node);
 	}
 
 	NodeHandle get_root_node() const
@@ -204,22 +203,22 @@ private:
 	EntityPool pool;
 	Util::ObjectPool<Node> node_pool;
 	NodeHandle root_node;
-	std::vector<std::tuple<BoundedComponent*, RenderInfoComponent*, CachedSpatialTransformTimestampComponent *>> &spatials;
-	std::vector<std::tuple<RenderInfoComponent*, RenderableComponent*, OpaqueComponent*>> &opaque;
-	std::vector<std::tuple<RenderInfoComponent*, RenderableComponent*, TransparentComponent*>> &transparent;
-	std::vector<std::tuple<RenderInfoComponent*, RenderableComponent*, PositionalLightComponent*>> &positional_lights;
-	std::vector<std::tuple<RenderInfoComponent*, RenderableComponent*, CastsStaticShadowComponent*>> &static_shadowing;
-	std::vector<std::tuple<RenderInfoComponent*, RenderableComponent*, CastsDynamicShadowComponent*>> &dynamic_shadowing;
-	std::vector<std::tuple<RenderPassComponent*, RenderableComponent*, CastsDynamicShadowComponent*>> &render_pass_shadowing;
-	std::vector<std::tuple<UnboundedComponent*, RenderableComponent*>> &backgrounds;
-	std::vector<std::tuple<CameraComponent*, CachedTransformComponent*>> &cameras;
-	std::vector<std::tuple<DirectionalLightComponent*, CachedTransformComponent*>> &directional_lights;
-	std::vector<std::tuple<AmbientLightComponent*>> &ambient_lights;
-	std::vector<std::tuple<PerFrameUpdateComponent*>> &per_frame_updates;
-	std::vector<std::tuple<PerFrameUpdateTransformComponent*, RenderInfoComponent*>> &per_frame_update_transforms;
-	std::vector<std::tuple<EnvironmentComponent*>> &environments;
-	std::vector<std::tuple<RenderPassSinkComponent*, RenderableComponent*, CullPlaneComponent*>> &render_pass_sinks;
-	std::vector<std::tuple<RenderPassComponent*>> &render_pass_creators;
+	ComponentGroupVector<BoundedComponent, RenderInfoComponent, CachedSpatialTransformTimestampComponent> &spatials;
+	ComponentGroupVector<RenderInfoComponent, RenderableComponent, OpaqueComponent> &opaque;
+	ComponentGroupVector<RenderInfoComponent, RenderableComponent, TransparentComponent> &transparent;
+	ComponentGroupVector<RenderInfoComponent, RenderableComponent, PositionalLightComponent> &positional_lights;
+	ComponentGroupVector<RenderInfoComponent, RenderableComponent, CastsStaticShadowComponent> &static_shadowing;
+	ComponentGroupVector<RenderInfoComponent, RenderableComponent, CastsDynamicShadowComponent> &dynamic_shadowing;
+	ComponentGroupVector<RenderPassComponent, RenderableComponent, CastsDynamicShadowComponent> &render_pass_shadowing;
+	ComponentGroupVector<UnboundedComponent, RenderableComponent> &backgrounds;
+	ComponentGroupVector<CameraComponent, CachedTransformComponent> &cameras;
+	ComponentGroupVector<DirectionalLightComponent, CachedTransformComponent> &directional_lights;
+	ComponentGroupVector<AmbientLightComponent> &ambient_lights;
+	ComponentGroupVector<PerFrameUpdateComponent> &per_frame_updates;
+	ComponentGroupVector<PerFrameUpdateTransformComponent, RenderInfoComponent> &per_frame_update_transforms;
+	ComponentGroupVector<EnvironmentComponent> &environments;
+	ComponentGroupVector<RenderPassSinkComponent, RenderableComponent, CullPlaneComponent> &render_pass_sinks;
+	ComponentGroupVector<RenderPassComponent> &render_pass_creators;
 	Util::IntrusiveList<Entity> entities;
 	Util::IntrusiveList<Entity> queued_entities;
 	void destroy_entities(Util::IntrusiveList<Entity> &entity_list);

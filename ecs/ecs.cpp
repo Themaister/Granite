@@ -97,21 +97,37 @@ void EntityDeleter::operator()(Entity *entity)
 	entity->get_pool()->delete_entity(entity);
 }
 
-void EntityPool::reset_groups()
+void EntityPool::free_groups()
 {
-	component_to_groups.clear();
-
+	auto &list = groups.inner_list();
+	auto itr = list.begin();
+	while (itr != list.end())
 	{
-		auto &list = groups.inner_list();
-		auto itr = list.begin();
-		while (itr != list.end())
-		{
-			auto *to_free = itr.get();
-			itr = list.erase(itr);
-			delete to_free;
-		}
+		auto *to_free = itr.get();
+		itr = list.erase(itr);
+		delete to_free;
 	}
 	groups.clear();
+}
+
+void EntityPool::reset_groups()
+{
+	for (auto &group : groups)
+		group.reset();
+}
+
+void EntityPool::reset_groups_for_component_type(ComponentType id)
+{
+	auto *component_groups = component_to_groups.find(id);
+	if (component_groups)
+	{
+		for (auto &group : *component_groups)
+		{
+			auto *g = groups.find(group.get_hash());
+			if (g)
+				g->reset();
+		}
+	}
 }
 
 void ComponentSet::insert(ComponentType type)

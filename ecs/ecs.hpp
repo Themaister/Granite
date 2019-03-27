@@ -108,6 +108,7 @@ public:
 	virtual ~EntityGroupBase() = default;
 	virtual void add_entity(Entity &entity) = 0;
 	virtual void remove_entity(const Entity &entity) = 0;
+	virtual void reset() = 0;
 };
 
 class EntityPool;
@@ -180,11 +181,19 @@ public:
 		return hash;
 	}
 
+	bool mark_for_destruction()
+	{
+		bool ret = !marked;
+		marked = true;
+		return ret;
+	}
+
 private:
 	EntityPool *pool;
 	Util::Hash hash;
 	size_t pool_offset = 0;
 	ComponentHashMap components;
+	bool marked = false;
 };
 
 template <typename... Ts>
@@ -224,6 +233,13 @@ public:
 	const std::vector<Entity *> &get_entities() const
 	{
 		return entities;
+	}
+
+	void reset() override final
+	{
+		groups.clear();
+		entities.clear();
+		entity_to_index.clear();
 	}
 
 private:
@@ -366,6 +382,7 @@ public:
 
 	void free_component(Entity &entity, ComponentType id, ComponentNode *component);
 	void reset_groups();
+	void reset_groups_for_component_type(ComponentType id);
 
 private:
 	Util::ObjectPool<Entity> entity_pool;
@@ -405,6 +422,8 @@ private:
 	{
 		GroupRegisters<U, Us...>::register_group(component_to_groups, group_id);
 	}
+
+	void free_groups();
 };
 
 template <typename T, typename... Ts>

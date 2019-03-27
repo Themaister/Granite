@@ -55,15 +55,12 @@ Scene::Scene()
 Scene::~Scene()
 {
 	// Makes shutdown way faster :)
+	// We know ahead of time we're going to delete everything,
+	// so reduce a lot of overhead by deleting right away.
 	pool.reset_groups();
 
-	auto itr = entities.begin();
-	while (itr != entities.end())
-	{
-		auto *to_free = itr.get();
-		itr = entities.erase(itr);
-		to_free->get_pool()->delete_entity(to_free);
-	}
+	destroy_entities(entities);
+	destroy_entities(queued_entities);
 }
 
 template <typename T>
@@ -573,8 +570,23 @@ Entity *Scene::create_renderable(AbstractRenderableHandle renderable, Node *node
 	return entity;
 }
 
+void Scene::destroy_entities(Util::IntrusiveList<Entity> &entity_list)
+{
+	auto itr = entity_list.begin();
+	while (itr != entity_list.end())
+	{
+		auto *to_free = itr.get();
+		itr = entity_list.erase(itr);
+		to_free->get_pool()->delete_entity(to_free);
+	}
+}
+
 void Scene::remove_entities_with_component(ComponentType id)
 {
+	// We know ahead of time we're going to delete everything,
+	// so reduce a lot of overhead by deleting right away.
+	pool.reset_groups_for_component_type(id);
+
 	auto itr = entities.begin();
 	while (itr != entities.end())
 	{
@@ -589,12 +601,26 @@ void Scene::remove_entities_with_component(ComponentType id)
 	}
 }
 
+void Scene::destroy_queued_entities()
+{
+	destroy_entities(queued_entities);
+}
+
 void Scene::destroy_entity(Entity *entity)
 {
 	if (entity)
 	{
 		entities.erase(entity);
 		entity->get_pool()->delete_entity(entity);
+	}
+}
+
+void Scene::queue_destroy_entity(Entity *entity)
+{
+	if (entity->mark_for_destruction())
+	{
+		entities.erase(entity);
+		queued_entities.insert_front(entity);
 	}
 }
 

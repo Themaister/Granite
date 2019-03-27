@@ -189,6 +189,8 @@ public:
 	Entity *create_light(const SceneFormats::LightInfo &light, Node *node);
 	Entity *create_entity();
 	void destroy_entity(Entity *entity);
+	void queue_destroy_entity(Entity *entity);
+	void destroy_queued_entities();
 
 	template <typename T>
 	void remove_entities_with_component()
@@ -219,6 +221,8 @@ private:
 	std::vector<std::tuple<RenderPassSinkComponent*, RenderableComponent*, CullPlaneComponent*>> &render_pass_sinks;
 	std::vector<std::tuple<RenderPassComponent*>> &render_pass_creators;
 	Util::IntrusiveList<Entity> entities;
+	Util::IntrusiveList<Entity> queued_entities;
+	void destroy_entities(Util::IntrusiveList<Entity> &entity_list);
 	void update_transform_tree(Node &node, const mat4 &transform, bool parent_is_dirty);
 
 	void update_skinning(Node &node);

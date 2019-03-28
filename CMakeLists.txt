@@ -425,6 +425,7 @@ if (NOT GRANITE_VULKAN_ONLY)
 
             util/aligned_alloc.cpp util/aligned_alloc.hpp
             util/lock_free_message_queue.hpp util/lock_free_message_queue.cpp
+            util/bitmap_to_mesh.cpp util/bitmap_to_mesh.hpp
     )
 
     if (${CMAKE_SYSTEM} MATCHES "Linux")

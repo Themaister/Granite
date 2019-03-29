@@ -64,16 +64,26 @@ public:
 		return state_bitmap[y * width + x];
 	}
 
-	bool rect_is_all_pending(unsigned x, unsigned y, unsigned w, unsigned h) const
+	bool is_empty_clamped(int x, int y) const
 	{
-		if (x + w > width)
-			return false;
-		if (y + h > height)
-			return false;
+		if (x < 0 || y < 0)
+			return true;
+		if (unsigned(x) >= width || unsigned(y) >= height)
+			return true;
+
+		return at(unsigned(x), unsigned(y)) == PixelState::Empty;
+	}
+
+	bool rect_is_all_state(int x, int y, unsigned w, unsigned h, PixelState state) const
+	{
+		if (x < 0 || y < 0)
+			return state == PixelState::Empty;
+		if (unsigned(x) >= width || unsigned(y) >= height)
+			return state == PixelState::Empty;
 
 		for (unsigned j = y; j < y + h; j++)
 			for (unsigned i = x; i < x + w; i++)
-				if (at(i, j) != PixelState::Pending)
+				if (at(i, j) != state)
 					return false;
 
 		return true;
@@ -114,19 +124,16 @@ private:
 	list<uvec2> pending_pixels;
 };
 
-struct Neighbor
-{
-	unsigned index;
-	NeighborOrientation orientation;
-};
-
 struct ClaimedRect
 {
 	unsigned x = 0;
 	unsigned y = 0;
 	unsigned w = 0;
 	unsigned h = 0;
-	vector<Neighbor> neighbors;
+	vector<unsigned> north_neighbors;
+	vector<unsigned> east_neighbors;
+	vector<unsigned> south_neighbors;
+	vector<unsigned> west_neighbors;
 };
 
 static ClaimedRect find_largest_pending_rect(StateBitmap &state, unsigned x, unsigned y)
@@ -140,18 +147,18 @@ static ClaimedRect find_largest_pending_rect(StateBitmap &state, unsigned x, uns
 	ClaimedRect xy_rect = rect;
 	{
 		// Be greedy in X, then in Y.
-		while (state.rect_is_all_pending(xy_rect.x + xy_rect.w, xy_rect.y, 1, xy_rect.h))
+		while (state.rect_is_all_state(xy_rect.x + xy_rect.w, xy_rect.y, 1, xy_rect.h, PixelState::Pending))
 			xy_rect.w++;
-		while (state.rect_is_all_pending(xy_rect.x, xy_rect.y + xy_rect.h, xy_rect.w, 1))
+		while (state.rect_is_all_state(xy_rect.x, xy_rect.y + xy_rect.h, xy_rect.w, 1, PixelState::Pending))
 			xy_rect.h++;
 	}
 
 	ClaimedRect yx_rect = rect;
 	{
 		// Be greedy in Y, then in X.
-		while (state.rect_is_all_pending(yx_rect.x, yx_rect.y + yx_rect.h, yx_rect.w, 1))
+		while (state.rect_is_all_state(yx_rect.x, yx_rect.y + yx_rect.h, yx_rect.w, 1, PixelState::Pending))
 			yx_rect.h++;
-		while (state.rect_is_all_pending(yx_rect.x + yx_rect.w, yx_rect.y, 1, yx_rect.h))
+		while (state.rect_is_all_state(yx_rect.x + yx_rect.w, yx_rect.y, 1, yx_rect.h, PixelState::Pending))
 			yx_rect.w++;
 	}
 
@@ -219,6 +226,7 @@ static bool is_degenerate(const vec3 &a, const vec3 &b, const vec3 &c)
 	return all(equal(a, b)) || all(equal(a, c)) || all(equal(b, c));
 }
 
+// Need to link up neighbors with "degenerate" triangles to get a 100% watertight mesh.
 static void emit_neighbor(vector<vec3> &position,
                           const ClaimedRect &rect,
                           NeighborOrientation orientation,
@@ -258,6 +266,7 @@ static void emit_neighbor(vector<vec3> &position,
 		break;
 	}
 
+	// If the rects share a corner it is not necessary to emit degenerates.
 	if (!is_degenerate(coords[0], coords[1], coords[2]))
 	{
 		position.push_back(coords[0]);
@@ -283,8 +292,143 @@ static void emit_rect(vector<vec3> &position, const ClaimedRect &rect, const vec
 	position.emplace_back(float(rect.x + rect.w) - e, 0.0f, float(rect.y) + e);
 	position.emplace_back(float(rect.x) + e, 0.0f, float(rect.y + rect.h) - e);
 
-	for (auto &n : rect.neighbors)
-		emit_neighbor(position, rect, n.orientation, all_rects[n.index]);
+	for (auto &n : rect.north_neighbors)
+		emit_neighbor(position, rect, NeighborOrientation::North, all_rects[n]);
+	for (auto &n : rect.east_neighbors)
+		emit_neighbor(position, rect, NeighborOrientation::East, all_rects[n]);
+	for (auto &n : rect.south_neighbors)
+		emit_neighbor(position, rect, NeighborOrientation::South, all_rects[n]);
+	for (auto &n : rect.west_neighbors)
+		emit_neighbor(position, rect, NeighborOrientation::West, all_rects[n]);
+}
+
+static void emit_depth_links_north(const StateBitmap &state, vector<vec3> &depth_links,
+                                   ClaimedRect &rect, vector<ClaimedRect> &rects)
+{
+	// North edge.
+	if (state.rect_is_all_state(int(rect.x), int(rect.y) - 1, rect.w, 1, PixelState::Empty))
+	{
+		// Simple case, no degenerates needed.
+		depth_links.emplace_back(float(rect.x + rect.w), 0.5f, float(rect.y));
+		depth_links.emplace_back(float(rect.x + rect.w), -0.5f, float(rect.y));
+		depth_links.emplace_back(float(rect.x), 0.5f, float(rect.y));
+		depth_links.emplace_back(float(rect.x), -0.5f, float(rect.y));
+		depth_links.emplace_back(float(rect.x), 0.5f, float(rect.y));
+		depth_links.emplace_back(float(rect.x + rect.w), -0.5f, float(rect.y));
+	}
+	else
+	{
+		// Partial case. Need to create degenerates to link up.
+		assert(rect.y != 0);
+
+		unsigned start_empty_x = rect.x;
+		while (start_empty_x < rect.x + rect.w)
+		{
+			while (start_empty_x < rect.x + rect.w)
+			{
+				if (state.at(start_empty_x, rect.y - 1) == PixelState::Empty)
+					break;
+				start_empty_x++;
+			}
+
+			if (start_empty_x < rect.x + rect.w)
+			{
+				unsigned end_empty_x = start_empty_x + 1;
+				while (end_empty_x < rect.x + rect.w)
+				{
+					if (state.at(end_empty_x, rect.y - 1) == PixelState::Empty)
+						end_empty_x++;
+					else
+						break;
+				}
+
+				ClaimedRect neighbor;
+				neighbor.x = start_empty_x;
+				neighbor.w = end_empty_x - start_empty_x;
+				neighbor.y = rect.y - 1;
+				neighbor.h = 1;
+				rect.north_neighbors.push_back(rects.size());
+				rects.push_back(neighbor);
+
+				depth_links.emplace_back(float(end_empty_x), 0.5f, float(rect.y));
+				depth_links.emplace_back(float(end_empty_x), -0.5f, float(rect.y));
+				depth_links.emplace_back(float(start_empty_x), 0.5f, float(rect.y));
+				depth_links.emplace_back(float(start_empty_x), -0.5f, float(rect.y));
+				depth_links.emplace_back(float(start_empty_x), 0.5f, float(rect.y));
+				depth_links.emplace_back(float(end_empty_x), -0.5f, float(rect.y));
+
+				start_empty_x = end_empty_x + 1;
+			}
+		}
+	}
+}
+
+static void emit_depth_links_south(const StateBitmap &state, vector<vec3> &depth_links,
+                                   ClaimedRect &rect, vector<ClaimedRect> &rects)
+{
+	// South edge.
+	if (state.rect_is_all_state(int(rect.x), int(rect.y + rect.h), rect.w, 1, PixelState::Empty))
+	{
+		// Simple case, no degenerates needed.
+		depth_links.emplace_back(float(rect.x), 0.5f, float(rect.y + rect.h));
+		depth_links.emplace_back(float(rect.x), -0.5f, float(rect.y + rect.h));
+		depth_links.emplace_back(float(rect.x + rect.w), 0.5f, float(rect.y + rect.h));
+		depth_links.emplace_back(float(rect.x + rect.w), -0.5f, float(rect.y + rect.h));
+		depth_links.emplace_back(float(rect.x + rect.w), 0.5f, float(rect.y + rect.h));
+		depth_links.emplace_back(float(rect.x), -0.5f, float(rect.y + rect.h));
+	}
+	else
+	{
+		// Partial case. Need to create degenerates to link up.
+		assert(rect.y != 0);
+
+		unsigned start_empty_x = rect.x;
+		while (start_empty_x < rect.x + rect.w)
+		{
+			while (start_empty_x < rect.x + rect.w)
+			{
+				if (state.at(start_empty_x, rect.y + rect.h) == PixelState::Empty)
+					break;
+				start_empty_x++;
+			}
+
+			if (start_empty_x < rect.x + rect.w)
+			{
+				unsigned end_empty_x = start_empty_x + 1;
+				while (end_empty_x < rect.x + rect.w)
+				{
+					if (state.at(end_empty_x, rect.y + rect.h) == PixelState::Empty)
+						end_empty_x++;
+					else
+						break;
+				}
+
+				ClaimedRect neighbor;
+				neighbor.x = start_empty_x;
+				neighbor.w = end_empty_x - start_empty_x;
+				neighbor.y = rect.y + rect.h;
+				neighbor.h = 1;
+				rect.south_neighbors.push_back(rects.size());
+				rects.push_back(neighbor);
+
+				depth_links.emplace_back(float(start_empty_x), 0.5f, float(rect.y + rect.h));
+				depth_links.emplace_back(float(start_empty_x), -0.5f, float(rect.y + rect.h));
+				depth_links.emplace_back(float(end_empty_x), 0.5f, float(rect.y + rect.h));
+				depth_links.emplace_back(float(end_empty_x), -0.5f, float(rect.y + rect.h));
+				depth_links.emplace_back(float(end_empty_x), 0.5f, float(rect.y + rect.h));
+				depth_links.emplace_back(float(start_empty_x), -0.5f, float(rect.y + rect.h));
+
+				start_empty_x = end_empty_x + 1;
+			}
+		}
+	}
+}
+
+static void emit_depth_links(const StateBitmap &state, vector<vec3> &depth_links,
+                             ClaimedRect &rect, vector<ClaimedRect> &rects)
+{
+	emit_depth_links_north(state, depth_links, rect, rects);
+	emit_depth_links_south(state, depth_links, rect, rects);
 }
 
 bool voxelize_bitmap(VoxelizedBitmap &bitmap, const uint8_t *components, unsigned component, unsigned pixel_stride,
@@ -323,20 +467,47 @@ bool voxelize_bitmap(VoxelizedBitmap &bitmap, const uint8_t *components, unsigne
 		for (unsigned j = i + 1; j < num_rects; j++)
 		{
 			if (is_north_neighbor(rects[i], rects[j]))
-				rects[i].neighbors.push_back({ j, NeighborOrientation::North });
+				rects[i].north_neighbors.push_back(j);
 			else if (is_east_neighbor(rects[i], rects[j]))
-				rects[i].neighbors.push_back({ j, NeighborOrientation::East });
+				rects[i].east_neighbors.push_back(j);
 			else if (is_south_neighbor(rects[i], rects[j]))
-				rects[i].neighbors.push_back({ j, NeighborOrientation::South });
+				rects[i].south_neighbors.push_back(j);
 			else if (is_west_neighbor(rects[i], rects[j]))
-				rects[i].neighbors.push_back({ j, NeighborOrientation::West });
+				rects[i].west_neighbors.push_back(j);
 		}
 	}
 
-	vector<vec3> positions;
-	for (auto &rect : rects)
-		emit_rect(positions, rect, rects);
+	vector<vec3> depth_link_position;
+	unsigned primary_rects = rects.size();
+	for (unsigned i = 0; i < primary_rects; i++)
+	{
+		// rects[i] might be invalidated if rects changes, so move into a temporary.
+		auto r = move(rects[i]);
+		emit_depth_links(state, depth_link_position, r, rects);
+		rects[i] = move(r);
+	}
 
+	vector<vec3> positions;
+	for (unsigned i = 0; i < primary_rects; i++)
+		emit_rect(positions, rects[i], rects);
+
+	vector<vec3> back_positions;
+	back_positions.reserve(positions.size());
+	for (auto itr = begin(positions); itr != end(positions); )
+	{
+		itr->y = 0.5f;
+		auto v0 = *itr++;
+		itr->y = 0.5f;
+		auto v1 = *itr++;
+		itr->y = 0.5f;
+		auto v2 = *itr++;
+		back_positions.emplace_back(v0.x, -v0.y, v0.z);
+		back_positions.emplace_back(v2.x, -v2.y, v2.z);
+		back_positions.emplace_back(v1.x, -v1.y, v1.z);
+	}
+
+	positions.insert(end(positions), begin(back_positions), end(back_positions));
+	positions.insert(end(positions), begin(depth_link_position), end(depth_link_position));
 	bitmap.positions = move(positions);
 	return true;
 }

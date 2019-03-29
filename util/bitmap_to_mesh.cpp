@@ -24,6 +24,7 @@
 #include "muglm/muglm_impl.hpp"
 #include <assert.h>
 #include <list>
+#include <algorithm>
 
 using namespace std;
 
@@ -380,8 +381,6 @@ static void emit_depth_links_south(const StateBitmap &state, vector<vec3> &depth
 	else
 	{
 		// Partial case. Need to create degenerates to link up.
-		assert(rect.y != 0);
-
 		unsigned start_empty_x = rect.x;
 		while (start_empty_x < rect.x + rect.w)
 		{
@@ -424,11 +423,71 @@ static void emit_depth_links_south(const StateBitmap &state, vector<vec3> &depth
 	}
 }
 
+static void emit_depth_links_east(const StateBitmap &state, vector<vec3> &depth_links,
+                                  ClaimedRect &rect, vector<ClaimedRect> &rects)
+{
+	// South edge.
+	if (state.rect_is_all_state(int(rect.x) + 1, int(rect.y), 1, rect.h, PixelState::Empty))
+	{
+		// Simple case, no degenerates needed.
+		depth_links.emplace_back(float(rect.x + rect.w), 0.5f, float(rect.y));
+		depth_links.emplace_back(float(rect.x + rect.w), 0.5f, float(rect.y + rect.h));
+		depth_links.emplace_back(float(rect.x + rect.w), -0.5f, float(rect.y));
+		depth_links.emplace_back(float(rect.x + rect.w), -0.5f, float(rect.y + rect.h));
+		depth_links.emplace_back(float(rect.x + rect.w), -0.5f, float(rect.y));
+		depth_links.emplace_back(float(rect.x + rect.w), 0.5f, float(rect.y + rect.h));
+	}
+	else
+	{
+		// Partial case. Need to create degenerates to link up.
+		unsigned start_empty_y = rect.y;
+		while (start_empty_y < rect.y + rect.h)
+		{
+			while (start_empty_y < rect.y + rect.h)
+			{
+				if (state.at(rect.x + rect.w, start_empty_y) == PixelState::Empty)
+					break;
+				start_empty_y++;
+			}
+
+			if (start_empty_y < rect.y + rect.h)
+			{
+				unsigned end_empty_y = start_empty_y + 1;
+				while (end_empty_y < rect.y + rect.h)
+				{
+					if (state.at(rect.x + rect.w, end_empty_y) == PixelState::Empty)
+						end_empty_y++;
+					else
+						break;
+				}
+
+				ClaimedRect neighbor;
+				neighbor.x = rect.x + rect.w;
+				neighbor.w = 1;
+				neighbor.y = start_empty_y;
+				neighbor.h = end_empty_y - start_empty_y;
+				rect.east_neighbors.push_back(rects.size());
+				rects.push_back(neighbor);
+
+				depth_links.emplace_back(float(rect.x + rect.w), 0.5f, float(start_empty_y));
+				depth_links.emplace_back(float(rect.x + rect.w), 0.5f, float(end_empty_y));
+				depth_links.emplace_back(float(rect.x + rect.w), -0.5f, float(start_empty_y));
+				depth_links.emplace_back(float(rect.x + rect.w), -0.5f, float(end_empty_y));
+				depth_links.emplace_back(float(rect.x + rect.w), -0.5f, float(start_empty_y));
+				depth_links.emplace_back(float(rect.x + rect.w), 0.5f, float(end_empty_y));
+
+				start_empty_y = end_empty_y + 1;
+			}
+		}
+	}
+}
+
 static void emit_depth_links(const StateBitmap &state, vector<vec3> &depth_links,
                              ClaimedRect &rect, vector<ClaimedRect> &rects)
 {
 	emit_depth_links_north(state, depth_links, rect, rects);
 	emit_depth_links_south(state, depth_links, rect, rects);
+	emit_depth_links_east(state, depth_links, rect, rects);
 }
 
 bool voxelize_bitmap(VoxelizedBitmap &bitmap, const uint8_t *components, unsigned component, unsigned pixel_stride,

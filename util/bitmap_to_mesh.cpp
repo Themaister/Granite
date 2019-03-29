@@ -21,6 +21,7 @@
  */
 
 #include "bitmap_to_mesh.hpp"
+#include "muglm/muglm_impl.hpp"
 #include <assert.h>
 #include <list>
 
@@ -91,13 +92,12 @@ public:
 		}
 	}
 
-	bool pop_next_pending(uvec2 &coord)
+	bool get_next_pending(uvec2 &coord)
 	{
 		if (pending_pixels.empty())
 			return false;
 
 		coord = pending_pixels.front();
-		pending_pixels.erase(pending_pixels.begin());
 		return true;
 	}
 
@@ -162,6 +162,131 @@ static ClaimedRect find_largest_pending_rect(StateBitmap &state, unsigned x, uns
 		return xy_rect;
 }
 
+static bool horizontal_overlap(const ClaimedRect &a, const ClaimedRect &b)
+{
+	if (a.x + a.w <= b.x)
+		return false;
+	if (b.x + b.w <= a.x)
+		return false;
+
+	return true;
+}
+
+static bool vertical_overlap(const ClaimedRect &a, const ClaimedRect &b)
+{
+	if (a.y + a.h <= b.y)
+		return false;
+	if (b.y + b.h <= a.y)
+		return false;
+
+	return true;
+}
+
+static bool is_north_neighbor(const ClaimedRect &a, const ClaimedRect &b)
+{
+	// Check for overlap on north edge.
+	if (b.y + b.h != a.y)
+		return false;
+	return horizontal_overlap(a, b);
+}
+
+static bool is_east_neighbor(const ClaimedRect &a, const ClaimedRect &b)
+{
+	// Check for overlap on east edge.
+	if (a.x + a.w != b.x)
+		return false;
+	return vertical_overlap(a, b);
+}
+
+static bool is_south_neighbor(const ClaimedRect &a, const ClaimedRect &b)
+{
+	// Check for overlap on south edge.
+	if (a.y + a.h != b.y)
+		return false;
+	return horizontal_overlap(a, b);
+}
+
+static bool is_west_neighbor(const ClaimedRect &a, const ClaimedRect &b)
+{
+	// Check for overlap on west edge.
+	if (b.x + b.w != a.x)
+		return false;
+	return vertical_overlap(a, b);
+}
+
+static bool is_degenerate(const vec3 &a, const vec3 &b, const vec3 &c)
+{
+	return all(equal(a, b)) || all(equal(a, c)) || all(equal(b, c));
+}
+
+static void emit_neighbor(vector<vec3> &position,
+                          const ClaimedRect &rect,
+                          NeighborOrientation orientation,
+                          const ClaimedRect &neighbor)
+{
+	const float e = 0.0f;
+	vec3 coords[4];
+
+	switch (orientation)
+	{
+	case NeighborOrientation::North:
+		coords[0] = vec3(float(rect.x) + e, 0.0f, float(rect.y) + e);
+		coords[1] = vec3(float(rect.x + rect.w) - e, 0.0f, float(rect.y) + e);
+		coords[2] = vec3(float(neighbor.x + neighbor.w) - e, 0.0f, float(neighbor.y + neighbor.h) - e);
+		coords[3] = vec3(float(neighbor.x) + e, 0.0f, float(neighbor.y + neighbor.h) - e);
+		break;
+
+	case NeighborOrientation::South:
+		coords[0] = vec3(float(neighbor.x) + e, 0.0f, float(neighbor.y) + e);
+		coords[1] = vec3(float(neighbor.x + neighbor.w) - e, 0.0f, float(neighbor.y) + e);
+		coords[2] = vec3(float(rect.x + rect.w) - e, 0.0f, float(rect.y + rect.h) - e);
+		coords[3] = vec3(float(rect.x) + e, 0.0f, float(rect.y + rect.h) - e);
+		break;
+
+	case NeighborOrientation::East:
+		coords[0] = vec3(float(rect.x + rect.w) - e, 0.0f, float(rect.y) + e);
+		coords[1] = vec3(float(rect.x + rect.w) - e, 0.0f, float(rect.y + rect.h) - e);
+		coords[2] = vec3(float(neighbor.x) + e, 0.0f, float(neighbor.y + neighbor.h) - e);
+		coords[3] = vec3(float(neighbor.x) + e, 0.0f, float(neighbor.y) + e);
+		break;
+
+	case NeighborOrientation::West:
+		coords[0] = vec3(float(neighbor.x + neighbor.w) - e, 0.0f, float(neighbor.y) + e);
+		coords[1] = vec3(float(neighbor.x + neighbor.w) - e, 0.0f, float(neighbor.y + neighbor.h) - e);
+		coords[2] = vec3(float(rect.x) + e, 0.0f, float(rect.y + rect.h) - e);
+		coords[3] = vec3(float(rect.x) + e, 0.0f, float(rect.y) + e);
+		break;
+	}
+
+	if (!is_degenerate(coords[0], coords[1], coords[2]))
+	{
+		position.push_back(coords[0]);
+		position.push_back(coords[1]);
+		position.push_back(coords[2]);
+	}
+
+	if (!is_degenerate(coords[3], coords[0], coords[2]))
+	{
+		position.push_back(coords[3]);
+		position.push_back(coords[0]);
+		position.push_back(coords[2]);
+	}
+}
+
+static void emit_rect(vector<vec3> &position, const ClaimedRect &rect, const vector<ClaimedRect> &all_rects)
+{
+	const float e = 0.0f;
+	position.emplace_back(float(rect.x) + e, 0.0f, float(rect.y) + e);
+	position.emplace_back(float(rect.x) + e, 0.0f, float(rect.y + rect.h) - e);
+	position.emplace_back(float(rect.x + rect.w) - e, 0.0f, float(rect.y) + e);
+	position.emplace_back(float(rect.x + rect.w) - e, 0.0f, float(rect.y + rect.h) - e);
+	position.emplace_back(float(rect.x + rect.w) - e, 0.0f, float(rect.y) + e);
+	position.emplace_back(float(rect.x) + e, 0.0f, float(rect.y + rect.h) - e);
+
+	for (auto &n : rect.neighbors)
+		emit_neighbor(position, rect, n.orientation, all_rects[n.index]);
+}
+
 bool voxelize_bitmap(VoxelizedBitmap &bitmap, const uint8_t *components, unsigned component, unsigned pixel_stride,
                      unsigned width, unsigned height, unsigned row_stride)
 {
@@ -183,14 +308,36 @@ bool voxelize_bitmap(VoxelizedBitmap &bitmap, const uint8_t *components, unsigne
 	vector<ClaimedRect> rects;
 
 	uvec2 coord;
-	while (state.pop_next_pending(coord))
+	while (state.get_next_pending(coord))
 	{
 		ClaimedRect rect = find_largest_pending_rect(state, coord.x, coord.y);
+		state.claim_rect(rect.x, rect.y, rect.w, rect.h);
 		rects.push_back(rect);
 	}
 
 	// Find all adjacent neighbors. We will need to emit degenerate triangles to get water-tight meshes.
+	// FIXME: Slow, O(n^2).
+	unsigned num_rects = rects.size();
+	for (unsigned i = 0; i < num_rects; i++)
+	{
+		for (unsigned j = i + 1; j < num_rects; j++)
+		{
+			if (is_north_neighbor(rects[i], rects[j]))
+				rects[i].neighbors.push_back({ j, NeighborOrientation::North });
+			else if (is_east_neighbor(rects[i], rects[j]))
+				rects[i].neighbors.push_back({ j, NeighborOrientation::East });
+			else if (is_south_neighbor(rects[i], rects[j]))
+				rects[i].neighbors.push_back({ j, NeighborOrientation::South });
+			else if (is_west_neighbor(rects[i], rects[j]))
+				rects[i].neighbors.push_back({ j, NeighborOrientation::West });
+		}
+	}
 
+	vector<vec3> positions;
+	for (auto &rect : rects)
+		emit_rect(positions, rect, rects);
+
+	bitmap.positions = move(positions);
 	return true;
 }
 }

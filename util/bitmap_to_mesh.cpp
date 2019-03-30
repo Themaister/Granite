@@ -166,11 +166,55 @@ static ClaimedRect find_largest_pending_rect(StateBitmap &state, unsigned x, uns
 			yx_rect.w++;
 	}
 
-	// Accept the one with largest area (greedy).
-	if (xy_rect.w * xy_rect.h < yx_rect.w * yx_rect.h)
-		return yx_rect;
-	else
-		return xy_rect;
+	ClaimedRect xy_interleave_rect = rect;
+	{
+		bool keep_going;
+		do
+		{
+			keep_going = false;
+			if (state.rect_is_all_state(xy_interleave_rect.x + xy_interleave_rect.w, xy_interleave_rect.y, 1, xy_interleave_rect.h, PixelState::Pending))
+			{
+				xy_interleave_rect.w++;
+				keep_going = true;
+			}
+
+			if (state.rect_is_all_state(xy_interleave_rect.x, xy_interleave_rect.y + xy_interleave_rect.h, xy_interleave_rect.w, 1, PixelState::Pending))
+			{
+				xy_interleave_rect.h++;
+				keep_going = true;
+			}
+		} while (keep_going);
+	}
+
+	ClaimedRect yx_interleave_rect = rect;
+	{
+		bool keep_going;
+		do
+		{
+			keep_going = false;
+			if (state.rect_is_all_state(yx_interleave_rect.x, yx_interleave_rect.y + yx_interleave_rect.h, yx_interleave_rect.w, 1, PixelState::Pending))
+			{
+				yx_interleave_rect.h++;
+				keep_going = true;
+			}
+
+			if (state.rect_is_all_state(yx_interleave_rect.x + yx_interleave_rect.w, yx_interleave_rect.y, 1, yx_interleave_rect.h, PixelState::Pending))
+			{
+				yx_interleave_rect.w++;
+				keep_going = true;
+			}
+		} while (keep_going);
+	}
+
+	rect = xy_rect;
+	const auto test_rect = [&](const ClaimedRect &r) {
+		if (r.w * r.h > rect.w * rect.h)
+			rect = r;
+	};
+	test_rect(yx_rect);
+	test_rect(xy_interleave_rect);
+	test_rect(yx_interleave_rect);
+	return rect;
 }
 
 static bool horizontal_overlap(const ClaimedRect &a, const ClaimedRect &b)

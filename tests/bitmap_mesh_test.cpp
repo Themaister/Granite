@@ -81,6 +81,8 @@ int main()
 	scene.materials = { &mat, 1 };
 	scene.meshes = { &m, 1 };
 	scene.nodes = { &n, 1 };
+	options.quantize_attributes = true;
+	options.optimize_meshes = true;
 	SceneFormats::export_scene_to_glb(scene, "/tmp/test.glb", options);
 	Global::deinit();
 }

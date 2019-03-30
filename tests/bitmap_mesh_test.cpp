@@ -20,36 +20,21 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "application.hpp"
-#include "command_buffer.hpp"
-#include "device.hpp"
-#include "os_filesystem.hpp"
 #include "math.hpp"
 #include "bitmap_to_mesh.hpp"
-#include "muglm/muglm_impl.hpp"
+#include "mesh_util.hpp"
+#include "gltf_export.hpp"
 #include <string.h>
 
 using namespace Granite;
-using namespace Vulkan;
 
-struct BitmapMeshApplication : Granite::Application, Granite::EventHandler
+int main()
 {
-	void render_frame(double, double)
-	{
-		auto &wsi = get_wsi();
-		auto &device = wsi.get_device();
-		auto cmd = device.request_command_buffer();
-
-		auto rp = device.get_swapchain_render_pass(SwapchainRenderPass::Depth);
-		rp.clear_color[0].float32[0] = 0.1f;
-		rp.clear_color[0].float32[1] = 0.2f;
-		rp.clear_color[0].float32[2] = 0.3f;
-		cmd->begin_render_pass(rp);
-
-		VoxelizedBitmap bitmap;
+	Global::init();
+	VoxelizedBitmap bitmap;
 #define O 0xff
 #define x 0x00
-		static const uint8_t comps[] = {
+	static const uint8_t comps[] = {
 			x, x, x, O, O, x, x, x,
 			x, x, O, O, O, O, x, x,
 			x, O, O, O, x, O, O, x,
@@ -58,58 +43,44 @@ struct BitmapMeshApplication : Granite::Application, Granite::EventHandler
 			x, O, O, O, O, O, O, x,
 			x, x, O, O, O, O, x, x,
 			x, x, x, O, O, x, x, x,
-		};
+	};
 #undef O
 #undef x
-		voxelize_bitmap(bitmap, comps, 0, 1, 8, 8, 8);
+	voxelize_bitmap(bitmap, comps, 0, 1, 8, 8, 8);
 
-		Camera cam;
-		cam.set_aspect(16.0f / 9.0f);
-		cam.set_depth_range(1.0f, 100.0f);
-		cam.set_fovy(0.4f * pi<float>());
-		cam.look_at(vec3(4.0f, 5.0f, 4.0f), vec3(4.0f, 0.0f, 4.0f), vec3(0.0f, 0.0f, -1.0f));
+	SceneFormats::Mesh m;
+	m.indices.resize(bitmap.indices.size() * sizeof(uint32_t));
+	memcpy(m.indices.data(), bitmap.indices.data(), m.indices.size());
+	m.positions.resize(bitmap.positions.size() * sizeof(vec3));
+	memcpy(m.positions.data(), bitmap.positions.data(), m.positions.size());
+	m.attributes.resize(bitmap.normals.size() * sizeof(vec3));
+	memcpy(m.attributes.data(), bitmap.normals.data(), m.attributes.size());
+	m.position_stride = sizeof(vec3);
+	m.attribute_stride = sizeof(vec3);
+	m.attribute_layout[Util::ecast(MeshAttribute::Position)].format = VK_FORMAT_R32G32B32_SFLOAT;
+	m.attribute_layout[Util::ecast(MeshAttribute::Normal)].format = VK_FORMAT_R32G32B32_SFLOAT;
+	m.index_type = VK_INDEX_TYPE_UINT32;
+	m.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	m.count = bitmap.indices.size();
+	m.has_material = true;
+	m.material_index = 0;
+	m.static_aabb = AABB(vec3(0.0f, -0.5f, 0.0f), vec3(8.0f, 0.5f, 8.0f));
 
-		mat4 vp = cam.get_projection() * cam.get_view();
-		cmd->push_constants(&vp, 0, sizeof(vp));
+	SceneFormats::MaterialInfo mat;
+	mat.uniform_base_color = vec4(1.0f, 0.8f, 0.6f, 1.0f);
+	mat.uniform_metallic = 0.0f;
+	mat.uniform_roughness = 1.0f;
+	mat.pipeline = DrawPipeline::Opaque;
 
-		cmd->set_opaque_state();
-		cmd->set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-		cmd->set_wireframe(true);
-		memcpy(cmd->allocate_vertex_data(0, bitmap.positions.size() * sizeof(vec3), sizeof(vec3)),
-		       bitmap.positions.data(),
-		       bitmap.positions.size() * sizeof(vec3));
-		cmd->set_vertex_attrib(0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0);
-		cmd->set_program("assets://shaders/bitmap_mesh.vert", "assets://shaders/bitmap_mesh.frag");
-		cmd->draw(bitmap.positions.size());
+	SceneFormats::SceneInformation scene;
+	SceneFormats::ExportOptions options;
 
-		cmd->end_render_pass();
-		device.submit(cmd);
-	}
-};
+	SceneFormats::Node n;
+	n.meshes.push_back(0);
 
-namespace Granite
-{
-Application *application_create(int, char **)
-{
-	application_dummy();
-
-#ifdef ASSET_DIRECTORY
-	const char *asset_dir = getenv("ASSET_DIRECTORY");
-	if (!asset_dir)
-		asset_dir = ASSET_DIRECTORY;
-
-	Global::filesystem()->register_protocol("assets", std::unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir)));
-#endif
-
-	try
-	{
-		auto *app = new BitmapMeshApplication();
-		return app;
-	}
-	catch (const std::exception &e)
-	{
-		LOGE("application_create() threw exception: %s\n", e.what());
-		return nullptr;
-	}
-}
+	scene.materials = { &mat, 1 };
+	scene.meshes = { &m, 1 };
+	scene.nodes = { &n, 1 };
+	SceneFormats::export_scene_to_glb(scene, "/tmp/test.glb", options);
+	Global::deinit();
 }

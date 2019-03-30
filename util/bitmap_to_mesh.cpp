@@ -22,6 +22,7 @@
 
 #include "bitmap_to_mesh.hpp"
 #include "muglm/muglm_impl.hpp"
+#include "meshoptimizer.h"
 #include <assert.h>
 #include <list>
 #include <algorithm>
@@ -551,6 +552,19 @@ static void emit_depth_links(const StateBitmap &state, vector<vec3> &depth_links
 	emit_depth_links_west(state, depth_links, rect, rects);
 }
 
+static void compute_normals(vector<vec3> &normals, const vector<vec3> &positions)
+{
+	for (size_t i = 0; i < positions.size(); i += 3)
+	{
+		vec3 normal = sign(cross(positions[i + 1] - positions[i + 0], positions[i + 2] - positions[i + 0]));
+		if (all(equal(normal, vec3(0.0f))))
+			normal.y = sign(positions[i].y);
+
+		for (size_t j = 0; j < 3; j++)
+			normals[i + j] = normal;
+	}
+}
+
 bool voxelize_bitmap(VoxelizedBitmap &bitmap, const uint8_t *components, unsigned component, unsigned pixel_stride,
                      unsigned width, unsigned height, unsigned row_stride)
 {
@@ -628,7 +642,28 @@ bool voxelize_bitmap(VoxelizedBitmap &bitmap, const uint8_t *components, unsigne
 
 	positions.insert(end(positions), begin(back_positions), end(back_positions));
 	positions.insert(end(positions), begin(depth_link_position), end(depth_link_position));
+
+	vector<vec3> normals(positions.size());
+	compute_normals(normals, positions);
+
+	vector<uint32_t> output_indices(positions.size());
+	meshopt_Stream streams[2] = {};
+	streams[0].data = positions.data();
+	streams[0].size = sizeof(vec3);
+	streams[0].stride = sizeof(vec3);
+	streams[1].data = normals.data();
+	streams[1].size = sizeof(vec3);
+	streams[1].stride = sizeof(vec3);
+	size_t unique_vertices = meshopt_generateVertexRemapMulti(output_indices.data(), nullptr, positions.size(), positions.size(), streams, 2);
+
+	meshopt_remapVertexBuffer(positions.data(), positions.data(), positions.size(), sizeof(vec3), output_indices.data());
+	meshopt_remapVertexBuffer(normals.data(), normals.data(), normals.size(), sizeof(vec3), output_indices.data());
+	positions.resize(unique_vertices);
+	normals.resize(unique_vertices);
+
 	bitmap.positions = move(positions);
+	bitmap.normals = move(normals);
+	bitmap.indices = move(output_indices);
 	return true;
 }
 }

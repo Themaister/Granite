@@ -29,6 +29,7 @@ namespace Granite
 struct VoxelizedBitmap
 {
 	std::vector<vec3> positions;
+	std::vector<vec3> normals;
 	std::vector<uint32_t> indices;
 };
 

@@ -23,9 +23,11 @@
 #include "bitmap_to_mesh.hpp"
 #include "muglm/muglm_impl.hpp"
 #include "meshoptimizer.h"
+#include "hash.hpp"
 #include <assert.h>
 #include <list>
 #include <algorithm>
+#include <unordered_set>
 
 using namespace std;
 
@@ -663,7 +665,29 @@ bool voxelize_bitmap(VoxelizedBitmap &bitmap, const uint8_t *components, unsigne
 
 	bitmap.positions = move(positions);
 	bitmap.normals = move(normals);
-	bitmap.indices = move(output_indices);
+	bitmap.indices.reserve(output_indices.size());
+
+	// We might emit duplicate primitives, remove them.
+	unordered_set<Util::Hash> seen_primitives;
+	seen_primitives.reserve(output_indices.size() / 3);
+	for (size_t i = 0; i < output_indices.size(); i += 3)
+	{
+		for (unsigned j = 0; j < 3; j++)
+		{
+			Util::Hasher h;
+			h.u32(output_indices[i + (j + 0) % 3]);
+			h.u32(output_indices[i + (j + 1) % 3]);
+			h.u32(output_indices[i + (j + 2) % 3]);
+			if (seen_primitives.count(h.get()))
+				goto out;
+			else
+				seen_primitives.insert(h.get());
+		}
+
+		for (unsigned j = 0; j < 3; j++)
+			bitmap.indices.push_back(output_indices[i + j]);
+out:;
+	}
 	return true;
 }
 }

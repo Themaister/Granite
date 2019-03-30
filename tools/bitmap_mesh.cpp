@@ -197,7 +197,7 @@ int main(int argc, char **argv)
 	scene.materials = { &mat, 1 };
 	scene.meshes = { &m, 1 };
 	scene.nodes = { &n, 1 };
-	options.quantize_attributes = true;
+	options.quantize_attributes = false;
 	options.optimize_meshes = true;
 	if (!SceneFormats::export_scene_to_glb(scene, output, options))
 	{

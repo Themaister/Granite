@@ -23,6 +23,7 @@
 #include "math.hpp"
 #include "bitmap_to_mesh.hpp"
 #include "mesh_util.hpp"
+#include "texture_files.hpp"
 #include "gltf_export.hpp"
 #include <string.h>
 
@@ -31,43 +32,70 @@ using namespace Granite;
 int main()
 {
 	Global::init();
+	auto dino = load_texture_from_file("/tmp/dino_down.png");
+	if (dino.empty())
+		return 1;
+
+	unsigned width = dino.get_layout().get_width();
+	unsigned height = dino.get_layout().get_height();
+	float inv_width = 1.0f / width;
+	float inv_height = 1.0f / height;
+
 	VoxelizedBitmap bitmap;
-#define O 0xff
-#define x 0x00
-	static const uint8_t comps[] = {
-			x, x, x, O, O, x, x, x,
-			x, x, O, O, O, O, x, x,
-			x, O, O, O, x, O, O, x,
-			O, O, O, x, x, O, O, O,
-			O, O, O, x, x, O, O, O,
-			x, O, O, O, O, O, O, x,
-			x, x, O, O, O, O, x, x,
-			x, x, x, O, O, x, x, x,
+	if (!voxelize_bitmap(bitmap,
+	                     dino.get_layout().data_2d<u8vec4>(0, 0, 0, 0)->data, 3, 4,
+	                     width, height, width * 4))
+		return 1;
+
+	const bool flip_winding = true;
+	if (flip_winding)
+	{
+		for (size_t i = 0; i < bitmap.indices.size(); i += 3)
+			std::swap(bitmap.indices[i + 1], bitmap.indices[i + 2]);
+		for (auto &n : bitmap.normals)
+			n = -n;
+	}
+
+	struct Attr
+	{
+		vec3 normal;
+		vec2 uv;
 	};
-#undef O
-#undef x
-	voxelize_bitmap(bitmap, comps, 0, 1, 8, 8, 8);
+	std::vector<Attr> attrs;
+	attrs.reserve(bitmap.normals.size());
+
+	for (size_t i = 0; i < bitmap.normals.size(); i++)
+		attrs.push_back({ bitmap.normals[i], vec2(bitmap.positions[i].x * inv_width, bitmap.positions[i].z * inv_height) });
+
+	const float y_scale = 4.0f;
+	for (auto &pos : bitmap.positions)
+		pos.y *= y_scale;
 
 	SceneFormats::Mesh m;
 	m.indices.resize(bitmap.indices.size() * sizeof(uint32_t));
 	memcpy(m.indices.data(), bitmap.indices.data(), m.indices.size());
 	m.positions.resize(bitmap.positions.size() * sizeof(vec3));
 	memcpy(m.positions.data(), bitmap.positions.data(), m.positions.size());
-	m.attributes.resize(bitmap.normals.size() * sizeof(vec3));
-	memcpy(m.attributes.data(), bitmap.normals.data(), m.attributes.size());
+	m.attributes.resize(attrs.size() * sizeof(Attr));
+	memcpy(m.attributes.data(), attrs.data(), m.attributes.size());
 	m.position_stride = sizeof(vec3);
-	m.attribute_stride = sizeof(vec3);
+	m.attribute_stride = sizeof(Attr);
 	m.attribute_layout[Util::ecast(MeshAttribute::Position)].format = VK_FORMAT_R32G32B32_SFLOAT;
 	m.attribute_layout[Util::ecast(MeshAttribute::Normal)].format = VK_FORMAT_R32G32B32_SFLOAT;
+	m.attribute_layout[Util::ecast(MeshAttribute::Normal)].offset = offsetof(Attr, normal);
+	m.attribute_layout[Util::ecast(MeshAttribute::UV)].format = VK_FORMAT_R32G32_SFLOAT;
+	m.attribute_layout[Util::ecast(MeshAttribute::UV)].offset = offsetof(Attr, uv);
+
 	m.index_type = VK_INDEX_TYPE_UINT32;
 	m.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 	m.count = bitmap.indices.size();
 	m.has_material = true;
 	m.material_index = 0;
-	m.static_aabb = AABB(vec3(0.0f, -0.5f, 0.0f), vec3(8.0f, 0.5f, 8.0f));
+	m.static_aabb = AABB(vec3(0.0f, -0.5f * y_scale, 0.0f), vec3(width, 0.5f * y_scale, height));
 
 	SceneFormats::MaterialInfo mat;
-	mat.uniform_base_color = vec4(1.0f, 0.8f, 0.6f, 1.0f);
+	mat.bandlimited_pixel = true;
+	mat.base_color.path = "/tmp/dino_down.png";
 	mat.uniform_metallic = 0.0f;
 	mat.uniform_roughness = 1.0f;
 	mat.pipeline = DrawPipeline::Opaque;

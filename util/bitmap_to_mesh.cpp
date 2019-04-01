@@ -120,10 +120,16 @@ public:
 		return true;
 	}
 
+	void pop_next_pending()
+	{
+		pending_pixels.erase(pending_pixels.begin());
+	}
+
 	void add_pending(unsigned x, unsigned y)
 	{
-		auto itr = pending_pixels.insert(pending_pixels.end(), uvec2(x, y));
+		auto itr = pending_pixels.insert(pending_pixels.begin(), uvec2(x, y));
 		state_nodes[y * width + x] = itr;
+		assert(at(x, y) != PixelState::Pending);
 		at(x, y) = PixelState::Pending;
 	}
 
@@ -169,6 +175,49 @@ struct ClaimedRect
 	vector<unsigned> south_neighbors;
 	vector<unsigned> west_neighbors;
 };
+
+static ClaimedRect find_largest_pending_rect_backwards(StateBitmap &state, const ClaimedRect &rect)
+{
+	ClaimedRect xy_rect = rect;
+	{
+		// Be greedy in X, then in Y.
+		while (xy_rect.x > 0 && state.rect_is_all_state(xy_rect.x - 1, xy_rect.y, 1, xy_rect.h, PixelState::Pending))
+		{
+			xy_rect.w++;
+			xy_rect.x--;
+		}
+
+		while (xy_rect.y > 0 && state.rect_is_all_state(xy_rect.x, xy_rect.y - 1, xy_rect.w, 1, PixelState::Pending))
+		{
+			xy_rect.h++;
+			xy_rect.y--;
+		}
+	}
+
+	ClaimedRect yx_rect = rect;
+	{
+		// Be greedy in Y, then in X.
+		while (yx_rect.y > 0 && state.rect_is_all_state(yx_rect.x, yx_rect.y - 1, yx_rect.w, 1, PixelState::Pending))
+		{
+			yx_rect.h++;
+			yx_rect.y--;
+		}
+
+		while (yx_rect.x > 0 && state.rect_is_all_state(yx_rect.x - 1, yx_rect.y, 1, yx_rect.h, PixelState::Pending))
+		{
+			yx_rect.w++;
+			yx_rect.x--;
+		}
+	}
+
+	auto backward_rect = xy_rect;
+	const auto test_rect = [&](const ClaimedRect &r) {
+		if (r.w * r.h > backward_rect.w * backward_rect.h)
+			backward_rect = r;
+	};
+	test_rect(yx_rect);
+	return backward_rect;
+}
 
 static ClaimedRect find_largest_pending_rect(StateBitmap &state, unsigned x, unsigned y)
 {
@@ -244,7 +293,9 @@ static ClaimedRect find_largest_pending_rect(StateBitmap &state, unsigned x, uns
 	test_rect(yx_rect);
 	test_rect(xy_interleave_rect);
 	test_rect(yx_interleave_rect);
-	return rect;
+
+	// Walk backwards since we might have skipped over some possible pixels through mipmapping.
+	return find_largest_pending_rect_backwards(state, rect);
 }
 
 static bool horizontal_overlap(const ClaimedRect &a, const ClaimedRect &b)
@@ -673,27 +724,34 @@ bool voxelize_bitmap(VoxelizedBitmap &bitmap, const uint8_t *components, unsigne
 	while (state_mipmap.back().get_width() > 1 || state_mipmap.back().get_height() > 1)
 		state_mipmap.push_back(state_mipmap.back().promote_2x2_quads());
 
+	// Move frontier checks for larger mipmaps first.
+	for (size_t level = 1; level < state_mipmap.size(); level++)
+	{
+		unsigned rect_size = 1u << level;
+		uvec2 coord;
+		while (state_mipmap[level].get_next_pending(coord))
+		{
+			for (unsigned y = 0; y < rect_size; y++)
+				for (unsigned x = 0; x < rect_size; x++)
+					if (x != 0 || y != 0)
+						state_mipmap.front().add_pending((coord.x << level) + x, (coord.y << level) + y);
+
+			// Make sure original coordinate is pushed last (first in list).
+			state_mipmap.front().add_pending(coord.x << level, coord.y << level);
+			state_mipmap[level].pop_next_pending();
+		}
+	}
+
 	// Create all rects which the bitmap is made of.
 	vector<ClaimedRect> rects;
 
-	for (int level = int(state_mipmap.size()) - 1; level >= 0; level--)
+	uvec2 coord;
+	auto &state = state_mipmap.front();
+	while (state.get_next_pending(coord))
 	{
-		uvec2 coord;
-		auto &state = state_mipmap[level];
-		while (state.get_next_pending(coord))
-		{
-			ClaimedRect rect = find_largest_pending_rect(state, coord.x, coord.y);
-			state.claim_rect(rect.x, rect.y, rect.w, rect.h);
-
-			// Adjust for size.
-			rect.x <<= level;
-			rect.y <<= level;
-			rect.w <<= level;
-			rect.h <<= level;
-			rect.w = std::min(width - rect.x, rect.w);
-			rect.h = std::min(height - rect.y, rect.h);
-			rects.push_back(rect);
-		}
+		ClaimedRect rect = find_largest_pending_rect(state, coord.x, coord.y);
+		state.claim_rect(rect.x, rect.y, rect.w, rect.h);
+		rects.push_back(rect);
 	}
 
 	// Find all adjacent neighbors. We will need to emit degenerate triangles to get water-tight meshes.
@@ -717,15 +775,13 @@ bool voxelize_bitmap(VoxelizedBitmap &bitmap, const uint8_t *components, unsigne
 	vector<vec3> depth_link_position;
 	unsigned primary_rects = rects.size();
 
-	if (options.depth)
+	// Have to emit depth link neighbors to patch up degenerate strips.
+	for (unsigned i = 0; i < primary_rects; i++)
 	{
-		for (unsigned i = 0; i < primary_rects; i++)
-		{
-			// rects[i] might be invalidated if rects changes, so move into a temporary.
-			auto r = move(rects[i]);
-			emit_depth_links(state_mipmap.front(), depth_link_position, r, rects);
-			rects[i] = move(r);
-		}
+		// rects[i] might be invalidated if rects changes, so move into a temporary.
+		auto r = move(rects[i]);
+		emit_depth_links(state_mipmap.front(), depth_link_position, r, rects);
+		rects[i] = move(r);
 	}
 
 	vector<vec3> positions;

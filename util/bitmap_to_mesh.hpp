@@ -33,6 +33,11 @@ struct VoxelizedBitmap
 	std::vector<uint32_t> indices;
 };
 
+struct VoxelizeBitmapOptions
+{
+	bool depth = true;
+};
+
 bool voxelize_bitmap(VoxelizedBitmap &bitmap, const uint8_t *components, unsigned component, unsigned pixel_stride,
-                     unsigned width, unsigned height, unsigned row_stride);
+                     unsigned width, unsigned height, unsigned row_stride, const VoxelizeBitmapOptions &options);
 }

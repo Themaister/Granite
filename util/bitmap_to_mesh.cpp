@@ -48,6 +48,18 @@ public:
 	{
 		state_bitmap.resize(width * height);
 		state_nodes.resize(width * height);
+		for (auto &b : state_bitmap)
+			b = PixelState::Empty;
+	}
+
+	unsigned get_width() const
+	{
+		return width;
+	}
+
+	unsigned get_height() const
+	{
+		return height;
 	}
 
 	PixelState &at(unsigned x, unsigned y)
@@ -104,6 +116,7 @@ public:
 			return false;
 
 		coord = pending_pixels.front();
+		assert(at(coord.x, coord.y) == PixelState::Pending);
 		return true;
 	}
 
@@ -111,6 +124,31 @@ public:
 	{
 		auto itr = pending_pixels.insert(pending_pixels.end(), uvec2(x, y));
 		state_nodes[y * width + x] = itr;
+		at(x, y) = PixelState::Pending;
+	}
+
+	StateBitmap promote_2x2_quads()
+	{
+		StateBitmap bitmap((width + 1u) >> 1u, (height + 1u) >> 1u);
+
+		for (unsigned y = 0; y < height; y += 2)
+		{
+			for (unsigned x = 0; x < width; x += 2)
+			{
+				bool pending00 = at(x, y) == PixelState::Pending;
+				bool pending10 = (x + 1 >= width) || (at(x + 1, y) == PixelState::Pending);
+				bool pending01 = (y + 1 >= height) || (at(x, y + 1) == PixelState::Pending);
+				bool pending11 = (x + 1 >= width) || (y + 1 >= height) || (at(x + 1, y + 1) == PixelState::Pending);
+				if (pending00 && pending10 && pending01 && pending11)
+				{
+					// Don't bother checking this later in the finer level.
+					claim_rect(x, y, std::min(2u, width - x), std::min(2u, height - y));
+					bitmap.add_pending(x >> 1u, y >> 1u);
+				}
+			}
+		}
+
+		return bitmap;
 	}
 
 private:
@@ -613,31 +651,49 @@ static void compute_normals(vector<vec3> &normals, const vector<vec3> &positions
 }
 
 bool voxelize_bitmap(VoxelizedBitmap &bitmap, const uint8_t *components, unsigned component, unsigned pixel_stride,
-                     unsigned width, unsigned height, unsigned row_stride)
+                     unsigned width, unsigned height, unsigned row_stride, const VoxelizeBitmapOptions &options)
 {
 	bitmap = {};
 
-	StateBitmap state(width, height);
-	for (unsigned y = 0; y < height; y++)
+	vector<StateBitmap> state_mipmap;
 	{
-		for (unsigned x = 0; x < width; x++)
+		StateBitmap state(width, height);
+		for (unsigned y = 0; y < height; y++)
 		{
-			bool active = components[component + pixel_stride * x + y * row_stride] >= 128;
-			state.at(x, y) = active ? PixelState::Pending : PixelState::Empty;
-			if (active)
-				state.add_pending(x, y);
+			for (unsigned x = 0; x < width; x++)
+			{
+				bool active = components[component + pixel_stride * x + y * row_stride] >= 128;
+				if (active)
+					state.add_pending(x, y);
+			}
 		}
+		state_mipmap.push_back(std::move(state));
 	}
+
+	while (state_mipmap.back().get_width() > 1 || state_mipmap.back().get_height() > 1)
+		state_mipmap.push_back(state_mipmap.back().promote_2x2_quads());
 
 	// Create all rects which the bitmap is made of.
 	vector<ClaimedRect> rects;
 
-	uvec2 coord;
-	while (state.get_next_pending(coord))
+	for (int level = int(state_mipmap.size()) - 1; level >= 0; level--)
 	{
-		ClaimedRect rect = find_largest_pending_rect(state, coord.x, coord.y);
-		state.claim_rect(rect.x, rect.y, rect.w, rect.h);
-		rects.push_back(rect);
+		uvec2 coord;
+		auto &state = state_mipmap[level];
+		while (state.get_next_pending(coord))
+		{
+			ClaimedRect rect = find_largest_pending_rect(state, coord.x, coord.y);
+			state.claim_rect(rect.x, rect.y, rect.w, rect.h);
+
+			// Adjust for size.
+			rect.x <<= level;
+			rect.y <<= level;
+			rect.w <<= level;
+			rect.h <<= level;
+			rect.w = std::min(width - rect.x, rect.w);
+			rect.h = std::min(height - rect.y, rect.h);
+			rects.push_back(rect);
+		}
 	}
 
 	// Find all adjacent neighbors. We will need to emit degenerate triangles to get water-tight meshes.
@@ -660,12 +716,16 @@ bool voxelize_bitmap(VoxelizedBitmap &bitmap, const uint8_t *components, unsigne
 
 	vector<vec3> depth_link_position;
 	unsigned primary_rects = rects.size();
-	for (unsigned i = 0; i < primary_rects; i++)
+
+	if (options.depth)
 	{
-		// rects[i] might be invalidated if rects changes, so move into a temporary.
-		auto r = move(rects[i]);
-		emit_depth_links(state, depth_link_position, r, rects);
-		rects[i] = move(r);
+		for (unsigned i = 0; i < primary_rects; i++)
+		{
+			// rects[i] might be invalidated if rects changes, so move into a temporary.
+			auto r = move(rects[i]);
+			emit_depth_links(state_mipmap.front(), depth_link_position, r, rects);
+			rects[i] = move(r);
+		}
 	}
 
 	vector<vec3> positions;
@@ -673,8 +733,9 @@ bool voxelize_bitmap(VoxelizedBitmap &bitmap, const uint8_t *components, unsigne
 		emit_rect(positions, rects[i], rects);
 
 	vector<vec3> back_positions;
+
 	back_positions.reserve(positions.size());
-	for (auto itr = begin(positions); itr != end(positions); )
+	for (auto itr = begin(positions); itr != end(positions);)
 	{
 		itr->y = 0.5f;
 		auto v0 = *itr++;
@@ -682,13 +743,19 @@ bool voxelize_bitmap(VoxelizedBitmap &bitmap, const uint8_t *components, unsigne
 		auto v1 = *itr++;
 		itr->y = 0.5f;
 		auto v2 = *itr++;
-		back_positions.emplace_back(v0.x, -v0.y, v0.z);
-		back_positions.emplace_back(v2.x, -v2.y, v2.z);
-		back_positions.emplace_back(v1.x, -v1.y, v1.z);
+		if (options.depth)
+		{
+			back_positions.emplace_back(v0.x, -v0.y, v0.z);
+			back_positions.emplace_back(v2.x, -v2.y, v2.z);
+			back_positions.emplace_back(v1.x, -v1.y, v1.z);
+		}
 	}
 
-	positions.insert(end(positions), begin(back_positions), end(back_positions));
-	positions.insert(end(positions), begin(depth_link_position), end(depth_link_position));
+	if (options.depth)
+	{
+		positions.insert(end(positions), begin(back_positions), end(back_positions));
+		positions.insert(end(positions), begin(depth_link_position), end(depth_link_position));
+	}
 
 	vector<vec3> normals(positions.size());
 	compute_normals(normals, positions);

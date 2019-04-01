@@ -33,7 +33,7 @@ using namespace Util;
 
 static void print_help()
 {
-	LOGI("Usage: bitmap-to-mesh [--input <path>] [--output <path>] [--scale x y z] [--flip-winding] [--rect x y width hegiht]\n");
+	LOGI("Usage: bitmap-to-mesh [--input <path>] [--output <path>] [--scale x y z] [--no-depth] [--flip-winding] [--rect x y width hegiht]\n");
 }
 
 int main(int argc, char **argv)
@@ -42,6 +42,7 @@ int main(int argc, char **argv)
 	if (argc < 1)
 		return 1;
 
+	VoxelizeBitmapOptions options;
 	std::string input;
 	std::string output;
 	unsigned rect_x = 0;
@@ -54,6 +55,7 @@ int main(int argc, char **argv)
 	cbs.add("--input", [&](CLIParser &parser) { input = parser.next_string(); });
 	cbs.add("--output", [&](CLIParser &parser) { output = parser.next_string(); });
 	cbs.add("--flip-winding", [&](CLIParser &) { flip_winding = true; });
+	cbs.add("--no-depth", [&](CLIParser &) { options.depth = false; });
 	cbs.add("--scale", [&](CLIParser &parser) {
 		for (unsigned i = 0; i < 3; i++)
 			scale[i] = float(parser.next_double());
@@ -128,7 +130,7 @@ int main(int argc, char **argv)
 	VoxelizedBitmap bitmap;
 	if (!voxelize_bitmap(bitmap,
 	                     image.get_layout().data_2d<u8vec4>(rect_x, rect_y, 0, 0)->data, 3, 4,
-	                     rect_width, rect_height, width * 4))
+	                     rect_width, rect_height, width * 4, options))
 	{
 		return 1;
 	}
@@ -190,16 +192,16 @@ int main(int argc, char **argv)
 	mat.pipeline = DrawPipeline::Opaque;
 
 	SceneFormats::SceneInformation scene;
-	SceneFormats::ExportOptions options;
+	SceneFormats::ExportOptions export_options;
 	SceneFormats::Node n;
 	n.meshes.push_back(0);
 
 	scene.materials = { &mat, 1 };
 	scene.meshes = { &m, 1 };
 	scene.nodes = { &n, 1 };
-	options.quantize_attributes = false;
-	options.optimize_meshes = true;
-	if (!SceneFormats::export_scene_to_glb(scene, output, options))
+	export_options.quantize_attributes = false;
+	export_options.optimize_meshes = true;
+	if (!SceneFormats::export_scene_to_glb(scene, output, export_options))
 	{
 		LOGE("Failed to export scene to %s.\n", output.c_str());
 		return 1;

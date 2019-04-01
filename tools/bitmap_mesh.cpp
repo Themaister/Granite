@@ -217,6 +217,7 @@ int main(int argc, char **argv)
 	mat.base_color.path = input;
 	mat.uniform_metallic = 0.0f;
 	mat.uniform_roughness = 1.0f;
+	mat.sampler = Vulkan::StockSampler::TrilinearClamp;
 	mat.pipeline = DrawPipeline::Opaque;
 
 	SceneFormats::SceneInformation scene;

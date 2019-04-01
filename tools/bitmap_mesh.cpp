@@ -36,17 +36,16 @@ static void print_help()
 	LOGI("Usage: bitmap-to-mesh [--input <path>] [--output <path>] [--scale x y z] [--no-depth] [--flip-winding] [--rect x y width hegiht]\n");
 }
 
-static vec3 compute_center_of_mass(const Vulkan::TextureFormatLayout &layout)
+static vec3 compute_center_of_mass(const Vulkan::TextureFormatLayout &layout,
+                                   unsigned rect_x, unsigned rect_y, unsigned rect_width, unsigned rect_height)
 {
-	unsigned width = layout.get_width();
-	unsigned height = layout.get_height();
 	float total_weight = 0.0f;
 	vec3 mass_sum = vec3(0.0f);
-	for (unsigned y = 0; y < height; y++)
+	for (unsigned y = 0; y < rect_height; y++)
 	{
-		for (unsigned x = 0; x < width; x++)
+		for (unsigned x = 0; x < rect_width; x++)
 		{
-			auto v = layout.data_2d<u8vec4>(x, y, 0, 0)->w;
+			auto v = layout.data_2d<u8vec4>(x + rect_x, y + rect_y, 0, 0)->w;
 			if (v >= 128)
 			{
 				mass_sum += vec3(float(x), 0.0f, float(y));
@@ -56,7 +55,7 @@ static vec3 compute_center_of_mass(const Vulkan::TextureFormatLayout &layout)
 	}
 
 	if (total_weight == 0.0f)
-		return vec3(float(width) * 0.5f, 0.0f, float(height) * 0.5f);
+		return vec3(float(rect_width) * 0.5f, 0.0f, float(rect_height) * 0.5f);
 	else
 		return mass_sum / total_weight;
 }
@@ -184,7 +183,7 @@ int main(int argc, char **argv)
 		                });
 	}
 
-	vec3 center_of_mass = compute_center_of_mass(image.get_layout());
+	vec3 center_of_mass = compute_center_of_mass(image.get_layout(), rect_x, rect_y, rect_width, rect_height);
 
 	for (auto &pos : bitmap.positions)
 		pos = scale * (pos - center_of_mass);
@@ -210,7 +209,7 @@ int main(int argc, char **argv)
 	m.has_material = true;
 	m.material_index = 0;
 	m.static_aabb = AABB(scale * (vec3(0.0f, -0.5f, 0.0f) - center_of_mass),
-	                     scale * (vec3(width, 0.5f, height) - center_of_mass));
+	                     scale * (vec3(rect_width, 0.5f, rect_height) - center_of_mass));
 
 	SceneFormats::MaterialInfo mat;
 	mat.bandlimited_pixel = true;

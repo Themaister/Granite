@@ -727,17 +727,20 @@ bool voxelize_bitmap(VoxelizedBitmap &bitmap, const uint8_t *components, unsigne
 	// Move frontier checks for larger mipmaps first.
 	for (size_t level = 1; level < state_mipmap.size(); level++)
 	{
-		unsigned rect_size = 1u << level;
 		uvec2 coord;
 		while (state_mipmap[level].get_next_pending(coord))
 		{
-			for (unsigned y = 0; y < rect_size; y++)
-				for (unsigned x = 0; x < rect_size; x++)
+			unsigned coord_x = coord.x << level;
+			unsigned coord_y = coord.y << level;
+			unsigned rect_size_x = std::min(1u << level, state_mipmap.front().get_width() - coord_x);
+			unsigned rect_size_y = std::min(1u << level, state_mipmap.front().get_height() - coord_y);
+			for (unsigned y = 0; y < rect_size_y; y++)
+				for (unsigned x = 0; x < rect_size_x; x++)
 					if (x != 0 || y != 0)
-						state_mipmap.front().add_pending((coord.x << level) + x, (coord.y << level) + y);
+						state_mipmap.front().add_pending(coord_x + x, coord_y + y);
 
 			// Make sure original coordinate is pushed last (first in list).
-			state_mipmap.front().add_pending(coord.x << level, coord.y << level);
+			state_mipmap.front().add_pending(coord_x, coord_y);
 			state_mipmap[level].pop_next_pending();
 		}
 	}

@@ -36,6 +36,31 @@ static void print_help()
 	LOGI("Usage: bitmap-to-mesh [--input <path>] [--output <path>] [--scale x y z] [--no-depth] [--flip-winding] [--rect x y width hegiht]\n");
 }
 
+static vec3 compute_center_of_mass(const Vulkan::TextureFormatLayout &layout)
+{
+	unsigned width = layout.get_width();
+	unsigned height = layout.get_height();
+	float total_weight = 0.0f;
+	vec3 mass_sum = vec3(0.0f);
+	for (unsigned y = 0; y < height; y++)
+	{
+		for (unsigned x = 0; x < width; x++)
+		{
+			auto v = layout.data_2d<u8vec4>(x, y, 0, 0)->w;
+			if (v >= 128)
+			{
+				mass_sum += vec3(float(x), 0.0f, float(y));
+				total_weight += 1.0f;
+			}
+		}
+	}
+
+	if (total_weight == 0.0f)
+		return vec3(float(width) * 0.5f, 0.0f, float(height) * 0.5f);
+	else
+		return mass_sum / total_weight;
+}
+
 int main(int argc, char **argv)
 {
 	Global::init();
@@ -159,8 +184,10 @@ int main(int argc, char **argv)
 		                });
 	}
 
+	vec3 center_of_mass = compute_center_of_mass(image.get_layout());
+
 	for (auto &pos : bitmap.positions)
-		pos *= scale;
+		pos = scale * (pos - center_of_mass);
 
 	SceneFormats::Mesh m;
 	m.indices.resize(bitmap.indices.size() * sizeof(uint32_t));
@@ -182,7 +209,8 @@ int main(int argc, char **argv)
 	m.count = bitmap.indices.size();
 	m.has_material = true;
 	m.material_index = 0;
-	m.static_aabb = AABB(scale * vec3(0.0f, -0.5f, 0.0f), scale * vec3(width, 0.5f, height));
+	m.static_aabb = AABB(scale * (vec3(0.0f, -0.5f, 0.0f) - center_of_mass),
+	                     scale * (vec3(width, 0.5f, height) - center_of_mass));
 
 	SceneFormats::MaterialInfo mat;
 	mat.bandlimited_pixel = true;
@@ -199,7 +227,7 @@ int main(int argc, char **argv)
 	scene.materials = { &mat, 1 };
 	scene.meshes = { &m, 1 };
 	scene.nodes = { &n, 1 };
-	export_options.quantize_attributes = false;
+	export_options.quantize_attributes = true;
 	export_options.optimize_meshes = true;
 	if (!SceneFormats::export_scene_to_glb(scene, output, export_options))
 	{

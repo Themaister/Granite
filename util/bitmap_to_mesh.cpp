@@ -40,14 +40,6 @@ enum class PixelState : uint8_t
 	Claimed
 };
 
-enum class NeighborOrientation : uint8_t
-{
-	North,
-	East,
-	South,
-	West,
-};
-
 class StateBitmap
 {
 public:
@@ -269,68 +261,53 @@ static bool is_west_neighbor(const ClaimedRect &a, const ClaimedRect &b)
 	return vertical_overlap(a, b);
 }
 
-static bool is_degenerate(const vec3 &a, const vec3 &b, const vec3 &c)
+static bool is_degenerate(const vec2 &a, const vec2 &b, const vec2 &c)
 {
 	return all(equal(a, b)) || all(equal(a, c)) || all(equal(b, c));
 }
 
-// Need to link up neighbors with "degenerate" triangles to get a 100% watertight mesh.
-static void emit_neighbor(vector<vec3> &position,
-                          const ClaimedRect &rect,
-                          NeighborOrientation orientation,
-                          const ClaimedRect &neighbor)
+static vec2 interpolate_rect(const ClaimedRect &rect, const vec2 &v)
 {
-	const float e = 0.0f;
-	vec3 coords[4];
-
-	switch (orientation)
-	{
-	case NeighborOrientation::North:
-		coords[0] = vec3(float(rect.x) + e, 0.0f, float(rect.y) + e);
-		coords[1] = vec3(float(rect.x + rect.w) - e, 0.0f, float(rect.y) + e);
-		coords[2] = vec3(float(neighbor.x + neighbor.w) - e, 0.0f, float(neighbor.y + neighbor.h) - e);
-		coords[3] = vec3(float(neighbor.x) + e, 0.0f, float(neighbor.y + neighbor.h) - e);
-		break;
-
-	case NeighborOrientation::South:
-		coords[0] = vec3(float(neighbor.x) + e, 0.0f, float(neighbor.y) + e);
-		coords[1] = vec3(float(neighbor.x + neighbor.w) - e, 0.0f, float(neighbor.y) + e);
-		coords[2] = vec3(float(rect.x + rect.w) - e, 0.0f, float(rect.y + rect.h) - e);
-		coords[3] = vec3(float(rect.x) + e, 0.0f, float(rect.y + rect.h) - e);
-		break;
-
-	case NeighborOrientation::East:
-		coords[0] = vec3(float(rect.x + rect.w) - e, 0.0f, float(rect.y) + e);
-		coords[1] = vec3(float(rect.x + rect.w) - e, 0.0f, float(rect.y + rect.h) - e);
-		coords[2] = vec3(float(neighbor.x) + e, 0.0f, float(neighbor.y + neighbor.h) - e);
-		coords[3] = vec3(float(neighbor.x) + e, 0.0f, float(neighbor.y) + e);
-		break;
-
-	case NeighborOrientation::West:
-		coords[0] = vec3(float(neighbor.x + neighbor.w) - e, 0.0f, float(neighbor.y) + e);
-		coords[1] = vec3(float(neighbor.x + neighbor.w) - e, 0.0f, float(neighbor.y + neighbor.h) - e);
-		coords[2] = vec3(float(rect.x) + e, 0.0f, float(rect.y + rect.h) - e);
-		coords[3] = vec3(float(rect.x) + e, 0.0f, float(rect.y) + e);
-		break;
-	}
-
-	// If the rects share a corner it is not necessary to emit degenerates.
-	if (!is_degenerate(coords[0], coords[1], coords[2]))
-	{
-		position.push_back(coords[0]);
-		position.push_back(coords[1]);
-		position.push_back(coords[2]);
-	}
-
-	if (!is_degenerate(coords[3], coords[0], coords[2]))
-	{
-		position.push_back(coords[3]);
-		position.push_back(coords[0]);
-		position.push_back(coords[2]);
-	}
+	return vec2(rect.x, rect.y) + v * vec2(rect.w, rect.h);
 }
 
-static void emit_rect(vector<vec3> &position, const ClaimedRect &rect, const vector<ClaimedRect> &all_rects)
+// Need to link up neighbors with "degenerate" triangles to get a 100% watertight mesh.
+static void emit_neighbors(vector<vec3> &position,
+                           const ClaimedRect &rect,
+                           const vector<unsigned> &neighbors,
+                           const vector<ClaimedRect> &all_rects,
+                           const vec2 &neighbor_primary,
+                           const vec2 &neighbor_secondary,
+                           const vec2 &rect_primary,
+                           const vec2 &rect_secondary)
+{
+	if (neighbors.empty())
+		return;
+
+	vec2 coords[3];
+
+	for (auto &n : neighbors)
+	{
+		auto &neighbor = all_rects[n];
+		coords[0] = interpolate_rect(neighbor, neighbor_primary);
+		coords[1] = interpolate_rect(neighbor, neighbor_secondary);
+		coords[2] = interpolate_rect(rect, rect_primary);
+
+		// If the rects share a corner it is not necessary to emit degenerates.
+		if (!is_degenerate(coords[0], coords[1], coords[2]))
+			for (auto &c : coords)
+				position.emplace_back(c.x, 0.0f, c.y);
+	}
+
+	coords[0] = interpolate_rect(rect, rect_primary);
+	coords[1] = interpolate_rect(all_rects[neighbors.back()], neighbor_secondary);
+	coords[2] = interpolate_rect(rect, rect_secondary);
+	if (!is_degenerate(coords[0], coords[1], coords[2]))
+		for (auto &c : coords)
+			position.emplace_back(c.x, 0.0f, c.y);
+}
+
+static void emit_rect(vector<vec3> &position, ClaimedRect &rect, const vector<ClaimedRect> &all_rects)
 {
 	const float e = 0.0f;
 	position.emplace_back(float(rect.x) + e, 0.0f, float(rect.y) + e);
@@ -340,14 +317,38 @@ static void emit_rect(vector<vec3> &position, const ClaimedRect &rect, const vec
 	position.emplace_back(float(rect.x + rect.w) - e, 0.0f, float(rect.y) + e);
 	position.emplace_back(float(rect.x) + e, 0.0f, float(rect.y + rect.h) - e);
 
-	for (auto &n : rect.north_neighbors)
-		emit_neighbor(position, rect, NeighborOrientation::North, all_rects[n]);
-	for (auto &n : rect.east_neighbors)
-		emit_neighbor(position, rect, NeighborOrientation::East, all_rects[n]);
-	for (auto &n : rect.south_neighbors)
-		emit_neighbor(position, rect, NeighborOrientation::South, all_rects[n]);
-	for (auto &n : rect.west_neighbors)
-		emit_neighbor(position, rect, NeighborOrientation::West, all_rects[n]);
+	// Emit a degenerate list to link up neighbors which do not share primitive edges.
+	sort(begin(rect.west_neighbors), end(rect.west_neighbors), [&](unsigned a, unsigned b) -> bool {
+		return all_rects[a].y < all_rects[b].y;
+	});
+
+	sort(begin(rect.east_neighbors), end(rect.east_neighbors), [&](unsigned a, unsigned b) -> bool {
+		return all_rects[a].y > all_rects[b].y;
+	});
+
+	sort(begin(rect.north_neighbors), end(rect.north_neighbors), [&](unsigned a, unsigned b) -> bool {
+		return all_rects[a].x > all_rects[b].x;
+	});
+
+	sort(begin(rect.south_neighbors), end(rect.south_neighbors), [&](unsigned a, unsigned b) -> bool {
+		return all_rects[a].x < all_rects[b].x;
+	});
+
+	emit_neighbors(position, rect, rect.north_neighbors, all_rects,
+	               vec2(1.0f, 1.0f), vec2(0.0f, 1.0f),
+	               vec2(1.0f, 0.0f), vec2(0.0f, 0.0f));
+
+	emit_neighbors(position, rect, rect.south_neighbors, all_rects,
+	               vec2(0.0f, 0.0f), vec2(1.0f, 0.0f),
+	               vec2(0.0f, 1.0f), vec2(1.0f, 1.0f));
+
+	emit_neighbors(position, rect, rect.west_neighbors, all_rects,
+	               vec2(1.0f, 0.0f), vec2(1.0f, 1.0f),
+	               vec2(0.0f, 0.0f), vec2(0.0f, 1.0f));
+
+	emit_neighbors(position, rect, rect.east_neighbors, all_rects,
+	               vec2(0.0f, 1.0f), vec2(0.0f, 0.0f),
+	               vec2(1.0f, 1.0f), vec2(1.0f, 0.0f));
 }
 
 static void emit_depth_links_north(const StateBitmap &state, vector<vec3> &depth_links,

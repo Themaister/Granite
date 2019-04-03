@@ -119,7 +119,8 @@ int main(int argc, char **argv)
 		vec4 rotation;
 		for (unsigned i = 0; i < 4; i++)
 			rotation[i] = float(parser.next_double());
-		static_transform.rotation = angleAxis(radians(rotation.w), rotation.xyz());
+		static_transform.rotation =
+				normalize(angleAxis(radians(rotation.w), rotation.xyz()) * static_transform.rotation);
 	});
 	cbs.add("--rect", [&](CLIParser &parser) {
 		rect_x = parser.next_uint();

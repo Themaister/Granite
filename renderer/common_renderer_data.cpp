@@ -153,9 +153,10 @@ void SSAOLookupTables::on_device_created(const Vulkan::DeviceCreatedEvent &e)
 	Vulkan::ImageInitialData initial = { noise_samples_fp16, 0, 0 };
 	noise = device.create_image(info, &initial);
 
-	kernel_size = 64;
-	vec4 hemisphere[64];
-	for (unsigned i = 0; i < 64; i++)
+	static const unsigned SSAO_KERNEL_SIZE = 16;
+	kernel_size = SSAO_KERNEL_SIZE;
+	vec4 hemisphere[SSAO_KERNEL_SIZE];
+	for (unsigned i = 0; i < SSAO_KERNEL_SIZE; i++)
 	{
 		float x = dist(rnd);
 		float y = dist(rnd);

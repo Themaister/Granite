@@ -492,8 +492,12 @@ bool DeviceAllocator::allocate(uint32_t size, uint32_t memory_type, VkDeviceMemo
 	auto &heap = heaps[mem_props.memoryTypes[memory_type].heapIndex];
 
 	// Naive searching is fine here as vkAllocate blocks are *huge* and we won't have many of them.
-	auto itr = find_if(begin(heap.blocks), end(heap.blocks),
-	                   [=](const Allocation &alloc) { return size == alloc.size && memory_type == alloc.type; });
+	auto itr = end(heap.blocks);
+	if (dedicated_image == VK_NULL_HANDLE)
+	{
+		itr = find_if(begin(heap.blocks), end(heap.blocks),
+		              [=](const Allocation &alloc) { return size == alloc.size && memory_type == alloc.type; });
+	}
 
 	bool host_visible = (mem_props.memoryTypes[memory_type].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0;
 

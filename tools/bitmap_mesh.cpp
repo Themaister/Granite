@@ -33,11 +33,23 @@ using namespace Util;
 
 static void print_help()
 {
-	LOGI("Usage: bitmap-to-mesh [--input <path>] [--output <path>] [--scale x y z] [--no-depth] [--flip-winding] [--rect x y width hegiht]\n");
+	LOGI("Usage: bitmap-to-mesh\n"
+	     "\t[--input <path>]\n"
+	     "\t[--output <path>]\n"
+	     "\t[--quantize-attributes]\n"
+	     "\t[--compute-center-of-mass]\n"
+	     "\t[--fixed-center-of-mass x y z]\n"
+	     "\t[--scale x y z]\n"
+	     "\t[--no-depth]\n"
+	     "\t[--flip-winding]\n"
+	     "\t[--node-translate x y z]\n"
+	     "\t[--node-rotate axisX axisY axisZ degrees]\n"
+	     "\t[--node-scale x y z]\n"
+	     "\t[--rect x y width hegiht]\n");
 }
 
-static vec3 compute_center_of_mass(const Vulkan::TextureFormatLayout &layout,
-                                   unsigned rect_x, unsigned rect_y, unsigned rect_width, unsigned rect_height)
+static vec3 center_of_mass_constant_density(const Vulkan::TextureFormatLayout &layout,
+                                            unsigned rect_x, unsigned rect_y, unsigned rect_width, unsigned rect_height)
 {
 	float total_weight = 0.0f;
 	vec3 mass_sum = vec3(0.0f);
@@ -75,14 +87,39 @@ int main(int argc, char **argv)
 	unsigned rect_height = 0;
 	vec3 scale = vec3(1.0f);
 	bool flip_winding = false;
+	bool compute_center_of_mass = false;
+	bool quantize_attributes = false;
+	vec3 center_of_mass = vec3(0.0f);
+	SceneFormats::NodeTransform static_transform;
+
 	CLICallbacks cbs;
 	cbs.add("--input", [&](CLIParser &parser) { input = parser.next_string(); });
 	cbs.add("--output", [&](CLIParser &parser) { output = parser.next_string(); });
 	cbs.add("--flip-winding", [&](CLIParser &) { flip_winding = true; });
 	cbs.add("--no-depth", [&](CLIParser &) { options.depth = false; });
+	cbs.add("--compute-center-of-mass", [&](CLIParser &) { compute_center_of_mass = true; });
+	cbs.add("--quantize-attributes", [&](CLIParser &) { quantize_attributes = true; });
+	cbs.add("--fixed-center-of-mass", [&](CLIParser &parser) {
+		for (unsigned i = 0; i < 3; i++)
+			center_of_mass[i] = float(parser.next_double());
+	});
 	cbs.add("--scale", [&](CLIParser &parser) {
 		for (unsigned i = 0; i < 3; i++)
 			scale[i] = float(parser.next_double());
+	});
+	cbs.add("--node-scale", [&](CLIParser &parser) {
+		for (unsigned i = 0; i < 3; i++)
+			static_transform.scale[i] = float(parser.next_double());
+	});
+	cbs.add("--node-translate", [&](CLIParser &parser) {
+		for (unsigned i = 0; i < 3; i++)
+			static_transform.translation[i] = float(parser.next_double());
+	});
+	cbs.add("--node-rotate", [&](CLIParser &parser) {
+		vec4 rotation;
+		for (unsigned i = 0; i < 4; i++)
+			rotation[i] = float(parser.next_double());
+		static_transform.rotation = angleAxis(radians(rotation.w), rotation.xyz());
 	});
 	cbs.add("--rect", [&](CLIParser &parser) {
 		rect_x = parser.next_uint();
@@ -183,7 +220,11 @@ int main(int argc, char **argv)
 		                });
 	}
 
-	vec3 center_of_mass = compute_center_of_mass(image.get_layout(), rect_x, rect_y, rect_width, rect_height);
+	if (compute_center_of_mass)
+	{
+		center_of_mass = center_of_mass_constant_density(image.get_layout(), rect_x, rect_y,
+		                                                 rect_width, rect_height);
+	}
 
 	for (auto &pos : bitmap.positions)
 		pos = scale * (pos - center_of_mass);
@@ -222,12 +263,13 @@ int main(int argc, char **argv)
 	SceneFormats::SceneInformation scene;
 	SceneFormats::ExportOptions export_options;
 	SceneFormats::Node n;
+	n.transform = static_transform;
 	n.meshes.push_back(0);
 
 	scene.materials = { &mat, 1 };
 	scene.meshes = { &m, 1 };
 	scene.nodes = { &n, 1 };
-	export_options.quantize_attributes = true;
+	export_options.quantize_attributes = quantize_attributes;
 	export_options.optimize_meshes = true;
 	if (!SceneFormats::export_scene_to_glb(scene, output, export_options))
 	{

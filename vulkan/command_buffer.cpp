@@ -618,7 +618,7 @@ VkPipeline CommandBuffer::build_compute_pipeline(Hash hash)
 	VkSpecializationInfo spec_info = {};
 	VkSpecializationMapEntry spec_entries[VULKAN_NUM_SPEC_CONSTANTS];
 	auto mask = current_layout->get_resource_layout().combined_spec_constant_mask &
-	            static_state.state.spec_constant_mask;
+	            potential_static_state.spec_constant_mask;
 
 	if (mask)
 	{
@@ -796,7 +796,7 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
 			s.stage = static_cast<VkShaderStageFlagBits>(1u << i);
 
 			auto mask = current_layout->get_resource_layout().spec_constant_mask[i] &
-			            static_state.state.spec_constant_mask;
+			            potential_static_state.spec_constant_mask;
 
 			if (mask)
 			{
@@ -855,7 +855,7 @@ void CommandBuffer::flush_compute_pipeline()
 	// Spec constants.
 	auto &layout = current_layout->get_resource_layout();
 	uint32_t combined_spec_constant = layout.combined_spec_constant_mask;
-	combined_spec_constant &= static_state.state.spec_constant_mask;
+	combined_spec_constant &= potential_static_state.spec_constant_mask;
 	h.u32(combined_spec_constant);
 	for_each_bit(combined_spec_constant, [&](uint32_t bit) {
 		h.u32(potential_static_state.spec_constants[bit]);
@@ -906,7 +906,7 @@ void CommandBuffer::flush_graphics_pipeline()
 
 	// Spec constants.
 	uint32_t combined_spec_constant = layout.combined_spec_constant_mask;
-	combined_spec_constant &= static_state.state.spec_constant_mask;
+	combined_spec_constant &= potential_static_state.spec_constant_mask;
 	h.u32(combined_spec_constant);
 	for_each_bit(combined_spec_constant, [&](uint32_t bit) {
 		h.u32(potential_static_state.spec_constants[bit]);
@@ -1858,9 +1858,7 @@ void CommandBuffer::clear_render_state()
 {
 	// Preserve spec constant mask.
 	auto &state = static_state.state;
-	uint32_t spec_constant_mask = state.spec_constant_mask;
 	memset(&state, 0, sizeof(state));
-	state.spec_constant_mask = spec_constant_mask;
 }
 
 void CommandBuffer::set_opaque_state()

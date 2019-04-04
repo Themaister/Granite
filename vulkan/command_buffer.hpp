@@ -101,8 +101,6 @@ union PipelineState {
 		unsigned topology : 4;
 
 		unsigned wireframe : 1;
-		unsigned spec_constant_mask : 8;
-
 		uint32_t write_mask;
 	} state;
 	uint32_t words[4];
@@ -112,6 +110,7 @@ struct PotentialState
 {
 	float blend_constants[4];
 	uint32_t spec_constants[VULKAN_NUM_SPEC_CONSTANTS];
+	uint8_t spec_constant_mask;
 };
 
 struct DynamicState
@@ -549,7 +548,7 @@ public:
 	inline void set_specialization_constant_mask(uint32_t spec_constant_mask)
 	{
 		VK_ASSERT((spec_constant_mask & ~((1u << VULKAN_NUM_SPEC_CONSTANTS) - 1u)) == 0u);
-		SET_STATIC_STATE(spec_constant_mask);
+		SET_POTENTIALLY_STATIC_STATE(spec_constant_mask);
 	}
 
 	template <typename T>
@@ -560,7 +559,7 @@ public:
 		if (memcmp(&potential_static_state.spec_constants[index], &value, sizeof(value)))
 		{
 			memcpy(&potential_static_state.spec_constants[index], &value, sizeof(value));
-			if (static_state.state.spec_constant_mask & (1u << index))
+			if (potential_static_state.spec_constant_mask & (1u << index))
 				set_dirty(COMMAND_BUFFER_DIRTY_STATIC_STATE_BIT);
 		}
 	}

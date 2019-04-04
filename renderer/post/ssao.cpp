@@ -29,8 +29,119 @@ using namespace std;
 
 namespace Granite
 {
-void setup_ssao(RenderGraph &graph, const RenderContext &context,
-                const string &output, const string &input_depth, const string &input_normal)
+void setup_ssao_interleaved(RenderGraph &graph, const RenderContext &context,
+                            const string &output, const string &input_depth, const string &input_normal)
+{
+	auto &ssao_pass = graph.add_pass(output + "-ssao", RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT);
+
+	AttachmentInfo info;
+	info.format = VK_FORMAT_R32_SFLOAT;
+	info.size_class = SizeClass::InputRelative;
+	info.size_relative_name = input_depth;
+	info.size_x = 0.25f;
+	info.size_y = 0.25f;
+	info.layers = 16;
+	info.aux_usage = VK_IMAGE_USAGE_SAMPLED_BIT;
+	auto &interleaved_linear_depth = ssao_pass.add_storage_texture_output(output + "-interleaved-depth", info);
+
+	info.format = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
+	auto &interleaved_linear_normal = ssao_pass.add_storage_texture_output(output + "-interleaved-normal", info);
+
+	info.format = VK_FORMAT_R8_UNORM;
+	auto &interleaved_ssao = ssao_pass.add_storage_texture_output(output + "-interleaved", info);
+	info.layers = 1;
+	auto &deinterleaved_ssao = ssao_pass.add_storage_texture_output(output, info);
+
+	auto &depth = ssao_pass.add_texture_input(input_depth);
+	auto &normal = ssao_pass.add_texture_input(input_normal);
+
+	ssao_pass.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
+		auto &d = graph.get_physical_texture_resource(depth);
+		auto &n = graph.get_physical_texture_resource(normal);
+		auto &interleaved_d = graph.get_physical_texture_resource(interleaved_linear_depth);
+		auto &interleaved_n = graph.get_physical_texture_resource(interleaved_linear_normal);
+		cmd.set_texture(0, 0, d, Vulkan::StockSampler::NearestClamp);
+		cmd.set_texture(0, 1, n, Vulkan::StockSampler::NearestClamp);
+		cmd.set_storage_texture(0, 2, interleaved_d);
+		cmd.set_storage_texture(0, 3, interleaved_n);
+
+		unsigned padded_width = interleaved_d.get_image().get_width() * 4;
+		unsigned padded_height = interleaved_d.get_image().get_height() * 4;
+		float inv_padded_width = 1.0f / padded_width;
+		float inv_padded_height = 1.0f / padded_height;
+		cmd.set_program("builtin://shaders/post/ssao_interleave.comp");
+
+		struct Push
+		{
+			vec4 inv_z_transform;
+			vec2 inv_padded_resolution;
+			uvec2 num_threads;
+		} push = {};
+
+		push.inv_z_transform = vec4(
+				context.get_render_parameters().inv_projection[2].zw(),
+				context.get_render_parameters().inv_projection[3].zw());
+		push.inv_padded_resolution = vec2(inv_padded_width, inv_padded_height);
+		push.num_threads = uvec2(padded_width, padded_height);
+		cmd.push_constants(&push, 0, sizeof(push));
+
+		cmd.dispatch((padded_width + 7) / 8, (padded_height + 7) / 8, 1);
+
+		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+
+		unsigned layer_width = interleaved_d.get_image().get_width();
+		unsigned layer_height = interleaved_d.get_image().get_height();
+
+		struct SSAOData
+		{
+			mat4 shadow_matrix;
+			vec4 inv_z_transform;
+			vec4 to_world_x;
+			vec4 to_world_y;
+			vec4 to_world_z;
+			vec4 to_world_base;
+			vec2 inv_padded_resolution;
+			uvec2 num_threads;
+		};
+
+		auto *ssao = cmd.allocate_typed_constant_data<SSAOData>(1, 0, 1);
+		ssao->shadow_matrix = translate(vec3(0.5f, 0.5f, 0.0f)) * scale(vec3(0.5f, 0.5f, 1.0f)) * context.get_render_parameters().view_projection;
+		ssao->inv_z_transform = vec4(
+				context.get_render_parameters().inv_projection[2].zw(),
+				context.get_render_parameters().inv_projection[3].zw());
+		ssao->to_world_x = context.get_render_parameters().inv_view_projection[0];
+		ssao->to_world_y = context.get_render_parameters().inv_view_projection[1];
+		ssao->to_world_z = vec4(context.get_render_parameters().camera_front, 0.0f);
+		ssao->to_world_base = vec4(context.get_render_parameters().camera_position, 0.0f);
+		ssao->inv_padded_resolution = vec2(inv_padded_width, inv_padded_height);
+		ssao->num_threads = uvec2(layer_width, layer_height);
+
+		cmd.set_program("builtin://shaders/post/ssao.comp");
+		cmd.set_texture(0, 0, interleaved_d, Vulkan::StockSampler::NearestClamp);
+		cmd.set_texture(0, 1, interleaved_n, Vulkan::StockSampler::NearestClamp);
+		cmd.set_storage_texture(0, 2, graph.get_physical_texture_resource(interleaved_ssao));
+		cmd.set_texture(0, 3, Global::common_renderer_data()->ssao_luts.noise->get_view(), Vulkan::StockSampler::NearestWrap);
+		cmd.set_uniform_buffer(0, 4, *Global::common_renderer_data()->ssao_luts.kernel);
+		cmd.set_specialization_constant_mask(3);
+		cmd.set_specialization_constant(0, Global::common_renderer_data()->ssao_luts.kernel_size);
+		cmd.set_specialization_constant(1, 0.3f);
+		cmd.dispatch((layer_width + 7) / 8, (layer_height + 7) / 8, 16);
+
+		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+
+		cmd.set_program("builtin://shaders/post/ssao_deinterleave.comp");
+		cmd.set_texture(0, 0, graph.get_physical_texture_resource(interleaved_ssao), Vulkan::StockSampler::NearestClamp);
+		cmd.set_storage_texture(0, 1, graph.get_physical_texture_resource(deinterleaved_ssao));
+		uvec2 final_resolution(layer_width, layer_height);
+		cmd.push_constants(&final_resolution, 0, sizeof(final_resolution));
+		cmd.dispatch((layer_width + 7) / 8, (layer_height + 7) / 8, 16);
+	});
+}
+
+void setup_ssao_naive(RenderGraph &graph, const RenderContext &context,
+                      const string &output, const string &input_depth, const string &input_normal)
 {
 	AttachmentInfo info;
 	info.format = VK_FORMAT_R8_UNORM;

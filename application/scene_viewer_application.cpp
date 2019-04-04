@@ -760,7 +760,8 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 
 	if (config.ssao)
 	{
-		setup_ssao(graph, context, tagcat("ssao-output", tag), tagcat("depth-transient", tag), tagcat("normal", tag));
+		setup_ssao_interleaved(graph, context, tagcat("ssao-output", tag), tagcat("depth-transient", tag),
+		                       tagcat("normal", tag));
 	}
 
 	auto &lighting_pass = graph.add_pass(tagcat("lighting", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);

@@ -1,0 +1,22 @@
+#version 450
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(set = 0, binding = 0) uniform sampler2DArray uSSAOInterleaved;
+layout(set = 0, binding = 1, r8) writeonly uniform image2D uSSAO;
+
+layout(push_constant) uniform Registers
+{
+    ivec2 num_threads;
+} registers;
+
+void main()
+{
+    ivec2 ident = ivec2(gl_GlobalInvocationID.xy);
+    if (all(lessThan(ident, registers.num_threads)))
+    {
+        float ao = 0.0;
+        for (int i = 0; i < 16; i++)
+            ao += texelFetch(uSSAOInterleaved, ivec3(ident, i), 0).x;
+        imageStore(uSSAO, ident, vec4(ao / 16.0));
+    }
+}

@@ -31,6 +31,12 @@ float to_world_depth(float z)
     return -zw.x / zw.y;
 }
 
+float max4(vec4 v)
+{
+    vec2 v2 = max(v.xy, v.zw);
+    return max(v2.x, v2.y);
+}
+
 void main()
 {
     ivec2 ident = ivec2(gl_GlobalInvocationID.xy);
@@ -40,7 +46,7 @@ void main()
 
     if (all(lessThan(ident, registers.num_threads)))
     {
-        float linear_depth = texelFetch(uDepth, ivec3(ident, layer), 0).x - 0.01;
+        float linear_depth = texelFetch(uDepth, ivec3(ident, layer), 0).x;
         mediump float ao;
         if (linear_depth > 0.0)
         {
@@ -51,7 +57,6 @@ void main()
                 registers.to_world_base;
 
             mediump vec3 normal = normalize(texelFetch(uNormal, ivec3(ident, layer), 0).xyz * 2.0 - 1.0);
-            world += 0.01 * normal;
             mediump vec3 rvec = vec3(texelFetch(uNoise, ivec2(layer_x, layer_y), 0).xy, 0.0);
             mediump vec3 tangent = normalize(rvec - normal * dot(rvec, normal));
             mediump vec3 bitangent = cross(normal, tangent);
@@ -69,7 +74,8 @@ void main()
                 {
                     vec3 C = c.xyz / c.w;
                     float ref_depth = to_world_depth(C.z);
-                    float sampled_depth = textureLod(uDepth, vec3(C.xy + uv_offset, layer), 0.0).x;
+                    vec4 sampled_depth4 = textureGather(uDepth, vec3(C.xy + uv_offset, layer));
+                    float sampled_depth = max4(sampled_depth4);
                     float delta = ref_depth - sampled_depth;
 
                     if (delta < 0.0)

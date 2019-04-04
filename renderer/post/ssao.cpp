@@ -35,7 +35,7 @@ void setup_ssao_interleaved(RenderGraph &graph, const RenderContext &context,
 	auto &ssao_pass = graph.add_pass(output + "-ssao", RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT);
 
 	AttachmentInfo info;
-	info.format = VK_FORMAT_R32_SFLOAT;
+	info.format = VK_FORMAT_R16_SFLOAT;
 	info.size_class = SizeClass::InputRelative;
 	info.size_relative_name = input_depth;
 	info.size_x = 0.25f;
@@ -125,7 +125,7 @@ void setup_ssao_interleaved(RenderGraph &graph, const RenderContext &context,
 		cmd.set_uniform_buffer(0, 4, *Global::common_renderer_data()->ssao_luts.kernel);
 		cmd.set_specialization_constant_mask(3);
 		cmd.set_specialization_constant(0, Global::common_renderer_data()->ssao_luts.kernel_size);
-		cmd.set_specialization_constant(1, 0.3f);
+		cmd.set_specialization_constant(1, 0.1f);
 		cmd.dispatch((layer_width + 7) / 8, (layer_height + 7) / 8, 16);
 
 		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
@@ -173,7 +173,7 @@ void setup_ssao_naive(RenderGraph &graph, const RenderContext &context,
 
 		cmd.set_specialization_constant_mask(3);
 		cmd.set_specialization_constant(0, Global::common_renderer_data()->ssao_luts.kernel_size);
-		cmd.set_specialization_constant(1, 0.3f);
+		cmd.set_specialization_constant(1, 0.1f);
 
 		struct Push
 		{

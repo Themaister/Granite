@@ -3,7 +3,7 @@ layout(location = 0) out mediump float AO;
 layout(location = 0) in vec2 vUV;
 layout(location = 1) in vec4 vClip;
 
-layout(constant_id = 0) const int KERNEL_SIZE = 64;
+layout(constant_id = 0) const int KERNEL_SIZE = 16;
 layout(constant_id = 1) const float HALO_THRESHOLD = 0.1;
 
 layout(set = 0, binding = 0) uniform sampler2D uDepth;

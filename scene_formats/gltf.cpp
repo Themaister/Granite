@@ -462,6 +462,10 @@ static void read_min_max(T &out, ScalarType type, const Value &v)
 	case ScalarType::Float16:
 	case ScalarType::A2Bgr10Snorm:
 	case ScalarType::A2Bgr10Unorm:
+	case ScalarType::Int8Snorm:
+	case ScalarType::Int16Snorm:
+	case ScalarType::Uint8Unorm:
+	case ScalarType::Uint16Unorm:
 		out.f32 = v.GetFloat();
 		break;
 
@@ -477,19 +481,6 @@ static void read_min_max(T &out, ScalarType type, const Value &v)
 	case ScalarType::Uint32:
 	case ScalarType::A2Bgr10Uint:
 		out.u32 = v.GetUint();
-		break;
-
-	case ScalarType::Int8Snorm:
-		out.f32 = clamp(float(v.GetInt()) / 0x7f, -1.0f, 1.0f);
-		break;
-	case ScalarType::Int16Snorm:
-		out.f32 = clamp(float(v.GetInt()) / 0x7fff, -1.0f, 1.0f);
-		break;
-	case ScalarType::Uint8Unorm:
-		out.f32 = clamp(float(v.GetUint()) / 0xff, 0.0f, 1.0f);
-		break;
-	case ScalarType::Uint16Unorm:
-		out.f32 = clamp(float(v.GetUint()) / 0xffff, 0.0f, 1.0f);
 		break;
 	}
 }

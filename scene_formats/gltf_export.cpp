@@ -789,6 +789,38 @@ static void quantize_attribute_fp32_fp16(uint8_t *output,
 	}
 }
 
+static void quantize_attribute_fp32_unorm16(uint8_t *output,
+                                            const uint8_t *buffer,
+                                            uint32_t stride,
+                                            uint32_t count)
+{
+	for (uint32_t i = 0; i < count; i++)
+	{
+		vec4 input(0.0f, 0.0f, 0.0f, 1.0f);
+		memcpy(input.data, buffer + stride * i, stride);
+		input *= float(0xffff);
+		input = clamp(round(input), vec4(0.0f), vec4(0xffff));
+		u16vec4 packed = u16vec4(input);
+		memcpy(output + sizeof(u16vec4) * i, packed.data, sizeof(packed.data));
+	}
+}
+
+static void quantize_attribute_fp32_snorm16(uint8_t *output,
+                                            const uint8_t *buffer,
+                                            uint32_t stride,
+                                            uint32_t count)
+{
+	for (uint32_t i = 0; i < count; i++)
+	{
+		vec4 input(0.0f, 0.0f, 0.0f, 1.0f);
+		memcpy(input.data, buffer + stride * i, stride);
+		input *= float(0x7fff);
+		input = clamp(round(input), vec4(-0x7fff), vec4(0x7fff));
+		i16vec4 packed = i16vec4(input);
+		memcpy(output + sizeof(u16vec4) * i, packed.data, sizeof(packed.data));
+	}
+}
+
 static void quantize_attribute_rg32f_rg16unorm(uint8_t *output, const uint8_t *buffer, uint32_t count)
 {
 	for (uint32_t i = 0; i < count; i++)
@@ -800,6 +832,20 @@ static void quantize_attribute_rg32f_rg16unorm(uint8_t *output, const uint8_t *b
 		input = clamp(round(input), vec2(0.0f), vec2(0xffff));
 		u16vec2 result(input);
 		memcpy(output + i * sizeof(u16vec2), result.data, sizeof(u16vec2));
+	}
+}
+
+static void quantize_attribute_rg32f_rg16snorm(uint8_t *output, const uint8_t *buffer, uint32_t count)
+{
+	for (uint32_t i = 0; i < count; i++)
+	{
+		vec2 input;
+		memcpy(input.data, buffer + sizeof(vec2) * i, sizeof(vec2));
+
+		input *= float(0x7fff);
+		input = clamp(round(input), vec2(-0x7fff), vec2(0x7fff));
+		i16vec2 result(input);
+		memcpy(output + i * sizeof(i16vec2), result.data, sizeof(i16vec2));
 	}
 }
 
@@ -921,8 +967,30 @@ void RemapState::emit_mesh(unsigned remapped_index)
 		                      format == VK_FORMAT_R32G32B32A32_SFLOAT;
 
 		if (options->quantize_attributes && format_is_fp32 &&
-		    all(greaterThan(output_mesh.static_aabb.get_minimum(), vec3(-0x8000))) &&
-		    all(lessThan(output_mesh.static_aabb.get_maximum(), vec3(0x8000))))
+		    all(greaterThanEqual(output_mesh.static_aabb.get_minimum(), vec3(0.0f))) &&
+		    all(lessThanEqual(output_mesh.static_aabb.get_maximum(), vec3(1.0f))))
+		{
+			vector<uint8_t> output(sizeof(u16vec4) * count);
+			quantize_attribute_fp32_unorm16(output.data(), output_mesh.positions.data(), output_mesh.position_stride, count);
+			buffer_index = emit_buffer(output);
+			acc = emit_accessor(buffer_index,
+			                    VK_FORMAT_R16G16B16A16_UNORM,
+			                    0, count);
+		}
+		else if (options->quantize_attributes && format_is_fp32 &&
+		         all(greaterThanEqual(output_mesh.static_aabb.get_minimum(), vec3(-1.0f))) &&
+		         all(lessThanEqual(output_mesh.static_aabb.get_maximum(), vec3(1.0f))))
+		{
+			vector<uint8_t> output(sizeof(i16vec4) * count);
+			quantize_attribute_fp32_snorm16(output.data(), output_mesh.positions.data(), output_mesh.position_stride, count);
+			buffer_index = emit_buffer(output);
+			acc = emit_accessor(buffer_index,
+			                    VK_FORMAT_R16G16B16A16_SNORM,
+			                    0, count);
+		}
+		else if (options->quantize_attributes && format_is_fp32 &&
+		         all(greaterThan(output_mesh.static_aabb.get_minimum(), vec3(-0x8000))) &&
+		         all(lessThan(output_mesh.static_aabb.get_maximum(), vec3(0x8000))))
 		{
 			vector<uint8_t> output(sizeof(u16vec4) * count);
 
@@ -1001,7 +1069,15 @@ void RemapState::emit_mesh(unsigned remapped_index)
 					remapped_format = VK_FORMAT_R16G16_UNORM;
 					format_size = sizeof(u16vec2);
 				}
-				else if (all(lessThanEqual(max_uv, vec2(0x8000))) && all(greaterThanEqual(min_uv, vec2(-0x8000))))
+				else if (all(lessThanEqual(max_uv, vec2(1.0f))) && all(greaterThanEqual(min_uv, vec2(-1.0f))))
+				{
+					vector<uint8_t> quantized(attr_count * sizeof(i16vec2));
+					quantize_attribute_rg32f_rg16snorm(quantized.data(), unpacked_buffer.data(), attr_count);
+					unpacked_buffer = move(quantized);
+					remapped_format = VK_FORMAT_R16G16_SNORM;
+					format_size = sizeof(i16vec2);
+				}
+				else if (all(lessThan(max_uv, vec2(0x8000))) && all(greaterThan(min_uv, vec2(-0x8000))))
 				{
 					vector<uint8_t> quantized(attr_count * sizeof(u16vec2));
 					quantize_attribute_rg32f_rg16f(quantized.data(), unpacked_buffer.data(), attr_count);

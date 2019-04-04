@@ -24,6 +24,7 @@
 #include "type_to_string.hpp"
 #include "format.hpp"
 #include "quirks.hpp"
+#include "muglm/muglm_impl.hpp"
 #include <algorithm>
 
 using namespace std;
@@ -2664,9 +2665,9 @@ ResourceDimensions RenderGraph::get_resource_dimensions(const RenderTextureResou
 	switch (info.size_class)
 	{
 	case SizeClass::SwapchainRelative:
-		dim.width = std::max(unsigned(info.size_x * swapchain_dimensions.width), 1u);
-		dim.height = std::max(unsigned(info.size_y * swapchain_dimensions.height), 1u);
-		dim.depth = std::max(unsigned(info.size_z), 1u);
+		dim.width = std::max(unsigned(muglm::ceil(info.size_x * swapchain_dimensions.width)), 1u);
+		dim.height = std::max(unsigned(muglm::ceil(info.size_y * swapchain_dimensions.height)), 1u);
+		dim.depth = std::max(unsigned(muglm::ceil(info.size_z)), 1u);
 		break;
 
 	case SizeClass::Absolute:
@@ -2683,9 +2684,9 @@ ResourceDimensions RenderGraph::get_resource_dimensions(const RenderTextureResou
 		auto &input = static_cast<RenderTextureResource &>(*resources[itr->second]);
 		auto input_dim = get_resource_dimensions(input);
 
-		dim.width = std::max(unsigned(input_dim.width * info.size_x), 1u);
-		dim.height = std::max(unsigned(input_dim.height * info.size_y), 1u);
-		dim.depth = std::max(unsigned(input_dim.depth * info.size_z), 1u);
+		dim.width = std::max(unsigned(muglm::ceil(input_dim.width * info.size_x)), 1u);
+		dim.height = std::max(unsigned(muglm::ceil(input_dim.height * info.size_y)), 1u);
+		dim.depth = std::max(unsigned(muglm::ceil(input_dim.depth * info.size_z)), 1u);
 		break;
 	}
 	}

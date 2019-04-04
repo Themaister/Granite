@@ -672,6 +672,7 @@ private:
 
 	bool flush_render_state();
 	bool flush_compute_state();
+	void clear_render_state();
 
 	VkPipeline build_graphics_pipeline(Util::Hash hash);
 	VkPipeline build_compute_pipeline(Util::Hash hash);

@@ -1854,10 +1854,19 @@ void CommandBuffer::dispatch(uint32_t groups_x, uint32_t groups_y, uint32_t grou
 		LOGE("Failed to flush render state, dispatch will be dropped.\n");
 }
 
+void CommandBuffer::clear_render_state()
+{
+	// Preserve spec constant mask.
+	auto &state = static_state.state;
+	uint32_t spec_constant_mask = state.spec_constant_mask;
+	memset(&state, 0, sizeof(state));
+	state.spec_constant_mask = spec_constant_mask;
+}
+
 void CommandBuffer::set_opaque_state()
 {
+	clear_render_state();
 	auto &state = static_state.state;
-	memset(&state, 0, sizeof(state));
 	state.front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	state.cull_mode = VK_CULL_MODE_BACK_BIT;
 	state.blend_enable = false;
@@ -1869,14 +1878,13 @@ void CommandBuffer::set_opaque_state()
 	state.stencil_test = false;
 	state.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 	state.write_mask = ~0u;
-
 	set_dirty(COMMAND_BUFFER_DIRTY_STATIC_STATE_BIT);
 }
 
 void CommandBuffer::set_quad_state()
 {
+	clear_render_state();
 	auto &state = static_state.state;
-	memset(&state, 0, sizeof(state));
 	state.front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	state.cull_mode = VK_CULL_MODE_NONE;
 	state.blend_enable = false;
@@ -1889,8 +1897,8 @@ void CommandBuffer::set_quad_state()
 
 void CommandBuffer::set_opaque_sprite_state()
 {
+	clear_render_state();
 	auto &state = static_state.state;
-	memset(&state, 0, sizeof(state));
 	state.front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	state.cull_mode = VK_CULL_MODE_NONE;
 	state.blend_enable = false;
@@ -1904,8 +1912,8 @@ void CommandBuffer::set_opaque_sprite_state()
 
 void CommandBuffer::set_transparent_sprite_state()
 {
+	clear_render_state();
 	auto &state = static_state.state;
-	memset(&state, 0, sizeof(state));
 	state.front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	state.cull_mode = VK_CULL_MODE_NONE;
 	state.blend_enable = true;

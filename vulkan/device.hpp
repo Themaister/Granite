@@ -52,7 +52,6 @@
 #include <atomic>
 #include <mutex>
 #include <condition_variable>
-#include "thread_group.hpp"
 #endif
 
 #ifdef GRANITE_VULKAN_FOSSILIZE
@@ -284,6 +283,7 @@ private:
 	VkQueue graphics_queue = VK_NULL_HANDLE;
 	VkQueue compute_queue = VK_NULL_HANDLE;
 	VkQueue transfer_queue = VK_NULL_HANDLE;
+	unsigned num_thread_indices = 1;
 
 #ifdef GRANITE_VULKAN_MT
 	std::atomic<uint64_t> cookie;

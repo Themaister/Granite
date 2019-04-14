@@ -182,6 +182,16 @@ public:
 	void notify_validation_error(const char *msg);
 	void set_notification_callback(std::function<void (const char *)> func);
 
+	void set_num_thread_indices(unsigned indices)
+	{
+		num_thread_indices = indices;
+	}
+
+	unsigned get_num_thread_indices() const
+	{
+		return num_thread_indices;
+	}
+
 private:
 	VkDevice device = VK_NULL_HANDLE;
 	VkInstance instance = VK_NULL_HANDLE;
@@ -196,6 +206,7 @@ private:
 	uint32_t graphics_queue_family = VK_QUEUE_FAMILY_IGNORED;
 	uint32_t compute_queue_family = VK_QUEUE_FAMILY_IGNORED;
 	uint32_t transfer_queue_family = VK_QUEUE_FAMILY_IGNORED;
+	unsigned num_thread_indices = 1;
 
 	bool create_instance(const char **instance_ext, uint32_t instance_ext_count);
 	bool create_device(VkPhysicalDevice gpu, VkSurfaceKHR surface, const char **required_device_extensions,

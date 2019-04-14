@@ -25,6 +25,7 @@
 #include <stdexcept>
 #include "util.hpp"
 #include "global_managers.hpp"
+#include "thread_id.hpp"
 
 using namespace std;
 
@@ -113,21 +114,6 @@ TaskGroup::~TaskGroup()
 	if (!flushed)
 		flush();
 }
-}
-
-static thread_local unsigned thread_id_to_index = ~0u;
-
-unsigned ThreadGroup::get_current_thread_index()
-{
-	auto ret = thread_id_to_index;
-	if (ret == ~0u)
-		throw invalid_argument("Thread does not exist in thread manager or is not the main thread.");
-	return ret;
-}
-
-void ThreadGroup::register_main_thread()
-{
-	thread_id_to_index = 0;
 }
 
 void ThreadGroup::start(unsigned num_threads)
@@ -275,7 +261,11 @@ bool ThreadGroup::is_idle()
 
 void ThreadGroup::thread_looper(unsigned index)
 {
-	thread_id_to_index = index;
+#ifdef GRANITE_VULKAN_MT
+	Vulkan::register_thread_index(index);
+#else
+	(void)index;
+#endif
 
 	for (;;)
 	{
@@ -315,7 +305,9 @@ void ThreadGroup::thread_looper(unsigned index)
 
 ThreadGroup::ThreadGroup()
 {
-	register_main_thread();
+#ifdef GRANITE_VULKAN_MT
+	Vulkan::register_thread_index(0);
+#endif
 	total_tasks.store(0);
 	completed_tasks.store(0);
 }

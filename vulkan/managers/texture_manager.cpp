@@ -28,6 +28,7 @@
 
 #ifdef GRANITE_VULKAN_MT
 #include "thread_group.hpp"
+#include "thread_id.hpp"
 #endif
 
 using namespace std;
@@ -62,7 +63,7 @@ void Texture::update(std::unique_ptr<Granite::File> file)
 	auto *f = file.release();
 	auto work = [f, this]() {
 #ifdef GRANITE_VULKAN_MT
-		LOGI("Loading texture in thread index: %u\n", Granite::ThreadGroup::get_current_thread_index());
+		LOGI("Loading texture in thread index: %u\n", get_current_thread_index());
 #endif
 		unique_ptr<Granite::File> updated_file{f};
 		auto size = updated_file->get_size();

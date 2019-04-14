@@ -84,7 +84,7 @@ float WSI::get_estimated_video_latency()
 	}
 }
 
-bool WSI::init_external_context(std::unique_ptr<Vulkan::Context> fresh_context)
+bool WSI::init_external_context(unique_ptr<Context> fresh_context)
 {
 	context = move(fresh_context);
 
@@ -96,7 +96,7 @@ bool WSI::init_external_context(std::unique_ptr<Vulkan::Context> fresh_context)
 	return true;
 }
 
-bool WSI::init_external_swapchain(std::vector<Vulkan::ImageHandle> swapchain_images_)
+bool WSI::init_external_swapchain(vector<ImageHandle> swapchain_images_)
 {
 	swapchain_width = platform->get_surface_width();
 	swapchain_height = platform->get_surface_height();
@@ -129,11 +129,12 @@ void WSI::set_platform(WSIPlatform *platform_)
 	platform = platform_;
 }
 
-bool WSI::init()
+bool WSI::init(unsigned num_thread_indices)
 {
 	auto instance_ext = platform->get_instance_extensions();
 	auto device_ext = platform->get_device_extensions();
 	context.reset(new Context);
+	context->set_num_thread_indices(num_thread_indices);
 	if (!context->init_instance_and_device(instance_ext.data(), instance_ext.size(), device_ext.data(), device_ext.size()))
 		return false;
 
@@ -197,7 +198,7 @@ void WSI::deinit_surface_and_swapchain()
 	platform->event_swapchain_destroyed();
 }
 
-void WSI::set_external_frame(unsigned index, Vulkan::Semaphore acquire_semaphore, double frame_time)
+void WSI::set_external_frame(unsigned index, Semaphore acquire_semaphore, double frame_time)
 {
 	external_frame_index = index;
 	external_acquire = move(acquire_semaphore);
@@ -378,7 +379,7 @@ bool WSI::end_frame()
 		// If we didn't render into the swapchain this frame, we will return a blank semaphore.
 		external_release = device->consume_release_semaphore();
 		if (external_release && !external_release->is_signalled())
-			std::abort();
+			abort();
 		frame_is_external = false;
 	}
 	else
@@ -538,7 +539,7 @@ bool WSI::blocking_init_swapchain(unsigned width, unsigned height)
 		else if (err == SwapchainError::NoSurface && platform->alive(*this))
 		{
 			platform->poll_input();
-			this_thread::sleep_for(std::chrono::milliseconds(10));
+			this_thread::sleep_for(chrono::milliseconds(10));
 		}
 	} while (err != SwapchainError::None);
 

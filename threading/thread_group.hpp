@@ -139,8 +139,6 @@ public:
 
 	void stop();
 
-	static unsigned get_current_thread_index();
-
 	void enqueue_task(TaskGroup &group, std::function<void ()> func);
 	TaskGroup create_task(std::function<void ()> func);
 	TaskGroup create_task();
@@ -155,8 +153,6 @@ public:
 	void submit(TaskGroup &group);
 	void wait_idle();
 	bool is_idle();
-
-	static void register_main_thread();
 
 private:
 	Util::ThreadSafeObjectPool<Internal::Task> task_pool;

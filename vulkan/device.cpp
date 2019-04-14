@@ -29,22 +29,21 @@
 #include <string.h>
 
 #ifdef GRANITE_VULKAN_MT
-#include "thread_group.hpp"
+#include "thread_id.hpp"
+static unsigned get_thread_index()
+{
+	return Vulkan::get_current_thread_index();
+}
 #define LOCK() std::lock_guard<std::mutex> holder__{lock.lock}
 #define DRAIN_FRAME_LOCK() \
 	std::unique_lock<std::mutex> holder__{lock.lock}; \
 	lock.cond.wait(holder__, [&]() { \
 		return lock.counter == 0; \
 	})
-
-static inline unsigned get_current_thread_index()
-{
-	return Granite::ThreadGroup::get_current_thread_index();
-}
 #else
 #define LOCK() ((void)0)
 #define DRAIN_FRAME_LOCK() VK_ASSERT(lock.counter == 0)
-static inline unsigned get_current_thread_index()
+static unsigned get_thread_index()
 {
 	return 0;
 }
@@ -644,9 +643,13 @@ void Device::init_workarounds()
 
 void Device::set_context(const Context &context)
 {
+#ifdef GRANITE_VULKAN_MT
+	register_thread_index(0);
+#endif
 	instance = context.get_instance();
 	gpu = context.get_gpu();
 	device = context.get_device();
+	num_thread_indices = context.get_num_thread_indices();
 
 	graphics_queue_family_index = context.get_graphics_queue_family();
 	graphics_queue = context.get_graphics_queue();
@@ -1339,7 +1342,7 @@ void Device::sync_buffer_blocks()
 
 	VkBufferUsageFlags usage = 0;
 
-	auto cmd = request_command_buffer_nolock(get_current_thread_index(), CommandBuffer::Type::AsyncTransfer);
+	auto cmd = request_command_buffer_nolock(get_thread_index(), CommandBuffer::Type::AsyncTransfer);
 
 	cmd->begin_region("buffer-block-sync");
 
@@ -1473,7 +1476,7 @@ vector<CommandBufferHandle> &Device::get_queue_submissions(CommandBuffer::Type t
 
 CommandBufferHandle Device::request_command_buffer(CommandBuffer::Type type)
 {
-	return request_command_buffer_for_thread(get_current_thread_index(), type);
+	return request_command_buffer_for_thread(get_thread_index(), type);
 }
 
 CommandBufferHandle Device::request_command_buffer_for_thread(unsigned thread_index, CommandBuffer::Type type)
@@ -1574,9 +1577,6 @@ bool Device::swapchain_touched() const
 
 Device::~Device()
 {
-#ifdef GRANITE_VULKAN_MT
-	Granite::Global::thread_group()->wait_idle();
-#endif
 	wait_idle();
 
 	wsi.acquire.reset();
@@ -1685,12 +1685,7 @@ Device::PerFrame::PerFrame(Device *device_)
     , managers(device_->managers)
     , query_pool(device_)
 {
-#ifdef GRANITE_VULKAN_MT
-	unsigned count = Granite::Global::thread_group()->get_num_threads() + 1;
-#else
-	unsigned count = 1;
-#endif
-
+	unsigned count = device_->num_thread_indices;
 	for (unsigned i = 0; i < count; i++)
 	{
 		graphics_cmd_pool.emplace_back(device_->get_device(), device_->graphics_queue_family_index);

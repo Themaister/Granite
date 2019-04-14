@@ -24,10 +24,6 @@
 #include "device.hpp"
 #include <vector>
 
-#ifdef GRANITE_VULKAN_MT
-#include "thread_group.hpp"
-#endif
-
 using namespace std;
 using namespace Util;
 
@@ -37,11 +33,7 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device_, const
 	: IntrusiveHashMapEnabled<DescriptorSetAllocator>(hash)
 	, device(device_)
 {
-#ifdef GRANITE_VULKAN_MT
-	unsigned count = Granite::Global::thread_group()->get_num_threads() + 1;
-#else
-	unsigned count = 1;
-#endif
+	unsigned count = device_->num_thread_indices;
 	for (unsigned i = 0; i < count; i++)
 		per_thread.emplace_back(new PerThread);
 

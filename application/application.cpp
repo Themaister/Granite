@@ -32,6 +32,7 @@
 #include "muglm/matrix_helper.hpp"
 #include "muglm/muglm_impl.hpp"
 #include "utils/image_utils.hpp"
+#include "thread_group.hpp"
 #ifdef HAVE_GRANITE_AUDIO
 #include "audio_mixer.hpp"
 #endif
@@ -49,7 +50,7 @@ bool Application::init_wsi(std::unique_ptr<WSIPlatform> new_platform)
 {
 	platform = move(new_platform);
 	application_wsi.set_platform(platform.get());
-	if (!platform->has_external_swapchain() && !application_wsi.init())
+	if (!platform->has_external_swapchain() && !application_wsi.init(Global::thread_group()->get_num_threads() + 1))
 		return false;
 
 	return true;

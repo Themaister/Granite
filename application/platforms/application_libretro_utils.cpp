@@ -81,6 +81,9 @@ bool libretro_create_device(
 		return false;
 
 	vulkan_context.reset(new Vulkan::Context);
+#ifdef GRANITE_VULKAN_MT
+	vulkan_context->set_num_thread_indices(Global::thread_group()->get_num_threads() + 1);
+#endif
 	if (!vulkan_context->init_device_from_instance(instance, gpu, surface, required_device_extensions, num_required_device_extensions,
 	                                               required_device_layers, num_required_device_layers,
 	                                               required_features))

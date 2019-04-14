@@ -294,6 +294,11 @@ target_sources(granite PRIVATE
         vulkan/pipeline_event.cpp vulkan/pipeline_event.hpp
         vulkan/query_pool.cpp vulkan/query_pool.hpp)
 
+if (GRANITE_VULKAN_MT)
+    target_compile_definitions(granite PUBLIC GRANITE_VULKAN_MT)
+    target_sources(granite PRIVATE vulkan/thread_id.hpp vulkan/thread_id.cpp)
+endif()
+
 if (NOT GRANITE_VULKAN_ONLY)
     if (NOT ANDROID)
         add_library(granite-application-entry STATIC application/application_entry.cpp)
@@ -572,10 +577,6 @@ if (NOT GRANITE_VULKAN_ONLY)
     if (GRANITE_ASTC_ENCODER_COMPRESSION)
         target_link_libraries(granite PRIVATE astc-encoder)
         target_compile_definitions(granite PRIVATE HAVE_ASTC_ENCODER)
-    endif()
-
-    if (GRANITE_VULKAN_MT)
-        target_compile_definitions(granite PUBLIC GRANITE_VULKAN_MT)
     endif()
 
     if (GRANITE_VULKAN_FOSSILIZE)

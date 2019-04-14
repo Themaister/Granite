@@ -23,6 +23,7 @@
 #include "application_libretro_utils.hpp"
 #include "application.hpp"
 #include "application_events.hpp"
+#include "thread_group.hpp"
 
 namespace Granite
 {

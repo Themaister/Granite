@@ -52,6 +52,7 @@
 #include <atomic>
 #include <mutex>
 #include <condition_variable>
+#include "thread_group.hpp"
 #endif
 
 #ifdef GRANITE_VULKAN_FOSSILIZE

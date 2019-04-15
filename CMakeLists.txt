@@ -264,6 +264,7 @@ target_sources(granite PRIVATE
         util/unstable_remove_if.hpp
         util/intrusive_hash_map.hpp
         util/timer.hpp util/timer.cpp
+        util/aligned_alloc.cpp util/aligned_alloc.hpp
 
         vulkan/texture_format.cpp vulkan/texture_format.hpp
         vulkan/vulkan.cpp vulkan/vulkan.hpp
@@ -428,7 +429,6 @@ if (NOT GRANITE_VULKAN_ONLY)
             util/dynamic_library.cpp util/dynamic_library.hpp
             util/util.cpp
 
-            util/aligned_alloc.cpp util/aligned_alloc.hpp
             util/lock_free_message_queue.hpp util/lock_free_message_queue.cpp
             util/bitmap_to_mesh.cpp util/bitmap_to_mesh.hpp
     )

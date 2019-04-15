@@ -6,7 +6,7 @@ extern "C" {
 #endif
 
 /*
-** Copyright (c) 2015-2018 The Khronos Group Inc.
+** Copyright (c) 2015-2019 The Khronos Group Inc.
 **
 ** Licensed under the Apache License, Version 2.0 (the "License");
 ** you may not use this file except in compliance with the License.
@@ -27,19 +27,17 @@ extern "C" {
 */
 
 
+
 #define VK_FUCHSIA_imagepipe_surface 1
 #define VK_FUCHSIA_IMAGEPIPE_SURFACE_SPEC_VERSION 1
 #define VK_FUCHSIA_IMAGEPIPE_SURFACE_EXTENSION_NAME "VK_FUCHSIA_imagepipe_surface"
-
 typedef VkFlags VkImagePipeSurfaceCreateFlagsFUCHSIA;
-
 typedef struct VkImagePipeSurfaceCreateInfoFUCHSIA {
     VkStructureType                         sType;
     const void*                             pNext;
     VkImagePipeSurfaceCreateFlagsFUCHSIA    flags;
     zx_handle_t                             imagePipeHandle;
 } VkImagePipeSurfaceCreateInfoFUCHSIA;
-
 
 typedef VkResult (VKAPI_PTR *PFN_vkCreateImagePipeSurfaceFUCHSIA)(VkInstance instance, const VkImagePipeSurfaceCreateInfoFUCHSIA* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkSurfaceKHR* pSurface);
 

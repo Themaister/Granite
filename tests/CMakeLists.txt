@@ -6,6 +6,11 @@ if (NOT ANDROID)
     target_compile_definitions(linear-image-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
 endif()
 
+add_granite_application(mrt-color-mask mrt_color_mask.cpp)
+if (NOT ANDROID)
+    target_compile_definitions(mrt-color-mask PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
+endif()
+
 add_granite_application(triangle-test triangle.cpp)
 if (NOT ANDROID)
     target_compile_definitions(triangle-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")

@@ -52,11 +52,11 @@
 #include <atomic>
 #include <mutex>
 #include <condition_variable>
-#include "thread_group.hpp"
 #endif
 
 #ifdef GRANITE_VULKAN_FOSSILIZE
 #include "fossilize.hpp"
+#include "thread_group.hpp"
 #endif
 
 #include "quirks.hpp"

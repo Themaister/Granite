@@ -85,15 +85,15 @@ public:
 	{
 	}
 
-	virtual void event_device_created(Device *device) = 0;
-	virtual void event_device_destroyed() = 0;
+	virtual void event_device_created(Device *device);
+	virtual void event_device_destroyed();
 	virtual void event_swapchain_created(Device *device, unsigned width, unsigned height,
-	                                     float aspect_ratio, size_t num_swapchain_images, VkFormat format) = 0;
-	virtual void event_swapchain_destroyed() = 0;
-	virtual void event_frame_tick(double frame, double elapsed) = 0;
-	virtual void event_swapchain_index(Device *device, unsigned index) = 0;
+	                                     float aspect_ratio, size_t num_swapchain_images, VkFormat format);
+	virtual void event_swapchain_destroyed();
+	virtual void event_frame_tick(double frame, double elapsed);
+	virtual void event_swapchain_index(Device *device, unsigned index);
 	virtual void event_display_timing_stutter(uint32_t current_serial, uint32_t observed_serial,
-	                                          unsigned dropped_frames) = 0;
+	                                          unsigned dropped_frames);
 
 	virtual float get_estimated_frame_presentation_duration();
 

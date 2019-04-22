@@ -748,4 +748,13 @@ WSI::~WSI()
 {
 	deinit_external();
 }
+
+void WSIPlatform::event_device_created(Device *) {}
+void WSIPlatform::event_device_destroyed() {}
+void WSIPlatform::event_swapchain_created(Device *, unsigned, unsigned, float, size_t, VkFormat) {}
+void WSIPlatform::event_swapchain_destroyed() {}
+void WSIPlatform::event_frame_tick(double, double) {}
+void WSIPlatform::event_swapchain_index(Device *, unsigned) {}
+void WSIPlatform::event_display_timing_stutter(uint32_t, uint32_t, uint32_t) {}
+
 }

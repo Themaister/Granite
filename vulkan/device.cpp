@@ -987,13 +987,8 @@ void Device::submit_empty_inner(CommandBuffer::Type type, VkFence *fence,
 		report_checkpoints();
 
 	if (fence)
-	{
-		frame().wait_fences.push_back(cleared_fence);
 		*fence = cleared_fence;
-		data.need_fence = false;
-	}
-	else
-		data.need_fence = true;
+	data.need_fence = true;
 
 #if defined(VULKAN_DEBUG) && defined(SUBMIT_DEBUG)
 	const char *queue_name = nullptr;
@@ -1282,13 +1277,8 @@ void Device::submit_queue(CommandBuffer::Type type, VkFence *fence,
 	submissions.clear();
 
 	if (fence)
-	{
-		frame().wait_fences.push_back(cleared_fence);
 		*fence = cleared_fence;
-		data.need_fence = false;
-	}
-	else
-		data.need_fence = true;
+	data.need_fence = true;
 
 #if defined(VULKAN_DEBUG) && defined(SUBMIT_DEBUG)
 	const char *queue_name = nullptr;
@@ -1400,6 +1390,7 @@ void Device::end_frame_nolock()
 	if (transfer.need_fence || !frame().transfer_submissions.empty())
 	{
 		submit_queue(CommandBuffer::Type::AsyncTransfer, &fence, 0, nullptr);
+		frame().wait_fences.push_back(fence);
 		frame().recycle_fences.push_back(fence);
 		transfer.need_fence = false;
 	}
@@ -1407,6 +1398,7 @@ void Device::end_frame_nolock()
 	if (graphics.need_fence || !frame().graphics_submissions.empty())
 	{
 		submit_queue(CommandBuffer::Type::Generic, &fence, 0, nullptr);
+		frame().wait_fences.push_back(fence);
 		frame().recycle_fences.push_back(fence);
 		graphics.need_fence = false;
 	}
@@ -1414,6 +1406,7 @@ void Device::end_frame_nolock()
 	if (compute.need_fence || !frame().compute_submissions.empty())
 	{
 		submit_queue(CommandBuffer::Type::AsyncCompute, &fence, 0, nullptr);
+		frame().wait_fences.push_back(fence);
 		frame().recycle_fences.push_back(fence);
 		compute.need_fence = false;
 	}

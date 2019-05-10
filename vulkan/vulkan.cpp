@@ -135,11 +135,7 @@ bool Context::init_from_instance_and_device(VkInstance instance_, VkPhysicalDevi
 	owned_instance = false;
 	owned_device = true;
 
-	{
-		lock_guard<mutex> holder(loader_init_lock);
-		volkLoadInstance(instance);
-	}
-
+	volkLoadInstance(instance);
 	volkLoadDeviceTable(&device_table, device);
 	vkGetPhysicalDeviceProperties(gpu, &gpu_props);
 	vkGetPhysicalDeviceMemoryProperties(gpu, &mem_props);
@@ -156,11 +152,7 @@ bool Context::init_device_from_instance(VkInstance instance_, VkPhysicalDevice g
 	instance = instance_;
 	owned_instance = false;
 	owned_device = true;
-
-	{
-		lock_guard<mutex> holder(loader_init_lock);
-		volkLoadInstance(instance);
-	}
+	volkLoadInstance(instance);
 
 	if (!create_device(gpu_, surface, required_device_extensions, num_required_device_extensions, required_device_layers,
 	                   num_required_device_layers, required_features))

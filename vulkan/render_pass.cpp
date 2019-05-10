@@ -86,6 +86,7 @@ RenderPass::RenderPass(Hash hash, Device *device_, const VkRenderPassCreateInfo 
 	: IntrusiveHashMapEnabled<RenderPass>(hash)
 	, device(device_)
 {
+	auto &table = device->get_device_table();
 	unsigned num_color_attachments = 0;
 	if (create_info.attachmentCount > 0)
 	{
@@ -113,7 +114,7 @@ RenderPass::RenderPass(Hash hash, Device *device_, const VkRenderPassCreateInfo 
 		fixup_wsi_barrier(info, fixup_attachments);
 
 	LOGI("Creating render pass.\n");
-	if (vkCreateRenderPass(device->get_device(), &info, nullptr, &render_pass) != VK_SUCCESS)
+	if (table.vkCreateRenderPass(device->get_device(), &info, nullptr, &render_pass) != VK_SUCCESS)
 		LOGE("Failed to create render pass.");
 
 #ifdef GRANITE_VULKAN_FOSSILIZE
@@ -794,7 +795,8 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 		fixup_wsi_barrier(rp_info, fixup_attachments);
 
 	LOGI("Creating render pass.\n");
-	if (vkCreateRenderPass(device->get_device(), &rp_info, nullptr, &render_pass) != VK_SUCCESS)
+	auto &table = device->get_device_table();
+	if (table.vkCreateRenderPass(device->get_device(), &rp_info, nullptr, &render_pass) != VK_SUCCESS)
 		LOGE("Failed to create render pass.");
 
 #ifdef GRANITE_VULKAN_FOSSILIZE
@@ -846,8 +848,9 @@ void RenderPass::fixup_render_pass_workaround(VkRenderPassCreateInfo &create_inf
 
 RenderPass::~RenderPass()
 {
+	auto &table = device->get_device_table();
 	if (render_pass != VK_NULL_HANDLE)
-		vkDestroyRenderPass(device->get_device(), render_pass, nullptr);
+		table.vkDestroyRenderPass(device->get_device(), render_pass, nullptr);
 }
 
 Framebuffer::Framebuffer(Device *device_, const RenderPass &rp, const RenderPassInfo &info_)
@@ -890,7 +893,8 @@ Framebuffer::Framebuffer(Device *device_, const RenderPass &rp, const RenderPass
 	fb_info.height = height;
 	fb_info.layers = 1;
 
-	if (vkCreateFramebuffer(device->get_device(), &fb_info, nullptr, &framebuffer) != VK_SUCCESS)
+	auto &table = device->get_device_table();
+	if (table.vkCreateFramebuffer(device->get_device(), &fb_info, nullptr, &framebuffer) != VK_SUCCESS)
 		LOGE("Failed to create framebuffer.");
 }
 

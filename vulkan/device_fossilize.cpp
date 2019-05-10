@@ -104,7 +104,7 @@ VkPipeline Device::fossilize_create_graphics_pipeline(Fossilize::Hash hash, VkGr
 
 	LOGI("Creating graphics pipeline.\n");
 	VkPipeline pipeline = VK_NULL_HANDLE;
-	VkResult res = vkCreateGraphicsPipelines(device, pipeline_cache, 1, &info, nullptr, &pipeline);
+	VkResult res = table->vkCreateGraphicsPipelines(device, pipeline_cache, 1, &info, nullptr, &pipeline);
 	if (res != VK_SUCCESS)
 		LOGE("Failed to create graphics pipeline!\n");
 	return ret->add_pipeline(hash, pipeline);
@@ -126,7 +126,7 @@ VkPipeline Device::fossilize_create_compute_pipeline(Fossilize::Hash hash, VkCom
 
 	LOGI("Creating compute pipeline.\n");
 	VkPipeline pipeline = VK_NULL_HANDLE;
-	VkResult res = vkCreateComputePipelines(device, pipeline_cache, 1, &info, nullptr, &pipeline);
+	VkResult res = table->vkCreateComputePipelines(device, pipeline_cache, 1, &info, nullptr, &pipeline);
 	if (res != VK_SUCCESS)
 		LOGE("Failed to create compute pipeline!\n");
 	return ret->add_pipeline(hash, pipeline);

@@ -39,6 +39,8 @@
 
 namespace Vulkan
 {
+class Device;
+
 static inline uint32_t log2_integer(uint32_t v)
 {
 	v--;
@@ -307,7 +309,7 @@ private:
 class DeviceAllocator
 {
 public:
-	void init(VkPhysicalDevice gpu, VkDevice device);
+	void init(Device *device);
 	void set_supports_dedicated_allocation(bool enable)
 	{
 		use_dedicated = enable;
@@ -332,7 +334,8 @@ public:
 
 private:
 	std::vector<std::unique_ptr<Allocator>> allocators;
-	VkDevice device = VK_NULL_HANDLE;
+	Device *device = nullptr;
+	const VolkDeviceTable *table = nullptr;
 	VkPhysicalDeviceMemoryProperties mem_props;
 	VkDeviceSize atom_alignment = 1;
 #ifdef GRANITE_VULKAN_MT
@@ -352,7 +355,7 @@ private:
 	{
 		uint64_t size = 0;
 		std::vector<Allocation> blocks;
-		void garbage_collect(VkDevice device);
+		void garbage_collect(Device *device);
 	};
 
 	std::vector<Heap> heaps;

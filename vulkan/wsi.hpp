@@ -182,6 +182,7 @@ private:
 	VkSwapchainKHR swapchain = VK_NULL_HANDLE;
 	std::vector<VkImage> swapchain_images;
 	std::unique_ptr<Device> device;
+	const VolkDeviceTable *table = nullptr;
 
 	unsigned swapchain_width = 0;
 	unsigned swapchain_height = 0;

@@ -32,6 +32,7 @@ namespace Vulkan
 DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device_, const DescriptorSetLayout &layout, const uint32_t *stages_for_binds)
 	: IntrusiveHashMapEnabled<DescriptorSetAllocator>(hash)
 	, device(device_)
+	, table(device_->get_device_table())
 {
 	unsigned count = device_->num_thread_indices;
 	for (unsigned i = 0; i < count; i++)
@@ -124,7 +125,7 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device_, const
 	}
 
 	LOGI("Creating descriptor set layout.\n");
-	if (vkCreateDescriptorSetLayout(device->get_device(), &info, nullptr, &set_layout) != VK_SUCCESS)
+	if (table.vkCreateDescriptorSetLayout(device->get_device(), &info, nullptr, &set_layout) != VK_SUCCESS)
 		LOGE("Failed to create descriptor set layout.");
 #ifdef GRANITE_VULKAN_FOSSILIZE
 	device->register_descriptor_set_layout(set_layout, get_hash(), info);
@@ -163,7 +164,7 @@ pair<VkDescriptorSet, bool> DescriptorSetAllocator::find(unsigned thread_index, 
 		info.pPoolSizes = pool_size.data();
 	}
 
-	if (vkCreateDescriptorPool(device->get_device(), &info, nullptr, &pool) != VK_SUCCESS)
+	if (table.vkCreateDescriptorPool(device->get_device(), &info, nullptr, &pool) != VK_SUCCESS)
 		LOGE("Failed to create descriptor pool.\n");
 
 	VkDescriptorSet sets[VULKAN_NUM_SETS_PER_POOL];
@@ -175,7 +176,7 @@ pair<VkDescriptorSet, bool> DescriptorSetAllocator::find(unsigned thread_index, 
 	alloc.descriptorSetCount = VULKAN_NUM_SETS_PER_POOL;
 	alloc.pSetLayouts = layouts;
 
-	if (vkAllocateDescriptorSets(device->get_device(), &alloc, sets) != VK_SUCCESS)
+	if (table.vkAllocateDescriptorSets(device->get_device(), &alloc, sets) != VK_SUCCESS)
 		LOGE("Failed to allocate descriptor sets.\n");
 	state.pools.push_back(pool);
 
@@ -192,8 +193,8 @@ void DescriptorSetAllocator::clear()
 		thr->set_nodes.clear();
 		for (auto &pool : thr->pools)
 		{
-			vkResetDescriptorPool(device->get_device(), pool, 0);
-			vkDestroyDescriptorPool(device->get_device(), pool, nullptr);
+			table.vkResetDescriptorPool(device->get_device(), pool, 0);
+			table.vkDestroyDescriptorPool(device->get_device(), pool, nullptr);
 		}
 		thr->pools.clear();
 	}
@@ -202,7 +203,7 @@ void DescriptorSetAllocator::clear()
 DescriptorSetAllocator::~DescriptorSetAllocator()
 {
 	if (set_layout != VK_NULL_HANDLE)
-		vkDestroyDescriptorSetLayout(device->get_device(), set_layout, nullptr);
+		table.vkDestroyDescriptorSetLayout(device->get_device(), set_layout, nullptr);
 	clear();
 }
 }

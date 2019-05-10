@@ -41,6 +41,7 @@ namespace Vulkan
 {
 CommandBuffer::CommandBuffer(Device *device_, VkCommandBuffer cmd_, VkPipelineCache cache_, Type type_)
     : device(device_)
+    , table(device_->get_device_table())
     , cmd(cmd_)
     , cache(cache_)
     , type(type_)
@@ -66,7 +67,7 @@ void CommandBuffer::fill_buffer(const Buffer &dst, uint32_t value)
 
 void CommandBuffer::fill_buffer(const Buffer &dst, uint32_t value, VkDeviceSize offset, VkDeviceSize size)
 {
-	vkCmdFillBuffer(cmd, dst.get_buffer(), offset, size, value);
+	table.vkCmdFillBuffer(cmd, dst.get_buffer(), offset, size, value);
 }
 
 void CommandBuffer::copy_buffer(const Buffer &dst, VkDeviceSize dst_offset, const Buffer &src, VkDeviceSize src_offset,
@@ -75,7 +76,7 @@ void CommandBuffer::copy_buffer(const Buffer &dst, VkDeviceSize dst_offset, cons
 	const VkBufferCopy region = {
 		src_offset, dst_offset, size,
 	};
-	vkCmdCopyBuffer(cmd, src.get_buffer(), dst.get_buffer(), 1, &region);
+	table.vkCmdCopyBuffer(cmd, src.get_buffer(), dst.get_buffer(), 1, &region);
 }
 
 void CommandBuffer::copy_buffer(const Buffer &dst, const Buffer &src)
@@ -96,7 +97,7 @@ void CommandBuffer::copy_image(const Vulkan::Image &dst, const Vulkan::Image &sr
 	region.srcSubresource = src_subresource;
 	region.dstSubresource = dst_subresource;
 
-	vkCmdCopyImage(cmd, src.get_image(), src.get_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL),
+	table.vkCmdCopyImage(cmd, src.get_image(), src.get_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL),
 	               dst.get_image(), dst.get_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL),
 	               1, &region);
 }
@@ -129,23 +130,23 @@ void CommandBuffer::copy_image(const Image &dst, const Image &src)
 		VK_ASSERT(region.srcSubresource.aspectMask == region.dstSubresource.aspectMask);
 	}
 
-	vkCmdCopyImage(cmd, src.get_image(), src.get_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL),
-	               dst.get_image(), dst.get_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL),
-	               levels, regions);
+	table.vkCmdCopyImage(cmd, src.get_image(), src.get_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL),
+	                     dst.get_image(), dst.get_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL),
+	                     levels, regions);
 }
 
 void CommandBuffer::copy_buffer_to_image(const Image &image, const Buffer &buffer, unsigned num_blits,
                                          const VkBufferImageCopy *blits)
 {
-	vkCmdCopyBufferToImage(cmd, buffer.get_buffer(),
-	                       image.get_image(), image.get_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL), num_blits, blits);
+	table.vkCmdCopyBufferToImage(cmd, buffer.get_buffer(),
+	                             image.get_image(), image.get_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL), num_blits, blits);
 }
 
 void CommandBuffer::copy_image_to_buffer(const Buffer &buffer, const Image &image, unsigned num_blits,
                                          const VkBufferImageCopy *blits)
 {
-	vkCmdCopyImageToBuffer(cmd, image.get_image(), image.get_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL),
-	                       buffer.get_buffer(), num_blits, blits);
+	table.vkCmdCopyImageToBuffer(cmd, image.get_image(), image.get_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL),
+	                             buffer.get_buffer(), num_blits, blits);
 }
 
 void CommandBuffer::copy_buffer_to_image(const Image &image, const Buffer &src, VkDeviceSize buffer_offset,
@@ -157,8 +158,8 @@ void CommandBuffer::copy_buffer_to_image(const Image &image, const Buffer &src, 
 		row_length != extent.width ? row_length : 0, slice_height != extent.height ? slice_height : 0,
 		subresource, offset, extent,
 	};
-	vkCmdCopyBufferToImage(cmd, src.get_buffer(), image.get_image(), image.get_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL),
-	                       1, &region);
+	table.vkCmdCopyBufferToImage(cmd, src.get_buffer(), image.get_image(), image.get_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL),
+	                             1, &region);
 }
 
 void CommandBuffer::copy_image_to_buffer(const Buffer &buffer, const Image &image, VkDeviceSize buffer_offset,
@@ -170,8 +171,8 @@ void CommandBuffer::copy_image_to_buffer(const Buffer &buffer, const Image &imag
 		row_length != extent.width ? row_length : 0, slice_height != extent.height ? slice_height : 0,
 		subresource, offset, extent,
 	};
-	vkCmdCopyImageToBuffer(cmd, image.get_image(), image.get_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL),
-	                       buffer.get_buffer(), 1, &region);
+	table.vkCmdCopyImageToBuffer(cmd, image.get_image(), image.get_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL),
+	                             buffer.get_buffer(), 1, &region);
 }
 
 void CommandBuffer::clear_image(const Image &image, const VkClearValue &value)
@@ -188,13 +189,13 @@ void CommandBuffer::clear_image(const Image &image, const VkClearValue &value)
 	range.layerCount = image.get_create_info().layers;
 	if (aspect & VK_IMAGE_ASPECT_COLOR_BIT)
 	{
-		vkCmdClearColorImage(cmd, image.get_image(), image.get_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL),
-		                     &value.color, 1, &range);
+		table.vkCmdClearColorImage(cmd, image.get_image(), image.get_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL),
+		                           &value.color, 1, &range);
 	}
 	else
 	{
-		vkCmdClearDepthStencilImage(cmd, image.get_image(), image.get_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL),
-		                            &value.depthStencil, 1, &range);
+		table.vkCmdClearDepthStencilImage(cmd, image.get_image(), image.get_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL),
+		                                  &value.depthStencil, 1, &range);
 	}
 }
 
@@ -207,14 +208,14 @@ void CommandBuffer::clear_quad(unsigned attachment, const VkClearRect &rect, con
 	att.clearValue = value;
 	att.colorAttachment = attachment;
 	att.aspectMask = aspect;
-	vkCmdClearAttachments(cmd, 1, &att, 1, &rect);
+	table.vkCmdClearAttachments(cmd, 1, &att, 1, &rect);
 }
 
 void CommandBuffer::clear_quad(const VkClearRect &rect, const VkClearAttachment *attachments, unsigned num_attachments)
 {
 	VK_ASSERT(framebuffer);
 	VK_ASSERT(actual_render_pass);
-	vkCmdClearAttachments(cmd, num_attachments, attachments, 1, &rect);
+	table.vkCmdClearAttachments(cmd, num_attachments, attachments, 1, &rect);
 }
 
 void CommandBuffer::full_barrier()
@@ -237,8 +238,8 @@ void CommandBuffer::pixel_barrier()
 	VkMemoryBarrier barrier = { VK_STRUCTURE_TYPE_MEMORY_BARRIER };
 	barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 	barrier.dstAccessMask = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
-	vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-	                     VK_DEPENDENCY_BY_REGION_BIT, 1, &barrier, 0, nullptr, 0, nullptr);
+	table.vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+	                           VK_DEPENDENCY_BY_REGION_BIT, 1, &barrier, 0, nullptr, 0, nullptr);
 }
 
 static inline void fixup_src_stage(VkPipelineStageFlags &src_stages, bool fixup)
@@ -265,7 +266,7 @@ void CommandBuffer::barrier(VkPipelineStageFlags src_stages, VkAccessFlags src_a
 	barrier.srcAccessMask = src_access;
 	barrier.dstAccessMask = dst_access;
 	fixup_src_stage(src_stages, device->get_workarounds().optimize_all_graphics_barrier);
-	vkCmdPipelineBarrier(cmd, src_stages, dst_stages, 0, 1, &barrier, 0, nullptr, 0, nullptr);
+	table.vkCmdPipelineBarrier(cmd, src_stages, dst_stages, 0, 1, &barrier, 0, nullptr, 0, nullptr);
 }
 
 void CommandBuffer::barrier(VkPipelineStageFlags src_stages, VkPipelineStageFlags dst_stages, unsigned barriers,
@@ -276,7 +277,7 @@ void CommandBuffer::barrier(VkPipelineStageFlags src_stages, VkPipelineStageFlag
 	VK_ASSERT(!actual_render_pass);
 	VK_ASSERT(!framebuffer);
 	fixup_src_stage(src_stages, device->get_workarounds().optimize_all_graphics_barrier);
-	vkCmdPipelineBarrier(cmd, src_stages, dst_stages, 0, barriers, globals, buffer_barriers, buffers, image_barriers, images);
+	table.vkCmdPipelineBarrier(cmd, src_stages, dst_stages, 0, barriers, globals, buffer_barriers, buffers, image_barriers, images);
 }
 
 void CommandBuffer::buffer_barrier(const Buffer &buffer, VkPipelineStageFlags src_stages, VkAccessFlags src_access,
@@ -292,7 +293,7 @@ void CommandBuffer::buffer_barrier(const Buffer &buffer, VkPipelineStageFlags sr
 	barrier.size = buffer.get_create_info().size;
 
 	fixup_src_stage(src_stages, device->get_workarounds().optimize_all_graphics_barrier);
-	vkCmdPipelineBarrier(cmd, src_stages, dst_stages, 0, 0, nullptr, 1, &barrier, 0, nullptr);
+	table.vkCmdPipelineBarrier(cmd, src_stages, dst_stages, 0, 0, nullptr, 1, &barrier, 0, nullptr);
 }
 
 void CommandBuffer::image_barrier(const Image &image, VkImageLayout old_layout, VkImageLayout new_layout,
@@ -316,7 +317,7 @@ void CommandBuffer::image_barrier(const Image &image, VkImageLayout old_layout, 
 	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 
 	fixup_src_stage(src_stages, device->get_workarounds().optimize_all_graphics_barrier);
-	vkCmdPipelineBarrier(cmd, src_stages, dst_stages, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+	table.vkCmdPipelineBarrier(cmd, src_stages, dst_stages, 0, 0, nullptr, 0, nullptr, 1, &barrier);
 }
 
 void CommandBuffer::barrier_prepare_generate_mipmap(const Image &image, VkImageLayout base_level_layout,
@@ -416,10 +417,10 @@ void CommandBuffer::blit_image(const Image &dst, const Image &src,
 		{ dst_offset, add_offset(dst_offset, dst_extent) },
 	};
 
-	vkCmdBlitImage(cmd,
-	               src.get_image(), src.get_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL),
-	               dst.get_image(), dst.get_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL),
-	               1, &blit, filter);
+	table.vkCmdBlitImage(cmd,
+	                     src.get_image(), src.get_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL),
+	                     dst.get_image(), dst.get_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL),
+	                     1, &blit, filter);
 #else
 	// RADV workaround.
 	for (unsigned i = 0; i < num_layers; i++)
@@ -431,10 +432,10 @@ void CommandBuffer::blit_image(const Image &dst, const Image &src,
 				{ dst_offset,                                          add_offset(dst_offset, dst_extent) },
 		};
 
-		vkCmdBlitImage(cmd,
-		               src.get_image(), src.get_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL),
-		               dst.get_image(), dst.get_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL),
-		               1, &blit, filter);
+		table.vkCmdBlitImage(cmd,
+		                     src.get_image(), src.get_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL),
+		                     dst.get_image(), dst.get_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL),
+		                     1, &blit, filter);
 	}
 #endif
 }
@@ -533,7 +534,7 @@ void CommandBuffer::next_subpass(VkSubpassContents contents)
 	VK_ASSERT(actual_render_pass);
 	current_subpass++;
 	VK_ASSERT(current_subpass < actual_render_pass->get_num_subpasses());
-	vkCmdNextSubpass(cmd, contents);
+	table.vkCmdNextSubpass(cmd, contents);
 	current_contents = contents;
 	begin_graphics();
 }
@@ -579,7 +580,7 @@ void CommandBuffer::begin_render_pass(const RenderPassInfo &info, VkSubpassConte
 	begin_info.clearValueCount = num_clear_values;
 	begin_info.pClearValues = clear_values;
 
-	vkCmdBeginRenderPass(cmd, &begin_info, contents);
+	table.vkCmdBeginRenderPass(cmd, &begin_info, contents);
 
 	current_contents = contents;
 	begin_graphics();
@@ -591,7 +592,7 @@ void CommandBuffer::end_render_pass()
 	VK_ASSERT(actual_render_pass);
 	VK_ASSERT(compatible_render_pass);
 
-	vkCmdEndRenderPass(cmd);
+	table.vkCmdEndRenderPass(cmd);
 
 	framebuffer = nullptr;
 	actual_render_pass = nullptr;
@@ -641,7 +642,7 @@ VkPipeline CommandBuffer::build_compute_pipeline(Hash hash)
 #endif
 
 	LOGI("Creating compute pipeline.\n");
-	if (vkCreateComputePipelines(device->get_device(), cache, 1, &info, nullptr, &compute_pipeline) != VK_SUCCESS)
+	if (table.vkCreateComputePipelines(device->get_device(), cache, 1, &info, nullptr, &compute_pipeline) != VK_SUCCESS)
 	{
 		LOGE("Failed to create compute pipeline!\n");
 		return VK_NULL_HANDLE;
@@ -837,7 +838,7 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
 #endif
 
 	LOGI("Creating graphics pipeline.\n");
-	VkResult res = vkCreateGraphicsPipelines(device->get_device(), cache, 1, &pipe, nullptr, &pipeline);
+	VkResult res = table.vkCreateGraphicsPipelines(device->get_device(), cache, 1, &pipe, nullptr, &pipeline);
 	if (res != VK_SUCCESS)
 	{
 		LOGE("Failed to create graphics pipeline!\n");
@@ -933,7 +934,7 @@ bool CommandBuffer::flush_compute_state()
 			return false;
 
 		if (old_pipe != current_pipeline)
-			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, current_pipeline);
+			table.vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, current_pipeline);
 	}
 
 	if (current_pipeline == VK_NULL_HANDLE)
@@ -947,9 +948,9 @@ bool CommandBuffer::flush_compute_state()
 		if (range.stageFlags != 0)
 		{
 			VK_ASSERT(range.offset == 0);
-			vkCmdPushConstants(cmd, current_pipeline_layout, range.stageFlags,
-			                   0, range.size,
-			                   bindings.push_constant_data);
+			table.vkCmdPushConstants(cmd, current_pipeline_layout, range.stageFlags,
+			                         0, range.size,
+			                         bindings.push_constant_data);
 		}
 	}
 
@@ -974,7 +975,7 @@ bool CommandBuffer::flush_render_state()
 
 		if (old_pipe != current_pipeline)
 		{
-			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, current_pipeline);
+			table.vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, current_pipeline);
 			set_dirty(COMMAND_BUFFER_DYNAMIC_BITS);
 		}
 	}
@@ -990,26 +991,26 @@ bool CommandBuffer::flush_render_state()
 		if (range.stageFlags != 0)
 		{
 			VK_ASSERT(range.offset == 0);
-			vkCmdPushConstants(cmd, current_pipeline_layout, range.stageFlags,
-			                   0, range.size,
-			                   bindings.push_constant_data);
+			table.vkCmdPushConstants(cmd, current_pipeline_layout, range.stageFlags,
+			                         0, range.size,
+			                         bindings.push_constant_data);
 		}
 	}
 
 	if (get_and_clear(COMMAND_BUFFER_DIRTY_VIEWPORT_BIT))
-		vkCmdSetViewport(cmd, 0, 1, &viewport);
+		table.vkCmdSetViewport(cmd, 0, 1, &viewport);
 	if (get_and_clear(COMMAND_BUFFER_DIRTY_SCISSOR_BIT))
-		vkCmdSetScissor(cmd, 0, 1, &scissor);
+		table.vkCmdSetScissor(cmd, 0, 1, &scissor);
 	if (static_state.state.depth_bias_enable && get_and_clear(COMMAND_BUFFER_DIRTY_DEPTH_BIAS_BIT))
-		vkCmdSetDepthBias(cmd, dynamic_state.depth_bias_constant, 0.0f, dynamic_state.depth_bias_slope);
+		table.vkCmdSetDepthBias(cmd, dynamic_state.depth_bias_constant, 0.0f, dynamic_state.depth_bias_slope);
 	if (static_state.state.stencil_test && get_and_clear(COMMAND_BUFFER_DIRTY_STENCIL_REFERENCE_BIT))
 	{
-		vkCmdSetStencilCompareMask(cmd, VK_STENCIL_FACE_FRONT_BIT, dynamic_state.front_compare_mask);
-		vkCmdSetStencilReference(cmd, VK_STENCIL_FACE_FRONT_BIT, dynamic_state.front_reference);
-		vkCmdSetStencilWriteMask(cmd, VK_STENCIL_FACE_FRONT_BIT, dynamic_state.front_write_mask);
-		vkCmdSetStencilCompareMask(cmd, VK_STENCIL_FACE_BACK_BIT, dynamic_state.back_compare_mask);
-		vkCmdSetStencilReference(cmd, VK_STENCIL_FACE_BACK_BIT, dynamic_state.back_reference);
-		vkCmdSetStencilWriteMask(cmd, VK_STENCIL_FACE_BACK_BIT, dynamic_state.back_write_mask);
+		table.vkCmdSetStencilCompareMask(cmd, VK_STENCIL_FACE_FRONT_BIT, dynamic_state.front_compare_mask);
+		table.vkCmdSetStencilReference(cmd, VK_STENCIL_FACE_FRONT_BIT, dynamic_state.front_reference);
+		table.vkCmdSetStencilWriteMask(cmd, VK_STENCIL_FACE_FRONT_BIT, dynamic_state.front_write_mask);
+		table.vkCmdSetStencilCompareMask(cmd, VK_STENCIL_FACE_BACK_BIT, dynamic_state.back_compare_mask);
+		table.vkCmdSetStencilReference(cmd, VK_STENCIL_FACE_BACK_BIT, dynamic_state.back_reference);
+		table.vkCmdSetStencilWriteMask(cmd, VK_STENCIL_FACE_BACK_BIT, dynamic_state.back_write_mask);
 	}
 
 	uint32_t update_vbo_mask = dirty_vbos & active_vbos;
@@ -1018,7 +1019,7 @@ bool CommandBuffer::flush_render_state()
 		for (unsigned i = binding; i < binding + binding_count; i++)
 			VK_ASSERT(vbo.buffers[i] != VK_NULL_HANDLE);
 #endif
-		vkCmdBindVertexBuffers(cmd, binding, binding_count, vbo.buffers + binding, vbo.offsets + binding);
+		table.vkCmdBindVertexBuffers(cmd, binding, binding_count, vbo.buffers + binding, vbo.offsets + binding);
 	});
 	dirty_vbos &= ~update_vbo_mask;
 
@@ -1044,8 +1045,8 @@ void CommandBuffer::wait_events(unsigned num_events, const VkEvent *events,
 	}
 	else
 	{
-		vkCmdWaitEvents(cmd, num_events, events, src_stages, dst_stages,
-		                barriers, globals, buffer_barriers, buffers, image_barriers, images);
+		table.vkCmdWaitEvents(cmd, num_events, events, src_stages, dst_stages,
+		                      barriers, globals, buffer_barriers, buffers, image_barriers, images);
 	}
 }
 
@@ -1055,7 +1056,7 @@ PipelineEvent CommandBuffer::signal_event(VkPipelineStageFlags stages)
 	VK_ASSERT(!actual_render_pass);
 	auto event = device->request_pipeline_event();
 	if (!device->get_workarounds().emulate_event_as_pipeline_barrier)
-		vkCmdSetEvent(cmd, event->get_event(), stages);
+		table.vkCmdSetEvent(cmd, event->get_event(), stages);
 	event->set_stages(stages);
 	return event;
 }
@@ -1089,7 +1090,7 @@ void CommandBuffer::set_index_buffer(const Buffer &buffer, VkDeviceSize offset, 
 	index_state.buffer = buffer.get_buffer();
 	index_state.offset = offset;
 	index_state.index_type = index_type;
-	vkCmdBindIndexBuffer(cmd, buffer.get_buffer(), offset, index_type);
+	table.vkCmdBindIndexBuffer(cmd, buffer.get_buffer(), offset, index_type);
 }
 
 void CommandBuffer::set_vertex_binding(uint32_t binding, const Buffer &buffer, VkDeviceSize offset, VkDeviceSize stride,
@@ -1763,11 +1764,11 @@ void CommandBuffer::flush_descriptor_set(uint32_t set)
 			}
 		});
 
-		vkUpdateDescriptorSets(device->get_device(), write_count, writes, 0, nullptr);
+		table.vkUpdateDescriptorSets(device->get_device(), write_count, writes, 0, nullptr);
 	}
 
-	vkCmdBindDescriptorSets(cmd, actual_render_pass ? VK_PIPELINE_BIND_POINT_GRAPHICS : VK_PIPELINE_BIND_POINT_COMPUTE,
-	                        current_pipeline_layout, set, 1, &allocated.first, num_dynamic_offsets, dynamic_offsets);
+	table.vkCmdBindDescriptorSets(cmd, actual_render_pass ? VK_PIPELINE_BIND_POINT_GRAPHICS : VK_PIPELINE_BIND_POINT_COMPUTE,
+	                              current_pipeline_layout, set, 1, &allocated.first, num_dynamic_offsets, dynamic_offsets);
 }
 
 void CommandBuffer::flush_descriptor_sets()
@@ -1784,7 +1785,7 @@ void CommandBuffer::draw(uint32_t vertex_count, uint32_t instance_count, uint32_
 	if (flush_render_state())
 	{
 		set_backtrace_checkpoint();
-		vkCmdDraw(cmd, vertex_count, instance_count, first_vertex, first_instance);
+		table.vkCmdDraw(cmd, vertex_count, instance_count, first_vertex, first_instance);
 	}
 	else
 		LOGE("Failed to flush render state, draw call will be dropped.\n");
@@ -1798,7 +1799,7 @@ void CommandBuffer::draw_indexed(uint32_t index_count, uint32_t instance_count, 
 	if (flush_render_state())
 	{
 		set_backtrace_checkpoint();
-		vkCmdDrawIndexed(cmd, index_count, instance_count, first_index, vertex_offset, first_instance);
+		table.vkCmdDrawIndexed(cmd, index_count, instance_count, first_index, vertex_offset, first_instance);
 	}
 	else
 		LOGE("Failed to flush render state, draw call will be dropped.\n");
@@ -1811,7 +1812,7 @@ void CommandBuffer::draw_indirect(const Vulkan::Buffer &buffer,
 	if (flush_render_state())
 	{
 		set_backtrace_checkpoint();
-		vkCmdDrawIndirect(cmd, buffer.get_buffer(), offset, draw_count, stride);
+		table.vkCmdDrawIndirect(cmd, buffer.get_buffer(), offset, draw_count, stride);
 	}
 	else
 		LOGE("Failed to flush render state, draw call will be dropped.\n");
@@ -1823,7 +1824,7 @@ void CommandBuffer::draw_indexed_indirect(const Vulkan::Buffer &buffer,
 	VK_ASSERT(!is_compute);
 	if (flush_render_state())
 	{
-		vkCmdDrawIndexedIndirect(cmd, buffer.get_buffer(), offset, draw_count, stride);
+		table.vkCmdDrawIndexedIndirect(cmd, buffer.get_buffer(), offset, draw_count, stride);
 		set_backtrace_checkpoint();
 	}
 	else
@@ -1836,7 +1837,7 @@ void CommandBuffer::dispatch_indirect(const Buffer &buffer, uint32_t offset)
 	if (flush_compute_state())
 	{
 		set_backtrace_checkpoint();
-		vkCmdDispatchIndirect(cmd, buffer.get_buffer(), offset);
+		table.vkCmdDispatchIndirect(cmd, buffer.get_buffer(), offset);
 	}
 	else
 		LOGE("Failed to flush render state, dispatch will be dropped.\n");
@@ -1848,7 +1849,7 @@ void CommandBuffer::dispatch(uint32_t groups_x, uint32_t groups_y, uint32_t grou
 	if (flush_compute_state())
 	{
 		set_backtrace_checkpoint();
-		vkCmdDispatch(cmd, groups_x, groups_y, groups_z);
+		table.vkCmdDispatch(cmd, groups_x, groups_y, groups_z);
 	}
 	else
 		LOGE("Failed to flush render state, dispatch will be dropped.\n");
@@ -2027,7 +2028,7 @@ QueryPoolHandle CommandBuffer::write_timestamp(VkPipelineStageFlagBits stage)
 void CommandBuffer::add_checkpoint(const char *tag)
 {
 	if (device->get_device_features().supports_nv_device_diagnostic_checkpoints)
-		vkCmdSetCheckpointNV(cmd, tag);
+		table.vkCmdSetCheckpointNV(cmd, tag);
 }
 
 void CommandBuffer::set_backtrace_checkpoint()
@@ -2048,7 +2049,7 @@ void CommandBuffer::set_backtrace_checkpoint()
 
 void CommandBuffer::end()
 {
-	if (vkEndCommandBuffer(cmd) != VK_SUCCESS)
+	if (table.vkEndCommandBuffer(cmd) != VK_SUCCESS)
 		LOGE("Failed to end command buffer.\n");
 
 	if (vbo_block.mapped)
@@ -2078,8 +2079,8 @@ void CommandBuffer::begin_region(const char *name, const float *color)
 		}
 
 		info.pLabelName = name;
-		if (vkCmdBeginDebugUtilsLabelEXT)
-			vkCmdBeginDebugUtilsLabelEXT(cmd, &info);
+		if (table.vkCmdBeginDebugUtilsLabelEXT)
+			table.vkCmdBeginDebugUtilsLabelEXT(cmd, &info);
 	}
 	else if (device->ext.supports_debug_marker)
 	{
@@ -2096,7 +2097,7 @@ void CommandBuffer::begin_region(const char *name, const float *color)
 		}
 
 		info.pMarkerName = name;
-		vkCmdDebugMarkerBeginEXT(cmd, &info);
+		table.vkCmdDebugMarkerBeginEXT(cmd, &info);
 	}
 }
 
@@ -2104,11 +2105,11 @@ void CommandBuffer::end_region()
 {
 	if (device->ext.supports_debug_utils)
 	{
-		if (vkCmdEndDebugUtilsLabelEXT)
-			vkCmdEndDebugUtilsLabelEXT(cmd);
+		if (table.vkCmdEndDebugUtilsLabelEXT)
+			table.vkCmdEndDebugUtilsLabelEXT(cmd);
 	}
 	else if (device->ext.supports_debug_marker)
-		vkCmdDebugMarkerEndEXT(cmd);
+		table.vkCmdDebugMarkerEndEXT(cmd);
 }
 
 #ifdef GRANITE_VULKAN_FILESYSTEM

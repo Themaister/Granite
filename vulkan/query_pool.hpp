@@ -80,6 +80,7 @@ public:
 
 private:
 	Device *device;
+	const VolkDeviceTable &table;
 
 	struct Pool
 	{

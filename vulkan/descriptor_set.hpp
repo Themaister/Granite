@@ -103,6 +103,7 @@ private:
 	};
 
 	Device *device;
+	const VolkDeviceTable &table;
 	VkDescriptorSetLayout set_layout = VK_NULL_HANDLE;
 
 	struct PerThread

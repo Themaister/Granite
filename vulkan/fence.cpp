@@ -28,7 +28,7 @@ namespace Vulkan
 FenceHolder::~FenceHolder()
 {
 	if (fence != VK_NULL_HANDLE)
-		device->reset_fence(fence);
+		device->reset_fence(fence, observed_wait);
 }
 
 VkFence FenceHolder::get_fence() const
@@ -38,13 +38,20 @@ VkFence FenceHolder::get_fence() const
 
 void FenceHolder::wait()
 {
-	if (vkWaitForFences(device->get_device(), 1, &fence, VK_TRUE, UINT64_MAX) != VK_SUCCESS)
+	auto &table = device->get_device_table();
+	if (table.vkWaitForFences(device->get_device(), 1, &fence, VK_TRUE, UINT64_MAX) != VK_SUCCESS)
 		LOGE("Failed to wait for fence!\n");
+	else
+		observed_wait = true;
 }
 
 bool FenceHolder::wait_timeout(uint64_t timeout)
 {
-	return vkWaitForFences(device->get_device(), 1, &fence, VK_TRUE, timeout) == VK_SUCCESS;
+	auto &table = device->get_device_table();
+	bool ret = table.vkWaitForFences(device->get_device(), 1, &fence, VK_TRUE, timeout) == VK_SUCCESS;
+	if (ret)
+		observed_wait = true;
+	return ret;
 }
 
 void FenceHolderDeleter::operator()(Vulkan::FenceHolder *fence)

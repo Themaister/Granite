@@ -21,16 +21,17 @@
  */
 
 #include "command_pool.hpp"
+#include "device.hpp"
 
 namespace Vulkan
 {
-CommandPool::CommandPool(VkDevice device_, uint32_t queue_family_index)
-    : device(device_)
+CommandPool::CommandPool(Device *device_, uint32_t queue_family_index)
+    : device(device_), table(&device_->get_device_table())
 {
 	VkCommandPoolCreateInfo info = { VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO };
 	info.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
 	info.queueFamilyIndex = queue_family_index;
-	vkCreateCommandPool(device, &info, nullptr, &pool);
+	table->vkCreateCommandPool(device->get_device(), &info, nullptr, &pool);
 }
 
 CommandPool::CommandPool(CommandPool &&other) noexcept
@@ -43,10 +44,11 @@ CommandPool &CommandPool::operator=(CommandPool &&other) noexcept
 	if (this != &other)
 	{
 		device = other.device;
+		table = other.table;
 		if (!buffers.empty())
-			vkFreeCommandBuffers(device, pool, buffers.size(), buffers.data());
+			table->vkFreeCommandBuffers(device->get_device(), pool, buffers.size(), buffers.data());
 		if (pool != VK_NULL_HANDLE)
-			vkDestroyCommandPool(device, pool, nullptr);
+			table->vkDestroyCommandPool(device->get_device(), pool, nullptr);
 
 		pool = VK_NULL_HANDLE;
 		buffers.clear();
@@ -65,11 +67,11 @@ CommandPool &CommandPool::operator=(CommandPool &&other) noexcept
 CommandPool::~CommandPool()
 {
 	if (!buffers.empty())
-		vkFreeCommandBuffers(device, pool, buffers.size(), buffers.data());
+		table->vkFreeCommandBuffers(device->get_device(), pool, buffers.size(), buffers.data());
 	if (!secondary_buffers.empty())
-		vkFreeCommandBuffers(device, pool, secondary_buffers.size(), secondary_buffers.data());
+		table->vkFreeCommandBuffers(device->get_device(), pool, secondary_buffers.size(), secondary_buffers.data());
 	if (pool != VK_NULL_HANDLE)
-		vkDestroyCommandPool(device, pool, nullptr);
+		table->vkDestroyCommandPool(device->get_device(), pool, nullptr);
 }
 
 void CommandPool::signal_submitted(VkCommandBuffer cmd)
@@ -101,7 +103,7 @@ VkCommandBuffer CommandPool::request_secondary_command_buffer()
 		info.level = VK_COMMAND_BUFFER_LEVEL_SECONDARY;
 		info.commandBufferCount = 1;
 
-		vkAllocateCommandBuffers(device, &info, &cmd);
+		table->vkAllocateCommandBuffers(device->get_device(), &info, &cmd);
 #ifdef VULKAN_DEBUG
 		VK_ASSERT(in_flight.find(cmd) == end(in_flight));
 		in_flight.insert(cmd);
@@ -131,7 +133,7 @@ VkCommandBuffer CommandPool::request_command_buffer()
 		info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 		info.commandBufferCount = 1;
 
-		vkAllocateCommandBuffers(device, &info, &cmd);
+		table->vkAllocateCommandBuffers(device->get_device(), &info, &cmd);
 #ifdef VULKAN_DEBUG
 		VK_ASSERT(in_flight.find(cmd) == end(in_flight));
 		in_flight.insert(cmd);
@@ -148,7 +150,7 @@ void CommandPool::begin()
 	VK_ASSERT(in_flight.empty());
 #endif
 	if (index > 0 || secondary_index > 0)
-		vkResetCommandPool(device, pool, 0);
+		table->vkResetCommandPool(device->get_device(), pool, 0);
 	index = 0;
 	secondary_index = 0;
 }

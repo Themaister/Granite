@@ -176,7 +176,9 @@ LinearHostImage::LinearHostImage(Device *device_, ImageHandle gpu_image_, Buffer
 		VkImageSubresource sub = {};
 		sub.aspectMask = format_to_aspect_mask(gpu_image->get_format());
 		VkSubresourceLayout layout;
-		vkGetImageSubresourceLayout(device->get_device(), gpu_image->get_image(), &sub, &layout);
+
+		auto &table = device_->get_device_table();
+		table.vkGetImageSubresourceLayout(device->get_device(), gpu_image->get_image(), &sub, &layout);
 		row_pitch = layout.rowPitch;
 		row_offset = layout.offset;
 	}

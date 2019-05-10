@@ -143,6 +143,7 @@ public:
 	void init_swapchain(const std::vector<VkImage> &swapchain_images, unsigned width, unsigned height, VkFormat format);
 	void init_external_swapchain(const std::vector<ImageHandle> &swapchain_images);
 	void init_frame_contexts(unsigned count);
+	const VolkDeviceTable &get_device_table() const;
 
 	ImageView &get_swapchain_view();
 	ImageView &get_swapchain_view(unsigned index);
@@ -281,6 +282,7 @@ private:
 	VkInstance instance = VK_NULL_HANDLE;
 	VkPhysicalDevice gpu = VK_NULL_HANDLE;
 	VkDevice device = VK_NULL_HANDLE;
+	const VolkDeviceTable *table = nullptr;
 	VkQueue graphics_queue = VK_NULL_HANDLE;
 	VkQueue compute_queue = VK_NULL_HANDLE;
 	VkQueue transfer_queue = VK_NULL_HANDLE;
@@ -349,7 +351,8 @@ private:
 
 		void begin();
 
-		VkDevice device;
+		Device &device;
+		const VolkDeviceTable &table;
 		Managers &managers;
 		std::vector<CommandPool> graphics_cmd_pool;
 		std::vector<CommandPool> compute_cmd_pool;
@@ -478,7 +481,7 @@ private:
 	void recycle_semaphore(VkSemaphore semaphore);
 	void destroy_event(VkEvent event);
 	void free_memory(const DeviceAllocation &alloc);
-	void reset_fence(VkFence fence);
+	void reset_fence(VkFence fence, bool observed_wait);
 	void keep_handle_alive(ImageHandle handle);
 
 	void destroy_buffer_nolock(VkBuffer buffer);

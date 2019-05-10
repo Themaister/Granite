@@ -38,7 +38,8 @@ public:
 	void recycle(VkEvent event);
 
 private:
-	VkDevice device = VK_NULL_HANDLE;
+	Device *device = nullptr;
+	const VolkDeviceTable *table = nullptr;
 	std::vector<VkEvent> events;
 	uint64_t workaround_counter = 0;
 	bool workaround = false;

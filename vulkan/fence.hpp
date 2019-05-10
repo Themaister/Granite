@@ -57,6 +57,7 @@ private:
 
 	Device *device;
 	VkFence fence;
+	bool observed_wait = false;
 };
 
 using Fence = Util::IntrusivePtr<FenceHolder>;

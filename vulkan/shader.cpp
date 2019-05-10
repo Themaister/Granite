@@ -63,7 +63,8 @@ PipelineLayout::PipelineLayout(Hash hash, Device *device_, const CombinedResourc
 	}
 
 	LOGI("Creating pipeline layout.\n");
-	if (vkCreatePipelineLayout(device->get_device(), &info, nullptr, &pipe_layout) != VK_SUCCESS)
+	auto &table = device->get_device_table();
+	if (table.vkCreatePipelineLayout(device->get_device(), &info, nullptr, &pipe_layout) != VK_SUCCESS)
 		LOGE("Failed to create pipeline layout.\n");
 #ifdef GRANITE_VULKAN_FOSSILIZE
 	device->register_pipeline_layout(pipe_layout, get_hash(), info);
@@ -72,8 +73,9 @@ PipelineLayout::PipelineLayout(Hash hash, Device *device_, const CombinedResourc
 
 PipelineLayout::~PipelineLayout()
 {
+	auto &table = device->get_device_table();
 	if (pipe_layout != VK_NULL_HANDLE)
-		vkDestroyPipelineLayout(device->get_device(), pipe_layout, nullptr);
+		table.vkDestroyPipelineLayout(device->get_device(), pipe_layout, nullptr);
 }
 
 const char *Shader::stage_to_name(ShaderStage stage)
@@ -162,7 +164,8 @@ Shader::Shader(Hash hash, Device *device_, const uint32_t *data, size_t size)
 	info.pCode = data;
 
 	LOGI("Creating shader module.\n");
-	if (vkCreateShaderModule(device->get_device(), &info, nullptr, &module) != VK_SUCCESS)
+	auto &table = device->get_device_table();
+	if (table.vkCreateShaderModule(device->get_device(), &info, nullptr, &module) != VK_SUCCESS)
 		LOGE("Failed to create shader module.\n");
 
 #ifdef GRANITE_VULKAN_FOSSILIZE
@@ -318,8 +321,9 @@ Shader::Shader(Hash hash, Device *device_, const uint32_t *data, size_t size)
 
 Shader::~Shader()
 {
+	auto &table = device->get_device_table();
 	if (module)
-		vkDestroyShaderModule(device->get_device(), module, nullptr);
+		table.vkDestroyShaderModule(device->get_device(), module, nullptr);
 }
 
 void Program::set_shader(ShaderStage stage, Shader *handle)

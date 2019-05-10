@@ -93,6 +93,7 @@ bool WSI::init_external_context(unique_ptr<Context> fresh_context)
 	device->set_context(*context);
 	device->init_external_swapchain({ ImageHandle(nullptr) });
 	platform->event_device_created(device.get());
+	table = &context->get_device_table();
 	return true;
 }
 
@@ -140,6 +141,7 @@ bool WSI::init(unsigned num_thread_indices)
 
 	device.reset(new Device);
 	device->set_context(*context);
+	table = &context->get_device_table();
 
 	platform->event_device_created(device.get());
 
@@ -187,7 +189,7 @@ void WSI::deinit_surface_and_swapchain()
 	device->consume_release_semaphore();
 
 	if (swapchain != VK_NULL_HANDLE)
-		vkDestroySwapchainKHR(context->get_device(), swapchain, nullptr);
+		table->vkDestroySwapchainKHR(context->get_device(), swapchain, nullptr);
 	swapchain = VK_NULL_HANDLE;
 	has_acquired_swapchain_index = false;
 
@@ -292,10 +294,10 @@ bool WSI::begin_frame()
 		auto acquire_start = Util::get_current_time_nsecs();
 #endif
 
-		result = vkAcquireNextImageKHR(context->get_device(), swapchain, UINT64_MAX,
-		                               acquire->get_semaphore(),
-		                               fence ? fence->get_fence() : VK_NULL_HANDLE,
-		                               &swapchain_index);
+		result = table->vkAcquireNextImageKHR(context->get_device(), swapchain, UINT64_MAX,
+		                                      acquire->get_semaphore(),
+		                                      fence ? fence->get_fence() : VK_NULL_HANDLE,
+		                                      &swapchain_index);
 
 		if (fence)
 			fence->wait();
@@ -346,11 +348,11 @@ bool WSI::begin_frame()
 		{
 			VK_ASSERT(swapchain_width != 0);
 			VK_ASSERT(swapchain_height != 0);
-			vkDeviceWaitIdle(device->get_device());
+			table->vkDeviceWaitIdle(device->get_device());
 
 			if (swapchain != VK_NULL_HANDLE)
 			{
-				vkDestroySwapchainKHR(device->get_device(), swapchain, nullptr);
+				table->vkDestroySwapchainKHR(device->get_device(), swapchain, nullptr);
 				swapchain = VK_NULL_HANDLE;
 			}
 
@@ -418,7 +420,7 @@ bool WSI::end_frame()
 		auto present_start = Util::get_current_time_nsecs();
 #endif
 
-		VkResult overall = vkQueuePresentKHR(context->get_graphics_queue(), &info);
+		VkResult overall = table->vkQueuePresentKHR(context->get_graphics_queue(), &info);
 
 #ifdef VULKAN_WSI_TIMING_DEBUG
 		auto present_end = Util::get_current_time_nsecs();
@@ -429,8 +431,8 @@ bool WSI::end_frame()
 		{
 			LOGE("vkQueuePresentKHR failed.\n");
 			device->wait_idle();
-			vkDestroySemaphore(device->get_device(), release_semaphore, nullptr);
-			vkDestroySwapchainKHR(device->get_device(), swapchain, nullptr);
+			table->vkDestroySemaphore(device->get_device(), release_semaphore, nullptr);
+			table->vkDestroySwapchainKHR(device->get_device(), swapchain, nullptr);
 			swapchain = VK_NULL_HANDLE;
 			return false;
 		}
@@ -459,7 +461,7 @@ void WSI::update_framebuffer(unsigned width, unsigned height)
 {
 	if (context && device)
 	{
-		vkDeviceWaitIdle(context->get_device());
+		table->vkDeviceWaitIdle(context->get_device());
 		if (blocking_init_swapchain(width, height))
 			device->init_swapchain(swapchain_images, swapchain_width, swapchain_height, swapchain_format);
 	}
@@ -492,14 +494,14 @@ void WSI::deinit_external()
 
 	if (context)
 	{
-		vkDeviceWaitIdle(context->get_device());
+		table->vkDeviceWaitIdle(context->get_device());
 
 		device->set_acquire_semaphore(0, Semaphore{});
 		device->consume_release_semaphore();
 
 		platform->event_swapchain_destroyed();
 		if (swapchain != VK_NULL_HANDLE)
-			vkDestroySwapchainKHR(context->get_device(), swapchain, nullptr);
+			table->vkDestroySwapchainKHR(context->get_device(), swapchain, nullptr);
 		has_acquired_swapchain_index = false;
 	}
 
@@ -531,9 +533,9 @@ bool WSI::blocking_init_swapchain(unsigned width, unsigned height)
 				return false;
 
 			// Try to not reuse the swapchain.
-			vkDeviceWaitIdle(device->get_device());
+			table->vkDeviceWaitIdle(device->get_device());
 			if (swapchain != VK_NULL_HANDLE)
-				vkDestroySwapchainKHR(device->get_device(), swapchain, nullptr);
+				table->vkDestroySwapchainKHR(device->get_device(), swapchain, nullptr);
 			swapchain = VK_NULL_HANDLE;
 		}
 		else if (err == SwapchainError::NoSurface && platform->alive(*this))
@@ -686,9 +688,9 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	info.clipped = VK_TRUE;
 	info.oldSwapchain = old_swapchain;
 
-	auto res = vkCreateSwapchainKHR(context->get_device(), &info, nullptr, &swapchain);
+	auto res = table->vkCreateSwapchainKHR(context->get_device(), &info, nullptr, &swapchain);
 	if (old_swapchain != VK_NULL_HANDLE)
-		vkDestroySwapchainKHR(context->get_device(), old_swapchain, nullptr);
+		table->vkDestroySwapchainKHR(context->get_device(), old_swapchain, nullptr);
 	has_acquired_swapchain_index = false;
 
 	if (use_vsync && context->get_enabled_device_features().supports_google_display_timing)
@@ -697,7 +699,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 		timing_options.swap_interval = 1;
 		//timing_options.adaptive_swap_interval = true;
 		//timing_options.latency_limiter = LatencyLimiter::IdealPipeline;
-		timing.init(platform, device->get_device(), swapchain, timing_options);
+		timing.init(platform, device.get(), swapchain, timing_options);
 		using_display_timing = true;
 	}
 	else
@@ -718,10 +720,10 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	     static_cast<unsigned>(swapchain_format));
 
 	uint32_t image_count;
-	if (vkGetSwapchainImagesKHR(context->get_device(), swapchain, &image_count, nullptr) != VK_SUCCESS)
+	if (table->vkGetSwapchainImagesKHR(context->get_device(), swapchain, &image_count, nullptr) != VK_SUCCESS)
 		return SwapchainError::Error;
 	swapchain_images.resize(image_count);
-	if (vkGetSwapchainImagesKHR(context->get_device(), swapchain, &image_count, swapchain_images.data()) != VK_SUCCESS)
+	if (table->vkGetSwapchainImagesKHR(context->get_device(), swapchain, &image_count, swapchain_images.data()) != VK_SUCCESS)
 		return SwapchainError::Error;
 
 	LOGI("Got %u swapchain images.\n", image_count);

@@ -36,10 +36,11 @@
 
 namespace Vulkan
 {
-void WSITiming::init(WSIPlatform *platform_, VkDevice device_, VkSwapchainKHR swapchain_, const WSITimingOptions &options_)
+void WSITiming::init(WSIPlatform *platform_, Device *device_, VkSwapchainKHR swapchain_, const WSITimingOptions &options_)
 {
 	platform = platform_;
-	device = device_;
+	device = device_->get_device();
+	table = &device_->get_device_table();
 	swapchain = swapchain_;
 	options = options_;
 
@@ -85,7 +86,7 @@ void WSITiming::set_swap_interval(unsigned interval)
 void WSITiming::update_refresh_interval()
 {
 	VkRefreshCycleDurationGOOGLE refresh;
-	if (vkGetRefreshCycleDurationGOOGLE(device, swapchain, &refresh) == VK_SUCCESS)
+	if (table->vkGetRefreshCycleDurationGOOGLE(device, swapchain, &refresh) == VK_SUCCESS)
 	{
 		if (!feedback.refresh_interval || options.debug)
 			LOGI("Observed refresh rate: %.6f Hz.\n", 1e9 / refresh.refreshDuration);
@@ -112,14 +113,14 @@ void WSITiming::update_past_presentation_timing()
 {
 	// Update past presentation timings.
 	uint32_t presentation_count;
-	if (vkGetPastPresentationTimingGOOGLE(device, swapchain, &presentation_count, nullptr) != VK_SUCCESS)
+	if (table->vkGetPastPresentationTimingGOOGLE(device, swapchain, &presentation_count, nullptr) != VK_SUCCESS)
 		return;
 
 	if (presentation_count)
 	{
 		if (presentation_count > feedback.timing_buffer.size())
 			feedback.timing_buffer.resize(presentation_count);
-		auto res = vkGetPastPresentationTimingGOOGLE(device, swapchain, &presentation_count, feedback.timing_buffer.data());
+		auto res = table->vkGetPastPresentationTimingGOOGLE(device, swapchain, &presentation_count, feedback.timing_buffer.data());
 
 		// I have a feeling this is racy in nature and we might have received another presentation timing in-between
 		// querying count and getting actual data, so accept INCOMPLETE here.

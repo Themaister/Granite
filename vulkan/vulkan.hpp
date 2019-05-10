@@ -192,10 +192,16 @@ public:
 		return num_thread_indices;
 	}
 
+	const VolkDeviceTable &get_device_table() const
+	{
+		return device_table;
+	}
+
 private:
 	VkDevice device = VK_NULL_HANDLE;
 	VkInstance instance = VK_NULL_HANDLE;
 	VkPhysicalDevice gpu = VK_NULL_HANDLE;
+	VolkDeviceTable device_table;
 
 	VkPhysicalDeviceProperties gpu_props;
 	VkPhysicalDeviceMemoryProperties mem_props;

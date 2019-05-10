@@ -27,17 +27,19 @@
 
 namespace Vulkan
 {
+class Device;
 class SemaphoreManager
 {
 public:
-	void init(VkDevice device);
+	void init(Device *device);
 	~SemaphoreManager();
 
 	VkSemaphore request_cleared_semaphore();
 	void recycle(VkSemaphore semaphore);
 
 private:
-	VkDevice device = VK_NULL_HANDLE;
+	Device *device = nullptr;
+	const VolkDeviceTable *table = nullptr;
 	std::vector<VkSemaphore> semaphores;
 };
 }

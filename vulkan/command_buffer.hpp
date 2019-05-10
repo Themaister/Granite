@@ -617,6 +617,7 @@ private:
 	CommandBuffer(Device *device, VkCommandBuffer cmd, VkPipelineCache cache, Type type);
 
 	Device *device;
+	const VolkDeviceTable &table;
 	VkCommandBuffer cmd;
 	VkPipelineCache cache;
 	Type type;

@@ -28,10 +28,11 @@
 
 namespace Vulkan
 {
+class Device;
 class CommandPool
 {
 public:
-	CommandPool(VkDevice device, uint32_t queue_family_index);
+	CommandPool(Device *device, uint32_t queue_family_index);
 	~CommandPool();
 
 	CommandPool(CommandPool &&) noexcept;
@@ -45,7 +46,8 @@ public:
 	void signal_submitted(VkCommandBuffer cmd);
 
 private:
-	VkDevice device = VK_NULL_HANDLE;
+	Device *device;
+	const VolkDeviceTable *table;
 	VkCommandPool pool = VK_NULL_HANDLE;
 	std::vector<VkCommandBuffer> buffers;
 	std::vector<VkCommandBuffer> secondary_buffers;

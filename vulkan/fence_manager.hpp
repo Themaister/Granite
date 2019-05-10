@@ -27,17 +27,19 @@
 
 namespace Vulkan
 {
+class Device;
 class FenceManager
 {
 public:
-	void init(VkDevice device);
+	void init(Device *device);
 	~FenceManager();
 
 	VkFence request_cleared_fence();
 	void recycle_fence(VkFence fence);
 
 private:
-	VkDevice device;
+	Device *device = nullptr;
+	const VolkDeviceTable *table = nullptr;
 	std::vector<VkFence> fences;
 };
 }

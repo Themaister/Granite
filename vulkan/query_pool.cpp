@@ -31,6 +31,7 @@ namespace Vulkan
 
 QueryPool::QueryPool(Device *device_)
 	: device(device_)
+	, table(device_->get_device_table())
 {
 	query_period = 1e-9 * device->get_gpu_properties().limits.timestampPeriod;
 	supports_timestamp = device->get_gpu_properties().limits.timestampComputeAndGraphics;
@@ -43,7 +44,7 @@ QueryPool::QueryPool(Device *device_)
 QueryPool::~QueryPool()
 {
 	for (auto &pool : pools)
-		vkDestroyQueryPool(device->get_device(), pool.pool, nullptr);
+		table.vkDestroyQueryPool(device->get_device(), pool.pool, nullptr);
 }
 
 void QueryPool::begin()
@@ -57,12 +58,12 @@ void QueryPool::begin()
 		if (pool.index == 0)
 			continue;
 
-		vkGetQueryPoolResults(device->get_device(), pool.pool,
-		                      0, pool.index,
-		                      pool.index * sizeof(uint64_t),
-		                      pool.query_results.data(),
-		                      sizeof(uint64_t),
-		                      VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
+		table.vkGetQueryPoolResults(device->get_device(), pool.pool,
+		                            0, pool.index,
+		                            pool.index * sizeof(uint64_t),
+		                            pool.query_results.data(),
+		                            sizeof(uint64_t),
+		                            VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
 
 		for (unsigned j = 0; j < pool.index; j++)
 			pool.cookies[j]->signal_timestamp(double(pool.query_results[j]) * query_period);
@@ -80,7 +81,7 @@ void QueryPool::add_pool()
 	pool_info.queryCount = 64;
 
 	Pool pool;
-	vkCreateQueryPool(device->get_device(), &pool_info, nullptr, &pool.pool);
+	table.vkCreateQueryPool(device->get_device(), &pool_info, nullptr, &pool.pool);
 	pool.size = pool_info.queryCount;
 	pool.index = 0;
 	pool.query_results.resize(pool.size);
@@ -108,8 +109,8 @@ QueryPoolHandle QueryPool::write_timestamp(VkCommandBuffer cmd, VkPipelineStageF
 	auto cookie = QueryPoolHandle(device->handle_pool.query.allocate(device));
 	pool.cookies[pool.index] = cookie;
 
-	vkCmdResetQueryPool(cmd, pool.pool, pool.index, 1);
-	vkCmdWriteTimestamp(cmd, stage, pool.pool, pool.index);
+	table.vkCmdResetQueryPool(cmd, pool.pool, pool.index, 1);
+	table.vkCmdWriteTimestamp(cmd, stage, pool.pool, pool.index);
 
 	pool.index++;
 	return cookie;

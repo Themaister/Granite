@@ -29,14 +29,14 @@ EventManager::~EventManager()
 {
 	if (!workaround)
 		for (auto &event : events)
-			vkDestroyEvent(device, event, nullptr);
+			table->vkDestroyEvent(device->get_device(), event, nullptr);
 }
 
 void EventManager::recycle(VkEvent event)
 {
 	if (!workaround && event != VK_NULL_HANDLE)
 	{
-		vkResetEvent(device, event);
+		table->vkResetEvent(device->get_device(), event);
 		events.push_back(event);
 	}
 }
@@ -52,7 +52,7 @@ VkEvent EventManager::request_cleared_event()
 	{
 		VkEvent event;
 		VkEventCreateInfo info = { VK_STRUCTURE_TYPE_EVENT_CREATE_INFO };
-		vkCreateEvent(device, &info, nullptr, &event);
+		table->vkCreateEvent(device->get_device(), &info, nullptr, &event);
 		return event;
 	}
 	else
@@ -65,7 +65,8 @@ VkEvent EventManager::request_cleared_event()
 
 void EventManager::init(Device *device_)
 {
-	device = device_->get_device();
+	device = device_;
+	table = &device->get_device_table();
 	workaround = device_->get_workarounds().emulate_event_as_pipeline_barrier;
 }
 }

@@ -21,18 +21,20 @@
  */
 
 #include "semaphore_manager.hpp"
+#include "device.hpp"
 
 namespace Vulkan
 {
-void SemaphoreManager::init(VkDevice device_)
+void SemaphoreManager::init(Device *device_)
 {
 	device = device_;
+	table = &device->get_device_table();
 }
 
 SemaphoreManager::~SemaphoreManager()
 {
 	for (auto &sem : semaphores)
-		vkDestroySemaphore(device, sem, nullptr);
+		table->vkDestroySemaphore(device->get_device(), sem, nullptr);
 }
 
 void SemaphoreManager::recycle(VkSemaphore sem)
@@ -47,7 +49,7 @@ VkSemaphore SemaphoreManager::request_cleared_semaphore()
 	{
 		VkSemaphore semaphore;
 		VkSemaphoreCreateInfo info = { VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
-		vkCreateSemaphore(device, &info, nullptr, &semaphore);
+		table->vkCreateSemaphore(device->get_device(), &info, nullptr, &semaphore);
 		return semaphore;
 	}
 	else

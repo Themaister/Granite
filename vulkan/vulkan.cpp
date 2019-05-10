@@ -23,6 +23,7 @@
 #include "vulkan.hpp"
 #include <stdexcept>
 #include <vector>
+#include <mutex>
 #include <algorithm>
 #include <string.h>
 
@@ -64,8 +65,15 @@ bool Context::init_instance_and_device(const char **instance_ext, uint32_t insta
 	return true;
 }
 
+static mutex loader_init_lock;
+static bool loader_init_once;
+
 bool Context::init_loader(PFN_vkGetInstanceProcAddr addr)
 {
+	lock_guard<mutex> holder(loader_init_lock);
+	if (loader_init_once)
+		return true;
+
 	if (!addr)
 	{
 #ifndef _WIN32
@@ -107,6 +115,7 @@ bool Context::init_loader(PFN_vkGetInstanceProcAddr addr)
 	}
 
 	volkInitializeCustom(addr);
+	loader_init_once = true;
 	return true;
 }
 
@@ -126,8 +135,12 @@ bool Context::init_from_instance_and_device(VkInstance instance_, VkPhysicalDevi
 	owned_instance = false;
 	owned_device = true;
 
-	volkLoadInstance(instance);
-	volkLoadDevice(device);
+	{
+		lock_guard<mutex> holder(loader_init_lock);
+		volkLoadInstance(instance);
+	}
+
+	volkLoadDeviceTable(&device_table, device);
 	vkGetPhysicalDeviceProperties(gpu, &gpu_props);
 	vkGetPhysicalDeviceMemoryProperties(gpu, &mem_props);
 	return true;
@@ -143,7 +156,12 @@ bool Context::init_device_from_instance(VkInstance instance_, VkPhysicalDevice g
 	instance = instance_;
 	owned_instance = false;
 	owned_device = true;
-	volkLoadInstance(instance);
+
+	{
+		lock_guard<mutex> holder(loader_init_lock);
+		volkLoadInstance(instance);
+	}
+
 	if (!create_device(gpu_, surface, required_device_extensions, num_required_device_extensions, required_device_layers,
 	                   num_required_device_layers, required_features))
 	{
@@ -158,7 +176,7 @@ bool Context::init_device_from_instance(VkInstance instance_, VkPhysicalDevice g
 void Context::destroy()
 {
 	if (device != VK_NULL_HANDLE)
-		vkDeviceWaitIdle(device);
+		device_table.vkDeviceWaitIdle(device);
 
 #ifdef VULKAN_DEBUG
 	if (debug_callback)
@@ -170,7 +188,7 @@ void Context::destroy()
 #endif
 
 	if (owned_device && device != VK_NULL_HANDLE)
-		vkDestroyDevice(device, nullptr);
+		device_table.vkDestroyDevice(device, nullptr);
 	if (owned_instance && instance != VK_NULL_HANDLE)
 		vkDestroyInstance(instance, nullptr);
 }
@@ -811,10 +829,10 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	if (vkCreateDevice(gpu, &device_info, nullptr, &device) != VK_SUCCESS)
 		return false;
 
-	volkLoadDevice(device);
-	vkGetDeviceQueue(device, graphics_queue_family, graphics_queue_index, &graphics_queue);
-	vkGetDeviceQueue(device, compute_queue_family, compute_queue_index, &compute_queue);
-	vkGetDeviceQueue(device, transfer_queue_family, transfer_queue_index, &transfer_queue);
+	volkLoadDeviceTable(&device_table, device);
+	device_table.vkGetDeviceQueue(device, graphics_queue_family, graphics_queue_index, &graphics_queue);
+	device_table.vkGetDeviceQueue(device, compute_queue_family, compute_queue_index, &compute_queue);
+	device_table.vkGetDeviceQueue(device, transfer_queue_family, transfer_queue_index, &transfer_queue);
 
 	return true;
 }

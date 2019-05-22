@@ -525,20 +525,6 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		LOGI("GPU supports Vulkan 1.0.\n");
 	}
 
-	// Only need GetPhysicalDeviceProperties2 for Vulkan 1.1-only code, so don't bother getting KHR variant.
-	ext.subgroup_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES };
-	VkPhysicalDeviceProperties2 props = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
-	void **ppNext = &props.pNext;
-
-	if (ext.supports_vulkan_11_instance && ext.supports_vulkan_11_device)
-	{
-		*ppNext = &ext.subgroup_properties;
-		ppNext = &ext.subgroup_properties.pNext;
-	}
-
-	if (ext.supports_vulkan_11_instance && ext.supports_vulkan_11_device)
-		vkGetPhysicalDeviceProperties2(gpu, &props);
-
 	uint32_t queue_count;
 	vkGetPhysicalDeviceQueueFamilyProperties(gpu, &queue_count, nullptr);
 	vector<VkQueueFamilyProperties> queue_props(queue_count);
@@ -725,7 +711,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	ext.storage_8bit_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES_KHR };
 	ext.storage_16bit_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES_KHR };
 	ext.float16_int8_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FLOAT16_INT8_FEATURES_KHR };
-	ppNext = &features.pNext;
+	void **ppNext = &features.pNext;
 
 	if (has_extension(VK_KHR_STORAGE_BUFFER_STORAGE_CLASS_EXTENSION_NAME))
 		enabled_extensions.push_back(VK_KHR_STORAGE_BUFFER_STORAGE_CLASS_EXTENSION_NAME);
@@ -812,6 +798,33 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 			enabled_layers.push_back("VK_LAYER_LUNARG_standard_validation");
 	}
 #endif
+
+	if (ext.supports_external && has_extension(VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME))
+	{
+		ext.supports_external_memory_host = true;
+		enabled_extensions.push_back(VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME);
+	}
+
+	// Only need GetPhysicalDeviceProperties2 for Vulkan 1.1-only code, so don't bother getting KHR variant.
+	ext.subgroup_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES };
+	ext.host_memory_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_MEMORY_HOST_PROPERTIES_EXT };
+	VkPhysicalDeviceProperties2 props = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
+	ppNext = &props.pNext;
+
+	if (ext.supports_vulkan_11_instance && ext.supports_vulkan_11_device)
+	{
+		*ppNext = &ext.subgroup_properties;
+		ppNext = &ext.subgroup_properties.pNext;
+	}
+
+	if (ext.supports_external_memory_host)
+	{
+		*ppNext = &ext.host_memory_properties;
+		ppNext = &ext.host_memory_properties.pNext;
+	}
+
+	if (ext.supports_vulkan_11_instance && ext.supports_vulkan_11_device)
+		vkGetPhysicalDeviceProperties2(gpu, &props);
 
 	device_info.enabledExtensionCount = enabled_extensions.size();
 	device_info.ppEnabledExtensionNames = enabled_extensions.empty() ? nullptr : enabled_extensions.data();

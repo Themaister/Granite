@@ -3120,25 +3120,8 @@ SamplerHandle Device::create_sampler(const SamplerCreateInfo &sampler_info)
 	return SamplerHandle(handle_pool.samplers.allocate(this, sampler, sampler_info));
 }
 
-BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const void *initial)
+void Device::fill_buffer_sharing_indices(VkBufferCreateInfo &info, uint32_t *sharing_indices)
 {
-	VkBuffer buffer;
-	VkMemoryRequirements reqs;
-	DeviceAllocation allocation;
-
-	bool zero_initialize = (create_info.misc & BUFFER_MISC_ZERO_INITIALIZE_BIT) != 0;
-	if (initial && zero_initialize)
-	{
-		LOGE("Cannot initialize buffer with data and clear.\n");
-		return BufferHandle{};
-	}
-
-	VkBufferCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
-	info.size = create_info.size;
-	info.usage = create_info.usage | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-	info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-	uint32_t sharing_indices[3];
 	if (graphics_queue_family_index != compute_queue_family_index ||
 	    graphics_queue_family_index != transfer_queue_family_index)
 	{
@@ -3159,6 +3142,116 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 
 		info.pQueueFamilyIndices = sharing_indices;
 	}
+}
+
+BufferHandle Device::create_imported_host_buffer(const BufferCreateInfo &create_info, VkExternalMemoryHandleTypeFlagBits type, void *host_buffer)
+{
+	if (create_info.domain != BufferDomain::Host && create_info.domain != BufferDomain::CachedHost)
+		return BufferHandle{};
+
+	if (!ext.supports_external_memory_host)
+		return BufferHandle{};
+
+	if ((reinterpret_cast<uintptr_t>(host_buffer) & (ext.host_memory_properties.minImportedHostPointerAlignment - 1)) != 0)
+	{
+		LOGE("Host buffer is not aligned appropriately.\n");
+		return BufferHandle{};
+	}
+
+	VkMemoryHostPointerPropertiesEXT host_pointer_props = { VK_STRUCTURE_TYPE_MEMORY_HOST_POINTER_PROPERTIES_EXT };
+	if (table->vkGetMemoryHostPointerPropertiesEXT(device, type, host_buffer, &host_pointer_props) != VK_SUCCESS)
+	{
+		LOGE("Host pointer is not importable.\n");
+		return BufferHandle{};
+	}
+
+	VkBufferCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+	info.size = create_info.size;
+	info.usage = create_info.usage;
+	info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+	uint32_t sharing_indices[3];
+	fill_buffer_sharing_indices(info, sharing_indices);
+
+	VkBuffer buffer;
+	VkMemoryRequirements reqs;
+	if (table->vkCreateBuffer(device, &info, nullptr, &buffer) != VK_SUCCESS)
+		return BufferHandle{};
+
+	table->vkGetBufferMemoryRequirements(device, buffer, &reqs);
+
+	reqs.memoryTypeBits &= host_pointer_props.memoryTypeBits;
+	if (reqs.memoryTypeBits == 0)
+	{
+		LOGE("No compatible host pointer types are available.\n");
+		table->vkDestroyBuffer(device, buffer, nullptr);
+		return BufferHandle{};
+	}
+
+	uint32_t memory_type = find_memory_type(create_info.domain, reqs.memoryTypeBits);
+	if (memory_type == UINT32_MAX)
+	{
+		LOGE("Failed to find memory type.\n");
+		table->vkDestroyBuffer(device, buffer, nullptr);
+		return BufferHandle{};
+	}
+
+	VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+	alloc_info.allocationSize = (create_info.size + ext.host_memory_properties.minImportedHostPointerAlignment - 1) &
+	                            ~(ext.host_memory_properties.minImportedHostPointerAlignment - 1);
+	alloc_info.memoryTypeIndex = memory_type;
+
+	VkImportMemoryHostPointerInfoEXT import = { VK_STRUCTURE_TYPE_IMPORT_MEMORY_HOST_POINTER_INFO_EXT };
+	import.handleType = type;
+	import.pHostPointer = host_buffer;
+	alloc_info.pNext = &import;
+
+	VkDeviceMemory memory;
+	if (table->vkAllocateMemory(device, &alloc_info, nullptr, &memory) != VK_SUCCESS)
+	{
+		table->vkDestroyBuffer(device, buffer, nullptr);
+		return BufferHandle{};
+	}
+
+	auto allocation = DeviceAllocation::make_imported_allocation(memory, info.size, memory_type);
+	if (table->vkMapMemory(device, memory, 0, VK_WHOLE_SIZE, 0, reinterpret_cast<void **>(&allocation.host_base)) != VK_SUCCESS)
+	{
+		allocation.free_immediate(managers.memory);
+		table->vkDestroyBuffer(device, buffer, nullptr);
+		return BufferHandle{};
+	}
+
+	if (table->vkBindBufferMemory(device, buffer, memory, 0) != VK_SUCCESS)
+	{
+		allocation.free_immediate(managers.memory);
+		table->vkDestroyBuffer(device, buffer, nullptr);
+		return BufferHandle{};
+	}
+
+	BufferHandle handle(handle_pool.buffers.allocate(this, buffer, allocation, create_info));
+	return handle;
+}
+
+BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const void *initial)
+{
+	VkBuffer buffer;
+	VkMemoryRequirements reqs;
+	DeviceAllocation allocation;
+
+	bool zero_initialize = (create_info.misc & BUFFER_MISC_ZERO_INITIALIZE_BIT) != 0;
+	if (initial && zero_initialize)
+	{
+		LOGE("Cannot initialize buffer with data and clear.\n");
+		return BufferHandle{};
+	}
+
+	VkBufferCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+	info.size = create_info.size;
+	info.usage = create_info.usage | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+	info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+	uint32_t sharing_indices[3];
+	fill_buffer_sharing_indices(info, sharing_indices);
 
 	if (table->vkCreateBuffer(device, &info, nullptr, &buffer) != VK_SUCCESS)
 		return BufferHandle(nullptr);
@@ -3169,6 +3262,7 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 	if (memory_type == UINT32_MAX)
 	{
 		LOGE("Failed to find memory type.\n");
+		table->vkDestroyBuffer(device, buffer, nullptr);
 		return BufferHandle(nullptr);
 	}
 

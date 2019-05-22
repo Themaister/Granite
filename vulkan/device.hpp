@@ -197,6 +197,7 @@ public:
 
 	// Create buffers and images.
 	BufferHandle create_buffer(const BufferCreateInfo &info, const void *initial = nullptr);
+	BufferHandle create_imported_host_buffer(const BufferCreateInfo &info, VkExternalMemoryHandleTypeFlagBits type, void *host_buffer);
 	ImageHandle create_image(const ImageCreateInfo &info, const ImageInitialData *initial = nullptr);
 	ImageHandle create_image_from_staging_buffer(const ImageCreateInfo &info, const InitialImageBuffer *buffer);
 	LinearHostImageHandle create_linear_host_image(const LinearHostImageCreateInfo &info);
@@ -566,5 +567,7 @@ private:
 	ImplementationWorkarounds workarounds;
 	void init_workarounds();
 	void report_checkpoints();
+
+	void fill_buffer_sharing_indices(VkBufferCreateInfo &create_info, uint32_t *sharing_indices);
 };
 }

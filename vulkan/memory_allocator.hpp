@@ -138,6 +138,7 @@ struct MiniHeap;
 class ClassAllocator;
 class DeviceAllocator;
 class Allocator;
+class Device;
 
 struct DeviceAllocation
 {
@@ -145,6 +146,7 @@ struct DeviceAllocation
 	friend class Allocator;
 	friend class Block;
 	friend class DeviceAllocator;
+	friend class Device;
 
 public:
 	inline VkDeviceMemory get_memory() const

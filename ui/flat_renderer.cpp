@@ -113,9 +113,9 @@ void FlatRenderer::flush(Vulkan::CommandBuffer &cmd, const vec3 &camera_pos, con
 	queue.dispatch(Queue::Transparent, cmd, &state);
 }
 
-void FlatRenderer::render_quad(const ImageView *view, Vulkan::StockSampler sampler,
+void FlatRenderer::render_quad(const ImageView *view, unsigned layer, Vulkan::StockSampler sampler,
                                const vec3 &offset, const vec2 &size, const vec2 &tex_offset, const vec2 &tex_size, const vec4 &color,
-                               bool transparent)
+                               bool transparent, bool layered)
 {
 	auto type = transparent ? Queue::Transparent : Queue::Opaque;
 	auto pipeline = transparent ? DrawPipeline::AlphaBlend : DrawPipeline::Opaque;
@@ -136,6 +136,7 @@ void FlatRenderer::render_quad(const ImageView *view, Vulkan::StockSampler sampl
 	h.s32(sprite.clip_quad.y);
 	h.s32(sprite.clip_quad.z);
 	h.s32(sprite.clip_quad.w);
+	h.s32(layered);
 
 	if (view)
 	{
@@ -152,24 +153,29 @@ void FlatRenderer::render_quad(const ImageView *view, Vulkan::StockSampler sampl
 
 	if (sprite_data)
 	{
+		uint32_t flags = 0;
+		if (layered && view)
+			flags |= Sprite::ARRAY_TEXTURE_BIT;
+
 		if (view)
 		{
 			sprite.program = suite[ecast(RenderableType::Sprite)].get_program(pipeline,
 			                                                                  MESH_ATTRIBUTE_POSITION_BIT |
 			                                                                  MESH_ATTRIBUTE_VERTEX_COLOR_BIT |
 			                                                                  MESH_ATTRIBUTE_UV_BIT,
-			                                                                  MATERIAL_TEXTURE_BASE_COLOR_BIT);
+			                                                                  MATERIAL_TEXTURE_BASE_COLOR_BIT, flags);
 		}
 		else
 		{
 			sprite.program = suite[ecast(RenderableType::Sprite)].get_program(pipeline,
 			                                                                  MESH_ATTRIBUTE_POSITION_BIT |
-			                                                                  MESH_ATTRIBUTE_VERTEX_COLOR_BIT, 0);
+			                                                                  MESH_ATTRIBUTE_VERTEX_COLOR_BIT, 0, flags);
 		}
 		*sprite_data = sprite;
 	}
 
 	quads->layer = offset.z;
+	quads->array_layer = float(layer);
 	quads->pos_off_x = offset.x;
 	quads->pos_off_y = offset.y;
 	quads->pos_scale_x = size.x;
@@ -185,15 +191,23 @@ void FlatRenderer::render_quad(const ImageView *view, Vulkan::StockSampler sampl
 	quads->rotation[3] = 1.0f;
 }
 
-void FlatRenderer::render_textured_quad(const ImageView &view, const vec3 &offset, const vec2 &size, const vec2 &tex_offset,
+void FlatRenderer::render_layered_textured_quad(const ImageView &view, unsigned layer,
+                                                const vec3 &offset, const vec2 &size, const vec2 &tex_offset,
+                                                const vec2 &tex_size, bool transparent, const vec4 &color, Vulkan::StockSampler sampler)
+{
+	render_quad(&view, layer, sampler, offset, size, tex_offset, tex_size, color, transparent, true);
+}
+
+void FlatRenderer::render_textured_quad(const ImageView &view,
+                                        const vec3 &offset, const vec2 &size, const vec2 &tex_offset,
                                         const vec2 &tex_size, bool transparent, const vec4 &color, Vulkan::StockSampler sampler)
 {
-	render_quad(&view, sampler, offset, size, tex_offset, tex_size, color, transparent);
+	render_quad(&view, 0, sampler, offset, size, tex_offset, tex_size, color, transparent, false);
 }
 
 void FlatRenderer::render_quad(const vec3 &offset, const vec2 &size, const vec4 &color)
 {
-	render_quad(nullptr, Vulkan::StockSampler::Count, offset, size, vec2(0.0f), vec2(0.0f), color, color.w < 1.0f);
+	render_quad(nullptr, 0, Vulkan::StockSampler::Count, offset, size, vec2(0.0f), vec2(0.0f), color, color.w < 1.0f, true);
 }
 
 void FlatRenderer::build_scissor(ivec4 &clip, const vec2 &minimum, const vec2 &maximum) const

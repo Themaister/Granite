@@ -13,8 +13,16 @@ layout(location = 5) in mediump float Layer;
 #define SPRITE_BLENDING
 #endif
 
+#if defined(VARIANT_BIT_5) && VARIANT_BIT_5
+#define ARRAY_LAYERS
+#endif
+
 #ifdef SPRITE_BLENDING
 layout(location = 6) in mediump float BlendFactor;
+#endif
+
+#ifdef ARRAY_LAYERS
+layout(location = 7) in float ArrayLayer;
 #endif
 
 layout(std140, set = 0, binding = 0) uniform Scene
@@ -29,6 +37,9 @@ layout(location = 0) flat out mediump vec4 vColor;
         layout(location = 1) out highp vec3 vTex;
     #else
         layout(location = 1) out highp vec2 vTex;
+    #endif
+    #ifdef ARRAY_LAYERS
+        layout(location = 2) flat out highp float vLayer;
     #endif
     layout(set = 3, binding = 0, std140) uniform Globals
     {
@@ -50,6 +61,9 @@ void main()
         vTex = vec3(uv, BlendFactor);
     #else
         vTex = uv;
+    #endif
+    #ifdef ARRAY_LAYERS
+        vLayer = ArrayLayer;
     #endif
 #endif
 

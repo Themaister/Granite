@@ -41,6 +41,7 @@ struct QuadData
 	float rotation[4];
 	uint8_t color[4];
 	float layer;
+	float array_layer;
 	float blend_factor;
 };
 
@@ -71,7 +72,8 @@ struct Sprite : AbstractRenderable
 		BLEND_TEXUTRE_BIT = 1 << 1,
 		LUMA_TO_ALPHA_BIT = 1 << 2,
 		CLEAR_ALPHA_TO_ZERO_BIT = 1 << 3,
-		ALPHA_TEXTURE_BIT = 1 << 4
+		ALPHA_TEXTURE_BIT = 1 << 4,
+		ARRAY_TEXTURE_BIT = 1 << 5
 	};
 	using ShaderVariantFlags = uint32_t;
 

@@ -79,11 +79,19 @@ public:
 	void push_sprites(const SpriteList &visible);
 
 	void render_quad(const vec3 &offset, const vec2 &size, const vec4 &color);
+
 	void render_textured_quad(const Vulkan::ImageView &view, const vec3 &offset, const vec2 &size,
 	                          const vec2 &tex_offset, const vec2 &tex_size,
 	                          bool transparent = false,
 	                          const vec4 &color = vec4(1.0f),
 	                          Vulkan::StockSampler sampler = Vulkan::StockSampler::LinearClamp);
+
+	void render_layered_textured_quad(const Vulkan::ImageView &view, unsigned layer,
+	                                  const vec3 &offset, const vec2 &size,
+	                                  const vec2 &tex_offset, const vec2 &tex_size,
+	                                  bool transparent = false,
+	                                  const vec4 &color = vec4(1.0f),
+	                                  Vulkan::StockSampler sampler = Vulkan::StockSampler::LinearClamp);
 
 	void render_text(const Font &font, const char *text,
 	                 const vec3 &offset, const vec2 &size,
@@ -112,9 +120,9 @@ private:
 	};
 	std::vector<Scissor> scissor_stack;
 
-	void render_quad(const Vulkan::ImageView *view, Vulkan::StockSampler sampler,
+	void render_quad(const Vulkan::ImageView *view, unsigned layer, Vulkan::StockSampler sampler,
 	                 const vec3 &offset, const vec2 &size, const vec2 &tex_offset, const vec2 &tex_size, const vec4 &color,
-	                 bool transparent);
+	                 bool transparent, bool layered);
 
 	void build_scissor(ivec4 &clip, const vec2 &minimum, const vec2 &maximum) const;
 };

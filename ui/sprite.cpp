@@ -130,6 +130,7 @@ void sprite_render(Vulkan::CommandBuffer &cmd, const RenderQueueData *infos, uns
 	cmd.set_vertex_attrib(5, 1, VK_FORMAT_R32_SFLOAT, offsetof(QuadData, layer));
 	if (info.textures[1])
 		cmd.set_vertex_attrib(6, 1, VK_FORMAT_R32_SFLOAT, offsetof(QuadData, blend_factor));
+	cmd.set_vertex_attrib(7, 1, VK_FORMAT_R32_SFLOAT, offsetof(QuadData, array_layer));
 	cmd.draw(4, quads);
 }
 }

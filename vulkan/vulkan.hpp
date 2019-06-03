@@ -82,6 +82,7 @@ struct DeviceFeatures
 	VkPhysicalDeviceFloat16Int8FeaturesKHR float16_int8_features = {};
 	VkPhysicalDeviceFeatures enabled_features = {};
 	VkPhysicalDeviceExternalMemoryHostPropertiesEXT host_memory_properties = {};
+	VkPhysicalDeviceMultiviewFeaturesKHR multiview_features = {};
 };
 
 enum VendorID

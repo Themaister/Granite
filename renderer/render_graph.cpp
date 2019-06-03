@@ -1912,10 +1912,11 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device_)
 				timestamps.timestamps_fragment_begin[physical_pass_index] = cmd->write_timestamp(VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 			}
 
+			// TODO: Replace with multiview.
 			VK_ASSERT(physical_pass.layers != ~0u);
 			for (unsigned layer = 0; layer < physical_pass.layers; layer++)
 			{
-				physical_pass.render_pass_info.layer = layer;
+				physical_pass.render_pass_info.base_layer = layer;
 				cmd->begin_region("begin-render-pass");
 				cmd->begin_render_pass(physical_pass.render_pass_info);
 				cmd->end_region();

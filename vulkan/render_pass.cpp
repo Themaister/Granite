@@ -133,6 +133,7 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 	// Want to make load/store to transient a very explicit thing to do, since it will kill performance.
 	bool enable_transient_store = (info.op_flags & RENDER_PASS_OP_ENABLE_TRANSIENT_STORE_BIT) != 0;
 	bool enable_transient_load = (info.op_flags & RENDER_PASS_OP_ENABLE_TRANSIENT_LOAD_BIT) != 0;
+	bool multiview = info.num_layers > 1;
 
 	// Set up default subpass info structure if we don't have it.
 	auto *subpass_infos = info.subpasses;
@@ -716,6 +717,8 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 		dep.srcSubpass = subpass;
 		dep.dstSubpass = subpass;
 		dep.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+		if (multiview)
+			dep.dependencyFlags |= VK_DEPENDENCY_VIEW_LOCAL_BIT_KHR;
 
 		if (color_self_dependencies & (1u << subpass))
 		{
@@ -741,6 +744,8 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 		dep.srcSubpass = subpass - 1;
 		dep.dstSubpass = subpass;
 		dep.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+		if (multiview)
+			dep.dependencyFlags |= VK_DEPENDENCY_VIEW_LOCAL_BIT_KHR;
 
 		if (color_attachment_read_write & (1u << (subpass - 1)))
 		{
@@ -787,6 +792,20 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 
 	// Store the important subpass information for later.
 	setup_subpasses(rp_info);
+
+	VkRenderPassMultiviewCreateInfoKHR multiview_info = { VK_STRUCTURE_TYPE_RENDER_PASS_MULTIVIEW_CREATE_INFO_KHR };
+	vector<uint32_t> multiview_view_mask;
+	if (multiview && device->get_device_features().multiview_features.multiview)
+	{
+		multiview_view_mask.resize(num_subpasses);
+		multiview_info.subpassCount = num_subpasses;
+		for (auto &mask : multiview_view_mask)
+			mask = ((1u << info.num_layers) - 1u) << info.base_layer;
+		multiview_info.pViewMasks = multiview_view_mask.data();
+		rp_info.pNext = &multiview_info;
+	}
+	else if (multiview)
+		LOGE("Multiview not supported. Predending render pass is not multiview.");
 
 	// Fixup after, we want the Fossilize render pass to be generic.
 	VkAttachmentDescription fixup_attachments[VULKAN_NUM_ATTACHMENTS + 1];
@@ -872,7 +891,13 @@ Framebuffer::Framebuffer(Device *device_, const RenderPass &rp, const RenderPass
 		unsigned lod = info.color_attachments[i]->get_create_info().base_level;
 		width = min(width, info.color_attachments[i]->get_image().get_width(lod));
 		height = min(height, info.color_attachments[i]->get_image().get_height(lod));
-		views[num_views++] = info.color_attachments[i]->get_render_target_view(info.layer);
+
+		// For multiview, we use view indices to pick right layers.
+		if (info.num_layers > 1)
+			views[num_views++] = info.color_attachments[i]->get_view();
+		else
+			views[num_views++] = info.color_attachments[i]->get_render_target_view(info.base_layer);
+
 		attachments.push_back(info.color_attachments[i]);
 	}
 
@@ -881,7 +906,13 @@ Framebuffer::Framebuffer(Device *device_, const RenderPass &rp, const RenderPass
 		unsigned lod = info.depth_stencil->get_create_info().base_level;
 		width = min(width, info.depth_stencil->get_image().get_width(lod));
 		height = min(height, info.depth_stencil->get_image().get_height(lod));
-		views[num_views++] = info.depth_stencil->get_render_target_view(info.layer);
+
+		// For multiview, we use view indices to pick right layers.
+		if (info.num_layers > 1)
+			views[num_views++] = info.depth_stencil->get_view();
+		else
+			views[num_views++] = info.depth_stencil->get_render_target_view(info.base_layer);
+
 		attachments.push_back(info.depth_stencil);
 	}
 
@@ -891,7 +922,11 @@ Framebuffer::Framebuffer(Device *device_, const RenderPass &rp, const RenderPass
 	fb_info.pAttachments = views;
 	fb_info.width = width;
 	fb_info.height = height;
-	fb_info.layers = 1;
+
+	if (info.num_layers > 1)
+		fb_info.layers = info.num_layers + info.base_layer;
+	else
+		fb_info.layers = 1;
 
 	auto &table = device->get_device_table();
 	if (table.vkCreateFramebuffer(device->get_device(), &fb_info, nullptr, &framebuffer) != VK_SUCCESS)
@@ -937,7 +972,11 @@ Framebuffer &FramebufferAllocator::request_framebuffer(const RenderPassInfo &inf
 	if (info.depth_stencil)
 		h.u64(info.depth_stencil->get_cookie());
 
-	h.u32(info.layer);
+	// For multiview we bind the whole attachment, and base layer is encoded in the render pass.
+	if (info.num_layers > 1)
+		h.u32(0);
+	else
+		h.u32(info.base_layer);
 
 	auto hash = h.get();
 

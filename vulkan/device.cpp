@@ -3104,7 +3104,7 @@ SamplerHandle Device::create_sampler(const SamplerCreateInfo &sampler_info, Stoc
 	if (table->vkCreateSampler(device, &info, nullptr, &sampler) != VK_SUCCESS)
 		return SamplerHandle(nullptr);
 #ifdef GRANITE_VULKAN_FOSSILIZE
-	state_recorder.record_sampler(sampler, info, Fossilize::Hash(stock_sampler) | 0x10000);
+	register_sampler(sampler, Fossilize::Hash(stock_sampler) | 0x10000, info);
 #else
 	(void)stock_sampler;
 #endif
@@ -3416,6 +3416,18 @@ const RenderPass &Device::request_render_pass(const RenderPassInfo &info, bool c
 			lazy |= 1u << info.num_color_attachments;
 		if (info.depth_stencil->get_image().get_layout_type() == Layout::Optimal)
 			optimal |= 1u << info.num_color_attachments;
+	}
+
+	// For multiview, base layer is encoded into the view mask.
+	if (info.num_layers > 1)
+	{
+		h.u32(info.base_layer);
+		h.u32(info.num_layers);
+	}
+	else
+	{
+		h.u32(0);
+		h.u32(info.num_layers);
 	}
 
 	h.u32(info.num_subpasses);

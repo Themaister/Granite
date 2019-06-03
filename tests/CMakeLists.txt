@@ -11,6 +11,11 @@ if (NOT ANDROID)
     target_compile_definitions(mrt-color-mask PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
 endif()
 
+add_granite_application(multiview-test multiview_test.cpp)
+if (NOT ANDROID)
+    target_compile_definitions(multiview-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
+endif()
+
 add_granite_application(triangle-test triangle.cpp)
 if (NOT ANDROID)
     target_compile_definitions(triangle-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")

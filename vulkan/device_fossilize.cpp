@@ -22,39 +22,94 @@
 
 #include "device.hpp"
 #include "timer.hpp"
+#include <stdexcept>
 
 using namespace std;
 
 namespace Vulkan
 {
+void Device::register_sampler(VkSampler sampler, Fossilize::Hash hash, const VkSamplerCreateInfo &info)
+{
+	try
+	{
+		state_recorder.record_sampler(sampler, info, hash);
+	}
+	catch (const exception &e)
+	{
+		LOGE("Fossilize exception: %s\n", e.what());
+	}
+}
+
 void Device::register_descriptor_set_layout(VkDescriptorSetLayout layout, Fossilize::Hash hash, const VkDescriptorSetLayoutCreateInfo &info)
 {
-	state_recorder.record_descriptor_set_layout(layout, info, hash);
+	try
+	{
+		state_recorder.record_descriptor_set_layout(layout, info, hash);
+	}
+	catch (const exception &e)
+	{
+		LOGE("Fossilize exception: %s\n", e.what());
+	}
 }
 
 void Device::register_pipeline_layout(VkPipelineLayout layout, Fossilize::Hash hash, const VkPipelineLayoutCreateInfo &info)
 {
-	return state_recorder.record_pipeline_layout(layout, info, hash);
+	try
+	{
+		state_recorder.record_pipeline_layout(layout, info, hash);
+	}
+	catch (const exception &e)
+	{
+		LOGE("Fossilize exception: %s\n", e.what());
+	}
 }
 
 void Device::register_shader_module(VkShaderModule module, Fossilize::Hash hash, const VkShaderModuleCreateInfo &info)
 {
-	return state_recorder.record_shader_module(module, info, hash);
+	try
+	{
+		state_recorder.record_shader_module(module, info, hash);
+	}
+	catch (const exception &e)
+	{
+		LOGE("Fossilize exception: %s\n", e.what());
+	}
 }
 
 void Device::register_compute_pipeline(Fossilize::Hash hash, const VkComputePipelineCreateInfo &info)
 {
-	return state_recorder.record_compute_pipeline(VK_NULL_HANDLE, info, nullptr, 0, hash);
+	try
+	{
+		state_recorder.record_compute_pipeline(VK_NULL_HANDLE, info, nullptr, 0, hash);
+	}
+	catch (const exception &e)
+	{
+		LOGE("Fossilize exception: %s\n", e.what());
+	}
 }
 
 void Device::register_graphics_pipeline(Fossilize::Hash hash, const VkGraphicsPipelineCreateInfo &info)
 {
-	return state_recorder.record_graphics_pipeline(VK_NULL_HANDLE, info, nullptr, 0, hash);
+	try
+	{
+		state_recorder.record_graphics_pipeline(VK_NULL_HANDLE, info, nullptr, 0, hash);
+	}
+	catch (const exception &e)
+	{
+		LOGE("Fossilize exception: %s\n", e.what());
+	}
 }
 
 void Device::register_render_pass(VkRenderPass render_pass, Fossilize::Hash hash, const VkRenderPassCreateInfo &info)
 {
-	return state_recorder.record_render_pass(render_pass, info, hash);
+	try
+	{
+		state_recorder.record_render_pass(render_pass, info, hash);
+	}
+	catch (const exception &e)
+	{
+		LOGE("Fossilize exception: %s\n", e.what());
+	}
 }
 
 bool Device::enqueue_create_shader_module(Fossilize::Hash hash, const VkShaderModuleCreateInfo *create_info, VkShaderModule *module)
@@ -63,6 +118,7 @@ bool Device::enqueue_create_shader_module(Fossilize::Hash hash, const VkShaderMo
 	*module = ret->get_module();
 	replayer_state.shader_map[*module] = ret;
 	return true;
+
 }
 
 void Device::notify_replayed_resources_for_type()

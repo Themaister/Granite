@@ -54,7 +54,8 @@ struct RenderPassInfo
 	uint32_t clear_attachments = 0;
 	uint32_t load_attachments = 0;
 	uint32_t store_attachments = 0;
-	uint32_t layer = 0;
+	uint32_t base_layer = 0;
+	uint32_t num_layers = 1;
 
 	// Render area will be clipped to the actual framebuffer.
 	VkRect2D render_area = { { 0, 0 }, { UINT32_MAX, UINT32_MAX } };

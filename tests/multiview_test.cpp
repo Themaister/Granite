@@ -47,6 +47,15 @@ struct MultiviewApplication : Application, EventHandler
 		rt.layers = 4;
 		rt.usage |= VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 		multiview_rt = e.get_device().create_image(rt);
+
+		VkDrawIndirectCommand initial = {};
+		initial.vertexCount = 4;
+		initial.instanceCount = 4;
+		BufferCreateInfo info = {};
+		info.size = sizeof(VkDrawIndirectCommand);
+		info.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+		info.domain = BufferDomain::Device;
+		indirect = e.get_device().create_buffer(info, &initial);
 	}
 
 	void on_device_destroyed(const DeviceCreatedEvent &)
@@ -98,7 +107,8 @@ struct MultiviewApplication : Application, EventHandler
 		base_positions[1] = vec4(-0.8f, +0.8f, 0.0f, 1.0f);
 		base_positions[2] = vec4(+0.8f, -0.8f, 0.0f, 1.0f);
 		base_positions[3] = vec4(+0.8f, +0.8f, 0.0f, 1.0f);
-		cmd->draw(4, 4);
+		//cmd->draw(4, 4);
+		cmd->draw_indirect(*indirect, 0, 1, sizeof(VkDrawIndirectCommand));
 		cmd->end_render_pass();
 
 		cmd->image_barrier(*multiview_rt, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
@@ -115,6 +125,7 @@ struct MultiviewApplication : Application, EventHandler
 	}
 
 	ImageHandle multiview_rt;
+	BufferHandle indirect;
 };
 
 namespace Granite

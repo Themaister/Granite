@@ -357,7 +357,7 @@ static TransparencyType check_transparency(const Vulkan::TextureFormatLayout &la
 	return non_opaque_pixel ? TransparencyType::Binary : TransparencyType::None;
 }
 
-TransparencyType image_layer_contains_transparency(const Vulkan::TextureFormatLayout &layout, unsigned layer, unsigned level)
+TransparencyType image_slice_contains_transparency(const Vulkan::TextureFormatLayout &layout, unsigned layer, unsigned level)
 {
 	switch (layout.get_format())
 	{

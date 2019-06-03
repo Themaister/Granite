@@ -98,10 +98,10 @@ struct CubeArrayTest : Granite::Application, Granite::EventHandler
 			for (unsigned face = 0; face < 6; face++)
 			{
 				RenderPassInfo cube_rp;
-				cube_rp.layer = face + slice * 6;
+				cube_rp.base_layer = face + slice * 6;
 				cube_rp.op_flags = RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT | RENDER_PASS_OP_STORE_DEPTH_STENCIL_BIT;
 				cube_rp.depth_stencil = &cube->get_view();
-				cube_rp.clear_depth_stencil.depth = 1.0f - 1.0f * float(cube_rp.layer) / float(LAYERS * 6);
+				cube_rp.clear_depth_stencil.depth = 1.0f - 1.0f * float(cube_rp.base_layer) / float(LAYERS * 6);
 				cube_rp.clear_color[0].float32[0] = cube_rp.clear_depth_stencil.depth;
 				cube_rp.clear_color[0].float32[1] = 0.4f * cube_rp.clear_depth_stencil.depth;
 				cube_rp.clear_color[0].float32[2] = 0.2f * cube_rp.clear_depth_stencil.depth;

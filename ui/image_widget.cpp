@@ -87,7 +87,7 @@ void Image::reconfigure_to_canvas(vec2, vec2 size)
 float Image::render(FlatRenderer &renderer, float layer, vec2 offset, vec2)
 {
 	renderer.render_textured_quad(texture->get_image()->get_view(), vec3(offset + sprite_offset, layer), sprite_size,
-	                              vec2(0.0f), image_size, true, vec4(1.0f), sampler);
+	                              vec2(0.0f), image_size, DrawPipeline::AlphaBlend, vec4(1.0f), sampler);
 	return layer;
 }
 

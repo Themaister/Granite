@@ -102,7 +102,7 @@ float Window::render(FlatRenderer &renderer, float layer, vec2 offset, vec2 size
 			renderer.render_textured_quad(image.get_view(),
 			                              vec3(offset, layer), size,
 			                              vec2(0.0f), vec2(image.get_width(0), image.get_height(0)),
-			                              true, bg_color, Vulkan::StockSampler::LinearClamp);
+			                              DrawPipeline::AlphaBlend, bg_color, Vulkan::StockSampler::LinearClamp);
 		}
 		else
 		{

@@ -333,5 +333,43 @@ MemoryMappedTexture fixup_alpha_edges(const Vulkan::TextureFormatLayout &layout,
 	fixup_edges(mapped, layout);
 	return mapped;
 }
+
+static TransparencyType check_transparency(const Vulkan::TextureFormatLayout &layout, unsigned layer, unsigned level)
+{
+	bool non_opaque_pixel = false;
+	auto width = layout.get_width();
+	auto height = layout.get_height();
+	for (unsigned y = 0; y < height; y++)
+	{
+		for (unsigned x = 0; x < width; x++)
+		{
+			uint8_t alpha = layout.data_2d<u8vec4>(x, y, layer, level)->w;
+			if (alpha != 0xff)
+			{
+				if (alpha == 0)
+					non_opaque_pixel = true;
+				else
+					return TransparencyType::Floating;
+			}
+		}
+	}
+
+	return non_opaque_pixel ? TransparencyType::Binary : TransparencyType::None;
+}
+
+TransparencyType image_layer_contains_transparency(const Vulkan::TextureFormatLayout &layout, unsigned layer, unsigned level)
+{
+	switch (layout.get_format())
+	{
+	case VK_FORMAT_R8G8B8A8_UNORM:
+	case VK_FORMAT_R8G8B8A8_SRGB:
+	case VK_FORMAT_B8G8R8A8_UNORM:
+	case VK_FORMAT_B8G8R8A8_SRGB:
+		return check_transparency(layout, layer, level);
+
+	default:
+		throw std::logic_error("Unsupported format for image_layer_contains_transparency.");
+	}
+}
 }
 }

@@ -115,10 +115,10 @@ void FlatRenderer::flush(Vulkan::CommandBuffer &cmd, const vec3 &camera_pos, con
 
 void FlatRenderer::render_quad(const ImageView *view, unsigned layer, Vulkan::StockSampler sampler,
                                const vec3 &offset, const vec2 &size, const vec2 &tex_offset, const vec2 &tex_size, const vec4 &color,
-                               bool transparent, bool layered)
+                               DrawPipeline pipeline)
 {
-	auto type = transparent ? Queue::Transparent : Queue::Opaque;
-	auto pipeline = transparent ? DrawPipeline::AlphaBlend : DrawPipeline::Opaque;
+	auto type = pipeline == DrawPipeline::AlphaBlend ? Queue::Transparent : Queue::Opaque;
+	bool layered = view && view->get_create_info().view_type == VK_IMAGE_VIEW_TYPE_2D_ARRAY;
 
 	SpriteRenderInfo sprite;
 	build_scissor(sprite.clip_quad, offset.xy(), offset.xy() + size);
@@ -130,7 +130,7 @@ void FlatRenderer::render_quad(const ImageView *view, unsigned layer, Vulkan::St
 
 	Hasher h;
 	h.string("quad");
-	h.s32(transparent);
+	h.s32(ecast(pipeline));
 	auto pipe_hash = h.get();
 	h.s32(sprite.clip_quad.x);
 	h.s32(sprite.clip_quad.y);
@@ -191,23 +191,18 @@ void FlatRenderer::render_quad(const ImageView *view, unsigned layer, Vulkan::St
 	quads->rotation[3] = 1.0f;
 }
 
-void FlatRenderer::render_layered_textured_quad(const ImageView &view, unsigned layer,
-                                                const vec3 &offset, const vec2 &size, const vec2 &tex_offset,
-                                                const vec2 &tex_size, bool transparent, const vec4 &color, Vulkan::StockSampler sampler)
-{
-	render_quad(&view, layer, sampler, offset, size, tex_offset, tex_size, color, transparent, true);
-}
-
 void FlatRenderer::render_textured_quad(const ImageView &view,
                                         const vec3 &offset, const vec2 &size, const vec2 &tex_offset,
-                                        const vec2 &tex_size, bool transparent, const vec4 &color, Vulkan::StockSampler sampler)
+                                        const vec2 &tex_size, DrawPipeline pipeline, const vec4 &color, Vulkan::StockSampler sampler,
+                                        unsigned layer)
 {
-	render_quad(&view, 0, sampler, offset, size, tex_offset, tex_size, color, transparent, false);
+	render_quad(&view, layer, sampler, offset, size, tex_offset, tex_size, color, pipeline);
 }
 
 void FlatRenderer::render_quad(const vec3 &offset, const vec2 &size, const vec4 &color)
 {
-	render_quad(nullptr, 0, Vulkan::StockSampler::Count, offset, size, vec2(0.0f), vec2(0.0f), color, color.w < 1.0f, true);
+	render_quad(nullptr, 0, Vulkan::StockSampler::Count, offset, size, vec2(0.0f), vec2(0.0f), color,
+	            color.w < 1.0f ? DrawPipeline::AlphaBlend : DrawPipeline::Opaque);
 }
 
 void FlatRenderer::build_scissor(ivec4 &clip, const vec2 &minimum, const vec2 &maximum) const

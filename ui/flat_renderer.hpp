@@ -72,7 +72,7 @@ struct LineStripInfo
 class FlatRenderer : public EventHandler
 {
 public:
-	FlatRenderer(const ShaderSuiteResolver *resolver = nullptr);
+	explicit FlatRenderer(const ShaderSuiteResolver *resolver = nullptr);
 
 	void begin();
 	void push_sprite(const SpriteInfo &info);
@@ -82,16 +82,10 @@ public:
 
 	void render_textured_quad(const Vulkan::ImageView &view, const vec3 &offset, const vec2 &size,
 	                          const vec2 &tex_offset, const vec2 &tex_size,
-	                          bool transparent = false,
+	                          DrawPipeline pipeline,
 	                          const vec4 &color = vec4(1.0f),
-	                          Vulkan::StockSampler sampler = Vulkan::StockSampler::LinearClamp);
-
-	void render_layered_textured_quad(const Vulkan::ImageView &view, unsigned layer,
-	                                  const vec3 &offset, const vec2 &size,
-	                                  const vec2 &tex_offset, const vec2 &tex_size,
-	                                  bool transparent = false,
-	                                  const vec4 &color = vec4(1.0f),
-	                                  Vulkan::StockSampler sampler = Vulkan::StockSampler::LinearClamp);
+	                          Vulkan::StockSampler sampler = Vulkan::StockSampler::LinearClamp,
+	                          unsigned layer = 0);
 
 	void render_text(const Font &font, const char *text,
 	                 const vec3 &offset, const vec2 &size,
@@ -122,7 +116,7 @@ private:
 
 	void render_quad(const Vulkan::ImageView *view, unsigned layer, Vulkan::StockSampler sampler,
 	                 const vec3 &offset, const vec2 &size, const vec2 &tex_offset, const vec2 &tex_size, const vec4 &color,
-	                 bool transparent, bool layered);
+	                 DrawPipeline pipeline);
 
 	void build_scissor(ivec4 &clip, const vec2 &minimum, const vec2 &maximum) const;
 };

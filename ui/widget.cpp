@@ -45,7 +45,7 @@ float Widget::render_children(FlatRenderer &renderer, float layer, vec2 offset)
 					renderer.render_textured_quad(image.get_view(),
 					                              vec3(child.offset + offset, layer - 0.5f), vec2(child.size),
 					                              vec2(0.0f), vec2(image.get_width(0), image.get_height(0)),
-					                              true, child.widget->bg_color, Vulkan::StockSampler::LinearClamp);
+					                              DrawPipeline::AlphaBlend, child.widget->bg_color, Vulkan::StockSampler::LinearClamp);
 				}
 				else
 				{

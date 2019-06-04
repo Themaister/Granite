@@ -1666,7 +1666,7 @@ void Device::init_swapchain(const vector<VkImage> &swapchain_images, unsigned wi
 		if (table->vkCreateImageView(device, &view_info, nullptr, &image_view) != VK_SUCCESS)
 			LOGE("Failed to create view for backbuffer.");
 
-		auto backbuffer = ImageHandle(handle_pool.images.allocate(this, image, image_view, DeviceAllocation{}, info));
+		auto backbuffer = ImageHandle(handle_pool.images.allocate(this, image, image_view, DeviceAllocation{}, info, VK_IMAGE_VIEW_TYPE_2D));
 		backbuffer->set_internal_sync_object();
 		backbuffer->get_view().set_internal_sync_object();
 		wsi.swapchain.push_back(backbuffer);
@@ -2265,10 +2265,16 @@ public:
 	VkImageView stencil_view = VK_NULL_HANDLE;
 	VkImageView unorm_view = VK_NULL_HANDLE;
 	VkImageView srgb_view = VK_NULL_HANDLE;
+	VkImageViewType default_view_type = VK_IMAGE_VIEW_TYPE_RANGE_SIZE;
 	vector<VkImageView> rt_views;
 	DeviceAllocation allocation;
 	DeviceAllocator *allocator = nullptr;
 	bool owned = true;
+
+	VkImageViewType get_default_view_type() const
+	{
+		return default_view_type;
+	}
 
 	bool create_default_views(const ImageCreateInfo &create_info, const VkImageViewCreateInfo *view_info,
 	                          bool create_unorm_srgb_views = false, const VkFormat *view_formats = nullptr)
@@ -2295,6 +2301,8 @@ public:
 			default_view_info.subresourceRange.levelCount = create_info.levels;
 			default_view_info.subresourceRange.layerCount = create_info.layers;
 			view_info = &default_view_info;
+
+			default_view_type = default_view_info.viewType;
 		}
 
 		if (!create_alt_views(create_info, *view_info))
@@ -2554,15 +2562,17 @@ ImageHandle Device::create_imported_image(int fd, VkDeviceSize size, uint32_t me
 
 	// Create default image views.
 	// App could of course to this on its own, but it's very handy to have these being created automatically for you.
+	VkImageViewType view_type = VK_IMAGE_VIEW_TYPE_RANGE_SIZE;
 	if (info.usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
 	                  VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT))
 	{
 		if (!holder.create_default_views(create_info, nullptr))
 			return ImageHandle(nullptr);
+		view_type = holder.get_default_view_type();
 	}
 
 	auto allocation = DeviceAllocation::make_imported_allocation(holder.memory, size, memory_type);
-	ImageHandle handle(handle_pool.images.allocate(this, holder.image, holder.image_view, allocation, create_info));
+	ImageHandle handle(handle_pool.images.allocate(this, holder.image, holder.image_view, allocation, create_info, view_type));
 	if (handle)
 	{
 		holder.owned = false;
@@ -2890,13 +2900,16 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 
 	bool has_view = (info.usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
 	                               VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT)) != 0;
+
+	VkImageViewType view_type = VK_IMAGE_VIEW_TYPE_RANGE_SIZE;
 	if (has_view)
 	{
 		if (!holder.create_default_views(tmpinfo, nullptr, create_unorm_srgb_views, view_formats))
 			return ImageHandle(nullptr);
+		view_type = holder.get_default_view_type();
 	}
 
-	ImageHandle handle(handle_pool.images.allocate(this, holder.image, holder.image_view, holder.allocation, tmpinfo));
+	ImageHandle handle(handle_pool.images.allocate(this, holder.image, holder.image_view, holder.allocation, tmpinfo, view_type));
 	if (handle)
 	{
 		holder.owned = false;

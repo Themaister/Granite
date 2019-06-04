@@ -89,7 +89,7 @@ ImageView::~ImageView()
 }
 
 Image::Image(Device *device_, VkImage image_, VkImageView default_view, const DeviceAllocation &alloc_,
-             const ImageCreateInfo &create_info_)
+             const ImageCreateInfo &create_info_, VkImageViewType view_type)
     : Cookie(device_)
     , device(device_)
     , image(image_)
@@ -100,6 +100,7 @@ Image::Image(Device *device_, VkImage image_, VkImageView default_view, const De
 	{
 		ImageViewCreateInfo info;
 		info.image = this;
+		info.view_type = view_type;
 		info.format = create_info.format;
 		info.base_level = 0;
 		info.levels = create_info.levels;

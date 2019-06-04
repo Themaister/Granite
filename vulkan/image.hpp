@@ -520,7 +520,7 @@ private:
 	friend class Util::ObjectPool<Image>;
 
 	Image(Device *device, VkImage image, VkImageView default_view, const DeviceAllocation &alloc,
-	      const ImageCreateInfo &info);
+	      const ImageCreateInfo &info, VkImageViewType view_type);
 
 	Device *device;
 	VkImage image;

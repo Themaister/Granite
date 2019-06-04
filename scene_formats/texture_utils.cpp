@@ -292,10 +292,12 @@ static void fixup_edges(const MemoryMappedTexture &mapped, const Vulkan::Texture
 	switch (layout.get_format())
 	{
 	case VK_FORMAT_R8G8B8A8_UNORM:
+	case VK_FORMAT_B8G8R8A8_UNORM:
 		fixup_edges(dst_layout, layout, TextureFormatRGBA8Unorm());
 		break;
 
 	case VK_FORMAT_R8G8B8A8_SRGB:
+	case VK_FORMAT_B8G8R8A8_SRGB:
 		fixup_edges(dst_layout, layout, TextureFormatRGBA8Srgb());
 		break;
 

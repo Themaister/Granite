@@ -181,19 +181,19 @@ inline void generate_mipmaps(const Vulkan::TextureFormatLayout &dst_layout,
 	}
 }
 
-static void copy_dimensions(MemoryMappedTexture &mapped, const Vulkan::TextureFormatLayout &layout, MemoryMappedTextureFlags flags)
+static void copy_dimensions(MemoryMappedTexture &mapped, const Vulkan::TextureFormatLayout &layout, MemoryMappedTextureFlags flags, unsigned levels = 0)
 {
 	switch (layout.get_image_type())
 	{
 	case VK_IMAGE_TYPE_1D:
-		mapped.set_1d(layout.get_format(), layout.get_width(), layout.get_layers(), 0);
+		mapped.set_1d(layout.get_format(), layout.get_width(), layout.get_layers(), levels);
 		break;
 
 	case VK_IMAGE_TYPE_2D:
 		if (flags & MEMORY_MAPPED_TEXTURE_CUBE_MAP_COMPATIBLE_BIT)
-			mapped.set_cube(layout.get_format(), layout.get_width(), layout.get_layers() / 6, 0);
+			mapped.set_cube(layout.get_format(), layout.get_width(), layout.get_layers() / 6, levels);
 		else
-			mapped.set_2d(layout.get_format(), layout.get_width(), layout.get_height(), layout.get_layers(), 0);
+			mapped.set_2d(layout.get_format(), layout.get_width(), layout.get_height(), layout.get_layers(), levels);
 		break;
 
 	case VK_IMAGE_TYPE_3D:
@@ -327,7 +327,7 @@ MemoryMappedTexture generate_mipmaps(const Vulkan::TextureFormatLayout &layout, 
 MemoryMappedTexture fixup_alpha_edges(const Vulkan::TextureFormatLayout &layout, MemoryMappedTextureFlags flags)
 {
 	MemoryMappedTexture mapped;
-	copy_dimensions(mapped, layout, flags);
+	copy_dimensions(mapped, layout, flags, layout.get_levels());
 	if (!mapped.map_write_scratch())
 		return {};
 	fixup_edges(mapped, layout);

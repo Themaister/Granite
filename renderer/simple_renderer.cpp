@@ -30,6 +30,7 @@ SimpleRenderer::SimpleRenderer(const ShaderSuiteResolver *resolver)
 {
 	lighting.directional.color = vec3(1.0f);
 	lighting.directional.direction = vec3(0.0f, 1.0f, 0.0f);
+	renderer.set_mesh_renderer_options_from_lighting(lighting);
 }
 
 void SimpleRenderer::set_directional_light_color(const vec3 &color)

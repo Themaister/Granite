@@ -21,32 +21,31 @@
  */
 
 #pragma once
+#include "renderer.hpp"
+#include "math.hpp"
+#include "command_buffer.hpp"
+#include "render_context.hpp"
+
+// A trivial renderer which makes small prototypes easier to get working.
 
 namespace Granite
 {
-enum class RenderableType
-{
-	Mesh,
-	DebugMesh,
-	Skybox,
-	SkyCylinder,
-	Ground,
-	Ocean,
-	Sprite,
-	LineUI,
-	TexturePlane,
-	SpotLight,
-	PointLight,
-	Custom,
-	Count
-};
+class Scene;
+class Camera;
 
-enum class RendererType
+class SimpleRenderer
 {
-	GeneralForward,
-	GeneralDeferred,
-	DepthOnly,
-	Flat,
-	External
+public:
+	explicit SimpleRenderer(const ShaderSuiteResolver *resolver = nullptr);
+
+	void set_directional_light_color(const vec3 &color);
+	void set_directional_light_direction(const vec3 &direction);
+	void render_scene(const Camera &camera, Scene &scene, Vulkan::CommandBuffer &cmd);
+
+private:
+	Renderer renderer;
+	LightingParameters lighting;
+	RenderContext render_context;
+	VisibilityList visible;
 };
 }

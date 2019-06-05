@@ -60,7 +60,7 @@ bool ShaderTemplate::init()
 	compiler->set_include_directories(&include_directories);
 	if (!compiler->preprocess())
 	{
-		LOGE("Failed to pre-process shader: %s", path.c_str());
+		LOGE("Failed to pre-process shader: %s\n", path.c_str());
 		compiler.reset();
 		return false;
 	}

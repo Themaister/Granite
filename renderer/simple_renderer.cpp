@@ -20,33 +20,40 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#pragma once
+#include "simple_renderer.hpp"
+#include "muglm/muglm_impl.hpp"
 
 namespace Granite
 {
-enum class RenderableType
+SimpleRenderer::SimpleRenderer(const ShaderSuiteResolver *resolver)
+	: renderer(RendererType::GeneralForward, resolver)
 {
-	Mesh,
-	DebugMesh,
-	Skybox,
-	SkyCylinder,
-	Ground,
-	Ocean,
-	Sprite,
-	LineUI,
-	TexturePlane,
-	SpotLight,
-	PointLight,
-	Custom,
-	Count
-};
+	lighting.directional.color = vec3(1.0f);
+	lighting.directional.direction = vec3(0.0f, 1.0f, 0.0f);
+}
 
-enum class RendererType
+void SimpleRenderer::set_directional_light_color(const vec3 &color)
 {
-	GeneralForward,
-	GeneralDeferred,
-	DepthOnly,
-	Flat,
-	External
-};
+	lighting.directional.color = color;
+}
+
+void SimpleRenderer::set_directional_light_direction(const vec3 &direction)
+{
+	lighting.directional.direction = normalize(direction);
+}
+
+void SimpleRenderer::render_scene(const Camera &camera, Scene &scene, Vulkan::CommandBuffer &cmd)
+{
+	scene.update_cached_transforms();
+	render_context.set_camera(camera);
+	render_context.set_lighting_parameters(&lighting);
+
+	visible.clear();
+	scene.gather_unbounded_renderables(visible);
+	scene.gather_visible_opaque_renderables(render_context.get_visibility_frustum(), visible);
+	scene.gather_visible_transparent_renderables(render_context.get_visibility_frustum(), visible);
+	renderer.begin();
+	renderer.push_renderables(render_context, visible);
+	renderer.flush(cmd, render_context);
+}
 }

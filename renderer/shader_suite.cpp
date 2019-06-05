@@ -60,6 +60,12 @@ void ShaderSuite::bake_base_defines()
 Vulkan::Program *ShaderSuite::get_program(DrawPipeline pipeline, uint32_t attribute_mask,
                                           uint32_t texture_mask, uint32_t variant_id)
 {
+	if (!program)
+	{
+		LOGE("No program to use in ShaderSuite.\n");
+		return nullptr;
+	}
+
 	Hasher h;
 	assert(base_define_hash != 0);
 	h.u64(base_define_hash);

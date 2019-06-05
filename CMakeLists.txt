@@ -366,6 +366,7 @@ if (NOT GRANITE_VULKAN_ONLY)
             math/simd.hpp math/simd_headers.hpp
 
             renderer/render_queue.hpp renderer/render_queue.cpp
+            renderer/simple_renderer.hpp renderer/simple_renderer.cpp
             renderer/mesh.hpp renderer/mesh.cpp
             renderer/scene.hpp renderer/scene.cpp
             renderer/shader_suite.hpp renderer/shader_suite.cpp

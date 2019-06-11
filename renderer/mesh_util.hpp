@@ -57,6 +57,9 @@ private:
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
 };
 
+AbstractRenderableHandle create_imported_mesh(const SceneFormats::Mesh &mesh,
+                                              const SceneFormats::MaterialInfo *materials);
+
 class CubeMesh : public StaticMesh, public EventHandler
 {
 public:

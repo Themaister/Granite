@@ -64,6 +64,10 @@ static std::vector<Scene::NodeHandle> create_nodes(Scene &scene, const std::vect
 			throw logic_error("Skinning not yet supported for MeshManager.");
 
 		auto node = scene.create_node();
+		node->transform.translation = node_info.transform.translation;
+		node->transform.rotation = node_info.transform.rotation;
+		node->transform.scale = node_info.transform.scale;
+		node->invalidate_cached_transform();
 		scene_nodes[i] = move(node);
 	}
 

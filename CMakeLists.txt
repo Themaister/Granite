@@ -433,6 +433,7 @@ if (NOT GRANITE_VULKAN_ONLY)
 
             util/lock_free_message_queue.hpp util/lock_free_message_queue.cpp
             util/bitmap_to_mesh.cpp util/bitmap_to_mesh.hpp
+            util/cooperative_task.hpp
     )
 
     if (${CMAKE_SYSTEM} MATCHES "Linux")

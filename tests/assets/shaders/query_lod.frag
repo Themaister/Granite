@@ -6,5 +6,5 @@ layout(location = 0) in vec2 vUV;
 
 void main()
 {
-    FragColor = textureQueryLod(uSampler, vUV);
+    FragColor = textureQueryLod(uSampler, vUV * 0.0);
 }

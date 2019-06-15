@@ -279,7 +279,7 @@ Mesh mesh_optimize_index_buffer(const Mesh &mesh, bool stripify)
 		vector<uint32_t> stripped_index_buffer((index_buffer.size() / 3) * 4);
 		size_t stripped_index_count = meshopt_stripify(stripped_index_buffer.data(),
 		                                               index_buffer.data(), index_buffer.size(),
-		                                               vertex_count);
+		                                               vertex_count, ~0u);
 
 		stripped_index_buffer.resize(stripped_index_count);
 		if (stripped_index_count < index_buffer.size())

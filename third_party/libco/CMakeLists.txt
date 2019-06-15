@@ -1,0 +1,7 @@
+if (WIN32)
+	add_library(libco STATIC libco.h fiber.c)
+else()
+	add_library(libco STATIC libco.h sjlj.c)
+	target_compile_options(libco PRIVATE -pthread)
+endif()
+target_include_directories(libco PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

@@ -20,49 +20,30 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#pragma once
+#include "cooperative_task.hpp"
+#include "util.hpp"
 
-#include <memory>
+using namespace Util;
 
-namespace Util
+struct PrinterTask : CooperativeTaskRunnable
 {
-class CooperativeTaskRunnable
-{
-public:
-	virtual ~CooperativeTaskRunnable() = default;
-
-	bool is_runnable(double time) const;
-	void set_current_time(double time);
-	void yield_complete();
-
-	virtual void run() noexcept = 0;
-
-protected:
-	double get_current_time() const;
-	void yield();
-	void yield_and_delay(double time);
-
-private:
-	double current_time = 0.0;
-	double sleep_until = 0.0;
-	bool complete = false;
+	void run() noexcept override
+	{
+		for (unsigned i = 0; i < 10; i++)
+		{
+			LOGI("Value in task: %u\n", i);
+			yield();
+		}
+	}
 };
 
-class CooperativeTask
+int main()
 {
-public:
-	explicit CooperativeTask(std::unique_ptr<CooperativeTaskRunnable> task_);
-	~CooperativeTask();
-
-	CooperativeTask(const CooperativeTask &) = delete;
-	void operator=(const CooperativeTask &) = delete;
-
-	void resume(double current_time);
-	bool task_is_runnable(double current_time) const;
-
-private:
-	std::unique_ptr<CooperativeTaskRunnable> task;
-	void *cothread = nullptr;
-};
+	CooperativeTask task(std::make_unique<PrinterTask>());
+	while (task.task_is_runnable(0.0))
+	{
+		LOGI(":D\n");
+		task.resume(0.0);
+	}
 }
 

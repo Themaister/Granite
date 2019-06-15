@@ -120,6 +120,7 @@ if (NOT GRANITE_VULKAN_ONLY)
     add_subdirectory(third_party/meshoptimizer EXCLUDE_FROM_ALL)
     add_subdirectory(third_party/mikktspace EXCLUDE_FROM_ALL)
     add_subdirectory(third_party/muFFT EXCLUDE_FROM_ALL)
+    add_subdirectory(third_party/libco EXCLUDE_FROM_ALL)
     add_subdirectory(third_party EXCLUDE_FROM_ALL)
 endif()
 
@@ -433,7 +434,7 @@ if (NOT GRANITE_VULKAN_ONLY)
 
             util/lock_free_message_queue.hpp util/lock_free_message_queue.cpp
             util/bitmap_to_mesh.cpp util/bitmap_to_mesh.hpp
-            util/cooperative_task.hpp
+            util/cooperative_task.hpp util/cooperative_task.cpp
     )
 
     if (${CMAKE_SYSTEM} MATCHES "Linux")
@@ -658,7 +659,8 @@ if (NOT GRANITE_VULKAN_ONLY)
             PRIVATE
                 stb
                 mikktspace
-                meshoptimizer)
+                meshoptimizer
+                libco)
     target_include_directories(granite PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/third_party/stb/stb)
 endif()
 

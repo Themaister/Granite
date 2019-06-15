@@ -27,6 +27,8 @@ typedef struct {
 static __thread cothread_struct co_primary;
 static __thread cothread_struct *creating, *co_running = 0;
 
+static pthread_mutex_t global_lock = PTHREAD_MUTEX_INITIALIZER;
+
 static void springboard(int ignored) {
   if(sigsetjmp(creating->context, 0)) {
     co_running->coentry(co_running->userdata);
@@ -61,6 +63,8 @@ cothread_t co_create(unsigned int size, void (*coentry)(void *), void *userdata)
       sigemptyset(&handler.sa_mask);
       creating = thread;
 
+      /* Signal state is global. Need locking if we're using cothreads from multiple threads. */
+      pthread_mutex_lock(&global_lock);
       if(!sigaction(SIGUSR1, &handler, &old_handler)) {
         if(!pthread_kill(pthread_self(), SIGUSR1)) {
           thread->coentry = coentry;
@@ -68,6 +72,7 @@ cothread_t co_create(unsigned int size, void (*coentry)(void *), void *userdata)
         sigaltstack(&old_stack, 0);
         sigaction(SIGUSR1, &old_handler, 0);
       }
+      pthread_mutex_unlock(&global_lock);
     }
 
     if(thread->coentry != coentry) {

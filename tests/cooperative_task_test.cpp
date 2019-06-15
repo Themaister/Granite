@@ -40,7 +40,7 @@ struct PrinterTask : CooperativeTaskRunnable
 int main()
 {
 	CooperativeTask task(std::make_unique<PrinterTask>());
-	while (task.task_is_runnable(0.0))
+	while (!task.task_is_complete())
 	{
 		LOGI(":D\n");
 		task.resume(0.0);

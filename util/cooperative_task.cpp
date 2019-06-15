@@ -81,6 +81,11 @@ bool CooperativeTask::task_is_runnable(double current_time) const
 	return task->is_runnable(current_time);
 }
 
+bool CooperativeTask::task_is_complete() const
+{
+	return task->is_complete();
+}
+
 bool CooperativeTaskRunnable::is_runnable(double time) const
 {
 	return !complete && time >= sleep_until;
@@ -111,5 +116,10 @@ void CooperativeTaskRunnable::yield_and_delay(double time)
 double CooperativeTaskRunnable::get_current_time() const
 {
 	return current_time;
+}
+
+bool CooperativeTaskRunnable::is_complete() const
+{
+	return complete;
 }
 }

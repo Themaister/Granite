@@ -34,6 +34,7 @@ public:
 	bool is_runnable(double time) const;
 	void set_current_time(double time);
 	void yield_complete();
+	bool is_complete() const;
 
 	virtual void run() noexcept = 0;
 
@@ -59,6 +60,7 @@ public:
 
 	void resume(double current_time);
 	bool task_is_runnable(double current_time) const;
+	bool task_is_complete() const;
 
 private:
 	std::unique_ptr<CooperativeTaskRunnable> task;

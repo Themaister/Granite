@@ -10,7 +10,13 @@
 #define _WIN32_WINNT 0x0400
 #include <windows.h>
 
+#if defined(_MSC_VER)
+__declspec(thread) static cothread_t co_active_ = 0;
+#elif defined(__GNUC__)
 static __thread cothread_t co_active_ = 0;
+#else
+#error "Unknown compiler."
+#endif
 
 struct fiber_data
 {

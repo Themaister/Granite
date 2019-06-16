@@ -45,6 +45,12 @@ inline T *get_component(Tup &t)
 	return std::get<T *>(t);
 }
 
+template <typename T>
+inline T *get(const std::tuple<T *> &t)
+{
+	return std::get<0>(t);
+}
+
 template <typename... Ts>
 using ComponentGroupVector = std::vector<std::tuple<Ts *...>>;
 

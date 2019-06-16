@@ -47,10 +47,15 @@ void UIManager::render(Vulkan::CommandBuffer &cmd)
 {
 	renderer.begin();
 
-	float minimum_layer = 0.0f;
+	const float max_layers = 20000.0f; // Roughly for D16 with some headroom for quantization errors.
+
+	float minimum_layer = max_layers - 1.0f;
 	for (auto &widget : widgets)
 	{
 		auto *window = static_cast<Window *>(widget.get());
+		if (!window->get_visible())
+			continue;
+
 		widget->reconfigure_geometry();
 
 		vec2 window_size;
@@ -72,14 +77,14 @@ void UIManager::render(Vulkan::CommandBuffer &cmd)
 		}
 
 		renderer.push_scissor(window->get_floating_position(), window_size);
-		float min_layer = widget->render(renderer, 0.0f, window_pos, window_size);
+		float min_layer = widget->render(renderer, minimum_layer, window_pos, window_size);
 		renderer.pop_scissor();
 
 		minimum_layer = min(min_layer, minimum_layer);
 	}
 
 	renderer.flush(cmd, vec3(0.0f, 0.0f, minimum_layer),
-	               vec3(cmd.get_viewport().width, cmd.get_viewport().height, 32000.0f));
+	               vec3(cmd.get_viewport().width, cmd.get_viewport().height, max_layers));
 }
 
 Font& UIManager::get_font(FontSize size)
@@ -201,6 +206,8 @@ bool UIManager::filter_input_event(const MouseButtonEvent &e)
 	for (auto &widget : widgets)
 	{
 		auto *window = static_cast<Window *>(widget.get());
+		if (!window->get_visible())
+			continue;
 		widget->reconfigure_geometry();
 		widget->reconfigure_geometry_to_canvas(window->get_floating_position(), window->get_minimum_geometry());
 

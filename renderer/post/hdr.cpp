@@ -385,9 +385,9 @@ void setup_hdr_postprocess_compute(RenderGraph &graph, const std::string &input,
 		if (options.dynamic_exposure)
 			ubo_res = &tonemap.add_uniform_input("average-luminance");
 
-		tonemap.set_build_render_pass([&, interface = iface, ubo = ubo_res](Vulkan::CommandBuffer &cmd)
+		tonemap.set_build_render_pass([&, iface = iface, ubo = ubo_res](Vulkan::CommandBuffer &cmd)
 		                              {
-			                              tonemap_build_render_pass(tonemap, cmd, hdr_res, bloom_res, ubo, interface);
+			                              tonemap_build_render_pass(tonemap, cmd, hdr_res, bloom_res, ubo, iface);
 		                              });
 	}
 }
@@ -546,9 +546,9 @@ void setup_hdr_postprocess(RenderGraph &graph, const std::string &input, const s
 		if (options.dynamic_exposure)
 			ubo_res = &tonemap.add_uniform_input("average-luminance-updated");
 
-		tonemap.set_build_render_pass([&, interface = iface, ubo = ubo_res](Vulkan::CommandBuffer &cmd)
+		tonemap.set_build_render_pass([&, iface = iface, ubo = ubo_res](Vulkan::CommandBuffer &cmd)
 		                              {
-			                              tonemap_build_render_pass(tonemap, cmd, hdr_res, bloom_res, ubo, interface);
+			                              tonemap_build_render_pass(tonemap, cmd, hdr_res, bloom_res, ubo, iface);
 		                              });
 	}
 }

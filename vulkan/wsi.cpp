@@ -621,9 +621,33 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	}
 
 	uint32_t num_present_modes;
-	vkGetPhysicalDeviceSurfacePresentModesKHR(gpu, surface, &num_present_modes, nullptr);
-	vector<VkPresentModeKHR> present_modes(num_present_modes);
-	vkGetPhysicalDeviceSurfacePresentModesKHR(gpu, surface, &num_present_modes, present_modes.data());
+
+	vector<VkPresentModeKHR> present_modes;
+#ifdef _WIN32
+	// Block any exclusive full-screen, borderless windowed is nice for time being.
+	// If ALLOWED_EXT, we get exclusive fullscreen when driver detects a full-screen window.
+	VkSurfaceFullScreenExclusiveInfoEXT exclusive_info = { VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT };
+	exclusive_info.fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_DISALLOWED_EXT;
+	if (device->get_device_features().supports_full_screen_exclusive)
+	{
+		VkPhysicalDeviceSurfaceInfo2KHR surface_info = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SURFACE_INFO_2_KHR };
+		surface_info.surface = surface;
+		surface_info.pNext = &exclusive_info;
+		if (vkGetPhysicalDeviceSurfacePresentModes2EXT(gpu, &surface_info, &num_present_modes, nullptr) != VK_SUCCESS)
+			return SwapchainError::Error;
+		present_modes.resize(num_present_modes);
+		if (vkGetPhysicalDeviceSurfacePresentModes2EXT(gpu, &surface_info, &num_present_modes, present_modes.data()) != VK_SUCCESS)
+			return SwapchainError::Error;
+	}
+	else
+#endif
+	{
+		if (vkGetPhysicalDeviceSurfacePresentModesKHR(gpu, surface, &num_present_modes, nullptr) != VK_SUCCESS)
+			return SwapchainError::Error;
+		present_modes.resize(num_present_modes);
+		if (vkGetPhysicalDeviceSurfacePresentModesKHR(gpu, surface, &num_present_modes, present_modes.data()) != VK_SUCCESS)
+			return SwapchainError::Error;
+	}
 
 	VkPresentModeKHR swapchain_present_mode = VK_PRESENT_MODE_FIFO_KHR;
 	bool use_vsync = current_present_mode == PresentMode::SyncToVBlank;
@@ -687,6 +711,11 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	info.presentMode = swapchain_present_mode;
 	info.clipped = VK_TRUE;
 	info.oldSwapchain = old_swapchain;
+
+#ifdef _WIN32
+	if (device->get_device_features().supports_full_screen_exclusive)
+		info.pNext = &exclusive_info;
+#endif
 
 	auto res = table->vkCreateSwapchainKHR(context->get_device(), &info, nullptr, &swapchain);
 	if (old_swapchain != VK_NULL_HANDLE)

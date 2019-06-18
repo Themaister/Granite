@@ -301,6 +301,11 @@ if (GRANITE_VULKAN_MT)
     target_sources(granite PRIVATE vulkan/thread_id.hpp vulkan/thread_id.cpp)
 endif()
 
+if (WIN32)
+    target_compile_definitions(granite PRIVATE VK_USE_PLATFORM_WIN32_KHR)
+    target_compile_definitions(volk PRIVATE VK_USE_PLATFORM_WIN32_KHR)
+endif()
+
 if (NOT GRANITE_VULKAN_ONLY)
     if (NOT ANDROID)
         add_library(granite-application-entry STATIC application/application_entry.cpp)

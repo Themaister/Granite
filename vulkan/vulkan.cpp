@@ -372,6 +372,17 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 		ext.supports_debug_utils = true;
 	}
 
+	auto itr = find_if(instance_ext, instance_ext + instance_ext_count, [](const char *name) {
+		return strcmp(name, VK_KHR_SURFACE_EXTENSION_NAME) == 0;
+	});
+	bool has_surface_extension = itr != (instance_ext + instance_ext_count);
+
+	if (has_surface_extension && has_extension(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME))
+	{
+		instance_exts.push_back(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
+		ext.supports_surface_capabilities2 = true;
+	}
+
 #ifdef VULKAN_DEBUG
 	const auto has_layer = [&](const char *name) -> bool {
 		auto itr = find_if(begin(queried_layers), end(queried_layers), [name](const VkLayerProperties &e) -> bool {
@@ -679,6 +690,14 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		ext.supports_google_display_timing = true;
 		enabled_extensions.push_back(VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME);
 	}
+
+#ifdef _WIN32
+	if (ext.supports_surface_capabilities2 && has_extension(VK_EXT_FULL_SCREEN_EXCLUSIVE_EXTENSION_NAME))
+	{
+		ext.supports_full_screen_exclusive = true;
+		enabled_extensions.push_back(VK_EXT_FULL_SCREEN_EXCLUSIVE_EXTENSION_NAME);
+	}
+#endif
 
 #ifdef VULKAN_DEBUG
 	if (has_extension(VK_NV_DEVICE_DIAGNOSTIC_CHECKPOINTS_EXTENSION_NAME))

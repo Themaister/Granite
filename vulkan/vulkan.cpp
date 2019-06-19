@@ -385,10 +385,10 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 
 #ifdef VULKAN_DEBUG
 	const auto has_layer = [&](const char *name) -> bool {
-		auto itr = find_if(begin(queried_layers), end(queried_layers), [name](const VkLayerProperties &e) -> bool {
+		auto layer_itr = find_if(begin(queried_layers), end(queried_layers), [name](const VkLayerProperties &e) -> bool {
 			return strcmp(e.layerName, name) == 0;
 		});
-		return itr != end(queried_layers);
+		return layer_itr != end(queried_layers);
 	};
 
 	if (!ext.supports_debug_utils && has_extension(VK_EXT_DEBUG_REPORT_EXTENSION_NAME))

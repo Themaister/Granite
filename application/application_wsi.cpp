@@ -28,11 +28,12 @@
 namespace Granite
 {
 void GraniteWSIPlatform::event_swapchain_created(Vulkan::Device *device, unsigned width, unsigned height,
-                                                 float aspect_ratio, size_t image_count, VkFormat format)
+                                                 float aspect_ratio, size_t image_count, VkFormat format,
+                                                 VkSurfaceTransformFlagBitsKHR transform)
 {
 	auto *em = Global::event_manager();
 	if (em)
-		em->enqueue_latched<Vulkan::SwapchainParameterEvent>(device, width, height, aspect_ratio, image_count, format);
+		em->enqueue_latched<Vulkan::SwapchainParameterEvent>(device, width, height, aspect_ratio, image_count, format, transform);
 }
 
 void GraniteWSIPlatform::event_swapchain_destroyed()

@@ -185,6 +185,12 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 		return true;
 	}
 
+	void event_swapchain_created(Device *device_, unsigned width_, unsigned height_, float aspect_, size_t count_, VkFormat format_, VkSurfaceTransformFlagBitsKHR transform_) override
+	{
+		get_input_tracker().set_touch_resolution(width_, height_);
+		Granite::GraniteWSIPlatform::event_swapchain_created(device_, width_, height_, aspect_, count_, format_, transform_);
+	}
+
 	void update_orientation();
 	bool alive(Vulkan::WSI &wsi) override;
 	void poll_input() override;
@@ -1016,6 +1022,9 @@ void android_main(android_app *app)
 					int ret;
 					if (app_handle)
 					{
+						// TODO: Configurable.
+						app_handle->get_wsi().set_support_prerotate(true);
+
 						auto platform = make_unique<Granite::WSIPlatformAndroid>();
 						if (platform->init(width, height))
 						{

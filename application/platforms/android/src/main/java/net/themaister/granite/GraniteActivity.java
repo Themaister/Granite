@@ -122,4 +122,9 @@ public class GraniteActivity extends android.app.NativeActivity
             return "";
         return extra;
     }
+
+    public int getCurrentOrientation()
+    {
+        return getResources().getConfiguration().orientation;
+    }
 }

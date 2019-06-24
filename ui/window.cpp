@@ -55,6 +55,9 @@ Widget *Window::on_mouse_button_pressed(vec2 offset)
 
 	for (auto &child : children)
 	{
+		if (!child.widget->get_visible())
+			continue;
+
 		if (any(lessThan(offset, child.offset + vec2(0.0f, off_y))) ||
 		    any(greaterThanEqual(offset, child.offset + vec2(0.0f, off_y) + child.size)))
 			continue;

@@ -88,7 +88,7 @@ public:
 	virtual void event_device_created(Device *device);
 	virtual void event_device_destroyed();
 	virtual void event_swapchain_created(Device *device, unsigned width, unsigned height,
-	                                     float aspect_ratio, size_t num_swapchain_images, VkFormat format);
+	                                     float aspect_ratio, size_t num_swapchain_images, VkFormat format, VkSurfaceTransformFlagBitsKHR pre_rotate);
 	virtual void event_swapchain_destroyed();
 	virtual void event_frame_tick(double frame, double elapsed);
 	virtual void event_swapchain_index(Device *device, unsigned index);
@@ -119,6 +119,8 @@ public:
 	void set_platform(WSIPlatform *platform);
 	void set_present_mode(PresentMode mode);
 	void set_backbuffer_srgb(bool enable);
+	void set_support_prerotate(bool enable);
+	VkSurfaceTransformFlagBitsKHR get_current_prerotate() const;
 
 	PresentMode get_present_mode() const
 	{
@@ -174,6 +176,8 @@ public:
 		return timing;
 	}
 
+	static void build_prerotate_matrix_2x2(VkSurfaceTransformFlagBitsKHR pre_rotate, float mat[4]);
+
 private:
 	void update_framebuffer(unsigned width, unsigned height);
 
@@ -214,6 +218,9 @@ private:
 	bool using_display_timing = false;
 	bool srgb_backbuffer_enable = true;
 	bool current_srgb_backbuffer_enable = true;
+	bool support_prerotate = false;
+	VkSurfaceTransformFlagBitsKHR swapchain_current_prerotate = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+
 	bool begin_frame_external();
 	double external_frame_time = 0.0;
 

@@ -116,7 +116,7 @@ bool WSI::init_external_swapchain(vector<ImageHandle> swapchain_images_)
 	platform->event_swapchain_created(device.get(), swapchain_width, swapchain_height,
 	                                  swapchain_aspect_ratio,
 	                                  external_swapchain_images.size(),
-	                                  swapchain_format);
+	                                  swapchain_format, swapchain_current_prerotate);
 
 	device->init_external_swapchain(this->external_swapchain_images);
 	platform->get_frame_timer().reset();
@@ -608,17 +608,65 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 			format = formats[0];
 	}
 
-	VkExtent2D swapchain_size;
-	if (surface_properties.currentExtent.width == ~0u)
+	static const char *transform_names[] = {
+		"IDENTITY_BIT_KHR",
+		"ROTATE_90_BIT_KHR",
+		"ROTATE_180_BIT_KHR",
+		"ROTATE_270_BIT_KHR",
+		"HORIZONTAL_MIRROR_BIT_KHR",
+		"HORIZONTAL_MIRROR_ROTATE_90_BIT_KHR",
+		"HORIZONTAL_MIRROR_ROTATE_180_BIT_KHR",
+		"HORIZONTAL_MIRROR_ROTATE_270_BIT_KHR",
+		"INHERIT_BIT_KHR",
+	};
+
+	LOGI("Current transform is enum 0x%x.\n", unsigned(surface_properties.currentTransform));
+
+	for (unsigned i = 0; i <= 8; i++)
 	{
-		swapchain_size.width = width;
-		swapchain_size.height = height;
+		if (surface_properties.supportedTransforms & (1u << i))
+			LOGI("Supported transform 0x%x: %s.\n", 1u << i, transform_names[i]);
 	}
+
+	VkSurfaceTransformFlagBitsKHR pre_transform;
+	if (!support_prerotate && (surface_properties.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR) != 0)
+		pre_transform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
 	else
+		pre_transform = surface_properties.currentTransform;
+
+	if (pre_transform != surface_properties.currentTransform)
 	{
-		swapchain_size.width = max(min(width, surface_properties.maxImageExtent.width), surface_properties.minImageExtent.width);
-		swapchain_size.height = max(min(height, surface_properties.maxImageExtent.height), surface_properties.minImageExtent.height);
+		LOGW("surfaceTransform (0x%x) != currentTransform (0x%u). Might get performance penalty.\n",
+		     unsigned(pre_transform), unsigned(surface_properties.currentTransform));
 	}
+
+	swapchain_current_prerotate = pre_transform;
+
+	VkExtent2D swapchain_size;
+	LOGI("Swapchain current extent: %d x %d\n",
+	     int(surface_properties.currentExtent.width),
+	     int(surface_properties.currentExtent.height));
+
+	// Try to match the swapchain size up with what we expect.
+	float target_aspect_ratio = float(width) / float(height);
+	if ((swapchain_aspect_ratio > 1.0f && target_aspect_ratio < 1.0f) ||
+	    (swapchain_aspect_ratio < 1.0f && target_aspect_ratio > 1.0f))
+	{
+		swap(width, height);
+	}
+
+	// If we are using pre-rotate of 90 or 270 degrees, we need to flip width and height again.
+	if (swapchain_current_prerotate & (VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR |
+	                                   VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR |
+	                                   VK_SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_90_BIT_KHR |
+	                                   VK_SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_270_BIT_KHR))
+	{
+		swap(width, height);
+	}
+
+	// Clamp the target width, height to boundaries.
+	swapchain_size.width = max(min(width, surface_properties.maxImageExtent.width), surface_properties.minImageExtent.width);
+	swapchain_size.height = max(min(height, surface_properties.maxImageExtent.height), surface_properties.minImageExtent.height);
 
 	uint32_t num_present_modes;
 
@@ -678,12 +726,6 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	if ((surface_properties.maxImageCount > 0) && (desired_swapchain_images > surface_properties.maxImageCount))
 		desired_swapchain_images = surface_properties.maxImageCount;
 
-	VkSurfaceTransformFlagBitsKHR pre_transform;
-	if (surface_properties.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR)
-		pre_transform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
-	else
-		pre_transform = surface_properties.currentTransform;
-
 	VkCompositeAlphaFlagBitsKHR composite_mode = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
 	if (surface_properties.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR)
 		composite_mode = VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
@@ -722,6 +764,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 		table->vkDestroySwapchainKHR(context->get_device(), old_swapchain, nullptr);
 	has_acquired_swapchain_index = false;
 
+#if 0
 	if (use_vsync && context->get_enabled_device_features().supports_google_display_timing)
 	{
 		WSITimingOptions timing_options;
@@ -732,6 +775,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 		using_display_timing = true;
 	}
 	else
+#endif
 		using_display_timing = false;
 
 	if (res != VK_SUCCESS)
@@ -759,7 +803,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 
 	platform->event_swapchain_destroyed();
 	platform->event_swapchain_created(device.get(), swapchain_width, swapchain_height,
-	                                  swapchain_aspect_ratio, image_count, info.imageFormat);
+	                                  swapchain_aspect_ratio, image_count, info.imageFormat, swapchain_current_prerotate);
 
 	return SwapchainError::None;
 }
@@ -775,14 +819,59 @@ double WSI::get_estimated_refresh_interval() const
 		return 0.0;
 }
 
+void WSI::set_support_prerotate(bool enable)
+{
+	support_prerotate = enable;
+}
+
+VkSurfaceTransformFlagBitsKHR WSI::get_current_prerotate() const
+{
+	return swapchain_current_prerotate;
+}
+
 WSI::~WSI()
 {
 	deinit_external();
 }
 
+void WSI::build_prerotate_matrix_2x2(VkSurfaceTransformFlagBitsKHR pre_rotate, float mat[4])
+{
+	// TODO: HORIZONTAL_MIRROR.
+	switch (pre_rotate)
+	{
+	default:
+		mat[0] = 1.0f;
+		mat[1] = 0.0f;
+		mat[2] = 0.0f;
+		mat[3] = 1.0f;
+		break;
+
+	case VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR:
+		mat[0] = 0.0f;
+		mat[1] = 1.0f;
+		mat[2] = -1.0f;
+		mat[3] = 0.0f;
+		break;
+
+	case VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR:
+		mat[0] = 0.0f;
+		mat[1] = -1.0f;
+		mat[2] = 1.0f;
+		mat[3] = 0.0f;
+		break;
+
+	case VK_SURFACE_TRANSFORM_ROTATE_180_BIT_KHR:
+		mat[0] = -1.0f;
+		mat[1] = 0.0f;
+		mat[2] = 0.0f;
+		mat[3] = -1.0f;
+		break;
+	}
+}
+
 void WSIPlatform::event_device_created(Device *) {}
 void WSIPlatform::event_device_destroyed() {}
-void WSIPlatform::event_swapchain_created(Device *, unsigned, unsigned, float, size_t, VkFormat) {}
+void WSIPlatform::event_swapchain_created(Device *, unsigned, unsigned, float, size_t, VkFormat, VkSurfaceTransformFlagBitsKHR) {}
 void WSIPlatform::event_swapchain_destroyed() {}
 void WSIPlatform::event_frame_tick(double, double) {}
 void WSIPlatform::event_swapchain_index(Device *, unsigned) {}

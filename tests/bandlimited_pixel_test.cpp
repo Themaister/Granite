@@ -80,6 +80,11 @@ struct BandlimitedPixelTestApplication : Application, EventHandler
 		cam.set_aspect(e.get_aspect_ratio());
 		cam.set_fovy(0.6f * half_pi<float>());
 		cam.set_depth_range(0.05f, 100.0f);
+
+		float mat[4];
+		WSI::build_prerotate_matrix_2x2(e.get_prerotate(), mat);
+		pre_rotate = mat4(vec4(mat[0], mat[1], 0.0f, 0.0f), vec4(mat[2], mat[3], 0.0f, 0.0f),
+		                  vec4(0.0f, 0.0f, 1.0f, 0.0f), vec4(0.0f, 0.0f, 0.0f, 1.0f));
 	}
 
 	void on_swapchain_destroyed(const SwapchainParameterEvent &)
@@ -126,7 +131,7 @@ struct BandlimitedPixelTestApplication : Application, EventHandler
 		auto width = texture->get_image()->get_width();
 		auto height = texture->get_image()->get_height();
 
-		mat4 mvp = cam.get_projection() * cam.get_view() * mat4_cast(rot) * scale(20.0f * vec3(float(width) / float(height), 1.0f, 1.0f));
+		mat4 mvp = pre_rotate * cam.get_projection() * cam.get_view() * mat4_cast(rot) * scale(20.0f * vec3(float(width) / float(height), 1.0f, 1.0f));
 		cmd->push_constants(&mvp, 0, sizeof(mvp));
 
 		struct TexInfo
@@ -144,10 +149,11 @@ struct BandlimitedPixelTestApplication : Application, EventHandler
 	}
 
 	double elapsed = 0.0;
-	FPSCamera cam;
+	Camera cam;
 	bool rotate = false;
 	bool debug = false;
 	unsigned mode = 2;
+	mat4 pre_rotate;
 };
 
 namespace Granite

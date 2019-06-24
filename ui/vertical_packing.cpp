@@ -34,8 +34,13 @@ void VerticalPacking::reconfigure_to_canvas(vec2, vec2 size)
 
 	unsigned fixed_children = 0;
 	for (auto &child : children)
+	{
+		if (!child.widget->get_visible())
+			continue;
+
 		if (!child.widget->is_floating())
 			fixed_children++;
+	}
 
 	if (!children.empty())
 	{
@@ -45,6 +50,9 @@ void VerticalPacking::reconfigure_to_canvas(vec2, vec2 size)
 		// Make sure we allocate the minimum.
 		for (auto &child : children)
 		{
+			if (!child.widget->get_visible())
+				continue;
+
 			if (child.widget->is_floating())
 			{
 				child.size = max(child.widget->get_minimum_geometry(), child.widget->get_target_geometry());
@@ -66,6 +74,9 @@ void VerticalPacking::reconfigure_to_canvas(vec2, vec2 size)
 
 			for (auto &child : children)
 			{
+				if (!child.widget->get_visible())
+					continue;
+
 				if (!child.widget->is_floating() && (child.size.y < child.widget->get_target_geometry().y))
 					padding_targets++;
 			}
@@ -78,6 +89,9 @@ void VerticalPacking::reconfigure_to_canvas(vec2, vec2 size)
 			// If we have some slack room, use at most extra_height_per_object to pad from minimum to target.
 			for (auto &child : children)
 			{
+				if (!child.widget->get_visible())
+					continue;
+
 				if (!child.widget->is_floating())
 				{
 					float desired_padding = max(
@@ -95,8 +109,13 @@ void VerticalPacking::reconfigure_to_canvas(vec2, vec2 size)
 			unsigned padding_targets = 0;
 
 			for (auto &child : children)
+			{
+				if (!child.widget->get_visible())
+					continue;
+
 				if (!child.widget->is_floating() && child.widget->get_size_is_flexible())
 					padding_targets++;
+			}
 
 			if (padding_targets)
 			{
@@ -114,6 +133,9 @@ void VerticalPacking::reconfigure_to_canvas(vec2, vec2 size)
 
 		for (auto &child : children)
 		{
+			if (!child.widget->get_visible())
+				continue;
+
 			if (!child.widget->is_floating())
 			{
 				off.y += geometry.margin;
@@ -143,6 +165,9 @@ void VerticalPacking::reconfigure()
 
 	for (auto &child : children)
 	{
+		if (!child.widget->get_visible())
+			continue;
+
 		if (child.widget->is_floating())
 		{
 			minimum = max(minimum,

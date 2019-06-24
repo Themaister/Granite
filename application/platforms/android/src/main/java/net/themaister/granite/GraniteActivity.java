@@ -31,6 +31,7 @@ import android.view.Display;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
+import android.graphics.Point;
 
 public class GraniteActivity extends android.app.NativeActivity
 {
@@ -84,6 +85,28 @@ public class GraniteActivity extends android.app.NativeActivity
         return display.getRotation();
     }
 
+    public int getDisplayWidth()
+    {
+        Display display = getWindowManager().getDefaultDisplay();
+        if (display == null)
+            return 0;
+
+        Point p = new Point();
+        display.getRealSize(p);
+        return p.x;
+    }
+
+    public int getDisplayHeight()
+    {
+        Display display = getWindowManager().getDefaultDisplay();
+        if (display == null)
+            return 0;
+
+        Point p = new Point();
+        display.getRealSize(p);
+        return p.y;
+    }
+
     public int getAudioNativeSampleRate()
     {
         AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
@@ -121,5 +144,10 @@ public class GraniteActivity extends android.app.NativeActivity
         if (extra == null)
             return "";
         return extra;
+    }
+
+    public int getCurrentOrientation()
+    {
+        return getResources().getConfiguration().orientation;
     }
 }

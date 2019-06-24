@@ -187,8 +187,16 @@ struct WSIPlatformAndroid : Granite::GraniteWSIPlatform
 
 	void event_swapchain_created(Device *device_, unsigned width_, unsigned height_, float aspect_, size_t count_, VkFormat format_, VkSurfaceTransformFlagBitsKHR transform_) override
 	{
-		get_input_tracker().set_touch_resolution(width_, height_);
 		Granite::GraniteWSIPlatform::event_swapchain_created(device_, width_, height_, aspect_, count_, format_, transform_);
+
+		if (transform_ & (VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR |
+		                  VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR |
+		                  VK_SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_90_BIT_KHR |
+		                  VK_SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_270_BIT_KHR))
+		{
+			swap(width_, height_);
+		}
+		get_input_tracker().set_touch_resolution(width_, height_);
 	}
 
 	void update_orientation();
@@ -476,8 +484,6 @@ static int32_t engine_handle_input(android_app *app, AInputEvent *event)
 				int id = AMotionEvent_getPointerId(event, index);
 				state.get_input_tracker().on_touch_down(id, x, y);
 				handled = true;
-
-				LOGI("Touch: (%.3f, %.3f)\n", x, y);
 				break;
 			}
 

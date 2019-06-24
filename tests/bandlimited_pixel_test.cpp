@@ -144,7 +144,7 @@ struct BandlimitedPixelTestApplication : Application, EventHandler
 	}
 
 	double elapsed = 0.0;
-	FPSCamera cam;
+	Camera cam;
 	bool rotate = false;
 	bool debug = false;
 	unsigned mode = 2;

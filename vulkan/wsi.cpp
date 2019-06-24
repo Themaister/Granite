@@ -609,6 +609,9 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	}
 
 	VkExtent2D swapchain_size;
+	LOGI("Swapchain current extent: %d x %d\n",
+	     int(surface_properties.currentExtent.width),
+	     int(surface_properties.currentExtent.height));
 	if (surface_properties.currentExtent.width == ~0u)
 	{
 		swapchain_size.width = width;
@@ -678,11 +681,39 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	if ((surface_properties.maxImageCount > 0) && (desired_swapchain_images > surface_properties.maxImageCount))
 		desired_swapchain_images = surface_properties.maxImageCount;
 
+	static const char *transform_names[] = {
+		"IDENTITY_BIT_KHR",
+		"ROTATE_90_BIT_KHR",
+		"ROTATE_180_BIT_KHR",
+		"ROTATE_270_BIT_KHR",
+		"HORIZONTAL_MIRROR_BIT_KHR",
+		"HORIZONTAL_MIRROR_ROTATE_90_BIT_KHR",
+		"HORIZONTAL_MIRROR_ROTATE_180_BIT_KHR",
+		"HORIZONTAL_MIRROR_ROTATE_270_BIT_KHR",
+		"INHERIT_BIT_KHR",
+	};
+
+	LOGI("Current transform is enum 0x%x.\n", unsigned(surface_properties.currentTransform));
+
+	for (unsigned i = 0; i <= 8; i++)
+	{
+		if (surface_properties.supportedTransforms & (1u << i))
+			LOGI("Supported transform 0x%x: %s.\n", 1u << i, transform_names[i]);
+	}
+
 	VkSurfaceTransformFlagBitsKHR pre_transform;
+#if 0
 	if (surface_properties.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR)
 		pre_transform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
 	else
+#endif
 		pre_transform = surface_properties.currentTransform;
+
+	if (pre_transform != surface_properties.currentTransform)
+	{
+		LOGW("surfaceTransform (0x%x) != currentTransform (0x%u). Might get performance penalty.\n",
+		     unsigned(pre_transform), unsigned(surface_properties.currentTransform));
+	}
 
 	VkCompositeAlphaFlagBitsKHR composite_mode = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
 	if (surface_properties.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR)
@@ -722,6 +753,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 		table->vkDestroySwapchainKHR(context->get_device(), old_swapchain, nullptr);
 	has_acquired_swapchain_index = false;
 
+#if 0
 	if (use_vsync && context->get_enabled_device_features().supports_google_display_timing)
 	{
 		WSITimingOptions timing_options;
@@ -732,6 +764,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 		using_display_timing = true;
 	}
 	else
+#endif
 		using_display_timing = false;
 
 	if (res != VK_SUCCESS)

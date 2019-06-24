@@ -834,6 +834,41 @@ WSI::~WSI()
 	deinit_external();
 }
 
+void WSI::build_prerotate_matrix_2x2(VkSurfaceTransformFlagBitsKHR pre_rotate, float mat[4])
+{
+	// TODO: HORIZONTAL_MIRROR.
+	switch (pre_rotate)
+	{
+	default:
+		mat[0] = 1.0f;
+		mat[1] = 0.0f;
+		mat[2] = 0.0f;
+		mat[3] = 1.0f;
+		break;
+
+	case VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR:
+		mat[0] = 0.0f;
+		mat[1] = 1.0f;
+		mat[2] = -1.0f;
+		mat[3] = 0.0f;
+		break;
+
+	case VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR:
+		mat[0] = 0.0f;
+		mat[1] = -1.0f;
+		mat[2] = 1.0f;
+		mat[3] = 0.0f;
+		break;
+
+	case VK_SURFACE_TRANSFORM_ROTATE_180_BIT_KHR:
+		mat[0] = -1.0f;
+		mat[1] = 0.0f;
+		mat[2] = 0.0f;
+		mat[3] = -1.0f;
+		break;
+	}
+}
+
 void WSIPlatform::event_device_created(Device *) {}
 void WSIPlatform::event_device_destroyed() {}
 void WSIPlatform::event_swapchain_created(Device *, unsigned, unsigned, float, size_t, VkFormat, VkSurfaceTransformFlagBitsKHR) {}

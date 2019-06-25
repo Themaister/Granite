@@ -85,28 +85,6 @@ public class GraniteActivity extends android.app.NativeActivity
         return display.getRotation();
     }
 
-    public int getDisplayWidth()
-    {
-        Display display = getWindowManager().getDefaultDisplay();
-        if (display == null)
-            return 0;
-
-        Point p = new Point();
-        display.getRealSize(p);
-        return p.x;
-    }
-
-    public int getDisplayHeight()
-    {
-        Display display = getWindowManager().getDefaultDisplay();
-        if (display == null)
-            return 0;
-
-        Point p = new Point();
-        display.getRealSize(p);
-        return p.y;
-    }
-
     public int getAudioNativeSampleRate()
     {
         AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);

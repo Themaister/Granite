@@ -63,6 +63,7 @@ struct GlobalState
 	int surface_orientation;
 	bool has_window;
 	bool active;
+	bool content_rect_changed;
 };
 
 struct JNI
@@ -71,8 +72,6 @@ struct JNI
 	jclass granite;
 	jmethodID finishFromThread;
 	jmethodID getDisplayRotation;
-	jmethodID getDisplayWidth;
-	jmethodID getDisplayHeight;
 	jmethodID getAudioNativeSampleRate;
 	jmethodID getAudioNativeBlockFrames;
 	jmethodID getCommandLineArgument;
@@ -91,6 +90,14 @@ struct JNI
 };
 static GlobalState global_state;
 static JNI jni;
+
+static void on_content_rect_changed(ANativeActivity *, const ARect *rect)
+{
+	global_state.base_width = rect->right - rect->left;
+	global_state.base_height = rect->bottom - rect->top;
+	global_state.content_rect_changed = true;
+	LOGI("Got content rect: %d x %d\n", global_state.base_width, global_state.base_height);
+}
 
 namespace App
 {
@@ -147,18 +154,6 @@ static int getCurrentOrientation()
 static int getDisplayRotation()
 {
 	int ret = jni.env->CallIntMethod(global_state.app->activity->clazz, jni.getDisplayRotation);
-	return ret;
-}
-
-static int getDisplayWidth()
-{
-	int ret = jni.env->CallIntMethod(global_state.app->activity->clazz, jni.getDisplayWidth);
-	return ret;
-}
-
-static int getDisplayHeight()
-{
-	int ret = jni.env->CallIntMethod(global_state.app->activity->clazz, jni.getDisplayHeight);
 	return ret;
 }
 }
@@ -391,7 +386,7 @@ static void handle_sensors()
 				}
 				else if (global_state.display_rotation == 2 || global_state.display_rotation == 3)
 				{
-					LOGE("Untested orientation %u!\n", global_state.display_rotation);
+					//LOGE("Untested orientation %u!\n", global_state.display_rotation);
 				}
 
 				static const quat landscape(muglm::one_over_root_two<float>(), muglm::one_over_root_two<float>(), 0.0f, 0.0f);
@@ -575,22 +570,13 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 		if (app->window)
 		{
 			LOGI("Init window\n");
-			global_state.base_width = App::getDisplayWidth();
-			global_state.base_height = App::getDisplayHeight();
-			LOGI("Android screen resolution: %u x %u\n", global_state.base_width, global_state.base_height);
+			global_state.base_width = ANativeWindow_getWidth(app->window);
+			global_state.base_height = ANativeWindow_getHeight(app->window);
 		}
 
 		global_state.display_rotation = jni.env->CallIntMethod(app->activity->clazz, jni.getDisplayRotation);
 		break;
 	}
-
-	case APP_CMD_CONFIG_CHANGED:
-		if (app && app->config)
-		{
-			global_state.surface_orientation = AConfiguration_getOrientation(app->config);
-			LOGI("Get initial orientation: %d\n", global_state.surface_orientation);
-		}
-		break;
 
 	default:
 		break;
@@ -656,9 +642,10 @@ static void engine_handle_cmd(android_app *app, int32_t cmd)
 		if (app->window != nullptr)
 		{
 			state.has_window = true;
-			global_state.base_width = App::getDisplayWidth();
-			global_state.base_height = App::getDisplayHeight();
 			LOGI("New window size %d x %d\n", global_state.base_width, global_state.base_height);
+			global_state.base_width = ANativeWindow_getWidth(app->window);
+			global_state.base_height = ANativeWindow_getHeight(app->window);
+			global_state.content_rect_changed = false;
 
 			if (state.app_wsi)
 			{
@@ -688,10 +675,6 @@ static void engine_handle_cmd(android_app *app, int32_t cmd)
 		}
 		break;
 
-	case APP_CMD_CONFIG_CHANGED:
-		state.update_orientation();
-		break;
-
 	default:
 		break;
 	}
@@ -708,8 +691,6 @@ void WSIPlatformAndroid::update_orientation()
 	// Gotta use JNI. Sigh ........
 	global_state.surface_orientation = App::getCurrentOrientation();
 	global_state.display_rotation = App::getDisplayRotation();
-	global_state.base_width = App::getDisplayWidth();
-	global_state.base_height = App::getDisplayHeight();
 	LOGI("Got new orientation: %d\n", global_state.surface_orientation);
 	LOGI("Got new rotation: %d\n", global_state.display_rotation);
 	LOGI("Got new resolution: %d x %d\n", global_state.base_width, global_state.base_height);
@@ -733,14 +714,6 @@ void WSIPlatformAndroid::poll_input()
 		if (global_state.app->destroyRequested)
 			return;
 	}
-
-	// We don't seem to get any events if we
-	// rotate the device from 90 degrees to 270 degrees for some reason,
-	// so poll for changes ...
-	int rot = App::getDisplayRotation();
-	if (rot != global_state.display_rotation)
-		update_orientation();
-
 	get_input_tracker().dispatch_current_state(get_frame_timer().get_frame_time());
 }
 
@@ -756,6 +729,12 @@ bool WSIPlatformAndroid::alive(Vulkan::WSI &wsi)
 		return false;
 
 	bool once = false;
+
+	if (global_state.content_rect_changed)
+	{
+		update_orientation();
+		global_state.content_rect_changed = false;
+	}
 
 	if (state.pending_config_change)
 	{
@@ -842,8 +821,6 @@ static void init_jni()
 
 	jni.finishFromThread = jni.env->GetMethodID(jni.granite, "finishFromThread", "()V");
 	jni.getDisplayRotation = jni.env->GetMethodID(jni.granite, "getDisplayRotation", "()I");
-	jni.getDisplayWidth = jni.env->GetMethodID(jni.granite, "getDisplayWidth", "()I");
-	jni.getDisplayHeight = jni.env->GetMethodID(jni.granite, "getDisplayHeight", "()I");
 	jni.getAudioNativeSampleRate = jni.env->GetMethodID(jni.granite, "getAudioNativeSampleRate", "()I");
 	jni.getAudioNativeBlockFrames = jni.env->GetMethodID(jni.granite, "getAudioNativeBlockFrames", "()I");
 	jni.getCurrentOrientation = jni.env->GetMethodID(jni.granite, "getCurrentOrientation", "()I");
@@ -924,6 +901,9 @@ void android_main(android_app *app)
 	app_dummy();
 #pragma GCC diagnostic pop
 
+	// Native glue does not implement this.
+	app->activity->callbacks->onContentRectChanged = on_content_rect_changed;
+
 	android_api_version = uint32_t(app->activity->sdkVersion);
 
 	// Statics on Android might not be cleared out.
@@ -998,8 +978,11 @@ void android_main(android_app *app)
 			if (ident == LOOPER_ID_USER)
 				handle_sensors();
 
-			if (Granite::global_state.has_window)
+			if (Granite::global_state.has_window && Granite::global_state.content_rect_changed)
 			{
+				Granite::global_state.content_rect_changed = false;
+				global_state.surface_orientation = AConfiguration_getOrientation(app->config);
+				LOGI("Get initial orientation: %d\n", global_state.surface_orientation);
 				app->onAppCmd = Granite::engine_handle_cmd;
 
 				try

@@ -57,8 +57,39 @@ private:
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &event);
 };
 
-AbstractRenderableHandle create_imported_mesh(const SceneFormats::Mesh &mesh,
-                                              const SceneFormats::MaterialInfo *materials);
+template <typename StaticMesh = ImportedMesh, typename SkinnedMesh = ImportedSkinnedMesh>
+inline AbstractRenderableHandle create_imported_mesh(const SceneFormats::Mesh &mesh,
+                                                     const SceneFormats::MaterialInfo *materials)
+{
+	SceneFormats::MaterialInfo default_material;
+	default_material.uniform_base_color = vec4(0.3f, 1.0f, 0.3f, 1.0f);
+	default_material.uniform_metallic = 0.0f;
+	default_material.uniform_roughness = 1.0f;
+	AbstractRenderableHandle renderable;
+
+	bool skinned = mesh.attribute_layout[Util::ecast(MeshAttribute::BoneIndex)].format != VK_FORMAT_UNDEFINED;
+	if (skinned)
+	{
+		if (mesh.has_material)
+		{
+			renderable = Util::make_handle<SkinnedMesh>(mesh,
+			                                            materials[mesh.material_index]);
+		}
+		else
+			renderable = Util::make_handle<SkinnedMesh>(mesh, default_material);
+	}
+	else
+	{
+		if (mesh.has_material)
+		{
+			renderable = Util::make_handle<StaticMesh>(mesh,
+			                                           materials[mesh.material_index]);
+		}
+		else
+			renderable = Util::make_handle<StaticMesh>(mesh, default_material);
+	}
+	return renderable;
+}
 
 class CubeMesh : public StaticMesh, public EventHandler
 {

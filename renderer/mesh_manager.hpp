@@ -41,6 +41,10 @@ private:
 	struct MeshGroup;
 public:
 	MeshGroup *register_mesh(const std::string &path);
+	MeshGroup *register_mesh(const std::function<
+			AbstractRenderableHandle(const SceneFormats::Mesh &,
+			                         const SceneFormats::MaterialInfo *)> &cb,
+	                         const std::string &path);
 
 	struct SingleHandle
 	{

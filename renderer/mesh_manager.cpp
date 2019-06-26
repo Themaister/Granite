@@ -31,6 +31,16 @@ namespace Granite
 {
 MeshManager::MeshGroup *MeshManager::register_mesh(const std::string &path)
 {
+	return register_mesh([](const SceneFormats::Mesh &mesh, const SceneFormats::MaterialInfo *materials) {
+		return create_imported_mesh(mesh, materials);
+	}, path);
+}
+
+MeshManager::MeshGroup *MeshManager::register_mesh(
+		const std::function<Granite::AbstractRenderableHandle(const Granite::SceneFormats::Mesh &,
+		                                                      const Granite::SceneFormats::MaterialInfo *)> &cb,
+		const std::string &path)
+{
 	Util::Hasher hash;
 	hash.string(path);
 
@@ -48,7 +58,7 @@ MeshManager::MeshGroup *MeshManager::register_mesh(const std::string &path)
 	group->top_level_nodes = scene.node_indices;
 	group->node_hierarchy = parser.get_nodes();
 	for (auto &mesh : parser.get_meshes())
-		group->renderables.push_back(create_imported_mesh(mesh, parser.get_materials().data()));
+		group->renderables.push_back(cb(mesh, parser.get_materials().data()));
 
 	return group;
 }

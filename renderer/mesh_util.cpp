@@ -38,38 +38,6 @@ using namespace Granite::SceneFormats;
 
 namespace Granite
 {
-AbstractRenderableHandle create_imported_mesh(const Mesh &mesh, const MaterialInfo *materials)
-{
-	SceneFormats::MaterialInfo default_material;
-	default_material.uniform_base_color = vec4(0.3f, 1.0f, 0.3f, 1.0f);
-	default_material.uniform_metallic = 0.0f;
-	default_material.uniform_roughness = 1.0f;
-	AbstractRenderableHandle renderable;
-
-	bool skinned = mesh.attribute_layout[ecast(MeshAttribute::BoneIndex)].format != VK_FORMAT_UNDEFINED;
-	if (skinned)
-	{
-		if (mesh.has_material)
-		{
-			renderable = Util::make_handle<ImportedSkinnedMesh>(mesh,
-			                                                    materials[mesh.material_index]);
-		}
-		else
-			renderable = Util::make_handle<ImportedSkinnedMesh>(mesh, default_material);
-	}
-	else
-	{
-		if (mesh.has_material)
-		{
-			renderable = Util::make_handle<ImportedMesh>(mesh,
-			                                             materials[mesh.material_index]);
-		}
-		else
-			renderable = Util::make_handle<ImportedMesh>(mesh, default_material);
-	}
-	return renderable;
-}
-
 ImportedSkinnedMesh::ImportedSkinnedMesh(const Mesh &mesh_, const MaterialInfo &info_)
 	: mesh(mesh_), info(info_)
 {

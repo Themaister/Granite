@@ -84,7 +84,9 @@ struct BasicComputeTest : Granite::Application, Granite::EventHandler
 		auto &device = get_wsi().get_device();
 		auto cmd = device.request_command_buffer(CommandBuffer::Type::AsyncCompute);
 
-		float a[64] = {};
+		u16vec4 a[3] = {};
+		a[0] = floatToHalf(vec4(5000.0f));
+		a[1] = floatToHalf(vec4(10000.0f));
 		auto buffer_a = create_ssbo(a, sizeof(a));
 
 		cmd->set_program("assets://shaders/compute_add.comp");
@@ -97,8 +99,10 @@ struct BasicComputeTest : Granite::Application, Granite::EventHandler
 		device.add_wait_semaphore(CommandBuffer::Type::Generic, sem[1], VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, true);
 
 		readback_ssbo(a, sizeof(a), *buffer_a);
-		for (unsigned i = 0; i < 16; i++)
-			LOGI("a[%u] = %f\n", i, a[i]);
+		LOGI("dot_result = %f\n", halfToFloat(a[2].x));
+		LOGI("length_a_result = %f\n", halfToFloat(a[2].y));
+		LOGI("length_b_result = %f\n", halfToFloat(a[2].z));
+		LOGI("distance_result = %f\n", halfToFloat(a[2].w));
 
 		cmd = device.request_command_buffer();
 		auto rp = device.get_swapchain_render_pass(SwapchainRenderPass::ColorOnly);

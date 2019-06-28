@@ -1,26 +1,21 @@
 #version 450
-layout(local_size_x = 8, local_size_y = 4) in;
-
-struct Foo
-{
-    float a;
-    float b;
-    float c;
-};
-
-struct Bar
-{
-    vec3 c;
-    float d;
-};
+#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
+layout(local_size_x = 1, local_size_y = 1) in;
 
 layout(std430, binding = 0, set = 0) buffer SSBO
 {
-    Foo foo;
-    Bar bar;
+    f16vec4 a;
+    f16vec4 b;
+    float16_t dot_result;
+    float16_t length_a_result;
+    float16_t length_b_result;
+    float16_t distance_result;
 };
 
 void main()
 {
-    bar.c = vec3(1.0);
+    dot_result = dot(a, b);
+    length_a_result = length(a);
+    length_b_result = length(b);
+    distance_result = distance(a, b);
 }

@@ -37,6 +37,13 @@ Label::Label(string text_, FontSize font_size_)
 void Label::set_text(std::string text_)
 {
 	text = move(text_);
+	geometry_changed();
+}
+
+void Label::set_font_size(FontSize font_size_)
+{
+	font_size = font_size_;
+	geometry_changed();
 }
 
 void Label::reconfigure_to_canvas(vec2, vec2)

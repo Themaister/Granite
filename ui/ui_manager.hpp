@@ -68,6 +68,7 @@ public:
 	Font &get_font(FontSize size);
 
 	void reset_children();
+	void remove_child(Widget *widget);
 
 private:
 	FlatRenderer renderer;

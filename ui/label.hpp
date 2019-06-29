@@ -34,7 +34,10 @@ class Label : public Widget
 {
 public:
 	Label(std::string text = "", FontSize font_size = FontSize::Normal);
+
 	void set_text(std::string text);
+	void set_font_size(FontSize font_size);
+
 	const std::string &get_text() const
 	{
 		return text;

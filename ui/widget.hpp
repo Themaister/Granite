@@ -62,6 +62,12 @@ public:
 		return static_cast<T *>(handle.get());
 	}
 
+	Widget &get_child_widget(unsigned index)
+	{
+		assert(index < children.size());
+		return *children[index].widget;
+	}
+
 	void set_minimum_geometry(vec2 size)
 	{
 		geometry.minimum = size;

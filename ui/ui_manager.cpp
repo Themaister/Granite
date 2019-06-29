@@ -43,6 +43,14 @@ void UIManager::reset_children()
 	widgets.clear();
 }
 
+void UIManager::remove_child(Widget *widget)
+{
+	auto itr = remove_if(begin(widgets), end(widgets), [widget](const WidgetHandle &handle) {
+		return handle.get() == widget;
+	});
+	widgets.erase(itr, end(widgets));
+}
+
 void UIManager::render(Vulkan::CommandBuffer &cmd)
 {
 	renderer.begin();

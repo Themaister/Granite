@@ -822,9 +822,25 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	bool use_vsync = current_present_mode == PresentMode::SyncToVBlank;
 	if (!use_vsync)
 	{
+		bool allow_mailbox = true;
+		bool allow_immediate = true;
+
+#ifdef _WIN32
+		if (device->get_gpu_properties().vendorID == VENDOR_ID_NVIDIA)
+		{
+			// If we're trying to go exclusive full-screen,
+			// we need to ban certain types of present modes which apparently do not work as we expect.
+			if (use_application_controlled_exclusive_fullscreen)
+				allow_mailbox = false;
+			else
+				allow_immediate = false;
+		}
+#endif
+
 		for (uint32_t i = 0; i < num_present_modes; i++)
 		{
-			if (present_modes[i] == VK_PRESENT_MODE_IMMEDIATE_KHR || present_modes[i] == VK_PRESENT_MODE_MAILBOX_KHR)
+			if ((allow_immediate && present_modes[i] == VK_PRESENT_MODE_IMMEDIATE_KHR) ||
+			    (allow_mailbox && present_modes[i] == VK_PRESENT_MODE_MAILBOX_KHR))
 			{
 				swapchain_present_mode = present_modes[i];
 				break;

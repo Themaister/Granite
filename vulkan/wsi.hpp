@@ -99,6 +99,8 @@ public:
 
 	virtual void set_window_title(const std::string &title);
 
+	virtual uintptr_t get_fullscreen_monitor();
+
 protected:
 	bool resize = false;
 

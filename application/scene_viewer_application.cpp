@@ -993,7 +993,7 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 		graph.set_backbuffer_source(ui_source);
 
 	graph.bake();
-	graph.log();
+	//graph.log();
 	graph.install_physical_buffers(move(physical_buffers));
 
 	need_shadow_map_update = true;

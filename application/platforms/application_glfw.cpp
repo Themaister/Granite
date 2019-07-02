@@ -31,6 +31,11 @@
 #include "xinput_windows.hpp"
 #endif
 
+#ifdef _WIN32
+#define GLFW_EXPOSE_NATIVE_WIN32
+#include "GLFW/glfw3native.h"
+#endif
+
 using namespace std;
 using namespace Vulkan;
 
@@ -186,6 +191,18 @@ public:
 			glfwSetWindowTitle(window, title.c_str());
 	}
 
+#ifdef _WIN32
+	void set_hmonitor(HMONITOR monitor)
+	{
+		current_hmonitor = monitor;
+	}
+
+	uintptr_t get_fullscreen_monitor() override
+	{
+		return reinterpret_cast<uintptr_t>(current_hmonitor);
+	}
+#endif
+
 private:
 	GLFWwindow *window = nullptr;
 	unsigned width = 0;
@@ -196,6 +213,10 @@ private:
 	LinuxInputManager input_manager;
 #elif defined(HAVE_XINPUT_WINDOWS)
 	XInputManager input_manager;
+#endif
+
+#ifdef _WIN32
+	HMONITOR current_hmonitor = nullptr;
 #endif
 };
 
@@ -279,6 +300,9 @@ static void key_cb(GLFWwindow *window, int key, int, int action, int mods)
 		glfwSetWindowShouldClose(window, GLFW_TRUE);
 	else if (action == GLFW_PRESS && key == GLFW_KEY_ENTER && mods == GLFW_MOD_ALT)
 	{
+#ifdef _WIN32
+		glfw->set_hmonitor(nullptr);
+#endif
 		if (glfwGetWindowMonitor(window))
 		{
 			auto cached = glfw->get_cached_window();
@@ -295,6 +319,9 @@ static void key_cb(GLFWwindow *window, int key, int, int action, int mods)
 				glfwGetWindowSize(window, &win.width, &win.height);
 				glfw->set_cached_window(win);
 				glfwSetWindowMonitor(window, primary, 0, 0, mode->width, mode->height, mode->refreshRate);
+#ifdef _WIN32
+				glfw->set_hmonitor(MonitorFromWindow(glfwGetWin32Window(window), MONITOR_DEFAULTTOPRIMARY));
+#endif
 			}
 		}
 	}

@@ -20,9 +20,9 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include <thread>
 #include "wsi.hpp"
 #include "quirks.hpp"
+#include <thread>
 
 using namespace std;
 
@@ -34,6 +34,11 @@ WSI::WSI()
 
 void WSIPlatform::set_window_title(const string &)
 {
+}
+
+uintptr_t WSIPlatform::get_fullscreen_monitor()
+{
+	return 0;
 }
 
 void WSI::set_window_title(const string &title)
@@ -294,13 +299,16 @@ bool WSI::begin_frame()
 		auto acquire_start = Util::get_current_time_nsecs();
 #endif
 
-		result = table->vkAcquireNextImageKHR(context->get_device(), swapchain, UINT64_MAX,
-		                                      acquire->get_semaphore(),
-		                                      fence ? fence->get_fence() : VK_NULL_HANDLE,
-		                                      &swapchain_index);
+		result = table->vkAcquireNextImageKHR(context->get_device(), swapchain, UINT64_MAX, acquire->get_semaphore(),
+		                                      fence ? fence->get_fence() : VK_NULL_HANDLE, &swapchain_index);
 
-		if (fence)
+		if (result == VK_SUCCESS && fence)
 			fence->wait();
+
+		if (result == VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT)
+		{
+			LOGE("Lost exclusive full-screen ...\n");
+		}
 
 #ifdef VULKAN_WSI_TIMING_DEBUG
 		auto acquire_end = Util::get_current_time_nsecs();
@@ -344,7 +352,8 @@ bool WSI::begin_frame()
 
 			device->set_acquire_semaphore(swapchain_index, acquire);
 		}
-		else if (result == VK_SUBOPTIMAL_KHR || result == VK_ERROR_OUT_OF_DATE_KHR)
+		else if (result == VK_SUBOPTIMAL_KHR || result == VK_ERROR_OUT_OF_DATE_KHR ||
+		         result == VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT)
 		{
 			VK_ASSERT(swapchain_width != 0);
 			VK_ASSERT(swapchain_height != 0);
@@ -398,7 +407,7 @@ bool WSI::end_frame()
 		VK_ASSERT(release_semaphore != VK_NULL_HANDLE);
 
 		VkResult result = VK_SUCCESS;
-		VkPresentInfoKHR info = {VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
+		VkPresentInfoKHR info = { VK_STRUCTURE_TYPE_PRESENT_INFO_KHR };
 		info.waitSemaphoreCount = 1;
 		info.pWaitSemaphores = &release_semaphore;
 		info.swapchainCount = 1;
@@ -421,6 +430,12 @@ bool WSI::end_frame()
 #endif
 
 		VkResult overall = table->vkQueuePresentKHR(context->get_graphics_queue(), &info);
+
+		if (overall == VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT ||
+		    result == VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT)
+		{
+			LOGE("Lost exclusive full-screen ...\n");
+		}
 
 #ifdef VULKAN_WSI_TIMING_DEBUG
 		auto present_end = Util::get_current_time_nsecs();
@@ -445,8 +460,7 @@ bool WSI::end_frame()
 		}
 
 		// Re-init swapchain.
-		if (present_mode != current_present_mode ||
-		    srgb_backbuffer_enable != current_srgb_backbuffer_enable)
+		if (present_mode != current_present_mode || srgb_backbuffer_enable != current_srgb_backbuffer_enable)
 		{
 			current_present_mode = present_mode;
 			current_srgb_backbuffer_enable = srgb_backbuffer_enable;
@@ -550,20 +564,133 @@ bool WSI::blocking_init_swapchain(unsigned width, unsigned height)
 
 WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 {
-	VkSurfaceCapabilitiesKHR surface_properties;
-	auto gpu = context->get_gpu();
-	if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu, surface, &surface_properties) != VK_SUCCESS)
+	if (surface == VK_NULL_HANDLE)
+	{
+		LOGE("Cannot create swapchain with surface == VK_NULL_HANDLE.\n");
 		return SwapchainError::Error;
+	}
+
+	VkSurfaceCapabilitiesKHR surface_properties;
+	VkPhysicalDeviceSurfaceInfo2KHR surface_info = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SURFACE_INFO_2_KHR };
+	surface_info.surface = surface;
+	bool use_surface_info = device->get_device_features().supports_surface_capabilities2;
+	bool use_application_controlled_exclusive_fullscreen = false;
+
+#ifdef _WIN32
+	VkSurfaceFullScreenExclusiveInfoEXT exclusive_info = { VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT };
+	VkSurfaceFullScreenExclusiveWin32InfoEXT exclusive_info_win32 = { VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_WIN32_INFO_EXT };
+
+	HMONITOR monitor = reinterpret_cast<HMONITOR>(platform->get_fullscreen_monitor());
+	if (!device->get_device_features().supports_full_screen_exclusive)
+		monitor = nullptr;
+
+	surface_info.pNext = &exclusive_info;
+	if (monitor != nullptr)
+	{
+		exclusive_info.pNext = &exclusive_info_win32;
+		exclusive_info_win32.hmonitor = monitor;
+		LOGI("Win32: Got a full-screen monitor.\n");
+	}
+	else
+		LOGI("Win32: Not running full-screen.\n");
+
+	const char *exclusive = getenv("GRANITE_EXCLUSIVE_FULL_SCREEN");
+	bool prefer_exclusive = exclusive && strtoul(exclusive, nullptr, 0) != 0;
+	if (prefer_exclusive)
+	{
+		LOGI("Win32: Opting in to exclusive full-screen!\n");
+		exclusive_info.fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_ALLOWED_EXT;
+	}
+	else
+	{
+		LOGI("Win32: Opting out of exclusive full-screen!\n");
+		exclusive_info.fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_DISALLOWED_EXT;
+	}
+#endif
+
+	auto gpu = context->get_gpu();
+	if (use_surface_info)
+	{
+		VkSurfaceCapabilities2KHR surface_capabilities2 = { VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_2_KHR };
+
+#ifdef _WIN32
+		VkSurfaceCapabilitiesFullScreenExclusiveEXT capability_full_screen_exclusive = { VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_FULL_SCREEN_EXCLUSIVE_EXT };
+		if (device->get_device_features().supports_full_screen_exclusive && exclusive_info_win32.hmonitor)
+		{
+			surface_capabilities2.pNext = &capability_full_screen_exclusive;
+			capability_full_screen_exclusive.pNext = &exclusive_info_win32;
+		}
+#endif
+
+		if (vkGetPhysicalDeviceSurfaceCapabilities2KHR(gpu, &surface_info, &surface_capabilities2) != VK_SUCCESS)
+			return SwapchainError::Error;
+
+		surface_properties = surface_capabilities2.surfaceCapabilities;
+
+#ifdef _WIN32
+		if (capability_full_screen_exclusive.fullScreenExclusiveSupported)
+			LOGI("Surface could support app-controlled exclusive fullscreen.\n");
+
+		use_application_controlled_exclusive_fullscreen = exclusive_info.fullScreenExclusive == VK_FULL_SCREEN_EXCLUSIVE_ALLOWED_EXT &&
+		                                                  capability_full_screen_exclusive.fullScreenExclusiveSupported == VK_TRUE;
+		if (monitor == nullptr)
+			use_application_controlled_exclusive_fullscreen = false;
+#endif
+
+		if (use_application_controlled_exclusive_fullscreen)
+		{
+			LOGI("Using app-controlled exclusive fullscreen.\n");
+#ifdef _WIN32
+			exclusive_info.fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT;
+			exclusive_info.pNext = &exclusive_info_win32;
+#endif
+		}
+		else
+		{
+			LOGI("Not using app-controlled exclusive fullscreen.\n");
+		}
+	}
+	else
+	{
+		if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu, surface, &surface_properties) != VK_SUCCESS)
+			return SwapchainError::Error;
+	}
 
 	// Happens on nVidia Windows when you minimize a window.
-	if (surface_properties.maxImageExtent.width == 0 &&
-	    surface_properties.maxImageExtent.height == 0)
+	if (surface_properties.maxImageExtent.width == 0 && surface_properties.maxImageExtent.height == 0)
 		return SwapchainError::NoSurface;
 
 	uint32_t format_count;
-	vkGetPhysicalDeviceSurfaceFormatsKHR(gpu, surface, &format_count, nullptr);
-	vector<VkSurfaceFormatKHR> formats(format_count);
-	vkGetPhysicalDeviceSurfaceFormatsKHR(gpu, surface, &format_count, formats.data());
+	vector<VkSurfaceFormatKHR> formats;
+
+	if (use_surface_info)
+	{
+		if (vkGetPhysicalDeviceSurfaceFormats2KHR(gpu, &surface_info, &format_count, nullptr) != VK_SUCCESS)
+			return SwapchainError::Error;
+
+		vector<VkSurfaceFormat2KHR> formats2(format_count);
+
+		for (auto &f : formats2)
+		{
+			f = {};
+			f.sType = VK_STRUCTURE_TYPE_SURFACE_FORMAT_2_KHR;
+		}
+
+		if (vkGetPhysicalDeviceSurfaceFormats2KHR(gpu, &surface_info, &format_count, formats2.data()) != VK_SUCCESS)
+			return SwapchainError::Error;
+
+		formats.reserve(format_count);
+		for (auto &f : formats2)
+			formats.push_back(f.surfaceFormat);
+	}
+	else
+	{
+		if (vkGetPhysicalDeviceSurfaceFormatsKHR(gpu, surface, &format_count, nullptr) != VK_SUCCESS)
+			return SwapchainError::Error;
+		formats.resize(format_count);
+		if (vkGetPhysicalDeviceSurfaceFormatsKHR(gpu, surface, &format_count, formats.data()) != VK_SUCCESS)
+			return SwapchainError::Error;
+	}
 
 	VkSurfaceFormatKHR format;
 	if (format_count == 1 && formats[0].format == VK_FORMAT_UNDEFINED)
@@ -584,8 +711,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 		{
 			if (current_srgb_backbuffer_enable)
 			{
-				if (formats[i].format == VK_FORMAT_R8G8B8A8_SRGB ||
-				    formats[i].format == VK_FORMAT_B8G8R8A8_SRGB ||
+				if (formats[i].format == VK_FORMAT_R8G8B8A8_SRGB || formats[i].format == VK_FORMAT_B8G8R8A8_SRGB ||
 				    formats[i].format == VK_FORMAT_A8B8G8R8_SRGB_PACK32)
 				{
 					format = formats[i];
@@ -594,8 +720,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 			}
 			else
 			{
-				if (formats[i].format == VK_FORMAT_R8G8B8A8_UNORM ||
-				    formats[i].format == VK_FORMAT_B8G8R8A8_UNORM ||
+				if (formats[i].format == VK_FORMAT_R8G8B8A8_UNORM || formats[i].format == VK_FORMAT_B8G8R8A8_UNORM ||
 				    formats[i].format == VK_FORMAT_A8B8G8R8_UNORM_PACK32)
 				{
 					format = formats[i];
@@ -656,46 +781,32 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	}
 
 	// If we are using pre-rotate of 90 or 270 degrees, we need to flip width and height again.
-	if (swapchain_current_prerotate & (VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR |
-	                                   VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR |
-	                                   VK_SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_90_BIT_KHR |
-	                                   VK_SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_270_BIT_KHR))
+	if (swapchain_current_prerotate &
+	    (VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR | VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR |
+	     VK_SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_90_BIT_KHR |
+	     VK_SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_270_BIT_KHR))
 	{
 		swap(width, height);
 	}
 
 	// Clamp the target width, height to boundaries.
-	swapchain_size.width = max(min(width, surface_properties.maxImageExtent.width), surface_properties.minImageExtent.width);
-	swapchain_size.height = max(min(height, surface_properties.maxImageExtent.height), surface_properties.minImageExtent.height);
+	swapchain_size.width =
+	    max(min(width, surface_properties.maxImageExtent.width), surface_properties.minImageExtent.width);
+	swapchain_size.height =
+	    max(min(height, surface_properties.maxImageExtent.height), surface_properties.minImageExtent.height);
 
 	uint32_t num_present_modes;
 
 	vector<VkPresentModeKHR> present_modes;
-#ifdef _WIN32
-	// Block any exclusive full-screen, borderless windowed is nice for time being.
-	// If ALLOWED_EXT, we get exclusive fullscreen when driver detects a full-screen window.
-	VkSurfaceFullScreenExclusiveInfoEXT exclusive_info = { VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT };
-	const char *exclusive = getenv("GRANITE_EXCLUSIVE_FULL_SCREEN");
-	if (exclusive && strtoul(exclusive, nullptr, 0) != 0)
-	{
-		LOGI("Opting in to exclusive full-screen!\n");
-		exclusive_info.fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_ALLOWED_EXT;
-	}
-	else
-	{
-		LOGI("Opting out of exclusive full-screen!\n");
-		exclusive_info.fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_DISALLOWED_EXT;
-	}
 
-	if (device->get_device_features().supports_full_screen_exclusive)
+#ifdef _WIN32
+	if (use_surface_info)
 	{
-		VkPhysicalDeviceSurfaceInfo2KHR surface_info = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SURFACE_INFO_2_KHR };
-		surface_info.surface = surface;
-		surface_info.pNext = &exclusive_info;
 		if (vkGetPhysicalDeviceSurfacePresentModes2EXT(gpu, &surface_info, &num_present_modes, nullptr) != VK_SUCCESS)
 			return SwapchainError::Error;
 		present_modes.resize(num_present_modes);
-		if (vkGetPhysicalDeviceSurfacePresentModes2EXT(gpu, &surface_info, &num_present_modes, present_modes.data()) != VK_SUCCESS)
+		if (vkGetPhysicalDeviceSurfacePresentModes2EXT(gpu, &surface_info, &num_present_modes, present_modes.data()) !=
+		    VK_SUCCESS)
 			return SwapchainError::Error;
 	}
 	else
@@ -712,9 +823,25 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	bool use_vsync = current_present_mode == PresentMode::SyncToVBlank;
 	if (!use_vsync)
 	{
+		bool allow_mailbox = true;
+		bool allow_immediate = true;
+
+#ifdef _WIN32
+		if (device->get_gpu_properties().vendorID == VENDOR_ID_NVIDIA)
+		{
+			// If we're trying to go exclusive full-screen,
+			// we need to ban certain types of present modes which apparently do not work as we expect.
+			if (use_application_controlled_exclusive_fullscreen)
+				allow_mailbox = false;
+			else
+				allow_immediate = false;
+		}
+#endif
+
 		for (uint32_t i = 0; i < num_present_modes; i++)
 		{
-			if (present_modes[i] == VK_PRESENT_MODE_IMMEDIATE_KHR || present_modes[i] == VK_PRESENT_MODE_MAILBOX_KHR)
+			if ((allow_immediate && present_modes[i] == VK_PRESENT_MODE_IMMEDIATE_KHR) ||
+			    (allow_mailbox && present_modes[i] == VK_PRESENT_MODE_MAILBOX_KHR))
 			{
 				swapchain_present_mode = present_modes[i];
 				break;
@@ -775,6 +902,17 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 		table->vkDestroySwapchainKHR(context->get_device(), old_swapchain, nullptr);
 	has_acquired_swapchain_index = false;
 
+#ifdef _WIN32
+	if (use_application_controlled_exclusive_fullscreen)
+	{
+		bool success = vkAcquireFullScreenExclusiveModeEXT(context->get_device(), swapchain) == VK_SUCCESS;
+		if (success)
+			LOGI("Successfully acquired exclusive full-screen.\n");
+		else
+			LOGI("Failed to acquire exclusive full-screen. Using borderless windowed.\n");
+	}
+#endif
+
 #if 0
 	if (use_vsync && context->get_enabled_device_features().supports_google_display_timing)
 	{
@@ -787,7 +925,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	}
 	else
 #endif
-		using_display_timing = false;
+	using_display_timing = false;
 
 	if (res != VK_SUCCESS)
 	{

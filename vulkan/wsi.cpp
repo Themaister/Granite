@@ -302,7 +302,7 @@ bool WSI::begin_frame()
 		result = table->vkAcquireNextImageKHR(context->get_device(), swapchain, UINT64_MAX, acquire->get_semaphore(),
 		                                      fence ? fence->get_fence() : VK_NULL_HANDLE, &swapchain_index);
 
-		if (fence)
+		if (result == VK_SUCCESS && fence)
 			fence->wait();
 
 		if (result == VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT)

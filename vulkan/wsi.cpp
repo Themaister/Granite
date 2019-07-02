@@ -625,13 +625,14 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 		if (vkGetPhysicalDeviceSurfaceCapabilities2KHR(gpu, &surface_info, &surface_capabilities2) != VK_SUCCESS)
 			return SwapchainError::Error;
 
+		surface_properties = surface_capabilities2.surfaceCapabilities;
+
+#ifdef _WIN32
 		if (capability_full_screen_exclusive.fullScreenExclusiveSupported)
 			LOGI("Surface could support app-controlled exclusive fullscreen.\n");
 
-		surface_properties = surface_capabilities2.surfaceCapabilities;
 		use_application_controlled_exclusive_fullscreen = exclusive_info.fullScreenExclusive == VK_FULL_SCREEN_EXCLUSIVE_ALLOWED_EXT &&
 		                                                  capability_full_screen_exclusive.fullScreenExclusiveSupported == VK_TRUE;
-#ifdef _WIN32
 		if (monitor == nullptr)
 			use_application_controlled_exclusive_fullscreen = false;
 #endif
@@ -639,8 +640,8 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 		if (use_application_controlled_exclusive_fullscreen)
 		{
 			LOGI("Using app-controlled exclusive fullscreen.\n");
-			exclusive_info.fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT;
 #ifdef _WIN32
+			exclusive_info.fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT;
 			exclusive_info.pNext = &exclusive_info_win32;
 #endif
 		}

@@ -675,7 +675,18 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	// Block any exclusive full-screen, borderless windowed is nice for time being.
 	// If ALLOWED_EXT, we get exclusive fullscreen when driver detects a full-screen window.
 	VkSurfaceFullScreenExclusiveInfoEXT exclusive_info = { VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT };
-	exclusive_info.fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_DISALLOWED_EXT;
+	const char *exclusive = getenv("GRANITE_EXCLUSIVE_FULL_SCREEN");
+	if (exclusive && strtoul(exclusive, nullptr, 0) != 0)
+	{
+		LOGI("Opting in to exclusive full-screen!\n");
+		exclusive_info.fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_ALLOWED_EXT;
+	}
+	else
+	{
+		LOGI("Opting out of exclusive full-screen!\n");
+		exclusive_info.fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_DISALLOWED_EXT;
+	}
+
 	if (device->get_device_features().supports_full_screen_exclusive)
 	{
 		VkPhysicalDeviceSurfaceInfo2KHR surface_info = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SURFACE_INFO_2_KHR };

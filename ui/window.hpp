@@ -35,6 +35,7 @@ class Window : public WindowContainer
 public:
 	Window();
 	void set_title(const std::string &title);
+	void set_title_color(const vec4 &color);
 
 	const std::string &get_title() const
 	{
@@ -70,6 +71,7 @@ private:
 	float y_offset = 0.0f;
 	bool title_bar = true;
 	bool fullscreen = false;
+	vec4 title_color = vec4(0.0f, 0.0f, 0.0f, 1.0f);
 
 	float render(FlatRenderer &renderer, float layer, vec2 offset, vec2 size) override;
 	void reconfigure() override;

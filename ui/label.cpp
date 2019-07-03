@@ -67,7 +67,7 @@ void Label::reconfigure()
 	auto &font = ui.get_font(font_size);
 	vec2 minimum = font.get_text_geometry(text.c_str());
 
-	geometry.minimum = minimum + 2.0f * geometry.margin;
+	geometry.minimum = max(geometry.minimum, minimum + 2.0f * geometry.margin);
 }
 }
 }

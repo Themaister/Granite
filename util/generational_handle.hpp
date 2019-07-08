@@ -31,11 +31,12 @@
 
 namespace Util
 {
+using GenerationalHandleID = uint32_t;
 template <typename T>
 class GenerationalHandlePool
 {
 public:
-	using ID = uint32_t;
+	using ID = GenerationalHandleID;
 
 	GenerationalHandlePool()
 	{
@@ -134,6 +135,11 @@ private:
 		if (vacant_indices.empty())
 		{
 			size_t current_size = elements.size();
+
+			// If this is ever a problem, we can bump to 64-bit IDs.
+			if (current_size >= (size_t(1) << 24u))
+				throw std::bad_alloc();
+
 			elements.resize(current_size * 2);
 			generation.resize(current_size * 2);
 			for (size_t index = current_size; index < 2 * current_size; index++)

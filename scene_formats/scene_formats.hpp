@@ -67,26 +67,30 @@ struct AnimationChannel
 		return timestamps.back();
 	}
 
-	void get_index_phase(float t, unsigned &index, float &phase) const
+	void get_index_phase(float t, unsigned &index, float &phase, float &dt) const
 	{
-		if (t <= timestamps.front() || timestamps.size() == 1)
+		if (t < timestamps.front() || timestamps.size() == 1)
 		{
 			index = 0;
 			phase = 0.0f;
+			dt = 0.0f;
 		}
 		else if (t >= timestamps.back())
 		{
+			assert(timestamps.size() >= 2);
 			index = timestamps.size() - 2;
 			phase = 1.0f;
+			dt = timestamps[index + 1] - timestamps[index];
 		}
 		else
 		{
 			unsigned end_target = 0;
-			while (t > timestamps[end_target])
+			while (t >= timestamps[end_target])
 				end_target++;
 
 			index = end_target - 1;
 			phase = (t - timestamps[index]) / (timestamps[end_target] - timestamps[index]);
+			dt = timestamps[index + 1] - timestamps[index];
 		}
 	}
 };

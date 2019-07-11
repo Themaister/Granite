@@ -60,7 +60,12 @@ public:
 	ID emplace(P&&... p)
 	{
 		auto index = get_vacant_index();
-		auto generation_index = ++generation[index];
+		auto generation_index = uint8_t(++generation[index]);
+
+		// Reserve generation index 0 for sentinel purposes.
+		if (!generation_index)
+			generation_index = ++generation[index];
+
 		elements[index] = pool.allocate(std::forward<P>(p)...);
 		return make_id(index, generation_index);
 	}
@@ -91,8 +96,6 @@ public:
 			return nullptr;
 		if (gen_index != generation[index])
 			return nullptr;
-		if (!elements[index])
-			return nullptr;
 
 		return elements[index];
 	}
@@ -120,6 +123,7 @@ public:
 			{
 				pool.free(elements[i]);
 				vacant_indices.push(i);
+				elements[i] = nullptr;
 			}
 		}
 	}

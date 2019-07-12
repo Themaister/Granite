@@ -29,17 +29,18 @@ using namespace std;
 
 namespace Granite
 {
-MeshManager::MeshGroup *MeshManager::register_mesh(const std::string &path)
+MeshManager::MeshGroup *MeshManager::register_mesh(const std::string &path, AnimationSystem *animation_system)
 {
 	return register_mesh([](const SceneFormats::Mesh &mesh, const SceneFormats::MaterialInfo *materials) {
 		return create_imported_mesh(mesh, materials);
-	}, path);
+	}, path, animation_system);
 }
 
 MeshManager::MeshGroup *MeshManager::register_mesh(
 		const std::function<Granite::AbstractRenderableHandle(const Granite::SceneFormats::Mesh &,
 		                                                      const Granite::SceneFormats::MaterialInfo *)> &cb,
-		const std::string &path)
+		const std::string &path,
+		AnimationSystem *animation_system)
 {
 	Util::Hasher hash;
 	hash.string(path);
@@ -59,6 +60,15 @@ MeshManager::MeshGroup *MeshManager::register_mesh(
 	group->node_hierarchy = parser.get_nodes();
 	for (auto &mesh : parser.get_meshes())
 		group->renderables.push_back(cb(mesh, parser.get_materials().data()));
+
+	if (animation_system)
+	{
+		for (auto &animation : parser.get_animations())
+		{
+			auto id = animation_system->register_animation(path + "_" + animation.name, animation);
+			group->animations.push_back(Animation{ id, animation.name });
+		}
+	}
 
 	return group;
 }
@@ -118,6 +128,11 @@ MeshManager::SingleHandle MeshManager::instantiate_renderable(Scene &scene, Mesh
 	}
 
 	return handles;
+}
+
+const std::vector<MeshManager::Animation> &MeshManager::get_animations(MeshGroup *group)
+{
+	return group->animations;
 }
 
 MeshManager::MultiHandle MeshManager::instantiate_renderables(Scene &scene, MeshGroup *group)

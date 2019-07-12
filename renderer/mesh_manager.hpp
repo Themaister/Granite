@@ -32,6 +32,7 @@
 #include "scene_formats.hpp"
 #include "scene.hpp"
 #include "intrusive_hash_map.hpp"
+#include "animation_system.hpp"
 
 namespace Granite
 {
@@ -40,11 +41,12 @@ class MeshManager
 private:
 	struct MeshGroup;
 public:
-	MeshGroup *register_mesh(const std::string &path);
+	MeshGroup *register_mesh(const std::string &path, AnimationSystem *animation_system = nullptr);
 	MeshGroup *register_mesh(const std::function<
 			AbstractRenderableHandle(const SceneFormats::Mesh &,
 			                         const SceneFormats::MaterialInfo *)> &cb,
-	                         const std::string &path);
+	                         const std::string &path,
+	                         AnimationSystem *animation_system = nullptr);
 
 	struct SingleHandle
 	{
@@ -58,6 +60,12 @@ public:
 		Scene::NodeHandle root_node;
 	};
 
+	struct Animation
+	{
+		AnimationID id;
+		std::string name;
+	};
+
 	// Instantiates a renderable which contains multiple renderables.
 	// This generates multiple entities.
 	MultiHandle instantiate_renderables(Scene &scene, MeshGroup *group);
@@ -67,12 +75,15 @@ public:
 	// Convenient for scenarios where there is just one renderable.
 	SingleHandle instantiate_renderable(Scene &scene, MeshGroup *group);
 
+	const std::vector<Animation> &get_animations(MeshGroup *group);
+
 private:
 	struct MeshGroup : Util::IntrusiveHashMapEnabled<MeshGroup>
 	{
 		std::vector<AbstractRenderableHandle> renderables;
 		std::vector<SceneFormats::Node> node_hierarchy;
 		std::vector<uint32_t> top_level_nodes;
+		std::vector<Animation> animations;
 	};
 	Util::IntrusiveHashMap<MeshGroup> groups;
 };

@@ -24,36 +24,103 @@
 
 #include "scene.hpp"
 #include "scene_formats.hpp"
+#include "generational_handle.hpp"
+#include "intrusive_hash_map.hpp"
+#include "intrusive_list.hpp"
 #include <vector>
 
 namespace Granite
 {
+class AnimationUnrolled : public Util::IntrusiveHashMapEnabled<AnimationUnrolled>
+{
+public:
+	AnimationUnrolled(const SceneFormats::Animation &animation, float key_frame_rate);
+	void animate(Transform * const *transforms, unsigned num_transforms, float offset_time) const;
+
+	unsigned get_num_channels() const;
+
+	bool is_skinned() const;
+	uint32_t get_multi_node_index(unsigned channel) const;
+	Util::Hash get_skin_compat() const;
+
+	float get_length() const;
+
+private:
+	enum ChannelMask
+	{
+		ROTATION_BIT = 1 << 0,
+		TRANSLATION_BIT = 1 << 1,
+		SCALE_BIT = 1 << 2
+	};
+
+	std::vector<std::vector<quat>> key_frames_rotation;
+	std::vector<std::vector<vec3>> key_frames_translation;
+	std::vector<std::vector<vec3>> key_frames_scale;
+	std::vector<uint8_t> channel_mask;
+
+	std::vector<uint32_t> multi_node_indices;
+
+	unsigned num_samples = 0;
+	float frame_rate = 0.0f;
+	float inv_frame_rate = 0.0f;
+	float length = 0.0f;
+
+	Util::Hash skin_compat = 0;
+	bool skinning = false;
+
+	void reserve_num_clips(unsigned count);
+	unsigned find_or_allocate_index(uint32_t node_index);
+
+	void animate_single(Transform &transform, unsigned channel, int lo, int hi, float l) const;
+};
+
+using AnimationID = Util::GenerationalHandleID;
+using AnimationStateID = Util::GenerationalHandleID;
+
 class AnimationSystem
 {
 public:
 	void animate(double t);
+	void set_fixed_pose(Scene::Node &node, AnimationID id, float offset) const;
+	void set_fixed_pose_multi(Scene::NodeHandle *nodes, unsigned num_nodes, AnimationID id, float offset) const;
 
-	void start_animation(Scene::NodeHandle *node_list, const std::string &name, double start_time, bool repeat);
-	void start_animation(Scene::Node &node, const std::string &name, double start_time, bool repeat);
-	void register_animation(const std::string &name, const SceneFormats::Animation &animation);
+	AnimationID register_animation(const std::string &name, const SceneFormats::Animation &animation, float key_frame_rate = 60.0f);
+	AnimationID register_animation(const std::string &name, AnimationUnrolled animation);
+	AnimationID get_animation_id_from_name(const std::string &name) const;
+
+	AnimationStateID start_animation(Scene::Node &node, AnimationID id, double start_time, bool repeat);
+	AnimationStateID start_animation_multi(Scene::NodeHandle *nodes, unsigned num_nodes, AnimationID id, double start_time, bool repeat);
+	void stop_animation(AnimationStateID id);
+	bool animation_is_running(AnimationStateID id) const;
+
+	void set_completion_callback(AnimationStateID id, std::function<void ()> cb);
 
 private:
-	std::unordered_map<std::string, SceneFormats::Animation> animation_map;
-
-	struct AnimationState
+	struct AnimationState : Util::IntrusiveListEnabled<AnimationState>
 	{
-		AnimationState(std::vector<std::pair<Transform *, Scene::Node *>> channel_targets_,
-		               const SceneFormats::Animation &anim, double start_time_, bool repeating_)
-			: channel_targets(std::move(channel_targets_)), animation(anim),
-			  start_time(start_time_), repeating(repeating_)
-		{
-		}
-		std::vector<std::pair<Transform *, Scene::Node *>> channel_targets;
-		const SceneFormats::Animation &animation;
+		AnimationState(const AnimationUnrolled &anim,
+		               std::vector<Transform *> channel_transforms_,
+		               std::vector<Scene::Node *> channel_nodes_,
+		               double start_time_, bool repeating_);
+
+		AnimationState(const AnimationUnrolled &anim,
+		               Scene::Node *node,
+		               double start_time_, bool repeating_);
+
+		Scene::Node *skinned_node = nullptr;
+		AnimationStateID id = 0;
+		std::vector<Transform *> channel_transforms;
+		std::vector<Scene::Node *> channel_nodes;
+		const AnimationUnrolled &animation;
 		double start_time = 0.0;
 		bool repeating = false;
+
+		std::function<void ()> cb;
 	};
 
-	std::vector<std::unique_ptr<AnimationState>> animations;
+	Util::GenerationalHandlePool<AnimationUnrolled> animation_pool;
+	Util::IntrusiveHashMap<Util::IntrusivePODWrapper<AnimationID>> animation_map;
+	Util::GenerationalHandlePool<AnimationState> animation_state_pool;
+	Util::IntrusiveList<AnimationState> active_animation;
 };
 }

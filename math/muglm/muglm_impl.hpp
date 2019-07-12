@@ -705,7 +705,7 @@ MUGLM_VECTORIZED_FUNC2(pow)
 MUGLM_VECTORIZED_FUNC3(clamp)
 
 // mix
-template <typename T, typename Lerp> inline T mix(const T &a, const T &b, const Lerp &lerp) { return a + (b - a) * lerp; }
+template <typename T, typename Lerp> inline T mix(const T &a, const T &b, const Lerp &lerp) { return a * (1.0f - lerp) + b * lerp; }
 
 // smoothstep
 template <typename T> inline T smoothstep(const T &lo, const T &hi, T val)
@@ -736,6 +736,10 @@ MUGLM_VECTORIZED_FUNC1(ceil)
 // round
 inline float round(float v) { return std::round(v); }
 MUGLM_VECTORIZED_FUNC1(round)
+
+// mod
+inline float mod(float x, float y) { return x - y * floor(x / y); }
+MUGLM_VECTORIZED_FUNC2(mod)
 
 // abs
 template <typename T>

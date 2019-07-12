@@ -98,8 +98,8 @@ Scene::NodeHandle SceneLoader::build_tree_for_subscene(const SubsceneData &subsc
 				{
 					if (animation.skin_compat == skin_compat)
 					{
-						animation_system->register_animation(animation.name, animation);
-						animation_system->start_animation(*nodeptr, animation.name, 0.0, true);
+						auto animation_id = animation_system->register_animation(animation.name, animation);
+						animation_system->start_animation(*nodeptr, animation_id, 0.0, true);
 					}
 				}
 #endif
@@ -122,8 +122,8 @@ Scene::NodeHandle SceneLoader::build_tree_for_subscene(const SubsceneData &subsc
 	{
 		if (!animation.skinning)
 		{
-			animation_system->register_animation(animation.name, animation);
-			animation_system->start_animation(nodes.data(), animation.name, 0.0, true);
+			auto animation_id = animation_system->register_animation(animation.name, animation);
+			animation_system->start_animation_multi(nodes.data(), nodes.size(), animation_id, 0.0, true);
 		}
 	}
 
@@ -471,9 +471,10 @@ Scene::NodeHandle SceneLoader::parse_scene_format(const std::string &path, const
 			track.update_length();
 
 			auto ident = to_string(index);
+			AnimationID animation_id = 0;
 
 			if (!track.channels.empty())
-				animation_system->register_animation(ident, track);
+				animation_id = animation_system->register_animation(ident, track);
 
 			bool per_instance = false;
 			if (animation.HasMember("perInstance"))
@@ -485,7 +486,7 @@ Scene::NodeHandle SceneLoader::parse_scene_format(const std::string &path, const
 				auto &root = hierarchy[target_itr->GetUint()];
 
 				if (root->get_children().empty() || !per_instance)
-					animation_system->start_animation(*root, ident, 0.0, true);
+					animation_system->start_animation(*root, animation_id, 0.0, true);
 				else
 				{
 					for (auto &channel : track.channels)
@@ -493,7 +494,7 @@ Scene::NodeHandle SceneLoader::parse_scene_format(const std::string &path, const
 							throw logic_error("Cannot use per-instance translation.");
 
 					for (auto &child : root->get_children())
-						animation_system->start_animation(*child, ident, 0.0, true);
+						animation_system->start_animation(*child, animation_id, 0.0, true);
 				}
 			}
 		}

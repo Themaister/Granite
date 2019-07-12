@@ -24,6 +24,7 @@
 #include "aabb.hpp"
 #include "simd.hpp"
 #include "muglm/matrix_helper.hpp"
+#include <assert.h>
 
 namespace Granite
 {
@@ -219,22 +220,25 @@ void compute_cube_render_transform(vec3 center, unsigned face, mat4 &proj, mat4 
 	proj = scale(vec3(-1.0f, 1.0f, 1.0f)) * projection(0.5f * pi<float>(), 1.0f, znear, zfar);
 }
 
-vec3 LinearSampler::sample(unsigned index, float l) const
+vec3 LinearSampler::sample(unsigned index, float l, float) const
 {
 	if (l == 0.0f)
 		return values[index];
+	assert(index + 1 < values.size());
 	return mix(values[index], values[index + 1], l);
 }
 
-quat SlerpSampler::sample(unsigned index, float l) const
+quat SlerpSampler::sample(unsigned index, float l, float) const
 {
 	if (l == 0.0f)
 		return values[index];
+	assert(index + 1 < values.size());
 	return slerp(values[index], values[index + 1], l);
 }
 
 vec3 CubicSampler::sample(unsigned index, float t, float dt) const
 {
+	assert(index + 1 < values.size());
 	vec3 p0 = values[3 * index + 1];
 	vec3 m0 = dt * values[3 * index + 2];
 	vec3 m1 = dt * values[3 * index + 3];

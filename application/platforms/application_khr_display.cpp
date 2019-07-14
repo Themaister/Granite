@@ -306,8 +306,8 @@ out:
 	void notify_resize(unsigned width, unsigned height)
 	{
 		resize = true;
-		this->width = width;
-		this->height = height;
+		width = width_;
+		height = height_;
 	}
 
 	void signal_die()

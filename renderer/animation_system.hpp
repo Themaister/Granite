@@ -80,7 +80,7 @@ using AnimationStateID = Util::GenerationalHandleID;
 class AnimationSystem
 {
 public:
-	void animate(double t);
+	void animate(double frame_time, double elapsed_time);
 	void set_fixed_pose(Scene::Node &node, AnimationID id, float offset) const;
 	void set_fixed_pose_multi(Scene::NodeHandle *nodes, unsigned num_nodes, AnimationID id, float offset) const;
 
@@ -88,10 +88,13 @@ public:
 	AnimationID register_animation(const std::string &name, AnimationUnrolled animation);
 	AnimationID get_animation_id_from_name(const std::string &name) const;
 
-	AnimationStateID start_animation(Scene::Node &node, AnimationID id, double start_time, bool repeat);
-	AnimationStateID start_animation_multi(Scene::NodeHandle *nodes, unsigned num_nodes, AnimationID id, double start_time, bool repeat);
+	AnimationStateID start_animation(Scene::Node &node, AnimationID id, double start_time);
+	AnimationStateID start_animation_multi(Scene::NodeHandle *nodes, unsigned num_nodes, AnimationID id, double start_time);
 	void stop_animation(AnimationStateID id);
 	bool animation_is_running(AnimationStateID id) const;
+
+	void set_repeating(AnimationStateID id, bool repeat);
+	void set_relative_timing(AnimationStateID id, bool enable);
 
 	void set_completion_callback(AnimationStateID id, std::function<void ()> cb);
 
@@ -101,11 +104,11 @@ private:
 		AnimationState(const AnimationUnrolled &anim,
 		               std::vector<Transform *> channel_transforms_,
 		               std::vector<Scene::Node *> channel_nodes_,
-		               double start_time_, bool repeating_);
+		               double start_time_);
 
 		AnimationState(const AnimationUnrolled &anim,
 		               Scene::Node *node,
-		               double start_time_, bool repeating_);
+		               double start_time_);
 
 		Scene::Node *skinned_node = nullptr;
 		AnimationStateID id = 0;
@@ -114,6 +117,7 @@ private:
 		const AnimationUnrolled &animation;
 		double start_time = 0.0;
 		bool repeating = false;
+		bool relative_timing = false;
 
 		std::function<void ()> cb;
 	};

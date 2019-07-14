@@ -1080,7 +1080,7 @@ void SceneViewerApplication::update_scene(double frame_time, double elapsed_time
 	last_frame_times[last_frame_index++ & FrameWindowSizeMask] = float(frame_time);
 	auto &scene = scene_loader.get_scene();
 
-	animation_system->animate(elapsed_time);
+	animation_system->animate(frame_time, elapsed_time);
 	scene.update_cached_transforms();
 
 	jitter.step(selected_camera->get_projection(), selected_camera->get_view());

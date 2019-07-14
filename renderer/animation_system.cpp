@@ -241,7 +241,7 @@ AnimationID AnimationSystem::register_animation(const std::string &name,
 }
 
 AnimationStateID AnimationSystem::start_animation(Scene::Node &node, Granite::AnimationID animation_id,
-                                                  double start_time, bool repeat)
+                                                  double start_time)
 {
 	auto *animation = animation_pool.maybe_get(animation_id);
 	if (!animation)
@@ -259,7 +259,7 @@ AnimationStateID AnimationSystem::start_animation(Scene::Node &node, Granite::An
 			return 0;
 		}
 
-		id = animation_state_pool.emplace(*animation, &node, start_time, repeat);
+		id = animation_state_pool.emplace(*animation, &node, start_time);
 	}
 	else
 	{
@@ -271,7 +271,7 @@ AnimationStateID AnimationSystem::start_animation(Scene::Node &node, Granite::An
 
 		std::vector<Transform *> target_transforms = { &node.transform };
 		std::vector<Scene::Node *> nodes = { &node };
-		id = animation_state_pool.emplace(*animation, move(target_transforms), move(nodes), start_time, repeat);
+		id = animation_state_pool.emplace(*animation, move(target_transforms), move(nodes), start_time);
 	}
 
 	auto *state = &animation_state_pool.get(id);
@@ -353,7 +353,7 @@ void AnimationSystem::set_fixed_pose_multi(Scene::NodeHandle *nodes, unsigned nu
 }
 
 AnimationStateID AnimationSystem::start_animation_multi(Scene::NodeHandle *nodes, unsigned num_nodes,
-                                                        AnimationID animation_id, double start_time, bool repeat)
+                                                        AnimationID animation_id, double start_time)
 {
 	auto *animation = animation_pool.maybe_get(animation_id);
 	if (!animation)
@@ -386,7 +386,7 @@ AnimationStateID AnimationSystem::start_animation_multi(Scene::NodeHandle *nodes
 		target_nodes.push_back(nodes[index].get());
 	}
 
-	auto id = animation_state_pool.emplace(*animation, move(target_transforms), move(target_nodes), start_time, repeat);
+	auto id = animation_state_pool.emplace(*animation, move(target_transforms), move(target_nodes), start_time);
 	auto *state = &animation_state_pool.get(id);
 	state->id = id;
 	active_animation.insert_front(state);
@@ -400,13 +400,38 @@ void AnimationSystem::set_completion_callback(AnimationStateID id, function<void
 		state->cb = move(cb);
 }
 
-void AnimationSystem::animate(double t)
+void AnimationSystem::set_repeating(Granite::AnimationStateID id, bool repeat)
+{
+	auto *state = animation_state_pool.maybe_get(id);
+	if (state)
+		state->repeating = repeat;
+}
+
+void AnimationSystem::set_relative_timing(Granite::AnimationStateID id, bool enable)
+{
+	auto *state = animation_state_pool.maybe_get(id);
+	if (state)
+		state->relative_timing = enable;
+}
+
+void AnimationSystem::animate(double frame_time, double elapsed_time)
 {
 	auto itr = active_animation.begin();
 	while (itr != active_animation.end())
 	{
 		bool complete = false;
-		auto offset = float(t - itr->start_time);
+
+		float offset;
+		if (itr->relative_timing)
+		{
+			itr->start_time += frame_time;
+			offset = float(itr->start_time);
+		}
+		else
+		{
+			offset = float(elapsed_time - itr->start_time);
+		}
+
 		if (!itr->repeating && offset >= itr->animation.get_length())
 			complete = true;
 
@@ -442,17 +467,17 @@ void AnimationSystem::animate(double t)
 AnimationSystem::AnimationState::AnimationState(const AnimationUnrolled &anim,
                                                 std::vector<Transform *> channel_transforms_,
                                                 std::vector<Scene::Node *> channel_nodes_,
-                                                double start_time_, bool repeating_)
+                                                double start_time_)
 		: channel_transforms(std::move(channel_transforms_)),
 		  channel_nodes(std::move(channel_nodes_)),
 		  animation(anim),
-		  start_time(start_time_), repeating(repeating_)
+		  start_time(start_time_)
 {
 }
 
 AnimationSystem::AnimationState::AnimationState(const Granite::AnimationUnrolled &anim, Granite::Scene::Node *node,
-                                                double start_time_, bool repeating_)
-		: skinned_node(node), animation(anim), start_time(start_time_), repeating(repeating_)
+                                                double start_time_)
+		: skinned_node(node), animation(anim), start_time(start_time_)
 {
 }
 

@@ -628,9 +628,6 @@ if (NOT GRANITE_VULKAN_ONLY)
         target_sources(granite PRIVATE
                 application/platforms/application_glfw.cpp)
         target_link_libraries(granite PRIVATE glfw)
-    elseif (${GRANITE_PLATFORM} MATCHES "CUSTOM_SURFACE")
-        target_sources(granite PRIVATE
-                application/platforms/application_custom_surface.cpp)
     elseif (${GRANITE_PLATFORM} MATCHES "KHR_DISPLAY")
         target_sources(granite PRIVATE
                 application/platforms/application_khr_display.cpp)

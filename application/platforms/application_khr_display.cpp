@@ -303,7 +303,7 @@ out:
 		return height;
 	}
 
-	void notify_resize(unsigned width, unsigned height)
+	void notify_resize(unsigned width_, unsigned height_)
 	{
 		resize = true;
 		width = width_;

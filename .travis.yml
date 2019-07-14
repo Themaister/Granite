@@ -20,12 +20,6 @@ matrix:
         - PLATFORM=KHR_DISPLAY
     - os: linux
       dist: xenial
-      compiler: gcc
-      env:
-        - GENERATOR="Unix Makefiles"
-        - PLATFORM=CUSTOM_SURFACE
-    - os: linux
-      dist: xenial
       compiler: clang
       env:
         - GENERATOR="Unix Makefiles"

@@ -35,6 +35,7 @@
 #include <cmath>
 #include "dynamic_library.hpp"
 #include "hw_counters/hw_counter_interface.h"
+#include "thread_group.hpp"
 
 #ifdef HAVE_GRANITE_AUDIO
 #include "audio_interface.hpp"
@@ -248,6 +249,7 @@ public:
 
 		auto &wsi = app->get_wsi();
 		auto context = make_unique<Context>();
+		context->set_num_thread_indices(Global::thread_group()->get_num_threads() + 1);
 		if (!context->init_instance_and_device(nullptr, 0, nullptr, 0))
 			return false;
 		wsi.init_external_context(move(context));

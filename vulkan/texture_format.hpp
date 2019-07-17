@@ -22,7 +22,7 @@
 
 #pragma once
 
-#include "volk.h"
+#include "vulkan.hpp"
 #include <vector>
 #include <stddef.h>
 #include <assert.h>

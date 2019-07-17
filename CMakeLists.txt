@@ -302,7 +302,6 @@ if (GRANITE_VULKAN_MT)
 endif()
 
 if (WIN32)
-    target_compile_definitions(granite PRIVATE VK_USE_PLATFORM_WIN32_KHR)
     target_compile_definitions(volk PRIVATE VK_USE_PLATFORM_WIN32_KHR)
 endif()
 

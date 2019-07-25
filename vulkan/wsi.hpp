@@ -24,7 +24,7 @@
 
 #include "device.hpp"
 #include "semaphore_manager.hpp"
-#include "vulkan.hpp"
+#include "context.hpp"
 #include "timer.hpp"
 #include "wsi_timing.hpp"
 #include <memory>

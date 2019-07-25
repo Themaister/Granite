@@ -1525,7 +1525,7 @@ CommandBufferHandle Device::request_secondary_command_buffer_for_thread(unsigned
 	VkCommandBufferBeginInfo info = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
 	VkCommandBufferInheritanceInfo inherit = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO };
 
-	inherit.framebuffer = framebuffer->get_framebuffer();
+	inherit.framebuffer = VK_NULL_HANDLE;
 	inherit.renderPass = framebuffer->get_compatible_render_pass().get_render_pass();
 	inherit.subpass = subpass;
 	info.pInheritanceInfo = &inherit;

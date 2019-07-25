@@ -872,17 +872,36 @@ RenderPass::~RenderPass()
 		table.vkDestroyRenderPass(device->get_device(), render_pass, nullptr);
 }
 
-Framebuffer::Framebuffer(Device *device_, const RenderPass &rp, const RenderPassInfo &info_)
-    : Cookie(device_)
-    , device(device_)
-    , render_pass(rp)
-    , info(info_)
+unsigned Framebuffer::setup_raw_views(VkImageView *views, const RenderPassInfo &info)
+{
+	unsigned num_views = 0;
+	for (unsigned i = 0; i < info.num_color_attachments; i++)
+	{
+		VK_ASSERT(info.color_attachments[i]);
+
+		// For multiview, we use view indices to pick right layers.
+		if (info.num_layers > 1)
+			views[num_views++] = info.color_attachments[i]->get_view();
+		else
+			views[num_views++] = info.color_attachments[i]->get_render_target_view(info.base_layer);
+	}
+
+	if (info.depth_stencil)
+	{
+		// For multiview, we use view indices to pick right layers.
+		if (info.num_layers > 1)
+			views[num_views++] = info.depth_stencil->get_view();
+		else
+			views[num_views++] = info.depth_stencil->get_render_target_view(info.base_layer);
+	}
+
+	return num_views;
+}
+
+void Framebuffer::compute_dimensions(const RenderPassInfo &info, unsigned &width, unsigned &height)
 {
 	width = UINT32_MAX;
 	height = UINT32_MAX;
-	VkImageView views[VULKAN_NUM_ATTACHMENTS + 1];
-	unsigned num_views = 0;
-
 	VK_ASSERT(info.num_color_attachments || info.depth_stencil);
 
 	for (unsigned i = 0; i < info.num_color_attachments; i++)
@@ -891,14 +910,6 @@ Framebuffer::Framebuffer(Device *device_, const RenderPass &rp, const RenderPass
 		unsigned lod = info.color_attachments[i]->get_create_info().base_level;
 		width = min(width, info.color_attachments[i]->get_image().get_width(lod));
 		height = min(height, info.color_attachments[i]->get_image().get_height(lod));
-
-		// For multiview, we use view indices to pick right layers.
-		if (info.num_layers > 1)
-			views[num_views++] = info.color_attachments[i]->get_view();
-		else
-			views[num_views++] = info.color_attachments[i]->get_render_target_view(info.base_layer);
-
-		attachments.push_back(info.color_attachments[i]);
 	}
 
 	if (info.depth_stencil)
@@ -906,20 +917,40 @@ Framebuffer::Framebuffer(Device *device_, const RenderPass &rp, const RenderPass
 		unsigned lod = info.depth_stencil->get_create_info().base_level;
 		width = min(width, info.depth_stencil->get_image().get_width(lod));
 		height = min(height, info.depth_stencil->get_image().get_height(lod));
-
-		// For multiview, we use view indices to pick right layers.
-		if (info.num_layers > 1)
-			views[num_views++] = info.depth_stencil->get_view();
-		else
-			views[num_views++] = info.depth_stencil->get_render_target_view(info.base_layer);
-
-		attachments.push_back(info.depth_stencil);
 	}
+}
+
+Framebuffer::Framebuffer(Device *device_, const RenderPass &rp, const RenderPassInfo &info_)
+    : Cookie(device_)
+    , device(device_)
+    , render_pass(rp)
+    , info(info_)
+{
+	compute_dimensions(info_, width, height);
+	VkImageView views[VULKAN_NUM_ATTACHMENTS + 1];
+	unsigned num_views = 0;
+
+	auto &features = device->get_device_features();
+	bool imageless = features.imageless_features.imagelessFramebuffer == VK_TRUE;
+
+	if (!imageless)
+		num_views = setup_raw_views(views, info_);
+	else
+		num_views = info.num_color_attachments + (info.depth_stencil ? 1 : 0);
 
 	VkFramebufferCreateInfo fb_info = { VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO };
+	VkFramebufferAttachmentImageInfoKHR image_info = { VK_STRUCTURE_TYPE_FRAMEBUFFER_ATTACHMENT_IMAGE_INFO_KHR };
 	fb_info.renderPass = rp.get_render_pass();
 	fb_info.attachmentCount = num_views;
-	fb_info.pAttachments = views;
+
+	if (imageless)
+	{
+		fb_info.pNext = &image_info;
+		fb_info.flags = VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT_KHR;
+	}
+	else
+		fb_info.pAttachments = views;
+
 	fb_info.width = width;
 	fb_info.height = height;
 
@@ -965,12 +996,26 @@ Framebuffer &FramebufferAllocator::request_framebuffer(const RenderPassInfo &inf
 	Hasher h;
 	h.u64(rp.get_hash());
 
-	for (unsigned i = 0; i < info.num_color_attachments; i++)
-		if (info.color_attachments[i])
-			h.u64(info.color_attachments[i]->get_cookie());
+	auto &features = device->get_device_features();
+	bool imageless = features.imageless_features.imagelessFramebuffer == VK_TRUE;
 
-	if (info.depth_stencil)
-		h.u64(info.depth_stencil->get_cookie());
+	if (imageless)
+	{
+		// Hash just dimension instead.
+		unsigned width, height;
+		Framebuffer::compute_dimensions(info, width, height);
+		h.u32(width);
+		h.u32(height);
+	}
+	else
+	{
+		for (unsigned i = 0; i < info.num_color_attachments; i++)
+			if (info.color_attachments[i])
+				h.u64(info.color_attachments[i]->get_cookie());
+
+		if (info.depth_stencil)
+			h.u64(info.depth_stencil->get_cookie());
+	}
 
 	// For multiview we bind the whole attachment, and base layer is encoded in the render pass.
 	if (info.num_layers > 1)

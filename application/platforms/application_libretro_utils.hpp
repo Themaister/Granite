@@ -22,7 +22,7 @@
 
 #pragma once
 
-#include "vulkan.hpp"
+#include "context.hpp"
 #include "libretro.h"
 #include "libretro_vulkan.h"
 #include "wsi.hpp"

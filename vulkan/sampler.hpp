@@ -24,7 +24,7 @@
 
 #include "cookie.hpp"
 #include "vulkan_common.hpp"
-#include "vulkan.hpp"
+#include "context.hpp"
 #include "object_pool.hpp"
 
 namespace Vulkan

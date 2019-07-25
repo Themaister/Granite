@@ -20,7 +20,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "vulkan.hpp"
+#include "context.hpp"
 #include "device.hpp"
 #include "global_managers.hpp"
 #include <string.h>

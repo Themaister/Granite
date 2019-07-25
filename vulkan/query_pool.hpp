@@ -22,7 +22,7 @@
 
 #pragma once
 
-#include "vulkan.hpp"
+#include "context.hpp"
 #include "vulkan_common.hpp"
 #include "object_pool.hpp"
 

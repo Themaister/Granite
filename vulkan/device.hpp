@@ -35,7 +35,7 @@
 #include "semaphore_manager.hpp"
 #include "event_manager.hpp"
 #include "shader.hpp"
-#include "vulkan.hpp"
+#include "context.hpp"
 #include "query_pool.hpp"
 #include "buffer_pool.hpp"
 #include <memory>

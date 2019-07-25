@@ -21,7 +21,7 @@
  */
 
 #include "gltf.hpp"
-#include "vulkan.hpp"
+#include "context.hpp"
 #include "filesystem.hpp"
 #include "mesh.hpp"
 #include <unordered_map>

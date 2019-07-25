@@ -40,3 +40,6 @@
 [submodule "third_party/oboe"]
 	path = third_party/oboe
 	url = git://github.com/google/oboe
+[submodule "third_party/khronos/vulkan-headers"]
+	path = third_party/khronos/vulkan-headers
+	url = git://github.com/KhronosGroup/Vulkan-Headers

@@ -22,18 +22,7 @@
 
 #pragma once
 
-#ifdef _WIN32
-#define VK_USE_PLATFORM_WIN32_KHR
-#endif
-
-#include "volk.h"
-
-#ifdef VK_USE_PLATFORM_XLIB_XRANDR_EXT
-// Workaround silly Xlib headers that define macros for these globally :(
-#undef None
-#undef Bool
-#endif
-
+#include "vulkan_headers.hpp"
 #include "util.hpp"
 #include <memory>
 #include <stdexcept>
@@ -89,6 +78,7 @@ struct DeviceFeatures
 	VkPhysicalDeviceFeatures enabled_features = {};
 	VkPhysicalDeviceExternalMemoryHostPropertiesEXT host_memory_properties = {};
 	VkPhysicalDeviceMultiviewFeaturesKHR multiview_features = {};
+	VkPhysicalDeviceImagelessFramebufferFeaturesKHR imageless_features = {};
 };
 
 enum VendorID

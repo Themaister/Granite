@@ -23,7 +23,7 @@
 #include "application.hpp"
 #include "application_wsi.hpp"
 #include "application_events.hpp"
-#include "vulkan.hpp"
+#include "context.hpp"
 #include "GLFW/glfw3.h"
 #ifdef HAVE_LINUX_INPUT
 #include "input_linux.hpp"

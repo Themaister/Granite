@@ -22,43 +22,14 @@
 
 #pragma once
 
-#include "vulkan_common.hpp"
-#include "context.hpp"
-#include "object_pool.hpp"
+#ifdef _WIN32
+#define VK_USE_PLATFORM_WIN32_KHR
+#endif
 
-namespace Vulkan
-{
-class Device;
+#include "volk.h"
 
-class FenceHolder;
-struct FenceHolderDeleter
-{
-	void operator()(FenceHolder *fence);
-};
-
-class FenceHolder : public Util::IntrusivePtrEnabled<FenceHolder, FenceHolderDeleter, HandleCounter>
-{
-public:
-	friend struct FenceHolderDeleter;
-
-	~FenceHolder();
-	void wait();
-
-	bool wait_timeout(uint64_t nsec);
-
-	VkFence get_fence() const;
-
-private:
-	friend class Util::ObjectPool<FenceHolder>;
-	FenceHolder(Device *device_, VkFence fence_)
-		: device(device_), fence(fence_)
-	{
-	}
-
-	Device *device;
-	VkFence fence;
-	bool observed_wait = false;
-};
-
-using Fence = Util::IntrusivePtr<FenceHolder>;
-}
+#ifdef VK_USE_PLATFORM_XLIB_XRANDR_EXT
+// Workaround silly Xlib headers that define macros for these globally :(
+#undef None
+#undef Bool
+#endif

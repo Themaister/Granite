@@ -24,7 +24,7 @@
 
 #include "buffer.hpp"
 #include "buffer_pool.hpp"
-#include "context.hpp"
+#include "vulkan_headers.hpp"
 #include "image.hpp"
 #include "pipeline_event.hpp"
 #include "query_pool.hpp"

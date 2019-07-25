@@ -27,9 +27,34 @@
 #endif
 
 #include "volk.h"
+#include <stdlib.h>
 
 #ifdef VK_USE_PLATFORM_XLIB_XRANDR_EXT
 // Workaround silly Xlib headers that define macros for these globally :(
 #undef None
 #undef Bool
 #endif
+
+#ifdef VULKAN_DEBUG
+#define VK_ASSERT(x)                                             \
+	do                                                           \
+	{                                                            \
+		if (!bool(x))                                            \
+		{                                                        \
+			LOGE("Vulkan error at %s:%d.\n", __FILE__, __LINE__); \
+			abort();                                        \
+		}                                                        \
+	} while (0)
+#else
+#define VK_ASSERT(x) ((void)0)
+#endif
+
+namespace Vulkan
+{
+struct NoCopyNoMove
+{
+	NoCopyNoMove() = default;
+	NoCopyNoMove(const NoCopyNoMove &) = delete;
+	void operator=(const NoCopyNoMove &) = delete;
+};
+}

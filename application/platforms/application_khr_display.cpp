@@ -27,7 +27,7 @@
 #include "application.hpp"
 #include "application_events.hpp"
 #include "application_wsi.hpp"
-#include "context.hpp"
+#include "vulkan_headers.hpp"
 #include <string.h>
 #include <signal.h>
 

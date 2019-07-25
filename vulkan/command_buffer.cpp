@@ -23,7 +23,6 @@
 #include "command_buffer.hpp"
 #include "device.hpp"
 #include "format.hpp"
-#include <stdexcept>
 #include <string.h>
 
 //#define FULL_BACKTRACE_CHECKPOINTS

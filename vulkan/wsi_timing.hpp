@@ -22,7 +22,8 @@
 
 #pragma once
 
-#include "context.hpp"
+#include "vulkan_headers.hpp"
+#include <vector>
 
 namespace Vulkan
 {

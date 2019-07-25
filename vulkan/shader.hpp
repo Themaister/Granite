@@ -27,7 +27,7 @@
 #include "hash.hpp"
 #include "intrusive.hpp"
 #include "limits.hpp"
-#include "context.hpp"
+#include "vulkan_headers.hpp"
 #include "enum_cast.hpp"
 
 namespace spirv_cross

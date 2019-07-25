@@ -20,7 +20,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "context.hpp"
+#include "vulkan_headers.hpp"
 #include "device.hpp"
 #include "utils/image_utils.hpp"
 #include "cli_parser.hpp"

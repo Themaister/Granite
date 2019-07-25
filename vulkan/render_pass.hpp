@@ -29,7 +29,7 @@
 #include "limits.hpp"
 #include "object_pool.hpp"
 #include "temporary_hashmap.hpp"
-#include "context.hpp"
+#include "vulkan_headers.hpp"
 
 namespace Vulkan
 {

@@ -21,7 +21,6 @@
  */
 
 #include "context.hpp"
-#include <stdexcept>
 #include <vector>
 #include <mutex>
 #include <algorithm>

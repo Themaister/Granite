@@ -25,33 +25,8 @@
 #include "vulkan_headers.hpp"
 #include "util.hpp"
 #include <memory>
-#include <stdexcept>
 #include <functional>
 #include "util.hpp"
-
-#ifdef VULKAN_DEBUG
-#define VK_ASSERT(x)                                             \
-	do                                                           \
-	{                                                            \
-		if (!bool(x))                                            \
-		{                                                        \
-			LOGE("Vulkan error at %s:%d.\n", __FILE__, __LINE__); \
-			std::abort();                                        \
-		}                                                        \
-	} while (0)
-#else
-#define VK_ASSERT(x) ((void)0)
-#endif
-
-namespace Vulkan
-{
-struct NoCopyNoMove
-{
-	NoCopyNoMove() = default;
-	NoCopyNoMove(const NoCopyNoMove &) = delete;
-	void operator=(const NoCopyNoMove &) = delete;
-};
-}
 
 namespace Vulkan
 {

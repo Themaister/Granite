@@ -1525,7 +1525,7 @@ CommandBufferHandle Device::request_secondary_command_buffer_for_thread(unsigned
 	VkCommandBufferBeginInfo info = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
 	VkCommandBufferInheritanceInfo inherit = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO };
 
-	inherit.framebuffer = framebuffer->get_framebuffer();
+	inherit.framebuffer = VK_NULL_HANDLE;
 	inherit.renderPass = framebuffer->get_compatible_render_pass().get_render_pass();
 	inherit.subpass = subpass;
 	info.pInheritanceInfo = &inherit;
@@ -2681,33 +2681,6 @@ InitialImageBuffer Device::create_image_staging_buffer(const ImageCreateInfo &in
 	return result;
 }
 
-static bool fill_image_format_list(VkFormat *formats, VkFormat format)
-{
-	switch (format)
-	{
-	case VK_FORMAT_R8G8B8A8_UNORM:
-	case VK_FORMAT_R8G8B8A8_SRGB:
-		formats[0] = VK_FORMAT_R8G8B8A8_UNORM;
-		formats[1] = VK_FORMAT_R8G8B8A8_SRGB;
-		return true;
-
-	case VK_FORMAT_B8G8R8A8_UNORM:
-	case VK_FORMAT_B8G8R8A8_SRGB:
-		formats[0] = VK_FORMAT_B8G8R8A8_UNORM;
-		formats[1] = VK_FORMAT_B8G8R8A8_SRGB;
-		return true;
-
-	case VK_FORMAT_A8B8G8R8_UNORM_PACK32:
-	case VK_FORMAT_A8B8G8R8_SRGB_PACK32:
-		formats[0] = VK_FORMAT_A8B8G8R8_UNORM_PACK32;
-		formats[1] = VK_FORMAT_A8B8G8R8_SRGB_PACK32;
-		return true;
-
-	default:
-		return false;
-	}
-}
-
 ImageHandle Device::create_image(const ImageCreateInfo &create_info, const ImageInitialData *initial)
 {
 	if (initial)
@@ -2766,7 +2739,8 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 
 	if (create_info.misc & IMAGE_MISC_MUTABLE_SRGB_BIT)
 	{
-		if (fill_image_format_list(view_formats, info.format))
+		format_info.viewFormatCount = ImageCreateInfo::compute_view_formats(create_info, view_formats);
+		if (format_info.viewFormatCount != 0)
 		{
 			create_unorm_srgb_views = true;
 			if (ext.supports_image_format_list)
@@ -2896,6 +2870,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 
 	auto tmpinfo = create_info;
 	tmpinfo.usage = info.usage;
+	tmpinfo.flags = info.flags;
 	tmpinfo.levels = info.mipLevels;
 
 	bool has_view = (info.usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |

@@ -29,7 +29,7 @@
 #include <utility>
 #include <string>
 #include <functional>
-#include "vulkan.hpp"
+#include "vulkan_headers.hpp"
 #include "device.hpp"
 #include "stack_allocator.hpp"
 #include "application_wsi_events.hpp"

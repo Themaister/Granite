@@ -20,8 +20,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "vulkan.hpp"
-#include <stdexcept>
+#include "context.hpp"
 #include <vector>
 #include <mutex>
 #include <algorithm>
@@ -731,6 +730,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	ext.storage_16bit_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES_KHR };
 	ext.float16_int8_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FLOAT16_INT8_FEATURES_KHR };
 	ext.multiview_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_FEATURES_KHR };
+	ext.imageless_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGELESS_FRAMEBUFFER_FEATURES_KHR };
 	void **ppNext = &features.pNext;
 
 	if (has_extension(VK_KHR_STORAGE_BUFFER_STORAGE_CLASS_EXTENSION_NAME))
@@ -762,6 +762,13 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		enabled_extensions.push_back(VK_KHR_MULTIVIEW_EXTENSION_NAME);
 		*ppNext = &ext.multiview_features;
 		ppNext = &ext.multiview_features.pNext;
+	}
+
+	if (ext.supports_physical_device_properties2 && has_extension(VK_KHR_IMAGELESS_FRAMEBUFFER_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_KHR_IMAGELESS_FRAMEBUFFER_EXTENSION_NAME);
+		*ppNext = &ext.imageless_features;
+		ppNext = &ext.imageless_features.pNext;
 	}
 
 	if (ext.supports_physical_device_properties2)

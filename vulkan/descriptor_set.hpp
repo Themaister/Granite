@@ -25,7 +25,7 @@
 #include "hash.hpp"
 #include "object_pool.hpp"
 #include "temporary_hashmap.hpp"
-#include "vulkan.hpp"
+#include "vulkan_headers.hpp"
 #include "sampler.hpp"
 #include "limits.hpp"
 #include <utility>

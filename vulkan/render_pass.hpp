@@ -29,7 +29,7 @@
 #include "limits.hpp"
 #include "object_pool.hpp"
 #include "temporary_hashmap.hpp"
-#include "vulkan.hpp"
+#include "vulkan_headers.hpp"
 
 namespace Vulkan
 {
@@ -184,11 +184,9 @@ public:
 		return framebuffer;
 	}
 
-	ImageView *get_attachment(unsigned index) const
-	{
-		assert(index < attachments.size());
-		return attachments[index];
-	}
+	static unsigned setup_raw_views(VkImageView *views, const RenderPassInfo &info);
+	static void compute_dimensions(const RenderPassInfo &info, uint32_t &width, uint32_t &height);
+	static void compute_attachment_dimensions(const RenderPassInfo &info, unsigned index, uint32_t &width, uint32_t &height);
 
 	uint32_t get_width() const
 	{
@@ -212,8 +210,6 @@ private:
 	RenderPassInfo info;
 	uint32_t width = 0;
 	uint32_t height = 0;
-
-	std::vector<ImageView *> attachments;
 };
 
 static const unsigned VULKAN_FRAMEBUFFER_RING_SIZE = 8;

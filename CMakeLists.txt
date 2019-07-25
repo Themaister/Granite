@@ -106,12 +106,15 @@ set(SPIRV_CHECK_CONTEXT OFF CACHE BOOL "Disable SPIR-V IR context checking." FOR
 set(SPIRV-Headers_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/spirv-headers" CACHE STRING "SPIRV-Headers path")
 set(SHADERC_SKIP_TESTS ON)
 set(FOSSILIZE_RAPIDJSON_INCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/third_party/rapidjson/include" CACHE STRING "Fossilize rapidjson path." FORCE)
-set(FOSSILIZE_VULKAN_INCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/third_party/khronos/vulkan" CACHE STRING "Fossilize Vulkan path." FORCE)
+set(FOSSILIZE_VULKAN_INCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/third_party/khronos/vulkan-headers/include/vulkan" CACHE STRING "Fossilize Vulkan path." FORCE)
 set(MUFFT_ENABLE_FFTW OFF CACHE BOOL "Disable FFTW tests." FORCE)
+
+add_subdirectory(third_party/khronos/vulkan-headers EXCLUDE_FROM_ALL)
 
 add_subdirectory(third_party/spirv-cross EXCLUDE_FROM_ALL)
 add_library(volk STATIC third_party/volk/volk.c third_party/volk/volk.h)
-target_include_directories(volk PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/third_party/volk ${CMAKE_CURRENT_SOURCE_DIR}/third_party/khronos)
+target_include_directories(volk PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/third_party/volk)
+target_link_libraries(volk PUBLIC Vulkan::Headers)
 
 if (NOT GRANITE_VULKAN_ONLY)
     add_subdirectory(third_party/shaderc EXCLUDE_FROM_ALL)
@@ -268,7 +271,7 @@ target_sources(granite PRIVATE
         util/aligned_alloc.cpp util/aligned_alloc.hpp
 
         vulkan/texture_format.cpp vulkan/texture_format.hpp
-        vulkan/vulkan.cpp vulkan/vulkan.hpp
+        vulkan/context.cpp vulkan/context.hpp vulkan/vulkan_headers.hpp
         vulkan/device.cpp vulkan/device.hpp
         vulkan/wsi.cpp vulkan/wsi.hpp
         vulkan/wsi_timing.cpp vulkan/wsi_timing.hpp

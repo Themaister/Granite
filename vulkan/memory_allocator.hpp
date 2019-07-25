@@ -26,12 +26,13 @@
 #include "intrusive.hpp"
 #include "object_pool.hpp"
 #include "intrusive_list.hpp"
-#include "vulkan.hpp"
+#include "vulkan_headers.hpp"
 #include <assert.h>
 #include <memory>
 #include <stddef.h>
 #include <stdint.h>
 #include <vector>
+#include "util.hpp"
 
 #ifdef GRANITE_VULKAN_MT
 #include <mutex>

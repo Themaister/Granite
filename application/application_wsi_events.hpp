@@ -23,7 +23,7 @@
 #pragma once
 
 #include "event.hpp"
-#include "vulkan.hpp"
+#include "vulkan_headers.hpp"
 
 namespace Vulkan
 {

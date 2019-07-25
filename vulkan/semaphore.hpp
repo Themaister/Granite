@@ -23,7 +23,7 @@
 #pragma once
 
 #include "vulkan_common.hpp"
-#include "vulkan.hpp"
+#include "vulkan_headers.hpp"
 #include "cookie.hpp"
 #include "object_pool.hpp"
 

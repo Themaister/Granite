@@ -22,24 +22,39 @@
 
 #pragma once
 
-#include "vulkan_headers.hpp"
-#include <vector>
+#ifdef _WIN32
+#define VK_USE_PLATFORM_WIN32_KHR
+#endif
+
+#include "volk.h"
+#include <stdlib.h>
+
+#ifdef VK_USE_PLATFORM_XLIB_XRANDR_EXT
+// Workaround silly Xlib headers that define macros for these globally :(
+#undef None
+#undef Bool
+#endif
+
+#ifdef VULKAN_DEBUG
+#define VK_ASSERT(x)                                             \
+	do                                                           \
+	{                                                            \
+		if (!bool(x))                                            \
+		{                                                        \
+			LOGE("Vulkan error at %s:%d.\n", __FILE__, __LINE__); \
+			abort();                                        \
+		}                                                        \
+	} while (0)
+#else
+#define VK_ASSERT(x) ((void)0)
+#endif
 
 namespace Vulkan
 {
-class Device;
-class SemaphoreManager
+struct NoCopyNoMove
 {
-public:
-	void init(Device *device);
-	~SemaphoreManager();
-
-	VkSemaphore request_cleared_semaphore();
-	void recycle(VkSemaphore semaphore);
-
-private:
-	Device *device = nullptr;
-	const VolkDeviceTable *table = nullptr;
-	std::vector<VkSemaphore> semaphores;
+	NoCopyNoMove() = default;
+	NoCopyNoMove(const NoCopyNoMove &) = delete;
+	void operator=(const NoCopyNoMove &) = delete;
 };
 }

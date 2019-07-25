@@ -384,7 +384,7 @@ A standalone glTF viewer. It uses `SceneViewerApplication` directly.
 This is the Vulkan backend and is the part of the code base which needs most
 explanation and rationale behind its design.
 
-### `vulkan.cpp` and `vulkan.hpp`
+### `context.cpp` and `context.hpp`
 
 Here we have the "context". This is the module which:
 

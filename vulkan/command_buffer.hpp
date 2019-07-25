@@ -23,15 +23,15 @@
 #pragma once
 
 #include "buffer.hpp"
+#include "buffer_pool.hpp"
+#include "vulkan_headers.hpp"
 #include "image.hpp"
-#include "vulkan_common.hpp"
+#include "pipeline_event.hpp"
+#include "query_pool.hpp"
 #include "render_pass.hpp"
 #include "sampler.hpp"
 #include "shader.hpp"
-#include "vulkan.hpp"
-#include "pipeline_event.hpp"
-#include "query_pool.hpp"
-#include "buffer_pool.hpp"
+#include "vulkan_common.hpp"
 #include <string.h>
 
 namespace Vulkan
@@ -625,6 +625,7 @@ private:
 	const Framebuffer *framebuffer = nullptr;
 	const RenderPass *actual_render_pass = nullptr;
 	const RenderPass *compatible_render_pass = nullptr;
+	const Vulkan::ImageView *framebuffer_attachments[VULKAN_NUM_ATTACHMENTS + 1] = {};
 
 	VertexAttribState attribs[VULKAN_NUM_VERTEX_ATTRIBS] = {};
 	IndexState index_state = {};

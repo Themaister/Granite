@@ -22,47 +22,11 @@
 
 #pragma once
 
-#ifdef _WIN32
-#define VK_USE_PLATFORM_WIN32_KHR
-#endif
-
-#include "volk.h"
-
-#ifdef VK_USE_PLATFORM_XLIB_XRANDR_EXT
-// Workaround silly Xlib headers that define macros for these globally :(
-#undef None
-#undef Bool
-#endif
-
+#include "vulkan_headers.hpp"
 #include "util.hpp"
 #include <memory>
-#include <stdexcept>
 #include <functional>
 #include "util.hpp"
-
-#ifdef VULKAN_DEBUG
-#define VK_ASSERT(x)                                             \
-	do                                                           \
-	{                                                            \
-		if (!bool(x))                                            \
-		{                                                        \
-			LOGE("Vulkan error at %s:%d.\n", __FILE__, __LINE__); \
-			std::abort();                                        \
-		}                                                        \
-	} while (0)
-#else
-#define VK_ASSERT(x) ((void)0)
-#endif
-
-namespace Vulkan
-{
-struct NoCopyNoMove
-{
-	NoCopyNoMove() = default;
-	NoCopyNoMove(const NoCopyNoMove &) = delete;
-	void operator=(const NoCopyNoMove &) = delete;
-};
-}
 
 namespace Vulkan
 {
@@ -89,6 +53,7 @@ struct DeviceFeatures
 	VkPhysicalDeviceFeatures enabled_features = {};
 	VkPhysicalDeviceExternalMemoryHostPropertiesEXT host_memory_properties = {};
 	VkPhysicalDeviceMultiviewFeaturesKHR multiview_features = {};
+	VkPhysicalDeviceImagelessFramebufferFeaturesKHR imageless_features = {};
 };
 
 enum VendorID

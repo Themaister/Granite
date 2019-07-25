@@ -23,7 +23,6 @@
 #include "command_buffer.hpp"
 #include "device.hpp"
 #include "format.hpp"
-#include <stdexcept>
 #include <string.h>
 
 //#define FULL_BACKTRACE_CHECKPOINTS
@@ -490,6 +489,12 @@ CommandBufferHandle CommandBuffer::request_secondary_command_buffer(Device &devi
 	cmd->compatible_render_pass = &fb->get_compatible_render_pass();
 	cmd->actual_render_pass = &device.request_render_pass(info, false);
 
+	unsigned i;
+	for (i = 0; i < info.num_color_attachments; i++)
+		cmd->framebuffer_attachments[i] = info.color_attachments[i];
+	if (info.depth_stencil)
+		cmd->framebuffer_attachments[i++] = info.depth_stencil;
+
 	cmd->init_viewport_scissor(info, fb);
 	cmd->current_subpass = subpass;
 	cmd->current_contents = VK_SUBPASS_CONTENTS_INLINE;
@@ -508,6 +513,7 @@ CommandBufferHandle CommandBuffer::request_secondary_command_buffer(unsigned thr
 	secondary_cmd->framebuffer = framebuffer;
 	secondary_cmd->compatible_render_pass = compatible_render_pass;
 	secondary_cmd->actual_render_pass = actual_render_pass;
+	memcpy(secondary_cmd->framebuffer_attachments, framebuffer_attachments, sizeof(framebuffer_attachments));
 
 	secondary_cmd->current_subpass = subpass_;
 	secondary_cmd->viewport = viewport;
@@ -548,6 +554,14 @@ void CommandBuffer::begin_render_pass(const RenderPassInfo &info, VkSubpassConte
 	framebuffer = &device->request_framebuffer(info);
 	compatible_render_pass = &framebuffer->get_compatible_render_pass();
 	actual_render_pass = &device->request_render_pass(info, false);
+	current_subpass = 0;
+
+	memset(framebuffer_attachments, 0, sizeof(framebuffer_attachments));
+	unsigned att;
+	for (att = 0; att < info.num_color_attachments; att++)
+		framebuffer_attachments[att] = info.color_attachments[att];
+	if (info.depth_stencil)
+		framebuffer_attachments[att++] = info.depth_stencil;
 
 	init_viewport_scissor(info, framebuffer);
 
@@ -574,11 +588,22 @@ void CommandBuffer::begin_render_pass(const RenderPassInfo &info, VkSubpassConte
 	}
 
 	VkRenderPassBeginInfo begin_info = { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
+	VkRenderPassAttachmentBeginInfoKHR attachment_info = { VK_STRUCTURE_TYPE_RENDER_PASS_ATTACHMENT_BEGIN_INFO_KHR };
 	begin_info.renderPass = actual_render_pass->get_render_pass();
 	begin_info.framebuffer = framebuffer->get_framebuffer();
 	begin_info.renderArea = scissor;
 	begin_info.clearValueCount = num_clear_values;
 	begin_info.pClearValues = clear_values;
+
+	auto &features = device->get_device_features();
+	bool imageless = features.imageless_features.imagelessFramebuffer == VK_TRUE;
+	VkImageView immediate_views[VULKAN_NUM_ATTACHMENTS + 1];
+	if (imageless)
+	{
+		attachment_info.attachmentCount = Framebuffer::setup_raw_views(immediate_views, info);
+		attachment_info.pAttachments = immediate_views;
+		begin_info.pNext = &attachment_info;
+	}
 
 	table.vkCmdBeginRenderPass(cmd, &begin_info, contents);
 
@@ -1393,7 +1418,7 @@ void CommandBuffer::set_input_attachments(unsigned set, unsigned start_binding)
 		if (ref.attachment == VK_ATTACHMENT_UNUSED)
 			continue;
 
-		ImageView *view = framebuffer->get_attachment(ref.attachment);
+		const ImageView *view = framebuffer_attachments[ref.attachment];
 		VK_ASSERT(view);
 		VK_ASSERT(view->get_image().get_create_info().usage & VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT);
 

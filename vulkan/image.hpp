@@ -392,6 +392,36 @@ struct ImageCreateInfo
 		info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 		return info;
 	}
+
+	static uint32_t compute_view_formats(const ImageCreateInfo &info, VkFormat *formats)
+	{
+		if ((info.misc & IMAGE_MISC_MUTABLE_SRGB_BIT) == 0)
+			return 0;
+
+		switch (info.format)
+		{
+		case VK_FORMAT_R8G8B8A8_UNORM:
+		case VK_FORMAT_R8G8B8A8_SRGB:
+			formats[0] = VK_FORMAT_R8G8B8A8_UNORM;
+			formats[1] = VK_FORMAT_R8G8B8A8_SRGB;
+			return 2;
+
+		case VK_FORMAT_B8G8R8A8_UNORM:
+		case VK_FORMAT_B8G8R8A8_SRGB:
+			formats[0] = VK_FORMAT_B8G8R8A8_UNORM;
+			formats[1] = VK_FORMAT_B8G8R8A8_SRGB;
+			return 2;
+
+		case VK_FORMAT_A8B8G8R8_UNORM_PACK32:
+		case VK_FORMAT_A8B8G8R8_SRGB_PACK32:
+			formats[0] = VK_FORMAT_A8B8G8R8_UNORM_PACK32;
+			formats[1] = VK_FORMAT_A8B8G8R8_SRGB_PACK32;
+			return 2;
+
+		default:
+			return 0;
+		}
+	}
 };
 
 class Image;

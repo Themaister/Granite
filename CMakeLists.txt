@@ -109,12 +109,10 @@ set(FOSSILIZE_RAPIDJSON_INCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/third_party/ra
 set(FOSSILIZE_VULKAN_INCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/third_party/khronos/vulkan-headers/include/vulkan" CACHE STRING "Fossilize Vulkan path." FORCE)
 set(MUFFT_ENABLE_FFTW OFF CACHE BOOL "Disable FFTW tests." FORCE)
 
-add_subdirectory(third_party/khronos/vulkan-headers EXCLUDE_FROM_ALL)
-
 add_subdirectory(third_party/spirv-cross EXCLUDE_FROM_ALL)
 add_library(volk STATIC third_party/volk/volk.c third_party/volk/volk.h)
 target_include_directories(volk PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/third_party/volk)
-target_link_libraries(volk PUBLIC Vulkan::Headers)
+target_include_directories(volk PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/third_party/khronos/vulkan-headers/include)
 
 if (NOT GRANITE_VULKAN_ONLY)
     add_subdirectory(third_party/shaderc EXCLUDE_FROM_ALL)

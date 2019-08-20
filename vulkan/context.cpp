@@ -803,6 +803,10 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 			enabled_features.shaderStorageImageMultisample = VK_TRUE;
 		if (features.features.largePoints)
 			enabled_features.largePoints = VK_TRUE;
+		if (features.features.shaderInt16)
+			enabled_features.shaderInt16 = VK_TRUE;
+		if (features.features.shaderInt64)
+			enabled_features.shaderInt64 = VK_TRUE;
 
 		if (features.features.shaderSampledImageArrayDynamicIndexing)
 			enabled_features.shaderSampledImageArrayDynamicIndexing = VK_TRUE;

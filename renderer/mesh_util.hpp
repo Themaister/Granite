@@ -36,6 +36,9 @@ class ImportedMesh : public StaticMesh, public EventHandler
 public:
 	ImportedMesh(const SceneFormats::Mesh &mesh, const SceneFormats::MaterialInfo &info);
 
+	const SceneFormats::Mesh &get_mesh() const;
+	const SceneFormats::MaterialInfo &get_material_info() const;
+
 private:
 	SceneFormats::Mesh mesh;
 	SceneFormats::MaterialInfo info;
@@ -48,6 +51,9 @@ class ImportedSkinnedMesh : public SkinnedMesh, public EventHandler
 {
 public:
 	ImportedSkinnedMesh(const SceneFormats::Mesh &mesh, const SceneFormats::MaterialInfo &info);
+
+	const SceneFormats::Mesh &get_mesh() const;
+	const SceneFormats::MaterialInfo &get_material_info() const;
 
 private:
 	SceneFormats::Mesh mesh;

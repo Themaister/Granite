@@ -92,6 +92,16 @@ void ImportedSkinnedMesh::on_device_destroyed(const DeviceCreatedEvent &)
 	ibo.reset();
 }
 
+const SceneFormats::Mesh &ImportedSkinnedMesh::get_mesh() const
+{
+	return mesh;
+}
+
+const SceneFormats::MaterialInfo &ImportedSkinnedMesh::get_material_info() const
+{
+	return info;
+}
+
 ImportedMesh::ImportedMesh(const Mesh &mesh_, const MaterialInfo &info_)
 	: mesh(mesh_), info(info_)
 {
@@ -111,6 +121,16 @@ ImportedMesh::ImportedMesh(const Mesh &mesh_, const MaterialInfo &info_)
 	static_aabb = mesh.static_aabb;
 
 	EVENT_MANAGER_REGISTER_LATCH(ImportedMesh, on_device_created, on_device_destroyed, DeviceCreatedEvent);
+}
+
+const SceneFormats::Mesh &ImportedMesh::get_mesh() const
+{
+	return mesh;
+}
+
+const SceneFormats::MaterialInfo &ImportedMesh::get_material_info() const
+{
+	return info;
 }
 
 void ImportedMesh::on_device_created(const DeviceCreatedEvent &created)

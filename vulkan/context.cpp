@@ -764,12 +764,14 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		ppNext = &ext.multiview_features.pNext;
 	}
 
+#if 0
 	if (ext.supports_physical_device_properties2 && has_extension(VK_KHR_IMAGELESS_FRAMEBUFFER_EXTENSION_NAME))
 	{
 		enabled_extensions.push_back(VK_KHR_IMAGELESS_FRAMEBUFFER_EXTENSION_NAME);
 		*ppNext = &ext.imageless_features;
 		ppNext = &ext.imageless_features.pNext;
 	}
+#endif
 
 	if (ext.supports_physical_device_properties2)
 		vkGetPhysicalDeviceFeatures2KHR(gpu, &features);

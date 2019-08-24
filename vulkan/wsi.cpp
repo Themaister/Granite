@@ -800,7 +800,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	vector<VkPresentModeKHR> present_modes;
 
 #ifdef _WIN32
-	if (use_surface_info)
+	if (use_surface_info && device->get_device_features().supports_full_screen_exclusive)
 	{
 		if (vkGetPhysicalDeviceSurfacePresentModes2EXT(gpu, &surface_info, &num_present_modes, nullptr) != VK_SUCCESS)
 			return SwapchainError::Error;

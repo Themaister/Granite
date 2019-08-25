@@ -731,6 +731,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	ext.float16_int8_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FLOAT16_INT8_FEATURES_KHR };
 	ext.multiview_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_FEATURES_KHR };
 	ext.imageless_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGELESS_FRAMEBUFFER_FEATURES_KHR };
+	ext.subgroup_size_control_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_FEATURES_EXT };
 	void **ppNext = &features.pNext;
 
 	if (has_extension(VK_KHR_STORAGE_BUFFER_STORAGE_CLASS_EXTENSION_NAME))
@@ -762,6 +763,13 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		enabled_extensions.push_back(VK_KHR_MULTIVIEW_EXTENSION_NAME);
 		*ppNext = &ext.multiview_features;
 		ppNext = &ext.multiview_features.pNext;
+	}
+
+	if (ext.supports_physical_device_properties2 && has_extension(VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME);
+		*ppNext = &ext.subgroup_size_control_features;
+		ppNext = &ext.subgroup_size_control_features.pNext;
 	}
 
 #if 0
@@ -848,19 +856,23 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	// Only need GetPhysicalDeviceProperties2 for Vulkan 1.1-only code, so don't bother getting KHR variant.
 	ext.subgroup_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES };
 	ext.host_memory_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_MEMORY_HOST_PROPERTIES_EXT };
+	ext.subgroup_size_control_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_PROPERTIES_EXT };
 	VkPhysicalDeviceProperties2 props = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
 	ppNext = &props.pNext;
 
-	if (ext.supports_vulkan_11_instance && ext.supports_vulkan_11_device)
-	{
-		*ppNext = &ext.subgroup_properties;
-		ppNext = &ext.subgroup_properties.pNext;
-	}
+	*ppNext = &ext.subgroup_properties;
+	ppNext = &ext.subgroup_properties.pNext;
 
 	if (ext.supports_external_memory_host)
 	{
 		*ppNext = &ext.host_memory_properties;
 		ppNext = &ext.host_memory_properties.pNext;
+	}
+
+	if (has_extension(VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME))
+	{
+		*ppNext = &ext.subgroup_size_control_properties;
+		ppNext = &ext.subgroup_size_control_properties.pNext;
 	}
 
 	if (ext.supports_vulkan_11_instance && ext.supports_vulkan_11_device)

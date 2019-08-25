@@ -661,6 +661,62 @@ VkPipeline CommandBuffer::build_compute_pipeline(Hash hash)
 		});
 	}
 
+	VkPipelineShaderStageRequiredSubgroupSizeCreateInfoEXT subgroup_size_info = {
+		VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_REQUIRED_SUBGROUP_SIZE_CREATE_INFO_EXT
+	};
+
+	if (static_state.state.subgroup_control_size)
+	{
+		auto &features = device->get_device_features();
+
+		if (!features.subgroup_size_control_features.subgroupSizeControl)
+		{
+			LOGE("Device does not support subgroup size control.\n");
+			return VK_NULL_HANDLE;
+		}
+
+		if (static_state.state.subgroup_full_group)
+		{
+			if (!features.subgroup_size_control_features.computeFullSubgroups)
+			{
+				LOGE("Device does not support full subgroups.\n");
+				return VK_NULL_HANDLE;
+			}
+
+			info.stage.flags |= VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT_EXT;
+		}
+
+		uint32_t min_subgroups = 1u << static_state.state.subgroup_minimum_size_log2;
+		uint32_t max_subgroups = 1u << static_state.state.subgroup_maximum_size_log2;
+		if (min_subgroups <= features.subgroup_size_control_properties.minSubgroupSize &&
+		    max_subgroups >= features.subgroup_size_control_properties.maxSubgroupSize)
+		{
+			info.stage.flags |= VK_PIPELINE_SHADER_STAGE_CREATE_ALLOW_VARYING_SUBGROUP_SIZE_BIT_EXT;
+		}
+		else
+		{
+			// Pick a fixed subgroup size. Prefer smallest subgroup size.
+			if (min_subgroups < features.subgroup_size_control_properties.minSubgroupSize)
+				subgroup_size_info.requiredSubgroupSize = features.subgroup_size_control_properties.minSubgroupSize;
+			else
+				subgroup_size_info.requiredSubgroupSize = min_subgroups;
+			info.stage.pNext = &subgroup_size_info;
+
+			if (subgroup_size_info.requiredSubgroupSize < features.subgroup_size_control_properties.minSubgroupSize ||
+			    subgroup_size_info.requiredSubgroupSize > features.subgroup_size_control_properties.maxSubgroupSize)
+			{
+				LOGE("Requested subgroup size is out of range.\n");
+				return VK_NULL_HANDLE;
+			}
+
+			if ((features.subgroup_size_control_properties.requiredSubgroupSizeStages & VK_SHADER_STAGE_COMPUTE_BIT) == 0)
+			{
+				LOGE("Cannot request specific subgroup size in compute.\n");
+				return VK_NULL_HANDLE;
+			}
+		}
+	}
+
 	VkPipeline compute_pipeline;
 #ifdef GRANITE_VULKAN_FOSSILIZE
 	device->register_compute_pipeline(hash, info);
@@ -886,6 +942,16 @@ void CommandBuffer::flush_compute_pipeline()
 	for_each_bit(combined_spec_constant, [&](uint32_t bit) {
 		h.u32(potential_static_state.spec_constants[bit]);
 	});
+
+	if (static_state.state.subgroup_control_size)
+	{
+		h.s32(1);
+		h.u32(static_state.state.subgroup_minimum_size_log2);
+		h.u32(static_state.state.subgroup_maximum_size_log2);
+		h.s32(static_state.state.subgroup_full_group);
+	}
+	else
+		h.s32(0);
 
 	auto hash = h.get();
 	current_pipeline = current_program->get_pipeline(hash);

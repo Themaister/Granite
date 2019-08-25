@@ -101,6 +101,11 @@ union PipelineState {
 		unsigned topology : 4;
 
 		unsigned wireframe : 1;
+		unsigned subgroup_control_size : 1;
+		unsigned subgroup_full_group : 1;
+		unsigned subgroup_minimum_size_log2 : 3;
+		unsigned subgroup_maximum_size_log2 : 3;
+
 		uint32_t write_mask;
 	} state;
 	uint32_t words[4];
@@ -562,6 +567,22 @@ public:
 			if (potential_static_state.spec_constant_mask & (1u << index))
 				set_dirty(COMMAND_BUFFER_DIRTY_STATIC_STATE_BIT);
 		}
+	}
+
+	inline void enable_subgroup_size_control(bool subgroup_control_size)
+	{
+		SET_STATIC_STATE(subgroup_control_size);
+	}
+
+	inline void set_subgroup_size_log2(bool subgroup_full_group,
+	                                   uint8_t subgroup_minimum_size_log2,
+	                                   uint8_t subgroup_maximum_size_log2)
+	{
+		VK_ASSERT(subgroup_minimum_size_log2 < 8);
+		VK_ASSERT(subgroup_maximum_size_log2 < 8);
+		SET_STATIC_STATE(subgroup_full_group);
+		SET_STATIC_STATE(subgroup_minimum_size_log2);
+		SET_STATIC_STATE(subgroup_maximum_size_log2);
 	}
 
 #define SET_DYNAMIC_STATE(state, flags)   \

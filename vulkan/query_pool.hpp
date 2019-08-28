@@ -29,6 +29,7 @@
 namespace Vulkan
 {
 class Device;
+
 class QueryPoolResult;
 
 struct QueryPoolResultDeleter
@@ -59,6 +60,7 @@ public:
 
 private:
 	friend class Util::ObjectPool<QueryPoolResult>;
+
 	explicit QueryPoolResult(Device *device_)
 		: device(device_)
 	{}
@@ -67,15 +69,18 @@ private:
 	double timestamp = 0.0;
 	bool has_timestamp = false;
 };
+
 using QueryPoolHandle = Util::IntrusivePtr<QueryPoolResult>;
 
 class QueryPool
 {
 public:
 	explicit QueryPool(Device *device);
+
 	~QueryPool();
 
 	void begin();
+
 	QueryPoolHandle write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlagBits stage);
 
 private:
@@ -95,6 +100,40 @@ private:
 	double query_period = 0.0;
 
 	void add_pool();
+
 	bool supports_timestamp = false;
+};
+
+class TimestampInterval : public Util::IntrusiveHashMapEnabled<TimestampInterval>
+{
+public:
+	explicit TimestampInterval(std::string tag);
+
+	void accumulate_time(double t);
+	double get_time_per_iteration() const;
+	const std::string &get_tag() const;
+	void mark_end_of_frame_context();
+
+	double get_total_time() const;
+	uint64_t get_total_frame_iterations() const;
+	uint64_t get_total_accumulations() const;
+
+private:
+	std::string tag;
+	double total_time = 0.0;
+	uint64_t total_frame_iterations = 0;
+	uint64_t total_accumulations = 0;
+};
+
+class TimestampIntervalManager
+{
+public:
+	TimestampInterval *get_timestamp_tag(const char *tag);
+	void mark_end_of_frame_context();
+
+	void log_simple();
+
+private:
+	Util::IntrusiveHashMap<TimestampInterval> timestamps;
 };
 }

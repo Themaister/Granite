@@ -178,6 +178,7 @@ public:
 	                  Semaphore *semaphore = nullptr);
 	void add_wait_semaphore(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags stages, bool flush);
 	CommandBuffer::Type get_physical_queue_type(CommandBuffer::Type queue_type) const;
+	void register_time_interval(QueryPoolHandle start_ts, QueryPoolHandle end_ts, const char *tag);
 
 	// Request shaders and programs. These objects are owned by the Device.
 	Shader *request_shader(const uint32_t *code, size_t size);
@@ -329,6 +330,7 @@ private:
 		SemaphoreManager semaphore;
 		EventManager event;
 		BufferPool vbo, ibo, ubo, staging;
+		TimestampIntervalManager timestamps;
 	};
 	Managers managers;
 
@@ -382,6 +384,14 @@ private:
 		std::vector<VkEvent> recycled_events;
 		std::vector<VkSemaphore> destroyed_semaphores;
 		std::vector<ImageHandle> keep_alive_images;
+
+		struct TimestampIntervalHandles
+		{
+			QueryPoolHandle start_ts;
+			QueryPoolHandle end_ts;
+			TimestampInterval *timestamp_tag;
+		};
+		std::vector<TimestampIntervalHandles> timestamp_intervals;
 	};
 	// The per frame structure must be destroyed after
 	// the hashmap data structures below, so it must be declared before.

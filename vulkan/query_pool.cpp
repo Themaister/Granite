@@ -120,4 +120,76 @@ void QueryPoolResultDeleter::operator()(QueryPoolResult *query)
 {
 	query->device->handle_pool.query.free(query);
 }
+
+void TimestampInterval::mark_end_of_frame_context()
+{
+	if (total_time > 0.0)
+		total_frame_iterations++;
+}
+
+uint64_t TimestampInterval::get_total_accumulations() const
+{
+	return total_accumulations;
+}
+
+uint64_t TimestampInterval::get_total_frame_iterations() const
+{
+	return total_frame_iterations;
+}
+
+double TimestampInterval::get_total_time() const
+{
+	return total_time;
+}
+
+void TimestampInterval::accumulate_time(double t)
+{
+	total_time += t;
+	total_accumulations++;
+}
+
+double TimestampInterval::get_time_per_iteration() const
+{
+	if (total_frame_iterations)
+		return total_time / double(total_frame_iterations);
+	else
+		return 0.0;
+}
+
+const string &TimestampInterval::get_tag() const
+{
+	return tag;
+}
+
+TimestampInterval::TimestampInterval(string tag_)
+	: tag(move(tag_))
+{
+}
+
+TimestampInterval *TimestampIntervalManager::get_timestamp_tag(const char *tag)
+{
+	Util::Hasher h;
+	h.string(tag);
+	return timestamps.emplace_yield(h.get(), tag);
+}
+
+void TimestampIntervalManager::mark_end_of_frame_context()
+{
+	for (auto &timestamp : timestamps)
+		timestamp.mark_end_of_frame_context();
+}
+
+void TimestampIntervalManager::log_simple()
+{
+	for (auto &timestamp : timestamps)
+	{
+		LOGI("Timestamp tag report: %s\n", timestamp.get_tag().c_str());
+		if (timestamp.get_total_frame_iterations())
+		{
+			LOGI("  %.3f ms / frame context\n", 1000.0 * timestamp.get_time_per_iteration());
+			LOGI("  %.3f iterations / frame context\n",
+			     double(timestamp.get_total_accumulations()) / double(timestamp.get_total_frame_iterations()));
+		}
+	}
+}
 }

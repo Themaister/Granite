@@ -1574,6 +1574,8 @@ Device::~Device()
 {
 	wait_idle();
 
+	managers.timestamps.log_simple();
+
 	wsi.acquire.reset();
 	wsi.release.reset();
 	wsi.swapchain.clear();
@@ -1950,6 +1952,13 @@ QueryPoolHandle Device::write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlag
 	return frame().query_pool.write_timestamp(cmd, stage);
 }
 
+void Device::register_time_interval(QueryPoolHandle start_ts, QueryPoolHandle end_ts, const char *tag)
+{
+	LOCK();
+	TimestampInterval *timestamp_tag = managers.timestamps.get_timestamp_tag(tag);
+	frame().timestamp_intervals.push_back({ move(start_ts), move(end_ts), timestamp_tag });
+}
+
 void Device::add_frame_counter()
 {
 	LOCK();
@@ -2061,6 +2070,12 @@ void Device::PerFrame::begin()
 	recycled_semaphores.clear();
 	recycled_events.clear();
 	allocations.clear();
+
+	for (auto &ts : timestamp_intervals)
+		if (ts.end_ts->is_signalled() && ts.start_ts->is_signalled())
+			ts.timestamp_tag->accumulate_time(ts.end_ts->get_timestamp() - ts.start_ts->get_timestamp());
+	managers.timestamps.mark_end_of_frame_context();
+	timestamp_intervals.clear();
 }
 
 Device::PerFrame::~PerFrame()

@@ -56,6 +56,7 @@ struct DeviceFeatures
 	VkPhysicalDeviceImagelessFramebufferFeaturesKHR imageless_features = {};
 	VkPhysicalDeviceSubgroupSizeControlFeaturesEXT subgroup_size_control_features = {};
 	VkPhysicalDeviceSubgroupSizeControlPropertiesEXT subgroup_size_control_properties = {};
+	VkPhysicalDeviceComputeShaderDerivativesFeaturesNV compute_shader_derivative_features = {};
 };
 
 enum VendorID

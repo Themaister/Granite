@@ -54,7 +54,7 @@ void QueryPool::begin()
 		if (i >= pools.size())
 			continue;
 
-		auto &pool = pools[pool_index];
+		auto &pool = pools[i];
 		if (pool.index == 0)
 			continue;
 

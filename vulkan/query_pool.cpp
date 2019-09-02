@@ -67,6 +67,9 @@ void QueryPool::begin()
 
 		for (unsigned j = 0; j < pool.index; j++)
 			pool.cookies[j]->signal_timestamp(double(pool.query_results[j]) * query_period);
+
+		if (device->get_device_features().host_query_reset_features.hostQueryReset)
+			table.vkResetQueryPoolEXT(device->get_device(), pool.pool, 0, pool.index);
 	}
 
 	pool_index = 0;
@@ -86,6 +89,9 @@ void QueryPool::add_pool()
 	pool.index = 0;
 	pool.query_results.resize(pool.size);
 	pool.cookies.resize(pool.size);
+
+	if (device->get_device_features().host_query_reset_features.hostQueryReset)
+		table.vkResetQueryPoolEXT(device->get_device(), pool.pool, 0, pool.size);
 
 	pools.push_back(move(pool));
 }
@@ -109,7 +115,8 @@ QueryPoolHandle QueryPool::write_timestamp(VkCommandBuffer cmd, VkPipelineStageF
 	auto cookie = QueryPoolHandle(device->handle_pool.query.allocate(device));
 	pool.cookies[pool.index] = cookie;
 
-	table.vkCmdResetQueryPool(cmd, pool.pool, pool.index, 1);
+	if (!device->get_device_features().host_query_reset_features.hostQueryReset)
+		table.vkCmdResetQueryPool(cmd, pool.pool, pool.index, 1);
 	table.vkCmdWriteTimestamp(cmd, stage, pool.pool, pool.index);
 
 	pool.index++;

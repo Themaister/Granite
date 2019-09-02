@@ -733,6 +733,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	ext.imageless_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGELESS_FRAMEBUFFER_FEATURES_KHR };
 	ext.subgroup_size_control_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_FEATURES_EXT };
 	ext.compute_shader_derivative_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COMPUTE_SHADER_DERIVATIVES_FEATURES_NV };
+	ext.host_query_reset_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_QUERY_RESET_FEATURES_EXT };
 	void **ppNext = &features.pNext;
 
 	if (has_extension(VK_KHR_STORAGE_BUFFER_STORAGE_CLASS_EXTENSION_NAME))
@@ -777,7 +778,14 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	{
 		enabled_extensions.push_back(VK_NV_COMPUTE_SHADER_DERIVATIVES_EXTENSION_NAME);
 		*ppNext = &ext.compute_shader_derivative_features;
-		ppNext = &ext.subgroup_size_control_features.pNext;
+		ppNext = &ext.compute_shader_derivative_features.pNext;
+	}
+
+	if (ext.supports_physical_device_properties2 && has_extension(VK_EXT_HOST_QUERY_RESET_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_EXT_HOST_QUERY_RESET_EXTENSION_NAME);
+		*ppNext = &ext.host_query_reset_features;
+		ppNext = &ext.host_query_reset_features.pNext;
 	}
 
 #if 0

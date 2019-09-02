@@ -57,6 +57,7 @@ struct DeviceFeatures
 	VkPhysicalDeviceSubgroupSizeControlFeaturesEXT subgroup_size_control_features = {};
 	VkPhysicalDeviceSubgroupSizeControlPropertiesEXT subgroup_size_control_properties = {};
 	VkPhysicalDeviceComputeShaderDerivativesFeaturesNV compute_shader_derivative_features = {};
+	VkPhysicalDeviceHostQueryResetFeaturesEXT host_query_reset_features = {};
 };
 
 enum VendorID

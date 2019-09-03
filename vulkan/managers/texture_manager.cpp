@@ -108,6 +108,8 @@ void Texture::update_checkerboard()
 	initial.data = checkerboard;
 
 	auto info = ImageCreateInfo::immutable_2d_image(4, 4, VK_FORMAT_R8G8B8A8_UNORM, false);
+	info.misc = IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT | IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT |
+	            IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT;
 
 	auto image = device->create_image(info, &initial);
 	if (image)
@@ -140,7 +142,8 @@ void Texture::update_gtx(const Granite::SceneFormats::MemoryMappedTexture &mappe
 	info.swizzle = swizzle;
 	info.flags = (mapped_file.get_flags() & Granite::SceneFormats::MEMORY_MAPPED_TEXTURE_CUBE_MAP_COMPATIBLE_BIT) ?
 	             VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0;
-	info.misc = 0;
+	info.misc = IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT | IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT |
+	            IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT;
 
 	mapped_file.remap_swizzle(info.swizzle);
 

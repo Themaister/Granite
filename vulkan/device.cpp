@@ -2795,7 +2795,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 			add_unique_family(graphics_queue_family_index);
 		if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT)
 			add_unique_family(compute_queue_family_index);
-		if (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT)
+		if (staging_buffer || (queue_flags & IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT) != 0)
 			add_unique_family(transfer_queue_family_index);
 
 		if (info.queueFamilyIndexCount > 1)

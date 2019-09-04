@@ -1,0 +1,52 @@
+#version 450
+
+#pragma optimize off
+
+#extension GL_KHR_shader_subgroup_ballot : require
+layout(local_size_x = 64) in;
+
+layout(std430, set = 0, binding = 0) readonly buffer VariantBuffer
+{
+   uint variants[];
+};
+
+layout(std430, set = 0, binding = 1) writeonly buffer WorkList
+{
+   uint work_list[];
+};
+
+layout(std430, set = 0, binding = 2) buffer ItemCounts
+{
+   uint item_counts_per_variant[];
+};
+
+uint allocate_work_offset(uint variant_index)
+{
+#if 0
+   return atomicAdd(item_counts_per_variant[variant_index], 1u);
+#else
+   // Merge atomic operations.
+   for (;;)
+   {
+      if (subgroupBroadcastFirst(variant_index) == variant_index)
+      {
+         uvec4 active_mask = subgroupBallot(true);
+         uint count = subgroupBallotBitCount(active_mask);
+         uint work_offset = 0u;
+         if (subgroupElect())
+            work_offset = atomicAdd(item_counts_per_variant[variant_index], count);
+
+         work_offset = subgroupBroadcastFirst(work_offset);
+         work_offset += subgroupBallotExclusiveBitCount(active_mask);
+         return work_offset;
+      }
+   }
+#endif
+}
+
+void main()
+{
+   uint variant_index = variants[gl_GlobalInvocationID.x];
+   uint work_offset = allocate_work_offset(variant_index);
+   work_list[work_offset + 64u * variant_index] = gl_GlobalInvocationID.x;
+}

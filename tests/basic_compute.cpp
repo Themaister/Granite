@@ -23,8 +23,8 @@
 #include "application.hpp"
 #include "command_buffer.hpp"
 #include "device.hpp"
-#include "os_filesystem.hpp"
 #include "muglm/muglm_impl.hpp"
+#include "os_filesystem.hpp"
 
 using namespace Granite;
 using namespace Vulkan;
@@ -50,6 +50,8 @@ struct BasicComputeTest : Granite::Application, Granite::EventHandler
 		info.size = size;
 		info.domain = BufferDomain::Device;
 		info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+		if (!data)
+			info.misc = BUFFER_MISC_ZERO_INITIALIZE_BIT;
 		return get_wsi().get_device().create_buffer(info, data);
 	}
 
@@ -61,17 +63,15 @@ struct BasicComputeTest : Granite::Application, Granite::EventHandler
 		info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 		auto buffer = get_wsi().get_device().create_buffer(info);
 
-		auto cmd = get_wsi().get_device().request_command_buffer(CommandBuffer::Type::AsyncTransfer);
-		cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
-		             VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+		auto cmd = get_wsi().get_device().request_command_buffer();
+		cmd->barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+		             VK_ACCESS_TRANSFER_READ_BIT);
 		cmd->copy_buffer(*buffer, src);
-		cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-		             VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
+		cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_HOST_BIT,
+		             VK_ACCESS_HOST_READ_BIT);
 
 		Fence fence;
-		Semaphore sem[2];
-		get_wsi().get_device().submit(cmd, &fence, 2, sem);
-		get_wsi().get_device().add_wait_semaphore(CommandBuffer::Type::AsyncCompute, sem[0], VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, true);
+		get_wsi().get_device().submit(cmd, &fence);
 		fence->wait();
 
 		auto *mapped = get_wsi().get_device().map_host_buffer(*buffer, MEMORY_ACCESS_READ_BIT);
@@ -82,27 +82,41 @@ struct BasicComputeTest : Granite::Application, Granite::EventHandler
 	void render_frame(double, double) override
 	{
 		auto &device = get_wsi().get_device();
-		auto cmd = device.request_command_buffer(CommandBuffer::Type::AsyncCompute);
+		auto cmd = device.request_command_buffer();
 
-		u16vec4 a[3] = {};
-		a[0] = floatToHalf(vec4(5000.0f));
-		a[1] = floatToHalf(vec4(10000.0f));
-		auto buffer_a = create_ssbo(a, sizeof(a));
+		cmd->barrier(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_ACCESS_MEMORY_WRITE_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+		             VK_ACCESS_MEMORY_READ_BIT);
 
-		cmd->set_program("assets://shaders/compute_add.comp");
-		cmd->set_storage_buffer(0, 0, *buffer_a);
+		uint32_t variants[64];
+		for (unsigned i = 0; i < 64; i++)
+			variants[i] = i & 3;
+		auto variant_buffer = create_ssbo(variants, sizeof(variants));
+
+		auto work_list_buffer = create_ssbo(nullptr, 64 * 64 * sizeof(uint32_t));
+
+		uint32_t counts[64] = {};
+		auto work_list_count = create_ssbo(counts, sizeof(counts));
+
+		cmd->set_program("assets://shaders/compute_bucket_allocate.comp");
+		cmd->set_storage_buffer(0, 0, *variant_buffer);
+		cmd->set_storage_buffer(0, 1, *work_list_buffer);
+		cmd->set_storage_buffer(0, 2, *work_list_count);
 		cmd->dispatch(1, 1, 1);
+		device.submit(cmd);
 
-		Semaphore sem[2];
-		device.submit(cmd, nullptr, 2, sem);
-		device.add_wait_semaphore(CommandBuffer::Type::AsyncTransfer, sem[0], VK_PIPELINE_STAGE_TRANSFER_BIT, true);
-		device.add_wait_semaphore(CommandBuffer::Type::Generic, sem[1], VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, true);
+		uint32_t readback_work_list[64][64];
+		readback_ssbo(readback_work_list, sizeof(readback_work_list), *work_list_buffer);
 
-		readback_ssbo(a, sizeof(a), *buffer_a);
-		LOGI("dot_result = %f\n", halfToFloat(a[2].x));
-		LOGI("length_a_result = %f\n", halfToFloat(a[2].y));
-		LOGI("length_b_result = %f\n", halfToFloat(a[2].z));
-		LOGI("distance_result = %f\n", halfToFloat(a[2].w));
+		uint32_t readback_counts[64];
+		readback_ssbo(readback_counts, sizeof(readback_counts), *work_list_count);
+
+		for (unsigned i = 0; i < 64; i++)
+		{
+			LOGI("Variant: %u\n", i);
+			LOGI("  Count: %u\n", readback_counts[i]);
+			for (unsigned j = 0; j < readback_counts[i]; j++)
+				LOGI("    %u\n", readback_work_list[i][j]);
+		}
 
 		cmd = device.request_command_buffer();
 		auto rp = device.get_swapchain_render_pass(SwapchainRenderPass::ColorOnly);
@@ -137,4 +151,4 @@ Application *application_create(int, char **)
 		return nullptr;
 	}
 }
-}
+} // namespace Granite

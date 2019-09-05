@@ -1,6 +1,8 @@
 #ifndef SUBGROUP_DISCARD_H_
 #define SUBGROUP_DISCARD_H_
 
+#include "helper_invocation.h"
+
 #ifdef SUBGROUP_BASIC
 #extension GL_KHR_shader_subgroup_basic : require
 #endif
@@ -21,9 +23,20 @@
 #extension GL_KHR_shader_subgroup_quad : require
 #endif
 
-void quad_discard(bool to_discard)
+void quad_discard_late(bool to_discard)
 {
-#if defined(SUBGROUP_CLUSTERED)
+#if !defined(DEMOTE)
+	if (to_discard)
+		discard;
+#endif
+}
+
+void quad_discard_early(bool to_discard)
+{
+#if defined(DEMOTE)
+	if (to_discard)
+		demote;
+#elif defined(SUBGROUP_CLUSTERED)
 	// This is the cleanest one.
 	// Invocations in a quad must align to a cluster of 4.
 	if (subgroupClusteredAnd(int(to_discard), 4) != 0)

@@ -1,5 +1,6 @@
 #version 450
 
+#include "../inc/helper_invocation.h"
 #include "clusterer.h"
 
 layout(input_attachment_index = 0, set = 3, binding = 0) uniform mediump subpassInput BaseColor;

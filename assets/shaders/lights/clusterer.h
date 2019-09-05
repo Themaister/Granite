@@ -90,7 +90,7 @@ mediump vec3 compute_cluster_scatter_light(vec3 world_pos, vec3 camera_pos)
 
 #if !defined(CLUSTERER_NO_HELPER_INVOCATION) && defined(CLUSTERING_WAVE_UNIFORM)
 	uvec2 bits = uvec2(0u);
-	if (!gl_HelperInvocation)
+	if (!is_helper_invocation())
 		bits = textureLod(uCluster, cluster_pos, 0.0).xy;
 #else
 	uvec2 bits = textureLod(uCluster, cluster_pos, 0.0).xy;
@@ -174,7 +174,7 @@ mediump vec3 compute_cluster_light(
 
 #if !defined(CLUSTERER_NO_HELPER_INVOCATION) && defined(CLUSTERING_WAVE_UNIFORM)
 	uvec2 bits = uvec2(0u);
-	if (!gl_HelperInvocation)
+	if (!is_helper_invocation())
 		bits = textureLod(uCluster, cluster_pos, 0.0).xy;
 #else
 	uvec2 bits = textureLod(uCluster, cluster_pos, 0.0).xy;

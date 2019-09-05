@@ -73,7 +73,11 @@ void Renderer::set_mesh_renderer_options_internal(RendererOptionFlags flags)
 
 	if (device)
 	{
-		// Used for early-kill alpha testing.
+		// Safe early-discard.
+		if (device->get_device_features().demote_to_helper_invocation_features.shaderDemoteToHelperInvocation)
+			global_defines.emplace_back("DEMOTE", 1);
+
+		// Used for early-kill alpha testing if demote_to_helper isn't available.
 		auto &subgroup = device->get_device_features().subgroup_properties;
 		if ((subgroup.supportedStages & VK_SHADER_STAGE_FRAGMENT_BIT) != 0 &&
 		    !ImplementationQuirks::get().force_no_subgroups &&

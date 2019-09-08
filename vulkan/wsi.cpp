@@ -185,18 +185,24 @@ void WSI::init_surface_and_swapchain(VkSurfaceKHR new_surface)
 	update_framebuffer(swapchain_width, swapchain_height);
 }
 
-void WSI::deinit_surface_and_swapchain()
+void WSI::tear_down_swapchain()
 {
-	LOGI("deinit_surface_and_swapchain()\n");
-	device->wait_idle();
-
+	release_semaphores.clear();
 	device->set_acquire_semaphore(0, Semaphore{});
 	device->consume_release_semaphore();
+	device->wait_idle();
 
 	if (swapchain != VK_NULL_HANDLE)
 		table->vkDestroySwapchainKHR(context->get_device(), swapchain, nullptr);
 	swapchain = VK_NULL_HANDLE;
 	has_acquired_swapchain_index = false;
+}
+
+void WSI::deinit_surface_and_swapchain()
+{
+	LOGI("deinit_surface_and_swapchain()\n");
+
+	tear_down_swapchain();
 
 	if (surface != VK_NULL_HANDLE)
 		vkDestroySurfaceKHR(context->get_instance(), surface, nullptr);
@@ -357,16 +363,8 @@ bool WSI::begin_frame()
 		{
 			VK_ASSERT(swapchain_width != 0);
 			VK_ASSERT(swapchain_height != 0);
-			table->vkDeviceWaitIdle(device->get_device());
 
-			if (swapchain != VK_NULL_HANDLE)
-			{
-				table->vkDestroySwapchainKHR(device->get_device(), swapchain, nullptr);
-				swapchain = VK_NULL_HANDLE;
-			}
-
-			device->set_acquire_semaphore(0, Semaphore{});
-			device->consume_release_semaphore();
+			tear_down_swapchain();
 
 			if (!blocking_init_swapchain(swapchain_width, swapchain_height))
 				return false;
@@ -403,7 +401,7 @@ bool WSI::end_frame()
 		auto release = device->consume_release_semaphore();
 		VK_ASSERT(release);
 		VK_ASSERT(release->is_signalled());
-		auto release_semaphore = release->consume();
+		auto release_semaphore = release->get_semaphore();
 		VK_ASSERT(release_semaphore != VK_NULL_HANDLE);
 
 		VkResult result = VK_SUCCESS;
@@ -445,18 +443,15 @@ bool WSI::end_frame()
 		if (overall != VK_SUCCESS || result != VK_SUCCESS)
 		{
 			LOGE("vkQueuePresentKHR failed.\n");
-			device->wait_idle();
-			table->vkDestroySemaphore(device->get_device(), release_semaphore, nullptr);
-			table->vkDestroySwapchainKHR(device->get_device(), swapchain, nullptr);
-			swapchain = VK_NULL_HANDLE;
+			tear_down_swapchain();
 			return false;
 		}
 		else
 		{
-			if (release->can_recycle())
-				device->frame().recycled_semaphores.push_back(release_semaphore);
-			else
-				device->frame().destroyed_semaphores.push_back(release_semaphore);
+			release->wait_external();
+			// Cannot release the WSI wait semaphore until we observe that the image has been
+			// waited on again.
+			release_semaphores[swapchain_index] = release;
 		}
 
 		// Re-init swapchain.
@@ -475,7 +470,7 @@ void WSI::update_framebuffer(unsigned width, unsigned height)
 {
 	if (context && device)
 	{
-		table->vkDeviceWaitIdle(context->get_device());
+		tear_down_swapchain();
 		if (blocking_init_swapchain(width, height))
 			device->init_swapchain(swapchain_images, swapchain_width, swapchain_height, swapchain_format);
 	}
@@ -508,15 +503,8 @@ void WSI::deinit_external()
 
 	if (context)
 	{
-		table->vkDeviceWaitIdle(context->get_device());
-
-		device->set_acquire_semaphore(0, Semaphore{});
-		device->consume_release_semaphore();
-
+		tear_down_swapchain();
 		platform->event_swapchain_destroyed();
-		if (swapchain != VK_NULL_HANDLE)
-			table->vkDestroySwapchainKHR(context->get_device(), swapchain, nullptr);
-		has_acquired_swapchain_index = false;
 	}
 
 	if (surface != VK_NULL_HANDLE)
@@ -547,10 +535,7 @@ bool WSI::blocking_init_swapchain(unsigned width, unsigned height)
 				return false;
 
 			// Try to not reuse the swapchain.
-			table->vkDeviceWaitIdle(device->get_device());
-			if (swapchain != VK_NULL_HANDLE)
-				table->vkDestroySwapchainKHR(device->get_device(), swapchain, nullptr);
-			swapchain = VK_NULL_HANDLE;
+			tear_down_swapchain();
 		}
 		else if (err == SwapchainError::NoSurface && platform->alive(*this))
 		{
@@ -945,6 +930,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	if (table->vkGetSwapchainImagesKHR(context->get_device(), swapchain, &image_count, nullptr) != VK_SUCCESS)
 		return SwapchainError::Error;
 	swapchain_images.resize(image_count);
+	release_semaphores.resize(image_count);
 	if (table->vkGetSwapchainImagesKHR(context->get_device(), swapchain, &image_count, swapchain_images.data()) != VK_SUCCESS)
 		return SwapchainError::Error;
 

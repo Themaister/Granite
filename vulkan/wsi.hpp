@@ -187,6 +187,7 @@ private:
 	VkSurfaceKHR surface = VK_NULL_HANDLE;
 	VkSwapchainKHR swapchain = VK_NULL_HANDLE;
 	std::vector<VkImage> swapchain_images;
+	std::vector<Semaphore> release_semaphores;
 	std::unique_ptr<Device> device;
 	const VolkDeviceTable *table = nullptr;
 
@@ -230,5 +231,7 @@ private:
 	double smooth_elapsed_time = 0.0;
 
 	WSITiming timing;
+
+	void tear_down_swapchain();
 };
 }

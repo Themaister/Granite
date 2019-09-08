@@ -1819,7 +1819,8 @@ void Device::destroy_semaphore_nolock(VkSemaphore semaphore)
 
 void Device::recycle_semaphore_nolock(VkSemaphore semaphore)
 {
-	managers.semaphore.recycle(semaphore);
+	VK_ASSERT(!exists(frame().recycled_semaphores, semaphore));
+	frame().recycled_semaphores.push_back(semaphore);
 }
 
 void Device::destroy_event_nolock(VkEvent event)

@@ -78,6 +78,13 @@ public:
 		return !should_destroy_on_consume;
 	}
 
+	void wait_external()
+	{
+		VK_ASSERT(semaphore);
+		VK_ASSERT(signalled);
+		signalled = false;
+	}
+
 	void signal_external()
 	{
 		VK_ASSERT(!signalled);

@@ -59,6 +59,8 @@ struct DeviceFeatures
 	VkPhysicalDeviceComputeShaderDerivativesFeaturesNV compute_shader_derivative_features = {};
 	VkPhysicalDeviceHostQueryResetFeaturesEXT host_query_reset_features = {};
 	VkPhysicalDeviceShaderDemoteToHelperInvocationFeaturesEXT demote_to_helper_invocation_features = {};
+	VkPhysicalDeviceScalarBlockLayoutFeaturesEXT scalar_block_features = {};
+	VkPhysicalDeviceUniformBufferStandardLayoutFeaturesKHR ubo_std430_features = {};
 };
 
 enum VendorID

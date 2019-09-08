@@ -735,6 +735,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	ext.compute_shader_derivative_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COMPUTE_SHADER_DERIVATIVES_FEATURES_NV };
 	ext.host_query_reset_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_QUERY_RESET_FEATURES_EXT };
 	ext.demote_to_helper_invocation_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DEMOTE_TO_HELPER_INVOCATION_FEATURES_EXT };
+	ext.scalar_block_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SCALAR_BLOCK_LAYOUT_FEATURES_EXT };
+	ext.ubo_std430_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_UNIFORM_BUFFER_STANDARD_LAYOUT_FEATURES_KHR };
 	void **ppNext = &features.pNext;
 
 	bool has_pdf2 = ext.supports_physical_device_properties2 ||
@@ -799,6 +801,20 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 			enabled_extensions.push_back(VK_EXT_SHADER_DEMOTE_TO_HELPER_INVOCATION_EXTENSION_NAME);
 			*ppNext = &ext.demote_to_helper_invocation_features;
 			ppNext = &ext.demote_to_helper_invocation_features.pNext;
+		}
+
+		if (has_extension(VK_EXT_SCALAR_BLOCK_LAYOUT_EXTENSION_NAME))
+		{
+			enabled_extensions.push_back(VK_EXT_SCALAR_BLOCK_LAYOUT_EXTENSION_NAME);
+			*ppNext = &ext.scalar_block_features;
+			ppNext = &ext.scalar_block_features.pNext;
+		}
+
+		if (has_extension(VK_KHR_UNIFORM_BUFFER_STANDARD_LAYOUT_EXTENSION_NAME))
+		{
+			enabled_extensions.push_back(VK_KHR_UNIFORM_BUFFER_STANDARD_LAYOUT_EXTENSION_NAME);
+			*ppNext = &ext.ubo_std430_features;
+			ppNext = &ext.ubo_std430_features.pNext;
 		}
 
 #if 0

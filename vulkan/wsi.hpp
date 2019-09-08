@@ -233,5 +233,6 @@ private:
 	WSITiming timing;
 
 	void tear_down_swapchain();
+	void drain_swapchain();
 };
 }

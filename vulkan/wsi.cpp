@@ -185,12 +185,17 @@ void WSI::init_surface_and_swapchain(VkSurfaceKHR new_surface)
 	update_framebuffer(swapchain_width, swapchain_height);
 }
 
-void WSI::tear_down_swapchain()
+void WSI::drain_swapchain()
 {
 	release_semaphores.clear();
 	device->set_acquire_semaphore(0, Semaphore{});
 	device->consume_release_semaphore();
 	device->wait_idle();
+}
+
+void WSI::tear_down_swapchain()
+{
+	drain_swapchain();
 
 	if (swapchain != VK_NULL_HANDLE)
 		table->vkDestroySwapchainKHR(context->get_device(), swapchain, nullptr);
@@ -470,7 +475,7 @@ void WSI::update_framebuffer(unsigned width, unsigned height)
 {
 	if (context && device)
 	{
-		tear_down_swapchain();
+		drain_swapchain();
 		if (blocking_init_swapchain(width, height))
 			device->init_swapchain(swapchain_images, swapchain_width, swapchain_height, swapchain_format);
 	}

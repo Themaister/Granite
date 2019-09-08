@@ -245,7 +245,9 @@ vector<uint32_t> GLSLCompiler::compile(const vector<pair<string, int>> *defines)
 		error_message = message;
 	});
 
-	if (!core.Validate(compiled_spirv))
+	spvtools::ValidatorOptions opts;
+	opts.SetScalarBlockLayout(true);
+	if (!core.Validate(compiled_spirv.data(), compiled_spirv.size(), opts))
 	{
 		LOGE("Failed to validate SPIR-V.\n");
 		return {};

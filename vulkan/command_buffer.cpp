@@ -683,7 +683,9 @@ VkPipeline CommandBuffer::build_compute_pipeline(Hash hash)
 				return VK_NULL_HANDLE;
 			}
 
-			info.stage.flags |= VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT_EXT;
+			// We faked support for this flag on AMD for time being, see context.cpp.
+			if (device->get_gpu_properties().vendorID != VENDOR_ID_AMD)
+				info.stage.flags |= VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT_EXT;
 		}
 
 		uint32_t min_subgroups = 1u << static_state.state.subgroup_minimum_size_log2;

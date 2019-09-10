@@ -939,6 +939,12 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	device_table.vkGetDeviceQueue(device, compute_queue_family, compute_queue_index, &compute_queue);
 	device_table.vkGetDeviceQueue(device, transfer_queue_family, transfer_queue_index, &transfer_queue);
 
+	if (gpu_props.vendorID == VENDOR_ID_AMD && ext.subgroup_size_control_features.subgroupSizeControl)
+	{
+		// Workaround a missing feature bit being set. AMD driver always behaves like this.
+		ext.subgroup_size_control_features.computeFullSubgroups = VK_TRUE;
+	}
+
 	return true;
 }
 }

@@ -21,6 +21,11 @@ if (NOT ANDROID)
     target_compile_definitions(image-query-lod-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
 endif()
 
+add_granite_application(divergent-lod-test divergent_lod_test.cpp)
+if (NOT ANDROID)
+    target_compile_definitions(divergent-lod-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
+endif()
+
 add_granite_application(triangle-test triangle.cpp)
 if (NOT ANDROID)
     target_compile_definitions(triangle-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")

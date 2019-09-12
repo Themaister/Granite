@@ -52,7 +52,7 @@ struct DivergentLOD : Granite::Application, Granite::EventHandler
 		for (auto &r : red_color)
 			r = 0xff;
 		uint32_t green_color[8 * 8];
-		for (auto &r : red_color)
+		for (auto &r : green_color)
 			r = 0xff00;
 		uint32_t blue_color[8 * 8];
 		for (auto &r : blue_color)

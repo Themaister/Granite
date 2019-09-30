@@ -46,6 +46,7 @@ struct DeviceFeatures
 	bool supports_external_memory_host = false;
 	bool supports_surface_capabilities2 = false;
 	bool supports_full_screen_exclusive = false;
+	bool supports_update_template = false;
 	VkPhysicalDeviceSubgroupProperties subgroup_properties = {};
 	VkPhysicalDevice8BitStorageFeaturesKHR storage_8bit_features = {};
 	VkPhysicalDevice16BitStorageFeaturesKHR storage_16bit_features = {};

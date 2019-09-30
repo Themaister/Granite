@@ -1411,10 +1411,11 @@ void CommandBuffer::set_uniform_buffer(unsigned set, unsigned binding, const Buf
 	VK_ASSERT(buffer.get_create_info().usage & VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
 	auto &b = bindings.bindings[set][binding];
 
-	if (buffer.get_cookie() == bindings.cookies[set][binding] && b.buffer.offset == offset && b.buffer.range == range)
+	if (buffer.get_cookie() == bindings.cookies[set][binding] && b.dynamic_offset == offset && b.buffer.range == range)
 		return;
 
-	b.buffer = { buffer.get_buffer(), offset, range };
+	b.buffer = { buffer.get_buffer(), 0, range };
+	b.dynamic_offset = offset;
 	bindings.cookies[set][binding] = buffer.get_cookie();
 	bindings.secondary_cookies[set][binding] = 0;
 	dirty_sets |= 1u << set;
@@ -1432,6 +1433,7 @@ void CommandBuffer::set_storage_buffer(unsigned set, unsigned binding, const Buf
 		return;
 
 	b.buffer = { buffer.get_buffer(), offset, range };
+	b.dynamic_offset = 0;
 	bindings.cookies[set][binding] = buffer.get_cookie();
 	bindings.secondary_cookies[set][binding] = 0;
 	dirty_sets |= 1u << set;
@@ -1585,6 +1587,167 @@ void CommandBuffer::set_storage_texture(unsigned set, unsigned binding, const Im
 	            view.get_image().get_layout(VK_IMAGE_LAYOUT_GENERAL), view.get_cookie());
 }
 
+static void update_descriptor_set_legacy(Device &device, VkDescriptorSet desc_set,
+                                         const DescriptorSetLayout &set_layout, const ResourceBinding *bindings)
+{
+	auto &table = device.get_device_table();
+	uint32_t write_count = 0;
+	VkWriteDescriptorSet writes[VULKAN_NUM_BINDINGS];
+
+	for_each_bit(set_layout.uniform_buffer_mask, [&](uint32_t binding) {
+		unsigned array_size = set_layout.array_size[binding];
+		for (unsigned i = 0; i < array_size; i++)
+		{
+			VK_ASSERT(write_count < VULKAN_NUM_BINDINGS);
+			auto &write = writes[write_count++];
+			write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			write.pNext = nullptr;
+			write.descriptorCount = 1;
+			write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+			write.dstArrayElement = i;
+			write.dstBinding = binding;
+			write.dstSet = desc_set;
+			write.pBufferInfo = &bindings[binding + i].buffer;
+		}
+	});
+
+	for_each_bit(set_layout.storage_buffer_mask, [&](uint32_t binding) {
+		unsigned array_size = set_layout.array_size[binding];
+		for (unsigned i = 0; i < array_size; i++)
+		{
+			VK_ASSERT(write_count < VULKAN_NUM_BINDINGS);
+			auto &write = writes[write_count++];
+			write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			write.pNext = nullptr;
+			write.descriptorCount = 1;
+			write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+			write.dstArrayElement = i;
+			write.dstBinding = binding;
+			write.dstSet = desc_set;
+			write.pBufferInfo = &bindings[binding + i].buffer;
+		}
+	});
+
+	for_each_bit(set_layout.sampled_buffer_mask, [&](uint32_t binding) {
+		unsigned array_size = set_layout.array_size[binding];
+		for (unsigned i = 0; i < array_size; i++)
+		{
+			VK_ASSERT(write_count < VULKAN_NUM_BINDINGS);
+			auto &write = writes[write_count++];
+			write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			write.pNext = nullptr;
+			write.descriptorCount = 1;
+			write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
+			write.dstArrayElement = i;
+			write.dstBinding = binding;
+			write.dstSet = desc_set;
+			write.pTexelBufferView = &bindings[binding + i].buffer_view;
+		}
+	});
+
+	for_each_bit(set_layout.sampled_image_mask, [&](uint32_t binding) {
+		unsigned array_size = set_layout.array_size[binding];
+		for (unsigned i = 0; i < array_size; i++)
+		{
+			VK_ASSERT(write_count < VULKAN_NUM_BINDINGS);
+			auto &write = writes[write_count++];
+			write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			write.pNext = nullptr;
+			write.descriptorCount = 1;
+			write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			write.dstArrayElement = i;
+			write.dstBinding = binding;
+			write.dstSet = desc_set;
+
+			if (set_layout.fp_mask & (1u << binding))
+				write.pImageInfo = &bindings[binding + i].image.fp;
+			else
+				write.pImageInfo = &bindings[binding + i].image.integer;
+		}
+	});
+
+	for_each_bit(set_layout.separate_image_mask, [&](uint32_t binding) {
+		unsigned array_size = set_layout.array_size[binding];
+		for (unsigned i = 0; i < array_size; i++)
+		{
+			VK_ASSERT(write_count < VULKAN_NUM_BINDINGS);
+			auto &write = writes[write_count++];
+			write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			write.pNext = nullptr;
+			write.descriptorCount = 1;
+			write.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+			write.dstArrayElement = i;
+			write.dstBinding = binding;
+			write.dstSet = desc_set;
+
+			if (set_layout.fp_mask & (1u << binding))
+				write.pImageInfo = &bindings[binding + i].image.fp;
+			else
+				write.pImageInfo = &bindings[binding + i].image.integer;
+		}
+	});
+
+	for_each_bit(set_layout.sampler_mask & ~set_layout.immutable_sampler_mask, [&](uint32_t binding) {
+		unsigned array_size = set_layout.array_size[binding];
+		for (unsigned i = 0; i < array_size; i++)
+		{
+			VK_ASSERT(write_count < VULKAN_NUM_BINDINGS);
+			auto &write = writes[write_count++];
+			write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			write.pNext = nullptr;
+			write.descriptorCount = 1;
+			write.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+			write.dstArrayElement = i;
+			write.dstBinding = binding;
+			write.dstSet = desc_set;
+			write.pImageInfo = &bindings[binding + i].image.fp;
+		}
+	});
+
+	for_each_bit(set_layout.storage_image_mask, [&](uint32_t binding) {
+		unsigned array_size = set_layout.array_size[binding];
+		for (unsigned i = 0; i < array_size; i++)
+		{
+			VK_ASSERT(write_count < VULKAN_NUM_BINDINGS);
+			auto &write = writes[write_count++];
+			write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			write.pNext = nullptr;
+			write.descriptorCount = 1;
+			write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+			write.dstArrayElement = i;
+			write.dstBinding = binding;
+			write.dstSet = desc_set;
+
+			if (set_layout.fp_mask & (1u << binding))
+				write.pImageInfo = &bindings[binding + i].image.fp;
+			else
+				write.pImageInfo = &bindings[binding + i].image.integer;
+		}
+	});
+
+	for_each_bit(set_layout.input_attachment_mask, [&](uint32_t binding) {
+		unsigned array_size = set_layout.array_size[binding];
+		for (unsigned i = 0; i < array_size; i++)
+		{
+			VK_ASSERT(write_count < VULKAN_NUM_BINDINGS);
+			auto &write = writes[write_count++];
+			write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			write.pNext = nullptr;
+			write.descriptorCount = 1;
+			write.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+			write.dstArrayElement = i;
+			write.dstBinding = binding;
+			write.dstSet = desc_set;
+			if (set_layout.fp_mask & (1u << binding))
+				write.pImageInfo = &bindings[binding + i].image.fp;
+			else
+				write.pImageInfo = &bindings[binding + i].image.integer;
+		}
+	});
+
+	table.vkUpdateDescriptorSets(device.get_device(), write_count, writes, 0, nullptr);
+}
+
 void CommandBuffer::flush_descriptor_set(uint32_t set)
 {
 	auto &layout = current_layout->get_resource_layout();
@@ -1597,7 +1760,7 @@ void CommandBuffer::flush_descriptor_set(uint32_t set)
 
 	// UBOs
 	for_each_bit(set_layout.uniform_buffer_mask, [&](uint32_t binding) {
-		unsigned array_size = layout.sets[set].array_size[binding];
+		unsigned array_size = set_layout.array_size[binding];
 		for (unsigned i = 0; i < array_size; i++)
 		{
 			h.u64(bindings.cookies[set][binding + i]);
@@ -1605,13 +1768,13 @@ void CommandBuffer::flush_descriptor_set(uint32_t set)
 			VK_ASSERT(bindings.bindings[set][binding + i].buffer.buffer != VK_NULL_HANDLE);
 
 			VK_ASSERT(num_dynamic_offsets < VULKAN_NUM_BINDINGS);
-			dynamic_offsets[num_dynamic_offsets++] = bindings.bindings[set][binding + i].buffer.offset;
+			dynamic_offsets[num_dynamic_offsets++] = bindings.bindings[set][binding + i].dynamic_offset;
 		}
 	});
 
 	// SSBOs
 	for_each_bit(set_layout.storage_buffer_mask, [&](uint32_t binding) {
-		unsigned array_size = layout.sets[set].array_size[binding];
+		unsigned array_size = set_layout.array_size[binding];
 		for (unsigned i = 0; i < array_size; i++)
 		{
 			h.u64(bindings.cookies[set][binding + i]);
@@ -1623,7 +1786,7 @@ void CommandBuffer::flush_descriptor_set(uint32_t set)
 
 	// Sampled buffers
 	for_each_bit(set_layout.sampled_buffer_mask, [&](uint32_t binding) {
-		unsigned array_size = layout.sets[set].array_size[binding];
+		unsigned array_size = set_layout.array_size[binding];
 		for (unsigned i = 0; i < array_size; i++)
 		{
 			h.u64(bindings.cookies[set][binding + i]);
@@ -1633,7 +1796,7 @@ void CommandBuffer::flush_descriptor_set(uint32_t set)
 
 	// Sampled images
 	for_each_bit(set_layout.sampled_image_mask, [&](uint32_t binding) {
-		unsigned array_size = layout.sets[set].array_size[binding];
+		unsigned array_size = set_layout.array_size[binding];
 		for (unsigned i = 0; i < array_size; i++)
 		{
 			h.u64(bindings.cookies[set][binding + i]);
@@ -1649,7 +1812,7 @@ void CommandBuffer::flush_descriptor_set(uint32_t set)
 
 	// Separate images
 	for_each_bit(set_layout.separate_image_mask, [&](uint32_t binding) {
-		unsigned array_size = layout.sets[set].array_size[binding];
+		unsigned array_size = set_layout.array_size[binding];
 		for (unsigned i = 0; i < array_size; i++)
 		{
 			h.u64(bindings.cookies[set][binding + i]);
@@ -1660,7 +1823,7 @@ void CommandBuffer::flush_descriptor_set(uint32_t set)
 
 	// Separate samplers
 	for_each_bit(set_layout.sampler_mask & ~set_layout.immutable_sampler_mask, [&](uint32_t binding) {
-		unsigned array_size = layout.sets[set].array_size[binding];
+		unsigned array_size = set_layout.array_size[binding];
 		for (unsigned i = 0; i < array_size; i++)
 		{
 			h.u64(bindings.secondary_cookies[set][binding + 1]);
@@ -1670,7 +1833,7 @@ void CommandBuffer::flush_descriptor_set(uint32_t set)
 
 	// Storage images
 	for_each_bit(set_layout.storage_image_mask, [&](uint32_t binding) {
-		unsigned array_size = layout.sets[set].array_size[binding];
+		unsigned array_size = set_layout.array_size[binding];
 		for (unsigned i = 0; i < array_size; i++)
 		{
 			h.u64(bindings.cookies[set][binding + i]);
@@ -1681,7 +1844,7 @@ void CommandBuffer::flush_descriptor_set(uint32_t set)
 
 	// Input attachments
 	for_each_bit(set_layout.input_attachment_mask, [&](uint32_t binding) {
-		unsigned array_size = layout.sets[set].array_size[binding];
+		unsigned array_size = set_layout.array_size[binding];
 		for (unsigned i = 0; i < array_size; i++)
 		{
 			h.u64(bindings.cookies[set][binding + i]);
@@ -1696,168 +1859,17 @@ void CommandBuffer::flush_descriptor_set(uint32_t set)
 	// The descriptor set was not successfully cached, rebuild.
 	if (!allocated.second)
 	{
-		uint32_t write_count = 0;
-		uint32_t buffer_info_count = 0;
-		VkWriteDescriptorSet writes[VULKAN_NUM_BINDINGS];
-		VkDescriptorBufferInfo buffer_info[VULKAN_NUM_BINDINGS];
+        auto update_template = is_compute ?
+                               current_layout->get_update_template_compute(set) :
+                               current_layout->get_update_template_graphics(set);
 
-		for_each_bit(set_layout.uniform_buffer_mask, [&](uint32_t binding) {
-			unsigned array_size = layout.sets[set].array_size[binding];
-			for (unsigned i = 0; i < array_size; i++)
-			{
-				VK_ASSERT(write_count < VULKAN_NUM_BINDINGS);
-				auto &write = writes[write_count++];
-				write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-				write.pNext = nullptr;
-				write.descriptorCount = 1;
-				write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-				write.dstArrayElement = i;
-				write.dstBinding = binding;
-				write.dstSet = allocated.first;
-
-				// Offsets are applied dynamically.
-				auto &buffer = buffer_info[buffer_info_count++];
-				buffer = bindings.bindings[set][binding + i].buffer;
-				buffer.offset = 0;
-				write.pBufferInfo = &buffer;
-			}
-		});
-
-		for_each_bit(set_layout.storage_buffer_mask, [&](uint32_t binding) {
-			unsigned array_size = layout.sets[set].array_size[binding];
-			for (unsigned i = 0; i < array_size; i++)
-			{
-				VK_ASSERT(write_count < VULKAN_NUM_BINDINGS);
-				auto &write = writes[write_count++];
-				write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-				write.pNext = nullptr;
-				write.descriptorCount = 1;
-				write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-				write.dstArrayElement = i;
-				write.dstBinding = binding;
-				write.dstSet = allocated.first;
-				write.pBufferInfo = &bindings.bindings[set][binding + i].buffer;
-			}
-		});
-
-		for_each_bit(set_layout.sampled_buffer_mask, [&](uint32_t binding) {
-			unsigned array_size = layout.sets[set].array_size[binding];
-			for (unsigned i = 0; i < array_size; i++)
-			{
-				VK_ASSERT(write_count < VULKAN_NUM_BINDINGS);
-				auto &write = writes[write_count++];
-				write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-				write.pNext = nullptr;
-				write.descriptorCount = 1;
-				write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
-				write.dstArrayElement = i;
-				write.dstBinding = binding;
-				write.dstSet = allocated.first;
-				write.pTexelBufferView = &bindings.bindings[set][binding + i].buffer_view;
-			}
-		});
-
-		for_each_bit(set_layout.sampled_image_mask, [&](uint32_t binding) {
-			unsigned array_size = layout.sets[set].array_size[binding];
-			for (unsigned i = 0; i < array_size; i++)
-			{
-				VK_ASSERT(write_count < VULKAN_NUM_BINDINGS);
-				auto &write = writes[write_count++];
-				write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-				write.pNext = nullptr;
-				write.descriptorCount = 1;
-				write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-				write.dstArrayElement = i;
-				write.dstBinding = binding;
-				write.dstSet = allocated.first;
-
-				if (set_layout.fp_mask & (1u << binding))
-					write.pImageInfo = &bindings.bindings[set][binding + i].image.fp;
-				else
-					write.pImageInfo = &bindings.bindings[set][binding + i].image.integer;
-			}
-		});
-
-		for_each_bit(set_layout.separate_image_mask, [&](uint32_t binding) {
-			unsigned array_size = layout.sets[set].array_size[binding];
-			for (unsigned i = 0; i < array_size; i++)
-			{
-				VK_ASSERT(write_count < VULKAN_NUM_BINDINGS);
-				auto &write = writes[write_count++];
-				write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-				write.pNext = nullptr;
-				write.descriptorCount = 1;
-				write.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-				write.dstArrayElement = i;
-				write.dstBinding = binding;
-				write.dstSet = allocated.first;
-
-				if (set_layout.fp_mask & (1u << binding))
-					write.pImageInfo = &bindings.bindings[set][binding + i].image.fp;
-				else
-					write.pImageInfo = &bindings.bindings[set][binding + i].image.integer;
-			}
-		});
-
-		for_each_bit(set_layout.sampler_mask & ~set_layout.immutable_sampler_mask, [&](uint32_t binding) {
-			unsigned array_size = layout.sets[set].array_size[binding];
-			for (unsigned i = 0; i < array_size; i++)
-			{
-				VK_ASSERT(write_count < VULKAN_NUM_BINDINGS);
-				auto &write = writes[write_count++];
-				write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-				write.pNext = nullptr;
-				write.descriptorCount = 1;
-				write.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-				write.dstArrayElement = i;
-				write.dstBinding = binding;
-				write.dstSet = allocated.first;
-				write.pImageInfo = &bindings.bindings[set][binding + i].image.fp;
-			}
-		});
-
-		for_each_bit(set_layout.storage_image_mask, [&](uint32_t binding) {
-			unsigned array_size = layout.sets[set].array_size[binding];
-			for (unsigned i = 0; i < array_size; i++)
-			{
-				VK_ASSERT(write_count < VULKAN_NUM_BINDINGS);
-				auto &write = writes[write_count++];
-				write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-				write.pNext = nullptr;
-				write.descriptorCount = 1;
-				write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-				write.dstArrayElement = i;
-				write.dstBinding = binding;
-				write.dstSet = allocated.first;
-
-				if (set_layout.fp_mask & (1u << binding))
-					write.pImageInfo = &bindings.bindings[set][binding + i].image.fp;
-				else
-					write.pImageInfo = &bindings.bindings[set][binding + i].image.integer;
-			}
-		});
-
-		for_each_bit(set_layout.input_attachment_mask, [&](uint32_t binding) {
-			unsigned array_size = layout.sets[set].array_size[binding];
-			for (unsigned i = 0; i < array_size; i++)
-			{
-				VK_ASSERT(write_count < VULKAN_NUM_BINDINGS);
-				auto &write = writes[write_count++];
-				write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-				write.pNext = nullptr;
-				write.descriptorCount = 1;
-				write.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
-				write.dstArrayElement = i;
-				write.dstBinding = binding;
-				write.dstSet = allocated.first;
-				if (set_layout.fp_mask & (1u << binding))
-					write.pImageInfo = &bindings.bindings[set][binding + i].image.fp;
-				else
-					write.pImageInfo = &bindings.bindings[set][binding + i].image.integer;
-			}
-		});
-
-		table.vkUpdateDescriptorSets(device->get_device(), write_count, writes, 0, nullptr);
+		if (update_template != VK_NULL_HANDLE)
+		{
+			table.vkUpdateDescriptorSetWithTemplateKHR(device->get_device(), allocated.first,
+			                                           update_template, bindings.bindings[set]);
+		}
+		else
+			update_descriptor_set_legacy(*device, allocated.first, layout.sets[set], bindings.bindings[set]);
 	}
 
 	table.vkCmdBindDescriptorSets(cmd, actual_render_pass ? VK_PIPELINE_BIND_POINT_GRAPHICS : VK_PIPELINE_BIND_POINT_COMPUTE,

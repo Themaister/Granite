@@ -152,27 +152,6 @@ struct VertexBindingState
 	VkVertexInputRate input_rates[VULKAN_NUM_VERTEX_BUFFERS];
 };
 
-struct ResourceBinding
-{
-	union {
-		VkDescriptorBufferInfo buffer;
-		struct
-		{
-			VkDescriptorImageInfo fp;
-			VkDescriptorImageInfo integer;
-		} image;
-		VkBufferView buffer_view;
-	};
-};
-
-struct ResourceBindings
-{
-	ResourceBinding bindings[VULKAN_NUM_DESCRIPTOR_SETS][VULKAN_NUM_BINDINGS];
-	uint64_t cookies[VULKAN_NUM_DESCRIPTOR_SETS][VULKAN_NUM_BINDINGS];
-	uint64_t secondary_cookies[VULKAN_NUM_DESCRIPTOR_SETS][VULKAN_NUM_BINDINGS];
-	uint8_t push_constant_data[VULKAN_PUSH_CONSTANT_SIZE];
-};
-
 enum CommandBufferSavedStateBits
 {
 	COMMAND_BUFFER_SAVED_BINDINGS_0_BIT = 1u << 0,

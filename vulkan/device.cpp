@@ -662,25 +662,18 @@ void Device::set_context(const Context &context)
 
 	mem_props = context.get_mem_props();
 	gpu_props = context.get_gpu_props();
+	ext = context.get_enabled_device_features();
 
 	init_workarounds();
 
 	init_stock_samplers();
 	init_pipeline_cache();
-#ifdef GRANITE_VULKAN_FOSSILIZE
-	init_pipeline_state();
-#endif
-#ifdef GRANITE_VULKAN_FILESYSTEM
-	init_shader_manager_cache();
-#endif
 
 #ifdef ANDROID
 	init_frame_contexts(3); // Android needs a bit more ... ;)
 #else
 	init_frame_contexts(2); // By default, regular double buffer between CPU and GPU.
 #endif
-
-	ext = context.get_enabled_device_features();
 
 	managers.memory.init(this);
 	managers.memory.set_supports_dedicated_allocation(ext.supports_dedicated);
@@ -697,6 +690,13 @@ void Device::set_context(const Context &context)
 	managers.staging.init(this, 64 * 1024, std::max<VkDeviceSize>(16u, gpu_props.limits.optimalBufferCopyOffsetAlignment),
 	                      VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 	                      false);
+
+#ifdef GRANITE_VULKAN_FOSSILIZE
+	init_pipeline_state();
+#endif
+#ifdef GRANITE_VULKAN_FILESYSTEM
+	init_shader_manager_cache();
+#endif
 }
 
 void Device::init_stock_samplers()

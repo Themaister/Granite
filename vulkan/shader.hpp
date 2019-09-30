@@ -73,6 +73,28 @@ struct CombinedResourceLayout
 	Util::Hash push_constant_layout_hash = 0;
 };
 
+struct ResourceBinding
+{
+	union {
+		VkDescriptorBufferInfo buffer;
+		struct
+		{
+			VkDescriptorImageInfo fp;
+			VkDescriptorImageInfo integer;
+		} image;
+		VkBufferView buffer_view;
+	};
+	VkDeviceSize dynamic_offset;
+};
+
+struct ResourceBindings
+{
+	ResourceBinding bindings[VULKAN_NUM_DESCRIPTOR_SETS][VULKAN_NUM_BINDINGS];
+	uint64_t cookies[VULKAN_NUM_DESCRIPTOR_SETS][VULKAN_NUM_BINDINGS];
+	uint64_t secondary_cookies[VULKAN_NUM_DESCRIPTOR_SETS][VULKAN_NUM_BINDINGS];
+	uint8_t push_constant_data[VULKAN_PUSH_CONSTANT_SIZE];
+};
+
 class PipelineLayout : public HashedObject<PipelineLayout>
 {
 public:
@@ -94,11 +116,24 @@ public:
 		return set_allocators[set];
 	}
 
+	VkDescriptorUpdateTemplateKHR get_update_template_graphics(unsigned set) const
+	{
+		return update_template_graphics[set];
+	}
+
+	VkDescriptorUpdateTemplateKHR get_update_template_compute(unsigned set) const
+	{
+		return update_template_compute[set];
+	}
+
 private:
 	Device *device;
 	VkPipelineLayout pipe_layout = VK_NULL_HANDLE;
 	CombinedResourceLayout layout;
 	DescriptorSetAllocator *set_allocators[VULKAN_NUM_DESCRIPTOR_SETS] = {};
+	VkDescriptorUpdateTemplateKHR update_template_graphics[VULKAN_NUM_DESCRIPTOR_SETS] = {};
+	VkDescriptorUpdateTemplateKHR update_template_compute[VULKAN_NUM_DESCRIPTOR_SETS] = {};
+	void create_update_templates();
 };
 
 class Shader : public HashedObject<Shader>

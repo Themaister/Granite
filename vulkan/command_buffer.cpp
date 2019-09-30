@@ -1859,9 +1859,7 @@ void CommandBuffer::flush_descriptor_set(uint32_t set)
 	// The descriptor set was not successfully cached, rebuild.
 	if (!allocated.second)
 	{
-        auto update_template = is_compute ?
-                               current_layout->get_update_template_compute(set) :
-                               current_layout->get_update_template_graphics(set);
+		auto update_template = current_layout->get_update_template(set);
 
 		if (update_template != VK_NULL_HANDLE)
 		{

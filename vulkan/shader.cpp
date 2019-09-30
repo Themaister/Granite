@@ -202,17 +202,11 @@ void PipelineLayout::create_update_templates()
 		info.set = desc_set;
 		info.descriptorUpdateEntryCount = update_count;
 		info.pDescriptorUpdateEntries = update_entries;
-		info.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+		info.pipelineBindPoint = (layout.stages_for_sets[desc_set] & VK_SHADER_STAGE_COMPUTE_BIT) ?
+				VK_PIPELINE_BIND_POINT_COMPUTE : VK_PIPELINE_BIND_POINT_GRAPHICS;
 
 		if (table.vkCreateDescriptorUpdateTemplateKHR(device->get_device(), &info, nullptr,
-		                                              &update_template_graphics[desc_set]) != VK_SUCCESS)
-		{
-			LOGE("Failed to create descriptor update template.\n");
-		}
-
-		info.pipelineBindPoint = VK_PIPELINE_BIND_POINT_COMPUTE;
-		if (table.vkCreateDescriptorUpdateTemplateKHR(device->get_device(), &info, nullptr,
-		                                              &update_template_compute[desc_set]) != VK_SUCCESS)
+		                                              &update_template[desc_set]) != VK_SUCCESS)
 		{
 			LOGE("Failed to create descriptor update template.\n");
 		}
@@ -225,11 +219,7 @@ PipelineLayout::~PipelineLayout()
 	if (pipe_layout != VK_NULL_HANDLE)
 		table.vkDestroyPipelineLayout(device->get_device(), pipe_layout, nullptr);
 
-	for (auto &update : update_template_graphics)
-		if (update != VK_NULL_HANDLE)
-			table.vkDestroyDescriptorUpdateTemplateKHR(device->get_device(), update, nullptr);
-
-	for (auto &update : update_template_compute)
+	for (auto &update : update_template)
 		if (update != VK_NULL_HANDLE)
 			table.vkDestroyDescriptorUpdateTemplateKHR(device->get_device(), update, nullptr);
 }

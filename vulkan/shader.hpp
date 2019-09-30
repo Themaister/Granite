@@ -116,14 +116,9 @@ public:
 		return set_allocators[set];
 	}
 
-	VkDescriptorUpdateTemplateKHR get_update_template_graphics(unsigned set) const
+	VkDescriptorUpdateTemplateKHR get_update_template(unsigned set) const
 	{
-		return update_template_graphics[set];
-	}
-
-	VkDescriptorUpdateTemplateKHR get_update_template_compute(unsigned set) const
-	{
-		return update_template_compute[set];
+		return update_template[set];
 	}
 
 private:
@@ -131,8 +126,7 @@ private:
 	VkPipelineLayout pipe_layout = VK_NULL_HANDLE;
 	CombinedResourceLayout layout;
 	DescriptorSetAllocator *set_allocators[VULKAN_NUM_DESCRIPTOR_SETS] = {};
-	VkDescriptorUpdateTemplateKHR update_template_graphics[VULKAN_NUM_DESCRIPTOR_SETS] = {};
-	VkDescriptorUpdateTemplateKHR update_template_compute[VULKAN_NUM_DESCRIPTOR_SETS] = {};
+	VkDescriptorUpdateTemplateKHR update_template[VULKAN_NUM_DESCRIPTOR_SETS] = {};
 	void create_update_templates();
 };
 

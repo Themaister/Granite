@@ -693,7 +693,8 @@ VkPipeline CommandBuffer::build_compute_pipeline(Hash hash)
 		if (min_subgroups <= features.subgroup_size_control_properties.minSubgroupSize &&
 		    max_subgroups >= features.subgroup_size_control_properties.maxSubgroupSize)
 		{
-			info.stage.flags |= VK_PIPELINE_SHADER_STAGE_CREATE_ALLOW_VARYING_SUBGROUP_SIZE_BIT_EXT;
+			if (!features.subgroup_size_control_fake)
+				info.stage.flags |= VK_PIPELINE_SHADER_STAGE_CREATE_ALLOW_VARYING_SUBGROUP_SIZE_BIT_EXT;
 		}
 		else
 		{
@@ -702,7 +703,9 @@ VkPipeline CommandBuffer::build_compute_pipeline(Hash hash)
 				subgroup_size_info.requiredSubgroupSize = features.subgroup_size_control_properties.minSubgroupSize;
 			else
 				subgroup_size_info.requiredSubgroupSize = min_subgroups;
-			info.stage.pNext = &subgroup_size_info;
+
+			if (!features.subgroup_size_control_fake)
+				info.stage.pNext = &subgroup_size_info;
 
 			if (subgroup_size_info.requiredSubgroupSize < features.subgroup_size_control_properties.minSubgroupSize ||
 			    subgroup_size_info.requiredSubgroupSize > features.subgroup_size_control_properties.maxSubgroupSize)

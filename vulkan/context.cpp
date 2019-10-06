@@ -950,6 +950,16 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		// Workaround a missing feature bit being set. AMD driver always behaves like this.
 		ext.subgroup_size_control_features.computeFullSubgroups = VK_TRUE;
 	}
+	else if (gpu_props.vendorID == VENDOR_ID_AMD && !ext.subgroup_size_control_features.subgroupSizeControl)
+	{
+		// Workaround for RADV. Just assume wave size is always 64.
+		ext.subgroup_size_control_features.subgroupSizeControl = VK_TRUE;
+		ext.subgroup_size_control_features.computeFullSubgroups = VK_TRUE;
+		ext.subgroup_size_control_properties.requiredSubgroupSizeStages = VK_SHADER_STAGE_COMPUTE_BIT;
+		ext.subgroup_size_control_properties.minSubgroupSize = ext.subgroup_properties.subgroupSize;
+		ext.subgroup_size_control_properties.maxSubgroupSize = ext.subgroup_properties.subgroupSize;
+		ext.subgroup_size_control_fake = true;
+	}
 
 	return true;
 }

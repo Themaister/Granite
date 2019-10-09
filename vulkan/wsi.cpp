@@ -296,7 +296,7 @@ bool WSI::begin_frame()
 	VkResult result;
 	do
 	{
-		auto acquire = device->request_semaphore();
+		auto acquire = device->request_legacy_semaphore();
 
 		// For adaptive low latency we don't want to observe the time it takes to wait for
 		// WSI semaphore as part of our latency,
@@ -304,7 +304,7 @@ bool WSI::begin_frame()
 		// so block on that first.
 		Fence fence;
 		if (timing.get_options().latency_limiter == LatencyLimiter::AdaptiveLowLatency)
-			fence = device->request_fence();
+			fence = device->request_legacy_fence();
 
 #ifdef VULKAN_WSI_TIMING_DEBUG
 		auto acquire_start = Util::get_current_time_nsecs();

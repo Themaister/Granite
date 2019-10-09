@@ -67,7 +67,7 @@ Device::Device()
 #endif
 }
 
-Semaphore Device::request_semaphore()
+Semaphore Device::request_legacy_semaphore()
 {
 	LOCK();
 	auto semaphore = managers.semaphore.request_cleared_semaphore();
@@ -669,6 +669,8 @@ void Device::set_context(const Context &context)
 	init_stock_samplers();
 	init_pipeline_cache();
 
+	init_timeline_semaphores();
+
 #ifdef ANDROID
 	init_frame_contexts(3); // Android needs a bit more ... ;)
 #else
@@ -697,6 +699,24 @@ void Device::set_context(const Context &context)
 #ifdef GRANITE_VULKAN_FILESYSTEM
 	init_shader_manager_cache();
 #endif
+}
+
+void Device::init_timeline_semaphores()
+{
+	if (!ext.timeline_semaphore_features.timelineSemaphore)
+		return;
+
+	VkSemaphoreTypeCreateInfoKHR type_info = { VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO_KHR };
+	VkSemaphoreCreateInfo info = { VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
+	info.pNext = &type_info;
+	type_info.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE_KHR;
+	type_info.initialValue = 0;
+	if (table->vkCreateSemaphore(device, &info, nullptr, &graphics.timeline_semaphore) != VK_SUCCESS)
+		LOGE("Failed to create timeline semaphore.\n");
+	if (table->vkCreateSemaphore(device, &info, nullptr, &compute.timeline_semaphore) != VK_SUCCESS)
+		LOGE("Failed to create timeline semaphore.\n");
+	if (table->vkCreateSemaphore(device, &info, nullptr, &transfer.timeline_semaphore) != VK_SUCCESS)
+		LOGE("Failed to create timeline sempahore.\n");
 }
 
 void Device::init_stock_samplers()
@@ -874,22 +894,27 @@ CommandBuffer::Type Device::get_physical_queue_type(CommandBuffer::Type queue_ty
 void Device::submit_nolock(CommandBufferHandle cmd, Fence *fence, unsigned semaphore_count, Semaphore *semaphores)
 {
 	auto type = cmd->get_command_buffer_type();
-	auto &pool = get_command_pool(type, cmd->get_thread_index());
 	auto &submissions = get_queue_submissions(type);
-
+#ifdef VULKAN_DEBUG
+	auto &pool = get_command_pool(type, cmd->get_thread_index());
 	pool.signal_submitted(cmd->get_command_buffer());
+#endif
+
 	cmd->end();
 	submissions.push_back(move(cmd));
 
-	VkFence cleared_fence = VK_NULL_HANDLE;
+	InternalFence signalled_fence;
 
 	if (fence || semaphore_count)
-		submit_queue(type, fence ? &cleared_fence : nullptr, semaphore_count, semaphores);
+		submit_queue(type, fence ? &signalled_fence : nullptr, semaphore_count, semaphores);
 
 	if (fence)
 	{
 		VK_ASSERT(!*fence);
-		*fence = Fence(handle_pool.fences.allocate(this, cleared_fence));
+		if (signalled_fence.value)
+			*fence = Fence(handle_pool.fences.allocate(this, signalled_fence.value, signalled_fence.timeline));
+		else
+			*fence = Fence(handle_pool.fences.allocate(this, signalled_fence.fence));
 	}
 
 	decrement_frame_counter_nolock();
@@ -908,52 +933,29 @@ void Device::submit_empty_nolock(CommandBuffer::Type type, Fence *fence,
 	if (type != CommandBuffer::Type::AsyncTransfer)
 		flush_frame(CommandBuffer::Type::AsyncTransfer);
 
-	VkFence cleared_fence = VK_NULL_HANDLE;
-	submit_queue(type, fence ? &cleared_fence : nullptr, semaphore_count, semaphores);
+	InternalFence signalled_fence;
+	submit_queue(type, fence ? &signalled_fence : nullptr, semaphore_count, semaphores);
 	if (fence)
-		*fence = Fence(handle_pool.fences.allocate(this, cleared_fence));
+	{
+		if (signalled_fence.value)
+			*fence = Fence(handle_pool.fences.allocate(this, signalled_fence.value, signalled_fence.timeline));
+		else
+			*fence = Fence(handle_pool.fences.allocate(this, signalled_fence.fence));
+	}
 }
 
-void Device::submit_empty_inner(CommandBuffer::Type type, VkFence *fence,
+void Device::submit_empty_inner(CommandBuffer::Type type, InternalFence *fence,
                                 unsigned semaphore_count, Semaphore *semaphores)
 {
 	auto &data = get_queue_data(type);
 	VkSubmitInfo submit = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
+	VkTimelineSemaphoreSubmitInfoKHR timeline_info = { VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO_KHR };
 
-	// Add external wait semaphores.
-	vector<VkSemaphore> waits;
-	vector<VkSemaphore> signals;
-	auto stages = move(data.wait_stages);
+	if (ext.timeline_semaphore_features.timelineSemaphore)
+		submit.pNext = &timeline_info;
 
-	for (auto &semaphore : data.wait_semaphores)
-	{
-		auto wait = semaphore->consume();
-		if (semaphore->can_recycle())
-			frame().recycled_semaphores.push_back(wait);
-		else
-			frame().destroyed_semaphores.push_back(wait);
-		waits.push_back(wait);
-	}
-	data.wait_stages.clear();
-	data.wait_semaphores.clear();
-
-	// Add external signal semaphores.
-	for (unsigned i = 0; i < semaphore_count; i++)
-	{
-		VkSemaphore cleared_semaphore = managers.semaphore.request_cleared_semaphore();
-		signals.push_back(cleared_semaphore);
-		VK_ASSERT(!semaphores[i]);
-		semaphores[i] = Semaphore(handle_pool.semaphores.allocate(this, cleared_semaphore, true));
-	}
-
-	submit.signalSemaphoreCount = signals.size();
-	submit.waitSemaphoreCount = waits.size();
-	if (!signals.empty())
-		submit.pSignalSemaphores = signals.data();
-	if (!stages.empty())
-		submit.pWaitDstStageMask = stages.data();
-	if (!waits.empty())
-		submit.pWaitSemaphores = waits.data();
+	VkSemaphore timeline_semaphore = data.timeline_semaphore;
+	uint64_t timeline_value = ++data.current_timeline;
 
 	VkQueue queue;
 	switch (type)
@@ -961,22 +963,111 @@ void Device::submit_empty_inner(CommandBuffer::Type type, VkFence *fence,
 	default:
 	case CommandBuffer::Type::Generic:
 		queue = graphics_queue;
+		frame().timeline_fence_graphics = graphics.current_timeline;
 		break;
+
 	case CommandBuffer::Type::AsyncCompute:
 		queue = compute_queue;
+		frame().timeline_fence_compute = compute.current_timeline;
 		break;
+
 	case CommandBuffer::Type::AsyncTransfer:
 		queue = transfer_queue;
+		frame().timeline_fence_transfer = transfer.current_timeline;
 		break;
 	}
 
-	VkFence cleared_fence = fence ? managers.fence.request_cleared_fence() : VK_NULL_HANDLE;
+	// Add external signal semaphores.
+	SmallVector<VkSemaphore> signals;
+	if (ext.timeline_semaphore_features.timelineSemaphore)
+	{
+		// Signal once and distribute the timeline value to all.
+		timeline_info.signalSemaphoreValueCount = 1;
+		timeline_info.pSignalSemaphoreValues = &timeline_value;
+		submit.signalSemaphoreCount = 1;
+		submit.pSignalSemaphores = &timeline_semaphore;
+
+		if (fence)
+		{
+			fence->timeline = timeline_semaphore;
+			fence->value = timeline_value;
+			fence->fence = VK_NULL_HANDLE;
+		}
+
+		for (unsigned i = 0; i < semaphore_count; i++)
+		{
+			VK_ASSERT(!semaphores[i]);
+			semaphores[i] = Semaphore(handle_pool.semaphores.allocate(this, timeline_value, timeline_semaphore));
+		}
+	}
+	else
+	{
+		if (fence)
+		{
+			fence->timeline = VK_NULL_HANDLE;
+			fence->value = 0;
+		}
+
+		for (unsigned i = 0; i < semaphore_count; i++)
+		{
+			VkSemaphore cleared_semaphore = managers.semaphore.request_cleared_semaphore();
+			signals.push_back(cleared_semaphore);
+			VK_ASSERT(!semaphores[i]);
+			semaphores[i] = Semaphore(handle_pool.semaphores.allocate(this, cleared_semaphore, true));
+		}
+
+		submit.signalSemaphoreCount = signals.size();
+		if (!signals.empty())
+			submit.pSignalSemaphores = signals.data();
+	}
+
+	// Add external wait semaphores.
+	SmallVector<VkSemaphore> waits;
+	SmallVector<uint64_t> waits_count;
+	auto stages = move(data.wait_stages);
+
+	for (auto &semaphore : data.wait_semaphores)
+	{
+		auto wait = semaphore->consume();
+		if (!semaphore->get_timeline_value())
+		{
+			if (semaphore->can_recycle())
+				frame().recycled_semaphores.push_back(wait);
+			else
+				frame().destroyed_semaphores.push_back(wait);
+		}
+		waits.push_back(wait);
+		waits_count.push_back(semaphore->get_timeline_value());
+	}
+
+	data.wait_stages.clear();
+	data.wait_semaphores.clear();
+
+	submit.waitSemaphoreCount = waits.size();
+	if (!stages.empty())
+		submit.pWaitDstStageMask = stages.data();
+	if (!waits.empty())
+		submit.pWaitSemaphores = waits.data();
+
+	if (!waits_count.empty())
+	{
+		timeline_info.waitSemaphoreValueCount = waits_count.size();
+		timeline_info.pWaitSemaphoreValues = waits_count.data();
+	}
+
+	VkFence cleared_fence = fence && !ext.timeline_semaphore_features.timelineSemaphore ?
+	                        managers.fence.request_cleared_fence() :
+	                        VK_NULL_HANDLE;
+	if (fence)
+		fence->fence = cleared_fence;
+
 	if (queue_lock_callback)
 		queue_lock_callback();
 #if defined(VULKAN_DEBUG) && defined(SUBMIT_DEBUG)
 	if (cleared_fence)
 		LOGI("Signalling Fence: %llx\n", reinterpret_cast<unsigned long long>(cleared_fence));
 #endif
+
 	VkResult result = table->vkQueueSubmit(queue, 1, &submit, cleared_fence);
 	if (ImplementationQuirks::get().queue_wait_on_submission)
 		table->vkQueueWaitIdle(queue);
@@ -988,9 +1079,8 @@ void Device::submit_empty_inner(CommandBuffer::Type type, VkFence *fence,
 	if (result == VK_ERROR_DEVICE_LOST)
 		report_checkpoints();
 
-	if (fence)
-		*fence = cleared_fence;
-	data.need_fence = true;
+	if (!ext.timeline_semaphore_features.timelineSemaphore)
+		data.need_fence = true;
 
 #if defined(VULKAN_DEBUG) && defined(SUBMIT_DEBUG)
 	const char *queue_name = nullptr;
@@ -1024,7 +1114,7 @@ void Device::submit_empty_inner(CommandBuffer::Type type, VkFence *fence,
 #endif
 }
 
-Fence Device::request_fence()
+Fence Device::request_legacy_fence()
 {
 	VkFence fence = managers.fence.request_cleared_fence();
 	return Fence(handle_pool.fences.allocate(this, fence));
@@ -1113,7 +1203,7 @@ void Device::submit_staging(CommandBufferHandle &cmd, VkBufferUsageFlags usage, 
 	}
 }
 
-void Device::submit_queue(CommandBuffer::Type type, VkFence *fence,
+void Device::submit_queue(CommandBuffer::Type type, InternalFence *fence,
                           unsigned semaphore_count, Semaphore *semaphores)
 {
 	type = get_physical_queue_type(type);
@@ -1132,27 +1222,60 @@ void Device::submit_queue(CommandBuffer::Type type, VkFence *fence,
 		return;
 	}
 
-	vector<VkCommandBuffer> cmds;
+	VkSemaphore timeline_semaphore = data.timeline_semaphore;
+	uint64_t timeline_value = ++data.current_timeline;
+
+	VkQueue queue;
+	switch (type)
+	{
+	default:
+	case CommandBuffer::Type::Generic:
+		queue = graphics_queue;
+		frame().timeline_fence_graphics = graphics.current_timeline;
+		break;
+
+	case CommandBuffer::Type::AsyncCompute:
+		queue = compute_queue;
+		frame().timeline_fence_compute = compute.current_timeline;
+		break;
+
+	case CommandBuffer::Type::AsyncTransfer:
+		queue = transfer_queue;
+		frame().timeline_fence_transfer = transfer.current_timeline;
+		break;
+	}
+
+	SmallVector<VkCommandBuffer> cmds;
 	cmds.reserve(submissions.size());
 
-	vector<VkSubmitInfo> submits;
+	SmallVector<VkSubmitInfo> submits;
+	SmallVector<VkTimelineSemaphoreSubmitInfoKHR> timeline_infos;
+
 	submits.reserve(2);
+	timeline_infos.reserve(2);
+
 	size_t last_cmd = 0;
 
-	vector<VkSemaphore> waits[2];
-	vector<VkSemaphore> signals[2];
-	vector<VkFlags> stages[2];
+	SmallVector<VkSemaphore> waits[2];
+	SmallVector<uint64_t> wait_counts[2];
+	SmallVector<VkFlags> wait_stages[2];
+	SmallVector<VkSemaphore> signals[2];
+	SmallVector<uint64_t> signal_counts[2];
 
 	// Add external wait semaphores.
-	stages[0] = move(data.wait_stages);
+	wait_stages[0] = move(data.wait_stages);
 
 	for (auto &semaphore : data.wait_semaphores)
 	{
 		auto wait = semaphore->consume();
-		if (semaphore->can_recycle())
-			frame().recycled_semaphores.push_back(wait);
-		else
-			frame().destroyed_semaphores.push_back(wait);
+		if (!semaphore->get_timeline_value())
+		{
+			if (semaphore->can_recycle())
+				frame().recycled_semaphores.push_back(wait);
+			else
+				frame().destroyed_semaphores.push_back(wait);
+		}
+		wait_counts[0].push_back(semaphore->get_timeline_value());
 		waits[0].push_back(wait);
 	}
 	data.wait_stages.clear();
@@ -1186,12 +1309,17 @@ void Device::submit_queue(CommandBuffer::Type type, VkFence *fence,
 		unsigned index = submits.size();
 
 		// Push all pending cmd buffers to their own submission.
-		submits.emplace_back();
+		timeline_infos.emplace_back();
+		auto &timeline_info = timeline_infos.back();
+		timeline_info = { VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO_KHR };
 
+		submits.emplace_back();
 		auto &submit = submits.back();
-		memset(&submit, 0, sizeof(submit));
-		submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-		submit.pNext = nullptr;
+		submit = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
+
+		if (ext.timeline_semaphore_features.timelineSemaphore)
+			submit.pNext = &timeline_info;
+
 		submit.commandBufferCount = cmds.size() - last_cmd;
 		submit.pCommandBuffers = cmds.data() + last_cmd;
 		if (wsi.touched && !wsi.consumed)
@@ -1201,14 +1329,19 @@ void Device::submit_queue(CommandBuffer::Type type, VkFence *fence,
 			{
 				VK_ASSERT(wsi.acquire->is_signalled());
 				VkSemaphore sem = wsi.acquire->consume();
+
 				waits[index].push_back(sem);
+				wait_counts[index].push_back(wsi.acquire->get_timeline_value());
+				wait_stages[index].push_back(wait);
 
-				if (wsi.acquire->can_recycle())
-					frame().recycled_semaphores.push_back(sem);
-				else
-					frame().destroyed_semaphores.push_back(sem);
+				if (!wsi.acquire->get_timeline_value())
+				{
+					if (wsi.acquire->can_recycle())
+						frame().recycled_semaphores.push_back(sem);
+					else
+						frame().destroyed_semaphores.push_back(sem);
+				}
 
-				stages[index].push_back(wait);
 				wsi.acquire.reset();
 			}
 
@@ -1216,49 +1349,72 @@ void Device::submit_queue(CommandBuffer::Type type, VkFence *fence,
 			wsi.release = Semaphore(handle_pool.semaphores.allocate(this, release, true));
 			wsi.release->set_internal_sync_object();
 			signals[index].push_back(wsi.release->get_semaphore());
+			signal_counts[index].push_back(0);
 			wsi.consumed = true;
 		}
 		last_cmd = cmds.size();
 	}
 
-	VkFence cleared_fence = fence ? managers.fence.request_cleared_fence() : VK_NULL_HANDLE;
+	VkFence cleared_fence = fence && !ext.timeline_semaphore_features.timelineSemaphore ?
+	                        managers.fence.request_cleared_fence() :
+	                        VK_NULL_HANDLE;
 
-	for (unsigned i = 0; i < semaphore_count; i++)
+	if (fence)
+		fence->fence = cleared_fence;
+
+	// Add external signal semaphores.
+	if (ext.timeline_semaphore_features.timelineSemaphore)
 	{
-		VkSemaphore cleared_semaphore = managers.semaphore.request_cleared_semaphore();
-		signals[submits.size() - 1].push_back(cleared_semaphore);
-		VK_ASSERT(!semaphores[i]);
-		semaphores[i] = Semaphore(handle_pool.semaphores.allocate(this, cleared_semaphore, true));
+		// Signal once and distribute the timeline value to all.
+		signals[submits.size() - 1].push_back(timeline_semaphore);
+		signal_counts[submits.size() - 1].push_back(timeline_value);
+
+		if (fence)
+		{
+			fence->timeline = timeline_semaphore;
+			fence->value = timeline_value;
+			fence->fence = VK_NULL_HANDLE;
+		}
+
+		for (unsigned i = 0; i < semaphore_count; i++)
+		{
+			VK_ASSERT(!semaphores[i]);
+			semaphores[i] = Semaphore(handle_pool.semaphores.allocate(this, timeline_value, timeline_semaphore));
+		}
+	}
+	else
+	{
+		if (fence)
+		{
+			fence->timeline = VK_NULL_HANDLE;
+			fence->value = 0;
+		}
+
+		for (unsigned i = 0; i < semaphore_count; i++)
+		{
+			VkSemaphore cleared_semaphore = managers.semaphore.request_cleared_semaphore();
+			signals[submits.size() - 1].push_back(cleared_semaphore);
+			signal_counts[submits.size() - 1].push_back(0);
+			VK_ASSERT(!semaphores[i]);
+			semaphores[i] = Semaphore(handle_pool.semaphores.allocate(this, cleared_semaphore, true));
+		}
 	}
 
 	for (unsigned i = 0; i < submits.size(); i++)
 	{
 		auto &submit = submits[i];
+		auto &timeline_submit = timeline_infos[i];
+
 		submit.waitSemaphoreCount = waits[i].size();
-		if (!waits[i].empty())
-		{
-			submit.pWaitSemaphores = waits[i].data();
-			submit.pWaitDstStageMask = stages[i].data();
-		}
+		submit.pWaitSemaphores = waits[i].data();
+		submit.pWaitDstStageMask = wait_stages[i].data();
+		timeline_submit.waitSemaphoreValueCount = submit.waitSemaphoreCount;
+		timeline_submit.pWaitSemaphoreValues = wait_counts[i].data();
 
 		submit.signalSemaphoreCount = signals[i].size();
-		if (!signals[i].empty())
-			submit.pSignalSemaphores = signals[i].data();
-	}
-
-	VkQueue queue;
-	switch (type)
-	{
-	default:
-	case CommandBuffer::Type::Generic:
-		queue = graphics_queue;
-		break;
-	case CommandBuffer::Type::AsyncCompute:
-		queue = compute_queue;
-		break;
-	case CommandBuffer::Type::AsyncTransfer:
-		queue = transfer_queue;
-		break;
+		submit.pSignalSemaphores = signals[i].data();
+		timeline_submit.signalSemaphoreValueCount = submit.signalSemaphoreCount;
+		timeline_submit.pSignalSemaphoreValues = signal_counts[i].data();
 	}
 
 	if (queue_lock_callback)
@@ -1278,9 +1434,8 @@ void Device::submit_queue(CommandBuffer::Type type, VkFence *fence,
 		report_checkpoints();
 	submissions.clear();
 
-	if (fence)
-		*fence = cleared_fence;
-	data.need_fence = true;
+	if (!ext.timeline_semaphore_features.timelineSemaphore)
+		data.need_fence = true;
 
 #if defined(VULKAN_DEBUG) && defined(SUBMIT_DEBUG)
 	const char *queue_name = nullptr;
@@ -1387,29 +1542,38 @@ void Device::end_frame_nolock()
 	frame().keep_alive_images.clear();
 
 	// Make sure we have a fence which covers all submissions in the frame.
-	VkFence fence;
+	InternalFence fence;
 
 	if (transfer.need_fence || !frame().transfer_submissions.empty())
 	{
 		submit_queue(CommandBuffer::Type::AsyncTransfer, &fence, 0, nullptr);
-		frame().wait_fences.push_back(fence);
-		frame().recycle_fences.push_back(fence);
+		if (fence.fence != VK_NULL_HANDLE)
+		{
+			frame().wait_fences.push_back(fence.fence);
+			frame().recycle_fences.push_back(fence.fence);
+		}
 		transfer.need_fence = false;
 	}
 
 	if (graphics.need_fence || !frame().graphics_submissions.empty())
 	{
 		submit_queue(CommandBuffer::Type::Generic, &fence, 0, nullptr);
-		frame().wait_fences.push_back(fence);
-		frame().recycle_fences.push_back(fence);
+		if (fence.fence != VK_NULL_HANDLE)
+		{
+			frame().wait_fences.push_back(fence.fence);
+			frame().recycle_fences.push_back(fence.fence);
+		}
 		graphics.need_fence = false;
 	}
 
 	if (compute.need_fence || !frame().compute_submissions.empty())
 	{
 		submit_queue(CommandBuffer::Type::AsyncCompute, &fence, 0, nullptr);
-		frame().wait_fences.push_back(fence);
-		frame().recycle_fences.push_back(fence);
+		if (fence.fence != VK_NULL_HANDLE)
+		{
+			frame().wait_fences.push_back(fence.fence);
+			frame().recycle_fences.push_back(fence.fence);
+		}
 		compute.need_fence = false;
 	}
 }
@@ -1455,7 +1619,7 @@ CommandPool &Device::get_command_pool(CommandBuffer::Type type, unsigned thread)
 	}
 }
 
-vector<CommandBufferHandle> &Device::get_queue_submissions(CommandBuffer::Type type)
+Util::SmallVector<CommandBufferHandle> &Device::get_queue_submissions(CommandBuffer::Type type)
 {
 	switch (get_physical_queue_type(type))
 	{
@@ -1598,6 +1762,33 @@ Device::~Device()
 	transient_allocator.clear();
 	for (auto &sampler : samplers)
 		sampler.reset();
+
+	deinit_timeline_semaphores();
+}
+
+void Device::deinit_timeline_semaphores()
+{
+	if (graphics.timeline_semaphore != VK_NULL_HANDLE)
+		table->vkDestroySemaphore(device, graphics.timeline_semaphore, nullptr);
+	if (compute.timeline_semaphore != VK_NULL_HANDLE)
+		table->vkDestroySemaphore(device, compute.timeline_semaphore, nullptr);
+	if (transfer.timeline_semaphore != VK_NULL_HANDLE)
+		table->vkDestroySemaphore(device, transfer.timeline_semaphore, nullptr);
+
+	graphics.timeline_semaphore = VK_NULL_HANDLE;
+	compute.timeline_semaphore = VK_NULL_HANDLE;
+	transfer.timeline_semaphore = VK_NULL_HANDLE;
+
+	// Make sure we don't accidentally try to wait for these after we destroy the semaphores.
+	for (auto &frame : per_frame)
+	{
+		frame->timeline_fence_graphics = 0;
+		frame->timeline_fence_compute = 0;
+		frame->timeline_fence_transfer = 0;
+		frame->timeline_fence_graphics = VK_NULL_HANDLE;
+		frame->timeline_fence_compute = VK_NULL_HANDLE;
+		frame->timeline_fence_transfer = VK_NULL_HANDLE;
+	}
 }
 
 void Device::init_frame_contexts(unsigned count)
@@ -1683,6 +1874,10 @@ Device::PerFrame::PerFrame(Device *device_)
     , managers(device_->managers)
     , query_pool(device_)
 {
+	graphics_timeline_semaphore = device.graphics.timeline_semaphore;
+	compute_timeline_semaphore = device.compute.timeline_semaphore;
+	transfer_timeline_semaphore = device.transfer.timeline_semaphore;
+
 	unsigned count = device_->num_thread_indices;
 	graphics_cmd_pool.reserve(count);
 	compute_cmd_pool.reserve(count);
@@ -1989,6 +2184,20 @@ void Device::decrement_frame_counter_nolock()
 void Device::PerFrame::begin()
 {
 	VkDevice vkdevice = device.get_device();
+
+	if (device.get_device_features().timeline_semaphore_features.timelineSemaphore)
+	{
+		VkSemaphoreWaitInfoKHR info = { VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO_KHR };
+		const VkSemaphore semaphores[3] = { graphics_timeline_semaphore, compute_timeline_semaphore, transfer_timeline_semaphore };
+		const uint64_t values[3] = { timeline_fence_graphics, timeline_fence_compute, timeline_fence_transfer };
+
+		info.pSemaphores = semaphores;
+		info.pValues = values;
+		info.semaphoreCount = 3;
+		table.vkWaitSemaphoresKHR(vkdevice, &info, UINT64_MAX);
+	}
+
+	// If we're using timeline semaphores, these paths should never be hit.
 	if (!wait_fences.empty())
 	{
 #if defined(VULKAN_DEBUG) && defined(SUBMIT_DEBUG)
@@ -1999,6 +2208,7 @@ void Device::PerFrame::begin()
 		wait_fences.clear();
 	}
 
+	// If we're using timeline semaphores, these paths should never be hit.
 	if (!recycle_fences.empty())
 	{
 #if defined(VULKAN_DEBUG) && defined(SUBMIT_DEBUG)

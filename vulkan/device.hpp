@@ -60,6 +60,7 @@
 #endif
 
 #include "quirks.hpp"
+#include "small_vector.hpp"
 
 namespace Vulkan
 {
@@ -232,8 +233,9 @@ public:
 	                                    unsigned index = 0, unsigned samples = 1, unsigned layers = 1);
 	RenderPassInfo get_swapchain_render_pass(SwapchainRenderPass style);
 
-	// Request semaphores.
-	Semaphore request_semaphore();
+	// Request legacy (non-timeline) semaphores.
+	// Timeline semaphores are only used internally to reduce handle bloat.
+	Semaphore request_legacy_semaphore();
 	Semaphore request_external_semaphore(VkSemaphore semaphore, bool signalled);
 #ifndef _WIN32
 	Semaphore request_imported_semaphore(int fd, VkExternalSemaphoreHandleTypeFlagBitsKHR handle_type);
@@ -319,6 +321,8 @@ private:
 
 	DeviceFeatures ext;
 	void init_stock_samplers();
+	void init_timeline_semaphores();
+	void deinit_timeline_semaphores();
 
 	// Make sure this is deleted last.
 	HandlePool handle_pool;
@@ -367,8 +371,16 @@ private:
 		std::vector<BufferBlock> ubo_blocks;
 		std::vector<BufferBlock> staging_blocks;
 
+		VkSemaphore graphics_timeline_semaphore;
+		VkSemaphore compute_timeline_semaphore;
+		VkSemaphore transfer_timeline_semaphore;
+		uint64_t timeline_fence_graphics = 0;
+		uint64_t timeline_fence_compute = 0;
+		uint64_t timeline_fence_transfer = 0;
+
 		std::vector<VkFence> wait_fences;
 		std::vector<VkFence> recycle_fences;
+
 		std::vector<DeviceAllocation> allocations;
 		std::vector<VkFramebuffer> destroyed_framebuffers;
 		std::vector<VkSampler> destroyed_samplers;
@@ -377,9 +389,9 @@ private:
 		std::vector<VkBufferView> destroyed_buffer_views;
 		std::vector<VkImage> destroyed_images;
 		std::vector<VkBuffer> destroyed_buffers;
-		std::vector<CommandBufferHandle> graphics_submissions;
-		std::vector<CommandBufferHandle> compute_submissions;
-		std::vector<CommandBufferHandle> transfer_submissions;
+		Util::SmallVector<CommandBufferHandle> graphics_submissions;
+		Util::SmallVector<CommandBufferHandle> compute_submissions;
+		Util::SmallVector<CommandBufferHandle> transfer_submissions;
 		std::vector<VkSemaphore> recycled_semaphores;
 		std::vector<VkEvent> recycled_events;
 		std::vector<VkSemaphore> destroyed_semaphores;
@@ -409,10 +421,20 @@ private:
 
 	struct QueueData
 	{
-		std::vector<Semaphore> wait_semaphores;
-		std::vector<VkPipelineStageFlags> wait_stages;
+		Util::SmallVector<Semaphore> wait_semaphores;
+		Util::SmallVector<VkPipelineStageFlags> wait_stages;
 		bool need_fence = false;
+
+		VkSemaphore timeline_semaphore = VK_NULL_HANDLE;
+		uint64_t current_timeline = 0;
 	} graphics, compute, transfer;
+
+	struct InternalFence
+	{
+		VkFence fence;
+		VkSemaphore timeline;
+		uint64_t value;
+	};
 
 	// Pending buffers which need to be copied from CPU to GPU before submitting graphics or compute work.
 	struct
@@ -422,7 +444,7 @@ private:
 		std::vector<BufferBlock> ubo;
 	} dma;
 
-	void submit_queue(CommandBuffer::Type type, VkFence *fence,
+	void submit_queue(CommandBuffer::Type type, InternalFence *fence,
 	                  unsigned semaphore_count = 0,
 	                  Semaphore *semaphore = nullptr);
 
@@ -468,7 +490,7 @@ private:
 
 	CommandPool &get_command_pool(CommandBuffer::Type type, unsigned thread);
 	QueueData &get_queue_data(CommandBuffer::Type type);
-	std::vector<CommandBufferHandle> &get_queue_submissions(CommandBuffer::Type type);
+	Util::SmallVector<CommandBufferHandle> &get_queue_submissions(CommandBuffer::Type type);
 	void clear_wait_semaphores();
 	void submit_staging(CommandBufferHandle &cmd, VkBufferUsageFlags usage, bool flush);
 	PipelineEvent request_pipeline_event();
@@ -477,7 +499,7 @@ private:
 	std::function<void ()> queue_unlock_callback;
 	void flush_frame(CommandBuffer::Type type);
 	void sync_buffer_blocks();
-	void submit_empty_inner(CommandBuffer::Type type, VkFence *fence,
+	void submit_empty_inner(CommandBuffer::Type type, InternalFence *fence,
 	                        unsigned semaphore_count,
 	                        Semaphore *semaphore);
 
@@ -532,7 +554,7 @@ private:
 	void wait_idle_nolock();
 	void end_frame_nolock();
 
-	Fence request_fence();
+	Fence request_legacy_fence();
 
 #ifdef GRANITE_VULKAN_FILESYSTEM
 	ShaderManager shader_manager;

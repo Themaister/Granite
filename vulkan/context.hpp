@@ -63,6 +63,7 @@ struct DeviceFeatures
 	VkPhysicalDeviceShaderDemoteToHelperInvocationFeaturesEXT demote_to_helper_invocation_features = {};
 	VkPhysicalDeviceScalarBlockLayoutFeaturesEXT scalar_block_features = {};
 	VkPhysicalDeviceUniformBufferStandardLayoutFeaturesKHR ubo_std430_features = {};
+	VkPhysicalDeviceTimelineSemaphoreFeaturesKHR timeline_semaphore_features = {};
 };
 
 enum VendorID

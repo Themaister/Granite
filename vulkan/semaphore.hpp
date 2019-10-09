@@ -55,6 +55,11 @@ public:
 		return signalled;
 	}
 
+	uint64_t get_timeline_value() const
+	{
+		return timeline;
+	}
+
 	VkSemaphore consume()
 	{
 		auto ret = semaphore;
@@ -110,14 +115,22 @@ public:
 private:
 	friend class Util::ObjectPool<SemaphoreHolder>;
 	SemaphoreHolder(Device *device_, VkSemaphore semaphore_, bool signalled_)
-	    : device(device_)
-	    , semaphore(semaphore_)
-	    , signalled(signalled_)
+		: device(device_)
+		, semaphore(semaphore_)
+		, timeline(0)
+		, signalled(signalled_)
 	{
+	}
+
+	SemaphoreHolder(Device *device_, uint64_t timeline_, VkSemaphore semaphore_)
+		: device(device_), semaphore(semaphore_), timeline(timeline_)
+	{
+		VK_ASSERT(timeline > 0);
 	}
 
 	Device *device;
 	VkSemaphore semaphore;
+	uint64_t timeline;
 	bool signalled = true;
 	bool pending = false;
 	bool should_destroy_on_consume = false;

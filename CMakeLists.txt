@@ -267,6 +267,7 @@ target_sources(granite PRIVATE
         util/intrusive_hash_map.hpp
         util/timer.hpp util/timer.cpp
         util/aligned_alloc.cpp util/aligned_alloc.hpp
+        util/small_vector.hpp
 
         vulkan/texture_format.cpp vulkan/texture_format.hpp
         vulkan/context.cpp vulkan/context.hpp vulkan/vulkan_headers.hpp

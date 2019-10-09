@@ -3566,8 +3566,8 @@ void Device::set_name(const Buffer &buffer, const char *name)
 		info.objectType = VK_OBJECT_TYPE_BUFFER;
 		info.objectHandle = (uint64_t)buffer.get_buffer();
 		info.pObjectName = name;
-		if (table->vkSetDebugUtilsObjectNameEXT)
-			table->vkSetDebugUtilsObjectNameEXT(device, &info);
+		if (vkSetDebugUtilsObjectNameEXT)
+			vkSetDebugUtilsObjectNameEXT(device, &info);
 	}
 	else if (ext.supports_debug_marker)
 	{
@@ -3587,8 +3587,8 @@ void Device::set_name(const Image &image, const char *name)
 		info.objectType = VK_OBJECT_TYPE_IMAGE;
 		info.objectHandle = (uint64_t)image.get_image();
 		info.pObjectName = name;
-		if (table->vkSetDebugUtilsObjectNameEXT)
-			table->vkSetDebugUtilsObjectNameEXT(device, &info);
+		if (vkSetDebugUtilsObjectNameEXT)
+			vkSetDebugUtilsObjectNameEXT(device, &info);
 	}
 	else if (ext.supports_debug_marker)
 	{
@@ -3608,8 +3608,8 @@ void Device::set_name(const CommandBuffer &cmd, const char *name)
 		info.objectType = VK_OBJECT_TYPE_COMMAND_BUFFER;
 		info.objectHandle = (uint64_t)cmd.get_command_buffer();
 		info.pObjectName = name;
-		if (table->vkSetDebugUtilsObjectNameEXT)
-			table->vkSetDebugUtilsObjectNameEXT(device, &info);
+		if (vkSetDebugUtilsObjectNameEXT)
+			vkSetDebugUtilsObjectNameEXT(device, &info);
 	}
 	else if (ext.supports_debug_marker)
 	{

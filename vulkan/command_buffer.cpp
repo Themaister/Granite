@@ -2185,8 +2185,8 @@ void CommandBuffer::begin_region(const char *name, const float *color)
 		}
 
 		info.pLabelName = name;
-		if (table.vkCmdBeginDebugUtilsLabelEXT)
-			table.vkCmdBeginDebugUtilsLabelEXT(cmd, &info);
+		if (vkCmdBeginDebugUtilsLabelEXT)
+			vkCmdBeginDebugUtilsLabelEXT(cmd, &info);
 	}
 	else if (device->ext.supports_debug_marker)
 	{
@@ -2211,8 +2211,8 @@ void CommandBuffer::end_region()
 {
 	if (device->ext.supports_debug_utils)
 	{
-		if (table.vkCmdEndDebugUtilsLabelEXT)
-			table.vkCmdEndDebugUtilsLabelEXT(cmd);
+		if (vkCmdEndDebugUtilsLabelEXT)
+			vkCmdEndDebugUtilsLabelEXT(cmd);
 	}
 	else if (device->ext.supports_debug_marker)
 		table.vkCmdDebugMarkerEndEXT(cmd);

@@ -40,23 +40,37 @@ class FenceHolder : public Util::IntrusivePtrEnabled<FenceHolder, FenceHolderDel
 {
 public:
 	friend struct FenceHolderDeleter;
+	friend class WSI;
 
 	~FenceHolder();
 	void wait();
-
 	bool wait_timeout(uint64_t nsec);
-
-	VkFence get_fence() const;
 
 private:
 	friend class Util::ObjectPool<FenceHolder>;
 	FenceHolder(Device *device_, VkFence fence_)
-		: device(device_), fence(fence_)
+		: device(device_),
+		  fence(fence_),
+		  timeline_semaphore(VK_NULL_HANDLE),
+		  timeline_value(0)
 	{
 	}
 
+	FenceHolder(Device *device_, uint64_t value, VkSemaphore timeline_semaphore_)
+		: device(device_),
+		  fence(VK_NULL_HANDLE),
+		  timeline_semaphore(timeline_semaphore_),
+		  timeline_value(value)
+	{
+		VK_ASSERT(value > 0);
+	}
+
+	VkFence get_fence() const;
+
 	Device *device;
 	VkFence fence;
+	VkSemaphore timeline_semaphore;
+	uint64_t timeline_value;
 	bool observed_wait = false;
 };
 

@@ -27,7 +27,7 @@ namespace Vulkan
 {
 SemaphoreHolder::~SemaphoreHolder()
 {
-	if (semaphore)
+	if (timeline == 0 && semaphore)
 	{
 		if (internal_sync)
 		{

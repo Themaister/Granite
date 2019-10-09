@@ -39,16 +39,43 @@ VkFence FenceHolder::get_fence() const
 void FenceHolder::wait()
 {
 	auto &table = device->get_device_table();
-	if (table.vkWaitForFences(device->get_device(), 1, &fence, VK_TRUE, UINT64_MAX) != VK_SUCCESS)
-		LOGE("Failed to wait for fence!\n");
+	if (timeline_value != 0)
+	{
+		VK_ASSERT(timeline_semaphore);
+		VkSemaphoreWaitInfoKHR info = { VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO_KHR };
+		info.semaphoreCount = 1;
+		info.pSemaphores = &timeline_semaphore;
+		info.pValues = &timeline_value;
+		if (table.vkWaitSemaphoresKHR(device->get_device(), &info, UINT64_MAX) != VK_SUCCESS)
+			LOGE("Failed to wait for timeline semaphore!\n");
+		else
+			observed_wait = true;
+	}
 	else
-		observed_wait = true;
+	{
+		if (table.vkWaitForFences(device->get_device(), 1, &fence, VK_TRUE, UINT64_MAX) != VK_SUCCESS)
+			LOGE("Failed to wait for fence!\n");
+		else
+			observed_wait = true;
+	}
 }
 
 bool FenceHolder::wait_timeout(uint64_t timeout)
 {
+	bool ret = false;
 	auto &table = device->get_device_table();
-	bool ret = table.vkWaitForFences(device->get_device(), 1, &fence, VK_TRUE, timeout) == VK_SUCCESS;
+	if (timeline_value != 0)
+	{
+		VK_ASSERT(timeline_semaphore);
+		VkSemaphoreWaitInfoKHR info = { VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO_KHR };
+		info.semaphoreCount = 1;
+		info.pSemaphores = &timeline_semaphore;
+		info.pValues = &timeline_value;
+		ret = table.vkWaitSemaphoresKHR(device->get_device(), &info, timeout) == VK_SUCCESS;
+	}
+	else
+		ret = table.vkWaitForFences(device->get_device(), 1, &fence, VK_TRUE, timeout) == VK_SUCCESS;
+
 	if (ret)
 		observed_wait = true;
 	return ret;

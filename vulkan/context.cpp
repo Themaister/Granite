@@ -743,6 +743,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	ext.demote_to_helper_invocation_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DEMOTE_TO_HELPER_INVOCATION_FEATURES_EXT };
 	ext.scalar_block_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SCALAR_BLOCK_LAYOUT_FEATURES_EXT };
 	ext.ubo_std430_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_UNIFORM_BUFFER_STANDARD_LAYOUT_FEATURES_KHR };
+	ext.timeline_semaphore_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES_KHR };
 	void **ppNext = &features.pNext;
 
 	bool has_pdf2 = ext.supports_physical_device_properties2 ||
@@ -821,6 +822,13 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 			enabled_extensions.push_back(VK_KHR_UNIFORM_BUFFER_STANDARD_LAYOUT_EXTENSION_NAME);
 			*ppNext = &ext.ubo_std430_features;
 			ppNext = &ext.ubo_std430_features.pNext;
+		}
+
+		if (has_extension(VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME))
+		{
+			enabled_extensions.push_back(VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME);
+			*ppNext = &ext.timeline_semaphore_features;
+			ppNext = &ext.timeline_semaphore_features.pNext;
 		}
 
 #if 0

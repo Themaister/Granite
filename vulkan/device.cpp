@@ -1785,9 +1785,9 @@ void Device::deinit_timeline_semaphores()
 		frame->timeline_fence_graphics = 0;
 		frame->timeline_fence_compute = 0;
 		frame->timeline_fence_transfer = 0;
-		frame->timeline_fence_graphics = VK_NULL_HANDLE;
-		frame->timeline_fence_compute = VK_NULL_HANDLE;
-		frame->timeline_fence_transfer = VK_NULL_HANDLE;
+		frame->graphics_timeline_semaphore = VK_NULL_HANDLE;
+		frame->compute_timeline_semaphore = VK_NULL_HANDLE;
+		frame->transfer_timeline_semaphore = VK_NULL_HANDLE;
 	}
 }
 
@@ -2185,7 +2185,8 @@ void Device::PerFrame::begin()
 {
 	VkDevice vkdevice = device.get_device();
 
-	if (device.get_device_features().timeline_semaphore_features.timelineSemaphore)
+	if (device.get_device_features().timeline_semaphore_features.timelineSemaphore &&
+	    graphics_timeline_semaphore && compute_timeline_semaphore && transfer_timeline_semaphore)
 	{
 		VkSemaphoreWaitInfoKHR info = { VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO_KHR };
 		const VkSemaphore semaphores[3] = { graphics_timeline_semaphore, compute_timeline_semaphore, transfer_timeline_semaphore };

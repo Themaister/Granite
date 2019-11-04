@@ -396,7 +396,9 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 	bool force_no_validation = false;
 	if (getenv("GRANITE_VULKAN_NO_VALIDATION"))
 		force_no_validation = true;
-	if (!force_no_validation && has_layer("VK_LAYER_LUNARG_standard_validation"))
+	if (!force_no_validation && has_layer("VK_LAYER_KHRONOS_validation"))
+		instance_layers.push_back("VK_LAYER_KHRONOS_validation");
+	else if (!force_no_validation && has_layer("VK_LAYER_LUNARG_standard_validation"))
 		instance_layers.push_back("VK_LAYER_LUNARG_standard_validation");
 #endif
 

@@ -963,17 +963,41 @@ void Device::submit_empty_inner(CommandBuffer::Type type, InternalFence *fence,
 	default:
 	case CommandBuffer::Type::Generic:
 		queue = graphics_queue;
-		frame().timeline_fence_graphics = graphics.current_timeline;
+		frame().timeline_fence_graphics = data.current_timeline;
+#ifdef VULKAN_DEBUG
+		if (ext.timeline_semaphore_features.timelineSemaphore)
+		{
+			LOGI("Signal graphics: (%p) %u\n",
+			     reinterpret_cast<void *>(timeline_semaphore),
+			     unsigned(data.current_timeline));
+		}
+#endif
 		break;
 
 	case CommandBuffer::Type::AsyncCompute:
 		queue = compute_queue;
-		frame().timeline_fence_compute = compute.current_timeline;
+		frame().timeline_fence_compute = data.current_timeline;
+#ifdef VULKAN_DEBUG
+		if (ext.timeline_semaphore_features.timelineSemaphore)
+		{
+			LOGI("Signal compute: (%p) %u\n",
+			     reinterpret_cast<void *>(timeline_semaphore),
+			     unsigned(data.current_timeline));
+		}
+#endif
 		break;
 
 	case CommandBuffer::Type::AsyncTransfer:
 		queue = transfer_queue;
-		frame().timeline_fence_transfer = transfer.current_timeline;
+		frame().timeline_fence_transfer = data.current_timeline;
+#ifdef VULKAN_DEBUG
+		if (ext.timeline_semaphore_features.timelineSemaphore)
+		{
+			LOGI("Signal transfer: (%p) %u\n",
+			     reinterpret_cast<void *>(timeline_semaphore),
+			     unsigned(data.current_timeline));
+		}
+#endif
 		break;
 	}
 
@@ -1231,17 +1255,32 @@ void Device::submit_queue(CommandBuffer::Type type, InternalFence *fence,
 	default:
 	case CommandBuffer::Type::Generic:
 		queue = graphics_queue;
-		frame().timeline_fence_graphics = graphics.current_timeline;
+		frame().timeline_fence_graphics = data.current_timeline;
+#ifdef VULKAN_DEBUG
+		LOGI("Signal graphics: (%p) %u\n",
+			 reinterpret_cast<void *>(timeline_semaphore),
+			 unsigned(data.current_timeline));
+#endif
 		break;
 
 	case CommandBuffer::Type::AsyncCompute:
 		queue = compute_queue;
-		frame().timeline_fence_compute = compute.current_timeline;
+		frame().timeline_fence_compute = data.current_timeline;
+#ifdef VULKAN_DEBUG
+		LOGI("Signal compute: (%p) %u\n",
+			 reinterpret_cast<void *>(timeline_semaphore),
+			 unsigned(data.current_timeline));
+#endif
 		break;
 
 	case CommandBuffer::Type::AsyncTransfer:
 		queue = transfer_queue;
-		frame().timeline_fence_transfer = transfer.current_timeline;
+		frame().timeline_fence_transfer = data.current_timeline;
+#ifdef VULKAN_DEBUG
+		LOGI("Signal transfer: (%p) %u\n",
+			 reinterpret_cast<void *>(timeline_semaphore),
+			 unsigned(data.current_timeline));
+#endif
 		break;
 	}
 
@@ -2191,6 +2230,21 @@ void Device::PerFrame::begin()
 		VkSemaphoreWaitInfoKHR info = { VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO_KHR };
 		const VkSemaphore semaphores[3] = { graphics_timeline_semaphore, compute_timeline_semaphore, transfer_timeline_semaphore };
 		const uint64_t values[3] = { timeline_fence_graphics, timeline_fence_compute, timeline_fence_transfer };
+
+#ifdef VULKAN_DEBUG
+		if (device.get_device_features().timeline_semaphore_features.timelineSemaphore)
+		{
+			LOGI("Waiting for graphics (%p) %u\n",
+			     reinterpret_cast<void *>(graphics_timeline_semaphore),
+			     unsigned(timeline_fence_graphics));
+			LOGI("Waiting for compute (%p) %u\n",
+			     reinterpret_cast<void *>(compute_timeline_semaphore),
+			     unsigned(timeline_fence_compute));
+			LOGI("Waiting for transfer (%p) %u\n",
+			     reinterpret_cast<void *>(transfer_timeline_semaphore),
+			     unsigned(timeline_fence_transfer));
+		}
+#endif
 
 		info.pSemaphores = semaphores;
 		info.pValues = values;

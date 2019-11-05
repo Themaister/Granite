@@ -964,7 +964,7 @@ void Device::submit_empty_inner(CommandBuffer::Type type, InternalFence *fence,
 	case CommandBuffer::Type::Generic:
 		queue = graphics_queue;
 		frame().timeline_fence_graphics = data.current_timeline;
-#ifdef VULKAN_DEBUG
+#if defined(VULKAN_DEBUG) && defined(SUBMIT_DEBUG)
 		if (ext.timeline_semaphore_features.timelineSemaphore)
 		{
 			LOGI("Signal graphics: (%p) %u\n",
@@ -977,7 +977,7 @@ void Device::submit_empty_inner(CommandBuffer::Type type, InternalFence *fence,
 	case CommandBuffer::Type::AsyncCompute:
 		queue = compute_queue;
 		frame().timeline_fence_compute = data.current_timeline;
-#ifdef VULKAN_DEBUG
+#if defined(VULKAN_DEBUG) && defined(SUBMIT_DEBUG)
 		if (ext.timeline_semaphore_features.timelineSemaphore)
 		{
 			LOGI("Signal compute: (%p) %u\n",
@@ -990,7 +990,7 @@ void Device::submit_empty_inner(CommandBuffer::Type type, InternalFence *fence,
 	case CommandBuffer::Type::AsyncTransfer:
 		queue = transfer_queue;
 		frame().timeline_fence_transfer = data.current_timeline;
-#ifdef VULKAN_DEBUG
+#if defined(VULKAN_DEBUG) && defined(SUBMIT_DEBUG)
 		if (ext.timeline_semaphore_features.timelineSemaphore)
 		{
 			LOGI("Signal transfer: (%p) %u\n",
@@ -1256,7 +1256,7 @@ void Device::submit_queue(CommandBuffer::Type type, InternalFence *fence,
 	case CommandBuffer::Type::Generic:
 		queue = graphics_queue;
 		frame().timeline_fence_graphics = data.current_timeline;
-#ifdef VULKAN_DEBUG
+#if defined(VULKAN_DEBUG) && defined(SUBMIT_DEBUG)
 		LOGI("Signal graphics: (%p) %u\n",
 			 reinterpret_cast<void *>(timeline_semaphore),
 			 unsigned(data.current_timeline));
@@ -1266,7 +1266,7 @@ void Device::submit_queue(CommandBuffer::Type type, InternalFence *fence,
 	case CommandBuffer::Type::AsyncCompute:
 		queue = compute_queue;
 		frame().timeline_fence_compute = data.current_timeline;
-#ifdef VULKAN_DEBUG
+#if defined(VULKAN_DEBUG) && defined(SUBMIT_DEBUG)
 		LOGI("Signal compute: (%p) %u\n",
 			 reinterpret_cast<void *>(timeline_semaphore),
 			 unsigned(data.current_timeline));
@@ -1276,7 +1276,7 @@ void Device::submit_queue(CommandBuffer::Type type, InternalFence *fence,
 	case CommandBuffer::Type::AsyncTransfer:
 		queue = transfer_queue;
 		frame().timeline_fence_transfer = data.current_timeline;
-#ifdef VULKAN_DEBUG
+#if defined(VULKAN_DEBUG) && defined(SUBMIT_DEBUG)
 		LOGI("Signal transfer: (%p) %u\n",
 			 reinterpret_cast<void *>(timeline_semaphore),
 			 unsigned(data.current_timeline));
@@ -1329,10 +1329,15 @@ void Device::submit_queue(CommandBuffer::Type type, InternalFence *fence,
 				// Push all pending cmd buffers to their own submission.
 				submits.emplace_back();
 
+				timeline_infos.emplace_back();
+				auto &timeline_info = timeline_infos.back();
+				timeline_info = { VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO_KHR };
+
 				auto &submit = submits.back();
-				memset(&submit, 0, sizeof(submit));
-				submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-				submit.pNext = nullptr;
+				submit = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
+				if (ext.timeline_semaphore_features.timelineSemaphore)
+					submit.pNext = &timeline_info;
+
 				submit.commandBufferCount = cmds.size() - last_cmd;
 				submit.pCommandBuffers = cmds.data() + last_cmd;
 				last_cmd = cmds.size();
@@ -2231,7 +2236,7 @@ void Device::PerFrame::begin()
 		const VkSemaphore semaphores[3] = { graphics_timeline_semaphore, compute_timeline_semaphore, transfer_timeline_semaphore };
 		const uint64_t values[3] = { timeline_fence_graphics, timeline_fence_compute, timeline_fence_transfer };
 
-#ifdef VULKAN_DEBUG
+#if defined(VULKAN_DEBUG) && defined(SUBMIT_DEBUG)
 		if (device.get_device_features().timeline_semaphore_features.timelineSemaphore)
 		{
 			LOGI("Waiting for graphics (%p) %u\n",

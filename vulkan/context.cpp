@@ -107,7 +107,11 @@ bool Context::init_loader(PFN_vkGetInstanceProcAddr addr)
 				return false;
 		}
 
-		addr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(GetProcAddress(module, "vkGetInstanceProcAddr"));
+		// Ugly pointer warning workaround.
+		auto ptr = GetProcAddress(module, "vkGetInstanceProcAddr");
+		static_assert(sizeof(ptr) == sizeof(addr), "Mismatch pointer type.");
+		memcpy(&addr, &ptr, sizeof(ptr));
+
 		if (!addr)
 			return false;
 #endif

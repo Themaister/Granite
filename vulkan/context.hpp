@@ -47,6 +47,10 @@ struct DeviceFeatures
 	bool supports_surface_capabilities2 = false;
 	bool supports_full_screen_exclusive = false;
 	bool supports_update_template = false;
+	bool supports_maintenance_1 = false;
+	bool supports_maintenance_2 = false;
+	bool supports_maintenance_3 = false;
+	bool supports_descriptor_indexing = false;
 	bool subgroup_size_control_fake = false;
 	VkPhysicalDeviceSubgroupProperties subgroup_properties = {};
 	VkPhysicalDevice8BitStorageFeaturesKHR storage_8bit_features = {};
@@ -64,6 +68,8 @@ struct DeviceFeatures
 	VkPhysicalDeviceScalarBlockLayoutFeaturesEXT scalar_block_features = {};
 	VkPhysicalDeviceUniformBufferStandardLayoutFeaturesKHR ubo_std430_features = {};
 	VkPhysicalDeviceTimelineSemaphoreFeaturesKHR timeline_semaphore_features = {};
+	VkPhysicalDeviceDescriptorIndexingFeaturesEXT descriptor_indexing_features = {};
+	VkPhysicalDeviceDescriptorIndexingPropertiesEXT descriptor_indexing_properties = {};
 };
 
 enum VendorID
@@ -214,5 +220,6 @@ private:
 	std::function<void (const char *)> message_callback;
 
 	void destroy();
+	void check_descriptor_indexing_features();
 };
 }

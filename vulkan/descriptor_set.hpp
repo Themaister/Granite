@@ -74,6 +74,40 @@ static inline void set_immutable_sampler(DescriptorSetLayout &layout, unsigned b
 static const unsigned VULKAN_NUM_SETS_PER_POOL = 16;
 static const unsigned VULKAN_DESCRIPTOR_RING_SIZE = 8;
 
+class DescriptorSetAllocator;
+class BindlessDescriptorPool;
+
+struct BindlessDescriptorPoolDeleter
+{
+	void operator()(BindlessDescriptorPool *pool);
+};
+
+class BindlessDescriptorPool : public Util::IntrusivePtrEnabled<BindlessDescriptorPool, BindlessDescriptorPoolDeleter, HandleCounter>,
+                               public InternalSyncEnabled
+{
+public:
+	friend struct BindlessDescriptorPoolDeleter;
+	explicit BindlessDescriptorPool(Device *device, DescriptorSetAllocator *allocator, VkDescriptorPool pool);
+	~BindlessDescriptorPool();
+	void operator=(const BindlessDescriptorPool &) = delete;
+	BindlessDescriptorPool(const BindlessDescriptorPool &) = delete;
+
+	bool allocate_descriptors(unsigned count);
+	VkDescriptorSet get_descriptor_set() const;
+
+private:
+	Device *device;
+	DescriptorSetAllocator *allocator;
+	VkDescriptorPool desc_pool;
+	VkDescriptorSet desc_set = VK_NULL_HANDLE;
+};
+using BindlessDescriptorPoolHandle = Util::IntrusivePtr<BindlessDescriptorPool>;
+
+enum class BindlessResourceType
+{
+	Image
+};
+
 class DescriptorSetAllocator : public HashedObject<DescriptorSetAllocator>
 {
 public:

@@ -34,11 +34,15 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device_, const
 	, device(device_)
 	, table(device_->get_device_table())
 {
-	unsigned count = device_->num_thread_indices;
-	for (unsigned i = 0; i < count; i++)
-		per_thread.emplace_back(new PerThread);
-
 	bindless = layout.array_size[0] == DescriptorSetLayout::UNSIZED_ARRAY;
+
+	if (!bindless)
+	{
+		unsigned count = device_->num_thread_indices;
+		for (unsigned i = 0; i < count; i++)
+			per_thread.emplace_back(new PerThread);
+	}
+
 	if (bindless && !device->get_device_features().supports_descriptor_indexing)
 	{
 		LOGE("Cannot support descriptor indexing on this device.\n");
@@ -223,8 +227,11 @@ VkDescriptorPool DescriptorSetAllocator::allocate_bindless_pool(unsigned num_set
 
 void DescriptorSetAllocator::begin_frame()
 {
-	for (auto &thr : per_thread)
-		thr->should_begin = true;
+	if (!bindless)
+	{
+		for (auto &thr : per_thread)
+			thr->should_begin = true;
+	}
 }
 
 pair<VkDescriptorSet, bool> DescriptorSetAllocator::find(unsigned thread_index, Hash hash)
@@ -299,5 +306,37 @@ DescriptorSetAllocator::~DescriptorSetAllocator()
 	if (set_layout != VK_NULL_HANDLE)
 		table.vkDestroyDescriptorSetLayout(device->get_device(), set_layout, nullptr);
 	clear();
+}
+
+BindlessDescriptorPool::BindlessDescriptorPool(Device *device_, DescriptorSetAllocator *allocator_, VkDescriptorPool pool)
+	: device(device_), allocator(allocator_), desc_pool(pool)
+{
+}
+
+BindlessDescriptorPool::~BindlessDescriptorPool()
+{
+	if (desc_pool)
+	{
+		if (internal_sync)
+			device->destroy_descriptor_pool_nolock(desc_pool);
+		else
+			device->destroy_descriptor_pool(desc_pool);
+	}
+}
+
+VkDescriptorSet BindlessDescriptorPool::get_descriptor_set() const
+{
+	return desc_set;
+}
+
+bool BindlessDescriptorPool::allocate_descriptors(unsigned count)
+{
+	desc_set = allocator->allocate_bindless_set(desc_pool, count);
+	return desc_set != VK_NULL_HANDLE;
+}
+
+void BindlessDescriptorPoolDeleter::operator()(BindlessDescriptorPool *pool)
+{
+	pool->device->handle_pool.bindless_descriptor_pool.free(pool);
 }
 }

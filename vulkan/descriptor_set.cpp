@@ -62,8 +62,10 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device_, const
 		flags.bindingCount = 1;
 		flags.pBindingFlags = &binding_flags;
 		binding_flags = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT_EXT |
-		                VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT_EXT |
 		                VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT_EXT;
+
+		if (device->get_device_features().descriptor_indexing_features.descriptorBindingVariableDescriptorCount)
+			binding_flags |= VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT_EXT;
 	}
 
 	for (unsigned i = 0; i < VULKAN_NUM_BINDINGS; i++)
@@ -76,7 +78,10 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device_, const
 		unsigned pool_array_size;
 		if (array_size == DescriptorSetLayout::UNSIZED_ARRAY)
 		{
-			array_size = VULKAN_NUM_BINDINGS_BINDLESS;
+			if (device->get_device_features().descriptor_indexing_features.descriptorBindingVariableDescriptorCount)
+				array_size = VULKAN_NUM_BINDINGS_BINDLESS_VARYING;
+			else
+				array_size = VULKAN_NUM_BINDINGS_BINDLESS;
 			pool_array_size = array_size;
 		}
 		else
@@ -184,10 +189,13 @@ VkDescriptorSet DescriptorSetAllocator::allocate_bindless_set(VkDescriptorPool p
 	VkDescriptorSetVariableDescriptorCountAllocateInfoEXT count_info =
 			{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO_EXT };
 
-	count_info.descriptorSetCount = 1;
-	uint32_t num_desc = num_descriptors;
-	count_info.pDescriptorCounts = &num_desc;
-	info.pNext = &count_info;
+	if (device->get_device_features().descriptor_indexing_features.descriptorBindingVariableDescriptorCount)
+	{
+		count_info.descriptorSetCount = 1;
+		uint32_t num_desc = num_descriptors;
+		count_info.pDescriptorCounts = &num_desc;
+		info.pNext = &count_info;
+	}
 
 	VkDescriptorSet desc_set = VK_NULL_HANDLE;
 	if (table.vkAllocateDescriptorSets(device->get_device(), &info, &desc_set) != VK_SUCCESS)
@@ -213,7 +221,13 @@ VkDescriptorPool DescriptorSetAllocator::allocate_bindless_pool(unsigned num_set
 		LOGE("Trying to allocate more than max bindless descriptors for descriptor layout.\n");
 		return VK_NULL_HANDLE;
 	}
-	size.descriptorCount = num_descriptors;
+
+	// If implementation does not support variable descriptor count, allocate maximum.
+	if (device->get_device_features().descriptor_indexing_features.descriptorBindingVariableDescriptorCount)
+		size.descriptorCount = num_descriptors;
+	else
+		info.maxSets = 1;
+
 	info.pPoolSizes = &size;
 
 	if (table.vkCreateDescriptorPool(device->get_device(), &info, nullptr, &pool) != VK_SUCCESS)

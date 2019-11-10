@@ -1018,10 +1018,8 @@ void Context::check_descriptor_indexing_features()
 	auto &f = ext.descriptor_indexing_features;
 	if (f.descriptorBindingSampledImageUpdateAfterBind &&
 	    f.descriptorBindingPartiallyBound &&
-	    f.descriptorBindingSampledImageUpdateAfterBind &&
 	    f.runtimeDescriptorArray &&
-	    f.shaderSampledImageArrayNonUniformIndexing &&
-	    f.descriptorBindingVariableDescriptorCount)
+	    f.shaderSampledImageArrayNonUniformIndexing)
 	{
 		ext.supports_descriptor_indexing = true;
 	}

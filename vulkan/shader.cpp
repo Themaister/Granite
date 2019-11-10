@@ -81,6 +81,8 @@ void PipelineLayout::create_update_templates()
 	{
 		if ((layout.descriptor_set_mask & (1u << desc_set)) == 0)
 			continue;
+		if ((layout.bindless_descriptor_set_mask & (1u << desc_set)) == 0)
+			continue;
 
 		VkDescriptorUpdateTemplateEntryKHR update_entries[VULKAN_NUM_BINDINGS];
 		uint32_t update_count = 0;
@@ -280,7 +282,25 @@ void Shader::update_array_info(const SPIRType &type, unsigned set, unsigned bind
 			LOGE("Array dimension must be a literal.\n");
 		else
 		{
-			if (size && size != type.array.front())
+			if (type.array.front() == 0)
+			{
+				// Runtime array.
+				if (!device->get_device_features().supports_descriptor_indexing)
+					LOGE("Sufficient features for descriptor indexing is not supported on this device.\n");
+
+				if (binding != 0)
+					LOGE("Bindless textures can only be used with binding = 0 in a set.\n");
+
+				if (type.basetype != SPIRType::Image || type.image.dim == spv::DimBuffer)
+					LOGE("Can only use bindless for sampled images.\n");
+				else if ((layout.bindless_set_mask & (1u << set)) == 0)
+					layout.bindless_set_mask |= 1u << set;
+				else
+					LOGE("Bindless layout registered multiple times for set = %u.\n", set);
+
+				size = DescriptorSetLayout::UNSIZED_ARRAY;
+			}
+			else if (size && size != type.array.front())
 				LOGE("Array dimension for (%u, %u) is inconsistent.\n", set, binding);
 			else if (type.array.front() + binding > VULKAN_NUM_BINDINGS)
 				LOGE("Binding array will go out of bounds.\n");

@@ -397,9 +397,9 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 	if (!ext.supports_debug_utils && has_extension(VK_EXT_DEBUG_REPORT_EXTENSION_NAME))
 		instance_exts.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
 
-	bool force_no_validation = false;
 	if (getenv("GRANITE_VULKAN_NO_VALIDATION"))
 		force_no_validation = true;
+
 	if (!force_no_validation && has_layer("VK_LAYER_KHRONOS_validation"))
 		instance_layers.push_back("VK_LAYER_KHRONOS_validation");
 	else if (!force_no_validation && has_layer("VK_LAYER_LUNARG_standard_validation"))
@@ -737,6 +737,24 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		ext.supports_update_template = true;
 	}
 
+	if (has_extension(VK_KHR_MAINTENANCE1_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_KHR_MAINTENANCE1_EXTENSION_NAME);
+		ext.supports_maintenance_1 = true;
+	}
+
+	if (has_extension(VK_KHR_MAINTENANCE2_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_KHR_MAINTENANCE2_EXTENSION_NAME);
+		ext.supports_maintenance_2 = true;
+	}
+
+	if (has_extension(VK_KHR_MAINTENANCE3_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_KHR_MAINTENANCE3_EXTENSION_NAME);
+		ext.supports_maintenance_3 = true;
+	}
+
 	VkPhysicalDeviceFeatures2KHR features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2_KHR };
 	ext.storage_8bit_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES_KHR };
 	ext.storage_16bit_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES_KHR };
@@ -750,6 +768,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	ext.scalar_block_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SCALAR_BLOCK_LAYOUT_FEATURES_EXT };
 	ext.ubo_std430_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_UNIFORM_BUFFER_STANDARD_LAYOUT_FEATURES_KHR };
 	ext.timeline_semaphore_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES_KHR };
+	ext.descriptor_indexing_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT };
 	void **ppNext = &features.pNext;
 
 	bool has_pdf2 = ext.supports_physical_device_properties2 ||
@@ -830,11 +849,23 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 			ppNext = &ext.ubo_std430_features.pNext;
 		}
 
-		if (has_extension(VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME))
+#ifdef VULKAN_DEBUG
+		bool use_timeline_semaphore = force_no_validation;
+#else
+		constexpr bool use_timeline_semaphore = true;
+#endif
+		if (use_timeline_semaphore && has_extension(VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME))
 		{
 			enabled_extensions.push_back(VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME);
 			*ppNext = &ext.timeline_semaphore_features;
 			ppNext = &ext.timeline_semaphore_features.pNext;
+		}
+
+		if (ext.supports_maintenance_3 && has_extension(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME))
+		{
+			enabled_extensions.push_back(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
+			*ppNext = &ext.descriptor_indexing_features;
+			ppNext = &ext.descriptor_indexing_features.pNext;
 		}
 
 #if 0
@@ -905,14 +936,10 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		device_info.pEnabledFeatures = &features.features;
 
 #ifdef VULKAN_DEBUG
-	{
-		bool force_no_validation = false;
-		const char *no_validation = getenv("GRANITE_VULKAN_NO_VALIDATION");
-		if (no_validation && strtoul(no_validation, nullptr, 0) != 0)
-			force_no_validation = true;
-		if (!force_no_validation && has_layer("VK_LAYER_LUNARG_standard_validation"))
-			enabled_layers.push_back("VK_LAYER_LUNARG_standard_validation");
-	}
+	if (!force_no_validation && has_layer("VK_LAYER_KHRONOS_validation"))
+		enabled_layers.push_back("VK_LAYER_KHRONOS_validation");
+	else if (!force_no_validation && has_layer("VK_LAYER_LUNARG_standard_validation"))
+		enabled_layers.push_back("VK_LAYER_LUNARG_standard_validation");
 #endif
 
 	if (ext.supports_external && has_extension(VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME))
@@ -925,6 +952,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	ext.subgroup_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES };
 	ext.host_memory_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_MEMORY_HOST_PROPERTIES_EXT };
 	ext.subgroup_size_control_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_PROPERTIES_EXT };
+	ext.descriptor_indexing_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES_EXT };
 	VkPhysicalDeviceProperties2 props = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
 	ppNext = &props.pNext;
 
@@ -943,6 +971,12 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		ppNext = &ext.subgroup_size_control_properties.pNext;
 	}
 
+	if (ext.supports_maintenance_3 && has_extension(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME))
+	{
+		*ppNext = &ext.descriptor_indexing_properties;
+		ppNext = &ext.descriptor_indexing_properties.pNext;
+	}
+
 	if (ext.supports_vulkan_11_instance && ext.supports_vulkan_11_device)
 		vkGetPhysicalDeviceProperties2(gpu, &props);
 
@@ -959,12 +993,15 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	device_table.vkGetDeviceQueue(device, compute_queue_family, compute_queue_index, &compute_queue);
 	device_table.vkGetDeviceQueue(device, transfer_queue_family, transfer_queue_index, &transfer_queue);
 
-	if (gpu_props.vendorID == VENDOR_ID_AMD && ext.subgroup_size_control_features.subgroupSizeControl)
-	{
-		// Workaround a missing feature bit being set. AMD driver always behaves like this.
-		ext.subgroup_size_control_features.computeFullSubgroups = VK_TRUE;
-	}
-	else if (gpu_props.vendorID == VENDOR_ID_AMD && !ext.subgroup_size_control_features.subgroupSizeControl)
+	check_descriptor_indexing_features();
+	check_subgroup_size_control();
+
+	return true;
+}
+
+void Context::check_subgroup_size_control()
+{
+	if (gpu_props.vendorID == VENDOR_ID_AMD && !ext.subgroup_size_control_features.subgroupSizeControl)
 	{
 		// Workaround for RADV. Just assume wave size is always 64.
 		ext.subgroup_size_control_features.subgroupSizeControl = VK_TRUE;
@@ -974,7 +1011,19 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		ext.subgroup_size_control_properties.maxSubgroupSize = ext.subgroup_properties.subgroupSize;
 		ext.subgroup_size_control_fake = true;
 	}
+}
 
-	return true;
+void Context::check_descriptor_indexing_features()
+{
+	auto &f = ext.descriptor_indexing_features;
+	if (f.descriptorBindingSampledImageUpdateAfterBind &&
+	    f.descriptorBindingPartiallyBound &&
+	    f.descriptorBindingSampledImageUpdateAfterBind &&
+	    f.runtimeDescriptorArray &&
+	    f.shaderSampledImageArrayNonUniformIndexing &&
+	    f.descriptorBindingVariableDescriptorCount)
+	{
+		ext.supports_descriptor_indexing = true;
+	}
 }
 }

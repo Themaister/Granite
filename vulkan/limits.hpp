@@ -24,12 +24,13 @@
 
 namespace Vulkan
 {
-static const unsigned VULKAN_NUM_DESCRIPTOR_SETS = 4;
-static const unsigned VULKAN_NUM_BINDINGS = 16;
-static const unsigned VULKAN_NUM_ATTACHMENTS = 8;
-static const unsigned VULKAN_NUM_VERTEX_ATTRIBS = 16;
-static const unsigned VULKAN_NUM_VERTEX_BUFFERS = 4;
-static const unsigned VULKAN_PUSH_CONSTANT_SIZE = 128;
-static const unsigned VULKAN_UBO_SIZE = 16 * 1024;
-static const unsigned VULKAN_NUM_SPEC_CONSTANTS = 8;
+constexpr unsigned VULKAN_NUM_DESCRIPTOR_SETS = 4;
+constexpr unsigned VULKAN_NUM_BINDINGS = 16;
+constexpr unsigned VULKAN_NUM_BINDINGS_BINDLESS = 64 * 1024;
+constexpr unsigned VULKAN_NUM_ATTACHMENTS = 8;
+constexpr unsigned VULKAN_NUM_VERTEX_ATTRIBS = 16;
+constexpr unsigned VULKAN_NUM_VERTEX_BUFFERS = 4;
+constexpr unsigned VULKAN_PUSH_CONSTANT_SIZE = 128;
+constexpr unsigned VULKAN_UBO_SIZE = 16 * 1024;
+constexpr unsigned VULKAN_NUM_SPEC_CONSTANTS = 8;
 }

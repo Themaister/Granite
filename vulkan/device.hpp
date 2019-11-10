@@ -90,6 +90,7 @@ struct HandlePool
 	VulkanObjectPool<EventHolder> events;
 	VulkanObjectPool<QueryPoolResult> query;
 	VulkanObjectPool<CommandBuffer> command_buffers;
+	VulkanObjectPool<BindlessDescriptorPool> bindless_descriptor_pool;
 };
 
 class Device
@@ -121,6 +122,8 @@ public:
 	friend struct LinearHostImageDeleter;
 	friend class CommandBuffer;
 	friend struct CommandBufferDeleter;
+	friend class BindlessDescriptorPool;
+	friend struct BindlessDescriptorPoolDeleter;
 	friend class Program;
 	friend class WSI;
 	friend class Cookie;
@@ -220,6 +223,9 @@ public:
 	ImageViewHandle create_image_view(const ImageViewCreateInfo &view_info);
 	BufferViewHandle create_buffer_view(const BufferViewCreateInfo &view_info);
 	SamplerHandle create_sampler(const SamplerCreateInfo &info);
+
+	BindlessDescriptorPoolHandle create_bindless_descriptor_pool(BindlessResourceType type,
+	                                                             unsigned num_sets, unsigned num_descriptors);
 
 	// Render pass helpers.
 	bool image_format_is_supported(VkFormat format, VkFormatFeatureFlags required, VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL) const;
@@ -322,6 +328,7 @@ private:
 	DeviceFeatures ext;
 	void init_stock_samplers();
 	void init_timeline_semaphores();
+	void init_bindless();
 	void deinit_timeline_semaphores();
 
 	// Make sure this is deleted last.
@@ -389,6 +396,7 @@ private:
 		std::vector<VkBufferView> destroyed_buffer_views;
 		std::vector<VkImage> destroyed_images;
 		std::vector<VkBuffer> destroyed_buffers;
+		std::vector<VkDescriptorPool> destroyed_descriptor_pools;
 		Util::SmallVector<CommandBufferHandle> graphics_submissions;
 		Util::SmallVector<CommandBufferHandle> compute_submissions;
 		Util::SmallVector<CommandBufferHandle> transfer_submissions;
@@ -480,6 +488,9 @@ private:
 	VulkanCache<Shader> shaders;
 	VulkanCache<Program> programs;
 
+	DescriptorSetAllocator *bindless_sampled_image_allocator_fp = nullptr;
+	DescriptorSetAllocator *bindless_sampled_image_allocator_integer = nullptr;
+
 	FramebufferAllocator framebuffer_allocator;
 	TransientAttachmentAllocator transient_allocator;
 	VkPipelineCache pipeline_cache = VK_NULL_HANDLE;
@@ -516,6 +527,7 @@ private:
 	void free_memory(const DeviceAllocation &alloc);
 	void reset_fence(VkFence fence, bool observed_wait);
 	void keep_handle_alive(ImageHandle handle);
+	void destroy_descriptor_pool(VkDescriptorPool desc_pool);
 
 	void destroy_buffer_nolock(VkBuffer buffer);
 	void destroy_image_nolock(VkImage image);
@@ -528,6 +540,7 @@ private:
 	void recycle_semaphore_nolock(VkSemaphore semaphore);
 	void destroy_event_nolock(VkEvent event);
 	void free_memory_nolock(const DeviceAllocation &alloc);
+	void destroy_descriptor_pool_nolock(VkDescriptorPool desc_pool);
 
 	void flush_frame_nolock();
 	CommandBufferHandle request_command_buffer_nolock(unsigned thread_index, CommandBuffer::Type type = CommandBuffer::Type::Generic);

@@ -683,8 +683,7 @@ VkPipeline CommandBuffer::build_compute_pipeline(Hash hash)
 				return VK_NULL_HANDLE;
 			}
 
-			// We faked support for this flag on AMD for time being, see context.cpp.
-			if (device->get_gpu_properties().vendorID != VENDOR_ID_AMD)
+			if (!device->get_device_features().subgroup_size_control_fake)
 				info.stage.flags |= VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT_EXT;
 		}
 
@@ -1531,6 +1530,13 @@ void CommandBuffer::set_texture(unsigned set, unsigned binding,
 	dirty_sets |= 1u << set;
 }
 
+void CommandBuffer::set_bindless(unsigned set, VkDescriptorSet desc_set)
+{
+	VK_ASSERT(set < VULKAN_NUM_DESCRIPTOR_SETS);
+	bindless_sets[set] = desc_set;
+	dirty_sets |= 1u << set;
+}
+
 void CommandBuffer::set_texture(unsigned set, unsigned binding, const ImageView &view)
 {
 	VK_ASSERT(view.get_image().get_create_info().usage & VK_IMAGE_USAGE_SAMPLED_BIT);
@@ -1754,6 +1760,14 @@ static void update_descriptor_set_legacy(Device &device, VkDescriptorSet desc_se
 void CommandBuffer::flush_descriptor_set(uint32_t set)
 {
 	auto &layout = current_layout->get_resource_layout();
+	if (layout.bindless_descriptor_set_mask & (1u << set))
+	{
+		VK_ASSERT(bindless_sets[set]);
+		table.vkCmdBindDescriptorSets(cmd, actual_render_pass ? VK_PIPELINE_BIND_POINT_GRAPHICS : VK_PIPELINE_BIND_POINT_COMPUTE,
+		                              current_pipeline_layout, set, 1, &bindless_sets[set], 0, nullptr);
+		return;
+	}
+
 	auto &set_layout = layout.sets[set];
 	uint32_t num_dynamic_offsets = 0;
 	uint32_t dynamic_offsets[VULKAN_NUM_BINDINGS];
@@ -1829,8 +1843,8 @@ void CommandBuffer::flush_descriptor_set(uint32_t set)
 		unsigned array_size = set_layout.array_size[binding];
 		for (unsigned i = 0; i < array_size; i++)
 		{
-			h.u64(bindings.secondary_cookies[set][binding + 1]);
-			VK_ASSERT(bindings.bindings[set][binding + 1].image.fp.sampler != VK_NULL_HANDLE);
+			h.u64(bindings.secondary_cookies[set][binding + i]);
+			VK_ASSERT(bindings.bindings[set][binding + i].image.fp.sampler != VK_NULL_HANDLE);
 		}
 	});
 

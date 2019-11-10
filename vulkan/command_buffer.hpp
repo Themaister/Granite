@@ -341,6 +341,9 @@ public:
 	void set_storage_buffer(unsigned set, unsigned binding, const Buffer &buffer);
 	void set_storage_buffer(unsigned set, unsigned binding, const Buffer &buffer, VkDeviceSize offset,
 	                        VkDeviceSize range);
+
+	void set_bindless(unsigned set, VkDescriptorSet desc_set);
+
 	void push_constants(const void *data, VkDeviceSize offset, VkDeviceSize range);
 
 	void *allocate_constant_data(unsigned set, unsigned binding, VkDeviceSize size);
@@ -631,6 +634,7 @@ private:
 	IndexState index_state = {};
 	VertexBindingState vbo = {};
 	ResourceBindings bindings;
+	VkDescriptorSet bindless_sets[VULKAN_NUM_DESCRIPTOR_SETS] = {};
 
 	VkPipeline current_pipeline = VK_NULL_HANDLE;
 	VkPipelineLayout current_pipeline_layout = VK_NULL_HANDLE;

@@ -424,6 +424,7 @@ void Device::bake_program(Program &program)
 
 		layout.spec_constant_mask[i] = shader_layout.spec_constant_mask;
 		layout.combined_spec_constant_mask |= shader_layout.spec_constant_mask;
+		layout.bindless_descriptor_set_mask |= shader_layout.bindless_set_mask;
 	}
 
 	for (unsigned set = 0; set < VULKAN_NUM_DESCRIPTOR_SETS; set++)
@@ -435,7 +436,18 @@ void Device::bake_program(Program &program)
 			for (unsigned binding = 0; binding < VULKAN_NUM_BINDINGS; binding++)
 			{
 				auto &array_size = layout.sets[set].array_size[binding];
-				if (array_size == 0)
+				if (array_size == DescriptorSetLayout::UNSIZED_ARRAY)
+				{
+					for (unsigned i = 1; i < VULKAN_NUM_BINDINGS; i++)
+					{
+						if (layout.stages_for_bindings[set][i] != 0)
+							LOGE("Using bindless for set = %u, but binding = %u has a descriptor attached to it.\n", set, i);
+					}
+
+					// Allows us to have one unified descriptor set layout for bindless.
+					layout.stages_for_bindings[set][binding] = VK_SHADER_STAGE_ALL;
+				}
+				else if (array_size == 0)
 				{
 					array_size = 1;
 				}
@@ -670,6 +682,7 @@ void Device::set_context(const Context &context)
 	init_pipeline_cache();
 
 	init_timeline_semaphores();
+	init_bindless();
 
 #ifdef ANDROID
 	init_frame_contexts(3); // Android needs a bit more ... ;)
@@ -699,6 +712,24 @@ void Device::set_context(const Context &context)
 #ifdef GRANITE_VULKAN_FILESYSTEM
 	init_shader_manager_cache();
 #endif
+}
+
+void Device::init_bindless()
+{
+	if (!ext.supports_descriptor_indexing)
+		return;
+
+	DescriptorSetLayout layout;
+
+	layout.array_size[0] = DescriptorSetLayout::UNSIZED_ARRAY;
+	for (unsigned i = 1; i < VULKAN_NUM_BINDINGS; i++)
+		layout.array_size[i] = 1;
+
+	layout.separate_image_mask = 1;
+	uint32_t stages_for_sets[VULKAN_NUM_BINDINGS] = { VK_SHADER_STAGE_ALL };
+	bindless_sampled_image_allocator_integer = request_descriptor_set_allocator(layout, stages_for_sets);
+	layout.fp_mask = 1;
+	bindless_sampled_image_allocator_fp = request_descriptor_set_allocator(layout, stages_for_sets);
 }
 
 void Device::init_timeline_semaphores()
@@ -1978,6 +2009,12 @@ void Device::destroy_buffer(VkBuffer buffer)
 	destroy_buffer_nolock(buffer);
 }
 
+void Device::destroy_descriptor_pool(VkDescriptorPool desc_pool)
+{
+	LOCK();
+	destroy_descriptor_pool_nolock(desc_pool);
+}
+
 void Device::destroy_buffer_view(VkBufferView view)
 {
 	LOCK();
@@ -2083,6 +2120,12 @@ void Device::destroy_buffer_nolock(VkBuffer buffer)
 {
 	VK_ASSERT(!exists(frame().destroyed_buffers, buffer));
 	frame().destroyed_buffers.push_back(buffer);
+}
+
+void Device::destroy_descriptor_pool_nolock(VkDescriptorPool desc_pool)
+{
+	VK_ASSERT(!exists(frame().destroyed_descriptor_pools, desc_pool));
+	frame().destroyed_descriptor_pools.push_back(desc_pool);
 }
 
 void Device::destroy_sampler_nolock(VkSampler sampler)
@@ -2305,6 +2348,8 @@ void Device::PerFrame::begin()
 		table.vkDestroyBuffer(vkdevice, buffer, nullptr);
 	for (auto &semaphore : destroyed_semaphores)
 		table.vkDestroySemaphore(vkdevice, semaphore, nullptr);
+	for (auto &pool : destroyed_descriptor_pools)
+		table.vkDestroyDescriptorPool(vkdevice, pool, nullptr);
 	for (auto &semaphore : recycled_semaphores)
 	{
 #if defined(VULKAN_DEBUG) && defined(SUBMIT_DEBUG)
@@ -2338,6 +2383,7 @@ void Device::PerFrame::begin()
 	destroyed_images.clear();
 	destroyed_buffers.clear();
 	destroyed_semaphores.clear();
+	destroyed_descriptor_pools.clear();
 	recycled_semaphores.clear();
 	recycled_events.clear();
 	allocations.clear();
@@ -3392,6 +3438,42 @@ SamplerHandle Device::create_sampler(const SamplerCreateInfo &sampler_info)
 	if (table->vkCreateSampler(device, &info, nullptr, &sampler) != VK_SUCCESS)
 		return SamplerHandle(nullptr);
 	return SamplerHandle(handle_pool.samplers.allocate(this, sampler, sampler_info));
+}
+
+BindlessDescriptorPoolHandle Device::create_bindless_descriptor_pool(BindlessResourceType type,
+                                                                     unsigned num_sets, unsigned num_descriptors)
+{
+	if (!ext.supports_descriptor_indexing)
+		return BindlessDescriptorPoolHandle{ nullptr };
+
+	DescriptorSetAllocator *allocator = nullptr;
+
+	switch (type)
+	{
+	case BindlessResourceType::ImageFP:
+		allocator = bindless_sampled_image_allocator_fp;
+		break;
+
+	case BindlessResourceType::ImageInt:
+		allocator = bindless_sampled_image_allocator_integer;
+		break;
+
+	default:
+		break;
+	}
+
+	VkDescriptorPool pool = VK_NULL_HANDLE;
+	if (allocator)
+		pool = allocator->allocate_bindless_pool(num_sets, num_descriptors);
+
+	if (!pool)
+	{
+		LOGE("Failed to allocate bindless pool.\n");
+		return BindlessDescriptorPoolHandle{ nullptr };
+	}
+
+	auto *handle = handle_pool.bindless_descriptor_pool.allocate(this, allocator, pool);
+	return BindlessDescriptorPoolHandle{ handle };
 }
 
 void Device::fill_buffer_sharing_indices(VkBufferCreateInfo &info, uint32_t *sharing_indices)

@@ -222,5 +222,6 @@ private:
 	void destroy();
 	void check_descriptor_indexing_features();
 	void check_subgroup_size_control();
+	bool force_no_validation = false;
 };
 }

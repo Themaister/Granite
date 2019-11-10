@@ -397,9 +397,9 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 	if (!ext.supports_debug_utils && has_extension(VK_EXT_DEBUG_REPORT_EXTENSION_NAME))
 		instance_exts.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
 
-	bool force_no_validation = false;
 	if (getenv("GRANITE_VULKAN_NO_VALIDATION"))
 		force_no_validation = true;
+
 	if (!force_no_validation && has_layer("VK_LAYER_KHRONOS_validation"))
 		instance_layers.push_back("VK_LAYER_KHRONOS_validation");
 	else if (!force_no_validation && has_layer("VK_LAYER_LUNARG_standard_validation"))
@@ -849,7 +849,12 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 			ppNext = &ext.ubo_std430_features.pNext;
 		}
 
-		if (has_extension(VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME))
+#ifdef VULKAN_DEBUG
+		bool use_timeline_semaphore = force_no_validation;
+#else
+		constexpr bool use_timeline_semaphore = true;
+#endif
+		if (use_timeline_semaphore && has_extension(VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME))
 		{
 			enabled_extensions.push_back(VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME);
 			*ppNext = &ext.timeline_semaphore_features;
@@ -931,14 +936,10 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		device_info.pEnabledFeatures = &features.features;
 
 #ifdef VULKAN_DEBUG
-	{
-		bool force_no_validation = false;
-		const char *no_validation = getenv("GRANITE_VULKAN_NO_VALIDATION");
-		if (no_validation && strtoul(no_validation, nullptr, 0) != 0)
-			force_no_validation = true;
-		if (!force_no_validation && has_layer("VK_LAYER_LUNARG_standard_validation"))
-			enabled_layers.push_back("VK_LAYER_LUNARG_standard_validation");
-	}
+	if (!force_no_validation && has_layer("VK_LAYER_KHRONOS_validation"))
+		enabled_layers.push_back("VK_LAYER_KHRONOS_validation");
+	else if (!force_no_validation && has_layer("VK_LAYER_LUNARG_standard_validation"))
+		enabled_layers.push_back("VK_LAYER_LUNARG_standard_validation");
 #endif
 
 	if (ext.supports_external && has_extension(VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME))

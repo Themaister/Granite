@@ -45,14 +45,14 @@ struct BindlessApplication : Granite::Application, Granite::EventHandler
 		const uint8_t red[] = { 0xff, 0, 0, 0xff };
 		const uint8_t green[] = { 0, 0xff, 0, 0xff };
 		const uint8_t blue[] = { 0, 0, 0xff, 0xff };
-		const uint8_t white[] = { 0xff, 0xff, 0xff, 0xff };
+		const uint8_t black[] = { 0, 0, 0, 0xff };
 		data.data = red;
 		images[0] = e.get_device().create_image(info, &data);
 		data.data = green;
 		images[1] = e.get_device().create_image(info, &data);
 		data.data = blue;
 		images[2] = e.get_device().create_image(info, &data);
-		data.data = white;
+		data.data = black;
 		images[3] = e.get_device().create_image(info, &data);
 	}
 
@@ -79,7 +79,8 @@ struct BindlessApplication : Granite::Application, Granite::EventHandler
 		for (unsigned i = 0; i < 1024; i++)
 			bindless->set_texture(i, images[i & 3]->get_view());
 		cmd->set_bindless(0, bindless->get_descriptor_set());
-		CommandBufferUtil::draw_fullscreen_quad(*cmd, "builtin://shaders/quad.vert", "builtin://shaders/bindless.frag");
+		cmd->set_bindless(2, bindless->get_descriptor_set());
+		CommandBufferUtil::draw_fullscreen_quad(*cmd, "builtin://shaders/quad.vert", "assets://shaders/bindless.frag");
 
 		cmd->end_render_pass();
 		device.submit(cmd);

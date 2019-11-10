@@ -2377,6 +2377,7 @@ void Device::PerFrame::begin()
 	destroyed_images.clear();
 	destroyed_buffers.clear();
 	destroyed_semaphores.clear();
+	destroyed_descriptor_pools.clear();
 	recycled_semaphores.clear();
 	recycled_events.clear();
 	allocations.clear();

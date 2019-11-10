@@ -208,7 +208,7 @@ VkDescriptorPool DescriptorSetAllocator::allocate_bindless_pool(unsigned num_set
 	info.poolSizeCount = 1;
 
 	VkDescriptorPoolSize size = pool_size[0];
-	if (num_descriptors > size.type)
+	if (num_descriptors > size.descriptorCount)
 	{
 		LOGE("Trying to allocate more than max bindless descriptors for descriptor layout.\n");
 		return VK_NULL_HANDLE;
@@ -352,7 +352,7 @@ void BindlessDescriptorPool::set_texture_srgb(unsigned binding, const ImageView 
 
 void BindlessDescriptorPool::set_texture(unsigned binding, VkImageView view, VkImageLayout layout)
 {
-	VkWriteDescriptorSet write = {};
+	VkWriteDescriptorSet write = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
 	write.descriptorCount = 1;
 	write.dstArrayElement = binding;
 	write.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;

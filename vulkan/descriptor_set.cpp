@@ -337,6 +337,7 @@ bool BindlessDescriptorPool::allocate_descriptors(unsigned count)
 
 void BindlessDescriptorPool::set_texture(unsigned binding, const ImageView &view)
 {
+	// TODO: Deal with integer view for depth-stencil images?
 	set_texture(binding, view.get_float_view(), view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
 }
 

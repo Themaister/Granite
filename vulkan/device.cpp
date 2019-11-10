@@ -720,10 +720,16 @@ void Device::init_bindless()
 		return;
 
 	DescriptorSetLayout layout;
+
 	layout.array_size[0] = DescriptorSetLayout::UNSIZED_ARRAY;
+	for (unsigned i = 1; i < VULKAN_NUM_BINDINGS; i++)
+		layout.array_size[i] = 1;
+
 	layout.separate_image_mask = 1;
-	const uint32_t stages_for_sets[VULKAN_NUM_BINDINGS] = { VK_SHADER_STAGE_ALL };
-	bindless_sampled_image_allocator = request_descriptor_set_allocator(layout, stages_for_sets);
+	uint32_t stages_for_sets[VULKAN_NUM_BINDINGS] = { VK_SHADER_STAGE_ALL };
+	bindless_sampled_image_allocator_integer = request_descriptor_set_allocator(layout, stages_for_sets);
+	layout.fp_mask = 1;
+	bindless_sampled_image_allocator_fp = request_descriptor_set_allocator(layout, stages_for_sets);
 }
 
 void Device::init_timeline_semaphores()
@@ -3444,8 +3450,12 @@ BindlessDescriptorPoolHandle Device::create_bindless_descriptor_pool(BindlessRes
 
 	switch (type)
 	{
-	case BindlessResourceType::Image:
-		allocator = bindless_sampled_image_allocator;
+	case BindlessResourceType::ImageFP:
+		allocator = bindless_sampled_image_allocator_fp;
+		break;
+
+	case BindlessResourceType::ImageInt:
+		allocator = bindless_sampled_image_allocator_integer;
 		break;
 
 	default:
@@ -3454,7 +3464,7 @@ BindlessDescriptorPoolHandle Device::create_bindless_descriptor_pool(BindlessRes
 
 	VkDescriptorPool pool = VK_NULL_HANDLE;
 	if (allocator)
-		pool = bindless_sampled_image_allocator->allocate_bindless_pool(num_sets, num_descriptors);
+		pool = allocator->allocate_bindless_pool(num_sets, num_descriptors);
 
 	if (!pool)
 	{

@@ -112,7 +112,8 @@ using BindlessDescriptorPoolHandle = Util::IntrusivePtr<BindlessDescriptorPool>;
 
 enum class BindlessResourceType
 {
-	Image
+	ImageFP,
+	ImageInt
 };
 
 class DescriptorSetAllocator : public HashedObject<DescriptorSetAllocator>

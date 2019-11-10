@@ -488,7 +488,8 @@ private:
 	VulkanCache<Shader> shaders;
 	VulkanCache<Program> programs;
 
-	DescriptorSetAllocator *bindless_sampled_image_allocator = nullptr;
+	DescriptorSetAllocator *bindless_sampled_image_allocator_fp = nullptr;
+	DescriptorSetAllocator *bindless_sampled_image_allocator_integer = nullptr;
 
 	FramebufferAllocator framebuffer_allocator;
 	TransientAttachmentAllocator transient_allocator;

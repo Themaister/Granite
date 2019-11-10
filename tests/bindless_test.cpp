@@ -74,7 +74,7 @@ struct BindlessApplication : Granite::Application, Granite::EventHandler
 		rp.clear_color[0].float32[2] = 0.3f;
 		cmd->begin_render_pass(rp);
 
-		auto bindless = device.create_bindless_descriptor_pool(BindlessResourceType::Image, 1, 1024);
+		auto bindless = device.create_bindless_descriptor_pool(BindlessResourceType::ImageFP, 1, 1024);
 		bindless->allocate_descriptors(1024);
 		for (unsigned i = 0; i < 1024; i++)
 			bindless->set_texture(i, images[i & 3]->get_view());

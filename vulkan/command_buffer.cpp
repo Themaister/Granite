@@ -683,8 +683,7 @@ VkPipeline CommandBuffer::build_compute_pipeline(Hash hash)
 				return VK_NULL_HANDLE;
 			}
 
-			// We faked support for this flag on AMD for time being, see context.cpp.
-			if (device->get_gpu_properties().vendorID != VENDOR_ID_AMD)
+			if (!device->get_device_features().subgroup_size_control_fake)
 				info.stage.flags |= VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT_EXT;
 		}
 

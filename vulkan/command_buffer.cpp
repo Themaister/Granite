@@ -1843,8 +1843,8 @@ void CommandBuffer::flush_descriptor_set(uint32_t set)
 		unsigned array_size = set_layout.array_size[binding];
 		for (unsigned i = 0; i < array_size; i++)
 		{
-			h.u64(bindings.secondary_cookies[set][binding + 1]);
-			VK_ASSERT(bindings.bindings[set][binding + 1].image.fp.sampler != VK_NULL_HANDLE);
+			h.u64(bindings.secondary_cookies[set][binding + i]);
+			VK_ASSERT(bindings.bindings[set][binding + i].image.fp.sampler != VK_NULL_HANDLE);
 		}
 	});
 

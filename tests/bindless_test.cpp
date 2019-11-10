@@ -80,6 +80,7 @@ struct BindlessApplication : Granite::Application, Granite::EventHandler
 			bindless->set_texture(i, images[i & 3]->get_view());
 		cmd->set_bindless(0, bindless->get_descriptor_set());
 		cmd->set_bindless(2, bindless->get_descriptor_set());
+		cmd->set_sampler(1, 2, StockSampler::LinearClamp);
 		CommandBufferUtil::draw_fullscreen_quad(*cmd, "builtin://shaders/quad.vert", "assets://shaders/bindless.frag");
 
 		cmd->end_render_pass();

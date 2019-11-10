@@ -4,6 +4,7 @@
 
 layout(set = 0, binding = 0) uniform texture2D uImages[];
 layout(set = 2, binding = 0) uniform texture2D uImages2[];
+layout(set = 1, binding = 2) uniform sampler uSampler;
 layout(location = 0) out vec4 FragColor;
 
 void main()
@@ -13,6 +14,6 @@ void main()
     int index = x ^ y;
 
     FragColor =
-        texelFetch(uImages[nonuniformEXT(index)], ivec2(0), 0) *
-        texelFetch(uImages2[nonuniformEXT(index)], ivec2(0), 0);
+        textureLod(sampler2D(uImages[nonuniformEXT(index)], uSampler), vec2(0.5), 0.0) *
+        textureLod(sampler2D(uImages2[nonuniformEXT(index)], uSampler), vec2(0.5), 0.0);
 }

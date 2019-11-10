@@ -424,6 +424,7 @@ void Device::bake_program(Program &program)
 
 		layout.spec_constant_mask[i] = shader_layout.spec_constant_mask;
 		layout.combined_spec_constant_mask |= shader_layout.spec_constant_mask;
+		layout.bindless_descriptor_set_mask |= shader_layout.bindless_set_mask;
 	}
 
 	for (unsigned set = 0; set < VULKAN_NUM_DESCRIPTOR_SETS; set++)
@@ -435,7 +436,18 @@ void Device::bake_program(Program &program)
 			for (unsigned binding = 0; binding < VULKAN_NUM_BINDINGS; binding++)
 			{
 				auto &array_size = layout.sets[set].array_size[binding];
-				if (array_size == 0)
+				if (array_size == DescriptorSetLayout::UNSIZED_ARRAY)
+				{
+					for (unsigned i = 1; i < VULKAN_NUM_BINDINGS; i++)
+					{
+						if (layout.stages_for_bindings[set][i] != 0)
+							LOGE("Using bindless for set = %u, but binding = %u has a descriptor attached to it.\n", set, i);
+					}
+
+					// Allows us to have one unified descriptor set layout for bindless.
+					layout.stages_for_bindings[set][binding] = VK_SHADER_STAGE_ALL;
+				}
+				else if (array_size == 0)
 				{
 					array_size = 1;
 				}

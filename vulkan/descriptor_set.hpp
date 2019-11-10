@@ -49,6 +49,7 @@ struct DescriptorSetLayout
 	uint32_t immutable_sampler_mask = 0;
 	uint64_t immutable_samplers = 0;
 	uint8_t array_size[VULKAN_NUM_BINDINGS] = {};
+	enum { UNSIZED_ARRAY = 0xff };
 };
 
 // Avoid -Wclass-memaccess warnings since we hash DescriptorSetLayout.
@@ -91,6 +92,14 @@ public:
 
 	void clear();
 
+	bool is_bindless() const
+	{
+		return bindless;
+	}
+
+	VkDescriptorPool allocate_bindless_pool(unsigned num_sets, unsigned num_descriptors);
+	VkDescriptorSet allocate_bindless_set(VkDescriptorPool pool, unsigned num_descriptors);
+
 private:
 	struct DescriptorSetNode : Util::TemporaryHashmapEnabled<DescriptorSetNode>, Util::IntrusiveListEnabled<DescriptorSetNode>
 	{
@@ -114,5 +123,6 @@ private:
 	};
 	std::vector<std::unique_ptr<PerThread>> per_thread;
 	std::vector<VkDescriptorPoolSize> pool_size;
+	bool bindless = false;
 };
 }

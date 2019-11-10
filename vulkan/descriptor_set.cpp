@@ -335,6 +335,40 @@ bool BindlessDescriptorPool::allocate_descriptors(unsigned count)
 	return desc_set != VK_NULL_HANDLE;
 }
 
+void BindlessDescriptorPool::set_texture(unsigned binding, const ImageView &view)
+{
+	set_texture(binding, view.get_float_view(), view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
+}
+
+void BindlessDescriptorPool::set_texture_unorm(unsigned binding, const ImageView &view)
+{
+	set_texture(binding, view.get_unorm_view(), view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
+}
+
+void BindlessDescriptorPool::set_texture_srgb(unsigned binding, const ImageView &view)
+{
+	set_texture(binding, view.get_srgb_view(), view.get_image().get_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
+}
+
+void BindlessDescriptorPool::set_texture(unsigned binding, VkImageView view, VkImageLayout layout)
+{
+	VkWriteDescriptorSet write = {};
+	write.descriptorCount = 1;
+	write.dstArrayElement = binding;
+	write.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+	write.dstSet = desc_set;
+
+	const VkDescriptorImageInfo info = {
+		VK_NULL_HANDLE,
+		view,
+		layout,
+	};
+	write.pImageInfo = &info;
+
+	auto &table = device->get_device_table();
+	table.vkUpdateDescriptorSets(device->get_device(), 1, &write, 0, nullptr);
+}
+
 void BindlessDescriptorPoolDeleter::operator()(BindlessDescriptorPool *pool)
 {
 	pool->device->handle_pool.bindless_descriptor_pool.free(pool);

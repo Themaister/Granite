@@ -76,6 +76,7 @@ static const unsigned VULKAN_DESCRIPTOR_RING_SIZE = 8;
 
 class DescriptorSetAllocator;
 class BindlessDescriptorPool;
+class ImageView;
 
 struct BindlessDescriptorPoolDeleter
 {
@@ -95,11 +96,17 @@ public:
 	bool allocate_descriptors(unsigned count);
 	VkDescriptorSet get_descriptor_set() const;
 
+	void set_texture(unsigned binding, const ImageView &view);
+	void set_texture_unorm(unsigned binding, const ImageView &view);
+	void set_texture_srgb(unsigned binding, const ImageView &view);
+
 private:
 	Device *device;
 	DescriptorSetAllocator *allocator;
 	VkDescriptorPool desc_pool;
 	VkDescriptorSet desc_set = VK_NULL_HANDLE;
+
+	void set_texture(unsigned binding, VkImageView view, VkImageLayout layout);
 };
 using BindlessDescriptorPoolHandle = Util::IntrusivePtr<BindlessDescriptorPool>;
 

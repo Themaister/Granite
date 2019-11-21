@@ -858,6 +858,23 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
 	raster.polygonMode = static_state.state.wireframe ? VK_POLYGON_MODE_LINE : VK_POLYGON_MODE_FILL;
 	raster.depthBiasEnable = static_state.state.depth_bias_enable != 0;
 
+	VkPipelineRasterizationConservativeStateCreateInfoEXT conservative_raster = {
+		VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_CONSERVATIVE_STATE_CREATE_INFO_EXT
+	};
+	if (static_state.state.conservative_raster)
+	{
+		if (device->get_device_features().supports_conservative_rasterization)
+		{
+			raster.pNext = &conservative_raster;
+			conservative_raster.conservativeRasterizationMode = VK_CONSERVATIVE_RASTERIZATION_MODE_OVERESTIMATE_EXT;
+		}
+		else
+		{
+			LOGE("Conservative rasterization is not supported on this device.\n");
+			return VK_NULL_HANDLE;
+		}
+	}
+
 	// Stages
 	VkPipelineShaderStageCreateInfo stages[static_cast<unsigned>(ShaderStage::Count)];
 	unsigned num_stages = 0;

@@ -777,6 +777,12 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	if (has_extension(VK_KHR_STORAGE_BUFFER_STORAGE_CLASS_EXTENSION_NAME))
 		enabled_extensions.push_back(VK_KHR_STORAGE_BUFFER_STORAGE_CLASS_EXTENSION_NAME);
 
+	if (has_extension(VK_EXT_CONSERVATIVE_RASTERIZATION_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_EXT_CONSERVATIVE_RASTERIZATION_EXTENSION_NAME);
+		ext.supports_conservative_rasterization = true;
+	}
+
 	if (has_pdf2)
 	{
 		if (has_extension(VK_KHR_8BIT_STORAGE_EXTENSION_NAME))
@@ -953,6 +959,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	ext.host_memory_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_MEMORY_HOST_PROPERTIES_EXT };
 	ext.subgroup_size_control_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_PROPERTIES_EXT };
 	ext.descriptor_indexing_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES_EXT };
+	ext.conservative_rasterization_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CONSERVATIVE_RASTERIZATION_PROPERTIES_EXT };
 	VkPhysicalDeviceProperties2 props = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
 	ppNext = &props.pNext;
 
@@ -975,6 +982,12 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	{
 		*ppNext = &ext.descriptor_indexing_properties;
 		ppNext = &ext.descriptor_indexing_properties.pNext;
+	}
+
+	if (ext.supports_conservative_rasterization)
+	{
+		*ppNext = &ext.conservative_rasterization_properties;
+		ppNext = &ext.conservative_rasterization_properties.pNext;
 	}
 
 	if (ext.supports_vulkan_11_instance && ext.supports_vulkan_11_device)

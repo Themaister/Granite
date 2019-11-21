@@ -105,6 +105,7 @@ union PipelineState {
 		unsigned subgroup_full_group : 1;
 		unsigned subgroup_minimum_size_log2 : 3;
 		unsigned subgroup_maximum_size_log2 : 3;
+		unsigned conservative_raster : 1;
 
 		uint32_t write_mask;
 	} state;
@@ -565,6 +566,11 @@ public:
 		SET_STATIC_STATE(subgroup_full_group);
 		SET_STATIC_STATE(subgroup_minimum_size_log2);
 		SET_STATIC_STATE(subgroup_maximum_size_log2);
+	}
+
+	inline void set_conservative_rasterization(bool conservative_raster)
+	{
+		SET_STATIC_STATE(conservative_raster);
 	}
 
 #define SET_DYNAMIC_STATE(state, flags)   \

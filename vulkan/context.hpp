@@ -51,6 +51,7 @@ struct DeviceFeatures
 	bool supports_maintenance_2 = false;
 	bool supports_maintenance_3 = false;
 	bool supports_descriptor_indexing = false;
+	bool supports_conservative_rasterization = false;
 	bool subgroup_size_control_fake = false;
 	VkPhysicalDeviceSubgroupProperties subgroup_properties = {};
 	VkPhysicalDevice8BitStorageFeaturesKHR storage_8bit_features = {};
@@ -70,6 +71,7 @@ struct DeviceFeatures
 	VkPhysicalDeviceTimelineSemaphoreFeaturesKHR timeline_semaphore_features = {};
 	VkPhysicalDeviceDescriptorIndexingFeaturesEXT descriptor_indexing_features = {};
 	VkPhysicalDeviceDescriptorIndexingPropertiesEXT descriptor_indexing_properties = {};
+	VkPhysicalDeviceConservativeRasterizationPropertiesEXT conservative_rasterization_properties = {};
 };
 
 enum VendorID

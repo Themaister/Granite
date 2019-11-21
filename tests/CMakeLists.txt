@@ -36,6 +36,11 @@ if (NOT ANDROID)
     target_compile_definitions(bindless-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
 endif()
 
+add_granite_application(conservative-raster-test conservative_raster_test.cpp)
+if (NOT ANDROID)
+    target_compile_definitions(conservative-raster-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
+endif()
+
 add_granite_application(display-timing-test display_timing.cpp)
 if (NOT ANDROID)
     target_compile_definitions(display-timing-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")

@@ -1007,23 +1007,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	device_table.vkGetDeviceQueue(device, transfer_queue_family, transfer_queue_index, &transfer_queue);
 
 	check_descriptor_indexing_features();
-	check_subgroup_size_control();
 
 	return true;
-}
-
-void Context::check_subgroup_size_control()
-{
-	if (gpu_props.vendorID == VENDOR_ID_AMD && !ext.subgroup_size_control_features.subgroupSizeControl)
-	{
-		// Workaround for RADV. Just assume wave size is always 64.
-		ext.subgroup_size_control_features.subgroupSizeControl = VK_TRUE;
-		ext.subgroup_size_control_features.computeFullSubgroups = VK_TRUE;
-		ext.subgroup_size_control_properties.requiredSubgroupSizeStages = VK_SHADER_STAGE_COMPUTE_BIT;
-		ext.subgroup_size_control_properties.minSubgroupSize = ext.subgroup_properties.subgroupSize;
-		ext.subgroup_size_control_properties.maxSubgroupSize = ext.subgroup_properties.subgroupSize;
-		ext.subgroup_size_control_fake = true;
-	}
 }
 
 void Context::check_descriptor_indexing_features()

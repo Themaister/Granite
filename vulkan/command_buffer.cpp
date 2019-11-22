@@ -683,8 +683,7 @@ VkPipeline CommandBuffer::build_compute_pipeline(Hash hash)
 				return VK_NULL_HANDLE;
 			}
 
-			if (!device->get_device_features().subgroup_size_control_fake)
-				info.stage.flags |= VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT_EXT;
+			info.stage.flags |= VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT_EXT;
 		}
 
 		uint32_t min_subgroups = 1u << static_state.state.subgroup_minimum_size_log2;
@@ -692,8 +691,7 @@ VkPipeline CommandBuffer::build_compute_pipeline(Hash hash)
 		if (min_subgroups <= features.subgroup_size_control_properties.minSubgroupSize &&
 		    max_subgroups >= features.subgroup_size_control_properties.maxSubgroupSize)
 		{
-			if (!features.subgroup_size_control_fake)
-				info.stage.flags |= VK_PIPELINE_SHADER_STAGE_CREATE_ALLOW_VARYING_SUBGROUP_SIZE_BIT_EXT;
+			info.stage.flags |= VK_PIPELINE_SHADER_STAGE_CREATE_ALLOW_VARYING_SUBGROUP_SIZE_BIT_EXT;
 		}
 		else
 		{
@@ -703,8 +701,7 @@ VkPipeline CommandBuffer::build_compute_pipeline(Hash hash)
 			else
 				subgroup_size_info.requiredSubgroupSize = min_subgroups;
 
-			if (!features.subgroup_size_control_fake)
-				info.stage.pNext = &subgroup_size_info;
+			info.stage.pNext = &subgroup_size_info;
 
 			if (subgroup_size_info.requiredSubgroupSize < features.subgroup_size_control_properties.minSubgroupSize ||
 			    subgroup_size_info.requiredSubgroupSize > features.subgroup_size_control_properties.maxSubgroupSize)

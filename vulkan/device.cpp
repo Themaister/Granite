@@ -1180,7 +1180,23 @@ void Device::submit_staging(CommandBufferHandle &cmd, VkBufferUsageFlags usage, 
 	auto access = buffer_usage_to_possible_access(usage);
 	auto stages = buffer_usage_to_possible_stages(usage);
 
-	if (transfer_queue == graphics_queue && transfer_queue == compute_queue)
+	VkQueue src_queue;
+	switch (cmd->get_command_buffer_type())
+	{
+	case CommandBuffer::Type::AsyncCompute:
+		src_queue = compute_queue;
+		break;
+
+	case CommandBuffer::Type::AsyncTransfer:
+		src_queue = transfer_queue;
+		break;
+
+	default:
+		src_queue = graphics_queue;
+		break;
+	}
+
+	if (src_queue == graphics_queue && src_queue == compute_queue)
 	{
 		// For single-queue systems, just use a pipeline barrier.
 		cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, stages, access);
@@ -1203,7 +1219,7 @@ void Device::submit_staging(CommandBufferHandle &cmd, VkBufferUsageFlags usage, 
 
 		auto graphics_stages = stages;
 
-		if (transfer_queue == graphics_queue)
+		if (src_queue == graphics_queue)
 		{
 			cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 			             graphics_stages, access);
@@ -1217,7 +1233,7 @@ void Device::submit_staging(CommandBufferHandle &cmd, VkBufferUsageFlags usage, 
 			else
 				submit_nolock(cmd, nullptr, 0, nullptr);
 		}
-		else if (transfer_queue == compute_queue)
+		else if (src_queue == compute_queue)
 		{
 			cmd->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 			             compute_stages, compute_access);
@@ -3656,7 +3672,7 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 		}
 		else
 		{
-			cmd = request_command_buffer(CommandBuffer::Type::AsyncTransfer);
+			cmd = request_command_buffer(CommandBuffer::Type::AsyncCompute);
 			cmd->begin_region("fill-buffer-staging");
 			cmd->fill_buffer(*handle, 0);
 			cmd->end_region();

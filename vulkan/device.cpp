@@ -988,12 +988,11 @@ void Device::submit_empty_inner(CommandBuffer::Type type, InternalFence *fence,
 	VkSemaphore timeline_semaphore = data.timeline_semaphore;
 	uint64_t timeline_value = ++data.current_timeline;
 
-	VkQueue queue;
+	VkQueue queue = get_vk_queue(type);
 	switch (type)
 	{
 	default:
 	case CommandBuffer::Type::Generic:
-		queue = graphics_queue;
 		frame().timeline_fence_graphics = data.current_timeline;
 #if defined(VULKAN_DEBUG) && defined(SUBMIT_DEBUG)
 		if (ext.timeline_semaphore_features.timelineSemaphore)
@@ -1006,7 +1005,6 @@ void Device::submit_empty_inner(CommandBuffer::Type type, InternalFence *fence,
 		break;
 
 	case CommandBuffer::Type::AsyncCompute:
-		queue = compute_queue;
 		frame().timeline_fence_compute = data.current_timeline;
 #if defined(VULKAN_DEBUG) && defined(SUBMIT_DEBUG)
 		if (ext.timeline_semaphore_features.timelineSemaphore)
@@ -1019,7 +1017,6 @@ void Device::submit_empty_inner(CommandBuffer::Type type, InternalFence *fence,
 		break;
 
 	case CommandBuffer::Type::AsyncTransfer:
-		queue = transfer_queue;
 		frame().timeline_fence_transfer = data.current_timeline;
 #if defined(VULKAN_DEBUG) && defined(SUBMIT_DEBUG)
 		if (ext.timeline_semaphore_features.timelineSemaphore)
@@ -1179,22 +1176,7 @@ void Device::submit_staging(CommandBufferHandle &cmd, VkBufferUsageFlags usage, 
 {
 	auto access = buffer_usage_to_possible_access(usage);
 	auto stages = buffer_usage_to_possible_stages(usage);
-
-	VkQueue src_queue;
-	switch (cmd->get_command_buffer_type())
-	{
-	case CommandBuffer::Type::AsyncCompute:
-		src_queue = compute_queue;
-		break;
-
-	case CommandBuffer::Type::AsyncTransfer:
-		src_queue = transfer_queue;
-		break;
-
-	default:
-		src_queue = graphics_queue;
-		break;
-	}
+	VkQueue src_queue = get_vk_queue(cmd->get_command_buffer_type());
 
 	if (src_queue == graphics_queue && src_queue == compute_queue)
 	{
@@ -1296,12 +1278,11 @@ void Device::submit_queue(CommandBuffer::Type type, InternalFence *fence,
 	VkSemaphore timeline_semaphore = data.timeline_semaphore;
 	uint64_t timeline_value = ++data.current_timeline;
 
-	VkQueue queue;
+	VkQueue queue = get_vk_queue(type);
 	switch (type)
 	{
 	default:
 	case CommandBuffer::Type::Generic:
-		queue = graphics_queue;
 		frame().timeline_fence_graphics = data.current_timeline;
 #if defined(VULKAN_DEBUG) && defined(SUBMIT_DEBUG)
 		LOGI("Signal graphics: (%p) %u\n",
@@ -1311,7 +1292,6 @@ void Device::submit_queue(CommandBuffer::Type type, InternalFence *fence,
 		break;
 
 	case CommandBuffer::Type::AsyncCompute:
-		queue = compute_queue;
 		frame().timeline_fence_compute = data.current_timeline;
 #if defined(VULKAN_DEBUG) && defined(SUBMIT_DEBUG)
 		LOGI("Signal compute: (%p) %u\n",
@@ -1321,7 +1301,6 @@ void Device::submit_queue(CommandBuffer::Type type, InternalFence *fence,
 		break;
 
 	case CommandBuffer::Type::AsyncTransfer:
-		queue = transfer_queue;
 		frame().timeline_fence_transfer = data.current_timeline;
 #if defined(VULKAN_DEBUG) && defined(SUBMIT_DEBUG)
 		LOGI("Signal transfer: (%p) %u\n",
@@ -1693,6 +1672,20 @@ Device::QueueData &Device::get_queue_data(CommandBuffer::Type type)
 		return compute;
 	case CommandBuffer::Type::AsyncTransfer:
 		return transfer;
+	}
+}
+
+VkQueue Device::get_vk_queue(CommandBuffer::Type type) const
+{
+	switch (type)
+	{
+	default:
+	case CommandBuffer::Type::Generic:
+		return graphics_queue;
+	case CommandBuffer::Type::AsyncCompute:
+		return compute_queue;
+	case CommandBuffer::Type::AsyncTransfer:
+		return transfer_queue;
 	}
 }
 

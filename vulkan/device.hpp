@@ -501,6 +501,7 @@ private:
 
 	CommandPool &get_command_pool(CommandBuffer::Type type, unsigned thread);
 	QueueData &get_queue_data(CommandBuffer::Type type);
+	VkQueue get_vk_queue(CommandBuffer::Type type) const;
 	Util::SmallVector<CommandBufferHandle> &get_queue_submissions(CommandBuffer::Type type);
 	void clear_wait_semaphores();
 	void submit_staging(CommandBufferHandle &cmd, VkBufferUsageFlags usage, bool flush);

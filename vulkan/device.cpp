@@ -706,6 +706,10 @@ void Device::set_context(const Context &context)
 	                      VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 	                      false);
 
+	graphics.performance_query_pool.init_device(this, graphics_queue_family_index);
+	compute.performance_query_pool.init_device(this, compute_queue_family_index);
+	transfer.performance_query_pool.init_device(this, transfer_queue_family_index);
+
 #ifdef GRANITE_VULKAN_FOSSILIZE
 	init_pipeline_state();
 #endif
@@ -931,13 +935,31 @@ void Device::submit_nolock(CommandBufferHandle cmd, Fence *fence, unsigned semap
 	pool.signal_submitted(cmd->get_command_buffer());
 #endif
 
+	bool profiled_submit = cmd->has_profiling();
+
+	if (profiled_submit)
+	{
+		LOGI("Submitting profiled command buffer, draining GPU.\n");
+		auto &query_pool = get_performance_query_pool(type);
+		// Profiled submit, drain GPU before submitting to make sure there's no overlap going on.
+		query_pool.end_command_buffer(cmd->get_command_buffer());
+		Fence drain_fence;
+		submit_empty_nolock(type, &drain_fence, 0, nullptr, -1);
+		drain_fence->wait();
+		drain_fence->set_internal_sync_object();
+	}
+
 	cmd->end();
 	submissions.push_back(move(cmd));
 
 	InternalFence signalled_fence;
 
 	if (fence || semaphore_count)
-		submit_queue(type, fence ? &signalled_fence : nullptr, semaphore_count, semaphores);
+	{
+		submit_queue(type, fence ? &signalled_fence : nullptr,
+		             semaphore_count, semaphores,
+		             profiled_submit ? 0 : -1);
+	}
 
 	if (fence)
 	{
@@ -948,6 +970,19 @@ void Device::submit_nolock(CommandBufferHandle cmd, Fence *fence, unsigned semap
 			*fence = Fence(handle_pool.fences.allocate(this, signalled_fence.fence));
 	}
 
+	if (profiled_submit)
+	{
+		// Drain queue again and report results.
+		LOGI("Submitted profiled command buffer, draining GPU and report ...\n");
+		auto &query_pool = get_performance_query_pool(type);
+		Fence drain_fence;
+		submit_empty_nolock(type, &drain_fence, 0, nullptr, fence || semaphore_count ? -1 : 0);
+		drain_fence->wait();
+		drain_fence->set_internal_sync_object();
+		query_pool.report();
+		query_pool.release_profiling();
+	}
+
 	decrement_frame_counter_nolock();
 }
 
@@ -955,17 +990,17 @@ void Device::submit_empty(CommandBuffer::Type type, Fence *fence,
                           unsigned semaphore_count, Semaphore *semaphores)
 {
 	LOCK();
-	submit_empty_nolock(type, fence, semaphore_count, semaphores);
+	submit_empty_nolock(type, fence, semaphore_count, semaphores, -1);
 }
 
 void Device::submit_empty_nolock(CommandBuffer::Type type, Fence *fence,
-                                 unsigned semaphore_count, Semaphore *semaphores)
+                                 unsigned semaphore_count, Semaphore *semaphores, int profiling_iteration)
 {
 	if (type != CommandBuffer::Type::AsyncTransfer)
 		flush_frame(CommandBuffer::Type::AsyncTransfer);
 
 	InternalFence signalled_fence;
-	submit_queue(type, fence ? &signalled_fence : nullptr, semaphore_count, semaphores);
+	submit_queue(type, fence ? &signalled_fence : nullptr, semaphore_count, semaphores, profiling_iteration);
 	if (fence)
 	{
 		if (signalled_fence.value)
@@ -1257,7 +1292,7 @@ void Device::submit_staging(CommandBufferHandle &cmd, VkBufferUsageFlags usage, 
 }
 
 void Device::submit_queue(CommandBuffer::Type type, InternalFence *fence,
-                          unsigned semaphore_count, Semaphore *semaphores)
+                          unsigned semaphore_count, Semaphore *semaphores, int profiling_iteration)
 {
 	type = get_physical_queue_type(type);
 
@@ -1470,10 +1505,22 @@ void Device::submit_queue(CommandBuffer::Type type, InternalFence *fence,
 		}
 	}
 
+	VkPerformanceQuerySubmitInfoKHR profiling_infos[2];
+
 	for (unsigned i = 0; i < submits.size(); i++)
 	{
 		auto &submit = submits[i];
 		auto &timeline_submit = timeline_infos[i];
+
+		if (profiling_iteration >= 0)
+		{
+			profiling_infos[i] = { VK_STRUCTURE_TYPE_PERFORMANCE_QUERY_SUBMIT_INFO_KHR };
+			profiling_infos[i].counterPassIndex = uint32_t(profiling_iteration);
+			if (submit.pNext)
+				timeline_submit.pNext = &profiling_infos[i];
+			else
+				submit.pNext = &profiling_infos[i];
+		}
 
 		submit.waitSemaphoreCount = waits[i].size();
 		submit.pWaitSemaphores = waits[i].data();
@@ -1559,7 +1606,7 @@ void Device::sync_buffer_blocks()
 
 	VkBufferUsageFlags usage = 0;
 
-	auto cmd = request_command_buffer_nolock(get_thread_index(), CommandBuffer::Type::AsyncTransfer);
+	auto cmd = request_command_buffer_nolock(get_thread_index(), CommandBuffer::Type::AsyncTransfer, false);
 
 	cmd->begin_region("buffer-block-sync");
 
@@ -1677,7 +1724,7 @@ Device::QueueData &Device::get_queue_data(CommandBuffer::Type type)
 
 VkQueue Device::get_vk_queue(CommandBuffer::Type type) const
 {
-	switch (type)
+	switch (get_physical_queue_type(type))
 	{
 	default:
 	case CommandBuffer::Type::Generic:
@@ -1686,6 +1733,20 @@ VkQueue Device::get_vk_queue(CommandBuffer::Type type) const
 		return compute_queue;
 	case CommandBuffer::Type::AsyncTransfer:
 		return transfer_queue;
+	}
+}
+
+PerformanceQueryPool &Device::get_performance_query_pool(CommandBuffer::Type type)
+{
+	switch (get_physical_queue_type(type))
+	{
+	default:
+	case CommandBuffer::Type::Generic:
+		return graphics.performance_query_pool;
+	case CommandBuffer::Type::AsyncCompute:
+		return compute.performance_query_pool;
+	case CommandBuffer::Type::AsyncTransfer:
+		return transfer.performance_query_pool;
 	}
 }
 
@@ -1725,15 +1786,34 @@ CommandBufferHandle Device::request_command_buffer(CommandBuffer::Type type)
 CommandBufferHandle Device::request_command_buffer_for_thread(unsigned thread_index, CommandBuffer::Type type)
 {
 	LOCK();
-	return request_command_buffer_nolock(thread_index, type);
+	return request_command_buffer_nolock(thread_index, type, false);
 }
 
-CommandBufferHandle Device::request_command_buffer_nolock(unsigned thread_index, CommandBuffer::Type type)
+CommandBufferHandle Device::request_profiled_command_buffer(CommandBuffer::Type type)
+{
+	return request_profiled_command_buffer_for_thread(get_thread_index(), type);
+}
+
+CommandBufferHandle Device::request_profiled_command_buffer_for_thread(unsigned thread_index,
+                                                                       CommandBuffer::Type type)
+{
+	LOCK();
+	return request_command_buffer_nolock(thread_index, type, true);
+}
+
+CommandBufferHandle Device::request_command_buffer_nolock(unsigned thread_index, CommandBuffer::Type type, bool profiled)
 {
 #ifndef GRANITE_VULKAN_MT
 	VK_ASSERT(thread_index == 0);
 #endif
 	auto cmd = get_command_pool(type, thread_index).request_command_buffer();
+
+	if (profiled)
+	{
+		auto &query_pool = get_performance_query_pool(type);
+		if (!query_pool.acquire_profiling())
+			profiled = false;
+	}
 
 	VkCommandBufferBeginInfo info = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
 	info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -1741,6 +1821,14 @@ CommandBufferHandle Device::request_command_buffer_nolock(unsigned thread_index,
 	add_frame_counter_nolock();
 	CommandBufferHandle handle(handle_pool.command_buffers.allocate(this, cmd, pipeline_cache, type));
 	handle->set_thread_index(thread_index);
+
+	if (profiled)
+	{
+		auto &query_pool = get_performance_query_pool(type);
+		handle->enable_profiling();
+		query_pool.begin_command_buffer(handle->get_command_buffer());
+	}
+
 	return handle;
 }
 
@@ -2003,13 +2091,8 @@ void Device::destroy_pipeline(VkPipeline pipeline)
 
 void Device::reset_fence(VkFence fence, bool observed_wait)
 {
-	if (observed_wait)
-		table->vkResetFences(device, 1, &fence);
 	LOCK();
-	if (observed_wait)
-		managers.fence.recycle_fence(fence);
-	else
-		frame().recycle_fences.push_back(fence);
+	reset_fence_nolock(fence, observed_wait);
 }
 
 void Device::destroy_buffer(VkBuffer buffer)
@@ -2112,6 +2195,17 @@ void Device::destroy_event_nolock(VkEvent event)
 {
 	VK_ASSERT(!exists(frame().recycled_events, event));
 	frame().recycled_events.push_back(event);
+}
+
+void Device::reset_fence_nolock(VkFence fence, bool observed_wait)
+{
+	if (observed_wait)
+	{
+		table->vkResetFences(device, 1, &fence);
+		managers.fence.recycle_fence(fence);
+	}
+	else
+		frame().recycle_fences.push_back(fence);
 }
 
 PipelineEvent Device::request_pipeline_event()
@@ -4028,6 +4122,17 @@ void Device::report_checkpoints()
 		for (auto &g : transfer_data)
 			LOGI("    Stage %u:\n%s\n", g.stage, static_cast<const char *>(g.pCheckpointMarker));
 	}
+}
+
+bool Device::init_performance_counters(const std::vector<std::string> &names)
+{
+	if (!graphics.performance_query_pool.init_counters(names))
+		return false;
+	if (!compute.performance_query_pool.init_counters(names))
+		return false;
+	if (!transfer.performance_query_pool.init_counters(names))
+		return false;
+	return true;
 }
 
 #ifdef GRANITE_VULKAN_FILESYSTEM

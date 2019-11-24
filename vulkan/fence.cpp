@@ -28,7 +28,12 @@ namespace Vulkan
 FenceHolder::~FenceHolder()
 {
 	if (fence != VK_NULL_HANDLE)
-		device->reset_fence(fence, observed_wait);
+	{
+		if (internal_sync)
+			device->reset_fence_nolock(fence, observed_wait);
+		else
+			device->reset_fence(fence, observed_wait);
+	}
 }
 
 VkFence FenceHolder::get_fence() const

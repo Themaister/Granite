@@ -71,6 +71,7 @@ struct DeviceFeatures
 	VkPhysicalDeviceDescriptorIndexingFeaturesEXT descriptor_indexing_features = {};
 	VkPhysicalDeviceDescriptorIndexingPropertiesEXT descriptor_indexing_properties = {};
 	VkPhysicalDeviceConservativeRasterizationPropertiesEXT conservative_rasterization_properties = {};
+	VkPhysicalDevicePerformanceQueryFeaturesKHR performance_query_features = {};
 };
 
 enum VendorID

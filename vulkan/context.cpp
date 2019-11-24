@@ -363,7 +363,6 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 	    has_extension(VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME) &&
 	    has_extension(VK_KHR_EXTERNAL_SEMAPHORE_CAPABILITIES_EXTENSION_NAME))
 	{
-		instance_exts.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
 		instance_exts.push_back(VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME);
 		instance_exts.push_back(VK_KHR_EXTERNAL_SEMAPHORE_CAPABILITIES_EXTENSION_NAME);
 		ext.supports_external = true;
@@ -401,15 +400,24 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 		force_no_validation = true;
 
 	if (!force_no_validation && has_layer("VK_LAYER_KHRONOS_validation"))
+	{
 		instance_layers.push_back("VK_LAYER_KHRONOS_validation");
+		LOGI("Enabling VK_LAYER_KHRONOS_validation.\n");
+	}
 	else if (!force_no_validation && has_layer("VK_LAYER_LUNARG_standard_validation"))
+	{
 		instance_layers.push_back("VK_LAYER_LUNARG_standard_validation");
+		LOGI("Enabling VK_LAYER_LUNARG_standard_validation.\n");
+	}
 #endif
 
 	info.enabledExtensionCount = instance_exts.size();
 	info.ppEnabledExtensionNames = instance_exts.empty() ? nullptr : instance_exts.data();
 	info.enabledLayerCount = instance_layers.size();
 	info.ppEnabledLayerNames = instance_layers.empty() ? nullptr : instance_layers.data();
+
+	for (auto *ext_name : instance_exts)
+		LOGI("Enabling instance extension: %s.\n", ext_name);
 
 	if (vkCreateInstance(&info, nullptr, &instance) != VK_SUCCESS)
 		return false;
@@ -997,6 +1005,9 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	device_info.ppEnabledExtensionNames = enabled_extensions.empty() ? nullptr : enabled_extensions.data();
 	device_info.enabledLayerCount = enabled_layers.size();
 	device_info.ppEnabledLayerNames = enabled_layers.empty() ? nullptr : enabled_layers.data();
+
+	for (auto *enabled_extension : enabled_extensions)
+		LOGI("Enabling device extension: %s.\n", enabled_extension);
 
 	if (vkCreateDevice(gpu, &device_info, nullptr, &device) != VK_SUCCESS)
 		return false;

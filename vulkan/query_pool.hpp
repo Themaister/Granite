@@ -33,9 +33,9 @@ class Device;
 class PerformanceQueryPool
 {
 public:
-	void init_device(Device *device);
+	void init_device(Device *device, uint32_t queue_family_index);
 	~PerformanceQueryPool();
-	bool init_counters(uint32_t queue_family_index, const std::vector<std::string> &enable_counter_names);
+	bool init_counters(const std::vector<std::string> &enable_counter_names);
 
 	bool acquire_profiling();
 	void release_profiling();
@@ -47,6 +47,7 @@ public:
 
 private:
 	Device *device = nullptr;
+	uint32_t queue_family_index = 0;
 	VkQueryPool pool = VK_NULL_HANDLE;
 	std::vector<VkPerformanceCounterResultKHR> results;
 	std::vector<VkPerformanceCounterKHR> counters;

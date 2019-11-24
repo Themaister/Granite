@@ -706,9 +706,9 @@ void Device::set_context(const Context &context)
 	                      VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 	                      false);
 
-	graphics.performance_query_pool.init_device(this);
-	compute.performance_query_pool.init_device(this);
-	transfer.performance_query_pool.init_device(this);
+	graphics.performance_query_pool.init_device(this, graphics_queue_family_index);
+	compute.performance_query_pool.init_device(this, compute_queue_family_index);
+	transfer.performance_query_pool.init_device(this, transfer_queue_family_index);
 
 #ifdef GRANITE_VULKAN_FOSSILIZE
 	init_pipeline_state();
@@ -4102,11 +4102,11 @@ void Device::report_checkpoints()
 
 bool Device::init_performance_counters(const std::vector<std::string> &names)
 {
-	if (!graphics.performance_query_pool.init_counters(graphics_queue_family_index, names))
+	if (!graphics.performance_query_pool.init_counters(names))
 		return false;
-	if (!compute.performance_query_pool.init_counters(compute_queue_family_index, names))
+	if (!compute.performance_query_pool.init_counters(names))
 		return false;
-	if (!transfer.performance_query_pool.init_counters(transfer_queue_family_index, names))
+	if (!transfer.performance_query_pool.init_counters(names))
 		return false;
 	return true;
 }

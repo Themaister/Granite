@@ -28,51 +28,6 @@ using namespace std;
 
 namespace Vulkan
 {
-void PerformanceQueryPool::init_device(Device *device_)
-{
-	device = device_;
-}
-
-PerformanceQueryPool::~PerformanceQueryPool()
-{
-	if (acquired)
-		release_profiling();
-
-	if (pool)
-		device->get_device_table().vkDestroyQueryPool(device->get_device(), pool, nullptr);
-}
-
-void PerformanceQueryPool::begin_command_buffer(VkCommandBuffer cmd)
-{
-	if (!acquired || !pool)
-		return;
-
-	auto &table = device->get_device_table();
-	table.vkResetQueryPoolEXT(device->get_device(), pool, 0, 0);
-	table.vkCmdBeginQuery(cmd, pool, 0, 0);
-
-	VkMemoryBarrier barrier = { VK_STRUCTURE_TYPE_MEMORY_BARRIER };
-	barrier.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
-	barrier.dstAccessMask = VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_MEMORY_READ_BIT;
-	table.vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-	                           0, 1, &barrier, 0, nullptr, 0, nullptr);
-}
-
-void PerformanceQueryPool::end_command_buffer(VkCommandBuffer cmd)
-{
-	if (!acquired || !pool)
-		return;
-
-	auto &table = device->get_device_table();
-
-	VkMemoryBarrier barrier = { VK_STRUCTURE_TYPE_MEMORY_BARRIER };
-	barrier.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
-	barrier.dstAccessMask = VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_MEMORY_READ_BIT;
-	table.vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-	                           0, 1, &barrier, 0, nullptr, 0, nullptr);
-	table.vkCmdEndQuery(cmd, pool, 0);
-}
-
 static const char *storage_to_str(VkPerformanceCounterStorageKHR storage)
 {
 	switch (storage)
@@ -140,6 +95,86 @@ static const char *unit_to_str(VkPerformanceCounterUnitKHR unit)
 	}
 }
 
+void PerformanceQueryPool::init_device(Device *device_, uint32_t queue_family_index_)
+{
+	device = device_;
+	queue_family_index = queue_family_index_;
+
+	uint32_t num_counters = 0;
+	if (vkEnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR(
+			device->get_physical_device(),
+			queue_family_index,
+			&num_counters,
+			nullptr, nullptr) != VK_SUCCESS)
+	{
+		LOGE("Failed to enumerate performance counters.\n");
+		return;
+	}
+
+	counters.resize(num_counters);
+	counter_descriptions.resize(num_counters);
+
+	if (vkEnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR(
+			device->get_physical_device(),
+			queue_family_index,
+			&num_counters,
+			counters.data(), counter_descriptions.data()) != VK_SUCCESS)
+	{
+		LOGE("Failed to enumerate performance counters.\n");
+		return;
+	}
+
+	LOGI("Available performance counters for queue family: %u\n", queue_family_index);
+	for (uint32_t i = 0; i < num_counters; i++)
+	{
+		LOGI("  %s: %s\n", counter_descriptions[i].name, counter_descriptions[i].description);
+		LOGI("    Storage: %s\n", storage_to_str(counters[i].storage));
+		LOGI("    Scope: %s\n", scope_to_str(counters[i].scope));
+		LOGI("    Unit: %s\n", unit_to_str(counters[i].unit));
+	}
+}
+
+PerformanceQueryPool::~PerformanceQueryPool()
+{
+	if (acquired)
+		release_profiling();
+
+	if (pool)
+		device->get_device_table().vkDestroyQueryPool(device->get_device(), pool, nullptr);
+}
+
+void PerformanceQueryPool::begin_command_buffer(VkCommandBuffer cmd)
+{
+	if (!acquired || !pool)
+		return;
+
+	auto &table = device->get_device_table();
+	table.vkResetQueryPoolEXT(device->get_device(), pool, 0, 0);
+	table.vkCmdBeginQuery(cmd, pool, 0, 0);
+
+	VkMemoryBarrier barrier = { VK_STRUCTURE_TYPE_MEMORY_BARRIER };
+	barrier.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
+	barrier.dstAccessMask = VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_MEMORY_READ_BIT;
+	table.vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+	                           0, 1, &barrier, 0, nullptr, 0, nullptr);
+}
+
+void PerformanceQueryPool::end_command_buffer(VkCommandBuffer cmd)
+{
+	if (!acquired || !pool)
+		return;
+
+	auto &table = device->get_device_table();
+
+	VkMemoryBarrier barrier = { VK_STRUCTURE_TYPE_MEMORY_BARRIER };
+	barrier.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
+	barrier.dstAccessMask = VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_MEMORY_READ_BIT;
+	table.vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+	                           0, 1, &barrier, 0, nullptr, 0, nullptr);
+	table.vkCmdEndQuery(cmd, pool, 0);
+}
+
+
 void PerformanceQueryPool::report()
 {
 	auto &table = device->get_device_table();
@@ -188,7 +223,7 @@ void PerformanceQueryPool::report()
 	LOGI("================================\n\n");
 }
 
-bool PerformanceQueryPool::init_counters(uint32_t queue_family_index, const std::vector<std::string> &counter_names)
+bool PerformanceQueryPool::init_counters(const std::vector<std::string> &counter_names)
 {
 	if (acquired)
 	{
@@ -219,39 +254,6 @@ bool PerformanceQueryPool::init_counters(uint32_t queue_family_index, const std:
 
 	info.queryType = VK_QUERY_TYPE_PERFORMANCE_QUERY_KHR;
 	info.queryCount = 1;
-
-	uint32_t num_counters = 0;
-	if (vkEnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR(
-			device->get_physical_device(),
-			queue_family_index,
-			&num_counters,
-			nullptr, nullptr) != VK_SUCCESS)
-	{
-		LOGE("Failed to enumerate performance counters.\n");
-		return false;
-	}
-
-	counters.resize(num_counters);
-	counter_descriptions.resize(num_counters);
-
-	if (vkEnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR(
-			device->get_physical_device(),
-			queue_family_index,
-			&num_counters,
-			counters.data(), counter_descriptions.data()) != VK_SUCCESS)
-	{
-		LOGE("Failed to enumerate performance counters.\n");
-		return false;
-	}
-
-	LOGI("Available performance counters for queue family: %u\n", queue_family_index);
-	for (uint32_t i = 0; i < num_counters; i++)
-	{
-		LOGI("  %s: %s\n", counter_descriptions[i].name, counter_descriptions[i].description);
-		LOGI("    Storage: %s\n", storage_to_str(counters[i].storage));
-		LOGI("    Scope: %s\n", scope_to_str(counters[i].scope));
-		LOGI("    Unit: %s\n", unit_to_str(counters[i].unit));
-	}
 
 	active_indices.clear();
 

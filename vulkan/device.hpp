@@ -466,7 +466,8 @@ private:
 
 	void submit_queue(CommandBuffer::Type type, InternalFence *fence,
 	                  unsigned semaphore_count = 0,
-	                  Semaphore *semaphore = nullptr);
+	                  Semaphore *semaphore = nullptr,
+	                  int profiled_iteration = -1);
 
 	PerFrame &frame()
 	{
@@ -555,6 +556,7 @@ private:
 	void destroy_event_nolock(VkEvent event);
 	void free_memory_nolock(const DeviceAllocation &alloc);
 	void destroy_descriptor_pool_nolock(VkDescriptorPool desc_pool);
+	void reset_fence_nolock(VkFence fence, bool observed_wait);
 
 	void flush_frame_nolock();
 	CommandBufferHandle request_command_buffer_nolock(unsigned thread_index, CommandBuffer::Type type, bool profiled);
@@ -562,7 +564,7 @@ private:
 	                   unsigned semaphore_count, Semaphore *semaphore);
 	void submit_empty_nolock(CommandBuffer::Type type, Fence *fence,
 	                         unsigned semaphore_count,
-	                         Semaphore *semaphore);
+	                         Semaphore *semaphore, int profiling_iteration);
 	void add_wait_semaphore_nolock(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags stages,
 	                               bool flush);
 

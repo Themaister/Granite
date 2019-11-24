@@ -944,8 +944,9 @@ void Device::submit_nolock(CommandBufferHandle cmd, Fence *fence, unsigned semap
 		// Profiled submit, drain GPU before submitting to make sure there's no overlap going on.
 		query_pool.end_command_buffer(cmd->get_command_buffer());
 		Fence drain_fence;
-		submit_empty_nolock(type, &drain_fence, 0, nullptr);
+		submit_empty_nolock(type, &drain_fence, 0, nullptr, -1);
 		drain_fence->wait();
+		drain_fence->set_internal_sync_object();
 	}
 
 	cmd->end();
@@ -954,7 +955,11 @@ void Device::submit_nolock(CommandBufferHandle cmd, Fence *fence, unsigned semap
 	InternalFence signalled_fence;
 
 	if (fence || semaphore_count)
-		submit_queue(type, fence ? &signalled_fence : nullptr, semaphore_count, semaphores);
+	{
+		submit_queue(type, fence ? &signalled_fence : nullptr,
+		             semaphore_count, semaphores,
+		             profiled_submit ? 0 : -1);
+	}
 
 	if (fence)
 	{
@@ -970,11 +975,12 @@ void Device::submit_nolock(CommandBufferHandle cmd, Fence *fence, unsigned semap
 		// Drain queue again and report results.
 		LOGI("Submitted profiled command buffer, draining GPU and report ...\n");
 		auto &query_pool = get_performance_query_pool(type);
-		query_pool.release_profiling();
 		Fence drain_fence;
-		submit_empty_nolock(type, &drain_fence, 0, nullptr);
+		submit_empty_nolock(type, &drain_fence, 0, nullptr, fence || semaphore_count ? -1 : 0);
 		drain_fence->wait();
+		drain_fence->set_internal_sync_object();
 		query_pool.report();
+		query_pool.release_profiling();
 	}
 
 	decrement_frame_counter_nolock();
@@ -984,17 +990,17 @@ void Device::submit_empty(CommandBuffer::Type type, Fence *fence,
                           unsigned semaphore_count, Semaphore *semaphores)
 {
 	LOCK();
-	submit_empty_nolock(type, fence, semaphore_count, semaphores);
+	submit_empty_nolock(type, fence, semaphore_count, semaphores, -1);
 }
 
 void Device::submit_empty_nolock(CommandBuffer::Type type, Fence *fence,
-                                 unsigned semaphore_count, Semaphore *semaphores)
+                                 unsigned semaphore_count, Semaphore *semaphores, int profiling_iteration)
 {
 	if (type != CommandBuffer::Type::AsyncTransfer)
 		flush_frame(CommandBuffer::Type::AsyncTransfer);
 
 	InternalFence signalled_fence;
-	submit_queue(type, fence ? &signalled_fence : nullptr, semaphore_count, semaphores);
+	submit_queue(type, fence ? &signalled_fence : nullptr, semaphore_count, semaphores, profiling_iteration);
 	if (fence)
 	{
 		if (signalled_fence.value)
@@ -1286,7 +1292,7 @@ void Device::submit_staging(CommandBufferHandle &cmd, VkBufferUsageFlags usage, 
 }
 
 void Device::submit_queue(CommandBuffer::Type type, InternalFence *fence,
-                          unsigned semaphore_count, Semaphore *semaphores)
+                          unsigned semaphore_count, Semaphore *semaphores, int profiling_iteration)
 {
 	type = get_physical_queue_type(type);
 
@@ -1499,10 +1505,22 @@ void Device::submit_queue(CommandBuffer::Type type, InternalFence *fence,
 		}
 	}
 
+	VkPerformanceQuerySubmitInfoKHR profiling_infos[2];
+
 	for (unsigned i = 0; i < submits.size(); i++)
 	{
 		auto &submit = submits[i];
 		auto &timeline_submit = timeline_infos[i];
+
+		if (profiling_iteration >= 0)
+		{
+			profiling_infos[i] = { VK_STRUCTURE_TYPE_PERFORMANCE_QUERY_SUBMIT_INFO_KHR };
+			profiling_infos[i].counterPassIndex = uint32_t(profiling_iteration);
+			if (submit.pNext)
+				timeline_submit.pNext = &profiling_infos[i];
+			else
+				submit.pNext = &profiling_infos[i];
+		}
 
 		submit.waitSemaphoreCount = waits[i].size();
 		submit.pWaitSemaphores = waits[i].data();
@@ -2073,13 +2091,8 @@ void Device::destroy_pipeline(VkPipeline pipeline)
 
 void Device::reset_fence(VkFence fence, bool observed_wait)
 {
-	if (observed_wait)
-		table->vkResetFences(device, 1, &fence);
 	LOCK();
-	if (observed_wait)
-		managers.fence.recycle_fence(fence);
-	else
-		frame().recycle_fences.push_back(fence);
+	reset_fence_nolock(fence, observed_wait);
 }
 
 void Device::destroy_buffer(VkBuffer buffer)
@@ -2182,6 +2195,17 @@ void Device::destroy_event_nolock(VkEvent event)
 {
 	VK_ASSERT(!exists(frame().recycled_events, event));
 	frame().recycled_events.push_back(event);
+}
+
+void Device::reset_fence_nolock(VkFence fence, bool observed_wait)
+{
+	if (observed_wait)
+	{
+		table->vkResetFences(device, 1, &fence);
+		managers.fence.recycle_fence(fence);
+	}
+	else
+		frame().recycle_fences.push_back(fence);
 }
 
 PipelineEvent Device::request_pipeline_event()

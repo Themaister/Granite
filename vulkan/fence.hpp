@@ -25,6 +25,7 @@
 #include "vulkan_common.hpp"
 #include "vulkan_headers.hpp"
 #include "object_pool.hpp"
+#include "cookie.hpp"
 
 namespace Vulkan
 {
@@ -36,7 +37,7 @@ struct FenceHolderDeleter
 	void operator()(FenceHolder *fence);
 };
 
-class FenceHolder : public Util::IntrusivePtrEnabled<FenceHolder, FenceHolderDeleter, HandleCounter>
+class FenceHolder : public Util::IntrusivePtrEnabled<FenceHolder, FenceHolderDeleter, HandleCounter>, public InternalSyncEnabled
 {
 public:
 	friend struct FenceHolderDeleter;

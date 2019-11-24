@@ -100,6 +100,9 @@ void PerformanceQueryPool::init_device(Device *device_, uint32_t queue_family_in
 	device = device_;
 	queue_family_index = queue_family_index_;
 
+	if (!device->get_device_features().performance_query_features.performanceCounterQueryPools)
+		return;
+
 	uint32_t num_counters = 0;
 	if (vkEnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR(
 			device->get_physical_device(),

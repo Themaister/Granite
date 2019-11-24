@@ -30,6 +30,31 @@ namespace Vulkan
 {
 class Device;
 
+class PerformanceQueryPool
+{
+public:
+	void init_device(Device *device);
+	~PerformanceQueryPool();
+	bool init_counters(uint32_t queue_family_index, const std::vector<std::string> &enable_counter_names);
+
+	bool acquire_profiling();
+	void release_profiling();
+
+	void begin_command_buffer(VkCommandBuffer cmd);
+	void end_command_buffer(VkCommandBuffer cmd);
+
+	void report();
+
+private:
+	Device *device = nullptr;
+	VkQueryPool pool = VK_NULL_HANDLE;
+	std::vector<VkPerformanceCounterResultKHR> results;
+	std::vector<VkPerformanceCounterKHR> counters;
+	std::vector<VkPerformanceCounterDescriptionKHR> counter_descriptions;
+	std::vector<uint32_t> active_indices;
+	bool acquired = false;
+};
+
 class QueryPoolResult;
 
 struct QueryPoolResultDeleter

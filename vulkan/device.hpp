@@ -149,6 +149,8 @@ public:
 	void init_frame_contexts(unsigned count);
 	const VolkDeviceTable &get_device_table() const;
 
+	bool init_performance_counters(const std::vector<std::string> &names);
+
 	ImageView &get_swapchain_view();
 	ImageView &get_swapchain_view(unsigned index);
 	unsigned get_num_swapchain_images() const;
@@ -174,6 +176,10 @@ public:
 	void flush_frame();
 	CommandBufferHandle request_command_buffer(CommandBuffer::Type type = CommandBuffer::Type::Generic);
 	CommandBufferHandle request_command_buffer_for_thread(unsigned thread_index, CommandBuffer::Type type = CommandBuffer::Type::Generic);
+
+	CommandBufferHandle request_profiled_command_buffer(CommandBuffer::Type type = CommandBuffer::Type::Generic);
+	CommandBufferHandle request_profiled_command_buffer_for_thread(unsigned thread_index, CommandBuffer::Type type = CommandBuffer::Type::Generic);
+
 	void submit(CommandBufferHandle &cmd, Fence *fence = nullptr,
 	            unsigned semaphore_count = 0, Semaphore *semaphore = nullptr);
 	void submit_empty(CommandBuffer::Type type,
@@ -247,9 +253,14 @@ public:
 	Semaphore request_imported_semaphore(int fd, VkExternalSemaphoreHandleTypeFlagBitsKHR handle_type);
 #endif
 
-	VkDevice get_device()
+	VkDevice get_device() const
 	{
 		return device;
+	}
+
+	VkPhysicalDevice get_physical_device() const
+	{
+		return gpu;
 	}
 
 	const VkPhysicalDeviceMemoryProperties &get_memory_properties() const
@@ -435,6 +446,7 @@ private:
 
 		VkSemaphore timeline_semaphore = VK_NULL_HANDLE;
 		uint64_t current_timeline = 0;
+		PerformanceQueryPool performance_query_pool;
 	} graphics, compute, transfer;
 
 	struct InternalFence
@@ -502,6 +514,7 @@ private:
 	CommandPool &get_command_pool(CommandBuffer::Type type, unsigned thread);
 	QueueData &get_queue_data(CommandBuffer::Type type);
 	VkQueue get_vk_queue(CommandBuffer::Type type) const;
+	PerformanceQueryPool &get_performance_query_pool(CommandBuffer::Type type);
 	Util::SmallVector<CommandBufferHandle> &get_queue_submissions(CommandBuffer::Type type);
 	void clear_wait_semaphores();
 	void submit_staging(CommandBufferHandle &cmd, VkBufferUsageFlags usage, bool flush);
@@ -544,7 +557,7 @@ private:
 	void destroy_descriptor_pool_nolock(VkDescriptorPool desc_pool);
 
 	void flush_frame_nolock();
-	CommandBufferHandle request_command_buffer_nolock(unsigned thread_index, CommandBuffer::Type type = CommandBuffer::Type::Generic);
+	CommandBufferHandle request_command_buffer_nolock(unsigned thread_index, CommandBuffer::Type type, bool profiled);
 	void submit_nolock(CommandBufferHandle cmd, Fence *fence,
 	                   unsigned semaphore_count, Semaphore *semaphore);
 	void submit_empty_nolock(CommandBuffer::Type type, Fence *fence,

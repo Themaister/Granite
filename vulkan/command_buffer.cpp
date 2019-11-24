@@ -2246,6 +2246,16 @@ void CommandBuffer::end_region()
 		table.vkCmdDebugMarkerEndEXT(cmd);
 }
 
+void CommandBuffer::enable_profiling()
+{
+	profiling = true;
+}
+
+bool CommandBuffer::has_profiling() const
+{
+	return profiling;
+}
+
 #ifdef GRANITE_VULKAN_FILESYSTEM
 void CommandBufferUtil::set_quad_vertex_state(CommandBuffer &cmd)
 {

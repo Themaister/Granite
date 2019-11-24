@@ -28,6 +28,320 @@ using namespace std;
 
 namespace Vulkan
 {
+void PerformanceQueryPool::init_device(Device *device_)
+{
+	device = device_;
+}
+
+PerformanceQueryPool::~PerformanceQueryPool()
+{
+	if (acquired)
+		release_profiling();
+
+	if (pool)
+		device->get_device_table().vkDestroyQueryPool(device->get_device(), pool, nullptr);
+}
+
+void PerformanceQueryPool::begin_command_buffer(VkCommandBuffer cmd)
+{
+	if (!acquired || !pool)
+		return;
+
+	auto &table = device->get_device_table();
+	table.vkResetQueryPoolEXT(device->get_device(), pool, 0, 0);
+	table.vkCmdBeginQuery(cmd, pool, 0, 0);
+
+	VkMemoryBarrier barrier = { VK_STRUCTURE_TYPE_MEMORY_BARRIER };
+	barrier.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
+	barrier.dstAccessMask = VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_MEMORY_READ_BIT;
+	table.vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+	                           0, 1, &barrier, 0, nullptr, 0, nullptr);
+}
+
+void PerformanceQueryPool::end_command_buffer(VkCommandBuffer cmd)
+{
+	if (!acquired || !pool)
+		return;
+
+	auto &table = device->get_device_table();
+
+	VkMemoryBarrier barrier = { VK_STRUCTURE_TYPE_MEMORY_BARRIER };
+	barrier.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
+	barrier.dstAccessMask = VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_MEMORY_READ_BIT;
+	table.vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+	                           0, 1, &barrier, 0, nullptr, 0, nullptr);
+	table.vkCmdEndQuery(cmd, pool, 0);
+}
+
+static const char *storage_to_str(VkPerformanceCounterStorageKHR storage)
+{
+	switch (storage)
+	{
+	case VK_PERFORMANCE_COUNTER_STORAGE_FLOAT32_KHR:
+		return "float32";
+	case VK_PERFORMANCE_COUNTER_STORAGE_FLOAT64_KHR:
+		return "float32";
+	case VK_PERFORMANCE_COUNTER_STORAGE_INT32_KHR:
+		return "int32";
+	case VK_PERFORMANCE_COUNTER_STORAGE_INT64_KHR:
+		return "int64";
+	case VK_PERFORMANCE_COUNTER_STORAGE_UINT32_KHR:
+		return "uint32";
+	case VK_PERFORMANCE_COUNTER_STORAGE_UINT64_KHR:
+		return "uint64";
+	default:
+		return "???";
+	}
+}
+
+static const char *scope_to_str(VkPerformanceCounterScopeKHR scope)
+{
+	switch (scope)
+	{
+	case VK_QUERY_SCOPE_COMMAND_BUFFER_KHR:
+		return "command buffer";
+	case VK_QUERY_SCOPE_RENDER_PASS_KHR:
+		return "render pass";
+	case VK_QUERY_SCOPE_COMMAND_KHR:
+		return "command";
+	default:
+		return "???";
+	}
+}
+
+static const char *unit_to_str(VkPerformanceCounterUnitKHR unit)
+{
+	switch (unit)
+	{
+	case VK_PERFORMANCE_COUNTER_UNIT_AMPS_KHR:
+		return "A";
+	case VK_PERFORMANCE_COUNTER_UNIT_BYTES_KHR:
+		return "bytes";
+	case VK_PERFORMANCE_COUNTER_UNIT_BYTES_PER_SECOND_KHR:
+		return "bytes / second";
+	case VK_PERFORMANCE_COUNTER_UNIT_CYCLES_KHR:
+		return "cycles";
+	case VK_PERFORMANCE_COUNTER_UNIT_GENERIC_KHR:
+		return "generic";
+	case VK_PERFORMANCE_COUNTER_UNIT_HERTZ_KHR:
+		return "Hz";
+	case VK_PERFORMANCE_COUNTER_UNIT_KELVIN_KHR:
+		return "K";
+	case VK_PERFORMANCE_COUNTER_UNIT_NANOSECONDS_KHR:
+		return "ns";
+	case VK_PERFORMANCE_COUNTER_UNIT_PERCENTAGE_KHR:
+		return "%";
+	case VK_PERFORMANCE_COUNTER_UNIT_VOLTS_KHR:
+		return "V";
+	case VK_PERFORMANCE_COUNTER_UNIT_WATTS_KHR:
+		return "W";
+	default:
+		return "???";
+	}
+}
+
+void PerformanceQueryPool::report()
+{
+	auto &table = device->get_device_table();
+	if (table.vkGetQueryPoolResults(device->get_device(), pool,
+	                                0, 1,
+	                                results.size() * sizeof(VkPerformanceCounterResultKHR),
+	                                results.data(),
+	                                sizeof(VkPerformanceCounterResultKHR),
+	                                0) != VK_SUCCESS)
+	{
+		LOGE("Getting performance counters did not succeed.\n");
+	}
+
+	size_t num_counters = results.size();
+
+	LOGI("\n=== Profiling result ===\n");
+	for (size_t i = 0; i < num_counters; i++)
+	{
+		auto &counter = counters[active_indices[i]];
+		auto &desc = counter_descriptions[active_indices[i]];
+
+		switch (counter.storage)
+		{
+		case VK_PERFORMANCE_COUNTER_STORAGE_INT32_KHR:
+			LOGI(" %s (%s): %d %s\n", desc.name, desc.description, results[i].int32, unit_to_str(counter.unit));
+			break;
+		case VK_PERFORMANCE_COUNTER_STORAGE_INT64_KHR:
+			LOGI(" %s (%s): %lld %s\n", desc.name, desc.description, static_cast<long long>(results[i].int64), unit_to_str(counter.unit));
+			break;
+		case VK_PERFORMANCE_COUNTER_STORAGE_UINT32_KHR:
+			LOGI(" %s (%s): %u %s\n", desc.name, desc.description, results[i].uint32, unit_to_str(counter.unit));
+			break;
+		case VK_PERFORMANCE_COUNTER_STORAGE_UINT64_KHR:
+			LOGI(" %s (%s): %llu %s\n", desc.name, desc.description, static_cast<long long>(results[i].uint64), unit_to_str(counter.unit));
+			break;
+		case VK_PERFORMANCE_COUNTER_STORAGE_FLOAT32_KHR:
+			LOGI(" %s (%s): %g %s\n", desc.name, desc.description, results[i].float32, unit_to_str(counter.unit));
+			break;
+		case VK_PERFORMANCE_COUNTER_STORAGE_FLOAT64_KHR:
+			LOGI(" %s (%s): %g %s\n", desc.name, desc.description, results[i].float64, unit_to_str(counter.unit));
+			break;
+		default:
+			break;
+		}
+	}
+	LOGI("================================\n\n");
+}
+
+bool PerformanceQueryPool::init_counters(uint32_t queue_family_index, const std::vector<std::string> &counter_names)
+{
+	if (acquired)
+	{
+		LOGE("Cannot init new counter pools while profiling is acquired.\n");
+		return false;
+	}
+
+	if (!device->get_device_features().performance_query_features.performanceCounterQueryPools)
+	{
+		LOGE("Device does not support VK_KHR_performance_query.\n");
+		return false;
+	}
+
+	if (!device->get_device_features().host_query_reset_features.hostQueryReset)
+	{
+		LOGE("Device does not support host query reset.\n");
+		return false;
+	}
+
+	auto &table = device->get_device_table();
+	if (pool)
+		table.vkDestroyQueryPool(device->get_device(), pool, nullptr);
+	pool = VK_NULL_HANDLE;
+
+	VkQueryPoolPerformanceCreateInfoKHR performance_info = { VK_STRUCTURE_TYPE_QUERY_POOL_PERFORMANCE_CREATE_INFO_KHR };
+	VkQueryPoolCreateInfo info = { VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO };
+	info.pNext = &performance_info;
+
+	info.queryType = VK_QUERY_TYPE_PERFORMANCE_QUERY_KHR;
+	info.queryCount = 1;
+
+	uint32_t num_counters = 0;
+	if (vkEnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR(
+			device->get_physical_device(),
+			queue_family_index,
+			&num_counters,
+			nullptr, nullptr) != VK_SUCCESS)
+	{
+		LOGE("Failed to enumerate performance counters.\n");
+		return false;
+	}
+
+	counters.resize(num_counters);
+	counter_descriptions.resize(num_counters);
+
+	if (vkEnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR(
+			device->get_physical_device(),
+			queue_family_index,
+			&num_counters,
+			counters.data(), counter_descriptions.data()) != VK_SUCCESS)
+	{
+		LOGE("Failed to enumerate performance counters.\n");
+		return false;
+	}
+
+	LOGI("Available performance counters for queue family: %u\n", queue_family_index);
+	for (uint32_t i = 0; i < num_counters; i++)
+	{
+		LOGI("  %s: %s\n", counter_descriptions[i].name, counter_descriptions[i].description);
+		LOGI("    Storage: %s\n", storage_to_str(counters[i].storage));
+		LOGI("    Scope: %s\n", scope_to_str(counters[i].scope));
+		LOGI("    Unit: %s\n", unit_to_str(counters[i].unit));
+	}
+
+	active_indices.clear();
+
+	for (auto &name : counter_names)
+	{
+		auto itr = find_if(begin(counter_descriptions), end(counter_descriptions), [&](const VkPerformanceCounterDescriptionKHR &desc) {
+			return name == desc.name;
+		});
+
+		if (itr != end(counter_descriptions))
+		{
+			LOGI("Found counter %s: %s\n", itr->name, itr->description);
+			active_indices.push_back(itr - begin(counter_descriptions));
+		}
+	}
+
+	if (active_indices.empty())
+	{
+		LOGW("No performance counters were enabled.\n");
+		return false;
+	}
+
+	performance_info.queueFamilyIndex = queue_family_index;
+	performance_info.counterIndexCount = active_indices.size();
+	performance_info.pCounterIndices = active_indices.data();
+	results.resize(active_indices.size());
+
+	uint32_t num_passes = 0;
+	vkGetPhysicalDeviceQueueFamilyPerformanceQueryPassesKHR(device->get_physical_device(),
+	                                                        &performance_info, &num_passes);
+
+	if (num_passes != 1)
+	{
+		LOGE("Implementation requires %u passes to query performance counters. Cannot create query pool.\n",
+		     num_passes);
+		return false;
+	}
+
+	if (table.vkCreateQueryPool(device->get_device(), &info, nullptr, &pool) != VK_SUCCESS)
+	{
+		LOGE("Failed to create performance query pool.\n");
+		return false;
+	}
+
+	return true;
+}
+
+bool PerformanceQueryPool::acquire_profiling()
+{
+	if (acquired)
+	{
+		LOGE("Cannot acquire profiling while holding profiling lock.\n");
+		return false;
+	}
+
+	if (!pool)
+	{
+		LOGE("Cannot acquire performance query pool if pool has not been created.\n");
+		return false;
+	}
+
+	auto &table = device->get_device_table();
+
+	VkAcquireProfilingLockInfoKHR info = { VK_STRUCTURE_TYPE_ACQUIRE_PROFILING_LOCK_INFO_KHR };
+	info.timeout = 100000000;
+	if (table.vkAcquireProfilingLockKHR(device->get_device(), &info) != VK_SUCCESS)
+	{
+		LOGE("Failed to acquire profiling lock in due time (100 ms).\n");
+		return false;
+	}
+
+	acquired = true;
+
+	return true;
+}
+
+void PerformanceQueryPool::release_profiling()
+{
+	if (!acquired)
+	{
+		LOGE("Attempting to release profiling lock while not holding lock.\n");
+		return;
+	}
+
+	if (!pool)
+		return;
+	auto &table = device->get_device_table();
+	table.vkReleaseProfilingLockKHR(device->get_device());
+	acquired = false;
+}
 
 QueryPool::QueryPool(Device *device_)
 	: device(device_)

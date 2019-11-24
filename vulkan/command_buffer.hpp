@@ -620,6 +620,8 @@ public:
 	void set_backtrace_checkpoint();
 
 	void end();
+	void enable_profiling();
+	bool has_profiling() const;
 
 private:
 	friend class Util::ObjectPool<CommandBuffer>;
@@ -705,6 +707,8 @@ private:
 	                 uint64_t cookie);
 
 	void init_viewport_scissor(const RenderPassInfo &info, const Framebuffer *framebuffer);
+
+	bool profiling = false;
 };
 
 #ifdef GRANITE_VULKAN_FILESYSTEM

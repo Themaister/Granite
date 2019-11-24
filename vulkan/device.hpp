@@ -149,7 +149,14 @@ public:
 	void init_frame_contexts(unsigned count);
 	const VolkDeviceTable &get_device_table() const;
 
+	// Profiling
 	bool init_performance_counters(const std::vector<std::string> &names);
+	bool acquire_profiling();
+	void release_profiling();
+	void query_available_performance_counters(CommandBuffer::Type type,
+	                                          uint32_t *count,
+	                                          const VkPerformanceCounterKHR **counters,
+	                                          const VkPerformanceCounterDescriptionKHR **desc);
 
 	ImageView &get_swapchain_view();
 	ImageView &get_swapchain_view(unsigned index);

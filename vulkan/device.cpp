@@ -707,8 +707,13 @@ void Device::set_context(const Context &context)
 	                      false);
 
 	graphics.performance_query_pool.init_device(this, graphics_queue_family_index);
-	compute.performance_query_pool.init_device(this, compute_queue_family_index);
-	transfer.performance_query_pool.init_device(this, transfer_queue_family_index);
+	if (graphics_queue_family_index != compute_queue_family_index)
+		compute.performance_query_pool.init_device(this, compute_queue_family_index);
+	if (graphics_queue_family_index != transfer_queue_family_index &&
+	    compute_queue_family_index != transfer_queue_family_index)
+	{
+		transfer.performance_query_pool.init_device(this, transfer_queue_family_index);
+	}
 
 #ifdef GRANITE_VULKAN_FOSSILIZE
 	init_pipeline_state();
@@ -980,7 +985,6 @@ void Device::submit_nolock(CommandBufferHandle cmd, Fence *fence, unsigned semap
 		drain_fence->wait();
 		drain_fence->set_internal_sync_object();
 		query_pool.report();
-		query_pool.release_profiling();
 	}
 
 	decrement_frame_counter_nolock();
@@ -1744,9 +1748,17 @@ PerformanceQueryPool &Device::get_performance_query_pool(CommandBuffer::Type typ
 	case CommandBuffer::Type::Generic:
 		return graphics.performance_query_pool;
 	case CommandBuffer::Type::AsyncCompute:
-		return compute.performance_query_pool;
+		if (graphics_queue_family_index == compute_queue_family_index)
+			return graphics.performance_query_pool;
+		else
+			return compute.performance_query_pool;
 	case CommandBuffer::Type::AsyncTransfer:
-		return transfer.performance_query_pool;
+		if (graphics_queue_family_index == transfer_queue_family_index)
+			return graphics.performance_query_pool;
+		else if (compute_queue_family_index == transfer_queue_family_index)
+			return compute.performance_query_pool;
+		else
+			return transfer.performance_query_pool;
 	}
 }
 
@@ -1808,11 +1820,10 @@ CommandBufferHandle Device::request_command_buffer_nolock(unsigned thread_index,
 #endif
 	auto cmd = get_command_pool(type, thread_index).request_command_buffer();
 
-	if (profiled)
+	if (profiled && !ext.performance_query_features.performanceCounterQueryPools)
 	{
-		auto &query_pool = get_performance_query_pool(type);
-		if (!query_pool.acquire_profiling())
-			profiled = false;
+		LOGW("Profiling is not supported on this device.\n");
+		profiled = false;
 	}
 
 	VkCommandBufferBeginInfo info = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
@@ -4124,14 +4135,52 @@ void Device::report_checkpoints()
 	}
 }
 
+void Device::query_available_performance_counters(CommandBuffer::Type type, uint32_t *count,
+                                                  const VkPerformanceCounterKHR **counters,
+                                                  const VkPerformanceCounterDescriptionKHR **desc)
+{
+	auto &query_pool = get_performance_query_pool(type);
+	*count = query_pool.get_num_counters();
+	*counters = query_pool.get_available_counters();
+	*desc = query_pool.get_available_counter_descs();
+}
+
 bool Device::init_performance_counters(const std::vector<std::string> &names)
 {
 	if (!graphics.performance_query_pool.init_counters(names))
 		return false;
-	if (!compute.performance_query_pool.init_counters(names))
+
+	if (compute_queue_family_index != graphics_queue_family_index &&
+	    !compute.performance_query_pool.init_counters(names))
+	{
 		return false;
-	if (!transfer.performance_query_pool.init_counters(names))
+	}
+
+	if (transfer_queue_family_index != compute_queue_family_index &&
+	    transfer_queue_family_index != graphics_queue_family_index &&
+	    !transfer.performance_query_pool.init_counters(names))
+	{
 		return false;
+	}
+
+	return true;
+}
+
+void Device::release_profiling()
+{
+	table->vkReleaseProfilingLockKHR(device);
+}
+
+bool Device::acquire_profiling()
+{
+	VkAcquireProfilingLockInfoKHR info = { VK_STRUCTURE_TYPE_ACQUIRE_PROFILING_LOCK_INFO_KHR };
+	info.timeout = UINT64_MAX;
+	if (table->vkAcquireProfilingLockKHR(device, &info) != VK_SUCCESS)
+	{
+		LOGE("Failed to acquire profiling lock.\n");
+		return false;
+	}
+
 	return true;
 }
 

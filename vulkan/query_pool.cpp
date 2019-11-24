@@ -77,7 +77,7 @@ static const char *unit_to_str(VkPerformanceCounterUnitKHR unit)
 	case VK_PERFORMANCE_COUNTER_UNIT_CYCLES_KHR:
 		return "cycles";
 	case VK_PERFORMANCE_COUNTER_UNIT_GENERIC_KHR:
-		return "generic";
+		return "units";
 	case VK_PERFORMANCE_COUNTER_UNIT_HERTZ_KHR:
 		return "Hz";
 	case VK_PERFORMANCE_COUNTER_UNIT_KELVIN_KHR:
@@ -139,16 +139,13 @@ void PerformanceQueryPool::init_device(Device *device_, uint32_t queue_family_in
 
 PerformanceQueryPool::~PerformanceQueryPool()
 {
-	if (acquired)
-		release_profiling();
-
 	if (pool)
 		device->get_device_table().vkDestroyQueryPool(device->get_device(), pool, nullptr);
 }
 
 void PerformanceQueryPool::begin_command_buffer(VkCommandBuffer cmd)
 {
-	if (!acquired || !pool)
+	if (!pool)
 		return;
 
 	auto &table = device->get_device_table();
@@ -164,7 +161,7 @@ void PerformanceQueryPool::begin_command_buffer(VkCommandBuffer cmd)
 
 void PerformanceQueryPool::end_command_buffer(VkCommandBuffer cmd)
 {
-	if (!acquired || !pool)
+	if (!pool)
 		return;
 
 	auto &table = device->get_device_table();
@@ -176,7 +173,6 @@ void PerformanceQueryPool::end_command_buffer(VkCommandBuffer cmd)
 	                           0, 1, &barrier, 0, nullptr, 0, nullptr);
 	table.vkCmdEndQuery(cmd, pool, 0);
 }
-
 
 void PerformanceQueryPool::report()
 {
@@ -226,14 +222,23 @@ void PerformanceQueryPool::report()
 	LOGI("================================\n\n");
 }
 
+uint32_t PerformanceQueryPool::get_num_counters() const
+{
+	return uint32_t(counters.size());
+}
+
+const VkPerformanceCounterKHR *PerformanceQueryPool::get_available_counters() const
+{
+	return counters.data();
+}
+
+const VkPerformanceCounterDescriptionKHR *PerformanceQueryPool::get_available_counter_descs() const
+{
+	return counter_descriptions.data();
+}
+
 bool PerformanceQueryPool::init_counters(const std::vector<std::string> &counter_names)
 {
-	if (acquired)
-	{
-		LOGE("Cannot init new counter pools while profiling is acquired.\n");
-		return false;
-	}
-
 	if (!device->get_device_features().performance_query_features.performanceCounterQueryPools)
 	{
 		LOGE("Device does not support VK_KHR_performance_query.\n");
@@ -302,50 +307,6 @@ bool PerformanceQueryPool::init_counters(const std::vector<std::string> &counter
 	}
 
 	return true;
-}
-
-bool PerformanceQueryPool::acquire_profiling()
-{
-	if (acquired)
-	{
-		LOGE("Cannot acquire profiling while holding profiling lock.\n");
-		return false;
-	}
-
-	if (!pool)
-	{
-		LOGE("Cannot acquire performance query pool if pool has not been created.\n");
-		return false;
-	}
-
-	auto &table = device->get_device_table();
-
-	VkAcquireProfilingLockInfoKHR info = { VK_STRUCTURE_TYPE_ACQUIRE_PROFILING_LOCK_INFO_KHR };
-	info.timeout = 100000000;
-	if (table.vkAcquireProfilingLockKHR(device->get_device(), &info) != VK_SUCCESS)
-	{
-		LOGE("Failed to acquire profiling lock in due time (100 ms).\n");
-		return false;
-	}
-
-	acquired = true;
-
-	return true;
-}
-
-void PerformanceQueryPool::release_profiling()
-{
-	if (!acquired)
-	{
-		LOGE("Attempting to release profiling lock while not holding lock.\n");
-		return;
-	}
-
-	if (!pool)
-		return;
-	auto &table = device->get_device_table();
-	table.vkReleaseProfilingLockKHR(device->get_device());
-	acquired = false;
 }
 
 QueryPool::QueryPool(Device *device_)

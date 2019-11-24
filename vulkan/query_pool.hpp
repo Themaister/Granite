@@ -37,13 +37,14 @@ public:
 	~PerformanceQueryPool();
 	bool init_counters(const std::vector<std::string> &enable_counter_names);
 
-	bool acquire_profiling();
-	void release_profiling();
-
 	void begin_command_buffer(VkCommandBuffer cmd);
 	void end_command_buffer(VkCommandBuffer cmd);
 
 	void report();
+
+	uint32_t get_num_counters() const;
+	const VkPerformanceCounterKHR *get_available_counters() const;
+	const VkPerformanceCounterDescriptionKHR *get_available_counter_descs() const;
 
 private:
 	Device *device = nullptr;
@@ -53,7 +54,6 @@ private:
 	std::vector<VkPerformanceCounterKHR> counters;
 	std::vector<VkPerformanceCounterDescriptionKHR> counter_descriptions;
 	std::vector<uint32_t> active_indices;
-	bool acquired = false;
 };
 
 class QueryPoolResult;

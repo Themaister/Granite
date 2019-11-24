@@ -4173,6 +4173,9 @@ void Device::release_profiling()
 
 bool Device::acquire_profiling()
 {
+	if (!ext.performance_query_features.performanceCounterQueryPools)
+		return false;
+
 	VkAcquireProfilingLockInfoKHR info = { VK_STRUCTURE_TYPE_ACQUIRE_PROFILING_LOCK_INFO_KHR };
 	info.timeout = UINT64_MAX;
 	if (table->vkAcquireProfilingLockKHR(device, &info) != VK_SUCCESS)

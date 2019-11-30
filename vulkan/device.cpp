@@ -3221,9 +3221,7 @@ static unsigned ycbcr_num_planes(YCbCrFormat format)
 	switch (format)
 	{
 	case YCbCrFormat::YUV420P_3PLANE:
-		return 3;
 	case YCbCrFormat::YUV422P_3PLANE:
-		return 2;
 	case YCbCrFormat::YUV444P_3PLANE:
 		return 3;
 

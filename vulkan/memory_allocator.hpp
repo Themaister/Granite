@@ -323,7 +323,7 @@ public:
 	bool allocate(uint32_t size, uint32_t alignment, uint32_t memory_type, AllocationTiling tiling,
 	              DeviceAllocation *alloc);
 	bool allocate_image_memory(uint32_t size, uint32_t alignment, uint32_t memory_type, AllocationTiling tiling,
-	                           DeviceAllocation *alloc, VkImage image);
+	                           DeviceAllocation *alloc, VkImage image, bool force_no_dedicated);
 
 	bool allocate_global(uint32_t size, uint32_t memory_type, DeviceAllocation *alloc);
 

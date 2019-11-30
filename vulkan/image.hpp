@@ -159,7 +159,8 @@ enum ImageMiscFlagBits
 	IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT = 1 << 5,
 	IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_TRANSFER_BIT = 1 << 6,
 	IMAGE_MISC_VERIFY_FORMAT_FEATURE_SAMPLED_LINEAR_FILTER_BIT = 1 << 7,
-	IMAGE_MISC_LINEAR_IMAGE_IGNORE_DEVICE_LOCAL_BIT = 1 << 8
+	IMAGE_MISC_LINEAR_IMAGE_IGNORE_DEVICE_LOCAL_BIT = 1 << 8,
+	IMAGE_MISC_FORCE_NO_DEDICATED_BIT = 1 << 9
 };
 using ImageMiscFlags = uint32_t;
 
@@ -323,6 +324,8 @@ struct ImageCreateInfo
 	VkComponentMapping swizzle = {
 			VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A,
 	};
+	const DeviceAllocation **memory_aliases = nullptr;
+	unsigned num_memory_aliases = 0;
 
 	static ImageCreateInfo immutable_2d_image(unsigned width, unsigned height, VkFormat format, bool mipmapped = false)
 	{
@@ -422,13 +425,62 @@ struct ImageCreateInfo
 			return 0;
 		}
 	}
+
+	static unsigned num_planes(VkFormat format)
+	{
+		switch (format)
+		{
+		case VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM:
+		case VK_FORMAT_G8_B8_R8_3PLANE_422_UNORM:
+		case VK_FORMAT_G8_B8_R8_3PLANE_444_UNORM:
+		case VK_FORMAT_G16_B16_R16_3PLANE_420_UNORM:
+		case VK_FORMAT_G16_B16_R16_3PLANE_422_UNORM:
+		case VK_FORMAT_G16_B16_R16_3PLANE_444_UNORM:
+		case VK_FORMAT_G10X6_B10X6_R10X6_3PLANE_420_UNORM_3PACK16:
+		case VK_FORMAT_G10X6_B10X6_R10X6_3PLANE_422_UNORM_3PACK16:
+		case VK_FORMAT_G10X6_B10X6_R10X6_3PLANE_444_UNORM_3PACK16:
+		case VK_FORMAT_G12X4_B12X4_R12X4_3PLANE_420_UNORM_3PACK16:
+		case VK_FORMAT_G12X4_B12X4_R12X4_3PLANE_422_UNORM_3PACK16:
+		case VK_FORMAT_G12X4_B12X4_R12X4_3PLANE_444_UNORM_3PACK16:
+			return 3;
+
+		case VK_FORMAT_G8_B8R8_2PLANE_420_UNORM:
+		case VK_FORMAT_G8_B8R8_2PLANE_422_UNORM:
+		case VK_FORMAT_G16_B16R16_2PLANE_420_UNORM:
+		case VK_FORMAT_G16_B16R16_2PLANE_422_UNORM:
+		case VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16:
+		case VK_FORMAT_G10X6_B10X6R10X6_2PLANE_422_UNORM_3PACK16:
+		case VK_FORMAT_G12X4_B12X4R12X4_2PLANE_420_UNORM_3PACK16:
+		case VK_FORMAT_G12X4_B12X4R12X4_2PLANE_422_UNORM_3PACK16:
+			return 2;
+
+		default:
+			return 1;
+		}
+	}
+};
+
+enum class YCbCrFormat
+{
+	YUV420P,
+	YUV444P,
+	YUV422P
+};
+
+struct YCbCrImageCreateInfo
+{
+	YCbCrFormat format = YCbCrFormat::YUV420P;
+	unsigned width = 0;
+	unsigned height = 0;
 };
 
 class Image;
+class YCbCrImage;
 
 struct ImageDeleter
 {
 	void operator()(Image *image);
+	void operator()(YCbCrImage *image);
 };
 
 enum class Layout
@@ -546,6 +598,9 @@ public:
 		return alloc;
 	}
 
+	void disown_image();
+	void disown_memory_allocation();
+
 private:
 	friend class Util::ObjectPool<Image>;
 
@@ -562,9 +617,34 @@ private:
 	VkPipelineStageFlags stage_flags = 0;
 	VkAccessFlags access_flags = 0;
 	VkImageLayout swapchain_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+	bool owns_image = true;
+	bool owns_memory_allocation = true;
 };
 
 using ImageHandle = Util::IntrusivePtr<Image>;
+
+class YCbCrImage : public Util::IntrusivePtrEnabled<YCbCrImage, ImageDeleter, HandleCounter>
+{
+public:
+	friend struct ImageDeleter;
+	~YCbCrImage();
+	Image &get_ycbcr_image();
+	Image &get_plane_image(unsigned plane);
+	unsigned get_num_planes() const;
+	YCbCrFormat get_ycbcr_format() const;
+
+private:
+	friend class Util::ObjectPool<YCbCrImage>;
+	YCbCrImage(Device *device, YCbCrFormat format, ImageHandle image, const ImageHandle *planes, unsigned num_planes);
+
+	Device *device;
+	YCbCrFormat format;
+	ImageHandle image;
+	ImageHandle planes[3];
+	unsigned num_planes;
+};
+
+using YCbCrImageHandle = Util::IntrusivePtr<YCbCrImage>;
 
 class LinearHostImage;
 struct LinearHostImageDeleter

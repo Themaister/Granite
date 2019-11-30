@@ -672,12 +672,16 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	for (uint32_t i = 0; i < num_required_device_layers; i++)
 		enabled_layers.push_back(required_device_layers[i]);
 
-	if (has_extension(VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME) &&
-	    has_extension(VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME))
+	if (has_extension(VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME))
+	{
+		ext.supports_get_memory_requirements2 = true;
+		enabled_extensions.push_back(VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME);
+	}
+
+	if (ext.supports_get_memory_requirements2 && has_extension(VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME))
 	{
 		ext.supports_dedicated = true;
 		enabled_extensions.push_back(VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME);
-		enabled_extensions.push_back(VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME);
 	}
 
 	if (has_extension(VK_KHR_IMAGE_FORMAT_LIST_EXTENSION_NAME))
@@ -763,6 +767,12 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		ext.supports_maintenance_3 = true;
 	}
 
+	if (has_extension(VK_KHR_BIND_MEMORY_2_EXTENSION_NAME))
+	{
+		ext.supports_bind_memory2 = true;
+		enabled_extensions.push_back(VK_KHR_BIND_MEMORY_2_EXTENSION_NAME);
+	}
+
 	VkPhysicalDeviceFeatures2KHR features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2_KHR };
 	ext.storage_8bit_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES_KHR };
 	ext.storage_16bit_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES_KHR };
@@ -778,6 +788,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	ext.timeline_semaphore_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES_KHR };
 	ext.descriptor_indexing_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT };
 	ext.performance_query_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PERFORMANCE_QUERY_FEATURES_KHR };
+	ext.sampler_ycbcr_conversion_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_YCBCR_CONVERSION_FEATURES_KHR };
 	void **ppNext = &features.pNext;
 
 	bool has_pdf2 = ext.supports_physical_device_properties2 ||
@@ -888,6 +899,15 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 			enabled_extensions.push_back(VK_KHR_PERFORMANCE_QUERY_EXTENSION_NAME);
 			*ppNext = &ext.performance_query_features;
 			ppNext = &ext.performance_query_features.pNext;
+		}
+
+		if (ext.supports_bind_memory2 &&
+		    ext.supports_get_memory_requirements2 &&
+		    has_extension(VK_KHR_SAMPLER_YCBCR_CONVERSION_EXTENSION_NAME))
+		{
+			enabled_extensions.push_back(VK_KHR_SAMPLER_YCBCR_CONVERSION_EXTENSION_NAME);
+			*ppNext = &ext.sampler_ycbcr_conversion_features;
+			ppNext = &ext.sampler_ycbcr_conversion_features.pNext;
 		}
 
 #if 0

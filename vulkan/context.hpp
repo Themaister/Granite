@@ -52,6 +52,8 @@ struct DeviceFeatures
 	bool supports_maintenance_3 = false;
 	bool supports_descriptor_indexing = false;
 	bool supports_conservative_rasterization = false;
+	bool supports_bind_memory2 = false;
+	bool supports_get_memory_requirements2 = false;
 	VkPhysicalDeviceSubgroupProperties subgroup_properties = {};
 	VkPhysicalDevice8BitStorageFeaturesKHR storage_8bit_features = {};
 	VkPhysicalDevice16BitStorageFeaturesKHR storage_16bit_features = {};
@@ -72,6 +74,7 @@ struct DeviceFeatures
 	VkPhysicalDeviceDescriptorIndexingPropertiesEXT descriptor_indexing_properties = {};
 	VkPhysicalDeviceConservativeRasterizationPropertiesEXT conservative_rasterization_properties = {};
 	VkPhysicalDevicePerformanceQueryFeaturesKHR performance_query_features = {};
+	VkPhysicalDeviceSamplerYcbcrConversionFeaturesKHR sampler_ycbcr_conversion_features = {};
 };
 
 enum VendorID

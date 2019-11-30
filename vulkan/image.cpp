@@ -110,21 +110,69 @@ Image::Image(Device *device_, VkImage image_, VkImageView default_view, const De
 	}
 }
 
+void Image::disown_image()
+{
+	owns_image = false;
+}
+
+void Image::disown_memory_allocation()
+{
+	owns_memory_allocation = false;
+}
+
 Image::~Image()
 {
-	if (alloc.get_memory())
+	if (owns_image)
 	{
 		if (internal_sync)
-		{
 			device->destroy_image_nolock(image);
-			device->free_memory_nolock(alloc);
-		}
 		else
-		{
 			device->destroy_image(image);
-			device->free_memory(alloc);
-		}
 	}
+
+	if (alloc.get_memory() && owns_memory_allocation)
+	{
+		if (internal_sync)
+			device->free_memory_nolock(alloc);
+		else
+			device->free_memory(alloc);
+	}
+}
+
+YCbCrImage::YCbCrImage(Device *device_, YCbCrFormat format_, ImageHandle image_, const ImageHandle *planes_, unsigned num_planes_)
+	: device(device_), format(format_), num_planes(num_planes_)
+{
+	VK_ASSERT(num_planes <= 3);
+	image = std::move(image_);
+	image->set_internal_sync_object();
+	image->get_view().set_internal_sync_object();
+
+	for (unsigned i = 0; i < num_planes; i++)
+	{
+		planes[i] = planes_[i];
+		planes[i]->set_internal_sync_object();
+		planes[i]->get_view().set_internal_sync_object();
+	}
+}
+
+YCbCrImage::~YCbCrImage()
+{
+}
+
+Image &YCbCrImage::get_ycbcr_image()
+{
+	return *image;
+}
+
+Image &YCbCrImage::get_plane_image(unsigned plane)
+{
+	VK_ASSERT(plane < num_planes);
+	return *planes[plane];
+}
+
+unsigned YCbCrImage::get_num_planes() const
+{
+	return num_planes;
 }
 
 const Buffer &LinearHostImage::get_host_visible_buffer() const
@@ -198,6 +246,11 @@ void ImageViewDeleter::operator()(ImageView *view)
 void ImageDeleter::operator()(Image *image)
 {
 	image->device->handle_pool.images.free(image);
+}
+
+void ImageDeleter::operator()(YCbCrImage *image)
+{
+	image->device->handle_pool.ycbcr_images.free(image);
 }
 
 void LinearHostImageDeleter::operator()(LinearHostImage *image)

@@ -2044,6 +2044,8 @@ void Device::init_swapchain(const vector<VkImage> &swapchain_images, unsigned wi
 
 		auto backbuffer = ImageHandle(handle_pool.images.allocate(this, image, image_view, DeviceAllocation{}, info, VK_IMAGE_VIEW_TYPE_2D));
 		backbuffer->set_internal_sync_object();
+		backbuffer->disown_image();
+		backbuffer->disown_memory_allocation();
 		backbuffer->get_view().set_internal_sync_object();
 		wsi.swapchain.push_back(backbuffer);
 		set_name(*backbuffer, "backbuffer");
@@ -3127,6 +3129,140 @@ InitialImageBuffer Device::create_image_staging_buffer(const ImageCreateInfo &in
 	return result;
 }
 
+static unsigned ycbcr_num_planes(YCbCrFormat format)
+{
+	switch (format)
+	{
+	case YCbCrFormat::YUV420P:
+		return 3;
+	case YCbCrFormat::YUV422P:
+		return 2;
+	case YCbCrFormat::YUV444P:
+		return 3;
+	}
+
+	return 1;
+}
+
+static unsigned ycbcr_downsample_ratio_log2(YCbCrFormat format, unsigned dim, unsigned plane)
+{
+	switch (format)
+	{
+	case YCbCrFormat::YUV420P:
+		return plane > 0 ? 1 : 0;
+	case YCbCrFormat::YUV422P:
+		return plane > 0 && dim == 0 ? 1 : 0;
+	case YCbCrFormat::YUV444P:
+		return 0;
+	}
+
+	return 0;
+}
+
+static VkFormat ycbcr_plane_format(YCbCrFormat format, unsigned plane)
+{
+	switch (format)
+	{
+	case YCbCrFormat::YUV420P:
+		return VK_FORMAT_R8_UNORM;
+	case YCbCrFormat::YUV422P:
+		return plane > 0 ? VK_FORMAT_R8G8_UNORM : VK_FORMAT_R8_UNORM;
+	case YCbCrFormat::YUV444P:
+		return VK_FORMAT_R8_UNORM;
+	}
+
+	return VK_FORMAT_UNDEFINED;
+}
+
+static VkFormat ycbcr_planar_format(YCbCrFormat format)
+{
+	switch (format)
+	{
+	case YCbCrFormat::YUV420P:
+		return VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM;
+	case YCbCrFormat::YUV444P:
+		return VK_FORMAT_G8_B8_R8_3PLANE_444_UNORM;
+	case YCbCrFormat::YUV422P:
+		return VK_FORMAT_G8_B8R8_2PLANE_422_UNORM;
+	}
+
+	return VK_FORMAT_UNDEFINED;
+}
+
+YCbCrImageHandle Device::create_ycbcr_image(const YCbCrImageCreateInfo &create_info)
+{
+	if (!ext.sampler_ycbcr_conversion_features.samplerYcbcrConversion)
+		return YCbCrImageHandle(nullptr);
+
+	VkFormatProperties format_properties = {};
+	get_format_properties(ycbcr_planar_format(create_info.format), &format_properties);
+
+	if ((format_properties.optimalTilingFeatures & VK_FORMAT_FEATURE_DISJOINT_BIT) == 0)
+	{
+		LOGE("YCbCr format does not support DISJOINT_BIT.\n");
+		return YCbCrImageHandle(nullptr);
+	}
+
+	if ((format_properties.optimalTilingFeatures & VK_FORMAT_FEATURE_MIDPOINT_CHROMA_SAMPLES_BIT) == 0)
+	{
+		LOGE("YCbCr format does not support MIDPOINT_CHROMA_SAMPLES_BIT.\n");
+		return YCbCrImageHandle(nullptr);
+	}
+
+	if ((format_properties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER_BIT) == 0)
+	{
+		LOGE("YCbCr format does not support YCBCR_CONVERSION_LINEAR_FILTER_BIT.\n");
+		return YCbCrImageHandle(nullptr);
+	}
+
+	ImageHandle ycbcr_image;
+	ImageHandle plane_handles[3];
+	unsigned num_planes = ycbcr_num_planes(create_info.format);
+
+	for (unsigned i = 0; i < num_planes; i++)
+	{
+		ImageCreateInfo plane_info = ImageCreateInfo::immutable_2d_image(
+				create_info.width,
+				create_info.height,
+				ycbcr_plane_format(create_info.format, i));
+		plane_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+		plane_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+		plane_info.width >>= ycbcr_downsample_ratio_log2(create_info.format, 0, i);
+		plane_info.height >>= ycbcr_downsample_ratio_log2(create_info.format, 1, i);
+		plane_info.flags = VK_IMAGE_CREATE_ALIAS_BIT; // Will alias directly over the YCbCr image.
+		plane_info.misc = IMAGE_MISC_FORCE_NO_DEDICATED_BIT;
+		plane_handles[i] = create_image(plane_info);
+		if (!plane_handles[i])
+		{
+			LOGE("Failed to create plane image.\n");
+			return YCbCrImageHandle(nullptr);
+		}
+	}
+
+	ImageCreateInfo ycbcr_info = ImageCreateInfo::immutable_2d_image(
+			create_info.width,
+			create_info.height,
+			ycbcr_planar_format(create_info.format));
+	ycbcr_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+	ycbcr_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+	ycbcr_info.flags = VK_IMAGE_CREATE_DISJOINT_BIT | VK_IMAGE_CREATE_ALIAS_BIT;
+	ycbcr_info.misc = IMAGE_MISC_FORCE_NO_DEDICATED_BIT;
+
+	const DeviceAllocation *allocations[3];
+	for (unsigned i = 0; i < num_planes; i++)
+		allocations[i] = &plane_handles[i]->get_allocation();
+	ycbcr_info.memory_aliases = allocations;
+	ycbcr_info.num_memory_aliases = num_planes;
+
+	ycbcr_image = create_image(ycbcr_info);
+	if (!ycbcr_image)
+		return YCbCrImageHandle(nullptr);
+
+	YCbCrImageHandle handle(handle_pool.ycbcr_images.allocate(this, create_info.format, ycbcr_image, plane_handles, num_planes));
+	return handle;
+}
+
 ImageHandle Device::create_image(const ImageCreateInfo &create_info, const ImageInitialData *initial)
 {
 	if (initial)
@@ -3284,34 +3420,109 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		return ImageHandle(nullptr);
 	}
 
-	table->vkGetImageMemoryRequirements(device, holder.image, &reqs);
-	uint32_t memory_type = find_memory_type(create_info.domain, reqs.memoryTypeBits);
-	if (memory_type == UINT32_MAX)
+	if (create_info.num_memory_aliases != 0)
 	{
-		LOGE("Failed to find memory type.\n");
-		return ImageHandle(nullptr);
-	}
-
-	if (info.tiling == VK_IMAGE_TILING_LINEAR &&
-	    (create_info.misc & IMAGE_MISC_LINEAR_IMAGE_IGNORE_DEVICE_LOCAL_BIT) == 0)
-	{
-		// Is it also device local?
-		if ((mem_props.memoryTypes[memory_type].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) == 0)
+		unsigned num_planes = ImageCreateInfo::num_planes(info.format);
+		if (create_info.num_memory_aliases < num_planes)
 			return ImageHandle(nullptr);
-	}
 
-	if (!managers.memory.allocate_image_memory(reqs.size, reqs.alignment, memory_type,
-	                                           info.tiling == VK_IMAGE_TILING_OPTIMAL ? ALLOCATION_TILING_OPTIMAL : ALLOCATION_TILING_LINEAR,
-	                                           &holder.allocation, holder.image))
-	{
-		LOGE("Failed to allocate image memory (type %u, size: %u).\n", unsigned(memory_type), unsigned(reqs.size));
-		return ImageHandle(nullptr);
-	}
+		if (num_planes == 1)
+		{
+			table->vkGetImageMemoryRequirements(device, holder.image, &reqs);
+			auto &alias = *create_info.memory_aliases[0];
 
-	if (table->vkBindImageMemory(device, holder.image, holder.allocation.get_memory(), holder.allocation.get_offset()) != VK_SUCCESS)
+			// Verify we can actually use this aliased allocation.
+			if ((reqs.memoryTypeBits & (1u << alias.memory_type)) == 0)
+				return ImageHandle(nullptr);
+			if (reqs.size > alias.size)
+				return ImageHandle(nullptr);
+			if (((alias.offset + reqs.alignment - 1) & (reqs.alignment - 1)) != alias.offset)
+				return ImageHandle(nullptr);
+
+			if (table->vkBindImageMemory(device, holder.image, alias.get_memory(),
+			                             alias.get_offset()) != VK_SUCCESS)
+				return ImageHandle(nullptr);
+		}
+		else
+		{
+			if (!ext.supports_bind_memory2 || !ext.supports_get_memory_requirements2)
+				return ImageHandle(nullptr);
+
+			VkBindImageMemoryInfo bind_infos[3];
+			VkBindImagePlaneMemoryInfo bind_plane_infos[3];
+			VK_ASSERT(num_planes <= 3);
+
+			for (unsigned plane = 0; plane < num_planes; plane++)
+			{
+				VkMemoryRequirements2KHR memory_req = {VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR };
+				VkImageMemoryRequirementsInfo2KHR image_info = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2_KHR };
+				image_info.image = holder.image;
+
+				VkImagePlaneMemoryRequirementsInfo plane_info = { VK_STRUCTURE_TYPE_IMAGE_PLANE_MEMORY_REQUIREMENTS_INFO_KHR };
+				plane_info.planeAspect = static_cast<VkImageAspectFlagBits>(VK_IMAGE_ASPECT_PLANE_0_BIT << plane);
+				image_info.pNext = &plane_info;
+
+				table->vkGetImageMemoryRequirements2KHR(device, &image_info, &memory_req);
+
+				auto &alias = *create_info.memory_aliases[plane];
+
+				// Verify we can actually use this aliased allocation.
+				if ((reqs.memoryTypeBits & (1u << alias.memory_type)) == 0)
+					return ImageHandle(nullptr);
+				if (reqs.size > alias.size)
+					return ImageHandle(nullptr);
+				if (((alias.offset + reqs.alignment - 1) & (reqs.alignment - 1)) != alias.offset)
+					return ImageHandle(nullptr);
+
+				bind_infos[plane] = { VK_STRUCTURE_TYPE_BIND_IMAGE_MEMORY_INFO };
+				bind_infos[plane].image = holder.image;
+				bind_infos[plane].memory = alias.base;
+				bind_infos[plane].memoryOffset = alias.offset;
+				bind_infos[plane].pNext = &bind_plane_infos[plane];
+
+				bind_plane_infos[plane] = { VK_STRUCTURE_TYPE_BIND_IMAGE_PLANE_MEMORY_INFO };
+				bind_plane_infos[plane].planeAspect = static_cast<VkImageAspectFlagBits>(VK_IMAGE_ASPECT_PLANE_0_BIT << plane);
+			}
+
+			if (table->vkBindImageMemory2KHR(device, num_planes, bind_infos) != VK_SUCCESS)
+				return ImageHandle(nullptr);
+		}
+	}
+	else
 	{
-		LOGE("Failed to bind image memory.\n");
-		return ImageHandle(nullptr);
+		table->vkGetImageMemoryRequirements(device, holder.image, &reqs);
+
+		uint32_t memory_type = find_memory_type(create_info.domain, reqs.memoryTypeBits);
+		if (memory_type == UINT32_MAX)
+		{
+			LOGE("Failed to find memory type.\n");
+			return ImageHandle(nullptr);
+		}
+
+		if (info.tiling == VK_IMAGE_TILING_LINEAR &&
+		    (create_info.misc & IMAGE_MISC_LINEAR_IMAGE_IGNORE_DEVICE_LOCAL_BIT) == 0)
+		{
+			// Is it also device local?
+			if ((mem_props.memoryTypes[memory_type].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) == 0)
+				return ImageHandle(nullptr);
+		}
+
+		if (!managers.memory.allocate_image_memory(reqs.size, reqs.alignment, memory_type,
+		                                           info.tiling == VK_IMAGE_TILING_OPTIMAL ? ALLOCATION_TILING_OPTIMAL
+		                                                                                  : ALLOCATION_TILING_LINEAR,
+		                                           &holder.allocation, holder.image,
+		                                           (create_info.misc & IMAGE_MISC_FORCE_NO_DEDICATED_BIT) != 0))
+		{
+			LOGE("Failed to allocate image memory (type %u, size: %u).\n", unsigned(memory_type), unsigned(reqs.size));
+			return ImageHandle(nullptr);
+		}
+
+		if (table->vkBindImageMemory(device, holder.image, holder.allocation.get_memory(),
+		                             holder.allocation.get_offset()) != VK_SUCCESS)
+		{
+			LOGE("Failed to bind image memory.\n");
+			return ImageHandle(nullptr);
+		}
 	}
 
 	auto tmpinfo = create_info;

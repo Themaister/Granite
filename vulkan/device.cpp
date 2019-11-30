@@ -761,6 +761,42 @@ void Device::init_timeline_semaphores()
 
 void Device::init_stock_samplers()
 {
+	if (ext.sampler_ycbcr_conversion_features.samplerYcbcrConversion)
+	{
+		for (auto &sampler : samplers_ycbcr)
+		{
+			if (sampler)
+				table->vkDestroySamplerYcbcrConversion(device, sampler, nullptr);
+			sampler = VK_NULL_HANDLE;
+		}
+
+		VkSamplerYcbcrConversionCreateInfo info = { VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_CREATE_INFO };
+		info.ycbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709;
+		info.ycbcrRange = VK_SAMPLER_YCBCR_RANGE_ITU_FULL;
+		info.components = {
+			VK_COMPONENT_SWIZZLE_IDENTITY,
+			VK_COMPONENT_SWIZZLE_IDENTITY,
+			VK_COMPONENT_SWIZZLE_IDENTITY,
+			VK_COMPONENT_SWIZZLE_IDENTITY,
+		};
+		info.chromaFilter = VK_FILTER_LINEAR;
+		info.xChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;
+		info.yChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;
+		info.forceExplicitReconstruction = VK_FALSE;
+
+		info.format = VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM;
+		table->vkCreateSamplerYcbcrConversionKHR(device, &info, nullptr,
+		                                         &samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV420P)]);
+
+		info.format = VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
+		table->vkCreateSamplerYcbcrConversionKHR(device, &info, nullptr,
+		                                         &samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV422P)]);
+
+		info.format = VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM;
+		table->vkCreateSamplerYcbcrConversionKHR(device, &info, nullptr,
+		                                         &samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV444P)]);
+	}
+
 	SamplerCreateInfo info = {};
 	info.max_lod = VK_LOD_CLAMP_NONE;
 	info.max_anisotropy = 1.0f;
@@ -801,6 +837,9 @@ void Device::init_stock_samplers()
 		case StockSampler::TrilinearClamp:
 		case StockSampler::TrilinearWrap:
 		case StockSampler::LinearShadow:
+		case StockSampler::LinearYUV420P:
+		case StockSampler::LinearYUV422P:
+		case StockSampler::LinearYUV444P:
 			info.mag_filter = VK_FILTER_LINEAR;
 			info.min_filter = VK_FILTER_LINEAR;
 			break;
@@ -827,13 +866,16 @@ void Device::init_stock_samplers()
 		case StockSampler::TrilinearClamp:
 		case StockSampler::NearestShadow:
 		case StockSampler::LinearShadow:
+		case StockSampler::LinearYUV420P:
+		case StockSampler::LinearYUV422P:
+		case StockSampler::LinearYUV444P:
 			info.address_mode_u = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
 			info.address_mode_v = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
 			info.address_mode_w = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
 			break;
 		}
+
 		samplers[i] = create_sampler(info, mode);
-		samplers[i]->set_internal_sync_object();
 	}
 }
 
@@ -1946,6 +1988,10 @@ Device::~Device()
 	for (auto &sampler : samplers)
 		sampler.reset();
 
+	for (auto &sampler : samplers_ycbcr)
+		if (sampler)
+			table->vkDestroySamplerYcbcrConversion(device, sampler, nullptr);
+
 	deinit_timeline_semaphores();
 }
 
@@ -2045,7 +2091,6 @@ void Device::init_swapchain(const vector<VkImage> &swapchain_images, unsigned wi
 		auto backbuffer = ImageHandle(handle_pool.images.allocate(this, image, image_view, DeviceAllocation{}, info, VK_IMAGE_VIEW_TYPE_2D));
 		backbuffer->set_internal_sync_object();
 		backbuffer->disown_image();
-		backbuffer->disown_memory_allocation();
 		backbuffer->get_view().set_internal_sync_object();
 		wsi.swapchain.push_back(backbuffer);
 		set_name(*backbuffer, "backbuffer");
@@ -3139,9 +3184,10 @@ static unsigned ycbcr_num_planes(YCbCrFormat format)
 		return 2;
 	case YCbCrFormat::YUV444P:
 		return 3;
-	}
 
-	return 1;
+	default:
+		return 0;
+	}
 }
 
 static unsigned ycbcr_downsample_ratio_log2(YCbCrFormat format, unsigned dim, unsigned plane)
@@ -3152,11 +3198,10 @@ static unsigned ycbcr_downsample_ratio_log2(YCbCrFormat format, unsigned dim, un
 		return plane > 0 ? 1 : 0;
 	case YCbCrFormat::YUV422P:
 		return plane > 0 && dim == 0 ? 1 : 0;
-	case YCbCrFormat::YUV444P:
+
+	default:
 		return 0;
 	}
-
-	return 0;
 }
 
 static VkFormat ycbcr_plane_format(YCbCrFormat format, unsigned plane)
@@ -3169,9 +3214,10 @@ static VkFormat ycbcr_plane_format(YCbCrFormat format, unsigned plane)
 		return plane > 0 ? VK_FORMAT_R8G8_UNORM : VK_FORMAT_R8_UNORM;
 	case YCbCrFormat::YUV444P:
 		return VK_FORMAT_R8_UNORM;
-	}
 
-	return VK_FORMAT_UNDEFINED;
+	default:
+		return VK_FORMAT_UNDEFINED;
+	}
 }
 
 static VkFormat ycbcr_planar_format(YCbCrFormat format)
@@ -3184,9 +3230,10 @@ static VkFormat ycbcr_planar_format(YCbCrFormat format)
 		return VK_FORMAT_G8_B8_R8_3PLANE_444_UNORM;
 	case YCbCrFormat::YUV422P:
 		return VK_FORMAT_G8_B8R8_2PLANE_422_UNORM;
-	}
 
-	return VK_FORMAT_UNDEFINED;
+	default:
+		return VK_FORMAT_UNDEFINED;
+	}
 }
 
 YCbCrImageHandle Device::create_ycbcr_image(const YCbCrImageCreateInfo &create_info)
@@ -3278,6 +3325,12 @@ bool Device::allocate_image_memory(DeviceAllocation *allocation, const ImageCrea
                                    VkImage image, VkImageTiling tiling)
 {
 	VkMemoryRequirements reqs;
+
+	if ((info.flags & VK_IMAGE_CREATE_DISJOINT_BIT) != 0 && info.num_memory_aliases == 0)
+	{
+		LOGE("Must use memory aliases when creating a DISJOINT planar image.\n");
+		return false;
+	}
 
 	if (info.num_memory_aliases != 0)
 	{
@@ -3760,6 +3813,35 @@ SamplerHandle Device::create_sampler(const SamplerCreateInfo &sampler_info, Stoc
 	auto info = fill_vk_sampler_info(sampler_info);
 	VkSampler sampler;
 
+	VkSamplerYcbcrConversionInfo conversion_info = { VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO };
+
+	switch (stock_sampler)
+	{
+	case StockSampler::LinearYUV420P:
+		if (!ext.sampler_ycbcr_conversion_features.samplerYcbcrConversion)
+			return SamplerHandle(nullptr);
+		info.pNext = &conversion_info;
+		conversion_info.conversion = samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV420P)];
+		break;
+
+	case StockSampler::LinearYUV422P:
+		if (!ext.sampler_ycbcr_conversion_features.samplerYcbcrConversion)
+			return SamplerHandle(nullptr);
+		info.pNext = &conversion_info;
+		conversion_info.conversion = samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV422P)];
+		break;
+
+	case StockSampler::LinearYUV444P:
+		if (!ext.sampler_ycbcr_conversion_features.samplerYcbcrConversion)
+			return SamplerHandle(nullptr);
+		info.pNext = &conversion_info;
+		conversion_info.conversion = samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV444P)];
+		break;
+
+	default:
+		info.pNext = nullptr;
+		break;
+	}
 
 	if (table->vkCreateSampler(device, &info, nullptr, &sampler) != VK_SUCCESS)
 		return SamplerHandle(nullptr);
@@ -3768,7 +3850,9 @@ SamplerHandle Device::create_sampler(const SamplerCreateInfo &sampler_info, Stoc
 #else
 	(void)stock_sampler;
 #endif
-	return SamplerHandle(handle_pool.samplers.allocate(this, sampler, sampler_info));
+	SamplerHandle handle(handle_pool.samplers.allocate(this, sampler, sampler_info));
+	handle->set_internal_sync_object();
+	return handle;
 }
 
 SamplerHandle Device::create_sampler(const SamplerCreateInfo &sampler_info)

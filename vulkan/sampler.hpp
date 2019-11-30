@@ -39,6 +39,9 @@ enum class StockSampler
 	TrilinearWrap,
 	NearestShadow,
 	LinearShadow,
+	LinearYUV420P,
+	LinearYUV422P,
+	LinearYUV444P,
 	Count
 };
 

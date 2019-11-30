@@ -464,7 +464,8 @@ enum class YCbCrFormat
 {
 	YUV420P,
 	YUV444P,
-	YUV422P
+	YUV422P,
+	Count
 };
 
 struct YCbCrImageCreateInfo

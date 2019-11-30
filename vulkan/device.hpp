@@ -503,6 +503,7 @@ private:
 	bool memory_type_is_host_visible(uint32_t type) const;
 
 	SamplerHandle samplers[static_cast<unsigned>(StockSampler::Count)];
+	VkSamplerYcbcrConversion samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::Count)] = {};
 
 	VulkanCache<PipelineLayout> pipeline_layouts;
 	VulkanCache<DescriptorSetAllocator> descriptor_set_allocators;

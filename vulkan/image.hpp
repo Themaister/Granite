@@ -462,15 +462,15 @@ struct ImageCreateInfo
 
 enum class YCbCrFormat
 {
-	YUV420P,
-	YUV444P,
-	YUV422P,
+	YUV420P_3PLANE,
+	YUV444P_3PLANE,
+	YUV422P_3PLANE,
 	Count
 };
 
 struct YCbCrImageCreateInfo
 {
-	YCbCrFormat format = YCbCrFormat::YUV420P;
+	YCbCrFormat format = YCbCrFormat::YUV420P_3PLANE;
 	unsigned width = 0;
 	unsigned height = 0;
 };

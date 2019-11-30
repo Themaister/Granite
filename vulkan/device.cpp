@@ -786,15 +786,15 @@ void Device::init_stock_samplers()
 
 		info.format = VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM;
 		table->vkCreateSamplerYcbcrConversionKHR(device, &info, nullptr,
-		                                         &samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV420P)]);
+		                                         &samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV420P_3PLANE)]);
 
-		info.format = VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
+		info.format = VK_FORMAT_G8_B8_R8_3PLANE_422_UNORM;
 		table->vkCreateSamplerYcbcrConversionKHR(device, &info, nullptr,
-		                                         &samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV422P)]);
+		                                         &samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV422P_3PLANE)]);
 
-		info.format = VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM;
+		info.format = VK_FORMAT_G8_B8_R8_3PLANE_444_UNORM;
 		table->vkCreateSamplerYcbcrConversionKHR(device, &info, nullptr,
-		                                         &samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV444P)]);
+		                                         &samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV444P_3PLANE)]);
 	}
 
 	SamplerCreateInfo info = {};
@@ -2778,7 +2778,7 @@ public:
 				return false;
 			create_info.pNext = &conversion;
 			conversion = { VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO };
-			conversion.conversion = device->samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV420P)];
+			conversion.conversion = device->samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV420P_3PLANE)];
 			break;
 
 		case VK_FORMAT_G8_B8_R8_3PLANE_422_UNORM:
@@ -2786,7 +2786,7 @@ public:
 				return false;
 			create_info.pNext = &conversion;
 			conversion = { VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO };
-			conversion.conversion = device->samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV422P)];
+			conversion.conversion = device->samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV422P_3PLANE)];
 			break;
 
 		case VK_FORMAT_G8_B8_R8_3PLANE_444_UNORM:
@@ -2794,7 +2794,7 @@ public:
 				return false;
 			create_info.pNext = &conversion;
 			conversion = { VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO };
-			conversion.conversion = device->samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV444P)];
+			conversion.conversion = device->samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV444P_3PLANE)];
 			break;
 
 		default:
@@ -3220,11 +3220,11 @@ static unsigned ycbcr_num_planes(YCbCrFormat format)
 {
 	switch (format)
 	{
-	case YCbCrFormat::YUV420P:
+	case YCbCrFormat::YUV420P_3PLANE:
 		return 3;
-	case YCbCrFormat::YUV422P:
+	case YCbCrFormat::YUV422P_3PLANE:
 		return 2;
-	case YCbCrFormat::YUV444P:
+	case YCbCrFormat::YUV444P_3PLANE:
 		return 3;
 
 	default:
@@ -3236,9 +3236,9 @@ static unsigned ycbcr_downsample_ratio_log2(YCbCrFormat format, unsigned dim, un
 {
 	switch (format)
 	{
-	case YCbCrFormat::YUV420P:
+	case YCbCrFormat::YUV420P_3PLANE:
 		return plane > 0 ? 1 : 0;
-	case YCbCrFormat::YUV422P:
+	case YCbCrFormat::YUV422P_3PLANE:
 		return plane > 0 && dim == 0 ? 1 : 0;
 
 	default:
@@ -3250,11 +3250,11 @@ static VkFormat ycbcr_plane_format(YCbCrFormat format, unsigned plane)
 {
 	switch (format)
 	{
-	case YCbCrFormat::YUV420P:
+	case YCbCrFormat::YUV420P_3PLANE:
 		return VK_FORMAT_R8_UNORM;
-	case YCbCrFormat::YUV422P:
+	case YCbCrFormat::YUV422P_3PLANE:
 		return plane > 0 ? VK_FORMAT_R8G8_UNORM : VK_FORMAT_R8_UNORM;
-	case YCbCrFormat::YUV444P:
+	case YCbCrFormat::YUV444P_3PLANE:
 		return VK_FORMAT_R8_UNORM;
 
 	default:
@@ -3266,12 +3266,12 @@ static VkFormat ycbcr_planar_format(YCbCrFormat format)
 {
 	switch (format)
 	{
-	case YCbCrFormat::YUV420P:
+	case YCbCrFormat::YUV420P_3PLANE:
 		return VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM;
-	case YCbCrFormat::YUV444P:
+	case YCbCrFormat::YUV422P_3PLANE:
+		return VK_FORMAT_G8_B8_R8_3PLANE_422_UNORM;
+	case YCbCrFormat::YUV444P_3PLANE:
 		return VK_FORMAT_G8_B8_R8_3PLANE_444_UNORM;
-	case YCbCrFormat::YUV422P:
-		return VK_FORMAT_G8_B8R8_2PLANE_422_UNORM;
 
 	default:
 		return VK_FORMAT_UNDEFINED;
@@ -3862,21 +3862,21 @@ SamplerHandle Device::create_sampler(const SamplerCreateInfo &sampler_info, Stoc
 		if (!ext.sampler_ycbcr_conversion_features.samplerYcbcrConversion)
 			return SamplerHandle(nullptr);
 		info.pNext = &conversion_info;
-		conversion_info.conversion = samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV420P)];
+		conversion_info.conversion = samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV420P_3PLANE)];
 		break;
 
 	case StockSampler::LinearYUV422P:
 		if (!ext.sampler_ycbcr_conversion_features.samplerYcbcrConversion)
 			return SamplerHandle(nullptr);
 		info.pNext = &conversion_info;
-		conversion_info.conversion = samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV422P)];
+		conversion_info.conversion = samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV422P_3PLANE)];
 		break;
 
 	case StockSampler::LinearYUV444P:
 		if (!ext.sampler_ycbcr_conversion_features.samplerYcbcrConversion)
 			return SamplerHandle(nullptr);
 		info.pNext = &conversion_info;
-		conversion_info.conversion = samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV444P)];
+		conversion_info.conversion = samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV444P_3PLANE)];
 		break;
 
 	default:

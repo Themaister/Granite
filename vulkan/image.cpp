@@ -175,6 +175,11 @@ unsigned YCbCrImage::get_num_planes() const
 	return num_planes;
 }
 
+YCbCrFormat YCbCrImage::get_ycbcr_format() const
+{
+	return format;
+}
+
 const Buffer &LinearHostImage::get_host_visible_buffer() const
 {
 	return *cpu_image;

@@ -39,9 +39,9 @@ struct YCbCrSamplingTest : Granite::Application, Granite::EventHandler
 
 	void on_device_created(const DeviceCreatedEvent &e)
 	{
-#if 0
+#if 1
 		YCbCrImageCreateInfo info;
-		info.format = YCbCrFormat::YUV420P;
+		info.format = YCbCrFormat::YUV420P_3PLANE;
 		info.width = 16;
 		info.height = 16;
 		ycbcr_image = e.get_device().create_ycbcr_image(info);
@@ -49,8 +49,8 @@ struct YCbCrSamplingTest : Granite::Application, Granite::EventHandler
 		ImageCreateInfo info = ImageCreateInfo::immutable_2d_image(16, 16, VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM);
 		info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 		info.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-#endif
 		ycbcr_image = e.get_device().create_image(info);
+#endif
 
 		if (!ycbcr_image)
 		{
@@ -60,7 +60,7 @@ struct YCbCrSamplingTest : Granite::Application, Granite::EventHandler
 
 		auto cmd = e.get_device().request_command_buffer();
 
-#if 0
+#if 1
 		cmd->image_barrier(ycbcr_image->get_ycbcr_image(), VK_IMAGE_LAYOUT_UNDEFINED,
 		                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 		                   VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
@@ -131,7 +131,7 @@ struct YCbCrSamplingTest : Granite::Application, Granite::EventHandler
 		rp.clear_color[0].float32[1] = 0.2f;
 		rp.clear_color[0].float32[2] = 0.3f;
 		cmd->begin_render_pass(rp);
-#if 0
+#if 1
 		cmd->set_texture(0, 0, ycbcr_image->get_ycbcr_image().get_view());
 #else
 		cmd->set_texture(0, 0, ycbcr_image->get_view());
@@ -141,8 +141,11 @@ struct YCbCrSamplingTest : Granite::Application, Granite::EventHandler
 		device.submit(cmd);
 	}
 
-	//YCbCrImageHandle ycbcr_image;
+#if 1
+	YCbCrImageHandle ycbcr_image;
+#else
 	ImageHandle ycbcr_image;
+#endif
 };
 
 namespace Granite

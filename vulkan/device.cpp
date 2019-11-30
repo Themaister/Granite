@@ -3447,6 +3447,12 @@ bool Device::allocate_image_memory(DeviceAllocation *allocation, const ImageCrea
 		VkMemoryRequirements reqs;
 		table->vkGetImageMemoryRequirements(device, image, &reqs);
 
+		// If we intend to alias with other images bump the alignment to something very high.
+		// This is kind of crude, but should be high enough to allow YCbCr disjoint aliasing on any implementation.
+		if (info.flags & VK_IMAGE_CREATE_ALIAS_BIT)
+			if (reqs.alignment < 64 * 1024)
+				reqs.alignment = 64 * 1024;
+
 		uint32_t memory_type = find_memory_type(info.domain, reqs.memoryTypeBits);
 		if (memory_type == UINT32_MAX)
 		{

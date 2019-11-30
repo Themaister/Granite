@@ -362,7 +362,7 @@ void FFTInterface::read_texture(void *buffer, GLFFT::Texture *texture)
 	auto &image = static_cast<FFTTexture *>(texture)->image->get_image();
 	Vulkan::BufferCreateInfo info = {};
 	info.size =
-	    Vulkan::TextureFormatLayout::format_block_size(image.get_format()) *
+	    Vulkan::TextureFormatLayout::format_block_size(image.get_format(), 0) *
 	    image.get_width() * image.get_height();
 	info.domain = Vulkan::BufferDomain::CachedHost;
 	info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;

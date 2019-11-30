@@ -135,6 +135,7 @@ public:
 	friend class Texture;
 	friend class DescriptorSetAllocator;
 	friend class Shader;
+	friend class ImageResourceHolder;
 
 	Device();
 	~Device();

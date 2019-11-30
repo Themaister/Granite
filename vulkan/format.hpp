@@ -123,14 +123,14 @@ static inline void format_num_blocks(VkFormat format, uint32_t &width, uint32_t 
 	height = (height + align_height - 1) / align_height;
 }
 
-static inline VkDeviceSize format_get_layer_size(VkFormat format, unsigned width, unsigned height, unsigned depth)
+static inline VkDeviceSize format_get_layer_size(VkFormat format, VkImageAspectFlags aspect, unsigned width, unsigned height, unsigned depth)
 {
 	uint32_t blocks_x = width;
 	uint32_t blocks_y = height;
 	format_num_blocks(format, blocks_x, blocks_y);
 	format_align_dim(format, width, height);
 
-	VkDeviceSize size = TextureFormatLayout::format_block_size(format) * depth * blocks_x * blocks_y;
+	VkDeviceSize size = TextureFormatLayout::format_block_size(format, aspect) * depth * blocks_x * blocks_y;
 	return size;
 }
 }

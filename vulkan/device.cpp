@@ -188,7 +188,7 @@ LinearHostImageHandle Device::create_linear_host_image(const LinearHostImageCrea
 				BufferDomain::CachedHost :
 				BufferDomain::Host;
 		buffer.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-		buffer.size = info.width * info.height * TextureFormatLayout::format_block_size(info.format);
+		buffer.size = info.width * info.height * TextureFormatLayout::format_block_size(info.format, format_to_aspect_mask(info.format));
 		cpu_image = create_buffer(buffer);
 		if (!cpu_image)
 			return LinearHostImageHandle(nullptr);
@@ -2769,6 +2769,41 @@ public:
 		return default_view_type;
 	}
 
+	bool setup_conversion_info(VkImageViewCreateInfo &create_info, VkSamplerYcbcrConversionInfo &conversion)
+	{
+		switch (create_info.format)
+		{
+		case VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM:
+			if (!device->get_device_features().sampler_ycbcr_conversion_features.samplerYcbcrConversion)
+				return false;
+			create_info.pNext = &conversion;
+			conversion = { VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO };
+			conversion.conversion = device->samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV420P)];
+			break;
+
+		case VK_FORMAT_G8_B8_R8_3PLANE_422_UNORM:
+			if (!device->get_device_features().sampler_ycbcr_conversion_features.samplerYcbcrConversion)
+				return false;
+			create_info.pNext = &conversion;
+			conversion = { VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO };
+			conversion.conversion = device->samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV422P)];
+			break;
+
+		case VK_FORMAT_G8_B8_R8_3PLANE_444_UNORM:
+			if (!device->get_device_features().sampler_ycbcr_conversion_features.samplerYcbcrConversion)
+				return false;
+			create_info.pNext = &conversion;
+			conversion = { VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO };
+			conversion.conversion = device->samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV444P)];
+			break;
+
+		default:
+			break;
+		}
+
+		return true;
+	}
+
 	bool create_default_views(const ImageCreateInfo &create_info, const VkImageViewCreateInfo *view_info,
 	                          bool create_unorm_srgb_views = false, const VkFormat *view_formats = nullptr)
 	{
@@ -2782,6 +2817,8 @@ public:
 		}
 
 		VkImageViewCreateInfo default_view_info = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+		VkSamplerYcbcrConversionInfo conversion_info = { VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO };
+
 		if (!view_info)
 		{
 			default_view_info.image = image;
@@ -2793,10 +2830,15 @@ public:
 			default_view_info.subresourceRange.baseArrayLayer = 0;
 			default_view_info.subresourceRange.levelCount = create_info.levels;
 			default_view_info.subresourceRange.layerCount = create_info.layers;
-			view_info = &default_view_info;
 
 			default_view_type = default_view_info.viewType;
 		}
+		else
+			default_view_info = *view_info;
+
+		view_info = &default_view_info;
+		if (!setup_conversion_info(default_view_info, conversion_info))
+			return false;
 
 		if (!create_alt_views(create_info, *view_info))
 			return false;
@@ -3324,8 +3366,6 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 bool Device::allocate_image_memory(DeviceAllocation *allocation, const ImageCreateInfo &info,
                                    VkImage image, VkImageTiling tiling)
 {
-	VkMemoryRequirements reqs;
-
 	if ((info.flags & VK_IMAGE_CREATE_DISJOINT_BIT) != 0 && info.num_memory_aliases == 0)
 	{
 		LOGE("Must use memory aliases when creating a DISJOINT planar image.\n");
@@ -3342,6 +3382,7 @@ bool Device::allocate_image_memory(DeviceAllocation *allocation, const ImageCrea
 
 		if (num_planes == 1)
 		{
+			VkMemoryRequirements reqs;
 			table->vkGetImageMemoryRequirements(device, image, &reqs);
 			auto &alias = *info.memory_aliases[0];
 
@@ -3350,11 +3391,10 @@ bool Device::allocate_image_memory(DeviceAllocation *allocation, const ImageCrea
 				return false;
 			if (reqs.size > alias.size)
 				return false;
-			if (((alias.offset + reqs.alignment - 1) & (reqs.alignment - 1)) != alias.offset)
+			if (((alias.offset + reqs.alignment - 1) & ~(reqs.alignment - 1)) != alias.offset)
 				return false;
 
-			if (table->vkBindImageMemory(device, image, alias.get_memory(),
-			                             alias.get_offset()) != VK_SUCCESS)
+			if (table->vkBindImageMemory(device, image, alias.get_memory(), alias.get_offset()) != VK_SUCCESS)
 				return false;
 		}
 		else
@@ -3377,7 +3417,7 @@ bool Device::allocate_image_memory(DeviceAllocation *allocation, const ImageCrea
 				image_info.pNext = &plane_info;
 
 				table->vkGetImageMemoryRequirements2KHR(device, &image_info, &memory_req);
-
+				auto &reqs = memory_req.memoryRequirements;
 				auto &alias = *info.memory_aliases[plane];
 
 				// Verify we can actually use this aliased allocation.
@@ -3385,7 +3425,7 @@ bool Device::allocate_image_memory(DeviceAllocation *allocation, const ImageCrea
 					return false;
 				if (reqs.size > alias.size)
 					return false;
-				if (((alias.offset + reqs.alignment - 1) & (reqs.alignment - 1)) != alias.offset)
+				if (((alias.offset + reqs.alignment - 1) & ~(reqs.alignment - 1)) != alias.offset)
 					return false;
 
 				bind_infos[plane] = { VK_STRUCTURE_TYPE_BIND_IMAGE_MEMORY_INFO };
@@ -3404,6 +3444,7 @@ bool Device::allocate_image_memory(DeviceAllocation *allocation, const ImageCrea
 	}
 	else
 	{
+		VkMemoryRequirements reqs;
 		table->vkGetImageMemoryRequirements(device, image, &reqs);
 
 		uint32_t memory_type = find_memory_type(info.domain, reqs.memoryTypeBits);

@@ -233,7 +233,8 @@ LinearHostImage::LinearHostImage(Device *device_, ImageHandle gpu_image_, Buffer
 	}
 	else
 	{
-		row_pitch = gpu_image->get_width() * TextureFormatLayout::format_block_size(gpu_image->get_format());
+		row_pitch = gpu_image->get_width() * TextureFormatLayout::format_block_size(gpu_image->get_format(),
+		                                                                            format_to_aspect_mask(gpu_image->get_format()));
 		row_offset = 0;
 	}
 }

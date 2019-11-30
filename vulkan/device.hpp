@@ -640,5 +640,8 @@ private:
 	void report_checkpoints();
 
 	void fill_buffer_sharing_indices(VkBufferCreateInfo &create_info, uint32_t *sharing_indices);
+
+	bool allocate_image_memory(DeviceAllocation *allocation, const ImageCreateInfo &info,
+	                           VkImage image, VkImageTiling tiling);
 };
 }

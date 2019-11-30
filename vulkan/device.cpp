@@ -3274,11 +3274,125 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 		return create_image_from_staging_buffer(create_info, nullptr);
 }
 
+bool Device::allocate_image_memory(DeviceAllocation *allocation, const ImageCreateInfo &info,
+                                   VkImage image, VkImageTiling tiling)
+{
+	VkMemoryRequirements reqs;
+
+	if (info.num_memory_aliases != 0)
+	{
+		*allocation = {};
+
+		unsigned num_planes = ImageCreateInfo::num_planes(info.format);
+		if (info.num_memory_aliases < num_planes)
+			return false;
+
+		if (num_planes == 1)
+		{
+			table->vkGetImageMemoryRequirements(device, image, &reqs);
+			auto &alias = *info.memory_aliases[0];
+
+			// Verify we can actually use this aliased allocation.
+			if ((reqs.memoryTypeBits & (1u << alias.memory_type)) == 0)
+				return false;
+			if (reqs.size > alias.size)
+				return false;
+			if (((alias.offset + reqs.alignment - 1) & (reqs.alignment - 1)) != alias.offset)
+				return false;
+
+			if (table->vkBindImageMemory(device, image, alias.get_memory(),
+			                             alias.get_offset()) != VK_SUCCESS)
+				return false;
+		}
+		else
+		{
+			if (!ext.supports_bind_memory2 || !ext.supports_get_memory_requirements2)
+				return false;
+
+			VkBindImageMemoryInfo bind_infos[3];
+			VkBindImagePlaneMemoryInfo bind_plane_infos[3];
+			VK_ASSERT(num_planes <= 3);
+
+			for (unsigned plane = 0; plane < num_planes; plane++)
+			{
+				VkMemoryRequirements2KHR memory_req = {VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR };
+				VkImageMemoryRequirementsInfo2KHR image_info = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2_KHR };
+				image_info.image = image;
+
+				VkImagePlaneMemoryRequirementsInfo plane_info = { VK_STRUCTURE_TYPE_IMAGE_PLANE_MEMORY_REQUIREMENTS_INFO_KHR };
+				plane_info.planeAspect = static_cast<VkImageAspectFlagBits>(VK_IMAGE_ASPECT_PLANE_0_BIT << plane);
+				image_info.pNext = &plane_info;
+
+				table->vkGetImageMemoryRequirements2KHR(device, &image_info, &memory_req);
+
+				auto &alias = *info.memory_aliases[plane];
+
+				// Verify we can actually use this aliased allocation.
+				if ((reqs.memoryTypeBits & (1u << alias.memory_type)) == 0)
+					return false;
+				if (reqs.size > alias.size)
+					return false;
+				if (((alias.offset + reqs.alignment - 1) & (reqs.alignment - 1)) != alias.offset)
+					return false;
+
+				bind_infos[plane] = { VK_STRUCTURE_TYPE_BIND_IMAGE_MEMORY_INFO };
+				bind_infos[plane].image = image;
+				bind_infos[plane].memory = alias.base;
+				bind_infos[plane].memoryOffset = alias.offset;
+				bind_infos[plane].pNext = &bind_plane_infos[plane];
+
+				bind_plane_infos[plane] = { VK_STRUCTURE_TYPE_BIND_IMAGE_PLANE_MEMORY_INFO };
+				bind_plane_infos[plane].planeAspect = static_cast<VkImageAspectFlagBits>(VK_IMAGE_ASPECT_PLANE_0_BIT << plane);
+			}
+
+			if (table->vkBindImageMemory2KHR(device, num_planes, bind_infos) != VK_SUCCESS)
+				return false;
+		}
+	}
+	else
+	{
+		table->vkGetImageMemoryRequirements(device, image, &reqs);
+
+		uint32_t memory_type = find_memory_type(info.domain, reqs.memoryTypeBits);
+		if (memory_type == UINT32_MAX)
+		{
+			LOGE("Failed to find memory type.\n");
+			return false;
+		}
+
+		if (tiling == VK_IMAGE_TILING_LINEAR &&
+		    (info.misc & IMAGE_MISC_LINEAR_IMAGE_IGNORE_DEVICE_LOCAL_BIT) == 0)
+		{
+			// Is it also device local?
+			if ((mem_props.memoryTypes[memory_type].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) == 0)
+				return false;
+		}
+
+		if (!managers.memory.allocate_image_memory(reqs.size, reqs.alignment, memory_type,
+		                                           tiling == VK_IMAGE_TILING_OPTIMAL ? ALLOCATION_TILING_OPTIMAL
+		                                                                             : ALLOCATION_TILING_LINEAR,
+		                                           allocation, image,
+		                                           (info.misc & IMAGE_MISC_FORCE_NO_DEDICATED_BIT) != 0))
+		{
+			LOGE("Failed to allocate image memory (type %u, size: %u).\n", unsigned(memory_type), unsigned(reqs.size));
+			return false;
+		}
+
+		if (table->vkBindImageMemory(device, image, allocation->get_memory(),
+		                             allocation->get_offset()) != VK_SUCCESS)
+		{
+			LOGE("Failed to bind image memory.\n");
+			return false;
+		}
+	}
+
+	return true;
+}
+
 ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &create_info,
                                                      const InitialImageBuffer *staging_buffer)
 {
 	ImageResourceHolder holder(this);
-	VkMemoryRequirements reqs;
 
 	VkImageCreateInfo info = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
 	info.format = create_info.format;
@@ -3420,109 +3534,10 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		return ImageHandle(nullptr);
 	}
 
-	if (create_info.num_memory_aliases != 0)
+	if (!allocate_image_memory(&holder.allocation, create_info, holder.image, info.tiling))
 	{
-		unsigned num_planes = ImageCreateInfo::num_planes(info.format);
-		if (create_info.num_memory_aliases < num_planes)
-			return ImageHandle(nullptr);
-
-		if (num_planes == 1)
-		{
-			table->vkGetImageMemoryRequirements(device, holder.image, &reqs);
-			auto &alias = *create_info.memory_aliases[0];
-
-			// Verify we can actually use this aliased allocation.
-			if ((reqs.memoryTypeBits & (1u << alias.memory_type)) == 0)
-				return ImageHandle(nullptr);
-			if (reqs.size > alias.size)
-				return ImageHandle(nullptr);
-			if (((alias.offset + reqs.alignment - 1) & (reqs.alignment - 1)) != alias.offset)
-				return ImageHandle(nullptr);
-
-			if (table->vkBindImageMemory(device, holder.image, alias.get_memory(),
-			                             alias.get_offset()) != VK_SUCCESS)
-				return ImageHandle(nullptr);
-		}
-		else
-		{
-			if (!ext.supports_bind_memory2 || !ext.supports_get_memory_requirements2)
-				return ImageHandle(nullptr);
-
-			VkBindImageMemoryInfo bind_infos[3];
-			VkBindImagePlaneMemoryInfo bind_plane_infos[3];
-			VK_ASSERT(num_planes <= 3);
-
-			for (unsigned plane = 0; plane < num_planes; plane++)
-			{
-				VkMemoryRequirements2KHR memory_req = {VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR };
-				VkImageMemoryRequirementsInfo2KHR image_info = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2_KHR };
-				image_info.image = holder.image;
-
-				VkImagePlaneMemoryRequirementsInfo plane_info = { VK_STRUCTURE_TYPE_IMAGE_PLANE_MEMORY_REQUIREMENTS_INFO_KHR };
-				plane_info.planeAspect = static_cast<VkImageAspectFlagBits>(VK_IMAGE_ASPECT_PLANE_0_BIT << plane);
-				image_info.pNext = &plane_info;
-
-				table->vkGetImageMemoryRequirements2KHR(device, &image_info, &memory_req);
-
-				auto &alias = *create_info.memory_aliases[plane];
-
-				// Verify we can actually use this aliased allocation.
-				if ((reqs.memoryTypeBits & (1u << alias.memory_type)) == 0)
-					return ImageHandle(nullptr);
-				if (reqs.size > alias.size)
-					return ImageHandle(nullptr);
-				if (((alias.offset + reqs.alignment - 1) & (reqs.alignment - 1)) != alias.offset)
-					return ImageHandle(nullptr);
-
-				bind_infos[plane] = { VK_STRUCTURE_TYPE_BIND_IMAGE_MEMORY_INFO };
-				bind_infos[plane].image = holder.image;
-				bind_infos[plane].memory = alias.base;
-				bind_infos[plane].memoryOffset = alias.offset;
-				bind_infos[plane].pNext = &bind_plane_infos[plane];
-
-				bind_plane_infos[plane] = { VK_STRUCTURE_TYPE_BIND_IMAGE_PLANE_MEMORY_INFO };
-				bind_plane_infos[plane].planeAspect = static_cast<VkImageAspectFlagBits>(VK_IMAGE_ASPECT_PLANE_0_BIT << plane);
-			}
-
-			if (table->vkBindImageMemory2KHR(device, num_planes, bind_infos) != VK_SUCCESS)
-				return ImageHandle(nullptr);
-		}
-	}
-	else
-	{
-		table->vkGetImageMemoryRequirements(device, holder.image, &reqs);
-
-		uint32_t memory_type = find_memory_type(create_info.domain, reqs.memoryTypeBits);
-		if (memory_type == UINT32_MAX)
-		{
-			LOGE("Failed to find memory type.\n");
-			return ImageHandle(nullptr);
-		}
-
-		if (info.tiling == VK_IMAGE_TILING_LINEAR &&
-		    (create_info.misc & IMAGE_MISC_LINEAR_IMAGE_IGNORE_DEVICE_LOCAL_BIT) == 0)
-		{
-			// Is it also device local?
-			if ((mem_props.memoryTypes[memory_type].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) == 0)
-				return ImageHandle(nullptr);
-		}
-
-		if (!managers.memory.allocate_image_memory(reqs.size, reqs.alignment, memory_type,
-		                                           info.tiling == VK_IMAGE_TILING_OPTIMAL ? ALLOCATION_TILING_OPTIMAL
-		                                                                                  : ALLOCATION_TILING_LINEAR,
-		                                           &holder.allocation, holder.image,
-		                                           (create_info.misc & IMAGE_MISC_FORCE_NO_DEDICATED_BIT) != 0))
-		{
-			LOGE("Failed to allocate image memory (type %u, size: %u).\n", unsigned(memory_type), unsigned(reqs.size));
-			return ImageHandle(nullptr);
-		}
-
-		if (table->vkBindImageMemory(device, holder.image, holder.allocation.get_memory(),
-		                             holder.allocation.get_offset()) != VK_SUCCESS)
-		{
-			LOGE("Failed to bind image memory.\n");
-			return ImageHandle(nullptr);
-		}
+		LOGE("Failed to allocate memory for image.\n");
+		return ImageHandle(nullptr);
 	}
 
 	auto tmpinfo = create_info;

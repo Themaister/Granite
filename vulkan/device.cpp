@@ -3216,73 +3216,13 @@ InitialImageBuffer Device::create_image_staging_buffer(const ImageCreateInfo &in
 	return result;
 }
 
-static unsigned ycbcr_num_planes(YCbCrFormat format)
-{
-	switch (format)
-	{
-	case YCbCrFormat::YUV420P_3PLANE:
-	case YCbCrFormat::YUV422P_3PLANE:
-	case YCbCrFormat::YUV444P_3PLANE:
-		return 3;
-
-	default:
-		return 0;
-	}
-}
-
-static unsigned ycbcr_downsample_ratio_log2(YCbCrFormat format, unsigned dim, unsigned plane)
-{
-	switch (format)
-	{
-	case YCbCrFormat::YUV420P_3PLANE:
-		return plane > 0 ? 1 : 0;
-	case YCbCrFormat::YUV422P_3PLANE:
-		return plane > 0 && dim == 0 ? 1 : 0;
-
-	default:
-		return 0;
-	}
-}
-
-static VkFormat ycbcr_plane_format(YCbCrFormat format, unsigned plane)
-{
-	switch (format)
-	{
-	case YCbCrFormat::YUV420P_3PLANE:
-		return VK_FORMAT_R8_UNORM;
-	case YCbCrFormat::YUV422P_3PLANE:
-		return plane > 0 ? VK_FORMAT_R8G8_UNORM : VK_FORMAT_R8_UNORM;
-	case YCbCrFormat::YUV444P_3PLANE:
-		return VK_FORMAT_R8_UNORM;
-
-	default:
-		return VK_FORMAT_UNDEFINED;
-	}
-}
-
-static VkFormat ycbcr_planar_format(YCbCrFormat format)
-{
-	switch (format)
-	{
-	case YCbCrFormat::YUV420P_3PLANE:
-		return VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM;
-	case YCbCrFormat::YUV422P_3PLANE:
-		return VK_FORMAT_G8_B8_R8_3PLANE_422_UNORM;
-	case YCbCrFormat::YUV444P_3PLANE:
-		return VK_FORMAT_G8_B8_R8_3PLANE_444_UNORM;
-
-	default:
-		return VK_FORMAT_UNDEFINED;
-	}
-}
-
 YCbCrImageHandle Device::create_ycbcr_image(const YCbCrImageCreateInfo &create_info)
 {
 	if (!ext.sampler_ycbcr_conversion_features.samplerYcbcrConversion)
 		return YCbCrImageHandle(nullptr);
 
 	VkFormatProperties format_properties = {};
-	get_format_properties(ycbcr_planar_format(create_info.format), &format_properties);
+	get_format_properties(format_ycbcr_planar_vk_format(create_info.format), &format_properties);
 
 	if ((format_properties.optimalTilingFeatures & VK_FORMAT_FEATURE_DISJOINT_BIT) == 0)
 	{
@@ -3304,19 +3244,19 @@ YCbCrImageHandle Device::create_ycbcr_image(const YCbCrImageCreateInfo &create_i
 
 	ImageHandle ycbcr_image;
 	ImageHandle plane_handles[3];
-	unsigned num_planes = ycbcr_num_planes(create_info.format);
+	unsigned num_planes = format_ycbcr_num_planes(create_info.format);
 
 	for (unsigned i = 0; i < num_planes; i++)
 	{
 		ImageCreateInfo plane_info = ImageCreateInfo::immutable_2d_image(
 				create_info.width,
 				create_info.height,
-				ycbcr_plane_format(create_info.format, i));
+				format_ycbcr_plane_vk_format(create_info.format, i));
 		plane_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 		plane_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-		plane_info.width >>= ycbcr_downsample_ratio_log2(create_info.format, 0, i);
-		plane_info.height >>= ycbcr_downsample_ratio_log2(create_info.format, 1, i);
+		plane_info.width >>= format_ycbcr_downsample_ratio_log2(create_info.format, 0, i);
+		plane_info.height >>= format_ycbcr_downsample_ratio_log2(create_info.format, 1, i);
 		plane_info.flags = VK_IMAGE_CREATE_ALIAS_BIT; // Will alias directly over the YCbCr image.
 		plane_info.misc = IMAGE_MISC_FORCE_NO_DEDICATED_BIT;
 		plane_handles[i] = create_image(plane_info);
@@ -3330,7 +3270,7 @@ YCbCrImageHandle Device::create_ycbcr_image(const YCbCrImageCreateInfo &create_i
 	ImageCreateInfo ycbcr_info = ImageCreateInfo::immutable_2d_image(
 			create_info.width,
 			create_info.height,
-			ycbcr_planar_format(create_info.format));
+			format_ycbcr_planar_vk_format(create_info.format));
 	ycbcr_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 	ycbcr_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 	ycbcr_info.flags = VK_IMAGE_CREATE_DISJOINT_BIT | VK_IMAGE_CREATE_ALIAS_BIT;
@@ -3374,7 +3314,7 @@ bool Device::allocate_image_memory(DeviceAllocation *allocation, const ImageCrea
 	{
 		*allocation = {};
 
-		unsigned num_planes = ImageCreateInfo::num_planes(info.format);
+		unsigned num_planes = format_ycbcr_num_planes(info.format);
 		if (info.num_memory_aliases < num_planes)
 			return false;
 

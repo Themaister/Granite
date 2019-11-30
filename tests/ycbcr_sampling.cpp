@@ -89,17 +89,17 @@ struct YCbCrSamplingTest : Granite::Application, Granite::EventHandler
 
 		uint8_t *y = static_cast<uint8_t *>(
 				cmd->update_image(*ycbcr_image, {}, { 16, 16, 1 },
-				                  16, 16,
+				                  0, 0,
 				                  { VK_IMAGE_ASPECT_PLANE_0_BIT, 0, 0, 1 }));
 
 		uint8_t *cb = static_cast<uint8_t *>(
 				cmd->update_image(*ycbcr_image, {}, { 8, 8, 1 },
-				                  8, 8,
+				                  0, 0,
 				                  { VK_IMAGE_ASPECT_PLANE_1_BIT, 0, 0, 1 }));
 
 		uint8_t *cr = static_cast<uint8_t *>(
 				cmd->update_image(*ycbcr_image, {}, { 8, 8, 1 },
-				                  8, 8,
+				                  0, 0,
 				                  { VK_IMAGE_ASPECT_PLANE_2_BIT, 0, 0, 1 }));
 
 		memset(y, 255, 16 * 16);

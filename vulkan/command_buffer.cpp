@@ -152,20 +152,6 @@ void CommandBuffer::copy_buffer_to_image(const Image &image, const Buffer &src, 
                                          const VkOffset3D &offset, const VkExtent3D &extent, unsigned row_length,
                                          unsigned slice_height, const VkImageSubresourceLayers &subresource)
 {
-#ifdef VULKAN_DEBUG
-	if (!row_length)
-	{
-		VK_ASSERT((subresource.aspectMask &
-		           (VK_IMAGE_ASPECT_PLANE_0_BIT | VK_IMAGE_ASPECT_PLANE_1_BIT | VK_IMAGE_ASPECT_PLANE_2_BIT)) == 0);
-	}
-
-	if (!slice_height)
-	{
-		VK_ASSERT((subresource.aspectMask &
-		           (VK_IMAGE_ASPECT_PLANE_0_BIT | VK_IMAGE_ASPECT_PLANE_1_BIT | VK_IMAGE_ASPECT_PLANE_2_BIT)) == 0);
-	}
-#endif
-
 	const VkBufferImageCopy region = {
 		buffer_offset,
 		row_length, slice_height,
@@ -179,20 +165,6 @@ void CommandBuffer::copy_image_to_buffer(const Buffer &buffer, const Image &imag
                                          const VkOffset3D &offset, const VkExtent3D &extent, unsigned row_length,
                                          unsigned slice_height, const VkImageSubresourceLayers &subresource)
 {
-#ifdef VULKAN_DEBUG
-	if (!row_length)
-	{
-		VK_ASSERT((subresource.aspectMask &
-		           (VK_IMAGE_ASPECT_PLANE_0_BIT | VK_IMAGE_ASPECT_PLANE_1_BIT | VK_IMAGE_ASPECT_PLANE_2_BIT)) == 0);
-	}
-
-	if (!slice_height)
-	{
-		VK_ASSERT((subresource.aspectMask &
-		           (VK_IMAGE_ASPECT_PLANE_0_BIT | VK_IMAGE_ASPECT_PLANE_1_BIT | VK_IMAGE_ASPECT_PLANE_2_BIT)) == 0);
-	}
-#endif
-
 	const VkBufferImageCopy region = {
 		buffer_offset,
 		row_length, slice_height,
@@ -1407,15 +1379,16 @@ void *CommandBuffer::update_image(const Image &image, const VkOffset3D &offset, 
 	uint32_t depth = max(image.get_depth() >> subresource.mipLevel, 1u);
 
 	if (!row_length)
-	{
-		VK_ASSERT((subresource.aspectMask & (VK_IMAGE_ASPECT_PLANE_0_BIT | VK_IMAGE_ASPECT_PLANE_1_BIT | VK_IMAGE_ASPECT_PLANE_2_BIT)) == 0);
 		row_length = width;
-	}
 
 	if (!image_height)
-	{
-		VK_ASSERT((subresource.aspectMask & (VK_IMAGE_ASPECT_PLANE_0_BIT | VK_IMAGE_ASPECT_PLANE_1_BIT | VK_IMAGE_ASPECT_PLANE_2_BIT)) == 0);
 		image_height = height;
+
+	if ((subresource.aspectMask & (VK_IMAGE_ASPECT_PLANE_0_BIT |
+	                               VK_IMAGE_ASPECT_PLANE_1_BIT |
+	                               VK_IMAGE_ASPECT_PLANE_2_BIT)) != 0)
+	{
+		format_ycbcr_downsample_dimensions(create_info.format, subresource.aspectMask, row_length, image_height);
 	}
 
 	uint32_t blocks_x = row_length;

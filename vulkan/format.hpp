@@ -133,4 +133,149 @@ static inline VkDeviceSize format_get_layer_size(VkFormat format, VkImageAspectF
 	VkDeviceSize size = TextureFormatLayout::format_block_size(format, aspect) * depth * blocks_x * blocks_y;
 	return size;
 }
+
+enum class YCbCrFormat
+{
+	YUV420P_3PLANE,
+	YUV444P_3PLANE,
+	YUV422P_3PLANE,
+	Count
+};
+
+static inline unsigned format_ycbcr_num_planes(VkFormat format)
+{
+	switch (format)
+	{
+	case VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM:
+	case VK_FORMAT_G8_B8_R8_3PLANE_422_UNORM:
+	case VK_FORMAT_G8_B8_R8_3PLANE_444_UNORM:
+	case VK_FORMAT_G16_B16_R16_3PLANE_420_UNORM:
+	case VK_FORMAT_G16_B16_R16_3PLANE_422_UNORM:
+	case VK_FORMAT_G16_B16_R16_3PLANE_444_UNORM:
+	case VK_FORMAT_G10X6_B10X6_R10X6_3PLANE_420_UNORM_3PACK16:
+	case VK_FORMAT_G10X6_B10X6_R10X6_3PLANE_422_UNORM_3PACK16:
+	case VK_FORMAT_G10X6_B10X6_R10X6_3PLANE_444_UNORM_3PACK16:
+	case VK_FORMAT_G12X4_B12X4_R12X4_3PLANE_420_UNORM_3PACK16:
+	case VK_FORMAT_G12X4_B12X4_R12X4_3PLANE_422_UNORM_3PACK16:
+	case VK_FORMAT_G12X4_B12X4_R12X4_3PLANE_444_UNORM_3PACK16:
+		return 3;
+
+	case VK_FORMAT_G8_B8R8_2PLANE_420_UNORM:
+	case VK_FORMAT_G8_B8R8_2PLANE_422_UNORM:
+	case VK_FORMAT_G16_B16R16_2PLANE_420_UNORM:
+	case VK_FORMAT_G16_B16R16_2PLANE_422_UNORM:
+	case VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16:
+	case VK_FORMAT_G10X6_B10X6R10X6_2PLANE_422_UNORM_3PACK16:
+	case VK_FORMAT_G12X4_B12X4R12X4_2PLANE_420_UNORM_3PACK16:
+	case VK_FORMAT_G12X4_B12X4R12X4_2PLANE_422_UNORM_3PACK16:
+		return 2;
+
+	default:
+		return 1;
+	}
+}
+
+static inline unsigned format_ycbcr_num_planes(YCbCrFormat format)
+{
+	switch (format)
+	{
+	case YCbCrFormat::YUV420P_3PLANE:
+	case YCbCrFormat::YUV422P_3PLANE:
+	case YCbCrFormat::YUV444P_3PLANE:
+		return 3;
+
+	default:
+		return 0;
+	}
+}
+
+static inline void format_ycbcr_downsample_dimensions(VkFormat format, VkImageAspectFlags aspect, uint32_t &width, uint32_t &height)
+{
+	if (aspect == VK_IMAGE_ASPECT_PLANE_0_BIT)
+		return;
+
+	switch (format)
+	{
+#define fmt(x, sub0, sub1) \
+	case VK_FORMAT_##x: \
+		width >>= sub0; \
+		height >>= sub1; \
+		break
+
+		fmt(G8_B8_R8_3PLANE_420_UNORM, 1, 1);
+		fmt(G8_B8R8_2PLANE_420_UNORM, 1, 1);
+		fmt(G8_B8_R8_3PLANE_422_UNORM, 1, 0);
+		fmt(G8_B8R8_2PLANE_422_UNORM, 1, 0);
+		fmt(G8_B8_R8_3PLANE_444_UNORM, 0, 0);
+
+		fmt(G10X6_B10X6_R10X6_3PLANE_420_UNORM_3PACK16, 1, 1);
+		fmt(G10X6_B10X6_R10X6_3PLANE_422_UNORM_3PACK16, 1, 0);
+		fmt(G10X6_B10X6_R10X6_3PLANE_444_UNORM_3PACK16, 0, 0);
+		fmt(G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16, 1, 1);
+		fmt(G10X6_B10X6R10X6_2PLANE_422_UNORM_3PACK16, 1, 0);
+
+		fmt(G12X4_B12X4_R12X4_3PLANE_420_UNORM_3PACK16, 1, 1);
+		fmt(G12X4_B12X4_R12X4_3PLANE_422_UNORM_3PACK16, 1, 0);
+		fmt(G12X4_B12X4_R12X4_3PLANE_444_UNORM_3PACK16, 0, 0);
+		fmt(G12X4_B12X4R12X4_2PLANE_420_UNORM_3PACK16, 1, 1);
+		fmt(G12X4_B12X4R12X4_2PLANE_422_UNORM_3PACK16, 1, 0);
+
+		fmt(G16_B16_R16_3PLANE_420_UNORM, 1, 1);
+		fmt(G16_B16_R16_3PLANE_422_UNORM, 1, 0);
+		fmt(G16_B16_R16_3PLANE_444_UNORM, 0, 0);
+		fmt(G16_B16R16_2PLANE_420_UNORM, 1, 1);
+		fmt(G16_B16R16_2PLANE_422_UNORM, 1, 0);
+
+	default:
+		break;
+	}
+#undef fmt
+}
+
+static inline unsigned format_ycbcr_downsample_ratio_log2(YCbCrFormat format, unsigned dim, unsigned plane)
+{
+	switch (format)
+	{
+	case YCbCrFormat::YUV420P_3PLANE:
+		return plane > 0 ? 1 : 0;
+	case YCbCrFormat::YUV422P_3PLANE:
+		return plane > 0 && dim == 0 ? 1 : 0;
+
+	default:
+		return 0;
+	}
+}
+
+static inline VkFormat format_ycbcr_plane_vk_format(YCbCrFormat format, unsigned plane)
+{
+	switch (format)
+	{
+	case YCbCrFormat::YUV420P_3PLANE:
+		return VK_FORMAT_R8_UNORM;
+	case YCbCrFormat::YUV422P_3PLANE:
+		return plane > 0 ? VK_FORMAT_R8G8_UNORM : VK_FORMAT_R8_UNORM;
+	case YCbCrFormat::YUV444P_3PLANE:
+		return VK_FORMAT_R8_UNORM;
+
+	default:
+		return VK_FORMAT_UNDEFINED;
+	}
+}
+
+static inline VkFormat format_ycbcr_planar_vk_format(YCbCrFormat format)
+{
+	switch (format)
+	{
+	case YCbCrFormat::YUV420P_3PLANE:
+		return VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM;
+	case YCbCrFormat::YUV422P_3PLANE:
+		return VK_FORMAT_G8_B8_R8_3PLANE_422_UNORM;
+	case YCbCrFormat::YUV444P_3PLANE:
+		return VK_FORMAT_G8_B8_R8_3PLANE_444_UNORM;
+
+	default:
+		return VK_FORMAT_UNDEFINED;
+	}
+}
+
 }

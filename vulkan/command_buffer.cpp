@@ -1379,9 +1379,16 @@ void *CommandBuffer::update_image(const Image &image, const VkOffset3D &offset, 
 	uint32_t depth = max(image.get_depth() >> subresource.mipLevel, 1u);
 
 	if (!row_length)
+	{
+		VK_ASSERT((subresource.aspectMask & (VK_IMAGE_ASPECT_PLANE_0_BIT | VK_IMAGE_ASPECT_PLANE_1_BIT | VK_IMAGE_ASPECT_PLANE_2_BIT)) == 0);
 		row_length = width;
+	}
+
 	if (!image_height)
+	{
+		VK_ASSERT((subresource.aspectMask & (VK_IMAGE_ASPECT_PLANE_0_BIT | VK_IMAGE_ASPECT_PLANE_1_BIT | VK_IMAGE_ASPECT_PLANE_2_BIT)) == 0);
 		image_height = height;
+	}
 
 	uint32_t blocks_x = row_length;
 	uint32_t blocks_y = image_height;

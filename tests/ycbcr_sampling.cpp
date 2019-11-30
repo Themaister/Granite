@@ -39,7 +39,7 @@ struct YCbCrSamplingTest : Granite::Application, Granite::EventHandler
 
 	void on_device_created(const DeviceCreatedEvent &e)
 	{
-#if 1
+#if 0
 		YCbCrImageCreateInfo info;
 		info.format = YCbCrFormat::YUV420P_3PLANE;
 		info.width = 16;
@@ -60,7 +60,7 @@ struct YCbCrSamplingTest : Granite::Application, Granite::EventHandler
 
 		auto cmd = e.get_device().request_command_buffer();
 
-#if 1
+#if 0
 		cmd->image_barrier(ycbcr_image->get_ycbcr_image(), VK_IMAGE_LAYOUT_UNDEFINED,
 		                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 		                   VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
@@ -89,17 +89,17 @@ struct YCbCrSamplingTest : Granite::Application, Granite::EventHandler
 
 		uint8_t *y = static_cast<uint8_t *>(
 				cmd->update_image(*ycbcr_image, {}, { 16, 16, 1 },
-				                  0, 0,
+				                  16, 16,
 				                  { VK_IMAGE_ASPECT_PLANE_0_BIT, 0, 0, 1 }));
 
 		uint8_t *cb = static_cast<uint8_t *>(
 				cmd->update_image(*ycbcr_image, {}, { 8, 8, 1 },
-				                  0, 0,
+				                  8, 8,
 				                  { VK_IMAGE_ASPECT_PLANE_1_BIT, 0, 0, 1 }));
 
 		uint8_t *cr = static_cast<uint8_t *>(
 				cmd->update_image(*ycbcr_image, {}, { 8, 8, 1 },
-				                  0, 0,
+				                  8, 8,
 				                  { VK_IMAGE_ASPECT_PLANE_2_BIT, 0, 0, 1 }));
 
 		memset(y, 255, 16 * 16);
@@ -131,7 +131,7 @@ struct YCbCrSamplingTest : Granite::Application, Granite::EventHandler
 		rp.clear_color[0].float32[1] = 0.2f;
 		rp.clear_color[0].float32[2] = 0.3f;
 		cmd->begin_render_pass(rp);
-#if 1
+#if 0
 		cmd->set_texture(0, 0, ycbcr_image->get_ycbcr_image().get_view());
 #else
 		cmd->set_texture(0, 0, ycbcr_image->get_view());
@@ -141,7 +141,7 @@ struct YCbCrSamplingTest : Granite::Application, Granite::EventHandler
 		device.submit(cmd);
 	}
 
-#if 1
+#if 0
 	YCbCrImageHandle ycbcr_image;
 #else
 	ImageHandle ycbcr_image;

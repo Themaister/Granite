@@ -1,0 +1,124 @@
+/* Copyright (c) 2017-2019 Hans-Kristian Arntzen
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining
+ * a copy of this software and associated documentation files (the
+ * "Software"), to deal in the Software without restriction, including
+ * without limitation the rights to use, copy, modify, merge, publish,
+ * distribute, sublicense, and/or sell copies of the Software, and to
+ * permit persons to whom the Software is furnished to do so, subject to
+ * the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+ * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+ * CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+#include "application.hpp"
+#include "command_buffer.hpp"
+#include "device.hpp"
+#include "os_filesystem.hpp"
+#include "math.hpp"
+#include <string.h>
+
+using namespace Granite;
+using namespace Vulkan;
+
+struct YCbCrSamplingTest : Granite::Application, Granite::EventHandler
+{
+	YCbCrSamplingTest()
+	{
+		EVENT_MANAGER_REGISTER_LATCH(YCbCrSamplingTest, on_device_created, on_device_destroyed, DeviceCreatedEvent);
+	}
+
+	void on_device_created(const DeviceCreatedEvent &e)
+	{
+		YCbCrImageCreateInfo info;
+		info.format = YCbCrFormat::YUV420P;
+		info.width = 16;
+		info.height = 16;
+		ycbcr_image = e.get_device().create_ycbcr_image(info);
+
+		auto cmd = e.get_device().request_command_buffer();
+
+		cmd->image_barrier(ycbcr_image->get_ycbcr_image(), VK_IMAGE_LAYOUT_UNDEFINED,
+		                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		                   VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
+		                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+
+		// Should be gray.
+		VkClearValue clear_value = {};
+		clear_value.color.float32[0] = 1.0f;
+		cmd->clear_image(ycbcr_image->get_plane_image(0), clear_value);
+
+		clear_value.color.float32[0] = 0.5f;
+		cmd->clear_image(ycbcr_image->get_plane_image(1), clear_value);
+
+		clear_value.color.float32[0] = 0.5f;
+		cmd->clear_image(ycbcr_image->get_plane_image(2), clear_value);
+
+		cmd->image_barrier(ycbcr_image->get_ycbcr_image(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+
+		e.get_device().submit(cmd);
+	}
+
+	void on_device_destroyed(const DeviceCreatedEvent &)
+	{
+		ycbcr_image.reset();
+	}
+
+	void render_frame(double, double)
+	{
+		auto &wsi = get_wsi();
+		auto &device = wsi.get_device();
+
+		auto cmd = device.request_command_buffer();
+		auto rp = device.get_swapchain_render_pass(SwapchainRenderPass::ColorOnly);
+		rp.clear_color[0].float32[0] = 0.1f;
+		rp.clear_color[0].float32[1] = 0.2f;
+		rp.clear_color[0].float32[2] = 0.3f;
+		cmd->begin_render_pass(rp);
+		cmd->set_texture(0, 0, ycbcr_image->get_ycbcr_image().get_view());
+		CommandBufferUtil::draw_fullscreen_quad(*cmd, "builtin://shaders/quad.vert", "assets://shaders/yuv420p-sample.frag");
+		cmd->end_render_pass();
+		device.submit(cmd);
+	}
+
+	YCbCrImageHandle ycbcr_image;
+};
+
+namespace Granite
+{
+Application *application_create(int, char **)
+{
+	application_dummy();
+
+#ifdef ASSET_DIRECTORY
+	const char *asset_dir = getenv("ASSET_DIRECTORY");
+	if (!asset_dir)
+		asset_dir = ASSET_DIRECTORY;
+
+	Global::filesystem()->register_protocol("assets", std::unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir)));
+#endif
+
+	try
+	{
+		auto *app = new YCbCrSamplingTest();
+		return app;
+	}
+	catch (const std::exception &e)
+	{
+		LOGE("application_create() threw exception: %s\n", e.what());
+		return nullptr;
+	}
+}
+}

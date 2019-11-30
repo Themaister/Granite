@@ -152,9 +152,23 @@ void CommandBuffer::copy_buffer_to_image(const Image &image, const Buffer &src, 
                                          const VkOffset3D &offset, const VkExtent3D &extent, unsigned row_length,
                                          unsigned slice_height, const VkImageSubresourceLayers &subresource)
 {
+#ifdef VULKAN_DEBUG
+	if (!row_length)
+	{
+		VK_ASSERT((subresource.aspectMask &
+		           (VK_IMAGE_ASPECT_PLANE_0_BIT | VK_IMAGE_ASPECT_PLANE_1_BIT | VK_IMAGE_ASPECT_PLANE_2_BIT)) == 0);
+	}
+
+	if (!slice_height)
+	{
+		VK_ASSERT((subresource.aspectMask &
+		           (VK_IMAGE_ASPECT_PLANE_0_BIT | VK_IMAGE_ASPECT_PLANE_1_BIT | VK_IMAGE_ASPECT_PLANE_2_BIT)) == 0);
+	}
+#endif
+
 	const VkBufferImageCopy region = {
 		buffer_offset,
-		row_length != extent.width ? row_length : 0, slice_height != extent.height ? slice_height : 0,
+		row_length, slice_height,
 		subresource, offset, extent,
 	};
 	table.vkCmdCopyBufferToImage(cmd, src.get_buffer(), image.get_image(), image.get_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL),
@@ -165,9 +179,23 @@ void CommandBuffer::copy_image_to_buffer(const Buffer &buffer, const Image &imag
                                          const VkOffset3D &offset, const VkExtent3D &extent, unsigned row_length,
                                          unsigned slice_height, const VkImageSubresourceLayers &subresource)
 {
+#ifdef VULKAN_DEBUG
+	if (!row_length)
+	{
+		VK_ASSERT((subresource.aspectMask &
+		           (VK_IMAGE_ASPECT_PLANE_0_BIT | VK_IMAGE_ASPECT_PLANE_1_BIT | VK_IMAGE_ASPECT_PLANE_2_BIT)) == 0);
+	}
+
+	if (!slice_height)
+	{
+		VK_ASSERT((subresource.aspectMask &
+		           (VK_IMAGE_ASPECT_PLANE_0_BIT | VK_IMAGE_ASPECT_PLANE_1_BIT | VK_IMAGE_ASPECT_PLANE_2_BIT)) == 0);
+	}
+#endif
+
 	const VkBufferImageCopy region = {
 		buffer_offset,
-		row_length != extent.width ? row_length : 0, slice_height != extent.height ? slice_height : 0,
+		row_length, slice_height,
 		subresource, offset, extent,
 	};
 	table.vkCmdCopyImageToBuffer(cmd, image.get_image(), image.get_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL),

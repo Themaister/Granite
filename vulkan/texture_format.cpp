@@ -116,11 +116,16 @@ void TextureFormatLayout::format_block_dim(VkFormat format, uint32_t &width, uin
 #undef fmt
 }
 
-uint32_t TextureFormatLayout::format_block_size(VkFormat format)
+uint32_t TextureFormatLayout::format_block_size(VkFormat format, VkImageAspectFlags aspect)
 {
 #define fmt(x, bpp)     \
     case VK_FORMAT_##x: \
         return bpp
+
+#define fmt2(x, bpp0, bpp1) \
+	case VK_FORMAT_##x:     \
+		return aspect == VK_IMAGE_ASPECT_PLANE_0_BIT ? bpp0 : bpp1
+
 	switch (format)
 	{
 	fmt(R4G4_UNORM_PACK8, 1);
@@ -239,13 +244,17 @@ uint32_t TextureFormatLayout::format_block_size(VkFormat format)
 	fmt(R64G64B64A64_SFLOAT, 32);
 	fmt(B10G11R11_UFLOAT_PACK32, 4);
 	fmt(E5B9G9R9_UFLOAT_PACK32, 4);
+
 	fmt(D16_UNORM, 2);
 	fmt(X8_D24_UNORM_PACK32, 4);
 	fmt(D32_SFLOAT, 4);
 	fmt(S8_UINT, 1);
-	fmt(D16_UNORM_S8_UINT, 3); // Doesn't make sense.
-	fmt(D24_UNORM_S8_UINT, 4);
-	fmt(D32_SFLOAT_S8_UINT, 5); // Doesn't make sense.
+
+	case VK_FORMAT_D16_UNORM_S8_UINT:
+		return aspect == VK_IMAGE_ASPECT_DEPTH_BIT ? 2 : 1;
+	case VK_FORMAT_D24_UNORM_S8_UINT:
+	case VK_FORMAT_D32_SFLOAT_S8_UINT:
+		return aspect == VK_IMAGE_ASPECT_DEPTH_BIT ? 4 : 1;
 
 		// ETC2
 	fmt(ETC2_R8G8B8A8_UNORM_BLOCK, 16);
@@ -307,16 +316,56 @@ uint32_t TextureFormatLayout::format_block_size(VkFormat format)
 	fmt(ASTC_12x10_UNORM_BLOCK, 16);
 	fmt(ASTC_12x12_UNORM_BLOCK, 16);
 
+	fmt(G8B8G8R8_422_UNORM, 4);
+	fmt(B8G8R8G8_422_UNORM, 4);
+
+	fmt(G8_B8_R8_3PLANE_420_UNORM, 1);
+	fmt2(G8_B8R8_2PLANE_420_UNORM, 1, 2);
+	fmt(G8_B8_R8_3PLANE_422_UNORM, 1);
+	fmt2(G8_B8R8_2PLANE_422_UNORM, 1, 2);
+	fmt(G8_B8_R8_3PLANE_444_UNORM, 1);
+
+	fmt(R10X6_UNORM_PACK16, 2);
+	fmt(R10X6G10X6_UNORM_2PACK16, 4);
+	fmt(R10X6G10X6B10X6A10X6_UNORM_4PACK16, 8);
+	fmt(G10X6B10X6G10X6R10X6_422_UNORM_4PACK16, 8);
+	fmt(B10X6G10X6R10X6G10X6_422_UNORM_4PACK16, 8);
+	fmt(G10X6_B10X6_R10X6_3PLANE_420_UNORM_3PACK16, 2);
+	fmt(G10X6_B10X6_R10X6_3PLANE_422_UNORM_3PACK16, 2);
+	fmt(G10X6_B10X6_R10X6_3PLANE_444_UNORM_3PACK16, 2);
+	fmt2(G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16, 2, 4);
+	fmt2(G10X6_B10X6R10X6_2PLANE_422_UNORM_3PACK16, 2, 4);
+
+	fmt(R12X4_UNORM_PACK16, 2);
+	fmt(R12X4G12X4_UNORM_2PACK16, 4);
+	fmt(R12X4G12X4B12X4A12X4_UNORM_4PACK16, 8);
+	fmt(G12X4B12X4G12X4R12X4_422_UNORM_4PACK16, 8);
+	fmt(B12X4G12X4R12X4G12X4_422_UNORM_4PACK16, 8);
+	fmt(G12X4_B12X4_R12X4_3PLANE_420_UNORM_3PACK16, 2);
+	fmt(G12X4_B12X4_R12X4_3PLANE_422_UNORM_3PACK16, 2);
+	fmt(G12X4_B12X4_R12X4_3PLANE_444_UNORM_3PACK16, 2);
+	fmt2(G12X4_B12X4R12X4_2PLANE_420_UNORM_3PACK16, 2, 4);
+	fmt2(G12X4_B12X4R12X4_2PLANE_422_UNORM_3PACK16, 2, 4);
+
+	fmt(G16B16G16R16_422_UNORM, 8);
+	fmt(B16G16R16G16_422_UNORM, 8);
+	fmt(G16_B16_R16_3PLANE_420_UNORM, 2);
+	fmt(G16_B16_R16_3PLANE_422_UNORM, 2);
+	fmt(G16_B16_R16_3PLANE_444_UNORM, 2);
+	fmt2(G16_B16R16_2PLANE_420_UNORM, 2, 4);
+	fmt2(G16_B16R16_2PLANE_422_UNORM, 2, 4);
+
 	default:
 		assert(0 && "Unknown format.");
 		return 0;
 	}
 #undef fmt
+#undef fmt2
 }
 
 void TextureFormatLayout::fill_mipinfo(uint32_t width, uint32_t height, uint32_t depth)
 {
-	block_stride = format_block_size(format);
+	block_stride = format_block_size(format, 0);
 	format_block_dim(format, block_dim_x, block_dim_y);
 
 	if (mip_levels == 0)

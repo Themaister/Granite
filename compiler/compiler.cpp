@@ -182,14 +182,12 @@ vector<uint32_t> GLSLCompiler::compile(const vector<pair<string, int>> *defines)
 	if (optimization != Optimization::ForceOff)
 		options.SetOptimizationLevel(shaderc_optimization_level_performance);
 	else
-	{
 		options.SetOptimizationLevel(shaderc_optimization_level_zero);
-		options.SetGenerateDebugInfo();
-	}
 #else
 	options.SetOptimizationLevel(shaderc_optimization_level_zero);
-	options.SetGenerateDebugInfo();
 #endif
+	// Need this for some reflection purposes with immutable samplers.
+	options.SetGenerateDebugInfo();
 
 	options.SetTargetEnvironment(shaderc_target_env_vulkan,
 	                             target == Target::Vulkan11 ?

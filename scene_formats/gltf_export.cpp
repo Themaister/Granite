@@ -1026,7 +1026,7 @@ void RemapState::emit_mesh(unsigned remapped_index)
 
 			emit.attribute_mask |= 1u << i;
 
-			auto format_size = Vulkan::TextureFormatLayout::format_block_size(layout[i].format);
+			auto format_size = Vulkan::TextureFormatLayout::format_block_size(layout[i].format, 0);
 			vector<uint8_t> unpacked_buffer(attr_count * format_size);
 
 			extract_attribute(unpacked_buffer.data(), format_size,

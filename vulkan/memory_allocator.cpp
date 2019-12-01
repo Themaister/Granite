@@ -379,9 +379,10 @@ bool DeviceAllocator::allocate(uint32_t size, uint32_t alignment, uint32_t memor
 }
 
 bool DeviceAllocator::allocate_image_memory(uint32_t size, uint32_t alignment, uint32_t memory_type,
-                                            AllocationTiling tiling, DeviceAllocation *alloc, VkImage image)
+                                            AllocationTiling tiling, DeviceAllocation *alloc, VkImage image,
+                                            bool force_no_dedicated)
 {
-	if (!use_dedicated)
+	if (!use_dedicated || force_no_dedicated)
 		return allocate(size, alignment, memory_type, tiling, alloc);
 
 	VkImageMemoryRequirementsInfo2KHR info = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2_KHR };

@@ -154,7 +154,7 @@ void CommandBuffer::copy_buffer_to_image(const Image &image, const Buffer &src, 
 {
 	const VkBufferImageCopy region = {
 		buffer_offset,
-		row_length != extent.width ? row_length : 0, slice_height != extent.height ? slice_height : 0,
+		row_length, slice_height,
 		subresource, offset, extent,
 	};
 	table.vkCmdCopyBufferToImage(cmd, src.get_buffer(), image.get_image(), image.get_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL),
@@ -167,7 +167,7 @@ void CommandBuffer::copy_image_to_buffer(const Buffer &buffer, const Image &imag
 {
 	const VkBufferImageCopy region = {
 		buffer_offset,
-		row_length != extent.width ? row_length : 0, slice_height != extent.height ? slice_height : 0,
+		row_length, slice_height,
 		subresource, offset, extent,
 	};
 	table.vkCmdCopyImageToBuffer(cmd, image.get_image(), image.get_layout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL),
@@ -176,25 +176,30 @@ void CommandBuffer::copy_image_to_buffer(const Buffer &buffer, const Image &imag
 
 void CommandBuffer::clear_image(const Image &image, const VkClearValue &value)
 {
+	auto aspect = format_to_aspect_mask(image.get_format());
+	clear_image(image, value, aspect);
+}
+
+void CommandBuffer::clear_image(const Image &image, const VkClearValue &value, VkImageAspectFlags aspect)
+{
 	VK_ASSERT(!framebuffer);
 	VK_ASSERT(!actual_render_pass);
 
-	auto aspect = format_to_aspect_mask(image.get_format());
 	VkImageSubresourceRange range = {};
 	range.aspectMask = aspect;
 	range.baseArrayLayer = 0;
 	range.baseMipLevel = 0;
 	range.levelCount = image.get_create_info().levels;
 	range.layerCount = image.get_create_info().layers;
-	if (aspect & VK_IMAGE_ASPECT_COLOR_BIT)
-	{
-		table.vkCmdClearColorImage(cmd, image.get_image(), image.get_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL),
-		                           &value.color, 1, &range);
-	}
-	else
+	if (aspect & (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT))
 	{
 		table.vkCmdClearDepthStencilImage(cmd, image.get_image(), image.get_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL),
 		                                  &value.depthStencil, 1, &range);
+	}
+	else
+	{
+		table.vkCmdClearColorImage(cmd, image.get_image(), image.get_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL),
+		                           &value.color, 1, &range);
 	}
 }
 
@@ -1375,15 +1380,23 @@ void *CommandBuffer::update_image(const Image &image, const VkOffset3D &offset, 
 
 	if (!row_length)
 		row_length = width;
+
 	if (!image_height)
 		image_height = height;
+
+	if ((subresource.aspectMask & (VK_IMAGE_ASPECT_PLANE_0_BIT |
+	                               VK_IMAGE_ASPECT_PLANE_1_BIT |
+	                               VK_IMAGE_ASPECT_PLANE_2_BIT)) != 0)
+	{
+		format_ycbcr_downsample_dimensions(create_info.format, subresource.aspectMask, row_length, image_height);
+	}
 
 	uint32_t blocks_x = row_length;
 	uint32_t blocks_y = image_height;
 	format_num_blocks(create_info.format, blocks_x, blocks_y);
 
 	VkDeviceSize size =
-	    TextureFormatLayout::format_block_size(create_info.format) * subresource.layerCount * depth * blocks_x * blocks_y;
+	    TextureFormatLayout::format_block_size(create_info.format, subresource.aspectMask) * subresource.layerCount * depth * blocks_x * blocks_y;
 
 	auto data = staging_block.allocate(size);
 	if (!data.host)

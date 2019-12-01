@@ -36,7 +36,7 @@ public:
 	void set_2d(VkFormat format, uint32_t width, uint32_t height, uint32_t array_layers = 1, uint32_t mip_levels = 1);
 	void set_3d(VkFormat format, uint32_t width, uint32_t height, uint32_t depth, uint32_t mip_levels = 1);
 
-	static uint32_t format_block_size(VkFormat format);
+	static uint32_t format_block_size(VkFormat format, VkImageAspectFlags aspect);
 	static void format_block_dim(VkFormat format, uint32_t &width, uint32_t &height);
 	static uint32_t num_miplevels(uint32_t width, uint32_t height = 1, uint32_t depth = 1);
 

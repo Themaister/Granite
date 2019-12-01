@@ -265,6 +265,12 @@ static bool get_stock_sampler(StockSampler &sampler, const string &name)
 		sampler = StockSampler::NearestShadow;
 	else if (name.find("LinearShadow") != string::npos)
 		sampler = StockSampler::LinearShadow;
+	else if (name.find("LinearYUV420P") != string::npos)
+		sampler = StockSampler::LinearYUV420P;
+	else if (name.find("LinearYUV422P") != string::npos)
+		sampler = StockSampler::LinearYUV422P;
+	else if (name.find("LinearYUV444P") != string::npos)
+		sampler = StockSampler::LinearYUV444P;
 	else
 		return false;
 

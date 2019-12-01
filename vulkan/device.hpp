@@ -81,6 +81,7 @@ struct HandlePool
 {
 	VulkanObjectPool<Buffer> buffers;
 	VulkanObjectPool<Image> images;
+	VulkanObjectPool<YCbCrImage> ycbcr_images;
 	VulkanObjectPool<LinearHostImage> linear_images;
 	VulkanObjectPool<ImageView> image_views;
 	VulkanObjectPool<BufferView> buffer_views;
@@ -134,6 +135,7 @@ public:
 	friend class Texture;
 	friend class DescriptorSetAllocator;
 	friend class Shader;
+	friend class ImageResourceHolder;
 
 	Device();
 	~Device();
@@ -219,6 +221,7 @@ public:
 	ImageHandle create_image(const ImageCreateInfo &info, const ImageInitialData *initial = nullptr);
 	ImageHandle create_image_from_staging_buffer(const ImageCreateInfo &info, const InitialImageBuffer *buffer);
 	LinearHostImageHandle create_linear_host_image(const LinearHostImageCreateInfo &info);
+	YCbCrImageHandle create_ycbcr_image(const YCbCrImageCreateInfo &info);
 
 	// Create staging buffers for images.
 	InitialImageBuffer create_image_staging_buffer(const ImageCreateInfo &info, const ImageInitialData *initial);
@@ -501,6 +504,7 @@ private:
 	bool memory_type_is_host_visible(uint32_t type) const;
 
 	SamplerHandle samplers[static_cast<unsigned>(StockSampler::Count)];
+	VkSamplerYcbcrConversion samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::Count)] = {};
 
 	VulkanCache<PipelineLayout> pipeline_layouts;
 	VulkanCache<DescriptorSetAllocator> descriptor_set_allocators;
@@ -638,5 +642,8 @@ private:
 	void report_checkpoints();
 
 	void fill_buffer_sharing_indices(VkBufferCreateInfo &create_info, uint32_t *sharing_indices);
+
+	bool allocate_image_memory(DeviceAllocation *allocation, const ImageCreateInfo &info,
+	                           VkImage image, VkImageTiling tiling);
 };
 }

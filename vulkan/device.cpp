@@ -188,7 +188,7 @@ LinearHostImageHandle Device::create_linear_host_image(const LinearHostImageCrea
 				BufferDomain::CachedHost :
 				BufferDomain::Host;
 		buffer.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-		buffer.size = info.width * info.height * TextureFormatLayout::format_block_size(info.format);
+		buffer.size = info.width * info.height * TextureFormatLayout::format_block_size(info.format, format_to_aspect_mask(info.format));
 		cpu_image = create_buffer(buffer);
 		if (!cpu_image)
 			return LinearHostImageHandle(nullptr);
@@ -761,6 +761,42 @@ void Device::init_timeline_semaphores()
 
 void Device::init_stock_samplers()
 {
+	if (ext.sampler_ycbcr_conversion_features.samplerYcbcrConversion)
+	{
+		for (auto &sampler : samplers_ycbcr)
+		{
+			if (sampler)
+				table->vkDestroySamplerYcbcrConversion(device, sampler, nullptr);
+			sampler = VK_NULL_HANDLE;
+		}
+
+		VkSamplerYcbcrConversionCreateInfo info = { VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_CREATE_INFO };
+		info.ycbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709;
+		info.ycbcrRange = VK_SAMPLER_YCBCR_RANGE_ITU_NARROW;
+		info.components = {
+			VK_COMPONENT_SWIZZLE_IDENTITY,
+			VK_COMPONENT_SWIZZLE_IDENTITY,
+			VK_COMPONENT_SWIZZLE_IDENTITY,
+			VK_COMPONENT_SWIZZLE_IDENTITY,
+		};
+		info.chromaFilter = VK_FILTER_LINEAR;
+		info.xChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;
+		info.yChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;
+		info.forceExplicitReconstruction = VK_FALSE;
+
+		info.format = VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM;
+		table->vkCreateSamplerYcbcrConversionKHR(device, &info, nullptr,
+		                                         &samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV420P_3PLANE)]);
+
+		info.format = VK_FORMAT_G8_B8_R8_3PLANE_422_UNORM;
+		table->vkCreateSamplerYcbcrConversionKHR(device, &info, nullptr,
+		                                         &samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV422P_3PLANE)]);
+
+		info.format = VK_FORMAT_G8_B8_R8_3PLANE_444_UNORM;
+		table->vkCreateSamplerYcbcrConversionKHR(device, &info, nullptr,
+		                                         &samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV444P_3PLANE)]);
+	}
+
 	SamplerCreateInfo info = {};
 	info.max_lod = VK_LOD_CLAMP_NONE;
 	info.max_anisotropy = 1.0f;
@@ -801,6 +837,9 @@ void Device::init_stock_samplers()
 		case StockSampler::TrilinearClamp:
 		case StockSampler::TrilinearWrap:
 		case StockSampler::LinearShadow:
+		case StockSampler::LinearYUV420P:
+		case StockSampler::LinearYUV422P:
+		case StockSampler::LinearYUV444P:
 			info.mag_filter = VK_FILTER_LINEAR;
 			info.min_filter = VK_FILTER_LINEAR;
 			break;
@@ -827,13 +866,16 @@ void Device::init_stock_samplers()
 		case StockSampler::TrilinearClamp:
 		case StockSampler::NearestShadow:
 		case StockSampler::LinearShadow:
+		case StockSampler::LinearYUV420P:
+		case StockSampler::LinearYUV422P:
+		case StockSampler::LinearYUV444P:
 			info.address_mode_u = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
 			info.address_mode_v = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
 			info.address_mode_w = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
 			break;
 		}
+
 		samplers[i] = create_sampler(info, mode);
-		samplers[i]->set_internal_sync_object();
 	}
 }
 
@@ -1946,6 +1988,10 @@ Device::~Device()
 	for (auto &sampler : samplers)
 		sampler.reset();
 
+	for (auto &sampler : samplers_ycbcr)
+		if (sampler)
+			table->vkDestroySamplerYcbcrConversion(device, sampler, nullptr);
+
 	deinit_timeline_semaphores();
 }
 
@@ -2044,6 +2090,7 @@ void Device::init_swapchain(const vector<VkImage> &swapchain_images, unsigned wi
 
 		auto backbuffer = ImageHandle(handle_pool.images.allocate(this, image, image_view, DeviceAllocation{}, info, VK_IMAGE_VIEW_TYPE_2D));
 		backbuffer->set_internal_sync_object();
+		backbuffer->disown_image();
 		backbuffer->get_view().set_internal_sync_object();
 		wsi.swapchain.push_back(backbuffer);
 		set_name(*backbuffer, "backbuffer");
@@ -2722,6 +2769,41 @@ public:
 		return default_view_type;
 	}
 
+	bool setup_conversion_info(VkImageViewCreateInfo &create_info, VkSamplerYcbcrConversionInfo &conversion)
+	{
+		switch (create_info.format)
+		{
+		case VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM:
+			if (!device->get_device_features().sampler_ycbcr_conversion_features.samplerYcbcrConversion)
+				return false;
+			create_info.pNext = &conversion;
+			conversion = { VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO };
+			conversion.conversion = device->samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV420P_3PLANE)];
+			break;
+
+		case VK_FORMAT_G8_B8_R8_3PLANE_422_UNORM:
+			if (!device->get_device_features().sampler_ycbcr_conversion_features.samplerYcbcrConversion)
+				return false;
+			create_info.pNext = &conversion;
+			conversion = { VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO };
+			conversion.conversion = device->samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV422P_3PLANE)];
+			break;
+
+		case VK_FORMAT_G8_B8_R8_3PLANE_444_UNORM:
+			if (!device->get_device_features().sampler_ycbcr_conversion_features.samplerYcbcrConversion)
+				return false;
+			create_info.pNext = &conversion;
+			conversion = { VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO };
+			conversion.conversion = device->samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV444P_3PLANE)];
+			break;
+
+		default:
+			break;
+		}
+
+		return true;
+	}
+
 	bool create_default_views(const ImageCreateInfo &create_info, const VkImageViewCreateInfo *view_info,
 	                          bool create_unorm_srgb_views = false, const VkFormat *view_formats = nullptr)
 	{
@@ -2735,6 +2817,8 @@ public:
 		}
 
 		VkImageViewCreateInfo default_view_info = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+		VkSamplerYcbcrConversionInfo conversion_info = { VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO };
+
 		if (!view_info)
 		{
 			default_view_info.image = image;
@@ -2746,10 +2830,15 @@ public:
 			default_view_info.subresourceRange.baseArrayLayer = 0;
 			default_view_info.subresourceRange.levelCount = create_info.levels;
 			default_view_info.subresourceRange.layerCount = create_info.layers;
-			view_info = &default_view_info;
 
 			default_view_type = default_view_info.viewType;
 		}
+		else
+			default_view_info = *view_info;
+
+		view_info = &default_view_info;
+		if (!setup_conversion_info(default_view_info, conversion_info))
+			return false;
 
 		if (!create_alt_views(create_info, *view_info))
 			return false;
@@ -3127,6 +3216,80 @@ InitialImageBuffer Device::create_image_staging_buffer(const ImageCreateInfo &in
 	return result;
 }
 
+YCbCrImageHandle Device::create_ycbcr_image(const YCbCrImageCreateInfo &create_info)
+{
+	if (!ext.sampler_ycbcr_conversion_features.samplerYcbcrConversion)
+		return YCbCrImageHandle(nullptr);
+
+	VkFormatProperties format_properties = {};
+	get_format_properties(format_ycbcr_planar_vk_format(create_info.format), &format_properties);
+
+	if ((format_properties.optimalTilingFeatures & VK_FORMAT_FEATURE_DISJOINT_BIT) == 0)
+	{
+		LOGE("YCbCr format does not support DISJOINT_BIT.\n");
+		return YCbCrImageHandle(nullptr);
+	}
+
+	if ((format_properties.optimalTilingFeatures & VK_FORMAT_FEATURE_MIDPOINT_CHROMA_SAMPLES_BIT) == 0)
+	{
+		LOGE("YCbCr format does not support MIDPOINT_CHROMA_SAMPLES_BIT.\n");
+		return YCbCrImageHandle(nullptr);
+	}
+
+	if ((format_properties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER_BIT) == 0)
+	{
+		LOGE("YCbCr format does not support YCBCR_CONVERSION_LINEAR_FILTER_BIT.\n");
+		return YCbCrImageHandle(nullptr);
+	}
+
+	ImageHandle ycbcr_image;
+	ImageHandle plane_handles[3];
+	unsigned num_planes = format_ycbcr_num_planes(create_info.format);
+
+	for (unsigned i = 0; i < num_planes; i++)
+	{
+		ImageCreateInfo plane_info = ImageCreateInfo::immutable_2d_image(
+				create_info.width,
+				create_info.height,
+				format_ycbcr_plane_vk_format(create_info.format, i));
+		plane_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+		plane_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+		plane_info.width >>= format_ycbcr_downsample_ratio_log2(create_info.format, 0, i);
+		plane_info.height >>= format_ycbcr_downsample_ratio_log2(create_info.format, 1, i);
+		plane_info.flags = VK_IMAGE_CREATE_ALIAS_BIT; // Will alias directly over the YCbCr image.
+		plane_info.misc = IMAGE_MISC_FORCE_NO_DEDICATED_BIT;
+		plane_handles[i] = create_image(plane_info);
+		if (!plane_handles[i])
+		{
+			LOGE("Failed to create plane image.\n");
+			return YCbCrImageHandle(nullptr);
+		}
+	}
+
+	ImageCreateInfo ycbcr_info = ImageCreateInfo::immutable_2d_image(
+			create_info.width,
+			create_info.height,
+			format_ycbcr_planar_vk_format(create_info.format));
+	ycbcr_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+	ycbcr_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+	ycbcr_info.flags = VK_IMAGE_CREATE_DISJOINT_BIT | VK_IMAGE_CREATE_ALIAS_BIT;
+	ycbcr_info.misc = IMAGE_MISC_FORCE_NO_DEDICATED_BIT;
+
+	const DeviceAllocation *allocations[3];
+	for (unsigned i = 0; i < num_planes; i++)
+		allocations[i] = &plane_handles[i]->get_allocation();
+	ycbcr_info.memory_aliases = allocations;
+	ycbcr_info.num_memory_aliases = num_planes;
+
+	ycbcr_image = create_image(ycbcr_info);
+	if (!ycbcr_image)
+		return YCbCrImageHandle(nullptr);
+
+	YCbCrImageHandle handle(handle_pool.ycbcr_images.allocate(this, create_info.format, ycbcr_image, plane_handles, num_planes));
+	return handle;
+}
+
 ImageHandle Device::create_image(const ImageCreateInfo &create_info, const ImageInitialData *initial)
 {
 	if (initial)
@@ -3138,11 +3301,136 @@ ImageHandle Device::create_image(const ImageCreateInfo &create_info, const Image
 		return create_image_from_staging_buffer(create_info, nullptr);
 }
 
+bool Device::allocate_image_memory(DeviceAllocation *allocation, const ImageCreateInfo &info,
+                                   VkImage image, VkImageTiling tiling)
+{
+	if ((info.flags & VK_IMAGE_CREATE_DISJOINT_BIT) != 0 && info.num_memory_aliases == 0)
+	{
+		LOGE("Must use memory aliases when creating a DISJOINT planar image.\n");
+		return false;
+	}
+
+	if (info.num_memory_aliases != 0)
+	{
+		*allocation = {};
+
+		unsigned num_planes = format_ycbcr_num_planes(info.format);
+		if (info.num_memory_aliases < num_planes)
+			return false;
+
+		if (num_planes == 1)
+		{
+			VkMemoryRequirements reqs;
+			table->vkGetImageMemoryRequirements(device, image, &reqs);
+			auto &alias = *info.memory_aliases[0];
+
+			// Verify we can actually use this aliased allocation.
+			if ((reqs.memoryTypeBits & (1u << alias.memory_type)) == 0)
+				return false;
+			if (reqs.size > alias.size)
+				return false;
+			if (((alias.offset + reqs.alignment - 1) & ~(reqs.alignment - 1)) != alias.offset)
+				return false;
+
+			if (table->vkBindImageMemory(device, image, alias.get_memory(), alias.get_offset()) != VK_SUCCESS)
+				return false;
+		}
+		else
+		{
+			if (!ext.supports_bind_memory2 || !ext.supports_get_memory_requirements2)
+				return false;
+
+			VkBindImageMemoryInfo bind_infos[3];
+			VkBindImagePlaneMemoryInfo bind_plane_infos[3];
+			VK_ASSERT(num_planes <= 3);
+
+			for (unsigned plane = 0; plane < num_planes; plane++)
+			{
+				VkMemoryRequirements2KHR memory_req = {VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR };
+				VkImageMemoryRequirementsInfo2KHR image_info = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2_KHR };
+				image_info.image = image;
+
+				VkImagePlaneMemoryRequirementsInfo plane_info = { VK_STRUCTURE_TYPE_IMAGE_PLANE_MEMORY_REQUIREMENTS_INFO_KHR };
+				plane_info.planeAspect = static_cast<VkImageAspectFlagBits>(VK_IMAGE_ASPECT_PLANE_0_BIT << plane);
+				image_info.pNext = &plane_info;
+
+				table->vkGetImageMemoryRequirements2KHR(device, &image_info, &memory_req);
+				auto &reqs = memory_req.memoryRequirements;
+				auto &alias = *info.memory_aliases[plane];
+
+				// Verify we can actually use this aliased allocation.
+				if ((reqs.memoryTypeBits & (1u << alias.memory_type)) == 0)
+					return false;
+				if (reqs.size > alias.size)
+					return false;
+				if (((alias.offset + reqs.alignment - 1) & ~(reqs.alignment - 1)) != alias.offset)
+					return false;
+
+				bind_infos[plane] = { VK_STRUCTURE_TYPE_BIND_IMAGE_MEMORY_INFO };
+				bind_infos[plane].image = image;
+				bind_infos[plane].memory = alias.base;
+				bind_infos[plane].memoryOffset = alias.offset;
+				bind_infos[plane].pNext = &bind_plane_infos[plane];
+
+				bind_plane_infos[plane] = { VK_STRUCTURE_TYPE_BIND_IMAGE_PLANE_MEMORY_INFO };
+				bind_plane_infos[plane].planeAspect = static_cast<VkImageAspectFlagBits>(VK_IMAGE_ASPECT_PLANE_0_BIT << plane);
+			}
+
+			if (table->vkBindImageMemory2KHR(device, num_planes, bind_infos) != VK_SUCCESS)
+				return false;
+		}
+	}
+	else
+	{
+		VkMemoryRequirements reqs;
+		table->vkGetImageMemoryRequirements(device, image, &reqs);
+
+		// If we intend to alias with other images bump the alignment to something very high.
+		// This is kind of crude, but should be high enough to allow YCbCr disjoint aliasing on any implementation.
+		if (info.flags & VK_IMAGE_CREATE_ALIAS_BIT)
+			if (reqs.alignment < 64 * 1024)
+				reqs.alignment = 64 * 1024;
+
+		uint32_t memory_type = find_memory_type(info.domain, reqs.memoryTypeBits);
+		if (memory_type == UINT32_MAX)
+		{
+			LOGE("Failed to find memory type.\n");
+			return false;
+		}
+
+		if (tiling == VK_IMAGE_TILING_LINEAR &&
+		    (info.misc & IMAGE_MISC_LINEAR_IMAGE_IGNORE_DEVICE_LOCAL_BIT) == 0)
+		{
+			// Is it also device local?
+			if ((mem_props.memoryTypes[memory_type].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) == 0)
+				return false;
+		}
+
+		if (!managers.memory.allocate_image_memory(reqs.size, reqs.alignment, memory_type,
+		                                           tiling == VK_IMAGE_TILING_OPTIMAL ? ALLOCATION_TILING_OPTIMAL
+		                                                                             : ALLOCATION_TILING_LINEAR,
+		                                           allocation, image,
+		                                           (info.misc & IMAGE_MISC_FORCE_NO_DEDICATED_BIT) != 0))
+		{
+			LOGE("Failed to allocate image memory (type %u, size: %u).\n", unsigned(memory_type), unsigned(reqs.size));
+			return false;
+		}
+
+		if (table->vkBindImageMemory(device, image, allocation->get_memory(),
+		                             allocation->get_offset()) != VK_SUCCESS)
+		{
+			LOGE("Failed to bind image memory.\n");
+			return false;
+		}
+	}
+
+	return true;
+}
+
 ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &create_info,
                                                      const InitialImageBuffer *staging_buffer)
 {
 	ImageResourceHolder holder(this);
-	VkMemoryRequirements reqs;
 
 	VkImageCreateInfo info = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
 	info.format = create_info.format;
@@ -3284,33 +3572,9 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		return ImageHandle(nullptr);
 	}
 
-	table->vkGetImageMemoryRequirements(device, holder.image, &reqs);
-	uint32_t memory_type = find_memory_type(create_info.domain, reqs.memoryTypeBits);
-	if (memory_type == UINT32_MAX)
+	if (!allocate_image_memory(&holder.allocation, create_info, holder.image, info.tiling))
 	{
-		LOGE("Failed to find memory type.\n");
-		return ImageHandle(nullptr);
-	}
-
-	if (info.tiling == VK_IMAGE_TILING_LINEAR &&
-	    (create_info.misc & IMAGE_MISC_LINEAR_IMAGE_IGNORE_DEVICE_LOCAL_BIT) == 0)
-	{
-		// Is it also device local?
-		if ((mem_props.memoryTypes[memory_type].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) == 0)
-			return ImageHandle(nullptr);
-	}
-
-	if (!managers.memory.allocate_image_memory(reqs.size, reqs.alignment, memory_type,
-	                                           info.tiling == VK_IMAGE_TILING_OPTIMAL ? ALLOCATION_TILING_OPTIMAL : ALLOCATION_TILING_LINEAR,
-	                                           &holder.allocation, holder.image))
-	{
-		LOGE("Failed to allocate image memory (type %u, size: %u).\n", unsigned(memory_type), unsigned(reqs.size));
-		return ImageHandle(nullptr);
-	}
-
-	if (table->vkBindImageMemory(device, holder.image, holder.allocation.get_memory(), holder.allocation.get_offset()) != VK_SUCCESS)
-	{
-		LOGE("Failed to bind image memory.\n");
+		LOGE("Failed to allocate memory for image.\n");
 		return ImageHandle(nullptr);
 	}
 
@@ -3534,6 +3798,35 @@ SamplerHandle Device::create_sampler(const SamplerCreateInfo &sampler_info, Stoc
 	auto info = fill_vk_sampler_info(sampler_info);
 	VkSampler sampler;
 
+	VkSamplerYcbcrConversionInfo conversion_info = { VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO };
+
+	switch (stock_sampler)
+	{
+	case StockSampler::LinearYUV420P:
+		if (!ext.sampler_ycbcr_conversion_features.samplerYcbcrConversion)
+			return SamplerHandle(nullptr);
+		info.pNext = &conversion_info;
+		conversion_info.conversion = samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV420P_3PLANE)];
+		break;
+
+	case StockSampler::LinearYUV422P:
+		if (!ext.sampler_ycbcr_conversion_features.samplerYcbcrConversion)
+			return SamplerHandle(nullptr);
+		info.pNext = &conversion_info;
+		conversion_info.conversion = samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV422P_3PLANE)];
+		break;
+
+	case StockSampler::LinearYUV444P:
+		if (!ext.sampler_ycbcr_conversion_features.samplerYcbcrConversion)
+			return SamplerHandle(nullptr);
+		info.pNext = &conversion_info;
+		conversion_info.conversion = samplers_ycbcr[static_cast<unsigned>(YCbCrFormat::YUV444P_3PLANE)];
+		break;
+
+	default:
+		info.pNext = nullptr;
+		break;
+	}
 
 	if (table->vkCreateSampler(device, &info, nullptr, &sampler) != VK_SUCCESS)
 		return SamplerHandle(nullptr);
@@ -3542,7 +3835,9 @@ SamplerHandle Device::create_sampler(const SamplerCreateInfo &sampler_info, Stoc
 #else
 	(void)stock_sampler;
 #endif
-	return SamplerHandle(handle_pool.samplers.allocate(this, sampler, sampler_info));
+	SamplerHandle handle(handle_pool.samplers.allocate(this, sampler, sampler_info));
+	handle->set_internal_sync_object();
+	return handle;
 }
 
 SamplerHandle Device::create_sampler(const SamplerCreateInfo &sampler_info)

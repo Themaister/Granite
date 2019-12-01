@@ -772,7 +772,7 @@ void Device::init_stock_samplers()
 
 		VkSamplerYcbcrConversionCreateInfo info = { VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_CREATE_INFO };
 		info.ycbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709;
-		info.ycbcrRange = VK_SAMPLER_YCBCR_RANGE_ITU_FULL;
+		info.ycbcrRange = VK_SAMPLER_YCBCR_RANGE_ITU_NARROW;
 		info.components = {
 			VK_COMPONENT_SWIZZLE_IDENTITY,
 			VK_COMPONENT_SWIZZLE_IDENTITY,

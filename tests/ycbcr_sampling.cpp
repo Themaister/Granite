@@ -32,8 +32,22 @@ using namespace Vulkan;
 
 struct YCbCrSamplingTest : Granite::Application, Granite::EventHandler
 {
-	YCbCrSamplingTest()
+	YCbCrSamplingTest(std::string path_, unsigned width_, unsigned height_)
+		: path(std::move(path_)), width(width_), height(height_)
 	{
+		get_wsi().set_backbuffer_srgb(false);
+
+		yuv_file = Global::filesystem()->open(path, FileMode::ReadOnly);
+		if (!yuv_file)
+			throw std::runtime_error("Failed to open file.\n");
+
+		file_mapped = static_cast<const uint8_t *>(yuv_file->map());
+		if (!file_mapped)
+			throw std::runtime_error("Failed to map file.\n");
+
+		file_offset = 0;
+		file_size = yuv_file->get_size();
+
 		EVENT_MANAGER_REGISTER_LATCH(YCbCrSamplingTest, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 	}
 
@@ -46,7 +60,7 @@ struct YCbCrSamplingTest : Granite::Application, Granite::EventHandler
 		info.height = 16;
 		ycbcr_image = e.get_device().create_ycbcr_image(info);
 #else
-		ImageCreateInfo info = ImageCreateInfo::immutable_2d_image(16, 16, VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM);
+		ImageCreateInfo info = ImageCreateInfo::immutable_2d_image(width, height, VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM);
 		info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 		info.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 		ycbcr_image = e.get_device().create_image(info);
@@ -60,10 +74,33 @@ struct YCbCrSamplingTest : Granite::Application, Granite::EventHandler
 
 		auto cmd = e.get_device().request_command_buffer();
 
+
+		e.get_device().submit(cmd);
+	}
+
+	void on_device_destroyed(const DeviceCreatedEvent &)
+	{
+		ycbcr_image.reset();
+	}
+
+	void render_frame(double, double)
+	{
+		constexpr unsigned DOWNSAMPLE_WIDTH = 2;
+		constexpr unsigned DOWNSAMPLE_HEIGHT = 2;
+
+		auto &wsi = get_wsi();
+		auto &device = wsi.get_device();
+
+		auto cmd = device.request_command_buffer();
+
+		size_t required_size = width * height + 2 * ((width / DOWNSAMPLE_WIDTH) * (height / DOWNSAMPLE_HEIGHT));
+		if (file_offset + required_size > file_size)
+			file_offset = 0;
+
 #if 0
 		cmd->image_barrier(ycbcr_image->get_ycbcr_image(), VK_IMAGE_LAYOUT_UNDEFINED,
 		                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		                   VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
+		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
 		                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
 
 		// Should be gray.
@@ -84,27 +121,30 @@ struct YCbCrSamplingTest : Granite::Application, Granite::EventHandler
 #else
 		cmd->image_barrier(*ycbcr_image, VK_IMAGE_LAYOUT_UNDEFINED,
 		                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		                   VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
+		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
 		                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
 
 		uint8_t *y = static_cast<uint8_t *>(
-				cmd->update_image(*ycbcr_image, {}, { 16, 16, 1 },
+				cmd->update_image(*ycbcr_image, {}, { width, height, 1 },
 				                  0, 0,
 				                  { VK_IMAGE_ASPECT_PLANE_0_BIT, 0, 0, 1 }));
 
 		uint8_t *cb = static_cast<uint8_t *>(
-				cmd->update_image(*ycbcr_image, {}, { 8, 8, 1 },
+				cmd->update_image(*ycbcr_image, {}, { width / DOWNSAMPLE_WIDTH, height / DOWNSAMPLE_HEIGHT, 1 },
 				                  0, 0,
 				                  { VK_IMAGE_ASPECT_PLANE_1_BIT, 0, 0, 1 }));
 
 		uint8_t *cr = static_cast<uint8_t *>(
-				cmd->update_image(*ycbcr_image, {}, { 8, 8, 1 },
+				cmd->update_image(*ycbcr_image, {}, { width / DOWNSAMPLE_WIDTH, height / DOWNSAMPLE_HEIGHT, 1 },
 				                  0, 0,
 				                  { VK_IMAGE_ASPECT_PLANE_2_BIT, 0, 0, 1 }));
 
-		memset(y, 255, 16 * 16);
-		memset(cb, 128, 8 * 8);
-		memset(cr, 128, 8 * 8);
+		memcpy(y, file_mapped + file_offset, width * height);
+		file_offset += width * height;
+		memcpy(cb, file_mapped + file_offset, (width / DOWNSAMPLE_WIDTH) * (height / DOWNSAMPLE_HEIGHT));
+		file_offset += (width / DOWNSAMPLE_WIDTH) * (height / DOWNSAMPLE_HEIGHT);
+		memcpy(cr, file_mapped + file_offset, (width / DOWNSAMPLE_WIDTH) * (height / DOWNSAMPLE_HEIGHT));
+		file_offset += (width / DOWNSAMPLE_WIDTH) * (height / DOWNSAMPLE_HEIGHT);
 
 		cmd->image_barrier(*ycbcr_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 		                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
@@ -112,24 +152,7 @@ struct YCbCrSamplingTest : Granite::Application, Granite::EventHandler
 		                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 #endif
 
-		e.get_device().submit(cmd);
-	}
-
-	void on_device_destroyed(const DeviceCreatedEvent &)
-	{
-		ycbcr_image.reset();
-	}
-
-	void render_frame(double, double)
-	{
-		auto &wsi = get_wsi();
-		auto &device = wsi.get_device();
-
-		auto cmd = device.request_command_buffer();
 		auto rp = device.get_swapchain_render_pass(SwapchainRenderPass::ColorOnly);
-		rp.clear_color[0].float32[0] = 0.1f;
-		rp.clear_color[0].float32[1] = 0.2f;
-		rp.clear_color[0].float32[2] = 0.3f;
 		cmd->begin_render_pass(rp);
 #if 0
 		cmd->set_texture(0, 0, ycbcr_image->get_ycbcr_image().get_view());
@@ -141,6 +164,15 @@ struct YCbCrSamplingTest : Granite::Application, Granite::EventHandler
 		device.submit(cmd);
 	}
 
+	std::string path;
+	unsigned width;
+	unsigned height;
+
+	std::unique_ptr<Granite::File> yuv_file;
+	size_t file_offset = 0;
+	size_t file_size = 0;
+	const uint8_t *file_mapped = nullptr;
+
 #if 0
 	YCbCrImageHandle ycbcr_image;
 #else
@@ -150,9 +182,19 @@ struct YCbCrSamplingTest : Granite::Application, Granite::EventHandler
 
 namespace Granite
 {
-Application *application_create(int, char **)
+Application *application_create(int argc, char **argv)
 {
 	application_dummy();
+
+	if (argc != 4)
+	{
+		LOGE("Usage: ycbcr-sampling <path to raw yuv420p> <width> <height>\n");
+		return nullptr;
+	}
+
+	unsigned width = std::stoi(argv[2]);
+	unsigned height = std::stoi(argv[3]);
+	std::string path = argv[1];
 
 #ifdef ASSET_DIRECTORY
 	const char *asset_dir = getenv("ASSET_DIRECTORY");
@@ -164,7 +206,7 @@ Application *application_create(int, char **)
 
 	try
 	{
-		auto *app = new YCbCrSamplingTest();
+		auto *app = new YCbCrSamplingTest(path, width, height);
 		return app;
 	}
 	catch (const std::exception &e)

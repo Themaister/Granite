@@ -53,6 +53,11 @@ struct YCbCrSamplingTest : Granite::Application, Granite::EventHandler
 
 	void on_device_created(const DeviceCreatedEvent &e)
 	{
+		if (!e.get_device().get_device_features().sampler_ycbcr_conversion_features.samplerYcbcrConversion)
+		{
+			LOGE("YCbCr sampling not supported!\n");
+			std::terminate();
+		}
 #if 0
 		YCbCrImageCreateInfo info;
 		info.format = YCbCrFormat::YUV420P_3PLANE;

@@ -644,6 +644,7 @@ private:
 	VertexBindingState vbo = {};
 	ResourceBindings bindings;
 	VkDescriptorSet bindless_sets[VULKAN_NUM_DESCRIPTOR_SETS] = {};
+	VkDescriptorSet allocated_sets[VULKAN_NUM_DESCRIPTOR_SETS] = {};
 
 	VkPipeline current_pipeline = VK_NULL_HANDLE;
 	VkPipelineLayout current_pipeline_layout = VK_NULL_HANDLE;
@@ -658,6 +659,7 @@ private:
 
 	CommandBufferDirtyFlags dirty = ~0u;
 	uint32_t dirty_sets = 0;
+	uint32_t dirty_sets_dynamic = 0;
 	uint32_t dirty_vbos = 0;
 	uint32_t active_vbos = 0;
 	bool uses_swapchain = false;
@@ -695,6 +697,7 @@ private:
 	void flush_descriptor_sets();
 	void begin_graphics();
 	void flush_descriptor_set(uint32_t set);
+	void rebind_descriptor_set(uint32_t set);
 	void begin_compute();
 	void begin_context();
 

@@ -702,6 +702,7 @@ void Device::set_context(const Context &context)
 	managers.ubo.init(this, 256 * 1024, std::max<VkDeviceSize>(16u, gpu_props.limits.minUniformBufferOffsetAlignment),
 	                  VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 	                  ImplementationQuirks::get().staging_need_device_local);
+	managers.ubo.set_spill_region_size(VULKAN_MAX_UBO_SIZE);
 	managers.staging.init(this, 64 * 1024, std::max<VkDeviceSize>(16u, gpu_props.limits.optimalBufferCopyOffsetAlignment),
 	                      VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 	                      false);

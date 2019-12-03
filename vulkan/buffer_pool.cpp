@@ -39,6 +39,11 @@ void BufferPool::init(Device *device_, VkDeviceSize block_size_,
 	need_device_local = need_device_local_;
 }
 
+void BufferPool::set_spill_region_size(VkDeviceSize spill_size_)
+{
+	spill_size = spill_size_;
+}
+
 BufferBlock::~BufferBlock()
 {
 }
@@ -85,6 +90,7 @@ BufferBlock BufferPool::allocate_block(VkDeviceSize size)
 	block.offset = 0;
 	block.alignment = alignment;
 	block.size = size;
+	block.spill_size = spill_size;
 	return block;
 }
 

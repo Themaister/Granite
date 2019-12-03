@@ -25,6 +25,7 @@
 #include "vulkan_headers.hpp"
 #include "intrusive.hpp"
 #include <vector>
+#include <algorithm>
 
 namespace Vulkan
 {
@@ -35,6 +36,7 @@ struct BufferBlockAllocation
 {
 	uint8_t *host;
 	VkDeviceSize offset;
+	VkDeviceSize padded_size;
 };
 
 struct BufferBlock
@@ -45,6 +47,7 @@ struct BufferBlock
 	VkDeviceSize offset = 0;
 	VkDeviceSize alignment = 0;
 	VkDeviceSize size = 0;
+	VkDeviceSize spill_size = 0;
 	uint8_t *mapped = nullptr;
 
 	BufferBlockAllocation allocate(VkDeviceSize allocate_size)
@@ -54,10 +57,14 @@ struct BufferBlock
 		{
 			auto *ret = mapped + aligned_offset;
 			offset = aligned_offset + allocate_size;
-			return { ret, aligned_offset };
+
+			VkDeviceSize padded_size = std::max(allocate_size, spill_size);
+			padded_size = std::min(padded_size, size - aligned_offset);
+
+			return { ret, aligned_offset, padded_size };
 		}
 		else
-			return { nullptr, 0 };
+			return { nullptr, 0, 0 };
 	}
 };
 
@@ -67,6 +74,10 @@ public:
 	~BufferPool();
 	void init(Device *device, VkDeviceSize block_size, VkDeviceSize alignment, VkBufferUsageFlags usage, bool need_device_local);
 	void reset();
+
+	// Used for allocating UBOs, where we want to specify a fixed size for range,
+	// and we need to make sure we don't allocate beyond the block.
+	void set_spill_region_size(VkDeviceSize spill_size);
 
 	VkDeviceSize get_block_size() const
 	{
@@ -80,6 +91,7 @@ private:
 	Device *device = nullptr;
 	VkDeviceSize block_size = 0;
 	VkDeviceSize alignment = 0;
+	VkDeviceSize spill_size = 0;
 	VkBufferUsageFlags usage = 0;
 	std::vector<BufferBlock> blocks;
 	BufferBlock allocate_block(VkDeviceSize size);

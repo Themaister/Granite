@@ -1335,13 +1335,14 @@ void CommandBuffer::set_program(Program *program)
 
 void *CommandBuffer::allocate_constant_data(unsigned set, unsigned binding, VkDeviceSize size)
 {
+	VK_ASSERT(size <= VULKAN_MAX_UBO_SIZE);
 	auto data = ubo_block.allocate(size);
 	if (!data.host)
 	{
 		device->request_uniform_block(ubo_block, size);
 		data = ubo_block.allocate(size);
 	}
-	set_uniform_buffer(set, binding, *ubo_block.gpu, data.offset, size);
+	set_uniform_buffer(set, binding, *ubo_block.gpu, data.offset, data.padded_size);
 	return data.host;
 }
 
@@ -1440,14 +1441,22 @@ void CommandBuffer::set_uniform_buffer(unsigned set, unsigned binding, const Buf
 	VK_ASSERT(buffer.get_create_info().usage & VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
 	auto &b = bindings.bindings[set][binding];
 
-	if (buffer.get_cookie() == bindings.cookies[set][binding] && b.dynamic_offset == offset && b.buffer.range == range)
-		return;
-
-	b.buffer = { buffer.get_buffer(), 0, range };
-	b.dynamic_offset = offset;
-	bindings.cookies[set][binding] = buffer.get_cookie();
-	bindings.secondary_cookies[set][binding] = 0;
-	dirty_sets |= 1u << set;
+	if (buffer.get_cookie() == bindings.cookies[set][binding] && b.buffer.range == range)
+	{
+		if (b.dynamic_offset != offset)
+		{
+			dirty_sets_dynamic |= 1u << set;
+			b.dynamic_offset = offset;
+		}
+	}
+	else
+	{
+		b.buffer = { buffer.get_buffer(), 0, range };
+		b.dynamic_offset = offset;
+		bindings.cookies[set][binding] = buffer.get_cookie();
+		bindings.secondary_cookies[set][binding] = 0;
+		dirty_sets |= 1u << set;
+	}
 }
 
 void CommandBuffer::set_storage_buffer(unsigned set, unsigned binding, const Buffer &buffer, VkDeviceSize offset,
@@ -1784,6 +1793,35 @@ static void update_descriptor_set_legacy(Device &device, VkDescriptorSet desc_se
 	table.vkUpdateDescriptorSets(device.get_device(), write_count, writes, 0, nullptr);
 }
 
+void CommandBuffer::rebind_descriptor_set(uint32_t set)
+{
+	auto &layout = current_layout->get_resource_layout();
+	if (layout.bindless_descriptor_set_mask & (1u << set))
+	{
+		VK_ASSERT(bindless_sets[set]);
+		table.vkCmdBindDescriptorSets(cmd, actual_render_pass ? VK_PIPELINE_BIND_POINT_GRAPHICS : VK_PIPELINE_BIND_POINT_COMPUTE,
+		                              current_pipeline_layout, set, 1, &bindless_sets[set], 0, nullptr);
+		return;
+	}
+
+	auto &set_layout = layout.sets[set];
+	uint32_t num_dynamic_offsets = 0;
+	uint32_t dynamic_offsets[VULKAN_NUM_BINDINGS];
+
+	// UBOs
+	for_each_bit(set_layout.uniform_buffer_mask, [&](uint32_t binding) {
+		unsigned array_size = set_layout.array_size[binding];
+		for (unsigned i = 0; i < array_size; i++)
+		{
+			VK_ASSERT(num_dynamic_offsets < VULKAN_NUM_BINDINGS);
+			dynamic_offsets[num_dynamic_offsets++] = bindings.bindings[set][binding + i].dynamic_offset;
+		}
+	});
+
+	table.vkCmdBindDescriptorSets(cmd, actual_render_pass ? VK_PIPELINE_BIND_POINT_GRAPHICS : VK_PIPELINE_BIND_POINT_COMPUTE,
+	                              current_pipeline_layout, set, 1, &allocated_sets[set], num_dynamic_offsets, dynamic_offsets);
+}
+
 void CommandBuffer::flush_descriptor_set(uint32_t set)
 {
 	auto &layout = current_layout->get_resource_layout();
@@ -1916,14 +1954,24 @@ void CommandBuffer::flush_descriptor_set(uint32_t set)
 
 	table.vkCmdBindDescriptorSets(cmd, actual_render_pass ? VK_PIPELINE_BIND_POINT_GRAPHICS : VK_PIPELINE_BIND_POINT_COMPUTE,
 	                              current_pipeline_layout, set, 1, &allocated.first, num_dynamic_offsets, dynamic_offsets);
+	allocated_sets[set] = allocated.first;
 }
 
 void CommandBuffer::flush_descriptor_sets()
 {
 	auto &layout = current_layout->get_resource_layout();
+
 	uint32_t set_update = layout.descriptor_set_mask & dirty_sets;
 	for_each_bit(set_update, [&](uint32_t set) { flush_descriptor_set(set); });
 	dirty_sets &= ~set_update;
+
+	// If we update a set, we also bind dynamically.
+	dirty_sets_dynamic &= ~set_update;
+
+	// If we only rebound UBOs, we might get away with just rebinding descriptor sets, no hashing and lookup required.
+	uint32_t dynamic_set_update = layout.descriptor_set_mask & dirty_sets_dynamic;
+	for_each_bit(dynamic_set_update, [&](uint32_t set) { rebind_descriptor_set(set); });
+	dirty_sets_dynamic &= ~dynamic_set_update;
 }
 
 void CommandBuffer::draw(uint32_t vertex_count, uint32_t instance_count, uint32_t first_vertex, uint32_t first_instance)

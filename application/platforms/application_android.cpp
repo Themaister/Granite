@@ -1012,7 +1012,7 @@ void android_main(android_app *app)
 					if (app_handle)
 					{
 						// TODO: Configurable.
-						app_handle->get_wsi().set_support_prerotate(true);
+						app_handle->get_wsi().set_support_prerotate(false);
 
 						auto platform = make_unique<Granite::WSIPlatformAndroid>();
 						if (platform->init(width, height))

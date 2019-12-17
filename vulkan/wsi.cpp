@@ -313,6 +313,13 @@ bool WSI::begin_frame()
 		result = table->vkAcquireNextImageKHR(context->get_device(), swapchain, UINT64_MAX, acquire->get_semaphore(),
 		                                      fence ? fence->get_fence() : VK_NULL_HANDLE, &swapchain_index);
 
+#ifdef ANDROID
+		// Android 10 can return suboptimal here, only because of pre-transform.
+		// We don't care about that, and treat this as success.
+		if (result == VK_SUBOPTIMAL_KHR)
+			result = VK_SUCCESS;
+#endif
+
 		if (result == VK_SUCCESS && fence)
 			fence->wait();
 
@@ -433,6 +440,15 @@ bool WSI::end_frame()
 #endif
 
 		VkResult overall = table->vkQueuePresentKHR(context->get_graphics_queue(), &info);
+
+#ifdef ANDROID
+		// Android 10 can return suboptimal here, only because of pre-transform.
+		// We don't care about that, and treat this as success.
+		if (overall == VK_SUBOPTIMAL_KHR)
+			overall = VK_SUCCESS;
+		if (result == VK_SUBOPTIMAL_KHR)
+			result = VK_SUCCESS;
+#endif
 
 		if (overall == VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT ||
 		    result == VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT)

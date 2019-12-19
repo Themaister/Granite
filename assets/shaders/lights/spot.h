@@ -7,7 +7,7 @@
 #ifdef POSITIONAL_LIGHT_DEFERRED
 layout(std140, set = 2, binding = 0) uniform SpotParameters
 {
-    SpotShaderInfo data[256];
+    PositionalLightInfo data[256];
 } spot;
 #endif
 
@@ -48,8 +48,8 @@ layout(set = SPOT_LIGHT_SHADOW_ATLAS_SET, binding = SPOT_LIGHT_SHADOW_ATLAS_BIND
 		#define SPOT_SHADOW_TRANSFORM(index) spot_shadow.data[0]
 	#endif
 #elif defined(CLUSTERER_BINDLESS)
-	#define SPOT_DATA(index) cluster_transforms.spots[index]
-	#define SPOT_SHADOW_TRANSFORM(index) cluster_transforms.spot_shadow[index]
+	#define SPOT_DATA(index) cluster_transforms.lights[index]
+	#define SPOT_SHADOW_TRANSFORM(index) cluster_transforms.shadow[index]
 #else
 	#define SPOT_DATA(index) cluster.spots[index]
 	#define SPOT_SHADOW_TRANSFORM(index) cluster.spot_shadow[index]

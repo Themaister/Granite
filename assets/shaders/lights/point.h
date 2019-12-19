@@ -7,7 +7,7 @@
 #ifdef POSITIONAL_LIGHT_DEFERRED
 layout(std140, set = 2, binding = 0) uniform PointParameters
 {
-    PointShaderInfo data[256];
+    PositionalLightInfo data[256];
 } point;
 #endif
 
@@ -44,14 +44,16 @@ layout(set = POINT_LIGHT_SHADOW_ATLAS_SET, binding = POINT_LIGHT_SHADOW_ATLAS_BI
 		#define POINT_SHADOW_TRANSFORM(index) point_shadow.data[index]
 	#else
 		#define POINT_DATA(index) point.data[0]
-		#define POINT_SHADOW_TRANSFORM(index) point_shadow.data[0]
+		#define POINT_SHADOW_TRANSFORM(index) point_shadow.data[0].transform
+		#define POINT_SHADOW_SLICE(index) point_shadow.data[0].slice.x
 	#endif
 #elif defined(CLUSTERER_BINDLESS)
-	#define POINT_DATA(index) cluster_transform.points[index]
-	#define POINT_SHADOW_TRANSFORM(index) cluster_transform.point_shadow[index]
+	#define POINT_DATA(index) cluster_transform.lights[index]
+	#define POINT_SHADOW_TRANSFORM(index) cluster_transform.shadow[index][0]
 #else
 	#define POINT_DATA(index) cluster.points[index]
-	#define POINT_SHADOW_TRANSFORM(index) cluster.point_shadow[index]
+	#define POINT_SHADOW_TRANSFORM(index) cluster.point_shadow[index].transform
+	#define POINT_SHADOW_SLICE(index) cluster.point_shadow[index].slice.x
 #endif
 
 mediump float point_scatter_phase_function(mediump float VoL)
@@ -71,9 +73,9 @@ mediump vec3 compute_point_color(int index, vec3 world_pos, out mediump vec3 lig
 #ifdef POSITIONAL_LIGHTS_SHADOW
 	vec3 dir_abs = abs(light_dir_full);
 	float max_z = max(max(dir_abs.x, dir_abs.y), dir_abs.z);
-	vec4 shadow_transform = POINT_SHADOW_TRANSFORM(index).transform;
+	vec4 shadow_transform = POINT_SHADOW_TRANSFORM(index);
 	#if !defined(CLUSTERER_BINDLESS)
-		mediump float slice = POINT_SHADOW_TRANSFORM(index).slice.x;
+		mediump float slice = POINT_SHADOW_SLICE(index);
 		#ifdef POSITIONAL_SHADOW_VSM
 			vec2 shadow_moments = textureLod(uPointShadowAtlas, vec4(light_dir_full, slice), 0.0).xy;
 			mediump float shadow_falloff = vsm(max_z, shadow_moments);

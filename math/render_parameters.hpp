@@ -25,6 +25,7 @@
 #include "math.hpp"
 #include "image.hpp"
 #include "lights/light_info.hpp"
+#include "limits.hpp"
 
 namespace Granite
 {
@@ -93,13 +94,38 @@ struct RefractionParameters
 };
 
 #define CLUSTERER_MAX_LIGHTS 32
-struct ClustererParameters
+struct ClustererParametersLegacy
 {
 	mat4 transform;
 	PositionalFragmentInfo spots[CLUSTERER_MAX_LIGHTS];
 	PositionalFragmentInfo points[CLUSTERER_MAX_LIGHTS];
 	mat4 spot_shadow_transforms[CLUSTERER_MAX_LIGHTS];
 	PointTransform point_shadow[CLUSTERER_MAX_LIGHTS];
+};
+
+struct ClustererParametersBindless
+{
+	alignas(16) mat4 transform;
+	alignas(16) vec3 camera_base;
+	alignas(16) vec3 camera_front;
+
+	alignas(8) vec2 xy_scale;
+	alignas(8) ivec2 resolution_xy;
+
+	uint32_t num_lights;
+	uint32_t num_lights_32;
+	uint32_t z_max_index;
+	float z_scale;
+};
+
+#define CLUSTERER_MAX_LIGHTS_BINDLESS 4096
+struct ClustererBindlessTransforms
+{
+	PositionalFragmentInfo spots[CLUSTERER_MAX_LIGHTS_BINDLESS];
+	PositionalFragmentInfo points[CLUSTERER_MAX_LIGHTS_BINDLESS];
+	mat4 spot_shadow[CLUSTERER_MAX_LIGHTS_BINDLESS];
+	PointTransform point_shadow[CLUSTERER_MAX_LIGHTS_BINDLESS];
+	uint32_t type_mask[CLUSTERER_MAX_LIGHTS_BINDLESS / 32];
 };
 
 struct CombinedRenderParameters
@@ -111,9 +137,9 @@ struct CombinedRenderParameters
 	DirectionalParameters directional;
 	RefractionParameters refraction;
 	ResolutionParameters resolution;
-	ClustererParameters clusterer;
+	ClustererParametersLegacy clusterer;
 };
-static_assert(sizeof(CombinedRenderParameters) <= 16 * 1024, "CombinedRenderParameters cannot fit in min-spec.");
+static_assert(sizeof(CombinedRenderParameters) <= Vulkan::VULKAN_MAX_UBO_SIZE, "CombinedRenderParameters cannot fit in min-spec.");
 
 struct LightingParameters
 {

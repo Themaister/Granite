@@ -268,7 +268,7 @@ void Renderer::begin()
 
 static void set_cluster_parameters(Vulkan::CommandBuffer &cmd, const LightClusterer &cluster)
 {
-	auto &params = *cmd.allocate_typed_constant_data<ClustererParameters>(0, 2, 1);
+	auto &params = *cmd.allocate_typed_constant_data<ClustererParametersLegacy>(0, 2, 1);
 	memset(&params, 0, sizeof(params));
 
 	cmd.set_texture(1, 6, *cluster.get_cluster_image(), StockSampler::NearestClamp);

@@ -92,7 +92,15 @@ void LightClusterer::set_shadow_resolution(unsigned res)
 void LightClusterer::setup_render_pass_dependencies(RenderGraph &, RenderPass &target_)
 {
 	// TODO: Other passes might want this?
-	target_.add_texture_input("light-cluster");
+	if (enable_bindless)
+	{
+		target_.add_texture_input("cluster-bitmask");
+		target_.add_texture_input("cluster-range");
+	}
+	else
+	{
+		target_.add_texture_input("light-cluster");
+	}
 }
 
 void LightClusterer::set_base_render_context(const RenderContext *context_)
@@ -102,9 +110,17 @@ void LightClusterer::set_base_render_context(const RenderContext *context_)
 
 void LightClusterer::setup_render_pass_resources(RenderGraph &graph)
 {
-	target = &graph.get_physical_texture_resource(graph.get_texture_resource("light-cluster").get_physical_index());
-	if (!ImplementationQuirks::get().clustering_list_iteration && !ImplementationQuirks::get().clustering_force_cpu)
-		pre_cull_target = &graph.get_physical_texture_resource(graph.get_texture_resource("light-cluster-prepass").get_physical_index());
+	if (enable_bindless)
+	{
+		bindless.bitmask_buffer = &graph.get_physical_buffer_resource(graph.get_buffer_resource("cluster-bitmask"));
+		bindless.range_buffer = &graph.get_physical_buffer_resource(graph.get_buffer_resource("cluster-range"));
+	}
+	else
+	{
+		target = &graph.get_physical_texture_resource(graph.get_texture_resource("light-cluster").get_physical_index());
+		if (!ImplementationQuirks::get().clustering_list_iteration && !ImplementationQuirks::get().clustering_force_cpu)
+			pre_cull_target = &graph.get_physical_texture_resource(graph.get_texture_resource("light-cluster-prepass").get_physical_index());
+	}
 }
 
 unsigned LightClusterer::get_active_point_light_count() const
@@ -159,12 +175,12 @@ const Vulkan::Buffer *LightClusterer::get_cluster_transform_buffer() const
 
 const Vulkan::Buffer *LightClusterer::get_cluster_bitmask_buffer() const
 {
-	return bindless.bitmask_buffer.get();
+	return bindless.bitmask_buffer;
 }
 
 const Vulkan::Buffer *LightClusterer::get_cluster_range_buffer() const
 {
-	return bindless.range_buffer.get();
+	return bindless.range_buffer;
 }
 
 VkDescriptorSet LightClusterer::get_cluster_shadow_map_bindless_set() const
@@ -827,6 +843,11 @@ uvec2 LightClusterer::cluster_lights_cpu(int x, int y, int z, const CPUGlobalAcc
 	return uvec2(spot_mask, point_mask);
 }
 
+void LightClusterer::build_cluster_bindless(Vulkan::CommandBuffer &cmd)
+{
+
+}
+
 void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view)
 {
 	unsigned res_x = resolution_x;
@@ -1123,7 +1144,33 @@ void LightClusterer::build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView
 	cmd.dispatch((res_x + 3) / 4, (res_y + 3) / 4, (ClusterHierarchies + 1) * ((res_z + 3) / 4));
 }
 
-void LightClusterer::add_render_passes(RenderGraph &graph)
+void LightClusterer::add_render_passes_bindless(RenderGraph &graph)
+{
+	BufferInfo att;
+	att.persistent = true;
+	att.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+
+	auto &pass = graph.add_pass("clustering", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
+
+	{
+		att.size = resolution_x * resolution_y * (MaxLights / 8);
+		pass.add_storage_output("cluster-bitmask", att);
+	}
+
+	{
+		att.size = resolution_z * sizeof(ivec2);
+		pass.add_storage_output("cluster-range", att);
+	}
+
+	pass.set_build_render_pass([&](CommandBuffer &cmd) {
+		build_cluster_bindless(cmd);
+	});
+	pass.set_need_render_pass([this]() {
+		return enable_clustering;
+	});
+}
+
+void LightClusterer::add_render_passes_legacy(RenderGraph &graph)
 {
 	AttachmentInfo att;
 	att.levels = 1;
@@ -1183,6 +1230,14 @@ void LightClusterer::add_render_passes(RenderGraph &graph)
 			return enable_clustering;
 		});
 	}
+}
+
+void LightClusterer::add_render_passes(RenderGraph &graph)
+{
+	if (enable_bindless)
+		add_render_passes_bindless(graph);
+	else
+		add_render_passes_legacy(graph);
 }
 
 void LightClusterer::set_base_renderer(Renderer *, Renderer *, Renderer *depth)

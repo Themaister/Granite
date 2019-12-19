@@ -302,7 +302,16 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 		rp->creator = volumetric_fog.get();
 
 		if (config.clustered_lights)
-			volumetric_fog->add_texture_dependency("light-cluster");
+		{
+			if (config.clustered_lights_bindless)
+			{
+				volumetric_fog->add_texture_dependency("cluster-bitmask");
+				volumetric_fog->add_texture_dependency("cluster-range");
+			}
+			else
+				volumetric_fog->add_texture_dependency("light-cluster");
+		}
+
 		if (config.directional_light_shadows)
 		{
 			volumetric_fog->add_texture_dependency("shadow-main");

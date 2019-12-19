@@ -89,6 +89,9 @@ public:
 
 private:
 	void add_render_passes(RenderGraph &graph) override;
+	void add_render_passes_legacy(RenderGraph &graph);
+	void add_render_passes_bindless(RenderGraph &graph);
+
 	void setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target) override;
 	void setup_render_pass_resources(RenderGraph &graph) override;
 	void refresh(RenderContext &context_) override;
@@ -103,6 +106,7 @@ private:
 	unsigned max_point_lights = MaxLights;
 	void build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view, const Vulkan::ImageView *pre_culled);
 	void build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view);
+	void build_cluster_bindless(Vulkan::CommandBuffer &cmd);
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
 	Vulkan::ShaderProgram *program = nullptr;
@@ -192,8 +196,8 @@ private:
 		Vulkan::BindlessDescriptorPoolHandle descriptor_pool;
 		ClustererParametersBindless parameters;
 		Vulkan::BufferHandle transforms_buffer;
-		Vulkan::BufferHandle bitmask_buffer;
-		Vulkan::BufferHandle range_buffer;
+		const Vulkan::Buffer *bitmask_buffer = nullptr;
+		const Vulkan::Buffer *range_buffer = nullptr;
 		VkDescriptorSet desc_set = VK_NULL_HANDLE;
 	} bindless;
 };

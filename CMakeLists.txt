@@ -399,6 +399,7 @@ if (NOT GRANITE_VULKAN_ONLY)
             renderer/utils/image_utils.hpp renderer/utils/image_utils.cpp
             renderer/lights/lights.cpp renderer/lights/lights.hpp
             renderer/lights/clusterer.cpp renderer/lights/clusterer.hpp
+            renderer/lights/clusterer_binning.cpp renderer/lights/clusterer_binning.hpp
             renderer/lights/volumetric_fog.cpp renderer/lights/volumetric_fog.hpp
             renderer/lights/light_info.hpp
             renderer/lights/deferred_lights.hpp renderer/lights/deferred_lights.cpp

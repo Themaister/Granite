@@ -49,6 +49,12 @@ PipelineLayout::PipelineLayout(Hash hash, Device *device_, const CombinedResourc
 			num_sets = i + 1;
 	}
 
+	if (num_sets > device->get_gpu_properties().limits.maxBoundDescriptorSets)
+	{
+		LOGE("Number of sets %u exceeds device limit of %u.\n",
+		     num_sets, device->get_gpu_properties().limits.maxBoundDescriptorSets);
+	}
+
 	VkPipelineLayoutCreateInfo info = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
 	if (num_sets)
 	{

@@ -9,17 +9,17 @@ layout(std140, set = 0, binding = 2) uniform ClusterParameters
 	ClustererParametersBindless cluster;
 };
 
-layout(std430, set = 1, binding = 6) readonly buffer ClustererData
+layout(std430, set = 0, binding = 3) readonly buffer ClustererData
 {
 	ClustererBindlessTransform cluster_transforms;
 };
 
-layout(std430, set = 1, binding = 7) readonly buffer ClustererBitmasks
+layout(std430, set = 0, binding = 4) readonly buffer ClustererBitmasks
 {
 	uint cluster_bitmask[];
 };
 
-layout(std430, set = 1, binding = 8) readonly buffer ClustererRanges
+layout(std430, set = 0, binding = 5) readonly buffer ClustererRanges
 {
 	ivec2 cluster_range[];
 };

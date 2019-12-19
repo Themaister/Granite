@@ -44,11 +44,13 @@ public:
 	void set_enable_shadows(bool enable);
 	void set_force_update_shadows(bool enable);
 	void set_enable_clustering(bool enable);
+	void set_enable_bindless(bool enable);
 	void set_shadow_type(ShadowType shadow_type);
 
 	void set_resolution(unsigned x, unsigned y, unsigned z);
 	void set_shadow_resolution(unsigned res);
 
+	// Legacy clustering.
 	const Vulkan::ImageView *get_cluster_image() const;
 	const Vulkan::Buffer *get_cluster_list_buffer() const;
 	const Vulkan::ImageView *get_spot_light_shadows() const;
@@ -60,6 +62,14 @@ public:
 	unsigned get_active_point_light_count() const;
 	unsigned get_active_spot_light_count() const;
 	const mat4 &get_cluster_transform() const;
+
+	// Bindless clustering.
+	const ClustererParametersBindless &get_cluster_parameters_bindless() const;
+	const Vulkan::Buffer *get_cluster_transform_buffer() const;
+	const Vulkan::Buffer *get_cluster_bitmask_buffer() const;
+	const Vulkan::Buffer *get_cluster_range_buffer() const;
+	VkDescriptorSet get_cluster_shadow_map_bindless_set() const;
+	bool clusterer_is_bindless() const;
 
 	void set_scene(Scene *scene) override;
 	void set_base_renderer(Renderer *forward_renderer, Renderer *deferred_renderer, Renderer *depth_renderer) override;
@@ -135,6 +145,7 @@ private:
 
 	bool enable_shadows = true;
 	bool enable_clustering = true;
+	bool enable_bindless = false;
 	bool force_update_shadows = false;
 	ShadowType shadow_type = ShadowType::PCF;
 
@@ -172,5 +183,18 @@ private:
 	                   Vulkan::ImageView &rt, Renderer::RendererFlushFlags flags);
 	Vulkan::ImageHandle scratch_vsm_rt;
 	Vulkan::ImageHandle scratch_vsm_down;
+
+	// Bindless
+	struct
+	{
+		Vulkan::ImageHandle spot_lights[MaxLights];
+		Vulkan::ImageHandle point_lights[MaxLights];
+		Vulkan::BindlessDescriptorPoolHandle descriptor_pool;
+		ClustererParametersBindless parameters;
+		Vulkan::BufferHandle transforms_buffer;
+		Vulkan::BufferHandle bitmask_buffer;
+		Vulkan::BufferHandle range_buffer;
+		VkDescriptorSet desc_set = VK_NULL_HANDLE;
+	} bindless;
 };
 }

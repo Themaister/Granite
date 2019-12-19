@@ -142,6 +142,41 @@ void LightClusterer::set_enable_clustering(bool enable)
 	enable_clustering = enable;
 }
 
+void LightClusterer::set_enable_bindless(bool enable)
+{
+	enable_bindless = enable;
+}
+
+const ClustererParametersBindless &LightClusterer::get_cluster_parameters_bindless() const
+{
+	return bindless.parameters;
+}
+
+const Vulkan::Buffer *LightClusterer::get_cluster_transform_buffer() const
+{
+	return bindless.transforms_buffer.get();
+}
+
+const Vulkan::Buffer *LightClusterer::get_cluster_bitmask_buffer() const
+{
+	return bindless.bitmask_buffer.get();
+}
+
+const Vulkan::Buffer *LightClusterer::get_cluster_range_buffer() const
+{
+	return bindless.range_buffer.get();
+}
+
+VkDescriptorSet LightClusterer::get_cluster_shadow_map_bindless_set() const
+{
+	return bindless.desc_set;
+}
+
+bool LightClusterer::clusterer_is_bindless() const
+{
+	return enable_bindless;
+}
+
 void LightClusterer::set_shadow_type(ShadowType shadow_type_)
 {
 	shadow_type = shadow_type_;

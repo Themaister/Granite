@@ -24,10 +24,20 @@ layout(std140, set = 2, binding = 3) uniform SpotShadowParameters
 
 #ifdef POSITIONAL_SHADOW_VSM
 #include "vsm.h"
+#if defined(CLUSTERER_BINDLESS)
+layout(set = SPOT_LIGHT_SHADOW_ATLAS_SET, binding = 0) uniform texture2D uSpotShadowAtlas[];
+layout(set = 1, binding = 15) uniform sampler LinearClampSampler;
+#else
 layout(set = SPOT_LIGHT_SHADOW_ATLAS_SET, binding = SPOT_LIGHT_SHADOW_ATLAS_BINDING) uniform sampler2D uSpotShadowAtlas;
+#endif
 #else
 #include "pcf.h"
+#if defined(CLUSTERER_BINDLESS)
+layout(set = 1, binding = 15) uniform sampler LinearShadowSampler;
+layout(set = SPOT_LIGHT_SHADOW_ATLAS_SET, binding = 0) uniform texture2D uSpotShadowAtlas[];
+#else
 layout(set = SPOT_LIGHT_SHADOW_ATLAS_SET, binding = SPOT_LIGHT_SHADOW_ATLAS_BINDING) uniform sampler2DShadow uSpotShadowAtlas;
+#endif
 #endif
 #endif
 
@@ -39,6 +49,9 @@ layout(set = SPOT_LIGHT_SHADOW_ATLAS_SET, binding = SPOT_LIGHT_SHADOW_ATLAS_BIND
 		#define SPOT_DATA(index) spot.data[0]
 		#define SPOT_SHADOW_TRANSFORM(index) spot_shadow.data[0]
 	#endif
+#elif defined(CLUSTERER_BINDLESS)
+	#define SPOT_DATA(index) cluster_transforms.spots[index]
+	#define SPOT_SHADOW_TRANSFORM(index) cluster_transforms.spot_shadow[index]
 #else
 	#define SPOT_DATA(index) cluster.spots[index]
 	#define SPOT_SHADOW_TRANSFORM(index) cluster.spot_shadow[index]
@@ -60,13 +73,17 @@ mediump vec3 compute_spot_color(int index, vec3 world_pos, out mediump vec3 ligh
 	#ifdef POSITIONAL_SHADOW_VSM
 		vec4 spot_shadow_clip = SPOT_SHADOW_TRANSFORM(index) * vec4(world_pos, 1.0);
 		vec2 shadow_uv = spot_shadow_clip.xy / spot_shadow_clip.w;
-		vec2 shadow_moments = textureLod(uSpotShadowAtlas, shadow_uv, 0.0).xy;
+		#ifdef CLUSTERER_BINDLESS
+			vec2 shadow_moments = textureLod(sampler2D(uSpotShadowAtlas[nonuniformEXT(index)], LinearClampSampler), shadow_uv, 0.0).xy;
+		#else
+			vec2 shadow_moments = textureLod(uSpotShadowAtlas, shadow_uv, 0.0).xy;
+		#endif
 		float shadow_z = dot(light_primary_direction, world_pos - light_pos);
 		mediump float shadow_falloff = vsm(shadow_z, shadow_moments);
 	#else
 		vec4 spot_shadow_clip = SPOT_SHADOW_TRANSFORM(index) * vec4(world_pos, 1.0);
 		mediump float shadow_falloff;
-		SAMPLE_PCF_KERNEL(shadow_falloff, uSpotShadowAtlas, spot_shadow_clip);
+		SAMPLE_PCF_KERNEL(shadow_falloff, uSpotShadowAtlas, index, spot_shadow_clip);
 	#endif
 #else
 	const float shadow_falloff = 1.0;

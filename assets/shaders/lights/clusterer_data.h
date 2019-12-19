@@ -36,13 +36,17 @@ struct PointShadowData
 #ifdef CLUSTERER_BINDLESS
 struct ClustererParametersBindless
 {
+	mat4 transform;
+	vec3 camera_base;
+	vec3 camera_front;
+
 	vec2 xy_scale;
 	ivec2 resolution_xy;
 
-	uint num_lights;
-	uint num_lights_32;
-	uint z_resolution;
-	float inv_z_scale;
+	int num_lights;
+	int num_lights_32;
+	int z_max_index;
+	float z_scale;
 };
 
 struct ClustererBindlessTransforms

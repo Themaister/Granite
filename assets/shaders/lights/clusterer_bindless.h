@@ -1,6 +1,9 @@
 #ifndef CLUSTERER_BINDLESS_H_
 #define CLUSTERER_BINDLESS_H_
 
+#define SPOT_LIGHT_SHADOW_ATLAS_SET 4
+#define POINT_LIGHT_SHADOW_ATLAS_SET 5
+
 layout(std140, set = 0, binding = 2) uniform ClusterParameters
 {
 	ClustererParametersBindless cluster;

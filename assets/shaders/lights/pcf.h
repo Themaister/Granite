@@ -5,6 +5,10 @@
 #define SHADOW_MAP_PCF_KERNEL_WIDTH 1
 #endif
 
+#ifdef CLUSTERER_BINDLESS
+layout(set = 1, binding = 15) uniform sampler LinearShadowSampler;
+#endif
+
 #define SAMPLE_PCF_BINDLESS(tex, index, uv, x, y) \
 	textureLodOffset(sampler2DShadow(tex[nonuniformEXT(index)], LinearShadowClamp), uv, 0.0, ivec2(x, y))
 #define SAMPLE_PCF(tex, uv, x, y) \

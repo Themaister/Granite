@@ -1,6 +1,10 @@
 #ifndef VSM_H_
 #define VSM_H_
 
+#ifdef CLUSTERER_BINDLESS
+layout(set = 1, binding = 14) uniform sampler LinearClampSampler;
+#endif
+
 mediump float vsm(float depth, vec2 moments)
 {
     mediump float shadow_term = 1.0;

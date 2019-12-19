@@ -26,7 +26,6 @@ layout(std140, set = 2, binding = 3) uniform SpotShadowParameters
 #include "vsm.h"
 #if defined(CLUSTERER_BINDLESS)
 layout(set = SPOT_LIGHT_SHADOW_ATLAS_SET, binding = 0) uniform texture2D uSpotShadowAtlas[];
-layout(set = 1, binding = 15) uniform sampler LinearClampSampler;
 #else
 layout(set = SPOT_LIGHT_SHADOW_ATLAS_SET, binding = SPOT_LIGHT_SHADOW_ATLAS_BINDING) uniform sampler2D uSpotShadowAtlas;
 #endif
@@ -34,7 +33,6 @@ layout(set = SPOT_LIGHT_SHADOW_ATLAS_SET, binding = SPOT_LIGHT_SHADOW_ATLAS_BIND
 #include "pcf.h"
 #if defined(CLUSTERER_BINDLESS)
 layout(set = SPOT_LIGHT_SHADOW_ATLAS_SET, binding = 0) uniform texture2D uSpotShadowAtlas[];
-layout(set = 1, binding = 15) uniform sampler LinearShadowSampler;
 #else
 layout(set = SPOT_LIGHT_SHADOW_ATLAS_SET, binding = SPOT_LIGHT_SHADOW_ATLAS_BINDING) uniform sampler2DShadow uSpotShadowAtlas;
 #endif

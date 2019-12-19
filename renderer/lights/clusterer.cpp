@@ -713,11 +713,63 @@ void LightClusterer::render_atlas_spot(RenderContext &context_)
 	device.submit(cmd);
 }
 
+void LightClusterer::refresh_legacy(RenderContext& context_)
+{
+	// Figure out aabb bounds in view space.
+	auto &inv_proj = context_.get_render_parameters().inv_projection;
+	const auto project = [](const vec4 &v) -> vec3 {
+		return v.xyz() / v.w;
+	};
+
+	vec3 ul = project(inv_proj * vec4(-1.0f, -1.0f, 1.0f, 1.0f));
+	vec3 ll = project(inv_proj * vec4(-1.0f, +1.0f, 1.0f, 1.0f));
+	vec3 ur = project(inv_proj * vec4(+1.0f, -1.0f, 1.0f, 1.0f));
+	vec3 lr = project(inv_proj * vec4(+1.0f, +1.0f, 1.0f, 1.0f));
+
+	vec3 min_view = min(min(ul, ll), min(ur, lr));
+	vec3 max_view = max(max(ul, ll), max(ur, lr));
+	// Make sure scaling the box does not move the near plane.
+	max_view.z = 0.0f;
+
+	mat4 ortho_box = ortho(AABB(min_view, max_view));
+
+	if (points.count || spots.count)
+		cluster_transform = scale(vec3(1 << (ClusterHierarchies - 1))) * ortho_box * context_.get_render_parameters().view;
+	else
+		cluster_transform = scale(vec3(0.0f, 0.0f, 0.0f));
+
+	if (enable_shadows)
+	{
+		render_atlas_spot(context_);
+		render_atlas_point(context_);
+	}
+	else
+	{
+		spots.atlas.reset();
+		points.atlas.reset();
+	}
+}
+
+void LightClusterer::refresh_bindless(RenderContext& context_)
+{
+}
+
 void LightClusterer::refresh(RenderContext &context_)
 {
 	points.count = 0;
 	spots.count = 0;
 	auto &frustum = context_.get_visibility_frustum();
+
+	// Prefer lights which are closest to the camera.
+	sort(begin(*lights), end(*lights), [&](const auto &a, const auto &b) -> bool {
+		auto *transform_a = get_component<RenderInfoComponent>(a);
+		auto *transform_b = get_component<RenderInfoComponent>(b);
+		vec3 pos_a = transform_a->transform->world_transform[3].xyz();
+		vec3 pos_b = transform_b->transform->world_transform[3].xyz();
+		float dist_a = dot(pos_a, context_.get_render_parameters().camera_front);
+		float dist_b = dot(pos_b, context_.get_render_parameters().camera_front);
+		return dist_a < dist_b;
+	});
 
 	for (auto &light : *lights)
 	{
@@ -752,39 +804,10 @@ void LightClusterer::refresh(RenderContext &context_)
 		}
 	}
 
-	// Figure out aabb bounds in view space.
-	auto &inv_proj = context_.get_render_parameters().inv_projection;
-	const auto project = [](const vec4 &v) -> vec3 {
-		return v.xyz() / v.w;
-	};
-
-	vec3 ul = project(inv_proj * vec4(-1.0f, -1.0f, 1.0f, 1.0f));
-	vec3 ll = project(inv_proj * vec4(-1.0f, +1.0f, 1.0f, 1.0f));
-	vec3 ur = project(inv_proj * vec4(+1.0f, -1.0f, 1.0f, 1.0f));
-	vec3 lr = project(inv_proj * vec4(+1.0f, +1.0f, 1.0f, 1.0f));
-
-	vec3 min_view = min(min(ul, ll), min(ur, lr));
-	vec3 max_view = max(max(ul, ll), max(ur, lr));
-	// Make sure scaling the box does not move the near plane.
-	max_view.z = 0.0f;
-
-	mat4 ortho_box = ortho(AABB(min_view, max_view));
-
-	if (points.count || spots.count)
-		cluster_transform = scale(vec3(1 << (ClusterHierarchies - 1))) * ortho_box * context_.get_render_parameters().view;
+	if (enable_bindless)
+		refresh_bindless(context_);
 	else
-		cluster_transform = scale(vec3(0.0f, 0.0f, 0.0f));
-
-	if (enable_shadows)
-	{
-		render_atlas_spot(context_);
-		render_atlas_point(context_);
-	}
-	else
-	{
-		spots.atlas.reset();
-		points.atlas.reset();
-	}
+		refresh_legacy(context_);
 }
 
 uvec2 LightClusterer::cluster_lights_cpu(int x, int y, int z, const CPUGlobalAccelState &state,

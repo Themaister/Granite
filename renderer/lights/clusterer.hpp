@@ -95,6 +95,8 @@ private:
 	void setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target) override;
 	void setup_render_pass_resources(RenderGraph &graph) override;
 	void refresh(RenderContext &context_) override;
+	void refresh_bindless(RenderContext &context_);
+	void refresh_legacy(RenderContext &context_);
 
 	Scene *scene = nullptr;
 	const RenderContext *context = nullptr;

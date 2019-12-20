@@ -193,14 +193,19 @@ private:
 	// Bindless
 	struct
 	{
-		Vulkan::ImageHandle spot_lights[MaxLights];
-		Vulkan::ImageHandle point_lights[MaxLights];
-		Vulkan::BindlessDescriptorPoolHandle descriptor_pool;
 		ClustererParametersBindless parameters;
-		Vulkan::BufferHandle transforms_buffer;
+		Vulkan::BindlessDescriptorPoolHandle descriptor_pool;
+
 		const Vulkan::Buffer *bitmask_buffer = nullptr;
 		const Vulkan::Buffer *range_buffer = nullptr;
+		const Vulkan::Buffer *transforms_buffer = nullptr;
 		VkDescriptorSet desc_set = VK_NULL_HANDLE;
 	} bindless;
+
+	void update_bindless_descriptors(Vulkan::CommandBuffer &cmd);
+	void update_bindless_range_buffer(Vulkan::CommandBuffer &cmd);
+	void update_bindless_mask_buffer(Vulkan::CommandBuffer &cmd);
+	void render_bindless_spot(RenderContext &context);
+	void render_bindless_point(RenderContext &context);
 };
 }

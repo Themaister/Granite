@@ -121,10 +121,8 @@ struct ClustererParametersBindless
 #define CLUSTERER_MAX_LIGHTS_BINDLESS 4096
 struct ClustererBindlessTransforms
 {
-	PositionalFragmentInfo spots[CLUSTERER_MAX_LIGHTS_BINDLESS];
-	PositionalFragmentInfo points[CLUSTERER_MAX_LIGHTS_BINDLESS];
-	mat4 spot_shadow[CLUSTERER_MAX_LIGHTS_BINDLESS];
-	PointTransform point_shadow[CLUSTERER_MAX_LIGHTS_BINDLESS];
+	PositionalFragmentInfo lights[CLUSTERER_MAX_LIGHTS_BINDLESS];
+	mat4 shadow[CLUSTERER_MAX_LIGHTS_BINDLESS];
 	uint32_t type_mask[CLUSTERER_MAX_LIGHTS_BINDLESS / 32];
 };
 

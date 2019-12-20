@@ -307,6 +307,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 			{
 				volumetric_fog->add_texture_dependency("cluster-bitmask");
 				volumetric_fog->add_texture_dependency("cluster-range");
+				volumetric_fog->add_texture_dependency("cluster-transforms");
 			}
 			else
 				volumetric_fog->add_texture_dependency("light-cluster");

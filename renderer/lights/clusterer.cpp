@@ -94,8 +94,9 @@ void LightClusterer::setup_render_pass_dependencies(RenderGraph &, RenderPass &t
 	// TODO: Other passes might want this?
 	if (enable_bindless)
 	{
-		target_.add_texture_input("cluster-bitmask");
-		target_.add_texture_input("cluster-range");
+		target_.add_storage_read_only_input("cluster-bitmask");
+		target_.add_storage_read_only_input("cluster-range");
+		target_.add_storage_read_only_input("cluster-transforms");
 	}
 	else
 	{
@@ -114,6 +115,7 @@ void LightClusterer::setup_render_pass_resources(RenderGraph &graph)
 	{
 		bindless.bitmask_buffer = &graph.get_physical_buffer_resource(graph.get_buffer_resource("cluster-bitmask"));
 		bindless.range_buffer = &graph.get_physical_buffer_resource(graph.get_buffer_resource("cluster-range"));
+		bindless.transforms_buffer = &graph.get_physical_buffer_resource(graph.get_buffer_resource("cluster-transforms"));
 	}
 	else
 	{
@@ -170,7 +172,7 @@ const ClustererParametersBindless &LightClusterer::get_cluster_parameters_bindle
 
 const Vulkan::Buffer *LightClusterer::get_cluster_transform_buffer() const
 {
-	return bindless.transforms_buffer.get();
+	return bindless.transforms_buffer;
 }
 
 const Vulkan::Buffer *LightClusterer::get_cluster_bitmask_buffer() const
@@ -234,7 +236,7 @@ const mat4 &LightClusterer::get_cluster_transform() const
 }
 
 template <typename T>
-static uint32_t reassign_indices(T &type)
+static uint32_t reassign_indices_legacy(T &type)
 {
 	uint32_t partial_mask = 0;
 
@@ -417,7 +419,7 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &de
 void LightClusterer::render_atlas_point(RenderContext &context_)
 {
 	bool vsm = shadow_type == ShadowType::VSM;
-	uint32_t partial_mask = reassign_indices(points);
+	uint32_t partial_mask = reassign_indices_legacy(points);
 
 	if (!points.atlas || force_update_shadows)
 		partial_mask = ~0u;
@@ -602,10 +604,18 @@ void LightClusterer::render_atlas_point(RenderContext &context_)
 	device.submit(cmd);
 }
 
+void LightClusterer::render_bindless_spot(RenderContext &context_)
+{
+}
+
+void LightClusterer::render_bindless_point(RenderContext &context_)
+{
+}
+
 void LightClusterer::render_atlas_spot(RenderContext &context_)
 {
 	bool vsm = shadow_type == ShadowType::VSM;
-	uint32_t partial_mask = reassign_indices(spots);
+	uint32_t partial_mask = reassign_indices_legacy(spots);
 
 	if (!spots.atlas || force_update_shadows)
 		partial_mask = ~0u;
@@ -750,8 +760,26 @@ void LightClusterer::refresh_legacy(RenderContext& context_)
 	}
 }
 
-void LightClusterer::refresh_bindless(RenderContext& context_)
+void LightClusterer::refresh_bindless(RenderContext &context_)
 {
+	float z_slice_size = context_.get_render_parameters().z_far / float(resolution_z);
+	bindless.parameters.transform = translate(vec3(0.5f, 0.5f, 0.0f)) *
+	                                scale(vec3(0.5f, 0.5f, 1.0f)) *
+	                                context_.get_render_parameters().view_projection;
+	bindless.parameters.camera_front = context_.get_render_parameters().camera_front;
+	bindless.parameters.camera_base = context_.get_render_parameters().camera_position;
+	bindless.parameters.xy_scale = vec2(resolution_x, resolution_y);
+	bindless.parameters.resolution_xy = ivec2(resolution_x, resolution_y);
+	bindless.parameters.z_scale = 1.0f / z_slice_size;
+	bindless.parameters.z_max_index = resolution_z - 1;
+	bindless.parameters.num_lights = spots.count + points.count;
+	bindless.parameters.num_lights_32 = (bindless.parameters.num_lights + 31) / 32;
+
+	if (enable_shadows)
+	{
+		render_bindless_spot(context_);
+		render_bindless_point(context_);
+	}
 }
 
 void LightClusterer::refresh(RenderContext &context_)
@@ -866,9 +894,82 @@ uvec2 LightClusterer::cluster_lights_cpu(int x, int y, int z, const CPUGlobalAcc
 	return uvec2(spot_mask, point_mask);
 }
 
+void LightClusterer::update_bindless_descriptors(Vulkan::CommandBuffer &cmd)
+{
+	if (!bindless.descriptor_pool)
+		bindless.descriptor_pool = cmd.get_device().create_bindless_descriptor_pool(BindlessResourceType::ImageFP, 16, MaxLights);
+
+	unsigned num_lights = enable_shadows ? std::max(1u, spots.count + points.count) : 1u;
+	if (!bindless.descriptor_pool->allocate_descriptors(num_lights))
+	{
+		bindless.descriptor_pool = cmd.get_device().create_bindless_descriptor_pool(BindlessResourceType::ImageFP, 16, MaxLights);
+		if (!bindless.descriptor_pool->allocate_descriptors(num_lights))
+			LOGE("Failed to allocate descriptors on a fresh descriptor pool!\n");
+	}
+
+	bindless.desc_set = bindless.descriptor_pool->get_descriptor_set();
+
+	ClustererBindlessTransforms transforms = {};
+	for (unsigned i = 0; i < spots.count; i++)
+	{
+		transforms.lights[i] = spots.lights[i];
+		if (enable_shadows)
+		{
+			transforms.shadow[i] = spots.transforms[i];
+			//bindless.descriptor_pool->set_texture(i, bindless.spot_lights[spots.index_remap[i]]->get_view());
+		}
+	}
+
+	for (unsigned i = 0; i < points.count; i++)
+	{
+		unsigned index = i + spots.count;
+		transforms.lights[index] = points.lights[i];
+		transforms.type_mask[index >> 5] |= 1u << (index & 31);
+
+		if (enable_shadows)
+		{
+			transforms.shadow[index][0] = points.transforms[i].transform;
+			//bindless.descriptor_pool->set_texture(index, bindless.point_lights[points.index_remap[i]]->get_view());
+		}
+	}
+
+	memcpy(cmd.update_buffer(*bindless.transforms_buffer, 0, sizeof(transforms)),
+	       &transforms, sizeof(transforms));
+}
+
+void LightClusterer::update_bindless_range_buffer(Vulkan::CommandBuffer &cmd)
+{
+	cmd.fill_buffer(*bindless.range_buffer, 0);
+}
+
+void LightClusterer::update_bindless_mask_buffer(Vulkan::CommandBuffer &cmd)
+{
+	auto *masks = static_cast<uint32_t *>(cmd.update_buffer(*bindless.bitmask_buffer, 0,
+	                                                        bindless.parameters.num_lights_32 * sizeof(uint32_t) *
+	                                                        resolution_x * resolution_y));
+
+	// Pretend all lights are active.
+	for (unsigned y = 0; y < resolution_y; y++)
+	{
+		for (unsigned x = 0; x < resolution_x; x++)
+		{
+			auto *tile_list = masks + (y * resolution_x + x) * bindless.parameters.num_lights_32;
+			for (unsigned i = 0; i < bindless.parameters.num_lights; i += 32)
+			{
+				if (i + 32 <= bindless.parameters.num_lights)
+					tile_list[i] = ~0u;
+				else
+					tile_list[i] = (1u << (bindless.parameters.num_lights - i)) - 1;
+			}
+		}
+	}
+}
+
 void LightClusterer::build_cluster_bindless(Vulkan::CommandBuffer &cmd)
 {
-
+	update_bindless_descriptors(cmd);
+	update_bindless_range_buffer(cmd);
+	update_bindless_mask_buffer(cmd);
 }
 
 void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view)
@@ -1157,11 +1258,11 @@ void LightClusterer::build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView
 	float radius = 0.5f * length(mat3(inverse_cluster_transform) * (vec3(2.0f, 2.0f, 0.5f) * inv_res));
 
 	Push push = {
-			inverse_cluster_transform,
-			uvec4(res_x, res_y, res_z, trailing_zeroes(res_z)),
-			vec4(1.0f / res_x, 1.0f / res_y, 1.0f / ((ClusterHierarchies + 1) * res_z), 1.0f),
-			vec4(inv_res, radius),
-			spots.count, points.count,
+		inverse_cluster_transform,
+		uvec4(res_x, res_y, res_z, trailing_zeroes(res_z)),
+		vec4(1.0f / res_x, 1.0f / res_y, 1.0f / ((ClusterHierarchies + 1) * res_z), 1.0f),
+		vec4(inv_res, radius),
+		spots.count, points.count,
 	};
 	cmd.push_constants(&push, 0, sizeof(push));
 	cmd.dispatch((res_x + 3) / 4, (res_y + 3) / 4, (ClusterHierarchies + 1) * ((res_z + 3) / 4));
@@ -1171,18 +1272,23 @@ void LightClusterer::add_render_passes_bindless(RenderGraph &graph)
 {
 	BufferInfo att;
 	att.persistent = true;
-	att.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+	att.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 
 	auto &pass = graph.add_pass("clustering", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
 
 	{
 		att.size = resolution_x * resolution_y * (MaxLights / 8);
-		pass.add_storage_output("cluster-bitmask", att);
+		pass.add_transfer_output("cluster-bitmask", att);
 	}
 
 	{
 		att.size = resolution_z * sizeof(ivec2);
-		pass.add_storage_output("cluster-range", att);
+		pass.add_transfer_output("cluster-range", att);
+	}
+
+	{
+		att.size = sizeof(ClustererBindlessTransforms);
+		pass.add_transfer_output("cluster-transforms", att);
 	}
 
 	pass.set_build_render_pass([&](CommandBuffer &cmd) {

@@ -656,7 +656,7 @@ void LightClusterer::render_bindless_spot(RenderContext &context_)
 		render_shadow(*cmd, depth_context, visible,
 		              0, 0,
 		              shadow_resolution, shadow_resolution,
-		              spots.atlas->get_view(), 0, Renderer::DEPTH_BIAS_BIT);
+		              image->get_view(), 0, Renderer::DEPTH_BIAS_BIT);
 
 		if (vsm)
 		{

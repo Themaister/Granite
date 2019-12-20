@@ -6,6 +6,7 @@
 	"PCFKernelWidth": 1,
 	"directionalLightShadowsCascaded": true,
 	"clusteredLights": false,
+	"clusteredLightsBindless": false,
 	"clusteredLightsShadows": true,
 	"clusteredLightsShadowsVSM": false,
 	"clusteredLightsShadowsResolution": 512,

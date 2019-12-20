@@ -131,6 +131,8 @@ void SceneViewerApplication::read_config(const std::string &path)
 	}
 	if (doc.HasMember("clusteredLights"))
 		config.clustered_lights = doc["clusteredLights"].GetBool();
+	if (doc.HasMember("clusteredLightsBindless"))
+		config.clustered_lights_bindless = doc["clusteredLightsBindless"].GetBool();
 	if (doc.HasMember("clusteredLightsShadows"))
 		config.clustered_lights_shadows = doc["clusteredLightsShadows"].GetBool();
 	if (doc.HasMember("clusteredLightsShadowsResolution"))
@@ -282,6 +284,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 		cluster->set_max_point_lights(config.max_point_lights);
 		cluster->set_enable_shadows(config.clustered_lights_shadows);
 		cluster->set_enable_clustering(config.clustered_lights);
+		cluster->set_enable_bindless(config.clustered_lights_bindless);
 		cluster->set_force_update_shadows(config.force_shadow_map_update);
 		cluster->set_shadow_resolution(config.clustered_lights_shadow_resolution);
 

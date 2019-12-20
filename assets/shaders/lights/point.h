@@ -91,7 +91,7 @@ mediump vec3 compute_point_color(int index, vec3 world_pos, out mediump vec3 lig
 		#else
 			vec2 shadow_ref2 = shadow_transform.zw - shadow_transform.xy * max_z;
 			float shadow_ref = shadow_ref2.x / shadow_ref2.y;
-			mediump float shadow_falloff = textureLod(samplerCubeShadow(uPointShadowAtlas[nonuniformEXT(index)], LinearShadowSampler), vec4(light_dir_full, shadow_ref), 0.0);
+			mediump float shadow_falloff = texture(samplerCubeShadow(uPointShadowAtlas[nonuniformEXT(index)], LinearShadowSampler), vec4(light_dir_full, shadow_ref));
 		#endif
 	#endif
 #else

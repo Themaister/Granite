@@ -225,9 +225,16 @@ Renderer::RendererOptionFlags Renderer::get_mesh_renderer_options_from_lighting(
 		if (lighting.cluster->get_spot_light_shadows() && lighting.cluster->get_point_light_shadows())
 		{
 			flags |= POSITIONAL_LIGHT_SHADOW_ENABLE_BIT;
-			if (!format_has_depth_or_stencil_aspect(lighting.cluster->get_spot_light_shadows()->get_format()))
+			if (lighting.cluster->get_shadow_type() == LightClusterer::ShadowType::VSM)
 				flags |= POSITIONAL_LIGHT_SHADOW_VSM_BIT;
 		}
+		else if (lighting.cluster->get_cluster_shadow_map_bindless_set() != VK_NULL_HANDLE)
+		{
+			flags |= POSITIONAL_LIGHT_SHADOW_ENABLE_BIT;
+			if (lighting.cluster->get_shadow_type() == LightClusterer::ShadowType::VSM)
+				flags |= POSITIONAL_LIGHT_SHADOW_VSM_BIT;
+		}
+
 		if (lighting.cluster->get_cluster_list_buffer())
 			flags |= POSITIONAL_LIGHT_CLUSTER_LIST_BIT;
 		if (lighting.cluster->clusterer_is_bindless())
@@ -310,7 +317,8 @@ static void set_cluster_parameters_bindless(Vulkan::CommandBuffer &cmd, const Li
 	cmd.set_storage_buffer(0, 3, *cluster.get_cluster_transform_buffer());
 	cmd.set_storage_buffer(0, 4, *cluster.get_cluster_bitmask_buffer());
 	cmd.set_storage_buffer(0, 5, *cluster.get_cluster_range_buffer());
-	cmd.set_bindless(4, cluster.get_cluster_shadow_map_bindless_set());
+	if (cluster.get_cluster_shadow_map_bindless_set() != VK_NULL_HANDLE)
+		cmd.set_bindless(4, cluster.get_cluster_shadow_map_bindless_set());
 }
 
 static void set_cluster_parameters(Vulkan::CommandBuffer &cmd, const LightClusterer &cluster)
@@ -705,10 +713,11 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 		};
 
 		vector<pair<string, int>> cluster_defines;
-		if (light.cluster->get_spot_light_shadows())
+		if (light.cluster->get_spot_light_shadows() ||
+		    light.cluster->get_cluster_shadow_map_bindless_set())
 		{
 			cluster_defines.emplace_back("POSITIONAL_LIGHTS_SHADOW", 1);
-			if (!format_has_depth_or_stencil_aspect(light.cluster->get_spot_light_shadows()->get_format()))
+			if (light.cluster->get_shadow_type() == LightClusterer::ShadowType::VSM)
 				cluster_defines.emplace_back("POSITIONAL_SHADOW_VSM", 1);
 			else
 			{

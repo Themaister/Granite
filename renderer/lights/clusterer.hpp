@@ -47,6 +47,7 @@ public:
 	void set_enable_clustering(bool enable);
 	void set_enable_bindless(bool enable);
 	void set_shadow_type(ShadowType shadow_type);
+	ShadowType get_shadow_type() const;
 
 	void set_resolution(unsigned x, unsigned y, unsigned z);
 	void set_shadow_resolution(unsigned res);

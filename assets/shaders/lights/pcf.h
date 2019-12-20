@@ -10,7 +10,7 @@ layout(set = 1, binding = 15) uniform sampler LinearShadowSampler;
 #endif
 
 #define SAMPLE_PCF_BINDLESS(tex, index, uv, x, y) \
-	textureLodOffset(sampler2DShadow(tex[nonuniformEXT(index)], LinearShadowClamp), uv, 0.0, ivec2(x, y))
+	textureLodOffset(sampler2DShadow(tex[nonuniformEXT(index)], LinearShadowSampler), uv, 0.0, ivec2(x, y))
 #define SAMPLE_PCF(tex, uv, x, y) \
 	textureLodOffset(tex, uv, 0.0, ivec2(x, y))
 
@@ -117,7 +117,7 @@ layout(set = 1, binding = 15) uniform sampler LinearShadowSampler;
 	var += 0.0625 * SAMPLE_PCF(tex, clip_uv, +1, +1); \
 }
 #elif SHADOW_MAP_PCF_KERNEL_WIDTH == 1
-#define SAMPLE_PCF_KERNEL_BINDLESS(var, tex, index, uv) var = textureProjLod(sampler2DShadow(tex[nonuniformEXT(index)], LinearShadowClamp), uv, 0.0)
+#define SAMPLE_PCF_KERNEL_BINDLESS(var, tex, index, uv) var = textureProjLod(sampler2DShadow(tex[nonuniformEXT(index)], LinearShadowSampler), uv, 0.0)
 #define SAMPLE_PCF_KERNEL(var, tex, uv) var = textureProjLod(tex, uv, 0.0)
 #else
 #error "Unsupported PCF kernel width."

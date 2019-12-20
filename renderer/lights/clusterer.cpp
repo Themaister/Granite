@@ -198,6 +198,11 @@ void LightClusterer::set_shadow_type(ShadowType shadow_type_)
 	shadow_type = shadow_type_;
 }
 
+LightClusterer::ShadowType LightClusterer::get_shadow_type() const
+{
+	return shadow_type;
+}
+
 void LightClusterer::set_enable_shadows(bool enable)
 {
 	enable_shadows = enable;

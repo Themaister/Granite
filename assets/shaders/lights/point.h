@@ -48,8 +48,8 @@ layout(set = POINT_LIGHT_SHADOW_ATLAS_SET, binding = POINT_LIGHT_SHADOW_ATLAS_BI
 		#define POINT_SHADOW_SLICE(index) point_shadow.data[0].slice.x
 	#endif
 #elif defined(CLUSTERER_BINDLESS)
-	#define POINT_DATA(index) cluster_transform.lights[index]
-	#define POINT_SHADOW_TRANSFORM(index) cluster_transform.shadow[index][0]
+	#define POINT_DATA(index) cluster_transforms.lights[index]
+	#define POINT_SHADOW_TRANSFORM(index) cluster_transforms.shadow[index][0]
 #else
 	#define POINT_DATA(index) cluster.points[index]
 	#define POINT_SHADOW_TRANSFORM(index) cluster.point_shadow[index].transform

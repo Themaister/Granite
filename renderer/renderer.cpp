@@ -693,13 +693,15 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 	{
 		struct ClusterPush
 		{
-			vec4 inv_view_proj_col2;
-			vec3 camera_pos;
+			alignas(16) vec4 inv_view_proj_col2;
+			alignas(16) vec3 camera_pos;
+			alignas(8) vec2 inv_resolution;
 		};
 
 		ClusterPush cluster_push = {
 			context.get_render_parameters().inv_view_projection[2],
 			context.get_render_parameters().camera_position,
+			vec2(1.0f / cmd.get_viewport().width, 1.0f / cmd.get_viewport().height),
 		};
 
 		vector<pair<string, int>> cluster_defines;

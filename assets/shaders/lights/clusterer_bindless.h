@@ -11,7 +11,7 @@ layout(std140, set = 0, binding = 2) uniform ClusterParameters
 
 layout(std430, set = 0, binding = 3) readonly buffer ClustererData
 {
-	ClustererBindlessTransform cluster_transforms;
+	ClustererBindlessTransforms cluster_transforms;
 };
 
 layout(std430, set = 0, binding = 4) readonly buffer ClustererBitmasks
@@ -33,13 +33,13 @@ mediump vec3 compute_cluster_light(
 		mediump vec3 material_normal,
 		mediump float material_metallic,
 		mediump float material_roughness,
-		vec3 world_pos, vec3 camera_pos)
+		vec3 world_pos, vec3 camera_pos, vec2 inv_resolution)
 {
 	mediump vec3 result = vec3(0.0);
 
-	ivec2 cluster_coord = ivec2(gl_FragCoord.xy * cluster.xy_scale);
-	cluster_coord = clamp(cluster_index, ivec2(0), cluster.resolution_xy - 1);
-	int cluster_index = cluster_coord.y * cluster.resolution_x + cluster_coord.x;
+	ivec2 cluster_coord = ivec2(gl_FragCoord.xy * inv_resolution * cluster.xy_scale);
+	cluster_coord = clamp(cluster_coord, ivec2(0), cluster.resolution_xy - 1);
+	int cluster_index = cluster_coord.y * cluster.resolution_xy.x + cluster_coord.x;
 	int cluster_base = cluster_index * cluster.num_lights_32;
 
 	float z = dot(world_pos - cluster.camera_base, cluster.camera_front);

@@ -1020,6 +1020,9 @@ void LightClusterer::update_bindless_range_buffer(Vulkan::CommandBuffer &cmd)
 
 void LightClusterer::update_bindless_mask_buffer(Vulkan::CommandBuffer &cmd)
 {
+	if (bindless.parameters.num_lights == 0)
+		return;
+
 	auto *masks = static_cast<uint32_t *>(cmd.update_buffer(*bindless.bitmask_buffer, 0,
 	                                                        bindless.parameters.num_lights_32 * sizeof(uint32_t) *
 	                                                        resolution_x * resolution_y));

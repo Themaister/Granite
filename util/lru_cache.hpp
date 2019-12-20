@@ -37,6 +37,11 @@ public:
 		total_cost_limit = cost;
 	}
 
+	uint64_t get_current_cost() const
+	{
+		return total_cost;
+	}
+
 	T *find_and_mark_as_recent(uint64_t cookie)
 	{
 		auto *entry = hashmap.find(get_hash(cookie));
@@ -51,20 +56,24 @@ public:
 
 	T *allocate(uint64_t cookie, uint64_t cost)
 	{
-		auto *t = hashmap.find(get_hash(cookie));
-		if (t)
+		Hash hash = get_hash(cookie);
+		auto *hash_entry = hashmap.find(hash);
+		if (hash_entry)
 		{
-			total_cost -= t->cost;
-			total_cost += cost;
-			t->cost = cost;
-			lru.move_to_front(lru, t->get());
-			return t;
+			total_cost += cost - hash_entry->get()->cost;
+			hash_entry->get()->cost = cost;
+			lru.move_to_front(lru, hash_entry->get());
+			return &hash_entry->get()->t;
 		}
 
 		total_cost += cost;
+
 		auto *entry = pool.allocate();
+		entry->cost = cost;
+		entry->hash = hash;
+
 		lru.insert_front(entry);
-		hashmap.insert_replace(get_hash(cookie), lru.begin());
+		hashmap.emplace_replace(get_hash(cookie), lru.begin());
 		return &entry->t;
 	}
 
@@ -75,16 +84,21 @@ public:
 			auto itr = lru.rbegin();
 			total_cost -= itr->cost;
 			lru.erase(itr);
-			hashmap.erase(itr);
+			hashmap.erase(itr->hash);
 			pool.free(itr.get());
 		}
 	}
 
-	void evict(uint64_t cookie)
+	bool evict(uint64_t cookie)
 	{
 		auto *entry = hashmap.find(get_hash(cookie));
 		if (entry)
+		{
 			lru.move_to_back(lru, entry->get());
+			return true;
+		}
+		else
+			return false;
 	}
 
 	bool erase(uint64_t cookie)
@@ -94,7 +108,7 @@ public:
 		{
 			hashmap.erase(entry);
 			lru.erase(entry->get());
-			pool.free(entry->get());
+			pool.free(entry->get().get());
 			return true;
 		}
 		else
@@ -107,23 +121,34 @@ public:
 		{
 			auto itr = lru.begin();
 			lru.erase(itr);
-			pool.free(itr);
+			pool.free(itr.get());
 		}
 	}
 
-private:
 	struct CacheEntry : IntrusiveListEnabled<CacheEntry>
 	{
 		uint64_t cost;
+		Hash hash;
 		T t;
 	};
 
+	typename IntrusiveList<CacheEntry>::Iterator begin()
+	{
+		return lru.begin();
+	}
+
+	typename IntrusiveList<CacheEntry>::Iterator end()
+	{
+		return lru.end();
+	}
+
+private:
 	uint64_t total_cost = 0;
 	uint64_t total_cost_limit = 0;
 
 	ObjectPool<CacheEntry> pool;
 	IntrusiveList<CacheEntry> lru;
-	IntrusiveHashMap<IntrusivePODWrapper<typename IntrusiveList<CacheEntry>::iterator>> hashmap;
+	IntrusiveHashMap<IntrusivePODWrapper<typename IntrusiveList<CacheEntry>::Iterator>> hashmap;
 
 	static Hash get_hash(uint64_t cookie)
 	{

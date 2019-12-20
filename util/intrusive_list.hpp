@@ -38,6 +38,7 @@ public:
 	void clear()
 	{
 		head = nullptr;
+		tail = nullptr;
 	}
 
 	class Iterator

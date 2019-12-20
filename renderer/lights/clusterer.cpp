@@ -64,8 +64,6 @@ void LightClusterer::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
 	points.atlas.reset();
 	scratch_vsm_rt.reset();
 	scratch_vsm_down.reset();
-	for (auto &rt : shadow_atlas_rt)
-		rt.reset();
 
 	fill(begin(spots.cookie), end(spots.cookie), 0);
 	fill(begin(points.cookie), end(points.cookie), 0);
@@ -290,7 +288,7 @@ static uint32_t reassign_indices_legacy(T &type)
 
 void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &depth_context, VisibilityList &visible,
                                    unsigned off_x, unsigned off_y, unsigned res_x, unsigned res_y,
-                                   Vulkan::ImageView &rt, Renderer::RendererFlushFlags flags)
+                                   Vulkan::ImageView &rt, unsigned layer, Renderer::RendererFlushFlags flags)
 {
 	bool vsm = shadow_type == ShadowType::VSM;
 	visible.clear();
@@ -382,6 +380,7 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &de
 			rp_horiz.render_area.offset.y = off_y;
 			rp_horiz.render_area.extent.width = res_x;
 			rp_horiz.render_area.extent.height = res_y;
+			rp_horiz.base_layer = layer;
 
 			cmd.begin_render_pass(rp_horiz);
 			cmd.set_viewport({ float(off_x), float(off_y), float(res_x), float(res_y), 0.0f, 1.0f });
@@ -407,6 +406,7 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &de
 		rp.render_area.offset.y = off_y;
 		rp.render_area.extent.width = res_x;
 		rp.render_area.extent.height = res_y;
+		rp.base_layer = layer;
 
 		cmd.begin_render_pass(rp);
 		cmd.set_viewport({ float(off_x), float(off_y), float(res_x), float(res_y), 0.0f, 1.0f });
@@ -446,15 +446,6 @@ void LightClusterer::render_atlas_point(RenderContext &context_)
 			info.usage |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
 
 		points.atlas = device.create_image(info, nullptr);
-
-		for (unsigned i = 0; i < 6 * MaxLights; i++)
-		{
-			ImageViewCreateInfo view;
-			view.image = points.atlas.get();
-			view.layers = 1;
-			view.base_layer = i;
-			shadow_atlas_rt[i] = device.create_image_view(view);
-		}
 	}
 	else if (partial_update)
 	{
@@ -546,7 +537,8 @@ void LightClusterer::render_atlas_point(RenderContext &context_)
 
 			render_shadow(*cmd, depth_context, visible,
 			              0, 0, shadow_resolution, shadow_resolution,
-			              *shadow_atlas_rt[6 * remapped + face],
+			              points.atlas->get_view(),
+			              6 * remapped + face,
 			              Renderer::FRONT_FACE_CLOCKWISE_BIT | Renderer::DEPTH_BIAS_BIT);
 		}
 	}
@@ -702,7 +694,7 @@ void LightClusterer::render_atlas_spot(RenderContext &context_)
 		render_shadow(*cmd, depth_context, visible,
 		              shadow_resolution * (remapped & 7), shadow_resolution * (remapped >> 3),
 		              shadow_resolution, shadow_resolution,
-		              spots.atlas->get_view(), Renderer::DEPTH_BIAS_BIT);
+		              spots.atlas->get_view(), 0, Renderer::DEPTH_BIAS_BIT);
 	}
 
 	if (vsm)

@@ -145,7 +145,6 @@ private:
 	std::mutex cluster_list_lock;
 
 	Renderer *depth_renderer = nullptr;
-	Vulkan::ImageViewHandle shadow_atlas_rt[6 * MaxLights];
 	void render_atlas_spot(RenderContext &context_);
 	void render_atlas_point(RenderContext &context_);
 
@@ -186,7 +185,8 @@ private:
 	                   VisibilityList &visibility,
 	                   unsigned off_x, unsigned off_y,
 	                   unsigned res_x, unsigned res_y,
-	                   Vulkan::ImageView &rt, Renderer::RendererFlushFlags flags);
+	                   Vulkan::ImageView &rt, unsigned layer,
+	                   Renderer::RendererFlushFlags flags);
 	Vulkan::ImageHandle scratch_vsm_rt;
 	Vulkan::ImageHandle scratch_vsm_down;
 

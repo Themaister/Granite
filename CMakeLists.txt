@@ -443,6 +443,7 @@ if (NOT GRANITE_VULKAN_ONLY)
             util/bitmap_to_mesh.cpp util/bitmap_to_mesh.hpp
             util/cooperative_task.hpp util/cooperative_task.cpp
             util/generational_handle.hpp
+            util/lru_cache.hpp
     )
 
     if (${CMAKE_SYSTEM} MATCHES "Linux")

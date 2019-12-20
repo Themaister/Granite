@@ -102,6 +102,12 @@ public:
 			return *this;
 		}
 
+		Iterator &operator--()
+		{
+			node = node->prev;
+			return *this;
+		}
+
 	private:
 		IntrusiveListEnabled<T> *node = nullptr;
 	};
@@ -109,6 +115,11 @@ public:
 	Iterator begin()
 	{
 		return Iterator(head);
+	}
+
+	Iterator rbegin()
+	{
+		return Iterator(tail);
 	}
 
 	Iterator end()
@@ -129,6 +140,8 @@ public:
 
 		if (next)
 			next->prev = prev;
+		else
+			tail = prev;
 
 		return next;
 	}
@@ -138,16 +151,37 @@ public:
 		auto *node = itr.get();
 		if (head)
 			head->prev = node;
+		else
+			tail = node;
 
 		node->next = head;
 		node->prev = nullptr;
 		head = node;
 	}
 
+	void insert_back(Iterator itr)
+	{
+		auto *node = itr.get();
+		if (tail)
+			tail->next = node;
+		else
+			head = node;
+
+		node->prev = tail;
+		node->next = nullptr;
+		tail = node;
+	}
+
 	void move_to_front(IntrusiveList<T> &other, Iterator itr)
 	{
 		other.erase(itr);
 		insert_front(itr);
+	}
+
+	void move_to_back(IntrusiveList<T> &other, Iterator itr)
+	{
+		other.erase(itr);
+		insert_back(itr);
 	}
 
 	bool empty() const
@@ -157,5 +191,6 @@ public:
 
 private:
 	IntrusiveListEnabled<T> *head = nullptr;
+	IntrusiveListEnabled<T> *tail = nullptr;
 };
 }

@@ -27,6 +27,7 @@
 #include "event.hpp"
 #include "shader_manager.hpp"
 #include "renderer.hpp"
+#include "lru_cache.hpp"
 
 namespace Granite
 {
@@ -195,6 +196,7 @@ private:
 	{
 		ClustererParametersBindless parameters;
 		Vulkan::BindlessDescriptorPoolHandle descriptor_pool;
+		Util::LRUCache<Vulkan::ImageHandle> shadow_map_cache;
 
 		const Vulkan::Buffer *bitmask_buffer = nullptr;
 		const Vulkan::Buffer *range_buffer = nullptr;

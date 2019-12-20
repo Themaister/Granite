@@ -46,26 +46,12 @@ enum PositionalLightVariantBits
 	POSITIONAL_VARIANT_VSM_BIT = 1 << 3
 };
 
-struct LightCookie
-{
-	LightCookie() noexcept
-	{
-		count.store(0);
-	}
-
-	unsigned get_cookie()
-	{
-		return count.fetch_add(1, std::memory_order_relaxed) + 1;
-	}
-
-	std::atomic_uint count;
-};
-static LightCookie light_cookie;
+static std::atomic_uint light_cookie_count;
 
 PositionalLight::PositionalLight(Type type_)
 	: type(type_)
 {
-	cookie = light_cookie.get_cookie();
+	cookie = light_cookie_count.fetch_add(1, std::memory_order_relaxed) + 1;
 }
 
 void PositionalLight::set_color(vec3 color_)

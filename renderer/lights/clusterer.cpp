@@ -598,6 +598,83 @@ void LightClusterer::render_atlas_point(RenderContext &context_)
 
 void LightClusterer::render_bindless_spot(RenderContext &context_)
 {
+	bool vsm = shadow_type == ShadowType::VSM;
+	RenderContext depth_context;
+	VisibilityList visible;
+	auto &device = context_.get_device();
+
+	for (unsigned i = 0; i < spots.count; i++)
+	{
+		auto cookie = spots.handles[i]->get_cookie();
+		auto &image = *bindless.shadow_map_cache.allocate(cookie, shadow_resolution * shadow_resolution * 2);
+
+		if (image && !force_update_shadows)
+			continue;
+
+		bool has_image = bool(image);
+
+		auto format = vsm ? VK_FORMAT_R32G32_SFLOAT : VK_FORMAT_D16_UNORM;
+		ImageCreateInfo info = ImageCreateInfo::render_target(shadow_resolution, shadow_resolution, format);
+		info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+		info.usage = vsm ? VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT : VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+		info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+		image = device.create_image(info, nullptr);
+
+		auto cmd = device.request_command_buffer();
+		if (vsm)
+		{
+			cmd->image_barrier(*image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			                   has_image ? VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
+			                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
+		}
+		else
+		{
+			cmd->image_barrier(*image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+			                   has_image ? VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
+			                   VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+			                   VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+			                   VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+			                   VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
+		}
+
+		LOGI("Rendering shadow for spot light %u (%p)\n", i, static_cast<void *>(spots.handles[i]));
+
+		float range = tan(spots.handles[i]->get_xy_range());
+		mat4 view = mat4_cast(look_at_arbitrary_up(spots.lights[i].direction)) *
+		            translate(-spots.lights[i].position);
+		mat4 proj = projection(range * 2.0f, 1.0f,
+		                       0.005f / spots.lights[i].inv_radius,
+		                       1.0f / spots.lights[i].inv_radius);
+
+		spots.transforms[i] =
+				translate(vec3(0.5f, 0.5f, 0.0f)) *
+				scale(vec3(0.5f, 0.5f, 1.0f)) *
+				proj * view;
+
+		spots.handles[i]->set_shadow_info(&image->get_view(), spots.transforms[i]);
+		depth_context.set_camera(proj, view);
+		render_shadow(*cmd, depth_context, visible,
+		              0, 0,
+		              shadow_resolution, shadow_resolution,
+		              spots.atlas->get_view(), 0, Renderer::DEPTH_BIAS_BIT);
+
+		if (vsm)
+		{
+			cmd->image_barrier(*image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+			                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		}
+		else
+		{
+			cmd->image_barrier(*image, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+			                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			                   VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+			                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		}
+
+		device.submit(cmd);
+	}
 }
 
 void LightClusterer::render_bindless_point(RenderContext &context_)
@@ -767,6 +844,9 @@ void LightClusterer::refresh_bindless(RenderContext &context_)
 	bindless.parameters.num_lights = spots.count + points.count;
 	bindless.parameters.num_lights_32 = (bindless.parameters.num_lights + 31) / 32;
 
+	bindless.shadow_map_cache.set_total_cost(64 * 1024 * 1024);
+	bindless.shadow_map_cache.prune();
+
 	if (enable_shadows)
 	{
 		render_bindless_spot(context_);
@@ -908,7 +988,9 @@ void LightClusterer::update_bindless_descriptors(Vulkan::CommandBuffer &cmd)
 		if (enable_shadows)
 		{
 			transforms.shadow[i] = spots.transforms[i];
-			//bindless.descriptor_pool->set_texture(i, bindless.spot_lights[spots.index_remap[i]]->get_view());
+			auto *image = bindless.shadow_map_cache.find_and_mark_as_recent(spots.handles[i]->get_cookie());
+			assert(image);
+			bindless.descriptor_pool->set_texture(i, (*image)->get_view());
 		}
 	}
 
@@ -921,7 +1003,9 @@ void LightClusterer::update_bindless_descriptors(Vulkan::CommandBuffer &cmd)
 		if (enable_shadows)
 		{
 			transforms.shadow[index][0] = points.transforms[i].transform;
-			//bindless.descriptor_pool->set_texture(index, bindless.point_lights[points.index_remap[i]]->get_view());
+			auto *image = bindless.shadow_map_cache.find_and_mark_as_recent(points.handles[i]->get_cookie());
+			assert(image);
+			bindless.descriptor_pool->set_texture(i, (*image)->get_view());
 		}
 	}
 

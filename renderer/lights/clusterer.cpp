@@ -605,20 +605,23 @@ void LightClusterer::render_bindless_spot(RenderContext &context_)
 
 	for (unsigned i = 0; i < spots.count; i++)
 	{
+		spots.handles[i]->set_shadow_info(nullptr, {});
 		auto cookie = spots.handles[i]->get_cookie();
 		auto &image = *bindless.shadow_map_cache.allocate(cookie, shadow_resolution * shadow_resolution * 2);
 
+		bool has_image = bool(image);
 		if (image && !force_update_shadows)
 			continue;
 
-		bool has_image = bool(image);
-
-		auto format = vsm ? VK_FORMAT_R32G32_SFLOAT : VK_FORMAT_D16_UNORM;
-		ImageCreateInfo info = ImageCreateInfo::render_target(shadow_resolution, shadow_resolution, format);
-		info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-		info.usage = vsm ? VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT : VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-		info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
-		image = device.create_image(info, nullptr);
+		if (!image)
+		{
+			auto format = vsm ? VK_FORMAT_R32G32_SFLOAT : VK_FORMAT_D16_UNORM;
+			ImageCreateInfo info = ImageCreateInfo::render_target(shadow_resolution, shadow_resolution, format);
+			info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+			info.usage = vsm ? VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT : VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+			info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+			image = device.create_image(info, nullptr);
+		}
 
 		auto cmd = device.request_command_buffer();
 		if (vsm)
@@ -651,7 +654,6 @@ void LightClusterer::render_bindless_spot(RenderContext &context_)
 				scale(vec3(0.5f, 0.5f, 1.0f)) *
 				proj * view;
 
-		spots.handles[i]->set_shadow_info(&image->get_view(), spots.transforms[i]);
 		depth_context.set_camera(proj, view);
 		render_shadow(*cmd, depth_context, visible,
 		              0, 0,

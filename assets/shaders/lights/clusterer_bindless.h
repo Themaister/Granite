@@ -33,7 +33,8 @@ mediump vec3 compute_cluster_light(
 		mediump vec3 material_normal,
 		mediump float material_metallic,
 		mediump float material_roughness,
-		vec3 world_pos, vec3 camera_pos, vec2 inv_resolution)
+		vec3 world_pos, vec3 camera_pos,
+		vec2 inv_resolution)
 {
 	mediump vec3 result = vec3(0.0);
 
@@ -67,22 +68,6 @@ mediump vec3 compute_cluster_light(
 			mask &= ~uint(1 << bit_index);
 		}
 	}
-
-#if 0
-	{
-		int index = findLSB(bits_x);
-		result += compute_spot_light(index, material_base_color, material_normal,
-				material_metallic, material_roughness, world_pos, camera_pos);
-		bits_x ^= 1u << uint(index);
-	}
-
-	{
-		int index = findLSB(bits_y);
-		result += compute_point_light(index, material_base_color, material_normal,
-				material_metallic, material_roughness, world_pos, camera_pos);
-		bits_y ^= 1u << uint(index);
-	}
-#endif
 
 	return result;
 }

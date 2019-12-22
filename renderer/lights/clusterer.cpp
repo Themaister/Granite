@@ -951,10 +951,18 @@ void LightClusterer::refresh(RenderContext &context_)
 	spots.count = 0;
 	auto &frustum = context_.get_visibility_frustum();
 
+	light_sort_cache.clear();
+	light_sort_cache.reserve(lights->size());
+	for (auto &light : *lights)
+	{
+		light_sort_cache.emplace_back(get_component<PositionalLightComponent>(light)->light,
+		                              get_component<RenderInfoComponent>(light));
+	}
+
 	// Prefer lights which are closest to the camera.
-	sort(begin(*lights), end(*lights), [&](const auto &a, const auto &b) -> bool {
-		auto *transform_a = get_component<RenderInfoComponent>(a);
-		auto *transform_b = get_component<RenderInfoComponent>(b);
+	sort(begin(light_sort_cache), end(light_sort_cache), [&](const auto &a, const auto &b) -> bool {
+		auto *transform_a = a.second;
+		auto *transform_b = b.second;
 		vec3 pos_a = transform_a->transform->world_transform[3].xyz();
 		vec3 pos_b = transform_b->transform->world_transform[3].xyz();
 		float dist_a = dot(pos_a, context_.get_render_parameters().camera_front);
@@ -962,10 +970,10 @@ void LightClusterer::refresh(RenderContext &context_)
 		return dist_a < dist_b;
 	});
 
-	for (auto &light : *lights)
+	for (auto &light : light_sort_cache)
 	{
-		auto &l = *get_component<PositionalLightComponent>(light)->light;
-		auto *transform = get_component<RenderInfoComponent>(light);
+		auto &l = *light.first;
+		auto *transform = light.second;
 
 		// Frustum cull lights here.
 		if (!frustum.intersects(transform->world_aabb))

@@ -686,6 +686,90 @@ void LightClusterer::render_bindless_spot(RenderContext &context_)
 
 void LightClusterer::render_bindless_point(RenderContext &context_)
 {
+	bool vsm = shadow_type == ShadowType::VSM;
+	RenderContext depth_context;
+	VisibilityList visible;
+	auto &device = context_.get_device();
+
+	for (unsigned i = 0; i < points.count; i++)
+	{
+		points.handles[i]->set_shadow_info(nullptr, {});
+		auto cookie = points.handles[i]->get_cookie();
+		auto &image = *bindless.shadow_map_cache.allocate(cookie, shadow_resolution * shadow_resolution * 2 * 6);
+
+		bool has_image = bool(image);
+		if (image && !force_update_shadows)
+			continue;
+
+		if (!image)
+		{
+			auto format = vsm ? VK_FORMAT_R32G32_SFLOAT : VK_FORMAT_D16_UNORM;
+			ImageCreateInfo info = ImageCreateInfo::render_target(shadow_resolution, shadow_resolution, format);
+			info.layers = 6;
+			info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+			info.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+			info.usage = vsm ? VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT : VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+			info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+			image = device.create_image(info, nullptr);
+		}
+
+		auto cmd = device.request_command_buffer();
+		if (vsm)
+		{
+			cmd->image_barrier(*image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			                   has_image ? VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
+			                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
+		}
+		else
+		{
+			cmd->image_barrier(*image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+			                   has_image ? VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
+			                   VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+			                   VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+			                   VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+			                   VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
+		}
+
+		LOGI("Rendering shadow for point light %u (%p)\n", i, static_cast<void *>(points.handles[i]));
+
+		for (unsigned face = 0; face < 6; face++)
+		{
+			mat4 view, proj;
+			compute_cube_render_transform(points.lights[i].position, face, proj, view,
+			                              0.005f / points.lights[i].inv_radius,
+			                              1.0f / points.lights[i].inv_radius);
+			depth_context.set_camera(proj, view);
+
+			if (face == 0)
+			{
+				points.transforms[i].transform = vec4(proj[2].zw(), proj[3].zw());
+				points.handles[i]->set_shadow_info(nullptr, {});
+			}
+
+			render_shadow(*cmd, depth_context, visible,
+			              0, 0, shadow_resolution, shadow_resolution,
+			              image->get_view(),
+			              face,
+			              Renderer::FRONT_FACE_CLOCKWISE_BIT | Renderer::DEPTH_BIAS_BIT);
+		}
+
+		if (vsm)
+		{
+			cmd->image_barrier(*image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+			                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		}
+		else
+		{
+			cmd->image_barrier(*image, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+			                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			                   VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+			                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+		}
+
+		device.submit(cmd);
+	}
 }
 
 void LightClusterer::render_atlas_spot(RenderContext &context_)
@@ -975,18 +1059,23 @@ uvec2 LightClusterer::cluster_lights_cpu(int x, int y, int z, const CPUGlobalAcc
 
 void LightClusterer::update_bindless_descriptors(Vulkan::CommandBuffer &cmd)
 {
-	if (!bindless.descriptor_pool)
-		bindless.descriptor_pool = cmd.get_device().create_bindless_descriptor_pool(BindlessResourceType::ImageFP, 16, MaxLights);
-
-	unsigned num_lights = enable_shadows ? std::max(1u, spots.count + points.count) : 1u;
-	if (!bindless.descriptor_pool->allocate_descriptors(num_lights))
+	if (spots.count != 0 || points.count != 0)
 	{
-		bindless.descriptor_pool = cmd.get_device().create_bindless_descriptor_pool(BindlessResourceType::ImageFP, 16, MaxLights);
-		if (!bindless.descriptor_pool->allocate_descriptors(num_lights))
-			LOGE("Failed to allocate descriptors on a fresh descriptor pool!\n");
-	}
+		if (!bindless.descriptor_pool)
+			bindless.descriptor_pool = cmd.get_device().create_bindless_descriptor_pool(BindlessResourceType::ImageFP, 16, MaxLights);
 
-	bindless.desc_set = bindless.descriptor_pool->get_descriptor_set();
+		unsigned num_lights = enable_shadows ? std::max(1u, spots.count + points.count) : 1u;
+		if (!bindless.descriptor_pool->allocate_descriptors(num_lights))
+		{
+			bindless.descriptor_pool = cmd.get_device().create_bindless_descriptor_pool(BindlessResourceType::ImageFP, 16, MaxLights);
+			if (!bindless.descriptor_pool->allocate_descriptors(num_lights))
+				LOGE("Failed to allocate descriptors on a fresh descriptor pool!\n");
+		}
+
+		bindless.desc_set = bindless.descriptor_pool->get_descriptor_set();
+	}
+	else
+		bindless.desc_set = VK_NULL_HANDLE;
 
 	ClustererBindlessTransforms transforms = {};
 	for (unsigned i = 0; i < spots.count; i++)
@@ -1012,7 +1101,7 @@ void LightClusterer::update_bindless_descriptors(Vulkan::CommandBuffer &cmd)
 			transforms.shadow[index][0] = points.transforms[i].transform;
 			auto *image = bindless.shadow_map_cache.find_and_mark_as_recent(points.handles[i]->get_cookie());
 			assert(image);
-			bindless.descriptor_pool->set_texture(i, (*image)->get_view());
+			bindless.descriptor_pool->set_texture(index, (*image)->get_view());
 		}
 	}
 

@@ -29,4 +29,6 @@ namespace Granite
 class RenderContext;
 bool frustum_intersects_spot_light(const RenderContext &context, const vec2 &clip_lo, const vec2 &clip_hi,
                                    const mat4 &model);
+
+vec2 spot_light_z_range(const RenderContext &context, const mat4 &model);
 }

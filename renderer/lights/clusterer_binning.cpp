@@ -158,4 +158,35 @@ bool frustum_intersects_spot_light(const RenderContext &context, const vec2 &cli
 
 	return true;
 }
+
+vec2 spot_light_z_range(const RenderContext &context, const mat4 &model)
+{
+	auto &pos = context.get_render_parameters().camera_position;
+	auto &front = context.get_render_parameters().camera_front;
+
+	float lo = std::numeric_limits<float>::infinity();
+	float hi = 0.0f;
+
+	vec3 base_pos = model[3].xyz();
+	vec3 x_off = model[0].xyz();
+	vec3 y_off = model[1].xyz();
+	vec3 z_off = -model[2].xyz();
+
+	const vec3 world_pos[5] = {
+		base_pos,
+		base_pos + z_off + x_off + y_off,
+		base_pos + z_off - x_off + y_off,
+		base_pos + z_off + x_off - y_off,
+		base_pos + z_off - x_off - y_off,
+	};
+
+	for (auto &p : world_pos)
+	{
+		float z = dot(p - pos, front);
+		lo = muglm::min(z, lo);
+		hi = muglm::max(z, hi);
+	}
+
+	return vec2(lo, hi);
+}
 }

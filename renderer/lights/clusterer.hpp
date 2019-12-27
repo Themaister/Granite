@@ -125,7 +125,8 @@ private:
 	{
 		PositionalFragmentInfo lights[MaxLights] = {};
 		PointLight *handles[MaxLights] = {};
-		PointTransform transforms[MaxLights] = {};
+		PointTransform shadow_transforms[MaxLights] = {};
+		vec4 model_transforms[MaxLights] = {};
 		unsigned cookie[MaxLights] = {};
 		unsigned count = 0;
 		uint8_t index_remap[MaxLights];
@@ -136,7 +137,8 @@ private:
 	{
 		PositionalFragmentInfo lights[MaxLights] = {};
 		SpotLight *handles[MaxLights] = {};
-		mat4 transforms[MaxLights] = {};
+		mat4 shadow_transforms[MaxLights] = {};
+		mat4 model_transforms[MaxLights] = {};
 		unsigned cookie[MaxLights] = {};
 		unsigned count = 0;
 		uint8_t index_remap[MaxLights];
@@ -204,6 +206,8 @@ private:
 		const Vulkan::Buffer *range_buffer = nullptr;
 		const Vulkan::Buffer *transforms_buffer = nullptr;
 		VkDescriptorSet desc_set = VK_NULL_HANDLE;
+
+		std::vector<uvec2> light_index_range;
 	} bindless;
 
 	void update_bindless_descriptors(Vulkan::CommandBuffer &cmd);

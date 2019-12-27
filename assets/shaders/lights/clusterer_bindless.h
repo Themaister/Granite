@@ -26,7 +26,7 @@ layout(std430, set = 0, binding = 5) readonly buffer ClustererRanges
 
 #include "spot.h"
 #include "point.h"
-//#define CLUSTERING_DEBUG
+#define CLUSTERING_DEBUG
 
 mediump vec3 compute_cluster_light(
 		mediump vec3 material_base_color,
@@ -59,12 +59,18 @@ mediump vec3 compute_cluster_light(
 			{
 				result += compute_point_light(index, material_base_color, material_normal,
 						material_metallic, material_roughness, world_pos, camera_pos);
+#ifdef CLUSTERING_DEBUG
+				result += vec3(0.1, 0.0, 0.0);
+#endif
 			}
 			else
 			{
 				result += compute_spot_light(index, material_base_color, material_normal,
 						material_metallic, material_roughness, world_pos, camera_pos);
-			}
+#ifdef CLUSTERING_DEBUG
+				result += vec3(0.0, 0.1, 0.0);
+#endif
+}
 			mask &= ~uint(1 << bit_index);
 		}
 	}

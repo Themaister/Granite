@@ -116,6 +116,8 @@ public:
 		return xy_range;
 	}
 
+	mat4 build_model_matrix(const mat4 &transform) const;
+
 private:
 	float inner_cone = 0.4f;
 	float outer_cone = 0.45f;

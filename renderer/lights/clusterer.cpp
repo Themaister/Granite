@@ -29,6 +29,7 @@
 #include "quirks.hpp"
 #include "muglm/matrix_helper.hpp"
 #include "thread_group.hpp"
+#include "clusterer_binning.hpp"
 #include <string.h>
 
 using namespace Vulkan;
@@ -140,12 +141,12 @@ const PositionalFragmentInfo *LightClusterer::get_active_point_lights() const
 
 const mat4 *LightClusterer::get_active_spot_light_shadow_matrices() const
 {
-	return spots.transforms;
+	return spots.shadow_transforms;
 }
 
 const PointTransform *LightClusterer::get_active_point_light_shadow_transform() const
 {
-	return points.transforms;
+	return points.shadow_transforms;
 }
 
 const PositionalFragmentInfo *LightClusterer::get_active_spot_lights() const
@@ -257,7 +258,7 @@ static uint32_t reassign_indices_legacy(T &type)
 			{
 				// Reuse the shadow data from the atlas.
 				swap(type.cookie[i], type.cookie[index]);
-				swap(type.transforms[i], type.transforms[index]);
+				swap(type.shadow_transforms[i], type.shadow_transforms[index]);
 				swap(type.index_remap[i], type.index_remap[index]);
 			}
 		}
@@ -274,7 +275,7 @@ static uint32_t reassign_indices_legacy(T &type)
 				{
 					// Reuse the shadow data from the atlas.
 					swap(type.cookie[i], type.cookie[index]);
-					swap(type.transforms[i], type.transforms[index]);
+					swap(type.shadow_transforms[i], type.shadow_transforms[index]);
 					swap(type.index_remap[i], type.index_remap[index]);
 				}
 			}
@@ -283,7 +284,7 @@ static uint32_t reassign_indices_legacy(T &type)
 		if (type.handles[i]->get_cookie() != type.cookie[i])
 			partial_mask |= 1u << i;
 		else
-			type.handles[i]->set_shadow_info(&type.atlas->get_view(), type.transforms[i]);
+			type.handles[i]->set_shadow_info(&type.atlas->get_view(), type.shadow_transforms[i]);
 
 		type.cookie[i] = type.handles[i]->get_cookie();
 	}
@@ -535,9 +536,9 @@ void LightClusterer::render_atlas_point(RenderContext &context_)
 
 			if (face == 0)
 			{
-				points.transforms[i].transform = vec4(proj[2].zw(), proj[3].zw());
-				points.transforms[i].slice.x = float(remapped);
-				points.handles[i]->set_shadow_info(&points.atlas->get_view(), points.transforms[i]);
+				points.shadow_transforms[i].transform = vec4(proj[2].zw(), proj[3].zw());
+				points.shadow_transforms[i].slice.x = float(remapped);
+				points.handles[i]->set_shadow_info(&points.atlas->get_view(), points.shadow_transforms[i]);
 			}
 
 			render_shadow(*cmd, depth_context, visible,
@@ -654,7 +655,7 @@ void LightClusterer::render_bindless_spot(RenderContext &context_)
 		                       0.005f / spots.lights[i].inv_radius,
 		                       1.0f / spots.lights[i].inv_radius);
 
-		spots.transforms[i] =
+		spots.shadow_transforms[i] =
 				translate(vec3(0.5f, 0.5f, 0.0f)) *
 				scale(vec3(0.5f, 0.5f, 1.0f)) *
 				proj * view;
@@ -742,7 +743,7 @@ void LightClusterer::render_bindless_point(RenderContext &context_)
 
 			if (face == 0)
 			{
-				points.transforms[i].transform = vec4(proj[2].zw(), proj[3].zw());
+				points.shadow_transforms[i].transform = vec4(proj[2].zw(), proj[3].zw());
 				points.handles[i]->set_shadow_info(nullptr, {});
 			}
 
@@ -848,14 +849,14 @@ void LightClusterer::render_atlas_spot(RenderContext &context_)
 		unsigned remapped = spots.index_remap[i];
 
 		// Carve out the atlas region where the spot light shadows live.
-		spots.transforms[i] =
+		spots.shadow_transforms[i] =
 				translate(vec3(float(remapped & 7) / 8.0f, float(remapped >> 3) / 4.0f, 0.0f)) *
 				scale(vec3(1.0f / 8.0f, 1.0f / 4.0f, 1.0f)) *
 				translate(vec3(0.5f, 0.5f, 0.0f)) *
 				scale(vec3(0.5f, 0.5f, 1.0f)) *
 				proj * view;
 
-		spots.handles[i]->set_shadow_info(&spots.atlas->get_view(), spots.transforms[i]);
+		spots.handles[i]->set_shadow_info(&spots.atlas->get_view(), spots.shadow_transforms[i]);
 
 		depth_context.set_camera(proj, view);
 
@@ -986,6 +987,7 @@ void LightClusterer::refresh(RenderContext &context_)
 			if (spots.count < max_spot_lights)
 			{
 				spots.lights[spots.count] = spot.get_shader_info(transform->transform->world_transform);
+				spots.model_transforms[spots.count] = spot.build_model_matrix(transform->transform->world_transform);
 				spots.handles[spots.count] = &spot;
 				spots.count++;
 			}
@@ -997,6 +999,7 @@ void LightClusterer::refresh(RenderContext &context_)
 			if (points.count < max_point_lights)
 			{
 				points.lights[points.count] = point.get_shader_info(transform->transform->world_transform);
+				points.model_transforms[points.count] = vec4(points.lights[points.count].position, 1.0f / points.lights[points.count].inv_radius);
 				points.handles[points.count] = &point;
 				points.count++;
 			}
@@ -1091,7 +1094,7 @@ void LightClusterer::update_bindless_descriptors(Vulkan::CommandBuffer &cmd)
 		transforms.lights[i] = spots.lights[i];
 		if (enable_shadows)
 		{
-			transforms.shadow[i] = spots.transforms[i];
+			transforms.shadow[i] = spots.shadow_transforms[i];
 			auto *image = bindless.shadow_map_cache.find_and_mark_as_recent(spots.handles[i]->get_cookie());
 			assert(image);
 			bindless.descriptor_pool->set_texture(i, (*image)->get_view());
@@ -1106,7 +1109,7 @@ void LightClusterer::update_bindless_descriptors(Vulkan::CommandBuffer &cmd)
 
 		if (enable_shadows)
 		{
-			transforms.shadow[index][0] = points.transforms[i].transform;
+			transforms.shadow[index][0] = points.shadow_transforms[i].transform;
 			auto *image = bindless.shadow_map_cache.find_and_mark_as_recent(points.handles[i]->get_cookie());
 			assert(image);
 			bindless.descriptor_pool->set_texture(index, (*image)->get_view());
@@ -1119,7 +1122,30 @@ void LightClusterer::update_bindless_descriptors(Vulkan::CommandBuffer &cmd)
 
 void LightClusterer::update_bindless_range_buffer(Vulkan::CommandBuffer &cmd)
 {
-	cmd.fill_buffer(*bindless.range_buffer, 0);
+	bindless.light_index_range.resize(resolution_z);
+	for (auto &range : bindless.light_index_range)
+		range = uvec2(0xffffffff, 0);
+
+	// PERF: We can certainly be smarter here with some scan algorithm trickery.
+	for (unsigned i = 0; i < spots.count; i++)
+	{
+		vec2 range = spot_light_z_range(*context, spots.model_transforms[i]);
+		range = range * (float(resolution_z) / context->get_render_parameters().z_far);
+		if (range.y < 0.0f)
+			continue;
+		range.x = muglm::max(range.x, 0.0f);
+
+		uvec2 urange(range);
+		for (unsigned x = urange.x; x <= urange.y; x++)
+		{
+			auto &index_range = bindless.light_index_range[x];
+			index_range.x = muglm::min(index_range.x, i);
+			index_range.y = muglm::max(index_range.y, i);
+		}
+	}
+
+	auto *ranges = static_cast<uvec2 *>(cmd.update_buffer(*bindless.range_buffer, 0, bindless.range_buffer->get_create_info().size));
+	memcpy(ranges, bindless.light_index_range.data(), resolution_z * sizeof(ivec2));
 }
 
 void LightClusterer::update_bindless_mask_buffer(Vulkan::CommandBuffer &cmd)
@@ -1127,22 +1153,23 @@ void LightClusterer::update_bindless_mask_buffer(Vulkan::CommandBuffer &cmd)
 	if (bindless.parameters.num_lights == 0)
 		return;
 
-	auto *masks = static_cast<uint32_t *>(cmd.update_buffer(*bindless.bitmask_buffer, 0,
-	                                                        bindless.parameters.num_lights_32 * sizeof(uint32_t) *
-	                                                        resolution_x * resolution_y));
+	size_t size = bindless.parameters.num_lights_32 * sizeof(uint32_t) * resolution_x * resolution_y;
+	auto *masks = static_cast<uint32_t *>(cmd.update_buffer(*bindless.bitmask_buffer, 0, size));
+	memset(masks, 0, size);
 
 	// Pretend all lights are active.
 	for (unsigned y = 0; y < resolution_y; y++)
 	{
 		for (unsigned x = 0; x < resolution_x; x++)
 		{
+			vec2 clip_lo = (2.0f * vec2(x, y) / vec2(resolution_x, resolution_y)) - 1.0f;
+			vec2 clip_hi = (2.0f * vec2(x + 1, y + 1) / vec2(resolution_x, resolution_y)) - 1.0f;
+
 			auto *tile_list = masks + (y * resolution_x + x) * bindless.parameters.num_lights_32;
-			for (unsigned i = 0; i < bindless.parameters.num_lights; i += 32)
+			for (unsigned i = 0; i < spots.count; i++)
 			{
-				if (i + 32 <= bindless.parameters.num_lights)
-					tile_list[i] = ~0u;
-				else
-					tile_list[i] = (1u << (bindless.parameters.num_lights - i)) - 1;
+				if (frustum_intersects_spot_light(*context, clip_lo, clip_hi, spots.model_transforms[i]))
+					tile_list[i >> 5] |= 1u << (i & 31);
 			}
 		}
 	}

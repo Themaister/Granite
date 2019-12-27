@@ -100,6 +100,12 @@ void SpotLight::set_shadow_info(const Vulkan::ImageView *shadow, const mat4 &tra
 	shadow_transform = transform;
 }
 
+mat4 SpotLight::build_model_matrix(const mat4 &transform) const
+{
+	float max_range = min(falloff_range, cutoff_range);
+	return transform * scale(vec3(xy_range * max_range, xy_range * max_range, max_range));
+}
+
 PositionalFragmentInfo SpotLight::get_shader_info(const mat4 &transform) const
 {
 	// If the point light node has been scaled, renormalize this.
@@ -339,8 +345,7 @@ void SpotLight::get_depth_render_info(const RenderContext &, const RenderInfoCom
 	auto sorting_key = h.get();
 	auto *spot = queue.allocate_one<PositionalShaderInfo>();
 
-	float max_range = min(falloff_range, cutoff_range);
-	spot->vertex.model = transform->transform->world_transform * scale(vec3(xy_range * max_range, xy_range * max_range, max_range));
+	spot->vertex.model = build_model_matrix(transform->transform->world_transform);
 
 	auto *spot_info = queue.push<PositionalLightRenderInfo>(Queue::Opaque, instance_key, sorting_key,
 	                                                        func, spot);
@@ -417,8 +422,7 @@ void SpotLight::get_render_info(const RenderContext &context, const RenderInfoCo
 
 	auto *spot = queue.allocate_one<PositionalShaderInfo>();
 
-	float max_range = min(falloff_range, cutoff_range);
-	spot->vertex.model = transform->transform->world_transform * scale(vec3(xy_range * max_range, xy_range * max_range, max_range));
+	spot->vertex.model = build_model_matrix(transform->transform->world_transform);
 	spot->fragment = get_shader_info(transform->transform->world_transform);
 	spot->u.shadow_transform = shadow_transform;
 

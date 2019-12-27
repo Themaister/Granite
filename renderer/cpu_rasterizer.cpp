@@ -310,9 +310,9 @@ void rasterize_conservative_triangles(std::vector<uvec2> &coverage,
 	for (unsigned index = 0; index < num_indices; index += 3)
 	{
 		unsigned count = setup_clipped_triangles(setups,
-		                                         clip_positions[indices[0]],
-		                                         clip_positions[indices[1]],
-		                                         clip_positions[indices[2]]);
+		                                         clip_positions[indices[index + 0]],
+		                                         clip_positions[indices[index + 1]],
+		                                         clip_positions[indices[index + 2]]);
 
 		for (unsigned i = 0; i < count; i++)
 		{
@@ -322,7 +322,7 @@ void rasterize_conservative_triangles(std::vector<uvec2> &coverage,
 			lo = max(lo, ivec2(0));
 			hi = min(hi, ivec2(resolution) - 1);
 
-			vec3 base = setup.base + setup.dx * float(lo.x) + setup.dy * float(lo.y);
+			vec3 base = setup.base + setup.dx * float(lo.x) * inv_resolution.x + setup.dy * float(lo.y) * inv_resolution.y;
 			base += select(vec3(0.0f), setup.dx * inv_resolution.x, greaterThan(setup.dx, vec3(0.0f)));
 			base += select(vec3(0.0f), setup.dy * inv_resolution.y, greaterThan(setup.dy, vec3(0.0f)));
 

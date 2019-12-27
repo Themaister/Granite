@@ -31,20 +31,20 @@ static void compute_spot_points_and_planes(vec3 spot_points[5], vec4 spot_planes
 	spot_points[0] = (model * vec4(0.0f, 0.0f, 0.0f, 1.0f)).xyz();
 	spot_points[1] = (model * vec4(-1.0f, +1.0f, -1.0f, 1.0f)).xyz();
 	spot_points[2] = (model * vec4(+1.0f, +1.0f, -1.0f, 1.0f)).xyz();
-	spot_points[4] = (model * vec4(+1.0f, -1.0f, -1.0f, 1.0f)).xyz();
-	spot_points[3] = (model * vec4(-1.0f, -1.0f, -1.0f, 1.0f)).xyz();
+	spot_points[3] = (model * vec4(+1.0f, -1.0f, -1.0f, 1.0f)).xyz();
+	spot_points[4] = (model * vec4(-1.0f, -1.0f, -1.0f, 1.0f)).xyz();
 
-	vec3 top_plane = normalize(cross(spot_points[1], spot_points[2]));
-	vec3 right_plane = normalize(cross(spot_points[2], spot_points[3]));
-	vec3 bottom_plane = normalize(cross(spot_points[3], spot_points[4]));
-	vec3 left_plane = normalize(cross(spot_points[4], spot_points[1]));
+	vec3 top_plane = normalize(cross(spot_points[1] - spot_points[0], spot_points[2] - spot_points[0]));
+	vec3 right_plane = normalize(cross(spot_points[2] - spot_points[0], spot_points[3] - spot_points[0]));
+	vec3 bottom_plane = normalize(cross(spot_points[3] - spot_points[0], spot_points[4] - spot_points[0]));
+	vec3 left_plane = normalize(cross(spot_points[4] - spot_points[0], spot_points[1] - spot_points[0]));
 
 	spot_planes[0] = vec4(top_plane, -dot(top_plane, spot_points[0]));
 	spot_planes[1] = vec4(right_plane, -dot(right_plane, spot_points[0]));
 	spot_planes[2] = vec4(bottom_plane, -dot(bottom_plane, spot_points[0]));
 	spot_planes[3] = vec4(left_plane, -dot(left_plane, spot_points[0]));
 
-	vec3 back_plane = normalize(cross(spot_points[1] - spot_points[2], spot_points[0] - spot_points[1]));
+	vec3 back_plane = normalize(cross(spot_points[1] - spot_points[2], spot_points[3] - spot_points[2]));
 	spot_planes[4] = vec4(back_plane, -dot(back_plane, spot_points[1]));
 }
 
@@ -56,13 +56,13 @@ bool frustum_intersects_spot_light(const RenderContext &context, const vec2 &cli
 	float x_scale = context.get_render_parameters().inv_projection[0][0];
 	float y_scale = context.get_render_parameters().inv_projection[1][1];
 	auto right = context.get_render_parameters().camera_right * x_scale;
-	auto down = -context.get_render_parameters().camera_up * y_scale;
+	auto down = context.get_render_parameters().camera_up * y_scale;
 
 	// PERF: These planes can be precomputed.
-	vec3 tl = clip_lo.x * right + clip_lo.y * down;
-	vec3 tr = clip_hi.x * right + clip_lo.y * down;
-	vec3 bl = clip_lo.x * right + clip_hi.y * down;
-	vec3 br = clip_hi.x * right + clip_hi.y * down;
+	vec3 tl = front + clip_lo.x * right + clip_lo.y * down;
+	vec3 tr = front + clip_hi.x * right + clip_lo.y * down;
+	vec3 bl = front + clip_lo.x * right + clip_hi.y * down;
+	vec3 br = front + clip_hi.x * right + clip_hi.y * down;
 	vec3 right_plane = normalize(cross(tr, br));
 	vec3 top_plane = normalize(cross(tl, tr));
 	vec3 left_plane = normalize(cross(bl, tl));
@@ -129,14 +129,14 @@ bool frustum_intersects_spot_light(const RenderContext &context, const vec2 &cli
 	// dot((front + tl), plane.xyz) *  (Dynamic)
 	// min_z_plane                     (Precomputed per spot light)
 	vec3 frustum_points[8];
-	frustum_points[0] = pos + (front + tl) * min_z_plane;
-	frustum_points[1] = pos + (front + tl) * max_z_plane;
-	frustum_points[2] = pos + (front + tr) * min_z_plane;
-	frustum_points[3] = pos + (front + tr) * max_z_plane;
-	frustum_points[4] = pos + (front + bl) * min_z_plane;
-	frustum_points[5] = pos + (front + bl) * max_z_plane;
-	frustum_points[6] = pos + (front + br) * min_z_plane;
-	frustum_points[7] = pos + (front + br) * max_z_plane;
+	frustum_points[0] = pos + tl * min_z_plane;
+	frustum_points[1] = pos + tl * max_z_plane;
+	frustum_points[2] = pos + tr * min_z_plane;
+	frustum_points[3] = pos + tr * max_z_plane;
+	frustum_points[4] = pos + bl * min_z_plane;
+	frustum_points[5] = pos + bl * max_z_plane;
+	frustum_points[6] = pos + br * min_z_plane;
+	frustum_points[7] = pos + br * max_z_plane;
 
 	for (auto &plane : spot_planes)
 	{

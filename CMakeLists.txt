@@ -406,6 +406,7 @@ if (NOT GRANITE_VULKAN_ONLY)
             renderer/scene_loader.cpp renderer/scene_loader.hpp
             renderer/mesh_manager.cpp renderer/mesh_manager.hpp
             renderer/common_renderer_data.cpp renderer/common_renderer_data.hpp
+            renderer/cpu_rasterizer.cpp renderer/cpu_rasterizer.hpp
 
             scene_formats/texture_compression.hpp scene_formats/texture_compression.cpp
             scene_formats/gltf.cpp scene_formats/gltf.hpp

@@ -103,6 +103,44 @@ static inline bool frustum_cull(const AABB &aabb, const vec4 *planes)
 #endif
 }
 
+static inline void mul(vec4 &c, const mat4 &a, const vec4 &b)
+{
+#if defined(__SSE__)
+	__m128 a0 = _mm_loadu_ps(a[0].data);
+	__m128 a1 = _mm_loadu_ps(a[1].data);
+	__m128 a2 = _mm_loadu_ps(a[2].data);
+	__m128 a3 = _mm_loadu_ps(a[3].data);
+	__m128 b0 = _mm_loadu_ps(b.data);
+
+	__m128 b00 = _mm_shuffle_ps(b0, b0, _MM_SHUFFLE(0, 0, 0, 0));
+	__m128 b01 = _mm_shuffle_ps(b0, b0, _MM_SHUFFLE(1, 1, 1, 1));
+	__m128 b02 = _mm_shuffle_ps(b0, b0, _MM_SHUFFLE(2, 2, 2, 2));
+	__m128 b03 = _mm_shuffle_ps(b0, b0, _MM_SHUFFLE(3, 3, 3, 3));
+
+	__m128 col0 = _mm_mul_ps(a0, b00);
+	col0 = _mm_add_ps(col0, _mm_mul_ps(a1, b01));
+	col0 = _mm_add_ps(col0, _mm_mul_ps(a2, b02));
+	col0 = _mm_add_ps(col0, _mm_mul_ps(a3, b03));
+
+	_mm_storeu_ps(c.data, col0);
+#elif defined(__ARM_NEON)
+	float32x4_t a0 = vld1q_f32(a[0].data);
+	float32x4_t a1 = vld1q_f32(a[1].data);
+	float32x4_t a2 = vld1q_f32(a[2].data);
+	float32x4_t a3 = vld1q_f32(a[3].data);
+	float32x4_t b0 = vld1q_f32(b.data);
+
+	float32x4_t col0 = vmulq_n_f32(a0, vgetq_lane_f32(b0, 0));
+	col0 = vmlaq_n_f32(col0, a1, vgetq_lane_f32(b0, 1));
+	col0 = vmlaq_n_f32(col0, a2, vgetq_lane_f32(b0, 2));
+	col0 = vmlaq_n_f32(col0, a3, vgetq_lane_f32(b0, 3));
+
+	vst1q_f32(c.data, col0);
+#else
+	c = a * b;
+#endif
+}
+
 static inline void mul(mat4 &c, const mat4 &a, const mat4 &b)
 {
 #if defined(__SSE__)

@@ -707,6 +707,26 @@ MUGLM_VECTORIZED_FUNC3(clamp)
 // mix
 template <typename T, typename Lerp> inline T mix(const T &a, const T &b, const Lerp &lerp) { return a * (1.0f - lerp) + b * lerp; }
 
+template <typename T> inline T select(T a, T b, bool lerp)
+{
+	return lerp ? b : a;
+}
+
+template <typename T> inline tvec2<T> select(const tvec2<T> &a, const tvec2<T> &b, const tvec2<bool> &lerp)
+{
+	return tvec2<T>(lerp.x ? b.x : a.x, lerp.y ? b.y : a.y);
+}
+
+template <typename T> inline tvec3<T> select(const tvec3<T> &a, const tvec3<T> &b, const tvec3<bool> &lerp)
+{
+	return tvec3<T>(lerp.x ? b.x : a.x, lerp.y ? b.y : a.y, lerp.z ? b.z : a.z);
+}
+
+template <typename T> inline tvec4<T> select(const tvec4<T> &a, const tvec4<T> &b, const tvec4<bool> &lerp)
+{
+	return tvec4<T>(lerp.x ? b.x : a.x, lerp.y ? b.y : a.y, lerp.z ? b.z : a.z, lerp.w ? b.w : a.w);
+}
+
 // smoothstep
 template <typename T> inline T smoothstep(const T &lo, const T &hi, T val)
 {

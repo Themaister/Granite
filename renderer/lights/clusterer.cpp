@@ -30,6 +30,7 @@
 #include "muglm/matrix_helper.hpp"
 #include "thread_group.hpp"
 #include "clusterer_binning.hpp"
+#include "cpu_rasterizer.hpp"
 #include <string.h>
 
 using namespace Vulkan;
@@ -1157,6 +1158,44 @@ void LightClusterer::update_bindless_mask_buffer(Vulkan::CommandBuffer &cmd)
 	auto *masks = static_cast<uint32_t *>(cmd.update_buffer(*bindless.bitmask_buffer, 0, size));
 	memset(masks, 0, size);
 
+	vector<uvec2> coverage;
+
+	for (unsigned i = 0; i < spots.count; i++)
+	{
+		auto mvp = context->get_render_parameters().view_projection * spots.model_transforms[i];
+		const vec4 spot_points[5] = {
+			vec4(0.0f, 0.0f, 0.0f, 1.0f),
+			vec4(+1.0f, +1.0f, -1.0f, 1.0f),
+			vec4(-1.0f, +1.0f, -1.0f, 1.0f),
+			vec4(-1.0f, -1.0f, -1.0f, 1.0f),
+			vec4(+1.0f, -1.0f, -1.0f, 1.0f),
+		};
+		vec4 clip[5];
+		Rasterizer::transform_vertices(clip, spot_points, 5, mvp);
+		coverage.clear();
+
+		static const unsigned indices[6 * 3] = {
+			0, 1, 2,
+			0, 2, 3,
+			0, 3, 4,
+			0, 4, 5,
+			2, 1, 3,
+			4, 3, 1,
+		};
+
+		Rasterizer::rasterize_conservative_triangles(coverage, clip,
+		                                             indices, sizeof(indices) / sizeof(indices[0]),
+		                                             uvec2(resolution_x, resolution_y));
+
+		for (auto &index : coverage)
+		{
+			unsigned linear_coord = index.y * resolution_x + index.x;
+			auto *tile_list = masks + linear_coord * bindless.parameters.num_lights_32;
+			tile_list[i >> 5] |= 1u << (i & 31);
+		}
+	}
+
+#if 0
 	// Pretend all lights are active.
 	for (unsigned y = 0; y < resolution_y; y++)
 	{
@@ -1173,6 +1212,7 @@ void LightClusterer::update_bindless_mask_buffer(Vulkan::CommandBuffer &cmd)
 			}
 		}
 	}
+#endif
 }
 
 void LightClusterer::build_cluster_bindless(Vulkan::CommandBuffer &cmd)

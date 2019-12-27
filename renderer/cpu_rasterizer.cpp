@@ -334,7 +334,7 @@ void rasterize_conservative_triangles(std::vector<uvec2> &coverage,
 				vec3 step = base;
 				for (int x = lo.x; x <= hi.x; x++)
 				{
-					if (any(greaterThan(step, vec3(0.0f))))
+					if (all(greaterThan(step, vec3(0.0f))))
 						coverage.emplace_back(x, y);
 					step += step_x;
 				}

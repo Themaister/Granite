@@ -616,6 +616,18 @@ void LightClusterer::render_bindless_spot(RenderContext &context_)
 		auto cookie = spots.handles[i]->get_cookie();
 		auto &image = *bindless.shadow_map_cache.allocate(cookie, shadow_resolution * shadow_resolution * 2);
 
+		float range = tan(spots.handles[i]->get_xy_range());
+		mat4 view = mat4_cast(look_at_arbitrary_up(spots.lights[i].direction)) *
+		            translate(-spots.lights[i].position);
+		mat4 proj = projection(range * 2.0f, 1.0f,
+		                       0.005f / spots.lights[i].inv_radius,
+		                       1.0f / spots.lights[i].inv_radius);
+
+		spots.shadow_transforms[i] =
+				translate(vec3(0.5f, 0.5f, 0.0f)) *
+				scale(vec3(0.5f, 0.5f, 1.0f)) *
+				proj * view;
+
 		bool has_image = bool(image);
 		if (image && !force_update_shadows)
 			continue;
@@ -648,18 +660,6 @@ void LightClusterer::render_bindless_spot(RenderContext &context_)
 		}
 
 		LOGI("Rendering shadow for spot light %u (%p)\n", i, static_cast<void *>(spots.handles[i]));
-
-		float range = tan(spots.handles[i]->get_xy_range());
-		mat4 view = mat4_cast(look_at_arbitrary_up(spots.lights[i].direction)) *
-		            translate(-spots.lights[i].position);
-		mat4 proj = projection(range * 2.0f, 1.0f,
-		                       0.005f / spots.lights[i].inv_radius,
-		                       1.0f / spots.lights[i].inv_radius);
-
-		spots.shadow_transforms[i] =
-				translate(vec3(0.5f, 0.5f, 0.0f)) *
-				scale(vec3(0.5f, 0.5f, 1.0f)) *
-				proj * view;
 
 		depth_context.set_camera(proj, view);
 		render_shadow(*cmd, depth_context, visible,

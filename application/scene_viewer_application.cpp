@@ -292,6 +292,11 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 			cluster->set_shadow_type(LightClusterer::ShadowType::VSM);
 		else
 			cluster->set_shadow_type(LightClusterer::ShadowType::PCF);
+
+		if (config.clustered_lights_bindless)
+		{
+			cluster->set_resolution(1280 / 8, 720 / 8, 256);
+		}
 	}
 
 	if (config.volumetric_fog)

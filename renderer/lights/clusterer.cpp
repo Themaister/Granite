@@ -1079,23 +1079,21 @@ uvec2 LightClusterer::cluster_lights_cpu(int x, int y, int z, const CPUGlobalAcc
 
 void LightClusterer::update_bindless_descriptors(Vulkan::CommandBuffer &cmd)
 {
-	if (spots.count != 0 || points.count != 0)
+	if (!bindless.descriptor_pool)
+		bindless.descriptor_pool = cmd.get_device().create_bindless_descriptor_pool(BindlessResourceType::ImageFP, 16, MaxLights);
+
+	unsigned num_lights = enable_shadows ? std::max(1u, spots.count + points.count) : 1u;
+	if (!bindless.descriptor_pool->allocate_descriptors(num_lights))
 	{
-		if (!bindless.descriptor_pool)
-			bindless.descriptor_pool = cmd.get_device().create_bindless_descriptor_pool(BindlessResourceType::ImageFP, 16, MaxLights);
-
-		unsigned num_lights = enable_shadows ? std::max(1u, spots.count + points.count) : 1u;
+		bindless.descriptor_pool = cmd.get_device().create_bindless_descriptor_pool(BindlessResourceType::ImageFP, 16, MaxLights);
 		if (!bindless.descriptor_pool->allocate_descriptors(num_lights))
-		{
-			bindless.descriptor_pool = cmd.get_device().create_bindless_descriptor_pool(BindlessResourceType::ImageFP, 16, MaxLights);
-			if (!bindless.descriptor_pool->allocate_descriptors(num_lights))
-				LOGE("Failed to allocate descriptors on a fresh descriptor pool!\n");
-		}
-
-		bindless.desc_set = bindless.descriptor_pool->get_descriptor_set();
+			LOGE("Failed to allocate descriptors on a fresh descriptor pool!\n");
 	}
-	else
-		bindless.desc_set = VK_NULL_HANDLE;
+
+	bindless.desc_set = bindless.descriptor_pool->get_descriptor_set();
+
+	if (!spots.count && !points.count)
+		return;
 
 	ClustererBindlessTransforms transforms = {};
 	for (unsigned i = 0; i < spots.count; i++)

@@ -97,12 +97,7 @@ mediump vec3 compute_cluster_light(
 	return result;
 }
 #else
-mediump vec3 compute_cluster_scatter_light(
-		mediump vec3 material_base_color,
-		mediump vec3 material_normal,
-		mediump float material_metallic,
-		mediump float material_roughness,
-		vec3 world_pos, vec3 camera_pos)
+mediump vec3 compute_cluster_scatter_light(vec3 world_pos, vec3 camera_pos)
 {
 	mediump vec3 result = vec3(0.0);
 
@@ -135,13 +130,11 @@ mediump vec3 compute_cluster_scatter_light(
 			int index = 32 * i + bit_index;
 			if ((type_mask & (1 << bit_index)) != 0)
 			{
-				result += compute_point_scatter_light(index, material_base_color, material_normal,
-						material_metallic, material_roughness, world_pos, camera_pos);
+				result += compute_point_scatter_light(index, world_pos, camera_pos);
 			}
 			else
 			{
-				result += compute_spot_scatter_light(index, material_base_color, material_normal,
-						material_metallic, material_roughness, world_pos, camera_pos);
+				result += compute_spot_scatter_light(index, world_pos, camera_pos);
 			}
 			mask &= ~uint(1 << bit_index);
 		}

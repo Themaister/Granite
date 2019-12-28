@@ -313,9 +313,9 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 		{
 			if (config.clustered_lights_bindless)
 			{
-				volumetric_fog->add_texture_dependency("cluster-bitmask");
-				volumetric_fog->add_texture_dependency("cluster-range");
-				volumetric_fog->add_texture_dependency("cluster-transforms");
+				volumetric_fog->add_storage_buffer_dependency("cluster-bitmask");
+				volumetric_fog->add_storage_buffer_dependency("cluster-range");
+				volumetric_fog->add_storage_buffer_dependency("cluster-transforms");
 			}
 			else
 				volumetric_fog->add_texture_dependency("light-cluster");

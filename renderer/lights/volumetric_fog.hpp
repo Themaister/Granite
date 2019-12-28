@@ -40,6 +40,7 @@ class VolumetricFog : public RenderPassCreator, public EventHandler
 public:
 	VolumetricFog();
 	void add_texture_dependency(std::string name);
+	void add_storage_buffer_dependency(std::string name);
 	void set_resolution(unsigned width, unsigned height, unsigned depth);
 	void set_z_range(float range);
 	void set_fog_density(float density);
@@ -68,6 +69,7 @@ public:
 
 private:
 	std::vector<std::string> texture_dependencies;
+	std::vector<std::string> buffer_dependencies;
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
 	bool on_frame_tick(const FrameTickEvent &e);

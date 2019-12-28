@@ -21,12 +21,24 @@ layout(std430, set = 0, binding = 4) readonly buffer ClustererBitmasks
 
 layout(std430, set = 0, binding = 5) readonly buffer ClustererRanges
 {
-	ivec2 cluster_range[];
+	uvec2 cluster_range[];
 };
 
 #include "spot.h"
 #include "point.h"
 #define CLUSTERING_DEBUG
+
+uint cluster_mask_range(uint mask, uvec2 range, uint start_index)
+{
+	range.x = clamp(range.x, start_index, start_index + 32u);
+	range.y = clamp(range.y + 1u, range.x, start_index + 32u);
+
+	uint num_bits = range.y - range.x;
+	uint range_mask = num_bits == 32 ?
+		0xffffffffu :
+		((1u << num_bits) - 1u) << (range.x - start_index);
+	return mask & uint(range_mask);
+}
 
 mediump vec3 compute_cluster_light(
 		mediump vec3 material_base_color,
@@ -46,10 +58,16 @@ mediump vec3 compute_cluster_light(
 	float z = dot(world_pos - cluster.camera_base, cluster.camera_front);
 	int z_index = int(z * cluster.z_scale);
 	z_index = clamp(z_index, 0, cluster.z_max_index);
+	uvec2 z_range = cluster_range[z_index];
 
-	for (int i = 0; i < cluster.num_lights_32; i++)
+	int z_start = int(z_range.x >> 5u);
+	int z_end = int(z_range.y >> 5u);
+
+	for (int i = z_start; i <= z_end; i++)
 	{
 		uint mask = cluster_bitmask[cluster_base + i];
+		mask = cluster_mask_range(mask, z_range, 32u * i);
+
 		int type_mask = int(cluster_transforms.type_mask[i]);
 		while (mask != 0u)
 		{

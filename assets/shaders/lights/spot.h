@@ -83,6 +83,8 @@ mediump vec3 compute_spot_color(int index, vec3 world_pos, out mediump vec3 ligh
 		mediump float shadow_falloff;
 		#ifdef CLUSTERER_BINDLESS
 			SAMPLE_PCF_KERNEL_BINDLESS(shadow_falloff, uSpotShadowAtlas, index, spot_shadow_clip);
+
+
 		#else
 			SAMPLE_PCF_KERNEL(shadow_falloff, uSpotShadowAtlas, spot_shadow_clip);
 		#endif

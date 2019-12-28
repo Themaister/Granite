@@ -295,7 +295,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 
 		if (config.clustered_lights_bindless)
 		{
-			cluster->set_resolution(1280 / 8, 720 / 8, 256);
+			cluster->set_resolution(1280 / 8, 720 / 8, 4 * 1024);
 		}
 	}
 

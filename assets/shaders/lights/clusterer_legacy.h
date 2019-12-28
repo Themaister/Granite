@@ -58,6 +58,7 @@ vec3 to_cluster_pos(vec3 world_pos)
 	return cluster_pos;
 }
 
+#ifdef CLUSTERER_NO_HELPER_INVOCATION
 mediump vec3 compute_cluster_scatter_light(vec3 world_pos, vec3 camera_pos)
 {
 	vec3 cluster_pos = to_cluster_pos(world_pos);
@@ -82,13 +83,7 @@ mediump vec3 compute_cluster_scatter_light(vec3 world_pos, vec3 camera_pos)
 		result += compute_point_scatter_light(cluster_list.elements[point_start + i], world_pos, camera_pos);
 #else
 
-#if !defined(CLUSTERER_NO_HELPER_INVOCATION) && defined(CLUSTERING_WAVE_UNIFORM)
-	uvec2 bits = uvec2(0u);
-	if (!is_helper_invocation())
-		bits = textureLod(uCluster, cluster_pos, 0.0).xy;
-#else
 	uvec2 bits = textureLod(uCluster, cluster_pos, 0.0).xy;
-#endif
 
 #ifdef CLUSTERING_DEBUG
 	result.x = 0.1 * float(bitCount(bits.x));
@@ -98,7 +93,7 @@ mediump vec3 compute_cluster_scatter_light(vec3 world_pos, vec3 camera_pos)
 
 #ifdef CLUSTERING_WAVE_UNIFORM
 	// Make cluster mask wave uniform for some load optimizations! :D
-	uint bits_x = subgroupBroadcastFirst(subgroupOr(bits.x));
+	uint bits_x = subgroupOr(bits.x);
 #else
 	uint bits_x = bits.x;
 #endif
@@ -112,7 +107,7 @@ mediump vec3 compute_cluster_scatter_light(vec3 world_pos, vec3 camera_pos)
 
 #ifdef CLUSTERING_WAVE_UNIFORM
 	// Make cluster mask wave uniform for some load optimizations! :D
-	uint bits_y = subgroupBroadcastFirst(subgroupOr(bits.y));
+	uint bits_y = subgroupOr(bits.y);
 #else
 	uint bits_y = bits.y;
 #endif
@@ -127,7 +122,7 @@ mediump vec3 compute_cluster_scatter_light(vec3 world_pos, vec3 camera_pos)
 
 	return result;
 }
-
+#else
 mediump vec3 compute_cluster_light(
 		mediump vec3 material_base_color,
 		mediump vec3 material_normal,
@@ -165,7 +160,7 @@ mediump vec3 compute_cluster_light(
 			material_metallic, material_roughness, world_pos, camera_pos);
 	}
 #else
-#if !defined(CLUSTERER_NO_HELPER_INVOCATION) && defined(CLUSTERING_WAVE_UNIFORM)
+#if defined(CLUSTERING_WAVE_UNIFORM)
 	uvec2 bits = uvec2(0u);
 	if (!is_helper_invocation())
 		bits = textureLod(uCluster, cluster_pos, 0.0).xy;
@@ -181,7 +176,7 @@ mediump vec3 compute_cluster_light(
 
 #ifdef CLUSTERING_WAVE_UNIFORM
 	// Make cluster mask wave uniform for some UBO load optimizations! :D
-	uint bits_x = subgroupBroadcastFirst(subgroupOr(bits.x));
+	uint bits_x = subgroupOr(bits.x);
 #else
 	uint bits_x = bits.x;
 #endif
@@ -195,7 +190,7 @@ mediump vec3 compute_cluster_light(
 	}
 
 #ifdef CLUSTERING_WAVE_UNIFORM
-	uint bits_y = subgroupBroadcastFirst(subgroupOr(bits.y));
+	uint bits_y = subgroupOr(bits.y);
 #else
 	uint bits_y = bits.y;
 #endif
@@ -211,5 +206,6 @@ mediump vec3 compute_cluster_light(
 
 	return result;
 }
+#endif
 
 #endif

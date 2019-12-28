@@ -40,6 +40,7 @@ uint cluster_mask_range(uint mask, uvec2 range, uint start_index)
 	return mask & uint(range_mask);
 }
 
+#ifndef CLUSTERER_NO_HELPER_INVOCATION
 mediump vec3 compute_cluster_light(
 		mediump vec3 material_base_color,
 		mediump vec3 material_normal,
@@ -88,12 +89,66 @@ mediump vec3 compute_cluster_light(
 #ifdef CLUSTERING_DEBUG
 				result += vec3(0.0, 0.1, 0.0);
 #endif
-}
+			}
 			mask &= ~uint(1 << bit_index);
 		}
 	}
 
 	return result;
 }
+#else
+mediump vec3 compute_cluster_scatter_light(
+		mediump vec3 material_base_color,
+		mediump vec3 material_normal,
+		mediump float material_metallic,
+		mediump float material_roughness,
+		vec3 world_pos, vec3 camera_pos)
+{
+	mediump vec3 result = vec3(0.0);
+
+	vec4 clip_coord = cluster.transform * vec4(world_pos, 1.0);
+	if (clip_coord.w <= 0.0)
+		return result;
+	ivec2 cluster_coord = ivec2((clip_coord.xy * cluster.xy_scale) / clip_coord.w);
+
+	cluster_coord = clamp(cluster_coord, ivec2(0), cluster.resolution_xy - 1);
+	int cluster_index = cluster_coord.y * cluster.resolution_xy.x + cluster_coord.x;
+	int cluster_base = cluster_index * cluster.num_lights_32;
+
+	float z = dot(world_pos - cluster.camera_base, cluster.camera_front);
+	int z_index = int(z * cluster.z_scale);
+	z_index = clamp(z_index, 0, cluster.z_max_index);
+	uvec2 z_range = cluster_range[z_index];
+
+	int z_start = int(z_range.x >> 5u);
+	int z_end = int(z_range.y >> 5u);
+
+	for (int i = z_start; i <= z_end; i++)
+	{
+		uint mask = cluster_bitmask[cluster_base + i];
+		mask = cluster_mask_range(mask, z_range, 32u * i);
+
+		int type_mask = int(cluster_transforms.type_mask[i]);
+		while (mask != 0u)
+		{
+			int bit_index = findLSB(mask);
+			int index = 32 * i + bit_index;
+			if ((type_mask & (1 << bit_index)) != 0)
+			{
+				result += compute_point_scatter_light(index, material_base_color, material_normal,
+						material_metallic, material_roughness, world_pos, camera_pos);
+			}
+			else
+			{
+				result += compute_spot_scatter_light(index, material_base_color, material_normal,
+						material_metallic, material_roughness, world_pos, camera_pos);
+			}
+			mask &= ~uint(1 << bit_index);
+		}
+	}
+
+	return result;
+}
+#endif
 
 #endif

@@ -31,4 +31,5 @@ bool frustum_intersects_spot_light(const RenderContext &context, const vec2 &cli
                                    const mat4 &model);
 
 vec2 spot_light_z_range(const RenderContext &context, const mat4 &model);
+vec2 point_light_z_range(const RenderContext &context, const vec3 &pos, float radius);
 }

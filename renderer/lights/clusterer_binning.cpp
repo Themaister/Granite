@@ -159,6 +159,15 @@ bool frustum_intersects_spot_light(const RenderContext &context, const vec2 &cli
 	return true;
 }
 
+vec2 point_light_z_range(const RenderContext &context, const vec3 &center, float radius)
+{
+	auto &pos = context.get_render_parameters().camera_position;
+	auto &front = context.get_render_parameters().camera_front;
+
+	float z = dot(center - pos, front);
+	return vec2(z - radius, z + radius);
+}
+
 vec2 spot_light_z_range(const RenderContext &context, const mat4 &model)
 {
 	auto &pos = context.get_render_parameters().camera_position;

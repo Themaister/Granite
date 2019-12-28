@@ -26,7 +26,7 @@ layout(std430, set = 0, binding = 5) readonly buffer ClustererRanges
 
 #include "spot.h"
 #include "point.h"
-#define CLUSTERING_DEBUG
+//#define CLUSTERING_DEBUG
 
 uint cluster_mask_range(uint mask, uvec2 range, uint start_index)
 {

@@ -70,10 +70,16 @@ mediump vec3 compute_point_color(int index, vec3 world_pos, out mediump vec3 lig
 	vec3 light_dir_full = world_pos - light_pos;
 	light_dir = normalize(-light_dir_full);
 
+	mediump vec3 point_color;
+	mediump float light_dist = max(MIN_POINT_DIST, length(light_dir_full));
+	mediump float static_falloff = 1.0 - smoothstep(0.9, 1.0, light_dist * POINT_DATA(index).inv_radius);
+
+	if (static_falloff > 0.0)
+	{
 #ifdef POSITIONAL_LIGHTS_SHADOW
-	vec3 dir_abs = abs(light_dir_full);
-	float max_z = max(max(dir_abs.x, dir_abs.y), dir_abs.z);
-	vec4 shadow_transform = POINT_SHADOW_TRANSFORM(index);
+		vec3 dir_abs = abs(light_dir_full);
+		float max_z = max(max(dir_abs.x, dir_abs.y), dir_abs.z);
+		vec4 shadow_transform = POINT_SHADOW_TRANSFORM(index);
 	#if !defined(CLUSTERER_BINDLESS)
 		mediump float slice = POINT_SHADOW_SLICE(index);
 		#ifdef POSITIONAL_SHADOW_VSM
@@ -95,12 +101,12 @@ mediump vec3 compute_point_color(int index, vec3 world_pos, out mediump vec3 lig
 		#endif
 	#endif
 #else
-	const float shadow_falloff = 1.0;
+		const float shadow_falloff = 1.0;
 #endif
-
-	mediump float light_dist = max(MIN_POINT_DIST, length(light_dir_full));
-	mediump float static_falloff = shadow_falloff * (1.0 - smoothstep(0.9, 1.0, light_dist * POINT_DATA(index).inv_radius));
-	mediump vec3 point_color = POINT_DATA(index).color * (static_falloff / (light_dist * light_dist));
+		point_color = POINT_DATA(index).color * (shadow_falloff * static_falloff) / (light_dist * light_dist);
+	}
+	else
+		point_color = vec3(0.0);
 
 	return point_color;
 }
@@ -126,6 +132,9 @@ mediump vec3 compute_point_light(int index,
 #ifdef POINT_LIGHT_EARLY_OUT
 	if (all(equal(point_color, vec3(0.0))))
 		discard;
+#else
+	if (all(equal(point_color, vec3(0.0))))
+		return vec3(0.0);
 #endif
 
 	mediump float roughness = material_roughness * 0.75 + 0.25;

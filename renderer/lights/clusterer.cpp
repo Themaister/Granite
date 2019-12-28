@@ -701,7 +701,15 @@ void LightClusterer::render_bindless_point(RenderContext &context_)
 
 		bool has_image = bool(image);
 		if (image && !force_update_shadows)
+		{
+			mat4 view, proj;
+			compute_cube_render_transform(points.lights[i].position, 0, proj, view,
+			                              0.005f / points.lights[i].inv_radius,
+			                              1.0f / points.lights[i].inv_radius);
+			points.shadow_transforms[i].transform = vec4(proj[2].zw(), proj[3].zw());
+			points.handles[i]->set_shadow_info(nullptr, {});
 			continue;
+		}
 
 		if (!image)
 		{
@@ -1128,21 +1136,33 @@ void LightClusterer::update_bindless_range_buffer(Vulkan::CommandBuffer &cmd)
 		range = uvec2(0xffffffff, 0);
 
 	// PERF: We can certainly be smarter here with some scan algorithm trickery.
-	for (unsigned i = 0; i < spots.count; i++)
-	{
-		vec2 range = spot_light_z_range(*context, spots.model_transforms[i]);
+	const auto apply_range = [&](unsigned index, vec2 range) {
 		range = range * (float(resolution_z) / context->get_render_parameters().z_far);
 		if (range.y < 0.0f)
-			continue;
+			return;
 		range.x = muglm::max(range.x, 0.0f);
 
 		uvec2 urange(range);
+		urange.y = muglm::min(urange.y, resolution_z - 1);
+
 		for (unsigned x = urange.x; x <= urange.y; x++)
 		{
 			auto &index_range = bindless.light_index_range[x];
-			index_range.x = muglm::min(index_range.x, i);
-			index_range.y = muglm::max(index_range.y, i);
+			index_range.x = muglm::min(index_range.x, index);
+			index_range.y = muglm::max(index_range.y, index);
 		}
+	};
+
+	for (unsigned i = 0; i < spots.count; i++)
+	{
+		vec2 range = spot_light_z_range(*context, spots.model_transforms[i]);
+		apply_range(i, range);
+	}
+
+	for (unsigned i = 0; i < points.count; i++)
+	{
+		vec2 range = point_light_z_range(*context, points.lights[i].position, 1.0f / points.lights[i].inv_radius);
+		apply_range(i + spots.count, range);
 	}
 
 	auto *ranges = static_cast<uvec2 *>(cmd.update_buffer(*bindless.range_buffer, 0, bindless.range_buffer->get_create_info().size));
@@ -1162,27 +1182,6 @@ void LightClusterer::update_bindless_mask_buffer(Vulkan::CommandBuffer &cmd)
 
 	for (unsigned i = 0; i < spots.count; i++)
 	{
-		auto mvp = context->get_render_parameters().view_projection * spots.model_transforms[i];
-		const vec4 spot_points[5] = {
-			vec4(0.0f, 0.0f, 0.0f, 1.0f),
-			vec4(+1.0f, +1.0f, -1.0f, 1.0f),
-			vec4(-1.0f, +1.0f, -1.0f, 1.0f),
-			vec4(-1.0f, -1.0f, -1.0f, 1.0f),
-			vec4(+1.0f, -1.0f, -1.0f, 1.0f),
-		};
-		vec4 clip[5];
-		Rasterizer::transform_vertices(clip, spot_points, 5, mvp);
-		coverage.clear();
-
-		static const unsigned indices[6 * 3] = {
-			0, 1, 2,
-			0, 2, 3,
-			0, 3, 4,
-			0, 4, 1,
-			2, 1, 3,
-			4, 3, 1,
-		};
-
 		Rasterizer::CullMode cull;
 		vec2 range = spot_light_z_range(*context, spots.model_transforms[i]);
 		if (range.x <= context->get_render_parameters().z_near && range.y >= context->get_render_parameters().z_far)
@@ -1194,6 +1193,27 @@ void LightClusterer::update_bindless_mask_buffer(Vulkan::CommandBuffer &cmd)
 
 		if (cull != Rasterizer::CullMode::Both)
 		{
+			auto mvp = context->get_render_parameters().view_projection * spots.model_transforms[i];
+			const vec4 spot_points[5] = {
+				vec4(0.0f, 0.0f, 0.0f, 1.0f),
+				vec4(+1.0f, +1.0f, -1.0f, 1.0f),
+				vec4(-1.0f, +1.0f, -1.0f, 1.0f),
+				vec4(-1.0f, -1.0f, -1.0f, 1.0f),
+				vec4(+1.0f, -1.0f, -1.0f, 1.0f),
+			};
+			vec4 clip[5];
+			Rasterizer::transform_vertices(clip, spot_points, 5, mvp);
+			coverage.clear();
+
+			static const unsigned indices[6 * 3] = {
+				0, 1, 2,
+				0, 2, 3,
+				0, 3, 4,
+				0, 4, 1,
+				2, 1, 3,
+				4, 3, 1,
+			};
+
 			Rasterizer::rasterize_conservative_triangles(coverage, clip,
 			                                             indices, sizeof(indices) / sizeof(indices[0]),
 			                                             uvec2(resolution_x, resolution_y),
@@ -1220,24 +1240,20 @@ void LightClusterer::update_bindless_mask_buffer(Vulkan::CommandBuffer &cmd)
 		}
 	}
 
-#if 0
-	// Pretend all lights are active.
-	for (unsigned y = 0; y < resolution_y; y++)
+	for (unsigned i = 0; i < points.count; i++)
 	{
-		for (unsigned x = 0; x < resolution_x; x++)
+		// TODO: Conservative point light culling.
+		unsigned index = i + spots.count;
+		for (unsigned y = 0; y < resolution_y; y++)
 		{
-			vec2 clip_lo = (2.0f * vec2(x, y) / vec2(resolution_x, resolution_y)) - 1.0f;
-			vec2 clip_hi = (2.0f * vec2(x + 1, y + 1) / vec2(resolution_x, resolution_y)) - 1.0f;
-
-			auto *tile_list = masks + (y * resolution_x + x) * bindless.parameters.num_lights_32;
-			for (unsigned i = 0; i < spots.count; i++)
+			for (unsigned x = 0; x < resolution_x; x++)
 			{
-				if (frustum_intersects_spot_light(*context, clip_lo, clip_hi, spots.model_transforms[i]))
-					tile_list[i >> 5] |= 1u << (i & 31);
+				unsigned linear_coord = y * resolution_x + x;
+				auto *tile_list = masks + linear_coord * bindless.parameters.num_lights_32;
+				tile_list[index >> 5] |= 1u << (index & 31);
 			}
 		}
 	}
-#endif
 }
 
 void LightClusterer::build_cluster_bindless(Vulkan::CommandBuffer &cmd)

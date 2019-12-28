@@ -85,7 +85,11 @@ mediump vec3 compute_lighting(
 		material_normal,
 		material_metallic,
 		material_roughness,
-		light_world_pos, light_camera_pos);
+		light_world_pos, light_camera_pos
+#ifdef CLUSTERER_BINDLESS
+		, resolution.inv_resolution
+#endif
+		);
 #endif
 
 	return lighting;

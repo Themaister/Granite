@@ -1079,10 +1079,16 @@ uvec2 LightClusterer::cluster_lights_cpu(int x, int y, int z, const CPUGlobalAcc
 
 void LightClusterer::update_bindless_descriptors(Vulkan::CommandBuffer &cmd)
 {
+	if (!enable_shadows)
+	{
+		bindless.desc_set = VK_NULL_HANDLE;
+		return;
+	}
+
 	if (!bindless.descriptor_pool)
 		bindless.descriptor_pool = cmd.get_device().create_bindless_descriptor_pool(BindlessResourceType::ImageFP, 16, MaxLights);
 
-	unsigned num_lights = enable_shadows ? std::max(1u, spots.count + points.count) : 1u;
+	unsigned num_lights = std::max(1u, spots.count + points.count);
 	if (!bindless.descriptor_pool->allocate_descriptors(num_lights))
 	{
 		bindless.descriptor_pool = cmd.get_device().create_bindless_descriptor_pool(BindlessResourceType::ImageFP, 16, MaxLights);

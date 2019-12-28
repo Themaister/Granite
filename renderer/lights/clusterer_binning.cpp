@@ -165,19 +165,21 @@ vec2 spot_light_z_range(const RenderContext &context, const mat4 &model)
 	auto &front = context.get_render_parameters().camera_front;
 
 	float lo = std::numeric_limits<float>::infinity();
-	float hi = 0.0f;
+	float hi = -lo;
 
 	vec3 base_pos = model[3].xyz();
 	vec3 x_off = model[0].xyz();
 	vec3 y_off = model[1].xyz();
 	vec3 z_off = -model[2].xyz();
 
+	vec3 z_base = base_pos + z_off;
+
 	const vec3 world_pos[5] = {
 		base_pos,
-		base_pos + z_off + x_off + y_off,
-		base_pos + z_off - x_off + y_off,
-		base_pos + z_off + x_off - y_off,
-		base_pos + z_off - x_off - y_off,
+		z_base + x_off + y_off,
+		z_base - x_off + y_off,
+		z_base + x_off - y_off,
+		z_base - x_off - y_off,
 	};
 
 	for (auto &p : world_pos)

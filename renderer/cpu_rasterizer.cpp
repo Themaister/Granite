@@ -65,14 +65,20 @@ static float cross_2d(const vec2 &a, const vec2 &b)
 	return a.x * b.y - a.y * b.x;
 }
 
-static bool setup_triangle(TriangleSetup &setup, const Triangle &tri)
+static bool setup_triangle(TriangleSetup &setup, const Triangle &tri, CullMode cull)
 {
 	vec2 ab = tri.vertices[1].xy() - tri.vertices[0].xy();
 	vec2 bc = tri.vertices[2].xy() - tri.vertices[1].xy();
 	vec2 ca = tri.vertices[0].xy() - tri.vertices[2].xy();
 	float z = cross_2d(ab, -ca);
-	if (z >= 0.0f)
+
+	if ((cull == CullMode::Front && z >= 0.0f) ||
+	    (cull == CullMode::Back && z <= 0.0f) ||
+	    (cull == CullMode::Both && z == 0.0f))
+	{
 		return false;
+	}
+
 	float inv_z = 1.0f / z;
 
 	setup.base.x = cross_2d(ab, -tri.vertices[0].xy()) * inv_z;
@@ -222,7 +228,7 @@ static unsigned clip_triangles(Triangle *outputs, const Triangle *inputs, unsign
 	return output_count;
 }
 
-static unsigned setup_clipped_triangles_clipped_w(TriangleSetup *setup, Triangle &prim)
+static unsigned setup_clipped_triangles_clipped_w(TriangleSetup *setup, Triangle &prim, CullMode cull)
 {
 	// Cull primitives on X/Y early.
 	// If all vertices are outside clip-space, we know the primitive is not visible.
@@ -272,14 +278,14 @@ static unsigned setup_clipped_triangles_clipped_w(TriangleSetup *setup, Triangle
 	for (unsigned i = 0; i < count; i++)
 	{
 		// Finally, we can perform triangle setup.
-		if (setup_triangle(setup[output_count], tmp[i]))
+		if (setup_triangle(setup[output_count], tmp[i], cull))
 			output_count++;
 	}
 
 	return output_count;
 }
 
-unsigned setup_clipped_triangles(TriangleSetup *setup, const vec4 &a, const vec4 &b, const vec4 &c)
+unsigned setup_clipped_triangles(TriangleSetup *setup, const vec4 &a, const vec4 &b, const vec4 &c, CullMode cull)
 {
 	constexpr float MIN_W = 1.0f / 1024.0f;
 
@@ -291,7 +297,7 @@ unsigned setup_clipped_triangles(TriangleSetup *setup, const vec4 &a, const vec4
 
 	for (unsigned i = 0; i < clipped_w_count; i++)
 	{
-		unsigned count = setup_clipped_triangles_clipped_w(setup, clipped_w[i]);
+		unsigned count = setup_clipped_triangles_clipped_w(setup, clipped_w[i], cull);
 		setup += count;
 		output_count += count;
 	}
@@ -301,7 +307,7 @@ unsigned setup_clipped_triangles(TriangleSetup *setup, const vec4 &a, const vec4
 void rasterize_conservative_triangles(std::vector<uvec2> &coverage,
                                       const vec4 *clip_positions,
                                       const unsigned *indices, unsigned num_indices,
-                                      uvec2 resolution)
+                                      uvec2 resolution, CullMode cull)
 {
 	vec2 fresolution = vec2(resolution);
 	vec2 inv_resolution = 1.0f / fresolution;
@@ -312,7 +318,7 @@ void rasterize_conservative_triangles(std::vector<uvec2> &coverage,
 		unsigned count = setup_clipped_triangles(setups,
 		                                         clip_positions[indices[index + 0]],
 		                                         clip_positions[indices[index + 1]],
-		                                         clip_positions[indices[index + 2]]);
+		                                         clip_positions[indices[index + 2]], cull);
 
 		for (unsigned i = 0; i < count; i++)
 		{

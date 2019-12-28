@@ -1183,15 +1183,40 @@ void LightClusterer::update_bindless_mask_buffer(Vulkan::CommandBuffer &cmd)
 			4, 3, 1,
 		};
 
-		Rasterizer::rasterize_conservative_triangles(coverage, clip,
-		                                             indices, sizeof(indices) / sizeof(indices[0]),
-		                                             uvec2(resolution_x, resolution_y));
+		Rasterizer::CullMode cull;
+		vec2 range = spot_light_z_range(*context, spots.model_transforms[i]);
+		if (range.x <= context->get_render_parameters().z_near && range.y >= context->get_render_parameters().z_far)
+			cull = Rasterizer::CullMode::Both;
+		else if (range.x <= context->get_render_parameters().z_near)
+			cull = Rasterizer::CullMode::Back;
+		else
+			cull = Rasterizer::CullMode::Front;
 
-		for (auto &index : coverage)
+		if (cull != Rasterizer::CullMode::Both)
 		{
-			unsigned linear_coord = index.y * resolution_x + index.x;
-			auto *tile_list = masks + linear_coord * bindless.parameters.num_lights_32;
-			tile_list[i >> 5] |= 1u << (i & 31);
+			Rasterizer::rasterize_conservative_triangles(coverage, clip,
+			                                             indices, sizeof(indices) / sizeof(indices[0]),
+			                                             uvec2(resolution_x, resolution_y),
+			                                             cull);
+
+			for (auto &index : coverage)
+			{
+				unsigned linear_coord = index.y * resolution_x + index.x;
+				auto *tile_list = masks + linear_coord * bindless.parameters.num_lights_32;
+				tile_list[i >> 5] |= 1u << (i & 31);
+			}
+		}
+		else
+		{
+			for (unsigned y = 0; y < resolution_y; y++)
+			{
+				for (unsigned x = 0; x < resolution_x; x++)
+				{
+					unsigned linear_coord = y * resolution_x + x;
+					auto *tile_list = masks + linear_coord * bindless.parameters.num_lights_32;
+					tile_list[i >> 5] |= 1u << (i & 31);
+				}
+			}
 		}
 	}
 

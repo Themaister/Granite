@@ -1173,7 +1173,7 @@ void LightClusterer::update_bindless_range_buffer(Vulkan::CommandBuffer &cmd)
 	memcpy(ranges, bindless.light_index_range.data(), resolution_z * sizeof(ivec2));
 }
 
-static vec2 project_sphere_flat(float view_xy, float view_z, float radius, float proj_xy)
+static vec2 project_sphere_flat(float view_xy, float view_z, float radius, float proj_xy_scale)
 {
 	// Goal here is to deal with the intersection problem in 2D.
 	// Camera forms a cone with the sphere.
@@ -1194,8 +1194,8 @@ static vec2 project_sphere_flat(float view_xy, float view_z, float radius, float
 		vec2 rot_hi = mat2(vec2(cos_xy, -sin_xy), vec2(+sin_xy, cos_xy)) * vec2(view_xy, view_z);
 
 		// Apply projection matrix now.
-		rot_lo.x *= proj_xy;
-		rot_hi.x *= proj_xy;
+		rot_lo.x *= proj_xy_scale;
+		rot_hi.x *= proj_xy_scale;
 
 		// Clip to some sensible ranges.
 		if (rot_lo.y <= 0.0f)
@@ -1217,7 +1217,7 @@ static vec2 project_sphere_flat(float view_xy, float view_z, float radius, float
 }
 
 static vec4 project_sphere(const RenderContext &context,
-                           const vec3 &pos, float radius)
+                           const vec3 &pos, float radius, vec2 scale)
 {
 	vec3 view = (context.get_render_parameters().view * vec4(pos, 1.0f)).xyz();
 
@@ -1226,8 +1226,8 @@ static vec4 project_sphere(const RenderContext &context,
 	view.z = -view.z;
 
 	return vec4(
-			project_sphere_flat(view.x, view.z, radius, context.get_render_parameters().projection[0][0]),
-			project_sphere_flat(view.y, view.z, radius, -context.get_render_parameters().projection[1][1]));
+			project_sphere_flat(view.x, view.z, radius, scale.x),
+			project_sphere_flat(view.y, view.z, radius, scale.y));
 }
 
 void LightClusterer::update_bindless_mask_buffer(Vulkan::CommandBuffer &cmd)
@@ -1307,7 +1307,11 @@ void LightClusterer::update_bindless_mask_buffer(Vulkan::CommandBuffer &cmd)
 		float radius = 1.0f / points.lights[i].inv_radius;
 		unsigned index = i + spots.count;
 
-		vec4 ranges = project_sphere(*context, pos, radius);
+		vec2 proj_scale(
+				context->get_render_parameters().projection[0][0],
+				-context->get_render_parameters().projection[1][1]);
+
+		vec4 ranges = project_sphere(*context, pos, radius, proj_scale);
 		ranges = ranges * 0.5f + 0.5f;
 		ranges *= vec4(resolution_x, resolution_x, resolution_y, resolution_y);
 		ranges = clamp(ranges, vec4(0.0f), vec4(resolution_x - 1, resolution_x - 1,

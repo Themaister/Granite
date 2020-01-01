@@ -26,7 +26,7 @@ layout(std430, set = 0, binding = 5) readonly buffer ClustererRanges
 
 #include "spot.h"
 #include "point.h"
-//#define CLUSTERING_DEBUG
+#define CLUSTERING_DEBUG
 
 uint cluster_mask_range(uint mask, uvec2 range, uint start_index)
 {
@@ -61,13 +61,15 @@ mediump vec3 compute_cluster_light(
 	z_index = clamp(z_index, 0, cluster.z_max_index);
 	uvec2 z_range = cluster_range[z_index];
 
-	int z_start = int(z_range.x >> 5u);
-	int z_end = int(z_range.y >> 5u);
+	//int z_start = int(z_range.x >> 5u);
+	//int z_end = int(z_range.y >> 5u);
+	int z_start = 0;
+	int z_end = 0;
 
 	for (int i = z_start; i <= z_end; i++)
 	{
 		uint mask = cluster_bitmask[cluster_base + i];
-		mask = cluster_mask_range(mask, z_range, 32u * i);
+		//mask = cluster_mask_range(mask, z_range, 32u * i);
 
 		int type_mask = int(cluster_transforms.type_mask[i]);
 		while (mask != 0u)

@@ -69,7 +69,7 @@ void PositionalLight::set_maximum_range(float range)
 void PositionalLight::recompute_range()
 {
 	// Check when attenuation drops below a constant.
-	const float target_atten = 0.1f;
+	const float target_atten = 4.0f;
 	float max_color = max(max(color.x, color.y), color.z);
 	float d = muglm::sqrt(max_color / target_atten);
 	set_range(d);

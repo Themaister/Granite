@@ -1246,11 +1246,110 @@ void LightClusterer::update_bindless_mask_buffer(Vulkan::CommandBuffer &cmd)
 
 	for (unsigned i = 0; i < points.count; i++)
 	{
-		// TODO: Conservative point light culling.
+		auto &pos = points.lights[i].position;
+		float radius = 1.0f / points.lights[i].inv_radius;
 		unsigned index = i + spots.count;
-		for (unsigned y = 0; y < resolution_y; y++)
+
+		vec3 view = (context->get_render_parameters().view * vec4(pos, 1.0f)).xyz();
+
+		// Work in projection space.
+		view.y = -view.y;
+		view.z = -view.z;
+
+		// Goal here is to deal with the intersection problem in 2D.
+		// Camera forms a cone with the sphere.
+		// We want to intersect that cone with the near plane.
+		// To do that we find minimum and maximum angles in 2D, rotate the direction vector,
+		// and project down to plane.
+
+		float length_x = length(view.xz());
+		float length_y = length(view.yz());
+
+		uvec2 range_x(0u, resolution_x - 1);
+		uvec2 range_y(0u, resolution_y - 1);
+
+		float sin_x = radius / length_x;
+		if (sin_x < 0.999f)
 		{
-			for (unsigned x = 0; x < resolution_x; x++)
+			// Find half-angles for the cone, and turn it into a 2x2 rotation matrix.
+			float cos_x = muglm::sqrt(1.0f - sin_x * sin_x);
+
+			// Rotate half-angles in each direction.
+			vec2 x_lo = mat2(vec2(cos_x, +sin_x), vec2(-sin_x, cos_x)) * view.xz();
+			vec2 x_hi = mat2(vec2(cos_x, -sin_x), vec2(+sin_x, cos_x)) * view.xz();
+
+			// Apply projection matrix now.
+			x_lo.x *= context->get_render_parameters().projection[0][0];
+			x_hi.x *= context->get_render_parameters().projection[0][0];
+
+			// Clip to some sensible ranges.
+			if (x_lo.y <= 0.0f)
+			{
+				x_lo.x = -1.0f;
+				x_lo.y = 0.00001f;
+			}
+
+			if (x_hi.y <= 0.0f)
+			{
+				x_hi.x = +1.0f;
+				x_hi.y = 0.00001f;
+			}
+
+			if (x_lo.x >= x_lo.y || x_hi.x <= -x_hi.y)
+			{
+				// Completely culled.
+				continue;
+			}
+
+			float lo = x_lo.x / x_lo.y;
+			float hi = x_hi.x / x_hi.y;
+
+			lo = 0.5f * lo + 0.5f;
+			hi = 0.5f * hi + 0.5f;
+			range_x.x = unsigned(clamp(lo * float(resolution_x), 0.0f, float(resolution_x) - 1.0f));
+			range_x.y = unsigned(clamp(hi * float(resolution_x), 0.0f, float(resolution_x) - 1.0f));
+		}
+
+		float sin_y = radius / length_y;
+		if (sin_y < 0.999f)
+		{
+			float cos_y = muglm::sqrt(1.0f - sin_y * sin_y);
+			vec2 y_lo = mat2(vec2(cos_y, +sin_y), vec2(-sin_y, cos_y)) * view.yz();
+			vec2 y_hi = mat2(vec2(cos_y, -sin_y), vec2(+sin_y, cos_y)) * view.yz();
+			y_lo.x *= -context->get_render_parameters().projection[1][1];
+			y_hi.x *= -context->get_render_parameters().projection[1][1];
+
+			// Clip to some sensible ranges.
+			if (y_lo.y <= 0.0f)
+			{
+				y_lo.x = -1.0f;
+				y_lo.y = 0.00001f;
+			}
+
+			if (y_hi.y <= 0.0f)
+			{
+				y_hi.x = +1.0f;
+				y_hi.y = 0.00001f;
+			}
+
+			if (y_lo.x >= y_lo.y || y_hi.x <= -y_hi.y)
+			{
+				// Completely culled.
+				continue;
+			}
+
+			float lo = y_lo.x / y_lo.y;
+			float hi = y_hi.x / y_hi.y;
+
+			lo = 0.5f * lo + 0.5f;
+			hi = 0.5f * hi + 0.5f;
+			range_y.x = unsigned(clamp(lo * float(resolution_y), 0.0f, float(resolution_y) - 1.0f));
+			range_y.y = unsigned(clamp(hi * float(resolution_y), 0.0f, float(resolution_y) - 1.0f));
+		}
+
+		for (unsigned y = range_y.x; y <= range_y.y; y++)
+		{
+			for (unsigned x = range_x.x; x <= range_x.y; x++)
 			{
 				unsigned linear_coord = y * resolution_x + x;
 				auto *tile_list = masks + linear_coord * bindless.parameters.num_lights_32;

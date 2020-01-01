@@ -1173,7 +1173,7 @@ void LightClusterer::update_bindless_range_buffer(Vulkan::CommandBuffer &cmd)
 	memcpy(ranges, bindless.light_index_range.data(), resolution_z * sizeof(ivec2));
 }
 
-static vec2 project_sphere_flat(float view_xy, float view_z, float radius, float proj_xy_scale)
+static vec2 project_sphere_flat(float view_xy, float view_z, float radius)
 {
 	// Goal here is to deal with the intersection problem in 2D.
 	// Camera forms a cone with the sphere.
@@ -1193,10 +1193,6 @@ static vec2 project_sphere_flat(float view_xy, float view_z, float radius, float
 		vec2 rot_lo = mat2(vec2(cos_xy, +sin_xy), vec2(-sin_xy, cos_xy)) * vec2(view_xy, view_z);
 		vec2 rot_hi = mat2(vec2(cos_xy, -sin_xy), vec2(+sin_xy, cos_xy)) * vec2(view_xy, view_z);
 
-		// Apply projection matrix now.
-		rot_lo.x *= proj_xy_scale;
-		rot_hi.x *= proj_xy_scale;
-
 		// Clip to some sensible ranges.
 		if (rot_lo.y <= 0.0f)
 		{
@@ -1213,11 +1209,11 @@ static vec2 project_sphere_flat(float view_xy, float view_z, float radius, float
 		return vec2(rot_lo.x / rot_lo.y, rot_hi.x / rot_hi.y);
 	}
 	else
-		return vec2(-1.0f, 1.0f);
+		return vec2(-std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity());
 }
 
 static vec4 project_sphere(const RenderContext &context,
-                           const vec3 &pos, float radius, vec2 scale)
+                           const vec3 &pos, float radius)
 {
 	vec3 view = (context.get_render_parameters().view * vec4(pos, 1.0f)).xyz();
 
@@ -1226,8 +1222,8 @@ static vec4 project_sphere(const RenderContext &context,
 	view.z = -view.z;
 
 	return vec4(
-			project_sphere_flat(view.x, view.z, radius, scale.x),
-			project_sphere_flat(view.y, view.z, radius, scale.y));
+			project_sphere_flat(view.x, view.z, radius),
+			project_sphere_flat(view.y, view.z, radius));
 }
 
 void LightClusterer::update_bindless_mask_buffer(Vulkan::CommandBuffer &cmd)
@@ -1307,25 +1303,80 @@ void LightClusterer::update_bindless_mask_buffer(Vulkan::CommandBuffer &cmd)
 		float radius = 1.0f / points.lights[i].inv_radius;
 		unsigned index = i + spots.count;
 
-		vec2 proj_scale(
-				context->get_render_parameters().projection[0][0],
-				-context->get_render_parameters().projection[1][1]);
+		vec4 ranges = project_sphere(*context, pos, radius);
 
-		vec4 ranges = project_sphere(*context, pos, radius, proj_scale);
-		ranges = ranges * 0.5f + 0.5f;
+		// FIXME: This needs to be an oriented ellipse.
+		bool ellipsis_intersection =
+				ranges.x > -std::numeric_limits<float>::infinity() &&
+				ranges.y < std::numeric_limits<float>::infinity() &&
+				ranges.z > -std::numeric_limits<float>::infinity() &&
+				ranges.w < std::numeric_limits<float>::infinity();
+		ellipsis_intersection = false;
+
+		vec2 intersection_center = 0.5f * (ranges.xz() + ranges.yw());
+		vec2 intersection_radius = ranges.yw() - intersection_center;
+
+		LOGI("Ranges: X: [%.3f, %.3f], Y: [%.3f, %.3f]\n",
+		     ranges.x, ranges.y, ranges.z, ranges.w);
+
+		ranges = ranges *
+		         vec4(context->get_render_parameters().projection[0][0],
+		              context->get_render_parameters().projection[0][0],
+		              -context->get_render_parameters().projection[1][1],
+		              -context->get_render_parameters().projection[1][1]) *
+		         0.5f + 0.5f;
+
 		ranges *= vec4(resolution_x, resolution_x, resolution_y, resolution_y);
-		ranges = clamp(ranges, vec4(0.0f), vec4(resolution_x - 1, resolution_x - 1,
-		                                        resolution_y - 1, resolution_y - 1));
+		ranges = clamp(ranges, vec4(0.0f), vec4(resolution_x, resolution_x - 1,
+		                                        resolution_y, resolution_y - 1));
 
 		uvec4 uranges(ranges);
 
-		for (unsigned y = uranges.z; y <= uranges.w; y++)
+		if (ellipsis_intersection)
 		{
-			for (unsigned x = uranges.x; x <= uranges.y; x++)
+			vec2 inv_intersection_radius = 1.0f / intersection_radius;
+			intersection_center *= inv_intersection_radius;
+			vec2 inv_resolution = 1.0f / vec2(resolution_x, resolution_y);
+
+			vec2 clip_scale = vec2(context->get_render_parameters().inv_projection[0][0],
+			                       -context->get_render_parameters().inv_projection[1][1]);
+			clip_scale *= inv_intersection_radius;
+
+			for (unsigned y = uranges.z; y <= uranges.w; y++)
 			{
-				unsigned linear_coord = y * resolution_x + x;
-				auto *tile_list = masks + linear_coord * bindless.parameters.num_lights_32;
-				tile_list[index >> 5] |= 1u << (index & 31);
+				for (unsigned x = uranges.x; x <= uranges.y; x++)
+				{
+					vec2 clip_lo = 2.0f * vec2(x, y) * inv_resolution - 1.0f;
+					vec2 clip_hi = clip_lo + 2.0f * inv_resolution;
+					clip_lo *= clip_scale;
+					clip_hi *= clip_scale;
+
+					vec2 dist_00 = vec2(clip_lo.x, clip_lo.y) - intersection_center;
+					vec2 dist_01 = vec2(clip_lo.x, clip_hi.y) - intersection_center;
+					vec2 dist_10 = vec2(clip_hi.x, clip_lo.y) - intersection_center;
+					vec2 dist_11 = vec2(clip_hi.x, clip_hi.y) - intersection_center;
+					if (dot(dist_00, dist_00) < 1.0f ||
+					    dot(dist_01, dist_01) < 1.0f ||
+					    dot(dist_10, dist_10) < 1.0f ||
+					    dot(dist_11, dist_11) < 1.0f)
+					{
+						unsigned linear_coord = y * resolution_x + x;
+						auto *tile_list = masks + linear_coord * bindless.parameters.num_lights_32;
+						tile_list[index >> 5] |= 1u << (index & 31);
+					}
+				}
+			}
+		}
+		else
+		{
+			for (unsigned y = uranges.z; y <= uranges.w; y++)
+			{
+				for (unsigned x = uranges.x; x <= uranges.y; x++)
+				{
+					unsigned linear_coord = y * resolution_x + x;
+					auto *tile_list = masks + linear_coord * bindless.parameters.num_lights_32;
+					tile_list[index >> 5] |= 1u << (index & 31);
+				}
 			}
 		}
 	}

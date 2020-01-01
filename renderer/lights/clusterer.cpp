@@ -1212,18 +1212,46 @@ static vec2 project_sphere_flat(float view_xy, float view_z, float radius)
 		return vec2(-std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity());
 }
 
-static vec4 project_sphere(const RenderContext &context,
-                           const vec3 &pos, float radius)
+struct ProjectedResult
 {
+	vec4 ranges;
+	vec4 transformed_ranges;
+	mat2 clip_transform;
+	bool ellipsis;
+};
+
+static ProjectedResult project_sphere(const RenderContext &context,
+                                      const vec3 &pos, float radius)
+{
+	ProjectedResult result;
 	vec3 view = (context.get_render_parameters().view * vec4(pos, 1.0f)).xyz();
 
 	// Work in projection space.
 	view.y = -view.y;
 	view.z = -view.z;
 
-	return vec4(
-			project_sphere_flat(view.x, view.z, radius),
-			project_sphere_flat(view.y, view.z, radius));
+	result.ranges = vec4(project_sphere_flat(view.x, view.z, radius),
+	                     project_sphere_flat(view.y, view.z, radius));
+
+	// Need to rotate view space on the Z-axis so the ellipsis will
+	// have its major axes orthogonal with X/Y.
+	float xy_length = length(vec2(view.x, view.y));
+	float inv_xy_length = 1.0f / muglm::max(xy_length, 0.0000001f);
+	result.clip_transform = mat2(vec2(view.x, -view.y) * inv_xy_length,
+	                             vec2(view.y, view.x) * inv_xy_length);
+
+	vec2 transformed_xy = result.clip_transform * vec2(view.x, view.y);
+
+	result.transformed_ranges = vec4(project_sphere_flat(transformed_xy.x, view.z, radius),
+	                                 project_sphere_flat(transformed_xy.y, view.z, radius));
+
+	result.ellipsis =
+			result.transformed_ranges.x > -std::numeric_limits<float>::infinity() &&
+			result.transformed_ranges.y < std::numeric_limits<float>::infinity() &&
+			result.transformed_ranges.z > -std::numeric_limits<float>::infinity() &&
+			result.transformed_ranges.w < std::numeric_limits<float>::infinity();
+
+	return result;
 }
 
 void LightClusterer::update_bindless_mask_buffer(Vulkan::CommandBuffer &cmd)
@@ -1303,22 +1331,18 @@ void LightClusterer::update_bindless_mask_buffer(Vulkan::CommandBuffer &cmd)
 		float radius = 1.0f / points.lights[i].inv_radius;
 		unsigned index = i + spots.count;
 
-		vec4 ranges = project_sphere(*context, pos, radius);
-
-		// FIXME: This needs to be an oriented ellipse.
-		bool ellipsis_intersection =
-				ranges.x > -std::numeric_limits<float>::infinity() &&
-				ranges.y < std::numeric_limits<float>::infinity() &&
-				ranges.z > -std::numeric_limits<float>::infinity() &&
-				ranges.w < std::numeric_limits<float>::infinity();
-		ellipsis_intersection = false;
-
-		vec2 intersection_center = 0.5f * (ranges.xz() + ranges.yw());
-		vec2 intersection_radius = ranges.yw() - intersection_center;
+		auto projection = project_sphere(*context, pos, radius);
+		auto &ranges = projection.ranges;
+		auto &transformed_ranges = projection.transformed_ranges;
+		auto &clip_transform = projection.clip_transform;
+		auto &ellipsis = projection.ellipsis;
 
 		LOGI("Ranges: X: [%.3f, %.3f], Y: [%.3f, %.3f]\n",
 		     ranges.x, ranges.y, ranges.z, ranges.w);
+		LOGI("Transformed ranges: X: [%.3f, %.3f], Y: [%.3f, %.3f]\n",
+		     transformed_ranges.x, transformed_ranges.y, transformed_ranges.z, transformed_ranges.w);
 
+		// Compute screen-space BB for projected sphere.
 		ranges = ranges *
 		         vec4(context->get_render_parameters().projection[0][0],
 		              context->get_render_parameters().projection[0][0],
@@ -1332,15 +1356,15 @@ void LightClusterer::update_bindless_mask_buffer(Vulkan::CommandBuffer &cmd)
 
 		uvec4 uranges(ranges);
 
-		if (ellipsis_intersection)
+		if (ellipsis)
 		{
-			vec2 inv_intersection_radius = 1.0f / intersection_radius;
-			intersection_center *= inv_intersection_radius;
-			vec2 inv_resolution = 1.0f / vec2(resolution_x, resolution_y);
+			vec2 intersection_center = 0.5f * (transformed_ranges.xz() + transformed_ranges.yw());
+			vec2 intersection_radius = transformed_ranges.yw() - intersection_center;
 
+			vec2 inv_intersection_radius = 1.0f / intersection_radius;
+			vec2 inv_resolution = 1.0f / vec2(resolution_x, resolution_y);
 			vec2 clip_scale = vec2(context->get_render_parameters().inv_projection[0][0],
 			                       -context->get_render_parameters().inv_projection[1][1]);
-			clip_scale *= inv_intersection_radius;
 
 			for (unsigned y = uranges.z; y <= uranges.w; y++)
 			{
@@ -1351,10 +1375,16 @@ void LightClusterer::update_bindless_mask_buffer(Vulkan::CommandBuffer &cmd)
 					clip_lo *= clip_scale;
 					clip_hi *= clip_scale;
 
-					vec2 dist_00 = vec2(clip_lo.x, clip_lo.y) - intersection_center;
-					vec2 dist_01 = vec2(clip_lo.x, clip_hi.y) - intersection_center;
-					vec2 dist_10 = vec2(clip_hi.x, clip_lo.y) - intersection_center;
-					vec2 dist_11 = vec2(clip_hi.x, clip_hi.y) - intersection_center;
+					vec2 dist_00 = clip_transform * vec2(clip_lo.x, clip_lo.y) - intersection_center;
+					vec2 dist_01 = clip_transform * vec2(clip_lo.x, clip_hi.y) - intersection_center;
+					vec2 dist_10 = clip_transform * vec2(clip_hi.x, clip_lo.y) - intersection_center;
+					vec2 dist_11 = clip_transform * vec2(clip_hi.x, clip_hi.y) - intersection_center;
+
+					dist_00 *= inv_intersection_radius;
+					dist_01 *= inv_intersection_radius;
+					dist_10 *= inv_intersection_radius;
+					dist_11 *= inv_intersection_radius;
+
 					if (dot(dist_00, dist_00) < 1.0f ||
 					    dot(dist_01, dist_01) < 1.0f ||
 					    dot(dist_10, dist_10) < 1.0f ||

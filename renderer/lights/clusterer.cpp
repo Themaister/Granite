@@ -29,7 +29,6 @@
 #include "quirks.hpp"
 #include "muglm/matrix_helper.hpp"
 #include "thread_group.hpp"
-#include "clusterer_binning.hpp"
 #include "cpu_rasterizer.hpp"
 #include <string.h>
 
@@ -1262,15 +1261,8 @@ static ProjectedResult project_sphere(const RenderContext &context,
 	return result;
 }
 
-void LightClusterer::update_bindless_mask_buffer(Vulkan::CommandBuffer &cmd)
+void LightClusterer::update_bindless_mask_buffer_spot(uint32_t *masks)
 {
-	if (bindless.parameters.num_lights == 0)
-		return;
-
-	size_t size = bindless.parameters.num_lights_32 * sizeof(uint32_t) * resolution_x * resolution_y;
-	auto *masks = static_cast<uint32_t *>(cmd.update_buffer(*bindless.bitmask_buffer, 0, size));
-	memset(masks, 0, size);
-
 	vector<uvec2> coverage;
 
 	for (unsigned i = 0; i < spots.count; i++)
@@ -1288,23 +1280,23 @@ void LightClusterer::update_bindless_mask_buffer(Vulkan::CommandBuffer &cmd)
 		{
 			auto mvp = context->get_render_parameters().view_projection * spots.model_transforms[i];
 			const vec4 spot_points[5] = {
-				vec4(0.0f, 0.0f, 0.0f, 1.0f),
-				vec4(+1.0f, +1.0f, -1.0f, 1.0f),
-				vec4(-1.0f, +1.0f, -1.0f, 1.0f),
-				vec4(-1.0f, -1.0f, -1.0f, 1.0f),
-				vec4(+1.0f, -1.0f, -1.0f, 1.0f),
+					vec4(0.0f, 0.0f, 0.0f, 1.0f),
+					vec4(+1.0f, +1.0f, -1.0f, 1.0f),
+					vec4(-1.0f, +1.0f, -1.0f, 1.0f),
+					vec4(-1.0f, -1.0f, -1.0f, 1.0f),
+					vec4(+1.0f, -1.0f, -1.0f, 1.0f),
 			};
 			vec4 clip[5];
 			Rasterizer::transform_vertices(clip, spot_points, 5, mvp);
 			coverage.clear();
 
 			static const unsigned indices[6 * 3] = {
-				0, 1, 2,
-				0, 2, 3,
-				0, 3, 4,
-				0, 4, 1,
-				2, 1, 3,
-				4, 3, 1,
+					0, 1, 2,
+					0, 2, 3,
+					0, 3, 4,
+					0, 4, 1,
+					2, 1, 3,
+					4, 3, 1,
 			};
 
 			Rasterizer::rasterize_conservative_triangles(coverage, clip,
@@ -1332,7 +1324,10 @@ void LightClusterer::update_bindless_mask_buffer(Vulkan::CommandBuffer &cmd)
 			}
 		}
 	}
+}
 
+void LightClusterer::update_bindless_mask_buffer_point(uint32_t *masks)
+{
 	vec2 inv_resolution = 1.0f / vec2(resolution_x, resolution_y);
 	vec2 clip_scale = vec2(context->get_render_parameters().inv_projection[0][0],
 	                       -context->get_render_parameters().inv_projection[1][1]);
@@ -1422,6 +1417,19 @@ void LightClusterer::update_bindless_mask_buffer(Vulkan::CommandBuffer &cmd)
 			}
 		}
 	}
+}
+
+void LightClusterer::update_bindless_mask_buffer(Vulkan::CommandBuffer &cmd)
+{
+	if (bindless.parameters.num_lights == 0)
+		return;
+
+	size_t size = bindless.parameters.num_lights_32 * sizeof(uint32_t) * resolution_x * resolution_y;
+	auto *masks = static_cast<uint32_t *>(cmd.update_buffer(*bindless.bitmask_buffer, 0, size));
+	memset(masks, 0, size);
+
+	update_bindless_mask_buffer_spot(masks);
+	update_bindless_mask_buffer_point(masks);
 }
 
 void LightClusterer::build_cluster_bindless(Vulkan::CommandBuffer &cmd)

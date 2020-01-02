@@ -213,6 +213,8 @@ private:
 	void update_bindless_descriptors(Vulkan::CommandBuffer &cmd);
 	void update_bindless_range_buffer(Vulkan::CommandBuffer &cmd);
 	void update_bindless_mask_buffer(Vulkan::CommandBuffer &cmd);
+	void update_bindless_mask_buffer_spot(uint32_t *masks);
+	void update_bindless_mask_buffer_point(uint32_t *masks);
 	void render_bindless_spot(RenderContext &context);
 	void render_bindless_point(RenderContext &context);
 };

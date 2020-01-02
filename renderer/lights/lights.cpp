@@ -605,4 +605,45 @@ void PointLight::get_render_info(const RenderContext &context, const RenderInfoC
 	}
 }
 
+vec2 point_light_z_range(const RenderContext &context, const vec3 &center, float radius)
+{
+	auto &pos = context.get_render_parameters().camera_position;
+	auto &front = context.get_render_parameters().camera_front;
+
+	float z = dot(center - pos, front);
+	return vec2(z - radius, z + radius);
+}
+
+vec2 spot_light_z_range(const RenderContext &context, const mat4 &model)
+{
+	auto &pos = context.get_render_parameters().camera_position;
+	auto &front = context.get_render_parameters().camera_front;
+
+	float lo = std::numeric_limits<float>::infinity();
+	float hi = -lo;
+
+	vec3 base_pos = model[3].xyz();
+	vec3 x_off = model[0].xyz();
+	vec3 y_off = model[1].xyz();
+	vec3 z_off = -model[2].xyz();
+
+	vec3 z_base = base_pos + z_off;
+
+	const vec3 world_pos[5] = {
+			base_pos,
+			z_base + x_off + y_off,
+			z_base - x_off + y_off,
+			z_base + x_off - y_off,
+			z_base - x_off - y_off,
+	};
+
+	for (auto &p : world_pos)
+	{
+		float z = dot(p - pos, front);
+		lo = muglm::min(z, lo);
+		hi = muglm::max(z, hi);
+	}
+
+	return vec2(lo, hi);
+}
 }

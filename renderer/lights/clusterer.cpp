@@ -1236,9 +1236,17 @@ static ProjectedResult project_sphere(const RenderContext &context,
 	// Need to rotate view space on the Z-axis so the ellipsis will
 	// have its major axes orthogonal with X/Y.
 	float xy_length = length(vec2(view.x, view.y));
-	float inv_xy_length = 1.0f / muglm::max(xy_length, 0.0000001f);
-	result.clip_transform = mat2(vec2(view.x, -view.y) * inv_xy_length,
-	                             vec2(view.y, view.x) * inv_xy_length);
+
+	if (xy_length < 0.0001f)
+	{
+		result.clip_transform = mat2(1.0f);
+	}
+	else
+	{
+		float inv_xy_length = 1.0f / muglm::max(xy_length, 0.0000001f);
+		result.clip_transform = mat2(vec2(view.x, -view.y) * inv_xy_length,
+		                             vec2(view.y, view.x) * inv_xy_length);
+	}
 
 	vec2 transformed_xy = result.clip_transform * vec2(view.x, view.y);
 
@@ -1325,6 +1333,10 @@ void LightClusterer::update_bindless_mask_buffer(Vulkan::CommandBuffer &cmd)
 		}
 	}
 
+	vec2 inv_resolution = 1.0f / vec2(resolution_x, resolution_y);
+	vec2 clip_scale = vec2(context->get_render_parameters().inv_projection[0][0],
+	                       -context->get_render_parameters().inv_projection[1][1]);
+
 	for (unsigned i = 0; i < points.count; i++)
 	{
 		auto &pos = points.lights[i].position;
@@ -1362,9 +1374,6 @@ void LightClusterer::update_bindless_mask_buffer(Vulkan::CommandBuffer &cmd)
 			vec2 intersection_radius = transformed_ranges.yw() - intersection_center;
 
 			vec2 inv_intersection_radius = 1.0f / intersection_radius;
-			vec2 inv_resolution = 1.0f / vec2(resolution_x, resolution_y);
-			vec2 clip_scale = vec2(context->get_render_parameters().inv_projection[0][0],
-			                       -context->get_render_parameters().inv_projection[1][1]);
 
 			for (unsigned y = uranges.z; y <= uranges.w; y++)
 			{
@@ -1385,10 +1394,13 @@ void LightClusterer::update_bindless_mask_buffer(Vulkan::CommandBuffer &cmd)
 					dist_10 *= inv_intersection_radius;
 					dist_11 *= inv_intersection_radius;
 
-					if (dot(dist_00, dist_00) < 1.0f ||
-					    dot(dist_01, dist_01) < 1.0f ||
-					    dot(dist_10, dist_10) < 1.0f ||
-					    dot(dist_11, dist_11) < 1.0f)
+					float max_diag = muglm::max(distance(dist_00, dist_11), distance(dist_01, dist_10));
+					float min_sq_dist = (1.0f + max_diag) * (1.0f + max_diag);
+
+					if (dot(dist_00, dist_00) < min_sq_dist &&
+					    dot(dist_01, dist_01) < min_sq_dist &&
+					    dot(dist_10, dist_10) < min_sq_dist &&
+					    dot(dist_11, dist_11) < min_sq_dist)
 					{
 						unsigned linear_coord = y * resolution_x + x;
 						auto *tile_list = masks + linear_coord * bindless.parameters.num_lights_32;

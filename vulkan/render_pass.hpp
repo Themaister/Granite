@@ -47,8 +47,8 @@ using RenderPassOpFlags = uint32_t;
 class ImageView;
 struct RenderPassInfo
 {
-	ImageView *color_attachments[VULKAN_NUM_ATTACHMENTS];
-	ImageView *depth_stencil = nullptr;
+	const ImageView *color_attachments[VULKAN_NUM_ATTACHMENTS];
+	const ImageView *depth_stencil = nullptr;
 	unsigned num_color_attachments = 0;
 	RenderPassOpFlags op_flags = 0;
 	uint32_t clear_attachments = 0;

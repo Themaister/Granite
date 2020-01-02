@@ -294,7 +294,7 @@ static uint32_t reassign_indices_legacy(T &type)
 
 void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &depth_context, VisibilityList &visible,
                                    unsigned off_x, unsigned off_y, unsigned res_x, unsigned res_y,
-                                   Vulkan::ImageView &rt, unsigned layer, Renderer::RendererFlushFlags flags)
+                                   const Vulkan::ImageView &rt, unsigned layer, Renderer::RendererFlushFlags flags)
 {
 	bool vsm = shadow_type == ShadowType::VSM;
 	visible.clear();
@@ -602,18 +602,130 @@ void LightClusterer::render_atlas_point(RenderContext &context_)
 	device.submit(cmd);
 }
 
-void LightClusterer::render_bindless_spot(RenderContext &context_)
+void LightClusterer::begin_bindless_barriers(Vulkan::CommandBuffer &cmd)
 {
 	bool vsm = shadow_type == ShadowType::VSM;
+	bindless.src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+	bindless.dst_stage = vsm ?
+	                     VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT :
+	                     (VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT);
+
+	bindless.shadow_barriers.clear();
+	bindless.shadow_barriers.reserve(spots.count + points.count);
+
+	bindless.shadow_images.clear();
+	bindless.shadow_images.resize(spots.count + points.count);
+
+	const auto add_barrier = [&](VkImage image) {
+		VkImageMemoryBarrier barrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+		barrier.image = image;
+		barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		barrier.newLayout = vsm ? VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+		barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrier.srcAccessMask = 0;
+		barrier.dstAccessMask = vsm ? (VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT) :
+		                        (VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT);
+		barrier.subresourceRange = {
+				vsm ? VK_IMAGE_ASPECT_COLOR_BIT : VK_IMAGE_ASPECT_DEPTH_BIT,
+				0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS
+		};
+		bindless.shadow_barriers.push_back(barrier);
+	};
+
+	for (unsigned i = 0; i < spots.count; i++)
+	{
+		auto cookie = spots.handles[i]->get_cookie();
+		auto &image = *bindless.shadow_map_cache.allocate(cookie, shadow_resolution * shadow_resolution * 2);
+
+		if (image && !force_update_shadows)
+			continue;
+
+		if (!image)
+		{
+			auto format = vsm ? VK_FORMAT_R32G32_SFLOAT : VK_FORMAT_D16_UNORM;
+			ImageCreateInfo info = ImageCreateInfo::render_target(shadow_resolution, shadow_resolution, format);
+			info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+			info.usage = vsm ? VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT : VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+			info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+			image = cmd.get_device().create_image(info, nullptr);
+		}
+		else
+			bindless.src_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+
+		bindless.shadow_images[i] = image.get();
+		add_barrier(image->get_image());
+	}
+
+	for (unsigned i = 0; i < points.count; i++)
+	{
+		auto cookie = points.handles[i]->get_cookie();
+		auto &image = *bindless.shadow_map_cache.allocate(cookie, shadow_resolution * shadow_resolution * 2 * 6);
+
+		if (image && !force_update_shadows)
+			continue;
+
+		if (!image)
+		{
+			auto format = vsm ? VK_FORMAT_R32G32_SFLOAT : VK_FORMAT_D16_UNORM;
+			ImageCreateInfo info = ImageCreateInfo::render_target(shadow_resolution, shadow_resolution, format);
+			info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+			info.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+			info.layers = 6;
+			info.usage = vsm ? VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT : VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+			info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+			image = cmd.get_device().create_image(info, nullptr);
+		}
+		else
+			bindless.src_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+
+		bindless.shadow_images[i + spots.count] = image.get();
+		add_barrier(image->get_image());
+	}
+
+	if (!bindless.shadow_barriers.empty())
+	{
+		cmd.barrier(bindless.src_stage, bindless.dst_stage,
+		            0, nullptr,
+		            0, nullptr,
+		            bindless.shadow_barriers.size(), bindless.shadow_barriers.data());
+	}
+}
+
+void LightClusterer::end_bindless_barriers(Vulkan::CommandBuffer &cmd)
+{
+	bool vsm = shadow_type == ShadowType::VSM;
+	for (auto &barrier : bindless.shadow_barriers)
+	{
+		if (vsm)
+			barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		else
+			barrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+		barrier.oldLayout = barrier.newLayout;
+		barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	}
+
+	bindless.src_stage = vsm ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT : VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+	bindless.dst_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+
+	if (!bindless.shadow_barriers.empty())
+	{
+		cmd.barrier(bindless.src_stage, bindless.dst_stage,
+		            0, nullptr,
+		            0, nullptr,
+		            bindless.shadow_barriers.size(), bindless.shadow_barriers.data());
+	}
+}
+
+void LightClusterer::render_bindless_spot(Vulkan::CommandBuffer &cmd)
+{
 	RenderContext depth_context;
 	VisibilityList visible;
-	auto &device = context_.get_device();
 
 	for (unsigned i = 0; i < spots.count; i++)
 	{
 		spots.handles[i]->set_shadow_info(nullptr, {});
-		auto cookie = spots.handles[i]->get_cookie();
-		auto &image = *bindless.shadow_map_cache.allocate(cookie, shadow_resolution * shadow_resolution * 2);
 
 		float range = tan(spots.handles[i]->get_xy_range());
 		mat4 view = mat4_cast(look_at_arbitrary_up(spots.lights[i].direction)) *
@@ -627,157 +739,53 @@ void LightClusterer::render_bindless_spot(RenderContext &context_)
 				scale(vec3(0.5f, 0.5f, 1.0f)) *
 				proj * view;
 
-		bool has_image = bool(image);
-		if (image && !force_update_shadows)
+		if (!bindless.shadow_images[i])
 			continue;
-
-		if (!image)
-		{
-			auto format = vsm ? VK_FORMAT_R32G32_SFLOAT : VK_FORMAT_D16_UNORM;
-			ImageCreateInfo info = ImageCreateInfo::render_target(shadow_resolution, shadow_resolution, format);
-			info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-			info.usage = vsm ? VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT : VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-			info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
-			image = device.create_image(info, nullptr);
-		}
-
-		auto cmd = device.request_command_buffer();
-		if (vsm)
-		{
-			cmd->image_barrier(*image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-			                   has_image ? VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
-			                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
-		}
-		else
-		{
-			cmd->image_barrier(*image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-			                   has_image ? VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
-			                   VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
-			                   VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-			                   VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
-			                   VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
-		}
 
 		LOGI("Rendering shadow for spot light %u (%p)\n", i, static_cast<void *>(spots.handles[i]));
 
 		depth_context.set_camera(proj, view);
-		render_shadow(*cmd, depth_context, visible,
+		render_shadow(cmd, depth_context, visible,
 		              0, 0,
 		              shadow_resolution, shadow_resolution,
-		              image->get_view(), 0, Renderer::DEPTH_BIAS_BIT);
-
-		if (vsm)
-		{
-			cmd->image_barrier(*image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-			                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-			                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-			                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-		}
-		else
-		{
-			cmd->image_barrier(*image, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-			                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-			                   VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-			                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-		}
-
-		device.submit(cmd);
+		              bindless.shadow_images[i]->get_view(), 0, Renderer::DEPTH_BIAS_BIT);
 	}
 }
 
-void LightClusterer::render_bindless_point(RenderContext &context_)
+void LightClusterer::render_bindless_point(Vulkan::CommandBuffer &cmd)
 {
-	bool vsm = shadow_type == ShadowType::VSM;
 	RenderContext depth_context;
 	VisibilityList visible;
-	auto &device = context_.get_device();
 
 	for (unsigned i = 0; i < points.count; i++)
 	{
 		points.handles[i]->set_shadow_info(nullptr, {});
-		auto cookie = points.handles[i]->get_cookie();
-		auto &image = *bindless.shadow_map_cache.allocate(cookie, shadow_resolution * shadow_resolution * 2 * 6);
 
-		bool has_image = bool(image);
-		if (image && !force_update_shadows)
-		{
-			mat4 view, proj;
-			compute_cube_render_transform(points.lights[i].position, 0, proj, view,
-			                              0.005f / points.lights[i].inv_radius,
-			                              1.0f / points.lights[i].inv_radius);
-			points.shadow_transforms[i].transform = vec4(proj[2].zw(), proj[3].zw());
-			points.handles[i]->set_shadow_info(nullptr, {});
+		mat4 view, proj;
+		compute_cube_render_transform(points.lights[i].position, 0, proj, view,
+		                              0.005f / points.lights[i].inv_radius,
+		                              1.0f / points.lights[i].inv_radius);
+		points.shadow_transforms[i].transform = vec4(proj[2].zw(), proj[3].zw());
+		points.handles[i]->set_shadow_info(nullptr, {});
+
+		if (!bindless.shadow_images[i + spots.count])
 			continue;
-		}
-
-		if (!image)
-		{
-			auto format = vsm ? VK_FORMAT_R32G32_SFLOAT : VK_FORMAT_D16_UNORM;
-			ImageCreateInfo info = ImageCreateInfo::render_target(shadow_resolution, shadow_resolution, format);
-			info.layers = 6;
-			info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-			info.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
-			info.usage = vsm ? VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT : VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-			info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
-			image = device.create_image(info, nullptr);
-		}
-
-		auto cmd = device.request_command_buffer();
-		if (vsm)
-		{
-			cmd->image_barrier(*image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-			                   has_image ? VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
-			                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
-		}
-		else
-		{
-			cmd->image_barrier(*image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-			                   has_image ? VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
-			                   VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
-			                   VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-			                   VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
-			                   VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
-		}
 
 		LOGI("Rendering shadow for point light %u (%p)\n", i, static_cast<void *>(points.handles[i]));
 
 		for (unsigned face = 0; face < 6; face++)
 		{
-			mat4 view, proj;
 			compute_cube_render_transform(points.lights[i].position, face, proj, view,
 			                              0.005f / points.lights[i].inv_radius,
 			                              1.0f / points.lights[i].inv_radius);
 			depth_context.set_camera(proj, view);
 
-			if (face == 0)
-			{
-				points.shadow_transforms[i].transform = vec4(proj[2].zw(), proj[3].zw());
-				points.handles[i]->set_shadow_info(nullptr, {});
-			}
-
-			render_shadow(*cmd, depth_context, visible,
+			render_shadow(cmd, depth_context, visible,
 			              0, 0, shadow_resolution, shadow_resolution,
-			              image->get_view(),
+			              bindless.shadow_images[i + spots.count]->get_view(),
 			              face,
 			              Renderer::FRONT_FACE_CLOCKWISE_BIT | Renderer::DEPTH_BIAS_BIT);
 		}
-
-		if (vsm)
-		{
-			cmd->image_barrier(*image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-			                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-			                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-			                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-		}
-		else
-		{
-			cmd->image_barrier(*image, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-			                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-			                   VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-			                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-		}
-
-		device.submit(cmd);
 	}
 }
 
@@ -949,8 +957,12 @@ void LightClusterer::refresh_bindless(RenderContext &context_)
 
 	if (enable_shadows)
 	{
-		render_bindless_spot(context_);
-		render_bindless_point(context_);
+		auto cmd = context_.get_device().request_command_buffer();
+		begin_bindless_barriers(*cmd);
+		render_bindless_spot(*cmd);
+		render_bindless_point(*cmd);
+		end_bindless_barriers(*cmd);
+		context_.get_device().submit(cmd);
 	}
 }
 

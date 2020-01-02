@@ -190,7 +190,7 @@ private:
 	                   VisibilityList &visibility,
 	                   unsigned off_x, unsigned off_y,
 	                   unsigned res_x, unsigned res_y,
-	                   Vulkan::ImageView &rt, unsigned layer,
+	                   const Vulkan::ImageView &rt, unsigned layer,
 	                   Renderer::RendererFlushFlags flags);
 	Vulkan::ImageHandle scratch_vsm_rt;
 	Vulkan::ImageHandle scratch_vsm_down;
@@ -208,6 +208,11 @@ private:
 		VkDescriptorSet desc_set = VK_NULL_HANDLE;
 
 		std::vector<uvec2> light_index_range;
+
+		VkPipelineStageFlags src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+		VkPipelineStageFlags dst_stage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+		std::vector<VkImageMemoryBarrier> shadow_barriers;
+		std::vector<const Vulkan::Image *> shadow_images;
 	} bindless;
 
 	void update_bindless_descriptors(Vulkan::CommandBuffer &cmd);
@@ -215,7 +220,9 @@ private:
 	void update_bindless_mask_buffer(Vulkan::CommandBuffer &cmd);
 	void update_bindless_mask_buffer_spot(uint32_t *masks);
 	void update_bindless_mask_buffer_point(uint32_t *masks);
-	void render_bindless_spot(RenderContext &context);
-	void render_bindless_point(RenderContext &context);
+	void begin_bindless_barriers(Vulkan::CommandBuffer &cmd);
+	void end_bindless_barriers(Vulkan::CommandBuffer &cmd);
+	void render_bindless_spot(Vulkan::CommandBuffer &cmd);
+	void render_bindless_point(Vulkan::CommandBuffer &cmd);
 };
 }

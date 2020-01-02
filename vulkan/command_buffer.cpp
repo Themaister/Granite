@@ -1360,6 +1360,9 @@ void *CommandBuffer::allocate_index_data(VkDeviceSize size, VkIndexType index_ty
 
 void *CommandBuffer::update_buffer(const Buffer &buffer, VkDeviceSize offset, VkDeviceSize size)
 {
+	if (size == 0)
+		return nullptr;
+
 	auto data = staging_block.allocate(size);
 	if (!data.host)
 	{

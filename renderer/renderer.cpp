@@ -177,6 +177,8 @@ vector<pair<string, int>> Renderer::build_defines_from_renderer_options(Renderer
 		global_defines.emplace_back("POSITIONAL_LIGHTS_SHADOW", 1);
 	if (flags & POSITIONAL_LIGHT_CLUSTER_LIST_BIT)
 		global_defines.emplace_back("CLUSTER_LIST", 1);
+	if (flags & POSITIONAL_LIGHT_CLUSTER_BINDLESS_BIT)
+		global_defines.emplace_back("CLUSTERER_BINDLESS", 1);
 
 	if (flags & SHADOW_VSM_BIT)
 		global_defines.emplace_back("DIRECTIONAL_SHADOW_VSM", 1);
@@ -217,17 +219,26 @@ Renderer::RendererOptionFlags Renderer::get_mesh_renderer_options_from_lighting(
 	else if (lighting.fog.falloff > 0.0f)
 		flags |= FOG_ENABLE_BIT;
 
-	if (lighting.cluster && lighting.cluster->get_cluster_image())
+	if (lighting.cluster && (lighting.cluster->get_cluster_image() || lighting.cluster->get_cluster_bitmask_buffer()))
 	{
 		flags |= POSITIONAL_LIGHT_ENABLE_BIT;
 		if (lighting.cluster->get_spot_light_shadows() && lighting.cluster->get_point_light_shadows())
 		{
 			flags |= POSITIONAL_LIGHT_SHADOW_ENABLE_BIT;
-			if (!format_has_depth_or_stencil_aspect(lighting.cluster->get_spot_light_shadows()->get_format()))
+			if (lighting.cluster->get_shadow_type() == LightClusterer::ShadowType::VSM)
 				flags |= POSITIONAL_LIGHT_SHADOW_VSM_BIT;
 		}
+		else if (lighting.cluster->get_cluster_shadow_map_bindless_set() != VK_NULL_HANDLE)
+		{
+			flags |= POSITIONAL_LIGHT_SHADOW_ENABLE_BIT;
+			if (lighting.cluster->get_shadow_type() == LightClusterer::ShadowType::VSM)
+				flags |= POSITIONAL_LIGHT_SHADOW_VSM_BIT;
+		}
+
 		if (lighting.cluster->get_cluster_list_buffer())
 			flags |= POSITIONAL_LIGHT_CLUSTER_LIST_BIT;
+		if (lighting.cluster->clusterer_is_bindless())
+			flags |= POSITIONAL_LIGHT_CLUSTER_BINDLESS_BIT;
 	}
 
 	return flags;
@@ -266,12 +277,12 @@ void Renderer::begin()
 	queue.set_shader_suites(suite);
 }
 
-static void set_cluster_parameters(Vulkan::CommandBuffer &cmd, const LightClusterer &cluster)
+static void set_cluster_parameters_legacy(Vulkan::CommandBuffer &cmd, const LightClusterer &cluster)
 {
-	auto &params = *cmd.allocate_typed_constant_data<ClustererParameters>(0, 2, 1);
+	auto &params = *cmd.allocate_typed_constant_data<ClustererParametersLegacy>(0, 2, 1);
 	memset(&params, 0, sizeof(params));
 
-	cmd.set_texture(1, 6, *cluster.get_cluster_image(), StockSampler::NearestClamp);
+	cmd.set_texture(0, 3, *cluster.get_cluster_image(), StockSampler::NearestClamp);
 
 	params.transform = cluster.get_cluster_transform();
 	memcpy(params.spots, cluster.get_active_spot_lights(),
@@ -286,8 +297,8 @@ static void set_cluster_parameters(Vulkan::CommandBuffer &cmd, const LightCluste
 		auto point_sampler = format_has_depth_or_stencil_aspect(cluster.get_point_light_shadows()->get_format()) ?
 		                     StockSampler::LinearShadow : StockSampler::LinearClamp;
 
-		cmd.set_texture(1, 7, *cluster.get_spot_light_shadows(), spot_sampler);
-		cmd.set_texture(1, 8, *cluster.get_point_light_shadows(), point_sampler);
+		cmd.set_texture(0, 4, *cluster.get_spot_light_shadows(), spot_sampler);
+		cmd.set_texture(0, 5, *cluster.get_point_light_shadows(), point_sampler);
 
 		memcpy(params.spot_shadow_transforms, cluster.get_active_spot_light_shadow_matrices(),
 		       cluster.get_active_spot_light_count() * sizeof(mat4));
@@ -297,7 +308,25 @@ static void set_cluster_parameters(Vulkan::CommandBuffer &cmd, const LightCluste
 	}
 
 	if (cluster.get_cluster_list_buffer())
-		cmd.set_storage_buffer(1, 9, *cluster.get_cluster_list_buffer());
+		cmd.set_storage_buffer(0, 6, *cluster.get_cluster_list_buffer());
+}
+
+static void set_cluster_parameters_bindless(Vulkan::CommandBuffer &cmd, const LightClusterer &cluster)
+{
+	*cmd.allocate_typed_constant_data<ClustererParametersBindless>(0, 2, 1) = cluster.get_cluster_parameters_bindless();
+	cmd.set_storage_buffer(0, 3, *cluster.get_cluster_transform_buffer());
+	cmd.set_storage_buffer(0, 4, *cluster.get_cluster_bitmask_buffer());
+	cmd.set_storage_buffer(0, 5, *cluster.get_cluster_range_buffer());
+	if (cluster.get_cluster_shadow_map_bindless_set() != VK_NULL_HANDLE)
+		cmd.set_bindless(4, cluster.get_cluster_shadow_map_bindless_set());
+}
+
+static void set_cluster_parameters(Vulkan::CommandBuffer &cmd, const LightClusterer &cluster)
+{
+	if (cluster.clusterer_is_bindless())
+		set_cluster_parameters_bindless(cmd, cluster);
+	else
+		set_cluster_parameters_legacy(cmd, cluster);
 }
 
 void Renderer::bind_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context)
@@ -350,11 +379,11 @@ void Renderer::bind_lighting_parameters(Vulkan::CommandBuffer &cmd, const Render
 		cmd.set_texture(1, 4, *lighting->shadow_near, sampler);
 	}
 
-	if (lighting->cluster && lighting->cluster->get_cluster_image())
-		set_cluster_parameters(cmd, *lighting->cluster);
-
 	if (lighting->ambient_occlusion)
-		cmd.set_texture(1, 10, *lighting->ambient_occlusion, StockSampler::LinearClamp);
+		cmd.set_texture(1, 6, *lighting->ambient_occlusion, StockSampler::LinearClamp);
+
+	if (lighting->cluster && (lighting->cluster->get_cluster_image() || lighting->cluster->get_cluster_bitmask_buffer()))
+		set_cluster_parameters(cmd, *lighting->cluster);
 }
 
 void Renderer::set_stencil_reference(uint8_t compare_mask, uint8_t write_mask, uint8_t ref)
@@ -621,7 +650,7 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 	}
 
 	if (light.ambient_occlusion)
-		cmd.set_texture(1, 10, *light.ambient_occlusion, Vulkan::StockSampler::LinearClamp);
+		cmd.set_texture(1, 6, *light.ambient_occlusion, Vulkan::StockSampler::LinearClamp);
 
 	struct DirectionalLightPush
 	{
@@ -668,24 +697,27 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 	CommandBufferUtil::draw_fullscreen_quad(cmd);
 
 	// Clustered lighting.
-	if (light.cluster && light.cluster->get_cluster_image())
+	if (light.cluster && (light.cluster->get_cluster_image() || light.cluster->get_cluster_bitmask_buffer()))
 	{
 		struct ClusterPush
 		{
-			vec4 inv_view_proj_col2;
-			vec3 camera_pos;
+			alignas(16) vec4 inv_view_proj_col2;
+			alignas(16) vec3 camera_pos;
+			alignas(8) vec2 inv_resolution;
 		};
 
 		ClusterPush cluster_push = {
 			context.get_render_parameters().inv_view_projection[2],
 			context.get_render_parameters().camera_position,
+			vec2(1.0f / cmd.get_viewport().width, 1.0f / cmd.get_viewport().height),
 		};
 
 		vector<pair<string, int>> cluster_defines;
-		if (light.cluster->get_spot_light_shadows())
+		if (light.cluster->get_spot_light_shadows() ||
+		    light.cluster->get_cluster_shadow_map_bindless_set())
 		{
 			cluster_defines.emplace_back("POSITIONAL_LIGHTS_SHADOW", 1);
-			if (!format_has_depth_or_stencil_aspect(light.cluster->get_spot_light_shadows()->get_format()))
+			if (light.cluster->get_shadow_type() == LightClusterer::ShadowType::VSM)
 				cluster_defines.emplace_back("POSITIONAL_SHADOW_VSM", 1);
 			else
 			{
@@ -696,7 +728,9 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 			}
 		}
 
-		if (light.cluster->get_cluster_list_buffer())
+		if (light.cluster->clusterer_is_bindless())
+			cluster_defines.emplace_back("CLUSTERER_BINDLESS", 1);
+		else if (light.cluster->get_cluster_list_buffer())
 			cluster_defines.emplace_back("CLUSTER_LIST", 1);
 
 		// Try to enable wave-optimizations.

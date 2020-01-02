@@ -116,6 +116,8 @@ public:
 		return xy_range;
 	}
 
+	mat4 build_model_matrix(const mat4 &transform) const;
+
 private:
 	float inner_cone = 0.4f;
 	float outer_cone = 0.45f;
@@ -148,4 +150,7 @@ private:
 	const Vulkan::ImageView *shadow_atlas = nullptr;
 	PointTransform shadow_transform;
 };
+
+vec2 spot_light_z_range(const RenderContext &context, const mat4 &model);
+vec2 point_light_z_range(const RenderContext &context, const vec3 &pos, float radius);
 }

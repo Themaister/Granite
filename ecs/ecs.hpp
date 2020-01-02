@@ -234,7 +234,7 @@ public:
 		}
 	}
 
-	ComponentGroupVector<Ts...> &get_groups()
+	const ComponentGroupVector<Ts...> &get_groups() const
 	{
 		return groups;
 	}
@@ -337,7 +337,7 @@ public:
 	}
 
 	template <typename... Ts>
-	ComponentGroupVector<Ts...> &get_component_group()
+	const ComponentGroupVector<Ts...> &get_component_group()
 	{
 		auto *group = get_component_group_holder<Ts...>();
 		return group->get_groups();

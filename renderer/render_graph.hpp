@@ -391,6 +391,7 @@ public:
 	                                                  VkPipelineStageFlags stages = 0);
 
 	RenderBufferResource &add_storage_output(const std::string &name, const BufferInfo &info, const std::string &input = "");
+	RenderBufferResource &add_transfer_output(const std::string &name, const BufferInfo &info);
 
 	RenderTextureResource &add_storage_texture_output(const std::string &name, const AttachmentInfo &info, const std::string &input = "");
 	RenderTextureResource &add_blit_texture_output(const std::string &name, const AttachmentInfo &info, const std::string &input = "");
@@ -464,6 +465,11 @@ public:
 	const std::vector<RenderBufferResource *> &get_storage_outputs() const
 	{
 		return storage_outputs;
+	}
+
+	const std::vector<RenderBufferResource *> &get_transfer_outputs() const
+	{
+		return transfer_outputs;
 	}
 
 	const std::vector<AccessedTextureResource> &get_generic_texture_inputs() const
@@ -597,6 +603,7 @@ private:
 	std::vector<RenderTextureResource *> history_inputs;
 	std::vector<RenderBufferResource *> storage_outputs;
 	std::vector<RenderBufferResource *> storage_inputs;
+	std::vector<RenderBufferResource *> transfer_outputs;
 	std::vector<AccessedTextureResource> generic_texture;
 	std::vector<AccessedBufferResource> generic_buffer;
 	RenderTextureResource *depth_stencil_input = nullptr;

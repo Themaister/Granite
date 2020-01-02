@@ -22,16 +22,25 @@
 
 #pragma once
 
-namespace Vulkan
+#include <vector>
+#include "math.hpp"
+
+namespace Granite
 {
-constexpr unsigned VULKAN_NUM_DESCRIPTOR_SETS = 8;
-constexpr unsigned VULKAN_NUM_BINDINGS = 16;
-constexpr unsigned VULKAN_NUM_BINDINGS_BINDLESS_VARYING = 64 * 1024;
-constexpr unsigned VULKAN_NUM_BINDINGS_BINDLESS = 4 * 1024;
-constexpr unsigned VULKAN_NUM_ATTACHMENTS = 8;
-constexpr unsigned VULKAN_NUM_VERTEX_ATTRIBS = 16;
-constexpr unsigned VULKAN_NUM_VERTEX_BUFFERS = 4;
-constexpr unsigned VULKAN_PUSH_CONSTANT_SIZE = 128;
-constexpr unsigned VULKAN_MAX_UBO_SIZE = 16 * 1024;
-constexpr unsigned VULKAN_NUM_SPEC_CONSTANTS = 8;
+namespace Rasterizer
+{
+enum class CullMode
+{
+	Front,
+	Back,
+	Both
+};
+
+void rasterize_conservative_triangles(std::vector<uvec2> &coverage,
+                                      const vec4 *clip_positions,
+                                      const unsigned *indices, unsigned num_indices,
+                                      uvec2 resolution, CullMode cull);
+
+void transform_vertices(vec4 *clip_position, const vec4 *positions, unsigned num_positions, const mat4 &mvp);
+}
 }

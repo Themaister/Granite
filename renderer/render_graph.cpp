@@ -143,6 +143,17 @@ RenderBufferResource &RenderPass::add_storage_output(const std::string &name, co
 	return res;
 }
 
+RenderBufferResource &RenderPass::add_transfer_output(const std::string &name, const BufferInfo &info)
+{
+	auto &res = graph.get_buffer_resource(name);
+	res.add_queue(queue);
+	res.set_buffer_info(info);
+	res.written_in_pass(index);
+	res.add_buffer_usage(VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+	transfer_outputs.push_back(&res);
+	return res;
+}
+
 RenderTextureResource &RenderPass::add_texture_input(const std::string &name, VkPipelineStageFlags stages)
 {
 	auto &res = graph.get_texture_resource(name);
@@ -436,7 +447,7 @@ void RenderGraph::validate_passes()
 			throw logic_error("Size of storage inputs must match storage outputs.");
 
 		if (pass.get_blit_texture_inputs().size() != pass.get_blit_texture_outputs().size())
-			throw logic_error("Size of storage inputs must match storage outputs.");
+			throw logic_error("Size of blit inputs must match blit outputs.");
 
 		if (pass.get_storage_texture_inputs().size() != pass.get_storage_texture_outputs().size())
 			throw logic_error("Size of storage texture inputs must match storage texture outputs.");
@@ -691,6 +702,20 @@ void RenderGraph::build_physical_resources()
 		}
 
 		for (auto *output : pass.get_storage_outputs())
+		{
+			if (output->get_physical_index() == RenderResource::Unused)
+			{
+				physical_dimensions.push_back(get_resource_dimensions(*output));
+				output->set_physical_index(phys_index++);
+			}
+			else
+			{
+				physical_dimensions[output->get_physical_index()].queues |= output->get_used_queues();
+				physical_dimensions[output->get_physical_index()].buffer_info.usage |= output->get_buffer_usage();
+			}
+		}
+
+		for (auto *output : pass.get_transfer_outputs())
 		{
 			if (output->get_physical_index() == RenderResource::Unused)
 			{
@@ -3132,6 +3157,16 @@ void RenderGraph::build_barriers()
 			else
 				barrier.stages |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
 
+			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
+				throw logic_error("Layout mismatch.");
+			barrier.layout = VK_IMAGE_LAYOUT_GENERAL;
+		}
+
+		for (auto *output : pass.get_transfer_outputs())
+		{
+			auto &barrier = get_flush_access(output->get_physical_index());
+			barrier.access |= VK_ACCESS_TRANSFER_WRITE_BIT;
+			barrier.stages |= VK_PIPELINE_STAGE_TRANSFER_BIT;
 			if (barrier.layout != VK_IMAGE_LAYOUT_UNDEFINED)
 				throw logic_error("Layout mismatch.");
 			barrier.layout = VK_IMAGE_LAYOUT_GENERAL;

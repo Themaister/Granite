@@ -405,6 +405,7 @@ if (NOT GRANITE_VULKAN_ONLY)
             renderer/scene_loader.cpp renderer/scene_loader.hpp
             renderer/mesh_manager.cpp renderer/mesh_manager.hpp
             renderer/common_renderer_data.cpp renderer/common_renderer_data.hpp
+            renderer/cpu_rasterizer.cpp renderer/cpu_rasterizer.hpp
 
             scene_formats/texture_compression.hpp scene_formats/texture_compression.cpp
             scene_formats/gltf.cpp scene_formats/gltf.hpp
@@ -442,6 +443,7 @@ if (NOT GRANITE_VULKAN_ONLY)
             util/bitmap_to_mesh.cpp util/bitmap_to_mesh.hpp
             util/cooperative_task.hpp util/cooperative_task.cpp
             util/generational_handle.hpp
+            util/lru_cache.hpp
     )
 
     if (${CMAKE_SYSTEM} MATCHES "Linux")

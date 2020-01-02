@@ -77,6 +77,11 @@ void VolumetricFog::add_texture_dependency(string name)
 	texture_dependencies.push_back(move(name));
 }
 
+void VolumetricFog::add_storage_buffer_dependency(string name)
+{
+	buffer_dependencies.push_back(move(name));
+}
+
 void VolumetricFog::compute_slice_extents()
 {
 	for (unsigned z = 0; z < depth; z++)
@@ -310,6 +315,8 @@ void VolumetricFog::setup_render_pass_dependencies(RenderGraph &graph, RenderPas
 	target.add_texture_input("volumetric-fog-output");
 	for (auto &dep : texture_dependencies)
 		pass->add_texture_input(dep);
+	for (auto &dep : buffer_dependencies)
+		pass->add_storage_read_only_input(dep);
 
 	if (!dither_lut)
 		build_dither_lut(graph.get_device());

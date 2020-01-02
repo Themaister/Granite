@@ -49,6 +49,12 @@ PipelineLayout::PipelineLayout(Hash hash, Device *device_, const CombinedResourc
 			num_sets = i + 1;
 	}
 
+	if (num_sets > device->get_gpu_properties().limits.maxBoundDescriptorSets)
+	{
+		LOGE("Number of sets %u exceeds device limit of %u.\n",
+		     num_sets, device->get_gpu_properties().limits.maxBoundDescriptorSets);
+	}
+
 	VkPipelineLayoutCreateInfo info = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
 	if (num_sets)
 	{
@@ -299,10 +305,8 @@ void Shader::update_array_info(const SPIRType &type, unsigned set, unsigned bind
 
 				if (type.basetype != SPIRType::Image || type.image.dim == spv::DimBuffer)
 					LOGE("Can only use bindless for sampled images.\n");
-				else if ((layout.bindless_set_mask & (1u << set)) == 0)
-					layout.bindless_set_mask |= 1u << set;
 				else
-					LOGE("Bindless layout registered multiple times for set = %u.\n", set);
+					layout.bindless_set_mask |= 1u << set;
 
 				size = DescriptorSetLayout::UNSIZED_ARRAY;
 			}

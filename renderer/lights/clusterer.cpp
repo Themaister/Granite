@@ -29,6 +29,7 @@
 #include "quirks.hpp"
 #include "muglm/matrix_helper.hpp"
 #include "thread_group.hpp"
+#include "cpu_rasterizer.hpp"
 #include <string.h>
 
 using namespace Vulkan;
@@ -64,8 +65,6 @@ void LightClusterer::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
 	points.atlas.reset();
 	scratch_vsm_rt.reset();
 	scratch_vsm_down.reset();
-	for (auto &rt : shadow_atlas_rt)
-		rt.reset();
 
 	fill(begin(spots.cookie), end(spots.cookie), 0);
 	fill(begin(points.cookie), end(points.cookie), 0);
@@ -92,7 +91,16 @@ void LightClusterer::set_shadow_resolution(unsigned res)
 void LightClusterer::setup_render_pass_dependencies(RenderGraph &, RenderPass &target_)
 {
 	// TODO: Other passes might want this?
-	target_.add_texture_input("light-cluster");
+	if (enable_bindless)
+	{
+		target_.add_storage_read_only_input("cluster-bitmask");
+		target_.add_storage_read_only_input("cluster-range");
+		target_.add_storage_read_only_input("cluster-transforms");
+	}
+	else
+	{
+		target_.add_texture_input("light-cluster");
+	}
 }
 
 void LightClusterer::set_base_render_context(const RenderContext *context_)
@@ -102,9 +110,18 @@ void LightClusterer::set_base_render_context(const RenderContext *context_)
 
 void LightClusterer::setup_render_pass_resources(RenderGraph &graph)
 {
-	target = &graph.get_physical_texture_resource(graph.get_texture_resource("light-cluster").get_physical_index());
-	if (!ImplementationQuirks::get().clustering_list_iteration && !ImplementationQuirks::get().clustering_force_cpu)
-		pre_cull_target = &graph.get_physical_texture_resource(graph.get_texture_resource("light-cluster-prepass").get_physical_index());
+	if (enable_bindless)
+	{
+		bindless.bitmask_buffer = &graph.get_physical_buffer_resource(graph.get_buffer_resource("cluster-bitmask"));
+		bindless.range_buffer = &graph.get_physical_buffer_resource(graph.get_buffer_resource("cluster-range"));
+		bindless.transforms_buffer = &graph.get_physical_buffer_resource(graph.get_buffer_resource("cluster-transforms"));
+	}
+	else
+	{
+		target = &graph.get_physical_texture_resource(graph.get_texture_resource("light-cluster").get_physical_index());
+		if (!ImplementationQuirks::get().clustering_list_iteration && !ImplementationQuirks::get().clustering_force_cpu)
+			pre_cull_target = &graph.get_physical_texture_resource(graph.get_texture_resource("light-cluster-prepass").get_physical_index());
+	}
 }
 
 unsigned LightClusterer::get_active_point_light_count() const
@@ -124,12 +141,12 @@ const PositionalFragmentInfo *LightClusterer::get_active_point_lights() const
 
 const mat4 *LightClusterer::get_active_spot_light_shadow_matrices() const
 {
-	return spots.transforms;
+	return spots.shadow_transforms;
 }
 
 const PointTransform *LightClusterer::get_active_point_light_shadow_transform() const
 {
-	return points.transforms;
+	return points.shadow_transforms;
 }
 
 const PositionalFragmentInfo *LightClusterer::get_active_spot_lights() const
@@ -142,9 +159,49 @@ void LightClusterer::set_enable_clustering(bool enable)
 	enable_clustering = enable;
 }
 
+void LightClusterer::set_enable_bindless(bool enable)
+{
+	enable_bindless = enable;
+}
+
+const ClustererParametersBindless &LightClusterer::get_cluster_parameters_bindless() const
+{
+	return bindless.parameters;
+}
+
+const Vulkan::Buffer *LightClusterer::get_cluster_transform_buffer() const
+{
+	return bindless.transforms_buffer;
+}
+
+const Vulkan::Buffer *LightClusterer::get_cluster_bitmask_buffer() const
+{
+	return bindless.bitmask_buffer;
+}
+
+const Vulkan::Buffer *LightClusterer::get_cluster_range_buffer() const
+{
+	return bindless.range_buffer;
+}
+
+VkDescriptorSet LightClusterer::get_cluster_shadow_map_bindless_set() const
+{
+	return bindless.desc_set;
+}
+
+bool LightClusterer::clusterer_is_bindless() const
+{
+	return enable_bindless;
+}
+
 void LightClusterer::set_shadow_type(ShadowType shadow_type_)
 {
 	shadow_type = shadow_type_;
+}
+
+LightClusterer::ShadowType LightClusterer::get_shadow_type() const
+{
+	return shadow_type;
 }
 
 void LightClusterer::set_enable_shadows(bool enable)
@@ -183,7 +240,7 @@ const mat4 &LightClusterer::get_cluster_transform() const
 }
 
 template <typename T>
-static uint32_t reassign_indices(T &type)
+static uint32_t reassign_indices_legacy(T &type)
 {
 	uint32_t partial_mask = 0;
 
@@ -201,7 +258,7 @@ static uint32_t reassign_indices(T &type)
 			{
 				// Reuse the shadow data from the atlas.
 				swap(type.cookie[i], type.cookie[index]);
-				swap(type.transforms[i], type.transforms[index]);
+				swap(type.shadow_transforms[i], type.shadow_transforms[index]);
 				swap(type.index_remap[i], type.index_remap[index]);
 			}
 		}
@@ -218,7 +275,7 @@ static uint32_t reassign_indices(T &type)
 				{
 					// Reuse the shadow data from the atlas.
 					swap(type.cookie[i], type.cookie[index]);
-					swap(type.transforms[i], type.transforms[index]);
+					swap(type.shadow_transforms[i], type.shadow_transforms[index]);
 					swap(type.index_remap[i], type.index_remap[index]);
 				}
 			}
@@ -227,7 +284,7 @@ static uint32_t reassign_indices(T &type)
 		if (type.handles[i]->get_cookie() != type.cookie[i])
 			partial_mask |= 1u << i;
 		else
-			type.handles[i]->set_shadow_info(&type.atlas->get_view(), type.transforms[i]);
+			type.handles[i]->set_shadow_info(&type.atlas->get_view(), type.shadow_transforms[i]);
 
 		type.cookie[i] = type.handles[i]->get_cookie();
 	}
@@ -237,7 +294,7 @@ static uint32_t reassign_indices(T &type)
 
 void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &depth_context, VisibilityList &visible,
                                    unsigned off_x, unsigned off_y, unsigned res_x, unsigned res_y,
-                                   Vulkan::ImageView &rt, Renderer::RendererFlushFlags flags)
+                                   const Vulkan::ImageView &rt, unsigned layer, Renderer::RendererFlushFlags flags)
 {
 	bool vsm = shadow_type == ShadowType::VSM;
 	visible.clear();
@@ -329,6 +386,7 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &de
 			rp_horiz.render_area.offset.y = off_y;
 			rp_horiz.render_area.extent.width = res_x;
 			rp_horiz.render_area.extent.height = res_y;
+			rp_horiz.base_layer = layer;
 
 			cmd.begin_render_pass(rp_horiz);
 			cmd.set_viewport({ float(off_x), float(off_y), float(res_x), float(res_y), 0.0f, 1.0f });
@@ -354,6 +412,7 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &de
 		rp.render_area.offset.y = off_y;
 		rp.render_area.extent.width = res_x;
 		rp.render_area.extent.height = res_y;
+		rp.base_layer = layer;
 
 		cmd.begin_render_pass(rp);
 		cmd.set_viewport({ float(off_x), float(off_y), float(res_x), float(res_y), 0.0f, 1.0f });
@@ -366,7 +425,7 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &de
 void LightClusterer::render_atlas_point(RenderContext &context_)
 {
 	bool vsm = shadow_type == ShadowType::VSM;
-	uint32_t partial_mask = reassign_indices(points);
+	uint32_t partial_mask = reassign_indices_legacy(points);
 
 	if (!points.atlas || force_update_shadows)
 		partial_mask = ~0u;
@@ -393,15 +452,6 @@ void LightClusterer::render_atlas_point(RenderContext &context_)
 			info.usage |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
 
 		points.atlas = device.create_image(info, nullptr);
-
-		for (unsigned i = 0; i < 6 * MaxLights; i++)
-		{
-			ImageViewCreateInfo view;
-			view.image = points.atlas.get();
-			view.layers = 1;
-			view.base_layer = i;
-			shadow_atlas_rt[i] = device.create_image_view(view);
-		}
 	}
 	else if (partial_update)
 	{
@@ -486,14 +536,15 @@ void LightClusterer::render_atlas_point(RenderContext &context_)
 
 			if (face == 0)
 			{
-				points.transforms[i].transform = vec4(proj[2].zw(), proj[3].zw());
-				points.transforms[i].slice.x = float(remapped);
-				points.handles[i]->set_shadow_info(&points.atlas->get_view(), points.transforms[i]);
+				points.shadow_transforms[i].transform = vec4(proj[2].zw(), proj[3].zw());
+				points.shadow_transforms[i].slice.x = float(remapped);
+				points.handles[i]->set_shadow_info(&points.atlas->get_view(), points.shadow_transforms[i]);
 			}
 
 			render_shadow(*cmd, depth_context, visible,
 			              0, 0, shadow_resolution, shadow_resolution,
-			              *shadow_atlas_rt[6 * remapped + face],
+			              points.atlas->get_view(),
+			              6 * remapped + face,
 			              Renderer::FRONT_FACE_CLOCKWISE_BIT | Renderer::DEPTH_BIAS_BIT);
 		}
 	}
@@ -551,10 +602,197 @@ void LightClusterer::render_atlas_point(RenderContext &context_)
 	device.submit(cmd);
 }
 
+void LightClusterer::begin_bindless_barriers(Vulkan::CommandBuffer &cmd)
+{
+	bool vsm = shadow_type == ShadowType::VSM;
+	bindless.src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+	bindless.dst_stage = vsm ?
+	                     VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT :
+	                     (VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT);
+
+	bindless.shadow_barriers.clear();
+	bindless.shadow_barriers.reserve(spots.count + points.count);
+
+	bindless.shadow_images.clear();
+	bindless.shadow_images.resize(spots.count + points.count);
+
+	const auto add_barrier = [&](VkImage image) {
+		VkImageMemoryBarrier barrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+		barrier.image = image;
+		barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		barrier.newLayout = vsm ? VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+		barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrier.srcAccessMask = 0;
+		barrier.dstAccessMask = vsm ? (VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT) :
+		                        (VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT);
+		barrier.subresourceRange = {
+				vsm ? VK_IMAGE_ASPECT_COLOR_BIT : VK_IMAGE_ASPECT_DEPTH_BIT,
+				0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS
+		};
+		bindless.shadow_barriers.push_back(barrier);
+	};
+
+	for (unsigned i = 0; i < spots.count; i++)
+	{
+		auto cookie = spots.handles[i]->get_cookie();
+		auto &image = *bindless.shadow_map_cache.allocate(cookie, shadow_resolution * shadow_resolution * 2);
+
+		if (image && !force_update_shadows)
+			continue;
+
+		if (!image)
+		{
+			auto format = vsm ? VK_FORMAT_R32G32_SFLOAT : VK_FORMAT_D16_UNORM;
+			ImageCreateInfo info = ImageCreateInfo::render_target(shadow_resolution, shadow_resolution, format);
+			info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+			info.usage = vsm ? VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT : VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+			info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+			image = cmd.get_device().create_image(info, nullptr);
+		}
+		else
+			bindless.src_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+
+		bindless.shadow_images[i] = image.get();
+		add_barrier(image->get_image());
+	}
+
+	for (unsigned i = 0; i < points.count; i++)
+	{
+		auto cookie = points.handles[i]->get_cookie();
+		auto &image = *bindless.shadow_map_cache.allocate(cookie, shadow_resolution * shadow_resolution * 2 * 6);
+
+		if (image && !force_update_shadows)
+			continue;
+
+		if (!image)
+		{
+			auto format = vsm ? VK_FORMAT_R32G32_SFLOAT : VK_FORMAT_D16_UNORM;
+			ImageCreateInfo info = ImageCreateInfo::render_target(shadow_resolution, shadow_resolution, format);
+			info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+			info.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+			info.layers = 6;
+			info.usage = vsm ? VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT : VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+			info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+			image = cmd.get_device().create_image(info, nullptr);
+		}
+		else
+			bindless.src_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+
+		bindless.shadow_images[i + spots.count] = image.get();
+		add_barrier(image->get_image());
+	}
+
+	if (!bindless.shadow_barriers.empty())
+	{
+		cmd.barrier(bindless.src_stage, bindless.dst_stage,
+		            0, nullptr,
+		            0, nullptr,
+		            bindless.shadow_barriers.size(), bindless.shadow_barriers.data());
+	}
+}
+
+void LightClusterer::end_bindless_barriers(Vulkan::CommandBuffer &cmd)
+{
+	bool vsm = shadow_type == ShadowType::VSM;
+	for (auto &barrier : bindless.shadow_barriers)
+	{
+		if (vsm)
+			barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		else
+			barrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+		barrier.oldLayout = barrier.newLayout;
+		barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	}
+
+	bindless.src_stage = vsm ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT : VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+	bindless.dst_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+
+	if (!bindless.shadow_barriers.empty())
+	{
+		cmd.barrier(bindless.src_stage, bindless.dst_stage,
+		            0, nullptr,
+		            0, nullptr,
+		            bindless.shadow_barriers.size(), bindless.shadow_barriers.data());
+	}
+}
+
+void LightClusterer::render_bindless_spot(Vulkan::CommandBuffer &cmd)
+{
+	RenderContext depth_context;
+	VisibilityList visible;
+
+	for (unsigned i = 0; i < spots.count; i++)
+	{
+		spots.handles[i]->set_shadow_info(nullptr, {});
+
+		float range = tan(spots.handles[i]->get_xy_range());
+		mat4 view = mat4_cast(look_at_arbitrary_up(spots.lights[i].direction)) *
+		            translate(-spots.lights[i].position);
+		mat4 proj = projection(range * 2.0f, 1.0f,
+		                       0.005f / spots.lights[i].inv_radius,
+		                       1.0f / spots.lights[i].inv_radius);
+
+		spots.shadow_transforms[i] =
+				translate(vec3(0.5f, 0.5f, 0.0f)) *
+				scale(vec3(0.5f, 0.5f, 1.0f)) *
+				proj * view;
+
+		if (!bindless.shadow_images[i])
+			continue;
+
+		LOGI("Rendering shadow for spot light %u (%p)\n", i, static_cast<void *>(spots.handles[i]));
+
+		depth_context.set_camera(proj, view);
+		render_shadow(cmd, depth_context, visible,
+		              0, 0,
+		              shadow_resolution, shadow_resolution,
+		              bindless.shadow_images[i]->get_view(), 0, Renderer::DEPTH_BIAS_BIT);
+	}
+}
+
+void LightClusterer::render_bindless_point(Vulkan::CommandBuffer &cmd)
+{
+	RenderContext depth_context;
+	VisibilityList visible;
+
+	for (unsigned i = 0; i < points.count; i++)
+	{
+		points.handles[i]->set_shadow_info(nullptr, {});
+
+		mat4 view, proj;
+		compute_cube_render_transform(points.lights[i].position, 0, proj, view,
+		                              0.005f / points.lights[i].inv_radius,
+		                              1.0f / points.lights[i].inv_radius);
+		points.shadow_transforms[i].transform = vec4(proj[2].zw(), proj[3].zw());
+		points.handles[i]->set_shadow_info(nullptr, {});
+
+		if (!bindless.shadow_images[i + spots.count])
+			continue;
+
+		LOGI("Rendering shadow for point light %u (%p)\n", i, static_cast<void *>(points.handles[i]));
+
+		for (unsigned face = 0; face < 6; face++)
+		{
+			compute_cube_render_transform(points.lights[i].position, face, proj, view,
+			                              0.005f / points.lights[i].inv_radius,
+			                              1.0f / points.lights[i].inv_radius);
+			depth_context.set_camera(proj, view);
+
+			render_shadow(cmd, depth_context, visible,
+			              0, 0, shadow_resolution, shadow_resolution,
+			              bindless.shadow_images[i + spots.count]->get_view(),
+			              face,
+			              Renderer::FRONT_FACE_CLOCKWISE_BIT | Renderer::DEPTH_BIAS_BIT);
+		}
+	}
+}
+
 void LightClusterer::render_atlas_spot(RenderContext &context_)
 {
 	bool vsm = shadow_type == ShadowType::VSM;
-	uint32_t partial_mask = reassign_indices(spots);
+	uint32_t partial_mask = reassign_indices_legacy(spots);
 
 	if (!spots.atlas || force_update_shadows)
 		partial_mask = ~0u;
@@ -627,21 +865,21 @@ void LightClusterer::render_atlas_spot(RenderContext &context_)
 		unsigned remapped = spots.index_remap[i];
 
 		// Carve out the atlas region where the spot light shadows live.
-		spots.transforms[i] =
+		spots.shadow_transforms[i] =
 				translate(vec3(float(remapped & 7) / 8.0f, float(remapped >> 3) / 4.0f, 0.0f)) *
 				scale(vec3(1.0f / 8.0f, 1.0f / 4.0f, 1.0f)) *
 				translate(vec3(0.5f, 0.5f, 0.0f)) *
 				scale(vec3(0.5f, 0.5f, 1.0f)) *
 				proj * view;
 
-		spots.handles[i]->set_shadow_info(&spots.atlas->get_view(), spots.transforms[i]);
+		spots.handles[i]->set_shadow_info(&spots.atlas->get_view(), spots.shadow_transforms[i]);
 
 		depth_context.set_camera(proj, view);
 
 		render_shadow(*cmd, depth_context, visible,
 		              shadow_resolution * (remapped & 7), shadow_resolution * (remapped >> 3),
 		              shadow_resolution, shadow_resolution,
-		              spots.atlas->get_view(), Renderer::DEPTH_BIAS_BIT);
+		              spots.atlas->get_view(), 0, Renderer::DEPTH_BIAS_BIT);
 	}
 
 	if (vsm)
@@ -662,45 +900,8 @@ void LightClusterer::render_atlas_spot(RenderContext &context_)
 	device.submit(cmd);
 }
 
-void LightClusterer::refresh(RenderContext &context_)
+void LightClusterer::refresh_legacy(RenderContext& context_)
 {
-	points.count = 0;
-	spots.count = 0;
-	auto &frustum = context_.get_visibility_frustum();
-
-	for (auto &light : *lights)
-	{
-		auto &l = *get_component<PositionalLightComponent>(light)->light;
-		auto *transform = get_component<RenderInfoComponent>(light);
-
-		// Frustum cull lights here.
-		if (!frustum.intersects(transform->world_aabb))
-			continue;
-
-		if (l.get_type() == PositionalLight::Type::Spot)
-		{
-			auto &spot = static_cast<SpotLight &>(l);
-			spot.set_shadow_info(nullptr, {});
-			if (spots.count < max_spot_lights)
-			{
-				spots.lights[spots.count] = spot.get_shader_info(transform->transform->world_transform);
-				spots.handles[spots.count] = &spot;
-				spots.count++;
-			}
-		}
-		else if (l.get_type() == PositionalLight::Type::Point)
-		{
-			auto &point = static_cast<PointLight &>(l);
-			point.set_shadow_info(nullptr, {});
-			if (points.count < max_point_lights)
-			{
-				points.lights[points.count] = point.get_shader_info(transform->transform->world_transform);
-				points.handles[points.count] = &point;
-				points.count++;
-			}
-		}
-	}
-
 	// Figure out aabb bounds in view space.
 	auto &inv_proj = context_.get_render_parameters().inv_projection;
 	const auto project = [](const vec4 &v) -> vec3 {
@@ -734,6 +935,101 @@ void LightClusterer::refresh(RenderContext &context_)
 		spots.atlas.reset();
 		points.atlas.reset();
 	}
+}
+
+void LightClusterer::refresh_bindless(RenderContext &context_)
+{
+	float z_slice_size = context_.get_render_parameters().z_far / float(resolution_z);
+	bindless.parameters.transform = translate(vec3(0.5f, 0.5f, 0.0f)) *
+	                                scale(vec3(0.5f, 0.5f, 1.0f)) *
+	                                context_.get_render_parameters().view_projection;
+	bindless.parameters.camera_front = context_.get_render_parameters().camera_front;
+	bindless.parameters.camera_base = context_.get_render_parameters().camera_position;
+	bindless.parameters.xy_scale = vec2(resolution_x, resolution_y);
+	bindless.parameters.resolution_xy = ivec2(resolution_x, resolution_y);
+	bindless.parameters.z_scale = 1.0f / z_slice_size;
+	bindless.parameters.z_max_index = resolution_z - 1;
+	bindless.parameters.num_lights = spots.count + points.count;
+	bindless.parameters.num_lights_32 = (bindless.parameters.num_lights + 31) / 32;
+
+	bindless.shadow_map_cache.set_total_cost(64 * 1024 * 1024);
+	bindless.shadow_map_cache.prune();
+
+	if (enable_shadows)
+	{
+		auto cmd = context_.get_device().request_command_buffer();
+		begin_bindless_barriers(*cmd);
+		render_bindless_spot(*cmd);
+		render_bindless_point(*cmd);
+		end_bindless_barriers(*cmd);
+		context_.get_device().submit(cmd);
+	}
+}
+
+void LightClusterer::refresh(RenderContext &context_)
+{
+	points.count = 0;
+	spots.count = 0;
+	auto &frustum = context_.get_visibility_frustum();
+
+	light_sort_cache.clear();
+	light_sort_cache.reserve(lights->size());
+	for (auto &light : *lights)
+	{
+		light_sort_cache.emplace_back(get_component<PositionalLightComponent>(light)->light,
+		                              get_component<RenderInfoComponent>(light));
+	}
+
+	// Prefer lights which are closest to the camera.
+	sort(begin(light_sort_cache), end(light_sort_cache), [&](const auto &a, const auto &b) -> bool {
+		auto *transform_a = a.second;
+		auto *transform_b = b.second;
+		vec3 pos_a = transform_a->transform->world_transform[3].xyz();
+		vec3 pos_b = transform_b->transform->world_transform[3].xyz();
+		float dist_a = dot(pos_a, context_.get_render_parameters().camera_front);
+		float dist_b = dot(pos_b, context_.get_render_parameters().camera_front);
+		return dist_a < dist_b;
+	});
+
+	for (auto &light : light_sort_cache)
+	{
+		auto &l = *light.first;
+		auto *transform = light.second;
+
+		// Frustum cull lights here.
+		if (!frustum.intersects(transform->world_aabb))
+			continue;
+
+		if (l.get_type() == PositionalLight::Type::Spot)
+		{
+			auto &spot = static_cast<SpotLight &>(l);
+			spot.set_shadow_info(nullptr, {});
+			if (spots.count < max_spot_lights)
+			{
+				spots.lights[spots.count] = spot.get_shader_info(transform->transform->world_transform);
+				spots.model_transforms[spots.count] = spot.build_model_matrix(transform->transform->world_transform);
+				spots.handles[spots.count] = &spot;
+				spots.count++;
+			}
+		}
+		else if (l.get_type() == PositionalLight::Type::Point)
+		{
+			auto &point = static_cast<PointLight &>(l);
+			point.set_shadow_info(nullptr, {});
+			if (points.count < max_point_lights)
+			{
+				points.lights[points.count] = point.get_shader_info(transform->transform->world_transform);
+				points.model_transforms[points.count] = vec4(points.lights[points.count].position, 1.0f / points.lights[points.count].inv_radius);
+				points.handles[points.count] = &point;
+				points.count++;
+			}
+		}
+	}
+
+	if (enable_bindless)
+		refresh_bindless(context_);
+	else
+		refresh_legacy(context_);
 }
 
 uvec2 LightClusterer::cluster_lights_cpu(int x, int y, int z, const CPUGlobalAccelState &state,
@@ -790,6 +1086,364 @@ uvec2 LightClusterer::cluster_lights_cpu(int x, int y, int z, const CPUGlobalAcc
 	}
 
 	return uvec2(spot_mask, point_mask);
+}
+
+void LightClusterer::update_bindless_descriptors(Vulkan::CommandBuffer &cmd)
+{
+	if (!enable_shadows)
+	{
+		bindless.desc_set = VK_NULL_HANDLE;
+		return;
+	}
+
+	if (!bindless.descriptor_pool)
+		bindless.descriptor_pool = cmd.get_device().create_bindless_descriptor_pool(BindlessResourceType::ImageFP, 16, MaxLights);
+
+	unsigned num_lights = std::max(1u, spots.count + points.count);
+	if (!bindless.descriptor_pool->allocate_descriptors(num_lights))
+	{
+		bindless.descriptor_pool = cmd.get_device().create_bindless_descriptor_pool(BindlessResourceType::ImageFP, 16, MaxLights);
+		if (!bindless.descriptor_pool->allocate_descriptors(num_lights))
+			LOGE("Failed to allocate descriptors on a fresh descriptor pool!\n");
+	}
+
+	bindless.desc_set = bindless.descriptor_pool->get_descriptor_set();
+
+	if (!spots.count && !points.count)
+		return;
+
+	ClustererBindlessTransforms transforms = {};
+	for (unsigned i = 0; i < spots.count; i++)
+	{
+		transforms.lights[i] = spots.lights[i];
+		if (enable_shadows)
+		{
+			transforms.shadow[i] = spots.shadow_transforms[i];
+			auto *image = bindless.shadow_map_cache.find_and_mark_as_recent(spots.handles[i]->get_cookie());
+			assert(image);
+			bindless.descriptor_pool->set_texture(i, (*image)->get_view());
+		}
+	}
+
+	for (unsigned i = 0; i < points.count; i++)
+	{
+		unsigned index = i + spots.count;
+		transforms.lights[index] = points.lights[i];
+		transforms.type_mask[index >> 5] |= 1u << (index & 31);
+
+		if (enable_shadows)
+		{
+			transforms.shadow[index][0] = points.shadow_transforms[i].transform;
+			auto *image = bindless.shadow_map_cache.find_and_mark_as_recent(points.handles[i]->get_cookie());
+			assert(image);
+			bindless.descriptor_pool->set_texture(index, (*image)->get_view());
+		}
+	}
+
+	memcpy(cmd.update_buffer(*bindless.transforms_buffer, 0, sizeof(transforms)),
+	       &transforms, sizeof(transforms));
+}
+
+void LightClusterer::update_bindless_range_buffer(Vulkan::CommandBuffer &cmd)
+{
+	bindless.light_index_range.resize(resolution_z);
+	for (auto &range : bindless.light_index_range)
+		range = uvec2(0xffffffff, 0);
+
+	// PERF: We can certainly be smarter here with some scan algorithm trickery.
+	const auto apply_range = [&](unsigned index, vec2 range) {
+		range = range * (float(resolution_z) / context->get_render_parameters().z_far);
+		if (range.y < 0.0f)
+			return;
+		range.x = muglm::max(range.x, 0.0f);
+
+		uvec2 urange(range);
+		urange.y = muglm::min(urange.y, resolution_z - 1);
+
+		for (unsigned x = urange.x; x <= urange.y; x++)
+		{
+			auto &index_range = bindless.light_index_range[x];
+			index_range.x = muglm::min(index_range.x, index);
+			index_range.y = muglm::max(index_range.y, index);
+		}
+	};
+
+	for (unsigned i = 0; i < spots.count; i++)
+	{
+		vec2 range = spot_light_z_range(*context, spots.model_transforms[i]);
+		apply_range(i, range);
+	}
+
+	for (unsigned i = 0; i < points.count; i++)
+	{
+		vec2 range = point_light_z_range(*context, points.lights[i].position, 1.0f / points.lights[i].inv_radius);
+		apply_range(i + spots.count, range);
+	}
+
+	auto *ranges = static_cast<uvec2 *>(cmd.update_buffer(*bindless.range_buffer, 0, bindless.range_buffer->get_create_info().size));
+	memcpy(ranges, bindless.light_index_range.data(), resolution_z * sizeof(ivec2));
+}
+
+static vec2 project_sphere_flat(float view_xy, float view_z, float radius)
+{
+	// Goal here is to deal with the intersection problem in 2D.
+	// Camera forms a cone with the sphere.
+	// We want to intersect that cone with the near plane.
+	// To do that we find minimum and maximum angles in 2D, rotate the direction vector,
+	// and project down to plane.
+
+	float len = length(vec2(view_xy, view_z));
+	float sin_xy = radius / len;
+
+	if (sin_xy < 0.999f)
+	{
+		// Find half-angles for the cone, and turn it into a 2x2 rotation matrix.
+		float cos_xy = muglm::sqrt(1.0f - sin_xy * sin_xy);
+
+		// Rotate half-angles in each direction.
+		vec2 rot_lo = mat2(vec2(cos_xy, +sin_xy), vec2(-sin_xy, cos_xy)) * vec2(view_xy, view_z);
+		vec2 rot_hi = mat2(vec2(cos_xy, -sin_xy), vec2(+sin_xy, cos_xy)) * vec2(view_xy, view_z);
+
+		// Clip to some sensible ranges.
+		if (rot_lo.y <= 0.0f)
+		{
+			rot_lo.x = -1.0f;
+			rot_lo.y = 0.0f;
+		}
+
+		if (rot_hi.y <= 0.0f)
+		{
+			rot_hi.x = +1.0f;
+			rot_hi.y = 0.0f;
+		}
+
+		return vec2(rot_lo.x / rot_lo.y, rot_hi.x / rot_hi.y);
+	}
+	else
+		return vec2(-std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity());
+}
+
+struct ProjectedResult
+{
+	vec4 ranges;
+	vec4 transformed_ranges;
+	mat2 clip_transform;
+	bool ellipsis;
+};
+
+static ProjectedResult project_sphere(const RenderContext &context,
+                                      const vec3 &pos, float radius)
+{
+	ProjectedResult result;
+	vec3 view = (context.get_render_parameters().view * vec4(pos, 1.0f)).xyz();
+
+	// Work in projection space.
+	view.y = -view.y;
+	view.z = -view.z;
+
+	result.ranges = vec4(project_sphere_flat(view.x, view.z, radius),
+	                     project_sphere_flat(view.y, view.z, radius));
+
+	// Need to rotate view space on the Z-axis so the ellipsis will
+	// have its major axes orthogonal with X/Y.
+	float xy_length = length(vec2(view.x, view.y));
+
+	if (xy_length < 0.0001f)
+	{
+		result.clip_transform = mat2(1.0f);
+	}
+	else
+	{
+		float inv_xy_length = 1.0f / muglm::max(xy_length, 0.0000001f);
+		result.clip_transform = mat2(vec2(view.x, -view.y) * inv_xy_length,
+		                             vec2(view.y, view.x) * inv_xy_length);
+	}
+
+	vec2 transformed_xy = result.clip_transform * vec2(view.x, view.y);
+
+	result.transformed_ranges = vec4(project_sphere_flat(transformed_xy.x, view.z, radius),
+	                                 project_sphere_flat(transformed_xy.y, view.z, radius));
+
+	result.ellipsis =
+			result.transformed_ranges.x > -std::numeric_limits<float>::infinity() &&
+			result.transformed_ranges.y < std::numeric_limits<float>::infinity() &&
+			result.transformed_ranges.z > -std::numeric_limits<float>::infinity() &&
+			result.transformed_ranges.w < std::numeric_limits<float>::infinity();
+
+	return result;
+}
+
+void LightClusterer::update_bindless_mask_buffer_spot(uint32_t *masks)
+{
+	vector<uvec2> coverage;
+
+	for (unsigned i = 0; i < spots.count; i++)
+	{
+		Rasterizer::CullMode cull;
+		vec2 range = spot_light_z_range(*context, spots.model_transforms[i]);
+		if (range.x <= context->get_render_parameters().z_near && range.y >= context->get_render_parameters().z_far)
+			cull = Rasterizer::CullMode::Both;
+		else if (range.x <= context->get_render_parameters().z_near)
+			cull = Rasterizer::CullMode::Back;
+		else
+			cull = Rasterizer::CullMode::Front;
+
+		if (cull != Rasterizer::CullMode::Both)
+		{
+			auto mvp = context->get_render_parameters().view_projection * spots.model_transforms[i];
+			const vec4 spot_points[5] = {
+					vec4(0.0f, 0.0f, 0.0f, 1.0f),
+					vec4(+1.0f, +1.0f, -1.0f, 1.0f),
+					vec4(-1.0f, +1.0f, -1.0f, 1.0f),
+					vec4(-1.0f, -1.0f, -1.0f, 1.0f),
+					vec4(+1.0f, -1.0f, -1.0f, 1.0f),
+			};
+			vec4 clip[5];
+			Rasterizer::transform_vertices(clip, spot_points, 5, mvp);
+			coverage.clear();
+
+			static const unsigned indices[6 * 3] = {
+					0, 1, 2,
+					0, 2, 3,
+					0, 3, 4,
+					0, 4, 1,
+					2, 1, 3,
+					4, 3, 1,
+			};
+
+			Rasterizer::rasterize_conservative_triangles(coverage, clip,
+			                                             indices, sizeof(indices) / sizeof(indices[0]),
+			                                             uvec2(resolution_x, resolution_y),
+			                                             cull);
+
+			for (auto &index : coverage)
+			{
+				unsigned linear_coord = index.y * resolution_x + index.x;
+				auto *tile_list = masks + linear_coord * bindless.parameters.num_lights_32;
+				tile_list[i >> 5] |= 1u << (i & 31);
+			}
+		}
+		else
+		{
+			for (unsigned y = 0; y < resolution_y; y++)
+			{
+				for (unsigned x = 0; x < resolution_x; x++)
+				{
+					unsigned linear_coord = y * resolution_x + x;
+					auto *tile_list = masks + linear_coord * bindless.parameters.num_lights_32;
+					tile_list[i >> 5] |= 1u << (i & 31);
+				}
+			}
+		}
+	}
+}
+
+void LightClusterer::update_bindless_mask_buffer_point(uint32_t *masks)
+{
+	vec2 inv_resolution = 1.0f / vec2(resolution_x, resolution_y);
+	vec2 clip_scale = vec2(context->get_render_parameters().inv_projection[0][0],
+	                       -context->get_render_parameters().inv_projection[1][1]);
+
+	for (unsigned i = 0; i < points.count; i++)
+	{
+		auto &pos = points.lights[i].position;
+		float radius = 1.0f / points.lights[i].inv_radius;
+		unsigned index = i + spots.count;
+
+		auto projection = project_sphere(*context, pos, radius);
+		auto &ranges = projection.ranges;
+		auto &transformed_ranges = projection.transformed_ranges;
+		auto &clip_transform = projection.clip_transform;
+		auto &ellipsis = projection.ellipsis;
+
+		// Compute screen-space BB for projected sphere.
+		ranges = ranges *
+		         vec4(context->get_render_parameters().projection[0][0],
+		              context->get_render_parameters().projection[0][0],
+		              -context->get_render_parameters().projection[1][1],
+		              -context->get_render_parameters().projection[1][1]) *
+		         0.5f + 0.5f;
+
+		ranges *= vec4(resolution_x, resolution_x, resolution_y, resolution_y);
+		ranges = clamp(ranges, vec4(0.0f), vec4(resolution_x, resolution_x - 1,
+		                                        resolution_y, resolution_y - 1));
+
+		uvec4 uranges(ranges);
+
+		if (ellipsis)
+		{
+			vec2 intersection_center = 0.5f * (transformed_ranges.xz() + transformed_ranges.yw());
+			vec2 intersection_radius = transformed_ranges.yw() - intersection_center;
+
+			vec2 inv_intersection_radius = 1.0f / intersection_radius;
+
+			for (unsigned y = uranges.z; y <= uranges.w; y++)
+			{
+				for (unsigned x = uranges.x; x <= uranges.y; x++)
+				{
+					vec2 clip_lo = 2.0f * vec2(x, y) * inv_resolution - 1.0f;
+					vec2 clip_hi = clip_lo + 2.0f * inv_resolution;
+					clip_lo *= clip_scale;
+					clip_hi *= clip_scale;
+
+					vec2 dist_00 = clip_transform * vec2(clip_lo.x, clip_lo.y) - intersection_center;
+					vec2 dist_01 = clip_transform * vec2(clip_lo.x, clip_hi.y) - intersection_center;
+					vec2 dist_10 = clip_transform * vec2(clip_hi.x, clip_lo.y) - intersection_center;
+					vec2 dist_11 = clip_transform * vec2(clip_hi.x, clip_hi.y) - intersection_center;
+
+					dist_00 *= inv_intersection_radius;
+					dist_01 *= inv_intersection_radius;
+					dist_10 *= inv_intersection_radius;
+					dist_11 *= inv_intersection_radius;
+
+					float max_diag = muglm::max(distance(dist_00, dist_11), distance(dist_01, dist_10));
+					float min_sq_dist = (1.0f + max_diag) * (1.0f + max_diag);
+
+					if (dot(dist_00, dist_00) < min_sq_dist &&
+					    dot(dist_01, dist_01) < min_sq_dist &&
+					    dot(dist_10, dist_10) < min_sq_dist &&
+					    dot(dist_11, dist_11) < min_sq_dist)
+					{
+						unsigned linear_coord = y * resolution_x + x;
+						auto *tile_list = masks + linear_coord * bindless.parameters.num_lights_32;
+						tile_list[index >> 5] |= 1u << (index & 31);
+					}
+				}
+			}
+		}
+		else
+		{
+			for (unsigned y = uranges.z; y <= uranges.w; y++)
+			{
+				for (unsigned x = uranges.x; x <= uranges.y; x++)
+				{
+					unsigned linear_coord = y * resolution_x + x;
+					auto *tile_list = masks + linear_coord * bindless.parameters.num_lights_32;
+					tile_list[index >> 5] |= 1u << (index & 31);
+				}
+			}
+		}
+	}
+}
+
+void LightClusterer::update_bindless_mask_buffer(Vulkan::CommandBuffer &cmd)
+{
+	if (bindless.parameters.num_lights == 0)
+		return;
+
+	size_t size = bindless.parameters.num_lights_32 * sizeof(uint32_t) * resolution_x * resolution_y;
+	auto *masks = static_cast<uint32_t *>(cmd.update_buffer(*bindless.bitmask_buffer, 0, size));
+	memset(masks, 0, size);
+
+	update_bindless_mask_buffer_spot(masks);
+	update_bindless_mask_buffer_point(masks);
+}
+
+void LightClusterer::build_cluster_bindless(Vulkan::CommandBuffer &cmd)
+{
+	update_bindless_descriptors(cmd);
+	update_bindless_range_buffer(cmd);
+	update_bindless_mask_buffer(cmd);
 }
 
 void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view)
@@ -1078,17 +1732,48 @@ void LightClusterer::build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView
 	float radius = 0.5f * length(mat3(inverse_cluster_transform) * (vec3(2.0f, 2.0f, 0.5f) * inv_res));
 
 	Push push = {
-			inverse_cluster_transform,
-			uvec4(res_x, res_y, res_z, trailing_zeroes(res_z)),
-			vec4(1.0f / res_x, 1.0f / res_y, 1.0f / ((ClusterHierarchies + 1) * res_z), 1.0f),
-			vec4(inv_res, radius),
-			spots.count, points.count,
+		inverse_cluster_transform,
+		uvec4(res_x, res_y, res_z, trailing_zeroes(res_z)),
+		vec4(1.0f / res_x, 1.0f / res_y, 1.0f / ((ClusterHierarchies + 1) * res_z), 1.0f),
+		vec4(inv_res, radius),
+		spots.count, points.count,
 	};
 	cmd.push_constants(&push, 0, sizeof(push));
 	cmd.dispatch((res_x + 3) / 4, (res_y + 3) / 4, (ClusterHierarchies + 1) * ((res_z + 3) / 4));
 }
 
-void LightClusterer::add_render_passes(RenderGraph &graph)
+void LightClusterer::add_render_passes_bindless(RenderGraph &graph)
+{
+	BufferInfo att;
+	att.persistent = true;
+	att.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+
+	auto &pass = graph.add_pass("clustering", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
+
+	{
+		att.size = resolution_x * resolution_y * (MaxLights / 8);
+		pass.add_transfer_output("cluster-bitmask", att);
+	}
+
+	{
+		att.size = resolution_z * sizeof(ivec2);
+		pass.add_transfer_output("cluster-range", att);
+	}
+
+	{
+		att.size = sizeof(ClustererBindlessTransforms);
+		pass.add_transfer_output("cluster-transforms", att);
+	}
+
+	pass.set_build_render_pass([&](CommandBuffer &cmd) {
+		build_cluster_bindless(cmd);
+	});
+	pass.set_need_render_pass([this]() {
+		return enable_clustering;
+	});
+}
+
+void LightClusterer::add_render_passes_legacy(RenderGraph &graph)
 {
 	AttachmentInfo att;
 	att.levels = 1;
@@ -1148,6 +1833,14 @@ void LightClusterer::add_render_passes(RenderGraph &graph)
 			return enable_clustering;
 		});
 	}
+}
+
+void LightClusterer::add_render_passes(RenderGraph &graph)
+{
+	if (enable_bindless)
+		add_render_passes_bindless(graph);
+	else
+		add_render_passes_legacy(graph);
 }
 
 void LightClusterer::set_base_renderer(Renderer *, Renderer *, Renderer *depth)

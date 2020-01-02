@@ -131,6 +131,8 @@ void SceneViewerApplication::read_config(const std::string &path)
 	}
 	if (doc.HasMember("clusteredLights"))
 		config.clustered_lights = doc["clusteredLights"].GetBool();
+	if (doc.HasMember("clusteredLightsBindless"))
+		config.clustered_lights_bindless = doc["clusteredLightsBindless"].GetBool();
 	if (doc.HasMember("clusteredLightsShadows"))
 		config.clustered_lights_shadows = doc["clusteredLightsShadows"].GetBool();
 	if (doc.HasMember("clusteredLightsShadowsResolution"))
@@ -282,6 +284,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 		cluster->set_max_point_lights(config.max_point_lights);
 		cluster->set_enable_shadows(config.clustered_lights_shadows);
 		cluster->set_enable_clustering(config.clustered_lights);
+		cluster->set_enable_bindless(config.clustered_lights_bindless);
 		cluster->set_force_update_shadows(config.force_shadow_map_update);
 		cluster->set_shadow_resolution(config.clustered_lights_shadow_resolution);
 
@@ -289,6 +292,11 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 			cluster->set_shadow_type(LightClusterer::ShadowType::VSM);
 		else
 			cluster->set_shadow_type(LightClusterer::ShadowType::PCF);
+
+		if (config.clustered_lights_bindless)
+		{
+			cluster->set_resolution(1280 / 8, 720 / 8, 4 * 1024);
+		}
 	}
 
 	if (config.volumetric_fog)
@@ -302,7 +310,17 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 		rp->creator = volumetric_fog.get();
 
 		if (config.clustered_lights)
-			volumetric_fog->add_texture_dependency("light-cluster");
+		{
+			if (config.clustered_lights_bindless)
+			{
+				volumetric_fog->add_storage_buffer_dependency("cluster-bitmask");
+				volumetric_fog->add_storage_buffer_dependency("cluster-range");
+				volumetric_fog->add_storage_buffer_dependency("cluster-transforms");
+			}
+			else
+				volumetric_fog->add_texture_dependency("light-cluster");
+		}
+
 		if (config.directional_light_shadows)
 		{
 			volumetric_fog->add_texture_dependency("shadow-main");

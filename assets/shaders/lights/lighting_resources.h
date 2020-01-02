@@ -114,7 +114,7 @@ mediump float get_directional_shadow_term(
 #endif
 
 #ifdef AMBIENT_OCCLUSION
-layout(set = 1, binding = 10) uniform mediump sampler2D uAmbientOcclusion;
+layout(set = 1, binding = 6) uniform mediump sampler2D uAmbientOcclusion;
 #endif
 
 #endif

@@ -7,7 +7,7 @@
 #ifdef POSITIONAL_LIGHT_DEFERRED
 layout(std140, set = 2, binding = 0) uniform SpotParameters
 {
-    SpotShaderInfo data[256];
+    PositionalLightInfo data[256];
 } spot;
 #endif
 
@@ -24,10 +24,18 @@ layout(std140, set = 2, binding = 3) uniform SpotShadowParameters
 
 #ifdef POSITIONAL_SHADOW_VSM
 #include "vsm.h"
+#if defined(CLUSTERER_BINDLESS)
+layout(set = SPOT_LIGHT_SHADOW_ATLAS_SET, binding = 0) uniform texture2D uSpotShadowAtlas[];
+#else
 layout(set = SPOT_LIGHT_SHADOW_ATLAS_SET, binding = SPOT_LIGHT_SHADOW_ATLAS_BINDING) uniform sampler2D uSpotShadowAtlas;
+#endif
 #else
 #include "pcf.h"
+#if defined(CLUSTERER_BINDLESS)
+layout(set = SPOT_LIGHT_SHADOW_ATLAS_SET, binding = 0) uniform texture2D uSpotShadowAtlas[];
+#else
 layout(set = SPOT_LIGHT_SHADOW_ATLAS_SET, binding = SPOT_LIGHT_SHADOW_ATLAS_BINDING) uniform sampler2DShadow uSpotShadowAtlas;
+#endif
 #endif
 #endif
 
@@ -39,6 +47,9 @@ layout(set = SPOT_LIGHT_SHADOW_ATLAS_SET, binding = SPOT_LIGHT_SHADOW_ATLAS_BIND
 		#define SPOT_DATA(index) spot.data[0]
 		#define SPOT_SHADOW_TRANSFORM(index) spot_shadow.data[0]
 	#endif
+#elif defined(CLUSTERER_BINDLESS)
+	#define SPOT_DATA(index) cluster_transforms.lights[index]
+	#define SPOT_SHADOW_TRANSFORM(index) cluster_transforms.shadow[index]
 #else
 	#define SPOT_DATA(index) cluster.spots[index]
 	#define SPOT_SHADOW_TRANSFORM(index) cluster.spot_shadow[index]
@@ -56,21 +67,6 @@ mediump vec3 compute_spot_color(int index, vec3 world_pos, out mediump vec3 ligh
 {
 	vec3 light_pos = SPOT_DATA(index).position;
 	vec3 light_primary_direction = SPOT_DATA(index).direction;
-#ifdef POSITIONAL_LIGHTS_SHADOW
-	#ifdef POSITIONAL_SHADOW_VSM
-		vec4 spot_shadow_clip = SPOT_SHADOW_TRANSFORM(index) * vec4(world_pos, 1.0);
-		vec2 shadow_uv = spot_shadow_clip.xy / spot_shadow_clip.w;
-		vec2 shadow_moments = textureLod(uSpotShadowAtlas, shadow_uv, 0.0).xy;
-		float shadow_z = dot(light_primary_direction, world_pos - light_pos);
-		mediump float shadow_falloff = vsm(shadow_z, shadow_moments);
-	#else
-		vec4 spot_shadow_clip = SPOT_SHADOW_TRANSFORM(index) * vec4(world_pos, 1.0);
-		mediump float shadow_falloff;
-		SAMPLE_PCF_KERNEL(shadow_falloff, uSpotShadowAtlas, spot_shadow_clip);
-	#endif
-#else
-	const float shadow_falloff = 1.0;
-#endif
 
 	mediump vec3 light_dir_full = light_pos - world_pos;
 	light_dir = normalize(light_dir_full);
@@ -78,8 +74,38 @@ mediump vec3 compute_spot_color(int index, vec3 world_pos, out mediump vec3 ligh
 	mediump float cone_angle = dot(normalize(world_pos - light_pos), light_primary_direction);
 	mediump float cone_falloff = clamp(cone_angle * SPOT_DATA(index).spot_scale + SPOT_DATA(index).spot_bias, 0.0, 1.0);
 	cone_falloff *= cone_falloff;
-	mediump float static_falloff = shadow_falloff * (1.0 - smoothstep(0.9, 1.0, light_dist * SPOT_DATA(index).inv_radius));
-	mediump vec3 spot_color = SPOT_DATA(index).color * ((static_falloff * cone_falloff) / (light_dist * light_dist));
+	cone_falloff *= 1.0 - smoothstep(0.9, 1.0, light_dist * SPOT_DATA(index).inv_radius);
+
+	mediump vec3 spot_color;
+	if (cone_falloff > 0.0)
+	{
+#ifdef POSITIONAL_LIGHTS_SHADOW
+	#ifdef POSITIONAL_SHADOW_VSM
+		vec4 spot_shadow_clip = SPOT_SHADOW_TRANSFORM(index) * vec4(world_pos, 1.0);
+		vec2 shadow_uv = spot_shadow_clip.xy / spot_shadow_clip.w;
+		#ifdef CLUSTERER_BINDLESS
+			vec2 shadow_moments = textureLod(sampler2D(uSpotShadowAtlas[nonuniformEXT(index)], LinearClampSampler), shadow_uv, 0.0).xy;
+		#else
+			vec2 shadow_moments = textureLod(uSpotShadowAtlas, shadow_uv, 0.0).xy;
+		#endif
+		float shadow_z = dot(light_primary_direction, world_pos - light_pos);
+		mediump float shadow_falloff = vsm(shadow_z, shadow_moments);
+	#else
+		vec4 spot_shadow_clip = SPOT_SHADOW_TRANSFORM(index) * vec4(world_pos, 1.0);
+		mediump float shadow_falloff;
+		#ifdef CLUSTERER_BINDLESS
+			SAMPLE_PCF_KERNEL_BINDLESS(shadow_falloff, uSpotShadowAtlas, index, spot_shadow_clip);
+		#else
+			SAMPLE_PCF_KERNEL(shadow_falloff, uSpotShadowAtlas, spot_shadow_clip);
+		#endif
+	#endif
+#else
+		const float shadow_falloff = 1.0;
+#endif
+		spot_color = SPOT_DATA(index).color * ((cone_falloff * shadow_falloff) / (light_dist * light_dist));
+	}
+	else
+		spot_color = vec3(0.0);
 
 	return spot_color;
 }
@@ -105,6 +131,9 @@ mediump vec3 compute_spot_light(int index,
 #ifdef SPOT_LIGHT_EARLY_OUT
 	if (all(equal(spot_color, vec3(0.0))))
 		discard;
+#else
+	if (all(equal(spot_color, vec3(0.0))))
+		return spot_color;
 #endif
 
 	mediump float roughness = material_roughness * 0.75 + 0.25;

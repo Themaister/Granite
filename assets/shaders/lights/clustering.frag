@@ -15,6 +15,7 @@ layout(std430, push_constant) uniform Registers
 {
     vec4 inverse_view_projection_col2;
     vec3 camera_pos;
+    vec2 inv_resolution;
 } registers;
 
 void main()
@@ -31,5 +32,9 @@ void main()
 
     FragColor = compute_cluster_light(
 		base_color_ambient.rgb, N, mr.x, mr.y,
-		pos, registers.camera_pos);
+		pos, registers.camera_pos
+#ifdef CLUSTERER_BINDLESS
+        , registers.inv_resolution
+#endif
+    );
 }

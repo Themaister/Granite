@@ -46,26 +46,12 @@ enum PositionalLightVariantBits
 	POSITIONAL_VARIANT_VSM_BIT = 1 << 3
 };
 
-struct LightCookie
-{
-	LightCookie() noexcept
-	{
-		count.store(0);
-	}
-
-	unsigned get_cookie()
-	{
-		return count.fetch_add(1, std::memory_order_relaxed) + 1;
-	}
-
-	std::atomic_uint count;
-};
-static LightCookie light_cookie;
+static std::atomic_uint light_cookie_count;
 
 PositionalLight::PositionalLight(Type type_)
 	: type(type_)
 {
-	cookie = light_cookie.get_cookie();
+	cookie = light_cookie_count.fetch_add(1, std::memory_order_relaxed) + 1;
 }
 
 void PositionalLight::set_color(vec3 color_)
@@ -112,6 +98,12 @@ void SpotLight::set_shadow_info(const Vulkan::ImageView *shadow, const mat4 &tra
 {
 	atlas = shadow;
 	shadow_transform = transform;
+}
+
+mat4 SpotLight::build_model_matrix(const mat4 &transform) const
+{
+	float max_range = min(falloff_range, cutoff_range);
+	return transform * scale(vec3(xy_range * max_range, xy_range * max_range, max_range));
 }
 
 PositionalFragmentInfo SpotLight::get_shader_info(const mat4 &transform) const
@@ -353,8 +345,7 @@ void SpotLight::get_depth_render_info(const RenderContext &, const RenderInfoCom
 	auto sorting_key = h.get();
 	auto *spot = queue.allocate_one<PositionalShaderInfo>();
 
-	float max_range = min(falloff_range, cutoff_range);
-	spot->vertex.model = transform->transform->world_transform * scale(vec3(xy_range * max_range, xy_range * max_range, max_range));
+	spot->vertex.model = build_model_matrix(transform->transform->world_transform);
 
 	auto *spot_info = queue.push<PositionalLightRenderInfo>(Queue::Opaque, instance_key, sorting_key,
 	                                                        func, spot);
@@ -431,8 +422,7 @@ void SpotLight::get_render_info(const RenderContext &context, const RenderInfoCo
 
 	auto *spot = queue.allocate_one<PositionalShaderInfo>();
 
-	float max_range = min(falloff_range, cutoff_range);
-	spot->vertex.model = transform->transform->world_transform * scale(vec3(xy_range * max_range, xy_range * max_range, max_range));
+	spot->vertex.model = build_model_matrix(transform->transform->world_transform);
 	spot->fragment = get_shader_info(transform->transform->world_transform);
 	spot->u.shadow_transform = shadow_transform;
 
@@ -615,4 +605,45 @@ void PointLight::get_render_info(const RenderContext &context, const RenderInfoC
 	}
 }
 
+vec2 point_light_z_range(const RenderContext &context, const vec3 &center, float radius)
+{
+	auto &pos = context.get_render_parameters().camera_position;
+	auto &front = context.get_render_parameters().camera_front;
+
+	float z = dot(center - pos, front);
+	return vec2(z - radius, z + radius);
+}
+
+vec2 spot_light_z_range(const RenderContext &context, const mat4 &model)
+{
+	auto &pos = context.get_render_parameters().camera_position;
+	auto &front = context.get_render_parameters().camera_front;
+
+	float lo = std::numeric_limits<float>::infinity();
+	float hi = -lo;
+
+	vec3 base_pos = model[3].xyz();
+	vec3 x_off = model[0].xyz();
+	vec3 y_off = model[1].xyz();
+	vec3 z_off = -model[2].xyz();
+
+	vec3 z_base = base_pos + z_off;
+
+	const vec3 world_pos[5] = {
+			base_pos,
+			z_base + x_off + y_off,
+			z_base - x_off + y_off,
+			z_base + x_off - y_off,
+			z_base - x_off - y_off,
+	};
+
+	for (auto &p : world_pos)
+	{
+		float z = dot(p - pos, front);
+		lo = muglm::min(z, lo);
+		hi = muglm::max(z, hi);
+	}
+
+	return vec2(lo, hi);
+}
 }

@@ -1356,11 +1356,6 @@ void LightClusterer::update_bindless_mask_buffer_point(uint32_t *masks)
 		auto &clip_transform = projection.clip_transform;
 		auto &ellipsis = projection.ellipsis;
 
-		LOGI("Ranges: X: [%.3f, %.3f], Y: [%.3f, %.3f]\n",
-		     ranges.x, ranges.y, ranges.z, ranges.w);
-		LOGI("Transformed ranges: X: [%.3f, %.3f], Y: [%.3f, %.3f]\n",
-		     transformed_ranges.x, transformed_ranges.y, transformed_ranges.z, transformed_ranges.w);
-
 		// Compute screen-space BB for projected sphere.
 		ranges = ranges *
 		         vec4(context->get_render_parameters().projection[0][0],

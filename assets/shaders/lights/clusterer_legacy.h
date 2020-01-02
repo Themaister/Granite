@@ -1,10 +1,10 @@
 #ifndef CLUSTERER_LEGACY_H_
 #define CLUSTERER_LEGACY_H_
 
-#define SPOT_LIGHT_SHADOW_ATLAS_SET 1
-#define SPOT_LIGHT_SHADOW_ATLAS_BINDING 7
-#define POINT_LIGHT_SHADOW_ATLAS_SET 1
-#define POINT_LIGHT_SHADOW_ATLAS_BINDING 8
+#define SPOT_LIGHT_SHADOW_ATLAS_SET 0
+#define SPOT_LIGHT_SHADOW_ATLAS_BINDING 4
+#define POINT_LIGHT_SHADOW_ATLAS_SET 0
+#define POINT_LIGHT_SHADOW_ATLAS_BINDING 5
 
 layout(std140, set = 0, binding = 2) uniform ClusterParameters
 {
@@ -14,9 +14,9 @@ layout(std140, set = 0, binding = 2) uniform ClusterParameters
 #include "spot.h"
 #include "point.h"
 
-layout(set = 1, binding = 6) uniform usampler3D uCluster;
+layout(set = 0, binding = 3) uniform usampler3D uCluster;
 #ifdef CLUSTER_LIST
-layout(std430, set = 1, binding = 9) readonly buffer ClusterList
+layout(std430, set = 0, binding = 6) readonly buffer ClusterList
 {
 	int elements[];
 } cluster_list;

@@ -282,7 +282,7 @@ static void set_cluster_parameters_legacy(Vulkan::CommandBuffer &cmd, const Ligh
 	auto &params = *cmd.allocate_typed_constant_data<ClustererParametersLegacy>(0, 2, 1);
 	memset(&params, 0, sizeof(params));
 
-	cmd.set_texture(1, 6, *cluster.get_cluster_image(), StockSampler::NearestClamp);
+	cmd.set_texture(0, 3, *cluster.get_cluster_image(), StockSampler::NearestClamp);
 
 	params.transform = cluster.get_cluster_transform();
 	memcpy(params.spots, cluster.get_active_spot_lights(),
@@ -297,8 +297,8 @@ static void set_cluster_parameters_legacy(Vulkan::CommandBuffer &cmd, const Ligh
 		auto point_sampler = format_has_depth_or_stencil_aspect(cluster.get_point_light_shadows()->get_format()) ?
 		                     StockSampler::LinearShadow : StockSampler::LinearClamp;
 
-		cmd.set_texture(1, 7, *cluster.get_spot_light_shadows(), spot_sampler);
-		cmd.set_texture(1, 8, *cluster.get_point_light_shadows(), point_sampler);
+		cmd.set_texture(0, 4, *cluster.get_spot_light_shadows(), spot_sampler);
+		cmd.set_texture(0, 5, *cluster.get_point_light_shadows(), point_sampler);
 
 		memcpy(params.spot_shadow_transforms, cluster.get_active_spot_light_shadow_matrices(),
 		       cluster.get_active_spot_light_count() * sizeof(mat4));
@@ -308,7 +308,7 @@ static void set_cluster_parameters_legacy(Vulkan::CommandBuffer &cmd, const Ligh
 	}
 
 	if (cluster.get_cluster_list_buffer())
-		cmd.set_storage_buffer(1, 9, *cluster.get_cluster_list_buffer());
+		cmd.set_storage_buffer(0, 6, *cluster.get_cluster_list_buffer());
 }
 
 static void set_cluster_parameters_bindless(Vulkan::CommandBuffer &cmd, const LightClusterer &cluster)
@@ -379,11 +379,11 @@ void Renderer::bind_lighting_parameters(Vulkan::CommandBuffer &cmd, const Render
 		cmd.set_texture(1, 4, *lighting->shadow_near, sampler);
 	}
 
+	if (lighting->ambient_occlusion)
+		cmd.set_texture(1, 6, *lighting->ambient_occlusion, StockSampler::LinearClamp);
+
 	if (lighting->cluster && (lighting->cluster->get_cluster_image() || lighting->cluster->get_cluster_bitmask_buffer()))
 		set_cluster_parameters(cmd, *lighting->cluster);
-
-	if (lighting->ambient_occlusion)
-		cmd.set_texture(1, 10, *lighting->ambient_occlusion, StockSampler::LinearClamp);
 }
 
 void Renderer::set_stencil_reference(uint8_t compare_mask, uint8_t write_mask, uint8_t ref)
@@ -650,7 +650,7 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderConte
 	}
 
 	if (light.ambient_occlusion)
-		cmd.set_texture(1, 10, *light.ambient_occlusion, Vulkan::StockSampler::LinearClamp);
+		cmd.set_texture(1, 6, *light.ambient_occlusion, Vulkan::StockSampler::LinearClamp);
 
 	struct DirectionalLightPush
 	{

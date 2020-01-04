@@ -13,7 +13,7 @@ layout(std140, set = 1, binding = 0) uniform ClustererParameters
 const uint MAX_TRIANGLES = 8;
 struct CullSetup
 {
-    vec4 data[3 * MAX_TRIANGLES];
+    vec4 data[4 * MAX_TRIANGLES];
 };
 
 layout(std430, set = 0, binding = 0) readonly buffer ClusterTransforms

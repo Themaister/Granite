@@ -1886,7 +1886,7 @@ void LightClusterer::add_render_passes_bindless(RenderGraph &graph)
 		}
 
 		{
-			att.size = sizeof(vec4) * 3 * 8 * MaxLights;
+			att.size = sizeof(vec4) * 4 * 8 * MaxLights;
 			pass.add_storage_output("cluster-cull-setup", att);
 		}
 

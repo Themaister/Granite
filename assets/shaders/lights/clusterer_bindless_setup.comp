@@ -24,7 +24,7 @@ const uint MAX_TRIANGLES = 8;
 
 struct CullSetup
 {
-    vec4 data[3 * MAX_TRIANGLES];
+    vec4 data[4 * MAX_TRIANGLES];
 };
 
 struct TransformedSpot
@@ -126,7 +126,7 @@ void setup_triangle(inout uint num_triangles, mat3x2 triangle, float cull)
     vec2 bc = c2 - c1;
     vec2 ca = c0 - c2;
     float z = cross_2d(ab, -ca);
-    if (sign(cull) == sign(z))
+    if (abs(z) < 0.000001 || sign(cull) == sign(z))
         return;
 
     float inv_z = 1.0 / z;
@@ -137,9 +137,10 @@ void setup_triangle(inout uint num_triangles, mat3x2 triangle, float cull)
 
     if (num_triangles < MAX_TRIANGLES)
     {
-        culling_setup.data[gl_GlobalInvocationID.x].data[3u * num_triangles] = vec4(base, 0.0);
-        culling_setup.data[gl_GlobalInvocationID.x].data[3u * num_triangles + 1u] = vec4(dx, 0.0);
-        culling_setup.data[gl_GlobalInvocationID.x].data[3u * num_triangles + 2u] = vec4(dy, 0.0);
+        culling_setup.data[gl_GlobalInvocationID.x].data[4u * num_triangles] = vec4(base, 0.0);
+        culling_setup.data[gl_GlobalInvocationID.x].data[4u * num_triangles + 1u] = vec4(dx, z);
+        culling_setup.data[gl_GlobalInvocationID.x].data[4u * num_triangles + 2u] = vec4(dy, inv_z);
+        culling_setup.data[gl_GlobalInvocationID.x].data[4u * num_triangles + 3u] = vec4(min(min(c0, c1), c2), max(max(c0, c1), c2));
     }
     num_triangles++;
 }
@@ -301,21 +302,26 @@ void main()
     }
     else
     {
-        uint num_triangles = 0u;
-        vec4 c0 = transformed.spots[index].clip[0];
-        vec4 c1 = transformed.spots[index].clip[1];
-        vec4 c2 = transformed.spots[index].clip[2];
-        vec4 c3 = transformed.spots[index].clip[3];
-        vec4 c4 = transformed.spots[index].clip[4];
         vec4 z = transformed.spots[index].z;
+        if (z.x != 0.0)
+        {
+            uint num_triangles = 0u;
+            vec4 c0 = transformed.spots[index].clip[0];
+            vec4 c1 = transformed.spots[index].clip[1];
+            vec4 c2 = transformed.spots[index].clip[2];
+            vec4 c3 = transformed.spots[index].clip[3];
+            vec4 c4 = transformed.spots[index].clip[4];
 
-        setup_triangle(num_triangles, c0, c1, c2, z.x);
-        setup_triangle(num_triangles, c0, c2, c3, z.x);
-        setup_triangle(num_triangles, c0, c3, c4, z.x);
-        setup_triangle(num_triangles, c0, c4, c1, z.x);
-        setup_triangle(num_triangles, c2, c1, c3, z.x);
-        setup_triangle(num_triangles, c4, c3, c1, z.x);
+            setup_triangle(num_triangles, c0, c1, c2, z.x);
+            setup_triangle(num_triangles, c0, c2, c3, z.x);
+            setup_triangle(num_triangles, c0, c3, c4, z.x);
+            setup_triangle(num_triangles, c0, c4, c1, z.x);
+            setup_triangle(num_triangles, c2, c1, c3, z.x);
+            setup_triangle(num_triangles, c4, c3, c1, z.x);
 
-        culling_setup.data[index].data[0].w = uintBitsToFloat(num_triangles);
+            culling_setup.data[index].data[0].w = uintBitsToFloat(num_triangles);
+        }
+        else
+            culling_setup.data[index].data[0].w = uintBitsToFloat(0xffffffffu);
     }
 }

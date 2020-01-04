@@ -102,6 +102,32 @@ void main()
         }
         else
         {
+            uint num_triangles = floatBitsToUint(culling_setup.data[light_index].data[0].w);
+            if (num_triangles <= MAX_TRIANGLES)
+            {
+                for (uint i = 0; i < num_triangles; i++)
+                {
+                    vec4 lohi = culling_setup.data[light_index].data[4u * i + 3u];
+                    if (all(bvec4(greaterThan(uv + uv_stride, lohi.xy), lessThan(uv, lohi.zw))))
+                    {
+                        vec3 base = culling_setup.data[light_index].data[4u * i].xyz;
+                        vec3 dx = culling_setup.data[light_index].data[4u * i + 1u].xyz;
+                        vec3 dy = culling_setup.data[light_index].data[4u * i + 2u].xyz;
+
+                        base += dx * uv.x;
+                        base += dy * uv.y;
+                        base += mix(vec3(0.0), uv_stride.x * dx, greaterThan(dx, vec3(0.0)));
+                        base += mix(vec3(0.0), uv_stride.y * dy, greaterThan(dy, vec3(0.0)));
+                        if (all(greaterThan(base, vec3(0.0))))
+                        {
+                            atomicOr(shared_mask, 1u << local_index);
+                            break;
+                        }
+                    }
+                }
+            }
+            else
+                atomicOr(shared_mask, 1u << local_index);
         }
     }
 

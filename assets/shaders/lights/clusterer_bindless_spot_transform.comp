@@ -2,6 +2,9 @@
 
 layout(local_size_x = 64) in;
 
+#define CLUSTERER_BINDLESS
+#include "clusterer_data.h"
+
 layout(push_constant) uniform Registers
 {
     mat4 vp;
@@ -12,15 +15,15 @@ layout(push_constant) uniform Registers
     float z_far;
 } registers;
 
-layout(std430, set = 0, binding = 0) readonly buffer SpotsTransforms
-{
-    mat4 transforms[];
-} model;
-
 struct TransformedSpot
 {
     vec4 clip[5];
     vec4 z;
+};
+
+layout(std430, set = 0, binding = 0) readonly buffer ClustererData
+{
+    ClustererBindlessTransforms cluster_transforms;
 };
 
 layout(std430, set = 0, binding = 1) writeonly buffer TransformedSpots
@@ -34,7 +37,7 @@ void main()
     if (index >= registers.num_lights)
         return;
 
-    mat4 m = model.transforms[index];
+    mat4 m = cluster_transforms.model[index];
     vec3 p[5];
     p[0] = m[3].xyz;
     vec3 pz = p[0] - m[2].xyz;

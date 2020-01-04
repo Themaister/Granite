@@ -111,7 +111,8 @@ private:
 	unsigned max_point_lights = MaxLights;
 	void build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view, const Vulkan::ImageView *pre_culled);
 	void build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view);
-	void build_cluster_bindless(Vulkan::CommandBuffer &cmd);
+	void build_cluster_bindless_cpu(Vulkan::CommandBuffer &cmd);
+	void build_cluster_bindless_gpu(Vulkan::CommandBuffer &cmd);
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
 
@@ -205,7 +206,6 @@ private:
 		unsigned count = 0;
 		ClustererParametersBindless parameters;
 		ClustererBindlessTransforms transforms;
-		mat4 model_transforms[MaxLights] = {};
 		PositionalLight *handles[MaxLights] = {};
 
 		Vulkan::BindlessDescriptorPoolHandle descriptor_pool;
@@ -214,6 +214,10 @@ private:
 		const Vulkan::Buffer *bitmask_buffer = nullptr;
 		const Vulkan::Buffer *range_buffer = nullptr;
 		const Vulkan::Buffer *transforms_buffer = nullptr;
+
+		const Vulkan::Buffer *transformed_spots = nullptr;
+		const Vulkan::Buffer *cull_data = nullptr;
+
 		VkDescriptorSet desc_set = VK_NULL_HANDLE;
 
 		std::vector<uvec2> light_index_range;
@@ -226,7 +230,8 @@ private:
 
 	void update_bindless_descriptors(Vulkan::CommandBuffer &cmd);
 	void update_bindless_range_buffer(Vulkan::CommandBuffer &cmd);
-	void update_bindless_mask_buffer(Vulkan::CommandBuffer &cmd);
+	void update_bindless_mask_buffer_cpu(Vulkan::CommandBuffer &cmd);
+	void update_bindless_mask_buffer_gpu(Vulkan::CommandBuffer &cmd);
 	void update_bindless_mask_buffer_spot(uint32_t *masks, unsigned index);
 	void update_bindless_mask_buffer_point(uint32_t *masks, unsigned index);
 	void begin_bindless_barriers(Vulkan::CommandBuffer &cmd);

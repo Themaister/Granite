@@ -10,6 +10,11 @@ layout(push_constant) uniform Registers
     uint num_lights;
 } registers;
 
+layout(std140, set = 1, binding = 0) uniform ClustererParameters
+{
+    ClustererParametersBindless parameters;
+};
+
 layout(std430, set = 0, binding = 0) readonly buffer ClustererData
 {
     ClustererBindlessTransforms cluster_transforms;
@@ -22,21 +27,21 @@ struct CullSetup
     vec4 data[3 * MAX_TRIANGLES];
 };
 
-layout(std430, set = 0, binding = 2) writeonly buffer CullingSetup
-{
-    CullSetup data[];
-} culling_setup;
-
 struct TransformedSpot
 {
     vec4 clip[5];
     vec4 z;
 };
 
-layout(std430, set = 0, binding = 3) readonly buffer TransformedSpots
+layout(std430, set = 0, binding = 1) readonly buffer TransformedSpots
 {
     TransformedSpot spots[];
 } transformed;
+
+layout(std430, set = 0, binding = 2) writeonly buffer CullingSetup
+{
+    CullSetup data[];
+} culling_setup;
 
 vec2 project_sphere_flat(float view_xy, float view_z, float radius)
 {

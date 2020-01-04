@@ -125,6 +125,7 @@ struct ClustererBindlessTransforms
 {
 	PositionalFragmentInfo lights[CLUSTERER_MAX_LIGHTS_BINDLESS];
 	mat4 shadow[CLUSTERER_MAX_LIGHTS_BINDLESS];
+	mat4 model[CLUSTERER_MAX_LIGHTS_BINDLESS];
 	uint32_t type_mask[CLUSTERER_MAX_LIGHTS_BINDLESS / 32];
 };
 

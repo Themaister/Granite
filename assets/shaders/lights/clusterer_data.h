@@ -40,6 +40,7 @@ struct ClustererBindlessTransforms
 {
 	PositionalLightInfo lights[CLUSTERER_MAX_LIGHTS];
 	mat4 shadow[CLUSTERER_MAX_LIGHTS];
+	mat4 model[CLUSTERER_MAX_LIGHTS];
 	uint type_mask[CLUSTERER_MAX_LIGHTS / 32];
 };
 #else

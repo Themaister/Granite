@@ -1,14 +1,13 @@
 #version 450
 layout(local_size_x = 64) in;
 
+#define CLUSTERER_BINDLESS
 #include "clusterer_data.h"
 
 layout(push_constant) uniform Registers
 {
     mat4 view;
-    vec3 camera_pos;
     uint num_lights;
-    vec3 camera_front;
 } registers;
 
 layout(std430, set = 0, binding = 0) readonly buffer ClustererData
@@ -16,20 +15,28 @@ layout(std430, set = 0, binding = 0) readonly buffer ClustererData
     ClustererBindlessTransforms cluster_transforms;
 };
 
-layout(std430, set = 0, binding = 1) readonly buffer SpotTransforms
-{
-    mat4 model[];
-} spot_transforms;
+const uint MAX_TRIANGLES = 8;
 
 struct CullSetup
 {
-    vec4 data[4];
+    vec4 data[3 * MAX_TRIANGLES];
 };
 
 layout(std430, set = 0, binding = 2) writeonly buffer CullingSetup
 {
     CullSetup data[];
 } culling_setup;
+
+struct TransformedSpot
+{
+    vec4 clip[5];
+    vec4 z;
+};
+
+layout(std430, set = 0, binding = 3) readonly buffer TransformedSpots
+{
+    TransformedSpot spots[];
+} transformed;
 
 vec2 project_sphere_flat(float view_xy, float view_z, float radius)
 {
@@ -55,6 +62,186 @@ vec2 project_sphere_flat(float view_xy, float view_z, float radius)
         result = vec2(-1.0 / 0.0, +1.0 / 0.0);
 
     return result;
+}
+
+void clip_single_output(out mat3x2 clipped, vec3 c0, vec3 c1, vec3 c2, float target)
+{
+    float la = (target - c0.z) / (c2.z - c0.z);
+    float lb = (target - c1.z) / (c2.z - c1.z);
+    c0 = mix(c0, c2, la);
+    c1 = mix(c1, c2, lb);
+    clipped = mat3x2(c0.xy, c1.xy, c2.xy);
+}
+
+void clip_dual_output(out mat3x2 clipped0, out mat3x2 clipped1, vec3 c0, vec3 c1, vec3 c2, float target)
+{
+    float l_ab = (target - c0.z) / (c1.z - c0.z);
+    float l_ac = (target - c0.z) / (c2.z - c0.z);
+
+    vec3 ab = mix(c0, c1, l_ab);
+    vec3 ac = mix(c0, c2, l_ac);
+
+    clipped0 = mat3x2(ab.xy, c1.xy, ac.xy);
+    clipped1 = mat3x2(ac.xy, c1.xy, c2.xy);
+}
+
+void clip_single_output(out mat3 clipped, vec4 c0, vec4 c1, vec4 c2, float target)
+{
+    float la = (target - c0.w) / (c2.w - c0.w);
+    float lb = (target - c1.w) / (c2.w - c1.w);
+    c0 = mix(c0, c2, la);
+    c1 = mix(c1, c2, lb);
+    clipped = mat3(c0.xyz / target, c1.xyz / target, c2.xyz / c2.w);
+}
+
+void clip_dual_output(out mat3 clipped0, out mat3 clipped1, vec4 c0, vec4 c1, vec4 c2, float target)
+{
+    float l_ab = (target - c0.w) / (c1.w - c0.w);
+    float l_ac = (target - c0.w) / (c2.w - c0.w);
+
+    vec4 ab = mix(c0, c1, l_ab);
+    vec4 ac = mix(c0, c2, l_ac);
+
+    clipped0 = mat3(ab.xyz / target, c1.xyz / c1.w, ac.xyz / target);
+    clipped1 = mat3(ac.xyz / target, c1.xyz / c1.w, c2.xyz / c2.w);
+}
+
+float cross_2d(vec2 a, vec2 b)
+{
+    return a.x * b.y - a.y * b.x;
+}
+
+void setup_triangle(inout uint num_triangles, mat3x2 triangle, float cull)
+{
+    vec2 c0 = triangle[0] * 0.5 + 0.5;
+    vec2 c1 = triangle[1] * 0.5 + 0.5;
+    vec2 c2 = triangle[2] * 0.5 + 0.5;
+
+    vec2 ab = c1 - c0;
+    vec2 bc = c2 - c1;
+    vec2 ca = c0 - c2;
+    float z = cross_2d(ab, -ca);
+    if (sign(cull) == sign(z))
+        return;
+
+    float inv_z = 1.0 / z;
+
+    vec3 base = inv_z * vec3(cross_2d(ab, -c0), cross_2d(bc, -c1), cross_2d(ca, -c2));
+    vec3 dx = inv_z * vec3(-ab.y, -bc.y, -ca.y);
+    vec3 dy = inv_z * vec3(ab.x, bc.x, ca.x);
+
+    if (num_triangles < MAX_TRIANGLES)
+    {
+        culling_setup.data[gl_GlobalInvocationID.x].data[3u * num_triangles] = vec4(base, 0.0);
+        culling_setup.data[gl_GlobalInvocationID.x].data[3u * num_triangles + 1u] = vec4(dx, 0.0);
+        culling_setup.data[gl_GlobalInvocationID.x].data[3u * num_triangles + 2u] = vec4(dy, 0.0);
+    }
+    num_triangles++;
+}
+
+void setup_triangle(inout uint num_triangles, mat3 triangle, float cull)
+{
+    vec3 c0 = triangle[0];
+    vec3 c1 = triangle[1];
+    vec3 c2 = triangle[2];
+
+    bvec3 clip_z = greaterThan(vec3(c0.z, c1.z, c2.z), vec3(1.0));
+    uint clip_code = uint(clip_z.x) + uint(clip_z.y) * 2u + uint(clip_z.z) * 4u;
+    mat3x2 clipped0, clipped1;
+    bool dual = false;
+
+    switch (clip_code)
+    {
+    case 0:
+        clipped0 = mat3x2(c0.xy, c1.xy, c2.xy);
+        break;
+
+    case 1:
+        clip_dual_output(clipped0, clipped1, c0, c1, c2, 1.0);
+        dual = true;
+        break;
+
+    case 2:
+        clip_dual_output(clipped0, clipped1, c1, c2, c0, 1.0);
+        dual = true;
+        break;
+
+    case 4:
+        clip_dual_output(clipped0, clipped1, c2, c0, c1, 1.0);
+        dual = true;
+        break;
+
+    case 3:
+        clip_single_output(clipped0, c0, c1, c2, 1.0);
+        break;
+
+    case 5:
+        clip_single_output(clipped0, c2, c0, c1, 1.0);
+        break;
+
+    case 6:
+        clip_single_output(clipped0, c1, c2, c0, 1.0);
+        break;
+
+    case 7:
+        return;
+    }
+
+    setup_triangle(num_triangles, clipped0, cull);
+    if (dual)
+        setup_triangle(num_triangles, clipped1, cull);
+}
+
+void setup_triangle(inout uint num_triangles, vec4 c0, vec4 c1, vec4 c2, float cull)
+{
+    const float MIN_W = 1.0 / 1024.0;
+    bvec3 clip_w = lessThan(vec3(c0.w, c1.w, c2.w), vec3(MIN_W));
+    uint clip_code = uint(clip_w.x) + uint(clip_w.y) * 2u + uint(clip_w.z) * 4u;
+
+    mat3 clipped0;
+    mat3 clipped1;
+    bool dual = false;
+
+    switch (clip_code)
+    {
+    case 0:
+        clipped0 = mat3(c0.xyz / c0.w, c1.xyz / c1.w, c2.xyz / c2.w);
+        break;
+
+    case 1:
+        clip_dual_output(clipped0, clipped1, c0, c1, c2, MIN_W);
+        dual = true;
+        break;
+
+    case 2:
+        clip_dual_output(clipped0, clipped1, c1, c2, c0, MIN_W);
+        dual = true;
+        break;
+
+    case 4:
+        clip_dual_output(clipped0, clipped1, c2, c0, c1, MIN_W);
+        dual = true;
+        break;
+
+    case 3:
+        clip_single_output(clipped0, c0, c1, c2, MIN_W);
+        break;
+
+    case 5:
+        clip_single_output(clipped0, c2, c0, c1, MIN_W);
+        break;
+
+    case 6:
+        clip_single_output(clipped0, c1, c2, c0, MIN_W);
+        break;
+
+    case 7:
+        return;
+    }
+
+    setup_triangle(num_triangles, clipped0, cull);
+    if (dual)
+        setup_triangle(num_triangles, clipped1, cull);
 }
 
 void main()
@@ -95,14 +282,30 @@ void main()
         bool ellipsis = all(not(isinf(transformed_ranges)));
 
         vec2 center = (transformed_ranges.xz + transformed_ranges.yw) * 0.5;
-        vec2 radius = transformed_ranges.yw - center;
+        vec2 ellipse_radius = transformed_ranges.yw - center;
 
         culling_setup.data[index].data[0] = ranges;
         culling_setup.data[index].data[1] = transformed_ranges;
         culling_setup.data[index].data[2] = vec4(clip_transform[0], clip_transform[1]);
-        culling_setup.data[index].data[3] = vec4(float(ellipsis), 1.0 / radius.xy, 0.0);
+        culling_setup.data[index].data[3] = vec4(float(ellipsis), 1.0 / ellipse_radius.xy, 0.0);
     }
     else
     {
+        uint num_triangles = 0u;
+        vec4 c0 = transformed.spots[index].clip[0];
+        vec4 c1 = transformed.spots[index].clip[1];
+        vec4 c2 = transformed.spots[index].clip[2];
+        vec4 c3 = transformed.spots[index].clip[3];
+        vec4 c4 = transformed.spots[index].clip[4];
+        vec4 z = transformed.spots[index].z;
+
+        setup_triangle(num_triangles, c0, c1, c2, z.x);
+        setup_triangle(num_triangles, c0, c2, c3, z.x);
+        setup_triangle(num_triangles, c0, c3, c4, z.x);
+        setup_triangle(num_triangles, c0, c4, c1, z.x);
+        setup_triangle(num_triangles, c2, c1, c3, z.x);
+        setup_triangle(num_triangles, c4, c3, c1, z.x);
+
+        culling_setup.data[index].data[0].w = uintBitsToFloat(num_triangles);
     }
 }

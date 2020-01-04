@@ -1,0 +1,69 @@
+#version 450
+
+layout(local_size_x = 64) in;
+
+layout(push_constant) uniform Registers
+{
+    mat4 vp;
+    vec3 camera_pos;
+    uint num_lights;
+    vec3 camera_front;
+    float z_near;
+    float z_far;
+} registers;
+
+layout(std430, set = 0, binding = 0) readonly buffer SpotsTransforms
+{
+    mat4 transforms[];
+} model;
+
+struct TransformedSpot
+{
+    vec4 clip[5];
+    vec4 z;
+};
+
+layout(std430, set = 0, binding = 1) writeonly buffer TransformedSpots
+{
+    TransformedSpot spots[];
+} transformed;
+
+void main()
+{
+    uint index = gl_GlobalInvocationID.x;
+    if (index >= registers.num_lights)
+        return;
+
+    mat4 m = model.transforms[index];
+    vec3 p[5];
+    p[0] = m[3].xyz;
+    vec3 pz = p[0] - m[2].xyz;
+    p[1] = pz + m[0].xyz + m[1].xyz;
+    p[2] = pz - m[0].xyz + m[1].xyz;
+    p[3] = pz - m[0].xyz - m[1].xyz;
+    p[4] = pz + m[0].xyz - m[1].xyz;
+
+    float z[5];
+    for (int i = 0; i < 5; i++)
+        z[i] = dot(p[i] - registers.camera_pos, registers.camera_front);
+
+    float z_lo = z[0];
+    float z_hi = z[0];
+    for (int i = 1; i < 5; i++)
+    {
+        z_lo = min(z_lo, z[i]);
+        z_hi = max(z_hi, z[i]);
+    }
+
+    float cull;
+    if (z_lo <= registers.z_near && z_hi >= registers.z_far)
+        cull = 0.0;
+    else if (z_lo <= registers.z_near)
+        cull = -1.0;
+    else
+        cull = 1.0;
+
+    for (int i = 0; i < 5; i++)
+        transformed.spots[index].clip[i] = registers.vp * vec4(p[i], 1.0);
+    transformed.spots[index].z = vec4(cull, z_lo, z_hi, 0.0);
+}

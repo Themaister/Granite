@@ -21,11 +21,14 @@ struct PositionalLightInfo
 struct ClustererParametersBindless
 {
 	mat4 transform;
+	vec4 clip_scale;
+
 	vec3 camera_base;
 	vec3 camera_front;
 
 	vec2 xy_scale;
 	ivec2 resolution_xy;
+	vec2 inv_resolution_xy;
 
 	int num_lights;
 	int num_lights_32;

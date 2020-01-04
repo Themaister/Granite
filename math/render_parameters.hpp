@@ -106,11 +106,13 @@ struct ClustererParametersLegacy
 struct ClustererParametersBindless
 {
 	alignas(16) mat4 transform;
+	alignas(16) vec4 clip_scale;
 	alignas(16) vec3 camera_base;
 	alignas(16) vec3 camera_front;
 
 	alignas(8) vec2 xy_scale;
 	alignas(8) ivec2 resolution_xy;
+	alignas(8) vec2 inv_resolution_xy;
 
 	uint32_t num_lights;
 	uint32_t num_lights_32;

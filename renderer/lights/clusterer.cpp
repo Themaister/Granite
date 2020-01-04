@@ -999,6 +999,12 @@ void LightClusterer::refresh_bindless(RenderContext &context_)
 	bindless.count = index;
 
 	float z_slice_size = context_.get_render_parameters().z_far / float(resolution_z);
+	bindless.parameters.clip_scale =
+			vec4(context_.get_render_parameters().projection[0][0],
+			     -context_.get_render_parameters().projection[1][1],
+			     context_.get_render_parameters().inv_projection[0][0],
+			     -context_.get_render_parameters().inv_projection[1][1]);
+
 	bindless.parameters.transform = translate(vec3(0.5f, 0.5f, 0.0f)) *
 	                                scale(vec3(0.5f, 0.5f, 1.0f)) *
 	                                context_.get_render_parameters().view_projection;
@@ -1006,6 +1012,7 @@ void LightClusterer::refresh_bindless(RenderContext &context_)
 	bindless.parameters.camera_base = context_.get_render_parameters().camera_position;
 	bindless.parameters.xy_scale = vec2(resolution_x, resolution_y);
 	bindless.parameters.resolution_xy = ivec2(resolution_x, resolution_y);
+	bindless.parameters.inv_resolution_xy = vec2(1.0f / resolution_x, 1.0f / resolution_y);
 	bindless.parameters.z_scale = 1.0f / z_slice_size;
 	bindless.parameters.z_max_index = resolution_z - 1;
 	bindless.parameters.num_lights = bindless.count;

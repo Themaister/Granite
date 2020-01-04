@@ -113,9 +113,9 @@ float cross_2d(vec2 a, vec2 b)
 
 void setup_triangle(inout uint num_triangles, mat3x2 triangle, float cull)
 {
-    vec2 c0 = triangle[0] * 0.5 + 0.5;
-    vec2 c1 = triangle[1] * 0.5 + 0.5;
-    vec2 c2 = triangle[2] * 0.5 + 0.5;
+    vec2 c0 = triangle[0];
+    vec2 c1 = triangle[1];
+    vec2 c2 = triangle[2];
 
     vec2 ab = c1 - c0;
     vec2 bc = c2 - c1;
@@ -288,6 +288,11 @@ void main()
         culling_setup.data[index].data[1] = transformed_ranges;
         culling_setup.data[index].data[2] = vec4(clip_transform[0], clip_transform[1]);
         culling_setup.data[index].data[3] = vec4(float(ellipsis), 1.0 / ellipse_radius.xy, 0.0);
+
+        ranges = ranges * parameters.clip_scale.xxyy * 0.5 + 0.5;
+        ranges *= vec4(parameters.resolution_xy.xxyy);
+        ranges = clamp(ranges, vec4(0.0), vec4(parameters.resolution_xy.xxyy - 1));
+        culling_setup.data[index].data[4] = uintBitsToFloat(uvec4(ranges.xzyw));
     }
     else
     {

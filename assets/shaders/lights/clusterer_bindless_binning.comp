@@ -38,7 +38,7 @@ void main()
     uvec2 pixel = gl_WorkGroupID.yz;
     uint linear_coord = pixel.y * parameters.resolution_xy.x + pixel.x;
     uint base_index = linear_coord * parameters.num_lights_32;
-    uint chunk_index = gl_WorkGroupID.z;
+    uint chunk_index = gl_WorkGroupID.x;
     uint type_mask = cluster_transforms.type_mask[chunk_index];
     uint local_index = gl_LocalInvocationIndex;
 

@@ -1,0 +1,108 @@
+#version 450
+layout(local_size_x = 64) in;
+
+#include "clusterer_data.h"
+
+layout(push_constant) uniform Registers
+{
+    mat4 view;
+    vec3 camera_pos;
+    uint num_lights;
+    vec3 camera_front;
+} registers;
+
+layout(std430, set = 0, binding = 0) readonly buffer ClustererData
+{
+    ClustererBindlessTransforms cluster_transforms;
+};
+
+layout(std430, set = 0, binding = 1) readonly buffer SpotTransforms
+{
+    mat4 model[];
+} spot_transforms;
+
+struct CullSetup
+{
+    vec4 data[4];
+};
+
+layout(std430, set = 0, binding = 2) writeonly buffer CullingSetup
+{
+    CullSetup data[];
+} culling_setup;
+
+vec2 project_sphere_flat(float view_xy, float view_z, float radius)
+{
+    float len = length(vec2(view_xy, view_z));
+    float sin_xy = radius / len;
+
+    vec2 result;
+
+    if (sin_xy < 0.999)
+    {
+        float cos_xy = sqrt(1.0 - sin_xy * sin_xy);
+        vec2 rot_lo = mat2(cos_xy, sin_xy, -sin_xy, cos_xy) * vec2(view_xy, view_z);
+        vec2 rot_hi = mat2(cos_xy, -sin_xy, +sin_xy, cos_xy) * vec2(view_xy, view_z);
+
+        if (rot_lo.y <= 0.0)
+            rot_lo = vec2(-1.0, 0.0);
+        if (rot_hi.y <= 0.0)
+            rot_hi = vec2(+1.0, 0.0);
+
+        result = vec2(rot_lo.x / rot_lo.y, rot_hi.x / rot_hi.y);
+    }
+    else
+        result = vec2(-1.0 / 0.0, +1.0 / 0.0);
+
+    return result;
+}
+
+void main()
+{
+    uint index = gl_GlobalInvocationID.x;
+    if (index >= registers.num_lights)
+        return;
+
+    bool point = (cluster_transforms.type_mask[index >> 5u] & (1u << (index & 31u))) != 0u;
+
+    if (point)
+    {
+        vec3 pos = cluster_transforms.lights[index].position;
+        float radius = 1.0 / cluster_transforms.lights[index].inv_radius;
+
+        vec3 view = (registers.view * vec4(pos, 1.0)).xyz;
+        view.yz = -view.yz;
+
+        vec4 ranges = vec4(project_sphere_flat(view.x, view.z, radius),
+                           project_sphere_flat(view.y, view.z, radius));
+
+        float xy_length = length(vec2(view.x, view.y));
+
+        mat2 clip_transform;
+        if (xy_length < 0.00001)
+            clip_transform = mat2(1.0);
+        else
+        {
+            float inv_xy_length = 1.0 / xy_length;
+            clip_transform = mat2(view.x, -view.y, view.y, view.x) * inv_xy_length;
+        }
+
+        vec2 transformed_xy = clip_transform * view.xy;
+
+        vec4 transformed_ranges = vec4(project_sphere_flat(transformed_xy.x, view.z, radius),
+                                       project_sphere_flat(transformed_xy.y, view.z, radius));
+
+        bool ellipsis = all(not(isinf(transformed_ranges)));
+
+        vec2 center = (transformed_ranges.xz + transformed_ranges.yw) * 0.5;
+        vec2 radius = transformed_ranges.yw - center;
+
+        culling_setup.data[index].data[0] = ranges;
+        culling_setup.data[index].data[1] = transformed_ranges;
+        culling_setup.data[index].data[2] = vec4(clip_transform[0], clip_transform[1]);
+        culling_setup.data[index].data[3] = vec4(float(ellipsis), 1.0 / radius.xy, 0.0);
+    }
+    else
+    {
+    }
+}

@@ -114,40 +114,44 @@ private:
 	void build_cluster_bindless(Vulkan::CommandBuffer &cmd);
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
-	Vulkan::ShaderProgram *program = nullptr;
-	Vulkan::ImageView *target = nullptr;
-	Vulkan::ImageView *pre_cull_target = nullptr;
-	Vulkan::BufferHandle cluster_list;
-	unsigned inherit_variant = 0;
-	unsigned cull_variant = 0;
 
 	struct
 	{
-		PositionalFragmentInfo lights[MaxLights] = {};
-		PointLight *handles[MaxLights] = {};
-		PointTransform shadow_transforms[MaxLights] = {};
-		vec4 model_transforms[MaxLights] = {};
-		unsigned cookie[MaxLights] = {};
-		unsigned count = 0;
-		uint8_t index_remap[MaxLights];
-		Vulkan::ImageHandle atlas;
-	} points;
+		struct
+		{
+			PositionalFragmentInfo lights[MaxLights] = {};
+			PointLight *handles[MaxLights] = {};
+			PointTransform shadow_transforms[MaxLights] = {};
+			vec4 model_transforms[MaxLights] = {};
+			unsigned cookie[MaxLights] = {};
+			unsigned count = 0;
+			uint8_t index_remap[MaxLights];
+			Vulkan::ImageHandle atlas;
+		} points;
 
-	struct
-	{
-		PositionalFragmentInfo lights[MaxLights] = {};
-		SpotLight *handles[MaxLights] = {};
-		mat4 shadow_transforms[MaxLights] = {};
-		mat4 model_transforms[MaxLights] = {};
-		unsigned cookie[MaxLights] = {};
-		unsigned count = 0;
-		uint8_t index_remap[MaxLights];
-		Vulkan::ImageHandle atlas;
-	} spots;
+		struct
+		{
+			PositionalFragmentInfo lights[MaxLights] = {};
+			SpotLight *handles[MaxLights] = {};
+			mat4 shadow_transforms[MaxLights] = {};
+			unsigned cookie[MaxLights] = {};
+			unsigned count = 0;
+			uint8_t index_remap[MaxLights];
+			Vulkan::ImageHandle atlas;
+		} spots;
 
-	mat4 cluster_transform;
-	std::vector<uint32_t> cluster_list_buffer;
-	std::mutex cluster_list_lock;
+		Vulkan::BufferHandle cluster_list;
+		unsigned inherit_variant = 0;
+		unsigned cull_variant = 0;
+
+		mat4 cluster_transform;
+		std::vector<uint32_t> cluster_list_buffer;
+		std::mutex cluster_list_lock;
+
+		Vulkan::ShaderProgram *program = nullptr;
+		Vulkan::ImageView *target = nullptr;
+		Vulkan::ImageView *pre_cull_target = nullptr;
+	} legacy;
 
 	Renderer *depth_renderer = nullptr;
 	void render_atlas_spot(RenderContext &context_);
@@ -198,7 +202,12 @@ private:
 	// Bindless
 	struct
 	{
+		unsigned count = 0;
 		ClustererParametersBindless parameters;
+		ClustererBindlessTransforms transforms;
+		mat4 model_transforms[MaxLights] = {};
+		const PositionalLight *handles[MaxLights] = {};
+
 		Vulkan::BindlessDescriptorPoolHandle descriptor_pool;
 		Util::LRUCache<Vulkan::ImageHandle> shadow_map_cache;
 
@@ -218,11 +227,12 @@ private:
 	void update_bindless_descriptors(Vulkan::CommandBuffer &cmd);
 	void update_bindless_range_buffer(Vulkan::CommandBuffer &cmd);
 	void update_bindless_mask_buffer(Vulkan::CommandBuffer &cmd);
-	void update_bindless_mask_buffer_spot(uint32_t *masks);
-	void update_bindless_mask_buffer_point(uint32_t *masks);
+	void update_bindless_mask_buffer_spot(uint32_t *masks, unsigned index);
+	void update_bindless_mask_buffer_point(uint32_t *masks, unsigned index);
 	void begin_bindless_barriers(Vulkan::CommandBuffer &cmd);
 	void end_bindless_barriers(Vulkan::CommandBuffer &cmd);
-	void render_bindless_spot(Vulkan::CommandBuffer &cmd);
-	void render_bindless_point(Vulkan::CommandBuffer &cmd);
+	void render_bindless_spot(Vulkan::CommandBuffer &cmd, unsigned index);
+	void render_bindless_point(Vulkan::CommandBuffer &cmd, unsigned index);
+	bool bindless_light_is_point(unsigned index) const;
 };
 }

@@ -719,6 +719,10 @@ void LightClusterer::render_bindless_spot(Vulkan::CommandBuffer &cmd, unsigned i
 	if (!bindless.shadow_images[index])
 		return;
 
+	static_cast<SpotLight *>(bindless.handles[index])->set_shadow_info(
+			&bindless.shadow_images[index]->get_view(),
+			bindless.transforms.shadow[index]);
+
 	LOGI("Rendering shadow for spot light %u (%p)\n", index, static_cast<const void *>(bindless.handles[index]));
 
 	depth_context.set_camera(proj, view);
@@ -741,6 +745,10 @@ void LightClusterer::render_bindless_point(Vulkan::CommandBuffer &cmd, unsigned 
 
 	if (!bindless.shadow_images[index])
 		return;
+
+	static_cast<PointLight *>(bindless.handles[index])->set_shadow_info(
+			&bindless.shadow_images[index]->get_view(),
+			PointTransform{ bindless.transforms.shadow[index][0] });
 
 	LOGI("Rendering shadow for point light %u (%p)\n", index, static_cast<const void *>(bindless.handles[index]));
 

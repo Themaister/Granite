@@ -206,7 +206,7 @@ private:
 		ClustererParametersBindless parameters;
 		ClustererBindlessTransforms transforms;
 		mat4 model_transforms[MaxLights] = {};
-		const PositionalLight *handles[MaxLights] = {};
+		PositionalLight *handles[MaxLights] = {};
 
 		Vulkan::BindlessDescriptorPoolHandle descriptor_pool;
 		Util::LRUCache<Vulkan::ImageHandle> shadow_map_cache;

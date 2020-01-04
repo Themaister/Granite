@@ -229,7 +229,8 @@ private:
 	} bindless;
 
 	void update_bindless_descriptors(Vulkan::CommandBuffer &cmd);
-	void update_bindless_range_buffer(Vulkan::CommandBuffer &cmd);
+	void update_bindless_range_buffer_cpu(Vulkan::CommandBuffer &cmd);
+	void update_bindless_range_buffer_gpu(Vulkan::CommandBuffer &cmd);
 	void update_bindless_mask_buffer_cpu(Vulkan::CommandBuffer &cmd);
 	void update_bindless_mask_buffer_gpu(Vulkan::CommandBuffer &cmd);
 	void update_bindless_mask_buffer_spot(uint32_t *masks, unsigned index);

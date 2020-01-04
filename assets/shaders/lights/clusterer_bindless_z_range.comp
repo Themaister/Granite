@@ -1,0 +1,51 @@
+#version 450
+
+layout(local_size_x = 64) in;
+
+layout(push_constant, std430) uniform Registers
+{
+    uint num_lights;
+} registers;
+
+layout(set = 0, binding = 0, std430) readonly buffer ZRangesPerLight
+{
+    uvec2 z_ranges[];
+};
+
+layout(set = 0, binding = 1, std430) writeonly buffer LightRange
+{
+    uvec2 light_ranges[];
+};
+
+void main()
+{
+    uint z_lo = 0xffffffffu;
+    uint z_hi = 0u;
+    uint z = gl_GlobalInvocationID.x;
+
+    // Kinda brute force. A faster algorithm seems non-trivial.
+
+    for (uint i = 0; i < registers.num_lights; i++)
+    {
+        uvec2 range = z_ranges[i];
+        if (z >= range.x && z <= range.y)
+        {
+            z_lo = i;
+            break;
+        }
+    }
+
+    int z_lo_int = max(int(z_lo), 0);
+
+    for (int i = int(registers.num_lights) - 1; i >= z_lo_int; i--)
+    {
+        uvec2 range = z_ranges[i];
+        if (z >= range.x && z <= range.y)
+        {
+            z_hi = i;
+            break;
+        }
+    }
+
+    light_ranges[z] = uvec2(z_lo, z_hi);
+}

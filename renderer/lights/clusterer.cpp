@@ -1169,7 +1169,60 @@ bool LightClusterer::bindless_light_is_point(unsigned index) const
 	return (bindless.transforms.type_mask[index >> 5] & (1u << (index & 31))) != 0;
 }
 
-void LightClusterer::update_bindless_range_buffer(Vulkan::CommandBuffer &cmd)
+void LightClusterer::update_bindless_range_buffer_gpu(Vulkan::CommandBuffer &cmd)
+{
+	if (bindless.count == 0)
+		return;
+
+	bindless.light_index_range.resize(bindless.count);
+
+	const auto compute_uint_range = [&](vec2 range) -> uvec2 {
+		range = range * (float(resolution_z) / context->get_render_parameters().z_far);
+		if (range.y < 0.0f)
+			return uvec2(0xffffffffu, 0u);
+		range.x = muglm::max(range.x, 0.0f);
+
+		uvec2 urange(range);
+		urange.y = muglm::min(urange.y, resolution_z - 1);
+		return urange;
+	};
+
+	for (unsigned i = 0; i < bindless.count; i++)
+	{
+		vec2 range;
+		if (bindless_light_is_point(i))
+		{
+			range = point_light_z_range(*context, bindless.transforms.lights[i].position,
+			                            1.0f / bindless.transforms.lights[i].inv_radius);
+		}
+		else
+			range = spot_light_z_range(*context, bindless.transforms.model[i]);
+
+		bindless.light_index_range[i] = compute_uint_range(range);
+	}
+
+	BufferCreateInfo info;
+	info.domain = BufferDomain::Host;
+	info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+	info.size = bindless.count * sizeof(uvec2);
+	auto buffer = cmd.get_device().create_buffer(info, bindless.light_index_range.data());
+
+	cmd.set_program("builtin://shaders/lights/clusterer_bindless_z_range.comp");
+	cmd.set_storage_buffer(0, 0, *buffer);
+	cmd.set_storage_buffer(0, 1, *bindless.range_buffer);
+
+	assert((resolution_z & 63) == 0);
+
+	struct Registers
+	{
+		uint num_lights;
+	} push;
+	push.num_lights = bindless.parameters.num_lights;
+	cmd.push_constants(&push, 0, sizeof(push));
+	cmd.dispatch(resolution_z / 64, 1, 1);
+}
+
+void LightClusterer::update_bindless_range_buffer_cpu(Vulkan::CommandBuffer &cmd)
 {
 	bindless.light_index_range.resize(resolution_z);
 	for (auto &range : bindless.light_index_range)
@@ -1523,7 +1576,7 @@ void LightClusterer::update_bindless_mask_buffer_gpu(Vulkan::CommandBuffer &cmd)
 void LightClusterer::build_cluster_bindless_cpu(Vulkan::CommandBuffer &cmd)
 {
 	update_bindless_descriptors(cmd);
-	update_bindless_range_buffer(cmd);
+	update_bindless_range_buffer_cpu(cmd);
 	update_bindless_mask_buffer_cpu(cmd);
 }
 
@@ -1531,7 +1584,7 @@ void LightClusterer::build_cluster_bindless_gpu(Vulkan::CommandBuffer &cmd)
 {
 	update_bindless_descriptors(cmd);
 	update_bindless_mask_buffer_gpu(cmd);
-	update_bindless_range_buffer(cmd);
+	update_bindless_range_buffer_gpu(cmd);
 }
 
 void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::ImageView &view)

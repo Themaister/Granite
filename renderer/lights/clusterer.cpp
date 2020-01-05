@@ -1171,9 +1171,6 @@ bool LightClusterer::bindless_light_is_point(unsigned index) const
 
 void LightClusterer::update_bindless_range_buffer_gpu(Vulkan::CommandBuffer &cmd)
 {
-	if (bindless.count == 0)
-		return;
-
 	bindless.light_index_range.resize(bindless.count);
 
 	const auto compute_uint_range = [&](vec2 range) -> uvec2 {
@@ -1201,10 +1198,14 @@ void LightClusterer::update_bindless_range_buffer_gpu(Vulkan::CommandBuffer &cmd
 		bindless.light_index_range[i] = compute_uint_range(range);
 	}
 
+	// Still need to run this algorithm to make sure we get a cleared out Z-range buffer.
+	if (bindless.light_index_range.empty())
+		bindless.light_index_range.push_back(uvec2(~0u, 0u));
+
 	BufferCreateInfo info;
 	info.domain = BufferDomain::Host;
 	info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-	info.size = bindless.count * sizeof(uvec2);
+	info.size = bindless.light_index_range.size() * sizeof(uvec2);
 	auto buffer = cmd.get_device().create_buffer(info, bindless.light_index_range.data());
 
 	cmd.set_program("builtin://shaders/lights/clusterer_bindless_z_range.comp");
@@ -1519,6 +1520,9 @@ void LightClusterer::update_bindless_mask_buffer_cpu(Vulkan::CommandBuffer &cmd)
 
 void LightClusterer::update_bindless_mask_buffer_gpu(Vulkan::CommandBuffer &cmd)
 {
+	if (bindless.parameters.num_lights == 0)
+		return;
+
 	cmd.barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 	            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 
@@ -1569,8 +1573,59 @@ void LightClusterer::update_bindless_mask_buffer_gpu(Vulkan::CommandBuffer &cmd)
 	cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
 	            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 
-	cmd.set_program("builtin://shaders/lights/clusterer_bindless_binning.comp");
-	cmd.dispatch(bindless.parameters.num_lights_32, resolution_x, resolution_y);
+	assert((resolution_x & 7) == 0);
+	assert((resolution_y & 7) == 0);
+
+	bool use_subgroups = false;
+	auto &features = cmd.get_device().get_device_features();
+	unsigned tile_width = 1;
+	unsigned tile_height = 1;
+	unsigned num_chunks_per_wg = 1;
+
+	constexpr VkSubgroupFeatureFlags required = VK_SUBGROUP_FEATURE_BALLOT_BIT | VK_SUBGROUP_FEATURE_BASIC_BIT;
+
+	if (features.subgroup_size_control_features.subgroupSizeControl &&
+	    features.subgroup_size_control_features.computeFullSubgroups &&
+	    (features.subgroup_properties.supportedOperations & required) == required &&
+	    (features.subgroup_properties.supportedStages & VK_SHADER_STAGE_COMPUTE_BIT) != 0)
+	{
+		// Our desired range is either 32 threads or 64 threads, 32 threads is preferred.
+
+		if (features.subgroup_size_control_properties.minSubgroupSize <= 32 &&
+		    features.subgroup_size_control_properties.maxSubgroupSize >= 32 &&
+		    (features.subgroup_size_control_properties.requiredSubgroupSizeStages & VK_SHADER_STAGE_COMPUTE_BIT) != 0)
+		{
+			// We can lock in 32 thread subgroups!
+			cmd.enable_subgroup_size_control(true);
+			cmd.set_subgroup_size_log2(true, 5, 5);
+			cmd.set_specialization_constant_mask(1);
+			cmd.set_specialization_constant(0, 32);
+			tile_width = 8;
+			tile_height = 4;
+			use_subgroups = true;
+		}
+		else if (features.subgroup_size_control_properties.minSubgroupSize >= 32 &&
+		         features.subgroup_size_control_properties.maxSubgroupSize <= 64)
+		{
+			// We can use varying size, 32 or 64 sizes need to be handled.
+			cmd.enable_subgroup_size_control(true);
+			cmd.set_subgroup_size_log2(true, 5, 6);
+			cmd.set_specialization_constant_mask(1);
+			cmd.set_specialization_constant(0, 64);
+			num_chunks_per_wg = 2;
+			tile_width = 8;
+			tile_height = 8;
+			use_subgroups = true;
+		}
+	}
+
+	cmd.set_program("builtin://shaders/lights/clusterer_bindless_binning.comp", {{ "SUBGROUPS", use_subgroups ? 1 : 0 }});
+	cmd.dispatch((bindless.parameters.num_lights_32 + num_chunks_per_wg - 1) / num_chunks_per_wg,
+	             resolution_x / tile_width,
+	             resolution_y / tile_height);
+
+	cmd.set_specialization_constant_mask(0);
+	cmd.enable_subgroup_size_control(false);
 }
 
 void LightClusterer::build_cluster_bindless_cpu(Vulkan::CommandBuffer &cmd)
@@ -1930,7 +1985,7 @@ void LightClusterer::add_render_passes_bindless(RenderGraph &graph)
 
 		{
 			att.size = resolution_z * sizeof(ivec2);
-			pass.add_transfer_output("cluster-range", att);
+			pass.add_storage_output("cluster-range", att);
 		}
 
 		{

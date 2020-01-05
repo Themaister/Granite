@@ -1,6 +1,11 @@
 #version 450
 
+#if SUBGROUPS
+#extension GL_KHR_shader_subgroup_ballot : require
+layout(local_size_x_id = 0) in;
+#else
 layout(local_size_x = 32) in;
+#endif
 
 #define CLUSTERER_BINDLESS
 #include "clusterer_data.h"
@@ -30,8 +35,6 @@ layout(std430, set = 0, binding = 3) writeonly buffer Bitmask
 {
     uint bitmask[];
 };
-
-shared uint shared_mask;
 
 bool test_point_light(vec2 uv, vec2 uv_stride, uint light_index)
 {
@@ -116,8 +119,67 @@ bool test_spot_light(vec2 uv, vec2 uv_stride, uint light_index)
     return result;
 }
 
+#if !SUBGROUPS
+shared uint shared_mask;
+#endif
+
 void main()
 {
+#if SUBGROUPS
+    const uvec2 WORK_GROUP_SIZE = uvec2(8u, gl_WorkGroupSize.x >> 3u);
+    uint local_index = gl_SubgroupID * gl_SubgroupSize + gl_SubgroupInvocationID;
+    uvec2 tile = gl_WorkGroupID.yz;
+    uint global_subgroup_id = gl_WorkGroupID.x * gl_NumSubgroups + gl_SubgroupID;
+    uint num_bitmasks_per_subgroup = gl_SubgroupSize >> 5u;
+    uint base_chunk_index = global_subgroup_id * num_bitmasks_per_subgroup;
+
+    vec2 tile_uv = 2.0 * vec2(tile * WORK_GROUP_SIZE) * parameters.inv_resolution_xy - 1.0;
+    vec2 tile_uv_stride = (2.0 * vec2(WORK_GROUP_SIZE)) * parameters.inv_resolution_xy;
+
+    uint light_index = 32u * base_chunk_index + local_index;
+    uint type_mask = cluster_transforms.type_mask[light_index >> 5u];
+    bool point = (type_mask & (1u << (light_index & 31u))) != 0u;
+    bool passed;
+    if (point)
+        passed = test_point_light(tile_uv, tile_uv_stride, light_index);
+    else
+        passed = test_spot_light(tile_uv, tile_uv_stride, light_index);
+
+    uvec4 ballot = subgroupBallot(passed);
+
+    uvec2 pixel = tile * WORK_GROUP_SIZE + uvec2(local_index & 7u, local_index >> 3u);
+    uint linear_coord = pixel.y * parameters.resolution_xy.x + pixel.x;
+    vec2 uv = 2.0 * vec2(pixel) * parameters.inv_resolution_xy - 1.0;
+    vec2 uv_stride = 2.0 * parameters.inv_resolution_xy;
+
+    uint base_index = linear_coord * parameters.num_lights_32;
+    uint num_iterations = min(num_bitmasks_per_subgroup, parameters.num_lights_32 - base_chunk_index);
+    for (uint mask_index = 0; mask_index < num_iterations; mask_index++)
+    {
+        uint chunk_index = base_chunk_index + mask_index;
+        uint chunk_mask = ballot[mask_index];
+        uint pixel_mask = 0u;
+        type_mask = cluster_transforms.type_mask[chunk_index];
+
+        while (chunk_mask != 0u)
+        {
+            int lsb = findLSB(chunk_mask);
+            chunk_mask &= ~uint(1 << lsb);
+            light_index = chunk_index * 32u + lsb;
+            point = (type_mask & uint(1 << lsb)) != 0u;
+
+            if (point)
+                passed = test_point_light(uv, uv_stride, light_index);
+            else
+                passed = test_spot_light(uv, uv_stride, light_index);
+
+            if (passed)
+                pixel_mask |= uint(1 << lsb);
+        }
+
+        bitmask[base_index + chunk_index] = pixel_mask;
+    }
+#else
     uvec2 pixel = gl_WorkGroupID.yz;
     uint linear_coord = pixel.y * parameters.resolution_xy.x + pixel.x;
     uint base_index = linear_coord * parameters.num_lights_32;
@@ -151,4 +213,5 @@ void main()
     barrier();
     if (local_index == 0u)
         bitmask[base_index + chunk_index] = shared_mask;
+#endif
 }

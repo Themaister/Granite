@@ -33,6 +33,89 @@ layout(std430, set = 0, binding = 3) writeonly buffer Bitmask
 
 shared uint shared_mask;
 
+bool test_point_light(vec2 uv, vec2 uv_stride, uint light_index)
+{
+    bool result;
+
+    vec4 screen_bb = culling_setup.data[light_index].data[0];
+    vec4 transformed_ranges = culling_setup.data[light_index].data[1];
+    vec4 clip_transform = culling_setup.data[light_index].data[2];
+    vec4 ellipsis_inv_radius = culling_setup.data[light_index].data[3];
+    mat2 clip_transform_mat = mat2(clip_transform.xy, clip_transform.zw);
+
+    if (ellipsis_inv_radius.x != 0.0)
+    {
+        vec2 intersection_center = 0.5 * (transformed_ranges.xz + transformed_ranges.yw);
+
+        vec2 clip_lo = uv;
+        vec2 clip_hi = uv + uv_stride;
+        clip_lo *= parameters.clip_scale.zw;
+        clip_hi *= parameters.clip_scale.zw;
+
+        vec2 dist_00 = clip_transform_mat * vec2(clip_lo.x, clip_lo.y) - intersection_center;
+        vec2 dist_01 = clip_transform_mat * vec2(clip_lo.x, clip_hi.y) - intersection_center;
+        vec2 dist_10 = clip_transform_mat * vec2(clip_hi.x, clip_lo.y) - intersection_center;
+        vec2 dist_11 = clip_transform_mat * vec2(clip_hi.x, clip_hi.y) - intersection_center;
+
+        dist_00 *= ellipsis_inv_radius.yz;
+        dist_01 *= ellipsis_inv_radius.yz;
+        dist_10 *= ellipsis_inv_radius.yz;
+        dist_11 *= ellipsis_inv_radius.yz;
+
+        float max_diag = max(distance(dist_00, dist_11), distance(dist_01, dist_10));
+        float min_sq_dist = 1.0 + max_diag;
+        min_sq_dist *= min_sq_dist;
+
+        vec4 d = vec4(
+        dot(dist_00, dist_00),
+        dot(dist_01, dist_01),
+        dot(dist_10, dist_10),
+        dot(dist_11, dist_11));
+
+        result = all(lessThan(d, vec4(min_sq_dist)));
+    }
+    else
+    {
+        result = all(bvec4(greaterThan(uv + uv_stride, screen_bb.xy), lessThan(uv, screen_bb.zw)));
+    }
+
+    return result;
+}
+
+bool test_spot_light(vec2 uv, vec2 uv_stride, uint light_index)
+{
+    bool result;
+    uint num_triangles = floatBitsToUint(culling_setup.data[light_index].data[0].w);
+    if (num_triangles <= MAX_TRIANGLES)
+    {
+        result = false;
+        for (uint i = 0; i < num_triangles; i++)
+        {
+            vec4 screen_bb = culling_setup.data[light_index].data[4u * i + 3u];
+            if (all(bvec4(greaterThan(uv + uv_stride, screen_bb.xy), lessThan(uv, screen_bb.zw))))
+            {
+                vec3 base = culling_setup.data[light_index].data[4u * i].xyz;
+                vec3 dx = culling_setup.data[light_index].data[4u * i + 1u].xyz;
+                vec3 dy = culling_setup.data[light_index].data[4u * i + 2u].xyz;
+
+                base += dx * uv.x;
+                base += dy * uv.y;
+                base += mix(vec3(0.0), uv_stride.x * dx, greaterThan(dx, vec3(0.0)));
+                base += mix(vec3(0.0), uv_stride.y * dy, greaterThan(dy, vec3(0.0)));
+                if (all(greaterThan(base, vec3(0.0))))
+                {
+                    result = true;
+                    break;
+                }
+            }
+        }
+    }
+    else
+        result = true;
+
+    return result;
+}
+
 void main()
 {
     uvec2 pixel = gl_WorkGroupID.yz;
@@ -55,78 +138,12 @@ void main()
     {
         if ((type_mask & (1u << local_index)) != 0u)
         {
-            vec4 ranges = culling_setup.data[light_index].data[0];
-            vec4 transformed_ranges = culling_setup.data[light_index].data[1];
-            mat2 clip_transform = mat2(culling_setup.data[light_index].data[2].xy,
-                                       culling_setup.data[light_index].data[2].zw);
-            vec4 ellipsis_inv_radius = culling_setup.data[light_index].data[3];
-
-            if (ellipsis_inv_radius.x != 0.0)
-            {
-                vec2 intersection_center = 0.5 * (transformed_ranges.xz + transformed_ranges.yw);
-
-                vec2 clip_lo = uv;
-                vec2 clip_hi = uv + uv_stride;
-                clip_lo *= parameters.clip_scale.zw;
-                clip_hi *= parameters.clip_scale.zw;
-
-                vec2 dist_00 = clip_transform * vec2(clip_lo.x, clip_lo.y) - intersection_center;
-                vec2 dist_01 = clip_transform * vec2(clip_lo.x, clip_hi.y) - intersection_center;
-                vec2 dist_10 = clip_transform * vec2(clip_hi.x, clip_lo.y) - intersection_center;
-                vec2 dist_11 = clip_transform * vec2(clip_hi.x, clip_hi.y) - intersection_center;
-
-                dist_00 *= ellipsis_inv_radius.yz;
-                dist_01 *= ellipsis_inv_radius.yz;
-                dist_10 *= ellipsis_inv_radius.yz;
-                dist_11 *= ellipsis_inv_radius.yz;
-
-                float max_diag = max(distance(dist_00, dist_11), distance(dist_01, dist_10));
-                float min_sq_dist = 1.0 + max_diag;
-                min_sq_dist *= min_sq_dist;
-
-                vec4 d = vec4(
-                    dot(dist_00, dist_00),
-                    dot(dist_01, dist_01),
-                    dot(dist_10, dist_10),
-                    dot(dist_11, dist_11));
-
-                if (all(lessThan(d, vec4(min_sq_dist))))
-                    atomicOr(shared_mask, 1u << local_index);
-            }
-            else
-            {
-                uvec4 screen_bb = floatBitsToUint(culling_setup.data[light_index].data[4]);
-                if (all(bvec4(greaterThanEqual(pixel, screen_bb.xy), lessThanEqual(pixel, screen_bb.zw))))
-                    atomicOr(shared_mask, 1u << local_index);
-            }
+            if (test_point_light(uv, uv_stride, light_index))
+                atomicOr(shared_mask, 1u << local_index);
         }
         else
         {
-            uint num_triangles = floatBitsToUint(culling_setup.data[light_index].data[0].w);
-            if (num_triangles <= MAX_TRIANGLES)
-            {
-                for (uint i = 0; i < num_triangles; i++)
-                {
-                    vec4 lohi = culling_setup.data[light_index].data[4u * i + 3u];
-                    if (all(bvec4(greaterThan(uv + uv_stride, lohi.xy), lessThan(uv, lohi.zw))))
-                    {
-                        vec3 base = culling_setup.data[light_index].data[4u * i].xyz;
-                        vec3 dx = culling_setup.data[light_index].data[4u * i + 1u].xyz;
-                        vec3 dy = culling_setup.data[light_index].data[4u * i + 2u].xyz;
-
-                        base += dx * uv.x;
-                        base += dy * uv.y;
-                        base += mix(vec3(0.0), uv_stride.x * dx, greaterThan(dx, vec3(0.0)));
-                        base += mix(vec3(0.0), uv_stride.y * dy, greaterThan(dy, vec3(0.0)));
-                        if (all(greaterThan(base, vec3(0.0))))
-                        {
-                            atomicOr(shared_mask, 1u << local_index);
-                            break;
-                        }
-                    }
-                }
-            }
-            else
+            if (test_spot_light(uv, uv_stride, light_index))
                 atomicOr(shared_mask, 1u << local_index);
         }
     }

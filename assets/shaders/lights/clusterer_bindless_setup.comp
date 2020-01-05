@@ -290,15 +290,11 @@ void main()
         vec2 center = (transformed_ranges.xz + transformed_ranges.yw) * 0.5;
         vec2 ellipse_radius = transformed_ranges.yw - center;
 
-        culling_setup.data[index].data[0] = ranges;
+        ranges = ranges * parameters.clip_scale.xxyy;
+        culling_setup.data[index].data[0] = ranges.xzyw;
         culling_setup.data[index].data[1] = transformed_ranges;
         culling_setup.data[index].data[2] = vec4(clip_transform[0], clip_transform[1]);
         culling_setup.data[index].data[3] = vec4(float(ellipsis), 1.0 / ellipse_radius.xy, 0.0);
-
-        ranges = ranges * parameters.clip_scale.xxyy * 0.5 + 0.5;
-        ranges *= vec4(parameters.resolution_xy.xxyy);
-        ranges = clamp(ranges, vec4(0.0), vec4(parameters.resolution_xy.xxyy - 1));
-        culling_setup.data[index].data[4] = uintBitsToFloat(uvec4(ranges.xzyw));
     }
     else
     {

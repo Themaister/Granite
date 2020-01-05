@@ -1160,8 +1160,25 @@ void LightClusterer::update_bindless_descriptors(Vulkan::CommandBuffer &cmd)
 		}
 	}
 
-	memcpy(cmd.update_buffer(*bindless.transforms_buffer, 0, sizeof(bindless.transforms)),
-	       &bindless.transforms, sizeof(bindless.transforms));
+	memcpy(cmd.update_buffer(*bindless.transforms_buffer, offsetof(ClustererBindlessTransforms, lights),
+	                         bindless.count * sizeof(bindless.transforms.lights[0])),
+	       bindless.transforms.lights,
+	       bindless.count * sizeof(bindless.transforms.lights[0]));
+
+	memcpy(cmd.update_buffer(*bindless.transforms_buffer, offsetof(ClustererBindlessTransforms, shadow),
+	                         bindless.count * sizeof(bindless.transforms.shadow[0])),
+	       bindless.transforms.shadow,
+	       bindless.count * sizeof(bindless.transforms.shadow[0]));
+
+	memcpy(cmd.update_buffer(*bindless.transforms_buffer, offsetof(ClustererBindlessTransforms, model),
+	                         bindless.count * sizeof(bindless.transforms.model[0])),
+	       bindless.transforms.model,
+	       bindless.count * sizeof(bindless.transforms.model[0]));
+
+	memcpy(cmd.update_buffer(*bindless.transforms_buffer, offsetof(ClustererBindlessTransforms, type_mask),
+	                         bindless.parameters.num_lights_32 * sizeof(bindless.transforms.type_mask[0])),
+	       bindless.transforms.type_mask,
+	       bindless.parameters.num_lights_32 * sizeof(bindless.transforms.type_mask[0]));
 }
 
 bool LightClusterer::bindless_light_is_point(unsigned index) const

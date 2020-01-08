@@ -189,10 +189,10 @@ VkDescriptorSet DescriptorSetAllocator::allocate_bindless_set(VkDescriptorPool p
 	VkDescriptorSetVariableDescriptorCountAllocateInfoEXT count_info =
 			{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO_EXT };
 
+	uint32_t num_desc = num_descriptors;
 	if (device->get_device_features().descriptor_indexing_features.descriptorBindingVariableDescriptorCount)
 	{
 		count_info.descriptorSetCount = 1;
-		uint32_t num_desc = num_descriptors;
 		count_info.pDescriptorCounts = &num_desc;
 		info.pNext = &count_info;
 	}

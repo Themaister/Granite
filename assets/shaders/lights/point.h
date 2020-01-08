@@ -41,7 +41,8 @@ layout(set = POINT_LIGHT_SHADOW_ATLAS_SET, binding = POINT_LIGHT_SHADOW_ATLAS_BI
 #ifdef POSITIONAL_LIGHT_DEFERRED
 	#ifdef POSITIONAL_LIGHT_INSTANCING
 		#define POINT_DATA(index) point.data[index]
-		#define POINT_SHADOW_TRANSFORM(index) point_shadow.data[index]
+		#define POINT_SHADOW_TRANSFORM(index) point_shadow.data[index].transform
+		#define POINT_SHADOW_SLICE(index) point_shadow.data[index].slice.x
 	#else
 		#define POINT_DATA(index) point.data[0]
 		#define POINT_SHADOW_TRANSFORM(index) point_shadow.data[0].transform

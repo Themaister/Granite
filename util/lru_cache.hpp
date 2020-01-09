@@ -77,16 +77,19 @@ public:
 		return &entry->t;
 	}
 
-	void prune()
+	uint64_t prune()
 	{
+		uint64_t total_pruned = 0;
 		while (total_cost > total_cost_limit)
 		{
 			auto itr = lru.rbegin();
 			total_cost -= itr->cost;
+			total_pruned += itr->cost;
 			lru.erase(itr);
 			hashmap.erase(itr->hash);
 			pool.free(itr.get());
 		}
+		return total_pruned;
 	}
 
 	bool evict(uint64_t cookie)

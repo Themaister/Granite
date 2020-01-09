@@ -77,7 +77,12 @@ public:
 	void set_base_renderer(Renderer *forward_renderer, Renderer *deferred_renderer, Renderer *depth_renderer) override;
 	void set_base_render_context(const RenderContext *context) override;
 
-	enum { MaxLights = 32, ClusterHierarchies = 8, ClusterPrepassDownsample = 4 };
+	enum {
+		MaxLights = CLUSTERER_MAX_LIGHTS,
+		MaxLightsBindless = CLUSTERER_MAX_LIGHTS_BINDLESS,
+		ClusterHierarchies = 8,
+		ClusterPrepassDownsample = 4
+	};
 
 	void set_max_spot_lights(unsigned count)
 	{
@@ -206,7 +211,7 @@ private:
 		unsigned count = 0;
 		ClustererParametersBindless parameters;
 		ClustererBindlessTransforms transforms;
-		PositionalLight *handles[MaxLights] = {};
+		PositionalLight *handles[MaxLightsBindless] = {};
 
 		Vulkan::BindlessDescriptorPoolHandle descriptor_pool;
 		Util::LRUCache<Vulkan::ImageHandle> shadow_map_cache;

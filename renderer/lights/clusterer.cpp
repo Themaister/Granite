@@ -644,7 +644,9 @@ void LightClusterer::begin_bindless_barriers(Vulkan::CommandBuffer &cmd)
 		bool point = bindless_light_is_point(i);
 		auto cookie = bindless.handles[i]->get_cookie();
 		auto &image = *bindless.shadow_map_cache.allocate(cookie,
-		                                                  shadow_resolution * shadow_resolution * (point ? 12 : 2));
+		                                                  shadow_resolution * shadow_resolution *
+		                                                  (point ? 6 : 1) *
+		                                                  (vsm ? 8 : 2));
 
 		if (image && !force_update_shadows)
 			continue;
@@ -978,7 +980,7 @@ void LightClusterer::refresh_bindless(RenderContext &context_)
 		{
 			auto &spot = static_cast<SpotLight &>(l);
 			spot.set_shadow_info(nullptr, {});
-			if (index < MaxLights)
+			if (index < MaxLightsBindless)
 			{
 				bindless.transforms.lights[index] = spot.get_shader_info(transform->transform->world_transform);
 				bindless.transforms.model[index] = spot.build_model_matrix(transform->transform->world_transform);
@@ -990,7 +992,7 @@ void LightClusterer::refresh_bindless(RenderContext &context_)
 		{
 			auto &point = static_cast<PointLight &>(l);
 			point.set_shadow_info(nullptr, {});
-			if (index < MaxLights)
+			if (index < MaxLightsBindless)
 			{
 				bindless.transforms.lights[index] = point.get_shader_info(transform->transform->world_transform);
 				bindless.transforms.model[index][0] = vec4(bindless.transforms.lights[index].position,
@@ -1025,7 +1027,9 @@ void LightClusterer::refresh_bindless(RenderContext &context_)
 	bindless.parameters.num_lights_32 = (bindless.parameters.num_lights + 31) / 32;
 
 	bindless.shadow_map_cache.set_total_cost(64 * 1024 * 1024);
-	bindless.shadow_map_cache.prune();
+	uint64_t total_pruned = bindless.shadow_map_cache.prune();
+	if (total_pruned)
+		LOGI("Clusterer pruned a total of %llu bytes.\n", static_cast<unsigned long long>(total_pruned));
 
 	if (enable_shadows)
 	{
@@ -1135,12 +1139,12 @@ void LightClusterer::update_bindless_descriptors(Vulkan::CommandBuffer &cmd)
 	}
 
 	if (!bindless.descriptor_pool)
-		bindless.descriptor_pool = cmd.get_device().create_bindless_descriptor_pool(BindlessResourceType::ImageFP, 16, MaxLights);
+		bindless.descriptor_pool = cmd.get_device().create_bindless_descriptor_pool(BindlessResourceType::ImageFP, 16, MaxLightsBindless);
 
 	unsigned num_lights = std::max(1u, bindless.count);
 	if (!bindless.descriptor_pool->allocate_descriptors(num_lights))
 	{
-		bindless.descriptor_pool = cmd.get_device().create_bindless_descriptor_pool(BindlessResourceType::ImageFP, 16, MaxLights);
+		bindless.descriptor_pool = cmd.get_device().create_bindless_descriptor_pool(BindlessResourceType::ImageFP, 16, MaxLightsBindless);
 		if (!bindless.descriptor_pool->allocate_descriptors(num_lights))
 			LOGE("Failed to allocate descriptors on a fresh descriptor pool!\n");
 	}
@@ -1966,7 +1970,7 @@ void LightClusterer::add_render_passes_bindless(RenderGraph &graph)
 		auto &pass = graph.add_pass("clustering", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
 
 		{
-			att.size = resolution_x * resolution_y * (MaxLights / 8);
+			att.size = resolution_x * resolution_y * (MaxLightsBindless / 8);
 			pass.add_transfer_output("cluster-bitmask", att);
 		}
 
@@ -1996,7 +2000,7 @@ void LightClusterer::add_render_passes_bindless(RenderGraph &graph)
 		auto &pass = graph.add_pass("clustering", RENDER_GRAPH_QUEUE_COMPUTE_BIT);
 
 		{
-			att.size = resolution_x * resolution_y * (MaxLights / 8);
+			att.size = resolution_x * resolution_y * (MaxLightsBindless / 8);
 			pass.add_storage_output("cluster-bitmask", att);
 		}
 
@@ -2011,12 +2015,12 @@ void LightClusterer::add_render_passes_bindless(RenderGraph &graph)
 		}
 
 		{
-			att.size = sizeof(vec4) * 4 * 8 * MaxLights;
+			att.size = sizeof(vec4) * 4 * 8 * MaxLightsBindless;
 			pass.add_storage_output("cluster-cull-setup", att);
 		}
 
 		{
-			att.size = sizeof(vec4) * 6 * MaxLights;
+			att.size = sizeof(vec4) * 6 * MaxLightsBindless;
 			pass.add_storage_output("cluster-transformed-spot", att);
 		}
 

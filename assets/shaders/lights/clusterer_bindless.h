@@ -62,20 +62,20 @@ mediump vec3 compute_cluster_light(
 	uvec2 z_range = cluster_range[z_index];
 
 #ifdef CLUSTERING_WAVE_UNIFORM
-	z_range.x = subgroupMin(z_range.x);
-	z_range.y = subgroupMax(z_range.y);
-#endif
-
+	int z_start = int(subgroupMin(z_range.x) >> 5u);
+	int z_end = int(subgroupMax(z_range.y) >> 5u);
+#else
 	int z_start = int(z_range.x >> 5u);
 	int z_end = int(z_range.y >> 5u);
+#endif
 
 	for (int i = z_start; i <= z_end; i++)
 	{
 		uint mask = cluster_bitmask[cluster_base + i];
+		mask = cluster_mask_range(mask, z_range, 32u * i);
 #ifdef CLUSTERING_WAVE_UNIFORM
 		mask = subgroupOr(mask);
 #endif
-		mask = cluster_mask_range(mask, z_range, 32u * i);
 
 		int type_mask = int(cluster_transforms.type_mask[i]);
 		while (mask != 0u)
@@ -124,20 +124,20 @@ mediump vec3 compute_cluster_scatter_light(vec3 world_pos, vec3 camera_pos)
 	uvec2 z_range = cluster_range[z_index];
 
 #ifdef CLUSTERING_WAVE_UNIFORM
-	z_range.x = subgroupMin(z_range.x);
-	z_range.y = subgroupMax(z_range.y);
-#endif
-
+	int z_start = int(subgroupMin(z_range.x) >> 5u);
+	int z_end = int(subgroupMax(z_range.y) >> 5u);
+#else
 	int z_start = int(z_range.x >> 5u);
 	int z_end = int(z_range.y >> 5u);
+#endif
 
 	for (int i = z_start; i <= z_end; i++)
 	{
 		uint mask = cluster_bitmask[cluster_base + i];
+		mask = cluster_mask_range(mask, z_range, 32u * i);
 #ifdef CLUSTERING_WAVE_UNIFORM
 		mask = subgroupOr(mask);
 #endif
-		mask = cluster_mask_range(mask, z_range, 32u * i);
 
 		int type_mask = int(cluster_transforms.type_mask[i]);
 		while (mask != 0u)

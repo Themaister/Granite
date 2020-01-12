@@ -1601,7 +1601,6 @@ void LightClusterer::update_bindless_mask_buffer_gpu(Vulkan::CommandBuffer &cmd)
 	auto &features = cmd.get_device().get_device_features();
 	unsigned tile_width = 1;
 	unsigned tile_height = 1;
-	unsigned num_chunks_per_wg = 1;
 
 	constexpr VkSubgroupFeatureFlags required = VK_SUBGROUP_FEATURE_BALLOT_BIT | VK_SUBGROUP_FEATURE_BASIC_BIT;
 
@@ -1633,7 +1632,6 @@ void LightClusterer::update_bindless_mask_buffer_gpu(Vulkan::CommandBuffer &cmd)
 			cmd.set_subgroup_size_log2(true, 5, 6);
 			cmd.set_specialization_constant_mask(1);
 			cmd.set_specialization_constant(0, 64);
-			num_chunks_per_wg = 2;
 			tile_width = 8;
 			tile_height = 8;
 			use_subgroups = true;
@@ -1641,7 +1639,7 @@ void LightClusterer::update_bindless_mask_buffer_gpu(Vulkan::CommandBuffer &cmd)
 	}
 
 	cmd.set_program("builtin://shaders/lights/clusterer_bindless_binning.comp", {{ "SUBGROUPS", use_subgroups ? 1 : 0 }});
-	cmd.dispatch((bindless.parameters.num_lights_32 + num_chunks_per_wg - 1) / num_chunks_per_wg,
+	cmd.dispatch(bindless.parameters.num_lights_32,
 	             resolution_x / tile_width,
 	             resolution_y / tile_height);
 

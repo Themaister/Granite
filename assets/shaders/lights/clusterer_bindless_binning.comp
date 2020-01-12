@@ -126,59 +126,58 @@ shared uint shared_mask;
 void main()
 {
 #if SUBGROUPS
-    const uvec2 WORK_GROUP_SIZE = uvec2(8u, gl_WorkGroupSize.x >> 3u);
-    uint local_index = gl_SubgroupID * gl_SubgroupSize + gl_SubgroupInvocationID;
+    uvec2 TILE_SIZE = uvec2(8u, gl_SubgroupSize >> 3u);
+    uint local_index = gl_SubgroupInvocationID;
+
     uvec2 tile = gl_WorkGroupID.yz;
-    uint global_subgroup_id = gl_WorkGroupID.x * gl_NumSubgroups + gl_SubgroupID;
-    uint num_bitmasks_per_subgroup = gl_SubgroupSize >> 5u;
-    uint base_chunk_index = global_subgroup_id * num_bitmasks_per_subgroup;
+    tile.y = tile.y * gl_NumSubgroups + gl_SubgroupID;
 
-    vec2 tile_uv = 2.0 * vec2(tile * WORK_GROUP_SIZE) * parameters.inv_resolution_xy - 1.0;
-    vec2 tile_uv_stride = (2.0 * vec2(WORK_GROUP_SIZE)) * parameters.inv_resolution_xy;
+    uint chunk_index = gl_WorkGroupID.x;
 
-    uint light_index = 32u * base_chunk_index + local_index;
-    uint type_mask = cluster_transforms.type_mask[light_index >> 5u];
-    bool point = (type_mask & (1u << (light_index & 31u))) != 0u;
+    vec2 tile_uv = 2.0 * vec2(tile * TILE_SIZE) * parameters.inv_resolution_xy - 1.0;
+    vec2 tile_uv_stride = (2.0 * vec2(TILE_SIZE)) * parameters.inv_resolution_xy;
+
     bool passed;
-    if (point)
-        passed = test_point_light(tile_uv, tile_uv_stride, light_index);
+    uint type_mask = cluster_transforms.type_mask[chunk_index];
+    if (local_index < 32u)
+    {
+        bool point = (type_mask & (1u << local_index)) != 0u;
+        uint light_index = 32u * chunk_index + local_index;
+        if (point)
+            passed = test_point_light(tile_uv, tile_uv_stride, light_index);
+        else
+            passed = test_spot_light(tile_uv, tile_uv_stride, light_index);
+    }
     else
-        passed = test_spot_light(tile_uv, tile_uv_stride, light_index);
+        passed = false;
 
-    uvec4 ballot = subgroupBallot(passed);
+    uint ballot = subgroupBallot(passed).x;
 
-    uvec2 pixel = tile * WORK_GROUP_SIZE + uvec2(local_index & 7u, local_index >> 3u);
-    uint linear_coord = pixel.y * parameters.resolution_xy.x + pixel.x;
+    uvec2 pixel = tile * TILE_SIZE + uvec2(local_index & 7u, local_index >> 3u);
     vec2 uv = 2.0 * vec2(pixel) * parameters.inv_resolution_xy - 1.0;
     vec2 uv_stride = 2.0 * parameters.inv_resolution_xy;
 
-    uint base_index = linear_coord * parameters.num_lights_32;
-    uint num_iterations = min(num_bitmasks_per_subgroup, parameters.num_lights_32 - base_chunk_index);
-    for (uint mask_index = 0; mask_index < num_iterations; mask_index++)
+    uint pixel_mask = 0u;
+
+    while (ballot != 0u)
     {
-        uint chunk_index = base_chunk_index + mask_index;
-        uint chunk_mask = ballot[mask_index];
-        uint pixel_mask = 0u;
-        type_mask = cluster_transforms.type_mask[chunk_index];
+        int lsb = findLSB(ballot);
+        ballot &= ~uint(1 << lsb);
+        uint light_index = chunk_index * 32u + lsb;
+        bool point = (type_mask & uint(1 << lsb)) != 0u;
 
-        while (chunk_mask != 0u)
-        {
-            int lsb = findLSB(chunk_mask);
-            chunk_mask &= ~uint(1 << lsb);
-            light_index = chunk_index * 32u + lsb;
-            point = (type_mask & uint(1 << lsb)) != 0u;
+        if (point)
+            passed = test_point_light(uv, uv_stride, light_index);
+        else
+            passed = test_spot_light(uv, uv_stride, light_index);
 
-            if (point)
-                passed = test_point_light(uv, uv_stride, light_index);
-            else
-                passed = test_spot_light(uv, uv_stride, light_index);
-
-            if (passed)
-                pixel_mask |= uint(1 << lsb);
-        }
-
-        bitmask[base_index + chunk_index] = pixel_mask;
+        if (passed)
+            pixel_mask |= uint(1 << lsb);
     }
+
+    uint linear_coord = pixel.y * parameters.resolution_xy.x + pixel.x;
+    uint base_index = linear_coord * parameters.num_lights_32;
+    bitmask[base_index + chunk_index] = pixel_mask;
 #else
     uvec2 pixel = gl_WorkGroupID.yz;
     uint linear_coord = pixel.y * parameters.resolution_xy.x + pixel.x;

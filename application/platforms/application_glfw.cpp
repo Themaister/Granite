@@ -268,6 +268,16 @@ static Key glfw_key_to_granite(int key)
 	k(RIGHT, Right);
 	k(UP, Up);
 	k(DOWN, Down);
+	k(0, _0);
+	k(1, _1);
+	k(2, _2);
+	k(3, _3);
+	k(4, _4);
+	k(5, _5);
+	k(6, _6);
+	k(7, _7);
+	k(8, _8);
+	k(9, _9);
 	default:
 		return Key::Unknown;
 	}

@@ -940,21 +940,6 @@ void android_main(android_app *app)
 
 	Granite::Global::event_manager()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
 
-	unsigned width = 1280;
-	unsigned height = 720;
-	string android_config;
-	Global::filesystem()->read_file_to_string("assets://android.json", android_config);
-	if (!android_config.empty())
-	{
-		rapidjson::Document doc;
-		doc.Parse(android_config);
-
-		if (doc.HasMember("width"))
-			width = doc["width"].GetUint();
-		if (doc.HasMember("height"))
-			height = doc["height"].GetUint();
-	}
-
 	LOGI("Using resolution: %u x %u\n", width, height);
 
 	for (;;)
@@ -1013,6 +998,21 @@ void android_main(android_app *app)
 					{
 						// TODO: Configurable.
 						app_handle->get_wsi().set_support_prerotate(false);
+
+						unsigned width = app_handle->get_default_width();
+						unsigned height = app_handle->get_default_height();
+						string android_config;
+						Global::filesystem()->read_file_to_string("assets://android.json", android_config);
+						if (!android_config.empty())
+						{
+							rapidjson::Document doc;
+							doc.Parse(android_config);
+
+							if (doc.HasMember("width"))
+								width = doc["width"].GetUint();
+							if (doc.HasMember("height"))
+								height = doc["height"].GetUint();
+						}
 
 						auto platform = make_unique<Granite::WSIPlatformAndroid>();
 						if (platform->init(width, height))

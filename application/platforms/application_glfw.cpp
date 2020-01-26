@@ -383,7 +383,7 @@ int application_main(Application *(*create_application)(int, char **), int argc,
 	if (app)
 	{
 		auto platform = make_unique<Granite::WSIPlatformGLFW>();
-		if (!platform->init(1280, 720))
+		if (!platform->init(app->get_default_width(), app->get_default_height()))
 			return 1;
 
 		if (!app->init_wsi(move(platform)))

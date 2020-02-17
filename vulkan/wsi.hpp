@@ -110,8 +110,10 @@ private:
 
 enum class PresentMode
 {
-	SyncToVBlank,
-	Unlocked
+	SyncToVBlank, // Force FIFO
+	UnlockedMaybeTear, // MAILBOX or IMMEDIATE
+	UnlockedForceTearing, // Force IMMEDIATE
+	UnlockedNoTearing // Force MAILBOX
 };
 
 class WSI

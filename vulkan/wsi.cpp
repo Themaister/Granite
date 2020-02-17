@@ -829,8 +829,8 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	bool use_vsync = current_present_mode == PresentMode::SyncToVBlank;
 	if (!use_vsync)
 	{
-		bool allow_mailbox = true;
-		bool allow_immediate = true;
+		bool allow_mailbox = current_present_mode != PresentMode::UnlockedForceTearing;
+		bool allow_immediate = current_present_mode != PresentMode::UnlockedNoTearing;
 
 #ifdef _WIN32
 		if (device->get_gpu_properties().vendorID == VENDOR_ID_NVIDIA)

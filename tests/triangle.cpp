@@ -30,11 +30,11 @@
 using namespace Granite;
 using namespace Vulkan;
 
-struct TriangleApplication : Granite::Application, Granite::EventHandler
+struct PresentModeTest : Granite::Application, Granite::EventHandler
 {
-	TriangleApplication()
+	PresentModeTest()
 	{
-		EVENT_MANAGER_REGISTER_LATCH(TriangleApplication, on_device_created, on_device_destroyed, DeviceCreatedEvent);
+		EVENT_MANAGER_REGISTER_LATCH(PresentModeTest, on_device_created, on_device_destroyed, DeviceCreatedEvent);
 	}
 
 	void on_device_created(const DeviceCreatedEvent &e)
@@ -206,7 +206,7 @@ Application *application_create(int, char **)
 
 	try
 	{
-		auto *app = new TriangleApplication();
+		auto *app = new PresentModeTest();
 		return app;
 	}
 	catch (const std::exception &e)

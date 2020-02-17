@@ -56,6 +56,11 @@ if (NOT ANDROID)
     target_compile_definitions(display-timing-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
 endif()
 
+add_granite_application(present-mode-test present_mode_test.cpp)
+if (NOT ANDROID)
+    target_compile_definitions(present-mode-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
+endif()
+
 add_granite_application(clustering-visualizer clustering_visualizer.cpp)
 target_compile_definitions(clustering-visualizer PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
 

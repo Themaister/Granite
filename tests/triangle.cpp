@@ -30,8 +30,26 @@
 using namespace Granite;
 using namespace Vulkan;
 
-struct TriangleApplication : Granite::Application, Granite::EventHandler
+struct PresentModeTest : Granite::Application, Granite::EventHandler
 {
+	PresentModeTest()
+	{
+		EVENT_MANAGER_REGISTER_LATCH(PresentModeTest, on_device_created, on_device_destroyed, DeviceCreatedEvent);
+	}
+
+	void on_device_created(const DeviceCreatedEvent &e)
+	{
+		ImageCreateInfo info = ImageCreateInfo::render_target(1280, 720, VK_FORMAT_B8G8R8A8_SRGB);
+		info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+		info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+		render_target = e.get_device().create_image(info, nullptr);
+	}
+
+	void on_device_destroyed(const DeviceCreatedEvent &)
+	{
+		render_target.reset();
+	}
+
 	void render_frame(double, double)
 	{
 		auto &wsi = get_wsi();
@@ -86,7 +104,7 @@ Application *application_create(int, char **)
 
 	try
 	{
-		auto *app = new TriangleApplication();
+		auto *app = new PresentModeTest();
 		return app;
 	}
 	catch (const std::exception &e)

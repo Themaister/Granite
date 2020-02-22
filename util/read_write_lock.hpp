@@ -78,14 +78,12 @@ public:
 	inline void promote_reader_to_writer()
 	{
 		uint32_t expected = Reader;
-		while (!counter.compare_exchange_weak(expected, Writer,
-		                                      std::memory_order_acquire,
-		                                      std::memory_order_relaxed))
+		if (!counter.compare_exchange_strong(expected, Writer,
+		                                     std::memory_order_acquire,
+		                                     std::memory_order_relaxed))
 		{
-#ifdef __SSE2__
-			_mm_pause();
-#endif
-			expected = Reader;
+			unlock_read();
+			lock_write();
 		}
 	}
 

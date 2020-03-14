@@ -44,6 +44,7 @@ option(GRANITE_SANITIZE_MEMORY "Sanitize memory" OFF)
 option(GRANITE_ANDROID_AUDIO_OBOE "Use the Oboe library for audio." ON)
 option(GRANITE_TARGET_NATIVE "Target native arch (-march=native)" OFF)
 option(GRANITE_BULLET "Enable Bullet support." OFF)
+option(GRANITE_RENDERDOC_CAPTURE "Enable support for RenderDoc capture from API." ON)
 
 if (GRANITE_HIDDEN)
     if (CMAKE_COMPILER_IS_GNUCXX OR (${CMAKE_CXX_COMPILER_ID} MATCHES "Clang"))
@@ -297,6 +298,15 @@ target_sources(granite PRIVATE
         vulkan/event_manager.cpp vulkan/event_manager.hpp
         vulkan/pipeline_event.cpp vulkan/pipeline_event.hpp
         vulkan/query_pool.cpp vulkan/query_pool.hpp)
+
+if (GRANITE_RENDERDOC_CAPTURE)
+    target_link_libraries(granite PRIVATE renderdoc-app)
+    target_compile_definitions(granite PRIVATE GRANITE_RENDERDOC_CAPTURE)
+    target_sources(granite PRIVATE vulkan/renderdoc_capture.cpp)
+    if (NOT WIN32)
+        target_link_libraries(granite PRIVATE dl)
+    endif()
+endif()
 
 if (GRANITE_VULKAN_MT)
     target_compile_definitions(granite PUBLIC GRANITE_VULKAN_MT)

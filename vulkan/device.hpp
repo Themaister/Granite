@@ -176,6 +176,13 @@ public:
 	void wait_idle();
 	void end_frame_context();
 
+	// RenderDoc integration API for app-guided captures.
+	static void init_renderdoc_capture();
+	// Calls next_frame_context() and begins a renderdoc capture.
+	void begin_renderdoc_capture();
+	// Calls next_frame_context() and ends the renderdoc capture.
+	void end_renderdoc_capture();
+
 	// Set names for objects for debuggers and profilers.
 	void set_name(const Buffer &buffer, const char *name);
 	void set_name(const Image &image, const char *name);

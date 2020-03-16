@@ -42,11 +42,11 @@ static void *renderdoc_module;
 
 static RENDERDOC_API_1_0_0 *renderdoc_api;
 
-void Device::init_renderdoc_capture()
+bool Device::init_renderdoc_capture()
 {
 	std::lock_guard<std::mutex> holder{module_lock};
 	if (renderdoc_module)
-		return;
+		return true;
 
 #ifdef _WIN32
 	renderdoc_module = GetModuleHandleA("renderdoc.dll");
@@ -59,7 +59,7 @@ void Device::init_renderdoc_capture()
 	if (!renderdoc_module)
 	{
 		LOGE("Failed to load RenderDoc, make sure RenderDoc started the application in capture mode.\n");
-		return;
+		return false;
 	}
 
 #ifdef _WIN32
@@ -78,14 +78,14 @@ void Device::init_renderdoc_capture()
 	if (!func)
 	{
 		LOGE("Failed to load RENDERDOC_GetAPI function.\n");
-		return;
+		return false;
 	}
 #endif
 
 	if (!func(eRENDERDOC_API_Version_1_0_0, reinterpret_cast<void **>(&renderdoc_api)))
 	{
 		LOGE("Failed to obtain RenderDoc 1.0.0 API.\n");
-		return;
+		return false;
 	}
 	else
 	{
@@ -93,6 +93,8 @@ void Device::init_renderdoc_capture()
 		renderdoc_api->GetAPIVersion(&major, &minor, &patch);
 		LOGI("Initialized RenderDoc API %d.%d.%d.\n", major, minor, patch);
 	}
+
+	return true;
 }
 
 void Device::begin_renderdoc_capture()

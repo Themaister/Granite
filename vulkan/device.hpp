@@ -177,7 +177,7 @@ public:
 	void end_frame_context();
 
 	// RenderDoc integration API for app-guided captures.
-	static void init_renderdoc_capture();
+	static bool init_renderdoc_capture();
 	// Calls next_frame_context() and begins a renderdoc capture.
 	void begin_renderdoc_capture();
 	// Calls next_frame_context() and ends the renderdoc capture.

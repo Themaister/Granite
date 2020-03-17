@@ -39,11 +39,11 @@ public:
 	Hasher() = default;
 
 	template <typename T>
-	inline void data(const T *data, size_t size)
+	inline void data(const T *data_, size_t size)
 	{
-		size /= sizeof(*data);
+		size /= sizeof(*data_);
 		for (size_t i = 0; i < size; i++)
-			h = (h * 0x100000001b3ull) ^ data[i];
+			h = (h * 0x100000001b3ull) ^ data_[i];
 	}
 
 	inline void u32(uint32_t value)

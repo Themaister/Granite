@@ -71,7 +71,7 @@ bool Device::init_renderdoc_capture()
 	if (!func)
 	{
 		LOGE("Failed to load RENDERDOC_GetAPI function.\n");
-		return;
+		return false;
 	}
 #else
 	auto *func = reinterpret_cast<pRENDERDOC_GetAPI>(dlsym(renderdoc_module, "RENDERDOC_GetAPI"));

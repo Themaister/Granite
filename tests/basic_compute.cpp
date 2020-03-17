@@ -25,6 +25,7 @@
 #include "device.hpp"
 #include "muglm/muglm_impl.hpp"
 #include "os_filesystem.hpp"
+#include <random>
 
 using namespace Granite;
 using namespace Vulkan;
@@ -87,35 +88,46 @@ struct BasicComputeTest : Granite::Application, Granite::EventHandler
 		cmd->barrier(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_ACCESS_MEMORY_WRITE_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
 		             VK_ACCESS_MEMORY_READ_BIT);
 
-		uint32_t variants[64];
-		for (unsigned i = 0; i < 64; i++)
-			variants[i] = i & 3;
-		auto variant_buffer = create_ssbo(variants, sizeof(variants));
+		std::mt19937 rnd(1337);
+		int16_t inputs[64][2] = {};
+		for (auto &v : inputs)
+		{
+			v[0] = rnd();
+			v[1] = rnd();
+		}
+		auto input_buffer = create_ssbo(inputs, sizeof(inputs));
+		auto output_buffer = create_ssbo(nullptr, 64 * 2);
 
-		auto work_list_buffer = create_ssbo(nullptr, 64 * 64 * sizeof(uint32_t));
-
-		uint32_t counts[64] = {};
-		auto work_list_count = create_ssbo(counts, sizeof(counts));
-
-		cmd->set_program("assets://shaders/compute_bucket_allocate.comp");
-		cmd->set_storage_buffer(0, 0, *variant_buffer);
-		cmd->set_storage_buffer(0, 1, *work_list_buffer);
-		cmd->set_storage_buffer(0, 2, *work_list_count);
+		cmd->set_program("assets://shaders/sign_extend_16bit.comp");
+		cmd->set_storage_buffer(0, 0, *input_buffer);
+		cmd->set_storage_buffer(0, 1, *output_buffer);
 		cmd->dispatch(1, 1, 1);
 		device.submit(cmd);
 
-		uint32_t readback_work_list[64][64];
-		readback_ssbo(readback_work_list, sizeof(readback_work_list), *work_list_buffer);
-
-		uint32_t readback_counts[64];
-		readback_ssbo(readback_counts, sizeof(readback_counts), *work_list_count);
+		uint8_t readback[64][2];
+		readback_ssbo(readback, sizeof(readback), *output_buffer);
 
 		for (unsigned i = 0; i < 64; i++)
 		{
 			LOGI("Variant: %u\n", i);
-			LOGI("  Count: %u\n", readback_counts[i]);
-			for (unsigned j = 0; j < readback_counts[i]; j++)
-				LOGI("    %u\n", readback_work_list[i][j]);
+			LOGI("  Input: { %d, %d }\n", inputs[i][0], inputs[i][1]);
+			LOGI("  Output: { %u, %u }\n", readback[i][0], readback[i][1]);
+
+			const auto expected_output = [](int16_t v) -> uint8_t {
+				v -= 0x80;
+				v <<= 7;
+				v >>= 7;
+				v += 0x80;
+				if (v > 0xff)
+					v = 0xff;
+				else if (v < 0)
+					v = 0;
+				return uint8_t(v);
+			};
+			LOGI("  Expected Output: { %u, %u }\n", expected_output(inputs[i][0]), expected_output(inputs[i][1]));
+
+			assert(readback[i][0] == expected_output(inputs[i][0]));
+			assert(readback[i][1] == expected_output(inputs[i][1]));
 		}
 
 		cmd = device.request_command_buffer();

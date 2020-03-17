@@ -1,0 +1,32 @@
+#version 450
+layout(local_size_x = 64) in;
+#extension GL_EXT_shader_explicit_arithmetic_types_int8 : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int16 : require
+#extension GL_EXT_shader_8bit_storage : require
+#extension GL_EXT_shader_16bit_storage : require
+
+layout(set = 0, binding = 0) readonly buffer SSBO
+{
+    i16vec2 inputs[];
+};
+
+layout(set = 0, binding = 1) writeonly buffer SSBOOutput
+{
+    u8vec2 outputs[];
+};
+
+i16vec2 clamp_9bit_notrunc(i16vec2 color)
+{
+    color -= 0x80s;
+    color <<= 7s;
+    color >>= 7s;
+    color += 0x80s;
+    return clamp(color, i16vec2(0), i16vec2(0xff));
+}
+
+void main()
+{
+    i16vec2 inp = inputs[gl_GlobalInvocationID.x];
+    u8vec2 outp = u8vec2(clamp_9bit_notrunc(inp));
+    outputs[gl_GlobalInvocationID.x] = outp;
+}

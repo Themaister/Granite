@@ -55,7 +55,10 @@ void BufferPool::reset()
 
 BufferBlock BufferPool::allocate_block(VkDeviceSize size)
 {
-	BufferDomain ideal_domain = need_device_local ? BufferDomain::Device : BufferDomain::Host;
+	BufferDomain ideal_domain = need_device_local ?
+	                            BufferDomain::Device :
+	                            ((usage & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) != 0) ? BufferDomain::Host : BufferDomain::LinkedDeviceHost;
+
 	VkBufferUsageFlags extra_usage = ideal_domain == BufferDomain::Device ? VK_BUFFER_USAGE_TRANSFER_DST_BIT : 0;
 
 	BufferBlock block;

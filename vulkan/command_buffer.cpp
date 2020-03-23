@@ -2016,6 +2016,48 @@ void CommandBuffer::draw_indirect(const Vulkan::Buffer &buffer,
 		LOGE("Failed to flush render state, draw call will be dropped.\n");
 }
 
+void CommandBuffer::draw_multi_indirect(const Buffer &buffer, uint32_t offset, uint32_t draw_count, uint32_t stride,
+                                        const Buffer &count, uint32_t count_offset)
+{
+	VK_ASSERT(!is_compute);
+	if (!get_device().get_device_features().supports_draw_indirect_count)
+	{
+		LOGE("VK_KHR_draw_indirect_count not supported, dropping draw call.\n");
+		return;
+	}
+
+	if (flush_render_state())
+	{
+		set_backtrace_checkpoint();
+		table.vkCmdDrawIndirectCountKHR(cmd, buffer.get_buffer(), offset,
+		                                count.get_buffer(), count_offset,
+		                                draw_count, stride);
+	}
+	else
+		LOGE("Failed to flush render state, draw call will be dropped.\n");
+}
+
+void CommandBuffer::draw_indexed_multi_indirect(const Buffer &buffer, uint32_t offset, uint32_t draw_count, uint32_t stride,
+                                                const Buffer &count, uint32_t count_offset)
+{
+	VK_ASSERT(!is_compute);
+	if (!get_device().get_device_features().supports_draw_indirect_count)
+	{
+		LOGE("VK_KHR_draw_indirect_count not supported, dropping draw call.\n");
+		return;
+	}
+
+	if (flush_render_state())
+	{
+		set_backtrace_checkpoint();
+		table.vkCmdDrawIndexedIndirectCountKHR(cmd, buffer.get_buffer(), offset,
+		                                       count.get_buffer(), count_offset,
+		                                       draw_count, stride);
+	}
+	else
+		LOGE("Failed to flush render state, draw call will be dropped.\n");
+}
+
 void CommandBuffer::draw_indexed_indirect(const Vulkan::Buffer &buffer,
                                           uint32_t offset, uint32_t draw_count, uint32_t stride)
 {

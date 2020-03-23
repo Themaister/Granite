@@ -36,6 +36,11 @@ if (NOT ANDROID)
     target_compile_definitions(triangle-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
 endif()
 
+add_granite_application(multi-draw-indirect multi_draw_indirect.cpp)
+if (NOT ANDROID)
+    target_compile_definitions(multi-draw-indirect PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
+endif()
+
 add_granite_application(bindless-test bindless_test.cpp)
 if (NOT ANDROID)
     target_compile_definitions(bindless-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")

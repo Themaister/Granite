@@ -54,6 +54,7 @@ struct DeviceFeatures
 	bool supports_conservative_rasterization = false;
 	bool supports_bind_memory2 = false;
 	bool supports_get_memory_requirements2 = false;
+	bool supports_draw_indirect_count = false;
 	VkPhysicalDeviceSubgroupProperties subgroup_properties = {};
 	VkPhysicalDevice8BitStorageFeaturesKHR storage_8bit_features = {};
 	VkPhysicalDevice16BitStorageFeaturesKHR storage_16bit_features = {};

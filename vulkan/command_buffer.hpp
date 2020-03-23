@@ -387,6 +387,10 @@ public:
 
 	void draw_indirect(const Buffer &buffer, uint32_t offset, uint32_t draw_count, uint32_t stride);
 	void draw_indexed_indirect(const Buffer &buffer, uint32_t offset, uint32_t draw_count, uint32_t stride);
+	void draw_multi_indirect(const Buffer &buffer, uint32_t offset, uint32_t draw_count, uint32_t stride,
+	                         const Buffer &count, uint32_t count_offset);
+	void draw_indexed_multi_indirect(const Buffer &buffer, uint32_t offset, uint32_t draw_count, uint32_t stride,
+	                                 const Buffer &count, uint32_t count_offset);
 	void dispatch_indirect(const Buffer &buffer, uint32_t offset);
 
 	void set_opaque_state();

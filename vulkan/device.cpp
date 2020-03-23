@@ -4034,8 +4034,29 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 
 	if (!managers.memory.allocate(reqs.size, reqs.alignment, memory_type, ALLOCATION_TILING_LINEAR, &allocation))
 	{
-		table->vkDestroyBuffer(device, buffer, nullptr);
-		return BufferHandle(nullptr);
+		// This memory type is rather scarce, so fallback to Host type if we've exhausted this memory.
+		if (create_info.domain == BufferDomain::LinkedDeviceHost)
+		{
+			LOGW("Exhausted LinkedDeviceHost memory, falling back to host.\n");
+			memory_type = find_memory_type(BufferDomain::Host, reqs.memoryTypeBits);
+			if (memory_type == UINT32_MAX)
+			{
+				LOGE("Failed to find memory type.\n");
+				table->vkDestroyBuffer(device, buffer, nullptr);
+				return BufferHandle(nullptr);
+			}
+
+			if (!managers.memory.allocate(reqs.size, reqs.alignment, memory_type, ALLOCATION_TILING_LINEAR, &allocation))
+			{
+				table->vkDestroyBuffer(device, buffer, nullptr);
+				return BufferHandle(nullptr);
+			}
+		}
+		else
+		{
+			table->vkDestroyBuffer(device, buffer, nullptr);
+			return BufferHandle(nullptr);
+		}
 	}
 
 	if (table->vkBindBufferMemory(device, buffer, allocation.get_memory(), allocation.get_offset()) != VK_SUCCESS)

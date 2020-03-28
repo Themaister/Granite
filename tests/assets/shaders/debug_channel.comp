@@ -1,0 +1,9 @@
+#version 450
+layout(local_size_x = 64) in;
+
+#include "inc/debug_channel.h"
+
+void main()
+{
+    add_debug_message(0, gl_GlobalInvocationID, vec3(gl_GlobalInvocationID));
+}

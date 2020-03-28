@@ -632,6 +632,9 @@ public:
 	void enable_profiling();
 	bool has_profiling() const;
 
+	void begin_debug_channel(const char *tag, VkDeviceSize size);
+	void end_debug_channel();
+
 private:
 	friend class Util::ObjectPool<CommandBuffer>;
 	CommandBuffer(Device *device, VkCommandBuffer cmd, VkPipelineCache cache, Type type);
@@ -721,6 +724,8 @@ private:
 	void init_viewport_scissor(const RenderPassInfo &info, const Framebuffer *framebuffer);
 
 	bool profiling = false;
+	std::string debug_channel_tag;
+	Vulkan::BufferHandle debug_channel_buffer;
 };
 
 #ifdef GRANITE_VULKAN_FILESYSTEM

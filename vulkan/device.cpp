@@ -955,6 +955,8 @@ void Device::request_staging_block_nolock(BufferBlock &block, VkDeviceSize size)
 
 void Device::submit(CommandBufferHandle &cmd, Fence *fence, unsigned semaphore_count, Semaphore *semaphores)
 {
+	cmd->end_debug_channel();
+
 	LOCK();
 	submit_nolock(move(cmd), fence, semaphore_count, semaphores);
 }
@@ -2493,6 +2495,12 @@ void Device::PerFrame::begin()
 	for (auto &pool : transfer_cmd_pool)
 		pool.begin();
 	query_pool.begin();
+
+	for (auto &channel : debug_channels)
+		device.parse_debug_channel(channel);
+
+	// Free the debug channel buffers here, and they will immediately be recycled by the destroyed_buffers right below.
+	debug_channels.clear();
 
 	for (auto &framebuffer : destroyed_framebuffers)
 		table.vkDestroyFramebuffer(vkdevice, framebuffer, nullptr);
@@ -4502,6 +4510,51 @@ bool Device::acquire_profiling()
 	}
 
 	return true;
+}
+
+void Device::add_debug_channel_buffer(std::string tag, Vulkan::BufferHandle buffer)
+{
+	buffer->set_internal_sync_object();
+	LOCK();
+	frame().debug_channels.push_back({ std::move(tag), std::move(buffer) });
+}
+
+void Device::set_debug_channel_interface(DebugChannelInterface *iface)
+{
+	debug_channel_interface = iface;
+}
+
+void Device::parse_debug_channel(const PerFrame::DebugChannel &channel)
+{
+	if (!debug_channel_interface)
+		return;
+
+	auto *words = static_cast<const DebugChannelInterface::Word *>(map_host_buffer(*channel.buffer, MEMORY_ACCESS_READ_BIT));
+
+	size_t size = channel.buffer->get_create_info().size;
+	if (size <= sizeof(uint32_t))
+	{
+		LOGE("Debug channel buffer is too small.\n");
+		return;
+	}
+
+	// Format for the debug channel.
+	// Word 0: Atomic counter used by shader.
+	// Word 1-*: [total message length, code, x, y, z, args]
+
+	words++;
+	size -= sizeof(uint32_t);
+	size /= sizeof(uint32_t);
+
+	while (size != 0 && words[0].u32 >= 5 && words[0].u32 <= size)
+	{
+		words += words[0].u32;
+		debug_channel_interface->message(channel.tag, words[1].u32,
+		                                 words[2].u32, words[3].u32, words[4].u32,
+		                                 words[0].u32 - 5, &words[5]);
+	}
+
+	unmap_host_buffer(*channel.buffer, MEMORY_ACCESS_READ_BIT);
 }
 
 #ifdef GRANITE_VULKAN_FILESYSTEM

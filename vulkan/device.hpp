@@ -94,6 +94,19 @@ struct HandlePool
 	VulkanObjectPool<BindlessDescriptorPool> bindless_descriptor_pool;
 };
 
+class DebugChannelInterface
+{
+public:
+	union Word
+	{
+		uint32_t u32;
+		int32_t s32;
+		float f32;
+	};
+	virtual void message(const std::string &tag, uint32_t x, uint32_t y, uint32_t z,
+	                     uint32_t code, uint32_t word_count, const Word *words) = 0;
+};
+
 class Device
 #ifdef GRANITE_VULKAN_FOSSILIZE
 	: public Fossilize::StateCreatorInterface
@@ -159,6 +172,7 @@ public:
 	                                          uint32_t *count,
 	                                          const VkPerformanceCounterKHR **counters,
 	                                          const VkPerformanceCounterDescriptionKHR **desc);
+	void set_debug_channel_interface(DebugChannelInterface *iface);
 
 	ImageView &get_swapchain_view();
 	ImageView &get_swapchain_view(unsigned index);
@@ -433,6 +447,13 @@ private:
 		std::vector<VkSemaphore> destroyed_semaphores;
 		std::vector<ImageHandle> keep_alive_images;
 
+		struct DebugChannel
+		{
+			std::string tag;
+			BufferHandle buffer;
+		};
+		std::vector<DebugChannel> debug_channels;
+
 		struct TimestampIntervalHandles
 		{
 			QueryPoolHandle start_ts;
@@ -600,6 +621,10 @@ private:
 	void submit_secondary(CommandBuffer &primary, CommandBuffer &secondary);
 	void wait_idle_nolock();
 	void end_frame_nolock();
+
+	void add_debug_channel_buffer(std::string tag, BufferHandle buffer);
+	void parse_debug_channel(const PerFrame::DebugChannel &channel);
+	DebugChannelInterface *debug_channel_interface = nullptr;
 
 	Fence request_legacy_fence();
 

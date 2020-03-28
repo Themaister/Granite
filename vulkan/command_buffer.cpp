@@ -457,6 +457,9 @@ void CommandBuffer::begin_context()
 	memset(bindings.secondary_cookies, 0, sizeof(bindings.secondary_cookies));
 	memset(&index_state, 0, sizeof(index_state));
 	memset(vbo.buffers, 0, sizeof(vbo.buffers));
+
+	if (debug_channel_buffer)
+		set_storage_buffer(VULKAN_NUM_DESCRIPTOR_SETS - 1, VULKAN_NUM_BINDINGS - 1, *debug_channel_buffer);
 }
 
 void CommandBuffer::begin_compute()
@@ -2289,6 +2292,8 @@ void CommandBuffer::set_backtrace_checkpoint()
 
 void CommandBuffer::end()
 {
+	VK_ASSERT(!debug_channel_buffer);
+
 	if (table.vkEndCommandBuffer(cmd) != VK_SUCCESS)
 		LOGE("Failed to end command buffer.\n");
 
@@ -2360,6 +2365,49 @@ void CommandBuffer::enable_profiling()
 bool CommandBuffer::has_profiling() const
 {
 	return profiling;
+}
+
+void CommandBuffer::begin_debug_channel(const char *tag, VkDeviceSize size)
+{
+	if (debug_channel_buffer)
+		end_debug_channel();
+
+	debug_channel_tag = tag;
+
+	BufferCreateInfo info = {};
+	info.size = size;
+	info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+	info.domain = BufferDomain::Device;
+	debug_channel_buffer = device->create_buffer(info);
+
+	fill_buffer(*debug_channel_buffer, 0);
+	barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+	        VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+	        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
+
+	set_storage_buffer(VULKAN_NUM_DESCRIPTOR_SETS - 1, VULKAN_NUM_BINDINGS - 1, *debug_channel_buffer);
+}
+
+void CommandBuffer::end_debug_channel()
+{
+	if (!debug_channel_buffer)
+		return;
+
+	BufferCreateInfo info = {};
+	info.size = debug_channel_buffer->get_create_info().size;
+	info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+	info.domain = BufferDomain::CachedHost;
+	auto debug_channel_readback = device->create_buffer(info);
+	barrier(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+	        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+	copy_buffer(*debug_channel_readback, *debug_channel_buffer);
+	barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+	        VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
+
+	debug_channel_buffer.reset();
+	device->add_debug_channel_buffer(std::move(debug_channel_tag), std::move(debug_channel_readback));
+	debug_channel_readback = {};
+	debug_channel_tag = {};
 }
 
 #ifdef GRANITE_VULKAN_FILESYSTEM

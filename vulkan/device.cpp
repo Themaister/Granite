@@ -4555,10 +4555,10 @@ void Device::parse_debug_channel(const PerFrame::DebugChannel &channel)
 
 	while (size != 0 && words[0].u32 >= 5 && words[0].u32 <= size)
 	{
-		words += words[0].u32;
 		debug_channel_interface->message(channel.tag, words[1].u32,
 		                                 words[2].u32, words[3].u32, words[4].u32,
 		                                 words[0].u32 - 5, &words[5]);
+		words += words[0].u32;
 	}
 
 	unmap_host_buffer(*channel.buffer, MEMORY_ACCESS_READ_BIT);

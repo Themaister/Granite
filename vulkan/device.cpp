@@ -4542,9 +4542,16 @@ void Device::parse_debug_channel(const PerFrame::DebugChannel &channel)
 	// Word 0: Atomic counter used by shader.
 	// Word 1-*: [total message length, code, x, y, z, args]
 
-	words++;
 	size -= sizeof(uint32_t);
 	size /= sizeof(uint32_t);
+
+	if (words[0].u32 > size)
+	{
+		LOGW("Debug channel overflowed and messaged were dropped. Consider increasing debug channel size to at least %u bytes.\n",
+		     unsigned((words[0].u32 + 1) * sizeof(uint32_t)));
+	}
+
+	words++;
 
 	while (size != 0 && words[0].u32 >= 5 && words[0].u32 <= size)
 	{

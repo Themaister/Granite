@@ -50,6 +50,11 @@ public:
 		return semaphore;
 	}
 
+	const VkSemaphore &get_timeline_semaphore() const
+	{
+		return timeline_semaphore;
+	}
+
 	bool is_signalled() const
 	{
 		return signalled;
@@ -123,13 +128,14 @@ private:
 	}
 
 	SemaphoreHolder(Device *device_, uint64_t timeline_, VkSemaphore semaphore_)
-		: device(device_), semaphore(semaphore_), timeline(timeline_)
+		: device(device_), semaphore(semaphore_), timeline_semaphore(semaphore_), timeline(timeline_)
 	{
 		VK_ASSERT(timeline > 0);
 	}
 
 	Device *device;
 	VkSemaphore semaphore;
+	VkSemaphore timeline_semaphore = VK_NULL_HANDLE;
 	uint64_t timeline;
 	bool signalled = true;
 	bool pending = false;

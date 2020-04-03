@@ -122,6 +122,44 @@ void Device::add_wait_semaphore(CommandBuffer::Type type, Semaphore semaphore, V
 	add_wait_semaphore_nolock(type, semaphore, stages, flush);
 }
 
+Semaphore Device::add_host_signaled_wait_semaphore(CommandBuffer::Type type, VkPipelineStageFlags stages, bool flush)
+{
+	LOCK();
+
+	if (!get_device_features().timeline_semaphore_features.timelineSemaphore)
+	{
+		LOGE("Must support timeline semaphores to use host signaled wait semaphores.\n");
+		return Semaphore{nullptr};
+	}
+
+	current_host_timeline++;
+	Semaphore semaphore(handle_pool.semaphores.allocate(this, current_host_timeline, host_timeline_semaphore));
+	add_wait_semaphore_nolock(type, semaphore, stages, flush);
+	return semaphore;
+}
+
+void Device::signal_host_semaphore(Semaphore &semaphore)
+{
+	if (!get_device_features().timeline_semaphore_features.timelineSemaphore)
+	{
+		LOGE("Cannot signal semaphores from host without timeline semaphore feature.\n");
+		return;
+	}
+
+	VkSemaphoreSignalInfo info = { VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO_KHR };
+	info.semaphore = semaphore->get_timeline_semaphore();
+	info.value = semaphore->get_timeline_value();
+	VK_ASSERT(info.value != 0);
+	VK_ASSERT(info.value <= current_host_timeline);
+	if (table->vkSignalSemaphoreKHR(device, &info) != VK_SUCCESS)
+	{
+		LOGE("Failed to signal timeline semaphore. Terminating as device will likely hang indefinitely now.\n");
+		abort();
+	}
+
+	semaphore.reset();
+}
+
 void Device::add_wait_semaphore_nolock(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags stages,
                                        bool flush)
 {
@@ -757,6 +795,8 @@ void Device::init_timeline_semaphores()
 	if (table->vkCreateSemaphore(device, &info, nullptr, &compute.timeline_semaphore) != VK_SUCCESS)
 		LOGE("Failed to create timeline semaphore.\n");
 	if (table->vkCreateSemaphore(device, &info, nullptr, &transfer.timeline_semaphore) != VK_SUCCESS)
+		LOGE("Failed to create timeline sempahore.\n");
+	if (table->vkCreateSemaphore(device, &info, nullptr, &host_timeline_semaphore) != VK_SUCCESS)
 		LOGE("Failed to create timeline sempahore.\n");
 }
 
@@ -2006,10 +2046,13 @@ void Device::deinit_timeline_semaphores()
 		table->vkDestroySemaphore(device, compute.timeline_semaphore, nullptr);
 	if (transfer.timeline_semaphore != VK_NULL_HANDLE)
 		table->vkDestroySemaphore(device, transfer.timeline_semaphore, nullptr);
+	if (host_timeline_semaphore != VK_NULL_HANDLE)
+		table->vkDestroySemaphore(device, host_timeline_semaphore, nullptr);
 
 	graphics.timeline_semaphore = VK_NULL_HANDLE;
 	compute.timeline_semaphore = VK_NULL_HANDLE;
 	transfer.timeline_semaphore = VK_NULL_HANDLE;
+	host_timeline_semaphore = VK_NULL_HANDLE;
 
 	// Make sure we don't accidentally try to wait for these after we destroy the semaphores.
 	for (auto &frame : per_frame)

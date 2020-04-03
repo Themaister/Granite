@@ -220,6 +220,9 @@ public:
 	CommandBuffer::Type get_physical_queue_type(CommandBuffer::Type queue_type) const;
 	void register_time_interval(QueryPoolHandle start_ts, QueryPoolHandle end_ts, const char *tag);
 
+	Semaphore add_host_signaled_wait_semaphore(CommandBuffer::Type type, VkPipelineStageFlags stages, bool flush);
+	void signal_host_semaphore(Semaphore &semaphore);
+
 	// Request shaders and programs. These objects are owned by the Device.
 	Shader *request_shader(const uint32_t *code, size_t size);
 	Shader *request_shader_by_hash(Util::Hash hash);
@@ -486,6 +489,9 @@ private:
 		uint64_t current_timeline = 0;
 		PerformanceQueryPool performance_query_pool;
 	} graphics, compute, transfer;
+
+	VkSemaphore host_timeline_semaphore = VK_NULL_HANDLE;
+	uint64_t current_host_timeline = 0;
 
 	struct InternalFence
 	{

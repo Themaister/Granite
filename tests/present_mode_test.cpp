@@ -28,6 +28,8 @@
 #include <string.h>
 #include <flat_renderer.hpp>
 #include <ui_manager.hpp>
+#include <thread>
+#include "thread_group.hpp"
 
 using namespace Granite;
 using namespace Vulkan;
@@ -88,11 +90,19 @@ struct PresentModeTest : Granite::Application, Granite::EventHandler
 		auto cmd = device.request_command_buffer(CommandBuffer::Type::AsyncCompute);
 
 		BufferCreateInfo info = {};
-		info.size = 4 * 1024 * 1024;
+		info.size = 1 * 1024 * 1024;
 		info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 		auto buffer = device.create_buffer(info);
 		cmd->fill_buffer(*buffer, 0);
-		device.submit(cmd);
+
+		Semaphore sem[2];
+		Fence fence;
+		device.submit(cmd, &fence, 2, sem);
+		device.add_wait_semaphore(CommandBuffer::Type::Generic, sem[0], VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, true);
+		device.add_wait_semaphore(CommandBuffer::Type::Generic, sem[1], VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, true);
+		Global::thread_group()->create_task([fence]() mutable {
+			fence->wait();
+		});
 	}
 
 	void render_frame(double frame_time, double) override
@@ -100,7 +110,25 @@ struct PresentModeTest : Granite::Application, Granite::EventHandler
 		auto &wsi = get_wsi();
 		auto &device = wsi.get_device();
 
-		render_dummy_async_compute();
+		auto sem = device.add_host_signaled_wait_semaphore(CommandBuffer::Type::AsyncCompute, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, true);
+		auto sem2 = device.add_host_signaled_wait_semaphore(CommandBuffer::Type::Generic, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, true);
+		Fence async_fence, graphics_fence;
+		device.submit_empty(CommandBuffer::Type::AsyncCompute, &async_fence);
+		device.submit_empty(CommandBuffer::Type::Generic, &graphics_fence);
+
+		for (unsigned i = 0; i < 100; i++)
+			render_dummy_async_compute();
+
+		Global::thread_group()->create_task([async_fence]() mutable {
+			async_fence->wait();
+		});
+
+		{
+			auto start_time = Util::get_current_time_nsecs();
+			device.signal_host_semaphore(sem);
+			auto end_time = Util::get_current_time_nsecs();
+			LOGI("Signal took %.3f us\n", 1e-3 * (end_time - start_time));
+		}
 
 		if (frame_time_history.size() > 64)
 			frame_time_history.erase(frame_time_history.begin());
@@ -148,7 +176,22 @@ struct PresentModeTest : Granite::Application, Granite::EventHandler
 		draw_frame_time_history(*cmd);
 
 		cmd->end_render_pass();
-		device.submit(cmd);
+		Fence fence;
+		device.submit(cmd, &fence);
+
+		Global::thread_group()->create_task([graphics_fence]() mutable {
+			graphics_fence->wait();
+		});
+
+		Global::thread_group()->create_task([fence]() mutable {
+			fence->wait();
+		});
+
+		LOGI("Signalling ...\n");
+		auto start_signal = Util::get_current_time_nsecs();
+		device.signal_host_semaphore(sem2);
+		auto end_signal = Util::get_current_time_nsecs();
+		LOGI("Took %.3f us to signal semaphore!\n", 1e-3 * (end_signal - start_signal));
 	}
 
 	static float convert_to_y(float t, float min_y, float max_y)

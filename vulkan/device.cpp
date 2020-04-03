@@ -132,7 +132,7 @@ Semaphore Device::add_host_signaled_wait_semaphore(CommandBuffer::Type type, VkP
 		return Semaphore{nullptr};
 	}
 
-	current_host_timeline++;
+	current_host_timeline += 100;
 	Semaphore semaphore(handle_pool.semaphores.allocate(this, current_host_timeline, host_timeline_semaphore));
 	add_wait_semaphore_nolock(type, semaphore, stages, flush);
 	return semaphore;

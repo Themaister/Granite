@@ -48,9 +48,12 @@ void FenceHolder::wait()
 	{
 		VK_ASSERT(timeline_semaphore);
 		VkSemaphoreWaitInfoKHR info = { VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO_KHR };
-		info.semaphoreCount = 1;
-		info.pSemaphores = &timeline_semaphore;
-		info.pValues = &timeline_value;
+		info.flags = VK_SEMAPHORE_WAIT_ANY_BIT_KHR;
+		info.semaphoreCount = 4;
+		VkSemaphore sems[4] = { timeline_semaphore, timeline_semaphore, timeline_semaphore, timeline_semaphore };
+		uint64_t values[4] = { timeline_value, timeline_value, timeline_value, timeline_value };
+		info.pSemaphores = sems;
+		info.pValues = values;
 		if (table.vkWaitSemaphoresKHR(device->get_device(), &info, UINT64_MAX) != VK_SUCCESS)
 			LOGE("Failed to wait for timeline semaphore!\n");
 		else

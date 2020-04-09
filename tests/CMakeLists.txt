@@ -77,6 +77,9 @@ target_compile_definitions(pcf-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SO
 add_granite_application(cube-array-test cube_array_test.cpp)
 target_compile_definitions(cube-array-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
 
+add_granite_application(async-spec-constant async_spec_constant.cpp)
+target_compile_definitions(async-spec-constant PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
+
 add_granite_application(render-graph-sandbox render_graph_sandbox.cpp)
 target_compile_definitions(render-graph-sandbox PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
 

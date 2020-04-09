@@ -654,19 +654,24 @@ VkPipeline CommandBuffer::build_compute_pipeline(Device *device, const DeferredP
 	auto mask = compile.program->get_pipeline_layout()->get_resource_layout().combined_spec_constant_mask &
 	            compile.potential_static_state.spec_constant_mask;
 
+	uint32_t spec_constants[VULKAN_NUM_SPEC_CONSTANTS];
+
 	if (mask)
 	{
 		info.stage.pSpecializationInfo = &spec_info;
-		spec_info.pData = compile.potential_static_state.spec_constants;
-		spec_info.dataSize = sizeof(compile.potential_static_state.spec_constants);
+		spec_info.pData = spec_constants;
 		spec_info.pMapEntries = spec_entries;
 
 		for_each_bit(mask, [&](uint32_t bit) {
-			auto &entry = spec_entries[spec_info.mapEntryCount++];
-			entry.offset = sizeof(uint32_t) * bit;
+			auto &entry = spec_entries[spec_info.mapEntryCount];
+			entry.offset = sizeof(uint32_t) * spec_info.mapEntryCount;
 			entry.size = sizeof(uint32_t);
 			entry.constantID = bit;
+
+			spec_constants[spec_info.mapEntryCount] = compile.potential_static_state.spec_constants[bit];
+			spec_info.mapEntryCount++;
 		});
+		spec_info.dataSize = spec_info.mapEntryCount * sizeof(uint32_t);
 	}
 
 	VkPipelineShaderStageRequiredSubgroupSizeCreateInfoEXT subgroup_size_info = {
@@ -900,6 +905,7 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Device *device, const Deferred
 
 	VkSpecializationInfo spec_info[ecast(ShaderStage::Count)] = {};
 	VkSpecializationMapEntry spec_entries[ecast(ShaderStage::Count)][VULKAN_NUM_SPEC_CONSTANTS];
+	uint32_t spec_constants[static_cast<unsigned>(ShaderStage::Count)][VULKAN_NUM_SPEC_CONSTANTS];
 
 	for (unsigned i = 0; i < static_cast<unsigned>(ShaderStage::Count); i++)
 	{
@@ -918,21 +924,23 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Device *device, const Deferred
 			s.stage = static_cast<VkShaderStageFlagBits>(1u << i);
 
 			auto mask = compile.program->get_pipeline_layout()->get_resource_layout().spec_constant_mask[i] &
-					compile.potential_static_state.spec_constant_mask;
+			            compile.potential_static_state.spec_constant_mask;
 
 			if (mask)
 			{
 				s.pSpecializationInfo = &spec_info[i];
-				spec_info[i].pData = compile.potential_static_state.spec_constants;
-				spec_info[i].dataSize = sizeof(compile.potential_static_state.spec_constants);
+				spec_info[i].pData = spec_constants[i];
 				spec_info[i].pMapEntries = spec_entries[i];
 
 				for_each_bit(mask, [&](uint32_t bit) {
-					auto &entry = spec_entries[i][spec_info[i].mapEntryCount++];
-					entry.offset = sizeof(uint32_t) * bit;
+					auto &entry = spec_entries[i][spec_info[i].mapEntryCount];
+					entry.offset = sizeof(uint32_t) * spec_info[i].mapEntryCount;
 					entry.size = sizeof(uint32_t);
 					entry.constantID = bit;
+					spec_constants[i][spec_info[i].mapEntryCount] = compile.potential_static_state.spec_constants[bit];
+					spec_info[i].mapEntryCount++;
 				});
+				spec_info[i].dataSize = spec_info[i].mapEntryCount * sizeof(uint32_t);
 			}
 		}
 	}
@@ -2537,6 +2545,7 @@ void CommandBufferUtil::setup_fullscreen_quad(Vulkan::CommandBuffer &cmd, const 
 	set_fullscreen_quad_vertex_state(cmd);
 	cmd.set_depth_test(depth_test, depth_write);
 	cmd.set_depth_compare(depth_compare);
+	cmd.set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 }
 #endif
 

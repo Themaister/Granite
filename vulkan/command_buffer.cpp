@@ -1080,7 +1080,10 @@ bool CommandBuffer::flush_compute_state(bool synchronous)
 		return false;
 	VK_ASSERT(current_layout);
 
-	if (get_and_clear(COMMAND_BUFFER_DIRTY_PIPELINE_BIT))
+	if (current_pipeline == VK_NULL_HANDLE)
+		set_dirty(COMMAND_BUFFER_DIRTY_PIPELINE_BIT);
+
+	if (get_and_clear(COMMAND_BUFFER_DIRTY_STATIC_STATE_BIT | COMMAND_BUFFER_DIRTY_PIPELINE_BIT))
 	{
 		VkPipeline old_pipe = current_pipeline;
 		if (!flush_compute_pipeline(synchronous))
@@ -1115,6 +1118,9 @@ bool CommandBuffer::flush_render_state(bool synchronous)
 	if (!pipeline_state.program)
 		return false;
 	VK_ASSERT(current_layout);
+
+	if (current_pipeline == VK_NULL_HANDLE)
+		set_dirty(COMMAND_BUFFER_DIRTY_PIPELINE_BIT);
 
 	// We've invalidated pipeline state, update the VkPipeline.
 	if (get_and_clear(COMMAND_BUFFER_DIRTY_STATIC_STATE_BIT | COMMAND_BUFFER_DIRTY_PIPELINE_BIT |

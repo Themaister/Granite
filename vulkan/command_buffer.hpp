@@ -149,8 +149,6 @@ struct VertexBindingState
 {
 	VkBuffer buffers[VULKAN_NUM_VERTEX_BUFFERS];
 	VkDeviceSize offsets[VULKAN_NUM_VERTEX_BUFFERS];
-	VkDeviceSize strides[VULKAN_NUM_VERTEX_BUFFERS];
-	VkVertexInputRate input_rates[VULKAN_NUM_VERTEX_BUFFERS];
 };
 
 enum CommandBufferSavedStateBits
@@ -181,6 +179,21 @@ struct CommandBufferSavedState
 	PipelineState static_state;
 	PotentialState potential_static_state;
 	DynamicState dynamic_state;
+};
+
+struct DeferredPipelineCompile
+{
+	Program *program;
+	const RenderPass *compatible_render_pass;
+	PipelineState static_state;
+	PotentialState potential_static_state;
+	VertexAttribState attribs[VULKAN_NUM_VERTEX_ATTRIBS];
+	VkDeviceSize strides[VULKAN_NUM_VERTEX_BUFFERS];
+	VkVertexInputRate input_rates[VULKAN_NUM_VERTEX_BUFFERS];
+
+	unsigned subpass_index;
+	Util::Hash hash;
+	VkPipelineCache cache;
 };
 
 class CommandBuffer;
@@ -317,7 +330,7 @@ public:
 	void submit_secondary(Util::IntrusivePtr<CommandBuffer> secondary);
 	inline unsigned get_current_subpass() const
 	{
-		return current_subpass;
+		return pipeline_state.subpass_index;
 	}
 	Util::IntrusivePtr<CommandBuffer> request_secondary_command_buffer(unsigned thread_index, unsigned subpass);
 	static Util::IntrusivePtr<CommandBuffer> request_secondary_command_buffer(Device &device,
@@ -404,21 +417,21 @@ public:
 #define SET_STATIC_STATE(value)                               \
 	do                                                        \
 	{                                                         \
-		if (static_state.state.value != value)                \
+		if (pipeline_state.static_state.state.value != value) \
 		{                                                     \
-			static_state.state.value = value;                 \
+			pipeline_state.static_state.state.value = value;  \
 			set_dirty(COMMAND_BUFFER_DIRTY_STATIC_STATE_BIT); \
 		}                                                     \
 	} while (0)
 
-#define SET_POTENTIALLY_STATIC_STATE(value)                   \
-	do                                                        \
-	{                                                         \
-		if (potential_static_state.value != value)            \
-		{                                                     \
-			potential_static_state.value = value;             \
-			set_dirty(COMMAND_BUFFER_DIRTY_STATIC_STATE_BIT); \
-		}                                                     \
+#define SET_POTENTIALLY_STATIC_STATE(value)                       \
+	do                                                            \
+	{                                                             \
+		if (pipeline_state.potential_static_state.value != value) \
+		{                                                         \
+			pipeline_state.potential_static_state.value = value;  \
+			set_dirty(COMMAND_BUFFER_DIRTY_STATIC_STATE_BIT);     \
+		}                                                         \
 	} while (0)
 
 	inline void set_depth_test(bool depth_test, bool depth_write)
@@ -553,10 +566,10 @@ public:
 	{
 		VK_ASSERT(index < VULKAN_NUM_SPEC_CONSTANTS);
 		static_assert(sizeof(value) == sizeof(uint32_t), "Spec constant data must be 32-bit.");
-		if (memcmp(&potential_static_state.spec_constants[index], &value, sizeof(value)))
+		if (memcmp(&pipeline_state.potential_static_state.spec_constants[index], &value, sizeof(value)))
 		{
-			memcpy(&potential_static_state.spec_constants[index], &value, sizeof(value));
-			if (potential_static_state.spec_constant_mask & (1u << index))
+			memcpy(&pipeline_state.potential_static_state.spec_constants[index], &value, sizeof(value));
+			if (pipeline_state.potential_static_state.spec_constant_mask & (1u << index))
 				set_dirty(COMMAND_BUFFER_DIRTY_STATIC_STATE_BIT);
 		}
 	}
@@ -635,6 +648,12 @@ public:
 	void begin_debug_channel(const char *tag, VkDeviceSize size);
 	void end_debug_channel();
 
+	void extract_pipeline_state(DeferredPipelineCompile &compile) const;
+	static VkPipeline build_graphics_pipeline(Device *device, const DeferredPipelineCompile &compile);
+	static VkPipeline build_compute_pipeline(Device *device, const DeferredPipelineCompile &compile);
+
+	bool flush_pipeline_state_without_blocking();
+
 private:
 	friend class Util::ObjectPool<CommandBuffer>;
 	CommandBuffer(Device *device, VkCommandBuffer cmd, VkPipelineCache cache, Type type);
@@ -642,15 +661,12 @@ private:
 	Device *device;
 	const VolkDeviceTable &table;
 	VkCommandBuffer cmd;
-	VkPipelineCache cache;
 	Type type;
 
 	const Framebuffer *framebuffer = nullptr;
 	const RenderPass *actual_render_pass = nullptr;
-	const RenderPass *compatible_render_pass = nullptr;
 	const Vulkan::ImageView *framebuffer_attachments[VULKAN_NUM_ATTACHMENTS + 1] = {};
 
-	VertexAttribState attribs[VULKAN_NUM_VERTEX_ATTRIBS] = {};
 	IndexState index_state = {};
 	VertexBindingState vbo = {};
 	ResourceBindings bindings;
@@ -660,8 +676,6 @@ private:
 	VkPipeline current_pipeline = VK_NULL_HANDLE;
 	VkPipelineLayout current_pipeline_layout = VK_NULL_HANDLE;
 	PipelineLayout *current_layout = nullptr;
-	Program *current_program = nullptr;
-	unsigned current_subpass = 0;
 	VkSubpassContents current_contents = VK_SUBPASS_CONTENTS_INLINE;
 	unsigned thread_index = 0;
 
@@ -689,22 +703,19 @@ private:
 		return mask;
 	}
 
-	PipelineState static_state;
-	PotentialState potential_static_state = {};
+	DeferredPipelineCompile pipeline_state = {};
 	DynamicState dynamic_state = {};
 #ifndef _MSC_VER
-	static_assert(sizeof(static_state.words) >= sizeof(static_state.state),
+	static_assert(sizeof(pipeline_state.static_state.words) >= sizeof(pipeline_state.static_state.state),
 	              "Hashable pipeline state is not large enough!");
 #endif
 
-	bool flush_render_state();
-	bool flush_compute_state();
+	bool flush_render_state(bool synchronous);
+	bool flush_compute_state(bool synchronous);
 	void clear_render_state();
 
-	VkPipeline build_graphics_pipeline(Util::Hash hash);
-	VkPipeline build_compute_pipeline(Util::Hash hash);
-	void flush_graphics_pipeline();
-	void flush_compute_pipeline();
+	bool flush_graphics_pipeline(bool synchronous);
+	bool flush_compute_pipeline(bool synchronous);
 	void flush_descriptor_sets();
 	void begin_graphics();
 	void flush_descriptor_set(uint32_t set);
@@ -726,6 +737,9 @@ private:
 	bool profiling = false;
 	std::string debug_channel_tag;
 	Vulkan::BufferHandle debug_channel_buffer;
+
+	static void update_hash_graphics_pipeline(DeferredPipelineCompile &compile, uint32_t &active_vbos);
+	static void update_hash_compute_pipeline(DeferredPipelineCompile &compile);
 };
 
 #ifdef GRANITE_VULKAN_FILESYSTEM

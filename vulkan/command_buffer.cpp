@@ -38,16 +38,16 @@ using namespace Util;
 
 namespace Vulkan
 {
-CommandBuffer::CommandBuffer(Device *device_, VkCommandBuffer cmd_, VkPipelineCache cache_, Type type_)
+CommandBuffer::CommandBuffer(Device *device_, VkCommandBuffer cmd_, VkPipelineCache cache, Type type_)
     : device(device_)
     , table(device_->get_device_table())
     , cmd(cmd_)
-    , cache(cache_)
     , type(type_)
 {
+	pipeline_state.cache = cache;
 	begin_compute();
 	set_opaque_state();
-	memset(&static_state, 0, sizeof(static_state));
+	memset(&pipeline_state.static_state, 0, sizeof(pipeline_state.static_state));
 	memset(&bindings, 0, sizeof(bindings));
 }
 
@@ -452,7 +452,7 @@ void CommandBuffer::begin_context()
 	current_pipeline = VK_NULL_HANDLE;
 	current_pipeline_layout = VK_NULL_HANDLE;
 	current_layout = nullptr;
-	current_program = nullptr;
+	pipeline_state.program = nullptr;
 	memset(bindings.cookies, 0, sizeof(bindings.cookies));
 	memset(bindings.secondary_cookies, 0, sizeof(bindings.secondary_cookies));
 	memset(&index_state, 0, sizeof(index_state));
@@ -494,7 +494,7 @@ CommandBufferHandle CommandBuffer::request_secondary_command_buffer(Device &devi
 	cmd->begin_graphics();
 
 	cmd->framebuffer = fb;
-	cmd->compatible_render_pass = &fb->get_compatible_render_pass();
+	cmd->pipeline_state.compatible_render_pass = &fb->get_compatible_render_pass();
 	cmd->actual_render_pass = &device.request_render_pass(info, false);
 
 	unsigned i;
@@ -504,7 +504,7 @@ CommandBufferHandle CommandBuffer::request_secondary_command_buffer(Device &devi
 		cmd->framebuffer_attachments[i++] = info.depth_stencil;
 
 	cmd->init_viewport_scissor(info, fb);
-	cmd->current_subpass = subpass;
+	cmd->pipeline_state.subpass_index = subpass;
 	cmd->current_contents = VK_SUBPASS_CONTENTS_INLINE;
 
 	return cmd;
@@ -519,11 +519,11 @@ CommandBufferHandle CommandBuffer::request_secondary_command_buffer(unsigned thr
 	secondary_cmd->begin_graphics();
 
 	secondary_cmd->framebuffer = framebuffer;
-	secondary_cmd->compatible_render_pass = compatible_render_pass;
+	secondary_cmd->pipeline_state.compatible_render_pass = pipeline_state.compatible_render_pass;
 	secondary_cmd->actual_render_pass = actual_render_pass;
 	memcpy(secondary_cmd->framebuffer_attachments, framebuffer_attachments, sizeof(framebuffer_attachments));
 
-	secondary_cmd->current_subpass = subpass_;
+	secondary_cmd->pipeline_state.subpass_index = subpass_;
 	secondary_cmd->viewport = viewport;
 	secondary_cmd->scissor = scissor;
 	secondary_cmd->current_contents = VK_SUBPASS_CONTENTS_INLINE;
@@ -535,7 +535,7 @@ void CommandBuffer::submit_secondary(CommandBufferHandle secondary)
 {
 	VK_ASSERT(!is_secondary);
 	VK_ASSERT(secondary->is_secondary);
-	VK_ASSERT(current_subpass == secondary->current_subpass);
+	VK_ASSERT(pipeline_state.subpass_index == secondary->pipeline_state.subpass_index);
 	VK_ASSERT(current_contents == VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
 
 	device->submit_secondary(*this, *secondary);
@@ -544,10 +544,10 @@ void CommandBuffer::submit_secondary(CommandBufferHandle secondary)
 void CommandBuffer::next_subpass(VkSubpassContents contents)
 {
 	VK_ASSERT(framebuffer);
-	VK_ASSERT(compatible_render_pass);
+	VK_ASSERT(pipeline_state.compatible_render_pass);
 	VK_ASSERT(actual_render_pass);
-	current_subpass++;
-	VK_ASSERT(current_subpass < actual_render_pass->get_num_subpasses());
+	pipeline_state.subpass_index++;
+	VK_ASSERT(pipeline_state.subpass_index < actual_render_pass->get_num_subpasses());
 	table.vkCmdNextSubpass(cmd, contents);
 	current_contents = contents;
 	begin_graphics();
@@ -556,13 +556,13 @@ void CommandBuffer::next_subpass(VkSubpassContents contents)
 void CommandBuffer::begin_render_pass(const RenderPassInfo &info, VkSubpassContents contents)
 {
 	VK_ASSERT(!framebuffer);
-	VK_ASSERT(!compatible_render_pass);
+	VK_ASSERT(!pipeline_state.compatible_render_pass);
 	VK_ASSERT(!actual_render_pass);
 
 	framebuffer = &device->request_framebuffer(info);
-	compatible_render_pass = &framebuffer->get_compatible_render_pass();
+	pipeline_state.compatible_render_pass = &framebuffer->get_compatible_render_pass();
 	actual_render_pass = &device->request_render_pass(info, false);
-	current_subpass = 0;
+	pipeline_state.subpass_index = 0;
 
 	memset(framebuffer_attachments, 0, sizeof(framebuffer_attachments));
 	unsigned att;
@@ -623,21 +623,21 @@ void CommandBuffer::end_render_pass()
 {
 	VK_ASSERT(framebuffer);
 	VK_ASSERT(actual_render_pass);
-	VK_ASSERT(compatible_render_pass);
+	VK_ASSERT(pipeline_state.compatible_render_pass);
 
 	table.vkCmdEndRenderPass(cmd);
 
 	framebuffer = nullptr;
 	actual_render_pass = nullptr;
-	compatible_render_pass = nullptr;
+	pipeline_state.compatible_render_pass = nullptr;
 	begin_compute();
 }
 
-VkPipeline CommandBuffer::build_compute_pipeline(Hash hash)
+VkPipeline CommandBuffer::build_compute_pipeline(Device *device, const DeferredPipelineCompile &compile)
 {
-	auto &shader = *current_program->get_shader(ShaderStage::Compute);
+	auto &shader = *compile.program->get_shader(ShaderStage::Compute);
 	VkComputePipelineCreateInfo info = { VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO };
-	info.layout = current_program->get_pipeline_layout()->get_layout();
+	info.layout = compile.program->get_pipeline_layout()->get_layout();
 	info.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	info.stage.module = shader.get_module();
 	info.stage.pName = "main";
@@ -651,14 +651,14 @@ VkPipeline CommandBuffer::build_compute_pipeline(Hash hash)
 
 	VkSpecializationInfo spec_info = {};
 	VkSpecializationMapEntry spec_entries[VULKAN_NUM_SPEC_CONSTANTS];
-	auto mask = current_layout->get_resource_layout().combined_spec_constant_mask &
-	            potential_static_state.spec_constant_mask;
+	auto mask = compile.program->get_pipeline_layout()->get_resource_layout().combined_spec_constant_mask &
+	            compile.potential_static_state.spec_constant_mask;
 
 	if (mask)
 	{
 		info.stage.pSpecializationInfo = &spec_info;
-		spec_info.pData = potential_static_state.spec_constants;
-		spec_info.dataSize = sizeof(potential_static_state.spec_constants);
+		spec_info.pData = compile.potential_static_state.spec_constants;
+		spec_info.dataSize = sizeof(compile.potential_static_state.spec_constants);
 		spec_info.pMapEntries = spec_entries;
 
 		for_each_bit(mask, [&](uint32_t bit) {
@@ -673,7 +673,7 @@ VkPipeline CommandBuffer::build_compute_pipeline(Hash hash)
 		VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_REQUIRED_SUBGROUP_SIZE_CREATE_INFO_EXT
 	};
 
-	if (static_state.state.subgroup_control_size)
+	if (compile.static_state.state.subgroup_control_size)
 	{
 		auto &features = device->get_device_features();
 
@@ -683,7 +683,7 @@ VkPipeline CommandBuffer::build_compute_pipeline(Hash hash)
 			return VK_NULL_HANDLE;
 		}
 
-		if (static_state.state.subgroup_full_group)
+		if (compile.static_state.state.subgroup_full_group)
 		{
 			if (!features.subgroup_size_control_features.computeFullSubgroups)
 			{
@@ -694,8 +694,8 @@ VkPipeline CommandBuffer::build_compute_pipeline(Hash hash)
 			info.stage.flags |= VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT_EXT;
 		}
 
-		uint32_t min_subgroups = 1u << static_state.state.subgroup_minimum_size_log2;
-		uint32_t max_subgroups = 1u << static_state.state.subgroup_maximum_size_log2;
+		uint32_t min_subgroups = 1u << compile.static_state.state.subgroup_minimum_size_log2;
+		uint32_t max_subgroups = 1u << compile.static_state.state.subgroup_maximum_size_log2;
 		if (min_subgroups <= features.subgroup_size_control_properties.minSubgroupSize &&
 		    max_subgroups >= features.subgroup_size_control_properties.maxSubgroupSize)
 		{
@@ -728,20 +728,34 @@ VkPipeline CommandBuffer::build_compute_pipeline(Hash hash)
 
 	VkPipeline compute_pipeline;
 #ifdef GRANITE_VULKAN_FOSSILIZE
-	device->register_compute_pipeline(hash, info);
+	device->register_compute_pipeline(compile.hash, info);
 #endif
 
 	LOGI("Creating compute pipeline.\n");
-	if (table.vkCreateComputePipelines(device->get_device(), cache, 1, &info, nullptr, &compute_pipeline) != VK_SUCCESS)
+	auto &table = device->get_device_table();
+	if (table.vkCreateComputePipelines(device->get_device(), compile.cache, 1, &info, nullptr, &compute_pipeline) != VK_SUCCESS)
 	{
 		LOGE("Failed to create compute pipeline!\n");
 		return VK_NULL_HANDLE;
 	}
 
-	return current_program->add_pipeline(hash, compute_pipeline);
+	return compile.program->add_pipeline(compile.hash, compute_pipeline);
 }
 
-VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
+void CommandBuffer::extract_pipeline_state(DeferredPipelineCompile &compile) const
+{
+	compile = pipeline_state;
+
+	if (is_compute)
+		update_hash_compute_pipeline(compile);
+	else
+	{
+		uint32_t active_vbo = 0;
+		update_hash_graphics_pipeline(compile, active_vbo);
+	}
+}
+
+VkPipeline CommandBuffer::build_graphics_pipeline(Device *device, const DeferredPipelineCompile &compile)
 {
 	// Viewport state
 	VkPipelineViewportStateCreateInfo vp = { VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO };
@@ -756,9 +770,9 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
 	};
 	dyn.pDynamicStates = states;
 
-	if (static_state.state.depth_bias_enable)
+	if (compile.static_state.state.depth_bias_enable)
 		states[dyn.dynamicStateCount++] = VK_DYNAMIC_STATE_DEPTH_BIAS;
-	if (static_state.state.stencil_test)
+	if (compile.static_state.state.stencil_test)
 	{
 		states[dyn.dynamicStateCount++] = VK_DYNAMIC_STATE_STENCIL_COMPARE_MASK;
 		states[dyn.dynamicStateCount++] = VK_DYNAMIC_STATE_STENCIL_REFERENCE;
@@ -768,64 +782,64 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
 	// Blend state
 	VkPipelineColorBlendAttachmentState blend_attachments[VULKAN_NUM_ATTACHMENTS];
 	VkPipelineColorBlendStateCreateInfo blend = { VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO };
-	blend.attachmentCount = compatible_render_pass->get_num_color_attachments(current_subpass);
+	blend.attachmentCount = compile.compatible_render_pass->get_num_color_attachments(compile.subpass_index);
 	blend.pAttachments = blend_attachments;
 	for (unsigned i = 0; i < blend.attachmentCount; i++)
 	{
 		auto &att = blend_attachments[i];
 		att = {};
 
-		if (compatible_render_pass->get_color_attachment(current_subpass, i).attachment != VK_ATTACHMENT_UNUSED &&
-			(current_layout->get_resource_layout().render_target_mask & (1u << i)))
+		if (compile.compatible_render_pass->get_color_attachment(compile.subpass_index, i).attachment != VK_ATTACHMENT_UNUSED &&
+			(compile.program->get_pipeline_layout()->get_resource_layout().render_target_mask & (1u << i)))
 		{
-			att.colorWriteMask = (static_state.state.write_mask >> (4 * i)) & 0xf;
-			att.blendEnable = static_state.state.blend_enable;
+			att.colorWriteMask = (compile.static_state.state.write_mask >> (4 * i)) & 0xf;
+			att.blendEnable = compile.static_state.state.blend_enable;
 			if (att.blendEnable)
 			{
-				att.alphaBlendOp = static_cast<VkBlendOp>(static_state.state.alpha_blend_op);
-				att.colorBlendOp = static_cast<VkBlendOp>(static_state.state.color_blend_op);
-				att.dstAlphaBlendFactor = static_cast<VkBlendFactor>(static_state.state.dst_alpha_blend);
-				att.srcAlphaBlendFactor = static_cast<VkBlendFactor>(static_state.state.src_alpha_blend);
-				att.dstColorBlendFactor = static_cast<VkBlendFactor>(static_state.state.dst_color_blend);
-				att.srcColorBlendFactor = static_cast<VkBlendFactor>(static_state.state.src_color_blend);
+				att.alphaBlendOp = static_cast<VkBlendOp>(compile.static_state.state.alpha_blend_op);
+				att.colorBlendOp = static_cast<VkBlendOp>(compile.static_state.state.color_blend_op);
+				att.dstAlphaBlendFactor = static_cast<VkBlendFactor>(compile.static_state.state.dst_alpha_blend);
+				att.srcAlphaBlendFactor = static_cast<VkBlendFactor>(compile.static_state.state.src_alpha_blend);
+				att.dstColorBlendFactor = static_cast<VkBlendFactor>(compile.static_state.state.dst_color_blend);
+				att.srcColorBlendFactor = static_cast<VkBlendFactor>(compile.static_state.state.src_color_blend);
 			}
 		}
 	}
-	memcpy(blend.blendConstants, potential_static_state.blend_constants, sizeof(blend.blendConstants));
+	memcpy(blend.blendConstants, compile.potential_static_state.blend_constants, sizeof(blend.blendConstants));
 
 	// Depth state
 	VkPipelineDepthStencilStateCreateInfo ds = { VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO };
-	ds.stencilTestEnable = compatible_render_pass->has_stencil(current_subpass) && static_state.state.stencil_test;
-	ds.depthTestEnable = compatible_render_pass->has_depth(current_subpass) && static_state.state.depth_test;
-	ds.depthWriteEnable = compatible_render_pass->has_depth(current_subpass) && static_state.state.depth_write;
+	ds.stencilTestEnable = compile.compatible_render_pass->has_stencil(compile.subpass_index) && compile.static_state.state.stencil_test;
+	ds.depthTestEnable = compile.compatible_render_pass->has_depth(compile.subpass_index) && compile.static_state.state.depth_test;
+	ds.depthWriteEnable = compile.compatible_render_pass->has_depth(compile.subpass_index) && compile.static_state.state.depth_write;
 
 	if (ds.depthTestEnable)
-		ds.depthCompareOp = static_cast<VkCompareOp>(static_state.state.depth_compare);
+		ds.depthCompareOp = static_cast<VkCompareOp>(compile.static_state.state.depth_compare);
 
 	if (ds.stencilTestEnable)
 	{
-		ds.front.compareOp = static_cast<VkCompareOp>(static_state.state.stencil_front_compare_op);
-		ds.front.passOp = static_cast<VkStencilOp>(static_state.state.stencil_front_pass);
-		ds.front.failOp = static_cast<VkStencilOp>(static_state.state.stencil_front_fail);
-		ds.front.depthFailOp = static_cast<VkStencilOp>(static_state.state.stencil_front_depth_fail);
-		ds.back.compareOp = static_cast<VkCompareOp>(static_state.state.stencil_back_compare_op);
-		ds.back.passOp = static_cast<VkStencilOp>(static_state.state.stencil_back_pass);
-		ds.back.failOp = static_cast<VkStencilOp>(static_state.state.stencil_back_fail);
-		ds.back.depthFailOp = static_cast<VkStencilOp>(static_state.state.stencil_back_depth_fail);
+		ds.front.compareOp = static_cast<VkCompareOp>(compile.static_state.state.stencil_front_compare_op);
+		ds.front.passOp = static_cast<VkStencilOp>(compile.static_state.state.stencil_front_pass);
+		ds.front.failOp = static_cast<VkStencilOp>(compile.static_state.state.stencil_front_fail);
+		ds.front.depthFailOp = static_cast<VkStencilOp>(compile.static_state.state.stencil_front_depth_fail);
+		ds.back.compareOp = static_cast<VkCompareOp>(compile.static_state.state.stencil_back_compare_op);
+		ds.back.passOp = static_cast<VkStencilOp>(compile.static_state.state.stencil_back_pass);
+		ds.back.failOp = static_cast<VkStencilOp>(compile.static_state.state.stencil_back_fail);
+		ds.back.depthFailOp = static_cast<VkStencilOp>(compile.static_state.state.stencil_back_depth_fail);
 	}
 
 	// Vertex input
 	VkPipelineVertexInputStateCreateInfo vi = { VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
 	VkVertexInputAttributeDescription vi_attribs[VULKAN_NUM_VERTEX_ATTRIBS];
 	vi.pVertexAttributeDescriptions = vi_attribs;
-	uint32_t attr_mask = current_layout->get_resource_layout().attribute_mask;
+	uint32_t attr_mask = compile.program->get_pipeline_layout()->get_resource_layout().attribute_mask;
 	uint32_t binding_mask = 0;
 	for_each_bit(attr_mask, [&](uint32_t bit) {
 		auto &attr = vi_attribs[vi.vertexAttributeDescriptionCount++];
 		attr.location = bit;
-		attr.binding = attribs[bit].binding;
-		attr.format = attribs[bit].format;
-		attr.offset = attribs[bit].offset;
+		attr.binding = compile.attribs[bit].binding;
+		attr.format = compile.attribs[bit].format;
+		attr.offset = compile.attribs[bit].offset;
 		binding_mask |= 1u << attr.binding;
 	});
 
@@ -834,39 +848,39 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
 	for_each_bit(binding_mask, [&](uint32_t bit) {
 		auto &bind = vi_bindings[vi.vertexBindingDescriptionCount++];
 		bind.binding = bit;
-		bind.inputRate = vbo.input_rates[bit];
-		bind.stride = vbo.strides[bit];
+		bind.inputRate = compile.input_rates[bit];
+		bind.stride = compile.strides[bit];
 	});
 
 	// Input assembly
 	VkPipelineInputAssemblyStateCreateInfo ia = { VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO };
-	ia.primitiveRestartEnable = static_state.state.primitive_restart;
-	ia.topology = static_cast<VkPrimitiveTopology>(static_state.state.topology);
+	ia.primitiveRestartEnable = compile.static_state.state.primitive_restart;
+	ia.topology = static_cast<VkPrimitiveTopology>(compile.static_state.state.topology);
 
 	// Multisample
 	VkPipelineMultisampleStateCreateInfo ms = { VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO };
-	ms.rasterizationSamples = static_cast<VkSampleCountFlagBits>(compatible_render_pass->get_sample_count(current_subpass));
+	ms.rasterizationSamples = static_cast<VkSampleCountFlagBits>(compile.compatible_render_pass->get_sample_count(compile.subpass_index));
 
-	if (compatible_render_pass->get_sample_count(current_subpass) > 1)
+	if (compile.compatible_render_pass->get_sample_count(compile.subpass_index) > 1)
 	{
-		ms.alphaToCoverageEnable = static_state.state.alpha_to_coverage;
-		ms.alphaToOneEnable = static_state.state.alpha_to_one;
-		ms.sampleShadingEnable = static_state.state.sample_shading;
+		ms.alphaToCoverageEnable = compile.static_state.state.alpha_to_coverage;
+		ms.alphaToOneEnable = compile.static_state.state.alpha_to_one;
+		ms.sampleShadingEnable = compile.static_state.state.sample_shading;
 		ms.minSampleShading = 1.0f;
 	}
 
 	// Raster
 	VkPipelineRasterizationStateCreateInfo raster = { VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO };
-	raster.cullMode = static_cast<VkCullModeFlags>(static_state.state.cull_mode);
-	raster.frontFace = static_cast<VkFrontFace>(static_state.state.front_face);
+	raster.cullMode = static_cast<VkCullModeFlags>(compile.static_state.state.cull_mode);
+	raster.frontFace = static_cast<VkFrontFace>(compile.static_state.state.front_face);
 	raster.lineWidth = 1.0f;
-	raster.polygonMode = static_state.state.wireframe ? VK_POLYGON_MODE_LINE : VK_POLYGON_MODE_FILL;
-	raster.depthBiasEnable = static_state.state.depth_bias_enable != 0;
+	raster.polygonMode = compile.static_state.state.wireframe ? VK_POLYGON_MODE_LINE : VK_POLYGON_MODE_FILL;
+	raster.depthBiasEnable = compile.static_state.state.depth_bias_enable != 0;
 
 	VkPipelineRasterizationConservativeStateCreateInfoEXT conservative_raster = {
 		VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_CONSERVATIVE_STATE_CREATE_INFO_EXT
 	};
-	if (static_state.state.conservative_raster)
+	if (compile.static_state.state.conservative_raster)
 	{
 		if (device->get_device_features().supports_conservative_rasterization)
 		{
@@ -890,27 +904,27 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
 	for (unsigned i = 0; i < static_cast<unsigned>(ShaderStage::Count); i++)
 	{
 		auto stage = static_cast<ShaderStage>(i);
-		if (current_program->get_shader(stage))
+		if (compile.program->get_shader(stage))
 		{
 			auto &s = stages[num_stages++];
 			s = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO };
-			s.module = current_program->get_shader(stage)->get_module();
+			s.module = compile.program->get_shader(stage)->get_module();
 #ifdef GRANITE_SPIRV_DUMP
 			LOGI("Compiling SPIR-V file: (%s) %s\n",
 			     Shader::stage_to_name(stage),
-			     (to_string(current_program->get_shader(stage)->get_hash()) + ".spv").c_str());
+			     (to_string(compile.program->get_shader(stage)->get_hash()) + ".spv").c_str());
 #endif
 			s.pName = "main";
 			s.stage = static_cast<VkShaderStageFlagBits>(1u << i);
 
-			auto mask = current_layout->get_resource_layout().spec_constant_mask[i] &
-			            potential_static_state.spec_constant_mask;
+			auto mask = compile.program->get_pipeline_layout()->get_resource_layout().spec_constant_mask[i] &
+					compile.potential_static_state.spec_constant_mask;
 
 			if (mask)
 			{
 				s.pSpecializationInfo = &spec_info[i];
-				spec_info[i].pData = potential_static_state.spec_constants;
-				spec_info[i].dataSize = sizeof(potential_static_state.spec_constants);
+				spec_info[i].pData = compile.potential_static_state.spec_constants;
+				spec_info[i].dataSize = sizeof(compile.potential_static_state.spec_constants);
 				spec_info[i].pMapEntries = spec_entries[i];
 
 				for_each_bit(mask, [&](uint32_t bit) {
@@ -924,9 +938,9 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
 	}
 
 	VkGraphicsPipelineCreateInfo pipe = { VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
-	pipe.layout = current_pipeline_layout;
-	pipe.renderPass = compatible_render_pass->get_render_pass();
-	pipe.subpass = current_subpass;
+	pipe.layout = compile.program->get_pipeline_layout()->get_layout();
+	pipe.renderPass = compile.compatible_render_pass->get_render_pass();
+	pipe.subpass = compile.subpass_index;
 
 	pipe.pViewportState = &vp;
 	pipe.pDynamicState = &dyn;
@@ -941,113 +955,127 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Hash hash)
 
 	VkPipeline pipeline;
 #ifdef GRANITE_VULKAN_FOSSILIZE
-	device->register_graphics_pipeline(hash, pipe);
+	device->register_graphics_pipeline(compile.hash, pipe);
 #endif
 
 	LOGI("Creating graphics pipeline.\n");
-	VkResult res = table.vkCreateGraphicsPipelines(device->get_device(), cache, 1, &pipe, nullptr, &pipeline);
+	auto &table = device->get_device_table();
+	VkResult res = table.vkCreateGraphicsPipelines(device->get_device(), compile.cache, 1, &pipe, nullptr, &pipeline);
 	if (res != VK_SUCCESS)
 	{
 		LOGE("Failed to create graphics pipeline!\n");
 		return VK_NULL_HANDLE;
 	}
 
-	return current_program->add_pipeline(hash, pipeline);
+	return compile.program->add_pipeline(compile.hash, pipeline);
 }
 
-void CommandBuffer::flush_compute_pipeline()
+bool CommandBuffer::flush_compute_pipeline(bool synchronous)
+{
+	update_hash_compute_pipeline(pipeline_state);
+	current_pipeline = pipeline_state.program->get_pipeline(pipeline_state.hash);
+	if (current_pipeline == VK_NULL_HANDLE && synchronous)
+		current_pipeline = build_compute_pipeline(device, pipeline_state);
+
+	return current_pipeline != VK_NULL_HANDLE;
+}
+
+void CommandBuffer::update_hash_compute_pipeline(DeferredPipelineCompile &compile)
 {
 	Hasher h;
-	h.u64(current_program->get_hash());
+	h.u64(compile.program->get_hash());
 
 	// Spec constants.
-	auto &layout = current_layout->get_resource_layout();
+	auto &layout = compile.program->get_pipeline_layout()->get_resource_layout();
 	uint32_t combined_spec_constant = layout.combined_spec_constant_mask;
-	combined_spec_constant &= potential_static_state.spec_constant_mask;
+	combined_spec_constant &= compile.potential_static_state.spec_constant_mask;
 	h.u32(combined_spec_constant);
 	for_each_bit(combined_spec_constant, [&](uint32_t bit) {
-		h.u32(potential_static_state.spec_constants[bit]);
+		h.u32(compile.potential_static_state.spec_constants[bit]);
 	});
 
-	if (static_state.state.subgroup_control_size)
+	if (compile.static_state.state.subgroup_control_size)
 	{
 		h.s32(1);
-		h.u32(static_state.state.subgroup_minimum_size_log2);
-		h.u32(static_state.state.subgroup_maximum_size_log2);
-		h.s32(static_state.state.subgroup_full_group);
+		h.u32(compile.static_state.state.subgroup_minimum_size_log2);
+		h.u32(compile.static_state.state.subgroup_maximum_size_log2);
+		h.s32(compile.static_state.state.subgroup_full_group);
 	}
 	else
 		h.s32(0);
 
-	auto hash = h.get();
-	current_pipeline = current_program->get_pipeline(hash);
-	if (current_pipeline == VK_NULL_HANDLE)
-		current_pipeline = build_compute_pipeline(hash);
+	compile.hash = h.get();
 }
 
-void CommandBuffer::flush_graphics_pipeline()
+void CommandBuffer::update_hash_graphics_pipeline(DeferredPipelineCompile &compile, uint32_t &active_vbos)
 {
 	Hasher h;
 	active_vbos = 0;
-	auto &layout = current_layout->get_resource_layout();
+	auto &layout = compile.program->get_pipeline_layout()->get_resource_layout();
 	for_each_bit(layout.attribute_mask, [&](uint32_t bit) {
 		h.u32(bit);
-		active_vbos |= 1u << attribs[bit].binding;
-		h.u32(attribs[bit].binding);
-		h.u32(attribs[bit].format);
-		h.u32(attribs[bit].offset);
+		active_vbos |= 1u << compile.attribs[bit].binding;
+		h.u32(compile.attribs[bit].binding);
+		h.u32(compile.attribs[bit].format);
+		h.u32(compile.attribs[bit].offset);
 	});
 
 	for_each_bit(active_vbos, [&](uint32_t bit) {
-		h.u32(vbo.input_rates[bit]);
-		h.u32(vbo.strides[bit]);
+		h.u32(compile.input_rates[bit]);
+		h.u32(compile.strides[bit]);
 	});
 
-	h.u64(compatible_render_pass->get_hash());
-	h.u32(current_subpass);
-	h.u64(current_program->get_hash());
-	h.data(static_state.words, sizeof(static_state.words));
+	h.u64(compile.compatible_render_pass->get_hash());
+	h.u32(compile.subpass_index);
+	h.u64(compile.program->get_hash());
+	h.data(compile.static_state.words, sizeof(compile.static_state.words));
 
-	if (static_state.state.blend_enable)
+	if (compile.static_state.state.blend_enable)
 	{
 		const auto needs_blend_constant = [](VkBlendFactor factor) {
 			return factor == VK_BLEND_FACTOR_CONSTANT_COLOR || factor == VK_BLEND_FACTOR_CONSTANT_ALPHA;
 		};
-		bool b0 = needs_blend_constant(static_cast<VkBlendFactor>(static_state.state.src_color_blend));
-		bool b1 = needs_blend_constant(static_cast<VkBlendFactor>(static_state.state.src_alpha_blend));
-		bool b2 = needs_blend_constant(static_cast<VkBlendFactor>(static_state.state.dst_color_blend));
-		bool b3 = needs_blend_constant(static_cast<VkBlendFactor>(static_state.state.dst_alpha_blend));
+		bool b0 = needs_blend_constant(static_cast<VkBlendFactor>(compile.static_state.state.src_color_blend));
+		bool b1 = needs_blend_constant(static_cast<VkBlendFactor>(compile.static_state.state.src_alpha_blend));
+		bool b2 = needs_blend_constant(static_cast<VkBlendFactor>(compile.static_state.state.dst_color_blend));
+		bool b3 = needs_blend_constant(static_cast<VkBlendFactor>(compile.static_state.state.dst_alpha_blend));
 		if (b0 || b1 || b2 || b3)
-			h.data(reinterpret_cast<uint32_t *>(potential_static_state.blend_constants),
-			       sizeof(potential_static_state.blend_constants));
+			h.data(reinterpret_cast<const uint32_t *>(compile.potential_static_state.blend_constants),
+			       sizeof(compile.potential_static_state.blend_constants));
 	}
 
 	// Spec constants.
 	uint32_t combined_spec_constant = layout.combined_spec_constant_mask;
-	combined_spec_constant &= potential_static_state.spec_constant_mask;
+	combined_spec_constant &= compile.potential_static_state.spec_constant_mask;
 	h.u32(combined_spec_constant);
 	for_each_bit(combined_spec_constant, [&](uint32_t bit) {
-		h.u32(potential_static_state.spec_constants[bit]);
+		h.u32(compile.potential_static_state.spec_constants[bit]);
 	});
 
-	auto hash = h.get();
-	current_pipeline = current_program->get_pipeline(hash);
-	if (current_pipeline == VK_NULL_HANDLE)
-		current_pipeline = build_graphics_pipeline(hash);
+	compile.hash = h.get();
 }
 
-bool CommandBuffer::flush_compute_state()
+bool CommandBuffer::flush_graphics_pipeline(bool synchronous)
 {
-	if (!current_program)
+	update_hash_graphics_pipeline(pipeline_state, active_vbos);
+	current_pipeline = pipeline_state.program->get_pipeline(pipeline_state.hash);
+
+	if (current_pipeline == VK_NULL_HANDLE && synchronous)
+		current_pipeline = build_graphics_pipeline(device, pipeline_state);
+
+	return current_pipeline != VK_NULL_HANDLE;
+}
+
+bool CommandBuffer::flush_compute_state(bool synchronous)
+{
+	if (!pipeline_state.program)
 		return false;
 	VK_ASSERT(current_layout);
 
 	if (get_and_clear(COMMAND_BUFFER_DIRTY_PIPELINE_BIT))
 	{
 		VkPipeline old_pipe = current_pipeline;
-		flush_compute_pipeline();
-
-		if (current_pipeline == VK_NULL_HANDLE)
+		if (!flush_compute_pipeline(synchronous))
 			return false;
 
 		if (old_pipe != current_pipeline)
@@ -1074,9 +1102,9 @@ bool CommandBuffer::flush_compute_state()
 	return true;
 }
 
-bool CommandBuffer::flush_render_state()
+bool CommandBuffer::flush_render_state(bool synchronous)
 {
-	if (!current_program)
+	if (!pipeline_state.program)
 		return false;
 	VK_ASSERT(current_layout);
 
@@ -1085,9 +1113,7 @@ bool CommandBuffer::flush_render_state()
 	                  COMMAND_BUFFER_DIRTY_STATIC_VERTEX_BIT))
 	{
 		VkPipeline old_pipe = current_pipeline;
-		flush_graphics_pipeline();
-
-		if (current_pipeline == VK_NULL_HANDLE)
+		if (!flush_graphics_pipeline(synchronous))
 			return false;
 
 		if (old_pipe != current_pipeline)
@@ -1118,9 +1144,9 @@ bool CommandBuffer::flush_render_state()
 		table.vkCmdSetViewport(cmd, 0, 1, &viewport);
 	if (get_and_clear(COMMAND_BUFFER_DIRTY_SCISSOR_BIT))
 		table.vkCmdSetScissor(cmd, 0, 1, &scissor);
-	if (static_state.state.depth_bias_enable && get_and_clear(COMMAND_BUFFER_DIRTY_DEPTH_BIAS_BIT))
+	if (pipeline_state.static_state.state.depth_bias_enable && get_and_clear(COMMAND_BUFFER_DIRTY_DEPTH_BIAS_BIT))
 		table.vkCmdSetDepthBias(cmd, dynamic_state.depth_bias_constant, 0.0f, dynamic_state.depth_bias_slope);
-	if (static_state.state.stencil_test && get_and_clear(COMMAND_BUFFER_DIRTY_STENCIL_REFERENCE_BIT))
+	if (pipeline_state.static_state.state.stencil_test && get_and_clear(COMMAND_BUFFER_DIRTY_STENCIL_REFERENCE_BIT))
 	{
 		table.vkCmdSetStencilCompareMask(cmd, VK_STENCIL_FACE_FRONT_BIT, dynamic_state.front_compare_mask);
 		table.vkCmdSetStencilReference(cmd, VK_STENCIL_FACE_FRONT_BIT, dynamic_state.front_reference);
@@ -1141,6 +1167,14 @@ bool CommandBuffer::flush_render_state()
 	dirty_vbos &= ~update_vbo_mask;
 
 	return true;
+}
+
+bool CommandBuffer::flush_pipeline_state_without_blocking()
+{
+	if (is_compute)
+		return flush_compute_state(false);
+	else
+		return flush_render_state(false);
 }
 
 void CommandBuffer::wait_events(unsigned num_events, const VkEvent *events,
@@ -1183,7 +1217,7 @@ void CommandBuffer::set_vertex_attrib(uint32_t attrib, uint32_t binding, VkForma
 	VK_ASSERT(attrib < VULKAN_NUM_VERTEX_ATTRIBS);
 	VK_ASSERT(framebuffer);
 
-	auto &attr = attribs[attrib];
+	auto &attr = pipeline_state.attribs[attrib];
 
 	if (attr.binding != binding || attr.format != format || attr.offset != offset)
 		set_dirty(COMMAND_BUFFER_DIRTY_STATIC_VERTEX_BIT);
@@ -1219,13 +1253,13 @@ void CommandBuffer::set_vertex_binding(uint32_t binding, const Buffer &buffer, V
 	VkBuffer vkbuffer = buffer.get_buffer();
 	if (vbo.buffers[binding] != vkbuffer || vbo.offsets[binding] != offset)
 		dirty_vbos |= 1u << binding;
-	if (vbo.strides[binding] != stride || vbo.input_rates[binding] != step_rate)
+	if (pipeline_state.strides[binding] != stride || pipeline_state.input_rates[binding] != step_rate)
 		set_dirty(COMMAND_BUFFER_DIRTY_STATIC_VERTEX_BIT);
 
 	vbo.buffers[binding] = vkbuffer;
 	vbo.offsets[binding] = offset;
-	vbo.strides[binding] = stride;
-	vbo.input_rates[binding] = step_rate;
+	pipeline_state.strides[binding] = stride;
+	pipeline_state.input_rates[binding] = step_rate;
 }
 
 void CommandBuffer::set_viewport(const VkViewport &viewport_)
@@ -1285,18 +1319,18 @@ void CommandBuffer::set_program(const std::string &vertex, const std::string &fr
 
 void CommandBuffer::set_program(Program *program)
 {
-	if (current_program == program)
+	if (pipeline_state.program == program)
 		return;
 
-	current_program = program;
+	pipeline_state.program = program;
 	current_pipeline = VK_NULL_HANDLE;
 
 	set_dirty(COMMAND_BUFFER_DIRTY_PIPELINE_BIT | COMMAND_BUFFER_DYNAMIC_BITS);
 	if (!program)
 		return;
 
-	VK_ASSERT((framebuffer && current_program->get_shader(ShaderStage::Vertex)) ||
-	          (!framebuffer && current_program->get_shader(ShaderStage::Compute)));
+	VK_ASSERT((framebuffer && pipeline_state.program->get_shader(ShaderStage::Vertex)) ||
+	          (!framebuffer && pipeline_state.program->get_shader(ShaderStage::Compute)));
 
 	if (!current_layout)
 	{
@@ -1524,11 +1558,11 @@ void CommandBuffer::set_buffer_view(unsigned set, unsigned binding, const Buffer
 void CommandBuffer::set_input_attachments(unsigned set, unsigned start_binding)
 {
 	VK_ASSERT(set < VULKAN_NUM_DESCRIPTOR_SETS);
-	VK_ASSERT(start_binding + actual_render_pass->get_num_input_attachments(current_subpass) <= VULKAN_NUM_BINDINGS);
-	unsigned num_input_attachments = actual_render_pass->get_num_input_attachments(current_subpass);
+	VK_ASSERT(start_binding + actual_render_pass->get_num_input_attachments(pipeline_state.subpass_index) <= VULKAN_NUM_BINDINGS);
+	unsigned num_input_attachments = actual_render_pass->get_num_input_attachments(pipeline_state.subpass_index);
 	for (unsigned i = 0; i < num_input_attachments; i++)
 	{
-		auto &ref = actual_render_pass->get_input_attachment(current_subpass, i);
+		auto &ref = actual_render_pass->get_input_attachment(pipeline_state.subpass_index, i);
 		if (ref.attachment == VK_ATTACHMENT_UNUSED)
 			continue;
 
@@ -1983,7 +2017,7 @@ void CommandBuffer::flush_descriptor_sets()
 void CommandBuffer::draw(uint32_t vertex_count, uint32_t instance_count, uint32_t first_vertex, uint32_t first_instance)
 {
 	VK_ASSERT(!is_compute);
-	if (flush_render_state())
+	if (flush_render_state(true))
 	{
 		set_backtrace_checkpoint();
 		table.vkCmdDraw(cmd, vertex_count, instance_count, first_vertex, first_instance);
@@ -1997,7 +2031,7 @@ void CommandBuffer::draw_indexed(uint32_t index_count, uint32_t instance_count, 
 {
 	VK_ASSERT(!is_compute);
 	VK_ASSERT(index_state.buffer != VK_NULL_HANDLE);
-	if (flush_render_state())
+	if (flush_render_state(true))
 	{
 		set_backtrace_checkpoint();
 		table.vkCmdDrawIndexed(cmd, index_count, instance_count, first_index, vertex_offset, first_instance);
@@ -2010,7 +2044,7 @@ void CommandBuffer::draw_indirect(const Vulkan::Buffer &buffer,
                                   uint32_t offset, uint32_t draw_count, uint32_t stride)
 {
 	VK_ASSERT(!is_compute);
-	if (flush_render_state())
+	if (flush_render_state(true))
 	{
 		set_backtrace_checkpoint();
 		table.vkCmdDrawIndirect(cmd, buffer.get_buffer(), offset, draw_count, stride);
@@ -2029,7 +2063,7 @@ void CommandBuffer::draw_multi_indirect(const Buffer &buffer, uint32_t offset, u
 		return;
 	}
 
-	if (flush_render_state())
+	if (flush_render_state(true))
 	{
 		set_backtrace_checkpoint();
 		table.vkCmdDrawIndirectCountKHR(cmd, buffer.get_buffer(), offset,
@@ -2050,7 +2084,7 @@ void CommandBuffer::draw_indexed_multi_indirect(const Buffer &buffer, uint32_t o
 		return;
 	}
 
-	if (flush_render_state())
+	if (flush_render_state(true))
 	{
 		set_backtrace_checkpoint();
 		table.vkCmdDrawIndexedIndirectCountKHR(cmd, buffer.get_buffer(), offset,
@@ -2065,7 +2099,7 @@ void CommandBuffer::draw_indexed_indirect(const Vulkan::Buffer &buffer,
                                           uint32_t offset, uint32_t draw_count, uint32_t stride)
 {
 	VK_ASSERT(!is_compute);
-	if (flush_render_state())
+	if (flush_render_state(true))
 	{
 		table.vkCmdDrawIndexedIndirect(cmd, buffer.get_buffer(), offset, draw_count, stride);
 		set_backtrace_checkpoint();
@@ -2077,7 +2111,7 @@ void CommandBuffer::draw_indexed_indirect(const Vulkan::Buffer &buffer,
 void CommandBuffer::dispatch_indirect(const Buffer &buffer, uint32_t offset)
 {
 	VK_ASSERT(is_compute);
-	if (flush_compute_state())
+	if (flush_compute_state(true))
 	{
 		set_backtrace_checkpoint();
 		table.vkCmdDispatchIndirect(cmd, buffer.get_buffer(), offset);
@@ -2089,7 +2123,7 @@ void CommandBuffer::dispatch_indirect(const Buffer &buffer, uint32_t offset)
 void CommandBuffer::dispatch(uint32_t groups_x, uint32_t groups_y, uint32_t groups_z)
 {
 	VK_ASSERT(is_compute);
-	if (flush_compute_state())
+	if (flush_compute_state(true))
 	{
 		set_backtrace_checkpoint();
 		table.vkCmdDispatch(cmd, groups_x, groups_y, groups_z);
@@ -2101,14 +2135,14 @@ void CommandBuffer::dispatch(uint32_t groups_x, uint32_t groups_y, uint32_t grou
 void CommandBuffer::clear_render_state()
 {
 	// Preserve spec constant mask.
-	auto &state = static_state.state;
+	auto &state = pipeline_state.static_state.state;
 	memset(&state, 0, sizeof(state));
 }
 
 void CommandBuffer::set_opaque_state()
 {
 	clear_render_state();
-	auto &state = static_state.state;
+	auto &state = pipeline_state.static_state.state;
 	state.front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	state.cull_mode = VK_CULL_MODE_BACK_BIT;
 	state.blend_enable = false;
@@ -2126,7 +2160,7 @@ void CommandBuffer::set_opaque_state()
 void CommandBuffer::set_quad_state()
 {
 	clear_render_state();
-	auto &state = static_state.state;
+	auto &state = pipeline_state.static_state.state;
 	state.front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	state.cull_mode = VK_CULL_MODE_NONE;
 	state.blend_enable = false;
@@ -2140,7 +2174,7 @@ void CommandBuffer::set_quad_state()
 void CommandBuffer::set_opaque_sprite_state()
 {
 	clear_render_state();
-	auto &state = static_state.state;
+	auto &state = pipeline_state.static_state.state;
 	state.front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	state.cull_mode = VK_CULL_MODE_NONE;
 	state.blend_enable = false;
@@ -2155,7 +2189,7 @@ void CommandBuffer::set_opaque_sprite_state()
 void CommandBuffer::set_transparent_sprite_state()
 {
 	clear_render_state();
-	auto &state = static_state.state;
+	auto &state = pipeline_state.static_state.state;
 	state.front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	state.cull_mode = VK_CULL_MODE_NONE;
 	state.blend_enable = true;
@@ -2176,6 +2210,9 @@ void CommandBuffer::set_transparent_sprite_state()
 
 void CommandBuffer::restore_state(const CommandBufferSavedState &state)
 {
+	auto &static_state = pipeline_state.static_state;
+	auto &potential_static_state = pipeline_state.potential_static_state;
+
 	for (unsigned i = 0; i < VULKAN_NUM_DESCRIPTOR_SETS; i++)
 	{
 		if (state.flags & (COMMAND_BUFFER_SAVED_BINDINGS_0_BIT << i))
@@ -2192,20 +2229,20 @@ void CommandBuffer::restore_state(const CommandBufferSavedState &state)
 
 	if (state.flags & COMMAND_BUFFER_SAVED_PUSH_CONSTANT_BIT)
 	{
-		if (memcmp(state.bindings.push_constant_data, bindings.push_constant_data, sizeof(bindings.push_constant_data)))
+		if (memcmp(state.bindings.push_constant_data, bindings.push_constant_data, sizeof(bindings.push_constant_data)) != 0)
 		{
 			memcpy(bindings.push_constant_data, state.bindings.push_constant_data, sizeof(bindings.push_constant_data));
 			set_dirty(COMMAND_BUFFER_DIRTY_PUSH_CONSTANTS_BIT);
 		}
 	}
 
-	if ((state.flags & COMMAND_BUFFER_SAVED_VIEWPORT_BIT) && memcmp(&state.viewport, &viewport, sizeof(viewport)))
+	if ((state.flags & COMMAND_BUFFER_SAVED_VIEWPORT_BIT) && memcmp(&state.viewport, &viewport, sizeof(viewport)) != 0)
 	{
 		viewport = state.viewport;
 		set_dirty(COMMAND_BUFFER_DIRTY_VIEWPORT_BIT);
 	}
 
-	if ((state.flags & COMMAND_BUFFER_SAVED_SCISSOR_BIT) && memcmp(&state.scissor, &scissor, sizeof(scissor)))
+	if ((state.flags & COMMAND_BUFFER_SAVED_SCISSOR_BIT) && memcmp(&state.scissor, &scissor, sizeof(scissor)) != 0)
 	{
 		scissor = state.scissor;
 		set_dirty(COMMAND_BUFFER_DIRTY_SCISSOR_BIT);
@@ -2213,19 +2250,19 @@ void CommandBuffer::restore_state(const CommandBufferSavedState &state)
 
 	if (state.flags & COMMAND_BUFFER_SAVED_RENDER_STATE_BIT)
 	{
-		if (memcmp(&state.static_state, &static_state, sizeof(static_state)))
+		if (memcmp(&state.static_state, &static_state, sizeof(static_state)) != 0)
 		{
 			memcpy(&static_state, &state.static_state, sizeof(static_state));
 			set_dirty(COMMAND_BUFFER_DIRTY_STATIC_STATE_BIT);
 		}
 
-		if (memcmp(&state.potential_static_state, &potential_static_state, sizeof(potential_static_state)))
+		if (memcmp(&state.potential_static_state, &potential_static_state, sizeof(potential_static_state)) != 0)
 		{
 			memcpy(&potential_static_state, &state.potential_static_state, sizeof(potential_static_state));
 			set_dirty(COMMAND_BUFFER_DIRTY_STATIC_STATE_BIT);
 		}
 
-		if (memcmp(&state.dynamic_state, &dynamic_state, sizeof(dynamic_state)))
+		if (memcmp(&state.dynamic_state, &dynamic_state, sizeof(dynamic_state)) != 0)
 		{
 			memcpy(&dynamic_state, &state.dynamic_state, sizeof(dynamic_state));
 			set_dirty(COMMAND_BUFFER_DIRTY_STENCIL_REFERENCE_BIT | COMMAND_BUFFER_DIRTY_DEPTH_BIAS_BIT);
@@ -2252,8 +2289,8 @@ void CommandBuffer::save_state(CommandBufferSaveStateFlags flags, CommandBufferS
 		state.scissor = scissor;
 	if (flags & COMMAND_BUFFER_SAVED_RENDER_STATE_BIT)
 	{
-		memcpy(&state.static_state, &static_state, sizeof(static_state));
-		state.potential_static_state = potential_static_state;
+		memcpy(&state.static_state, &pipeline_state.static_state, sizeof(pipeline_state.static_state));
+		state.potential_static_state = pipeline_state.potential_static_state;
 		state.dynamic_state = dynamic_state;
 	}
 

@@ -751,6 +751,12 @@ void CommandBuffer::extract_pipeline_state(DeferredPipelineCompile &compile) con
 {
 	compile = pipeline_state;
 
+	if (!compile.program)
+	{
+		LOGE("Attempting to extract pipeline state when no program is bound.\n");
+		return;
+	}
+
 	if (is_compute)
 		update_hash_compute_pipeline(compile);
 	else

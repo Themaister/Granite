@@ -889,6 +889,11 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 
 #ifdef VULKAN_DEBUG
 		bool use_timeline_semaphore = force_no_validation;
+		if (const char *use_timeline = getenv("GRANITE_VULKAN_FORCE_TIMELINE_SEMAPHORE"))
+		{
+			if (strtol(use_timeline, nullptr, 0) != 0)
+				use_timeline_semaphore = true;
+		}
 #else
 		constexpr bool use_timeline_semaphore = true;
 #endif

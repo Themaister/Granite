@@ -36,6 +36,7 @@
 
 namespace Vulkan
 {
+class DebugChannelInterface;
 
 enum CommandBufferDirtyBits
 {
@@ -645,7 +646,7 @@ public:
 	void enable_profiling();
 	bool has_profiling() const;
 
-	void begin_debug_channel(const char *tag, VkDeviceSize size);
+	void begin_debug_channel(DebugChannelInterface *iface, const char *tag, VkDeviceSize size);
 	void end_debug_channel();
 
 	void extract_pipeline_state(DeferredPipelineCompile &compile) const;
@@ -737,6 +738,7 @@ private:
 	bool profiling = false;
 	std::string debug_channel_tag;
 	Vulkan::BufferHandle debug_channel_buffer;
+	DebugChannelInterface *debug_channel_interface = nullptr;
 
 	static void update_hash_graphics_pipeline(DeferredPipelineCompile &compile, uint32_t &active_vbos);
 	static void update_hash_compute_pipeline(DeferredPipelineCompile &compile);

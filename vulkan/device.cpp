@@ -4512,21 +4512,16 @@ bool Device::acquire_profiling()
 	return true;
 }
 
-void Device::add_debug_channel_buffer(std::string tag, Vulkan::BufferHandle buffer)
+void Device::add_debug_channel_buffer(DebugChannelInterface *iface, std::string tag, Vulkan::BufferHandle buffer)
 {
 	buffer->set_internal_sync_object();
 	LOCK();
-	frame().debug_channels.push_back({ std::move(tag), std::move(buffer) });
-}
-
-void Device::set_debug_channel_interface(DebugChannelInterface *iface)
-{
-	debug_channel_interface = iface;
+	frame().debug_channels.push_back({ iface, std::move(tag), std::move(buffer) });
 }
 
 void Device::parse_debug_channel(const PerFrame::DebugChannel &channel)
 {
-	if (!debug_channel_interface)
+	if (!channel.iface)
 		return;
 
 	auto *words = static_cast<const DebugChannelInterface::Word *>(map_host_buffer(*channel.buffer, MEMORY_ACCESS_READ_BIT));
@@ -4555,9 +4550,10 @@ void Device::parse_debug_channel(const PerFrame::DebugChannel &channel)
 
 	while (size != 0 && words[0].u32 >= 5 && words[0].u32 <= size)
 	{
-		debug_channel_interface->message(channel.tag, words[1].u32,
-		                                 words[2].u32, words[3].u32, words[4].u32,
-		                                 words[0].u32 - 5, &words[5]);
+		channel.iface->message(channel.tag, words[1].u32,
+		                       words[2].u32, words[3].u32, words[4].u32,
+		                       words[0].u32 - 5, &words[5]);
+		size -= words[0].u32;
 		words += words[0].u32;
 	}
 

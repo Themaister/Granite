@@ -172,7 +172,6 @@ public:
 	                                          uint32_t *count,
 	                                          const VkPerformanceCounterKHR **counters,
 	                                          const VkPerformanceCounterDescriptionKHR **desc);
-	void set_debug_channel_interface(DebugChannelInterface *iface);
 
 	ImageView &get_swapchain_view();
 	ImageView &get_swapchain_view(unsigned index);
@@ -449,6 +448,7 @@ private:
 
 		struct DebugChannel
 		{
+			DebugChannelInterface *iface;
 			std::string tag;
 			BufferHandle buffer;
 		};
@@ -622,9 +622,8 @@ private:
 	void wait_idle_nolock();
 	void end_frame_nolock();
 
-	void add_debug_channel_buffer(std::string tag, BufferHandle buffer);
+	void add_debug_channel_buffer(DebugChannelInterface *iface, std::string tag, BufferHandle buffer);
 	void parse_debug_channel(const PerFrame::DebugChannel &channel);
-	DebugChannelInterface *debug_channel_interface = nullptr;
 
 	Fence request_legacy_fence();
 

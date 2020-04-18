@@ -2424,12 +2424,13 @@ bool CommandBuffer::has_profiling() const
 	return profiling;
 }
 
-void CommandBuffer::begin_debug_channel(const char *tag, VkDeviceSize size)
+void CommandBuffer::begin_debug_channel(DebugChannelInterface *iface, const char *tag, VkDeviceSize size)
 {
 	if (debug_channel_buffer)
 		end_debug_channel();
 
 	debug_channel_tag = tag;
+	debug_channel_interface = iface;
 
 	BufferCreateInfo info = {};
 	info.size = size;
@@ -2462,9 +2463,10 @@ void CommandBuffer::end_debug_channel()
 	        VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 
 	debug_channel_buffer.reset();
-	device->add_debug_channel_buffer(std::move(debug_channel_tag), std::move(debug_channel_readback));
+	device->add_debug_channel_buffer(debug_channel_interface, std::move(debug_channel_tag), std::move(debug_channel_readback));
 	debug_channel_readback = {};
 	debug_channel_tag = {};
+	debug_channel_interface = nullptr;
 }
 
 #ifdef GRANITE_VULKAN_FILESYSTEM

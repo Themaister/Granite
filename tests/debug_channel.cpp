@@ -39,7 +39,6 @@ struct DebugChannelTest : Granite::Application, Granite::EventHandler, DebugChan
 	void on_device_create(const DeviceCreatedEvent &e)
 	{
 		e.get_device().get_shader_manager().add_include_directory("builtin://shaders");
-		e.get_device().set_debug_channel_interface(this);
 	}
 
 	void on_device_destroy(const DeviceCreatedEvent &)
@@ -58,7 +57,7 @@ struct DebugChannelTest : Granite::Application, Granite::EventHandler, DebugChan
 	{
 		auto &device = get_wsi().get_device();
 		auto cmd = device.request_command_buffer();
-		cmd->begin_debug_channel("Debug", 256);
+		cmd->begin_debug_channel(this, "Debug", 256);
 
 		cmd->set_program("assets://shaders/debug_channel.comp");
 		cmd->dispatch(2, 2, 2);

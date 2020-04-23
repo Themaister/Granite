@@ -87,35 +87,29 @@ struct BasicComputeTest : Granite::Application, Granite::EventHandler
 		cmd->barrier(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_ACCESS_MEMORY_WRITE_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
 		             VK_ACCESS_MEMORY_READ_BIT);
 
-		uint32_t variants[64];
-		for (unsigned i = 0; i < 64; i++)
-			variants[i] = i & 3;
-		auto variant_buffer = create_ssbo(variants, sizeof(variants));
+		int32_t a[12] = {};
+		for (unsigned i = 0; i < 8; i++)
+			a[i] = (int(i) - 8) << 16;
+		auto input_buffer = create_ssbo(a, sizeof(a));
+		auto output_buffer = create_ssbo(nullptr, 12 * sizeof(int16_t));
 
-		auto work_list_buffer = create_ssbo(nullptr, 64 * 64 * sizeof(uint32_t));
+		cmd->set_program("assets://shaders/minmax16.comp");
+		cmd->set_storage_buffer(0, 0, *input_buffer);
+		cmd->set_storage_buffer(0, 1, *output_buffer);
 
-		uint32_t counts[64] = {};
-		auto work_list_count = create_ssbo(counts, sizeof(counts));
+		auto *v = cmd->allocate_typed_constant_data<ivec4>(1, 0, 1);
+		*v = ivec4(10, 10, 10, 10);
 
-		cmd->set_program("assets://shaders/compute_bucket_allocate.comp");
-		cmd->set_storage_buffer(0, 0, *variant_buffer);
-		cmd->set_storage_buffer(0, 1, *work_list_buffer);
-		cmd->set_storage_buffer(0, 2, *work_list_count);
 		cmd->dispatch(1, 1, 1);
 		device.submit(cmd);
 
-		uint32_t readback_work_list[64][64];
-		readback_ssbo(readback_work_list, sizeof(readback_work_list), *work_list_buffer);
+		int16_t readback_data[12];
+		readback_ssbo(readback_data, sizeof(readback_data), *output_buffer);
 
-		uint32_t readback_counts[64];
-		readback_ssbo(readback_counts, sizeof(readback_counts), *work_list_count);
-
-		for (unsigned i = 0; i < 64; i++)
+		for (unsigned i = 0; i < 4; i++)
 		{
-			LOGI("Variant: %u\n", i);
-			LOGI("  Count: %u\n", readback_counts[i]);
-			for (unsigned j = 0; j < readback_counts[i]; j++)
-				LOGI("    %u\n", readback_work_list[i][j]);
+			LOGI("min s16 (%d, %d) -> %d, (ref: %d).\n", a[i + 0] >> 16, 20, readback_data[i], std::min(a[i + 0] >> 16, 20));
+			LOGI("max s16 (%d, %d) -> %d, (ref: %d).\n", a[i + 4] >> 16, 20, readback_data[i + 4], std::max(a[i + 4] >> 16, 20));
 		}
 
 		cmd = device.request_command_buffer();

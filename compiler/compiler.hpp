@@ -83,6 +83,23 @@ public:
 		return error_message;
 	}
 
+	enum class Optimization
+	{
+		ForceOff,
+		ForceOn,
+		Default
+	};
+
+	void set_optimization(Optimization opt)
+	{
+		optimization = opt;
+	}
+
+	void set_strip(bool strip_)
+	{
+		strip = strip_;
+	}
+
 private:
 	std::string source;
 	std::string source_path;
@@ -98,13 +115,8 @@ private:
 	static Stage stage_from_path(const std::string &path);
 	bool parse_variants(const std::string &source, const std::string &path);
 
-	enum class Optimization
-	{
-		ForceOff,
-		ForceOn,
-		Default
-	};
 	Optimization optimization = Optimization::Default;
+	bool strip = false;
 
 	bool find_include_path(const std::string &source_path, const std::string &include_path,
 	                       std::string &included_path, std::string &included_source);

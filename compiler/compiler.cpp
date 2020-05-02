@@ -186,8 +186,12 @@ vector<uint32_t> GLSLCompiler::compile(const vector<pair<string, int>> *defines)
 #else
 	options.SetOptimizationLevel(shaderc_optimization_level_zero);
 #endif
-	// Need this for some reflection purposes with immutable samplers.
-	options.SetGenerateDebugInfo();
+
+	if (!strip)
+	{
+		// Need this for some reflection purposes with immutable samplers.
+		options.SetGenerateDebugInfo();
+	}
 
 	options.SetTargetEnvironment(shaderc_target_env_vulkan,
 	                             target == Target::Vulkan11 ?

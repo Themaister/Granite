@@ -4592,9 +4592,10 @@ const VolkDeviceTable &Device::get_device_table() const
 }
 
 #ifndef GRANITE_RENDERDOC_CAPTURE
-void Device::init_renderdoc_capture()
+bool Device::init_renderdoc_capture()
 {
 	LOGE("RenderDoc API capture is not enabled in this build.\n");
+	return false;
 }
 
 void Device::begin_renderdoc_capture()

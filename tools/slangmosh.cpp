@@ -340,7 +340,7 @@ static std::string generate_header(const std::vector<Shader> &shaders,
 								str << " &&\n\t\t    ";
 							first = false;
 
-							str << "resolver(device, \"" << shader.name << "\"" << ", " << "\"" <<
+							str << "resolver(\"" << shader.name << "\"" << ", " << "\"" <<
 							    shader.variants[variant_index].define << "\") == " <<
 							    shader.permutation_to_variant_define(perm, variant_index);
 						}
@@ -360,7 +360,7 @@ static std::string generate_header(const std::vector<Shader> &shaders,
 		}
 		else
 		{
-			str << "\t\t" << shader.name << " = device.request_" << (shader.compute ? "program" : "shader") <<
+			str << "\t\tthis->" << shader.name << " = device.request_" << (shader.compute ? "program" : "shader") <<
 			    "(spirv_bank + " << variant_to_offset_size[i][0].first << ", " <<
 			    variant_to_offset_size[i][0].second * sizeof(uint32_t) << ");\n";
 		}

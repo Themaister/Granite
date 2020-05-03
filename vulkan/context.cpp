@@ -155,7 +155,9 @@ bool Context::init_device_from_instance(VkInstance instance_, VkPhysicalDevice g
 	instance = instance_;
 	owned_instance = false;
 	owned_device = true;
-	volkLoadInstance(instance);
+
+	if (!create_instance(nullptr, 0))
+		return false;
 
 	if (!create_device(gpu_, surface, required_device_extensions, num_required_device_extensions, required_device_layers,
 	                   num_required_device_layers, required_features))
@@ -419,8 +421,9 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 	for (auto *ext_name : instance_exts)
 		LOGI("Enabling instance extension: %s.\n", ext_name);
 
-	if (vkCreateInstance(&info, nullptr, &instance) != VK_SUCCESS)
-		return false;
+	if (instance == VK_NULL_HANDLE)
+		if (vkCreateInstance(&info, nullptr, &instance) != VK_SUCCESS)
+			return false;
 
 	volkLoadInstance(instance);
 

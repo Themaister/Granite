@@ -49,6 +49,7 @@ struct ShaderVariant
 {
 	std::string define;
 	unsigned count = 0;
+	bool resolve = false;
 };
 
 struct Shader
@@ -203,6 +204,8 @@ static std::vector<Shader> parse_shaders(const std::string &path)
 				auto &variant = *var_itr;
 				parsed_var.define = variant["define"].GetString();
 				parsed_var.count = variant["count"].GetUint();
+				if (variant.HasMember("resolve"))
+					parsed_var.resolve = variant["resolve"].GetBool();
 				parsed_shader.variants.push_back(std::move(parsed_var));
 			}
 		}
@@ -291,23 +294,26 @@ static std::string generate_header(const std::vector<Shader> &shaders,
 	str << std::dec;
 	str << "};\n\n";
 
+	str << "template <typename Program, typename Shader>\n";
 	str << "struct Shaders\n{\n";
 
 	for (auto &shader : shaders)
 	{
 		str << "\t";
 		if (shader.compute)
-			str << "Vulkan::Program *";
+			str << "Program ";
 		else
-			str << "Vulkan::Shader *";
+			str << "Shader ";
 
 		str << shader.name;
 		for (auto &var : shader.variants)
-			str << "[" << var.count << "]";
+			if (!var.resolve)
+				str << "[" << var.count << "]";
 		str << " = {};\n";
 	}
 
-	str << "\texplicit Shaders(Vulkan::Device &device)\n\t{\n";
+	str << "\n\ttemplate <typename Device, typename Resolver>\n";
+	str << "\tShaders(Device &device, const Resolver &resolver)\n\t{\n";
 
 	for (size_t i = 0; i < shaders.size(); i++)
 	{
@@ -318,13 +324,38 @@ static std::string generate_header(const std::vector<Shader> &shaders,
 			size_t num_perm = shader.total_permutations();
 			for (size_t perm = 0; perm < num_perm; perm++)
 			{
-				str << "\t\t" << shader.name;
+				bool conditional = false;
+				for (auto &var : shader.variants)
+					conditional = conditional || var.resolve;
+
+				if (conditional)
+				{
+					bool first = true;
+					str << "\t\tif (";
+					for (size_t variant_index = 0; variant_index < shader.variants.size(); variant_index++)
+					{
+						if (shader.variants[variant_index].resolve)
+						{
+							if (!first)
+								str << " &&\n\t\t    ";
+							first = false;
+
+							str << "resolver(device, \"" << shader.name << "\"" << ", " << "\"" <<
+							    shader.variants[variant_index].define << "\") == " <<
+							    shader.permutation_to_variant_define(perm, variant_index);
+						}
+					}
+					str << ")\n\t";
+				}
+
+				str << "\t\tthis->" << shader.name;
 				for (size_t variant_index = 0; variant_index < shader.variants.size(); variant_index++)
-					str << "[" << shader.permutation_to_variant_define(perm, variant_index) << "]";
+					if (!shader.variants[variant_index].resolve)
+						str << "[" << shader.permutation_to_variant_define(perm, variant_index) << "]";
 
 				str << " = device.request_" << (shader.compute ? "program" : "shader") <<
-				    "(spirv_bank + " << variant_to_offset_size[i][perm].first <<
-				    ", " << variant_to_offset_size[i][perm].second * sizeof(uint32_t) << ");\n";
+					"(spirv_bank + " << variant_to_offset_size[i][perm].first <<
+					", " << variant_to_offset_size[i][perm].second * sizeof(uint32_t) << ");\n";
 			}
 		}
 		else

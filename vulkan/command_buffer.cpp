@@ -736,7 +736,9 @@ VkPipeline CommandBuffer::build_compute_pipeline(Device *device, const DeferredP
 	device->register_compute_pipeline(compile.hash, info);
 #endif
 
+#ifdef VULKAN_DEBUG
 	LOGI("Creating compute pipeline.\n");
+#endif
 	auto &table = device->get_device_table();
 	if (table.vkCreateComputePipelines(device->get_device(), compile.cache, 1, &info, nullptr, &compute_pipeline) != VK_SUCCESS)
 	{
@@ -972,7 +974,9 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Device *device, const Deferred
 	device->register_graphics_pipeline(compile.hash, pipe);
 #endif
 
+#ifdef VULKAN_DEBUG
 	LOGI("Creating graphics pipeline.\n");
+#endif
 	auto &table = device->get_device_table();
 	VkResult res = table.vkCreateGraphicsPipelines(device->get_device(), compile.cache, 1, &pipe, nullptr, &pipeline);
 	if (res != VK_SUCCESS)

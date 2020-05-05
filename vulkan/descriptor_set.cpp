@@ -168,7 +168,9 @@ DescriptorSetAllocator::DescriptorSetAllocator(Hash hash, Device *device_, const
 		}
 	}
 
+#ifdef VULKAN_DEBUG
 	LOGI("Creating descriptor set layout.\n");
+#endif
 	if (table.vkCreateDescriptorSetLayout(device->get_device(), &info, nullptr, &set_layout) != VK_SUCCESS)
 		LOGE("Failed to create descriptor set layout.");
 #ifdef GRANITE_VULKAN_FOSSILIZE

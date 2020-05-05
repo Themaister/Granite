@@ -113,7 +113,9 @@ RenderPass::RenderPass(Hash hash, Device *device_, const VkRenderPassCreateInfo 
 	if (device->get_workarounds().wsi_acquire_barrier_is_expensive)
 		fixup_wsi_barrier(info, fixup_attachments);
 
+#ifdef VULKAN_DEBUG
 	LOGI("Creating render pass.\n");
+#endif
 	if (table.vkCreateRenderPass(device->get_device(), &info, nullptr, &render_pass) != VK_SUCCESS)
 		LOGE("Failed to create render pass.");
 
@@ -813,7 +815,9 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 	if (device->get_workarounds().wsi_acquire_barrier_is_expensive)
 		fixup_wsi_barrier(rp_info, fixup_attachments);
 
+#ifdef VULKAN_DEBUG
 	LOGI("Creating render pass.\n");
+#endif
 	auto &table = device->get_device_table();
 	if (table.vkCreateRenderPass(device->get_device(), &rp_info, nullptr, &render_pass) != VK_SUCCESS)
 		LOGE("Failed to create render pass.");

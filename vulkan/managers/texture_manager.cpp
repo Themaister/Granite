@@ -62,7 +62,7 @@ void Texture::update(std::unique_ptr<Granite::File> file)
 {
 	auto *f = file.release();
 	auto work = [f, this]() {
-#ifdef GRANITE_VULKAN_MT
+#if defined(GRANITE_VULKAN_MT) && defined(VULKAN_DEBUG)
 		LOGI("Loading texture in thread index: %u\n", get_current_thread_index());
 #endif
 		unique_ptr<Granite::File> updated_file{f};

@@ -732,24 +732,31 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	}
 #endif
 
-#ifdef _WIN32
-	ext.supports_external = false;
-#else
 	if (ext.supports_external && ext.supports_dedicated &&
 	    has_extension(VK_KHR_EXTERNAL_SEMAPHORE_EXTENSION_NAME) &&
 	    has_extension(VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME) &&
+#ifdef _WIN32
+	    has_extension(VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME) &&
+	    has_extension(VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME)
+#else
 	    has_extension(VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME) &&
-	    has_extension(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME))
+	    has_extension(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME)
+#endif
+		)
 	{
 		ext.supports_external = true;
 		enabled_extensions.push_back(VK_KHR_EXTERNAL_SEMAPHORE_EXTENSION_NAME);
-		enabled_extensions.push_back(VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME);
 		enabled_extensions.push_back(VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME);
+#ifdef _WIN32
+		enabled_extensions.push_back(VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME);
+		enabled_extensions.push_back(VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME);
+#else
+		enabled_extensions.push_back(VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME);
 		enabled_extensions.push_back(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
+#endif
 	}
 	else
 		ext.supports_external = false;
-#endif
 
 	if (has_extension(VK_KHR_DESCRIPTOR_UPDATE_TEMPLATE_EXTENSION_NAME))
 	{

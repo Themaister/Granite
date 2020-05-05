@@ -313,7 +313,6 @@ QueryPool::QueryPool(Device *device_)
 	: device(device_)
 	, table(device_->get_device_table())
 {
-	query_period = 1e-9 * device->get_gpu_properties().limits.timestampPeriod;
 	supports_timestamp = device->get_gpu_properties().limits.timestampComputeAndGraphics;
 
 	// Ignore timestampValidBits and friends for now.
@@ -346,7 +345,7 @@ void QueryPool::begin()
 		                            VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
 
 		for (unsigned j = 0; j < pool.index; j++)
-			pool.cookies[j]->signal_timestamp(double(pool.query_results[j]) * query_period);
+			pool.cookies[j]->signal_timestamp_ticks(pool.query_results[j]);
 
 		if (device->get_device_features().host_query_reset_features.hostQueryReset)
 			table.vkResetQueryPoolEXT(device->get_device(), pool.pool, 0, pool.index);

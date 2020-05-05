@@ -569,6 +569,9 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		if (supported && ((queue_props[i].queueFlags & required) == required))
 		{
 			graphics_queue_family = i;
+
+			// XXX: This assumes timestamp valid bits is the same for all queue types.
+			timestamp_valid_bits = queue_props[i].timestampValidBits;
 			break;
 		}
 	}

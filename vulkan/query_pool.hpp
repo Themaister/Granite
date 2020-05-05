@@ -68,15 +68,15 @@ class QueryPoolResult : public Util::IntrusivePtrEnabled<QueryPoolResult, QueryP
 public:
 	friend struct QueryPoolResultDeleter;
 
-	void signal_timestamp(double timestamp_)
+	void signal_timestamp_ticks(uint64_t ticks)
 	{
-		timestamp = timestamp_;
+		timestamp_ticks = ticks;
 		has_timestamp = true;
 	}
 
-	double get_timestamp() const
+	uint64_t get_timestamp_ticks() const
 	{
-		return timestamp;
+		return timestamp_ticks;
 	}
 
 	bool is_signalled() const
@@ -92,7 +92,7 @@ private:
 	{}
 
 	Device *device;
-	double timestamp = 0.0;
+	uint64_t timestamp_ticks = 0;
 	bool has_timestamp = false;
 };
 
@@ -123,7 +123,6 @@ private:
 	};
 	std::vector<Pool> pools;
 	unsigned pool_index = 0;
-	double query_period = 0.0;
 
 	void add_pool();
 

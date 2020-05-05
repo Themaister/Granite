@@ -3306,8 +3306,8 @@ void RenderGraph::report_timestamps()
 			    timestamp.timestamps_vertex_begin[pass]->is_signalled() &&
 			    timestamp.timestamps_vertex_end[pass]->is_signalled())
 			{
-				double t = timestamp.timestamps_vertex_end[pass]->get_timestamp() -
-				           timestamp.timestamps_vertex_begin[pass]->get_timestamp();
+				double t = device->convert_timestamp_delta(timestamp.timestamps_vertex_begin[pass]->get_timestamp_ticks(),
+				                                           timestamp.timestamps_vertex_end[pass]->get_timestamp_ticks());
 				if (t < 0.0) // Non-monotonic, discard.
 					continue;
 
@@ -3320,8 +3320,8 @@ void RenderGraph::report_timestamps()
 			    timestamp.timestamps_fragment_begin[pass]->is_signalled() &&
 			    timestamp.timestamps_fragment_end[pass]->is_signalled())
 			{
-				double t = timestamp.timestamps_fragment_end[pass]->get_timestamp() -
-				           timestamp.timestamps_fragment_begin[pass]->get_timestamp();
+				double t = device->convert_timestamp_delta(timestamp.timestamps_fragment_begin[pass]->get_timestamp_ticks(),
+				                                           timestamp.timestamps_fragment_end[pass]->get_timestamp_ticks());
 				if (t < 0.0) // Non-monotonic, discard.
 					continue;
 
@@ -3334,8 +3334,8 @@ void RenderGraph::report_timestamps()
 			    timestamp.timestamps_compute_begin[pass]->is_signalled() &&
 			    timestamp.timestamps_compute_end[pass]->is_signalled())
 			{
-				double t = timestamp.timestamps_compute_end[pass]->get_timestamp() -
-				           timestamp.timestamps_compute_begin[pass]->get_timestamp();
+				double t = device->convert_timestamp_delta(timestamp.timestamps_compute_begin[pass]->get_timestamp_ticks(),
+				                                           timestamp.timestamps_compute_end[pass]->get_timestamp_ticks());
 				if (t < 0.0) // Non-monotonic, discard.
 					continue;
 

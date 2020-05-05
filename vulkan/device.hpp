@@ -329,6 +329,8 @@ public:
 
 	bool swapchain_touched() const;
 
+	double convert_timestamp_delta(uint64_t start_ticks, uint64_t end_ticks) const;
+
 private:
 	VkInstance instance = VK_NULL_HANDLE;
 	VkPhysicalDevice gpu = VK_NULL_HANDLE;
@@ -337,6 +339,7 @@ private:
 	VkQueue graphics_queue = VK_NULL_HANDLE;
 	VkQueue compute_queue = VK_NULL_HANDLE;
 	VkQueue transfer_queue = VK_NULL_HANDLE;
+	uint32_t timestamp_valid_bits = 0;
 	unsigned num_thread_indices = 1;
 
 #ifdef GRANITE_VULKAN_MT

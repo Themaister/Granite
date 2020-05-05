@@ -167,6 +167,11 @@ public:
 		return transfer_queue_family;
 	}
 
+	uint32_t get_timestamp_valid_bits() const
+	{
+		return timestamp_valid_bits;
+	}
+
 	void release_instance()
 	{
 		owned_instance = false;
@@ -217,6 +222,7 @@ private:
 	uint32_t graphics_queue_family = VK_QUEUE_FAMILY_IGNORED;
 	uint32_t compute_queue_family = VK_QUEUE_FAMILY_IGNORED;
 	uint32_t transfer_queue_family = VK_QUEUE_FAMILY_IGNORED;
+	uint32_t timestamp_valid_bits = 0;
 	unsigned num_thread_indices = 1;
 
 	bool create_instance(const char **instance_ext, uint32_t instance_ext_count);

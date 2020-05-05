@@ -671,6 +671,7 @@ void Device::set_context(const Context &context)
 	compute_queue = context.get_compute_queue();
 	transfer_queue_family_index = context.get_transfer_queue_family();
 	transfer_queue = context.get_transfer_queue();
+	timestamp_valid_bits = context.get_timestamp_valid_bits();
 
 	mem_props = context.get_mem_props();
 	gpu_props = context.get_gpu_props();
@@ -2560,7 +2561,7 @@ void Device::PerFrame::begin()
 
 	for (auto &ts : timestamp_intervals)
 		if (ts.end_ts->is_signalled() && ts.start_ts->is_signalled())
-			ts.timestamp_tag->accumulate_time(ts.end_ts->get_timestamp() - ts.start_ts->get_timestamp());
+			ts.timestamp_tag->accumulate_time(device.convert_timestamp_delta(ts.start_ts->get_timestamp_ticks(), ts.end_ts->get_timestamp_ticks()));
 	managers.timestamps.mark_end_of_frame_context();
 	timestamp_intervals.clear();
 }
@@ -4558,6 +4559,14 @@ void Device::parse_debug_channel(const PerFrame::DebugChannel &channel)
 	}
 
 	unmap_host_buffer(*channel.buffer, MEMORY_ACCESS_READ_BIT);
+}
+
+double Device::convert_timestamp_delta(uint64_t start_ticks, uint64_t end_ticks) const
+{
+	uint64_t ticks_delta = end_ticks - start_ticks;
+	if (timestamp_valid_bits < 64)
+		ticks_delta &= (1ull << timestamp_valid_bits) - 1;
+	return double(int64_t(ticks_delta)) * gpu_props.limits.timestampPeriod * 1e-9;
 }
 
 #ifdef GRANITE_VULKAN_FILESYSTEM

@@ -40,7 +40,7 @@ using namespace std;
 namespace Vulkan
 {
 bool Context::init_instance_and_device(const char **instance_ext, uint32_t instance_ext_count, const char **device_ext,
-                                       uint32_t device_ext_count)
+                                       uint32_t device_ext_count, ContextCreationFlags flags)
 {
 	destroy();
 
@@ -54,7 +54,7 @@ bool Context::init_instance_and_device(const char **instance_ext, uint32_t insta
 	}
 
 	VkPhysicalDeviceFeatures features = {};
-	if (!create_device(VK_NULL_HANDLE, VK_NULL_HANDLE, device_ext, device_ext_count, nullptr, 0, &features))
+	if (!create_device(VK_NULL_HANDLE, VK_NULL_HANDLE, device_ext, device_ext_count, nullptr, 0, &features, flags))
 	{
 		destroy();
 		LOGE("Failed to create Vulkan device.\n");
@@ -148,7 +148,8 @@ bool Context::init_from_instance_and_device(VkInstance instance_, VkPhysicalDevi
 bool Context::init_device_from_instance(VkInstance instance_, VkPhysicalDevice gpu_, VkSurfaceKHR surface,
                                         const char **required_device_extensions, unsigned num_required_device_extensions,
                                         const char **required_device_layers, unsigned num_required_device_layers,
-                                        const VkPhysicalDeviceFeatures *required_features)
+                                        const VkPhysicalDeviceFeatures *required_features,
+                                        ContextCreationFlags flags)
 {
 	destroy();
 
@@ -160,7 +161,7 @@ bool Context::init_device_from_instance(VkInstance instance_, VkPhysicalDevice g
 		return false;
 
 	if (!create_device(gpu_, surface, required_device_extensions, num_required_device_extensions, required_device_layers,
-	                   num_required_device_layers, required_features))
+	                   num_required_device_layers, required_features, flags))
 	{
 		destroy();
 		LOGE("Failed to create Vulkan device.\n");
@@ -459,7 +460,8 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 
 bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const char **required_device_extensions,
                             unsigned num_required_device_extensions, const char **required_device_layers,
-                            unsigned num_required_device_layers, const VkPhysicalDeviceFeatures *required_features)
+                            unsigned num_required_device_layers, const VkPhysicalDeviceFeatures *required_features,
+                            ContextCreationFlags flags)
 {
 	gpu = gpu_;
 	if (gpu == VK_NULL_HANDLE)
@@ -907,7 +909,9 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 			ppNext = &ext.timeline_semaphore_features.pNext;
 		}
 
-		if (ext.supports_maintenance_3 && has_extension(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME))
+		if ((flags & CONTEXT_CREATION_DISABLE_BINDLESS_BIT) == 0 &&
+		    ext.supports_maintenance_3 &&
+		    has_extension(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME))
 		{
 			enabled_extensions.push_back(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
 			*ppNext = &ext.descriptor_indexing_features;

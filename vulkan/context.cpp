@@ -70,7 +70,7 @@ static bool loader_init_once;
 bool Context::init_loader(PFN_vkGetInstanceProcAddr addr)
 {
 	lock_guard<mutex> holder(loader_init_lock);
-	if (loader_init_once)
+	if (loader_init_once && !addr)
 		return true;
 
 	if (!addr)

@@ -56,6 +56,7 @@ struct DeviceFeatures
 	bool supports_get_memory_requirements2 = false;
 	bool supports_draw_indirect_count = false;
 	bool supports_draw_parameters = false;
+	bool supports_driver_properties = false;
 	VkPhysicalDeviceSubgroupProperties subgroup_properties = {};
 	VkPhysicalDevice8BitStorageFeaturesKHR storage_8bit_features = {};
 	VkPhysicalDevice16BitStorageFeaturesKHR storage_16bit_features = {};
@@ -77,6 +78,7 @@ struct DeviceFeatures
 	VkPhysicalDeviceConservativeRasterizationPropertiesEXT conservative_rasterization_properties = {};
 	VkPhysicalDevicePerformanceQueryFeaturesKHR performance_query_features = {};
 	VkPhysicalDeviceSamplerYcbcrConversionFeaturesKHR sampler_ycbcr_conversion_features = {};
+	VkPhysicalDeviceDriverPropertiesKHR driver_properties = {};
 };
 
 enum VendorID

@@ -1030,6 +1030,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	ext.subgroup_size_control_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_PROPERTIES_EXT };
 	ext.descriptor_indexing_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES_EXT };
 	ext.conservative_rasterization_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CONSERVATIVE_RASTERIZATION_PROPERTIES_EXT };
+	ext.driver_properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES_KHR };
 	VkPhysicalDeviceProperties2 props = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
 	ppNext = &props.pNext;
 
@@ -1058,6 +1059,15 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	{
 		*ppNext = &ext.conservative_rasterization_properties;
 		ppNext = &ext.conservative_rasterization_properties.pNext;
+	}
+
+	if (ext.supports_vulkan_11_instance && ext.supports_vulkan_11_device &&
+	    has_extension(VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME))
+	{
+		enabled_extensions.push_back(VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME);
+		ext.supports_driver_properties = true;
+		*ppNext = &ext.driver_properties;
+		ppNext = &ext.driver_properties.pNext;
 	}
 
 	if (ext.supports_vulkan_11_instance && ext.supports_vulkan_11_device)

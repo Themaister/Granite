@@ -446,8 +446,11 @@ void DeviceAllocator::garbage_collect()
 		heap.garbage_collect(device);
 }
 
-void *DeviceAllocator::map_memory(const DeviceAllocation &alloc, MemoryAccessFlags flags)
+void *DeviceAllocator::map_memory(const DeviceAllocation &alloc, MemoryAccessFlags flags,
+                                  VkDeviceSize offset, VkDeviceSize length)
 {
+	VkDeviceSize base_offset = offset;
+
 	// This will only happen if the memory type is device local only, which we cannot possibly map.
 	if (!alloc.host_base)
 		return nullptr;
@@ -455,8 +458,10 @@ void *DeviceAllocator::map_memory(const DeviceAllocation &alloc, MemoryAccessFla
 	if ((flags & MEMORY_ACCESS_READ_BIT) &&
 	    !(mem_props.memoryTypes[alloc.memory_type].propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))
 	{
-		VkDeviceSize offset = alloc.offset & ~(atom_alignment - 1);
-		VkDeviceSize size = (alloc.offset + alloc.get_size() - offset + atom_alignment - 1) & ~(atom_alignment - 1);
+		offset += alloc.offset;
+		offset &= ~(atom_alignment - 1);
+
+		VkDeviceSize size = (alloc.offset + length - offset + atom_alignment - 1) & ~(atom_alignment - 1);
 
 		// Have to invalidate cache here.
 		const VkMappedMemoryRange range = {
@@ -465,10 +470,11 @@ void *DeviceAllocator::map_memory(const DeviceAllocation &alloc, MemoryAccessFla
 		table->vkInvalidateMappedMemoryRanges(device->get_device(), 1, &range);
 	}
 
-	return alloc.host_base;
+	return alloc.host_base + base_offset;
 }
 
-void DeviceAllocator::unmap_memory(const DeviceAllocation &alloc, MemoryAccessFlags flags)
+void DeviceAllocator::unmap_memory(const DeviceAllocation &alloc, MemoryAccessFlags flags,
+                                   VkDeviceSize offset, VkDeviceSize length)
 {
 	// This will only happen if the memory type is device local only, which we cannot possibly map.
 	if (!alloc.host_base)
@@ -477,8 +483,9 @@ void DeviceAllocator::unmap_memory(const DeviceAllocation &alloc, MemoryAccessFl
 	if ((flags & MEMORY_ACCESS_WRITE_BIT) &&
 	    !(mem_props.memoryTypes[alloc.memory_type].propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))
 	{
-		VkDeviceSize offset = alloc.offset & ~(atom_alignment - 1);
-		VkDeviceSize size = (alloc.offset + alloc.get_size() - offset + atom_alignment - 1) & ~(atom_alignment - 1);
+		offset += alloc.offset;
+		offset &= ~(atom_alignment - 1);
+		VkDeviceSize size = (alloc.offset + length - offset + atom_alignment - 1) & ~(atom_alignment - 1);
 
 		// Have to flush caches here.
 		const VkMappedMemoryRange range = {

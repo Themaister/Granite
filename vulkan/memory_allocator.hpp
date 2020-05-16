@@ -175,6 +175,11 @@ public:
 		return mask;
 	}
 
+	inline bool is_host_allocation() const
+	{
+		return host_base != nullptr;
+	}
+
 	void free_immediate();
 	void free_immediate(DeviceAllocator &allocator);
 
@@ -328,8 +333,8 @@ public:
 	bool allocate_global(uint32_t size, uint32_t memory_type, DeviceAllocation *alloc);
 
 	void garbage_collect();
-	void *map_memory(const DeviceAllocation &alloc, MemoryAccessFlags flags);
-	void unmap_memory(const DeviceAllocation &alloc, MemoryAccessFlags flags);
+	void *map_memory(const DeviceAllocation &alloc, MemoryAccessFlags flags, VkDeviceSize offset, VkDeviceSize length);
+	void unmap_memory(const DeviceAllocation &alloc, MemoryAccessFlags flags, VkDeviceSize offset, VkDeviceSize length);
 
 	bool allocate(uint32_t size, uint32_t memory_type, VkDeviceMemory *memory, uint8_t **host_memory, VkImage dedicated_image);
 	void free(uint32_t size, uint32_t memory_type, VkDeviceMemory memory, uint8_t *host_memory);

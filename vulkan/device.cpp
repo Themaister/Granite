@@ -201,13 +201,15 @@ LinearHostImageHandle Device::create_linear_host_image(const LinearHostImageCrea
 
 void *Device::map_linear_host_image(const LinearHostImage &image, MemoryAccessFlags access)
 {
-	void *host = managers.memory.map_memory(image.get_host_visible_allocation(), access);
+	void *host = managers.memory.map_memory(image.get_host_visible_allocation(), access,
+	                                        0, image.get_host_visible_allocation().get_size());
 	return host;
 }
 
 void Device::unmap_linear_host_image_and_sync(const LinearHostImage &image, MemoryAccessFlags access)
 {
-	managers.memory.unmap_memory(image.get_host_visible_allocation(), access);
+	managers.memory.unmap_memory(image.get_host_visible_allocation(), access,
+	                             0, image.get_host_visible_allocation().get_size());
 	if (image.need_staging_copy())
 	{
 		// Kinda icky fallback, shouldn't really be used on discrete cards.
@@ -235,13 +237,26 @@ void Device::unmap_linear_host_image_and_sync(const LinearHostImage &image, Memo
 
 void *Device::map_host_buffer(const Buffer &buffer, MemoryAccessFlags access)
 {
-	void *host = managers.memory.map_memory(buffer.get_allocation(), access);
+	void *host = managers.memory.map_memory(buffer.get_allocation(), access, 0, buffer.get_create_info().size);
 	return host;
 }
 
 void Device::unmap_host_buffer(const Buffer &buffer, MemoryAccessFlags access)
 {
-	managers.memory.unmap_memory(buffer.get_allocation(), access);
+	managers.memory.unmap_memory(buffer.get_allocation(), access, 0, buffer.get_create_info().size);
+}
+
+void *Device::map_host_buffer(const Buffer &buffer, MemoryAccessFlags access, VkDeviceSize offset, VkDeviceSize length)
+{
+	VK_ASSERT(offset + length <= buffer.get_create_info().size);
+	void *host = managers.memory.map_memory(buffer.get_allocation(), access, offset, length);
+	return host;
+}
+
+void Device::unmap_host_buffer(const Buffer &buffer, MemoryAccessFlags access, VkDeviceSize offset, VkDeviceSize length)
+{
+	VK_ASSERT(offset + length <= buffer.get_create_info().size);
+	managers.memory.unmap_memory(buffer.get_allocation(), access, offset, length);
 }
 
 Shader *Device::request_shader(const uint32_t *data, size_t size)
@@ -4107,7 +4122,7 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 	}
 	else if (initial || zero_initialize)
 	{
-		void *ptr = managers.memory.map_memory(allocation, MEMORY_ACCESS_WRITE_BIT);
+		void *ptr = managers.memory.map_memory(allocation, MEMORY_ACCESS_WRITE_BIT, 0, allocation.get_size());
 		if (!ptr)
 			return BufferHandle(nullptr);
 
@@ -4115,7 +4130,7 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 			memcpy(ptr, initial, create_info.size);
 		else
 			memset(ptr, 0, create_info.size);
-		managers.memory.unmap_memory(allocation, MEMORY_ACCESS_WRITE_BIT);
+		managers.memory.unmap_memory(allocation, MEMORY_ACCESS_WRITE_BIT, 0, allocation.get_size());
 	}
 	return handle;
 }

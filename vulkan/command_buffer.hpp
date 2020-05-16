@@ -267,6 +267,7 @@ public:
 	void copy_buffer(const Buffer &dst, VkDeviceSize dst_offset, const Buffer &src, VkDeviceSize src_offset,
 	                 VkDeviceSize size);
 	void copy_buffer(const Buffer &dst, const Buffer &src);
+	void copy_buffer(const Buffer &dst, const Buffer &src, const VkBufferCopy *copies, size_t count);
 	void copy_image(const Image &dst, const Image &src);
 	void copy_image(const Image &dst, const Image &src,
 	                const VkOffset3D &dst_offset, const VkOffset3D &src_offset,

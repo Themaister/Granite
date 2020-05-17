@@ -44,6 +44,15 @@ VkFence FenceHolder::get_fence() const
 void FenceHolder::wait()
 {
 	auto &table = device->get_device_table();
+
+#ifdef GRANITE_VULKAN_MT
+	// Waiting for the same VkFence in parallel is not allowed, and there seems to be some shenanigans on Intel
+	// when waiting for a timeline semaphore in parallel with same value as well.
+	std::lock_guard<std::mutex> holder{lock};
+#endif
+	if (observed_wait)
+		return;
+
 	if (timeline_value != 0)
 	{
 		VK_ASSERT(timeline_semaphore);

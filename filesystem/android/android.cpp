@@ -90,8 +90,8 @@ AssetFile::~AssetFile()
 		AAsset_close(asset);
 }
 
-AssetManagerFilesystem::AssetManagerFilesystem(const std::string &base, AAssetManager *mgr)
-	: base(base), mgr(mgr)
+AssetManagerFilesystem::AssetManagerFilesystem(const std::string &base_)
+	: base(base_), mgr(global_asset_manager)
 {
 }
 
@@ -154,4 +154,6 @@ bool AssetManagerFilesystem::stat(const std::string &path, FileStat &stat)
 	AAsset_close(asset);
 	return true;
 }
+
+AAssetManager *AssetManagerFilesystem::global_asset_manager;
 }

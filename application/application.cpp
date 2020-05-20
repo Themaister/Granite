@@ -33,6 +33,8 @@
 #include "muglm/muglm_impl.hpp"
 #include "utils/image_utils.hpp"
 #include "thread_group.hpp"
+#include "thread_id.hpp"
+#include <chrono>
 #ifdef HAVE_GRANITE_AUDIO
 #include "audio_mixer.hpp"
 #endif
@@ -103,6 +105,50 @@ void Application::run_frame()
 	application_wsi.begin_frame();
 	render_frame(application_wsi.get_smooth_frame_time(), application_wsi.get_smooth_elapsed_time());
 	application_wsi.end_frame();
+}
+
+void ApplicationCLIWrapper::render_frame(double, double)
+{
+	if (!started)
+	{
+		LOGI("Begin main function ...\n");
+		auto ctx = Global::create_thread_context();
+		task = std::async(std::launch::async, [=, c = std::move(ctx)]() -> int {
+			Global::set_thread_context(*c);
+			Vulkan::register_thread_index(0);
+			return func(argc, argv);
+		});
+		started = true;
+	}
+
+	if (!task.valid())
+		return;
+
+	auto &device = get_wsi().get_device();
+	auto result = task.wait_for(std::chrono::milliseconds(100));
+	if (result != std::future_status::ready)
+	{
+		int ret = task.get();
+		LOGI("======================\n");
+		LOGI("Executable returned %d.\n", ret);
+		LOGI("======================\n");
+		auto cmd = device.request_command_buffer();
+		auto rp = device.get_swapchain_render_pass(SwapchainRenderPass::ColorOnly);
+		rp.clear_color[0].float32[0] = 1.0f;
+		rp.clear_color[0].float32[1] = 1.0f;
+		rp.clear_color[0].float32[2] = 1.0f;
+
+		cmd->begin_render_pass(rp);
+		cmd->end_render_pass();
+		device.submit(cmd);
+
+		request_shutdown();
+	}
+}
+
+ApplicationCLIWrapper::ApplicationCLIWrapper(int (*func_)(int, char **), int argc_, char **argv_)
+	: func(func_), argc(argc_), argv(argv_)
+{
 }
 
 }

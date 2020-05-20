@@ -49,7 +49,7 @@ private:
 class AssetManagerFilesystem : public FilesystemBackend
 {
 public:
-	AssetManagerFilesystem(const std::string &base, AAssetManager *mgr);
+	AssetManagerFilesystem(const std::string &base);
 	std::vector<ListEntry> list(const std::string &path) override;
 	std::unique_ptr<File> open(const std::string &path, FileMode mode) override;
 	bool stat(const std::string &path, FileStat &stat) override;
@@ -57,6 +57,8 @@ public:
 	void uninstall_notification(FileNotifyHandle handle) override;
 	void poll_notifications() override;
 	int get_notification_fd() const override;
+
+	static AAssetManager *global_asset_manager;
 
 private:
 	std::string base;

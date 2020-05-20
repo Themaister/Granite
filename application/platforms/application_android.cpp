@@ -927,8 +927,9 @@ void android_main(android_app *app)
 #define ANDROID_ASSET_PATH ""
 #endif
 
-	Global::filesystem()->register_protocol("builtin", make_unique<AssetManagerFilesystem>(ANDROID_BUILTIN_ASSET_PATH, app->activity->assetManager));
-	Global::filesystem()->register_protocol("assets", make_unique<AssetManagerFilesystem>(ANDROID_ASSET_PATH, app->activity->assetManager));
+	AssetManagerFilesystem::global_asset_manager = app->activity->assetManager;
+	Global::filesystem()->register_protocol("builtin", make_unique<AssetManagerFilesystem>(ANDROID_BUILTIN_ASSET_PATH));
+	Global::filesystem()->register_protocol("assets", make_unique<AssetManagerFilesystem>(ANDROID_ASSET_PATH));
 	Global::filesystem()->register_protocol("cache", make_unique<OSFilesystem>(app->activity->internalDataPath));
 #endif
 

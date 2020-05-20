@@ -459,9 +459,10 @@ void *DeviceAllocator::map_memory(const DeviceAllocation &alloc, MemoryAccessFla
 	    !(mem_props.memoryTypes[alloc.memory_type].propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))
 	{
 		offset += alloc.offset;
+		VkDeviceSize end_offset = offset + length;
 		offset &= ~(atom_alignment - 1);
-
-		VkDeviceSize size = (alloc.offset + length - offset + atom_alignment - 1) & ~(atom_alignment - 1);
+		length = end_offset - offset;
+		VkDeviceSize size = (length + atom_alignment - 1) & ~(atom_alignment - 1);
 
 		// Have to invalidate cache here.
 		const VkMappedMemoryRange range = {
@@ -484,8 +485,10 @@ void DeviceAllocator::unmap_memory(const DeviceAllocation &alloc, MemoryAccessFl
 	    !(mem_props.memoryTypes[alloc.memory_type].propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))
 	{
 		offset += alloc.offset;
+		VkDeviceSize end_offset = offset + length;
 		offset &= ~(atom_alignment - 1);
-		VkDeviceSize size = (alloc.offset + length - offset + atom_alignment - 1) & ~(atom_alignment - 1);
+		length = end_offset - offset;
+		VkDeviceSize size = (length + atom_alignment - 1) & ~(atom_alignment - 1);
 
 		// Have to flush caches here.
 		const VkMappedMemoryRange range = {

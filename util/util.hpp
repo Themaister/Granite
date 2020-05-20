@@ -147,12 +147,21 @@ inline void for_each_bit(uint32_t value, const T &func)
 template<typename T>
 inline void for_each_bit_range(uint32_t value, const T &func)
 {
+	if (value == ~0u)
+	{
+		func(0, 32);
+		return;
+	}
+
+	uint32_t bit_offset = 0;
 	while (value)
 	{
 		uint32_t bit = trailing_zeroes(value);
-		uint32_t range = trailing_ones(value >> bit);
-		func(bit, range);
-		value &= ~((1u << (bit + range)) - 1);
+		bit_offset += bit;
+		value >>= bit;
+		uint32_t range = trailing_ones(value);
+		func(bit_offset, range);
+		value &= ~((1u << range) - 1);
 	}
 }
 

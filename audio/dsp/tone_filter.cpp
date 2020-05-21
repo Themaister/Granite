@@ -24,7 +24,7 @@
 #include "aligned_alloc.hpp"
 #include "pole_zero_filter_design.hpp"
 #include "dsp.hpp"
-#include "util.hpp"
+#include "logging.hpp"
 #include <complex>
 #include <cmath>
 #include <algorithm>

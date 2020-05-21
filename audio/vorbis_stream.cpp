@@ -24,7 +24,7 @@
 #include "filesystem.hpp"
 #include "dsp/dsp.hpp"
 #include "stb_vorbis.h"
-#include "util.hpp"
+#include "logging.hpp"
 #include <string.h>
 #include <algorithm>
 

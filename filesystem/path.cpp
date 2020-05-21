@@ -21,7 +21,8 @@
  */
 
 #include "path.hpp"
-#include "util.hpp"
+#include "logging.hpp"
+#include "string_helpers.hpp"
 #include <algorithm>
 
 #ifdef _WIN32

@@ -21,10 +21,10 @@
  */
 
 #include "lock_free_message_queue.hpp"
-#include "util.hpp"
 #include "aligned_alloc.hpp"
-#include <stdlib.h>
+#include "logging.hpp"
 #include <algorithm>
+#include <stdlib.h>
 
 namespace Util
 {

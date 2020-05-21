@@ -21,7 +21,8 @@
  */
 
 #include "xinput_windows.hpp"
-#include "util.hpp"
+#include "logging.hpp"
+#include "bitops.hpp"
 
 using namespace Util;
 using namespace std;

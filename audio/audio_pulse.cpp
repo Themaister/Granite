@@ -23,7 +23,7 @@
 #include "audio_pulse.hpp"
 #include <pulse/pulseaudio.h>
 #include "dsp/dsp.hpp"
-#include "util.hpp"
+#include "logging.hpp"
 #include <string.h>
 
 static constexpr size_t MAX_NUM_SAMPLES = 256;

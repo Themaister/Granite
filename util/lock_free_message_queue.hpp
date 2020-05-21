@@ -55,7 +55,7 @@ public:
 	size_t read_avail() const noexcept
 	{
 		return write_count.load(std::memory_order_acquire) -
-		read_count.load(std::memory_order_relaxed);
+		       read_count.load(std::memory_order_relaxed);
 	}
 
 	size_t write_avail() const noexcept

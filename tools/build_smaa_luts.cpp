@@ -1,6 +1,6 @@
 #include "smaa/AreaTex.h"
 #include "smaa/SearchTex.h"
-#include "util.hpp"
+#include "logging.hpp"
 #include "memory_mapped_texture.hpp"
 #include <string.h>
 

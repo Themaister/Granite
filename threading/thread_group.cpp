@@ -23,7 +23,7 @@
 #include "thread_group.hpp"
 #include <assert.h>
 #include <stdexcept>
-#include "util.hpp"
+#include "logging.hpp"
 #include "global_managers.hpp"
 #include "thread_id.hpp"
 

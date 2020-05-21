@@ -21,7 +21,7 @@
  */
 
 #include "gltf_export.hpp"
-#include "util.hpp"
+#include "logging.hpp"
 #include "cli_parser.hpp"
 #include "obj.hpp"
 

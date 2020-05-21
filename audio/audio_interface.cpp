@@ -22,7 +22,7 @@
 
 #include "filesystem.hpp"
 #include "audio_interface.hpp"
-#include "util.hpp"
+#include "logging.hpp"
 #include "dsp/dsp.hpp"
 #ifdef AUDIO_HAVE_PULSE
 #include "audio_pulse.hpp"

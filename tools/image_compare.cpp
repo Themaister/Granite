@@ -21,7 +21,7 @@
  */
 
 #include "cli_parser.hpp"
-#include "util.hpp"
+#include "logging.hpp"
 #include "texture_files.hpp"
 #include "filesystem.hpp"
 #include "thread_group.hpp"

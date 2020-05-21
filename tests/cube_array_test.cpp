@@ -114,6 +114,7 @@ struct CubeArrayTest : Granite::Application, Granite::EventHandler
 #endif
 				cmd->begin_render_pass(cube_rp);
 
+#if 0
 				VkClearRect clear_rect = {};
 				clear_rect.layerCount = 1;
 				clear_rect.rect.extent.width = 16;
@@ -121,6 +122,7 @@ struct CubeArrayTest : Granite::Application, Granite::EventHandler
 				VkClearValue clear_value = {};
 				clear_value.depthStencil.depth = cube_rp.clear_depth_stencil.depth;
 				//cmd->clear_quad(1, clear_rect, clear_value, VK_IMAGE_ASPECT_DEPTH_BIT);
+#endif
 				cmd->end_render_pass();
 			}
 		}

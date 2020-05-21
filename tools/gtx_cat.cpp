@@ -20,7 +20,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "util.hpp"
+#include "logging.hpp"
 #include "memory_mapped_texture.hpp"
 #include <string.h>
 #include <vector>

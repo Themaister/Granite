@@ -22,7 +22,7 @@
 
 #include "intrusive.hpp"
 #include "intrusive_hash_map.hpp"
-#include "util.hpp"
+#include "logging.hpp"
 #include <vector>
 
 using namespace Util;

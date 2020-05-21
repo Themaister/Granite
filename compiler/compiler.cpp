@@ -23,7 +23,7 @@
 #include "compiler.hpp"
 #include <shaderc/shaderc.hpp>
 #include <path.hpp>
-#include "util.hpp"
+#include "logging.hpp"
 #include "filesystem.hpp"
 
 #include "spirv-tools/libspirv.hpp"

@@ -22,9 +22,10 @@
 
 #include "stb_image.h"
 #include "stb_image_write.h"
-#include "util.hpp"
+#include "logging.hpp"
 #include <vector>
 #include <string.h>
+#include <stdint.h>
 
 // Handy tool to convert Gloss/Metallic/AO maps to packed textures suitable for glTF 2.0 PBR.
 

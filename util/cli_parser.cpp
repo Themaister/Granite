@@ -21,8 +21,9 @@
  */
 
 #include "cli_parser.hpp"
-#include "util.hpp"
+#include "logging.hpp"
 #include <limits>
+#include <stdexcept>
 
 using namespace std;
 

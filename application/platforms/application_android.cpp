@@ -21,7 +21,7 @@
  */
 
 #include "android_native_app_glue.h"
-#include "util.hpp"
+#include "logging.hpp"
 #include "application.hpp"
 #include "application_events.hpp"
 #include "application_wsi.hpp"

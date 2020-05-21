@@ -23,7 +23,7 @@
 #include "audio_fft_eq.hpp"
 #include "dsp/dsp.hpp"
 #include "fft.h"
-#include "util.hpp"
+#include "logging.hpp"
 #include <vector>
 #include <complex>
 #include <string.h>

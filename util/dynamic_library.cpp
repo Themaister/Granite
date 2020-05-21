@@ -21,7 +21,7 @@
  */
 
 #include "dynamic_library.hpp"
-#include "util.hpp"
+#include "logging.hpp"
 #include <stdexcept>
 
 #ifdef _WIN32

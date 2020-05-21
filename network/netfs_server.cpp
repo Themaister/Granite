@@ -21,7 +21,7 @@
  */
 
 #include "network.hpp"
-#include "util.hpp"
+#include "logging.hpp"
 #include "netfs.hpp"
 #include "filesystem.hpp"
 #include "event.hpp"

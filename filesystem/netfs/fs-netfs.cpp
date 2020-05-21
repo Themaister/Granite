@@ -22,7 +22,7 @@
 
 #include "fs-netfs.hpp"
 #include "../path.hpp"
-#include "util.hpp"
+#include "logging.hpp"
 #include <queue>
 #include <assert.h>
 

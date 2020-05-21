@@ -22,7 +22,7 @@
 
 #include "gltf.hpp"
 #include "gltf_export.hpp"
-#include "util.hpp"
+#include "logging.hpp"
 #include "cli_parser.hpp"
 #include "rapidjson_wrapper.hpp"
 

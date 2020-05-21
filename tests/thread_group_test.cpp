@@ -21,7 +21,7 @@
  */
 
 #include "thread_group.hpp"
-#include "util.hpp"
+#include "logging.hpp"
 
 using namespace Granite;
 

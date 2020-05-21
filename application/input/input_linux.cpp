@@ -24,7 +24,7 @@
 
 #include "input_linux.hpp"
 #include "unstable_remove_if.hpp"
-#include "util.hpp"
+#include "logging.hpp"
 #include <stdexcept>
 #include <sys/epoll.h>
 #include <fcntl.h>

@@ -23,11 +23,11 @@
 #pragma once
 
 #include "filesystem.hpp"
-#include "intrusive.hpp"
-#include "util.hpp"
-#include "path.hpp"
-#include <string>
 #include "global_managers.hpp"
+#include "intrusive.hpp"
+#include "path.hpp"
+#include "logging.hpp"
+#include <string>
 
 namespace Util
 {

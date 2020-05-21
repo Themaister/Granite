@@ -1,7 +1,7 @@
 #include "simd.hpp"
 #include "muglm/muglm_impl.hpp"
 #include "muglm/matrix_helper.hpp"
-#include "util.hpp"
+#include "logging.hpp"
 #include "transforms.hpp"
 #include "frustum.hpp"
 #include <assert.h>

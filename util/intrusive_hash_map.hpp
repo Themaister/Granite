@@ -22,13 +22,13 @@
 
 #pragma once
 
-#include "intrusive_list.hpp"
 #include "hash.hpp"
+#include "intrusive_list.hpp"
 #include "object_pool.hpp"
 #include "read_write_lock.hpp"
-#include "util.hpp"
-#include <vector>
+#include "string_helpers.hpp"
 #include <assert.h>
+#include <vector>
 
 namespace Util
 {

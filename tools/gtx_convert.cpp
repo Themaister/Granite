@@ -22,7 +22,7 @@
 
 #include <texture_files.hpp>
 #include "cli_parser.hpp"
-#include "util.hpp"
+#include "logging.hpp"
 #include "texture_compression.hpp"
 #include "memory_mapped_texture.hpp"
 #include "texture_utils.hpp"

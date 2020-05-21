@@ -22,7 +22,7 @@
 
 #include "audio_aaudio.hpp"
 #include "dsp/dsp.hpp"
-#include "util.hpp"
+#include "logging.hpp"
 #include <dlfcn.h>
 #include <stdint.h>
 #include <aaudio/AAudio.h>

@@ -254,7 +254,10 @@ target_sources(granite PRIVATE
         application/application.hpp
         application/application_wsi.hpp
 
-        util/util.hpp
+        util/logging.hpp util/logging.cpp
+        util/lock_free_message_queue.hpp util/lock_free_message_queue.cpp
+        util/aligned_alloc.cpp util/aligned_alloc.hpp
+        util/bitops.hpp
         util/array_view.hpp
         util/variant.hpp
         util/enum_cast.hpp
@@ -270,7 +273,6 @@ target_sources(granite PRIVATE
         util/unstable_remove_if.hpp
         util/intrusive_hash_map.hpp
         util/timer.hpp util/timer.cpp
-        util/aligned_alloc.cpp util/aligned_alloc.hpp
         util/small_vector.hpp
 
         vulkan/texture_format.cpp vulkan/texture_format.hpp
@@ -450,9 +452,8 @@ if (NOT GRANITE_VULKAN_ONLY)
 
             util/cli_parser.cpp util/cli_parser.hpp
             util/dynamic_library.cpp util/dynamic_library.hpp
-            util/util.cpp
+            util/string_helpers.cpp util/string_helpers.hpp
 
-            util/lock_free_message_queue.hpp util/lock_free_message_queue.cpp
             util/bitmap_to_mesh.cpp util/bitmap_to_mesh.hpp
             util/cooperative_task.hpp util/cooperative_task.cpp
             util/generational_handle.hpp

@@ -34,7 +34,7 @@
 #include <mmdeviceapi.h>
 #include "audio_interface.hpp"
 #include "dsp/dsp.hpp"
-#include "util.hpp"
+#include "logging.hpp"
 
 using namespace std;
 

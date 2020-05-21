@@ -23,10 +23,9 @@
 #pragma once
 
 #include "vulkan_headers.hpp"
-#include "util.hpp"
+#include "logging.hpp"
 #include <memory>
 #include <functional>
-#include "util.hpp"
 
 namespace Vulkan
 {

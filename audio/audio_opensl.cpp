@@ -23,7 +23,7 @@
 #include "audio_opensl.hpp"
 #include "dsp/dsp.hpp"
 #include <SLES/OpenSLES_Android.h>
-#include "util.hpp"
+#include "logging.hpp"
 #include <string.h>
 #include <cmath>
 

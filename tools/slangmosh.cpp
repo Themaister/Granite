@@ -23,7 +23,7 @@
 #include "cli_parser.hpp"
 #include "global_managers.hpp"
 #include "rapidjson_wrapper.hpp"
-#include "util.hpp"
+#include "logging.hpp"
 #include "filesystem.hpp"
 #include "compiler.hpp"
 #include "path.hpp"

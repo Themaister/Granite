@@ -1,5 +1,5 @@
 #include "math.hpp"
-#include "util.hpp"
+#include "logging.hpp"
 #include "muglm/matrix_helper.hpp"
 #include "muglm/muglm_impl.hpp"
 #include "memory_mapped_texture.hpp"

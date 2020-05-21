@@ -68,6 +68,11 @@ target_compile_definitions(fragment-output-components PRIVATE ASSET_DIRECTORY=\"
 add_granite_application(basic-compute basic_compute.cpp)
 target_compile_definitions(basic-compute PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
 
+add_granite_application(coherency coherency.cpp)
+if (NOT ANDROID)
+    target_compile_definitions(coherency PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
+endif()
+
 add_granite_application(debug-channel debug_channel.cpp)
 target_compile_definitions(debug-channel PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
 

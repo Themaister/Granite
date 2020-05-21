@@ -2588,47 +2588,54 @@ Device::PerFrame::~PerFrame()
 
 uint32_t Device::find_memory_type(BufferDomain domain, uint32_t mask)
 {
-	uint32_t desired = 0, fallback = 0;
+	uint32_t prio[3] = {};
 	switch (domain)
 	{
 	case BufferDomain::Device:
-		desired = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-		fallback = 0;
+		prio[0] = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 		break;
 
 	case BufferDomain::LinkedDeviceHost:
-		desired = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-		fallback = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+		prio[0] = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+		prio[1] = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+		prio[2] = prio[1];
 		break;
 
 	case BufferDomain::Host:
-		desired = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-		fallback = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+		prio[0] = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+		prio[1] = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+		prio[2] = prio[1];
 		break;
 
 	case BufferDomain::CachedHost:
-		desired = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
-		fallback = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+		prio[0] = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+		prio[1] = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+		prio[2] = prio[1];
+		break;
+
+	case BufferDomain::CachedCoherentHostPreferCached:
+		prio[0] = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+		prio[1] = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+		prio[2] = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+		break;
+
+	case BufferDomain::CachedCoherentHostPreferCoherent:
+		prio[0] = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+		prio[1] = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+		prio[2] = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
 		break;
 	}
 
-	for (uint32_t i = 0; i < mem_props.memoryTypeCount; i++)
+	for (auto &p : prio)
 	{
-		if ((1u << i) & mask)
+		for (uint32_t i = 0; i < mem_props.memoryTypeCount; i++)
 		{
-			uint32_t flags = mem_props.memoryTypes[i].propertyFlags;
-			if ((flags & desired) == desired)
-				return i;
-		}
-	}
-
-	for (uint32_t i = 0; i < mem_props.memoryTypeCount; i++)
-	{
-		if ((1u << i) & mask)
-		{
-			uint32_t flags = mem_props.memoryTypes[i].propertyFlags;
-			if ((flags & fallback) == fallback)
-				return i;
+			if ((1u << i) & mask)
+			{
+				uint32_t flags = mem_props.memoryTypes[i].propertyFlags;
+				if ((flags & p) == p)
+					return i;
+			}
 		}
 	}
 

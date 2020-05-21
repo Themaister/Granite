@@ -22,9 +22,9 @@
 
 #pragma once
 
-#include "event.hpp"
-#include "lock_free_message_queue.hpp"
 #include "audio_mixer.hpp"
+#include "event.hpp"
+#include "message_queue.hpp"
 #include <string.h>
 
 namespace Granite

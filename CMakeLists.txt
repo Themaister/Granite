@@ -255,7 +255,7 @@ target_sources(granite PRIVATE
         application/application_wsi.hpp
 
         util/logging.hpp util/logging.cpp
-        util/lock_free_message_queue.hpp util/lock_free_message_queue.cpp
+        util/message_queue.hpp util/message_queue.cpp
         util/aligned_alloc.cpp util/aligned_alloc.hpp
         util/bitops.hpp
         util/array_view.hpp

@@ -20,7 +20,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "lock_free_message_queue.hpp"
+#include "message_queue.hpp"
 #include "aligned_alloc.hpp"
 #include "logging.hpp"
 #include <algorithm>

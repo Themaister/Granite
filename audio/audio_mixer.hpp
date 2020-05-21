@@ -23,10 +23,10 @@
 #pragma once
 
 #include "audio_interface.hpp"
-#include "lock_free_message_queue.hpp"
+#include "message_queue.hpp"
 #include <atomic>
-#include <vector>
 #include <mutex>
+#include <vector>
 
 namespace Granite
 {

@@ -3943,8 +3943,13 @@ void Device::fill_buffer_sharing_indices(VkBufferCreateInfo &info, uint32_t *sha
 
 BufferHandle Device::create_imported_host_buffer(const BufferCreateInfo &create_info, VkExternalMemoryHandleTypeFlagBits type, void *host_buffer)
 {
-	if (create_info.domain != BufferDomain::Host && create_info.domain != BufferDomain::CachedHost)
+	if (create_info.domain != BufferDomain::Host &&
+	    create_info.domain != BufferDomain::CachedHost &&
+	    create_info.domain != BufferDomain::CachedCoherentHostPreferCached &&
+	    create_info.domain != BufferDomain::CachedCoherentHostPreferCoherent)
+	{
 		return BufferHandle{};
+	}
 
 	if (!ext.supports_external_memory_host)
 		return BufferHandle{};

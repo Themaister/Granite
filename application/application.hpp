@@ -25,7 +25,6 @@
 #include "application_wsi_events.hpp"
 #include "input.hpp"
 #include "camera.hpp"
-#include <future>
 
 namespace Granite
 {
@@ -80,20 +79,6 @@ private:
 	std::unique_ptr<Vulkan::WSIPlatform> platform;
 	Vulkan::WSI application_wsi;
 	bool requested_shutdown = false;
-};
-
-class ApplicationCLIWrapper : public Application
-{
-public:
-	ApplicationCLIWrapper(int (*func)(int, char **), int argc, char **argv);
-	void render_frame(double, double) override;
-
-private:
-	std::future<int> task;
-	bool started = false;
-	int (*func)(int argc, char **argv);
-	int argc;
-	char **argv;
 };
 
 int application_main(Application *(*create_application)(int, char **), int argc, char **argv);

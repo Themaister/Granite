@@ -27,6 +27,7 @@
 #include "event.hpp"
 #include "ui_manager.hpp"
 #include "common_renderer_data.hpp"
+#include "message_queue.hpp"
 #include <thread>
 
 #ifdef HAVE_GRANITE_AUDIO
@@ -52,6 +53,7 @@ struct GlobalManagers
 	ThreadGroup *thread_group;
 	UI::UIManager *ui_manager;
 	CommonRendererData *common_renderer_data;
+	Util::MessageQueue *logging;
 #ifdef HAVE_GRANITE_AUDIO
 	Audio::Backend *audio_backend;
 	Audio::Mixer *audio_mixer;
@@ -86,6 +88,14 @@ void set_thread_context(const GlobalManagers &managers)
 void clear_thread_context()
 {
 	global_managers = {};
+}
+
+Util::MessageQueue *message_queue()
+{
+	if (!global_managers.logging)
+		global_managers.logging = new Util::MessageQueue;
+
+	return global_managers.logging;
 }
 
 Filesystem *filesystem()
@@ -208,6 +218,12 @@ void init(ManagerFeatureFlags flags, unsigned max_threads)
 			global_managers.common_renderer_data = new CommonRendererData;
 	}
 
+	if (flags & MANAGER_FEATURE_LOGGING_BIT)
+	{
+		if (!global_managers.logging)
+			global_managers.logging = new Util::MessageQueue;
+	}
+
 #ifdef HAVE_GRANITE_PHYSICS
 	if (flags & MANAGER_FEATURE_PHYSICS_BIT)
 	{
@@ -254,12 +270,14 @@ void deinit()
 	delete global_managers.thread_group;
 	delete global_managers.filesystem;
 	delete global_managers.event_manager;
+	delete global_managers.logging;
 
 	global_managers.common_renderer_data = nullptr;
 	global_managers.filesystem = nullptr;
 	global_managers.event_manager = nullptr;
 	global_managers.thread_group = nullptr;
 	global_managers.ui_manager = nullptr;
+	global_managers.logging = nullptr;
 }
 
 void start_audio_system()

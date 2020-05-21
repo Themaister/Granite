@@ -26,6 +26,11 @@
 #include <memory>
 #include <limits>
 
+namespace Util
+{
+class MessageQueue;
+}
+
 namespace Granite
 {
 class Filesystem;
@@ -33,6 +38,7 @@ class ThreadGroup;
 class EventManager;
 class CommonRendererData;
 class PhysicsSystem;
+
 namespace UI
 {
 class UIManager;
@@ -55,6 +61,7 @@ enum ManagerFeatureFlagBits
 	MANAGER_FEATURE_AUDIO_BIT = 1 << 4,
 	MANAGER_FEATURE_COMMON_RENDERER_DATA_BIT = 1 << 5,
 	MANAGER_FEATURE_PHYSICS_BIT = 1 << 6,
+	MANAGER_FEATURE_LOGGING_BIT = 1 << 7,
 	MANAGER_FEATURE_ALL_BITS = 0x7fffffff
 };
 using ManagerFeatureFlags = uint32_t;
@@ -79,6 +86,7 @@ void clear_thread_context();
 void start_audio_system();
 void stop_audio_system();
 
+Util::MessageQueue *message_queue();
 Filesystem *filesystem();
 EventManager *event_manager();
 ThreadGroup *thread_group();

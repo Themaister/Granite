@@ -104,4 +104,51 @@ MessageQueuePayload LockFreeMessageQueue::allocate_write_payload(size_t size) no
 	payload.set_payload_data(memalign_calloc(64, size), size);
 	return payload;
 }
+
+MessageQueue::MessageQueue()
+{
+	corked.store(true);
+}
+
+void MessageQueue::cork()
+{
+	corked.store(true, std::memory_order_relaxed);
+}
+
+void MessageQueue::uncork()
+{
+	corked.store(false, std::memory_order_relaxed);
+}
+
+MessageQueuePayload MessageQueue::allocate_write_payload(size_t size) noexcept
+{
+	if (corked.load(std::memory_order_relaxed))
+		return {};
+	std::lock_guard<std::mutex> holder{lock};
+	return LockFreeMessageQueue::allocate_write_payload(size);
+}
+
+bool MessageQueue::push_written_payload(MessageQueuePayload payload) noexcept
+{
+	std::lock_guard<std::mutex> holder{lock};
+	return LockFreeMessageQueue::push_written_payload(std::move(payload));
+}
+
+size_t MessageQueue::available_read_messages() const noexcept
+{
+	std::lock_guard<std::mutex> holder{lock};
+	return LockFreeMessageQueue::available_read_messages();
+}
+
+MessageQueuePayload MessageQueue::read_message() noexcept
+{
+	std::lock_guard<std::mutex> holder{lock};
+	return LockFreeMessageQueue::read_message();
+}
+
+void MessageQueue::recycle_payload(MessageQueuePayload payload) noexcept
+{
+	std::lock_guard<std::mutex> holder{lock};
+	return LockFreeMessageQueue::recycle_payload(std::move(payload));
+}
 }

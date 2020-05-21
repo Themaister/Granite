@@ -28,6 +28,8 @@
 #include <stddef.h>
 #include <assert.h>
 #include <memory>
+#include <mutex>
+#include <condition_variable>
 
 namespace Util
 {
@@ -209,5 +211,25 @@ private:
 	LockFreeRingBuffer<MessageQueuePayload> read_ring;
 	LockFreeRingBuffer<MessageQueuePayload> write_ring[8];
 	size_t payload_capacity[8] = {};
+};
+
+class MessageQueue : private LockFreeMessageQueue
+{
+public:
+	MessageQueue();
+	void cork();
+	void uncork();
+
+	MessageQueuePayload allocate_write_payload(size_t size) noexcept;
+	bool push_written_payload(MessageQueuePayload payload) noexcept;
+
+	size_t available_read_messages() const noexcept;
+	MessageQueuePayload read_message() noexcept;
+	void recycle_payload(MessageQueuePayload payload) noexcept;
+
+private:
+	mutable std::mutex lock;
+	mutable std::condition_variable cond;
+	std::atomic_bool corked;
 };
 }

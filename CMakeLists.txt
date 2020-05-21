@@ -335,7 +335,7 @@ if (NOT GRANITE_VULKAN_ONLY)
 
     target_compile_definitions(granite PRIVATE GRANITE_DEFAULT_BUILTIN_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
     target_compile_definitions(granite PRIVATE GRANITE_DEFAULT_CACHE_DIRECTORY=\"${CMAKE_BINARY_DIR}/cache\")
-    target_compile_definitions(granite PUBLIC NOMINMAX)
+    target_compile_definitions(granite PUBLIC NOMINMAX GRANITE_LOGGING_QUEUE)
 
     target_include_directories(granite PUBLIC
             ${CMAKE_CURRENT_SOURCE_DIR}/application
@@ -366,6 +366,7 @@ if (NOT GRANITE_VULKAN_ONLY)
             application/input/input.hpp application/input/input.cpp
             application/events/application_events.hpp
             application/scene_viewer_application.cpp application/scene_viewer_application.hpp
+            application/application_cli_wrapper.cpp application/application_cli_wrapper.hpp
 
             event/event.cpp event/event.hpp
             ecs/ecs.cpp ecs/ecs.hpp

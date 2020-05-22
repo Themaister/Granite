@@ -77,8 +77,7 @@ void LockFreeMessageQueue::recycle_payload(MessageQueuePayload payload) noexcept
 	{
 		if (payload.get_capacity() == payload_capacity[i])
 		{
-			if (!write_ring[i].write_and_move(std::move(payload)))
-				LOGE("Failed to recycle write payload. Increase sizes!\n");
+			write_ring[i].write_and_move(std::move(payload));
 			return;
 		}
 	}
@@ -92,15 +91,11 @@ MessageQueuePayload LockFreeMessageQueue::allocate_write_payload(size_t size) no
 		if (size <= payload_capacity[i])
 		{
 			if (!write_ring[i].read_and_move(payload))
-			{
-				LOGE("Failed to allocate write payload. Have to allocate a new one on the fly. Increase sizes!\n");
 				payload.set_payload_data(memalign_calloc(64, payload_capacity[i]), payload_capacity[i]);
-			}
 			return payload;
 		}
 	}
 
-	LOGE("Failed to allocate any payload. Making a temporary one. Increase max payload size!\n");
 	payload.set_payload_data(memalign_calloc(64, size), size);
 	return payload;
 }

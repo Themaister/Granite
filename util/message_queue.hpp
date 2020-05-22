@@ -220,6 +220,8 @@ public:
 	void cork();
 	void uncork();
 
+	bool is_uncorked() const;
+
 	MessageQueuePayload allocate_write_payload(size_t size) noexcept;
 	bool push_written_payload(MessageQueuePayload payload) noexcept;
 

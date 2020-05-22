@@ -34,7 +34,7 @@ namespace Util
 static inline void queued_log(const char *tag, const char *fmt, ...)
 {
 	auto *message_queue = ::Granite::Global::message_queue();
-	if (!message_queue)
+	if (!message_queue || !message_queue->is_uncorked())
 		return;
 
 	char message_buffer[16 * 1024];

@@ -120,6 +120,11 @@ void MessageQueue::uncork()
 	corked.store(false, std::memory_order_relaxed);
 }
 
+bool MessageQueue::is_uncorked() const
+{
+	return !corked.load(std::memory_order_relaxed);
+}
+
 MessageQueuePayload MessageQueue::allocate_write_payload(size_t size) noexcept
 {
 	if (corked.load(std::memory_order_relaxed))

@@ -24,6 +24,7 @@
 #include "filesystem.hpp"
 #include "memory_mapped_texture.hpp"
 #include "texture_files.hpp"
+#include "string_helpers.hpp"
 
 using namespace std;
 using namespace Util;

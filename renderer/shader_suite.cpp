@@ -22,6 +22,7 @@
 
 #include "shader_suite.hpp"
 #include "device.hpp"
+#include "string_helpers.hpp"
 
 using namespace std;
 using namespace Util;

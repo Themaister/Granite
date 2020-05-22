@@ -25,6 +25,7 @@
 #include <path.hpp>
 #include "logging.hpp"
 #include "filesystem.hpp"
+#include "string_helpers.hpp"
 
 #include "spirv-tools/libspirv.hpp"
 

@@ -28,6 +28,10 @@
 #include <algorithm>
 #include <string.h>
 
+#ifdef GRANITE_VULKAN_FILESYSTEM
+#include "string_helpers.hpp"
+#endif
+
 #ifdef GRANITE_VULKAN_MT
 #include "thread_id.hpp"
 static unsigned get_thread_index()

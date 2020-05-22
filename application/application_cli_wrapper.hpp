@@ -24,22 +24,26 @@
 
 #include "application.hpp"
 #include "flat_renderer.hpp"
+#include "event.hpp"
 #include <future>
+#include <functional>
 
 namespace Granite
 {
-class ApplicationCLIWrapper : public Application
+class ApplicationCLIWrapper : public Application, public EventHandler
 {
 public:
+	ApplicationCLIWrapper(int (*func)(Vulkan::Device *device, int, char **), int argc, char **argv);
 	ApplicationCLIWrapper(int (*func)(int, char **), int argc, char **argv);
+	~ApplicationCLIWrapper();
 	void render_frame(double, double) override;
+
+	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
+	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
 
 private:
 	std::future<int> task;
-	bool started = false;
-	int (*func)(int argc, char **argv);
-	int argc;
-	char **argv;
+	std::function<int (Vulkan::Device *)> func;
 
 	FlatRenderer renderer;
 	std::vector<std::string> messages;

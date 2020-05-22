@@ -30,7 +30,7 @@
 
 namespace Granite
 {
-void ApplicationCLIWrapper::render_frame(double, double)
+void ApplicationCLIWrapper::render_frame(double, double elapsed_time)
 {
 	if (!started)
 	{
@@ -52,6 +52,7 @@ void ApplicationCLIWrapper::render_frame(double, double)
 		if (result == std::future_status::ready)
 		{
 			int ret = task.get();
+			task = {};
 			LOGI("======================\n");
 			LOGI("Executable returned %d.\n", ret);
 			LOGI("======================\n");
@@ -68,10 +69,13 @@ void ApplicationCLIWrapper::render_frame(double, double)
 		got_message = true;
 	}
 
-	if (got_message)
+	if (got_message || !task.valid())
 	{
 		auto cmd = device.request_command_buffer();
 		auto rp = device.get_swapchain_render_pass(Vulkan::SwapchainRenderPass::ColorOnly);
+		rp.clear_color[0].float32[0] = 0.1 * std::sin(elapsed_time * 0.5) + 0.1;
+		rp.clear_color[0].float32[1] = 0.1 * std::sin(elapsed_time * 0.6) + 0.1;
+		rp.clear_color[0].float32[2] = 0.1 * std::sin(elapsed_time * 0.7) + 0.1;
 		cmd->begin_render_pass(rp);
 		renderer.begin();
 

@@ -219,7 +219,8 @@ public:
 	                  Semaphore *semaphore = nullptr);
 	void add_wait_semaphore(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags stages, bool flush);
 	CommandBuffer::Type get_physical_queue_type(CommandBuffer::Type queue_type) const;
-	void register_time_interval(const char *tid, QueryPoolHandle start_ts, QueryPoolHandle end_ts, const char *tag);
+	void register_time_interval(std::string tid, QueryPoolHandle start_ts, QueryPoolHandle end_ts,
+	                            std::string tag, std::string extra = {});
 
 	// Request shaders and programs. These objects are owned by the Device.
 	Shader *request_shader(const uint32_t *code, size_t size);
@@ -387,13 +388,14 @@ private:
 	int64_t json_timestamp_origin = 0;
 	int64_t convert_timestamp_to_absolute_usec(uint64_t ts);
 	uint64_t update_wrapped_base_timestamp(uint64_t ts);
-	void write_json_timestamp_range(unsigned frame_index, const char *tid, const char *name, uint64_t start_ts, uint64_t end_ts,
+	void write_json_timestamp_range(unsigned frame_index, const char *tid, const char *name, const char *extra,
+	                                uint64_t start_ts, uint64_t end_ts,
 	                                int64_t &min_us, int64_t &max_us);
 	void write_json_timestamp_range_us(unsigned frame_index, const char *tid, const char *name, int64_t start_us, int64_t end_us);
 
 	QueryPoolHandle write_timestamp_nolock(VkCommandBuffer cmd, VkPipelineStageFlagBits stage);
 	QueryPoolHandle write_calibrated_timestamp_nolock();
-	void register_time_interval_nolock(const char *tid, QueryPoolHandle start_ts, QueryPoolHandle end_ts, const char *tag);
+	void register_time_interval_nolock(std::string tid, QueryPoolHandle start_ts, QueryPoolHandle end_ts, std::string tag, std::string extra);
 
 	// Make sure this is deleted last.
 	HandlePool handle_pool;
@@ -495,6 +497,7 @@ private:
 			QueryPoolHandle start_ts;
 			QueryPoolHandle end_ts;
 			TimestampInterval *timestamp_tag;
+			std::string extra;
 		};
 		std::vector<TimestampIntervalHandles> timestamp_intervals;
 

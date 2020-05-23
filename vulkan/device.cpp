@@ -2411,7 +2411,7 @@ void Device::next_frame_context()
 	if (frame_context_begin_ts)
 	{
 		auto frame_context_end_ts = write_calibrated_timestamp_nolock();
-		register_time_interval_nolock("CPU", std::move(frame_context_begin_ts), std::move(frame_context_end_ts), "command submissions");
+		register_time_interval_nolock("CPU", std::move(frame_context_begin_ts), std::move(frame_context_end_ts), "command submissions", "");
 		frame_context_begin_ts = {};
 	}
 
@@ -2590,22 +2590,23 @@ int64_t Device::get_calibrated_timestamp()
 	return reported;
 }
 
-void Device::register_time_interval(const char *tid, QueryPoolHandle start_ts, QueryPoolHandle end_ts, const char *tag)
+void Device::register_time_interval(std::string tid, QueryPoolHandle start_ts, QueryPoolHandle end_ts, std::string tag, std::string extra)
 {
 	LOCK();
-	register_time_interval_nolock(tid, std::move(start_ts), std::move(end_ts), tag);
+	register_time_interval_nolock(std::move(tid), std::move(start_ts), std::move(end_ts), std::move(tag), std::move(extra));
 }
 
-void Device::register_time_interval_nolock(const char *tid, QueryPoolHandle start_ts, QueryPoolHandle end_ts, const char *tag)
+void Device::register_time_interval_nolock(std::string tid, QueryPoolHandle start_ts, QueryPoolHandle end_ts,
+                                           std::string tag, std::string extra)
 {
 	if (start_ts && end_ts)
 	{
-		TimestampInterval *timestamp_tag = managers.timestamps.get_timestamp_tag(tag);
+		TimestampInterval *timestamp_tag = managers.timestamps.get_timestamp_tag(tag.c_str());
 #ifdef VULKAN_DEBUG
 		if (start_ts->is_signalled() && end_ts->is_signalled())
 			VK_ASSERT(end_ts->get_timestamp_ticks() >= start_ts->get_timestamp_ticks());
 #endif
-		frame().timestamp_intervals.push_back({ std::string(tid), move(start_ts), move(end_ts), timestamp_tag });
+		frame().timestamp_intervals.push_back({ std::move(tid), move(start_ts), move(end_ts), timestamp_tag, std::move(extra) });
 	}
 }
 
@@ -2671,7 +2672,7 @@ void Device::PerFrame::begin()
 	}
 
 	if (!in_destructor && device.json_timestamp_origin)
-		device.register_time_interval_nolock("CPU", std::move(wait_fence_ts), device.write_calibrated_timestamp_nolock(), "fence");
+		device.register_time_interval_nolock("CPU", std::move(wait_fence_ts), device.write_calibrated_timestamp_nolock(), "fence", "");
 
 	// If we're using timeline semaphores, these paths should never be hit.
 	if (!recycle_fences.empty())
@@ -2766,6 +2767,7 @@ void Device::PerFrame::begin()
 			ts.timestamp_tag->accumulate_time(
 			    device.convert_timestamp_delta(ts.start_ts->get_timestamp_ticks(), ts.end_ts->get_timestamp_ticks()));
 			device.write_json_timestamp_range(frame_index, ts.tid.c_str(), ts.timestamp_tag->get_tag().c_str(),
+			                                  ts.extra.c_str(),
 			                                  ts.start_ts->get_timestamp_ticks(), ts.end_ts->get_timestamp_ticks(),
 			                                  min_timestamp_us, max_timestamp_us);
 		}
@@ -4827,7 +4829,9 @@ int64_t Device::convert_timestamp_to_absolute_usec(uint64_t ts)
 	return us;
 }
 
-void Device::write_json_timestamp_range(unsigned frame_index, const char *tid, const char *name, uint64_t start_ts, uint64_t end_ts,
+void Device::write_json_timestamp_range(unsigned frame_index, const char *tid,
+                                        const char *name, const char *extra,
+                                        uint64_t start_ts, uint64_t end_ts,
                                         int64_t &min_us, int64_t &max_us)
 {
 	if (!json_trace_file)
@@ -4841,10 +4845,10 @@ void Device::write_json_timestamp_range(unsigned frame_index, const char *tid, c
 	min_us = std::min(absolute_start, min_us);
 	max_us = std::max(absolute_end, max_us);
 
-	fprintf(json_trace_file.get(), "\t{ \"name\": \"%s\", \"ph\": \"B\", \"tid\": \"%s\", \"pid\": \"%u\", \"ts\": %lld },\n",
-	        name, tid, frame_index, static_cast<long long>(absolute_start));
-	fprintf(json_trace_file.get(), "\t{ \"name\": \"%s\", \"ph\": \"E\", \"tid\": \"%s\", \"pid\": \"%u\", \"ts\": %lld },\n",
-	        name, tid, frame_index, static_cast<long long>(absolute_end));
+	fprintf(json_trace_file.get(), "\t{ \"name\": \"%s%s%s\", \"ph\": \"B\", \"tid\": \"%s\", \"pid\": \"%u\", \"ts\": %lld },\n",
+	        name, *extra != '\0' ? " " : "", extra, tid, frame_index, static_cast<long long>(absolute_start));
+	fprintf(json_trace_file.get(), "\t{ \"name\": \"%s%s%s\", \"ph\": \"E\", \"tid\": \"%s\", \"pid\": \"%u\", \"ts\": %lld },\n",
+	        name, *extra != '\0' ? " " : "", extra, tid, frame_index, static_cast<long long>(absolute_end));
 }
 
 void Device::write_json_timestamp_range_us(unsigned frame_index, const char *tid, const char *name, int64_t start_us, int64_t end_us)

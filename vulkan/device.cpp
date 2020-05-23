@@ -2063,7 +2063,7 @@ void Device::init_frame_contexts(unsigned count)
 
 	for (unsigned i = 0; i < count; i++)
 	{
-		auto frame = unique_ptr<PerFrame>(new PerFrame(this));
+		auto frame = unique_ptr<PerFrame>(new PerFrame(this, i));
 		per_frame.emplace_back(move(frame));
 	}
 }
@@ -2129,8 +2129,9 @@ void Device::init_swapchain(const vector<VkImage> &swapchain_images, unsigned wi
 	}
 }
 
-Device::PerFrame::PerFrame(Device *device_)
+Device::PerFrame::PerFrame(Device *device_, unsigned frame_index_)
     : device(*device_)
+    , frame_index(frame_index_)
     , table(device_->get_device_table())
     , managers(device_->managers)
     , query_pool(device_)
@@ -2583,12 +2584,12 @@ void Device::PerFrame::begin()
 		{
 			ts.timestamp_tag->accumulate_time(
 			    device.convert_timestamp_delta(ts.start_ts->get_timestamp_ticks(), ts.end_ts->get_timestamp_ticks()));
-			device.write_json_timestamp_range(ts.tid.c_str(), ts.timestamp_tag->get_tag().c_str(),
+			device.write_json_timestamp_range(frame_index, ts.tid.c_str(), ts.timestamp_tag->get_tag().c_str(),
 			                                  ts.start_ts->get_timestamp_ticks(), ts.end_ts->get_timestamp_ticks(),
 			                                  min_timestamp_us, max_timestamp_us);
 		}
 	}
-	device.write_json_timestamp_range_us("frame-context", "frame", min_timestamp_us, max_timestamp_us);
+	device.write_json_timestamp_range_us(frame_index, "frame-context", "frame", min_timestamp_us, max_timestamp_us);
 	managers.timestamps.mark_end_of_frame_context();
 	timestamp_intervals.clear();
 }
@@ -4646,7 +4647,7 @@ int64_t Device::convert_timestamp_to_absolute_usec(uint64_t ts)
 	return us;
 }
 
-void Device::write_json_timestamp_range(const char *tid, const char *name, uint64_t start_ts, uint64_t end_ts,
+void Device::write_json_timestamp_range(unsigned frame_index, const char *tid, const char *name, uint64_t start_ts, uint64_t end_ts,
                                         int64_t &min_us, int64_t &max_us)
 {
 	if (!json_trace_file)
@@ -4658,23 +4659,23 @@ void Device::write_json_timestamp_range(const char *tid, const char *name, uint6
 	min_us = std::min(absolute_start, min_us);
 	max_us = std::max(absolute_end, max_us);
 
-	fprintf(json_trace_file.get(), "\t{ \"name\": \"%s\", \"ph\": \"B\", \"tid\": \"%s\", \"pid\": \"1\", \"ts\": %" PRId64 "},\n",
-	        name, tid, absolute_start);
-	fprintf(json_trace_file.get(), "\t{ \"name\": \"%s\", \"ph\": \"E\", \"tid\": \"%s\", \"pid\": \"1\", \"ts\": %" PRId64 "},\n",
-	        name, tid, absolute_end);
+	fprintf(json_trace_file.get(), "\t{ \"name\": \"%s\", \"ph\": \"B\", \"tid\": \"%s\", \"pid\": \"%u\", \"ts\": %" PRId64 "},\n",
+	        name, tid, frame_index, absolute_start);
+	fprintf(json_trace_file.get(), "\t{ \"name\": \"%s\", \"ph\": \"E\", \"tid\": \"%s\", \"pid\": \"%u\", \"ts\": %" PRId64 "},\n",
+	        name, tid, frame_index, absolute_end);
 }
 
-void Device::write_json_timestamp_range_us(const char *tid, const char *name, int64_t start_us, int64_t end_us)
+void Device::write_json_timestamp_range_us(unsigned frame_index, const char *tid, const char *name, int64_t start_us, int64_t end_us)
 {
 	if (!json_trace_file)
 		return;
 	if (start_us > end_us)
 		return;
 
-	fprintf(json_trace_file.get(), "\t{ \"name\": \"%s\", \"ph\": \"B\", \"tid\": \"%s\", \"pid\": \"1\", \"ts\": %" PRId64 "},\n",
-	        name, tid, start_us);
-	fprintf(json_trace_file.get(), "\t{ \"name\": \"%s\", \"ph\": \"E\", \"tid\": \"%s\", \"pid\": \"1\", \"ts\": %" PRId64 "},\n",
-	        name, tid, end_us);
+	fprintf(json_trace_file.get(), "\t{ \"name\": \"%s\", \"ph\": \"B\", \"tid\": \"%s\", \"pid\": \"%u\", \"ts\": %" PRId64 "},\n",
+	        name, tid, frame_index, start_us);
+	fprintf(json_trace_file.get(), "\t{ \"name\": \"%s\", \"ph\": \"E\", \"tid\": \"%s\", \"pid\": \"%u\", \"ts\": %" PRId64 "},\n",
+	        name, tid, frame_index, end_us);
 }
 
 void Device::JSONTraceFileDeleter::operator()(FILE *file)

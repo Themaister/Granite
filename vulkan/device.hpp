@@ -385,9 +385,9 @@ private:
 	int64_t json_timestamp_origin = 0;
 	int64_t convert_timestamp_to_absolute_usec(uint64_t ts);
 	uint64_t update_wrapped_base_timestamp(uint64_t ts);
-	void write_json_timestamp_range(const char *tid, const char *name, uint64_t start_ts, uint64_t end_ts,
+	void write_json_timestamp_range(unsigned frame_index, const char *tid, const char *name, uint64_t start_ts, uint64_t end_ts,
 	                                int64_t &min_us, int64_t &max_us);
-	void write_json_timestamp_range_us(const char *tid, const char *name, int64_t start_us, int64_t end_us);
+	void write_json_timestamp_range_us(unsigned frame_index, const char *tid, const char *name, int64_t start_us, int64_t end_us);
 
 	// Make sure this is deleted last.
 	HandlePool handle_pool;
@@ -414,7 +414,7 @@ private:
 
 	struct PerFrame
 	{
-		explicit PerFrame(Device *device);
+		PerFrame(Device *device, unsigned index);
 		~PerFrame();
 		void operator=(const PerFrame &) = delete;
 		PerFrame(const PerFrame &) = delete;
@@ -422,6 +422,7 @@ private:
 		void begin();
 
 		Device &device;
+		unsigned frame_index;
 		const VolkDeviceTable &table;
 		Managers &managers;
 		std::vector<CommandPool> graphics_cmd_pool;

@@ -391,6 +391,7 @@ private:
 	                                int64_t &min_us, int64_t &max_us);
 	void write_json_timestamp_range_us(unsigned frame_index, const char *tid, const char *name, int64_t start_us, int64_t end_us);
 
+	QueryPoolHandle write_timestamp_nolock(VkCommandBuffer cmd, VkPipelineStageFlagBits stage);
 	QueryPoolHandle write_calibrated_timestamp_nolock();
 	void register_time_interval_nolock(const char *tid, QueryPoolHandle start_ts, QueryPoolHandle end_ts, const char *tag);
 
@@ -399,6 +400,7 @@ private:
 
 	// Calibrated timestamps.
 	void init_calibrated_timestamps();
+	void recalibrate_timestamps_fallback();
 	void recalibrate_timestamps();
 	bool resample_calibrated_timestamps();
 	VkTimeDomainEXT calibrated_time_domain = VK_TIME_DOMAIN_DEVICE_EXT;
@@ -495,6 +497,8 @@ private:
 			TimestampInterval *timestamp_tag;
 		};
 		std::vector<TimestampIntervalHandles> timestamp_intervals;
+
+		bool in_destructor = false;
 	};
 	// The per frame structure must be destroyed after
 	// the hashmap data structures below, so it must be declared before.

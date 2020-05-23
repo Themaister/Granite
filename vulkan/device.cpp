@@ -2436,6 +2436,11 @@ void Device::next_frame_context()
 QueryPoolHandle Device::write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlagBits stage)
 {
 	LOCK();
+	return write_timestamp_nolock(cmd, stage);
+}
+
+QueryPoolHandle Device::write_timestamp_nolock(VkCommandBuffer cmd, VkPipelineStageFlagBits stage)
+{
 	return frame().query_pool.write_timestamp(cmd, stage);
 }
 
@@ -2450,22 +2455,39 @@ QueryPoolHandle Device::write_calibrated_timestamp_nolock()
 	if (!json_trace_file)
 		return {};
 
-	if (!get_device_features().supports_calibrated_timestamps)
-	{
-		LOGE("Device does not support calibrated timestamps.\n");
-		// TODO: Fallback.
-		return {};
-	}
-
 	auto handle = QueryPoolHandle(handle_pool.query.allocate(this));
 	handle->signal_timestamp_ticks(get_calibrated_timestamp());
 	return handle;
 }
 
+void Device::recalibrate_timestamps_fallback()
+{
+	wait_idle_nolock();
+	auto cmd = request_command_buffer_nolock(0, CommandBuffer::Type::Generic, false);
+	auto ts = write_timestamp_nolock(cmd->get_command_buffer(), VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+	if (!ts)
+		return;
+	auto start_ts = Util::get_current_time_nsecs();
+	submit_nolock(cmd, nullptr, 0, nullptr);
+	wait_idle_nolock();
+	auto end_ts = Util::get_current_time_nsecs();
+	auto host_ts = (start_ts + end_ts) / 2;
+
+	LOGI("Calibrated timestamps with a fallback method. Uncertainty: %.3f us.\n", 1e-3 * (end_ts - start_ts));
+
+	calibrated_timestamp_host = host_ts;
+	VK_ASSERT(ts->is_signalled());
+	calibrated_timestamp_device = ts->get_timestamp_ticks();
+}
+
 void Device::init_calibrated_timestamps()
 {
 	if (!get_device_features().supports_calibrated_timestamps)
+	{
+		recalibrate_timestamps_fallback();
+		json_timestamp_origin = calibrated_timestamp_device;
 		return;
+	}
 
 	uint32_t count;
 	vkGetPhysicalDeviceCalibrateableTimeDomainsEXT(gpu, &count, nullptr);
@@ -2512,6 +2534,8 @@ void Device::init_calibrated_timestamps()
 		calibrated_time_domain = VK_TIME_DOMAIN_DEVICE_EXT;
 		return;
 	}
+
+	json_timestamp_origin = calibrated_timestamp_device;
 }
 
 bool Device::resample_calibrated_timestamps()
@@ -2541,22 +2565,22 @@ void Device::recalibrate_timestamps()
 	// Don't bother recalibrating timestamps if we're not tracing.
 	if (!json_trace_file)
 		return;
-	if (calibrated_timestamp_host == VK_TIME_DOMAIN_DEVICE_EXT)
-		return;
 
 	// Recalibrate every once in a while ...
 	timestamp_calibration_counter++;
 	if (timestamp_calibration_counter < 1000)
 		return;
 	timestamp_calibration_counter = 0;
-	resample_calibrated_timestamps();
+
+	if (calibrated_time_domain == VK_TIME_DOMAIN_DEVICE_EXT)
+		recalibrate_timestamps_fallback();
+	else
+		resample_calibrated_timestamps();
 }
 
 int64_t Device::get_calibrated_timestamp()
 {
 	int64_t nsecs = Util::get_current_time_nsecs();
-	if (calibrated_time_domain == VK_TIME_DOMAIN_DEVICE_EXT)
-		return nsecs;
 
 	auto offset_from_calibration = double(nsecs - calibrated_timestamp_host);
 	auto ticks_in_device_timebase = int64_t(offset_from_calibration / double(gpu_props.limits.timestampPeriod));
@@ -2577,6 +2601,10 @@ void Device::register_time_interval_nolock(const char *tid, QueryPoolHandle star
 	if (start_ts && end_ts)
 	{
 		TimestampInterval *timestamp_tag = managers.timestamps.get_timestamp_tag(tag);
+#ifdef VULKAN_DEBUG
+		if (start_ts->is_signalled() && end_ts->is_signalled())
+			VK_ASSERT(end_ts->get_timestamp_ticks() >= start_ts->get_timestamp_ticks());
+#endif
 		frame().timestamp_intervals.push_back({ std::string(tid), move(start_ts), move(end_ts), timestamp_tag });
 	}
 }
@@ -2599,7 +2627,9 @@ void Device::PerFrame::begin()
 {
 	VkDevice vkdevice = device.get_device();
 
-	auto wait_fence_ts = device.write_calibrated_timestamp_nolock();
+	Vulkan::QueryPoolHandle wait_fence_ts;
+	if (!in_destructor && device.json_timestamp_origin)
+		wait_fence_ts = device.write_calibrated_timestamp_nolock();
 
 	if (device.get_device_features().timeline_semaphore_features.timelineSemaphore &&
 	    graphics_timeline_semaphore && compute_timeline_semaphore && transfer_timeline_semaphore)
@@ -2640,7 +2670,8 @@ void Device::PerFrame::begin()
 		wait_fences.clear();
 	}
 
-	device.register_time_interval_nolock("CPU", std::move(wait_fence_ts), device.write_calibrated_timestamp_nolock(), "fence");
+	if (!in_destructor && device.json_timestamp_origin)
+		device.register_time_interval_nolock("CPU", std::move(wait_fence_ts), device.write_calibrated_timestamp_nolock(), "fence");
 
 	// If we're using timeline semaphores, these paths should never be hit.
 	if (!recycle_fences.empty())
@@ -2746,6 +2777,7 @@ void Device::PerFrame::begin()
 
 Device::PerFrame::~PerFrame()
 {
+	in_destructor = true;
 	begin();
 }
 
@@ -4789,8 +4821,6 @@ int64_t Device::convert_timestamp_to_absolute_usec(uint64_t ts)
 	// On some hardware, we have < 64 valid bits and the timestamp counters will wrap around at some interval.
 	// As long as timestamps come in at a reasonably steady pace, we can deal with wraparound cleanly.
 	ts = update_wrapped_base_timestamp(ts);
-	if (json_timestamp_origin == 0)
-		json_timestamp_origin = ts;
 
 	auto delta_ts = int64_t(ts - json_timestamp_origin);
 	auto us = int64_t(double(int64_t(delta_ts)) * gpu_props.limits.timestampPeriod * 1e-3);
@@ -4805,6 +4835,8 @@ void Device::write_json_timestamp_range(unsigned frame_index, const char *tid, c
 
 	int64_t absolute_start = convert_timestamp_to_absolute_usec(start_ts);
 	int64_t absolute_end = convert_timestamp_to_absolute_usec(end_ts);
+
+	VK_ASSERT(absolute_start <= absolute_end);
 
 	min_us = std::min(absolute_start, min_us);
 	max_us = std::max(absolute_end, max_us);

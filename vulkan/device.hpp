@@ -361,6 +361,8 @@ private:
 	void request_staging_block(BufferBlock &block, VkDeviceSize size);
 
 	QueryPoolHandle write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlagBits stage);
+	// Writes a timestamp on host side, which is calibrated to the GPU timebase.
+	QueryPoolHandle write_calibrated_timestamp();
 
 	void set_acquire_semaphore(unsigned index, Semaphore acquire);
 	Semaphore consume_release_semaphore();
@@ -389,8 +391,23 @@ private:
 	                                int64_t &min_us, int64_t &max_us);
 	void write_json_timestamp_range_us(unsigned frame_index, const char *tid, const char *name, int64_t start_us, int64_t end_us);
 
+	QueryPoolHandle write_calibrated_timestamp_nolock();
+	void register_time_interval_nolock(const char *tid, QueryPoolHandle start_ts, QueryPoolHandle end_ts, const char *tag);
+
 	// Make sure this is deleted last.
 	HandlePool handle_pool;
+
+	// Calibrated timestamps.
+	void init_calibrated_timestamps();
+	void recalibrate_timestamps();
+	bool resample_calibrated_timestamps();
+	VkTimeDomainEXT calibrated_time_domain = VK_TIME_DOMAIN_DEVICE_EXT;
+	int64_t calibrated_timestamp_device = 0;
+	int64_t calibrated_timestamp_host = 0;
+	int64_t last_calibrated_timestamp_host = 0; // To ensure monotonicity after a recalibration.
+	unsigned timestamp_calibration_counter = 0;
+	int64_t get_calibrated_timestamp();
+	Vulkan::QueryPoolHandle frame_context_begin_ts;
 
 	struct Managers
 	{

@@ -24,6 +24,7 @@
 #include "format.hpp"
 #include "type_to_string.hpp"
 #include "quirks.hpp"
+#include "timer.hpp"
 #include <algorithm>
 #include <string.h>
 #include <stdlib.h>
@@ -750,6 +751,8 @@ void Device::set_context(const Context &context)
 #ifdef GRANITE_VULKAN_FILESYSTEM
 	init_shader_manager_cache();
 #endif
+
+	init_calibrated_timestamps();
 }
 
 void Device::init_bindless()
@@ -2406,6 +2409,13 @@ void Device::next_frame_context()
 {
 	DRAIN_FRAME_LOCK();
 
+	if (frame_context_begin_ts)
+	{
+		auto frame_context_end_ts = write_calibrated_timestamp_nolock();
+		register_time_interval_nolock("CPU", std::move(frame_context_begin_ts), std::move(frame_context_end_ts), "frame-context");
+		frame_context_begin_ts = {};
+	}
+
 	// Flush the frame here as we might have pending staging command buffers from init stage.
 	end_frame_nolock();
 
@@ -2420,6 +2430,8 @@ void Device::next_frame_context()
 		frame_context_index = 0;
 
 	frame().begin();
+	recalibrate_timestamps();
+	frame_context_begin_ts = write_calibrated_timestamp_nolock();
 }
 
 QueryPoolHandle Device::write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlagBits stage)
@@ -2428,11 +2440,146 @@ QueryPoolHandle Device::write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlag
 	return frame().query_pool.write_timestamp(cmd, stage);
 }
 
+QueryPoolHandle Device::write_calibrated_timestamp()
+{
+	LOCK();
+	return write_calibrated_timestamp_nolock();
+}
+
+QueryPoolHandle Device::write_calibrated_timestamp_nolock()
+{
+	if (!json_trace_file)
+		return {};
+
+	if (!get_device_features().supports_calibrated_timestamps)
+	{
+		LOGE("Device does not support calibrated timestamps.\n");
+		// TODO: Fallback.
+		return {};
+	}
+
+	auto handle = QueryPoolHandle(handle_pool.query.allocate(this));
+	handle->signal_timestamp_ticks(get_calibrated_timestamp());
+	return handle;
+}
+
+void Device::init_calibrated_timestamps()
+{
+	if (!get_device_features().supports_calibrated_timestamps)
+		return;
+
+	uint32_t count;
+	vkGetPhysicalDeviceCalibrateableTimeDomainsEXT(gpu, &count, nullptr);
+	std::vector<VkTimeDomainEXT> domains(count);
+	if (vkGetPhysicalDeviceCalibrateableTimeDomainsEXT(gpu, &count, domains.data()) != VK_SUCCESS)
+		return;
+
+	bool supports_device_domain = false;
+	for (auto &domain : domains)
+	{
+		if (domain == VK_TIME_DOMAIN_DEVICE_EXT)
+		{
+			supports_device_domain = true;
+			break;
+		}
+	}
+
+	if (!supports_device_domain)
+		return;
+
+	for (auto &domain : domains)
+	{
+#ifdef _WIN32
+		const auto supported_domain = VK_TIME_DOMAIN_QUERY_PERFORMANCE_COUNTER_EXT;
+#else
+		const auto supported_domain = VK_TIME_DOMAIN_CLOCK_MONOTONIC_EXT;
+#endif
+		if (domain == supported_domain)
+		{
+			calibrated_time_domain = domain;
+			break;
+		}
+	}
+
+	if (calibrated_time_domain == VK_TIME_DOMAIN_DEVICE_EXT)
+	{
+		LOGE("Could not find a suitable time domain for calibrated timestamps.\n");
+		return;
+	}
+
+	if (!resample_calibrated_timestamps())
+	{
+		LOGE("Failed to get calibrated timestamps.\n");
+		calibrated_time_domain = VK_TIME_DOMAIN_DEVICE_EXT;
+		return;
+	}
+}
+
+bool Device::resample_calibrated_timestamps()
+{
+	VkCalibratedTimestampInfoEXT infos[2] = {};
+	infos[0].sType = VK_STRUCTURE_TYPE_CALIBRATED_TIMESTAMP_INFO_EXT;
+	infos[1].sType = VK_STRUCTURE_TYPE_CALIBRATED_TIMESTAMP_INFO_EXT;
+	infos[0].timeDomain = calibrated_time_domain;
+	infos[1].timeDomain = VK_TIME_DOMAIN_DEVICE_EXT;
+	uint64_t timestamps[2] = {};
+	uint64_t max_deviation[2] = {};
+
+	if (table->vkGetCalibratedTimestampsEXT(device, 2, infos, timestamps, max_deviation) != VK_SUCCESS)
+	{
+		LOGE("Failed to get calibrated timestamps.\n");
+		calibrated_time_domain = VK_TIME_DOMAIN_DEVICE_EXT;
+		return false;
+	}
+
+	calibrated_timestamp_host = timestamps[0];
+	calibrated_timestamp_device = timestamps[1];
+	return true;
+}
+
+void Device::recalibrate_timestamps()
+{
+	// Don't bother recalibrating timestamps if we're not tracing.
+	if (!json_trace_file)
+		return;
+	if (calibrated_timestamp_host == VK_TIME_DOMAIN_DEVICE_EXT)
+		return;
+
+	// Recalibrate every once in a while ...
+	timestamp_calibration_counter++;
+	if (timestamp_calibration_counter < 1000)
+		return;
+	timestamp_calibration_counter = 0;
+	resample_calibrated_timestamps();
+}
+
+int64_t Device::get_calibrated_timestamp()
+{
+	int64_t nsecs = Util::get_current_time_nsecs();
+	if (calibrated_time_domain == VK_TIME_DOMAIN_DEVICE_EXT)
+		return nsecs;
+
+	auto offset_from_calibration = double(nsecs - calibrated_timestamp_host);
+	auto ticks_in_device_timebase = int64_t(offset_from_calibration / double(gpu_props.limits.timestampPeriod));
+	int64_t reported = calibrated_timestamp_device + ticks_in_device_timebase;
+	reported = std::max(reported, last_calibrated_timestamp_host);
+	last_calibrated_timestamp_host = reported;
+	return reported;
+}
+
 void Device::register_time_interval(const char *tid, QueryPoolHandle start_ts, QueryPoolHandle end_ts, const char *tag)
 {
 	LOCK();
-	TimestampInterval *timestamp_tag = managers.timestamps.get_timestamp_tag(tag);
-	frame().timestamp_intervals.push_back({ std::string(tid), move(start_ts), move(end_ts), timestamp_tag });
+	register_time_interval_nolock(tid, std::move(start_ts), std::move(end_ts), tag);
+}
+
+void Device::register_time_interval_nolock(const char *tid, QueryPoolHandle start_ts, QueryPoolHandle end_ts, const char *tag)
+{
+	if (start_ts && end_ts)
+	{
+		TimestampInterval *timestamp_tag = managers.timestamps.get_timestamp_tag(tag);
+		frame().timestamp_intervals.push_back({ std::string(tid), move(start_ts), move(end_ts), timestamp_tag });
+	}
 }
 
 void Device::add_frame_counter_nolock()

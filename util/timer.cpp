@@ -21,9 +21,13 @@
  */
 
 #include "timer.hpp"
-#include <chrono>
 
-using namespace std;
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#else
+#include <time.h>
+#endif
 
 namespace Util
 {
@@ -82,9 +86,19 @@ int64_t FrameTimer::get_time()
 
 int64_t get_current_time_nsecs()
 {
-	auto current = chrono::steady_clock::now().time_since_epoch();
-	auto nsecs = chrono::duration_cast<chrono::nanoseconds>(current);
-	return nsecs.count();
+#ifdef _WIN32
+	LARGE_INTEGER li, freq;
+	if (!QueryPerformanceCounter(&li))
+		return 0;
+	if (!QueryPerformanceFrequency(&li))
+		return 0;
+	return int64_t(1e9 * double(li.QuadPart) / double(freq.QuadPart));
+#else
+	struct timespec ts = {};
+	if (clock_gettime(CLOCK_MONOTONIC, &ts) < 0)
+		return 0;
+	return ts.tv_sec * 1000000000ll + ts.tv_nsec;
+#endif
 }
 
 void Timer::start()

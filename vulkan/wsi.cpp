@@ -310,8 +310,10 @@ bool WSI::begin_frame()
 		auto acquire_start = Util::get_current_time_nsecs();
 #endif
 
+		auto acquire_ts = device->write_calibrated_timestamp();
 		result = table->vkAcquireNextImageKHR(context->get_device(), swapchain, UINT64_MAX, acquire->get_semaphore(),
 		                                      fence ? fence->get_fence() : VK_NULL_HANDLE, &swapchain_index);
+		device->register_time_interval("WSI", std::move(acquire_ts), device->write_calibrated_timestamp(), "acquire");
 
 #ifdef ANDROID
 		// Android 10 can return suboptimal here, only because of pre-transform.
@@ -439,7 +441,9 @@ bool WSI::end_frame()
 		auto present_start = Util::get_current_time_nsecs();
 #endif
 
+		auto present_ts = device->write_calibrated_timestamp();
 		VkResult overall = table->vkQueuePresentKHR(context->get_graphics_queue(), &info);
+		device->register_time_interval("WSI", std::move(present_ts), device->write_calibrated_timestamp(), "present");
 
 #ifdef ANDROID
 		// Android 10 can return suboptimal here, only because of pre-transform.

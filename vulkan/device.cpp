@@ -2411,7 +2411,7 @@ void Device::next_frame_context()
 	if (frame_context_begin_ts)
 	{
 		auto frame_context_end_ts = write_calibrated_timestamp_nolock();
-		register_time_interval_nolock("CPU", std::move(frame_context_begin_ts), std::move(frame_context_end_ts), "frame-context");
+		register_time_interval_nolock("CPU", std::move(frame_context_begin_ts), std::move(frame_context_end_ts), "command submissions");
 		frame_context_begin_ts = {};
 	}
 
@@ -2599,6 +2599,8 @@ void Device::PerFrame::begin()
 {
 	VkDevice vkdevice = device.get_device();
 
+	auto wait_fence_ts = device.write_calibrated_timestamp_nolock();
+
 	if (device.get_device_features().timeline_semaphore_features.timelineSemaphore &&
 	    graphics_timeline_semaphore && compute_timeline_semaphore && transfer_timeline_semaphore)
 	{
@@ -2637,6 +2639,8 @@ void Device::PerFrame::begin()
 		table.vkWaitForFences(vkdevice, wait_fences.size(), wait_fences.data(), VK_TRUE, UINT64_MAX);
 		wait_fences.clear();
 	}
+
+	device.register_time_interval_nolock("CPU", std::move(wait_fence_ts), device.write_calibrated_timestamp_nolock(), "fence");
 
 	// If we're using timeline semaphores, these paths should never be hit.
 	if (!recycle_fences.empty())
@@ -2735,7 +2739,7 @@ void Device::PerFrame::begin()
 			                                  min_timestamp_us, max_timestamp_us);
 		}
 	}
-	device.write_json_timestamp_range_us(frame_index, "frame-context", "frame", min_timestamp_us, max_timestamp_us);
+	device.write_json_timestamp_range_us(frame_index, "CPU + GPU", "full frame lifetime", min_timestamp_us, max_timestamp_us);
 	managers.timestamps.mark_end_of_frame_context();
 	timestamp_intervals.clear();
 }

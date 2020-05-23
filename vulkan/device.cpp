@@ -2426,18 +2426,6 @@ void Device::register_time_interval(QueryPoolHandle start_ts, QueryPoolHandle en
 	frame().timestamp_intervals.push_back({ move(start_ts), move(end_ts), timestamp_tag });
 }
 
-void Device::add_frame_counter()
-{
-	LOCK();
-	add_frame_counter_nolock();
-}
-
-void Device::decrement_frame_counter()
-{
-	LOCK();
-	decrement_frame_counter_nolock();
-}
-
 void Device::add_frame_counter_nolock()
 {
 	lock.counter++;

@@ -399,8 +399,6 @@ private:
 #endif
 		unsigned counter = 0;
 	} lock;
-	void add_frame_counter();
-	void decrement_frame_counter();
 
 	struct PerFrame
 	{

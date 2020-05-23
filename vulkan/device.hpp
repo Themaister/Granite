@@ -334,6 +334,8 @@ public:
 	bool swapchain_touched() const;
 
 	double convert_timestamp_delta(uint64_t start_ticks, uint64_t end_ticks) const;
+	// Writes a timestamp on host side, which is calibrated to the GPU timebase.
+	QueryPoolHandle write_calibrated_timestamp();
 
 private:
 	VkInstance instance = VK_NULL_HANDLE;
@@ -361,8 +363,6 @@ private:
 	void request_staging_block(BufferBlock &block, VkDeviceSize size);
 
 	QueryPoolHandle write_timestamp(VkCommandBuffer cmd, VkPipelineStageFlagBits stage);
-	// Writes a timestamp on host side, which is calibrated to the GPU timebase.
-	QueryPoolHandle write_calibrated_timestamp();
 
 	void set_acquire_semaphore(unsigned index, Semaphore acquire);
 	Semaphore consume_release_semaphore();

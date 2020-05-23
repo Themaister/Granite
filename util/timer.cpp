@@ -84,15 +84,27 @@ int64_t FrameTimer::get_time()
 	return get_current_time_nsecs();
 }
 
+#ifdef _WIN32
+struct QPCFreq
+{
+	QPCFreq()
+	{
+		LARGE_INTEGER freq;
+		QueryPerformanceFrequency(&freq);
+		inv_freq = 1e9 / double(freq.QuadPart);
+	}
+
+	double inv_freq;
+} static static_qpc_freq;
+#endif
+
 int64_t get_current_time_nsecs()
 {
 #ifdef _WIN32
-	LARGE_INTEGER li, freq;
+	LARGE_INTEGER li;
 	if (!QueryPerformanceCounter(&li))
 		return 0;
-	if (!QueryPerformanceFrequency(&li))
-		return 0;
-	return int64_t(1e9 * double(li.QuadPart) / double(freq.QuadPart));
+	return int64_t(double(li.QuadPart) * static_qpc_freq.inv_freq);
 #else
 	struct timespec ts = {};
 	if (clock_gettime(CLOCK_MONOTONIC, &ts) < 0)

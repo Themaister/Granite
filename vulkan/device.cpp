@@ -28,7 +28,6 @@
 #include <algorithm>
 #include <string.h>
 #include <stdlib.h>
-#include <inttypes.h>
 
 #ifdef GRANITE_VULKAN_FILESYSTEM
 #include "string_helpers.hpp"
@@ -4806,10 +4805,10 @@ void Device::write_json_timestamp_range(unsigned frame_index, const char *tid, c
 	min_us = std::min(absolute_start, min_us);
 	max_us = std::max(absolute_end, max_us);
 
-	fprintf(json_trace_file.get(), "\t{ \"name\": \"%s\", \"ph\": \"B\", \"tid\": \"%s\", \"pid\": \"%u\", \"ts\": %" PRId64 "},\n",
-	        name, tid, frame_index, absolute_start);
-	fprintf(json_trace_file.get(), "\t{ \"name\": \"%s\", \"ph\": \"E\", \"tid\": \"%s\", \"pid\": \"%u\", \"ts\": %" PRId64 "},\n",
-	        name, tid, frame_index, absolute_end);
+	fprintf(json_trace_file.get(), "\t{ \"name\": \"%s\", \"ph\": \"B\", \"tid\": \"%s\", \"pid\": \"%u\", \"ts\": %lld },\n",
+	        name, tid, frame_index, static_cast<long long>(absolute_start));
+	fprintf(json_trace_file.get(), "\t{ \"name\": \"%s\", \"ph\": \"E\", \"tid\": \"%s\", \"pid\": \"%u\", \"ts\": %lld },\n",
+	        name, tid, frame_index, static_cast<long long>(absolute_end));
 }
 
 void Device::write_json_timestamp_range_us(unsigned frame_index, const char *tid, const char *name, int64_t start_us, int64_t end_us)
@@ -4819,10 +4818,10 @@ void Device::write_json_timestamp_range_us(unsigned frame_index, const char *tid
 	if (start_us > end_us)
 		return;
 
-	fprintf(json_trace_file.get(), "\t{ \"name\": \"%s\", \"ph\": \"B\", \"tid\": \"%s\", \"pid\": \"%u\", \"ts\": %" PRId64 "},\n",
-	        name, tid, frame_index, start_us);
-	fprintf(json_trace_file.get(), "\t{ \"name\": \"%s\", \"ph\": \"E\", \"tid\": \"%s\", \"pid\": \"%u\", \"ts\": %" PRId64 "},\n",
-	        name, tid, frame_index, end_us);
+	fprintf(json_trace_file.get(), "\t{ \"name\": \"%s\", \"ph\": \"B\", \"tid\": \"%s\", \"pid\": \"%u\", \"ts\": %lld },\n",
+	        name, tid, frame_index, static_cast<long long>(start_us));
+	fprintf(json_trace_file.get(), "\t{ \"name\": \"%s\", \"ph\": \"E\", \"tid\": \"%s\", \"pid\": \"%u\", \"ts\": %lld },\n",
+	        name, tid, frame_index, static_cast<long long>(end_us));
 }
 
 void Device::JSONTraceFileDeleter::operator()(FILE *file)

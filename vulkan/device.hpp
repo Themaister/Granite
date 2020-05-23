@@ -42,6 +42,7 @@
 #include <vector>
 #include <functional>
 #include <unordered_map>
+#include <stdio.h>
 
 #ifdef GRANITE_VULKAN_FILESYSTEM
 #include "shader_manager.hpp"
@@ -172,6 +173,7 @@ public:
 	                                          uint32_t *count,
 	                                          const VkPerformanceCounterKHR **counters,
 	                                          const VkPerformanceCounterDescriptionKHR **desc);
+	bool init_timestamp_trace(const char *path);
 
 	ImageView &get_swapchain_view();
 	ImageView &get_swapchain_view(unsigned index);
@@ -217,7 +219,7 @@ public:
 	                  Semaphore *semaphore = nullptr);
 	void add_wait_semaphore(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags stages, bool flush);
 	CommandBuffer::Type get_physical_queue_type(CommandBuffer::Type queue_type) const;
-	void register_time_interval(QueryPoolHandle start_ts, QueryPoolHandle end_ts, const char *tag);
+	void register_time_interval(const char *tid, QueryPoolHandle start_ts, QueryPoolHandle end_ts, const char *tag);
 
 	// Request shaders and programs. These objects are owned by the Device.
 	Shader *request_shader(const uint32_t *code, size_t size);
@@ -377,6 +379,16 @@ private:
 	void init_bindless();
 	void deinit_timeline_semaphores();
 
+	struct JSONTraceFileDeleter { void operator()(FILE *file); };
+	std::unique_ptr<FILE, JSONTraceFileDeleter> json_trace_file;
+	int64_t json_base_timestamp_value = 0;
+	int64_t json_timestamp_origin = 0;
+	int64_t convert_timestamp_to_absolute_usec(uint64_t ts);
+	uint64_t update_wrapped_base_timestamp(uint64_t ts);
+	void write_json_timestamp_range(const char *tid, const char *name, uint64_t start_ts, uint64_t end_ts,
+	                                int64_t &min_us, int64_t &max_us);
+	void write_json_timestamp_range_us(const char *tid, const char *name, int64_t start_us, int64_t end_us);
+
 	// Make sure this is deleted last.
 	HandlePool handle_pool;
 
@@ -459,6 +471,7 @@ private:
 
 		struct TimestampIntervalHandles
 		{
+			std::string tid;
 			QueryPoolHandle start_ts;
 			QueryPoolHandle end_ts;
 			TimestampInterval *timestamp_tag;

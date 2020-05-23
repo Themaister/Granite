@@ -369,7 +369,6 @@ void SceneViewerApplication::export_cameras()
 
 SceneViewerApplication::~SceneViewerApplication()
 {
-	graph.report_timestamps();
 	export_lights();
 	export_cameras();
 }

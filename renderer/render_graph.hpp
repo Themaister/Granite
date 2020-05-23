@@ -647,7 +647,6 @@ public:
 	}
 
 	void enable_timestamps(bool enable);
-	void report_timestamps();
 
 	void bake();
 	void reset();
@@ -832,19 +831,7 @@ private:
 	void build_physical_barriers();
 	void build_render_pass_info();
 	void build_aliases();
-	void setup_timestamps();
 
-	struct Timestamps
-	{
-		std::vector<Vulkan::QueryPoolHandle> timestamps_vertex_begin;
-		std::vector<Vulkan::QueryPoolHandle> timestamps_fragment_begin;
-		std::vector<Vulkan::QueryPoolHandle> timestamps_compute_begin;
-		std::vector<Vulkan::QueryPoolHandle> timestamps_vertex_end;
-		std::vector<Vulkan::QueryPoolHandle> timestamps_fragment_end;
-		std::vector<Vulkan::QueryPoolHandle> timestamps_compute_end;
-	};
-	std::vector<Timestamps> physical_timestamps;
-	unsigned physical_timestamp_index = 0;
 	bool enabled_timestamps = false;
 
 	std::vector<ResourceDimensions> physical_dimensions;

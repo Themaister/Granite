@@ -2485,7 +2485,6 @@ void Device::init_calibrated_timestamps()
 	if (!get_device_features().supports_calibrated_timestamps)
 	{
 		recalibrate_timestamps_fallback();
-		json_timestamp_origin = calibrated_timestamp_device;
 		return;
 	}
 
@@ -2534,8 +2533,6 @@ void Device::init_calibrated_timestamps()
 		calibrated_time_domain = VK_TIME_DOMAIN_DEVICE_EXT;
 		return;
 	}
-
-	json_timestamp_origin = calibrated_timestamp_device;
 }
 
 bool Device::resample_calibrated_timestamps()
@@ -4823,6 +4820,8 @@ int64_t Device::convert_timestamp_to_absolute_usec(uint64_t ts)
 	// On some hardware, we have < 64 valid bits and the timestamp counters will wrap around at some interval.
 	// As long as timestamps come in at a reasonably steady pace, we can deal with wraparound cleanly.
 	ts = update_wrapped_base_timestamp(ts);
+	if (json_timestamp_origin == 0)
+		json_timestamp_origin = ts;
 
 	auto delta_ts = int64_t(ts - json_timestamp_origin);
 	auto us = int64_t(double(int64_t(delta_ts)) * gpu_props.limits.timestampPeriod * 1e-3);

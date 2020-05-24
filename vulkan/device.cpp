@@ -2795,6 +2795,12 @@ uint32_t Device::find_memory_type(BufferDomain domain, uint32_t mask)
 		prio[2] = prio[1];
 		break;
 
+	case BufferDomain::LinkedDeviceHostPreferDevice:
+		prio[0] = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+		prio[1] = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+		prio[2] = prio[1];
+		break;
+
 	case BufferDomain::Host:
 		prio[0] = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 		prio[1] = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;

@@ -72,6 +72,7 @@ enum class BufferDomain
 {
 	Device, // Device local. Probably not visible from CPU.
 	LinkedDeviceHost, // On desktop, directly mapped VRAM over PCI.
+	LinkedDeviceHostPreferDevice, // Prefer device local of host visible.
 	Host, // Host-only, needs to be synced to GPU. Might be device local as well on iGPUs.
 	CachedHost,
 	CachedCoherentHostPreferCoherent, // Aim for both cached and coherent, but prefer COHERENT

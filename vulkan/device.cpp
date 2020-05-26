@@ -29,6 +29,11 @@
 #include <string.h>
 #include <stdlib.h>
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
+
 #ifdef GRANITE_VULKAN_FILESYSTEM
 #include "string_helpers.hpp"
 #endif
@@ -2565,6 +2570,12 @@ bool Device::resample_calibrated_timestamps()
 
 	calibrated_timestamp_host = timestamps[0];
 	calibrated_timestamp_device = timestamps[1];
+
+#ifdef _WIN32
+	LARGE_INTEGER freq;
+	QueryPerformanceFrequency(&freq);
+	calibrated_timestamp_device = int64_t(1e9 * calibrated_timestamp_device / double(freq.QuadPart));
+#endif
 	return true;
 }
 

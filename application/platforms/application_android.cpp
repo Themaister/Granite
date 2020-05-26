@@ -26,6 +26,7 @@
 #include "application_events.hpp"
 #include "application_wsi.hpp"
 #include "context.hpp"
+#include "string_helpers.hpp"
 #include <jni.h>
 #include <android/sensor.h>
 

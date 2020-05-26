@@ -306,6 +306,13 @@ bool WSI::begin_frame()
 		if (timing.get_options().latency_limiter == LatencyLimiter::AdaptiveLowLatency)
 			fence = device->request_legacy_fence();
 
+		bool wait_fence = false;
+		if (const char *env = getenv("WSI_FENCE"))
+			wait_fence = strtol(env, nullptr, 0) > 0;
+
+		if (wait_fence)
+			fence = device->request_legacy_fence();
+
 #ifdef VULKAN_WSI_TIMING_DEBUG
 		auto acquire_start = Util::get_current_time_nsecs();
 #endif

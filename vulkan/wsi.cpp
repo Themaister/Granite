@@ -320,7 +320,6 @@ bool WSI::begin_frame()
 		auto acquire_ts = device->write_calibrated_timestamp();
 		result = table->vkAcquireNextImageKHR(context->get_device(), swapchain, UINT64_MAX, acquire->get_semaphore(),
 		                                      fence ? fence->get_fence() : VK_NULL_HANDLE, &swapchain_index);
-		device->register_time_interval("WSI", std::move(acquire_ts), device->write_calibrated_timestamp(), "acquire");
 
 #ifdef ANDROID
 		// Android 10 can return suboptimal here, only because of pre-transform.
@@ -332,6 +331,7 @@ bool WSI::begin_frame()
 		if (result == VK_SUCCESS && fence)
 			fence->wait();
 
+		device->register_time_interval("WSI", std::move(acquire_ts), device->write_calibrated_timestamp(), "acquire");
 		if (result == VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT)
 		{
 			LOGE("Lost exclusive full-screen ...\n");

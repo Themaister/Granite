@@ -1232,7 +1232,9 @@ void Device::submit_empty_inner(CommandBuffer::Type type, InternalFence *fence,
 	if (fence)
 		fence->fence = cleared_fence;
 
-	auto start_ts = write_calibrated_timestamp_nolock();
+	QueryPoolHandle start_ts, end_ts;
+	if (json_timestamp_origin)
+		start_ts = write_calibrated_timestamp_nolock();
 
 	if (queue_lock_callback)
 		queue_lock_callback();
@@ -1247,8 +1249,11 @@ void Device::submit_empty_inner(CommandBuffer::Type type, InternalFence *fence,
 	if (queue_unlock_callback)
 		queue_unlock_callback();
 
-	auto end_ts = write_calibrated_timestamp_nolock();
-	register_time_interval_nolock("CPU", std::move(start_ts), std::move(end_ts), "submit", "");
+	if (json_timestamp_origin)
+	{
+		end_ts = write_calibrated_timestamp_nolock();
+		register_time_interval_nolock("CPU", std::move(start_ts), std::move(end_ts), "submit", "");
+	}
 
 	if (result != VK_SUCCESS)
 		LOGE("vkQueueSubmit failed (code: %d).\n", int(result));
@@ -1623,7 +1628,9 @@ void Device::submit_queue(CommandBuffer::Type type, InternalFence *fence,
 		timeline_submit.pSignalSemaphoreValues = signal_counts[i].data();
 	}
 
-	auto start_ts = write_calibrated_timestamp_nolock();
+	QueryPoolHandle start_ts, end_ts;
+	if (json_timestamp_origin)
+		start_ts = write_calibrated_timestamp_nolock();
 
 	if (queue_lock_callback)
 		queue_lock_callback();
@@ -1637,8 +1644,11 @@ void Device::submit_queue(CommandBuffer::Type type, InternalFence *fence,
 	if (queue_unlock_callback)
 		queue_unlock_callback();
 
-	auto end_ts = write_calibrated_timestamp_nolock();
-	register_time_interval_nolock("CPU", std::move(start_ts), std::move(end_ts), "submit", "");
+	if (json_timestamp_origin)
+	{
+		end_ts = write_calibrated_timestamp_nolock();
+		register_time_interval_nolock("CPU", std::move(start_ts), std::move(end_ts), "submit", "");
+	}
 
 	if (result != VK_SUCCESS)
 		LOGE("vkQueueSubmit failed (code: %d).\n", int(result));

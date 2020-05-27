@@ -2574,7 +2574,7 @@ bool Device::resample_calibrated_timestamps()
 #ifdef _WIN32
 	LARGE_INTEGER freq;
 	QueryPerformanceFrequency(&freq);
-	calibrated_timestamp_device = int64_t(1e9 * calibrated_timestamp_device / double(freq.QuadPart));
+	calibrated_timestamp_host = int64_t(1e9 * calibrated_timestamp_host / double(freq.QuadPart));
 #endif
 	return true;
 }

@@ -160,7 +160,7 @@ private:
 	uint8_t *buffer = nullptr;
 	size_t buffer_size = 0;
 
-	VkImageType image_type = VK_IMAGE_TYPE_RANGE_SIZE;
+	VkImageType image_type = VK_IMAGE_TYPE_MAX_ENUM;
 	VkFormat format = VK_FORMAT_UNDEFINED;
 	size_t required_size = 0;
 

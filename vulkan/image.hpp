@@ -180,7 +180,7 @@ struct ImageViewCreateInfo
 	unsigned levels = VK_REMAINING_MIP_LEVELS;
 	unsigned base_layer = 0;
 	unsigned layers = VK_REMAINING_ARRAY_LAYERS;
-	VkImageViewType view_type = VK_IMAGE_VIEW_TYPE_RANGE_SIZE;
+	VkImageViewType view_type = VK_IMAGE_VIEW_TYPE_MAX_ENUM;
 	ImageViewMiscFlags misc = 0;
 	VkComponentMapping swizzle = {
 			VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A,

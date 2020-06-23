@@ -60,7 +60,7 @@ struct EmittedMesh
 	int material = -1;
 	uint32_t attribute_mask = 0;
 	int attribute_accessor[ecast(MeshAttribute::Count)] = {};
-	VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_END_RANGE;
+	VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_MAX_ENUM;
 	bool primitive_restart = false;
 };
 

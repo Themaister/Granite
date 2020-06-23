@@ -2977,7 +2977,7 @@ static inline VkImageViewType get_image_view_type(const ImageCreateInfo &create_
 
 	default:
 		VK_ASSERT(0 && "bogus");
-		return VK_IMAGE_VIEW_TYPE_RANGE_SIZE;
+		return VK_IMAGE_VIEW_TYPE_MAX_ENUM;
 	}
 }
 
@@ -3022,7 +3022,7 @@ public:
 	VkImageView stencil_view = VK_NULL_HANDLE;
 	VkImageView unorm_view = VK_NULL_HANDLE;
 	VkImageView srgb_view = VK_NULL_HANDLE;
-	VkImageViewType default_view_type = VK_IMAGE_VIEW_TYPE_RANGE_SIZE;
+	VkImageViewType default_view_type = VK_IMAGE_VIEW_TYPE_MAX_ENUM;
 	vector<VkImageView> rt_views;
 	DeviceAllocation allocation;
 	DeviceAllocator *allocator = nullptr;
@@ -3260,7 +3260,7 @@ ImageViewHandle Device::create_image_view(const ImageViewCreateInfo &create_info
 	view_info.subresourceRange.levelCount = create_info.levels;
 	view_info.subresourceRange.layerCount = create_info.layers;
 
-	if (create_info.view_type == VK_IMAGE_VIEW_TYPE_RANGE_SIZE)
+	if (create_info.view_type == VK_IMAGE_VIEW_TYPE_MAX_ENUM)
 		view_info.viewType = get_image_view_type(image_create_info, &create_info);
 	else
 		view_info.viewType = create_info.view_type;
@@ -3361,7 +3361,7 @@ ImageHandle Device::create_imported_image(int fd, VkDeviceSize size, uint32_t me
 
 	// Create default image views.
 	// App could of course to this on its own, but it's very handy to have these being created automatically for you.
-	VkImageViewType view_type = VK_IMAGE_VIEW_TYPE_RANGE_SIZE;
+	VkImageViewType view_type = VK_IMAGE_VIEW_TYPE_MAX_ENUM;
 	if (info.usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
 	                  VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT))
 	{
@@ -3850,7 +3850,7 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 	bool has_view = (info.usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
 	                               VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT)) != 0;
 
-	VkImageViewType view_type = VK_IMAGE_VIEW_TYPE_RANGE_SIZE;
+	VkImageViewType view_type = VK_IMAGE_VIEW_TYPE_MAX_ENUM;
 	if (has_view)
 	{
 		if (!holder.create_default_views(tmpinfo, nullptr, create_unorm_srgb_views, view_formats))

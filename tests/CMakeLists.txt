@@ -105,6 +105,12 @@ add_granite_offline_tool(imported-host imported_host.cpp)
 
 add_granite_offline_tool(cooperative-task-test cooperative_task_test.cpp)
 
+add_granite_offline_tool(baked-test baked_test.cpp)
+add_zip_archive_target(baked-zippy baked_zippy
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets assets
+        ${CMAKE_CURRENT_SOURCE_DIR}/baked_test.cpp baked.cpp)
+target_link_libraries(baked-test PRIVATE baked-zippy)
+
 if (GRANITE_AUDIO)
     add_granite_offline_tool(audio-test audio_test.cpp)
     add_granite_offline_tool(tone-filter-bench tone_filter_bench.cpp)

@@ -25,6 +25,7 @@
 #include "fs-netfs.hpp"
 #include "path.hpp"
 #include "logging.hpp"
+#include "string_helpers.hpp"
 #include <stdlib.h>
 #include <algorithm>
 
@@ -385,6 +386,114 @@ std::unique_ptr<File> ScratchFilesystem::open(const std::string &path, FileMode)
 	{
 		return std::unique_ptr<ScratchFilesystemFile>(new ScratchFilesystemFile(itr->second->data));
 	}
+}
+
+ZIPFilesystem::ZIPFilesystem(std::unique_ptr<File> file_, std::string basedir_)
+	: file(std::move(file_)), base(std::move(basedir_))
+{
+}
+
+const ZIPFilesystem::Directory *ZIPFilesystem::find_directory(const std::string &path) const
+{
+	auto split = Util::split_no_empty(path, "/");
+	const auto *dir = root.get();
+
+	for (const auto &subpath : split)
+	{
+		auto dir_itr = std::find_if(dir->dirs.begin(), dir->dirs.end(), [&](const std::unique_ptr<Directory> &dir_) {
+			return subpath == dir_->path;
+		});
+
+		if (dir_itr != dir->dirs.end())
+			dir = dir_itr->get();
+		else
+			return nullptr;
+	}
+
+	return dir;
+}
+
+const ZIPFilesystem::ZipFile *ZIPFilesystem::find_file(const std::string &path) const
+{
+	auto paths = Path::split(path);
+	auto *dir = find_directory(paths.first);
+	if (!dir)
+		return nullptr;
+
+	auto file_itr = std::find_if(dir->files.begin(), dir->files.end(), [&](const ZipFile &zip_file) {
+		return paths.second == zip_file.path;
+	});
+
+	if (file_itr != dir->files.end())
+		return &*file_itr;
+	else
+		return nullptr;
+}
+
+std::vector<ListEntry> ZIPFilesystem::list(const std::string &path)
+{
+	std::vector<ListEntry> entries;
+	if (const auto *zip_dir = find_directory(Path::join(base, path)))
+	{
+		entries.reserve(zip_dir->dirs.size() + zip_dir->files.size());
+		for (auto &dir : zip_dir->dirs)
+			entries.push_back({ dir->path, PathType::Directory });
+		for (auto &f : zip_dir->files)
+			entries.push_back({ f.path, PathType::File });
+	}
+	return entries;
+}
+
+bool ZIPFilesystem::stat(const std::string &path, FileStat &stat)
+{
+	auto p = Path::join(base, path);
+
+	if (const auto *zip_file = find_file(p))
+	{
+		stat.size = zip_file->size;
+		stat.type = PathType::File;
+		stat.last_modified = 0;
+		return true;
+	}
+	else if (find_directory(p))
+	{
+		stat.size = 0;
+		stat.last_modified = 0;
+		stat.type = PathType::Directory;
+		return true;
+	}
+	else
+		return false;
+}
+
+std::unique_ptr<File> ZIPFilesystem::open(const std::string &path, FileMode mode)
+{
+	if (mode != FileMode::ReadOnly)
+		return {};
+
+	auto p = Path::join(base, path);
+	auto *zip_file = find_file(p);
+	if (!zip_file)
+		return {};
+	return std::make_unique<ConstantMemoryFile>(zip_file->mapped, zip_file->size);
+}
+
+FileNotifyHandle ZIPFilesystem::install_notification(const std::string &, std::function<void (const FileNotifyInfo &)>)
+{
+	return -1;
+}
+
+void ZIPFilesystem::uninstall_notification(FileNotifyHandle)
+{
+}
+
+void ZIPFilesystem::poll_notifications()
+{
+}
+
+int ZIPFilesystem::get_notification_fd() const
+{
+	return -1;
 }
 
 }

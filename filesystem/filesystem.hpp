@@ -236,4 +236,80 @@ private:
 	std::unordered_map<std::string, std::unique_ptr<ScratchFile>> scratch_files;
 };
 
+struct ConstantMemoryFile : Granite::File
+{
+	ConstantMemoryFile(const void *mapped_, size_t size_)
+		: mapped(mapped_), size(size_)
+	{
+	}
+
+	void *map() override
+	{
+		return const_cast<void *>(mapped);
+	}
+
+	void *map_write(size_t) override
+	{
+		return nullptr;
+	}
+
+	bool reopen() override
+	{
+		return true;
+	}
+
+	void unmap() override
+	{
+	}
+
+	size_t get_size() override
+	{
+		return size;
+	}
+
+	const void *mapped;
+	size_t size;
+};
+
+class ZIPFilesystem : public FilesystemBackend
+{
+public:
+	ZIPFilesystem(std::unique_ptr<File> file, std::string basedir);
+
+	std::vector<ListEntry> list(const std::string &path) override;
+
+	std::unique_ptr<File> open(const std::string &path, FileMode mode) override;
+
+	bool stat(const std::string &path, FileStat &stat) override;
+
+	FileNotifyHandle install_notification(const std::string &path, std::function<void(const FileNotifyInfo &)> func) override;
+
+	void uninstall_notification(FileNotifyHandle handle) override;
+
+	void poll_notifications() override;
+
+	int get_notification_fd() const override;
+
+private:
+	std::unique_ptr<File> file;
+	std::string base;
+
+	struct ZipFile
+	{
+		std::string path;
+		const void *mapped;
+		size_t size;
+	};
+
+	struct Directory
+	{
+		std::string path;
+		std::vector<std::unique_ptr<Directory>> dirs;
+		std::vector<ZipFile> files;
+	};
+	std::unique_ptr<Directory> root;
+	const ZipFile *find_file(const std::string &path) const;
+	const Directory *find_directory(const std::string &path) const;
+};
+
 }

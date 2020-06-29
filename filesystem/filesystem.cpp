@@ -25,6 +25,7 @@
 #include "fs-netfs.hpp"
 #include "path.hpp"
 #include "logging.hpp"
+#include "string_helpers.hpp"
 #include <stdlib.h>
 #include <algorithm>
 
@@ -385,6 +386,235 @@ std::unique_ptr<File> ScratchFilesystem::open(const std::string &path, FileMode)
 	{
 		return std::unique_ptr<ScratchFilesystemFile>(new ScratchFilesystemFile(itr->second->data));
 	}
+}
+
+BlobFilesystem::BlobFilesystem(std::unique_ptr<File> file_, std::string basedir_)
+	: file(std::move(file_)), base(std::move(basedir_))
+{
+	if (!file)
+		return;
+
+	root = std::make_unique<Directory>();
+	parse();
+}
+
+uint8_t BlobFilesystem::read_u8(const uint8_t *&buf, size_t &size)
+{
+	if (size < 1)
+		throw std::range_error("Blob EOF.");
+
+	uint8_t ret = *buf++;
+	size--;
+	return ret;
+}
+
+uint64_t BlobFilesystem::read_u64(const uint8_t *&buf, size_t &size)
+{
+	if (size < 8)
+		throw std::range_error("Blob EOF.");
+
+	uint64_t ret = 0;
+	for (unsigned i = 0; i < 8; i++)
+		ret |= uint64_t(buf[i]) << (8 * i);
+	size -= 8;
+	buf += 8;
+	return ret;
+}
+
+std::string BlobFilesystem::read_string(const uint8_t *&buf, size_t &size, size_t len)
+{
+	if (size < len)
+		throw std::range_error("Blob EOF.");
+
+	std::string ret;
+	ret.insert(ret.end(), reinterpret_cast<const char *>(buf), reinterpret_cast<const char *>(buf) + len);
+	size -= len;
+	buf += len;
+	return ret;
+}
+
+void BlobFilesystem::add_entry(const std::string &path, size_t offset, size_t size)
+{
+	auto paths = Path::split(path);
+	auto *dir = find_directory(paths.first);
+	if (!dir)
+		dir = make_directory(paths.first);
+	dir->files.push_back({ Path::basename(path), offset, size });
+}
+
+void BlobFilesystem::parse()
+{
+	size_t mapped_size = file->get_size();
+	if (mapped_size < 16)
+		throw std::runtime_error("Blob archive too small.");
+	auto *mapped = static_cast<const uint8_t *>(file->map());
+	if (!mapped)
+		throw std::runtime_error("Failed to map blob archive.");
+
+	if (memcmp(mapped, "BLOBBY01", 8) != 0)
+		throw std::runtime_error("Invalid magic.");
+	mapped += 8;
+	mapped_size -= 8;
+
+	uint64_t required_size = 0;
+
+	while (mapped_size >= 4 && memcmp(mapped, "ENTR", 4) == 0)
+	{
+		mapped += 4;
+		mapped_size -= 4;
+
+		uint8_t len = read_u8(mapped, mapped_size);
+		std::string path = Path::canonicalize_path(read_string(mapped, mapped_size, len));
+		uint64_t blob_offset = read_u64(mapped, mapped_size);
+		uint64_t blob_size = read_u64(mapped, mapped_size);
+		required_size = std::max(required_size, blob_offset + blob_size);
+
+		if (blob_offset + blob_size < blob_offset)
+			throw std::range_error("Overflow for blob offset + size.");
+
+		if (blob_offset > std::numeric_limits<size_t>::max() ||
+		    blob_size > std::numeric_limits<size_t>::max())
+			throw std::range_error("Blob offset out of range.");
+
+		add_entry(path, blob_offset, blob_size);
+	}
+
+	if (mapped_size >= 4 && memcmp(mapped, "DATA", 4) == 0)
+	{
+		blob_base = mapped + 4;
+		mapped_size -= 4;
+		if (mapped_size < required_size)
+			throw std::range_error("Blob is not large enough for all files.");
+	}
+}
+
+BlobFilesystem::Directory *BlobFilesystem::make_directory(const std::string &path)
+{
+	auto split = Util::split_no_empty(path, "/");
+	auto *dir = root.get();
+
+	for (const auto &subpath : split)
+	{
+		auto dir_itr = std::find_if(dir->dirs.begin(), dir->dirs.end(), [&](const std::unique_ptr<Directory> &dir_) {
+			return subpath == dir_->path;
+		});
+
+		if (dir_itr != dir->dirs.end())
+			dir = dir_itr->get();
+		else
+		{
+			dir->dirs.emplace_back(new Directory);
+			dir->dirs.back()->path = subpath;
+			dir = dir->dirs.back().get();
+		}
+	}
+
+	return dir;
+}
+
+BlobFilesystem::Directory *BlobFilesystem::find_directory(const std::string &path)
+{
+	auto split = Util::split_no_empty(path, "/");
+	auto *dir = root.get();
+
+	for (const auto &subpath : split)
+	{
+		auto dir_itr = std::find_if(dir->dirs.begin(), dir->dirs.end(), [&](const std::unique_ptr<Directory> &dir_) {
+			return subpath == dir_->path;
+		});
+
+		if (dir_itr != dir->dirs.end())
+			dir = dir_itr->get();
+		else
+			return nullptr;
+	}
+
+	return dir;
+}
+
+BlobFilesystem::BlobFile *BlobFilesystem::find_file(const std::string &path)
+{
+	auto paths = Path::split(path);
+	auto *dir = find_directory(paths.first);
+	if (!dir)
+		return nullptr;
+
+	auto file_itr = std::find_if(dir->files.begin(), dir->files.end(), [&](const BlobFile &zip_file) {
+		return paths.second == zip_file.path;
+	});
+
+	if (file_itr != dir->files.end())
+		return &*file_itr;
+	else
+		return nullptr;
+}
+
+std::vector<ListEntry> BlobFilesystem::list(const std::string &path)
+{
+	auto canon_path = Path::canonicalize_path(path);
+
+	std::vector<ListEntry> entries;
+	if (const auto *zip_dir = find_directory(Path::join(base, canon_path)))
+	{
+		entries.reserve(zip_dir->dirs.size() + zip_dir->files.size());
+		for (auto &dir : zip_dir->dirs)
+			entries.push_back({ Path::join(path, dir->path), PathType::Directory });
+		for (auto &f : zip_dir->files)
+			entries.push_back({ Path::join(path, f.path), PathType::File });
+	}
+	return entries;
+}
+
+bool BlobFilesystem::stat(const std::string &path, FileStat &stat)
+{
+	auto p = Path::join(base, Path::canonicalize_path(path));
+
+	if (const auto *zip_file = find_file(p))
+	{
+		stat.size = zip_file->size;
+		stat.type = PathType::File;
+		stat.last_modified = 0;
+		return true;
+	}
+	else if (find_directory(p))
+	{
+		stat.size = 0;
+		stat.last_modified = 0;
+		stat.type = PathType::Directory;
+		return true;
+	}
+	else
+		return false;
+}
+
+std::unique_ptr<File> BlobFilesystem::open(const std::string &path, FileMode mode)
+{
+	if (mode != FileMode::ReadOnly)
+		return {};
+
+	auto p = Path::join(base, Path::canonicalize_path(path));
+	auto *blob_file = find_file(p);
+	if (!blob_file)
+		return {};
+	return std::make_unique<ConstantMemoryFile>(blob_base + blob_file->offset, blob_file->size);
+}
+
+FileNotifyHandle BlobFilesystem::install_notification(const std::string &, std::function<void (const FileNotifyInfo &)>)
+{
+	return -1;
+}
+
+void BlobFilesystem::uninstall_notification(FileNotifyHandle)
+{
+}
+
+void BlobFilesystem::poll_notifications()
+{
+}
+
+int BlobFilesystem::get_notification_fd() const
+{
+	return -1;
 }
 
 }

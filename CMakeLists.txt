@@ -693,6 +693,49 @@ else()
 endif()
 
 if (NOT GRANITE_VULKAN_ONLY)
+    find_package(Python3)
+
+    if (Python3_FOUND)
+        message("Found Python 3 interpreter: ${Python3_EXECUTABLE}.")
+        function(add_blob_archive_target TARGET_NAME BLOB_NAME)
+            set_source_files_properties(
+                    ${CMAKE_BINARY_DIR}/${BLOB_NAME}.h
+                    ${CMAKE_BINARY_DIR}/${BLOB_NAME}.c
+                    PROPERTIES GENERATED ON)
+            add_library(${TARGET_NAME} STATIC
+                    ${CMAKE_BINARY_DIR}/${BLOB_NAME}.h
+                    ${CMAKE_BINARY_DIR}/${BLOB_NAME}.c)
+            target_include_directories(${TARGET_NAME} PUBLIC ${CMAKE_BINARY_DIR})
+            # ... CMake, y u gotta be like this.
+            set(_arg_list)
+            set(_arg_counter 0)
+            foreach(_arg IN LISTS ARGN)
+                math(EXPR _arg_counter_mod "${_arg_counter} % 2")
+                if (NOT ${_arg_counter_mod})
+                    list(APPEND _arg_list --input)
+                endif()
+                list(APPEND _arg_list ${_arg})
+                math(EXPR _arg_counter "${_arg_counter} + 1")
+            endforeach()
+            add_custom_command(OUTPUT
+                ${CMAKE_BINARY_DIR}/${BLOB_NAME}.h
+                ${CMAKE_BINARY_DIR}/${BLOB_NAME}.c
+                COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/tools/blobify.py
+                    --output ${CMAKE_BINARY_DIR}/${BLOB_NAME}.blob
+                    ${_arg_list}
+                COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/tools/bin_to_text.py
+                    --output ${CMAKE_BINARY_DIR}/${BLOB_NAME}
+                    --blob-name ${BLOB_NAME}
+                    ${CMAKE_BINARY_DIR}/${BLOB_NAME}.blob
+                BYPRODUCTS
+                    ${CMAKE_BINARY_DIR}/${BLOB_NAME}.blob)
+        endfunction()
+    else()
+        message("Did not find Python 3 interpreter.")
+    endif()
+
     add_subdirectory(tests)
     add_subdirectory(viewer)
 

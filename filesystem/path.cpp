@@ -68,7 +68,7 @@ string canonicalize_path(const string &path)
 			if (!result.empty())
 				result.pop_back();
 		}
-		else
+		else if (i != ".")
 			result.push_back(move(i));
 	}
 

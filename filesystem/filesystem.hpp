@@ -236,4 +236,88 @@ private:
 	std::unordered_map<std::string, std::unique_ptr<ScratchFile>> scratch_files;
 };
 
+struct ConstantMemoryFile : Granite::File
+{
+	ConstantMemoryFile(const void *mapped_, size_t size_)
+		: mapped(mapped_), size(size_)
+	{
+	}
+
+	void *map() override
+	{
+		return const_cast<void *>(mapped);
+	}
+
+	void *map_write(size_t) override
+	{
+		return nullptr;
+	}
+
+	bool reopen() override
+	{
+		return true;
+	}
+
+	void unmap() override
+	{
+	}
+
+	size_t get_size() override
+	{
+		return size;
+	}
+
+	const void *mapped;
+	size_t size;
+};
+
+class BlobFilesystem : public FilesystemBackend
+{
+public:
+	BlobFilesystem(std::unique_ptr<File> file, std::string basedir);
+
+	std::vector<ListEntry> list(const std::string &path) override;
+
+	std::unique_ptr<File> open(const std::string &path, FileMode mode) override;
+
+	bool stat(const std::string &path, FileStat &stat) override;
+
+	FileNotifyHandle install_notification(const std::string &path, std::function<void(const FileNotifyInfo &)> func) override;
+
+	void uninstall_notification(FileNotifyHandle handle) override;
+
+	void poll_notifications() override;
+
+	int get_notification_fd() const override;
+
+private:
+	std::unique_ptr<File> file;
+	std::string base;
+
+	struct BlobFile
+	{
+		std::string path;
+		size_t offset;
+		size_t size;
+	};
+
+	struct Directory
+	{
+		std::string path;
+		std::vector<std::unique_ptr<Directory>> dirs;
+		std::vector<BlobFile> files;
+	};
+	std::unique_ptr<Directory> root;
+	BlobFile *find_file(const std::string &path);
+	Directory *find_directory(const std::string &path);
+	Directory *make_directory(const std::string &path);
+	void parse();
+	const uint8_t *blob_base = nullptr;
+
+	static uint8_t read_u8(const uint8_t *&buf, size_t &size);
+	static uint64_t read_u64(const uint8_t *&buf, size_t &size);
+	static std::string read_string(const uint8_t *&buf, size_t &size, size_t len);
+	void add_entry(const std::string &path, size_t offset, size_t size);
+};
+
 }

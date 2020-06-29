@@ -22,7 +22,7 @@ def main():
         print('#include <stdint.h>', file = f)
         print('#include <stddef.h>', file = f)
         print('#ifdef __cplusplus', file = f)
-        print('extern C {', file = f)
+        print('extern "C" {', file = f)
         print('#endif', file = f)
         print('extern const uint8_t ' + args.blob_name + '[];', file = f)
         print('extern const size_t ' + args.blob_name + '_size;', file = f)

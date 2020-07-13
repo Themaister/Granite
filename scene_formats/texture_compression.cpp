@@ -30,8 +30,7 @@
 #endif
 
 #ifdef HAVE_ASTC_ENCODER
-#undef IGNORE
-#include "astc_codec_internals.h"
+#include "astcenc.h"
 #endif
 
 #include "rgtc_compressor.hpp"
@@ -141,17 +140,6 @@ static unsigned output_format_to_input_stride(VkFormat format)
 }
 #endif
 
-#ifdef HAVE_ASTC_ENCODER
-struct FirstASTC
-{
-	FirstASTC()
-	{
-		prepare_angular_tables();
-		build_quantization_mode_table();
-	}
-};
-#endif
-
 struct CompressorState : enable_shared_from_this<CompressorState>
 {
 	shared_ptr<MemoryMappedTexture> input;
@@ -246,7 +234,9 @@ void CompressorState::setup(const CompressorArguments &args)
 			force_alpha = true;
 		}
 
-#ifdef HAVE_ISPC
+#if defined(HAVE_ASTC_ENCODER)
+		use_astc_encoder = true;
+#elif defined(HAVE_ISPC)
 		if (alpha || force_alpha)
 		{
 			if (args.quality <= 3)
@@ -256,8 +246,6 @@ void CompressorState::setup(const CompressorArguments &args)
 		}
 		else
 			GetProfile_astc_fast(&astc, x, y);
-#elif defined(HAVE_ASTC_ENCODER)
-		use_astc_encoder = true;
 #endif
 
 		return true;
@@ -856,219 +844,228 @@ void CompressorState::enqueue_compression_block_ispc(TaskGroup &group, const Com
 void CompressorState::enqueue_compression_block_astc(TaskGroup &compression_task, const CompressorArguments &args,
                                                      unsigned layer, unsigned level, TextureMode mode)
 {
-	static FirstASTC first_astc;
+	struct ContextDeleter
+	{
+		void operator()(astcenc_context *context)
+		{
+			astcenc_context_free(context);
+		}
+	};
 
 	struct CodecState
 	{
-		error_weighting_params ewp = {};
-		vector<uint8_t *> rows;
-		vector<uint8_t> buffer;
-		astc_codec_image astc_image = {};
-
+		astcenc_config config;
+		std::unique_ptr<astcenc_context, ContextDeleter> context;
 		uint32_t layer, level;
 		int blocks_x, blocks_y;
-		void **ptr;
+
+		std::vector<uint8_t *> rows_8;
+		std::vector<uint16_t *> rows_16;
+		std::vector<u8vec4> data_padded_8;
+		std::vector<u16vec4> data_padded_16;
+		uint8_t **slice_8 = nullptr;
+		uint16_t **slice_16 = nullptr;
+		astcenc_image image;
 	};
 
 	auto state = make_shared<CodecState>();
+	unsigned flags = 0;
 
-	state->ewp.rgb_power = 1.0f;
-	state->ewp.alpha_power = 1.0f;
-	state->ewp.rgb_base_weight = 1.0f;
-	state->ewp.alpha_base_weight = 1.0f;
+	astcenc_profile profile;
+	switch (mode)
+	{
+	case TextureMode::HDR:
+		profile = ASTCENC_PRF_HDR;
+		break;
 
-	state->ewp.rgba_weights[0] = 1.0f;
-	state->ewp.rgba_weights[1] = 1.0f;
-	state->ewp.rgba_weights[2] = 1.0f;
+	case TextureMode::sRGBA:
+	case TextureMode::RGBA:
+		profile = ASTCENC_PRF_LDR_SRGB;
+		break;
 
-	if (mode == TextureMode::sRGBA || mode == TextureMode::RGBA || force_alpha)
-		state->ewp.rgba_weights[3] = 1.0f;
+	case TextureMode::sRGB:
+	case TextureMode::RGB:
+		profile = ASTCENC_PRF_LDR;
+		break;
+
+	default:
+		LOGE("Unknown TextureMode.\n");
+		return;
+	}
+
+	VkFormat input_format = input->get_layout().get_format();
+	bool use_alpha = force_alpha || mode == TextureMode::sRGBA || mode == TextureMode::RGBA;
+	if (use_alpha)
+		flags |= ASTCENC_FLG_USE_ALPHA_WEIGHT;
+	if (input_format == VK_FORMAT_R8G8_UNORM)
+		flags |= ASTCENC_FLG_MAP_NORMAL;
+
+	astcenc_preset preset;
+	if (args.quality >= 5)
+		preset = ASTCENC_PRE_EXHAUSTIVE;
+	else if (args.quality >= 4)
+		preset = ASTCENC_PRE_THOROUGH;
+	else if (args.quality >= 3)
+		preset = ASTCENC_PRE_MEDIUM;
 	else
-		state->ewp.rgba_weights[3] = 0.0f;
+		preset = ASTCENC_PRE_FAST;
 
-	float log10_texels = log10(float(block_size_x * block_size_y));
-	float dblimit = std::max(95.0f - 35.0f * log10_texels, 70.0f - 19.0f * log10_texels);
-
-	if (args.quality >= 3)
+	if (astcenc_init_config(profile, block_size_x, block_size_y, 1,
+	                        preset, flags, state->config) != ASTCENC_SUCCESS)
 	{
-		state->ewp.max_refinement_iters = 2;
-		state->ewp.block_mode_cutoff = 75.0f / 100.0f;
-		state->ewp.partition_1_to_2_limit = 1.2f;
-		state->ewp.lowest_correlation_cutoff = 0.75f;
-		state->ewp.partition_search_limit = 25;
-		dblimit = std::max(95.0f - 35.0f * log10_texels, 70.0f - 19.0f * log10_texels);
-	}
-	else if (args.quality == 2)
-	{
-		state->ewp.max_refinement_iters = 1;
-		state->ewp.block_mode_cutoff = 50.0f / 100.0f;
-		state->ewp.partition_1_to_2_limit = 1.0f;
-		state->ewp.lowest_correlation_cutoff = 0.5f;
-		state->ewp.partition_search_limit = 4;
-		dblimit = std::max(85.0f - 35.0f * log10_texels, 63.0f - 19.0f * log10_texels);
-	}
-	else if (args.quality <= 1)
-	{
-		state->ewp.max_refinement_iters = 1;
-		state->ewp.block_mode_cutoff = 25.0f / 100.0f;
-		state->ewp.partition_1_to_2_limit = 1.0f;
-		state->ewp.lowest_correlation_cutoff = 0.5f;
-		state->ewp.partition_search_limit = 2;
-		dblimit = std::max(70.0f - 35.0f * log10_texels, 53.0f - 19.0f * log10_texels);
+		LOGE("Failed to initialize ASTC encoder config.\n");
+		return;
 	}
 
-	if (mode == TextureMode::HDR)
-	{
-		state->ewp.rgb_power = 0.75f;
-		state->ewp.alpha_power = 0.75f;
-#if 0
-		state->ewp.mean_stdev_radius = 0;
-		state->ewp.rgb_base_weight = 0.0f;
-		state->ewp.rgb_mean_weight = 1.0f;
-		state->ewp.alpha_base_weight = 0.0f;
-		state->ewp.alpha_mean_weight = 1.0f;
-#endif
-		state->ewp.partition_search_limit = PARTITION_COUNT;
-		state->ewp.texel_avg_error_limit = 0.0f;
-		rgb_force_use_of_hdr = 1;
-		alpha_force_use_of_hdr = 1;
-	}
-	else
-	{
-		rgb_force_use_of_hdr = 0;
-		alpha_force_use_of_hdr = 0;
-		state->ewp.texel_avg_error_limit = pow(0.1f, dblimit * 0.1f) * 65535.0f * 65535.0f;
-	}
-
-	float max_color_component_weight = std::max(std::max(state->ewp.rgba_weights[0], state->ewp.rgba_weights[1]),
-	                                            std::max(state->ewp.rgba_weights[2], state->ewp.rgba_weights[3]));
-	for (auto &w : state->ewp.rgba_weights)
-		w = std::max(w, max_color_component_weight / 1000.0f);
-
-	expand_block_artifact_suppression(block_size_x, block_size_y, 1, &state->ewp);
+	// Errors in alpha channel are irrelevant if we're not using it.
+	if (!use_alpha && (input_format == VK_FORMAT_R8G8B8A8_UNORM || input_format == VK_FORMAT_R8G8B8A8_SRGB))
+		state->config.cw_a_weight = 0.0f;
 
 	int width = input->get_layout().get_width(level);
 	int height = input->get_layout().get_height(level);
 
-	state->astc_image.xsize = width;
-	state->astc_image.ysize = height;
-	state->astc_image.zsize = 1;
-	state->astc_image.padding = std::max(state->ewp.mean_stdev_radius, state->ewp.alpha_radius);
+	int num_blocks_x = (width + block_size_x - 1) / block_size_x;
+	int num_blocks_y = (height + block_size_y - 1) / block_size_y;
+	int num_blocks = num_blocks_x * num_blocks_y;
+	int num_threads = (num_blocks + 63) / 64;
 
-	int exsize = state->astc_image.xsize + state->astc_image.padding * 2;
-	int eysize = state->astc_image.ysize + state->astc_image.padding * 2;
-	int estride = use_hdr ? 8 : 4;
-	state->rows.resize(eysize);
-
-	state->buffer.resize(exsize * eysize * estride);
-	state->rows[0] = state->buffer.data();
-	for (int y = 1; y < eysize; y++)
-		state->rows[y] = state->rows[0] + y * exsize * estride;
-
-	auto input_format = input->get_layout().get_format();
-	for (int y = 0; y < eysize; y++)
+	astcenc_context *context = nullptr;
+	if (astcenc_context_alloc(state->config, num_threads, &context) != ASTCENC_SUCCESS)
 	{
-		for (int x = 0; x < exsize; x++)
-		{
-			int dst_offset = x + y * exsize;
-			int cx = clamp(x - state->astc_image.padding, 0, state->astc_image.xsize - 1);
-			int cy = clamp(y - state->astc_image.padding, 0, state->astc_image.ysize - 1);
+		LOGE("Failed to allocate ASTC encoding context.\n");
+		return;
+	}
 
-			if (input_format == VK_FORMAT_R16G16B16A16_SFLOAT ||
-			    input_format == VK_FORMAT_R8G8B8A8_UNORM ||
-			    input_format == VK_FORMAT_R8G8B8A8_SRGB)
+	state->context.reset(context);
+
+	if (input_format == VK_FORMAT_R16G16B16A16_SFLOAT ||
+	    input_format == VK_FORMAT_R16G16_SFLOAT ||
+	    input_format == VK_FORMAT_R16_SFLOAT)
+	{
+		state->data_padded_16.resize(width * height);
+		state->rows_16.reserve(height);
+		for (int y = 0; y < height; y++)
+			state->rows_16.push_back(&state->data_padded_16[y * width].x);
+		state->slice_16 = state->rows_16.data();
+	}
+	else
+	{
+		state->data_padded_8.resize(width * height);
+		state->rows_8.reserve(height);
+		for (int y = 0; y < height; y++)
+			state->rows_8.push_back(&state->data_padded_8[y * width].x);
+		state->slice_8 = state->rows_8.data();
+	}
+
+	int pixel_size = Vulkan::TextureFormatLayout::format_block_size(input_format, VK_IMAGE_ASPECT_COLOR_BIT);
+
+	for (int y = 0; y < height; y++)
+	{
+		for (int x = 0; x < width; x++)
+		{
+			if (input_format == VK_FORMAT_R16G16B16A16_SFLOAT)
 			{
-				auto *src = input->get_layout().data_opaque(cx, cy, layer, level);
-				memcpy(&state->buffer[dst_offset * estride], src, estride);
-			}
-			else if (input_format == VK_FORMAT_R8G8_UNORM)
-			{
-				auto *src = input->get_layout().data_2d<u8vec2>(cx, cy, layer, level);
-				uint8_t *dst = &state->buffer[dst_offset * estride];
-				dst[0] = src->x;
-				dst[1] = src->x;
-				dst[2] = src->x;
-				dst[3] = src->y;
+				auto *src = input->get_layout().data_opaque(x, y, layer, level);
+				memcpy(&state->data_padded_16[y * width + x], src, pixel_size);
 			}
 			else if (input_format == VK_FORMAT_R16G16_SFLOAT)
 			{
-				auto *src = input->get_layout().data_2d<u16vec2>(cx, cy, layer, level);
-				auto *dst = reinterpret_cast<uint16_t *>(&state->buffer[dst_offset * estride]);
-				dst[0] = src->x;
-				dst[1] = src->x;
-				dst[2] = src->x;
-				dst[3] = src->y;
-			}
-			else if (input_format == VK_FORMAT_R8_UNORM)
-			{
-				auto *src = input->get_layout().data_2d<uint8_t>(cx, cy, layer, level);
-				uint8_t *dst = &state->buffer[dst_offset * estride];
-				dst[0] = *src;
-				dst[1] = *src;
-				dst[2] = *src;
-				dst[3] = *src;
+				auto *src = input->get_layout().data_2d<u16vec2>(x, y, layer, level);
+				auto *dst = &state->data_padded_16[y * width + x];
+				dst->x = src->x;
+				dst->y = src->x;
+				dst->z = src->x;
+				dst->w = src->y;
 			}
 			else if (input_format == VK_FORMAT_R16_SFLOAT)
 			{
-				auto *src = input->get_layout().data_2d<uint16_t>(cx, cy, layer, level);
-				auto *dst = reinterpret_cast<uint16_t *>(&state->buffer[dst_offset * estride]);
-				dst[0] = *src;
-				dst[1] = *src;
-				dst[2] = *src;
-				dst[3] = *src;
+				auto *src = input->get_layout().data_2d<uint16_t>(x, y, layer, level);
+				auto *dst = &state->data_padded_16[y * width + x];
+				*dst = u16vec4(*src);
+			}
+			else if (input_format == VK_FORMAT_R8G8B8A8_UNORM || input_format == VK_FORMAT_R8G8B8A8_SRGB)
+			{
+				auto *src = input->get_layout().data_opaque(x, y, layer, level);
+				memcpy(&state->data_padded_8[y * width + x], src, pixel_size);
+			}
+			else if (input_format == VK_FORMAT_R8G8_UNORM)
+			{
+				auto *src = input->get_layout().data_2d<u8vec2>(x, y, layer, level);
+				auto *dst = &state->data_padded_8[y * width + x];
+				dst->x = src->x;
+				dst->y = src->x;
+				dst->z = src->x;
+				dst->w = src->y;
+			}
+			else if (input_format == VK_FORMAT_R8_UNORM)
+			{
+				auto *src = input->get_layout().data_2d<uint8_t>(x, y, layer, level);
+				auto *dst = &state->data_padded_8[y * width + x];
+				*dst = u8vec4(*src);
 			}
 		}
 	}
 
-	state->ptr = reinterpret_cast<void **>(state->rows.data());
-
-	// Triple-pointer wat.
-	if (use_hdr)
-		state->astc_image.imagedata16 = reinterpret_cast<uint16_t ***>(&state->ptr);
-	else
-		state->astc_image.imagedata8 = reinterpret_cast<uint8_t ***>(&state->ptr);
-
-#if 0
-	if (state->astc_image.padding > 0 || state->ewp.rgb_mean_weight != 0.0f || state->ewp.rgb_stdev_weight != 0.0f ||
-	    state->ewp.alpha_mean_weight != 0.0f || state->ewp.alpha_stdev_weight != 0.0f)
-	{
-		const swizzlepattern swizzle = { 0, 1, 2, 3 };
-
-		// For some reason, this is not thread-safe :(
-		static mutex global_lock;
-		lock_guard<mutex> holder{global_lock};
-
-		compute_averages_and_variances(&state->astc_image, state->ewp.rgb_power, state->ewp.alpha_power,
-		                               state->ewp.mean_stdev_radius, state->ewp.alpha_radius, swizzle);
-	}
-#endif
-
-	state->blocks_x = (width + block_size_x - 1) / block_size_x;
-	state->blocks_y = (height + block_size_y - 1) / block_size_y;
 	state->layer = layer;
 	state->level = level;
 
-	for (int y = 0; y < state->blocks_y; y++)
+	state->image.dim_x = width;
+	state->image.dim_y = height;
+	state->image.dim_z = 1;
+	state->image.dim_pad = 0;
+	state->image.data16 = &state->slice_16;
+	state->image.data8 = &state->slice_8;
+
+	static const astcenc_swizzle swiz = { ASTCENC_SWZ_R, ASTCENC_SWZ_G, ASTCENC_SWZ_B, ASTCENC_SWZ_A };
+	auto *group = compression_task->get_thread_group();
+
+	if (astcenc_compress_image_multistage(state->context.get(), state->image, swiz,
+			ASTCENC_COMPRESS_STAGE_INIT,
+			static_cast<uint8_t *>(output->get_layout().data(state->layer, state->level)),
+			output->get_layout().get_layer_size(state->level), 0) != ASTCENC_SUCCESS)
 	{
-		for (int x = 0; x < state->blocks_x; x++)
-		{
-			compression_task->enqueue_task([=]() {
-				symbolic_compressed_block scb;
-				physical_compressed_block pcb;
-				imageblock pb = {};
-				const swizzlepattern swizzle = { 0, 1, 2, 3 };
-
-				fetch_imageblock(&state->astc_image, &pb, block_size_x, block_size_y, 1, x * block_size_x,
-				                 y * block_size_y, 0, swizzle);
-				compress_symbolic_block(&state->astc_image, use_hdr ? DECODE_HDR : DECODE_LDR,
-				                        block_size_x, block_size_y, 1, &state->ewp, &pb, &scb);
-				pcb = symbolic_to_physical(block_size_x, block_size_y, 1, &scb);
-
-				auto *dst = static_cast<uint8_t *>(output->get_layout().data(state->layer, state->level));
-				memcpy(dst + 16 * (y * state->blocks_x + x), &pcb, sizeof(pcb));
-			});
-		}
+		LOGE("Failed to initialize ASTC encoder.\n");
+		return;
 	}
+
+	auto compute_task = group->create_task();
+	for (int i = 0; i < num_threads; i++)
+	{
+		compute_task->enqueue_task([this, state, i]() {
+			if (astcenc_compress_image_multistage(state->context.get(), state->image, swiz,
+					ASTCENC_COMPRESS_STAGE_COMPUTE_AVERAGES_AND_VARIANCE,
+					static_cast<uint8_t *>(output->get_layout().data(state->layer, state->level)),
+					output->get_layout().get_layer_size(state->level), i) != ASTCENC_SUCCESS)
+			{
+				LOGE("Failed to run compute averages and variance stage.\n");
+			}
+		});
+	}
+
+	for (int i = 0; i < num_threads; i++)
+	{
+		compression_task->enqueue_task([this, state, i]() {
+			if (astcenc_compress_image_multistage(state->context.get(), state->image, swiz,
+					ASTCENC_COMPRESS_STAGE_EXECUTE,
+					static_cast<uint8_t *>(output->get_layout().data(state->layer, state->level)),
+					output->get_layout().get_layer_size(state->level), i) != ASTCENC_SUCCESS)
+			{
+				LOGE("Failed to compress ASTC blocks.\n");
+			}
+		});
+	}
+	group->add_dependency(compression_task, compute_task);
+
+	auto cleanup_task = group->create_task([this, state]() {
+		if (astcenc_compress_image_multistage(state->context.get(), state->image, swiz,
+				ASTCENC_COMPRESS_STAGE_CLEANUP,
+				static_cast<uint8_t *>(output->get_layout().data(state->layer, state->level)),
+				output->get_layout().get_layer_size(state->level), 0) != ASTCENC_SUCCESS)
+		{
+			LOGE("Failed to cleanup ASTC encoder.\n");
+		}
+	});
+	group->add_dependency(cleanup_task, compression_task);
 }
 #endif
 

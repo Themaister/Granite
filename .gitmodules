@@ -24,7 +24,7 @@
 	url = git://github.com/nothings/stb
 [submodule "third_party/astc-encoder"]
 	path = third_party/astc-encoder
-	url = http://bitbucket.org/Themaister/astc-encoder
+	url = git://github.com/Themaister/astc-encoder
 [submodule "third_party/fossilize"]
 	path = third_party/fossilize
 	url = git://github.com/ValveSoftware/Fossilize

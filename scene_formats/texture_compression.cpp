@@ -927,7 +927,7 @@ void CompressorState::enqueue_compression_block_astc(TaskGroup &compression_task
 	int num_blocks_x = (width + block_size_x - 1) / block_size_x;
 	int num_blocks_y = (height + block_size_y - 1) / block_size_y;
 	int num_blocks = num_blocks_x * num_blocks_y;
-	int num_threads = (num_blocks + 63) / 64;
+	int num_threads = (num_blocks + 127) / 128;
 
 	astcenc_context *context = nullptr;
 	if (astcenc_context_alloc(state->config, num_threads, &context) != ASTCENC_SUCCESS)

@@ -33,7 +33,7 @@
 	url = git://github.com/zeux/volk
 [submodule "third_party/meshoptimizer"]
 	path = third_party/meshoptimizer
-	url = git://github.com/zeux/meshoptimizer
+	url = git://github.com/Themaister/meshoptimizer
 [submodule "third_party/muFFT"]
 	path = third_party/muFFT
 	url = git://github.com/Themaister/muFFT

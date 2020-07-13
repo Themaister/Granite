@@ -895,10 +895,10 @@ void CompressorState::enqueue_compression_block_astc(TaskGroup &compression_task
 
 	VkFormat input_format = input->get_layout().get_format();
 	bool use_alpha = force_alpha || mode == TextureMode::sRGBA || mode == TextureMode::RGBA;
-	if (use_alpha)
-		flags |= ASTCENC_FLG_USE_ALPHA_WEIGHT;
 	if (input_format == VK_FORMAT_R8G8_UNORM)
 		flags |= ASTCENC_FLG_MAP_NORMAL;
+	else if (use_alpha)
+		flags |= ASTCENC_FLG_USE_ALPHA_WEIGHT;
 
 	astcenc_preset preset;
 	if (args.quality >= 5)

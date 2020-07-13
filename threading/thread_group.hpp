@@ -101,6 +101,7 @@ struct TaskGroup : Util::IntrusivePtrEnabled<TaskGroup, TaskGroupDeleter, Util::
 	TaskDepsHandle deps;
 	void enqueue_task(std::function<void ()> func);
 	void set_fence_counter_signal(TaskSignal *signal);
+	ThreadGroup *get_thread_group() const;
 
 	unsigned id = 0;
 	bool flushed = false;

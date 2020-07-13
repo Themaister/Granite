@@ -231,6 +231,11 @@ void Internal::TaskGroup::set_fence_counter_signal(TaskSignal *signal)
 	deps->signal = signal;
 }
 
+ThreadGroup *Internal::TaskGroup::get_thread_group() const
+{
+	return group;
+}
+
 void Internal::TaskGroup::enqueue_task(std::function<void()> func)
 {
 	auto ref = reference_from_this();

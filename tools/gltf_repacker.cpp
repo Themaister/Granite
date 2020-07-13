@@ -67,6 +67,10 @@ static void print_help()
 
 int main(int argc, char *argv[])
 {
+	Global::init(Global::MANAGER_FEATURE_THREAD_GROUP_BIT |
+	             Global::MANAGER_FEATURE_FILESYSTEM_BIT |
+	             Global::MANAGER_FEATURE_EVENT_BIT);
+
 	struct Arguments
 	{
 		string input;

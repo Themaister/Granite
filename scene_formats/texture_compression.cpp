@@ -1016,7 +1016,12 @@ void CompressorState::enqueue_compression_block_astc(TaskGroup &compression_task
 	state->image.data16 = &state->slice_16;
 	state->image.data8 = &state->slice_8;
 
-	static const astcenc_swizzle swiz = { ASTCENC_SWZ_R, ASTCENC_SWZ_G, ASTCENC_SWZ_B, ASTCENC_SWZ_A };
+	const astcenc_swizzle swiz = {
+		ASTCENC_SWZ_R,
+		ASTCENC_SWZ_G,
+		ASTCENC_SWZ_B,
+		use_alpha ? ASTCENC_SWZ_A : ASTCENC_SWZ_1
+	};
 	auto *group = compression_task->get_thread_group();
 
 	if (astcenc_compress_image_multistage(state->context.get(), state->image, swiz,
@@ -1031,7 +1036,7 @@ void CompressorState::enqueue_compression_block_astc(TaskGroup &compression_task
 	auto compute_task = group->create_task();
 	for (int i = 0; i < num_threads; i++)
 	{
-		compute_task->enqueue_task([this, state, i]() {
+		compute_task->enqueue_task([this, state, i, swiz]() {
 			if (astcenc_compress_image_multistage(state->context.get(), state->image, swiz,
 					ASTCENC_COMPRESS_STAGE_COMPUTE_AVERAGES_AND_VARIANCE,
 					static_cast<uint8_t *>(output->get_layout().data(state->layer, state->level)),
@@ -1044,7 +1049,7 @@ void CompressorState::enqueue_compression_block_astc(TaskGroup &compression_task
 
 	for (int i = 0; i < num_threads; i++)
 	{
-		compression_task->enqueue_task([this, state, i]() {
+		compression_task->enqueue_task([this, state, i, swiz]() {
 			if (astcenc_compress_image_multistage(state->context.get(), state->image, swiz,
 					ASTCENC_COMPRESS_STAGE_EXECUTE,
 					static_cast<uint8_t *>(output->get_layout().data(state->layer, state->level)),
@@ -1056,7 +1061,7 @@ void CompressorState::enqueue_compression_block_astc(TaskGroup &compression_task
 	}
 	group->add_dependency(compression_task, compute_task);
 
-	auto cleanup_task = group->create_task([this, state]() {
+	auto cleanup_task = group->create_task([this, state, swiz]() {
 		if (astcenc_compress_image_multistage(state->context.get(), state->image, swiz,
 				ASTCENC_COMPRESS_STAGE_CLEANUP,
 				static_cast<uint8_t *>(output->get_layout().data(state->layer, state->level)),

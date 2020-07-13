@@ -693,7 +693,11 @@ else()
 endif()
 
 if (NOT GRANITE_VULKAN_ONLY)
-    set(GRANITE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}" PARENT_SCOPE)
+    if ("${CMAKE_CURRENT_SOURCE_DIR}" STREQUAL "${CMAKE_SOURCE_DIR}")
+        set(GRANITE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+    else()
+        set(GRANITE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}" PARENT_SCOPE)
+    endif()
     function(add_blob_archive_target TARGET_NAME BLOB_NAME)
         find_package(Python3 REQUIRED)
         set_source_files_properties(

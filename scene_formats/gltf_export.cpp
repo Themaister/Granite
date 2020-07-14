@@ -735,13 +735,13 @@ void RemapState::emit_material(unsigned remapped_material)
 	if (!mat.normal.path.empty())
 	{
 		output.normal = emit_texture(mat.normal, mat.sampler, Material::Textures::Normal,
-		                             options->compression, options->texcomp_quality, TextureMode::RGB);
+		                             options->compression, options->texcomp_quality, TextureMode::Normal);
 	}
 
 	if (!mat.occlusion.path.empty())
 	{
 		output.occlusion = emit_texture(mat.occlusion, mat.sampler, Material::Textures::Occlusion,
-		                                options->compression, options->texcomp_quality, TextureMode::RGB);
+		                                options->compression, options->texcomp_quality, TextureMode::Luminance);
 	}
 
 	if (!mat.base_color.path.empty())
@@ -755,7 +755,7 @@ void RemapState::emit_material(unsigned remapped_material)
 	{
 		output.metallic_roughness = emit_texture(mat.metallic_roughness, mat.sampler,
 		                                         Material::Textures::MetallicRoughness,
-		                                         options->compression, options->texcomp_quality, TextureMode::RGB);
+		                                         options->compression, options->texcomp_quality, TextureMode::Mask);
 	}
 
 	if (!mat.emissive.path.empty())
@@ -1337,6 +1337,7 @@ void AnalysisResult::deduce_compression(TextureCompressionFamily family)
 
 		case Material::Textures::Occlusion:
 			compression = TextureCompression::ASTC6x6;
+			mode = TextureMode::Luminance;
 			swizzle_image(*image, { VK_COMPONENT_SWIZZLE_R,
 			                        VK_COMPONENT_SWIZZLE_R,
 			                        VK_COMPONENT_SWIZZLE_R,
@@ -1345,12 +1346,12 @@ void AnalysisResult::deduce_compression(TextureCompressionFamily family)
 
 		case Material::Textures::Normal:
 			compression = TextureCompression::ASTC6x6;
+			mode = TextureMode::NormalLA;
 			swizzle_image(*image, { VK_COMPONENT_SWIZZLE_R,
 			                        VK_COMPONENT_SWIZZLE_R,
 			                        VK_COMPONENT_SWIZZLE_R,
 			                        VK_COMPONENT_SWIZZLE_G });
 
-			mode = TextureMode::RGBA;
 			swizzle.r = VK_COMPONENT_SWIZZLE_R;
 			swizzle.g = VK_COMPONENT_SWIZZLE_A;
 			swizzle.b = VK_COMPONENT_SWIZZLE_ONE;
@@ -1360,11 +1361,11 @@ void AnalysisResult::deduce_compression(TextureCompressionFamily family)
 		case Material::Textures::MetallicRoughness:
 		{
 			compression = TextureCompression::ASTC6x6;
+			mode = TextureMode::MaskLA;
 			auto mr_mode = deduce_metallic_roughness_mode();
 			switch (mr_mode)
 			{
 			case MetallicRoughnessMode::Default:
-				mode = TextureMode::RGBA;
 				swizzle_image(*image, { VK_COMPONENT_SWIZZLE_G,
 				                        VK_COMPONENT_SWIZZLE_G,
 				                        VK_COMPONENT_SWIZZLE_G,
@@ -1386,6 +1387,7 @@ void AnalysisResult::deduce_compression(TextureCompressionFamily family)
 				            VK_COMPONENT_SWIZZLE_ONE : VK_COMPONENT_SWIZZLE_ZERO;
 				swizzle.b = VK_COMPONENT_SWIZZLE_R;
 				swizzle.a = VK_COMPONENT_SWIZZLE_ZERO;
+				mode = TextureMode::Luminance;
 				break;
 
 			case MetallicRoughnessMode::RoughnessDielectric:
@@ -1399,6 +1401,7 @@ void AnalysisResult::deduce_compression(TextureCompressionFamily family)
 				swizzle.b = mr_mode == MetallicRoughnessMode::RoughnessMetal ?
 				            VK_COMPONENT_SWIZZLE_ONE : VK_COMPONENT_SWIZZLE_ZERO;
 				swizzle.a = VK_COMPONENT_SWIZZLE_ZERO;
+				mode = TextureMode::Luminance;
 				break;
 			}
 			break;
@@ -1419,10 +1422,12 @@ void AnalysisResult::deduce_compression(TextureCompressionFamily family)
 
 		case Material::Textures::Occlusion:
 			compression = TextureCompression::BC4;
+			mode = TextureMode::Luminance;
 			break;
 
 		case Material::Textures::MetallicRoughness:
 		{
+			mode = TextureMode::Mask;
 			auto mr_mode = deduce_metallic_roughness_mode();
 			switch (mr_mode)
 			{
@@ -1450,6 +1455,7 @@ void AnalysisResult::deduce_compression(TextureCompressionFamily family)
 				swizzle.b = mr_mode == MetallicRoughnessMode::RoughnessMetal ?
 				            VK_COMPONENT_SWIZZLE_ONE : VK_COMPONENT_SWIZZLE_ZERO;
 				swizzle.a = VK_COMPONENT_SWIZZLE_ZERO;
+				mode = TextureMode::Luminance;
 				break;
 
 			case MetallicRoughnessMode::MetallicRough:
@@ -1464,6 +1470,7 @@ void AnalysisResult::deduce_compression(TextureCompressionFamily family)
 				            VK_COMPONENT_SWIZZLE_ONE : VK_COMPONENT_SWIZZLE_ZERO;
 				swizzle.b = VK_COMPONENT_SWIZZLE_R;
 				swizzle.a = VK_COMPONENT_SWIZZLE_ZERO;
+				mode = TextureMode::Luminance;
 				break;
 			}
 			break;
@@ -1471,6 +1478,7 @@ void AnalysisResult::deduce_compression(TextureCompressionFamily family)
 
 		case Material::Textures::Normal:
 			compression = TextureCompression::BC5;
+			mode = TextureMode::Normal;
 			break;
 
 		default:

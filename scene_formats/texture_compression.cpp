@@ -153,7 +153,6 @@ struct CompressorState : enable_shared_from_this<CompressorState>
 
 	bool use_astc_encoder = false;
 	bool use_hdr = false;
-	bool force_alpha = false;
 
 	unsigned block_size_x = 1;
 	unsigned block_size_y = 1;
@@ -231,13 +230,13 @@ void CompressorState::setup(const CompressorArguments &args)
 					                    VK_COMPONENT_SWIZZLE_ZERO,
 					                    VK_COMPONENT_SWIZZLE_ONE,
 			                    });
-			force_alpha = true;
 		}
 
 #if defined(HAVE_ASTC_ENCODER)
 		use_astc_encoder = true;
 #elif defined(HAVE_ISPC)
-		if (alpha || force_alpha)
+		bool astc_w_swizzle = args.mode == TextureMode::NormalLA || args.mode == TextureMode::MaskLA;
+		if (alpha || astc_w_swizzle)
 		{
 			if (args.quality <= 3)
 				GetProfile_astc_alpha_fast(&astc, x, y);
@@ -358,41 +357,40 @@ void CompressorState::setup(const CompressorArguments &args)
 					                    VK_COMPONENT_SWIZZLE_ZERO,
 					                    VK_COMPONENT_SWIZZLE_ONE,
 			                    });
-			force_alpha = true;
 		}
 
 		switch (args.quality)
 		{
 		case 1:
-			if (alpha || force_alpha)
+			if (alpha)
 				GetProfile_alpha_ultrafast(&bc7);
 			else
 				GetProfile_ultrafast(&bc7);
 			break;
 
 		case 2:
-			if (alpha || force_alpha)
+			if (alpha)
 				GetProfile_alpha_veryfast(&bc7);
 			else
 				GetProfile_veryfast(&bc7);
 			break;
 
 		case 3:
-			if (alpha || force_alpha)
+			if (alpha)
 				GetProfile_alpha_fast(&bc7);
 			else
 				GetProfile_fast(&bc7);
 			break;
 
 		case 4:
-			if (alpha || force_alpha)
+			if (alpha)
 				GetProfile_alpha_basic(&bc7);
 			else
 				GetProfile_basic(&bc7);
 			break;
 
 		case 5:
-			if (alpha || force_alpha)
+			if (alpha)
 				GetProfile_alpha_slow(&bc7);
 			else
 				GetProfile_slow(&bc7);
@@ -879,12 +877,16 @@ void CompressorState::enqueue_compression_block_astc(TaskGroup &compression_task
 		break;
 
 	case TextureMode::sRGBA:
-	case TextureMode::RGBA:
+	case TextureMode::sRGB:
 		profile = ASTCENC_PRF_LDR_SRGB;
 		break;
 
-	case TextureMode::sRGB:
 	case TextureMode::RGB:
+	case TextureMode::RGBA:
+	case TextureMode::Normal:
+	case TextureMode::Mask:
+	case TextureMode::NormalLA:
+	case TextureMode::MaskLA:
 		profile = ASTCENC_PRF_LDR;
 		break;
 
@@ -894,10 +896,13 @@ void CompressorState::enqueue_compression_block_astc(TaskGroup &compression_task
 	}
 
 	VkFormat input_format = input->get_layout().get_format();
-	bool use_alpha = force_alpha || mode == TextureMode::sRGBA || mode == TextureMode::RGBA;
-	if (input_format == VK_FORMAT_R8G8_UNORM)
+	bool use_alpha_weight = mode == TextureMode::sRGBA || mode == TextureMode::RGBA;
+	bool use_alpha_channel = use_alpha_weight || mode == TextureMode::NormalLA || mode == TextureMode::MaskLA;
+	if (mode == TextureMode::NormalLA)
 		flags |= ASTCENC_FLG_MAP_NORMAL;
-	else if (use_alpha)
+	else if (mode == TextureMode::MaskLA)
+		flags |= ASTCENC_FLG_MAP_MASK;
+	else if (use_alpha_weight)
 		flags |= ASTCENC_FLG_USE_ALPHA_WEIGHT;
 
 	astcenc_preset preset;
@@ -916,10 +921,6 @@ void CompressorState::enqueue_compression_block_astc(TaskGroup &compression_task
 		LOGE("Failed to initialize ASTC encoder config.\n");
 		return;
 	}
-
-	// Errors in alpha channel are irrelevant if we're not using it.
-	if (!use_alpha && (input_format == VK_FORMAT_R8G8B8A8_UNORM || input_format == VK_FORMAT_R8G8B8A8_SRGB))
-		state->config.cw_a_weight = 0.0f;
 
 	int width = input->get_layout().get_width(level);
 	int height = input->get_layout().get_height(level);
@@ -1020,7 +1021,7 @@ void CompressorState::enqueue_compression_block_astc(TaskGroup &compression_task
 		ASTCENC_SWZ_R,
 		ASTCENC_SWZ_G,
 		ASTCENC_SWZ_B,
-		use_alpha ? ASTCENC_SWZ_A : ASTCENC_SWZ_1
+		use_alpha_channel ? ASTCENC_SWZ_A : ASTCENC_SWZ_1
 	};
 	auto *group = compression_task->get_thread_group();
 

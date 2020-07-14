@@ -34,6 +34,11 @@ enum class TextureMode
 	RGBA,
 	sRGB,
 	sRGBA,
+	Luminance,
+	Normal,
+	Mask,
+	NormalLA, // Special encoding to help certain formats where we encode as LLL + A.
+	MaskLA, // Special encoding to help certain formats where we encode as LLL + A.
 	HDR,
 	Unknown
 };

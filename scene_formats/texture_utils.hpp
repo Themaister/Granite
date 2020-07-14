@@ -65,6 +65,8 @@ MemoryMappedTexture generate_mipmaps(const Vulkan::TextureFormatLayout &layout, 
 MemoryMappedTexture generate_mipmaps_to_file(const std::string &path, const Vulkan::TextureFormatLayout &layout, MemoryMappedTextureFlags flags);
 MemoryMappedTexture fixup_alpha_edges(const Vulkan::TextureFormatLayout &layout, MemoryMappedTextureFlags flags);
 
+bool swizzle_image(MemoryMappedTexture &texture, const VkComponentMapping &swizzle);
+
 enum class TransparencyType
 {
 	None,

@@ -125,7 +125,6 @@ struct AnalysisResult
 	VkComponentMapping swizzle;
 
 	bool load_image(const string &src, const VkComponentMapping &swizzle);
-	void swizzle_image(const VkComponentMapping &swizzle_);
 	void deduce_compression(TextureCompressionFamily family);
 
 	enum class MetallicRoughnessMode
@@ -1251,47 +1250,6 @@ static VkFormat get_compression_format(TextureCompression compression, TextureMo
 	}
 }
 
-void AnalysisResult::swizzle_image(const VkComponentMapping &swizzle_)
-{
-	if (swizzle_.r != VK_COMPONENT_SWIZZLE_R ||
-	    swizzle_.g != VK_COMPONENT_SWIZZLE_G ||
-	    swizzle_.b != VK_COMPONENT_SWIZZLE_B ||
-	    swizzle_.a != VK_COMPONENT_SWIZZLE_A)
-	{
-		image->make_local_copy();
-
-		auto &layout = image->get_layout();
-		if (layout.get_format() != VK_FORMAT_R8G8B8A8_SRGB && layout.get_format() != VK_FORMAT_R8G8B8A8_UNORM)
-			throw invalid_argument("Can only swizzle RGBA textures.");
-
-		ivec4 swizzles = {};
-		const auto conv_swizzle = [](VkComponentSwizzle swiz) -> int {
-			switch (swiz)
-			{
-			case VK_COMPONENT_SWIZZLE_R:
-				return 0;
-			case VK_COMPONENT_SWIZZLE_G:
-				return 1;
-			case VK_COMPONENT_SWIZZLE_B:
-				return 2;
-			case VK_COMPONENT_SWIZZLE_A:
-				return 3;
-			default:
-				throw invalid_argument("Unrecognized swizzle parameter.");
-			}
-		};
-
-		swizzles.x = conv_swizzle(swizzle_.r);
-		swizzles.y = conv_swizzle(swizzle_.g);
-		swizzles.z = conv_swizzle(swizzle_.b);
-		swizzles.w = conv_swizzle(swizzle_.a);
-
-		transform_texture_layout<u8vec4>(layout, [swizzles](const u8vec4 &v) {
-			return u8vec4(v[swizzles.x], v[swizzles.y], v[swizzles.z], v[swizzles.w]);
-		});
-	}
-}
-
 AnalysisResult::MetallicRoughnessMode AnalysisResult::deduce_metallic_roughness_mode()
 {
 	auto &layout = image->get_layout();
@@ -1350,7 +1308,7 @@ bool AnalysisResult::load_image(const string &src, const VkComponentMapping &swi
 	if (image->get_layout().get_required_size() == 0)
 		return false;
 
-	swizzle_image(swizzle_);
+	swizzle_image(*image, swizzle_);
 	swizzle = {
 		VK_COMPONENT_SWIZZLE_R,
 		VK_COMPONENT_SWIZZLE_G,
@@ -1379,18 +1337,18 @@ void AnalysisResult::deduce_compression(TextureCompressionFamily family)
 
 		case Material::Textures::Occlusion:
 			compression = TextureCompression::ASTC6x6;
-			swizzle_image({ VK_COMPONENT_SWIZZLE_R,
-			                VK_COMPONENT_SWIZZLE_R,
-			                VK_COMPONENT_SWIZZLE_R,
-			                VK_COMPONENT_SWIZZLE_R });
+			swizzle_image(*image, { VK_COMPONENT_SWIZZLE_R,
+			                        VK_COMPONENT_SWIZZLE_R,
+			                        VK_COMPONENT_SWIZZLE_R,
+			                        VK_COMPONENT_SWIZZLE_R });
 			break;
 
 		case Material::Textures::Normal:
 			compression = TextureCompression::ASTC6x6;
-			swizzle_image({ VK_COMPONENT_SWIZZLE_R,
-			                VK_COMPONENT_SWIZZLE_R,
-			                VK_COMPONENT_SWIZZLE_R,
-			                VK_COMPONENT_SWIZZLE_G });
+			swizzle_image(*image, { VK_COMPONENT_SWIZZLE_R,
+			                        VK_COMPONENT_SWIZZLE_R,
+			                        VK_COMPONENT_SWIZZLE_R,
+			                        VK_COMPONENT_SWIZZLE_G });
 
 			mode = TextureMode::RGBA;
 			swizzle.r = VK_COMPONENT_SWIZZLE_R;
@@ -1407,10 +1365,10 @@ void AnalysisResult::deduce_compression(TextureCompressionFamily family)
 			{
 			case MetallicRoughnessMode::Default:
 				mode = TextureMode::RGBA;
-				swizzle_image({VK_COMPONENT_SWIZZLE_G,
-				               VK_COMPONENT_SWIZZLE_G,
-				               VK_COMPONENT_SWIZZLE_G,
-				               VK_COMPONENT_SWIZZLE_B});
+				swizzle_image(*image, { VK_COMPONENT_SWIZZLE_G,
+				                        VK_COMPONENT_SWIZZLE_G,
+				                        VK_COMPONENT_SWIZZLE_G,
+				                        VK_COMPONENT_SWIZZLE_B });
 				swizzle.r = VK_COMPONENT_SWIZZLE_ZERO;
 				swizzle.g = VK_COMPONENT_SWIZZLE_R;
 				swizzle.b = VK_COMPONENT_SWIZZLE_A;
@@ -1419,10 +1377,10 @@ void AnalysisResult::deduce_compression(TextureCompressionFamily family)
 
 			case MetallicRoughnessMode::MetallicRough:
 			case MetallicRoughnessMode::MetallicSmooth:
-				swizzle_image({VK_COMPONENT_SWIZZLE_B,
-				               VK_COMPONENT_SWIZZLE_B,
-				               VK_COMPONENT_SWIZZLE_B,
-				               VK_COMPONENT_SWIZZLE_B});
+				swizzle_image(*image, { VK_COMPONENT_SWIZZLE_B,
+				                        VK_COMPONENT_SWIZZLE_B,
+				                        VK_COMPONENT_SWIZZLE_B,
+				                        VK_COMPONENT_SWIZZLE_B });
 				swizzle.r = VK_COMPONENT_SWIZZLE_ZERO;
 				swizzle.g = mr_mode == MetallicRoughnessMode::MetallicRough ?
 				            VK_COMPONENT_SWIZZLE_ONE : VK_COMPONENT_SWIZZLE_ZERO;
@@ -1432,10 +1390,10 @@ void AnalysisResult::deduce_compression(TextureCompressionFamily family)
 
 			case MetallicRoughnessMode::RoughnessDielectric:
 			case MetallicRoughnessMode::RoughnessMetal:
-				swizzle_image({VK_COMPONENT_SWIZZLE_G,
-				               VK_COMPONENT_SWIZZLE_G,
-				               VK_COMPONENT_SWIZZLE_G,
-				               VK_COMPONENT_SWIZZLE_G});
+				swizzle_image(*image, { VK_COMPONENT_SWIZZLE_G,
+				                        VK_COMPONENT_SWIZZLE_G,
+				                        VK_COMPONENT_SWIZZLE_G,
+				                        VK_COMPONENT_SWIZZLE_G });
 				swizzle.r = VK_COMPONENT_SWIZZLE_ZERO;
 				swizzle.g = VK_COMPONENT_SWIZZLE_R;
 				swizzle.b = mr_mode == MetallicRoughnessMode::RoughnessMetal ?
@@ -1470,10 +1428,10 @@ void AnalysisResult::deduce_compression(TextureCompressionFamily family)
 			{
 			case MetallicRoughnessMode::Default:
 				compression = TextureCompression::BC5;
-				swizzle_image({VK_COMPONENT_SWIZZLE_G,
-				               VK_COMPONENT_SWIZZLE_B,
-				               VK_COMPONENT_SWIZZLE_B,
-				               VK_COMPONENT_SWIZZLE_A});
+				swizzle_image(*image, { VK_COMPONENT_SWIZZLE_G,
+				                        VK_COMPONENT_SWIZZLE_B,
+				                        VK_COMPONENT_SWIZZLE_B,
+				                        VK_COMPONENT_SWIZZLE_A });
 				swizzle.r = VK_COMPONENT_SWIZZLE_ZERO;
 				swizzle.g = VK_COMPONENT_SWIZZLE_R;
 				swizzle.b = VK_COMPONENT_SWIZZLE_G;
@@ -1483,10 +1441,10 @@ void AnalysisResult::deduce_compression(TextureCompressionFamily family)
 			case MetallicRoughnessMode::RoughnessDielectric:
 			case MetallicRoughnessMode::RoughnessMetal:
 				compression = TextureCompression::BC4;
-				swizzle_image({VK_COMPONENT_SWIZZLE_G,
-				               VK_COMPONENT_SWIZZLE_G,
-				               VK_COMPONENT_SWIZZLE_G,
-				               VK_COMPONENT_SWIZZLE_G});
+				swizzle_image(*image, { VK_COMPONENT_SWIZZLE_G,
+				                        VK_COMPONENT_SWIZZLE_G,
+				                        VK_COMPONENT_SWIZZLE_G,
+				                        VK_COMPONENT_SWIZZLE_G });
 				swizzle.r = VK_COMPONENT_SWIZZLE_ZERO;
 				swizzle.g = VK_COMPONENT_SWIZZLE_R;
 				swizzle.b = mr_mode == MetallicRoughnessMode::RoughnessMetal ?
@@ -1497,10 +1455,10 @@ void AnalysisResult::deduce_compression(TextureCompressionFamily family)
 			case MetallicRoughnessMode::MetallicRough:
 			case MetallicRoughnessMode::MetallicSmooth:
 				compression = TextureCompression::BC4;
-				swizzle_image({VK_COMPONENT_SWIZZLE_B,
-				               VK_COMPONENT_SWIZZLE_B,
-				               VK_COMPONENT_SWIZZLE_B,
-				               VK_COMPONENT_SWIZZLE_B});
+				swizzle_image(*image, { VK_COMPONENT_SWIZZLE_B,
+				                        VK_COMPONENT_SWIZZLE_B,
+				                        VK_COMPONENT_SWIZZLE_B,
+				                        VK_COMPONENT_SWIZZLE_B });
 				swizzle.r = VK_COMPONENT_SWIZZLE_ZERO;
 				swizzle.g = mr_mode == MetallicRoughnessMode::MetallicRough ?
 				            VK_COMPONENT_SWIZZLE_ONE : VK_COMPONENT_SWIZZLE_ZERO;

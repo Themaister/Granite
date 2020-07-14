@@ -336,6 +336,137 @@ MemoryMappedTexture fixup_alpha_edges(const Vulkan::TextureFormatLayout &layout,
 	return mapped;
 }
 
+static bool component_is_identity(VkComponentSwizzle swiz, VkComponentSwizzle expected)
+{
+	return swiz == expected || swiz == VK_COMPONENT_SWIZZLE_IDENTITY;
+}
+
+static inline uint16_t swizzle_to_one(uint16_t)
+{
+	return 0x3c00;
+}
+
+static inline uint8_t swizzle_to_one(uint8_t)
+{
+	return 0xff;
+}
+
+template <typename T>
+static inline T extract_component(const tvec4<T> &t, int swiz)
+{
+	if (swiz < 4)
+		return t[swiz];
+	else if (swiz == 4)
+		return swizzle_to_one(T());
+	else
+		return 0;
+}
+
+template <typename T>
+static inline T extract_component(const tvec3<T> &t, int swiz)
+{
+	if (swiz < 3)
+		return t[swiz];
+	else if (swiz == 3 || swiz == 4)
+		return swizzle_to_one(T());
+	else
+		return 0;
+}
+
+template <typename T>
+static inline T extract_component(const tvec2<T> &t, int swiz)
+{
+	if (swiz < 2)
+		return t[swiz];
+	else if (swiz == 3 || swiz == 4)
+		return swizzle_to_one(T());
+	else
+		return 0;
+}
+
+template <typename T>
+static inline T extract_component(const T &t, int swiz)
+{
+	if (swiz < 1)
+		return t;
+	else if (swiz == 3 || swiz == 4)
+		return swizzle_to_one(T());
+	else
+		return 0;
+}
+
+template <typename T>
+static inline void swizzle_image_inner(const Vulkan::TextureFormatLayout &layout, ivec4 swizzles)
+{
+	transform_texture_layout<T>(layout, [swizzles](const T &v) {
+		auto r = extract_component(v, swizzles.x);
+	    auto g = extract_component(v, swizzles.y);
+	    auto b = extract_component(v, swizzles.z);
+	    auto a = extract_component(v, swizzles.w);
+		return T(r, g, b, a);
+	});
+}
+
+bool swizzle_image(MemoryMappedTexture &texture, const VkComponentMapping &swizzle)
+{
+	if (!component_is_identity(swizzle.r, VK_COMPONENT_SWIZZLE_R) ||
+		!component_is_identity(swizzle.g, VK_COMPONENT_SWIZZLE_G) ||
+		!component_is_identity(swizzle.b, VK_COMPONENT_SWIZZLE_B) ||
+		!component_is_identity(swizzle.a, VK_COMPONENT_SWIZZLE_A))
+	{
+		texture.make_local_copy();
+
+		auto &layout = texture.get_layout();
+
+		ivec4 swizzles = {};
+		const auto conv_swizzle = [](VkComponentSwizzle swiz, int identity_component) -> int {
+			switch (swiz)
+			{
+			case VK_COMPONENT_SWIZZLE_IDENTITY:
+				return identity_component;
+			case VK_COMPONENT_SWIZZLE_R:
+				return 0;
+			case VK_COMPONENT_SWIZZLE_G:
+				return 1;
+			case VK_COMPONENT_SWIZZLE_B:
+				return 2;
+			case VK_COMPONENT_SWIZZLE_A:
+				return 3;
+			case VK_COMPONENT_SWIZZLE_ONE:
+				return 4;
+			case VK_COMPONENT_SWIZZLE_ZERO:
+				return 5;
+			default:
+				LOGE("Unrecognized swizzle parameter.");
+				return false;
+			}
+		};
+
+		swizzles.x = conv_swizzle(swizzle.r, 0);
+		swizzles.y = conv_swizzle(swizzle.g, 1);
+		swizzles.z = conv_swizzle(swizzle.b, 2);
+		swizzles.w = conv_swizzle(swizzle.a, 3);
+
+		switch (layout.get_format())
+		{
+		case VK_FORMAT_R8G8B8A8_UNORM:
+		case VK_FORMAT_R8G8B8A8_SRGB:
+			swizzle_image_inner<u8vec4>(layout, swizzles);
+			break;
+
+		case VK_FORMAT_R16G16B16A16_SFLOAT:
+			swizzle_image_inner<u16vec4>(layout, swizzles);
+			break;
+
+		default:
+			LOGE("Unexpected swizzle format %u.\n", unsigned(layout.get_format()));
+			return false;
+		}
+	}
+
+	return true;
+}
+
 static TransparencyType check_transparency(const Vulkan::TextureFormatLayout &layout, unsigned layer, unsigned level)
 {
 	bool non_opaque_pixel = false;

@@ -37,11 +37,62 @@ static void print_help()
 	LOGI("Usage: \n"
 	     "\t[--mipgen]\n"
 	     "\t[--fixup-alpha]\n"
+	     "\t[--alpha]\n"
 	     "\t[--deferred-mipgen]\n"
 	     "\t[--quality [1-5]]\n"
 	     "\t[--format <format>]\n"
+	     "\t[--swizzle <rgba01>x4]\n"
 	     "\t--output <out.gtx>\n"
 	     "\t<in.gtx>\n");
+}
+
+static VkComponentSwizzle parse_swizzle(const char c)
+{
+	switch (c)
+	{
+	case 'r':
+	case 'R':
+		return VK_COMPONENT_SWIZZLE_R;
+
+	case 'g':
+	case 'G':
+		return VK_COMPONENT_SWIZZLE_G;
+
+	case 'b':
+	case 'B':
+		return VK_COMPONENT_SWIZZLE_B;
+
+	case 'a':
+	case 'A':
+		return VK_COMPONENT_SWIZZLE_A;
+
+	case '1':
+		return VK_COMPONENT_SWIZZLE_ONE;
+	case '0':
+		return VK_COMPONENT_SWIZZLE_ZERO;
+
+	default:
+		break;
+	}
+
+	LOGE("Invalid swizzle %c.\n", c);
+	exit(EXIT_FAILURE);
+}
+
+static VkComponentMapping parse_swizzle(const char *str)
+{
+	if (strlen(str) != 4)
+	{
+		LOGE("Swizzle string must be 4 characters.\n");
+		exit(EXIT_FAILURE);
+	}
+
+	return {
+		parse_swizzle(str[0]),
+		parse_swizzle(str[1]),
+		parse_swizzle(str[2]),
+		parse_swizzle(str[3])
+	};
 }
 
 int main(int argc, char *argv[])
@@ -56,6 +107,13 @@ int main(int argc, char *argv[])
 	bool fixup_alpha = false;
 	CompressorArguments args;
 
+	VkComponentMapping swizzle = {
+		VK_COMPONENT_SWIZZLE_R,
+		VK_COMPONENT_SWIZZLE_G,
+		VK_COMPONENT_SWIZZLE_B,
+		VK_COMPONENT_SWIZZLE_A,
+	};
+
 	args.mode = TextureMode::RGB;
 
 	CLICallbacks cbs;
@@ -67,6 +125,7 @@ int main(int argc, char *argv[])
 	cbs.add("--fixup-alpha", [&](CLIParser &) { fixup_alpha = true; });
 	cbs.add("--mipgen", [&](CLIParser &) { generate_mipmap = true; });
 	cbs.add("--deferred-mipgen", [&](CLIParser &) { deferred_generate_mipmap = true; });
+	cbs.add("--swizzle", [&](CLIParser &parser) { swizzle = parse_swizzle(parser.next_string()); });
 	cbs.default_handler = [&](const char *arg) { input_path = arg; };
 	cbs.error_handler = []() { print_help(); };
 	CLIParser parser(move(cbs), argc - 1, argv + 1);
@@ -88,29 +147,8 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	Granite::ColorSpace color;
-	switch (args.format)
-	{
-	case VK_FORMAT_R8_UNORM:
-	case VK_FORMAT_R8G8_UNORM:
-	case VK_FORMAT_R8G8B8A8_UNORM:
-	case VK_FORMAT_BC1_RGB_UNORM_BLOCK:
-	case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:
-	case VK_FORMAT_BC3_UNORM_BLOCK:
-	case VK_FORMAT_BC4_UNORM_BLOCK:
-	case VK_FORMAT_BC5_UNORM_BLOCK:
-	case VK_FORMAT_BC7_UNORM_BLOCK:
-	case VK_FORMAT_ASTC_4x4_UNORM_BLOCK:
-	case VK_FORMAT_ASTC_5x5_UNORM_BLOCK:
-	case VK_FORMAT_ASTC_6x6_UNORM_BLOCK:
-	case VK_FORMAT_ASTC_8x8_UNORM_BLOCK:
-		color = Granite::ColorSpace::Linear;
-		break;
-
-	default:
-		color = Granite::ColorSpace::sRGB;
-		break;
-	}
+	Granite::ColorSpace color = Vulkan::format_is_srgb(args.format) ?
+	                            Granite::ColorSpace::sRGB : Granite::ColorSpace::Linear;
 
 	auto input = make_shared<MemoryMappedTexture>(Granite::load_texture_from_file(input_path, color));
 
@@ -144,6 +182,12 @@ int main(int argc, char *argv[])
 
 	if (input->get_layout().get_format() == VK_FORMAT_R16G16B16A16_SFLOAT)
 		args.mode = TextureMode::HDR;
+
+	if (!swizzle_image(*input, swizzle))
+	{
+		LOGE("Failed to swizzle image.\n");
+		return 1;
+	}
 
 	ThreadGroup &group = *Global::thread_group();
 

@@ -180,9 +180,7 @@ void CompressorState::setup(const CompressorArguments &args)
 
 	const auto is_8bit = [&]() -> bool {
 		return layout.get_format() == VK_FORMAT_R8G8B8A8_SRGB ||
-		       layout.get_format() == VK_FORMAT_R8G8B8A8_UNORM ||
-		       layout.get_format() == VK_FORMAT_R8G8_UNORM ||
-		       layout.get_format() == VK_FORMAT_R8_UNORM;
+		       layout.get_format() == VK_FORMAT_R8G8B8A8_UNORM;
 	};
 
 #ifdef HAVE_ISPC
@@ -193,15 +191,11 @@ void CompressorState::setup(const CompressorArguments &args)
 #endif
 
 	const auto is_unorm = [&]() -> bool {
-		return layout.get_format() == VK_FORMAT_R8G8B8A8_UNORM ||
-		       layout.get_format() == VK_FORMAT_R8G8_UNORM ||
-		       layout.get_format() == VK_FORMAT_R8_UNORM;
+		return layout.get_format() == VK_FORMAT_R8G8B8A8_UNORM;
 	};
 
 	const auto is_16bit_float = [&]() -> bool {
-		return layout.get_format() == VK_FORMAT_R16G16B16A16_SFLOAT ||
-		       layout.get_format() == VK_FORMAT_R16G16_SFLOAT ||
-		       layout.get_format() == VK_FORMAT_R16_SFLOAT;
+		return layout.get_format() == VK_FORMAT_R16G16B16A16_SFLOAT;
 	};
 
 	const auto handle_astc_ldr_format = [&](unsigned x, unsigned y) -> bool {
@@ -211,25 +205,6 @@ void CompressorState::setup(const CompressorArguments &args)
 		{
 			LOGE("Input format to ASTC LDR must be 8-bit.\n");
 			return false;
-		}
-
-		if (layout.get_format() == VK_FORMAT_R8_UNORM)
-		{
-			output->set_swizzle({
-					                    VK_COMPONENT_SWIZZLE_R,
-					                    VK_COMPONENT_SWIZZLE_R,
-					                    VK_COMPONENT_SWIZZLE_R,
-					                    VK_COMPONENT_SWIZZLE_R,
-			                    });
-		}
-		else if (layout.get_format() == VK_FORMAT_R8G8_UNORM)
-		{
-			output->set_swizzle({
-					                    VK_COMPONENT_SWIZZLE_R,
-					                    VK_COMPONENT_SWIZZLE_A,
-					                    VK_COMPONENT_SWIZZLE_ZERO,
-					                    VK_COMPONENT_SWIZZLE_ONE,
-			                    });
 		}
 
 #if defined(HAVE_ASTC_ENCODER)
@@ -338,25 +313,6 @@ void CompressorState::setup(const CompressorArguments &args)
 		{
 			LOGE("Input format to bc7 must be 8-bit.\n");
 			return;
-		}
-
-		if (layout.get_format() == VK_FORMAT_R8_UNORM)
-		{
-			output->set_swizzle({
-					                    VK_COMPONENT_SWIZZLE_R,
-					                    VK_COMPONENT_SWIZZLE_R,
-					                    VK_COMPONENT_SWIZZLE_R,
-					                    VK_COMPONENT_SWIZZLE_R,
-			                    });
-		}
-		else if (layout.get_format() == VK_FORMAT_R8G8_UNORM)
-		{
-			output->set_swizzle({
-					                    VK_COMPONENT_SWIZZLE_R,
-					                    VK_COMPONENT_SWIZZLE_A,
-					                    VK_COMPONENT_SWIZZLE_ZERO,
-					                    VK_COMPONENT_SWIZZLE_ONE,
-			                    });
 		}
 
 		switch (args.quality)
@@ -668,82 +624,12 @@ void CompressorState::enqueue_compression_block_ispc(TaskGroup &group, const Com
 				uint8_t encode_buffer[16 * 8 * 8];
 				rgba_surface surface = {};
 
-				auto format_stride = output_format_to_input_stride(format);
-				if (layout.get_block_stride() == format_stride)
-				{
-					surface.ptr = const_cast<uint8_t *>(static_cast<const uint8_t *>(layout.data(layer, level)));
-					surface.width = std::min(width - x, grid_stride_x);
-					surface.height = std::min(height - y, grid_stride_y);
-					surface.stride = width * output_format_to_input_stride(format);
-					surface.ptr += y * surface.stride + x * output_format_to_input_stride(format);
-				}
-				else
-				{
-					// Need to pad out format to 4 components,
-					// 2 components are transformed to LA8 for optimal compression
-					// (except for BC6H which is only 3 components).
-					// 1 component is transformed to I8.
-
-					surface.width = std::min(width - x, grid_stride_x);
-					surface.height = std::min(height - y, grid_stride_y);
-					surface.stride = surface.width * output_format_to_input_stride(format);
-					surface.ptr = splat_buffer8[0].data;
-
-					if (layout.get_block_stride() == 2 && layout.get_format() == VK_FORMAT_R8G8_UNORM)
-					{
-						for (int sy = 0; sy < surface.height; sy++)
-						{
-							for (int sx = 0; sx < surface.width; sx++)
-							{
-								auto *ptr = &splat_buffer8[sy * surface.width + sx];
-								auto *v = layout.data_2d<u8vec2>(x + sx, y + sy, layer, level);
-								ptr->x = v->x;
-								ptr->y = v->x;
-								ptr->z = v->x;
-								ptr->w = v->y;
-							}
-						}
-					}
-					else if (layout.get_block_stride() == 1 && layout.get_format() == VK_FORMAT_R8_UNORM)
-					{
-						for (int sy = 0; sy < surface.height; sy++)
-						{
-							for (int sx = 0; sx < surface.width; sx++)
-							{
-								auto *ptr = &splat_buffer8[sx * surface.width + sy];
-								auto *v = layout.data_2d<uint8_t>(x + sx, y + sy, layer, level);
-								*ptr = u8vec4(*v);
-							}
-						}
-					}
-					else if (layout.get_block_stride() == 2 && layout.get_format() == VK_FORMAT_R16_SFLOAT)
-					{
-						for (int sy = 0; sy < surface.height; sy++)
-						{
-							for (int sx = 0; sx < surface.width; sx++)
-							{
-								auto *ptr = &splat_buffer16[sy * surface.width + sx];
-								auto *v = layout.data_2d<uint16_t>(x + sx, y + sy, layer, level);
-								*ptr = u16vec4(*v);
-							}
-						}
-					}
-					else if (layout.get_block_stride() == 4 && layout.get_format() == VK_FORMAT_R16G16_SFLOAT)
-					{
-						for (int sy = 0; sy < surface.height; sy++)
-						{
-							for (int sx = 0; sx < surface.width; sx++)
-							{
-								auto *ptr = &splat_buffer16[sy * surface.width + sx];
-								auto *v = layout.data_2d<u16vec2>(x + sx, y + sy, layer, level);
-								ptr->x = v->x;
-								ptr->y = v->y;
-								ptr->z = 0;
-								ptr->w = 0;
-							}
-						}
-					}
-				}
+				assert(layout.get_block_stride() == output_format_to_input_stride(format));
+				surface.ptr = const_cast<uint8_t *>(static_cast<const uint8_t *>(layout.data(layer, level)));
+				surface.width = std::min(width - x, grid_stride_x);
+				surface.height = std::min(height - y, grid_stride_y);
+				surface.stride = width * output_format_to_input_stride(format);
+				surface.ptr += y * surface.stride + x * output_format_to_input_stride(format);
 
 				rgba_surface padded_surface = {};
 
@@ -895,7 +781,6 @@ void CompressorState::enqueue_compression_block_astc(TaskGroup &compression_task
 		return;
 	}
 
-	VkFormat input_format = input->get_layout().get_format();
 	bool use_alpha_weight = mode == TextureMode::sRGBA || mode == TextureMode::RGBA;
 	bool use_alpha_channel = use_alpha_weight || mode == TextureMode::NormalLA || mode == TextureMode::MaskLA;
 	if (mode == TextureMode::NormalLA)
@@ -939,22 +824,33 @@ void CompressorState::enqueue_compression_block_astc(TaskGroup &compression_task
 
 	state->context.reset(context);
 
-	if (input_format == VK_FORMAT_R16G16B16A16_SFLOAT ||
-	    input_format == VK_FORMAT_R16G16_SFLOAT ||
-	    input_format == VK_FORMAT_R16_SFLOAT)
+	constexpr int padding_pixels = 8;
+	int padded_width = width + padding_pixels * 2;
+	int padded_height = height + padding_pixels * 2;
+
+	VkFormat input_format = input->get_layout().get_format();
+	if (input_format == VK_FORMAT_R16G16B16A16_SFLOAT)
 	{
-		state->data_padded_16.resize(width * height);
-		state->rows_16.reserve(height);
+		state->data_padded_16.resize(padded_width * height);
+		state->rows_16.reserve(padded_height);
+		for (unsigned y = 0; y < padding_pixels; y++)
+			state->rows_16.push_back(&state->data_padded_16[0].x);
 		for (int y = 0; y < height; y++)
 			state->rows_16.push_back(&state->data_padded_16[y * width].x);
+		for (unsigned y = 0; y < padding_pixels; y++)
+			state->rows_16.push_back(&state->data_padded_16[(height - 1) * padded_width].x);
 		state->slice_16 = state->rows_16.data();
 	}
 	else
 	{
-		state->data_padded_8.resize(width * height);
-		state->rows_8.reserve(height);
+		state->data_padded_8.resize(padded_width * height);
+		state->rows_8.reserve(padded_height);
+		for (unsigned y = 0; y < padding_pixels; y++)
+			state->rows_8.push_back(&state->data_padded_8[0].x);
 		for (int y = 0; y < height; y++)
-			state->rows_8.push_back(&state->data_padded_8[y * width].x);
+			state->rows_8.push_back(&state->data_padded_8[y * padded_width].x);
+		for (unsigned y = 0; y < padding_pixels; y++)
+			state->rows_8.push_back(&state->data_padded_8[(height - 1) * padded_width].x);
 		state->slice_8 = state->rows_8.data();
 	}
 
@@ -962,47 +858,18 @@ void CompressorState::enqueue_compression_block_astc(TaskGroup &compression_task
 
 	for (int y = 0; y < height; y++)
 	{
-		for (int x = 0; x < width; x++)
+		for (int x = 0; x < padded_width; x++)
 		{
+			int cx = clamp(x - padding_pixels, 0, width - 1);
 			if (input_format == VK_FORMAT_R16G16B16A16_SFLOAT)
 			{
-				auto *src = input->get_layout().data_opaque(x, y, layer, level);
+				auto *src = input->get_layout().data_opaque(cx, y, layer, level);
 				memcpy(&state->data_padded_16[y * width + x], src, pixel_size);
 			}
-			else if (input_format == VK_FORMAT_R16G16_SFLOAT)
+			else
 			{
-				auto *src = input->get_layout().data_2d<u16vec2>(x, y, layer, level);
-				auto *dst = &state->data_padded_16[y * width + x];
-				dst->x = src->x;
-				dst->y = src->x;
-				dst->z = src->x;
-				dst->w = src->y;
-			}
-			else if (input_format == VK_FORMAT_R16_SFLOAT)
-			{
-				auto *src = input->get_layout().data_2d<uint16_t>(x, y, layer, level);
-				auto *dst = &state->data_padded_16[y * width + x];
-				*dst = u16vec4(*src);
-			}
-			else if (input_format == VK_FORMAT_R8G8B8A8_UNORM || input_format == VK_FORMAT_R8G8B8A8_SRGB)
-			{
-				auto *src = input->get_layout().data_opaque(x, y, layer, level);
+				auto *src = input->get_layout().data_opaque(cx, y, layer, level);
 				memcpy(&state->data_padded_8[y * width + x], src, pixel_size);
-			}
-			else if (input_format == VK_FORMAT_R8G8_UNORM)
-			{
-				auto *src = input->get_layout().data_2d<u8vec2>(x, y, layer, level);
-				auto *dst = &state->data_padded_8[y * width + x];
-				dst->x = src->x;
-				dst->y = src->x;
-				dst->z = src->x;
-				dst->w = src->y;
-			}
-			else if (input_format == VK_FORMAT_R8_UNORM)
-			{
-				auto *src = input->get_layout().data_2d<uint8_t>(x, y, layer, level);
-				auto *dst = &state->data_padded_8[y * width + x];
-				*dst = u8vec4(*src);
 			}
 		}
 	}
@@ -1013,7 +880,7 @@ void CompressorState::enqueue_compression_block_astc(TaskGroup &compression_task
 	state->image.dim_x = width;
 	state->image.dim_y = height;
 	state->image.dim_z = 1;
-	state->image.dim_pad = 0;
+	state->image.dim_pad = padding_pixels;
 	state->image.data16 = &state->slice_16;
 	state->image.data8 = &state->slice_8;
 
@@ -1160,12 +1027,24 @@ void CompressorState::enqueue_compression(ThreadGroup &group, const CompressorAr
 	write_task->set_fence_counter_signal(signal);
 }
 
-void compress_texture(ThreadGroup &group, const CompressorArguments &args, const shared_ptr<MemoryMappedTexture> &input,
+bool compress_texture(ThreadGroup &group, const CompressorArguments &args, const shared_ptr<MemoryMappedTexture> &input,
                       TaskGroup &dep, TaskSignal *signal)
 {
 	auto output = make_shared<CompressorState>();
 	output->input = input;
 	output->signal = signal;
+
+	switch (input->get_layout().get_format())
+	{
+	case VK_FORMAT_R8G8B8A8_SRGB:
+	case VK_FORMAT_R8G8B8A8_UNORM:
+	case VK_FORMAT_R16G16B16A16_SFLOAT:
+		break;
+
+	default:
+		LOGE("Unsupported input format for compression: %u\n", unsigned(input->get_layout().get_format()));
+		return false;
+	}
 
 	auto setup_task = group.create_task([&group, output, args]() {
 		output->output = make_shared<MemoryMappedTexture>();
@@ -1206,5 +1085,7 @@ void compress_texture(ThreadGroup &group, const CompressorArguments &args, const
 		output->enqueue_compression(group, args);
 	});
 	group.add_dependency(setup_task, dep);
+
+	return true;
 }
 }

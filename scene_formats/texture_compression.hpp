@@ -53,7 +53,7 @@ struct CompressorArguments
 };
 
 VkFormat string_to_format(const std::string &s);
-void compress_texture(ThreadGroup &group, const CompressorArguments &args,
+bool compress_texture(ThreadGroup &group, const CompressorArguments &args,
                       const std::shared_ptr<SceneFormats::MemoryMappedTexture> &input,
                       TaskGroup &dep, TaskSignal *signal);
 }

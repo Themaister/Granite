@@ -65,6 +65,26 @@ struct TextureViewerApplication : Granite::Application, Granite::EventHandler
 					level--;
 				break;
 
+			case Key::R:
+				swiz.r = swiz.g = swiz.b = swiz.a = VK_COMPONENT_SWIZZLE_R;
+				break;
+
+			case Key::G:
+				swiz.r = swiz.g = swiz.b = swiz.a = VK_COMPONENT_SWIZZLE_G;
+				break;
+
+			case Key::B:
+				swiz.r = swiz.g = swiz.b = swiz.a = VK_COMPONENT_SWIZZLE_B;
+				break;
+
+			case Key::A:
+				swiz.r = swiz.g = swiz.b = swiz.a = VK_COMPONENT_SWIZZLE_A;
+				break;
+
+			case Key::Space:
+				swiz = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A };
+				break;
+
 			default:
 				break;
 			}
@@ -100,6 +120,7 @@ struct TextureViewerApplication : Granite::Application, Granite::EventHandler
 		view_info.layers = 1;
 		view_info.base_layer = layer;
 		view_info.base_level = level;
+		view_info.swizzle = swiz;
 		auto view = device.create_image_view(view_info);
 
 		wsi.set_backbuffer_srgb(Vulkan::format_is_srgb(img.get_format()));
@@ -127,6 +148,7 @@ struct TextureViewerApplication : Granite::Application, Granite::EventHandler
 
 	Texture *texture = nullptr;
 	std::string path;
+	VkComponentMapping swiz = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A };
 };
 
 namespace Granite

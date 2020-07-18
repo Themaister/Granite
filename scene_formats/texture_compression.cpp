@@ -836,7 +836,7 @@ void CompressorState::enqueue_compression_block_astc(TaskGroup &compression_task
 		for (unsigned y = 0; y < padding_pixels; y++)
 			state->rows_16.push_back(&state->data_padded_16[0].x);
 		for (int y = 0; y < height; y++)
-			state->rows_16.push_back(&state->data_padded_16[y * width].x);
+			state->rows_16.push_back(&state->data_padded_16[y * padded_width].x);
 		for (unsigned y = 0; y < padding_pixels; y++)
 			state->rows_16.push_back(&state->data_padded_16[(height - 1) * padded_width].x);
 		state->slice_16 = state->rows_16.data();
@@ -864,12 +864,12 @@ void CompressorState::enqueue_compression_block_astc(TaskGroup &compression_task
 			if (input_format == VK_FORMAT_R16G16B16A16_SFLOAT)
 			{
 				auto *src = input->get_layout().data_opaque(cx, y, layer, level);
-				memcpy(&state->data_padded_16[y * width + x], src, pixel_size);
+				memcpy(&state->data_padded_16[y * padded_width + x], src, pixel_size);
 			}
 			else
 			{
 				auto *src = input->get_layout().data_opaque(cx, y, layer, level);
-				memcpy(&state->data_padded_8[y * width + x], src, pixel_size);
+				memcpy(&state->data_padded_8[y * padded_width + x], src, pixel_size);
 			}
 		}
 	}

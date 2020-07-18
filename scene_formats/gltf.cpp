@@ -776,46 +776,6 @@ void Parser::parse(const string &original_path, const string &json)
 	};
 
 	const auto add_image = [&](const Value &image) {
-		VkComponentMapping swizzle = {
-			VK_COMPONENT_SWIZZLE_R,
-			VK_COMPONENT_SWIZZLE_G,
-			VK_COMPONENT_SWIZZLE_B,
-			VK_COMPONENT_SWIZZLE_A,
-		};
-
-		if (image.HasMember("extras"))
-		{
-			auto &extra = image["extras"];
-			if (extra.HasMember("swizzle"))
-			{
-				auto &swiz = extra["swizzle"];
-				const auto swiz_to_enum = [](unsigned value) -> VkComponentSwizzle {
-					switch (value)
-					{
-					case 0:
-						return VK_COMPONENT_SWIZZLE_R;
-					case 1:
-						return VK_COMPONENT_SWIZZLE_G;
-					case 2:
-						return VK_COMPONENT_SWIZZLE_B;
-					case 3:
-						return VK_COMPONENT_SWIZZLE_A;
-					case 4:
-						return VK_COMPONENT_SWIZZLE_ONE;
-					case 5:
-						return VK_COMPONENT_SWIZZLE_ZERO;
-					default:
-						return VK_COMPONENT_SWIZZLE_IDENTITY;
-					}
-				};
-
-				swizzle.r = swiz_to_enum(swiz[0].GetUint());
-				swizzle.g = swiz_to_enum(swiz[1].GetUint());
-				swizzle.b = swiz_to_enum(swiz[2].GetUint());
-				swizzle.a = swiz_to_enum(swiz[3].GetUint());
-			}
-		}
-
 		if (image.HasMember("bufferView"))
 		{
 			auto index = image["bufferView"].GetUint();
@@ -831,7 +791,7 @@ void Parser::parse(const string &original_path, const string &json)
 				throw runtime_error("Failed to map memory file.");
 
 			memcpy(mapped, json_buffers[view.buffer_index].data() + view.offset, view.length);
-			json_images.push_back({ move(fake_path), swizzle });
+			json_images.emplace_back(move(fake_path));
 		}
 		else
 		{
@@ -845,7 +805,7 @@ void Parser::parse(const string &original_path, const string &json)
 			else if (!strncmp(uri, base64_type_png, strlen(base64_type_png)))
 				base64_data = uri + strlen(base64_type_png);
 			else
-				json_images.push_back({ Path::relpath(original_path, image["uri"].GetString()), swizzle });
+				json_images.emplace_back(Path::relpath(original_path, image["uri"].GetString()));
 
 			if (base64_data)
 			{
@@ -868,7 +828,7 @@ void Parser::parse(const string &original_path, const string &json)
 					throw runtime_error("Failed to map memory file.");
 
 				memcpy(mapped, base64_buffer.data(), base64_buffer.size());
-				json_images.push_back({ move(fake_path), swizzle });
+				json_images.emplace_back(move(fake_path));
 			}
 		}
 	};

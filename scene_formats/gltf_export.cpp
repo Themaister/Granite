@@ -124,7 +124,7 @@ struct AnalysisResult
 	Material::Textures type;
 	VkComponentMapping swizzle;
 
-	bool load_image(const string &src, const VkComponentMapping &swizzle);
+	bool load_image(const string &src);
 	void deduce_compression(TextureCompressionFamily family);
 
 	enum class MetallicRoughnessMode
@@ -148,7 +148,6 @@ struct EmittedImage
 	unsigned compression_quality;
 	TextureMode mode;
 	Material::Textures type;
-	VkComponentMapping swizzle;
 
 	shared_ptr<AnalysisResult> loaded_image;
 };
@@ -659,7 +658,7 @@ unsigned RemapState::emit_image(const MaterialInfo::Texture &texture, Material::
 		string extension = compression == TextureCompressionFamily::PNG ? ".png" : ".gtx";
 		const char *mime = compression == TextureCompressionFamily::PNG ? "image/png" : "image/custom/granite-texture";
 		image_cache.push_back({ texture.path, to_string(h.get()) + extension, mime,
-		                        compression, quality, mode, type, texture.swizzle, {} });
+		                        compression, quality, mode, type, {}});
 		return index;
 	}
 	else
@@ -693,29 +692,22 @@ void RemapState::emit_environment(const string &cube, const string &reflection, 
                                   vec3 fog_color, float fog_falloff,
                                   TextureCompressionFamily compression, unsigned quality)
 {
-	static const VkComponentMapping swizzle = {
-		VK_COMPONENT_SWIZZLE_R,
-		VK_COMPONENT_SWIZZLE_G,
-		VK_COMPONENT_SWIZZLE_B,
-		VK_COMPONENT_SWIZZLE_A,
-	};
-
 	EmittedEnvironment env;
 	if (!cube.empty())
 	{
-		env.cube = emit_texture({cube, swizzle}, Vulkan::StockSampler::LinearClamp,
+		env.cube = emit_texture(MaterialInfo::Texture(cube), Vulkan::StockSampler::LinearClamp,
 		                        Material::Textures::Emissive, compression, quality, TextureMode::HDR);
 	}
 
 	if (!reflection.empty())
 	{
-		env.reflection = emit_texture({reflection, swizzle}, Vulkan::StockSampler::LinearClamp,
+		env.reflection = emit_texture(MaterialInfo::Texture(reflection), Vulkan::StockSampler::LinearClamp,
 		                              Material::Textures::Emissive, compression, quality, TextureMode::HDR);
 	}
 
 	if (!irradiance.empty())
 	{
-		env.irradiance = emit_texture({irradiance, swizzle}, Vulkan::StockSampler::LinearClamp,
+		env.irradiance = emit_texture(MaterialInfo::Texture(irradiance), Vulkan::StockSampler::LinearClamp,
 		                              Material::Textures::Emissive, compression, quality, TextureMode::HDR);
 	}
 
@@ -1297,7 +1289,7 @@ AnalysisResult::MetallicRoughnessMode AnalysisResult::deduce_metallic_roughness_
 		return MetallicRoughnessMode::Default;
 }
 
-bool AnalysisResult::load_image(const string &src, const VkComponentMapping &swizzle_)
+bool AnalysisResult::load_image(const string &src)
 {
 	src_path = src;
 	image = make_shared<MemoryMappedTexture>();
@@ -1308,7 +1300,6 @@ bool AnalysisResult::load_image(const string &src, const VkComponentMapping &swi
 	if (image->get_layout().get_required_size() == 0)
 		return false;
 
-	swizzle_image(*image, swizzle_);
 	swizzle = {
 		VK_COMPONENT_SWIZZLE_R,
 		VK_COMPONENT_SWIZZLE_G,
@@ -1496,7 +1487,7 @@ void AnalysisResult::deduce_compression(TextureCompressionFamily family)
 }
 
 static shared_ptr<AnalysisResult> analyze_image(ThreadGroup &workers,
-                                                const string &src, const VkComponentMapping &swizzle,
+                                                const string &src,
                                                 Material::Textures type, TextureCompressionFamily family,
                                                 TextureMode mode,
                                                 TaskSignal *signal)
@@ -1506,7 +1497,7 @@ static shared_ptr<AnalysisResult> analyze_image(ThreadGroup &workers,
 	result->type = type;
 
 	auto group = workers.create_task([=]() {
-		if (!result->load_image(src, swizzle))
+		if (!result->load_image(src))
 		{
 			LOGE("Failed to load image.\n");
 			return;
@@ -1539,6 +1530,7 @@ static void compress_image(ThreadGroup &workers, const string &target_path, shar
 	args.format = get_compression_format(result->compression, result->mode);
 	args.quality = quality;
 	args.mode = result->mode;
+	args.output_mapping = result->swizzle;
 
 	auto mipgen_task = workers.create_task([=]() {
 		if (result->image->get_layout().get_levels() == 1 && result->mode != TextureMode::HDR)
@@ -1857,7 +1849,7 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 			if (image_max_count > 8)
 				image_signal.wait_until_at_least(image_max_count - 8);
 			image.loaded_image = analyze_image(workers,
-			                                   image.source_path, image.swizzle,
+			                                   image.source_path,
 			                                   image.type, image.compression, image.mode,
 			                                   &image_signal);
 		}
@@ -1868,47 +1860,9 @@ bool export_scene_to_glb(const SceneInformation &scene, const string &path, cons
 		unsigned max_count = 0;
 		for (auto &image : state.image_cache)
 		{
-			// Replace the swizzle with possibly something else.
-			auto swiz = image.loaded_image->swizzle;
-
 			Value i(kObjectType);
 			i.AddMember("uri", image.target_relpath, allocator);
 			i.AddMember("mimeType", image.target_mime, allocator);
-
-			const auto swiz_to_index = [](VkComponentSwizzle s, unsigned identity) -> unsigned {
-				switch (s)
-				{
-				case VK_COMPONENT_SWIZZLE_R:
-					return 0;
-				case VK_COMPONENT_SWIZZLE_G:
-					return 1;
-				case VK_COMPONENT_SWIZZLE_B:
-					return 2;
-				case VK_COMPONENT_SWIZZLE_A:
-					return 3;
-				case VK_COMPONENT_SWIZZLE_ONE:
-					return 4;
-				case VK_COMPONENT_SWIZZLE_ZERO:
-					return 5;
-				default:
-					return identity;
-				}
-			};
-
-			if (swiz.r != VK_COMPONENT_SWIZZLE_R ||
-			    swiz.g != VK_COMPONENT_SWIZZLE_G ||
-			    swiz.b != VK_COMPONENT_SWIZZLE_B ||
-			    swiz.a != VK_COMPONENT_SWIZZLE_A)
-			{
-				Value extras(kObjectType);
-				Value swizzle(kArrayType);
-				swizzle.PushBack(swiz_to_index(swiz.r, 0), allocator);
-				swizzle.PushBack(swiz_to_index(swiz.g, 1), allocator);
-				swizzle.PushBack(swiz_to_index(swiz.b, 2), allocator);
-				swizzle.PushBack(swiz_to_index(swiz.a, 3), allocator);
-				extras.AddMember("swizzle", swizzle, allocator);
-				i.AddMember("extras", extras, allocator);
-			}
 
 			images.PushBack(i, allocator);
 

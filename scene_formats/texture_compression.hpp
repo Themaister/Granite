@@ -49,6 +49,12 @@ struct CompressorArguments
 	VkFormat format = VK_FORMAT_UNDEFINED;
 	unsigned quality = 3;
 	TextureMode mode = TextureMode::Unknown;
+	VkComponentMapping output_mapping = {
+		VK_COMPONENT_SWIZZLE_R,
+		VK_COMPONENT_SWIZZLE_G,
+		VK_COMPONENT_SWIZZLE_B,
+		VK_COMPONENT_SWIZZLE_A,
+	};
 	bool deferred_mipgen = false;
 };
 

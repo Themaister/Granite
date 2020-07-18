@@ -172,6 +172,7 @@ struct CompressorState : enable_shared_from_this<CompressorState>
 
 void CompressorState::setup(const CompressorArguments &args)
 {
+	output->set_swizzle(args.output_mapping);
 	output->set_generate_mipmaps_on_load(args.deferred_mipgen);
 #ifdef HAVE_ISPC
 	bool alpha = args.mode == TextureMode::sRGBA || args.mode == TextureMode::RGBA;

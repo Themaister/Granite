@@ -42,6 +42,8 @@ static void print_help()
 	     "\t[--quality [1-5]]\n"
 	     "\t[--format <format>]\n"
 	     "\t[--swizzle <rgba01>x4]\n"
+	     "\t[--normal-la]\n"
+	     "\t[--mask-la]\n"
 	     "\t--output <out.gtx>\n"
 	     "\t<in.gtx>\n");
 }
@@ -122,6 +124,8 @@ int main(int argc, char *argv[])
 	cbs.add("--format", [&](CLIParser &parser) { args.format = string_to_format(parser.next_string()); });
 	cbs.add("--output", [&](CLIParser &parser) { args.output = parser.next_string(); });
 	cbs.add("--alpha", [&](CLIParser &) { args.mode = TextureMode::RGBA; });
+	cbs.add("--normal-la", [&](CLIParser &) { args.mode = TextureMode::NormalLA; });
+	cbs.add("--mask-la", [&](CLIParser &) { args.mode = TextureMode::MaskLA; });
 	cbs.add("--fixup-alpha", [&](CLIParser &) { fixup_alpha = true; });
 	cbs.add("--mipgen", [&](CLIParser &) { generate_mipmap = true; });
 	cbs.add("--deferred-mipgen", [&](CLIParser &) { deferred_generate_mipmap = true; });

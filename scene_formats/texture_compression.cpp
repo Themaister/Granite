@@ -811,10 +811,19 @@ void CompressorState::enqueue_compression_block_astc(TaskGroup &compression_task
 	int width = input->get_layout().get_width(level);
 	int height = input->get_layout().get_height(level);
 
+	// Seems to be a bug in astcenc itself.
+
+#if 0
+	auto *group = compression_task->get_thread_group();
 	int num_blocks_x = (width + block_size_x - 1) / block_size_x;
 	int num_blocks_y = (height + block_size_y - 1) / block_size_y;
+
+	// There are some weird bugs happening when using multi-threading.
 	int num_blocks = num_blocks_x * num_blocks_y;
 	int num_threads = (num_blocks + 127) / 128;
+#else
+	constexpr int num_threads = 1;
+#endif
 
 	astcenc_context *context = nullptr;
 	if (astcenc_context_alloc(state->config, num_threads, &context) != ASTCENC_SUCCESS)
@@ -891,8 +900,8 @@ void CompressorState::enqueue_compression_block_astc(TaskGroup &compression_task
 		ASTCENC_SWZ_B,
 		use_alpha_channel ? ASTCENC_SWZ_A : ASTCENC_SWZ_1
 	};
-	auto *group = compression_task->get_thread_group();
 
+#if 0
 	if (astcenc_compress_image_multistage(state->context.get(), state->image, swiz,
 			ASTCENC_COMPRESS_STAGE_INIT,
 			static_cast<uint8_t *>(output->get_layout().data(state->layer, state->level)),
@@ -915,19 +924,28 @@ void CompressorState::enqueue_compression_block_astc(TaskGroup &compression_task
 			}
 		});
 	}
+#endif
 
 	for (int i = 0; i < num_threads; i++)
 	{
 		compression_task->enqueue_task([this, state, i, swiz]() {
+#if 0
 			if (astcenc_compress_image_multistage(state->context.get(), state->image, swiz,
 					ASTCENC_COMPRESS_STAGE_EXECUTE,
 					static_cast<uint8_t *>(output->get_layout().data(state->layer, state->level)),
 					output->get_layout().get_layer_size(state->level), i) != ASTCENC_SUCCESS)
+#else
+			if (astcenc_compress_image(state->context.get(), state->image, swiz,
+					static_cast<uint8_t *>(output->get_layout().data(state->layer, state->level)),
+					output->get_layout().get_layer_size(state->level), i) != ASTCENC_SUCCESS)
+#endif
 			{
 				LOGE("Failed to compress ASTC blocks.\n");
 			}
 		});
 	}
+
+#if 0
 	group->add_dependency(compression_task, compute_task);
 
 	auto cleanup_task = group->create_task([this, state, swiz]() {
@@ -940,6 +958,7 @@ void CompressorState::enqueue_compression_block_astc(TaskGroup &compression_task
 		}
 	});
 	group->add_dependency(cleanup_task, compression_task);
+#endif
 }
 #endif
 

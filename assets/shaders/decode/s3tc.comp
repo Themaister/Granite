@@ -1,0 +1,95 @@
+#version 450
+#extension GL_EXT_samplerless_texture_functions : require
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(set = 0, binding = 0, rgba8ui) writeonly uniform uimage2D uOutput;
+layout(set = 0, binding = 1) uniform utexture2D uInput;
+
+layout(push_constant) uniform Registers
+{
+    ivec2 resolution;
+} registers;
+
+layout(constant_id = 0) const bool USE_ALPHA = false;
+
+ivec3 decode_endpoint(uint color)
+{
+    ivec3 c = ivec3(color) >> ivec3(11, 5, 0);
+    c &= ivec3(31, 63, 31);
+    c <<= ivec3(3, 2, 3);
+    c |= c >> ivec3(5, 6, 5);
+    return c;
+}
+
+bool decode_endpoints(uint payload, out ivec3 ep0, out ivec3 ep1)
+{
+    uint color0 = payload & 0xffffu;
+    uint color1 = payload >> 16u;
+    bool opaque_mode = color0 > color1;
+    ep0 = decode_endpoint(color0);
+    ep1 = decode_endpoint(color1);
+    return opaque_mode;
+}
+
+ivec4 interpolate_endpoint(ivec3 ep0, ivec3 ep1, int bits, bool opaque_mode)
+{
+    ivec4 res;
+    ivec3 lerped;
+    if (opaque_mode)
+    {
+        if (bits == 0)
+            lerped = ep0;
+        else if (bits == 1)
+            lerped = ep1;
+        else
+        {
+            if (bits == 2)
+                lerped = ep0 * 0xff + (ep1 - ep0) * 0x55;
+            else
+                lerped = ep1 * 0xff + (ep0 - ep1) * 0x55;
+            lerped = (lerped + (lerped >> 8) + 0x80) >> 8;
+        }
+        res = ivec4(lerped, 0xff);
+    }
+    else
+    {
+        if (bits == 3)
+        {
+            res = ivec4(0);
+        }
+        else
+        {
+            if (bits == 0)
+                lerped = ep0;
+            else if (bits == 1)
+                lerped = ep1;
+            else
+                lerped = (ep0 + ep1 + 1) >> 1;
+            res = ivec4(lerped, 0xff);
+        }
+    }
+
+    return res;
+}
+
+void main()
+{
+    ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
+    if (any(greaterThanEqual(coord, registers.resolution)))
+        return;
+
+    ivec2 tile_coord = coord >> 2;
+    ivec2 pixel_coord = coord & 3;
+    int linear_pixel = 4 * pixel_coord.y + pixel_coord.x;
+    uvec4 payload = texelFetch(uInput, tile_coord, 0);
+    uvec2 color_payload = payload.xy;
+
+    ivec3 ep0, ep1;
+    bool opaque_mode = decode_endpoints(color_payload.x, ep0, ep1);
+    uvec4 decoded = interpolate_endpoint(ep0, ep1, int((color_payload.y >> (2 * linear_pixel)) & 3), opaque_mode);
+
+    if (!USE_ALPHA)
+        decoded.a = 0xffu;
+
+    imageStore(uOutput, coord, decoded);
+}

@@ -154,6 +154,8 @@ static bool set_compute_decoder(Vulkan::CommandBuffer &cmd, VkFormat format)
 	case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:
 	case VK_FORMAT_BC1_RGB_SRGB_BLOCK:
 	case VK_FORMAT_BC1_RGB_UNORM_BLOCK:
+	case VK_FORMAT_BC2_SRGB_BLOCK:
+	case VK_FORMAT_BC2_UNORM_BLOCK:
 		cmd.set_program("builtin://shaders/decode/s3tc.comp");
 		break;
 
@@ -175,9 +177,42 @@ static void dispatch_kernel_s3tc(Vulkan::CommandBuffer &cmd, uint32_t width, uin
 	push.height = height;
 	cmd.push_constants(&push, 0, sizeof(push));
 
-	cmd.set_specialization_constant_mask(1);
-	cmd.set_specialization_constant(0, uint32_t(format == VK_FORMAT_BC1_RGBA_SRGB_BLOCK ||
-	                                            format == VK_FORMAT_BC1_RGBA_UNORM_BLOCK));
+	cmd.set_specialization_constant_mask(3);
+
+	switch (format)
+	{
+	case VK_FORMAT_BC1_RGB_UNORM_BLOCK:
+	case VK_FORMAT_BC1_RGB_SRGB_BLOCK:
+		cmd.set_specialization_constant(0, uint32_t(0));
+		break;
+
+	default:
+		cmd.set_specialization_constant(0, uint32_t(1));
+		break;
+	}
+
+	switch (format)
+	{
+	case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:
+	case VK_FORMAT_BC1_RGB_UNORM_BLOCK:
+	case VK_FORMAT_BC1_RGBA_SRGB_BLOCK:
+	case VK_FORMAT_BC1_RGB_SRGB_BLOCK:
+		cmd.set_specialization_constant(1, uint32_t(1));
+		break;
+
+	case VK_FORMAT_BC2_UNORM_BLOCK:
+	case VK_FORMAT_BC2_SRGB_BLOCK:
+		cmd.set_specialization_constant(1, uint32_t(2));
+		break;
+
+	case VK_FORMAT_BC3_UNORM_BLOCK:
+	case VK_FORMAT_BC3_SRGB_BLOCK:
+		cmd.set_specialization_constant(1, uint32_t(3));
+		break;
+
+	default:
+		break;
+	}
 
 	width = (width + 7) / 8;
 	height = (height + 7) / 8;
@@ -192,6 +227,8 @@ static void dispatch_kernel(Vulkan::CommandBuffer &cmd, uint32_t width, uint32_t
 	case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:
 	case VK_FORMAT_BC1_RGB_SRGB_BLOCK:
 	case VK_FORMAT_BC1_RGB_UNORM_BLOCK:
+	case VK_FORMAT_BC2_SRGB_BLOCK:
+	case VK_FORMAT_BC2_UNORM_BLOCK:
 		dispatch_kernel_s3tc(cmd, width, height, format);
 		break;
 

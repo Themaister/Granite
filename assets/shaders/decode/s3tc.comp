@@ -11,8 +11,9 @@ layout(push_constant) uniform Registers
 } registers;
 
 layout(constant_id = 0) const bool USE_ALPHA = false;
+layout(constant_id = 1) const int BC_VERSION = 1;
 
-ivec3 decode_endpoint(uint color)
+ivec3 decode_endpoint_color(uint color)
 {
     ivec3 c = ivec3(color) >> ivec3(11, 5, 0);
     c &= ivec3(31, 63, 31);
@@ -21,17 +22,17 @@ ivec3 decode_endpoint(uint color)
     return c;
 }
 
-bool decode_endpoints(uint payload, out ivec3 ep0, out ivec3 ep1)
+bool decode_endpoints_color(uint payload, out ivec3 ep0, out ivec3 ep1)
 {
     uint color0 = payload & 0xffffu;
     uint color1 = payload >> 16u;
-    bool opaque_mode = color0 > color1;
-    ep0 = decode_endpoint(color0);
-    ep1 = decode_endpoint(color1);
+    bool opaque_mode = (BC_VERSION > 1) || (color0 > color1);
+    ep0 = decode_endpoint_color(color0);
+    ep1 = decode_endpoint_color(color1);
     return opaque_mode;
 }
 
-ivec4 interpolate_endpoint(ivec3 ep0, ivec3 ep1, int bits, bool opaque_mode)
+ivec4 interpolate_endpoint_color(ivec3 ep0, ivec3 ep1, int bits, bool opaque_mode)
 {
     ivec4 res;
     ivec3 lerped;
@@ -69,6 +70,12 @@ ivec4 interpolate_endpoint(ivec3 ep0, ivec3 ep1, int bits, bool opaque_mode)
     return res;
 }
 
+uint decode_alpha_4bit(uvec2 payload, int pixel)
+{
+    uint offset = pixel * 4;
+    return 0x11 * ((payload[offset >> 5] >> (offset & 31)) & 0xf);
+}
+
 void main()
 {
     ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
@@ -79,14 +86,29 @@ void main()
     ivec2 pixel_coord = coord & 3;
     int linear_pixel = 4 * pixel_coord.y + pixel_coord.x;
     uvec4 payload = texelFetch(uInput, tile_coord, 0);
-    uvec2 color_payload = payload.xy;
+
+    uvec2 color_payload, alpha_payload;
+    if (BC_VERSION == 1)
+        color_payload = payload.xy;
+    else
+        color_payload = payload.zw;
+
+    uint alpha;
+    if (BC_VERSION > 1)
+    {
+        alpha_payload = payload.xy;
+        int ep0, ep1;
+        if (BC_VERSION == 2)
+            alpha = decode_alpha_4bit(alpha_payload.xy, linear_pixel);
+    }
 
     ivec3 ep0, ep1;
-    bool opaque_mode = decode_endpoints(color_payload.x, ep0, ep1);
-    uvec4 decoded = interpolate_endpoint(ep0, ep1, int((color_payload.y >> (2 * linear_pixel)) & 3), opaque_mode);
-
+    bool opaque_mode = decode_endpoints_color(color_payload.x, ep0, ep1);
+    uvec4 decoded = interpolate_endpoint_color(ep0, ep1, int((color_payload.y >> (2 * linear_pixel)) & 3), opaque_mode);
     if (!USE_ALPHA)
         decoded.a = 0xffu;
+    else if (BC_VERSION > 1)
+        decoded.a = alpha;
 
     imageStore(uOutput, coord, decoded);
 }

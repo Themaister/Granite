@@ -114,6 +114,8 @@ static BufferHandle decode_gpu(CommandBuffer &cmd, const TextureFormatLayout &la
 static BufferHandle decode_compute(CommandBuffer &cmd, const TextureFormatLayout &layout)
 {
 	auto compressed = decode_compressed_image(cmd, layout);
+	if (!compressed)
+		return {};
 	cmd.image_barrier(*compressed, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 	                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
 	                  VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
@@ -126,11 +128,12 @@ static bool test_s3tc(Device &device, VkFormat format, VkFormat readback_format)
 	std::mt19937 rnd(1337);
 
 	SceneFormats::MemoryMappedTexture tex;
-	unsigned width = 4096;
-	unsigned height = 4096;
+	unsigned width = 4;
+	unsigned height = 4;
 	unsigned blocks_x = (width + 3) / 4;
 	unsigned blocks_y = (height + 3) / 4;
-	unsigned num_words = blocks_x * blocks_y * 2;
+	unsigned num_words = blocks_x * blocks_y *
+	                     (TextureFormatLayout::format_block_size(format, VK_IMAGE_ASPECT_COLOR_BIT) / 4);
 	tex.set_2d(format, width, height);
 	if (!tex.map_write_scratch())
 		return false;
@@ -142,6 +145,11 @@ static bool test_s3tc(Device &device, VkFormat format, VkFormat readback_format)
 
 	auto readback_reference = decode_gpu(*cmd, layout, readback_format);
 	auto readback_decoded = decode_compute(*cmd, layout);
+	if (!readback_decoded)
+	{
+		device.submit_discard(cmd);
+		return false;
+	}
 
 	Fence fence;
 	device.submit(cmd, &fence);
@@ -162,6 +170,12 @@ static bool test_s3tc(Device &device)
 		return false;
 	device.wait_idle();
 	if (!test_s3tc(device, VK_FORMAT_BC1_RGB_SRGB_BLOCK, VK_FORMAT_R8G8B8A8_SRGB))
+		return false;
+	device.wait_idle();
+	if (!test_s3tc(device, VK_FORMAT_BC2_UNORM_BLOCK, VK_FORMAT_R8G8B8A8_UNORM))
+		return false;
+	device.wait_idle();
+	if (!test_s3tc(device, VK_FORMAT_BC2_SRGB_BLOCK, VK_FORMAT_R8G8B8A8_SRGB))
 		return false;
 	device.wait_idle();
 	return true;

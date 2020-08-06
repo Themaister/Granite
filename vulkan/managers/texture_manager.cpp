@@ -127,18 +127,7 @@ void Texture::update_gtx(const Granite::SceneFormats::MemoryMappedTexture &mappe
 
 	auto &layout = mapped_file.get_layout();
 
-	ImageCreateInfo info = {};
-	info.width = layout.get_width();
-	info.height = layout.get_height();
-	info.depth = layout.get_depth();
-	info.type = layout.get_image_type();
-	info.format = layout.get_format();
-	info.levels = layout.get_levels();
-	info.layers = layout.get_layers();
-	info.samples = VK_SAMPLE_COUNT_1_BIT;
-	info.domain = ImageDomain::Physical;
-	info.initial_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	info.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
+	ImageCreateInfo info = ImageCreateInfo::immutable_image(layout);
 	info.swizzle = swizzle;
 	info.flags = (mapped_file.get_flags() & Granite::SceneFormats::MEMORY_MAPPED_TEXTURE_CUBE_MAP_COMPATIBLE_BIT) ?
 	             VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0;

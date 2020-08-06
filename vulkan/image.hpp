@@ -327,6 +327,23 @@ struct ImageCreateInfo
 	const DeviceAllocation **memory_aliases = nullptr;
 	unsigned num_memory_aliases = 0;
 
+	static ImageCreateInfo immutable_image(const TextureFormatLayout &layout)
+	{
+		Vulkan::ImageCreateInfo info;
+		info.width = layout.get_width();
+		info.height = layout.get_height();
+		info.type = layout.get_image_type();
+		info.depth = layout.get_depth();
+		info.format = layout.get_format();
+		info.layers = layout.get_layers();
+		info.levels = layout.get_levels();
+		info.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
+		info.initial_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		info.samples = VK_SAMPLE_COUNT_1_BIT;
+		info.domain = ImageDomain::Physical;
+		return info;
+	}
+
 	static ImageCreateInfo immutable_2d_image(unsigned width, unsigned height, VkFormat format, bool mipmapped = false)
 	{
 		ImageCreateInfo info;

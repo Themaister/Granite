@@ -78,34 +78,25 @@ void TextureFormatLayout::format_block_dim(VkFormat format, uint32_t &width, uin
 	fmt(BC7_SRGB_BLOCK, 4, 4);
 	fmt(BC7_UNORM_BLOCK, 4, 4);
 
-	fmt(ASTC_4x4_SRGB_BLOCK, 4, 4);
-	fmt(ASTC_5x4_SRGB_BLOCK, 5, 4);
-	fmt(ASTC_5x5_SRGB_BLOCK, 5, 5);
-	fmt(ASTC_6x5_SRGB_BLOCK, 6, 5);
-	fmt(ASTC_6x6_SRGB_BLOCK, 6, 6);
-	fmt(ASTC_8x5_SRGB_BLOCK, 8, 5);
-	fmt(ASTC_8x6_SRGB_BLOCK, 8, 6);
-	fmt(ASTC_8x8_SRGB_BLOCK, 8, 8);
-	fmt(ASTC_10x5_SRGB_BLOCK, 10, 5);
-	fmt(ASTC_10x6_SRGB_BLOCK, 10, 6);
-	fmt(ASTC_10x8_SRGB_BLOCK, 10, 8);
-	fmt(ASTC_10x10_SRGB_BLOCK, 10, 10);
-	fmt(ASTC_12x10_SRGB_BLOCK, 12, 10);
-	fmt(ASTC_12x12_SRGB_BLOCK, 12, 12);
-	fmt(ASTC_4x4_UNORM_BLOCK, 4, 4);
-	fmt(ASTC_5x4_UNORM_BLOCK, 5, 4);
-	fmt(ASTC_5x5_UNORM_BLOCK, 5, 5);
-	fmt(ASTC_6x5_UNORM_BLOCK, 6, 5);
-	fmt(ASTC_6x6_UNORM_BLOCK, 6, 6);
-	fmt(ASTC_8x5_UNORM_BLOCK, 8, 5);
-	fmt(ASTC_8x6_UNORM_BLOCK, 8, 6);
-	fmt(ASTC_8x8_UNORM_BLOCK, 8, 8);
-	fmt(ASTC_10x5_UNORM_BLOCK, 10, 5);
-	fmt(ASTC_10x6_UNORM_BLOCK, 10, 6);
-	fmt(ASTC_10x8_UNORM_BLOCK, 10, 8);
-	fmt(ASTC_10x10_UNORM_BLOCK, 10, 10);
-	fmt(ASTC_12x10_UNORM_BLOCK, 12, 10);
-	fmt(ASTC_12x12_UNORM_BLOCK, 12, 12);
+#define astc_fmt(w, h) \
+    fmt(ASTC_##w##x##h##_UNORM_BLOCK, w, h); \
+    fmt(ASTC_##w##x##h##_SRGB_BLOCK, w, h); \
+    fmt(ASTC_##w##x##h##_SFLOAT_BLOCK_EXT, w, h)
+
+	astc_fmt(4, 4);
+	astc_fmt(5, 4);
+	astc_fmt(5, 5);
+	astc_fmt(6, 5);
+	astc_fmt(6, 6);
+	astc_fmt(8, 5);
+	astc_fmt(8, 6);
+	astc_fmt(8, 8);
+	astc_fmt(10, 5);
+	astc_fmt(10, 6);
+	astc_fmt(10, 8);
+	astc_fmt(10, 10);
+	astc_fmt(12, 10);
+	astc_fmt(12, 12);
 
 	default:
 		width = 1;
@@ -114,6 +105,7 @@ void TextureFormatLayout::format_block_dim(VkFormat format, uint32_t &width, uin
 	}
 
 #undef fmt
+#undef astc_fmt
 }
 
 uint32_t TextureFormatLayout::format_block_size(VkFormat format, VkImageAspectFlags aspect)
@@ -287,34 +279,25 @@ uint32_t TextureFormatLayout::format_block_size(VkFormat format, VkImageAspectFl
 	fmt(BC7_UNORM_BLOCK, 16);
 
 		// ASTC
-	fmt(ASTC_4x4_SRGB_BLOCK, 16);
-	fmt(ASTC_5x4_SRGB_BLOCK, 16);
-	fmt(ASTC_5x5_SRGB_BLOCK, 16);
-	fmt(ASTC_6x5_SRGB_BLOCK, 16);
-	fmt(ASTC_6x6_SRGB_BLOCK, 16);
-	fmt(ASTC_8x5_SRGB_BLOCK, 16);
-	fmt(ASTC_8x6_SRGB_BLOCK, 16);
-	fmt(ASTC_8x8_SRGB_BLOCK, 16);
-	fmt(ASTC_10x5_SRGB_BLOCK, 16);
-	fmt(ASTC_10x6_SRGB_BLOCK, 16);
-	fmt(ASTC_10x8_SRGB_BLOCK, 16);
-	fmt(ASTC_10x10_SRGB_BLOCK, 16);
-	fmt(ASTC_12x10_SRGB_BLOCK, 16);
-	fmt(ASTC_12x12_SRGB_BLOCK, 16);
-	fmt(ASTC_4x4_UNORM_BLOCK, 16);
-	fmt(ASTC_5x4_UNORM_BLOCK, 16);
-	fmt(ASTC_5x5_UNORM_BLOCK, 16);
-	fmt(ASTC_6x5_UNORM_BLOCK, 16);
-	fmt(ASTC_6x6_UNORM_BLOCK, 16);
-	fmt(ASTC_8x5_UNORM_BLOCK, 16);
-	fmt(ASTC_8x6_UNORM_BLOCK, 16);
-	fmt(ASTC_8x8_UNORM_BLOCK, 16);
-	fmt(ASTC_10x5_UNORM_BLOCK, 16);
-	fmt(ASTC_10x6_UNORM_BLOCK, 16);
-	fmt(ASTC_10x8_UNORM_BLOCK, 16);
-	fmt(ASTC_10x10_UNORM_BLOCK, 16);
-	fmt(ASTC_12x10_UNORM_BLOCK, 16);
-	fmt(ASTC_12x12_UNORM_BLOCK, 16);
+#define astc_fmt(w, h) \
+    fmt(ASTC_##w##x##h##_UNORM_BLOCK, 16); \
+    fmt(ASTC_##w##x##h##_SRGB_BLOCK, 16); \
+    fmt(ASTC_##w##x##h##_SFLOAT_BLOCK_EXT, 16)
+
+	astc_fmt(4, 4);
+	astc_fmt(5, 4);
+	astc_fmt(5, 5);
+	astc_fmt(6, 5);
+	astc_fmt(6, 6);
+	astc_fmt(8, 5);
+	astc_fmt(8, 6);
+	astc_fmt(8, 8);
+	astc_fmt(10, 5);
+	astc_fmt(10, 6);
+	astc_fmt(10, 8);
+	astc_fmt(10, 10);
+	astc_fmt(12, 10);
+	astc_fmt(12, 12);
 
 	fmt(G8B8G8R8_422_UNORM, 4);
 	fmt(B8G8R8G8_422_UNORM, 4);
@@ -361,6 +344,7 @@ uint32_t TextureFormatLayout::format_block_size(VkFormat format, VkImageAspectFl
 	}
 #undef fmt
 #undef fmt2
+#undef astc_fmt
 }
 
 void TextureFormatLayout::fill_mipinfo(uint32_t width, uint32_t height, uint32_t depth)

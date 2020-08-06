@@ -388,7 +388,9 @@ struct ImageCreateInfo
 		info.samples = VK_SAMPLE_COUNT_1_BIT;
 		info.flags = 0;
 		info.misc = 0;
-		info.initial_layout = VK_IMAGE_LAYOUT_GENERAL;
+		info.initial_layout = format_has_depth_or_stencil_aspect(format) ?
+		                      VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL :
+		                      VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 		return info;
 	}
 

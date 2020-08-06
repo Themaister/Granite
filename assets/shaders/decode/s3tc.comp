@@ -37,17 +37,14 @@ ivec4 interpolate_endpoint(ivec3 ep0, ivec3 ep1, int bits, bool opaque_mode)
     ivec3 lerped;
     if (opaque_mode)
     {
-        if (bits == 0)
-            lerped = ep0;
-        else if (bits == 1)
-            lerped = ep1;
+        if (bits < 2)
+        {
+            lerped = bits != 0 ? ep1 : ep0;
+        }
         else
         {
-            if (bits == 2)
-                lerped = ep0 * 0xff + (ep1 - ep0) * 0x55;
-            else
-                lerped = ep1 * 0xff + (ep0 - ep1) * 0x55;
-            lerped = (lerped + (lerped >> 8) + 0x80) >> 8;
+            lerped = (ep1 - ep0) * (0x55 * (bits - 1));
+            lerped = ep0 + ((lerped + (lerped >> 8) + 0x80) >> 8);
         }
         res = ivec4(lerped, 0xff);
     }

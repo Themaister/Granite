@@ -215,15 +215,18 @@ Vulkan::ImageHandle decode_compressed_image(Vulkan::CommandBuffer &cmd, const Vu
 
 	auto image_info = Vulkan::ImageCreateInfo::immutable_image(layout);
 	image_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-	image_info.format = compressed_format_to_decoded_format(layout.get_format());
-	image_info.flags = VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
-	image_info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT |
-	                   VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-	image_info.swizzle = swizzle;
-
+	image_info.format = to_storage_format(compressed_format_to_decoded_format(layout.get_format()));
+	image_info.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 	if (image_info.format == VK_FORMAT_UNDEFINED)
 		return {};
 	auto decoded_image = device.create_image(image_info);
+
+	image_info.format = compressed_format_to_decoded_format(layout.get_format());
+	if (image_info.format == VK_FORMAT_UNDEFINED)
+		return {};
+	image_info.swizzle = swizzle;
+	image_info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+	auto decoded_formatted_image = device.create_image(image_info);
 
 	auto staging = device.create_image_staging_buffer(layout);
 	for (auto &blit : staging.blits)
@@ -255,7 +258,6 @@ Vulkan::ImageHandle decode_compressed_image(Vulkan::CommandBuffer &cmd, const Vu
 	view_info.view_type = VK_IMAGE_VIEW_TYPE_2D;
 	view_info.levels = 1;
 	view_info.layers = 1;
-	view_info.format = to_storage_format(compressed_format_to_decoded_format(layout.get_format()));
 
 	Vulkan::ImageViewCreateInfo input_view_info;
 	input_view_info.image = uploaded_image.get();
@@ -266,6 +268,9 @@ Vulkan::ImageHandle decode_compressed_image(Vulkan::CommandBuffer &cmd, const Vu
 	cmd.image_barrier(*decoded_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
 	                  VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
 	                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT);
+	cmd.image_barrier(*decoded_formatted_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+	                  VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
+	                  VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
 
 	if (!set_compute_decoder(cmd, layout.get_format()))
 	{
@@ -291,10 +296,17 @@ Vulkan::ImageHandle decode_compressed_image(Vulkan::CommandBuffer &cmd, const Vu
 		}
 	}
 
-	cmd.image_barrier(*decoded_image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	cmd.image_barrier(*decoded_image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 	                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+	                  VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+
+	cmd.copy_image(*decoded_formatted_image, *decoded_image);
+
+	cmd.image_barrier(*decoded_formatted_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	                  VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
 	                  VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_ACCESS_SHADER_READ_BIT);
+
 	cmd.set_specialization_constant_mask(0);
-	return decoded_image;
+	return decoded_formatted_image;
 }
 }

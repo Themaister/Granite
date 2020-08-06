@@ -996,6 +996,19 @@ void Device::submit(CommandBufferHandle &cmd, Fence *fence, unsigned semaphore_c
 	submit_nolock(move(cmd), fence, semaphore_count, semaphores);
 }
 
+void Device::submit_discard(CommandBufferHandle &cmd)
+{
+	auto type = cmd->get_command_buffer_type();
+	LOCK();
+#ifdef VULKAN_DEBUG
+	auto &pool = get_command_pool(type, cmd->get_thread_index());
+	pool.signal_submitted(cmd->get_command_buffer());
+#endif
+
+	cmd.reset();
+	decrement_frame_counter_nolock();
+}
+
 CommandBuffer::Type Device::get_physical_queue_type(CommandBuffer::Type queue_type) const
 {
 	if (queue_type != CommandBuffer::Type::AsyncGraphics)

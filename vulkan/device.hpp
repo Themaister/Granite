@@ -217,6 +217,7 @@ public:
 	                  Fence *fence = nullptr,
 	                  unsigned semaphore_count = 0,
 	                  Semaphore *semaphore = nullptr);
+	void submit_discard(CommandBufferHandle &cmd);
 	void add_wait_semaphore(CommandBuffer::Type type, Semaphore semaphore, VkPipelineStageFlags stages, bool flush);
 	CommandBuffer::Type get_physical_queue_type(CommandBuffer::Type queue_type) const;
 	void register_time_interval(std::string tid, QueryPoolHandle start_ts, QueryPoolHandle end_ts,

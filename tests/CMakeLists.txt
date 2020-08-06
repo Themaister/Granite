@@ -104,6 +104,7 @@ add_granite_offline_tool(simd-test simd_test.cpp)
 add_granite_offline_tool(imported-host imported_host.cpp)
 
 add_granite_offline_tool(cooperative-task-test cooperative_task_test.cpp)
+add_granite_offline_tool(texture-decoder-test texture_decoder_test.cpp)
 
 if (GRANITE_AUDIO)
     add_granite_offline_tool(audio-test audio_test.cpp)

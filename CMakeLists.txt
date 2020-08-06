@@ -435,6 +435,7 @@ if (NOT GRANITE_VULKAN_ONLY)
             scene_formats/gltf_export.cpp scene_formats/gltf_export.hpp
             scene_formats/rgtc_compressor.cpp scene_formats/rgtc_compressor.hpp
             scene_formats/tmx_parser.cpp scene_formats/tmx_parser.hpp
+            scene_formats/texture_decoder.cpp scene_formats/texture_decoder.hpp
 
             threading/thread_group.cpp threading/thread_group.hpp
 

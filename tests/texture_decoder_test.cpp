@@ -233,8 +233,8 @@ static bool test_s3tc(Device &device, VkFormat format, VkFormat readback_format)
 	std::mt19937 rnd(1337);
 
 	SceneFormats::MemoryMappedTexture tex;
-	unsigned width = 512;
-	unsigned height = 512;
+	unsigned width = 2048;
+	unsigned height = 2048;
 	unsigned blocks_x = (width + 3) / 4;
 	unsigned blocks_y = (height + 3) / 4;
 	unsigned num_words = blocks_x * blocks_y *

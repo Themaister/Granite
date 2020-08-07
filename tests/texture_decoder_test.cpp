@@ -66,9 +66,10 @@ static bool compare_rgba8(Device &device,
 			auto &dec = mapped_decoded[y * width + x];
 
 			int diff_r = muglm::abs(int(ref.x) - int(dec.x));
-			int diff_g = muglm::abs(int(ref.x) - int(dec.x));
-			int diff_b = muglm::abs(int(ref.x) - int(dec.x));
-			int diff_max = muglm::max(std::max(diff_r, diff_g), diff_b);
+			int diff_g = muglm::abs(int(ref.y) - int(dec.y));
+			int diff_b = muglm::abs(int(ref.z) - int(dec.z));
+			int diff_a = muglm::abs(int(ref.w) - int(dec.w));
+			int diff_max = muglm::max(std::max(diff_r, diff_g), std::max(diff_b, diff_a));
 
 			if (diff_max > max_diff)
 			{
@@ -128,8 +129,8 @@ static bool test_s3tc(Device &device, VkFormat format, VkFormat readback_format)
 	std::mt19937 rnd(1337);
 
 	SceneFormats::MemoryMappedTexture tex;
-	unsigned width = 4;
-	unsigned height = 4;
+	unsigned width = 512;
+	unsigned height = 512;
 	unsigned blocks_x = (width + 3) / 4;
 	unsigned blocks_y = (height + 3) / 4;
 	unsigned num_words = blocks_x * blocks_y *
@@ -176,6 +177,12 @@ static bool test_s3tc(Device &device)
 		return false;
 	device.wait_idle();
 	if (!test_s3tc(device, VK_FORMAT_BC2_SRGB_BLOCK, VK_FORMAT_R8G8B8A8_SRGB))
+		return false;
+	device.wait_idle();
+	if (!test_s3tc(device, VK_FORMAT_BC3_UNORM_BLOCK, VK_FORMAT_R8G8B8A8_UNORM))
+		return false;
+	device.wait_idle();
+	if (!test_s3tc(device, VK_FORMAT_BC3_SRGB_BLOCK, VK_FORMAT_R8G8B8A8_SRGB))
 		return false;
 	device.wait_idle();
 	return true;

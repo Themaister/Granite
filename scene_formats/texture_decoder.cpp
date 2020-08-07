@@ -156,6 +156,8 @@ static bool set_compute_decoder(Vulkan::CommandBuffer &cmd, VkFormat format)
 	case VK_FORMAT_BC1_RGB_UNORM_BLOCK:
 	case VK_FORMAT_BC2_SRGB_BLOCK:
 	case VK_FORMAT_BC2_UNORM_BLOCK:
+	case VK_FORMAT_BC3_SRGB_BLOCK:
+	case VK_FORMAT_BC3_UNORM_BLOCK:
 		cmd.set_program("builtin://shaders/decode/s3tc.comp");
 		break;
 
@@ -229,6 +231,8 @@ static void dispatch_kernel(Vulkan::CommandBuffer &cmd, uint32_t width, uint32_t
 	case VK_FORMAT_BC1_RGB_UNORM_BLOCK:
 	case VK_FORMAT_BC2_SRGB_BLOCK:
 	case VK_FORMAT_BC2_UNORM_BLOCK:
+	case VK_FORMAT_BC3_SRGB_BLOCK:
+	case VK_FORMAT_BC3_UNORM_BLOCK:
 		dispatch_kernel_s3tc(cmd, width, height, format);
 		break;
 

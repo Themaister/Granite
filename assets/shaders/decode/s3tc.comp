@@ -2,6 +2,8 @@
 #extension GL_EXT_samplerless_texture_functions : require
 layout(local_size_x = 8, local_size_y = 8) in;
 
+#include "rgtc.h"
+
 layout(set = 0, binding = 0, rgba8ui) writeonly uniform uimage2D uOutput;
 layout(set = 0, binding = 1) uniform utexture2D uInput;
 
@@ -99,7 +101,9 @@ void main()
         alpha_payload = payload.xy;
         int ep0, ep1;
         if (BC_VERSION == 2)
-            alpha = decode_alpha_4bit(alpha_payload.xy, linear_pixel);
+            alpha = decode_alpha_4bit(alpha_payload, linear_pixel);
+        else
+            alpha = decode_alpha_rgtc(alpha_payload, linear_pixel);
     }
 
     ivec3 ep0, ep1;

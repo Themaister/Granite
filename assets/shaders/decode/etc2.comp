@@ -91,6 +91,38 @@ void main()
         else if (uint(b1) > 31)
         {
             // Planar mode
+            int r = int(bitfieldExtract(color_payload.y, 57 - 32, 6));
+            int g = int(bitfieldExtract(color_payload.y, 49 - 32, 6)) |
+                    (int(color_payload.y >> 18) & 0x40);
+            int b = int(bitfieldExtract(color_payload.y, 39 - 32, 3)) |
+                    (int(bitfieldExtract(color_payload.y, 43 - 32, 2)) << 3) |
+                    (int(color_payload.y >> 11) & 0x20);
+            int rh = int(color_payload.y & 1u) |
+                    (int(bitfieldExtract(color_payload.y, 2, 5)) << 1);
+            int rv = int(bitfieldExtract(color_payload.x, 13, 6));
+            int gh = int(bitfieldExtract(color_payload.x, 25, 7));
+            int gv = int(bitfieldExtract(color_payload.x, 6, 7));
+            int bh = int(bitfieldExtract(color_payload.x, 19, 6));
+            int bv = int(bitfieldExtract(color_payload.x, 0, 6));
+
+            r = (r << 2) | (r >> 4);
+            rh = (rh << 2) | (rh >> 4);
+            rv = (rv << 2) | (rv >> 4);
+            g = (g << 1) | (g >> 6);
+            gh = (gh << 1) | (gh >> 6);
+            gv = (gv << 1) | (gv >> 6);
+            b = (b << 2) | (b >> 4);
+            bh = (bh << 2) | (bh >> 4);
+            bv = (bv << 2) | (bv >> 4);
+
+            ivec3 rgb = ivec3(r, g, b);
+            ivec3 dx = ivec3(rh, gh, bh) - rgb;
+            ivec3 dy = ivec3(rv, gv, bv) - rgb;
+            dx *= pixel_coord.x;
+            dy *= pixel_coord.y;
+            rgb = rgb + ((dx + dy + 2) >> 2);
+            rgb = clamp(rgb, ivec3(0), ivec3(255));
+            rgb_result = rgb;
         }
         else
         {

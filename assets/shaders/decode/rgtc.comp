@@ -1,0 +1,38 @@
+#version 450
+#extension GL_EXT_samplerless_texture_functions : require
+layout(local_size_x = 8, local_size_y = 8) in;
+
+#include "rgtc.h"
+
+layout(set = 0, binding = 0, r8ui) writeonly uniform uimage2D uOutputR;
+layout(set = 0, binding = 0, rg8ui) writeonly uniform uimage2D uOutputRG;
+layout(set = 0, binding = 1) uniform utexture2D uInput;
+
+layout(push_constant) uniform Registers
+{
+    ivec2 resolution;
+} registers;
+
+layout(constant_id = 0) const bool DUAL_COMPONENT = false;
+
+void main()
+{
+    ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
+    if (any(greaterThanEqual(coord, registers.resolution)))
+        return;
+
+    ivec2 tile_coord = coord >> 2;
+    ivec2 pixel_coord = coord & 3;
+    int linear_pixel = 4 * pixel_coord.y + pixel_coord.x;
+    uvec4 payload = texelFetch(uInput, tile_coord, 0);
+
+    uvec4 rg = uvec4(0);
+    rg.x = decode_alpha_rgtc(payload.xy, linear_pixel);
+    if (DUAL_COMPONENT)
+        rg.y = decode_alpha_rgtc(payload.zw, linear_pixel);
+
+    if (DUAL_COMPONENT)
+        imageStore(uOutputRG, coord, rg);
+    else
+        imageStore(uOutputR, coord, rg);
+}

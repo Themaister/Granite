@@ -135,8 +135,9 @@ static VkFormat to_storage_format(VkFormat format)
 		return VK_FORMAT_R8G8B8A8_UINT;
 
 	case VK_FORMAT_R8_UNORM:
+		return VK_FORMAT_R8_UINT;
 	case VK_FORMAT_R8G8_UNORM:
-		return format;
+		return VK_FORMAT_R8G8_UINT;
 
 	case VK_FORMAT_R16G16B16A16_SFLOAT:
 		return VK_FORMAT_R16G16B16A16_UINT;
@@ -161,11 +162,35 @@ static bool set_compute_decoder(Vulkan::CommandBuffer &cmd, VkFormat format)
 		cmd.set_program("builtin://shaders/decode/s3tc.comp");
 		break;
 
+	case VK_FORMAT_BC4_UNORM_BLOCK:
+	case VK_FORMAT_BC5_UNORM_BLOCK:
+		cmd.set_program("builtin://shaders/decode/rgtc.comp");
+		break;
+
 	default:
 		return false;
 	}
 
 	return true;
+}
+
+static void dispatch_kernel_rgtc(Vulkan::CommandBuffer &cmd, uint32_t width, uint32_t height, VkFormat format)
+{
+	struct Push
+	{
+		uint32_t width, height;
+	} push;
+
+	push.width = width;
+	push.height = height;
+	cmd.push_constants(&push, 0, sizeof(push));
+
+	cmd.set_specialization_constant_mask(1);
+	cmd.set_specialization_constant(0, uint32_t(format == VK_FORMAT_BC5_UNORM_BLOCK));
+
+	width = (width + 7) / 8;
+	height = (height + 7) / 8;
+	cmd.dispatch(width, height, 1);
 }
 
 static void dispatch_kernel_s3tc(Vulkan::CommandBuffer &cmd, uint32_t width, uint32_t height, VkFormat format)
@@ -234,6 +259,11 @@ static void dispatch_kernel(Vulkan::CommandBuffer &cmd, uint32_t width, uint32_t
 	case VK_FORMAT_BC3_SRGB_BLOCK:
 	case VK_FORMAT_BC3_UNORM_BLOCK:
 		dispatch_kernel_s3tc(cmd, width, height, format);
+		break;
+
+	case VK_FORMAT_BC4_UNORM_BLOCK:
+	case VK_FORMAT_BC5_UNORM_BLOCK:
+		dispatch_kernel_rgtc(cmd, width, height, format);
 		break;
 
 	default:

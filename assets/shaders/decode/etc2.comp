@@ -1,0 +1,116 @@
+#version 450
+#extension GL_EXT_samplerless_texture_functions : require
+layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
+
+layout(set = 0, binding = 0, rgba8ui) writeonly uniform uimage2D uOutput;
+layout(set = 0, binding = 1) uniform utexture2D uInput;
+
+layout(push_constant) uniform Registers
+{
+    ivec2 resolution;
+} registers;
+
+ivec2 build_coord()
+{
+    ivec2 base = ivec2(gl_WorkGroupID.xy) * 8;
+    base.x += 4 * (int(gl_LocalInvocationID.z) & 1);
+    base.y += 2 * (int(gl_LocalInvocationID.z) & 2);
+    base += ivec2(gl_LocalInvocationID.xy);
+    return base;
+}
+
+uint flip_endian(uint v)
+{
+    uvec4 words = uvec4(v) >> uvec4(0, 8, 16, 24);
+    words &= 0xffu;
+    return (words.x << 24u) | (words.y << 16u) | (words.z << 8u) | (words.w << 0u);
+}
+
+uvec2 flip_endian(uvec2 v)
+{
+    return uvec2(flip_endian(v.y), flip_endian(v.x));
+}
+
+const ivec2 etc1_color_modifier_table[] = ivec2[](
+    ivec2(2, 8),
+    ivec2(5, 17),
+    ivec2(9, 29),
+    ivec2(13, 42),
+    ivec2(18, 60),
+    ivec2(24, 80),
+    ivec2(33, 106),
+    ivec2(47, 183));
+
+void main()
+{
+    ivec2 coord = build_coord();
+    if (any(greaterThanEqual(coord, registers.resolution)))
+        return;
+
+    ivec2 tile_coord = coord >> 2;
+    ivec2 pixel_coord = coord & 3;
+    int linear_pixel = 4 * pixel_coord.x + pixel_coord.y;
+    uvec4 payload = texelFetch(uInput, tile_coord, 0);
+    uvec2 color_payload = flip_endian(payload.xy);
+
+    uvec3 rgb_result;
+    ivec3 base_rgb;
+    uint flip = color_payload.y & 1u;
+    uint subblock = (pixel_coord[flip] & 2u) >> 1u;
+    bool etc1_compat = false;
+
+    if ((color_payload.y & 2u) == 0u)
+    {
+        // Individual mode (ETC1)
+        etc1_compat = true;
+        base_rgb = ivec3(color_payload.yyy >> (uvec3(28, 20, 12) - 4 * subblock));
+        base_rgb &= 0xf;
+        base_rgb *= 0x11;
+    }
+    else
+    {
+        int r = int(bitfieldExtract(color_payload.y, 27, 5));
+        int rd = bitfieldExtract(int(color_payload.y), 24, 3);
+        int g = int(bitfieldExtract(color_payload.y, 19, 5));
+        int gd = bitfieldExtract(int(color_payload.y), 16, 3);
+        int b = int(bitfieldExtract(color_payload.y, 11, 5));
+        int bd = bitfieldExtract(int(color_payload.y), 8, 3);
+
+        int r1 = r + rd;
+        int g1 = g + gd;
+        int b1 = b + bd;
+
+        if (uint(r1) > 31)
+        {
+            // T mode
+        }
+        else if (uint(g1) > 31)
+        {
+            // H mode
+        }
+        else if (uint(b1) > 31)
+        {
+            // Planar mode
+        }
+        else
+        {
+            // Differential mode (ETC1)
+            etc1_compat = true;
+            base_rgb = ivec3(r, g, b) + int(subblock) * ivec3(rd, gd, bd);
+            base_rgb = (base_rgb << 3) | (base_rgb >> 2);
+        }
+    }
+
+    if (etc1_compat)
+    {
+        uint etc1_table_index = bitfieldExtract(color_payload.y, 5 - 3 * int(subblock != 0u), 3);
+        int msb = int((color_payload.x >> (16 + linear_pixel)) & 1u);
+        int lsb = int((color_payload.x >> linear_pixel) & 1u);
+        int sgn = 1 - 2 * msb;
+        int offset = etc1_color_modifier_table[etc1_table_index][lsb] * sgn;
+        base_rgb = clamp(base_rgb + offset, ivec3(0), ivec3(255));
+        rgb_result = base_rgb;
+    }
+
+    imageStore(uOutput, coord, uvec4(rgb_result, 0xffu));
+}

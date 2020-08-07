@@ -186,6 +186,59 @@ static BufferHandle decode_compute(CommandBuffer &cmd, const TextureFormatLayout
 	return readback_image(cmd, *compressed);
 }
 
+static bool test_etc2(Device &device, VkFormat format, VkFormat readback_format)
+{
+	auto cmd = device.request_command_buffer();
+	std::mt19937 rnd(1337);
+
+	SceneFormats::MemoryMappedTexture tex;
+	unsigned width = 64;
+	unsigned height = 64;
+	unsigned blocks_x = (width + 3) / 4;
+	unsigned blocks_y = (height + 3) / 4;
+	unsigned num_words = blocks_x * blocks_y *
+	                     (TextureFormatLayout::format_block_size(format, VK_IMAGE_ASPECT_COLOR_BIT) / 4);
+	tex.set_2d(format, width, height);
+	if (!tex.map_write_scratch())
+		return false;
+
+	auto &layout = tex.get_layout();
+	auto *d = static_cast<uint32_t *>(layout.data_opaque(0, 0, 0, 0));
+	for (unsigned i = 0; i < num_words; i++)
+	{
+		uint32_t w = rnd();
+		if ((i & 1) == 0)
+		{
+			// Ensure we only hit ETC1 paths.
+			uint32_t r = (w >> 3) & 31;
+			uint32_t g = (w >> 11) & 31;
+			uint32_t b = (w >> 19) & 31;
+
+			if (r < 4 || r > 28)
+				w &= ~0x7u;
+			if (g < 4 || g > 28)
+				w &= ~0x700u;
+			if (b < 4 || b > 28)
+				w &= ~0x70000u;
+		}
+		d[i] = w;
+	}
+
+	auto readback_reference = decode_gpu(*cmd, layout, readback_format);
+	auto readback_decoded = decode_compute(*cmd, layout);
+	if (!readback_decoded)
+	{
+		device.submit_discard(cmd);
+		return false;
+	}
+
+	Fence fence;
+	device.submit(cmd, &fence);
+	fence->wait();
+
+	return compare_rgba8(device, *readback_reference, *readback_decoded, width, height, 0);
+}
+
 static bool test_rgtc(Device &device, VkFormat format, VkFormat readback_format)
 {
 	auto cmd = device.request_command_buffer();
@@ -303,6 +356,17 @@ static bool test_rgtc(Device &device)
 	return true;
 }
 
+static bool test_etc2(Device &device)
+{
+	if (!test_etc2(device, VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK, VK_FORMAT_R8G8B8A8_UNORM))
+		return false;
+	device.wait_idle();
+	if (!test_etc2(device, VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK, VK_FORMAT_R8G8B8A8_SRGB))
+		return false;
+	device.wait_idle();
+	return true;
+}
+
 int main()
 {
 	Global::init(Global::MANAGER_FEATURE_ALL_BITS, 1);
@@ -321,5 +385,7 @@ int main()
 	if (!test_s3tc(device))
 		return EXIT_FAILURE;
 	if (!test_rgtc(device))
+		return EXIT_FAILURE;
+	if (!test_etc2(device))
 		return EXIT_FAILURE;
 }

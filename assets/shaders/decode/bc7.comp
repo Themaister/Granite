@@ -1,0 +1,168 @@
+#version 450
+#extension GL_EXT_samplerless_texture_functions : require
+layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
+
+layout(set = 0, binding = 0, rgba8ui) writeonly uniform uimage2D uOutput;
+layout(set = 0, binding = 1) uniform utexture2D uInput;
+
+layout(push_constant) uniform Registers
+{
+    ivec2 resolution;
+} registers;
+
+ivec2 build_coord()
+{
+    ivec2 base = ivec2(gl_WorkGroupID.xy) * 8;
+    base.x += 4 * (int(gl_LocalInvocationID.z) & 1);
+    base.y += 2 * (int(gl_LocalInvocationID.z) & 2);
+    base += ivec2(gl_LocalInvocationID.xy);
+    return base;
+}
+
+const int weight_table2[4] = int[](0, 21, 43, 64);
+const int weight_table3[8] = int[](0, 9, 18, 27, 37, 46, 55, 64);
+const int weight_table4[16] = int[](0, 4, 9, 13, 17, 21, 26, 30, 34, 38, 43, 47, 51, 55, 60, 64);
+
+struct DecodedInterpolation
+{
+    uvec4 ep0, ep1;
+    uint weight;
+};
+
+int extract_bits(uvec4 payload, int offset, int bits)
+{
+    int last_offset = offset + bits - 1;
+    int result;
+    if ((last_offset >> 5) == (offset >> 5))
+        result = int(bitfieldExtract(payload[offset >> 5], offset & 31, bits));
+    else
+    {
+        int first_bits = 32 - (offset & 31);
+        int result_first = int(bitfieldExtract(payload[offset >> 5], offset & 31, first_bits));
+        int result_second = int(bitfieldExtract(payload[(offset >> 5) + 1], 0, bits - first_bits));
+        result = result_first | (result_second << first_bits);
+    }
+    return result;
+}
+
+DecodedInterpolation decode_bc7_mode0(uvec4 payload, int linear_pixel)
+{
+    return DecodedInterpolation(uvec4(0), uvec4(0), 0);
+}
+
+DecodedInterpolation decode_bc7_mode1(uvec4 payload, int linear_pixel)
+{
+    return DecodedInterpolation(uvec4(0), uvec4(0), 0);
+}
+
+DecodedInterpolation decode_bc7_mode2(uvec4 payload, int linear_pixel)
+{
+    return DecodedInterpolation(uvec4(0), uvec4(0), 0);
+}
+
+DecodedInterpolation decode_bc7_mode3(uvec4 payload, int linear_pixel)
+{
+    return DecodedInterpolation(uvec4(0), uvec4(0), 0);
+}
+
+DecodedInterpolation decode_bc7_mode4(uvec4 payload, int linear_pixel)
+{
+    return DecodedInterpolation(uvec4(0), uvec4(0), 0);
+}
+
+DecodedInterpolation decode_bc7_mode5(uvec4 payload, int linear_pixel)
+{
+    return DecodedInterpolation(uvec4(0), uvec4(0), 0);
+}
+
+DecodedInterpolation decode_bc7_mode6(uvec4 payload, int linear_pixel)
+{
+    int sep0 = extract_bits(payload, 63, 1);
+    int sep1 = extract_bits(payload, 64, 1);
+    int r0 = extract_bits(payload, 7, 7);
+    int r1 = extract_bits(payload, 14, 7);
+    int g0 = extract_bits(payload, 21, 7);
+    int g1 = extract_bits(payload, 28, 7);
+    int b0 = extract_bits(payload, 35, 7);
+    int b1 = extract_bits(payload, 42, 7);
+    int a0 = extract_bits(payload, 49, 7);
+    int a1 = extract_bits(payload, 56, 7);
+
+    ivec4 ep0 = ivec4(r0, g0, b0, a0) * 2 + sep0;
+    ivec4 ep1 = ivec4(r1, g1, b1, a1) * 2 + sep1;
+
+    int index = extract_bits(
+            payload,
+            max(64 + linear_pixel * 4, 65),
+            linear_pixel == 0 ? 3 : 4);
+
+    int w = weight_table4[index];
+    return DecodedInterpolation(ep0, ep1, w);
+}
+
+DecodedInterpolation decode_bc7_mode7(uvec4 payload, int linear_pixel)
+{
+    return DecodedInterpolation(uvec4(0), uvec4(0), 0);
+}
+
+uvec4 interpolate_endpoint(DecodedInterpolation interp)
+{
+    return (((64u - interp.weight) * interp.ep0 + interp.weight * interp.ep1 + 32) >> 6);
+}
+
+void main()
+{
+    ivec2 coord = build_coord();
+    if (any(greaterThanEqual(coord, registers.resolution)))
+        return;
+
+    ivec2 tile_coord = coord >> 2;
+    ivec2 pixel_coord = coord & 3;
+    int linear_pixel = 4 * pixel_coord.y + pixel_coord.x;
+    uvec4 payload = texelFetch(uInput, tile_coord, 0);
+
+    DecodedInterpolation interp;
+
+    int mode = findLSB(payload.x);
+    switch (mode)
+    {
+    case 0:
+        interp = decode_bc7_mode0(payload, linear_pixel);
+        break;
+
+    case 1:
+        interp = decode_bc7_mode1(payload, linear_pixel);
+        break;
+
+    case 2:
+        interp = decode_bc7_mode2(payload, linear_pixel);
+        break;
+
+    case 3:
+        interp = decode_bc7_mode3(payload, linear_pixel);
+        break;
+
+    case 4:
+        interp = decode_bc7_mode4(payload, linear_pixel);
+        break;
+
+    case 5:
+        interp = decode_bc7_mode5(payload, linear_pixel);
+        break;
+
+    case 6:
+        interp = decode_bc7_mode6(payload, linear_pixel);
+        break;
+
+    case 7:
+        interp = decode_bc7_mode7(payload, linear_pixel);
+        break;
+
+    default:
+        interp = DecodedInterpolation(uvec4(0), uvec4(0), 0);
+        break;
+    }
+
+    uvec4 rgba_result = interpolate_endpoint(interp);
+    imageStore(uOutput, coord, rgba_result);
+}

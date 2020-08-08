@@ -59,7 +59,6 @@ static bool compare_r8(Device &device,
 	auto *mapped_reference = static_cast<const uint8_t *>(device.map_host_buffer(reference, MEMORY_ACCESS_READ_BIT));
 	auto *mapped_decoded = static_cast<const uint8_t *>(device.map_host_buffer(decoded, MEMORY_ACCESS_READ_BIT));
 
-	bool success = true;
 	for (unsigned y = 0; y < height; y++)
 	{
 		for (unsigned x = 0; x < width; x++)
@@ -73,12 +72,12 @@ static bool compare_r8(Device &device,
 			{
 				LOGE("(%u, %u): Reference (%u) != (%u).\n",
 				     x, y, ref, dec);
-				success = false;
+				return false;
 			}
 		}
 	}
 
-	return success;
+	return true;
 }
 
 static bool compare_rg8(Device &device,
@@ -88,7 +87,6 @@ static bool compare_rg8(Device &device,
 	auto *mapped_reference = static_cast<const u8vec2 *>(device.map_host_buffer(reference, MEMORY_ACCESS_READ_BIT));
 	auto *mapped_decoded = static_cast<const u8vec2 *>(device.map_host_buffer(decoded, MEMORY_ACCESS_READ_BIT));
 
-	bool success = true;
 	for (unsigned y = 0; y < height; y++)
 	{
 		for (unsigned x = 0; x < width; x++)
@@ -105,12 +103,12 @@ static bool compare_rg8(Device &device,
 				LOGE("(%u, %u): Reference (%u, %u) != (%u, %u).\n",
 				     x, y,
 				     ref.x, ref.y, dec.x, dec.y);
-				success = false;
+				return false;
 			}
 		}
 	}
 
-	return success;
+	return true;
 }
 
 static bool compare_rgba8(Device &device,
@@ -120,7 +118,6 @@ static bool compare_rgba8(Device &device,
 	auto *mapped_reference = static_cast<const u8vec4 *>(device.map_host_buffer(reference, MEMORY_ACCESS_READ_BIT));
 	auto *mapped_decoded = static_cast<const u8vec4 *>(device.map_host_buffer(decoded, MEMORY_ACCESS_READ_BIT));
 
-	bool success = true;
 	for (unsigned y = 0; y < height; y++)
 	{
 		for (unsigned x = 0; x < width; x++)
@@ -140,12 +137,12 @@ static bool compare_rgba8(Device &device,
 				     x, y,
 				     ref.x, ref.y, ref.z, ref.w,
 				     dec.x, dec.y, dec.z, dec.w);
-				success = false;
+				return false;
 			}
 		}
 	}
 
-	return success;
+	return true;
 }
 
 static BufferHandle decode_gpu(CommandBuffer &cmd, const TextureFormatLayout &layout, VkFormat format)
@@ -210,11 +207,7 @@ static bool test_etc2(Device &device, VkFormat format, VkFormat readback_format)
 		if ((i & 1) == 0)
 		{
 			// Ensure we only hit ETC1 paths.
-			uint32_t r = (w >> 3) & 31;
 			uint32_t g = (w >> 11) & 31;
-
-			if (r < 4 || r > 28)
-				w &= ~0x7u;
 			if (g < 4 || g > 28)
 				w &= ~0x700u;
 		}

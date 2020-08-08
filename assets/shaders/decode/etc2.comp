@@ -41,6 +41,8 @@ const ivec2 etc1_color_modifier_table[] = ivec2[](
     ivec2(33, 106),
     ivec2(47, 183));
 
+const int etc2_distance_table[] = int[](3, 6, 11, 16, 23, 32, 41, 64);
+
 void main()
 {
     ivec2 coord = build_coord();
@@ -82,7 +84,32 @@ void main()
 
         if (uint(r1) > 31)
         {
-            // T mode
+            int r1 = int(bitfieldExtract(color_payload.y, 56 - 32, 2)) |
+                    (int(bitfieldExtract(color_payload.y, 59 - 32, 2)) << 2);
+            int g1 = int(bitfieldExtract(color_payload.y, 52 - 32, 4));
+            int b1 = int(bitfieldExtract(color_payload.y, 48 - 32, 4));
+            int r2 = int(bitfieldExtract(color_payload.y, 44 - 32, 4));
+            int g2 = int(bitfieldExtract(color_payload.y, 40 - 32, 4));
+            int b2 = int(bitfieldExtract(color_payload.y, 36 - 32, 4));
+            uint da = (bitfieldExtract(color_payload.y, 34 - 32, 2) << 1) |
+                    (color_payload.y & 1u);
+            int dist = etc2_distance_table[da];
+
+            int msb = int((color_payload.x >> (15 + linear_pixel)) & 2u);
+            int lsb = int((color_payload.x >> linear_pixel) & 1u);
+            int index = msb | lsb;
+
+            if (index == 0)
+            {
+                rgb_result = uvec3(r1, g1, b1);
+                rgb_result *= 0x11u;
+            }
+            else
+            {
+                int mod = 2 - index;
+                ivec3 rgb = ivec3(r2, g2, b2) * 0x11 + mod * dist;
+                rgb_result = clamp(rgb, ivec3(0), ivec3(255));
+            }
         }
         else if (uint(g1) > 31)
         {

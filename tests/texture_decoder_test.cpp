@@ -189,8 +189,8 @@ static bool test_etc2(Device &device, VkFormat format, VkFormat readback_format)
 	std::mt19937 rnd(1337);
 
 	SceneFormats::MemoryMappedTexture tex;
-	unsigned width = 512;
-	unsigned height = 512;
+	unsigned width = 2048;
+	unsigned height = 2048;
 	unsigned blocks_x = (width + 3) / 4;
 	unsigned blocks_y = (height + 3) / 4;
 	unsigned num_words = blocks_x * blocks_y *
@@ -204,13 +204,6 @@ static bool test_etc2(Device &device, VkFormat format, VkFormat readback_format)
 	for (unsigned i = 0; i < num_words; i++)
 	{
 		uint32_t w = rnd();
-		if ((i & 1) == 0)
-		{
-			// Ensure we only hit ETC1 paths.
-			uint32_t g = (w >> 11) & 31;
-			if (g < 4 || g > 28)
-				w &= ~0x700u;
-		}
 		d[i] = w;
 	}
 

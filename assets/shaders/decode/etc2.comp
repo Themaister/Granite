@@ -113,7 +113,27 @@ void main()
         }
         else if (uint(g1) > 31)
         {
-            // H mode
+            int r1 = int(bitfieldExtract(color_payload.y, 59 - 32, 4));
+            int g1 = (int(bitfieldExtract(color_payload.y, 56 - 32, 3)) << 1) |
+                    int((color_payload.y >> 20u) & 1u);
+            int b1 = int(bitfieldExtract(color_payload.y, 47 - 32, 3)) |
+                    int((color_payload.y >> 16u) & 8u);
+            int r2 = int(bitfieldExtract(color_payload.y, 43 - 32, 4));
+            int g2 = int(bitfieldExtract(color_payload.y, 39 - 32, 4));
+            int b2 = int(bitfieldExtract(color_payload.y, 35 - 32, 4));
+            uint da = color_payload.y & 4u;
+            uint db = color_payload.y & 1u;
+            uint d = da + 2 * db;
+            d += uint((r1 * 0x10000 + g1 * 0x100 + b1) >= (r2 * 0x10000 + g2 * 0x100 + b2));
+            int dist = etc2_distance_table[d];
+            int msb = int((color_payload.x >> (15 + linear_pixel)) & 2u);
+            int lsb = int((color_payload.x >> linear_pixel) & 1u);
+
+            ivec3 base = msb != 0 ? ivec3(r2, g2, b2) : ivec3(r1, g1, b1);
+            base *= 0x11;
+            int mod = 1 - 2 * lsb;
+            base += mod * dist;
+            rgb_result = clamp(base, ivec3(0), ivec3(0xff));
         }
         else if (uint(b1) > 31)
         {

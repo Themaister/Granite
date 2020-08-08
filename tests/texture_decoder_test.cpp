@@ -347,6 +347,12 @@ static bool test_etc2(Device &device)
 	if (!test_etc2(device, VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK, VK_FORMAT_R8G8B8A8_SRGB))
 		return false;
 	device.wait_idle();
+	if (!test_etc2(device, VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK, VK_FORMAT_R8G8B8A8_UNORM))
+		return false;
+	device.wait_idle();
+	if (!test_etc2(device, VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK, VK_FORMAT_R8G8B8A8_SRGB))
+		return false;
+	device.wait_idle();
 	return true;
 }
 

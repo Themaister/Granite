@@ -183,7 +183,7 @@ static bool set_compute_decoder(Vulkan::CommandBuffer &cmd, VkFormat format)
 	return true;
 }
 
-static void dispatch_kernel_etc2(Vulkan::CommandBuffer &cmd, uint32_t width, uint32_t height, VkFormat)
+static void dispatch_kernel_etc2(Vulkan::CommandBuffer &cmd, uint32_t width, uint32_t height, VkFormat format)
 {
 	struct Push
 	{
@@ -193,6 +193,28 @@ static void dispatch_kernel_etc2(Vulkan::CommandBuffer &cmd, uint32_t width, uin
 	push.width = width;
 	push.height = height;
 	cmd.push_constants(&push, 0, sizeof(push));
+
+	cmd.set_specialization_constant_mask(1);
+	switch (format)
+	{
+	case VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK:
+	case VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK:
+		cmd.set_specialization_constant(0, uint32_t(0));
+		break;
+
+	case VK_FORMAT_ETC2_R8G8B8A1_SRGB_BLOCK:
+	case VK_FORMAT_ETC2_R8G8B8A1_UNORM_BLOCK:
+		cmd.set_specialization_constant(0, uint32_t(1));
+		break;
+
+	case VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK:
+	case VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK:
+		cmd.set_specialization_constant(0, uint32_t(8));
+		break;
+
+	default:
+		break;
+	}
 
 	width = (width + 7) / 8;
 	height = (height + 7) / 8;

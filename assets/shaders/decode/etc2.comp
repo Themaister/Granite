@@ -92,6 +92,7 @@ void main()
 
     uvec2 color_payload;
     uint alpha_result;
+    bool punchthrough;
     if (ALPHA_BITS == 8)
     {
         uvec2 alpha_payload = flip_endian(payload.xy);
@@ -110,7 +111,12 @@ void main()
     uint subblock = (pixel_coord[flip] & 2u) >> 1u;
     bool etc1_compat = false;
 
-    if ((color_payload.y & 2u) == 0u)
+    if (ALPHA_BITS == 1)
+        punchthrough = (color_payload.y & 2u) == 0u;
+    else
+        punchthrough = false;
+
+    if (ALPHA_BITS != 1 && (color_payload.y & 2u) == 0u)
     {
         // Individual mode (ETC1)
         etc1_compat = true;
@@ -148,6 +154,9 @@ void main()
             int lsb = int((color_payload.x >> linear_pixel) & 1u);
             int index = msb | lsb;
 
+            if (punchthrough)
+                punchthrough = index == 2;
+
             if (index == 0)
             {
                 rgb_result = uvec3(r1, g1, b1);
@@ -177,6 +186,9 @@ void main()
             int dist = etc2_distance_table[d];
             int msb = int((color_payload.x >> (15 + linear_pixel)) & 2u);
             int lsb = int((color_payload.x >> linear_pixel) & 1u);
+
+            if (punchthrough)
+                punchthrough = (msb + lsb) == 2;
 
             ivec3 base = msb != 0 ? ivec3(r2, g2, b2) : ivec3(r1, g1, b1);
             base *= 0x11;
@@ -219,6 +231,7 @@ void main()
             rgb = rgb + ((dx + dy + 2) >> 2);
             rgb = clamp(rgb, ivec3(0), ivec3(255));
             rgb_result = rgb;
+            punchthrough = false;
         }
         else
         {
@@ -232,12 +245,23 @@ void main()
     if (etc1_compat)
     {
         uint etc1_table_index = bitfieldExtract(color_payload.y, 5 - 3 * int(subblock != 0u), 3);
-        int msb = int((color_payload.x >> (16 + linear_pixel)) & 1u);
+        int msb = int((color_payload.x >> (15 + linear_pixel)) & 2u);
         int lsb = int((color_payload.x >> linear_pixel) & 1u);
-        int sgn = 1 - 2 * msb;
+        int sgn = 1 - msb;
+        if (punchthrough)
+        {
+            sgn *= lsb;
+            punchthrough = (msb + lsb) == 2;
+        }
         int offset = etc1_color_modifier_table[etc1_table_index][lsb] * sgn;
         base_rgb = clamp(base_rgb + offset, ivec3(0), ivec3(255));
         rgb_result = base_rgb;
+    }
+
+    if (ALPHA_BITS == 1 && punchthrough)
+    {
+        rgb_result = uvec3(0);
+        alpha_result = 0;
     }
 
     imageStore(uOutput, coord, uvec4(rgb_result, alpha_result));

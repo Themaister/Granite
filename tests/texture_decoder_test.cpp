@@ -265,8 +265,8 @@ static bool test_bc7(Device &device, VkFormat format, VkFormat readback_format)
 		uint32_t w = rnd();
 		if ((i & 3u) == 0u)
 		{
-			w &= ~0x7u;
-			w |= 0x8u;
+			w &= ~0x1u;
+			w |= 0x2u;
 		}
 		d[i] = w;
 	}

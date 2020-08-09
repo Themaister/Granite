@@ -69,7 +69,43 @@ DecodedInterpolation decode_bc7_mode3(uvec4 payload, int linear_pixel)
 
 DecodedInterpolation decode_bc7_mode4(uvec4 payload, int linear_pixel)
 {
-    return DecodedInterpolation(uvec4(0), uvec4(0), 0, 0, 0);
+    int rot = extract_bits(payload, 5, 2);
+    bool isb = (payload.x & 0x80u) != 0u;
+    int r0 = extract_bits(payload, 8, 5);
+    int r1 = extract_bits(payload, 13, 5);
+    int g0 = extract_bits(payload, 18, 5);
+    int g1 = extract_bits(payload, 23, 5);
+    int b0 = extract_bits(payload, 28, 5);
+    int b1 = extract_bits(payload, 33, 5);
+    int a0 = extract_bits(payload, 38, 6);
+    int a1 = extract_bits(payload, 44, 6);
+
+    int primary_index = extract_bits(
+            payload,
+            max(49 + linear_pixel * 2, 50),
+            linear_pixel == 0 ? 1 : 2);
+    int secondary_index = extract_bits(
+            payload,
+            max(80 + linear_pixel * 3, 81),
+            linear_pixel == 0 ? 2 : 3);
+
+    int color_weight = weight_table2[primary_index];
+    int alpha_weight = weight_table3[secondary_index];
+
+    if (isb)
+    {
+        int tmp = color_weight;
+        color_weight = alpha_weight;
+        alpha_weight = tmp;
+    }
+
+    ivec3 rgb0 = ivec3(r0, g0, b0);
+    ivec3 rgb1 = ivec3(r1, g1, b1);
+    rgb0 = (rgb0 << 3) | (rgb0 >> 2);
+    rgb1 = (rgb1 << 3) | (rgb1 >> 2);
+    a0 = (a0 << 2) | (a0 >> 4);
+    a1 = (a1 << 2) | (a1 >> 4);
+    return DecodedInterpolation(uvec4(rgb0, a0), uvec4(rgb1, a1), color_weight, alpha_weight, rot);
 }
 
 DecodedInterpolation decode_bc7_mode5(uvec4 payload, int linear_pixel)

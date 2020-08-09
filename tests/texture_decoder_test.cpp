@@ -204,6 +204,40 @@ static bool compare_rgba8(Device &device,
 	return true;
 }
 
+static bool compare_rgba16f(Device &device,
+                            const Buffer &reference, const Buffer &decoded,
+                            unsigned width, unsigned height)
+{
+	auto *mapped_reference = static_cast<const u16vec4 *>(device.map_host_buffer(reference, MEMORY_ACCESS_READ_BIT));
+	auto *mapped_decoded = static_cast<const u16vec4 *>(device.map_host_buffer(decoded, MEMORY_ACCESS_READ_BIT));
+
+	for (unsigned y = 0; y < height; y++)
+	{
+		for (unsigned x = 0; x < width; x++)
+		{
+			auto &ref = mapped_reference[y * width + x];
+			auto &dec = mapped_decoded[y * width + x];
+
+			int diff_r = muglm::abs(int(ref.x) - int(dec.x));
+			int diff_g = muglm::abs(int(ref.y) - int(dec.y));
+			int diff_b = muglm::abs(int(ref.z) - int(dec.z));
+			int diff_a = muglm::abs(int(ref.w) - int(dec.w));
+			int diff_max = muglm::max(muglm::max(diff_r, diff_g), muglm::max(diff_b, diff_a));
+
+			if (diff_max)
+			{
+				LOGE("(%u, %u): Reference (%u, %u, %u, %u) != (%u, %u, %u, %u).\n",
+				     x, y,
+				     ref.x, ref.y, ref.z, ref.w,
+				     dec.x, dec.y, dec.z, dec.w);
+				return false;
+			}
+		}
+	}
+
+	return true;
+}
+
 static BufferHandle decode_gpu(CommandBuffer &cmd, const TextureFormatLayout &layout, VkFormat format)
 {
 	auto &device = cmd.get_device();
@@ -240,6 +274,63 @@ static BufferHandle decode_compute(CommandBuffer &cmd, const TextureFormatLayout
 	                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
 	                  VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
 	return readback_image(cmd, *compressed);
+}
+
+#if 0
+struct DebugIface : DebugChannelInterface
+{
+	void message(const std::string &tag, uint32_t code, uint32_t x, uint32_t y, uint32_t z,
+	             uint32_t word_count, const Word *words) override
+	{
+		if (x == 170 && y == 46)
+			LOGI("(X = %d, Y = %d), line: %d = (%d, %d, %d).\n", x, y, words[0].s32, words[1].s32, words[2].s32, words[3].s32);
+	}
+};
+static DebugIface iface;
+#endif
+
+static bool test_bc6(Device &device, VkFormat format)
+{
+	auto cmd = device.request_command_buffer();
+	std::mt19937 rnd(1337);
+
+	SceneFormats::MemoryMappedTexture tex;
+	unsigned width = 4096;
+	unsigned height = 4096;
+	unsigned blocks_x = (width + 3) / 4;
+	unsigned blocks_y = (height + 3) / 4;
+	unsigned num_words = blocks_x * blocks_y *
+	                     (TextureFormatLayout::format_block_size(format, VK_IMAGE_ASPECT_COLOR_BIT) / 4);
+	tex.set_2d(format, width, height);
+	if (!tex.map_write_scratch())
+		return false;
+
+	auto &layout = tex.get_layout();
+	auto *d = static_cast<uint32_t *>(layout.data_opaque(0, 0, 0, 0));
+	for (unsigned i = 0; i < num_words; i++)
+	{
+		uint32_t w = rnd();
+		if ((i & 3u) == 0u)
+		{
+			w &= ~0x1fu;
+			w |= 3u;
+		}
+		d[i] = w;
+	}
+
+	auto readback_reference = decode_gpu(*cmd, layout, VK_FORMAT_R16G16B16A16_SFLOAT);
+	auto readback_decoded = decode_compute(*cmd, layout);
+	if (!readback_decoded)
+	{
+		device.submit_discard(cmd);
+		return false;
+	}
+
+	Fence fence;
+	device.submit(cmd, &fence);
+	fence->wait();
+
+	return compare_rgba16f(device, *readback_reference, *readback_decoded, width, height);
 }
 
 static bool test_bc7(Device &device, VkFormat format, VkFormat readback_format)
@@ -526,6 +617,19 @@ static bool test_bc7(Device &device)
 	return true;
 }
 
+static bool test_bc6(Device &device)
+{
+#if 1
+	if (!test_bc6(device, VK_FORMAT_BC6H_SFLOAT_BLOCK))
+		return false;
+	device.wait_idle();
+#endif
+	if (!test_bc6(device, VK_FORMAT_BC6H_UFLOAT_BLOCK))
+		return false;
+	device.wait_idle();
+	return true;
+}
+
 int main()
 {
 	Global::init(Global::MANAGER_FEATURE_ALL_BITS, 1);
@@ -550,7 +654,9 @@ int main()
 		return EXIT_FAILURE;
 	if (!test_eac(device))
 		return EXIT_FAILURE;
-#endif
 	if (!test_bc7(device))
+		return EXIT_FAILURE;
+#endif
+	if (!test_bc6(device))
 		return EXIT_FAILURE;
 }

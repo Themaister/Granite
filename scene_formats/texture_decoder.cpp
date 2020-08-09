@@ -141,8 +141,10 @@ static VkFormat to_storage_format(VkFormat format)
 
 	case VK_FORMAT_R16_SFLOAT:
 	case VK_FORMAT_R16G16_SFLOAT:
-	case VK_FORMAT_R16G16B16A16_SFLOAT:
 		return format;
+
+	case VK_FORMAT_R16G16B16A16_SFLOAT:
+		return VK_FORMAT_R16G16B16A16_UINT;
 
 	default:
 		return VK_FORMAT_UNDEFINED;
@@ -183,6 +185,11 @@ static bool set_compute_decoder(Vulkan::CommandBuffer &cmd, VkFormat format)
 		cmd.set_program("builtin://shaders/decode/eac.comp");
 		break;
 
+	case VK_FORMAT_BC6H_SFLOAT_BLOCK:
+	case VK_FORMAT_BC6H_UFLOAT_BLOCK:
+		cmd.set_program("builtin://shaders/decode/bc6.comp");
+		break;
+
 	case VK_FORMAT_BC7_SRGB_BLOCK:
 	case VK_FORMAT_BC7_UNORM_BLOCK:
 		cmd.set_program("builtin://shaders/decode/bc7.comp");
@@ -208,6 +215,25 @@ static void dispatch_kernel_eac(Vulkan::CommandBuffer &cmd, uint32_t width, uint
 
 	cmd.set_specialization_constant_mask(1);
 	cmd.set_specialization_constant(0, uint32_t(format == VK_FORMAT_EAC_R11G11_UNORM_BLOCK ? 2 : 1));
+
+	width = (width + 7) / 8;
+	height = (height + 7) / 8;
+	cmd.dispatch(width, height, 1);
+}
+
+static void dispatch_kernel_bc6(Vulkan::CommandBuffer &cmd, uint32_t width, uint32_t height, VkFormat format)
+{
+	struct Push
+	{
+		uint32_t width, height;
+	} push;
+
+	push.width = width;
+	push.height = height;
+	cmd.push_constants(&push, 0, sizeof(push));
+
+	cmd.set_specialization_constant_mask(1);
+	cmd.set_specialization_constant(0, uint32_t(format == VK_FORMAT_BC6H_SFLOAT_BLOCK));
 
 	width = (width + 7) / 8;
 	height = (height + 7) / 8;
@@ -372,6 +398,11 @@ static void dispatch_kernel(Vulkan::CommandBuffer &cmd, uint32_t width, uint32_t
 	case VK_FORMAT_EAC_R11_UNORM_BLOCK:
 	case VK_FORMAT_EAC_R11G11_UNORM_BLOCK:
 		dispatch_kernel_eac(cmd, width, height, format);
+		break;
+
+	case VK_FORMAT_BC6H_SFLOAT_BLOCK:
+	case VK_FORMAT_BC6H_UFLOAT_BLOCK:
+		dispatch_kernel_bc6(cmd, width, height, format);
 		break;
 
 	case VK_FORMAT_BC7_SRGB_BLOCK:

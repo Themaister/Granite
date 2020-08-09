@@ -26,7 +26,9 @@ const int weight_table4[16] = int[](0, 4, 9, 13, 17, 21, 26, 30, 34, 38, 43, 47,
 struct DecodedInterpolation
 {
     uvec4 ep0, ep1;
-    uint weight;
+    uint color_weight;
+    uint alpha_weight;
+    uint rotation;
 };
 
 int extract_bits(uvec4 payload, int offset, int bits)
@@ -47,32 +49,58 @@ int extract_bits(uvec4 payload, int offset, int bits)
 
 DecodedInterpolation decode_bc7_mode0(uvec4 payload, int linear_pixel)
 {
-    return DecodedInterpolation(uvec4(0), uvec4(0), 0);
+    return DecodedInterpolation(uvec4(0), uvec4(0), 0, 0, 0);
 }
 
 DecodedInterpolation decode_bc7_mode1(uvec4 payload, int linear_pixel)
 {
-    return DecodedInterpolation(uvec4(0), uvec4(0), 0);
+    return DecodedInterpolation(uvec4(0), uvec4(0), 0, 0, 0);
 }
 
 DecodedInterpolation decode_bc7_mode2(uvec4 payload, int linear_pixel)
 {
-    return DecodedInterpolation(uvec4(0), uvec4(0), 0);
+    return DecodedInterpolation(uvec4(0), uvec4(0), 0, 0, 0);
 }
 
 DecodedInterpolation decode_bc7_mode3(uvec4 payload, int linear_pixel)
 {
-    return DecodedInterpolation(uvec4(0), uvec4(0), 0);
+    return DecodedInterpolation(uvec4(0), uvec4(0), 0, 0, 0);
 }
 
 DecodedInterpolation decode_bc7_mode4(uvec4 payload, int linear_pixel)
 {
-    return DecodedInterpolation(uvec4(0), uvec4(0), 0);
+    return DecodedInterpolation(uvec4(0), uvec4(0), 0, 0, 0);
 }
 
 DecodedInterpolation decode_bc7_mode5(uvec4 payload, int linear_pixel)
 {
-    return DecodedInterpolation(uvec4(0), uvec4(0), 0);
+    int rot = extract_bits(payload, 6, 2);
+    int r0 = extract_bits(payload, 8, 7);
+    int r1 = extract_bits(payload, 15, 7);
+    int g0 = extract_bits(payload, 22, 7);
+    int g1 = extract_bits(payload, 29, 7);
+    int b0 = extract_bits(payload, 36, 7);
+    int b1 = extract_bits(payload, 43, 7);
+    int a0 = extract_bits(payload, 50, 8);
+    int a1 = extract_bits(payload, 58, 8);
+
+    int primary_index = extract_bits(
+            payload,
+            max(65 + linear_pixel * 2, 66),
+            linear_pixel == 0 ? 1 : 2);
+    int secondary_index = extract_bits(
+            payload,
+            max(96 + linear_pixel * 2, 97),
+            linear_pixel == 0 ? 1 : 2);
+
+    int color_weight = weight_table2[primary_index];
+    int alpha_weight = weight_table2[secondary_index];
+
+    ivec3 rgb0 = ivec3(r0, g0, b0);
+    ivec3 rgb1 = ivec3(r1, g1, b1);
+    rgb0 = (rgb0 << 1) | (rgb0 >> 6);
+    rgb1 = (rgb1 << 1) | (rgb1 >> 6);
+    return DecodedInterpolation(uvec4(rgb0, a0), uvec4(rgb1, a1), color_weight, alpha_weight, rot);
 }
 
 DecodedInterpolation decode_bc7_mode6(uvec4 payload, int linear_pixel)
@@ -97,17 +125,36 @@ DecodedInterpolation decode_bc7_mode6(uvec4 payload, int linear_pixel)
             linear_pixel == 0 ? 3 : 4);
 
     int w = weight_table4[index];
-    return DecodedInterpolation(ep0, ep1, w);
+    return DecodedInterpolation(ep0, ep1, w, w, 0);
 }
 
 DecodedInterpolation decode_bc7_mode7(uvec4 payload, int linear_pixel)
 {
-    return DecodedInterpolation(uvec4(0), uvec4(0), 0);
+    return DecodedInterpolation(uvec4(0), uvec4(0), 0, 0, 0);
 }
 
 uvec4 interpolate_endpoint(DecodedInterpolation interp)
 {
-    return (((64u - interp.weight) * interp.ep0 + interp.weight * interp.ep1 + 32) >> 6);
+    uvec3 rgb = (((64u - interp.color_weight) * interp.ep0.rgb + interp.color_weight * interp.ep1.rgb + 32) >> 6);
+    uint a = (((64u - interp.alpha_weight) * interp.ep0.a + interp.alpha_weight * interp.ep1.a + 32) >> 6);
+    uvec4 rgba = uvec4(rgb, a);
+
+    switch (interp.rotation)
+    {
+    default:
+        break;
+    case 1u:
+        rgba = rgba.agbr;
+        break;
+    case 2u:
+        rgba = rgba.rabg;
+        break;
+    case 3u:
+        rgba = rgba.rgab;
+        break;
+    }
+
+    return rgba;
 }
 
 void main()
@@ -159,7 +206,7 @@ void main()
         break;
 
     default:
-        interp = DecodedInterpolation(uvec4(0), uvec4(0), 0);
+        interp = DecodedInterpolation(uvec4(0), uvec4(0), 0, 0, 0);
         break;
     }
 

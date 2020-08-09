@@ -248,8 +248,8 @@ static bool test_bc7(Device &device, VkFormat format, VkFormat readback_format)
 	std::mt19937 rnd(1337);
 
 	SceneFormats::MemoryMappedTexture tex;
-	unsigned width = 2048;
-	unsigned height = 2048;
+	unsigned width = 4096;
+	unsigned height = 4096;
 	unsigned blocks_x = (width + 3) / 4;
 	unsigned blocks_y = (height + 3) / 4;
 	unsigned num_words = blocks_x * blocks_y *
@@ -263,11 +263,6 @@ static bool test_bc7(Device &device, VkFormat format, VkFormat readback_format)
 	for (unsigned i = 0; i < num_words; i++)
 	{
 		uint32_t w = rnd();
-		if ((i & 3u) == 0u)
-		{
-			w &= ~0x3u;
-			w |= 0x4u;
-		}
 		d[i] = w;
 	}
 

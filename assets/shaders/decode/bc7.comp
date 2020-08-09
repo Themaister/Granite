@@ -227,7 +227,33 @@ int extract_bits(uvec4 payload, int offset, int bits)
 
 DecodedInterpolation decode_bc7_mode0(uvec4 payload, int linear_pixel)
 {
-    return DecodedInterpolation(uvec4(0), uvec4(0), 0, 0, 0);
+    int part_index = extract_bits(payload, 1, 4);
+    int part = (partition_table3[part_index] >> (2 * linear_pixel)) & 3;
+    int bit_offset = part * 8;
+
+    int r0 = extract_bits(payload, 5 + bit_offset, 4);
+    int r1 = extract_bits(payload, 9 + bit_offset, 4);
+    int g0 = extract_bits(payload, 29 + bit_offset, 4);
+    int g1 = extract_bits(payload, 33 + bit_offset, 4);
+    int b0 = extract_bits(payload, 53 + bit_offset, 4);
+    int b1 = extract_bits(payload, 57 + bit_offset, 4);
+
+    int sep0 = extract_bits(payload, 77 + part * 2, 1);
+    int sep1 = extract_bits(payload, 78 + part * 2, 1);
+
+    ivec2 anchor_pixels = anchor_table3[part_index];
+    int index = extract_bits(
+            payload,
+            max(82 + linear_pixel * 3 - int(linear_pixel > anchor_pixels.x) - int(linear_pixel > anchor_pixels.y), 83),
+            (linear_pixel == anchor_pixels.y || linear_pixel == anchor_pixels.x || linear_pixel == 0) ? 2 : 3);
+
+    ivec3 rgb0 = ivec3(r0, g0, b0);
+    ivec3 rgb1 = ivec3(r1, g1, b1);
+    rgb0 = (rgb0 << 4) | (sep0 << 3) | (rgb0 >> 1);
+    rgb1 = (rgb1 << 4) | (sep1 << 3) | (rgb1 >> 1);
+
+    int w = weight_table3[index];
+    return DecodedInterpolation(uvec4(rgb0, 0xff), uvec4(rgb1, 0xff), w, w, 0);
 }
 
 DecodedInterpolation decode_bc7_mode1(uvec4 payload, int linear_pixel)

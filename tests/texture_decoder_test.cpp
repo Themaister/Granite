@@ -313,7 +313,7 @@ static bool test_bc6(Device &device, VkFormat format)
 		if ((i & 3u) == 0u)
 		{
 			w &= ~0x1fu;
-			w |= 30u;
+			w |= 15u;
 		}
 		d[i] = w;
 	}

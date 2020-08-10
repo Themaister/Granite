@@ -312,11 +312,6 @@ static bool test_bc6(Device &device, VkFormat format)
 	for (unsigned i = 0; i < num_words; i++)
 	{
 		uint32_t w = rnd();
-		if ((i & 3u) == 0u)
-		{
-			w &= ~0x1fu;
-			w |= 22u;
-		}
 		d[i] = w;
 	}
 

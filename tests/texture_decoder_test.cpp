@@ -282,7 +282,7 @@ struct DebugIface : DebugChannelInterface
 	void message(const std::string &tag, uint32_t code, uint32_t x, uint32_t y, uint32_t z,
 	             uint32_t word_count, const Word *words) override
 	{
-		if (x == 170 && y == 46)
+		if (x == 3 && y == 0)
 			LOGI("(X = %d, Y = %d), line: %d = (%d, %d, %d).\n", x, y, words[0].s32, words[1].s32, words[2].s32, words[3].s32);
 	}
 };
@@ -293,6 +293,8 @@ static bool test_bc6(Device &device, VkFormat format)
 {
 	auto cmd = device.request_command_buffer();
 	std::mt19937 rnd(1337);
+
+	//cmd->begin_debug_channel(&iface, "BC6", 16 * 1024 * 1024);
 
 	SceneFormats::MemoryMappedTexture tex;
 	unsigned width = 4096;
@@ -313,7 +315,7 @@ static bool test_bc6(Device &device, VkFormat format)
 		if ((i & 3u) == 0u)
 		{
 			w &= ~0x3u;
-			w |= 0u;
+			w |= 1u;
 		}
 		d[i] = w;
 	}

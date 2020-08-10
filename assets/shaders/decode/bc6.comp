@@ -126,7 +126,6 @@ DecodedInterpolation decode_bc6_mode2(uvec4 payload, int linear_pixel) { return 
 DecodedInterpolation decode_bc6_mode6(uvec4 payload, int linear_pixel) { return DecodedInterpolation(ivec3(0), ivec3(0), linear_pixel); }
 DecodedInterpolation decode_bc6_mode7(uvec4 payload, int linear_pixel) { return DecodedInterpolation(ivec3(0), ivec3(0), linear_pixel); }
 DecodedInterpolation decode_bc6_mode10(uvec4 payload, int linear_pixel) { return DecodedInterpolation(ivec3(0), ivec3(0), linear_pixel); }
-DecodedInterpolation decode_bc6_mode11(uvec4 payload, int linear_pixel) { return DecodedInterpolation(ivec3(0), ivec3(0), linear_pixel); }
 DecodedInterpolation decode_bc6_mode14(uvec4 payload, int linear_pixel) { return DecodedInterpolation(ivec3(0), ivec3(0), linear_pixel); }
 DecodedInterpolation decode_bc6_mode18(uvec4 payload, int linear_pixel) { return DecodedInterpolation(ivec3(0), ivec3(0), linear_pixel); }
 DecodedInterpolation decode_bc6_mode22(uvec4 payload, int linear_pixel) { return DecodedInterpolation(ivec3(0), ivec3(0), linear_pixel); }
@@ -145,6 +144,34 @@ DecodedInterpolation decode_bc6_mode3(uvec4 payload, int linear_pixel)
     ivec3 ep1 = ivec3(r1, g1, b1);
     ep0 = unquantize_endpoint(ep0, 10);
     ep1 = unquantize_endpoint(ep1, 10);
+
+    int index = extract_bits(
+        payload,
+        max(64 + linear_pixel * 4, 65),
+        linear_pixel == 0 ? 3 : 4);
+
+    int w = weight_table4[index];
+    return DecodedInterpolation(ep0, ep1, w);
+}
+
+DecodedInterpolation decode_bc6_mode11(uvec4 payload, int linear_pixel)
+{
+    int r0 = extract_bits(payload, 5, 10) | (extract_bits_reverse(payload, 43, 2) << 10);
+    int g0 = extract_bits(payload, 15, 10) | (extract_bits_reverse(payload, 53, 2) << 10);
+    int b0 = extract_bits(payload, 25, 10) | (extract_bits_reverse(payload, 63, 2) << 10);
+
+    int r1 = extract_bits_sign(payload, 35, 8);
+    int g1 = extract_bits_sign(payload, 45, 8);
+    int b1 = extract_bits_sign(payload, 55, 8);
+
+    r1 += r0;
+    g1 += g0;
+    b1 += b0;
+
+    ivec3 ep0 = ivec3(r0, g0, b0);
+    ivec3 ep1 = ivec3(r1, g1, b1);
+    ep0 = unquantize_endpoint(ep0, 12);
+    ep1 = unquantize_endpoint(ep1, 12);
 
     int index = extract_bits(
         payload,

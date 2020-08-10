@@ -312,8 +312,8 @@ static bool test_bc6(Device &device, VkFormat format)
 		uint32_t w = rnd();
 		if ((i & 3u) == 0u)
 		{
-			w &= ~0x1fu;
-			w |= 7u;
+			w &= ~0x3u;
+			w |= 0u;
 		}
 		d[i] = w;
 	}

@@ -616,11 +616,9 @@ static bool test_bc7(Device &device)
 
 static bool test_bc6(Device &device)
 {
-#if 1
 	if (!test_bc6(device, VK_FORMAT_BC6H_SFLOAT_BLOCK))
 		return false;
 	device.wait_idle();
-#endif
 	if (!test_bc6(device, VK_FORMAT_BC6H_UFLOAT_BLOCK))
 		return false;
 	device.wait_idle();
@@ -642,7 +640,6 @@ int main()
 	Device device;
 	device.set_context(ctx);
 
-#if 0
 	if (!test_s3tc(device))
 		return EXIT_FAILURE;
 	if (!test_rgtc(device))
@@ -653,7 +650,6 @@ int main()
 		return EXIT_FAILURE;
 	if (!test_bc7(device))
 		return EXIT_FAILURE;
-#endif
 	if (!test_bc6(device))
 		return EXIT_FAILURE;
 }

@@ -126,18 +126,35 @@ static VkFormat compressed_format_to_payload_format(VkFormat format)
 		return VK_FORMAT_UNDEFINED;
 }
 
-static VkFormat to_storage_format(VkFormat format)
+static VkFormat to_storage_format(VkFormat format, VkFormat orig_format = VK_FORMAT_UNDEFINED)
 {
 	switch (format)
 	{
 	case VK_FORMAT_R8G8B8A8_SRGB:
 	case VK_FORMAT_R8G8B8A8_UNORM:
-		return VK_FORMAT_R8G8B8A8_UINT;
+		if (orig_format == VK_FORMAT_BC1_RGBA_UNORM_BLOCK ||
+		    orig_format == VK_FORMAT_BC1_RGBA_SRGB_BLOCK ||
+		    orig_format == VK_FORMAT_BC1_RGB_SRGB_BLOCK ||
+		    orig_format == VK_FORMAT_BC1_RGB_UNORM_BLOCK ||
+		    orig_format == VK_FORMAT_BC2_SRGB_BLOCK ||
+		    orig_format == VK_FORMAT_BC2_UNORM_BLOCK ||
+		    orig_format == VK_FORMAT_BC3_SRGB_BLOCK ||
+		    orig_format == VK_FORMAT_BC3_UNORM_BLOCK)
+			return VK_FORMAT_R8G8B8A8_UNORM;
+		else
+			return VK_FORMAT_R8G8B8A8_UINT;
 
 	case VK_FORMAT_R8_UNORM:
-		return VK_FORMAT_R8_UINT;
+		if (orig_format == VK_FORMAT_BC4_UNORM_BLOCK)
+			return VK_FORMAT_R8_UNORM;
+		else
+			return VK_FORMAT_R8_UINT;
+
 	case VK_FORMAT_R8G8_UNORM:
-		return VK_FORMAT_R8G8_UINT;
+		if (orig_format == VK_FORMAT_BC5_UNORM_BLOCK)
+			return VK_FORMAT_R8G8_UNORM;
+		else
+			return VK_FORMAT_R8G8_UINT;
 
 	case VK_FORMAT_R16_SFLOAT:
 	case VK_FORMAT_R16G16_SFLOAT:
@@ -473,7 +490,7 @@ Vulkan::ImageHandle decode_compressed_image(Vulkan::CommandBuffer &cmd, const Vu
 	view_info.view_type = VK_IMAGE_VIEW_TYPE_2D;
 	view_info.levels = 1;
 	view_info.layers = 1;
-	view_info.format = to_storage_format(compressed_format_to_decoded_format(layout.get_format()));
+	view_info.format = to_storage_format(compressed_format_to_decoded_format(layout.get_format()), layout.get_format());
 
 	Vulkan::ImageViewCreateInfo input_view_info;
 	input_view_info.image = uploaded_image.get();

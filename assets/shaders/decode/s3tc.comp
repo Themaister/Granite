@@ -4,7 +4,7 @@ layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
 
 #include "rgtc.h"
 
-layout(set = 0, binding = 0, rgba8ui) writeonly uniform uimage2D uOutput;
+layout(set = 0, binding = 0, rgba8) writeonly uniform image2D uOutput;
 layout(set = 0, binding = 1) uniform utexture2D uInput;
 
 layout(push_constant) uniform Registers
@@ -15,16 +15,14 @@ layout(push_constant) uniform Registers
 layout(constant_id = 0) const bool USE_ALPHA = false;
 layout(constant_id = 1) const int BC_VERSION = 1;
 
-ivec3 decode_endpoint_color(uint color)
+vec3 decode_endpoint_color(uint color)
 {
     ivec3 c = ivec3(color) >> ivec3(11, 5, 0);
     c &= ivec3(31, 63, 31);
-    c <<= ivec3(3, 2, 3);
-    c |= c >> ivec3(5, 6, 5);
-    return c;
+    return vec3(c) / vec3(31.0, 63.0, 31.0);
 }
 
-bool decode_endpoints_color(uint payload, out ivec3 ep0, out ivec3 ep1)
+bool decode_endpoints_color(uint payload, out vec3 ep0, out vec3 ep1)
 {
     uint color0 = payload & 0xffffu;
     uint color1 = payload >> 16u;
@@ -34,28 +32,23 @@ bool decode_endpoints_color(uint payload, out ivec3 ep0, out ivec3 ep1)
     return opaque_mode;
 }
 
-ivec4 interpolate_endpoint_color(ivec3 ep0, ivec3 ep1, int bits, bool opaque_mode)
+vec4 interpolate_endpoint_color(vec3 ep0, vec3 ep1, int bits, bool opaque_mode)
 {
-    ivec4 res;
-    ivec3 lerped;
+    vec4 res;
+    vec3 lerped;
     if (opaque_mode)
     {
         if (bits < 2)
-        {
             lerped = bits != 0 ? ep1 : ep0;
-        }
         else
-        {
-            lerped = (ep1 - ep0) * (0x55 * (bits - 1));
-            lerped = ep0 + ((lerped + (lerped >> 8) + 0x80) >> 8);
-        }
-        res = ivec4(lerped, 0xff);
+            lerped = mix(ep0, ep1, (1.0 / 3.0) * float(bits - 1));
+        res = vec4(lerped, 1.0);
     }
     else
     {
         if (bits == 3)
         {
-            res = ivec4(0);
+            res = vec4(0);
         }
         else
         {
@@ -64,18 +57,18 @@ ivec4 interpolate_endpoint_color(ivec3 ep0, ivec3 ep1, int bits, bool opaque_mod
             else if (bits == 1)
                 lerped = ep1;
             else
-                lerped = (ep0 + ep1 + 1) >> 1;
-            res = ivec4(lerped, 0xff);
+                lerped = 0.5 * (ep0 + ep1);
+            res = vec4(lerped, 1.0);
         }
     }
 
     return res;
 }
 
-uint decode_alpha_4bit(uvec2 payload, int pixel)
+float decode_alpha_4bit(uvec2 payload, int pixel)
 {
     uint offset = pixel * 4;
-    return 0x11 * ((payload[offset >> 5] >> (offset & 31)) & 0xf);
+    return float((payload[offset >> 5] >> (offset & 31)) & 0xf) / 15.0;
 }
 
 ivec2 build_coord()
@@ -104,7 +97,7 @@ void main()
     else
         color_payload = payload.zw;
 
-    uint alpha;
+    float alpha;
     if (BC_VERSION > 1)
     {
         alpha_payload = payload.xy;
@@ -115,11 +108,11 @@ void main()
             alpha = decode_alpha_rgtc(alpha_payload, linear_pixel);
     }
 
-    ivec3 ep0, ep1;
+    vec3 ep0, ep1;
     bool opaque_mode = decode_endpoints_color(color_payload.x, ep0, ep1);
-    uvec4 decoded = interpolate_endpoint_color(ep0, ep1, int((color_payload.y >> (2 * linear_pixel)) & 3), opaque_mode);
+    vec4 decoded = interpolate_endpoint_color(ep0, ep1, int((color_payload.y >> (2 * linear_pixel)) & 3), opaque_mode);
     if (!USE_ALPHA)
-        decoded.a = 0xffu;
+        decoded.a = 1.0;
     else if (BC_VERSION > 1)
         decoded.a = alpha;
 

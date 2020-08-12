@@ -996,6 +996,19 @@ void Device::submit(CommandBufferHandle &cmd, Fence *fence, unsigned semaphore_c
 	submit_nolock(move(cmd), fence, semaphore_count, semaphores);
 }
 
+void Device::submit_discard(CommandBufferHandle &cmd)
+{
+	auto type = cmd->get_command_buffer_type();
+	LOCK();
+#ifdef VULKAN_DEBUG
+	auto &pool = get_command_pool(type, cmd->get_thread_index());
+	pool.signal_submitted(cmd->get_command_buffer());
+#endif
+
+	cmd.reset();
+	decrement_frame_counter_nolock();
+}
+
 CommandBuffer::Type Device::get_physical_queue_type(CommandBuffer::Type queue_type) const
 {
 	if (queue_type != CommandBuffer::Type::AsyncGraphics)
@@ -3824,7 +3837,8 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		}
 	}
 
-	if (!image_format_is_supported(create_info.format, image_usage_to_features(info.usage) | check_extra_features, info.tiling))
+	if ((create_info.flags & VK_IMAGE_CREATE_EXTENDED_USAGE_BIT) == 0 &&
+	    (!image_format_is_supported(create_info.format, image_usage_to_features(info.usage) | check_extra_features, info.tiling)))
 	{
 		LOGE("Format %u is not supported for usage flags!\n", unsigned(create_info.format));
 		return ImageHandle(nullptr);

@@ -1,0 +1,120 @@
+#version 450
+#extension GL_EXT_samplerless_texture_functions : require
+layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
+
+#include "rgtc.h"
+
+layout(set = 0, binding = 0, rgba8) writeonly uniform image2D uOutput;
+layout(set = 0, binding = 1) uniform utexture2D uInput;
+
+layout(push_constant) uniform Registers
+{
+    ivec2 resolution;
+} registers;
+
+layout(constant_id = 0) const bool USE_ALPHA = false;
+layout(constant_id = 1) const int BC_VERSION = 1;
+
+vec3 decode_endpoint_color(uint color)
+{
+    ivec3 c = ivec3(color) >> ivec3(11, 5, 0);
+    c &= ivec3(31, 63, 31);
+    return vec3(c) / vec3(31.0, 63.0, 31.0);
+}
+
+bool decode_endpoints_color(uint payload, out vec3 ep0, out vec3 ep1)
+{
+    uint color0 = payload & 0xffffu;
+    uint color1 = payload >> 16u;
+    bool opaque_mode = (BC_VERSION > 1) || (color0 > color1);
+    ep0 = decode_endpoint_color(color0);
+    ep1 = decode_endpoint_color(color1);
+    return opaque_mode;
+}
+
+vec4 interpolate_endpoint_color(vec3 ep0, vec3 ep1, int bits, bool opaque_mode)
+{
+    vec4 res;
+    vec3 lerped;
+    if (opaque_mode)
+    {
+        if (bits < 2)
+            lerped = bits != 0 ? ep1 : ep0;
+        else
+            lerped = mix(ep0, ep1, (1.0 / 3.0) * float(bits - 1));
+        res = vec4(lerped, 1.0);
+    }
+    else
+    {
+        if (bits == 3)
+        {
+            res = vec4(0);
+        }
+        else
+        {
+            if (bits == 0)
+                lerped = ep0;
+            else if (bits == 1)
+                lerped = ep1;
+            else
+                lerped = 0.5 * (ep0 + ep1);
+            res = vec4(lerped, 1.0);
+        }
+    }
+
+    return res;
+}
+
+float decode_alpha_4bit(uvec2 payload, int pixel)
+{
+    uint offset = pixel * 4;
+    return float((payload[offset >> 5] >> (offset & 31)) & 0xf) / 15.0;
+}
+
+ivec2 build_coord()
+{
+    ivec2 base = ivec2(gl_WorkGroupID.xy) * 8;
+    base.x += 4 * (int(gl_LocalInvocationID.z) & 1);
+    base.y += 2 * (int(gl_LocalInvocationID.z) & 2);
+    base += ivec2(gl_LocalInvocationID.xy);
+    return base;
+}
+
+void main()
+{
+    ivec2 coord = build_coord();
+    if (any(greaterThanEqual(coord, registers.resolution)))
+        return;
+
+    ivec2 tile_coord = coord >> 2;
+    ivec2 pixel_coord = coord & 3;
+    int linear_pixel = 4 * pixel_coord.y + pixel_coord.x;
+    uvec4 payload = texelFetch(uInput, tile_coord, 0);
+
+    uvec2 color_payload, alpha_payload;
+    if (BC_VERSION == 1)
+        color_payload = payload.xy;
+    else
+        color_payload = payload.zw;
+
+    float alpha;
+    if (BC_VERSION > 1)
+    {
+        alpha_payload = payload.xy;
+        int ep0, ep1;
+        if (BC_VERSION == 2)
+            alpha = decode_alpha_4bit(alpha_payload, linear_pixel);
+        else
+            alpha = decode_alpha_rgtc(alpha_payload, linear_pixel);
+    }
+
+    vec3 ep0, ep1;
+    bool opaque_mode = decode_endpoints_color(color_payload.x, ep0, ep1);
+    vec4 decoded = interpolate_endpoint_color(ep0, ep1, int((color_payload.y >> (2 * linear_pixel)) & 3), opaque_mode);
+    if (!USE_ALPHA)
+        decoded.a = 1.0;
+    else if (BC_VERSION > 1)
+        decoded.a = alpha;
+
+    imageStore(uOutput, coord, decoded);
+}

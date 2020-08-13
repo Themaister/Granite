@@ -184,21 +184,101 @@ static VkFormat to_storage_format(VkFormat format, VkFormat orig_format = VK_FOR
 	}
 }
 
-struct Solution
+struct ASTCQuantizationMode
 {
 	uint8_t bits, trits, quints;
 };
 
-static void build_astc_unquant_lut(uint8_t *lut, size_t range, const Solution &solution)
+static void build_astc_unquant_weight_lut(uint8_t *lut, size_t range, const ASTCQuantizationMode &mode)
 {
 	for (size_t i = 0; i < range; i++)
 	{
 		auto &v = lut[i];
 
-		if (!solution.quints && !solution.trits)
+		if (!mode.quints && !mode.trits)
+		{
+			switch (mode.bits)
+			{
+			case 1:
+				v = i * 63;
+				break;
+
+			case 2:
+				v = i * 0x15;
+				break;
+
+			case 3:
+				v = i * 9;
+				break;
+
+			case 4:
+				v = (i << 2) | (i >> 2);
+				break;
+
+			case 5:
+				v = (i << 1) | (i >> 4);
+				break;
+
+			default:
+				v = 0;
+				break;
+			}
+		}
+		else if (mode.bits == 0)
+		{
+			if (mode.trits)
+				v = 32 * i;
+			else
+				v = 16 * i;
+		}
+		else
+		{
+			unsigned b = (i >> 1) & 1;
+			unsigned c = (i >> 2) & 1;
+			unsigned A, B, C, D;
+
+			A = 0x7f * (i & 1);
+			D = i >> mode.bits;
+			B = 0;
+
+			if (mode.trits)
+			{
+				static const unsigned Cs[3] = { 50, 23, 11 };
+				C = Cs[mode.bits - 1];
+				if (mode.bits == 2)
+					B = 0x45 * b;
+				else if (mode.bits == 3)
+					B = 0x21 * b + 0x42 * c;
+			}
+			else
+			{
+				static const unsigned Cs[2] = { 28, 13 };
+				C = Cs[mode.bits - 1];
+				if (mode.bits == 2)
+					B = 0x42 * b;
+			}
+
+			unsigned unq = D * C + B;
+			unq ^= A;
+			unq = (A & 0x20) | (unq >> 2);
+		}
+
+		// Expand [0, 63] to [0, 64].
+		if (mode.bits != 0 && v > 32)
+			v++;
+	}
+}
+
+static void build_astc_unquant_endpoint_lut(uint8_t *lut, size_t range, const ASTCQuantizationMode &mode)
+{
+	for (size_t i = 0; i < range; i++)
+	{
+		auto &v = lut[i];
+
+		if (!mode.quints && !mode.trits)
 		{
 			// Bit-replication.
-			switch (solution.bits)
+			switch (mode.bits)
 			{
 			case 1:
 				v = i * 0xff;
@@ -235,8 +315,86 @@ static void build_astc_unquant_lut(uint8_t *lut, size_t range, const Solution &s
 		}
 		else
 		{
+			unsigned A, B, C, D;
+			unsigned b = (i >> 1) & 1;
+			unsigned c = (i >> 2) & 1;
+			unsigned d = (i >> 3) & 1;
+			unsigned e = (i >> 4) & 1;
+			unsigned f = (i >> 5) & 1;
+
+			B = 0;
+			D = i >> mode.bits;
+			A = (i & 1) * 0x1ff;
+
+			if (mode.trits)
+			{
+				static const unsigned Cs[6] = { 204, 93, 44, 22, 11, 5 };
+				C = Cs[mode.bits - 1];
+
+				switch (mode.bits)
+				{
+				case 2:
+					B = b * 0x116;
+					break;
+
+				case 3:
+					B = b * 0x85 + c * 0x10a;
+					break;
+
+				case 4:
+					B = b * 0x41 + c * 0x82 + d * 0x104;
+					break;
+
+				case 5:
+					B = b * 0x20 + c * 0x40 + d * 0x81 + e * 0x102;
+					break;
+
+				case 6:
+					B = b * 0x10 + c * 0x20 + d * 0x40 + e * 0x80 + f * 0x101;
+					break;
+				}
+			}
+			else
+			{
+				static const unsigned Cs[5] = { 113, 54, 26, 13, 6 };
+				C = Cs[mode.bits - 1];
+
+				switch (mode.bits)
+				{
+				case 2:
+					B = b * 0x10c;
+					break;
+
+				case 3:
+					B = b * 0x82 + c * 0x105;
+					break;
+
+				case 4:
+					B = b * 0x40 + c * 0x81 + d * 0x102;
+					break;
+
+				case 5:
+					B = b * 0x20 + c * 0x40 + d * 0x80 + e * 0x101;
+					break;
+				}
+			}
+
+			unsigned unq = D * C + B;
+			unq ^= A;
+			unq = (A & 0x80) | (unq >> 2);
+			v = uint8_t(unq);
 		}
 	}
+}
+
+static unsigned astc_value_range(const ASTCQuantizationMode &mode)
+{
+	unsigned value_range = 1u << mode.bits;
+	if (mode.trits)
+		value_range *= 3;
+	if (mode.quints)
+		value_range *= 5;
+	return value_range;
 }
 
 static void setup_astc_lut_color_endpoint(Vulkan::CommandBuffer &cmd)
@@ -244,8 +402,7 @@ static void setup_astc_lut_color_endpoint(Vulkan::CommandBuffer &cmd)
 	// In order to decode color endpoints, we need to convert available bits and number of values
 	// into a format of (bits, trits, quints). A simple LUT texture is a reasonable approach for this.
 	// Decoders are expected to have some form of LUT to deal with this ...
-
-	static const Solution potential_solutions[] = {
+	static const ASTCQuantizationMode potential_modes[] = {
 		{ 8, 0, 0 },
 		{ 6, 1, 0 },
 		{ 5, 0, 1 },
@@ -268,67 +425,158 @@ static void setup_astc_lut_color_endpoint(Vulkan::CommandBuffer &cmd)
 		{ 1, 0, 0 },
 	};
 
-	constexpr size_t num_solutions = sizeof(potential_solutions) / sizeof(potential_solutions[0]);
-	uint8_t unquant_lut_offsets[num_solutions];
+	constexpr size_t num_modes = sizeof(potential_modes) / sizeof(potential_modes[0]);
+	uint8_t unquant_lut_offsets[num_modes];
 	size_t unquant_offset = 0;
 
 	uint8_t unquant_lut[2048];
 
-	for (size_t i = 0; i < num_solutions; i++)
+	for (size_t i = 0; i < num_modes; i++)
 	{
-		unsigned value_range = 1u << potential_solutions[i].bits;
-		if (potential_solutions[i].trits)
-			value_range *= 3;
-		if (potential_solutions[i].quints)
-			value_range *= 5;
-
+		auto value_range = astc_value_range(potential_modes[i]);
 		unquant_lut_offsets[i] = unquant_offset;
-		build_astc_unquant_lut(unquant_lut + unquant_offset, value_range, potential_solutions[i]);
+		build_astc_unquant_endpoint_lut(unquant_lut + unquant_offset, value_range, potential_modes[i]);
 		unquant_offset += value_range;
 	}
 
-	uint8_t lut[16][128][4];
+	uint16_t lut[16][128][4];
 
 	// We can have a maximum of 4 partitions and 4 component pairs.
 	for (unsigned pairs = 0; pairs < 16; pairs++)
 	{
 		for (unsigned remaining = 0; remaining < 128; remaining++)
 		{
-			bool found_solution = false;
-			for (auto &solution : potential_solutions)
+			bool found_mode = false;
+			for (auto &mode : potential_modes)
 			{
 				unsigned num_values = pairs * 2;
-				unsigned total_bits =
-					solution.bits * num_values +
-					solution.quints * 7 * ((num_values + 2) / 3) +
-					solution.trits * 8 * ((num_values + 4) / 5);
+				unsigned total_bits = mode.bits * num_values + mode.quints * 7 * ((num_values + 2) / 3) +
+				                      mode.trits * 8 * ((num_values + 4) / 5);
 
 				if (total_bits <= remaining)
 				{
-					found_solution = true;
-					lut[pairs][remaining][0] = solution.bits;
-					lut[pairs][remaining][1] = solution.trits;
-					lut[pairs][remaining][2] = solution.quints;
-					lut[pairs][remaining][3] = uint8_t(&solution - potential_solutions);
+					found_mode = true;
+					lut[pairs][remaining][0] = mode.bits;
+					lut[pairs][remaining][1] = mode.trits;
+					lut[pairs][remaining][2] = mode.quints;
+					lut[pairs][remaining][3] = unquant_lut_offsets[&mode - potential_modes];
 					break;
 				}
 			}
 
-			if (!found_solution)
-				memset(lut[pairs][remaining], 0, 4);
+			if (!found_mode)
+				memset(lut[pairs][remaining], 0, sizeof(lut[pairs][remaining]));
 		}
 	}
 
-	auto info = Vulkan::ImageCreateInfo::immutable_2d_image(128, 16, VK_FORMAT_R8G8B8A8_UINT);
-	Vulkan::ImageInitialData init = {};
-	init.data = lut;
-	auto lut_image = cmd.get_device().create_image(info, &init);
-	cmd.set_texture(1, 0, lut_image->get_view());
+	{
+		Vulkan::BufferCreateInfo info = {};
+		info.size = sizeof(lut);
+		info.domain = Vulkan::BufferDomain::Device;
+		info.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
+		auto lut_buffer = cmd.get_device().create_buffer(info, lut);
+
+		Vulkan::BufferViewCreateInfo view_info = {};
+		view_info.buffer = lut_buffer.get();
+		view_info.format = VK_FORMAT_R16G16B16A16_UINT;
+		view_info.range = sizeof(lut);
+		auto lut_view = cmd.get_device().create_buffer_view(view_info);
+		cmd.set_buffer_view(1, 0, *lut_view);
+	}
+
+	{
+		Vulkan::BufferCreateInfo info = {};
+		info.size = unquant_offset;
+		info.domain = Vulkan::BufferDomain::Device;
+		info.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
+		auto unquant_buffer = cmd.get_device().create_buffer(info, unquant_lut);
+
+		Vulkan::BufferViewCreateInfo view_info = {};
+		view_info.buffer = unquant_buffer.get();
+		view_info.format = VK_FORMAT_R8_UINT;
+		view_info.range = unquant_offset;
+
+		auto unquant_view = cmd.get_device().create_buffer_view(view_info);
+		cmd.set_buffer_view(1, 1, *unquant_view);
+	}
+}
+
+static void setup_astc_lut_weights(Vulkan::CommandBuffer &cmd)
+{
+	static const ASTCQuantizationMode weight_modes[] = {
+		{ 0, 0, 0 }, // Invalid
+		{ 0, 0, 0 }, // Invalid
+		{ 1, 0, 0 },
+		{ 0, 1, 0 },
+		{ 2, 0, 0 },
+		{ 0, 0, 1 },
+		{ 1, 1, 0 },
+		{ 3, 0, 0 },
+		{ 0, 0, 0 }, // Invalid
+		{ 0, 0, 0 }, // Invalid
+		{ 1, 0, 1 },
+		{ 2, 1, 0 },
+		{ 4, 0, 0 },
+		{ 2, 0, 1 },
+		{ 3, 1, 0 },
+		{ 5, 0, 0 },
+	};
+
+	constexpr size_t num_modes = sizeof(weight_modes) / sizeof(weight_modes[0]);
+	size_t unquant_offset = 0;
+	uint8_t unquant_lut[2048];
+
+	uint8_t lut[num_modes][4];
+
+	for (size_t i = 0; i < num_modes; i++)
+	{
+		auto value_range = astc_value_range(weight_modes[i]);
+		lut[i][0] = weight_modes[i].bits;
+		lut[i][1] = weight_modes[i].trits;
+		lut[i][2] = weight_modes[i].quints;
+		lut[i][3] = unquant_offset;
+		build_astc_unquant_weight_lut(unquant_lut + unquant_offset, value_range, weight_modes[i]);
+		unquant_offset += value_range;
+	}
+
+	assert(unquant_offset <= 256);
+
+	{
+		Vulkan::BufferCreateInfo info = {};
+		info.size = sizeof(lut);
+		info.domain = Vulkan::BufferDomain::Device;
+		info.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
+		auto lut_buffer = cmd.get_device().create_buffer(info, lut);
+
+		Vulkan::BufferViewCreateInfo view_info = {};
+		view_info.buffer = lut_buffer.get();
+		view_info.format = VK_FORMAT_R8G8B8A8_UINT;
+		view_info.range = sizeof(lut);
+		auto lut_view = cmd.get_device().create_buffer_view(view_info);
+		cmd.set_buffer_view(1, 2, *lut_view);
+	}
+
+	{
+		Vulkan::BufferCreateInfo info = {};
+		info.size = unquant_offset;
+		info.domain = Vulkan::BufferDomain::Device;
+		info.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
+		auto unquant_buffer = cmd.get_device().create_buffer(info, unquant_lut);
+
+		Vulkan::BufferViewCreateInfo view_info = {};
+		view_info.buffer = unquant_buffer.get();
+		view_info.format = VK_FORMAT_R8_UINT;
+		view_info.range = unquant_offset;
+
+		auto unquant_view = cmd.get_device().create_buffer_view(view_info);
+		cmd.set_buffer_view(1, 3, *unquant_view);
+	}
 }
 
 static void setup_astc_luts(Vulkan::CommandBuffer &cmd)
 {
 	setup_astc_lut_color_endpoint(cmd);
+	setup_astc_lut_weights(cmd);
 }
 
 static bool set_compute_decoder(Vulkan::CommandBuffer &cmd, VkFormat format)

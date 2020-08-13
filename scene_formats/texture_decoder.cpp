@@ -107,6 +107,22 @@ static VkFormat compressed_format_to_decoded_format(VkFormat format)
 	case VK_FORMAT_ASTC_12x12_SRGB_BLOCK:
 		return VK_FORMAT_R8G8B8A8_SRGB;
 
+	case VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_5x4_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_5x5_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_6x5_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_6x6_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_8x5_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_8x6_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_8x8_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_10x5_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_10x6_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_10x8_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_10x10_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_12x10_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_12x12_SFLOAT_BLOCK_EXT:
+		return VK_FORMAT_R16G16B16A16_SFLOAT;
+
 	default:
 		return VK_FORMAT_UNDEFINED;
 	}
@@ -168,6 +184,153 @@ static VkFormat to_storage_format(VkFormat format, VkFormat orig_format = VK_FOR
 	}
 }
 
+struct Solution
+{
+	uint8_t bits, trits, quints;
+};
+
+static void build_astc_unquant_lut(uint8_t *lut, size_t range, const Solution &solution)
+{
+	for (size_t i = 0; i < range; i++)
+	{
+		auto &v = lut[i];
+
+		if (!solution.quints && !solution.trits)
+		{
+			// Bit-replication.
+			switch (solution.bits)
+			{
+			case 1:
+				v = i * 0xff;
+				break;
+
+			case 2:
+				v = i * 0x55;
+				break;
+
+			case 3:
+				v = (i << 5) | (i << 2) | (i >> 1);
+				break;
+
+			case 4:
+				v = i * 0x11;
+				break;
+
+			case 5:
+				v = (i << 3) | (i >> 2);
+				break;
+
+			case 6:
+				v = (i << 2) | (i >> 4);
+				break;
+
+			case 7:
+				v = (i << 1) | (i >> 6);
+				break;
+
+			default:
+				v = i;
+				break;
+			}
+		}
+		else
+		{
+		}
+	}
+}
+
+static void setup_astc_lut_color_endpoint(Vulkan::CommandBuffer &cmd)
+{
+	// In order to decode color endpoints, we need to convert available bits and number of values
+	// into a format of (bits, trits, quints). A simple LUT texture is a reasonable approach for this.
+	// Decoders are expected to have some form of LUT to deal with this ...
+
+	static const Solution potential_solutions[] = {
+		{ 8, 0, 0 },
+		{ 6, 1, 0 },
+		{ 5, 0, 1 },
+		{ 7, 0, 0 },
+		{ 5, 1, 0 },
+		{ 4, 0, 1 },
+		{ 6, 0, 0 },
+		{ 4, 1, 0 },
+		{ 3, 0, 1 },
+		{ 5, 0, 0 },
+		{ 3, 1, 0 },
+		{ 2, 0, 1 },
+		{ 4, 0, 0 },
+		{ 2, 1, 0 },
+		{ 1, 0, 1 },
+		{ 3, 0, 0 },
+		{ 1, 1, 0 },
+		// Are these valid?
+		{ 2, 0, 0 },
+		{ 1, 0, 0 },
+	};
+
+	constexpr size_t num_solutions = sizeof(potential_solutions) / sizeof(potential_solutions[0]);
+	uint8_t unquant_lut_offsets[num_solutions];
+	size_t unquant_offset = 0;
+
+	uint8_t unquant_lut[2048];
+
+	for (size_t i = 0; i < num_solutions; i++)
+	{
+		unsigned value_range = 1u << potential_solutions[i].bits;
+		if (potential_solutions[i].trits)
+			value_range *= 3;
+		if (potential_solutions[i].quints)
+			value_range *= 5;
+
+		unquant_lut_offsets[i] = unquant_offset;
+		build_astc_unquant_lut(unquant_lut + unquant_offset, value_range, potential_solutions[i]);
+		unquant_offset += value_range;
+	}
+
+	uint8_t lut[16][128][4];
+
+	// We can have a maximum of 4 partitions and 4 component pairs.
+	for (unsigned pairs = 0; pairs < 16; pairs++)
+	{
+		for (unsigned remaining = 0; remaining < 128; remaining++)
+		{
+			bool found_solution = false;
+			for (auto &solution : potential_solutions)
+			{
+				unsigned num_values = pairs * 2;
+				unsigned total_bits =
+					solution.bits * num_values +
+					solution.quints * 7 * ((num_values + 2) / 3) +
+					solution.trits * 8 * ((num_values + 4) / 5);
+
+				if (total_bits <= remaining)
+				{
+					found_solution = true;
+					lut[pairs][remaining][0] = solution.bits;
+					lut[pairs][remaining][1] = solution.trits;
+					lut[pairs][remaining][2] = solution.quints;
+					lut[pairs][remaining][3] = uint8_t(&solution - potential_solutions);
+					break;
+				}
+			}
+
+			if (!found_solution)
+				memset(lut[pairs][remaining], 0, 4);
+		}
+	}
+
+	auto info = Vulkan::ImageCreateInfo::immutable_2d_image(128, 16, VK_FORMAT_R8G8B8A8_UINT);
+	Vulkan::ImageInitialData init = {};
+	init.data = lut;
+	auto lut_image = cmd.get_device().create_image(info, &init);
+	cmd.set_texture(1, 0, lut_image->get_view());
+}
+
+static void setup_astc_luts(Vulkan::CommandBuffer &cmd)
+{
+	setup_astc_lut_color_endpoint(cmd);
+}
+
 static bool set_compute_decoder(Vulkan::CommandBuffer &cmd, VkFormat format)
 {
 	switch (format)
@@ -210,6 +373,52 @@ static bool set_compute_decoder(Vulkan::CommandBuffer &cmd, VkFormat format)
 	case VK_FORMAT_BC7_SRGB_BLOCK:
 	case VK_FORMAT_BC7_UNORM_BLOCK:
 		cmd.set_program("builtin://shaders/decode/bc7.comp");
+		break;
+
+	case VK_FORMAT_ASTC_4x4_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_5x4_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_5x5_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_6x5_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_6x6_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_8x5_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_8x6_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_8x8_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_10x5_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_10x6_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_10x8_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_10x10_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_12x10_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_12x12_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_4x4_SRGB_BLOCK:
+	case VK_FORMAT_ASTC_5x4_SRGB_BLOCK:
+	case VK_FORMAT_ASTC_5x5_SRGB_BLOCK:
+	case VK_FORMAT_ASTC_6x5_SRGB_BLOCK:
+	case VK_FORMAT_ASTC_6x6_SRGB_BLOCK:
+	case VK_FORMAT_ASTC_8x5_SRGB_BLOCK:
+	case VK_FORMAT_ASTC_8x6_SRGB_BLOCK:
+	case VK_FORMAT_ASTC_8x8_SRGB_BLOCK:
+	case VK_FORMAT_ASTC_10x5_SRGB_BLOCK:
+	case VK_FORMAT_ASTC_10x6_SRGB_BLOCK:
+	case VK_FORMAT_ASTC_10x8_SRGB_BLOCK:
+	case VK_FORMAT_ASTC_10x10_SRGB_BLOCK:
+	case VK_FORMAT_ASTC_12x10_SRGB_BLOCK:
+	case VK_FORMAT_ASTC_12x12_SRGB_BLOCK:
+	case VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_5x4_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_5x5_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_6x5_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_6x6_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_8x5_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_8x6_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_8x8_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_10x5_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_10x6_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_10x8_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_10x10_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_12x10_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_12x12_SFLOAT_BLOCK_EXT:
+		setup_astc_luts(cmd);
+		cmd.set_program("builtin://shaders/decode/astc.comp");
 		break;
 
 	default:

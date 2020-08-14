@@ -450,8 +450,9 @@ static void setup_astc_lut_color_endpoint(Vulkan::CommandBuffer &cmd)
 			for (auto &mode : potential_modes)
 			{
 				unsigned num_values = (pairs_minus_1 + 1) * 2;
-				unsigned total_bits = mode.bits * num_values + mode.quints * 7 * ((num_values + 2) / 3) +
-				                      mode.trits * 8 * ((num_values + 4) / 5);
+				unsigned total_bits = mode.bits * num_values +
+				                      (mode.quints * 7 * num_values + 2) / 3 +
+				                      (mode.trits * 8 * num_values + 4) / 5;
 
 				if (total_bits <= remaining)
 				{

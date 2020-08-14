@@ -1,6 +1,6 @@
 #version 450
 #extension GL_EXT_samplerless_texture_functions : require
-layout(local_size_id_x = 0, local_size_id_y = 1, local_size_z = 4) in;
+layout(local_size_x_id = 0, local_size_y_id = 1, local_size_z = 4) in;
 
 #include "bitextract.h"
 
@@ -30,21 +30,12 @@ ivec4 build_coord()
     return ivec4(coord, payload_coord);
 }
 
-struct EndpointInterpolation
+ivec4 interpolate_endpoint(ivec4 ep0, ivec4 ep1, ivec4 weight, bool HDR_endpoint)
 {
-    ivec4 ep0;
-    ivec4 ep1;
-    ivec4 weight;
-    bool HDR_endpoint;
-};
-
-ivec4 interpolate_endpoint(EndpointInterpolation interp)
-{
-    ivec4 ep0, ep1;
-    if (interp.HDR_endpoint)
+    if (HDR_endpoint)
     {
-        ep0 = interp.ep0 << 4;
-        ep1 = interp.ep1 << 4;
+        ep0 <<= 4;
+        ep1 <<= 4;
     }
     else if (DECODE_8BIT)
     {
@@ -55,16 +46,16 @@ ivec4 interpolate_endpoint(EndpointInterpolation interp)
         // This is correct if decode_unorm8 mode is used though,
         // for sanity, we're going to assume unorm8 decoding mode
         // is implied when using sRGB.
-        ep0 = (interp.ep0 << 8) | ivec4(0x80);
-        ep1 = (interp.ep0 << 8) | ivec4(0x80);
+        ep0 = (ep0 << 8) | ivec4(0x80);
+        ep1 = (ep1 << 8) | ivec4(0x80);
     }
     else
     {
-        ep0 = interp.ep0 * 0x101;
-        ep1 = interp.ep1 * 0x101;
+        ep0 *= 0x101;
+        ep1 *= 0x101;
     }
 
-    ivec4 color = (ep0 * (64 - interp.weight) + ep1 * interp.weight + 32) >> 6;
+    ivec4 color = (ep0 * (64 - weight) + ep1 * weight + 32) >> 6;
     return color;
 }
 
@@ -80,7 +71,7 @@ uvec4 decode_fp16(ivec4 color)
     uvec4 decoded = m | (e << 11);
     uvec4 denorm_decode = color << 9;
     decoded = mix(decoded, uvec4(denorm_decode), lessThan(e, ivec4(1)));
-    decoded = mix(decoded, uvec4(0x3c00), equal(color, 0xffff));
+    decoded = mix(decoded, uvec4(0x3c00), equal(color, ivec4(0xffff)));
     return decoded;
 }
 
@@ -90,6 +81,8 @@ struct BlockMode
     int weight_mode_index;
     int num_partitions;
     int seed;
+    int cem;
+    int config_bits;
     bool dual_plane;
     bool void_extent;
 };
@@ -137,13 +130,200 @@ BlockMode decode_block_mode(uvec4 payload)
     }
     else
     {
+        int p3 = int(bitfieldExtract(payload.x, 9, 1));
+        int hi = int(bitfieldExtract(payload.x, 7, 2));
+        int lo = int(bitfieldExtract(payload.x, 5, 2));
+        if (hi == 0)
+        {
+            mode.weight_grid_size.x = 12;
+            mode.weight_grid_size.y = lo + 2;
+        }
+        else if (hi == 1)
+        {
+            mode.weight_grid_size.x = lo + 2;
+            mode.weight_grid_size.y = 12;
+        }
+        else if (hi == 2)
+        {
+            mode.dual_plane = false;
+            p3 = 0;
+            mode.weight_grid_size.x = lo + 6;
+            mode.weight_grid_size.y = int(bitfieldExtract(payload.x, 9, 2) + 6);
+        }
+        else
+        {
+            if (lo == 0)
+                mode.weight_grid_size = ivec2(6, 10);
+            else if (lo == 1)
+                mode.weight_grid_size = ivec2(10, 6);
+            else
+                decode_error = true;
+        }
+
+        int p0 = int(bitfieldExtract(payload.x, 4, 1));
+        int p1 = int(bitfieldExtract(payload.x, 2, 1));
+        int p2 = int(bitfieldExtract(payload.x, 3, 1));
+        mode.weight_mode_index = p0 + (p1 << 1) + (p2 << 2) + (p3 << 3);
     }
 
+    mode.num_partitions = int(bitfieldExtract(payload.x, 11, 2)) + 1;
+
+    if (mode.num_partitions > 1)
+    {
+        mode.cem = int(bitfieldExtract(payload.x, 23, 6));
+        mode.seed = int(bitfieldExtract(payload.x, 13, 10));
+    }
+    else
+        mode.cem = int(bitfieldExtract(payload.x, 13, 4));
+
+    int config_bits = 17;
+    if (mode.num_partitions > 1)
+    {
+        bool single_cem = (mode.cem & 3) == 0;
+        if (single_cem)
+            config_bits = 29;
+        else
+            config_bits = 25 + 3 * mode.num_partitions;
+    }
+
+    if (mode.dual_plane)
+        config_bits += 2;
+
+    mode.config_bits = config_bits;
     return mode;
 }
 
-ivec4 decode_weights(uvec4 payload, int pixel, out int weight_cost_bits)
+int idiv3_floor(int v)
 {
+    return (v * 0x5556) >> 16;
+}
+
+int idiv3_ceil(int v)
+{
+    return idiv3_floor(v + 2);
+}
+
+int idiv5_floor(int v)
+{
+    return (v * 0x3334) >> 16;
+}
+
+int idiv5_ceil(int v)
+{
+    return idiv5_floor(v + 4);
+}
+
+int decode_integer_sequence(uvec4 payload, int start_bit, int index, ivec3 quant)
+{
+    int ret;
+    if (quant.y != 0)
+    {
+        // Trit-decoding.
+        int block = idiv5_floor(index);
+        int offset = index - block * 5;
+        start_bit += block * 5;
+
+        int t0_t1_offset = start_bit + (quant.x * 1 + 0);
+        int t2_t3_offset = start_bit + (quant.x * 2 + 2);
+        int t4_offset    = start_bit + (quant.x * 3 + 4);
+        int t5_t6_offset = start_bit + (quant.x * 4 + 5);
+        int t7_offset    = start_bit + (quant.x * 5 + 7);
+
+        int t = (extract_bits(payload, t0_t1_offset, 2) << 0) |
+                (extract_bits(payload, t2_t3_offset, 2) << 2) |
+                (extract_bits(payload, t4_offset, 1) << 4) |
+                (extract_bits(payload, t5_t6_offset, 2) << 5) |
+                (extract_bits(payload, t7_offset, 1) << 7);
+
+        int t_bits = idiv5_ceil((offset + 1) * 8);
+        t &= (1 << t_bits) - 1;
+
+        int m_offset = offset * quant.x;
+        m_offset += idiv5_ceil(offset * 8);
+        int m = extract_bits(payload, m_offset + start_bit, quant.x);
+        ret = (t << quant.x) | m;
+    }
+    else if (quant.z != 0)
+    {
+        // Quint-decoding
+        int block = idiv3_floor(index);
+        int offset = index - block * 3;
+        start_bit += block * 3;
+
+        int q0_q1_q2_offset = start_bit + (quant.x * 1 + 0);
+        int q3_q4_offset    = start_bit + (quant.x * 2 + 3);
+        int q5_q6_offset    = start_bit + (quant.x * 4 + 5);
+
+        int q = (extract_bits(payload, q0_q1_q2_offset, 3) << 0) |
+                (extract_bits(payload, q3_q4_offset, 2) << 3) |
+                (extract_bits(payload, q5_q6_offset, 2) << 5);
+
+        int q_bits = idiv3_ceil((offset + 1) * 7);
+        q &= (1 << q_bits) - 1;
+
+        int m_offset = offset * quant.x;
+        m_offset += idiv3_ceil(offset * 7);
+        int m = extract_bits(payload, m_offset + start_bit, quant.x);
+        ret = (q << quant.x) | m;
+    }
+    else
+    {
+        int bit = index * quant.x;
+        ret = extract_bits(payload, bit, quant.x);
+    }
+    return ret;
+}
+
+ivec4 decode_weights(uvec4 payload, BlockMode mode, int pixel, out int weight_cost_bits)
+{
+    payload = bitfieldReverse(payload);
+    payload = payload.wzyx;
+
+    ivec4 quant = ivec4(texelFetch(LUTWeightQuantizer, mode.weight_mode_index));
+    int num_weights = mode.weight_grid_size.x * mode.weight_grid_size.y;
+    num_weights *= int(mode.dual_plane) + 1;
+    weight_cost_bits =
+        quant.x * num_weights +
+        idiv5_ceil(num_weights * 8 * quant.y) +
+        idiv3_ceil(num_weights * 7 * quant.z);
+
+    int weight_index = pixel;
+    int primary_weight = decode_integer_sequence(payload, 0, weight_index, quant.xyz);
+    primary_weight = int(texelFetch(LUTWeightUnquantize, primary_weight + quant.w).x);
+    return ivec4(primary_weight);
+}
+
+void decode_endpoint(out ivec4 ep0, out ivec4 ep1, out bool HDR,
+                     uvec4 payload, int bit_offset, ivec4 quant, int ep_mode)
+{
+    switch (ep_mode >> 2)
+    {
+    case 0:
+    {
+        int v0 = decode_integer_sequence(payload, bit_offset, 0, quant.xyz);
+        int v1 = decode_integer_sequence(payload, bit_offset, 1, quant.xyz);
+        v0 = int(texelFetch(LUTEndpointUnquantize, quant.w + v0).x);
+        v1 = int(texelFetch(LUTEndpointUnquantize, quant.w + v1).x);
+
+        switch (ep_mode & 3)
+        {
+        case 0: // LDR Luminance
+            ep0 = ivec4(v0, v0, v0, 0xff);
+            ep1 = ivec4(v1, v1, v1, 0xff);
+            HDR = false;
+            break;
+
+        default:
+            decode_error = true;
+            break;
+        }
+        break;
+    }
+
+    default:
+        decode_error = true;
+        break;
+    }
 }
 
 void main()
@@ -156,10 +336,21 @@ void main()
     int linear_pixel = int(gl_WorkGroupSize.x) * pixel_coord.y + pixel_coord.x;
     uvec4 payload = texelFetch(PayloadInput, coord.zw, 0);
 
+    BlockMode block_mode = decode_block_mode(payload);
     int weight_cost_bits;
-    ivec4 weights = decode_weights(payload, linear_pixel, weight_cost_bits);
+    ivec4 weights = decode_weights(payload, block_mode, linear_pixel, weight_cost_bits);
 
-    ivec4 final_color = interpolate_endpoint(interp);
+    int available_endpoint_bits = 128 - block_mode.config_bits - weight_cost_bits;
+    int num_endpoint_pairs = (block_mode.cem >> 2) + 1;
+    ivec4 endpoint_quant = ivec4(texelFetch(LUTRemainingBitsToEndpointQuantizer,
+            128 * (num_endpoint_pairs - 1) + available_endpoint_bits));
+
+    int endpoint_bit_offset = block_mode.config_bits;
+    ivec4 ep0, ep1;
+    bool HDR;
+    decode_endpoint(ep0, ep1, HDR, payload, endpoint_bit_offset, endpoint_quant, block_mode.cem);
+
+    ivec4 final_color = interpolate_endpoint(ep0, ep1, weights, HDR);
 
     if (decode_error)
     {

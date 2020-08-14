@@ -289,6 +289,54 @@ struct DebugIface : DebugChannelInterface
 static DebugIface iface;
 #endif
 
+static bool test_astc(Device &device, VkFormat format, VkFormat readback_format)
+{
+	auto cmd = device.request_command_buffer();
+	std::mt19937 rnd(1337);
+
+	SceneFormats::MemoryMappedTexture tex;
+	unsigned width = 4;
+	unsigned height = 4;
+	unsigned blocks_x = (width + 3) / 4;
+	unsigned blocks_y = (height + 3) / 4;
+	unsigned num_words = blocks_x * blocks_y *
+	                     (TextureFormatLayout::format_block_size(format, VK_IMAGE_ASPECT_COLOR_BIT) / 4);
+	tex.set_2d(format, width, height);
+	if (!tex.map_write_scratch())
+		return false;
+
+	auto &layout = tex.get_layout();
+	auto *d = static_cast<uint32_t *>(layout.data_opaque(0, 0, 0, 0));
+
+	d[0] = 0;
+	d[1] = 0;
+	d[2] = 0;
+	d[3] = 0;
+
+	// 4x4 weight grid.
+	d[0] |= 0 << 7;
+	d[0] |= 2 << 5;
+
+	// 3 bit weights.
+	d[0] |= 1 << 0;
+	d[0] |= 1 << 1;
+	d[0] |= 1 << 4;
+
+	auto readback_reference = decode_gpu(*cmd, layout, VK_FORMAT_R16G16B16A16_SFLOAT);
+	auto readback_decoded = decode_compute(*cmd, layout);
+	if (!readback_decoded)
+	{
+		device.submit_discard(cmd);
+		return false;
+	}
+
+	Fence fence;
+	device.submit(cmd, &fence);
+	fence->wait();
+
+	return compare_rgba16f(device, *readback_reference, *readback_decoded, width, height);
+}
+
 static bool test_bc6(Device &device, VkFormat format)
 {
 	auto cmd = device.request_command_buffer();
@@ -625,6 +673,14 @@ static bool test_bc6(Device &device)
 	return true;
 }
 
+static bool test_astc(Device &device)
+{
+	if (!test_astc(device, VK_FORMAT_ASTC_4x4_UNORM_BLOCK, VK_FORMAT_R16G16B16A16_SFLOAT))
+		return false;
+	device.wait_idle();
+	return true;
+}
+
 int main()
 {
 	Global::init(Global::MANAGER_FEATURE_ALL_BITS, 1);
@@ -640,6 +696,7 @@ int main()
 	Device device;
 	device.set_context(ctx);
 
+#if 0
 	if (!test_s3tc(device))
 		return EXIT_FAILURE;
 	if (!test_rgtc(device))
@@ -651,5 +708,8 @@ int main()
 	if (!test_bc7(device))
 		return EXIT_FAILURE;
 	if (!test_bc6(device))
+		return EXIT_FAILURE;
+#endif
+	if (!test_astc(device))
 		return EXIT_FAILURE;
 }

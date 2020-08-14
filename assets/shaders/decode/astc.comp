@@ -1,0 +1,180 @@
+#version 450
+#extension GL_EXT_samplerless_texture_functions : require
+layout(local_size_id_x = 0, local_size_id_y = 1, local_size_z = 4) in;
+
+#include "bitextract.h"
+
+layout(set = 1, binding = 0) uniform utextureBuffer LUTRemainingBitsToEndpointQuantizer;
+layout(set = 1, binding = 1) uniform utextureBuffer LUTEndpointUnquantize;
+layout(set = 1, binding = 2) uniform utextureBuffer LUTWeightQuantizer;
+layout(set = 1, binding = 3) uniform utextureBuffer LUTWeightUnquantize;
+layout(set = 1, binding = 4) uniform utextureBuffer LUTTritQuintDecode;
+
+layout(set = 0, binding = 0, rgba8ui) writeonly uniform uimage2D OutputImageU8;
+layout(set = 0, binding = 0, rgba16ui) writeonly uniform uimage2D OutputImageFP16;
+layout(set = 0, binding = 1) uniform utexture2D PayloadInput;
+layout(constant_id = 2) const bool DECODE_8BIT = false;
+
+layout(push_constant) uniform Registers
+{
+    ivec2 resolution;
+} registers;
+
+ivec4 build_coord()
+{
+    ivec2 payload_coord = ivec2(gl_WorkGroupID.xy) * 2;
+    payload_coord.x += int(gl_LocalInvocationID.z) & 1;
+    payload_coord.y += (int(gl_LocalInvocationID.z) >> 1) & 1;
+    ivec2 coord = payload_coord * ivec2(gl_WorkGroupSize.xy);
+    coord += ivec2(gl_LocalInvocationID.xy);
+    return ivec4(coord, payload_coord);
+}
+
+struct EndpointInterpolation
+{
+    ivec4 ep0;
+    ivec4 ep1;
+    ivec4 weight;
+    bool HDR_endpoint;
+};
+
+ivec4 interpolate_endpoint(EndpointInterpolation interp)
+{
+    ivec4 ep0, ep1;
+    if (interp.HDR_endpoint)
+    {
+        ep0 = interp.ep0 << 4;
+        ep1 = interp.ep1 << 4;
+    }
+    else if (DECODE_8BIT)
+    {
+        // This isn't quite right in all cases.
+        // In normal ASTC with sRGB, the alpha channel is supposed to
+        // be decoded as FP16,
+        // even when color components are SRGB 8-bit (?!?!?!?!).
+        // This is correct if decode_unorm8 mode is used though,
+        // for sanity, we're going to assume unorm8 decoding mode
+        // is implied when using sRGB.
+        ep0 = (interp.ep0 << 8) | ivec4(0x80);
+        ep1 = (interp.ep0 << 8) | ivec4(0x80);
+    }
+    else
+    {
+        ep0 = interp.ep0 * 0x101;
+        ep1 = interp.ep1 * 0x101;
+    }
+
+    ivec4 color = (ep0 * (64 - interp.weight) + ep1 * interp.weight + 32) >> 6;
+    return color;
+}
+
+uvec4 decode_fp16(ivec4 color)
+{
+    // ASTC has a very peculiar way of converting the decoded result to FP16.
+    // 0xffff -> 1.0, and for everything else we get roundDownQuantizeFP16(vec4(c) / vec4(0x10000)).
+
+    ivec4 msb = findMSB(color);
+    ivec4 shamt = 20 - msb;
+    ivec4 m = (color >> shamt) & 0x3ff;
+    ivec4 e = msb - 1;
+    uvec4 decoded = m | (e << 11);
+    uvec4 denorm_decode = color << 9;
+    decoded = mix(decoded, uvec4(denorm_decode), lessThan(e, ivec4(1)));
+    decoded = mix(decoded, uvec4(0x3c00), equal(color, 0xffff));
+    return decoded;
+}
+
+struct BlockMode
+{
+    ivec2 weight_grid_size;
+    int weight_mode_index;
+    int num_partitions;
+    int seed;
+    bool dual_plane;
+    bool void_extent;
+};
+
+bool decode_error = false;
+
+BlockMode decode_block_mode(uvec4 payload)
+{
+    BlockMode mode;
+    mode.void_extent = (payload.x & 0x1ffu) == 0x1fcu;
+    mode.dual_plane = (payload.x & (1u << 10u)) != 0u;
+
+    uint higher = (payload.x >> 2u) & 3u;
+    uint lower = payload.x & 3u;
+
+    if (lower != 0)
+    {
+        mode.weight_mode_index = int((payload.x >> 4u) & 1u);
+        mode.weight_mode_index |= int((payload.x << 1u) & 3u);
+        mode.weight_mode_index |= int((payload.x >> 6u) & 8u);
+
+        if (higher < 2u)
+        {
+            mode.weight_grid_size.x = int(bitfieldExtract(payload.x, 7, 2) + 4 + 4 * higher);
+            mode.weight_grid_size.y = int(bitfieldExtract(payload.x, 5, 2) + 2);
+        }
+        else if (higher == 2u)
+        {
+            mode.weight_grid_size.x = int(bitfieldExtract(payload.x, 5, 2) + 2);
+            mode.weight_grid_size.y = int(bitfieldExtract(payload.x, 7, 2) + 8);
+        }
+        else
+        {
+            if ((payload.x & (1u << 8u)) != 0u)
+            {
+                mode.weight_grid_size.x = int(bitfieldExtract(payload.x, 7, 1) + 2);
+                mode.weight_grid_size.y = int(bitfieldExtract(payload.x, 5, 2) + 2);
+            }
+            else
+            {
+                mode.weight_grid_size.x = int(bitfieldExtract(payload.x, 5, 2) + 2);
+                mode.weight_grid_size.y = int(bitfieldExtract(payload.x, 7, 1) + 6);
+            }
+        }
+    }
+    else
+    {
+    }
+
+    return mode;
+}
+
+ivec4 decode_weights(uvec4 payload, int pixel, out int weight_cost_bits)
+{
+}
+
+void main()
+{
+    ivec4 coord = build_coord();
+    if (any(greaterThanEqual(coord.xy, registers.resolution)))
+        return;
+
+    ivec2 pixel_coord = ivec2(gl_LocalInvocationID.xy);
+    int linear_pixel = int(gl_WorkGroupSize.x) * pixel_coord.y + pixel_coord.x;
+    uvec4 payload = texelFetch(PayloadInput, coord.zw, 0);
+
+    int weight_cost_bits;
+    ivec4 weights = decode_weights(payload, linear_pixel, weight_cost_bits);
+
+    ivec4 final_color = interpolate_endpoint(interp);
+
+    if (decode_error)
+    {
+        if (DECODE_8BIT)
+            imageStore(OutputImageU8, coord.xy, uvec4(0xff, 0, 0xff, 0xff));
+        else
+            imageStore(OutputImageFP16, coord.xy, uvec4(0xffff));
+    }
+    else if (DECODE_8BIT)
+    {
+        imageStore(OutputImageU8, coord.xy, uvec4(final_color >> 8));
+    }
+    else
+    {
+        uvec4 encoded = decode_fp16(final_color);
+        imageStore(OutputImageFP16, coord.xy, encoded);
+    }
+}

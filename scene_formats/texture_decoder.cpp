@@ -89,7 +89,7 @@ static VkFormat compressed_format_to_decoded_format(VkFormat format)
 	case VK_FORMAT_ASTC_10x10_UNORM_BLOCK:
 	case VK_FORMAT_ASTC_12x10_UNORM_BLOCK:
 	case VK_FORMAT_ASTC_12x12_UNORM_BLOCK:
-		return VK_FORMAT_R8G8B8A8_UNORM;
+		return VK_FORMAT_R16G16B16A16_SFLOAT;
 
 	case VK_FORMAT_ASTC_4x4_SRGB_BLOCK:
 	case VK_FORMAT_ASTC_5x4_SRGB_BLOCK:
@@ -442,37 +442,37 @@ static void setup_astc_lut_color_endpoint(Vulkan::CommandBuffer &cmd)
 	uint16_t lut[16][128][4];
 
 	// We can have a maximum of 4 partitions and 4 component pairs.
-	for (unsigned pairs = 0; pairs < 16; pairs++)
+	for (unsigned pairs_minus_1 = 0; pairs_minus_1 < 16; pairs_minus_1++)
 	{
 		for (unsigned remaining = 0; remaining < 128; remaining++)
 		{
 			bool found_mode = false;
 			for (auto &mode : potential_modes)
 			{
-				unsigned num_values = pairs * 2;
+				unsigned num_values = (pairs_minus_1 + 1) * 2;
 				unsigned total_bits = mode.bits * num_values + mode.quints * 7 * ((num_values + 2) / 3) +
 				                      mode.trits * 8 * ((num_values + 4) / 5);
 
 				if (total_bits <= remaining)
 				{
 					found_mode = true;
-					lut[pairs][remaining][0] = mode.bits;
-					lut[pairs][remaining][1] = mode.trits;
-					lut[pairs][remaining][2] = mode.quints;
-					lut[pairs][remaining][3] = unquant_lut_offsets[&mode - potential_modes];
+					lut[pairs_minus_1][remaining][0] = mode.bits;
+					lut[pairs_minus_1][remaining][1] = mode.trits;
+					lut[pairs_minus_1][remaining][2] = mode.quints;
+					lut[pairs_minus_1][remaining][3] = unquant_lut_offsets[&mode - potential_modes];
 					break;
 				}
 			}
 
 			if (!found_mode)
-				memset(lut[pairs][remaining], 0, sizeof(lut[pairs][remaining]));
+				memset(lut[pairs_minus_1][remaining], 0, sizeof(lut[pairs_minus_1][remaining]));
 		}
 	}
 
 	{
 		Vulkan::BufferCreateInfo info = {};
 		info.size = sizeof(lut);
-		info.domain = Vulkan::BufferDomain::Device;
+		info.domain = Vulkan::BufferDomain::LinkedDeviceHost;
 		info.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
 		auto lut_buffer = cmd.get_device().create_buffer(info, lut);
 
@@ -487,7 +487,7 @@ static void setup_astc_lut_color_endpoint(Vulkan::CommandBuffer &cmd)
 	{
 		Vulkan::BufferCreateInfo info = {};
 		info.size = unquant_offset;
-		info.domain = Vulkan::BufferDomain::Device;
+		info.domain = Vulkan::BufferDomain::LinkedDeviceHost;
 		info.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
 		auto unquant_buffer = cmd.get_device().create_buffer(info, unquant_lut);
 
@@ -544,7 +544,7 @@ static void setup_astc_lut_weights(Vulkan::CommandBuffer &cmd)
 	{
 		Vulkan::BufferCreateInfo info = {};
 		info.size = sizeof(lut);
-		info.domain = Vulkan::BufferDomain::Device;
+		info.domain = Vulkan::BufferDomain::LinkedDeviceHost;
 		info.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
 		auto lut_buffer = cmd.get_device().create_buffer(info, lut);
 
@@ -559,7 +559,7 @@ static void setup_astc_lut_weights(Vulkan::CommandBuffer &cmd)
 	{
 		Vulkan::BufferCreateInfo info = {};
 		info.size = unquant_offset;
-		info.domain = Vulkan::BufferDomain::Device;
+		info.domain = Vulkan::BufferDomain::LinkedDeviceHost;
 		info.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
 		auto unquant_buffer = cmd.get_device().create_buffer(info, unquant_lut);
 
@@ -573,10 +573,115 @@ static void setup_astc_lut_weights(Vulkan::CommandBuffer &cmd)
 	}
 }
 
+static void setup_astc_lut_trits_quints(Vulkan::CommandBuffer &cmd)
+{
+	uint16_t trits_quints[256 + 128];
+
+	// From specification.
+
+	for (unsigned T = 0; T < 256; T++)
+	{
+		unsigned C;
+		uint8_t t0, t1, t2, t3, t4;
+
+		if (((T >> 2) & 7) == 7)
+		{
+			C = (((T >> 5) & 7) << 2) | (T & 3);
+			t4 = t3 = 2;
+		}
+		else
+		{
+			C = T & 0x1f;
+			if (((T >> 5) & 3) == 3)
+			{
+				t4 = 2;
+				t3 = (T >> 7) & 1;
+			}
+			else
+			{
+				t4 = (T >> 7) & 1;
+				t3 = (T >> 5) & 3;
+			}
+		}
+
+		if ((C & 3) == 3)
+		{
+			t2 = 2;
+			t1 = (C >> 4) & 1;
+			t0 = (((C >> 3) & 1) << 1) | (((C >> 2) & 1) & ~(((C >> 3) & 1)));
+		}
+		else if (((C >> 2) & 3) == 3)
+		{
+			t2 = 2;
+			t1 = 2;
+			t0 = C & 3;
+		}
+		else
+		{
+			t2 = (C >> 4) & 1;
+			t1 = (C >> 2) & 3;
+			t0 = (((C >> 1) & 1) << 1) | ((C & 1) & ~(((C >> 1) & 1)));
+		}
+
+		trits_quints[T] = t0 | (t1 << 3) | (t2 << 6) | (t3 << 9) | (t4 << 12);
+	}
+
+	for (unsigned Q = 0; Q < 128; Q++)
+	{
+		unsigned C;
+		uint8_t q0, q1, q2;
+		if (((Q >> 1) & 3) == 3 && ((Q >> 5) & 3) == 0)
+		{
+			q2 = ((Q & 1) << 2) | ((((Q >> 4) & 1) & ~(Q & 1)) << 1) | (((Q >> 3) & 1) & ~(Q & 1));
+			q1 = q0 = 4;
+		}
+		else
+		{
+			if ((Q >> 1) & 3)
+			{
+				q2 = 4;
+				C = (((Q >> 3) & 3) << 2) | ((~(Q >> 5) & 3) << 1) | (Q & 1);
+			}
+			else
+			{
+				q2 = (Q >> 5) & 3;
+				C = Q & 0x1f;
+			}
+
+			if ((C & 7) == 5)
+			{
+				q1 = 4;
+				q0 = (C >> 3) & 3;
+			}
+			else
+			{
+				q1 = (C >> 3) & 3;
+				q0 = C & 7;
+			}
+		}
+
+		trits_quints[256 + Q] = q0 | (q1 << 3) | (q2 << 6);
+	}
+
+	Vulkan::BufferCreateInfo info = {};
+	info.size = sizeof(trits_quints);
+	info.domain = Vulkan::BufferDomain::LinkedDeviceHost;
+	info.usage = VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
+	auto lut_buffer = cmd.get_device().create_buffer(info, trits_quints);
+
+	Vulkan::BufferViewCreateInfo view_info = {};
+	view_info.buffer = lut_buffer.get();
+	view_info.format = VK_FORMAT_R16_UINT;
+	view_info.range = sizeof(trits_quints);
+	auto trits_quints_buffer = cmd.get_device().create_buffer_view(view_info);
+	cmd.set_buffer_view(1, 4, *trits_quints_buffer);
+}
+
 static void setup_astc_luts(Vulkan::CommandBuffer &cmd)
 {
 	setup_astc_lut_color_endpoint(cmd);
 	setup_astc_lut_weights(cmd);
+	setup_astc_lut_trits_quints(cmd);
 }
 
 static bool set_compute_decoder(Vulkan::CommandBuffer &cmd, VkFormat format)

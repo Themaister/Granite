@@ -820,6 +820,30 @@ static void dispatch_kernel_bc6(Vulkan::CommandBuffer &cmd, uint32_t width, uint
 	cmd.dispatch(width, height, 1);
 }
 
+static void dispatch_kernel_astc(Vulkan::CommandBuffer &cmd, uint32_t width, uint32_t height, VkFormat format)
+{
+	struct Push
+	{
+		uint32_t width, height;
+	} push;
+
+	push.width = width;
+	push.height = height;
+	cmd.push_constants(&push, 0, sizeof(push));
+
+	uint32_t block_width, block_height;
+	Vulkan::TextureFormatLayout::format_block_dim(format, block_width, block_height);
+
+	cmd.set_specialization_constant_mask(7);
+	cmd.set_specialization_constant(0, block_width);
+	cmd.set_specialization_constant(1, block_height);
+	cmd.set_specialization_constant(2, uint32_t(Vulkan::format_is_srgb(format)));
+
+	cmd.dispatch((width + block_width - 1) / block_width,
+	             (height + block_height - 1) / block_height,
+	             1);
+}
+
 static void dispatch_kernel_bc7(Vulkan::CommandBuffer &cmd, uint32_t width, uint32_t height, VkFormat)
 {
 	struct Push
@@ -988,6 +1012,51 @@ static void dispatch_kernel(Vulkan::CommandBuffer &cmd, uint32_t width, uint32_t
 	case VK_FORMAT_BC7_SRGB_BLOCK:
 	case VK_FORMAT_BC7_UNORM_BLOCK:
 		dispatch_kernel_bc7(cmd, width, height, format);
+		break;
+
+	case VK_FORMAT_ASTC_4x4_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_5x4_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_5x5_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_6x5_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_6x6_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_8x5_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_8x6_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_8x8_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_10x5_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_10x6_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_10x8_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_10x10_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_12x10_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_12x12_UNORM_BLOCK:
+	case VK_FORMAT_ASTC_4x4_SRGB_BLOCK:
+	case VK_FORMAT_ASTC_5x4_SRGB_BLOCK:
+	case VK_FORMAT_ASTC_5x5_SRGB_BLOCK:
+	case VK_FORMAT_ASTC_6x5_SRGB_BLOCK:
+	case VK_FORMAT_ASTC_6x6_SRGB_BLOCK:
+	case VK_FORMAT_ASTC_8x5_SRGB_BLOCK:
+	case VK_FORMAT_ASTC_8x6_SRGB_BLOCK:
+	case VK_FORMAT_ASTC_8x8_SRGB_BLOCK:
+	case VK_FORMAT_ASTC_10x5_SRGB_BLOCK:
+	case VK_FORMAT_ASTC_10x6_SRGB_BLOCK:
+	case VK_FORMAT_ASTC_10x8_SRGB_BLOCK:
+	case VK_FORMAT_ASTC_10x10_SRGB_BLOCK:
+	case VK_FORMAT_ASTC_12x10_SRGB_BLOCK:
+	case VK_FORMAT_ASTC_12x12_SRGB_BLOCK:
+	case VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_5x4_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_5x5_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_6x5_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_6x6_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_8x5_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_8x6_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_8x8_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_10x5_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_10x6_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_10x8_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_10x10_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_12x10_SFLOAT_BLOCK_EXT:
+	case VK_FORMAT_ASTC_12x12_SFLOAT_BLOCK_EXT:
+		dispatch_kernel_astc(cmd, width, height, format);
 		break;
 
 	default:

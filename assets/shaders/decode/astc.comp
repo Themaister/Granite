@@ -3,6 +3,12 @@
 layout(local_size_x_id = 0, local_size_y_id = 1, local_size_z = 4) in;
 
 #include "bitextract.h"
+#include "../inc/debug_channel.h"
+
+uvec3 debug_coord;
+#define DEBUG1(x) add_debug_message(0, debug_coord, uvec2(__LINE__, x))
+#define DEBUG2(x, y) add_debug_message(0, debug_coord, uvec3(__LINE__, x, y))
+#define DEBUG3(x, y, z) add_debug_message(0, debug_coord, uvec4(__LINE__, x, y, z))
 
 layout(set = 1, binding = 0) uniform utextureBuffer LUTRemainingBitsToEndpointQuantizer;
 layout(set = 1, binding = 1) uniform utextureBuffer LUTEndpointUnquantize;
@@ -65,11 +71,11 @@ uvec4 decode_fp16(ivec4 color)
     // 0xffff -> 1.0, and for everything else we get roundDownQuantizeFP16(vec4(c) / vec4(0x10000)).
 
     ivec4 msb = findMSB(color);
-    ivec4 shamt = 20 - msb;
-    ivec4 m = (color >> shamt) & 0x3ff;
+    ivec4 shamt = msb;
+    ivec4 m = ((color << 10) >> shamt) & 0x3ff;
     ivec4 e = msb - 1;
-    uvec4 decoded = m | (e << 11);
-    uvec4 denorm_decode = color << 9;
+    uvec4 decoded = m | (e << 10);
+    uvec4 denorm_decode = color << 8;
     decoded = mix(decoded, uvec4(denorm_decode), lessThan(e, ivec4(1)));
     decoded = mix(decoded, uvec4(0x3c00), equal(color, ivec4(0xffff)));
     return decoded;
@@ -101,7 +107,7 @@ BlockMode decode_block_mode(uvec4 payload)
     if (lower != 0)
     {
         mode.weight_mode_index = int((payload.x >> 4u) & 1u);
-        mode.weight_mode_index |= int((payload.x << 1u) & 3u);
+        mode.weight_mode_index |= int((payload.x << 1u) & 6u);
         mode.weight_mode_index |= int((payload.x >> 6u) & 8u);
 
         if (higher < 2u)
@@ -269,7 +275,7 @@ int decode_integer_sequence(uvec4 payload, int start_bit, int index, ivec3 quant
     else
     {
         int bit = index * quant.x;
-        ret = extract_bits(payload, bit, quant.x);
+        ret = extract_bits(payload, start_bit + bit, quant.x);
     }
     return ret;
 }
@@ -329,6 +335,7 @@ void decode_endpoint(out ivec4 ep0, out ivec4 ep1, out bool HDR,
 void main()
 {
     ivec4 coord = build_coord();
+    debug_coord = uvec3(coord.xy, 0);
     if (any(greaterThanEqual(coord.xy, registers.resolution)))
         return;
 
@@ -351,6 +358,12 @@ void main()
     decode_endpoint(ep0, ep1, HDR, payload, endpoint_bit_offset, endpoint_quant, block_mode.cem);
 
     ivec4 final_color = interpolate_endpoint(ep0, ep1, weights, HDR);
+
+    DEBUG3(ep0.x, ep0.y, ep0.z);
+    DEBUG1(ep0.w);
+    DEBUG3(ep1.x, ep1.y, ep1.z);
+    DEBUG1(ep1.w);
+    DEBUG1(weights.x);
 
     if (decode_error)
     {

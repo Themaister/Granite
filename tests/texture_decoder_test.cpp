@@ -276,14 +276,21 @@ static BufferHandle decode_compute(CommandBuffer &cmd, const TextureFormatLayout
 	return readback_image(cmd, *compressed);
 }
 
-#if 0
+#if 1
 struct DebugIface : DebugChannelInterface
 {
 	void message(const std::string &tag, uint32_t code, uint32_t x, uint32_t y, uint32_t z,
 	             uint32_t word_count, const Word *words) override
 	{
-		if (x == 3 && y == 0)
-			LOGI("(X = %d, Y = %d), line: %d = (%d, %d, %d).\n", x, y, words[0].s32, words[1].s32, words[2].s32, words[3].s32);
+		if (x == 0 && y == 0)
+		{
+			if (word_count == 2)
+				LOGI("(X = %d, Y = %d), line: %d = (%d).\n", x, y, words[0].s32, words[1].s32);
+			else if (word_count == 3)
+				LOGI("(X = %d, Y = %d), line: %d = (%d, %d).\n", x, y, words[0].s32, words[1].s32, words[2].s32);
+			else if (word_count == 4)
+				LOGI("(X = %d, Y = %d), line: %d = (%d, %d, %d).\n", x, y, words[0].s32, words[1].s32, words[2].s32, words[3].s32);
+		}
 	}
 };
 static DebugIface iface;
@@ -293,6 +300,8 @@ static bool test_astc(Device &device, VkFormat format, VkFormat readback_format)
 {
 	auto cmd = device.request_command_buffer();
 	std::mt19937 rnd(1337);
+
+	cmd->begin_debug_channel(&iface, "ASTC", 16 * 1024 * 1024);
 
 	SceneFormats::MemoryMappedTexture tex;
 	unsigned width = 4;
@@ -318,11 +327,17 @@ static bool test_astc(Device &device, VkFormat format, VkFormat readback_format)
 	d[0] |= 2 << 5;
 
 	// 3 bit weights.
+	d[0] |= 1 << 4;
 	d[0] |= 1 << 0;
 	d[0] |= 1 << 1;
-	d[0] |= 1 << 4;
 
-	auto readback_reference = decode_gpu(*cmd, layout, VK_FORMAT_R16G16B16A16_SFLOAT);
+	d[0] |= 7 << 17;
+	d[0] |= 253 << 25;
+
+	d[2] = uint32_t(rnd());
+	d[3] = uint32_t(rnd());
+
+	auto readback_reference = decode_gpu(*cmd, layout, readback_format);
 	auto readback_decoded = decode_compute(*cmd, layout);
 	if (!readback_decoded)
 	{
@@ -334,7 +349,12 @@ static bool test_astc(Device &device, VkFormat format, VkFormat readback_format)
 	device.submit(cmd, &fence);
 	fence->wait();
 
-	return compare_rgba16f(device, *readback_reference, *readback_decoded, width, height);
+	if (readback_format == VK_FORMAT_R16G16B16A16_SFLOAT)
+		return compare_rgba16f(device, *readback_reference, *readback_decoded, width, height);
+	else if (readback_format == VK_FORMAT_R8G8B8A8_UNORM)
+		return compare_rgba8(device, *readback_reference, *readback_decoded, width, height, 0);
+	else
+		return false;
 }
 
 static bool test_bc6(Device &device, VkFormat format)

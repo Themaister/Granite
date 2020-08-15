@@ -391,6 +391,58 @@ void decode_endpoint_ldr_luma_alpha_base_offset(out ivec4 ep0, out ivec4 ep1,
     ep1 = ivec4(ivec3(v0_v1), v2_v3);
 }
 
+void decode_endpoint_ldr_rgb_base_scale(out ivec4 ep0, out ivec4 ep1,
+        int v0, int v1, int v2, int v3)
+{
+    ep0 = ivec4((ivec3(v0, v1, v2) * v3) >> 8, 0xff);
+    ep1 = ivec4(v0, v1, v2, 0xff);
+}
+
+void decode_endpoint_ldr_rgb_base_scale_two_a(out ivec4 ep0, out ivec4 ep1,
+        int v0, int v1, int v2, int v3, int v4, int v5)
+{
+    ep0 = ivec4((ivec3(v0, v1, v2) * v3) >> 8, v4);
+    ep1 = ivec4(v0, v1, v2, v5);
+}
+
+void decode_endpoint_ldr_rgb_direct(out ivec4 ep0, out ivec4 ep1,
+        int v0, int v1, int v2, int v3, int v4, int v5)
+{
+    int s0 = v0 + v2 + v4;
+    int s1 = v1 + v3 + v5;
+    if (s1 >= s0)
+    {
+        ep0 = ivec4(v0, v2, v4, 0xff);
+        ep1 = ivec4(v1, v3, v5, 0xff);
+    }
+    else
+    {
+        ep0 = blue_contract(v1, v3, v5, 0xff);
+        ep1 = blue_contract(v0, v2, v4, 0xff);
+    }
+}
+
+void decode_endpoint_ldr_rgb_base_offset(out ivec4 ep0, out ivec4 ep1,
+        int v0, int v1, int v2, int v3, int v4, int v5)
+{
+    bit_transfer_signed(v1, v0);
+    bit_transfer_signed(v3, v2);
+    bit_transfer_signed(v5, v4);
+    if (v1 + v3 + v5 >= 0)
+    {
+        ep0 = ivec4(v0, v2, v4, 0xff);
+        ep1 = ivec4(v0 + v1, v2 + v3, v4 + v5, 0xff);
+    }
+    else
+    {
+        ep0 = blue_contract(v0 + v1, v2 + v3, v4 + v5, 0xff);
+        ep1 = blue_contract(v0, v2, v4, 0xff);
+    }
+
+    ep0.rgb = clamp(ep0.rgb, ivec3(0), ivec3(0xff));
+    ep1.rgb = clamp(ep1.rgb, ivec3(0), ivec3(0xff));
+}
+
 void decode_endpoint_ldr_rgba_direct(out ivec4 ep0, out ivec4 ep1,
         int v0, int v1, int v2, int v3,
         int v4, int v5, int v6, int v7)
@@ -407,6 +459,29 @@ void decode_endpoint_ldr_rgba_direct(out ivec4 ep0, out ivec4 ep1,
         ep0 = blue_contract(v1, v3, v5, v7);
         ep1 = blue_contract(v0, v2, v4, v6);
     }
+}
+
+void decode_endpoint_ldr_rgba_base_offset(out ivec4 ep0, out ivec4 ep1,
+        int v0, int v1, int v2, int v3, int v4, int v5, int v6, int v7)
+{
+    bit_transfer_signed(v1, v0);
+    bit_transfer_signed(v3, v2);
+    bit_transfer_signed(v5, v4);
+    bit_transfer_signed(v7, v6);
+
+    if (v1 + v3 + v5 >= 0)
+    {
+        ep0 = ivec4(v0, v2, v4, v6);
+        ep1 = ivec4(v0 + v1, v2 + v3, v4 + v5, v6 + v7);
+    }
+    else
+    {
+        ep0 = blue_contract(v0 + v1, v2 + v3, v4 + v5, v6 + v7);
+        ep1 = blue_contract(v0, v2, v4, v6);
+    }
+
+    ep0 = clamp(ep0, ivec4(0), ivec4(0xff));
+    ep1 = clamp(ep1, ivec4(0), ivec4(0xff));
 }
 
 void decode_endpoint(out ivec4 ep0, out ivec4 ep1, out bool HDR,
@@ -470,8 +545,38 @@ void decode_endpoint(out ivec4 ep0, out ivec4 ep1, out bool HDR,
         HDR = false;
         break;
 
+    case 6:
+        decode_endpoint_ldr_rgb_base_scale(ep0, ep1,
+            v0, v1, v2, v3);
+        HDR = false;
+        break;
+
+    case 8:
+        decode_endpoint_ldr_rgb_direct(ep0, ep1,
+            v0, v1, v2, v3, v4, v5);
+        HDR = false;
+        break;
+
+    case 9:
+        decode_endpoint_ldr_rgb_base_offset(ep0, ep1,
+            v0, v1, v2, v3, v4, v5);
+        HDR = false;
+        break;
+
+    case 10:
+        decode_endpoint_ldr_rgb_base_scale_two_a(ep0, ep1,
+            v0, v1, v2, v3, v4, v5);
+        HDR = false;
+        break;
+
     case 12:
         decode_endpoint_ldr_rgba_direct(ep0, ep1,
+            v0, v1, v2, v3, v4, v5, v6, v7);
+        HDR = false;
+        break;
+
+    case 13:
+        decode_endpoint_ldr_rgba_base_offset(ep0, ep1,
             v0, v1, v2, v3, v4, v5, v6, v7);
         HDR = false;
         break;

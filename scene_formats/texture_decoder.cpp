@@ -261,6 +261,7 @@ static void build_astc_unquant_weight_lut(uint8_t *lut, size_t range, const ASTC
 			unsigned unq = D * C + B;
 			unq ^= A;
 			unq = (A & 0x20) | (unq >> 2);
+			v = unq;
 		}
 
 		// Expand [0, 63] to [0, 64].
@@ -394,6 +395,9 @@ static unsigned astc_value_range(const ASTCQuantizationMode &mode)
 		value_range *= 3;
 	if (mode.quints)
 		value_range *= 5;
+
+	if (value_range == 1)
+		value_range = 0;
 	return value_range;
 }
 
@@ -420,9 +424,6 @@ static void setup_astc_lut_color_endpoint(Vulkan::CommandBuffer &cmd)
 		{ 1, 0, 1 },
 		{ 3, 0, 0 },
 		{ 1, 1, 0 },
-		// Are these valid?
-		{ 2, 0, 0 },
-		{ 1, 0, 0 },
 	};
 
 	constexpr size_t num_modes = sizeof(potential_modes) / sizeof(potential_modes[0]);

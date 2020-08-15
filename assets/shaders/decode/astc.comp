@@ -195,6 +195,12 @@ BlockMode decode_block_mode(uvec4 payload)
     if (mode.dual_plane)
         config_bits += 2;
 
+    // This is not allowed.
+    if (any(greaterThan(mode.weight_grid_size, ivec2(gl_WorkGroupSize.xy))))
+        decode_error = true;
+    if (mode.dual_plane && mode.num_partitions > 3)
+        decode_error = true;
+
     mode.config_bits = config_bits;
     return mode;
 }
@@ -227,7 +233,7 @@ int decode_integer_sequence(uvec4 payload, int start_bit, int index, ivec3 quant
         // Trit-decoding.
         int block = idiv5_floor(index);
         int offset = index - block * 5;
-        start_bit += block * 5;
+        start_bit += block * (5 * quant.x + 8);
 
         int t0_t1_offset = start_bit + (quant.x * 1 + 0);
         int t2_t3_offset = start_bit + (quant.x * 2 + 2);
@@ -244,17 +250,21 @@ int decode_integer_sequence(uvec4 payload, int start_bit, int index, ivec3 quant
         int t_bits = idiv5_ceil((offset + 1) * 8);
         t &= (1 << t_bits) - 1;
 
+        t = int(texelFetch(LUTTritQuintDecode, t).x);
+        t = (t >> (3 * offset)) & 7;
+
         int m_offset = offset * quant.x;
         m_offset += idiv5_ceil(offset * 8);
         int m = extract_bits(payload, m_offset + start_bit, quant.x);
         ret = (t << quant.x) | m;
+        DEBUG1(ret);
     }
     else if (quant.z != 0)
     {
         // Quint-decoding
         int block = idiv3_floor(index);
         int offset = index - block * 3;
-        start_bit += block * 3;
+        start_bit += block * (3 * quant.x + 7);
 
         int q0_q1_q2_offset = start_bit + (quant.x * 1 + 0);
         int q3_q4_offset    = start_bit + (quant.x * 2 + 3);
@@ -266,6 +276,9 @@ int decode_integer_sequence(uvec4 payload, int start_bit, int index, ivec3 quant
 
         int q_bits = idiv3_ceil((offset + 1) * 7);
         q &= (1 << q_bits) - 1;
+
+        q = int(texelFetch(LUTTritQuintDecode, 256 + q).x);
+        q = (q >> (3 * offset)) & 7;
 
         int m_offset = offset * quant.x;
         m_offset += idiv3_ceil(offset * 7);
@@ -286,6 +299,7 @@ ivec4 decode_weights(uvec4 payload, BlockMode mode, int pixel, out int weight_co
     payload = payload.wzyx;
 
     ivec4 quant = ivec4(texelFetch(LUTWeightQuantizer, mode.weight_mode_index));
+    DEBUG3(quant.x, quant.y, quant.z);
     int num_weights = mode.weight_grid_size.x * mode.weight_grid_size.y;
     num_weights *= int(mode.dual_plane) + 1;
     weight_cost_bits =
@@ -293,9 +307,18 @@ ivec4 decode_weights(uvec4 payload, BlockMode mode, int pixel, out int weight_co
         idiv5_ceil(num_weights * 8 * quant.y) +
         idiv3_ceil(num_weights * 7 * quant.z);
 
+    DEBUG1(weight_cost_bits);
+
+    // Decoders must deal with error conditions and return the correct error color.
+    if (weight_cost_bits < 24 || weight_cost_bits > 96 || num_weights > 64)
+        decode_error = true;
+
     int weight_index = pixel;
     int primary_weight = decode_integer_sequence(payload, 0, weight_index, quant.xyz);
+    DEBUG1(primary_weight);
+    DEBUG1(quant.w);
     primary_weight = int(texelFetch(LUTWeightUnquantize, primary_weight + quant.w).x);
+    DEBUG1(primary_weight);
     return ivec4(primary_weight);
 }
 
@@ -332,6 +355,22 @@ void decode_endpoint(out ivec4 ep0, out ivec4 ep1, out bool HDR,
     }
 }
 
+#define CHECK_DECODE_ERROR() do { \
+    if (decode_error) \
+    { \
+        emit_decode_error(coord.xy); \
+        return; \
+    } \
+} while(false)
+
+void emit_decode_error(ivec2 coord)
+{
+    if (DECODE_8BIT)
+        imageStore(OutputImageU8, coord, uvec4(0xff, 0, 0xff, 0xff));
+    else
+        imageStore(OutputImageFP16, coord, uvec4(0xffff));
+}
+
 void main()
 {
     ivec4 coord = build_coord();
@@ -344,6 +383,8 @@ void main()
     uvec4 payload = texelFetch(PayloadInput, coord.zw, 0);
 
     BlockMode block_mode = decode_block_mode(payload);
+    CHECK_DECODE_ERROR();
+
     int weight_cost_bits;
     ivec4 weights = decode_weights(payload, block_mode, linear_pixel, weight_cost_bits);
 
@@ -352,10 +393,16 @@ void main()
     ivec4 endpoint_quant = ivec4(texelFetch(LUTRemainingBitsToEndpointQuantizer,
             128 * (num_endpoint_pairs - 1) + available_endpoint_bits));
 
+    // No space left for color endpoints.
+    if (all(equal(endpoint_quant.xyz, ivec3(0))))
+        decode_error = true;
+    CHECK_DECODE_ERROR();
+
     int endpoint_bit_offset = block_mode.config_bits;
     ivec4 ep0, ep1;
     bool HDR;
     decode_endpoint(ep0, ep1, HDR, payload, endpoint_bit_offset, endpoint_quant, block_mode.cem);
+    CHECK_DECODE_ERROR();
 
     ivec4 final_color = interpolate_endpoint(ep0, ep1, weights, HDR);
 
@@ -365,14 +412,7 @@ void main()
     DEBUG1(ep1.w);
     DEBUG1(weights.x);
 
-    if (decode_error)
-    {
-        if (DECODE_8BIT)
-            imageStore(OutputImageU8, coord.xy, uvec4(0xff, 0, 0xff, 0xff));
-        else
-            imageStore(OutputImageFP16, coord.xy, uvec4(0xffff));
-    }
-    else if (DECODE_8BIT)
+    if (DECODE_8BIT)
     {
         imageStore(OutputImageU8, coord.xy, uvec4(final_color >> 8));
     }

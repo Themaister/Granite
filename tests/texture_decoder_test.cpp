@@ -322,15 +322,18 @@ static bool test_astc(Device &device, VkFormat format, VkFormat readback_format)
 	d[2] = 0;
 	d[3] = 0;
 
+	// Endpoint type
+	d[0] |= 12 << 13;
+
 	// 4x4 weight grid.
 	d[0] |= 0 << 7;
 	d[0] |= 2 << 5;
 
 	// 3 bit weights.
-	d[0] |= 0 << 9;
+	d[0] |= 1 << 9;
 	d[0] |= 1 << 1;
 	d[0] |= 1 << 0;
-	d[0] |= 0 << 4;
+	d[0] |= 1 << 4;
 
 	// Randomize endpoint and weights.
 	d[0] |= uint32_t(rnd()) << 17;

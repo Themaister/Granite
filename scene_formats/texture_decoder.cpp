@@ -427,7 +427,7 @@ static void setup_astc_lut_color_endpoint(Vulkan::CommandBuffer &cmd)
 	};
 
 	constexpr size_t num_modes = sizeof(potential_modes) / sizeof(potential_modes[0]);
-	uint8_t unquant_lut_offsets[num_modes];
+	size_t unquant_lut_offsets[num_modes];
 	size_t unquant_offset = 0;
 
 	uint8_t unquant_lut[2048];
@@ -639,10 +639,10 @@ static void setup_astc_lut_trits_quints(Vulkan::CommandBuffer &cmd)
 		}
 		else
 		{
-			if ((Q >> 1) & 3)
+			if (((Q >> 1) & 3) == 3)
 			{
 				q2 = 4;
-				C = (((Q >> 3) & 3) << 2) | ((~(Q >> 5) & 3) << 1) | (Q & 1);
+				C = (((Q >> 3) & 3) << 3) | ((~(Q >> 5) & 3) << 1) | (Q & 1);
 			}
 			else
 			{
@@ -825,11 +825,36 @@ static void dispatch_kernel_astc(Vulkan::CommandBuffer &cmd, uint32_t width, uin
 {
 	struct Push
 	{
+		uint32_t error_color[4];
 		uint32_t width, height;
 	} push;
 
 	push.width = width;
 	push.height = height;
+	bool srgb = Vulkan::format_is_srgb(format);
+	constexpr bool HDR_profile = false;
+
+	if (srgb)
+	{
+		push.error_color[0] = 0xff;
+		push.error_color[1] = 0;
+		push.error_color[2] = 0xff;
+		push.error_color[3] = 0xff;
+	}
+	else if (HDR_profile)
+	{
+		push.error_color[0] = 0xffff;
+		push.error_color[1] = 0xffff;
+		push.error_color[2] = 0xffff;
+		push.error_color[3] = 0xffff;
+	}
+	else
+	{
+		push.error_color[0] = 0x3c00;
+		push.error_color[1] = 0;
+		push.error_color[2] = 0x3c00;
+		push.error_color[3] = 0x3c00;
+	}
 	cmd.push_constants(&push, 0, sizeof(push));
 
 	uint32_t block_width, block_height;
@@ -838,10 +863,10 @@ static void dispatch_kernel_astc(Vulkan::CommandBuffer &cmd, uint32_t width, uin
 	cmd.set_specialization_constant_mask(7);
 	cmd.set_specialization_constant(0, block_width);
 	cmd.set_specialization_constant(1, block_height);
-	cmd.set_specialization_constant(2, uint32_t(Vulkan::format_is_srgb(format)));
+	cmd.set_specialization_constant(2, uint32_t(srgb));
 
-	cmd.dispatch((width + block_width - 1) / block_width,
-	             (height + block_height - 1) / block_height,
+	cmd.dispatch((width + 2 * block_width - 1) / (2 * block_width),
+	             (height + 2 * block_height - 1) / (2 * block_height),
 	             1);
 }
 

@@ -225,8 +225,19 @@ int idiv5_ceil(int v)
     return idiv5_floor(v + 4);
 }
 
-int decode_integer_sequence(uvec4 payload, int start_bit, int index, ivec3 quant)
+uvec4 build_bitmask(int bits)
 {
+    ivec4 num_bits = ivec4(bits, bits - 32, bits - 64, bits - 96);
+    uvec4 mask = uvec4(1) << clamp(num_bits, ivec4(0), ivec4(31));
+    mask--;
+    mask = mix(mask, uvec4(0xffffffffu), greaterThanEqual(uvec4(bits), uvec4(32, 64, 96, 128)));
+    return mask;
+}
+
+int decode_integer_sequence(uvec4 payload, int start_bit, int index, int max_bits, ivec3 quant)
+{
+    payload &= build_bitmask(max_bits);
+
     int ret;
     if (quant.y != 0)
     {
@@ -247,17 +258,19 @@ int decode_integer_sequence(uvec4 payload, int start_bit, int index, ivec3 quant
                 (extract_bits(payload, t5_t6_offset, 2) << 5) |
                 (extract_bits(payload, t7_offset, 1) << 7);
 
-        int t_bits = idiv5_ceil((offset + 1) * 8);
-        t &= (1 << t_bits) - 1;
-
         t = int(texelFetch(LUTTritQuintDecode, t).x);
         t = (t >> (3 * offset)) & 7;
 
         int m_offset = offset * quant.x;
         m_offset += idiv5_ceil(offset * 8);
-        int m = extract_bits(payload, m_offset + start_bit, quant.x);
-        ret = (t << quant.x) | m;
-        DEBUG1(ret);
+
+        if (quant.x != 0)
+        {
+            int m = extract_bits(payload, m_offset + start_bit, quant.x);
+            ret = (t << quant.x) | m;
+        }
+        else
+            ret = t;
     }
     else if (quant.z != 0)
     {
@@ -274,16 +287,19 @@ int decode_integer_sequence(uvec4 payload, int start_bit, int index, ivec3 quant
                 (extract_bits(payload, q3_q4_offset, 2) << 3) |
                 (extract_bits(payload, q5_q6_offset, 2) << 5);
 
-        int q_bits = idiv3_ceil((offset + 1) * 7);
-        q &= (1 << q_bits) - 1;
-
         q = int(texelFetch(LUTTritQuintDecode, 256 + q).x);
         q = (q >> (3 * offset)) & 7;
 
         int m_offset = offset * quant.x;
         m_offset += idiv3_ceil(offset * 7);
-        int m = extract_bits(payload, m_offset + start_bit, quant.x);
-        ret = (q << quant.x) | m;
+
+        if (quant.x != 0)
+        {
+            int m = extract_bits(payload, m_offset + start_bit, quant.x);
+            ret = (q << quant.x) | m;
+        }
+        else
+            ret = q;
     }
     else
     {
@@ -314,7 +330,7 @@ ivec4 decode_weights(uvec4 payload, BlockMode mode, int pixel, out int weight_co
         decode_error = true;
 
     int weight_index = pixel;
-    int primary_weight = decode_integer_sequence(payload, 0, weight_index, quant.xyz);
+    int primary_weight = decode_integer_sequence(payload, 0, weight_index, weight_cost_bits, quant.xyz);
     DEBUG1(primary_weight);
     DEBUG1(quant.w);
     primary_weight = int(texelFetch(LUTWeightUnquantize, primary_weight + quant.w).x);
@@ -323,17 +339,26 @@ ivec4 decode_weights(uvec4 payload, BlockMode mode, int pixel, out int weight_co
 }
 
 void decode_endpoint(out ivec4 ep0, out ivec4 ep1, out bool HDR,
-                     uvec4 payload, int bit_offset, ivec4 quant, int ep_mode)
+                     uvec4 payload, int bit_offset, ivec4 quant, int ep_mode, int num_endpoint_bits)
 {
+    num_endpoint_bits += bit_offset;
+
+    int vals[8];
+    int num_values = 2 * ((ep_mode >> 2) + 1);
+
+    for (int i = 0; i < num_values; i++)
+    {
+        int v = decode_integer_sequence(payload, bit_offset, i, num_endpoint_bits, quant.xyz);
+        v = int(texelFetch(LUTEndpointUnquantize, quant.w + v).x);
+        vals[i] = v;
+    }
+
     switch (ep_mode >> 2)
     {
     case 0:
     {
-        int v0 = decode_integer_sequence(payload, bit_offset, 0, quant.xyz);
-        int v1 = decode_integer_sequence(payload, bit_offset, 1, quant.xyz);
-        v0 = int(texelFetch(LUTEndpointUnquantize, quant.w + v0).x);
-        v1 = int(texelFetch(LUTEndpointUnquantize, quant.w + v1).x);
-
+        int v0 = vals[0];
+        int v1 = vals[1];
         switch (ep_mode & 3)
         {
         case 0: // LDR Luminance
@@ -401,7 +426,8 @@ void main()
     int endpoint_bit_offset = block_mode.config_bits;
     ivec4 ep0, ep1;
     bool HDR;
-    decode_endpoint(ep0, ep1, HDR, payload, endpoint_bit_offset, endpoint_quant, block_mode.cem);
+    decode_endpoint(ep0, ep1, HDR, payload, endpoint_bit_offset, endpoint_quant,
+            block_mode.cem, available_endpoint_bits);
     CHECK_DECODE_ERROR();
 
     ivec4 final_color = interpolate_endpoint(ep0, ep1, weights, HDR);

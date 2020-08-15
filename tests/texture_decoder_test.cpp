@@ -282,7 +282,7 @@ struct DebugIface : DebugChannelInterface
 	void message(const std::string &tag, uint32_t code, uint32_t x, uint32_t y, uint32_t z,
 	             uint32_t word_count, const Word *words) override
 	{
-		if (x == 0 && y == 0)
+		if (x == 3 && y == 0)
 		{
 			if (word_count == 2)
 				LOGI("(X = %d, Y = %d), line: %d = (%d).\n", x, y, words[0].s32, words[1].s32);

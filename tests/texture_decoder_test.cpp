@@ -323,7 +323,7 @@ static bool test_astc(Device &device, VkFormat format, VkFormat readback_format)
 	d[3] = 0;
 
 	// Endpoint type
-	d[0] |= 12 << 13;
+	d[0] |= 5 << 13;
 
 	// 4x4 weight grid.
 	d[0] |= 0 << 7;

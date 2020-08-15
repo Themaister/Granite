@@ -342,6 +342,23 @@ void decode_endpoint_ldr_luma_direct(out ivec4 ep0, out ivec4 ep1,
     ep1 = ivec4(ivec3(v1), 0xff);
 }
 
+void decode_endpoint_ldr_luma_base_offset(out ivec4 ep0, out ivec4 ep1,
+        int v0, int v1)
+{
+    int l0 = (v0 >> 2) | (v1 & 0xc0);
+    int l1 = l0 + (v1 & 0x3f);
+    l1 = min(l1, 0xff);
+    ep0 = ivec4(ivec3(l0), 0xff);
+    ep1 = ivec4(ivec3(l1), 0xff);
+}
+
+void decode_endpoint_ldr_luma_alpha_direct(out ivec4 ep0, out ivec4 ep1,
+    int v0, int v1, int v2, int v3)
+{
+    ep0 = ivec4(ivec3(v0), v2);
+    ep1 = ivec4(ivec3(v1), v3);
+}
+
 ivec4 blue_contract(int r, int g, int b, int a)
 {
     ivec4 ret;
@@ -350,6 +367,28 @@ ivec4 blue_contract(int r, int g, int b, int a)
     ret.b = b;
     ret.a = a;
     return ret;
+}
+
+void bit_transfer_signed(inout int a, inout int b)
+{
+    b >>= 1;
+    b |= a & 0x80;
+    a >>= 1;
+    a &= 0x3f;
+    a = bitfieldExtract(a, 0, 6);
+}
+
+void decode_endpoint_ldr_luma_alpha_base_offset(out ivec4 ep0, out ivec4 ep1,
+    int v0, int v1, int v2, int v3)
+{
+    bit_transfer_signed(v1, v0);
+    bit_transfer_signed(v3, v2);
+    int v0_v1 = clamp(v0 + v1, 0, 0xff);
+    int v2_v3 = clamp(v2 + v3, 0, 0xff);
+    v0 = clamp(v0, 0, 0xff);
+    v2 = clamp(v2, 0, 0xff);
+    ep0 = ivec4(ivec3(v0), v2);
+    ep1 = ivec4(ivec3(v0_v1), v2_v3);
 }
 
 void decode_endpoint_ldr_rgba_direct(out ivec4 ep0, out ivec4 ep1,
@@ -376,27 +415,64 @@ void decode_endpoint(out ivec4 ep0, out ivec4 ep1, out bool HDR,
     num_endpoint_bits += bit_offset;
     payload &= build_bitmask(num_endpoint_bits);
 
-    int vals[8];
+    // Could of course use an array, but that doesn't lower nicely to indexed registers on all GPUs.
+    int v0, v1, v2, v3, v4, v5, v6, v7;
     int num_values = 2 * ((ep_mode >> 2) + 1);
 
-    for (int i = 0; i < num_values; i++)
+#define DECODE_EP(i) \
+    int(texelFetch(LUTEndpointUnquantize, quant.w + decode_integer_sequence(payload, bit_offset, i, quant.xyz)).x)
+
+    int hi_bits = ep_mode >> 2;
+    v0 = DECODE_EP(0);
+    v1 = DECODE_EP(1);
+
+    if (hi_bits >= 1)
     {
-        int v = decode_integer_sequence(payload, bit_offset, i, quant.xyz);
-        v = int(texelFetch(LUTEndpointUnquantize, quant.w + v).x);
-        vals[i] = v;
+        v2 = DECODE_EP(2);
+        v3 = DECODE_EP(3);
+    }
+
+    if (hi_bits >= 2)
+    {
+        v4 = DECODE_EP(4);
+        v5 = DECODE_EP(5);
+    }
+
+    if (hi_bits >= 3)
+    {
+        v6 = DECODE_EP(6);
+        v7 = DECODE_EP(7);
     }
 
     switch (ep_mode)
     {
     case 0:
-        decode_endpoint_ldr_luma_direct(ep0, ep1, vals[0], vals[1]);
+        decode_endpoint_ldr_luma_direct(ep0, ep1,
+            v0, v1);
+        HDR = false;
+        break;
+
+    case 1:
+        decode_endpoint_ldr_luma_base_offset(ep0, ep1,
+            v0, v1);
+        HDR = false;
+        break;
+
+    case 4:
+        decode_endpoint_ldr_luma_alpha_direct(ep0, ep1,
+            v0, v1, v2, v3);
+        HDR = false;
+        break;
+
+    case 5:
+        decode_endpoint_ldr_luma_alpha_base_offset(ep0, ep1,
+            v0, v1, v2, v3);
         HDR = false;
         break;
 
     case 12:
         decode_endpoint_ldr_rgba_direct(ep0, ep1,
-            vals[0], vals[1], vals[2], vals[3],
-            vals[4], vals[5], vals[6], vals[7]);
+            v0, v1, v2, v3, v4, v5, v6, v7);
         HDR = false;
         break;
 

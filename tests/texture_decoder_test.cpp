@@ -215,8 +215,8 @@ static bool compare_rgba16f(Device &device,
 	{
 		for (unsigned x = 0; x < width; x++)
 		{
-			auto &ref = mapped_reference[y * width + x];
-			auto &dec = mapped_decoded[y * width + x];
+			auto ref = mapped_reference[y * width + x];
+			auto dec = mapped_decoded[y * width + x];
 
 			int diff_r = muglm::abs(int(ref.x) - int(dec.x));
 			int diff_g = muglm::abs(int(ref.y) - int(dec.y));
@@ -282,7 +282,7 @@ struct DebugIface : DebugChannelInterface
 	void message(const std::string &tag, uint32_t code, uint32_t x, uint32_t y, uint32_t z,
 	             uint32_t word_count, const Word *words) override
 	{
-		if (x == 3 && y == 0)
+		if (x == 0 && y == 0)
 		{
 			if (word_count == 2)
 				LOGI("(X = %d, Y = %d), line: %d = (%d).\n", x, y, words[0].s32, words[1].s32);
@@ -322,6 +322,9 @@ static bool test_astc(Device &device, VkFormat format, VkFormat readback_format)
 	d[2] = 0;
 	d[3] = 0;
 
+	// Dual-plane
+	d[0] |= 0 << 10;
+
 	// Endpoint type
 	d[0] |= 13 << 13;
 
@@ -330,7 +333,7 @@ static bool test_astc(Device &device, VkFormat format, VkFormat readback_format)
 	d[0] |= 2 << 5;
 
 	// 3 bit weights.
-	d[0] |= 1 << 9;
+	d[0] |= 0 << 9;
 	d[0] |= 1 << 1;
 	d[0] |= 1 << 0;
 	d[0] |= 1 << 4;

@@ -440,10 +440,10 @@ static void setup_astc_lut_color_endpoint(Vulkan::CommandBuffer &cmd)
 		unquant_offset += value_range;
 	}
 
-	uint16_t lut[16][128][4];
+	uint16_t lut[9][128][4];
 
-	// We can have a maximum of 4 partitions and 4 component pairs.
-	for (unsigned pairs_minus_1 = 0; pairs_minus_1 < 16; pairs_minus_1++)
+	// We can have a maximum of 9 endpoint pairs, i.e. 18 endpoint values in total.
+	for (unsigned pairs_minus_1 = 0; pairs_minus_1 < 9; pairs_minus_1++)
 	{
 		for (unsigned remaining = 0; remaining < 128; remaining++)
 		{

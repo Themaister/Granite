@@ -90,6 +90,7 @@ struct BlockMode
     int seed;
     int cem;
     int config_bits;
+    int primary_config_bits;
     bool dual_plane;
     bool void_extent;
 };
@@ -183,18 +184,63 @@ BlockMode decode_block_mode(uvec4 payload)
     else
         mode.cem = int(bitfieldExtract(payload.x, 13, 4));
 
-    int config_bits = 17;
+    // 11 bits for block mode.
+    // 2 bits for partition select
+    // If partitions > 1:
+    //   4 bits CEM selector
+    //   If dual_plane:
+    //     2 bits of CCS
+    // else:
+    //   10 for partition seed
+    //   2 bits for CEM main selector
+    //   If CEM[1:0] = 00:
+    //     4 bits for CEM extra selector if all same type.
+    //   else:
+    //     (1 + 2) * num_partitions if different types.
+    //     First 4 bits are encoded next to CEM[1:0], otherwise, packed before weights.
+    //   If dual_plane:
+    //     2 bits of CCS before extra CEM bits.
+    const int CONFIG_BITS_BLOCK = 11;
+    const int CONFIG_BITS_PARTITION_MODE = 2;
+    const int CONFIG_BITS_SEED = 10;
+    const int CONFIG_BITS_PRIMARY_MULTI_CEM = 2;
+    const int CONFIG_BITS_CEM = 4;
+    const int CONFIG_BITS_EXTRA_CEM_PER_PARTITION = 3;
+    const int CONFIG_BITS_CCS = 2;
+
+    int config_bits;
     if (mode.num_partitions > 1)
     {
         bool single_cem = (mode.cem & 3) == 0;
         if (single_cem)
-            config_bits = 29;
+        {
+            config_bits = CONFIG_BITS_BLOCK + CONFIG_BITS_PARTITION_MODE +
+                          CONFIG_BITS_SEED + CONFIG_BITS_PRIMARY_MULTI_CEM + CONFIG_BITS_CEM;
+        }
         else
-            config_bits = 25 + 3 * mode.num_partitions;
+        {
+            config_bits = CONFIG_BITS_BLOCK + CONFIG_BITS_PARTITION_MODE +
+                          CONFIG_BITS_SEED + CONFIG_BITS_PRIMARY_MULTI_CEM +
+                          CONFIG_BITS_EXTRA_CEM_PER_PARTITION * mode.num_partitions;
+        }
+    }
+    else
+    {
+        config_bits = CONFIG_BITS_BLOCK + CONFIG_BITS_PARTITION_MODE + CONFIG_BITS_CEM;
     }
 
+    // Other config bits are packed before the weights.
+    int primary_config_bits;
+    if (mode.num_partitions > 1)
+    {
+        primary_config_bits = CONFIG_BITS_BLOCK + CONFIG_BITS_PARTITION_MODE + CONFIG_BITS_SEED +
+                              CONFIG_BITS_PRIMARY_MULTI_CEM + CONFIG_BITS_CEM;
+    }
+    else
+        primary_config_bits = config_bits;
+
     if (mode.dual_plane)
-        config_bits += 2;
+        config_bits += CONFIG_BITS_CCS;
 
     // This is not allowed.
     if (any(greaterThan(mode.weight_grid_size, ivec2(gl_WorkGroupSize.xy))))
@@ -203,6 +249,7 @@ BlockMode decode_block_mode(uvec4 payload)
         decode_error = true;
 
     mode.config_bits = config_bits;
+    mode.primary_config_bits = primary_config_bits;
     return mode;
 }
 
@@ -310,12 +357,9 @@ int decode_integer_sequence(uvec4 payload, int start_bit, int index, ivec3 quant
 
 ivec4 decode_weights(uvec4 payload, BlockMode mode, int pixel, out int weight_cost_bits)
 {
-    payload = bitfieldReverse(payload);
-    payload = payload.wzyx;
-
     ivec4 quant = ivec4(texelFetch(LUTWeightQuantizer, mode.weight_mode_index));
     int num_weights = mode.weight_grid_size.x * mode.weight_grid_size.y;
-    num_weights *= int(mode.dual_plane) + 1;
+    num_weights <<= int(mode.dual_plane);
     weight_cost_bits =
         quant.x * num_weights +
         idiv5_ceil(num_weights * 8 * quant.y) +
@@ -325,14 +369,42 @@ ivec4 decode_weights(uvec4 payload, BlockMode mode, int pixel, out int weight_co
 
     // Decoders must deal with error conditions and return the correct error color.
     if (weight_cost_bits < 24 || weight_cost_bits > 96 || num_weights > 64)
+    {
         decode_error = true;
+        return ivec4(0);
+    }
 
+    int ccs;
+    if (mode.dual_plane)
+    {
+        int extra_cem_bits = max(mode.num_partitions * 3 - 4, 0);
+        ccs = extract_bits(payload, 126 - weight_cost_bits - extra_cem_bits, 2);
+        DEBUG1(ccs);
+    }
+
+    payload = bitfieldReverse(payload);
+    payload = payload.wzyx;
     payload &= build_bitmask(weight_cost_bits);
 
-    int weight_index = pixel;
+    int weight_index = pixel << int(mode.dual_plane);
     int primary_weight = decode_integer_sequence(payload, 0, weight_index, quant.xyz);
     primary_weight = int(texelFetch(LUTWeightUnquantize, primary_weight + quant.w).x);
-    return ivec4(primary_weight);
+    ivec4 ret;
+    DEBUG1(primary_weight);
+
+    if (mode.dual_plane)
+    {
+        int secondary_weight = decode_integer_sequence(payload, 0, weight_index + 1, quant.xyz);
+        secondary_weight = int(texelFetch(LUTWeightUnquantize, secondary_weight + quant.w).x);
+        DEBUG1(secondary_weight);
+        ret = mix(ivec4(primary_weight), ivec4(secondary_weight), equal(ivec4(ccs), ivec4(0, 1, 2, 3)));
+    }
+    else
+    {
+        ret = ivec4(primary_weight);
+    }
+
+    return ret;
 }
 
 void decode_endpoint_ldr_luma_direct(out ivec4 ep0, out ivec4 ep1,
@@ -603,6 +675,23 @@ void emit_decode_error(ivec2 coord)
         imageStore(OutputImageFP16, coord, registers.error_color);
 }
 
+int compute_num_endpoint_pairs(int num_partitions, int cem)
+{
+    int ret;
+    if (num_partitions > 1)
+    {
+        if ((cem & 3) == 0)
+            ret = ((cem >> 4) + 1) * num_partitions;
+        else
+            ret = (cem & 3) * num_partitions + bitCount(bitfieldExtract(cem, 2, num_partitions));
+    }
+    else
+    {
+        ret = (cem >> 2) + 1;
+    }
+    return ret;
+}
+
 void main()
 {
     ivec4 coord = build_coord();
@@ -621,7 +710,20 @@ void main()
     ivec4 weights = decode_weights(payload, block_mode, linear_pixel, weight_cost_bits);
 
     int available_endpoint_bits = 128 - block_mode.config_bits - weight_cost_bits;
-    int num_endpoint_pairs = (block_mode.cem >> 2) + 1;
+
+    // In multi-partition mode, the 6-bit CEM field is encoded as
+    // First two bits tell if all CEM field are the same, if not we specify a class offset, and N bits
+    // after that will offset the class by 1.
+    int num_endpoint_pairs = compute_num_endpoint_pairs(block_mode.num_partitions, block_mode.cem);
+
+    // Error color must be emitted if we need more than 18 integer sequence encoded values of color.
+    if (num_endpoint_pairs > 9)
+    {
+        decode_error = true;
+        emit_decode_error(coord.xy);
+        return;
+    }
+
     ivec4 endpoint_quant = ivec4(texelFetch(LUTRemainingBitsToEndpointQuantizer,
             128 * (num_endpoint_pairs - 1) + available_endpoint_bits));
 
@@ -632,7 +734,7 @@ void main()
         decode_error = true;
     CHECK_DECODE_ERROR();
 
-    int endpoint_bit_offset = block_mode.config_bits;
+    int endpoint_bit_offset = block_mode.primary_config_bits;
     ivec4 ep0, ep1;
     bool HDR;
     decode_endpoint(ep0, ep1, HDR, payload, endpoint_bit_offset, endpoint_quant,

@@ -325,8 +325,15 @@ static bool test_astc(Device &device, VkFormat format, VkFormat readback_format)
 	// Dual-plane
 	d[0] |= 0 << 10;
 
+	// Partition count - 1
+	d[0] |= 1 << 11;
+
+	// Partition seed
+	d[0] |= 0 << 13;
+
 	// Endpoint type
-	d[0] |= 13 << 13;
+	d[0] |= 0 << 23; // Same for all partitions.
+	d[0] |= 13 << 25;
 
 	// 4x4 weight grid.
 	d[0] |= 0 << 7;
@@ -339,7 +346,7 @@ static bool test_astc(Device &device, VkFormat format, VkFormat readback_format)
 	d[0] |= 1 << 4;
 
 	// Randomize endpoint and weights.
-	d[0] |= uint32_t(rnd()) << 17;
+	d[0] |= uint32_t(rnd()) << 29;
 	d[1] = uint32_t(rnd());
 	d[2] = uint32_t(rnd());
 	d[3] = uint32_t(rnd());

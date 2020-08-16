@@ -679,11 +679,124 @@ static void setup_astc_lut_trits_quints(Vulkan::CommandBuffer &cmd)
 	cmd.set_buffer_view(1, 4, *trits_quints_buffer);
 }
 
-static void setup_astc_luts(Vulkan::CommandBuffer &cmd)
+static uint32_t hash52(uint32_t p)
+{
+	p ^= p >> 15; p -= p << 17; p += p << 7; p += p << 4;
+	p ^= p >>  5; p += p << 16; p ^= p >> 7; p ^= p >> 3;
+	p ^= p <<  6; p ^= p >> 17;
+	return p;
+}
+
+// Copy-paste from spec.
+static int astc_select_partition(int seed, int x, int y, int z, int partitioncount, bool small_block)
+{
+	if (small_block)
+	{
+		x <<= 1;
+		y <<= 1;
+		z <<= 1;
+	}
+
+	seed += (partitioncount - 1) * 1024;
+	uint32_t rnum = hash52(seed);
+	uint8_t seed1 = rnum & 0xF;
+	uint8_t seed2 = (rnum >> 4) & 0xF;
+	uint8_t seed3 = (rnum >> 8) & 0xF;
+	uint8_t seed4 = (rnum >> 12) & 0xF;
+	uint8_t seed5 = (rnum >> 16) & 0xF;
+	uint8_t seed6 = (rnum >> 20) & 0xF;
+	uint8_t seed7 = (rnum >> 24) & 0xF;
+	uint8_t seed8 = (rnum >> 28) & 0xF;
+	uint8_t seed9 = (rnum >> 18) & 0xF;
+	uint8_t seed10 = (rnum >> 22) & 0xF;
+	uint8_t seed11 = (rnum >> 26) & 0xF;
+	uint8_t seed12 = ((rnum >> 30) | (rnum << 2)) & 0xF;
+
+	seed1 *= seed1; seed2 *= seed2; seed3 *= seed3; seed4 *= seed4;
+	seed5 *= seed5; seed6 *= seed6; seed7 *= seed7; seed8 *= seed8;
+	seed9 *= seed9; seed10 *= seed10; seed11 *= seed11; seed12 *= seed12;
+
+	int sh1, sh2, sh3;
+	if (seed & 1)
+	{
+		sh1 = seed & 2 ? 4 : 5;
+		sh2 = partitioncount == 3 ? 6 : 5;
+	}
+	else
+	{
+		sh1 = partitioncount == 3 ? 6 : 5;
+		sh2 = seed & 2 ? 4 : 5;
+	}
+	sh3 = (seed & 0x10) ? sh1 : sh2;
+
+	seed1 >>= sh1; seed2 >>= sh2; seed3 >>= sh1; seed4 >>= sh2;
+	seed5 >>= sh1; seed6 >>= sh2; seed7 >>= sh1; seed8 >>= sh2;
+	seed9 >>= sh3; seed10 >>= sh3; seed11 >>= sh3; seed12 >>= sh3;
+
+	int a = seed1 * x + seed2 * y + seed11 * z + (rnum >> 14);
+	int b = seed3 * x + seed4 * y + seed12 * z + (rnum >> 10);
+	int c = seed5 * x + seed6 * y + seed9 * z + (rnum >> 6);
+	int d = seed7 * x + seed8 * y + seed10 * z + (rnum >> 2);
+
+	a &= 0x3f; b &= 0x3f; c &= 0x3f; d &= 0x3f;
+
+	if (partitioncount < 4)
+		d = 0;
+	if (partitioncount < 3)
+		c = 0;
+
+	if (a >= b && a >= c && a >= d)
+		return 0;
+	else if (b >= c && b >= d)
+		return 1;
+	else if (c >= d)
+		return 2;
+	else
+		return 3;
+}
+
+static void setup_astc_lut_partition_table(Vulkan::CommandBuffer &cmd, VkFormat format)
+{
+	uint32_t block_width, block_height;
+	Vulkan::TextureFormatLayout::format_block_dim(format, block_width, block_height);
+	bool small_block = (block_width * block_height) < 31;
+
+	unsigned lut_width = block_width * 32;
+	unsigned lut_height = block_height * 32;
+	std::vector<uint8_t> lut_buffer(lut_width * lut_height);
+
+	for (unsigned seed_y = 0; seed_y < 32; seed_y++)
+	{
+		for (unsigned seed_x = 0; seed_x < 32; seed_x++)
+		{
+			unsigned seed = seed_y * 32 + seed_x;
+			for (unsigned block_y = 0; block_y < block_height; block_y++)
+			{
+				for (unsigned block_x = 0; block_x < block_width; block_x++)
+				{
+					int part2 = astc_select_partition(seed, block_x, block_y, 0, 2, small_block);
+					int part3 = astc_select_partition(seed, block_x, block_y, 0, 3, small_block);
+					int part4 = astc_select_partition(seed, block_x, block_y, 0, 4, small_block);
+					lut_buffer[(seed_y * block_height + block_y) * lut_width + (seed_x * block_width + block_x)] =
+							(part2 << 0) | (part3 << 2) | (part4 << 4);
+				}
+			}
+		}
+	}
+
+	auto info = Vulkan::ImageCreateInfo::immutable_2d_image(lut_width, lut_height, VK_FORMAT_R8_UINT);
+	Vulkan::ImageInitialData data = {};
+	data.data = lut_buffer.data();
+	auto lut_image = cmd.get_device().create_image(info, &data);
+	cmd.set_texture(1, 5, lut_image->get_view());
+}
+
+static void setup_astc_luts(Vulkan::CommandBuffer &cmd, VkFormat format)
 {
 	setup_astc_lut_color_endpoint(cmd);
 	setup_astc_lut_weights(cmd);
 	setup_astc_lut_trits_quints(cmd);
+	setup_astc_lut_partition_table(cmd, format);
 }
 
 static bool set_compute_decoder(Vulkan::CommandBuffer &cmd, VkFormat format)
@@ -772,7 +885,7 @@ static bool set_compute_decoder(Vulkan::CommandBuffer &cmd, VkFormat format)
 	case VK_FORMAT_ASTC_10x10_SFLOAT_BLOCK_EXT:
 	case VK_FORMAT_ASTC_12x10_SFLOAT_BLOCK_EXT:
 	case VK_FORMAT_ASTC_12x12_SFLOAT_BLOCK_EXT:
-		setup_astc_luts(cmd);
+		setup_astc_luts(cmd, format);
 		cmd.set_program("builtin://shaders/decode/astc.comp");
 		break;
 

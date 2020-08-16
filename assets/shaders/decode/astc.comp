@@ -425,7 +425,9 @@ ivec4 decode_weights(uvec4 payload, BlockMode mode, ivec2 normalized_pixel, out 
     int ccs;
     if (mode.dual_plane)
     {
-        int extra_cem_bits = max(mode.num_partitions * 3 - 4, 0);
+        int extra_cem_bits = 0;
+        if ((mode.cem & 3) != 0)
+            extra_cem_bits = max(mode.num_partitions * 3 - 4, 0);
         ccs = extract_bits(payload, 126 - weight_cost_bits - extra_cem_bits, 2);
     }
 
@@ -752,13 +754,13 @@ void decode_cem_base_endpoint(uvec4 payload, int weight_cost_bits, inout int cem
         {
             cem >>= 2;
             base_endpoint_index = ((cem >> 2) + 1) * partition_index;
-            DEBUG1(partition_index);
-            DEBUG1(base_endpoint_index);
         }
         else
         {
             if (partition_index != 0)
                 base_endpoint_index = (cem & 3) * partition_index + bitCount(bitfieldExtract(cem, 2, partition_index));
+            else
+                base_endpoint_index = 0;
 
             int base_class = (cem & 3) - 1;
             int extra_cem_bits = num_partitions * 3 - 4;

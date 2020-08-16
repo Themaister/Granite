@@ -296,20 +296,22 @@ struct DebugIface : DebugChannelInterface
 static DebugIface iface;
 #endif
 
-static bool test_astc(Device &device, VkFormat format, VkFormat readback_format)
+template <bool dual_plane>
+static bool test_astc_weights(Device &device, VkFormat format, VkFormat readback_format)
 {
 	auto cmd = device.request_command_buffer();
 	std::mt19937 rnd(1337);
-
 	cmd->begin_debug_channel(&iface, "ASTC", 16 * 1024 * 1024);
-
 	SceneFormats::MemoryMappedTexture tex;
-	unsigned width = 4;
-	unsigned height = 4;
-	unsigned blocks_x = (width + 3) / 4;
-	unsigned blocks_y = (height + 3) / 4;
-	unsigned num_words = blocks_x * blocks_y *
-	                     (TextureFormatLayout::format_block_size(format, VK_IMAGE_ASPECT_COLOR_BIT) / 4);
+	unsigned width = 2048;
+	unsigned height = 2048;
+
+	unsigned block_width, block_height;
+	Vulkan::TextureFormatLayout::format_block_dim(format, block_width, block_height);
+
+	unsigned blocks_x = (width + block_width - 1) / block_width;
+	unsigned blocks_y = (height + block_height - 1) / block_height;
+	unsigned num_blocks = blocks_x * blocks_y;
 	tex.set_2d(format, width, height);
 	if (!tex.map_write_scratch())
 		return false;
@@ -317,39 +319,38 @@ static bool test_astc(Device &device, VkFormat format, VkFormat readback_format)
 	auto &layout = tex.get_layout();
 	auto *d = static_cast<uint32_t *>(layout.data_opaque(0, 0, 0, 0));
 
-	d[0] = 0;
-	d[1] = 0;
-	d[2] = 0;
-	d[3] = 0;
+	// Expose all possible weight encoding formats.
+	for (unsigned i = 0; i < num_blocks; i++, d += 4)
+	{
+		d[0] = 0;
+		d[1] = 0;
+		d[2] = 0;
+		d[3] = 0;
 
-	// Dual-plane
-	d[0] |= 0 << 10;
+		d[0] |= uint32_t(dual_plane) << 10;
 
-	// Partition count - 1
-	d[0] |= 2 << 11;
+		unsigned weight_bits = i & 15;
+		while ((weight_bits & 6) == 0)
+			weight_bits++;
 
-	// Partition seed
-	d[0] |= 0 << 13;
+		d[0] |= ((weight_bits >> 3) & 1) << 9;
+		d[0] |= ((weight_bits >> 2) & 1) << 1;
+		d[0] |= ((weight_bits >> 1) & 1) << 0;
+		d[0] |= ((weight_bits >> 0) & 1) << 4;
 
-	// Endpoint type
-	d[0] |= 0 << 23; // Same for all partitions.
-	d[0] |= 0 << 25;
+		// Endpoint type
+		d[0] |= 0 << 13;
 
-	// 4x4 weight grid.
-	d[0] |= 0 << 7;
-	d[0] |= 2 << 5;
+		// 4x4 weight grid.
+		d[0] |= 0 << 7;
+		d[0] |= 2 << 5;
 
-	// 3 bit weights.
-	d[0] |= 0 << 9;
-	d[0] |= 1 << 1;
-	d[0] |= 0 << 0;
-	d[0] |= 0 << 4;
-
-	// Randomize endpoint and weights.
-	d[0] |= uint32_t(rnd()) << 29;
-	d[1] = uint32_t(rnd());
-	d[2] = uint32_t(rnd());
-	d[3] = uint32_t(rnd());
+		// Randomize endpoint and weights.
+		d[0] |= uint32_t(rnd()) << 17;
+		d[1] = uint32_t(rnd());
+		d[2] = uint32_t(rnd());
+		d[3] = uint32_t(rnd());
+	}
 
 	auto readback_reference = decode_gpu(*cmd, layout, readback_format);
 	auto readback_decoded = decode_compute(*cmd, layout);
@@ -369,6 +370,54 @@ static bool test_astc(Device &device, VkFormat format, VkFormat readback_format)
 		return compare_rgba8(device, *readback_reference, *readback_decoded, width, height, 0);
 	else
 		return false;
+}
+
+static bool test_astc(Device &device)
+{
+	static const VkFormat formats[] = {
+		VK_FORMAT_ASTC_4x4_UNORM_BLOCK,
+		VK_FORMAT_ASTC_5x4_UNORM_BLOCK,
+		VK_FORMAT_ASTC_5x5_UNORM_BLOCK,
+		VK_FORMAT_ASTC_6x5_UNORM_BLOCK,
+		VK_FORMAT_ASTC_6x6_UNORM_BLOCK,
+		VK_FORMAT_ASTC_8x5_UNORM_BLOCK,
+		VK_FORMAT_ASTC_8x6_UNORM_BLOCK,
+		VK_FORMAT_ASTC_8x8_UNORM_BLOCK,
+		VK_FORMAT_ASTC_10x5_UNORM_BLOCK,
+		VK_FORMAT_ASTC_10x6_UNORM_BLOCK,
+		VK_FORMAT_ASTC_10x8_UNORM_BLOCK,
+		VK_FORMAT_ASTC_10x10_UNORM_BLOCK,
+		VK_FORMAT_ASTC_12x10_UNORM_BLOCK,
+		VK_FORMAT_ASTC_12x12_UNORM_BLOCK,
+	};
+
+	const auto test_formats = [&](bool (*func)(Device &, VkFormat, VkFormat)) -> bool {
+		for (auto format : formats)
+		{
+			uint32_t w, h;
+			Vulkan::TextureFormatLayout::format_block_dim(format, w, h);
+			LOGI(" ... %u x %u UNORM\n", w, h);
+			if (!func(device, format, VK_FORMAT_R16G16B16A16_SFLOAT))
+			{
+				LOGE("FAILED!\n");
+				return false;
+			}
+			else
+				LOGI("   ... Success!\n");
+		}
+
+		device.wait_idle();
+		return true;
+	};
+
+	LOGI("Testing ASTC weight encoding ...\n");
+	if (!test_formats(test_astc_weights<false>))
+		return false;
+	LOGI("Testing dual plane encoding ...\n");
+	if (!test_formats(test_astc_weights<true>))
+		return false;
+
+	return true;
 }
 
 static bool test_bc6(Device &device, VkFormat format)
@@ -702,14 +751,6 @@ static bool test_bc6(Device &device)
 		return false;
 	device.wait_idle();
 	if (!test_bc6(device, VK_FORMAT_BC6H_UFLOAT_BLOCK))
-		return false;
-	device.wait_idle();
-	return true;
-}
-
-static bool test_astc(Device &device)
-{
-	if (!test_astc(device, VK_FORMAT_ASTC_4x4_UNORM_BLOCK, VK_FORMAT_R16G16B16A16_SFLOAT))
 		return false;
 	device.wait_idle();
 	return true;

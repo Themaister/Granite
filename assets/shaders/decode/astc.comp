@@ -357,7 +357,55 @@ int decode_integer_sequence(uvec4 payload, int start_bit, int index, ivec3 quant
     return ret;
 }
 
-ivec4 decode_weights(uvec4 payload, BlockMode mode, int pixel, out int weight_cost_bits)
+ivec2 normalize_coord(ivec2 pixel_coord)
+{
+    // This resolves to a compile-time constant.
+    const ivec2 D = ivec2((vec2((1024 + ivec2(gl_WorkGroupSize.xy >> 1))) + 0.5) / vec2(gl_WorkGroupSize.xy - 1));
+    ivec2 c = D * pixel_coord;
+    return c;
+}
+
+int decode_weight(uvec4 payload, int weight_index, ivec4 quant)
+{
+    int primary_weight = decode_integer_sequence(payload, 0, weight_index, quant.xyz);
+    primary_weight = int(texelFetch(LUTWeightUnquantize, primary_weight + quant.w).x);
+    return primary_weight;
+}
+
+int decode_weight_bilinear(uvec4 payload, ivec2 coord, int weight_resolution,
+                           int stride, int offset, ivec2 fractional, ivec4 quant)
+{
+    int index = coord.y * weight_resolution + coord.x;
+    int p00 = decode_weight(payload, stride * index + offset, quant);
+    int p10, p01, p11;
+
+    if (fractional.x != 0)
+        p10 = decode_weight(payload, stride * (index + 1) + offset, quant);
+    else
+        p10 = p00;
+
+    if (fractional.y != 0)
+    {
+        p01 = decode_weight(payload, stride * (index + weight_resolution) + offset, quant);
+        if (fractional.x != 0)
+            p11 = decode_weight(payload, stride * (index + weight_resolution + 1) + offset, quant);
+        else
+            p11 = p01;
+    }
+    else
+    {
+        p01 = p00;
+        p11 = p10;
+    }
+
+    int w11 = (fractional.x * fractional.y + 8) >> 4;
+    int w10 = fractional.x - w11;
+    int w01 = fractional.y - w11;
+    int w00 = 16 - fractional.x - fractional.y + w11;
+    return (p00 * w00 + p10 * w10 + p01 * w01 + p11 * w11 + 8) >> 4;
+}
+
+ivec4 decode_weights(uvec4 payload, BlockMode mode, ivec2 normalized_pixel, out int weight_cost_bits)
 {
     ivec4 quant = ivec4(texelFetch(LUTWeightQuantizer, mode.weight_mode_index));
     int num_weights = mode.weight_grid_size.x * mode.weight_grid_size.y;
@@ -366,8 +414,6 @@ ivec4 decode_weights(uvec4 payload, BlockMode mode, int pixel, out int weight_co
         quant.x * num_weights +
         idiv5_ceil(num_weights * 8 * quant.y) +
         idiv3_ceil(num_weights * 7 * quant.z);
-
-    DEBUG1(weight_cost_bits);
 
     // Decoders must deal with error conditions and return the correct error color.
     if (weight_cost_bits < 24 || weight_cost_bits > 96 || num_weights > 64)
@@ -381,30 +427,30 @@ ivec4 decode_weights(uvec4 payload, BlockMode mode, int pixel, out int weight_co
     {
         int extra_cem_bits = max(mode.num_partitions * 3 - 4, 0);
         ccs = extract_bits(payload, 126 - weight_cost_bits - extra_cem_bits, 2);
-        DEBUG1(ccs);
     }
 
     payload = bitfieldReverse(payload);
     payload = payload.wzyx;
     payload &= build_bitmask(weight_cost_bits);
 
-    int weight_index = pixel << int(mode.dual_plane);
-    int primary_weight = decode_integer_sequence(payload, 0, weight_index, quant.xyz);
-    primary_weight = int(texelFetch(LUTWeightUnquantize, primary_weight + quant.w).x);
-    ivec4 ret;
-    DEBUG1(primary_weight);
+    // Scale the normalized coordinate to weight grid.
+    ivec2 weight_pixel_fixed_point = (normalized_pixel * (mode.weight_grid_size - 1) + 32) >> 6;
+    ivec2 weight_pixel = weight_pixel_fixed_point >> 4;
+    ivec2 weight_pixel_fractional = weight_pixel_fixed_point & 0xf;
 
+    ivec4 ret;
+    int primary_weight = decode_weight_bilinear(payload, weight_pixel, mode.weight_grid_size.x,
+                                                1 << int(mode.dual_plane), 0,
+                                                weight_pixel_fractional, quant);
     if (mode.dual_plane)
     {
-        int secondary_weight = decode_integer_sequence(payload, 0, weight_index + 1, quant.xyz);
-        secondary_weight = int(texelFetch(LUTWeightUnquantize, secondary_weight + quant.w).x);
-        DEBUG1(secondary_weight);
+        int secondary_weight = decode_weight_bilinear(payload, weight_pixel, mode.weight_grid_size.x,
+                                                      2, 1,
+                                                      weight_pixel_fractional, quant);
         ret = mix(ivec4(primary_weight), ivec4(secondary_weight), equal(ivec4(ccs), ivec4(0, 1, 2, 3)));
     }
     else
-    {
         ret = ivec4(primary_weight);
-    }
 
     return ret;
 }
@@ -747,7 +793,7 @@ void main()
     CHECK_DECODE_ERROR();
 
     int weight_cost_bits;
-    ivec4 weights = decode_weights(payload, block_mode, linear_pixel, weight_cost_bits);
+    ivec4 weights = decode_weights(payload, block_mode, normalize_coord(pixel_coord), weight_cost_bits);
 
     int partition_index = 0;
     if (block_mode.num_partitions > 1)

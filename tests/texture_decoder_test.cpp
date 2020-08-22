@@ -339,7 +339,7 @@ struct DebugIface : DebugChannelInterface
 	void message(const std::string &tag, uint32_t code, uint32_t x, uint32_t y, uint32_t z,
 	             uint32_t word_count, const Word *words) override
 	{
-		if (x == 0 && y == 0)
+		if (x == 1 && y == 0)
 		{
 			if (word_count == 2)
 				LOGI("(X = %d, Y = %d), line: %d = (%d).\n", x, y, words[0].s32, words[1].s32);
@@ -506,7 +506,7 @@ template <bool dual_plane>
 static bool test_astc_partitions(Device &device, VkFormat format, VkFormat readback_format)
 {
 	auto cmd = device.request_command_buffer();
-	std::mt19937 rnd(1337);
+	std::mt19937 rnd(1339);
 	cmd->begin_debug_channel(&iface, "ASTC", 16 * 1024 * 1024);
 	SceneFormats::MemoryMappedTexture tex;
 	unsigned width = 2048;
@@ -551,8 +551,8 @@ static bool test_astc_partitions(Device &device, VkFormat format, VkFormat readb
 		d[0] |= num_partitions_1 << 11;
 		d[0] |= seed << 13;
 
-		// Constant CEM of 0.
-		d[0] |= 0 << 23;
+		// Constant CEM, variable endpoint type.
+		d[0] |= ((i >> 12) & 0xf) << 25;
 
 		// Randomize endpoint and weights.
 		d[0] |= uint32_t(rnd()) << 29;
@@ -584,8 +584,8 @@ static bool test_astc_partitions(Device &device, VkFormat format, VkFormat readb
 static bool test_astc_partitions_complex(Device &device, VkFormat format, VkFormat readback_format)
 {
 	auto cmd = device.request_command_buffer();
-	std::mt19937 rnd(1337);
-	cmd->begin_debug_channel(&iface, "ASTC", 16 * 1024 * 1024);
+	std::mt19937 rnd(1338);
+	cmd->begin_debug_channel(&iface, "ASTC", 256 * 1024 * 1024);
 	SceneFormats::MemoryMappedTexture tex;
 	unsigned width = 2048;
 	unsigned height = 2048;
@@ -707,7 +707,6 @@ static bool test_astc(Device &device)
 		return true;
 	};
 
-#if 1
 	LOGI("Testing ASTC weight encoding and interpolation ...\n");
 	if (!test_formats(test_astc_weights<false>))
 		return false;
@@ -723,7 +722,6 @@ static bool test_astc(Device &device)
 	LOGI("Testing ASTC multi-partition with dual-plane ...\n");
 	if (!test(test_astc_partitions<true>))
 		return false;
-#endif
 	LOGI("Testing ASTC multi-partition complex encoding ...\n");
 	if (!test(test_astc_partitions_complex))
 		return false;

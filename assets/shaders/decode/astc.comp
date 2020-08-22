@@ -855,12 +855,6 @@ void main()
 
     ivec4 final_color = interpolate_endpoint(ep0, ep1, weights, HDR);
 
-    DEBUG3(ep0.x, ep0.y, ep0.z);
-    DEBUG1(ep0.w);
-    DEBUG3(ep1.x, ep1.y, ep1.z);
-    DEBUG1(ep1.w);
-    DEBUG1(weights.x);
-
     if (DECODE_8BIT)
     {
         imageStore(OutputImageU8, coord.xy, uvec4(final_color >> 8));

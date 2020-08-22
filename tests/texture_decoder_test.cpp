@@ -29,6 +29,10 @@
 #include "muglm/muglm_impl.hpp"
 #include <random>
 
+#ifdef HAVE_ASTC_DECODER
+#include "astcenc.h"
+#endif
+
 using namespace Granite;
 using namespace Vulkan;
 
@@ -238,8 +242,61 @@ static bool compare_rgba16f(Device &device,
 	return true;
 }
 
+#ifdef HAVE_ASTC_DECODER
+static BufferHandle decode_astc_cpu(Device &device, const TextureFormatLayout &layout)
+{
+	astcenc_config config = {};
+	uint32_t block_width, block_height;
+	TextureFormatLayout::format_block_dim(layout.get_format(), block_width, block_height);
+	astcenc_init_config(ASTCENC_PRF_LDR, block_width, block_height, 1, ASTCENC_PRE_FAST, 0, config);
+
+	astcenc_context *ctx = nullptr;
+	if (astcenc_context_alloc(config, 1, &ctx) != ASTCENC_SUCCESS)
+		return {};
+
+	astcenc_image image = {};
+	image.dim_pad = 0;
+	image.dim_x = layout.get_width();
+	image.dim_y = layout.get_height();
+	image.dim_z = 1;
+
+	Vulkan::BufferCreateInfo buffer_info = {};
+	buffer_info.size = layout.get_width() * layout.get_height() * 8;
+	buffer_info.domain = BufferDomain::CachedHost;
+	buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+	auto buffer = device.create_buffer(buffer_info);
+
+	auto *mapped = static_cast<uint16_t *>(device.map_host_buffer(*buffer, MEMORY_ACCESS_WRITE_BIT));
+
+	std::vector<uint16_t *> rows;
+	rows.reserve(layout.get_height());
+	for (unsigned y = 0; y < layout.get_height(); y++)
+		rows.push_back(mapped + y * layout.get_width() * 4);
+
+	uint16_t **p_rows = rows.data();
+	image.data16 = &p_rows;
+
+	if (astcenc_decompress_image(ctx, static_cast<const uint8_t *>(layout.data()),
+	                             layout.get_layer_size(0), image, {
+		                             ASTCENC_SWZ_R,
+		                             ASTCENC_SWZ_G,
+		                             ASTCENC_SWZ_B,
+		                             ASTCENC_SWZ_A }) != ASTCENC_SUCCESS)
+	{
+		buffer.reset();
+	}
+	astcenc_context_free(ctx);
+	return buffer;
+}
+#endif
+
 static BufferHandle decode_gpu(CommandBuffer &cmd, const TextureFormatLayout &layout, VkFormat format)
 {
+#ifdef HAVE_ASTC_DECODER
+	if (Vulkan::format_compression_type(layout.get_format()) == Vulkan::FormatCompressionType::ASTC)
+		return decode_astc_cpu(cmd.get_device(), layout);
+#endif
+
 	auto &device = cmd.get_device();
 	auto uploaded_info = ImageCreateInfo::immutable_image(layout);
 	uploaded_info.initial_layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
@@ -650,7 +707,7 @@ static bool test_astc(Device &device)
 		return true;
 	};
 
-#if 0
+#if 1
 	LOGI("Testing ASTC weight encoding and interpolation ...\n");
 	if (!test_formats(test_astc_weights<false>))
 		return false;
@@ -1034,11 +1091,15 @@ int main()
 		return EXIT_FAILURE;
 	if (!test_eac(device))
 		return EXIT_FAILURE;
+#endif
+#if 0
 	if (!test_bc7(device))
 		return EXIT_FAILURE;
 	if (!test_bc6(device))
 		return EXIT_FAILURE;
 #endif
+#if 1
 	if (!test_astc(device))
 		return EXIT_FAILURE;
+#endif
 }

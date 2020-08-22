@@ -945,7 +945,7 @@ static void dispatch_kernel_astc(Vulkan::CommandBuffer &cmd, uint32_t width, uin
 	push.width = width;
 	push.height = height;
 	bool srgb = Vulkan::format_is_srgb(format);
-	constexpr bool HDR_profile = false;
+	constexpr bool HDR_profile = true;
 
 	if (srgb)
 	{

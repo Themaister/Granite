@@ -735,7 +735,7 @@ int compute_num_endpoint_pairs(int num_partitions, int cem)
         if (single_cem)
             ret = ((cem >> 4) + 1) * num_partitions;
         else
-            ret = (cem & 3) * num_partitions + bitCount(bitfieldExtract(cem, 2, num_partitions));
+            ret = (cem & 3) * num_partitions + bitCount(bitfieldExtract(uint(cem), 2, num_partitions));
     }
     else
     {
@@ -758,7 +758,7 @@ void decode_cem_base_endpoint(uvec4 payload, int weight_cost_bits, inout int cem
         else
         {
             if (partition_index != 0)
-                base_endpoint_index = (cem & 3) * partition_index + bitCount(bitfieldExtract(cem, 2, partition_index));
+                base_endpoint_index = (cem & 3) * partition_index + bitCount(bitfieldExtract(uint(cem), 2, partition_index));
             else
                 base_endpoint_index = 0;
 

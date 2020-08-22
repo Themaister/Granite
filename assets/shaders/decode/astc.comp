@@ -824,7 +824,12 @@ void main()
     ivec4 endpoint_quant = ivec4(texelFetch(LUTRemainingBitsToEndpointQuantizer,
             128 * (num_endpoint_pairs - 1) + available_endpoint_bits));
 
-    DEBUG3(endpoint_quant.x, endpoint_quant.y, endpoint_quant.z);
+    // Only read the bits we need for endpoints.
+    int num_endpoint_values = num_endpoint_pairs * 2;
+    available_endpoint_bits =
+        endpoint_quant.x * num_endpoint_values +
+        idiv5_ceil(endpoint_quant.y * 8 * num_endpoint_values) +
+        idiv3_ceil(endpoint_quant.z * 7 * num_endpoint_values);
 
     // No space left for color endpoints.
     if (all(equal(endpoint_quant.xyz, ivec3(0))))

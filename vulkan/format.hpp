@@ -27,6 +27,74 @@
 
 namespace Vulkan
 {
+enum class FormatCompressionType
+{
+	Uncompressed,
+	BC,
+	ETC,
+	ASTC
+};
+
+static inline FormatCompressionType format_compression_type(VkFormat format)
+{
+	switch (format)
+	{
+	case VK_FORMAT_BC1_RGBA_SRGB_BLOCK:
+	case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:
+	case VK_FORMAT_BC1_RGB_SRGB_BLOCK:
+	case VK_FORMAT_BC1_RGB_UNORM_BLOCK:
+	case VK_FORMAT_BC2_SRGB_BLOCK:
+	case VK_FORMAT_BC2_UNORM_BLOCK:
+	case VK_FORMAT_BC3_SRGB_BLOCK:
+	case VK_FORMAT_BC3_UNORM_BLOCK:
+	case VK_FORMAT_BC4_UNORM_BLOCK:
+	case VK_FORMAT_BC4_SNORM_BLOCK:
+	case VK_FORMAT_BC5_UNORM_BLOCK:
+	case VK_FORMAT_BC5_SNORM_BLOCK:
+	case VK_FORMAT_BC6H_SFLOAT_BLOCK:
+	case VK_FORMAT_BC6H_UFLOAT_BLOCK:
+	case VK_FORMAT_BC7_SRGB_BLOCK:
+	case VK_FORMAT_BC7_UNORM_BLOCK:
+		return FormatCompressionType::BC;
+
+	case VK_FORMAT_ETC2_R8G8B8A1_SRGB_BLOCK:
+	case VK_FORMAT_ETC2_R8G8B8A1_UNORM_BLOCK:
+	case VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK:
+	case VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK:
+	case VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK:
+	case VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK:
+	case VK_FORMAT_EAC_R11G11_SNORM_BLOCK:
+	case VK_FORMAT_EAC_R11G11_UNORM_BLOCK:
+	case VK_FORMAT_EAC_R11_SNORM_BLOCK:
+	case VK_FORMAT_EAC_R11_UNORM_BLOCK:
+		return FormatCompressionType::ETC;
+
+#define astc_fmt(w, h) \
+	case VK_FORMAT_ASTC_##w##x##h##_UNORM_BLOCK: \
+	case VK_FORMAT_ASTC_##w##x##h##_SRGB_BLOCK: \
+	case VK_FORMAT_ASTC_##w##x##h##_SFLOAT_BLOCK_EXT
+	astc_fmt(4, 4):
+	astc_fmt(5, 4):
+	astc_fmt(5, 5):
+	astc_fmt(6, 5):
+	astc_fmt(6, 6):
+	astc_fmt(8, 5):
+	astc_fmt(8, 6):
+	astc_fmt(8, 8):
+	astc_fmt(10, 5):
+	astc_fmt(10, 6):
+	astc_fmt(10, 8):
+	astc_fmt(10, 10):
+	astc_fmt(12, 10):
+	astc_fmt(12, 12):
+		return FormatCompressionType::ASTC;
+#undef astc_fmt
+
+	default:
+		return FormatCompressionType::Uncompressed;
+	}
+}
+
 static inline bool format_is_srgb(VkFormat format)
 {
 	switch (format)

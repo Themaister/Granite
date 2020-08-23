@@ -128,6 +128,8 @@ void Texture::update_gtx(const Granite::SceneFormats::MemoryMappedTexture &mappe
 
 	auto &layout = mapped_file.get_layout();
 
+	mapped_file.remap_swizzle(swizzle);
+
 	Vulkan::ImageHandle image;
 	if (!device->image_format_is_supported(layout.get_format(), VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) &&
 	    format_compression_type(layout.get_format()) != FormatCompressionType::Uncompressed)

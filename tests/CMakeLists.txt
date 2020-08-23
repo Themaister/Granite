@@ -106,6 +106,11 @@ add_granite_offline_tool(imported-host imported_host.cpp)
 add_granite_offline_tool(cooperative-task-test cooperative_task_test.cpp)
 add_granite_offline_tool(texture-decoder-test texture_decoder_test.cpp)
 
+if (GRANITE_ASTC_ENCODER_COMPRESSION)
+    target_link_libraries(texture-decoder-test PRIVATE astc-encoder)
+    target_compile_definitions(texture-decoder-test PRIVATE HAVE_ASTC_DECODER)
+endif()
+
 if (GRANITE_AUDIO)
     add_granite_offline_tool(audio-test audio_test.cpp)
     add_granite_offline_tool(tone-filter-bench tone_filter_bench.cpp)

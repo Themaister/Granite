@@ -25,6 +25,7 @@
 #include "stb_image.h"
 #include "memory_mapped_texture.hpp"
 #include "texture_files.hpp"
+#include "texture_decoder.hpp"
 
 #ifdef GRANITE_VULKAN_MT
 #include "thread_group.hpp"
@@ -127,32 +128,51 @@ void Texture::update_gtx(const Granite::SceneFormats::MemoryMappedTexture &mappe
 
 	auto &layout = mapped_file.get_layout();
 
-	ImageCreateInfo info = ImageCreateInfo::immutable_image(layout);
-	info.swizzle = swizzle;
-	info.flags = (mapped_file.get_flags() & Granite::SceneFormats::MEMORY_MAPPED_TEXTURE_CUBE_MAP_COMPATIBLE_BIT) ?
-	             VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0;
-	info.misc = IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT | IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT |
-	            IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT;
+	mapped_file.remap_swizzle(swizzle);
 
-	mapped_file.remap_swizzle(info.swizzle);
-
-	if (info.levels == 1 &&
-	    (mapped_file.get_flags() & Granite::SceneFormats::MEMORY_MAPPED_TEXTURE_GENERATE_MIPMAP_ON_LOAD_BIT) != 0 &&
-	    device->image_format_is_supported(info.format, VK_FORMAT_FEATURE_BLIT_SRC_BIT) &&
-	    device->image_format_is_supported(info.format, VK_FORMAT_FEATURE_BLIT_DST_BIT))
+	Vulkan::ImageHandle image;
+	if (!device->image_format_is_supported(layout.get_format(), VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) &&
+	    format_compression_type(layout.get_format()) != FormatCompressionType::Uncompressed)
 	{
-		info.levels = 0;
-		info.misc |= IMAGE_MISC_GENERATE_MIPS_BIT;
+		LOGI("Compressed format #%u is not supported, falling back to compute decode of compressed image.\n",
+		     unsigned(layout.get_format()));
+		auto cmd = device->request_command_buffer(CommandBuffer::Type::AsyncCompute);
+		image = Granite::decode_compressed_image(*cmd, layout, swizzle);
+		Semaphore sem;
+		device->submit(cmd, nullptr, 1, &sem);
+		device->add_wait_semaphore(CommandBuffer::Type::Generic, sem, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, true);
+	}
+	else
+	{
+		ImageCreateInfo info = ImageCreateInfo::immutable_image(layout);
+		info.swizzle = swizzle;
+		info.flags = (mapped_file.get_flags() & Granite::SceneFormats::MEMORY_MAPPED_TEXTURE_CUBE_MAP_COMPATIBLE_BIT) ?
+                         VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT :
+                         0;
+		info.misc = IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT | IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT |
+		            IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT;
+
+		mapped_file.remap_swizzle(info.swizzle);
+
+		if (info.levels == 1 &&
+		    (mapped_file.get_flags() & Granite::SceneFormats::MEMORY_MAPPED_TEXTURE_GENERATE_MIPMAP_ON_LOAD_BIT) != 0 &&
+		    device->image_format_is_supported(info.format, VK_FORMAT_FEATURE_BLIT_SRC_BIT) &&
+		    device->image_format_is_supported(info.format, VK_FORMAT_FEATURE_BLIT_DST_BIT))
+		{
+			info.levels = 0;
+			info.misc |= IMAGE_MISC_GENERATE_MIPS_BIT;
+		}
+
+		if (!device->image_format_is_supported(info.format, VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT))
+		{
+			LOGE("Format (%u) is not supported!\n", unsigned(info.format));
+			return;
+		}
+
+		auto staging = device->create_image_staging_buffer(layout);
+		image = device->create_image_from_staging_buffer(info, &staging);
 	}
 
-	if (!device->image_format_is_supported(info.format, VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT))
-	{
-		LOGE("Format (%u) is not supported!\n", unsigned(info.format));
-		return;
-	}
-
-	auto staging = device->create_image_staging_buffer(layout);
-	auto image = device->create_image_from_staging_buffer(info, &staging);
 	if (image)
 		device->set_name(*image, path.c_str());
 	replace_image(image);

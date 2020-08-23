@@ -998,9 +998,9 @@ void Device::submit(CommandBufferHandle &cmd, Fence *fence, unsigned semaphore_c
 
 void Device::submit_discard(CommandBufferHandle &cmd)
 {
-	auto type = cmd->get_command_buffer_type();
 	LOCK();
 #ifdef VULKAN_DEBUG
+	auto type = cmd->get_command_buffer_type();
 	auto &pool = get_command_pool(type, cmd->get_thread_index());
 	pool.signal_submitted(cmd->get_command_buffer());
 #endif

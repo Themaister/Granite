@@ -774,6 +774,7 @@ void CompressorState::enqueue_compression_block_astc(TaskGroup &compression_task
 	case TextureMode::Mask:
 	case TextureMode::NormalLA:
 	case TextureMode::MaskLA:
+	case TextureMode::Luminance:
 		profile = ASTCENC_PRF_LDR;
 		break;
 

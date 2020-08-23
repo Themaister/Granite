@@ -75,7 +75,7 @@ enum class SwapchainRenderPass
 struct InitialImageBuffer
 {
 	BufferHandle buffer;
-	std::vector<VkBufferImageCopy> blits;
+	Util::SmallVector<VkBufferImageCopy, 32> blits;
 };
 
 struct HandlePool

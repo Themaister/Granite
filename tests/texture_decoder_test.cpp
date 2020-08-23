@@ -243,12 +243,13 @@ static bool compare_rgba16f(Device &device,
 }
 
 #ifdef HAVE_ASTC_DECODER
-static BufferHandle decode_astc_cpu(Device &device, const TextureFormatLayout &layout)
+static BufferHandle decode_astc_cpu(Device &device, const TextureFormatLayout &layout, VkFormat readback_format)
 {
 	astcenc_config config = {};
 	uint32_t block_width, block_height;
 	TextureFormatLayout::format_block_dim(layout.get_format(), block_width, block_height);
-	astcenc_init_config(ASTCENC_PRF_HDR, block_width, block_height, 1, ASTCENC_PRE_FAST, 0, config);
+	bool srgb = Vulkan::format_is_srgb(readback_format);
+	astcenc_init_config(srgb ? ASTCENC_PRF_LDR_SRGB : ASTCENC_PRF_HDR, block_width, block_height, 1, ASTCENC_PRE_FAST, 0, config);
 
 	astcenc_context *ctx = nullptr;
 	if (astcenc_context_alloc(config, 1, &ctx) != ASTCENC_SUCCESS)
@@ -261,20 +262,35 @@ static BufferHandle decode_astc_cpu(Device &device, const TextureFormatLayout &l
 	image.dim_z = 1;
 
 	Vulkan::BufferCreateInfo buffer_info = {};
-	buffer_info.size = layout.get_width() * layout.get_height() * 8;
+	buffer_info.size = layout.get_width() * layout.get_height() * (srgb ? 4 : 8);
 	buffer_info.domain = BufferDomain::CachedHost;
 	buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 	auto buffer = device.create_buffer(buffer_info);
 
-	auto *mapped = static_cast<uint16_t *>(device.map_host_buffer(*buffer, MEMORY_ACCESS_WRITE_BIT));
 
-	std::vector<uint16_t *> rows;
-	rows.reserve(layout.get_height());
-	for (unsigned y = 0; y < layout.get_height(); y++)
-		rows.push_back(mapped + y * layout.get_width() * 4);
+	uint16_t **p_rows16 = nullptr;
+	uint8_t **p_rows8 = nullptr;
+	std::vector<uint16_t *> rows16;
+	std::vector<uint8_t *> rows8;
 
-	uint16_t **p_rows = rows.data();
-	image.data16 = &p_rows;
+	if (srgb)
+	{
+		auto *mapped = static_cast<uint8_t *>(device.map_host_buffer(*buffer, MEMORY_ACCESS_WRITE_BIT));
+		rows8.reserve(layout.get_height());
+		for (unsigned y = 0; y < layout.get_height(); y++)
+			rows8.push_back(mapped + y * layout.get_width() * 4);
+		p_rows8 = rows8.data();
+		image.data8 = &p_rows8;
+	}
+	else
+	{
+		auto *mapped = static_cast<uint16_t *>(device.map_host_buffer(*buffer, MEMORY_ACCESS_WRITE_BIT));
+		rows16.reserve(layout.get_height());
+		for (unsigned y = 0; y < layout.get_height(); y++)
+			rows16.push_back(mapped + y * layout.get_width() * 4);
+		p_rows16 = rows16.data();
+		image.data16 = &p_rows16;
+	}
 
 	if (astcenc_decompress_image(ctx, static_cast<const uint8_t *>(layout.data()),
 	                             layout.get_layer_size(0), image, {
@@ -294,7 +310,7 @@ static BufferHandle decode_gpu(CommandBuffer &cmd, const TextureFormatLayout &la
 {
 #ifdef HAVE_ASTC_DECODER
 	if (Vulkan::format_compression_type(layout.get_format()) == Vulkan::FormatCompressionType::ASTC)
-		return decode_astc_cpu(cmd.get_device(), layout);
+		return decode_astc_cpu(cmd.get_device(), layout, format);
 #endif
 
 	auto &device = cmd.get_device();
@@ -423,7 +439,7 @@ static bool test_astc_weights(Device &device, VkFormat format, VkFormat readback
 
 	if (readback_format == VK_FORMAT_R16G16B16A16_SFLOAT)
 		return compare_rgba16f(device, *readback_reference, *readback_decoded, width, height);
-	else if (readback_format == VK_FORMAT_R8G8B8A8_UNORM)
+	else if (readback_format == VK_FORMAT_R8G8B8A8_SRGB)
 		return compare_rgba8(device, *readback_reference, *readback_decoded, width, height, 0);
 	else
 		return false;
@@ -496,7 +512,7 @@ static bool test_astc_endpoint_formats(Device &device, VkFormat format, VkFormat
 
 	if (readback_format == VK_FORMAT_R16G16B16A16_SFLOAT)
 		return compare_rgba16f(device, *readback_reference, *readback_decoded, width, height);
-	else if (readback_format == VK_FORMAT_R8G8B8A8_UNORM)
+	else if (readback_format == VK_FORMAT_R8G8B8A8_SRGB)
 		return compare_rgba8(device, *readback_reference, *readback_decoded, width, height, 0);
 	else
 		return false;
@@ -575,7 +591,7 @@ static bool test_astc_partitions(Device &device, VkFormat format, VkFormat readb
 
 	if (readback_format == VK_FORMAT_R16G16B16A16_SFLOAT)
 		return compare_rgba16f(device, *readback_reference, *readback_decoded, width, height);
-	else if (readback_format == VK_FORMAT_R8G8B8A8_UNORM)
+	else if (readback_format == VK_FORMAT_R8G8B8A8_SRGB)
 		return compare_rgba8(device, *readback_reference, *readback_decoded, width, height, 0);
 	else
 		return false;
@@ -653,7 +669,7 @@ static bool test_astc_partitions_complex(Device &device, VkFormat format, VkForm
 
 	if (readback_format == VK_FORMAT_R16G16B16A16_SFLOAT)
 		return compare_rgba16f(device, *readback_reference, *readback_decoded, width, height);
-	else if (readback_format == VK_FORMAT_R8G8B8A8_UNORM)
+	else if (readback_format == VK_FORMAT_R8G8B8A8_SRGB)
 		return compare_rgba8(device, *readback_reference, *readback_decoded, width, height, 0);
 	else
 		return false;
@@ -750,7 +766,7 @@ static bool test_astc_void_extent(Device &device, VkFormat format, VkFormat read
 
 	if (readback_format == VK_FORMAT_R16G16B16A16_SFLOAT)
 		return compare_rgba16f(device, *readback_reference, *readback_decoded, width, height);
-	else if (readback_format == VK_FORMAT_R8G8B8A8_UNORM)
+	else if (readback_format == VK_FORMAT_R8G8B8A8_SRGB)
 		return compare_rgba8(device, *readback_reference, *readback_decoded, width, height, 0);
 	else
 		return false;
@@ -778,6 +794,8 @@ static bool test_astc_block_mode(Device &device, VkFormat format, VkFormat readb
 	auto &layout = tex.get_layout();
 	auto *d = static_cast<uint32_t *>(layout.data_opaque(0, 0, 0, 0));
 
+	uint32_t fail_block[4];
+
 	// Expose all possible weight encoding formats.
 	for (unsigned i = 0; i < num_blocks; i++, d += 4)
 	{
@@ -792,7 +810,12 @@ static bool test_astc_block_mode(Device &device, VkFormat format, VkFormat readb
 		d[1] = uint32_t(rnd());
 		d[2] = uint32_t(rnd());
 		d[3] = uint32_t(rnd());
+
+		if (i == (1045 / 5) + (24 / 4) * ((width + 4) / 5))
+			memcpy(fail_block, d, sizeof(fail_block));
 	}
+
+	memcpy(layout.data_opaque(0, 0, 0), fail_block, sizeof(fail_block));
 
 	auto readback_reference = decode_gpu(*cmd, layout, readback_format);
 	auto readback_decoded = decode_compute(*cmd, layout);
@@ -808,7 +831,7 @@ static bool test_astc_block_mode(Device &device, VkFormat format, VkFormat readb
 
 	if (readback_format == VK_FORMAT_R16G16B16A16_SFLOAT)
 		return compare_rgba16f(device, *readback_reference, *readback_decoded, width, height);
-	else if (readback_format == VK_FORMAT_R8G8B8A8_UNORM)
+	else if (readback_format == VK_FORMAT_R8G8B8A8_SRGB)
 		return compare_rgba8(device, *readback_reference, *readback_decoded, width, height, 0);
 	else
 		return false;
@@ -816,7 +839,7 @@ static bool test_astc_block_mode(Device &device, VkFormat format, VkFormat readb
 
 static bool test_astc(Device &device)
 {
-	static const VkFormat formats[] = {
+	static const VkFormat unorm_formats[] = {
 		VK_FORMAT_ASTC_4x4_UNORM_BLOCK,
 		VK_FORMAT_ASTC_5x4_UNORM_BLOCK,
 		VK_FORMAT_ASTC_5x5_UNORM_BLOCK,
@@ -833,8 +856,41 @@ static bool test_astc(Device &device)
 		VK_FORMAT_ASTC_12x12_UNORM_BLOCK,
 	};
 
+	static const VkFormat srgb_formats[] = {
+		VK_FORMAT_ASTC_4x4_SRGB_BLOCK,
+		VK_FORMAT_ASTC_5x4_SRGB_BLOCK,
+		VK_FORMAT_ASTC_5x5_SRGB_BLOCK,
+		VK_FORMAT_ASTC_6x5_SRGB_BLOCK,
+		VK_FORMAT_ASTC_6x6_SRGB_BLOCK,
+		VK_FORMAT_ASTC_8x5_SRGB_BLOCK,
+		VK_FORMAT_ASTC_8x6_SRGB_BLOCK,
+		VK_FORMAT_ASTC_8x8_SRGB_BLOCK,
+		VK_FORMAT_ASTC_10x5_SRGB_BLOCK,
+		VK_FORMAT_ASTC_10x6_SRGB_BLOCK,
+		VK_FORMAT_ASTC_10x8_SRGB_BLOCK,
+		VK_FORMAT_ASTC_10x10_SRGB_BLOCK,
+		VK_FORMAT_ASTC_12x10_SRGB_BLOCK,
+		VK_FORMAT_ASTC_12x12_SRGB_BLOCK,
+	};
+
 	const auto test_formats = [&](bool (*func)(Device &, VkFormat, VkFormat)) -> bool {
-		for (auto format : formats)
+		for (auto format : srgb_formats)
+		{
+			uint32_t w, h;
+			Vulkan::TextureFormatLayout::format_block_dim(format, w, h);
+			LOGI(" ... %u x %u sRGB\n", w, h);
+			if (!func(device, format, VK_FORMAT_R8G8B8A8_SRGB))
+			{
+				LOGE("    ... FAILED!\n");
+				return false;
+			}
+			else
+				LOGI("    ... Success!\n");
+
+			device.wait_idle();
+		}
+
+		for (auto format : unorm_formats)
 		{
 			uint32_t w, h;
 			Vulkan::TextureFormatLayout::format_block_dim(format, w, h);
@@ -846,9 +902,9 @@ static bool test_astc(Device &device)
 			}
 			else
 				LOGI("    ... Success!\n");
-		}
 
-		device.wait_idle();
+			device.wait_idle();
+		}
 		return true;
 	};
 
@@ -890,7 +946,7 @@ static bool test_astc(Device &device)
 	if (!test(test_astc_void_extent))
 		return false;
 	LOGI("Testing ASTC block mode.\n");
-	if (!test(test_astc_block_mode))
+	if (!test_formats(test_astc_block_mode))
 		return false;
 
 	return true;

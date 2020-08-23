@@ -242,7 +242,7 @@ ImageReadback save_image_to_cpu_buffer(Vulkan::Device &device, const Vulkan::Ima
 		return {};
 	}
 
-	std::vector<VkBufferImageCopy> blits;
+	Util::SmallVector<VkBufferImageCopy, 32> blits;
 	readback.layout.build_buffer_image_copies(blits);
 
 	BufferCreateInfo buffer_info;

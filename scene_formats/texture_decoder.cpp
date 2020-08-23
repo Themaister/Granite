@@ -1240,21 +1240,37 @@ Vulkan::ImageHandle decode_compressed_image(Vulkan::CommandBuffer &cmd, const Vu
 		blit.imageExtent.height = (blit.imageExtent.height + block_height - 1) / block_height;
 	}
 
+	// Need to upload each miplevel on its own since the mip-chain size will be cut off too short.
+	// Could use BLOCK_VIEW flag to work around this, but don't really need to rely on it.
+	Vulkan::InitialImageBuffer split_staging;
+	split_staging.buffer = staging.buffer;
+	split_staging.blits.resize(1);
+	Util::SmallVector<Vulkan::ImageHandle, 32> uploaded_images(layout.get_levels());
+
 	image_info.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
 	image_info.format = compressed_format_to_payload_format(layout.get_format());
 	if (image_info.format == VK_FORMAT_UNDEFINED)
 		return {};
 	image_info.swizzle = { VK_COMPONENT_SWIZZLE_R,
-		                   VK_COMPONENT_SWIZZLE_G,
-		                   VK_COMPONENT_SWIZZLE_B,
-		                   VK_COMPONENT_SWIZZLE_A };
+	                       VK_COMPONENT_SWIZZLE_G,
+	                       VK_COMPONENT_SWIZZLE_B,
+	                       VK_COMPONENT_SWIZZLE_A };
 	image_info.misc = Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT |
 	                  Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT |
 	                  Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT;
-	image_info.width = (image_info.width + block_width - 1) / block_width;
-	image_info.height = (image_info.height + block_height - 1) / block_height;
 	image_info.initial_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	auto uploaded_image = device.create_image_from_staging_buffer(image_info, &staging);
+	image_info.levels = 1;
+
+	for (auto &blit : staging.blits)
+	{
+		// Should be monotonic, but not guaranteed.
+		unsigned level = blit.imageSubresource.mipLevel;
+		split_staging.blits[0] = blit;
+		split_staging.blits[0].imageSubresource.mipLevel = 0;
+		image_info.width = (layout.get_width(level) + block_width - 1) / block_width;
+		image_info.height = (layout.get_height(level) + block_height - 1) / block_height;
+		uploaded_images[level] = device.create_image_from_staging_buffer(image_info, &split_staging);
+	}
 
 	Vulkan::ImageViewCreateInfo view_info;
 	view_info.image = decoded_image.get();
@@ -1264,10 +1280,10 @@ Vulkan::ImageHandle decode_compressed_image(Vulkan::CommandBuffer &cmd, const Vu
 	view_info.format = to_storage_format(compressed_format_to_decoded_format(layout.get_format()), layout.get_format());
 
 	Vulkan::ImageViewCreateInfo input_view_info;
-	input_view_info.image = uploaded_image.get();
 	input_view_info.view_type = VK_IMAGE_VIEW_TYPE_2D;
 	input_view_info.levels = 1;
 	input_view_info.layers = 1;
+	input_view_info.base_level = 0;
 
 	cmd.image_barrier(*decoded_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
 	                  VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
@@ -1286,8 +1302,9 @@ Vulkan::ImageHandle decode_compressed_image(Vulkan::CommandBuffer &cmd, const Vu
 
 		for (unsigned layer = 0; layer < layout.get_layers(); layer++)
 		{
+			input_view_info.image = uploaded_images[level].get();
 			view_info.base_layer = input_view_info.base_layer = layer;
-			view_info.base_level = input_view_info.base_level = level;
+			view_info.base_level = level;
 			auto storage_view = device.create_image_view(view_info);
 			auto payload_view = device.create_image_view(input_view_info);
 

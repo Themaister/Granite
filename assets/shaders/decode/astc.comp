@@ -26,12 +26,6 @@ layout(local_size_x_id = 0, local_size_y_id = 1, local_size_z = 4) in;
 
 #include "bitextract.h"
 
-uvec3 debug_coord;
-#define DEBUG1(x) add_debug_message(0, debug_coord, uvec2(__LINE__, x))
-#define DEBUG2(x, y) add_debug_message(0, debug_coord, uvec3(__LINE__, x, y))
-#define DEBUG3(x, y, z) add_debug_message(0, debug_coord, uvec4(__LINE__, x, y, z))
-//#include "../inc/debug_channel.h"
-
 layout(set = 1, binding = 0) uniform utextureBuffer LUTRemainingBitsToEndpointQuantizer;
 layout(set = 1, binding = 1) uniform utextureBuffer LUTEndpointUnquantize;
 layout(set = 1, binding = 2) uniform utextureBuffer LUTWeightQuantizer;
@@ -1153,7 +1147,6 @@ ivec4 void_extent_color(uvec4 payload, out int decode_mode)
 void main()
 {
     ivec4 coord = build_coord();
-    debug_coord = uvec3(coord.xy, 0);
     if (any(greaterThanEqual(coord.xy, registers.resolution)))
         return;
 

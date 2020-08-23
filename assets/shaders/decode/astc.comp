@@ -1167,7 +1167,7 @@ void main()
             partition_index = (partition_index >> (2 * block_mode.num_partitions - 4)) & 3;
         }
 
-        int available_endpoint_bits = 128 - block_mode.config_bits - weight_cost_bits;
+        int available_endpoint_bits = max(128 - block_mode.config_bits - weight_cost_bits, 0);
 
         // In multi-partition mode, the 6-bit CEM field is encoded as
         // First two bits tell if all CEM field are the same, if not we specify a class offset, and N bits
@@ -1183,7 +1183,7 @@ void main()
         }
 
         ivec4 endpoint_quant = ivec4(texelFetch(LUTRemainingBitsToEndpointQuantizer,
-        128 * (num_endpoint_pairs - 1) + available_endpoint_bits));
+                128 * (num_endpoint_pairs - 1) + available_endpoint_bits));
 
         // Only read the bits we need for endpoints.
         int num_endpoint_values = num_endpoint_pairs * 2;

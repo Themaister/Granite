@@ -768,8 +768,6 @@ static bool test_astc_block_mode(Device &device, VkFormat format, VkFormat readb
 	auto &layout = tex.get_layout();
 	auto *d = static_cast<uint32_t *>(layout.data_opaque(0, 0, 0, 0));
 
-	uint32_t fail_block[4];
-
 	// Expose all possible weight encoding formats.
 	for (unsigned i = 0; i < num_blocks; i++, d += 4)
 	{
@@ -784,12 +782,7 @@ static bool test_astc_block_mode(Device &device, VkFormat format, VkFormat readb
 		d[1] = uint32_t(rnd());
 		d[2] = uint32_t(rnd());
 		d[3] = uint32_t(rnd());
-
-		if (i == (1045 / 5) + (24 / 4) * ((width + 4) / 5))
-			memcpy(fail_block, d, sizeof(fail_block));
 	}
-
-	memcpy(layout.data_opaque(0, 0, 0), fail_block, sizeof(fail_block));
 
 	auto readback_reference = decode_gpu(*cmd, layout, readback_format);
 	auto readback_decoded = decode_compute(*cmd, layout);

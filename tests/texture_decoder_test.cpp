@@ -1159,27 +1159,35 @@ static bool test_s3tc(Device &device, VkFormat format, VkFormat readback_format)
 
 static bool test_s3tc(Device &device)
 {
+	LOGI("Testing BC1 RGBA UNORM.\n");
 	if (!test_s3tc(device, VK_FORMAT_BC1_RGBA_UNORM_BLOCK, VK_FORMAT_R8G8B8A8_UNORM))
 		return false;
 	device.wait_idle();
+	LOGI("Testing BC1 RGB UNORM.\n");
 	if (!test_s3tc(device, VK_FORMAT_BC1_RGB_UNORM_BLOCK, VK_FORMAT_R8G8B8A8_UNORM))
 		return false;
 	device.wait_idle();
+	LOGI("Testing BC1 sRGBA UNORM.\n");
 	if (!test_s3tc(device, VK_FORMAT_BC1_RGBA_SRGB_BLOCK, VK_FORMAT_R8G8B8A8_SRGB))
 		return false;
 	device.wait_idle();
+	LOGI("Testing BC1 sRGB UNORM.\n");
 	if (!test_s3tc(device, VK_FORMAT_BC1_RGB_SRGB_BLOCK, VK_FORMAT_R8G8B8A8_SRGB))
 		return false;
 	device.wait_idle();
+	LOGI("Testing BC2 UNORM.\n");
 	if (!test_s3tc(device, VK_FORMAT_BC2_UNORM_BLOCK, VK_FORMAT_R8G8B8A8_UNORM))
 		return false;
 	device.wait_idle();
+	LOGI("Testing BC2 sRGB.\n");
 	if (!test_s3tc(device, VK_FORMAT_BC2_SRGB_BLOCK, VK_FORMAT_R8G8B8A8_SRGB))
 		return false;
 	device.wait_idle();
+	LOGI("Testing BC3 UNORM.\n");
 	if (!test_s3tc(device, VK_FORMAT_BC3_UNORM_BLOCK, VK_FORMAT_R8G8B8A8_UNORM))
 		return false;
 	device.wait_idle();
+	LOGI("Testing BC3 sRGB.\n");
 	if (!test_s3tc(device, VK_FORMAT_BC3_SRGB_BLOCK, VK_FORMAT_R8G8B8A8_SRGB))
 		return false;
 	device.wait_idle();
@@ -1188,9 +1196,11 @@ static bool test_s3tc(Device &device)
 
 static bool test_rgtc(Device &device)
 {
+	LOGI("Testing BC4 UNORM.\n");
 	if (!test_rgtc(device, VK_FORMAT_BC4_UNORM_BLOCK, VK_FORMAT_R8_UNORM))
 		return false;
 	device.wait_idle();
+	LOGI("Testing BC5 UNORM.\n");
 	if (!test_rgtc(device, VK_FORMAT_BC5_UNORM_BLOCK, VK_FORMAT_R8G8_UNORM))
 		return false;
 	device.wait_idle();
@@ -1199,21 +1209,27 @@ static bool test_rgtc(Device &device)
 
 static bool test_etc2(Device &device)
 {
+	LOGI("Testing ETC2 RGB UNORM.\n");
 	if (!test_etc2(device, VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK, VK_FORMAT_R8G8B8A8_UNORM))
 		return false;
 	device.wait_idle();
+	LOGI("Testing ETC2 RGB sRGB.\n");
 	if (!test_etc2(device, VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK, VK_FORMAT_R8G8B8A8_SRGB))
 		return false;
 	device.wait_idle();
+	LOGI("Testing ETC2 RGB8A1 UNORM.\n");
 	if (!test_etc2(device, VK_FORMAT_ETC2_R8G8B8A1_UNORM_BLOCK, VK_FORMAT_R8G8B8A8_UNORM))
 		return false;
 	device.wait_idle();
+	LOGI("Testing ETC2 RGB8A1 sRGB.\n");
 	if (!test_etc2(device, VK_FORMAT_ETC2_R8G8B8A1_SRGB_BLOCK, VK_FORMAT_R8G8B8A8_SRGB))
 		return false;
 	device.wait_idle();
+	LOGI("Testing ETC2 RGB8A8 UNORM.\n");
 	if (!test_etc2(device, VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK, VK_FORMAT_R8G8B8A8_UNORM))
 		return false;
 	device.wait_idle();
+	LOGI("Testing ETC2 RGB8A8 sRGB.\n");
 	if (!test_etc2(device, VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK, VK_FORMAT_R8G8B8A8_SRGB))
 		return false;
 	device.wait_idle();
@@ -1222,9 +1238,11 @@ static bool test_etc2(Device &device)
 
 static bool test_eac(Device &device)
 {
+	LOGI("Testing EAC R11 UNORM.\n");
 	if (!test_eac(device, VK_FORMAT_EAC_R11_UNORM_BLOCK, VK_FORMAT_R16_SFLOAT))
 		return false;
 	device.wait_idle();
+	LOGI("Testing EAC R11G11 UNORM.\n");
 	if (!test_eac(device, VK_FORMAT_EAC_R11G11_UNORM_BLOCK, VK_FORMAT_R16G16_SFLOAT))
 		return false;
 	device.wait_idle();
@@ -1233,9 +1251,11 @@ static bool test_eac(Device &device)
 
 static bool test_bc7(Device &device)
 {
+	LOGI("Testing BC7 sRGB.\n");
 	if (!test_bc7(device, VK_FORMAT_BC7_SRGB_BLOCK, VK_FORMAT_R8G8B8A8_SRGB))
 		return false;
 	device.wait_idle();
+	LOGI("Testing BC7 UNORM.\n");
 	if (!test_bc7(device, VK_FORMAT_BC7_UNORM_BLOCK, VK_FORMAT_R8G8B8A8_UNORM))
 		return false;
 	device.wait_idle();
@@ -1244,9 +1264,11 @@ static bool test_bc7(Device &device)
 
 static bool test_bc6(Device &device)
 {
+	LOGI("Testing BC6 SFLOAT.\n");
 	if (!test_bc6(device, VK_FORMAT_BC6H_SFLOAT_BLOCK))
 		return false;
 	device.wait_idle();
+	LOGI("Testing BC6 UFLOAT.\n");
 	if (!test_bc6(device, VK_FORMAT_BC6H_UFLOAT_BLOCK))
 		return false;
 	device.wait_idle();

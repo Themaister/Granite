@@ -734,6 +734,64 @@ static bool test_astc_void_extent(Device &device, VkFormat format, VkFormat read
 		return false;
 }
 
+static bool test_astc_block_mode(Device &device, VkFormat format, VkFormat readback_format)
+{
+	auto cmd = device.request_command_buffer();
+	std::mt19937 rnd(1338);
+	cmd->begin_debug_channel(&iface, "ASTC", 256 * 1024 * 1024);
+	SceneFormats::MemoryMappedTexture tex;
+	unsigned width = 8092;
+	unsigned height = 8092;
+
+	unsigned block_width, block_height;
+	Vulkan::TextureFormatLayout::format_block_dim(format, block_width, block_height);
+
+	unsigned blocks_x = (width + block_width - 1) / block_width;
+	unsigned blocks_y = (height + block_height - 1) / block_height;
+	unsigned num_blocks = blocks_x * blocks_y;
+	tex.set_2d(format, width, height);
+	if (!tex.map_write_scratch())
+		return false;
+
+	auto &layout = tex.get_layout();
+	auto *d = static_cast<uint32_t *>(layout.data_opaque(0, 0, 0, 0));
+
+	// Expose all possible weight encoding formats.
+	for (unsigned i = 0; i < num_blocks; i++, d += 4)
+	{
+		d[0] = 0;
+		d[1] = 0;
+		d[2] = 0;
+		d[3] = 0;
+
+		// Exhaustively test all possible block modes, randomize all other data.
+		d[0] = i & 0x3ff;
+		d[0] |= uint32_t(rnd()) << 11;
+		d[1] = uint32_t(rnd());
+		d[2] = uint32_t(rnd());
+		d[3] = uint32_t(rnd());
+	}
+
+	auto readback_reference = decode_gpu(*cmd, layout, readback_format);
+	auto readback_decoded = decode_compute(*cmd, layout);
+	if (!readback_decoded)
+	{
+		device.submit_discard(cmd);
+		return false;
+	}
+
+	Fence fence;
+	device.submit(cmd, &fence);
+	fence->wait();
+
+	if (readback_format == VK_FORMAT_R16G16B16A16_SFLOAT)
+		return compare_rgba16f(device, *readback_reference, *readback_decoded, width, height);
+	else if (readback_format == VK_FORMAT_R8G8B8A8_UNORM)
+		return compare_rgba8(device, *readback_reference, *readback_decoded, width, height, 0);
+	else
+		return false;
+}
+
 static bool test_astc(Device &device)
 {
 	static const VkFormat formats[] = {
@@ -785,6 +843,7 @@ static bool test_astc(Device &device)
 		return true;
 	};
 
+#if 0
 	LOGI("Testing ASTC weight encoding and interpolation ...\n");
 	if (!test_formats(test_astc_weights<false>))
 		return false;
@@ -808,6 +867,10 @@ static bool test_astc(Device &device)
 		return false;
 	LOGI("Testing ASTC void extent.\n");
 	if (!test(test_astc_void_extent))
+		return false;
+#endif
+	LOGI("Testing ASTC block mode.\n");
+	if (!test(test_astc_block_mode))
 		return false;
 
 	return true;

@@ -349,26 +349,6 @@ static BufferHandle decode_compute(CommandBuffer &cmd, const TextureFormatLayout
 	return readback_image(cmd, *compressed);
 }
 
-#if 1
-struct DebugIface : DebugChannelInterface
-{
-	void message(const std::string &tag, uint32_t code, uint32_t x, uint32_t y, uint32_t z,
-	             uint32_t word_count, const Word *words) override
-	{
-		if (x == 0 && y == 0)
-		{
-			if (word_count == 2)
-				LOGI("(X = %d, Y = %d), line: %d = (%d).\n", x, y, words[0].s32, words[1].s32);
-			else if (word_count == 3)
-				LOGI("(X = %d, Y = %d), line: %d = (%d, %d).\n", x, y, words[0].s32, words[1].s32, words[2].s32);
-			else if (word_count == 4)
-				LOGI("(X = %d, Y = %d), line: %d = (%d, %d, %d).\n", x, y, words[0].s32, words[1].s32, words[2].s32, words[3].s32);
-		}
-	}
-};
-static DebugIface iface;
-#endif
-
 template <bool dual_plane>
 static bool test_astc_weights(Device &device, VkFormat format, VkFormat readback_format)
 {
@@ -1295,7 +1275,6 @@ int main()
 	Device device;
 	device.set_context(ctx);
 
-#if 0
 	if (!test_s3tc(device))
 		return EXIT_FAILURE;
 	if (!test_rgtc(device))
@@ -1304,7 +1283,6 @@ int main()
 		return EXIT_FAILURE;
 	if (!test_eac(device))
 		return EXIT_FAILURE;
-#endif
 	if (!test_bc7(device))
 		return EXIT_FAILURE;
 	if (!test_bc6(device))

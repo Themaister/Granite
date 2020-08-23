@@ -751,7 +751,10 @@ VkPipeline CommandBuffer::build_compute_pipeline(Device *device, const DeferredP
 		return VK_NULL_HANDLE;
 	}
 
-	return compile.program->add_pipeline(compile.hash, compute_pipeline);
+	auto returned_pipeline = compile.program->add_pipeline(compile.hash, compute_pipeline);
+	if (returned_pipeline != compute_pipeline)
+		table.vkDestroyPipeline(device->get_device(), compute_pipeline, nullptr);
+	return returned_pipeline;
 }
 
 void CommandBuffer::extract_pipeline_state(DeferredPipelineCompile &compile) const
@@ -990,7 +993,10 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Device *device, const Deferred
 		return VK_NULL_HANDLE;
 	}
 
-	return compile.program->add_pipeline(compile.hash, pipeline);
+	auto returned_pipeline = compile.program->add_pipeline(compile.hash, pipeline);
+	if (returned_pipeline != pipeline)
+		table.vkDestroyPipeline(device->get_device(), pipeline, nullptr);
+	return returned_pipeline;
 }
 
 bool CommandBuffer::flush_compute_pipeline(bool synchronous)

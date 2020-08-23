@@ -102,6 +102,9 @@ BlockMode decode_block_mode(uvec4 payload)
 {
     BlockMode mode;
     mode.void_extent = (payload.x & 0x1ffu) == 0x1fcu;
+    if (mode.void_extent)
+        return mode;
+
     mode.dual_plane = (payload.x & (1u << 10u)) != 0u;
 
     uint higher = (payload.x >> 2u) & 3u;
@@ -780,6 +783,45 @@ void decode_cem_base_endpoint(uvec4 payload, int weight_cost_bits, inout int cem
     }
 }
 
+ivec4 void_extent_color(uvec4 payload)
+{
+    int min_s = extract_bits(payload, 12, 13);
+    int max_s = extract_bits(payload, 12 + 13, 13);
+    int min_t = extract_bits(payload, 12 + 2 * 13, 13);
+    int max_t = extract_bits(payload, 12 + 3 * 13, 13);
+
+    int reserved = extract_bits(payload, 10, 2);
+    if (reserved != 3)
+    {
+        decode_error = true;
+        return ivec4(0);
+    }
+
+    if (!all(equal(ivec4(min_s, max_s, min_t, max_t), ivec4((1 << 13) - 1))))
+    {
+        if (any(greaterThanEqual(ivec2(min_s, min_t), ivec2(max_s, max_t))))
+        {
+            decode_error = true;
+            return ivec4(0);
+        }
+    }
+
+    bool HDR = (payload.x & (1u << 9)) != 0u;
+
+    if (HDR)
+    {
+        decode_error = true;
+        return ivec4(0);
+    }
+
+    int r = extract_bits(payload, 64, 16);
+    int g = extract_bits(payload, 64 + 16, 16);
+    int b = extract_bits(payload, 64 + 32, 16);
+    int a = extract_bits(payload, 64 + 48, 16);
+
+    return ivec4(r, g, b, a);
+}
+
 void main()
 {
     ivec4 coord = build_coord();
@@ -794,66 +836,75 @@ void main()
     BlockMode block_mode = decode_block_mode(payload);
     CHECK_DECODE_ERROR();
 
-    int weight_cost_bits;
-    ivec4 weights = decode_weights(payload, block_mode, normalize_coord(pixel_coord), weight_cost_bits);
-
-    int partition_index = 0;
-    if (block_mode.num_partitions > 1)
+    ivec4 final_color;
+    if (block_mode.void_extent)
     {
-        int lut_x = pixel_coord.x + int(gl_WorkGroupSize.x) * (block_mode.seed & 31);
-        int lut_y = pixel_coord.y + int(gl_WorkGroupSize.y) * (block_mode.seed >> 5);
-        partition_index = int(texelFetch(LUTPartitionTable, ivec2(lut_x, lut_y), 0).x);
-        partition_index = (partition_index >> (2 * block_mode.num_partitions - 4)) & 3;
+        final_color = void_extent_color(payload);
+        CHECK_DECODE_ERROR();
     }
-
-    int available_endpoint_bits = 128 - block_mode.config_bits - weight_cost_bits;
-
-    // In multi-partition mode, the 6-bit CEM field is encoded as
-    // First two bits tell if all CEM field are the same, if not we specify a class offset, and N bits
-    // after that will offset the class by 1.
-    int num_endpoint_pairs = compute_num_endpoint_pairs(block_mode.num_partitions, block_mode.cem);
-
-    // Error color must be emitted if we need more than 18 integer sequence encoded values of color.
-    if (num_endpoint_pairs > 9)
+    else
     {
-        decode_error = true;
-        emit_decode_error(coord.xy);
-        return;
-    }
+        int weight_cost_bits;
+        ivec4 weights = decode_weights(payload, block_mode, normalize_coord(pixel_coord), weight_cost_bits);
 
-    ivec4 endpoint_quant = ivec4(texelFetch(LUTRemainingBitsToEndpointQuantizer,
-            128 * (num_endpoint_pairs - 1) + available_endpoint_bits));
+        int partition_index = 0;
+        if (block_mode.num_partitions > 1)
+        {
+            int lut_x = pixel_coord.x + int(gl_WorkGroupSize.x) * (block_mode.seed & 31);
+            int lut_y = pixel_coord.y + int(gl_WorkGroupSize.y) * (block_mode.seed >> 5);
+            partition_index = int(texelFetch(LUTPartitionTable, ivec2(lut_x, lut_y), 0).x);
+            partition_index = (partition_index >> (2 * block_mode.num_partitions - 4)) & 3;
+        }
 
-    // Only read the bits we need for endpoints.
-    int num_endpoint_values = num_endpoint_pairs * 2;
-    available_endpoint_bits =
+        int available_endpoint_bits = 128 - block_mode.config_bits - weight_cost_bits;
+
+        // In multi-partition mode, the 6-bit CEM field is encoded as
+        // First two bits tell if all CEM field are the same, if not we specify a class offset, and N bits
+        // after that will offset the class by 1.
+        int num_endpoint_pairs = compute_num_endpoint_pairs(block_mode.num_partitions, block_mode.cem);
+
+        // Error color must be emitted if we need more than 18 integer sequence encoded values of color.
+        if (num_endpoint_pairs > 9)
+        {
+            decode_error = true;
+            emit_decode_error(coord.xy);
+            return;
+        }
+
+        ivec4 endpoint_quant = ivec4(texelFetch(LUTRemainingBitsToEndpointQuantizer,
+        128 * (num_endpoint_pairs - 1) + available_endpoint_bits));
+
+        // Only read the bits we need for endpoints.
+        int num_endpoint_values = num_endpoint_pairs * 2;
+        available_endpoint_bits =
         endpoint_quant.x * num_endpoint_values +
         idiv5_ceil(endpoint_quant.y * 8 * num_endpoint_values) +
         idiv3_ceil(endpoint_quant.z * 7 * num_endpoint_values);
 
-    // No space left for color endpoints.
-    if (all(equal(endpoint_quant.xyz, ivec3(0))))
-    {
-        decode_error = true;
-        emit_decode_error(coord.xy);
-        return;
+        // No space left for color endpoints.
+        if (all(equal(endpoint_quant.xyz, ivec3(0))))
+        {
+            decode_error = true;
+            emit_decode_error(coord.xy);
+            return;
+        }
+
+        int endpoint_bit_offset = block_mode.primary_config_bits;
+        ivec4 ep0, ep1;
+        bool HDR;
+
+        // Decode CEM for multi-partition schemes.
+        int cem = block_mode.cem;
+        int base_endpoint_index;
+        decode_cem_base_endpoint(payload, weight_cost_bits, cem, base_endpoint_index,
+        block_mode.num_partitions, partition_index);
+
+        decode_endpoint(ep0, ep1, HDR, payload, endpoint_bit_offset, endpoint_quant,
+        cem, base_endpoint_index, available_endpoint_bits);
+        CHECK_DECODE_ERROR();
+
+        final_color = interpolate_endpoint(ep0, ep1, weights, HDR);
     }
-
-    int endpoint_bit_offset = block_mode.primary_config_bits;
-    ivec4 ep0, ep1;
-    bool HDR;
-
-    // Decode CEM for multi-partition schemes.
-    int cem = block_mode.cem;
-    int base_endpoint_index;
-    decode_cem_base_endpoint(payload, weight_cost_bits, cem, base_endpoint_index,
-            block_mode.num_partitions, partition_index);
-
-    decode_endpoint(ep0, ep1, HDR, payload, endpoint_bit_offset, endpoint_quant,
-            cem, base_endpoint_index, available_endpoint_bits);
-    CHECK_DECODE_ERROR();
-
-    ivec4 final_color = interpolate_endpoint(ep0, ep1, weights, HDR);
 
     if (DECODE_8BIT)
     {

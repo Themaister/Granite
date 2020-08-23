@@ -435,8 +435,8 @@ static bool test_astc_endpoint_formats(Device &device, VkFormat format, VkFormat
 	std::mt19937 rnd(1337);
 	cmd->begin_debug_channel(&iface, "ASTC", 16 * 1024 * 1024);
 	SceneFormats::MemoryMappedTexture tex;
-	unsigned width = 2048;
-	unsigned height = 2048;
+	unsigned width = 8092;
+	unsigned height = 8092;
 
 	unsigned block_width, block_height;
 	Vulkan::TextureFormatLayout::format_block_dim(format, block_width, block_height);
@@ -872,9 +872,11 @@ static bool test_astc(Device &device)
 	LOGI("Testing ASTC dual plane encoding ...\n");
 	if (!test_formats(test_astc_weights<true>))
 		return false;
+#endif
 	LOGI("Testing ASTC endpoint formats ...\n");
 	if (!test(test_astc_endpoint_formats))
 		return false;
+#if 0
 	LOGI("Testing ASTC multi-partition ...\n");
 	if (!test(test_astc_partitions<false>))
 		return false;

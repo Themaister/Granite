@@ -22,11 +22,22 @@ layout(set = 0, binding = 0, rgba16ui) writeonly uniform uimage2D OutputImageFP1
 layout(set = 0, binding = 1) uniform utexture2D PayloadInput;
 layout(constant_id = 2) const bool DECODE_8BIT = false;
 
+const int MODE_LDR = 0;
+const int MODE_HDR = 1;
+const int MODE_HDR_LDR_ALPHA = 2;
+
 layout(push_constant) uniform Registers
 {
     uvec4 error_color;
     ivec2 resolution;
 } registers;
+
+void swap(inout int a, inout int b)
+{
+    int tmp = a;
+    a = b;
+    b = tmp;
+}
 
 ivec4 build_coord()
 {
@@ -38,12 +49,19 @@ ivec4 build_coord()
     return ivec4(coord, payload_coord);
 }
 
-ivec4 interpolate_endpoint(ivec4 ep0, ivec4 ep1, ivec4 weight, bool HDR_endpoint)
+ivec4 interpolate_endpoint(ivec4 ep0, ivec4 ep1, ivec4 weight, int decode_mode)
 {
-    if (HDR_endpoint)
+    if (decode_mode == MODE_HDR)
     {
         ep0 <<= 4;
         ep1 <<= 4;
+    }
+    else if (decode_mode == MODE_HDR_LDR_ALPHA)
+    {
+        ep0.rgb <<= 4;
+        ep1.rgb <<= 4;
+        ep0.a *= 0x101;
+        ep1.a *= 0x101;
     }
     else if (DECODE_8BIT)
     {
@@ -72,9 +90,36 @@ bvec4 bvec_or(bvec4 a, bvec4 b)
     return bvec4(ivec4(a) | ivec4(b));
 }
 
-uvec4 decode_fp16(ivec4 color, bool HDR)
+uint round_down_quantize_fp16(int color)
 {
-    if (HDR)
+    // ASTC has a very peculiar way of converting the decoded result to FP16.
+    // 0xffff -> 1.0, and for everything else we get roundDownQuantizeFP16(vec4(c) / vec4(0x10000)).
+    int msb = findMSB(color);
+    int shamt = msb;
+    int m = ((color << 10) >> shamt) & 0x3ff;
+    int e = msb - 1;
+    uint decoded = color == 0xffff ? 0x3c00u : (e < 1 ? (color << 8) : (m | (e << 10)));
+    return decoded;
+}
+
+uvec4 round_down_quantize_fp16(ivec4 color)
+{
+    // ASTC has a very peculiar way of converting the decoded result to FP16.
+    // 0xffff -> 1.0, and for everything else we get roundDownQuantizeFP16(vec4(c) / vec4(0x10000)).
+    ivec4 msb = findMSB(color);
+    ivec4 shamt = msb;
+    ivec4 m = ((color << 10) >> shamt) & 0x3ff;
+    ivec4 e = msb - 1;
+    uvec4 decoded = m | (e << 10);
+    uvec4 denorm_decode = color << 8;
+    decoded = mix(decoded, uvec4(denorm_decode), lessThan(e, ivec4(1)));
+    decoded = mix(decoded, uvec4(0x3c00), equal(color, ivec4(0xffff)));
+    return decoded;
+}
+
+uvec4 decode_fp16(ivec4 color, int decode_mode)
+{
+    if (decode_mode != MODE_LDR)
     {
         // Interpret the value as FP16, but with some extra fixups along the way to make the interpolation more
         // logarithmic (apparently). From spec:
@@ -87,21 +132,15 @@ uvec4 decode_fp16(ivec4 color, bool HDR)
         ivec4 decoded = (e << 10) + (mt >> 3);
         // +Inf or NaN are decoded to 0x7bff (max finite value).
         decoded = mix(decoded, ivec4(0x7bff), bvec_or(greaterThan(decoded & 0x7fff, ivec4(0x7c00)), equal(decoded, ivec4(0x7c00))));
+
+        if (decode_mode == MODE_HDR_LDR_ALPHA)
+            decoded.a = int(round_down_quantize_fp16(color.a));
+
         return decoded;
     }
     else
     {
-        // ASTC has a very peculiar way of converting the decoded result to FP16.
-        // 0xffff -> 1.0, and for everything else we get roundDownQuantizeFP16(vec4(c) / vec4(0x10000)).
-        ivec4 msb = findMSB(color);
-        ivec4 shamt = msb;
-        ivec4 m = ((color << 10) >> shamt) & 0x3ff;
-        ivec4 e = msb - 1;
-        uvec4 decoded = m | (e << 10);
-        uvec4 denorm_decode = color << 8;
-        decoded = mix(decoded, uvec4(denorm_decode), lessThan(e, ivec4(1)));
-        decoded = mix(decoded, uvec4(0x3c00), equal(color, ivec4(0xffff)));
-        return decoded;
+        return round_down_quantize_fp16(color);
     }
 }
 
@@ -489,6 +528,47 @@ void decode_endpoint_ldr_luma_direct(out ivec4 ep0, out ivec4 ep1,
     ep1 = ivec4(ivec3(v1), 0xff);
 }
 
+void decode_endpoint_hdr_luma_direct(out ivec4 ep0, out ivec4 ep1,
+        int v0, int v1)
+{
+    int y0, y1;
+    if (v1 >= v0)
+    {
+        y0 = v0 << 4;
+        y1 = v1 << 4;
+    }
+    else
+    {
+        y0 = (v1 << 4) + 8;
+        y1 = (v0 << 4) - 8;
+    }
+
+    ep0 = ivec4(ivec3(y0), 0x780);
+    ep1 = ivec4(ivec3(y1), 0x780);
+}
+
+void decode_endpoint_hdr_luma_direct_small_range(out ivec4 ep0, out ivec4 ep1,
+        int v0, int v1)
+{
+    int y0, y1, d;
+
+    if ((v0 & 0x80) != 0)
+    {
+        y0 = ((v1 & 0xe0) << 4) | ((v0 & 0x7f) << 2);
+        d = (v1 & 0x1f) << 2;
+    }
+    else
+    {
+        y0 = ((v1 & 0xf0) << 4) | ((v0 & 0x7f) << 1);
+        d = (v1 & 0x0f)  << 1;
+    }
+
+    y1 = min(y0 + d, 0xfff);
+
+    ep0 = ivec4(ivec3(y0), 0x780);
+    ep1 = ivec4(ivec3(y1), 0x780);
+}
+
 void decode_endpoint_ldr_luma_base_offset(out ivec4 ep0, out ivec4 ep1,
         int v0, int v1)
 {
@@ -569,6 +649,157 @@ void decode_endpoint_ldr_rgb_direct(out ivec4 ep0, out ivec4 ep1,
     }
 }
 
+void decode_endpoint_hdr_rgb_scale(out ivec4 ep0, out ivec4 ep1,
+    int v0, int v1, int v2, int v3)
+{
+    // Mind-numbing weird format, just copy from spec ...
+    int mode_value = ((v0 & 0xc0) >> 6) | ((v1 & 0x80) >> 5) | ((v2 & 0x80) >> 4);
+    int major_component;
+    int mode;
+
+    if ((mode_value & 0xc) != 0xc)
+    {
+        major_component = mode_value >> 2;
+        mode = mode_value & 3;
+    }
+    else if (mode_value != 0xf)
+    {
+        major_component = mode_value & 3;
+        mode = 4;
+    }
+    else
+    {
+        major_component = 0;
+        mode = 5;
+    }
+
+    int red = v0 & 0x3f;
+    int green = v1 & 0x1f;
+    int blue = v2 & 0x1f;
+    int scale = v3 & 0x1f;
+
+    int x0 = (v1 >> 6) & 1;
+    int x1 = (v1 >> 5) & 1;
+    int x2 = (v2 >> 6) & 1;
+    int x3 = (v2 >> 5) & 1;
+    int x4 = (v3 >> 7) & 1;
+    int x5 = (v3 >> 6) & 1;
+    int x6 = (v3 >> 5) & 1;
+
+    int ohm = 1 << mode;
+    if ((ohm & 0x30) != 0) green |= x0 << 6;
+    if ((ohm & 0x3a) != 0) green |= x1 << 5;
+    if ((ohm & 0x30) != 0) blue |= x2 << 6;
+    if ((ohm & 0x3a) != 0) blue |= x3 << 5;
+    if ((ohm & 0x3d) != 0) scale |= x6 << 5;
+    if ((ohm & 0x2d) != 0) scale |= x5 << 6;
+    if ((ohm & 0x04) != 0) scale |= x4 << 7;
+    if ((ohm & 0x3b) != 0) red |= x4 << 6;
+    if ((ohm & 0x04) != 0) red |= x3 << 6;
+    if ((ohm & 0x10) != 0) red |= x5 << 7;
+    if ((ohm & 0x0f) != 0) red |= x2 << 7;
+    if ((ohm & 0x05) != 0) red |= x1 << 8;
+    if ((ohm & 0x0a) != 0) red |= x0 << 8;
+    if ((ohm & 0x05) != 0) red |= x0 << 9;
+    if ((ohm & 0x02) != 0) red |= x6 << 9;
+    if ((ohm & 0x01) != 0) red |= x3 << 10;
+    if ((ohm & 0x02) != 0) red |= x5 << 10;
+
+    int shamt = max(mode, 1);
+    red <<= shamt;
+    green <<= shamt;
+    blue <<= shamt;
+    scale <<= shamt;
+
+    if (mode != 5)
+    {
+        green = red - green;
+        blue = red - blue;
+    }
+
+    if (major_component == 1)
+        swap(red, green);
+    else if (major_component == 2)
+        swap(red, blue);
+
+    ep1 = ivec4(clamp(ivec3(red, green, blue), ivec3(0), ivec3(0xfff)), 0x780);
+    ep0 = ivec4(clamp(ivec3(red, green, blue) - scale, ivec3(0), ivec3(0xfff)), 0x780);
+}
+
+void decode_endpoint_hdr_rgb_direct(out ivec4 ep0, out ivec4 ep1,
+        int v0, int v1, int v2, int v3, int v4, int v5)
+{
+    int major_component = ((v4 & 0x80) >> 7) | ((v5 & 0x80) >> 6);
+
+    if (major_component == 3)
+    {
+        ep0 = ivec4(v0 << 4, v2 << 4, (v4 & 0x7f) << 5, 0x780);
+        ep1 = ivec4(v1 << 4, v3 << 4, (v5 & 0x7f) << 5, 0x780);
+        return;
+    }
+
+    int mode = ((v1 & 0x80) >> 7) | ((v2 & 0x80) >> 6) | ((v3 & 0x80) >> 5);
+    int va = v0 | ((v1 & 0x40) << 2);
+    int vb0 = v2 & 0x3f;
+    int vb1 =  v3 & 0x3f;
+    int vc = v1 & 0x3f;
+    int vd0 = v4 & 0x7f;
+    int vd1 = v5 & 0x7f;
+
+    int d_bits = 7 - (mode & 1);
+    if ((mode & 5) == 4)
+        d_bits -= 2;
+
+    vd0 = bitfieldExtract(vd0, 0, d_bits);
+    vd1 = bitfieldExtract(vd1, 0, d_bits);
+
+    int x0 = (v2 >> 6) & 1;
+    int x1 = (v3 >> 6) & 1;
+    int x2 = (v4 >> 6) & 1;
+    int x3 = (v5 >> 6) & 1;
+    int x4 = (v4 >> 5) & 1;
+    int x5 = (v5 >> 5) & 1;
+
+    int ohm = 1 << mode;
+    if ((ohm & 0xa4) != 0) va |= x0 << 9;
+    if ((ohm & 0x08) != 0) va |= x2 << 9;
+    if ((ohm & 0x50) != 0) va |= x4 << 9;
+    if ((ohm & 0x50) != 0) va |= x5 << 10;
+    if ((ohm & 0xa0) != 0) va |= x1 << 10;
+    if ((ohm & 0xc0) != 0) va |= x2 << 11;
+
+    if ((ohm & 0x04) != 0) vc |= x1 << 6;
+    if ((ohm & 0xe8) != 0) vc |= x3 << 6;
+    if ((ohm & 0x20) != 0) vc |= x2 << 7;
+
+    if ((ohm & 0x5b) != 0) vb0 |= x0 << 6;
+    if ((ohm & 0x5b) != 0) vb1 |= x1 << 6;
+    if ((ohm & 0x12) != 0) vb0 |= x2 << 7;
+    if ((ohm & 0x12) != 0) vb1 |= x3 << 7;
+
+    int shamt = (mode >> 1) ^ 3;
+    va <<= shamt;
+    vb0 <<= shamt;
+    vb1 <<= shamt;
+    vc <<= shamt;
+    vd0 <<= shamt;
+    vd1 <<= shamt;
+
+    ep1 = ivec4(clamp(ivec3(va, va - vb0, va - vb1), ivec3(0), ivec3(0xfff)), 0x780);
+    ep0 = ivec4(clamp(ivec3(va - vc, va - vb0 - vc - vd0, va - vb1 - vc - vd1), ivec3(0), ivec3(0xfff)), 0x780);
+
+    if (major_component == 1)
+    {
+        swap(ep0.r, ep0.g);
+        swap(ep1.r, ep1.g);
+    }
+    else if (major_component == 2)
+    {
+        swap(ep0.r, ep0.b);
+        swap(ep1.r, ep1.b);
+    }
+}
+
 void decode_endpoint_ldr_rgb_base_offset(out ivec4 ep0, out ivec4 ep1,
         int v0, int v1, int v2, int v3, int v4, int v5)
 {
@@ -631,7 +862,33 @@ void decode_endpoint_ldr_rgba_base_offset(out ivec4 ep0, out ivec4 ep1,
     ep1 = clamp(ep1, ivec4(0), ivec4(0xff));
 }
 
-void decode_endpoint(out ivec4 ep0, out ivec4 ep1, out bool HDR,
+void decode_endpoint_hdr_alpha(out int ep0, out int ep1, int v6, int v7)
+{
+    int mode = ((v6 >> 7) & 1) | ((v7 >> 6) & 2);
+    v6 &= 0x7f;
+    v7 &= 0x7f;
+
+    if (mode == 3)
+    {
+        ep0 = v6 << 5;
+        ep1 = v7 << 5;
+    }
+    else
+    {
+        v6 |= (v7 << (mode + 1)) & 0x780;
+        v7 &= 0x3f >> mode;
+        v7 ^= 0x20 >> mode;
+        v7 -= 0x20 >> mode;
+        v6 <<= 4 - mode;
+        v7 <<= 4 - mode;
+        v7 += v6;
+        v7 = clamp(v7, 0, 0xfff);
+        ep0 = v6;
+        ep1 = v7;
+    }
+}
+
+void decode_endpoint(out ivec4 ep0, out ivec4 ep1, out int decode_mode,
                      uvec4 payload, int bit_offset, ivec4 quant, int ep_mode,
                      int base_endpoint_index, int num_endpoint_bits)
 {
@@ -672,67 +929,104 @@ void decode_endpoint(out ivec4 ep0, out ivec4 ep1, out bool HDR,
     case 0:
         decode_endpoint_ldr_luma_direct(ep0, ep1,
             v0, v1);
-        HDR = false;
+        decode_mode = MODE_LDR;
         break;
 
     case 1:
         decode_endpoint_ldr_luma_base_offset(ep0, ep1,
             v0, v1);
-        HDR = false;
+        decode_mode = MODE_LDR;
+        break;
+
+    case 2:
+        decode_endpoint_hdr_luma_direct(ep0, ep1,
+            v0, v1);
+        decode_mode = MODE_HDR;
+        break;
+
+    case 3:
+        decode_endpoint_hdr_luma_direct_small_range(ep0, ep1,
+            v0, v1);
+        decode_mode = MODE_HDR;
         break;
 
     case 4:
         decode_endpoint_ldr_luma_alpha_direct(ep0, ep1,
             v0, v1, v2, v3);
-        HDR = false;
+        decode_mode = MODE_LDR;
         break;
 
     case 5:
         decode_endpoint_ldr_luma_alpha_base_offset(ep0, ep1,
             v0, v1, v2, v3);
-        HDR = false;
+        decode_mode = MODE_LDR;
         break;
 
     case 6:
         decode_endpoint_ldr_rgb_base_scale(ep0, ep1,
             v0, v1, v2, v3);
-        HDR = false;
+        decode_mode = MODE_LDR;
+        break;
+
+    case 7:
+        decode_endpoint_hdr_rgb_scale(ep0, ep1,
+            v0, v1, v2, v3);
+        decode_mode = MODE_HDR;
         break;
 
     case 8:
         decode_endpoint_ldr_rgb_direct(ep0, ep1,
             v0, v1, v2, v3, v4, v5);
-        HDR = false;
+        decode_mode = MODE_LDR;
         break;
 
     case 9:
         decode_endpoint_ldr_rgb_base_offset(ep0, ep1,
             v0, v1, v2, v3, v4, v5);
-        HDR = false;
+        decode_mode = MODE_LDR;
         break;
 
     case 10:
         decode_endpoint_ldr_rgb_base_scale_two_a(ep0, ep1,
             v0, v1, v2, v3, v4, v5);
-        HDR = false;
+        decode_mode = MODE_LDR;
+        break;
+
+    case 11:
+    case 14:
+    case 15:
+        decode_endpoint_hdr_rgb_direct(ep0, ep1,
+            v0, v1, v2, v3, v4, v5);
+        if (ep_mode == 14)
+        {
+            ep0.a = v6;
+            ep1.a = v7;
+            decode_mode = MODE_HDR_LDR_ALPHA;
+        }
+        else if (ep_mode == 15)
+        {
+            decode_endpoint_hdr_alpha(ep0.a, ep1.a, v6, v7);
+            decode_mode = MODE_HDR;
+        }
+        else
+            decode_mode = MODE_HDR;
         break;
 
     case 12:
         decode_endpoint_ldr_rgba_direct(ep0, ep1,
             v0, v1, v2, v3, v4, v5, v6, v7);
-        HDR = false;
+        decode_mode = MODE_LDR;
         break;
 
     case 13:
         decode_endpoint_ldr_rgba_base_offset(ep0, ep1,
             v0, v1, v2, v3, v4, v5, v6, v7);
-        HDR = false;
-        break;
-
-    default:
-        decode_error = true;
+        decode_mode = MODE_LDR;
         break;
     }
+
+    if (DECODE_8BIT && decode_mode != MODE_LDR)
+        decode_error = true;
 }
 
 #define CHECK_DECODE_ERROR() do { \
@@ -805,7 +1099,7 @@ void decode_cem_base_endpoint(uvec4 payload, int weight_cost_bits, inout int cem
     }
 }
 
-ivec4 void_extent_color(uvec4 payload, out bool HDR)
+ivec4 void_extent_color(uvec4 payload, out int decode_mode)
 {
     int min_s = extract_bits(payload, 12, 13);
     int max_s = extract_bits(payload, 12 + 13, 13);
@@ -828,7 +1122,7 @@ ivec4 void_extent_color(uvec4 payload, out bool HDR)
         }
     }
 
-    HDR = (payload.x & (1u << 9)) != 0u;
+    decode_mode = (payload.x & (1u << 9)) != 0u ? MODE_HDR : MODE_LDR;
 
     int r = extract_bits(payload, 64, 16);
     int g = extract_bits(payload, 64 + 16, 16);
@@ -853,10 +1147,10 @@ void main()
     CHECK_DECODE_ERROR();
 
     ivec4 final_color;
-    bool HDR;
+    int decode_mode;
     if (block_mode.void_extent)
     {
-        final_color = void_extent_color(payload, HDR);
+        final_color = void_extent_color(payload, decode_mode);
         CHECK_DECODE_ERROR();
     }
     else
@@ -915,11 +1209,11 @@ void main()
         decode_cem_base_endpoint(payload, weight_cost_bits, cem, base_endpoint_index,
                                  block_mode.num_partitions, partition_index);
 
-        decode_endpoint(ep0, ep1, HDR, payload, endpoint_bit_offset, endpoint_quant,
+        decode_endpoint(ep0, ep1, decode_mode, payload, endpoint_bit_offset, endpoint_quant,
                         cem, base_endpoint_index, available_endpoint_bits);
         CHECK_DECODE_ERROR();
 
-        final_color = interpolate_endpoint(ep0, ep1, weights, HDR);
+        final_color = interpolate_endpoint(ep0, ep1, weights, decode_mode);
     }
 
     if (DECODE_8BIT)
@@ -929,10 +1223,10 @@ void main()
     else
     {
         uvec4 encoded;
-        if (block_mode.void_extent && HDR)
+        if (block_mode.void_extent && decode_mode == MODE_HDR)
             encoded = final_color;
         else
-            encoded = decode_fp16(final_color, HDR);
+            encoded = decode_fp16(final_color, decode_mode);
         imageStore(OutputImageFP16, coord.xy, encoded);
     }
 }

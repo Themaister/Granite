@@ -248,7 +248,7 @@ static BufferHandle decode_astc_cpu(Device &device, const TextureFormatLayout &l
 	astcenc_config config = {};
 	uint32_t block_width, block_height;
 	TextureFormatLayout::format_block_dim(layout.get_format(), block_width, block_height);
-	astcenc_init_config(ASTCENC_PRF_LDR, block_width, block_height, 1, ASTCENC_PRE_FAST, 0, config);
+	astcenc_init_config(ASTCENC_PRF_HDR, block_width, block_height, 1, ASTCENC_PRE_FAST, 0, config);
 
 	astcenc_context *ctx = nullptr;
 	if (astcenc_context_alloc(config, 1, &ctx) != ASTCENC_SUCCESS)
@@ -339,7 +339,7 @@ struct DebugIface : DebugChannelInterface
 	void message(const std::string &tag, uint32_t code, uint32_t x, uint32_t y, uint32_t z,
 	             uint32_t word_count, const Word *words) override
 	{
-		if (x == 48 && y == 0)
+		if (x == 0 && y == 0)
 		{
 			if (word_count == 2)
 				LOGI("(X = %d, Y = %d), line: %d = (%d).\n", x, y, words[0].s32, words[1].s32);
@@ -692,7 +692,8 @@ static bool test_astc_void_extent(Device &device, VkFormat format, VkFormat read
 		d[0] |= 0x1fc;
 
 		// HDR vs LDR selector.
-		d[0] |= (i & 1) << 9;
+		bool HDR = (i & 1) != 0;
+		d[0] |= uint32_t(HDR) << 9;
 
 		// Reserved bits must be 1.
 		d[0] |= 3 << 10;
@@ -710,8 +711,29 @@ static bool test_astc_void_extent(Device &device, VkFormat format, VkFormat read
 
 		d[0] |= uint32_t(rnd()) << 12;
 		d[1] |= uint32_t(rnd());
-		d[2] = uint32_t(rnd());
-		d[3] = uint32_t(rnd());
+
+		if (HDR)
+		{
+			// Inputs must be finite, or we get undefined behavior.
+			auto r = uint16_t(rnd());
+			auto g = uint16_t(rnd());
+			auto b = uint16_t(rnd());
+			auto a = uint16_t(rnd());
+			const auto fixup = [](uint16_t &v) { if (((v & 0x7fff) >> 10) >= 0x1f) v = 0; };
+			fixup(r);
+			fixup(g);
+			fixup(b);
+			fixup(a);
+			d[2] |= uint32_t(r);
+			d[2] |= uint32_t(g) << 16;
+			d[3] |= uint32_t(b);
+			d[3] |= uint32_t(a) << 16;
+		}
+		else
+		{
+			d[2] = uint32_t(rnd());
+			d[3] = uint32_t(rnd());
+		}
 	}
 
 	auto readback_reference = decode_gpu(*cmd, layout, readback_format);
@@ -865,13 +887,15 @@ static bool test_astc(Device &device)
 	LOGI("Testing ASTC multi-partition with dual-plane encoding ...\n");
 	if (!test(test_astc_partitions_complex<true>))
 		return false;
+#endif
 	LOGI("Testing ASTC void extent.\n");
 	if (!test(test_astc_void_extent))
 		return false;
-#endif
+#if 0
 	LOGI("Testing ASTC block mode.\n");
 	if (!test(test_astc_block_mode))
 		return false;
+#endif
 
 	return true;
 }

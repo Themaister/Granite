@@ -67,20 +67,42 @@ ivec4 interpolate_endpoint(ivec4 ep0, ivec4 ep1, ivec4 weight, bool HDR_endpoint
     return color;
 }
 
-uvec4 decode_fp16(ivec4 color)
+bvec4 bvec_or(bvec4 a, bvec4 b)
 {
-    // ASTC has a very peculiar way of converting the decoded result to FP16.
-    // 0xffff -> 1.0, and for everything else we get roundDownQuantizeFP16(vec4(c) / vec4(0x10000)).
+    return bvec4(ivec4(a) | ivec4(b));
+}
 
-    ivec4 msb = findMSB(color);
-    ivec4 shamt = msb;
-    ivec4 m = ((color << 10) >> shamt) & 0x3ff;
-    ivec4 e = msb - 1;
-    uvec4 decoded = m | (e << 10);
-    uvec4 denorm_decode = color << 8;
-    decoded = mix(decoded, uvec4(denorm_decode), lessThan(e, ivec4(1)));
-    decoded = mix(decoded, uvec4(0x3c00), equal(color, ivec4(0xffff)));
-    return decoded;
+uvec4 decode_fp16(ivec4 color, bool HDR)
+{
+    if (HDR)
+    {
+        // Interpret the value as FP16, but with some extra fixups along the way to make the interpolation more
+        // logarithmic (apparently). From spec:
+        ivec4 e = color >> 11;
+        ivec4 m = color & 0x7ff;
+        ivec4 mt = 4 * m - 512;
+        mt = mix(mt, ivec4(3 * m), lessThan(m, ivec4(512)));
+        mt = mix(mt, ivec4(5 * m - 2048), greaterThanEqual(m, ivec4(1536)));
+
+        ivec4 decoded = (e << 10) + (mt >> 3);
+        // +Inf or NaN are decoded to 0x7bff (max finite value).
+        decoded = mix(decoded, ivec4(0x7bff), bvec_or(greaterThan(decoded & 0x7fff, ivec4(0x7c00)), equal(decoded, ivec4(0x7c00))));
+        return decoded;
+    }
+    else
+    {
+        // ASTC has a very peculiar way of converting the decoded result to FP16.
+        // 0xffff -> 1.0, and for everything else we get roundDownQuantizeFP16(vec4(c) / vec4(0x10000)).
+        ivec4 msb = findMSB(color);
+        ivec4 shamt = msb;
+        ivec4 m = ((color << 10) >> shamt) & 0x3ff;
+        ivec4 e = msb - 1;
+        uvec4 decoded = m | (e << 10);
+        uvec4 denorm_decode = color << 8;
+        decoded = mix(decoded, uvec4(denorm_decode), lessThan(e, ivec4(1)));
+        decoded = mix(decoded, uvec4(0x3c00), equal(color, ivec4(0xffff)));
+        return decoded;
+    }
 }
 
 struct BlockMode
@@ -783,7 +805,7 @@ void decode_cem_base_endpoint(uvec4 payload, int weight_cost_bits, inout int cem
     }
 }
 
-ivec4 void_extent_color(uvec4 payload)
+ivec4 void_extent_color(uvec4 payload, out bool HDR)
 {
     int min_s = extract_bits(payload, 12, 13);
     int max_s = extract_bits(payload, 12 + 13, 13);
@@ -806,13 +828,7 @@ ivec4 void_extent_color(uvec4 payload)
         }
     }
 
-    bool HDR = (payload.x & (1u << 9)) != 0u;
-
-    if (HDR)
-    {
-        decode_error = true;
-        return ivec4(0);
-    }
+    HDR = (payload.x & (1u << 9)) != 0u;
 
     int r = extract_bits(payload, 64, 16);
     int g = extract_bits(payload, 64 + 16, 16);
@@ -837,9 +853,10 @@ void main()
     CHECK_DECODE_ERROR();
 
     ivec4 final_color;
+    bool HDR;
     if (block_mode.void_extent)
     {
-        final_color = void_extent_color(payload);
+        final_color = void_extent_color(payload, HDR);
         CHECK_DECODE_ERROR();
     }
     else
@@ -877,9 +894,9 @@ void main()
         // Only read the bits we need for endpoints.
         int num_endpoint_values = num_endpoint_pairs * 2;
         available_endpoint_bits =
-        endpoint_quant.x * num_endpoint_values +
-        idiv5_ceil(endpoint_quant.y * 8 * num_endpoint_values) +
-        idiv3_ceil(endpoint_quant.z * 7 * num_endpoint_values);
+            endpoint_quant.x * num_endpoint_values +
+            idiv5_ceil(endpoint_quant.y * 8 * num_endpoint_values) +
+            idiv3_ceil(endpoint_quant.z * 7 * num_endpoint_values);
 
         // No space left for color endpoints.
         if (all(equal(endpoint_quant.xyz, ivec3(0))))
@@ -891,16 +908,15 @@ void main()
 
         int endpoint_bit_offset = block_mode.primary_config_bits;
         ivec4 ep0, ep1;
-        bool HDR;
 
         // Decode CEM for multi-partition schemes.
         int cem = block_mode.cem;
         int base_endpoint_index;
         decode_cem_base_endpoint(payload, weight_cost_bits, cem, base_endpoint_index,
-        block_mode.num_partitions, partition_index);
+                                 block_mode.num_partitions, partition_index);
 
         decode_endpoint(ep0, ep1, HDR, payload, endpoint_bit_offset, endpoint_quant,
-        cem, base_endpoint_index, available_endpoint_bits);
+                        cem, base_endpoint_index, available_endpoint_bits);
         CHECK_DECODE_ERROR();
 
         final_color = interpolate_endpoint(ep0, ep1, weights, HDR);
@@ -912,7 +928,11 @@ void main()
     }
     else
     {
-        uvec4 encoded = decode_fp16(final_color);
+        uvec4 encoded;
+        if (block_mode.void_extent && HDR)
+            encoded = final_color;
+        else
+            encoded = decode_fp16(final_color, HDR);
         imageStore(OutputImageFP16, coord.xy, encoded);
     }
 }

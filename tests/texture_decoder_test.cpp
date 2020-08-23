@@ -865,18 +865,15 @@ static bool test_astc(Device &device)
 		return true;
 	};
 
-#if 0
 	LOGI("Testing ASTC weight encoding and interpolation ...\n");
 	if (!test_formats(test_astc_weights<false>))
 		return false;
 	LOGI("Testing ASTC dual plane encoding ...\n");
 	if (!test_formats(test_astc_weights<true>))
 		return false;
-#endif
 	LOGI("Testing ASTC endpoint formats ...\n");
 	if (!test(test_astc_endpoint_formats))
 		return false;
-#if 0
 	LOGI("Testing ASTC multi-partition ...\n");
 	if (!test(test_astc_partitions<false>))
 		return false;
@@ -889,15 +886,12 @@ static bool test_astc(Device &device)
 	LOGI("Testing ASTC multi-partition with dual-plane encoding ...\n");
 	if (!test(test_astc_partitions_complex<true>))
 		return false;
-#endif
 	LOGI("Testing ASTC void extent.\n");
 	if (!test(test_astc_void_extent))
 		return false;
-#if 0
 	LOGI("Testing ASTC block mode.\n");
 	if (!test(test_astc_block_mode))
 		return false;
-#endif
 
 	return true;
 }

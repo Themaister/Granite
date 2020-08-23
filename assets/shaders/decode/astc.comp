@@ -3,12 +3,12 @@
 layout(local_size_x_id = 0, local_size_y_id = 1, local_size_z = 4) in;
 
 #include "bitextract.h"
-#include "../inc/debug_channel.h"
 
 uvec3 debug_coord;
 #define DEBUG1(x) add_debug_message(0, debug_coord, uvec2(__LINE__, x))
 #define DEBUG2(x, y) add_debug_message(0, debug_coord, uvec3(__LINE__, x, y))
 #define DEBUG3(x, y, z) add_debug_message(0, debug_coord, uvec4(__LINE__, x, y, z))
+//#include "../inc/debug_channel.h"
 
 layout(set = 1, binding = 0) uniform utextureBuffer LUTRemainingBitsToEndpointQuantizer;
 layout(set = 1, binding = 1) uniform utextureBuffer LUTEndpointUnquantize;
@@ -17,8 +17,7 @@ layout(set = 1, binding = 3) uniform utextureBuffer LUTWeightUnquantize;
 layout(set = 1, binding = 4) uniform utextureBuffer LUTTritQuintDecode;
 layout(set = 1, binding = 5) uniform utexture2D LUTPartitionTable;
 
-layout(set = 0, binding = 0, rgba8ui) writeonly uniform uimage2D OutputImageU8;
-layout(set = 0, binding = 0, rgba16ui) writeonly uniform uimage2D OutputImageFP16;
+layout(set = 0, binding = 0) writeonly uniform uimage2D OutputImage;
 layout(set = 0, binding = 1) uniform utexture2D PayloadInput;
 layout(constant_id = 2) const bool DECODE_8BIT = false;
 
@@ -1039,10 +1038,7 @@ void decode_endpoint(out ivec4 ep0, out ivec4 ep1, out int decode_mode,
 
 void emit_decode_error(ivec2 coord)
 {
-    if (DECODE_8BIT)
-        imageStore(OutputImageU8, coord, registers.error_color);
-    else
-        imageStore(OutputImageFP16, coord, registers.error_color);
+    imageStore(OutputImage, coord, registers.error_color);
 }
 
 int compute_num_endpoint_pairs(int num_partitions, int cem)
@@ -1218,7 +1214,7 @@ void main()
 
     if (DECODE_8BIT)
     {
-        imageStore(OutputImageU8, coord.xy, uvec4(final_color >> 8));
+        imageStore(OutputImage, coord.xy, uvec4(final_color >> 8));
     }
     else
     {
@@ -1227,6 +1223,6 @@ void main()
             encoded = final_color;
         else
             encoded = decode_fp16(final_color, decode_mode);
-        imageStore(OutputImageFP16, coord.xy, encoded);
+        imageStore(OutputImage, coord.xy, encoded);
     }
 }

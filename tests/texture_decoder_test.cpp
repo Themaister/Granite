@@ -374,7 +374,6 @@ static bool test_astc_weights(Device &device, VkFormat format, VkFormat readback
 {
 	auto cmd = device.request_command_buffer();
 	std::mt19937 rnd(1337);
-	cmd->begin_debug_channel(&iface, "ASTC", 16 * 1024 * 1024);
 	SceneFormats::MemoryMappedTexture tex;
 	unsigned width = 2048;
 	unsigned height = 2048;
@@ -449,7 +448,6 @@ static bool test_astc_endpoint_formats(Device &device, VkFormat format, VkFormat
 {
 	auto cmd = device.request_command_buffer();
 	std::mt19937 rnd(1337);
-	cmd->begin_debug_channel(&iface, "ASTC", 16 * 1024 * 1024);
 	SceneFormats::MemoryMappedTexture tex;
 	unsigned width = 8092;
 	unsigned height = 8092;
@@ -523,7 +521,6 @@ static bool test_astc_partitions(Device &device, VkFormat format, VkFormat readb
 {
 	auto cmd = device.request_command_buffer();
 	std::mt19937 rnd(1339);
-	cmd->begin_debug_channel(&iface, "ASTC", 16 * 1024 * 1024);
 	SceneFormats::MemoryMappedTexture tex;
 	unsigned width = 2048;
 	unsigned height = 2048;
@@ -602,7 +599,6 @@ static bool test_astc_partitions_complex(Device &device, VkFormat format, VkForm
 {
 	auto cmd = device.request_command_buffer();
 	std::mt19937 rnd(1338);
-	cmd->begin_debug_channel(&iface, "ASTC", 256 * 1024 * 1024);
 	SceneFormats::MemoryMappedTexture tex;
 	unsigned width = 2048;
 	unsigned height = 2048;
@@ -679,7 +675,6 @@ static bool test_astc_void_extent(Device &device, VkFormat format, VkFormat read
 {
 	auto cmd = device.request_command_buffer();
 	std::mt19937 rnd(1338);
-	cmd->begin_debug_channel(&iface, "ASTC", 256 * 1024 * 1024);
 	SceneFormats::MemoryMappedTexture tex;
 	unsigned width = 2048;
 	unsigned height = 2048;
@@ -776,7 +771,6 @@ static bool test_astc_block_mode(Device &device, VkFormat format, VkFormat readb
 {
 	auto cmd = device.request_command_buffer();
 	std::mt19937 rnd(1338);
-	cmd->begin_debug_channel(&iface, "ASTC", 256 * 1024 * 1024);
 	SceneFormats::MemoryMappedTexture tex;
 	unsigned width = 8092;
 	unsigned height = 8092;
@@ -956,8 +950,6 @@ static bool test_bc6(Device &device, VkFormat format)
 {
 	auto cmd = device.request_command_buffer();
 	std::mt19937 rnd(1337);
-
-	//cmd->begin_debug_channel(&iface, "BC6", 16 * 1024 * 1024);
 
 	SceneFormats::MemoryMappedTexture tex;
 	unsigned width = 4096;
@@ -1313,14 +1305,10 @@ int main()
 	if (!test_eac(device))
 		return EXIT_FAILURE;
 #endif
-#if 0
 	if (!test_bc7(device))
 		return EXIT_FAILURE;
 	if (!test_bc6(device))
 		return EXIT_FAILURE;
-#endif
-#if 1
 	if (!test_astc(device))
 		return EXIT_FAILURE;
-#endif
 }

@@ -4,8 +4,7 @@ layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
 
 #include "rgtc.h"
 
-layout(set = 0, binding = 0, r8) writeonly uniform image2D uOutputR;
-layout(set = 0, binding = 0, rg8) writeonly uniform image2D uOutputRG;
+layout(set = 0, binding = 0) writeonly uniform image2D uOutput;
 layout(set = 0, binding = 1) uniform utexture2D uInput;
 
 layout(push_constant) uniform Registers
@@ -41,7 +40,7 @@ void main()
         rg.y = decode_alpha_rgtc(payload.zw, linear_pixel);
 
     if (DUAL_COMPONENT)
-        imageStore(uOutputRG, coord, rg);
+        imageStore(uOutput, coord, rg);
     else
-        imageStore(uOutputR, coord, rg);
+        imageStore(uOutput, coord, rg);
 }

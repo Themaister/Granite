@@ -2,8 +2,7 @@
 #extension GL_EXT_samplerless_texture_functions : require
 layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
 
-layout(set = 0, binding = 0, r16f) writeonly uniform image2D uOutputR;
-layout(set = 0, binding = 0, rg16f) writeonly uniform image2D uOutputRG;
+layout(set = 0, binding = 0) writeonly uniform image2D uOutput;
 layout(set = 0, binding = 1) uniform utexture2D uInput;
 
 layout(constant_id = 0) const int COMPONENTS = 1;
@@ -82,10 +81,10 @@ void main()
     uint r = decode_eac_alpha(flip_endian(payload.xy), linear_pixel);
 
     if (COMPONENTS == 1)
-        imageStore(uOutputR, coord, vec4(float(r) / 2047.0, 0.0, 0.0, 1.0));
+        imageStore(uOutput, coord, vec4(float(r) / 2047.0, 0.0, 0.0, 1.0));
     else if (COMPONENTS == 2)
     {
         uint g = decode_eac_alpha(flip_endian(payload.zw), linear_pixel);
-        imageStore(uOutputRG, coord, vec4(float(r) / 2047.0, float(g) / 2047.0, 0.0, 1.0));
+        imageStore(uOutput, coord, vec4(float(r) / 2047.0, float(g) / 2047.0, 0.0, 1.0));
     }
 }

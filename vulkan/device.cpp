@@ -996,9 +996,8 @@ void Device::submit(CommandBufferHandle &cmd, Fence *fence, unsigned semaphore_c
 	submit_nolock(move(cmd), fence, semaphore_count, semaphores);
 }
 
-void Device::submit_discard(CommandBufferHandle &cmd)
+void Device::submit_discard_nolock(CommandBufferHandle &cmd)
 {
-	LOCK();
 #ifdef VULKAN_DEBUG
 	auto type = cmd->get_command_buffer_type();
 	auto &pool = get_command_pool(type, cmd->get_thread_index());
@@ -1007,6 +1006,12 @@ void Device::submit_discard(CommandBufferHandle &cmd)
 
 	cmd.reset();
 	decrement_frame_counter_nolock();
+}
+
+void Device::submit_discard(CommandBufferHandle &cmd)
+{
+	LOCK();
+	submit_discard_nolock(cmd);
 }
 
 CommandBuffer::Type Device::get_physical_queue_type(CommandBuffer::Type queue_type) const
@@ -2506,7 +2511,7 @@ void Device::recalibrate_timestamps_fallback()
 	auto ts = write_timestamp_nolock(cmd->get_command_buffer(), VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
 	if (!ts)
 	{
-		submit_discard(cmd);
+		submit_discard_nolock(cmd);
 		return;
 	}
 	auto start_ts = Util::get_current_time_nsecs();

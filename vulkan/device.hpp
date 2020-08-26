@@ -641,6 +641,7 @@ private:
 
 	void flush_frame_nolock();
 	CommandBufferHandle request_command_buffer_nolock(unsigned thread_index, CommandBuffer::Type type, bool profiled);
+	void submit_discard_nolock(CommandBufferHandle &cmd);
 	void submit_nolock(CommandBufferHandle cmd, Fence *fence,
 	                   unsigned semaphore_count, Semaphore *semaphore);
 	void submit_empty_nolock(CommandBuffer::Type type, Fence *fence,

@@ -2505,7 +2505,10 @@ void Device::recalibrate_timestamps_fallback()
 	auto cmd = request_command_buffer_nolock(0, CommandBuffer::Type::Generic, false);
 	auto ts = write_timestamp_nolock(cmd->get_command_buffer(), VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
 	if (!ts)
+	{
+		submit_discard(cmd);
 		return;
+	}
 	auto start_ts = Util::get_current_time_nsecs();
 	submit_nolock(cmd, nullptr, 0, nullptr);
 	wait_idle_nolock();

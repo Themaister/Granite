@@ -1732,6 +1732,14 @@ void RenderGraph::PassBarrierState::emit_pre_pass_barriers(Vulkan::CommandBuffer
 	cmd.end_region();
 }
 
+void RenderGraph::PassBarrierState::emit_post_pass_barriers(Vulkan::CommandBuffer &cmd) const
+{
+	cmd.begin_region("render-graph-sync-post");
+	if (event_signal_stages != 0)
+		cmd.complete_signal_event(*signal_event);
+	cmd.end_region();
+}
+
 static void wait_for_semaphore_in_queue(Vulkan::Device &device_, Vulkan::Semaphore &sem,
                                         Vulkan::CommandBuffer::Type queue_type, VkPipelineStageFlags stages)
 {
@@ -1897,6 +1905,50 @@ void RenderGraph::physical_pass_handle_invalidate_barrier(const Barrier &barrier
 	}
 }
 
+void RenderGraph::physical_pass_handle_signal_event(Vulkan::Device &device_, const PhysicalPass &physical_pass, PassBarrierState &barriers)
+{
+	for (auto &barrier : physical_pass.flush)
+		if (!physical_dimensions[barrier.resource_index].uses_semaphore())
+			barriers.event_signal_stages |= barrier.stages;
+
+	if (barriers.event_signal_stages)
+		barriers.signal_event = device_.begin_signal_event(barriers.event_signal_stages);
+}
+
+void RenderGraph::physical_pass_handle_flush_barrier(const Barrier &barrier, PassBarrierState &barriers)
+{
+	auto &event = barrier.history ?
+	              physical_history_events[barrier.resource_index] :
+	              physical_events[barrier.resource_index];
+
+	// A render pass might have changed the final layout.
+	if (!physical_dimensions[barrier.resource_index].buffer_info.size)
+	{
+		auto *image = barrier.history ?
+		              physical_history_image_attachments[barrier.resource_index].get() :
+		              &physical_attachments[barrier.resource_index]->get_image();
+
+		if (!image)
+			return;
+
+		physical_events[barrier.resource_index].layout = barrier.layout;
+	}
+
+	// Mark if there are pending writes from this pass.
+	event.to_flush_access = barrier.access;
+
+	if (physical_dimensions[barrier.resource_index].uses_semaphore())
+	{
+		barriers.need_submission_semaphore = true;
+		// Actual semaphore will be set on submission.
+	}
+	else
+	{
+		assert(barriers.signal_event);
+		event.event = barriers.signal_event;
+	}
+}
+
 void RenderGraph::physical_pass_enqueue_graphics_commands(const PhysicalPass &physical_pass, Vulkan::CommandBuffer &cmd)
 {
 	for (auto &clear_req : physical_pass.color_clear_requests)
@@ -2009,6 +2061,10 @@ void RenderGraph::enqueue_render_pass(Vulkan::Device &device_, PhysicalPass &phy
 	for (auto &barrier : physical_pass.invalidate)
 		physical_pass_handle_invalidate_barrier(barrier, barriers, graphics);
 
+	physical_pass_handle_signal_event(device_, physical_pass, barriers);
+	for (auto &barrier : physical_pass.flush)
+		physical_pass_handle_flush_barrier(barrier, barriers);
+
 	if (barriers.wait_semaphore)
 		wait_for_semaphore_in_queue(device_, *barriers.wait_semaphore, queue_type, barriers.wait_semaphore_stages);
 
@@ -2020,54 +2076,10 @@ void RenderGraph::enqueue_render_pass(Vulkan::Device &device_, PhysicalPass &phy
 	else
 		physical_pass_enqueue_compute_commands(physical_pass, *cmd);
 
-	cmd->begin_region("render-graph-sync-post");
-
-	VkPipelineStageFlags wait_stages = 0;
-	for (auto &barrier : physical_pass.flush)
-		if (!physical_dimensions[barrier.resource_index].uses_semaphore())
-			wait_stages |= barrier.stages;
-
-	Vulkan::PipelineEvent pipeline_event;
-	if (wait_stages != 0)
-		pipeline_event = cmd->signal_event(wait_stages);
-
-	bool need_submission_semaphore = false;
-
-	for (auto &barrier : physical_pass.flush)
-	{
-		auto &event = barrier.history ?
-		              physical_history_events[barrier.resource_index] :
-		              physical_events[barrier.resource_index];
-
-		// A render pass might have changed the final layout.
-		if (!physical_dimensions[barrier.resource_index].buffer_info.size)
-		{
-			auto *image = barrier.history ?
-			              physical_history_image_attachments[barrier.resource_index].get() :
-			              &physical_attachments[barrier.resource_index]->get_image();
-
-			if (!image)
-				continue;
-
-			physical_events[barrier.resource_index].layout = barrier.layout;
-		}
-
-		// Mark if there are pending writes from this pass.
-		event.to_flush_access = barrier.access;
-
-		if (physical_dimensions[barrier.resource_index].uses_semaphore())
-		{
-			need_submission_semaphore = true;
-			// Actual semaphore will be set on submission.
-		}
-		else
-			event.event = pipeline_event;
-	}
-
-	cmd->end_region();
+	barriers.emit_post_pass_barriers(*cmd);
 
 	Vulkan::Semaphore semaphores[2];
-	if (need_submission_semaphore)
+	if (barriers.need_submission_semaphore)
 		device_.submit(cmd, nullptr, 2, semaphores);
 	else
 		device_.submit(cmd);
@@ -2076,7 +2088,7 @@ void RenderGraph::enqueue_render_pass(Vulkan::Device &device_, PhysicalPass &phy
 		device_.flush_frame();
 
 	// Assign semaphores to resources which are cross-queue.
-	if (need_submission_semaphore)
+	if (barriers.need_submission_semaphore)
 	{
 		for (auto &barrier : physical_pass.flush)
 		{

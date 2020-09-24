@@ -1238,13 +1238,17 @@ void CommandBuffer::wait_events(unsigned num_events, const VkEvent *events,
 
 PipelineEvent CommandBuffer::signal_event(VkPipelineStageFlags stages)
 {
+	auto event = device->begin_signal_event(stages);
+	complete_signal_event(*event);
+	return event;
+}
+
+void CommandBuffer::complete_signal_event(const EventHolder &event)
+{
 	VK_ASSERT(!framebuffer);
 	VK_ASSERT(!actual_render_pass);
-	auto event = device->request_pipeline_event();
 	if (!device->get_workarounds().emulate_event_as_pipeline_barrier)
-		table.vkCmdSetEvent(cmd, event->get_event(), stages);
-	event->set_stages(stages);
-	return event;
+		table.vkCmdSetEvent(cmd, event.get_event(), event.get_stages());
 }
 
 void CommandBuffer::set_vertex_attrib(uint32_t attrib, uint32_t binding, VkFormat format, VkDeviceSize offset)

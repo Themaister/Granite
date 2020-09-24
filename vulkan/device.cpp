@@ -4934,6 +4934,13 @@ void Device::JSONTraceFileDeleter::operator()(FILE *file)
 		fclose(file);
 }
 
+PipelineEvent Device::begin_signal_event(VkPipelineStageFlags stages)
+{
+	auto event = request_pipeline_event();
+	event->set_stages(stages);
+	return event;
+}
+
 #ifdef GRANITE_VULKAN_FILESYSTEM
 TextureManager &Device::get_texture_manager()
 {

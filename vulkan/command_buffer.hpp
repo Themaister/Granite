@@ -291,6 +291,8 @@ public:
 	             VkAccessFlags dst_access);
 
 	PipelineEvent signal_event(VkPipelineStageFlags stages);
+	void complete_signal_event(const EventHolder &event);
+
 	void wait_events(unsigned num_events, const VkEvent *events,
 	                 VkPipelineStageFlags src_stages, VkPipelineStageFlags dst_stages,
 	                 unsigned barriers, const VkMemoryBarrier *globals,

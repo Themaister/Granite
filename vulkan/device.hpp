@@ -339,6 +339,9 @@ public:
 	// Writes a timestamp on host side, which is calibrated to the GPU timebase.
 	QueryPoolHandle write_calibrated_timestamp();
 
+	// A split version of VkEvent handling which lets us record a wait command before signal is recorded.
+	PipelineEvent begin_signal_event(VkPipelineStageFlags stages);
+
 private:
 	VkInstance instance = VK_NULL_HANDLE;
 	VkPhysicalDevice gpu = VK_NULL_HANDLE;

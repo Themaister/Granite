@@ -918,9 +918,17 @@ private:
 		Vulkan::Semaphore *wait_semaphore = nullptr;
 		VkPipelineStageFlags wait_semaphore_stages = 0;
 
+		Vulkan::PipelineEvent signal_event;
+		VkPipelineStageFlags event_signal_stages = 0;
+
+		bool need_submission_semaphore = false;
+
 		void add_unique_event(VkEvent event);
 		void emit_pre_pass_barriers(Vulkan::CommandBuffer &cmd) const;
+		void emit_post_pass_barriers(Vulkan::CommandBuffer &cmd) const;
 	};
 	void physical_pass_handle_invalidate_barrier(const Barrier &barrier, PassBarrierState &state, bool graphics);
+	void physical_pass_handle_signal_event(Vulkan::Device &device, const PhysicalPass &pass, PassBarrierState &state);
+	void physical_pass_handle_flush_barrier(const Barrier &barrier, PassBarrierState &state);
 };
 }

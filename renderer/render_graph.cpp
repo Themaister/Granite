@@ -1697,6 +1697,41 @@ void RenderGraph::PassBarrierState::add_unique_event(VkEvent event)
 		events.push_back(event);
 }
 
+void RenderGraph::PassBarrierState::emit_pre_pass_barriers(Vulkan::CommandBuffer &cmd) const
+{
+	cmd.begin_region("render-graph-sync-pre");
+
+	// Submit barriers.
+	if (!semaphore_handover_barriers.empty() || !immediate_image_barriers.empty())
+	{
+		Util::SmallVector<VkImageMemoryBarrier, 64> combined_barriers;
+		combined_barriers.reserve(semaphore_handover_barriers.size() + immediate_image_barriers.size());
+		combined_barriers.insert(combined_barriers.end(), semaphore_handover_barriers.begin(), semaphore_handover_barriers.end());
+		combined_barriers.insert(combined_barriers.end(), immediate_image_barriers.begin(), immediate_image_barriers.end());
+
+		auto src = handover_stages;
+		auto dst = handover_stages | immediate_dst_stages;
+		if (!src)
+			src = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+
+		cmd.barrier(src, dst,
+		            0, nullptr, 0, nullptr,
+		            combined_barriers.size(),
+		            combined_barriers.empty() ? nullptr : combined_barriers.data());
+	}
+
+	if (!image_barriers.empty() || !buffer_barriers.empty())
+	{
+		cmd.wait_events(events.size(), events.data(),
+		                src_stages, dst_stages,
+		                0, nullptr,
+		                buffer_barriers.size(), buffer_barriers.empty() ? nullptr : buffer_barriers.data(),
+		                image_barriers.size(), image_barriers.empty() ? nullptr : image_barriers.data());
+	}
+
+	cmd.end_region();
+}
+
 static void wait_for_semaphore_in_queue(Vulkan::Device &device_, Vulkan::Semaphore &sem,
                                         Vulkan::CommandBuffer::Type queue_type, VkPipelineStageFlags stages)
 {
@@ -1712,6 +1747,246 @@ void RenderGraph::physical_pass_invalidate_attachments(const PhysicalPass &physi
 	for (auto &discard : physical_pass.discards)
 		if (!physical_dimensions[discard].is_buffer_like())
 			physical_events[discard].layout = VK_IMAGE_LAYOUT_UNDEFINED;
+}
+
+void RenderGraph::physical_pass_handle_invalidate_barrier(const Barrier &barrier, PassBarrierState &barriers,
+                                                          bool graphics)
+{
+
+	auto &event = barrier.history ? physical_history_events[barrier.resource_index] :
+	              physical_events[barrier.resource_index];
+
+	bool need_event_barrier = false;
+	bool layout_change = false;
+	bool need_wait_semaphore = false;
+	auto &wait_semaphore = graphics ? event.wait_graphics_semaphore : event.wait_compute_semaphore;
+
+	if (physical_dimensions[barrier.resource_index].buffer_info.size)
+	{
+		// Buffers.
+		bool need_sync = (event.to_flush_access != 0) || need_invalidate(barrier, event);
+
+		if (need_sync)
+		{
+			need_event_barrier = bool(event.event);
+			// Signalling and waiting for a semaphore satisfies the memory barrier automatically.
+			need_wait_semaphore = bool(wait_semaphore);
+		}
+
+		if (need_event_barrier)
+		{
+			auto &buffer = *physical_buffers[barrier.resource_index];
+			VkBufferMemoryBarrier b = { VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER };
+
+			b.srcAccessMask = event.to_flush_access;
+			b.dstAccessMask = barrier.access;
+			b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			b.buffer = buffer.get_buffer();
+			b.offset = 0;
+			b.size = VK_WHOLE_SIZE;
+			barriers.buffer_barriers.push_back(b);
+		}
+	}
+	else
+	{
+		// Images.
+		Vulkan::Image *image = barrier.history ?
+		                       physical_history_image_attachments[barrier.resource_index].get() :
+		                       &physical_attachments[barrier.resource_index]->get_image();
+
+		if (!image)
+		{
+			// Can happen for history inputs if this is the first frame.
+			return;
+		}
+
+		VkImageMemoryBarrier b = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+		b.oldLayout = event.layout;
+		b.newLayout = barrier.layout;
+		b.srcAccessMask = event.to_flush_access;
+		b.dstAccessMask = barrier.access;
+
+		b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		b.image = image->get_image();
+		b.subresourceRange.aspectMask = Vulkan::format_to_aspect_mask(image->get_format());
+		b.subresourceRange.layerCount = image->get_create_info().layers;
+		b.subresourceRange.levelCount = image->get_create_info().levels;
+		event.layout = barrier.layout;
+
+		layout_change = b.oldLayout != b.newLayout;
+
+		bool need_sync =
+				layout_change ||
+				(event.to_flush_access != 0) ||
+				need_invalidate(barrier, event);
+
+		if (need_sync)
+		{
+			if (event.event)
+			{
+				// Either we wait for a VkEvent ...
+				barriers.image_barriers.push_back(b);
+				need_event_barrier = true;
+			}
+			else if (wait_semaphore)
+			{
+				// We wait for a semaphore ...
+				if (layout_change)
+				{
+					// When the semaphore was signalled, caches were flushed, so we don't need to do that again.
+					// We still need dstAccessMask however, because layout changes may perform writes.
+					b.srcAccessMask = 0;
+					barriers.semaphore_handover_barriers.push_back(b);
+					barriers.handover_stages |= barrier.stages;
+				}
+				// If we don't need a layout transition, signalling and waiting for semaphores satisfies
+				// all requirements we have of srcAccessMask/dstAccessMask.
+				need_wait_semaphore = true;
+			}
+			else
+			{
+				// ... or vkCmdPipelineBarrier from TOP_OF_PIPE_BIT if this is the first time we use the resource.
+				barriers.immediate_image_barriers.push_back(b);
+				if (b.oldLayout != VK_IMAGE_LAYOUT_UNDEFINED)
+					throw logic_error("Cannot do immediate image barriers from a layout other than UNDEFINED.");
+				barriers.immediate_dst_stages |= barrier.stages;
+			}
+		}
+	}
+
+	// Any pending writes or layout changes means we have to invalidate caches.
+	if (event.to_flush_access || layout_change)
+	{
+		for (auto &e : event.invalidated_in_stage)
+			e = 0;
+	}
+	event.to_flush_access = 0;
+
+	if (need_event_barrier)
+	{
+		barriers.dst_stages |= barrier.stages;
+
+		assert(event.event);
+		barriers.src_stages |= event.event->get_stages();
+		barriers.add_unique_event(event.event->get_event());
+
+		// Mark appropriate caches as invalidated now.
+		Util::for_each_bit(barrier.stages, [&](uint32_t bit) {
+			event.invalidated_in_stage[bit] |= barrier.access;
+		});
+	}
+	else if (need_wait_semaphore)
+	{
+		assert(wait_semaphore);
+
+		// Wait for a semaphore, unless it has already been waited for ...
+		barriers.wait_semaphore = &wait_semaphore;
+		barriers.wait_semaphore_stages = barrier.stages;
+
+		// Waiting for a semaphore makes data visible to all access bits in relevant stages.
+		// The exception is if we perform a layout change ...
+		// In this case we only invalidate the access bits which we placed in the vkCmdPipelineBarrier.
+		Util::for_each_bit(barrier.stages, [&](uint32_t bit) {
+			if (layout_change)
+				event.invalidated_in_stage[bit] |= barrier.access;
+			else
+				event.invalidated_in_stage[bit] |= ~0u;
+		});
+	}
+}
+
+void RenderGraph::physical_pass_enqueue_graphics_commands(const PhysicalPass &physical_pass, Vulkan::CommandBuffer &cmd)
+{
+	for (auto &clear_req : physical_pass.color_clear_requests)
+		clear_req.pass->get_clear_color(clear_req.index, clear_req.target);
+
+	if (physical_pass.depth_clear_request.pass)
+	{
+		physical_pass.depth_clear_request.pass->get_clear_depth_stencil(
+				physical_pass.depth_clear_request.target);
+	}
+
+	Vulkan::QueryPoolHandle start_vertex, start_fragment, end_vertex, end_fragment;
+	if (enabled_timestamps)
+	{
+		start_vertex = cmd.write_timestamp(VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
+		start_fragment = cmd.write_timestamp(VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+	}
+
+	// TODO: Replace with multiview.
+	VK_ASSERT(physical_pass.layers != ~0u);
+	for (unsigned layer = 0; layer < physical_pass.layers; layer++)
+	{
+		auto rp_info = physical_pass.render_pass_info;
+		rp_info.base_layer = layer;
+		cmd.begin_region("begin-render-pass");
+		cmd.begin_render_pass(rp_info);
+		cmd.end_region();
+
+		for (auto &subpass : physical_pass.passes)
+		{
+			auto subpass_index = unsigned(&subpass - physical_pass.passes.data());
+			auto &scaled_requests = physical_pass.scaled_clear_requests[subpass_index];
+			enqueue_scaled_requests(cmd, scaled_requests);
+
+			auto &pass = *passes[subpass];
+
+			// If we have started the render pass, we have to do it, even if a lone subpass might not be required,
+			// due to clearing and so on.
+			// This should be an extremely unlikely scenario.
+			// Either you need all subpasses or none.
+			cmd.begin_region(pass.get_name().c_str());
+			pass.build_render_pass(cmd, layer);
+			cmd.end_region();
+
+			if (&subpass != &physical_pass.passes.back())
+				cmd.next_subpass();
+		}
+
+		cmd.begin_region("end-render-pass");
+		cmd.end_render_pass();
+		cmd.end_region();
+	}
+
+	if (enabled_timestamps)
+	{
+		end_vertex = cmd.write_timestamp(VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
+		end_fragment = cmd.write_timestamp(VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+		string name;
+		if (physical_pass.passes.size() == 1)
+			name = passes[physical_pass.passes.front()]->get_name();
+		else
+		{
+			for (auto &pass : physical_pass.passes)
+			{
+				name += passes[pass]->get_name();
+				if (&pass != &physical_pass.passes.back())
+					name += " + ";
+			}
+		}
+		device->register_time_interval("geometry", std::move(start_vertex), std::move(end_vertex), name.c_str());
+		device->register_time_interval("fragment", std::move(start_fragment), std::move(end_fragment), name.c_str());
+	}
+	enqueue_mipmap_requests(cmd, physical_pass.mipmap_requests);
+}
+
+void RenderGraph::physical_pass_enqueue_compute_commands(const PhysicalPass &physical_pass, Vulkan::CommandBuffer &cmd)
+{
+	assert(physical_pass.passes.size() == 1);
+	auto &pass = *passes[physical_pass.passes.front()];
+	Vulkan::QueryPoolHandle start_ts, end_ts;
+	if (enabled_timestamps)
+		start_ts = cmd.write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+	cmd.begin_region(pass.get_name().c_str());
+	pass.build_render_pass(cmd, 0);
+	cmd.end_region();
+	if (enabled_timestamps)
+	{
+		end_ts = cmd.write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+		device->register_time_interval("compute", std::move(start_ts), std::move(end_ts), pass.get_name());
+	}
 }
 
 void RenderGraph::enqueue_render_pass(Vulkan::Device &device_, PhysicalPass &physical_pass)
@@ -1732,268 +2007,18 @@ void RenderGraph::enqueue_render_pass(Vulkan::Device &device_, PhysicalPass &phy
 
 	// Queue up invalidates and change layouts.
 	for (auto &barrier : physical_pass.invalidate)
-	{
-		auto &event = barrier.history ? physical_history_events[barrier.resource_index] :
-		              physical_events[barrier.resource_index];
+		physical_pass_handle_invalidate_barrier(barrier, barriers, graphics);
 
-		bool need_event_barrier = false;
-		bool layout_change = false;
-		bool need_wait_semaphore = false;
-		auto &wait_semaphore = graphics ? event.wait_graphics_semaphore : event.wait_compute_semaphore;
-
-		if (physical_dimensions[barrier.resource_index].buffer_info.size)
-		{
-			// Buffers.
-			bool need_sync = (event.to_flush_access != 0) || need_invalidate(barrier, event);
-
-			if (need_sync)
-			{
-				need_event_barrier = bool(event.event);
-				// Signalling and waiting for a semaphore satisfies the memory barrier automatically.
-				need_wait_semaphore = bool(wait_semaphore);
-			}
-
-			if (need_event_barrier)
-			{
-				auto &buffer = *physical_buffers[barrier.resource_index];
-				VkBufferMemoryBarrier b = { VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER };
-
-				b.srcAccessMask = event.to_flush_access;
-				b.dstAccessMask = barrier.access;
-				b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-				b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-				b.buffer = buffer.get_buffer();
-				b.offset = 0;
-				b.size = VK_WHOLE_SIZE;
-				barriers.buffer_barriers.push_back(b);
-			}
-		}
-		else
-		{
-			// Images.
-			Vulkan::Image *image = barrier.history ?
-			                       physical_history_image_attachments[barrier.resource_index].get() :
-			                       &physical_attachments[barrier.resource_index]->get_image();
-
-			if (!image)
-			{
-				// Can happen for history inputs if this is the first frame.
-				continue;
-			}
-
-			VkImageMemoryBarrier b = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
-			b.oldLayout = event.layout;
-			b.newLayout = barrier.layout;
-			b.srcAccessMask = event.to_flush_access;
-			b.dstAccessMask = barrier.access;
-
-			b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			b.image = image->get_image();
-			b.subresourceRange.aspectMask = Vulkan::format_to_aspect_mask(image->get_format());
-			b.subresourceRange.layerCount = image->get_create_info().layers;
-			b.subresourceRange.levelCount = image->get_create_info().levels;
-			event.layout = barrier.layout;
-
-			layout_change = b.oldLayout != b.newLayout;
-
-			bool need_sync =
-				layout_change ||
-				(event.to_flush_access != 0) ||
-				need_invalidate(barrier, event);
-
-			if (need_sync)
-			{
-				if (event.event)
-				{
-					// Either we wait for a VkEvent ...
-					barriers.image_barriers.push_back(b);
-					need_event_barrier = true;
-				}
-				else if (wait_semaphore)
-				{
-					// We wait for a semaphore ...
-					if (layout_change)
-					{
-						// When the semaphore was signalled, caches were flushed, so we don't need to do that again.
-						// We still need dstAccessMask however, because layout changes may perform writes.
-						b.srcAccessMask = 0;
-						barriers.semaphore_handover_barriers.push_back(b);
-						barriers.handover_stages |= barrier.stages;
-					}
-					// If we don't need a layout transition, signalling and waiting for semaphores satisfies
-					// all requirements we have of srcAccessMask/dstAccessMask.
-					need_wait_semaphore = true;
-				}
-				else
-				{
-					// ... or vkCmdPipelineBarrier from TOP_OF_PIPE_BIT if this is the first time we use the resource.
-					barriers.immediate_image_barriers.push_back(b);
-					if (b.oldLayout != VK_IMAGE_LAYOUT_UNDEFINED)
-						throw logic_error("Cannot do immediate image barriers from a layout other than UNDEFINED.");
-					barriers.immediate_dst_stages |= barrier.stages;
-				}
-			}
-		}
-
-		// Any pending writes or layout changes means we have to invalidate caches.
-		if (event.to_flush_access || layout_change)
-		{
-			for (auto &e : event.invalidated_in_stage)
-				e = 0;
-		}
-		event.to_flush_access = 0;
-
-		if (need_event_barrier)
-		{
-			barriers.dst_stages |= barrier.stages;
-
-			assert(event.event);
-			barriers.src_stages |= event.event->get_stages();
-			barriers.add_unique_event(event.event->get_event());
-
-			// Mark appropriate caches as invalidated now.
-			Util::for_each_bit(barrier.stages, [&](uint32_t bit) {
-				event.invalidated_in_stage[bit] |= barrier.access;
-			});
-		}
-		else if (need_wait_semaphore)
-		{
-			assert(wait_semaphore);
-
-			// Wait for a semaphore, unless it has already been waited for ...
-			wait_for_semaphore_in_queue(device_, wait_semaphore, queue_type, barrier.stages);
-
-			// Waiting for a semaphore makes data visible to all access bits in relevant stages.
-			// The exception is if we perform a layout change ...
-			// In this case we only invalidate the access bits which we placed in the vkCmdPipelineBarrier.
-			Util::for_each_bit(barrier.stages, [&](uint32_t bit) {
-				if (layout_change)
-					event.invalidated_in_stage[bit] |= barrier.access;
-				else
-					event.invalidated_in_stage[bit] |= ~0u;
-			});
-		}
-	}
+	if (barriers.wait_semaphore)
+		wait_for_semaphore_in_queue(device_, *barriers.wait_semaphore, queue_type, barriers.wait_semaphore_stages);
 
 	auto cmd = device_.request_command_buffer(queue_type);
-	cmd->begin_region("render-graph-sync-pre");
-
-	// Submit barriers.
-	if (!barriers.semaphore_handover_barriers.empty())
-	{
-		cmd->barrier(barriers.handover_stages, barriers.handover_stages,
-		             0, nullptr, 0, nullptr,
-		             barriers.semaphore_handover_barriers.size(),
-		             barriers.semaphore_handover_barriers.empty() ? nullptr : barriers.semaphore_handover_barriers.data());
-	}
-
-	if (!barriers.image_barriers.empty() || !barriers.buffer_barriers.empty())
-	{
-		cmd->wait_events(barriers.events.size(), barriers.events.data(),
-		                 barriers.src_stages, barriers.dst_stages,
-		                 0, nullptr,
-		                 barriers.buffer_barriers.size(), barriers.buffer_barriers.empty() ? nullptr : barriers.buffer_barriers.data(),
-		                 barriers.image_barriers.size(), barriers.image_barriers.empty() ? nullptr : barriers.image_barriers.data());
-	}
-
-	if (!barriers.immediate_image_barriers.empty())
-	{
-		cmd->barrier(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, barriers.immediate_dst_stages,
-		             0, nullptr, 0, nullptr, barriers.immediate_image_barriers.size(), barriers.immediate_image_barriers.data());
-	}
-
-	cmd->end_region();
+	barriers.emit_pre_pass_barriers(*cmd);
 
 	if (graphics)
-	{
-		for (auto &clear_req : physical_pass.color_clear_requests)
-			clear_req.pass->get_clear_color(clear_req.index, clear_req.target);
-
-		if (physical_pass.depth_clear_request.pass)
-		{
-			physical_pass.depth_clear_request.pass->get_clear_depth_stencil(
-				physical_pass.depth_clear_request.target);
-		}
-
-		Vulkan::QueryPoolHandle start_vertex, start_fragment, end_vertex, end_fragment;
-		if (enabled_timestamps)
-		{
-			start_vertex = cmd->write_timestamp(VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
-			start_fragment = cmd->write_timestamp(VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
-		}
-
-		// TODO: Replace with multiview.
-		VK_ASSERT(physical_pass.layers != ~0u);
-		for (unsigned layer = 0; layer < physical_pass.layers; layer++)
-		{
-			physical_pass.render_pass_info.base_layer = layer;
-			cmd->begin_region("begin-render-pass");
-			cmd->begin_render_pass(physical_pass.render_pass_info);
-			cmd->end_region();
-
-			for (auto &subpass : physical_pass.passes)
-			{
-				auto subpass_index = unsigned(&subpass - physical_pass.passes.data());
-				auto &scaled_requests = physical_pass.scaled_clear_requests[subpass_index];
-				enqueue_scaled_requests(*cmd, scaled_requests);
-
-				auto &pass = *passes[subpass];
-
-				// If we have started the render pass, we have to do it, even if a lone subpass might not be required,
-				// due to clearing and so on.
-				// This should be an extremely unlikely scenario.
-				// Either you need all subpasses or none.
-				cmd->begin_region(pass.get_name().c_str());
-				pass.build_render_pass(*cmd, layer);
-				cmd->end_region();
-
-				if (&subpass != &physical_pass.passes.back())
-					cmd->next_subpass();
-			}
-
-			cmd->begin_region("end-render-pass");
-			cmd->end_render_pass();
-			cmd->end_region();
-		}
-
-		if (enabled_timestamps)
-		{
-			end_vertex = cmd->write_timestamp(VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
-			end_fragment = cmd->write_timestamp(VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
-			string name;
-			if (physical_pass.passes.size() == 1)
-				name = passes[physical_pass.passes.front()]->get_name();
-			else
-			{
-				for (auto &pass : physical_pass.passes)
-				{
-					name += passes[pass]->get_name();
-					if (&pass != &physical_pass.passes.back())
-						name += " + ";
-				}
-			}
-			device->register_time_interval("geometry", std::move(start_vertex), std::move(end_vertex), name.c_str());
-			device->register_time_interval("fragment", std::move(start_fragment), std::move(end_fragment), name.c_str());
-		}
-		enqueue_mipmap_requests(*cmd, physical_pass.mipmap_requests);
-	}
+		physical_pass_enqueue_graphics_commands(physical_pass, *cmd);
 	else
-	{
-		assert(physical_pass.passes.size() == 1);
-		auto &pass = *passes[physical_pass.passes.front()];
-		Vulkan::QueryPoolHandle start_ts, end_ts;
-		if (enabled_timestamps)
-			start_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-		cmd->begin_region(pass.get_name().c_str());
-		pass.build_render_pass(*cmd, 0);
-		cmd->end_region();
-		if (enabled_timestamps)
-		{
-			end_ts = cmd->write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-			device->register_time_interval("compute", std::move(start_ts), std::move(end_ts), pass.get_name().c_str());
-		}
-	}
+		physical_pass_enqueue_compute_commands(physical_pass, *cmd);
 
 	cmd->begin_region("render-graph-sync-post");
 
@@ -2042,7 +2067,6 @@ void RenderGraph::enqueue_render_pass(Vulkan::Device &device_, PhysicalPass &phy
 	cmd->end_region();
 
 	Vulkan::Semaphore semaphores[2];
-	Vulkan::Semaphore compute_semaphore;
 	if (need_submission_semaphore)
 		device_.submit(cmd, nullptr, 2, semaphores);
 	else

@@ -891,6 +891,8 @@ private:
 	bool physical_pass_requires_work(const PhysicalPass &pass) const;
 	void physical_pass_transfer_ownership(PhysicalPass &pass);
 	void physical_pass_invalidate_attachments(const PhysicalPass &pass);
+	void physical_pass_enqueue_graphics_commands(const PhysicalPass &pass, Vulkan::CommandBuffer &cmd);
+	void physical_pass_enqueue_compute_commands(const PhysicalPass &pass, Vulkan::CommandBuffer &cmd);
 
 	struct PassBarrierState
 	{
@@ -913,7 +915,12 @@ private:
 		VkPipelineStageFlags src_stages = 0;
 		VkPipelineStageFlags handover_stages = 0;
 
+		Vulkan::Semaphore *wait_semaphore = nullptr;
+		VkPipelineStageFlags wait_semaphore_stages = 0;
+
 		void add_unique_event(VkEvent event);
+		void emit_pre_pass_barriers(Vulkan::CommandBuffer &cmd) const;
 	};
+	void physical_pass_handle_invalidate_barrier(const Barrier &barrier, PassBarrierState &state, bool graphics);
 };
 }

@@ -1713,9 +1713,6 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device_)
 			break;
 		}
 
-		auto cmd = device_.request_command_buffer(queue_type);
-		cmd->begin_region("render-graph-sync-pre");
-
 		const auto wait_for_semaphore_in_queue = [&](Vulkan::Semaphore sem, VkPipelineStageFlags stages) {
 			if (sem->get_semaphore() != VK_NULL_HANDLE && !sem->is_pending_wait())
 				device_.add_wait_semaphore(queue_type, sem, stages, true);
@@ -1891,6 +1888,9 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device_)
 				});
 			}
 		}
+
+		auto cmd = device_.request_command_buffer(queue_type);
+		cmd->begin_region("render-graph-sync-pre");
 
 		// Submit barriers.
 		if (!semaphore_handover_barriers.empty())

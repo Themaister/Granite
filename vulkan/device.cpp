@@ -92,6 +92,13 @@ Semaphore Device::request_legacy_semaphore()
 	return ptr;
 }
 
+Semaphore Device::request_proxy_semaphore()
+{
+	LOCK();
+	Semaphore ptr(handle_pool.semaphores.allocate(this));
+	return ptr;
+}
+
 Semaphore Device::request_external_semaphore(VkSemaphore semaphore, bool signalled)
 {
 	LOCK();

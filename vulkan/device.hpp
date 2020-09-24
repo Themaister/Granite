@@ -288,6 +288,11 @@ public:
 #ifndef _WIN32
 	Semaphore request_imported_semaphore(int fd, VkExternalSemaphoreHandleTypeFlagBitsKHR handle_type);
 #endif
+	// A proxy semaphore which lets us grab a semaphore handle before we signal it.
+	// Mostly useful to deal better with render graph implementation.
+	// TODO: When we require timeline semaphores, this could be a bit more elegant, and we could expose timeline directly.
+	// For time being however, we'll support moving the payload over to the proxy object.
+	Semaphore request_proxy_semaphore();
 
 	VkDevice get_device() const
 	{

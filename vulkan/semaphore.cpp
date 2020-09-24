@@ -27,6 +27,11 @@ namespace Vulkan
 {
 SemaphoreHolder::~SemaphoreHolder()
 {
+	recycle_semaphore();
+}
+
+void SemaphoreHolder::recycle_semaphore()
+{
 	if (timeline == 0 && semaphore)
 	{
 		if (internal_sync)
@@ -44,6 +49,29 @@ SemaphoreHolder::~SemaphoreHolder()
 				device->recycle_semaphore(semaphore);
 		}
 	}
+}
+
+SemaphoreHolder &SemaphoreHolder::operator=(SemaphoreHolder &&other) noexcept
+{
+	if (this == &other)
+		return *this;
+
+	assert(device == other.device);
+	recycle_semaphore();
+
+	semaphore = other.semaphore;
+	timeline = other.timeline;
+	signalled = other.signalled;
+	pending = other.pending;
+	should_destroy_on_consume = other.should_destroy_on_consume;
+
+	other.semaphore = VK_NULL_HANDLE;
+	other.timeline = 0;
+	other.signalled = false;
+	other.pending = false;
+	other.should_destroy_on_consume = false;
+
+	return *this;
 }
 
 void SemaphoreHolderDeleter::operator()(Vulkan::SemaphoreHolder *semaphore)

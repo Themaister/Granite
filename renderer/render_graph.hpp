@@ -889,12 +889,12 @@ private:
 	void enqueue_render_pass(Vulkan::Device &device, PhysicalPass &physical_pass);
 	void enqueue_swapchain_scale_pass(Vulkan::Device &device);
 	bool physical_pass_requires_work(const PhysicalPass &pass) const;
-	void physical_pass_transfer_ownership(PhysicalPass &pass);
+	void physical_pass_transfer_ownership(const PhysicalPass &pass);
 	void physical_pass_invalidate_attachments(const PhysicalPass &pass);
 	void physical_pass_enqueue_graphics_commands(const PhysicalPass &pass, Vulkan::CommandBuffer &cmd);
 	void physical_pass_enqueue_compute_commands(const PhysicalPass &pass, Vulkan::CommandBuffer &cmd);
 
-	struct PassBarrierState
+	struct PassSubmissionState
 	{
 		Util::SmallVector<VkBufferMemoryBarrier> buffer_barriers;
 		Util::SmallVector<VkImageMemoryBarrier> image_barriers;
@@ -915,20 +915,28 @@ private:
 		VkPipelineStageFlags src_stages = 0;
 		VkPipelineStageFlags handover_stages = 0;
 
-		Vulkan::Semaphore *wait_semaphore = nullptr;
+		Vulkan::Semaphore wait_semaphore;
 		VkPipelineStageFlags wait_semaphore_stages = 0;
 
 		Vulkan::PipelineEvent signal_event;
 		VkPipelineStageFlags event_signal_stages = 0;
 
+		Vulkan::Semaphore proxy_semaphores[2];
 		bool need_submission_semaphore = false;
 
+		Vulkan::CommandBufferHandle cmd;
+
+		Vulkan::CommandBuffer::Type queue_type = Vulkan::CommandBuffer::Type::Count;
+		bool graphics = false;
+
 		void add_unique_event(VkEvent event);
-		void emit_pre_pass_barriers(Vulkan::CommandBuffer &cmd) const;
-		void emit_post_pass_barriers(Vulkan::CommandBuffer &cmd) const;
+		void emit_pre_pass_barriers();
+		void emit_post_pass_barriers();
+		void submit();
 	};
-	void physical_pass_handle_invalidate_barrier(const Barrier &barrier, PassBarrierState &state, bool graphics);
-	void physical_pass_handle_signal_event(Vulkan::Device &device, const PhysicalPass &pass, PassBarrierState &state);
-	void physical_pass_handle_flush_barrier(const Barrier &barrier, PassBarrierState &state);
+	void physical_pass_handle_invalidate_barrier(const Barrier &barrier, PassSubmissionState &state, bool graphics);
+	void physical_pass_handle_signal(Vulkan::Device &device, const PhysicalPass &pass, PassSubmissionState &state);
+	void physical_pass_handle_flush_barrier(const Barrier &barrier, PassSubmissionState &state);
+	void physical_pass_handle_cpu_timeline(Vulkan::Device &device, const PhysicalPass &pass, PassSubmissionState &state);
 };
 }

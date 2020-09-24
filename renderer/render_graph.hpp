@@ -31,6 +31,7 @@
 #include <functional>
 #include "vulkan_headers.hpp"
 #include "device.hpp"
+#include "small_vector.hpp"
 #include "stack_allocator.hpp"
 #include "application_wsi_events.hpp"
 #include "quirks.hpp"
@@ -889,5 +890,30 @@ private:
 	void enqueue_swapchain_scale_pass(Vulkan::Device &device);
 	bool physical_pass_requires_work(const PhysicalPass &pass) const;
 	void physical_pass_transfer_ownership(PhysicalPass &pass);
+	void physical_pass_invalidate_attachments(const PhysicalPass &pass);
+
+	struct PassBarrierState
+	{
+		Util::SmallVector<VkBufferMemoryBarrier> buffer_barriers;
+		Util::SmallVector<VkImageMemoryBarrier> image_barriers;
+
+		// Immediate buffer barriers are useless because they don't need any layout transition,
+		// and the API guarantees that submitting a batch makes memory visible to GPU resources.
+		// Immediate image barriers are purely for doing layout transitions without waiting (srcStage = TOP_OF_PIPE).
+		Util::SmallVector<VkImageMemoryBarrier> immediate_image_barriers;
+
+		// Barriers which are used when waiting for a semaphore, and then doing a transition.
+		// We need to use pipeline barriers here so we can have srcStage = dstStage,
+		// and hand over while not breaking the pipeline.
+		Util::SmallVector<VkImageMemoryBarrier> semaphore_handover_barriers;
+		Util::SmallVector<VkEvent> events;
+
+		VkPipelineStageFlags dst_stages = 0;
+		VkPipelineStageFlags immediate_dst_stages = 0;
+		VkPipelineStageFlags src_stages = 0;
+		VkPipelineStageFlags handover_stages = 0;
+
+		void add_unique_event(VkEvent event);
+	};
 };
 }

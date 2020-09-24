@@ -25,9 +25,11 @@
 #include "format.hpp"
 #include "quirks.hpp"
 #include "muglm/muglm_impl.hpp"
+#include "small_vector.hpp"
 #include <algorithm>
 
 using namespace std;
+using namespace Util;
 
 namespace Granite
 {
@@ -1635,20 +1637,20 @@ bool RenderGraph::need_invalidate(const Barrier &barrier, const PipelineEvent &e
 
 void RenderGraph::enqueue_render_passes(Vulkan::Device &device_)
 {
-	vector<VkBufferMemoryBarrier> buffer_barriers;
-	vector<VkImageMemoryBarrier> image_barriers;
+	SmallVector<VkBufferMemoryBarrier> buffer_barriers;
+	SmallVector<VkImageMemoryBarrier> image_barriers;
 
 	// Immediate buffer barriers are useless because they don't need any layout transition,
 	// and the API guarantees that submitting a batch makes memory visible to GPU resources.
 	// Immediate image barriers are purely for doing layout transitions without waiting (srcStage = TOP_OF_PIPE).
-	vector<VkImageMemoryBarrier> immediate_image_barriers;
+	SmallVector<VkImageMemoryBarrier> immediate_image_barriers;
 
 	// Barriers which are used when waiting for a semaphore, and then doing a transition.
 	// We need to use pipeline barriers here so we can have srcStage = dstStage,
 	// and hand over while not breaking the pipeline.
-	vector<VkImageMemoryBarrier> semaphore_handover_barriers;
+	SmallVector<VkImageMemoryBarrier> semaphore_handover_barriers;
 
-	vector<VkEvent> events;
+	SmallVector<VkEvent> events;
 
 	const auto transfer_ownership = [this](PhysicalPass &pass) {
 		// Need to wait on this event before we can transfer ownership to another alias.

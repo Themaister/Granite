@@ -50,7 +50,7 @@ public:
 class Renderer : public EventHandler
 {
 public:
-	Renderer(RendererType type = RendererType::GeneralDeferred, const ShaderSuiteResolver *resolver = nullptr);
+	explicit Renderer(RendererType type = RendererType::GeneralDeferred, const ShaderSuiteResolver *resolver = nullptr);
 	virtual ~Renderer() = default;
 
 	enum RendererOptionBits
@@ -101,19 +101,19 @@ public:
 	RendererOptionFlags get_mesh_renderer_options() const;
 
 	void begin();
+	void begin(RenderQueue &queue);
 
-	void push_renderables(RenderContext &context, const VisibilityList &visible);
-	void push_depth_renderables(RenderContext &context, const VisibilityList &visible);
+	void push_renderables(const RenderContext &context, const VisibilityList &visible);
+	void push_depth_renderables(const RenderContext &context, const VisibilityList &visible);
+	void render_debug_aabb(const RenderContext &context, const AABB &aabb, const vec4 &color);
+	void render_debug_frustum(const RenderContext &context, const Frustum &frustum, const vec4 &color);
 
-	void flush(Vulkan::CommandBuffer &cmd, RenderContext &context, RendererFlushFlags options = 0);
-
-	void render_debug_aabb(RenderContext &context, const AABB &aabb, const vec4 &color);
-
-	void render_debug_frustum(RenderContext &context, const Frustum &frustum, const vec4 &color);
+	void flush(Vulkan::CommandBuffer &cmd, const RenderContext &context, RendererFlushFlags options = 0);
 
 	RenderQueue &get_render_queue()
 	{
-		return queue;
+		assert(active_queue);
+		return *active_queue;
 	}
 
 	RendererType get_renderer_type() const
@@ -132,9 +132,10 @@ private:
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
 
 	Vulkan::Device *device = nullptr;
-	RenderQueue queue;
+	RenderQueue internal_queue; // TODO: remove
+	RenderQueue *active_queue = nullptr;
 
-	DebugMeshInstanceInfo &render_debug(RenderContext &context, unsigned count);
+	DebugMeshInstanceInfo &render_debug(const RenderContext &context, unsigned count);
 	void setup_shader_suite(Vulkan::Device &device, RendererType type);
 
 	RendererType type;
@@ -151,6 +152,6 @@ private:
 class DeferredLightRenderer
 {
 public:
-	static void render_light(Vulkan::CommandBuffer &cmd, RenderContext &context, Renderer::RendererOptionFlags flags);
+	static void render_light(Vulkan::CommandBuffer &cmd, const RenderContext &context, Renderer::RendererOptionFlags flags);
 };
 }

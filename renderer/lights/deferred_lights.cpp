@@ -92,7 +92,7 @@ void DeferredLights::set_renderers(Renderer *depth_renderer_, Renderer *deferred
 	deferred_renderer = deferred_renderer_;
 }
 
-void DeferredLights::render_prepass_lights(Vulkan::CommandBuffer &cmd, RenderContext &context)
+void DeferredLights::render_prepass_lights(Vulkan::CommandBuffer &cmd, const RenderContext &context)
 {
 	if (!enable_clustered_stencil)
 		return;
@@ -110,7 +110,7 @@ void DeferredLights::render_prepass_lights(Vulkan::CommandBuffer &cmd, RenderCon
 	}
 }
 
-void DeferredLights::render_lights(Vulkan::CommandBuffer &cmd, RenderContext &context,
+void DeferredLights::render_lights(Vulkan::CommandBuffer &cmd, const RenderContext &context,
                                    Renderer::RendererOptionFlags flags)
 {
 	deferred_renderer->set_mesh_renderer_options(flags);

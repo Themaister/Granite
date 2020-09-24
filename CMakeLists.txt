@@ -392,6 +392,7 @@ if (NOT GRANITE_VULKAN_ONLY)
             renderer/simple_renderer.hpp renderer/simple_renderer.cpp
             renderer/mesh.hpp renderer/mesh.cpp
             renderer/scene.hpp renderer/scene.cpp
+            renderer/scene_renderer.hpp renderer/scene_renderer.cpp
             renderer/shader_suite.hpp renderer/shader_suite.cpp
             renderer/render_context.hpp renderer/render_context.cpp
             renderer/camera.hpp renderer/camera.cpp

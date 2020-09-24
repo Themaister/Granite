@@ -41,6 +41,27 @@ namespace Granite
 class RenderGraph;
 class RenderPass;
 
+// A more stateful variant of the lambdas.
+// It can be somewhat awkward to marshal shared data between N different lambdas.
+class RenderPassInterface : public Util::IntrusivePtrEnabled<RenderPassInterface,
+		std::default_delete<RenderPassInterface>,
+		Util::SingleThreadCounter>
+{
+public:
+	virtual ~RenderPassInterface() = default;
+
+	virtual bool render_pass_is_conditional() const;
+	virtual bool render_pass_is_layered() const;
+
+	virtual bool need_render_pass() const;
+	virtual bool get_clear_depth_stencil(VkClearDepthStencilValue *value) const;
+	virtual bool get_clear_color(unsigned attachment, VkClearColorValue *value) const;
+
+	virtual void build_render_pass(Vulkan::CommandBuffer &cmd);
+	virtual void build_render_pass_layered(Vulkan::CommandBuffer &cmd, unsigned layer);
+};
+using RenderPassInterfaceHandle = Util::IntrusivePtr<RenderPassInterface>;
+
 enum SizeClass
 {
 	Absolute,
@@ -508,9 +529,11 @@ public:
 		physical_pass = index_;
 	}
 
-	bool need_render_pass()
+	bool need_render_pass() const
 	{
-		if (need_render_pass_cb)
+		if (render_pass_handle)
+			return render_pass_handle->need_render_pass();
+		else if (need_render_pass_cb)
 			return need_render_pass_cb();
 		else
 			return true;
@@ -518,20 +541,27 @@ public:
 
 	bool may_not_need_render_pass() const
 	{
-		return bool(need_render_pass_cb);
+		if (render_pass_handle)
+			return render_pass_handle->render_pass_is_conditional();
+		else
+			return bool(need_render_pass_cb);
 	}
 
-	bool get_clear_color(unsigned index_, VkClearColorValue * value = nullptr)
+	bool get_clear_color(unsigned index_, VkClearColorValue *value = nullptr) const
 	{
-		if (get_clear_color_cb)
+		if (render_pass_handle)
+			return render_pass_handle->get_clear_color(index_, value);
+		else if (get_clear_color_cb)
 			return get_clear_color_cb(index_, value);
 		else
 			return false;
 	}
 
-	bool get_clear_depth_stencil(VkClearDepthStencilValue * value = nullptr)
+	bool get_clear_depth_stencil(VkClearDepthStencilValue *value = nullptr) const
 	{
-		if (get_clear_depth_stencil_cb)
+		if (render_pass_handle)
+			return render_pass_handle->get_clear_depth_stencil(value);
+		else if (get_clear_depth_stencil_cb)
 			return get_clear_depth_stencil_cb(value);
 		else
 			return false;
@@ -539,10 +569,22 @@ public:
 
 	void build_render_pass(Vulkan::CommandBuffer &cmd, unsigned layer)
 	{
-		if (build_render_pass_layered_cb)
+		if (render_pass_handle)
+		{
+			if (render_pass_handle->render_pass_is_layered())
+				render_pass_handle->build_render_pass_layered(cmd, layer);
+			else
+				render_pass_handle->build_render_pass(cmd);
+		}
+		else if (build_render_pass_layered_cb)
 			build_render_pass_layered_cb(layer, cmd);
 		else if (build_render_pass_cb)
 			build_render_pass_cb(cmd);
+	}
+
+	void set_render_pass_interface(RenderPassInterfaceHandle handle)
+	{
+		render_pass_handle = std::move(handle);
 	}
 
 	void set_need_render_pass(std::function<bool ()> func)
@@ -586,6 +628,7 @@ private:
 	unsigned physical_pass = Unused;
 	RenderGraphQueueFlagBits queue;
 
+	RenderPassInterfaceHandle render_pass_handle;
 	std::function<void (Vulkan::CommandBuffer &)> build_render_pass_cb;
 	std::function<void (unsigned, Vulkan::CommandBuffer &)> build_render_pass_layered_cb;
 	std::function<bool ()> need_render_pass_cb;

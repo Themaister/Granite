@@ -31,6 +31,43 @@ using namespace std;
 
 namespace Granite
 {
+bool RenderPassInterface::render_pass_is_conditional() const
+{
+	return false;
+}
+
+bool RenderPassInterface::render_pass_is_layered() const
+{
+	return false;
+}
+
+bool RenderPassInterface::need_render_pass() const
+{
+	return true;
+}
+
+bool RenderPassInterface::get_clear_depth_stencil(VkClearDepthStencilValue *value) const
+{
+	if (value)
+		*value = { 1.0f, 0u };
+	return true;
+}
+
+bool RenderPassInterface::get_clear_color(unsigned, VkClearColorValue *value) const
+{
+	if (value)
+		*value = {};
+	return true;
+}
+
+void RenderPassInterface::build_render_pass(Vulkan::CommandBuffer &)
+{
+}
+
+void RenderPassInterface::build_render_pass_layered(Vulkan::CommandBuffer &, unsigned)
+{
+}
+
 static const RenderGraphQueueFlags compute_queues = RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT |
                                                     RENDER_GRAPH_QUEUE_COMPUTE_BIT;
 

@@ -1740,9 +1740,22 @@ void RenderGraph::PassSubmissionState::emit_post_pass_barriers()
 	cmd->end_region();
 }
 
+static void wait_for_semaphore_in_queue(Vulkan::Device &device_, Vulkan::Semaphore &sem,
+                                        Vulkan::CommandBuffer::Type queue_type, VkPipelineStageFlags stages)
+{
+	if (sem->get_semaphore() != VK_NULL_HANDLE && !sem->is_pending_wait())
+		device_.add_wait_semaphore(queue_type, sem, stages, true);
+}
+
 void RenderGraph::PassSubmissionState::submit()
 {
+	if (!cmd)
+		return;
+
 	auto &device_ = cmd->get_device();
+	if (wait_semaphore)
+		wait_for_semaphore_in_queue(device_, wait_semaphore, queue_type, wait_semaphore_stages);
+
 	if (need_submission_semaphore)
 	{
 		Vulkan::Semaphore semaphores[2];
@@ -1755,13 +1768,6 @@ void RenderGraph::PassSubmissionState::submit()
 
 	if (Vulkan::ImplementationQuirks::get().queue_wait_on_submission)
 		device_.flush_frame();
-}
-
-static void wait_for_semaphore_in_queue(Vulkan::Device &device_, Vulkan::Semaphore &sem,
-                                        Vulkan::CommandBuffer::Type queue_type, VkPipelineStageFlags stages)
-{
-	if (sem->get_semaphore() != VK_NULL_HANDLE && !sem->is_pending_wait())
-		device_.add_wait_semaphore(queue_type, sem, stages, true);
 }
 
 void RenderGraph::physical_pass_invalidate_attachments(const PhysicalPass &physical_pass)
@@ -2070,7 +2076,9 @@ void RenderGraph::physical_pass_enqueue_compute_commands(const PhysicalPass &phy
 	}
 }
 
-void RenderGraph::physical_pass_handle_cpu_timeline(Vulkan::Device &device_, const PhysicalPass &physical_pass, PassSubmissionState &state)
+void RenderGraph::physical_pass_handle_cpu_timeline(Vulkan::Device &device_,
+                                                    const PhysicalPass &physical_pass,
+                                                    PassSubmissionState &state)
 {
 	get_queue_type(state.queue_type, state.graphics, passes[physical_pass.passes.front()]->get_queue());
 
@@ -2088,24 +2096,10 @@ void RenderGraph::physical_pass_handle_cpu_timeline(Vulkan::Device &device_, con
 	physical_pass_transfer_ownership(physical_pass);
 }
 
-void RenderGraph::enqueue_render_pass(Vulkan::Device &device_, PhysicalPass &physical_pass)
+void RenderGraph::physical_pass_handle_gpu_timeline(Vulkan::Device &device_,
+                                                    const PhysicalPass &physical_pass,
+                                                    PassSubmissionState &state)
 {
-	PassSubmissionState state;
-
-	if (!physical_pass_requires_work(physical_pass))
-	{
-		physical_pass_transfer_ownership(physical_pass);
-		return;
-	}
-
-	physical_pass_handle_cpu_timeline(device_, physical_pass, state);
-
-	if (state.wait_semaphore)
-	{
-		wait_for_semaphore_in_queue(device_, state.wait_semaphore,
-		                            state.queue_type, state.wait_semaphore_stages);
-	}
-
 	state.cmd = device_.request_command_buffer(state.queue_type);
 	state.emit_pre_pass_barriers();
 
@@ -2115,7 +2109,21 @@ void RenderGraph::enqueue_render_pass(Vulkan::Device &device_, PhysicalPass &phy
 		physical_pass_enqueue_compute_commands(physical_pass, *state.cmd);
 
 	state.emit_post_pass_barriers();
-	state.submit();
+}
+
+void RenderGraph::enqueue_render_pass(Vulkan::Device &device_, PhysicalPass &physical_pass, PassSubmissionState &state)
+{
+	if (!physical_pass_requires_work(physical_pass))
+	{
+		physical_pass_transfer_ownership(physical_pass);
+		return;
+	}
+
+	// Runs serially on CPU resolve barrier states.
+	physical_pass_handle_cpu_timeline(device_, physical_pass, state);
+
+	// Could be run in parallel.
+	physical_pass_handle_gpu_timeline(device_, physical_pass, state);
 }
 
 void RenderGraph::enqueue_swapchain_scale_pass(Vulkan::Device &device_)
@@ -2220,8 +2228,13 @@ void RenderGraph::enqueue_swapchain_scale_pass(Vulkan::Device &device_)
 
 void RenderGraph::enqueue_render_passes(Vulkan::Device &device_)
 {
+	Util::SmallVector<PassSubmissionState, 64> states(physical_passes.size());
+	auto *state_itr = states.data();
 	for (auto &physical_pass : physical_passes)
-		enqueue_render_pass(device_, physical_pass);
+		enqueue_render_pass(device_, physical_pass, *state_itr++);
+
+	for (auto &state : states)
+		state.submit();
 
 	// Scale to swapchain if needed.
 	if (swapchain_physical_index == RenderResource::Unused)

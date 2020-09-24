@@ -886,14 +886,6 @@ private:
 	void reorder_passes(std::vector<unsigned> &passes);
 	static bool need_invalidate(const Barrier &barrier, const PipelineEvent &event);
 
-	void enqueue_render_pass(Vulkan::Device &device, PhysicalPass &physical_pass);
-	void enqueue_swapchain_scale_pass(Vulkan::Device &device);
-	bool physical_pass_requires_work(const PhysicalPass &pass) const;
-	void physical_pass_transfer_ownership(const PhysicalPass &pass);
-	void physical_pass_invalidate_attachments(const PhysicalPass &pass);
-	void physical_pass_enqueue_graphics_commands(const PhysicalPass &pass, Vulkan::CommandBuffer &cmd);
-	void physical_pass_enqueue_compute_commands(const PhysicalPass &pass, Vulkan::CommandBuffer &cmd);
-
 	struct PassSubmissionState
 	{
 		Util::SmallVector<VkBufferMemoryBarrier> buffer_barriers;
@@ -934,9 +926,19 @@ private:
 		void emit_post_pass_barriers();
 		void submit();
 	};
+
+	void enqueue_render_pass(Vulkan::Device &device, PhysicalPass &physical_pass, PassSubmissionState &state);
+	void enqueue_swapchain_scale_pass(Vulkan::Device &device);
+	bool physical_pass_requires_work(const PhysicalPass &pass) const;
+	void physical_pass_transfer_ownership(const PhysicalPass &pass);
+	void physical_pass_invalidate_attachments(const PhysicalPass &pass);
+	void physical_pass_enqueue_graphics_commands(const PhysicalPass &pass, Vulkan::CommandBuffer &cmd);
+	void physical_pass_enqueue_compute_commands(const PhysicalPass &pass, Vulkan::CommandBuffer &cmd);
+
 	void physical_pass_handle_invalidate_barrier(const Barrier &barrier, PassSubmissionState &state, bool graphics);
 	void physical_pass_handle_signal(Vulkan::Device &device, const PhysicalPass &pass, PassSubmissionState &state);
 	void physical_pass_handle_flush_barrier(const Barrier &barrier, PassSubmissionState &state);
 	void physical_pass_handle_cpu_timeline(Vulkan::Device &device, const PhysicalPass &pass, PassSubmissionState &state);
+	void physical_pass_handle_gpu_timeline(Vulkan::Device &device, const PhysicalPass &pass, PassSubmissionState &state);
 };
 }

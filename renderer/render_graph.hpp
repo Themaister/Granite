@@ -884,5 +884,10 @@ private:
 
 	void reorder_passes(std::vector<unsigned> &passes);
 	static bool need_invalidate(const Barrier &barrier, const PipelineEvent &event);
+
+	void enqueue_render_pass(Vulkan::Device &device, PhysicalPass &physical_pass);
+	void enqueue_swapchain_scale_pass(Vulkan::Device &device);
+	bool physical_pass_requires_work(const PhysicalPass &pass) const;
+	void physical_pass_transfer_ownership(PhysicalPass &pass);
 };
 }

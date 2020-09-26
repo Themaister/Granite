@@ -966,6 +966,7 @@ private:
 
 		Vulkan::CommandBuffer::Type queue_type = Vulkan::CommandBuffer::Type::Count;
 		bool graphics = false;
+		bool active = false;
 
 		void add_unique_event(VkEvent event);
 		void emit_pre_pass_barriers();

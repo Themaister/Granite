@@ -2161,11 +2161,10 @@ void RenderGraph::enqueue_render_pass(Vulkan::Device &device_, PhysicalPass &phy
 		return;
 	}
 
+	state.active = true;
+
 	// Runs serially on CPU resolve barrier states.
 	physical_pass_handle_cpu_timeline(device_, physical_pass, state);
-
-	// Could be run in parallel.
-	physical_pass_handle_gpu_timeline(device_, physical_pass, state);
 }
 
 void RenderGraph::enqueue_swapchain_scale_pass(Vulkan::Device &device_)
@@ -2271,9 +2270,17 @@ void RenderGraph::enqueue_swapchain_scale_pass(Vulkan::Device &device_)
 void RenderGraph::enqueue_render_passes(Vulkan::Device &device_)
 {
 	Util::SmallVector<PassSubmissionState, 64> states(physical_passes.size());
-	auto *state_itr = states.data();
-	for (auto &physical_pass : physical_passes)
-		enqueue_render_pass(device_, physical_pass, *state_itr++);
+	size_t count = states.size();
+
+	for (size_t i = 0; i < count; i++)
+		enqueue_render_pass(device_, physical_passes[i], states[i]);
+
+	for (size_t i = 0; i < count; i++)
+	{
+		// Could be run in parallel.
+		if (states[i].active)
+			physical_pass_handle_gpu_timeline(device_, physical_passes[i], states[i]);
+	}
 
 	for (auto &state : states)
 		state.submit();

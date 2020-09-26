@@ -39,8 +39,8 @@ public:
 		enable_clustered_stencil = state;
 	}
 
-	void render_prepass_lights(Vulkan::CommandBuffer &cmd, const RenderContext &context);
-	void render_lights(Vulkan::CommandBuffer &cmd, const RenderContext &context, Renderer::RendererOptionFlags flags);
+	void render_prepass_lights(Vulkan::CommandBuffer &cmd, RenderQueue &queue, const RenderContext &context);
+	void render_lights(Vulkan::CommandBuffer &cmd, RenderQueue &queue, const RenderContext &context, Renderer::RendererOptionFlags flags);
 
 	void set_max_spot_lights(unsigned count)
 	{
@@ -53,11 +53,10 @@ public:
 	}
 
 private:
-	VisibilityList visible;
-	RenderQueue queue;
 	Scene *scene = nullptr;
 	Renderer *depth_renderer = nullptr;
 	Renderer *deferred_renderer = nullptr;
+	VisibilityList visible;
 
 	enum { NumClusters = 7 };
 

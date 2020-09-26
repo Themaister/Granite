@@ -116,6 +116,8 @@ private:
 #endif
 	};
 
+	Vulkan::Program *get_program_locked(unsigned variant);
+
 	ShaderTemplate *stages[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
 	std::vector<Variant> variants;
 	std::vector<Util::Hash> variant_hashes;

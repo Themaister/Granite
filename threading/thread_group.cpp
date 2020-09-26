@@ -26,6 +26,11 @@
 #include "logging.hpp"
 #include "global_managers.hpp"
 #include "thread_id.hpp"
+#include "string_helpers.hpp"
+
+#ifdef __linux__
+#include <pthread.h>
+#endif
 
 using namespace std;
 
@@ -116,6 +121,24 @@ TaskGroup::~TaskGroup()
 }
 }
 
+static void set_main_thread_name()
+{
+#ifdef __linux__
+	pthread_setname_np(pthread_self(), "MainThread");
+#endif
+}
+
+static void set_worker_thread_name(unsigned index)
+{
+#ifdef _WIN32
+	// TODO: Kinda messy.
+	(void)index;
+#elif defined(__linux__)
+	auto name = Util::join("WorkerThread-", index);
+	pthread_setname_np(pthread_self(), name.c_str());
+#endif
+}
+
 void ThreadGroup::start(unsigned num_threads)
 {
 	if (active)
@@ -130,10 +153,13 @@ void ThreadGroup::start(unsigned num_threads)
 	auto ctx = std::shared_ptr<Global::GlobalManagers>(Global::create_thread_context().release(),
 	                                                   Global::delete_thread_context);
 
+	set_main_thread_name();
+
 	unsigned self_index = 1;
 	for (auto &t : thread_group)
 	{
 		t = make_unique<thread>([this, ctx, self_index]() {
+			set_worker_thread_name(self_index - 1);
 			Global::set_thread_context(*ctx);
 			thread_looper(self_index);
 		});

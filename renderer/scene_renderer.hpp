@@ -42,7 +42,11 @@ enum SceneRendererFlagBits : uint32_t
 	SCENE_RENDERER_DEFERRED_CLUSTER_BIT = 1 << 6,
 	SCENE_RENDERER_PCF_1X_BIT = 1 << 7,
 	SCENE_RENDERER_PCF_3X_BIT = 1 << 8,
-	SCENE_RENDERER_PCF_5X_BIT = 1 << 9
+	SCENE_RENDERER_PCF_5X_BIT = 1 << 9,
+	SCENE_RENDERER_DEPTH_VSM_BIT = 1 << 10,
+	SCENE_RENDERER_DEPTH_BIT = 1 << 11,
+	SCENE_RENDERER_DEPTH_STATIC_BIT = 1 << 12,
+	SCENE_RENDERER_DEPTH_DYNAMIC_BIT = 1 << 13
 };
 using SceneRendererFlags = uint32_t;
 
@@ -60,14 +64,28 @@ public:
 		SceneRendererFlags flags;
 	};
 	void init(const Setup &setup);
+	void set_clear_color(const VkClearColorValue &value);
 
 protected:
 	Setup setup_data = {};
+	VkClearColorValue clear_color_value = {};
 
 	// These need to be per-thread, and thus are hoisted out as state in RenderPassSceneRenderer.
 	VisibilityList visible;
 	RenderQueue queue;
 
 	void build_render_pass(Vulkan::CommandBuffer &cmd) override;
+	bool get_clear_color(unsigned attachment, VkClearColorValue *value) const override;
+};
+
+class RenderPassSceneRendererConditional : public RenderPassSceneRenderer
+{
+public:
+	void set_need_render_pass(bool need);
+
+private:
+	bool render_pass_is_conditional() const override;
+	bool need_render_pass() const override;
+	bool need = false;
 };
 }

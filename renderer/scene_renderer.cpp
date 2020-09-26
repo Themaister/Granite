@@ -110,5 +110,45 @@ void RenderPassSceneRenderer::build_render_pass(Vulkan::CommandBuffer &cmd)
 		setup_data.forward->push_renderables(*setup_data.context, visible);
 		setup_data.forward->flush(cmd, *setup_data.context, Renderer::DEPTH_STENCIL_READ_ONLY_BIT);
 	}
+
+	if (setup_data.flags & SCENE_RENDERER_DEPTH_BIT)
+	{
+		visible.clear();
+		setup_data.depth->set_mesh_renderer_options((setup_data.flags & SCENE_RENDERER_DEPTH_VSM_BIT) ? Renderer::SHADOW_VSM_BIT : 0);
+		setup_data.depth->begin(queue);
+		if (setup_data.flags & SCENE_RENDERER_DEPTH_DYNAMIC_BIT)
+			setup_data.scene->gather_visible_dynamic_shadow_renderables(setup_data.context->get_visibility_frustum(), visible);
+		if (setup_data.flags & SCENE_RENDERER_DEPTH_STATIC_BIT)
+			setup_data.scene->gather_visible_static_shadow_renderables(setup_data.context->get_visibility_frustum(), visible);
+		setup_data.depth->push_depth_renderables(*setup_data.context, visible);
+		setup_data.depth->flush(cmd, *setup_data.context, Renderer::DEPTH_BIAS_BIT);
+	}
+}
+
+void RenderPassSceneRenderer::set_clear_color(const VkClearColorValue &value)
+{
+	clear_color_value = value;
+}
+
+bool RenderPassSceneRenderer::get_clear_color(unsigned, VkClearColorValue *value) const
+{
+	if (value)
+		*value = clear_color_value;
+	return true;
+}
+
+void RenderPassSceneRendererConditional::set_need_render_pass(bool need_)
+{
+	need = need_;
+}
+
+bool RenderPassSceneRendererConditional::need_render_pass() const
+{
+	return need;
+}
+
+bool RenderPassSceneRendererConditional::render_pass_is_conditional() const
+{
+	return true;
 }
 }

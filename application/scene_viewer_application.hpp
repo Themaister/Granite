@@ -57,15 +57,16 @@ protected:
 	void render_scene();
 
 	RenderContext context;
-	RenderContext depth_context;
+	RenderContext depth_context_near;
+	RenderContext depth_context_far;
+	Util::IntrusivePtr<RenderPassSceneRendererConditional> shadow_far_renderer;
+
 	Renderer forward_renderer;
 	Renderer deferred_renderer;
 	Renderer depth_renderer;
 	FlatRenderer flat_renderer;
 	LightingParameters lighting;
 	FPSCamera cam;
-	VisibilityList visible;
-	VisibilityList depth_visible;
 	SceneLoader scene_loader;
 	std::unique_ptr<AnimationSystem> animation_system;
 
@@ -95,9 +96,9 @@ protected:
 	DeferredLights deferred_lights;
 	RenderQueue queue;
 
+	void setup_shadow_map_near();
+	void setup_shadow_map_far();
 	void update_shadow_scene_aabb();
-	void render_shadow_map_near(Vulkan::CommandBuffer &cmd);
-	void render_shadow_map_far(Vulkan::CommandBuffer &cmd);
 	void render_ui(Vulkan::CommandBuffer &cmd);
 
 	void add_main_pass(Vulkan::Device &device, const std::string &tag);

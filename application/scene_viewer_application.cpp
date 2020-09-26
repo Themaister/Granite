@@ -538,6 +538,8 @@ void SceneViewerApplication::capture_environment_probe()
 	auto handle = device.create_image(info, nullptr);
 	auto cmd = device.request_command_buffer();
 
+	VisibilityList visible;
+
 	for (unsigned face = 0; face < 6; face++)
 	{
 		ImageViewCreateInfo view_info = {};
@@ -838,35 +840,37 @@ void SceneViewerApplication::add_shadow_pass(Device &, const std::string &tag, D
 		shadowpass.set_depth_stencil_output(tagcat("shadow", tag), shadowmap);
 	}
 
-	shadowpass.set_build_render_pass([this, type](CommandBuffer &cmd) {
-		if (type == DepthPassType::Main)
-			render_shadow_map_far(cmd);
-		else
-			render_shadow_map_near(cmd);
-	});
+	Util::IntrusivePtr<RenderPassSceneRenderer> handle;
+	RenderPassSceneRenderer::Setup setup = {};
+	setup.scene = &scene_loader.get_scene();
+	setup.forward = &forward_renderer;
+	setup.deferred = &deferred_renderer;
+	setup.depth = &depth_renderer;
+	setup.flags = SCENE_RENDERER_DEPTH_BIT;
+	if (config.directional_light_shadows_vsm)
+		setup.flags |= SCENE_RENDERER_DEPTH_VSM_BIT;
 
-	shadowpass.set_get_clear_color([](unsigned, VkClearColorValue *value) -> bool {
-		if (value)
-		{
-			value->float32[0] = 1.0f;
-			value->float32[1] = 1.0f;
-			value->float32[2] = 0.0f;
-			value->float32[3] = 0.0f;
-		}
-		return true;
-	});
+	if (type == DepthPassType::Main)
+	{
+		setup.context = &depth_context_far;
+		shadow_far_renderer = Util::make_handle<RenderPassSceneRendererConditional>();
+		handle = shadow_far_renderer;
+		setup.flags |= SCENE_RENDERER_DEPTH_STATIC_BIT;
+	}
+	else
+	{
+		setup.context = &depth_context_near;
+		handle = Util::make_handle<RenderPassSceneRenderer>();
+		setup.flags |= SCENE_RENDERER_DEPTH_DYNAMIC_BIT;
+	}
 
-	shadowpass.set_get_clear_depth_stencil([](VkClearDepthStencilValue *value) -> bool {
-		if (value)
-		{
-			value->depth = 1.0f;
-			value->stencil = 0;
-		}
-		return true;
-	});
+	handle->init(setup);
 
-	shadowpass.set_need_render_pass(
-	    [this, type]() { return type == DepthPassType::Main ? need_shadow_map_update : true; });
+	VkClearColorValue value = {};
+	value.float32[0] = 1.0f;
+	value.float32[1] = 1.0f;
+	handle->set_clear_color(value);
+	shadowpass.set_render_pass_interface(std::move(handle));
 }
 
 void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent &swap)
@@ -966,9 +970,6 @@ void SceneViewerApplication::update_shadow_scene_aabb()
 
 void SceneViewerApplication::update_shadow_map()
 {
-	auto &scene = scene_loader.get_scene();
-	depth_visible.clear();
-
 	mat4 view = mat4_cast(look_at(-selected_directional->direction, vec3(0.0f, 1.0f, 0.0f)));
 
 	// Project the scene AABB into the light and find our ortho ranges.
@@ -977,24 +978,16 @@ void SceneViewerApplication::update_shadow_map()
 
 	// Standard scale/bias.
 	lighting.shadow.far_transform = translate(vec3(0.5f, 0.5f, 0.0f)) * scale(vec3(0.5f, 0.5f, 1.0f)) * proj * view;
-	depth_context.set_camera(proj, view);
-
-	depth_renderer.set_mesh_renderer_options(config.directional_light_shadows_vsm ? Renderer::SHADOW_VSM_BIT : 0);
-	depth_renderer.begin(queue);
-	scene.gather_visible_static_shadow_renderables(depth_context.get_visibility_frustum(), depth_visible);
-	depth_renderer.push_depth_renderables(depth_context, depth_visible);
+	depth_context_far.set_camera(proj, view);
 }
 
-void SceneViewerApplication::render_shadow_map_far(CommandBuffer &cmd)
+void SceneViewerApplication::setup_shadow_map_far()
 {
 	update_shadow_map();
-	depth_renderer.flush(cmd, depth_context, Renderer::DEPTH_BIAS_BIT);
 }
 
-void SceneViewerApplication::render_shadow_map_near(CommandBuffer &cmd)
+void SceneViewerApplication::setup_shadow_map_near()
 {
-	auto &scene = scene_loader.get_scene();
-	depth_visible.clear();
 	mat4 view = mat4_cast(look_at(-selected_directional->direction, vec3(0.0f, 1.0f, 0.0f)));
 	AABB ortho_range_depth = shadow_scene_aabb.transform(view); // Just need this to determine Zmin/Zmax.
 
@@ -1015,12 +1008,7 @@ void SceneViewerApplication::render_shadow_map_near(CommandBuffer &cmd)
 
 	mat4 proj = ortho(ortho_range);
 	lighting.shadow.near_transform = translate(vec3(0.5f, 0.5f, 0.0f)) * scale(vec3(0.5f, 0.5f, 1.0f)) * proj * view;
-	depth_context.set_camera(proj, view);
-	depth_renderer.set_mesh_renderer_options(config.directional_light_shadows_vsm ? Renderer::SHADOW_VSM_BIT : 0);
-	depth_renderer.begin(queue);
-	scene.gather_visible_dynamic_shadow_renderables(depth_context.get_visibility_frustum(), depth_visible);
-	depth_renderer.push_depth_renderables(depth_context, depth_visible);
-	depth_renderer.flush(cmd, depth_context, Renderer::DEPTH_BIAS_BIT);
+	depth_context_near.set_camera(proj, view);
 }
 
 void SceneViewerApplication::update_scene(double frame_time, double elapsed_time)
@@ -1102,14 +1090,20 @@ void SceneViewerApplication::render_scene()
 
 	if (config.force_shadow_map_update)
 		need_shadow_map_update = true;
-
-	if (need_shadow_map_update)
-		update_shadow_scene_aabb();
+	if (shadow_far_renderer)
+		shadow_far_renderer->set_need_render_pass(need_shadow_map_update);
 
 	graph.setup_attachments(device, &device.get_swapchain_view());
 	lighting.shadow_near = graph.maybe_get_physical_texture_resource(shadow_near);
 	lighting.shadow_far = graph.maybe_get_physical_texture_resource(shadow_main);
 	lighting.ambient_occlusion = graph.maybe_get_physical_texture_resource(ssao_output);
+
+	if (need_shadow_map_update)
+	{
+		update_shadow_scene_aabb();
+		setup_shadow_map_far();
+	}
+	setup_shadow_map_near();
 
 	scene.bind_render_graph_resources(graph);
 	graph.enqueue_render_passes(device);

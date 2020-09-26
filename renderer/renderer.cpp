@@ -271,11 +271,6 @@ void Renderer::on_device_destroyed(const DeviceCreatedEvent &)
 {
 }
 
-void Renderer::begin()
-{
-	begin(internal_queue);
-}
-
 void Renderer::begin(RenderQueue &queue)
 {
 	active_queue = &queue;

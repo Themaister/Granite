@@ -290,6 +290,7 @@ private:
 	const Vulkan::ImageView *reflection = nullptr;
 	const Vulkan::ImageView *refraction = nullptr;
 	Vulkan::Texture *normalmap = nullptr;
+	RenderQueue internal_queue;
 
 	vec3 position;
 	vec3 normal;

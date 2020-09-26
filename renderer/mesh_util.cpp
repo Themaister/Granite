@@ -1204,7 +1204,7 @@ void TexturePlane::render_main_pass(Vulkan::CommandBuffer &cmd, const mat4 &proj
 	scene->gather_visible_transparent_renderables(context.get_visibility_frustum(), visible);
 	scene->gather_unbounded_renderables(visible);
 	renderer->set_mesh_renderer_options_from_lighting(lighting);
-	renderer->begin();
+	renderer->begin(internal_queue);
 	renderer->push_renderables(context, visible);
 	renderer->flush(cmd, context);
 }

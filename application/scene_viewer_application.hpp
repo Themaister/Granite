@@ -92,6 +92,7 @@ protected:
 	std::unique_ptr<LightClusterer> cluster;
 	std::unique_ptr<VolumetricFog> volumetric_fog;
 	DeferredLights deferred_lights;
+	RenderQueue queue;
 
 	void update_shadow_scene_aabb();
 	void render_shadow_map_near(Vulkan::CommandBuffer &cmd);

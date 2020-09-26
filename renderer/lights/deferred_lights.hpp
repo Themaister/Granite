@@ -54,6 +54,7 @@ public:
 
 private:
 	VisibilityList visible;
+	RenderQueue queue;
 	Scene *scene = nullptr;
 	Renderer *depth_renderer = nullptr;
 	Renderer *deferred_renderer = nullptr;

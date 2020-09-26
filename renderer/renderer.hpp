@@ -100,7 +100,6 @@ public:
 	void set_stencil_reference(uint8_t compare_mask, uint8_t write_mask, uint8_t ref);
 	RendererOptionFlags get_mesh_renderer_options() const;
 
-	void begin();
 	void begin(RenderQueue &queue);
 
 	void push_renderables(const RenderContext &context, const VisibilityList &visible);
@@ -132,7 +131,6 @@ private:
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
 
 	Vulkan::Device *device = nullptr;
-	RenderQueue internal_queue; // TODO: remove
 	RenderQueue *active_queue = nullptr;
 
 	DebugMeshInstanceInfo &render_debug(const RenderContext &context, unsigned count);

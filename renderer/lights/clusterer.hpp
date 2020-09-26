@@ -109,6 +109,7 @@ private:
 	const RenderContext *context = nullptr;
 	const ComponentGroupVector<PositionalLightComponent, RenderInfoComponent> *lights = nullptr;
 	std::vector<std::pair<PositionalLight *, const RenderInfoComponent *>> light_sort_cache;
+	RenderQueue queue;
 
 	unsigned resolution_x = 64, resolution_y = 32, resolution_z = 16;
 	unsigned shadow_resolution = 512;

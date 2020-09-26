@@ -575,7 +575,8 @@ void SceneViewerApplication::capture_environment_probe()
 		scene.gather_unbounded_renderables(visible);
 		forward_renderer.set_mesh_renderer_options_from_lighting(lighting);
 		forward_renderer.set_mesh_renderer_options(forward_renderer.get_mesh_renderer_options() | config.pcf_flags);
-		forward_renderer.begin();
+
+		forward_renderer.begin(queue);
 		forward_renderer.push_renderables(context, visible);
 
 		Renderer::RendererOptionFlags opt = Renderer::FRONT_FACE_CLOCKWISE_BIT;
@@ -980,7 +981,7 @@ void SceneViewerApplication::update_shadow_map()
 	depth_context.set_camera(proj, view);
 
 	depth_renderer.set_mesh_renderer_options(config.directional_light_shadows_vsm ? Renderer::SHADOW_VSM_BIT : 0);
-	depth_renderer.begin();
+	depth_renderer.begin(queue);
 	scene.gather_visible_static_shadow_renderables(depth_context.get_visibility_frustum(), depth_visible);
 	depth_renderer.push_depth_renderables(depth_context, depth_visible);
 }
@@ -1017,7 +1018,7 @@ void SceneViewerApplication::render_shadow_map_near(CommandBuffer &cmd)
 	lighting.shadow.near_transform = translate(vec3(0.5f, 0.5f, 0.0f)) * scale(vec3(0.5f, 0.5f, 1.0f)) * proj * view;
 	depth_context.set_camera(proj, view);
 	depth_renderer.set_mesh_renderer_options(config.directional_light_shadows_vsm ? Renderer::SHADOW_VSM_BIT : 0);
-	depth_renderer.begin();
+	depth_renderer.begin(queue);
 	scene.gather_visible_dynamic_shadow_renderables(depth_context.get_visibility_frustum(), depth_visible);
 	depth_renderer.push_depth_renderables(depth_context, depth_visible);
 	depth_renderer.flush(cmd, depth_context, Renderer::DEPTH_BIAS_BIT);

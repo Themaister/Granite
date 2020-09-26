@@ -29,6 +29,7 @@
 #include "thread_group.hpp"
 #include "utils/image_utils.hpp"
 //#include "ocean.hpp"
+#include "scene_renderer.hpp"
 #include <float.h>
 #include <stdexcept>
 
@@ -696,25 +697,20 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 
 	lighting_pass.set_depth_stencil_output(tagcat("depth", tag), depth);
 
-	lighting_pass.set_get_clear_depth_stencil([](VkClearDepthStencilValue *value) -> bool {
-		if (value)
-		{
-			value->depth = 1.0f;
-			value->stencil = 0;
-		}
-		return true;
-	});
+	auto renderer = Util::make_handle<RenderPassSceneRenderer>();
+	RenderPassSceneRenderer::Setup setup = {};
+	setup.scene = &scene_loader.get_scene();
+	setup.deferred_lights = &deferred_lights;
+	setup.context = &context;
+	setup.forward = &forward_renderer;
+	setup.deferred = &deferred_renderer;
+	setup.depth = &depth_renderer;
+	setup.flags = SCENE_RENDERER_FORWARD_OPAQUE_BIT | SCENE_RENDERER_FORWARD_TRANSPARENT_BIT;
+	if (config.forward_depth_prepass)
+		setup.flags |= SCENE_RENDERER_FORWARD_Z_PREPASS_BIT;
+	renderer->init(setup);
 
-	lighting_pass.set_get_clear_color([](unsigned, VkClearColorValue *value) -> bool {
-		if (value)
-			memset(value, 0, sizeof(*value));
-		return true;
-	});
-
-	lighting_pass.set_build_render_pass([this](CommandBuffer &cmd) {
-		render_main_pass(cmd, selected_camera->get_projection(), selected_camera->get_view());
-		render_transparent_objects(cmd, selected_camera->get_projection(), selected_camera->get_view());
-	});
+	lighting_pass.set_render_pass_interface(std::move(renderer));
 
 	shadow_main = nullptr;
 	shadow_near = nullptr;
@@ -749,31 +745,23 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 	gbuffer.add_color_output(tagcat("normal", tag), normal);
 	gbuffer.add_color_output(tagcat("pbr", tag), pbr);
 	gbuffer.set_depth_stencil_output(tagcat("depth-transient", tag), depth);
-	gbuffer.set_build_render_pass([this](CommandBuffer &cmd) {
-		render_main_pass(cmd, selected_camera->get_projection(), selected_camera->get_view());
+
+	{
+		auto renderer = Util::make_handle<RenderPassSceneRenderer>();
+		RenderPassSceneRenderer::Setup setup = {};
+		setup.scene = &scene_loader.get_scene();
+		setup.deferred_lights = &deferred_lights;
+		setup.context = &context;
+		setup.forward = &forward_renderer;
+		setup.deferred = &deferred_renderer;
+		setup.depth = &depth_renderer;
+		setup.flags = SCENE_RENDERER_DEFERRED_GBUFFER_BIT;
 		if (!config.clustered_lights && config.deferred_clustered_stencil_culling)
-			render_positional_lights_prepass(cmd, selected_camera->get_projection(), selected_camera->get_view());
-	});
+			setup.flags |= SCENE_RENDERER_DEFERRED_GBUFFER_LIGHT_PREPASS_BIT;
+		renderer->init(setup);
 
-	gbuffer.set_get_clear_depth_stencil([](VkClearDepthStencilValue *value) -> bool {
-		if (value)
-		{
-			value->depth = 1.0f;
-			value->stencil = 0;
-		}
-		return true;
-	});
-
-	gbuffer.set_get_clear_color([](unsigned, VkClearColorValue *value) -> bool {
-		if (value)
-		{
-			value->float32[0] = 0.0f;
-			value->float32[1] = 0.0f;
-			value->float32[2] = 0.0f;
-			value->float32[3] = 0.0f;
-		}
-		return true;
-	});
+		gbuffer.set_render_pass_interface(std::move(renderer));
+	}
 
 	if (config.ssao)
 	{
@@ -790,6 +778,23 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 	lighting_pass.set_depth_stencil_input(tagcat("depth-transient", tag));
 	lighting_pass.add_fake_resource_write_alias(tagcat("depth-transient", tag), tagcat("depth", tag));
 
+	{
+		auto renderer = Util::make_handle<RenderPassSceneRenderer>();
+		RenderPassSceneRenderer::Setup setup = {};
+		setup.scene = &scene_loader.get_scene();
+		setup.deferred_lights = &deferred_lights;
+		setup.context = &context;
+		setup.forward = &forward_renderer;
+		setup.deferred = &deferred_renderer;
+		setup.depth = &depth_renderer;
+		setup.flags = SCENE_RENDERER_DEFERRED_LIGHTING_BIT | SCENE_RENDERER_FORWARD_TRANSPARENT_BIT;
+		if (config.clustered_lights)
+			setup.flags |= SCENE_RENDERER_DEFERRED_CLUSTER_BIT;
+		renderer->init(setup);
+
+		lighting_pass.set_render_pass_interface(std::move(renderer));
+	}
+
 	if (config.ssao)
 		ssao_output = &lighting_pass.add_texture_input(tagcat("ssao-output", tag));
 	else
@@ -805,13 +810,6 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 	}
 
 	scene_loader.get_scene().add_render_pass_dependencies(graph, gbuffer);
-
-	lighting_pass.set_build_render_pass([this](CommandBuffer &cmd) {
-		if (!config.clustered_lights)
-			render_positional_lights(cmd, selected_camera->get_projection(), selected_camera->get_view());
-		DeferredLightRenderer::render_light(cmd, context, config.pcf_flags);
-		render_transparent_objects(cmd, selected_camera->get_projection(), selected_camera->get_view());
-	});
 }
 
 void SceneViewerApplication::add_main_pass(Device &device, const std::string &tag)

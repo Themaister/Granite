@@ -49,21 +49,20 @@ using SceneRendererFlags = uint32_t;
 class RenderPassSceneRenderer : public RenderPassInterface
 {
 public:
-	void set_scene(Scene *scene);
-	void set_context(const RenderContext *context);
-	void set_renderer(Renderer *forward, Renderer *deferred, Renderer *depth);
-	void set_deferred_lights(DeferredLights *lights);
-	void set_flags(SceneRendererFlags flags);
+	struct Setup
+	{
+		Scene *scene;
+		const RenderContext *context;
+		Renderer *forward;
+		Renderer *deferred;
+		Renderer *depth;
+		DeferredLights *deferred_lights;
+		SceneRendererFlags flags;
+	};
+	void init(const Setup &setup);
 
 protected:
-	Scene *scene = nullptr;
-	const Camera *camera = nullptr;
-	const RenderContext *context = nullptr;
-	Renderer *forward_renderer = nullptr;
-	Renderer *deferred_renderer = nullptr;
-	Renderer *depth_renderer = nullptr;
-	DeferredLights *deferred_lights = nullptr;
-	SceneRendererFlags flags = 0;
+	Setup setup_data = {};
 
 	// These need to be per-thread, and thus are hoisted out as state in RenderPassSceneRenderer.
 	VisibilityList visible;

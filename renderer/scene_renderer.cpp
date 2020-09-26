@@ -24,31 +24,9 @@
 
 namespace Granite
 {
-void RenderPassSceneRenderer::set_context(const RenderContext *context_)
+void RenderPassSceneRenderer::init(const Setup &setup)
 {
-	context = context_;
-}
-
-void RenderPassSceneRenderer::set_scene(Scene *scene_)
-{
-	scene = scene_;
-}
-
-void RenderPassSceneRenderer::set_renderer(Renderer *forward, Renderer *deferred, Renderer *depth)
-{
-	forward_renderer = forward;
-	deferred_renderer = deferred;
-	depth_renderer = depth;
-}
-
-void RenderPassSceneRenderer::set_flags(SceneRendererFlags flags_)
-{
-	flags = flags_;
-}
-
-void RenderPassSceneRenderer::set_deferred_lights(DeferredLights *lights)
-{
-	deferred_lights = lights;
+	setup_data = setup;
 }
 
 static Renderer::RendererOptionFlags convert_pcf_flags(SceneRendererFlags flags)
@@ -63,73 +41,74 @@ static Renderer::RendererOptionFlags convert_pcf_flags(SceneRendererFlags flags)
 
 void RenderPassSceneRenderer::build_render_pass(Vulkan::CommandBuffer &cmd)
 {
-	visible.clear();
-
-	if (flags & (SCENE_RENDERER_FORWARD_OPAQUE_BIT | SCENE_RENDERER_FORWARD_Z_PREPASS_BIT))
-	{
-		if (flags & (SCENE_RENDERER_FORWARD_OPAQUE_BIT | SCENE_RENDERER_FORWARD_Z_PREPASS_BIT))
-		{
-			scene->gather_visible_opaque_renderables(context->get_visibility_frustum(), visible);
-			scene->gather_visible_render_pass_sinks(context->get_render_parameters().camera_position, visible);
-		}
-
-		if (flags & SCENE_RENDERER_FORWARD_Z_PREPASS_BIT)
-		{
-			depth_renderer->begin();
-			depth_renderer->push_renderables(*context, visible);
-			depth_renderer->flush(cmd, *context, Renderer::NO_COLOR_BIT);
-		}
-
-		if (flags & SCENE_RENDERER_FORWARD_OPAQUE_BIT)
-		{
-			scene->gather_unbounded_renderables(visible);
-
-			forward_renderer->set_mesh_renderer_options_from_lighting(*context->get_lighting_parameters());
-			forward_renderer->set_mesh_renderer_options(
-					forward_renderer->get_mesh_renderer_options() |
-					convert_pcf_flags(flags) |
-					((flags & SCENE_RENDERER_FORWARD_Z_PREPASS_BIT) ? Renderer::ALPHA_TEST_DISABLE_BIT : 0));
-			forward_renderer->begin();
-			forward_renderer->push_renderables(*context, visible);
-
-			Renderer::RendererOptionFlags opt = 0;
-			if (flags & SCENE_RENDERER_FORWARD_Z_PREPASS_BIT)
-				opt |= Renderer::DEPTH_STENCIL_READ_ONLY_BIT | Renderer::DEPTH_TEST_EQUAL_BIT;
-
-			forward_renderer->flush(cmd, *context, opt);
-		}
-	}
-
-	if (flags & SCENE_RENDERER_DEFERRED_GBUFFER_BIT)
-	{
-		scene->gather_visible_opaque_renderables(context->get_visibility_frustum(), visible);
-		scene->gather_visible_render_pass_sinks(context->get_render_parameters().camera_position, visible);
-		scene->gather_unbounded_renderables(visible);
-		deferred_renderer->begin();
-		deferred_renderer->push_renderables(*context, visible);
-		deferred_renderer->flush(cmd, *context);
-	}
-
-	if (flags & SCENE_RENDERER_DEFERRED_GBUFFER_LIGHT_PREPASS_BIT)
-		deferred_lights->render_prepass_lights(cmd, *context);
-
-	if (flags & SCENE_RENDERER_DEFERRED_LIGHTING_BIT)
-	{
-		if (!(flags & SCENE_RENDERER_DEFERRED_CLUSTER_BIT))
-			deferred_lights->render_lights(cmd, *context, convert_pcf_flags(flags));
-		DeferredLightRenderer::render_light(cmd, *context, convert_pcf_flags(flags));
-	}
-
-	if (flags & SCENE_RENDERER_FORWARD_TRANSPARENT_BIT)
+	if (setup_data.flags & (SCENE_RENDERER_FORWARD_OPAQUE_BIT | SCENE_RENDERER_FORWARD_Z_PREPASS_BIT))
 	{
 		visible.clear();
-		scene->gather_visible_transparent_renderables(context->get_visibility_frustum(), visible);
-		forward_renderer->set_mesh_renderer_options_from_lighting(*context->get_lighting_parameters());
-		forward_renderer->set_mesh_renderer_options(
-				forward_renderer->get_mesh_renderer_options() | convert_pcf_flags(flags));
-		forward_renderer->begin();
-		forward_renderer->push_renderables(*context, visible);
-		forward_renderer->flush(cmd, *context, Renderer::DEPTH_STENCIL_READ_ONLY_BIT);
+
+		if (setup_data.flags & (SCENE_RENDERER_FORWARD_OPAQUE_BIT | SCENE_RENDERER_FORWARD_Z_PREPASS_BIT))
+		{
+			setup_data.scene->gather_visible_opaque_renderables(setup_data.context->get_visibility_frustum(), visible);
+			setup_data.scene->gather_visible_render_pass_sinks(setup_data.context->get_render_parameters().camera_position, visible);
+		}
+
+		if (setup_data.flags & SCENE_RENDERER_FORWARD_Z_PREPASS_BIT)
+		{
+			setup_data.depth->begin();
+			setup_data.depth->push_renderables(*setup_data.context, visible);
+			setup_data.depth->flush(cmd, *setup_data.context, Renderer::NO_COLOR_BIT);
+		}
+
+		if (setup_data.flags & SCENE_RENDERER_FORWARD_OPAQUE_BIT)
+		{
+			setup_data.scene->gather_unbounded_renderables(visible);
+
+			setup_data.forward->set_mesh_renderer_options_from_lighting(*setup_data.context->get_lighting_parameters());
+			setup_data.forward->set_mesh_renderer_options(
+					setup_data.forward->get_mesh_renderer_options() |
+					convert_pcf_flags(setup_data.flags) |
+					((setup_data.flags & SCENE_RENDERER_FORWARD_Z_PREPASS_BIT) ? Renderer::ALPHA_TEST_DISABLE_BIT : 0));
+			setup_data.forward->begin();
+			setup_data.forward->push_renderables(*setup_data.context, visible);
+
+			Renderer::RendererOptionFlags opt = 0;
+			if (setup_data.flags & SCENE_RENDERER_FORWARD_Z_PREPASS_BIT)
+				opt |= Renderer::DEPTH_STENCIL_READ_ONLY_BIT | Renderer::DEPTH_TEST_EQUAL_BIT;
+
+			setup_data.forward->flush(cmd, *setup_data.context, opt);
+		}
+	}
+
+	if (setup_data.flags & SCENE_RENDERER_DEFERRED_GBUFFER_BIT)
+	{
+		visible.clear();
+		setup_data.scene->gather_visible_opaque_renderables(setup_data.context->get_visibility_frustum(), visible);
+		setup_data.scene->gather_visible_render_pass_sinks(setup_data.context->get_render_parameters().camera_position, visible);
+		setup_data.scene->gather_unbounded_renderables(visible);
+		setup_data.deferred->begin();
+		setup_data.deferred->push_renderables(*setup_data.context, visible);
+		setup_data.deferred->flush(cmd, *setup_data.context);
+	}
+
+	if (setup_data.flags & SCENE_RENDERER_DEFERRED_GBUFFER_LIGHT_PREPASS_BIT)
+		setup_data.deferred_lights->render_prepass_lights(cmd, *setup_data.context);
+
+	if (setup_data.flags & SCENE_RENDERER_DEFERRED_LIGHTING_BIT)
+	{
+		if (!(setup_data.flags & SCENE_RENDERER_DEFERRED_CLUSTER_BIT))
+			setup_data.deferred_lights->render_lights(cmd, *setup_data.context, convert_pcf_flags(setup_data.flags));
+		DeferredLightRenderer::render_light(cmd, *setup_data.context, convert_pcf_flags(setup_data.flags));
+	}
+
+	if (setup_data.flags & SCENE_RENDERER_FORWARD_TRANSPARENT_BIT)
+	{
+		visible.clear();
+		setup_data.scene->gather_visible_transparent_renderables(setup_data.context->get_visibility_frustum(), visible);
+		setup_data.forward->set_mesh_renderer_options_from_lighting(*setup_data.context->get_lighting_parameters());
+		setup_data.forward->set_mesh_renderer_options(
+				setup_data.forward->get_mesh_renderer_options() | convert_pcf_flags(setup_data.flags));
+		setup_data.forward->begin();
+		setup_data.forward->push_renderables(*setup_data.context, visible);
+		setup_data.forward->flush(cmd, *setup_data.context, Renderer::DEPTH_STENCIL_READ_ONLY_BIT);
 	}
 }
 }

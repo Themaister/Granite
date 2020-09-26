@@ -41,6 +41,11 @@ bool RenderPassInterface::render_pass_is_layered() const
 	return false;
 }
 
+bool RenderPassInterface::render_pass_can_multithread() const
+{
+	return false;
+}
+
 bool RenderPassInterface::need_render_pass() const
 {
 	return true;

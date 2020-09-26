@@ -50,9 +50,12 @@ class RenderPassInterface : public Util::IntrusivePtrEnabled<RenderPassInterface
 public:
 	virtual ~RenderPassInterface() = default;
 
+	// This information must remain fixed.
 	virtual bool render_pass_is_conditional() const;
 	virtual bool render_pass_is_layered() const;
+	virtual bool render_pass_can_multithread() const;
 
+	// Can change per frame.
 	virtual bool need_render_pass() const;
 	virtual bool get_clear_depth_stencil(VkClearDepthStencilValue *value) const;
 	virtual bool get_clear_color(unsigned attachment, VkClearColorValue *value) const;

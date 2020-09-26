@@ -33,6 +33,7 @@
 #include "ui_manager.hpp"
 #include "render_graph.hpp"
 #include "mesh_util.hpp"
+#include "scene_renderer.hpp"
 #include "lights/clusterer.hpp"
 #include "lights/volumetric_fog.hpp"
 #include "lights/deferred_lights.hpp"
@@ -128,7 +129,7 @@ private:
 		unsigned max_spot_lights = 32;
 		unsigned max_point_lights = 32;
 
-		Renderer::RendererOptionFlags pcf_flags = 0;
+		SceneRendererFlags pcf_flags = 0;
 		bool directional_light_shadows = true;
 		bool directional_light_cascaded_shadows = true;
 		bool directional_light_shadows_vsm = false;

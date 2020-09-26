@@ -29,7 +29,6 @@
 #include "thread_group.hpp"
 #include "utils/image_utils.hpp"
 //#include "ocean.hpp"
-#include "scene_renderer.hpp"
 #include <float.h>
 #include <stdexcept>
 
@@ -119,9 +118,9 @@ void SceneViewerApplication::read_config(const std::string &path)
 	{
 		unsigned width = doc["PCFKernelWidth"].GetUint();
 		if (width == 5)
-			config.pcf_flags = Renderer::SHADOW_PCF_KERNEL_WIDTH_5_BIT;
+			config.pcf_flags = SCENE_RENDERER_PCF_5X_BIT;
 		else if (width == 3)
-			config.pcf_flags = Renderer::SHADOW_PCF_KERNEL_WIDTH_3_BIT;
+			config.pcf_flags = SCENE_RENDERER_PCF_3X_BIT;
 		else if (width == 1)
 			config.pcf_flags = 0;
 		else
@@ -639,7 +638,7 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 	setup.forward = &forward_renderer;
 	setup.deferred = &deferred_renderer;
 	setup.depth = &depth_renderer;
-	setup.flags = SCENE_RENDERER_FORWARD_OPAQUE_BIT | SCENE_RENDERER_FORWARD_TRANSPARENT_BIT;
+	setup.flags = SCENE_RENDERER_FORWARD_OPAQUE_BIT | SCENE_RENDERER_FORWARD_TRANSPARENT_BIT | config.pcf_flags;
 	if (config.forward_depth_prepass)
 		setup.flags |= SCENE_RENDERER_FORWARD_Z_PREPASS_BIT;
 	renderer->init(setup);
@@ -721,7 +720,7 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 		setup.forward = &forward_renderer;
 		setup.deferred = &deferred_renderer;
 		setup.depth = &depth_renderer;
-		setup.flags = SCENE_RENDERER_DEFERRED_LIGHTING_BIT | SCENE_RENDERER_FORWARD_TRANSPARENT_BIT;
+		setup.flags = SCENE_RENDERER_DEFERRED_LIGHTING_BIT | SCENE_RENDERER_FORWARD_TRANSPARENT_BIT | config.pcf_flags;
 		if (config.clustered_lights)
 			setup.flags |= SCENE_RENDERER_DEFERRED_CLUSTER_BIT;
 		renderer->init(setup);

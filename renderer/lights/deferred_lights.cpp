@@ -100,9 +100,9 @@ void DeferredLights::render_prepass_lights(Vulkan::CommandBuffer &cmd, const Ren
 	for (unsigned cluster = 0; cluster < NumClusters; cluster++)
 	{
 		depth_renderer->begin(queue);
-		depth_renderer->push_depth_renderables(context, clusters[cluster]);
+		depth_renderer->push_depth_renderables(queue, context, clusters[cluster]);
 		depth_renderer->set_stencil_reference(0xff, 2 << cluster, 2 << cluster);
-		depth_renderer->flush(cmd, context,
+		depth_renderer->flush(cmd, queue, context,
 		                      Renderer::NO_COLOR_BIT |
 		                      Renderer::BACKFACE_BIT |
 		                      Renderer::DEPTH_STENCIL_READ_ONLY_BIT |
@@ -118,16 +118,16 @@ void DeferredLights::render_lights(Vulkan::CommandBuffer &cmd, const RenderConte
 	if (enable_clustered_stencil)
 	{
 		deferred_renderer->begin(queue);
-		deferred_renderer->push_renderables(context, clips);
+		deferred_renderer->push_renderables(queue, context, clips);
 		deferred_renderer->set_stencil_reference(1, 0, 0);
-		deferred_renderer->flush(cmd, context, Renderer::STENCIL_COMPARE_REFERENCE_BIT);
+		deferred_renderer->flush(cmd, queue, context, Renderer::STENCIL_COMPARE_REFERENCE_BIT);
 
 		for (unsigned cluster = 0; cluster < NumClusters; cluster++)
 		{
 			deferred_renderer->begin(queue);
-			deferred_renderer->push_renderables(context, clusters[cluster]);
+			deferred_renderer->push_renderables(queue, context, clusters[cluster]);
 			deferred_renderer->set_stencil_reference((2 << cluster) | 1, 0, 2 << cluster);
-			deferred_renderer->flush(cmd, context, Renderer::STENCIL_COMPARE_REFERENCE_BIT);
+			deferred_renderer->flush(cmd, queue, context, Renderer::STENCIL_COMPARE_REFERENCE_BIT);
 		}
 	}
 	else
@@ -136,8 +136,8 @@ void DeferredLights::render_lights(Vulkan::CommandBuffer &cmd, const RenderConte
 		scene->gather_visible_positional_lights(context.get_visibility_frustum(), visible,
 		                                        max_spot_lights, max_point_lights);
 		deferred_renderer->begin(queue);
-		deferred_renderer->push_renderables(context, visible);
-		deferred_renderer->flush(cmd, context);
+		deferred_renderer->push_renderables(queue, context, visible);
+		deferred_renderer->flush(cmd, queue, context);
 	}
 }
 }

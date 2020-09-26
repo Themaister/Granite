@@ -35,6 +35,7 @@
 #include "stack_allocator.hpp"
 #include "application_wsi_events.hpp"
 #include "quirks.hpp"
+#include "thread_group.hpp"
 
 namespace Granite
 {
@@ -542,6 +543,14 @@ public:
 			return true;
 	}
 
+	bool can_multithread() const
+	{
+		if (render_pass_handle)
+			return render_pass_handle->render_pass_can_multithread();
+		else
+			return false;
+	}
+
 	bool may_not_need_render_pass() const
 	{
 		if (render_pass_handle)
@@ -986,6 +995,7 @@ private:
 	void physical_pass_handle_signal(Vulkan::Device &device, const PhysicalPass &pass, PassSubmissionState &state);
 	void physical_pass_handle_flush_barrier(const Barrier &barrier, PassSubmissionState &state);
 	void physical_pass_handle_cpu_timeline(Vulkan::Device &device, const PhysicalPass &pass, PassSubmissionState &state);
-	void physical_pass_handle_gpu_timeline(Vulkan::Device &device, const PhysicalPass &pass, PassSubmissionState &state);
+	bool physical_pass_can_multithread(const PhysicalPass &pass) const;
+	TaskGroup physical_pass_handle_gpu_timeline(ThreadGroup &group, Vulkan::Device &device, const PhysicalPass &pass, PassSubmissionState &state);
 };
 }

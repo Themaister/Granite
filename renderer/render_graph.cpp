@@ -25,6 +25,7 @@
 #include "format.hpp"
 #include "quirks.hpp"
 #include "muglm/muglm_impl.hpp"
+#include "thread_group.hpp"
 #include <algorithm>
 
 using namespace std;
@@ -2138,19 +2139,37 @@ void RenderGraph::physical_pass_handle_cpu_timeline(Vulkan::Device &device_,
 	physical_pass_transfer_ownership(physical_pass);
 }
 
-void RenderGraph::physical_pass_handle_gpu_timeline(Vulkan::Device &device_,
-                                                    const PhysicalPass &physical_pass,
-                                                    PassSubmissionState &state)
+bool RenderGraph::physical_pass_can_multithread(const PhysicalPass &physical_pass) const
 {
-	state.cmd = device_.request_command_buffer(state.queue_type);
-	state.emit_pre_pass_barriers();
+	for (auto &pass : physical_pass.passes)
+		if (!passes[pass]->can_multithread())
+			return false;
+	return true;
+}
 
-	if (state.graphics)
-		physical_pass_enqueue_graphics_commands(physical_pass, *state.cmd);
+TaskGroup RenderGraph::physical_pass_handle_gpu_timeline(ThreadGroup &group, Vulkan::Device &device_,
+                                                         const PhysicalPass &physical_pass,
+                                                         PassSubmissionState &state)
+{
+	auto func = [&]() {
+		state.cmd = device_.request_command_buffer(state.queue_type);
+		state.emit_pre_pass_barriers();
+
+		if (state.graphics)
+			physical_pass_enqueue_graphics_commands(physical_pass, *state.cmd);
+		else
+			physical_pass_enqueue_compute_commands(physical_pass, *state.cmd);
+
+		state.emit_post_pass_barriers();
+	};
+
+	if (physical_pass_can_multithread(physical_pass))
+		return group.create_task(std::move(func));
 	else
-		physical_pass_enqueue_compute_commands(physical_pass, *state.cmd);
-
-	state.emit_post_pass_barriers();
+	{
+		func();
+		return {};
+	}
 }
 
 void RenderGraph::enqueue_render_pass(Vulkan::Device &device_, PhysicalPass &physical_pass, PassSubmissionState &state)
@@ -2269,8 +2288,12 @@ void RenderGraph::enqueue_swapchain_scale_pass(Vulkan::Device &device_)
 
 void RenderGraph::enqueue_render_passes(Vulkan::Device &device_)
 {
+	auto &group = *Global::thread_group();
+
 	Util::SmallVector<PassSubmissionState, 64> states(physical_passes.size());
+	Util::SmallVector<TaskGroup, 64> tasks;
 	size_t count = states.size();
+	auto pass_task = group.create_task();
 
 	for (size_t i = 0; i < count; i++)
 		enqueue_render_pass(device_, physical_passes[i], states[i]);
@@ -2279,8 +2302,18 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device_)
 	{
 		// Could be run in parallel.
 		if (states[i].active)
-			physical_pass_handle_gpu_timeline(device_, physical_passes[i], states[i]);
+		{
+			auto task = physical_pass_handle_gpu_timeline(group, device_, physical_passes[i], states[i]);
+			if (task)
+			{
+				task->flush();
+				tasks.push_back(std::move(task));
+			}
+		}
 	}
+
+	for (auto &task : tasks)
+		task->wait();
 
 	for (auto &state : states)
 		state.submit();

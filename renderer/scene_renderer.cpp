@@ -54,8 +54,8 @@ void RenderPassSceneRenderer::build_render_pass(Vulkan::CommandBuffer &cmd)
 		if (setup_data.flags & SCENE_RENDERER_FORWARD_Z_PREPASS_BIT)
 		{
 			setup_data.depth->begin(queue);
-			setup_data.depth->push_renderables(*setup_data.context, visible);
-			setup_data.depth->flush(cmd, *setup_data.context, Renderer::NO_COLOR_BIT);
+			setup_data.depth->push_renderables(queue, *setup_data.context, visible);
+			setup_data.depth->flush(cmd, queue, *setup_data.context, Renderer::NO_COLOR_BIT);
 		}
 
 		if (setup_data.flags & SCENE_RENDERER_FORWARD_OPAQUE_BIT)
@@ -68,13 +68,13 @@ void RenderPassSceneRenderer::build_render_pass(Vulkan::CommandBuffer &cmd)
 					convert_pcf_flags(setup_data.flags) |
 					((setup_data.flags & SCENE_RENDERER_FORWARD_Z_PREPASS_BIT) ? Renderer::ALPHA_TEST_DISABLE_BIT : 0));
 			setup_data.forward->begin(queue);
-			setup_data.forward->push_renderables(*setup_data.context, visible);
+			setup_data.forward->push_renderables(queue, *setup_data.context, visible);
 
 			Renderer::RendererOptionFlags opt = 0;
 			if (setup_data.flags & SCENE_RENDERER_FORWARD_Z_PREPASS_BIT)
 				opt |= Renderer::DEPTH_STENCIL_READ_ONLY_BIT | Renderer::DEPTH_TEST_EQUAL_BIT;
 
-			setup_data.forward->flush(cmd, *setup_data.context, opt);
+			setup_data.forward->flush(cmd, queue, *setup_data.context, opt);
 		}
 	}
 
@@ -85,8 +85,8 @@ void RenderPassSceneRenderer::build_render_pass(Vulkan::CommandBuffer &cmd)
 		setup_data.scene->gather_visible_render_pass_sinks(setup_data.context->get_render_parameters().camera_position, visible);
 		setup_data.scene->gather_unbounded_renderables(visible);
 		setup_data.deferred->begin(queue);
-		setup_data.deferred->push_renderables(*setup_data.context, visible);
-		setup_data.deferred->flush(cmd, *setup_data.context);
+		setup_data.deferred->push_renderables(queue, *setup_data.context, visible);
+		setup_data.deferred->flush(cmd, queue, *setup_data.context);
 	}
 
 	if (setup_data.flags & SCENE_RENDERER_DEFERRED_GBUFFER_LIGHT_PREPASS_BIT)
@@ -107,8 +107,8 @@ void RenderPassSceneRenderer::build_render_pass(Vulkan::CommandBuffer &cmd)
 		setup_data.forward->set_mesh_renderer_options(
 				setup_data.forward->get_mesh_renderer_options() | convert_pcf_flags(setup_data.flags));
 		setup_data.forward->begin(queue);
-		setup_data.forward->push_renderables(*setup_data.context, visible);
-		setup_data.forward->flush(cmd, *setup_data.context, Renderer::DEPTH_STENCIL_READ_ONLY_BIT);
+		setup_data.forward->push_renderables(queue, *setup_data.context, visible);
+		setup_data.forward->flush(cmd, queue, *setup_data.context, Renderer::DEPTH_STENCIL_READ_ONLY_BIT);
 	}
 
 	if (setup_data.flags & SCENE_RENDERER_DEPTH_BIT)
@@ -120,8 +120,8 @@ void RenderPassSceneRenderer::build_render_pass(Vulkan::CommandBuffer &cmd)
 			setup_data.scene->gather_visible_dynamic_shadow_renderables(setup_data.context->get_visibility_frustum(), visible);
 		if (setup_data.flags & SCENE_RENDERER_DEPTH_STATIC_BIT)
 			setup_data.scene->gather_visible_static_shadow_renderables(setup_data.context->get_visibility_frustum(), visible);
-		setup_data.depth->push_depth_renderables(*setup_data.context, visible);
-		setup_data.depth->flush(cmd, *setup_data.context, Renderer::DEPTH_BIAS_BIT);
+		setup_data.depth->push_depth_renderables(queue, *setup_data.context, visible);
+		setup_data.depth->flush(cmd, queue, *setup_data.context, Renderer::DEPTH_BIAS_BIT);
 	}
 }
 
@@ -134,6 +134,11 @@ bool RenderPassSceneRenderer::get_clear_color(unsigned, VkClearColorValue *value
 {
 	if (value)
 		*value = clear_color_value;
+	return true;
+}
+
+bool RenderPassSceneRenderer::render_pass_can_multithread() const
+{
 	return true;
 }
 

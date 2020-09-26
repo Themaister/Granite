@@ -1205,8 +1205,8 @@ void TexturePlane::render_main_pass(Vulkan::CommandBuffer &cmd, const mat4 &proj
 	scene->gather_unbounded_renderables(visible);
 	renderer->set_mesh_renderer_options_from_lighting(lighting);
 	renderer->begin(internal_queue);
-	renderer->push_renderables(context, visible);
-	renderer->flush(cmd, context);
+	renderer->push_renderables(internal_queue, context, visible);
+	renderer->flush(cmd, internal_queue, context);
 }
 
 void TexturePlane::set_plane(const vec3 &position_, const vec3 &normal_, const vec3 &up_, float extent_up,

@@ -76,6 +76,7 @@ protected:
 
 	void build_render_pass(Vulkan::CommandBuffer &cmd) override;
 	bool get_clear_color(unsigned attachment, VkClearColorValue *value) const override;
+	bool render_pass_can_multithread() const override;
 };
 
 class RenderPassSceneRendererConditional : public RenderPassSceneRenderer

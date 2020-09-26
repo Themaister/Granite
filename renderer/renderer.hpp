@@ -102,18 +102,12 @@ public:
 
 	void begin(RenderQueue &queue);
 
-	void push_renderables(const RenderContext &context, const VisibilityList &visible);
-	void push_depth_renderables(const RenderContext &context, const VisibilityList &visible);
-	void render_debug_aabb(const RenderContext &context, const AABB &aabb, const vec4 &color);
-	void render_debug_frustum(const RenderContext &context, const Frustum &frustum, const vec4 &color);
+	static void push_renderables(RenderQueue &queue, const RenderContext &context, const VisibilityList &visible);
+	static void push_depth_renderables(RenderQueue &queue, const RenderContext &context, const VisibilityList &visible);
+	void render_debug_aabb(RenderQueue &queue, const RenderContext &context, const AABB &aabb, const vec4 &color);
+	void render_debug_frustum(RenderQueue &queue, const RenderContext &context, const Frustum &frustum, const vec4 &color);
 
-	void flush(Vulkan::CommandBuffer &cmd, const RenderContext &context, RendererFlushFlags options = 0);
-
-	RenderQueue &get_render_queue()
-	{
-		assert(active_queue);
-		return *active_queue;
-	}
+	void flush(Vulkan::CommandBuffer &cmd, RenderQueue &queue, const RenderContext &context, RendererFlushFlags options = 0);
 
 	RendererType get_renderer_type() const
 	{
@@ -131,9 +125,8 @@ private:
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
 
 	Vulkan::Device *device = nullptr;
-	RenderQueue *active_queue = nullptr;
 
-	DebugMeshInstanceInfo &render_debug(const RenderContext &context, unsigned count);
+	DebugMeshInstanceInfo &render_debug(RenderQueue &queue, const RenderContext &context, unsigned count);
 	void setup_shader_suite(Vulkan::Device &device, RendererType type);
 
 	RendererType type;

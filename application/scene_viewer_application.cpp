@@ -578,10 +578,10 @@ void SceneViewerApplication::capture_environment_probe()
 		forward_renderer.set_mesh_renderer_options(forward_renderer.get_mesh_renderer_options() | config.pcf_flags);
 
 		forward_renderer.begin(queue);
-		forward_renderer.push_renderables(context, visible);
+		forward_renderer.push_renderables(queue, context, visible);
 
 		Renderer::RendererOptionFlags opt = Renderer::FRONT_FACE_CLOCKWISE_BIT;
-		forward_renderer.flush(*cmd, context, opt);
+		forward_renderer.flush(*cmd, queue, context, opt);
 
 		cmd->end_render_pass();
 	}

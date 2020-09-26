@@ -273,9 +273,8 @@ void Renderer::on_device_destroyed(const DeviceCreatedEvent &)
 
 void Renderer::begin(RenderQueue &queue)
 {
-	active_queue = &queue;
-	active_queue->reset();
-	active_queue->set_shader_suites(suite);
+	queue.reset();
+	queue.set_shader_suites(suite);
 }
 
 static void set_cluster_parameters_legacy(Vulkan::CommandBuffer &cmd, const LightClusterer &cluster)
@@ -405,7 +404,7 @@ void Renderer::set_render_context_parameter_binder(RenderContextParameterBinder 
 	render_context_parameter_binder = binder;
 }
 
-void Renderer::flush(Vulkan::CommandBuffer &cmd, const RenderContext &context, RendererFlushFlags options)
+void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderQueue &queue, const RenderContext &context, RendererFlushFlags options)
 {
 	if (render_context_parameter_binder)
 	{
@@ -419,7 +418,7 @@ void Renderer::flush(Vulkan::CommandBuffer &cmd, const RenderContext &context, R
 	}
 
 	if ((options & SKIP_SORTING_BIT) == 0)
-		active_queue->sort();
+		queue.sort();
 
 	cmd.set_opaque_state();
 
@@ -459,8 +458,8 @@ void Renderer::flush(Vulkan::CommandBuffer &cmd, const RenderContext &context, R
 	CommandBufferSavedState state;
 	cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
 	// No need to spend write bandwidth on writing 0 to light buffer, render opaque emissive on top.
-	active_queue->dispatch(Queue::Opaque, cmd, &state);
-	active_queue->dispatch(Queue::OpaqueEmissive, cmd, &state);
+	queue.dispatch(Queue::Opaque, cmd, &state);
+	queue.dispatch(Queue::OpaqueEmissive, cmd, &state);
 
 	if (type == RendererType::GeneralDeferred)
 	{
@@ -481,7 +480,7 @@ void Renderer::flush(Vulkan::CommandBuffer &cmd, const RenderContext &context, R
 		cmd.set_stencil_front_ops(VK_COMPARE_OP_EQUAL, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP);
 		cmd.set_stencil_back_ops(VK_COMPARE_OP_EQUAL, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP);
 		cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
-		active_queue->dispatch(Queue::Light, cmd, &state);
+		queue.dispatch(Queue::Light, cmd, &state);
 	}
 	else if (type == RendererType::GeneralForward)
 	{
@@ -492,18 +491,18 @@ void Renderer::flush(Vulkan::CommandBuffer &cmd, const RenderContext &context, R
 		cmd.set_blend_op(VK_BLEND_OP_ADD);
 		cmd.set_depth_test(true, false);
 		cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
-		active_queue->dispatch(Queue::Transparent, cmd, &state);
+		queue.dispatch(Queue::Transparent, cmd, &state);
 	}
 }
 
-DebugMeshInstanceInfo &Renderer::render_debug(const RenderContext &context, unsigned count)
+DebugMeshInstanceInfo &Renderer::render_debug(RenderQueue &queue, const RenderContext &context, unsigned count)
 {
 	DebugMeshInfo debug;
 
-	auto *instance_data = active_queue->allocate_one<DebugMeshInstanceInfo>();
+	auto *instance_data = queue.allocate_one<DebugMeshInstanceInfo>();
 	instance_data->count = count;
-	instance_data->colors = active_queue->allocate_many<vec4>(count);
-	instance_data->positions = active_queue->allocate_many<vec3>(count);
+	instance_data->colors = queue.allocate_many<vec4>(count);
+	instance_data->positions = queue.allocate_many<vec3>(count);
 
 	Hasher hasher;
 	hasher.string("debug");
@@ -511,9 +510,9 @@ DebugMeshInstanceInfo &Renderer::render_debug(const RenderContext &context, unsi
 	auto sorting_key = RenderInfo::get_sort_key(context, Queue::Opaque, hasher.get(), hasher.get(), vec3(0.0f));
 	debug.MVP = context.get_render_parameters().view_projection;
 
-	auto *debug_info = active_queue->push<DebugMeshInfo>(Queue::Opaque, instance_key, sorting_key,
-	                                                     RenderFunctions::debug_mesh_render,
-	                                                     instance_data);
+	auto *debug_info = queue.push<DebugMeshInfo>(Queue::Opaque, instance_key, sorting_key,
+	                                             RenderFunctions::debug_mesh_render,
+	                                             instance_data);
 
 	if (debug_info)
 	{
@@ -557,32 +556,32 @@ inline void dump_debug_coords(vec3 *pos, const T &t)
 	*pos++ = t.get_coord(0.0f, 1.0f, 1.0f);
 }
 
-void Renderer::render_debug_frustum(const RenderContext &context, const Frustum &frustum, const vec4 &color)
+void Renderer::render_debug_frustum(RenderQueue &queue, const RenderContext &context, const Frustum &frustum, const vec4 &color)
 {
-	auto &debug = render_debug(context, 12 * 2);
+	auto &debug = render_debug(queue, context, 12 * 2);
 	for (unsigned i = 0; i < debug.count; i++)
 		debug.colors[i] = color;
 	dump_debug_coords(debug.positions, frustum);
 }
 
-void Renderer::render_debug_aabb(const RenderContext &context, const AABB &aabb, const vec4 &color)
+void Renderer::render_debug_aabb(RenderQueue &queue, const RenderContext &context, const AABB &aabb, const vec4 &color)
 {
-	auto &debug = render_debug(context, 12 * 2);
+	auto &debug = render_debug(queue, context, 12 * 2);
 	for (unsigned i = 0; i < debug.count; i++)
 		debug.colors[i] = color;
 	dump_debug_coords(debug.positions, aabb);
 }
 
-void Renderer::push_renderables(const RenderContext &context, const VisibilityList &visible)
+void Renderer::push_renderables(RenderQueue &queue, const RenderContext &context, const VisibilityList &visible)
 {
 	for (auto &vis : visible)
-		vis.renderable->get_render_info(context, vis.transform, *active_queue);
+		vis.renderable->get_render_info(context, vis.transform, queue);
 }
 
-void Renderer::push_depth_renderables(const RenderContext &context, const VisibilityList &visible)
+void Renderer::push_depth_renderables(RenderQueue &queue, const RenderContext &context, const VisibilityList &visible)
 {
 	for (auto &vis : visible)
-		vis.renderable->get_depth_render_info(context, vis.transform, *active_queue);
+		vis.renderable->get_depth_render_info(context, vis.transform, queue);
 }
 
 void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const RenderContext &context,

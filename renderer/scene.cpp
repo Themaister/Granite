@@ -197,7 +197,7 @@ void Scene::gather_visible_positional_lights(const Frustum &frustum, VisibilityL
 
 		if (transform->transform)
 		{
-			if (frustum.intersects_fast(transform->world_aabb))
+			if (SIMD::frustum_cull(transform->world_aabb, frustum.get_planes()))
 			{
 				const auto *light = static_cast<const PositionalLight *>(renderable->renderable.get());
 				if (light->get_type() == PositionalLight::Type::Point)

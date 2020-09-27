@@ -26,7 +26,7 @@
 #include <list>
 #include <type_traits>
 #include <stdexcept>
-#include <command_buffer.hpp>
+#include "command_buffer.hpp"
 #include "hash.hpp"
 #include "enum_cast.hpp"
 #include "intrusive_hash_map.hpp"
@@ -36,6 +36,15 @@ namespace Granite
 {
 class ShaderSuite;
 class RenderContext;
+class AbstractRenderable;
+struct RenderInfoComponent;
+
+struct RenderableInfo
+{
+	AbstractRenderable *renderable;
+	const RenderInfoComponent *transform;
+};
+using VisibilityList = std::vector<RenderableInfo>;
 
 enum class Queue : unsigned
 {
@@ -177,6 +186,9 @@ public:
 	{
 		return shader_suites;
 	}
+
+	void push_renderables(const RenderContext &context, const VisibilityList &visible);
+	void push_depth_renderables(const RenderContext &context, const VisibilityList &visible);
 
 private:
 	void enqueue_queue_data(Queue queue, const RenderQueueData &data);

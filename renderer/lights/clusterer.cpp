@@ -308,7 +308,7 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &de
 
 	depth_renderer->set_mesh_renderer_options(vsm ? Renderer::POSITIONAL_LIGHT_SHADOW_VSM_BIT : 0);
 	depth_renderer->begin(queue);
-	depth_renderer->push_depth_renderables(queue, depth_context, visible);
+	queue.push_depth_renderables(depth_context, visible);
 
 	if (vsm)
 	{

@@ -572,18 +572,6 @@ void Renderer::render_debug_aabb(RenderQueue &queue, const RenderContext &contex
 	dump_debug_coords(debug.positions, aabb);
 }
 
-void Renderer::push_renderables(RenderQueue &queue, const RenderContext &context, const VisibilityList &visible)
-{
-	for (auto &vis : visible)
-		vis.renderable->get_render_info(context, vis.transform, queue);
-}
-
-void Renderer::push_depth_renderables(RenderQueue &queue, const RenderContext &context, const VisibilityList &visible)
-{
-	for (auto &vis : visible)
-		vis.renderable->get_depth_render_info(context, vis.transform, queue);
-}
-
 void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const RenderContext &context,
                                          Renderer::RendererOptionFlags flags)
 {

@@ -23,7 +23,6 @@
 #pragma once
 
 #include "application_wsi_events.hpp"
-#include "scene.hpp"
 #include "shader_suite.hpp"
 #include "renderer_enums.hpp"
 
@@ -31,6 +30,9 @@ namespace Granite
 {
 struct Sprite;
 class LightClusterer;
+class RenderQueue;
+struct LightingParameters;
+class Frustum;
 
 class ShaderSuiteResolver
 {
@@ -102,8 +104,6 @@ public:
 
 	void begin(RenderQueue &queue);
 
-	static void push_renderables(RenderQueue &queue, const RenderContext &context, const VisibilityList &visible);
-	static void push_depth_renderables(RenderQueue &queue, const RenderContext &context, const VisibilityList &visible);
 	void render_debug_aabb(RenderQueue &queue, const RenderContext &context, const AABB &aabb, const vec4 &color);
 	void render_debug_frustum(RenderQueue &queue, const RenderContext &context, const Frustum &frustum, const vec4 &color);
 

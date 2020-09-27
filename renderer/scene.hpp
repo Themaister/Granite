@@ -29,12 +29,6 @@
 
 namespace Granite
 {
-struct RenderableInfo
-{
-	AbstractRenderable *renderable;
-	const RenderInfoComponent *transform;
-};
-using VisibilityList = std::vector<RenderableInfo>;
 
 class RenderContext;
 struct EnvironmentComponent;

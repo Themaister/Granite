@@ -45,15 +45,32 @@ public:
 
 	void refresh_per_frame(RenderContext &context);
 	void update_cached_transforms();
-	void gather_visible_opaque_renderables(const Frustum &frustum, VisibilityList &list);
-	void gather_visible_transparent_renderables(const Frustum &frustum, VisibilityList &list);
-	void gather_visible_static_shadow_renderables(const Frustum &frustum, VisibilityList &list);
-	void gather_visible_dynamic_shadow_renderables(const Frustum &frustum, VisibilityList &list);
-	void gather_visible_positional_lights(const Frustum &frustum, VisibilityList &list,
-	                                      unsigned max_spot_lights = std::numeric_limits<unsigned>::max(),
-	                                      unsigned max_point_lights = std::numeric_limits<unsigned>::max());
-	void gather_visible_render_pass_sinks(const vec3 &camera_pos, VisibilityList &list);
-	void gather_unbounded_renderables(VisibilityList &list);
+
+	void gather_visible_opaque_renderables(const Frustum &frustum, VisibilityList &list) const;
+	void gather_visible_transparent_renderables(const Frustum &frustum, VisibilityList &list) const;
+	void gather_visible_static_shadow_renderables(const Frustum &frustum, VisibilityList &list) const;
+	void gather_visible_dynamic_shadow_renderables(const Frustum &frustum, VisibilityList &list) const;
+	void gather_visible_positional_lights(const Frustum &frustum, VisibilityList &list) const;
+
+	void gather_visible_opaque_renderables_subset(const Frustum &frustum, VisibilityList &list,
+	                                              unsigned index, unsigned num_indices) const;
+	void gather_visible_transparent_renderables_subset(const Frustum &frustum, VisibilityList &list,
+	                                                   unsigned index, unsigned num_indices) const;
+	void gather_visible_static_shadow_renderables_subset(const Frustum &frustum, VisibilityList &list,
+	                                                     unsigned index, unsigned num_indices) const;
+	void gather_visible_dynamic_shadow_renderables_subset(const Frustum &frustum, VisibilityList &list,
+	                                                      unsigned index, unsigned num_indices) const;
+	void gather_visible_positional_lights_subset(const Frustum &frustum, VisibilityList &list,
+	                                             unsigned index, unsigned num_indices) const;
+
+	size_t get_opaque_renderables_count() const;
+	size_t get_transparent_renderables_count() const;
+	size_t get_static_shadow_renderables_count() const;
+	size_t get_dynamic_shadow_renderables_count() const;
+	size_t get_positional_lights_count() const;
+
+	void gather_visible_render_pass_sinks(const vec3 &camera_pos, VisibilityList &list) const;
+	void gather_unbounded_renderables(VisibilityList &list) const;
 	EnvironmentComponent *get_environment() const;
 	EntityPool &get_entity_pool();
 

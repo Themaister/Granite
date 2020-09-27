@@ -64,10 +64,12 @@ Scene::~Scene()
 }
 
 template <typename T>
-static void gather_visible_renderables(const Frustum &frustum, VisibilityList &list, const T &objects)
+static void gather_visible_renderables(const Frustum &frustum, VisibilityList &list, const T &objects,
+                                       size_t begin_index, size_t end_index)
 {
-	for (auto &o : objects)
+	for (size_t i = begin_index; i < end_index; i++)
 	{
+		auto &o = objects[i];
 		auto *transform = get_component<RenderInfoComponent>(o);
 		auto *renderable = get_component<RenderableComponent>(o);
 
@@ -153,13 +155,13 @@ EntityPool &Scene::get_entity_pool()
 	return pool;
 }
 
-void Scene::gather_unbounded_renderables(VisibilityList &list)
+void Scene::gather_unbounded_renderables(VisibilityList &list) const
 {
 	for (auto &background : backgrounds)
 		list.push_back({ get_component<RenderableComponent>(background)->renderable.get(), nullptr });
 }
 
-void Scene::gather_visible_render_pass_sinks(const vec3 &camera_pos, VisibilityList &list)
+void Scene::gather_visible_render_pass_sinks(const vec3 &camera_pos, VisibilityList &list) const
 {
 	for (auto &sink : render_pass_sinks)
 	{
@@ -169,63 +171,122 @@ void Scene::gather_visible_render_pass_sinks(const vec3 &camera_pos, VisibilityL
 	}
 }
 
-void Scene::gather_visible_opaque_renderables(const Frustum &frustum, VisibilityList &list)
+void Scene::gather_visible_opaque_renderables(const Frustum &frustum, VisibilityList &list) const
 {
-	gather_visible_renderables(frustum, list, opaque);
+	gather_visible_renderables(frustum, list, opaque, 0, opaque.size());
 }
 
-void Scene::gather_visible_transparent_renderables(const Frustum &frustum, VisibilityList &list)
+void Scene::gather_visible_opaque_renderables_subset(const Frustum &frustum, VisibilityList &list,
+                                                     unsigned index, unsigned num_indices) const
 {
-	gather_visible_renderables(frustum, list, transparent);
+	size_t start_index = (index * opaque.size()) / num_indices;
+	size_t end_index = ((index + 1) * opaque.size()) / num_indices;
+	gather_visible_renderables(frustum, list, opaque, start_index, end_index);
 }
 
-void Scene::gather_visible_static_shadow_renderables(const Frustum &frustum, VisibilityList &list)
+void Scene::gather_visible_transparent_renderables(const Frustum &frustum, VisibilityList &list) const
 {
-	gather_visible_renderables(frustum, list, static_shadowing);
+	gather_visible_renderables(frustum, list, transparent, 0, transparent.size());
 }
 
-void Scene::gather_visible_positional_lights(const Frustum &frustum, VisibilityList &list,
-                                             unsigned max_spot_lights, unsigned max_point_lights)
+void Scene::gather_visible_static_shadow_renderables(const Frustum &frustum, VisibilityList &list) const
 {
-	unsigned spot_count = 0;
-	unsigned point_count = 0;
+	gather_visible_renderables(frustum, list, static_shadowing, 0, static_shadowing.size());
+}
 
-	for (auto &o : positional_lights)
+void Scene::gather_visible_transparent_renderables_subset(const Frustum &frustum, VisibilityList &list,
+                                                          unsigned index, unsigned num_indices) const
+{
+	size_t start_index = (index * transparent.size()) / num_indices;
+	size_t end_index = ((index + 1) * transparent.size()) / num_indices;
+	gather_visible_renderables(frustum, list, transparent, start_index, end_index);
+}
+
+void Scene::gather_visible_static_shadow_renderables_subset(const Frustum &frustum, VisibilityList &list,
+                                                            unsigned index, unsigned num_indices) const
+{
+	size_t start_index = (index * static_shadowing.size()) / num_indices;
+	size_t end_index = ((index + 1) * static_shadowing.size()) / num_indices;
+	gather_visible_renderables(frustum, list, static_shadowing, start_index, end_index);
+}
+
+void Scene::gather_visible_dynamic_shadow_renderables(const Frustum &frustum, VisibilityList &list) const
+{
+	gather_visible_renderables(frustum, list, dynamic_shadowing, 0, dynamic_shadowing.size());
+	for (auto &object : render_pass_shadowing)
+		list.push_back({ get_component<RenderableComponent>(object)->renderable.get(), nullptr });
+}
+
+void Scene::gather_visible_dynamic_shadow_renderables_subset(const Frustum &frustum, VisibilityList &list,
+                                                             unsigned index, unsigned num_indices) const
+{
+	size_t start_index = (index * dynamic_shadowing.size()) / num_indices;
+	size_t end_index = ((index + 1) * dynamic_shadowing.size()) / num_indices;
+	gather_visible_renderables(frustum, list, dynamic_shadowing, start_index, end_index);
+
+	if (index == 0)
+		for (auto &object : render_pass_shadowing)
+			list.push_back({ get_component<RenderableComponent>(object)->renderable.get(), nullptr });
+}
+
+static void gather_positional_lights(const Frustum &frustum, VisibilityList &list,
+                                     const std::vector<std::tuple<RenderInfoComponent *,
+	                                     RenderableComponent *,
+	                                     PositionalLightComponent *>> &positional,
+                                     size_t start_index, size_t end_index)
+{
+	for (size_t i = start_index; i < end_index; i++)
 	{
+		auto &o = positional[i];
 		auto *transform = get_component<RenderInfoComponent>(o);
 		auto *renderable = get_component<RenderableComponent>(o);
 
 		if (transform->transform)
 		{
 			if (SIMD::frustum_cull(transform->world_aabb, frustum.get_planes()))
-			{
-				const auto *light = static_cast<const PositionalLight *>(renderable->renderable.get());
-				if (light->get_type() == PositionalLight::Type::Point)
-				{
-					if (point_count >= max_point_lights)
-						continue;
-					point_count++;
-				}
-				else if (light->get_type() == PositionalLight::Type::Spot)
-				{
-					if (spot_count >= max_spot_lights)
-						continue;
-					spot_count++;
-				}
-
 				list.push_back({ renderable->renderable.get(), transform });
-			}
 		}
 		else
 			list.push_back({ renderable->renderable.get(), nullptr });
 	}
 }
 
-void Scene::gather_visible_dynamic_shadow_renderables(const Frustum &frustum, VisibilityList &list)
+void Scene::gather_visible_positional_lights(const Frustum &frustum, VisibilityList &list) const
 {
-	gather_visible_renderables(frustum, list, dynamic_shadowing);
-	for (auto &object : render_pass_shadowing)
-		list.push_back({ get_component<RenderableComponent>(object)->renderable.get(), nullptr });
+	gather_positional_lights(frustum, list, positional_lights, 0, positional_lights.size());
+}
+
+void Scene::gather_visible_positional_lights_subset(const Frustum &frustum, VisibilityList &list,
+                                                    unsigned index, unsigned num_indices) const
+{
+	size_t start_index = (index * positional_lights.size()) / num_indices;
+	size_t end_index = ((index + 1) * positional_lights.size()) / num_indices;
+	gather_positional_lights(frustum, list, positional_lights, start_index, end_index);
+}
+
+size_t Scene::get_opaque_renderables_count() const
+{
+	return opaque.size();
+}
+
+size_t Scene::get_transparent_renderables_count() const
+{
+	return transparent.size();
+}
+
+size_t Scene::get_static_shadow_renderables_count() const
+{
+	return static_shadowing.size();
+}
+
+size_t Scene::get_dynamic_shadow_renderables_count() const
+{
+	return dynamic_shadowing.size();
+}
+
+size_t Scene::get_positional_lights_count() const
+{
+	return positional_lights.size();
 }
 
 #if 0

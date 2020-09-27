@@ -337,8 +337,6 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 	deferred_lights.set_scene(&scene_loader.get_scene());
 	deferred_lights.set_renderers(&depth_renderer, &deferred_renderer);
 	deferred_lights.set_enable_clustered_stencil_culling(config.deferred_clustered_stencil_culling);
-	deferred_lights.set_max_spot_lights(config.max_spot_lights);
-	deferred_lights.set_max_point_lights(config.max_point_lights);
 
 	context.set_camera(*selected_camera);
 

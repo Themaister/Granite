@@ -42,16 +42,6 @@ public:
 	void render_prepass_lights(Vulkan::CommandBuffer &cmd, RenderQueue &queue, const RenderContext &context);
 	void render_lights(Vulkan::CommandBuffer &cmd, RenderQueue &queue, const RenderContext &context, Renderer::RendererOptionFlags flags);
 
-	void set_max_spot_lights(unsigned count)
-	{
-		max_spot_lights = count;
-	}
-
-	void set_max_point_lights(unsigned count)
-	{
-		max_point_lights = count;
-	}
-
 private:
 	Scene *scene = nullptr;
 	Renderer *depth_renderer = nullptr;
@@ -63,9 +53,6 @@ private:
 	VisibilityList clips;
 	VisibilityList clusters[NumClusters];
 	bool enable_clustered_stencil = false;
-
-	unsigned max_spot_lights = std::numeric_limits<unsigned>::max();
-	unsigned max_point_lights = std::numeric_limits<unsigned>::max();
 
 	void refresh(RenderContext &context) override;
 };

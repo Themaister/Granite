@@ -23,6 +23,7 @@
 #include "command_buffer.hpp"
 #include "device.hpp"
 #include "format.hpp"
+#include "thread_id.hpp"
 #include <string.h>
 
 //#define FULL_BACKTRACE_CHECKPOINTS
@@ -2374,6 +2375,9 @@ void CommandBuffer::end_threaded_recording()
 		return;
 
 	is_ended = true;
+
+	// We must end a command buffer on the same thread index we started it on.
+	VK_ASSERT(get_current_thread_index() == thread_index);
 
 	if (has_profiling())
 	{

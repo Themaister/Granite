@@ -2366,12 +2366,28 @@ void CommandBuffer::set_backtrace_checkpoint()
 #endif
 }
 
-void CommandBuffer::end()
+void CommandBuffer::end_threaded_recording()
 {
 	VK_ASSERT(!debug_channel_buffer);
 
+	if (is_ended)
+		return;
+
+	is_ended = true;
+
+	if (has_profiling())
+	{
+		auto &query_pool = device->get_performance_query_pool(type);
+		query_pool.end_command_buffer(cmd);
+	}
+
 	if (table.vkEndCommandBuffer(cmd) != VK_SUCCESS)
 		LOGE("Failed to end command buffer.\n");
+}
+
+void CommandBuffer::end()
+{
+	end_threaded_recording();
 
 	if (vbo_block.mapped)
 		device->request_vertex_block_nolock(vbo_block, 0);

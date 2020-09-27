@@ -1050,9 +1050,6 @@ void Device::submit_nolock(CommandBufferHandle cmd, Fence *fence, unsigned semap
 	if (profiled_submit)
 	{
 		LOGI("Submitting profiled command buffer, draining GPU.\n");
-		auto &query_pool = get_performance_query_pool(type);
-		// Profiled submit, drain GPU before submitting to make sure there's no overlap going on.
-		query_pool.end_command_buffer(cmd->get_command_buffer());
 		Fence drain_fence;
 		submit_empty_nolock(type, &drain_fence, 0, nullptr, -1);
 		drain_fence->wait();

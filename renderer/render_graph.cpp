@@ -2161,6 +2161,11 @@ TaskGroup RenderGraph::physical_pass_handle_gpu_timeline(ThreadGroup &group, Vul
 			physical_pass_enqueue_compute_commands(physical_pass, *state.cmd);
 
 		state.emit_post_pass_barriers();
+
+		// Explicitly end in the thread since we would break threading rules otherwise if we record and End
+		// in the submission task.
+		state.cmd->end_debug_channel();
+		state.cmd->end_threaded_recording();
 	};
 
 	if (physical_pass_can_multithread(physical_pass))

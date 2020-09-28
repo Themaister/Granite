@@ -147,7 +147,7 @@ public:
 
 	void move_to_ready_tasks(const std::vector<Internal::Task *> &list);
 
-	void add_dependency(TaskGroup &dependee, TaskGroup &dependency);
+	void add_dependency(Internal::TaskGroup &dependee, Internal::TaskGroup &dependency);
 
 	void free_task_group(Internal::TaskGroup *group);
 	void free_task_deps(Internal::TaskDeps *deps);

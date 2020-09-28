@@ -164,15 +164,15 @@ void ThreadGroup::submit(TaskGroup &group)
 	group.reset();
 }
 
-void ThreadGroup::add_dependency(TaskGroup &dependee, TaskGroup &dependency)
+void ThreadGroup::add_dependency(Internal::TaskGroup &dependee, Internal::TaskGroup &dependency)
 {
-	if (dependency->flushed)
+	if (dependency.flushed)
 		throw logic_error("Cannot wait for task group which has been flushed.");
-	if (dependee->flushed)
+	if (dependee.flushed)
 		throw logic_error("Cannot add dependency to task group which has been flushed.");
 
-	dependency->deps->pending.push_back(dependee->deps);
-	dependee->deps->dependency_count.fetch_add(1, memory_order_relaxed);
+	dependency.deps->pending.push_back(dependee.deps);
+	dependee.deps->dependency_count.fetch_add(1, memory_order_relaxed);
 }
 
 void ThreadGroup::move_to_ready_tasks(const std::vector<Internal::Task *> &list)

@@ -1044,7 +1044,7 @@ void CompressorState::enqueue_compression(ThreadGroup &group, const CompressorAr
 		state->output.reset();
 		state->input.reset();
 	});
-	group.add_dependency(write_task, compression_task);
+	group.add_dependency(*write_task, *compression_task);
 	write_task->set_fence_counter_signal(signal);
 }
 
@@ -1105,7 +1105,7 @@ bool compress_texture(ThreadGroup &group, const CompressorArguments &args, const
 
 		output->enqueue_compression(group, args);
 	});
-	group.add_dependency(setup_task, dep);
+	group.add_dependency(*setup_task, *dep);
 
 	return true;
 }

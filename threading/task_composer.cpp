@@ -38,7 +38,7 @@ void TaskComposer::begin_pipeline_stage()
 {
 	auto new_group = group.create_task();
 	if (incoming)
-		group.add_dependency(new_group, incoming);
+		group.add_dependency(*new_group, *incoming);
 	incoming = new_group;
 }
 

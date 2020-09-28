@@ -439,6 +439,7 @@ if (NOT GRANITE_VULKAN_ONLY)
             scene_formats/texture_decoder.cpp scene_formats/texture_decoder.hpp
 
             threading/thread_group.cpp threading/thread_group.hpp
+            threading/task_composer.cpp threading/task_composer.hpp
 
             ui/font.hpp ui/font.cpp
             ui/flat_renderer.hpp ui/flat_renderer.cpp

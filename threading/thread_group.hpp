@@ -69,7 +69,8 @@ struct TaskDeps : Util::IntrusivePtrEnabled<TaskDeps, TaskDepsDeleter, Util::Mul
 	    : group(group_)
 	{
 		count.store(0, std::memory_order_relaxed);
-		dependency_count.store(0, std::memory_order_relaxed);
+		// One implicit dependency is the flush() happening.
+		dependency_count.store(1, std::memory_order_relaxed);
 	}
 
 	ThreadGroup *group;

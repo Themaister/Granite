@@ -62,17 +62,17 @@ void TaskDeps::notify_dependees()
 
 void TaskDeps::task_completed()
 {
-	auto old_tasks = count.fetch_sub(1);
+	auto old_tasks = count.fetch_sub(1, std::memory_order_acq_rel);
 	assert(old_tasks > 0);
-
 	if (old_tasks == 1)
 		notify_dependees();
 }
 
 void TaskDeps::dependency_satisfied()
 {
-	auto old_deps = dependency_count.fetch_sub(1);
+	auto old_deps = dependency_count.fetch_sub(1, std::memory_order_acq_rel);
 	assert(old_deps > 0);
+
 	if (old_deps == 1)
 	{
 		if (pending_tasks.empty())
@@ -89,18 +89,9 @@ void TaskGroup::flush()
 {
 	if (flushed)
 		throw logic_error("Cannot flush more than once.");
-	flushed = true;
 
-	if (deps->dependency_count == 0)
-	{
-		if (deps->pending_tasks.empty())
-			deps->notify_dependees();
-		else
-		{
-			group->move_to_ready_tasks(deps->pending_tasks);
-			deps->pending_tasks.clear();
-		}
-	}
+	flushed = true;
+	deps->dependency_satisfied();
 }
 
 void TaskGroup::wait()

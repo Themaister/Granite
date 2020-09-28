@@ -26,6 +26,7 @@
 #include "quirks.hpp"
 #include "muglm/muglm_impl.hpp"
 #include "thread_group.hpp"
+#include "task_composer.hpp"
 #include <algorithm>
 
 using namespace std;
@@ -72,6 +73,12 @@ void RenderPassInterface::build_render_pass(Vulkan::CommandBuffer &)
 
 void RenderPassInterface::build_render_pass_layered(Vulkan::CommandBuffer &, unsigned)
 {
+}
+
+void RenderPassInterface::enqueue_prepare_render_pass(TaskComposer &, const Vulkan::RenderPassInfo &, unsigned,
+                                                      VkSubpassContents &contents)
+{
+	contents = VK_SUBPASS_CONTENTS_INLINE;
 }
 
 static const RenderGraphQueueFlags compute_queues = RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT |
@@ -984,7 +991,7 @@ void RenderGraph::build_render_pass_info()
 			vector<ScaledClearRequests> scaled_clear_requests;
 
 			auto &pass = *passes[subpass];
-			unsigned subpass_index = unsigned(&subpass - physical_pass.passes.data());
+			auto subpass_index = unsigned(&subpass - physical_pass.passes.data());
 
 			// Add color attachments.
 			unsigned num_color_attachments = pass.get_color_outputs().size();
@@ -2027,8 +2034,9 @@ void RenderGraph::physical_pass_handle_flush_barrier(const Barrier &barrier, Pas
 	}
 }
 
-void RenderGraph::physical_pass_enqueue_graphics_commands(const PhysicalPass &physical_pass, Vulkan::CommandBuffer &cmd)
+void RenderGraph::physical_pass_enqueue_graphics_commands(const PhysicalPass &physical_pass, PassSubmissionState &state)
 {
+	auto &cmd = *state.cmd;
 	for (auto &clear_req : physical_pass.color_clear_requests)
 		clear_req.pass->get_clear_color(clear_req.index, clear_req.target);
 
@@ -2052,7 +2060,7 @@ void RenderGraph::physical_pass_enqueue_graphics_commands(const PhysicalPass &ph
 		auto rp_info = physical_pass.render_pass_info;
 		rp_info.base_layer = layer;
 		cmd.begin_region("begin-render-pass");
-		cmd.begin_render_pass(rp_info);
+		cmd.begin_render_pass(rp_info, state.subpass_contents[0]);
 		cmd.end_region();
 
 		for (auto &subpass : physical_pass.passes)
@@ -2072,7 +2080,7 @@ void RenderGraph::physical_pass_enqueue_graphics_commands(const PhysicalPass &ph
 			cmd.end_region();
 
 			if (&subpass != &physical_pass.passes.back())
-				cmd.next_subpass();
+				cmd.next_subpass(state.subpass_contents[subpass_index + 1]);
 		}
 
 		cmd.begin_region("end-render-pass");
@@ -2102,9 +2110,11 @@ void RenderGraph::physical_pass_enqueue_graphics_commands(const PhysicalPass &ph
 	enqueue_mipmap_requests(cmd, physical_pass.mipmap_requests);
 }
 
-void RenderGraph::physical_pass_enqueue_compute_commands(const PhysicalPass &physical_pass, Vulkan::CommandBuffer &cmd)
+void RenderGraph::physical_pass_enqueue_compute_commands(const PhysicalPass &physical_pass, PassSubmissionState &state)
 {
 	assert(physical_pass.passes.size() == 1);
+
+	auto &cmd = *state.cmd;
 	auto &pass = *passes[physical_pass.passes.front()];
 	Vulkan::QueryPoolHandle start_ts, end_ts;
 	if (enabled_timestamps)
@@ -2137,6 +2147,31 @@ void RenderGraph::physical_pass_handle_cpu_timeline(Vulkan::Device &device_,
 
 	// Hand over aliases to some future pass.
 	physical_pass_transfer_ownership(physical_pass);
+
+	// Create preparation tasks.
+	state.subpass_contents.resize(physical_pass.passes.size());
+	for (auto &c : state.subpass_contents)
+		c = VK_SUBPASS_CONTENTS_INLINE;
+
+	if (physical_pass_can_multithread(physical_pass))
+	{
+		auto &group = *Global::thread_group();
+		auto wait_task = group.create_task();
+
+		unsigned subpass_index = 0;
+		for (auto &pass : physical_pass.passes)
+		{
+			TaskComposer composer(group);
+			auto &subpass = *passes[pass];
+			subpass.enqueue_prepare_render_pass(composer, physical_pass.render_pass_info,
+			                                    subpass_index, state.subpass_contents[subpass_index]);
+			subpass_index++;
+			if (auto outgoing = composer.get_outgoing_task())
+				group.add_dependency(*wait_task, *outgoing);
+		}
+
+		state.rendering_dependency = std::move(wait_task);
+	}
 }
 
 bool RenderGraph::physical_pass_can_multithread(const PhysicalPass &physical_pass) const
@@ -2156,9 +2191,9 @@ TaskGroup RenderGraph::physical_pass_handle_gpu_timeline(ThreadGroup &group, Vul
 		state.emit_pre_pass_barriers();
 
 		if (state.graphics)
-			physical_pass_enqueue_graphics_commands(physical_pass, *state.cmd);
+			physical_pass_enqueue_graphics_commands(physical_pass, state);
 		else
-			physical_pass_enqueue_compute_commands(physical_pass, *state.cmd);
+			physical_pass_enqueue_compute_commands(physical_pass, state);
 
 		state.emit_post_pass_barriers();
 
@@ -2169,9 +2204,18 @@ TaskGroup RenderGraph::physical_pass_handle_gpu_timeline(ThreadGroup &group, Vul
 	};
 
 	if (physical_pass_can_multithread(physical_pass))
-		return group.create_task(std::move(func));
+	{
+		auto task = group.create_task(std::move(func));
+		if (state.rendering_dependency)
+		{
+			group.add_dependency(*task, *state.rendering_dependency);
+			state.rendering_dependency.reset();
+		}
+		return task;
+	}
 	else
 	{
+		assert(!state.rendering_dependency);
 		func();
 		return {};
 	}

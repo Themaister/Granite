@@ -41,6 +41,7 @@ namespace Granite
 {
 class RenderGraph;
 class RenderPass;
+class TaskComposer;
 
 // A more stateful variant of the lambdas.
 // It can be somewhat awkward to marshal shared data between N different lambdas.
@@ -61,6 +62,9 @@ public:
 	virtual bool get_clear_depth_stencil(VkClearDepthStencilValue *value) const;
 	virtual bool get_clear_color(unsigned attachment, VkClearColorValue *value) const;
 
+	virtual void enqueue_prepare_render_pass(TaskComposer &composer,
+	                                         const Vulkan::RenderPassInfo &info, unsigned subpass,
+	                                         VkSubpassContents &subpass_contents);
 	virtual void build_render_pass(Vulkan::CommandBuffer &cmd);
 	virtual void build_render_pass_layered(Vulkan::CommandBuffer &cmd, unsigned layer);
 };
@@ -579,6 +583,15 @@ public:
 			return false;
 	}
 
+	void enqueue_prepare_render_pass(TaskComposer &composer, const Vulkan::RenderPassInfo &rp_info,
+	                                 unsigned subpass_index, VkSubpassContents &contents)
+	{
+		if (render_pass_handle)
+			render_pass_handle->enqueue_prepare_render_pass(composer, rp_info, subpass_index, contents);
+		else
+			contents = VK_SUBPASS_CONTENTS_INLINE;
+	}
+
 	void build_render_pass(Vulkan::CommandBuffer &cmd, unsigned layer)
 	{
 		if (render_pass_handle)
@@ -957,6 +970,8 @@ private:
 		Util::SmallVector<VkImageMemoryBarrier> semaphore_handover_barriers;
 		Util::SmallVector<VkEvent> events;
 
+		Util::SmallVector<VkSubpassContents> subpass_contents;
+
 		VkPipelineStageFlags dst_stages = 0;
 		VkPipelineStageFlags immediate_dst_stages = 0;
 		VkPipelineStageFlags src_stages = 0;
@@ -977,6 +992,8 @@ private:
 		bool graphics = false;
 		bool active = false;
 
+		TaskGroup rendering_dependency;
+
 		void add_unique_event(VkEvent event);
 		void emit_pre_pass_barriers();
 		void emit_post_pass_barriers();
@@ -988,8 +1005,8 @@ private:
 	bool physical_pass_requires_work(const PhysicalPass &pass) const;
 	void physical_pass_transfer_ownership(const PhysicalPass &pass);
 	void physical_pass_invalidate_attachments(const PhysicalPass &pass);
-	void physical_pass_enqueue_graphics_commands(const PhysicalPass &pass, Vulkan::CommandBuffer &cmd);
-	void physical_pass_enqueue_compute_commands(const PhysicalPass &pass, Vulkan::CommandBuffer &cmd);
+	void physical_pass_enqueue_graphics_commands(const PhysicalPass &pass, PassSubmissionState &state);
+	void physical_pass_enqueue_compute_commands(const PhysicalPass &pass, PassSubmissionState &state);
 
 	void physical_pass_handle_invalidate_barrier(const Barrier &barrier, PassSubmissionState &state, bool graphics);
 	void physical_pass_handle_signal(Vulkan::Device &device, const PhysicalPass &pass, PassSubmissionState &state);

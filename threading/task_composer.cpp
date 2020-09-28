@@ -47,8 +47,14 @@ Internal::TaskGroup &TaskComposer::get_group()
 	return *incoming;
 }
 
-TaskGroup TaskComposer::get_outgoing_task() const
+TaskGroup TaskComposer::get_outgoing_task()
 {
+	if (incoming)
+	{
+		auto new_group = group.create_task();
+		group.add_dependency(*new_group, *incoming);
+		incoming = new_group;
+	}
 	return incoming;
 }
 }

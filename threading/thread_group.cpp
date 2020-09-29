@@ -255,17 +255,16 @@ ThreadGroup *TaskGroup::get_thread_group() const
 
 void TaskGroup::enqueue_task(std::function<void()> func)
 {
-	auto ref = reference_from_this();
-	group->enqueue_task(ref, move(func));
+	group->enqueue_task(*this, move(func));
 }
 
-void ThreadGroup::enqueue_task(TaskGroupHandle &group, std::function<void()> func)
+void ThreadGroup::enqueue_task(TaskGroup &group, std::function<void()> func)
 {
-	if (group->flushed)
+	if (group.flushed)
 		throw logic_error("Cannot enqueue work to a flushed task group.");
 
-	group->deps->pending_tasks.push_back(task_pool.allocate(group->deps, move(func)));
-	group->deps->count.fetch_add(1, memory_order_relaxed);
+	group.deps->pending_tasks.push_back(task_pool.allocate(group.deps, move(func)));
+	group.deps->count.fetch_add(1, memory_order_relaxed);
 }
 
 void ThreadGroup::wait_idle()

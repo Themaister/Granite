@@ -39,7 +39,7 @@ int main()
 	auto task3 = group.create_task([]() {
 		LOGI("Ohai 3!\n");
 	});
-	group.enqueue_task(task3, []() {
+	group.enqueue_task(*task3, []() {
 		LOGI("Brrr :3\n");
 	});
 	task1->id = 1;

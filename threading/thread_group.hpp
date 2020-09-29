@@ -141,7 +141,7 @@ public:
 
 	void stop();
 
-	void enqueue_task(TaskGroupHandle &group, std::function<void ()> func);
+	void enqueue_task(TaskGroup &group, std::function<void ()> func);
 	TaskGroupHandle create_task(std::function<void ()> func);
 	TaskGroupHandle create_task();
 

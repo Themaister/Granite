@@ -4,6 +4,7 @@
 #include "post/aa.hpp"
 #include "post/temporal.hpp"
 #include "post/hdr.hpp"
+#include "task_composer.hpp"
 
 using namespace Util;
 using namespace Granite;
@@ -47,7 +48,9 @@ void AABenchApplication::render_frame(double, double)
 	auto &wsi = get_wsi();
 	auto &device = wsi.get_device();
 	graph.setup_attachments(device, &device.get_swapchain_view());
-	graph.enqueue_render_passes(device);
+	TaskComposer composer(*Global::thread_group());
+	graph.enqueue_render_passes(device, composer);
+	composer.get_outgoing_task()->wait();
 	//need_main_pass = false;
 }
 

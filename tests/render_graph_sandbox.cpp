@@ -23,6 +23,7 @@
 #include "application.hpp"
 #include "render_graph.hpp"
 #include "os_filesystem.hpp"
+#include "task_composer.hpp"
 #include <string.h>
 
 using namespace Granite;
@@ -139,7 +140,9 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
 		auto &wsi = get_wsi();
 		auto &device = wsi.get_device();
 		graph.setup_attachments(device, &device.get_swapchain_view());
-		graph.enqueue_render_passes(device);
+		TaskComposer composer(*Global::thread_group());
+		graph.enqueue_render_passes(device, composer);
+		composer.get_outgoing_task()->wait();
 	}
 
 	RenderGraph graph;

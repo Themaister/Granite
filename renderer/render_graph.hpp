@@ -992,7 +992,7 @@ private:
 		bool graphics = false;
 		bool active = false;
 
-		TaskGroup rendering_dependency;
+		TaskGroupHandle rendering_dependency;
 
 		void add_unique_event(VkEvent event);
 		void emit_pre_pass_barriers();
@@ -1015,7 +1015,7 @@ private:
 	void physical_pass_handle_cpu_timeline(Vulkan::Device &device, const PhysicalPass &pass, PassSubmissionState &state,
 	                                       TaskComposer &composer);
 	bool physical_pass_can_multithread(const PhysicalPass &pass) const;
-	void physical_pass_handle_gpu_timeline(Internal::TaskGroup &group, Vulkan::Device &device,
+	void physical_pass_handle_gpu_timeline(TaskGroup &group, Vulkan::Device &device,
 	                                       const PhysicalPass &pass, PassSubmissionState &state);
 };
 }

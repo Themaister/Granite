@@ -39,11 +39,6 @@ namespace Granite
 
 namespace Internal
 {
-TaskGroup::TaskGroup(ThreadGroup *group_)
-	: group(group_)
-{
-}
-
 void TaskDeps::notify_dependees()
 {
 	if (signal)
@@ -84,6 +79,12 @@ void TaskDeps::dependency_satisfied()
 		}
 	}
 }
+}
+
+TaskGroup::TaskGroup(ThreadGroup *group_)
+		: group(group_)
+{
+}
 
 void TaskGroup::flush()
 {
@@ -109,7 +110,6 @@ TaskGroup::~TaskGroup()
 {
 	if (!flushed)
 		flush();
-}
 }
 
 static void set_main_thread_name()
@@ -158,13 +158,13 @@ void ThreadGroup::start(unsigned num_threads)
 	}
 }
 
-void ThreadGroup::submit(TaskGroup &group)
+void ThreadGroup::submit(TaskGroupHandle &group)
 {
 	group->flush();
 	group.reset();
 }
 
-void ThreadGroup::add_dependency(Internal::TaskGroup &dependee, Internal::TaskGroup &dependency)
+void ThreadGroup::add_dependency(TaskGroup &dependee, TaskGroup &dependency)
 {
 	if (dependency.flushed)
 		throw logic_error("Cannot wait for task group which has been flushed.");
@@ -189,7 +189,7 @@ void ThreadGroup::move_to_ready_tasks(const std::vector<Internal::Task *> &list)
 		cond.notify_one();
 }
 
-void Internal::TaskGroupDeleter::operator()(Internal::TaskGroup *group)
+void Internal::TaskGroupDeleter::operator()(TaskGroup *group)
 {
 	group->group->free_task_group(group);
 }
@@ -199,7 +199,7 @@ void Internal::TaskDepsDeleter::operator()(Internal::TaskDeps *deps)
 	deps->group->free_task_deps(deps);
 }
 
-void ThreadGroup::free_task_group(Internal::TaskGroup *group)
+void ThreadGroup::free_task_group(TaskGroup *group)
 {
 	task_group_pool.free(group);
 }
@@ -224,9 +224,9 @@ void TaskSignal::wait_until_at_least(uint64_t count)
 	});
 }
 
-TaskGroup ThreadGroup::create_task(std::function<void()> func)
+TaskGroupHandle ThreadGroup::create_task(std::function<void()> func)
 {
-	TaskGroup group(task_group_pool.allocate(this));
+	TaskGroupHandle group(task_group_pool.allocate(this));
 
 	group->deps = Internal::TaskDepsHandle(task_deps_pool.allocate(this));
 
@@ -235,31 +235,31 @@ TaskGroup ThreadGroup::create_task(std::function<void()> func)
 	return group;
 }
 
-TaskGroup ThreadGroup::create_task()
+TaskGroupHandle ThreadGroup::create_task()
 {
-	TaskGroup group(task_group_pool.allocate(this));
+	TaskGroupHandle group(task_group_pool.allocate(this));
 	group->deps = Internal::TaskDepsHandle(task_deps_pool.allocate(this));
 	group->deps->count.store(0, memory_order_relaxed);
 	return group;
 }
 
-void Internal::TaskGroup::set_fence_counter_signal(TaskSignal *signal)
+void TaskGroup::set_fence_counter_signal(TaskSignal *signal)
 {
 	deps->signal = signal;
 }
 
-ThreadGroup *Internal::TaskGroup::get_thread_group() const
+ThreadGroup *TaskGroup::get_thread_group() const
 {
 	return group;
 }
 
-void Internal::TaskGroup::enqueue_task(std::function<void()> func)
+void TaskGroup::enqueue_task(std::function<void()> func)
 {
 	auto ref = reference_from_this();
 	group->enqueue_task(ref, move(func));
 }
 
-void ThreadGroup::enqueue_task(TaskGroup &group, std::function<void()> func)
+void ThreadGroup::enqueue_task(TaskGroupHandle &group, std::function<void()> func)
 {
 	if (group->flushed)
 		throw logic_error("Cannot enqueue work to a flushed task group.");

@@ -159,11 +159,11 @@ struct CompressorState : enable_shared_from_this<CompressorState>
 
 	void setup(const CompressorArguments &args);
 	void enqueue_compression(ThreadGroup &group, const CompressorArguments &args);
-	void enqueue_compression_block_ispc(TaskGroup &group, const CompressorArguments &args, unsigned layer, unsigned level);
-	void enqueue_compression_block_astc(TaskGroup &group, const CompressorArguments &args, unsigned layer, unsigned level, TextureMode mode);
-	void enqueue_compression_block_rgtc(TaskGroup &group, const CompressorArguments &args, unsigned layer, unsigned level);
-	void enqueue_compression_copy_8bit(TaskGroup &group, const CompressorArguments &, unsigned layer, unsigned level);
-	void enqueue_compression_copy_16bit(TaskGroup &group, const CompressorArguments &, unsigned layer, unsigned level);
+	void enqueue_compression_block_ispc(TaskGroupHandle &group, const CompressorArguments &args, unsigned layer, unsigned level);
+	void enqueue_compression_block_astc(TaskGroupHandle &group, const CompressorArguments &args, unsigned layer, unsigned level, TextureMode mode);
+	void enqueue_compression_block_rgtc(TaskGroupHandle &group, const CompressorArguments &args, unsigned layer, unsigned level);
+	void enqueue_compression_copy_8bit(TaskGroupHandle &group, const CompressorArguments &, unsigned layer, unsigned level);
+	void enqueue_compression_copy_16bit(TaskGroupHandle &group, const CompressorArguments &, unsigned layer, unsigned level);
 
 	double total_error[4] = {};
 	mutex lock;
@@ -436,7 +436,7 @@ void CompressorState::setup(const CompressorArguments &args)
 	}
 }
 
-void CompressorState::enqueue_compression_copy_16bit(TaskGroup &group, const CompressorArguments &,
+void CompressorState::enqueue_compression_copy_16bit(TaskGroupHandle &group, const CompressorArguments &,
                                                      unsigned layer, unsigned level)
 {
 	group->enqueue_task([=]() {
@@ -467,7 +467,7 @@ void CompressorState::enqueue_compression_copy_16bit(TaskGroup &group, const Com
 	});
 }
 
-void CompressorState::enqueue_compression_copy_8bit(TaskGroup &group, const CompressorArguments &,
+void CompressorState::enqueue_compression_copy_8bit(TaskGroupHandle &group, const CompressorArguments &,
                                                     unsigned layer, unsigned level)
 {
 	group->enqueue_task([=]() {
@@ -498,7 +498,7 @@ void CompressorState::enqueue_compression_copy_8bit(TaskGroup &group, const Comp
 	});
 }
 
-void CompressorState::enqueue_compression_block_rgtc(TaskGroup &group, const CompressorArguments &args, unsigned layer, unsigned level)
+void CompressorState::enqueue_compression_block_rgtc(TaskGroupHandle &group, const CompressorArguments &args, unsigned layer, unsigned level)
 {
 	int width = input->get_layout().get_width(level);
 	int height = input->get_layout().get_height(level);
@@ -600,7 +600,7 @@ void CompressorState::enqueue_compression_block_rgtc(TaskGroup &group, const Com
 }
 
 #ifdef HAVE_ISPC
-void CompressorState::enqueue_compression_block_ispc(TaskGroup &group, const CompressorArguments &args,
+void CompressorState::enqueue_compression_block_ispc(TaskGroupHandle &group, const CompressorArguments &args,
                                                      unsigned layer, unsigned level)
 {
 	int width = input->get_layout().get_width(level);
@@ -726,7 +726,7 @@ void CompressorState::enqueue_compression_block_ispc(TaskGroup &group, const Com
 #endif
 
 #ifdef HAVE_ASTC_ENCODER
-void CompressorState::enqueue_compression_block_astc(TaskGroup &compression_task, const CompressorArguments &args,
+void CompressorState::enqueue_compression_block_astc(TaskGroupHandle &compression_task, const CompressorArguments &args,
                                                      unsigned layer, unsigned level, TextureMode mode)
 {
 	struct ContextDeleter
@@ -1049,7 +1049,7 @@ void CompressorState::enqueue_compression(ThreadGroup &group, const CompressorAr
 }
 
 bool compress_texture(ThreadGroup &group, const CompressorArguments &args, const shared_ptr<MemoryMappedTexture> &input,
-                      TaskGroup &dep, TaskSignal *signal)
+                      TaskGroupHandle &dep, TaskSignal *signal)
 {
 	auto output = make_shared<CompressorState>();
 	output->input = input;

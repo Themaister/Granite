@@ -2184,7 +2184,7 @@ bool RenderGraph::physical_pass_can_multithread(const PhysicalPass &physical_pas
 	return true;
 }
 
-void RenderGraph::physical_pass_handle_gpu_timeline(Internal::TaskGroup &group, Vulkan::Device &device_,
+void RenderGraph::physical_pass_handle_gpu_timeline(TaskGroup &group, Vulkan::Device &device_,
                                                     const PhysicalPass &physical_pass,
                                                     PassSubmissionState &state)
 {

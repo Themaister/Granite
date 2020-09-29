@@ -29,12 +29,12 @@ TaskComposer::TaskComposer(ThreadGroup &group_)
 {
 }
 
-void TaskComposer::set_incoming_task(TaskGroup group_)
+void TaskComposer::set_incoming_task(TaskGroupHandle group_)
 {
 	incoming = std::move(group_);
 }
 
-Internal::TaskGroup &TaskComposer::begin_pipeline_stage()
+TaskGroup &TaskComposer::begin_pipeline_stage()
 {
 	auto new_group = group.create_task();
 	if (incoming)
@@ -43,12 +43,12 @@ Internal::TaskGroup &TaskComposer::begin_pipeline_stage()
 	return *incoming;
 }
 
-Internal::TaskGroup &TaskComposer::get_group()
+TaskGroup &TaskComposer::get_group()
 {
 	return *incoming;
 }
 
-TaskGroup TaskComposer::get_outgoing_task()
+TaskGroupHandle TaskComposer::get_outgoing_task()
 {
 	if (incoming)
 	{

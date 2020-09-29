@@ -711,7 +711,7 @@ private:
 		std::unordered_map<VkShaderModule, Shader *> shader_map;
 		std::unordered_map<VkRenderPass, RenderPass *> render_pass_map;
 #ifdef GRANITE_VULKAN_MT
-		Granite::TaskGroup pipeline_group;
+		Granite::TaskGroupHandle pipeline_group;
 #endif
 	} replayer_state;
 

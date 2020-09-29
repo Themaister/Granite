@@ -31,16 +31,16 @@ namespace Granite
 class TaskComposer
 {
 public:
-	TaskComposer(ThreadGroup &group);
-	void set_incoming_task(TaskGroup group);
-	Internal::TaskGroup &begin_pipeline_stage();
-	Internal::TaskGroup &get_group();
-	TaskGroup get_outgoing_task();
+	explicit TaskComposer(ThreadGroup &group);
+	void set_incoming_task(TaskGroupHandle group);
+	TaskGroup &begin_pipeline_stage();
+	TaskGroup &get_group();
+	TaskGroupHandle get_outgoing_task();
 
 private:
 	ThreadGroup &group;
-	TaskGroup incoming;
-	TaskGroup current;
+	TaskGroupHandle incoming;
+	TaskGroupHandle current;
 };
 
 }

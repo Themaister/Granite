@@ -98,10 +98,11 @@ const ShaderTemplate::Variant *ShaderTemplate::register_variant(const std::vecto
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 			if (compiler)
 			{
-				variant->spirv = compiler->compile(defines);
+				std::string error_message;
+				variant->spirv = compiler->compile(error_message, defines);
 				if (variant->spirv.empty())
 				{
-					LOGE("Shader error:\n%s\n", compiler->get_error_message().c_str());
+					LOGE("Shader error:\n%s\n", error_message.c_str());
 					variants.free(variant);
 					return nullptr;
 				}
@@ -143,10 +144,11 @@ void ShaderTemplate::recompile()
 
 	for (auto &variant : variants)
 	{
-		auto newspirv = compiler->compile(&variant.defines);
+		std::string error_message;
+		auto newspirv = compiler->compile(error_message, &variant.defines);
 		if (newspirv.empty())
 		{
-			LOGE("Failed to compile shader: %s\n%s\n", path.c_str(), compiler->get_error_message().c_str());
+			LOGE("Failed to compile shader: %s\n%s\n", path.c_str(), error_message.c_str());
 			for (auto &define : variant.defines)
 				LOGE("  Define: %s = %d\n", define.first.c_str(), define.second);
 			continue;

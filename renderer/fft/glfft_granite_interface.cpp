@@ -322,10 +322,11 @@ unique_ptr<GLFFT::Program> FFTInterface::compile_compute_shader(const char *sour
 		if (!compiler.preprocess())
 			return {};
 		compiler.set_stage(Stage::Compute);
-		auto spirv = compiler.compile();
+		std::string error_message;
+		auto spirv = compiler.compile(error_message);
 		if (spirv.empty())
 		{
-			LOGE("GLFFT: error: \n%s\n", compiler.get_error_message().c_str());
+			LOGE("GLFFT: error: \n%s\n", error_message.c_str());
 			return {};
 		}
 

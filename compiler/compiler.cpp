@@ -165,7 +165,7 @@ bool GLSLCompiler::preprocess()
 	return parse_variants(source, source_path);
 }
 
-vector<uint32_t> GLSLCompiler::compile(const vector<pair<string, int>> *defines)
+vector<uint32_t> GLSLCompiler::compile(std::string &error_message, const vector<pair<string, int>> *defines) const
 {
 	shaderc::Compiler compiler;
 	shaderc::CompileOptions options;
@@ -244,7 +244,7 @@ vector<uint32_t> GLSLCompiler::compile(const vector<pair<string, int>> *defines)
 
 	spvtools::SpirvTools core(target == Target::Vulkan11 ? SPV_ENV_VULKAN_1_1 : SPV_ENV_VULKAN_1_0);
 
-	core.SetMessageConsumer([this](spv_message_level_t, const char *, const spv_position_t&, const char *message) {
+	core.SetMessageConsumer([this, &error_message](spv_message_level_t, const char *, const spv_position_t&, const char *message) {
 		error_message = message;
 	});
 

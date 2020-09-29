@@ -721,7 +721,7 @@ public:
 	void reset();
 	void log();
 	void setup_attachments(Vulkan::Device &device, Vulkan::ImageView *swapchain);
-	void enqueue_render_passes(Vulkan::Device &device);
+	void enqueue_render_passes(Vulkan::Device &device, TaskComposer &composer);
 
 	RenderTextureResource &get_texture_resource(const std::string &name);
 	RenderBufferResource &get_buffer_resource(const std::string &name);
@@ -999,8 +999,9 @@ private:
 		void emit_post_pass_barriers();
 		void submit();
 	};
+	std::vector<PassSubmissionState> pass_submission_state;
 
-	void enqueue_render_pass(Vulkan::Device &device, PhysicalPass &physical_pass, PassSubmissionState &state);
+	void enqueue_render_pass(Vulkan::Device &device, PhysicalPass &physical_pass, PassSubmissionState &state, TaskComposer &composer);
 	void enqueue_swapchain_scale_pass(Vulkan::Device &device);
 	bool physical_pass_requires_work(const PhysicalPass &pass) const;
 	void physical_pass_transfer_ownership(const PhysicalPass &pass);
@@ -1011,8 +1012,10 @@ private:
 	void physical_pass_handle_invalidate_barrier(const Barrier &barrier, PassSubmissionState &state, bool graphics);
 	void physical_pass_handle_signal(Vulkan::Device &device, const PhysicalPass &pass, PassSubmissionState &state);
 	void physical_pass_handle_flush_barrier(const Barrier &barrier, PassSubmissionState &state);
-	void physical_pass_handle_cpu_timeline(Vulkan::Device &device, const PhysicalPass &pass, PassSubmissionState &state);
+	void physical_pass_handle_cpu_timeline(Vulkan::Device &device, const PhysicalPass &pass, PassSubmissionState &state,
+	                                       TaskComposer &composer);
 	bool physical_pass_can_multithread(const PhysicalPass &pass) const;
-	TaskGroup physical_pass_handle_gpu_timeline(ThreadGroup &group, Vulkan::Device &device, const PhysicalPass &pass, PassSubmissionState &state);
+	void physical_pass_handle_gpu_timeline(Internal::TaskGroup &group, Vulkan::Device &device,
+	                                       const PhysicalPass &pass, PassSubmissionState &state);
 };
 }

@@ -34,12 +34,13 @@ void TaskComposer::set_incoming_task(TaskGroup group_)
 	incoming = std::move(group_);
 }
 
-void TaskComposer::begin_pipeline_stage()
+Internal::TaskGroup &TaskComposer::begin_pipeline_stage()
 {
 	auto new_group = group.create_task();
 	if (incoming)
 		group.add_dependency(*new_group, *incoming);
 	incoming = new_group;
+	return *incoming;
 }
 
 Internal::TaskGroup &TaskComposer::get_group()

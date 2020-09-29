@@ -26,6 +26,7 @@
 #include "post/hdr.hpp"
 #include "post/ssao.hpp"
 #include "rapidjson_wrapper.hpp"
+#include "task_composer.hpp"
 #include "thread_group.hpp"
 #include "utils/image_utils.hpp"
 //#include "ocean.hpp"
@@ -1102,7 +1103,10 @@ void SceneViewerApplication::render_scene()
 
 	renderer_suite.update_mesh_rendering_options(context, renderer_suite_config);
 	scene.bind_render_graph_resources(graph);
-	graph.enqueue_render_passes(device);
+
+	TaskComposer composer(*Global::thread_group());
+	graph.enqueue_render_passes(device, composer);
+	composer.get_outgoing_task()->wait();
 
 	need_shadow_map_update = false;
 }

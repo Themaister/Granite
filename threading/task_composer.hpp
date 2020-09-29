@@ -33,7 +33,7 @@ class TaskComposer
 public:
 	TaskComposer(ThreadGroup &group);
 	void set_incoming_task(TaskGroup group);
-	void begin_pipeline_stage();
+	Internal::TaskGroup &begin_pipeline_stage();
 	Internal::TaskGroup &get_group();
 	TaskGroup get_outgoing_task();
 

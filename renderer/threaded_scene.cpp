@@ -29,8 +29,7 @@ namespace Threaded
 void scene_gather_opaque_renderables(const Scene &scene, TaskComposer &composer, const Frustum &frustum,
                                      VisibilityList *lists, unsigned num_tasks)
 {
-	composer.begin_pipeline_stage();
-	auto &group = composer.get_group();
+	auto &group = composer.begin_pipeline_stage();
 	for (unsigned i = 0; i < num_tasks; i++)
 	{
 		group.enqueue_task([&frustum, lists, &scene, i, num_tasks]() {
@@ -42,8 +41,7 @@ void scene_gather_opaque_renderables(const Scene &scene, TaskComposer &composer,
 void scene_gather_transparent_renderables(const Scene &scene, TaskComposer &composer, const Frustum &frustum,
                                           VisibilityList *lists, unsigned num_tasks)
 {
-	composer.begin_pipeline_stage();
-	auto &group = composer.get_group();
+	auto &group = composer.begin_pipeline_stage();
 	for (unsigned i = 0; i < num_tasks; i++)
 	{
 		group.enqueue_task([&frustum, lists, &scene, i, num_tasks]() {
@@ -55,8 +53,7 @@ void scene_gather_transparent_renderables(const Scene &scene, TaskComposer &comp
 void scene_gather_static_shadow_renderables(const Scene &scene, TaskComposer &composer, const Frustum &frustum,
                                             VisibilityList *lists, unsigned num_tasks)
 {
-	composer.begin_pipeline_stage();
-	auto &group = composer.get_group();
+	auto &group = composer.begin_pipeline_stage();
 	for (unsigned i = 0; i < num_tasks; i++)
 	{
 		group.enqueue_task([&frustum, lists, &scene, i, num_tasks]() {
@@ -68,8 +65,7 @@ void scene_gather_static_shadow_renderables(const Scene &scene, TaskComposer &co
 void scene_gather_dynamic_shadow_renderables(const Scene &scene, TaskComposer &composer, const Frustum &frustum,
                                              VisibilityList *lists, unsigned num_tasks)
 {
-	composer.begin_pipeline_stage();
-	auto &group = composer.get_group();
+	auto &group = composer.begin_pipeline_stage();
 	for (unsigned i = 0; i < num_tasks; i++)
 	{
 		group.enqueue_task([&frustum, lists, &scene, i, num_tasks]() {
@@ -81,8 +77,7 @@ void scene_gather_dynamic_shadow_renderables(const Scene &scene, TaskComposer &c
 void scene_gather_positional_light_renderables(const Scene &scene, TaskComposer &composer, const Frustum &frustum,
                                                VisibilityList *lists, unsigned num_tasks)
 {
-	composer.begin_pipeline_stage();
-	auto &group = composer.get_group();
+	auto &group = composer.begin_pipeline_stage();
 	for (unsigned i = 0; i < num_tasks; i++)
 	{
 		group.enqueue_task([&frustum, lists, &scene, i, num_tasks]() {

@@ -43,8 +43,7 @@ static Renderer::RendererOptionFlags convert_pcf_flags(SceneRendererFlags flags)
 static void compose_parallel_push_renderables(TaskComposer &composer, const RenderContext &context, RenderQueue *queues, VisibilityList *visibility, unsigned count)
 {
 	{
-		composer.begin_pipeline_stage();
-		auto &group = composer.get_group();
+		auto &group = composer.begin_pipeline_stage();
 		for (unsigned i = 0; i < count; i++)
 		{
 			group.enqueue_task([i, &context, visibility, queues]() {
@@ -54,8 +53,7 @@ static void compose_parallel_push_renderables(TaskComposer &composer, const Rend
 	}
 
 	{
-		composer.begin_pipeline_stage();
-		auto &group = composer.get_group();
+		auto &group = composer.begin_pipeline_stage();
 		group.enqueue_task([=]() {
 			for (unsigned i = 1; i < count; i++)
 				queues[0].combine_render_info(queues[i]);
@@ -106,8 +104,7 @@ void RenderPassSceneRenderer::enqueue_prepare_render_pass(TaskComposer &composer
 	if (setup_data.flags & (SCENE_RENDERER_FORWARD_OPAQUE_BIT | SCENE_RENDERER_FORWARD_Z_PREPASS_BIT))
 	{
 		{
-			composer.begin_pipeline_stage();
-			auto &group = composer.get_group();
+			auto &group = composer.begin_pipeline_stage();
 			group.enqueue_task([this]() {
 				setup_data.scene->gather_visible_render_pass_sinks(
 						setup_data.context->get_render_parameters().camera_position,
@@ -122,8 +119,7 @@ void RenderPassSceneRenderer::enqueue_prepare_render_pass(TaskComposer &composer
 		if (setup_data.flags & SCENE_RENDERER_FORWARD_OPAQUE_BIT)
 		{
 			{
-				composer.begin_pipeline_stage();
-				auto &group = composer.get_group();
+				auto &group = composer.begin_pipeline_stage();
 				group.enqueue_task([this]() {
 					setup_data.scene->gather_unbounded_renderables(visible_per_task[0]);
 				});
@@ -135,8 +131,7 @@ void RenderPassSceneRenderer::enqueue_prepare_render_pass(TaskComposer &composer
 	if (setup_data.flags & SCENE_RENDERER_DEFERRED_GBUFFER_BIT)
 	{
 		{
-			composer.begin_pipeline_stage();
-			auto &group = composer.get_group();
+			auto &group = composer.begin_pipeline_stage();
 			group.enqueue_task([this]() {
 				setup_data.scene->gather_visible_render_pass_sinks(setup_data.context->get_render_parameters().camera_position, visible_per_task[0]);
 				setup_data.scene->gather_unbounded_renderables(visible_per_task[0]);

@@ -166,9 +166,7 @@ void Ocean::refresh(RenderContext &context_)
 	last_camera_position = context_.get_render_parameters().camera_position;
 }
 
-void Ocean::set_base_renderer(Renderer *,
-                              Renderer *,
-                              Renderer *)
+void Ocean::set_base_renderer(const RendererSuite *)
 {
 }
 

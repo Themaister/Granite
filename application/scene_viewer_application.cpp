@@ -113,7 +113,10 @@ void SceneViewerApplication::read_config(const std::string &path)
 	if (doc.HasMember("directionalLightShadowsCascaded"))
 		config.directional_light_cascaded_shadows = doc["directionalLightShadowsCascaded"].GetBool();
 	if (doc.HasMember("directionalLightShadowsVSM"))
+	{
 		config.directional_light_shadows_vsm = doc["directionalLightShadowsVSM"].GetBool();
+		renderer_suite_config.directional_light_vsm = config.directional_light_shadows_vsm;
+	}
 	if (doc.HasMember("PCFKernelWidth"))
 	{
 		unsigned width = doc["PCFKernelWidth"].GetUint();
@@ -128,6 +131,7 @@ void SceneViewerApplication::read_config(const std::string &path)
 			config.pcf_flags = 0;
 			LOGE("Invalid PCFKernelWidth, assuming default of 1.\n");
 		}
+		renderer_suite_config.pcf_width = width;
 	}
 	if (doc.HasMember("clusteredLights"))
 		config.clustered_lights = doc["clusteredLights"].GetBool();
@@ -189,10 +193,9 @@ void SceneViewerApplication::read_config(const std::string &path)
 
 SceneViewerApplication::SceneViewerApplication(const std::string &path, const std::string &config_path,
                                                const std::string &quirks_path)
-    : forward_renderer(RendererType::GeneralForward)
-    , deferred_renderer(RendererType::GeneralDeferred)
-    , depth_renderer(RendererType::DepthOnly)
 {
+	renderer_suite.set_default_renderers();
+
 	if (!config_path.empty())
 		read_config(config_path);
 	if (!quirks_path.empty())
@@ -276,7 +279,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 		else
 		{
 			cluster->set_scene(&scene_loader.get_scene());
-			cluster->set_base_renderer(&forward_renderer, &deferred_renderer, &depth_renderer);
+			cluster->set_base_renderer(&renderer_suite);
 			cluster->set_base_render_context(&context);
 		}
 
@@ -335,7 +338,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 		entity->allocate_component<PerFrameUpdateComponent>()->refresh = &deferred_lights;
 	}
 	deferred_lights.set_scene(&scene_loader.get_scene());
-	deferred_lights.set_renderers(&depth_renderer, &deferred_renderer);
+	deferred_lights.set_renderers(&renderer_suite);
 	deferred_lights.set_enable_clustered_stencil_culling(config.deferred_clustered_stencil_culling);
 
 	context.set_camera(*selected_camera);
@@ -572,6 +575,8 @@ void SceneViewerApplication::capture_environment_probe()
 		scene.gather_visible_opaque_renderables(context.get_visibility_frustum(), visible);
 		scene.gather_visible_render_pass_sinks(context.get_render_parameters().camera_position, visible);
 		scene.gather_unbounded_renderables(visible);
+
+		auto &forward_renderer = renderer_suite.get_renderer(RendererSuite::Type::ForwardOpaque);
 		forward_renderer.set_mesh_renderer_options_from_lighting(lighting);
 		forward_renderer.set_mesh_renderer_options(forward_renderer.get_mesh_renderer_options() | config.pcf_flags);
 
@@ -635,10 +640,7 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 	setup.scene = &scene_loader.get_scene();
 	setup.deferred_lights = &deferred_lights;
 	setup.context = &context;
-	setup.forward_opaque = &forward_renderer;
-	setup.forward_transparent = &forward_renderer;
-	setup.deferred = &deferred_renderer;
-	setup.depth = &depth_renderer;
+	setup.suite = &renderer_suite;
 	setup.flags = SCENE_RENDERER_FORWARD_OPAQUE_BIT | SCENE_RENDERER_FORWARD_TRANSPARENT_BIT | config.pcf_flags;
 	if (config.forward_depth_prepass)
 		setup.flags |= SCENE_RENDERER_FORWARD_Z_PREPASS_BIT;
@@ -686,10 +688,7 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 		setup.scene = &scene_loader.get_scene();
 		setup.deferred_lights = &deferred_lights;
 		setup.context = &context;
-		setup.forward_opaque = &forward_renderer;
-		setup.forward_transparent = &forward_renderer;
-		setup.deferred = &deferred_renderer;
-		setup.depth = &depth_renderer;
+		setup.suite = &renderer_suite;
 		setup.flags = SCENE_RENDERER_DEFERRED_GBUFFER_BIT;
 		if (!config.clustered_lights && config.deferred_clustered_stencil_culling)
 			setup.flags |= SCENE_RENDERER_DEFERRED_GBUFFER_LIGHT_PREPASS_BIT;
@@ -719,10 +718,7 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 		setup.scene = &scene_loader.get_scene();
 		setup.deferred_lights = &deferred_lights;
 		setup.context = &context;
-		setup.forward_opaque = &forward_renderer;
-		setup.forward_transparent = &forward_renderer;
-		setup.deferred = &deferred_renderer;
-		setup.depth = &depth_renderer;
+		setup.suite = &renderer_suite;
 		setup.flags = SCENE_RENDERER_DEFERRED_LIGHTING_BIT | SCENE_RENDERER_FORWARD_TRANSPARENT_BIT | config.pcf_flags;
 		if (config.clustered_lights)
 			setup.flags |= SCENE_RENDERER_DEFERRED_CLUSTER_BIT;
@@ -844,10 +840,7 @@ void SceneViewerApplication::add_shadow_pass(Device &, const std::string &tag, D
 	Util::IntrusivePtr<RenderPassSceneRenderer> handle;
 	RenderPassSceneRenderer::Setup setup = {};
 	setup.scene = &scene_loader.get_scene();
-	setup.forward_opaque = &forward_renderer;
-	setup.forward_transparent = &forward_renderer;
-	setup.deferred = &deferred_renderer;
-	setup.depth = &depth_renderer;
+	setup.suite = &renderer_suite;
 	setup.flags = SCENE_RENDERER_DEPTH_BIT;
 	if (config.directional_light_shadows_vsm)
 		setup.flags |= SCENE_RENDERER_SHADOW_VSM_BIT;
@@ -1032,7 +1025,7 @@ void SceneViewerApplication::update_scene(double frame_time, double elapsed_time
 	lighting.refraction.falloff = vec3(1.0f / 1.5f, 1.0f / 2.5f, 1.0f / 5.0f);
 
 	context.set_camera(*selected_camera);
-	scene.set_render_pass_data(&forward_renderer, &deferred_renderer, &depth_renderer, &context);
+	scene.set_render_pass_data(&renderer_suite, &context);
 
 	lighting.directional.direction = selected_directional->direction;
 	lighting.directional.color = selected_directional->color;
@@ -1107,6 +1100,7 @@ void SceneViewerApplication::render_scene()
 	}
 	setup_shadow_map_near();
 
+	renderer_suite.update_mesh_rendering_options(context, renderer_suite_config);
 	scene.bind_render_graph_resources(graph);
 	graph.enqueue_render_passes(device);
 

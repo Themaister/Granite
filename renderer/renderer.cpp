@@ -35,6 +35,48 @@ using namespace std;
 
 namespace Granite
 {
+void RendererSuite::set_renderer(Type type, RendererHandle handle)
+{
+	handles[Util::ecast(type)] = std::move(handle);
+}
+
+Renderer &RendererSuite::get_renderer(Type type)
+{
+	return *handles[Util::ecast(type)];
+}
+
+const Renderer &RendererSuite::get_renderer(Type type) const
+{
+	return *handles[Util::ecast(type)];
+}
+
+void RendererSuite::set_default_renderers()
+{
+	set_renderer(Type::ForwardOpaque, Util::make_handle<Renderer>(RendererType::GeneralForward, nullptr));
+	set_renderer(Type::ForwardTransparent, Util::make_handle<Renderer>(RendererType::GeneralForward, nullptr));
+	set_renderer(Type::ShadowDepth, Util::make_handle<Renderer>(RendererType::DepthOnly, nullptr));
+	set_renderer(Type::PrepassDepth, Util::make_handle<Renderer>(RendererType::DepthOnly, nullptr));
+	set_renderer(Type::Deferred, Util::make_handle<Renderer>(RendererType::GeneralDeferred, nullptr));
+}
+
+void RendererSuite::update_mesh_rendering_options(const RenderContext &context, const Config &config)
+{
+	get_renderer(Type::ShadowDepth).set_mesh_renderer_options(
+			config.directional_light_vsm ? Renderer::SHADOW_VSM_BIT : 0);
+	get_renderer(Type::PrepassDepth).set_mesh_renderer_options(0);
+	get_renderer(Type::Deferred).set_mesh_renderer_options(0);
+
+	Renderer::RendererOptionFlags pcf_flags = 0;
+	if (config.pcf_width == 5)
+		pcf_flags |= Renderer::SHADOW_PCF_KERNEL_WIDTH_5_BIT;
+	else if (config.pcf_width == 3)
+		pcf_flags |= Renderer::SHADOW_PCF_KERNEL_WIDTH_3_BIT;
+
+	auto opts = Renderer::get_mesh_renderer_options_from_lighting(*context.get_lighting_parameters());
+	get_renderer(Type::ForwardOpaque).set_mesh_renderer_options(
+			opts | pcf_flags | (config.forward_z_prepass ? Renderer::ALPHA_TEST_DISABLE_BIT : 0));
+	get_renderer(Type::ForwardTransparent).set_mesh_renderer_options(opts | pcf_flags);
+}
 
 Renderer::Renderer(RendererType type_, const ShaderSuiteResolver *resolver_)
 	: type(type_), resolver(resolver_)

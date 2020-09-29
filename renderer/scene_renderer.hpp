@@ -57,10 +57,7 @@ public:
 	{
 		Scene *scene;
 		const RenderContext *context;
-		const Renderer *forward_opaque;
-		const Renderer *forward_transparent;
-		const Renderer *deferred;
-		const Renderer *depth;
+		const RendererSuite *suite;
 		DeferredLights *deferred_lights;
 		SceneRendererFlags flags;
 	};

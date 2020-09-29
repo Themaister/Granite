@@ -95,7 +95,7 @@ private:
 	void add_render_passes(RenderGraph &graph) override;
 	void setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target) override;
 	void setup_render_pass_resources(RenderGraph &graph) override;
-	void set_base_renderer(Renderer *, Renderer *, Renderer *) override;
+	void set_base_renderer(const RendererSuite *) override;
 	void set_base_render_context(const RenderContext *context) override;
 	void set_scene(Scene *scene) override;
 

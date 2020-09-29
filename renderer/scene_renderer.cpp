@@ -67,50 +67,38 @@ static void compose_parallel_push_renderables(TaskComposer &composer, const Rend
 void RenderPassSceneRenderer::enqueue_prepare_render_pass(TaskComposer &composer, const Vulkan::RenderPassInfo &,
                                                           unsigned, VkSubpassContents &contents)
 {
+	auto *suite = setup_data.suite;
 	contents = VK_SUBPASS_CONTENTS_INLINE;
 	for (auto &visible : visible_per_task)
 		visible.clear();
 
 	// Setup renderer options in main thread.
-	if (setup_data.flags & (SCENE_RENDERER_FORWARD_Z_PREPASS_BIT | SCENE_RENDERER_DEPTH_BIT))
+	if (setup_data.flags & SCENE_RENDERER_FORWARD_Z_PREPASS_BIT)
 	{
-#if 0
-		if (setup_data.flags & SCENE_RENDERER_DEPTH_BIT)
-			setup_data.depth->set_mesh_renderer_options((setup_data.flags & SCENE_RENDERER_DEPTH_VSM_BIT) ? Renderer::SHADOW_VSM_BIT : 0);
-#endif
-
 		for (auto &queue : queue_per_task_depth)
-			setup_data.depth->begin(queue);
+			suite->get_renderer(RendererSuite::Type::PrepassDepth).begin(queue);
+	}
+	else if (setup_data.flags & SCENE_RENDERER_DEPTH_BIT)
+	{
+		for (auto &queue : queue_per_task_depth)
+			suite->get_renderer(RendererSuite::Type::ShadowDepth).begin(queue);
 	}
 
 	if (setup_data.flags & SCENE_RENDERER_FORWARD_OPAQUE_BIT)
 	{
-#if 0
-		setup_data.forward->set_mesh_renderer_options_from_lighting(*setup_data.context->get_lighting_parameters());
-			setup_data.forward->set_mesh_renderer_options(
-					setup_data.forward->get_mesh_renderer_options() |
-					convert_pcf_flags(setup_data.flags) |
-					((setup_data.flags & SCENE_RENDERER_FORWARD_Z_PREPASS_BIT) ? Renderer::ALPHA_TEST_DISABLE_BIT : 0));
-#endif
 		for (auto &queue : queue_per_task_opaque)
-			setup_data.forward_opaque->begin(queue);
+			suite->get_renderer(RendererSuite::Type::ForwardOpaque).begin(queue);
 	}
 	else if (setup_data.flags & SCENE_RENDERER_DEFERRED_GBUFFER_BIT)
 	{
 		for (auto &queue : queue_per_task_opaque)
-			setup_data.deferred->begin(queue);
+			suite->get_renderer(RendererSuite::Type::Deferred).begin(queue);
 	}
 
 	if (setup_data.flags & SCENE_RENDERER_FORWARD_TRANSPARENT_BIT)
 	{
-#if 0
-		setup_data.forward->set_mesh_renderer_options_from_lighting(*setup_data.context->get_lighting_parameters());
-			setup_data.forward->set_mesh_renderer_options(
-					setup_data.forward->get_mesh_renderer_options() |
-					convert_pcf_flags(setup_data.flags));
-#endif
 		for (auto &queue : queue_per_task_transparent)
-			setup_data.forward_transparent->begin(queue);
+			suite->get_renderer(RendererSuite::Type::ForwardTransparent).begin(queue);
 	}
 
 	if (setup_data.flags & (SCENE_RENDERER_FORWARD_OPAQUE_BIT | SCENE_RENDERER_FORWARD_Z_PREPASS_BIT))
@@ -148,18 +136,20 @@ void RenderPassSceneRenderer::enqueue_prepare_render_pass(TaskComposer &composer
 			Threaded::scene_gather_dynamic_shadow_renderables(*setup_data.scene, composer, setup_data.context->get_visibility_frustum(), visible_per_task, MaxTasks);
 		if (setup_data.flags & SCENE_RENDERER_DEPTH_STATIC_BIT)
 			Threaded::scene_gather_static_shadow_renderables(*setup_data.scene, composer, setup_data.context->get_visibility_frustum(), visible_per_task, MaxTasks);
-		compose_parallel_push_renderables(composer, *setup_data.context, queue_per_task_opaque, visible_per_task, MaxTasks);
+		compose_parallel_push_renderables(composer, *setup_data.context, queue_per_task_depth, visible_per_task, MaxTasks);
 	}
 }
 
 void RenderPassSceneRenderer::build_render_pass(Vulkan::CommandBuffer &cmd)
 {
+	auto *suite = setup_data.suite;
+
 	if (setup_data.flags & (SCENE_RENDERER_FORWARD_OPAQUE_BIT | SCENE_RENDERER_FORWARD_Z_PREPASS_BIT))
 	{
 		if (setup_data.flags & SCENE_RENDERER_FORWARD_Z_PREPASS_BIT)
 		{
-			setup_data.depth->flush(cmd, queue_per_task_depth[0], *setup_data.context,
-			                        Renderer::NO_COLOR_BIT | Renderer::SKIP_SORTING_BIT);
+			suite->get_renderer(RendererSuite::Type::PrepassDepth).flush(cmd, queue_per_task_depth[0], *setup_data.context,
+			                                                             Renderer::NO_COLOR_BIT | Renderer::SKIP_SORTING_BIT);
 		}
 
 		if (setup_data.flags & SCENE_RENDERER_FORWARD_OPAQUE_BIT)
@@ -167,12 +157,12 @@ void RenderPassSceneRenderer::build_render_pass(Vulkan::CommandBuffer &cmd)
 			Renderer::RendererOptionFlags opt = Renderer::SKIP_SORTING_BIT;
 			if (setup_data.flags & SCENE_RENDERER_FORWARD_Z_PREPASS_BIT)
 				opt |= Renderer::DEPTH_STENCIL_READ_ONLY_BIT | Renderer::DEPTH_TEST_EQUAL_BIT;
-			setup_data.forward_opaque->flush(cmd, queue_per_task_opaque[0], *setup_data.context, opt);
+			suite->get_renderer(RendererSuite::Type::ForwardOpaque).flush(cmd, queue_per_task_opaque[0], *setup_data.context, opt);
 		}
 	}
 
 	if (setup_data.flags & SCENE_RENDERER_DEFERRED_GBUFFER_BIT)
-		setup_data.deferred->flush(cmd, queue_per_task_opaque[0], *setup_data.context, Renderer::SKIP_SORTING_BIT);
+		suite->get_renderer(RendererSuite::Type::Deferred).flush(cmd, queue_per_task_opaque[0], *setup_data.context, Renderer::SKIP_SORTING_BIT);
 
 	if (setup_data.flags & SCENE_RENDERER_DEFERRED_GBUFFER_LIGHT_PREPASS_BIT)
 		setup_data.deferred_lights->render_prepass_lights(cmd, queue_non_tasked, *setup_data.context);
@@ -186,14 +176,14 @@ void RenderPassSceneRenderer::build_render_pass(Vulkan::CommandBuffer &cmd)
 
 	if (setup_data.flags & SCENE_RENDERER_FORWARD_TRANSPARENT_BIT)
 	{
-		setup_data.forward_transparent->flush(cmd, queue_per_task_transparent[0], *setup_data.context,
-		                                      Renderer::DEPTH_STENCIL_READ_ONLY_BIT | Renderer::SKIP_SORTING_BIT);
+		suite->get_renderer(RendererSuite::Type::ForwardTransparent).flush(cmd, queue_per_task_transparent[0], *setup_data.context,
+		                                                                   Renderer::DEPTH_STENCIL_READ_ONLY_BIT | Renderer::SKIP_SORTING_BIT);
 	}
 
 	if (setup_data.flags & SCENE_RENDERER_DEPTH_BIT)
 	{
-		setup_data.depth->flush(cmd, queue_per_task_depth[0], *setup_data.context,
-		                        Renderer::DEPTH_BIAS_BIT | Renderer::SKIP_SORTING_BIT);
+		suite->get_renderer(RendererSuite::Type::ShadowDepth).flush(cmd, queue_per_task_depth[0], *setup_data.context,
+		                                                            Renderer::DEPTH_BIAS_BIT | Renderer::SKIP_SORTING_BIT);
 	}
 }
 

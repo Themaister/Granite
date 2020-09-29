@@ -61,9 +61,8 @@ protected:
 	RenderContext depth_context_far;
 	Util::IntrusivePtr<RenderPassSceneRendererConditional> shadow_far_renderer;
 
-	Renderer forward_renderer;
-	Renderer deferred_renderer;
-	Renderer depth_renderer;
+	RendererSuite renderer_suite;
+	RendererSuite::Config renderer_suite_config;
 	FlatRenderer flat_renderer;
 	LightingParameters lighting;
 	FPSCamera cam;

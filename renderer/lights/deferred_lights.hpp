@@ -33,7 +33,7 @@ class DeferredLights : public PerFrameRefreshable
 {
 public:
 	void set_scene(Scene *scene);
-	void set_renderers(Renderer *depth_renderer, Renderer *deferred_renderer);
+	void set_renderers(RendererSuite *suite);
 	void set_enable_clustered_stencil_culling(bool state)
 	{
 		enable_clustered_stencil = state;
@@ -44,8 +44,7 @@ public:
 
 private:
 	Scene *scene = nullptr;
-	Renderer *depth_renderer = nullptr;
-	Renderer *deferred_renderer = nullptr;
+	RendererSuite *renderer_suite = nullptr;
 	VisibilityList visible;
 
 	enum { NumClusters = 7 };

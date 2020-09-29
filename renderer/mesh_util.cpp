@@ -1203,10 +1203,14 @@ void TexturePlane::render_main_pass(Vulkan::CommandBuffer &cmd, const mat4 &proj
 	scene->gather_visible_opaque_renderables(context.get_visibility_frustum(), visible);
 	scene->gather_visible_transparent_renderables(context.get_visibility_frustum(), visible);
 	scene->gather_unbounded_renderables(visible);
-	renderer->set_mesh_renderer_options_from_lighting(lighting);
-	renderer->begin(internal_queue);
+
+	// FIXME: Need to rethink this. We shouldn't be allowed to mutate the renderer suite.
+	LOGE("FIXME, TexturePlane::render_main_pass\n");
+	auto &renderer = renderer_suite->get_renderer(RendererSuite::Type::ForwardOpaque);
+	//renderer.set_mesh_renderer_options_from_lighting(lighting);
+	renderer.begin(internal_queue);
 	internal_queue.push_renderables(context, visible);
-	renderer->flush(cmd, internal_queue, context);
+	renderer.flush(cmd, internal_queue, context);
 }
 
 void TexturePlane::set_plane(const vec3 &position_, const vec3 &normal_, const vec3 &up_, float extent_up,
@@ -1288,7 +1292,10 @@ void TexturePlane::add_render_pass(RenderGraph &graph, Type type)
 			float z_near;
 			compute_plane_reflection(proj, view, base_context->get_render_parameters().camera_position, position, normal, up,
 			                         rad_up, rad_x, z_near, zfar);
-			renderer->set_mesh_renderer_options(Renderer::ENVIRONMENT_ENABLE_BIT | Renderer::SHADOW_ENABLE_BIT);
+
+			// FIXME: Should not be allowed.
+			LOGE("FIXME, TexturePlane::add_render_pass\n");
+			//renderer.set_mesh_renderer_options(Renderer::ENVIRONMENT_ENABLE_BIT | Renderer::SHADOW_ENABLE_BIT);
 
 			if (zfar > z_near)
 				render_main_pass(cmd, proj, view);
@@ -1299,7 +1306,9 @@ void TexturePlane::add_render_pass(RenderGraph &graph, Type type)
 			float z_near;
 			compute_plane_refraction(proj, view, base_context->get_render_parameters().camera_position, position, normal, up,
 			                         rad_up, rad_x, z_near, zfar);
-			renderer->set_mesh_renderer_options(Renderer::ENVIRONMENT_ENABLE_BIT | Renderer::SHADOW_ENABLE_BIT | Renderer::REFRACTION_ENABLE_BIT);
+
+			// FIXME: Should not be allowed.
+			//renderer.set_mesh_renderer_options(Renderer::ENVIRONMENT_ENABLE_BIT | Renderer::SHADOW_ENABLE_BIT | Renderer::REFRACTION_ENABLE_BIT);
 
 			if (zfar > z_near)
 				render_main_pass(cmd, proj, view);
@@ -1326,9 +1335,9 @@ void TexturePlane::add_render_passes(RenderGraph &graph)
 		add_render_pass(graph, Refraction);
 }
 
-void TexturePlane::set_base_renderer(Renderer *forward, Renderer *, Renderer *)
+void TexturePlane::set_base_renderer(const RendererSuite *suite)
 {
-	this->renderer = forward;
+	renderer_suite = suite;
 }
 
 void TexturePlane::set_base_render_context(const RenderContext *context_)

@@ -49,10 +49,10 @@ public:
 	virtual void bind_render_context_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context) = 0;
 };
 
-class Renderer : public EventHandler
+class Renderer : public EventHandler, public Util::IntrusivePtrEnabled<Renderer>
 {
 public:
-	explicit Renderer(RendererType type = RendererType::GeneralDeferred, const ShaderSuiteResolver *resolver = nullptr);
+	explicit Renderer(RendererType type, const ShaderSuiteResolver *resolver);
 	virtual ~Renderer() = default;
 
 	enum RendererOptionBits
@@ -141,6 +141,39 @@ private:
 	uint8_t stencil_reference = 0;
 
 	void set_mesh_renderer_options_internal(RendererOptionFlags flags);
+};
+using RendererHandle = Util::IntrusivePtr<Renderer>;
+
+class RendererSuite
+{
+public:
+	enum class Type
+	{
+		ForwardOpaque = 0,
+		ForwardTransparent,
+		ShadowDepth,
+		PrepassDepth,
+		Deferred,
+		Count
+	};
+
+	void set_renderer(Type type, RendererHandle handle);
+	void set_default_renderers();
+
+	struct Config
+	{
+		unsigned pcf_width = 1;
+		bool directional_light_vsm = false;
+		bool forward_z_prepass = false;
+	};
+
+	void update_mesh_rendering_options(const RenderContext &context, const Config &config);
+
+	Renderer &get_renderer(Type type);
+	const Renderer &get_renderer(Type type) const;
+
+private:
+	RendererHandle handles[Util::ecast(Type::Count)];
 };
 
 class DeferredLightRenderer

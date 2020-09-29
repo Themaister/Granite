@@ -109,9 +109,7 @@ private:
 	void refresh(RenderContext &context) override;
 
 	void add_render_passes(RenderGraph &graph) override;
-	void set_base_renderer(Renderer *forward_renderer,
-	                       Renderer *deferred_renderer,
-	                       Renderer *depth_renderer) override;
+	void set_base_renderer(const RendererSuite *suite) override;
 	void set_base_render_context(const RenderContext *context) override;
 	void setup_render_pass_dependencies(RenderGraph &graph,
 	                                    RenderPass &target) override;

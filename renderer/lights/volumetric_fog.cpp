@@ -301,7 +301,7 @@ const ImageView &VolumetricFog::get_view() const
 	return *view;
 }
 
-void VolumetricFog::set_base_renderer(Renderer *, Renderer *, Renderer *)
+void VolumetricFog::set_base_renderer(const RendererSuite *)
 {
 }
 

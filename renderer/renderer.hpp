@@ -102,12 +102,15 @@ public:
 	void set_stencil_reference(uint8_t compare_mask, uint8_t write_mask, uint8_t ref);
 	RendererOptionFlags get_mesh_renderer_options() const;
 
-	void begin(RenderQueue &queue);
-
 	void render_debug_aabb(RenderQueue &queue, const RenderContext &context, const AABB &aabb, const vec4 &color);
 	void render_debug_frustum(RenderQueue &queue, const RenderContext &context, const Frustum &frustum, const vec4 &color);
 
-	void flush(Vulkan::CommandBuffer &cmd, RenderQueue &queue, const RenderContext &context, RendererFlushFlags options = 0);
+	void begin(RenderQueue &queue) const;
+	void flush(Vulkan::CommandBuffer &cmd, RenderQueue &queue, const RenderContext &context, RendererFlushFlags options = 0) const;
+	// Multi-threaded dispatch from a queue.
+	// queue is assumed to be sorted already.
+	void flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue, const RenderContext &context,
+	                  RendererFlushFlags options, unsigned index, unsigned num_indices) const;
 
 	RendererType get_renderer_type() const
 	{
@@ -117,7 +120,7 @@ public:
 	void set_render_context_parameter_binder(RenderContextParameterBinder *binder);
 
 protected:
-	ShaderSuite suite[Util::ecast(RenderableType::Count)];
+	mutable ShaderSuite suite[Util::ecast(RenderableType::Count)];
 
 private:
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);

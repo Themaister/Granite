@@ -174,8 +174,10 @@ public:
 	}
 
 	void sort();
-	void dispatch(Queue queue, Vulkan::CommandBuffer &cmd, const Vulkan::CommandBufferSavedState *state);
-	void dispatch(Queue queue, Vulkan::CommandBuffer &cmd, const Vulkan::CommandBufferSavedState *state, size_t begin, size_t end);
+	void dispatch(Queue queue, Vulkan::CommandBuffer &cmd, const Vulkan::CommandBufferSavedState *state) const;
+	void dispatch_range(Queue queue, Vulkan::CommandBuffer &cmd, const Vulkan::CommandBufferSavedState *state, size_t begin, size_t end) const;
+	void dispatch_subset(Queue queue, Vulkan::CommandBuffer &cmd, const Vulkan::CommandBufferSavedState *state, unsigned index, unsigned num_indices) const;
+	size_t get_dispatch_size(Queue queue) const;
 
 	void set_shader_suites(ShaderSuite *suite)
 	{

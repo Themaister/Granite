@@ -40,10 +40,10 @@ enum SceneRendererFlagBits : uint32_t
 	SCENE_RENDERER_DEFERRED_GBUFFER_LIGHT_PREPASS_BIT = 1 << 4,
 	SCENE_RENDERER_DEFERRED_LIGHTING_BIT = 1 << 5,
 	SCENE_RENDERER_DEFERRED_CLUSTER_BIT = 1 << 6,
-	SCENE_RENDERER_PCF_1X_BIT = 1 << 7,
-	SCENE_RENDERER_PCF_3X_BIT = 1 << 8,
-	SCENE_RENDERER_PCF_5X_BIT = 1 << 9,
-	SCENE_RENDERER_DEPTH_VSM_BIT = 1 << 10,
+	SCENE_RENDERER_SHADOW_PCF_1X_BIT = 1 << 7,
+	SCENE_RENDERER_SHADOW_PCF_3X_BIT = 1 << 8,
+	SCENE_RENDERER_SHADOW_PCF_5X_BIT = 1 << 9,
+	SCENE_RENDERER_SHADOW_VSM_BIT = 1 << 10,
 	SCENE_RENDERER_DEPTH_BIT = 1 << 11,
 	SCENE_RENDERER_DEPTH_STATIC_BIT = 1 << 12,
 	SCENE_RENDERER_DEPTH_DYNAMIC_BIT = 1 << 13
@@ -57,9 +57,10 @@ public:
 	{
 		Scene *scene;
 		const RenderContext *context;
-		Renderer *forward;
-		Renderer *deferred;
-		Renderer *depth;
+		const Renderer *forward_opaque;
+		const Renderer *forward_transparent;
+		const Renderer *deferred;
+		const Renderer *depth;
 		DeferredLights *deferred_lights;
 		SceneRendererFlags flags;
 	};
@@ -71,12 +72,20 @@ protected:
 	VkClearColorValue clear_color_value = {};
 
 	// These need to be per-thread, and thus are hoisted out as state in RenderPassSceneRenderer.
-	VisibilityList visible;
-	RenderQueue queue;
+	enum { MaxTasks = 16 };
+	VisibilityList visible_per_task[MaxTasks];
+	VisibilityList visible_per_task_transparent[MaxTasks];
+	RenderQueue queue_per_task_depth[MaxTasks];
+	RenderQueue queue_per_task_opaque[MaxTasks];
+	RenderQueue queue_per_task_transparent[MaxTasks];
+	RenderQueue queue_non_tasked;
 
 	void build_render_pass(Vulkan::CommandBuffer &cmd) override;
 	bool get_clear_color(unsigned attachment, VkClearColorValue *value) const override;
 	bool render_pass_can_multithread() const override;
+	void enqueue_prepare_render_pass(TaskComposer &composer,
+	                                 const Vulkan::RenderPassInfo &info, unsigned subpass,
+	                                 VkSubpassContents &contents) override;
 };
 
 class RenderPassSceneRendererConditional : public RenderPassSceneRenderer

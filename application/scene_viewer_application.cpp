@@ -118,9 +118,9 @@ void SceneViewerApplication::read_config(const std::string &path)
 	{
 		unsigned width = doc["PCFKernelWidth"].GetUint();
 		if (width == 5)
-			config.pcf_flags = SCENE_RENDERER_PCF_5X_BIT;
+			config.pcf_flags = SCENE_RENDERER_SHADOW_PCF_5X_BIT;
 		else if (width == 3)
-			config.pcf_flags = SCENE_RENDERER_PCF_3X_BIT;
+			config.pcf_flags = SCENE_RENDERER_SHADOW_PCF_3X_BIT;
 		else if (width == 1)
 			config.pcf_flags = 0;
 		else
@@ -635,7 +635,8 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 	setup.scene = &scene_loader.get_scene();
 	setup.deferred_lights = &deferred_lights;
 	setup.context = &context;
-	setup.forward = &forward_renderer;
+	setup.forward_opaque = &forward_renderer;
+	setup.forward_transparent = &forward_renderer;
 	setup.deferred = &deferred_renderer;
 	setup.depth = &depth_renderer;
 	setup.flags = SCENE_RENDERER_FORWARD_OPAQUE_BIT | SCENE_RENDERER_FORWARD_TRANSPARENT_BIT | config.pcf_flags;
@@ -685,7 +686,8 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 		setup.scene = &scene_loader.get_scene();
 		setup.deferred_lights = &deferred_lights;
 		setup.context = &context;
-		setup.forward = &forward_renderer;
+		setup.forward_opaque = &forward_renderer;
+		setup.forward_transparent = &forward_renderer;
 		setup.deferred = &deferred_renderer;
 		setup.depth = &depth_renderer;
 		setup.flags = SCENE_RENDERER_DEFERRED_GBUFFER_BIT;
@@ -717,7 +719,8 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 		setup.scene = &scene_loader.get_scene();
 		setup.deferred_lights = &deferred_lights;
 		setup.context = &context;
-		setup.forward = &forward_renderer;
+		setup.forward_opaque = &forward_renderer;
+		setup.forward_transparent = &forward_renderer;
 		setup.deferred = &deferred_renderer;
 		setup.depth = &depth_renderer;
 		setup.flags = SCENE_RENDERER_DEFERRED_LIGHTING_BIT | SCENE_RENDERER_FORWARD_TRANSPARENT_BIT | config.pcf_flags;
@@ -841,12 +844,13 @@ void SceneViewerApplication::add_shadow_pass(Device &, const std::string &tag, D
 	Util::IntrusivePtr<RenderPassSceneRenderer> handle;
 	RenderPassSceneRenderer::Setup setup = {};
 	setup.scene = &scene_loader.get_scene();
-	setup.forward = &forward_renderer;
+	setup.forward_opaque = &forward_renderer;
+	setup.forward_transparent = &forward_renderer;
 	setup.deferred = &deferred_renderer;
 	setup.depth = &depth_renderer;
 	setup.flags = SCENE_RENDERER_DEPTH_BIT;
 	if (config.directional_light_shadows_vsm)
-		setup.flags |= SCENE_RENDERER_DEPTH_VSM_BIT;
+		setup.flags |= SCENE_RENDERER_SHADOW_VSM_BIT;
 
 	if (type == DepthPassType::Main)
 	{

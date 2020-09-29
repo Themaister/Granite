@@ -271,7 +271,7 @@ void Renderer::on_device_destroyed(const DeviceCreatedEvent &)
 {
 }
 
-void Renderer::begin(RenderQueue &queue)
+void Renderer::begin(RenderQueue &queue) const
 {
 	queue.reset();
 	queue.set_shader_suites(suite);
@@ -404,8 +404,11 @@ void Renderer::set_render_context_parameter_binder(RenderContextParameterBinder 
 	render_context_parameter_binder = binder;
 }
 
-void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderQueue &queue, const RenderContext &context, RendererFlushFlags options)
+void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue, const RenderContext &context,
+                            RendererFlushFlags options, unsigned index, unsigned num_indices) const
 {
+	assert((options & SKIP_SORTING_BIT) != 0);
+
 	if (render_context_parameter_binder)
 	{
 		render_context_parameter_binder->bind_render_context_parameters(cmd, context);
@@ -416,9 +419,6 @@ void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderQueue &queue, const Rende
 		if (type == RendererType::GeneralForward)
 			bind_lighting_parameters(cmd, context);
 	}
-
-	if ((options & SKIP_SORTING_BIT) == 0)
-		queue.sort();
 
 	cmd.set_opaque_state();
 
@@ -458,8 +458,8 @@ void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderQueue &queue, const Rende
 	CommandBufferSavedState state;
 	cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
 	// No need to spend write bandwidth on writing 0 to light buffer, render opaque emissive on top.
-	queue.dispatch(Queue::Opaque, cmd, &state);
-	queue.dispatch(Queue::OpaqueEmissive, cmd, &state);
+	queue.dispatch_subset(Queue::Opaque, cmd, &state, index, num_indices);
+	queue.dispatch_subset(Queue::OpaqueEmissive, cmd, &state, index, num_indices);
 
 	if (type == RendererType::GeneralDeferred)
 	{
@@ -480,7 +480,7 @@ void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderQueue &queue, const Rende
 		cmd.set_stencil_front_ops(VK_COMPARE_OP_EQUAL, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP);
 		cmd.set_stencil_back_ops(VK_COMPARE_OP_EQUAL, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP);
 		cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
-		queue.dispatch(Queue::Light, cmd, &state);
+		queue.dispatch_subset(Queue::Light, cmd, &state, index, num_indices);
 	}
 	else if (type == RendererType::GeneralForward)
 	{
@@ -491,8 +491,15 @@ void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderQueue &queue, const Rende
 		cmd.set_blend_op(VK_BLEND_OP_ADD);
 		cmd.set_depth_test(true, false);
 		cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
-		queue.dispatch(Queue::Transparent, cmd, &state);
+		queue.dispatch_subset(Queue::Transparent, cmd, &state, index, num_indices);
 	}
+}
+
+void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderQueue &queue, const RenderContext &context, RendererFlushFlags options) const
+{
+	if ((options & SKIP_SORTING_BIT) == 0)
+		queue.sort();
+	flush_subset(cmd, queue, context, options | SKIP_SORTING_BIT, 0, 1);
 }
 
 DebugMeshInstanceInfo &Renderer::render_debug(RenderQueue &queue, const RenderContext &context, unsigned count)

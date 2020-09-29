@@ -24,7 +24,7 @@
 
 namespace Granite
 {
-namespace Threading
+namespace Threaded
 {
 void scene_gather_opaque_renderables(const Scene &scene, TaskComposer &composer, const Frustum &frustum,
                                      VisibilityList *lists, unsigned num_tasks)

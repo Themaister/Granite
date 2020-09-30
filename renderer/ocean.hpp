@@ -106,7 +106,7 @@ private:
 
 	const RenderContext *context = nullptr;
 
-	void refresh(RenderContext &context) override;
+	void refresh(const RenderContext &context, TaskComposer &composer) override;
 
 	void add_render_passes(RenderGraph &graph) override;
 	void set_base_renderer(const RendererSuite *suite) override;

@@ -53,6 +53,6 @@ private:
 	VisibilityList clusters[NumClusters];
 	bool enable_clustered_stencil = false;
 
-	void refresh(RenderContext &context) override;
+	void refresh(const RenderContext &context, TaskComposer &composer) override;
 };
 }

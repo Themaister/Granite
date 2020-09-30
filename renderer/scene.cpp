@@ -24,6 +24,7 @@
 #include "transforms.hpp"
 #include "lights/lights.hpp"
 #include "simd.hpp"
+#include "task_composer.hpp"
 #include <float.h>
 
 using namespace std;
@@ -124,22 +125,28 @@ void Scene::bind_render_graph_resources(RenderGraph &graph)
 	}
 }
 
-void Scene::refresh_per_frame(RenderContext &context)
+void Scene::refresh_per_frame(const RenderContext &context, TaskComposer &composer)
 {
+	composer.begin_pipeline_stage();
+
 	for (auto &update : per_frame_update_transforms)
 	{
 		auto *refresh = get_component<PerFrameUpdateTransformComponent>(update)->refresh;
 		auto *transform = get_component<RenderInfoComponent>(update);
 		if (refresh)
-			refresh->refresh(context, transform);
+			refresh->refresh(context, transform, composer);
 	}
+
+	composer.begin_pipeline_stage();
 
 	for (auto &update : per_frame_updates)
 	{
 		auto *refresh = get_component<PerFrameUpdateComponent>(update)->refresh;
 		if (refresh)
-			refresh->refresh(context);
+			refresh->refresh(context, composer);
 	}
+
+	composer.begin_pipeline_stage();
 }
 
 EnvironmentComponent *Scene::get_environment() const

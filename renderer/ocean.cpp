@@ -161,7 +161,7 @@ void Ocean::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
 	border_ibo.reset();
 }
 
-void Ocean::refresh(RenderContext &context_)
+void Ocean::refresh(const RenderContext &context_, TaskComposer &)
 {
 	last_camera_position = context_.get_render_parameters().camera_position;
 }

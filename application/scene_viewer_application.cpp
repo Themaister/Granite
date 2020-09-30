@@ -1007,7 +1007,7 @@ void SceneViewerApplication::setup_shadow_map_near()
 	depth_context_near.set_camera(proj, view);
 }
 
-void SceneViewerApplication::update_scene(double frame_time, double elapsed_time)
+void SceneViewerApplication::update_scene(TaskComposer &composer, double frame_time, double elapsed_time)
 {
 	last_frame_times[last_frame_index++ & FrameWindowSizeMask] = float(frame_time);
 	auto &scene = scene_loader.get_scene();
@@ -1031,7 +1031,7 @@ void SceneViewerApplication::update_scene(double frame_time, double elapsed_time
 	lighting.directional.direction = selected_directional->direction;
 	lighting.directional.color = selected_directional->color;
 
-	scene.refresh_per_frame(context);
+	scene.refresh_per_frame(context, composer);
 }
 
 void SceneViewerApplication::render_ui(CommandBuffer &cmd)
@@ -1078,7 +1078,7 @@ void SceneViewerApplication::render_ui(CommandBuffer &cmd)
 	flat_renderer.flush(cmd, vec3(0.0f), vec3(cmd.get_viewport().width, cmd.get_viewport().height, 1.0f));
 }
 
-void SceneViewerApplication::render_scene()
+void SceneViewerApplication::render_scene(TaskComposer &composer)
 {
 	auto &wsi = get_wsi();
 	auto &device = wsi.get_device();
@@ -1104,17 +1104,17 @@ void SceneViewerApplication::render_scene()
 	renderer_suite.update_mesh_rendering_options(context, renderer_suite_config);
 	scene.bind_render_graph_resources(graph);
 
-	TaskComposer composer(*Global::thread_group());
 	graph.enqueue_render_passes(device, composer);
-	composer.get_outgoing_task()->wait();
 
 	need_shadow_map_update = false;
 }
 
 void SceneViewerApplication::render_frame(double frame_time, double elapsed_time)
 {
-	update_scene(frame_time, elapsed_time);
-	render_scene();
+	TaskComposer composer(*Global::thread_group());
+	update_scene(composer, frame_time, elapsed_time);
+	render_scene(composer);
+	composer.get_outgoing_task()->wait();
 }
 
 } // namespace Granite

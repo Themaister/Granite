@@ -42,6 +42,7 @@ class Scene;
 class Ground;
 class PositionalLight;
 class Skybox;
+class TaskComposer;
 
 struct Transform
 {
@@ -147,13 +148,13 @@ struct RenderPassComponent : ComponentBase
 struct PerFrameRefreshableTransform
 {
 	virtual ~PerFrameRefreshableTransform() = default;
-	virtual void refresh(RenderContext &context, const RenderInfoComponent *transform) = 0;
+	virtual void refresh(const RenderContext &context, const RenderInfoComponent *transform, TaskComposer &composer) = 0;
 };
 
 struct PerFrameRefreshable
 {
 	virtual ~PerFrameRefreshable() = default;
-	virtual void refresh(RenderContext &context) = 0;
+	virtual void refresh(const RenderContext &context, TaskComposer &composer) = 0;
 };
 
 struct PerFrameUpdateTransformComponent : ComponentBase

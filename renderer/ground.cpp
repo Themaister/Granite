@@ -158,7 +158,7 @@ GroundPatch::~GroundPatch()
 {
 }
 
-void GroundPatch::refresh(RenderContext &context, const RenderInfoComponent *transform)
+void GroundPatch::refresh(const RenderContext &context, const RenderInfoComponent *transform, TaskComposer &)
 {
 	vec3 center = transform->world_aabb.get_center();
 	const auto &camera_pos = context.get_render_parameters().camera_position;
@@ -384,7 +384,7 @@ void Ground::get_render_info(const RenderContext &context, const RenderInfoCompo
 	}
 }
 
-void Ground::refresh(RenderContext &context)
+void Ground::refresh(const RenderContext &context, TaskComposer &)
 {
 	auto &device = context.get_device();
 	auto cmd = device.request_command_buffer();

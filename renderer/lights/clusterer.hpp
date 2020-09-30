@@ -101,9 +101,9 @@ private:
 
 	void setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target) override;
 	void setup_render_pass_resources(RenderGraph &graph) override;
-	void refresh(RenderContext &context_) override;
-	void refresh_bindless(RenderContext &context_);
-	void refresh_legacy(RenderContext &context_);
+	void refresh(const RenderContext &context_, TaskComposer &composer) override;
+	void refresh_bindless(const RenderContext &context_);
+	void refresh_legacy(const RenderContext &context_);
 
 	Scene *scene = nullptr;
 	const RenderContext *context = nullptr;
@@ -161,8 +161,8 @@ private:
 	} legacy;
 
 	const RendererSuite *renderer_suite = nullptr;
-	void render_atlas_spot(RenderContext &context_);
-	void render_atlas_point(RenderContext &context_);
+	void render_atlas_spot(const RenderContext &context_);
+	void render_atlas_point(const RenderContext &context_);
 
 	bool enable_shadows = true;
 	bool enable_clustering = true;

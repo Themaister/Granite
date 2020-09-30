@@ -43,7 +43,7 @@ public:
 	Scene(const Scene &) = delete;
 	void operator=(const Scene &) = delete;
 
-	void refresh_per_frame(RenderContext &context);
+	void refresh_per_frame(const RenderContext &context, TaskComposer &composer);
 	void update_cached_transforms();
 
 	void gather_visible_opaque_renderables(const Frustum &frustum, VisibilityList &list) const;

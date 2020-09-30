@@ -29,7 +29,7 @@
 
 namespace Granite
 {
-void DeferredLights::refresh(RenderContext &context)
+void DeferredLights::refresh(const RenderContext &context, TaskComposer &)
 {
 	if (!enable_clustered_stencil)
 		return;

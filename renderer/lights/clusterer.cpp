@@ -429,7 +429,7 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &de
 	}
 }
 
-void LightClusterer::render_atlas_point(RenderContext &context_)
+void LightClusterer::render_atlas_point(const RenderContext &context_)
 {
 	bool vsm = shadow_type == ShadowType::VSM;
 	uint32_t partial_mask = reassign_indices_legacy(legacy.points);
@@ -776,7 +776,7 @@ void LightClusterer::render_bindless_point(Vulkan::CommandBuffer &cmd, unsigned 
 	}
 }
 
-void LightClusterer::render_atlas_spot(RenderContext &context_)
+void LightClusterer::render_atlas_spot(const RenderContext &context_)
 {
 	bool vsm = shadow_type == ShadowType::VSM;
 	uint32_t partial_mask = reassign_indices_legacy(legacy.spots);
@@ -887,7 +887,7 @@ void LightClusterer::render_atlas_spot(RenderContext &context_)
 	device.submit(cmd);
 }
 
-void LightClusterer::refresh_legacy(RenderContext& context_)
+void LightClusterer::refresh_legacy(const RenderContext& context_)
 {
 	legacy.points.count = 0;
 	legacy.spots.count = 0;
@@ -961,7 +961,7 @@ void LightClusterer::refresh_legacy(RenderContext& context_)
 	}
 }
 
-void LightClusterer::refresh_bindless(RenderContext &context_)
+void LightClusterer::refresh_bindless(const RenderContext &context_)
 {
 	bindless.count = 0;
 	auto &frustum = context_.get_visibility_frustum();
@@ -1048,7 +1048,7 @@ void LightClusterer::refresh_bindless(RenderContext &context_)
 	}
 }
 
-void LightClusterer::refresh(RenderContext &context_)
+void LightClusterer::refresh(const RenderContext &context_, TaskComposer &)
 {
 	light_sort_cache.clear();
 	light_sort_cache.reserve(lights->size());

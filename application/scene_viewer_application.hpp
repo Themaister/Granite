@@ -43,6 +43,8 @@
 
 namespace Granite
 {
+class TaskComposer;
+
 class SceneViewerApplication : public Application, public EventHandler
 {
 public:
@@ -53,8 +55,8 @@ public:
 	void loop_animations();
 
 protected:
-	void update_scene(double frame_time, double elapsed_time);
-	void render_scene();
+	void update_scene(TaskComposer &composer, double frame_time, double elapsed_time);
+	void render_scene(TaskComposer &composer);
 
 	RenderContext context;
 	RenderContext depth_context_near;

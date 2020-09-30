@@ -77,7 +77,7 @@ private:
 	vec2 size = vec2(1.0f);
 	AABB aabb;
 
-	void refresh(RenderContext &context, const RenderInfoComponent *transform) override;
+	void refresh(const RenderContext &context, const RenderInfoComponent *transform, TaskComposer &composer) override;
 };
 
 class Ground : public Util::IntrusivePtrEnabled<Ground>, public PerFrameRefreshable, public EventHandler
@@ -147,7 +147,8 @@ private:
 	unsigned size;
 	TerrainInfo info;
 
-	void refresh(RenderContext &context) override;
+	void refresh(const RenderContext &context, TaskComposer &composer) override;
+
 	Vulkan::Texture *heights = nullptr;
 	Vulkan::Texture *normals = nullptr;
 	Vulkan::Texture *occlusion = nullptr;

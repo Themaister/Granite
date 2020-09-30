@@ -157,7 +157,9 @@ public:
 	{
 		ForwardOpaque = 0,
 		ForwardTransparent,
-		ShadowDepth,
+		ShadowDepthPCF,
+		ShadowDepthDirectionalVSM,
+		ShadowDepthPositionalVSM,
 		PrepassDepth,
 		Deferred,
 		Count

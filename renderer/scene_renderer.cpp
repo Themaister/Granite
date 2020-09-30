@@ -80,8 +80,11 @@ void RenderPassSceneRenderer::enqueue_prepare_render_pass(TaskComposer &composer
 	}
 	else if (setup_data.flags & SCENE_RENDERER_DEPTH_BIT)
 	{
+		auto type = (setup_data.flags & SCENE_RENDERER_SHADOW_VSM_BIT) != 0 ?
+				RendererSuite::Type::ShadowDepthDirectionalVSM :
+				RendererSuite::Type::ShadowDepthPCF;
 		for (auto &queue : queue_per_task_depth)
-			suite->get_renderer(RendererSuite::Type::ShadowDepth).begin(queue);
+			suite->get_renderer(type).begin(queue);
 	}
 
 	if (setup_data.flags & SCENE_RENDERER_FORWARD_OPAQUE_BIT)
@@ -199,8 +202,11 @@ void RenderPassSceneRenderer::build_render_pass(Vulkan::CommandBuffer &cmd)
 
 	if (setup_data.flags & SCENE_RENDERER_DEPTH_BIT)
 	{
-		suite->get_renderer(RendererSuite::Type::ShadowDepth).flush(cmd, queue_per_task_depth[0], *setup_data.context,
-		                                                            Renderer::DEPTH_BIAS_BIT | Renderer::SKIP_SORTING_BIT);
+		auto type = (setup_data.flags & SCENE_RENDERER_SHADOW_VSM_BIT) != 0 ?
+		            RendererSuite::Type::ShadowDepthDirectionalVSM :
+		            RendererSuite::Type::ShadowDepthPCF;
+		suite->get_renderer(type).flush(cmd, queue_per_task_depth[0], *setup_data.context,
+		                                Renderer::DEPTH_BIAS_BIT | Renderer::SKIP_SORTING_BIT);
 	}
 }
 

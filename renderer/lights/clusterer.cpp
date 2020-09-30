@@ -307,7 +307,7 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &de
 	visible.clear();
 	scene->gather_visible_static_shadow_renderables(depth_context.get_visibility_frustum(), visible);
 
-	auto &depth_renderer = renderer_suite->get_renderer(RendererSuite::Type::ShadowDepth);
+	auto &depth_renderer = renderer_suite->get_renderer(vsm ? RendererSuite::Type::ShadowDepthPositionalVSM : RendererSuite::Type::ShadowDepthPCF);
 	depth_renderer.begin(queue);
 	queue.push_depth_renderables(depth_context, visible);
 

@@ -54,23 +54,27 @@ void RendererSuite::set_default_renderers()
 {
 	set_renderer(Type::ForwardOpaque, Util::make_handle<Renderer>(RendererType::GeneralForward, nullptr));
 	set_renderer(Type::ForwardTransparent, Util::make_handle<Renderer>(RendererType::GeneralForward, nullptr));
-	set_renderer(Type::ShadowDepth, Util::make_handle<Renderer>(RendererType::DepthOnly, nullptr));
+	set_renderer(Type::ShadowDepthPCF, Util::make_handle<Renderer>(RendererType::DepthOnly, nullptr));
+	set_renderer(Type::ShadowDepthDirectionalVSM, Util::make_handle<Renderer>(RendererType::DepthOnly, nullptr));
+	set_renderer(Type::ShadowDepthPositionalVSM, Util::make_handle<Renderer>(RendererType::DepthOnly, nullptr));
 	set_renderer(Type::PrepassDepth, Util::make_handle<Renderer>(RendererType::DepthOnly, nullptr));
 	set_renderer(Type::Deferred, Util::make_handle<Renderer>(RendererType::GeneralDeferred, nullptr));
 }
 
 void RendererSuite::update_mesh_rendering_options(const RenderContext &context, const Config &config)
 {
-	get_renderer(Type::ShadowDepth).set_mesh_renderer_options(
-			config.directional_light_vsm ? Renderer::SHADOW_VSM_BIT : 0);
+	get_renderer(Type::ShadowDepthPCF).set_mesh_renderer_options(0);
+	get_renderer(Type::ShadowDepthDirectionalVSM).set_mesh_renderer_options(Renderer::SHADOW_VSM_BIT);
+	get_renderer(Type::ShadowDepthPositionalVSM).set_mesh_renderer_options(Renderer::POSITIONAL_LIGHT_SHADOW_VSM_BIT);
 	get_renderer(Type::PrepassDepth).set_mesh_renderer_options(0);
-	get_renderer(Type::Deferred).set_mesh_renderer_options(0);
 
 	Renderer::RendererOptionFlags pcf_flags = 0;
 	if (config.pcf_width == 5)
 		pcf_flags |= Renderer::SHADOW_PCF_KERNEL_WIDTH_5_BIT;
 	else if (config.pcf_width == 3)
 		pcf_flags |= Renderer::SHADOW_PCF_KERNEL_WIDTH_3_BIT;
+
+	get_renderer(Type::Deferred).set_mesh_renderer_options(pcf_flags);
 
 	auto opts = Renderer::get_mesh_renderer_options_from_lighting(*context.get_lighting_parameters());
 	get_renderer(Type::ForwardOpaque).set_mesh_renderer_options(

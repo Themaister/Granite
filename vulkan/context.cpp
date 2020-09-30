@@ -388,6 +388,7 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 			return strcmp(e.extensionName, VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME) == 0;
 		}) != end(layer_exts))
 		{
+			instance_exts.push_back(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME);
 			static const VkValidationFeatureEnableEXT validation_sync_features[1] = {
 				VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT,
 			};

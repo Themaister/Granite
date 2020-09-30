@@ -33,18 +33,18 @@ class DeferredLights : public PerFrameRefreshable
 {
 public:
 	void set_scene(Scene *scene);
-	void set_renderers(RendererSuite *suite);
+	void set_renderers(const RendererSuite *suite);
 	void set_enable_clustered_stencil_culling(bool state)
 	{
 		enable_clustered_stencil = state;
 	}
 
 	void render_prepass_lights(Vulkan::CommandBuffer &cmd, RenderQueue &queue, const RenderContext &context);
-	void render_lights(Vulkan::CommandBuffer &cmd, RenderQueue &queue, const RenderContext &context, Renderer::RendererOptionFlags flags);
+	void render_lights(Vulkan::CommandBuffer &cmd, RenderQueue &queue, const RenderContext &context);
 
 private:
 	Scene *scene = nullptr;
-	RendererSuite *renderer_suite = nullptr;
+	const RendererSuite *renderer_suite = nullptr;
 	VisibilityList visible;
 
 	enum { NumClusters = 7 };

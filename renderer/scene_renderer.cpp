@@ -187,7 +187,7 @@ void RenderPassSceneRenderer::build_render_pass(Vulkan::CommandBuffer &cmd)
 	if (setup_data.flags & SCENE_RENDERER_DEFERRED_LIGHTING_BIT)
 	{
 		if (!(setup_data.flags & SCENE_RENDERER_DEFERRED_CLUSTER_BIT))
-			setup_data.deferred_lights->render_lights(cmd, queue_non_tasked, *setup_data.context, convert_pcf_flags(setup_data.flags));
+			setup_data.deferred_lights->render_lights(cmd, queue_non_tasked, *setup_data.context);
 		DeferredLightRenderer::render_light(cmd, *setup_data.context, convert_pcf_flags(setup_data.flags));
 	}
 

@@ -85,7 +85,7 @@ void DeferredLights::set_scene(Scene *scene_)
 	scene = scene_;
 }
 
-void DeferredLights::set_renderers(RendererSuite *suite)
+void DeferredLights::set_renderers(const RendererSuite *suite)
 {
 	renderer_suite = suite;
 }
@@ -114,8 +114,7 @@ void DeferredLights::render_prepass_lights(Vulkan::CommandBuffer &cmd, RenderQue
 	}
 }
 
-void DeferredLights::render_lights(Vulkan::CommandBuffer &cmd, RenderQueue &queue, const RenderContext &context,
-                                   Renderer::RendererOptionFlags flags)
+void DeferredLights::render_lights(Vulkan::CommandBuffer &cmd, RenderQueue &queue, const RenderContext &context)
 {
 	auto &deferred_renderer = renderer_suite->get_renderer(RendererSuite::Type::Deferred);
 

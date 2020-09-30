@@ -428,13 +428,6 @@ void Renderer::bind_lighting_parameters(Vulkan::CommandBuffer &cmd, const Render
 		set_cluster_parameters(cmd, *lighting->cluster);
 }
 
-void Renderer::set_stencil_reference(uint8_t compare_mask, uint8_t write_mask, uint8_t ref)
-{
-	stencil_compare_mask = compare_mask;
-	stencil_write_mask = write_mask;
-	stencil_reference = ref;
-}
-
 void Renderer::bind_global_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context)
 {
 	auto *global = cmd.allocate_typed_constant_data<RenderParameters>(0, 0, 1);
@@ -447,7 +440,7 @@ void Renderer::set_render_context_parameter_binder(RenderContextParameterBinder 
 }
 
 void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue, const RenderContext &context,
-                            RendererFlushFlags options, unsigned index, unsigned num_indices) const
+                            RendererFlushFlags options, const FlushParameters *parameters, unsigned index, unsigned num_indices) const
 {
 	assert((options & SKIP_SORTING_BIT) != 0);
 
@@ -494,7 +487,7 @@ void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue
 	{
 		cmd.set_stencil_test(true);
 		cmd.set_stencil_ops(VK_COMPARE_OP_ALWAYS, VK_STENCIL_OP_REPLACE, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP);
-		cmd.set_stencil_reference(stencil_compare_mask, stencil_write_mask, stencil_reference);
+		cmd.set_stencil_reference(parameters->stencil.compare_mask, parameters->stencil.write_mask, parameters->stencil.ref);
 	}
 
 	CommandBufferSavedState state;
@@ -515,7 +508,7 @@ void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue
 
 		cmd.set_stencil_test(true);
 		if (options & STENCIL_COMPARE_REFERENCE_BIT)
-			cmd.set_stencil_reference(stencil_compare_mask, 0, stencil_reference);
+			cmd.set_stencil_reference(parameters->stencil.compare_mask, 0, parameters->stencil.ref);
 		else
 			cmd.set_stencil_reference(0xff, 0, 0);
 
@@ -537,11 +530,11 @@ void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue
 	}
 }
 
-void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderQueue &queue, const RenderContext &context, RendererFlushFlags options) const
+void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderQueue &queue, const RenderContext &context, RendererFlushFlags options, const FlushParameters *params) const
 {
 	if ((options & SKIP_SORTING_BIT) == 0)
 		queue.sort();
-	flush_subset(cmd, queue, context, options | SKIP_SORTING_BIT, 0, 1);
+	flush_subset(cmd, queue, context, options | SKIP_SORTING_BIT, params, 0, 1);
 }
 
 DebugMeshInstanceInfo &Renderer::render_debug(RenderQueue &queue, const RenderContext &context, unsigned count)

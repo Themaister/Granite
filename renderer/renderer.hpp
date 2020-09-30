@@ -99,18 +99,27 @@ public:
 	static void bind_global_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context);
 	static void bind_lighting_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context);
 
-	void set_stencil_reference(uint8_t compare_mask, uint8_t write_mask, uint8_t ref);
 	RendererOptionFlags get_mesh_renderer_options() const;
 
 	void render_debug_aabb(RenderQueue &queue, const RenderContext &context, const AABB &aabb, const vec4 &color);
 	void render_debug_frustum(RenderQueue &queue, const RenderContext &context, const Frustum &frustum, const vec4 &color);
 
 	void begin(RenderQueue &queue) const;
-	void flush(Vulkan::CommandBuffer &cmd, RenderQueue &queue, const RenderContext &context, RendererFlushFlags options = 0) const;
+
+	struct FlushParameters
+	{
+		struct
+		{
+			uint8_t compare_mask;
+			uint8_t write_mask;
+			uint8_t ref;
+		} stencil;
+	};
+	void flush(Vulkan::CommandBuffer &cmd, RenderQueue &queue, const RenderContext &context, RendererFlushFlags options = 0, const FlushParameters *params = nullptr) const;
 	// Multi-threaded dispatch from a queue.
 	// queue is assumed to be sorted already.
 	void flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue, const RenderContext &context,
-	                  RendererFlushFlags options, unsigned index, unsigned num_indices) const;
+	                  RendererFlushFlags options, const FlushParameters *params, unsigned index, unsigned num_indices) const;
 
 	RendererType get_renderer_type() const
 	{
@@ -136,9 +145,6 @@ private:
 	const ShaderSuiteResolver *resolver = nullptr;
 	RenderContextParameterBinder *render_context_parameter_binder = nullptr;
 	uint32_t renderer_options = ~0u;
-	uint8_t stencil_compare_mask = 0;
-	uint8_t stencil_write_mask = 0;
-	uint8_t stencil_reference = 0;
 
 	void set_mesh_renderer_options_internal(RendererOptionFlags flags);
 };

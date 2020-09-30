@@ -102,12 +102,15 @@ void DeferredLights::render_prepass_lights(Vulkan::CommandBuffer &cmd, RenderQue
 		depth_renderer.begin(queue);
 		queue.push_depth_renderables(context, clusters[cluster]);
 		// FIXME: A little ugly.
-		depth_renderer.set_stencil_reference(0xff, 2 << cluster, 2 << cluster);
+		Renderer::FlushParameters params = {};
+		params.stencil.compare_mask = 0xffu;
+		params.stencil.write_mask = 2u << cluster;
+		params.stencil.ref = 2u << cluster;
 		depth_renderer.flush(cmd, queue, context,
 		                     Renderer::NO_COLOR_BIT |
 		                     Renderer::BACKFACE_BIT |
 		                     Renderer::DEPTH_STENCIL_READ_ONLY_BIT |
-		                     Renderer::STENCIL_WRITE_REFERENCE_BIT);
+		                     Renderer::STENCIL_WRITE_REFERENCE_BIT, &params);
 	}
 }
 
@@ -115,21 +118,23 @@ void DeferredLights::render_lights(Vulkan::CommandBuffer &cmd, RenderQueue &queu
                                    Renderer::RendererOptionFlags flags)
 {
 	auto &deferred_renderer = renderer_suite->get_renderer(RendererSuite::Type::Deferred);
-	deferred_renderer.set_mesh_renderer_options(flags);
 
 	if (enable_clustered_stencil)
 	{
 		deferred_renderer.begin(queue);
 		queue.push_renderables(context, clips);
-		deferred_renderer.set_stencil_reference(1, 0, 0);
-		deferred_renderer.flush(cmd, queue, context, Renderer::STENCIL_COMPARE_REFERENCE_BIT);
+		Renderer::FlushParameters params = {};
+		params.stencil.compare_mask = 1;
+		deferred_renderer.flush(cmd, queue, context, Renderer::STENCIL_COMPARE_REFERENCE_BIT, &params);
 
 		for (unsigned cluster = 0; cluster < NumClusters; cluster++)
 		{
 			deferred_renderer.begin(queue);
 			queue.push_renderables(context, clusters[cluster]);
-			deferred_renderer.set_stencil_reference((2 << cluster) | 1, 0, 2 << cluster);
-			deferred_renderer.flush(cmd, queue, context, Renderer::STENCIL_COMPARE_REFERENCE_BIT);
+			params.stencil.compare_mask = (2u << cluster) | 1u;
+			params.stencil.write_mask = 0;
+			params.stencil.ref = 2u << cluster;
+			deferred_renderer.flush(cmd, queue, context, Renderer::STENCIL_COMPARE_REFERENCE_BIT, &params);
 		}
 	}
 	else

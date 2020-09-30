@@ -36,6 +36,7 @@ public:
 	TaskGroup &begin_pipeline_stage();
 	TaskGroup &get_group();
 	TaskGroupHandle get_outgoing_task();
+	ThreadGroup &get_thread_group();
 
 private:
 	ThreadGroup &group;

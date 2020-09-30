@@ -58,4 +58,9 @@ TaskGroupHandle TaskComposer::get_outgoing_task()
 	}
 	return incoming;
 }
+
+ThreadGroup &TaskComposer::get_thread_group()
+{
+	return group;
+}
 }

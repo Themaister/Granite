@@ -2156,7 +2156,7 @@ void RenderGraph::physical_pass_handle_cpu_timeline(Vulkan::Device &device_,
 
 	if (physical_pass_can_multithread(physical_pass))
 	{
-		auto &group = *Global::thread_group();
+		auto &group = incoming_composer.get_thread_group();
 		auto wait_task = group.create_task();
 
 		unsigned subpass_index = 0;
@@ -2184,7 +2184,7 @@ bool RenderGraph::physical_pass_can_multithread(const PhysicalPass &physical_pas
 	return true;
 }
 
-void RenderGraph::physical_pass_handle_gpu_timeline(TaskGroup &group, Vulkan::Device &device_,
+void RenderGraph::physical_pass_handle_gpu_timeline(ThreadGroup &group, Vulkan::Device &device_,
                                                     const PhysicalPass &physical_pass,
                                                     PassSubmissionState &state)
 {
@@ -2207,14 +2207,10 @@ void RenderGraph::physical_pass_handle_gpu_timeline(TaskGroup &group, Vulkan::De
 
 	if (physical_pass_can_multithread(physical_pass))
 	{
-		auto *thread_group = group.get_thread_group();
-		auto task = thread_group->create_task(std::move(func));
+		auto task = group.create_task(std::move(func));
 		if (state.rendering_dependency)
-		{
-			thread_group->add_dependency(*task, *state.rendering_dependency);
-			state.rendering_dependency.reset();
-		}
-		thread_group->add_dependency(group, *task);
+			group.add_dependency(*task, *state.rendering_dependency);
+		state.rendering_dependency = task;
 	}
 	else
 	{
@@ -2343,28 +2339,38 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device_, TaskComposer &c
 	pass_submission_state.clear();
 	size_t count = physical_passes.size();
 	pass_submission_state.resize(count);
+	auto &thread_group = composer.get_thread_group();
 
 	for (size_t i = 0; i < count; i++)
 		enqueue_render_pass(device_, physical_passes[i], pass_submission_state[i], composer);
 
+	for (size_t i = 0; i < count; i++)
 	{
-		auto &group = composer.begin_pipeline_stage();
-		for (size_t i = 0; i < count; i++)
-		{
-			// Could be run in parallel.
-			if (pass_submission_state[i].active)
-				physical_pass_handle_gpu_timeline(group, device_, physical_passes[i], pass_submission_state[i]);
-		}
+		// Could be run in parallel.
+		if (pass_submission_state[i].active)
+			physical_pass_handle_gpu_timeline(thread_group, device_, physical_passes[i], pass_submission_state[i]);
 	}
 
+	for (auto &state : pass_submission_state)
+	{
+		auto &group = composer.begin_pipeline_stage();
+		if (state.rendering_dependency)
+		{
+			thread_group.add_dependency(group, *state.rendering_dependency);
+			state.rendering_dependency.reset();
+		}
+
+		group.enqueue_task([&state]() {
+			state.submit();
+		});
+	}
+
+	// Scale to swapchain if needed.
+	if (swapchain_physical_index == RenderResource::Unused)
 	{
 		auto &group = composer.begin_pipeline_stage();
 		group.enqueue_task([this, &device_]() {
-			for (auto &state : pass_submission_state)
-				state.submit();
-			// Scale to swapchain if needed.
-			if (swapchain_physical_index == RenderResource::Unused)
-				enqueue_swapchain_scale_pass(device_);
+			enqueue_swapchain_scale_pass(device_);
 		});
 	}
 }

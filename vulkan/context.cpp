@@ -228,6 +228,15 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_messenger_cb(
 {
 	auto *context = static_cast<Context *>(pUserData);
 
+	if (messageType == VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT)
+	{
+		// Using LINEAR filter with COMPARE. Spec bug, should not trigger validation.
+		if (uint32_t(pCallbackData->messageIdNumber) == 0xf2fea78eu)
+			return VK_FALSE;
+		if (uint32_t(pCallbackData->messageIdNumber) == 0xd2c86c0cu)
+			return VK_FALSE;
+	}
+
 	switch (messageSeverity)
 	{
 	case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
@@ -279,42 +288,6 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_messenger_cb(
 			auto *name = pCallbackData->pObjects[i].pObjectName;
 			LOGI("  Object #%u: %s\n", i, name ? name : "N/A");
 		}
-	}
-
-	return VK_FALSE;
-}
-
-static VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_debug_cb(VkDebugReportFlagsEXT flags,
-                                                      VkDebugReportObjectTypeEXT, uint64_t,
-                                                      size_t, int32_t messageCode, const char *pLayerPrefix,
-                                                      const char *pMessage, void *pUserData)
-{
-	auto *context = static_cast<Context *>(pUserData);
-
-	// False positives about lack of srcAccessMask/dstAccessMask.
-	if (strcmp(pLayerPrefix, "DS") == 0 && messageCode == 10)
-		return VK_FALSE;
-
-	// Demote to a warning, it's a false positive almost all the time for Granite.
-	if (strcmp(pLayerPrefix, "DS") == 0 && messageCode == 6)
-		flags = VK_DEBUG_REPORT_DEBUG_BIT_EXT;
-
-	if (flags & VK_DEBUG_REPORT_ERROR_BIT_EXT)
-	{
-		LOGE("[Vulkan]: Error: %s: %s\n", pLayerPrefix, pMessage);
-		context->notify_validation_error(pMessage);
-	}
-	else if (flags & VK_DEBUG_REPORT_WARNING_BIT_EXT)
-	{
-		LOGW("[Vulkan]: Warning: %s: %s\n", pLayerPrefix, pMessage);
-	}
-	else if (flags & VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT)
-	{
-		//LOGW("[Vulkan]: Performance warning: %s: %s\n", pLayerPrefix, pMessage);
-	}
-	else
-	{
-		LOGI("[Vulkan]: Information: %s: %s\n", pLayerPrefix, pMessage);
 	}
 
 	return VK_FALSE;
@@ -396,8 +369,7 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 		return layer_itr != end(queried_layers);
 	};
 
-	if (!ext.supports_debug_utils && has_extension(VK_EXT_DEBUG_REPORT_EXTENSION_NAME))
-		instance_exts.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+	VkValidationFeaturesEXT validation_features = { VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT };
 
 	if (getenv("GRANITE_VULKAN_NO_VALIDATION"))
 		force_no_validation = true;
@@ -406,11 +378,24 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 	{
 		instance_layers.push_back("VK_LAYER_KHRONOS_validation");
 		LOGI("Enabling VK_LAYER_KHRONOS_validation.\n");
-	}
-	else if (!force_no_validation && has_layer("VK_LAYER_LUNARG_standard_validation"))
-	{
-		instance_layers.push_back("VK_LAYER_LUNARG_standard_validation");
-		LOGI("Enabling VK_LAYER_LUNARG_standard_validation.\n");
+
+		uint32_t layer_ext_count = 0;
+		vkEnumerateInstanceExtensionProperties("VK_LAYER_KHRONOS_validation", &layer_ext_count, nullptr);
+		std::vector<VkExtensionProperties> layer_exts(layer_ext_count);
+		vkEnumerateInstanceExtensionProperties("VK_LAYER_KHRONOS_validation", &layer_ext_count, layer_exts.data());
+
+		if (find_if(begin(layer_exts), end(layer_exts), [](const VkExtensionProperties &e) {
+			return strcmp(e.extensionName, VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME) == 0;
+		}) != end(layer_exts))
+		{
+			static const VkValidationFeatureEnableEXT validation_sync_features[1] = {
+				VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT,
+			};
+			LOGI("Enabling VK_EXT_validation_features for synchronization validation.\n");
+			validation_features.enabledValidationFeatureCount = 1;
+			validation_features.pEnabledValidationFeatures = validation_sync_features;
+			info.pNext = &validation_features;
+		}
 	}
 #endif
 
@@ -443,15 +428,6 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 		debug_info.pUserData = this;
 
 		vkCreateDebugUtilsMessengerEXT(instance, &debug_info, nullptr, &debug_messenger);
-	}
-	else if (has_extension(VK_EXT_DEBUG_REPORT_EXTENSION_NAME))
-	{
-		VkDebugReportCallbackCreateInfoEXT debug_info = { VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT };
-		debug_info.flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT |
-		                   VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT;
-		debug_info.pfnCallback = vulkan_debug_cb;
-		debug_info.pUserData = this;
-		vkCreateDebugReportCallbackEXT(instance, &debug_info, nullptr, &debug_callback);
 	}
 #endif
 

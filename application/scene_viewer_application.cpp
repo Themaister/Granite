@@ -1025,6 +1025,7 @@ void SceneViewerApplication::update_scene(TaskComposer &composer, double frame_t
 	lighting.environment.intensity = skydome_intensity;
 	lighting.refraction.falloff = vec3(1.0f / 1.5f, 1.0f / 2.5f, 1.0f / 5.0f);
 
+	renderer_suite.update_mesh_rendering_options(context, renderer_suite_config);
 	context.set_camera(*selected_camera);
 	scene.set_render_pass_data(&renderer_suite, &context);
 
@@ -1101,7 +1102,6 @@ void SceneViewerApplication::render_scene(TaskComposer &composer)
 	}
 	setup_shadow_map_near();
 
-	renderer_suite.update_mesh_rendering_options(context, renderer_suite_config);
 	scene.bind_render_graph_resources(graph);
 
 	graph.enqueue_render_passes(device, composer);

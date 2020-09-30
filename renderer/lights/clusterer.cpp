@@ -357,14 +357,17 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &de
 		                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
 		                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
 
+		cmd.begin_region("shadow-map-vsm");
 		cmd.begin_render_pass(rp);
 		depth_renderer.flush(cmd, queue, depth_context, flags);
+		cmd.end_render_pass();
 		cmd.end_render_pass();
 
 		cmd.image_barrier(*scratch_vsm_rt, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
 		                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 
+		cmd.begin_region("shadow-map-vsm-blur-down");
 		{
 			RenderPassInfo rp_vert = {};
 			rp_vert.num_color_attachments = 1;
@@ -379,11 +382,13 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &de
 			                                        "builtin://shaders/post/vsm_down_blur.frag");
 			cmd.end_render_pass();
 		}
+		cmd.end_region();
 
 		cmd.image_barrier(*scratch_vsm_down, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
 		                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 
+		cmd.begin_region("shadow-map-vsm-blur-up");
 		{
 			RenderPassInfo rp_horiz = {};
 			rp_horiz.num_color_attachments = 1;
@@ -406,6 +411,7 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &de
 			                                        "builtin://shaders/post/vsm_up_blur.frag");
 			cmd.end_render_pass();
 		}
+		cmd.end_region();
 	}
 	else
 	{
@@ -421,11 +427,13 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &de
 		rp.render_area.extent.height = res_y;
 		rp.base_layer = layer;
 
+		cmd.begin_region("shadow-map-pcf");
 		cmd.begin_render_pass(rp);
 		cmd.set_viewport({ float(off_x), float(off_y), float(res_x), float(res_y), 0.0f, 1.0f });
 		cmd.set_scissor({{ int(off_x), int(off_y) }, { res_x, res_y }});
 		depth_renderer.flush(cmd, queue, depth_context, flags);
 		cmd.end_render_pass();
+		cmd.end_region();
 	}
 }
 

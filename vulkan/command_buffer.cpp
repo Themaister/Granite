@@ -2423,23 +2423,6 @@ void CommandBuffer::begin_region(const char *name, const float *color)
 		if (vkCmdBeginDebugUtilsLabelEXT)
 			vkCmdBeginDebugUtilsLabelEXT(cmd, &info);
 	}
-	else if (device->ext.supports_debug_marker)
-	{
-		VkDebugMarkerMarkerInfoEXT info = { VK_STRUCTURE_TYPE_DEBUG_MARKER_MARKER_INFO_EXT };
-		if (color)
-		{
-			for (unsigned i = 0; i < 4; i++)
-				info.color[i] = color[i];
-		}
-		else
-		{
-			for (unsigned i = 0; i < 4; i++)
-				info.color[i] = 1.0f;
-		}
-
-		info.pMarkerName = name;
-		table.vkCmdDebugMarkerBeginEXT(cmd, &info);
-	}
 }
 
 void CommandBuffer::end_region()
@@ -2449,8 +2432,6 @@ void CommandBuffer::end_region()
 		if (vkCmdEndDebugUtilsLabelEXT)
 			vkCmdEndDebugUtilsLabelEXT(cmd);
 	}
-	else if (device->ext.supports_debug_marker)
-		table.vkCmdDebugMarkerEndEXT(cmd);
 }
 
 void CommandBuffer::enable_profiling()

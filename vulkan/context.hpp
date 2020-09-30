@@ -237,7 +237,6 @@ private:
 	DeviceFeatures ext;
 
 #ifdef VULKAN_DEBUG
-	VkDebugReportCallbackEXT debug_callback = VK_NULL_HANDLE;
 	VkDebugUtilsMessengerEXT debug_messenger = VK_NULL_HANDLE;
 #endif
 	std::function<void (const char *)> message_callback;

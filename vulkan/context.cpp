@@ -177,11 +177,8 @@ void Context::destroy()
 		device_table.vkDeviceWaitIdle(device);
 
 #ifdef VULKAN_DEBUG
-	if (debug_callback)
-		vkDestroyDebugReportCallbackEXT(instance, debug_callback, nullptr);
 	if (debug_messenger)
 		vkDestroyDebugUtilsMessengerEXT(instance, debug_messenger, nullptr);
-	debug_callback = VK_NULL_HANDLE;
 	debug_messenger = VK_NULL_HANDLE;
 #endif
 
@@ -673,12 +670,6 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	{
 		ext.supports_image_format_list = true;
 		enabled_extensions.push_back(VK_KHR_IMAGE_FORMAT_LIST_EXTENSION_NAME);
-	}
-
-	if (has_extension(VK_EXT_DEBUG_MARKER_EXTENSION_NAME))
-	{
-		ext.supports_debug_marker = true;
-		enabled_extensions.push_back(VK_EXT_DEBUG_MARKER_EXTENSION_NAME);
 	}
 
 	if (has_extension(VK_KHR_SAMPLER_MIRROR_CLAMP_TO_EDGE_EXTENSION_NAME))

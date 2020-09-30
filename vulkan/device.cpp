@@ -4650,14 +4650,6 @@ void Device::set_name(const Buffer &buffer, const char *name)
 		if (vkSetDebugUtilsObjectNameEXT)
 			vkSetDebugUtilsObjectNameEXT(device, &info);
 	}
-	else if (ext.supports_debug_marker)
-	{
-		VkDebugMarkerObjectNameInfoEXT info = { VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT };
-		info.objectType = VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_EXT;
-		info.object = (uint64_t)buffer.get_buffer();
-		info.pObjectName = name;
-		table->vkDebugMarkerSetObjectNameEXT(device, &info);
-	}
 }
 
 void Device::set_name(const Image &image, const char *name)
@@ -4671,14 +4663,6 @@ void Device::set_name(const Image &image, const char *name)
 		if (vkSetDebugUtilsObjectNameEXT)
 			vkSetDebugUtilsObjectNameEXT(device, &info);
 	}
-	else if (ext.supports_debug_marker)
-	{
-		VkDebugMarkerObjectNameInfoEXT info = { VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT };
-		info.objectType = VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT;
-		info.object = (uint64_t)image.get_image();
-		info.pObjectName = name;
-		table->vkDebugMarkerSetObjectNameEXT(device, &info);
-	}
 }
 
 void Device::set_name(const CommandBuffer &cmd, const char *name)
@@ -4691,14 +4675,6 @@ void Device::set_name(const CommandBuffer &cmd, const char *name)
 		info.pObjectName = name;
 		if (vkSetDebugUtilsObjectNameEXT)
 			vkSetDebugUtilsObjectNameEXT(device, &info);
-	}
-	else if (ext.supports_debug_marker)
-	{
-		VkDebugMarkerObjectNameInfoEXT info = { VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT };
-		info.objectType = VK_DEBUG_REPORT_OBJECT_TYPE_COMMAND_BUFFER_EXT;
-		info.object = (uint64_t)cmd.get_command_buffer();
-		info.pObjectName = name;
-		table->vkDebugMarkerSetObjectNameEXT(device, &info);
 	}
 }
 

@@ -59,7 +59,7 @@ static void test_frustum_cull()
 			for (int x = -10; x <= 10; x++)
 			{
 				AABB aabb(vec3(x, y, z) * 0.25f - 0.1f, vec3(x, y, z) * 0.25f + 0.1f);
-				bool slow_test = frustum.intersects(aabb);
+				bool slow_test = frustum.intersects_slow(aabb);
 				bool fast_test = SIMD::frustum_cull(aabb, frustum.get_planes());
 				if (slow_test != fast_test)
 				{

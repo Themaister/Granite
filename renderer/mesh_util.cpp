@@ -30,6 +30,7 @@
 #include "utils/image_utils.hpp"
 #include "application_events.hpp"
 #include "render_graph.hpp"
+#include "simd.hpp"
 #include <string.h>
 
 using namespace Vulkan;
@@ -1277,7 +1278,7 @@ void TexturePlane::add_render_pass(RenderGraph &graph, Type type)
 		vec3 c0 = position + dpdx + dpdy;
 		vec3 c1 = position - dpdx - dpdy;
 		AABB aabb(min(c0, c1), max(c0, c1));
-		if (!base_context->get_visibility_frustum().intersects(aabb))
+		if (!SIMD::frustum_cull(aabb, base_context->get_visibility_frustum().get_planes()))
 			return false;
 
 		// Only render if we are above the plane.

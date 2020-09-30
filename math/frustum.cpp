@@ -25,7 +25,8 @@
 namespace Granite
 {
 
-bool Frustum::intersects(const AABB &aabb) const
+// For reference, should always use SIMD-version.
+bool Frustum::intersects_slow(const AABB &aabb) const
 {
 	for (auto &plane : planes)
 	{
@@ -46,7 +47,7 @@ bool Frustum::intersects(const AABB &aabb) const
 	return true;
 }
 
-bool Frustum::intersects_fast(const AABB &aabb) const
+bool Frustum::intersects_sphere(const AABB &aabb) const
 {
 	vec4 center(aabb.get_center(), 1.0f);
 	float radius = aabb.get_radius();

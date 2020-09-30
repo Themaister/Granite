@@ -30,6 +30,7 @@
 #include "muglm/matrix_helper.hpp"
 #include "thread_group.hpp"
 #include "cpu_rasterizer.hpp"
+#include "simd.hpp"
 #include <string.h>
 
 using namespace Vulkan;
@@ -898,7 +899,7 @@ void LightClusterer::refresh_legacy(RenderContext& context_)
 		auto *transform = light.second;
 
 		// Frustum cull lights here.
-		if (!frustum.intersects(transform->world_aabb))
+		if (!SIMD::frustum_cull(transform->world_aabb, frustum.get_planes()))
 			continue;
 
 		if (l.get_type() == PositionalLight::Type::Spot)
@@ -973,7 +974,7 @@ void LightClusterer::refresh_bindless(RenderContext &context_)
 		auto *transform = light.second;
 
 		// Frustum cull lights here.
-		if (!frustum.intersects(transform->world_aabb))
+		if (!SIMD::frustum_cull(transform->world_aabb, frustum.get_planes()))
 			continue;
 
 		if (l.get_type() == PositionalLight::Type::Spot)

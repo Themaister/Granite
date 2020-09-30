@@ -35,7 +35,6 @@ struct DeviceFeatures
 	bool supports_external = false;
 	bool supports_dedicated = false;
 	bool supports_image_format_list = false;
-	bool supports_debug_marker = false;
 	bool supports_debug_utils = false;
 	bool supports_mirror_clamp_to_edge = false;
 	bool supports_google_display_timing = false;

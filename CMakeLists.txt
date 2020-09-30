@@ -392,6 +392,7 @@ if (NOT GRANITE_VULKAN_ONLY)
             renderer/simple_renderer.hpp renderer/simple_renderer.cpp
             renderer/mesh.hpp renderer/mesh.cpp
             renderer/scene.hpp renderer/scene.cpp
+            renderer/scene_renderer.hpp renderer/scene_renderer.cpp
             renderer/shader_suite.hpp renderer/shader_suite.cpp
             renderer/render_context.hpp renderer/render_context.cpp
             renderer/camera.hpp renderer/camera.cpp
@@ -422,6 +423,7 @@ if (NOT GRANITE_VULKAN_ONLY)
             renderer/mesh_manager.cpp renderer/mesh_manager.hpp
             renderer/common_renderer_data.cpp renderer/common_renderer_data.hpp
             renderer/cpu_rasterizer.cpp renderer/cpu_rasterizer.hpp
+            renderer/threaded_scene.cpp renderer/threaded_scene.hpp
 
             scene_formats/texture_compression.hpp scene_formats/texture_compression.cpp
             scene_formats/gltf.cpp scene_formats/gltf.hpp
@@ -438,6 +440,7 @@ if (NOT GRANITE_VULKAN_ONLY)
             scene_formats/texture_decoder.cpp scene_formats/texture_decoder.hpp
 
             threading/thread_group.cpp threading/thread_group.hpp
+            threading/task_composer.cpp threading/task_composer.hpp
 
             ui/font.hpp ui/font.cpp
             ui/flat_renderer.hpp ui/flat_renderer.cpp

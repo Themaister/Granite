@@ -35,8 +35,7 @@ void DeferredLights::refresh(RenderContext &context)
 		return;
 
 	visible.clear();
-	scene->gather_visible_positional_lights(context.get_visibility_frustum(), visible,
-	                                        max_spot_lights, max_point_lights);
+	scene->gather_visible_positional_lights(context.get_visibility_frustum(), visible);
 
 	clips.clear();
 	for (auto &cluster : clusters)
@@ -86,58 +85,60 @@ void DeferredLights::set_scene(Scene *scene_)
 	scene = scene_;
 }
 
-void DeferredLights::set_renderers(Renderer *depth_renderer_, Renderer *deferred_renderer_)
+void DeferredLights::set_renderers(RendererSuite *suite)
 {
-	depth_renderer = depth_renderer_;
-	deferred_renderer = deferred_renderer_;
+	renderer_suite = suite;
 }
 
-void DeferredLights::render_prepass_lights(Vulkan::CommandBuffer &cmd, RenderContext &context)
+void DeferredLights::render_prepass_lights(Vulkan::CommandBuffer &cmd, RenderQueue &queue, const RenderContext &context)
 {
 	if (!enable_clustered_stencil)
 		return;
 
+	auto &depth_renderer = renderer_suite->get_renderer(RendererSuite::Type::PrepassDepth);
+
 	for (unsigned cluster = 0; cluster < NumClusters; cluster++)
 	{
-		depth_renderer->begin();
-		depth_renderer->push_depth_renderables(context, clusters[cluster]);
-		depth_renderer->set_stencil_reference(0xff, 2 << cluster, 2 << cluster);
-		depth_renderer->flush(cmd, context,
-		                      Renderer::NO_COLOR_BIT |
-		                      Renderer::BACKFACE_BIT |
-		                      Renderer::DEPTH_STENCIL_READ_ONLY_BIT |
-		                      Renderer::STENCIL_WRITE_REFERENCE_BIT);
+		depth_renderer.begin(queue);
+		queue.push_depth_renderables(context, clusters[cluster]);
+		// FIXME: A little ugly.
+		depth_renderer.set_stencil_reference(0xff, 2 << cluster, 2 << cluster);
+		depth_renderer.flush(cmd, queue, context,
+		                     Renderer::NO_COLOR_BIT |
+		                     Renderer::BACKFACE_BIT |
+		                     Renderer::DEPTH_STENCIL_READ_ONLY_BIT |
+		                     Renderer::STENCIL_WRITE_REFERENCE_BIT);
 	}
 }
 
-void DeferredLights::render_lights(Vulkan::CommandBuffer &cmd, RenderContext &context,
+void DeferredLights::render_lights(Vulkan::CommandBuffer &cmd, RenderQueue &queue, const RenderContext &context,
                                    Renderer::RendererOptionFlags flags)
 {
-	deferred_renderer->set_mesh_renderer_options(flags);
+	auto &deferred_renderer = renderer_suite->get_renderer(RendererSuite::Type::Deferred);
+	deferred_renderer.set_mesh_renderer_options(flags);
 
 	if (enable_clustered_stencil)
 	{
-		deferred_renderer->begin();
-		deferred_renderer->push_renderables(context, clips);
-		deferred_renderer->set_stencil_reference(1, 0, 0);
-		deferred_renderer->flush(cmd, context, Renderer::STENCIL_COMPARE_REFERENCE_BIT);
+		deferred_renderer.begin(queue);
+		queue.push_renderables(context, clips);
+		deferred_renderer.set_stencil_reference(1, 0, 0);
+		deferred_renderer.flush(cmd, queue, context, Renderer::STENCIL_COMPARE_REFERENCE_BIT);
 
 		for (unsigned cluster = 0; cluster < NumClusters; cluster++)
 		{
-			deferred_renderer->begin();
-			deferred_renderer->push_renderables(context, clusters[cluster]);
-			deferred_renderer->set_stencil_reference((2 << cluster) | 1, 0, 2 << cluster);
-			deferred_renderer->flush(cmd, context, Renderer::STENCIL_COMPARE_REFERENCE_BIT);
+			deferred_renderer.begin(queue);
+			queue.push_renderables(context, clusters[cluster]);
+			deferred_renderer.set_stencil_reference((2 << cluster) | 1, 0, 2 << cluster);
+			deferred_renderer.flush(cmd, queue, context, Renderer::STENCIL_COMPARE_REFERENCE_BIT);
 		}
 	}
 	else
 	{
 		visible.clear();
-		scene->gather_visible_positional_lights(context.get_visibility_frustum(), visible,
-		                                        max_spot_lights, max_point_lights);
-		deferred_renderer->begin();
-		deferred_renderer->push_renderables(context, visible);
-		deferred_renderer->flush(cmd, context);
+		scene->gather_visible_positional_lights(context.get_visibility_frustum(), visible);
+		deferred_renderer.begin(queue);
+		queue.push_renderables(context, visible);
+		deferred_renderer.flush(cmd, queue, context);
 	}
 }
 }

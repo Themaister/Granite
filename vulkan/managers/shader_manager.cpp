@@ -98,10 +98,11 @@ const ShaderTemplate::Variant *ShaderTemplate::register_variant(const std::vecto
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 			if (compiler)
 			{
-				variant->spirv = compiler->compile(defines);
+				std::string error_message;
+				variant->spirv = compiler->compile(error_message, defines);
 				if (variant->spirv.empty())
 				{
-					LOGE("Shader error:\n%s\n", compiler->get_error_message().c_str());
+					LOGE("Shader error:\n%s\n", error_message.c_str());
 					variants.free(variant);
 					return nullptr;
 				}
@@ -143,10 +144,11 @@ void ShaderTemplate::recompile()
 
 	for (auto &variant : variants)
 	{
-		auto newspirv = compiler->compile(&variant.defines);
+		std::string error_message;
+		auto newspirv = compiler->compile(error_message, &variant.defines);
 		if (newspirv.empty())
 		{
-			LOGE("Failed to compile shader: %s\n%s\n", path.c_str(), compiler->get_error_message().c_str());
+			LOGE("Failed to compile shader: %s\n%s\n", path.c_str(), error_message.c_str());
 			for (auto &define : variant.defines)
 				LOGE("  Define: %s = %d\n", define.first.c_str(), define.second);
 			continue;
@@ -172,10 +174,24 @@ void ShaderProgram::set_stage(Vulkan::ShaderStage stage, ShaderTemplate *shader)
 
 Vulkan::Program *ShaderProgram::get_program(unsigned variant)
 {
+#ifdef GRANITE_VULKAN_MT
+	variant_lock.lock_read();
+#endif
+	auto *program = get_program_locked(variant);
+#ifdef GRANITE_VULKAN_MT
+	variant_lock.unlock_read();
+#endif
+	return program;
+}
+
+Vulkan::Program *ShaderProgram::get_program_locked(unsigned variant)
+{
 	auto &var = variants[variant];
 	auto *vert = var.stages[static_cast<unsigned>(Vulkan::ShaderStage::Vertex)];
 	auto *frag = var.stages[static_cast<unsigned>(Vulkan::ShaderStage::Fragment)];
 	auto *comp = var.stages[static_cast<unsigned>(Vulkan::ShaderStage::Compute)];
+	Vulkan::Program *ret = nullptr;
+
 	if (comp)
 	{
 		auto &comp_instance = var.shader_instance[static_cast<unsigned>(Vulkan::ShaderStage::Compute)];
@@ -202,19 +218,17 @@ Vulkan::Program *ShaderProgram::get_program(unsigned variant)
 					cache.emplace_replace(comp->hash, spirv_hash);
 				}
 			}
-			auto ret = var.program;
+			ret = var.program;
 #ifdef GRANITE_VULKAN_MT
 			var.instance_lock->unlock_write();
 #endif
-			return ret;
 		}
 		else
 		{
-			auto ret = var.program;
+			ret = var.program;
 #ifdef GRANITE_VULKAN_MT
 			var.instance_lock->unlock_read();
 #endif
-			return ret;
 		}
 	}
 	else if (vert && frag)
@@ -255,23 +269,21 @@ Vulkan::Program *ShaderProgram::get_program(unsigned variant)
 
 				var.program = device->request_program(vert_shader, frag_shader);
 			}
-			auto ret = var.program;
+			ret = var.program;
 #ifdef GRANITE_VULKAN_MT
 			var.instance_lock->unlock_write();
 #endif
-			return ret;
 		}
 		else
 		{
-			auto ret = var.program;
+			ret = var.program;
 #ifdef GRANITE_VULKAN_MT
 			var.instance_lock->unlock_read();
 #endif
-			return ret;
 		}
 	}
 
-	return {};
+	return ret;
 }
 
 unsigned ShaderProgram::register_variant(const std::vector<std::pair<std::string, int>> &defines)
@@ -279,7 +291,7 @@ unsigned ShaderProgram::register_variant(const std::vector<std::pair<std::string
 	Hasher h;
 	for (auto &define : defines)
 	{
-		h.u64(hash<string>()(define.first));
+		h.string(define.first);
 		h.s32(define.second);
 	}
 
@@ -311,7 +323,7 @@ unsigned ShaderProgram::register_variant(const std::vector<std::pair<std::string
 			var.stages[i] = stages[i]->register_variant(&defines);
 
 	// Make sure it's compiled correctly.
-	get_program(index);
+	get_program_locked(index);
 #ifdef GRANITE_VULKAN_MT
 	variant_lock.unlock_write();
 #endif

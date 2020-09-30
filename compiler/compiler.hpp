@@ -71,16 +71,11 @@ public:
 	bool set_source_from_file(const std::string &path);
 	bool preprocess();
 
-	std::vector<uint32_t> compile(const std::vector<std::pair<std::string, int>> *defines = nullptr);
+	std::vector<uint32_t> compile(std::string &error_message, const std::vector<std::pair<std::string, int>> *defines = nullptr) const;
 
 	const std::unordered_set<std::string> &get_dependencies() const
 	{
 		return dependencies;
-	}
-
-	const std::string &get_error_message() const
-	{
-		return error_message;
 	}
 
 	enum class Optimization
@@ -108,7 +103,6 @@ private:
 
 	std::unordered_set<std::string> dependencies;
 	std::string preprocessed_source;
-	std::string error_message;
 
 	Target target = Target::Vulkan10;
 

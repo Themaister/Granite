@@ -31,14 +31,44 @@
 #include <functional>
 #include "vulkan_headers.hpp"
 #include "device.hpp"
+#include "small_vector.hpp"
 #include "stack_allocator.hpp"
 #include "application_wsi_events.hpp"
 #include "quirks.hpp"
+#include "thread_group.hpp"
 
 namespace Granite
 {
 class RenderGraph;
 class RenderPass;
+class TaskComposer;
+
+// A more stateful variant of the lambdas.
+// It can be somewhat awkward to marshal shared data between N different lambdas.
+class RenderPassInterface : public Util::IntrusivePtrEnabled<RenderPassInterface,
+		std::default_delete<RenderPassInterface>,
+		Util::SingleThreadCounter>
+{
+public:
+	virtual ~RenderPassInterface() = default;
+
+	// This information must remain fixed.
+	virtual bool render_pass_is_conditional() const;
+	virtual bool render_pass_is_layered() const;
+	virtual bool render_pass_can_multithread() const;
+
+	// Can change per frame.
+	virtual bool need_render_pass() const;
+	virtual bool get_clear_depth_stencil(VkClearDepthStencilValue *value) const;
+	virtual bool get_clear_color(unsigned attachment, VkClearColorValue *value) const;
+
+	virtual void enqueue_prepare_render_pass(TaskComposer &composer,
+	                                         const Vulkan::RenderPassInfo &info, unsigned subpass,
+	                                         VkSubpassContents &subpass_contents);
+	virtual void build_render_pass(Vulkan::CommandBuffer &cmd);
+	virtual void build_render_pass_layered(Vulkan::CommandBuffer &cmd, unsigned layer);
+};
+using RenderPassInterfaceHandle = Util::IntrusivePtr<RenderPassInterface>;
 
 enum SizeClass
 {
@@ -507,41 +537,79 @@ public:
 		physical_pass = index_;
 	}
 
-	bool need_render_pass()
+	bool need_render_pass() const
 	{
-		if (need_render_pass_cb)
+		if (render_pass_handle)
+			return render_pass_handle->need_render_pass();
+		else if (need_render_pass_cb)
 			return need_render_pass_cb();
 		else
 			return true;
 	}
 
-	bool may_not_need_render_pass() const
+	bool can_multithread() const
 	{
-		return bool(need_render_pass_cb);
+		if (render_pass_handle)
+			return render_pass_handle->render_pass_can_multithread();
+		else
+			return false;
 	}
 
-	bool get_clear_color(unsigned index_, VkClearColorValue * value = nullptr)
+	bool may_not_need_render_pass() const
 	{
-		if (get_clear_color_cb)
+		if (render_pass_handle)
+			return render_pass_handle->render_pass_is_conditional();
+		else
+			return bool(need_render_pass_cb);
+	}
+
+	bool get_clear_color(unsigned index_, VkClearColorValue *value = nullptr) const
+	{
+		if (render_pass_handle)
+			return render_pass_handle->get_clear_color(index_, value);
+		else if (get_clear_color_cb)
 			return get_clear_color_cb(index_, value);
 		else
 			return false;
 	}
 
-	bool get_clear_depth_stencil(VkClearDepthStencilValue * value = nullptr)
+	bool get_clear_depth_stencil(VkClearDepthStencilValue *value = nullptr) const
 	{
-		if (get_clear_depth_stencil_cb)
+		if (render_pass_handle)
+			return render_pass_handle->get_clear_depth_stencil(value);
+		else if (get_clear_depth_stencil_cb)
 			return get_clear_depth_stencil_cb(value);
 		else
 			return false;
 	}
 
+	void enqueue_prepare_render_pass(TaskComposer &composer, const Vulkan::RenderPassInfo &rp_info,
+	                                 unsigned subpass_index, VkSubpassContents &contents)
+	{
+		if (render_pass_handle)
+			render_pass_handle->enqueue_prepare_render_pass(composer, rp_info, subpass_index, contents);
+		else
+			contents = VK_SUBPASS_CONTENTS_INLINE;
+	}
+
 	void build_render_pass(Vulkan::CommandBuffer &cmd, unsigned layer)
 	{
-		if (build_render_pass_layered_cb)
+		if (render_pass_handle)
+		{
+			if (render_pass_handle->render_pass_is_layered())
+				render_pass_handle->build_render_pass_layered(cmd, layer);
+			else
+				render_pass_handle->build_render_pass(cmd);
+		}
+		else if (build_render_pass_layered_cb)
 			build_render_pass_layered_cb(layer, cmd);
 		else if (build_render_pass_cb)
 			build_render_pass_cb(cmd);
+	}
+
+	void set_render_pass_interface(RenderPassInterfaceHandle handle)
+	{
+		render_pass_handle = std::move(handle);
 	}
 
 	void set_need_render_pass(std::function<bool ()> func)
@@ -585,6 +653,7 @@ private:
 	unsigned physical_pass = Unused;
 	RenderGraphQueueFlagBits queue;
 
+	RenderPassInterfaceHandle render_pass_handle;
 	std::function<void (Vulkan::CommandBuffer &)> build_render_pass_cb;
 	std::function<void (unsigned, Vulkan::CommandBuffer &)> build_render_pass_layered_cb;
 	std::function<bool ()> need_render_pass_cb;
@@ -652,7 +721,7 @@ public:
 	void reset();
 	void log();
 	void setup_attachments(Vulkan::Device &device, Vulkan::ImageView *swapchain);
-	void enqueue_render_passes(Vulkan::Device &device);
+	void enqueue_render_passes(Vulkan::Device &device, TaskComposer &composer);
 
 	RenderTextureResource &get_texture_resource(const std::string &name);
 	RenderBufferResource &get_buffer_resource(const std::string &name);
@@ -884,5 +953,69 @@ private:
 
 	void reorder_passes(std::vector<unsigned> &passes);
 	static bool need_invalidate(const Barrier &barrier, const PipelineEvent &event);
+
+	struct PassSubmissionState
+	{
+		Util::SmallVector<VkBufferMemoryBarrier> buffer_barriers;
+		Util::SmallVector<VkImageMemoryBarrier> image_barriers;
+
+		// Immediate buffer barriers are useless because they don't need any layout transition,
+		// and the API guarantees that submitting a batch makes memory visible to GPU resources.
+		// Immediate image barriers are purely for doing layout transitions without waiting (srcStage = TOP_OF_PIPE).
+		Util::SmallVector<VkImageMemoryBarrier> immediate_image_barriers;
+
+		// Barriers which are used when waiting for a semaphore, and then doing a transition.
+		// We need to use pipeline barriers here so we can have srcStage = dstStage,
+		// and hand over while not breaking the pipeline.
+		Util::SmallVector<VkImageMemoryBarrier> semaphore_handover_barriers;
+		Util::SmallVector<VkEvent> events;
+
+		Util::SmallVector<VkSubpassContents> subpass_contents;
+
+		VkPipelineStageFlags dst_stages = 0;
+		VkPipelineStageFlags immediate_dst_stages = 0;
+		VkPipelineStageFlags src_stages = 0;
+		VkPipelineStageFlags handover_stages = 0;
+
+		Vulkan::Semaphore wait_semaphore;
+		VkPipelineStageFlags wait_semaphore_stages = 0;
+
+		Vulkan::PipelineEvent signal_event;
+		VkPipelineStageFlags event_signal_stages = 0;
+
+		Vulkan::Semaphore proxy_semaphores[2];
+		bool need_submission_semaphore = false;
+
+		Vulkan::CommandBufferHandle cmd;
+
+		Vulkan::CommandBuffer::Type queue_type = Vulkan::CommandBuffer::Type::Count;
+		bool graphics = false;
+		bool active = false;
+
+		TaskGroupHandle rendering_dependency;
+
+		void add_unique_event(VkEvent event);
+		void emit_pre_pass_barriers();
+		void emit_post_pass_barriers();
+		void submit();
+	};
+	std::vector<PassSubmissionState> pass_submission_state;
+
+	void enqueue_render_pass(Vulkan::Device &device, PhysicalPass &physical_pass, PassSubmissionState &state, TaskComposer &composer);
+	void enqueue_swapchain_scale_pass(Vulkan::Device &device);
+	bool physical_pass_requires_work(const PhysicalPass &pass) const;
+	void physical_pass_transfer_ownership(const PhysicalPass &pass);
+	void physical_pass_invalidate_attachments(const PhysicalPass &pass);
+	void physical_pass_enqueue_graphics_commands(const PhysicalPass &pass, PassSubmissionState &state);
+	void physical_pass_enqueue_compute_commands(const PhysicalPass &pass, PassSubmissionState &state);
+
+	void physical_pass_handle_invalidate_barrier(const Barrier &barrier, PassSubmissionState &state, bool graphics);
+	void physical_pass_handle_signal(Vulkan::Device &device, const PhysicalPass &pass, PassSubmissionState &state);
+	void physical_pass_handle_flush_barrier(const Barrier &barrier, PassSubmissionState &state);
+	void physical_pass_handle_cpu_timeline(Vulkan::Device &device, const PhysicalPass &pass, PassSubmissionState &state,
+	                                       TaskComposer &composer);
+	bool physical_pass_can_multithread(const PhysicalPass &pass) const;
+	void physical_pass_handle_gpu_timeline(ThreadGroup &group, Vulkan::Device &device,
+	                                       const PhysicalPass &pass, PassSubmissionState &state);
 };
 }

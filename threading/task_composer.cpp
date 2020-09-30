@@ -20,46 +20,47 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#pragma once
-
-#include "material.hpp"
-#include "thread_group.hpp"
-#include "memory_mapped_texture.hpp"
+#include "task_composer.hpp"
 
 namespace Granite
 {
-enum class TextureMode
+TaskComposer::TaskComposer(ThreadGroup &group_)
+	: group(group_)
 {
-	RGB,
-	RGBA,
-	sRGB,
-	sRGBA,
-	Luminance,
-	Normal,
-	Mask,
-	NormalLA, // Special encoding to help certain formats where we encode as LLL + A.
-	MaskLA, // Special encoding to help certain formats where we encode as LLL + A.
-	HDR,
-	Unknown
-};
+}
 
-struct CompressorArguments
+void TaskComposer::set_incoming_task(TaskGroupHandle group_)
 {
-	std::string output;
-	VkFormat format = VK_FORMAT_UNDEFINED;
-	unsigned quality = 3;
-	TextureMode mode = TextureMode::Unknown;
-	VkComponentMapping output_mapping = {
-		VK_COMPONENT_SWIZZLE_R,
-		VK_COMPONENT_SWIZZLE_G,
-		VK_COMPONENT_SWIZZLE_B,
-		VK_COMPONENT_SWIZZLE_A,
-	};
-	bool deferred_mipgen = false;
-};
+	incoming = std::move(group_);
+}
 
-VkFormat string_to_format(const std::string &s);
-bool compress_texture(ThreadGroup &group, const CompressorArguments &args,
-                      const std::shared_ptr<SceneFormats::MemoryMappedTexture> &input,
-                      TaskGroupHandle &dep, TaskSignal *signal);
+TaskGroup &TaskComposer::begin_pipeline_stage()
+{
+	auto new_group = group.create_task();
+	if (incoming)
+		group.add_dependency(*new_group, *incoming);
+	incoming = new_group;
+	return *incoming;
+}
+
+TaskGroup &TaskComposer::get_group()
+{
+	return *incoming;
+}
+
+TaskGroupHandle TaskComposer::get_outgoing_task()
+{
+	if (incoming)
+	{
+		auto new_group = group.create_task();
+		group.add_dependency(*new_group, *incoming);
+		incoming = new_group;
+	}
+	return incoming;
+}
+
+ThreadGroup &TaskComposer::get_thread_group()
+{
+	return group;
+}
 }

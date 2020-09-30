@@ -35,6 +35,48 @@ using namespace std;
 
 namespace Granite
 {
+void RendererSuite::set_renderer(Type type, RendererHandle handle)
+{
+	handles[Util::ecast(type)] = std::move(handle);
+}
+
+Renderer &RendererSuite::get_renderer(Type type)
+{
+	return *handles[Util::ecast(type)];
+}
+
+const Renderer &RendererSuite::get_renderer(Type type) const
+{
+	return *handles[Util::ecast(type)];
+}
+
+void RendererSuite::set_default_renderers()
+{
+	set_renderer(Type::ForwardOpaque, Util::make_handle<Renderer>(RendererType::GeneralForward, nullptr));
+	set_renderer(Type::ForwardTransparent, Util::make_handle<Renderer>(RendererType::GeneralForward, nullptr));
+	set_renderer(Type::ShadowDepth, Util::make_handle<Renderer>(RendererType::DepthOnly, nullptr));
+	set_renderer(Type::PrepassDepth, Util::make_handle<Renderer>(RendererType::DepthOnly, nullptr));
+	set_renderer(Type::Deferred, Util::make_handle<Renderer>(RendererType::GeneralDeferred, nullptr));
+}
+
+void RendererSuite::update_mesh_rendering_options(const RenderContext &context, const Config &config)
+{
+	get_renderer(Type::ShadowDepth).set_mesh_renderer_options(
+			config.directional_light_vsm ? Renderer::SHADOW_VSM_BIT : 0);
+	get_renderer(Type::PrepassDepth).set_mesh_renderer_options(0);
+	get_renderer(Type::Deferred).set_mesh_renderer_options(0);
+
+	Renderer::RendererOptionFlags pcf_flags = 0;
+	if (config.pcf_width == 5)
+		pcf_flags |= Renderer::SHADOW_PCF_KERNEL_WIDTH_5_BIT;
+	else if (config.pcf_width == 3)
+		pcf_flags |= Renderer::SHADOW_PCF_KERNEL_WIDTH_3_BIT;
+
+	auto opts = Renderer::get_mesh_renderer_options_from_lighting(*context.get_lighting_parameters());
+	get_renderer(Type::ForwardOpaque).set_mesh_renderer_options(
+			opts | pcf_flags | (config.forward_z_prepass ? Renderer::ALPHA_TEST_DISABLE_BIT : 0));
+	get_renderer(Type::ForwardTransparent).set_mesh_renderer_options(opts | pcf_flags);
+}
 
 Renderer::Renderer(RendererType type_, const ShaderSuiteResolver *resolver_)
 	: type(type_), resolver(resolver_)
@@ -271,7 +313,7 @@ void Renderer::on_device_destroyed(const DeviceCreatedEvent &)
 {
 }
 
-void Renderer::begin()
+void Renderer::begin(RenderQueue &queue) const
 {
 	queue.reset();
 	queue.set_shader_suites(suite);
@@ -404,8 +446,11 @@ void Renderer::set_render_context_parameter_binder(RenderContextParameterBinder 
 	render_context_parameter_binder = binder;
 }
 
-void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context, RendererFlushFlags options)
+void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue, const RenderContext &context,
+                            RendererFlushFlags options, unsigned index, unsigned num_indices) const
 {
+	assert((options & SKIP_SORTING_BIT) != 0);
+
 	if (render_context_parameter_binder)
 	{
 		render_context_parameter_binder->bind_render_context_parameters(cmd, context);
@@ -416,9 +461,6 @@ void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context, Rendere
 		if (type == RendererType::GeneralForward)
 			bind_lighting_parameters(cmd, context);
 	}
-
-	if ((options & SKIP_SORTING_BIT) == 0)
-		queue.sort();
 
 	cmd.set_opaque_state();
 
@@ -458,8 +500,8 @@ void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context, Rendere
 	CommandBufferSavedState state;
 	cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
 	// No need to spend write bandwidth on writing 0 to light buffer, render opaque emissive on top.
-	queue.dispatch(Queue::Opaque, cmd, &state);
-	queue.dispatch(Queue::OpaqueEmissive, cmd, &state);
+	queue.dispatch_subset(Queue::Opaque, cmd, &state, index, num_indices);
+	queue.dispatch_subset(Queue::OpaqueEmissive, cmd, &state, index, num_indices);
 
 	if (type == RendererType::GeneralDeferred)
 	{
@@ -480,7 +522,7 @@ void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context, Rendere
 		cmd.set_stencil_front_ops(VK_COMPARE_OP_EQUAL, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP);
 		cmd.set_stencil_back_ops(VK_COMPARE_OP_EQUAL, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP);
 		cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
-		queue.dispatch(Queue::Light, cmd, &state);
+		queue.dispatch_subset(Queue::Light, cmd, &state, index, num_indices);
 	}
 	else if (type == RendererType::GeneralForward)
 	{
@@ -491,11 +533,18 @@ void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderContext &context, Rendere
 		cmd.set_blend_op(VK_BLEND_OP_ADD);
 		cmd.set_depth_test(true, false);
 		cmd.save_state(COMMAND_BUFFER_SAVED_SCISSOR_BIT | COMMAND_BUFFER_SAVED_VIEWPORT_BIT | COMMAND_BUFFER_SAVED_RENDER_STATE_BIT, state);
-		queue.dispatch(Queue::Transparent, cmd, &state);
+		queue.dispatch_subset(Queue::Transparent, cmd, &state, index, num_indices);
 	}
 }
 
-DebugMeshInstanceInfo &Renderer::render_debug(RenderContext &context, unsigned count)
+void Renderer::flush(Vulkan::CommandBuffer &cmd, RenderQueue &queue, const RenderContext &context, RendererFlushFlags options) const
+{
+	if ((options & SKIP_SORTING_BIT) == 0)
+		queue.sort();
+	flush_subset(cmd, queue, context, options | SKIP_SORTING_BIT, 0, 1);
+}
+
+DebugMeshInstanceInfo &Renderer::render_debug(RenderQueue &queue, const RenderContext &context, unsigned count)
 {
 	DebugMeshInfo debug;
 
@@ -556,35 +605,23 @@ inline void dump_debug_coords(vec3 *pos, const T &t)
 	*pos++ = t.get_coord(0.0f, 1.0f, 1.0f);
 }
 
-void Renderer::render_debug_frustum(RenderContext &context, const Frustum &frustum, const vec4 &color)
+void Renderer::render_debug_frustum(RenderQueue &queue, const RenderContext &context, const Frustum &frustum, const vec4 &color)
 {
-	auto &debug = render_debug(context, 12 * 2);
+	auto &debug = render_debug(queue, context, 12 * 2);
 	for (unsigned i = 0; i < debug.count; i++)
 		debug.colors[i] = color;
 	dump_debug_coords(debug.positions, frustum);
 }
 
-void Renderer::render_debug_aabb(RenderContext &context, const AABB &aabb, const vec4 &color)
+void Renderer::render_debug_aabb(RenderQueue &queue, const RenderContext &context, const AABB &aabb, const vec4 &color)
 {
-	auto &debug = render_debug(context, 12 * 2);
+	auto &debug = render_debug(queue, context, 12 * 2);
 	for (unsigned i = 0; i < debug.count; i++)
 		debug.colors[i] = color;
 	dump_debug_coords(debug.positions, aabb);
 }
 
-void Renderer::push_renderables(RenderContext &context, const VisibilityList &visible)
-{
-	for (auto &vis : visible)
-		vis.renderable->get_render_info(context, vis.transform, queue);
-}
-
-void Renderer::push_depth_renderables(RenderContext &context, const VisibilityList &visible)
-{
-	for (auto &vis : visible)
-		vis.renderable->get_depth_render_info(context, vis.transform, queue);
-}
-
-void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, RenderContext &context,
+void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const RenderContext &context,
                                          Renderer::RendererOptionFlags flags)
 {
 	cmd.set_quad_state();

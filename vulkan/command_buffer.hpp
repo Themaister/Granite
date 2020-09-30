@@ -291,6 +291,8 @@ public:
 	             VkAccessFlags dst_access);
 
 	PipelineEvent signal_event(VkPipelineStageFlags stages);
+	void complete_signal_event(const EventHolder &event);
+
 	void wait_events(unsigned num_events, const VkEvent *events,
 	                 VkPipelineStageFlags src_stages, VkPipelineStageFlags dst_stages,
 	                 unsigned barriers, const VkMemoryBarrier *globals,
@@ -643,6 +645,10 @@ public:
 	void add_checkpoint(const char *tag);
 	void set_backtrace_checkpoint();
 
+	// Used when recording command buffers in a thread, and submitting them in a different thread.
+	// Need to make sure that no further commands on the VkCommandBuffer happen.
+	void end_threaded_recording();
+	// End is called automatically by Device in submission. Should not be called by application.
 	void end();
 	void enable_profiling();
 	bool has_profiling() const;
@@ -692,6 +698,7 @@ private:
 	bool uses_swapchain = false;
 	bool is_compute = true;
 	bool is_secondary = false;
+	bool is_ended = false;
 
 	void set_dirty(CommandBufferDirtyFlags flags)
 	{

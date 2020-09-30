@@ -39,15 +39,15 @@ int main()
 	auto task3 = group.create_task([]() {
 		LOGI("Ohai 3!\n");
 	});
-	group.enqueue_task(task3, []() {
+	group.enqueue_task(*task3, []() {
 		LOGI("Brrr :3\n");
 	});
 	task1->id = 1;
 	task2->id = 2;
 	task3->id = 3;
-	group.add_dependency(task1, task3);
-	group.add_dependency(task2, task3);
-	group.add_dependency(task1, task2);
+	group.add_dependency(*task1, *task3);
+	group.add_dependency(*task2, *task3);
+	group.add_dependency(*task1, *task2);
 	group.submit(task1);
 	group.submit(task2);
 	group.submit(task3);

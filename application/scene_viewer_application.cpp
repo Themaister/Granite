@@ -26,6 +26,7 @@
 #include "post/hdr.hpp"
 #include "post/ssao.hpp"
 #include "rapidjson_wrapper.hpp"
+#include "task_composer.hpp"
 #include "thread_group.hpp"
 #include "utils/image_utils.hpp"
 //#include "ocean.hpp"
@@ -113,14 +114,17 @@ void SceneViewerApplication::read_config(const std::string &path)
 	if (doc.HasMember("directionalLightShadowsCascaded"))
 		config.directional_light_cascaded_shadows = doc["directionalLightShadowsCascaded"].GetBool();
 	if (doc.HasMember("directionalLightShadowsVSM"))
+	{
 		config.directional_light_shadows_vsm = doc["directionalLightShadowsVSM"].GetBool();
+		renderer_suite_config.directional_light_vsm = config.directional_light_shadows_vsm;
+	}
 	if (doc.HasMember("PCFKernelWidth"))
 	{
 		unsigned width = doc["PCFKernelWidth"].GetUint();
 		if (width == 5)
-			config.pcf_flags = Renderer::SHADOW_PCF_KERNEL_WIDTH_5_BIT;
+			config.pcf_flags = SCENE_RENDERER_SHADOW_PCF_5X_BIT;
 		else if (width == 3)
-			config.pcf_flags = Renderer::SHADOW_PCF_KERNEL_WIDTH_3_BIT;
+			config.pcf_flags = SCENE_RENDERER_SHADOW_PCF_3X_BIT;
 		else if (width == 1)
 			config.pcf_flags = 0;
 		else
@@ -128,6 +132,7 @@ void SceneViewerApplication::read_config(const std::string &path)
 			config.pcf_flags = 0;
 			LOGE("Invalid PCFKernelWidth, assuming default of 1.\n");
 		}
+		renderer_suite_config.pcf_width = width;
 	}
 	if (doc.HasMember("clusteredLights"))
 		config.clustered_lights = doc["clusteredLights"].GetBool();
@@ -189,10 +194,9 @@ void SceneViewerApplication::read_config(const std::string &path)
 
 SceneViewerApplication::SceneViewerApplication(const std::string &path, const std::string &config_path,
                                                const std::string &quirks_path)
-    : forward_renderer(RendererType::GeneralForward)
-    , deferred_renderer(RendererType::GeneralDeferred)
-    , depth_renderer(RendererType::DepthOnly)
 {
+	renderer_suite.set_default_renderers();
+
 	if (!config_path.empty())
 		read_config(config_path);
 	if (!quirks_path.empty())
@@ -276,7 +280,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 		else
 		{
 			cluster->set_scene(&scene_loader.get_scene());
-			cluster->set_base_renderer(&forward_renderer, &deferred_renderer, &depth_renderer);
+			cluster->set_base_renderer(&renderer_suite);
 			cluster->set_base_render_context(&context);
 		}
 
@@ -335,10 +339,8 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 		entity->allocate_component<PerFrameUpdateComponent>()->refresh = &deferred_lights;
 	}
 	deferred_lights.set_scene(&scene_loader.get_scene());
-	deferred_lights.set_renderers(&depth_renderer, &deferred_renderer);
+	deferred_lights.set_renderers(&renderer_suite);
 	deferred_lights.set_enable_clustered_stencil_culling(config.deferred_clustered_stencil_culling);
-	deferred_lights.set_max_spot_lights(config.max_spot_lights);
-	deferred_lights.set_max_point_lights(config.max_point_lights);
 
 	context.set_camera(*selected_camera);
 
@@ -538,6 +540,8 @@ void SceneViewerApplication::capture_environment_probe()
 	auto handle = device.create_image(info, nullptr);
 	auto cmd = device.request_command_buffer();
 
+	VisibilityList visible;
+
 	for (unsigned face = 0; face < 6; face++)
 	{
 		ImageViewCreateInfo view_info = {};
@@ -572,13 +576,16 @@ void SceneViewerApplication::capture_environment_probe()
 		scene.gather_visible_opaque_renderables(context.get_visibility_frustum(), visible);
 		scene.gather_visible_render_pass_sinks(context.get_render_parameters().camera_position, visible);
 		scene.gather_unbounded_renderables(visible);
+
+		auto &forward_renderer = renderer_suite.get_renderer(RendererSuite::Type::ForwardOpaque);
 		forward_renderer.set_mesh_renderer_options_from_lighting(lighting);
 		forward_renderer.set_mesh_renderer_options(forward_renderer.get_mesh_renderer_options() | config.pcf_flags);
-		forward_renderer.begin();
-		forward_renderer.push_renderables(context, visible);
+
+		forward_renderer.begin(queue);
+		queue.push_renderables(context, visible);
 
 		Renderer::RendererOptionFlags opt = Renderer::FRONT_FACE_CLOCKWISE_BIT;
-		forward_renderer.flush(*cmd, context, opt);
+		forward_renderer.flush(*cmd, queue, context, opt);
 
 		cmd->end_render_pass();
 	}
@@ -589,73 +596,6 @@ void SceneViewerApplication::capture_environment_probe()
 	device.submit(cmd);
 	auto buffer = save_image_to_cpu_buffer(device, *handle, CommandBuffer::Type::Generic);
 	save_image_buffer_to_gtx(device, buffer, "cache://environment.gtx");
-}
-
-void SceneViewerApplication::render_main_pass(CommandBuffer &cmd, const mat4 &proj, const mat4 &view)
-{
-	auto &scene = scene_loader.get_scene();
-	context.set_camera(jitter.get_jitter_matrix() * proj, view);
-	visible.clear();
-	scene.gather_visible_opaque_renderables(context.get_visibility_frustum(), visible);
-	scene.gather_visible_render_pass_sinks(context.get_render_parameters().camera_position, visible);
-
-	if (config.renderer_type == RendererType::GeneralForward)
-	{
-		if (config.forward_depth_prepass)
-		{
-			depth_renderer.begin();
-			depth_renderer.push_renderables(context, visible);
-			depth_renderer.flush(cmd, context, Renderer::NO_COLOR_BIT);
-		}
-
-		scene.gather_unbounded_renderables(visible);
-
-		forward_renderer.set_mesh_renderer_options_from_lighting(lighting);
-		forward_renderer.set_mesh_renderer_options(
-				forward_renderer.get_mesh_renderer_options() |
-				config.pcf_flags |
-				(config.forward_depth_prepass ? Renderer::ALPHA_TEST_DISABLE_BIT : 0));
-		forward_renderer.begin();
-		forward_renderer.push_renderables(context, visible);
-
-		Renderer::RendererOptionFlags opt = 0;
-		if (config.forward_depth_prepass)
-			opt |= Renderer::DEPTH_STENCIL_READ_ONLY_BIT | Renderer::DEPTH_TEST_EQUAL_BIT;
-
-		forward_renderer.flush(cmd, context, opt);
-	}
-	else if (config.renderer_type == RendererType::GeneralDeferred)
-	{
-		scene.gather_unbounded_renderables(visible);
-		deferred_renderer.begin();
-		deferred_renderer.push_renderables(context, visible);
-		deferred_renderer.flush(cmd, context);
-	}
-}
-
-void SceneViewerApplication::render_transparent_objects(CommandBuffer &cmd, const mat4 &proj, const mat4 &view)
-{
-	auto &scene = scene_loader.get_scene();
-	context.set_camera(jitter.get_jitter_matrix() * proj, view);
-	visible.clear();
-	scene.gather_visible_transparent_renderables(context.get_visibility_frustum(), visible);
-	forward_renderer.set_mesh_renderer_options_from_lighting(lighting);
-	forward_renderer.set_mesh_renderer_options(forward_renderer.get_mesh_renderer_options() | config.pcf_flags);
-	forward_renderer.begin();
-	forward_renderer.push_renderables(context, visible);
-	forward_renderer.flush(cmd, context);
-}
-
-void SceneViewerApplication::render_positional_lights_prepass(CommandBuffer &cmd, const mat4 &proj, const mat4 &view)
-{
-	context.set_camera(jitter.get_jitter_matrix() * proj, view);
-	deferred_lights.render_prepass_lights(cmd, context);
-}
-
-void SceneViewerApplication::render_positional_lights(CommandBuffer &cmd, const mat4 &proj, const mat4 &view)
-{
-	context.set_camera(jitter.get_jitter_matrix() * proj, view);
-	deferred_lights.render_lights(cmd, context, config.pcf_flags);
 }
 
 static inline string tagcat(const std::string &a, const std::string &b)
@@ -696,25 +636,18 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 
 	lighting_pass.set_depth_stencil_output(tagcat("depth", tag), depth);
 
-	lighting_pass.set_get_clear_depth_stencil([](VkClearDepthStencilValue *value) -> bool {
-		if (value)
-		{
-			value->depth = 1.0f;
-			value->stencil = 0;
-		}
-		return true;
-	});
+	auto renderer = Util::make_handle<RenderPassSceneRenderer>();
+	RenderPassSceneRenderer::Setup setup = {};
+	setup.scene = &scene_loader.get_scene();
+	setup.deferred_lights = &deferred_lights;
+	setup.context = &context;
+	setup.suite = &renderer_suite;
+	setup.flags = SCENE_RENDERER_FORWARD_OPAQUE_BIT | SCENE_RENDERER_FORWARD_TRANSPARENT_BIT | config.pcf_flags;
+	if (config.forward_depth_prepass)
+		setup.flags |= SCENE_RENDERER_FORWARD_Z_PREPASS_BIT;
+	renderer->init(setup);
 
-	lighting_pass.set_get_clear_color([](unsigned, VkClearColorValue *value) -> bool {
-		if (value)
-			memset(value, 0, sizeof(*value));
-		return true;
-	});
-
-	lighting_pass.set_build_render_pass([this](CommandBuffer &cmd) {
-		render_main_pass(cmd, selected_camera->get_projection(), selected_camera->get_view());
-		render_transparent_objects(cmd, selected_camera->get_projection(), selected_camera->get_view());
-	});
+	lighting_pass.set_render_pass_interface(std::move(renderer));
 
 	shadow_main = nullptr;
 	shadow_near = nullptr;
@@ -749,31 +682,21 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 	gbuffer.add_color_output(tagcat("normal", tag), normal);
 	gbuffer.add_color_output(tagcat("pbr", tag), pbr);
 	gbuffer.set_depth_stencil_output(tagcat("depth-transient", tag), depth);
-	gbuffer.set_build_render_pass([this](CommandBuffer &cmd) {
-		render_main_pass(cmd, selected_camera->get_projection(), selected_camera->get_view());
+
+	{
+		auto renderer = Util::make_handle<RenderPassSceneRenderer>();
+		RenderPassSceneRenderer::Setup setup = {};
+		setup.scene = &scene_loader.get_scene();
+		setup.deferred_lights = &deferred_lights;
+		setup.context = &context;
+		setup.suite = &renderer_suite;
+		setup.flags = SCENE_RENDERER_DEFERRED_GBUFFER_BIT;
 		if (!config.clustered_lights && config.deferred_clustered_stencil_culling)
-			render_positional_lights_prepass(cmd, selected_camera->get_projection(), selected_camera->get_view());
-	});
+			setup.flags |= SCENE_RENDERER_DEFERRED_GBUFFER_LIGHT_PREPASS_BIT;
+		renderer->init(setup);
 
-	gbuffer.set_get_clear_depth_stencil([](VkClearDepthStencilValue *value) -> bool {
-		if (value)
-		{
-			value->depth = 1.0f;
-			value->stencil = 0;
-		}
-		return true;
-	});
-
-	gbuffer.set_get_clear_color([](unsigned, VkClearColorValue *value) -> bool {
-		if (value)
-		{
-			value->float32[0] = 0.0f;
-			value->float32[1] = 0.0f;
-			value->float32[2] = 0.0f;
-			value->float32[3] = 0.0f;
-		}
-		return true;
-	});
+		gbuffer.set_render_pass_interface(std::move(renderer));
+	}
 
 	if (config.ssao)
 	{
@@ -790,6 +713,21 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 	lighting_pass.set_depth_stencil_input(tagcat("depth-transient", tag));
 	lighting_pass.add_fake_resource_write_alias(tagcat("depth-transient", tag), tagcat("depth", tag));
 
+	{
+		auto renderer = Util::make_handle<RenderPassSceneRenderer>();
+		RenderPassSceneRenderer::Setup setup = {};
+		setup.scene = &scene_loader.get_scene();
+		setup.deferred_lights = &deferred_lights;
+		setup.context = &context;
+		setup.suite = &renderer_suite;
+		setup.flags = SCENE_RENDERER_DEFERRED_LIGHTING_BIT | SCENE_RENDERER_FORWARD_TRANSPARENT_BIT | config.pcf_flags;
+		if (config.clustered_lights)
+			setup.flags |= SCENE_RENDERER_DEFERRED_CLUSTER_BIT;
+		renderer->init(setup);
+
+		lighting_pass.set_render_pass_interface(std::move(renderer));
+	}
+
 	if (config.ssao)
 		ssao_output = &lighting_pass.add_texture_input(tagcat("ssao-output", tag));
 	else
@@ -805,13 +743,6 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 	}
 
 	scene_loader.get_scene().add_render_pass_dependencies(graph, gbuffer);
-
-	lighting_pass.set_build_render_pass([this](CommandBuffer &cmd) {
-		if (!config.clustered_lights)
-			render_positional_lights(cmd, selected_camera->get_projection(), selected_camera->get_view());
-		DeferredLightRenderer::render_light(cmd, context, config.pcf_flags);
-		render_transparent_objects(cmd, selected_camera->get_projection(), selected_camera->get_view());
-	});
 }
 
 void SceneViewerApplication::add_main_pass(Device &device, const std::string &tag)
@@ -907,35 +838,35 @@ void SceneViewerApplication::add_shadow_pass(Device &, const std::string &tag, D
 		shadowpass.set_depth_stencil_output(tagcat("shadow", tag), shadowmap);
 	}
 
-	shadowpass.set_build_render_pass([this, type](CommandBuffer &cmd) {
-		if (type == DepthPassType::Main)
-			render_shadow_map_far(cmd);
-		else
-			render_shadow_map_near(cmd);
-	});
+	Util::IntrusivePtr<RenderPassSceneRenderer> handle;
+	RenderPassSceneRenderer::Setup setup = {};
+	setup.scene = &scene_loader.get_scene();
+	setup.suite = &renderer_suite;
+	setup.flags = SCENE_RENDERER_DEPTH_BIT;
+	if (config.directional_light_shadows_vsm)
+		setup.flags |= SCENE_RENDERER_SHADOW_VSM_BIT;
 
-	shadowpass.set_get_clear_color([](unsigned, VkClearColorValue *value) -> bool {
-		if (value)
-		{
-			value->float32[0] = 1.0f;
-			value->float32[1] = 1.0f;
-			value->float32[2] = 0.0f;
-			value->float32[3] = 0.0f;
-		}
-		return true;
-	});
+	if (type == DepthPassType::Main)
+	{
+		setup.context = &depth_context_far;
+		shadow_far_renderer = Util::make_handle<RenderPassSceneRendererConditional>();
+		handle = shadow_far_renderer;
+		setup.flags |= SCENE_RENDERER_DEPTH_STATIC_BIT;
+	}
+	else
+	{
+		setup.context = &depth_context_near;
+		handle = Util::make_handle<RenderPassSceneRenderer>();
+		setup.flags |= SCENE_RENDERER_DEPTH_DYNAMIC_BIT;
+	}
 
-	shadowpass.set_get_clear_depth_stencil([](VkClearDepthStencilValue *value) -> bool {
-		if (value)
-		{
-			value->depth = 1.0f;
-			value->stencil = 0;
-		}
-		return true;
-	});
+	handle->init(setup);
 
-	shadowpass.set_need_render_pass(
-	    [this, type]() { return type == DepthPassType::Main ? need_shadow_map_update : true; });
+	VkClearColorValue value = {};
+	value.float32[0] = 1.0f;
+	value.float32[1] = 1.0f;
+	handle->set_clear_color(value);
+	shadowpass.set_render_pass_interface(std::move(handle));
 }
 
 void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent &swap)
@@ -1035,9 +966,6 @@ void SceneViewerApplication::update_shadow_scene_aabb()
 
 void SceneViewerApplication::update_shadow_map()
 {
-	auto &scene = scene_loader.get_scene();
-	depth_visible.clear();
-
 	mat4 view = mat4_cast(look_at(-selected_directional->direction, vec3(0.0f, 1.0f, 0.0f)));
 
 	// Project the scene AABB into the light and find our ortho ranges.
@@ -1046,24 +974,16 @@ void SceneViewerApplication::update_shadow_map()
 
 	// Standard scale/bias.
 	lighting.shadow.far_transform = translate(vec3(0.5f, 0.5f, 0.0f)) * scale(vec3(0.5f, 0.5f, 1.0f)) * proj * view;
-	depth_context.set_camera(proj, view);
-
-	depth_renderer.set_mesh_renderer_options(config.directional_light_shadows_vsm ? Renderer::SHADOW_VSM_BIT : 0);
-	depth_renderer.begin();
-	scene.gather_visible_static_shadow_renderables(depth_context.get_visibility_frustum(), depth_visible);
-	depth_renderer.push_depth_renderables(depth_context, depth_visible);
+	depth_context_far.set_camera(proj, view);
 }
 
-void SceneViewerApplication::render_shadow_map_far(CommandBuffer &cmd)
+void SceneViewerApplication::setup_shadow_map_far()
 {
 	update_shadow_map();
-	depth_renderer.flush(cmd, depth_context, Renderer::DEPTH_BIAS_BIT);
 }
 
-void SceneViewerApplication::render_shadow_map_near(CommandBuffer &cmd)
+void SceneViewerApplication::setup_shadow_map_near()
 {
-	auto &scene = scene_loader.get_scene();
-	depth_visible.clear();
 	mat4 view = mat4_cast(look_at(-selected_directional->direction, vec3(0.0f, 1.0f, 0.0f)));
 	AABB ortho_range_depth = shadow_scene_aabb.transform(view); // Just need this to determine Zmin/Zmax.
 
@@ -1084,12 +1004,7 @@ void SceneViewerApplication::render_shadow_map_near(CommandBuffer &cmd)
 
 	mat4 proj = ortho(ortho_range);
 	lighting.shadow.near_transform = translate(vec3(0.5f, 0.5f, 0.0f)) * scale(vec3(0.5f, 0.5f, 1.0f)) * proj * view;
-	depth_context.set_camera(proj, view);
-	depth_renderer.set_mesh_renderer_options(config.directional_light_shadows_vsm ? Renderer::SHADOW_VSM_BIT : 0);
-	depth_renderer.begin();
-	scene.gather_visible_dynamic_shadow_renderables(depth_context.get_visibility_frustum(), depth_visible);
-	depth_renderer.push_depth_renderables(depth_context, depth_visible);
-	depth_renderer.flush(cmd, depth_context, Renderer::DEPTH_BIAS_BIT);
+	depth_context_near.set_camera(proj, view);
 }
 
 void SceneViewerApplication::update_scene(double frame_time, double elapsed_time)
@@ -1111,7 +1026,7 @@ void SceneViewerApplication::update_scene(double frame_time, double elapsed_time
 	lighting.refraction.falloff = vec3(1.0f / 1.5f, 1.0f / 2.5f, 1.0f / 5.0f);
 
 	context.set_camera(*selected_camera);
-	scene.set_render_pass_data(&forward_renderer, &deferred_renderer, &depth_renderer, &context);
+	scene.set_render_pass_data(&renderer_suite, &context);
 
 	lighting.directional.direction = selected_directional->direction;
 	lighting.directional.color = selected_directional->color;
@@ -1171,17 +1086,27 @@ void SceneViewerApplication::render_scene()
 
 	if (config.force_shadow_map_update)
 		need_shadow_map_update = true;
-
-	if (need_shadow_map_update)
-		update_shadow_scene_aabb();
+	if (shadow_far_renderer)
+		shadow_far_renderer->set_need_render_pass(need_shadow_map_update);
 
 	graph.setup_attachments(device, &device.get_swapchain_view());
 	lighting.shadow_near = graph.maybe_get_physical_texture_resource(shadow_near);
 	lighting.shadow_far = graph.maybe_get_physical_texture_resource(shadow_main);
 	lighting.ambient_occlusion = graph.maybe_get_physical_texture_resource(ssao_output);
 
+	if (need_shadow_map_update)
+	{
+		update_shadow_scene_aabb();
+		setup_shadow_map_far();
+	}
+	setup_shadow_map_near();
+
+	renderer_suite.update_mesh_rendering_options(context, renderer_suite_config);
 	scene.bind_render_graph_resources(graph);
-	graph.enqueue_render_passes(device);
+
+	TaskComposer composer(*Global::thread_group());
+	graph.enqueue_render_passes(device, composer);
+	composer.get_outgoing_task()->wait();
 
 	need_shadow_map_update = false;
 }

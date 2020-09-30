@@ -1578,7 +1578,7 @@ static void compress_image(ThreadGroup &workers, const string &target_path, shar
 			result->image.reset();
 		});
 		write_task->set_fence_counter_signal(signal);
-		workers.add_dependency(write_task, mipgen_task);
+		workers.add_dependency(*write_task, *mipgen_task);
 	}
 	else if (result->compression != TextureCompression::Uncompressed)
 		compress_texture(workers, args, result->image, mipgen_task, signal);
@@ -1592,7 +1592,7 @@ static void compress_image(ThreadGroup &workers, const string &target_path, shar
 			result->image.reset();
 		});
 		write_task->set_fence_counter_signal(signal);
-		workers.add_dependency(write_task, mipgen_task);
+		workers.add_dependency(*write_task, *mipgen_task);
 	}
 	else
 		mipgen_task->set_fence_counter_signal(signal);

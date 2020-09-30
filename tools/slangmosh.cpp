@@ -99,11 +99,12 @@ void Shader::dispatch_variants(std::vector<uint32_t> *output_spirv, Target targe
 				return;
 			}
 
-			output_spirv[0] = comp.compile(nullptr);
+			std::string error_message;
+			output_spirv[0] = comp.compile(error_message, nullptr);
 			if (output_spirv[0].empty())
 			{
 				LOGE("Failed to compile shader: %s.\n", path.c_str());
-				LOGE("%s\n", comp.get_error_message().c_str());
+				LOGE("%s\n", error_message.c_str());
 				return;
 			}
 		});
@@ -131,13 +132,14 @@ void Shader::dispatch_variants(std::vector<uint32_t> *output_spirv, Target targe
 				for (size_t i = 0; i < defines.size(); i++)
 					defines[i] = { variants[i].define, permutation_to_variant_define(perm, i) };
 
-				output_spirv[perm] = comp.compile(&defines);
+				std::string error_message;
+				output_spirv[perm] = comp.compile(error_message, &defines);
 				if (output_spirv[perm].empty())
 				{
 					LOGE("Failed to compile shader: %s with defines:\n", path.c_str());
 					for (auto &def : defines)
 						LOGE("  #define %s %d.\n", def.first.c_str(), def.second);
-					LOGE("%s\n", comp.get_error_message().c_str());
+					LOGE("%s\n", error_message.c_str());
 					return;
 				}
 			});

@@ -33,6 +33,7 @@
 #include "ui_manager.hpp"
 #include "render_graph.hpp"
 #include "mesh_util.hpp"
+#include "scene_renderer.hpp"
 #include "lights/clusterer.hpp"
 #include "lights/volumetric_fog.hpp"
 #include "lights/deferred_lights.hpp"
@@ -56,15 +57,15 @@ protected:
 	void render_scene();
 
 	RenderContext context;
-	RenderContext depth_context;
-	Renderer forward_renderer;
-	Renderer deferred_renderer;
-	Renderer depth_renderer;
+	RenderContext depth_context_near;
+	RenderContext depth_context_far;
+	Util::IntrusivePtr<RenderPassSceneRendererConditional> shadow_far_renderer;
+
+	RendererSuite renderer_suite;
+	RendererSuite::Config renderer_suite_config;
 	FlatRenderer flat_renderer;
 	LightingParameters lighting;
 	FPSCamera cam;
-	VisibilityList visible;
-	VisibilityList depth_visible;
 	SceneLoader scene_loader;
 	std::unique_ptr<AnimationSystem> animation_system;
 
@@ -92,14 +93,11 @@ protected:
 	std::unique_ptr<LightClusterer> cluster;
 	std::unique_ptr<VolumetricFog> volumetric_fog;
 	DeferredLights deferred_lights;
+	RenderQueue queue;
 
+	void setup_shadow_map_near();
+	void setup_shadow_map_far();
 	void update_shadow_scene_aabb();
-	void render_shadow_map_near(Vulkan::CommandBuffer &cmd);
-	void render_shadow_map_far(Vulkan::CommandBuffer &cmd);
-	void render_main_pass(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view);
-	void render_transparent_objects(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view);
-	void render_positional_lights(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view);
-	void render_positional_lights_prepass(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view);
 	void render_ui(Vulkan::CommandBuffer &cmd);
 
 	void add_main_pass(Vulkan::Device &device, const std::string &tag);
@@ -131,7 +129,7 @@ private:
 		unsigned max_spot_lights = 32;
 		unsigned max_point_lights = 32;
 
-		Renderer::RendererOptionFlags pcf_flags = 0;
+		SceneRendererFlags pcf_flags = 0;
 		bool directional_light_shadows = true;
 		bool directional_light_cascaded_shadows = true;
 		bool directional_light_shadows_vsm = false;

@@ -23,6 +23,7 @@
 #include "command_buffer.hpp"
 #include "device.hpp"
 #include "format.hpp"
+#include "thread_id.hpp"
 #include <string.h>
 
 //#define FULL_BACKTRACE_CHECKPOINTS
@@ -1238,13 +1239,17 @@ void CommandBuffer::wait_events(unsigned num_events, const VkEvent *events,
 
 PipelineEvent CommandBuffer::signal_event(VkPipelineStageFlags stages)
 {
+	auto event = device->begin_signal_event(stages);
+	complete_signal_event(*event);
+	return event;
+}
+
+void CommandBuffer::complete_signal_event(const EventHolder &event)
+{
 	VK_ASSERT(!framebuffer);
 	VK_ASSERT(!actual_render_pass);
-	auto event = device->request_pipeline_event();
 	if (!device->get_workarounds().emulate_event_as_pipeline_barrier)
-		table.vkCmdSetEvent(cmd, event->get_event(), stages);
-	event->set_stages(stages);
-	return event;
+		table.vkCmdSetEvent(cmd, event.get_event(), event.get_stages());
 }
 
 void CommandBuffer::set_vertex_attrib(uint32_t attrib, uint32_t binding, VkFormat format, VkDeviceSize offset)
@@ -2362,12 +2367,31 @@ void CommandBuffer::set_backtrace_checkpoint()
 #endif
 }
 
-void CommandBuffer::end()
+void CommandBuffer::end_threaded_recording()
 {
 	VK_ASSERT(!debug_channel_buffer);
 
+	if (is_ended)
+		return;
+
+	is_ended = true;
+
+	// We must end a command buffer on the same thread index we started it on.
+	VK_ASSERT(get_current_thread_index() == thread_index);
+
+	if (has_profiling())
+	{
+		auto &query_pool = device->get_performance_query_pool(type);
+		query_pool.end_command_buffer(cmd);
+	}
+
 	if (table.vkEndCommandBuffer(cmd) != VK_SUCCESS)
 		LOGE("Failed to end command buffer.\n");
+}
+
+void CommandBuffer::end()
+{
+	end_threaded_recording();
 
 	if (vbo_block.mapped)
 		device->request_vertex_block_nolock(vbo_block, 0);

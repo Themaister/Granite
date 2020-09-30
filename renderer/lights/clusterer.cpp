@@ -306,9 +306,9 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &de
 	visible.clear();
 	scene->gather_visible_static_shadow_renderables(depth_context.get_visibility_frustum(), visible);
 
-	depth_renderer->set_mesh_renderer_options(vsm ? Renderer::POSITIONAL_LIGHT_SHADOW_VSM_BIT : 0);
-	depth_renderer->begin();
-	depth_renderer->push_depth_renderables(depth_context, visible);
+	auto &depth_renderer = renderer_suite->get_renderer(RendererSuite::Type::ShadowDepth);
+	depth_renderer.begin(queue);
+	queue.push_depth_renderables(depth_context, visible);
 
 	if (vsm)
 	{
@@ -357,7 +357,7 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &de
 		                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
 
 		cmd.begin_render_pass(rp);
-		depth_renderer->flush(cmd, depth_context, flags);
+		depth_renderer.flush(cmd, queue, depth_context, flags);
 		cmd.end_render_pass();
 
 		cmd.image_barrier(*scratch_vsm_rt, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
@@ -423,7 +423,7 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &de
 		cmd.begin_render_pass(rp);
 		cmd.set_viewport({ float(off_x), float(off_y), float(res_x), float(res_y), 0.0f, 1.0f });
 		cmd.set_scissor({{ int(off_x), int(off_y) }, { res_x, res_y }});
-		depth_renderer->flush(cmd, depth_context, flags);
+		depth_renderer.flush(cmd, queue, depth_context, flags);
 		cmd.end_render_pass();
 	}
 }
@@ -2101,8 +2101,8 @@ void LightClusterer::add_render_passes(RenderGraph &graph)
 		add_render_passes_legacy(graph);
 }
 
-void LightClusterer::set_base_renderer(Renderer *, Renderer *, Renderer *depth)
+void LightClusterer::set_base_renderer(const RendererSuite *suite)
 {
-	depth_renderer = depth;
+	renderer_suite = suite;
 }
 }

@@ -92,6 +92,13 @@ Semaphore Device::request_legacy_semaphore()
 	return ptr;
 }
 
+Semaphore Device::request_proxy_semaphore()
+{
+	LOCK();
+	Semaphore ptr(handle_pool.semaphores.allocate(this));
+	return ptr;
+}
+
 Semaphore Device::request_external_semaphore(VkSemaphore semaphore, bool signalled)
 {
 	LOCK();
@@ -1043,9 +1050,6 @@ void Device::submit_nolock(CommandBufferHandle cmd, Fence *fence, unsigned semap
 	if (profiled_submit)
 	{
 		LOGI("Submitting profiled command buffer, draining GPU.\n");
-		auto &query_pool = get_performance_query_pool(type);
-		// Profiled submit, drain GPU before submitting to make sure there's no overlap going on.
-		query_pool.end_command_buffer(cmd->get_command_buffer());
 		Fence drain_fence;
 		submit_empty_nolock(type, &drain_fence, 0, nullptr, -1);
 		drain_fence->wait();
@@ -4932,6 +4936,13 @@ void Device::JSONTraceFileDeleter::operator()(FILE *file)
 	// Intentionally truncate the JSON so that we can emit "," after the last element.
 	if (file)
 		fclose(file);
+}
+
+PipelineEvent Device::begin_signal_event(VkPipelineStageFlags stages)
+{
+	auto event = request_pipeline_event();
+	event->set_stages(stages);
+	return event;
 }
 
 #ifdef GRANITE_VULKAN_FILESYSTEM

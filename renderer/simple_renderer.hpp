@@ -47,5 +47,6 @@ private:
 	LightingParameters lighting;
 	RenderContext render_context;
 	VisibilityList visible;
+	RenderQueue queue;
 };
 }

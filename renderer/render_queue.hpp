@@ -26,7 +26,7 @@
 #include <list>
 #include <type_traits>
 #include <stdexcept>
-#include <command_buffer.hpp>
+#include "command_buffer.hpp"
 #include "hash.hpp"
 #include "enum_cast.hpp"
 #include "intrusive_hash_map.hpp"
@@ -36,6 +36,15 @@ namespace Granite
 {
 class ShaderSuite;
 class RenderContext;
+class AbstractRenderable;
+struct RenderInfoComponent;
+
+struct RenderableInfo
+{
+	AbstractRenderable *renderable;
+	const RenderInfoComponent *transform;
+};
+using VisibilityList = std::vector<RenderableInfo>;
 
 enum class Queue : unsigned
 {
@@ -165,8 +174,10 @@ public:
 	}
 
 	void sort();
-	void dispatch(Queue queue, Vulkan::CommandBuffer &cmd, const Vulkan::CommandBufferSavedState *state);
-	void dispatch(Queue queue, Vulkan::CommandBuffer &cmd, const Vulkan::CommandBufferSavedState *state, size_t begin, size_t end);
+	void dispatch(Queue queue, Vulkan::CommandBuffer &cmd, const Vulkan::CommandBufferSavedState *state) const;
+	void dispatch_range(Queue queue, Vulkan::CommandBuffer &cmd, const Vulkan::CommandBufferSavedState *state, size_t begin, size_t end) const;
+	void dispatch_subset(Queue queue, Vulkan::CommandBuffer &cmd, const Vulkan::CommandBufferSavedState *state, unsigned index, unsigned num_indices) const;
+	size_t get_dispatch_size(Queue queue) const;
 
 	void set_shader_suites(ShaderSuite *suite)
 	{
@@ -177,6 +188,9 @@ public:
 	{
 		return shader_suites;
 	}
+
+	void push_renderables(const RenderContext &context, const VisibilityList &visible);
+	void push_depth_renderables(const RenderContext &context, const VisibilityList &visible);
 
 private:
 	void enqueue_queue_data(Queue queue, const RenderQueueData &data);

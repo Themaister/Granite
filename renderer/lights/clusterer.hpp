@@ -74,7 +74,7 @@ public:
 	bool clusterer_is_bindless() const;
 
 	void set_scene(Scene *scene) override;
-	void set_base_renderer(Renderer *forward_renderer, Renderer *deferred_renderer, Renderer *depth_renderer) override;
+	void set_base_renderer(const RendererSuite *suite) override;
 	void set_base_render_context(const RenderContext *context) override;
 
 	enum {
@@ -109,6 +109,7 @@ private:
 	const RenderContext *context = nullptr;
 	const ComponentGroupVector<PositionalLightComponent, RenderInfoComponent> *lights = nullptr;
 	std::vector<std::pair<PositionalLight *, const RenderInfoComponent *>> light_sort_cache;
+	RenderQueue queue;
 
 	unsigned resolution_x = 64, resolution_y = 32, resolution_z = 16;
 	unsigned shadow_resolution = 512;
@@ -159,7 +160,7 @@ private:
 		Vulkan::ImageView *pre_cull_target = nullptr;
 	} legacy;
 
-	Renderer *depth_renderer = nullptr;
+	const RendererSuite *renderer_suite = nullptr;
 	void render_atlas_spot(RenderContext &context_);
 	void render_atlas_point(RenderContext &context_);
 

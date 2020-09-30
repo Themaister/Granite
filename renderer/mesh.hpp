@@ -32,6 +32,7 @@
 
 namespace Granite
 {
+struct RenderQueueData;
 
 enum class MeshAttribute : unsigned
 {

@@ -52,7 +52,7 @@ void RenderQueue::combine_render_info(const RenderQueue &queue)
 	}
 }
 
-void RenderQueue::dispatch(Queue queue_type, CommandBuffer &cmd, const CommandBufferSavedState *state, size_t begin, size_t end)
+void RenderQueue::dispatch_range(Queue queue_type, CommandBuffer &cmd, const CommandBufferSavedState *state, size_t begin, size_t end) const
 {
 	auto *queue = queues[ecast(queue_type)].data();
 
@@ -73,9 +73,23 @@ void RenderQueue::dispatch(Queue queue_type, CommandBuffer &cmd, const CommandBu
 	}
 }
 
-void RenderQueue::dispatch(Queue queue, CommandBuffer &cmd, const CommandBufferSavedState *state)
+size_t RenderQueue::get_dispatch_size(Queue queue) const
 {
-	dispatch(queue, cmd, state, 0, queues[ecast(queue)].size());
+	return queues[ecast(queue)].size();
+}
+
+void RenderQueue::dispatch(Queue queue, CommandBuffer &cmd, const CommandBufferSavedState *state) const
+{
+	dispatch_range(queue, cmd, state, 0, queues[ecast(queue)].size());
+}
+
+void RenderQueue::dispatch_subset(Queue queue, Vulkan::CommandBuffer &cmd, const Vulkan::CommandBufferSavedState *state,
+                                  unsigned index, unsigned num_indices) const
+{
+	size_t size = get_dispatch_size(queue);
+	size_t begin_index = (size * index) / num_indices;
+	size_t end_index = (size * (index + 1)) / num_indices;
+	dispatch_range(queue, cmd, state, begin_index, end_index);
 }
 
 void RenderQueue::enqueue_queue_data(Queue queue_type, const RenderQueueData &render_info)
@@ -156,6 +170,18 @@ void *RenderQueue::allocate(size_t size, size_t alignment)
 
 	data = allocate_from_block(*current, size, alignment);
 	return data;
+}
+
+void RenderQueue::push_renderables(const RenderContext &context, const VisibilityList &visible)
+{
+	for (auto &vis : visible)
+		vis.renderable->get_render_info(context, vis.transform, *this);
+}
+
+void RenderQueue::push_depth_renderables(const RenderContext &context, const VisibilityList &visible)
+{
+	for (auto &vis : visible)
+		vis.renderable->get_depth_render_info(context, vis.transform, *this);
 }
 
 uint64_t RenderInfo::get_background_sort_key(Queue queue_type, Util::Hash pipeline_hash, Util::Hash draw_hash)

@@ -53,8 +53,8 @@ void SimpleRenderer::render_scene(const Camera &camera, Scene &scene, Vulkan::Co
 	scene.gather_unbounded_renderables(visible);
 	scene.gather_visible_opaque_renderables(render_context.get_visibility_frustum(), visible);
 	scene.gather_visible_transparent_renderables(render_context.get_visibility_frustum(), visible);
-	renderer.begin();
-	renderer.push_renderables(render_context, visible);
-	renderer.flush(cmd, render_context);
+	renderer.begin(queue);
+	queue.push_renderables(render_context, visible);
+	renderer.flush(cmd, queue, render_context);
 }
 }

@@ -23,7 +23,6 @@
 #pragma once
 
 #include "application_wsi_events.hpp"
-#include "scene.hpp"
 #include "shader_suite.hpp"
 #include "renderer_enums.hpp"
 
@@ -31,6 +30,9 @@ namespace Granite
 {
 struct Sprite;
 class LightClusterer;
+class RenderQueue;
+struct LightingParameters;
+class Frustum;
 
 class ShaderSuiteResolver
 {
@@ -47,10 +49,10 @@ public:
 	virtual void bind_render_context_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context) = 0;
 };
 
-class Renderer : public EventHandler
+class Renderer : public EventHandler, public Util::IntrusivePtrEnabled<Renderer>
 {
 public:
-	Renderer(RendererType type = RendererType::GeneralDeferred, const ShaderSuiteResolver *resolver = nullptr);
+	explicit Renderer(RendererType type, const ShaderSuiteResolver *resolver);
 	virtual ~Renderer() = default;
 
 	enum RendererOptionBits
@@ -100,21 +102,15 @@ public:
 	void set_stencil_reference(uint8_t compare_mask, uint8_t write_mask, uint8_t ref);
 	RendererOptionFlags get_mesh_renderer_options() const;
 
-	void begin();
+	void render_debug_aabb(RenderQueue &queue, const RenderContext &context, const AABB &aabb, const vec4 &color);
+	void render_debug_frustum(RenderQueue &queue, const RenderContext &context, const Frustum &frustum, const vec4 &color);
 
-	void push_renderables(RenderContext &context, const VisibilityList &visible);
-	void push_depth_renderables(RenderContext &context, const VisibilityList &visible);
-
-	void flush(Vulkan::CommandBuffer &cmd, RenderContext &context, RendererFlushFlags options = 0);
-
-	void render_debug_aabb(RenderContext &context, const AABB &aabb, const vec4 &color);
-
-	void render_debug_frustum(RenderContext &context, const Frustum &frustum, const vec4 &color);
-
-	RenderQueue &get_render_queue()
-	{
-		return queue;
-	}
+	void begin(RenderQueue &queue) const;
+	void flush(Vulkan::CommandBuffer &cmd, RenderQueue &queue, const RenderContext &context, RendererFlushFlags options = 0) const;
+	// Multi-threaded dispatch from a queue.
+	// queue is assumed to be sorted already.
+	void flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue, const RenderContext &context,
+	                  RendererFlushFlags options, unsigned index, unsigned num_indices) const;
 
 	RendererType get_renderer_type() const
 	{
@@ -124,7 +120,7 @@ public:
 	void set_render_context_parameter_binder(RenderContextParameterBinder *binder);
 
 protected:
-	ShaderSuite suite[Util::ecast(RenderableType::Count)];
+	mutable ShaderSuite suite[Util::ecast(RenderableType::Count)];
 
 private:
 	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
@@ -132,9 +128,8 @@ private:
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
 
 	Vulkan::Device *device = nullptr;
-	RenderQueue queue;
 
-	DebugMeshInstanceInfo &render_debug(RenderContext &context, unsigned count);
+	DebugMeshInstanceInfo &render_debug(RenderQueue &queue, const RenderContext &context, unsigned count);
 	void setup_shader_suite(Vulkan::Device &device, RendererType type);
 
 	RendererType type;
@@ -147,10 +142,43 @@ private:
 
 	void set_mesh_renderer_options_internal(RendererOptionFlags flags);
 };
+using RendererHandle = Util::IntrusivePtr<Renderer>;
+
+class RendererSuite
+{
+public:
+	enum class Type
+	{
+		ForwardOpaque = 0,
+		ForwardTransparent,
+		ShadowDepth,
+		PrepassDepth,
+		Deferred,
+		Count
+	};
+
+	void set_renderer(Type type, RendererHandle handle);
+	void set_default_renderers();
+
+	struct Config
+	{
+		unsigned pcf_width = 1;
+		bool directional_light_vsm = false;
+		bool forward_z_prepass = false;
+	};
+
+	void update_mesh_rendering_options(const RenderContext &context, const Config &config);
+
+	Renderer &get_renderer(Type type);
+	const Renderer &get_renderer(Type type) const;
+
+private:
+	RendererHandle handles[Util::ecast(Type::Count)];
+};
 
 class DeferredLightRenderer
 {
 public:
-	static void render_light(Vulkan::CommandBuffer &cmd, RenderContext &context, Renderer::RendererOptionFlags flags);
+	static void render_light(Vulkan::CommandBuffer &cmd, const RenderContext &context, Renderer::RendererOptionFlags flags);
 };
 }

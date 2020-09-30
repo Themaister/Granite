@@ -22,44 +22,26 @@
 
 #pragma once
 
-#include "material.hpp"
 #include "thread_group.hpp"
-#include "memory_mapped_texture.hpp"
+
+// Designed to compose a series of pipelined tasks.
 
 namespace Granite
 {
-enum class TextureMode
+class TaskComposer
 {
-	RGB,
-	RGBA,
-	sRGB,
-	sRGBA,
-	Luminance,
-	Normal,
-	Mask,
-	NormalLA, // Special encoding to help certain formats where we encode as LLL + A.
-	MaskLA, // Special encoding to help certain formats where we encode as LLL + A.
-	HDR,
-	Unknown
+public:
+	explicit TaskComposer(ThreadGroup &group);
+	void set_incoming_task(TaskGroupHandle group);
+	TaskGroup &begin_pipeline_stage();
+	TaskGroup &get_group();
+	TaskGroupHandle get_outgoing_task();
+	ThreadGroup &get_thread_group();
+
+private:
+	ThreadGroup &group;
+	TaskGroupHandle incoming;
+	TaskGroupHandle current;
 };
 
-struct CompressorArguments
-{
-	std::string output;
-	VkFormat format = VK_FORMAT_UNDEFINED;
-	unsigned quality = 3;
-	TextureMode mode = TextureMode::Unknown;
-	VkComponentMapping output_mapping = {
-		VK_COMPONENT_SWIZZLE_R,
-		VK_COMPONENT_SWIZZLE_G,
-		VK_COMPONENT_SWIZZLE_B,
-		VK_COMPONENT_SWIZZLE_A,
-	};
-	bool deferred_mipgen = false;
-};
-
-VkFormat string_to_format(const std::string &s);
-bool compress_texture(ThreadGroup &group, const CompressorArguments &args,
-                      const std::shared_ptr<SceneFormats::MemoryMappedTexture> &input,
-                      TaskGroupHandle &dep, TaskSignal *signal);
 }

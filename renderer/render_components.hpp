@@ -22,7 +22,7 @@
 
 #pragma once
 
-#include <render_parameters.hpp>
+#include "render_parameters.hpp"
 #include "ecs.hpp"
 #include "math.hpp"
 #include "aabb.hpp"
@@ -34,7 +34,7 @@
 namespace Granite
 {
 class RenderGraph;
-class Renderer;
+class RendererSuite;
 class RenderQueue;
 class RenderContext;
 class RenderPass;
@@ -114,7 +114,7 @@ struct RenderPassCreator
 {
 	virtual ~RenderPassCreator() = default;
 	virtual void add_render_passes(RenderGraph &graph) = 0;
-	virtual void set_base_renderer(Renderer *forward_renderer, Renderer *deferred_renderer, Renderer *depth_renderer) = 0;
+	virtual void set_base_renderer(const RendererSuite *suite) = 0;
 	virtual void set_base_render_context(const RenderContext *context) = 0;
 	virtual void setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target) = 0;
 	virtual void setup_render_pass_resources(RenderGraph &graph) = 0;

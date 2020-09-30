@@ -33,39 +33,25 @@ class DeferredLights : public PerFrameRefreshable
 {
 public:
 	void set_scene(Scene *scene);
-	void set_renderers(Renderer *depth_renderer, Renderer *deferred_renderer);
+	void set_renderers(RendererSuite *suite);
 	void set_enable_clustered_stencil_culling(bool state)
 	{
 		enable_clustered_stencil = state;
 	}
 
-	void render_prepass_lights(Vulkan::CommandBuffer &cmd, RenderContext &context);
-	void render_lights(Vulkan::CommandBuffer &cmd, RenderContext &context, Renderer::RendererOptionFlags flags);
-
-	void set_max_spot_lights(unsigned count)
-	{
-		max_spot_lights = count;
-	}
-
-	void set_max_point_lights(unsigned count)
-	{
-		max_point_lights = count;
-	}
+	void render_prepass_lights(Vulkan::CommandBuffer &cmd, RenderQueue &queue, const RenderContext &context);
+	void render_lights(Vulkan::CommandBuffer &cmd, RenderQueue &queue, const RenderContext &context, Renderer::RendererOptionFlags flags);
 
 private:
-	VisibilityList visible;
 	Scene *scene = nullptr;
-	Renderer *depth_renderer = nullptr;
-	Renderer *deferred_renderer = nullptr;
+	RendererSuite *renderer_suite = nullptr;
+	VisibilityList visible;
 
 	enum { NumClusters = 7 };
 
 	VisibilityList clips;
 	VisibilityList clusters[NumClusters];
 	bool enable_clustered_stencil = false;
-
-	unsigned max_spot_lights = std::numeric_limits<unsigned>::max();
-	unsigned max_point_lights = std::numeric_limits<unsigned>::max();
 
 	void refresh(RenderContext &context) override;
 };

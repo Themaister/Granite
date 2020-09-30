@@ -26,6 +26,11 @@
 #include "logging.hpp"
 #include "global_managers.hpp"
 #include "thread_id.hpp"
+#include "string_helpers.hpp"
+
+#ifdef __linux__
+#include <pthread.h>
+#endif
 
 using namespace std;
 
@@ -34,11 +39,6 @@ namespace Granite
 
 namespace Internal
 {
-TaskGroup::TaskGroup(ThreadGroup *group_)
-	: group(group_)
-{
-}
-
 void TaskDeps::notify_dependees()
 {
 	if (signal)
@@ -57,17 +57,17 @@ void TaskDeps::notify_dependees()
 
 void TaskDeps::task_completed()
 {
-	auto old_tasks = count.fetch_sub(1);
+	auto old_tasks = count.fetch_sub(1, std::memory_order_acq_rel);
 	assert(old_tasks > 0);
-
 	if (old_tasks == 1)
 		notify_dependees();
 }
 
 void TaskDeps::dependency_satisfied()
 {
-	auto old_deps = dependency_count.fetch_sub(1);
+	auto old_deps = dependency_count.fetch_sub(1, std::memory_order_acq_rel);
 	assert(old_deps > 0);
+
 	if (old_deps == 1)
 	{
 		if (pending_tasks.empty())
@@ -79,23 +79,20 @@ void TaskDeps::dependency_satisfied()
 		}
 	}
 }
+}
+
+TaskGroup::TaskGroup(ThreadGroup *group_)
+		: group(group_)
+{
+}
 
 void TaskGroup::flush()
 {
 	if (flushed)
 		throw logic_error("Cannot flush more than once.");
-	flushed = true;
 
-	if (deps->dependency_count == 0)
-	{
-		if (deps->pending_tasks.empty())
-			deps->notify_dependees();
-		else
-		{
-			group->move_to_ready_tasks(deps->pending_tasks);
-			deps->pending_tasks.clear();
-		}
-	}
+	flushed = true;
+	deps->dependency_satisfied();
 }
 
 void TaskGroup::wait()
@@ -114,6 +111,23 @@ TaskGroup::~TaskGroup()
 	if (!flushed)
 		flush();
 }
+
+static void set_main_thread_name()
+{
+#ifdef __linux__
+	pthread_setname_np(pthread_self(), "MainThread");
+#endif
+}
+
+static void set_worker_thread_name(unsigned index)
+{
+#ifdef _WIN32
+	// TODO: Kinda messy.
+	(void)index;
+#elif defined(__linux__)
+	auto name = Util::join("WorkerThread-", index);
+	pthread_setname_np(pthread_self(), name.c_str());
+#endif
 }
 
 void ThreadGroup::start(unsigned num_threads)
@@ -130,10 +144,13 @@ void ThreadGroup::start(unsigned num_threads)
 	auto ctx = std::shared_ptr<Global::GlobalManagers>(Global::create_thread_context().release(),
 	                                                   Global::delete_thread_context);
 
+	set_main_thread_name();
+
 	unsigned self_index = 1;
 	for (auto &t : thread_group)
 	{
 		t = make_unique<thread>([this, ctx, self_index]() {
+			set_worker_thread_name(self_index - 1);
 			Global::set_thread_context(*ctx);
 			thread_looper(self_index);
 		});
@@ -141,7 +158,7 @@ void ThreadGroup::start(unsigned num_threads)
 	}
 }
 
-void ThreadGroup::submit(TaskGroup &group)
+void ThreadGroup::submit(TaskGroupHandle &group)
 {
 	group->flush();
 	group.reset();
@@ -149,13 +166,13 @@ void ThreadGroup::submit(TaskGroup &group)
 
 void ThreadGroup::add_dependency(TaskGroup &dependee, TaskGroup &dependency)
 {
-	if (dependency->flushed)
+	if (dependency.flushed)
 		throw logic_error("Cannot wait for task group which has been flushed.");
-	if (dependee->flushed)
+	if (dependee.flushed)
 		throw logic_error("Cannot add dependency to task group which has been flushed.");
 
-	dependency->deps->pending.push_back(dependee->deps);
-	dependee->deps->dependency_count.fetch_add(1, memory_order_relaxed);
+	dependency.deps->pending.push_back(dependee.deps);
+	dependee.deps->dependency_count.fetch_add(1, memory_order_relaxed);
 }
 
 void ThreadGroup::move_to_ready_tasks(const std::vector<Internal::Task *> &list)
@@ -172,7 +189,7 @@ void ThreadGroup::move_to_ready_tasks(const std::vector<Internal::Task *> &list)
 		cond.notify_one();
 }
 
-void Internal::TaskGroupDeleter::operator()(Internal::TaskGroup *group)
+void Internal::TaskGroupDeleter::operator()(TaskGroup *group)
 {
 	group->group->free_task_group(group);
 }
@@ -182,7 +199,7 @@ void Internal::TaskDepsDeleter::operator()(Internal::TaskDeps *deps)
 	deps->group->free_task_deps(deps);
 }
 
-void ThreadGroup::free_task_group(Internal::TaskGroup *group)
+void ThreadGroup::free_task_group(TaskGroup *group)
 {
 	task_group_pool.free(group);
 }
@@ -207,9 +224,9 @@ void TaskSignal::wait_until_at_least(uint64_t count)
 	});
 }
 
-TaskGroup ThreadGroup::create_task(std::function<void()> func)
+TaskGroupHandle ThreadGroup::create_task(std::function<void()> func)
 {
-	TaskGroup group(task_group_pool.allocate(this));
+	TaskGroupHandle group(task_group_pool.allocate(this));
 
 	group->deps = Internal::TaskDepsHandle(task_deps_pool.allocate(this));
 
@@ -218,37 +235,36 @@ TaskGroup ThreadGroup::create_task(std::function<void()> func)
 	return group;
 }
 
-TaskGroup ThreadGroup::create_task()
+TaskGroupHandle ThreadGroup::create_task()
 {
-	TaskGroup group(task_group_pool.allocate(this));
+	TaskGroupHandle group(task_group_pool.allocate(this));
 	group->deps = Internal::TaskDepsHandle(task_deps_pool.allocate(this));
 	group->deps->count.store(0, memory_order_relaxed);
 	return group;
 }
 
-void Internal::TaskGroup::set_fence_counter_signal(TaskSignal *signal)
+void TaskGroup::set_fence_counter_signal(TaskSignal *signal)
 {
 	deps->signal = signal;
 }
 
-ThreadGroup *Internal::TaskGroup::get_thread_group() const
+ThreadGroup *TaskGroup::get_thread_group() const
 {
 	return group;
 }
 
-void Internal::TaskGroup::enqueue_task(std::function<void()> func)
+void TaskGroup::enqueue_task(std::function<void()> func)
 {
-	auto ref = reference_from_this();
-	group->enqueue_task(ref, move(func));
+	group->enqueue_task(*this, move(func));
 }
 
 void ThreadGroup::enqueue_task(TaskGroup &group, std::function<void()> func)
 {
-	if (group->flushed)
+	if (group.flushed)
 		throw logic_error("Cannot enqueue work to a flushed task group.");
 
-	group->deps->pending_tasks.push_back(task_pool.allocate(group->deps, move(func)));
-	group->deps->count.fetch_add(1, memory_order_relaxed);
+	group.deps->pending_tasks.push_back(task_pool.allocate(group.deps, move(func)));
+	group.deps->count.fetch_add(1, memory_order_relaxed);
 }
 
 void ThreadGroup::wait_idle()

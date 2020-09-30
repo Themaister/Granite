@@ -47,9 +47,9 @@ struct TaskSignal
 	void wait_until_at_least(uint64_t count);
 };
 
+struct TaskGroup;
 namespace Internal
 {
-struct TaskGroup;
 struct TaskDeps;
 struct Task;
 
@@ -69,7 +69,8 @@ struct TaskDeps : Util::IntrusivePtrEnabled<TaskDeps, TaskDepsDeleter, Util::Mul
 	    : group(group_)
 	{
 		count.store(0, std::memory_order_relaxed);
-		dependency_count.store(0, std::memory_order_relaxed);
+		// One implicit dependency is the flush() happening.
+		dependency_count.store(1, std::memory_order_relaxed);
 	}
 
 	ThreadGroup *group;
@@ -90,23 +91,6 @@ struct TaskDeps : Util::IntrusivePtrEnabled<TaskDeps, TaskDepsDeleter, Util::Mul
 };
 using TaskDepsHandle = Util::IntrusivePtr<TaskDeps>;
 
-struct TaskGroup : Util::IntrusivePtrEnabled<TaskGroup, TaskGroupDeleter, Util::MultiThreadCounter>
-{
-	explicit TaskGroup(ThreadGroup *group);
-	~TaskGroup();
-	void flush();
-	void wait();
-
-	ThreadGroup *group;
-	TaskDepsHandle deps;
-	void enqueue_task(std::function<void ()> func);
-	void set_fence_counter_signal(TaskSignal *signal);
-	ThreadGroup *get_thread_group() const;
-
-	unsigned id = 0;
-	bool flushed = false;
-};
-
 struct Task
 {
 	Task(TaskDepsHandle deps_, std::function<void ()> func_)
@@ -121,7 +105,24 @@ struct Task
 };
 }
 
-using TaskGroup = Util::IntrusivePtr<Internal::TaskGroup>;
+struct TaskGroup : Util::IntrusivePtrEnabled<TaskGroup, Internal::TaskGroupDeleter, Util::MultiThreadCounter>
+{
+	explicit TaskGroup(ThreadGroup *group);
+	~TaskGroup();
+	void flush();
+	void wait();
+
+	ThreadGroup *group;
+	Internal::TaskDepsHandle deps;
+	void enqueue_task(std::function<void ()> func);
+	void set_fence_counter_signal(TaskSignal *signal);
+	ThreadGroup *get_thread_group() const;
+
+	unsigned id = 0;
+	bool flushed = false;
+};
+
+using TaskGroupHandle = Util::IntrusivePtr<TaskGroup>;
 
 class ThreadGroup
 {
@@ -141,23 +142,23 @@ public:
 	void stop();
 
 	void enqueue_task(TaskGroup &group, std::function<void ()> func);
-	TaskGroup create_task(std::function<void ()> func);
-	TaskGroup create_task();
+	TaskGroupHandle create_task(std::function<void ()> func);
+	TaskGroupHandle create_task();
 
 	void move_to_ready_tasks(const std::vector<Internal::Task *> &list);
 
 	void add_dependency(TaskGroup &dependee, TaskGroup &dependency);
 
-	void free_task_group(Internal::TaskGroup *group);
+	void free_task_group(TaskGroup *group);
 	void free_task_deps(Internal::TaskDeps *deps);
 
-	void submit(TaskGroup &group);
+	void submit(TaskGroupHandle &group);
 	void wait_idle();
 	bool is_idle();
 
 private:
 	Util::ThreadSafeObjectPool<Internal::Task> task_pool;
-	Util::ThreadSafeObjectPool<Internal::TaskGroup> task_group_pool;
+	Util::ThreadSafeObjectPool<TaskGroup> task_group_pool;
 	Util::ThreadSafeObjectPool<Internal::TaskDeps> task_deps_pool;
 
 	std::queue<Internal::Task *> ready_tasks;

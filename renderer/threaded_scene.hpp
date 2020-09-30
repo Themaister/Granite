@@ -22,44 +22,24 @@
 
 #pragma once
 
-#include "material.hpp"
-#include "thread_group.hpp"
-#include "memory_mapped_texture.hpp"
+#include "frustum.hpp"
+#include "scene.hpp"
+#include "task_composer.hpp"
+#include "render_queue.hpp"
 
 namespace Granite
 {
-enum class TextureMode
+namespace Threaded
 {
-	RGB,
-	RGBA,
-	sRGB,
-	sRGBA,
-	Luminance,
-	Normal,
-	Mask,
-	NormalLA, // Special encoding to help certain formats where we encode as LLL + A.
-	MaskLA, // Special encoding to help certain formats where we encode as LLL + A.
-	HDR,
-	Unknown
-};
-
-struct CompressorArguments
-{
-	std::string output;
-	VkFormat format = VK_FORMAT_UNDEFINED;
-	unsigned quality = 3;
-	TextureMode mode = TextureMode::Unknown;
-	VkComponentMapping output_mapping = {
-		VK_COMPONENT_SWIZZLE_R,
-		VK_COMPONENT_SWIZZLE_G,
-		VK_COMPONENT_SWIZZLE_B,
-		VK_COMPONENT_SWIZZLE_A,
-	};
-	bool deferred_mipgen = false;
-};
-
-VkFormat string_to_format(const std::string &s);
-bool compress_texture(ThreadGroup &group, const CompressorArguments &args,
-                      const std::shared_ptr<SceneFormats::MemoryMappedTexture> &input,
-                      TaskGroupHandle &dep, TaskSignal *signal);
+void scene_gather_opaque_renderables(const Scene &scene, TaskComposer &composer, const Frustum &frustum,
+                                     VisibilityList *lists, unsigned num_tasks);
+void scene_gather_transparent_renderables(const Scene &scene, TaskComposer &composer, const Frustum &frustum,
+                                          VisibilityList *lists, unsigned num_tasks);
+void scene_gather_static_shadow_renderables(const Scene &scene, TaskComposer &composer, const Frustum &frustum,
+                                            VisibilityList *lists, unsigned num_tasks);
+void scene_gather_dynamic_shadow_renderables(const Scene &scene, TaskComposer &composer, const Frustum &frustum,
+                                             VisibilityList *lists, unsigned num_tasks);
+void scene_gather_positional_light_renderables(const Scene &scene, TaskComposer &composer, const Frustum &frustum,
+                                               VisibilityList *lists, unsigned num_tasks);
+}
 }

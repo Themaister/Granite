@@ -53,25 +53,29 @@ void scene_gather_transparent_renderables(const Scene &scene, TaskComposer &comp
 }
 
 void scene_gather_static_shadow_renderables(const Scene &scene, TaskComposer &composer, const Frustum &frustum,
-                                            VisibilityList *lists, unsigned num_tasks)
+                                            VisibilityList *lists, unsigned num_tasks,
+                                            const std::function<bool ()> &func)
 {
 	auto &group = composer.begin_pipeline_stage();
 	for (unsigned i = 0; i < num_tasks; i++)
 	{
-		group.enqueue_task([&frustum, lists, &scene, i, num_tasks]() {
-			scene.gather_visible_static_shadow_renderables_subset(frustum, lists[i], i, num_tasks);
+		group.enqueue_task([&frustum, lists, &scene, i, num_tasks, func]() {
+			if (!func || func())
+				scene.gather_visible_static_shadow_renderables_subset(frustum, lists[i], i, num_tasks);
 		});
 	}
 }
 
 void scene_gather_dynamic_shadow_renderables(const Scene &scene, TaskComposer &composer, const Frustum &frustum,
-                                             VisibilityList *lists, unsigned num_tasks)
+                                             VisibilityList *lists, unsigned num_tasks,
+                                             const std::function<bool ()> &func)
 {
 	auto &group = composer.begin_pipeline_stage();
 	for (unsigned i = 0; i < num_tasks; i++)
 	{
-		group.enqueue_task([&frustum, lists, &scene, i, num_tasks]() {
-			scene.gather_visible_dynamic_shadow_renderables_subset(frustum, lists[i], i, num_tasks);
+		group.enqueue_task([&frustum, lists, &scene, i, num_tasks, func]() {
+			if (!func || func())
+				scene.gather_visible_dynamic_shadow_renderables_subset(frustum, lists[i], i, num_tasks);
 		});
 	}
 }
@@ -125,6 +129,29 @@ void scene_gather_positional_light_renderables_sorted(const Scene &scene, TaskCo
 				float dist_b = dot(pos_b, context.get_render_parameters().camera_front);
 				return dist_a < dist_b;
 			});
+		});
+	}
+}
+
+void compose_parallel_push_renderables(TaskComposer &composer, const RenderContext &context,
+                                       RenderQueue *queues, VisibilityList *visibility, unsigned count)
+{
+	{
+		auto &group = composer.begin_pipeline_stage();
+		for (unsigned i = 0; i < count; i++)
+		{
+			group.enqueue_task([i, &context, visibility, queues]() {
+				queues[i].push_renderables(context, visibility[i]);
+			});
+		}
+	}
+
+	{
+		auto &group = composer.begin_pipeline_stage();
+		group.enqueue_task([=]() {
+			for (unsigned i = 1; i < count; i++)
+				queues[0].combine_render_info(queues[i]);
+			queues[0].sort();
 		});
 	}
 }

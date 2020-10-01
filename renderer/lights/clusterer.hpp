@@ -103,16 +103,17 @@ private:
 	void setup_render_pass_dependencies(RenderGraph &graph, RenderPass &target) override;
 	void setup_render_pass_resources(RenderGraph &graph) override;
 	void refresh(const RenderContext &context_, TaskComposer &composer) override;
-	void refresh_bindless(const RenderContext &context_);
+	void refresh_bindless(const RenderContext &context_, TaskComposer &composer);
+	void refresh_bindless_prepare(const RenderContext &context_);
 	void refresh_legacy(const RenderContext &context_);
 
 	Scene *scene = nullptr;
 	const RenderContext *context = nullptr;
 	const ComponentGroupVector<PositionalLightComponent, RenderInfoComponent> *lights = nullptr;
 
-	enum { MaxTasks = 16 };
+	enum { MaxTasks = 8 };
 	PositionalLightList light_sort_caches[MaxTasks];
-	RenderQueue queue;
+	RenderQueue internal_queue;
 
 	unsigned resolution_x = 64, resolution_y = 32, resolution_z = 16;
 	unsigned shadow_resolution = 512;
@@ -199,13 +200,24 @@ private:
 	                         const CPULocalAccelState &local,
 	                         float scale, uvec2 pre_mask);
 
+	void render_shadow_legacy(Vulkan::CommandBuffer &cmd,
+	                          const RenderContext &context,
+	                          VisibilityList &visibility,
+	                          unsigned off_x, unsigned off_y,
+	                          unsigned res_x, unsigned res_y,
+	                          const Vulkan::ImageView &rt, unsigned layer,
+	                          Renderer::RendererFlushFlags flags);
+
 	void render_shadow(Vulkan::CommandBuffer &cmd,
-	                   RenderContext &context,
-	                   VisibilityList &visibility,
+	                   const RenderContext &context,
+	                   const RenderQueue &queue,
 	                   unsigned off_x, unsigned off_y,
 	                   unsigned res_x, unsigned res_y,
 	                   const Vulkan::ImageView &rt, unsigned layer,
-	                   Renderer::RendererFlushFlags flags);
+	                   Renderer::RendererFlushFlags flags) const;
+
+	void setup_scratch_buffers_vsm(Vulkan::Device &device);
+
 	Vulkan::ImageHandle scratch_vsm_rt;
 	Vulkan::ImageHandle scratch_vsm_down;
 
@@ -246,8 +258,10 @@ private:
 	void update_bindless_mask_buffer_point(uint32_t *masks, unsigned index);
 	void begin_bindless_barriers(Vulkan::CommandBuffer &cmd);
 	void end_bindless_barriers(Vulkan::CommandBuffer &cmd);
-	void render_bindless_spot(Vulkan::CommandBuffer &cmd, unsigned index);
-	void render_bindless_point(Vulkan::CommandBuffer &cmd, unsigned index);
+	void render_bindless_spot(Vulkan::Device &device, unsigned index, TaskComposer &composer);
+	void render_bindless_point(Vulkan::Device &device, unsigned index, TaskComposer &composer);
 	bool bindless_light_is_point(unsigned index) const;
+
+	const Renderer &get_shadow_renderer() const;
 };
 }

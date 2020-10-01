@@ -40,28 +40,6 @@ static Renderer::RendererOptionFlags convert_pcf_flags(SceneRendererFlags flags)
 		return 0;
 }
 
-static void compose_parallel_push_renderables(TaskComposer &composer, const RenderContext &context, RenderQueue *queues, VisibilityList *visibility, unsigned count)
-{
-	{
-		auto &group = composer.begin_pipeline_stage();
-		for (unsigned i = 0; i < count; i++)
-		{
-			group.enqueue_task([i, &context, visibility, queues]() {
-				queues[i].push_renderables(context, visibility[i]);
-			});
-		}
-	}
-
-	{
-		auto &group = composer.begin_pipeline_stage();
-		group.enqueue_task([=]() {
-			for (unsigned i = 1; i < count; i++)
-				queues[0].combine_render_info(queues[i]);
-			queues[0].sort();
-		});
-	}
-}
-
 void RenderPassSceneRenderer::enqueue_prepare_render_pass(TaskComposer &composer, const Vulkan::RenderPassInfo &,
                                                           unsigned, VkSubpassContents &contents)
 {
@@ -117,7 +95,7 @@ void RenderPassSceneRenderer::enqueue_prepare_render_pass(TaskComposer &composer
 		Threaded::scene_gather_opaque_renderables(*setup_data.scene, composer, setup_data.context->get_visibility_frustum(), visible_per_task, MaxTasks);
 
 		if (setup_data.flags & SCENE_RENDERER_FORWARD_Z_PREPASS_BIT)
-			compose_parallel_push_renderables(composer, *setup_data.context, queue_per_task_depth, visible_per_task, MaxTasks);
+			Threaded::compose_parallel_push_renderables(composer, *setup_data.context, queue_per_task_depth, visible_per_task, MaxTasks);
 
 		if (setup_data.flags & SCENE_RENDERER_FORWARD_OPAQUE_BIT)
 		{
@@ -127,7 +105,7 @@ void RenderPassSceneRenderer::enqueue_prepare_render_pass(TaskComposer &composer
 					setup_data.scene->gather_unbounded_renderables(visible_per_task[0]);
 				});
 			}
-			compose_parallel_push_renderables(composer, *setup_data.context, queue_per_task_opaque, visible_per_task, MaxTasks);
+			Threaded::compose_parallel_push_renderables(composer, *setup_data.context, queue_per_task_opaque, visible_per_task, MaxTasks);
 		}
 	}
 
@@ -141,13 +119,13 @@ void RenderPassSceneRenderer::enqueue_prepare_render_pass(TaskComposer &composer
 			});
 		}
 		Threaded::scene_gather_opaque_renderables(*setup_data.scene, composer, setup_data.context->get_visibility_frustum(), visible_per_task, MaxTasks);
-		compose_parallel_push_renderables(composer, *setup_data.context, queue_per_task_opaque, visible_per_task, MaxTasks);
+		Threaded::compose_parallel_push_renderables(composer, *setup_data.context, queue_per_task_opaque, visible_per_task, MaxTasks);
 	}
 
 	if (setup_data.flags & SCENE_RENDERER_FORWARD_TRANSPARENT_BIT)
 	{
 		Threaded::scene_gather_transparent_renderables(*setup_data.scene, composer, setup_data.context->get_visibility_frustum(), visible_per_task_transparent, MaxTasks);
-		compose_parallel_push_renderables(composer, *setup_data.context, queue_per_task_transparent, visible_per_task_transparent, MaxTasks);
+		Threaded::compose_parallel_push_renderables(composer, *setup_data.context, queue_per_task_transparent, visible_per_task_transparent, MaxTasks);
 	}
 
 	if (setup_data.flags & SCENE_RENDERER_DEPTH_BIT)
@@ -156,7 +134,7 @@ void RenderPassSceneRenderer::enqueue_prepare_render_pass(TaskComposer &composer
 			Threaded::scene_gather_dynamic_shadow_renderables(*setup_data.scene, composer, setup_data.context->get_visibility_frustum(), visible_per_task, MaxTasks);
 		if (setup_data.flags & SCENE_RENDERER_DEPTH_STATIC_BIT)
 			Threaded::scene_gather_static_shadow_renderables(*setup_data.scene, composer, setup_data.context->get_visibility_frustum(), visible_per_task, MaxTasks);
-		compose_parallel_push_renderables(composer, *setup_data.context, queue_per_task_depth, visible_per_task, MaxTasks);
+		Threaded::compose_parallel_push_renderables(composer, *setup_data.context, queue_per_task_depth, visible_per_task, MaxTasks);
 	}
 }
 

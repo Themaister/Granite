@@ -28,23 +28,14 @@ using namespace Vulkan;
 
 namespace Granite
 {
-RenderContext::RenderContext()
-{
-	EVENT_MANAGER_REGISTER_LATCH(RenderContext, on_device_created, on_device_destroyed, DeviceCreatedEvent);
-}
-
-void RenderContext::on_device_created(const DeviceCreatedEvent &e)
-{
-	device = &e.get_device();
-}
-
-void RenderContext::on_device_destroyed(const DeviceCreatedEvent &)
-{
-}
-
 void RenderContext::set_camera(const Camera &camera_)
 {
 	set_camera(camera_.get_projection(), camera_.get_view());
+}
+
+void RenderContext::set_device(Device *device_)
+{
+	device = device_;
 }
 
 void RenderContext::set_camera(const mat4 &projection, const mat4 &view)

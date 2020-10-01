@@ -405,6 +405,7 @@ void SceneViewerApplication::on_device_created(const DeviceCreatedEvent &device)
 	if (!skydome_irradiance.empty())
 		irradiance = device.get_device().get_texture_manager().request_texture(skydome_irradiance);
 	graph.set_device(&device.get_device());
+	context.set_device(&device.get_device());
 }
 
 void SceneViewerApplication::on_device_destroyed(const DeviceCreatedEvent &)
@@ -1111,10 +1112,17 @@ void SceneViewerApplication::render_scene(TaskComposer &composer)
 
 void SceneViewerApplication::render_frame(double frame_time, double elapsed_time)
 {
-	TaskComposer composer(*Global::thread_group());
-	update_scene(composer, frame_time, elapsed_time);
-	render_scene(composer);
-	composer.get_outgoing_task()->wait();
+	{
+		TaskComposer composer(*Global::thread_group());
+		update_scene(composer, frame_time, elapsed_time);
+		composer.get_outgoing_task()->wait();
+	}
+
+	{
+		TaskComposer composer(*Global::thread_group());
+		render_scene(composer);
+		composer.get_outgoing_task()->wait();
+	}
 }
 
 } // namespace Granite

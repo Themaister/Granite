@@ -36,12 +36,13 @@ public:
 	TaskGroup &begin_pipeline_stage();
 	TaskGroup &get_group();
 	TaskGroupHandle get_outgoing_task();
+	TaskGroupHandle get_pipeline_stage_dependency();
 	ThreadGroup &get_thread_group();
 
 private:
 	ThreadGroup &group;
-	TaskGroupHandle incoming;
 	TaskGroupHandle current;
+	TaskGroupHandle incoming_deps;
 };
 
 }

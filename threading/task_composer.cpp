@@ -31,32 +31,37 @@ TaskComposer::TaskComposer(ThreadGroup &group_)
 
 void TaskComposer::set_incoming_task(TaskGroupHandle group_)
 {
-	incoming = std::move(group_);
+	current = std::move(group_);
 }
 
 TaskGroup &TaskComposer::begin_pipeline_stage()
 {
 	auto new_group = group.create_task();
-	if (incoming)
-		group.add_dependency(*new_group, *incoming);
-	incoming = new_group;
-	return *incoming;
+	auto new_deps = group.create_task();
+	if (current)
+	{
+		group.add_dependency(*new_group, *current);
+		group.add_dependency(*new_deps, *current);
+	}
+	current = std::move(new_group);
+	incoming_deps = std::move(new_deps);
+	return *current;
 }
 
 TaskGroup &TaskComposer::get_group()
 {
-	return *incoming;
+	return *current;
 }
 
 TaskGroupHandle TaskComposer::get_outgoing_task()
 {
-	if (incoming)
-	{
-		auto new_group = group.create_task();
-		group.add_dependency(*new_group, *incoming);
-		incoming = new_group;
-	}
-	return incoming;
+	begin_pipeline_stage();
+	return current;
+}
+
+TaskGroupHandle TaskComposer::get_pipeline_stage_dependency()
+{
+	return incoming_deps;
 }
 
 ThreadGroup &TaskComposer::get_thread_group()

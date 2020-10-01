@@ -2157,22 +2157,20 @@ void RenderGraph::physical_pass_handle_cpu_timeline(Vulkan::Device &device_,
 	if (physical_pass_can_multithread(physical_pass))
 	{
 		auto &group = incoming_composer.get_thread_group();
-		auto wait_task = group.create_task();
+		TaskComposer composer(group);
+		composer.set_incoming_task(incoming_composer.get_pipeline_stage_dependency());
+		composer.begin_pipeline_stage();
 
 		unsigned subpass_index = 0;
 		for (auto &pass : physical_pass.passes)
 		{
-			TaskComposer composer(group);
-			composer.set_incoming_task(incoming_composer.get_outgoing_task());
 			auto &subpass = *passes[pass];
 			subpass.enqueue_prepare_render_pass(composer, physical_pass.render_pass_info,
 			                                    subpass_index, state.subpass_contents[subpass_index]);
 			subpass_index++;
-			if (auto outgoing = composer.get_outgoing_task())
-				group.add_dependency(*wait_task, *outgoing);
 		}
 
-		state.rendering_dependency = std::move(wait_task);
+		state.rendering_dependency = composer.get_outgoing_task();
 	}
 }
 

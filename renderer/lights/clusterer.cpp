@@ -1136,31 +1136,36 @@ void LightClusterer::refresh_bindless(const RenderContext &context_, TaskCompose
 	if (enable_shadows)
 	{
 		// Submit barriers from UNDEFINED -> COLOR/DEPTH.
+		auto indirect_task = composer.get_thread_group().create_task();
+
 		auto &device = context_.get_device();
 		{
 			auto &group = composer.begin_pipeline_stage();
-			group.enqueue_task([this, &device]() {
+			composer.get_thread_group().add_dependency(*indirect_task, *composer.get_pipeline_stage_dependency());
+
+			group.enqueue_task([this, &device, indirect_task, &thread_group = composer.get_thread_group()]() mutable {
 				auto cmd = device.request_command_buffer();
 				cmd->begin_region("shadow-map-begin-barriers");
 				begin_bindless_barriers(*cmd);
 				cmd->end_region();
 				device.submit(cmd);
+
+				for (unsigned i = 0; i < bindless.count; i++)
+				{
+					TaskComposer per_light_composer(thread_group);
+					if (bindless_light_is_point(i))
+						render_bindless_point(device, i, per_light_composer);
+					else
+						render_bindless_spot(device, i, per_light_composer);
+					thread_group.add_dependency(*indirect_task, *per_light_composer.get_outgoing_task());
+				}
 			});
 		}
 
 		// Run all shadow map renderings in parallel in separate composers.
 		{
 			auto &group = composer.begin_pipeline_stage();
-			for (unsigned i = 0; i < bindless.count; i++)
-			{
-				TaskComposer per_light_composer(composer.get_thread_group());
-				per_light_composer.set_incoming_task(composer.get_pipeline_stage_dependency());
-				if (bindless_light_is_point(i))
-					render_bindless_point(device, i, per_light_composer);
-				else
-					render_bindless_spot(device, i, per_light_composer);
-				composer.get_thread_group().add_dependency(group, *per_light_composer.get_outgoing_task());
-			}
+			composer.get_thread_group().add_dependency(group, *indirect_task);
 		}
 
 		// Submit barriers from COLOR/DEPTH -> SHADER_READ_ONLY

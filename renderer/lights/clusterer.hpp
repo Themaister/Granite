@@ -28,6 +28,7 @@
 #include "shader_manager.hpp"
 #include "renderer.hpp"
 #include "lru_cache.hpp"
+#include "threaded_scene.hpp"
 
 namespace Granite
 {
@@ -108,7 +109,9 @@ private:
 	Scene *scene = nullptr;
 	const RenderContext *context = nullptr;
 	const ComponentGroupVector<PositionalLightComponent, RenderInfoComponent> *lights = nullptr;
-	std::vector<std::pair<PositionalLight *, const RenderInfoComponent *>> light_sort_cache;
+
+	enum { MaxTasks = 16 };
+	PositionalLightList light_sort_caches[MaxTasks];
 	RenderQueue queue;
 
 	unsigned resolution_x = 64, resolution_y = 32, resolution_z = 16;

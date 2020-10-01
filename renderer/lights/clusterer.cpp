@@ -899,16 +899,11 @@ void LightClusterer::refresh_legacy(const RenderContext& context_)
 {
 	legacy.points.count = 0;
 	legacy.spots.count = 0;
-	auto &frustum = context_.get_visibility_frustum();
 
-	for (auto &light : light_sort_cache)
+	for (auto &light : light_sort_caches[0])
 	{
 		auto &l = *light.first;
 		auto *transform = light.second;
-
-		// Frustum cull lights here.
-		if (!SIMD::frustum_cull(transform->world_aabb, frustum.get_planes()))
-			continue;
 
 		if (l.get_type() == PositionalLight::Type::Spot)
 		{
@@ -972,18 +967,13 @@ void LightClusterer::refresh_legacy(const RenderContext& context_)
 void LightClusterer::refresh_bindless(const RenderContext &context_)
 {
 	bindless.count = 0;
-	auto &frustum = context_.get_visibility_frustum();
 	unsigned index = 0;
 	memset(bindless.transforms.type_mask, 0, sizeof(bindless.transforms.type_mask));
 
-	for (auto &light : light_sort_cache)
+	for (auto &light : light_sort_caches[0])
 	{
 		auto &l = *light.first;
 		auto *transform = light.second;
-
-		// Frustum cull lights here.
-		if (!SIMD::frustum_cull(transform->world_aabb, frustum.get_planes()))
-			continue;
 
 		if (l.get_type() == PositionalLight::Type::Spot)
 		{
@@ -1056,31 +1046,24 @@ void LightClusterer::refresh_bindless(const RenderContext &context_)
 	}
 }
 
-void LightClusterer::refresh(const RenderContext &context_, TaskComposer &)
+void LightClusterer::refresh(const RenderContext &context_, TaskComposer &incoming_composer)
 {
-	light_sort_cache.clear();
-	light_sort_cache.reserve(lights->size());
-	for (auto &light : *lights)
-	{
-		light_sort_cache.emplace_back(get_component<PositionalLightComponent>(light)->light,
-		                              get_component<RenderInfoComponent>(light));
-	}
+	for (auto &cache : light_sort_caches)
+		cache.clear();
 
-	// Prefer lights which are closest to the camera.
-	sort(begin(light_sort_cache), end(light_sort_cache), [&](const auto &a, const auto &b) -> bool {
-		auto *transform_a = a.second;
-		auto *transform_b = b.second;
-		vec3 pos_a = transform_a->transform->world_transform[3].xyz();
-		vec3 pos_b = transform_b->transform->world_transform[3].xyz();
-		float dist_a = dot(pos_a, context_.get_render_parameters().camera_front);
-		float dist_b = dot(pos_b, context_.get_render_parameters().camera_front);
-		return dist_a < dist_b;
+	TaskComposer composer(incoming_composer.get_thread_group());
+	composer.set_incoming_task(incoming_composer.get_pipeline_stage_dependency());
+	Threaded::scene_gather_positional_light_renderables_sorted(*scene, composer, context_,
+	                                                           light_sort_caches, MaxTasks);
+
+	auto &group = incoming_composer.begin_pipeline_stage();
+	group.enqueue_task([this, &context_]() {
+		if (enable_bindless)
+			refresh_bindless(context_);
+		else
+			refresh_legacy(context_);
 	});
-
-	if (enable_bindless)
-		refresh_bindless(context_);
-	else
-		refresh_legacy(context_);
+	incoming_composer.get_thread_group().add_dependency(incoming_composer.get_group(), *composer.get_outgoing_task());
 }
 
 uvec2 LightClusterer::cluster_lights_cpu(int x, int y, int z, const CPUGlobalAccelState &state,

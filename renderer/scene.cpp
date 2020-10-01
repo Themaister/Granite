@@ -258,12 +258,47 @@ static void gather_positional_lights(const Frustum &frustum, VisibilityList &lis
 	}
 }
 
+static void gather_positional_lights(const Frustum &frustum, PositionalLightList &list,
+                                     const std::vector<std::tuple<RenderInfoComponent *,
+		                                     RenderableComponent *,
+		                                     PositionalLightComponent *>> &positional,
+                                     size_t start_index, size_t end_index)
+{
+	for (size_t i = start_index; i < end_index; i++)
+	{
+		auto &o = positional[i];
+		auto *transform = get_component<RenderInfoComponent>(o);
+		auto *light = get_component<PositionalLightComponent>(o)->light;
+
+		if (transform->transform)
+		{
+			if (SIMD::frustum_cull(transform->world_aabb, frustum.get_planes()))
+				list.push_back({ light, transform });
+		}
+		else
+			list.push_back({ light, transform });
+	}
+}
+
 void Scene::gather_visible_positional_lights(const Frustum &frustum, VisibilityList &list) const
 {
 	gather_positional_lights(frustum, list, positional_lights, 0, positional_lights.size());
 }
 
+void Scene::gather_visible_positional_lights(const Frustum &frustum, PositionalLightList &list) const
+{
+	gather_positional_lights(frustum, list, positional_lights, 0, positional_lights.size());
+}
+
 void Scene::gather_visible_positional_lights_subset(const Frustum &frustum, VisibilityList &list,
+                                                    unsigned index, unsigned num_indices) const
+{
+	size_t start_index = (index * positional_lights.size()) / num_indices;
+	size_t end_index = ((index + 1) * positional_lights.size()) / num_indices;
+	gather_positional_lights(frustum, list, positional_lights, start_index, end_index);
+}
+
+void Scene::gather_visible_positional_lights_subset(const Frustum &frustum, PositionalLightList &list,
                                                     unsigned index, unsigned num_indices) const
 {
 	size_t start_index = (index * positional_lights.size()) / num_indices;

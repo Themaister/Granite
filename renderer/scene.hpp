@@ -51,6 +51,7 @@ public:
 	void gather_visible_static_shadow_renderables(const Frustum &frustum, VisibilityList &list) const;
 	void gather_visible_dynamic_shadow_renderables(const Frustum &frustum, VisibilityList &list) const;
 	void gather_visible_positional_lights(const Frustum &frustum, VisibilityList &list) const;
+	void gather_visible_positional_lights(const Frustum &frustum, PositionalLightList &list) const;
 
 	void gather_visible_opaque_renderables_subset(const Frustum &frustum, VisibilityList &list,
 	                                              unsigned index, unsigned num_indices) const;
@@ -61,6 +62,8 @@ public:
 	void gather_visible_dynamic_shadow_renderables_subset(const Frustum &frustum, VisibilityList &list,
 	                                                      unsigned index, unsigned num_indices) const;
 	void gather_visible_positional_lights_subset(const Frustum &frustum, VisibilityList &list,
+	                                             unsigned index, unsigned num_indices) const;
+	void gather_visible_positional_lights_subset(const Frustum &frustum, PositionalLightList &list,
 	                                             unsigned index, unsigned num_indices) const;
 
 	size_t get_opaque_renderables_count() const;

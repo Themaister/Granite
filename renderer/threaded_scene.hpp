@@ -41,5 +41,7 @@ void scene_gather_dynamic_shadow_renderables(const Scene &scene, TaskComposer &c
                                              VisibilityList *lists, unsigned num_tasks);
 void scene_gather_positional_light_renderables(const Scene &scene, TaskComposer &composer, const Frustum &frustum,
                                                VisibilityList *lists, unsigned num_tasks);
+void scene_gather_positional_light_renderables_sorted(const Scene &scene, TaskComposer &composer, const RenderContext &context,
+                                                      PositionalLightList *lists, unsigned num_tasks);
 }
 }

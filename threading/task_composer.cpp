@@ -50,7 +50,10 @@ TaskGroup &TaskComposer::begin_pipeline_stage()
 
 TaskGroup &TaskComposer::get_group()
 {
-	return *current;
+	if (!current)
+		return begin_pipeline_stage();
+	else
+		return *current;
 }
 
 TaskGroupHandle TaskComposer::get_outgoing_task()

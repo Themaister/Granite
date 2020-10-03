@@ -1803,8 +1803,10 @@ void RenderGraph::PassSubmissionState::submit()
 		return;
 
 	auto &device_ = cmd->get_device();
-	if (wait_semaphore)
-		wait_for_semaphore_in_queue(device_, wait_semaphore, queue_type, wait_semaphore_stages);
+
+	size_t num_semaphores = wait_semaphores.size();
+	for (size_t i = 0; i < num_semaphores; i++)
+		wait_for_semaphore_in_queue(device_, wait_semaphores[i], queue_type, wait_semaphore_stages[i]);
 
 	if (need_submission_semaphore)
 	{
@@ -1963,8 +1965,8 @@ void RenderGraph::physical_pass_handle_invalidate_barrier(const Barrier &barrier
 		assert(wait_semaphore);
 
 		// Wait for a semaphore, unless it has already been waited for ...
-		state.wait_semaphore = wait_semaphore;
-		state.wait_semaphore_stages = barrier.stages;
+		state.wait_semaphores.push_back(wait_semaphore);
+		state.wait_semaphore_stages.push_back(barrier.stages);
 
 		// Waiting for a semaphore makes data visible to all access bits in relevant stages.
 		// The exception is if we perform a layout change ...

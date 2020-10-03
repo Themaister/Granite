@@ -977,8 +977,8 @@ private:
 		VkPipelineStageFlags src_stages = 0;
 		VkPipelineStageFlags handover_stages = 0;
 
-		Vulkan::Semaphore wait_semaphore;
-		VkPipelineStageFlags wait_semaphore_stages = 0;
+		Util::SmallVector<Vulkan::Semaphore> wait_semaphores;
+		Util::SmallVector<VkPipelineStageFlags> wait_semaphore_stages;
 
 		Vulkan::PipelineEvent signal_event;
 		VkPipelineStageFlags event_signal_stages = 0;

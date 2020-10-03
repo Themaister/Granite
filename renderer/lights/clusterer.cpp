@@ -825,9 +825,12 @@ void LightClusterer::render_bindless_point(Vulkan::Device &device, unsigned inde
 		                              1.0f / bindless.transforms.lights[index].inv_radius);
 		bindless.transforms.shadow[index][0] = vec4(proj[2].zw(), proj[3].zw());
 
-		static_cast<PointLight *>(bindless.handles[index])->set_shadow_info(
-				&bindless.shadow_images[index]->get_view(),
-				PointTransform{ bindless.transforms.shadow[index][0] });
+		if (bindless.shadow_images[index])
+		{
+			static_cast<PointLight *>(bindless.handles[index])->set_shadow_info(
+					&bindless.shadow_images[index]->get_view(),
+					PointTransform{bindless.transforms.shadow[index][0]});
+		}
 
 		for (unsigned face = 0; face < 6; face++)
 		{
@@ -841,9 +844,6 @@ void LightClusterer::render_bindless_point(Vulkan::Device &device, unsigned inde
 		}
 	});
 
-	if (!bindless.shadow_images[index])
-		return;
-
 	auto &per_face_stage = composer.begin_pipeline_stage();
 
 	for (unsigned face = 0; face < 6; face++)
@@ -853,7 +853,10 @@ void LightClusterer::render_bindless_point(Vulkan::Device &device, unsigned inde
 
 		Threaded::scene_gather_static_shadow_renderables(*scene, face_composer,
 		                                                 data->depth_context[face].get_visibility_frustum(),
-		                                                 data->visibility[face], MaxTasks);
+		                                                 data->visibility[face], MaxTasks,
+		                                                 [this, index]() -> bool {
+			                                                 return bindless.shadow_images[index] != nullptr;
+		                                                 });
 
 		Threaded::compose_parallel_push_renderables(face_composer, data->depth_context[face],
 		                                            data->queues[face], data->visibility[face], MaxTasks);
@@ -2121,12 +2124,24 @@ void LightClusterer::add_render_passes_bindless(RenderGraph &graph)
 			pass.add_transfer_output("cluster-transforms", att);
 		}
 
-		pass.set_build_render_pass([&](CommandBuffer &cmd) {
-			build_cluster_bindless_cpu(cmd);
-		});
-		pass.set_need_render_pass([this]() {
-			return enable_clustering;
-		});
+		struct ThreadedPass : RenderPassInterface
+		{
+			explicit ThreadedPass(LightClusterer &clusterer_)
+				: clusterer(clusterer_)
+			{
+			}
+
+			bool render_pass_can_multithread() const override { return true; }
+			void build_render_pass(CommandBuffer &cmd) override
+			{
+				clusterer.build_cluster_bindless_cpu(cmd);
+			}
+
+			LightClusterer &clusterer;
+		};
+
+		if (enable_clustering)
+			pass.set_render_pass_interface(Util::make_handle<ThreadedPass>(*this));
 	}
 	else
 	{
@@ -2161,12 +2176,24 @@ void LightClusterer::add_render_passes_bindless(RenderGraph &graph)
 			pass.add_storage_output("cluster-transformed-spot", att);
 		}
 
-		pass.set_build_render_pass([&](CommandBuffer &cmd) {
-			build_cluster_bindless_gpu(cmd);
-		});
-		pass.set_need_render_pass([this]() {
-			return enable_clustering;
-		});
+		struct ThreadedPass : RenderPassInterface
+		{
+			explicit ThreadedPass(LightClusterer &clusterer_)
+				: clusterer(clusterer_)
+			{
+			}
+
+			bool render_pass_can_multithread() const override { return true; }
+			void build_render_pass(CommandBuffer &cmd) override
+			{
+				clusterer.build_cluster_bindless_gpu(cmd);
+			}
+
+			LightClusterer &clusterer;
+		};
+
+		if (enable_clustering)
+			pass.set_render_pass_interface(Util::make_handle<ThreadedPass>(*this));
 	}
 }
 

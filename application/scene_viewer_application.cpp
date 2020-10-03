@@ -1112,17 +1112,10 @@ void SceneViewerApplication::render_scene(TaskComposer &composer)
 
 void SceneViewerApplication::render_frame(double frame_time, double elapsed_time)
 {
-	{
-		TaskComposer composer(*Global::thread_group());
-		update_scene(composer, frame_time, elapsed_time);
-		composer.get_outgoing_task()->wait();
-	}
-
-	{
-		TaskComposer composer(*Global::thread_group());
-		render_scene(composer);
-		composer.get_outgoing_task()->wait();
-	}
+	TaskComposer composer(*Global::thread_group());
+	update_scene(composer, frame_time, elapsed_time);
+	render_scene(composer);
+	composer.get_outgoing_task()->wait();
 }
 
 } // namespace Granite

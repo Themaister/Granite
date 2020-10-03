@@ -391,7 +391,7 @@ QueryPoolHandle QueryPool::write_timestamp(VkCommandBuffer cmd, VkPipelineStageF
 
 	auto &pool = pools[pool_index];
 
-	auto cookie = QueryPoolHandle(device->handle_pool.query.allocate(device));
+	auto cookie = QueryPoolHandle(device->handle_pool.query.allocate(device, true));
 	pool.cookies[pool.index] = cookie;
 
 	if (!device->get_device_features().host_query_reset_features.hostQueryReset)

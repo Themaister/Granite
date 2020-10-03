@@ -2489,8 +2489,8 @@ QueryPoolHandle Device::write_calibrated_timestamp_nolock()
 	if (!timeline_trace_file)
 		return {};
 
-	auto handle = QueryPoolHandle(handle_pool.query.allocate(this));
-	handle->signal_timestamp_ticks(get_calibrated_timestamp());
+	auto handle = QueryPoolHandle(handle_pool.query.allocate(this, false));
+	handle->signal_timestamp_ticks(get_current_time_nsecs());
 	return handle;
 }
 
@@ -2515,6 +2515,7 @@ void Device::recalibrate_timestamps_fallback()
 	calibrated_timestamp_host = host_ts;
 	VK_ASSERT(ts->is_signalled());
 	calibrated_timestamp_device = ts->get_timestamp_ticks();
+	calibrated_timestamp_device_accum = calibrated_timestamp_device;
 }
 
 void Device::init_calibrated_timestamps()
@@ -2591,6 +2592,7 @@ bool Device::resample_calibrated_timestamps()
 
 	calibrated_timestamp_host = timestamps[0];
 	calibrated_timestamp_device = timestamps[1];
+	calibrated_timestamp_device_accum = calibrated_timestamp_device;
 
 #ifdef _WIN32
 	LARGE_INTEGER freq;
@@ -2616,18 +2618,6 @@ void Device::recalibrate_timestamps()
 		recalibrate_timestamps_fallback();
 	else
 		resample_calibrated_timestamps();
-}
-
-int64_t Device::get_calibrated_timestamp()
-{
-	int64_t nsecs = Util::get_current_time_nsecs();
-
-	auto offset_from_calibration = double(nsecs - calibrated_timestamp_host);
-	auto ticks_in_device_timebase = int64_t(offset_from_calibration / double(gpu_props.limits.timestampPeriod));
-	int64_t reported = calibrated_timestamp_device + ticks_in_device_timebase;
-	reported = std::max(reported, last_calibrated_timestamp_host);
-	last_calibrated_timestamp_host = reported;
-	return reported;
 }
 
 void Device::register_time_interval(std::string tid, QueryPoolHandle start_ts, QueryPoolHandle end_ts, std::string tag, std::string extra)
@@ -2809,8 +2799,8 @@ void Device::PerFrame::begin()
 
 			if (device.timeline_trace_file)
 			{
-				int64_t start_ts = device.convert_timestamp_to_absolute_nsec(ts.start_ts->get_timestamp_ticks());
-				int64_t end_ts = device.convert_timestamp_to_absolute_nsec(ts.end_ts->get_timestamp_ticks());
+				int64_t start_ts = device.convert_timestamp_to_absolute_nsec(*ts.start_ts);
+				int64_t end_ts = device.convert_timestamp_to_absolute_nsec(*ts.end_ts);
 				min_timestamp_us = (std::min)(min_timestamp_us, start_ts);
 				max_timestamp_us = (std::max)(max_timestamp_us, end_ts);
 
@@ -4851,20 +4841,27 @@ double Device::convert_timestamp_delta(uint64_t start_ticks, uint64_t end_ticks)
 	return double(int64_t(ticks_delta)) * gpu_props.limits.timestampPeriod * 1e-9;
 }
 
-uint64_t Device::update_wrapped_base_timestamp(uint64_t end_ticks)
+uint64_t Device::update_wrapped_device_timestamp(uint64_t ts)
 {
-	timeline_base_timestamp_value += convert_to_signed_delta(timeline_base_timestamp_value, end_ticks, timestamp_valid_bits);
-	return timeline_base_timestamp_value;
+	calibrated_timestamp_device_accum +=
+			convert_to_signed_delta(calibrated_timestamp_device_accum,
+			                        ts,
+			                        timestamp_valid_bits);
+	return calibrated_timestamp_device_accum;
 }
 
-int64_t Device::convert_timestamp_to_absolute_nsec(uint64_t ts)
+int64_t Device::convert_timestamp_to_absolute_nsec(const QueryPoolResult &handle)
 {
-	// Ensure that we deal with timestamp wraparound correctly.
-	// On some hardware, we have < 64 valid bits and the timestamp counters will wrap around at some interval.
-	// As long as timestamps come in at a reasonably steady pace, we can deal with wraparound cleanly.
-	ts = update_wrapped_base_timestamp(ts);
-	auto us = int64_t(double(int64_t(ts)) * gpu_props.limits.timestampPeriod);
-	return us;
+	auto ts = int64_t(handle.get_timestamp_ticks());
+	if (handle.is_device_timebase())
+	{
+		// Ensure that we deal with timestamp wraparound correctly.
+		// On some hardware, we have < 64 valid bits and the timestamp counters will wrap around at some interval.
+		// As long as timestamps come in at a reasonably steady pace, we can deal with wraparound cleanly.
+		ts = update_wrapped_device_timestamp(ts);
+		ts = calibrated_timestamp_host + int64_t(double(ts - calibrated_timestamp_device) * gpu_props.limits.timestampPeriod);
+	}
+	return ts;
 }
 
 PipelineEvent Device::begin_signal_event(VkPipelineStageFlags stages)

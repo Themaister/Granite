@@ -396,9 +396,8 @@ private:
 	void init_bindless();
 	void deinit_timeline_semaphores();
 
-	uint64_t update_wrapped_base_timestamp(uint64_t ts);
-	int64_t convert_timestamp_to_absolute_nsec(uint64_t ts);
-	int64_t timeline_base_timestamp_value = 0;
+	uint64_t update_wrapped_device_timestamp(uint64_t ts);
+	int64_t convert_timestamp_to_absolute_nsec(const QueryPoolResult &handle);
 	Util::TimelineTraceFile *timeline_trace_file = nullptr;
 
 	QueryPoolHandle write_timestamp_nolock(VkCommandBuffer cmd, VkPipelineStageFlagBits stage);
@@ -416,9 +415,9 @@ private:
 	VkTimeDomainEXT calibrated_time_domain = VK_TIME_DOMAIN_DEVICE_EXT;
 	int64_t calibrated_timestamp_device = 0;
 	int64_t calibrated_timestamp_host = 0;
+	int64_t calibrated_timestamp_device_accum = 0;
 	int64_t last_calibrated_timestamp_host = 0; // To ensure monotonicity after a recalibration.
 	unsigned timestamp_calibration_counter = 0;
-	int64_t get_calibrated_timestamp();
 	Vulkan::QueryPoolHandle frame_context_begin_ts;
 
 	struct Managers

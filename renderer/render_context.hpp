@@ -34,19 +34,12 @@
 namespace Granite
 {
 
-class RenderContext : public EventHandler
+class RenderContext
 {
 public:
-	RenderContext();
-
 	void set_scene(Scene *scene_)
 	{
 		scene = scene_;
-	}
-
-	void set_queue(RenderQueue *queue_)
-	{
-		queue = queue_;
 	}
 
 	void set_camera(const mat4 &projection, const mat4 &view);
@@ -77,12 +70,11 @@ public:
 		return *device;
 	}
 
+	void set_device(Vulkan::Device *device);
+
 private:
-	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
-	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
 	Vulkan::Device *device = nullptr;
-	Scene *scene = nullptr;
-	RenderQueue *queue = nullptr;
+	const Scene *scene = nullptr;
 	RenderParameters camera;
 	const LightingParameters *lighting;
 	Frustum frustum;

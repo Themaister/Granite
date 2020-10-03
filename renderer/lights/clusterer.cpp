@@ -299,32 +299,39 @@ static uint32_t reassign_indices_legacy(T &type)
 	return partial_mask;
 }
 
-void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &depth_context, VisibilityList &visible,
-                                   unsigned off_x, unsigned off_y, unsigned res_x, unsigned res_y,
-                                   const Vulkan::ImageView &rt, unsigned layer, Renderer::RendererFlushFlags flags)
+void LightClusterer::setup_scratch_buffers_vsm(Vulkan::Device &device)
+{
+	auto image_info = ImageCreateInfo::render_target(shadow_resolution, shadow_resolution, VK_FORMAT_R32G32_SFLOAT);
+	image_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+	image_info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+	if (!scratch_vsm_rt)
+		scratch_vsm_rt = device.create_image(image_info, nullptr);
+	if (!scratch_vsm_down)
+	{
+		image_info.width >>= 1;
+		image_info.height >>= 1;
+		scratch_vsm_down = device.create_image(image_info, nullptr);
+	}
+}
+
+const Renderer &LightClusterer::get_shadow_renderer() const
 {
 	bool vsm = shadow_type == ShadowType::VSM;
-	visible.clear();
-	scene->gather_visible_static_shadow_renderables(depth_context.get_visibility_frustum(), visible);
+	auto &depth_renderer = renderer_suite->get_renderer(vsm ?
+	                                                    RendererSuite::Type::ShadowDepthPositionalVSM :
+	                                                    RendererSuite::Type::ShadowDepthPCF);
+	return depth_renderer;
+}
 
-	auto &depth_renderer = renderer_suite->get_renderer(vsm ? RendererSuite::Type::ShadowDepthPositionalVSM : RendererSuite::Type::ShadowDepthPCF);
-	depth_renderer.begin(queue);
-	queue.push_depth_renderables(depth_context, visible);
+void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, const RenderContext &depth_context, const RenderQueue &queue,
+                                   unsigned off_x, unsigned off_y, unsigned res_x, unsigned res_y,
+                                   const Vulkan::ImageView &rt, unsigned layer, Renderer::RendererFlushFlags flags) const
+{
+	bool vsm = shadow_type == ShadowType::VSM;
+	auto &depth_renderer = get_shadow_renderer();
 
 	if (vsm)
 	{
-		auto image_info = ImageCreateInfo::render_target(shadow_resolution, shadow_resolution, VK_FORMAT_R32G32_SFLOAT);
-		image_info.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-		image_info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
-		if (!scratch_vsm_rt)
-			scratch_vsm_rt = cmd.get_device().create_image(image_info, nullptr);
-		if (!scratch_vsm_down)
-		{
-			image_info.width >>= 1;
-			image_info.height >>= 1;
-			scratch_vsm_down = cmd.get_device().create_image(image_info, nullptr);
-		}
-
 		RenderPassInfo rp;
 		rp.op_flags = RENDER_PASS_OP_CLEAR_DEPTH_STENCIL_BIT;
 		rp.clear_attachments = 1 << 0;
@@ -359,7 +366,7 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &de
 
 		cmd.begin_region("shadow-map-vsm");
 		cmd.begin_render_pass(rp);
-		depth_renderer.flush(cmd, queue, depth_context, flags);
+		depth_renderer.flush_subset(cmd, queue, depth_context, flags, nullptr, 0, 1);
 		cmd.end_render_pass();
 		cmd.end_render_pass();
 
@@ -431,10 +438,27 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, RenderContext &de
 		cmd.begin_render_pass(rp);
 		cmd.set_viewport({ float(off_x), float(off_y), float(res_x), float(res_y), 0.0f, 1.0f });
 		cmd.set_scissor({{ int(off_x), int(off_y) }, { res_x, res_y }});
-		depth_renderer.flush(cmd, queue, depth_context, flags);
+		depth_renderer.flush_subset(cmd, queue, depth_context, flags, nullptr, 0, 1);
 		cmd.end_render_pass();
 		cmd.end_region();
 	}
+}
+
+void LightClusterer::render_shadow_legacy(Vulkan::CommandBuffer &cmd, const RenderContext &depth_context, VisibilityList &visible,
+                                          unsigned off_x, unsigned off_y, unsigned res_x, unsigned res_y,
+                                          const Vulkan::ImageView &rt, unsigned layer, Renderer::RendererFlushFlags flags)
+{
+	visible.clear();
+	scene->gather_visible_static_shadow_renderables(depth_context.get_visibility_frustum(), visible);
+
+	auto &depth_renderer = get_shadow_renderer();
+	depth_renderer.begin(internal_queue);
+	internal_queue.push_depth_renderables(depth_context, visible);
+	internal_queue.sort();
+
+	render_shadow(cmd, depth_context, internal_queue,
+	              off_x, off_y, res_x, res_y,
+	              rt, layer, flags | Renderer::SKIP_SORTING_BIT);
 }
 
 void LightClusterer::render_atlas_point(const RenderContext &context_)
@@ -556,11 +580,11 @@ void LightClusterer::render_atlas_point(const RenderContext &context_)
 				legacy.points.handles[i]->set_shadow_info(&legacy.points.atlas->get_view(), legacy.points.shadow_transforms[i]);
 			}
 
-			render_shadow(*cmd, depth_context, visible,
-			              0, 0, shadow_resolution, shadow_resolution,
-			              legacy.points.atlas->get_view(),
-			              6 * remapped + face,
-			              Renderer::FRONT_FACE_CLOCKWISE_BIT | Renderer::DEPTH_BIAS_BIT);
+			render_shadow_legacy(*cmd, depth_context, visible,
+			                     0, 0, shadow_resolution, shadow_resolution,
+			                     legacy.points.atlas->get_view(),
+			                     6 * remapped + face,
+			                     Renderer::FRONT_FACE_CLOCKWISE_BIT | Renderer::DEPTH_BIAS_BIT);
 		}
 	}
 
@@ -716,71 +740,142 @@ void LightClusterer::end_bindless_barriers(Vulkan::CommandBuffer &cmd)
 	}
 }
 
-void LightClusterer::render_bindless_spot(Vulkan::CommandBuffer &cmd, unsigned index)
+void LightClusterer::render_bindless_spot(Vulkan::Device &device, unsigned index, TaskComposer &composer)
 {
-	RenderContext depth_context;
-	VisibilityList visible;
+	struct Data : Util::IntrusivePtrEnabled<Data, std::default_delete<Data>, Util::MultiThreadCounter>
+	{
+		RenderContext depth_context;
+		VisibilityList visibility[MaxTasks];
+		RenderQueue queues[MaxTasks];
+	};
 
-	float range = tan(static_cast<const SpotLight *>(bindless.handles[index])->get_xy_range());
-	mat4 view = mat4_cast(look_at_arbitrary_up(bindless.transforms.lights[index].direction)) *
-	            translate(-bindless.transforms.lights[index].position);
-	mat4 proj = projection(range * 2.0f, 1.0f,
-	                       0.005f / bindless.transforms.lights[index].inv_radius,
-	                       1.0f / bindless.transforms.lights[index].inv_radius);
+	auto data = Util::make_handle<Data>();
 
-	bindless.transforms.shadow[index] =
-			translate(vec3(0.5f, 0.5f, 0.0f)) *
-			scale(vec3(0.5f, 0.5f, 1.0f)) *
-			proj * view;
+	auto &setup_group = composer.begin_pipeline_stage();
+	setup_group.enqueue_task([this, data, index]() mutable {
+		float range = tan(static_cast<const SpotLight *>(bindless.handles[index])->get_xy_range());
+		mat4 view = mat4_cast(look_at_arbitrary_up(bindless.transforms.lights[index].direction)) *
+		            translate(-bindless.transforms.lights[index].position);
+		mat4 proj = projection(range * 2.0f, 1.0f,
+		                       0.005f / bindless.transforms.lights[index].inv_radius,
+		                       1.0f / bindless.transforms.lights[index].inv_radius);
 
-	if (!bindless.shadow_images[index])
-		return;
+		bindless.transforms.shadow[index] =
+				translate(vec3(0.5f, 0.5f, 0.0f)) *
+				scale(vec3(0.5f, 0.5f, 1.0f)) *
+				proj * view;
 
-	static_cast<SpotLight *>(bindless.handles[index])->set_shadow_info(
-			&bindless.shadow_images[index]->get_view(),
-			bindless.transforms.shadow[index]);
+		if (bindless.shadow_images[index])
+		{
+			static_cast<SpotLight *>(bindless.handles[index])->set_shadow_info(
+					&bindless.shadow_images[index]->get_view(),
+					bindless.transforms.shadow[index]);
+		}
 
-	LOGI("Rendering shadow for spot light %u (%p)\n", index, static_cast<const void *>(bindless.handles[index]));
+		data->depth_context.set_camera(proj, view);
+		auto &depth_renderer = get_shadow_renderer();
+		for (auto &queue : data->queues)
+			depth_renderer.begin(queue);
+	});
 
-	depth_context.set_camera(proj, view);
-	render_shadow(cmd, depth_context, visible,
-	              0, 0,
-	              shadow_resolution, shadow_resolution,
-	              bindless.shadow_images[index]->get_view(), 0, Renderer::DEPTH_BIAS_BIT);
+	Threaded::scene_gather_static_shadow_renderables(*scene, composer,
+	                                                 data->depth_context.get_visibility_frustum(),
+	                                                 data->visibility, MaxTasks,
+	                                                 [this, index]() -> bool {
+		                                                 return bindless.shadow_images[index] != nullptr;
+	                                                 });
+
+	Threaded::compose_parallel_push_renderables(composer, data->depth_context,
+	                                            data->queues, data->visibility, MaxTasks);
+
+	{
+		auto &group = composer.begin_pipeline_stage();
+		group.enqueue_task([&device, data, index, this]() {
+			if (!bindless.shadow_images[index])
+				return;
+			LOGI("Rendering shadow for spot light %u (%p)\n", index,
+			     static_cast<const void *>(bindless.handles[index]));
+			auto cmd = device.request_command_buffer();
+			render_shadow(*cmd, data->depth_context, data->queues[0],
+			              0, 0,
+			              shadow_resolution, shadow_resolution,
+			              bindless.shadow_images[index]->get_view(), 0,
+			              Renderer::DEPTH_BIAS_BIT | Renderer::SKIP_SORTING_BIT);
+			device.submit(cmd);
+		});
+	}
 }
 
-void LightClusterer::render_bindless_point(Vulkan::CommandBuffer &cmd, unsigned index)
+void LightClusterer::render_bindless_point(Vulkan::Device &device, unsigned index, TaskComposer &composer)
 {
-	RenderContext depth_context;
-	VisibilityList visible;
+	struct Data : Util::IntrusivePtrEnabled<Data, std::default_delete<Data>, Util::MultiThreadCounter>
+	{
+		RenderContext depth_context[6];
+		VisibilityList visibility[6][MaxTasks];
+		RenderQueue queues[6][MaxTasks];
+	};
 
-	mat4 view, proj;
-	compute_cube_render_transform(bindless.transforms.lights[index].position, 0, proj, view,
-	                              0.005f / bindless.transforms.lights[index].inv_radius,
-	                              1.0f / bindless.transforms.lights[index].inv_radius);
-	bindless.transforms.shadow[index][0] = vec4(proj[2].zw(), proj[3].zw());
+	auto data = Util::make_handle<Data>();
 
-	if (!bindless.shadow_images[index])
-		return;
+	auto &setup_group = composer.begin_pipeline_stage();
+	setup_group.enqueue_task([data, index, this]() mutable {
+		mat4 view, proj;
+		compute_cube_render_transform(bindless.transforms.lights[index].position, 0, proj, view,
+		                              0.005f / bindless.transforms.lights[index].inv_radius,
+		                              1.0f / bindless.transforms.lights[index].inv_radius);
+		bindless.transforms.shadow[index][0] = vec4(proj[2].zw(), proj[3].zw());
 
-	static_cast<PointLight *>(bindless.handles[index])->set_shadow_info(
-			&bindless.shadow_images[index]->get_view(),
-			PointTransform{ bindless.transforms.shadow[index][0] });
+		if (bindless.shadow_images[index])
+		{
+			static_cast<PointLight *>(bindless.handles[index])->set_shadow_info(
+					&bindless.shadow_images[index]->get_view(),
+					PointTransform{bindless.transforms.shadow[index][0]});
+		}
 
-	LOGI("Rendering shadow for point light %u (%p)\n", index, static_cast<const void *>(bindless.handles[index]));
+		for (unsigned face = 0; face < 6; face++)
+		{
+			compute_cube_render_transform(bindless.transforms.lights[index].position, face, proj, view,
+			                              0.005f / bindless.transforms.lights[index].inv_radius,
+			                              1.0f / bindless.transforms.lights[index].inv_radius);
+			data->depth_context[face].set_camera(proj, view);
+			auto &depth_renderer = get_shadow_renderer();
+			for (auto &queue : data->queues[face])
+				depth_renderer.begin(queue);
+		}
+	});
+
+	auto &per_face_stage = composer.begin_pipeline_stage();
 
 	for (unsigned face = 0; face < 6; face++)
 	{
-		compute_cube_render_transform(bindless.transforms.lights[index].position, face, proj, view,
-		                              0.005f / bindless.transforms.lights[index].inv_radius,
-		                              1.0f / bindless.transforms.lights[index].inv_radius);
-		depth_context.set_camera(proj, view);
+		TaskComposer face_composer(composer.get_thread_group());
+		face_composer.set_incoming_task(composer.get_pipeline_stage_dependency());
 
-		render_shadow(cmd, depth_context, visible,
-		              0, 0, shadow_resolution, shadow_resolution,
-		              bindless.shadow_images[index]->get_view(),
-		              face,
-		              Renderer::FRONT_FACE_CLOCKWISE_BIT | Renderer::DEPTH_BIAS_BIT);
+		Threaded::scene_gather_static_shadow_renderables(*scene, face_composer,
+		                                                 data->depth_context[face].get_visibility_frustum(),
+		                                                 data->visibility[face], MaxTasks,
+		                                                 [this, index]() -> bool {
+			                                                 return bindless.shadow_images[index] != nullptr;
+		                                                 });
+
+		Threaded::compose_parallel_push_renderables(face_composer, data->depth_context[face],
+		                                            data->queues[face], data->visibility[face], MaxTasks);
+
+		auto &group = face_composer.begin_pipeline_stage();
+		group.enqueue_task([&device, data, index, face, this]() {
+			if (!bindless.shadow_images[index])
+				return;
+			LOGI("Rendering shadow for point light %u (%p)\n", index, static_cast<const void *>(bindless.handles[index]));
+			auto cmd = device.request_command_buffer();
+			render_shadow(*cmd, data->depth_context[face], data->queues[face][0],
+			              0, 0, shadow_resolution, shadow_resolution,
+			              bindless.shadow_images[index]->get_view(),
+			              face,
+			              Renderer::FRONT_FACE_CLOCKWISE_BIT | Renderer::DEPTH_BIAS_BIT | Renderer::SKIP_SORTING_BIT);
+			device.submit(cmd);
+		});
+
+		composer.get_thread_group().add_dependency(per_face_stage, *face_composer.get_outgoing_task());
 	}
 }
 
@@ -871,10 +966,10 @@ void LightClusterer::render_atlas_spot(const RenderContext &context_)
 
 		depth_context.set_camera(proj, view);
 
-		render_shadow(*cmd, depth_context, visible,
-		              shadow_resolution * (remapped & 7), shadow_resolution * (remapped >> 3),
-		              shadow_resolution, shadow_resolution,
-		              legacy.spots.atlas->get_view(), 0, Renderer::DEPTH_BIAS_BIT);
+		render_shadow_legacy(*cmd, depth_context, visible,
+		                     shadow_resolution * (remapped & 7), shadow_resolution * (remapped >> 3),
+		                     shadow_resolution, shadow_resolution,
+		                     legacy.spots.atlas->get_view(), 0, Renderer::DEPTH_BIAS_BIT);
 	}
 
 	if (vsm)
@@ -899,16 +994,11 @@ void LightClusterer::refresh_legacy(const RenderContext& context_)
 {
 	legacy.points.count = 0;
 	legacy.spots.count = 0;
-	auto &frustum = context_.get_visibility_frustum();
 
-	for (auto &light : light_sort_cache)
+	for (auto &light : light_sort_caches[0])
 	{
 		auto &l = *light.first;
 		auto *transform = light.second;
-
-		// Frustum cull lights here.
-		if (!SIMD::frustum_cull(transform->world_aabb, frustum.get_planes()))
-			continue;
 
 		if (l.get_type() == PositionalLight::Type::Spot)
 		{
@@ -969,21 +1059,16 @@ void LightClusterer::refresh_legacy(const RenderContext& context_)
 	}
 }
 
-void LightClusterer::refresh_bindless(const RenderContext &context_)
+void LightClusterer::refresh_bindless_prepare(const RenderContext &context_)
 {
 	bindless.count = 0;
-	auto &frustum = context_.get_visibility_frustum();
 	unsigned index = 0;
 	memset(bindless.transforms.type_mask, 0, sizeof(bindless.transforms.type_mask));
 
-	for (auto &light : light_sort_cache)
+	for (auto &light : light_sort_caches[0])
 	{
 		auto &l = *light.first;
 		auto *transform = light.second;
-
-		// Frustum cull lights here.
-		if (!SIMD::frustum_cull(transform->world_aabb, frustum.get_planes()))
-			continue;
 
 		if (l.get_type() == PositionalLight::Type::Spot)
 		{
@@ -1039,48 +1124,96 @@ void LightClusterer::refresh_bindless(const RenderContext &context_)
 	uint64_t total_pruned = bindless.shadow_map_cache.prune();
 	if (total_pruned)
 		LOGI("Clusterer pruned a total of %llu bytes.\n", static_cast<unsigned long long>(total_pruned));
+}
+
+void LightClusterer::refresh_bindless(const RenderContext &context_, TaskComposer &composer)
+{
+	// Single task, prepare the lights and which shadow maps to render.
+	{
+		auto &group = composer.begin_pipeline_stage();
+		group.enqueue_task([this, &context_]() {
+			refresh_bindless_prepare(context_);
+		});
+	}
 
 	if (enable_shadows)
 	{
-		auto cmd = context_.get_device().request_command_buffer();
-		begin_bindless_barriers(*cmd);
-		for (unsigned i = 0; i < bindless.count; i++)
+		// Submit barriers from UNDEFINED -> COLOR/DEPTH.
+		auto indirect_task = composer.get_thread_group().create_task();
+
+		auto &device = context_.get_device();
 		{
-			if (bindless_light_is_point(i))
-				render_bindless_point(*cmd, i);
-			else
-				render_bindless_spot(*cmd, i);
+			auto &group = composer.begin_pipeline_stage();
+			composer.get_thread_group().add_dependency(*indirect_task, *composer.get_pipeline_stage_dependency());
+
+			group.enqueue_task([this, &device, indirect_task, &thread_group = composer.get_thread_group()]() mutable {
+				auto cmd = device.request_command_buffer();
+				cmd->begin_region("shadow-map-begin-barriers");
+				begin_bindless_barriers(*cmd);
+				cmd->end_region();
+				device.submit(cmd);
+
+				for (unsigned i = 0; i < bindless.count; i++)
+				{
+					TaskComposer per_light_composer(thread_group);
+					if (bindless_light_is_point(i))
+						render_bindless_point(device, i, per_light_composer);
+					else
+						render_bindless_spot(device, i, per_light_composer);
+					thread_group.add_dependency(*indirect_task, *per_light_composer.get_outgoing_task());
+				}
+			});
 		}
-		end_bindless_barriers(*cmd);
-		context_.get_device().submit(cmd);
+
+		// Run all shadow map renderings in parallel in separate composers.
+		{
+			auto &group = composer.begin_pipeline_stage();
+			composer.get_thread_group().add_dependency(group, *indirect_task);
+		}
+
+		// Submit barriers from COLOR/DEPTH -> SHADER_READ_ONLY
+		{
+			auto &group = composer.begin_pipeline_stage();
+			group.enqueue_task([this, &device]() {
+				auto cmd = device.request_command_buffer();
+				cmd->begin_region("shadow-map-end-barriers");
+				end_bindless_barriers(*cmd);
+				cmd->end_region();
+				device.submit(cmd);
+			});
+		}
 	}
 }
 
-void LightClusterer::refresh(const RenderContext &context_, TaskComposer &)
+void LightClusterer::refresh(const RenderContext &context_, TaskComposer &incoming_composer)
 {
-	light_sort_cache.clear();
-	light_sort_cache.reserve(lights->size());
-	for (auto &light : *lights)
-	{
-		light_sort_cache.emplace_back(get_component<PositionalLightComponent>(light)->light,
-		                              get_component<RenderInfoComponent>(light));
-	}
+	if (enable_shadows && shadow_type == ShadowType::VSM)
+		setup_scratch_buffers_vsm(context_.get_device());
 
-	// Prefer lights which are closest to the camera.
-	sort(begin(light_sort_cache), end(light_sort_cache), [&](const auto &a, const auto &b) -> bool {
-		auto *transform_a = a.second;
-		auto *transform_b = b.second;
-		vec3 pos_a = transform_a->transform->world_transform[3].xyz();
-		vec3 pos_b = transform_b->transform->world_transform[3].xyz();
-		float dist_a = dot(pos_a, context_.get_render_parameters().camera_front);
-		float dist_b = dot(pos_b, context_.get_render_parameters().camera_front);
-		return dist_a < dist_b;
-	});
+	for (auto &cache : light_sort_caches)
+		cache.clear();
+
+	TaskComposer composer(incoming_composer.get_thread_group());
+	composer.set_incoming_task(incoming_composer.get_pipeline_stage_dependency());
+
+	// Gather lights in parallel.
+	Threaded::scene_gather_positional_light_renderables_sorted(*scene, composer, context_,
+	                                                           light_sort_caches, MaxTasks);
 
 	if (enable_bindless)
-		refresh_bindless(context_);
+	{
+		refresh_bindless(context_, composer);
+	}
 	else
-		refresh_legacy(context_);
+	{
+		// For legacy path, just do everything in one thread.
+		auto &group = incoming_composer.begin_pipeline_stage();
+		group.enqueue_task([this, &context_]() {
+			refresh_legacy(context_);
+		});
+	}
+
+	incoming_composer.get_thread_group().add_dependency(incoming_composer.get_group(), *composer.get_outgoing_task());
 }
 
 uvec2 LightClusterer::cluster_lights_cpu(int x, int y, int z, const CPUGlobalAccelState &state,
@@ -1991,12 +2124,24 @@ void LightClusterer::add_render_passes_bindless(RenderGraph &graph)
 			pass.add_transfer_output("cluster-transforms", att);
 		}
 
-		pass.set_build_render_pass([&](CommandBuffer &cmd) {
-			build_cluster_bindless_cpu(cmd);
-		});
-		pass.set_need_render_pass([this]() {
-			return enable_clustering;
-		});
+		struct ThreadedPass : RenderPassInterface
+		{
+			explicit ThreadedPass(LightClusterer &clusterer_)
+				: clusterer(clusterer_)
+			{
+			}
+
+			bool render_pass_can_multithread() const override { return true; }
+			void build_render_pass(CommandBuffer &cmd) override
+			{
+				clusterer.build_cluster_bindless_cpu(cmd);
+			}
+
+			LightClusterer &clusterer;
+		};
+
+		if (enable_clustering)
+			pass.set_render_pass_interface(Util::make_handle<ThreadedPass>(*this));
 	}
 	else
 	{
@@ -2031,12 +2176,24 @@ void LightClusterer::add_render_passes_bindless(RenderGraph &graph)
 			pass.add_storage_output("cluster-transformed-spot", att);
 		}
 
-		pass.set_build_render_pass([&](CommandBuffer &cmd) {
-			build_cluster_bindless_gpu(cmd);
-		});
-		pass.set_need_render_pass([this]() {
-			return enable_clustering;
-		});
+		struct ThreadedPass : RenderPassInterface
+		{
+			explicit ThreadedPass(LightClusterer &clusterer_)
+				: clusterer(clusterer_)
+			{
+			}
+
+			bool render_pass_can_multithread() const override { return true; }
+			void build_render_pass(CommandBuffer &cmd) override
+			{
+				clusterer.build_cluster_bindless_gpu(cmd);
+			}
+
+			LightClusterer &clusterer;
+		};
+
+		if (enable_clustering)
+			pass.set_render_pass_interface(Util::make_handle<ThreadedPass>(*this));
 	}
 }
 

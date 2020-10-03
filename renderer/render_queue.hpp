@@ -37,6 +37,7 @@ namespace Granite
 class ShaderSuite;
 class RenderContext;
 class AbstractRenderable;
+class PositionalLight;
 struct RenderInfoComponent;
 
 struct RenderableInfo
@@ -45,6 +46,7 @@ struct RenderableInfo
 	const RenderInfoComponent *transform;
 };
 using VisibilityList = std::vector<RenderableInfo>;
+using PositionalLightList = std::vector<std::pair<PositionalLight *, const RenderInfoComponent *>>;
 
 enum class Queue : unsigned
 {

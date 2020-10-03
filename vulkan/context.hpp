@@ -27,6 +27,11 @@
 #include <memory>
 #include <functional>
 
+namespace Util
+{
+class TimelineTraceFile;
+}
+
 namespace Vulkan
 {
 struct DeviceFeatures
@@ -208,11 +213,22 @@ public:
 		return device_table;
 	}
 
+	void set_timeline_trace_file(Util::TimelineTraceFile *trace)
+	{
+		timeline_trace_file = trace;
+	}
+
+	Util::TimelineTraceFile *get_timeline_trace_file() const
+	{
+		return timeline_trace_file;
+	}
+
 private:
 	VkDevice device = VK_NULL_HANDLE;
 	VkInstance instance = VK_NULL_HANDLE;
 	VkPhysicalDevice gpu = VK_NULL_HANDLE;
 	VolkDeviceTable device_table = {};
+	Util::TimelineTraceFile *timeline_trace_file = nullptr;
 
 	VkPhysicalDeviceProperties gpu_props = {};
 	VkPhysicalDeviceMemoryProperties mem_props = {};

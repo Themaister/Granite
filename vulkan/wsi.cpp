@@ -135,12 +135,13 @@ void WSI::set_platform(WSIPlatform *platform_)
 	platform = platform_;
 }
 
-bool WSI::init(unsigned num_thread_indices)
+bool WSI::init(unsigned num_thread_indices, Util::TimelineTraceFile *timeline_trace_file)
 {
 	auto instance_ext = platform->get_instance_extensions();
 	auto device_ext = platform->get_device_extensions();
 	context.reset(new Context);
 	context->set_num_thread_indices(num_thread_indices);
+	context->set_timeline_trace_file(timeline_trace_file);
 	if (!context->init_instance_and_device(instance_ext.data(), instance_ext.size(), device_ext.data(), device_ext.size()))
 		return false;
 

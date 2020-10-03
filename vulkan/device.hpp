@@ -63,6 +63,11 @@
 #include "quirks.hpp"
 #include "small_vector.hpp"
 
+namespace Util
+{
+class TimelineTraceFile;
+}
+
 namespace Vulkan
 {
 enum class SwapchainRenderPass
@@ -391,16 +396,10 @@ private:
 	void init_bindless();
 	void deinit_timeline_semaphores();
 
-	struct JSONTraceFileDeleter { void operator()(FILE *file); };
-	std::unique_ptr<FILE, JSONTraceFileDeleter> json_trace_file;
-	int64_t json_base_timestamp_value = 0;
-	int64_t json_timestamp_origin = 0;
-	int64_t convert_timestamp_to_absolute_usec(uint64_t ts);
 	uint64_t update_wrapped_base_timestamp(uint64_t ts);
-	void write_json_timestamp_range(unsigned frame_index, const char *tid, const char *name, const char *extra,
-	                                uint64_t start_ts, uint64_t end_ts,
-	                                int64_t &min_us, int64_t &max_us);
-	void write_json_timestamp_range_us(unsigned frame_index, const char *tid, const char *name, int64_t start_us, int64_t end_us);
+	int64_t convert_timestamp_to_absolute_nsec(uint64_t ts);
+	int64_t timeline_base_timestamp_value = 0;
+	Util::TimelineTraceFile *timeline_trace_file = nullptr;
 
 	QueryPoolHandle write_timestamp_nolock(VkCommandBuffer cmd, VkPipelineStageFlagBits stage);
 	QueryPoolHandle write_calibrated_timestamp_nolock();

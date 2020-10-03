@@ -136,7 +136,7 @@ public:
 		return srgb_backbuffer_enable;
 	}
 
-	bool init(unsigned num_thread_indices);
+	bool init(unsigned num_thread_indices, Util::TimelineTraceFile *file);
 	bool init_external_context(std::unique_ptr<Vulkan::Context> context);
 	bool init_external_swapchain(std::vector<Vulkan::ImageHandle> external_images);
 	void deinit_external();

@@ -22,6 +22,7 @@
 
 #include "device.hpp"
 #include "format.hpp"
+#include "timeline_trace_file.hpp"
 #include "type_to_string.hpp"
 #include "quirks.hpp"
 #include "timer.hpp"
@@ -75,13 +76,6 @@ Device::Device()
 #ifdef GRANITE_VULKAN_MT
 	cookie.store(0);
 #endif
-
-	if (const char *env = getenv("GRANITE_TIMESTAMP_TRACE"))
-	{
-		LOGI("Tracing timestamps to %s.\n", env);
-		if (!init_timestamp_trace(env))
-			LOGE("Failed to init timestamp trace.\n");
-	}
 }
 
 Semaphore Device::request_legacy_semaphore()
@@ -763,7 +757,9 @@ void Device::set_context(const Context &context)
 	init_shader_manager_cache();
 #endif
 
-	init_calibrated_timestamps();
+	timeline_trace_file = context.get_timeline_trace_file();
+	if (timeline_trace_file)
+		init_calibrated_timestamps();
 }
 
 void Device::init_bindless()
@@ -1254,9 +1250,7 @@ void Device::submit_empty_inner(CommandBuffer::Type type, InternalFence *fence,
 	if (fence)
 		fence->fence = cleared_fence;
 
-	QueryPoolHandle start_ts, end_ts;
-	if (json_timestamp_origin)
-		start_ts = write_calibrated_timestamp_nolock();
+	auto start_ts = write_calibrated_timestamp_nolock();
 
 	if (queue_lock_callback)
 		queue_lock_callback();
@@ -1271,11 +1265,8 @@ void Device::submit_empty_inner(CommandBuffer::Type type, InternalFence *fence,
 	if (queue_unlock_callback)
 		queue_unlock_callback();
 
-	if (json_timestamp_origin)
-	{
-		end_ts = write_calibrated_timestamp_nolock();
-		register_time_interval_nolock("CPU", std::move(start_ts), std::move(end_ts), "submit", "");
-	}
+	auto end_ts = write_calibrated_timestamp_nolock();
+	register_time_interval_nolock("CPU", std::move(start_ts), std::move(end_ts), "submit", "");
 
 	if (result != VK_SUCCESS)
 		LOGE("vkQueueSubmit failed (code: %d).\n", int(result));
@@ -1650,9 +1641,7 @@ void Device::submit_queue(CommandBuffer::Type type, InternalFence *fence,
 		timeline_submit.pSignalSemaphoreValues = signal_counts[i].data();
 	}
 
-	QueryPoolHandle start_ts, end_ts;
-	if (json_timestamp_origin)
-		start_ts = write_calibrated_timestamp_nolock();
+	auto start_ts = write_calibrated_timestamp_nolock();
 
 	if (queue_lock_callback)
 		queue_lock_callback();
@@ -1666,11 +1655,8 @@ void Device::submit_queue(CommandBuffer::Type type, InternalFence *fence,
 	if (queue_unlock_callback)
 		queue_unlock_callback();
 
-	if (json_timestamp_origin)
-	{
-		end_ts = write_calibrated_timestamp_nolock();
-		register_time_interval_nolock("CPU", std::move(start_ts), std::move(end_ts), "submit", "");
-	}
+	auto end_ts = write_calibrated_timestamp_nolock();
+	register_time_interval_nolock("CPU", std::move(start_ts), std::move(end_ts), "submit", "");
 
 	if (result != VK_SUCCESS)
 		LOGE("vkQueueSubmit failed (code: %d).\n", int(result));
@@ -2500,7 +2486,7 @@ QueryPoolHandle Device::write_calibrated_timestamp()
 
 QueryPoolHandle Device::write_calibrated_timestamp_nolock()
 {
-	if (!json_trace_file)
+	if (!timeline_trace_file)
 		return {};
 
 	auto handle = QueryPoolHandle(handle_pool.query.allocate(this));
@@ -2594,9 +2580,9 @@ bool Device::resample_calibrated_timestamps()
 	infos[0].timeDomain = calibrated_time_domain;
 	infos[1].timeDomain = VK_TIME_DOMAIN_DEVICE_EXT;
 	uint64_t timestamps[2] = {};
-	uint64_t max_deviation[2] = {};
+	uint64_t max_deviation;
 
-	if (table->vkGetCalibratedTimestampsEXT(device, 2, infos, timestamps, max_deviation) != VK_SUCCESS)
+	if (table->vkGetCalibratedTimestampsEXT(device, 2, infos, timestamps, &max_deviation) != VK_SUCCESS)
 	{
 		LOGE("Failed to get calibrated timestamps.\n");
 		calibrated_time_domain = VK_TIME_DOMAIN_DEVICE_EXT;
@@ -2617,7 +2603,7 @@ bool Device::resample_calibrated_timestamps()
 void Device::recalibrate_timestamps()
 {
 	// Don't bother recalibrating timestamps if we're not tracing.
-	if (!json_trace_file)
+	if (!timeline_trace_file)
 		return;
 
 	// Recalibrate every once in a while ...
@@ -2683,7 +2669,7 @@ void Device::PerFrame::begin()
 	VkDevice vkdevice = device.get_device();
 
 	Vulkan::QueryPoolHandle wait_fence_ts;
-	if (!in_destructor && device.json_timestamp_origin)
+	if (!in_destructor)
 		wait_fence_ts = device.write_calibrated_timestamp_nolock();
 
 	if (device.get_device_features().timeline_semaphore_features.timelineSemaphore &&
@@ -2724,9 +2710,6 @@ void Device::PerFrame::begin()
 		table.vkWaitForFences(vkdevice, wait_fences.size(), wait_fences.data(), VK_TRUE, UINT64_MAX);
 		wait_fences.clear();
 	}
-
-	if (!in_destructor && device.json_timestamp_origin)
-		device.register_time_interval_nolock("CPU", std::move(wait_fence_ts), device.write_calibrated_timestamp_nolock(), "fence", "");
 
 	// If we're using timeline semaphores, these paths should never be hit.
 	if (!recycle_fences.empty())
@@ -2811,6 +2794,9 @@ void Device::PerFrame::begin()
 	recycled_events.clear();
 	allocations.clear();
 
+	if (!in_destructor)
+		device.register_time_interval_nolock("CPU", std::move(wait_fence_ts), device.write_calibrated_timestamp_nolock(), "fence + recycle", "");
+
 	int64_t min_timestamp_us = std::numeric_limits<int64_t>::max();
 	int64_t max_timestamp_us = 0;
 
@@ -2820,13 +2806,36 @@ void Device::PerFrame::begin()
 		{
 			ts.timestamp_tag->accumulate_time(
 			    device.convert_timestamp_delta(ts.start_ts->get_timestamp_ticks(), ts.end_ts->get_timestamp_ticks()));
-			device.write_json_timestamp_range(frame_index, ts.tid.c_str(), ts.timestamp_tag->get_tag().c_str(),
-			                                  ts.extra.c_str(),
-			                                  ts.start_ts->get_timestamp_ticks(), ts.end_ts->get_timestamp_ticks(),
-			                                  min_timestamp_us, max_timestamp_us);
+
+			if (device.timeline_trace_file)
+			{
+				int64_t start_ts = device.convert_timestamp_to_absolute_nsec(ts.start_ts->get_timestamp_ticks());
+				int64_t end_ts = device.convert_timestamp_to_absolute_nsec(ts.end_ts->get_timestamp_ticks());
+				min_timestamp_us = (std::min)(min_timestamp_us, start_ts);
+				max_timestamp_us = (std::max)(max_timestamp_us, end_ts);
+
+				auto *e = device.timeline_trace_file->allocate_event();
+				snprintf(e->desc, sizeof(e->desc), "%s", ts.timestamp_tag->get_tag().c_str());
+				snprintf(e->tid, sizeof(e->tid), "%s", ts.tid.c_str());
+				e->pid = frame_index;
+				e->start_ns = start_ts;
+				e->end_ns = end_ts;
+				device.timeline_trace_file->submit_event(e);
+			}
 		}
 	}
-	device.write_json_timestamp_range_us(frame_index, "CPU + GPU", "full frame lifetime", min_timestamp_us, max_timestamp_us);
+
+	if (device.timeline_trace_file && min_timestamp_us <= max_timestamp_us)
+	{
+		auto *e = device.timeline_trace_file->allocate_event();
+		strcpy(e->desc, "CPU + GPU full frame");
+		strcpy(e->tid, "Frame context");
+		e->pid = frame_index;
+		e->start_ns = min_timestamp_us;
+		e->end_ns = max_timestamp_us;
+		device.timeline_trace_file->submit_event(e);
+	}
+
 	managers.timestamps.mark_end_of_frame_context();
 	timestamp_intervals.clear();
 }
@@ -4844,74 +4853,18 @@ double Device::convert_timestamp_delta(uint64_t start_ticks, uint64_t end_ticks)
 
 uint64_t Device::update_wrapped_base_timestamp(uint64_t end_ticks)
 {
-	json_base_timestamp_value += convert_to_signed_delta(json_base_timestamp_value, end_ticks, timestamp_valid_bits);
-	return json_base_timestamp_value;
+	timeline_base_timestamp_value += convert_to_signed_delta(timeline_base_timestamp_value, end_ticks, timestamp_valid_bits);
+	return timeline_base_timestamp_value;
 }
 
-bool Device::init_timestamp_trace(const char *path)
-{
-	// Use the Chrome tracing format. It's trivial to emit and we get a frontend for free :)
-	json_trace_file.reset();
-	json_trace_file.reset(fopen(path, "w"));
-	if (json_trace_file)
-		fprintf(json_trace_file.get(), "[");
-	return bool(json_trace_file);
-}
-
-int64_t Device::convert_timestamp_to_absolute_usec(uint64_t ts)
+int64_t Device::convert_timestamp_to_absolute_nsec(uint64_t ts)
 {
 	// Ensure that we deal with timestamp wraparound correctly.
 	// On some hardware, we have < 64 valid bits and the timestamp counters will wrap around at some interval.
 	// As long as timestamps come in at a reasonably steady pace, we can deal with wraparound cleanly.
 	ts = update_wrapped_base_timestamp(ts);
-	if (json_timestamp_origin == 0)
-		json_timestamp_origin = ts;
-
-	auto delta_ts = int64_t(ts - json_timestamp_origin);
-	auto us = int64_t(double(int64_t(delta_ts)) * gpu_props.limits.timestampPeriod * 1e-3);
+	auto us = int64_t(double(int64_t(ts)) * gpu_props.limits.timestampPeriod);
 	return us;
-}
-
-void Device::write_json_timestamp_range(unsigned frame_index, const char *tid,
-                                        const char *name, const char *extra,
-                                        uint64_t start_ts, uint64_t end_ts,
-                                        int64_t &min_us, int64_t &max_us)
-{
-	if (!json_trace_file)
-		return;
-
-	int64_t absolute_start = convert_timestamp_to_absolute_usec(start_ts);
-	int64_t absolute_end = convert_timestamp_to_absolute_usec(end_ts);
-
-	VK_ASSERT(absolute_start <= absolute_end);
-
-	min_us = std::min(absolute_start, min_us);
-	max_us = std::max(absolute_end, max_us);
-
-	fprintf(json_trace_file.get(), "\t{ \"name\": \"%s%s%s\", \"ph\": \"B\", \"tid\": \"%s\", \"pid\": \"%u\", \"ts\": %lld },\n",
-	        name, *extra != '\0' ? " " : "", extra, tid, frame_index, static_cast<long long>(absolute_start));
-	fprintf(json_trace_file.get(), "\t{ \"name\": \"%s%s%s\", \"ph\": \"E\", \"tid\": \"%s\", \"pid\": \"%u\", \"ts\": %lld },\n",
-	        name, *extra != '\0' ? " " : "", extra, tid, frame_index, static_cast<long long>(absolute_end));
-}
-
-void Device::write_json_timestamp_range_us(unsigned frame_index, const char *tid, const char *name, int64_t start_us, int64_t end_us)
-{
-	if (!json_trace_file)
-		return;
-	if (start_us > end_us)
-		return;
-
-	fprintf(json_trace_file.get(), "\t{ \"name\": \"%s\", \"ph\": \"B\", \"tid\": \"%s\", \"pid\": \"%u\", \"ts\": %lld },\n",
-	        name, tid, frame_index, static_cast<long long>(start_us));
-	fprintf(json_trace_file.get(), "\t{ \"name\": \"%s\", \"ph\": \"E\", \"tid\": \"%s\", \"pid\": \"%u\", \"ts\": %lld },\n",
-	        name, tid, frame_index, static_cast<long long>(end_us));
-}
-
-void Device::JSONTraceFileDeleter::operator()(FILE *file)
-{
-	// Intentionally truncate the JSON so that we can emit "," after the last element.
-	if (file)
-		fclose(file);
 }
 
 PipelineEvent Device::begin_signal_event(VkPipelineStageFlags stages)

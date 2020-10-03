@@ -32,6 +32,7 @@
 #include <object_pool.hpp>
 #include "variant.hpp"
 #include "intrusive.hpp"
+#include "timeline_trace_file.hpp"
 
 namespace Granite
 {
@@ -156,6 +157,11 @@ public:
 	void wait_idle();
 	bool is_idle();
 
+	static void set_current_thread_name(const char *tag);
+
+	Util::TimelineTraceFile *get_timeline_trace_file();
+	void refresh_global_timeline_trace_file();
+
 private:
 	Util::ThreadSafeObjectPool<Internal::Task> task_pool;
 	Util::ThreadSafeObjectPool<TaskGroup> task_group_pool;
@@ -176,5 +182,7 @@ private:
 	std::mutex wait_cond_lock;
 	std::atomic_uint total_tasks;
 	std::atomic_uint completed_tasks;
+
+	std::unique_ptr<Util::TimelineTraceFile> timeline_trace_file;
 };
 }

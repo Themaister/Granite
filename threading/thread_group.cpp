@@ -27,6 +27,7 @@
 #include "global_managers.hpp"
 #include "thread_id.hpp"
 #include "string_helpers.hpp"
+#include "timeline_trace_file.hpp"
 
 #ifdef __linux__
 #include <pthread.h>
@@ -112,22 +113,35 @@ TaskGroup::~TaskGroup()
 		flush();
 }
 
-static void set_main_thread_name()
+void ThreadGroup::set_current_thread_name(const char *name)
 {
 #ifdef __linux__
-	pthread_setname_np(pthread_self(), "MainThread");
+	pthread_setname_np(pthread_self(), name);
+#else
+	// TODO: Kinda messy.
 #endif
+	Util::TimelineTraceFile::set_tid(name);
+}
+
+static void set_main_thread_name()
+{
+	ThreadGroup::set_current_thread_name("MainThread");
 }
 
 static void set_worker_thread_name(unsigned index)
 {
-#ifdef _WIN32
-	// TODO: Kinda messy.
-	(void)index;
-#elif defined(__linux__)
 	auto name = Util::join("WorkerThread-", index);
-	pthread_setname_np(pthread_self(), name.c_str());
-#endif
+	ThreadGroup::set_current_thread_name(name.c_str());
+}
+
+void ThreadGroup::refresh_global_timeline_trace_file()
+{
+	Util::TimelineTraceFile::set_per_thread(timeline_trace_file.get());
+}
+
+Util::TimelineTraceFile *ThreadGroup::get_timeline_trace_file()
+{
+	return timeline_trace_file.get();
 }
 
 void ThreadGroup::start(unsigned num_threads)
@@ -144,12 +158,20 @@ void ThreadGroup::start(unsigned num_threads)
 	auto ctx = std::shared_ptr<Global::GlobalManagers>(Global::create_thread_context().release(),
 	                                                   Global::delete_thread_context);
 
+	if (const char *env = getenv("GRANITE_TIMELINE_TRACE"))
+	{
+		LOGI("Enabling JSON timeline tracing to %s.\n", env);
+		timeline_trace_file = std::make_unique<Util::TimelineTraceFile>(env);
+	}
+
+	refresh_global_timeline_trace_file();
 	set_main_thread_name();
 
 	unsigned self_index = 1;
 	for (auto &t : thread_group)
 	{
 		t = make_unique<thread>([this, ctx, self_index]() {
+			refresh_global_timeline_trace_file();
 			set_worker_thread_name(self_index - 1);
 			Global::set_thread_context(*ctx);
 			thread_looper(self_index);

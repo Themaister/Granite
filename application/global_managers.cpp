@@ -83,6 +83,8 @@ void GlobalManagerDeleter::operator()(GlobalManagers *managers)
 void set_thread_context(const GlobalManagers &managers)
 {
 	global_managers = managers;
+	if (managers.thread_group)
+		managers.thread_group->refresh_global_timeline_trace_file();
 }
 
 void clear_thread_context()

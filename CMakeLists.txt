@@ -274,6 +274,7 @@ target_sources(granite PRIVATE
         util/intrusive_hash_map.hpp
         util/timer.hpp util/timer.cpp
         util/small_vector.hpp
+        util/timeline_trace_file.hpp util/timeline_trace_file.cpp
 
         vulkan/texture_format.cpp vulkan/texture_format.hpp
         vulkan/context.cpp vulkan/context.hpp vulkan/vulkan_headers.hpp

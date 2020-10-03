@@ -345,7 +345,7 @@ public:
 
 	bool swapchain_touched() const;
 
-	double convert_timestamp_delta(uint64_t start_ticks, uint64_t end_ticks) const;
+	double convert_device_timestamp_delta(uint64_t start_ticks, uint64_t end_ticks) const;
 	// Writes a timestamp on host side, which is calibrated to the GPU timebase.
 	QueryPoolHandle write_calibrated_timestamp();
 

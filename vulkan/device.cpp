@@ -2794,20 +2794,26 @@ void Device::PerFrame::begin()
 	{
 		if (ts.end_ts->is_signalled() && ts.start_ts->is_signalled())
 		{
-			ts.timestamp_tag->accumulate_time(
-			    device.convert_timestamp_delta(ts.start_ts->get_timestamp_ticks(), ts.end_ts->get_timestamp_ticks()));
+			VK_ASSERT(ts.start_ts->is_device_timebase() == ts.end_ts->is_device_timebase());
+
+			int64_t start_ts = ts.start_ts->get_timestamp_ticks();
+			int64_t end_ts = ts.end_ts->get_timestamp_ticks();
+			if (ts.start_ts->is_device_timebase())
+				ts.timestamp_tag->accumulate_time(device.convert_device_timestamp_delta(start_ts, end_ts));
+			else
+				ts.timestamp_tag->accumulate_time(1e-9 * double(end_ts - start_ts));
 
 			if (device.timeline_trace_file)
 			{
-				int64_t start_ts = device.convert_timestamp_to_absolute_nsec(*ts.start_ts);
-				int64_t end_ts = device.convert_timestamp_to_absolute_nsec(*ts.end_ts);
+				start_ts = device.convert_timestamp_to_absolute_nsec(*ts.start_ts);
+				end_ts = device.convert_timestamp_to_absolute_nsec(*ts.end_ts);
 				min_timestamp_us = (std::min)(min_timestamp_us, start_ts);
 				max_timestamp_us = (std::max)(max_timestamp_us, end_ts);
 
 				auto *e = device.timeline_trace_file->allocate_event();
 				snprintf(e->desc, sizeof(e->desc), "%s", ts.timestamp_tag->get_tag().c_str());
 				snprintf(e->tid, sizeof(e->tid), "%s", ts.tid.c_str());
-				e->pid = frame_index;
+				e->pid = frame_index + 1;
 				e->start_ns = start_ts;
 				e->end_ns = end_ts;
 				device.timeline_trace_file->submit_event(e);
@@ -2820,7 +2826,7 @@ void Device::PerFrame::begin()
 		auto *e = device.timeline_trace_file->allocate_event();
 		strcpy(e->desc, "CPU + GPU full frame");
 		strcpy(e->tid, "Frame context");
-		e->pid = frame_index;
+		e->pid = frame_index + 1;
 		e->start_ns = min_timestamp_us;
 		e->end_ns = max_timestamp_us;
 		device.timeline_trace_file->submit_event(e);
@@ -4835,7 +4841,7 @@ static int64_t convert_to_signed_delta(uint64_t start_ticks, uint64_t end_ticks,
 	return ticks_delta;
 }
 
-double Device::convert_timestamp_delta(uint64_t start_ticks, uint64_t end_ticks) const
+double Device::convert_device_timestamp_delta(uint64_t start_ticks, uint64_t end_ticks) const
 {
 	int64_t ticks_delta = convert_to_signed_delta(start_ticks, end_ticks, timestamp_valid_bits);
 	return double(int64_t(ticks_delta)) * gpu_props.limits.timestampPeriod * 1e-9;

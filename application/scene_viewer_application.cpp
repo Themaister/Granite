@@ -1115,17 +1115,25 @@ void SceneViewerApplication::render_frame(double frame_time, double elapsed_time
 	auto *file = Global::thread_group()->get_timeline_trace_file();
 	TaskComposer composer(*Global::thread_group());
 
-	auto *e = file->begin_event("update-scene-enqueue");
+	Util::TimelineTraceFile::Event *e = nullptr;
+
+	if (file)
+		e = file->begin_event("update-scene-enqueue");
 	update_scene(composer, frame_time, elapsed_time);
-	file->end_event(e);
+	if (e)
+		file->end_event(e);
 
-	e = file->begin_event("render-scene-enqueue");
+	if (file)
+		e = file->begin_event("render-scene-enqueue");
 	render_scene(composer);
-	file->end_event(e);
+	if (e)
+		file->end_event(e);
 
-	e = file->begin_event("render-frame-wait");
+	if (file)
+		e = file->begin_event("render-frame-wait");
 	composer.get_outgoing_task()->wait();
-	file->end_event(e);
+	if (e)
+		file->end_event(e);
 }
 
 } // namespace Granite

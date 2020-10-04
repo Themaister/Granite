@@ -24,6 +24,7 @@
 #include "dsp/dsp.hpp"
 #include "fft.h"
 #include "logging.hpp"
+#include "bitops.hpp"
 #include <vector>
 #include <complex>
 #include <string.h>

@@ -25,6 +25,7 @@
 #include "audio_events.hpp"
 #include "timer.hpp"
 #include "logging.hpp"
+#include "bitops.hpp"
 #include <string.h>
 #include <cmath>
 

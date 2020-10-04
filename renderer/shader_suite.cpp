@@ -58,6 +58,11 @@ void ShaderSuite::bake_base_defines()
 	base_define_hash = h.get();
 }
 
+void ShaderSuite::promote_read_write_cache_to_read_only()
+{
+	variants.move_to_read_only();
+}
+
 Vulkan::Program *ShaderSuite::get_program(DrawPipeline pipeline, uint32_t attribute_mask,
                                           uint32_t texture_mask, uint32_t variant_id)
 {

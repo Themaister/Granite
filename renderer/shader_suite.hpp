@@ -41,12 +41,13 @@ public:
 	}
 
 	void bake_base_defines();
+	void promote_read_write_cache_to_read_only();
 
 private:
 	Util::Hash base_define_hash = 0;
 	Vulkan::ShaderManager *manager = nullptr;
 	Vulkan::ShaderProgram *program = nullptr;
-	Util::ThreadSafeIntrusiveHashMap<Util::IntrusivePODWrapper<unsigned>> variants;
+	Util::ThreadSafeIntrusiveHashMapReadCached<Util::IntrusivePODWrapper<unsigned>> variants;
 	std::vector<std::pair<std::string, int>> base_defines;
 };
 }

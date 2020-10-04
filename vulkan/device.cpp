@@ -2446,6 +2446,22 @@ void Device::wait_idle_nolock()
 	}
 }
 
+void Device::promote_read_write_caches_to_read_only()
+{
+#ifdef GRANITE_VULKAN_MT
+	pipeline_layouts.move_to_read_only();
+	descriptor_set_allocators.move_to_read_only();
+	shaders.move_to_read_only();
+	programs.move_to_read_only();
+	for (auto &program : programs.get_read_only())
+		program.promote_read_write_to_read_only();
+	render_passes.move_to_read_only();
+#ifdef GRANITE_VULKAN_FILESYSTEM
+	shader_manager.promote_read_write_caches_to_read_only();
+#endif
+#endif
+}
+
 void Device::next_frame_context()
 {
 	DRAIN_FRAME_LOCK();

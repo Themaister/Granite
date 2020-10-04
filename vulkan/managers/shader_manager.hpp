@@ -99,6 +99,8 @@ public:
 		set_stage(Vulkan::ShaderStage::Fragment, frag);
 	}
 
+	~ShaderProgram();
+
 	Vulkan::Program *get_program(unsigned variant);
 	void set_stage(Vulkan::ShaderStage stage, ShaderTemplate *shader);
 	unsigned register_variant(const std::vector<std::pair<std::string, int>> &defines);
@@ -113,15 +115,24 @@ private:
 		unsigned shader_instance[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
 		Vulkan::Program *program;
 #ifdef GRANITE_VULKAN_MT
-		std::unique_ptr<Util::RWSpinLock> instance_lock = std::make_unique<Util::RWSpinLock>();
+		Util::RWSpinLock instance_lock;
 #endif
 	};
 
-	Vulkan::Program *get_program_locked(unsigned variant);
+	Variant &get_variant(unsigned variant);
+	Variant &allocate_variant(unsigned variant);
+	Program *get_program(Variant &variant);
 
 	ShaderTemplate *stages[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
-	std::vector<Variant> variants;
-	std::vector<Util::Hash> variant_hashes;
+
+	enum { StackVariants = 64 };
+	Util::ObjectPool<Variant> variant_pool;
+	Variant *stack_variants[StackVariants];
+	Util::Hash stack_variant_hashes[StackVariants];
+	std::vector<Variant *> variant_fallbacks;
+	std::vector<Util::Hash> variant_fallback_hashes;
+	size_t variant_count = 0;
+
 #ifdef GRANITE_VULKAN_MT
 	Util::RWSpinLock variant_lock;
 #endif
@@ -156,6 +167,8 @@ public:
 	{
 		return device;
 	}
+
+	void promote_read_write_caches_to_read_only();
 
 private:
 	Device *device;

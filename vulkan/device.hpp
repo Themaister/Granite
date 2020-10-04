@@ -352,6 +352,16 @@ public:
 	// A split version of VkEvent handling which lets us record a wait command before signal is recorded.
 	PipelineEvent begin_signal_event(VkPipelineStageFlags stages);
 
+	// Promotes any read-write cached state to read-only,
+	// which eliminates need to read/write lock.
+	// Can be called at any time as long as there is no
+	// racing access to:
+	// - Command buffer recording which uses pipelines (texture manager is fine).
+	// - request_shader()
+	// - request_program()
+	// Generally, this should be called before you call next_frame_context().
+	void promote_read_write_caches_to_read_only();
+
 private:
 	VkInstance instance = VK_NULL_HANDLE;
 	VkPhysicalDevice gpu = VK_NULL_HANDLE;

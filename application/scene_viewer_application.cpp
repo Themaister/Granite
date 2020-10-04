@@ -1134,6 +1134,9 @@ void SceneViewerApplication::render_frame(double frame_time, double elapsed_time
 	composer.get_outgoing_task()->wait();
 	if (e)
 		file->end_event(e);
+
+	renderer_suite.promote_read_write_cache_to_read_only();
+	get_wsi().get_device().promote_read_write_caches_to_read_only();
 }
 
 } // namespace Granite

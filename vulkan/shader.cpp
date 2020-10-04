@@ -545,6 +545,13 @@ void Program::destroy_pipeline(VkPipeline pipeline)
 		device->destroy_pipeline(pipeline);
 }
 
+void Program::promote_read_write_to_read_only()
+{
+#ifdef GRANITE_VULKAN_MT
+	pipelines.move_to_read_only();
+#endif
+}
+
 Program::~Program()
 {
 #ifdef GRANITE_VULKAN_MT

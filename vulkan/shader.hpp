@@ -183,6 +183,8 @@ public:
 	VkPipeline get_pipeline(Util::Hash hash) const;
 	VkPipeline add_pipeline(Util::Hash hash, VkPipeline pipeline);
 
+	void promote_read_write_to_read_only();
+
 private:
 	void set_shader(ShaderStage stage, Shader *handle);
 	Device *device;

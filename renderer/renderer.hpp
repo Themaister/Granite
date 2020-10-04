@@ -128,6 +128,8 @@ public:
 
 	void set_render_context_parameter_binder(RenderContextParameterBinder *binder);
 
+	void promote_read_write_cache_to_read_only();
+
 protected:
 	mutable ShaderSuite suite[Util::ecast(RenderableType::Count)];
 
@@ -179,6 +181,7 @@ public:
 
 	Renderer &get_renderer(Type type);
 	const Renderer &get_renderer(Type type) const;
+	void promote_read_write_cache_to_read_only();
 
 private:
 	RendererHandle handles[Util::ecast(Type::Count)];

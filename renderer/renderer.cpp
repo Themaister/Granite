@@ -50,6 +50,13 @@ const Renderer &RendererSuite::get_renderer(Type type) const
 	return *handles[Util::ecast(type)];
 }
 
+void RendererSuite::promote_read_write_cache_to_read_only()
+{
+	for (auto &renderer : handles)
+		if (renderer)
+			renderer->promote_read_write_cache_to_read_only();
+}
+
 void RendererSuite::set_default_renderers()
 {
 	set_renderer(Type::ForwardOpaque, Util::make_handle<Renderer>(RendererType::GeneralForward, nullptr));
@@ -441,6 +448,12 @@ void Renderer::bind_global_parameters(Vulkan::CommandBuffer &cmd, const RenderCo
 void Renderer::set_render_context_parameter_binder(RenderContextParameterBinder *binder)
 {
 	render_context_parameter_binder = binder;
+}
+
+void Renderer::promote_read_write_cache_to_read_only()
+{
+	for (auto &s : suite)
+		s.promote_read_write_cache_to_read_only();
 }
 
 void Renderer::flush_subset(Vulkan::CommandBuffer &cmd, const RenderQueue &queue, const RenderContext &context,

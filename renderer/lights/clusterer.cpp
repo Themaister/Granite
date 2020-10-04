@@ -1158,6 +1158,7 @@ void LightClusterer::refresh_bindless(const RenderContext &context_, TaskCompose
 				cmd->end_region();
 				device.submit(cmd);
 
+				// Run all shadow map renderings in parallel in separate composers.
 				for (unsigned i = 0; i < bindless.count; i++)
 				{
 					TaskComposer per_light_composer(thread_group);
@@ -1170,22 +1171,17 @@ void LightClusterer::refresh_bindless(const RenderContext &context_, TaskCompose
 			});
 		}
 
-		// Run all shadow map renderings in parallel in separate composers.
-		{
-			auto &group = composer.begin_pipeline_stage();
-			composer.get_thread_group().add_dependency(group, *indirect_task);
-		}
-
 		// Submit barriers from COLOR/DEPTH -> SHADER_READ_ONLY
 		{
 			auto &group = composer.begin_pipeline_stage();
+			composer.get_thread_group().add_dependency(group, *indirect_task);
 			group.enqueue_task([this, &device]() {
 				auto cmd = device.request_command_buffer();
 				cmd->begin_region("shadow-map-end-barriers");
 				end_bindless_barriers(*cmd);
 				cmd->end_region();
 				device.submit(cmd);
-
+				device.flush_frame();
 				update_bindless_descriptors(device);
 			});
 		}

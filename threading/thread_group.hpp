@@ -72,6 +72,7 @@ struct TaskDeps : Util::IntrusivePtrEnabled<TaskDeps, TaskDepsDeleter, Util::Mul
 		count.store(0, std::memory_order_relaxed);
 		// One implicit dependency is the flush() happening.
 		dependency_count.store(1, std::memory_order_relaxed);
+		desc[0] = '\0';
 	}
 
 	ThreadGroup *group;
@@ -89,6 +90,8 @@ struct TaskDeps : Util::IntrusivePtrEnabled<TaskDeps, TaskDepsDeleter, Util::Mul
 	std::condition_variable cond;
 	std::mutex cond_lock;
 	bool done = false;
+
+	char desc[64];
 };
 using TaskDepsHandle = Util::IntrusivePtr<TaskDeps>;
 
@@ -118,6 +121,8 @@ struct TaskGroup : Util::IntrusivePtrEnabled<TaskGroup, Internal::TaskGroupDelet
 	void enqueue_task(std::function<void ()> func);
 	void set_fence_counter_signal(TaskSignal *signal);
 	ThreadGroup *get_thread_group() const;
+
+	void set_desc(const char *desc);
 
 	unsigned id = 0;
 	bool flushed = false;

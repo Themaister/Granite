@@ -752,6 +752,7 @@ void LightClusterer::render_bindless_spot(Vulkan::Device &device, unsigned index
 	auto data = Util::make_handle<Data>();
 
 	auto &setup_group = composer.begin_pipeline_stage();
+	setup_group.set_desc("clusterer-spot-setup");
 	setup_group.enqueue_task([this, data, index]() mutable {
 		float range = tan(static_cast<const SpotLight *>(bindless.handles[index])->get_xy_range());
 		mat4 view = mat4_cast(look_at_arbitrary_up(bindless.transforms.lights[index].direction)) *
@@ -790,6 +791,7 @@ void LightClusterer::render_bindless_spot(Vulkan::Device &device, unsigned index
 
 	{
 		auto &group = composer.begin_pipeline_stage();
+		group.set_desc("render-shadow-map-spot");
 		group.enqueue_task([&device, data, index, this]() {
 			if (!bindless.shadow_images[index])
 				return;
@@ -818,6 +820,7 @@ void LightClusterer::render_bindless_point(Vulkan::Device &device, unsigned inde
 	auto data = Util::make_handle<Data>();
 
 	auto &setup_group = composer.begin_pipeline_stage();
+	setup_group.set_desc("clusterer-point-setup");
 	setup_group.enqueue_task([data, index, this]() mutable {
 		mat4 view, proj;
 		compute_cube_render_transform(bindless.transforms.lights[index].position, 0, proj, view,
@@ -862,6 +865,7 @@ void LightClusterer::render_bindless_point(Vulkan::Device &device, unsigned inde
 		                                            data->queues[face], data->visibility[face], MaxTasks);
 
 		auto &group = face_composer.begin_pipeline_stage();
+		group.set_desc("render-shadow-map-point-face");
 		group.enqueue_task([&device, data, index, face, this]() {
 			if (!bindless.shadow_images[index])
 				return;
@@ -1131,6 +1135,7 @@ void LightClusterer::refresh_bindless(const RenderContext &context_, TaskCompose
 	// Single task, prepare the lights and which shadow maps to render.
 	{
 		auto &group = composer.begin_pipeline_stage();
+		group.set_desc("clusterer-bindless-prepare");
 		group.enqueue_task([this, &context_]() {
 			refresh_bindless_prepare(context_);
 		});

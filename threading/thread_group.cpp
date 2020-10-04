@@ -119,19 +119,21 @@ void ThreadGroup::set_current_thread_name(const char *name)
 	pthread_setname_np(pthread_self(), name);
 #else
 	// TODO: Kinda messy.
+	(void)name;
 #endif
-	Util::TimelineTraceFile::set_tid(name);
 }
 
 static void set_main_thread_name()
 {
 	ThreadGroup::set_current_thread_name("MainThread");
+	Util::TimelineTraceFile::set_tid("main");
 }
 
 static void set_worker_thread_name(unsigned index)
 {
 	auto name = Util::join("WorkerThread-", index);
 	ThreadGroup::set_current_thread_name(name.c_str());
+	Util::TimelineTraceFile::set_tid(std::to_string(index + 1).c_str());
 }
 
 void ThreadGroup::refresh_global_timeline_trace_file()
@@ -280,6 +282,11 @@ void TaskGroup::enqueue_task(std::function<void()> func)
 	group->enqueue_task(*this, move(func));
 }
 
+void TaskGroup::set_desc(const char *desc)
+{
+	snprintf(deps->desc, sizeof(deps->desc), "%s", desc);
+}
+
 void ThreadGroup::enqueue_task(TaskGroup &group, std::function<void()> func)
 {
 	if (group.flushed)
@@ -328,7 +335,14 @@ void ThreadGroup::thread_looper(unsigned index)
 		}
 
 		if (task->func)
+		{
+			Util::TimelineTraceFile::Event *e = nullptr;
+			if (*task->deps->desc != '\0' && timeline_trace_file)
+				e = timeline_trace_file->begin_event(task->deps->desc);
 			task->func();
+			if (e)
+				timeline_trace_file->end_event(e);
+		}
 
 		task->deps->task_completed();
 		task_pool.free(task);

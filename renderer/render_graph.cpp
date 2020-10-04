@@ -2208,6 +2208,8 @@ void RenderGraph::physical_pass_handle_gpu_timeline(ThreadGroup &group, Vulkan::
 	if (physical_pass_can_multithread(physical_pass))
 	{
 		auto task = group.create_task(std::move(func));
+		task->set_desc((passes[physical_pass.passes.front()]->get_name() + "-build-gpu-commands").c_str());
+
 		if (state.rendering_dependency)
 			group.add_dependency(*task, *state.rendering_dependency);
 		state.rendering_dependency = task;
@@ -2354,6 +2356,7 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device_, TaskComposer &c
 	for (auto &state : pass_submission_state)
 	{
 		auto &group = composer.begin_pipeline_stage();
+		group.set_desc("render-graph-submit");
 		if (state.rendering_dependency)
 		{
 			thread_group.add_dependency(group, *state.rendering_dependency);

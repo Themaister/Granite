@@ -32,6 +32,7 @@ void scene_gather_opaque_renderables(const Scene &scene, TaskComposer &composer,
                                      VisibilityList *lists, unsigned num_tasks)
 {
 	auto &group = composer.begin_pipeline_stage();
+	group.set_desc("gather-opaque-renderables");
 	for (unsigned i = 0; i < num_tasks; i++)
 	{
 		group.enqueue_task([&frustum, lists, &scene, i, num_tasks]() {
@@ -44,6 +45,7 @@ void scene_gather_transparent_renderables(const Scene &scene, TaskComposer &comp
                                           VisibilityList *lists, unsigned num_tasks)
 {
 	auto &group = composer.begin_pipeline_stage();
+	group.set_desc("gather-transparent-renderables");
 	for (unsigned i = 0; i < num_tasks; i++)
 	{
 		group.enqueue_task([&frustum, lists, &scene, i, num_tasks]() {
@@ -57,6 +59,7 @@ void scene_gather_static_shadow_renderables(const Scene &scene, TaskComposer &co
                                             const std::function<bool ()> &func)
 {
 	auto &group = composer.begin_pipeline_stage();
+	group.set_desc("gather-static-shadow-renderables");
 	for (unsigned i = 0; i < num_tasks; i++)
 	{
 		group.enqueue_task([&frustum, lists, &scene, i, num_tasks, func]() {
@@ -71,6 +74,7 @@ void scene_gather_dynamic_shadow_renderables(const Scene &scene, TaskComposer &c
                                              const std::function<bool ()> &func)
 {
 	auto &group = composer.begin_pipeline_stage();
+	group.set_desc("gather-dynamic-shadow-renderables");
 	for (unsigned i = 0; i < num_tasks; i++)
 	{
 		group.enqueue_task([&frustum, lists, &scene, i, num_tasks, func]() {
@@ -84,6 +88,7 @@ void scene_gather_positional_light_renderables(const Scene &scene, TaskComposer 
                                                VisibilityList *lists, unsigned num_tasks)
 {
 	auto &group = composer.begin_pipeline_stage();
+	group.set_desc("gather-positional-light-renderables");
 	for (unsigned i = 0; i < num_tasks; i++)
 	{
 		group.enqueue_task([&frustum, lists, &scene, i, num_tasks]() {
@@ -98,6 +103,7 @@ void scene_gather_positional_light_renderables_sorted(const Scene &scene, TaskCo
 {
 	{
 		auto &group = composer.begin_pipeline_stage();
+		group.set_desc("gather-positional-light-renderables");
 		for (unsigned i = 0; i < num_tasks; i++)
 		{
 			group.enqueue_task([&context, lists, &scene, i, num_tasks]() {
@@ -109,6 +115,7 @@ void scene_gather_positional_light_renderables_sorted(const Scene &scene, TaskCo
 
 	{
 		auto &group = composer.begin_pipeline_stage();
+		group.set_desc("gather-positional-light-renderables-sort");
 		group.enqueue_task([&context, num_tasks, lists]() {
 			size_t expected_size = 0;
 			for (unsigned i = 0; i < num_tasks; i++)
@@ -138,6 +145,7 @@ void compose_parallel_push_renderables(TaskComposer &composer, const RenderConte
 {
 	{
 		auto &group = composer.begin_pipeline_stage();
+		group.set_desc("parallel-push-renderables");
 		for (unsigned i = 0; i < count; i++)
 		{
 			group.enqueue_task([i, &context, visibility, queues]() {
@@ -148,6 +156,7 @@ void compose_parallel_push_renderables(TaskComposer &composer, const RenderConte
 
 	{
 		auto &group = composer.begin_pipeline_stage();
+		group.set_desc("parallel-push-renderables-sort");
 		group.enqueue_task([=]() {
 			for (unsigned i = 1; i < count; i++)
 				queues[0].combine_render_info(queues[i]);

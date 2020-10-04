@@ -111,7 +111,7 @@ private:
 	const RenderContext *context = nullptr;
 	const ComponentGroupVector<PositionalLightComponent, RenderInfoComponent> *lights = nullptr;
 
-	enum { MaxTasks = 8 };
+	enum { MaxTasks = 4 };
 	PositionalLightList light_sort_caches[MaxTasks];
 	RenderQueue internal_queue;
 

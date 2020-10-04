@@ -113,7 +113,7 @@ struct QueueDataWrapped : QueueDataWrappedErased
 class RenderQueue
 {
 public:
-	enum { BlockSize = 256 * 1024 };
+	enum { BlockSize = 64 * 1024 };
 
 	template <typename T>
 	T *push(Queue queue, Util::Hash instance_key, uint64_t sorting_key,

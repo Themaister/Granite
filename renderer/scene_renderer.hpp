@@ -69,7 +69,7 @@ protected:
 	VkClearColorValue clear_color_value = {};
 
 	// These need to be per-thread, and thus are hoisted out as state in RenderPassSceneRenderer.
-	enum { MaxTasks = 16 };
+	enum { MaxTasks = 4 };
 	VisibilityList visible_per_task[MaxTasks];
 	VisibilityList visible_per_task_transparent[MaxTasks];
 	RenderQueue queue_per_task_depth[MaxTasks];

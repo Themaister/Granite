@@ -199,16 +199,16 @@ private:
 
 	struct Block
 	{
-		std::vector<uint8_t> buffer;
+		std::unique_ptr<uint8_t[]> buffer;
 		uintptr_t ptr = 0;
 		uintptr_t begin = 0;
 		uintptr_t end = 0;
 
 		explicit Block(size_t size)
 		{
-			buffer.resize(size);
-			begin = reinterpret_cast<uintptr_t>(buffer.data());
-			end = reinterpret_cast<uintptr_t>(buffer.data()) + size;
+			buffer.reset(new uint8_t[size]);
+			begin = reinterpret_cast<uintptr_t>(buffer.get());
+			end = reinterpret_cast<uintptr_t>(buffer.get()) + size;
 			reset();
 		}
 

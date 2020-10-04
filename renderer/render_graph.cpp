@@ -2372,8 +2372,18 @@ void RenderGraph::enqueue_render_passes(Vulkan::Device &device_, TaskComposer &c
 	if (swapchain_physical_index == RenderResource::Unused)
 	{
 		auto &group = composer.begin_pipeline_stage();
+		group.set_desc("render-queue-swapchain-scale");
 		group.enqueue_task([this, &device_]() {
 			enqueue_swapchain_scale_pass(device_);
+			device_.flush_frame();
+		});
+	}
+	else
+	{
+		auto &group = composer.begin_pipeline_stage();
+		group.set_desc("render-queue-flush");
+		group.enqueue_task([&device_]() {
+			device_.flush_frame();
 		});
 	}
 }

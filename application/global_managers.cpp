@@ -247,6 +247,8 @@ void init(ManagerFeatureFlags flags, unsigned max_threads)
 		unsigned cpu_threads = std::thread::hardware_concurrency();
 		if (cpu_threads > max_threads)
 			cpu_threads = max_threads;
+		if (const char *env = getenv("GRANITE_NUM_WORKER_THREADS"))
+			cpu_threads = strtoul(env, nullptr, 0);
 		global_managers.thread_group->start(cpu_threads);
 	}
 }

@@ -1185,6 +1185,8 @@ void LightClusterer::refresh_bindless(const RenderContext &context_, TaskCompose
 				end_bindless_barriers(*cmd);
 				cmd->end_region();
 				device.submit(cmd);
+
+				update_bindless_descriptors(device);
 			});
 		}
 	}
@@ -1277,40 +1279,8 @@ uvec2 LightClusterer::cluster_lights_cpu(int x, int y, int z, const CPUGlobalAcc
 	return uvec2(spot_mask, point_mask);
 }
 
-void LightClusterer::update_bindless_descriptors(Vulkan::CommandBuffer &cmd)
+void LightClusterer::update_bindless_data(Vulkan::CommandBuffer &cmd)
 {
-	if (!enable_shadows)
-	{
-		bindless.desc_set = VK_NULL_HANDLE;
-		return;
-	}
-
-	if (!bindless.descriptor_pool)
-		bindless.descriptor_pool = cmd.get_device().create_bindless_descriptor_pool(BindlessResourceType::ImageFP, 16, MaxLightsBindless);
-
-	unsigned num_lights = std::max(1u, bindless.count);
-	if (!bindless.descriptor_pool->allocate_descriptors(num_lights))
-	{
-		bindless.descriptor_pool = cmd.get_device().create_bindless_descriptor_pool(BindlessResourceType::ImageFP, 16, MaxLightsBindless);
-		if (!bindless.descriptor_pool->allocate_descriptors(num_lights))
-			LOGE("Failed to allocate descriptors on a fresh descriptor pool!\n");
-	}
-
-	bindless.desc_set = bindless.descriptor_pool->get_descriptor_set();
-
-	if (!bindless.count)
-		return;
-
-	if (enable_shadows)
-	{
-		for (unsigned i = 0; i < bindless.count; i++)
-		{
-			auto *image = bindless.shadow_map_cache.find_and_mark_as_recent(bindless.handles[i]->get_cookie());
-			assert(image);
-			bindless.descriptor_pool->set_texture(i, (*image)->get_view());
-		}
-	}
-
 	memcpy(cmd.update_buffer(*bindless.transforms_buffer, offsetof(ClustererBindlessTransforms, lights),
 	                         bindless.count * sizeof(bindless.transforms.lights[0])),
 	       bindless.transforms.lights,
@@ -1330,6 +1300,41 @@ void LightClusterer::update_bindless_descriptors(Vulkan::CommandBuffer &cmd)
 	                         bindless.parameters.num_lights_32 * sizeof(bindless.transforms.type_mask[0])),
 	       bindless.transforms.type_mask,
 	       bindless.parameters.num_lights_32 * sizeof(bindless.transforms.type_mask[0]));
+}
+
+void LightClusterer::update_bindless_descriptors(Vulkan::Device &device)
+{
+	if (!enable_shadows)
+	{
+		bindless.desc_set = VK_NULL_HANDLE;
+		return;
+	}
+
+	if (!bindless.descriptor_pool)
+		bindless.descriptor_pool = device.create_bindless_descriptor_pool(BindlessResourceType::ImageFP, 16, MaxLightsBindless);
+
+	unsigned num_lights = std::max(1u, bindless.count);
+	if (!bindless.descriptor_pool->allocate_descriptors(num_lights))
+	{
+		bindless.descriptor_pool = device.create_bindless_descriptor_pool(BindlessResourceType::ImageFP, 16, MaxLightsBindless);
+		if (!bindless.descriptor_pool->allocate_descriptors(num_lights))
+			LOGE("Failed to allocate descriptors on a fresh descriptor pool!\n");
+	}
+
+	bindless.desc_set = bindless.descriptor_pool->get_descriptor_set();
+
+	if (!bindless.count)
+		return;
+
+	if (enable_shadows)
+	{
+		for (unsigned i = 0; i < bindless.count; i++)
+		{
+			auto *image = bindless.shadow_map_cache.find_and_mark_as_recent(bindless.handles[i]->get_cookie());
+			assert(image);
+			bindless.descriptor_pool->set_texture(i, (*image)->get_view());
+		}
+	}
 }
 
 bool LightClusterer::bindless_light_is_point(unsigned index) const
@@ -1796,14 +1801,14 @@ void LightClusterer::update_bindless_mask_buffer_gpu(Vulkan::CommandBuffer &cmd)
 
 void LightClusterer::build_cluster_bindless_cpu(Vulkan::CommandBuffer &cmd)
 {
-	update_bindless_descriptors(cmd);
+	update_bindless_data(cmd);
 	update_bindless_range_buffer_cpu(cmd);
 	update_bindless_mask_buffer_cpu(cmd);
 }
 
 void LightClusterer::build_cluster_bindless_gpu(Vulkan::CommandBuffer &cmd)
 {
-	update_bindless_descriptors(cmd);
+	update_bindless_data(cmd);
 	update_bindless_mask_buffer_gpu(cmd);
 	update_bindless_range_buffer_gpu(cmd);
 }

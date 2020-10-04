@@ -40,10 +40,7 @@ public:
 
 	auto get_nowait()
 	{
-		spin.lock_read();
-		auto ret = object.get();
-		spin.unlock_read();
-		return ret;
+		return raw_object.load(std::memory_order_acquire);
 	}
 
 	auto get()
@@ -67,14 +64,22 @@ public:
 
 	T write_object(T new_object)
 	{
+		auto *raw_ptr = new_object.get();
 		spin.lock_write();
 		std::swap(object, new_object);
-		if (!has_object.exchange(true))
+
+		// Need to release here since the content inside the pointer needs to be made visible
+		// before the pointer itself.
+		// The pointer needs to be written before has_object.
+		raw_object.store(raw_ptr, std::memory_order_release);
+
+		if (!has_object.exchange(true, std::memory_order_acq_rel))
 		{
 			std::lock_guard<std::mutex> holder{lock};
 			async_object_exists = true;
 			cond.notify_all();
 		}
+
 		spin.unlock_write();
 		return new_object;
 	}
@@ -91,6 +96,9 @@ public:
 
 private:
 	T object;
+	using RawT = decltype(object.get());
+
+	std::atomic<RawT> raw_object;
 	std::condition_variable cond;
 	std::mutex lock;
 	Util::RWSpinLock spin;

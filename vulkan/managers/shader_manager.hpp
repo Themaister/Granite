@@ -94,11 +94,14 @@ private:
 	Device *device;
 	PrecomputedShaderCache &cache;
 	const ShaderTemplate::Variant *stages[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
-	unsigned shader_instance[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
-	Vulkan::Program *program = nullptr;
+	std::atomic<unsigned> shader_instance[static_cast<unsigned>(Vulkan::ShaderStage::Count)];
+	std::atomic<Vulkan::Program *> program;
 #ifdef GRANITE_VULKAN_MT
 	Util::RWSpinLock instance_lock;
 #endif
+
+	Vulkan::Program *get_program_compute();
+	Vulkan::Program *get_program_graphics();
 };
 
 class ShaderProgram : public Util::IntrusiveHashMapEnabled<ShaderProgram>

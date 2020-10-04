@@ -79,7 +79,7 @@ const ShaderTemplate::Variant *ShaderTemplate::register_variant(const std::vecto
 		for (auto &define : *defines)
 		{
 			h.string(define.first);
-			h.u32(uint32_t(define.second));
+			h.s32(define.second);
 		}
 	}
 
@@ -185,6 +185,117 @@ void ShaderProgram::set_stage(Vulkan::ShaderStage stage, ShaderTemplate *shader)
 ShaderProgramVariant::ShaderProgramVariant(Device *device_, PrecomputedShaderCache &cache_)
 	: device(device_), cache(cache_)
 {
+	for (auto &inst : shader_instance)
+		inst.store(0, std::memory_order_relaxed);
+	program.store(nullptr, std::memory_order_relaxed);
+}
+
+Vulkan::Program *ShaderProgramVariant::get_program_compute()
+{
+	Vulkan::Program *ret;
+
+	auto *comp = stages[Util::ecast(Vulkan::ShaderStage::Compute)];
+	auto &comp_instance = shader_instance[Util::ecast(Vulkan::ShaderStage::Compute)];
+
+	// If we have observed all possible compilation instances,
+	// we can safely read program directly.
+	// comp->instance will only ever be incremented in the main thread on an inotify, so this is fine.
+	// If comp->instance changes in the interim, we are at least guaranteed to read a sensible value for program.
+	unsigned loaded_instance = comp_instance.load(std::memory_order_acquire);
+	if (loaded_instance == comp->instance)
+		return program.load(std::memory_order_relaxed);
+
+#ifdef GRANITE_VULKAN_MT
+	instance_lock.lock_write();
+#endif
+	if (comp_instance.load(std::memory_order_relaxed) != comp->instance)
+	{
+		Vulkan::Program *new_program;
+		if (comp->spirv.empty())
+		{
+			auto *shader = device->request_shader_by_hash(comp->spirv_hash);
+			new_program = device->request_program(shader);
+		}
+		else
+		{
+			new_program = device->request_program(comp->spirv.data(), comp->spirv.size() * sizeof(uint32_t));
+			auto spirv_hash = new_program->get_shader(ShaderStage::Compute)->get_hash();
+			cache.emplace_replace(comp->hash, spirv_hash);
+		}
+
+		program.store(new_program, std::memory_order_relaxed);
+		ret = new_program;
+		comp_instance.store(comp->instance, std::memory_order_release);
+	}
+	else
+	{
+		ret = program.load(std::memory_order_relaxed);
+	}
+#ifdef GRANITE_VULKAN_MT
+	instance_lock.unlock_write();
+#endif
+
+	return ret;
+}
+
+Vulkan::Program *ShaderProgramVariant::get_program_graphics()
+{
+	Vulkan::Program *ret;
+	auto *vert = stages[Util::ecast(Vulkan::ShaderStage::Vertex)];
+	auto *frag = stages[Util::ecast(Vulkan::ShaderStage::Fragment)];
+	auto &vert_instance = shader_instance[Util::ecast(Vulkan::ShaderStage::Vertex)];
+	auto &frag_instance = shader_instance[Util::ecast(Vulkan::ShaderStage::Fragment)];
+
+	unsigned loaded_vert_instance = vert_instance.load(std::memory_order_acquire);
+	unsigned loaded_frag_instance = frag_instance.load(std::memory_order_acquire);
+
+	// If we have observed all possible compilation instances,
+	// we can safely read program directly.
+	// comp->instance will only ever be incremented in the main thread on an inotify, so this is fine.
+	// If comp->instance changes in the interim, we are at least guaranteed to read a sensible value for program.
+	if (loaded_vert_instance == vert->instance && loaded_frag_instance == frag->instance)
+		return program.load(std::memory_order_relaxed);
+
+#ifdef GRANITE_VULKAN_MT
+	instance_lock.lock_write();
+#endif
+	if (vert_instance.load(std::memory_order_relaxed) != vert->instance ||
+	    frag_instance.load(std::memory_order_relaxed) != frag->instance)
+	{
+		Shader *vert_shader;
+		Shader *frag_shader;
+
+		if (vert->spirv.empty())
+			vert_shader = device->request_shader_by_hash(vert->spirv_hash);
+		else
+		{
+			vert_shader = device->request_shader(vert->spirv.data(), vert->spirv.size() * sizeof(uint32_t));
+			cache.emplace_replace(vert->hash, vert_shader->get_hash());
+		}
+
+		if (frag->spirv.empty())
+			frag_shader = device->request_shader_by_hash(frag->spirv_hash);
+		else
+		{
+			frag_shader = device->request_shader(frag->spirv.data(), frag->spirv.size() * sizeof(uint32_t));
+			cache.emplace_replace(frag->hash, frag_shader->get_hash());
+		}
+
+		auto *new_program = device->request_program(vert_shader, frag_shader);
+		program.store(new_program, std::memory_order_relaxed);
+		ret = new_program;
+		vert_instance.store(vert->instance, std::memory_order_release);
+		frag_instance.store(frag->instance, std::memory_order_release);
+	}
+	else
+	{
+		ret = program.load(std::memory_order_relaxed);
+	}
+#ifdef GRANITE_VULKAN_MT
+	instance_lock.unlock_write();
+#endif
+
+	return ret;
 }
 
 Vulkan::Program *ShaderProgramVariant::get_program()
@@ -192,100 +303,13 @@ Vulkan::Program *ShaderProgramVariant::get_program()
 	auto *vert = stages[static_cast<unsigned>(Vulkan::ShaderStage::Vertex)];
 	auto *frag = stages[static_cast<unsigned>(Vulkan::ShaderStage::Fragment)];
 	auto *comp = stages[static_cast<unsigned>(Vulkan::ShaderStage::Compute)];
-	Vulkan::Program *ret = nullptr;
 
 	if (comp)
-	{
-		auto &comp_instance = shader_instance[static_cast<unsigned>(Vulkan::ShaderStage::Compute)];
-#ifdef GRANITE_VULKAN_MT
-		instance_lock.lock_read();
-#endif
-		if (comp_instance != comp->instance)
-		{
-#ifdef GRANITE_VULKAN_MT
-			instance_lock.promote_reader_to_writer();
-#endif
-			if (comp_instance != comp->instance)
-			{
-				comp_instance = comp->instance;
-				if (comp->spirv.empty())
-				{
-					auto *shader = device->request_shader_by_hash(comp->spirv_hash);
-					program = device->request_program(shader);
-				}
-				else
-				{
-					program = device->request_program(comp->spirv.data(), comp->spirv.size() * sizeof(uint32_t));
-					auto spirv_hash = program->get_shader(ShaderStage::Compute)->get_hash();
-					cache.emplace_replace(comp->hash, spirv_hash);
-				}
-			}
-			ret = program;
-#ifdef GRANITE_VULKAN_MT
-			instance_lock.unlock_write();
-#endif
-		}
-		else
-		{
-			ret = program;
-#ifdef GRANITE_VULKAN_MT
-			instance_lock.unlock_read();
-#endif
-		}
-	}
+		return get_program_compute();
 	else if (vert && frag)
-	{
-		auto &vert_instance = shader_instance[static_cast<unsigned>(Vulkan::ShaderStage::Vertex)];
-		auto &frag_instance = shader_instance[static_cast<unsigned>(Vulkan::ShaderStage::Fragment)];
-#ifdef GRANITE_VULKAN_MT
-		instance_lock.lock_read();
-#endif
-
-		if (vert_instance != vert->instance || frag_instance != frag->instance)
-		{
-#ifdef GRANITE_VULKAN_MT
-			instance_lock.promote_reader_to_writer();
-#endif
-			if (vert_instance != vert->instance || frag_instance != frag->instance)
-			{
-				vert_instance = vert->instance;
-				frag_instance = frag->instance;
-				Shader *vert_shader = nullptr;
-				Shader *frag_shader = nullptr;
-
-				if (vert->spirv.empty())
-					vert_shader = device->request_shader_by_hash(vert->spirv_hash);
-				else
-				{
-					vert_shader = device->request_shader(vert->spirv.data(), vert->spirv.size() * sizeof(uint32_t));
-					cache.emplace_replace(vert->hash, vert_shader->get_hash());
-				}
-
-				if (frag->spirv.empty())
-					frag_shader = device->request_shader_by_hash(frag->spirv_hash);
-				else
-				{
-					frag_shader = device->request_shader(frag->spirv.data(), frag->spirv.size() * sizeof(uint32_t));
-					cache.emplace_replace(frag->hash, frag_shader->get_hash());
-				}
-
-				program = device->request_program(vert_shader, frag_shader);
-			}
-			ret = program;
-#ifdef GRANITE_VULKAN_MT
-			instance_lock.unlock_write();
-#endif
-		}
-		else
-		{
-			ret = program;
-#ifdef GRANITE_VULKAN_MT
-			instance_lock.unlock_read();
-#endif
-		}
-	}
-
-	return ret;
+		return get_program_graphics();
+	else
+		return nullptr;
 }
 
 ShaderProgramVariant *ShaderProgram::register_variant(const std::vector<std::pair<std::string, int>> &defines)

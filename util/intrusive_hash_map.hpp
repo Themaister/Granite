@@ -550,4 +550,126 @@ private:
 	IntrusiveHashMap<T> hashmap;
 	mutable RWSpinLock lock;
 };
+
+// A special purpose hashmap which is split into a read-only, immutable portion and a plain thread-safe one.
+// User can move read-write thread-safe portion to read-only portion when user knows it's safe to do so.
+template <typename T>
+class ThreadSafeIntrusiveHashMapReadCached
+{
+public:
+	~ThreadSafeIntrusiveHashMapReadCached()
+	{
+		clear();
+	}
+
+	T *find(Hash hash) const
+	{
+		T *t = read_only.find(hash);
+		if (t)
+			return t;
+
+		lock.lock_read();
+		t = read_write.find(hash);
+		lock.unlock_read();
+		return t;
+	}
+
+	void move_to_read_only()
+	{
+		auto &list = read_write.inner_list();
+		auto itr = list.begin();
+		while (itr != list.end())
+		{
+			auto *to_move = itr.get();
+			read_write.erase(to_move);
+			T *to_delete = read_only.insert_yield(to_move);
+			if (to_delete)
+				object_pool.free(to_delete);
+			itr = list.begin();
+		}
+	}
+
+	template <typename P>
+	bool find_and_consume_pod(Hash hash, P &p) const
+	{
+		if (read_only.find_and_consume_pod(hash, p))
+			return true;
+
+		lock.lock_read();
+		bool ret = read_write.find_and_consume_pod(hash, p);
+		lock.unlock_read();
+		return ret;
+	}
+
+	void clear()
+	{
+		lock.lock_write();
+		clear_list(read_only.inner_list());
+		clear_list(read_write.inner_list());
+		read_only.clear();
+		read_write.clear();
+		lock.unlock_write();
+	}
+
+	template <typename... P>
+	T *allocate(P&&... p)
+	{
+		lock.lock_write();
+		T *t = object_pool.allocate(std::forward<P>(p)...);
+		lock.unlock_write();
+		return t;
+	}
+
+	void free(T *ptr)
+	{
+		lock.lock_write();
+		object_pool.free(ptr);
+		lock.unlock_write();
+	}
+
+	T *insert_yield(Hash hash, T *value)
+	{
+		static_cast<IntrusiveHashMapEnabled<T> *>(value)->set_hash(hash);
+		lock.lock_write();
+		T *to_delete = read_write.insert_yield(value);
+		if (to_delete)
+			object_pool.free(to_delete);
+		lock.unlock_write();
+		return value;
+	}
+
+	template <typename... P>
+	T *emplace_yield(Hash hash, P&&... p)
+	{
+		T *t = allocate(std::forward<P>(p)...);
+		return insert_yield(hash, t);
+	}
+
+	IntrusiveHashMapHolder<T> &get_read_only()
+	{
+		return read_only;
+	}
+
+	IntrusiveHashMapHolder<T> &get_read_write()
+	{
+		return read_write;
+	}
+
+private:
+	IntrusiveHashMapHolder<T> read_only;
+	IntrusiveHashMapHolder<T> read_write;
+	ObjectPool<T> object_pool;
+	mutable RWSpinLock lock;
+
+	void clear_list(IntrusiveList<T> &list)
+	{
+		auto itr = list.begin();
+		while (itr != list.end())
+		{
+			auto *to_free = itr.get();
+			itr = list.erase(itr);
+			object_pool.free(to_free);
+		}
+	}
+};
 }

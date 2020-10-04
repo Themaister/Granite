@@ -40,7 +40,7 @@
 
 namespace Vulkan
 {
-using PrecomputedShaderCache = VulkanCache<Util::IntrusivePODWrapper<Util::Hash>>;
+using PrecomputedShaderCache = VulkanCacheReadWrite<Util::IntrusivePODWrapper<Util::Hash>>;
 
 class ShaderManager;
 class Device;
@@ -78,6 +78,7 @@ private:
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
 	std::unique_ptr<Granite::GLSLCompiler> compiler;
 	const std::vector<std::string> &include_directories;
+	void recompile_variant(Variant &variant);
 #endif
 	VulkanCache<Variant> variants;
 };

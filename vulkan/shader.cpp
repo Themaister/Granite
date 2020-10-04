@@ -537,14 +537,24 @@ VkPipeline Program::add_pipeline(Hash hash, VkPipeline pipeline)
 	return pipelines.emplace_yield(hash, pipeline)->get();
 }
 
+void Program::destroy_pipeline(VkPipeline pipeline)
+{
+	if (internal_sync)
+		device->destroy_pipeline_nolock(pipeline);
+	else
+		device->destroy_pipeline(pipeline);
+}
+
 Program::~Program()
 {
+#ifdef GRANITE_VULKAN_MT
+	for (auto &pipe : pipelines.get_read_only())
+		destroy_pipeline(pipe.get());
+	for (auto &pipe : pipelines.get_read_write())
+		destroy_pipeline(pipe.get());
+#else
 	for (auto &pipe : pipelines)
-	{
-		if (internal_sync)
-			device->destroy_pipeline_nolock(pipe.get());
-		else
-			device->destroy_pipeline(pipe.get());
-	}
+		destroy_pipeline(pipe.get());
+#endif
 }
 }

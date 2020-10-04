@@ -126,6 +126,22 @@ const ShaderTemplate::Variant *ShaderTemplate::register_variant(const std::vecto
 }
 
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
+void ShaderTemplate::recompile_variant(Variant &variant)
+{
+	std::string error_message;
+	auto newspirv = compiler->compile(error_message, &variant.defines);
+	if (newspirv.empty())
+	{
+		LOGE("Failed to compile shader: %s\n%s\n", path.c_str(), error_message.c_str());
+		for (auto &define : variant.defines)
+			LOGE("  Define: %s = %d\n", define.first.c_str(), define.second);
+		return;
+	}
+
+	variant.spirv = move(newspirv);
+	variant.instance++;
+}
+
 void ShaderTemplate::recompile()
 {
 	// Recompile all variants.
@@ -142,21 +158,15 @@ void ShaderTemplate::recompile()
 	}
 	compiler = move(newcompiler);
 
+#ifdef GRANITE_VULKAN_MT
+	for (auto &variant : variants.get_read_only())
+		recompile_variant(variant);
+	for (auto &variant : variants.get_read_write())
+		recompile_variant(variant);
+#else
 	for (auto &variant : variants)
-	{
-		std::string error_message;
-		auto newspirv = compiler->compile(error_message, &variant.defines);
-		if (newspirv.empty())
-		{
-			LOGE("Failed to compile shader: %s\n%s\n", path.c_str(), error_message.c_str());
-			for (auto &define : variant.defines)
-				LOGE("  Define: %s = %d\n", define.first.c_str(), define.second);
-			continue;
-		}
-
-		variant.spirv = move(newspirv);
-		variant.instance++;
-	}
+		recompile_variant(variant);
+#endif
 }
 
 void ShaderTemplate::register_dependencies(ShaderManager &manager)

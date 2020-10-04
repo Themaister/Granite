@@ -2427,8 +2427,16 @@ void Device::wait_idle_nolock()
 
 	framebuffer_allocator.clear();
 	transient_allocator.clear();
+
+#ifdef GRANITE_VULKAN_MT
+	for (auto &allocator : descriptor_set_allocators.get_read_only())
+		allocator.clear();
+	for (auto &allocator : descriptor_set_allocators.get_read_write())
+		allocator.clear();
+#else
 	for (auto &allocator : descriptor_set_allocators)
 		allocator.clear();
+#endif
 
 	for (auto &frame : per_frame)
 	{
@@ -2454,8 +2462,16 @@ void Device::next_frame_context()
 
 	framebuffer_allocator.begin_frame();
 	transient_allocator.begin_frame();
+
+#ifdef GRANITE_VULKAN_MT
+	for (auto &allocator : descriptor_set_allocators.get_read_only())
+		allocator.begin_frame();
+	for (auto &allocator : descriptor_set_allocators.get_read_write())
+		allocator.begin_frame();
+#else
 	for (auto &allocator : descriptor_set_allocators)
 		allocator.begin_frame();
+#endif
 
 	VK_ASSERT(!per_frame.empty());
 	frame_context_index++;

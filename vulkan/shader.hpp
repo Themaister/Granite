@@ -189,5 +189,6 @@ private:
 	Shader *shaders[Util::ecast(ShaderStage::Count)] = {};
 	PipelineLayout *layout = nullptr;
 	VulkanCache<Util::IntrusivePODWrapper<VkPipeline>> pipelines;
+	void destroy_pipeline(VkPipeline pipeline);
 };
 }

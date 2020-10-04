@@ -668,8 +668,8 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 	if (light.ambient_occlusion)
 		defines.emplace_back("AMBIENT_OCCLUSION", 1);
 
-	unsigned variant = program->register_variant(defines);
-	cmd.set_program(program->get_program(variant));
+	auto *variant = program->register_variant(defines);
+	cmd.set_program(variant->get_program());
 	cmd.set_depth_test(true, false);
 	cmd.set_depth_compare(VK_COMPARE_OP_GREATER);
 

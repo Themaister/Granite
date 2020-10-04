@@ -124,11 +124,11 @@ Vulkan::Program *ShaderSuite::get_program(DrawPipeline pipeline, uint32_t attrib
 			defines.emplace_back("HAVE_EMISSIVEMAP", !!(texture_mask & MATERIAL_TEXTURE_EMISSIVE_BIT));
 		}
 
-		unsigned var_id = program->register_variant(defines);
-		variant = variants.emplace_yield(hash, var_id);
+		auto *program_variant = program->register_variant(defines);
+		variant = variants.emplace_yield(hash, program_variant);
 	}
 
-	return program->get_program(variant->get());
+	return variant->get()->get_program();
 }
 
 }

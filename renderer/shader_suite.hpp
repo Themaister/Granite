@@ -47,7 +47,7 @@ private:
 	Util::Hash base_define_hash = 0;
 	Vulkan::ShaderManager *manager = nullptr;
 	Vulkan::ShaderProgram *program = nullptr;
-	Util::ThreadSafeIntrusiveHashMapReadCached<Util::IntrusivePODWrapper<unsigned>> variants;
+	Util::ThreadSafeIntrusiveHashMapReadCached<Util::IntrusivePODWrapper<Vulkan::ShaderProgramVariant *>> variants;
 	std::vector<std::pair<std::string, int>> base_defines;
 };
 }

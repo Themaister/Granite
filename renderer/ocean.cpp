@@ -404,19 +404,19 @@ vec2 Ocean::normalmap_world_size() const
 void Ocean::update_fft_input(Vulkan::CommandBuffer &cmd)
 {
 	auto *program = cmd.get_device().get_shader_manager().register_compute("builtin://shaders/ocean/generate_fft.comp");
-	unsigned height_variant = program->register_variant({
-			                                                    { "FREQ_BAND_MODULATION", freq_band_modulation ? 1 : 0 }
-	                                                    });
+	auto *height_variant = program->register_variant({
+			                                                 { "FREQ_BAND_MODULATION", freq_band_modulation ? 1 : 0 }
+	                                                 });
 
-	unsigned normal_variant = program->register_variant({
-			                                                    { "GRADIENT_NORMAL", 1 },
-			                                                    { "FREQ_BAND_MODULATION", freq_band_modulation ? 1 : 0 }
-	                                                    });
+	auto *normal_variant = program->register_variant({
+			                                                 { "GRADIENT_NORMAL", 1 },
+			                                                 { "FREQ_BAND_MODULATION", freq_band_modulation ? 1 : 0 }
+	                                                 });
 
-	unsigned displacement_variant = program->register_variant({
-			                                                          { "GRADIENT_DISPLACEMENT", 1 },
-			                                                          { "FREQ_BAND_MODULATION", freq_band_modulation ? 1 : 0}
-	                                                          });
+	auto *displacement_variant = program->register_variant({
+			                                                       { "GRADIENT_DISPLACEMENT", 1 },
+			                                                       { "FREQ_BAND_MODULATION", freq_band_modulation ? 1 : 0}
+	                                                       });
 
 	struct Push
 	{
@@ -436,14 +436,14 @@ void Ocean::update_fft_input(Vulkan::CommandBuffer &cmd)
 		       frequency_bands, sizeof(frequency_bands));
 	}
 
-	cmd.set_program(program->get_program(height_variant));
+	cmd.set_program(height_variant->get_program());
 	push.N = uvec2(config.fft_resolution);
 	cmd.set_storage_buffer(0, 0, *distribution_buffer);
 	cmd.set_storage_buffer(0, 1, graph->get_physical_buffer_resource(*height_fft_input));
 	cmd.push_constants(&push, 0, sizeof(push));
 	cmd.dispatch(config.fft_resolution / 64, config.fft_resolution, 1);
 
-	cmd.set_program(program->get_program(displacement_variant));
+	cmd.set_program(displacement_variant->get_program());
 	push.N = uvec2(config.fft_resolution >> config.displacement_downsample);
 	cmd.set_storage_buffer(0, 0, *distribution_buffer_displacement);
 	cmd.set_storage_buffer(0, 1, graph->get_physical_buffer_resource(*displacement_fft_input));
@@ -453,7 +453,7 @@ void Ocean::update_fft_input(Vulkan::CommandBuffer &cmd)
 	             1);
 
 	push.mod = vec2(2.0f * pi<float>()) / normalmap_world_size();
-	cmd.set_program(program->get_program(normal_variant));
+	cmd.set_program(normal_variant->get_program());
 	push.N = uvec2(config.fft_resolution);
 	cmd.set_storage_buffer(0, 0, *distribution_buffer_normal);
 	cmd.set_storage_buffer(0, 1, graph->get_physical_buffer_resource(*normal_fft_input));

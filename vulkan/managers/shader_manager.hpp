@@ -83,6 +83,24 @@ private:
 	VulkanCache<Variant> variants;
 };
 
+class ShaderProgramVariant : public Util::IntrusiveHashMapEnabled<ShaderProgramVariant>
+{
+public:
+	ShaderProgramVariant(Device *device, PrecomputedShaderCache &cache);
+	Vulkan::Program *get_program();
+
+private:
+	friend class ShaderProgram;
+	Device *device;
+	PrecomputedShaderCache &cache;
+	const ShaderTemplate::Variant *stages[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
+	unsigned shader_instance[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
+	Vulkan::Program *program = nullptr;
+#ifdef GRANITE_VULKAN_MT
+	Util::RWSpinLock instance_lock;
+#endif
+};
+
 class ShaderProgram : public Util::IntrusiveHashMapEnabled<ShaderProgram>
 {
 public:
@@ -99,43 +117,14 @@ public:
 		set_stage(Vulkan::ShaderStage::Fragment, frag);
 	}
 
-	~ShaderProgram();
-
-	Vulkan::Program *get_program(unsigned variant);
 	void set_stage(Vulkan::ShaderStage stage, ShaderTemplate *shader);
-	unsigned register_variant(const std::vector<std::pair<std::string, int>> &defines);
+	ShaderProgramVariant *register_variant(const std::vector<std::pair<std::string, int>> &defines);
 
 private:
 	Device *device;
 	PrecomputedShaderCache &cache;
-
-	struct Variant
-	{
-		const ShaderTemplate::Variant *stages[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
-		unsigned shader_instance[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
-		Vulkan::Program *program;
-#ifdef GRANITE_VULKAN_MT
-		Util::RWSpinLock instance_lock;
-#endif
-	};
-
-	Variant &get_variant(unsigned variant);
-	Variant &allocate_variant(unsigned variant);
-	Program *get_program(Variant &variant);
-
 	ShaderTemplate *stages[static_cast<unsigned>(Vulkan::ShaderStage::Count)] = {};
-
-	enum { StackVariants = 64 };
-	Util::ObjectPool<Variant> variant_pool;
-	Variant *stack_variants[StackVariants];
-	Util::Hash stack_variant_hashes[StackVariants];
-	std::vector<Variant *> variant_fallbacks;
-	std::vector<Util::Hash> variant_fallback_hashes;
-	size_t variant_count = 0;
-
-#ifdef GRANITE_VULKAN_MT
-	Util::RWSpinLock variant_lock;
-#endif
+	VulkanCacheReadWrite<ShaderProgramVariant> variant_cache;
 };
 
 class ShaderManager

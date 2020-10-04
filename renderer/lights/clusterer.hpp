@@ -152,8 +152,8 @@ private:
 		} spots;
 
 		Vulkan::BufferHandle cluster_list;
-		unsigned inherit_variant = 0;
-		unsigned cull_variant = 0;
+		Vulkan::ShaderProgramVariant *inherit_variant = nullptr;
+		Vulkan::ShaderProgramVariant *cull_variant = nullptr;
 
 		mat4 cluster_transform;
 		std::vector<uint32_t> cluster_list_buffer;

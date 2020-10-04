@@ -1834,8 +1834,8 @@ void LightClusterer::build_cluster_cpu(Vulkan::CommandBuffer &cmd, Vulkan::Image
 	{
 		auto *copy_program = cmd.get_device().get_shader_manager().register_compute(
 				"builtin://shaders/util/copy_buffer_to_image_3d.comp");
-		auto variant = copy_program->register_variant({});
-		cmd.set_program(copy_program->get_program(variant));
+		auto *variant = copy_program->register_variant({});
+		cmd.set_program(variant->get_program());
 		cmd.set_storage_texture(0, 0, view);
 		cmd.set_storage_buffer(0, 1, *compute_staging);
 
@@ -2064,7 +2064,7 @@ void LightClusterer::build_cluster(Vulkan::CommandBuffer &cmd, Vulkan::ImageView
 		res_z /= ClusterPrepassDownsample;
 	}
 
-	cmd.set_program(legacy.program->get_program(pre_culled ? legacy.inherit_variant : legacy.cull_variant));
+	cmd.set_program(pre_culled ? legacy.inherit_variant->get_program() : legacy.cull_variant->get_program());
 	cmd.set_storage_texture(0, 0, view);
 	if (pre_culled)
 		cmd.set_texture(0, 1, *pre_culled, StockSampler::NearestWrap);

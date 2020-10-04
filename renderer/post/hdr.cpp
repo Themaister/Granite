@@ -43,8 +43,8 @@ static void luminance_build_render_pass(RenderPass &pass, Vulkan::CommandBuffer 
 	unsigned half_height = input.get_image().get_create_info().height / 2;
 
 	auto *program = cmd.get_device().get_shader_manager().register_compute("builtin://shaders/post/luminance.comp");
-	unsigned variant = program->register_variant({});
-	cmd.set_program(program->get_program(variant));
+	auto *variant = program->register_variant({});
+	cmd.set_program(variant->get_program());
 
 	struct Registers
 	{
@@ -74,8 +74,8 @@ static void luminance_build_compute(Vulkan::CommandBuffer &cmd, RenderGraph &gra
 	unsigned half_height = input.get_image().get_create_info().height / 2;
 
 	auto *program = cmd.get_device().get_shader_manager().register_compute("builtin://shaders/post/luminance.comp");
-	unsigned variant = program->register_variant({});
-	cmd.set_program(program->get_program(variant));
+	auto *variant = program->register_variant({});
+	cmd.set_program(variant->get_program());
 
 	struct Registers
 	{
@@ -158,8 +158,8 @@ static void bloom_downsample_build_compute(Vulkan::CommandBuffer &cmd, RenderGra
 	}
 
 	auto *program = cmd.get_device().get_shader_manager().register_compute("builtin://shaders/post/bloom_downsample.comp");
-	unsigned variant = program->register_variant({{ "FEEDBACK", feedback ? 1 : 0 }});
-	cmd.set_program(program->get_program(variant));
+	auto *variant = program->register_variant({{ "FEEDBACK", feedback ? 1 : 0 }});
+	cmd.set_program(variant->get_program());
 
 	struct Registers
 	{
@@ -191,8 +191,8 @@ static void bloom_upsample_build_compute(Vulkan::CommandBuffer &cmd, RenderGraph
 	cmd.set_storage_texture(0, 1, output);
 
 	auto *program = cmd.get_device().get_shader_manager().register_compute("builtin://shaders/post/bloom_upsample.comp");
-	unsigned variant = program->register_variant({});
-	cmd.set_program(program->get_program(variant));
+	auto *variant = program->register_variant({});
+	cmd.set_program(variant->get_program());
 
 	struct Registers
 	{

@@ -1336,8 +1336,8 @@ void CommandBuffer::set_program(const std::string &compute, const std::vector<st
 	auto *p = device->get_shader_manager().register_compute(compute);
 	if (p)
 	{
-		unsigned variant = p->register_variant(defines);
-		set_program(p->get_program(variant));
+		auto *variant = p->register_variant(defines);
+		set_program(variant->get_program());
 	}
 	else
 		set_program(nullptr);
@@ -1349,8 +1349,8 @@ void CommandBuffer::set_program(const std::string &vertex, const std::string &fr
 	auto *p = device->get_shader_manager().register_graphics(vertex, fragment);
 	if (p)
 	{
-		unsigned variant = p->register_variant(defines);
-		set_program(p->get_program(variant));
+		auto *variant = p->register_variant(defines);
+		set_program(variant->get_program());
 	}
 	else
 		set_program(nullptr);

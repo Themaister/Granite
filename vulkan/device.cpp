@@ -2811,8 +2811,8 @@ void Device::PerFrame::begin()
 				max_timestamp_us = (std::max)(max_timestamp_us, end_ts);
 
 				auto *e = device.timeline_trace_file->allocate_event();
-				snprintf(e->desc, sizeof(e->desc), "%s", ts.timestamp_tag->get_tag().c_str());
-				snprintf(e->tid, sizeof(e->tid), "%s", ts.tid.c_str());
+				e->set_desc(ts.timestamp_tag->get_tag().c_str());
+				e->set_tid(ts.tid.c_str());
 				e->pid = frame_index + 1;
 				e->start_ns = start_ts;
 				e->end_ns = end_ts;
@@ -2824,8 +2824,8 @@ void Device::PerFrame::begin()
 	if (device.timeline_trace_file && min_timestamp_us <= max_timestamp_us)
 	{
 		auto *e = device.timeline_trace_file->allocate_event();
-		strcpy(e->desc, "CPU + GPU full frame");
-		strcpy(e->tid, "Frame context");
+		e->set_desc("CPU + GPU full frame");
+		e->set_tid("Frame context");
 		e->pid = frame_index + 1;
 		e->start_ns = min_timestamp_us;
 		e->end_ns = max_timestamp_us;

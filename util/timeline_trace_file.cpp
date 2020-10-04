@@ -47,15 +47,22 @@ TimelineTraceFile *TimelineTraceFile::get_per_thread()
 	return trace_file;
 }
 
+void TimelineTraceFile::Event::set_desc(const char *desc_)
+{
+	snprintf(desc, sizeof(desc), "%s", desc_);
+}
+
+void TimelineTraceFile::Event::set_tid(const char *tid_)
+{
+	snprintf(tid, sizeof(tid), "%s", tid_);
+}
+
 TimelineTraceFile::Event *TimelineTraceFile::begin_event(const char *desc, uint32_t pid)
 {
 	auto *e = event_pool.allocate();
 	e->pid = pid;
-
-	static_assert(sizeof(e->tid) == sizeof(trace_tid), "Size mismatch.");
-	strcpy(e->tid, trace_tid);
-
-	snprintf(e->desc, sizeof(e->desc), "%s", desc);
+	e->set_tid(trace_tid);
+	e->set_desc(desc);
 	e->start_ns = get_current_time_nsecs();
 	return e;
 }

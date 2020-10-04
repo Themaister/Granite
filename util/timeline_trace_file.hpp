@@ -48,6 +48,9 @@ public:
 		char tid[32];
 		uint32_t pid;
 		uint64_t start_ns, end_ns;
+
+		void set_desc(const char *desc);
+		void set_tid(const char *tid);
 	};
 	Event *begin_event(const char *desc, uint32_t pid = 0);
 	void end_event(Event *e);

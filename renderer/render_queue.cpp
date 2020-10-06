@@ -97,15 +97,21 @@ void RenderQueue::enqueue_queue_data(Queue queue_type, const RenderQueueData &re
 	queues[ecast(queue_type)].push_back(render_info);
 }
 
-RenderQueue::Chain::iterator RenderQueue::insert_block()
+Util::ThreadSafeObjectPool<RenderQueue::Block> RenderQueue::allocator_pool;
+
+RenderQueue::Block *RenderQueue::insert_block()
 {
-	return blocks.insert(end(blocks), Block(BlockSize));
+	auto *ret = allocator_pool.allocate();
+	blocks.push_back(ret);
+	return ret;
 }
 
-RenderQueue::Chain::iterator RenderQueue::insert_large_block(size_t size, size_t alignment)
+RenderQueue::Block *RenderQueue::insert_large_block(size_t size, size_t alignment)
 {
 	size_t padded_size = alignment > alignof(uintmax_t) ? (size + alignment) : size;
-	return large_blocks.insert(end(large_blocks), Block(padded_size));
+	auto *ret = allocator_pool.allocate(padded_size);
+	blocks.push_back(ret);
+	return ret;
 }
 
 void *RenderQueue::allocate_from_block(Block &block, size_t size, size_t alignment)
@@ -122,52 +128,44 @@ void *RenderQueue::allocate_from_block(Block &block, size_t size, size_t alignme
 		return nullptr;
 }
 
+void RenderQueue::recycle_blocks()
+{
+	for (auto *block : blocks)
+		allocator_pool.free(block);
+	blocks.clear();
+	current = nullptr;
+}
+
 void RenderQueue::reset()
 {
-	current = begin(blocks);
-	if (current != end(blocks))
-		current->reset();
-
+	recycle_blocks();
 	for (auto &queue : queues)
 		queue.clear();
-
-	large_blocks.clear();
 	render_infos.clear();
 }
 
-void RenderQueue::reset_and_reclaim()
+RenderQueue::~RenderQueue()
 {
-	blocks.clear();
-	large_blocks.clear();
-	render_infos.clear();
-	current = end(blocks);
-
-	for (auto &queue : queues)
-		queue.clear();
+	recycle_blocks();
 }
 
 void *RenderQueue::allocate(size_t size, size_t alignment)
 {
 	if (size + alignment > BlockSize)
 	{
-		auto itr = insert_large_block(size, alignment);
-		return allocate_from_block(*itr, size, alignment);
+		auto *block = insert_large_block(size, alignment);
+		return allocate_from_block(*block, size, alignment);
 	}
 
 	// First allocation.
-	if (current == end(blocks))
+	if (!current)
 		current = insert_block();
 
 	void *data = allocate_from_block(*current, size, alignment);
 	if (data)
 		return data;
 
-	++current;
-	if (current == end(blocks))
-		current = insert_block();
-	else
-		current->reset();
-
+	current = insert_block();
 	data = allocate_from_block(*current, size, alignment);
 	return data;
 }

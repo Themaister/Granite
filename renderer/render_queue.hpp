@@ -115,6 +115,11 @@ class RenderQueue
 public:
 	enum { BlockSize = 64 * 1024 };
 
+	RenderQueue() = default;
+	void operator=(const RenderQueue &) = delete;
+	RenderQueue(const RenderQueue &) = delete;
+	~RenderQueue();
+
 	template <typename T>
 	T *push(Queue queue, Util::Hash instance_key, uint64_t sorting_key,
 	        RenderFunc render, void *instance_data)
@@ -168,9 +173,10 @@ public:
 
 	void combine_render_info(const RenderQueue &queue);
 	void reset();
-	void reset_and_reclaim();
 
-	const std::vector<RenderQueueData> &get_queue_data(Queue queue) const
+	using RenderQueueDataVector = Util::SmallVector<RenderQueueData, 64>;
+
+	const RenderQueueDataVector &get_queue_data(Queue queue) const
 	{
 		return queues[Util::ecast(queue)];
 	}
@@ -197,25 +203,31 @@ public:
 private:
 	void enqueue_queue_data(Queue queue, const RenderQueueData &data);
 
-	struct Block
+	struct Block : Util::IntrusivePtrEnabled<Block>
 	{
-		std::unique_ptr<uint8_t[]> buffer;
+		std::unique_ptr<uint8_t[]> large_buffer;
 		uintptr_t ptr = 0;
 		uintptr_t begin = 0;
 		uintptr_t end = 0;
+		uint8_t inline_buffer[BlockSize];
 
 		explicit Block(size_t size)
 		{
-			buffer.reset(new uint8_t[size]);
-			begin = reinterpret_cast<uintptr_t>(buffer.get());
-			end = reinterpret_cast<uintptr_t>(buffer.get()) + size;
+			large_buffer.reset(new uint8_t[size]);
+			begin = reinterpret_cast<uintptr_t>(large_buffer.get());
+			end = reinterpret_cast<uintptr_t>(large_buffer.get()) + size;
+			reset();
+		}
+
+		Block()
+		{
+			begin = reinterpret_cast<uintptr_t>(inline_buffer);
+			end = reinterpret_cast<uintptr_t>(inline_buffer) + BlockSize;
 			reset();
 		}
 
 		void operator=(const Block &) = delete;
 		Block(const Block &) = delete;
-		Block(Block &&) = default;
-		Block &operator=(Block &&) = default;
 
 		void reset()
 		{
@@ -223,18 +235,18 @@ private:
 		}
 	};
 
-	using Chain = std::list<Block>;
-	Chain blocks;
-	Chain large_blocks;
-	Chain::iterator current = std::end(blocks);
+	static Util::ThreadSafeObjectPool<Block> allocator_pool;
 
-	std::vector<RenderQueueData> queues[static_cast<unsigned>(Queue::Count)];
+	static void *allocate_from_block(Block &block, size_t size, size_t alignment);
+	Block *insert_block();
+	Block *insert_large_block(size_t size, size_t alignment);
 
-	void *allocate_from_block(Block &block, size_t size, size_t alignment);
-	Chain::iterator insert_block();
-	Chain::iterator insert_large_block(size_t size, size_t alignment);
+	RenderQueueDataVector queues[static_cast<unsigned>(Queue::Count)];
+	Util::SmallVector<Block *, 64> blocks;
+	Block *current = nullptr;
 
 	ShaderSuite *shader_suites = nullptr;
 	Util::IntrusiveHashMapHolder<QueueDataWrappedErased> render_infos;
+	void recycle_blocks();
 };
 }

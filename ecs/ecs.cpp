@@ -90,6 +90,7 @@ EntityPool::~EntityPool()
 	}
 
 	reset_groups();
+	free_groups();
 }
 
 void EntityDeleter::operator()(Entity *entity)

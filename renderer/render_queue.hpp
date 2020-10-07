@@ -44,9 +44,17 @@ struct RenderableInfo
 {
 	AbstractRenderable *renderable;
 	const RenderInfoComponent *transform;
+	Util::Hash transform_hash;
+};
+
+struct PositionalLightInfo
+{
+	PositionalLight *light;
+	const RenderInfoComponent *transform;
+	Util::Hash transform_hash;
 };
 using VisibilityList = std::vector<RenderableInfo>;
-using PositionalLightList = std::vector<std::pair<PositionalLight *, const RenderInfoComponent *>>;
+using PositionalLightList = std::vector<PositionalLightInfo>;
 
 enum class Queue : unsigned
 {

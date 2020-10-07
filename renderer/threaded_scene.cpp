@@ -128,8 +128,8 @@ void scene_gather_positional_light_renderables_sorted(const Scene &scene, TaskCo
 
 			// Prefer lights which are closest to the camera.
 			std::sort(lights.begin(), lights.end(), [&context](const auto &a, const auto &b) -> bool {
-				auto *transform_a = a.second;
-				auto *transform_b = b.second;
+				auto *transform_a = a.transform;
+				auto *transform_b = b.transform;
 				vec3 pos_a = transform_a->transform->world_transform[3].xyz();
 				vec3 pos_b = transform_b->transform->world_transform[3].xyz();
 				float dist_a = dot(pos_a, context.get_render_parameters().camera_front);

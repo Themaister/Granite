@@ -190,8 +190,10 @@ struct CachedTransformComponent : ComponentBase
 struct CachedSpatialTransformTimestampComponent : ComponentBase
 {
 	GRANITE_COMPONENT_TYPE_DECL(CachedSpatialTransformTimestampComponent)
-	uint32_t last_timestamp = ~0u;
+	uint64_t cookie = 0;
+	Util::Hash timestamp_hash = 0;
 	const uint32_t *current_timestamp = nullptr;
+	uint32_t last_timestamp = ~0u;
 };
 
 struct OpaqueComponent : ComponentBase

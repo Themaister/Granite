@@ -1001,8 +1001,8 @@ void LightClusterer::refresh_legacy(const RenderContext& context_)
 
 	for (auto &light : light_sort_caches[0])
 	{
-		auto &l = *light.first;
-		auto *transform = light.second;
+		auto &l = *light.light;
+		auto *transform = light.transform;
 
 		if (l.get_type() == PositionalLight::Type::Spot)
 		{
@@ -1071,8 +1071,8 @@ void LightClusterer::refresh_bindless_prepare(const RenderContext &context_)
 
 	for (auto &light : light_sort_caches[0])
 	{
-		auto &l = *light.first;
-		auto *transform = light.second;
+		auto &l = *light.light;
+		auto *transform = light.transform;
 
 		if (l.get_type() == PositionalLight::Type::Spot)
 		{

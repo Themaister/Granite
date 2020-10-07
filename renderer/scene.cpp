@@ -34,12 +34,12 @@ namespace Granite
 
 Scene::Scene()
 	: spatials(pool.get_component_group<BoundedComponent, RenderInfoComponent, CachedSpatialTransformTimestampComponent>()),
-	  opaque(pool.get_component_group<RenderInfoComponent, RenderableComponent, OpaqueComponent>()),
-	  transparent(pool.get_component_group<RenderInfoComponent, RenderableComponent, TransparentComponent>()),
-	  positional_lights(pool.get_component_group<RenderInfoComponent, RenderableComponent, PositionalLightComponent>()),
-	  static_shadowing(pool.get_component_group<RenderInfoComponent, RenderableComponent, CastsStaticShadowComponent>()),
-	  dynamic_shadowing(pool.get_component_group<RenderInfoComponent, RenderableComponent, CastsDynamicShadowComponent>()),
-	  render_pass_shadowing(pool.get_component_group<RenderPassComponent, RenderableComponent, CastsDynamicShadowComponent>()),
+	  opaque(pool.get_component_group<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, OpaqueComponent>()),
+	  transparent(pool.get_component_group<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, TransparentComponent>()),
+	  positional_lights(pool.get_component_group<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, PositionalLightComponent>()),
+	  static_shadowing(pool.get_component_group<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, CastsStaticShadowComponent>()),
+	  dynamic_shadowing(pool.get_component_group<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, CastsDynamicShadowComponent>()),
+	  render_pass_shadowing(pool.get_component_group<RenderPassComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, CastsDynamicShadowComponent>()),
 	  backgrounds(pool.get_component_group<UnboundedComponent, RenderableComponent>()),
 	  cameras(pool.get_component_group<CameraComponent, CachedTransformComponent>()),
 	  directional_lights(pool.get_component_group<DirectionalLightComponent, CachedTransformComponent>()),
@@ -73,17 +73,22 @@ static void gather_visible_renderables(const Frustum &frustum, VisibilityList &l
 		auto &o = objects[i];
 		auto *transform = get_component<RenderInfoComponent>(o);
 		auto *renderable = get_component<RenderableComponent>(o);
+		auto *timestamp = get_component<CachedSpatialTransformTimestampComponent>(o);
+
+		Util::Hasher h;
+		h.u64(timestamp->cookie);
+		h.u32(timestamp->last_timestamp);
 
 		if (transform->transform)
 		{
 			if ((renderable->renderable->flags & RENDERABLE_FORCE_VISIBLE_BIT) != 0 ||
 			    SIMD::frustum_cull(transform->world_aabb, frustum.get_planes()))
 			{
-				list.push_back({ renderable->renderable.get(), transform });
+				list.push_back({ renderable->renderable.get(), transform, h.get() });
 			}
 		}
 		else
-			list.push_back({ renderable->renderable.get(), nullptr});
+			list.push_back({ renderable->renderable.get(), nullptr, h.get() });
 	}
 }
 
@@ -239,6 +244,7 @@ void Scene::gather_visible_dynamic_shadow_renderables_subset(const Frustum &frus
 static void gather_positional_lights(const Frustum &frustum, VisibilityList &list,
                                      const std::vector<std::tuple<RenderInfoComponent *,
 	                                     RenderableComponent *,
+	                                     CachedSpatialTransformTimestampComponent *,
 	                                     PositionalLightComponent *>> &positional,
                                      size_t start_index, size_t end_index)
 {
@@ -247,21 +253,27 @@ static void gather_positional_lights(const Frustum &frustum, VisibilityList &lis
 		auto &o = positional[i];
 		auto *transform = get_component<RenderInfoComponent>(o);
 		auto *renderable = get_component<RenderableComponent>(o);
+		auto *timestamp = get_component<CachedSpatialTransformTimestampComponent>(o);
+
+		Util::Hasher h;
+		h.u64(timestamp->cookie);
+		h.u32(timestamp->last_timestamp);
 
 		if (transform->transform)
 		{
 			if (SIMD::frustum_cull(transform->world_aabb, frustum.get_planes()))
-				list.push_back({ renderable->renderable.get(), transform });
+				list.push_back({ renderable->renderable.get(), transform, h.get() });
 		}
 		else
-			list.push_back({ renderable->renderable.get(), nullptr });
+			list.push_back({ renderable->renderable.get(), nullptr, h.get() });
 	}
 }
 
 static void gather_positional_lights(const Frustum &frustum, PositionalLightList &list,
                                      const std::vector<std::tuple<RenderInfoComponent *,
-		                                     RenderableComponent *,
-		                                     PositionalLightComponent *>> &positional,
+	                                     RenderableComponent *,
+	                                     CachedSpatialTransformTimestampComponent *,
+	                                     PositionalLightComponent *>> &positional,
                                      size_t start_index, size_t end_index)
 {
 	for (size_t i = start_index; i < end_index; i++)
@@ -269,14 +281,19 @@ static void gather_positional_lights(const Frustum &frustum, PositionalLightList
 		auto &o = positional[i];
 		auto *transform = get_component<RenderInfoComponent>(o);
 		auto *light = get_component<PositionalLightComponent>(o)->light;
+		auto *timestamp = get_component<CachedSpatialTransformTimestampComponent>(o);
+
+		Util::Hasher h;
+		h.u64(timestamp->cookie);
+		h.u32(timestamp->last_timestamp);
 
 		if (transform->transform)
 		{
 			if (SIMD::frustum_cull(transform->world_aabb, frustum.get_planes()))
-				list.push_back({ light, transform });
+				list.push_back({ light, transform, h.get() });
 		}
 		else
-			list.push_back({ light, transform });
+			list.push_back({ light, transform, h.get() });
 	}
 }
 
@@ -567,6 +584,8 @@ Entity *Scene::create_entity()
 	return entity;
 }
 
+static std::atomic<uint64_t> transform_cookies;
+
 Entity *Scene::create_light(const SceneFormats::LightInfo &light, Node *node)
 {
 	Entity *entity = pool.create_entity();
@@ -613,6 +632,8 @@ Entity *Scene::create_light(const SceneFormats::LightInfo &light, Node *node)
 
 		auto *transform = entity->allocate_component<RenderInfoComponent>();
 		auto *timestamp = entity->allocate_component<CachedSpatialTransformTimestampComponent>();
+		timestamp->cookie = transform_cookies.fetch_add(1, std::memory_order_relaxed);
+
 		if (node)
 		{
 			transform->transform = &node->cached_transform;
@@ -636,6 +657,8 @@ Entity *Scene::create_renderable(AbstractRenderableHandle renderable, Node *node
 	{
 		auto *transform = entity->allocate_component<RenderInfoComponent>();
 		auto *timestamp = entity->allocate_component<CachedSpatialTransformTimestampComponent>();
+		timestamp->cookie = transform_cookies.fetch_add(1, std::memory_order_relaxed);
+
 		if (node)
 		{
 			transform->transform = &node->cached_transform;

@@ -418,13 +418,56 @@ void Scene::update_transform_tree(Node &node, const mat4 &transform, bool parent
 	}
 }
 
-void Scene::update_cached_transforms()
+size_t Scene::get_cached_transforms_count() const
+{
+	return spatials.size();
+}
+
+void Scene::update_cached_transforms_subset(unsigned index, unsigned num_indices)
+{
+	size_t begin_index = (spatials.size() * index) / num_indices;
+	size_t end_index = (spatials.size() * (index + 1)) / num_indices;
+	update_cached_transforms_range(begin_index, end_index);
+}
+
+void Scene::update_transform_tree_and_cached_transforms()
+{
+	update_transform_tree();
+	update_cached_transforms_range(0, spatials.size());
+}
+
+void Scene::update_transform_tree()
 {
 	if (root_node)
 		update_transform_tree(*root_node, mat4(1.0f), false);
 
-	for (auto &s : spatials)
+	// Update camera transforms.
+	for (auto &c : cameras)
 	{
+		CameraComponent *cam;
+		CachedTransformComponent *transform;
+		tie(cam, transform) = c;
+		cam->camera.set_transform(transform->transform->world_transform);
+	}
+
+	// Update directional light transforms.
+	for (auto &light : directional_lights)
+	{
+		DirectionalLightComponent *l;
+		CachedTransformComponent *transform;
+		tie(l, transform) = light;
+
+		// v = [0, 0, 1, 0].
+		l->direction = normalize(transform->transform->world_transform[2].xyz());
+	}
+}
+
+void Scene::update_cached_transforms_range(size_t begin_range, size_t end_range)
+{
+	for (size_t i = begin_range; i < end_range; i++)
+	{
+		auto &s = spatials[i];
+
 		BoundedComponent *aabb;
 		RenderInfoComponent *cached_transform;
 		CachedSpatialTransformTimestampComponent *timestamp;
@@ -450,26 +493,6 @@ void Scene::update_cached_transforms()
 			}
 			timestamp->last_timestamp = *timestamp->current_timestamp;
 		}
-	}
-
-	// Update camera transforms.
-	for (auto &c : cameras)
-	{
-		CameraComponent *cam;
-		CachedTransformComponent *transform;
-		tie(cam, transform) = c;
-		cam->camera.set_transform(transform->transform->world_transform);
-	}
-
-	// Update directional light transforms.
-	for (auto &light : directional_lights)
-	{
-		DirectionalLightComponent *l;
-		CachedTransformComponent *transform;
-		tie(l, transform) = light;
-
-		// v = [0, 0, 1, 0].
-		l->direction = normalize(transform->transform->world_transform[2].xyz());
 	}
 }
 

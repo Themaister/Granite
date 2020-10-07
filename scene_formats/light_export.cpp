@@ -52,7 +52,7 @@ std::string export_lights_to_json(const DirectionalParameters &dir, Scene &scene
 	Value spots(kArrayType);
 	Value points(kArrayType);
 
-	scene.update_cached_transforms();
+	scene.update_transform_tree_and_cached_transforms();
 	auto &pos = scene.get_entity_pool().get_component_group<PositionalLightComponent, RenderInfoComponent>();
 
 	for (auto &light : pos)

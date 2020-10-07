@@ -45,7 +45,7 @@ void SimpleRenderer::set_directional_light_direction(const vec3 &direction)
 
 void SimpleRenderer::render_scene(const Camera &camera, Scene &scene, Vulkan::CommandBuffer &cmd)
 {
-	scene.update_cached_transforms();
+	scene.update_transform_tree_and_cached_transforms();
 	render_context.set_camera(camera);
 	render_context.set_lighting_parameters(&lighting);
 

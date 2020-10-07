@@ -381,7 +381,7 @@ void SceneViewerApplication::loop_animations()
 
 void SceneViewerApplication::rescale_scene(float radius)
 {
-	scene_loader.get_scene().update_cached_transforms();
+	scene_loader.get_scene().update_transform_tree_and_cached_transforms();
 
 	AABB aabb(vec3(FLT_MAX), vec3(-FLT_MAX));
 	auto &objects = scene_loader.get_scene()
@@ -1014,7 +1014,7 @@ void SceneViewerApplication::update_scene(TaskComposer &composer, double frame_t
 	auto &scene = scene_loader.get_scene();
 
 	animation_system->animate(frame_time, elapsed_time);
-	scene.update_cached_transforms();
+	scene.update_transform_tree_and_cached_transforms();
 
 	jitter.step(selected_camera->get_projection(), selected_camera->get_view());
 

@@ -44,7 +44,11 @@ public:
 	void operator=(const Scene &) = delete;
 
 	void refresh_per_frame(const RenderContext &context, TaskComposer &composer);
-	void update_cached_transforms();
+
+	void update_transform_tree_and_cached_transforms();
+	void update_transform_tree();
+	void update_cached_transforms_subset(unsigned index, unsigned num_indices);
+	size_t get_cached_transforms_count() const;
 
 	void gather_visible_opaque_renderables(const Frustum &frustum, VisibilityList &list) const;
 	void gather_visible_transparent_renderables(const Frustum &frustum, VisibilityList &list) const;
@@ -239,5 +243,7 @@ private:
 	void update_transform_tree(Node &node, const mat4 &transform, bool parent_is_dirty);
 
 	void update_skinning(Node &node);
+
+	void update_cached_transforms_range(size_t start_index, size_t end_index);
 };
 }

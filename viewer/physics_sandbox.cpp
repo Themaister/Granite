@@ -470,7 +470,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 		}
 
 		Global::physics()->iterate(frame_time);
-		scene.update_cached_transforms();
+		scene.update_transform_free_and_cached_transforms();
 
 		lighting.directional.direction = normalize(vec3(1.0f, 0.5f, 1.0f));
 		lighting.directional.color = vec3(1.0f, 0.8f, 0.6f);

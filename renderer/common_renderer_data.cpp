@@ -180,4 +180,24 @@ void SSAOLookupTables::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
 	kernel.reset();
 	noise.reset();
 }
+
+BRDFTables::BRDFTables()
+{
+	EVENT_MANAGER_REGISTER_LATCH(BRDFTables, on_device_created, on_device_destroyed, Vulkan::DeviceCreatedEvent);
+}
+
+void BRDFTables::on_device_created(const Vulkan::DeviceCreatedEvent &e)
+{
+	texture = e.get_device().get_texture_manager().request_texture("builtin://textures/ibl_brdf_lut.gtx");
+}
+
+void BRDFTables::on_device_destroyed(const Vulkan::DeviceCreatedEvent &)
+{
+	texture = nullptr;
+}
+
+Vulkan::Texture *BRDFTables::get_texture() const
+{
+	return texture;
+}
 }

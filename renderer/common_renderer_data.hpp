@@ -28,6 +28,11 @@
 #include "application_wsi_events.hpp"
 #include "application_events.hpp"
 
+namespace Vulkan
+{
+class Texture;
+}
+
 namespace Granite
 {
 class PersistentFrameEvent : public EventHandler
@@ -77,11 +82,24 @@ private:
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
 };
 
+class BRDFTables : public EventHandler
+{
+public:
+	BRDFTables();
+	Vulkan::Texture *get_texture() const;
+
+private:
+	Vulkan::Texture *texture = nullptr;
+	void on_device_created(const Vulkan::DeviceCreatedEvent &e);
+	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
+};
+
 class CommonRendererData
 {
 public:
 	LightMesh light_mesh;
 	PersistentFrameEvent frame_tick;
 	SSAOLookupTables ssao_luts;
+	BRDFTables brdf_tables;
 };
 }

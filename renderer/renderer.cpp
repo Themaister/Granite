@@ -27,6 +27,8 @@
 #include "lights/clusterer.hpp"
 #include "lights/volumetric_fog.hpp"
 #include "render_parameters.hpp"
+#include "global_managers.hpp"
+#include "common_renderer_data.hpp"
 #include <string.h>
 
 using namespace Vulkan;
@@ -678,8 +680,7 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 	if (light.environment_irradiance)
 		cmd.set_texture(1, 1, *light.environment_irradiance, Vulkan::StockSampler::LinearClamp);
 
-	cmd.set_texture(1, 2,
-	                cmd.get_device().get_texture_manager().request_texture("builtin://textures/ibl_brdf_lut.gtx")->get_image()->get_view(),
+	cmd.set_texture(1, 2, Granite::Global::common_renderer_data()->brdf_tables.get_texture()->get_image()->get_view(),
 	                Vulkan::StockSampler::LinearClamp);
 
 	if (light.shadow_far)

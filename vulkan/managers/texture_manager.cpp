@@ -152,8 +152,6 @@ void Texture::update_gtx(const Granite::SceneFormats::MemoryMappedTexture &mappe
 		info.misc = IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT | IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT |
 		            IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT;
 
-		mapped_file.remap_swizzle(info.swizzle);
-
 		if (info.levels == 1 &&
 		    (mapped_file.get_flags() & Granite::SceneFormats::MEMORY_MAPPED_TEXTURE_GENERATE_MIPMAP_ON_LOAD_BIT) != 0 &&
 		    device->image_format_is_supported(info.format, VK_FORMAT_FEATURE_BLIT_SRC_BIT) &&

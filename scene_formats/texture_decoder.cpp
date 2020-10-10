@@ -1210,7 +1210,16 @@ Vulkan::ImageHandle decode_compressed_image(Vulkan::CommandBuffer &cmd, const Vu
 
 	// For EXTENDED_USAGE_BIT.
 	if (!device.get_device_features().supports_maintenance_2)
+	{
+		LOGE("Require KHR_maintenance_2.\n");
 		return {};
+	}
+
+	if (!device.get_device_features().enabled_features.shaderStorageImageWriteWithoutFormat)
+	{
+		LOGE("Require shaderStorageImageWriteWithoutFormat.\n");
+		return {};
+	}
 
 	uint32_t block_width, block_height;
 	Vulkan::TextureFormatLayout::format_block_dim(layout.get_format(), block_width, block_height);

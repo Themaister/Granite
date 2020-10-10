@@ -73,8 +73,19 @@ public:
 
 	virtual vec2 get_z_range(const RenderContext &context, const mat4 &transform) const = 0;
 
+	Util::Hash get_shadow_transform_hash() const
+	{
+		return shadow_hash;
+	}
+
+	void set_shadow_transform_hash(Util::Hash hash)
+	{
+		shadow_hash = hash;
+	}
+
 protected:
 	AABB aabb;
+	Util::Hash shadow_hash = ~Util::Hash(0);
 	vec3 color = vec3(1.0f);
 	float falloff_range = 1.0f;
 	float cutoff_range = 100.0f;

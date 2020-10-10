@@ -131,9 +131,19 @@ void RenderPassSceneRenderer::enqueue_prepare_render_pass(TaskComposer &composer
 	if (setup_data.flags & SCENE_RENDERER_DEPTH_BIT)
 	{
 		if (setup_data.flags & SCENE_RENDERER_DEPTH_DYNAMIC_BIT)
-			Threaded::scene_gather_dynamic_shadow_renderables(*setup_data.scene, composer, setup_data.context->get_visibility_frustum(), visible_per_task, MaxTasks);
+		{
+			Threaded::scene_gather_dynamic_shadow_renderables(*setup_data.scene, composer,
+			                                                  setup_data.context->get_visibility_frustum(),
+			                                                  visible_per_task, nullptr, MaxTasks);
+		}
+
 		if (setup_data.flags & SCENE_RENDERER_DEPTH_STATIC_BIT)
-			Threaded::scene_gather_static_shadow_renderables(*setup_data.scene, composer, setup_data.context->get_visibility_frustum(), visible_per_task, MaxTasks);
+		{
+			Threaded::scene_gather_static_shadow_renderables(*setup_data.scene, composer,
+			                                                 setup_data.context->get_visibility_frustum(),
+			                                                 visible_per_task, nullptr, MaxTasks);
+		}
+
 		Threaded::compose_parallel_push_renderables(composer, *setup_data.context, queue_per_task_depth, visible_per_task, MaxTasks);
 	}
 }

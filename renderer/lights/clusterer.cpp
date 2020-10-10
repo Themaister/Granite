@@ -681,7 +681,13 @@ void LightClusterer::begin_bindless_barriers(Vulkan::CommandBuffer &cmd)
 		                                                  (point ? 6 : 1) *
 		                                                  (vsm ? 8 : 2));
 
-		if (image && !force_update_shadows)
+		Util::Hash current_transform_hash;
+		if (point)
+			current_transform_hash = static_cast<const ShadowTaskContextPoint &>(*bindless.shadow_task_handles[i]).get_combined_hash();
+		else
+			current_transform_hash = static_cast<const ShadowTaskContextSpot &>(*bindless.shadow_task_handles[i]).get_combined_hash();
+
+		if (image && (!force_update_shadows && current_transform_hash == bindless.handles[i]->get_shadow_transform_hash()))
 			continue;
 
 		if (!image)
@@ -701,6 +707,7 @@ void LightClusterer::begin_bindless_barriers(Vulkan::CommandBuffer &cmd)
 		else
 			bindless.src_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
 
+		bindless.handles[i]->set_shadow_transform_hash(current_transform_hash);
 		bindless.shadow_images[i] = image.get();
 		add_barrier(image->get_image());
 	}
@@ -740,16 +747,10 @@ void LightClusterer::end_bindless_barriers(Vulkan::CommandBuffer &cmd)
 	}
 }
 
-void LightClusterer::render_bindless_spot(Vulkan::Device &device, unsigned index, TaskComposer &composer)
+LightClusterer::ShadowTaskContextSpotHandle
+LightClusterer::gather_bindless_spot_shadow_renderables(unsigned index, TaskComposer &composer)
 {
-	struct Data : Util::IntrusivePtrEnabled<Data, std::default_delete<Data>, Util::MultiThreadCounter>
-	{
-		RenderContext depth_context;
-		VisibilityList visibility[MaxTasks];
-		RenderQueue queues[MaxTasks];
-	};
-
-	auto data = Util::make_handle<Data>();
+	auto data = Util::make_handle<ShadowTaskContextSpot>();
 
 	auto &setup_group = composer.begin_pipeline_stage();
 	setup_group.set_desc("clusterer-spot-setup");
@@ -766,58 +767,23 @@ void LightClusterer::render_bindless_spot(Vulkan::Device &device, unsigned index
 				scale(vec3(0.5f, 0.5f, 1.0f)) *
 				proj * view;
 
-		if (bindless.shadow_images[index])
-		{
-			static_cast<SpotLight *>(bindless.handles[index])->set_shadow_info(
-					&bindless.shadow_images[index]->get_view(),
-					bindless.transforms.shadow[index]);
-		}
-
-		data->depth_context.set_camera(proj, view);
+		data->depth_context[0].set_camera(proj, view);
 		auto &depth_renderer = get_shadow_renderer();
-		for (auto &queue : data->queues)
+		for (auto &queue : data->queues[0])
 			depth_renderer.begin(queue);
 	});
 
 	Threaded::scene_gather_static_shadow_renderables(*scene, composer,
-	                                                 data->depth_context.get_visibility_frustum(),
-	                                                 data->visibility, MaxTasks,
-	                                                 [this, index]() -> bool {
-		                                                 return bindless.shadow_images[index] != nullptr;
-	                                                 });
+	                                                 data->depth_context[0].get_visibility_frustum(),
+	                                                 data->visibility[0], data->hashes[0], MaxTasks);
 
-	Threaded::compose_parallel_push_renderables(composer, data->depth_context,
-	                                            data->queues, data->visibility, MaxTasks);
-
-	{
-		auto &group = composer.begin_pipeline_stage();
-		group.set_desc("render-shadow-map-spot");
-		group.enqueue_task([&device, data, index, this]() {
-			if (!bindless.shadow_images[index])
-				return;
-			LOGI("Rendering shadow for spot light %u (%p)\n", index,
-			     static_cast<const void *>(bindless.handles[index]));
-			auto cmd = device.request_command_buffer();
-			render_shadow(*cmd, data->depth_context, data->queues[0],
-			              0, 0,
-			              shadow_resolution, shadow_resolution,
-			              bindless.shadow_images[index]->get_view(), 0,
-			              Renderer::DEPTH_BIAS_BIT | Renderer::SKIP_SORTING_BIT);
-			device.submit(cmd);
-		});
-	}
+	return data;
 }
 
-void LightClusterer::render_bindless_point(Vulkan::Device &device, unsigned index, TaskComposer &composer)
+LightClusterer::ShadowTaskContextPointHandle
+LightClusterer::gather_bindless_point_shadow_renderables(unsigned index, TaskComposer &composer)
 {
-	struct Data : Util::IntrusivePtrEnabled<Data, std::default_delete<Data>, Util::MultiThreadCounter>
-	{
-		RenderContext depth_context[6];
-		VisibilityList visibility[6][MaxTasks];
-		RenderQueue queues[6][MaxTasks];
-	};
-
-	auto data = Util::make_handle<Data>();
+	auto data = Util::make_handle<ShadowTaskContextPoint>();
 
 	auto &setup_group = composer.begin_pipeline_stage();
 	setup_group.set_desc("clusterer-point-setup");
@@ -827,13 +793,6 @@ void LightClusterer::render_bindless_point(Vulkan::Device &device, unsigned inde
 		                              0.005f / bindless.transforms.lights[index].inv_radius,
 		                              1.0f / bindless.transforms.lights[index].inv_radius);
 		bindless.transforms.shadow[index][0] = vec4(proj[2].zw(), proj[3].zw());
-
-		if (bindless.shadow_images[index])
-		{
-			static_cast<PointLight *>(bindless.handles[index])->set_shadow_info(
-					&bindless.shadow_images[index]->get_view(),
-					PointTransform{bindless.transforms.shadow[index][0]});
-		}
 
 		for (unsigned face = 0; face < 6; face++)
 		{
@@ -856,22 +815,62 @@ void LightClusterer::render_bindless_point(Vulkan::Device &device, unsigned inde
 
 		Threaded::scene_gather_static_shadow_renderables(*scene, face_composer,
 		                                                 data->depth_context[face].get_visibility_frustum(),
-		                                                 data->visibility[face], MaxTasks,
-		                                                 [this, index]() -> bool {
-			                                                 return bindless.shadow_images[index] != nullptr;
-		                                                 });
+		                                                 data->visibility[face], data->hashes[face], MaxTasks);
 
-		Threaded::compose_parallel_push_renderables(face_composer, data->depth_context[face],
-		                                            data->queues[face], data->visibility[face], MaxTasks);
+		composer.get_thread_group().add_dependency(per_face_stage, *face_composer.get_outgoing_task());
+	}
+
+	return data;
+}
+
+void LightClusterer::render_bindless_spot(Vulkan::Device &device, unsigned index, TaskComposer &composer)
+{
+	auto data = bindless.shadow_task_handles[index];
+	auto &spot_data = static_cast<ShadowTaskContextSpot &>(*data);
+
+	Threaded::compose_parallel_push_renderables(composer, spot_data.depth_context[0],
+	                                            spot_data.queues[0], spot_data.visibility[0], MaxTasks);
+
+	{
+		auto &group = composer.begin_pipeline_stage();
+		group.set_desc("render-shadow-map-spot");
+		group.enqueue_task([&device, data, index, this]() {
+			auto &spot = static_cast<const ShadowTaskContextSpot &>(*data);
+			LOGI("Rendering shadow for spot light %u (%p)\n", index,
+			     static_cast<const void *>(bindless.handles[index]));
+			auto cmd = device.request_command_buffer();
+			render_shadow(*cmd, spot.depth_context[0], spot.queues[0][0],
+			              0, 0,
+			              shadow_resolution, shadow_resolution,
+			              bindless.shadow_images[index]->get_view(), 0,
+			              Renderer::DEPTH_BIAS_BIT | Renderer::SKIP_SORTING_BIT);
+			device.submit(cmd);
+		});
+	}
+}
+
+void LightClusterer::render_bindless_point(Vulkan::Device &device, unsigned index, TaskComposer &composer)
+{
+	auto data = bindless.shadow_task_handles[index];
+	auto &point_data = static_cast<ShadowTaskContextPoint &>(*data);
+
+	auto &per_face_stage = composer.begin_pipeline_stage();
+
+	for (unsigned face = 0; face < 6; face++)
+	{
+		TaskComposer face_composer(composer.get_thread_group());
+		face_composer.set_incoming_task(composer.get_pipeline_stage_dependency());
+
+		Threaded::compose_parallel_push_renderables(face_composer, point_data.depth_context[face],
+		                                            point_data.queues[face], point_data.visibility[face], MaxTasks);
 
 		auto &group = face_composer.begin_pipeline_stage();
 		group.set_desc("render-shadow-map-point-face");
 		group.enqueue_task([&device, data, index, face, this]() {
-			if (!bindless.shadow_images[index])
-				return;
+			auto &point = static_cast<const ShadowTaskContextPoint &>(*data);
 			LOGI("Rendering shadow for point light %u (%p)\n", index, static_cast<const void *>(bindless.handles[index]));
 			auto cmd = device.request_command_buffer();
-			render_shadow(*cmd, data->depth_context[face], data->queues[face][0],
+			render_shadow(*cmd, point.depth_context[face], point.queues[face][0],
 			              0, 0, shadow_resolution, shadow_resolution,
 			              bindless.shadow_images[index]->get_view(),
 			              face,
@@ -1069,6 +1068,9 @@ void LightClusterer::refresh_bindless_prepare(const RenderContext &context_)
 	unsigned index = 0;
 	memset(bindless.transforms.type_mask, 0, sizeof(bindless.transforms.type_mask));
 
+	bindless.light_transform_hashes.clear();
+	bindless.light_transform_hashes.reserve(light_sort_caches[0].size());
+
 	for (auto &light : light_sort_caches[0])
 	{
 		auto &l = *light.light;
@@ -1083,6 +1085,7 @@ void LightClusterer::refresh_bindless_prepare(const RenderContext &context_)
 				bindless.transforms.lights[index] = spot.get_shader_info(transform->transform->world_transform);
 				bindless.transforms.model[index] = spot.build_model_matrix(transform->transform->world_transform);
 				bindless.handles[index] = &l;
+				bindless.light_transform_hashes.push_back(light.transform_hash);
 				index++;
 			}
 		}
@@ -1097,6 +1100,7 @@ void LightClusterer::refresh_bindless_prepare(const RenderContext &context_)
 				                                           1.0f / bindless.transforms.lights[index].inv_radius);
 				bindless.transforms.type_mask[index >> 5] |= 1u << (index & 31u);
 				bindless.handles[index] = &l;
+				bindless.light_transform_hashes.push_back(light.transform_hash);
 				index++;
 			}
 		}
@@ -1132,7 +1136,13 @@ void LightClusterer::refresh_bindless_prepare(const RenderContext &context_)
 
 void LightClusterer::refresh_bindless(const RenderContext &context_, TaskComposer &composer)
 {
-	// Single task, prepare the lights and which shadow maps to render.
+	auto &device = context_.get_device();
+	auto &thread_group = composer.get_thread_group();
+
+	bindless.shadow_task_handles.clear();
+	bindless.shadow_task_handles.reserve(bindless.count);
+
+	// Single task, prepare the lights.
 	{
 		auto &group = composer.begin_pipeline_stage();
 		group.set_desc("clusterer-bindless-prepare");
@@ -1143,15 +1153,37 @@ void LightClusterer::refresh_bindless(const RenderContext &context_, TaskCompose
 
 	if (enable_shadows)
 	{
-		// Submit barriers from UNDEFINED -> COLOR/DEPTH.
-		auto indirect_task = composer.get_thread_group().create_task();
-
-		auto &device = context_.get_device();
+		auto gather_indirect_task = thread_group.create_task();
 		{
 			auto &group = composer.begin_pipeline_stage();
-			composer.get_thread_group().add_dependency(*indirect_task, *composer.get_pipeline_stage_dependency());
+			group.set_desc("clusterer-bindless-setup");
+			group.enqueue_task([this, gather_indirect_task, &thread_group]() mutable {
+				// Gather renderables and compute the visiblity hash.
+				for (unsigned i = 0; i < bindless.count; i++)
+				{
+					TaskComposer per_light_composer(thread_group);
+					if (bindless_light_is_point(i))
+					{
+						bindless.shadow_task_handles.emplace_back(
+								gather_bindless_point_shadow_renderables(i, per_light_composer));
+					}
+					else
+					{
+						bindless.shadow_task_handles.emplace_back(
+								gather_bindless_spot_shadow_renderables(i, per_light_composer));
+					}
+					thread_group.add_dependency(*gather_indirect_task, *per_light_composer.get_outgoing_task());
+				}
+			});
+		}
 
-			group.enqueue_task([this, &device, indirect_task, &thread_group = composer.get_thread_group()]() mutable {
+		// Submit barriers from UNDEFINED -> COLOR/DEPTH.
+		auto indirect_task = thread_group.create_task();
+		{
+			auto &group = composer.begin_pipeline_stage();
+			thread_group.add_dependency(group, *gather_indirect_task);
+
+			group.enqueue_task([this, &device, indirect_task, &thread_group]() mutable {
 				auto cmd = device.request_command_buffer();
 				cmd->begin_region("shadow-map-begin-barriers");
 				begin_bindless_barriers(*cmd);
@@ -1161,6 +1193,9 @@ void LightClusterer::refresh_bindless(const RenderContext &context_, TaskCompose
 				// Run all shadow map renderings in parallel in separate composers.
 				for (unsigned i = 0; i < bindless.count; i++)
 				{
+					if (!bindless.shadow_images[i])
+						continue;
+
 					TaskComposer per_light_composer(thread_group);
 					if (bindless_light_is_point(i))
 						render_bindless_point(device, i, per_light_composer);

@@ -221,6 +221,12 @@ private:
 	Vulkan::ImageHandle scratch_vsm_rt;
 	Vulkan::ImageHandle scratch_vsm_down;
 
+	struct ShadowTaskBase : Util::ThreadSafeIntrusivePtrEnabled<ShadowTaskBase>
+	{
+		virtual ~ShadowTaskBase() = default;
+	};
+	using ShadowTaskHandle = Util::IntrusivePtr<ShadowTaskBase>;
+
 	// Bindless
 	struct
 	{
@@ -247,6 +253,8 @@ private:
 		VkPipelineStageFlags dst_stage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 		std::vector<VkImageMemoryBarrier> shadow_barriers;
 		std::vector<const Vulkan::Image *> shadow_images;
+		std::vector<ShadowTaskHandle> shadow_task_handles;
+		std::vector<Util::Hash> light_transform_hashes;
 	} bindless;
 
 	void update_bindless_descriptors(Vulkan::Device &device);
@@ -259,8 +267,39 @@ private:
 	void update_bindless_mask_buffer_point(uint32_t *masks, unsigned index);
 	void begin_bindless_barriers(Vulkan::CommandBuffer &cmd);
 	void end_bindless_barriers(Vulkan::CommandBuffer &cmd);
+
+	template <unsigned Faces, unsigned MaxTasks>
+	struct ShadowTaskContext : ShadowTaskBase
+	{
+		RenderContext depth_context[Faces];
+		VisibilityList visibility[Faces][MaxTasks];
+		Util::Hash hashes[Faces][MaxTasks];
+		RenderQueue queues[Faces][MaxTasks];
+
+		Util::Hash get_combined_hash() const
+		{
+			Util::Hasher hasher;
+			for (unsigned face = 0; face < Faces; face++)
+			{
+				Util::Hash h = 0;
+				for (auto &hash : hashes[face])
+					h ^= hash;
+				hasher.u64(h);
+			}
+			return hasher.get();
+		}
+	};
+	using ShadowTaskContextSpot = ShadowTaskContext<1, MaxTasks>;
+	using ShadowTaskContextPoint = ShadowTaskContext<6, MaxTasks>;
+	using ShadowTaskContextSpotHandle = Util::IntrusivePtr<ShadowTaskContextSpot>;
+	using ShadowTaskContextPointHandle = Util::IntrusivePtr<ShadowTaskContextPoint>;
+
+	ShadowTaskContextSpotHandle gather_bindless_spot_shadow_renderables(unsigned index, TaskComposer &composer);
+	ShadowTaskContextPointHandle gather_bindless_point_shadow_renderables(unsigned index, TaskComposer &composer);
+
 	void render_bindless_spot(Vulkan::Device &device, unsigned index, TaskComposer &composer);
 	void render_bindless_point(Vulkan::Device &device, unsigned index, TaskComposer &composer);
+
 	bool bindless_light_is_point(unsigned index) const;
 
 	const Renderer &get_shadow_renderer() const;

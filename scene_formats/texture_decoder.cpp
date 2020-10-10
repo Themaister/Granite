@@ -785,6 +785,7 @@ static void setup_astc_lut_partition_table(Vulkan::CommandBuffer &cmd, VkFormat 
 	}
 
 	auto info = Vulkan::ImageCreateInfo::immutable_2d_image(lut_width, lut_height, VK_FORMAT_R8_UINT);
+	info.misc = Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT;
 	Vulkan::ImageInitialData data = {};
 	data.data = lut_buffer.data();
 	auto lut_image = cmd.get_device().create_image(info, &data);

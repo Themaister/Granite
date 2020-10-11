@@ -373,14 +373,14 @@ void Scene::update_skinning(Node &node)
 {
 	if (!node.cached_skin_transform.bone_world_transforms.empty())
 	{
-		auto len = node.get_skin().skin.size();
-		assert(node.get_skin().skin.size() == node.cached_skin_transform.bone_world_transforms.size());
+		auto len = node.get_skin()->skin.size();
+		assert(node.get_skin()->skin.size() == node.cached_skin_transform.bone_world_transforms.size());
 		//assert(node.get_skin().cached_skin.size() == node.cached_skin_transform.bone_normal_transforms.size());
 		for (size_t i = 0; i < len; i++)
 		{
 			SIMD::mul(node.cached_skin_transform.bone_world_transforms[i],
-			          node.get_skin().cached_skin[i]->world_transform,
-			          node.get_skin().inverse_bind_poses[i]);
+			          node.get_skin()->cached_skin[i]->world_transform,
+			          node.get_skin()->inverse_bind_poses[i]);
 			//node.cached_skin_transform.bone_normal_transforms[i] = node.get_skin().cached_skin[i]->normal_transform;
 		}
 		//log_node_transforms(node);
@@ -659,7 +659,8 @@ Scene::NodeHandle Scene::create_skinned_node(const SceneFormats::Skin &skin)
 	node->cached_skin_transform.bone_world_transforms.resize(skin.joint_transforms.size());
 	//node->cached_skin_transform.bone_normal_transforms.resize(skin.joint_transforms.size());
 
-	auto &node_skin = node->get_skin();
+	node->set_skin(skinning_pool.allocate());
+	auto &node_skin = *node->get_skin();
 	node_skin.skin.reserve(skin.joint_transforms.size());
 	node_skin.cached_skin.reserve(skin.joint_transforms.size());
 	node_skin.inverse_bind_poses.reserve(skin.joint_transforms.size());
@@ -816,7 +817,7 @@ Entity *Scene::create_renderable(AbstractRenderableHandle renderable, Node *node
 			transform->transform = &node->cached_transform;
 			timestamp->current_timestamp = node->get_timestamp_pointer();
 
-			if (!node->get_skin().cached_skin.empty())
+			if (node->get_skin() && !node->get_skin()->cached_skin.empty())
 				transform->skin_transform = &node->cached_skin_transform;
 		}
 		auto *bounded = entity->allocate_component<BoundedComponent>();

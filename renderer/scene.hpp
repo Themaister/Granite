@@ -107,6 +107,12 @@ public:
 		{
 		}
 
+		~Node()
+		{
+			if (skinning)
+				parent_scene->skinning_pool.free(skinning);
+		}
+
 		Scene *parent_scene;
 		Transform transform;
 		CachedTransform cached_transform;
@@ -150,7 +156,14 @@ public:
 			Util::Hash skin_compat = 0;
 		};
 
-		Skinning &get_skin()
+		inline void set_skin(Skinning *skinning_)
+		{
+			if (skinning)
+				parent_scene->skinning_pool.free(skinning);
+			skinning = skinning_;
+		}
+
+		inline Skinning *get_skin()
 		{
 			return skinning;
 		}
@@ -182,12 +195,11 @@ public:
 	private:
 		std::vector<Util::IntrusivePtr<Node>> children;
 		std::vector<Util::IntrusivePtr<Node>> skeletons;
-		Skinning skinning;
+		Skinning *skinning = nullptr;
 		Node *parent = nullptr;
-
+		uint32_t timestamp = 0;
 		bool any_child_transform_dirty = true;
 		bool cached_transform_dirty = true;
-		uint32_t timestamp = 0;
 	};
 	using NodeHandle = Util::IntrusivePtr<Node>;
 	NodeHandle create_node();
@@ -226,6 +238,7 @@ public:
 private:
 	EntityPool pool;
 	Util::ObjectPool<Node> node_pool;
+	Util::ObjectPool<Node::Skinning> skinning_pool;
 	NodeHandle root_node;
 	const ComponentGroupVector<BoundedComponent, RenderInfoComponent, CachedSpatialTransformTimestampComponent> &spatials;
 	const ComponentGroupVector<RenderInfoComponent, RenderableComponent, CachedSpatialTransformTimestampComponent, OpaqueComponent> &opaque;

@@ -253,7 +253,8 @@ AnimationStateID AnimationSystem::start_animation(Scene::Node &node, Granite::An
 	AnimationStateID id;
 	if (animation->is_skinned())
 	{
-		if (node.get_skin().skin.empty() || node.get_skin().skin_compat != animation->get_skin_compat())
+		if (!node.get_skin() || node.get_skin()->skin.empty() ||
+		    node.get_skin()->skin_compat != animation->get_skin_compat())
 		{
 			LOGE("Skin is not compatible with animation.\n");
 			return 0;
@@ -291,13 +292,14 @@ void AnimationSystem::set_fixed_pose(Scene::Node &node, Granite::AnimationID id,
 
 	if (animation->is_skinned())
 	{
-		if (node.get_skin().skin.empty() || node.get_skin().skin_compat != animation->get_skin_compat())
+		if (!node.get_skin() || node.get_skin()->skin.empty() ||
+		    node.get_skin()->skin_compat != animation->get_skin_compat())
 		{
 			LOGE("Skin is not compatible with animation.\n");
 			return;
 		}
 
-		animation->animate(node.get_skin().skin.data(), node.get_skin().skin.size(), offset);
+		animation->animate(node.get_skin()->skin.data(), node.get_skin()->skin.size(), offset);
 		node.invalidate_cached_transform();
 	}
 	else
@@ -441,7 +443,7 @@ void AnimationSystem::animate(double frame_time, double elapsed_time)
 		if (itr->animation.is_skinned())
 		{
 			auto *node = itr->skinned_node;
-			itr->animation.animate(node->get_skin().skin.data(), node->get_skin().skin.size(), offset);
+			itr->animation.animate(node->get_skin()->skin.data(), node->get_skin()->skin.size(), offset);
 			node->invalidate_cached_transform();
 		}
 		else

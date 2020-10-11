@@ -25,6 +25,7 @@
 #include "math.hpp"
 #include "aabb.hpp"
 #include "simd_headers.hpp"
+#include "muglm/matrix_helper.hpp"
 
 namespace Granite
 {
@@ -326,6 +327,44 @@ static inline void transform_and_expand_aabb(AABB &expandee, const AABB &aabb, c
 	auto &output_max = expandee.get_maximum4();
 	output_min = min(output_min, tmp.get_minimum4());
 	output_max = max(output_max, tmp.get_maximum4());
+#endif
+}
+
+static inline void convert_quaternion_with_scale(vec4 *cols, const quat &q, const vec3 &scale)
+{
+#if defined(__SSE3__)
+	__m128 quat = _mm_loadu_ps(q.as_vec4().data);
+
+#define SHUF(x, y, z) _mm_shuffle_ps(quat, quat, _MM_SHUFFLE(z, y, x, 3))
+	__m128 q_yy_xz_xy = _mm_mul_ps(SHUF(1, 0, 0), SHUF(1, 2, 1));
+	__m128 q_zz_wy_wz = _mm_mul_ps(SHUF(2, 3, 3), SHUF(2, 1, 2));
+	__m128 col0 = _mm_mul_ps(_mm_set_ps(+2.0f, +2.0f, -2.0f, 0.0f), _mm_addsub_ps(q_yy_xz_xy, q_zz_wy_wz));
+	col0 = _mm_shuffle_ps(col0, col0, _MM_SHUFFLE(0, 2, 3, 1));
+	col0 = _mm_add_ps(col0, _mm_set_ss(1.0f));
+	col0 = _mm_mul_ps(col0, _mm_set1_ps(scale.x));
+	_mm_storeu_ps(cols[0].data, col0);
+
+	__m128 q_xx_xy_yz = _mm_mul_ps(SHUF(0, 0, 1), SHUF(0, 1, 2));
+	__m128 q_zz_wz_wx = _mm_mul_ps(SHUF(2, 3, 3), SHUF(2, 2, 0));
+	__m128 col1 = _mm_mul_ps(_mm_set_ps(2.0f, 2.0f, -2.0f, 0.0f), _mm_addsub_ps(q_xx_xy_yz, q_zz_wz_wx));
+	col1 = _mm_shuffle_ps(col1, col1, _MM_SHUFFLE(0, 3, 1, 2));
+	col1 = _mm_add_ps(col1, _mm_set_ps(0.0f, 0.0f, 1.0f, 0.0f));
+	col1 = _mm_mul_ps(col1, _mm_set1_ps(scale.y));
+	_mm_storeu_ps(cols[1].data, col1);
+
+	__m128 q_xz_yz_xx = _mm_mul_ps(SHUF(0, 1, 0), SHUF(2, 2, 0));
+	__m128 q_wy_wx_yy = _mm_mul_ps(SHUF(3, 3, 1), SHUF(1, 0, 1));
+	__m128 col2 = _mm_mul_ps(_mm_set_ps(-2.0f, 2.0f, 2.0f, 0.0f), _mm_addsub_ps(q_xz_yz_xx, q_wy_wx_yy));
+	col2 = _mm_shuffle_ps(col2, col2, _MM_SHUFFLE(0, 3, 2, 1));
+	col2 = _mm_add_ps(col2, _mm_set_ps(0.0f, 1.0f, 0.0f, 0.0f));
+	col2 = _mm_mul_ps(col2, _mm_set1_ps(scale.z));
+	_mm_storeu_ps(cols[2].data, col2);
+#undef SHUF
+#else
+	mat3 m = muglm::mat3_cast(q);
+	cols[0] = vec4(m[0] * scale.x, 0.0f);
+	cols[1] = vec4(m[1] * scale.y, 0.0f);
+	cols[2] = vec4(m[2] * scale.z, 0.0f);
 #endif
 }
 }

@@ -71,10 +71,38 @@ static void test_frustum_cull()
 	}
 }
 
+static void test_quat()
+{
+	quat q(-0.91354f, 0.123415f, 0.4325f, -0.8434f);
+	mat3 reference = mat3_cast(q);
+
+	vec4 cols[3];
+	SIMD::convert_quaternion_with_scale(cols, q, vec3(1.0f));
+
+	for (unsigned col = 0; col < 3; col++)
+	{
+		for (int comp = 0; comp < 3; comp++)
+		{
+			if (muglm::abs(cols[col][comp] - reference[col][comp]) > 0.00001f)
+			{
+				LOGE("Quat mismatch!\n");
+				exit(1);
+			}
+		}
+
+		if (cols[col].w != 0.0f)
+		{
+			LOGE("Quat mismatch!\n");
+			exit(1);
+		}
+	}
+}
+
 int main()
 {
 	test_matrix_multiply();
 	test_frustum_cull();
 	test_aabb_transform();
+	test_quat();
 	LOGI(":D\n");
 }

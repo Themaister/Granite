@@ -392,29 +392,31 @@ void Scene::update_transform_tree(Node &node, const mat4 &transform, bool parent
 
 	if (transform_dirty)
 	{
-		compute_model_transform(node.cached_transform.world_transform,
+		compute_model_transform(node.world_transform_seen_by_children,
 		                        node.transform.scale, node.transform.rotation, node.transform.translation, transform);
+
+		for (auto &child : node.get_skeletons())
+			update_transform_tree(*child, node.world_transform_seen_by_children, true);
+
+		// Apply the first transformation in the sequence, this is used for skinning.
+		if (node.needs_initial_transform)
+		{
+			SIMD::mul(node.cached_transform.world_transform,
+			          node.world_transform_seen_by_children,
+			          node.initial_transform);
+		}
+		else
+			node.cached_transform.world_transform = node.world_transform_seen_by_children;
+
+		//compute_normal_transform(node.cached_transform.normal_transform, node.cached_transform.world_transform);
+		update_skinning(node);
+		node.update_timestamp();
 	}
 
 	if (node.get_and_clear_child_transform_dirty() || transform_dirty)
 	{
 		for (auto &child : node.get_children())
-			update_transform_tree(*child, node.cached_transform.world_transform, transform_dirty);
-	}
-
-	if (transform_dirty)
-	{
-		for (auto &child : node.get_skeletons())
-			update_transform_tree(*child, node.cached_transform.world_transform, true);
-
-		// Apply the first transformation in the sequence, this is used for skinning.
-		SIMD::mul(node.cached_transform.world_transform,
-		          node.cached_transform.world_transform,
-		          node.initial_transform);
-
-		//compute_normal_transform(node.cached_transform.normal_transform, node.cached_transform.world_transform);
-		update_skinning(node);
-		node.update_timestamp();
+			update_transform_tree(*child, node.world_transform_seen_by_children, transform_dirty);
 	}
 }
 
@@ -430,9 +432,10 @@ void Scene::update_cached_transforms_subset(unsigned index, unsigned num_indices
 	update_cached_transforms_range(begin_index, end_index);
 }
 
-void Scene::update_transform_tree_and_cached_transforms()
+void Scene::update_all_transforms()
 {
 	update_transform_tree();
+	update_transform_listener_components();
 	update_cached_transforms_range(0, spatials.size());
 }
 
@@ -440,7 +443,10 @@ void Scene::update_transform_tree()
 {
 	if (root_node)
 		update_transform_tree(*root_node, mat4(1.0f), false);
+}
 
+void Scene::update_transform_listener_components()
+{
 	// Update camera transforms.
 	for (auto &c : cameras)
 	{
@@ -527,6 +533,7 @@ Scene::NodeHandle Scene::create_skinned_node(const SceneFormats::Skin &skin)
 		bones[i]->transform.scale = skin.joint_transforms[i].scale;
 		bones[i]->transform.rotation = skin.joint_transforms[i].rotation;
 		bones[i]->initial_transform = skin.inverse_bind_pose[i];
+		bones[i]->needs_initial_transform = true;
 	}
 
 	node->cached_skin_transform.bone_world_transforms.resize(skin.joint_transforms.size());

@@ -45,8 +45,9 @@ public:
 
 	void refresh_per_frame(const RenderContext &context, TaskComposer &composer);
 
-	void update_transform_tree_and_cached_transforms();
+	void update_all_transforms();
 	void update_transform_tree();
+	void update_transform_listener_components();
 	void update_cached_transforms_subset(unsigned index, unsigned num_indices);
 	size_t get_cached_transforms_count() const;
 
@@ -92,6 +93,9 @@ public:
 		void operator()(Node *node);
 	};
 
+	// TODO: Need to slim this down, and be more data oriented.
+	// Should possibly maintain separate large buffers with transform matrices, and just point to those
+	// in the node.
 	class Node : public Util::IntrusivePtrEnabled<Node, NodeDeleter>
 	{
 	public:
@@ -161,7 +165,9 @@ public:
 			return ret;
 		}
 
-		mat4 initial_transform = mat4(1.0f);
+		mat4 world_transform_seen_by_children;
+		mat4 initial_transform;
+		bool needs_initial_transform = false;
 
 		void update_timestamp()
 		{

@@ -381,7 +381,7 @@ void SceneViewerApplication::loop_animations()
 
 void SceneViewerApplication::rescale_scene(float radius)
 {
-	scene_loader.get_scene().update_transform_tree_and_cached_transforms();
+	scene_loader.get_scene().update_all_transforms();
 
 	AABB aabb(vec3(FLT_MAX), vec3(-FLT_MAX));
 	auto &objects = scene_loader.get_scene()

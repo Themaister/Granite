@@ -1014,7 +1014,13 @@ void SceneViewerApplication::update_scene(TaskComposer &composer, double frame_t
 	auto &scene = scene_loader.get_scene();
 
 	animation_system->animate(frame_time, elapsed_time);
-	scene.update_transform_tree_and_cached_transforms();
+
+	{
+		TaskComposer update_composer(composer.get_thread_group());
+		scene.update_transform_tree();
+		Threaded::scene_update_cached_transforms(scene, update_composer, 64);
+		update_composer.get_outgoing_task()->wait();
+	}
 
 	jitter.step(selected_camera->get_projection(), selected_camera->get_view());
 

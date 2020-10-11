@@ -184,5 +184,17 @@ void compose_parallel_push_renderables(TaskComposer &composer, const RenderConte
 		});
 	}
 }
+
+void scene_update_cached_transforms(Scene &scene, TaskComposer &composer, unsigned num_tasks)
+{
+	auto &group = composer.begin_pipeline_stage();
+	group.set_desc("parallel-update-cached-transforms");
+	for (unsigned i = 0; i < num_tasks; i++)
+	{
+		group.enqueue_task([&scene, num_tasks, i]() {
+			scene.update_cached_transforms_subset(i, num_tasks);
+		});
+	}
+}
 }
 }

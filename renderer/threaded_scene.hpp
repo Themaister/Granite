@@ -50,5 +50,7 @@ void scene_gather_positional_light_renderables_sorted(const Scene &scene, TaskCo
 
 void compose_parallel_push_renderables(TaskComposer &composer, const RenderContext &context,
                                        RenderQueue *queues, VisibilityList *visibility, unsigned count);
+
+void scene_update_cached_transforms(Scene &scene, TaskComposer &composer, unsigned num_tasks);
 }
 }

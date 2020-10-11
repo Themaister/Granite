@@ -144,8 +144,9 @@ public:
 
 		struct Skinning
 		{
+			std::vector<const CachedTransform *> cached_skin;
 			std::vector<Transform *> skin;
-			std::vector<CachedTransform *> cached_skin;
+			std::vector<mat4> inverse_bind_poses;
 			Util::Hash skin_compat = 0;
 		};
 
@@ -167,10 +168,6 @@ public:
 			cached_transform_dirty = false;
 			return ret;
 		}
-
-		mat4 world_transform_seen_by_children;
-		mat4 initial_transform;
-		bool needs_initial_transform = false;
 
 		void update_timestamp()
 		{

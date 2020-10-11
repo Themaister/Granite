@@ -373,12 +373,14 @@ void Scene::update_skinning(Node &node)
 {
 	if (!node.cached_skin_transform.bone_world_transforms.empty())
 	{
-		auto len = node.get_skin().cached_skin.size();
-		assert(node.get_skin().cached_skin.size() == node.cached_skin_transform.bone_world_transforms.size());
+		auto len = node.get_skin().skin.size();
+		assert(node.get_skin().skin.size() == node.cached_skin_transform.bone_world_transforms.size());
 		//assert(node.get_skin().cached_skin.size() == node.cached_skin_transform.bone_normal_transforms.size());
 		for (size_t i = 0; i < len; i++)
 		{
-			node.cached_skin_transform.bone_world_transforms[i] = node.get_skin().cached_skin[i]->world_transform;
+			SIMD::mul(node.cached_skin_transform.bone_world_transforms[i],
+			          node.get_skin().cached_skin[i]->world_transform,
+			          node.get_skin().inverse_bind_poses[i]);
 			//node.cached_skin_transform.bone_normal_transforms[i] = node.get_skin().cached_skin[i]->normal_transform;
 		}
 		//log_node_transforms(node);
@@ -422,7 +424,7 @@ void Scene::dispatch_collect_children(TraversalState *state)
 
 		auto *input_childs = pending->get_children().data();
 		size_t child_count = pending->get_children().size();
-		const mat4 *transform = &pending->world_transform_seen_by_children;
+		const mat4 *transform = &pending->cached_transform.world_transform;
 
 		size_t derived_batch_count = child_count / TraversalState::BatchSize;
 
@@ -516,24 +518,12 @@ Scene::NodeUpdateState Scene::update_node_state(Node &node, bool parent_is_dirty
 
 void Scene::update_transform_tree_node(Node &node, const mat4 &transform)
 {
-	compute_model_transform(node.world_transform_seen_by_children,
+	compute_model_transform(node.cached_transform.world_transform,
 	                        node.transform.scale, node.transform.rotation, node.transform.translation,
 	                        transform);
 
 	for (auto &child : node.get_skeletons())
-		update_transform_tree(*child, node.world_transform_seen_by_children, true);
-
-	// Apply the first transformation in the sequence, this is used for skinning.
-	if (node.needs_initial_transform)
-	{
-		SIMD::mul(node.cached_transform.world_transform,
-		          node.world_transform_seen_by_children,
-		          node.initial_transform);
-	}
-	else
-	{
-		node.cached_transform.world_transform = node.world_transform_seen_by_children;
-	}
+		update_transform_tree(*child, node.cached_transform.world_transform, true);
 
 	//compute_normal_transform(node.cached_transform.normal_transform, node.cached_transform.world_transform);
 	update_skinning(node);
@@ -549,7 +539,7 @@ void Scene::update_transform_tree(Node &node, const mat4 &transform, bool parent
 
 	if (state.children)
 		for (auto &child : node.get_children())
-			update_transform_tree(*child, node.world_transform_seen_by_children, state.self);
+			update_transform_tree(*child, node.cached_transform.world_transform, state.self);
 }
 
 size_t Scene::get_cached_transforms_count() const
@@ -664,20 +654,20 @@ Scene::NodeHandle Scene::create_skinned_node(const SceneFormats::Skin &skin)
 		bones[i]->transform.translation = skin.joint_transforms[i].translation;
 		bones[i]->transform.scale = skin.joint_transforms[i].scale;
 		bones[i]->transform.rotation = skin.joint_transforms[i].rotation;
-		bones[i]->initial_transform = skin.inverse_bind_pose[i];
-		bones[i]->needs_initial_transform = true;
 	}
 
 	node->cached_skin_transform.bone_world_transforms.resize(skin.joint_transforms.size());
 	//node->cached_skin_transform.bone_normal_transforms.resize(skin.joint_transforms.size());
 
 	auto &node_skin = node->get_skin();
-	node_skin.cached_skin.reserve(skin.joint_transforms.size());
 	node_skin.skin.reserve(skin.joint_transforms.size());
+	node_skin.cached_skin.reserve(skin.joint_transforms.size());
+	node_skin.inverse_bind_poses.reserve(skin.joint_transforms.size());
 	for (size_t i = 0; i < skin.joint_transforms.size(); i++)
 	{
-		node_skin.skin.push_back(&bones[i]->transform);
 		node_skin.cached_skin.push_back(&bones[i]->cached_transform);
+		node_skin.skin.push_back(&bones[i]->transform);
+		node_skin.inverse_bind_poses.push_back(skin.inverse_bind_pose[i]);
 	}
 
 	for (auto &skeleton : skin.skeletons)

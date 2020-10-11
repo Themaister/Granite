@@ -116,7 +116,6 @@ public:
 		Scene *parent_scene;
 		Transform transform;
 		CachedTransform cached_transform;
-		CachedSkinTransform cached_skin_transform;
 
 		void invalidate_cached_transform();
 		void add_child(Util::IntrusivePtr<Node> node);
@@ -150,6 +149,7 @@ public:
 
 		struct Skinning
 		{
+			CachedSkinTransform cached_skin_transform;
 			std::vector<const CachedTransform *> cached_skin;
 			std::vector<Transform *> skin;
 			std::vector<mat4> inverse_bind_poses;

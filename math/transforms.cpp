@@ -100,13 +100,12 @@ bool compute_plane_refraction(mat4 &projection, mat4 &view, vec3 camera_pos, vec
 
 void compute_model_transform(mat4 &world, vec3 s, quat rot, vec3 trans, const mat4 &parent)
 {
-	mat4 S = scale(s);
-	mat4 R = mat4_cast(rot);
-	mat4 T = translate(trans);
+	mat4 model = mat4_cast(rot);
+	model[0] *= s.x;
+	model[1] *= s.y;
+	model[2] *= s.z;
+	model[3] = vec4(trans, 1.0f);
 
-	mat4 model;
-	SIMD::mul(model, R, S);
-	SIMD::mul(model, T, model);
 	SIMD::mul(world, parent, model);
 }
 

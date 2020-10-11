@@ -154,4 +154,17 @@ void CommandPool::begin()
 	index = 0;
 	secondary_index = 0;
 }
+
+void CommandPool::trim()
+{
+	table->vkResetCommandPool(device->get_device(), pool, VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT);
+	if (!buffers.empty())
+		table->vkFreeCommandBuffers(device->get_device(), pool, buffers.size(), buffers.data());
+	if (!secondary_buffers.empty())
+		table->vkFreeCommandBuffers(device->get_device(), pool, secondary_buffers.size(), secondary_buffers.data());
+	buffers.clear();
+	secondary_buffers.clear();
+	if (device->get_device_features().supports_maintenance_1)
+		table->vkTrimCommandPoolKHR(device->get_device(), pool, 0);
+}
 }

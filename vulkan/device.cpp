@@ -2443,6 +2443,7 @@ void Device::wait_idle_nolock()
 		// We have done WaitIdle, no need to wait for extra fences, it's also not safe.
 		frame->wait_fences.clear();
 		frame->begin();
+		frame->trim_command_pools();
 	}
 }
 
@@ -2684,6 +2685,16 @@ void Device::decrement_frame_counter_nolock()
 #ifdef GRANITE_VULKAN_MT
 	lock.cond.notify_one();
 #endif
+}
+
+void Device::PerFrame::trim_command_pools()
+{
+	for (auto &pool : graphics_cmd_pool)
+		pool.trim();
+	for (auto &pool : compute_cmd_pool)
+		pool.trim();
+	for (auto &pool : transfer_cmd_pool)
+		pool.trim();
 }
 
 void Device::PerFrame::begin()

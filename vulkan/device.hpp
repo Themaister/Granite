@@ -458,6 +458,7 @@ private:
 		PerFrame(const PerFrame &) = delete;
 
 		void begin();
+		void trim_command_pools();
 
 		Device &device;
 		unsigned frame_index;

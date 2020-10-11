@@ -193,6 +193,8 @@ void scene_update_cached_transforms(Scene &scene, TaskComposer &composer, unsign
 	{
 		group.enqueue_task([&scene, num_tasks, i]() {
 			scene.update_cached_transforms_subset(i, num_tasks);
+			if (i == 0)
+				scene.update_transform_listener_components();
 		});
 	}
 }

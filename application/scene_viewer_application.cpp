@@ -1017,7 +1017,7 @@ void SceneViewerApplication::update_scene(TaskComposer &composer, double frame_t
 
 	{
 		TaskComposer update_composer(composer.get_thread_group());
-		scene.update_transform_tree();
+		scene.update_transform_tree(update_composer);
 		Threaded::scene_update_cached_transforms(scene, update_composer, 64);
 		update_composer.get_outgoing_task()->wait();
 	}

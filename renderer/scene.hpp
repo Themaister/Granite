@@ -26,6 +26,8 @@
 #include "render_components.hpp"
 #include "frustum.hpp"
 #include "scene_formats.hpp"
+#include "no_init_pod.hpp"
+#include "thread_group.hpp"
 
 namespace Granite
 {
@@ -47,6 +49,7 @@ public:
 
 	void update_all_transforms();
 	void update_transform_tree();
+	void update_transform_tree(TaskComposer &composer);
 	void update_transform_listener_components();
 	void update_cached_transforms_subset(unsigned index, unsigned num_indices);
 	size_t get_cached_transforms_count() const;
@@ -246,9 +249,36 @@ private:
 	Util::IntrusiveList<Entity> entities;
 	Util::IntrusiveList<Entity> queued_entities;
 	void destroy_entities(Util::IntrusiveList<Entity> &entity_list);
-	void update_transform_tree(Node &node, const mat4 &transform, bool parent_is_dirty);
 
-	void update_skinning(Node &node);
+	static void update_transform_tree(Node &node, const mat4 &transform, bool parent_is_dirty);
+	static void update_transform_tree_node(Node &node, const mat4 &transform);
+	static void update_skinning(Node &node);
+	struct NodeUpdateState
+	{
+		bool self;
+		bool children;
+	};
+	static NodeUpdateState update_node_state(Node &node, bool parent_is_dirty);
+
+	struct TraversalState
+	{
+		enum { BatchSize = 1024 };
+		TraversalState() = default;
+
+		Node *pending[BatchSize];
+		const mat4 *parent_transforms[BatchSize];
+		bool parent_is_dirty[BatchSize];
+		TaskGroupHandle traversal_done_dependency;
+		size_t pending_count = 0;
+		ThreadGroup *group = nullptr;
+		const mat4 *single_parent_transform = nullptr;
+		Util::IntrusivePtr<Node> *pending_list = nullptr;
+		bool single_parent_is_dirty = false;
+		bool single_parent = false;
+	};
+	Util::ThreadSafeObjectPool<TraversalState> traversal_state_pool;
+	void dispatch_collect_children(TraversalState *state);
+	TaskGroupHandle dispatch_per_node_work(TraversalState *state);
 
 	void update_cached_transforms_range(size_t start_index, size_t end_index);
 };

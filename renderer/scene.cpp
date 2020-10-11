@@ -373,51 +373,183 @@ void Scene::update_skinning(Node &node)
 {
 	if (!node.cached_skin_transform.bone_world_transforms.empty())
 	{
-		unsigned len = unsigned(node.get_skin().cached_skin.size());
+		auto len = node.get_skin().cached_skin.size();
 		assert(node.get_skin().cached_skin.size() == node.cached_skin_transform.bone_world_transforms.size());
 		//assert(node.get_skin().cached_skin.size() == node.cached_skin_transform.bone_normal_transforms.size());
-		for (unsigned i = 0; i < len; i++)
+		for (size_t i = 0; i < len; i++)
 		{
 			node.cached_skin_transform.bone_world_transforms[i] = node.get_skin().cached_skin[i]->world_transform;
 			//node.cached_skin_transform.bone_normal_transforms[i] = node.get_skin().cached_skin[i]->normal_transform;
 		}
-
 		//log_node_transforms(node);
 	}
 }
 
-void Scene::update_transform_tree(Node &node, const mat4 &transform, bool parent_is_dirty)
+void Scene::dispatch_collect_children(TraversalState *state)
 {
-	bool transform_dirty = node.get_and_clear_transform_dirty() || parent_is_dirty;
+	size_t count = state->pending_count;
 
-	if (transform_dirty)
+	// If we have a lot of child nodes, they will be farmed out to separate traversal states.
+	// The spill-over will be collected, and sub-batches will be dispatched from that, etc.
+
+	Node *children[TraversalState::BatchSize];
+	size_t unbatched_child_count = 0;
+
+	for (size_t i = 0; i < count; i++)
 	{
-		compute_model_transform(node.world_transform_seen_by_children,
-		                        node.transform.scale, node.transform.rotation, node.transform.translation, transform);
+		NodeUpdateState update_state;
+		Node *pending;
 
-		for (auto &child : node.get_skeletons())
-			update_transform_tree(*child, node.world_transform_seen_by_children, true);
-
-		// Apply the first transformation in the sequence, this is used for skinning.
-		if (node.needs_initial_transform)
+		if (state->single_parent)
 		{
-			SIMD::mul(node.cached_transform.world_transform,
-			          node.world_transform_seen_by_children,
-			          node.initial_transform);
+			pending = state->pending_list[i].get();
+			update_state = update_node_state(*pending, state->single_parent_is_dirty);
+			if (update_state.self)
+				update_transform_tree_node(*pending, *state->single_parent_transform);
 		}
 		else
-			node.cached_transform.world_transform = node.world_transform_seen_by_children;
+		{
+			pending = state->pending[i];
+			update_state = update_node_state(*pending, state->parent_is_dirty[i]);
+			if (update_state.self)
+				update_transform_tree_node(*pending, *state->parent_transforms[i]);
+		}
 
-		//compute_normal_transform(node.cached_transform.normal_transform, node.cached_transform.world_transform);
-		update_skinning(node);
-		node.update_timestamp();
+		if (!update_state.children)
+			continue;
+
+		bool parent_is_dirty = update_state.self;
+
+		auto *input_childs = pending->get_children().data();
+		size_t child_count = pending->get_children().size();
+		const mat4 *transform = &pending->world_transform_seen_by_children;
+
+		size_t derived_batch_count = child_count / TraversalState::BatchSize;
+
+		for (size_t batch = 0; batch < derived_batch_count; batch++)
+		{
+			auto *child_state = traversal_state_pool.allocate();
+			child_state->traversal_done_dependency = state->traversal_done_dependency;
+			child_state->traversal_done_dependency->add_flush_dependency();
+			child_state->group = state->group;
+			child_state->pending_count = TraversalState::BatchSize;
+
+			child_state->pending_list = &input_childs[batch * TraversalState::BatchSize];
+			child_state->single_parent = true;
+			child_state->single_parent_transform = transform;
+			child_state->single_parent_is_dirty = parent_is_dirty;
+
+			dispatch_per_node_work(child_state);
+		}
+
+		for (size_t j = derived_batch_count * TraversalState::BatchSize; j < child_count; j++)
+		{
+			children[unbatched_child_count] = input_childs[j].get();
+			state->parent_is_dirty[unbatched_child_count] = parent_is_dirty;
+			state->parent_transforms[unbatched_child_count] = transform;
+			unbatched_child_count++;
+
+			if (unbatched_child_count == TraversalState::BatchSize)
+			{
+				auto *child_state = traversal_state_pool.allocate();
+				child_state->traversal_done_dependency = state->traversal_done_dependency;
+				child_state->traversal_done_dependency->add_flush_dependency();
+				child_state->group = state->group;
+				child_state->pending_count = TraversalState::BatchSize;
+
+				memcpy(child_state->pending, children, sizeof(children));
+				memcpy(child_state->parent_is_dirty, state->parent_is_dirty, sizeof(state->parent_is_dirty));
+				memcpy(child_state->parent_transforms, state->parent_transforms, sizeof(state->parent_transforms));
+
+				dispatch_per_node_work(child_state);
+				unbatched_child_count = 0;
+			}
+		}
 	}
 
-	if (node.get_and_clear_child_transform_dirty() || transform_dirty)
+	state->pending_count = unbatched_child_count;
+	memcpy(state->pending, children, unbatched_child_count * sizeof(*children));
+}
+
+TaskGroupHandle Scene::dispatch_per_node_work(TraversalState *state)
+{
+	auto dispatcher_task = state->group->create_task([this, state]() {
+		while (state->pending_count != 0)
+			dispatch_collect_children(state);
+		state->traversal_done_dependency->release_flush_dependency();
+		traversal_state_pool.free(state);
+	});
+	dispatcher_task->set_desc("parallel-node-transform-update");
+	return dispatcher_task;
+}
+
+static const mat4 identity_transform(1.0f);
+
+void Scene::update_transform_tree(TaskComposer &composer)
+{
+	if (!root_node)
+		return;
+
+	auto &group = composer.begin_pipeline_stage();
+
+	auto traversal = traversal_state_pool.allocate();
+	traversal->traversal_done_dependency = composer.get_thread_group().create_task();
+	traversal->pending_count = 1;
+	traversal->pending[0] = root_node.get();
+	traversal->parent_is_dirty[0] = false;
+	traversal->parent_transforms[0] = &identity_transform;
+	traversal->group = &composer.get_thread_group();
+	traversal->traversal_done_dependency->add_flush_dependency();
+	auto dispatch = dispatch_per_node_work(traversal);
+
+	if (auto dep = composer.get_pipeline_stage_dependency())
+		composer.get_thread_group().add_dependency(*dispatch, *dep);
+	composer.get_thread_group().add_dependency(group, *traversal->traversal_done_dependency);
+}
+
+Scene::NodeUpdateState Scene::update_node_state(Node &node, bool parent_is_dirty)
+{
+	bool transform_dirty = node.get_and_clear_transform_dirty() || parent_is_dirty;
+	bool child_transforms_dirty = node.get_and_clear_child_transform_dirty() || transform_dirty;
+	return { transform_dirty, child_transforms_dirty };
+}
+
+void Scene::update_transform_tree_node(Node &node, const mat4 &transform)
+{
+	compute_model_transform(node.world_transform_seen_by_children,
+	                        node.transform.scale, node.transform.rotation, node.transform.translation,
+	                        transform);
+
+	for (auto &child : node.get_skeletons())
+		update_transform_tree(*child, node.world_transform_seen_by_children, true);
+
+	// Apply the first transformation in the sequence, this is used for skinning.
+	if (node.needs_initial_transform)
 	{
-		for (auto &child : node.get_children())
-			update_transform_tree(*child, node.world_transform_seen_by_children, transform_dirty);
+		SIMD::mul(node.cached_transform.world_transform,
+		          node.world_transform_seen_by_children,
+		          node.initial_transform);
 	}
+	else
+	{
+		node.cached_transform.world_transform = node.world_transform_seen_by_children;
+	}
+
+	//compute_normal_transform(node.cached_transform.normal_transform, node.cached_transform.world_transform);
+	update_skinning(node);
+	node.update_timestamp();
+}
+
+void Scene::update_transform_tree(Node &node, const mat4 &transform, bool parent_is_dirty)
+{
+	auto state = update_node_state(node, parent_is_dirty);
+
+	if (state.self)
+		update_transform_tree_node(node, transform);
+
+	if (state.children)
+		for (auto &child : node.get_children())
+			update_transform_tree(*child, node.world_transform_seen_by_children, state.self);
 }
 
 size_t Scene::get_cached_transforms_count() const

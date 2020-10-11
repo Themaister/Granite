@@ -26,6 +26,8 @@
 #include "render_components.hpp"
 #include "frustum.hpp"
 #include "scene_formats.hpp"
+#include "no_init_pod.hpp"
+#include "thread_group.hpp"
 
 namespace Granite
 {
@@ -45,8 +47,10 @@ public:
 
 	void refresh_per_frame(const RenderContext &context, TaskComposer &composer);
 
-	void update_transform_tree_and_cached_transforms();
+	void update_all_transforms();
 	void update_transform_tree();
+	void update_transform_tree(TaskComposer &composer);
+	void update_transform_listener_components();
 	void update_cached_transforms_subset(unsigned index, unsigned num_indices);
 	size_t get_cached_transforms_count() const;
 
@@ -92,6 +96,9 @@ public:
 		void operator()(Node *node);
 	};
 
+	// TODO: Need to slim this down, and be more data oriented.
+	// Should possibly maintain separate large buffers with transform matrices, and just point to those
+	// in the node.
 	class Node : public Util::IntrusivePtrEnabled<Node, NodeDeleter>
 	{
 	public:
@@ -161,7 +168,9 @@ public:
 			return ret;
 		}
 
-		mat4 initial_transform = mat4(1.0f);
+		mat4 world_transform_seen_by_children;
+		mat4 initial_transform;
+		bool needs_initial_transform = false;
 
 		void update_timestamp()
 		{
@@ -240,9 +249,36 @@ private:
 	Util::IntrusiveList<Entity> entities;
 	Util::IntrusiveList<Entity> queued_entities;
 	void destroy_entities(Util::IntrusiveList<Entity> &entity_list);
-	void update_transform_tree(Node &node, const mat4 &transform, bool parent_is_dirty);
 
-	void update_skinning(Node &node);
+	static void update_transform_tree(Node &node, const mat4 &transform, bool parent_is_dirty);
+	static void update_transform_tree_node(Node &node, const mat4 &transform);
+	static void update_skinning(Node &node);
+	struct NodeUpdateState
+	{
+		bool self;
+		bool children;
+	};
+	static NodeUpdateState update_node_state(Node &node, bool parent_is_dirty);
+
+	struct TraversalState
+	{
+		enum { BatchSize = 1024 };
+		TraversalState() = default;
+
+		Node *pending[BatchSize];
+		const mat4 *parent_transforms[BatchSize];
+		bool parent_is_dirty[BatchSize];
+		TaskGroupHandle traversal_done_dependency;
+		size_t pending_count = 0;
+		ThreadGroup *group = nullptr;
+		const mat4 *single_parent_transform = nullptr;
+		Util::IntrusivePtr<Node> *pending_list = nullptr;
+		bool single_parent_is_dirty = false;
+		bool single_parent = false;
+	};
+	Util::ThreadSafeObjectPool<TraversalState> traversal_state_pool;
+	void dispatch_collect_children(TraversalState *state);
+	TaskGroupHandle dispatch_per_node_work(TraversalState *state);
 
 	void update_cached_transforms_range(size_t start_index, size_t end_index);
 };

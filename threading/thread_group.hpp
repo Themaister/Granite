@@ -116,6 +116,9 @@ struct TaskGroup : Util::IntrusivePtrEnabled<TaskGroup, Internal::TaskGroupDelet
 	void flush();
 	void wait();
 
+	void add_flush_dependency();
+	void release_flush_dependency();
+
 	ThreadGroup *group;
 	Internal::TaskDepsHandle deps;
 	void enqueue_task(std::function<void ()> func);

@@ -469,6 +469,7 @@ if (NOT GRANITE_VULKAN_ONLY)
             util/cooperative_task.hpp util/cooperative_task.cpp
             util/generational_handle.hpp
             util/lru_cache.hpp
+            util/no_init_pod.hpp
     )
 
     if (${CMAKE_SYSTEM} MATCHES "Linux")

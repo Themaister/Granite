@@ -96,6 +96,16 @@ void TaskGroup::flush()
 	deps->dependency_satisfied();
 }
 
+void TaskGroup::add_flush_dependency()
+{
+	deps->dependency_count.fetch_add(1, std::memory_order_relaxed);
+}
+
+void TaskGroup::release_flush_dependency()
+{
+	deps->dependency_satisfied();
+}
+
 void TaskGroup::wait()
 {
 	if (!flushed)

@@ -39,20 +39,20 @@ struct tvec2
 	tvec2() = default;
 	tvec2(const tvec2 &) = default;
 
-	explicit inline tvec2(T v)
+	explicit inline tvec2(T v) noexcept
 	{
 		x = v;
 		y = v;
 	}
 
 	template <typename U>
-	explicit inline tvec2(const tvec2<U> &u)
+	explicit inline tvec2(const tvec2<U> &u) noexcept
 	{
 		x = T(u.x);
 		y = T(u.y);
 	}
 
-	inline tvec2(T x_, T y_)
+	inline tvec2(T x_, T y_) noexcept
 	{
 		x = x_;
 		y = y_;
@@ -116,35 +116,35 @@ struct tvec3
 	tvec3(const tvec3 &) = default;
 
 	template <typename U>
-	explicit inline tvec3(const tvec3<U> &u)
+	explicit inline tvec3(const tvec3<U> &u) noexcept
 	{
 		x = T(u.x);
 		y = T(u.y);
 		z = T(u.z);
 	}
 
-	inline tvec3(const tvec2<T> &a, float b)
+	inline tvec3(const tvec2<T> &a, float b) noexcept
 	{
 		x = a.x;
 		y = a.y;
 		z = b;
 	}
 
-	inline tvec3(float a, const tvec2<T> &b)
+	inline tvec3(float a, const tvec2<T> &b) noexcept
 	{
 		x = a;
 		y = b.x;
 		z = b.y;
 	}
 
-	explicit inline tvec3(T v)
+	explicit inline tvec3(T v) noexcept
 	{
 		x = v;
 		y = v;
 		z = v;
 	}
 
-	inline tvec3(T x_, T y_, T z_)
+	inline tvec3(T x_, T y_, T z_) noexcept
 	{
 		x = x_;
 		y = y_;
@@ -298,7 +298,7 @@ struct tvec4
 	tvec4(const tvec4 &) = default;
 
 	template <typename U>
-	explicit inline tvec4(const tvec4<U> &u)
+	explicit inline tvec4(const tvec4<U> &u) noexcept
 	{
 		x = T(u.x);
 		y = T(u.y);
@@ -306,7 +306,7 @@ struct tvec4
 		w = T(u.w);
 	}
 
-	inline tvec4(const tvec2<T> &a, const tvec2<T> &b)
+	inline tvec4(const tvec2<T> &a, const tvec2<T> &b) noexcept
 	{
 		x = a.x;
 		y = a.y;
@@ -314,7 +314,7 @@ struct tvec4
 		w = b.y;
 	}
 
-	inline tvec4(const tvec3<T> &a, float b)
+	inline tvec4(const tvec3<T> &a, float b) noexcept
 	{
 		x = a.x;
 		y = a.y;
@@ -322,7 +322,7 @@ struct tvec4
 		w = b;
 	}
 
-	inline tvec4(float a, const tvec3<T> &b)
+	inline tvec4(float a, const tvec3<T> &b) noexcept
 	{
 		x = a;
 		y = b.x;
@@ -330,7 +330,7 @@ struct tvec4
 		w = b.z;
 	}
 
-	inline tvec4(const tvec2<T> &a, float b, float c)
+	inline tvec4(const tvec2<T> &a, float b, float c) noexcept
 	{
 		x = a.x;
 		y = a.y;
@@ -338,7 +338,7 @@ struct tvec4
 		w = c;
 	}
 
-	inline tvec4(float a, const tvec2<T> &b, float c)
+	inline tvec4(float a, const tvec2<T> &b, float c) noexcept
 	{
 		x = a;
 		y = b.x;
@@ -346,7 +346,7 @@ struct tvec4
 		w = c;
 	}
 
-	inline tvec4(float a, float b, const tvec2<T> &c)
+	inline tvec4(float a, float b, const tvec2<T> &c) noexcept
 	{
 		x = a;
 		y = b;
@@ -354,7 +354,7 @@ struct tvec4
 		w = c.y;
 	}
 
-	explicit inline tvec4(T v)
+	explicit inline tvec4(T v) noexcept
 	{
 		x = v;
 		y = v;
@@ -362,7 +362,7 @@ struct tvec4
 		w = v;
 	}
 
-	inline tvec4(T x_, T y_, T z_, T w_)
+	inline tvec4(T x_, T y_, T z_, T w_) noexcept
 	{
 		x = x_;
 		y = y_;
@@ -734,13 +734,13 @@ struct tmat2
 {
 	tmat2() = default;
 
-	explicit inline tmat2(T v)
+	explicit inline tmat2(T v) noexcept
 	{
 		vec[0] = tvec2<T>(v, T(0));
 		vec[1] = tvec2<T>(T(0), v);
 	}
 
-	inline tmat2(const tvec2<T> &a, const tvec2<T> &b)
+	inline tmat2(const tvec2<T> &a, const tvec2<T> &b) noexcept
 	{
 		vec[0] = a;
 		vec[1] = b;
@@ -765,21 +765,21 @@ struct tmat3
 {
 	tmat3() = default;
 
-	explicit inline tmat3(T v)
+	explicit inline tmat3(T v) noexcept
 	{
 		vec[0] = tvec3<T>(v, T(0), T(0));
 		vec[1] = tvec3<T>(T(0), v, T(0));
 		vec[2] = tvec3<T>(T(0), T(0), v);
 	}
 
-	inline tmat3(const tvec3<T> &a, const tvec3<T> &b, const tvec3<T> &c)
+	inline tmat3(const tvec3<T> &a, const tvec3<T> &b, const tvec3<T> &c) noexcept
 	{
 		vec[0] = a;
 		vec[1] = b;
 		vec[2] = c;
 	}
 
-	explicit inline tmat3(const tmat4<T> &m)
+	explicit inline tmat3(const tmat4<T> &m) noexcept
 	{
 		for (int col = 0; col < 3; col++)
 			for (int row = 0; row < 3; row++)
@@ -805,7 +805,7 @@ struct tmat4
 {
 	tmat4() = default;
 
-	explicit inline tmat4(T v)
+	explicit inline tmat4(T v) noexcept
 	{
 		vec[0] = tvec4<T>(v, T(0), T(0), T(0));
 		vec[1] = tvec4<T>(T(0), v, T(0), T(0));
@@ -813,7 +813,7 @@ struct tmat4
 		vec[3] = tvec4<T>(T(0), T(0), T(0), v);
 	}
 
-	explicit inline tmat4(const tmat3<T> &m)
+	explicit inline tmat4(const tmat3<T> &m) noexcept
 	{
 		vec[0] = tvec4<T>(m[0], T(0));
 		vec[1] = tvec4<T>(m[1], T(0));
@@ -821,7 +821,7 @@ struct tmat4
 		vec[3] = tvec4<T>(T(0), T(0), T(0), T(1));
 	}
 
-	inline tmat4(const tvec4<T> &a, const tvec4<T> &b, const tvec4<T> &c, const tvec4<T> &d)
+	inline tmat4(const tvec4<T> &a, const tvec4<T> &b, const tvec4<T> &c, const tvec4<T> &d) noexcept
 	{
 		vec[0] = a;
 		vec[1] = b;

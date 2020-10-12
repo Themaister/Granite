@@ -1,5 +1,9 @@
 #version 450
 
+#if defined(MULTIVIEW) && MULTIVIEW
+#extension GL_EXT_multiview : require
+#endif
+
 #include "inc/render_parameters.h"
 
 layout(location = 0) in highp vec3 Position;
@@ -102,7 +106,12 @@ void main()
         world_col1 * Position.y +
         world_col2 * Position.z +
         world_col3;
+
+#if defined(MULTIVIEW) && MULTIVIEW
+    gl_Position = global.multiview_view_projection[gl_ViewIndex] * vec4(World, 1.0);
+#else
     gl_Position = global.view_projection * vec4(World, 1.0);
+#endif
 
 #ifndef RENDERER_DEPTH
     vPos = World;

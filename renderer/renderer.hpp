@@ -71,7 +71,8 @@ public:
 		SHADOW_PCF_KERNEL_WIDTH_5_BIT = 1 << 11,
 		VOLUMETRIC_FOG_ENABLE_BIT = 1 << 12,
 		ALPHA_TEST_DISABLE_BIT = 1 << 13,
-		POSITIONAL_LIGHT_CLUSTER_BINDLESS_BIT = 1 << 14
+		POSITIONAL_LIGHT_CLUSTER_BINDLESS_BIT = 1 << 14,
+		MULTIVIEW_BIT = 1 << 15
 	};
 	using RendererOptionFlags = uint32_t;
 
@@ -159,7 +160,8 @@ public:
 	{
 		ForwardOpaque = 0,
 		ForwardTransparent,
-		ShadowDepthPCF,
+		ShadowDepthDirectionalPCF,
+		ShadowDepthPositionalPCF,
 		ShadowDepthDirectionalVSM,
 		ShadowDepthPositionalVSM,
 		PrepassDepth,
@@ -175,6 +177,7 @@ public:
 		unsigned pcf_width = 1;
 		bool directional_light_vsm = false;
 		bool forward_z_prepass = false;
+		bool cascaded_directional_shadows = false;
 	};
 
 	void update_mesh_rendering_options(const RenderContext &context, const Config &config);

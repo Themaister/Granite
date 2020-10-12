@@ -59,9 +59,7 @@ protected:
 	void render_scene(TaskComposer &composer);
 
 	RenderContext context;
-	RenderContext depth_context_near;
-	RenderContext depth_context_far;
-	Util::IntrusivePtr<RenderPassSceneRendererConditional> shadow_far_renderer;
+	RenderContext depth_context;
 
 	RendererSuite renderer_suite;
 	RendererSuite::Config renderer_suite_config;
@@ -86,7 +84,6 @@ protected:
 	Vulkan::Texture *irradiance = nullptr;
 
 	bool need_shadow_map_update = true;
-	void update_shadow_map();
 	std::string skydome_reflection;
 	std::string skydome_irradiance;
 	float skydome_intensity = 1.0f;
@@ -97,8 +94,7 @@ protected:
 	DeferredLights deferred_lights;
 	RenderQueue queue;
 
-	void setup_shadow_map_near();
-	void setup_shadow_map_far();
+	void setup_shadow_map();
 	void update_shadow_scene_aabb();
 	void render_ui(Vulkan::CommandBuffer &cmd);
 
@@ -106,12 +102,7 @@ protected:
 	void add_main_pass_forward(Vulkan::Device &device, const std::string &tag);
 	void add_main_pass_deferred(Vulkan::Device &device, const std::string &tag);
 
-	enum class DepthPassType
-	{
-		Main,
-		Near
-	};
-	void add_shadow_pass(Vulkan::Device &device, const std::string &tag, DepthPassType type);
+	void add_shadow_pass(Vulkan::Device &device, const std::string &tag);
 
 	std::vector<RecordedCamera> recorded_cameras;
 
@@ -122,10 +113,8 @@ private:
 	{
 		RendererType renderer_type = RendererType::GeneralDeferred;
 		unsigned msaa = 1;
-		float shadow_map_resolution_main = 2048.0f;
-		float shadow_map_resolution_near = 1024.0f;
+		float shadow_map_resolution = 2048.0f;
 		unsigned clustered_lights_shadow_resolution = 512;
-		float cascade_cutoff_distance = 10.0f;
 		int camera_index = -1;
 
 		unsigned max_spot_lights = 32;
@@ -146,7 +135,6 @@ private:
 		bool rt_fp16 = false;
 		bool timestamps = false;
 		bool rescale_scene = false;
-		bool force_shadow_map_update = false;
 		bool show_ui = true;
 		bool volumetric_fog = false;
 		bool ssao = true;
@@ -165,7 +153,6 @@ private:
 	void capture_environment_probe();
 
 	RenderTextureResource *ssao_output = nullptr;
-	RenderTextureResource *shadow_near = nullptr;
-	RenderTextureResource *shadow_main = nullptr;
+	RenderTextureResource *shadows = nullptr;
 };
 }

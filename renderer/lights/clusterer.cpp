@@ -317,9 +317,8 @@ void LightClusterer::setup_scratch_buffers_vsm(Vulkan::Device &device)
 const Renderer &LightClusterer::get_shadow_renderer() const
 {
 	bool vsm = shadow_type == ShadowType::VSM;
-	auto &depth_renderer = renderer_suite->get_renderer(vsm ?
-	                                                    RendererSuite::Type::ShadowDepthPositionalVSM :
-	                                                    RendererSuite::Type::ShadowDepthPCF);
+	auto &depth_renderer = renderer_suite->get_renderer(
+			vsm ? RendererSuite::Type::ShadowDepthPositionalVSM : RendererSuite::Type::ShadowDepthPositionalPCF);
 	return depth_renderer;
 }
 

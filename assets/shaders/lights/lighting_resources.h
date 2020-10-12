@@ -7,106 +7,139 @@
 layout(set = 1, binding = 0) uniform mediump samplerCube uReflection;
 layout(set = 1, binding = 1) uniform mediump samplerCube uIrradiance;
 #endif
+
 layout(set = 1, binding = 2) uniform mediump sampler2D uBRDFLut;
 
+#ifdef RENDERER_FORWARD
+#include "lighting_data.h"
+#endif
+
 #ifdef SHADOWS
+
+#ifndef SHADOW_TRANSFORMS
+#error "Must define SHADOW_TRANSFORMS."
+#endif
+
+#ifndef SHADOW_CASCADE_LOG_BIAS
+#error "Must define SHADOW_CASCADE_LOG_BIAS."
+#endif
+
+#ifndef SHADOW_NUM_CASCADES
+#error "Must define SHADOW_NUM_CASCADES."
+#endif
 
 #if !defined(DIRECTIONAL_SHADOW_PCF) && !defined(DIRECTIONAL_SHADOW_VSM)
 #define DIRECTIONAL_SHADOW_PCF
 #endif
 
+#ifdef SHADOW_CASCADES
+void compute_shadow_cascade(out vec3 clip_near, out vec3 clip_far,
+		out mediump float shadow_lerp, out mediump float white_lerp,
+		out mediump int layer_near, out mediump int layer_far,
+		vec3 light_world_pos, vec3 light_camera_pos,
+		mediump vec3 light_camera_front, mediump vec3 light_direction)
+{
+	float view_z = dot(light_camera_front, (light_world_pos - light_camera_pos));
+	float shadow_cascade = log(view_z) + SHADOW_CASCADE_LOG_BIAS;
+
+	shadow_cascade = max(shadow_cascade, 0.0);
+	layer_near = min(int(shadow_cascade), SHADOW_NUM_CASCADES - 1);
+	layer_far = min(layer_near + 1, SHADOW_NUM_CASCADES - 1);
+
+	const float BEGIN_LERP_FRACT = 0.5;
+	const float INV_BEGIN_LERP_FRACT = 1.0 / (1.0 - BEGIN_LERP_FRACT);
+
+	shadow_lerp = INV_BEGIN_LERP_FRACT * max(fract(shadow_cascade) - BEGIN_LERP_FRACT, 0.0);
+	if (layer_near == layer_far)
+		shadow_lerp = 0.0;
+
+	// TODO: Clever subgroup stuff here to make sure we can load shadow matrices in a scalar way.
+	clip_near = (SHADOW_TRANSFORMS[layer_near] * vec4(light_world_pos, 1.0)).xyz;
+	if (shadow_lerp > 0.0)
+		clip_far = (SHADOW_TRANSFORMS[layer_far] * vec4(light_world_pos, 1.0)).xyz;
+
+	// Out of range, blend to full illumination.
+	const float MAX_CASCADE = float(SHADOW_NUM_CASCADES);
+	const float INV_MAX_CASCADE = 100.0 / MAX_CASCADE;
+	white_lerp = clamp(INV_MAX_CASCADE * (shadow_cascade - 0.99 * MAX_CASCADE), 0.0, 1.0);
+}
+#endif
+
 #ifdef DIRECTIONAL_SHADOW_VSM
 #include "vsm.h"
-layout(set = 1, binding = 3) uniform mediump sampler2D uShadowmap;
 #ifdef SHADOW_CASCADES
-layout(set = 1, binding = 4) uniform mediump sampler2D uShadowmapNear;
+layout(set = 1, binding = 3) uniform mediump sampler2DArray uShadowmap;
+#else
+layout(set = 1, binding = 3) uniform mediump sampler2D uShadowmap;
 #endif
 
 mediump float get_directional_shadow_term(
-		vec4 light_clip_shadow_near,
-		vec4 light_clip_shadow_far,
 		vec3 light_world_pos,
 		vec3 light_camera_pos,
 		mediump vec3 light_camera_front,
-		mediump vec3 light_direction,
-		mediump float light_inv_cutoff_distance)
+		mediump vec3 light_direction)
 {
 	// Sample shadowmap.
 #ifdef SHADOW_CASCADES
-	vec3 shadow_near = light_clip_shadow_near.xyz / light_clip_shadow_near.w;
-	vec3 shadow_far = light_clip_shadow_far.xyz / light_clip_shadow_far.w;
-
-	float view_z = dot(light_camera_front, (light_world_pos - light_camera_pos));
-	float shadow_cascade = view_z * light_inv_cutoff_distance;
-	mediump float shadow_term_near = 0.0;
-	mediump float shadow_term_far = 0.0;
-
-	if (shadow_cascade < 1.0)
+	vec3 clip_near, clip_far;
+	mediump float shadow_lerp, white_lerp, shadow_term, shadow_term_far;
+	mediump int layer_near, layer_far;
+	compute_shadow_cascade(clip_near, clip_far, shadow_lerp, white_lerp, layer_near, layer_far,
+			light_world_pos, light_camera_pos,
+			light_camera_front, light_direction);
+	shadow_term = vsm(clip_near.z, textureLod(uShadowmap, vec3(clip_near.xy, layer_near), 0.0).xy);
+	if (shadow_lerp > 0.0)
 	{
-		vec2 moments_near = textureLod(uShadowmapNear, shadow_near.xy, 0.0).xy;
-		shadow_term_near = vsm(shadow_near.z, moments_near);
+		shadow_term_far = vsm(clip_far.z, textureLod(uShadowmap, vec3(clip_far.xy, layer_far), 0.0).xy);
+		shadow_term = mix(shadow_term, shadow_term_far, shadow_lerp);
 	}
-
-	if (shadow_cascade > 0.75)
-	{
-		vec2 moments_far = textureLod(uShadowmap, shadow_far.xy, 0.0).xy;
-		shadow_term_far = vsm(shadow_far.z, moments_far);
-	}
-
-	mediump float shadow_lerp = clamp(4.0 * (shadow_cascade - 0.75), 0.0, 1.0);
-	mediump float shadow_term = mix(shadow_term_near, shadow_term_far, shadow_lerp);
+	shadow_term = mix(shadow_term, 1.0, white_lerp);
 	return shadow_term;
 #else
-	vec3 shadow_far = light_clip_shadow_far.xyz / light_clip_shadow_far.w;
-	return vsm(shadow_far.z, texture(uShadowmap, shadow_far.xy).xy);
+	vec3 shadow_far = (SHADOW_TRANSFORMS[0] * vec4(light_world_pos, 1.0)).xyz;
+	return vsm(shadow_far.z, textureLod(uShadowmap, shadow_far.xy, 0.0).xy);
 #endif
 }
 #endif
 
 #ifdef DIRECTIONAL_SHADOW_PCF
-layout(set = 1, binding = 3) uniform mediump sampler2DShadow uShadowmap;
 #ifdef SHADOW_CASCADES
-layout(set = 1, binding = 4) uniform mediump sampler2DShadow uShadowmapNear;
+layout(set = 1, binding = 3) uniform mediump sampler2DArrayShadow uShadowmap;
+#else
+layout(set = 1, binding = 3) uniform mediump sampler2DShadow uShadowmap;
 #endif
 
 #include "pcf.h"
 
 mediump float get_directional_shadow_term(
-		vec4 light_clip_shadow_near,
-		vec4 light_clip_shadow_far,
 		vec3 light_world_pos,
 		vec3 light_camera_pos,
 		mediump vec3 light_camera_front,
-		mediump vec3 light_direction,
-		mediump float light_inv_cutoff_distance)
+		mediump vec3 light_direction)
 {
 #ifdef SHADOW_CASCADES
-	mediump float shadow_term_near = 0.0;
-	mediump float shadow_term_far = 0.0;
-	float view_z = dot(light_camera_front, (light_world_pos - light_camera_pos));
-	float shadow_cascade = view_z * light_inv_cutoff_distance;
-	if (shadow_cascade < 1.0)
+	vec3 clip_near, clip_far;
+	mediump float shadow_lerp, white_lerp, shadow_term, shadow_term_far;
+	mediump int layer_near, layer_far;
+	compute_shadow_cascade(clip_near, clip_far, shadow_lerp, white_lerp, layer_near, layer_far,
+			light_world_pos, light_camera_pos,
+			light_camera_front, light_direction);
+	SAMPLE_PCF_KERNEL_LAYER_NOPROJ(shadow_term, uShadowmap, clip_near, layer_near);
+	if (shadow_lerp > 0.0)
 	{
-		SAMPLE_PCF_KERNEL(shadow_term_near, uShadowmapNear, light_clip_shadow_near);
+		SAMPLE_PCF_KERNEL_LAYER_NOPROJ(shadow_term_far, uShadowmap, clip_far, layer_far);
+		shadow_term = mix(shadow_term, shadow_term_far, shadow_lerp);
 	}
-	if (shadow_cascade > 0.75)
-	{
-		SAMPLE_PCF_KERNEL(shadow_term_far, uShadowmap, light_clip_shadow_far);
-	}
-	mediump float shadow_lerp = clamp(4.0 * (shadow_cascade - 0.75), 0.0, 1.0);
-	mediump float shadow_term = mix(shadow_term_near, shadow_term_far, shadow_lerp);
+	shadow_term = mix(shadow_term, 1.0, white_lerp);
 	return shadow_term;
 #else
 	mediump float shadow_term_far;
-	SAMPLE_PCF_KERNEL(shadow_term_far, uShadowmap, light_clip_shadow_far);
+	vec3 light_clip_shadow_far = (SHADOW_TRANSFORMS[0] * vec4(light_world_pos, 1.0)).xyz;
+	SAMPLE_PCF_KERNEL(shadow_term_far, uShadowmap, vec4(light_clip_shadow_far, 1.0));
 	return shadow_term_far;
 #endif
 }
 #endif
-#endif
-
-#ifdef RENDERER_FORWARD
-#include "lighting_data.h"
 #endif
 
 #ifdef POSITIONAL_LIGHTS
@@ -114,7 +147,7 @@ mediump float get_directional_shadow_term(
 #endif
 
 #ifdef AMBIENT_OCCLUSION
-layout(set = 1, binding = 6) uniform mediump sampler2D uAmbientOcclusion;
+layout(set = 1, binding = 5) uniform mediump sampler2D uAmbientOcclusion;
 #endif
 
 #endif

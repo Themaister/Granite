@@ -63,7 +63,8 @@ void RendererSuite::set_default_renderers()
 {
 	set_renderer(Type::ForwardOpaque, Util::make_handle<Renderer>(RendererType::GeneralForward, nullptr));
 	set_renderer(Type::ForwardTransparent, Util::make_handle<Renderer>(RendererType::GeneralForward, nullptr));
-	set_renderer(Type::ShadowDepthPCF, Util::make_handle<Renderer>(RendererType::DepthOnly, nullptr));
+	set_renderer(Type::ShadowDepthPositionalPCF, Util::make_handle<Renderer>(RendererType::DepthOnly, nullptr));
+	set_renderer(Type::ShadowDepthDirectionalPCF, Util::make_handle<Renderer>(RendererType::DepthOnly, nullptr));
 	set_renderer(Type::ShadowDepthDirectionalVSM, Util::make_handle<Renderer>(RendererType::DepthOnly, nullptr));
 	set_renderer(Type::ShadowDepthPositionalVSM, Util::make_handle<Renderer>(RendererType::DepthOnly, nullptr));
 	set_renderer(Type::PrepassDepth, Util::make_handle<Renderer>(RendererType::DepthOnly, nullptr));
@@ -72,9 +73,12 @@ void RendererSuite::set_default_renderers()
 
 void RendererSuite::update_mesh_rendering_options(const RenderContext &context, const Config &config)
 {
-	get_renderer(Type::ShadowDepthPCF).set_mesh_renderer_options(0);
+	get_renderer(Type::ShadowDepthDirectionalPCF).set_mesh_renderer_options(
+			config.cascaded_directional_shadows ? Renderer::MULTIVIEW_BIT : 0);
+	get_renderer(Type::ShadowDepthPositionalPCF).set_mesh_renderer_options(0);
 	get_renderer(Type::ShadowDepthDirectionalVSM).set_mesh_renderer_options(Renderer::SHADOW_VSM_BIT);
-	get_renderer(Type::ShadowDepthPositionalVSM).set_mesh_renderer_options(Renderer::POSITIONAL_LIGHT_SHADOW_VSM_BIT);
+	get_renderer(Type::ShadowDepthPositionalVSM).set_mesh_renderer_options(
+			Renderer::POSITIONAL_LIGHT_SHADOW_VSM_BIT);
 	get_renderer(Type::PrepassDepth).set_mesh_renderer_options(0);
 
 	Renderer::RendererOptionFlags pcf_flags = 0;
@@ -250,6 +254,9 @@ vector<pair<string, int>> Renderer::build_defines_from_renderer_options(Renderer
 	if (flags & ALPHA_TEST_DISABLE_BIT)
 		global_defines.emplace_back("ALPHA_TEST_DISABLE", 1);
 
+	if (flags & MULTIVIEW_BIT)
+		global_defines.emplace_back("MULTIVIEW", 1);
+
 	global_defines.emplace_back(renderer_to_define(type), 1);
 
 	return global_defines;
@@ -260,14 +267,15 @@ Renderer::RendererOptionFlags Renderer::get_mesh_renderer_options_from_lighting(
 	uint32_t flags = 0;
 	if (lighting.environment_irradiance && lighting.environment_radiance)
 		flags |= ENVIRONMENT_ENABLE_BIT;
-	if (lighting.shadow_far)
+
+	if (lighting.shadows)
 	{
 		flags |= SHADOW_ENABLE_BIT;
-		if (!Vulkan::format_has_depth_or_stencil_aspect(lighting.shadow_far->get_format()))
+		if (!Vulkan::format_has_depth_or_stencil_aspect(lighting.shadows->get_format()))
 			flags |= SHADOW_VSM_BIT;
+		if (lighting.shadows->get_create_info().layers > 1)
+			flags |= SHADOW_CASCADE_ENABLE_BIT;
 	}
-	if (lighting.shadow_near && lighting.shadow_far)
-		flags |= SHADOW_CASCADE_ENABLE_BIT;
 
 	if (lighting.volumetric_fog)
 		flags |= VOLUMETRIC_FOG_ENABLE_BIT;
@@ -277,13 +285,8 @@ Renderer::RendererOptionFlags Renderer::get_mesh_renderer_options_from_lighting(
 	if (lighting.cluster && (lighting.cluster->get_cluster_image() || lighting.cluster->get_cluster_bitmask_buffer()))
 	{
 		flags |= POSITIONAL_LIGHT_ENABLE_BIT;
-		if (lighting.cluster->get_spot_light_shadows() && lighting.cluster->get_point_light_shadows())
-		{
-			flags |= POSITIONAL_LIGHT_SHADOW_ENABLE_BIT;
-			if (lighting.cluster->get_shadow_type() == LightClusterer::ShadowType::VSM)
-				flags |= POSITIONAL_LIGHT_SHADOW_VSM_BIT;
-		}
-		else if (lighting.cluster->get_cluster_shadow_map_bindless_set() != VK_NULL_HANDLE)
+		if ((lighting.cluster->get_spot_light_shadows() && lighting.cluster->get_point_light_shadows()) ||
+		    (lighting.cluster->get_cluster_shadow_map_bindless_set() != VK_NULL_HANDLE))
 		{
 			flags |= POSITIONAL_LIGHT_SHADOW_ENABLE_BIT;
 			if (lighting.cluster->get_shadow_type() == LightClusterer::ShadowType::VSM)
@@ -398,7 +401,7 @@ void Renderer::bind_lighting_parameters(Vulkan::CommandBuffer &cmd, const Render
 
 	if (lighting->volumetric_fog)
 	{
-		cmd.set_texture(1, 5, lighting->volumetric_fog->get_view(), StockSampler::LinearClamp);
+		cmd.set_texture(1, 4, lighting->volumetric_fog->get_view(), StockSampler::LinearClamp);
 		combined->volumetric_fog.slice_z_log2_scale = lighting->volumetric_fog->get_slice_z_log2_scale();
 	}
 	else
@@ -420,22 +423,15 @@ void Renderer::bind_lighting_parameters(Vulkan::CommandBuffer &cmd, const Render
 	if (lighting->environment_irradiance != nullptr)
 		cmd.set_texture(1, 1, *lighting->environment_irradiance, Vulkan::StockSampler::LinearClamp);
 
-	if (lighting->shadow_far != nullptr)
+	if (lighting->shadows != nullptr)
 	{
-		auto sampler = format_has_depth_or_stencil_aspect(lighting->shadow_far->get_format()) ? StockSampler::LinearShadow
-		                                                                           : StockSampler::LinearClamp;
-		cmd.set_texture(1, 3, *lighting->shadow_far, sampler);
-	}
-
-	if (lighting->shadow_near != nullptr)
-	{
-		auto sampler = format_has_depth_or_stencil_aspect(lighting->shadow_near->get_format()) ? StockSampler::LinearShadow
-		                                                                            : StockSampler::LinearClamp;
-		cmd.set_texture(1, 4, *lighting->shadow_near, sampler);
+		auto sampler = format_has_depth_or_stencil_aspect(lighting->shadows->get_format()) ? StockSampler::LinearShadow
+		                                                                                   : StockSampler::LinearClamp;
+		cmd.set_texture(1, 3, *lighting->shadows, sampler);
 	}
 
 	if (lighting->ambient_occlusion)
-		cmd.set_texture(1, 6, *lighting->ambient_occlusion, StockSampler::LinearClamp);
+		cmd.set_texture(1, 5, *lighting->ambient_occlusion, StockSampler::LinearClamp);
 
 	if (lighting->cluster && (lighting->cluster->get_cluster_image() || lighting->cluster->get_cluster_bitmask_buffer()))
 		set_cluster_parameters(cmd, *lighting->cluster);
@@ -650,14 +646,14 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 	auto &light = *context.get_lighting_parameters();
 
 	vector<pair<string, int>> defines;
-	if (light.shadow_far && light.shadow_near)
+	if (light.shadows && light.shadows->get_create_info().layers > 1)
 		defines.emplace_back("SHADOW_CASCADES", 1);
 	if (light.environment_radiance && light.environment_irradiance)
 		defines.emplace_back("ENVIRONMENT", 1);
-	if (light.shadow_far)
+	if (light.shadows)
 	{
 		defines.emplace_back("SHADOWS", 1);
-		if (!format_has_depth_or_stencil_aspect(light.shadow_far->get_format()))
+		if (!format_has_depth_or_stencil_aspect(light.shadows->get_format()))
 			defines.emplace_back("DIRECTIONAL_SHADOW_VSM", 1);
 		else
 		{
@@ -683,54 +679,41 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 	cmd.set_texture(1, 2, Granite::Global::common_renderer_data()->brdf_tables.get_texture()->get_image()->get_view(),
 	                Vulkan::StockSampler::LinearClamp);
 
-	if (light.shadow_far)
+	if (light.shadows)
 	{
-		auto sampler = format_has_depth_or_stencil_aspect(light.shadow_far->get_format()) ? StockSampler::LinearShadow
-		                                                                       : StockSampler::LinearClamp;
-		cmd.set_texture(1, 3, *light.shadow_far, sampler);
-	}
-
-	if (light.shadow_near)
-	{
-		auto sampler = format_has_depth_or_stencil_aspect(light.shadow_near->get_format()) ? StockSampler::LinearShadow
-		                                                                        : StockSampler::LinearClamp;
-		cmd.set_texture(1, 4, *light.shadow_near, sampler);
+		auto sampler = format_has_depth_or_stencil_aspect(light.shadows->get_format()) ? StockSampler::LinearShadow
+		                                                                               : StockSampler::LinearClamp;
+		cmd.set_texture(1, 3, *light.shadows, sampler);
 	}
 
 	if (light.ambient_occlusion)
-		cmd.set_texture(1, 6, *light.ambient_occlusion, Vulkan::StockSampler::LinearClamp);
+		cmd.set_texture(1, 5, *light.ambient_occlusion, Vulkan::StockSampler::LinearClamp);
 
 	struct DirectionalLightPush
 	{
 		alignas(16) vec4 inv_view_proj_col2;
-		alignas(16) vec4 shadow_col2;
-		alignas(16) vec4 shadow_near_col2;
-		alignas(16) vec4 direction_inv_cutoff;
 		alignas(16) vec4 color_env_intensity;
 		alignas(16) vec4 camera_pos_mipscale;
+		alignas(16) vec3 direction;
+		alignas(4) float cascade_log_bias;
 		alignas(16) vec3 camera_front;
 		alignas(8) vec2 inv_resolution;
 	} push;
 
-	mat4 total_shadow_transform = light.shadow.far_transform * context.get_render_parameters().inv_view_projection;
-	mat4 total_shadow_transform_near = light.shadow.near_transform * context.get_render_parameters().inv_view_projection;
-
 	struct DirectionalLightUBO
 	{
 		mat4 inv_view_projection;
-		mat4 shadow_transform;
-		mat4 shadow_transform_near;
+		mat4 transforms[NumShadowCascades];
 	};
 	auto *ubo = static_cast<DirectionalLightUBO *>(cmd.allocate_constant_data(0, 0, sizeof(DirectionalLightUBO)));
 	ubo->inv_view_projection = context.get_render_parameters().inv_view_projection;
-	ubo->shadow_transform = total_shadow_transform;
-	ubo->shadow_transform_near = total_shadow_transform_near;
+	for (int i = 0; i < NumShadowCascades; i++)
+		ubo->transforms[i] = light.shadow.transforms[i];
 
 	push.inv_view_proj_col2 = context.get_render_parameters().inv_view_projection[2];
-	push.shadow_col2 = total_shadow_transform[2];
-	push.shadow_near_col2 = total_shadow_transform_near[2];
 	push.color_env_intensity = vec4(light.directional.color, light.environment.intensity);
-	push.direction_inv_cutoff = vec4(light.directional.direction, light.shadow.inv_cutoff_distance);
+	push.direction = light.directional.direction;
+	push.cascade_log_bias = light.shadow.cascade_log_bias;
 
 	float mipscale = 0.0f;
 	if (light.environment_radiance)

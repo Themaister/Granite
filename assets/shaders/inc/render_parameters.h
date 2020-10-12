@@ -10,6 +10,7 @@ layout(set = 0, binding = 0, std140) uniform RenderParameters
 	mat4 inv_view_projection;
 	mat4 local_view_projection;
 	mat4 inv_local_view_projection;
+	mat4 multiview_view_projection[4];
 
 	vec3 camera_position;
 	vec3 camera_front;

@@ -1194,7 +1194,7 @@ void TexturePlane::set_scene(Scene *scene_)
 void TexturePlane::render_main_pass(Vulkan::CommandBuffer &cmd, const mat4 &proj, const mat4 &view)
 {
 	LightingParameters lighting = *base_context->get_lighting_parameters();
-	lighting.shadow_near = nullptr;
+	lighting.shadows = nullptr;
 	lighting.cluster = nullptr;
 
 	context.set_lighting_parameters(&lighting);

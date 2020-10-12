@@ -33,6 +33,12 @@ void RenderContext::set_camera(const Camera &camera_)
 	set_camera(camera_.get_projection(), camera_.get_view());
 }
 
+void RenderContext::set_shadow_cascades(const mat4 cascades[NumShadowCascades])
+{
+	for (unsigned i = 0; i < NumShadowCascades; i++)
+		camera.multiview_view_projection[i] = cascades[i];
+}
+
 void RenderContext::set_device(Device *device_)
 {
 	device = device_;

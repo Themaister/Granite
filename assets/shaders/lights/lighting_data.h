@@ -18,11 +18,14 @@ struct VolumetricFogParameters
 	float slice_z_log2_scale;
 };
 
+#define SHADOW_NUM_CASCADES 4
+#define SHADOW_TRANSFORMS shadow.transforms
+#define SHADOW_CASCADE_LOG_BIAS shadow.cascade_log_bias
+
 struct ShadowParameters
 {
-	mat4 near;
-	mat4 far;
-	float inv_cutoff_distance;
+	mat4 transforms[SHADOW_NUM_CASCADES];
+	float cascade_log_bias;
 };
 
 struct DirectionalParameters

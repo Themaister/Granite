@@ -68,7 +68,6 @@ struct DeviceFeatures
 	VkPhysicalDeviceFeatures enabled_features = {};
 	VkPhysicalDeviceExternalMemoryHostPropertiesEXT host_memory_properties = {};
 	VkPhysicalDeviceMultiviewFeaturesKHR multiview_features = {};
-	VkPhysicalDeviceImagelessFramebufferFeaturesKHR imageless_features = {};
 	VkPhysicalDeviceSubgroupSizeControlFeaturesEXT subgroup_size_control_features = {};
 	VkPhysicalDeviceSubgroupSizeControlPropertiesEXT subgroup_size_control_properties = {};
 	VkPhysicalDeviceComputeShaderDerivativesFeaturesNV compute_shader_derivative_features = {};

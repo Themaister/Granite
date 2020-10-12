@@ -38,7 +38,7 @@ bool RenderPassInterface::render_pass_is_conditional() const
 	return false;
 }
 
-bool RenderPassInterface::render_pass_is_layered() const
+bool RenderPassInterface::render_pass_is_separate_layered() const
 {
 	return false;
 }
@@ -71,7 +71,7 @@ void RenderPassInterface::build_render_pass(Vulkan::CommandBuffer &)
 {
 }
 
-void RenderPassInterface::build_render_pass_layered(Vulkan::CommandBuffer &, unsigned)
+void RenderPassInterface::build_render_pass_separate_layer(Vulkan::CommandBuffer &, unsigned)
 {
 }
 
@@ -2055,11 +2055,51 @@ void RenderGraph::physical_pass_enqueue_graphics_commands(const PhysicalPass &ph
 		start_fragment = cmd.write_timestamp(VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
 	}
 
-	// TODO: Replace with multiview.
 	VK_ASSERT(physical_pass.layers != ~0u);
-	for (unsigned layer = 0; layer < physical_pass.layers; layer++)
+
+	auto rp_info = physical_pass.render_pass_info;
+	unsigned layer_iterations = 1;
+
+	if (physical_pass.layers > 1)
 	{
-		auto rp_info = physical_pass.render_pass_info;
+		unsigned multiview_count = 0;
+		unsigned separate_count = 0;
+
+		for (auto pass : physical_pass.passes)
+		{
+			auto &subpass = passes[pass];
+			if (subpass->render_pass_is_multiview())
+				multiview_count++;
+			else
+				separate_count++;
+		}
+
+		if (multiview_count && separate_count)
+		{
+			LOGE("Mismatch in physical pass w.r.t. multiview vs separate layers. Do not mix and match! Render pass will be dropped.\n");
+			layer_iterations = 0;
+		}
+		else if (multiview_count)
+		{
+			if (device->get_device_features().multiview_features.multiview)
+			{
+				rp_info.num_layers = physical_pass.layers;
+				rp_info.base_layer = 0;
+			}
+			else
+			{
+				LOGE("VK_KHR_multiview is not supported on this device. Falling back to separate layering.\n");
+				layer_iterations = physical_pass.layers;
+			}
+		}
+		else
+		{
+			layer_iterations = physical_pass.layers;
+		}
+	}
+
+	for (unsigned layer = 0; layer < layer_iterations; layer++)
+	{
 		rp_info.base_layer = layer;
 		cmd.begin_region("begin-render-pass");
 		cmd.begin_render_pass(rp_info, state.subpass_contents[0]);

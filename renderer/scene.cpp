@@ -523,8 +523,9 @@ void Scene::update_transform_tree_node(Node &node, const mat4 &transform)
 	                        node.transform.scale, node.transform.rotation, node.transform.translation,
 	                        transform);
 
-	for (auto &child : node.get_skeletons())
-		update_transform_tree(*child, node.cached_transform.world_transform, true);
+	if (auto *skinning = node.get_skin())
+		for (auto &child : skinning->skeletons)
+			update_transform_tree(*child, node.cached_transform.world_transform, true);
 
 	//compute_normal_transform(node.cached_transform.normal_transform, node.cached_transform.world_transform);
 	update_skinning(node);
@@ -637,7 +638,7 @@ void Scene::NodeDeleter::operator()(Node *node)
 
 static void add_bone(Scene::NodeHandle *bones, uint32_t parent, const SceneFormats::Skin::Bone &bone)
 {
-	bones[parent]->get_skeletons().push_back(bones[bone.index]);
+	bones[parent]->get_skin()->skeletons.push_back(bones[bone.index]);
 	for (auto &child : bone.children)
 		add_bone(bones, bone.index, child);
 }
@@ -674,7 +675,7 @@ Scene::NodeHandle Scene::create_skinned_node(const SceneFormats::Skin &skin)
 
 	for (auto &skeleton : skin.skeletons)
 	{
-		node->get_skeletons().push_back(bones[skeleton.index]);
+		node->get_skin()->skeletons.push_back(bones[skeleton.index]);
 		for (auto &child : skeleton.children)
 			add_bone(bones.data(), skeleton.index, child);
 	}

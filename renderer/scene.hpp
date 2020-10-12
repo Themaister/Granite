@@ -127,19 +127,9 @@ public:
 			return children;
 		}
 
-		const std::vector<Util::IntrusivePtr<Node>> &get_skeletons() const
-		{
-			return skeletons;
-		}
-
 		std::vector<Util::IntrusivePtr<Node>> &get_children()
 		{
 			return children;
-		}
-
-		std::vector<Util::IntrusivePtr<Node>> &get_skeletons()
-		{
-			return skeletons;
 		}
 
 		Node *get_parent() const
@@ -153,6 +143,7 @@ public:
 			std::vector<const CachedTransform *> cached_skin;
 			std::vector<Transform *> skin;
 			std::vector<mat4> inverse_bind_poses;
+			std::vector<Util::IntrusivePtr<Node>> skeletons;
 			Util::Hash skin_compat = 0;
 		};
 
@@ -194,7 +185,6 @@ public:
 
 	private:
 		std::vector<Util::IntrusivePtr<Node>> children;
-		std::vector<Util::IntrusivePtr<Node>> skeletons;
 		Skinning *skinning = nullptr;
 		Node *parent = nullptr;
 		uint32_t timestamp = 0;

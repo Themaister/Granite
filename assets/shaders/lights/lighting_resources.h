@@ -39,7 +39,7 @@ void compute_shadow_cascade(out vec3 clip_near, out vec3 clip_far,
 		vec3 light_world_pos, vec3 light_camera_pos,
 		mediump vec3 light_camera_front, mediump vec3 light_direction)
 {
-	float view_z = dot(light_camera_front, (light_world_pos - light_camera_pos));
+	float view_z = max(dot(light_camera_front, (light_world_pos - light_camera_pos)), 0.0);
 	float shadow_cascade = log(view_z) + SHADOW_CASCADE_LOG_BIAS;
 
 	shadow_cascade = max(shadow_cascade, 0.0);

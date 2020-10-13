@@ -193,6 +193,17 @@ void VolumetricFog::build_light_density(CommandBuffer &cmd, ImageView &light_den
 		}
 	}
 
+	if (flags & Renderer::SHADOW_CASCADE_ENABLE_BIT)
+	{
+		auto &subgroup = cmd.get_device().get_device_features().subgroup_properties;
+		if ((subgroup.supportedStages & VK_SHADER_STAGE_FRAGMENT_BIT) != 0 &&
+		    !ImplementationQuirks::get().force_no_subgroups &&
+		    (subgroup.supportedOperations & VK_SUBGROUP_FEATURE_ARITHMETIC_BIT) != 0)
+		{
+			defines.emplace_back("SUBGROUP_ARITHMETIC", 1);
+		}
+	}
+
 	old_projection = context->get_render_parameters().view_projection;
 
 	if (floor.input_view)

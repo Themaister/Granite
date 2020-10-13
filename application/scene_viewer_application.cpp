@@ -322,11 +322,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 		}
 
 		if (config.directional_light_shadows)
-		{
 			volumetric_fog->add_texture_dependency("shadow-main");
-			if (config.directional_light_cascaded_shadows)
-				volumetric_fog->add_texture_dependency("shadow-near");
-		}
 	}
 
 	if (config.deferred_clustered_stencil_culling)

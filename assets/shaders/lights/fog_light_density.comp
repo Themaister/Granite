@@ -3,6 +3,7 @@ layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
 
 #define CLUSTERER_NO_HELPER_INVOCATION
 
+#include "../inc/subgroup_extensions.h"
 #include "volumetric_fog.h"
 #include "lighting_scatter.h"
 #include "../inc/render_parameters.h"
@@ -78,24 +79,12 @@ float get_fog_albedo(vec3 uvw)
 
 vec3 compute_inscatter_light(vec3 pos)
 {
-#ifdef SHADOWS
-#ifdef SHADOW_CASCADES
-    vec4 clip_shadow_near = shadow.near * vec4(pos, 1.0);
-#else
-    vec4 clip_shadow_near = vec4(0.0);
-#endif
-    vec4 clip_shadow_far = shadow.far * vec4(pos, 1.0);
-#endif
-
     return compute_scatter_lighting(
         pos,
         global.camera_position,
         global.camera_front,
         directional.direction,
         directional.color
-#ifdef SHADOWS
-		, clip_shadow_near, clip_shadow_far, shadow.inv_cutoff_distance
-#endif
 #ifdef ENVIRONMENT
         , environment.intensity
 #endif

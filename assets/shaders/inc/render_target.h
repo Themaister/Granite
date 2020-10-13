@@ -34,21 +34,9 @@ layout(location = 0) out mediump vec4 Color;
 void emit_render_target(mediump vec3 emissive, mediump vec4 base_color, mediump vec3 normal,
         mediump float metallic, mediump float roughness, mediump float ambient, vec3 pos)
 {
-#ifdef SHADOWS
-#ifdef SHADOW_CASCADES
-    vec4 clip_shadow_near = shadow.near * vec4(pos, 1.0);
-#else
-    vec4 clip_shadow_near = vec4(0.0);
-#endif
-    vec4 clip_shadow_far = shadow.far * vec4(pos, 1.0);
-#endif
-
     mediump vec3 lighting = emissive + compute_lighting(
         base_color.rgb, normal, metallic, roughness, ambient, base_color.a,
         pos, global.camera_position, global.camera_front, directional.direction, directional.color
-#ifdef SHADOWS
-		, clip_shadow_near, clip_shadow_far, shadow.inv_cutoff_distance
-#endif
 #ifdef ENVIRONMENT
         , environment.intensity, environment.mipscale
 #endif

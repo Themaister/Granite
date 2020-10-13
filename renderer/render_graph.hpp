@@ -54,7 +54,7 @@ public:
 
 	// This information must remain fixed.
 	virtual bool render_pass_is_conditional() const;
-	virtual bool render_pass_is_layered() const;
+	virtual bool render_pass_is_separate_layered() const;
 	virtual bool render_pass_can_multithread() const;
 
 	// Can change per frame.
@@ -66,9 +66,20 @@ public:
 	                                         const Vulkan::RenderPassInfo &info, unsigned subpass,
 	                                         VkSubpassContents &subpass_contents);
 	virtual void build_render_pass(Vulkan::CommandBuffer &cmd);
-	virtual void build_render_pass_layered(Vulkan::CommandBuffer &cmd, unsigned layer);
+	virtual void build_render_pass_separate_layer(Vulkan::CommandBuffer &cmd, unsigned layer);
 };
 using RenderPassInterfaceHandle = Util::IntrusivePtr<RenderPassInterface>;
+
+class MultiThreadRenderPassInterfaceWrapper : public RenderPassInterface
+{
+public:
+	explicit MultiThreadRenderPassInterfaceWrapper(std::function<void (Vulkan::CommandBuffer &)> func);
+
+private:
+	std::function<void (Vulkan::CommandBuffer &)> func;
+	void build_render_pass(Vulkan::CommandBuffer &cmd) override;
+	bool render_pass_can_multithread() const override;
+};
 
 enum SizeClass
 {
@@ -547,6 +558,14 @@ public:
 			return true;
 	}
 
+	bool render_pass_is_multiview() const
+	{
+		if (render_pass_handle)
+			return !render_pass_handle->render_pass_is_separate_layered();
+		else
+			return build_render_pass_cb && !build_render_pass_separate_layered_cb;
+	}
+
 	bool can_multithread() const
 	{
 		if (render_pass_handle)
@@ -596,13 +615,13 @@ public:
 	{
 		if (render_pass_handle)
 		{
-			if (render_pass_handle->render_pass_is_layered())
-				render_pass_handle->build_render_pass_layered(cmd, layer);
+			if (render_pass_handle->render_pass_is_separate_layered())
+				render_pass_handle->build_render_pass_separate_layer(cmd, layer);
 			else
 				render_pass_handle->build_render_pass(cmd);
 		}
-		else if (build_render_pass_layered_cb)
-			build_render_pass_layered_cb(layer, cmd);
+		else if (build_render_pass_separate_layered_cb)
+			build_render_pass_separate_layered_cb(layer, cmd);
 		else if (build_render_pass_cb)
 			build_render_pass_cb(cmd);
 	}
@@ -622,9 +641,9 @@ public:
 		build_render_pass_cb = std::move(func);
 	}
 
-	void set_build_render_pass_layered(std::function<void (unsigned, Vulkan::CommandBuffer &)> func)
+	void set_build_render_pass_separate_layered(std::function<void (unsigned, Vulkan::CommandBuffer &)> func)
 	{
-		build_render_pass_layered_cb = std::move(func);
+		build_render_pass_separate_layered_cb = std::move(func);
 	}
 
 	void set_get_clear_depth_stencil(std::function<bool (VkClearDepthStencilValue *)> func)
@@ -655,7 +674,7 @@ private:
 
 	RenderPassInterfaceHandle render_pass_handle;
 	std::function<void (Vulkan::CommandBuffer &)> build_render_pass_cb;
-	std::function<void (unsigned, Vulkan::CommandBuffer &)> build_render_pass_layered_cb;
+	std::function<void (unsigned, Vulkan::CommandBuffer &)> build_render_pass_separate_layered_cb;
 	std::function<bool ()> need_render_pass_cb;
 	std::function<bool (VkClearDepthStencilValue *)> get_clear_depth_stencil_cb;
 	std::function<bool (unsigned, VkClearColorValue *)> get_clear_color_cb;

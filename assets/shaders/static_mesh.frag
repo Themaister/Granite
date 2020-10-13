@@ -6,6 +6,10 @@ precision highp int;
 #undef ALPHA_TEST
 #endif
 
+#if defined(RENDERER_FORWARD)
+#include "inc/subgroup_extensions.h"
+#endif
+
 #if defined(ALPHA_TEST)
 #include "inc/subgroup_discard.h"
 #else

@@ -2,26 +2,7 @@
 #define SUBGROUP_DISCARD_H_
 
 #include "helper_invocation.h"
-
-#ifdef SUBGROUP_BASIC
-#extension GL_KHR_shader_subgroup_basic : require
-#endif
-
-#ifdef SUBGROUP_VOTE
-#extension GL_KHR_shader_subgroup_vote : require
-#endif
-
-#ifdef SUBGROUP_CLUSTERED
-#extension GL_KHR_shader_subgroup_clustered : require
-#endif
-
-#ifdef SUBGROUP_BALLOT
-#extension GL_KHR_shader_subgroup_ballot : require
-#endif
-
-#ifdef SUBGROUP_QUAD
-#extension GL_KHR_shader_subgroup_quad : require
-#endif
+#include "subgroup_extensions.h"
 
 void quad_discard_late(bool to_discard)
 {

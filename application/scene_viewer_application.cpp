@@ -111,8 +111,13 @@ void SceneViewerApplication::read_config(const std::string &path)
 
 	if (doc.HasMember("directionalLightShadows"))
 		config.directional_light_shadows = doc["directionalLightShadows"].GetBool();
+
 	if (doc.HasMember("directionalLightShadowsCascaded"))
+	{
 		config.directional_light_cascaded_shadows = doc["directionalLightShadowsCascaded"].GetBool();
+		renderer_suite_config.cascaded_directional_shadows = config.directional_light_cascaded_shadows;
+	}
+
 	if (doc.HasMember("directionalLightShadowsVSM"))
 	{
 		config.directional_light_shadows_vsm = doc["directionalLightShadowsVSM"].GetBool();
@@ -155,10 +160,8 @@ void SceneViewerApplication::read_config(const std::string &path)
 	if (doc.HasMember("deferredClusteredStencilCulling"))
 		config.deferred_clustered_stencil_culling = doc["deferredClusteredStencilCulling"].GetBool();
 
-	if (doc.HasMember("shadowMapResolutionMain"))
-		config.shadow_map_resolution_main = doc["shadowMapResolutionMain"].GetFloat();
-	if (doc.HasMember("shadowMapResolutionNear"))
-		config.shadow_map_resolution_near = doc["shadowMapResolutionNear"].GetFloat();
+	if (doc.HasMember("shadowMapResolution"))
+		config.shadow_map_resolution = doc["shadowMapResolution"].GetFloat();
 
 	if (doc.HasMember("cameraIndex"))
 		config.camera_index = doc["cameraIndex"].GetInt();
@@ -171,12 +174,6 @@ void SceneViewerApplication::read_config(const std::string &path)
 
 	if (doc.HasMember("rescaleScene"))
 		config.rescale_scene = doc["rescaleScene"].GetBool();
-
-	if (doc.HasMember("directionalLightCascadeCutoff"))
-		config.cascade_cutoff_distance = doc["directionalLightCascadeCutoff"].GetFloat();
-
-	if (doc.HasMember("directionalLightShadowsForceUpdate"))
-		config.force_shadow_map_update = doc["directionalLightShadowsForceUpdate"].GetBool();
 
 	if (doc.HasMember("postAA"))
 	{
@@ -289,7 +286,6 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 		cluster->set_enable_shadows(config.clustered_lights_shadows);
 		cluster->set_enable_clustering(config.clustered_lights);
 		cluster->set_enable_bindless(config.clustered_lights_bindless);
-		cluster->set_force_update_shadows(config.force_shadow_map_update);
 		cluster->set_shadow_resolution(config.clustered_lights_shadow_resolution);
 
 		if (config.clustered_lights_shadows_vsm)
@@ -326,11 +322,7 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 		}
 
 		if (config.directional_light_shadows)
-		{
 			volumetric_fog->add_texture_dependency("shadow-main");
-			if (config.directional_light_cascaded_shadows)
-				volumetric_fog->add_texture_dependency("shadow-near");
-		}
 	}
 
 	if (config.deferred_clustered_stencil_culling)
@@ -650,14 +642,9 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 
 	lighting_pass.set_render_pass_interface(std::move(renderer));
 
-	shadow_main = nullptr;
-	shadow_near = nullptr;
+	shadows = nullptr;
 	if (config.directional_light_shadows)
-	{
-		shadow_main = &lighting_pass.add_texture_input("shadow-main");
-		if (config.directional_light_cascaded_shadows)
-			shadow_near = &lighting_pass.add_texture_input("shadow-near");
-	}
+		shadows = &lighting_pass.add_texture_input("shadow-main");
 	scene_loader.get_scene().add_render_pass_dependencies(graph, lighting_pass);
 }
 
@@ -734,14 +721,9 @@ void SceneViewerApplication::add_main_pass_deferred(Device &device, const std::s
 	else
 		ssao_output = nullptr;
 
-	shadow_main = nullptr;
-	shadow_near = nullptr;
+	shadows = nullptr;
 	if (config.directional_light_shadows)
-	{
-		shadow_main = &lighting_pass.add_texture_input("shadow-main");
-		if (config.directional_light_cascaded_shadows)
-			shadow_near = &lighting_pass.add_texture_input("shadow-near");
-	}
+		shadows = &lighting_pass.add_texture_input("shadow-main");
 
 	scene_loader.get_scene().add_render_pass_dependencies(graph, gbuffer);
 }
@@ -763,23 +745,17 @@ void SceneViewerApplication::add_main_pass(Device &device, const std::string &ta
 	}
 }
 
-void SceneViewerApplication::add_shadow_pass(Device &, const std::string &tag, DepthPassType type)
+void SceneViewerApplication::add_shadow_pass(Device &, const std::string &tag)
 {
 	AttachmentInfo shadowmap;
 	shadowmap.format = VK_FORMAT_D16_UNORM;
 	shadowmap.samples = config.directional_light_shadows_vsm ? 4 : 1;
 	shadowmap.size_class = SizeClass::Absolute;
+	shadowmap.size_x = config.shadow_map_resolution;
+	shadowmap.size_y = config.shadow_map_resolution;
 
-	if (type == DepthPassType::Main)
-	{
-		shadowmap.size_x = config.shadow_map_resolution_main;
-		shadowmap.size_y = config.shadow_map_resolution_main;
-	}
-	else
-	{
-		shadowmap.size_x = config.shadow_map_resolution_near;
-		shadowmap.size_y = config.shadow_map_resolution_near;
-	}
+	if (config.directional_light_cascaded_shadows)
+		shadowmap.layers = NumShadowCascades;
 
 	auto &shadowpass = graph.add_pass(tagcat("shadow", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 
@@ -808,30 +784,26 @@ void SceneViewerApplication::add_shadow_pass(Device &, const std::string &tag, D
 		up_pass.add_color_output(tagcat("shadow", tag), shadowmap_vsm_resolved_color);
 		auto &up_pass_res = up_pass.add_texture_input(tagcat("shadow-down", tag));
 
-		down_pass.set_need_render_pass(
-		    [this, type]() { return type == DepthPassType::Main ? need_shadow_map_update : true; });
-
-		up_pass.set_need_render_pass(
-		    [this, type]() { return type == DepthPassType::Main ? need_shadow_map_update : true; });
-
-		down_pass.set_build_render_pass([&](CommandBuffer &cmd) {
+		down_pass.set_build_render_pass([&, layered = shadowmap.layers > 1](CommandBuffer &cmd) {
 			auto &input = graph.get_physical_texture_resource(down_pass_res);
 			vec2 inv_size(1.0f / input.get_image().get_create_info().width,
 			              1.0f / input.get_image().get_create_info().height);
 			cmd.push_constants(&inv_size, 0, sizeof(inv_size));
 			cmd.set_texture(0, 0, input, StockSampler::LinearClamp);
 			CommandBufferUtil::draw_fullscreen_quad(cmd, "builtin://shaders/quad.vert",
-			                                        "builtin://shaders/post/vsm_down_blur.frag");
+			                                        "builtin://shaders/post/vsm_down_blur.frag",
+			                                        {{ "LAYERED", layered ? 1 : 0 }});
 		});
 
-		up_pass.set_build_render_pass([&](CommandBuffer &cmd) {
+		up_pass.set_build_render_pass([&, layered = shadowmap.layers > 1](CommandBuffer &cmd) {
 			auto &input = graph.get_physical_texture_resource(up_pass_res);
 			vec2 inv_size(1.0f / input.get_image().get_create_info().width,
 			              1.0f / input.get_image().get_create_info().height);
 			cmd.set_texture(0, 0, input, StockSampler::LinearClamp);
 			cmd.push_constants(&inv_size, 0, sizeof(inv_size));
 			CommandBufferUtil::draw_fullscreen_quad(cmd, "builtin://shaders/quad.vert",
-			                                        "builtin://shaders/post/vsm_up_blur.frag");
+			                                        "builtin://shaders/post/vsm_up_blur.frag",
+			                                        {{ "LAYERED", layered ? 1 : 0 }});
 		});
 	}
 	else
@@ -847,20 +819,10 @@ void SceneViewerApplication::add_shadow_pass(Device &, const std::string &tag, D
 	if (config.directional_light_shadows_vsm)
 		setup.flags |= SCENE_RENDERER_SHADOW_VSM_BIT;
 
-	if (type == DepthPassType::Main)
-	{
-		setup.context = &depth_context_far;
-		shadow_far_renderer = Util::make_handle<RenderPassSceneRendererConditional>();
-		handle = shadow_far_renderer;
-		setup.flags |= SCENE_RENDERER_DEPTH_STATIC_BIT;
-	}
-	else
-	{
-		setup.context = &depth_context_near;
-		handle = Util::make_handle<RenderPassSceneRenderer>();
-		setup.flags |= SCENE_RENDERER_DEPTH_DYNAMIC_BIT;
-	}
+	setup.context = &depth_context;
+	setup.flags |= SCENE_RENDERER_DEPTH_DYNAMIC_BIT;
 
+	handle = Util::make_handle<RenderPassSceneRenderer>();
 	handle->init(setup);
 
 	VkClearColorValue value = {};
@@ -874,8 +836,7 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 {
 	auto physical_buffers = graph.consume_physical_buffers();
 
-	shadow_main = nullptr;
-	shadow_near = nullptr;
+	shadows = nullptr;
 	ssao_output = nullptr;
 
 	graph.reset();
@@ -893,11 +854,7 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 	scene_loader.get_scene().add_render_passes(graph);
 
 	if (config.directional_light_shadows)
-	{
-		add_shadow_pass(swap.get_device(), "main", DepthPassType::Main);
-		if (config.directional_light_cascaded_shadows)
-			add_shadow_pass(swap.get_device(), "near", DepthPassType::Near);
-	}
+		add_shadow_pass(swap.get_device(), "main");
 
 	add_main_pass(swap.get_device(), "main");
 
@@ -965,47 +922,78 @@ void SceneViewerApplication::update_shadow_scene_aabb()
 	shadow_scene_aabb = aabb;
 }
 
-void SceneViewerApplication::update_shadow_map()
-{
-	mat4 view = mat4_cast(look_at(-selected_directional->direction, vec3(0.0f, 1.0f, 0.0f)));
-
-	// Project the scene AABB into the light and find our ortho ranges.
-	AABB ortho_range = shadow_scene_aabb.transform(view);
-	mat4 proj = ortho(ortho_range);
-
-	// Standard scale/bias.
-	lighting.shadow.far_transform = translate(vec3(0.5f, 0.5f, 0.0f)) * scale(vec3(0.5f, 0.5f, 1.0f)) * proj * view;
-	depth_context_far.set_camera(proj, view);
-}
-
-void SceneViewerApplication::setup_shadow_map_far()
-{
-	update_shadow_map();
-}
-
-void SceneViewerApplication::setup_shadow_map_near()
+void SceneViewerApplication::setup_shadow_map()
 {
 	mat4 view = mat4_cast(look_at(-selected_directional->direction, vec3(0.0f, 1.0f, 0.0f)));
 	AABB ortho_range_depth = shadow_scene_aabb.transform(view); // Just need this to determine Zmin/Zmax.
 
-	auto near_camera = *selected_camera;
-	near_camera.set_depth_range(near_camera.get_znear(), config.cascade_cutoff_distance);
-	vec4 sphere = Frustum::get_bounding_sphere(inverse(near_camera.get_projection()), inverse(near_camera.get_view()));
-	vec2 center_xy = (view * vec4(sphere.xyz(), 1.0f)).xy();
-	sphere.w *= 1.01f;
+	// Project the scene AABB into the light and find our ortho ranges.
+	// This will serve as the culling bounding box.
+	// TODO: Make configurable.
+	constexpr float FIRST_SLICE_CUTOFF = 10.0f;
+	constexpr float BEGIN_LERP_FRACT = 0.8f;
 
-	vec2 texel_size = vec2(2.0f * sphere.w) * vec2(1.0f / lighting.shadow_near->get_image().get_create_info().width,
-	                                               1.0f / lighting.shadow_near->get_image().get_create_info().height);
+	const float cascade_log_bias = 1.0f - muglm::log2(FIRST_SLICE_CUTOFF);
+	const auto compute_z = [&](float slice) -> float {
+		float slice_z = FIRST_SLICE_CUTOFF * muglm::exp2(slice - 1.0f);
+		return slice_z;
+	};
 
-	// Snap to texel grid.
-	center_xy = round(center_xy / texel_size) * texel_size;
+	lighting.shadow.cascade_log_bias = cascade_log_bias;
 
-	AABB ortho_range = AABB(vec3(center_xy - vec2(sphere.w), ortho_range_depth.get_minimum().z),
-	                        vec3(center_xy + vec2(sphere.w), ortho_range_depth.get_maximum().z));
+	if (config.directional_light_cascaded_shadows)
+	{
+		mat4 cascade_transforms[NumShadowCascades];
+		AABB combined_aabb(vec3(FLT_MAX), vec3(-FLT_MAX));
 
-	mat4 proj = ortho(ortho_range);
-	lighting.shadow.near_transform = translate(vec3(0.5f, 0.5f, 0.0f)) * scale(vec3(0.5f, 0.5f, 1.0f)) * proj * view;
-	depth_context_near.set_camera(proj, view);
+		for (int i = 0; i < NumShadowCascades; i++)
+		{
+			float cascade_cutoffs_lo;
+			float cascade_cutoffs_hi = compute_z(float(i + 1));
+			if (i == 0)
+				cascade_cutoffs_lo = 0.0001f;
+			else
+				cascade_cutoffs_lo = compute_z(float(i - 1) + BEGIN_LERP_FRACT);
+
+			auto near_camera = *selected_camera;
+			near_camera.set_depth_range(cascade_cutoffs_lo, cascade_cutoffs_hi);
+			vec4 sphere = Frustum::get_bounding_sphere(inverse(near_camera.get_projection()), inverse(near_camera.get_view()));
+			vec2 center_xy = (view * vec4(sphere.xyz(), 1.0f)).xy();
+			sphere.w *= 1.01f;
+
+			vec2 texel_size = vec2(2.0f * sphere.w) * vec2(1.0f / lighting.shadows->get_image().get_create_info().width,
+			                                               1.0f / lighting.shadows->get_image().get_create_info().height);
+
+			// Snap to texel grid.
+			center_xy = round(center_xy / texel_size) * texel_size;
+
+			AABB ortho_range = AABB(vec3(center_xy - vec2(sphere.w), ortho_range_depth.get_minimum().z),
+			                        vec3(center_xy + vec2(sphere.w), ortho_range_depth.get_maximum().z));
+
+			combined_aabb.expand(ortho_range);
+
+			mat4 proj = ortho(ortho_range);
+			cascade_transforms[i] = proj * view;
+			lighting.shadow.transforms[i] =
+					translate(vec3(0.5f, 0.5f, 0.0f)) *
+					scale(vec3(0.5f, 0.5f, 1.0f)) *
+					cascade_transforms[i];
+		}
+
+		depth_context.set_shadow_cascades(cascade_transforms);
+
+		mat4 proj = ortho(combined_aabb);
+		depth_context.set_camera(proj, view);
+	}
+	else
+	{
+		mat4 proj = ortho(ortho_range_depth);
+		depth_context.set_camera(proj, view);
+		lighting.shadow.transforms[0] =
+				translate(vec3(0.5f, 0.5f, 0.0f)) *
+				scale(vec3(0.5f, 0.5f, 1.0f)) *
+				proj * view;
+	}
 }
 
 void SceneViewerApplication::update_scene(TaskComposer &composer, double frame_time, double elapsed_time)
@@ -1028,7 +1016,6 @@ void SceneViewerApplication::update_scene(TaskComposer &composer, double frame_t
 		lighting.environment_radiance = &reflection->get_image()->get_view();
 	if (irradiance)
 		lighting.environment_irradiance = &irradiance->get_image()->get_view();
-	lighting.shadow.inv_cutoff_distance = 1.0f / config.cascade_cutoff_distance;
 	lighting.environment.intensity = skydome_intensity;
 	lighting.refraction.falloff = vec3(1.0f / 1.5f, 1.0f / 2.5f, 1.0f / 5.0f);
 
@@ -1092,27 +1079,16 @@ void SceneViewerApplication::render_scene(TaskComposer &composer)
 	auto &device = wsi.get_device();
 	auto &scene = scene_loader.get_scene();
 
-	if (config.force_shadow_map_update)
-		need_shadow_map_update = true;
-	if (shadow_far_renderer)
-		shadow_far_renderer->set_need_render_pass(need_shadow_map_update);
-
 	graph.setup_attachments(device, &device.get_swapchain_view());
-	lighting.shadow_near = graph.maybe_get_physical_texture_resource(shadow_near);
-	lighting.shadow_far = graph.maybe_get_physical_texture_resource(shadow_main);
+	lighting.shadows = graph.maybe_get_physical_texture_resource(shadows);
 	lighting.ambient_occlusion = graph.maybe_get_physical_texture_resource(ssao_output);
 
 	if (need_shadow_map_update)
-	{
 		update_shadow_scene_aabb();
-		setup_shadow_map_far();
-	}
-	setup_shadow_map_near();
+	setup_shadow_map();
 
 	scene.bind_render_graph_resources(graph);
-
 	graph.enqueue_render_passes(device, composer);
-
 	need_shadow_map_update = false;
 }
 

@@ -31,6 +31,7 @@ namespace Granite
 {
 class LightClusterer;
 class VolumetricFog;
+enum { NumShadowCascades = 4 };
 
 struct RenderParameters
 {
@@ -42,6 +43,8 @@ struct RenderParameters
 	mat4 inv_view_projection;
 	mat4 local_view_projection;
 	mat4 inv_local_view_projection;
+
+	mat4 multiview_view_projection[NumShadowCascades];
 
 	alignas(16) vec3 camera_position;
 	alignas(16) vec3 camera_front;
@@ -77,9 +80,8 @@ struct DirectionalParameters
 
 struct ShadowParameters
 {
-	alignas(16) mat4 near_transform;
-	alignas(16) mat4 far_transform;
-	float inv_cutoff_distance;
+	alignas(16) mat4 transforms[NumShadowCascades];
+	float cascade_log_bias;
 };
 
 struct EnvironmentParameters
@@ -131,14 +133,14 @@ struct ClustererBindlessTransforms
 
 struct CombinedRenderParameters
 {
-	FogParameters fog;
-	EnvironmentParameters environment;
-	ShadowParameters shadow;
-	VolumetricFogParameters volumetric_fog;
-	DirectionalParameters directional;
-	RefractionParameters refraction;
-	ResolutionParameters resolution;
-	ClustererParametersLegacy clusterer;
+	alignas(16) FogParameters fog;
+	alignas(16) EnvironmentParameters environment;
+	alignas(16) ShadowParameters shadow;
+	alignas(16) VolumetricFogParameters volumetric_fog;
+	alignas(16) DirectionalParameters directional;
+	alignas(16) RefractionParameters refraction;
+	alignas(16) ResolutionParameters resolution;
+	alignas(16) ClustererParametersLegacy clusterer;
 };
 static_assert(sizeof(CombinedRenderParameters) <= Vulkan::VULKAN_MAX_UBO_SIZE, "CombinedRenderParameters cannot fit in min-spec.");
 
@@ -152,8 +154,7 @@ struct LightingParameters
 
 	Vulkan::ImageView *environment_radiance = nullptr;
 	Vulkan::ImageView *environment_irradiance = nullptr;
-	Vulkan::ImageView *shadow_near = nullptr;
-	Vulkan::ImageView *shadow_far = nullptr;
+	Vulkan::ImageView *shadows = nullptr;
 	Vulkan::ImageView *ambient_occlusion = nullptr;
 	const LightClusterer *cluster = nullptr;
 	const VolumetricFog *volumetric_fog = nullptr;

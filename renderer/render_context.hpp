@@ -45,6 +45,8 @@ public:
 	void set_camera(const mat4 &projection, const mat4 &view);
 	void set_camera(const Camera &camera);
 
+	void set_shadow_cascades(const mat4 cascades[NumShadowCascades]);
+
 	const RenderParameters &get_render_parameters() const
 	{
 		return camera;

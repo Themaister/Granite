@@ -232,6 +232,8 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_messenger_cb(
 			return VK_FALSE;
 		if (uint32_t(pCallbackData->messageIdNumber) == 0xd2c86c0cu)
 			return VK_FALSE;
+		if (uint32_t(pCallbackData->messageIdNumber) == 0x2aba6354u)
+			return VK_FALSE;
 	}
 
 	switch (messageSeverity)
@@ -788,7 +790,6 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	ext.storage_16bit_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES_KHR };
 	ext.float16_int8_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FLOAT16_INT8_FEATURES_KHR };
 	ext.multiview_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_FEATURES_KHR };
-	ext.imageless_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGELESS_FRAMEBUFFER_FEATURES_KHR };
 	ext.subgroup_size_control_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_FEATURES_EXT };
 	ext.compute_shader_derivative_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COMPUTE_SHADER_DERIVATIVES_FEATURES_NV };
 	ext.host_query_reset_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_QUERY_RESET_FEATURES_EXT };
@@ -917,15 +918,6 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 			*ppNext = &ext.sampler_ycbcr_conversion_features;
 			ppNext = &ext.sampler_ycbcr_conversion_features.pNext;
 		}
-
-#if 0
-		if (has_extension(VK_KHR_IMAGELESS_FRAMEBUFFER_EXTENSION_NAME))
-		{
-			enabled_extensions.push_back(VK_KHR_IMAGELESS_FRAMEBUFFER_EXTENSION_NAME);
-			*ppNext = &ext.imageless_features;
-			ppNext = &ext.imageless_features.pNext;
-		}
-#endif
 	}
 
 	if (ext.supports_vulkan_11_device && ext.supports_vulkan_11_instance)

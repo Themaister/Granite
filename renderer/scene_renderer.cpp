@@ -60,7 +60,7 @@ void RenderPassSceneRenderer::enqueue_prepare_render_pass(TaskComposer &composer
 	{
 		auto type = (setup_data.flags & SCENE_RENDERER_SHADOW_VSM_BIT) != 0 ?
 				RendererSuite::Type::ShadowDepthDirectionalVSM :
-				RendererSuite::Type::ShadowDepthPCF;
+				RendererSuite::Type::ShadowDepthDirectionalPCF;
 		for (auto &queue : queue_per_task_depth)
 			suite->get_renderer(type).begin(queue);
 	}
@@ -192,7 +192,7 @@ void RenderPassSceneRenderer::build_render_pass(Vulkan::CommandBuffer &cmd)
 	{
 		auto type = (setup_data.flags & SCENE_RENDERER_SHADOW_VSM_BIT) != 0 ?
 		            RendererSuite::Type::ShadowDepthDirectionalVSM :
-		            RendererSuite::Type::ShadowDepthPCF;
+		            RendererSuite::Type::ShadowDepthDirectionalPCF;
 		suite->get_renderer(type).flush(cmd, queue_per_task_depth[0], *setup_data.context,
 		                                Renderer::DEPTH_BIAS_BIT | Renderer::SKIP_SORTING_BIT);
 	}

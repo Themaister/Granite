@@ -193,6 +193,17 @@ void VolumetricFog::build_light_density(CommandBuffer &cmd, ImageView &light_den
 		}
 	}
 
+	if (flags & Renderer::SHADOW_CASCADE_ENABLE_BIT)
+	{
+		auto &subgroup = cmd.get_device().get_device_features().subgroup_properties;
+		if ((subgroup.supportedStages & VK_SHADER_STAGE_FRAGMENT_BIT) != 0 &&
+		    !ImplementationQuirks::get().force_no_subgroups &&
+		    (subgroup.supportedOperations & VK_SUBGROUP_FEATURE_ARITHMETIC_BIT) != 0)
+		{
+			defines.emplace_back("SUBGROUP_ARITHMETIC", 1);
+		}
+	}
+
 	old_projection = context->get_render_parameters().view_projection;
 
 	if (floor.input_view)
@@ -273,7 +284,7 @@ void VolumetricFog::add_render_passes(RenderGraph &graph)
 	fog_volume = &pass->add_storage_texture_output("volumetric-fog-output", volume);
 	pass->add_history_input("volumetric-fog-inscatter");
 
-	pass->set_build_render_pass([&](CommandBuffer &cmd) {
+	pass->set_render_pass_interface(Util::make_handle<MultiThreadRenderPassInterfaceWrapper>([&](CommandBuffer &cmd) {
 		auto &d = graph.get_physical_texture_resource(density_volume);
 		auto &d_low = graph.get_physical_texture_resource(density_volume_low_freq);
 		auto &l = graph.get_physical_texture_resource(in_scatter_volume);
@@ -288,7 +299,7 @@ void VolumetricFog::add_render_passes(RenderGraph &graph)
 		cmd.barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
 		            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 		build_fog(cmd, f, l);
-	});
+	}));
 }
 
 float VolumetricFog::get_slice_z_log2_scale() const

@@ -602,22 +602,11 @@ void CommandBuffer::begin_render_pass(const RenderPassInfo &info, VkSubpassConte
 	}
 
 	VkRenderPassBeginInfo begin_info = { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
-	VkRenderPassAttachmentBeginInfoKHR attachment_info = { VK_STRUCTURE_TYPE_RENDER_PASS_ATTACHMENT_BEGIN_INFO_KHR };
 	begin_info.renderPass = actual_render_pass->get_render_pass();
 	begin_info.framebuffer = framebuffer->get_framebuffer();
 	begin_info.renderArea = scissor;
 	begin_info.clearValueCount = num_clear_values;
 	begin_info.pClearValues = clear_values;
-
-	auto &features = device->get_device_features();
-	bool imageless = features.imageless_features.imagelessFramebuffer == VK_TRUE;
-	VkImageView immediate_views[VULKAN_NUM_ATTACHMENTS + 1];
-	if (imageless)
-	{
-		attachment_info.attachmentCount = Framebuffer::setup_raw_views(immediate_views, info);
-		attachment_info.pAttachments = immediate_views;
-		begin_info.pNext = &attachment_info;
-	}
 
 	table.vkCmdBeginRenderPass(cmd, &begin_info, contents);
 

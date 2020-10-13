@@ -68,7 +68,6 @@ void compute_shadow_cascade(out vec3 clip_near, out vec3 clip_far,
 			clip_far = new_clip;
 	}
 #else
-#error "meep."
 	clip_near = (SHADOW_TRANSFORMS[layer_near] * vec4(light_world_pos, 1.0)).xyz;
 	if (shadow_lerp > 0.0)
 		clip_far = (SHADOW_TRANSFORMS[layer_far] * vec4(light_world_pos, 1.0)).xyz;

@@ -154,6 +154,8 @@ void Renderer::set_mesh_renderer_options_internal(RendererOptionFlags flags)
 				global_defines.emplace_back("SUBGROUP_BALLOT", 1);
 			if ((subgroup.supportedOperations & VK_SUBGROUP_FEATURE_VOTE_BIT) != 0)
 				global_defines.emplace_back("SUBGROUP_VOTE", 1);
+			if ((subgroup.supportedOperations & VK_SUBGROUP_FEATURE_ARITHMETIC_BIT) != 0)
+				global_defines.emplace_back("SUBGROUP_ARITHMETIC", 1);
 
 			if (flags & POSITIONAL_LIGHT_ENABLE_BIT)
 			{
@@ -645,10 +647,20 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 	                                                              "builtin://shaders/lights/directional.frag");
 
 	auto &light = *context.get_lighting_parameters();
+	auto &subgroup = device.get_device_features().subgroup_properties;
 
 	vector<pair<string, int>> defines;
 	if (light.shadows && light.shadows->get_create_info().layers > 1)
+	{
 		defines.emplace_back("SHADOW_CASCADES", 1);
+		if ((subgroup.supportedOperations & VK_SUBGROUP_FEATURE_ARITHMETIC_BIT) != 0 &&
+		    (subgroup.supportedStages & VK_SHADER_STAGE_FRAGMENT_BIT) != 0 &&
+		    !ImplementationQuirks::get().force_no_subgroups)
+		{
+			// For cascaded shadows.
+			defines.emplace_back("SUBGROUP_ARITHMETIC", 1);
+		}
+	}
 	if (light.environment_radiance && light.environment_irradiance)
 		defines.emplace_back("ENVIRONMENT", 1);
 	if (light.shadows)
@@ -767,7 +779,6 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 
 		// Try to enable wave-optimizations.
 		static const VkSubgroupFeatureFlags required_subgroup = VK_SUBGROUP_FEATURE_BALLOT_BIT | VK_SUBGROUP_FEATURE_ARITHMETIC_BIT;
-		auto &subgroup = device.get_device_features().subgroup_properties;
 		if ((subgroup.supportedStages & VK_SHADER_STAGE_FRAGMENT_BIT) != 0 &&
 		    !ImplementationQuirks::get().force_no_subgroups &&
 		    (subgroup.supportedOperations & required_subgroup) == required_subgroup)

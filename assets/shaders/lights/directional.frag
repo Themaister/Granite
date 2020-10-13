@@ -2,6 +2,8 @@
 precision highp float;
 precision highp int;
 
+#include "../inc/subgroup_extensions.h"
+
 #define SHADOW_NUM_CASCADES 4
 layout(std140, set = 0, binding = 0) uniform Transforms
 {

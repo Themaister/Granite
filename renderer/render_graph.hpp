@@ -70,6 +70,17 @@ public:
 };
 using RenderPassInterfaceHandle = Util::IntrusivePtr<RenderPassInterface>;
 
+class MultiThreadRenderPassInterfaceWrapper : public RenderPassInterface
+{
+public:
+	explicit MultiThreadRenderPassInterfaceWrapper(std::function<void (Vulkan::CommandBuffer &)> func);
+
+private:
+	std::function<void (Vulkan::CommandBuffer &)> func;
+	void build_render_pass(Vulkan::CommandBuffer &cmd) override;
+	bool render_pass_can_multithread() const override;
+};
+
 enum SizeClass
 {
 	Absolute,

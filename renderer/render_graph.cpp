@@ -81,6 +81,22 @@ void RenderPassInterface::enqueue_prepare_render_pass(TaskComposer &, const Vulk
 	contents = VK_SUBPASS_CONTENTS_INLINE;
 }
 
+MultiThreadRenderPassInterfaceWrapper::MultiThreadRenderPassInterfaceWrapper(
+		std::function<void(Vulkan::CommandBuffer &)> func_)
+		: func(std::move(func_))
+{
+}
+
+void MultiThreadRenderPassInterfaceWrapper::build_render_pass(Vulkan::CommandBuffer &cmd)
+{
+	func(cmd);
+}
+
+bool MultiThreadRenderPassInterfaceWrapper::render_pass_can_multithread() const
+{
+	return true;
+}
+
 static const RenderGraphQueueFlags compute_queues = RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT |
                                                     RENDER_GRAPH_QUEUE_COMPUTE_BIT;
 

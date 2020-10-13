@@ -232,6 +232,8 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_messenger_cb(
 			return VK_FALSE;
 		if (uint32_t(pCallbackData->messageIdNumber) == 0xd2c86c0cu)
 			return VK_FALSE;
+		if (uint32_t(pCallbackData->messageIdNumber) == 0x2aba6354u)
+			return VK_FALSE;
 	}
 
 	switch (messageSeverity)

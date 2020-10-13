@@ -40,13 +40,13 @@ void compute_shadow_cascade(out vec3 clip_near, out vec3 clip_far,
 		mediump vec3 light_camera_front, mediump vec3 light_direction)
 {
 	float view_z = max(dot(light_camera_front, (light_world_pos - light_camera_pos)), 0.0);
-	float shadow_cascade = log(view_z) + SHADOW_CASCADE_LOG_BIAS;
+	float shadow_cascade = log2(view_z) + SHADOW_CASCADE_LOG_BIAS;
 
 	shadow_cascade = max(shadow_cascade, 0.0);
 	layer_near = min(int(shadow_cascade), SHADOW_NUM_CASCADES - 1);
 	layer_far = min(layer_near + 1, SHADOW_NUM_CASCADES - 1);
 
-	const float BEGIN_LERP_FRACT = 0.5;
+	const float BEGIN_LERP_FRACT = 0.8;
 	const float INV_BEGIN_LERP_FRACT = 1.0 / (1.0 - BEGIN_LERP_FRACT);
 
 	shadow_lerp = INV_BEGIN_LERP_FRACT * max(fract(shadow_cascade) - BEGIN_LERP_FRACT, 0.0);

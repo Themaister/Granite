@@ -930,12 +930,12 @@ void SceneViewerApplication::setup_shadow_map()
 	// Project the scene AABB into the light and find our ortho ranges.
 	// This will serve as the culling bounding box.
 	// TODO: Make configurable.
-	constexpr float FIRST_SLICE_CUTOFF = 5.0f;
-	constexpr float BEGIN_LERP_FRACT = 0.5f;
+	constexpr float FIRST_SLICE_CUTOFF = 10.0f;
+	constexpr float BEGIN_LERP_FRACT = 0.8f;
 
-	const float cascade_log_bias = 1.0f - muglm::log(FIRST_SLICE_CUTOFF);
+	const float cascade_log_bias = 1.0f - muglm::log2(FIRST_SLICE_CUTOFF);
 	const auto compute_z = [&](float slice) -> float {
-		float slice_z = FIRST_SLICE_CUTOFF * muglm::exp(slice - 1.0f);
+		float slice_z = FIRST_SLICE_CUTOFF * muglm::exp2(slice - 1.0f);
 		return slice_z;
 	};
 
@@ -953,7 +953,7 @@ void SceneViewerApplication::setup_shadow_map()
 			if (i == 0)
 				cascade_cutoffs_lo = 0.0001f;
 			else
-				cascade_cutoffs_lo = compute_z(float(i) - BEGIN_LERP_FRACT);
+				cascade_cutoffs_lo = compute_z(float(i - 1) + BEGIN_LERP_FRACT);
 
 			auto near_camera = *selected_camera;
 			near_camera.set_depth_range(cascade_cutoffs_lo, cascade_cutoffs_hi);

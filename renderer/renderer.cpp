@@ -76,7 +76,8 @@ void RendererSuite::update_mesh_rendering_options(const RenderContext &context, 
 	get_renderer(Type::ShadowDepthDirectionalPCF).set_mesh_renderer_options(
 			config.cascaded_directional_shadows ? Renderer::MULTIVIEW_BIT : 0);
 	get_renderer(Type::ShadowDepthPositionalPCF).set_mesh_renderer_options(0);
-	get_renderer(Type::ShadowDepthDirectionalVSM).set_mesh_renderer_options(Renderer::SHADOW_VSM_BIT);
+	get_renderer(Type::ShadowDepthDirectionalVSM).set_mesh_renderer_options(
+			(config.cascaded_directional_shadows ? Renderer::MULTIVIEW_BIT : 0) | Renderer::SHADOW_VSM_BIT);
 	get_renderer(Type::ShadowDepthPositionalVSM).set_mesh_renderer_options(
 			Renderer::POSITIONAL_LIGHT_SHADOW_VSM_BIT);
 	get_renderer(Type::PrepassDepth).set_mesh_renderer_options(0);

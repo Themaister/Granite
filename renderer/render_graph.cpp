@@ -2575,7 +2575,7 @@ void RenderGraph::setup_attachments(Vulkan::Device &device_, Vulkan::ImageView *
 			else if (i == swapchain_physical_index)
 				physical_attachments[i] = swapchain;
 			else if (att.transient)
-				physical_attachments[i] = &device_.get_transient_attachment(att.width, att.height, att.format, i, att.samples, 1);
+				physical_attachments[i] = &device_.get_transient_attachment(att.width, att.height, att.format, i, att.samples, att.layers);
 			else
 				setup_physical_image(device_, i);
 		}

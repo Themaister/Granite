@@ -772,9 +772,6 @@ void SceneViewerApplication::add_shadow_pass(Device &, const std::string &tag)
 		shadowmap_vsm_resolved_color.format = VK_FORMAT_R32G32_SFLOAT;
 		shadowmap_vsm_resolved_color.samples = 1;
 
-		shadowmap_vsm_color.layers = shadowmap.layers;
-		shadowmap_vsm_resolved_color.layers = shadowmap.layers;
-
 		auto shadowmap_vsm_half = shadowmap_vsm_resolved_color;
 		shadowmap_vsm_half.size_x *= 0.5f;
 		shadowmap_vsm_half.size_y *= 0.5f;

@@ -7,7 +7,7 @@
 precision highp float;
 
 #if defined(LAYERED) && LAYERED
-layout(set = 0, binding = 0) uniform mediump sampler2DArray uSampler;
+layout(set = 0, binding = 0) uniform highp sampler2DArray uSampler;
 #else
 layout(set = 0, binding = 0) uniform sampler2D uSampler;
 #endif

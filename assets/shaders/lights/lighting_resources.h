@@ -68,9 +68,9 @@ void compute_shadow_cascade(out vec3 clip_near, out vec3 clip_far,
 #ifdef DIRECTIONAL_SHADOW_VSM
 #include "vsm.h"
 #ifdef SHADOW_CASCADES
-layout(set = 1, binding = 3) uniform mediump sampler2DArray uShadowmap;
+layout(set = 1, binding = 3) uniform sampler2DArray uShadowmap;
 #else
-layout(set = 1, binding = 3) uniform mediump sampler2D uShadowmap;
+layout(set = 1, binding = 3) uniform sampler2D uShadowmap;
 #endif
 
 mediump float get_directional_shadow_term(

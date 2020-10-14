@@ -69,16 +69,6 @@ public:
 };
 using RenderPassInterfaceHandle = Util::IntrusivePtr<RenderPassInterface>;
 
-class RenderPassInterfaceWrapper : public RenderPassInterface
-{
-public:
-	explicit RenderPassInterfaceWrapper(std::function<void (Vulkan::CommandBuffer &)> func);
-
-private:
-	std::function<void (Vulkan::CommandBuffer &)> func;
-	void build_render_pass(Vulkan::CommandBuffer &cmd) override;
-};
-
 enum SizeClass
 {
 	Absolute,

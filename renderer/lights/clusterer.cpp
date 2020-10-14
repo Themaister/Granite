@@ -2166,9 +2166,9 @@ void LightClusterer::add_render_passes_bindless(RenderGraph &graph)
 
 		if (enable_clustering)
 		{
-			pass.set_render_pass_interface(Util::make_handle<RenderPassInterfaceWrapper>([&](Vulkan::CommandBuffer &cmd) {
+			pass.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
 				build_cluster_bindless_cpu(cmd);
-			}));
+			});
 		}
 	}
 	else
@@ -2206,9 +2206,9 @@ void LightClusterer::add_render_passes_bindless(RenderGraph &graph)
 
 		if (enable_clustering)
 		{
-			pass.set_render_pass_interface(Util::make_handle<RenderPassInterfaceWrapper>([&](Vulkan::CommandBuffer &cmd) {
+			pass.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
 				build_cluster_bindless_gpu(cmd);
-			}));
+			});
 		}
 	}
 }

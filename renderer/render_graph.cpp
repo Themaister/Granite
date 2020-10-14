@@ -76,17 +76,6 @@ void RenderPassInterface::enqueue_prepare_render_pass(TaskComposer &, const Vulk
 	contents = VK_SUBPASS_CONTENTS_INLINE;
 }
 
-RenderPassInterfaceWrapper::RenderPassInterfaceWrapper(
-		std::function<void(Vulkan::CommandBuffer &)> func_)
-		: func(std::move(func_))
-{
-}
-
-void RenderPassInterfaceWrapper::build_render_pass(Vulkan::CommandBuffer &cmd)
-{
-	func(cmd);
-}
-
 static const RenderGraphQueueFlags compute_queues = RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT |
                                                     RENDER_GRAPH_QUEUE_COMPUTE_BIT;
 

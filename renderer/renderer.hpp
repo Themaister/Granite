@@ -72,7 +72,8 @@ public:
 		VOLUMETRIC_FOG_ENABLE_BIT = 1 << 12,
 		ALPHA_TEST_DISABLE_BIT = 1 << 13,
 		POSITIONAL_LIGHT_CLUSTER_BINDLESS_BIT = 1 << 14,
-		MULTIVIEW_BIT = 1 << 15
+		MULTIVIEW_BIT = 1 << 15,
+		AMBIENT_OCCLUSION_BIT = 1 << 16
 	};
 	using RendererOptionFlags = uint32_t;
 

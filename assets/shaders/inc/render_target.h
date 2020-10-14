@@ -34,6 +34,10 @@ layout(location = 0) out mediump vec4 Color;
 void emit_render_target(mediump vec3 emissive, mediump vec4 base_color, mediump vec3 normal,
         mediump float metallic, mediump float roughness, mediump float ambient, vec3 pos)
 {
+#ifdef AMBIENT_OCCLUSION
+    ambient *= textureLod(uAmbientOcclusion, gl_FragCoord.xy * resolution.inv_resolution, 0.0).x;
+#endif
+
     mediump vec3 lighting = emissive + compute_lighting(
         base_color.rgb, normal, metallic, roughness, ambient, base_color.a,
         pos, global.camera_position, global.camera_front, directional.direction, directional.color

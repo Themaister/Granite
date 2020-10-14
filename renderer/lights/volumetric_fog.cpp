@@ -158,7 +158,7 @@ void VolumetricFog::build_light_density(CommandBuffer &cmd, ImageView &light_den
 	cmd.push_constants(&push, 0, sizeof(push));
 
 	auto flags = Renderer::get_mesh_renderer_options_from_lighting(*context->get_lighting_parameters());
-	flags &= ~Renderer::VOLUMETRIC_FOG_ENABLE_BIT;
+	flags &= ~(Renderer::VOLUMETRIC_FOG_ENABLE_BIT | Renderer::AMBIENT_OCCLUSION_BIT);
 	auto defines = Renderer::build_defines_from_renderer_options(RendererType::GeneralForward, flags);
 	if (light_density_history)
 	{

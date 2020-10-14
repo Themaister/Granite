@@ -599,6 +599,26 @@ static inline string tagcat(const std::string &a, const std::string &b)
 void SceneViewerApplication::add_main_pass_forward(Device &device, const std::string &tag)
 {
 	AttachmentInfo color, depth;
+	depth.format = device.get_default_depth_format();
+
+	bool use_ssao = config.forward_depth_prepass && config.ssao && config.msaa == 1;
+
+	if (use_ssao)
+	{
+		auto &prepass_depth = graph.add_pass(tagcat("depth-transient", tag), RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
+		prepass_depth.set_depth_stencil_output(tagcat("depth-transient", tag), depth);
+		auto renderer = Util::make_handle<RenderPassSceneRenderer>();
+		RenderPassSceneRenderer::Setup setup = {};
+		setup.scene = &scene_loader.get_scene();
+		setup.context = &context;
+		setup.suite = &renderer_suite;
+		setup.flags = SCENE_RENDERER_FORWARD_Z_PREPASS_BIT;
+		renderer->init(setup);
+
+		// TODO: Find a good way to let the prepass renderer share renderer with opaque / transparent passes.
+		prepass_depth.set_render_pass_interface(std::move(renderer));
+		setup_ssao_naive(graph, context, tagcat("ssao-output", tag), tagcat("depth-transient", tag), "");
+	}
 
 	bool supports_32bpp =
 			device.image_format_is_supported(VK_FORMAT_B10G11R11_UFLOAT_PACK32,
@@ -610,7 +630,6 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 	else
 		color.format = VK_FORMAT_UNDEFINED; // Swapchain format.
 
-	depth.format = device.get_default_depth_format();
 	color.samples = config.msaa;
 	depth.samples = config.msaa;
 
@@ -627,7 +646,17 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 	else
 		lighting_pass.add_color_output(tagcat("HDR", tag), color);
 
-	lighting_pass.set_depth_stencil_output(tagcat("depth", tag), depth);
+	if (use_ssao)
+	{
+		ssao_output = &lighting_pass.add_texture_input(tagcat("ssao-output", tag));
+		lighting_pass.set_depth_stencil_input(tagcat("depth-transient", tag));
+		lighting_pass.add_fake_resource_write_alias(tagcat("depth-transient", tag), tagcat("depth", tag));
+	}
+	else
+	{
+		ssao_output = nullptr;
+		lighting_pass.set_depth_stencil_output(tagcat("depth", tag), depth);
+	}
 
 	auto renderer = Util::make_handle<RenderPassSceneRenderer>();
 	RenderPassSceneRenderer::Setup setup = {};
@@ -636,8 +665,10 @@ void SceneViewerApplication::add_main_pass_forward(Device &device, const std::st
 	setup.context = &context;
 	setup.suite = &renderer_suite;
 	setup.flags = SCENE_RENDERER_FORWARD_OPAQUE_BIT | SCENE_RENDERER_FORWARD_TRANSPARENT_BIT | config.pcf_flags;
-	if (config.forward_depth_prepass)
+	if (config.forward_depth_prepass && !use_ssao)
 		setup.flags |= SCENE_RENDERER_FORWARD_Z_PREPASS_BIT;
+	else if (config.forward_depth_prepass)
+		setup.flags |= SCENE_RENDERER_FORWARD_Z_EXISTING_PREPASS_BIT;
 	renderer->init(setup);
 
 	lighting_pass.set_render_pass_interface(std::move(renderer));

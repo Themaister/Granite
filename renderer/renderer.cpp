@@ -93,6 +93,7 @@ void RendererSuite::update_mesh_rendering_options(const RenderContext &context, 
 	auto opts = Renderer::get_mesh_renderer_options_from_lighting(*context.get_lighting_parameters());
 	get_renderer(Type::ForwardOpaque).set_mesh_renderer_options(
 			opts | pcf_flags | (config.forward_z_prepass ? Renderer::ALPHA_TEST_DISABLE_BIT : 0));
+	opts &= ~Renderer::AMBIENT_OCCLUSION_BIT;
 	get_renderer(Type::ForwardTransparent).set_mesh_renderer_options(opts | pcf_flags);
 }
 
@@ -260,6 +261,9 @@ vector<pair<string, int>> Renderer::build_defines_from_renderer_options(Renderer
 	if (flags & MULTIVIEW_BIT)
 		global_defines.emplace_back("MULTIVIEW", 1);
 
+	if (flags & AMBIENT_OCCLUSION_BIT)
+		global_defines.emplace_back("AMBIENT_OCCLUSION", 1);
+
 	global_defines.emplace_back(renderer_to_define(type), 1);
 
 	return global_defines;
@@ -301,6 +305,9 @@ Renderer::RendererOptionFlags Renderer::get_mesh_renderer_options_from_lighting(
 		if (lighting.cluster->clusterer_is_bindless())
 			flags |= POSITIONAL_LIGHT_CLUSTER_BINDLESS_BIT;
 	}
+
+	if (lighting.ambient_occlusion)
+		flags |= AMBIENT_OCCLUSION_BIT;
 
 	return flags;
 }

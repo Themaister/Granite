@@ -163,7 +163,7 @@ void RenderPassSceneRenderer::build_render_pass(Vulkan::CommandBuffer &cmd)
 		if (setup_data.flags & SCENE_RENDERER_FORWARD_OPAQUE_BIT)
 		{
 			Renderer::RendererOptionFlags opt = Renderer::SKIP_SORTING_BIT;
-			if (setup_data.flags & SCENE_RENDERER_FORWARD_Z_PREPASS_BIT)
+			if (setup_data.flags & (SCENE_RENDERER_FORWARD_Z_PREPASS_BIT | SCENE_RENDERER_FORWARD_Z_EXISTING_PREPASS_BIT))
 				opt |= Renderer::DEPTH_STENCIL_READ_ONLY_BIT | Renderer::DEPTH_TEST_EQUAL_BIT;
 			suite->get_renderer(RendererSuite::Type::ForwardOpaque).flush(cmd, queue_per_task_opaque[0], *setup_data.context, opt);
 		}

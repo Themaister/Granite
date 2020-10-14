@@ -2164,12 +2164,9 @@ void LightClusterer::add_render_passes_bindless(RenderGraph &graph)
 			pass.add_transfer_output("cluster-transforms", att);
 		}
 
-		if (enable_clustering)
-		{
-			pass.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
-				build_cluster_bindless_cpu(cmd);
-			});
-		}
+		pass.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
+			build_cluster_bindless_cpu(cmd);
+		});
 	}
 	else
 	{
@@ -2204,12 +2201,9 @@ void LightClusterer::add_render_passes_bindless(RenderGraph &graph)
 			pass.add_storage_output("cluster-transformed-spot", att);
 		}
 
-		if (enable_clustering)
-		{
-			pass.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
-				build_cluster_bindless_gpu(cmd);
-			});
-		}
+		pass.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
+			build_cluster_bindless_gpu(cmd);
+		});
 	}
 }
 
@@ -2239,10 +2233,6 @@ void LightClusterer::add_render_passes_legacy(RenderGraph &graph)
 		pass.set_build_render_pass([this](Vulkan::CommandBuffer &cmd) {
 			build_cluster_cpu(cmd, *legacy.target);
 		});
-
-		pass.set_need_render_pass([this]() {
-			return enable_clustering;
-		});
 	}
 	else
 	{
@@ -2268,19 +2258,18 @@ void LightClusterer::add_render_passes_legacy(RenderGraph &graph)
 			                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 			build_cluster(cmd, *legacy.target, legacy.pre_cull_target);
 		});
-
-		pass.set_need_render_pass([this]() {
-			return enable_clustering;
-		});
 	}
 }
 
 void LightClusterer::add_render_passes(RenderGraph &graph)
 {
-	if (enable_bindless)
-		add_render_passes_bindless(graph);
-	else
-		add_render_passes_legacy(graph);
+	if (enable_clustering)
+	{
+		if (enable_bindless)
+			add_render_passes_bindless(graph);
+		else
+			add_render_passes_legacy(graph);
+	}
 }
 
 void LightClusterer::set_base_renderer(const RendererSuite *suite)

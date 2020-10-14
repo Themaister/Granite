@@ -540,8 +540,6 @@ public:
 	{
 		if (render_pass_handle)
 			return render_pass_handle->need_render_pass();
-		else if (need_render_pass_cb)
-			return need_render_pass_cb();
 		else
 			return true;
 	}
@@ -551,7 +549,7 @@ public:
 		if (render_pass_handle)
 			return !render_pass_handle->render_pass_is_separate_layered();
 		else
-			return build_render_pass_cb && !build_render_pass_separate_layered_cb;
+			return true;
 	}
 
 	bool may_not_need_render_pass() const
@@ -559,7 +557,7 @@ public:
 		if (render_pass_handle)
 			return render_pass_handle->render_pass_is_conditional();
 		else
-			return bool(need_render_pass_cb);
+			return false;
 	}
 
 	bool get_clear_color(unsigned index_, VkClearColorValue *value = nullptr) const
@@ -600,8 +598,6 @@ public:
 			else
 				render_pass_handle->build_render_pass(cmd);
 		}
-		else if (build_render_pass_separate_layered_cb)
-			build_render_pass_separate_layered_cb(layer, cmd);
 		else if (build_render_pass_cb)
 			build_render_pass_cb(cmd);
 	}
@@ -611,19 +607,9 @@ public:
 		render_pass_handle = std::move(handle);
 	}
 
-	void set_need_render_pass(std::function<bool ()> func)
-	{
-		need_render_pass_cb = std::move(func);
-	}
-
 	void set_build_render_pass(std::function<void (Vulkan::CommandBuffer &)> func)
 	{
 		build_render_pass_cb = std::move(func);
-	}
-
-	void set_build_render_pass_separate_layered(std::function<void (unsigned, Vulkan::CommandBuffer &)> func)
-	{
-		build_render_pass_separate_layered_cb = std::move(func);
 	}
 
 	void set_get_clear_depth_stencil(std::function<bool (VkClearDepthStencilValue *)> func)
@@ -654,8 +640,6 @@ private:
 
 	RenderPassInterfaceHandle render_pass_handle;
 	std::function<void (Vulkan::CommandBuffer &)> build_render_pass_cb;
-	std::function<void (unsigned, Vulkan::CommandBuffer &)> build_render_pass_separate_layered_cb;
-	std::function<bool ()> need_render_pass_cb;
 	std::function<bool (VkClearDepthStencilValue *)> get_clear_depth_stencil_cb;
 	std::function<bool (unsigned, VkClearColorValue *)> get_clear_color_cb;
 

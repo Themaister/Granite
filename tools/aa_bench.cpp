@@ -76,9 +76,6 @@ void AABenchApplication::on_swapchain_changed(const SwapchainParameterEvent &swa
 	auto &pass = graph.add_pass("main", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 	pass.add_color_output("HDR-main", main_output);
 	pass.set_depth_stencil_output("depth-main", main_depth);
-	pass.set_need_render_pass([this]() {
-		return need_main_pass;
-	});
 	pass.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
 		cmd.set_texture(0, 0, images[(input_index++) & 1]->get_image()->get_view(), Vulkan::StockSampler::LinearClamp);
 		Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd, "builtin://shaders/quad.vert",

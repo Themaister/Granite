@@ -1273,6 +1273,7 @@ void TexturePlane::add_render_pass(RenderGraph &graph, Type type)
 		return true;
 	});
 
+#if 0
 	lighting.set_need_render_pass([this]() -> bool {
 		// No point in rendering reflection/refraction if we cannot even see it :)
 		vec3 c0 = position + dpdx + dpdy;
@@ -1285,6 +1286,7 @@ void TexturePlane::add_render_pass(RenderGraph &graph, Type type)
 		float plane_test = dot(base_context->get_render_parameters().camera_position - position, normal);
 		return plane_test > 0.0f;
 	});
+#endif
 
 	lighting.set_build_render_pass([this, type](Vulkan::CommandBuffer &cmd) {
 		if (type == Reflection)

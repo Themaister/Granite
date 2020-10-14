@@ -177,7 +177,7 @@ void setup_ssao_naive(RenderGraph &graph, const RenderContext &context,
 
 		cmd.set_specialization_constant_mask(3);
 		cmd.set_specialization_constant(0, Global::common_renderer_data()->ssao_luts.kernel_size);
-		cmd.set_specialization_constant(1, 0.1f);
+		cmd.set_specialization_constant(1, 0.3f);
 
 		struct Push
 		{

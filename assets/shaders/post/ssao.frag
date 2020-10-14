@@ -7,7 +7,9 @@ layout(constant_id = 0) const int KERNEL_SIZE = 16;
 layout(constant_id = 1) const float HALO_THRESHOLD = 0.1;
 
 layout(set = 0, binding = 0) uniform sampler2D uDepth;
+#if NORMAL
 layout(set = 0, binding = 1) uniform mediump sampler2D uNormal;
+#endif
 layout(set = 0, binding = 2) uniform mediump sampler2D uNoise;
 layout(set = 0, binding = 3, std140) uniform Kernel
 {
@@ -19,6 +21,8 @@ layout(std140, set = 1, binding = 0) uniform Registers
     mat4 shadow_matrix;
     mat4 inv_view_projection;
     vec4 inv_z_transform;
+    vec4 dx_clip;
+    vec4 dy_clip;
     vec2 noise_scale;
 } registers;
 
@@ -41,7 +45,8 @@ float min4(vec4 v)
 
 void main()
 {
-    float d = min4(textureGather(uDepth, vUV));
+    vec4 d4 = textureGather(uDepth, vUV);
+    float d = min4(d4);
     if (d == 1.0)
         discard;
 
@@ -51,7 +56,20 @@ void main()
     // Implementation heavily inspired from
     // http://john-chapman-graphics.blogspot.com/2013/01/ssao-tutorial.html
 
+#if NORMAL
     mediump vec3 normal = normalize(textureLod(uNormal, vUV, 0.0).xyz * 2.0 - 1.0);
+#else
+    vec2 dzdx2 = d4.zy - d4.wx;
+    vec2 dzdy2 = d4.xy - d4.wz;
+    float dzdx = min(dzdx2.x, dzdx2.y);
+    float dzdy = min(dzdy2.x, dzdy2.y);
+    vec3 world_dx = project(world4 + registers.dx_clip + dzdx * registers.inv_view_projection[2]);
+    vec3 world_dy = project(world4 + registers.dy_clip + dzdy * registers.inv_view_projection[2]);
+    world_dx -= world;
+    world_dy -= world;
+    mediump vec3 normal = normalize(cross(world_dy, world_dx));
+#endif
+
     mediump vec3 rvec = vec3(textureLod(uNoise, vUV * registers.noise_scale, 0.0).xy, 0.0);
     mediump vec3 tangent = normalize(rvec - normal * dot(rvec, normal));
     mediump vec3 bitangent = cross(normal, tangent);

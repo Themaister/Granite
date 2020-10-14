@@ -1083,9 +1083,12 @@ void SceneViewerApplication::render_scene(TaskComposer &composer)
 	lighting.shadows = graph.maybe_get_physical_texture_resource(shadows);
 	lighting.ambient_occlusion = graph.maybe_get_physical_texture_resource(ssao_output);
 
-	if (need_shadow_map_update)
-		update_shadow_scene_aabb();
-	setup_shadow_map();
+	if (lighting.shadows)
+	{
+		if (need_shadow_map_update)
+			update_shadow_scene_aabb();
+		setup_shadow_map();
+	}
 
 	scene.bind_render_graph_resources(graph);
 	graph.enqueue_render_passes(device, composer);

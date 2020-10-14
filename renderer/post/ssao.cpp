@@ -156,7 +156,10 @@ void setup_ssao_naive(RenderGraph &graph, const RenderContext &context,
 
 	auto &ssao_first = graph.add_pass(output + "-first", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);
 	auto &depth = ssao_first.add_texture_input(input_depth);
-	auto &normal = ssao_first.add_texture_input(input_normal);
+
+	RenderTextureResource *normal = nullptr;
+	if (!input_normal.empty())
+		normal = &ssao_first.add_texture_input(input_normal);
 	auto &noisy_output = ssao_first.add_color_output(output + "-noise", info);
 
 	ssao_first.set_get_clear_color([](unsigned, VkClearColorValue *value) {
@@ -165,9 +168,10 @@ void setup_ssao_naive(RenderGraph &graph, const RenderContext &context,
 		return true;
 	});
 
-	ssao_first.set_build_render_pass([&](Vulkan::CommandBuffer &cmd) {
+	ssao_first.set_build_render_pass([&, normal](Vulkan::CommandBuffer &cmd) {
 		cmd.set_texture(0, 0, graph.get_physical_texture_resource(depth), Vulkan::StockSampler::NearestClamp);
-		cmd.set_texture(0, 1, graph.get_physical_texture_resource(normal), Vulkan::StockSampler::NearestClamp);
+		if (normal)
+			cmd.set_texture(0, 1, graph.get_physical_texture_resource(*normal), Vulkan::StockSampler::NearestClamp);
 		cmd.set_texture(0, 2, Global::common_renderer_data()->ssao_luts.noise->get_view(), Vulkan::StockSampler::NearestWrap);
 		cmd.set_uniform_buffer(0, 3, *Global::common_renderer_data()->ssao_luts.kernel);
 
@@ -180,6 +184,8 @@ void setup_ssao_naive(RenderGraph &graph, const RenderContext &context,
 			mat4 shadow_matrix;
 			mat4 inv_view_projection;
 			vec4 inv_z_transform;
+			vec4 dx_clip;
+			vec4 dy_clip;
 			vec2 noise_scale;
 		};
 
@@ -192,9 +198,12 @@ void setup_ssao_naive(RenderGraph &graph, const RenderContext &context,
 		push->noise_scale = vec2(
 				cmd.get_viewport().width / float(Global::common_renderer_data()->ssao_luts.noise_resolution),
 				cmd.get_viewport().height / float(Global::common_renderer_data()->ssao_luts.noise_resolution));
+		push->dx_clip = context.get_render_parameters().inv_view_projection[0] * (1.0f / cmd.get_viewport().width);
+		push->dy_clip = context.get_render_parameters().inv_view_projection[1] * (1.0f / cmd.get_viewport().height);
 
 		cmd.push_constants(&push, 0, sizeof(push));
-		Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd, "builtin://shaders/post/ssao.vert", "builtin://shaders/post/ssao.frag");
+		Vulkan::CommandBufferUtil::draw_fullscreen_quad(cmd, "builtin://shaders/post/ssao.vert", "builtin://shaders/post/ssao.frag",
+		                                                {{ "NORMAL", normal ? 1 : 0 }});
 	});
 
 	auto &ssao_blur = graph.add_pass(output + "-blur", RENDER_GRAPH_QUEUE_GRAPHICS_BIT);

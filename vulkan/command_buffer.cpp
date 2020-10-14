@@ -1212,6 +1212,9 @@ void CommandBuffer::wait_events(unsigned num_events, const VkEvent *events,
 	VK_ASSERT(!framebuffer);
 	VK_ASSERT(!actual_render_pass);
 
+	VK_ASSERT(src_stages != 0);
+	VK_ASSERT(dst_stages != 0);
+
 	if (device->get_workarounds().emulate_event_as_pipeline_barrier)
 	{
 		barrier(src_stages, dst_stages,
@@ -1237,6 +1240,7 @@ void CommandBuffer::complete_signal_event(const EventHolder &event)
 {
 	VK_ASSERT(!framebuffer);
 	VK_ASSERT(!actual_render_pass);
+	VK_ASSERT(event.get_stages() != 0);
 	if (!device->get_workarounds().emulate_event_as_pipeline_barrier)
 		table.vkCmdSetEvent(cmd, event.get_event(), event.get_stages());
 }

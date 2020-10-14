@@ -209,24 +209,4 @@ bool RenderPassSceneRenderer::get_clear_color(unsigned, VkClearColorValue *value
 		*value = clear_color_value;
 	return true;
 }
-
-bool RenderPassSceneRenderer::render_pass_can_multithread() const
-{
-	return true;
-}
-
-void RenderPassSceneRendererConditional::set_need_render_pass(bool need_)
-{
-	need = need_;
-}
-
-bool RenderPassSceneRendererConditional::need_render_pass() const
-{
-	return need;
-}
-
-bool RenderPassSceneRendererConditional::render_pass_is_conditional() const
-{
-	return true;
-}
 }

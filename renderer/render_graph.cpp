@@ -43,11 +43,6 @@ bool RenderPassInterface::render_pass_is_separate_layered() const
 	return false;
 }
 
-bool RenderPassInterface::render_pass_can_multithread() const
-{
-	return false;
-}
-
 bool RenderPassInterface::need_render_pass() const
 {
 	return true;
@@ -81,20 +76,15 @@ void RenderPassInterface::enqueue_prepare_render_pass(TaskComposer &, const Vulk
 	contents = VK_SUBPASS_CONTENTS_INLINE;
 }
 
-MultiThreadRenderPassInterfaceWrapper::MultiThreadRenderPassInterfaceWrapper(
+RenderPassInterfaceWrapper::RenderPassInterfaceWrapper(
 		std::function<void(Vulkan::CommandBuffer &)> func_)
 		: func(std::move(func_))
 {
 }
 
-void MultiThreadRenderPassInterfaceWrapper::build_render_pass(Vulkan::CommandBuffer &cmd)
+void RenderPassInterfaceWrapper::build_render_pass(Vulkan::CommandBuffer &cmd)
 {
 	func(cmd);
-}
-
-bool MultiThreadRenderPassInterfaceWrapper::render_pass_can_multithread() const
-{
-	return true;
 }
 
 static const RenderGraphQueueFlags compute_queues = RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT |
@@ -2212,39 +2202,28 @@ void RenderGraph::physical_pass_handle_cpu_timeline(Vulkan::Device &device_,
 	for (auto &c : state.subpass_contents)
 		c = VK_SUBPASS_CONTENTS_INLINE;
 
-	if (physical_pass_can_multithread(physical_pass))
-	{
-		auto &group = incoming_composer.get_thread_group();
-		TaskComposer composer(group);
-		composer.set_incoming_task(incoming_composer.get_pipeline_stage_dependency());
-		composer.begin_pipeline_stage();
+	auto &group = incoming_composer.get_thread_group();
+	TaskComposer composer(group);
+	composer.set_incoming_task(incoming_composer.get_pipeline_stage_dependency());
+	composer.begin_pipeline_stage();
 
-		unsigned subpass_index = 0;
-		for (auto &pass : physical_pass.passes)
-		{
-			auto &subpass = *passes[pass];
-			subpass.enqueue_prepare_render_pass(composer, physical_pass.render_pass_info,
-			                                    subpass_index, state.subpass_contents[subpass_index]);
-			subpass_index++;
-		}
-
-		state.rendering_dependency = composer.get_outgoing_task();
-	}
-}
-
-bool RenderGraph::physical_pass_can_multithread(const PhysicalPass &physical_pass) const
-{
+	unsigned subpass_index = 0;
 	for (auto &pass : physical_pass.passes)
-		if (!passes[pass]->can_multithread())
-			return false;
-	return true;
+	{
+		auto &subpass = *passes[pass];
+		subpass.enqueue_prepare_render_pass(composer, physical_pass.render_pass_info,
+		                                    subpass_index, state.subpass_contents[subpass_index]);
+		subpass_index++;
+	}
+
+	state.rendering_dependency = composer.get_outgoing_task();
 }
 
 void RenderGraph::physical_pass_handle_gpu_timeline(ThreadGroup &group, Vulkan::Device &device_,
                                                     const PhysicalPass &physical_pass,
                                                     PassSubmissionState &state)
 {
-	auto func = [&]() {
+	auto task = group.create_task([&]() {
 		state.cmd = device_.request_command_buffer(state.queue_type);
 		state.emit_pre_pass_barriers();
 
@@ -2259,22 +2238,12 @@ void RenderGraph::physical_pass_handle_gpu_timeline(ThreadGroup &group, Vulkan::
 		// in the submission task.
 		state.cmd->end_debug_channel();
 		state.cmd->end_threaded_recording();
-	};
+	});
 
-	if (physical_pass_can_multithread(physical_pass))
-	{
-		auto task = group.create_task(std::move(func));
-		task->set_desc((passes[physical_pass.passes.front()]->get_name() + "-build-gpu-commands").c_str());
-
-		if (state.rendering_dependency)
-			group.add_dependency(*task, *state.rendering_dependency);
-		state.rendering_dependency = task;
-	}
-	else
-	{
-		assert(!state.rendering_dependency);
-		func();
-	}
+	task->set_desc((passes[physical_pass.passes.front()]->get_name() + "-build-gpu-commands").c_str());
+	if (state.rendering_dependency)
+		group.add_dependency(*task, *state.rendering_dependency);
+	state.rendering_dependency = task;
 }
 
 void RenderGraph::enqueue_render_pass(Vulkan::Device &device_, PhysicalPass &physical_pass, PassSubmissionState &state,

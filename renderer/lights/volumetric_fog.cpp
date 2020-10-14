@@ -284,7 +284,7 @@ void VolumetricFog::add_render_passes(RenderGraph &graph)
 	fog_volume = &pass->add_storage_texture_output("volumetric-fog-output", volume);
 	pass->add_history_input("volumetric-fog-inscatter");
 
-	pass->set_render_pass_interface(Util::make_handle<MultiThreadRenderPassInterfaceWrapper>([&](CommandBuffer &cmd) {
+	pass->set_render_pass_interface(Util::make_handle<RenderPassInterfaceWrapper>([&](CommandBuffer &cmd) {
 		auto &d = graph.get_physical_texture_resource(density_volume);
 		auto &d_low = graph.get_physical_texture_resource(density_volume_low_freq);
 		auto &l = graph.get_physical_texture_resource(in_scatter_volume);

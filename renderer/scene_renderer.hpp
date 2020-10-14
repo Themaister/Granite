@@ -80,20 +80,8 @@ protected:
 
 	void build_render_pass(Vulkan::CommandBuffer &cmd) override;
 	bool get_clear_color(unsigned attachment, VkClearColorValue *value) const override;
-	bool render_pass_can_multithread() const override;
 	void enqueue_prepare_render_pass(TaskComposer &composer,
 	                                 const Vulkan::RenderPassInfo &info, unsigned subpass,
 	                                 VkSubpassContents &contents) override;
-};
-
-class RenderPassSceneRendererConditional : public RenderPassSceneRenderer
-{
-public:
-	void set_need_render_pass(bool need);
-
-private:
-	bool render_pass_is_conditional() const override;
-	bool need_render_pass() const override;
-	bool need = false;
 };
 }

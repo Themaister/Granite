@@ -2164,24 +2164,12 @@ void LightClusterer::add_render_passes_bindless(RenderGraph &graph)
 			pass.add_transfer_output("cluster-transforms", att);
 		}
 
-		struct ThreadedPass : RenderPassInterface
-		{
-			explicit ThreadedPass(LightClusterer &clusterer_)
-				: clusterer(clusterer_)
-			{
-			}
-
-			bool render_pass_can_multithread() const override { return true; }
-			void build_render_pass(CommandBuffer &cmd) override
-			{
-				clusterer.build_cluster_bindless_cpu(cmd);
-			}
-
-			LightClusterer &clusterer;
-		};
-
 		if (enable_clustering)
-			pass.set_render_pass_interface(Util::make_handle<ThreadedPass>(*this));
+		{
+			pass.set_render_pass_interface(Util::make_handle<RenderPassInterfaceWrapper>([&](Vulkan::CommandBuffer &cmd) {
+				build_cluster_bindless_cpu(cmd);
+			}));
+		}
 	}
 	else
 	{
@@ -2216,24 +2204,12 @@ void LightClusterer::add_render_passes_bindless(RenderGraph &graph)
 			pass.add_storage_output("cluster-transformed-spot", att);
 		}
 
-		struct ThreadedPass : RenderPassInterface
-		{
-			explicit ThreadedPass(LightClusterer &clusterer_)
-				: clusterer(clusterer_)
-			{
-			}
-
-			bool render_pass_can_multithread() const override { return true; }
-			void build_render_pass(CommandBuffer &cmd) override
-			{
-				clusterer.build_cluster_bindless_gpu(cmd);
-			}
-
-			LightClusterer &clusterer;
-		};
-
 		if (enable_clustering)
-			pass.set_render_pass_interface(Util::make_handle<ThreadedPass>(*this));
+		{
+			pass.set_render_pass_interface(Util::make_handle<RenderPassInterfaceWrapper>([&](Vulkan::CommandBuffer &cmd) {
+				build_cluster_bindless_gpu(cmd);
+			}));
+		}
 	}
 }
 

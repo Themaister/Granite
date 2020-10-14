@@ -55,7 +55,6 @@ public:
 	// This information must remain fixed.
 	virtual bool render_pass_is_conditional() const;
 	virtual bool render_pass_is_separate_layered() const;
-	virtual bool render_pass_can_multithread() const;
 
 	// Can change per frame.
 	virtual bool need_render_pass() const;
@@ -70,15 +69,14 @@ public:
 };
 using RenderPassInterfaceHandle = Util::IntrusivePtr<RenderPassInterface>;
 
-class MultiThreadRenderPassInterfaceWrapper : public RenderPassInterface
+class RenderPassInterfaceWrapper : public RenderPassInterface
 {
 public:
-	explicit MultiThreadRenderPassInterfaceWrapper(std::function<void (Vulkan::CommandBuffer &)> func);
+	explicit RenderPassInterfaceWrapper(std::function<void (Vulkan::CommandBuffer &)> func);
 
 private:
 	std::function<void (Vulkan::CommandBuffer &)> func;
 	void build_render_pass(Vulkan::CommandBuffer &cmd) override;
-	bool render_pass_can_multithread() const override;
 };
 
 enum SizeClass
@@ -566,14 +564,6 @@ public:
 			return build_render_pass_cb && !build_render_pass_separate_layered_cb;
 	}
 
-	bool can_multithread() const
-	{
-		if (render_pass_handle)
-			return render_pass_handle->render_pass_can_multithread();
-		else
-			return false;
-	}
-
 	bool may_not_need_render_pass() const
 	{
 		if (render_pass_handle)
@@ -1033,7 +1023,6 @@ private:
 	void physical_pass_handle_flush_barrier(const Barrier &barrier, PassSubmissionState &state);
 	void physical_pass_handle_cpu_timeline(Vulkan::Device &device, const PhysicalPass &pass, PassSubmissionState &state,
 	                                       TaskComposer &composer);
-	bool physical_pass_can_multithread(const PhysicalPass &pass) const;
 	void physical_pass_handle_gpu_timeline(ThreadGroup &group, Vulkan::Device &device,
 	                                       const PhysicalPass &pass, PassSubmissionState &state);
 };

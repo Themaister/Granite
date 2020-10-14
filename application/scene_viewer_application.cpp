@@ -113,16 +113,11 @@ void SceneViewerApplication::read_config(const std::string &path)
 		config.directional_light_shadows = doc["directionalLightShadows"].GetBool();
 
 	if (doc.HasMember("directionalLightShadowsCascaded"))
-	{
 		config.directional_light_cascaded_shadows = doc["directionalLightShadowsCascaded"].GetBool();
-		renderer_suite_config.cascaded_directional_shadows = config.directional_light_cascaded_shadows;
-	}
 
 	if (doc.HasMember("directionalLightShadowsVSM"))
-	{
 		config.directional_light_shadows_vsm = doc["directionalLightShadowsVSM"].GetBool();
-		renderer_suite_config.directional_light_vsm = config.directional_light_shadows_vsm;
-	}
+
 	if (doc.HasMember("PCFKernelWidth"))
 	{
 		unsigned width = doc["PCFKernelWidth"].GetUint();
@@ -198,6 +193,9 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 		read_config(config_path);
 	if (!quirks_path.empty())
 		read_quirks(quirks_path);
+
+	renderer_suite_config.cascaded_directional_shadows = config.directional_light_cascaded_shadows;
+	renderer_suite_config.directional_light_vsm = config.directional_light_shadows_vsm;
 
 	scene_loader.load_scene(path);
 

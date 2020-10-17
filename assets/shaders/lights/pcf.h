@@ -15,6 +15,8 @@ layout(set = 1, binding = 15) uniform sampler LinearShadowSampler;
 	textureLodOffset(tex, uv, 0.0, ivec2(x, y))
 #define SAMPLE_PCF_LAYER(tex, uvz, x, y) \
 	textureOffset(tex, uvz, ivec2(x, y))
+#define SAMPLE_PCF_LAYER_NO_OFFSET(tex, uvz) \
+	texture(tex, uvz)
 
 #if SHADOW_MAP_PCF_KERNEL_WIDTH == 5
 #define SAMPLE_PCF_KERNEL_BINDLESS(var, tex, index, uv) \
@@ -113,7 +115,7 @@ layout(set = 1, binding = 15) uniform sampler LinearShadowSampler;
 	var += w12 * SAMPLE_PCF_LAYER(tex, clip_uv, +2, -1); \
 	var += w02 * SAMPLE_PCF_LAYER(tex, clip_uv, -2, +0); \
 	var += w01 * SAMPLE_PCF_LAYER(tex, clip_uv, -1, +0); \
-	var += w00 * SAMPLE_PCF_LAYER(tex, clip_uv, +0, +0); \
+	var += w00 * SAMPLE_PCF_LAYER_NO_OFFSET(tex, clip_uv); \
 	var += w01 * SAMPLE_PCF_LAYER(tex, clip_uv, +1, +0); \
 	var += w02 * SAMPLE_PCF_LAYER(tex, clip_uv, +2, +0); \
 	var += w12 * SAMPLE_PCF_LAYER(tex, clip_uv, -2, +1); \
@@ -163,7 +165,7 @@ layout(set = 1, binding = 15) uniform sampler LinearShadowSampler;
 	var += 0.1250 * SAMPLE_PCF_LAYER(tex, clip_uv, +0, -1); \
 	var += 0.0625 * SAMPLE_PCF_LAYER(tex, clip_uv, +1, -1); \
 	var += 0.1250 * SAMPLE_PCF_LAYER(tex, clip_uv, -1, +0); \
-	var += 0.2500 * SAMPLE_PCF_LAYER(tex, clip_uv, +0, +0); \
+	var += 0.2500 * SAMPLE_PCF_LAYER_NO_OFFSET(tex, clip_uv); \
 	var += 0.1250 * SAMPLE_PCF_LAYER(tex, clip_uv, +1, +0); \
 	var += 0.0625 * SAMPLE_PCF_LAYER(tex, clip_uv, -1, +1); \
 	var += 0.1250 * SAMPLE_PCF_LAYER(tex, clip_uv, +0, +1); \
@@ -172,7 +174,7 @@ layout(set = 1, binding = 15) uniform sampler LinearShadowSampler;
 #elif SHADOW_MAP_PCF_KERNEL_WIDTH == 1
 #define SAMPLE_PCF_KERNEL_BINDLESS(var, tex, index, uv) var = textureProjLod(sampler2DShadow(tex[nonuniformEXT(index)], LinearShadowSampler), uv, 0.0)
 #define SAMPLE_PCF_KERNEL(var, tex, uv) var = textureProjLod(tex, uv, 0.0)
-#define SAMPLE_PCF_KERNEL_LAYER_NOPROJ(var, tex, uv, layer) var = SAMPLE_PCF_LAYER(tex, vec4((uv).xy, layer, (uv).z), 0, 0)
+#define SAMPLE_PCF_KERNEL_LAYER_NOPROJ(var, tex, uv, layer) var = SAMPLE_PCF_LAYER_NO_OFFSET(tex, vec4((uv).xy, layer, (uv).z))
 #else
 #error "Unsupported PCF kernel width."
 #endif

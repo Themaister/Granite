@@ -29,6 +29,7 @@
 #include "renderer.hpp"
 #include "lru_cache.hpp"
 #include "threaded_scene.hpp"
+#include "render_context.hpp"
 
 namespace Granite
 {

@@ -163,6 +163,10 @@ else()
 endif()
 target_compile_options(granite PRIVATE ${GRANITE_CXX_FLAGS})
 
+if (${CMAKE_CXX_COMPILER_ID} MATCHES "Clang")
+    target_link_libraries(granite PUBLIC atomic)
+endif()
+
 function(add_granite_executable NAME)
     if (ANDROID)
         add_library(${NAME} SHARED ${ARGN})

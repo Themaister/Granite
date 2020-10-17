@@ -244,7 +244,7 @@ vector<uint32_t> GLSLCompiler::compile(std::string &error_message, const vector<
 
 	spvtools::SpirvTools core(target == Target::Vulkan11 ? SPV_ENV_VULKAN_1_1 : SPV_ENV_VULKAN_1_0);
 
-	core.SetMessageConsumer([this, &error_message](spv_message_level_t, const char *, const spv_position_t&, const char *message) {
+	core.SetMessageConsumer([&error_message](spv_message_level_t, const char *, const spv_position_t&, const char *message) {
 		error_message = message;
 	});
 

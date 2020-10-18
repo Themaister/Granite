@@ -554,7 +554,11 @@ bool DeviceAllocator::allocate(uint32_t size, uint32_t memory_type, VkDeviceMemo
 		{
 			if (table->vkMapMemory(device->get_device(), device_memory, 0, VK_WHOLE_SIZE,
 			                       0, reinterpret_cast<void **>(host_memory)) != VK_SUCCESS)
+			{
+				table->vkFreeMemory(device->get_device(), device_memory, nullptr);
+				heap.size -= size;
 				return false;
+			}
 		}
 
 		return true;
@@ -584,6 +588,7 @@ bool DeviceAllocator::allocate(uint32_t size, uint32_t memory_type, VkDeviceMemo
 				    VK_SUCCESS)
 				{
 					table->vkFreeMemory(device->get_device(), device_memory, nullptr);
+					heap.size -= size;
 					return false;
 				}
 			}

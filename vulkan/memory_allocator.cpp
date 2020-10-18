@@ -510,7 +510,8 @@ void DeviceAllocator::get_memory_budget_nolock(HeapBudget *heap_budgets)
 {
 	uint32_t num_heaps = mem_props.memoryHeapCount;
 
-	if (device->get_device_features().supports_physical_device_properties2)
+	if (device->get_device_features().supports_physical_device_properties2 &&
+	    device->get_device_features().supports_memory_budget)
 	{
 		VkPhysicalDeviceMemoryProperties2KHR props =
 				{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2_KHR};

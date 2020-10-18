@@ -3745,9 +3745,14 @@ bool Device::allocate_image_memory(DeviceAllocation *allocation, const ImageCrea
 				return false;
 		}
 
-		if (!managers.memory.allocate_image_memory(reqs.size, reqs.alignment, memory_type,
-		                                           tiling == VK_IMAGE_TILING_OPTIMAL ? ALLOCATION_TILING_OPTIMAL
-		                                                                             : ALLOCATION_TILING_LINEAR,
+		AllocationMode mode;
+		if (tiling == VK_IMAGE_TILING_OPTIMAL &&
+		    (info.usage & (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_STORAGE_BIT)) != 0)
+			mode = AllocationMode::OptimalRenderTarget;
+		else
+			mode = tiling == VK_IMAGE_TILING_OPTIMAL ? AllocationMode::OptimalResource : AllocationMode::LinearHostMappable;
+
+		if (!managers.memory.allocate_image_memory(reqs.size, reqs.alignment, mode, memory_type,
 		                                           allocation, image,
 		                                           (info.misc & IMAGE_MISC_FORCE_NO_DEDICATED_BIT) != 0))
 		{
@@ -4387,7 +4392,7 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 		return BufferHandle(nullptr);
 	}
 
-	if (!managers.memory.allocate(reqs.size, reqs.alignment, memory_type, ALLOCATION_TILING_LINEAR, &allocation))
+	if (!managers.memory.allocate(reqs.size, reqs.alignment, AllocationMode::LinearHostMappable, memory_type, &allocation))
 	{
 		// This memory type is rather scarce, so fallback to Host type if we've exhausted this memory.
 		if (create_info.domain == BufferDomain::LinkedDeviceHost)
@@ -4401,7 +4406,7 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 				return BufferHandle(nullptr);
 			}
 
-			if (!managers.memory.allocate(reqs.size, reqs.alignment, memory_type, ALLOCATION_TILING_LINEAR, &allocation))
+			if (!managers.memory.allocate(reqs.size, reqs.alignment, AllocationMode::LinearHostMappable, memory_type, &allocation))
 			{
 				table->vkDestroyBuffer(device, buffer, nullptr);
 				return BufferHandle(nullptr);

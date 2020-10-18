@@ -2445,6 +2445,8 @@ void Device::wait_idle_nolock()
 		frame->begin();
 		frame->trim_command_pools();
 	}
+
+	managers.memory.garbage_collect();
 }
 
 void Device::promote_read_write_caches_to_read_only()

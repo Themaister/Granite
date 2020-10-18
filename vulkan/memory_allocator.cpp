@@ -414,6 +414,7 @@ void DeviceAllocator::Heap::garbage_collect(Device *device_)
 		table_.vkFreeMemory(device_->get_device(), block.memory, nullptr);
 		size -= block.size;
 	}
+	blocks.clear();
 }
 
 DeviceAllocator::~DeviceAllocator()

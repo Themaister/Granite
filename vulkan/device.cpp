@@ -725,7 +725,6 @@ void Device::set_context(const Context &context)
 #endif
 
 	managers.memory.init(this);
-	managers.memory.set_supports_dedicated_allocation(ext.supports_dedicated);
 	managers.semaphore.init(this);
 	managers.fence.init(this);
 	managers.event.init(this);

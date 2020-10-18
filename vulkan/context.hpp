@@ -82,6 +82,7 @@ struct DeviceFeatures
 	VkPhysicalDevicePerformanceQueryFeaturesKHR performance_query_features = {};
 	VkPhysicalDeviceSamplerYcbcrConversionFeaturesKHR sampler_ycbcr_conversion_features = {};
 	VkPhysicalDeviceDriverPropertiesKHR driver_properties = {};
+	VkPhysicalDeviceMemoryPriorityFeaturesEXT memory_priority_features = {};
 };
 
 enum VendorID

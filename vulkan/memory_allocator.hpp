@@ -309,10 +309,6 @@ class DeviceAllocator
 {
 public:
 	void init(Device *device);
-	void set_supports_dedicated_allocation(bool enable)
-	{
-		use_dedicated = enable;
-	}
 
 	~DeviceAllocator();
 
@@ -327,8 +323,10 @@ public:
 	void *map_memory(const DeviceAllocation &alloc, MemoryAccessFlags flags, VkDeviceSize offset, VkDeviceSize length);
 	void unmap_memory(const DeviceAllocation &alloc, MemoryAccessFlags flags, VkDeviceSize offset, VkDeviceSize length);
 
-	bool allocate(uint32_t size, uint32_t memory_type, VkDeviceMemory *memory, uint8_t **host_memory, VkImage dedicated_image);
-	void free(uint32_t size, uint32_t memory_type, VkDeviceMemory memory, bool is_mapped);
+	bool allocate(uint32_t size, uint32_t memory_type, AllocationMode mode,
+	              VkDeviceMemory *memory, uint8_t **host_memory,
+	              VkImage dedicated_image);
+	void free(uint32_t size, uint32_t memory_type, AllocationMode mode, VkDeviceMemory memory, bool is_mapped);
 	void free_no_recycle(uint32_t size, uint32_t memory_type, VkDeviceMemory memory);
 
 private:
@@ -340,13 +338,12 @@ private:
 #ifdef GRANITE_VULKAN_MT
 	std::mutex lock;
 #endif
-	bool use_dedicated = false;
-
 	struct Allocation
 	{
 		VkDeviceMemory memory;
 		uint32_t size;
 		uint32_t type;
+		AllocationMode mode;
 	};
 
 	struct Heap

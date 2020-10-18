@@ -800,6 +800,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 	ext.descriptor_indexing_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT };
 	ext.performance_query_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PERFORMANCE_QUERY_FEATURES_KHR };
 	ext.sampler_ycbcr_conversion_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_YCBCR_CONVERSION_FEATURES_KHR };
+	ext.memory_priority_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PRIORITY_FEATURES_EXT };
 	void **ppNext = &features.pNext;
 
 	bool has_pdf2 = ext.supports_physical_device_properties2 ||
@@ -917,6 +918,13 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 			enabled_extensions.push_back(VK_KHR_SAMPLER_YCBCR_CONVERSION_EXTENSION_NAME);
 			*ppNext = &ext.sampler_ycbcr_conversion_features;
 			ppNext = &ext.sampler_ycbcr_conversion_features.pNext;
+		}
+
+		if (has_extension(VK_EXT_MEMORY_PRIORITY_EXTENSION_NAME))
+		{
+			enabled_extensions.push_back(VK_EXT_MEMORY_PRIORITY_EXTENSION_NAME);
+			*ppNext = &ext.memory_priority_features;
+			ppNext = &ext.memory_priority_features.pNext;
 		}
 	}
 

@@ -62,7 +62,7 @@ void DeviceAllocation::free_global(DeviceAllocator &allocator, uint32_t size_, u
 {
 	if (base)
 	{
-		allocator.free(size_, memory_type_, base, host_base != nullptr);
+		allocator.free(size_, memory_type_, mode, base, host_base != nullptr);
 		base = VK_NULL_HANDLE;
 		mask = 0;
 		offset = 0;
@@ -180,7 +180,7 @@ bool ClassAllocator::allocate(uint32_t size, AllocationMode mode, DeviceAllocati
 	{
 		heap.allocation.offset = 0;
 		heap.allocation.host_base = nullptr;
-		if (!global_allocator->allocate(alloc_size, memory_type, &heap.allocation.base,
+		if (!global_allocator->allocate(alloc_size, memory_type, mode, &heap.allocation.base,
 		                                mode == AllocationMode::LinearHostMappable ? &heap.allocation.host_base : nullptr,
 		                                VK_NULL_HANDLE))
 		{
@@ -277,7 +277,7 @@ bool Allocator::allocate_global(uint32_t size, AllocationMode mode, DeviceAlloca
 {
 	// Fall back to global allocation, do not recycle.
 	alloc->host_base = nullptr;
-	if (!global_allocator->allocate(size, memory_type, &alloc->base,
+	if (!global_allocator->allocate(size, memory_type, mode, &alloc->base,
 	                                mode == AllocationMode::LinearHostMappable ? &alloc->host_base : nullptr, VK_NULL_HANDLE))
 		return false;
 	alloc->alloc = nullptr;
@@ -290,7 +290,7 @@ bool Allocator::allocate_dedicated(uint32_t size, AllocationMode mode, DeviceAll
 {
 	// Fall back to global allocation, do not recycle.
 	alloc->host_base = nullptr;
-	if (!global_allocator->allocate(size, memory_type, &alloc->base,
+	if (!global_allocator->allocate(size, memory_type, mode, &alloc->base,
 	                                mode == AllocationMode::LinearHostMappable ? &alloc->host_base : nullptr, dedicated_image))
 		return false;
 	alloc->alloc = nullptr;
@@ -387,7 +387,7 @@ bool DeviceAllocator::allocate_image_memory(uint32_t size, uint32_t alignment, A
                                             DeviceAllocation *alloc, VkImage image,
                                             bool force_no_dedicated)
 {
-	if (!use_dedicated || force_no_dedicated)
+	if (!device->get_device_features().supports_dedicated || force_no_dedicated)
 		return allocate(size, alignment, mode, memory_type, alloc);
 
 	VkImageMemoryRequirementsInfo2KHR info = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2_KHR };
@@ -426,14 +426,14 @@ DeviceAllocator::~DeviceAllocator()
 		heap.garbage_collect(device);
 }
 
-void DeviceAllocator::free(uint32_t size, uint32_t memory_type, VkDeviceMemory memory, bool is_mapped)
+void DeviceAllocator::free(uint32_t size, uint32_t memory_type, AllocationMode mode, VkDeviceMemory memory, bool is_mapped)
 {
 	if (is_mapped)
 		table->vkUnmapMemory(device->get_device(), memory);
 
 	ALLOCATOR_LOCK();
 	auto &heap = heaps[mem_props.memoryTypes[memory_type].heapIndex];
-	heap.blocks.push_back({ memory, size, memory_type });
+	heap.blocks.push_back({ memory, size, memory_type, mode });
 }
 
 void DeviceAllocator::free_no_recycle(uint32_t size, uint32_t memory_type, VkDeviceMemory memory)
@@ -503,7 +503,8 @@ void DeviceAllocator::unmap_memory(const DeviceAllocation &alloc, MemoryAccessFl
 	}
 }
 
-bool DeviceAllocator::allocate(uint32_t size, uint32_t memory_type, VkDeviceMemory *memory, uint8_t **host_memory,
+bool DeviceAllocator::allocate(uint32_t size, uint32_t memory_type, AllocationMode mode,
+                               VkDeviceMemory *memory, uint8_t **host_memory,
                                VkImage dedicated_image)
 {
 	ALLOCATOR_LOCK();
@@ -514,7 +515,7 @@ bool DeviceAllocator::allocate(uint32_t size, uint32_t memory_type, VkDeviceMemo
 	if (dedicated_image == VK_NULL_HANDLE)
 	{
 		itr = find_if(begin(heap.blocks), end(heap.blocks),
-		              [=](const Allocation &alloc) { return size == alloc.size && memory_type == alloc.type; });
+		              [=](const Allocation &alloc) { return size == alloc.size && memory_type == alloc.type && mode == alloc.mode; });
 	}
 
 	bool host_visible = (mem_props.memoryTypes[memory_type].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0 &&
@@ -540,6 +541,18 @@ bool DeviceAllocator::allocate(uint32_t size, uint32_t memory_type, VkDeviceMemo
 	{
 		dedicated.image = dedicated_image;
 		info.pNext = &dedicated;
+	}
+
+	VkMemoryPriorityAllocateInfoEXT priority_info = { VK_STRUCTURE_TYPE_MEMORY_PRIORITY_ALLOCATE_INFO_EXT };
+	if (device->get_device_features().memory_priority_features.memoryPriority)
+	{
+		if (mode == AllocationMode::OptimalResource)
+			priority_info.priority = 0.5f;
+		else if (mode == AllocationMode::OptimalRenderTarget)
+			priority_info.priority = 1.0f;
+
+		priority_info.pNext = info.pNext;
+		info.pNext = &priority_info;
 	}
 
 	VkDeviceMemory device_memory;

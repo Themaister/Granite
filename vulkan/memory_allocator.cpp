@@ -375,6 +375,9 @@ void DeviceAllocator::init(Device *device_)
 		allocators.back()->set_memory_type(i);
 		allocators.back()->set_global_allocator(this);
 	}
+
+	HeapBudget budgets[VK_MAX_MEMORY_HEAPS];
+	get_memory_budget(budgets);
 }
 
 bool DeviceAllocator::allocate(uint32_t size, uint32_t alignment, AllocationMode mode, uint32_t memory_type,
@@ -503,12 +506,60 @@ void DeviceAllocator::unmap_memory(const DeviceAllocation &alloc, MemoryAccessFl
 	}
 }
 
+void DeviceAllocator::get_memory_budget_nolock(HeapBudget *heap_budgets)
+{
+	uint32_t num_heaps = mem_props.memoryHeapCount;
+
+	if (device->get_device_features().supports_physical_device_properties2)
+	{
+		VkPhysicalDeviceMemoryProperties2KHR props =
+				{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2_KHR};
+		VkPhysicalDeviceMemoryBudgetPropertiesEXT budget_props =
+				{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT};
+
+		if (device->get_device_features().supports_memory_budget)
+			props.pNext = &budget_props;
+
+		vkGetPhysicalDeviceMemoryProperties2KHR(device->get_physical_device(), &props);
+
+		for (uint32_t i = 0; i < num_heaps; i++)
+		{
+			auto &heap = heap_budgets[i];
+			heap.max_size = mem_props.memoryHeaps[i].size;
+			heap.budget_size = budget_props.heapBudget[i];
+			heap.device_usage = budget_props.heapUsage[i];
+			heap.tracked_usage = heaps[i].size;
+			heaps[i].last_budget = heap_budgets[i];
+		}
+	}
+	else
+	{
+		for (uint32_t i = 0; i < num_heaps; i++)
+		{
+			auto &heap = heap_budgets[i];
+			heap.max_size = mem_props.memoryHeaps[i].size;
+			// Allow 75%.
+			heap.budget_size = heap.max_size - (heap.max_size / 4);
+			heap.tracked_usage = heaps[i].size;
+			heap.device_usage = heaps[i].size;
+			heaps[i].last_budget = heap_budgets[i];
+		}
+	}
+}
+
+void DeviceAllocator::get_memory_budget(HeapBudget *heap_budgets)
+{
+	ALLOCATOR_LOCK();
+	get_memory_budget_nolock(heap_budgets);
+}
+
 bool DeviceAllocator::allocate(uint32_t size, uint32_t memory_type, AllocationMode mode,
                                VkDeviceMemory *memory, uint8_t **host_memory,
                                VkImage dedicated_image)
 {
+	uint32_t heap_index = mem_props.memoryTypes[memory_type].heapIndex;
+	auto &heap = heaps[heap_index];
 	ALLOCATOR_LOCK();
-	auto &heap = heaps[mem_props.memoryTypes[memory_type].heapIndex];
 
 	// Naive searching is fine here as vkAllocate blocks are *huge* and we won't have many of them.
 	auto itr = end(heap.blocks);
@@ -534,6 +585,28 @@ bool DeviceAllocator::allocate(uint32_t size, uint32_t memory_type, AllocationMo
 		heap.blocks.erase(itr);
 		return true;
 	}
+
+	HeapBudget budgets[VK_MAX_MEMORY_HEAPS];
+	get_memory_budget_nolock(budgets);
+
+	LOGI("Allocating %.1f MiB on heap #%u, before allocating budget: (%.1f MiB / %.1f MiB) [%.1f / %.1f].\n",
+	     double(size) / double(1024 * 1024),
+	     heap_index,
+	     double(budgets[heap_index].device_usage) / double(1024 * 1024),
+	     double(budgets[heap_index].budget_size) / double(1024 * 1024),
+	     double(budgets[heap_index].tracked_usage) / double(1024 * 1024),
+	     double(budgets[heap_index].max_size) / double(1024 * 1024));
+
+	// If we're going to blow out the budget, we should recycle a bit.
+	if (budgets[heap_index].device_usage + size >= budgets[heap_index].budget_size)
+	{
+		LOGW("Will exceed memory budget, cleaning up ...\n");
+		heap.garbage_collect(device);
+	}
+
+	get_memory_budget_nolock(budgets);
+	if (budgets[heap_index].device_usage + size >= budgets[heap_index].budget_size)
+		LOGW("Even after garbage collection, we will exceed budget ...\n");
 
 	VkMemoryAllocateInfo info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, nullptr, size, memory_type };
 	VkMemoryDedicatedAllocateInfoKHR dedicated = { VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR };

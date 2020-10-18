@@ -319,6 +319,8 @@ public:
 		return gpu_props;
 	}
 
+	void get_memory_budget(HeapBudget *budget);
+
 	const Sampler &get_stock_sampler(StockSampler sampler) const;
 
 #ifdef GRANITE_VULKAN_FILESYSTEM

@@ -926,6 +926,12 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 			*ppNext = &ext.memory_priority_features;
 			ppNext = &ext.memory_priority_features.pNext;
 		}
+
+		if (has_extension(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME))
+		{
+			enabled_extensions.push_back(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
+			ext.supports_memory_budget = true;
+		}
 	}
 
 	if (ext.supports_vulkan_11_device && ext.supports_vulkan_11_instance)

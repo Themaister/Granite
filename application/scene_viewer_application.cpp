@@ -1060,6 +1060,7 @@ void SceneViewerApplication::update_scene(TaskComposer &composer, double frame_t
 
 void SceneViewerApplication::render_ui(CommandBuffer &cmd)
 {
+	auto &device = cmd.get_device();
 	flat_renderer.begin();
 
 	unsigned count = std::min<unsigned>(last_frame_index, FrameWindowSize);
@@ -1098,6 +1099,22 @@ void SceneViewerApplication::render_ui(CommandBuffer &cmd)
 	                          offset + vec3(0.0f, 40.0f, 0.0f), size - vec2(0.0f, 40.0f), color, alignment, 1.0f);
 	flat_renderer.render_text(Global::ui_manager()->get_font(UI::FontSize::Large), latency_text,
 	                          offset + vec3(0.0f, 60.0f, 0.0f), size - vec2(0.0f, 60.0f), color, alignment, 1.0f);
+
+	HeapBudget budgets[VK_MAX_MEMORY_HEAPS];
+	device.get_memory_budget(budgets);
+	for (uint32_t i = 0; i < device.get_memory_properties().memoryHeapCount; i++)
+	{
+		char heap_text[256];
+		sprintf(heap_text, "Heap #%u: (%.1f MiB / %.1f MiB) [%.1f / %.1f]", i,
+		        double(budgets[i].device_usage) / double(1024 * 1024),
+		        double(budgets[i].budget_size) / double(1024 * 1024),
+		        double(budgets[i].tracked_usage) / double(1024 * 1024),
+		        double(budgets[i].max_size) / double(1024 * 1024));
+		flat_renderer.render_text(Global::ui_manager()->get_font(UI::FontSize::Normal), heap_text,
+		                          offset + vec3(0.0f, 90.0f + 15.0f * float(i), 0.0f),
+		                          size - vec2(0.0f, 90.0f + 15.0f * float(i)),
+		                          color, alignment, 1.0f);
+	}
 
 	flat_renderer.flush(cmd, vec3(0.0f), vec3(cmd.get_viewport().width, cmd.get_viewport().height, 1.0f));
 }

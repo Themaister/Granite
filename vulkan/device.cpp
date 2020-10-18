@@ -3628,6 +3628,11 @@ YCbCrImageHandle Device::create_ycbcr_image(const YCbCrImageCreateInfo &create_i
 	return handle;
 }
 
+void Device::get_memory_budget(HeapBudget *budget)
+{
+	managers.memory.get_memory_budget(budget);
+}
+
 ImageHandle Device::create_image(const ImageCreateInfo &create_info, const ImageInitialData *initial)
 {
 	if (initial)

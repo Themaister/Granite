@@ -305,6 +305,14 @@ private:
 	uint32_t memory_type = 0;
 };
 
+struct HeapBudget
+{
+	VkDeviceSize max_size;
+	VkDeviceSize budget_size;
+	VkDeviceSize tracked_usage;
+	VkDeviceSize device_usage;
+};
+
 class DeviceAllocator
 {
 public:
@@ -329,6 +337,8 @@ public:
 	void free(uint32_t size, uint32_t memory_type, AllocationMode mode, VkDeviceMemory memory, bool is_mapped);
 	void free_no_recycle(uint32_t size, uint32_t memory_type, VkDeviceMemory memory);
 
+	void get_memory_budget(HeapBudget *heaps);
+
 private:
 	std::vector<std::unique_ptr<Allocator>> allocators;
 	Device *device = nullptr;
@@ -351,8 +361,10 @@ private:
 		uint64_t size = 0;
 		std::vector<Allocation> blocks;
 		void garbage_collect(Device *device);
+		HeapBudget last_budget;
 	};
 
 	std::vector<Heap> heaps;
+	void get_memory_budget_nolock(HeapBudget *heaps);
 };
 }

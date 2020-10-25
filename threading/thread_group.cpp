@@ -28,10 +28,7 @@
 #include "thread_id.hpp"
 #include "string_helpers.hpp"
 #include "timeline_trace_file.hpp"
-
-#ifdef __linux__
-#include <pthread.h>
-#endif
+#include "thread_name.hpp"
 
 using namespace std;
 
@@ -123,26 +120,16 @@ TaskGroup::~TaskGroup()
 		flush();
 }
 
-void ThreadGroup::set_current_thread_name(const char *name)
-{
-#ifdef __linux__
-	pthread_setname_np(pthread_self(), name);
-#else
-	// TODO: Kinda messy.
-	(void)name;
-#endif
-}
-
 static void set_main_thread_name()
 {
-	ThreadGroup::set_current_thread_name("MainThread");
+	Util::set_current_thread_name("MainThread");
 	Util::TimelineTraceFile::set_tid("main");
 }
 
 static void set_worker_thread_name(unsigned index)
 {
 	auto name = Util::join("WorkerThread-", index);
-	ThreadGroup::set_current_thread_name(name.c_str());
+	Util::set_current_thread_name(name.c_str());
 	Util::TimelineTraceFile::set_tid(std::to_string(index + 1).c_str());
 }
 

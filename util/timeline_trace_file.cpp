@@ -22,8 +22,8 @@
 
 #include "logging.hpp"
 #include "timeline_trace_file.hpp"
+#include "thread_name.hpp"
 #include "timer.hpp"
-#include "thread_group.hpp"
 #include <string.h>
 #include <stdio.h>
 
@@ -98,7 +98,7 @@ TimelineTraceFile::TimelineTraceFile(const std::string &path)
 
 void TimelineTraceFile::looper(std::string path)
 {
-	Granite::ThreadGroup::set_current_thread_name("json-trace-io");
+	set_current_thread_name("json-trace-io");
 
 	FILE *file = fopen(path.c_str(), "w");
 	if (!file)

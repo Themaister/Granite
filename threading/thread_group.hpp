@@ -165,8 +165,6 @@ public:
 	void wait_idle();
 	bool is_idle();
 
-	static void set_current_thread_name(const char *tag);
-
 	Util::TimelineTraceFile *get_timeline_trace_file();
 	void refresh_global_timeline_trace_file();
 

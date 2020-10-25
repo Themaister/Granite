@@ -4310,7 +4310,11 @@ BufferHandle Device::create_imported_host_buffer(const BufferCreateInfo &create_
 
 	table->vkGetBufferMemoryRequirements(device, buffer, &reqs);
 
+	// Weird workaround for latest AMD Windows drivers which sets memoryTypeBits to 0 when using the external handle type.
+	if (!reqs.memoryTypeBits)
+		reqs.memoryTypeBits = ~0u;
 	reqs.memoryTypeBits &= host_pointer_props.memoryTypeBits;
+
 	if (reqs.memoryTypeBits == 0)
 	{
 		LOGE("No compatible host pointer types are available.\n");

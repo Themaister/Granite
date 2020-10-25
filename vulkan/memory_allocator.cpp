@@ -155,6 +155,7 @@ bool ClassAllocator::allocate(uint32_t size, AllocationMode mode, DeviceAllocati
 
 		alloc->heap = itr;
 		alloc->hierarchical = hierarchical;
+		alloc->mode = mode;
 
 		return true;
 	}
@@ -180,6 +181,7 @@ bool ClassAllocator::allocate(uint32_t size, AllocationMode mode, DeviceAllocati
 	{
 		heap.allocation.offset = 0;
 		heap.allocation.host_base = nullptr;
+		heap.allocation.mode = mode;
 		if (!global_allocator->allocate(alloc_size, memory_type, mode, &heap.allocation.base,
 		                                mode == AllocationMode::LinearHostMappable ? &heap.allocation.host_base : nullptr,
 		                                VK_NULL_HANDLE))
@@ -205,6 +207,7 @@ bool ClassAllocator::allocate(uint32_t size, AllocationMode mode, DeviceAllocati
 	}
 
 	alloc->hierarchical = hierarchical;
+	alloc->mode = mode;
 
 	return true;
 }
@@ -280,6 +283,7 @@ bool Allocator::allocate_global(uint32_t size, AllocationMode mode, DeviceAlloca
 	if (!global_allocator->allocate(size, memory_type, mode, &alloc->base,
 	                                mode == AllocationMode::LinearHostMappable ? &alloc->host_base : nullptr, VK_NULL_HANDLE))
 		return false;
+	alloc->mode = mode;
 	alloc->alloc = nullptr;
 	alloc->memory_type = memory_type;
 	alloc->size = size;
@@ -293,6 +297,7 @@ bool Allocator::allocate_dedicated(uint32_t size, AllocationMode mode, DeviceAll
 	if (!global_allocator->allocate(size, memory_type, mode, &alloc->base,
 	                                mode == AllocationMode::LinearHostMappable ? &alloc->host_base : nullptr, dedicated_image))
 		return false;
+	alloc->mode = mode;
 	alloc->alloc = nullptr;
 	alloc->memory_type = memory_type;
 	alloc->size = size;
@@ -436,6 +441,8 @@ void DeviceAllocator::free(uint32_t size, uint32_t memory_type, AllocationMode m
 
 	ALLOCATOR_LOCK();
 	auto &heap = heaps[mem_props.memoryTypes[memory_type].heapIndex];
+
+	VK_ASSERT(mode != AllocationMode::Count);
 	heap.blocks.push_back({ memory, size, memory_type, mode });
 }
 
@@ -597,9 +604,10 @@ bool DeviceAllocator::allocate(uint32_t size, uint32_t memory_type, AllocationMo
 	HeapBudget budgets[VK_MAX_MEMORY_HEAPS];
 	get_memory_budget_nolock(budgets);
 
-	LOGI("Allocating %.1f MiB on heap #%u, before allocating budget: (%.1f MiB / %.1f MiB) [%.1f / %.1f].\n",
+	LOGI("Allocating %.1f MiB on heap #%u (mode #%u), before allocating budget: (%.1f MiB / %.1f MiB) [%.1f / %.1f].\n",
 	     double(size) / double(1024 * 1024),
 	     heap_index,
+	     unsigned(mode),
 	     double(budgets[heap_index].device_usage) / double(1024 * 1024),
 	     double(budgets[heap_index].budget_size) / double(1024 * 1024),
 	     double(budgets[heap_index].tracked_usage) / double(1024 * 1024),

@@ -521,7 +521,14 @@ void DeviceAllocator::get_memory_budget_nolock(HeapBudget *heap_budgets)
 		if (device->get_device_features().supports_memory_budget)
 			props.pNext = &budget_props;
 
-		vkGetPhysicalDeviceMemoryProperties2KHR(device->get_physical_device(), &props);
+		// For global instance functions, we might not get KHR versions if we don't control
+		// instance creation, e.g. libretro.
+		// We can rely on Vulkan 1.1 having been enabled however.
+		if (device->get_device_features().supports_vulkan_11_device &&
+		    device->get_device_features().supports_vulkan_11_instance)
+			vkGetPhysicalDeviceMemoryProperties2(device->get_physical_device(), &props);
+		else
+			vkGetPhysicalDeviceMemoryProperties2KHR(device->get_physical_device(), &props);
 
 		for (uint32_t i = 0; i < num_heaps; i++)
 		{

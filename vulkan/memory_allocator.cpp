@@ -183,7 +183,9 @@ bool ClassAllocator::allocate(uint32_t size, AllocationMode mode, DeviceAllocati
 		heap.allocation.host_base = nullptr;
 		heap.allocation.mode = mode;
 		if (!global_allocator->allocate(alloc_size, memory_type, mode, &heap.allocation.base,
-		                                mode == AllocationMode::LinearHostMappable ? &heap.allocation.host_base : nullptr,
+		                                (mode == AllocationMode::LinearHostMappable ||
+		                                 mode == AllocationMode::LinearDevice ||
+		                                 mode == AllocationMode::LinearDeviceHighPriority) ? &heap.allocation.host_base : nullptr,
 		                                VK_NULL_HANDLE))
 		{
 			object_pool.free(node);
@@ -281,7 +283,9 @@ bool Allocator::allocate_global(uint32_t size, AllocationMode mode, DeviceAlloca
 	// Fall back to global allocation, do not recycle.
 	alloc->host_base = nullptr;
 	if (!global_allocator->allocate(size, memory_type, mode, &alloc->base,
-	                                mode == AllocationMode::LinearHostMappable ? &alloc->host_base : nullptr, VK_NULL_HANDLE))
+	                                (mode == AllocationMode::LinearHostMappable ||
+	                                 mode == AllocationMode::LinearDevice ||
+	                                 mode == AllocationMode::LinearDeviceHighPriority) ? &alloc->host_base : nullptr, VK_NULL_HANDLE))
 		return false;
 	alloc->mode = mode;
 	alloc->alloc = nullptr;
@@ -295,7 +299,9 @@ bool Allocator::allocate_dedicated(uint32_t size, AllocationMode mode, DeviceAll
 	// Fall back to global allocation, do not recycle.
 	alloc->host_base = nullptr;
 	if (!global_allocator->allocate(size, memory_type, mode, &alloc->base,
-	                                mode == AllocationMode::LinearHostMappable ? &alloc->host_base : nullptr, dedicated_image))
+	                                (mode == AllocationMode::LinearHostMappable ||
+	                                 mode == AllocationMode::LinearDevice ||
+	                                 mode == AllocationMode::LinearDeviceHighPriority) ? &alloc->host_base : nullptr, dedicated_image))
 		return false;
 	alloc->mode = mode;
 	alloc->alloc = nullptr;
@@ -637,10 +643,22 @@ bool DeviceAllocator::allocate(uint32_t size, uint32_t memory_type, AllocationMo
 	VkMemoryPriorityAllocateInfoEXT priority_info = { VK_STRUCTURE_TYPE_MEMORY_PRIORITY_ALLOCATE_INFO_EXT };
 	if (device->get_device_features().memory_priority_features.memoryPriority)
 	{
-		if (mode == AllocationMode::OptimalResource)
-			priority_info.priority = 0.5f;
-		else if (mode == AllocationMode::OptimalRenderTarget)
+		switch (mode)
+		{
+		case AllocationMode::LinearDeviceHighPriority:
+		case AllocationMode::OptimalRenderTarget:
 			priority_info.priority = 1.0f;
+			break;
+
+		case AllocationMode::LinearDevice:
+		case AllocationMode::OptimalResource:
+			priority_info.priority = 0.5f;
+			break;
+
+		default:
+			priority_info.priority = 0.0f;
+			break;
+		}
 
 		priority_info.pNext = info.pNext;
 		info.pNext = &priority_info;

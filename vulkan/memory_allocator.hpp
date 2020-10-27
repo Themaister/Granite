@@ -61,6 +61,8 @@ enum class MemoryClass : uint8_t
 enum class AllocationMode : uint8_t
 {
 	LinearHostMappable = 0,
+	LinearDevice,
+	LinearDeviceHighPriority,
 	OptimalResource,
 	OptimalRenderTarget,
 	Count

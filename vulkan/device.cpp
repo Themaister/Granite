@@ -4400,7 +4400,17 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 		return BufferHandle(nullptr);
 	}
 
-	if (!managers.memory.allocate(reqs.size, reqs.alignment, AllocationMode::LinearHostMappable, memory_type, &allocation))
+	AllocationMode mode;
+	if (create_info.domain == BufferDomain::Device &&
+	    (create_info.usage & (VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)) != 0)
+		mode = AllocationMode::LinearDeviceHighPriority;
+	else if (create_info.domain == BufferDomain::Device ||
+	         create_info.domain == BufferDomain::LinkedDeviceHostPreferDevice)
+		mode = AllocationMode::LinearDevice;
+	else
+		mode = AllocationMode::LinearHostMappable;
+
+	if (!managers.memory.allocate(reqs.size, reqs.alignment, mode, memory_type, &allocation))
 	{
 		// This memory type is rather scarce, so fallback to Host type if we've exhausted this memory.
 		if (create_info.domain == BufferDomain::LinkedDeviceHost)
@@ -4414,7 +4424,7 @@ BufferHandle Device::create_buffer(const BufferCreateInfo &create_info, const vo
 				return BufferHandle(nullptr);
 			}
 
-			if (!managers.memory.allocate(reqs.size, reqs.alignment, AllocationMode::LinearHostMappable, memory_type, &allocation))
+			if (!managers.memory.allocate(reqs.size, reqs.alignment, mode, memory_type, &allocation))
 			{
 				table->vkDestroyBuffer(device, buffer, nullptr);
 				return BufferHandle(nullptr);

@@ -14,6 +14,6 @@ void main()
     int index = x ^ y;
 
     FragColor =
-        textureLod(sampler2D(uImages[nonuniformEXT(index)], uSampler), vec2(0.5), 0.0) *
-        textureLod(sampler2D(uImages2[nonuniformEXT(index)], uSampler), vec2(0.5), 0.0);
+        textureLod(nonuniformEXT(sampler2D(uImages[index], uSampler)), vec2(0.5), 0.0) *
+        textureLod(nonuniformEXT(sampler2D(uImages2[index], uSampler)), vec2(0.5), 0.0);
 }

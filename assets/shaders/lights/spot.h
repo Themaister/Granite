@@ -84,7 +84,7 @@ mediump vec3 compute_spot_color(int index, vec3 world_pos, out mediump vec3 ligh
 		vec4 spot_shadow_clip = SPOT_SHADOW_TRANSFORM(index) * vec4(world_pos, 1.0);
 		vec2 shadow_uv = spot_shadow_clip.xy / spot_shadow_clip.w;
 		#ifdef CLUSTERER_BINDLESS
-			vec2 shadow_moments = textureLod(sampler2D(uSpotShadowAtlas[nonuniformEXT(index)], LinearClampSampler), shadow_uv, 0.0).xy;
+			vec2 shadow_moments = textureLod(nonuniformEXT(sampler2D(uSpotShadowAtlas[index], LinearClampSampler)), shadow_uv, 0.0).xy;
 		#else
 			vec2 shadow_moments = textureLod(uSpotShadowAtlas, shadow_uv, 0.0).xy;
 		#endif

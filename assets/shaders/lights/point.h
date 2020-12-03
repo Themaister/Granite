@@ -93,12 +93,12 @@ mediump vec3 compute_point_color(int index, vec3 world_pos, out mediump vec3 lig
 		#endif
 	#else
 		#ifdef POSITIONAL_SHADOW_VSM
-			vec2 shadow_moments = textureLod(samplerCube(uPointShadowAtlas[nonuniformEXT(index)], LinearClampSampler), light_dir_full, 0.0).xy;
+			vec2 shadow_moments = textureLod(nonuniformEXT(samplerCube(uPointShadowAtlas[index], LinearClampSampler)), light_dir_full, 0.0).xy;
 			mediump float shadow_falloff = vsm(max_z, shadow_moments);
 		#else
 			vec2 shadow_ref2 = shadow_transform.zw - shadow_transform.xy * max_z;
 			float shadow_ref = shadow_ref2.x / shadow_ref2.y;
-			mediump float shadow_falloff = texture(samplerCubeShadow(uPointShadowAtlas[nonuniformEXT(index)], LinearShadowSampler), vec4(light_dir_full, shadow_ref));
+			mediump float shadow_falloff = texture(nonuniformEXT(samplerCubeShadow(uPointShadowAtlas[index], LinearShadowSampler)), vec4(light_dir_full, shadow_ref));
 		#endif
 	#endif
 #else

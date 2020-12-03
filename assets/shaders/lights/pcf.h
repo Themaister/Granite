@@ -10,7 +10,7 @@ layout(set = 1, binding = 15) uniform sampler LinearShadowSampler;
 #endif
 
 #define SAMPLE_PCF_BINDLESS(tex, index, uv, x, y) \
-	textureLodOffset(sampler2DShadow(tex[nonuniformEXT(index)], LinearShadowSampler), uv, 0.0, ivec2(x, y))
+	textureLodOffset(nonuniformEXT(sampler2DShadow(tex[index], LinearShadowSampler)), uv, 0.0, ivec2(x, y))
 #define SAMPLE_PCF(tex, uv, x, y) \
 	textureLodOffset(tex, uv, 0.0, ivec2(x, y))
 #define SAMPLE_PCF_LAYER(tex, uvz, x, y) \
@@ -172,7 +172,7 @@ layout(set = 1, binding = 15) uniform sampler LinearShadowSampler;
 	var += 0.0625 * SAMPLE_PCF_LAYER(tex, clip_uv, +1, +1); \
 }
 #elif SHADOW_MAP_PCF_KERNEL_WIDTH == 1
-#define SAMPLE_PCF_KERNEL_BINDLESS(var, tex, index, uv) var = textureProjLod(sampler2DShadow(tex[nonuniformEXT(index)], LinearShadowSampler), uv, 0.0)
+#define SAMPLE_PCF_KERNEL_BINDLESS(var, tex, index, uv) var = textureProjLod(nonuniformEXT(sampler2DShadow(tex[index], LinearShadowSampler)), uv, 0.0)
 #define SAMPLE_PCF_KERNEL(var, tex, uv) var = textureProjLod(tex, uv, 0.0)
 #define SAMPLE_PCF_KERNEL_LAYER_NOPROJ(var, tex, uv, layer) var = SAMPLE_PCF_LAYER_NO_OFFSET(tex, vec4((uv).xy, layer, (uv).z))
 #else

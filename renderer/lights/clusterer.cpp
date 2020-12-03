@@ -367,7 +367,6 @@ void LightClusterer::render_shadow(Vulkan::CommandBuffer &cmd, const RenderConte
 		cmd.begin_render_pass(rp);
 		depth_renderer.flush_subset(cmd, queue, depth_context, flags, nullptr, 0, 1);
 		cmd.end_render_pass();
-		cmd.end_render_pass();
 
 		cmd.image_barrier(*scratch_vsm_rt, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,

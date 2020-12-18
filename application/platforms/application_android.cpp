@@ -999,8 +999,8 @@ void android_main(android_app *app)
 						// TODO: Configurable.
 						app_handle->get_wsi().set_support_prerotate(true);
 
-						unsigned width = app_handle->get_default_width();
-						unsigned height = app_handle->get_default_height();
+						unsigned width = 0;
+						unsigned height = 0;
 						{
 							string android_config;
 							Global::filesystem()->read_file_to_string("assets://android.json", android_config);

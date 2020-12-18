@@ -27,6 +27,7 @@
 #include "muglm/muglm_impl.hpp"
 #include "thread_group.hpp"
 #include "task_composer.hpp"
+#include "vulkan_prerotate.hpp"
 #include <algorithm>
 
 using namespace std;
@@ -2323,8 +2324,11 @@ void RenderGraph::enqueue_swapchain_scale_pass(Vulkan::Device &device_)
 		throw logic_error("Swapchain resource was not written to.");
 	}
 
-	auto rp_info = device_.get_swapchain_render_pass(Vulkan::SwapchainRenderPass::ColorOnly);
+	Vulkan::RenderPassInfo rp_info;
+	rp_info.num_color_attachments = 1;
 	rp_info.clear_attachments = 0;
+	rp_info.store_attachments = 1;
+	rp_info.color_attachments[0] = swapchain_attachment;
 
 	cmd->begin_render_pass(rp_info);
 	enqueue_scaled_requests(*cmd, {{ 0, index }});
@@ -2502,6 +2506,8 @@ void RenderGraph::setup_physical_image(Vulkan::Device &device_, unsigned attachm
 			info.misc |= Vulkan::IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT;
 
 		physical_image_attachments[attachment] = device_.create_image(info, nullptr);
+		physical_image_attachments[attachment]->set_surface_transform(att.transform);
+
 		// Just keep storage images in GENERAL layout.
 		// There is no reason to try enabling compression.
 		if (!physical_image_attachments[attachment])
@@ -2875,15 +2881,40 @@ void RenderGraph::bake()
 	bool can_alias_backbuffer = (backbuffer_dim.queues & compute_queues) == 0 &&
 	                            backbuffer_dim.transient;
 
+	// Resources which do not alias with the backbuffer should not be pre-rotated.
+	for (auto &dim : physical_dimensions)
+		if (&dim != &backbuffer_dim)
+			dim.transform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+
+	LOGI("Backbuffer transform: %u\n", backbuffer_dim.transform);
+	if (Vulkan::surface_transform_swaps_xy(backbuffer_dim.transform))
+		std::swap(backbuffer_dim.width, backbuffer_dim.height);
+
 	backbuffer_dim.transient = false;
 	backbuffer_dim.persistent = swapchain_dimensions.persistent;
 	if (!can_alias_backbuffer || backbuffer_dim != swapchain_dimensions)
 	{
+		LOGW("Cannot alias with backbuffer, requires extra blit pass!\n");
+		LOGW("  Backbuffer: %u x %u, fmt: %u, transform: %u\n",
+		     backbuffer_dim.width, backbuffer_dim.height,
+		     backbuffer_dim.format, backbuffer_dim.transform);
+		LOGW("  Swapchain: %u x %u, fmt: %u, transform: %u\n",
+		     swapchain_dimensions.width, swapchain_dimensions.height,
+		     swapchain_dimensions.format, swapchain_dimensions.transform);
+
 		swapchain_physical_index = RenderResource::Unused;
 		if ((backbuffer_dim.queues & RENDER_GRAPH_QUEUE_GRAPHICS_BIT) == 0)
 			backbuffer_dim.queues |= RENDER_GRAPH_QUEUE_ASYNC_GRAPHICS_BIT;
 		else
 			backbuffer_dim.queues |= RENDER_GRAPH_QUEUE_GRAPHICS_BIT;
+
+		// We will need to sample from the image to blit to backbuffer.
+		backbuffer_dim.image_usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+
+		// Don't use pre-transform if we can't alias anyways.
+		if (Vulkan::surface_transform_swaps_xy(backbuffer_dim.transform))
+			std::swap(backbuffer_dim.width, backbuffer_dim.height);
+		backbuffer_dim.transform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
 	}
 	else
 		physical_dimensions[swapchain_physical_index].transient = true;
@@ -2922,12 +2953,19 @@ ResourceDimensions RenderGraph::get_resource_dimensions(const RenderTextureResou
 	dim.image_usage = info.aux_usage | resource.get_image_usage();
 	dim.name = resource.get_name();
 
+	// Mark the resource as potentially supporting pre-rotate.
+	// If this resource ends up aliasing with the swapchain, it might go through.
+	if (info.supports_prerotate)
+		dim.transform = swapchain_dimensions.transform;
+
 	switch (info.size_class)
 	{
 	case SizeClass::SwapchainRelative:
 		dim.width = std::max(unsigned(muglm::ceil(info.size_x * swapchain_dimensions.width)), 1u);
 		dim.height = std::max(unsigned(muglm::ceil(info.size_y * swapchain_dimensions.height)), 1u);
 		dim.depth = std::max(unsigned(muglm::ceil(info.size_z)), 1u);
+		if (Vulkan::surface_transform_swaps_xy(swapchain_dimensions.transform))
+			std::swap(dim.width, dim.height);
 		break;
 
 	case SizeClass::Absolute:

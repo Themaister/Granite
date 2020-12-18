@@ -99,6 +99,7 @@ struct AttachmentInfo
 	VkImageUsageFlags aux_usage = 0;
 	bool persistent = true;
 	bool unorm_srgb_alias = false;
+	bool supports_prerotate = false;
 };
 
 struct BufferInfo
@@ -133,6 +134,7 @@ struct ResourceDimensions
 	bool transient = false;
 	bool unorm_srgb = false;
 	bool persistent = true;
+	VkSurfaceTransformFlagBitsKHR transform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
 	RenderGraphQueueFlags queues = 0;
 	VkImageUsageFlags image_usage = 0;
 
@@ -147,7 +149,8 @@ struct ResourceDimensions
 		       buffer_info == other.buffer_info &&
 		       transient == other.transient &&
 		       persistent == other.persistent &&
-		       unorm_srgb == other.unorm_srgb;
+		       unorm_srgb == other.unorm_srgb &&
+		       transform == other.transform;
 		// image_usage is deliberately not part of this test.
 		// queues is deliberately not part of this test.
 	}

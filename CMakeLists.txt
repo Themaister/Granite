@@ -286,7 +286,8 @@ target_sources(granite PRIVATE
         util/thread_name.hpp util/thread_name.cpp
 
         vulkan/texture_format.cpp vulkan/texture_format.hpp
-        vulkan/context.cpp vulkan/context.hpp vulkan/vulkan_headers.hpp
+        vulkan/context.cpp vulkan/context.hpp
+        vulkan/vulkan_headers.hpp vulkan/vulkan_prerotate.hpp
         vulkan/device.cpp vulkan/device.hpp
         vulkan/wsi.cpp vulkan/wsi.hpp
         vulkan/wsi_timing.cpp vulkan/wsi_timing.hpp

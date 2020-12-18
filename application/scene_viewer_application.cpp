@@ -875,6 +875,7 @@ void SceneViewerApplication::on_swapchain_changed(const SwapchainParameterEvent 
 	dim.width = swap.get_width();
 	dim.height = swap.get_height();
 	dim.format = swap.get_format();
+	dim.transform = swap.get_prerotate();
 	graph.set_backbuffer_dimensions(dim);
 
 	const char *backbuffer_source = getenv("GRANITE_SURFACE");

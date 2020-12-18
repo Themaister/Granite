@@ -165,7 +165,8 @@ public:
 
 	// Only called by main thread, during setup phase.
 	void set_context(const Context &context);
-	void init_swapchain(const std::vector<VkImage> &swapchain_images, unsigned width, unsigned height, VkFormat format);
+	void init_swapchain(const std::vector<VkImage> &swapchain_images, unsigned width, unsigned height, VkFormat format,
+	                    VkSurfaceTransformFlagBitsKHR transform);
 	void init_external_swapchain(const std::vector<ImageHandle> &swapchain_images);
 	void init_frame_contexts(unsigned count);
 	const VolkDeviceTable &get_device_table() const;
@@ -178,7 +179,6 @@ public:
 	                                          uint32_t *count,
 	                                          const VkPerformanceCounterKHR **counters,
 	                                          const VkPerformanceCounterDescriptionKHR **desc);
-	bool init_timestamp_trace(const char *path);
 
 	ImageView &get_swapchain_view();
 	ImageView &get_swapchain_view(unsigned index);

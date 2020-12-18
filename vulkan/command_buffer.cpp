@@ -24,6 +24,7 @@
 #include "device.hpp"
 #include "format.hpp"
 #include "thread_id.hpp"
+#include "vulkan_prerotate.hpp"
 #include <string.h>
 
 //#define FULL_BACKTRACE_CHECKPOINTS
@@ -483,12 +484,19 @@ void CommandBuffer::begin_graphics()
 void CommandBuffer::init_viewport_scissor(const RenderPassInfo &info, const Framebuffer *fb)
 {
 	VkRect2D rect = info.render_area;
-	rect.offset.x = min(fb->get_width(), uint32_t(rect.offset.x));
-	rect.offset.y = min(fb->get_height(), uint32_t(rect.offset.y));
-	rect.extent.width = min(fb->get_width() - rect.offset.x, rect.extent.width);
-	rect.extent.height = min(fb->get_height() - rect.offset.y, rect.extent.height);
 
-	viewport = { 0.0f, 0.0f, float(fb->get_width()), float(fb->get_height()), 0.0f, 1.0f };
+	uint32_t fb_width = fb->get_width();
+	uint32_t fb_height = fb->get_height();
+
+	if (surface_transform_swaps_xy(current_framebuffer_surface_transform))
+		std::swap(fb_width, fb_height);
+
+	rect.offset.x = min(fb_width, uint32_t(rect.offset.x));
+	rect.offset.y = min(fb_height, uint32_t(rect.offset.y));
+	rect.extent.width = min(fb_width - rect.offset.x, rect.extent.width);
+	rect.extent.height = min(fb_height - rect.offset.y, rect.extent.height);
+
+	viewport = { 0.0f, 0.0f, float(fb_width), float(fb_height), 0.0f, 1.0f };
 	scissor = rect;
 }
 
@@ -497,6 +505,7 @@ CommandBufferHandle CommandBuffer::request_secondary_command_buffer(Device &devi
 {
 	auto *fb = &device.request_framebuffer(info);
 	auto cmd = device.request_secondary_command_buffer_for_thread(thread_index, fb, subpass);
+	cmd->init_surface_transform(info);
 	cmd->begin_graphics();
 
 	cmd->framebuffer = fb;
@@ -559,6 +568,59 @@ void CommandBuffer::next_subpass(VkSubpassContents contents)
 	begin_graphics();
 }
 
+void CommandBuffer::set_surface_transform_specialization_constants(unsigned base_index)
+{
+	set_specialization_constant_mask(0xf << base_index);
+	float transform[4];
+	build_prerotate_matrix_2x2(current_framebuffer_surface_transform, transform);
+	for (unsigned i = 0; i < 4; i++)
+		set_specialization_constant(base_index + i, transform[i]);
+}
+
+void CommandBuffer::init_surface_transform(const RenderPassInfo &info)
+{
+	// Validate that all prerotate state matches, unless the attachments are transient, since we don't really care,
+	// and it gets messy to forward rotation state to them.
+	VkSurfaceTransformFlagBitsKHR prerorate = VK_SURFACE_TRANSFORM_FLAG_BITS_MAX_ENUM_KHR;
+	for (unsigned i = 0; i < info.num_color_attachments; i++)
+	{
+		auto usage = info.color_attachments[i]->get_image().get_create_info().usage;
+		if ((usage & VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT) == 0)
+		{
+			auto image_prerotate = info.color_attachments[i]->get_image().get_surface_transform();
+			if (prerorate == VK_SURFACE_TRANSFORM_FLAG_BITS_MAX_ENUM_KHR)
+			{
+				prerorate = image_prerotate;
+			}
+			else if (prerorate != image_prerotate)
+			{
+				LOGE("Mismatch in prerotate state for color attachment %u! (%u != %u)\n",
+				     i, unsigned(prerorate), unsigned(image_prerotate));
+			}
+		}
+	}
+
+	if (prerorate != VK_SURFACE_TRANSFORM_FLAG_BITS_MAX_ENUM_KHR && info.depth_stencil)
+	{
+		auto usage = info.depth_stencil->get_image().get_create_info().usage;
+		if ((usage & VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT) == 0)
+		{
+			auto image_prerotate = info.depth_stencil->get_image().get_surface_transform();
+			if (prerorate != image_prerotate)
+				LOGE("Mismatch in prerotate state for depth-stencil! (%u != %u)\n", unsigned(prerorate), unsigned(image_prerotate));
+		}
+	}
+
+	if (prerorate == VK_SURFACE_TRANSFORM_FLAG_BITS_MAX_ENUM_KHR)
+		prerorate = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+	current_framebuffer_surface_transform = prerorate;
+
+	// Vertex shaders which support prerotate are expected to include inc/prerotate.h and
+	// call prerotate_fixup_clip_xy().
+	if (current_framebuffer_surface_transform != VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR)
+		set_surface_transform_specialization_constants(0);
+}
+
 void CommandBuffer::begin_render_pass(const RenderPassInfo &info, VkSubpassContents contents)
 {
 	VK_ASSERT(!framebuffer);
@@ -566,6 +628,7 @@ void CommandBuffer::begin_render_pass(const RenderPassInfo &info, VkSubpassConte
 	VK_ASSERT(!actual_render_pass);
 
 	framebuffer = &device->request_framebuffer(info);
+	init_surface_transform(info);
 	pipeline_state.compatible_render_pass = &framebuffer->get_compatible_render_pass();
 	actual_render_pass = &device->request_render_pass(info, false);
 	pipeline_state.subpass_index = 0;
@@ -607,6 +670,11 @@ void CommandBuffer::begin_render_pass(const RenderPassInfo &info, VkSubpassConte
 	begin_info.renderArea = scissor;
 	begin_info.clearValueCount = num_clear_values;
 	begin_info.pClearValues = clear_values;
+
+	// In the render pass interface, we pretend we are rendering with normal
+	// un-rotated coordinates.
+	if (surface_transform_swaps_xy(current_framebuffer_surface_transform))
+		rect2d_swap_xy(begin_info.renderArea);
 
 	table.vkCmdBeginRenderPass(cmd, &begin_info, contents);
 
@@ -1166,9 +1234,29 @@ bool CommandBuffer::flush_render_state(bool synchronous)
 	}
 
 	if (get_and_clear(COMMAND_BUFFER_DIRTY_VIEWPORT_BIT))
-		table.vkCmdSetViewport(cmd, 0, 1, &viewport);
+	{
+		if (surface_transform_swaps_xy(current_framebuffer_surface_transform))
+		{
+			auto tmp_viewport = viewport;
+			viewport_swap_xy(tmp_viewport);
+			table.vkCmdSetViewport(cmd, 0, 1, &tmp_viewport);
+		}
+		else
+			table.vkCmdSetViewport(cmd, 0, 1, &viewport);
+	}
+
 	if (get_and_clear(COMMAND_BUFFER_DIRTY_SCISSOR_BIT))
-		table.vkCmdSetScissor(cmd, 0, 1, &scissor);
+	{
+		if (surface_transform_swaps_xy(current_framebuffer_surface_transform))
+		{
+			auto tmp_scissor = scissor;
+			rect2d_swap_xy(tmp_scissor);
+			table.vkCmdSetScissor(cmd, 0, 1, &tmp_scissor);
+		}
+		else
+			table.vkCmdSetScissor(cmd, 0, 1, &scissor);
+	}
+
 	if (pipeline_state.static_state.state.depth_bias_enable && get_and_clear(COMMAND_BUFFER_DIRTY_DEPTH_BIAS_BIT))
 		table.vkCmdSetDepthBias(cmd, dynamic_state.depth_bias_constant, 0.0f, dynamic_state.depth_bias_slope);
 	if (pipeline_state.static_state.state.stencil_test && get_and_clear(COMMAND_BUFFER_DIRTY_STENCIL_REFERENCE_BIT))

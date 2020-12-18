@@ -578,6 +578,8 @@ public:
 		}
 	}
 
+	void set_surface_transform_specialization_constants(unsigned base_index);
+
 	inline void enable_subgroup_size_control(bool subgroup_control_size)
 	{
 		SET_STATIC_STATE(subgroup_control_size);
@@ -742,6 +744,8 @@ private:
 	                 uint64_t cookie);
 
 	void init_viewport_scissor(const RenderPassInfo &info, const Framebuffer *framebuffer);
+	void init_surface_transform(const RenderPassInfo &info);
+	VkSurfaceTransformFlagBitsKHR current_framebuffer_surface_transform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
 
 	bool profiling = false;
 	std::string debug_channel_tag;

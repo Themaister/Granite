@@ -167,7 +167,7 @@ bool WSI::init(unsigned num_thread_indices, Util::TimelineTraceFile *timeline_tr
 	if (!blocking_init_swapchain(width, height))
 		return false;
 
-	device->init_swapchain(swapchain_images, swapchain_width, swapchain_height, swapchain_format);
+	device->init_swapchain(swapchain_images, swapchain_width, swapchain_height, swapchain_format, swapchain_current_prerotate);
 	platform->get_frame_timer().reset();
 	return true;
 }
@@ -383,7 +383,7 @@ bool WSI::begin_frame()
 
 			if (!blocking_init_swapchain(swapchain_width, swapchain_height))
 				return false;
-			device->init_swapchain(swapchain_images, swapchain_width, swapchain_height, swapchain_format);
+			device->init_swapchain(swapchain_images, swapchain_width, swapchain_height, swapchain_format, swapchain_current_prerotate);
 		}
 		else
 		{
@@ -498,7 +498,7 @@ void WSI::update_framebuffer(unsigned width, unsigned height)
 	{
 		drain_swapchain();
 		if (blocking_init_swapchain(width, height))
-			device->init_swapchain(swapchain_images, swapchain_width, swapchain_height, swapchain_format);
+			device->init_swapchain(swapchain_images, swapchain_width, swapchain_height, swapchain_format, swapchain_current_prerotate);
 	}
 }
 
@@ -768,7 +768,17 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	if (!support_prerotate && (surface_properties.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR) != 0)
 		pre_transform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
 	else
-		pre_transform = surface_properties.currentTransform;
+	{
+		// Only attempt to use prerotate if we can deal with it purely using a XY clip fixup.
+		// For horizontal flip we need to start flipping front-face as well ...
+		if ((surface_properties.currentTransform & (
+				VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR |
+				VK_SURFACE_TRANSFORM_ROTATE_180_BIT_KHR |
+				VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR)) != 0)
+			pre_transform = surface_properties.currentTransform;
+		else
+			pre_transform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+	}
 
 	if (pre_transform != surface_properties.currentTransform)
 	{
@@ -782,6 +792,24 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	LOGI("Swapchain current extent: %d x %d\n",
 	     int(surface_properties.currentExtent.width),
 	     int(surface_properties.currentExtent.height));
+
+	if (width == 0)
+	{
+		if (surface_properties.currentExtent.width != ~0u)
+			width = surface_properties.currentExtent.width;
+		else
+			width = 1280;
+		LOGI("Auto selected width = %u.\n", width);
+	}
+
+	if (height == 0)
+	{
+		if (surface_properties.currentExtent.height != ~0u)
+			height = surface_properties.currentExtent.height;
+		else
+			height = 720;
+		LOGI("Auto selected height = %u.\n", height);
+	}
 
 	// Try to match the swapchain size up with what we expect w.r.t. aspect ratio.
 	float target_aspect_ratio = float(width) / float(height);
@@ -949,8 +977,8 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	swapchain_height = swapchain_size.height;
 	swapchain_format = format.format;
 
-	LOGI("Created swapchain %u x %u (fmt: %u).\n", swapchain_width, swapchain_height,
-	     static_cast<unsigned>(swapchain_format));
+	LOGI("Created swapchain %u x %u (fmt: %u, transform: %u).\n", swapchain_width, swapchain_height,
+	     unsigned(swapchain_format), unsigned(swapchain_current_prerotate));
 
 	uint32_t image_count;
 	if (table->vkGetSwapchainImagesKHR(context->get_device(), swapchain, &image_count, nullptr) != VK_SUCCESS)
@@ -993,41 +1021,6 @@ VkSurfaceTransformFlagBitsKHR WSI::get_current_prerotate() const
 WSI::~WSI()
 {
 	deinit_external();
-}
-
-void WSI::build_prerotate_matrix_2x2(VkSurfaceTransformFlagBitsKHR pre_rotate, float mat[4])
-{
-	// TODO: HORIZONTAL_MIRROR.
-	switch (pre_rotate)
-	{
-	default:
-		mat[0] = 1.0f;
-		mat[1] = 0.0f;
-		mat[2] = 0.0f;
-		mat[3] = 1.0f;
-		break;
-
-	case VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR:
-		mat[0] = 0.0f;
-		mat[1] = 1.0f;
-		mat[2] = -1.0f;
-		mat[3] = 0.0f;
-		break;
-
-	case VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR:
-		mat[0] = 0.0f;
-		mat[1] = -1.0f;
-		mat[2] = 1.0f;
-		mat[3] = 0.0f;
-		break;
-
-	case VK_SURFACE_TRANSFORM_ROTATE_180_BIT_KHR:
-		mat[0] = -1.0f;
-		mat[1] = 0.0f;
-		mat[2] = 0.0f;
-		mat[3] = -1.0f;
-		break;
-	}
 }
 
 void WSIPlatform::event_device_created(Device *) {}

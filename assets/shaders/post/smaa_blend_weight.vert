@@ -10,6 +10,8 @@ layout(location = 2) out vec4 vOffset0;
 layout(location = 3) out vec4 vOffset1;
 layout(location = 4) out vec4 vOffset2;
 
+#include "../inc/prerotate.h"
+
 void main()
 {
     vec2 TexCoord = Position * 0.5 + 0.5;
@@ -21,4 +23,5 @@ void main()
     vOffset0 = out_coord[0];
     vOffset1 = out_coord[1];
     vOffset2 = out_coord[2];
+    prerotate_fixup_clip_xy();
 }

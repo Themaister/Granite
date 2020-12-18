@@ -80,11 +80,6 @@ struct BandlimitedPixelTestApplication : Application, EventHandler
 		cam.set_aspect(e.get_aspect_ratio());
 		cam.set_fovy(0.6f * half_pi<float>());
 		cam.set_depth_range(0.05f, 100.0f);
-
-		float mat[4];
-		WSI::build_prerotate_matrix_2x2(e.get_prerotate(), mat);
-		pre_rotate = mat4(vec4(mat[0], mat[1], 0.0f, 0.0f), vec4(mat[2], mat[3], 0.0f, 0.0f),
-		                  vec4(0.0f, 0.0f, 1.0f, 0.0f), vec4(0.0f, 0.0f, 0.0f, 1.0f));
 	}
 
 	void on_swapchain_destroyed(const SwapchainParameterEvent &)

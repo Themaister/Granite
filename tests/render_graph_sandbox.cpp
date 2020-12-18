@@ -45,6 +45,7 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
 		dim.width = e.get_width();
 		dim.height = e.get_height();
 		dim.format = e.get_format();
+		dim.transform = e.get_prerotate();
 		graph.set_backbuffer_dimensions(dim);
 
 		AttachmentInfo back;

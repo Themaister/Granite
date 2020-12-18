@@ -48,6 +48,8 @@ layout(location = 0) flat out mediump vec4 vColor;
     } constants;
 #endif
 
+#include "inc/prerotate.h"
+
 void main()
 {
     vec2 QuadPos = (mat2(Rotation.xy, Rotation.zw) * QuadCoord) * 0.5 + 0.5;
@@ -70,4 +72,5 @@ void main()
 #if HAVE_VERTEX_COLOR
     vColor = Color;
 #endif
+    prerotate_fixup_clip_xy();
 }

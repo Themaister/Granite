@@ -11,9 +11,12 @@ layout(std140, set = 1, binding = 0) uniform Registers
     vec2 noise_scale;
 } registers;
 
+#include "../inc/prerotate.h"
+
 void main()
 {
     vUV = 0.5 * Position.xy + 0.5;
     vClip = registers.inv_view_projection * vec4(Position.xy, 0.0, 1.0);
     gl_Position = Position;
+    prerotate_fixup_clip_xy();
 }

@@ -997,7 +997,7 @@ void android_main(android_app *app)
 					if (app_handle)
 					{
 						// TODO: Configurable.
-						app_handle->get_wsi().set_support_prerotate(false);
+						app_handle->get_wsi().set_support_prerotate(true);
 
 						unsigned width = app_handle->get_default_width();
 						unsigned height = app_handle->get_default_height();

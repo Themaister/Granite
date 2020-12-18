@@ -1456,7 +1456,7 @@ void RenderGraph::enqueue_scaled_requests(Vulkan::CommandBuffer &cmd, const std:
 
 	for (auto &req : requests)
 	{
-		defines.push_back({string("HAVE_TARGET_") + to_string(req.target), 1});
+		defines.emplace_back(string("HAVE_TARGET_") + to_string(req.target), 1);
 		cmd.set_texture(0, req.target, *physical_attachments[req.physical_resource], Vulkan::StockSampler::LinearClamp);
 	}
 

@@ -1,6 +1,8 @@
 #ifndef LIGHTING_DATA_H_
 #define LIGHTING_DATA_H_
 
+#include "../inc/global_bindings.h"
+
 struct EnvironmentParameters
 {
 	float intensity;
@@ -45,7 +47,7 @@ struct ResolutionParameters
 	vec2 inv_resolution;
 };
 
-layout(set = 0, binding = 1, std140) uniform LightingParameters
+layout(set = 0, binding = BINDING_GLOBAL_RENDER_PARAMETERS, std140) uniform LightingParameters
 {
 	FogParameters fog;
 	EnvironmentParameters environment;

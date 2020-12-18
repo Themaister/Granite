@@ -35,6 +35,29 @@ using namespace Vulkan;
 using namespace Util;
 using namespace std;
 
+enum GlobalDescriptorSetBindings
+{
+	BINDING_GLOBAL_TRANSFORM = 0,
+	BINDING_GLOBAL_RENDER_PARAMETERS = 1,
+	BINDING_GLOBAL_ENV_RADIANCE = 2,
+	BINDING_GLOBAL_ENV_IRRADIANCE = 3,
+	BINDING_GLOBAL_BRDF_TABLE = 4,
+	BINDING_GLOBAL_DIRECTIONAL_SHADOW = 5,
+	BINDING_GLOBAL_AMBIENT_OCCLUSION = 6,
+	BINDING_GLOBAL_VOLUMETRIC_FOG = 7,
+
+	BINDING_GLOBAL_CLUSTERER_PARAMETERS = 8,
+
+	BINDING_GLOBAL_CLUSTER_IMAGE_LEGACY = 9,
+	BINDING_GLOBAL_CLUSTER_SPOT_LEGACY = 10,
+	BINDING_GLOBAL_CLUSTER_POINT_LEGACY = 11,
+	BINDING_GLOBAL_CLUSTER_LIST_LEGACY = 12,
+
+	BINDING_GLOBAL_CLUSTER_TRANSFORM = 9,
+	BINDING_GLOBAL_CLUSTER_BITMASK = 10,
+	BINDING_GLOBAL_CLUSTER_RANGE = 11
+};
+
 namespace Granite
 {
 void RendererSuite::set_renderer(Type type, RendererHandle handle)
@@ -347,10 +370,10 @@ void Renderer::begin(RenderQueue &queue) const
 
 static void set_cluster_parameters_legacy(Vulkan::CommandBuffer &cmd, const LightClusterer &cluster)
 {
-	auto &params = *cmd.allocate_typed_constant_data<ClustererParametersLegacy>(0, 2, 1);
+	auto &params = *cmd.allocate_typed_constant_data<ClustererParametersLegacy>(0, BINDING_GLOBAL_CLUSTERER_PARAMETERS, 1);
 	memset(&params, 0, sizeof(params));
 
-	cmd.set_texture(0, 3, *cluster.get_cluster_image(), StockSampler::NearestClamp);
+	cmd.set_texture(0, BINDING_GLOBAL_CLUSTER_IMAGE_LEGACY, *cluster.get_cluster_image(), StockSampler::NearestClamp);
 
 	params.transform = cluster.get_cluster_transform();
 	memcpy(params.spots, cluster.get_active_spot_lights(),
@@ -365,8 +388,8 @@ static void set_cluster_parameters_legacy(Vulkan::CommandBuffer &cmd, const Ligh
 		auto point_sampler = format_has_depth_or_stencil_aspect(cluster.get_point_light_shadows()->get_format()) ?
 		                     StockSampler::LinearShadow : StockSampler::LinearClamp;
 
-		cmd.set_texture(0, 4, *cluster.get_spot_light_shadows(), spot_sampler);
-		cmd.set_texture(0, 5, *cluster.get_point_light_shadows(), point_sampler);
+		cmd.set_texture(0, BINDING_GLOBAL_CLUSTER_SPOT_LEGACY, *cluster.get_spot_light_shadows(), spot_sampler);
+		cmd.set_texture(0, BINDING_GLOBAL_CLUSTER_POINT_LEGACY, *cluster.get_point_light_shadows(), point_sampler);
 
 		memcpy(params.spot_shadow_transforms, cluster.get_active_spot_light_shadow_matrices(),
 		       cluster.get_active_spot_light_count() * sizeof(mat4));
@@ -376,17 +399,17 @@ static void set_cluster_parameters_legacy(Vulkan::CommandBuffer &cmd, const Ligh
 	}
 
 	if (cluster.get_cluster_list_buffer())
-		cmd.set_storage_buffer(0, 6, *cluster.get_cluster_list_buffer());
+		cmd.set_storage_buffer(0, BINDING_GLOBAL_CLUSTER_LIST_LEGACY, *cluster.get_cluster_list_buffer());
 }
 
 static void set_cluster_parameters_bindless(Vulkan::CommandBuffer &cmd, const LightClusterer &cluster)
 {
-	*cmd.allocate_typed_constant_data<ClustererParametersBindless>(0, 2, 1) = cluster.get_cluster_parameters_bindless();
-	cmd.set_storage_buffer(0, 3, *cluster.get_cluster_transform_buffer());
-	cmd.set_storage_buffer(0, 4, *cluster.get_cluster_bitmask_buffer());
-	cmd.set_storage_buffer(0, 5, *cluster.get_cluster_range_buffer());
+	*cmd.allocate_typed_constant_data<ClustererParametersBindless>(0, BINDING_GLOBAL_CLUSTERER_PARAMETERS, 1) = cluster.get_cluster_parameters_bindless();
+	cmd.set_storage_buffer(0, BINDING_GLOBAL_CLUSTER_TRANSFORM, *cluster.get_cluster_transform_buffer());
+	cmd.set_storage_buffer(0, BINDING_GLOBAL_CLUSTER_BITMASK, *cluster.get_cluster_bitmask_buffer());
+	cmd.set_storage_buffer(0, BINDING_GLOBAL_CLUSTER_RANGE, *cluster.get_cluster_range_buffer());
 	if (cluster.get_cluster_shadow_map_bindless_set() != VK_NULL_HANDLE)
-		cmd.set_bindless(4, cluster.get_cluster_shadow_map_bindless_set());
+		cmd.set_bindless(1, cluster.get_cluster_shadow_map_bindless_set());
 }
 
 static void set_cluster_parameters(Vulkan::CommandBuffer &cmd, const LightClusterer &cluster)
@@ -402,7 +425,7 @@ void Renderer::bind_lighting_parameters(Vulkan::CommandBuffer &cmd, const Render
 	auto *lighting = context.get_lighting_parameters();
 	assert(lighting);
 
-	auto *combined = cmd.allocate_typed_constant_data<CombinedRenderParameters>(0, 1, 1);
+	auto *combined = cmd.allocate_typed_constant_data<CombinedRenderParameters>(0, BINDING_GLOBAL_RENDER_PARAMETERS, 1);
 	memset(combined, 0, sizeof(*combined));
 
 	combined->environment.intensity = lighting->environment.intensity;
@@ -411,7 +434,7 @@ void Renderer::bind_lighting_parameters(Vulkan::CommandBuffer &cmd, const Render
 
 	if (lighting->volumetric_fog)
 	{
-		cmd.set_texture(1, 4, lighting->volumetric_fog->get_view(), StockSampler::LinearClamp);
+		cmd.set_texture(0, BINDING_GLOBAL_VOLUMETRIC_FOG, lighting->volumetric_fog->get_view(), StockSampler::LinearClamp);
 		combined->volumetric_fog.slice_z_log2_scale = lighting->volumetric_fog->get_slice_z_log2_scale();
 	}
 	else
@@ -424,24 +447,24 @@ void Renderer::bind_lighting_parameters(Vulkan::CommandBuffer &cmd, const Render
 	combined->resolution.resolution = vec2(cmd.get_viewport().width, cmd.get_viewport().height);
 	combined->resolution.inv_resolution = vec2(1.0f / cmd.get_viewport().width, 1.0f / cmd.get_viewport().height);
 
-	cmd.set_texture(1, 2,
+	cmd.set_texture(0, BINDING_GLOBAL_BRDF_TABLE,
 	                cmd.get_device().get_texture_manager().request_texture("builtin://textures/ibl_brdf_lut.gtx")->get_image()->get_view(),
 	                Vulkan::StockSampler::LinearClamp);
 
 	if (lighting->environment_radiance != nullptr)
-		cmd.set_texture(1, 0, *lighting->environment_radiance, Vulkan::StockSampler::TrilinearClamp);
+		cmd.set_texture(0, BINDING_GLOBAL_ENV_RADIANCE, *lighting->environment_radiance, Vulkan::StockSampler::TrilinearClamp);
 	if (lighting->environment_irradiance != nullptr)
-		cmd.set_texture(1, 1, *lighting->environment_irradiance, Vulkan::StockSampler::LinearClamp);
+		cmd.set_texture(0, BINDING_GLOBAL_ENV_IRRADIANCE, *lighting->environment_irradiance, Vulkan::StockSampler::LinearClamp);
 
 	if (lighting->shadows != nullptr)
 	{
 		auto sampler = format_has_depth_or_stencil_aspect(lighting->shadows->get_format()) ? StockSampler::LinearShadow
 		                                                                                   : StockSampler::LinearClamp;
-		cmd.set_texture(1, 3, *lighting->shadows, sampler);
+		cmd.set_texture(0, BINDING_GLOBAL_DIRECTIONAL_SHADOW, *lighting->shadows, sampler);
 	}
 
 	if (lighting->ambient_occlusion)
-		cmd.set_texture(1, 5, *lighting->ambient_occlusion, StockSampler::LinearClamp);
+		cmd.set_texture(0, BINDING_GLOBAL_AMBIENT_OCCLUSION, *lighting->ambient_occlusion, StockSampler::LinearClamp);
 
 	if (lighting->cluster && (lighting->cluster->get_cluster_image() || lighting->cluster->get_cluster_bitmask_buffer()))
 		set_cluster_parameters(cmd, *lighting->cluster);
@@ -449,7 +472,7 @@ void Renderer::bind_lighting_parameters(Vulkan::CommandBuffer &cmd, const Render
 
 void Renderer::bind_global_parameters(Vulkan::CommandBuffer &cmd, const RenderContext &context)
 {
-	auto *global = cmd.allocate_typed_constant_data<RenderParameters>(0, 0, 1);
+	auto *global = cmd.allocate_typed_constant_data<RenderParameters>(0, BINDING_GLOBAL_TRANSFORM, 1);
 	*global = context.get_render_parameters();
 }
 
@@ -692,22 +715,22 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 	cmd.set_depth_compare(VK_COMPARE_OP_GREATER);
 
 	if (light.environment_radiance)
-		cmd.set_texture(1, 0, *light.environment_radiance, Vulkan::StockSampler::LinearClamp);
+		cmd.set_texture(0, BINDING_GLOBAL_ENV_RADIANCE, *light.environment_radiance, Vulkan::StockSampler::LinearClamp);
 	if (light.environment_irradiance)
-		cmd.set_texture(1, 1, *light.environment_irradiance, Vulkan::StockSampler::LinearClamp);
+		cmd.set_texture(0, BINDING_GLOBAL_ENV_IRRADIANCE, *light.environment_irradiance, Vulkan::StockSampler::LinearClamp);
 
-	cmd.set_texture(1, 2, Granite::Global::common_renderer_data()->brdf_tables.get_texture()->get_image()->get_view(),
+	cmd.set_texture(0, BINDING_GLOBAL_BRDF_TABLE, Granite::Global::common_renderer_data()->brdf_tables.get_texture()->get_image()->get_view(),
 	                Vulkan::StockSampler::LinearClamp);
 
 	if (light.shadows)
 	{
 		auto sampler = format_has_depth_or_stencil_aspect(light.shadows->get_format()) ? StockSampler::LinearShadow
 		                                                                               : StockSampler::LinearClamp;
-		cmd.set_texture(1, 3, *light.shadows, sampler);
+		cmd.set_texture(0, BINDING_GLOBAL_DIRECTIONAL_SHADOW, *light.shadows, sampler);
 	}
 
 	if (light.ambient_occlusion)
-		cmd.set_texture(1, 5, *light.ambient_occlusion, Vulkan::StockSampler::LinearClamp);
+		cmd.set_texture(0, BINDING_GLOBAL_AMBIENT_OCCLUSION, *light.ambient_occlusion, Vulkan::StockSampler::LinearClamp);
 
 	struct DirectionalLightPush
 	{

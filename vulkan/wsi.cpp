@@ -667,7 +667,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 			return SwapchainError::Error;
 	}
 
-	// Happens on nVidia Windows when you minimize a window.
+	// Happens on Windows when you minimize a window.
 	if (surface_properties.maxImageExtent.width == 0 && surface_properties.maxImageExtent.height == 0)
 		return SwapchainError::NoSurface;
 
@@ -783,7 +783,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	     int(surface_properties.currentExtent.width),
 	     int(surface_properties.currentExtent.height));
 
-	// Try to match the swapchain size up with what we expect.
+	// Try to match the swapchain size up with what we expect w.r.t. aspect ratio.
 	float target_aspect_ratio = float(width) / float(height);
 	if ((swapchain_aspect_ratio > 1.0f && target_aspect_ratio < 1.0f) ||
 	    (swapchain_aspect_ratio < 1.0f && target_aspect_ratio > 1.0f))

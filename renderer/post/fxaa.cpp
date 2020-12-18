@@ -31,6 +31,7 @@ void setup_fxaa_postprocess(RenderGraph &graph, const std::string &input, const 
 
 	auto &fxaa = graph.add_pass("fxaa", RenderGraph::get_default_post_graphics_queue());
 	AttachmentInfo fxaa_output;
+	fxaa_output.supports_prerotate = true;
 	fxaa_output.size_class = SizeClass::InputRelative;
 	fxaa_output.size_relative_name = input;
 	fxaa_output.format = output_format;

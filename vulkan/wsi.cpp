@@ -316,7 +316,7 @@ bool WSI::begin_frame()
 		                                      fence ? fence->get_fence() : VK_NULL_HANDLE, &swapchain_index);
 		device->register_time_interval("WSI", std::move(acquire_ts), device->write_calibrated_timestamp(), "acquire");
 
-#ifdef ANDROID
+#if defined(ANDROID) && 0
 		// Android 10 can return suboptimal here, only because of pre-transform.
 		// We don't care about that, and treat this as success.
 		if (result == VK_SUBOPTIMAL_KHR)
@@ -446,7 +446,7 @@ bool WSI::end_frame()
 		VkResult overall = table->vkQueuePresentKHR(context->get_graphics_queue(), &info);
 		device->register_time_interval("WSI", std::move(present_ts), device->write_calibrated_timestamp(), "present");
 
-#ifdef ANDROID
+#if defined(ANDROID) && 0
 		// Android 10 can return suboptimal here, only because of pre-transform.
 		// We don't care about that, and treat this as success.
 		if (overall == VK_SUBOPTIMAL_KHR)

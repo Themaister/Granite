@@ -374,6 +374,7 @@ void setup_hdr_postprocess_compute(RenderGraph &graph, const std::string &input,
 
 	{
 		AttachmentInfo tonemap_info;
+		tonemap_info.supports_prerotate = true;
 		tonemap_info.size_class = SizeClass::InputRelative;
 		tonemap_info.size_relative_name = input;
 		auto &tonemap = graph.add_pass("tonemap", RenderGraph::get_default_post_graphics_queue());

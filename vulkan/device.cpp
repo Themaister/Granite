@@ -2129,7 +2129,8 @@ void Device::init_swapchain(const vector<VkImage> &swapchain_images, unsigned wi
 	wsi.swapchain.clear();
 	wait_idle_nolock();
 
-	const auto info = ImageCreateInfo::render_target(width, height, format);
+	auto info = ImageCreateInfo::render_target(width, height, format);
+	info.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
 	wsi.index = 0;
 	wsi.touched = false;

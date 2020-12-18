@@ -992,7 +992,7 @@ private:
 	void physical_pass_enqueue_graphics_commands(const PhysicalPass &pass, PassSubmissionState &state);
 	void physical_pass_enqueue_compute_commands(const PhysicalPass &pass, PassSubmissionState &state);
 
-	void physical_pass_handle_invalidate_barrier(const Barrier &barrier, PassSubmissionState &state, bool graphics);
+	void physical_pass_handle_invalidate_barrier(const Barrier &barrier, PassSubmissionState &state, bool physical_graphics_queue);
 	void physical_pass_handle_signal(Vulkan::Device &device, const PhysicalPass &pass, PassSubmissionState &state);
 	void physical_pass_handle_flush_barrier(const Barrier &barrier, PassSubmissionState &state);
 	void physical_pass_handle_cpu_timeline(Vulkan::Device &device, const PhysicalPass &pass, PassSubmissionState &state,

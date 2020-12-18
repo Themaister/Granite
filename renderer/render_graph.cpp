@@ -1828,7 +1828,7 @@ void RenderGraph::physical_pass_invalidate_attachments(const PhysicalPass &physi
 }
 
 void RenderGraph::physical_pass_handle_invalidate_barrier(const Barrier &barrier, PassSubmissionState &state,
-                                                          bool graphics)
+                                                          bool physical_graphics_queue)
 {
 
 	auto &event = barrier.history ? physical_history_events[barrier.resource_index] :
@@ -1837,7 +1837,7 @@ void RenderGraph::physical_pass_handle_invalidate_barrier(const Barrier &barrier
 	bool need_event_barrier = false;
 	bool layout_change = false;
 	bool need_wait_semaphore = false;
-	auto &wait_semaphore = graphics ? event.wait_graphics_semaphore : event.wait_compute_semaphore;
+	auto &wait_semaphore = physical_graphics_queue ? event.wait_graphics_semaphore : event.wait_compute_semaphore;
 
 	if (physical_dimensions[barrier.resource_index].buffer_info.size)
 	{
@@ -2177,7 +2177,11 @@ void RenderGraph::physical_pass_handle_cpu_timeline(Vulkan::Device &device_,
 
 	// Queue up invalidates and change layouts.
 	for (auto &barrier : physical_pass.invalidate)
-		physical_pass_handle_invalidate_barrier(barrier, state, state.graphics);
+	{
+		bool physical_graphics =
+				device->get_physical_queue_type(state.queue_type) == Vulkan::CommandBuffer::Type::Generic;
+		physical_pass_handle_invalidate_barrier(barrier, state, physical_graphics);
+	}
 
 	physical_pass_handle_signal(device_, physical_pass, state);
 	for (auto &barrier : physical_pass.flush)

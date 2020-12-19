@@ -2124,7 +2124,7 @@ void Device::init_external_swapchain(const vector<ImageHandle> &swapchain_images
 }
 
 void Device::init_swapchain(const vector<VkImage> &swapchain_images, unsigned width, unsigned height, VkFormat format,
-							VkSurfaceTransformFlagBitsKHR transform)
+                            VkSurfaceTransformFlagBitsKHR transform)
 {
 	DRAIN_FRAME_LOCK();
 	wsi.swapchain.clear();

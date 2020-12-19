@@ -899,6 +899,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 			if (strtol(use_timeline, nullptr, 0) != 0)
 				use_timeline_semaphore = true;
 		}
+#elif defined(ANDROID)
+		constexpr bool use_timeline_semaphore = false;
 #else
 		constexpr bool use_timeline_semaphore = true;
 #endif

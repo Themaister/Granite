@@ -1,12 +1,14 @@
 #ifndef PCF_H_
 #define PCF_H_
 
+#include "../inc/global_bindings.h"
+
 #ifndef SHADOW_MAP_PCF_KERNEL_WIDTH
 #define SHADOW_MAP_PCF_KERNEL_WIDTH 1
 #endif
 
 #ifdef CLUSTERER_BINDLESS
-layout(set = 1, binding = 15) uniform sampler LinearShadowSampler;
+layout(set = 0, binding = BINDING_GLOBAL_SHADOW_SAMPLER) uniform sampler LinearShadowSampler;
 #endif
 
 #define SAMPLE_PCF_BINDLESS(tex, index, uv, x, y) \

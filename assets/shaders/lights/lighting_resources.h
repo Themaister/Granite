@@ -2,13 +2,14 @@
 #define LIGHTING_RESOURCES_H_
 
 #include "pbr.h"
+#include "../inc/global_bindings.h"
 
 #ifdef ENVIRONMENT
-layout(set = 1, binding = 0) uniform mediump samplerCube uReflection;
-layout(set = 1, binding = 1) uniform mediump samplerCube uIrradiance;
+layout(set = 0, binding = BINDING_GLOBAL_ENV_RADIANCE) uniform mediump samplerCube uReflection;
+layout(set = 0, binding = BINDING_GLOBAL_ENV_IRRADIANCE) uniform mediump samplerCube uIrradiance;
 #endif
 
-layout(set = 1, binding = 2) uniform mediump sampler2D uBRDFLut;
+layout(set = 0, binding = BINDING_GLOBAL_BRDF_TABLE) uniform mediump sampler2D uBRDFLut;
 
 #ifdef RENDERER_FORWARD
 #include "lighting_data.h"
@@ -83,9 +84,9 @@ void compute_shadow_cascade(out vec3 clip_near, out vec3 clip_far,
 #ifdef DIRECTIONAL_SHADOW_VSM
 #include "vsm.h"
 #ifdef SHADOW_CASCADES
-layout(set = 1, binding = 3) uniform sampler2DArray uShadowmap;
+layout(set = 0, binding = BINDING_GLOBAL_DIRECTIONAL_SHADOW) uniform sampler2DArray uShadowmap;
 #else
-layout(set = 1, binding = 3) uniform sampler2D uShadowmap;
+layout(set = 0, binding = BINDING_GLOBAL_DIRECTIONAL_SHADOW) uniform sampler2D uShadowmap;
 #endif
 
 mediump float get_directional_shadow_term(
@@ -119,9 +120,9 @@ mediump float get_directional_shadow_term(
 
 #ifdef DIRECTIONAL_SHADOW_PCF
 #ifdef SHADOW_CASCADES
-layout(set = 1, binding = 3) uniform mediump sampler2DArrayShadow uShadowmap;
+layout(set = 0, binding = BINDING_GLOBAL_DIRECTIONAL_SHADOW) uniform mediump sampler2DArrayShadow uShadowmap;
 #else
-layout(set = 1, binding = 3) uniform mediump sampler2DShadow uShadowmap;
+layout(set = 0, binding = BINDING_GLOBAL_DIRECTIONAL_SHADOW) uniform mediump sampler2DShadow uShadowmap;
 #endif
 
 #include "pcf.h"
@@ -162,7 +163,7 @@ mediump float get_directional_shadow_term(
 #endif
 
 #ifdef AMBIENT_OCCLUSION
-layout(set = 1, binding = 5) uniform mediump sampler2D uAmbientOcclusion;
+layout(set = 0, binding = BINDING_GLOBAL_AMBIENT_OCCLUSION) uniform mediump sampler2D uAmbientOcclusion;
 #endif
 
 #endif

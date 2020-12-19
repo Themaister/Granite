@@ -379,15 +379,22 @@ static void handle_sensors()
 			if (event.type == SENSOR_GAME_ROTATION_VECTOR)
 			{
 				quat q(event.data[3], -event.data[0], -event.data[1], -event.data[2]);
+
+				// Compensate for different display rotation.
 				if (global_state.display_rotation == 1)
 				{
-					// Compensate for different display rotation.
 					swap(q.x, q.y);
 					q.x = -q.x;
 				}
-				else if (global_state.display_rotation == 2 || global_state.display_rotation == 3)
+				else if (global_state.display_rotation == 2)
 				{
-					//LOGE("Untested orientation %u!\n", global_state.display_rotation);
+					// Doesn't seem to be possible to trigger this?
+					LOGE("Untested orientation %u!\n", global_state.display_rotation);
+				}
+				else if (global_state.display_rotation == 3)
+				{
+					swap(q.x, q.y);
+					q.y = -q.y;
 				}
 
 				static const quat landscape(muglm::one_over_root_two<float>(), muglm::one_over_root_two<float>(), 0.0f, 0.0f);
@@ -997,10 +1004,10 @@ void android_main(android_app *app)
 					if (app_handle)
 					{
 						// TODO: Configurable.
-						app_handle->get_wsi().set_support_prerotate(false);
+						app_handle->get_wsi().set_support_prerotate(true);
 
-						unsigned width = app_handle->get_default_width();
-						unsigned height = app_handle->get_default_height();
+						unsigned width = 0;
+						unsigned height = 0;
 						{
 							string android_config;
 							Global::filesystem()->read_file_to_string("assets://android.json", android_config);

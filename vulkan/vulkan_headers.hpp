@@ -29,6 +29,7 @@
 #include "volk.h"
 #include <stdlib.h>
 #include "logging.hpp"
+#include <utility>
 
 #ifdef VK_USE_PLATFORM_XLIB_XRANDR_EXT
 // Workaround silly Xlib headers that define macros for these globally :(

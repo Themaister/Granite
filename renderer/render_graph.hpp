@@ -99,6 +99,7 @@ struct AttachmentInfo
 	VkImageUsageFlags aux_usage = 0;
 	bool persistent = true;
 	bool unorm_srgb_alias = false;
+	bool supports_prerotate = false;
 };
 
 struct BufferInfo
@@ -133,6 +134,7 @@ struct ResourceDimensions
 	bool transient = false;
 	bool unorm_srgb = false;
 	bool persistent = true;
+	VkSurfaceTransformFlagBitsKHR transform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
 	RenderGraphQueueFlags queues = 0;
 	VkImageUsageFlags image_usage = 0;
 
@@ -147,7 +149,8 @@ struct ResourceDimensions
 		       buffer_info == other.buffer_info &&
 		       transient == other.transient &&
 		       persistent == other.persistent &&
-		       unorm_srgb == other.unorm_srgb;
+		       unorm_srgb == other.unorm_srgb &&
+		       transform == other.transform;
 		// image_usage is deliberately not part of this test.
 		// queues is deliberately not part of this test.
 	}
@@ -992,7 +995,7 @@ private:
 	void physical_pass_enqueue_graphics_commands(const PhysicalPass &pass, PassSubmissionState &state);
 	void physical_pass_enqueue_compute_commands(const PhysicalPass &pass, PassSubmissionState &state);
 
-	void physical_pass_handle_invalidate_barrier(const Barrier &barrier, PassSubmissionState &state, bool graphics);
+	void physical_pass_handle_invalidate_barrier(const Barrier &barrier, PassSubmissionState &state, bool physical_graphics_queue);
 	void physical_pass_handle_signal(Vulkan::Device &device, const PhysicalPass &pass, PassSubmissionState &state);
 	void physical_pass_handle_flush_barrier(const Barrier &barrier, PassSubmissionState &state);
 	void physical_pass_handle_cpu_timeline(Vulkan::Device &device, const PhysicalPass &pass, PassSubmissionState &state,

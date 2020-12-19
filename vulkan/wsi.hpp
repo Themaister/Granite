@@ -180,8 +180,6 @@ public:
 		return timing;
 	}
 
-	static void build_prerotate_matrix_2x2(VkSurfaceTransformFlagBitsKHR pre_rotate, float mat[4]);
-
 private:
 	void update_framebuffer(unsigned width, unsigned height);
 

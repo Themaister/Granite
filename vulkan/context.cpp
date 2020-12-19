@@ -317,6 +317,10 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 	if (layer_count)
 		vkEnumerateInstanceLayerProperties(&layer_count, queried_layers.data());
 
+	LOGI("Layer count: %u\n", layer_count);
+	for (auto &layer : queried_layers)
+		LOGI("Found layer: %s.\n", layer.layerName);
+
 	const auto has_extension = [&](const char *name) -> bool {
 		auto itr = find_if(begin(queried_extensions), end(queried_extensions), [name](const VkExtensionProperties &e) -> bool {
 			return strcmp(e.extensionName, name) == 0;
@@ -396,6 +400,15 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 			validation_features.pEnabledValidationFeatures = validation_sync_features;
 			info.pNext = &validation_features;
 		}
+
+		if (!ext.supports_debug_utils &&
+		    find_if(begin(layer_exts), end(layer_exts), [](const VkExtensionProperties &e) {
+			    return strcmp(e.extensionName, VK_EXT_DEBUG_UTILS_EXTENSION_NAME) == 0;
+		    }) != end(layer_exts))
+		{
+			instance_exts.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+			ext.supports_debug_utils = true;
+		}
 	}
 #endif
 
@@ -413,7 +426,7 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 
 	volkLoadInstance(instance);
 
-#ifdef VULKAN_DEBUG
+#if defined(VULKAN_DEBUG) && !defined(ANDROID)
 	if (ext.supports_debug_utils)
 	{
 		VkDebugUtilsMessengerCreateInfoEXT debug_info = { VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT };
@@ -427,6 +440,7 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 		                         VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT;
 		debug_info.pUserData = this;
 
+		// For some reason, this segfaults Android, sigh ... We get relevant output in logcat anyways.
 		vkCreateDebugUtilsMessengerEXT(instance, &debug_info, nullptr, &debug_messenger);
 	}
 #endif
@@ -885,6 +899,8 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 			if (strtol(use_timeline, nullptr, 0) != 0)
 				use_timeline_semaphore = true;
 		}
+#elif defined(ANDROID)
+		constexpr bool use_timeline_semaphore = false;
 #else
 		constexpr bool use_timeline_semaphore = true;
 #endif

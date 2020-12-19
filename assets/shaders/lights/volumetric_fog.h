@@ -1,6 +1,8 @@
 #ifndef VOLUMETRIC_FOG_H_
 #define VOLUMETRIC_FOG_H_
 
+#include "../inc/global_bindings.h"
+
 float volumetric_fog_texture_z_to_world(float texture_z, float slice_z_log2_scale)
 {
 	float world_z = exp2(texture_z / slice_z_log2_scale) - 1.0;
@@ -20,7 +22,7 @@ mediump vec4 sample_volumetric_fog(sampler3D FogVolume, mediump vec2 uv, mediump
 }
 
 #if defined(RENDERER_FORWARD) && defined(VOLUMETRIC_FOG)
-layout(set = 1, binding = 4) uniform mediump sampler3D uFogVolume;
+layout(set = 0, binding = BINDING_GLOBAL_VOLUMETRIC_FOG) uniform mediump sampler3D uFogVolume;
 #endif
 
 #endif

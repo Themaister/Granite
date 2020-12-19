@@ -1,6 +1,9 @@
 #ifndef RENDER_PARAMETERS_H
 #define RENDER_PARAMETERS_H
-layout(set = 0, binding = 0, std140) uniform RenderParameters
+
+#include "../inc/global_bindings.h"
+
+layout(set = 0, binding = BINDING_GLOBAL_TRANSFORM, std140) uniform RenderParameters
 {
 	mat4 projection;
 	mat4 view;

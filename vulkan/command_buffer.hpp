@@ -158,16 +158,12 @@ enum CommandBufferSavedStateBits
 	COMMAND_BUFFER_SAVED_BINDINGS_1_BIT = 1u << 1,
 	COMMAND_BUFFER_SAVED_BINDINGS_2_BIT = 1u << 2,
 	COMMAND_BUFFER_SAVED_BINDINGS_3_BIT = 1u << 3,
-	COMMAND_BUFFER_SAVED_BINDINGS_4_BIT = 1u << 4,
-	COMMAND_BUFFER_SAVED_BINDINGS_5_BIT = 1u << 5,
-	COMMAND_BUFFER_SAVED_BINDINGS_6_BIT = 1u << 6,
-	COMMAND_BUFFER_SAVED_BINDINGS_7_BIT = 1u << 7,
-	COMMAND_BUFFER_SAVED_VIEWPORT_BIT = 1u << 8,
-	COMMAND_BUFFER_SAVED_SCISSOR_BIT = 1u << 9,
-	COMMAND_BUFFER_SAVED_RENDER_STATE_BIT = 1u << 10,
-	COMMAND_BUFFER_SAVED_PUSH_CONSTANT_BIT = 1u << 11
+	COMMAND_BUFFER_SAVED_VIEWPORT_BIT = 1u << 4,
+	COMMAND_BUFFER_SAVED_SCISSOR_BIT = 1u << 5,
+	COMMAND_BUFFER_SAVED_RENDER_STATE_BIT = 1u << 6,
+	COMMAND_BUFFER_SAVED_PUSH_CONSTANT_BIT = 1u << 7
 };
-static_assert(VULKAN_NUM_DESCRIPTOR_SETS == 8, "Number of descriptor sets != 8.");
+static_assert(VULKAN_NUM_DESCRIPTOR_SETS == 4, "Number of descriptor sets != 4.");
 using CommandBufferSaveStateFlags = uint32_t;
 
 struct CommandBufferSavedState
@@ -578,6 +574,8 @@ public:
 		}
 	}
 
+	void set_surface_transform_specialization_constants(unsigned base_index);
+
 	inline void enable_subgroup_size_control(bool subgroup_control_size)
 	{
 		SET_STATIC_STATE(subgroup_control_size);
@@ -742,6 +740,8 @@ private:
 	                 uint64_t cookie);
 
 	void init_viewport_scissor(const RenderPassInfo &info, const Framebuffer *framebuffer);
+	void init_surface_transform(const RenderPassInfo &info);
+	VkSurfaceTransformFlagBitsKHR current_framebuffer_surface_transform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
 
 	bool profiling = false;
 	std::string debug_channel_tag;

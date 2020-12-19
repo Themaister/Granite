@@ -580,6 +580,30 @@ public:
 	void disown_image();
 	void disown_memory_allocation();
 
+	void set_surface_transform(VkSurfaceTransformFlagBitsKHR transform)
+	{
+		surface_transform = transform;
+		if (transform != VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR)
+		{
+			const VkImageUsageFlags safe_usage_flags =
+					VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT |
+					VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+					VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
+					VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+
+			if ((create_info.usage & ~safe_usage_flags) != 0)
+			{
+				LOGW("Using surface transform for non-pure render target image (usage: %u). This can lead to weird results.\n",
+				     create_info.usage);
+			}
+		}
+	}
+
+	VkSurfaceTransformFlagBitsKHR get_surface_transform() const
+	{
+		return surface_transform;
+	}
+
 private:
 	friend class Util::ObjectPool<Image>;
 
@@ -596,6 +620,7 @@ private:
 	VkPipelineStageFlags stage_flags = 0;
 	VkAccessFlags access_flags = 0;
 	VkImageLayout swapchain_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+	VkSurfaceTransformFlagBitsKHR surface_transform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
 	bool owns_image = true;
 	bool owns_memory_allocation = true;
 };

@@ -14,11 +14,14 @@ layout(std430, push_constant) uniform Model
     mat4 MVP;
 } registers;
 
+#include "inc/prerotate.h"
+
 void main()
 {
     gl_Position = registers.MVP * vec4(Position, 1.0);
 #if HAVE_VERTEX_COLOR
     vColor = Color;
 #endif
+    prerotate_fixup_clip_xy();
 }
 

@@ -1,8 +1,10 @@
 #ifndef VSM_H_
 #define VSM_H_
 
+#include "../inc/global_bindings.h"
+
 #ifdef CLUSTERER_BINDLESS
-layout(set = 1, binding = 14) uniform sampler LinearClampSampler;
+layout(set = 0, binding = BINDING_GLOBAL_LINEAR_SAMPLER) uniform sampler LinearClampSampler;
 #endif
 
 mediump float vsm(float depth, vec2 moments)

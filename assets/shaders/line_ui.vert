@@ -13,6 +13,8 @@ layout(std140, set = 0, binding = 0) uniform Scene
     vec3 pos_offset_pixels;
 };
 
+#include "inc/prerotate.h"
+
 void main()
 {
     vec2 pos_ndc = (Position.xy + pos_offset_pixels.xy) * inv_resolution.xy;
@@ -20,4 +22,5 @@ void main()
 #if HAVE_VERTEX_COLOR
     vColor = Color;
 #endif
+    prerotate_fixup_clip_xy();
 }

@@ -1,25 +1,26 @@
 #ifndef CLUSTERER_BINDLESS_H_
 #define CLUSTERER_BINDLESS_H_
 
-#define SPOT_LIGHT_SHADOW_ATLAS_SET 4
-#define POINT_LIGHT_SHADOW_ATLAS_SET 4
+#include "../inc/global_bindings.h"
+#define SPOT_LIGHT_SHADOW_ATLAS_SET 1
+#define POINT_LIGHT_SHADOW_ATLAS_SET 1
 
-layout(std140, set = 0, binding = 2) uniform ClusterParameters
+layout(std140, set = 0, binding = BINDING_GLOBAL_CLUSTERER_PARAMETERS) uniform ClusterParameters
 {
 	ClustererParametersBindless cluster;
 };
 
-layout(std430, set = 0, binding = 3) readonly buffer ClustererData
+layout(std430, set = 0, binding = BINDING_GLOBAL_CLUSTER_TRANSFORM) readonly buffer ClustererData
 {
 	ClustererBindlessTransforms cluster_transforms;
 };
 
-layout(std430, set = 0, binding = 4) readonly buffer ClustererBitmasks
+layout(std430, set = 0, binding = BINDING_GLOBAL_CLUSTER_BITMASK) readonly buffer ClustererBitmasks
 {
 	uint cluster_bitmask[];
 };
 
-layout(std430, set = 0, binding = 5) readonly buffer ClustererRanges
+layout(std430, set = 0, binding = BINDING_GLOBAL_CLUSTER_RANGE) readonly buffer ClustererRanges
 {
 	uvec2 cluster_range[];
 };

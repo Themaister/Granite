@@ -2123,13 +2123,15 @@ void Device::init_external_swapchain(const vector<ImageHandle> &swapchain_images
 	}
 }
 
-void Device::init_swapchain(const vector<VkImage> &swapchain_images, unsigned width, unsigned height, VkFormat format)
+void Device::init_swapchain(const vector<VkImage> &swapchain_images, unsigned width, unsigned height, VkFormat format,
+							VkSurfaceTransformFlagBitsKHR transform)
 {
 	DRAIN_FRAME_LOCK();
 	wsi.swapchain.clear();
 	wait_idle_nolock();
 
-	const auto info = ImageCreateInfo::render_target(width, height, format);
+	auto info = ImageCreateInfo::render_target(width, height, format);
+	info.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
 	wsi.index = 0;
 	wsi.touched = false;
@@ -2158,6 +2160,7 @@ void Device::init_swapchain(const vector<VkImage> &swapchain_images, unsigned wi
 		backbuffer->set_internal_sync_object();
 		backbuffer->disown_image();
 		backbuffer->get_view().set_internal_sync_object();
+		backbuffer->set_surface_transform(transform);
 		wsi.swapchain.push_back(backbuffer);
 		set_name(*backbuffer, "backbuffer");
 		backbuffer->set_swapchain_layout(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);

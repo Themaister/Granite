@@ -460,6 +460,7 @@ void CommandBuffer::begin_context()
 	current_pipeline_layout = VK_NULL_HANDLE;
 	current_layout = nullptr;
 	pipeline_state.program = nullptr;
+	pipeline_state.potential_static_state.spec_constant_mask = 0;
 	memset(bindings.cookies, 0, sizeof(bindings.cookies));
 	memset(bindings.secondary_cookies, 0, sizeof(bindings.secondary_cookies));
 	memset(&index_state, 0, sizeof(index_state));
@@ -479,6 +480,11 @@ void CommandBuffer::begin_graphics()
 {
 	is_compute = false;
 	begin_context();
+
+	// Vertex shaders which support prerotate are expected to include inc/prerotate.h and
+	// call prerotate_fixup_clip_xy().
+	if (current_framebuffer_surface_transform != VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR)
+		set_surface_transform_specialization_constants(0);
 }
 
 void CommandBuffer::init_viewport_scissor(const RenderPassInfo &info, const Framebuffer *fb)
@@ -570,8 +576,9 @@ void CommandBuffer::next_subpass(VkSubpassContents contents)
 
 void CommandBuffer::set_surface_transform_specialization_constants(unsigned base_index)
 {
-	set_specialization_constant_mask(0xf << base_index);
 	float transform[4];
+
+	set_specialization_constant_mask(0xf << base_index);
 	build_prerotate_matrix_2x2(current_framebuffer_surface_transform, transform);
 	for (unsigned i = 0; i < 4; i++)
 		set_specialization_constant(base_index + i, transform[i]);
@@ -614,11 +621,6 @@ void CommandBuffer::init_surface_transform(const RenderPassInfo &info)
 	if (prerorate == VK_SURFACE_TRANSFORM_FLAG_BITS_MAX_ENUM_KHR)
 		prerorate = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
 	current_framebuffer_surface_transform = prerorate;
-
-	// Vertex shaders which support prerotate are expected to include inc/prerotate.h and
-	// call prerotate_fixup_clip_xy().
-	if (current_framebuffer_surface_transform != VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR)
-		set_surface_transform_specialization_constants(0);
 }
 
 void CommandBuffer::begin_render_pass(const RenderPassInfo &info, VkSubpassContents contents)

@@ -316,6 +316,7 @@ target_sources(granite PRIVATE
         vulkan/query_pool.cpp vulkan/query_pool.hpp)
 
 if (GRANITE_RENDERDOC_CAPTURE)
+    add_subdirectory(third_party/renderdoc)
     target_link_libraries(granite PRIVATE renderdoc-app)
     target_compile_definitions(granite PRIVATE GRANITE_RENDERDOC_CAPTURE)
     target_sources(granite PRIVATE vulkan/renderdoc_capture.cpp)

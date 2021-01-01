@@ -98,6 +98,7 @@ struct HandlePool
 	VulkanObjectPool<QueryPoolResult> query;
 	VulkanObjectPool<CommandBuffer> command_buffers;
 	VulkanObjectPool<BindlessDescriptorPool> bindless_descriptor_pool;
+	VulkanObjectPool<DeviceAllocationOwner> allocations;
 };
 
 class DebugChannelInterface
@@ -155,6 +156,8 @@ public:
 	friend class DescriptorSetAllocator;
 	friend class Shader;
 	friend class ImageResourceHolder;
+	friend class DeviceAllocationOwner;
+	friend struct DeviceAllocationDeleter;
 
 	Device();
 	~Device();
@@ -253,6 +256,7 @@ public:
 	ImageHandle create_image_from_staging_buffer(const ImageCreateInfo &info, const InitialImageBuffer *buffer);
 	LinearHostImageHandle create_linear_host_image(const LinearHostImageCreateInfo &info);
 	YCbCrImageHandle create_ycbcr_image(const YCbCrImageCreateInfo &info);
+	DeviceAllocationOwnerHandle take_device_allocation_ownership(Image &image);
 
 	// Create staging buffers for images.
 	InitialImageBuffer create_image_staging_buffer(const ImageCreateInfo &info, const ImageInitialData *initial);

@@ -110,6 +110,13 @@ Image::Image(Device *device_, VkImage image_, VkImageView default_view, const De
 	}
 }
 
+DeviceAllocation Image::take_allocation_ownership()
+{
+	DeviceAllocation ret = {};
+	std::swap(ret, alloc);
+	return ret;
+}
+
 void Image::disown_image()
 {
 	owns_image = false;

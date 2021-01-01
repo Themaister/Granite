@@ -579,6 +579,7 @@ public:
 
 	void disown_image();
 	void disown_memory_allocation();
+	DeviceAllocation take_allocation_ownership();
 
 	void set_surface_transform(VkSurfaceTransformFlagBitsKHR transform)
 	{

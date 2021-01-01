@@ -3557,6 +3557,20 @@ InitialImageBuffer Device::create_image_staging_buffer(const ImageCreateInfo &in
 	return result;
 }
 
+DeviceAllocationOwnerHandle Device::take_device_allocation_ownership(Image &image)
+{
+	if ((image.get_create_info().misc & IMAGE_MISC_FORCE_NO_DEDICATED_BIT) == 0)
+	{
+		LOGE("Must use FORCE_NO_DEDICATED_BIT to take ownership of memory.\n");
+		return DeviceAllocationOwnerHandle{};
+	}
+
+	if (!image.get_allocation().alloc || !image.get_allocation().base)
+		return DeviceAllocationOwnerHandle{};
+
+	return DeviceAllocationOwnerHandle(handle_pool.allocations.allocate(this, image.take_allocation_ownership()));
+}
+
 YCbCrImageHandle Device::create_ycbcr_image(const YCbCrImageCreateInfo &create_info)
 {
 	if (!ext.sampler_ycbcr_conversion_features.samplerYcbcrConversion)

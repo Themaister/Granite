@@ -29,6 +29,7 @@
 #include "logging.hpp"
 #include "bitops.hpp"
 #include "enum_cast.hpp"
+#include "vulkan_common.hpp"
 #include <assert.h>
 #include <memory>
 #include <stddef.h>
@@ -200,10 +201,31 @@ private:
 
 	AllocationMode mode = AllocationMode::Count;
 	uint8_t memory_type = 0;
-	bool hierarchical = false;
 
 	void free_global(DeviceAllocator &allocator, uint32_t size, uint32_t memory_type);
 };
+
+class DeviceAllocationOwner;
+struct DeviceAllocationDeleter
+{
+	void operator()(DeviceAllocationOwner *owner);
+};
+
+class DeviceAllocationOwner : public Util::IntrusivePtrEnabled<DeviceAllocationOwner, DeviceAllocationDeleter, HandleCounter>
+{
+public:
+	friend class Util::ObjectPool<DeviceAllocationOwner>;
+	friend struct DeviceAllocationDeleter;
+
+	~DeviceAllocationOwner();
+	const DeviceAllocation &get_allocation() const;
+
+private:
+	DeviceAllocationOwner(Device *device, const DeviceAllocation &alloc);
+	Device *device;
+	DeviceAllocation alloc;
+};
+using DeviceAllocationOwnerHandle = Util::IntrusivePtr<DeviceAllocationOwner>;
 
 struct MiniHeap : Util::IntrusiveListEnabled<MiniHeap>
 {
@@ -225,7 +247,7 @@ public:
 		sub_block_size = size;
 	}
 
-	bool allocate(uint32_t size, AllocationMode mode, DeviceAllocation *alloc, bool hierarchical);
+	bool allocate(uint32_t size, AllocationMode mode, DeviceAllocation *alloc);
 	void free(DeviceAllocation *alloc);
 
 private:

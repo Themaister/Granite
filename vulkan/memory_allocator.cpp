@@ -117,7 +117,7 @@ void ClassAllocator::suballocate(uint32_t num_blocks, AllocationMode mode, uint3
 	alloc->size = num_blocks << sub_block_size_log2;
 }
 
-bool ClassAllocator::allocate(uint32_t size, AllocationMode mode, DeviceAllocation *alloc, bool hierarchical)
+bool ClassAllocator::allocate(uint32_t size, AllocationMode mode, DeviceAllocation *alloc)
 {
 	ALLOCATOR_LOCK();
 	unsigned num_blocks = (size + sub_block_size - 1) >> sub_block_size_log2;
@@ -154,7 +154,6 @@ bool ClassAllocator::allocate(uint32_t size, AllocationMode mode, DeviceAllocati
 		}
 
 		alloc->heap = itr;
-		alloc->hierarchical = hierarchical;
 		alloc->mode = mode;
 
 		return true;
@@ -171,7 +170,7 @@ bool ClassAllocator::allocate(uint32_t size, AllocationMode mode, DeviceAllocati
 	if (parent)
 	{
 		// We cannot allocate a new block from parent ... This is fatal.
-		if (!parent->allocate(alloc_size, mode, &heap.allocation, true))
+		if (!parent->allocate(alloc_size, mode, &heap.allocation))
 		{
 			object_pool.free(node);
 			return false;
@@ -208,7 +207,6 @@ bool ClassAllocator::allocate(uint32_t size, AllocationMode mode, DeviceAllocati
 		m.heap_availability_mask |= 1u << new_index;
 	}
 
-	alloc->hierarchical = hierarchical;
 	alloc->mode = mode;
 
 	return true;
@@ -337,7 +335,7 @@ bool Allocator::allocate(uint32_t size, uint32_t alignment, AllocationMode mode,
 					continue;
 			}
 
-			bool ret = c.allocate(size, mode, alloc, false);
+			bool ret = c.allocate(size, mode, alloc);
 			if (ret)
 			{
 				uint32_t aligned_offset = (alloc->offset + alignment - 1) & ~(alignment - 1);
@@ -720,5 +718,26 @@ bool DeviceAllocator::allocate(uint32_t size, uint32_t memory_type, AllocationMo
 		else
 			return false;
 	}
+}
+
+DeviceAllocationOwner::DeviceAllocationOwner(Device *device_, const DeviceAllocation &alloc_)
+	: device(device_), alloc(alloc_)
+{
+}
+
+DeviceAllocationOwner::~DeviceAllocationOwner()
+{
+	if (alloc.get_memory())
+		device->free_memory(alloc);
+}
+
+const DeviceAllocation & DeviceAllocationOwner::get_allocation() const
+{
+	return alloc;
+}
+
+void DeviceAllocationDeleter::operator()(DeviceAllocationOwner *owner)
+{
+	owner->device->handle_pool.allocations.free(owner);
 }
 }

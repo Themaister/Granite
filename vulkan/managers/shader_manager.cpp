@@ -20,12 +20,15 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include <cstring>
-#include <algorithm>
-#include "path.hpp"
+#ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
+#include "compiler.hpp"
+#endif
 #include "shader_manager.hpp"
+#include "path.hpp"
 #include "device.hpp"
 #include "rapidjson_wrapper.hpp"
+#include <algorithm>
+#include <cstring>
 
 using namespace std;
 using namespace Util;
@@ -49,10 +52,16 @@ ShaderTemplate::ShaderTemplate(Device *device_, const std::string &shader_path,
 {
 }
 
+ShaderTemplate::~ShaderTemplate()
+{
+}
+
 bool ShaderTemplate::init()
 {
 #ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
-	compiler = make_unique<Granite::GLSLCompiler>();
+	if (!device->get_system_handles().filesystem)
+		return false;
+	compiler = make_unique<Granite::GLSLCompiler>(*device->get_system_handles().filesystem);
 	if (device->get_device_features().supports_vulkan_11_device)
 		compiler->set_target(Granite::Target::Vulkan11);
 	if (!compiler->set_source_from_file(path))
@@ -145,7 +154,9 @@ void ShaderTemplate::recompile_variant(Variant &variant)
 void ShaderTemplate::recompile()
 {
 	// Recompile all variants.
-	auto newcompiler = make_unique<Granite::GLSLCompiler>();
+	if (!device->get_system_handles().filesystem)
+		return;
+	auto newcompiler = make_unique<Granite::GLSLCompiler>(*device->get_system_handles().filesystem);
 	if (device->get_device_features().supports_vulkan_11_device)
 		newcompiler->set_target(Granite::Target::Vulkan11);
 	if (!newcompiler->set_source_from_file(path))
@@ -439,12 +450,14 @@ void ShaderManager::recompile(const Granite::FileNotifyInfo &info)
 
 void ShaderManager::add_directory_watch(const std::string &source)
 {
+	if (!device->get_system_handles().filesystem)
+		return;
 	auto basedir = Granite::Path::basedir(source);
 	if (directory_watches.find(basedir) != end(directory_watches))
 		return;
 
 	auto paths = Granite::Path::protocol_split(basedir);
-	auto *backend = Granite::Global::filesystem()->get_backend(paths.first);
+	auto *backend = device->get_system_handles().filesystem->get_backend(paths.first);
 	if (!backend)
 		return;
 
@@ -484,10 +497,12 @@ void ShaderManager::promote_read_write_caches_to_read_only()
 
 bool ShaderManager::load_shader_cache(const string &path)
 {
-	using namespace rapidjson;
+	if (!device->get_system_handles().filesystem)
+		return false;
 
+	using namespace rapidjson;
 	string json;
-	if (!Granite::Global::filesystem()->read_file_to_string(path, json))
+	if (!device->get_system_handles().filesystem->read_file_to_string(path, json))
 		return false;
 
 	Document doc;
@@ -511,6 +526,9 @@ bool ShaderManager::load_shader_cache(const string &path)
 
 bool ShaderManager::save_shader_cache(const string &path)
 {
+	if (!device->get_system_handles().filesystem)
+		return false;
+
 	using namespace rapidjson;
 	Document doc;
 	doc.SetObject();
@@ -532,7 +550,7 @@ bool ShaderManager::save_shader_cache(const string &path)
 	PrettyWriter<StringBuffer> writer(buffer);
 	doc.Accept(writer);
 
-	auto file = Granite::Global::filesystem()->open(path, Granite::FileMode::WriteOnly);
+	auto file = device->get_system_handles().filesystem->open(path, Granite::FileMode::WriteOnly);
 	if (!file)
 	{
 		LOGE("Failed to open %s for writing.\n", path.c_str());

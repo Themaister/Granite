@@ -20,6 +20,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include "global_managers_init.hpp"
 #include "android_native_app_glue.h"
 #include "logging.hpp"
 #include "application.hpp"
@@ -53,6 +54,15 @@ uint32_t android_api_version;
 
 void application_dummy()
 {
+}
+
+// Alternatively, make sure this is linked in.
+// Implementation is here to trick a linker to always let main() in static library work.
+void application_setup_default_filesystem(const char *default_asset_directory)
+{
+	auto *filesystem = GRANITE_FILESYSTEM();
+	if (filesystem)
+		Filesystem::setup_default_filesystem(filesystem, default_asset_directory);
 }
 
 struct GlobalState
@@ -332,7 +342,11 @@ static VkSurfaceKHR create_surface_from_native_window(VkInstance instance, ANati
 	VkSurfaceKHR surface = VK_NULL_HANDLE;
 	VkAndroidSurfaceCreateInfoKHR create_info = { VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR };
 	create_info.window = window;
-	if (vkCreateAndroidSurfaceKHR(instance, &create_info, nullptr, &surface) != VK_SUCCESS)
+
+	auto gpa = Vulkan::Context::get_instance_proc_addr();
+#define SYM(x) PFN_##x p_##x; do { PFN_vkVoidFunction vf = gpa(instance, #x); memcpy(&p_##x, &vf, sizeof(vf)); } while(0)
+	SYM(vkCreateAndroidSurfaceKHR);
+	if (p_vkCreateAndroidSurfaceKHR(instance, &create_info, nullptr, &surface) != VK_SUCCESS)
 		return VK_NULL_HANDLE;
 	return surface;
 }
@@ -538,8 +552,8 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 	{
 		LOGI("Lifecycle resume\n");
 		enable_sensors();
-		Granite::Global::event_manager()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		Granite::Global::event_manager()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
+		GRANITE_EVENT_MANAGER()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+		GRANITE_EVENT_MANAGER()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
 		global_state.active = true;
 		Granite::Global::start_audio_system();
 		break;
@@ -549,8 +563,8 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 	{
 		LOGI("Lifecycle pause\n");
 		disable_sensors();
-		Granite::Global::event_manager()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		Granite::Global::event_manager()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
+		GRANITE_EVENT_MANAGER()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+		GRANITE_EVENT_MANAGER()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
 		global_state.active = false;
 		Granite::Global::stop_audio_system();
 		break;
@@ -559,16 +573,16 @@ static void engine_handle_cmd_init(android_app *app, int32_t cmd)
 	case APP_CMD_START:
 	{
 		LOGI("Lifecycle start\n");
-		Granite::Global::event_manager()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		Granite::Global::event_manager()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
+		GRANITE_EVENT_MANAGER()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+		GRANITE_EVENT_MANAGER()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
 		break;
 	}
 
 	case APP_CMD_STOP:
 	{
 		LOGI("Lifecycle stop\n");
-		Granite::Global::event_manager()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		Granite::Global::event_manager()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
+		GRANITE_EVENT_MANAGER()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+		GRANITE_EVENT_MANAGER()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
 		break;
 	}
 
@@ -602,8 +616,8 @@ static void engine_handle_cmd(android_app *app, int32_t cmd)
 	case APP_CMD_RESUME:
 	{
 		LOGI("Lifecycle resume\n");
-		Granite::Global::event_manager()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		Granite::Global::event_manager()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
+		GRANITE_EVENT_MANAGER()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+		GRANITE_EVENT_MANAGER()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Running);
 		enable_sensors();
 		Granite::Global::start_audio_system();
 
@@ -619,8 +633,8 @@ static void engine_handle_cmd(android_app *app, int32_t cmd)
 	case APP_CMD_PAUSE:
 	{
 		LOGI("Lifecycle pause\n");
-		Granite::Global::event_manager()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		Granite::Global::event_manager()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
+		GRANITE_EVENT_MANAGER()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+		GRANITE_EVENT_MANAGER()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
 		disable_sensors();
 		Granite::Global::stop_audio_system();
 
@@ -633,16 +647,16 @@ static void engine_handle_cmd(android_app *app, int32_t cmd)
 	case APP_CMD_START:
 	{
 		LOGI("Lifecycle start\n");
-		Granite::Global::event_manager()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		Granite::Global::event_manager()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
+		GRANITE_EVENT_MANAGER()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+		GRANITE_EVENT_MANAGER()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Paused);
 		break;
 	}
 
 	case APP_CMD_STOP:
 	{
 		LOGI("Lifecycle stop\n");
-		Granite::Global::event_manager()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
-		Granite::Global::event_manager()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
+		GRANITE_EVENT_MANAGER()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+		GRANITE_EVENT_MANAGER()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
 		break;
 	}
 
@@ -936,9 +950,9 @@ void android_main(android_app *app)
 #endif
 
 	AssetManagerFilesystem::global_asset_manager = app->activity->assetManager;
-	Global::filesystem()->register_protocol("builtin", make_unique<AssetManagerFilesystem>(ANDROID_BUILTIN_ASSET_PATH));
-	Global::filesystem()->register_protocol("assets", make_unique<AssetManagerFilesystem>(ANDROID_ASSET_PATH));
-	Global::filesystem()->register_protocol("cache", make_unique<OSFilesystem>(app->activity->internalDataPath));
+	GRANITE_FILESYSTEM()->register_protocol("builtin", make_unique<AssetManagerFilesystem>(ANDROID_BUILTIN_ASSET_PATH));
+	GRANITE_FILESYSTEM()->register_protocol("assets", make_unique<AssetManagerFilesystem>(ANDROID_ASSET_PATH));
+	GRANITE_FILESYSTEM()->register_protocol("cache", make_unique<OSFilesystem>(app->activity->internalDataPath));
 #endif
 
 	app->onAppCmd = engine_handle_cmd_init;
@@ -947,7 +961,7 @@ void android_main(android_app *app)
 
 	init_sensors();
 
-	Granite::Global::event_manager()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
+	GRANITE_EVENT_MANAGER()->enqueue_latched<ApplicationLifecycleEvent>(ApplicationLifecycle::Stopped);
 
 	for (;;)
 	{
@@ -961,7 +975,7 @@ void android_main(android_app *app)
 
 			if (app->destroyRequested)
 			{
-				Granite::Global::event_manager()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+				GRANITE_EVENT_MANAGER()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 				Global::deinit();
 				deinit_jni();
 				return;
@@ -1010,7 +1024,7 @@ void android_main(android_app *app)
 						unsigned height = 0;
 						{
 							string android_config;
-							Global::filesystem()->read_file_to_string("assets://android.json", android_config);
+							GRANITE_FILESYSTEM()->read_file_to_string("assets://android.json", android_config);
 							if (!android_config.empty())
 							{
 								rapidjson::Document doc;
@@ -1047,7 +1061,7 @@ void android_main(android_app *app)
 					}
 
 					LOGI("Application returned %d.\n", ret);
-					Granite::Global::event_manager()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
+					GRANITE_EVENT_MANAGER()->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
 					App::finishFromThread();
 
 					wait_for_complete_teardown(global_state.app);

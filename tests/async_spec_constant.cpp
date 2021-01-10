@@ -60,7 +60,7 @@ struct AsyncSpecConstantApplication : Granite::Application, Granite::EventHandle
 			if (pending_pipelines.count(compile.hash) == 0)
 			{
 				LOGI("Enqueueing pipeline compile for spec constant %u.\n", value);
-				Global::thread_group()->create_task([&device, compile]() {
+				GRANITE_THREAD_GROUP()->create_task([&device, compile]() {
 					CommandBuffer::build_graphics_pipeline(&device, compile);
 				});
 				pending_pipelines.insert(compile.hash);
@@ -84,15 +84,7 @@ namespace Granite
 {
 Application *application_create(int, char **)
 {
-	application_dummy();
-
-#ifdef ASSET_DIRECTORY
-	const char *asset_dir = getenv("ASSET_DIRECTORY");
-	if (!asset_dir)
-		asset_dir = ASSET_DIRECTORY;
-
-	Global::filesystem()->register_protocol("assets", std::unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir)));
-#endif
+	GRANITE_APPLICATION_SETUP_FILESYSTEM();
 
 	try
 	{

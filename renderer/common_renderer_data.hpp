@@ -27,6 +27,7 @@
 #include "event.hpp"
 #include "application_wsi_events.hpp"
 #include "application_events.hpp"
+#include "global_managers_interface.hpp"
 
 namespace Vulkan
 {
@@ -94,7 +95,7 @@ private:
 	void on_device_destroyed(const Vulkan::DeviceCreatedEvent &e);
 };
 
-class CommonRendererData
+class CommonRendererData final : public CommonRendererDataInterface
 {
 public:
 	LightMesh light_mesh;

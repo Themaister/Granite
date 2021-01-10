@@ -24,6 +24,7 @@
 #include "application_wsi.hpp"
 #include "application_events.hpp"
 #include "vulkan_headers.hpp"
+#include "global_managers_init.hpp"
 #include "GLFW/glfw3.h"
 #ifdef HAVE_LINUX_INPUT
 #include "input_linux.hpp"
@@ -82,7 +83,7 @@ public:
 		glfwSetCursorPosCallback(window, cursor_cb);
 		glfwSetCursorEnterCallback(window, enter_cb);
 
-		auto *em = Global::event_manager();
+		auto *em = GRANITE_EVENT_MANAGER();
 		if (em)
 		{
 			em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
@@ -150,7 +151,7 @@ public:
 
 	~WSIPlatformGLFW()
 	{
-		auto *em = Global::event_manager();
+		auto *em = GRANITE_EVENT_MANAGER();
 		if (em)
 		{
 			em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());

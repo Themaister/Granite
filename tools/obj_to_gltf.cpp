@@ -24,6 +24,7 @@
 #include "logging.hpp"
 #include "cli_parser.hpp"
 #include "obj.hpp"
+#include "global_managers_init.hpp"
 
 using namespace std;
 using namespace Util;
@@ -42,6 +43,8 @@ int main(int argc, char *argv[])
 		string output;
 		float scale = 1.0f;
 	} args;
+
+	Granite::Global::init();
 
 	CLICallbacks cbs;
 	cbs.add("--output", [&](CLIParser &parser) { args.output = parser.next_string(); });

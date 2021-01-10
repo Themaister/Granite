@@ -21,6 +21,7 @@
 #include "glfft_interface.hpp"
 #include <utility>
 #include <algorithm>
+#include <stdexcept>
 
 #include "rapidjson_wrapper.hpp"
 using namespace rapidjson;

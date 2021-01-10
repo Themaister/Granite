@@ -21,10 +21,10 @@
  */
 
 #include "fs-netfs.hpp"
-#include "../path.hpp"
+#include "path.hpp"
 #include "logging.hpp"
-#include <queue>
 #include <assert.h>
+#include <queue>
 
 #define HOST_IP "localhost"
 using namespace std;

@@ -23,9 +23,10 @@
 #include "os_filesystem.hpp"
 #include "path.hpp"
 #include "logging.hpp"
-#include <stdexcept>
 #include <algorithm>
+#include <stdexcept>
 
+#include <errno.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>

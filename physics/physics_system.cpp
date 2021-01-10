@@ -113,7 +113,7 @@ void PhysicsSystem::tick_callback(float)
 		}
 	}
 
-	auto *em = Global::event_manager();
+	auto *em = GRANITE_EVENT_MANAGER();
 	if (em)
 		for (auto &collision : new_collision_buffer)
 			em->dispatch_inline(collision);
@@ -889,6 +889,6 @@ bool PhysicsSystem::get_overlapping_objects(PhysicsHandle *handle, vector<Physic
 PhysicsComponent::~PhysicsComponent()
 {
 	if (handle)
-		Global::physics()->remove_body(handle);
+		GRANITE_PHYSICS()->remove_body(handle);
 }
 }

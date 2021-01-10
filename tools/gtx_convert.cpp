@@ -20,11 +20,12 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include <texture_files.hpp>
+#include "texture_files.hpp"
 #include "cli_parser.hpp"
 #include "logging.hpp"
 #include "texture_compression.hpp"
 #include "memory_mapped_texture.hpp"
+#include "global_managers_init.hpp"
 #include "texture_utils.hpp"
 
 using namespace std;
@@ -151,10 +152,11 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	Granite::ColorSpace color = Vulkan::format_is_srgb(args.format) ?
-	                            Granite::ColorSpace::sRGB : Granite::ColorSpace::Linear;
+	Vulkan::ColorSpace color = Vulkan::format_is_srgb(args.format) ?
+	                           Vulkan::ColorSpace::sRGB : Vulkan::ColorSpace::Linear;
 
-	auto input = make_shared<MemoryMappedTexture>(Granite::load_texture_from_file(input_path, color));
+	auto input = make_shared<Vulkan::MemoryMappedTexture>(
+			Vulkan::load_texture_from_file(*GRANITE_FILESYSTEM(), input_path, color));
 
 	if (input->get_layout().get_required_size() == 0)
 	{
@@ -193,7 +195,7 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	ThreadGroup &group = *Global::thread_group();
+	ThreadGroup &group = *GRANITE_THREAD_GROUP();
 
 	auto dummy = group.create_task();
 	compress_texture(group, args, input, dummy, nullptr);

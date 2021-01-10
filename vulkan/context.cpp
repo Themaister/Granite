@@ -66,6 +66,12 @@ bool Context::init_instance_and_device(const char **instance_ext, uint32_t insta
 
 static mutex loader_init_lock;
 static bool loader_init_once;
+static PFN_vkGetInstanceProcAddr instance_proc_addr;
+
+PFN_vkGetInstanceProcAddr Context::get_instance_proc_addr()
+{
+	return instance_proc_addr;
+}
 
 bool Context::init_loader(PFN_vkGetInstanceProcAddr addr)
 {
@@ -117,6 +123,7 @@ bool Context::init_loader(PFN_vkGetInstanceProcAddr addr)
 #endif
 	}
 
+	instance_proc_addr = addr;
 	volkInitializeCustom(addr);
 	loader_init_once = true;
 	return true;

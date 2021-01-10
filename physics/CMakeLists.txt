@@ -1,0 +1,22 @@
+set(USE_GLUT OFF CACHE BOOL "" FORCE)
+set(BUILD_EGL OFF CACHE BOOL "" FORCE)
+set(BUILD_BULLET3 OFF CACHE BOOL "" FORCE)
+set(BUILD_PYBULLET OFF CACHE BOOL "" FORCE)
+set(USE_GRAPHICAL_BENCHMARK OFF CACHE BOOL "" FORCE)
+set(USE_DOUBLE_PRECISION OFF CACHE BOOL "" FORCE)
+set(BUILD_CPU_DEMOS OFF CACHE BOOL "" FORCE)
+set(INSTALL_LIBS ON CACHE BOOL "" FORCE)
+option(GRANITE_BULLET_ROOT "" "Path to a Bullet library checkout.")
+if (NOT GRANITE_BULLET_ROOT)
+    set(GRANITE_BULLET_ROOT $ENV{BULLET_ROOT})
+    message("GRANITE_BULLET_ROOT not set, overriding with environment variable BULLET_ROOT.")
+endif()
+message("Including bullet3 from GRANITE_BULLET_ROOT: ${GRANITE_BULLET_ROOT}")
+add_subdirectory(${GRANITE_BULLET_ROOT} ${CMAKE_CURRENT_BINARY_DIR}/third_party/bullet3 EXCLUDE_FROM_ALL)
+
+add_granite_internal_lib(granite-physics physics_system.cpp physics_system.hpp)
+target_include_directories(granite-physics PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} PRIVATE ${GRANITE_BULLET_ROOT}/src)
+target_compile_definitions(granite-physics PUBLIC HAVE_GRANITE_PHYSICS=1)
+target_link_libraries(granite-physics PRIVATE
+        BulletDynamics BulletCollision LinearMath
+        granite-renderer granite-application-global granite-application-global-interface)

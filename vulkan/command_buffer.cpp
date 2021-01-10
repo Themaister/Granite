@@ -708,12 +708,6 @@ VkPipeline CommandBuffer::build_compute_pipeline(Device *device, const DeferredP
 	info.stage.pName = "main";
 	info.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
 
-#ifdef GRANITE_SPIRV_DUMP
-	LOGI("Compiling SPIR-V file: (%s) %s\n",
-		     Shader::stage_to_name(ShaderStage::Compute),
-		     (to_string(shader.get_hash()) + ".spv").c_str());
-#endif
-
 	VkSpecializationInfo spec_info = {};
 	VkSpecializationMapEntry spec_entries[VULKAN_NUM_SPEC_CONSTANTS];
 	auto mask = compile.program->get_pipeline_layout()->get_resource_layout().combined_spec_constant_mask &
@@ -991,11 +985,6 @@ VkPipeline CommandBuffer::build_graphics_pipeline(Device *device, const Deferred
 			auto &s = stages[num_stages++];
 			s = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO };
 			s.module = compile.program->get_shader(stage)->get_module();
-#ifdef GRANITE_SPIRV_DUMP
-			LOGI("Compiling SPIR-V file: (%s) %s\n",
-			     Shader::stage_to_name(stage),
-			     (to_string(compile.program->get_shader(stage)->get_hash()) + ".spv").c_str());
-#endif
 			s.pName = "main";
 			s.stage = static_cast<VkShaderStageFlagBits>(1u << i);
 

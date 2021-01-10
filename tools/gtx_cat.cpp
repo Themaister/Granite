@@ -22,12 +22,12 @@
 
 #include "logging.hpp"
 #include "memory_mapped_texture.hpp"
+#include "global_managers_init.hpp"
 #include <string.h>
 #include <vector>
 #include <utility>
 
 using namespace Granite;
-using namespace Granite::SceneFormats;
 
 int main(int argc, char *argv[])
 {
@@ -39,13 +39,13 @@ int main(int argc, char *argv[])
 
 	Global::init();
 
-	std::vector<MemoryMappedTexture> inputs;
+	std::vector<Vulkan::MemoryMappedTexture> inputs;
 	VkFormat fmt = VK_FORMAT_UNDEFINED;
 	unsigned width = 0;
 	unsigned height = 0;
 	unsigned levels = 0;
 	unsigned total_layers = 0;
-	MemoryMappedTextureFlags flags = 0;
+	Vulkan::MemoryMappedTextureFlags flags = 0;
 	bool generate_mips = false;
 
 	bool cube = strcmp(argv[2], "cube") == 0;
@@ -58,8 +58,8 @@ int main(int argc, char *argv[])
 
 	for (int i = 3; i < argc; i++)
 	{
-		MemoryMappedTexture tex;
-		if (!tex.map_read(argv[i]) || tex.empty())
+		Vulkan::MemoryMappedTexture tex;
+		if (!tex.map_read(*GRANITE_FILESYSTEM(), argv[i]) || tex.empty())
 		{
 			LOGE("Failed to load texture: %s\n", argv[i]);
 			return 1;
@@ -110,14 +110,14 @@ int main(int argc, char *argv[])
 		levels = tex.get_layout().get_levels();
 		flags = tex.get_flags();
 
-		if (tex.get_flags() & MEMORY_MAPPED_TEXTURE_GENERATE_MIPMAP_ON_LOAD_BIT)
+		if (tex.get_flags() & Vulkan::MEMORY_MAPPED_TEXTURE_GENERATE_MIPMAP_ON_LOAD_BIT)
 			generate_mips = true;
 
 		total_layers += tex.get_layout().get_layers();
 		inputs.push_back(std::move(tex));
 	}
 
-	MemoryMappedTexture array;
+	Vulkan::MemoryMappedTexture array;
 	if (cube)
 	{
 		if ((total_layers % 6) != 0)
@@ -126,18 +126,18 @@ int main(int argc, char *argv[])
 			return 1;
 		}
 		array.set_cube(fmt, width, total_layers / 6, levels);
-		array.set_flags(flags | MEMORY_MAPPED_TEXTURE_CUBE_MAP_COMPATIBLE_BIT);
+		array.set_flags(flags | Vulkan::MEMORY_MAPPED_TEXTURE_CUBE_MAP_COMPATIBLE_BIT);
 	}
 	else
 	{
 		array.set_2d(fmt, width, height, total_layers, levels);
-		array.set_flags(flags & ~MEMORY_MAPPED_TEXTURE_CUBE_MAP_COMPATIBLE_BIT);
+		array.set_flags(flags & ~Vulkan::MEMORY_MAPPED_TEXTURE_CUBE_MAP_COMPATIBLE_BIT);
 	}
 
 	if (generate_mips)
 		array.set_generate_mipmaps_on_load(true);
 
-	if (!array.map_write(argv[1]))
+	if (!array.map_write(*GRANITE_FILESYSTEM(), argv[1]))
 	{
 		LOGE("Failed to save file: %s\n", argv[1]);
 		return 1;

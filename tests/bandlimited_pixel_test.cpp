@@ -24,6 +24,7 @@
 #include "os_filesystem.hpp"
 #include "muglm/matrix_helper.hpp"
 #include "muglm/muglm_impl.hpp"
+#include "camera.hpp"
 #include <string.h>
 
 using namespace Granite;
@@ -155,15 +156,7 @@ namespace Granite
 {
 Application *application_create(int, char **)
 {
-	application_dummy();
-
-#ifdef ASSET_DIRECTORY
-	const char *asset_dir = getenv("ASSET_DIRECTORY");
-	if (!asset_dir)
-		asset_dir = ASSET_DIRECTORY;
-
-	Global::filesystem()->register_protocol("assets", std::unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir)));
-#endif
+	GRANITE_APPLICATION_SETUP_FILESYSTEM();
 
 	try
 	{

@@ -268,7 +268,7 @@ bool save_image_buffer_to_gtx(Vulkan::Device &device, ImageReadback &readback, c
 		return false;
 	}
 
-	SceneFormats::MemoryMappedTexture tex;
+	Vulkan::MemoryMappedTexture tex;
 
 	if (info.levels == 1)
 		tex.set_generate_mipmaps_on_load();
@@ -294,7 +294,7 @@ bool save_image_buffer_to_gtx(Vulkan::Device &device, ImageReadback &readback, c
 		return false;
 	}
 
-	if (!tex.map_write(path))
+	if (!tex.map_write(*GRANITE_FILESYSTEM(), path))
 	{
 		LOGE("Failed to save texture to %s\n", path);
 		return false;

@@ -26,6 +26,7 @@
 #include "object_pool.hpp"
 #include "math.hpp"
 #include "ecs.hpp"
+#include "global_managers_interface.hpp"
 #include <memory>
 
 class btDefaultCollisionConfiguration;
@@ -143,7 +144,7 @@ struct RaycastResult
 	float t;
 };
 
-class PhysicsSystem
+class PhysicsSystem final : public PhysicsSystemInterface
 {
 public:
 	PhysicsSystem();
@@ -286,6 +287,6 @@ private:
 
 	btCollisionShape *create_shape(const ConvexMeshPart &part);
 	Scene *scene = nullptr;
-	ComponentGroupVector<PhysicsComponent, ForceComponent> *forces = nullptr;
+	const ComponentGroupVector<PhysicsComponent, ForceComponent> *forces = nullptr;
 };
 }

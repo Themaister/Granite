@@ -47,7 +47,7 @@ static vec3 light_direction()
 void SceneViewerApplication::read_quirks(const std::string &path)
 {
 	string json;
-	if (!Global::filesystem()->read_file_to_string(path, json))
+	if (!GRANITE_FILESYSTEM()->read_file_to_string(path, json))
 	{
 		LOGE("Failed to read quirks file. Assuming defaults.\n");
 		return;
@@ -83,7 +83,7 @@ void SceneViewerApplication::read_quirks(const std::string &path)
 void SceneViewerApplication::read_config(const std::string &path)
 {
 	string json;
-	if (!Global::filesystem()->read_file_to_string(path, json))
+	if (!GRANITE_FILESYSTEM()->read_file_to_string(path, json))
 	{
 		LOGE("Failed to read config file. Assuming defaults.\n");
 		return;
@@ -348,14 +348,14 @@ SceneViewerApplication::SceneViewerApplication(const std::string &path, const st
 void SceneViewerApplication::export_lights()
 {
 	auto lights = export_lights_to_json(lighting.directional, scene_loader.get_scene());
-	if (!Global::filesystem()->write_string_to_file("cache://lights.json", lights))
+	if (!GRANITE_FILESYSTEM()->write_string_to_file("cache://lights.json", lights))
 		LOGE("Failed to export light data.\n");
 }
 
 void SceneViewerApplication::export_cameras()
 {
 	auto cameras = export_cameras_to_json(recorded_cameras);
-	if (!Global::filesystem()->write_string_to_file("cache://cameras.json", cameras))
+	if (!GRANITE_FILESYSTEM()->write_string_to_file("cache://cameras.json", cameras))
 		LOGE("Failed to export camera data.\n");
 }
 
@@ -1093,13 +1093,13 @@ void SceneViewerApplication::render_ui(CommandBuffer &cmd)
 	vec4 color(1.0f, 1.0f, 0.0f, 1.0f);
 	Font::Alignment alignment = Font::Alignment::TopRight;
 
-	flat_renderer.render_text(Global::ui_manager()->get_font(UI::FontSize::Large), avg_text, offset, size, color,
+	flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Large), avg_text, offset, size, color,
 	                          alignment, 1.0f);
-	flat_renderer.render_text(Global::ui_manager()->get_font(UI::FontSize::Large), min_text,
+	flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Large), min_text,
 	                          offset + vec3(0.0f, 20.0f, 0.0f), size - vec2(0.0f, 20.0f), color, alignment, 1.0f);
-	flat_renderer.render_text(Global::ui_manager()->get_font(UI::FontSize::Large), max_text,
+	flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Large), max_text,
 	                          offset + vec3(0.0f, 40.0f, 0.0f), size - vec2(0.0f, 40.0f), color, alignment, 1.0f);
-	flat_renderer.render_text(Global::ui_manager()->get_font(UI::FontSize::Large), latency_text,
+	flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Large), latency_text,
 	                          offset + vec3(0.0f, 60.0f, 0.0f), size - vec2(0.0f, 60.0f), color, alignment, 1.0f);
 
 	HeapBudget budgets[VK_MAX_MEMORY_HEAPS];
@@ -1112,7 +1112,7 @@ void SceneViewerApplication::render_ui(CommandBuffer &cmd)
 		        double(budgets[i].budget_size) / double(1024 * 1024),
 		        double(budgets[i].tracked_usage) / double(1024 * 1024),
 		        double(budgets[i].max_size) / double(1024 * 1024));
-		flat_renderer.render_text(Global::ui_manager()->get_font(UI::FontSize::Normal), heap_text,
+		flat_renderer.render_text(GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal), heap_text,
 		                          offset + vec3(0.0f, 90.0f + 15.0f * float(i), 0.0f),
 		                          size - vec2(0.0f, 90.0f + 15.0f * float(i)),
 		                          color, alignment, 1.0f);
@@ -1145,8 +1145,8 @@ void SceneViewerApplication::render_scene(TaskComposer &composer)
 
 void SceneViewerApplication::render_frame(double frame_time, double elapsed_time)
 {
-	auto *file = Global::thread_group()->get_timeline_trace_file();
-	TaskComposer composer(*Global::thread_group());
+	auto *file = GRANITE_THREAD_GROUP()->get_timeline_trace_file();
+	TaskComposer composer(*GRANITE_THREAD_GROUP());
 
 	Util::TimelineTraceFile::Event *e = nullptr;
 

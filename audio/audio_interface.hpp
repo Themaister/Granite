@@ -25,6 +25,7 @@
 #include <memory>
 #include <string>
 #include <stddef.h>
+#include "global_managers.hpp"
 
 namespace Granite
 {
@@ -42,7 +43,7 @@ public:
 	virtual void set_latency_usec(uint32_t usec) = 0;
 };
 
-class Backend
+class Backend : public BackendInterface
 {
 public:
 	Backend(BackendCallback &callback);

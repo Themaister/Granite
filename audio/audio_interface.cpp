@@ -24,6 +24,7 @@
 #include "audio_interface.hpp"
 #include "logging.hpp"
 #include "dsp/dsp.hpp"
+
 #ifdef AUDIO_HAVE_PULSE
 #include "audio_pulse.hpp"
 #endif
@@ -159,7 +160,7 @@ bool DumpBackend::start()
 {
 	size_t target_size = impl->frames * impl->frames_per_tick * impl->target_channels * sizeof(float);
 
-	impl->file = Granite::Global::filesystem()->open(impl->path, Granite::FileMode::WriteOnly);
+	impl->file = GRANITE_FILESYSTEM()->open(impl->path, Granite::FileMode::WriteOnly);
 	if (!impl->file)
 	{
 		LOGE("Failed to open dump file for writing.\n");
@@ -205,6 +206,5 @@ const char *DumpBackend::get_backend_name()
 {
 	return "dump";
 }
-
 }
 }

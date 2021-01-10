@@ -53,7 +53,7 @@ void UIApplication::on_device_destroyed(const DeviceCreatedEvent &)
 void UIApplication::on_device_created(const DeviceCreatedEvent &e)
 {
 	auto &device = e.get_device();
-	auto &ui = *Global::ui_manager();
+	auto &ui = *GRANITE_UI_MANAGER();
 	ui.reset_children();
 
 	auto window = make_handle<UI::Window>();
@@ -147,7 +147,7 @@ void UIApplication::render_frame(double, double)
 	auto cmd = device.request_command_buffer();
 	auto rp = device.get_swapchain_render_pass(SwapchainRenderPass::Depth);
 	cmd->begin_render_pass(rp);
-	Global::ui_manager()->render(*cmd);
+	GRANITE_UI_MANAGER()->render(*cmd);
 	cmd->end_render_pass();
 	device.submit(cmd);
 }
@@ -156,15 +156,7 @@ namespace Granite
 {
 Application *application_create(int, char **)
 {
-	application_dummy();
-
-#ifdef ASSET_DIRECTORY
-	const char *asset_dir = getenv("ASSET_DIRECTORY");
-	if (!asset_dir)
-		asset_dir = ASSET_DIRECTORY;
-
-	Global::filesystem()->register_protocol("assets", std::unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir)));
-#endif
+	GRANITE_APPLICATION_SETUP_FILESYSTEM();
 
 	try
 	{

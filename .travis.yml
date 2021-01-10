@@ -8,22 +8,47 @@ matrix:
       dist: xenial
       compiler: gcc
       before_install:
-        - sudo apt-get install xorg-dev
+        - sudo apt-get install xorg-dev libpulse-dev
       env:
         - GENERATOR="Unix Makefiles"
         - PLATFORM=GLFW
+        - SHARED=OFF
     - os: linux
       dist: xenial
       compiler: clang
+      before_install:
+        - sudo apt-get install xorg-dev libpulse-dev
       env:
         - GENERATOR="Unix Makefiles"
         - PLATFORM=KHR_DISPLAY
+        - SHARED=OFF
+    - os: linux
+      dist: xenial
+      compiler: gcc
+      before_install:
+        - sudo apt-get install xorg-dev libpulse-dev
+      env:
+        - GENERATOR="Unix Makefiles"
+        - PLATFORM=KHR_DISPLAY
+        - SHARED=ON
     - os: linux
       dist: xenial
       compiler: clang
+      before_install:
+        - sudo apt-get install xorg-dev libpulse-dev
+      env:
+        - GENERATOR="Unix Makefiles"
+        - PLATFORM=GLFW
+        - SHARED=ON
+    - os: linux
+      dist: xenial
+      compiler: clang
+      before_install:
+        - sudo apt-get install xorg-dev libpulse-dev
       env:
         - GENERATOR="Unix Makefiles"
         - PLATFORM=libretro
+        - SHARED=OFF
     - os: windows
       before_install:
         - choco install python3
@@ -31,6 +56,7 @@ matrix:
       env:
         - GENERATOR="Visual Studio 15 2017"
         - PLATFORM=GLFW
+        - SHARED=OFF
     - os: windows
       before_install:
         - choco install python3
@@ -38,6 +64,23 @@ matrix:
       env:
         - GENERATOR="Visual Studio 15 2017 Win64"
         - PLATFORM=GLFW
+        - SHARED=OFF
+    - os: windows
+      before_install:
+        - choco install python3
+        - export PATH="/c/Python39:/c/Python39/Scripts:$PATH"
+      env:
+        - GENERATOR="Visual Studio 15 2017"
+        - PLATFORM=GLFW
+        - SHARED=ON
+    - os: windows
+      before_install:
+        - choco install python3
+        - export PATH="/c/Python39:/c/Python39/Scripts:$PATH"
+      env:
+        - GENERATOR="Visual Studio 15 2017 Win64"
+        - PLATFORM=GLFW
+        - SHARED=ON
     - os: windows
       before_install:
         - choco install python3
@@ -45,6 +88,7 @@ matrix:
       env:
         - GENERATOR="Visual Studio 15 2017"
         - PLATFORM=libretro
+        - SHARED=OFF
     - os: windows
       before_install:
         - choco install python3
@@ -52,6 +96,7 @@ matrix:
       env:
         - GENERATOR="Visual Studio 15 2017 Win64"
         - PLATFORM=libretro
+        - SHARED=OFF
 
 before_script:
   - git submodule update --init
@@ -59,7 +104,14 @@ before_script:
 script:
   - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then PYTHON3=$(which python); fi
   - if [[ "$TRAVIS_OS_NAME" != "windows" ]]; then PYTHON3=$(which python3); fi
-  - mkdir build
-  - cd build
-  - cmake .. -DCMAKE_BUILD_TYPE=Release -DGRANITE_PLATFORM=${PLATFORM} -G "${GENERATOR}" -DPYTHON_EXECUTABLE="${PYTHON3}"
-  - cmake --build . --config Release
+  - mkdir build && cd build
+  - cmake .. -DCMAKE_BUILD_TYPE=Release -DGRANITE_AUDIO=ON -DGRANITE_INSTALL_EXE_TARGETS=ON -DGRANITE_SHARED=${SHARED} -DGRANITE_PLATFORM=${PLATFORM} -G "${GENERATOR}" -DPYTHON_EXECUTABLE="${PYTHON3}" -DCMAKE_INSTALL_PREFIX=output
+  - mkdir ../viewer/assets
+  - cmake --build . --config Release --target install
+  - ./output/bin/linkage-test
+  - cd ..
+  - rm -rf build
+  - cd self-test && mkdir build && cd build
+  - cmake .. -DCMAKE_BUILD_TYPE=Release -DGRANITE_AUDIO=ON -DGRANITE_SHARED=${SHARED} -DGRANITE_PLATFORM=${PLATFORM} -G "${GENERATOR}" -DPYTHON_EXECUTABLE="${PYTHON3}" -DCMAKE_INSTALL_PREFIX=output
+  - cmake --build . --config Release --target install
+  - ./output/bin/link-test

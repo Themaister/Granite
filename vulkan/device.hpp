@@ -368,6 +368,11 @@ public:
 	// Generally, this should be called before you call next_frame_context().
 	void promote_read_write_caches_to_read_only();
 
+	const Context::SystemHandles &get_system_handles() const
+	{
+		return system_handles;
+	}
+
 private:
 	VkInstance instance = VK_NULL_HANDLE;
 	VkPhysicalDevice gpu = VK_NULL_HANDLE;
@@ -414,7 +419,7 @@ private:
 
 	uint64_t update_wrapped_device_timestamp(uint64_t ts);
 	int64_t convert_timestamp_to_absolute_nsec(const QueryPoolResult &handle);
-	Util::TimelineTraceFile *timeline_trace_file = nullptr;
+	Context::SystemHandles system_handles;
 
 	QueryPoolHandle write_timestamp_nolock(VkCommandBuffer cmd, VkPipelineStageFlagBits stage);
 	QueryPoolHandle write_calibrated_timestamp_nolock();

@@ -22,12 +22,11 @@
 
 #include "texture_manager.hpp"
 #include "device.hpp"
-#include "stb_image.h"
 #include "memory_mapped_texture.hpp"
 #include "texture_files.hpp"
 #include "texture_decoder.hpp"
 
-#ifdef GRANITE_VULKAN_MT
+#ifdef GRANITE_VULKAN_THREAD_GROUP
 #include "thread_group.hpp"
 #include "thread_id.hpp"
 #endif
@@ -45,7 +44,8 @@ bool Texture::init_texture()
 }
 
 Texture::Texture(Device *device_, const std::string &path_, VkFormat format_, const VkComponentMapping &swizzle_)
-	: VolatileSource(path_), device(device_), format(format_), swizzle(swizzle_)
+	: VolatileSource(device_->get_system_handles().filesystem, path_),
+	  device(device_), format(format_), swizzle(swizzle_)
 {
 }
 
@@ -63,15 +63,15 @@ void Texture::update(std::unique_ptr<Granite::File> file)
 {
 	auto *f = file.release();
 	auto work = [f, this]() {
-#if defined(GRANITE_VULKAN_MT) && defined(VULKAN_DEBUG)
-		LOGI("Loading texture in thread index: %u\n", get_current_thread_index());
+#if defined(GRANITE_VULKAN_THREAD_GROUP) && defined(VULKAN_DEBUG)
+		LOGI("Loading texture in thread index: %u\n", Util::get_current_thread_index());
 #endif
 		unique_ptr<Granite::File> updated_file{f};
 		auto size = updated_file->get_size();
 		void *mapped = updated_file->map();
 		if (size && mapped)
 		{
-			if (Granite::SceneFormats::MemoryMappedTexture::is_header(mapped, size))
+			if (MemoryMappedTexture::is_header(mapped, size))
 				update_gtx(move(updated_file), mapped);
 			else
 				update_other(mapped, size);
@@ -84,11 +84,15 @@ void Texture::update(std::unique_ptr<Granite::File> file)
 		}
 	};
 
-#ifdef GRANITE_VULKAN_MT
-	auto &workers = *Granite::Global::thread_group();
-	// Workaround, cannot copy the lambda because of owning a unique_ptr.
-	auto task = workers.create_task(move(work));
-	task->flush();
+#ifdef GRANITE_VULKAN_THREAD_GROUP
+	if (auto *group = device->get_system_handles().thread_group)
+	{
+		// Workaround, cannot copy the lambda because of owning a unique_ptr.
+		auto task = group->create_task(move(work));
+		task->flush();
+	}
+	else
+		work();
 #else
 	work();
 #endif
@@ -118,7 +122,7 @@ void Texture::update_checkerboard()
 	replace_image(image);
 }
 
-void Texture::update_gtx(const Granite::SceneFormats::MemoryMappedTexture &mapped_file)
+void Texture::update_gtx(const MemoryMappedTexture &mapped_file)
 {
 	if (mapped_file.empty())
 	{
@@ -146,14 +150,14 @@ void Texture::update_gtx(const Granite::SceneFormats::MemoryMappedTexture &mappe
 	{
 		ImageCreateInfo info = ImageCreateInfo::immutable_image(layout);
 		info.swizzle = swizzle;
-		info.flags = (mapped_file.get_flags() & Granite::SceneFormats::MEMORY_MAPPED_TEXTURE_CUBE_MAP_COMPATIBLE_BIT) ?
+		info.flags = (mapped_file.get_flags() & MEMORY_MAPPED_TEXTURE_CUBE_MAP_COMPATIBLE_BIT) ?
                          VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT :
                          0;
 		info.misc = IMAGE_MISC_CONCURRENT_QUEUE_GRAPHICS_BIT | IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_GRAPHICS_BIT |
 		            IMAGE_MISC_CONCURRENT_QUEUE_ASYNC_COMPUTE_BIT;
 
 		if (info.levels == 1 &&
-		    (mapped_file.get_flags() & Granite::SceneFormats::MEMORY_MAPPED_TEXTURE_GENERATE_MIPMAP_ON_LOAD_BIT) != 0 &&
+		    (mapped_file.get_flags() & MEMORY_MAPPED_TEXTURE_GENERATE_MIPMAP_ON_LOAD_BIT) != 0 &&
 		    device->image_format_is_supported(info.format, VK_FORMAT_FEATURE_BLIT_SRC_BIT) &&
 		    device->image_format_is_supported(info.format, VK_FORMAT_FEATURE_BLIT_DST_BIT))
 		{
@@ -178,7 +182,7 @@ void Texture::update_gtx(const Granite::SceneFormats::MemoryMappedTexture &mappe
 
 void Texture::update_gtx(unique_ptr<Granite::File> file, void *mapped)
 {
-	Granite::SceneFormats::MemoryMappedTexture mapped_file;
+	MemoryMappedTexture mapped_file;
 	if (!mapped_file.map_read(move(file), mapped))
 	{
 		LOGE("Failed to read texture.\n");
@@ -190,12 +194,12 @@ void Texture::update_gtx(unique_ptr<Granite::File> file, void *mapped)
 
 void Texture::update_other(const void *data, size_t size)
 {
-	auto tex = Granite::load_texture_from_memory(data, size,
+	auto tex = load_texture_from_memory(data, size,
 	                                    (format == VK_FORMAT_R8G8B8A8_SRGB ||
 	                                     format == VK_FORMAT_UNDEFINED ||
 	                                     format == VK_FORMAT_B8G8R8A8_SRGB ||
 	                                     format == VK_FORMAT_A8B8G8R8_SRGB_PACK32) ?
-	                                    Granite::ColorSpace::sRGB : Granite::ColorSpace::Linear);
+	                                    ColorSpace::sRGB : ColorSpace::Linear);
 
 	update_gtx(tex);
 }

@@ -23,24 +23,17 @@
 #pragma once
 
 #include "volatile_source.hpp"
-#include "image.hpp"
 #include "async_object_sink.hpp"
-
-namespace Granite
-{
-namespace SceneFormats
-{
-class MemoryMappedTexture;
-}
-}
+#include "image.hpp"
 
 namespace Vulkan
 {
-class Texture : public Util::VolatileSource<Texture>,
+class MemoryMappedTexture;
+class Texture : public Granite::VolatileSource<Texture>,
                 public Util::IntrusiveHashMapEnabled<Texture>
 {
 public:
-	friend class Util::VolatileSource<Texture>;
+	friend class Granite::VolatileSource<Texture>;
 	friend class TextureManager;
 	friend class Util::ObjectPool<Texture>;
 
@@ -66,7 +59,7 @@ private:
 	VkComponentMapping swizzle;
 	void update_other(const void *data, size_t size);
 	void update_gtx(std::unique_ptr<Granite::File> file, void *mapped);
-	void update_gtx(const Granite::SceneFormats::MemoryMappedTexture &texture);
+	void update_gtx(const MemoryMappedTexture &texture);
 	void update_checkerboard();
 
 	void load();

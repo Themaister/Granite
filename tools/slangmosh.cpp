@@ -20,22 +20,22 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "cli_parser.hpp"
-#include "global_managers.hpp"
-#include "rapidjson_wrapper.hpp"
-#include "logging.hpp"
-#include "filesystem.hpp"
-#include "compiler.hpp"
 #include "path.hpp"
-#include "thread_group.hpp"
+#include "cli_parser.hpp"
+#include "compiler.hpp"
+#include "filesystem.hpp"
+#include "global_managers_init.hpp"
 #include "hash.hpp"
-#include <sstream>
+#include "logging.hpp"
+#include "rapidjson_wrapper.hpp"
+#include "thread_group.hpp"
+#include <assert.h>
 #include <iomanip>
 #include <iostream>
-#include <unordered_map>
+#include <sstream>
 #include <string>
+#include <unordered_map>
 #include <vector>
-#include <assert.h>
 
 using namespace Util;
 using namespace Granite;
@@ -86,8 +86,8 @@ void Shader::dispatch_variants(std::vector<uint32_t> *output_spirv, Target targe
 {
 	if (variants.empty())
 	{
-		Global::thread_group()->create_task([=]() {
-			GLSLCompiler comp;
+		GRANITE_THREAD_GROUP()->create_task([=]() {
+			GLSLCompiler comp(*Global::filesystem());
 			comp.set_source_from_file(path);
 			comp.set_target(target);
 			comp.set_optimization(opt ? GLSLCompiler::Optimization::ForceOn : GLSLCompiler::Optimization::ForceOff);
@@ -114,8 +114,8 @@ void Shader::dispatch_variants(std::vector<uint32_t> *output_spirv, Target targe
 		size_t num_permutations = total_permutations();
 		for (size_t perm = 0; perm < num_permutations; perm++)
 		{
-			Global::thread_group()->create_task([=]() {
-				GLSLCompiler comp;
+			GRANITE_THREAD_GROUP()->create_task([=]() {
+				GLSLCompiler comp(*Global::filesystem());
 				comp.set_source_from_file(path);
 				comp.set_target(target);
 				comp.set_optimization(opt ? GLSLCompiler::Optimization::ForceOn : GLSLCompiler::Optimization::ForceOff);
@@ -165,7 +165,7 @@ static std::vector<Shader> parse_shaders(const std::string &path)
 	std::vector<Shader> parsed_shaders;
 
 	std::string input_json;
-	if (!Global::filesystem()->read_file_to_string(path, input_json))
+	if (!GRANITE_FILESYSTEM()->read_file_to_string(path, input_json))
 	{
 		LOGE("Failed to read file: %s.\n", path.c_str());
 		return parsed_shaders;
@@ -427,7 +427,7 @@ static int main_inner(int argc, char **argv)
 		parsed_shader.dispatch_variants(shader_variants.data(), vk11 ? Target::Vulkan11 : Target::Vulkan10, opt, strip);
 	}
 
-	Global::thread_group()->wait_idle();
+	GRANITE_THREAD_GROUP()->wait_idle();
 
 	for (auto &shader : spirv_for_shaders_and_variants)
 		for (auto &perm : shader)
@@ -440,7 +440,7 @@ static int main_inner(int argc, char **argv)
 		printf("%s\n", generated_code.c_str());
 	else
 	{
-		if (!Global::filesystem()->write_string_to_file(output_path, generated_code))
+		if (!GRANITE_FILESYSTEM()->write_string_to_file(output_path, generated_code))
 		{
 			LOGE("Failed to write to file: %s.\n", output_path.c_str());
 			return EXIT_FAILURE;

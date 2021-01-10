@@ -354,9 +354,9 @@ void SpotLight::get_depth_render_info(const RenderContext &, const RenderInfoCom
 	{
 		PositionalLightRenderInfo info;
 
-		info.count = Global::common_renderer_data()->light_mesh.spot_count;
-		info.vbo = Global::common_renderer_data()->light_mesh.spot_vbo.get();
-		info.ibo = Global::common_renderer_data()->light_mesh.spot_ibo.get();
+		info.count = GRANITE_COMMON_RENDERER_DATA()->light_mesh.spot_count;
+		info.vbo = GRANITE_COMMON_RENDERER_DATA()->light_mesh.spot_vbo.get();
+		info.ibo = GRANITE_COMMON_RENDERER_DATA()->light_mesh.spot_ibo.get();
 		info.type = PositionalLight::Type::Spot;
 
 		unsigned variant = POSITIONAL_VARIANT_INSTANCE_BIT;
@@ -433,9 +433,9 @@ void SpotLight::get_render_info(const RenderContext &context, const RenderInfoCo
 	{
 		PositionalLightRenderInfo info;
 
-		info.count = Global::common_renderer_data()->light_mesh.spot_count;
-		info.vbo = Global::common_renderer_data()->light_mesh.spot_vbo.get();
-		info.ibo = Global::common_renderer_data()->light_mesh.spot_ibo.get();
+		info.count = GRANITE_COMMON_RENDERER_DATA()->light_mesh.spot_count;
+		info.vbo = GRANITE_COMMON_RENDERER_DATA()->light_mesh.spot_vbo.get();
+		info.ibo = GRANITE_COMMON_RENDERER_DATA()->light_mesh.spot_ibo.get();
 
 		info.push.inv_view_projection = params.inv_view_projection;
 		info.push.camera_pos = vec4(params.camera_position, 0.0f);
@@ -526,9 +526,9 @@ void PointLight::get_depth_render_info(const RenderContext &, const RenderInfoCo
 	{
 		PositionalLightRenderInfo info;
 
-		info.count = Global::common_renderer_data()->light_mesh.point_count;
-		info.vbo = Global::common_renderer_data()->light_mesh.point_vbo.get();
-		info.ibo = Global::common_renderer_data()->light_mesh.point_ibo.get();
+		info.count = GRANITE_COMMON_RENDERER_DATA()->light_mesh.point_count;
+		info.vbo = GRANITE_COMMON_RENDERER_DATA()->light_mesh.point_vbo.get();
+		info.ibo = GRANITE_COMMON_RENDERER_DATA()->light_mesh.point_ibo.get();
 		info.type = PositionalLight::Type::Point;
 
 		unsigned variant = POSITIONAL_VARIANT_INSTANCE_BIT;
@@ -578,9 +578,9 @@ void PointLight::get_render_info(const RenderContext &context, const RenderInfoC
 	{
 		PositionalLightRenderInfo info;
 
-		info.count = Global::common_renderer_data()->light_mesh.point_count;
-		info.vbo = Global::common_renderer_data()->light_mesh.point_vbo.get();
-		info.ibo = Global::common_renderer_data()->light_mesh.point_ibo.get();
+		info.count = GRANITE_COMMON_RENDERER_DATA()->light_mesh.point_count;
+		info.vbo = GRANITE_COMMON_RENDERER_DATA()->light_mesh.point_vbo.get();
+		info.ibo = GRANITE_COMMON_RENDERER_DATA()->light_mesh.point_ibo.get();
 
 		info.push.inv_view_projection = params.inv_view_projection;
 		info.push.camera_pos = vec4(params.camera_position, 0.0f);

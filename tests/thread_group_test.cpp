@@ -28,7 +28,7 @@ using namespace Granite;
 int main()
 {
 	ThreadGroup group;
-	group.start(4);
+	group.start(4, {});
 
 	auto task1 = group.create_task([]() {
 		LOGI("Ohai!\n");

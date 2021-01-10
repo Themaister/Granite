@@ -719,7 +719,8 @@ void DeferredLightRenderer::render_light(Vulkan::CommandBuffer &cmd, const Rende
 	if (light.environment_irradiance)
 		cmd.set_texture(0, BINDING_GLOBAL_ENV_IRRADIANCE, *light.environment_irradiance, Vulkan::StockSampler::LinearClamp);
 
-	cmd.set_texture(0, BINDING_GLOBAL_BRDF_TABLE, Granite::Global::common_renderer_data()->brdf_tables.get_texture()->get_image()->get_view(),
+	cmd.set_texture(0, BINDING_GLOBAL_BRDF_TABLE,
+	                GRANITE_COMMON_RENDERER_DATA()->brdf_tables.get_texture()->get_image()->get_view(),
 	                Vulkan::StockSampler::LinearClamp);
 
 	if (light.shadows)

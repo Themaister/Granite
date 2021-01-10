@@ -21,8 +21,6 @@
  */
 
 #include "application.hpp"
-#include "rapidjson_wrapper.hpp"
-#include "light_export.hpp"
 #include "thread_group.hpp"
 #ifdef HAVE_GRANITE_AUDIO
 #include "audio_mixer.hpp"
@@ -41,9 +39,14 @@ bool Application::init_wsi(std::unique_ptr<WSIPlatform> new_platform)
 {
 	platform = move(new_platform);
 	application_wsi.set_platform(platform.get());
+
+	Context::SystemHandles system_handles;
+	system_handles.filesystem = GRANITE_FILESYSTEM();
+	system_handles.thread_group = GRANITE_THREAD_GROUP();
+	system_handles.timeline_trace_file = system_handles.thread_group->get_timeline_trace_file();
+
 	if (!platform->has_external_swapchain() &&
-	    !application_wsi.init(Global::thread_group()->get_num_threads() + 1,
-	                          Global::thread_group()->get_timeline_trace_file()))
+	    !application_wsi.init(system_handles.thread_group->get_num_threads() + 1, system_handles))
 	{
 		return false;
 	}
@@ -60,18 +63,18 @@ bool Application::poll()
 	if (requested_shutdown)
 		return false;
 
-	auto *fs = Global::filesystem();
-	auto *em = Global::event_manager();
+	auto *fs = GRANITE_FILESYSTEM();
+	auto *em = GRANITE_EVENT_MANAGER();
 	if (fs)
 		fs->poll_notifications();
 	if (em)
 		em->dispatch();
 
 #ifdef HAVE_GRANITE_AUDIO
-	auto *backend = Global::audio_backend();
+	auto *backend = GRANITE_AUDIO_BACKEND();
 	if (backend)
 		backend->heartbeat();
-	auto *am = Global::audio_mixer();
+	auto *am = GRANITE_AUDIO_MIXER();
 	if (am)
 	{
 		// Pump through events from audio thread.

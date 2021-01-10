@@ -36,6 +36,7 @@
 #include "dynamic_library.hpp"
 #include "hw_counters/hw_counter_interface.h"
 #include "thread_group.hpp"
+#include "global_managers_init.hpp"
 
 #ifdef HAVE_GRANITE_AUDIO
 #include "audio_interface.hpp"
@@ -152,7 +153,7 @@ public:
 		for (auto &thread : worker_threads)
 			thread->wait();
 
-		auto *em = Global::event_manager();
+		auto *em = GRANITE_EVENT_MANAGER();
 		if (em)
 		{
 			em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
@@ -229,7 +230,7 @@ public:
 			return false;
 		}
 
-		auto *em = Global::event_manager();
+		auto *em = GRANITE_EVENT_MANAGER();
 		if (em)
 		{
 			em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
@@ -249,7 +250,7 @@ public:
 
 		auto &wsi = app->get_wsi();
 		auto context = make_unique<Context>();
-		context->set_num_thread_indices(Global::thread_group()->get_num_threads() + 1);
+		context->set_num_thread_indices(GRANITE_THREAD_GROUP()->get_num_threads() + 1);
 		if (!context->init_instance_and_device(nullptr, 0, nullptr, 0))
 			return false;
 		wsi.init_external_context(move(context));
@@ -540,14 +541,14 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 
 	filtered_argv.push_back(nullptr);
 
-	Granite::Global::init(Granite::Global::MANAGER_FEATURE_ALL_BITS & ~Granite::Global::MANAGER_FEATURE_AUDIO_BIT);
+	Granite::Global::init(Granite::Global::MANAGER_FEATURE_DEFAULT_BITS);
 
 	if (!args.assets.empty())
-		Global::filesystem()->register_protocol("assets", make_unique<OSFilesystem>(args.assets));
+		GRANITE_FILESYSTEM()->register_protocol("assets", make_unique<OSFilesystem>(args.assets));
 	if (!args.builtin.empty())
-		Global::filesystem()->register_protocol("builtin", make_unique<OSFilesystem>(args.builtin));
+		GRANITE_FILESYSTEM()->register_protocol("builtin", make_unique<OSFilesystem>(args.builtin));
 	if (!args.cache.empty())
-		Global::filesystem()->register_protocol("cache", make_unique<OSFilesystem>(args.cache));
+		GRANITE_FILESYSTEM()->register_protocol("cache", make_unique<OSFilesystem>(args.cache));
 
 #ifdef HAVE_GRANITE_AUDIO
 	Audio::DumpBackend *audio_dumper = nullptr;
@@ -671,7 +672,7 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 				//Writer<StringBuffer> writer(buffer);
 				doc.Accept(writer);
 
-				if (!Global::filesystem()->write_string_to_file(args.stat, buffer.GetString()))
+				if (!GRANITE_FILESYSTEM()->write_string_to_file(args.stat, buffer.GetString()))
 					LOGE("Failed to write stat file to disk.\n");
 			}
 		}

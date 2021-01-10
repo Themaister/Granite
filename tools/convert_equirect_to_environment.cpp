@@ -24,6 +24,7 @@
 #include "device.hpp"
 #include "utils/image_utils.hpp"
 #include "cli_parser.hpp"
+#include "global_managers_init.hpp"
 
 using namespace Vulkan;
 using namespace Granite;
@@ -46,6 +47,8 @@ int main(int argc, char *argv[])
 		string irradiance;
 		float cube_scale = 1.0f;
 	} args;
+
+	Granite::Global::init();
 
 	cbs.add("--help", [](CLIParser &parser) { print_help(); parser.end(); });
 	cbs.add("--reflection", [&](CLIParser &parser) { args.reflection = parser.next_string(); });

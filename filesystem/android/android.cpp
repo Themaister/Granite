@@ -23,8 +23,8 @@
 #include "android.hpp"
 #include "path.hpp"
 #include "logging.hpp"
-#include <stdexcept>
 #include <algorithm>
+#include <stdexcept>
 
 using namespace std;
 

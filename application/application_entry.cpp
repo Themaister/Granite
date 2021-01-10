@@ -21,6 +21,7 @@
  */
 
 #include "application.hpp"
+#include "filesystem.hpp"
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -33,6 +34,15 @@ namespace Granite
 // Make sure this is linked in.
 void application_dummy()
 {
+}
+
+// Alternatively, make sure this is linked in.
+// Implementation is here to trick a linker to always let main() in static library work.
+void application_setup_default_filesystem(const char *default_asset_directory)
+{
+	auto *filesystem = GRANITE_FILESYSTEM();
+	if (filesystem)
+		Filesystem::setup_default_filesystem(filesystem, default_asset_directory);
 }
 }
 

@@ -28,6 +28,7 @@
 #include "application_events.hpp"
 #include "application_wsi.hpp"
 #include "vulkan_headers.hpp"
+#include "global_managers_init.hpp"
 #include <string.h>
 #include <signal.h>
 
@@ -94,7 +95,7 @@ public:
 			return false;
 		}
 
-		auto *em = Global::event_manager();
+		auto *em = GRANITE_EVENT_MANAGER();
 		if (em)
 		{
 			em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
@@ -130,7 +131,7 @@ public:
 
 	~WSIPlatformDisplay()
 	{
-		auto *em = Global::event_manager();
+		auto *em = GRANITE_EVENT_MANAGER();
 		if (em)
 		{
 			em->dequeue_all_latched(ApplicationLifecycleEvent::get_type_id());
@@ -166,15 +167,24 @@ public:
 	{
 		VkSurfaceKHR surface = VK_NULL_HANDLE;
 
+		auto gpa = Vulkan::Context::get_instance_proc_addr();
+#define SYM(x) PFN_##x p_##x; do { PFN_vkVoidFunction vf = gpa(instance, #x); memcpy(&p_##x, &vf, sizeof(vf)); } while(0)
+		SYM(vkGetPhysicalDeviceDisplayPropertiesKHR);
+		SYM(vkGetPhysicalDeviceDisplayPlanePropertiesKHR);
+		SYM(vkGetDisplayModePropertiesKHR);
+		SYM(vkGetDisplayPlaneSupportedDisplaysKHR);
+		SYM(vkGetDisplayPlaneCapabilitiesKHR);
+		SYM(vkCreateDisplayPlaneSurfaceKHR);
+
 		uint32_t display_count;
-		vkGetPhysicalDeviceDisplayPropertiesKHR(gpu, &display_count, nullptr);
+		p_vkGetPhysicalDeviceDisplayPropertiesKHR(gpu, &display_count, nullptr);
 		vector<VkDisplayPropertiesKHR> displays(display_count);
-		vkGetPhysicalDeviceDisplayPropertiesKHR(gpu, &display_count, displays.data());
+		p_vkGetPhysicalDeviceDisplayPropertiesKHR(gpu, &display_count, displays.data());
 
 		uint32_t plane_count;
-		vkGetPhysicalDeviceDisplayPlanePropertiesKHR(gpu, &plane_count, nullptr);
+		p_vkGetPhysicalDeviceDisplayPlanePropertiesKHR(gpu, &plane_count, nullptr);
 		vector<VkDisplayPlanePropertiesKHR> planes(plane_count);
-		vkGetPhysicalDeviceDisplayPlanePropertiesKHR(gpu, &plane_count, planes.data());
+		p_vkGetPhysicalDeviceDisplayPlanePropertiesKHR(gpu, &plane_count, planes.data());
 
 #ifdef KHR_DISPLAY_ACQUIRE_XLIB
 		VkDisplayKHR best_display = VK_NULL_HANDLE;
@@ -198,9 +208,9 @@ public:
 				continue;
 
 			uint32_t mode_count;
-			vkGetDisplayModePropertiesKHR(gpu, display, &mode_count, nullptr);
+			p_vkGetDisplayModePropertiesKHR(gpu, display, &mode_count, nullptr);
 			vector<VkDisplayModePropertiesKHR> modes(mode_count);
-			vkGetDisplayModePropertiesKHR(gpu, display, &mode_count, modes.data());
+			p_vkGetDisplayModePropertiesKHR(gpu, display, &mode_count, modes.data());
 
 			for (unsigned i = 0; i < mode_count; i++)
 			{
@@ -216,13 +226,13 @@ public:
 			{
 				uint32_t supported_count = 0;
 				VkDisplayPlaneCapabilitiesKHR plane_caps;
-				vkGetDisplayPlaneSupportedDisplaysKHR(gpu, i, &supported_count, nullptr);
+				p_vkGetDisplayPlaneSupportedDisplaysKHR(gpu, i, &supported_count, nullptr);
 
 				if (!supported_count)
 					continue;
 
 				vector<VkDisplayKHR> supported(supported_count);
-				vkGetDisplayPlaneSupportedDisplaysKHR(gpu, i, &supported_count, supported.data());
+				p_vkGetDisplayPlaneSupportedDisplaysKHR(gpu, i, &supported_count, supported.data());
 
 				unsigned j;
 				for (j = 0; j < supported_count; j++)
@@ -243,7 +253,7 @@ public:
 				else
 					continue;
 
-				vkGetDisplayPlaneCapabilitiesKHR(gpu, best_mode, i, &plane_caps);
+				p_vkGetDisplayPlaneCapabilitiesKHR(gpu, best_mode, i, &plane_caps);
 
 				if (plane_caps.supportedAlpha & VK_DISPLAY_PLANE_ALPHA_OPAQUE_BIT_KHR)
 				{
@@ -276,15 +286,16 @@ out:
 		this->height = actual_height;
 
 #ifdef KHR_DISPLAY_ACQUIRE_XLIB
-		dpy = XOpenDisplay(nullptr);
-		if (dpy)
+		xlib_dpy = XOpenDisplay(nullptr);
+		if (xlib_dpy)
 		{
-			if (vkAcquireXlibDisplayEXT(gpu, dpy, best_display) != VK_SUCCESS)
+			SYM(vkAcquireXlibDisplayEXT);
+			if (p_vkAcquireXlibDisplayEXT(gpu, xlib_dpy, best_display) != VK_SUCCESS)
 				LOGE("Failed to acquire Xlib display. Surface creation may fail.\n");
 		}
 #endif
 
-		if (vkCreateDisplayPlaneSurfaceKHR(instance, &create_info, NULL, &surface) != VK_SUCCESS)
+		if (p_vkCreateDisplayPlaneSurfaceKHR(instance, &create_info, NULL, &surface) != VK_SUCCESS)
 			return VK_NULL_HANDLE;
 
 		get_input_tracker().set_relative_mouse_rect(0.0, 0.0, double(this->width), double(this->height));
@@ -319,7 +330,7 @@ private:
 	unsigned width = 0;
 	unsigned height = 0;
 #ifdef KHR_DISPLAY_ACQUIRE_XLIB
-	Display *dpy = nullptr;
+	Display *xlib_dpy = nullptr;
 #endif
 	bool is_alive = true;
 

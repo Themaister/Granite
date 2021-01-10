@@ -24,19 +24,21 @@
 
 #include "shader.hpp"
 #include "vulkan_common.hpp"
+#include "filesystem.hpp"
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
 #include <string>
 #include <vector>
-#ifdef GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER
-#include "compiler.hpp"
-#endif
-#include "filesystem.hpp"
 #include "hash.hpp"
 #ifdef GRANITE_VULKAN_MT
 #include "read_write_lock.hpp"
 #endif
+
+namespace Granite
+{
+class GLSLCompiler;
+}
 
 namespace Vulkan
 {
@@ -49,6 +51,7 @@ class ShaderTemplate : public Util::IntrusiveHashMapEnabled<ShaderTemplate>
 public:
 	ShaderTemplate(Device *device, const std::string &shader_path, PrecomputedShaderCache &cache, Util::Hash path_hash,
 	               const std::vector<std::string> &include_directories);
+	~ShaderTemplate();
 
 	bool init();
 

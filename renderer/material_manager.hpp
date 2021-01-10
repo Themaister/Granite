@@ -22,19 +22,19 @@
 
 #pragma once
 
-#include "material.hpp"
 #include "volatile_source.hpp"
+#include "application_wsi_events.hpp"
 #include "device.hpp"
 #include "event.hpp"
+#include "material.hpp"
 #include "scene_formats.hpp"
-#include "application_wsi_events.hpp"
 
 namespace Granite
 {
-class MaterialFile : public Material, public Util::VolatileSource<MaterialFile>, public EventHandler
+class MaterialFile : public Material, public VolatileSource<MaterialFile>, public EventHandler
 {
 public:
-	MaterialFile(const std::string &path);
+	MaterialFile(Granite::Filesystem *fs, const std::string &path);
 	MaterialFile(const SceneFormats::MaterialInfo &info);
 	void update(std::unique_ptr<File> file);
 

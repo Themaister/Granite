@@ -32,6 +32,12 @@ namespace Util
 class TimelineTraceFile;
 }
 
+namespace Granite
+{
+class Filesystem;
+class ThreadGroup;
+}
+
 namespace Vulkan
 {
 struct DeviceFeatures
@@ -116,6 +122,7 @@ public:
 	Context(const Context &) = delete;
 	void operator=(const Context &) = delete;
 	static bool init_loader(PFN_vkGetInstanceProcAddr addr);
+	static PFN_vkGetInstanceProcAddr get_instance_proc_addr();
 
 	~Context();
 
@@ -214,14 +221,21 @@ public:
 		return device_table;
 	}
 
-	void set_timeline_trace_file(Util::TimelineTraceFile *trace)
+	struct SystemHandles
 	{
-		timeline_trace_file = trace;
+		Util::TimelineTraceFile *timeline_trace_file = nullptr;
+		Granite::Filesystem *filesystem = nullptr;
+		Granite::ThreadGroup *thread_group = nullptr;
+	};
+
+	void set_system_handles(const SystemHandles &handles_)
+	{
+		handles = handles_;
 	}
 
-	Util::TimelineTraceFile *get_timeline_trace_file() const
+	const SystemHandles &get_system_handles() const
 	{
-		return timeline_trace_file;
+		return handles;
 	}
 
 private:
@@ -229,7 +243,7 @@ private:
 	VkInstance instance = VK_NULL_HANDLE;
 	VkPhysicalDevice gpu = VK_NULL_HANDLE;
 	VolkDeviceTable device_table = {};
-	Util::TimelineTraceFile *timeline_trace_file = nullptr;
+	SystemHandles handles;
 
 	VkPhysicalDeviceProperties gpu_props = {};
 	VkPhysicalDeviceMemoryProperties mem_props = {};

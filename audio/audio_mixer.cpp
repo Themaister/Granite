@@ -388,5 +388,15 @@ void Mixer::set_stream_mixer_parameters(StreamID id, float new_gain_db, float ne
 	gain_linear[index].store(f32_to_u32(std::pow(10.0f, new_gain_db / 20.0f)), memory_order_release);
 	panning[index].store(f32_to_u32(new_panning), memory_order_release);
 }
+
+void Mixer::event_start(EventManagerInterface &iface)
+{
+	static_cast<EventManager &>(iface).enqueue_latched<MixerStartEvent>(*this);
+}
+
+void Mixer::event_stop(EventManagerInterface &iface)
+{
+	static_cast<EventManager &>(iface).dequeue_all_latched(MixerStartEvent::get_type_id());
+}
 }
 }

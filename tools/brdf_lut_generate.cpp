@@ -1,12 +1,11 @@
 #include "math.hpp"
 #include "logging.hpp"
-#include "muglm/matrix_helper.hpp"
 #include "muglm/muglm_impl.hpp"
 #include "memory_mapped_texture.hpp"
+#include "global_managers_init.hpp"
 
 using namespace muglm;
 using namespace Granite;
-using namespace Granite::SceneFormats;
 
 // Shameless copy-pasta from learnopengl.com. :)
 
@@ -114,13 +113,14 @@ int main(int argc, char *argv[])
 		LOGE("Usage: %s <output.gtx>\n", argv[0]);
 		return 1;
 	}
+	Granite::Global::init();
 
 	const unsigned width = 256;
 	const unsigned height = 256;
 
-	MemoryMappedTexture tex;
+	Vulkan::MemoryMappedTexture tex;
 	tex.set_2d(VK_FORMAT_R16G16_SFLOAT, width, height);
-	if (!tex.map_write(argv[1]))
+	if (!tex.map_write(*GRANITE_FILESYSTEM(), argv[1]))
 	{
 		LOGE("Failed to save image to: %s\n", argv[1]);
 		return 1;

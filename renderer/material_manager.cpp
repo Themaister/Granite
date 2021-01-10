@@ -34,8 +34,8 @@ using namespace Granite::SceneFormats;
 
 namespace Granite
 {
-MaterialFile::MaterialFile(const std::string &path_)
-	: VolatileSource(path_)
+MaterialFile::MaterialFile(Granite::Filesystem *fs_, const std::string &path_)
+	: VolatileSource(fs_, path_)
 {
 	if (!init())
 		throw runtime_error("Failed to load material file.");
@@ -200,7 +200,8 @@ MaterialHandle MaterialManager::request_material(const std::string &path)
 	auto itr = materials.find(path);
 	if (itr == end(materials))
 	{
-		auto handle = Util::make_derived_handle<Material, MaterialFile>(path);
+		auto handle = Util::make_derived_handle<Material, MaterialFile>(
+		    static_cast<Filesystem *>(Global::filesystem()), path);
 		materials[path] = handle;
 		return handle;
 	}

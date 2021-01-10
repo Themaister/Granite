@@ -25,6 +25,7 @@
 #include "logging.hpp"
 #include "cli_parser.hpp"
 #include "rapidjson_wrapper.hpp"
+#include "global_managers_init.hpp"
 
 using namespace Granite;
 using namespace Util;
@@ -199,7 +200,7 @@ int main(int argc, char *argv[])
 		cameras = parser.get_cameras();
 
 		string json;
-		if (!Global::filesystem()->read_file_to_string(extra_cameras, json))
+		if (!GRANITE_FILESYSTEM()->read_file_to_string(extra_cameras, json))
 		{
 			LOGE("Failed to read config file for lights.\n");
 			return 1;
@@ -297,7 +298,7 @@ int main(int argc, char *argv[])
 		lights = parser.get_lights();
 
 		string json;
-		if (!Global::filesystem()->read_file_to_string(extra_lights, json))
+		if (!GRANITE_FILESYSTEM()->read_file_to_string(extra_lights, json))
 		{
 			LOGE("Failed to read config file for lights.\n");
 			return 1;

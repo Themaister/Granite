@@ -352,7 +352,7 @@ bool Allocator::allocate(uint32_t size, uint32_t alignment, AllocationMode mode,
 
 Allocator::Allocator()
 {
-	for (unsigned i = 0; i < Util::ecast(MemoryClass::Count) - 1; i++)
+	for (int i = 0; i < Util::ecast(MemoryClass::Count) - 1; i++)
 		classes[i].set_parent(&classes[i + 1]);
 
 	// 128 chunk

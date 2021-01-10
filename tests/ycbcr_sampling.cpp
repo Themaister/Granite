@@ -37,7 +37,7 @@ struct YCbCrSamplingTest : Granite::Application, Granite::EventHandler
 	{
 		get_wsi().set_backbuffer_srgb(false);
 
-		yuv_file = Global::filesystem()->open(path, FileMode::ReadOnly);
+		yuv_file = GRANITE_FILESYSTEM()->open(path, FileMode::ReadOnly);
 		if (!yuv_file)
 			throw std::runtime_error("Failed to open file.\n");
 
@@ -189,8 +189,6 @@ namespace Granite
 {
 Application *application_create(int argc, char **argv)
 {
-	application_dummy();
-
 	if (argc != 4)
 	{
 		LOGE("Usage: ycbcr-sampling <path to raw yuv420p> <width> <height>\n");
@@ -201,13 +199,7 @@ Application *application_create(int argc, char **argv)
 	unsigned height = std::stoi(argv[3]);
 	std::string path = argv[1];
 
-#ifdef ASSET_DIRECTORY
-	const char *asset_dir = getenv("ASSET_DIRECTORY");
-	if (!asset_dir)
-		asset_dir = ASSET_DIRECTORY;
-
-	Global::filesystem()->register_protocol("assets", std::unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir)));
-#endif
+	GRANITE_APPLICATION_SETUP_FILESYSTEM();
 
 	try
 	{

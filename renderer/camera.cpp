@@ -22,7 +22,6 @@
 
 #include "camera.hpp"
 #include "transforms.hpp"
-#include "application_wsi_events.hpp"
 #include "input.hpp"
 #include "scene.hpp"
 #include "muglm/matrix_helper.hpp"

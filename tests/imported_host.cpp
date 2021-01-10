@@ -22,7 +22,7 @@
 
 #include "vulkan_headers.hpp"
 #include "device.hpp"
-#include "global_managers.hpp"
+#include "global_managers_init.hpp"
 #include <string.h>
 
 using namespace Vulkan;
@@ -36,7 +36,7 @@ int main(int argc, char **argv)
 	if (!Context::init_loader(nullptr))
 		return EXIT_FAILURE;
 
-	auto file = Granite::Global::filesystem()->open(argv[1], Granite::FileMode::ReadOnly);
+	auto file = GRANITE_FILESYSTEM()->open(argv[1], Granite::FileMode::ReadOnly);
 	if (!file)
 		return EXIT_FAILURE;
 

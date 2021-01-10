@@ -24,7 +24,6 @@
 #include "wsi.hpp"
 #include "application_wsi_events.hpp"
 #include "input.hpp"
-#include "camera.hpp"
 
 namespace Granite
 {
@@ -86,7 +85,14 @@ int application_main_headless(Application *(*create_application)(int, char **), 
 
 extern Application *application_create(int argc, char *argv[]);
 
-// Call this to ensure application-main is linked in correctly without having to mess around
+// Call this or setup_default_filesystem to ensure application-main is linked in correctly without having to mess around
 // with -Wl,--whole-archive.
 void application_dummy();
+void application_setup_default_filesystem(const char *default_asset_directory);
 }
+
+#ifdef ASSET_DIRECTORY
+#define GRANITE_APPLICATION_SETUP_FILESYSTEM() ::Granite::application_setup_default_filesystem(ASSET_DIRECTORY)
+#else
+#define GRANITE_APPLICATION_SETUP_FILESYSTEM() ::Granite::application_setup_default_filesystem(nullptr)
+#endif

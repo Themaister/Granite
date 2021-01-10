@@ -25,9 +25,9 @@
 #include <string>
 #include <memory>
 #include <unordered_map>
-#include "event.hpp"
 #include <functional>
 #include <stdio.h>
+#include "global_managers.hpp"
 
 namespace Granite
 {
@@ -152,32 +152,7 @@ protected:
 	std::string protocol;
 };
 
-class FilesystemProtocolEvent : public Event
-{
-public:
-	FilesystemProtocolEvent(const std::string &protocol_, FilesystemBackend &backend_)
-		: protocol(protocol_), backend(backend_)
-	{
-	}
-
-	GRANITE_EVENT_TYPE_DECL(FilesystemProtocolEvent)
-
-	const std::string &get_protocol() const
-	{
-		return protocol;
-	}
-
-	FilesystemBackend &get_backend() const
-	{
-		return backend;
-	}
-
-private:
-	std::string protocol;
-	FilesystemBackend &backend;
-};
-
-class Filesystem
+class Filesystem final : public FilesystemInterface
 {
 public:
 	Filesystem();
@@ -207,8 +182,12 @@ public:
 		return protocols;
 	}
 
+	static void setup_default_filesystem(Filesystem *fs, const char *default_asset_directory);
+
 private:
 	std::unordered_map<std::string, std::unique_ptr<FilesystemBackend>> protocols;
+
+	bool load_text_file(const std::string &path, std::string &str) override;
 };
 
 class ScratchFilesystem : public FilesystemBackend

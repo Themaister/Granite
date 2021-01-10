@@ -24,10 +24,6 @@
 #include "device.hpp"
 #include "spirv_cross.hpp"
 
-#ifdef GRANITE_SPIRV_DUMP
-#include "filesystem.hpp"
-#endif
-
 using namespace std;
 using namespace spirv_cross;
 using namespace Util;
@@ -332,11 +328,6 @@ Shader::Shader(Hash hash, Device *device_, const uint32_t *data, size_t size)
 	: IntrusiveHashMapEnabled<Shader>(hash)
 	, device(device_)
 {
-#ifdef GRANITE_SPIRV_DUMP
-	if (!Granite::Filesystem::get().write_buffer_to_file(string("cache://spirv/") + to_string(hash) + ".spv", data, size))
-		LOGE("Failed to dump shader to file.\n");
-#endif
-
 	VkShaderModuleCreateInfo info = { VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO };
 	info.codeSize = size;
 	info.pCode = data;

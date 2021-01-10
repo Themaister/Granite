@@ -33,7 +33,7 @@ Application *application_create(int argc, char **argv)
 	if (argc < 1)
 		return nullptr;
 
-	application_dummy();
+	GRANITE_APPLICATION_SETUP_FILESYSTEM();
 
 	std::string config;
 	std::string quirks;
@@ -50,35 +50,6 @@ Application *application_create(int argc, char **argv)
 	cbs.add("--quirks", [&](CLIParser &parser) { quirks = parser.next_string(); });
 	cbs.default_handler = [&](const char *arg) { path = arg; };
 
-	auto self_dir = Path::basedir(Path::get_executable_path());
-	auto assets_dir = Path::join(self_dir, "assets");
-	auto builtin_dir = Path::join(self_dir, "builtin/assets");
-
-#ifdef ASSET_DIRECTORY
-	const char *asset_dir = getenv("ASSET_DIRECTORY");
-	if (!asset_dir)
-		asset_dir = ASSET_DIRECTORY;
-
-	Global::filesystem()->register_protocol("assets", std::unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir)));
-#endif
-
-	FileStat s;
-	if (Global::filesystem()->stat(assets_dir, s) && s.type == PathType::Directory)
-	{
-		Global::filesystem()->register_protocol("assets", std::make_unique<OSFilesystem>(assets_dir));
-		LOGI("Redirecting filesystem \"assets\" to %s.\n", assets_dir.c_str());
-
-		auto cache_dir = Path::join(self_dir, "cache");
-		Global::filesystem()->register_protocol("cache", std::make_unique<OSFilesystem>(cache_dir));
-		LOGI("Redirecting filesystem \"cache\" to %s.\n", cache_dir.c_str());
-	}
-
-	if (Global::filesystem()->stat(builtin_dir, s) && s.type == PathType::Directory)
-	{
-		Global::filesystem()->register_protocol("builtin", std::make_unique<OSFilesystem>(builtin_dir));
-		LOGI("Redirecting filesystem \"builtin\" to %s.\n", builtin_dir.c_str());
-	}
-
 	CLIParser parser(std::move(cbs), argc - 1, argv + 1);
 	if (!parser.parse())
 		return nullptr;
@@ -92,7 +63,6 @@ Application *application_create(int argc, char **argv)
 	try
 	{
 		auto *app = new SceneViewerApplication(path, config, quirks);
-		//app->rescale_scene(5.0f);
 		app->loop_animations();
 		return app;
 	}

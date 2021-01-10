@@ -48,7 +48,7 @@ void AABenchApplication::render_frame(double, double)
 	auto &wsi = get_wsi();
 	auto &device = wsi.get_device();
 	graph.setup_attachments(device, &device.get_swapchain_view());
-	TaskComposer composer(*Global::thread_group());
+	TaskComposer composer(*GRANITE_THREAD_GROUP());
 	graph.enqueue_render_passes(device, composer);
 	composer.get_outgoing_task()->wait();
 	//need_main_pass = false;
@@ -144,7 +144,7 @@ Application *application_create(int argc, char **argv)
 	if (argc < 1)
 		return nullptr;
 
-	application_dummy();
+	GRANITE_APPLICATION_SETUP_FILESYSTEM();
 
 	const char *aa_method = nullptr;
 	std::string input_image0;
@@ -168,14 +168,6 @@ Application *application_create(int argc, char **argv)
 		LOGE("Need path to input images.\n");
 		return nullptr;
 	}
-
-#ifdef ASSET_DIRECTORY
-	const char *asset_dir = getenv("ASSET_DIRECTORY");
-	if (!asset_dir)
-		asset_dir = ASSET_DIRECTORY;
-
-	Filesystem::get().register_protocol("assets", std::unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir)));
-#endif
 
 	try
 	{

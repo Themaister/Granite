@@ -37,7 +37,7 @@ void Slider::set_text(string text_)
 
 void Slider::reconfigure()
 {
-	auto &ui = *Global::ui_manager();
+	auto &ui = *GRANITE_UI_MANAGER();
 	auto &font = ui.get_font(FontSize::Small);
 
 	vec2 minimum = vec2(0.0f);
@@ -95,7 +95,7 @@ void Slider::set_value(float new_value)
 
 void Slider::reconfigure_to_canvas(vec2, vec2 canvas_size)
 {
-	auto &ui = *Global::ui_manager();
+	auto &ui = *GRANITE_UI_MANAGER();
 	auto &font = ui.get_font(FontSize::Small);
 	vec2 minimum = font.get_text_geometry(text.c_str());
 	vec2 minimum_value = font.get_text_geometry(to_string(value).c_str());
@@ -199,7 +199,7 @@ void Slider::on_mouse_button_released(vec2)
 
 float Slider::render(FlatRenderer &renderer, float layer, vec2 offset, vec2)
 {
-	auto &ui = *Global::ui_manager();
+	auto &ui = *GRANITE_UI_MANAGER();
 	auto &font = ui.get_font(FontSize::Small);
 	assert(children.empty());
 

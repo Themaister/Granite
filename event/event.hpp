@@ -26,14 +26,14 @@
 #include <memory>
 #include <stdexcept>
 #include <utility>
-#include "global_managers.hpp"
 #include "compile_time_hash.hpp"
 #include "intrusive_hash_map.hpp"
+#include "global_managers.hpp"
 
 #define EVENT_MANAGER_REGISTER(clazz, member, event) \
-	::Granite::Global::event_manager()->register_handler<clazz, event, &clazz::member>(this)
+	GRANITE_EVENT_MANAGER()->register_handler<clazz, event, &clazz::member>(this)
 #define EVENT_MANAGER_REGISTER_LATCH(clazz, up_event, down_event, event) \
-	::Granite::Global::event_manager()->register_latch_handler<clazz, event, &clazz::up_event, &clazz::down_event>(this)
+	GRANITE_EVENT_MANAGER()->register_latch_handler<clazz, event, &clazz::up_event, &clazz::down_event>(this)
 
 namespace Granite
 {
@@ -91,6 +91,8 @@ private:
 	uint64_t cookie = 0;
 };
 
+class EventManager;
+
 class EventHandler
 {
 public:
@@ -99,13 +101,15 @@ public:
 	EventHandler() = default;
 	~EventHandler();
 
-	void event_manager_teardown();
+	void add_manager_reference(EventManager *manager);
+	void release_manager_reference();
 
 private:
-	bool need_unregister = true;
+	EventManager *event_manager = nullptr;
+	uint32_t event_manager_ref_count = 0;
 };
 
-class EventManager
+class EventManager final : public EventManagerInterface
 {
 public:
 	template<typename T, typename... P>
@@ -161,6 +165,7 @@ public:
 	template<typename T, typename EventType, bool (T::*mem_fn)(const EventType &)>
 	void register_handler(T *handler)
 	{
+		handler->add_manager_reference(this);
 		static constexpr auto type_id = EventType::get_type_id();
 		auto &l = events[type_id];
 		if (l.dispatching)
@@ -171,18 +176,10 @@ public:
 
 	void unregister_handler(EventHandler *handler);
 
-#if 0
-	template<typename T, bool (T::*mem_fn)(const Event &)>
-	void unregister_handler(EventHandler *handler)
-	{
-		Handler h{ member_function_invoker<bool, T, mem_fn>, nullptr, handler };
-		unregister_handler(h);
-	}
-#endif
-
 	template<typename T, typename EventType, void (T::*up_fn)(const EventType &), void (T::*down_fn)(const EventType &)>
 	void register_latch_handler(T *handler)
 	{
+		handler->add_manager_reference(this);
 		LatchHandler h{
 			member_function_invoker<void, T, EventType, up_fn>,
 			member_function_invoker<void, T, EventType, down_fn>,
@@ -200,19 +197,6 @@ public:
 	}
 
 	void unregister_latch_handler(EventHandler *handler);
-
-#if 0
-	template<typename T, void (T::*up_fn)(const Event &), void (T::*down_fn)(const Event &)>
-	void unregister_latch_handler(EventHandler *handler)
-	{
-		LatchHandler h{
-			member_function_invoker<void, T, up_fn>,
-			member_function_invoker<void, T, down_fn>,
-			nullptr, handler };
-
-		unregister_latch_handler(h);
-	}
-#endif
 
 	~EventManager();
 
@@ -259,11 +243,6 @@ private:
 	void dispatch_down_events(std::vector<std::unique_ptr<Event>> &events, const LatchHandler &handler);
 	void dispatch_up_event(LatchEventTypeData &event_type, const Event &event);
 	void dispatch_down_event(LatchEventTypeData &event_type, const Event &event);
-
-#if 0
-	void unregister_handler(const Handler &handler);
-#endif
-	void unregister_latch_handler(const LatchHandler &handler);
 
 	Util::IntrusiveHashMap<EventTypeData> events;
 	Util::IntrusiveHashMap<LatchEventTypeData> latched_events;

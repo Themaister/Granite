@@ -21,6 +21,7 @@
  */
 
 #include "application_libretro_utils.hpp"
+#include "global_managers_init.hpp"
 #include "application.hpp"
 #include "application_wsi.hpp"
 #include "muglm/muglm_impl.hpp"
@@ -131,7 +132,7 @@ static retro_hw_render_callback hw_render;
 
 RETRO_API void retro_init(void)
 {
-	Global::init(Global::MANAGER_FEATURE_ALL_BITS & ~Global::MANAGER_FEATURE_AUDIO_BIT);
+	Global::init();
 }
 
 RETRO_API void retro_deinit(void)
@@ -418,5 +419,14 @@ namespace Granite
 {
 void application_dummy()
 {
+}
+
+// Alternatively, make sure this is linked in.
+// Implementation is here to trick a linker to always let main() in static library work.
+void application_setup_default_filesystem(const char *default_asset_directory)
+{
+	auto *filesystem = GRANITE_FILESYSTEM();
+	if (filesystem)
+		Filesystem::setup_default_filesystem(filesystem, default_asset_directory);
 }
 }

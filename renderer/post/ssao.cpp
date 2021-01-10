@@ -121,10 +121,10 @@ void setup_ssao_interleaved(RenderGraph &graph, const RenderContext &context,
 		cmd.set_texture(0, 0, interleaved_d, Vulkan::StockSampler::NearestClamp);
 		cmd.set_texture(0, 1, interleaved_n, Vulkan::StockSampler::NearestClamp);
 		cmd.set_storage_texture(0, 2, graph.get_physical_texture_resource(interleaved_ssao));
-		cmd.set_texture(0, 3, Global::common_renderer_data()->ssao_luts.noise->get_view(), Vulkan::StockSampler::NearestWrap);
-		cmd.set_uniform_buffer(0, 4, *Global::common_renderer_data()->ssao_luts.kernel);
+		cmd.set_texture(0, 3, GRANITE_COMMON_RENDERER_DATA()->ssao_luts.noise->get_view(), Vulkan::StockSampler::NearestWrap);
+		cmd.set_uniform_buffer(0, 4, *GRANITE_COMMON_RENDERER_DATA()->ssao_luts.kernel);
 		cmd.set_specialization_constant_mask(3);
-		cmd.set_specialization_constant(0, Global::common_renderer_data()->ssao_luts.kernel_size);
+		cmd.set_specialization_constant(0, GRANITE_COMMON_RENDERER_DATA()->ssao_luts.kernel_size);
 		cmd.set_specialization_constant(1, 0.1f);
 		cmd.dispatch((layer_width + 7) / 8, (layer_height + 7) / 8, 16);
 
@@ -172,11 +172,11 @@ void setup_ssao_naive(RenderGraph &graph, const RenderContext &context,
 		cmd.set_texture(0, 0, graph.get_physical_texture_resource(depth), Vulkan::StockSampler::NearestClamp);
 		if (normal)
 			cmd.set_texture(0, 1, graph.get_physical_texture_resource(*normal), Vulkan::StockSampler::NearestClamp);
-		cmd.set_texture(0, 2, Global::common_renderer_data()->ssao_luts.noise->get_view(), Vulkan::StockSampler::NearestWrap);
-		cmd.set_uniform_buffer(0, 3, *Global::common_renderer_data()->ssao_luts.kernel);
+		cmd.set_texture(0, 2, GRANITE_COMMON_RENDERER_DATA()->ssao_luts.noise->get_view(), Vulkan::StockSampler::NearestWrap);
+		cmd.set_uniform_buffer(0, 3, *GRANITE_COMMON_RENDERER_DATA()->ssao_luts.kernel);
 
 		cmd.set_specialization_constant_mask(3);
-		cmd.set_specialization_constant(0, Global::common_renderer_data()->ssao_luts.kernel_size);
+		cmd.set_specialization_constant(0, GRANITE_COMMON_RENDERER_DATA()->ssao_luts.kernel_size);
 		cmd.set_specialization_constant(1, 0.3f);
 
 		struct Push
@@ -196,8 +196,8 @@ void setup_ssao_naive(RenderGraph &graph, const RenderContext &context,
 				context.get_render_parameters().inv_projection[2].zw(),
 				context.get_render_parameters().inv_projection[3].zw());
 		push->noise_scale = vec2(
-				cmd.get_viewport().width / float(Global::common_renderer_data()->ssao_luts.noise_resolution),
-				cmd.get_viewport().height / float(Global::common_renderer_data()->ssao_luts.noise_resolution));
+				cmd.get_viewport().width / float(GRANITE_COMMON_RENDERER_DATA()->ssao_luts.noise_resolution),
+				cmd.get_viewport().height / float(GRANITE_COMMON_RENDERER_DATA()->ssao_luts.noise_resolution));
 		push->dx_clip = context.get_render_parameters().inv_view_projection[0] * (1.0f / cmd.get_viewport().width);
 		push->dy_clip = context.get_render_parameters().inv_view_projection[1] * (1.0f / cmd.get_viewport().height);
 

@@ -26,6 +26,7 @@
 #include "widget.hpp"
 #include "flat_renderer.hpp"
 #include "input.hpp"
+#include "global_managers_interface.hpp"
 
 namespace Granite
 {
@@ -39,20 +40,10 @@ enum class FontSize
 	Count
 };
 
-class UIManager : public EventHandler
+class UIManager final : public EventHandler, public UIManagerInterface
 {
 public:
 	UIManager();
-
-	bool filter_input_event(const TouchDownEvent &e);
-	bool filter_input_event(const TouchUpEvent &e);
-	bool filter_input_event(const MouseMoveEvent &e);
-	bool filter_input_event(const KeyboardEvent &e);
-	bool filter_input_event(const OrientationEvent &e);
-	bool filter_input_event(const TouchGestureEvent &e);
-	bool filter_input_event(const MouseButtonEvent &e);
-	bool filter_input_event(const JoypadButtonEvent &e);
-	bool filter_input_event(const JoypadAxisEvent &e);
 
 	void add_child(WidgetHandle handle);
 
@@ -80,6 +71,16 @@ private:
 	vec2 drag_receiver_base = vec2(0.0f);
 
 	unsigned touch_emulation_id = ~0u;
+
+	bool filter_input_event(const TouchDownEvent &e) override;
+	bool filter_input_event(const TouchUpEvent &e) override;
+	bool filter_input_event(const MouseMoveEvent &e) override;
+	bool filter_input_event(const KeyboardEvent &e) override;
+	bool filter_input_event(const OrientationEvent &e) override;
+	bool filter_input_event(const TouchGestureEvent &e) override;
+	bool filter_input_event(const MouseButtonEvent &e) override;
+	bool filter_input_event(const JoypadButtonEvent &e) override;
+	bool filter_input_event(const JoypadAxisEvent &e) override;
 };
 }
 }

@@ -20,7 +20,8 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "global_managers.hpp"
+#include "application.hpp"
+#include "global_managers_init.hpp"
 #include "os_filesystem.hpp"
 #include "device.hpp"
 #include "context.hpp"
@@ -80,12 +81,13 @@ static int main_inner()
 int main()
 {
 	Global::init();
+
 #ifdef ASSET_DIRECTORY
 	const char *asset_dir = getenv("ASSET_DIRECTORY");
 	if (!asset_dir)
 		asset_dir = ASSET_DIRECTORY;
 
-	Global::filesystem()->register_protocol("assets", std::unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir)));
+	GRANITE_FILESYSTEM()->register_protocol("assets", std::unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir)));
 #endif
 	int ret = main_inner();
 	Global::deinit();

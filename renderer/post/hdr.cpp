@@ -54,7 +54,7 @@ static void luminance_build_render_pass(RenderPass &pass, Vulkan::CommandBuffer 
 		float maximum;
 	} push;
 	push.size = uvec2(half_width, half_height);
-	push.lerp = 1.0f - pow(0.5f, Global::common_renderer_data()->frame_tick.frame_time);
+	push.lerp = 1.0f - pow(0.5f, GRANITE_COMMON_RENDERER_DATA()->frame_tick.frame_time);
 	push.minimum = -3.0f;
 	push.maximum = 2.0f;
 	cmd.push_constants(&push, 0, sizeof(push));
@@ -85,7 +85,7 @@ static void luminance_build_compute(Vulkan::CommandBuffer &cmd, RenderGraph &gra
 		float maximum;
 	} push;
 	push.size = uvec2(half_width, half_height);
-	push.lerp = 1.0f - pow(0.5f, Global::common_renderer_data()->frame_tick.frame_time);
+	push.lerp = 1.0f - pow(0.5f, GRANITE_COMMON_RENDERER_DATA()->frame_tick.frame_time);
 	push.minimum = -3.0f;
 	push.maximum = 2.0f;
 	cmd.push_constants(&push, 0, sizeof(push));
@@ -174,7 +174,7 @@ static void bloom_downsample_build_compute(Vulkan::CommandBuffer &cmd, RenderGra
 	push.inv_output_resolution.y = 1.0f / float(push.threads.y);
 	push.inv_input_resolution.x = 1.0f / float(input.get_image().get_width());
 	push.inv_input_resolution.y = 1.0f / float(input.get_image().get_height());
-	float lerp = 1.0f - pow(0.001f, Global::common_renderer_data()->frame_tick.frame_time);
+	float lerp = 1.0f - pow(0.001f, GRANITE_COMMON_RENDERER_DATA()->frame_tick.frame_time);
 	push.lerp = lerp;
 
 	cmd.push_constants(&push, 0, sizeof(push));
@@ -232,7 +232,7 @@ static void bloom_downsample_build_render_pass(RenderPass &pass, Vulkan::Command
 			push.inv_size = vec2(1.0f / input.get_image().get_create_info().width,
 			                     1.0f / input.get_image().get_create_info().height);
 
-			float lerp = 1.0f - pow(0.001f, Global::common_renderer_data()->frame_tick.frame_time);
+			float lerp = 1.0f - pow(0.001f, GRANITE_COMMON_RENDERER_DATA()->frame_tick.frame_time);
 			push.lerp = lerp;
 			cmd.push_constants(&push, 0, sizeof(push));
 

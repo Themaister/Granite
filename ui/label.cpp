@@ -52,7 +52,7 @@ void Label::reconfigure_to_canvas(vec2, vec2)
 
 float Label::render(FlatRenderer &renderer, float layer, vec2 offset, vec2 size)
 {
-	auto &ui = *Global::ui_manager();
+	auto &ui = *GRANITE_UI_MANAGER();
 	auto &font = ui.get_font(font_size);
 	renderer.render_text(font, text.c_str(), vec3(offset + geometry.margin, layer), size - 2.0f * geometry.margin,
 	                     color, alignment);
@@ -63,7 +63,7 @@ float Label::render(FlatRenderer &renderer, float layer, vec2 offset, vec2 size)
 
 void Label::reconfigure()
 {
-	auto &ui = *Global::ui_manager();
+	auto &ui = *GRANITE_UI_MANAGER();
 	auto &font = ui.get_font(font_size);
 	vec2 minimum = font.get_text_geometry(text.c_str());
 

@@ -317,7 +317,7 @@ unique_ptr<GLFFT::Program> FFTInterface::compile_compute_shader(const char *sour
 	if (!shader)
 	{
 		// We don't have a shader, need to compile in runtime :(
-		GLSLCompiler compiler;
+		GLSLCompiler compiler(*Granite::Global::filesystem());
 		compiler.set_source(source, "compute.glsl");
 		if (!compiler.preprocess())
 			return {};
@@ -387,7 +387,7 @@ void FFTInterface::read_texture(void *buffer, GLFFT::Texture *texture)
 string FFTInterface::load_shader(const char *path)
 {
 	string str;
-	if (!Global::filesystem()->read_file_to_string(Path::join("builtin://shaders/fft", path), str))
+	if (!GRANITE_FILESYSTEM()->read_file_to_string(Path::join("builtin://shaders/fft", path), str))
 		return "";
 	return str;
 }

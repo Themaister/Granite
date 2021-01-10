@@ -141,7 +141,7 @@ struct RenderGraphSandboxApplication : Granite::Application, Granite::EventHandl
 		auto &wsi = get_wsi();
 		auto &device = wsi.get_device();
 		graph.setup_attachments(device, &device.get_swapchain_view());
-		TaskComposer composer(*Global::thread_group());
+		TaskComposer composer(*GRANITE_THREAD_GROUP());
 		graph.enqueue_render_passes(device, composer);
 		composer.get_outgoing_task()->wait();
 	}
@@ -153,15 +153,7 @@ namespace Granite
 {
 Application *application_create(int, char **)
 {
-	application_dummy();
-
-#ifdef ASSET_DIRECTORY
-	const char *asset_dir = getenv("ASSET_DIRECTORY");
-	if (!asset_dir)
-		asset_dir = ASSET_DIRECTORY;
-
-	Global::filesystem()->register_protocol("assets", std::unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir)));
-#endif
+	GRANITE_APPLICATION_SETUP_FILESYSTEM();
 
 	try
 	{

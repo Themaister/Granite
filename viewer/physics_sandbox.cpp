@@ -38,7 +38,7 @@ using namespace Granite;
 struct PhysicsSandboxApplication : Application, EventHandler
 {
 	PhysicsSandboxApplication(const std::string &gltf_path_)
-		: renderer(RendererType::GeneralForward), gltf_path(gltf_path_)
+		: renderer(RendererType::GeneralForward, nullptr), gltf_path(gltf_path_)
 	{
 		camera.set_position(vec3(0.0f, 2.0f, 8.0f));
 		cube = Util::make_handle<CubeMesh>();
@@ -76,19 +76,19 @@ struct PhysicsSandboxApplication : Application, EventHandler
 	{
 		if (e.get_index() == 0)
 		{
-			auto result = Global::physics()->query_closest_hit_ray(
+			auto result = GRANITE_PHYSICS()->query_closest_hit_ray(
 					camera.get_position(), camera.get_front(), 100.0f,
 					PhysicsSystem::INTERACTION_TYPE_DYNAMIC_BIT);
 
 			if (result.entity)
 			{
-				Global::physics()->apply_impulse(result.handle,
+				GRANITE_PHYSICS()->apply_impulse(result.handle,
 						20.0f * camera.get_front(), result.world_pos);
 			}
 		}
 		else if (e.get_index() == 1)
 		{
-			auto result = Global::physics()->query_closest_hit_ray(
+			auto result = GRANITE_PHYSICS()->query_closest_hit_ray(
 					camera.get_position(), camera.get_front(), 100.0f);
 
 			if (result.entity)
@@ -105,7 +105,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 				info.restitution = 0.2f;
 				info.angular_damping = 0.3f;
 				info.linear_damping = 0.3f;
-				auto *sphere = Global::physics()->add_capsule(sphere_node.get(), 1.0f, 0.5f, info);
+				auto *sphere = GRANITE_PHYSICS()->add_capsule(sphere_node.get(), 1.0f, 0.5f, info);
 				entity->allocate_component<PhysicsComponent>()->handle = sphere;
 				PhysicsSystem::set_handle_parent(sphere, entity);
 			}
@@ -117,13 +117,13 @@ struct PhysicsSandboxApplication : Application, EventHandler
 	{
 		if (e.get_pressed() && e.get_button() == MouseButton::Left)
 		{
-			auto result = Global::physics()->query_closest_hit_ray(
+			auto result = GRANITE_PHYSICS()->query_closest_hit_ray(
 					camera.get_position(), camera.get_front(), 100.0f,
 					PhysicsSystem::INTERACTION_TYPE_DYNAMIC_BIT);
 
 			if (result.entity)
 			{
-				Global::physics()->apply_impulse(result.handle,
+				GRANITE_PHYSICS()->apply_impulse(result.handle,
 						20.0f * camera.get_front(), result.world_pos);
 			}
 		}
@@ -196,11 +196,11 @@ struct PhysicsSandboxApplication : Application, EventHandler
 
 	void init_scene()
 	{
-		Global::physics()->set_scene(&scene);
+		GRANITE_PHYSICS()->set_scene(&scene);
 
 		auto root_node = scene.create_node();
 		auto *entity = scene.create_renderable(plane, root_node.get());
-		auto *plane = Global::physics()->add_infinite_plane(vec4(0.0f, 1.0f, 0.0f, 0.0f), {});
+		auto *plane = GRANITE_PHYSICS()->add_infinite_plane(vec4(0.0f, 1.0f, 0.0f, 0.0f), {});
 		entity->allocate_component<PhysicsComponent>()->handle = plane;
 		PhysicsSystem::set_handle_parent(plane, entity);
 		scene.set_root_node(root_node);
@@ -223,7 +223,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 				c.positions = collision_mesh.positions.front().data;
 				c.position_stride = sizeof(vec4);
 				c.aabb = mesh.static_aabb;
-				gltf_mesh_physics_index = Global::physics()->register_collision_mesh(c);
+				gltf_mesh_physics_index = GRANITE_PHYSICS()->register_collision_mesh(c);
 			}
 
 			if (mesh.has_material)
@@ -246,7 +246,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 			player_node->transform.translation.y = 2.0f;
 			root_node->add_child(player_node);
 			scene.create_renderable(sphere, player_node.get());
-			kinematic = Global::physics()->add_kinematic_character(player_node);
+			kinematic = GRANITE_PHYSICS()->add_kinematic_character(player_node);
 		}
 
 		{
@@ -259,7 +259,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 			PhysicsSystem::MaterialInfo info;
 			info.type = PhysicsSystem::InteractionType::Area;
 			info.mass = 0.0f;
-			animated_cube = Global::physics()->add_cube(static_node.get(), info);
+			animated_cube = GRANITE_PHYSICS()->add_cube(static_node.get(), info);
 			PhysicsSystem::set_handle_parent(animated_cube, renderable);
 		}
 	}
@@ -282,14 +282,14 @@ struct PhysicsSandboxApplication : Application, EventHandler
 				if (!PhysicsSystem::get_scene_node(h->handle))
 					continue;
 
-				Global::physics()->apply_impulse(h->handle,
+				GRANITE_PHYSICS()->apply_impulse(h->handle,
 				                                 vec3(0.0f, 22.0f, -4.0f),
 				                                 vec3(0.2f, 0.0f, 0.0f));
 			}
 		}
 		else if (e.get_key() == Key::R && e.get_key_state() == KeyState::Pressed)
 		{
-			auto result = Global::physics()->query_closest_hit_ray(
+			auto result = GRANITE_PHYSICS()->query_closest_hit_ray(
 					camera.get_position(), camera.get_front(), 100.0f);
 
 			if (result.entity && PhysicsSystem::get_scene_node(result.handle))
@@ -302,7 +302,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 		}
 		else if (e.get_key() == Key::O && e.get_key_state() == KeyState::Pressed)
 		{
-			auto result = Global::physics()->query_closest_hit_ray(
+			auto result = GRANITE_PHYSICS()->query_closest_hit_ray(
 					camera.get_position(), camera.get_front(), 100.0f);
 
 			if (result.entity)
@@ -340,7 +340,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 				info.restitution = 0.05f;
 				info.angular_damping = 0.3f;
 				info.linear_damping = 0.3f;
-				auto *compound = Global::physics()->add_compound_object(top_node.get(), parts, 2, info);
+				auto *compound = GRANITE_PHYSICS()->add_compound_object(top_node.get(), parts, 2, info);
 				auto *top_entity = scene.create_entity();
 				top_entity->allocate_component<PhysicsComponent>()->handle = compound;
 				PhysicsSystem::set_handle_parent(compound, top_entity);
@@ -348,7 +348,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 		}
 		else if (e.get_key() == Key::L && e.get_key_state() == KeyState::Pressed)
 		{
-			auto result = Global::physics()->query_closest_hit_ray(
+			auto result = GRANITE_PHYSICS()->query_closest_hit_ray(
 					camera.get_position(), camera.get_front(), 100.0f);
 
 			if (result.entity)
@@ -360,14 +360,14 @@ struct PhysicsSandboxApplication : Application, EventHandler
 				auto *entity = scene.create_renderable(gltf_mesh, mesh_node.get());
 				PhysicsSystem::MaterialInfo info;
 				info.mass = 25.0f;
-				auto *mesh = Global::physics()->add_convex_hull(mesh_node.get(), gltf_mesh_physics_index, info);
+				auto *mesh = GRANITE_PHYSICS()->add_convex_hull(mesh_node.get(), gltf_mesh_physics_index, info);
 				entity->allocate_component<PhysicsComponent>()->handle = mesh;
 				PhysicsSystem::set_handle_parent(mesh, entity);
 			}
 		}
 		else if (e.get_key() == Key::K && e.get_key_state() == KeyState::Pressed)
 		{
-			auto result = Global::physics()->query_closest_hit_ray(
+			auto result = GRANITE_PHYSICS()->query_closest_hit_ray(
 					camera.get_position(), camera.get_front(), 100.0f);
 
 			if (result.entity)
@@ -383,7 +383,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 				cube_node_left->invalidate_cached_transform();
 				scene.get_root_node()->add_child(cube_node_left);
 				auto *entity_left = scene.create_renderable(cube, cube_node_left.get());
-				auto *cube_left = Global::physics()->add_cube(cube_node_left.get(), info);
+				auto *cube_left = GRANITE_PHYSICS()->add_cube(cube_node_left.get(), info);
 				entity_left->allocate_component<PhysicsComponent>()->handle = cube_left;
 				PhysicsSystem::set_handle_parent(cube_left, entity_left);
 
@@ -398,7 +398,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 				cube_node_right->invalidate_cached_transform();
 				scene.get_root_node()->add_child(cube_node_right);
 				auto *entity_right = scene.create_renderable(cube, cube_node_right.get());
-				auto *cube_right = Global::physics()->add_cube(cube_node_right.get(), info);
+				auto *cube_right = GRANITE_PHYSICS()->add_cube(cube_node_right.get(), info);
 				entity_right->allocate_component<PhysicsComponent>()->handle = cube_right;
 				PhysicsSystem::set_handle_parent(cube_right, entity_right);
 
@@ -408,14 +408,14 @@ struct PhysicsSandboxApplication : Application, EventHandler
 				cube_right_hinge->transform.translation = vec3(-1.75f, 0.0f, 0.0f);
 				scene.create_renderable(cube, cube_right_hinge.get());
 
-				Global::physics()->add_point_constraint(cube_left, cube_right,
+				GRANITE_PHYSICS()->add_point_constraint(cube_left, cube_right,
 				                                        vec3(2.5f, 0.0f, 0.0f),
 				                                        vec3(-2.5f, 0.0f, 0.0f));
 			}
 		}
 		else if (e.get_key() == Key::P && e.get_key_state() == KeyState::Pressed)
 		{
-			auto result = Global::physics()->query_closest_hit_ray(
+			auto result = GRANITE_PHYSICS()->query_closest_hit_ray(
 					camera.get_position(), camera.get_front(), 100.0f);
 
 			if (result.entity)
@@ -432,7 +432,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 				info.restitution = 0.2f;
 				info.angular_damping = 0.3f;
 				info.linear_damping = 0.3f;
-				auto *sphere = Global::physics()->add_capsule(sphere_node.get(), 1.0f, 0.5f, info);
+				auto *sphere = GRANITE_PHYSICS()->add_capsule(sphere_node.get(), 1.0f, 0.5f, info);
 				entity->allocate_component<PhysicsComponent>()->handle = sphere;
 				PhysicsSystem::set_handle_parent(sphere, entity);
 			}
@@ -457,7 +457,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 
 		{
 			std::vector<PhysicsHandle *> overlapping;
-			Global::physics()->get_overlapping_objects(animated_cube, overlapping);
+			GRANITE_PHYSICS()->get_overlapping_objects(animated_cube, overlapping);
 			for (auto *o : overlapping)
 			{
 				if (!o)
@@ -469,8 +469,9 @@ struct PhysicsSandboxApplication : Application, EventHandler
 			}
 		}
 
-		Global::physics()->iterate(frame_time);
-		scene.update_transform_free_and_cached_transforms();
+		GRANITE_PHYSICS()->iterate(frame_time);
+
+		scene.update_all_transforms();
 
 		lighting.directional.direction = normalize(vec3(1.0f, 0.5f, 1.0f));
 		lighting.directional.color = vec3(1.0f, 0.8f, 0.6f);
@@ -486,9 +487,9 @@ struct PhysicsSandboxApplication : Application, EventHandler
 		rp.clear_color[0].float32[2] = 0.03f;
 		cmd->begin_render_pass(rp);
 
-		renderer.begin();
-		renderer.push_renderables(context, visible);
-		renderer.flush(*cmd, context, 0);
+		renderer.begin(render_queue);
+		render_queue.push_renderables(context, visible);
+		renderer.flush(*cmd, render_queue, context, 0);
 
 		cmd->end_render_pass();
 
@@ -508,6 +509,7 @@ struct PhysicsSandboxApplication : Application, EventHandler
 	LightingParameters lighting;
 	VisibilityList visible;
 	Renderer renderer;
+	RenderQueue render_queue;
 	std::string gltf_path;
 
 	AbstractRenderableHandle gltf_mesh;

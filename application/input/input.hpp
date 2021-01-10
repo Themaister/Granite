@@ -175,6 +175,8 @@ private:
 	Util::IntrusiveHashMap<AxisMap> axis_map;
 };
 
+class InputTrackerHandler;
+
 class InputTracker
 {
 public:
@@ -245,10 +247,16 @@ public:
 		return remappers[index];
 	}
 
+	void set_input_handler(InputTrackerHandler *handler_)
+	{
+		handler = handler_;
+	}
+
 	enum { TouchCount = 16 };
 	enum { Joypads = 8 };
 
 private:
+	InputTrackerHandler *handler = nullptr;
 	uint64_t key_state = 0;
 	uint8_t mouse_button_state = 0;
 	bool mouse_active = false;
@@ -700,5 +708,21 @@ private:
 	bool mouse_active;
 };
 
-
+class InputTrackerHandler
+{
+public:
+	virtual ~InputTrackerHandler() = default;
+	virtual void dispatch(const TouchDownEvent &e) = 0;
+	virtual void dispatch(const TouchUpEvent &e) = 0;
+	virtual void dispatch(const TouchGestureEvent &e) = 0;
+	virtual void dispatch(const JoypadButtonEvent &e) = 0;
+	virtual void dispatch(const JoypadAxisEvent &e) = 0;
+	virtual void dispatch(const KeyboardEvent &e) = 0;
+	virtual void dispatch(const OrientationEvent &e) = 0;
+	virtual void dispatch(const MouseButtonEvent &e) = 0;
+	virtual void dispatch(const MouseMoveEvent &e) = 0;
+	virtual void dispatch(const JoypadStateEvent &e) = 0;
+	virtual void dispatch(const InputStateEvent &e) = 0;
+	virtual void dispatch(const JoypadConnectionEvent &e) = 0;
+};
 }

@@ -20,25 +20,27 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "cli_parser.hpp"
-#include "logging.hpp"
-#include "texture_files.hpp"
-#include "filesystem.hpp"
-#include "thread_group.hpp"
 #include "path.hpp"
-#include <vector>
-#include <algorithm>
-#include "stb_image_write.h"
+#include "cli_parser.hpp"
+#include "filesystem.hpp"
+#include "logging.hpp"
 #include "muglm/muglm_impl.hpp"
+#include "stb_image_write.h"
+#include "texture_files.hpp"
+#include "thread_group.hpp"
+#include "global_managers_init.hpp"
+#include <algorithm>
 #include <string.h>
+#include <vector>
 
 using namespace Util;
 using namespace Granite;
+using namespace Vulkan;
 using namespace std;
 
 static void save_diff_image(const string &path,
-                            const SceneFormats::MemoryMappedTexture &a,
-                            const SceneFormats::MemoryMappedTexture &b)
+                            const MemoryMappedTexture &a,
+                            const MemoryMappedTexture &b)
 {
 	if (a.get_layout().get_format() != b.get_layout().get_format())
 	{
@@ -76,7 +78,7 @@ static void save_diff_image(const string &path,
 		LOGE("Failed to save diff-png to %s.\n", path.c_str());
 }
 
-static double compare_images(const SceneFormats::MemoryMappedTexture &a, const SceneFormats::MemoryMappedTexture &b)
+static double compare_images(const MemoryMappedTexture &a, const MemoryMappedTexture &b)
 {
 	if (a.get_layout().get_format() != b.get_layout().get_format())
 	{
@@ -121,6 +123,8 @@ static double compare_images(const SceneFormats::MemoryMappedTexture &a, const S
 
 int main(int argc, char *argv[])
 {
+	Global::init();
+
 	struct Arguments
 	{
 		vector<string> inputs;
@@ -150,14 +154,17 @@ int main(int argc, char *argv[])
 	}
 
 	ThreadGroup workers;
-	workers.start(thread::hardware_concurrency());
+	workers.start(thread::hardware_concurrency(),
+	              [ctx = std::shared_ptr<Global::GlobalManagers>(Global::create_thread_context())] {
+		              Global::set_thread_context(*ctx);
+	              });
 
 	FileStat a_stat, b_stat;
-	if (Global::filesystem()->stat(args.inputs[0], a_stat) && a_stat.type == PathType::Directory &&
-	    Global::filesystem()->stat(args.inputs[1], b_stat) && b_stat.type == PathType::Directory)
+	if (GRANITE_FILESYSTEM()->stat(args.inputs[0], a_stat) && a_stat.type == PathType::Directory &&
+	    GRANITE_FILESYSTEM()->stat(args.inputs[1], b_stat) && b_stat.type == PathType::Directory)
 	{
-		auto a_list = Global::filesystem()->list(args.inputs[0]);
-		auto b_list = Global::filesystem()->list(args.inputs[1]);
+		auto a_list = GRANITE_FILESYSTEM()->list(args.inputs[0]);
+		auto b_list = GRANITE_FILESYSTEM()->list(args.inputs[1]);
 
 		std::sort(begin(a_list), end(a_list), [](const ListEntry &a, const ListEntry &b) {
 			return strcmp(a.path.c_str(), b.path.c_str()) < 0;
@@ -180,8 +187,8 @@ int main(int argc, char *argv[])
 		for (unsigned i = 0; i < a_list.size(); i++)
 		{
 			task->enqueue_task([&a_list, &b_list, &psnrs, &ignore, i]() {
-				auto a = load_texture_from_file(a_list[i].path);
-				auto b = load_texture_from_file(b_list[i].path);
+				auto a = load_texture_from_file(*GRANITE_FILESYSTEM(), a_list[i].path);
+				auto b = load_texture_from_file(*GRANITE_FILESYSTEM(), b_list[i].path);
 				if (a.empty() || b.empty())
 				{
 					psnrs[i] = 0.0;
@@ -215,8 +222,8 @@ int main(int argc, char *argv[])
 	}
 	else
 	{
-		auto a = load_texture_from_file(args.inputs[0]);
-		auto b = load_texture_from_file(args.inputs[1]);
+		auto a = load_texture_from_file(*GRANITE_FILESYSTEM(), args.inputs[0]);
+		auto b = load_texture_from_file(*GRANITE_FILESYSTEM(), args.inputs[1]);
 
 		if (a.empty())
 		{

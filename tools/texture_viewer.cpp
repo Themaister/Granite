@@ -132,7 +132,7 @@ struct TextureViewerApplication : Granite::Application, Granite::EventHandler
 		                                        "builtin://shaders/blit.frag");
 
 		renderer.begin();
-		auto &font = Global::ui_manager()->get_font(UI::FontSize::Normal);
+		auto &font = GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal);
 		auto text = Util::join("Layer: ", layer, " Level: ", level, " Format: ", unsigned(img.get_format()));
 		renderer.render_text(font, text.c_str(), vec3(0.0f), vec2(1000.0f));
 		renderer.render_text(font, text.c_str(), vec3(-2.0f, 2.0f, 0.5f), vec2(1000.0f), vec4(0.0f, 0.0f, 0.0f, 1.0f));
@@ -155,7 +155,7 @@ namespace Granite
 {
 Application *application_create(int argc, char **argv)
 {
-	application_dummy();
+	GRANITE_APPLICATION_SETUP_FILESYSTEM();
 
 	if (argc != 2)
 	{

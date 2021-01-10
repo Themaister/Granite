@@ -21,13 +21,13 @@
  */
 
 #include "filesystem.hpp"
-#include "os_filesystem.hpp"
-#include "fs-netfs.hpp"
 #include "path.hpp"
 #include "logging.hpp"
+#include "os_filesystem.hpp"
 #include "string_helpers.hpp"
-#include <stdlib.h>
 #include <algorithm>
+#include <stdlib.h>
+#include <string.h>
 
 using namespace std;
 
@@ -146,52 +146,66 @@ Filesystem::Filesystem()
 	register_protocol("file", unique_ptr<FilesystemBackend>(new OSFilesystem(".")));
 	register_protocol("memory", unique_ptr<FilesystemBackend>(new ScratchFilesystem));
 
-#ifdef ANDROID
-	register_protocol("assets", unique_ptr<FilesystemBackend>(new NetworkFilesystem));
-	register_protocol("builtin", unique_ptr<FilesystemBackend>(new NetworkFilesystem));
-	register_protocol("cache", unique_ptr<FilesystemBackend>(new NetworkFilesystem));
-#else
-	if (getenv("GRANITE_USE_NETFS"))
-	{
-		register_protocol("assets", unique_ptr<FilesystemBackend>(new NetworkFilesystem));
-		register_protocol("builtin", unique_ptr<FilesystemBackend>(new NetworkFilesystem));
-		register_protocol("cache", unique_ptr<FilesystemBackend>(new NetworkFilesystem));
-	}
-	else
-	{
-		const char *asset_dir = getenv("GRANITE_DEFAULT_ASSET_DIRECTORY");
+	const char *asset_dir = getenv("GRANITE_DEFAULT_ASSET_DIRECTORY");
 #ifdef GRANITE_DEFAULT_ASSET_DIRECTORY
-		if (!asset_dir)
+	if (!asset_dir)
 			asset_dir = GRANITE_DEFAULT_ASSET_DIRECTORY;
 #endif
-		if (asset_dir)
-			register_protocol("builtin", unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir)));
+	if (asset_dir)
+		register_protocol("builtin", unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir)));
 
-		const char *builtin_dir = getenv("GRANITE_DEFAULT_BUILTIN_DIRECTORY");
+	const char *builtin_dir = getenv("GRANITE_DEFAULT_BUILTIN_DIRECTORY");
 #ifdef GRANITE_DEFAULT_BUILTIN_DIRECTORY
-		if (!builtin_dir)
-			builtin_dir = GRANITE_DEFAULT_BUILTIN_DIRECTORY;
+	if (!builtin_dir)
+		builtin_dir = GRANITE_DEFAULT_BUILTIN_DIRECTORY;
 #endif
-		if (builtin_dir)
-			register_protocol("builtin", unique_ptr<FilesystemBackend>(new OSFilesystem(builtin_dir)));
+	if (builtin_dir)
+		register_protocol("builtin", unique_ptr<FilesystemBackend>(new OSFilesystem(builtin_dir)));
 
-		const char *cache_dir = getenv("GRANITE_DEFAULT_CACHE_DIRECTORY");
+	const char *cache_dir = getenv("GRANITE_DEFAULT_CACHE_DIRECTORY");
 #ifdef GRANITE_DEFAULT_CACHE_DIRECTORY
-		if (!cache_dir)
-			cache_dir = GRANITE_DEFAULT_CACHE_DIRECTORY;
+	if (!cache_dir)
+		cache_dir = GRANITE_DEFAULT_CACHE_DIRECTORY;
 #endif
-		if (cache_dir)
-			register_protocol("cache", unique_ptr<FilesystemBackend>(new OSFilesystem(cache_dir)));
+	if (cache_dir)
+		register_protocol("cache", unique_ptr<FilesystemBackend>(new OSFilesystem(cache_dir)));
+}
+
+void Filesystem::setup_default_filesystem(Filesystem *filesystem, const char *default_asset_directory)
+{
+	auto self_dir = Path::basedir(Path::get_executable_path());
+	auto assets_dir = Path::join(self_dir, "assets");
+	auto builtin_dir = Path::join(self_dir, "builtin/assets");
+
+	if (default_asset_directory)
+	{
+		const char *asset_dir = getenv("ASSET_DIRECTORY");
+		if (!asset_dir)
+			asset_dir = default_asset_directory;
+		filesystem->register_protocol("assets", std::unique_ptr<FilesystemBackend>(new OSFilesystem(asset_dir)));
 	}
-#endif
+
+	FileStat s;
+	if (filesystem->stat(assets_dir, s) && s.type == PathType::Directory)
+	{
+		filesystem->register_protocol("assets", std::make_unique<OSFilesystem>(assets_dir));
+		LOGI("Redirecting filesystem \"assets\" to %s.\n", assets_dir.c_str());
+
+		auto cache_dir = Path::join(self_dir, "cache");
+		filesystem->register_protocol("cache", std::make_unique<OSFilesystem>(cache_dir));
+		LOGI("Redirecting filesystem \"cache\" to %s.\n", cache_dir.c_str());
+	}
+
+	if (filesystem->stat(builtin_dir, s) && s.type == PathType::Directory)
+	{
+		filesystem->register_protocol("builtin", std::make_unique<OSFilesystem>(builtin_dir));
+		LOGI("Redirecting filesystem \"builtin\" to %s.\n", builtin_dir.c_str());
+	}
 }
 
 void Filesystem::register_protocol(const std::string &proto, std::unique_ptr<FilesystemBackend> fs)
 {
 	fs->set_protocol(proto);
-	auto *em = Global::event_manager();
-	if (em)
-		em->dispatch_inline(FilesystemProtocolEvent(proto, *fs));
 	protocols[proto] = move(fs);
 }
 
@@ -301,6 +315,11 @@ void Filesystem::poll_notifications()
 {
 	for (auto &proto : protocols)
 		proto.second->poll_notifications();
+}
+
+bool Filesystem::load_text_file(const std::string &path, std::string &str)
+{
+	return read_file_to_string(path, str);
 }
 
 int ScratchFilesystem::get_notification_fd() const

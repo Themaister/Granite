@@ -41,7 +41,7 @@ void ApplicationCLIWrapper::on_device_created(const Vulkan::DeviceCreatedEvent &
 
 	task = std::async(std::launch::async, [=, c = std::move(ctx)]() -> int {
 		Global::set_thread_context(*c);
-		Vulkan::register_thread_index(0);
+		Util::register_thread_index(0);
 		return func(device);
 	});
 }
@@ -75,7 +75,7 @@ void ApplicationCLIWrapper::render_frame(double, double elapsed_time)
 		}
 	}
 
-	auto *queue = Global::message_queue();
+	auto *queue = GRANITE_MESSAGE_QUEUE();
 	while (queue->available_read_messages())
 	{
 		auto message = queue->read_message();
@@ -95,7 +95,7 @@ void ApplicationCLIWrapper::render_frame(double, double elapsed_time)
 	float height = cmd->get_viewport().height;
 	float accum_y = 20.0f;
 
-	auto &font = Global::ui_manager()->get_font(UI::FontSize::Normal);
+	auto &font = GRANITE_UI_MANAGER()->get_font(UI::FontSize::Normal);
 	for (auto &msg : messages)
 	{
 		auto geom = font.get_text_geometry(msg.c_str());
@@ -120,7 +120,7 @@ ApplicationCLIWrapper::ApplicationCLIWrapper(int (*func_)(Vulkan::Device *device
                                              int argc, char **argv)
 {
 	func = [=](Vulkan::Device *device) { return func_(device, argc, argv); };
-	Global::message_queue()->uncork();
+	GRANITE_MESSAGE_QUEUE()->uncork();
 	EVENT_MANAGER_REGISTER_LATCH(ApplicationCLIWrapper, on_device_created, on_device_destroyed, Vulkan::DeviceCreatedEvent);
 }
 
@@ -128,7 +128,7 @@ ApplicationCLIWrapper::ApplicationCLIWrapper(int (*func_)(int, char **),
                                              int argc, char **argv)
 {
 	func = [=](Vulkan::Device *) { return func_(argc, argv); };
-	Global::message_queue()->uncork();
+	GRANITE_MESSAGE_QUEUE()->uncork();
 	EVENT_MANAGER_REGISTER_LATCH(ApplicationCLIWrapper, on_device_created, on_device_destroyed, Vulkan::DeviceCreatedEvent);
 }
 }

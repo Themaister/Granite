@@ -103,7 +103,7 @@ add_granite_offline_tool(ecs-test ecs_test.cpp)
 add_granite_offline_tool(simd-test simd_test.cpp)
 add_granite_offline_tool(imported-host imported_host.cpp)
 
-add_granite_offline_tool(cooperative-task-test cooperative_task_test.cpp)
+#add_granite_offline_tool(cooperative-task-test cooperative_task_test.cpp)
 add_granite_offline_tool(texture-decoder-test texture_decoder_test.cpp)
 
 if (GRANITE_ASTC_ENCODER_COMPRESSION)
@@ -113,11 +113,16 @@ endif()
 
 if (GRANITE_AUDIO)
     add_granite_offline_tool(audio-test audio_test.cpp)
+    target_link_libraries(audio-test PRIVATE granite-audio)
     add_granite_offline_tool(tone-filter-bench tone_filter_bench.cpp)
+    target_link_libraries(tone-filter-bench PRIVATE granite-audio)
     target_compile_definitions(audio-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
 
     add_granite_application(audio-application audio_application.cpp)
     if (NOT ANDROID)
         target_compile_definitions(audio-application PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
     endif()
+    target_link_libraries(audio-application PRIVATE granite-audio)
 endif()
+
+add_granite_offline_tool(linkage-test linkage_test.cpp)

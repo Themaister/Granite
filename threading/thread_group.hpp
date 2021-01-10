@@ -29,10 +29,12 @@
 #include <queue>
 #include <future>
 #include <memory>
-#include <object_pool.hpp>
+#include <functional>
+#include "object_pool.hpp"
 #include "variant.hpp"
 #include "intrusive.hpp"
 #include "timeline_trace_file.hpp"
+#include "global_managers.hpp"
 
 namespace Granite
 {
@@ -133,7 +135,7 @@ struct TaskGroup : Util::IntrusivePtrEnabled<TaskGroup, Internal::TaskGroupDelet
 
 using TaskGroupHandle = Util::IntrusivePtr<TaskGroup>;
 
-class ThreadGroup
+class ThreadGroup final : public ThreadGroupInterface
 {
 public:
 	ThreadGroup();
@@ -141,7 +143,7 @@ public:
 	ThreadGroup(ThreadGroup &&) = delete;
 	void operator=(ThreadGroup &&) = delete;
 
-	void start(unsigned num_threads);
+	void start(unsigned num_threads, const std::function<void ()> &on_thread_begin) override;
 
 	unsigned get_num_threads() const
 	{
@@ -190,5 +192,6 @@ private:
 	std::atomic_uint completed_tasks;
 
 	std::unique_ptr<Util::TimelineTraceFile> timeline_trace_file;
+	void set_thread_context() override;
 };
 }

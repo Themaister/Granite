@@ -99,7 +99,7 @@ struct DecodedVorbisStream : MixerStream
 
 bool VorbisStream::init(const string &path)
 {
-	filesystem_file = Global::filesystem()->open(path, FileMode::ReadOnly);
+	filesystem_file = GRANITE_FILESYSTEM()->open(path, FileMode::ReadOnly);
 	if (!filesystem_file)
 		return false;
 
@@ -127,7 +127,7 @@ bool VorbisStream::init(const string &path)
 
 bool DecodedVorbisStream::init(const string &path)
 {
-	auto filesystem_file = Global::filesystem()->open(path, FileMode::ReadOnly);
+	auto filesystem_file = GRANITE_FILESYSTEM()->open(path, FileMode::ReadOnly);
 	if (!filesystem_file)
 		return false;
 

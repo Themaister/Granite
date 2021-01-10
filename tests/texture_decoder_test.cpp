@@ -22,7 +22,7 @@
 
 #include "device.hpp"
 #include "context.hpp"
-#include "global_managers.hpp"
+#include "global_managers_init.hpp"
 #include "texture_decoder.hpp"
 #include "memory_mapped_texture.hpp"
 #include "math.hpp"
@@ -354,7 +354,7 @@ static bool test_astc_weights(Device &device, VkFormat format, VkFormat readback
 {
 	auto cmd = device.request_command_buffer();
 	std::mt19937 rnd(1337);
-	SceneFormats::MemoryMappedTexture tex;
+	Vulkan::MemoryMappedTexture tex;
 	unsigned width = 2048;
 	unsigned height = 2048;
 
@@ -428,7 +428,7 @@ static bool test_astc_endpoint_formats(Device &device, VkFormat format, VkFormat
 {
 	auto cmd = device.request_command_buffer();
 	std::mt19937 rnd(1337);
-	SceneFormats::MemoryMappedTexture tex;
+	Vulkan::MemoryMappedTexture tex;
 	unsigned width = 8092;
 	unsigned height = 8092;
 
@@ -501,7 +501,7 @@ static bool test_astc_partitions(Device &device, VkFormat format, VkFormat readb
 {
 	auto cmd = device.request_command_buffer();
 	std::mt19937 rnd(1339);
-	SceneFormats::MemoryMappedTexture tex;
+	Vulkan::MemoryMappedTexture tex;
 	unsigned width = 2048;
 	unsigned height = 2048;
 
@@ -579,7 +579,7 @@ static bool test_astc_partitions_complex(Device &device, VkFormat format, VkForm
 {
 	auto cmd = device.request_command_buffer();
 	std::mt19937 rnd(1338);
-	SceneFormats::MemoryMappedTexture tex;
+	Vulkan::MemoryMappedTexture tex;
 	unsigned width = 2048;
 	unsigned height = 2048;
 
@@ -655,7 +655,7 @@ static bool test_astc_void_extent(Device &device, VkFormat format, VkFormat read
 {
 	auto cmd = device.request_command_buffer();
 	std::mt19937 rnd(1338);
-	SceneFormats::MemoryMappedTexture tex;
+	Vulkan::MemoryMappedTexture tex;
 	unsigned width = 2048;
 	unsigned height = 2048;
 
@@ -751,7 +751,7 @@ static bool test_astc_block_mode(Device &device, VkFormat format, VkFormat readb
 {
 	auto cmd = device.request_command_buffer();
 	std::mt19937 rnd(1338);
-	SceneFormats::MemoryMappedTexture tex;
+	Vulkan::MemoryMappedTexture tex;
 	unsigned width = 8092;
 	unsigned height = 8092;
 
@@ -924,7 +924,7 @@ static bool test_bc6(Device &device, VkFormat format)
 	auto cmd = device.request_command_buffer();
 	std::mt19937 rnd(1337);
 
-	SceneFormats::MemoryMappedTexture tex;
+	Vulkan::MemoryMappedTexture tex;
 	unsigned width = 4096;
 	unsigned height = 4096;
 	unsigned blocks_x = (width + 3) / 4;
@@ -963,7 +963,7 @@ static bool test_bc7(Device &device, VkFormat format, VkFormat readback_format)
 	auto cmd = device.request_command_buffer();
 	std::mt19937 rnd(1337);
 
-	SceneFormats::MemoryMappedTexture tex;
+	Vulkan::MemoryMappedTexture tex;
 	unsigned width = 4096;
 	unsigned height = 4096;
 	unsigned blocks_x = (width + 3) / 4;
@@ -1002,7 +1002,7 @@ static bool test_eac(Device &device, VkFormat format, VkFormat readback_format)
 	auto cmd = device.request_command_buffer();
 	std::mt19937 rnd(1337);
 
-	SceneFormats::MemoryMappedTexture tex;
+	Vulkan::MemoryMappedTexture tex;
 	unsigned width = 2048;
 	unsigned height = 2048;
 	unsigned blocks_x = (width + 3) / 4;
@@ -1046,7 +1046,7 @@ static bool test_etc2(Device &device, VkFormat format, VkFormat readback_format)
 	auto cmd = device.request_command_buffer();
 	std::mt19937 rnd(1337);
 
-	SceneFormats::MemoryMappedTexture tex;
+	Vulkan::MemoryMappedTexture tex;
 	unsigned width = 2048;
 	unsigned height = 2048;
 	unsigned blocks_x = (width + 3) / 4;
@@ -1085,7 +1085,7 @@ static bool test_rgtc(Device &device, VkFormat format, VkFormat readback_format)
 	auto cmd = device.request_command_buffer();
 	std::mt19937 rnd(1337);
 
-	SceneFormats::MemoryMappedTexture tex;
+	Vulkan::MemoryMappedTexture tex;
 	unsigned width = 2048;
 	unsigned height = 2048;
 	unsigned blocks_x = (width + 3) / 4;
@@ -1126,7 +1126,7 @@ static bool test_s3tc(Device &device, VkFormat format, VkFormat readback_format)
 	auto cmd = device.request_command_buffer();
 	std::mt19937 rnd(1337);
 
-	SceneFormats::MemoryMappedTexture tex;
+	Vulkan::MemoryMappedTexture tex;
 	unsigned width = 2048;
 	unsigned height = 2048;
 	unsigned blocks_x = (width + 3) / 4;
@@ -1277,7 +1277,7 @@ static bool test_bc6(Device &device)
 
 int main()
 {
-	Global::init(Global::MANAGER_FEATURE_ALL_BITS, 1);
+	Global::init(Global::MANAGER_FEATURE_DEFAULT_BITS, 1);
 
 	if (!Context::init_loader(nullptr))
 		return EXIT_FAILURE;

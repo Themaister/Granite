@@ -26,6 +26,7 @@
 #include "texture_files.hpp"
 #include "cli_parser.hpp"
 #include "gltf_export.hpp"
+#include "global_managers_init.hpp"
 #include <string.h>
 
 using namespace Granite;
@@ -151,7 +152,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	auto image = load_texture_from_file(input);
+	auto image = Vulkan::load_texture_from_file(*GRANITE_FILESYSTEM(), input);
 	if (image.empty())
 		return 1;
 

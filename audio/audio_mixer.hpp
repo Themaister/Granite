@@ -24,6 +24,7 @@
 
 #include "audio_interface.hpp"
 #include "message_queue.hpp"
+#include "global_managers.hpp"
 #include <atomic>
 #include <mutex>
 #include <vector>
@@ -77,7 +78,7 @@ private:
 	Util::LockFreeMessageQueue *message_queue = nullptr;
 };
 
-class Mixer : public BackendCallback
+class Mixer final : public BackendCallback, public MixerInterface
 {
 public:
 	Mixer();
@@ -155,6 +156,10 @@ private:
 	void update_stream_play_cursor(unsigned index, double new_latency) noexcept;
 
 	Util::LockFreeMessageQueue message_queue;
+
+private:
+	void event_start(EventManagerInterface &iface) override;
+	void event_stop(EventManagerInterface &iface) override;
 };
 
 }

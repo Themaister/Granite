@@ -151,4 +151,32 @@ void MessageQueue::recycle_payload(MessageQueuePayload payload) noexcept
 	std::lock_guard<std::mutex> holder{lock};
 	return LockFreeMessageQueue::recycle_payload(std::move(payload));
 }
+
+bool MessageQueue::log(const char *tag, const char *fmt, va_list va)
+{
+	if (!is_uncorked())
+		return false;
+	char message_buffer[16 * 1024];
+	memcpy(message_buffer, tag, strlen(tag));
+
+	vsnprintf(message_buffer + strlen(tag), sizeof(message_buffer) - strlen(tag), fmt, va);
+	va_end(va);
+
+	size_t message_size = strlen(message_buffer) + 1;
+
+	while (message_size >= 2 && message_buffer[message_size - 2] == '\n')
+	{
+		message_buffer[message_size - 2] = '\0';
+		message_size--;
+	}
+
+	auto message_payload = allocate_write_payload(message_size);
+	if (message_payload)
+	{
+		memcpy(static_cast<char *>(message_payload.get_payload_data()), message_buffer, message_size);
+		push_written_payload(std::move(message_payload));
+	}
+
+	return true;
+}
 }

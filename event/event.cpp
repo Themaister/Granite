@@ -28,7 +28,6 @@ using namespace std;
 
 namespace Granite
 {
-
 EventManager::~EventManager()
 {
 	dispatch();
@@ -37,10 +36,8 @@ EventManager::~EventManager()
 		for (auto &handler : event_type.handlers)
 		{
 			dispatch_down_events(event_type.queued_events, handler);
-
 			// Before the event manager dies, make sure no stale EventHandler objects try to unregister themselves.
-			if (handler.unregister_key)
-				handler.unregister_key->event_manager_teardown();
+			handler.unregister_key->release_manager_reference();
 		}
 	}
 }
@@ -53,8 +50,13 @@ void EventManager::dispatch()
 		auto &queued_events = event_type.queued_events;
 		auto itr = remove_if(begin(handlers), end(handlers), [&](const Handler &handler) {
 			for (auto &event : queued_events)
+			{
 				if (!handler.mem_fn(handler.handler, *event))
+				{
+					handler.unregister_key->release_manager_reference();
 					return true;
+				}
+			}
 			return false;
 		});
 
@@ -65,9 +67,11 @@ void EventManager::dispatch()
 
 void EventManager::dispatch_event(std::vector<Handler> &handlers, const Event &e)
 {
-	auto itr = remove_if(begin(handlers), end(handlers), [&](const Handler &handler) {
-		bool keep_event = handler.mem_fn(handler.handler, e);
-		return !keep_event;
+	auto itr = remove_if(begin(handlers), end(handlers), [&](const Handler &handler) -> bool {
+		bool to_remove = !handler.mem_fn(handler.handler, e);
+		if (to_remove)
+			handler.unregister_key->release_manager_reference();
+		return to_remove;
 	});
 
 	handlers.erase(itr, end(handlers));
@@ -119,8 +123,11 @@ void EventManager::unregister_handler(EventHandler *handler)
 {
 	for (auto &event_type : events)
 	{
-		auto itr = remove_if(begin(event_type.handlers), end(event_type.handlers), [&](const Handler &h) {
-			return h.unregister_key == handler;
+		auto itr = remove_if(begin(event_type.handlers), end(event_type.handlers), [&](const Handler &h) -> bool {
+			bool to_remove = h.unregister_key == handler;
+			if (to_remove)
+				h.unregister_key->release_manager_reference();
+			return to_remove;
 		});
 
 		if (itr != end(event_type.handlers) && event_type.dispatching)
@@ -130,52 +137,17 @@ void EventManager::unregister_handler(EventHandler *handler)
 			event_type.handlers.erase(itr, end(event_type.handlers));
 	}
 }
-
-#if 0
-// Check against mem_fn isn't safe.
-void EventManager::unregister_handler(const Handler &handler)
-{
-	for (auto &event_type : events)
-	{
-		auto itr = remove_if(begin(event_type.second.handlers), end(event_type.second.handlers), [&](const Handler &h) {
-			return h.unregister_key == handler.unregister_key && h.mem_fn == handler.mem_fn;
-		});
-
-		if (itr != end(event_type.second.handlers) && event_type.second.dispatching)
-			throw logic_error("Unregistering handlers while dispatching events.");
-
-		if (itr != end(event_type.second.handlers))
-			event_type.second.handlers.erase(itr, end(event_type.second.handlers));
-	}
-}
-#endif
 
 void EventManager::unregister_latch_handler(EventHandler *handler)
 {
 	for (auto &event_type : latched_events)
 	{
-		auto itr = remove_if(begin(event_type.handlers), end(event_type.handlers), [&](const LatchHandler &h) {
-			return h.unregister_key == handler;
+		auto itr = remove_if(begin(event_type.handlers), end(event_type.handlers), [&](const LatchHandler &h) -> bool {
+			bool to_remove = h.unregister_key == handler;
+			if (to_remove)
+				h.unregister_key->release_manager_reference();
+			return to_remove;
 		});
-
-		if (itr != end(event_type.handlers))
-			event_type.handlers.erase(itr, end(event_type.handlers));
-	}
-}
-
-void EventManager::unregister_latch_handler(const LatchHandler &handler)
-{
-	for (auto &event_type : latched_events)
-	{
-		auto itr = remove_if(begin(event_type.handlers), end(event_type.handlers), [&](const LatchHandler &h) {
-			bool signal = h.unregister_key == handler.unregister_key && h.up_fn == handler.up_fn && h.down_fn == handler.down_fn;
-			if (signal)
-				dispatch_down_events(event_type.queued_events, h);
-			return signal;
-		});
-
-		if (itr != end(event_type.handlers) && event_type.dispatching)
-			throw logic_error("Unregistering handlers while dispatching events.");
 
 		if (itr != end(event_type.handlers))
 			event_type.handlers.erase(itr, end(event_type.handlers));
@@ -216,21 +188,28 @@ void EventManager::dequeue_all_latched(EventType type)
 	event_type.enqueueing = false;
 }
 
-EventHandler::~EventHandler()
+void EventHandler::release_manager_reference()
 {
-	if (need_unregister)
-	{
-		auto *em = Global::event_manager();
-		if (em)
-		{
-			em->unregister_handler(this);
-			em->unregister_latch_handler(this);
-		}
-	}
+	assert(event_manager_ref_count > 0);
+	assert(event_manager);
+	if (--event_manager_ref_count == 0)
+		event_manager = nullptr;
 }
 
-void EventHandler::event_manager_teardown()
+void EventHandler::add_manager_reference(EventManager *manager)
 {
-	need_unregister = false;
+	assert(!event_manager_ref_count || manager == event_manager);
+	event_manager = manager;
+	event_manager_ref_count++;
+}
+
+EventHandler::~EventHandler()
+{
+	if (event_manager)
+		event_manager->unregister_handler(this);
+	// Splitting the branch is significant since event manager can release its last reference in between.
+	if (event_manager)
+		event_manager->unregister_latch_handler(this);
+	assert(event_manager_ref_count == 0 && !event_manager);
 }
 }

@@ -30,6 +30,8 @@
 #include <memory>
 #include <mutex>
 #include <condition_variable>
+#include "global_managers_interface.hpp"
+#include "logging.hpp"
 
 namespace Util
 {
@@ -213,7 +215,7 @@ private:
 	size_t payload_capacity[8] = {};
 };
 
-class MessageQueue : private LockFreeMessageQueue
+class MessageQueue final : private LockFreeMessageQueue, public MessageQueueInterface
 {
 public:
 	MessageQueue();
@@ -233,5 +235,7 @@ private:
 	mutable std::mutex lock;
 	mutable std::condition_variable cond;
 	std::atomic_bool corked;
+
+	bool log(const char *tag, const char *fmt, va_list va) override;
 };
 }

@@ -24,7 +24,6 @@
 #include <assert.h>
 #include <stdexcept>
 #include "logging.hpp"
-#include "global_managers.hpp"
 #include "thread_id.hpp"
 #include "string_helpers.hpp"
 #include "timeline_trace_file.hpp"
@@ -34,7 +33,6 @@ using namespace std;
 
 namespace Granite
 {
-
 namespace Internal
 {
 void TaskDeps::notify_dependees()
@@ -138,12 +136,17 @@ void ThreadGroup::refresh_global_timeline_trace_file()
 	Util::TimelineTraceFile::set_per_thread(timeline_trace_file.get());
 }
 
+void ThreadGroup::set_thread_context()
+{
+	refresh_global_timeline_trace_file();
+}
+
 Util::TimelineTraceFile *ThreadGroup::get_timeline_trace_file()
 {
 	return timeline_trace_file.get();
 }
 
-void ThreadGroup::start(unsigned num_threads)
+void ThreadGroup::start(unsigned num_threads, const std::function<void ()> &on_thread_begin)
 {
 	if (active)
 		throw logic_error("Cannot start a thread group which has already started.");
@@ -152,10 +155,6 @@ void ThreadGroup::start(unsigned num_threads)
 	active = true;
 
 	thread_group.resize(num_threads);
-
-	// Make sure the worker threads have the correct global data references.
-	auto ctx = std::shared_ptr<Global::GlobalManagers>(Global::create_thread_context().release(),
-	                                                   Global::delete_thread_context);
 
 	if (const char *env = getenv("GRANITE_TIMELINE_TRACE"))
 	{
@@ -169,10 +168,11 @@ void ThreadGroup::start(unsigned num_threads)
 	unsigned self_index = 1;
 	for (auto &t : thread_group)
 	{
-		t = make_unique<thread>([this, ctx, self_index]() {
+		t = make_unique<thread>([this, on_thread_begin, self_index]() {
 			refresh_global_timeline_trace_file();
 			set_worker_thread_name(self_index - 1);
-			Global::set_thread_context(*ctx);
+			if (on_thread_begin)
+				on_thread_begin();
 			thread_looper(self_index);
 		});
 		self_index++;
@@ -308,11 +308,7 @@ bool ThreadGroup::is_idle()
 
 void ThreadGroup::thread_looper(unsigned index)
 {
-#ifdef GRANITE_VULKAN_MT
-	Vulkan::register_thread_index(index);
-#else
-	(void)index;
-#endif
+	Util::register_thread_index(index);
 
 	for (;;)
 	{

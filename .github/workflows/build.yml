@@ -1,0 +1,73 @@
+name: Build Project
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [master]
+
+jobs:
+  build:
+    name: "Build ${{ matrix.platform }} || SHARED=${{ matrix.shared }} || PLATFORM=${{ matrix.granite_platform }}"
+    strategy:
+      matrix:
+        platform: [windows-latest, ubuntu-latest]
+        build_type: [Release]
+        shared: [OFF, ON]
+        granite_platform: ["GLFW", "libretro", "KHR_DISPLAY"]
+
+    env:
+      PARALLEL: -j 2
+    runs-on: "${{ matrix.platform }}"
+
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        submodules: "recursive"
+
+    - uses: actions/setup-python@v2
+      with:
+        python-version: '3.x'
+
+    - if: ${{ matrix.platform == 'ubuntu-latest' }}
+      name: Install headers
+      run: |
+        sudo apt-get update
+        sudo apt install xorg-dev libpulse-dev
+
+    - name: Create Build Environment
+      run: |
+        cmake -E make_directory ${{github.workspace}}/build
+        cmake -E make_directory ${{github.workspace}}/build-self
+        cmake -E make_directory ${{github.workspace}}/viewer/assets
+
+    - name: Configure CMake internal
+      shell: bash
+      working-directory: ${{github.workspace}}/build
+      run: cmake $GITHUB_WORKSPACE -DCMAKE_INSTALL_PREFIX=output -DGRANITE_INSTALL_EXE_TARGETS=ON -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DGRANITE_AUDIO=ON -DGRANITE_SHARED=${{ matrix.shared }} -DGRANITE_PLATFORM="${{ matrix.granite_platform }}"
+
+    - name: Build internal
+      working-directory: ${{github.workspace}}/build
+      shell: bash
+      run: cmake --build . --config ${{ matrix.build_type }} --target install ${{ env.PARALLEL }}
+
+    - name: Test internal linkage
+      working-directory: ${{github.workspace}}/build/output/bin
+      shell: bash
+      run: ./linkage-test
+
+    - name: Configure CMake external
+      shell: bash
+      working-directory: ${{github.workspace}}/build-self
+      run: cmake "$GITHUB_WORKSPACE"/self-test -DCMAKE_INSTALL_PREFIX=output -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DGRANITE_AUDIO=ON -DGRANITE_SHARED=${{ matrix.shared }} -DGRANITE_PLATFORM="${{ matrix.granite_platform }}"
+
+    - name: Build external
+      working-directory: ${{github.workspace}}/build-self
+      shell: bash
+      run: cmake --build . --config ${{ matrix.build_type }} --target install ${{ env.PARALLEL }}
+
+    - name: Test external linkage
+      working-directory: ${{github.workspace}}/build-self/output/bin
+      shell: bash
+      run: ./link-test
+

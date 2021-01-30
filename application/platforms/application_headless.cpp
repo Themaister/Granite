@@ -250,6 +250,13 @@ public:
 
 		auto &wsi = app->get_wsi();
 		auto context = make_unique<Context>();
+
+		Context::SystemHandles system_handles;
+		system_handles.filesystem = GRANITE_FILESYSTEM();
+		system_handles.thread_group = GRANITE_THREAD_GROUP();
+		system_handles.timeline_trace_file = system_handles.thread_group->get_timeline_trace_file();
+		context->set_system_handles(system_handles);
+
 		context->set_num_thread_indices(GRANITE_THREAD_GROUP()->get_num_threads() + 1);
 		if (!context->init_instance_and_device(nullptr, 0, nullptr, 0))
 			return false;

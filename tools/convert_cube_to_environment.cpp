@@ -25,6 +25,7 @@
 #include "utils/image_utils.hpp"
 #include "cli_parser.hpp"
 #include "global_managers_init.hpp"
+#include "thread_group.hpp"
 
 using namespace Vulkan;
 using namespace Granite;
@@ -68,6 +69,12 @@ int main(int argc, char *argv[])
 
 	Context::init_loader(nullptr);
 	Context context;
+
+	Context::SystemHandles handles;
+	handles.filesystem = GRANITE_FILESYSTEM();
+	handles.thread_group = GRANITE_THREAD_GROUP();
+	context.set_system_handles(handles);
+
 	if (!context.init_instance_and_device(nullptr, 0, nullptr, 0))
 		return 1;
 

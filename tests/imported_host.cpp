@@ -23,6 +23,7 @@
 #include "vulkan_headers.hpp"
 #include "device.hpp"
 #include "global_managers_init.hpp"
+#include "thread_group.hpp"
 #include <string.h>
 
 using namespace Vulkan;
@@ -45,6 +46,12 @@ int main(int argc, char **argv)
 		return EXIT_FAILURE;
 
 	Context ctx;
+
+	Context::SystemHandles handles;
+	handles.filesystem = GRANITE_FILESYSTEM();
+	handles.thread_group = GRANITE_THREAD_GROUP();
+	ctx.set_system_handles(handles);
+
 	if (!ctx.init_instance_and_device(nullptr, 0, nullptr, 0))
 		return EXIT_FAILURE;
 

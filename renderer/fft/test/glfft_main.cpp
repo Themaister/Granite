@@ -19,15 +19,24 @@
 #include "device.hpp"
 #include "glfft_cli.hpp"
 #include "glfft_granite_interface.hpp"
+#include "global_managers_init.hpp"
+#include "thread_group.hpp"
 
 using namespace GLFFT;
 using namespace Vulkan;
 
 int main(int argc, char *argv[])
 {
+	Granite::Global::init();
 	if (!Vulkan::Context::init_loader(nullptr))
 		return EXIT_FAILURE;
 	Vulkan::Context context;
+
+	Vulkan::Context::SystemHandles handles;
+	handles.filesystem = GRANITE_FILESYSTEM();
+	handles.thread_group = GRANITE_THREAD_GROUP();
+	context.set_system_handles(handles);
+
 	if (!context.init_instance_and_device(nullptr, 0, nullptr, 0))
 		return EXIT_FAILURE;
 	Device device;

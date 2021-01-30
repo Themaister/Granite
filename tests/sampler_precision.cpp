@@ -24,6 +24,7 @@
 #include "global_managers_init.hpp"
 #include "os_filesystem.hpp"
 #include "device.hpp"
+#include "thread_group.hpp"
 #include "context.hpp"
 
 using namespace Granite;
@@ -35,6 +36,12 @@ static int main_inner()
 		return 1;
 
 	Context ctx;
+
+	Context::SystemHandles handles;
+	handles.filesystem = GRANITE_FILESYSTEM();
+	handles.thread_group = GRANITE_THREAD_GROUP();
+	ctx.set_system_handles(handles);
+
 	if (!ctx.init_instance_and_device(nullptr, 0, nullptr, 0))
 		return 1;
 

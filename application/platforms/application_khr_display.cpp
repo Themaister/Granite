@@ -30,7 +30,10 @@
 #include "vulkan_headers.hpp"
 #include "global_managers_init.hpp"
 #include <string.h>
+
+#ifndef _WIN32
 #include <signal.h>
+#endif
 
 using namespace std;
 using namespace Vulkan;
@@ -39,7 +42,10 @@ namespace Granite
 {
 struct WSIPlatformDisplay;
 static WSIPlatformDisplay *global_display;
+
+#ifndef _WIN32
 static void signal_handler(int);
+#endif
 
 static bool vulkan_update_display_mode(unsigned *width, unsigned *height, const VkDisplayModePropertiesKHR *mode,
                                        unsigned desired_width, unsigned desired_height)
@@ -107,6 +113,8 @@ public:
 		}
 
 		global_display = this;
+
+#ifndef _WIN32
 		struct sigaction sa;
 		memset(&sa, 0, sizeof(sa));
 		sigemptyset(&sa.sa_mask);
@@ -114,6 +122,7 @@ public:
 		sa.sa_flags = SA_RESTART | SA_RESETHAND;
 		sigaction(SIGINT, &sa, nullptr);
 		sigaction(SIGTERM, &sa, nullptr);
+#endif
 
 #ifdef HAVE_LINUX_INPUT
 		if (!input_manager.init(
@@ -339,11 +348,13 @@ private:
 #endif
 };
 
+#ifndef _WIN32
 static void signal_handler(int)
 {
 	LOGI("SIGINT or SIGTERM received.\n");
 	global_display->signal_die();
 }
+#endif
 }
 
 namespace Granite

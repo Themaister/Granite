@@ -744,14 +744,8 @@ void CompressorState::enqueue_compression_block_astc(TaskGroupHandle &compressio
 		std::unique_ptr<astcenc_context, ContextDeleter> context;
 		uint32_t layer, level;
 		int blocks_x, blocks_y;
-
-		std::vector<uint8_t *> rows_8;
-		std::vector<uint16_t *> rows_16;
-		std::vector<u8vec4> data_padded_8;
-		std::vector<u16vec4> data_padded_16;
-		uint8_t **slice_8 = nullptr;
-		uint16_t **slice_16 = nullptr;
 		astcenc_image image;
+		void *slice;
 	};
 
 	auto state = make_shared<CodecState>();
@@ -793,7 +787,7 @@ void CompressorState::enqueue_compression_block_astc(TaskGroupHandle &compressio
 	else if (use_alpha_weight)
 		flags |= ASTCENC_FLG_USE_ALPHA_WEIGHT;
 
-	astcenc_preset preset;
+	float preset;
 	if (args.quality >= 5)
 		preset = ASTCENC_PRE_EXHAUSTIVE;
 	else if (args.quality >= 4)
@@ -803,7 +797,7 @@ void CompressorState::enqueue_compression_block_astc(TaskGroupHandle &compressio
 	else
 		preset = ASTCENC_PRE_FAST;
 
-	if (astcenc_init_config(profile, block_size_x, block_size_y, 1,
+	if (astcenc_config_init(profile, block_size_x, block_size_y, 1,
 	                        preset, flags, state->config) != ASTCENC_SUCCESS)
 	{
 		LOGE("Failed to initialize ASTC encoder config.\n");
@@ -815,17 +809,8 @@ void CompressorState::enqueue_compression_block_astc(TaskGroupHandle &compressio
 
 	// Seems to be a bug in astcenc itself.
 
-#if 0
 	auto *group = compression_task->get_thread_group();
-	int num_blocks_x = (width + block_size_x - 1) / block_size_x;
-	int num_blocks_y = (height + block_size_y - 1) / block_size_y;
-
-	// There are some weird bugs happening when using multi-threading.
-	int num_blocks = num_blocks_x * num_blocks_y;
-	int num_threads = (num_blocks + 127) / 128;
-#else
-	constexpr int num_threads = 1;
-#endif
+	auto num_threads = muglm::max(1u, group->get_num_threads() / 4);
 
 	astcenc_context *context = nullptr;
 	if (astcenc_context_alloc(state->config, num_threads, &context) != ASTCENC_SUCCESS)
@@ -836,65 +821,16 @@ void CompressorState::enqueue_compression_block_astc(TaskGroupHandle &compressio
 
 	state->context.reset(context);
 
-	constexpr int padding_pixels = 8;
-	int padded_width = width + padding_pixels * 2;
-	int padded_height = height + padding_pixels * 2;
-
 	VkFormat input_format = input->get_layout().get_format();
-	if (input_format == VK_FORMAT_R16G16B16A16_SFLOAT)
-	{
-		state->data_padded_16.resize(padded_width * height);
-		state->rows_16.reserve(padded_height);
-		for (unsigned y = 0; y < padding_pixels; y++)
-			state->rows_16.push_back(&state->data_padded_16[0].x);
-		for (int y = 0; y < height; y++)
-			state->rows_16.push_back(&state->data_padded_16[y * padded_width].x);
-		for (unsigned y = 0; y < padding_pixels; y++)
-			state->rows_16.push_back(&state->data_padded_16[(height - 1) * padded_width].x);
-		state->slice_16 = state->rows_16.data();
-	}
-	else
-	{
-		state->data_padded_8.resize(padded_width * height);
-		state->rows_8.reserve(padded_height);
-		for (unsigned y = 0; y < padding_pixels; y++)
-			state->rows_8.push_back(&state->data_padded_8[0].x);
-		for (int y = 0; y < height; y++)
-			state->rows_8.push_back(&state->data_padded_8[y * padded_width].x);
-		for (unsigned y = 0; y < padding_pixels; y++)
-			state->rows_8.push_back(&state->data_padded_8[(height - 1) * padded_width].x);
-		state->slice_8 = state->rows_8.data();
-	}
-
-	int pixel_size = Vulkan::TextureFormatLayout::format_block_size(input_format, VK_IMAGE_ASPECT_COLOR_BIT);
-
-	for (int y = 0; y < height; y++)
-	{
-		for (int x = 0; x < padded_width; x++)
-		{
-			int cx = clamp(x - padding_pixels, 0, width - 1);
-			if (input_format == VK_FORMAT_R16G16B16A16_SFLOAT)
-			{
-				auto *src = input->get_layout().data_opaque(cx, y, layer, level);
-				memcpy(&state->data_padded_16[y * padded_width + x], src, pixel_size);
-			}
-			else
-			{
-				auto *src = input->get_layout().data_opaque(cx, y, layer, level);
-				memcpy(&state->data_padded_8[y * padded_width + x], src, pixel_size);
-			}
-		}
-	}
-
-	state->layer = layer;
-	state->level = level;
+	state->slice = input->get_layout().data_opaque(0, 0, layer, level);
 
 	state->image.dim_x = width;
 	state->image.dim_y = height;
 	state->image.dim_z = 1;
-	state->image.dim_pad = padding_pixels;
-	state->image.data16 = &state->slice_16;
-	state->image.data8 = &state->slice_8;
+	state->image.data = &state->slice;
+	state->image.data_type = input_format == VK_FORMAT_R16G16B16A16_SFLOAT ? ASTCENC_TYPE_F16 : ASTCENC_TYPE_U8;
+	state->layer = layer;
+	state->level = level;
 
 	const astcenc_swizzle swiz = {
 		ASTCENC_SWZ_R,
@@ -903,64 +839,17 @@ void CompressorState::enqueue_compression_block_astc(TaskGroupHandle &compressio
 		use_alpha_channel ? ASTCENC_SWZ_A : ASTCENC_SWZ_1
 	};
 
-#if 0
-	if (astcenc_compress_image_multistage(state->context.get(), state->image, swiz,
-			ASTCENC_COMPRESS_STAGE_INIT,
-			static_cast<uint8_t *>(output->get_layout().data(state->layer, state->level)),
-			output->get_layout().get_layer_size(state->level), 0) != ASTCENC_SUCCESS)
-	{
-		LOGE("Failed to initialize ASTC encoder.\n");
-		return;
-	}
-
-	auto compute_task = group->create_task();
-	for (int i = 0; i < num_threads; i++)
-	{
-		compute_task->enqueue_task([this, state, i, swiz]() {
-			if (astcenc_compress_image_multistage(state->context.get(), state->image, swiz,
-					ASTCENC_COMPRESS_STAGE_COMPUTE_AVERAGES_AND_VARIANCE,
-					static_cast<uint8_t *>(output->get_layout().data(state->layer, state->level)),
-					output->get_layout().get_layer_size(state->level), i) != ASTCENC_SUCCESS)
-			{
-				LOGE("Failed to run compute averages and variance stage.\n");
-			}
-		});
-	}
-#endif
-
-	for (int i = 0; i < num_threads; i++)
+	for (unsigned i = 0; i < num_threads; i++)
 	{
 		compression_task->enqueue_task([this, state, i, swiz]() {
-#if 0
-			if (astcenc_compress_image_multistage(state->context.get(), state->image, swiz,
-					ASTCENC_COMPRESS_STAGE_EXECUTE,
-					static_cast<uint8_t *>(output->get_layout().data(state->layer, state->level)),
-					output->get_layout().get_layer_size(state->level), i) != ASTCENC_SUCCESS)
-#else
 			if (astcenc_compress_image(state->context.get(), state->image, swiz,
 					static_cast<uint8_t *>(output->get_layout().data(state->layer, state->level)),
 					output->get_layout().get_layer_size(state->level), i) != ASTCENC_SUCCESS)
-#endif
 			{
 				LOGE("Failed to compress ASTC blocks.\n");
 			}
 		});
 	}
-
-#if 0
-	group->add_dependency(compression_task, compute_task);
-
-	auto cleanup_task = group->create_task([this, state, swiz]() {
-		if (astcenc_compress_image_multistage(state->context.get(), state->image, swiz,
-				ASTCENC_COMPRESS_STAGE_CLEANUP,
-				static_cast<uint8_t *>(output->get_layout().data(state->layer, state->level)),
-				output->get_layout().get_layer_size(state->level), 0) != ASTCENC_SUCCESS)
-		{
-			LOGE("Failed to cleanup ASTC encoder.\n");
-		}
-	});
-	group->add_dependency(cleanup_task, compression_task);
-#endif
 }
 #endif
 

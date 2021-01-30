@@ -28,7 +28,7 @@ if (GRANITE_ISPC_TEXTURE_COMPRESSION)
     endif()
 endif()
 
-if (GRANITE_ASTC_ENCODER_COMPRESSION)
+if ((NOT ANDROID) AND GRANITE_ASTC_ENCODER_COMPRESSION)
     target_link_libraries(granite-scene-export PRIVATE astc-encoder)
     target_compile_definitions(granite-scene-export PRIVATE HAVE_ASTC_ENCODER)
 endif()

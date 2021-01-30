@@ -249,14 +249,13 @@ static BufferHandle decode_astc_cpu(Device &device, const TextureFormatLayout &l
 	uint32_t block_width, block_height;
 	TextureFormatLayout::format_block_dim(layout.get_format(), block_width, block_height);
 	bool srgb = Vulkan::format_is_srgb(readback_format);
-	astcenc_init_config(srgb ? ASTCENC_PRF_LDR_SRGB : ASTCENC_PRF_HDR, block_width, block_height, 1, ASTCENC_PRE_FAST, 0, config);
+	astcenc_config_init(srgb ? ASTCENC_PRF_LDR_SRGB : ASTCENC_PRF_HDR, block_width, block_height, 1, ASTCENC_PRE_FAST, 0, config);
 
 	astcenc_context *ctx = nullptr;
 	if (astcenc_context_alloc(config, 1, &ctx) != ASTCENC_SUCCESS)
 		return {};
 
 	astcenc_image image = {};
-	image.dim_pad = 0;
 	image.dim_x = layout.get_width();
 	image.dim_y = layout.get_height();
 	image.dim_z = 1;
@@ -267,29 +266,19 @@ static BufferHandle decode_astc_cpu(Device &device, const TextureFormatLayout &l
 	buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 	auto buffer = device.create_buffer(buffer_info);
 
-
-	uint16_t **p_rows16 = nullptr;
-	uint8_t **p_rows8 = nullptr;
-	std::vector<uint16_t *> rows16;
-	std::vector<uint8_t *> rows8;
+	void *slice = nullptr;
 
 	if (srgb)
 	{
-		auto *mapped = static_cast<uint8_t *>(device.map_host_buffer(*buffer, MEMORY_ACCESS_WRITE_BIT));
-		rows8.reserve(layout.get_height());
-		for (unsigned y = 0; y < layout.get_height(); y++)
-			rows8.push_back(mapped + y * layout.get_width() * 4);
-		p_rows8 = rows8.data();
-		image.data8 = &p_rows8;
+		slice = static_cast<uint8_t *>(device.map_host_buffer(*buffer, MEMORY_ACCESS_WRITE_BIT));
+		image.data = &slice;
+		image.data_type = ASTCENC_TYPE_U8;
 	}
 	else
 	{
-		auto *mapped = static_cast<uint16_t *>(device.map_host_buffer(*buffer, MEMORY_ACCESS_WRITE_BIT));
-		rows16.reserve(layout.get_height());
-		for (unsigned y = 0; y < layout.get_height(); y++)
-			rows16.push_back(mapped + y * layout.get_width() * 4);
-		p_rows16 = rows16.data();
-		image.data16 = &p_rows16;
+		slice = static_cast<uint16_t *>(device.map_host_buffer(*buffer, MEMORY_ACCESS_WRITE_BIT));
+		image.data = &slice;
+		image.data_type = ASTCENC_TYPE_F16;
 	}
 
 	if (astcenc_decompress_image(ctx, static_cast<const uint8_t *>(layout.data()),

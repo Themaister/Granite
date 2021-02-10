@@ -120,7 +120,7 @@ mediump float get_directional_shadow_term(
 
 #ifdef DIRECTIONAL_SHADOW_PCF
 #ifdef SHADOW_CASCADES
-layout(set = 0, binding = BINDING_GLOBAL_DIRECTIONAL_SHADOW) uniform mediump sampler2DArrayShadow uShadowmap;
+layout(set = 0, binding = BINDING_GLOBAL_DIRECTIONAL_SHADOW) uniform /* should be mediump, Mali r19 workaround */ sampler2DArrayShadow uShadowmap;
 #else
 layout(set = 0, binding = BINDING_GLOBAL_DIRECTIONAL_SHADOW) uniform mediump sampler2DShadow uShadowmap;
 #endif

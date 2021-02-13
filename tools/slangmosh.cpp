@@ -29,6 +29,7 @@
 #include "logging.hpp"
 #include "rapidjson_wrapper.hpp"
 #include "thread_group.hpp"
+#include "shader.hpp"
 #include <assert.h>
 #include <iomanip>
 #include <iostream>
@@ -235,35 +236,53 @@ static std::string generate_header(const std::vector<Shader> &shaders,
 	std::ostringstream str;
 
 	std::vector<uint32_t> spirv_bank;
-	std::unordered_map<Hash, std::pair<size_t, size_t>> shader_hash_to_size_offset;
-	std::vector<std::vector<std::pair<size_t, size_t>>> variant_to_offset_size;
+	std::vector<uint8_t> reflection_bank;
 
-	variant_to_offset_size.resize(spirv_for_shaders_and_variants.size());
-	for (size_t i = 0; i < variant_to_offset_size.size(); i++)
-		variant_to_offset_size[i].resize(spirv_for_shaders_and_variants[i].size());
+	struct OutputRange
+	{
+		size_t shader_offset;
+		size_t shader_size;
+		size_t reflection_offset;
+		size_t reflection_size;
+	};
+
+	std::unordered_map<Hash, OutputRange> shader_hash_to_output;
+	std::vector<std::vector<OutputRange>> variant_to_output;
+
+	variant_to_output.resize(spirv_for_shaders_and_variants.size());
+	for (size_t i = 0; i < variant_to_output.size(); i++)
+		variant_to_output[i].resize(spirv_for_shaders_and_variants[i].size());
 
 	for (size_t i = 0; i < spirv_for_shaders_and_variants.size(); i++)
 	{
 		for (size_t j = 0; j < spirv_for_shaders_and_variants[i].size(); j++)
 		{
 			auto &perm = spirv_for_shaders_and_variants[i][j];
-			auto &offset_size = variant_to_offset_size[i][j];
+			auto &output = variant_to_output[i][j];
 
 			Hasher h;
 			h.data(perm.data(), perm.size() * sizeof(uint32_t));
 			auto hash = h.get();
 
-			auto itr = shader_hash_to_size_offset.find(hash);
-			if (itr != shader_hash_to_size_offset.end())
+			auto itr = shader_hash_to_output.find(hash);
+			if (itr != shader_hash_to_output.end())
 			{
-				offset_size = itr->second;
+				output = itr->second;
 			}
 			else
 			{
-				offset_size.first = spirv_bank.size();
-				offset_size.second = perm.size();
-				shader_hash_to_size_offset[hash] = offset_size;
+				output.shader_offset = spirv_bank.size();
+				output.shader_size = perm.size();
+				output.reflection_offset = reflection_bank.size();
+				output.reflection_size = Vulkan::ResourceLayout::serialization_size();
+
+				shader_hash_to_output[hash] = output;
 				spirv_bank.insert(spirv_bank.end(), perm.begin(), perm.end());
+
+				Vulkan::ResourceLayout layout;
+				Vulkan::Shader::reflect_resource_layout(layout, perm.data(), perm.size() * sizeof(uint32_t));
+				reflection_bank.resize(reflection_bank.size() + output.reflection_size);
+				layout.serialize(reflection_bank.data() + output.reflection_offset, output.reflection_size);
 			}
 		}
 	}
@@ -296,6 +315,24 @@ static std::string generate_header(const std::vector<Shader> &shaders,
 	str << std::dec;
 	str << "};\n\n";
 
+	str << "static const uint8_t reflection_bank[] =\n{\n";
+	str << std::hex;
+	for (size_t i = 0; i < reflection_bank.size(); i++)
+	{
+		if ((i & 31) == 0)
+			str << "\t";
+
+		str << "0x" << std::setfill('0') << std::setw(2) << unsigned(reflection_bank[i]);
+		str << ",";
+
+		if (i + 1 == reflection_bank.size() || ((i & 31) == 31))
+			str << "\n";
+		else
+			str << " ";
+	}
+	str << std::dec;
+	str << "};\n\n";
+
 	str << "template <typename Program, typename Shader>\n";
 	str << "struct Shaders\n{\n";
 
@@ -314,8 +351,8 @@ static std::string generate_header(const std::vector<Shader> &shaders,
 		str << " = {};\n";
 	}
 
-	str << "\n\ttemplate <typename Device, typename Resolver>\n";
-	str << "\tShaders(Device &device, const Resolver &resolver)\n\t{\n";
+	str << "\n\ttemplate <typename Device, typename Layout, typename Resolver>\n";
+	str << "\tShaders(Device &device, Layout &layout, const Resolver &resolver)\n\t{\n";
 
 	for (size_t i = 0; i < shaders.size(); i++)
 	{
@@ -347,24 +384,40 @@ static std::string generate_header(const std::vector<Shader> &shaders,
 							    shader.permutation_to_variant_define(perm, variant_index);
 						}
 					}
-					str << ")\n\t";
+					str << ")\n";
 				}
 
+				if (conditional)
+					str << "\t\t{\n";
+
+				if (conditional)
+					str << "\t";
+				str << "\t\tlayout.unserialize(" << "reflection_bank + " << variant_to_output[i][perm].reflection_offset <<
+				    ", " << variant_to_output[i][perm].reflection_size << ");\n";
+
+				if (conditional)
+					str << "\t";
 				str << "\t\tthis->" << shader.name;
 				for (size_t variant_index = 0; variant_index < shader.variants.size(); variant_index++)
 					if (!shader.variants[variant_index].resolve)
 						str << "[" << shader.permutation_to_variant_define(perm, variant_index) << "]";
 
 				str << " = device.request_" << (shader.compute ? "program" : "shader") <<
-					"(spirv_bank + " << variant_to_offset_size[i][perm].first <<
-					", " << variant_to_offset_size[i][perm].second * sizeof(uint32_t) << ");\n";
+					"(spirv_bank + " << variant_to_output[i][perm].shader_offset <<
+					", " << variant_to_output[i][perm].shader_size * sizeof(uint32_t) << ", &layout);\n";
+
+				if (conditional)
+					str << "\t\t}\n";
 			}
 		}
 		else
 		{
+			str << "\t\tlayout.unserialize(" << "reflection_bank + " << variant_to_output[i][0].reflection_offset <<
+			    ", " << variant_to_output[i][0].reflection_size << ");\n";
+
 			str << "\t\tthis->" << shader.name << " = device.request_" << (shader.compute ? "program" : "shader") <<
-			    "(spirv_bank + " << variant_to_offset_size[i][0].first << ", " <<
-			    variant_to_offset_size[i][0].second * sizeof(uint32_t) << ");\n";
+			    "(spirv_bank + " << variant_to_output[i][0].shader_offset << ", " <<
+			    variant_to_output[i][0].shader_size * sizeof(uint32_t) << ", &layout);\n";
 		}
 	}
 

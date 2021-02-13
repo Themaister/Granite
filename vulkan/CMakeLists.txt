@@ -89,5 +89,10 @@ if (${CMAKE_BUILD_TYPE} MATCHES "Debug")
 endif()
 
 target_link_libraries(granite-vulkan
-        PRIVATE spirv-cross-core granite-volk
+        PRIVATE granite-volk
         PUBLIC granite-util granite-volk-headers)
+
+if (GRANITE_VULKAN_SPIRV_CROSS)
+    target_link_libraries(granite-vulkan PRIVATE spirv-cross-core)
+    target_compile_definitions(granite-vulkan PRIVATE GRANITE_VULKAN_SPIRV_CROSS=1)
+endif()

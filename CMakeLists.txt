@@ -38,6 +38,7 @@ option(GRANITE_ANDROID_APK_FILESYSTEM "Use APK file system for assets and builti
 option(GRANITE_SHADER_COMPILER_OPTIMIZE "Optimize SPIR-V." ON)
 option(GRANITE_VULKAN_FILESYSTEM "Add filesystem support to Vulkan backend." ON)
 option(GRANITE_VULKAN_THREAD_GROUP "Add thread group support to Vulkan backend." ON)
+option(GRANITE_VULKAN_SPIRV_CROSS "Add reflection support to Vulkan backend." ON)
 option(GRANITE_VULKAN_SHADER_MANAGER_RUNTIME_COMPILER "Enable Vulkan GLSL runtime compiler." ON)
 option(GRANITE_VULKAN_MT "Make Vulkan backend thread-safe." ON)
 option(GRANITE_VULKAN_FOSSILIZE "Enable support for Fossilize." OFF)

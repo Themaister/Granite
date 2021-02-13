@@ -52,13 +52,19 @@ enum class ShaderStage
 
 struct ResourceLayout
 {
+	DescriptorSetLayout sets[VULKAN_NUM_DESCRIPTOR_SETS];
 	uint32_t input_mask = 0;
 	uint32_t output_mask = 0;
 	uint32_t push_constant_size = 0;
 	uint32_t spec_constant_mask = 0;
 	uint32_t bindless_set_mask = 0;
-	DescriptorSetLayout sets[VULKAN_NUM_DESCRIPTOR_SETS];
+	enum { Version = 1 };
+
+	bool unserialize(const uint8_t *data, size_t size);
+	bool serialize(uint8_t *data, size_t size) const;
+	static size_t serialization_size();
 };
+static_assert(sizeof(DescriptorSetLayout) % 8 == 0, "Size of DescriptorSetLayout does not align to 64 bytes.");
 
 struct CombinedResourceLayout
 {
@@ -135,7 +141,8 @@ private:
 class Shader : public HashedObject<Shader>
 {
 public:
-	Shader(Util::Hash hash, Device *device, const uint32_t *data, size_t size);
+	Shader(Util::Hash hash, Device *device, const uint32_t *data, size_t size,
+	       const ResourceLayout *layout = nullptr);
 	~Shader();
 
 	const ResourceLayout &get_layout() const
@@ -148,14 +155,14 @@ public:
 		return module;
 	}
 
+	static bool reflect_resource_layout(ResourceLayout &layout, const uint32_t *spirv_data, size_t spirv_size);
+
 	static const char *stage_to_name(ShaderStage stage);
 
 private:
 	Device *device;
-	VkShaderModule module;
+	VkShaderModule module = VK_NULL_HANDLE;
 	ResourceLayout layout;
-
-	void update_array_info(const spirv_cross::SPIRType &type, unsigned set, unsigned binding);
 };
 
 class Program : public HashedObject<Program>, public InternalSyncEnabled

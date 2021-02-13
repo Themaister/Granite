@@ -277,7 +277,7 @@ void Device::unmap_host_buffer(const Buffer &buffer, MemoryAccessFlags access, V
 	managers.memory.unmap_memory(buffer.get_allocation(), access, offset, length);
 }
 
-Shader *Device::request_shader(const uint32_t *data, size_t size)
+Shader *Device::request_shader(const uint32_t *data, size_t size, const ResourceLayout *layout)
 {
 	Util::Hasher hasher;
 	hasher.data(data, size);
@@ -285,7 +285,7 @@ Shader *Device::request_shader(const uint32_t *data, size_t size)
 	auto hash = hasher.get();
 	auto *ret = shaders.find(hash);
 	if (!ret)
-		ret = shaders.emplace_yield(hash, hash, this, data, size);
+		ret = shaders.emplace_yield(hash, hash, this, data, size, layout);
 	return ret;
 }
 
@@ -309,12 +309,13 @@ Program *Device::request_program(Vulkan::Shader *compute_shader)
 	return ret;
 }
 
-Program *Device::request_program(const uint32_t *compute_data, size_t compute_size)
+Program *Device::request_program(const uint32_t *compute_data, size_t compute_size,
+                                 const ResourceLayout *layout)
 {
 	if (!compute_size)
 		return nullptr;
 
-	auto *compute_shader = request_shader(compute_data, compute_size);
+	auto *compute_shader = request_shader(compute_data, compute_size, layout);
 	return request_program(compute_shader);
 }
 
@@ -336,13 +337,14 @@ Program *Device::request_program(Shader *vertex, Shader *fragment)
 }
 
 Program *Device::request_program(const uint32_t *vertex_data, size_t vertex_size, const uint32_t *fragment_data,
-                                 size_t fragment_size)
+                                 size_t fragment_size, const ResourceLayout *vertex_layout,
+                                 const ResourceLayout *fragment_layout)
 {
 	if (!vertex_size || !fragment_size)
 		return nullptr;
 
-	auto *vertex = request_shader(vertex_data, vertex_size);
-	auto *fragment = request_shader(fragment_data, fragment_size);
+	auto *vertex = request_shader(vertex_data, vertex_size, vertex_layout);
+	auto *fragment = request_shader(fragment_data, fragment_size, fragment_layout);
 	return request_program(vertex, fragment);
 }
 

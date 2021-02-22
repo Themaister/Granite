@@ -1,7 +1,7 @@
 #ifndef DEBUG_CHANNEL_H_
 #define DEBUG_CHANNEL_H_
 
-layout(set = 7, binding = 15, std430) buffer DebugChannelSSBO
+layout(set = 3, binding = 15, std430) buffer DebugChannelSSBO
 {
 	uint counter;
 	writeonly uint words[];

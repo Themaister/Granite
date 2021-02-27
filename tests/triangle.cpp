@@ -24,7 +24,7 @@
 #include "command_buffer.hpp"
 #include "device.hpp"
 #include "os_filesystem.hpp"
-#include "math.hpp"
+#include "muglm/muglm_impl.hpp"
 #include <string.h>
 
 using namespace Granite;
@@ -32,7 +32,7 @@ using namespace Vulkan;
 
 struct TriangleApplication : Granite::Application, Granite::EventHandler
 {
-	void render_frame(double, double)
+	void render_frame(double, double elapsed_time)
 	{
 		auto &wsi = get_wsi();
 		auto &device = wsi.get_device();
@@ -44,11 +44,17 @@ struct TriangleApplication : Granite::Application, Granite::EventHandler
 		cmd->set_opaque_state();
 		cmd->set_primitive_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
 
-		static const vec2 vertices[] = {
+		vec2 vertices[] = {
 			vec2(-0.5f, -0.5f),
 			vec2(-0.5f, +0.5f),
 			vec2(+0.5f, -0.5f),
 		};
+
+		auto c = float(muglm::cos(elapsed_time * 2.0));
+		auto s = float(muglm::sin(elapsed_time * 2.0));
+		mat2 m{vec2(c, -s), vec2(s, c)};
+		for (auto &v : vertices)
+			v = m * v;
 
 		static const vec4 colors[] = {
 			vec4(1.0f, 0.0f, 0.0f, 1.0f),

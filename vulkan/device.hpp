@@ -114,6 +114,52 @@ public:
 	                     uint32_t word_count, const Word *words) = 0;
 };
 
+namespace Helper
+{
+struct WaitSemaphores
+{
+	Util::SmallVector<VkSemaphore> binary_waits;
+	Util::SmallVector<VkPipelineStageFlags> binary_wait_stages;
+	Util::SmallVector<VkSemaphore> timeline_waits;
+	Util::SmallVector<VkPipelineStageFlags> timeline_wait_stages;
+	Util::SmallVector<uint64_t> timeline_wait_counts;
+};
+
+class BatchComposer
+{
+public:
+	enum { MaxSubmissions = 8 };
+
+	explicit BatchComposer(bool split_binary_timeline_semaphores);
+	void add_wait_submissions(WaitSemaphores &sem);
+	void add_wait_semaphore(SemaphoreHolder &sem, VkPipelineStageFlags stage);
+	void add_signal_semaphore(VkSemaphore sem, uint64_t count);
+	void add_command_buffer(VkCommandBuffer cmd);
+
+	Util::SmallVector<VkSubmitInfo, MaxSubmissions> &bake(int profiling_iteration = -1);
+
+private:
+	Util::SmallVector<VkSubmitInfo, MaxSubmissions> submits;
+	VkTimelineSemaphoreSubmitInfoKHR timeline_infos[Helper::BatchComposer::MaxSubmissions];
+	VkPerformanceQuerySubmitInfoKHR profiling_infos[Helper::BatchComposer::MaxSubmissions];
+
+	Util::SmallVector<VkSemaphore> waits[MaxSubmissions];
+	Util::SmallVector<uint64_t> wait_counts[MaxSubmissions];
+	Util::SmallVector<VkFlags> wait_stages[MaxSubmissions];
+	Util::SmallVector<VkSemaphore> signals[MaxSubmissions];
+	Util::SmallVector<uint64_t> signal_counts[MaxSubmissions];
+	Util::SmallVector<VkCommandBuffer> cmds[MaxSubmissions];
+
+	unsigned submit_index = 0;
+	bool split_binary_timeline_semaphores = false;
+
+	void begin_batch();
+
+	bool has_timeline_semaphore_in_batch(unsigned index) const;
+	bool has_binary_semaphore_in_batch(unsigned index) const;
+};
+}
+
 class Device
 #ifdef GRANITE_VULKAN_FOSSILIZE
 	: public Fossilize::StateCreatorInterface
@@ -542,7 +588,6 @@ private:
 	{
 		Semaphore acquire;
 		Semaphore release;
-		bool touched = false;
 		bool consumed = false;
 		std::vector<ImageHandle> swapchain;
 		unsigned index = 0;
@@ -639,6 +684,13 @@ private:
 	void submit_empty_inner(CommandBuffer::Type type, InternalFence *fence,
 	                        unsigned semaphore_count,
 	                        Semaphore *semaphore);
+
+	void collect_wait_semaphores(QueueData &data, Helper::WaitSemaphores &semaphores);
+	void emit_queue_signals(Helper::BatchComposer &composer,
+	                        VkSemaphore sem, uint64_t timeline, InternalFence *fence,
+	                        unsigned semaphore_count, Semaphore *semaphores);
+	VkResult submit_batches(Helper::BatchComposer &composer, VkQueue queue, VkFence fence,
+	                        int profiling_iteration = -1);
 
 	void destroy_buffer(VkBuffer buffer);
 	void destroy_image(VkImage image);

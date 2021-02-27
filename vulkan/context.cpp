@@ -899,19 +899,7 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 			ppNext = &ext.ubo_std430_features.pNext;
 		}
 
-#ifdef VULKAN_DEBUG
-		bool use_timeline_semaphore = force_no_validation;
-		if (const char *use_timeline = getenv("GRANITE_VULKAN_FORCE_TIMELINE_SEMAPHORE"))
-		{
-			if (strtol(use_timeline, nullptr, 0) != 0)
-				use_timeline_semaphore = true;
-		}
-#elif defined(ANDROID)
-		constexpr bool use_timeline_semaphore = false;
-#else
-		constexpr bool use_timeline_semaphore = true;
-#endif
-		if (use_timeline_semaphore && has_extension(VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME))
+		if (has_extension(VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME))
 		{
 			enabled_extensions.push_back(VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME);
 			*ppNext = &ext.timeline_semaphore_features;

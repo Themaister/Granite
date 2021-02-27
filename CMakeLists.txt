@@ -81,6 +81,12 @@ if (GRANITE_TARGET_NATIVE)
 endif()
 
 set(GRANITE_LINK_FLAGS)
+
+if (${CMAKE_VERSION} GREATER "3.13")
+	# Executable targets are not stripped in release mode on Android, do it explicitly.
+    add_link_options($<$<AND:$<PLATFORM_ID:Android>,$<CONFIG:RELEASE>>:-s>)
+endif()
+
 if (GRANITE_SANITIZE_ADDRESS)
     set(GRANITE_CXX_FLAGS ${GRANITE_CXX_FLAGS} -fsanitize=address)
     set(GRANITE_LINK_FLAGS "${GRANITE_LINK_FLAGS} -fsanitize=address")

@@ -684,11 +684,13 @@ void Device::init_workarounds()
 		LOGW("Workaround applied: Acquiring WSI images early on Mali.\n");
 		LOGW("Workaround applied: Emulating events as pipeline barriers.\n");
 		LOGW("Workaround applied: Optimize ALL_GRAPHICS_BIT barriers.\n");
+		LOGW("Workaround applied: Split binary timeline semaphores.\n");
 
 		// All performance related workarounds.
 		workarounds.wsi_acquire_barrier_is_expensive = true;
 		workarounds.emulate_event_as_pipeline_barrier = true;
 		workarounds.optimize_all_graphics_barrier = true;
+		workarounds.split_binary_timeline_semaphores = true;
 	}
 #endif
 }

@@ -52,5 +52,6 @@ struct ImplementationWorkarounds
 	bool optimize_all_graphics_barrier = false;
 	bool force_store_in_render_pass = false;
 	bool broken_color_write_mask = false;
+	bool split_binary_timeline_semaphores = false;
 };
 }

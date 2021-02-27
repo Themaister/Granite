@@ -1481,9 +1481,6 @@ Helper::BatchComposer::bake(int profiling_iteration)
 		}
 	}
 
-	if (!split_binary_timeline_semaphores && submit_count > 2)
-		LOGW("Submission count is over 2, this is unexpected when not splitting binary and timeline semaphores.\n");
-
 	submits.resize(submit_count);
 	return submits;
 }

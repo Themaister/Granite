@@ -32,7 +32,6 @@ namespace Audio
 {
 namespace DSP
 {
-
 class SincResampler
 {
 public:
@@ -44,13 +43,19 @@ public:
 	};
 	SincResampler(float out_rate, float in_rate, Quality quality);
 	~SincResampler();
-	size_t process_and_accumulate(float *outputs, const float *inputs, size_t out_frames) noexcept;
+	size_t process_and_accumulate_output_frames(float *outputs, const float *inputs, size_t out_frames) noexcept;
+	size_t process_and_accumulate_input_frames(float *outputs, const float *inputs, size_t in_frames) noexcept;
+	size_t process_output_frames(float *outputs, const float *inputs, size_t out_frames) noexcept;
+	size_t process_input_frames(float *outputs, const float *inputs, size_t in_frames) noexcept;
 
 	void operator=(const SincResampler &) = delete;
 	SincResampler(const SincResampler &) = delete;
 
 	size_t get_maximum_input_for_output_frames(size_t out_frames) const noexcept;
 	size_t get_current_input_for_output_frames(size_t out_frames) const noexcept;
+	size_t get_maximum_output_for_input_frames(size_t in_frames) const noexcept;
+
+	void set_sample_rate_ratio(float ratio) noexcept;
 
 private:
 	unsigned phase_bits = 0;
@@ -68,8 +73,14 @@ private:
 	float *window_buffer = nullptr;
 
 	void init_table_kaiser(double cutoff, unsigned phase_count, unsigned num_taps, double beta);
-};
 
+	template <bool accumulate>
+	inline void process(float *output) const noexcept;
+	template <bool accumulate>
+	inline size_t process_output(float *outputs, const float *inputs, size_t out_frames) noexcept;
+	template <bool accumulate>
+	inline size_t process_input(float *outputs, const float *inputs, size_t in_frames) noexcept;
+};
 }
 }
 }

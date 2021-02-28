@@ -106,7 +106,6 @@ namespace Audio
 {
 namespace DSP
 {
-
 void SincResampler::init_table_kaiser(double cutoff, unsigned phase_count, unsigned num_taps, double beta)
 {
 	double window_mod = DSP::kaiser_window_function(0.0, beta);
@@ -186,7 +185,7 @@ SincResampler::SincResampler(float out_rate, float in_rate, Quality quality)
 	}
 
 	subphase_mask = (1u << subphase_bits) - 1u;
-	subphase_mod  = 1.0f / (1u << subphase_bits);
+	subphase_mod  = 1.0f / float(1u << subphase_bits);
 	taps = sidelobes * 2;
 	float bandwidth_mod = out_rate / in_rate;
 
@@ -195,7 +194,7 @@ SincResampler::SincResampler(float out_rate, float in_rate, Quality quality)
 	if (bandwidth_mod < 1.0f)
 	{
 		cutoff *= bandwidth_mod;
-		taps = unsigned(ceil(taps / bandwidth_mod));
+		taps = unsigned(ceil(float(taps) / bandwidth_mod));
 	}
 
 	/* Be SIMD-friendly. */
@@ -213,10 +212,13 @@ SincResampler::SincResampler(float out_rate, float in_rate, Quality quality)
 	window_buffer = main_buffer + phase_elems;
 
 	init_table_kaiser(cutoff, 1u << phase_bits, taps, kaiser_beta);
+	set_sample_rate_ratio(bandwidth_mod);
+}
 
-	float ratio = out_rate / in_rate;
+void SincResampler::set_sample_rate_ratio(float ratio) noexcept
+{
 	phases = 1u << (phase_bits + subphase_bits);
-	fixed_ratio = uint32_t(round(phases / ratio));
+	fixed_ratio = uint32_t(round(float(phases) / ratio));
 }
 
 SincResampler::~SincResampler()
@@ -240,66 +242,130 @@ size_t SincResampler::get_current_input_for_output_frames(size_t out_frames) con
 	return size_t(start_time);
 }
 
-size_t SincResampler::process_and_accumulate(float *output, const float *input, size_t out_frames) noexcept
+size_t SincResampler::get_maximum_output_for_input_frames(size_t in_frames) const noexcept
+{
+	uint64_t max_output_time = uint64_t(phases) * in_frames + phases - 1;
+	max_output_time = (max_output_time + fixed_ratio - 1) / fixed_ratio;
+	return size_t(max_output_time);
+}
+
+template <bool accumulate>
+inline void SincResampler::process(float *output) const noexcept
+{
+	const float *buffer = window_buffer + ptr;
+	unsigned num_taps = taps;
+	unsigned phase = time >> subphase_bits;
+
+	const float *sample_phase_table = phase_table + phase * num_taps * 2;
+	const float *delta_table = sample_phase_table + num_taps;
+
+#ifdef __SSE__
+	__m128 sum = _mm_setzero_ps();
+	__m128 delta = _mm_set1_ps(float(time & subphase_mask) * subphase_mod);
+	for (unsigned i = 0; i < num_taps; i += 4)
+	{
+		__m128 buf = _mm_loadu_ps(buffer + i);
+		__m128 deltas = _mm_load_ps(delta_table + i);
+		__m128 _sinc  = _mm_add_ps(_mm_load_ps(sample_phase_table + i), _mm_mul_ps(deltas, delta));
+		sum = _mm_add_ps(sum, _mm_mul_ps(buf, _sinc));
+	}
+
+	// Horizontal add.
+	sum = _mm_add_ps(_mm_shuffle_ps(sum, sum, _MM_SHUFFLE(2, 3, 2, 3)), sum);
+	sum = _mm_add_ss(_mm_shuffle_ps(sum, sum, _MM_SHUFFLE(1, 1, 1, 1)), sum);
+
+	if (accumulate)
+		_mm_store_ss(output, _mm_add_ss(_mm_load_ss(output), sum));
+	else
+		_mm_store_ss(output, sum);
+#elif defined(__ARM_NEON)
+	float delta = float(time & subphase_mask) * subphase_mod;
+	float32x4_t sum = vdupq_n_f32(0.0f);
+	for (unsigned i = 0; i < taps; i += 4)
+	{
+		float32x4_t phases = vld1q_f32(phase_table + i);
+		float32x4_t deltas = vld1q_f32(delta_table + i);
+		float32x4_t buf = vld1q_f32(buffer + i);
+		float32x4_t _sinc = vmlaq_n_f32(phases, deltas, delta);
+		sum = vmlaq_f32(sum, buf, _sinc);
+	}
+
+	float32x2_t half = vadd_f32(vget_low_f32(sum), vget_high_f32(sum));
+	float32x2_t res = vpadd_f32(half, half);
+
+	if (accumulate)
+	{
+		float32x2_t o = vld1_dup_f32(output);
+		res = vadd_f32(o, res);
+		vst1_lane_f32(output, res, 0);
+	}
+	else
+		vst1_lane_f32(output, res, 0);
+#else
+	float delta = float(time & subphase_mask) * subphase_mod;
+	float sum = 0.0f;
+	for (unsigned i = 0; i < taps; i++)
+	{
+		float sinc_val = phase_table[i] + delta_table[i] * delta;
+		sum += buffer[i] * sinc_val;
+	}
+
+	if (accumulate)
+		*output += sum;
+	else
+		*output = sum;
+#endif
+}
+
+template <bool accumulate>
+inline size_t SincResampler::process_input(float *output, const float *input, size_t in_frames) noexcept
 {
 	uint32_t ratio = fixed_ratio;
+	size_t rendered_frames = 0;
 
+	while (in_frames)
+	{
+		// Drain inputs.
+		while (in_frames && time >= phases)
+		{
+			// Push in reverse to make filter more obvious.
+			if (!ptr)
+				ptr = taps;
+			ptr--;
+
+			const float v = *input;
+			window_buffer[ptr + taps] = v;
+			window_buffer[ptr] = v;
+			time -= phases;
+			in_frames--;
+			input++;
+		}
+
+		// Pump out samples.
+		while (time < phases)
+		{
+			process<accumulate>(output);
+			output++;
+			time += ratio;
+			rendered_frames++;
+		}
+	}
+
+	return rendered_frames;
+}
+
+template <bool accumulate>
+inline size_t SincResampler::process_output(float *output, const float *input, size_t out_frames) noexcept
+{
+	uint32_t ratio = fixed_ratio;
 	size_t consumed_frames = 0;
+
 	while (out_frames)
 	{
 		// Pump out samples.
 		while (out_frames && time < phases)
 		{
-			const float *buffer = window_buffer + ptr;
-			unsigned num_taps = taps;
-			unsigned phase = time >> subphase_bits;
-
-			const float *sample_phase_table = phase_table + phase * num_taps * 2;
-			const float *delta_table = sample_phase_table + num_taps;
-
-#ifdef __SSE__
-			__m128 sum = _mm_setzero_ps();
-			__m128 delta = _mm_set1_ps(float(time & subphase_mask) * subphase_mod);
-			for (unsigned i = 0; i < num_taps; i += 4)
-			{
-				__m128 buf = _mm_loadu_ps(buffer + i);
-				__m128 deltas = _mm_load_ps(delta_table + i);
-				__m128 _sinc  = _mm_add_ps(_mm_load_ps(sample_phase_table + i), _mm_mul_ps(deltas, delta));
-				sum = _mm_add_ps(sum, _mm_mul_ps(buf, _sinc));
-			}
-
-			// Horizontal add.
-			sum = _mm_add_ps(_mm_shuffle_ps(sum, sum, _MM_SHUFFLE(2, 3, 2, 3)), sum);
-			sum = _mm_add_ss(_mm_shuffle_ps(sum, sum, _MM_SHUFFLE(1, 1, 1, 1)), sum);
-			_mm_store_ss(output, _mm_add_ss(_mm_load_ss(output), sum));
-#elif defined(__ARM_NEON)
-			float delta = float(time & subphase_mask) * subphase_mod;
-			float32x4_t sum = vdupq_n_f32(0.0f);
-			for (unsigned i = 0; i < taps; i += 4)
-			{
-				float32x4_t phases = vld1q_f32(phase_table + i);
-				float32x4_t deltas = vld1q_f32(delta_table + i);
-				float32x4_t buf = vld1q_f32(buffer + i);
-				float32x4_t _sinc = vmlaq_n_f32(phases, deltas, delta);
-				sum = vmlaq_f32(sum, buf, _sinc);
-			}
-
-			float32x2_t half = vadd_f32(vget_low_f32(sum), vget_high_f32(sum));
-			float32x2_t res = vpadd_f32(half, half);
-			float32x2_t o = vld1_dup_f32(output);
-			res = vadd_f32(o, res);
-			vst1_lane_f32(output, res, 0);
-#else
-			float delta = float(time & subphase_mask) * subphase_mod;
-			float sum = 0.0f;
-			for (unsigned i = 0; i < taps; i++)
-			{
-				float sinc_val = phase_table[i] + delta_table[i] * delta;
-				sum += buffer[i] * sinc_val;
-			}
-			*output += sum;
-#endif
-
+			process<accumulate>(output);
 			output++;
 			out_frames--;
 			time += ratio;
@@ -308,13 +374,14 @@ size_t SincResampler::process_and_accumulate(float *output, const float *input, 
 		// Drain inputs.
 		while (time >= phases)
 		{
-			/* Push in reverse to make filter more obvious. */
+			// Push in reverse to make filter more obvious.
 			if (!ptr)
 				ptr = taps;
 			ptr--;
 
-			window_buffer[ptr + taps] = input[consumed_frames];
-			window_buffer[ptr] = input[consumed_frames];
+			const float v = input[consumed_frames];
+			window_buffer[ptr + taps] = v;
+			window_buffer[ptr] = v;
 			consumed_frames++;
 			time -= phases;
 		}
@@ -323,6 +390,27 @@ size_t SincResampler::process_and_accumulate(float *output, const float *input, 
 	return consumed_frames;
 }
 
+size_t SincResampler::process_output_frames(float *outputs, const float *inputs, size_t out_frames) noexcept
+{
+	return process_output<false>(outputs, inputs, out_frames);
+}
+
+size_t SincResampler::process_input_frames(float *outputs, const float *inputs, size_t in_frames) noexcept
+{
+	return process_input<false>(outputs, inputs, in_frames);
+}
+
+size_t SincResampler::process_and_accumulate_output_frames(float *outputs, const float *inputs,
+                                                           size_t out_frames) noexcept
+{
+	return process_output<true>(outputs, inputs, out_frames);
+}
+
+size_t SincResampler::process_and_accumulate_input_frames(float *outputs, const float *inputs,
+                                                          size_t in_frames) noexcept
+{
+	return process_input<true>(outputs, inputs, in_frames);
+}
 }
 }
 }

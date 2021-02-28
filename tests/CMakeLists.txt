@@ -123,6 +123,9 @@ if (GRANITE_AUDIO)
         target_compile_definitions(audio-application PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
     endif()
     target_link_libraries(audio-application PRIVATE granite-audio)
+
+    add_granite_offline_tool(resampler-test resampler_test.cpp)
+    target_link_libraries(resampler-test PRIVATE granite-audio)
 endif()
 
 add_granite_offline_tool(linkage-test linkage_test.cpp)

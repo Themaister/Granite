@@ -683,12 +683,16 @@ void Device::init_workarounds()
 	{
 		LOGW("Workaround applied: Emulating events as pipeline barriers.\n");
 		LOGW("Workaround applied: Optimize ALL_GRAPHICS_BIT barriers.\n");
-		LOGW("Workaround applied: Split binary timeline semaphores.\n");
 
 		// All performance related workarounds.
 		workarounds.emulate_event_as_pipeline_barrier = true;
 		workarounds.optimize_all_graphics_barrier = true;
-		workarounds.split_binary_timeline_semaphores = true;
+
+		if (ext.timeline_semaphore_features.timelineSemaphore)
+		{
+			LOGW("Workaround applied: Split binary timeline semaphores.\n");
+			workarounds.split_binary_timeline_semaphores = true;
+		}
 	}
 #endif
 }
@@ -1571,7 +1575,20 @@ VkResult Device::submit_batches(Helper::BatchComposer &composer, VkQueue queue, 
 	if (cleared_fence)
 		LOGI("Signalling fence: %llx\n", reinterpret_cast<unsigned long long>(cleared_fence));
 #endif
-	auto result = table->vkQueueSubmit(queue, submits.size(), submits.data(), fence);
+	VkResult result = VK_SUCCESS;
+	if (get_workarounds().split_binary_timeline_semaphores)
+	{
+		for (auto &submit : submits)
+		{
+			bool last_submit = &submit == &submits.back();
+			result = table->vkQueueSubmit(queue, 1, &submit, last_submit ? fence : VK_NULL_HANDLE);
+			if (result != VK_SUCCESS)
+				break;
+		}
+	}
+	else
+		result = table->vkQueueSubmit(queue, submits.size(), submits.data(), fence);
+
 	if (ImplementationQuirks::get().queue_wait_on_submission)
 		table->vkQueueWaitIdle(queue);
 	if (queue_unlock_callback)

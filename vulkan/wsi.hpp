@@ -124,6 +124,7 @@ public:
 	void set_present_mode(PresentMode mode);
 	void set_backbuffer_srgb(bool enable);
 	void set_support_prerotate(bool enable);
+	void set_extra_usage_flags(VkImageUsageFlags usage);
 	VkSurfaceTransformFlagBitsKHR get_current_prerotate() const;
 
 	PresentMode get_present_mode() const
@@ -197,6 +198,8 @@ private:
 	VkFormat swapchain_format = VK_FORMAT_UNDEFINED;
 	PresentMode current_present_mode = PresentMode::SyncToVBlank;
 	PresentMode present_mode = PresentMode::SyncToVBlank;
+	VkImageUsageFlags current_extra_usage = 0;
+	VkImageUsageFlags extra_usage = 0;
 
 	enum class SwapchainError
 	{
@@ -234,5 +237,7 @@ private:
 
 	void tear_down_swapchain();
 	void drain_swapchain();
+
+	VkSurfaceFormatKHR find_suitable_present_format(const std::vector<VkSurfaceFormatKHR> &formats) const;
 };
 }

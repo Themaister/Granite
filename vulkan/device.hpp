@@ -215,7 +215,9 @@ public:
 	// Only called by main thread, during setup phase.
 	void set_context(const Context &context);
 	void init_swapchain(const std::vector<VkImage> &swapchain_images, unsigned width, unsigned height, VkFormat format,
-	                    VkSurfaceTransformFlagBitsKHR transform);
+	                    VkSurfaceTransformFlagBitsKHR transform, VkImageUsageFlags usage);
+	void set_swapchain_queue_family_support(uint32_t queue_family_support);
+	bool can_touch_swapchain_in_command_buffer(CommandBuffer::Type type) const;
 	void init_external_swapchain(const std::vector<ImageHandle> &swapchain_images);
 	void init_frame_contexts(unsigned count);
 	const VolkDeviceTable &get_device_table() const;
@@ -591,6 +593,7 @@ private:
 		Semaphore release;
 		std::vector<ImageHandle> swapchain;
 		VkQueue present_queue = VK_NULL_HANDLE;
+		uint32_t queue_family_support_mask = 0;
 		unsigned index = 0;
 		bool consumed = false;
 	} wsi;

@@ -681,16 +681,18 @@ void Device::init_workarounds()
 	// UNDEFINED -> COLOR_ATTACHMENT_OPTIMAL stalls, so need to acquire async.
 	if (gpu_props.vendorID == VENDOR_ID_ARM)
 	{
-		LOGW("Workaround applied: Acquiring WSI images early on Mali.\n");
 		LOGW("Workaround applied: Emulating events as pipeline barriers.\n");
 		LOGW("Workaround applied: Optimize ALL_GRAPHICS_BIT barriers.\n");
-		LOGW("Workaround applied: Split binary timeline semaphores.\n");
 
 		// All performance related workarounds.
-		workarounds.wsi_acquire_barrier_is_expensive = true;
 		workarounds.emulate_event_as_pipeline_barrier = true;
 		workarounds.optimize_all_graphics_barrier = true;
-		workarounds.split_binary_timeline_semaphores = true;
+
+		if (ext.timeline_semaphore_features.timelineSemaphore)
+		{
+			LOGW("Workaround applied: Split binary timeline semaphores.\n");
+			workarounds.split_binary_timeline_semaphores = true;
+		}
 	}
 #endif
 }
@@ -1573,7 +1575,20 @@ VkResult Device::submit_batches(Helper::BatchComposer &composer, VkQueue queue, 
 	if (cleared_fence)
 		LOGI("Signalling fence: %llx\n", reinterpret_cast<unsigned long long>(cleared_fence));
 #endif
-	auto result = table->vkQueueSubmit(queue, submits.size(), submits.data(), fence);
+	VkResult result = VK_SUCCESS;
+	if (get_workarounds().split_binary_timeline_semaphores)
+	{
+		for (auto &submit : submits)
+		{
+			bool last_submit = &submit == &submits.back();
+			result = table->vkQueueSubmit(queue, 1, &submit, last_submit ? fence : VK_NULL_HANDLE);
+			if (result != VK_SUCCESS)
+				break;
+		}
+	}
+	else
+		result = table->vkQueueSubmit(queue, submits.size(), submits.data(), fence);
+
 	if (ImplementationQuirks::get().queue_wait_on_submission)
 		table->vkQueueWaitIdle(queue);
 	if (queue_unlock_callback)
@@ -1673,6 +1688,7 @@ void Device::submit_queue(CommandBuffer::Type type, InternalFence *fence,
 			wsi.release->set_internal_sync_object();
 			composer.add_signal_semaphore(release, 0);
 			wsi.consumed = true;
+			wsi.present_queue = queue;
 		}
 		else
 		{
@@ -2053,6 +2069,12 @@ Semaphore Device::consume_release_semaphore()
 	auto ret = move(wsi.release);
 	wsi.release.reset();
 	return ret;
+}
+
+VkQueue Device::get_current_present_queue() const
+{
+	VK_ASSERT(wsi.present_queue);
+	return wsi.present_queue;
 }
 
 const Sampler &Device::get_stock_sampler(StockSampler sampler) const

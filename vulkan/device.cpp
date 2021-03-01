@@ -1663,13 +1663,17 @@ void Device::submit_queue(CommandBuffer::Type type, InternalFence *fence,
 	for (size_t i = 0, submissions_size = submissions.size(); i < submissions_size; i++)
 	{
 		auto &cmd = submissions[i];
+		VkPipelineStageFlags wsi_stages = cmd->swapchain_touched_in_stages();
 
-		if (cmd->swapchain_touched() && !wsi.consumed)
+		if (wsi_stages != 0 && !wsi.consumed)
 		{
+			if (!can_touch_swapchain_in_command_buffer(type))
+				LOGE("Touched swapchain in unsupported command buffer type %u.\n", unsigned(type));
+
 			if (wsi.acquire && wsi.acquire->get_semaphore() != VK_NULL_HANDLE)
 			{
 				VK_ASSERT(wsi.acquire->is_signalled());
-				composer.add_wait_semaphore(*wsi.acquire, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+				composer.add_wait_semaphore(*wsi.acquire, wsi_stages);
 				if (!wsi.acquire->get_timeline_value())
 				{
 					if (wsi.acquire->can_recycle())
@@ -1687,14 +1691,14 @@ void Device::submit_queue(CommandBuffer::Type type, InternalFence *fence,
 			wsi.release = Semaphore(handle_pool.semaphores.allocate(this, release, true));
 			wsi.release->set_internal_sync_object();
 			composer.add_signal_semaphore(release, 0);
-			wsi.consumed = true;
 			wsi.present_queue = queue;
+			wsi.consumed = true;
 		}
 		else
 		{
 			// After we have consumed WSI, we cannot keep using it, since we
 			// already signalled the semaphore.
-			VK_ASSERT(!cmd->swapchain_touched());
+			VK_ASSERT(wsi_stages == 0);
 			composer.add_command_buffer(cmd->get_command_buffer());
 		}
 	}
@@ -2184,15 +2188,37 @@ void Device::init_external_swapchain(const vector<ImageHandle> &swapchain_images
 	}
 }
 
+bool Device::can_touch_swapchain_in_command_buffer(CommandBuffer::Type type) const
+{
+	// If 0, we have virtual swap chain, so anything goes.
+	if (!wsi.queue_family_support_mask)
+		return true;
+
+	switch (get_physical_queue_type(type))
+	{
+	case CommandBuffer::Type::AsyncCompute:
+		return (wsi.queue_family_support_mask & (1u << compute_queue_family_index)) != 0;
+	case CommandBuffer::Type::AsyncTransfer:
+		return (wsi.queue_family_support_mask & (1u << transfer_queue_family_index)) != 0;
+	default:
+		return (wsi.queue_family_support_mask & (1u << graphics_queue_family_index)) != 0;
+	}
+}
+
+void Device::set_swapchain_queue_family_support(uint32_t queue_family_support)
+{
+	wsi.queue_family_support_mask = queue_family_support;
+}
+
 void Device::init_swapchain(const vector<VkImage> &swapchain_images, unsigned width, unsigned height, VkFormat format,
-                            VkSurfaceTransformFlagBitsKHR transform)
+                            VkSurfaceTransformFlagBitsKHR transform, VkImageUsageFlags usage)
 {
 	DRAIN_FRAME_LOCK();
 	wsi.swapchain.clear();
 	wait_idle_nolock();
 
 	auto info = ImageCreateInfo::render_target(width, height, format);
-	info.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	info.usage = usage;
 
 	wsi.index = 0;
 	wsi.consumed = false;

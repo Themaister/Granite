@@ -160,14 +160,28 @@ bool WSI::init(unsigned num_thread_indices, const Context::SystemHandles &system
 	swapchain_aspect_ratio = platform->get_aspect_ratio();
 
 	VkBool32 supported = VK_FALSE;
-	vkGetPhysicalDeviceSurfaceSupportKHR(context->get_gpu(), context->get_graphics_queue_family(), surface, &supported);
-	if (!supported)
+	if (vkGetPhysicalDeviceSurfaceSupportKHR(context->get_gpu(),
+	                                         context->get_graphics_queue_family(),
+	                                         surface, &supported) != VK_SUCCESS || !supported)
 		return false;
+
+	uint32_t queue_present_support = 1u << context->get_graphics_queue_family();
+	if (vkGetPhysicalDeviceSurfaceSupportKHR(context->get_gpu(),
+	                                         context->get_compute_queue_family(),
+	                                         surface, &supported) == VK_SUCCESS && supported)
+		queue_present_support |= 1u << context->get_compute_queue_family();
+	if (vkGetPhysicalDeviceSurfaceSupportKHR(context->get_gpu(),
+	                                         context->get_transfer_queue_family(),
+	                                         surface, &supported) == VK_SUCCESS && supported)
+		queue_present_support |= 1u << context->get_transfer_queue_family();
+	device->set_swapchain_queue_family_support(queue_present_support);
 
 	if (!blocking_init_swapchain(width, height))
 		return false;
 
-	device->init_swapchain(swapchain_images, swapchain_width, swapchain_height, swapchain_format, swapchain_current_prerotate);
+	device->init_swapchain(swapchain_images, swapchain_width, swapchain_height, swapchain_format,
+	                       swapchain_current_prerotate,
+	                       current_extra_usage | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
 	platform->get_frame_timer().reset();
 	return true;
 }
@@ -368,7 +382,8 @@ bool WSI::begin_frame()
 
 			if (!blocking_init_swapchain(swapchain_width, swapchain_height))
 				return false;
-			device->init_swapchain(swapchain_images, swapchain_width, swapchain_height, swapchain_format, swapchain_current_prerotate);
+			device->init_swapchain(swapchain_images, swapchain_width, swapchain_height, swapchain_format, swapchain_current_prerotate,
+			                       current_extra_usage | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
 		}
 		else
 		{
@@ -466,10 +481,12 @@ bool WSI::end_frame()
 		}
 
 		// Re-init swapchain.
-		if (present_mode != current_present_mode || srgb_backbuffer_enable != current_srgb_backbuffer_enable)
+		if (present_mode != current_present_mode || srgb_backbuffer_enable != current_srgb_backbuffer_enable ||
+		    extra_usage != current_extra_usage)
 		{
 			current_present_mode = present_mode;
 			current_srgb_backbuffer_enable = srgb_backbuffer_enable;
+			current_extra_usage = extra_usage;
 			update_framebuffer(swapchain_width, swapchain_height);
 		}
 	}
@@ -483,7 +500,11 @@ void WSI::update_framebuffer(unsigned width, unsigned height)
 	{
 		drain_swapchain();
 		if (blocking_init_swapchain(width, height))
-			device->init_swapchain(swapchain_images, swapchain_width, swapchain_height, swapchain_format, swapchain_current_prerotate);
+		{
+			device->init_swapchain(swapchain_images, swapchain_width, swapchain_height, swapchain_format,
+			                       swapchain_current_prerotate,
+			                       current_extra_usage | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
+		}
 	}
 }
 
@@ -493,6 +514,16 @@ void WSI::set_present_mode(PresentMode mode)
 	if (!has_acquired_swapchain_index && present_mode != current_present_mode)
 	{
 		current_present_mode = present_mode;
+		update_framebuffer(swapchain_width, swapchain_height);
+	}
+}
+
+void WSI::set_extra_usage_flags(VkImageUsageFlags usage)
+{
+	extra_usage = usage;
+	if (!has_acquired_swapchain_index && extra_usage != current_extra_usage)
+	{
+		current_extra_usage = extra_usage;
 		update_framebuffer(swapchain_width, swapchain_height);
 	}
 }
@@ -556,6 +587,52 @@ bool WSI::blocking_init_swapchain(unsigned width, unsigned height)
 	} while (err != SwapchainError::None);
 
 	return swapchain != VK_NULL_HANDLE;
+}
+
+VkSurfaceFormatKHR WSI::find_suitable_present_format(const std::vector<VkSurfaceFormatKHR> &formats) const
+{
+	size_t format_count = formats.size();
+	VkSurfaceFormatKHR format = { VK_FORMAT_UNDEFINED };
+
+	VkFormatFeatureFlags features = VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT |
+	                                VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT;
+	if ((current_extra_usage & VK_IMAGE_USAGE_STORAGE_BIT) != 0)
+		features |= VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT;
+
+	if (format_count == 0)
+	{
+		LOGE("Surface has no formats?\n");
+		return format;
+	}
+
+	for (size_t i = 0; i < format_count; i++)
+	{
+		if (!device->image_format_is_supported(formats[i].format, features))
+			continue;
+
+		if (current_srgb_backbuffer_enable)
+		{
+			if (formats[i].format == VK_FORMAT_R8G8B8A8_SRGB ||
+			    formats[i].format == VK_FORMAT_B8G8R8A8_SRGB ||
+			    formats[i].format == VK_FORMAT_A8B8G8R8_SRGB_PACK32)
+			{
+				format = formats[i];
+				break;
+			}
+		}
+		else
+		{
+			if (formats[i].format == VK_FORMAT_R8G8B8A8_UNORM ||
+			    formats[i].format == VK_FORMAT_B8G8R8A8_UNORM ||
+			    formats[i].format == VK_FORMAT_A8B8G8R8_UNORM_PACK32)
+			{
+				format = formats[i];
+				break;
+			}
+		}
+	}
+
+	return format;
 }
 
 WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
@@ -688,45 +765,26 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 			return SwapchainError::Error;
 	}
 
-	VkSurfaceFormatKHR format;
-	if (format_count == 1 && formats[0].format == VK_FORMAT_UNDEFINED)
+	if (current_extra_usage && support_prerotate)
 	{
-		format = formats[0];
-		format.format = VK_FORMAT_B8G8R8A8_UNORM;
+		LOGW("Disabling prerotate support due to extra usage flags in swapchain.\n");
+		support_prerotate = false;
 	}
-	else
+
+	if (current_extra_usage & ~surface_properties.supportedUsageFlags)
 	{
-		if (format_count == 0)
-		{
-			LOGE("Surface has no formats.\n");
-			return SwapchainError::Error;
-		}
+		LOGW("Attempting to use unsupported usage flags 0x%x for swapchain.\n", current_extra_usage);
+		current_extra_usage &= surface_properties.supportedUsageFlags;
+		extra_usage = current_extra_usage;
+	}
 
-		bool found = false;
-		for (unsigned i = 0; i < format_count; i++)
-		{
-			if (current_srgb_backbuffer_enable)
-			{
-				if (formats[i].format == VK_FORMAT_R8G8B8A8_SRGB || formats[i].format == VK_FORMAT_B8G8R8A8_SRGB ||
-				    formats[i].format == VK_FORMAT_A8B8G8R8_SRGB_PACK32)
-				{
-					format = formats[i];
-					found = true;
-				}
-			}
-			else
-			{
-				if (formats[i].format == VK_FORMAT_R8G8B8A8_UNORM || formats[i].format == VK_FORMAT_B8G8R8A8_UNORM ||
-				    formats[i].format == VK_FORMAT_A8B8G8R8_UNORM_PACK32)
-				{
-					format = formats[i];
-					found = true;
-				}
-			}
-		}
-
-		if (!found)
-			format = formats[0];
+	auto surface_format = find_suitable_present_format(formats);
+	if (surface_format.format == VK_FORMAT_UNDEFINED)
+	{
+		LOGW("Could not find supported format for swapchain usage flags 0x%x.\n", current_extra_usage);
+		current_extra_usage = 0;
+		extra_usage = 0;
+		surface_format = find_suitable_present_format(formats);
 	}
 
 	static const char *transform_names[] = {
@@ -905,12 +963,12 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 	VkSwapchainCreateInfoKHR info = { VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR };
 	info.surface = surface;
 	info.minImageCount = desired_swapchain_images;
-	info.imageFormat = format.format;
-	info.imageColorSpace = format.colorSpace;
+	info.imageFormat = surface_format.format;
+	info.imageColorSpace = surface_format.colorSpace;
 	info.imageExtent.width = swapchain_size.width;
 	info.imageExtent.height = swapchain_size.height;
 	info.imageArrayLayers = 1;
-	info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | current_extra_usage;
 	info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	info.preTransform = pre_transform;
 	info.compositeAlpha = composite_mode;
@@ -962,7 +1020,7 @@ WSI::SwapchainError WSI::init_swapchain(unsigned width, unsigned height)
 
 	swapchain_width = swapchain_size.width;
 	swapchain_height = swapchain_size.height;
-	swapchain_format = format.format;
+	swapchain_format = surface_format.format;
 
 	LOGI("Created swapchain %u x %u (fmt: %u, transform: %u).\n", swapchain_width, swapchain_height,
 	     unsigned(swapchain_format), unsigned(swapchain_current_prerotate));

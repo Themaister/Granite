@@ -455,6 +455,23 @@ bool Context::create_instance(const char **instance_ext, uint32_t instance_ext_c
 	return true;
 }
 
+static unsigned device_score(VkPhysicalDevice &gpu)
+{
+	VkPhysicalDeviceProperties props = {};
+	vkGetPhysicalDeviceProperties(gpu, &props);
+	switch (props.deviceType)
+	{
+	case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:
+		return 3;
+	case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:
+		return 2;
+	case VK_PHYSICAL_DEVICE_TYPE_CPU:
+		return 1;
+	default:
+		return 0;
+	}
+}
+
 bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const char **required_device_extensions,
                             unsigned num_required_device_extensions, const char **required_device_layers,
                             unsigned num_required_device_layers, const VkPhysicalDeviceFeatures *required_features,
@@ -498,7 +515,19 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 		}
 
 		if (gpu == VK_NULL_HANDLE)
-			gpu = gpus.front();
+		{
+			unsigned max_score = 0;
+			// Prefer earlier entries in list.
+			for (size_t i = gpus.size(); i; i--)
+			{
+				unsigned score = device_score(gpus[i - 1]);
+				if (score >= max_score)
+				{
+					max_score = score;
+					gpu = gpus[i - 1];
+				}
+			}
+		}
 	}
 
 	uint32_t ext_count = 0;

@@ -330,10 +330,10 @@ bool WSI::begin_frame()
 		                                      fence ? fence->get_fence() : VK_NULL_HANDLE, &swapchain_index);
 		device->register_time_interval("WSI", std::move(acquire_ts), device->write_calibrated_timestamp(), "acquire");
 
-#if defined(ANDROID) && 0
+#if defined(ANDROID)
 		// Android 10 can return suboptimal here, only because of pre-transform.
 		// We don't care about that, and treat this as success.
-		if (result == VK_SUBOPTIMAL_KHR)
+		if (result == VK_SUBOPTIMAL_KHR && !support_prerotate)
 			result = VK_SUCCESS;
 #endif
 
@@ -446,12 +446,12 @@ bool WSI::end_frame()
 		VkResult overall = table->vkQueuePresentKHR(device->get_current_present_queue(), &info);
 		device->register_time_interval("WSI", std::move(present_ts), device->write_calibrated_timestamp(), "present");
 
-#if defined(ANDROID) && 0
+#if defined(ANDROID)
 		// Android 10 can return suboptimal here, only because of pre-transform.
 		// We don't care about that, and treat this as success.
-		if (overall == VK_SUBOPTIMAL_KHR)
+		if (overall == VK_SUBOPTIMAL_KHR && !support_prerotate)
 			overall = VK_SUCCESS;
-		if (result == VK_SUBOPTIMAL_KHR)
+		if (result == VK_SUBOPTIMAL_KHR && !support_prerotate)
 			result = VK_SUCCESS;
 #endif
 

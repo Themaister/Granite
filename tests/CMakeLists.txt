@@ -93,6 +93,11 @@ if (NOT ANDROID)
     target_compile_definitions(bandlimited-pixel-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
 endif()
 
+add_granite_application(async-compute-present-test async_compute_present.cpp)
+if (NOT ANDROID)
+    target_compile_definitions(async-compute-present-test PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
+endif()
+
 add_granite_offline_tool(sampler-precision sampler_precision.cpp)
 target_compile_definitions(sampler-precision PRIVATE ASSET_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\")
 

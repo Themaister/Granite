@@ -450,6 +450,7 @@ private:
 
 	void set_acquire_semaphore(unsigned index, Semaphore acquire);
 	Semaphore consume_release_semaphore();
+	VkQueue get_current_present_queue() const;
 
 	PipelineLayout *request_pipeline_layout(const CombinedResourceLayout &layout);
 	DescriptorSetAllocator *request_descriptor_set_allocator(const DescriptorSetLayout &layout, const uint32_t *stages_for_sets);
@@ -588,9 +589,10 @@ private:
 	{
 		Semaphore acquire;
 		Semaphore release;
-		bool consumed = false;
 		std::vector<ImageHandle> swapchain;
+		VkQueue present_queue = VK_NULL_HANDLE;
 		unsigned index = 0;
+		bool consumed = false;
 	} wsi;
 
 	struct QueueData

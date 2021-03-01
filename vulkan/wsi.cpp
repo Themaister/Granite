@@ -428,7 +428,7 @@ bool WSI::end_frame()
 #endif
 
 		auto present_ts = device->write_calibrated_timestamp();
-		VkResult overall = table->vkQueuePresentKHR(context->get_graphics_queue(), &info);
+		VkResult overall = table->vkQueuePresentKHR(device->get_current_present_queue(), &info);
 		device->register_time_interval("WSI", std::move(present_ts), device->write_calibrated_timestamp(), "present");
 
 #if defined(ANDROID) && 0

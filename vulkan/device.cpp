@@ -1688,6 +1688,7 @@ void Device::submit_queue(CommandBuffer::Type type, InternalFence *fence,
 			wsi.release->set_internal_sync_object();
 			composer.add_signal_semaphore(release, 0);
 			wsi.consumed = true;
+			wsi.present_queue = queue;
 		}
 		else
 		{
@@ -2068,6 +2069,12 @@ Semaphore Device::consume_release_semaphore()
 	auto ret = move(wsi.release);
 	wsi.release.reset();
 	return ret;
+}
+
+VkQueue Device::get_current_present_queue() const
+{
+	VK_ASSERT(wsi.present_queue);
+	return wsi.present_queue;
 }
 
 const Sampler &Device::get_stock_sampler(StockSampler sampler) const

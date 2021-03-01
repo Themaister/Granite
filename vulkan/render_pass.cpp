@@ -110,8 +110,6 @@ RenderPass::RenderPass(Hash hash, Device *device_, const VkRenderPassCreateInfo 
 	auto info = create_info;
 	VkAttachmentDescription fixup_attachments[VULKAN_NUM_ATTACHMENTS + 1];
 	fixup_render_pass_workaround(info, fixup_attachments);
-	if (device->get_workarounds().wsi_acquire_barrier_is_expensive)
-		fixup_wsi_barrier(info, fixup_attachments);
 
 #ifdef VULKAN_DEBUG
 	LOGI("Creating render pass.\n");
@@ -812,8 +810,6 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 	// Fixup after, we want the Fossilize render pass to be generic.
 	VkAttachmentDescription fixup_attachments[VULKAN_NUM_ATTACHMENTS + 1];
 	fixup_render_pass_workaround(rp_info, fixup_attachments);
-	if (device->get_workarounds().wsi_acquire_barrier_is_expensive)
-		fixup_wsi_barrier(rp_info, fixup_attachments);
 
 #ifdef VULKAN_DEBUG
 	LOGI("Creating render pass.\n");
@@ -825,24 +821,6 @@ RenderPass::RenderPass(Hash hash, Device *device_, const RenderPassInfo &info)
 #ifdef GRANITE_VULKAN_FOSSILIZE
 	device->register_render_pass(render_pass, get_hash(), rp_info);
 #endif
-}
-
-void RenderPass::fixup_wsi_barrier(VkRenderPassCreateInfo &create_info, VkAttachmentDescription *attachments)
-{
-	// We have transitioned ahead of time in this case,
-	// so make initialLayout COLOR_ATTACHMENT_OPTIMAL for any WSI-attachments.
-	if (attachments != create_info.pAttachments)
-	{
-		memcpy(attachments, create_info.pAttachments, create_info.attachmentCount * sizeof(attachments[0]));
-		create_info.pAttachments = attachments;
-	}
-
-	for (uint32_t i = 0; i < create_info.attachmentCount; i++)
-	{
-		auto &att = attachments[i];
-		if (att.initialLayout == VK_IMAGE_LAYOUT_UNDEFINED && att.finalLayout == VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
-			att.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-	}
 }
 
 void RenderPass::fixup_render_pass_workaround(VkRenderPassCreateInfo &create_info, VkAttachmentDescription *attachments)

@@ -46,36 +46,36 @@ public:
 class Backend : public BackendInterface
 {
 public:
-	Backend(BackendCallback &callback);
+	explicit Backend(BackendCallback *callback);
 
 	enum { MaxAudioChannels = 8 };
-	virtual ~Backend() = default;
 
 	virtual const char *get_backend_name() = 0;
 	virtual float get_sample_rate() = 0;
 	virtual unsigned get_num_channels() = 0;
 
-	inline BackendCallback &get_callback()
+	inline BackendCallback *get_callback()
 	{
 		return callback;
 	}
 
-	virtual bool start() = 0;
-	virtual bool stop() = 0;
+	// Blocking interface. Used when callback is nullptr.
+	virtual bool get_buffer_status(size_t &write_avail, size_t &max_write_avail, uint32_t &latency_usec);
+	virtual size_t write_frames_interleaved(const float *data, size_t frames, bool blocking);
 
 	// Call periodically, used for automatic recovery for backends which need it.
 	virtual void heartbeat();
 
 protected:
-	BackendCallback &callback;
+	BackendCallback *callback = nullptr;
 };
 
-Backend *create_default_audio_backend(BackendCallback &callback, float target_sample_rate, unsigned target_channels);
+Backend *create_default_audio_backend(BackendCallback *callback, float target_sample_rate, unsigned target_channels);
 
 class DumpBackend : public Backend
 {
 public:
-	DumpBackend(BackendCallback &callback_, const std::string &path,
+	DumpBackend(BackendCallback *callback_, const std::string &path,
 	            float target_sample_rate, unsigned target_channels,
 	            unsigned frames_per_tick, unsigned frames);
 	~DumpBackend();
@@ -86,6 +86,9 @@ public:
 	unsigned get_num_channels() override;
 	bool start() override;
 	bool stop() override;
+
+	bool get_buffer_status(size_t &write_avail, size_t &write_avail_frames, uint32_t &latency_usec) override;
+	size_t write_frames_interleaved(const float *data, size_t frames, bool blocking) override;
 
 private:
 	struct Impl;

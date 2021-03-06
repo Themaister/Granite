@@ -43,6 +43,7 @@ public:
 	};
 	SincResampler(float out_rate, float in_rate, Quality quality);
 	~SincResampler();
+
 	size_t process_and_accumulate_output_frames(float *outputs, const float *inputs, size_t out_frames) noexcept;
 	size_t process_and_accumulate_input_frames(float *outputs, const float *inputs, size_t in_frames) noexcept;
 	size_t process_output_frames(float *outputs, const float *inputs, size_t out_frames) noexcept;

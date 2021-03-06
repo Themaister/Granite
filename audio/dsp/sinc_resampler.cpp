@@ -283,10 +283,10 @@ inline void SincResampler::process(float *output) const noexcept
 	float32x4_t sum = vdupq_n_f32(0.0f);
 	for (unsigned i = 0; i < taps; i += 4)
 	{
-		float32x4_t phases = vld1q_f32(phase_table + i);
+		float32x4_t _phases = vld1q_f32(phase_table + i);
 		float32x4_t deltas = vld1q_f32(delta_table + i);
 		float32x4_t buf = vld1q_f32(buffer + i);
-		float32x4_t _sinc = vmlaq_n_f32(phases, deltas, delta);
+		float32x4_t _sinc = vmlaq_n_f32(_phases, deltas, delta);
 		sum = vmlaq_f32(sum, buf, _sinc);
 	}
 

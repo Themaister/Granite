@@ -79,7 +79,7 @@ struct FactoryImplementation : Factory
 	{
 #ifdef HAVE_GRANITE_AUDIO
 		if (iface)
-			return Audio::create_default_audio_backend(*static_cast<Audio::Mixer *>(iface), sample_rate, channels);
+			return Audio::create_default_audio_backend(static_cast<Audio::Mixer *>(iface), sample_rate, channels);
 		else
 			return nullptr;
 #else
